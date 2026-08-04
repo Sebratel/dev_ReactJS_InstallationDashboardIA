@@ -54,10 +54,15 @@ de premiação), **1** `web` (Open-Meteo), **1** `inline` (feriados embutidos no
 > requisito. Sugerir melhorias é bem-vindo, mas registre-as separadamente — nunca
 > troque o comportamento atual sem avisar.
 
-Achados sobre o comportamento atual que **aguardam decisão do Erick** ficam em
-[`docs/ACHADOS.md`](./ACHADOS.md) — **leia antes da Fase 2b.** São 9, e dois deles
-mudam medidas: FERIADOS parando em 2025 (11 medidas afetadas) e a discordância
-sobre quanto vale um sábado.
+Achados sobre o comportamento atual ficam em [`docs/ACHADOS.md`](./ACHADOS.md) —
+**leia antes da Fase 2b.** A decisão do Erick sobre todos eles já está lá, no topo:
+**replicar fielmente**, inclusive onde o comportamento atual parece errado. Não
+"conserte" nada por iniciativa própria; divergência deliberada só com decisão nova
+registrada nessa seção.
+
+O achado 1 está **retirado** — era erro meu de ordenação de data em texto, não um
+defeito do relatório. Leia de qualquer forma: a lição sobre `DD/MM/YYYY` vale para
+o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
@@ -162,14 +167,17 @@ depois validaremos"). Continue — mas se um número divergir depois, a medida
 construída sobre aquela query nasce errada, então **não trate paridade como
 provada** até a conferência acontecer.
 
-Também aguardam decisão dele os achados 1, 2, 3, 6 e 7 de
-[`docs/ACHADOS.md`](./ACHADOS.md). Os dois que mudam a Fase 2b:
+Os achados de comportamento **já foram decididos: replicar fielmente**
+([`docs/ACHADOS.md`](./ACHADOS.md), seção "Decisão vigente"). O que isso impõe à
+Fase 2b:
 
-- **#1 — FERIADOS para em 2025 e afeta 11 das 78 medidas** (não 1, como estava
-  registrado antes: a coluna calculada `PESO` consulta FERIADOS e 8 medidas somam
-  `PESO`). Default: replicar fiel, inclusive o erro.
-- **#7 — `PESO` e `# MEDIA CRIADOS` discordam sobre quanto vale um sábado** (1 vs
-  1,5). Default: replicar as duas como estão e marcar a divergência.
+- **Alvo é 75 medidas, não 78.** As 3 do achado 6 apontam para tabela inexistente
+  e não têm resultado hoje; replicar fiel de "sem resultado" é não implementar.
+- **Onde o Power BI usa `DISTINCTCOUNT`, use `DISTINCTCOUNT`** — `field-agenda`
+  infla linha por skill (achado 2) e a inflação foi mantida de propósito.
+- **`PESO` e `# MEDIA CRIADOS` discordam sobre o sábado** (1 vs 1,5, achado 7).
+  Reproduza as duas como estão. É o único ponto que segue sendo pergunta de
+  negócio em aberto, mas não bloqueia nada.
 
 ## Próximo passo: Fase 2b — o avaliador de DAX
 

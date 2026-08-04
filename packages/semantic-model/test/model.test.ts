@@ -173,9 +173,9 @@ test('specs reais: PESO existe e depende de FERIADOS', () => {
   const peso = m.column('CALENDARIO INSTALADO', 'PESO');
   assert.ok(peso, 'PESO existe');
   assert.equal(peso.calculated, true);
-  // PESO é a regra de dia útil que seis medidas somam. Como ela consulta
-  // FERIADOS — que para em 2025 — o achado 1 de docs/ACHADOS.md alcança todas
-  // elas, não só `# MEDIA CRIADOS`.
+  // PESO é a regra de dia útil que oito medidas somam, e ela consulta FERIADOS.
+  // Por isso o avaliador da Fase 2b precisa da tabela FERIADOS carregada antes
+  // de calcular qualquer uma das 11 medidas do achado 1 de docs/ACHADOS.md.
   assert.match(peso.dax!, /FERIADOS/);
 });
 

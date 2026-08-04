@@ -1,71 +1,109 @@
-# Achados que precisam de decisão humana
+# Achados sobre o comportamento atual
 
 Coisas descobertas ao ler a base atual que **não** são bug do código novo — são
 comportamento do Power BI de hoje, ou dependências dele. Ficam aqui porque
 `specs/` é sobrescrito por `npm run extract` e nenhuma decisão humana pode viver lá.
 
+## Decisão vigente
+
+> **Replicar fielmente.** — Erick, 04/08/2026
+
+Vale para **todos** os achados abaixo. A plataforma nova reproduz o comportamento
+atual como ele é, inclusive onde ele parece errado. Nada aqui é "consertado" sem
+uma decisão nova e explícita, registrada nesta seção.
+
+Consequência prática por achado:
+
+| Achado | O que a Fase 2b faz |
+|---|---|
+| 2 — `field-agenda` infla por skill | mantém o `LEFT JOIN person_skills`, 1,4 mi de linhas. Nenhum `string_agg` |
+| 3 — data chumbada em `base-categorias-field` | mantém `> '2026-01-01'` literal |
+| 6 — 3 medidas apontam para tabela inexistente | **não** reimplementa: replicar fiel de "sem resultado" é não ter resultado. Alvo = **75 medidas** |
+| 7 — sábado vale 1 num lugar e 1,5 no outro | reproduz as duas contas como estão, cada uma com sua regra |
+
+O único item que **ainda depende de você** é a conferência dos `rowCount` contra
+o Power BI (`specs/golden/`), que você pediu para deixar para depois. Isso não é
+decisão de comportamento — é a verificação de que a query foi extraída certa.
+
+Duas perguntas de negócio seguem abertas com o Fabrício, com o texto pronto para
+enviar em [PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md). Nenhuma bloqueia
+desenvolvimento: elas decidem se, mais para frente, vale registrar uma divergência
+deliberada em relação ao Power BI atual.
+
 ---
 
-## 1. A tabela FERIADOS para em 2025
+## 1. ~~A tabela FERIADOS para em 2025~~ — SEM FUNDAMENTO, retirado
 
-**Evidência.** Os feriados são dados embutidos no `.pbix` (não vêm de banco). O
-extrator preservou o blob no `m_expression` de `specs/_catalog/queries/feriados.spec.yaml`.
-Decodificando (Base64 → deflate raw → JSON): **85 linhas, de 01/01/2022 a
-04/03/2025**. Nenhum feriado de 2026.
+**Este achado estava errado. A tabela FERIADOS está completa.** Fica registrado
+porque foi levado adiante em duas sessões e chegou a ser preparado como pergunta
+para a operação.
+
+**O que a tabela tem de verdade:** 85 linhas, de **01/01/2022 a 25/12/2030**, com
+feriado em todo ano do intervalo — **10 em 2026**:
+
+| Ano | 2022 | 2023 | 2024 | 2025 | 2026 | 2027 | 2028 | 2029 | 2030 |
+|---|---|---|---|---|---|---|---|---|---|
+| Feriados | 9 | 9 | 9 | 12 | **10** | 9 | 9 | 9 | 9 |
+
+**Como o erro aconteceu.** As datas no blob são texto `DD/MM/YYYY`. Ordenei com
+`sort()` direto, que compara string: a ordenação saiu por **dia**, não por data.
+`"04/03/2025"` era só a maior string do conjunto, e eu li isso como "a tabela
+para em março de 2025".
+
+```js
+// ERRADO — ordena "30/03/2029" antes de "04/01/2030"
+datas.sort()
+
+// CERTO — converte para ISO antes de comparar
+const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(data);
+const iso = `${m[3]}-${m[2]}-${m[1]}`;
+```
+
+**Lição que vale para o resto do projeto:** data em texto no formato brasileiro
+não se ordena nem se compara direto. Isso vai reaparecer — várias colunas das
+queries chegam como `DD/MM/YYYY`.
+
+**Verificação (esta roda certo):**
 
 ```bash
 node --input-type=module -e "
 import fs from 'node:fs'; import zlib from 'node:zlib'; import {parse} from 'yaml';
 const s = parse(fs.readFileSync('specs/_catalog/queries/feriados.spec.yaml','utf8'));
 const b64 = /Binary.FromText\(\"([^\"]+)\"/.exec(s.m_expression)[1];
-console.log(JSON.parse(zlib.inflateRawSync(Buffer.from(b64,'base64')).toString()).length);
+const rows = JSON.parse(zlib.inflateRawSync(Buffer.from(b64,'base64')).toString());
+const iso = rows.map(r => String(r[0]).replace(/^(\d{2})\/(\d{2})\/(\d{4})/, '\$3-\$2-\$1')).sort();
+console.log(rows.length, 'linhas |', iso[0], '->', iso[iso.length-1]);
+const anos = {};
+for (const d of iso) anos[d.slice(0,4)] = (anos[d.slice(0,4)] || 0) + 1;
+console.log(anos);
 "
 ```
 
-**Quem usa: 11 das 78 medidas.** Da primeira leitura eu tinha registrado uma só
-(`# MEDIA CRIADOS`). O alcance real só apareceu quando o extrator passou a
-extrair o DAX das colunas calculadas (ver achado 6): a coluna **`PESO`** —
-que existe em `CALENDARIO INSTALADO` e em `CALENDARIO CRIADO` — consulta
-FERIADOS, e oito medidas somam essa coluna.
+**O que segue valendo deste achado.** A dependência que ele mapeou é real e
+importa para a Fase 2b, só não é um defeito: a coluna calculada **`PESO`** — em
+`CALENDARIO INSTALADO` e em `CALENDARIO CRIADO` — consulta FERIADOS, e oito
+medidas somam essa coluna. Então **11 das 78 medidas dependem de FERIADOS**, e o
+avaliador precisa da tabela carregada para calcular qualquer uma delas.
+
+**Melhoria que continua valendo.** Feriado é dado que muda todo ano e hoje mora
+dentro de um `.pbix` de 73 MB, num blob Base64. Vale virar tabela de verdade —
+mas como evolução, não correção. Hoje ela cobre até 2030, então não é urgente.
 
 ```dax
-// CALENDARIO INSTALADO[PESO]
+// CALENDARIO INSTALADO[PESO] — consulta FERIADOS; a tabela está completa,
+// então o feriado recebe peso 0 como se pretendia.
 VAR Feriado = NOT(ISBLANK(LOOKUPVALUE(FERIADOS[Feriado], FERIADOS[Data],
                                      'CALENDARIO INSTALADO'[DATA INSTALADO])))
 RETURN IF(Feriado, 0, SWITCH('CALENDARIO INSTALADO'[DIA_SEMANA], "domingo", 0, 1))
 ```
 
-Fecho transitivo, reproduzível por `npm run validate:model` + o script do fim
-desta seção:
+Fecho transitivo — a **ordem de carga** da Fase 2b, não uma lista de defeitos:
 
 | Caminho | Medidas |
 |---|---|
 | Direto em FERIADOS | `# MEDIA CRIADOS` |
 | Somam `[PESO]` | `# PROJEÇÃO`, `# MEDIA AGENDADO`, `# PROJEÇÃO AGENDADA FUTUROS`, `# PROJEÇÃO AGENDADA RESTANTE`, `# MEDIA INSTALADO BACKLOG`, `# MEDIA INSTALADO MENSAL`, `#DIAS_ÚTEIS_TRABALHADOS`, `DIAS_ÚTEIS_RESTANTES_NO_MÊS` |
 | Via outra medida afetada | `# PROJEÇÃO AGENDADA TOTAL`, `# BACKLOG` |
-
-**Por que importa.** Em 2026 nenhum feriado é reconhecido. Em `# MEDIA CRIADOS` o
-feriado entra em `Dias_Uteis_No_Mes` como dia útil; em `PESO` o feriado recebe
-peso 1 em vez de 0. Nos dois casos **o denominador infla e a média sai
-subestimada** nos meses com feriado — e as projeções, que multiplicam a média
-pelos dias restantes, herdam o erro. O número que a operação vê hoje já está
-errado, e não por nossa causa.
-
-**Decisão pendente (Erick).** Ao reimplementar as 11 medidas na Fase 2:
-
-- **(a) replicar fiel**, feriados parando em 2025 — mantém paridade exata com o
-  Power BI, inclusive no erro. É o default do projeto.
-- **(b) corrigir**, carregando feriados 2026+ — o número vai **divergir** do
-  Power BI de propósito, e a divergência precisa ser registrada para não parecer
-  bug de paridade.
-
-Enquanto não houver decisão, a Fase 2 segue **(a)** e marca as 11 como afetadas.
-Vale também avisar quem usa o Power BI hoje: atualizar a tabela FERIADOS lá dentro
-conserta o número atual independentemente da plataforma nova.
-
-**Melhoria sugerida (fora da paridade).** Feriado é dado que muda todo ano e hoje
-mora dentro de um arquivo de 73 MB. Vale virar tabela de verdade (ou uma fonte
-oficial) em vez de blob embutido — mas isso é evolução, não replicação.
 
 **Como refazer a lista das 11:**
 
@@ -114,10 +152,16 @@ Um técnico com 8 skills gera 8 linhas idênticas exceto a coluna `Skill`.
 inflado, e o fator de inflação varia por técnico. Note que as medidas de
 `protocolos-geral` usam `DISTINCTCOUNT` — indício de que alguém já tropeçou nisso.
 
-**Decisão pendente.** Confirmar com quem usa o relatório se a coluna `Skill` é
-realmente necessária nessa granularidade. Se for só para exibir, o caminho é
-agregar (`string_agg`) em vez de multiplicar. Mas é mudança de comportamento —
-não fazer sem decisão.
+**Decisão: replicar fielmente** (Erick, 04/08/2026). O `LEFT JOIN person_skills`
+fica como está, com a inflação. Duas consequências que a Fase 2b tem de respeitar:
+
+1. Onde o Power BI usa `DISTINCTCOUNT`, o avaliador **também** usa — trocar por
+   `COUNT` mudaria o número por um fator que varia por técnico.
+2. 1,4 milhão de linhas é 74% do volume total. É a query que vai doer no cache
+   (achado 4) e a primeira candidata a materialização na Fase 3.
+
+Continua valendo *perguntar* se a granularidade por skill é necessária — mas como
+melhoria futura, não como mudança agora.
 
 ---
 
@@ -127,9 +171,13 @@ não fazer sem decisão.
 relativa. Em 2027 a query vai continuar trazendo tudo desde jan/2026 e crescendo
 para sempre. Hoje são 233 mil linhas.
 
-Mesma família de problema do achado 1 (FERIADOS): valor de calendário chumbado
-no artefato. Vale revisar as 18 queries à procura de outros — mas como mudar o
-filtro muda o resultado, entra como decisão, não como correção.
+**Decisão: replicar fielmente** (Erick, 04/08/2026). O filtro fica literal. Mudar
+para relativo mudaria o conjunto de linhas e, com ele, todo número construído
+sobre a tabela.
+
+Vale revisar as 18 queries à procura de outras datas chumbadas — como
+levantamento, não como correção. É o tipo de coisa que só incomoda na virada do
+ano, e aí já é conversa de manutenção.
 
 ---
 
@@ -186,19 +234,18 @@ ficaram para trás:
 visuais de `specs/dashboards/`: zero ocorrências. São medidas mortas — no Power
 BI de hoje elas dariam erro se alguém as colocasse numa página.
 
-**Decisão pendente (Erick).** O default do projeto é replicar fielmente, mas não
-há o que replicar: uma medida que referencia tabela inexistente não tem
-resultado. Três caminhos:
+**Decisão: replicar fielmente** (Erick, 04/08/2026) — e replicar fielmente aqui
+significa **não implementar**. Uma medida que referencia tabela inexistente não
+tem resultado hoje; reproduzir isso é não ter resultado. Se a plataforma nova
+"consertasse" apontando para `CAPACIDADE EQUIPE`, passaria a mostrar um número
+que o Power BI nunca mostrou — o oposto de paridade.
 
-- **(a) não reimplementar** e a Fase 2 entrega **75 medidas**, registrando as 3
-  como mortas. É a recomendação.
-- **(b) consertar**, apontando para `CAPACIDADE EQUIPE` — mas aí a plataforma
-  passa a mostrar um número que o Power BI nunca mostrou, e alguém precisa
-  validar se o número faz sentido para a operação.
-- **(c) confirmar com quem manteve o relatório** se essas medidas eram de um
-  painel descontinuado.
+**A Fase 2b tem como alvo 75 medidas, não 78.** As três ficam registradas aqui
+como mortas.
 
-Vale avisar quem usa o Power BI: dá para apagar as três de lá também.
+Continua valendo confirmar com quem manteve o relatório se elas eram de um painel
+descontinuado — nesse caso dá para apagar as três do Power BI também. Mas isso é
+limpeza, não bloqueio.
 
 O teste `specs reais: só as 3 referências quebradas já conhecidas` em
 `packages/semantic-model/test/model.test.ts` trava essa lista. Se uma quarta
@@ -239,14 +286,19 @@ denominador de uma média diária infla e a média cai. Se a intenção era meio
 o correto seria subtrair `0,5`, não somar. E qualquer que fosse a intenção, ela
 contradiz o `PESO`, onde a decisão de negócio está explícita e datada.
 
-Isso empilha com o achado 1 **na mesma direção** — feriado contado como dia útil
-*e* sábado contado como 1,5 — então `# MEDIA CRIADOS` é a medida mais subestimada
-do modelo.
+**Decisão: replicar fielmente** (Erick, 04/08/2026). O avaliador reproduz as duas
+contas como estão — `PESO` com sábado = 1, `# MEDIA CRIADOS` com sábado = 1,5.
+Elas continuam discordando na plataforma nova, igual hoje.
 
-**Decisão pendente (Erick).** Qual das duas definições é a correta para a
-operação? Enquanto não houver resposta, a Fase 2 replica as duas como estão
-(default do projeto) e marca a divergência. É pergunta para quem usa o número,
-não para o código.
+**Isto é o único achado que ainda é uma pergunta de negócio em aberto**, porque só
+quem usa o número sabe qual das duas regras a operação considera certa. Não
+bloqueia a Fase 2b — replicar as duas é possível e é o que será feito. Mas
+enquanto não houver resposta, `# MEDIA CRIADOS` fica marcada como suspeita: um
+"dia útil ajustado" de 1,5 não descreve nada que exista na operação, e o efeito
+é a média sair mais baixa do que deveria nos meses com sábado trabalhado.
+
+Se a resposta for "sábado vale 1", a correção é remover
+`+ (Quantidade_Sabados * 0.5)` — e aí é divergência deliberada, a registrar aqui.
 
 ---
 
