@@ -1,0 +1,48 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: l-mapa
+page_id: 101370500e0e465819a8
+name: L.MAPA
+type: Tooltip
+visibility: HiddenInViewMode
+size:
+  width: 550
+  height: 400
+visual_count: 1
+visuals:
+- id: b5f80346497ee95da54a
+  type: tableEx
+  position:
+    x: 0
+    y: 0
+    width: 550
+    height: 400
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 1"
+    name: "INSTALADO POR:"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: NUMERO CONTRATO
+    name: CONTRATO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: PROTOCOLO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "DATA INSTALAÇÃO"
+    name: "DATA "
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "HR. ALOCAÇÃO"
+    name: "HR. ALOCAÇÃO"

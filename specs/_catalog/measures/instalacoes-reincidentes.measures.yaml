@@ -1,0 +1,25 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: measures
+table: "INSTALAÇÕES REINCIDENTES"
+id: instalacoes-reincidentes
+measures:
+- name: Reincidentes
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        COUNTROWS('INSTALAÇÕES REINCIDENTES'),
+        'INSTALAÇÕES REINCIDENTES'[reincidente_30d] = "SIM"
+    )
+- name: "% Reincidencia"
+  format: "0.00%;-0.00%;0.00%"
+  display_folder: null
+  dax: |-
+    DIVIDE(
+        CALCULATE(
+            DISTINCTCOUNT('INSTALAÇÕES REINCIDENTES'[protocolo_instalacao]),
+            'INSTALAÇÕES REINCIDENTES'[reincidente_30d] = "SIM"
+        ),
+        DISTINCTCOUNT('INSTALAÇÕES REINCIDENTES'[protocolo_instalacao])
+    )

@@ -1,0 +1,13 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: protocolos
+name: PROTOCOLOS
+query_ref: null
+columns:
+- name: TIPO DE PROTOCOLO
+  type: null
+  format: null
+  source_column: "PROTOCOLOS GERAL[TIPO DE PROTOCOLO]"
+  calculated: false
+measure_count: 0

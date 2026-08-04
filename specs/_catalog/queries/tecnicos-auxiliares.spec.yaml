@@ -1,0 +1,43 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: tecnicos-auxiliares
+name: TECNICOS AUXILIARES
+origin: expression
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  with PERSONALIZAR as (
+      select 
+          r.tags as "PROTOCOLO:",
+          a.assignment_type as "TIPO SOLICITACAO",
+          p2.name as "TECNICO",
+          p.name as "AUXILIAR",
+          a.final_date as "CONCLUIDO EM:",
+          row_number() over(partition by r.tags order by a.final_date desc) as PERSONA
+      from reports r
+      left join assignments a on a.id = r.assignment_id
+      left join assignment_incidents ai on ai.assignment_id = a.id
+      left join people p on p.id = r.person_id
+      left join people p2 on p2.id = a.requestor_id
+      left join incident_types i on i.id = ai.incident_type_id
+      where a.corresponding_parent_id is not null
+        and a.assignment_type = 'RAUX'
+        and a.final_date >= '2026-01-01'
+  )
+  select *
+  from PERSONALIZAR
+  where PERSONA = 1
+url: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- assignments
+- incident_types
+- people
+- reports
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "with PERSONALIZAR as (#(lf)    select #(lf)        r.tags as ""PROTOCOLO:"",#(lf)        a.assignment_type as ""TIPO SOLICITACAO"",#(lf)        p2.name as ""TECNICO"",#(lf)        p.name as ""AUXILIAR"",#(lf)        a.final_date as ""CONCLUIDO EM:"",#(lf)        row_number() over(partition by r.tags order by a.final_date desc) as PERSONA#(lf)    from reports r#(lf)    left join assignments a on a.id = r.assignment_id#(lf)    left join assignment_incidents ai on ai.assignment_id = a.id#(lf)    left join people p on p.id = r.person_id#(lf)    left join people p2 on p2.id = a.requestor_id#(lf)    left join incident_types i on i.id = ai.incident_type_id#(lf)    where a.corresponding_parent_id is not null#(lf)      and a.assignment_type = 'RAUX'#(lf)      and a.final_date >= '2026-01-01'#(lf))#(lf)select *#(lf)from PERSONALIZAR#(lf)where PERSONA = 1"),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"PROTOCOLO:", Int64.Type}})
+  in
+      #"Tipo Alterado"

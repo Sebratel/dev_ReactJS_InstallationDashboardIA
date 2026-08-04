@@ -1,0 +1,28 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: apuracao-premiacao
+name: "#APURAÇÃO PREMIAÇÃO"
+query_ref: apuracao-premiacao
+columns:
+- name: INSTALADOR
+  type: string
+  format: null
+  source_column: INSTALADOR
+  calculated: false
+- name: QTD.
+  type: int64
+  format: "0"
+  source_column: QTD.
+  calculated: false
+- name: FAIXAS
+  type: string
+  format: null
+  source_column: FAIXAS
+  calculated: false
+- name: INSTALADOR_PAD
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+measure_count: 3

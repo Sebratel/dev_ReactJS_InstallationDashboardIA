@@ -1,0 +1,25 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: gestores-equipes
+name: GESTORES EQUIPES
+origin: expression
+source_type: odbc
+datasource: dbMaria
+sql: "SELECT it.* FROM DB_Applicattion.Installation_Teams AS it"
+url: null
+endpoints: null
+source_tables:
+- db_applicattion.installation_teams
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbMaria", "SELECT it.* FROM DB_Applicattion.Installation_Teams AS it"),
+      #"Personalização Adicionada" = Table.AddColumn(Fonte, "CAPACIDADE TOTAL", each [CAPACIDADE MANHÃ] + [CAPACIDADE TARDE]),
+      #"Tipo Alterado" = Table.TransformColumnTypes(#"Personalização Adicionada",{{"CAPACIDADE TOTAL", Int64.Type}}),
+      #"Personalização Adicionada1" = Table.AddColumn(#"Tipo Alterado", "POSIÇÃO", each if [EQUIPE] = "TERCEIROS" then "TERCEIRO" else "EFETIVO"),
+      #"Linhas Filtradas" = Table.SelectRows(#"Personalização Adicionada1", each ([CAPACIDADE TOTAL] <> null)),
+      #"Valor Substituído" = Table.ReplaceValue(#"Linhas Filtradas","","TERCEIROS",Replacer.ReplaceValue,{"GERENTE/SUPERVISOR"}),
+      #"Outras Colunas Removidas" = Table.SelectColumns(#"Valor Substituído",{"DATA", "TÉCNICO 1", "TÉCNICO 2", "GERENTE/SUPERVISOR"}),
+      #"Duplicatas Removidas" = Table.Distinct(#"Outras Colunas Removidas"),
+      #"Linhas Filtradas1" = Table.SelectRows(#"Duplicatas Removidas", each [DATA] > #date(2024, 12, 31))
+  in
+      #"Linhas Filtradas1"

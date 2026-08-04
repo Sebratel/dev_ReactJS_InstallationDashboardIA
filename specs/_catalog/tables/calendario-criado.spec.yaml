@@ -1,0 +1,23 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: calendario-criado
+name: CALENDARIO CRIADO
+query_ref: null
+columns:
+- name: DATA CRIADO
+  type: null
+  format: Short Date
+  source_column: "[Date]"
+  calculated: false
+- name: data_vigente
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: PESO
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+measure_count: 1

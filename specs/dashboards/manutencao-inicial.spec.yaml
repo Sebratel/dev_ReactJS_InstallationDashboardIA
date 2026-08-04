@@ -1,0 +1,771 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: manutencao-inicial
+page_id: 72654751de0a7f7de109
+name: "MANUTENÇÃO INICIAL"
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 2800
+  height: 3000
+visual_count: 41
+visuals:
+- id: 0147d7072c8525a2a802
+  type: tableEx
+  position:
+    x: 1000.1609010458568
+    y: 2317.940466613033
+    width: 1770.555108608206
+    height: 660.0160901045856
+  entities_used:
+  - RETORNO PRIORITARIO
+  fields:
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: cliente_nome_instalacao
+    name: CLIENTE
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: "Protocolo Instalação"
+    name: "PROT. INSTALAÇÃO"
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: data_instalacao
+    name: "DATA INSTALAÇÃO"
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: "Protocolo Retorno Prioritário"
+    name: PROTOCOLO RETORNO
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: data_retorno
+    name: DATA RETORNO
+  - role: Values
+    kind: measure
+    entity: RETORNO PRIORITARIO
+    property: TempoDifFormatado
+    name: "TEMPO ATÉ OCORRÊNCIA"
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: TempoTotalDias
+    name: DIAS
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+    name: "TÉCNICO"
+  - role: Values
+    kind: column
+    entity: RETORNO PRIORITARIO
+    property: service_tag
+    name: SERIAL
+- id: 01b1c7005b8de457349f
+  type: textbox
+  position:
+    x: 0
+    y: 10.107573392814775
+    width: 219.76580796252927
+    height: 42.99765807962529
+  entities_used: []
+  fields: []
+- id: 0a9c8fb6aeb367c4a9d6
+  type: card
+  position:
+    x: 349.1552695092518
+    y: 2360.7401448109413
+    width: 247.787610619469
+    height: 87.85197103781174
+  entities_used:
+  - RETORNO PRIORITARIO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    name: PROTOCOLOS RETORNOS
+- id: 148f6ba115cb24e32280
+  type: slicer
+  position:
+    x: 1838.133547868061
+    y: 148.6725663716814
+    width: 351.40788415124695
+    height: 94.60981496379726
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: protocol_type
+    name: protocol_type
+- id: 18e2df7fcebe55422e22
+  type: slicer
+  position:
+    x: 1948.5116653258244
+    y: 2205.309734513274
+    width: 545.1327433628319
+    height: 74.3362831858407
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: solucao
+    name: solucao
+- id: 19f96719cb60517a5062
+  type: card
+  position:
+    x: 1933.819211584876
+    y: 499.58307320997585
+    width: 239.67999999999998
+    height: 105.28
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: measure
+    entity: "REINCIDÊNCIA"
+    property: "CASOS MÊS ATUAL (MTD)"
+    name: "OCORRENCIAS MÊS ATUAL"
+- id: 2128ca2bc5fa3dab2b60
+  type: image
+  position:
+    x: 12.5
+    y: 0
+    width: 312.5
+    height: 75
+  entities_used: []
+  fields: []
+- id: 2b170b73919d66acd4f9
+  type: tableEx
+  position:
+    x: 49.557522123893804
+    y: 1637.6508447304907
+    width: 707.3209975864843
+    height: 641.9951729686243
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+    name: "TÉCNICOS OFENSORES"
+  - role: Values
+    kind: aggregation
+    entity: "REINCIDÊNCIA"
+    property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+    name: QTDE
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "%"
+- id: 2df4f6c42bfbfd487ab1
+  type: tableEx
+  position:
+    x: 49.746192893401016
+    y: 897.8003384094754
+    width: 2719.4585448392554
+    height: 713.0287648054145
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: cliente_nome
+    name: CLIENTE
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: "Protocolo Instalação"
+    name: "PROT. INSTALAÇÃO"
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: data_instalacao
+    name: "DATA INSTALAÇÃO"
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: protocol
+    name: "PROT. MANUTENÇÃO"
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: data_suporte
+    name: "DATA GERADO MANUTENÇÃO"
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: TempoDifFormatado
+    name: "TEMPO ATÉ OCORRÊNCIA"
+  - role: Values
+    kind: aggregation
+    entity: "REINCIDÊNCIA"
+    property: TempoTotalDias
+    name: DIAS
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+    name: "TÉCNICO"
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: "ALOCAÇÃO PATRIMONIO.POSIÇÃO"
+    name: EFETIVO
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: service_tag
+    name: SERIAL
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: protocol_type
+    name: TIPO PROTOCOLO
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria1
+    name: CAT 1
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria2
+    name: CAT 2
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria3
+    name: CAT 3
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria4
+    name: CAT 4
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria5
+    name: CAT 5
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: solucao
+    name: "SOLUÇÃO"
+- id: 39b8523db9e4024f345d
+  type: card
+  position:
+    x: 1933.819211584876
+    y: 300.22307320997584
+    width: 239.67999999999998
+    height: 105.28
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: "REINCIDÊNCIA"
+    property: protocol
+    name: "TOTAL DE OCORRÊNCIAS"
+- id: 455e4a8a0477ed34e806
+  type: slicer
+  position:
+    x: 1948.5116653258249
+    y: 2079.1633145615483
+    width: 545.1327433628319
+    height: 76.58889782783588
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria5
+    name: categoria5
+- id: 47c5da4202802d657d5b
+  type: slicer
+  position:
+    x: 1948.5116653258249
+    y: 1642.156074014479
+    width: 545.1327433628319
+    height: 74.3362831858407
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria1
+    name: categoria1
+- id: 48c389bfa9f9c43bfcff
+  type: unknown
+  position:
+    x: 0
+    y: 0.2653342522398354
+    width: 304.6762549287662
+    height: 53.10523147244007
+  entities_used: []
+  fields: []
+- id: 6bbd3fd0d32b0b83181a
+  type: slicer
+  position:
+    x: 1948.5116653258249
+    y: 1962.0273531777952
+    width: 545.1327433628319
+    height: 76.58889782783588
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria4
+    name: categoria4
+- id: 6fd98c21010e7e22239b
+  type: tableEx
+  position:
+    x: 808.688656476267
+    y: 1637.6508447304907
+    width: 1076.7497988736927
+    height: 641.9951729686243
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: solucao
+    name: "SOLUÇÃO"
+  - role: Values
+    kind: aggregation
+    entity: "REINCIDÊNCIA"
+    property: solucao
+    name: QTDE
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "%"
+- id: 702852fc76c92c8c0cd9
+  type: lineStackedColumnComboChart
+  position:
+    x: 49.557522123893804
+    y: 2317.940466613033
+    width: 925.824617860016
+    height: 662.2687047465809
+  entities_used:
+  - RETORNO PRIORITARIO
+  fields:
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: data_abertura Ano
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: "data_abertura Mês"
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: data_abertura Dia
+  - role: Y
+    kind: aggregation
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    name: Contagem de data_abertura
+- id: 707565fef6b8f5cb35ee
+  type: slicer
+  position:
+    x: 689.3000804505228
+    y: 148.6725663716814
+    width: 355.91311343523734
+    height: 94.60981496379726
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: cliente_nome
+    name: cliente_nome
+- id: 70a4682fdbd5f4414822
+  type: slicer
+  position:
+    x: 49.557522123893804
+    y: 148.6725663716814
+    width: 277.0716009654063
+    height: 94.60981496379726
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Dia
+- id: 77e715657d31d083dd84
+  type: textbox
+  position:
+    x: 1934.4542271612002
+    y: 815.4998333345866
+    width: 781.557632398754
+    height: 33.14641744548287
+  entities_used: []
+  fields: []
+- id: 79929c759b56d9c50002
+  type: card
+  position:
+    x: 1933.819211584876
+    y: 707.9030732099759
+    width: 239.67999999999998
+    height: 105.28
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: measure
+    entity: "REINCIDÊNCIA"
+    property: "MANUTENÇÕES ÚLTIMOS 30 DIAS"
+    name: OCORRENCIAS 30 DIAS
+- id: 7c4900b4ab95e8e421c8
+  type: card
+  position:
+    x: 2209.3392115848756
+    y: 707.9030732099759
+    width: 239.67999999999998
+    height: 105.28
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "INSTALADOS ÚLTIMOS 30 DIAS"
+    name: "INSTALADOS ÚLTIMOS 30 DIAS"
+- id: 812e60a64068500c1120
+  type: textbox
+  position:
+    x: 1934.4542271612002
+    y: 405.53098598256156
+    width: 779.8130841121496
+    height: 31.401869158878508
+  entities_used: []
+  fields: []
+- id: 8a935f3996b42c20f865
+  type: pageNavigator
+  position:
+    x: 0
+    y: 71.69811320754717
+    width: 2800
+    height: 49.056603773584904
+  entities_used: []
+  fields: []
+- id: 8eebca1b0652b988a8a8
+  type: slicer
+  position:
+    x: 1448.4312148028962
+    y: 148.6725663716814
+    width: 351.40788415124695
+    height: 94.60981496379726
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: Tipo
+    name: Tipo
+- id: 8f63123f92f546af4d24
+  type: slicer
+  position:
+    x: 367.1761866452132
+    y: 148.6725663716814
+    width: 292.83990345937247
+    height: 94.60981496379726
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: data_suporte Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "data_suporte Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: data_suporte Dia
+- id: 97806ae5a55362b8fe86
+  type: textbox
+  position:
+    x: 410
+    y: 4
+    width: 2020
+    height: 68
+  entities_used: []
+  fields: []
+- id: 9eed3abce470029b5891
+  type: card
+  position:
+    x: 2209.3392115848756
+    y: 499.58307320997585
+    width: 239.67999999999998
+    height: 103.03999999999999
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "INSTALADOS MÊS ATUAL"
+    name: "INSTALADOS MÊS ATUAL"
+- id: a8bb56155ea520769c12
+  type: slicer
+  position:
+    x: 1079.0024135156877
+    y: 148.6725663716814
+    width: 331.1343523732904
+    height: 94.60981496379726
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+    name: "TÉCNICO"
+- id: a8ffb16abb690cc6147d
+  type: card
+  position:
+    x: 2475.6099623356267
+    y: 709.1609711078738
+    width: 241.04104104104107
+    height: 106.50650650650651
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: measure
+    entity: "REINCIDÊNCIA"
+    property: "% MANUTENÇÕES / INSTALAÇÕES (30D)"
+    name: "% SOBRE OS ULTIMOS 30 DIAS"
+- id: ac8ae9e34e50c01060d3
+  type: card
+  position:
+    x: 2209.3436960693602
+    y: 299.9517618986646
+    width: 241.04104104104107
+    height: 106.50650650650651
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: TOTAL INSTALADOS
+- id: b277cbb3c0345505ddf8
+  type: card
+  position:
+    x: 186.96433211691232
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    name: Data mais recente
+- id: b3d817c3c57545262796
+  type: textbox
+  position:
+    x: 1934.4542271612002
+    y: 604.4094906554589
+    width: 779.8130841121496
+    height: 33.14641744548287
+  entities_used: []
+  fields: []
+- id: bc889c6e5aab180b4e49
+  type: card
+  position:
+    x: 2475.8992115848755
+    y: 499.58307320997585
+    width: 239.67999999999998
+    height: 103.03999999999999
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: measure
+    entity: "REINCIDÊNCIA"
+    property: "% CASOS MÊS ATUAL"
+    name: "% SOBRE O MÊS ATUAL"
+- id: cacbda0fe3a81ece18c5
+  type: card
+  position:
+    x: 291.7924809991332
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    name: Hora mais recente
+- id: ce735a6358c0af249bc2
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 2800
+    height: 75.06092607636067
+  entities_used: []
+  fields: []
+- id: d607ef36b82b1c37ab2c
+  type: slicer
+  position:
+    x: 1948.5116653258249
+    y: 1745.7763475462568
+    width: 545.1327433628319
+    height: 74.3362831858407
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria2
+    name: categoria2
+- id: d6966d4cb0e0556e0952
+  type: slicer
+  position:
+    x: 49.557522123893804
+    y: 2360.7401448109413
+    width: 299.597747385358
+    height: 87.85197103781174
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: data_abertura Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "data_abertura Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: data_abertura Dia
+- id: d97fe489202052421052
+  type: lineStackedColumnComboChart
+  position:
+    x: 49.557522123893804
+    y: 290.58728881737727
+    width: 1835.880933226066
+    height: 558.6484312148028
+  entities_used:
+  - PROTOCOLOS GERAL
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Dia
+  - role: Y
+    kind: aggregation
+    entity: "REINCIDÊNCIA"
+    property: protocol
+    name: "OCORRÊNCIAS"
+  - role: Y2
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: "SOLICITAÇÕES"
+- id: df74c4fb0e50148b9851
+  type: card
+  position:
+    x: 2475.8992115848755
+    y: 300.22307320997584
+    width: 239.67999999999998
+    height: 105.28
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: measure
+    entity: "REINCIDÊNCIA"
+    property: Porcentagem
+    name: "MÉDIA GERAL"
+- id: fb9054faac5121289c51
+  type: unknown
+  position:
+    x: 2390
+    y: 32.5
+    width: 410
+    height: 52.5
+  entities_used: []
+  fields: []
+- id: fefc9130d39cbbb0604a
+  type: slicer
+  position:
+    x: 1948.5116653258249
+    y: 1851.64923572003
+    width: 545.1327433628319
+    height: 74.3362831858407
+  entities_used:
+  - "REINCIDÊNCIA"
+  fields:
+  - role: Values
+    kind: column
+    entity: "REINCIDÊNCIA"
+    property: categoria3
+    name: categoria3

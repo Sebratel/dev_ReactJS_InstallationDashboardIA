@@ -1,0 +1,14 @@
+{
+  "name": "@analytics/extractor",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Extrai specs (queries, medidas, tabelas, dashboards) do projeto Power BI PBIP",
+  "bin": {
+    "pbip-extract": "src/index.mjs"
+  },
+  "scripts": {
+    "start": "node src/index.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}

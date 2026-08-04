@@ -1,0 +1,48 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: clima-tempo
+name: Clima/ Tempo
+query_ref: clima-tempo
+columns:
+- name: Data
+  type: dateTime
+  format: Long Date
+  source_column: Data
+  calculated: false
+- name: Precipitacao_mm
+  type: double
+  format: null
+  source_column: Precipitacao_mm
+  calculated: false
+- name: Probabilidade_Chuva_%
+  type: double
+  format: null
+  source_column: Probabilidade_Chuva_%
+  calculated: false
+- name: Cidade
+  type: string
+  format: null
+  source_column: Cidade
+  calculated: false
+- name: Tipo
+  type: string
+  format: null
+  source_column: Tipo
+  calculated: false
+- name: Classificacao_Chuva
+  type: string
+  format: null
+  source_column: Classificacao_Chuva
+  calculated: false
+- name: Classificacao
+  type: string
+  format: null
+  source_column: Classificacao
+  calculated: false
+- name: Probabilidade_Chuva_Formatada =
+  type: null
+  format: null
+  source_column: null
+  calculated: false
+measure_count: 0

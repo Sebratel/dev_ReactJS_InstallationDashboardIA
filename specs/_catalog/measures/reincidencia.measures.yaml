@@ -1,0 +1,63 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: measures
+table: "REINCIDÊNCIA"
+id: reincidencia
+measures:
+- name: Porcentagem
+  format: "0.00%;-0.00%;0.00%"
+  display_folder: null
+  dax: |-
+    ```
+    DIVIDE([CONTAGEM REINCIDENCIA], [CONTAGEM INSTALADO FIBRA])
+
+    ```
+- name: CONTAGEM REINCIDENCIA
+  format: "0"
+  display_folder: null
+  dax: "COUNTROWS('REINCIDÊNCIA')"
+- name: "CASOS MÊS ATUAL (MTD)"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Hoje = TODAY()
+    VAR InicioMes = DATE(YEAR(Hoje), MONTH(Hoje), 1)
+    RETURN
+    CALCULATE(
+        COUNTROWS('REINCIDÊNCIA'),
+        FILTER(
+            ALL('REINCIDÊNCIA'[data_suporte]),
+            'REINCIDÊNCIA'[data_suporte] >= InicioMes
+                && 'REINCIDÊNCIA'[data_suporte] <= Hoje
+        )
+    )
+- name: "% CASOS MÊS ATUAL"
+  format: "0.00%;-0.00%;0.00%"
+  display_folder: null
+  dax: |-
+    DIVIDE(
+        [CASOS MÊS ATUAL (MTD)],
+        [INSTALADOS MÊS ATUAL]
+    )
+- name: "MANUTENÇÕES ÚLTIMOS 30 DIAS"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        COUNTROWS('REINCIDÊNCIA'),
+        FILTER(
+            ALL('REINCIDÊNCIA'[data_suporte]),
+            'REINCIDÊNCIA'[data_suporte] >= Hoje - 30
+                && 'REINCIDÊNCIA'[data_suporte] <= Hoje
+        )
+    )
+- name: "% MANUTENÇÕES / INSTALAÇÕES (30D)"
+  format: "0.00%;-0.00%;0.00%"
+  display_folder: null
+  dax: |-
+    DIVIDE(
+        [MANUTENÇÕES ÚLTIMOS 30 DIAS],
+        [INSTALADOS ÚLTIMOS 30 DIAS]
+    )

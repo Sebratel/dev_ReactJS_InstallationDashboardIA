@@ -1,0 +1,311 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: protocolos-detalhados
+page_id: 118f6b93e8081ba20360
+name: PROTOCOLOS DETALHADOS
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 1920
+  height: 1400
+visual_count: 19
+visuals:
+- id: 02533b8983f84525ff7e
+  type: slicer
+  position:
+    x: 1469.029535864979
+    y: 113.41772151898735
+    width: 199.831223628692
+    height: 102.61603375527426
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CIDADE
+    name: CIDADE
+- id: 104a464c4cf23ca1b442
+  type: slicer
+  position:
+    x: 987.0042194092828
+    y: 113.41772151898735
+    width: 236.28691983122363
+    height: 102.61603375527426
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: STATUS
+    name: STATUS
+- id: 13e266901bcb96c7dee7
+  type: slicer
+  position:
+    x: 1690.3032962817263
+    y: 113.66662798947239
+    width: 200.02495321272616
+    height: 103.0068621334997
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: instalador_Unificado
+    name: instalador_Unificado
+- id: 14489d96e48e5b1da392
+  type: slicer
+  position:
+    x: 629.1983122362869
+    y: 113.41772151898735
+    width: 340.253164556962
+    height: 102.61603375527426
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+- id: 2b1d0cdb06764745d106
+  type: card
+  position:
+    x: 295.6594325361905
+    y: 5.961929699290896
+    width: 108.4579827896578
+    height: 50.67640244397258
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    name: Hora mais recente
+- id: 4e468085563d400c423e
+  type: textbox
+  position:
+    x: 0
+    y: 14.904824248227232
+    width: 236.23040087062458
+    height: 50.67640244397258
+  entities_used: []
+  fields: []
+- id: 549cbfc07b148106e392
+  type: unknown
+  position:
+    x: 1514.4691749566455
+    y: 10.59992591316295
+    width: 404.11741532584824
+    height: 65.5812266921998
+  entities_used: []
+  fields: []
+- id: 5cb978f65eb4630d78a1
+  type: tableEx
+  position:
+    x: 27.132169576059848
+    y: 818.7531172069826
+    width: 1862.5436408977555
+    height: 550.6234413965087
+  entities_used:
+  - CALENDARIO INSTALADO
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: N°PROTOCOLO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: instalador_Unificado
+    name: INSTALADOR
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: DATA CRIADO
+    name: DATA CRIADO
+  - role: Values
+    kind: column
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    name: DATA INSTALADO
+- id: 6e505c9364cd66b2a0d3
+  type: image
+  position:
+    x: 0
+    y: 10
+    width: 241.66666666666669
+    height: 59.16666666666667
+  entities_used: []
+  fields: []
+- id: 728190e9345bee30b33d
+  type: textbox
+  position:
+    x: 270.40209407832504
+    y: 14.904824248227232
+    width: 47.54322533245274
+    height: 38.7525430453908
+  entities_used: []
+  fields: []
+- id: 770a98c0d5a2c4327dbd
+  type: textbox
+  position:
+    x: 241.66666666666669
+    y: 0
+    width: 1456.6666666666667
+    height: 61.66666666666667
+  entities_used: []
+  fields: []
+- id: 7747905e8e5377786da9
+  type: pageNavigator
+  position:
+    x: 0
+    y: 65.64182194616976
+    width: 1920.0000000000002
+    height: 40
+  entities_used: []
+  fields: []
+- id: 848f2cbbb1bd3ceb2a46
+  type: slicer
+  position:
+    x: 329.4440631434454
+    y: 113.32875772134523
+    width: 282.00411805078926
+    height: 102.78654770075497
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: DATA CRIADO
+    name: DATA CRIADO
+- id: a3efd3196d0e7d0750e3
+  type: slicer
+  position:
+    x: 27.673301304049414
+    y: 113.32875772134523
+    width: 282.00411805078926
+    height: 102.78654770075497
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Dia
+- id: acbf261be994c1b01e59
+  type: slicer
+  position:
+    x: 1244.8945147679326
+    y: 113.41772151898735
+    width: 199.831223628692
+    height: 102.61603375527426
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: N°PROTOCOLO
+- id: cd782c152880065974b4
+  type: image
+  position:
+    x: 14.857257916391745
+    y: 0
+    width: 38.62887058261786
+    height: 53.65736729361802
+  entities_used: []
+  fields: []
+- id: ce6625eb09750a404bda
+  type: tableEx
+  position:
+    x: 27.132169576059848
+    y: 237.80548628428926
+    width: 1862.5436408977555
+    height: 560.1995012468827
+  entities_used:
+  - CALENDARIO INSTALADO
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: "."
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: N°PROTOCOLO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: instalador_Unificado
+    name: INSTALADOR
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TECNICOS AUXILIARES.AUXILIAR
+    name: AUXILIAR
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: DATA CRIADO
+    name: DATA CRIADO
+  - role: Values
+    kind: column
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    name: DATA INSTALADO
+- id: d2b95fd070ee3e408a01
+  type: card
+  position:
+    x: 144.1154017889976
+    y: 5.961929699290896
+    width: 163.4298370803063
+    height: 52.16688486879531
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    name: Data mais recente
+- id: d38465a71e637be9b23d
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 1920
+    height: 65.38024971623156
+  entities_used: []
+  fields: []

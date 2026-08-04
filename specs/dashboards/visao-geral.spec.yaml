@@ -1,0 +1,533 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: visao-geral
+page_id: ReportSectiona3e9336b0f26ce176b3e
+name: "VISÃO GERAL"
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 2800
+  height: 2130
+visual_count: 28
+visuals:
+- id: 103b7a8ac1768abbaa22
+  type: slicer
+  position:
+    x: 1020.4529855868218
+    y: 144.13177762525737
+    width: 309.4028826355525
+    height: 101.85312285518188
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: STATUS
+    name: STATUS
+- id: 23c5a9bf78b33e02db74
+  type: slicer
+  position:
+    x: 44.200411805078964
+    y: 142.21002059025395
+    width: 309.4028826355525
+    height: 101.85312285518188
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: Data Criado Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "Data Criado Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: Data Criado Dia
+- id: 2ce6f3783f48638594d6
+  type: card
+  position:
+    x: 291.7924809991332
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    name: Hora mais recente
+- id: 3b000fe189f5f6d62a62
+  type: card
+  position:
+    x: 186.96433211691232
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    name: Data mais recente
+- id: 50ae0cd55f11c1931830
+  type: pageNavigator
+  position:
+    x: 0
+    y: 72.66666666666667
+    width: 2800
+    height: 50
+  entities_used: []
+  fields: []
+- id: 529693bd75399ddef31f
+  type: advancedSlicerVisual
+  position:
+    x: 40.35689773507207
+    y: 269.04598490048045
+    width: 2700.0686341798214
+    height: 140.28826355525052
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+- id: 562fcabd15abb1c7880a
+  type: slicer
+  position:
+    x: 2049.3025511482906
+    y: 431.2631804973952
+    width: 310.3382453436053
+    height: 101.66252864704313
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: ESTAGIO CONTRATO
+    name: ESTAGIO CONTRATO
+- id: 5a505e91ed658e6741da
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 2800
+    height: 73.33333333333333
+  entities_used: []
+  fields: []
+- id: 5eac559add4291af6196
+  type: card
+  position:
+    x: 2396.4310226492794
+    y: 426.63006177076187
+    width: 343.9945092656143
+    height: 119.14893617021276
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: CLIENTE
+    name: CLIENTES DISTINTOS
+- id: 6b2781fa1e3b89ed0626
+  type: slicer
+  position:
+    x: 1349.0734385724088
+    y: 144.13177762525737
+    width: 309.4028826355525
+    height: 101.85312285518188
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "RESPONSÁVEL"
+    name: "RESPONSÁVEL"
+- id: 6f6ee418b1b95a80e2a4
+  type: slicer
+  position:
+    x: 691.8325326012337
+    y: 144.13177762525737
+    width: 309.4028826355525
+    height: 101.85312285518188
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: N°PROTOCOLO
+- id: 704b7bcb68fd3e17cd30
+  type: tableEx
+  position:
+    x: 41.29213483146067
+    y: 576.123595505618
+    width: 2697.752808988764
+    height: 890.7303370786517
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: PROTOCOLO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: DATA CRIADO
+    name: DATA CRIADO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "DATA INSTALAÇÃO"
+    name: DATA INSTALADO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: STATUS
+    name: STATUS PROTOCOLO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CLIENTE
+    name: CLIENTE
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: NUMERO CONTRATO
+    name: CONTRATO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: PLANO
+    name: "PLANO/ PLANO²"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TELEFONE
+    name: TELEFONE
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CIDADE
+    name: CIDADE
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: BAIRRO
+    name: BAIRRO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: RUA
+    name: RUA
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: EQUIPE
+    name: EQUIPE
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "RESPONSÁVEL"
+    name: "RESPONSÁVEL"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: STATUS FINANCEIRO
+    name: STATUS FINANCEIRO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: STATUS CONTRATO
+    name: STATUS CONTRATO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: EQUIPAMENTO
+    name: EQUIPAMENTO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CRIADO POR
+    name: CRIADO POR
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "USUÁRIO"
+    name: "CONEXÃO"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "POSIÇÃO"
+    name: "POSIÇÃO"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 1"
+    name: "TÉCNICO 1"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 2"
+    name: "TÉCNICO 2"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TMA
+    name: TMA
+- id: 71e5cb0109f72b45b16f
+  type: card
+  position:
+    x: 405.49073438572407
+    y: 426.63006177076187
+    width: 343.9945092656143
+    height: 119.14893617021276
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: PROTOCOLOS AGENDADOS
+- id: 747e8b722a3f0684bfd4
+  type: image
+  position:
+    x: 12.5
+    y: 0
+    width: 312.5
+    height: 75
+  entities_used: []
+  fields: []
+- id: 775229fb200e883f93bc
+  type: unknown
+  position:
+    x: 0
+    y: 0.2653342522398354
+    width: 304.6762549287662
+    height: 53.10523147244007
+  entities_used: []
+  fields: []
+- id: 7db40203ca467b8165c6
+  type: clusteredBarChart
+  position:
+    x: 40.35689773507207
+    y: 1495.1269732326698
+    width: 1137.6801647220316
+    height: 626.4927934111188
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Category
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 1"
+    name: "TÉCNICO 1"
+  - role: Category
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 2"
+    name: "Contagem de TÉCNICO 2"
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: Contagem de N°PROTOCOLO
+- id: 843bcbb16b315e6a1887
+  type: slicer
+  position:
+    x: 367.0555936856556
+    y: 144.13177762525737
+    width: 309.4028826355525
+    height: 101.85312285518188
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Dia
+- id: a26c18ffd99c49e69b3b
+  type: textbox
+  position:
+    x: 0
+    y: 10.107573392814775
+    width: 219.76580796252927
+    height: 42.99765807962529
+  entities_used: []
+  fields: []
+- id: b346badbabf75059fb86
+  type: barChart
+  position:
+    x: 1208.7851750171585
+    y: 1495.1269732326698
+    width: 745.6417295813316
+    height: 634.1798215511325
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Category
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: EQUIPE
+    name: EQUIPE
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: Contagem de SOLICITACAO1
+- id: b909e6c32f5fd8f54237
+  type: textbox
+  position:
+    x: 11.53054221002059
+    y: 9.60878517501716
+    width: 2788.4694577899795
+    height: 65.33973919011667
+  entities_used: []
+  fields: []
+- id: c8c7d1ae3d7a5907544c
+  type: slicer
+  position:
+    x: 1996.7055593685652
+    y: 144.13177762525737
+    width: 309.4028826355525
+    height: 101.85312285518188
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CLIENTE
+    name: CLIENTE
+- id: cbc30d7bc7375a004eac
+  type: card
+  position:
+    x: 41.7910447761194
+    y: 427.1973466003317
+    width: 343.61525704809293
+    height: 118.40796019900498
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: PROTOCOLOS TOTAIS
+- id: ce537446fc06ac83afea
+  type: slicer
+  position:
+    x: 1673.8503774879894
+    y: 144.13177762525737
+    width: 309.4028826355525
+    height: 101.85312285518188
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: EQUIPE
+    name: EQUIPE
+- id: cfe4382c2543d1fca3e3
+  type: unknown
+  position:
+    x: 2390
+    y: 32.5
+    width: 410
+    height: 52.5
+  entities_used: []
+  fields: []
+- id: d3f5075f753555c500ed
+  type: advancedSlicerVisual
+  position:
+    x: 2323.404255319149
+    y: 144.13177762525737
+    width: 417.02127659574467
+    height: 101.85312285518188
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: STATUS PROTOCOLO
+    name: STATUS PROTOCOLO
+- id: d9713da4535926b79bd8
+  type: columnChart
+  position:
+    x: 1994.783802333562
+    y: 1495.1269732326698
+    width: 745.6417295813316
+    height: 634.1798215511325
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Category
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CIDADE
+    name: CIDADE
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: TOTAL
+- id: df93e688d86824150aee
+  type: textbox
+  position:
+    x: 405.49073438572407
+    y: 538.0919698009609
+    width: 251.75017158544955
+    height: 36.513383665065206
+  entities_used: []
+  fields: []
+- id: f489778f1a41f78ed708
+  type: card
+  position:
+    x: 772.5463280713795
+    y: 426.63006177076187
+    width: 343.9945092656143
+    height: 119.14893617021276
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: "DATA INSTALAÇÃO"
+    name: PROTOCOLOS INSTALADOS

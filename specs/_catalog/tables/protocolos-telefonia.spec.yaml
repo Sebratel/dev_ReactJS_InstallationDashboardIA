@@ -1,0 +1,218 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: protocolos-telefonia
+name: PROTOCOLOS TELEFONIA
+query_ref: protocolos-telefonia
+columns:
+- name: SOLICITACAO
+  type: string
+  format: null
+  source_column: SOLICITACAO
+  calculated: false
+- name: N°PROTOCOLO
+  type: string
+  format: null
+  source_column: N°PROTOCOLO
+  calculated: false
+- name: DATA AGENDA
+  type: dateTime
+  format: Short Date
+  source_column: DATA AGENDA
+  calculated: false
+- name: HORA AGENDA
+  type: dateTime
+  format: Long Time
+  source_column: HORA AGENDA
+  calculated: false
+- name: DATA CRIADO
+  type: dateTime
+  format: Short Date
+  source_column: DATA CRIADO
+  calculated: false
+- name: HORA CRIADO
+  type: dateTime
+  format: Long Time
+  source_column: HORA CRIADO
+  calculated: false
+- name: DATA MODIFICADO
+  type: dateTime
+  format: Short Date
+  source_column: DATA MODIFICADO
+  calculated: false
+- name: STATUS
+  type: string
+  format: null
+  source_column: STATUS
+  calculated: false
+- name: CIDADE
+  type: string
+  format: null
+  source_column: CIDADE
+  calculated: false
+- name: BAIRRO
+  type: string
+  format: null
+  source_column: BAIRRO
+  calculated: false
+- name: RUA
+  type: string
+  format: null
+  source_column: RUA
+  calculated: false
+- name: NUMERO
+  type: string
+  format: null
+  source_column: NUMERO
+  calculated: false
+- name: TELEFONE
+  type: string
+  format: null
+  source_column: TELEFONE
+  calculated: false
+- name: CLIENTE
+  type: string
+  format: null
+  source_column: CLIENTE
+  calculated: false
+- name: EQUIPE
+  type: string
+  format: null
+  source_column: EQUIPE
+  calculated: false
+- name: LATITUDE
+  type: string
+  format: null
+  source_column: LATITUDE
+  calculated: false
+- name: LONGITUDE
+  type: string
+  format: null
+  source_column: LONGITUDE
+  calculated: false
+- name: "RESPONSÁVEL"
+  type: string
+  format: null
+  source_column: "RESPONSÁVEL"
+  calculated: false
+- name: PONTO DE ACESSO
+  type: string
+  format: null
+  source_column: PONTO DE ACESSO
+  calculated: false
+- name: POP
+  type: string
+  format: null
+  source_column: POP
+  calculated: false
+- name: VLAN
+  type: string
+  format: null
+  source_column: VLAN
+  calculated: false
+- name: SLOT
+  type: int64
+  format: "0"
+  source_column: SLOT
+  calculated: false
+- name: PORTA
+  type: int64
+  format: "0"
+  source_column: PORTA
+  calculated: false
+- name: CTO
+  type: string
+  format: null
+  source_column: CTO
+  calculated: false
+- name: STATUS CONTRATO
+  type: string
+  format: null
+  source_column: STATUS CONTRATO
+  calculated: false
+- name: NUMERO CONTRATO
+  type: string
+  format: null
+  source_column: NUMERO CONTRATO
+  calculated: false
+- name: ITEM
+  type: string
+  format: null
+  source_column: ITEM
+  calculated: false
+- name: CONTEXTO
+  type: string
+  format: null
+  source_column: CONTEXTO
+  calculated: false
+- name: PROBLEMA
+  type: string
+  format: null
+  source_column: PROBLEMA
+  calculated: false
+- name: OLT
+  type: string
+  format: null
+  source_column: OLT
+  calculated: false
+- name: EQUIPAMENTO
+  type: string
+  format: null
+  source_column: EQUIPAMENTO
+  calculated: false
+- name: "CRIADO POR:"
+  type: string
+  format: null
+  source_column: "CRIADO POR:"
+  calculated: false
+- name: "POSIÇÃO"
+  type: string
+  format: null
+  source_column: "POSIÇÃO"
+  calculated: false
+- name: "USUÁRIO"
+  type: string
+  format: null
+  source_column: "USUÁRIO"
+  calculated: false
+- name: TIPO DE PROTOCOLO
+  type: string
+  format: null
+  source_column: TIPO DE PROTOCOLO
+  calculated: false
+- name: SIGLA CIDADE
+  type: string
+  format: null
+  source_column: SIGLA CIDADE
+  calculated: false
+- name: INDICE 2
+  type: string
+  format: null
+  source_column: INDICE 2
+  calculated: false
+- name: "SITUAÇÃO"
+  type: string
+  format: null
+  source_column: "SITUAÇÃO"
+  calculated: false
+- name: TMA
+  type: int64
+  format: "0"
+  source_column: TMA
+  calculated: false
+- name: DATA HOJE
+  type: dateTime
+  format: Long Date
+  source_column: DATA HOJE
+  calculated: false
+- name: DATA ENCERRADO
+  type: string
+  format: null
+  source_column: DATA ENCERRADO
+  calculated: false
+- name: "TÍTULO RECEBÍVEL"
+  type: string
+  format: null
+  source_column: "TÍTULO RECEBÍVEL"
+  calculated: false
+measure_count: 0

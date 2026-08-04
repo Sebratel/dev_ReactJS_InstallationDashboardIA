@@ -1,0 +1,102 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: retorno-prioritario
+name: RETORNO PRIORITARIO
+origin: table:RETORNO PRIORITARIO
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  WITH primeira_instalacao AS (
+      SELECT
+          cst.id AS service_tag_id,
+          cst.service_tag,
+          ai.protocol AS "Protocolo Instalação",
+          it.title as "Tipo",
+          p4.name AS cliente_nome,
+          plis.created AS data_instalacao,
+          ROW_NUMBER() OVER (PARTITION BY cst.id ORDER BY plis.created ASC) AS rn
+      FROM patrimony_packing_list_items plis
+      LEFT JOIN patrimony_packing_lists ppl ON ppl.id = plis.patrimony_packing_list_id
+      LEFT JOIN assignments a ON a.id = ppl.assignment_id
+      LEFT JOIN assignment_incidents ai ON ai.assignment_id = a.id
+      LEFT JOIN incident_types it ON it.id = ai.incident_type_id
+      LEFT JOIN people p4 ON p4.id = ppl.responsible_id
+      LEFT JOIN contract_service_tags cst ON cst.id = ppl.contract_service_tag_id
+      WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '275', '1011', '1015')
+  ),
+  retorno_prioritario AS (
+      SELECT
+          cst.id AS service_tag_id,
+          ai.protocol AS "Protocolo Retorno Prioritário",
+          a.title AS titulo_protocolo,
+          a.created AS data_abertura,
+          ai.beginning_service_date AS data_retorno,
+          p.name AS cliente_nome_retorno,
+          it.title AS protocol_type,
+          ssc1.title AS categoria1,
+          ssc2.title AS categoria2,
+          ssc3.title AS categoria3,
+          ssc4.title AS categoria4,
+          ssc5.title AS categoria5
+      FROM assignment_incidents ai
+      LEFT JOIN assignments a ON a.id = ai.assignment_id
+      LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id
+      LEFT JOIN people p ON p.id = ai.client_id
+      LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id
+      LEFT JOIN incident_types it ON it.id = ai.incident_type_id
+      LEFT JOIN solicitation_category_matrices scm ON scm.id = ai.solicitation_category_matrix_id
+      LEFT JOIN solicitation_service_categories ssc1 ON ssc1.id = scm.service_category_id_1
+      LEFT JOIN solicitation_service_categories ssc2 ON ssc2.id = scm.service_category_id_2
+      LEFT JOIN solicitation_service_categories ssc3 ON ssc3.id = scm.service_category_id_3
+      LEFT JOIN solicitation_service_categories ssc4 ON ssc4.id = scm.service_category_id_4
+      LEFT JOIN solicitation_service_categories ssc5 ON ssc5.id = scm.service_category_id_5
+      WHERE ai.incident_type_id = '1160'
+        AND is2.title <> 'Cancelado'
+        AND a.created >= DATE '2026-01-01'
+  )
+  SELECT
+      pi."Protocolo Instalação",
+      pi."Tipo",
+      pi.service_tag,
+      pi.cliente_nome AS cliente_nome_instalacao,
+      pi.data_instalacao,
+      rp."Protocolo Retorno Prioritário",
+      rp.protocol_type,
+      rp.titulo_protocolo,
+      rp.data_abertura,
+      rp.data_retorno,
+      rp.categoria1,
+      rp.categoria2,
+      rp.categoria3,
+      rp.categoria4,
+      rp.categoria5,
+      (rp.data_retorno - pi.data_instalacao) AS intervalo_retorno
+  FROM primeira_instalacao pi
+  JOIN retorno_prioritario rp
+    ON rp.service_tag_id = pi.service_tag_id
+  WHERE pi.rn = 1
+    AND rp.data_retorno >= pi.data_instalacao
+    AND rp.data_retorno <= pi.data_instalacao + INTERVAL '30 days'
+  ORDER BY pi.data_instalacao DESC, rp.data_abertura DESC;
+url: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- assignments
+- contract_service_tags
+- incident_status
+- incident_types
+- patrimony_packing_list_items
+- patrimony_packing_lists
+- people
+- primeira_instalacao
+- retorno_prioritario
+- solicitation_category_matrices
+- solicitation_service_categories
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "WITH primeira_instalacao AS (#(lf)    SELECT#(lf)        cst.id AS service_tag_id,#(lf)        cst.service_tag,#(lf)        ai.protocol AS ""Protocolo Instalação"",#(lf)        it.title as ""Tipo"",#(lf)        p4.name AS cliente_nome,#(lf)        plis.created AS data_instalacao,#(lf)        ROW_NUMBER() OVER (PARTITION BY cst.id ORDER BY plis.created ASC) AS rn#(lf)    FROM patrimony_packing_list_items plis#(lf)    LEFT JOIN patrimony_packing_lists ppl ON ppl.id = plis.patrimony_packing_list_id#(lf)    LEFT JOIN assignments a ON a.id = ppl.assignment_id#(lf)    LEFT JOIN assignment_incidents ai ON ai.assignment_id = a.id#(lf)    LEFT JOIN incident_types it ON it.id = ai.incident_type_id#(lf)    LEFT JOIN people p4 ON p4.id = ppl.responsible_id#(lf)    LEFT JOIN contract_service_tags cst ON cst.id = ppl.contract_service_tag_id#(lf)    WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '275', '1011', '1015')#(lf)),#(lf)retorno_prioritario AS (#(lf)    SELECT#(lf)        cst.id AS service_tag_id,#(lf)        ai.protocol AS ""Protocolo Retorno Prioritário"",#(lf)        a.title AS titulo_protocolo,#(lf)        a.created AS data_abertura,#(lf)        ai.beginning_service_date AS data_retorno,#(lf)        p.name AS cliente_nome_retorno,#(lf)        it.title AS protocol_type,#(lf)        ssc1.title AS categoria1,#(lf)        ssc2.title AS categoria2,#(lf)        ssc3.title AS categoria3,#(lf)        ssc4.title AS categoria4,#(lf)        ssc5.title AS categoria5#(lf)    FROM assignment_incidents ai#(lf)    LEFT JOIN assignments a ON a.id = ai.assignment_id#(lf)    LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN people p ON p.id = ai.client_id#(lf)    LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id#(lf)    LEFT JOIN incident_types it ON it.id = ai.incident_type_id#(lf)    LEFT JOIN solicitation_category_matrices scm ON scm.id = ai.solicitation_category_matrix_id#(lf)    LEFT JOIN solicitation_service_categories ssc1 ON ssc1.id = scm.service_category_id_1#(lf)    LEFT JOIN solicitation_service_categories ssc2 ON ssc2.id = scm.service_category_id_2#(lf)    LEFT JOIN solicitation_service_categories ssc3 ON ssc3.id = scm.service_category_id_3#(lf)    LEFT JOIN solicitation_service_categories ssc4 ON ssc4.id = scm.service_category_id_4#(lf)    LEFT JOIN solicitation_service_categories ssc5 ON ssc5.id = scm.service_category_id_5#(lf)    WHERE ai.incident_type_id = '1160'#(lf)      AND is2.title <> 'Cancelado'#(lf)      AND a.created >= DATE '2026-01-01'#(lf))#(lf)SELECT#(lf)    pi.""Protocolo Instalação"",#(lf)    pi.""Tipo"",#(lf)    pi.service_tag,#(lf)    pi.cliente_nome AS cliente_nome_instalacao,#(lf)    pi.data_instalacao,#(lf)    rp.""Protocolo Retorno Prioritário"",#(lf)    rp.protocol_type,#(lf)    rp.titulo_protocolo,#(lf)    rp.data_abertura,#(lf)    rp.data_retorno,#(lf)    rp.categoria1,#(lf)    rp.categoria2,#(lf)    rp.categoria3,#(lf)    rp.categoria4,#(lf)    rp.categoria5,#(lf)    (rp.data_retorno - pi.data_instalacao) AS intervalo_retorno#(lf)FROM primeira_instalacao pi#(lf)JOIN retorno_prioritario rp#(lf)  ON rp.service_tag_id = pi.service_tag_id#(lf)WHERE pi.rn = 1#(lf)  AND rp.data_retorno >= pi.data_instalacao#(lf)  AND rp.data_retorno <= pi.data_instalacao + INTERVAL '30 days'#(lf)ORDER BY pi.data_instalacao DESC, rp.data_abertura DESC;"),
+      #"Consultas Mescladas" = Table.NestedJoin(Fonte, {"Protocolo Instalação"}, #"ALOCAÇÃO PATRIMONIO", {"N°PROTOCOLO"}, "ALOCAÇÃO PATRIMONIO", JoinKind.LeftOuter),
+      #"ALOCAÇÃO PATRIMONIO Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas", "ALOCAÇÃO PATRIMONIO", {"PATRIMONIO", "DATA SAIDA", "ALOCADO POR:"}, {"ALOCAÇÃO PATRIMONIO.PATRIMONIO", "ALOCAÇÃO PATRIMONIO.DATA SAIDA", "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"})
+  in
+      #"ALOCAÇÃO PATRIMONIO Expandido"

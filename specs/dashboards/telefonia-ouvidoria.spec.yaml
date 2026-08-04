@@ -1,0 +1,499 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: telefonia-ouvidoria
+page_id: 30a73395e849c869abee
+name: TELEFONIA & OUVIDORIA
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 2800
+  height: 1500
+visual_count: 24
+visuals:
+- id: 00be7542dc6adc442876
+  type: slicer
+  position:
+    x: 0
+    y: 2.325365581819528
+    width: 357.30774055339805
+    height: 115.04279196562507
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: STATUS
+    name: STATUS
+- id: 07fe8193d8e499ceda06
+  type: pageNavigator
+  position:
+    x: 0
+    y: 75
+    width: 2800
+    height: 50
+  entities_used: []
+  fields: []
+- id: 08b9980a0b170af3b6d6
+  type: image
+  position:
+    x: 12.5
+    y: 0
+    width: 312.5
+    height: 75
+  entities_used: []
+  fields: []
+- id: 180424e6485b88eae9f1
+  type: slicer
+  position:
+    x: 1565.2345220561535
+    y: 2.907109318281409
+    width: 355.1987175137555
+    height: 115.04279196562507
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: EQUIPE
+    name: EQUIPE
+- id: 230e44503581313eabc2
+  type: slicer
+  position:
+    x: 1960.4556302756844
+    y: 2.907109318281409
+    width: 355.4744623316103
+    height: 115.04279196562507
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: Data Criado Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: Data Criado Trimestre
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "Data Criado Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: Data Criado Dia
+- id: 4580554505674d5d2c43
+  type: card
+  position:
+    x: 186.96433211691232
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    name: Data mais recente
+- id: 471e980bb59d8e69e613
+  type: card
+  position:
+    x: 1481.6159821932822
+    y: 297.58363034109595
+    width: 300
+    height: 132.5
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS TELEFONIA
+    property: CLIENTE
+    name: CLIENTES
+- id: 4c6e6cd02d03488b4a37
+  type: slicer
+  position:
+    x: 389.57679507400496
+    y: 2.907109318281409
+    width: 355.4744623316103
+    height: 115.04279196562507
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: "RESPONSÁVEL"
+    name: "RESPONSÁVEL"
+- id: 54114d94597293813209
+  type: advancedSlicerVisual
+  position:
+    x: 929.2253521126761
+    y: 468.3098591549296
+    width: 995.774647887324
+    height: 86.26760563380282
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: "SITUAÇÃO"
+    name: "SITUAÇÃO"
+- id: 5a1eaa2c036bc396f005
+  type: unknown
+  position:
+    x: 57.65271105010295
+    y: 139.8846550084344
+    width: 2719.9536095124995
+    height: 122.99245024021963
+  entities_used: []
+  fields: []
+- id: 5db1cd84f82c39a7cf67
+  type: card
+  position:
+    x: 1091.6159821932822
+    y: 295.08363034109595
+    width: 340
+    height: 132.5
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS TELEFONIA
+    property: N°PROTOCOLO
+    name: PROTOCOLOS
+- id: 5f38a256874bf2affa50
+  type: textbox
+  position:
+    x: 0
+    y: 10.107573392814775
+    width: 219.76580796252927
+    height: 42.99765807962529
+  entities_used: []
+  fields: []
+- id: 60f4e5e52c95bf8ddeb8
+  type: slicer
+  position:
+    x: 779.7951044553139
+    y: 2.907109318281409
+    width: 355.1987175137555
+    height: 115.04279196562507
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: CLIENTE
+    name: CLIENTE
+- id: 7446052c5bf3d08506ef
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 2800
+    height: 75.06092607636067
+  entities_used: []
+  fields: []
+- id: a12862a2c6692e472055
+  type: card
+  position:
+    x: 291.7924809991332
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    name: Hora mais recente
+- id: ab7101a5e56c701ac5f7
+  type: columnChart
+  position:
+    x: 30.748112560054906
+    y: 332.4639670555937
+    width: 868.6341798215511
+    height: 355.5250514756349
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Category
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: CIDADE
+    name: CIDADE
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS TELEFONIA
+    property: N°PROTOCOLO
+    name: Contagem de N°PROTOCOLO1
+- id: c6d331b4655d2552f84e
+  type: slicer
+  position:
+    x: 2364.4285580368646
+    y: 0
+    width: 355.5250514756349
+    height: 122.99245024021963
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: N°PROTOCOLO
+    name: N°PROTOCOLO
+- id: e233496cb4a9c9d05787
+  type: advancedSlicerVisual
+  position:
+    x: 930.1304049416609
+    y: 582.2923816060398
+    width: 995.4701441317776
+    height: 88.40082361015786
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: STATUS CONTRATO
+    name: STATUS CONTRATO
+- id: e490ca88af05c71cb40c
+  type: slicer
+  position:
+    x: 1171.3133536922237
+    y: 2.907109318281409
+    width: 355.1987175137555
+    height: 115.04279196562507
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+- id: e5ffac48cee4968a3737
+  type: tableEx
+  position:
+    x: 30.748112560054906
+    y: 734.111187371311
+    width: 2728.894989704873
+    height: 766.7810569663693
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: N°PROTOCOLO
+    name: N°PROTOCOLO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: DATA CRIADO
+    name: DATA CRIADO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: HORA CRIADO
+    name: HORA CRIADO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: DATA ENCERRADO
+    name: DATA ENCERRADO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: TMA
+    name: TMA
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: CLIENTE
+    name: CLIENTE1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: TELEFONE
+    name: TELEFONE1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: STATUS
+    name: STATUS1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: "TÍTULO RECEBÍVEL"
+    name: "TÍTULO RECEBÍVEL"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: CIDADE
+    name: CIDADE1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: BAIRRO
+    name: BAIRRO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: RUA
+    name: RUA1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: NUMERO
+    name: NUMERO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: EQUIPE
+    name: EQUIPE1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: "RESPONSÁVEL"
+    name: "RESPONSÁVEL1"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: PONTO DE ACESSO
+    name: PONTO DE ACESSO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: POP
+    name: POP1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: SLOT
+    name: SLOT
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: PORTA
+    name: PORTA
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: STATUS CONTRATO
+    name: STATUS CONTRATO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: ITEM
+    name: ITEM1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: OLT
+    name: OLT1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: CTO
+    name: CTO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: EQUIPAMENTO
+    name: EQUIPAMENTO
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: CONTEXTO
+    name: CONTEXTO1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: PROBLEMA
+    name: PROBLEMA1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: "CRIADO POR:"
+    name: CRIADO POR:1
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: "POSIÇÃO"
+    name: "POSIÇÃO1"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: "USUÁRIO"
+    name: "USUÁRIO1"
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: NUMERO CONTRATO
+    name: NUMERO CONTRATO1
+- id: ead55782fbeeb19a0921
+  type: columnChart
+  position:
+    x: 1948.6616334934797
+    y: 332.4639670555937
+    width: 809.0597117364448
+    height: 355.5250514756349
+  entities_used:
+  - PROTOCOLOS TELEFONIA
+  fields:
+  - role: Category
+    kind: column
+    entity: PROTOCOLOS TELEFONIA
+    property: EQUIPE
+    name: EQUIPE
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS TELEFONIA
+    property: N°PROTOCOLO
+    name: TOTAL
+- id: eae1bc0c50c747f4112a
+  type: unknown
+  position:
+    x: 2390
+    y: 32.5
+    width: 410
+    height: 52.5
+  entities_used: []
+  fields: []
+- id: f1b558489967870ff389
+  type: textbox
+  position:
+    x: 410
+    y: 4
+    width: 2020
+    height: 68
+  entities_used: []
+  fields: []
+- id: fa94829fc16b87b2d477
+  type: unknown
+  position:
+    x: 0
+    y: 0.2653342522398354
+    width: 304.6762549287662
+    height: 53.10523147244007
+  entities_used: []
+  fields: []

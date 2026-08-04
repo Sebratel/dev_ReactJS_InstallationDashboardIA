@@ -1,0 +1,18 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: feriados
+name: FERIADOS
+origin: table:FERIADOS
+source_type: inline
+datasource: inline
+sql: null
+url: null
+endpoints: null
+source_tables: []
+m_expression: |-
+  let
+      Fonte = Table.FromRows(Json.Document(Binary.Decompress(Binary.FromText("ldXNattAEAfwVxE6B7TSfh9bl0AuJaTpyeQwsbZ4wV2ZlRtCXieHQh+hV79Y7ZVkN7CrHYFu89eu5scMWq9LUlenpyFNU96Uq8798HAw3tk3OP4+vnfFd2dfjO9hVz7drMuaV4RN6Xuwr+dIa4qVt/2hC5Gm/i/yaD20xh1MH2rny/hU+2KhaLvi0cMz7LbDy0RWRE+BO9eavXHt8Y/bDNnPHno7fklT1WRKfu36Hopvxm07D8WnPXizsS0MR56ClwZvrYO266deroV732128HNsuoXiweyPf593djOc0pzCzeU6OIweFz2K0Tt3x6Z0Ro/O6NGcHkXrUaweTenRJXo0rscweo2uCJ3SGT02o8dyegytx7B6LKXHluixuB5Hba4aaXhej8/o8ZweR+txrB5P6fElejyuJ1CbS0cakdcTM3oipccqIq5f4/e/+mK1PR9uP+oKtK7A6oqUrliiK+K6ErXZYtxsmdeVM7oyN5sSrSexejKlJ5foybieQm02G2lUXk/N6KmcnkLrKayeSumpJXoqrqcxepSMs6fzenpGT+f0NFpPY/V0Sk8v0dNRPUpQs6cHmpCe1wuRhF6ozemFAEovJDF6IRjTG3pB6g3XXfXoOE3hnwzewctUYclKHa08/QM=", BinaryEncoding.Base64), Compression.Deflate)), let _t = ((type nullable text) meta [Serialized.Text = true]) in type table [Data = _t, Feriado = _t]),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"Data", type date}, {"Feriado", type text}}),
+      #"Linhas Classificadas" = Table.Sort(#"Tipo Alterado",{{"Data", Order.Ascending}})
+  in
+      #"Linhas Classificadas"

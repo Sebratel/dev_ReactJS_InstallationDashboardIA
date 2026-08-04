@@ -1,0 +1,18 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: consolidado-clientes
+name: CONSOLIDADO CLIENTES
+query_ref: consolidado-clientes
+columns:
+- name: authentication_totalizer
+  type: int64
+  format: "0"
+  source_column: authentication_totalizer
+  calculated: false
+- name: created
+  type: dateTime
+  format: Long Date
+  source_column: created
+  calculated: false
+measure_count: 0

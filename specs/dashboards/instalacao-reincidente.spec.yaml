@@ -1,0 +1,562 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: instalacao-reincidente
+page_id: fee6a0f4db06a43a7368
+name: "INSTALAÇÃO/ REINCIDENTE"
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 2800
+  height: 1800
+visual_count: 29
+visuals:
+- id: 03b4bcd9157cec19d13e
+  type: card
+  position:
+    x: 291.7924809991332
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    name: Hora mais recente
+- id: 1a8f0f425eea4d91d7da
+  type: tableEx
+  position:
+    x: 1315.526950925181
+    y: 425.7441673370877
+    width: 403.21802091713596
+    height: 601.4481094127111
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Values
+    kind: measure
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: "% Reincidencia"
+    name: "% Reincidente"
+- id: 1bfe03ac7181a3ce2ace
+  type: tableEx
+  position:
+    x: 1741.2711182622686
+    y: 425.7441673370877
+    width: 1000.1609010458568
+    height: 601.4481094127111
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 1"
+    name: Instalador
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: Protocolos
+  - role: Values
+    kind: measure
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: Reincidentes
+    name: Reincidentes
+  - role: Values
+    kind: measure
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: "% Reincidencia"
+    name: "% Reincidente"
+- id: 1c15b278e5ca17bec2e8
+  type: card
+  position:
+    x: 2335.961383748994
+    y: 148.6725663716814
+    width: 198.23008849557522
+    height: 128.39903459372485
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: measure
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: Reincidentes
+    name: Reincidentes
+- id: 23e39b606638b87e8c8c
+  type: slicer
+  position:
+    x: 698.3105390185036
+    y: 148.6725663716814
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: cliente
+    name: cliente
+- id: 2a4376d703bdcbe973ea
+  type: unknown
+  position:
+    x: 2390
+    y: 32.5
+    width: 410
+    height: 52.5
+  entities_used: []
+  fields: []
+- id: 2e20bb37d3e6d566f9d3
+  type: slicer
+  position:
+    x: 427.99678197908287
+    y: 299.597747385358
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: catalogo
+    name: catalogo
+- id: 43cbfec92047966cb9ef
+  type: pageNavigator
+  position:
+    x: 0
+    y: 71.69811320754717
+    width: 2800
+    height: 49.056603773584904
+  entities_used: []
+  fields: []
+- id: 5e81bd24691c29217be8
+  type: card
+  position:
+    x: 2130.9734513274334
+    y: 148.6725663716814
+    width: 198.23008849557522
+    height: 128.39903459372485
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: Instalados
+- id: 62ff2e415274df7f7ad4
+  type: slicer
+  position:
+    x: 2335.961383748994
+    y: 299.597747385358
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_5
+    name: categoria_5
+- id: 6372fc0350f0434c7d93
+  type: slicer
+  position:
+    x: 1178.1174577634754
+    y: 299.597747385358
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_2
+    name: categoria_2
+- id: 6bed9d362974c6733761
+  type: card
+  position:
+    x: 2543.20193081255
+    y: 148.6725663716814
+    width: 198.23008849557522
+    height: 128.39903459372485
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: measure
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: "% Reincidencia"
+    name: "% Reincidencia"
+- id: 7a16be6815b78ddf3680
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 2800
+    height: 75.06092607636067
+  entities_used: []
+  fields: []
+- id: 7a8fbba740dcd8d93ffe
+  type: textbox
+  position:
+    x: 410
+    y: 4
+    width: 2020
+    height: 68
+  entities_used: []
+  fields: []
+- id: 81bd542c024a68a0b55a
+  type: textbox
+  position:
+    x: 0
+    y: 10.107573392814775
+    width: 219.76580796252927
+    height: 42.99765807962529
+  entities_used: []
+  fields: []
+- id: 95d7e33f240e61378a71
+  type: slicer
+  position:
+    x: 801.9308125502815
+    y: 299.597747385358
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_1
+    name: categoria_1
+- id: abd7e96af67e36e852c3
+  type: slicer
+  position:
+    x: 1718.744971842317
+    y: 148.6725663716814
+    width: 389.7023330651649
+    height: 128.39903459372485
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: reincidente_30d
+    name: reincidente_30d
+- id: af1c3777d731245dd558
+  type: lineStackedColumnComboChart
+  position:
+    x: 50.16797312430011
+    y: 426.4277715565509
+    width: 1240.0895856662933
+    height: 603.5834266517356
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Dia
+  - role: Series
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: reincidente_30d
+    name: Reincidente 30d
+  - role: Y
+    kind: aggregation
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: protocolo_instalacao
+    name: Contagem de protocolo_instalacao
+- id: b21a5d8ada09beaa839b
+  type: slicer
+  position:
+    x: 1950.7642799678197
+    y: 299.597747385358
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_4
+    name: categoria_4
+- id: c2cda490384c68eb80e4
+  type: image
+  position:
+    x: 12.5
+    y: 0
+    width: 312.5
+    height: 75
+  entities_used: []
+  fields: []
+- id: c8fbe163b6a8ae38cc23
+  type: slicer
+  position:
+    x: 1076.7497988736927
+    y: 148.6725663716814
+    width: 304.1029766693483
+    height: 94.60981496379726
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: data_manutencao Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "data_manutencao Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: data_manutencao Dia
+- id: d8c18995b06efbc39921
+  type: unknown
+  position:
+    x: 0
+    y: 0.2653342522398354
+    width: 304.6762549287662
+    height: 53.10523147244007
+  entities_used: []
+  fields: []
+- id: d93e5f330d5c60355c53
+  type: tableEx
+  position:
+    x: 49.557522123893804
+    y: 1051.9710378117456
+    width: 2691.8744971842316
+    height: 747.8680611423974
+  entities_used:
+  - CALENDARIO INSTALADO
+  - "INSTALAÇÕES REINCIDENTES"
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: "."
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: contrato
+    name: contrato
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: cliente
+    name: cliente
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: Protocolo
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: tipo_instalacao
+    name: "Tipo Instalação"
+  - role: Values
+    kind: column
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    name: Data Instalado
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: reincidente_30d
+    name: Reincidente 30d
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: dias_para_reincidencia
+    name: Dias
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: data_manutencao
+    name: "Data Manutenção"
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: protocolo_manutencao
+    name: "Protocolo Manutenção"
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: tipo_manutencao
+    name: "Tipo Manutenção"
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: tecnico_responsavel
+    name: Instalador
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: catalogo
+    name: "Catálogo"
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_1
+    name: Categoria 1
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_2
+    name: Categoria 2
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_3
+    name: Categoria 3
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_4
+    name: Categoria 4
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_5
+    name: Categoria 5
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: equipe
+    name: Equipe
+- id: e59df688d24f98b74fcb
+  type: slicer
+  position:
+    x: 1401.1263073209975
+    y: 148.6725663716814
+    width: 297.3451327433628
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: equipe
+    name: equipe
+- id: e9f72a9a044c3d178fa1
+  type: card
+  position:
+    x: 186.96433211691232
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    name: Data mais recente
+- id: ec213222764661ec1ea8
+  type: slicer
+  position:
+    x: 49.557522123893804
+    y: 299.597747385358
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: tipo_manutencao
+    name: tipo_manutencao
+- id: f02ce57f966b7b0b41bc
+  type: slicer
+  position:
+    x: 373.9340305711987
+    y: 148.6725663716814
+    width: 301.8503620273532
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: contrato
+    name: contrato
+- id: f4ceefeee158fb0bacf9
+  type: slicer
+  position:
+    x: 49.557522123893804
+    y: 148.6725663716814
+    width: 304.1029766693483
+    height: 94.60981496379726
+  entities_used: []
+  fields:
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Values
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Dia
+- id: fb5df651172fb9ad83ef
+  type: slicer
+  position:
+    x: 1561.0619469026549
+    y: 299.597747385358
+    width: 358.1657280772325
+    height: 94.60981496379726
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
+  fields:
+  - role: Values
+    kind: column
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: categoria_3
+    name: categoria_3

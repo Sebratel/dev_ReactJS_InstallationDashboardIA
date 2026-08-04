@@ -1,0 +1,18 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: calendar
+name: calendar
+query_ref: null
+columns:
+- name: Protocolo
+  type: null
+  format: null
+  source_column: "[Protocolo]"
+  calculated: false
+- name: Data
+  type: null
+  format: Short Date
+  source_column: "[Data]"
+  calculated: false
+measure_count: 0

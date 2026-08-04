@@ -1,0 +1,20 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: apuracao-premiacao
+name: "#APURAÇÃO PREMIAÇÃO"
+origin: "table:#APURAÇÃO PREMIAÇÃO"
+source_type: googlesheets
+datasource: gsheets
+sql: null
+url: "https://docs.google.com/spreadsheets/d/1UUyahgV-Z6WJGT1U7BAQjPg1TfLxPZoKnwJoQSAcYYM/edit?usp=sharing"
+endpoints: null
+source_tables: []
+m_expression: |-
+  let
+      Fonte = GoogleSheets.Contents("https://docs.google.com/spreadsheets/d/1UUyahgV-Z6WJGT1U7BAQjPg1TfLxPZoKnwJoQSAcYYM/edit?usp=sharing"),
+      #"#APURAÇÃO PREMIAÇÃO_Table" = Fonte{[name="#APURAÇÃO PREMIAÇÃO",ItemKind="Table"]}[Data],
+      #"Linhas Superiores Removidas" = Table.Skip(#"#APURAÇÃO PREMIAÇÃO_Table",1),
+      #"Cabeçalhos Promovidos" = Table.PromoteHeaders(#"Linhas Superiores Removidas", [PromoteAllScalars=true]),
+      #"Tipo Alterado" = Table.TransformColumnTypes(#"Cabeçalhos Promovidos",{{"INSTALADOR", type text}, {"QTD.", Int64.Type}, {"FAIXAS", type text}})
+  in
+      #"Tipo Alterado"

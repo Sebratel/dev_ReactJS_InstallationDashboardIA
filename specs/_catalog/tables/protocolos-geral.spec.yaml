@@ -1,0 +1,328 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: protocolos-geral
+name: PROTOCOLOS GERAL
+query_ref: protocolos-geral
+columns:
+- name: SOLICITACAO
+  type: string
+  format: null
+  source_column: SOLICITACAO
+  calculated: false
+- name: N°PROTOCOLO
+  type: string
+  format: null
+  source_column: N°PROTOCOLO
+  calculated: false
+- name: STATUS
+  type: string
+  format: null
+  source_column: STATUS
+  calculated: false
+- name: CIDADE
+  type: string
+  format: null
+  source_column: CIDADE
+  calculated: false
+- name: RUA
+  type: string
+  format: null
+  source_column: RUA
+  calculated: false
+- name: EQUIPE
+  type: string
+  format: null
+  source_column: EQUIPE
+  calculated: false
+- name: TELEFONE
+  type: string
+  format: null
+  source_column: TELEFONE
+  calculated: false
+- name: CLIENTE
+  type: string
+  format: null
+  source_column: CLIENTE
+  calculated: false
+- name: INDICE 2
+  type: string
+  format: null
+  source_column: INDICE 2
+  calculated: false
+- name: BAIRRO
+  type: string
+  format: null
+  source_column: BAIRRO
+  calculated: false
+- name: SIGLA CIDADE
+  type: string
+  format: null
+  source_column: SIGLA CIDADE
+  calculated: false
+- name: LATITUDE
+  type: string
+  format: null
+  source_column: LATITUDE
+  calculated: false
+- name: LONGITUDE
+  type: string
+  format: null
+  source_column: LONGITUDE
+  calculated: false
+- name: "RESPONSÁVEL"
+  type: string
+  format: null
+  source_column: "RESPONSÁVEL"
+  calculated: false
+- name: DATA CRIADO
+  type: dateTime
+  format: Short Date
+  source_column: DATA CRIADO
+  calculated: false
+- name: DATA AGENDA
+  type: dateTime
+  format: Short Date
+  source_column: DATA AGENDA
+  calculated: false
+- name: GRUPO =
+  type: null
+  format: null
+  source_column: null
+  calculated: false
+- name: TIPO DE PROTOCOLO
+  type: string
+  format: null
+  source_column: TIPO DE PROTOCOLO
+  calculated: false
+- name: HORA AGENDA
+  type: dateTime
+  format: Long Time
+  source_column: HORA AGENDA
+  calculated: false
+- name: PONTO DE ACESSO
+  type: string
+  format: null
+  source_column: PONTO DE ACESSO
+  calculated: false
+- name: STATUS CONTRATO
+  type: string
+  format: null
+  source_column: STATUS CONTRATO
+  calculated: false
+- name: NUMERO CONTRATO
+  type: string
+  format: null
+  source_column: NUMERO CONTRATO
+  calculated: false
+- name: ITEM
+  type: string
+  format: null
+  source_column: ITEM
+  calculated: false
+- name: CONDICAO ITEM
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: SLOT
+  type: int64
+  format: "0"
+  source_column: SLOT
+  calculated: false
+- name: PORTA
+  type: int64
+  format: "0"
+  source_column: PORTA
+  calculated: false
+- name: POP
+  type: string
+  format: null
+  source_column: POP
+  calculated: false
+- name: VLAN
+  type: string
+  format: null
+  source_column: VLAN
+  calculated: false
+- name: CTO
+  type: string
+  format: null
+  source_column: CTO
+  calculated: false
+- name: OLT
+  type: string
+  format: null
+  source_column: OLT
+  calculated: false
+- name: EQUIPAMENTO
+  type: string
+  format: null
+  source_column: EQUIPAMENTO
+  calculated: false
+- name: "'EQUIPES TEMPORARIAS' ="
+  type: null
+  format: null
+  source_column: null
+  calculated: false
+- name: CONTEXTO
+  type: string
+  format: null
+  source_column: CONTEXTO
+  calculated: false
+- name: PROBLEMA
+  type: string
+  format: null
+  source_column: PROBLEMA
+  calculated: false
+- name: CONTAGEM
+  type: int64
+  format: "0"
+  source_column: null
+  calculated: true
+- name: TURNO
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: "USUÁRIO"
+  type: string
+  format: null
+  source_column: "USUÁRIO"
+  calculated: false
+- name: HORA CRIADO
+  type: dateTime
+  format: Long Time
+  source_column: HORA CRIADO
+  calculated: false
+- name: TMA
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: TMA_DIAS
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: TMA_HORA_AGENDA
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: "DATA ALOCAÇÃO"
+  type: dateTime
+  format: Short Date
+  source_column: "DATA ALOCAÇÃO"
+  calculated: false
+- name: STATUS PROTOCOLO
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: "DATA INSTALAÇÃO"
+  type: null
+  format: Short Date
+  source_column: null
+  calculated: true
+- name: TURNO CRIADO
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: "HR. ALOCAÇÃO"
+  type: dateTime
+  format: Long Time
+  source_column: "HR. ALOCAÇÃO"
+  calculated: false
+- name: TURNO ALOCADO
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: "TÉCNICO INSTALAÇÃO"
+  type: string
+  format: null
+  source_column: "TÉCNICO INSTALAÇÃO"
+  calculated: false
+- name: "POSIÇÃO"
+  type: string
+  format: null
+  source_column: "POSIÇÃO"
+  calculated: false
+- name: STATUS FINANCEIRO
+  type: string
+  format: null
+  source_column: STATUS FINANCEIRO
+  calculated: false
+- name: DATA ENCERRADO
+  type: dateTime
+  format: Long Date
+  source_column: DATA ENCERRADO
+  calculated: false
+- name: "NUMERO PATRIMÔNIO"
+  type: string
+  format: null
+  source_column: "NUMERO PATRIMÔNIO"
+  calculated: false
+- name: ESTAGIO CONTRATO
+  type: string
+  format: null
+  source_column: ESTAGIO CONTRATO
+  calculated: false
+- name: CRIADO POR
+  type: string
+  format: null
+  source_column: CRIADO POR
+  calculated: false
+- name: GERENTE/SUPERVISOR
+  type: string
+  format: null
+  source_column: GERENTE/SUPERVISOR
+  calculated: false
+- name: DATA DA TROCA
+  type: dateTime
+  format: Long Date
+  source_column: DATA DA TROCA
+  calculated: false
+- name: "TÉCNICO TROCA"
+  type: string
+  format: null
+  source_column: "TÉCNICO TROCA"
+  calculated: false
+- name: "TÉCNICO 1"
+  type: string
+  format: null
+  source_column: "TÉCNICO 1"
+  calculated: false
+- name: DATA FINAL
+  type: string
+  format: null
+  source_column: DATA FINAL
+  calculated: false
+- name: "TÉCNICO 2"
+  type: string
+  format: null
+  source_column: "TÉCNICO 2"
+  calculated: false
+- name: EQUIPE_BASE
+  type: null
+  format: null
+  source_column: null
+  calculated: false
+- name: TECNICOS AUXILIARES.AUXILIAR
+  type: string
+  format: null
+  source_column: TECNICOS AUXILIARES.AUXILIAR
+  calculated: false
+- name: instalador_Unificado
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: PLANO
+  type: string
+  format: null
+  source_column: PLANO
+  calculated: false
+measure_count: 26

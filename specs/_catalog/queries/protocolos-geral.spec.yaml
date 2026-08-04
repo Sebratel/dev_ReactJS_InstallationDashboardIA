@@ -1,0 +1,207 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: protocolos-geral
+name: PROTOCOLOS GERAL
+origin: table:PROTOCOLOS GERAL
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  WITH PERSONALIZADO AS (
+      SELECT 
+          a.title AS "SOLICITACAO",
+          ai.protocol AS "N°PROTOCOLO",
+          s.start_date AS "DATA AGENDA",
+          a.modified AS "DATA ENCERRADO",
+          a.created AS "DATA CRIADO",
+          is2.title AS "STATUS",
+          p.city AS "CIDADE",
+          p.neighborhood AS "BAIRRO",
+          p.street AS "RUA",
+          p.number AS "NUMERO PATRIMÔNIO",
+          p.name AS "CLIENTE",
+          p.phone AS "TELEFONE",
+          t.title AS "EQUIPE",
+          ac.lat AS "LATITUDE",
+          ac.lng AS "LONGITUDE",
+          p2.name AS "RESPONSÁVEL",
+          it.title AS "TIPO DE PROTOCOLO",
+          aap.title AS "PONTO DE ACESSO",
+          aap.code AS "CODIGO",
+          aap.slots_first_number AS "SLOT",
+          aap.ports_first_number AS "PORTA",  
+          as2.title AS "CTO",
+          c.v_status AS "STATUS CONTRATO",
+          c.v_stage AS "ESTAGIO CONTRATO",
+          c.contract_number AS "NUMERO CONTRATO",
+          csi.title AS "ITEM",
+          sc.title AS "CONTEXTO",
+          sp.title AS "PROBLEMA",
+          as3.title AS "OLT",
+          m.title AS "EQUIPAMENTO",
+          ac.user AS "USUÁRIO",
+          vu.name AS "CRIADO POR",
+          ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,
+          CASE 
+              WHEN frt.title IS NULL THEN 'Pendente' 
+              ELSE 'Cobrado' 
+          END AS "STATUS FINANCEIRO"
+      FROM assignment_incidents ai
+      LEFT JOIN assignments a ON a.id = ai.assignment_id
+      LEFT JOIN schedules s ON s.assignment_id = a.id
+      LEFT JOIN incident_types it ON it.id = ai.incident_type_id
+      LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id
+      LEFT JOIN people p ON p.id = a.requestor_id
+      LEFT JOIN teams t ON t.id = ai.team_id
+      LEFT JOIN people_addresses pa ON pa.person_id = p.id
+      LEFT JOIN authentication_contracts ac ON ac.people_address_id = pa.id
+      LEFT JOIN people p2 ON p2.id = a.responsible_id
+      LEFT JOIN authentication_access_points aap ON aap.id = ac.authentication_access_point_id
+      LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id
+      LEFT JOIN contracts c ON cst.contract_id = c.id
+      LEFT JOIN catalog_services_items csi ON csi.id = ai.catalog_service_item_id
+      LEFT JOIN authentication_splitter_ports asp ON asp.authentication_contract_id = ac.id
+      LEFT JOIN authentication_sites as3 ON as3.id = aap.authentication_site_id
+      LEFT JOIN manufacturers m ON m.id = aap.manufacturer_id
+      LEFT JOIN solicitation_problems sp ON sp.id = ai.solicitation_problem_id
+      LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id
+      LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id
+      LEFT JOIN v_users vu ON vu.id = a.created_by
+      LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id
+      WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo
+        AND a.created >= '2026-01-01'
+  ),
+  PLANOS_CONTRATO AS (
+      SELECT
+          c.contract_number,
+          STRING_AGG(DISTINCT sp2.title, '/ ' ORDER BY sp2.title) AS "PLANO"
+      FROM contracts c
+      LEFT JOIN contract_service_tags cst ON cst.contract_id = c.id
+      LEFT JOIN service_products sp2 ON sp2.id = cst.service_product_id
+      WHERE c.contract_number IS NOT NULL
+      AND cst.deleted = 'False'
+      GROUP BY c.contract_number
+  )
+  SELECT DISTINCT 
+      per."SOLICITACAO", 
+      per."N°PROTOCOLO", 
+      per."DATA AGENDA", 
+      per."DATA CRIADO", 
+      per."DATA ENCERRADO", 
+      per."STATUS", 
+      per."CIDADE", 
+      per."BAIRRO",
+      per."RUA", 
+      per."NUMERO PATRIMÔNIO",
+      per."TELEFONE", 
+      per."CLIENTE", 
+      per."EQUIPE", 
+      per."LATITUDE", 
+      per."LONGITUDE", 
+      per."RESPONSÁVEL",
+      per."TIPO DE PROTOCOLO",
+      per."PONTO DE ACESSO",
+      per."CODIGO",
+      per."SLOT",
+      per."PORTA",
+      per."CTO",
+      per."STATUS CONTRATO",
+      per."ESTAGIO CONTRATO",
+      per."NUMERO CONTRATO",
+      per."ITEM",
+      per."CONTEXTO",
+      per."PROBLEMA",
+      per."OLT",
+      per."EQUIPAMENTO",
+      per."USUÁRIO",
+      per."CRIADO POR",
+      per."STATUS FINANCEIRO",
+      pc."PLANO"
+  FROM PERSONALIZADO per
+  LEFT JOIN PLANOS_CONTRATO pc ON pc.contract_number = per."NUMERO CONTRATO"
+  WHERE per.PERSONA1 = 1;
+url: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- assignments
+- authentication_access_points
+- authentication_contracts
+- authentication_sites
+- authentication_splitter_ports
+- authentication_splitters
+- catalog_services_items
+- contract_service_tags
+- contracts
+- financial_receivable_titles
+- incident_status
+- incident_types
+- manufacturers
+- people
+- people_addresses
+- planos_contrato
+- schedules
+- service_products
+- solicitation_classifications
+- solicitation_problems
+- teams
+- v_users
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "WITH PERSONALIZADO AS (#(lf)    SELECT #(lf)        a.title AS ""SOLICITACAO"",#(lf)        ai.protocol AS ""N°PROTOCOLO"",#(lf)        s.start_date AS ""DATA AGENDA"",#(lf)        a.modified AS ""DATA ENCERRADO"",#(lf)        a.created AS ""DATA CRIADO"",#(lf)        is2.title AS ""STATUS"",#(lf)        p.city AS ""CIDADE"",#(lf)        p.neighborhood AS ""BAIRRO"",#(lf)        p.street AS ""RUA"",#(lf)        p.number AS ""NUMERO PATRIMÔNIO"",#(lf)        p.name AS ""CLIENTE"",#(lf)        p.phone AS ""TELEFONE"",#(lf)        t.title AS ""EQUIPE"",#(lf)        ac.lat AS ""LATITUDE"",#(lf)        ac.lng AS ""LONGITUDE"",#(lf)        p2.name AS ""RESPONSÁVEL"",#(lf)        it.title AS ""TIPO DE PROTOCOLO"",#(lf)        aap.title AS ""PONTO DE ACESSO"",#(lf)        aap.code AS ""CODIGO"",#(lf)        aap.slots_first_number AS ""SLOT"",#(lf)        aap.ports_first_number AS ""PORTA"",  #(lf)        as2.title AS ""CTO"",#(lf)        c.v_status AS ""STATUS CONTRATO"",#(lf)        c.v_stage AS ""ESTAGIO CONTRATO"",#(lf)        c.contract_number AS ""NUMERO CONTRATO"",#(lf)        csi.title AS ""ITEM"",#(lf)        sc.title AS ""CONTEXTO"",#(lf)        sp.title AS ""PROBLEMA"",#(lf)        as3.title AS ""OLT"",#(lf)        m.title AS ""EQUIPAMENTO"",#(lf)        ac.user AS ""USUÁRIO"",#(lf)        vu.name AS ""CRIADO POR"",#(lf)        ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,#(lf)        CASE #(lf)            WHEN frt.title IS NULL THEN 'Pendente' #(lf)            ELSE 'Cobrado' #(lf)        END AS ""STATUS FINANCEIRO""#(lf)    FROM assignment_incidents ai#(lf)    LEFT JOIN assignments a ON a.id = ai.assignment_id#(lf)    LEFT JOIN schedules s ON s.assignment_id = a.id#(lf)    LEFT JOIN incident_types it ON it.id = ai.incident_type_id#(lf)    LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id#(lf)    LEFT JOIN people p ON p.id = a.requestor_id#(lf)    LEFT JOIN teams t ON t.id = ai.team_id#(lf)    LEFT JOIN people_addresses pa ON pa.person_id = p.id#(lf)    LEFT JOIN authentication_contracts ac ON ac.people_address_id = pa.id#(lf)    LEFT JOIN people p2 ON p2.id = a.responsible_id#(lf)    LEFT JOIN authentication_access_points aap ON aap.id = ac.authentication_access_point_id#(lf)    LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN contracts c ON cst.contract_id = c.id#(lf)    LEFT JOIN catalog_services_items csi ON csi.id = ai.catalog_service_item_id#(lf)    LEFT JOIN authentication_splitter_ports asp ON asp.authentication_contract_id = ac.id#(lf)    LEFT JOIN authentication_sites as3 ON as3.id = aap.authentication_site_id#(lf)    LEFT JOIN manufacturers m ON m.id = aap.manufacturer_id#(lf)    LEFT JOIN solicitation_problems sp ON sp.id = ai.solicitation_problem_id#(lf)    LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id#(lf)    LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id#(lf)    LEFT JOIN v_users vu ON vu.id = a.created_by#(lf)    LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id#(lf)    WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo#(lf)      AND a.created >= '2026-01-01'#(lf)),#(lf)PLANOS_CONTRATO AS (#(lf)    SELECT#(lf)        c.contract_number,#(lf)        STRING_AGG(DISTINCT sp2.title, '/ ' ORDER BY sp2.title) AS ""PLANO""#(lf)    FROM contracts c#(lf)    LEFT JOIN contract_service_tags cst ON cst.contract_id = c.id#(lf)    LEFT JOIN service_products sp2 ON sp2.id = cst.service_product_id#(lf)    WHERE c.contract_number IS NOT NULL#(lf)    AND cst.deleted = 'False'#(lf)    GROUP BY c.contract_number#(lf))#(lf)SELECT DISTINCT #(lf)    per.""SOLICITACAO"", #(lf)    per.""N°PROTOCOLO"", #(lf)    per.""DATA AGENDA"", #(lf)    per.""DATA CRIADO"", #(lf)    per.""DATA ENCERRADO"", #(lf)    per.""STATUS"", #(lf)    per.""CIDADE"", #(lf)    per.""BAIRRO"",#(lf)    per.""RUA"", #(lf)    per.""NUMERO PATRIMÔNIO"",#(lf)    per.""TELEFONE"", #(lf)    per.""CLIENTE"", #(lf)    per.""EQUIPE"", #(lf)    per.""LATITUDE"", #(lf)    per.""LONGITUDE"", #(lf)    per.""RESPONSÁVEL"",#(lf)    per.""TIPO DE PROTOCOLO"",#(lf)    per.""PONTO DE ACESSO"",#(lf)    per.""CODIGO"",#(lf)    per.""SLOT"",#(lf)    per.""PORTA"",#(lf)    per.""CTO"",#(lf)    per.""STATUS CONTRATO"",#(lf)    per.""ESTAGIO CONTRATO"",#(lf)    per.""NUMERO CONTRATO"",#(lf)    per.""ITEM"",#(lf)    per.""CONTEXTO"",#(lf)    per.""PROBLEMA"",#(lf)    per.""OLT"",#(lf)    per.""EQUIPAMENTO"",#(lf)    per.""USUÁRIO"",#(lf)    per.""CRIADO POR"",#(lf)    per.""STATUS FINANCEIRO"",#(lf)    pc.""PLANO""#(lf)FROM PERSONALIZADO per#(lf)LEFT JOIN PLANOS_CONTRATO pc ON pc.contract_number = per.""NUMERO CONTRATO""#(lf)WHERE per.PERSONA1 = 1;"),
+      #"Hora Inserida1" = Table.AddColumn(Fonte, "Hora", each DateTime.Time([DATA CRIADO]), type time),
+      #"Colunas Renomeadas3" = Table.RenameColumns(#"Hora Inserida1",{{"Hora", "HORA CRIADO"}}),
+      #"Colocar Cada Palavra Em Maiúscula" = Table.TransformColumns(#"Colunas Renomeadas3",{{"CIDADE", Text.Proper, type text}, {"BAIRRO", Text.Proper, type text}}),
+      #"Coluna Duplicada" = Table.DuplicateColumn(#"Colocar Cada Palavra Em Maiúscula", "CIDADE", "CIDADE - Copiar"),
+      #"Valor Substituído" = Table.ReplaceValue(#"Coluna Duplicada","Canoas","CAN",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Valor Substituído1" = Table.ReplaceValue(#"Valor Substituído","São Leopoldo","SLE",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Valor Substituído2" = Table.ReplaceValue(#"Valor Substituído1","Novo Hamburgo","NHO",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Valor Substituído3" = Table.ReplaceValue(#"Valor Substituído2","Sapucaia Do Sul","SPS",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Valor Substituído4" = Table.ReplaceValue(#"Valor Substituído3","Nova Santa Rita","NSR",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Valor Substituído5" = Table.ReplaceValue(#"Valor Substituído4","Brochier","BROCHIER",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Valor Substituído6" = Table.ReplaceValue(#"Valor Substituído5","Esteio","EIO",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Valor Substituído7" = Table.ReplaceValue(#"Valor Substituído6","Triunfo","TRF",Replacer.ReplaceText,{"CIDADE - Copiar"}),
+      #"Colunas Renomeadas" = Table.RenameColumns(#"Valor Substituído7",{{"CIDADE - Copiar", "SIGLA CIDADE"}}),
+      #"Valor Substituído8" = Table.ReplaceValue(#"Colunas Renomeadas","Porto Alegre","POA",Replacer.ReplaceText,{"SIGLA CIDADE"}),
+      #"Coluna Mesclada Inserida" = Table.AddColumn(#"Valor Substituído8", "INDICE 2", each Text.Combine({[BAIRRO], [SIGLA CIDADE]}, "/"), type text),
+      #"Valor Substituído9" = Table.ReplaceValue(#"Coluna Mesclada Inserida","Centro - Assentamento /NSR","Centro - Assentamento/NSR",Replacer.ReplaceText,{"INDICE 2"}),
+      #"Valor Substituído10" = Table.ReplaceValue(#"Valor Substituído9","Duque De Caxias /SLE","Duque De Caxias/SLE",Replacer.ReplaceText,{"INDICE 2"}),
+      #"Texto em Maiúscula" = Table.TransformColumns(#"Valor Substituído10",{{"RESPONSÁVEL", Text.Upper, type text}}),
+      #"Valor Substituído11" = Table.ReplaceValue(#"Texto em Maiúscula",null,"SEM INFORMAÇÃO",Replacer.ReplaceValue,{"RESPONSÁVEL"}),
+      #"Hora Inserida" = Table.AddColumn(#"Valor Substituído11", "Hora", each DateTime.Time([DATA AGENDA]), type time),
+      #"Tipo Alterado" = Table.TransformColumnTypes(#"Hora Inserida",{{"DATA AGENDA", type date}}),
+      #"Colunas Renomeadas1" = Table.RenameColumns(#"Tipo Alterado",{{"Hora", "HORA AGENDA"}}),
+      #"Valor Substituído12" = Table.ReplaceValue(#"Colunas Renomeadas1",null,"Sem Informação",Replacer.ReplaceValue,{"PONTO DE ACESSO"}),
+      #"Valor Substituído13" = Table.ReplaceValue(#"Valor Substituído12",null,"Sem Informação",Replacer.ReplaceValue,{"ITEM"}),
+      #"Dividir Coluna por Delimitador" = Table.SplitColumn(#"Valor Substituído13", "CODIGO", Splitter.SplitTextByDelimiter("-", QuoteStyle.Csv), {"CODIGO.1", "CODIGO.2"}),
+      #"Tipo Alterado2" = Table.TransformColumnTypes(#"Dividir Coluna por Delimitador",{{"CODIGO.1", type text}, {"CODIGO.2", Int64.Type}}),
+      #"Colunas Renomeadas2" = Table.RenameColumns(#"Tipo Alterado2",{{"CODIGO.2", "VLAN"}, {"CODIGO.1", "POP"}}),
+      #"Prefixo Adicionado" = Table.TransformColumns(#"Colunas Renomeadas2", {{"VLAN", each "VLAN " & Text.From(_, "pt-BR"), type text}}),
+      #"Valor Substituído14" = Table.ReplaceValue(#"Prefixo Adicionado",null,"Sem Informação",Replacer.ReplaceValue,{"POP", "VLAN"}),
+      #"Valor Substituído15" = Table.ReplaceValue(#"Valor Substituído14",null,"Sem Informação",Replacer.ReplaceValue,{"CONTEXTO", "PROBLEMA", "OLT", "EQUIPAMENTO"}),
+      #"Texto Extraído Após o Delimitador" = Table.TransformColumns(#"Valor Substituído15", {{"CTO", each Text.AfterDelimiter(_, "-", 1), type text}}),
+      #"Texto Extraído Antes do Delimitador" = Table.TransformColumns(#"Texto Extraído Após o Delimitador", {{"CTO", each Text.BeforeDelimiter(_, "-"), type text}}),
+      #"Consultas Mescladas1" = Table.NestedJoin(#"Texto Extraído Antes do Delimitador", {"SOLICITACAO"}, #"ALOCAÇÃO PATRIMONIO", {"SOLICITACAO"}, "ALOCAÇÃO_PATRIMONIO", JoinKind.LeftOuter),
+      #"ALOCAÇÃO_PATRIMONIO Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas1", "ALOCAÇÃO_PATRIMONIO", {"DATA SAIDA", "DATA HORA SAIDA", "ALOCADO POR:", "POSIÇÃO"}, {"ALOCAÇÃO_PATRIMONIO.DATA SAIDA", "ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA", "ALOCAÇÃO_PATRIMONIO.ALOCADO POR:", "ALOCAÇÃO_PATRIMONIO.POSIÇÃO"}),
+      #"Colunas Renomeadas5" = Table.RenameColumns(#"ALOCAÇÃO_PATRIMONIO Expandido",{{"ALOCAÇÃO_PATRIMONIO.DATA SAIDA", "DT.INSTA"}}),
+      #"Linhas Filtradas1" = Table.SelectRows(#"Colunas Renomeadas5", each ([STATUS] <> "Cancelado")),
+      #"Colunas Renomeadas4" = Table.RenameColumns(#"Linhas Filtradas1",{{"DT.INSTA", "DT.ALOCAÇÃO"}}),
+      #"Hora Inserida2" = Table.AddColumn(#"Colunas Renomeadas4", "Hora", each DateTime.Time([ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA]), type time),
+      #"Colunas Renomeadas7" = Table.RenameColumns(#"Hora Inserida2",{{"Hora", "HR. ALOCAÇÃO"}}),
+      #"Colunas Removidas" = Table.RemoveColumns(#"Colunas Renomeadas7",{"ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA"}),
+      #"Colunas Renomeadas6" = Table.RenameColumns(#"Colunas Removidas",{{"ALOCAÇÃO_PATRIMONIO.ALOCADO POR:", "INSTALADO POR:"}, {"ALOCAÇÃO_PATRIMONIO.POSIÇÃO", "POSIÇÃO"}}),
+      #"Tipo Alterado1" = Table.TransformColumnTypes(#"Colunas Renomeadas6",{{"DATA CRIADO", type date}, {"DATA ENCERRADO", type date}}),
+      #"Consultas Mescladas2" = Table.NestedJoin(#"Tipo Alterado1", {"N°PROTOCOLO"}, #"TROCA ENDEREÇO", {"PROTOCOLO"}, "TROCA ENDEREÇO", JoinKind.LeftOuter),
+      #"TROCA ENDEREÇO Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas2", "TROCA ENDEREÇO", {"TÉCNICO", "DATA DA TROCA"}, {"TÉCNICO", "DATA DA TROCA"}),
+      #"Colunas Renomeadas9" = Table.RenameColumns(#"TROCA ENDEREÇO Expandido",{{"TÉCNICO", "TÉCNICO TROCA"}, {"INSTALADO POR:", "TÉCNICO INSTALAÇÃO"}}),
+      #"Personalização Adicionada" = Table.AddColumn(#"Colunas Renomeadas9", "INSTALADO POR:", each if [TIPO DE PROTOCOLO] = "TEC - Troca de Endereço" then [TÉCNICO TROCA] else [TÉCNICO INSTALAÇÃO]),
+      #"Linhas Classificadas" = Table.Sort(#"Personalização Adicionada",{{"INSTALADO POR:", Order.Descending}}),
+      #"Colunas Renomeadas8" = Table.RenameColumns(#"Linhas Classificadas",{{"DT.ALOCAÇÃO", "DATA ALOCAÇÃO"}}),
+      #"Personalização Adicionada1" = Table.AddColumn(#"Colunas Renomeadas8", "DATA FINAL", each if [TIPO DE PROTOCOLO] = "TEC - Troca de Endereço" then [DATA DA TROCA] else [DATA ALOCAÇÃO]),
+      #"Consultas Mescladas" = Table.NestedJoin(#"Personalização Adicionada1", {"INSTALADO POR:", "DATA FINAL"}, #"GESTORES EQUIPES", {"TÉCNICO 1", "DATA"}, "GESTORES EQUIPES", JoinKind.LeftOuter),
+      #"GESTORES EQUIPES Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas", "GESTORES EQUIPES", {"TÉCNICO 2", "GERENTE/SUPERVISOR"}, {"TÉCNICO 2", "GERENTE/SUPERVISOR"}),
+      #"Colunas Renomeadas10" = Table.RenameColumns(#"GESTORES EQUIPES Expandido",{{"INSTALADO POR:", "TÉCNICO 1"}}),
+      #"Duplicatas Removidas" = Table.Distinct(#"Colunas Renomeadas10", {"SOLICITACAO"}),
+      #"Consultas Mescladas3" = Table.NestedJoin(#"Duplicatas Removidas", {"N°PROTOCOLO"}, #"TECNICOS AUXILIARES", {"PROTOCOLO:"}, "TECNICOS AUXILIARES", JoinKind.LeftOuter),
+      #"TECNICOS AUXILIARES Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas3", "TECNICOS AUXILIARES", {"AUXILIAR"}, {"TECNICOS AUXILIARES.AUXILIAR"})
+  in
+      #"TECNICOS AUXILIARES Expandido"

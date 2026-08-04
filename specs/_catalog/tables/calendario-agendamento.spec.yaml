@@ -1,0 +1,68 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: calendario-agendamento
+name: CALENDARIO AGENDAMENTO
+query_ref: null
+columns:
+- name: Data Agendado
+  type: null
+  format: Short Date
+  source_column: "[Date]"
+  calculated: false
+- name: Ano
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: "Num Mês"
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: "Mês"
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: "Inicio do Mês"
+  type: null
+  format: "d \"de\" mmmm"
+  source_column: null
+  calculated: true
+- name: Num Trimestre
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: Trimestre
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: Num Semana
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: "'Semana Do Mes Texto' ="
+  type: null
+  format: null
+  source_column: null
+  calculated: false
+- name: "DATA VIGENTE?"
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: DentroDoIntervalo
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: DiaDaSemana
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+measure_count: 0

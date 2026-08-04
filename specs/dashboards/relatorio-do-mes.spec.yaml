@@ -1,0 +1,574 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: relatorio-do-mes
+page_id: 6ad2f864a54709d38649
+name: "RELATÓRIO DO MÊS"
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 2800
+  height: 2400
+visual_count: 36
+visuals:
+- id: 00bd510021a87cd1dad3
+  type: card
+  position:
+    x: 1915.9917638984214
+    y: 449.691146190803
+    width: 336.30748112560053
+    height: 115.3054221002059
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "# MEDIA INSTALADO MENSAL"
+    name: "MÉDIA REALIZADOS (MÊS ATUAL)"
+- id: 0a375852e99a59d706e4
+  type: textbox
+  position:
+    x: 1916.6707909432287
+    y: 697.6768311807947
+    width: 332.8836424957841
+    height: 35.41315345699831
+  entities_used: []
+  fields: []
+- id: 1085586a867295a67435
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 2800
+    height: 75.06092607636067
+  entities_used: []
+  fields: []
+- id: 1498680b5eef0ce5b663
+  type: textbox
+  position:
+    x: 1532.9270221281463
+    y: 700.1381709246145
+    width: 334.38572409059714
+    height: 34.59162663006177
+  entities_used: []
+  fields: []
+- id: 1bb5d2e4002cb4703bde
+  type: pivotTable
+  position:
+    x: 46.09053497942387
+    y: 1927.1604938271605
+    width: 1906.9958847736625
+    height: 420.5761316872428
+  entities_used:
+  - Clima/ Tempo
+  - calendar
+  fields:
+  - role: Columns
+    kind: column
+    entity: calendar
+    property: Data
+    name: Data
+  - role: Rows
+    kind: column
+    entity: Clima/ Tempo
+    property: Cidade
+    name: Cidade
+  - role: Values
+    kind: aggregation
+    entity: Clima/ Tempo
+    property: Classificacao
+    name: Primeiro Classificacao
+- id: 20d23554c9b205376057
+  type: card
+  position:
+    x: 2311.8737131091284
+    y: 732.1894303363075
+    width: 338.229238160604
+    height: 115.3054221002059
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "#DIAS_ÚTEIS_TRABALHADOS"
+    name: "DIAS TRABALHADOS NO MÊS"
+- id: 28b2fed3696b956b1a98
+  type: card
+  position:
+    x: 1914
+    y: 318
+    width: 336
+    height: 116
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "# META"
+    name: "META DO MÊS"
+- id: 3241fd3b779d87605221
+  type: textbox
+  position:
+    x: 0
+    y: 10.107573392814775
+    width: 219.76580796252927
+    height: 42.99765807962529
+  entities_used: []
+  fields: []
+- id: 32bdea16073eb94d0642
+  type: textbox
+  position:
+    x: 1915.9917638984214
+    y: 841.7295813315031
+    width: 332.4639670555937
+    height: 36.513383665065206
+  entities_used: []
+  fields: []
+- id: 34ef83e09ebbc207bcaf
+  type: pageNavigator
+  position:
+    x: 0
+    y: 75
+    width: 2800
+    height: 50
+  entities_used: []
+  fields: []
+- id: 35c35445066c73fc984d
+  type: card
+  position:
+    x: 1530
+    y: 318
+    width: 336
+    height: 116
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "# TOTAL MÊS ATIVO"
+    name: "TOTAL MÊS ATIVO FIBRA"
+- id: 381f3e30e0700e006aad
+  type: pivotTable
+  position:
+    x: 1980.048270313757
+    y: 1928.238133547868
+    width: 779.4046661303298
+    height: 418.98632341110215
+  entities_used:
+  - Clima/ Tempo
+  - calendar
+  fields:
+  - role: Columns
+    kind: column
+    entity: calendar
+    property: Data
+    name: Data
+  - role: Rows
+    kind: column
+    entity: Clima/ Tempo
+    property: Cidade
+    name: Cidade
+  - role: Values
+    kind: aggregation
+    entity: Clima/ Tempo
+    property: Probabilidade_Chuva_Formatada
+    name: "Último Probabilidade_Chuva_Formatada"
+- id: 46f466fa464ba5d15e47
+  type: card
+  position:
+    x: 2312
+    y: 450
+    width: 338
+    height: 116
+  entities_used:
+  - CALENDARIO INSTALADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: CALENDARIO INSTALADO
+    property: "# PROJEÇÃO"
+    name: "PROJEÇÃO (MÉDIA REALIZADA)"
+- id: 472098e3faec67cae276
+  type: card
+  position:
+    x: 1916.936710182071
+    y: 582.0451572876422
+    width: 336.19210977701545
+    height: 118.46769582618639
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: measure
+    entity: FIELD AGENDA
+    property: "Média Mensal Protocolos2"
+    name: "MÉDIA AGENDADA (MÊS ATUAL)"
+- id: 6fefdcc266cd5e1b69e5
+  type: advancedSlicerVisual
+  position:
+    x: 42.2786547700755
+    y: 140.28826355525052
+    width: 2717.3644474948524
+    height: 151.8188057652711
+  entities_used:
+  - PROTOCOLOS
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+- id: 74caae7037048fb1ad13
+  type: lineChart
+  position:
+    x: 44.20041180507893
+    y: 334.38572409059714
+    width: 1433.63074811256
+    height: 438.1606039807824
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Ano
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: "DATA INSTALADO Mês"
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: DATA INSTALADO Dia
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: Contagem de SOLICITACAO1
+- id: 86f9814dea03cc6adb35
+  type: unknown
+  position:
+    x: 2390
+    y: 32.5
+    width: 410
+    height: 52.5
+  entities_used: []
+  fields: []
+- id: 8769f73484f79cbacc84
+  type: card
+  position:
+    x: 2312
+    y: 318
+    width: 338
+    height: 116
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "# FALTA MÊS ATIVO"
+    name: RESTANTES
+- id: 880781fe2acd05b5c506
+  type: textbox
+  position:
+    x: 1532.2751322751324
+    y: 846.5608465608466
+    width: 332.2751322751323
+    height: 38.095238095238095
+  entities_used: []
+  fields: []
+- id: 8de11f9835004031387c
+  type: textbox
+  position:
+    x: 45
+    y: 680
+    width: 570
+    height: 40
+  entities_used: []
+  fields: []
+- id: 8ffc57a7bf6467431ce6
+  type: unknown
+  position:
+    x: 0
+    y: 0.2653342522398354
+    width: 304.6762549287662
+    height: 53.10523147244007
+  entities_used: []
+  fields: []
+- id: 923a9ae0662ca27f433c
+  type: card
+  position:
+    x: 1529.5153265342724
+    y: 582.0451572876422
+    width: 336.19210977701545
+    height: 118.46769582618639
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: measure
+    entity: FIELD AGENDA
+    property: "Protocolos Restantes no Mês"
+    name: AGENDADOS
+- id: 95fe1259eb997b10b7dd
+  type: card
+  position:
+    x: 1914.070006863418
+    y: 732.1894303363075
+    width: 336.30748112560053
+    height: 115.3054221002059
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "# MEDIA INSTALADO BACKLOG"
+    name: "MÉDIA REALIZADO BACKLOG"
+- id: 9a7d36ddcbde8ec5135d
+  type: card
+  position:
+    x: 186.96433211691232
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    name: Data mais recente
+- id: 9dead5c82aa7fbf7bfa2
+  type: image
+  position:
+    x: 12.5
+    y: 0
+    width: 312.5
+    height: 75
+  entities_used: []
+  fields: []
+- id: b191d2c2621275eb43b3
+  type: clusteredColumnChart
+  position:
+    x: 1522.031571722718
+    y: 885.9299931365821
+    width: 1237.61153054221
+    height: 442.0041180507893
+  entities_used:
+  - BACKLOG AGENDADO FUTURO
+  - "BACKLOG INSTALAÇÃO"
+  fields:
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: Dates Ano
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: "Dates Mês"
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: Dates Dia
+  - role: Y
+    kind: aggregation
+    entity: "BACKLOG INSTALAÇÃO"
+    property: TOTAL
+    name: Abertos
+  - role: Y
+    kind: aggregation
+    entity: BACKLOG AGENDADO FUTURO
+    property: data_carga
+    name: Agendados
+- id: bbc6684676e273565d65
+  type: card
+  position:
+    x: 2311.8737131091284
+    y: 582.2923816060398
+    width: 338.229238160604
+    height: 115.3054221002059
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "DIAS_ÚTEIS_RESTANTES_NO_MÊS"
+    name: "DIAS ÚTEIS RESTANTES NO MÊS"
+- id: bdc924350c64cc92c0e2
+  type: textbox
+  position:
+    x: 1522.0315717227181
+    y: 1327.934111187374
+    width: 551.544269045985
+    height: 51.88743994509266
+  entities_used: []
+  fields: []
+- id: d6780942e086341bde5a
+  type: lineChart
+  position:
+    x: 42.2786547700755
+    y: 885.9299931365815
+    width: 1433.63074811256
+    height: 442.0041180507893
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: Data Criado Ano
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: "Data Criado Mês"
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: Data Criado Dia
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: PROTOCOLOS GERADOS
+- id: d914bdf23072848ca977
+  type: card
+  position:
+    x: 1529.7185998627317
+    y: 449.691146190803
+    width: 338.229238160604
+    height: 115.3054221002059
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: PROTOCOLOS TOTAIS REALIZADOS
+- id: dbb2eba36037470ca925
+  type: lineStackedColumnComboChart
+  position:
+    x: 42.49578414839797
+    y: 1378.7521079258008
+    width: 2717.3693086003373
+    height: 498.1450252951096
+  entities_used:
+  - CAPACIDADE EQUIPE
+  - calendar
+  fields:
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: Data Ano
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: "Data Mês"
+  - role: Category
+    kind: column
+    entity: null
+    property: null
+    name: Data Dia
+  - role: Y
+    kind: aggregation
+    entity: CAPACIDADE EQUIPE
+    property: "CAPACIDADE MANHÃ"
+    name: "CAPACIDADE MANHÃ"
+  - role: Y
+    kind: aggregation
+    entity: CAPACIDADE EQUIPE
+    property: CAPACIDADE TARDE
+    name: CAPACIDADE TARDE
+  - role: Y2
+    kind: aggregation
+    entity: calendar
+    property: Protocolo
+    name: Protocolo
+- id: dcc3106272278ce25a49
+  type: card
+  position:
+    x: 1529.7185998627317
+    y: 732.1894303363075
+    width: 336.30748112560053
+    height: 115.3054221002059
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "# BACKLOG"
+    name: BACKLOG AGENDADO
+- id: e2fc9924ee8243e8d5a5
+  type: textbox
+  position:
+    x: 12.5
+    y: 5
+    width: 2787.5
+    height: 67.5
+  entities_used: []
+  fields: []
+- id: e76f02844be92ab07edc
+  type: card
+  position:
+    x: 291.7924809991332
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    name: Hora mais recente
+- id: f4049560074482060335
+  type: card
+  position:
+    x: 999.8323554065382
+    y: 797.8916132253972
+    width: 230.00838222967312
+    height: 89.18692372170997
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: "# MEDIA CRIADOS"
+    name: "MÉDIA GERADOS"
+- id: f8d993576d24ed2ca01a
+  type: card
+  position:
+    x: 1248
+    y: 798
+    width: 228
+    height: 88
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    name: TOTAL GERADOS

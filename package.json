@@ -1,0 +1,28 @@
+{
+  "name": "analytics-platform",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Plataforma de Analytics Enterprise - migracao do Power BI (Sebratel)",
+  "type": "module",
+  "workspaces": [
+    "tools/*",
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "extract": "node tools/extractor/src/index.mjs",
+    "test": "node --test tools/extractor/test/*.test.mjs packages/*/test/*.test.ts",
+    "test:extractor": "node --test tools/extractor/test/*.test.mjs",
+    "test:engine": "node --test packages/query-engine/test/*.test.ts",
+    "doctor": "node tools/doctor/src/index.ts"
+  },
+  "dependencies": {
+    "ioredis": "^6.0.0",
+    "mysql2": "^3.23.2",
+    "pg": "^8.22.0",
+    "yaml": "^2.9.0"
+  }
+}

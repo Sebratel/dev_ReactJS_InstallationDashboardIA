@@ -1,0 +1,108 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: retorno-prioritario
+name: RETORNO PRIORITARIO
+query_ref: retorno-prioritario
+columns:
+- name: "Protocolo Instalação"
+  type: int64
+  format: "0"
+  source_column: "Protocolo Instalação"
+  calculated: false
+- name: Tipo
+  type: string
+  format: null
+  source_column: Tipo
+  calculated: false
+- name: service_tag
+  type: string
+  format: null
+  source_column: service_tag
+  calculated: false
+- name: cliente_nome_instalacao
+  type: string
+  format: null
+  source_column: cliente_nome_instalacao
+  calculated: false
+- name: data_instalacao
+  type: dateTime
+  format: General Date
+  source_column: data_instalacao
+  calculated: false
+- name: "Protocolo Retorno Prioritário"
+  type: int64
+  format: "0"
+  source_column: "Protocolo Retorno Prioritário"
+  calculated: false
+- name: protocol_type
+  type: string
+  format: null
+  source_column: protocol_type
+  calculated: false
+- name: titulo_protocolo
+  type: string
+  format: null
+  source_column: titulo_protocolo
+  calculated: false
+- name: data_abertura
+  type: dateTime
+  format: General Date
+  source_column: data_abertura
+  calculated: false
+- name: data_retorno
+  type: dateTime
+  format: General Date
+  source_column: data_retorno
+  calculated: false
+- name: categoria1
+  type: string
+  format: null
+  source_column: categoria1
+  calculated: false
+- name: categoria2
+  type: string
+  format: null
+  source_column: categoria2
+  calculated: false
+- name: categoria3
+  type: string
+  format: null
+  source_column: categoria3
+  calculated: false
+- name: categoria4
+  type: string
+  format: null
+  source_column: categoria4
+  calculated: false
+- name: categoria5
+  type: string
+  format: null
+  source_column: categoria5
+  calculated: false
+- name: intervalo_retorno
+  type: string
+  format: null
+  source_column: intervalo_retorno
+  calculated: false
+- name: "ALOCAÇÃO PATRIMONIO.PATRIMONIO"
+  type: string
+  format: null
+  source_column: "ALOCAÇÃO PATRIMONIO.PATRIMONIO"
+  calculated: false
+- name: "ALOCAÇÃO PATRIMONIO.DATA SAIDA"
+  type: dateTime
+  format: Long Date
+  source_column: "ALOCAÇÃO PATRIMONIO.DATA SAIDA"
+  calculated: false
+- name: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+  type: string
+  format: null
+  source_column: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+  calculated: false
+- name: TempoTotalDias =
+  type: null
+  format: null
+  source_column: null
+  calculated: false
+measure_count: 3

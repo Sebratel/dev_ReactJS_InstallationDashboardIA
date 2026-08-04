@@ -1,0 +1,23 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: datasources
+note: "Sem credenciais. Conexão real fica em variáveis de ambiente do Core."
+datasources:
+- id: dbVoalle
+  type: odbc
+  connection: dsn=dbVoalle
+- id: dbMaria
+  type: odbc
+  connection: dsn=dbMaria
+- id: gsheets
+  type: googlesheets
+  connection: "https://docs.google.com/spreadsheets/d/13aqmagy60DF_KJ5I4jucJD67qlJNOzzE1g1-sdU0Gjo/edit?gid=0#gid=0"
+- id: web
+  type: web
+  connection: https://archive-api.open-meteo.com
+- id: inline
+  type: inline
+  connection: null
+- id: computed
+  type: computed
+  connection: null

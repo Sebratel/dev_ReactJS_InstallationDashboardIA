@@ -1,0 +1,33 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: calendario-instalado
+name: CALENDARIO INSTALADO
+query_ref: null
+columns:
+- name: DATA INSTALADO
+  type: null
+  format: Short Date
+  source_column: "[Date]"
+  calculated: false
+- name: DATA_VIGENTE_INSTALADO
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: DentroDoIntervalo
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: PESO
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: DIA_SEMANA
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+measure_count: 2

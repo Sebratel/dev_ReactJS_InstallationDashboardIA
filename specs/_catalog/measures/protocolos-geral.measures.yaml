@@ -1,0 +1,380 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: measures
+table: PROTOCOLOS GERAL
+id: protocolos-geral
+measures:
+- name: "& DIAS VIGENTES CRIADOS"
+  format: null
+  display_folder: null
+  dax: |-
+    ```
+    CALCULATE(
+         COUNT('CALENDARIO CRIADO'[data_vigente]),
+        'CALENDARIO CRIADO'[data_vigente] = 1,
+        YEAR('CALENDARIO CRIADO'[DATA CRIADO]) = YEAR(TODAY())
+    )
+
+    ```
+- name: "# MEDIA CRIADOS"
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    VAR Total_Criados = 
+        CALCULATE(
+            DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+            DATESMTD('PROTOCOLOS GERAL'[DATA CRIADO]),
+            FILTER(
+                'PROTOCOLOS GERAL',
+                WEEKDAY('PROTOCOLOS GERAL'[DATA CRIADO], 2) <> 7 && -- Exclui domingos
+                NOT('PROTOCOLOS GERAL'[DATA CRIADO] IN SELECTCOLUMNS('FERIADOS', "Data", 'FERIADOS'[Data])) -- Exclui feriados
+            )
+        )
+
+    VAR Dias_Uteis_No_Mes = 
+        CALCULATE(
+            DISTINCTCOUNT('PROTOCOLOS GERAL'[DATA CRIADO]),
+            DATESMTD('PROTOCOLOS GERAL'[DATA CRIADO]),
+            FILTER(
+                'PROTOCOLOS GERAL',
+                WEEKDAY('PROTOCOLOS GERAL'[DATA CRIADO], 2) <> 7 &&
+                NOT('PROTOCOLOS GERAL'[DATA CRIADO] IN SELECTCOLUMNS('FERIADOS', "Data", 'FERIADOS'[Data])) -- Exclui feriados
+            )
+        )
+
+    VAR Quantidade_Sabados = 
+        CALCULATE(
+            DISTINCTCOUNT('PROTOCOLOS GERAL'[DATA CRIADO]),
+            DATESMTD('PROTOCOLOS GERAL'[DATA CRIADO]),
+            FILTER(
+                'PROTOCOLOS GERAL',
+                WEEKDAY('PROTOCOLOS GERAL'[DATA CRIADO], 2) = 6 -- Contabiliza apenas sábados
+            )
+        )
+
+    VAR Dias_Uteis_Ajustados = Dias_Uteis_No_Mes + (Quantidade_Sabados * 0.5)
+
+    RETURN
+        IF(
+            Dias_Uteis_Ajustados > 0,
+            DIVIDE(Total_Criados, Dias_Uteis_Ajustados),
+            BLANK()
+        )
+
+    ```
+- name: TotalEncerrados
+  format: null
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        COUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        'PROTOCOLOS GERAL'[Status] = "Encerrado"
+    )
+- name: "# MEDIA INSTALADO BACKLOG"
+  format: "0"
+  display_folder: null
+  dax: |-
+    -- Contabiliza
+    VAR Total_Encerrados = DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO])
+
+    VAR Dias_Uteis_Ajustados = SUM('CALENDARIO INSTALADO'[PESO])
+
+    RETURN
+        IF(
+            Dias_Uteis_Ajustados > 0,
+            ROUND(DIVIDE(Total_Encerrados, Dias_Uteis_Ajustados), 0),
+            BLANK()
+        )
+- name: "& DIAS VIGENTES ENCERRADOS"
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+         COUNT('CALENDARIO INSTALADO'[DATA INSTALADO]),
+        'CALENDARIO CRIADO'[data_vigente] = 1,
+        YEAR('CALENDARIO CRIADO'[DATA CRIADO]) = YEAR(TODAY()))
+- name: "# BACKLOG"
+  format: null
+  display_folder: null
+  dax: "ROUND([# TOTAL BACKLOG AGENDADO] / [# MEDIA INSTALADO BACKLOG],1) & \" Dias\""
+- name: "# TOTAL BACKLOG PROTOCOLOS"
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    CALCULATE(
+        SUM('BACKLOG INSTALAÇÃO'[TOTAL]),
+        FILTER(
+            'BACKLOG INSTALAÇÃO',
+            'BACKLOG INSTALAÇÃO'[DATA HOJE] = 
+                IF(
+                    WEEKDAY(TODAY(), 2) = 1,  // Se hoje é segunda-feira
+                    TODAY() - 2,  // Pegar sábado
+                    TODAY() - 1   // Pegar o dia anterior
+                ) &&
+            WEEKDAY('BACKLOG INSTALAÇÃO'[DATA HOJE], 2) <> 7  // Excluir domingos
+        )
+    )
+
+
+
+
+    ```
+- name: "# META"
+  format: "0"
+  display_folder: null
+  dax: "3000"
+- name: "# TOTAL MÊS ATIVO"
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    CALCULATE(
+        DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        FILTER(
+            'PROTOCOLOS GERAL',
+            NOT (
+                'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
+                    "TEC - Troca de Endereço",
+                    "TEC - Instalação de Rádio",
+                    "TEC - Instalação de Radio – CORPORATIVO",
+                    "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano",
+                    "#HR - TEC - Troca de Endereço",
+                    "TEC - Instalação de Roteador Adicional",
+                    "TEC - Migração com troca de Equipamento"
+                }
+            )
+        )
+    )
+
+    ```
+- name: "# FALTA MÊS ATIVO"
+  format: "0"
+  display_folder: null
+  dax: "if(ISBLANK([# TOTAL MÊS ATIVO]), \"Somente Ativos\", [# TOTAL MÊS ATIVO] - [# META])"
+- name: "# AA MÉDIA EQUIPES"
+  format: "0.0"
+  display_folder: null
+  dax: |-
+    ```
+    DIVIDE(
+        DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]), COUNT('CAPACIDADE INSTALAÇÃO'[EQUIPE_BASE])
+        )
+
+
+    ```
+- name: "# AA MÉDIA GERAL"
+  format: "0.0"
+  display_folder: null
+  dax: "DIVIDE(CALCULATE([# AA MÉDIA EQUIPES], GESTORES[GERENTE/SUPERVISOR]=\"LUIS FELIPE NAZARIO ARANDA\") + CALCULATE([# AA MÉDIA EQUIPES], GESTORES[GERENTE/SUPERVISOR]=\"STEFANY RODRIGUES\"),2)"
+- name: "# AA TOTAL EQUIPES"
+  format: "0.0"
+  display_folder: null
+  dax: "CALCULATE([# AA MÉDIA EQUIPES], GESTORES[GERENTE/SUPERVISOR]=\"LUIS FELIPE NAZARIO ARANDA\") + CALCULATE([# AA MÉDIA EQUIPES], GESTORES[GERENTE/SUPERVISOR]=\"STEFANY RODRIGUES\")"
+- name: "% EFETIVIDADE"
+  format: "0.00%;-0.00%;0.00%"
+  display_folder: null
+  dax: |-
+    ```
+    DIVIDE(
+
+        CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'PROTOCOLOS GERAL'[STATUS PROTOCOLO] <> "Não Instalado"),
+        COUNT('PROTOCOLOS GERAL'[DATA AGENDA])
+
+    )
+    ```
+- name: "# MEDIA INSTALADO MENSAL"
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    -- Contabiliza
+    VAR Total_Encerrados = 
+
+    DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO])
+
+
+    VAR Dias_Uteis_Ajustados =
+
+    CALCULATE(
+        SUM('CALENDARIO INSTALADO'[PESO]),
+        DATESBETWEEN(
+            'CALENDARIO INSTALADO'[DATA INSTALADO],
+            DATE(YEAR(TODAY()), MONTH(TODAY()), 1),
+            TODAY() - 1
+        )
+    )
+
+
+    RETURN
+
+    IF(
+        Dias_Uteis_Ajustados > 0,
+        ROUND(DIVIDE(Total_Encerrados, Dias_Uteis_Ajustados), 0),
+        BLANK()
+    )
+    ```
+- name: "#DIAS_ÚTEIS_TRABALHADOS"
+  format: null
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        SUM('CALENDARIO INSTALADO'[PESO]),
+        DATESBETWEEN(
+            'CALENDARIO INSTALADO'[DATA INSTALADO],
+            DATE(YEAR(TODAY()), MONTH(TODAY()), 1),
+            TODAY() - 1
+        )
+    )
+- name: CONTAGEM INSTALADO FIBRA
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        FILTER(
+            'PROTOCOLOS GERAL',
+            'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] = "TEC - INSTALAÇÃO DE FIBRA"
+        )
+    )
+- name: "TOTAL MÊS ATIVO"
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    CALCULATE(
+        DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Rádio" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Rádio - CORPORATIVO" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Troca de Endereço" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Suporte de Retorno Prioritário" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Migração com troca de Equipamento"
+    )
+
+    ```
+- name: "TOTAL MÊS ATIVO RÁDIO"
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    CALCULATE(
+        DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Fibra" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Fibra – CORPORATIVO" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Fibra - Cortesia" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Troca de Endereço" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Suporte de Retorno Prioritário" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Migração com troca de Equipamento"
+    )
+
+    ```
+- name: "DIAS_ÚTEIS_RESTANTES_NO_MÊS"
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    VAR Hoje = TODAY()
+    VAR UltimoDiaMes =
+        EOMONTH(Hoje, 0)
+    RETURN
+        CALCULATE(
+            SUM('CALENDARIO INSTALADO'[PESO]),
+            DATESBETWEEN(
+                'CALENDARIO INSTALADO'[DATA INSTALADO],
+                Hoje,
+                UltimoDiaMes
+            )
+        )
+
+    ```
+- name: "# TOTAL BACKLOG AGENDADO"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    IF(
+        WEEKDAY(Hoje, 2) = 7,  -- Se hoje for Domingo
+        BLANK(),               -- Retorna vazio
+        CALCULATE(
+            COUNTROWS('BACKLOG AGENDADO FUTURO'),
+            'BACKLOG AGENDADO FUTURO'[data_carga] = Hoje
+        )
+    )
+- name: RankInstalacao
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    VAR ProtocoloAtual = SELECTEDVALUE('FIELD AGENDA'[protocolo])
+    VAR DataInstalacao =
+        CALCULATE(
+            MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO]),
+            'PROTOCOLOS GERAL'[N°PROTOCOLO] = ProtocoloAtual
+        )
+    RETURN
+    CALCULATE(
+        MIN('FIELD AGENDA'[RankDataProtocolo]),
+        'FIELD AGENDA'[protocolo] = ProtocoloAtual,
+        TRUNC('FIELD AGENDA'[Slot Agenda]) = DataInstalacao
+    )
+
+    ```
+- name: Linhas CalendarioAgenda
+  format: "0"
+  display_folder: null
+  dax: |-
+    ```
+    COUNTROWS(calendar)
+
+    ```
+- name: "INSTALADOS ÚLTIMOS 30 DIAS"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
+            "TEC - INSTALAÇÃO DE FIBRA",
+            "TEC - Instalação de Fibra – CORPORATIVO",
+            "#HR - TEC - Instalação de Fibra"
+        },
+        FILTER(
+            ALL('PROTOCOLOS GERAL'[DATA INSTALAÇÃO]),
+            'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] >= Hoje - 30
+                && 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] <= Hoje
+        )
+    )
+- name: "INSTALADOS MÊS ATUAL"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Hoje = TODAY()
+    VAR InicioMes = DATE(YEAR(Hoje), MONTH(Hoje), 1)
+    RETURN
+    CALCULATE(
+        DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
+            "TEC - INSTALAÇÃO DE FIBRA",
+            "TEC - Instalação de Fibra – CORPORATIVO",
+            "#HR - TEC - Instalação de Fibra"
+        },
+        FILTER(
+            ALL('PROTOCOLOS GERAL'[DATA INSTALAÇÃO]),
+            'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] >= InicioMes
+                && 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] <= Hoje
+        )
+    )
+- name: Contagem Solicitacao 2026
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        COUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(2026,1,1)
+    )

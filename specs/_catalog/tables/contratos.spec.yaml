@@ -1,0 +1,123 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: contratos
+name: CONTRATOS
+query_ref: contratos
+columns:
+- name: CLIENTE
+  type: string
+  format: null
+  source_column: CLIENTE
+  calculated: false
+- name: "USUÁRIO"
+  type: string
+  format: null
+  source_column: "USUÁRIO"
+  calculated: false
+- name: NUMERO CONTRATO
+  type: int64
+  format: "0"
+  source_column: NUMERO CONTRATO
+  calculated: false
+- name: CONTRATO
+  type: string
+  format: null
+  source_column: CONTRATO
+  calculated: false
+- name: CRIADO
+  type: dateTime
+  format: Long Date
+  source_column: CRIADO
+  calculated: false
+- name: ETIQUETA
+  type: string
+  format: null
+  source_column: ETIQUETA
+  calculated: false
+- name: PLANO
+  type: string
+  format: null
+  source_column: PLANO
+  calculated: false
+- name: CIDADE
+  type: string
+  format: null
+  source_column: CIDADE
+  calculated: false
+- name: CATALOGO
+  type: string
+  format: null
+  source_column: CATALOGO
+  calculated: false
+- name: TELEFONE
+  type: string
+  format: null
+  source_column: TELEFONE
+  calculated: false
+- name: CIDADE2
+  type: string
+  format: null
+  source_column: CIDADE2
+  calculated: false
+- name: BAIRRO
+  type: string
+  format: null
+  source_column: BAIRRO
+  calculated: false
+- name: RUA
+  type: string
+  format: null
+  source_column: RUA
+  calculated: false
+- name: NUMERO
+  type: string
+  format: null
+  source_column: NUMERO
+  calculated: false
+- name: COMPLEMENTO
+  type: string
+  format: null
+  source_column: COMPLEMENTO
+  calculated: false
+- name: CEP
+  type: string
+  format: null
+  source_column: CEP
+  calculated: false
+- name: ESTADO
+  type: string
+  format: null
+  source_column: ESTADO
+  calculated: false
+- name: CPF/CNPJ
+  type: string
+  format: null
+  source_column: CPF/CNPJ
+  calculated: false
+- name: TELEFONE CONTATO
+  type: string
+  format: null
+  source_column: TELEFONE CONTATO
+  calculated: false
+- name: E-MAIL
+  type: string
+  format: null
+  source_column: E-MAIL
+  calculated: false
+- name: LATITUDE
+  type: string
+  format: null
+  source_column: LATITUDE
+  calculated: false
+- name: LONGITUDE
+  type: string
+  format: null
+  source_column: LONGITUDE
+  calculated: false
+- name: id
+  type: int64
+  format: "0"
+  source_column: id
+  calculated: false
+measure_count: 0

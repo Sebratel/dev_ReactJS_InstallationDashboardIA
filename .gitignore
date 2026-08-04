@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+Thumbs.db
+
+# Artefatos Power BI (base de referência, não versionar aqui)
+*.pbix
+**/.pbi/localSettings.json
+**/.pbi/cache.abf

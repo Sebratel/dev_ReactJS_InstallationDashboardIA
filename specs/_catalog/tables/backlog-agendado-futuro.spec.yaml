@@ -1,0 +1,28 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: backlog-agendado-futuro
+name: BACKLOG AGENDADO FUTURO
+query_ref: backlog-agendado-futuro
+columns:
+- name: protocolo_id
+  type: string
+  format: null
+  source_column: protocolo_id
+  calculated: false
+- name: data_inicio_slot
+  type: dateTime
+  format: Short Date
+  source_column: data_inicio_slot
+  calculated: false
+- name: data_carga
+  type: dateTime
+  format: Short Date
+  source_column: data_carga
+  calculated: false
+- name: PROTOCOLOS GERAL.TIPO DE PROTOCOLO
+  type: string
+  format: null
+  source_column: PROTOCOLOS GERAL.TIPO DE PROTOCOLO
+  calculated: false
+measure_count: 1

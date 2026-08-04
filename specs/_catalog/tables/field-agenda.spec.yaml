@@ -1,0 +1,138 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: field-agenda
+name: FIELD AGENDA
+query_ref: field-agenda
+columns:
+- name: Protocolo
+  type: string
+  format: null
+  source_column: Protocolo
+  calculated: false
+- name: Tipo de Protocolo
+  type: string
+  format: null
+  source_column: Tipo de Protocolo
+  calculated: false
+- name: Status Protocolo
+  type: string
+  format: null
+  source_column: Status Protocolo
+  calculated: false
+- name: Base
+  type: string
+  format: null
+  source_column: Base
+  calculated: false
+- name: Instalador
+  type: string
+  format: null
+  source_column: Instalador
+  calculated: false
+- name: Data Criado
+  type: dateTime
+  format: General Date
+  source_column: Data Criado
+  calculated: false
+- name: Reagenda
+  type: int64
+  format: "0"
+  source_column: Reagenda
+  calculated: false
+- name: Data finalizado atendimento app
+  type: dateTime
+  format: General Date
+  source_column: Data finalizado atendimento app
+  calculated: false
+- name: Data primeiro Play app
+  type: dateTime
+  format: General Date
+  source_column: Data primeiro Play app
+  calculated: false
+- name: Data ultimo play app
+  type: dateTime
+  format: General Date
+  source_column: Data ultimo play app
+  calculated: false
+- name: Prazo SLA
+  type: dateTime
+  format: General Date
+  source_column: Prazo SLA
+  calculated: false
+- name: Inicio relato
+  type: dateTime
+  format: General Date
+  source_column: Inicio relato
+  calculated: false
+- name: Fim relato
+  type: dateTime
+  format: General Date
+  source_column: Fim relato
+  calculated: false
+- name: Data
+  type: null
+  format: Short Date
+  source_column: null
+  calculated: true
+- name: Slot Agenda
+  type: dateTime
+  format: General Date
+  source_column: Slot Agenda
+  calculated: false
+- name: RankDataProtocolo
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: RankAtualProtocolo
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+- name: "Descrição"
+  type: string
+  format: null
+  source_column: "Descrição"
+  calculated: false
+- name: Relato
+  type: string
+  format: null
+  source_column: Relato
+  calculated: false
+- name: Data Relato
+  type: dateTime
+  format: General Date
+  source_column: Data Relato
+  calculated: false
+- name: ClassificacaoRelato
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: CategoriaProdutividade
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: Turno
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: Status SLA
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+- name: Relator
+  type: string
+  format: null
+  source_column: Relator
+  calculated: false
+- name: Skill
+  type: string
+  format: null
+  source_column: Skill
+  calculated: false
+measure_count: 20

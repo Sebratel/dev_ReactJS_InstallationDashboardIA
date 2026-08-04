@@ -1,0 +1,13 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: base-de-origem
+name: BASE DE ORIGEM
+query_ref: null
+columns:
+- name: EQUIPES TEMPORARIAS
+  type: null
+  format: null
+  source_column: "PROTOCOLOS GERAL[EQUIPES TEMPORARIAS]"
+  calculated: false
+measure_count: 0

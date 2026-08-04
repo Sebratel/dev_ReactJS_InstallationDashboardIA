@@ -1,0 +1,66 @@
+# MANTIDO POR HUMANOS — este arquivo NÃO é sobrescrito por `npm run extract`.
+#
+# Define cache e comportamento realtime por query. As specs em queries/ são
+# geradas e regeneráveis; nenhuma decisão nossa pode viver dentro delas.
+#
+#   ttl:      segundos no cache Redis (0 = nunca cacheia)
+#   realtime: se true, eventos CDC (Debezium) das source_tables invalidam a query
+
+default:
+  ttl: 300 # 5 min
+  realtime: true
+
+queries:
+  # --- Operacional quente: muda o dia todo, precisa de resposta rápida ---
+  protocolos-geral:
+    ttl: 60
+    realtime: true
+  protocolos-auxiliares:
+    ttl: 60
+    realtime: true
+  field-agenda:
+    ttl: 60
+    realtime: true
+  backlog-instalacao:
+    ttl: 60
+    realtime: true
+  backlog-agendado-futuro:
+    ttl: 120
+    realtime: true
+  status-protocolo-dia:
+    ttl: 60
+    realtime: true
+
+  # --- Cadastros: mudam devagar ---
+  contratos:
+    ttl: 900
+    realtime: true
+  contratos-telefonia:
+    ttl: 900
+    realtime: true
+  consolidado-clientes:
+    ttl: 900
+    realtime: true
+
+  # --- Referência quase estática ---
+  feriados:
+    ttl: 86400 # 1 dia
+    realtime: false
+  capacidade-equipe:
+    ttl: 3600
+    realtime: true
+  gestores-equipes:
+    ttl: 3600
+    realtime: false # MariaDB: sem CDC, atualiza por polling/TTL
+  quadro-funcional:
+    ttl: 3600
+    realtime: false # Google Sheets: sem CDC
+  clima-tempo:
+    ttl: 1800
+    realtime: false
+  base-categorias-field:
+    ttl: 3600
+    realtime: false
+  hora-atualizado:
+    ttl: 60
+    realtime: false

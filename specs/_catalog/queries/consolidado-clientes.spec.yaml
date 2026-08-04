@@ -1,0 +1,25 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: consolidado-clientes
+name: CONSOLIDADO CLIENTES
+origin: table:CONSOLIDADO CLIENTES
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  SELECT authentication_totalizer, created FROM erp.consolidated_indicators x
+  WHERE created > '01-01-2025'
+  ORDER BY created DESC
+url: null
+endpoints: null
+source_tables:
+- erp.consolidated_indicators
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "SELECT authentication_totalizer, created FROM erp.consolidated_indicators x#(lf)WHERE created > '01-01-2025'#(lf)ORDER BY created DESC "),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"created", type date}}),
+      #"Personalização Adicionada" = Table.AddColumn(#"Tipo Alterado", "Personalizar", each Date.AddMonths([created], -1)),
+      #"Tipo Alterado1" = Table.TransformColumnTypes(#"Personalização Adicionada",{{"Personalizar", type date}}),
+      #"Colunas Renomeadas" = Table.RenameColumns(#"Tipo Alterado1",{{"Personalizar", "created"}, {"created", "Personalizar"}}),
+      #"Colunas Removidas" = Table.RemoveColumns(#"Colunas Renomeadas",{"Personalizar"})
+  in
+      #"Colunas Removidas"
