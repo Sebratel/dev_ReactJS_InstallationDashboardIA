@@ -17,6 +17,9 @@ Repositório: `git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git` 
 
 **Comece lendo, nesta ordem:** `README.md`, `docs/ARCHITECTURE.md`, `docs/SPEC-DRIVEN.md`,
 `specs/EXTRACTION-REPORT.md`. Eles contêm todo o estado do projeto.
+Antes de escrever **qualquer** UI (componente, página, dashboard, gráfico), leia
+`docs/DESIGN-SYSTEM.md` — é o Design System oficial GER/Sebratel e tem prioridade
+máxima sobre qualquer default visual.
 
 ## O que é o projeto
 
@@ -82,7 +85,10 @@ Já implementado em `packages/query-engine/`:
    barrando DDL/DML antes de a query sair do processo. Não afrouxe isso.
 4. **Toda implementação vem com teste.** Nenhuma fase fecha sem testes verdes de
    paridade contra a spec. É o que impede quebrar o que já existe.
-5. **Nunca peça nem aceite credenciais em texto.** Elas vivem só no `.env` local,
+5. **Toda UI segue `docs/DESIGN-SYSTEM.md`.** Fundo `#F5F1E8`, cards brancos,
+   DM Sans, sidebar 256px, primária âmbar `#FFB000`, semáforo verde/vermelho/cinza.
+   Sem roxo/azul/gradiente/dark mode e sem HEX hardcoded — só tokens.
+6. **Nunca peça nem aceite credenciais em texto.** Elas vivem só no `.env` local,
    que o git ignora. A saída de `npm run doctor` é mascarada e segura.
 
 ## Comandos
