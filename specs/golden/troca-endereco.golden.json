@@ -1,0 +1,53 @@
+{
+  "queryId": "troca-endereco",
+  "datasource": "dbVoalle",
+  "strategy": "direct",
+  "rowCount": 4393,
+  "truncated": false,
+  "profiledRows": 4393,
+  "columns": [
+    {
+      "name": "TÉCNICO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 70,
+      "minLength": 12,
+      "maxLength": 38
+    },
+    {
+      "name": "PROTOCOLO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4393,
+      "numericString": true,
+      "sum": 7120200836
+    },
+    {
+      "name": "DATA DA TROCA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 4393,
+      "min": "2026-01-02T13:23:05.000Z",
+      "max": "2026-08-04T20:02:39.000Z"
+    },
+    {
+      "name": "CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4149,
+      "numericString": true,
+      "sum": 894020371
+    },
+    {
+      "name": "persona1",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1,
+      "numericString": true,
+      "sum": 4393
+    }
+  ],
+  "schemaFingerprint": "d12881360245455a",
+  "dataFingerprint": "1d6323b4437d775b",
+  "capturedAt": "2026-08-04T20:18:06.715Z"
+}

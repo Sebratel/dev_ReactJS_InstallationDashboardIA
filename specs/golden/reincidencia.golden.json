@@ -1,0 +1,139 @@
+{
+  "queryId": "reincidencia",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 1196,
+  "truncated": false,
+  "profiledRows": 1196,
+  "columns": [
+    {
+      "name": "Protocolo Instalação",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1196,
+      "numericString": true,
+      "sum": 1923575285
+    },
+    {
+      "name": "Tipo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 3,
+      "minLength": 25,
+      "maxLength": 39
+    },
+    {
+      "name": "service_tag",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1196,
+      "minLength": 8,
+      "maxLength": 13
+    },
+    {
+      "name": "cliente_nome",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1195,
+      "minLength": 3,
+      "maxLength": 57
+    },
+    {
+      "name": "data_instalacao",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 1196,
+      "min": "2025-12-04T12:54:58.455Z",
+      "max": "2026-07-31T21:15:27.342Z"
+    },
+    {
+      "name": "data_suporte",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 1196,
+      "min": "2026-01-01T11:11:36.849Z",
+      "max": "2026-08-04T12:27:18.553Z"
+    },
+    {
+      "name": "protocol",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1196,
+      "numericString": true,
+      "sum": 1943843676
+    },
+    {
+      "name": "protocol_type",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 8,
+      "minLength": 21,
+      "maxLength": 41
+    },
+    {
+      "name": "titulo_protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1196,
+      "minLength": 71,
+      "maxLength": 167
+    },
+    {
+      "name": "categoria1",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 6,
+      "minLength": 22,
+      "maxLength": 55
+    },
+    {
+      "name": "categoria2",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 19,
+      "minLength": 13,
+      "maxLength": 34
+    },
+    {
+      "name": "categoria3",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 28,
+      "minLength": 3,
+      "maxLength": 47
+    },
+    {
+      "name": "categoria4",
+      "type": "string",
+      "nulls": 492,
+      "distinct": 14,
+      "minLength": 2,
+      "maxLength": 31
+    },
+    {
+      "name": "categoria5",
+      "type": "string",
+      "nulls": 492,
+      "distinct": 4,
+      "minLength": 15,
+      "maxLength": 18
+    },
+    {
+      "name": "solucao",
+      "type": "string",
+      "nulls": 2,
+      "distinct": 162,
+      "minLength": 3,
+      "maxLength": 72
+    },
+    {
+      "name": "intervalo_suporte",
+      "type": "object",
+      "nulls": 0,
+      "distinct": 1196
+    }
+  ],
+  "schemaFingerprint": "0a5af9fe835f4b03",
+  "dataFingerprint": "1ffb0c6310eab23f",
+  "capturedAt": "2026-08-04T20:17:21.683Z"
+}

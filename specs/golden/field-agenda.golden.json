@@ -1,0 +1,164 @@
+{
+  "queryId": "field-agenda",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 1435793,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columns": [
+    {
+      "name": "Protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 294,
+      "numericString": true,
+      "sum": 8802672616
+    },
+    {
+      "name": "Tipo de Protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 6,
+      "minLength": 23,
+      "maxLength": 39
+    },
+    {
+      "name": "Status Protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 9,
+      "minLength": 7,
+      "maxLength": 25
+    },
+    {
+      "name": "Base",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 23,
+      "maxLength": 29
+    },
+    {
+      "name": "Instalador",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 35,
+      "minLength": 13,
+      "maxLength": 32
+    },
+    {
+      "name": "Data Criado",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 294,
+      "min": "2026-08-01T15:11:53.310Z",
+      "max": "2026-08-04T19:50:12.391Z"
+    },
+    {
+      "name": "Reagenda",
+      "type": "number",
+      "nulls": 3018,
+      "distinct": 2,
+      "sum": 5876
+    },
+    {
+      "name": "Data finalizado atendimento app",
+      "type": "date",
+      "nulls": 839,
+      "distinct": 116,
+      "min": "2026-08-03T13:11:46.000Z",
+      "max": "2026-08-04T20:10:17.000Z"
+    },
+    {
+      "name": "Data primeiro Play app",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 298,
+      "min": "2026-08-01T16:50:47.202Z",
+      "max": "2026-08-04T20:10:46.767Z"
+    },
+    {
+      "name": "Data ultimo play app",
+      "type": "date",
+      "nulls": 1479,
+      "distinct": 224,
+      "min": "2026-08-03T12:07:10.247Z",
+      "max": "2026-08-04T20:10:41.515Z"
+    },
+    {
+      "name": "Prazo SLA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 229,
+      "min": "2026-08-03T19:00:00.000Z",
+      "max": "2026-09-05T19:00:00.000Z"
+    },
+    {
+      "name": "Inicio relato",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 563,
+      "min": "2026-08-01T16:50:47.202Z",
+      "max": "2026-08-04T20:10:46.767Z"
+    },
+    {
+      "name": "Fim relato",
+      "type": "date",
+      "nulls": 1479,
+      "distinct": 348,
+      "min": "2026-08-01T19:32:55.435Z",
+      "max": "2026-08-04T20:09:22.440Z"
+    },
+    {
+      "name": "Slot Agenda",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 68,
+      "min": "2026-08-03T12:00:00.000Z",
+      "max": "2026-09-05T16:30:00.000Z"
+    },
+    {
+      "name": "Relator",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 79,
+      "minLength": 13,
+      "maxLength": 46
+    },
+    {
+      "name": "Skill",
+      "type": "string",
+      "nulls": 3574,
+      "distinct": 1,
+      "minLength": 15,
+      "maxLength": 15
+    },
+    {
+      "name": "Descrição",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 6,
+      "minLength": 23,
+      "maxLength": 59
+    },
+    {
+      "name": "Relato",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 747,
+      "minLength": 11,
+      "maxLength": 1728
+    },
+    {
+      "name": "Data Relato",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 1861,
+      "min": "2026-08-01T15:28:57.000Z",
+      "max": "2026-08-04T20:11:08.931Z"
+    }
+  ],
+  "schemaFingerprint": "b82722536a33c0e3",
+  "dataFingerprint": "f1ac26db6cd396d0",
+  "capturedAt": "2026-08-04T20:14:57.529Z"
+}

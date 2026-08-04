@@ -1,0 +1,61 @@
+{
+  "queryId": "tecnicos-auxiliares",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 28666,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columns": [
+    {
+      "name": "PROTOCOLO:",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5000,
+      "numericString": true,
+      "sum": 7579129488
+    },
+    {
+      "name": "TIPO SOLICITACAO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1,
+      "minLength": 4,
+      "maxLength": 4
+    },
+    {
+      "name": "TECNICO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 55,
+      "minLength": 9,
+      "maxLength": 38
+    },
+    {
+      "name": "AUXILIAR",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 78,
+      "minLength": 12,
+      "maxLength": 37
+    },
+    {
+      "name": "CONCLUIDO EM:",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 4986,
+      "min": "2026-01-02T12:36:10.000Z",
+      "max": "2026-06-05T19:19:04.000Z"
+    },
+    {
+      "name": "persona",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1,
+      "numericString": true,
+      "sum": 5000
+    }
+  ],
+  "schemaFingerprint": "c3e04157e510946b",
+  "dataFingerprint": "0152b2c60a4bc6c9",
+  "capturedAt": "2026-08-04T20:17:31.428Z"
+}

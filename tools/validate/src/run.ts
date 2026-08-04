@@ -42,9 +42,14 @@ function readCount(rows: Row[]): number | null {
  * amostra com LIMIT alimenta o perfil de colunas sem arrastar a tabela inteira
  * pela rede.
  *
- * Se o embrulho falhar (SQL que não sobrevive como subquery), cai para
- * 'direct': executa o SQL cru. Aí o rowCount também é exato — porque o
- * resultado inteiro passou pelo processo — mas custa mais rede e memória.
+ * Se o embrulho falhar, cai para 'direct': executa o SQL cru. Aí o rowCount
+ * também é exato — porque o resultado inteiro passou pelo processo — mas custa
+ * mais rede e memória.
+ *
+ * O motivo da queda vai em `fallbackFrom` **verbatim**, sem interpretação: a
+ * causa comum não é SQL incompatível com subquery, é `statement_timeout` (o
+ * count(*) percorre o resultado inteiro e em query pesada isso estoura o
+ * limite). Confundir os dois manda quem lê o relatório investigar o SQL errado.
  */
 export async function runQuery(
   query: ResolvedQuery,

@@ -1,0 +1,172 @@
+{
+  "queryId": "instalacoes-reincidentes",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 19249,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columns": [
+    {
+      "name": "protocolo_instalacao",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5000,
+      "numericString": true,
+      "sum": 8602827905
+    },
+    {
+      "name": "tipo_instalacao",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4,
+      "minLength": 25,
+      "maxLength": 39
+    },
+    {
+      "name": "contrato",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4999,
+      "numericString": true,
+      "sum": 1411922732
+    },
+    {
+      "name": "cliente",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4982,
+      "minLength": 9,
+      "maxLength": 54
+    },
+    {
+      "name": "data_instalacao",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 52,
+      "min": "2026-06-05T03:00:00.000Z",
+      "max": "2026-08-04T03:00:00.000Z"
+    },
+    {
+      "name": "data_hora_saida",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 5000,
+      "min": "2026-06-05T12:24:56.692Z",
+      "max": "2026-08-04T20:04:00.961Z"
+    },
+    {
+      "name": "tecnico_responsavel",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 52,
+      "minLength": 12,
+      "maxLength": 38
+    },
+    {
+      "name": "protocolo_manutencao",
+      "type": "string",
+      "nulls": 4706,
+      "distinct": 294,
+      "numericString": true,
+      "sum": 508651724
+    },
+    {
+      "name": "tipo_manutencao",
+      "type": "string",
+      "nulls": 4706,
+      "distinct": 6,
+      "minLength": 21,
+      "maxLength": 41
+    },
+    {
+      "name": "catalogo",
+      "type": "string",
+      "nulls": 4706,
+      "distinct": 5,
+      "minLength": 12,
+      "maxLength": 25
+    },
+    {
+      "name": "equipe",
+      "type": "string",
+      "nulls": 4706,
+      "distinct": 1,
+      "minLength": 20,
+      "maxLength": 20
+    },
+    {
+      "name": "categoria_1",
+      "type": "string",
+      "nulls": 4706,
+      "distinct": 6,
+      "minLength": 21,
+      "maxLength": 55
+    },
+    {
+      "name": "categoria_2",
+      "type": "string",
+      "nulls": 4706,
+      "distinct": 11,
+      "minLength": 9,
+      "maxLength": 32
+    },
+    {
+      "name": "categoria_3",
+      "type": "string",
+      "nulls": 4757,
+      "distinct": 19,
+      "minLength": 3,
+      "maxLength": 47
+    },
+    {
+      "name": "categoria_4",
+      "type": "string",
+      "nulls": 4757,
+      "distinct": 12,
+      "minLength": 2,
+      "maxLength": 30
+    },
+    {
+      "name": "categoria_5",
+      "type": "string",
+      "nulls": 4757,
+      "distinct": 4,
+      "minLength": 14,
+      "maxLength": 18
+    },
+    {
+      "name": "descricao_manutencao",
+      "type": "string",
+      "nulls": 4706,
+      "distinct": 294,
+      "minLength": 82,
+      "maxLength": 123
+    },
+    {
+      "name": "data_manutencao",
+      "type": "date",
+      "nulls": 4706,
+      "distinct": 294,
+      "min": "2026-06-06T12:04:12.722Z",
+      "max": "2026-08-04T12:27:18.594Z"
+    },
+    {
+      "name": "reincidente_30d",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 3,
+      "maxLength": 3
+    },
+    {
+      "name": "dias_para_reincidencia",
+      "type": "number",
+      "nulls": 4706,
+      "distinct": 30,
+      "sum": 2454
+    }
+  ],
+  "schemaFingerprint": "f2cfcb72f12729e6",
+  "dataFingerprint": "90d6f5b5621ffb84",
+  "capturedAt": "2026-08-04T20:15:02.264Z"
+}

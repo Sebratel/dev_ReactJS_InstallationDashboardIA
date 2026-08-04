@@ -1,0 +1,29 @@
+{
+  "queryId": "consolidado-clientes",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 20,
+  "truncated": false,
+  "profiledRows": 20,
+  "columns": [
+    {
+      "name": "authentication_totalizer",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 20,
+      "numericString": true,
+      "sum": 1519687
+    },
+    {
+      "name": "created",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 20,
+      "min": "2025-01-01T04:00:12.000Z",
+      "max": "2026-08-01T04:00:16.000Z"
+    }
+  ],
+  "schemaFingerprint": "b8c264cef527a622",
+  "dataFingerprint": "beb511c8209805cb",
+  "capturedAt": "2026-08-04T20:14:33.512Z"
+}

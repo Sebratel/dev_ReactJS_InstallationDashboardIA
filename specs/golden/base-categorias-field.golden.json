@@ -1,0 +1,61 @@
+{
+  "queryId": "base-categorias-field",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 232994,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columns": [
+    {
+      "name": "protocol",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5000,
+      "numericString": true,
+      "sum": 7506050086
+    },
+    {
+      "name": "beginning_service_date",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 4999,
+      "min": "2026-01-01T03:38:49.810Z",
+      "max": "2026-01-07T23:36:40.602Z"
+    },
+    {
+      "name": "categoria1",
+      "type": "string",
+      "nulls": 41,
+      "distinct": 44,
+      "minLength": 9,
+      "maxLength": 49
+    },
+    {
+      "name": "categoria2",
+      "type": "string",
+      "nulls": 1746,
+      "distinct": 80,
+      "minLength": 6,
+      "maxLength": 35
+    },
+    {
+      "name": "categoria3",
+      "type": "string",
+      "nulls": 3887,
+      "distinct": 44,
+      "minLength": 2,
+      "maxLength": 59
+    },
+    {
+      "name": "categoria5",
+      "type": "string",
+      "nulls": 3887,
+      "distinct": 44,
+      "minLength": 2,
+      "maxLength": 59
+    }
+  ],
+  "schemaFingerprint": "d5655df97d8bff49",
+  "dataFingerprint": "9e3ac774eff23aac",
+  "capturedAt": "2026-08-04T20:14:33.492Z"
+}

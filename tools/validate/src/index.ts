@@ -162,7 +162,11 @@ async function main() {
       const g = outcome.golden;
       const shape = `${g.rowCount ?? '?'} linhas, ${g.columns.length} colunas`;
       const timing = `${outcome.durationMs}ms`;
-      const note = g.strategy === 'direct' ? ' (fallback: SQL não aceitou subquery)' : '';
+      // o motivo real, não um chute: normalmente é statement_timeout no count(*)
+      const note =
+        g.strategy === 'direct'
+          ? ` (fallback p/ execução direta — ${(outcome.fallbackFrom ?? 'motivo desconhecido').split('\n')[0].slice(0, 90)})`
+          : '';
 
       const previous = readGolden(query.id);
       if (args.check) {

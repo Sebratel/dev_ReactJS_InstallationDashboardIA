@@ -1,0 +1,133 @@
+{
+  "queryId": "retorno-prioritario",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 199,
+  "truncated": false,
+  "profiledRows": 199,
+  "columns": [
+    {
+      "name": "Protocolo Instalação",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 197,
+      "numericString": true,
+      "sum": 322373785
+    },
+    {
+      "name": "Tipo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 3,
+      "minLength": 25,
+      "maxLength": 31
+    },
+    {
+      "name": "service_tag",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 197,
+      "minLength": 8,
+      "maxLength": 8
+    },
+    {
+      "name": "cliente_nome_instalacao",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 197,
+      "minLength": 10,
+      "maxLength": 48
+    },
+    {
+      "name": "data_instalacao",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 197,
+      "min": "2026-01-05T13:28:08.679Z",
+      "max": "2026-08-03T13:25:36.521Z"
+    },
+    {
+      "name": "Protocolo Retorno Prioritário",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 199,
+      "numericString": true,
+      "sum": 323199864
+    },
+    {
+      "name": "protocol_type",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1,
+      "minLength": 36,
+      "maxLength": 36
+    },
+    {
+      "name": "titulo_protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 199,
+      "minLength": 87,
+      "maxLength": 123
+    },
+    {
+      "name": "data_abertura",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 199,
+      "min": "2026-01-06T00:24:57.700Z",
+      "max": "2026-08-03T19:08:01.878Z"
+    },
+    {
+      "name": "data_retorno",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 199,
+      "min": "2026-01-06T00:24:57.653Z",
+      "max": "2026-08-03T19:08:01.820Z"
+    },
+    {
+      "name": "categoria1",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 20,
+      "maxLength": 21
+    },
+    {
+      "name": "categoria2",
+      "type": "string",
+      "nulls": 2,
+      "distinct": 2,
+      "minLength": 14,
+      "maxLength": 14
+    },
+    {
+      "name": "categoria3",
+      "type": "null",
+      "nulls": 199,
+      "distinct": 0
+    },
+    {
+      "name": "categoria4",
+      "type": "null",
+      "nulls": 199,
+      "distinct": 0
+    },
+    {
+      "name": "categoria5",
+      "type": "null",
+      "nulls": 199,
+      "distinct": 0
+    },
+    {
+      "name": "intervalo_retorno",
+      "type": "object",
+      "nulls": 0,
+      "distinct": 199
+    }
+  ],
+  "schemaFingerprint": "b7a60bdbec8c1b15",
+  "dataFingerprint": "808a1f8aa65f0f7d",
+  "capturedAt": "2026-08-04T20:17:28.318Z"
+}

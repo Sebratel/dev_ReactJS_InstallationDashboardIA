@@ -1,0 +1,189 @@
+{
+  "queryId": "contratos",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 86406,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columns": [
+    {
+      "name": "CLIENTE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4710,
+      "minLength": 5,
+      "maxLength": 58
+    },
+    {
+      "name": "USUÁRIO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4989,
+      "minLength": 4,
+      "maxLength": 27
+    },
+    {
+      "name": "NUMERO CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4987,
+      "numericString": true,
+      "sum": 935732315
+    },
+    {
+      "name": "CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4987,
+      "minLength": 1,
+      "maxLength": 111
+    },
+    {
+      "name": "CRIADO",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 4987,
+      "min": "2017-07-06T14:53:01.000Z",
+      "max": "2026-08-04T19:59:23.736Z"
+    },
+    {
+      "name": "ETIQUETA",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4988,
+      "minLength": 8,
+      "maxLength": 71
+    },
+    {
+      "name": "PLANO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 26,
+      "minLength": 22,
+      "maxLength": 55
+    },
+    {
+      "name": "CIDADE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 10,
+      "minLength": 6,
+      "maxLength": 21
+    },
+    {
+      "name": "CATALOGO",
+      "type": "string",
+      "nulls": 17,
+      "distinct": 6,
+      "minLength": 18,
+      "maxLength": 30
+    },
+    {
+      "name": "TELEFONE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4721,
+      "minLength": 0,
+      "maxLength": 15
+    },
+    {
+      "name": "BAIRRO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 127,
+      "minLength": 4,
+      "maxLength": 24
+    },
+    {
+      "name": "RUA",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2271,
+      "minLength": 5,
+      "maxLength": 53
+    },
+    {
+      "name": "NUMERO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1461,
+      "minLength": 1,
+      "maxLength": 16
+    },
+    {
+      "name": "COMPLEMENTO",
+      "type": "string",
+      "nulls": 2427,
+      "distinct": 275,
+      "minLength": 0,
+      "maxLength": 310
+    },
+    {
+      "name": "CEP",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2966,
+      "minLength": 8,
+      "maxLength": 9
+    },
+    {
+      "name": "ESTADO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1,
+      "minLength": 2,
+      "maxLength": 2
+    },
+    {
+      "name": "CPF/CNPJ",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4771,
+      "numericString": true,
+      "sum": 13224315208913604
+    },
+    {
+      "name": "TELEFONE CONTATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4750,
+      "minLength": 0,
+      "maxLength": 15
+    },
+    {
+      "name": "E-MAIL",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4064,
+      "minLength": 0,
+      "maxLength": 58
+    },
+    {
+      "name": "LATITUDE",
+      "type": "string",
+      "nulls": 248,
+      "distinct": 4324,
+      "minLength": 0,
+      "maxLength": 20
+    },
+    {
+      "name": "LONGITUDE",
+      "type": "string",
+      "nulls": 248,
+      "distinct": 4274,
+      "minLength": 0,
+      "maxLength": 19
+    },
+    {
+      "name": "id",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 26,
+      "numericString": true,
+      "sum": 21022825
+    }
+  ],
+  "schemaFingerprint": "c4892946147ab326",
+  "dataFingerprint": "92c7949f97ae2d29",
+  "capturedAt": "2026-08-04T20:14:35.256Z"
+}

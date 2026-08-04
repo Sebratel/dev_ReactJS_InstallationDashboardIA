@@ -1,0 +1,61 @@
+{
+  "queryId": "contratos-telefonia",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 2692,
+  "truncated": false,
+  "profiledRows": 2692,
+  "columns": [
+    {
+      "name": "CLIENTE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1660,
+      "minLength": 5,
+      "maxLength": 60
+    },
+    {
+      "name": "DESCRICAO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1724,
+      "minLength": 35,
+      "maxLength": 123
+    },
+    {
+      "name": "NUMERO CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1724,
+      "numericString": true,
+      "sum": 417498505
+    },
+    {
+      "name": "TELEFONIA",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 19,
+      "minLength": 0,
+      "maxLength": 44
+    },
+    {
+      "name": "STATUS CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5,
+      "minLength": 6,
+      "maxLength": 19
+    },
+    {
+      "name": "TELEFONE CONTRATO",
+      "type": "string",
+      "nulls": 954,
+      "distinct": 1319,
+      "numericString": true,
+      "sum": 56202492955
+    }
+  ],
+  "schemaFingerprint": "5bc2933f3202091e",
+  "dataFingerprint": "7da50dcf1f9c1b6e",
+  "capturedAt": "2026-08-04T20:14:36.301Z"
+}

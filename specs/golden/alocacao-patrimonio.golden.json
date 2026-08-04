@@ -1,0 +1,149 @@
+{
+  "queryId": "alocacao-patrimonio",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 20891,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columns": [
+    {
+      "name": "SOLICITACAO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4809,
+      "minLength": 66,
+      "maxLength": 152
+    },
+    {
+      "name": "N°PROTOCOLO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4809,
+      "numericString": true,
+      "sum": 7637503905
+    },
+    {
+      "name": "EQUIPAMENTO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 25,
+      "minLength": 17,
+      "maxLength": 84
+    },
+    {
+      "name": "PATRIMONIO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4911,
+      "minLength": 3,
+      "maxLength": 8
+    },
+    {
+      "name": "SERIAL",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4912,
+      "minLength": 6,
+      "maxLength": 16
+    },
+    {
+      "name": "DATA SAIDA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 42,
+      "min": "2026-01-09T03:00:00.000Z",
+      "max": "2026-04-01T03:00:00.000Z"
+    },
+    {
+      "name": "DATA HORA SAIDA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 5000,
+      "min": "2026-01-09T12:04:09.313Z",
+      "max": "2026-04-01T15:27:32.258Z"
+    },
+    {
+      "name": "STATUS RETORNO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "numericString": true,
+      "sum": 1201
+    },
+    {
+      "name": "DATA DO RETORNO",
+      "type": "date",
+      "nulls": 3799,
+      "distinct": 179,
+      "min": "2026-01-09T03:00:00.000Z",
+      "max": "2026-08-04T03:00:00.000Z"
+    },
+    {
+      "name": "RESPONSAVEL",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 58,
+      "minLength": 7,
+      "maxLength": 47
+    },
+    {
+      "name": "ALOCADO POR:",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 58,
+      "minLength": 9,
+      "maxLength": 39
+    },
+    {
+      "name": "CLIENTE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4737,
+      "minLength": 10,
+      "maxLength": 60
+    },
+    {
+      "name": "SITE",
+      "type": "string",
+      "nulls": 4001,
+      "distinct": 19,
+      "minLength": 5,
+      "maxLength": 11
+    },
+    {
+      "name": "CIDADE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 10,
+      "minLength": 6,
+      "maxLength": 21
+    },
+    {
+      "name": "PONTO DE ACESSO",
+      "type": "string",
+      "nulls": 3907,
+      "distinct": 105,
+      "minLength": 14,
+      "maxLength": 69
+    },
+    {
+      "name": "PROBLEMA",
+      "type": "string",
+      "nulls": 4983,
+      "distinct": 5,
+      "minLength": 14,
+      "maxLength": 33
+    },
+    {
+      "name": "POSIÇÃO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 7,
+      "maxLength": 8
+    }
+  ],
+  "schemaFingerprint": "34bc014eea8e0a14",
+  "dataFingerprint": "4d8d9744422fe3c3",
+  "capturedAt": "2026-08-04T20:14:33.261Z"
+}

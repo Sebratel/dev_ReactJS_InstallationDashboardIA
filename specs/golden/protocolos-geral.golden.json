@@ -1,0 +1,283 @@
+{
+  "queryId": "protocolos-geral",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 33432,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columns": [
+    {
+      "name": "SOLICITACAO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5000,
+      "minLength": 73,
+      "maxLength": 155
+    },
+    {
+      "name": "N°PROTOCOLO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5000,
+      "numericString": true,
+      "sum": 7568234884
+    },
+    {
+      "name": "DATA AGENDA",
+      "type": "date",
+      "nulls": 4988,
+      "distinct": 12,
+      "min": "2025-01-10T16:00:00.000Z",
+      "max": "2026-02-04T11:00:00.000Z"
+    },
+    {
+      "name": "DATA CRIADO",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 5000,
+      "min": "2026-01-01T12:27:36.878Z",
+      "max": "2026-01-30T20:58:49.849Z"
+    },
+    {
+      "name": "DATA ENCERRADO",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 5000,
+      "min": "2026-01-02T12:53:40.655Z",
+      "max": "2026-07-29T11:41:16.641Z"
+    },
+    {
+      "name": "STATUS",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 9,
+      "maxLength": 9
+    },
+    {
+      "name": "CIDADE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 12,
+      "minLength": 6,
+      "maxLength": 21
+    },
+    {
+      "name": "BAIRRO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 129,
+      "minLength": 4,
+      "maxLength": 24
+    },
+    {
+      "name": "RUA",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2074,
+      "minLength": 5,
+      "maxLength": 47
+    },
+    {
+      "name": "NUMERO PATRIMÔNIO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1329,
+      "minLength": 1,
+      "maxLength": 6
+    },
+    {
+      "name": "TELEFONE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4346,
+      "minLength": 0,
+      "maxLength": 15
+    },
+    {
+      "name": "CLIENTE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4404,
+      "minLength": 9,
+      "maxLength": 58
+    },
+    {
+      "name": "EQUIPE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 14,
+      "minLength": 5,
+      "maxLength": 34
+    },
+    {
+      "name": "LATITUDE",
+      "type": "string",
+      "nulls": 2594,
+      "distinct": 1935,
+      "minLength": 0,
+      "maxLength": 22
+    },
+    {
+      "name": "LONGITUDE",
+      "type": "string",
+      "nulls": 2594,
+      "distinct": 1924,
+      "minLength": 0,
+      "maxLength": 22
+    },
+    {
+      "name": "RESPONSÁVEL",
+      "type": "string",
+      "nulls": 67,
+      "distinct": 62,
+      "minLength": 9,
+      "maxLength": 46
+    },
+    {
+      "name": "TIPO DE PROTOCOLO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 7,
+      "minLength": 23,
+      "maxLength": 39
+    },
+    {
+      "name": "PONTO DE ACESSO",
+      "type": "string",
+      "nulls": 2477,
+      "distinct": 22,
+      "minLength": 14,
+      "maxLength": 14
+    },
+    {
+      "name": "CODIGO",
+      "type": "string",
+      "nulls": 2477,
+      "distinct": 22,
+      "numericString": true,
+      "sum": 67408231
+    },
+    {
+      "name": "SLOT",
+      "type": "string",
+      "nulls": 2477,
+      "distinct": 1,
+      "numericString": true,
+      "sum": 2523
+    },
+    {
+      "name": "PORTA",
+      "type": "string",
+      "nulls": 2477,
+      "distinct": 1,
+      "numericString": true,
+      "sum": 2523
+    },
+    {
+      "name": "CTO",
+      "type": "string",
+      "nulls": 2499,
+      "distinct": 2043,
+      "minLength": 17,
+      "maxLength": 64
+    },
+    {
+      "name": "STATUS CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5,
+      "minLength": 6,
+      "maxLength": 23
+    },
+    {
+      "name": "ESTAGIO CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 8,
+      "maxLength": 9
+    },
+    {
+      "name": "NUMERO CONTRATO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4605,
+      "numericString": true,
+      "sum": 1244456946
+    },
+    {
+      "name": "ITEM",
+      "type": "null",
+      "nulls": 5000,
+      "distinct": 0
+    },
+    {
+      "name": "CONTEXTO",
+      "type": "string",
+      "nulls": 4874,
+      "distinct": 18,
+      "minLength": 5,
+      "maxLength": 53
+    },
+    {
+      "name": "PROBLEMA",
+      "type": "string",
+      "nulls": 4964,
+      "distinct": 17,
+      "minLength": 5,
+      "maxLength": 50
+    },
+    {
+      "name": "OLT",
+      "type": "string",
+      "nulls": 2477,
+      "distinct": 16,
+      "minLength": 5,
+      "maxLength": 11
+    },
+    {
+      "name": "EQUIPAMENTO",
+      "type": "string",
+      "nulls": 2477,
+      "distinct": 1,
+      "minLength": 3,
+      "maxLength": 3
+    },
+    {
+      "name": "USUÁRIO",
+      "type": "string",
+      "nulls": 2476,
+      "distinct": 2300,
+      "minLength": 8,
+      "maxLength": 26
+    },
+    {
+      "name": "CRIADO POR",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 65,
+      "minLength": 13,
+      "maxLength": 46
+    },
+    {
+      "name": "STATUS FINANCEIRO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 7,
+      "maxLength": 8
+    },
+    {
+      "name": "PLANO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 33,
+      "minLength": 23,
+      "maxLength": 131
+    }
+  ],
+  "schemaFingerprint": "bd8c24bf2bd1a2ae",
+  "dataFingerprint": "b1d101c05cb78a53",
+  "capturedAt": "2026-08-04T20:16:21.691Z"
+}
