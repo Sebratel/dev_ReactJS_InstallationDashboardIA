@@ -5,6 +5,7 @@
   "rowCount": 19249,
   "truncated": false,
   "profiledRows": 5000,
+  "columnsFromSample": true,
   "columns": [
     {
       "name": "protocolo_instalacao",
@@ -12,7 +13,7 @@
       "nulls": 0,
       "distinct": 5000,
       "numericString": true,
-      "sum": 8602827905
+      "sum": 8602827465
     },
     {
       "name": "tipo_instalacao",
@@ -28,7 +29,7 @@
       "nulls": 0,
       "distinct": 4999,
       "numericString": true,
-      "sum": 1411922732
+      "sum": 1411922757
     },
     {
       "name": "cliente",
@@ -58,7 +59,7 @@
       "name": "tecnico_responsavel",
       "type": "string",
       "nulls": 0,
-      "distinct": 52,
+      "distinct": 53,
       "minLength": 12,
       "maxLength": 38
     },
@@ -163,10 +164,10 @@
       "type": "number",
       "nulls": 4706,
       "distinct": 30,
-      "sum": 2454
+      "sum": 2456
     }
   ],
   "schemaFingerprint": "f2cfcb72f12729e6",
-  "dataFingerprint": "90d6f5b5621ffb84",
-  "capturedAt": "2026-08-04T20:15:02.264Z"
+  "dataFingerprint": "be07bb5b25432e5d",
+  "capturedAt": "2026-08-04T20:23:28.642Z"
 }

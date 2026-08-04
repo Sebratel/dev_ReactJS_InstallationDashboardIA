@@ -5,6 +5,7 @@
   "rowCount": 20,
   "truncated": false,
   "profiledRows": 20,
+  "columnsFromSample": false,
   "columns": [
     {
       "name": "authentication_totalizer",
@@ -25,5 +26,5 @@
   ],
   "schemaFingerprint": "b8c264cef527a622",
   "dataFingerprint": "beb511c8209805cb",
-  "capturedAt": "2026-08-04T20:14:33.512Z"
+  "capturedAt": "2026-08-04T20:23:04.557Z"
 }

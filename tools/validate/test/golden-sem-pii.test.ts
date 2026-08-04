@@ -19,7 +19,8 @@ const GOLDEN_DIR = path.join(ROOT, 'specs', 'golden');
 
 const CHAVES_GOLDEN = new Set([
   'queryId', 'datasource', 'strategy', 'rowCount', 'truncated',
-  'profiledRows', 'columns', 'schemaFingerprint', 'dataFingerprint', 'capturedAt',
+  'profiledRows', 'columnsFromSample', 'columns',
+  'schemaFingerprint', 'dataFingerprint', 'capturedAt',
 ]);
 
 const CHAVES_COLUNA = new Set([

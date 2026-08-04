@@ -5,6 +5,7 @@
   "rowCount": 553,
   "truncated": false,
   "profiledRows": 553,
+  "columnsFromSample": false,
   "columns": [
     {
       "name": "SOLICITACAO",
@@ -113,16 +114,16 @@
     {
       "name": "LATITUDE",
       "type": "string",
-      "nulls": 168,
-      "distinct": 321,
+      "nulls": 169,
+      "distinct": 322,
       "minLength": 0,
       "maxLength": 19
     },
     {
       "name": "LONGITUDE",
       "type": "string",
-      "nulls": 168,
-      "distinct": 321,
+      "nulls": 169,
+      "distinct": 322,
       "minLength": 0,
       "maxLength": 19
     },
@@ -145,7 +146,7 @@
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
-      "nulls": 143,
+      "nulls": 133,
       "distinct": 25,
       "minLength": 14,
       "maxLength": 14
@@ -153,32 +154,32 @@
     {
       "name": "CODIGO",
       "type": "string",
-      "nulls": 143,
+      "nulls": 133,
       "distinct": 25,
       "numericString": true,
-      "sum": 11031517
+      "sum": 11343759
     },
     {
       "name": "SLOT",
       "type": "string",
-      "nulls": 143,
+      "nulls": 133,
       "distinct": 2,
       "numericString": true,
-      "sum": 404
+      "sum": 407
     },
     {
       "name": "PORTA",
       "type": "string",
-      "nulls": 143,
+      "nulls": 133,
       "distinct": 1,
       "numericString": true,
-      "sum": 410
+      "sum": 420
     },
     {
       "name": "CTO",
       "type": "string",
-      "nulls": 158,
-      "distinct": 330,
+      "nulls": 144,
+      "distinct": 344,
       "minLength": 17,
       "maxLength": 65
     },
@@ -223,7 +224,7 @@
     {
       "name": "OLT",
       "type": "string",
-      "nulls": 143,
+      "nulls": 133,
       "distinct": 18,
       "minLength": 5,
       "maxLength": 11
@@ -231,7 +232,7 @@
     {
       "name": "EQUIPAMENTO",
       "type": "string",
-      "nulls": 143,
+      "nulls": 133,
       "distinct": 2,
       "minLength": 3,
       "maxLength": 6
@@ -239,10 +240,10 @@
     {
       "name": "USUÁRIO",
       "type": "string",
-      "nulls": 139,
-      "distinct": 353,
-      "minLength": 8,
-      "maxLength": 27
+      "nulls": 130,
+      "distinct": 365,
+      "minLength": 9,
+      "maxLength": 28
     },
     {
       "name": "CRIADO POR:",
@@ -264,12 +265,12 @@
       "name": "TÍTULO RECEBÍVEL",
       "type": "string",
       "nulls": 192,
-      "distinct": 358,
+      "distinct": 360,
       "minLength": 12,
       "maxLength": 18
     }
   ],
   "schemaFingerprint": "78275f7b8c1b8c94",
-  "dataFingerprint": "9b5303d736da5c58",
-  "capturedAt": "2026-08-04T20:17:09.949Z"
+  "dataFingerprint": "19193783eb5a2c31",
+  "capturedAt": "2026-08-04T20:25:00.025Z"
 }

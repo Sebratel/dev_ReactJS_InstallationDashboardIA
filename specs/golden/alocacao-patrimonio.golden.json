@@ -5,6 +5,7 @@
   "rowCount": 20891,
   "truncated": false,
   "profiledRows": 5000,
+  "columnsFromSample": true,
   "columns": [
     {
       "name": "SOLICITACAO",
@@ -20,7 +21,7 @@
       "nulls": 0,
       "distinct": 4809,
       "numericString": true,
-      "sum": 7637503905
+      "sum": 7637491824
     },
     {
       "name": "EQUIPAMENTO",
@@ -34,7 +35,7 @@
       "name": "PATRIMONIO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4911,
+      "distinct": 4910,
       "minLength": 3,
       "maxLength": 8
     },
@@ -42,7 +43,7 @@
       "name": "SERIAL",
       "type": "string",
       "nulls": 0,
-      "distinct": 4912,
+      "distinct": 4911,
       "minLength": 6,
       "maxLength": 16
     },
@@ -68,12 +69,12 @@
       "nulls": 0,
       "distinct": 2,
       "numericString": true,
-      "sum": 1201
+      "sum": 1203
     },
     {
       "name": "DATA DO RETORNO",
       "type": "date",
-      "nulls": 3799,
+      "nulls": 3797,
       "distinct": 179,
       "min": "2026-01-09T03:00:00.000Z",
       "max": "2026-08-04T03:00:00.000Z"
@@ -105,7 +106,7 @@
     {
       "name": "SITE",
       "type": "string",
-      "nulls": 4001,
+      "nulls": 4003,
       "distinct": 19,
       "minLength": 5,
       "maxLength": 11
@@ -121,7 +122,7 @@
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
-      "nulls": 3907,
+      "nulls": 3909,
       "distinct": 105,
       "minLength": 14,
       "maxLength": 69
@@ -144,6 +145,6 @@
     }
   ],
   "schemaFingerprint": "34bc014eea8e0a14",
-  "dataFingerprint": "4d8d9744422fe3c3",
-  "capturedAt": "2026-08-04T20:14:33.261Z"
+  "dataFingerprint": "b1858cec19901b31",
+  "capturedAt": "2026-08-04T20:23:04.160Z"
 }

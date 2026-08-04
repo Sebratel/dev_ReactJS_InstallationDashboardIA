@@ -5,6 +5,7 @@
   "rowCount": 199,
   "truncated": false,
   "profiledRows": 199,
+  "columnsFromSample": false,
   "columns": [
     {
       "name": "Protocolo Instalação",
@@ -129,5 +130,5 @@
   ],
   "schemaFingerprint": "b7a60bdbec8c1b15",
   "dataFingerprint": "808a1f8aa65f0f7d",
-  "capturedAt": "2026-08-04T20:17:28.318Z"
+  "capturedAt": "2026-08-04T20:25:12.979Z"
 }

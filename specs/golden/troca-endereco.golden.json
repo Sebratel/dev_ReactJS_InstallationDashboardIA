@@ -1,10 +1,11 @@
 {
   "queryId": "troca-endereco",
   "datasource": "dbVoalle",
-  "strategy": "direct",
+  "strategy": "wrapped",
   "rowCount": 4393,
   "truncated": false,
   "profiledRows": 4393,
+  "columnsFromSample": false,
   "columns": [
     {
       "name": "TÉCNICO",
@@ -49,5 +50,5 @@
   ],
   "schemaFingerprint": "d12881360245455a",
   "dataFingerprint": "1d6323b4437d775b",
-  "capturedAt": "2026-08-04T20:18:06.715Z"
+  "capturedAt": "2026-08-04T20:25:14.796Z"
 }

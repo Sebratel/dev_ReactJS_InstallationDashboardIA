@@ -1,0 +1,108 @@
+{
+  "queryId": "gestores-equipes",
+  "datasource": "dbMaria",
+  "strategy": "wrapped",
+  "rowCount": 10795,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columnsFromSample": true,
+  "columns": [
+    {
+      "name": "DATA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 148,
+      "min": "2024-08-01T03:00:00.000Z",
+      "max": "2024-12-26T03:00:00.000Z"
+    },
+    {
+      "name": "TÉCNICO 1",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 63,
+      "minLength": 17,
+      "maxLength": 46
+    },
+    {
+      "name": "TÉCNICO 2",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 63,
+      "minLength": 0,
+      "maxLength": 35
+    },
+    {
+      "name": "EQUIPE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 22,
+      "minLength": 9,
+      "maxLength": 14
+    },
+    {
+      "name": "BASE DE ORIGEM",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 3,
+      "minLength": 0,
+      "maxLength": 18
+    },
+    {
+      "name": "GERENTE/SUPERVISOR",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 3,
+      "minLength": 0,
+      "maxLength": 26
+    },
+    {
+      "name": "CAPACIDADE MANHÃ",
+      "type": "number",
+      "nulls": 19,
+      "distinct": 5,
+      "sum": 10384
+    },
+    {
+      "name": "CAPACIDADE TARDE",
+      "type": "number",
+      "nulls": 19,
+      "distinct": 5,
+      "sum": 11790
+    },
+    {
+      "name": "COLOR",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 11,
+      "minLength": 0,
+      "maxLength": 10
+    },
+    {
+      "name": "TÉCNICO (OPCIONAL)",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 9,
+      "minLength": 0,
+      "maxLength": 30
+    },
+    {
+      "name": "EDITOR",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 4,
+      "minLength": 0,
+      "maxLength": 31
+    },
+    {
+      "name": "DATA MODIFICAÇÃO",
+      "type": "date",
+      "nulls": 4977,
+      "distinct": 4,
+      "min": "2025-05-14T03:00:00.000Z",
+      "max": "2025-05-22T03:00:00.000Z"
+    }
+  ],
+  "schemaFingerprint": "55db632e0f7ce557",
+  "dataFingerprint": "672190c37c6e06b6",
+  "capturedAt": "2026-08-04T20:23:26.300Z"
+}

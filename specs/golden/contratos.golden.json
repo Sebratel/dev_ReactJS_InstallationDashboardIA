@@ -2,9 +2,10 @@
   "queryId": "contratos",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 86406,
+  "rowCount": 86409,
   "truncated": false,
   "profiledRows": 5000,
+  "columnsFromSample": true,
   "columns": [
     {
       "name": "CLIENTE",
@@ -184,6 +185,6 @@
     }
   ],
   "schemaFingerprint": "c4892946147ab326",
-  "dataFingerprint": "92c7949f97ae2d29",
-  "capturedAt": "2026-08-04T20:14:35.256Z"
+  "dataFingerprint": "2d39e1281c110ab3",
+  "capturedAt": "2026-08-04T20:23:05.911Z"
 }

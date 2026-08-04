@@ -14,12 +14,34 @@ reimplementadas sobre dados nunca verificados.
 
 | Campo | Para que serve |
 |---|---|
-| `rowCount` | total exato de linhas — **é este número que se compara com o Power BI** |
+| `rowCount` | total **exato** de linhas — é este número que se compara com o Power BI |
 | `columns[]` | nome, tipo, nulos, distintos e agregados de cada coluna |
+| `columnsFromSample` | `true` = os agregados descrevem só a amostra (veja abaixo) |
+| `profiledRows` | quantas linhas alimentaram o perfil de colunas |
 | `schemaFingerprint` | hash de nomes+tipos. Mudou = regressão, quebra medidas |
-| `dataFingerprint` | hash dos agregados. Muda naturalmente com dado novo no ERP |
+| `dataFingerprint` | hash do que é comparável entre execuções |
 | `strategy` | `wrapped` (count exato + amostra) ou `direct` (fallback) |
 | `capturedAt` | quando foi capturado; fora dos fingerprints, de propósito |
+
+## Exato vs. amostra — a distinção que importa
+
+`rowCount` é **exato**: vem de um `count(*)` sobre a query inteira. É o número
+para conferir com o Power BI.
+
+Os agregados por coluna (`nulls`, `distinct`, `min`, `max`, `sum`) vêm das
+primeiras `profiledRows` linhas — 5000 por padrão. Quando `columnsFromSample` é
+`true`, eles **descrevem a amostra, não o resultado**. O SQL das specs raramente
+tem `ORDER BY`, então quais linhas caem na amostra depende da ordem que o banco
+devolveu, e esses números mudam entre execuções sem o dado ter mudado.
+
+Por isso, com `columnsFromSample: true` os agregados ficam **fora** do
+`dataFingerprint`. Sem isso o `--check` acusaria regressão em toda query grande.
+Um exemplo real: `base-categorias-field` filtra desde 01/01/2026 e tem 233 mil
+linhas, mas a amostra de 5000 cobria só a primeira semana de janeiro — o `min`/`max`
+de data ali descreve a amostra, não a query.
+
+Para perfilar tudo numa query específica, aumente a amostra acima do total:
+`npm run validate:queries -- --only=reincidencia --sample-rows=50000`.
 
 ## Por que não guardamos as linhas
 

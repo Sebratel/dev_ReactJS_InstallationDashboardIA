@@ -160,7 +160,9 @@ async function main() {
       }
 
       const g = outcome.golden;
-      const shape = `${g.rowCount ?? '?'} linhas, ${g.columns.length} colunas`;
+      // "~" marca que os agregados de coluna vieram de amostra, não do total
+      const amostra = g.columnsFromSample ? ` [perfil de ~${g.profiledRows}]` : '';
+      const shape = `${g.rowCount ?? '?'} linhas, ${g.columns.length} colunas${amostra}`;
       const timing = `${outcome.durationMs}ms`;
       // o motivo real, não um chute: normalmente é statement_timeout no count(*)
       const note =

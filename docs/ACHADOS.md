@@ -55,7 +55,71 @@ oficial) em vez de blob embutido — mas isso é evolução, não replicação.
 
 ---
 
-## 2. Quando o `.pbix` pode ser removido
+## 2. `field-agenda` multiplica linha por skill do relator (1,4 milhão de linhas)
+
+**Evidência.** `npm run validate:queries` devolveu **1.435.852 linhas** para
+`field-agenda` — 74% de todas as linhas das 18 queries somadas. O SQL:
+
+```sql
+FROM v_service_desk_slots_productivity_informative vsdspi
+LEFT JOIN reports r        ON vsdspi.assignment_id = r.assignment_id
+LEFT JOIN people p         ON p.id = r.person_id
+LEFT JOIN person_skills ps ON ps.person_id = p.id   -- <<< 1 linha por skill
+LEFT JOIN skills s         ON s.id = ps.skill_id
+WHERE vsdspi.begin_date_slot >= DATE '2026-01-01'
+```
+
+`person_skills` é 1:N. Cada relato é replicado **uma vez por skill do relator**.
+Um técnico com 8 skills gera 8 linhas idênticas exceto a coluna `Skill`.
+
+**Por que importa.** Qualquer `COUNT` sem `DISTINCT` sobre essa tabela conta
+inflado, e o fator de inflação varia por técnico. Note que as medidas de
+`protocolos-geral` usam `DISTINCTCOUNT` — indício de que alguém já tropeçou nisso.
+
+**Decisão pendente.** Confirmar com quem usa o relatório se a coluna `Skill` é
+realmente necessária nessa granularidade. Se for só para exibir, o caminho é
+agregar (`string_agg`) em vez de multiplicar. Mas é mudança de comportamento —
+não fazer sem decisão.
+
+---
+
+## 3. `base-categorias-field` tem data fixa no SQL
+
+`where ai.beginning_service_date > '2026-01-01'` — data **hardcoded**, não
+relativa. Em 2027 a query vai continuar trazendo tudo desde jan/2026 e crescendo
+para sempre. Hoje são 233 mil linhas.
+
+Mesma família de problema do achado 1 (FERIADOS): valor de calendário chumbado
+no artefato. Vale revisar as 18 queries à procura de outros — mas como mudar o
+filtro muda o resultado, entra como decisão, não como correção.
+
+---
+
+## 4. Quatro queries levam mais de 10s (uma chega a 29s)
+
+Medido na captura dos goldens, contra o ERP de produção:
+
+| Query | Tempo |
+|---|---|
+| `protocolos-geral` | 29,1s |
+| `protocolos-produtividade` | 25,5s |
+| `protocolos-auxiliares` | 25,4s |
+| `field-agenda` | 19,6s |
+| `protocolos-telefonia` | 11,2s |
+
+O `statement_timeout` está em 30s, então `protocolos-geral` está a 1 segundo do
+limite. Na primeira captura o `troca-endereco` **estourou** e caiu para execução
+direta.
+
+**Por que importa.** Isso é aceitável para uma ferramenta de validação que roda
+de vez em quando; **não** é aceitável para um dashboard. A Fase 3 não pode
+depender de uma query de 29s no caminho do usuário. É o que justifica o cache do
+Query Engine (TTL + single-flight, já prontos) e depois a invalidação por CDC da
+Fase 4 — o número acima é a linha de base que mostra por quê.
+
+---
+
+## 5. Quando o `.pbix` pode ser removido
 
 Pergunta do Erick: *mantivemos as infos do BI antigo só para consulta? mais para
 frente podemos remover?*

@@ -1,0 +1,54 @@
+{
+  "queryId": "backlog-instalacao",
+  "datasource": "dbMaria",
+  "strategy": "wrapped",
+  "rowCount": 5672,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columnsFromSample": true,
+  "columns": [
+    {
+      "name": "TOTAL",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 307,
+      "numericString": true,
+      "sum": 156140
+    },
+    {
+      "name": "DATA CRIADO",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 1919,
+      "min": "2024-06-18T13:20:52.000Z",
+      "max": "2026-04-28T23:48:51.000Z"
+    },
+    {
+      "name": "TIPO DE PROTOCOLO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 7,
+      "minLength": 23,
+      "maxLength": 39
+    },
+    {
+      "name": "EQUIPE",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 9,
+      "minLength": 11,
+      "maxLength": 32
+    },
+    {
+      "name": "DATA HOJE",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 412,
+      "min": "2025-01-01T20:32:52.000Z",
+      "max": "2026-04-29T03:00:03.000Z"
+    }
+  ],
+  "schemaFingerprint": "ebc85fb98367cb6d",
+  "dataFingerprint": "09fe853fd177e821",
+  "capturedAt": "2026-08-04T20:23:04.276Z"
+}

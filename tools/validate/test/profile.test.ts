@@ -128,6 +128,66 @@ test('fingerprints: dados mudam quando um agregado muda', () => {
   assert.notEqual(a, b);
 });
 
+// ------------------------------------------------- agregados de amostra
+
+test('buildGolden: marca columnsFromSample quando o perfil não cobriu tudo', () => {
+  const parcial = buildGolden({
+    queryId: 'q', datasource: 'dbVoalle', strategy: 'wrapped',
+    rowCount: 232994, truncated: false, rows: [{ a: 1 }], capturedAt: AT,
+  });
+  assert.equal(parcial.columnsFromSample, true);
+  assert.equal(parcial.profiledRows, 1);
+
+  const completo = buildGolden({
+    queryId: 'q', datasource: 'dbVoalle', strategy: 'wrapped',
+    rowCount: 1, truncated: false, rows: [{ a: 1 }], capturedAt: AT,
+  });
+  assert.equal(completo.columnsFromSample, false);
+});
+
+test('agregados de amostra ficam fora do dataFingerprint', () => {
+  // Mesma query, mesmo total, amostras diferentes — porque o SQL não tem ORDER
+  // BY e o banco devolveu outra ordem. Isso NÃO pode contar como mudança.
+  const base = {
+    queryId: 'base-categorias-field', datasource: 'dbVoalle',
+    strategy: 'wrapped' as const, rowCount: 232994, truncated: false, capturedAt: AT,
+  };
+  const primeira = buildGolden({ ...base, rows: [{ DATA: new Date('2026-01-03') }] });
+  const segunda = buildGolden({ ...base, rows: [{ DATA: new Date('2026-08-04') }] });
+
+  assert.equal(primeira.columnsFromSample, true);
+  assert.equal(
+    primeira.dataFingerprint,
+    segunda.dataFingerprint,
+    'amostra diferente com o mesmo total não é mudança de dados',
+  );
+  assert.deepEqual(diffGolden(primeira, segunda), [], '--check não pode acusar regressão aqui');
+});
+
+test('com perfil completo os agregados voltam a contar', () => {
+  const base = {
+    queryId: 'q', datasource: 'dbVoalle', strategy: 'wrapped' as const,
+    rowCount: 1, truncated: false, capturedAt: AT,
+  };
+  const a = buildGolden({ ...base, rows: [{ V: 10 }] });
+  const b = buildGolden({ ...base, rows: [{ V: 99 }] });
+  assert.equal(a.columnsFromSample, false);
+  assert.notEqual(a.dataFingerprint, b.dataFingerprint);
+});
+
+test('rowCount ainda pega mudança real, mesmo com agregados de amostra', () => {
+  const base = {
+    queryId: 'q', datasource: 'dbVoalle', strategy: 'wrapped' as const,
+    truncated: false, rows: [{ a: 1 }], capturedAt: AT,
+  };
+  const antes = buildGolden({ ...base, rowCount: 1000 });
+  const depois = buildGolden({ ...base, rowCount: 1001 });
+  const diffs = diffGolden(antes, depois);
+  assert.equal(diffs.length, 1);
+  assert.equal(diffs[0].severity, 'data');
+  assert.ok(diffs[0].message.includes('1000 -> 1001'));
+});
+
 test('buildGolden: capturedAt não entra nos fingerprints', () => {
   const base = {
     queryId: 'q', datasource: 'dbVoalle', strategy: 'wrapped' as const,

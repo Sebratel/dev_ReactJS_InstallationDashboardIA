@@ -1,0 +1,38 @@
+{
+  "queryId": "backlog-agendado-futuro",
+  "datasource": "dbMaria",
+  "strategy": "wrapped",
+  "rowCount": 85921,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columnsFromSample": true,
+  "columns": [
+    {
+      "name": "protocolo_id",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1941,
+      "numericString": true,
+      "sum": 7127238591
+    },
+    {
+      "name": "data_inicio_slot",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 25,
+      "min": "2025-10-11T03:00:00.000Z",
+      "max": "2025-11-28T03:00:00.000Z"
+    },
+    {
+      "name": "data_carga",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 15,
+      "min": "2025-10-11T03:00:00.000Z",
+      "max": "2025-10-25T03:00:00.000Z"
+    }
+  ],
+  "schemaFingerprint": "4d3ffd0a7ff54a54",
+  "dataFingerprint": "dd6da3d8a9ea571b",
+  "capturedAt": "2026-08-04T20:23:04.243Z"
+}

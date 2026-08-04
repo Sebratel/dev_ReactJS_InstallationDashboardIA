@@ -2,9 +2,10 @@
   "queryId": "protocolos-produtividade",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 33432,
+  "rowCount": 33438,
   "truncated": false,
   "profiledRows": 5000,
+  "columnsFromSample": true,
   "columns": [
     {
       "name": "SOLICITACAO",
@@ -113,16 +114,16 @@
     {
       "name": "LATITUDE",
       "type": "string",
-      "nulls": 2622,
-      "distinct": 1917,
+      "nulls": 2597,
+      "distinct": 1940,
       "minLength": 0,
       "maxLength": 22
     },
     {
       "name": "LONGITUDE",
       "type": "string",
-      "nulls": 2622,
-      "distinct": 1907,
+      "nulls": 2597,
+      "distinct": 1931,
       "minLength": 0,
       "maxLength": 22
     },
@@ -145,40 +146,40 @@
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
-      "nulls": 2513,
-      "distinct": 23,
+      "nulls": 2466,
+      "distinct": 22,
       "minLength": 14,
       "maxLength": 14
     },
     {
       "name": "CODIGO",
       "type": "string",
-      "nulls": 2513,
-      "distinct": 23,
+      "nulls": 2466,
+      "distinct": 22,
       "numericString": true,
-      "sum": 66464604
+      "sum": 67658668
     },
     {
       "name": "SLOT",
       "type": "string",
-      "nulls": 2513,
-      "distinct": 2,
+      "nulls": 2466,
+      "distinct": 1,
       "numericString": true,
-      "sum": 2486
+      "sum": 2534
     },
     {
       "name": "PORTA",
       "type": "string",
-      "nulls": 2513,
+      "nulls": 2466,
       "distinct": 1,
       "numericString": true,
-      "sum": 2487
+      "sum": 2534
     },
     {
       "name": "CTO",
       "type": "string",
-      "nulls": 2536,
-      "distinct": 2020,
+      "nulls": 2488,
+      "distinct": 2069,
       "minLength": 17,
       "maxLength": 65
     },
@@ -231,24 +232,24 @@
     {
       "name": "OLT",
       "type": "string",
-      "nulls": 2513,
-      "distinct": 17,
+      "nulls": 2466,
+      "distinct": 16,
       "minLength": 5,
       "maxLength": 11
     },
     {
       "name": "EQUIPAMENTO",
       "type": "string",
-      "nulls": 2513,
-      "distinct": 2,
+      "nulls": 2466,
+      "distinct": 1,
       "minLength": 3,
-      "maxLength": 6
+      "maxLength": 3
     },
     {
       "name": "USUÁRIO",
       "type": "string",
-      "nulls": 2512,
-      "distinct": 2261,
+      "nulls": 2465,
+      "distinct": 2312,
       "minLength": 8,
       "maxLength": 26
     },
@@ -270,6 +271,6 @@
     }
   ],
   "schemaFingerprint": "5e3191c310c40831",
-  "dataFingerprint": "52dab77fc7422579",
-  "capturedAt": "2026-08-04T20:16:56.090Z"
+  "dataFingerprint": "3ad2da62d07604bc",
+  "capturedAt": "2026-08-04T20:24:48.776Z"
 }

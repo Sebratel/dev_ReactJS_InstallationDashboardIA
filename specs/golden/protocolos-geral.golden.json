@@ -2,9 +2,10 @@
   "queryId": "protocolos-geral",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 33432,
+  "rowCount": 33438,
   "truncated": false,
   "profiledRows": 5000,
+  "columnsFromSample": true,
   "columns": [
     {
       "name": "SOLICITACAO",
@@ -113,16 +114,16 @@
     {
       "name": "LATITUDE",
       "type": "string",
-      "nulls": 2594,
-      "distinct": 1935,
+      "nulls": 2628,
+      "distinct": 1920,
       "minLength": 0,
       "maxLength": 22
     },
     {
       "name": "LONGITUDE",
       "type": "string",
-      "nulls": 2594,
-      "distinct": 1924,
+      "nulls": 2628,
+      "distinct": 1909,
       "minLength": 0,
       "maxLength": 22
     },
@@ -145,42 +146,42 @@
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
-      "nulls": 2477,
-      "distinct": 22,
+      "nulls": 2498,
+      "distinct": 23,
       "minLength": 14,
-      "maxLength": 14
+      "maxLength": 15
     },
     {
       "name": "CODIGO",
       "type": "string",
-      "nulls": 2477,
-      "distinct": 22,
+      "nulls": 2498,
+      "distinct": 23,
       "numericString": true,
-      "sum": 67408231
+      "sum": 66885056
     },
     {
       "name": "SLOT",
       "type": "string",
-      "nulls": 2477,
-      "distinct": 1,
+      "nulls": 2498,
+      "distinct": 2,
       "numericString": true,
-      "sum": 2523
+      "sum": 2501
     },
     {
       "name": "PORTA",
       "type": "string",
-      "nulls": 2477,
+      "nulls": 2498,
       "distinct": 1,
       "numericString": true,
-      "sum": 2523
+      "sum": 2502
     },
     {
       "name": "CTO",
       "type": "string",
-      "nulls": 2499,
-      "distinct": 2043,
+      "nulls": 2520,
+      "distinct": 2044,
       "minLength": 17,
-      "maxLength": 64
+      "maxLength": 65
     },
     {
       "name": "STATUS CONTRATO",
@@ -231,7 +232,7 @@
     {
       "name": "OLT",
       "type": "string",
-      "nulls": 2477,
+      "nulls": 2498,
       "distinct": 16,
       "minLength": 5,
       "maxLength": 11
@@ -239,7 +240,7 @@
     {
       "name": "EQUIPAMENTO",
       "type": "string",
-      "nulls": 2477,
+      "nulls": 2498,
       "distinct": 1,
       "minLength": 3,
       "maxLength": 3
@@ -247,8 +248,8 @@
     {
       "name": "USUÁRIO",
       "type": "string",
-      "nulls": 2476,
-      "distinct": 2300,
+      "nulls": 2497,
+      "distinct": 2281,
       "minLength": 8,
       "maxLength": 26
     },
@@ -278,6 +279,6 @@
     }
   ],
   "schemaFingerprint": "bd8c24bf2bd1a2ae",
-  "dataFingerprint": "b1d101c05cb78a53",
-  "capturedAt": "2026-08-04T20:16:21.691Z"
+  "dataFingerprint": "3ad2da62d07604bc",
+  "capturedAt": "2026-08-04T20:24:23.234Z"
 }

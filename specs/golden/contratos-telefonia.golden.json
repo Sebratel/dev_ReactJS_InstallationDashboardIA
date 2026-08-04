@@ -5,6 +5,7 @@
   "rowCount": 2692,
   "truncated": false,
   "profiledRows": 2692,
+  "columnsFromSample": false,
   "columns": [
     {
       "name": "CLIENTE",
@@ -57,5 +58,5 @@
   ],
   "schemaFingerprint": "5bc2933f3202091e",
   "dataFingerprint": "7da50dcf1f9c1b6e",
-  "capturedAt": "2026-08-04T20:14:36.301Z"
+  "capturedAt": "2026-08-04T20:23:06.643Z"
 }
