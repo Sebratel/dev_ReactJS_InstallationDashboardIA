@@ -16,7 +16,7 @@ C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_Installatio
 Repositório: `git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git` (branch `main`).
 
 **Comece lendo, nesta ordem:** `README.md`, `docs/ARCHITECTURE.md`, `docs/SPEC-DRIVEN.md`,
-`specs/EXTRACTION-REPORT.md`. Eles contêm todo o estado do projeto.
+`specs/golden/README.md`, `specs/EXTRACTION-REPORT.md`. Eles contêm todo o estado do projeto.
 Antes de escrever **qualquer** UI (componente, página, dashboard, gráfico), leia
 `docs/DESIGN-SYSTEM.md` — é o Design System oficial GER/Sebratel e tem prioridade
 máxima sobre qualquer default visual.
@@ -43,24 +43,32 @@ C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\
 
 Escala: **25 tabelas, 78 medidas DAX, 14 páginas, 306 visuais, 24 queries**.
 
-Fontes reais: `dbVoalle` (PostgreSQL do ERP Voalle), `dbMaria` (MariaDB,
-`DB_Applicattion.Installation_Teams`), `gsheets` (planilha QUADRO FUNCIONAL),
-`web` (API Open-Meteo), `inline` (feriados embutidos no .pbix), `computed`.
+Fontes reais das 24 queries: **15** `dbVoalle` (PostgreSQL do ERP Voalle), **3** `dbMaria`
+(MariaDB `DB_Applicattion`: `Backlog_Installation`, `Backlog_Schedules`,
+`Installation_Teams`), **3** `gsheets` (QUADRO FUNCIONAL, capacidade de equipe, apuração
+de premiação), **1** `web` (Open-Meteo), **1** `inline` (feriados embutidos no .pbix),
+**1** `computed`.
 
 > **Esses dados são usados hoje na operação de instalação.** Replicar fielmente é
 > requisito. Sugerir melhorias é bem-vindo, mas registre-as separadamente — nunca
 > troque o comportamento atual sem avisar.
 
+Achados sobre o comportamento atual que **aguardam decisão do Erick** ficam em
+[`docs/ACHADOS.md`](./ACHADOS.md) — leia antes da Fase 2. Já tem um que muda uma das
+78 medidas (`# MEDIA CRIADOS`: a tabela FERIADOS para em 2025).
+
 ## Estado atual (já pronto e testado)
 
-**71 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**116 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
 |---|---|---|
 | 0 | Extrator PBIP → specs | ✅ |
 | 1 | Query Engine + Registry + cache | ✅ |
 | — | Infra de conexão + doctor + guard read-only | ✅ |
-| 2 | Dataset/Measure Engine (78 medidas DAX) | ⏳ próximo |
+| — | Harness de validação contra dados reais (`validate:queries`) | ✅ código, ⏳ aguarda `.env` |
+| 2 | Dataset/Measure Engine (78 medidas DAX) | ⏳ bloqueada pela validação |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -73,6 +81,15 @@ Já implementado em `packages/query-engine/`:
   `invalidateByTable()`
 - `Connectors` — porta com driver injetável; `SqlConnector`, `FakeConnector`,
   e os pools reais em `connectors-sql.ts`
+
+Em `tools/validate/` (`npm run validate:queries`):
+- executa as **18 queries SQL** (dbVoalle + dbMaria) nas fontes reais
+- grava `specs/golden/<id>.golden.json` com a **forma e os agregados** do
+  resultado — nunca as linhas, porque o golden é commitado e as queries do
+  Voalle devolvem nome, endereço e CPF de cliente. Ver `specs/golden/README.md`.
+- `-- --check` reexecuta e separa mudança de **schema** (regressão: coluna sumiu
+  ou trocou de tipo, quebra medidas, exit 1) de mudança de **dados** (esperado)
+- a fonte entra como `SqlRunner` injetado, então tudo é testável sem banco
 
 ## Regras invioláveis
 
@@ -94,18 +111,29 @@ Já implementado em `packages/query-engine/`:
 ## Comandos
 
 ```bash
-npm test          # suíte completa (71 testes)
-npm run extract   # regenera as specs a partir do PBIP
-npm run doctor    # valida specs e conectividade (não imprime credencial)
+npm test                              # suíte completa (116 testes, sem credencial)
+npm run extract                       # regenera as specs a partir do PBIP
+npm run doctor                        # configuração e conectividade (não imprime credencial)
+npm run validate:queries              # executa as queries reais e grava os goldens
+npm run validate:queries -- --check    # falha se o schema de alguma query mudou
 ```
+
+Os três respondem perguntas diferentes: `npm test` = o código respeita as specs;
+`doctor` = as fontes estão alcançáveis; `validate:queries` = as queries rodam e
+devolvem o quê. Só o primeiro dispensa `.env`.
 
 Node 24 roda TypeScript nativamente — **não há build step**.
 
 ## Pendência conhecida
 
 O `git push` falhou: a conta `erickazambuja-Sebratel` **não tem permissão de escrita**
-no repositório da org. Existe 1 commit local (`first commit`) aguardando. Quando um
+no repositório da org. Os commits estão todos locais em `main`, aguardando. Quando um
 admin liberar o acesso, basta `git push -u origin main`. Não tente contornar.
+
+Pode haver **outra sessão de CLI commitando no mesmo repo em paralelo** (foi o caso
+do `docs/DESIGN-SYSTEM.md`). Antes de commitar, rode `git status` e confira o que
+está sendo staged — um `git add -A` distraído varre o trabalho da outra sessão para
+dentro do seu commit.
 
 Existe também uma cópia antiga do trabalho em
 `.claude/worktrees/analytics-platform-enterprise-394804` (repositório errado,
@@ -113,14 +141,29 @@ Existe também uma cópia antiga do trabalho em
 
 ## Próximo passo recomendado
 
-**Antes da Fase 2, valide contra dados reais.** Peça ao Erick para preencher o `.env`
-(a partir do `.env.example`) e rodar `npm run doctor`. Sem confirmar que as 24 queries
-retornam os mesmos números que o Power BI hoje, a Fase 2 construiria as medidas sobre
-dados não verificados.
+**A validação contra dados reais é o bloqueio da Fase 2.** O código está pronto e
+testado; falta só o `.env`. Sequência:
+
+1. Erick preenche o `.env` a partir do `.env.example` (você nunca vê os valores).
+2. `npm run doctor` — confirma conectividade e que a sessão Postgres está
+   somente-leitura. **Se o usuário do Postgres tiver permissão de escrita, avise:**
+   a camada 1 das 3 estaria faltando (as outras duas continuam valendo).
+3. `npm run validate:queries` — grava os 18 goldens.
+4. **Confira os `rowCount` com o Erick contra os números do Power BI.** Este é o
+   passo humano que nenhum teste substitui: se um `rowCount` divergir, a query foi
+   extraída errada e a medida construída sobre ela nasceria errada.
+5. Batendo, commite `specs/golden/`. Aí a Fase 2 tem linha de base.
+
+Se `dbMaria` ou `gsheets` não vierem no `.env`, siga com o que houver — o harness
+pula o que não está configurado e reporta o que ficou de fora. As 15 queries do
+`dbVoalle` já valem a validação.
 
 Depois disso, **Fase 2**: reimplementar as 78 medidas DAX de
-`specs/_catalog/measures/*.measures.yaml` como funções testáveis, com golden samples
-para comparação de paridade.
+`specs/_catalog/measures/*.measures.yaml` como funções testáveis, comparando contra
+os goldens.
+
+`gsheets` (3 queries) e `web` (1) só entram no `validate:queries` quando existirem
+connectors para eles — hoje o harness só sabe executar SQL.
 
 ## Como trabalhar
 
