@@ -9,10 +9,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 |---|---|---|
 | 0 | Fundação spec-driven + extrator PBIP | ✅ |
 | 1 | Query Engine + Query Registry + cache | ✅ |
-| 2 | Dataset/Measure Engine (78 medidas DAX) | ⏳ |
+| — | Infra de conexão + `doctor` + guard read-only | ✅ |
+| — | Harness de validação contra dados reais (`validate:queries`) | ✅ código pronto, ⏳ aguardando `.env` |
+| 2 | Dataset/Measure Engine (78 medidas DAX) | ⏳ bloqueada pela validação acima |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
+
+**116 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -20,10 +24,9 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 |---|---|
 | Tabelas | 25 |
 | Medidas (DAX) | 78 |
-| Queries (Query Registry) | 24 |
+| Queries (Query Registry) | 24 — 15 `dbVoalle`, 3 `dbMaria`, 3 `gsheets`, 1 `web`, 1 `inline`, 1 `computed` |
 | Dashboards (páginas) | 14 |
 | Visuais | 306 |
-| Datasources | `dbVoalle`, `dbMaria`, `gsheets`, `web`, `inline`, `computed` |
 
 ### Query Engine (Fase 1)
 
@@ -37,15 +40,28 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 - **Connectors** — porta `Connector` com `SqlConnector` (driver injetável) e
   `FakeConnector` para testes; o Engine não conhece driver nenhum.
 
+### Validação contra dados reais
+
+`npm run validate:queries` executa as 18 queries SQL do registry nas fontes e
+grava em `specs/golden/` a **forma e os agregados** de cada resultado — nunca as
+linhas, porque esses arquivos são commitados e as queries devolvem dado pessoal
+de cliente. O `rowCount` gravado é o número que se compara com o Power BI.
+
+Depois, `-- --check` reexecuta e separa mudança de **schema** (regressão: coluna
+sumiu ou trocou de tipo, quebra medidas) de mudança de **dados** (esperado).
+Ver [specs/golden/README.md](specs/golden/README.md).
+
 ## Comandos
 
 ```bash
-npm run extract
+npm test                              # suíte completa (116 testes, sem credencial)
+npm run extract                       # regenera as specs a partir do PBIP
+npm run doctor                        # valida configuração e conectividade
+npm run validate:queries              # executa as queries reais e grava os goldens
+npm run validate:queries -- --check    # falha se o schema de alguma query mudou
 ```
 
-```bash
-npm test
-```
+Node 24 roda TypeScript nativamente — não há build step.
 
 ## Estrutura
 
@@ -61,8 +77,11 @@ specs/
     tables/              # GERADO
     measures/            # GERADO — as 78 medidas DAX
   dashboards/            # GERADO — as 14 páginas com seus visuais
+  golden/                # GERADO por validate:queries — linha de base real
   EXTRACTION-REPORT.md
 tools/extractor/         # extrator PBIP -> specs (sem dependências externas)
+tools/doctor/            # valida configuração e conectividade
+tools/validate/          # executa as queries reais e perfila o resultado
 packages/query-engine/   # Query Registry, Cache, Connectors, Engine
 ```
 

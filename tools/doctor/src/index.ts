@@ -130,15 +130,19 @@ async function checkMaria() {
     const [rows] = await withTimeout(pool!.query('select version() as v'), 15_000, 'dbMaria');
     line(OK, 'conexão', String(rows[0]?.v ?? '?'));
 
+    // as 3 tabelas que as queries do registry realmente consultam
+    const tables = ['Backlog_Installation', 'Backlog_Schedules', 'Installation_Teams'];
     const [t] = await pool!.query(
-      `select count(*) as n from information_schema.tables
-       where table_schema = database() and table_name = 'Installation_Teams'`,
+      `select table_name from information_schema.tables
+       where table_schema = database()
+         and table_name in (${tables.map((x) => `'${x}'`).join(',')})`,
     );
-    const has = Number(t[0]?.n ?? 0) > 0;
-    if (has) line(OK, 'tabela Installation_Teams', 'encontrada');
+    const found = new Set(t.map((r) => String(r.table_name ?? r.TABLE_NAME)));
+    const missingTables = tables.filter((x) => !found.has(x));
+    if (missingTables.length === 0) line(OK, 'tabelas-chave', `${tables.length}/${tables.length} encontradas`);
     else {
       failures++;
-      line(FAIL, 'tabela Installation_Teams', 'não encontrada no schema configurado');
+      line(FAIL, 'tabelas-chave', `não encontradas: ${missingTables.join(', ')}`);
     }
   } catch (err) {
     failures++;

@@ -27,11 +27,17 @@ Cada Engine é um módulo independente (arquitetura hexagonal + vertical slice),
 
 ## 3. Fontes de dados reais (extraídas do PBIP)
 
-| Datasource | Tipo | Uso |
-|---|---|---|
-| `dbVoalle` | ODBC → **PostgreSQL** (ERP Voalle) | protocolos, contratos, patrimônio, agendas, técnicos |
-| `dbMaria` | ODBC → **MariaDB** | `DB_Applicattion.Installation_Teams` (capacidade de equipes) |
-| `gsheets` | Google Sheets API | `QUADRO FUNCIONAL` (RH) |
+| Datasource | Queries | Tipo | Uso |
+|---|---|---|---|
+| `dbVoalle` | 15 | ODBC → **PostgreSQL** (ERP Voalle) | protocolos, contratos, patrimônio, agendas, técnicos |
+| `dbMaria` | 3 | ODBC → **MariaDB** | `DB_Applicattion`: `Backlog_Installation`, `Backlog_Schedules`, `Installation_Teams` |
+| `gsheets` | 3 | Google Sheets API | `QUADRO FUNCIONAL` (RH), capacidade de equipe, apuração de premiação |
+| `web` | 1 | API Open-Meteo | clima |
+| `inline` | 1 | dados embutidos no `.pbix` | feriados |
+| `computed` | 1 | — | timestamp de atualização |
+
+As 18 queries de `dbVoalle`+`dbMaria` são as executáveis hoje pelo
+`npm run validate:queries`; `gsheets` e `web` entram quando seus connectors existirem.
 
 ## 4. Arquitetura de Real-time (Debezium + Kafka + Redis)
 
