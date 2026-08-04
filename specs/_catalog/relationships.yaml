@@ -1,0 +1,227 @@
+# GERADO automaticamente por tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: relationships
+note: "Filtro propaga do lado \"one\" (to_*) para o lado \"many\" (from_*), salvo cross_filter: bothDirections. active: false = relacionamento inativo, só vale dentro de USERELATIONSHIP."
+auto_date_relationships_ignored: 44
+auto_date_note: "Relacionamentos para LocalDateTable_<guid> (hierarquia automática de datas do Power BI). Contados aqui para que uma mudança no PBIP apareça."
+relationships:
+- id: 4050b2e7-b225-46ea-9b83-25a14b262f65
+  from_table: PROTOCOLOS GERAL
+  from_column: DATA AGENDA
+  to_table: CALENDARIO AGENDAMENTO
+  to_column: Data Agendado
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: b206f2c1-d825-01b5-8a3f-cab0950409fb
+  from_table: PROTOCOLOS GERAL
+  from_column: TIPO DE PROTOCOLO
+  to_table: PROTOCOLOS
+  to_column: TIPO DE PROTOCOLO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 48edf142-06ed-7aa7-c248-a5d0ef7d0e2d
+  from_table: PROTOCOLOS GERAL
+  from_column: EQUIPES TEMPORARIAS
+  to_table: BASE DE ORIGEM
+  to_column: EQUIPES TEMPORARIAS
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: cebd5c5c-9d6a-407e-b09a-87cafa35cd0e
+  from_table: PROTOCOLOS GERAL
+  from_column: DATA CRIADO
+  to_table: CALENDARIO CRIADO
+  to_column: DATA CRIADO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 648e50ad-aa12-fbc0-e1e4-d0d28deb459e
+  from_table: "BACKLOG INSTALAÇÃO"
+  from_column: DATA HOJE
+  to_table: CALENDARIO AGENDAMENTO
+  to_column: Data Agendado
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 513cdc10-1728-6b29-74e4-08b8b216534d
+  from_table: "BACKLOG INSTALAÇÃO"
+  from_column: TIPO DE PROTOCOLO
+  to_table: PROTOCOLOS
+  to_column: TIPO DE PROTOCOLO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 958905d1-5eb6-c786-470b-a328c3def0f1
+  from_table: PROTOCOLOS PRODUTIVIDADE
+  from_column: N°PROTOCOLO
+  to_table: Base Categorias Field
+  to_column: protocol
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: bothDirections
+  join_on_date_behavior: null
+- id: c31c5866-7b12-a568-98de-8f1041b829c7
+  from_table: BACKLOG AGENDADO FUTURO
+  from_column: data_carga
+  to_table: CALENDARIO AGENDAMENTO
+  to_column: Data Agendado
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 0fecae27-fc02-dcb5-6aed-b8ab2544e89e
+  from_table: BACKLOG AGENDADO FUTURO
+  from_column: PROTOCOLOS GERAL.TIPO DE PROTOCOLO
+  to_table: PROTOCOLOS
+  to_column: TIPO DE PROTOCOLO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 594551ff-fb28-e3d8-a56f-91b14c90c6e9
+  from_table: PROTOCOLOS PRODUTIVIDADE
+  from_column: SOLICITACAO
+  to_table: PROTOCOLOS GERAL
+  to_column: SOLICITACAO
+  from_cardinality: many
+  to_cardinality: one
+  active: false
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 6865a7b2-595a-e75b-2a30-96cadf64f77e
+  from_table: PROTOCOLOS PRODUTIVIDADE
+  from_column: INSTALADOR_PAD
+  to_table: "#APURAÇÃO PREMIAÇÃO"
+  to_column: INSTALADOR_PAD
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 7407da3f-7d8f-b3b4-9184-9f2d28eca7b7
+  from_table: CAPACIDADE EQUIPE
+  from_column: DATA
+  to_table: calendar
+  to_column: Data
+  from_cardinality: many
+  to_cardinality: many
+  active: true
+  cross_filter: bothDirections
+  join_on_date_behavior: null
+- id: b1a0883e-3a80-2481-410c-42ce6fa638c0
+  from_table: PROTOCOLOS GERAL
+  from_column: "DATA INSTALAÇÃO"
+  to_table: CALENDARIO INSTALADO
+  to_column: DATA INSTALADO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: bfef2319-2178-a1f3-6f3b-ffdaa10ed84b
+  from_table: CONSOLIDADO CLIENTES
+  from_column: created
+  to_table: CALENDARIO INSTALADO
+  to_column: DATA INSTALADO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: b1199a98-2dbb-2bd7-b36c-b250fdea53b7
+  from_table: "REINCIDÊNCIA"
+  from_column: Data
+  to_table: CALENDARIO INSTALADO
+  to_column: DATA INSTALADO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: a66ce5f7-f5cb-eaae-075f-e2198bbb3d7b
+  from_table: PROTOCOLOS PRODUTIVIDADE
+  from_column: "DATA INSTALAÇÃO"
+  to_table: CALENDARIO INSTALADO
+  to_column: DATA INSTALADO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: c4a40020-9da6-8623-3c3a-2b4df8135ab6
+  from_table: CONTRATOS
+  from_column: CLIENTE
+  to_table: PROTOCOLOS PRODUTIVIDADE
+  to_column: CLIENTE
+  from_cardinality: many
+  to_cardinality: many
+  active: true
+  cross_filter: bothDirections
+  join_on_date_behavior: null
+- id: 24851bb0-0802-95ca-2b48-b8ab0addea51
+  from_table: "INSTALAÇÕES REINCIDENTES"
+  from_column: protocolo_instalacao
+  to_table: PROTOCOLOS GERAL
+  to_column: N°PROTOCOLO
+  from_cardinality: many
+  to_cardinality: one
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: ce35f75f-ea2d-5fec-c1b1-827a7cce6ef5
+  from_table: Clima/ Tempo
+  from_column: Data
+  to_table: calendar
+  to_column: Data
+  from_cardinality: many
+  to_cardinality: many
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 708032e7-0437-ae45-c81b-6a21aa0eceec
+  from_table: Status Protocolo Dia
+  from_column: Dia
+  to_table: calendar
+  to_column: Data
+  from_cardinality: many
+  to_cardinality: many
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 58a8ebae-30c8-c778-7c90-fa744bd9988f
+  from_table: Status Protocolo Dia
+  from_column: protocolo
+  to_table: PROTOCOLOS GERAL
+  to_column: N°PROTOCOLO
+  from_cardinality: many
+  to_cardinality: many
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null
+- id: 143dde0e-d4f6-6614-00ca-b63a04be82c5
+  from_table: FIELD AGENDA
+  from_column: Protocolo
+  to_table: Status Protocolo Dia
+  to_column: protocolo
+  from_cardinality: many
+  to_cardinality: many
+  active: true
+  cross_filter: oneDirection
+  join_on_date_behavior: null

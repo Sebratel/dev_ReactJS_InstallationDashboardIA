@@ -7,27 +7,16 @@ measures:
 - name: "Instalações Apuradas"
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    SUM('#APURAÇÃO PREMIAÇÃO'[QTD.])
-
-    ```
+  dax: "SUM('#APURAÇÃO PREMIAÇÃO'[QTD.])"
 - name: "Diferença"
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    [Instalações Apuradas] - [Instalações Produtividade]
-
-    ```
+  dax: "[Instalações Apuradas] - [Instalações Produtividade]"
 - name: "% Diferença"
   format: "0.00%;-0.00%;0.00%"
   display_folder: null
   dax: |-
-    ```
     DIVIDE(
         [Instalações Apuradas] - [Instalações Produtividade],
         [Instalações Produtividade]
     )
-
-    ```

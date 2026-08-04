@@ -79,35 +79,23 @@ measures:
 - name: Total Protocolos
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO])
-
-    ```
+  dax: "DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO])"
 - name: Total Dias
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[DATA INSTALAÇÃO])
-
-    ```
+  dax: "DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[DATA INSTALAÇÃO])"
 - name: "Média Protocolos por Dia"
   format: null
   display_folder: null
   dax: |-
-    ```
     DIVIDE(
         [Total Protocolos],
         [Total Dias]
     )
-
-    ```
 - name: "Média Geral"
   format: null
   display_folder: null
   dax: |-
-    ```
     AVERAGEX(
         VALUES('PROTOCOLOS PRODUTIVIDADE'[INSTALADOR]),
         DIVIDE(
@@ -115,13 +103,7 @@ measures:
             CALCULATE(DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[DATA INSTALAÇÃO]))
         )
     )
-
-    ```
 - name: "Instalações Produtividade"
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO])
-
-    ```
+  dax: "DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO])"

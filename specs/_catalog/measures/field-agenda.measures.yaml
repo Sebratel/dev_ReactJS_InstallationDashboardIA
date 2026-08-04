@@ -23,7 +23,6 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR RankSelecionado = SELECTEDVALUE('FIELD AGENDA'[RankDataProtocolo])
     RETURN
     CALCULATE(
@@ -33,8 +32,6 @@ measures:
             'FIELD AGENDA'[RankAtualProtocolo] = RankSelecionado
         )
     )
-
-    ```
 - name: Qtd Protocolos Distintos
   format: "0"
   display_folder: null
@@ -43,19 +40,15 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     AVERAGEX(
         VALUES( 'FIELD AGENDA'[Data] 
         ),
         CALCULATE( DISTINCTCOUNT('FIELD AGENDA'[Protocolo]) )
     )
-
-    ```
 - name: "Protocolos Restantes no Mês"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR DataHoje = TODAY()
     VAR FimMes = EOMONTH(DataHoje, 0)
     RETURN
@@ -64,24 +57,18 @@ measures:
         'FIELD AGENDA'[Data] >= DataHoje &&
         'FIELD AGENDA'[Data] <= FimMes
     )
-
-    ```
 - name: "# PROTOCOLOS ATÉ HOJE"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
         DISTINCTCOUNT('FIELD AGENDA'[Protocolo]),
         'FIELD AGENDA'[Data] <= TODAY()
     )
-
-    ```
 - name: "# PROJEÇÃO AGENDADA FUTUROS"
   format: null
   display_folder: null
   dax: |-
-    ```
     [# MEDIA AGENDADO] *
     CALCULATE(
         SUM('CALENDARIO INSTALADO'[PESO]),
@@ -91,13 +78,10 @@ measures:
             ENDOFMONTH('CALENDARIO INSTALADO'[DATA INSTALADO])
         )
     )
-
-    ```
 - name: "# PROJEÇÃO AGENDADA RESTANTE"
   format: null
   display_folder: null
   dax: |-
-    ```
     VAR DataHoje = TODAY()
     VAR FimMes = EOMONTH(DataHoje, 0)
     VAR DiasRestantes =
@@ -111,22 +95,14 @@ measures:
         )
     RETURN
     [# MEDIA AGENDADO] * DiasRestantes
-
-
-    ```
 - name: "# PROJEÇÃO AGENDADA TOTAL"
   format: null
   display_folder: null
-  dax: |-
-    ```
-    [# PROTOCOLOS ATÉ HOJE] + [# PROJEÇÃO AGENDADA RESTANTE]
-
-    ```
+  dax: "[# PROTOCOLOS ATÉ HOJE] + [# PROJEÇÃO AGENDADA RESTANTE]"
 - name: "Média Mensal Protocolos2"
   format: null
   display_folder: null
   dax: |-
-    ```
     VAR Hoje = TODAY()
     VAR AnoAtual = YEAR(Hoje)
     VAR MesAtual = MONTH(Hoje)
@@ -142,8 +118,6 @@ measures:
             DISTINCTCOUNT('FIELD AGENDA'[Protocolo])
         )
     )
-
-    ```
 - name: "Protocolos Manhã"
   format: "0"
   display_folder: null
@@ -164,36 +138,25 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
         DISTINCTCOUNT(calendar[Protocolo])
     )
-
-    ```
 - name: QtdProtocolo
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    COUNTROWS('PROTOCOLOS GERAL')
-
-    ```
+  dax: "COUNTROWS('PROTOCOLOS GERAL')"
 - name: QtdProtocoloFieldAgenda
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
         [QtdProtocolo],
         TREATAS(VALUES('Field Agenda'[Protocolo]), 'PROTOCOLOS GERAL'[N°PROTOCOLO])
     )
-
-    ```
 - name: QtdProtocolos_Interseccao
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR ProtCalendario =
         DISTINCT(
             SELECTCOLUMNS(
@@ -212,13 +175,10 @@ measures:
         INTERSECT( ProtCalendario, ProtField )
     RETURN
     COUNTROWS( ProtComum )
-
-    ```
 - name: "##Qtd Produtivo"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR Dia = SELECTEDVALUE ( calendar[Data] )
     RETURN
     CALCULATE (
@@ -235,14 +195,10 @@ measures:
 
         TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = Dia
     )
-
-
-    ```
 - name: "##Qtd Improdutivo"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR Dia = SELECTEDVALUE ( calendar[Data] )
     RETURN
     CALCULATE (
@@ -263,15 +219,10 @@ measures:
             'PROTOCOLOS GERAL'[N°PROTOCOLO]
         )
     )
-
-
-
-    ```
 - name: "##Qtd Sem Ação"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR Dia = SELECTEDVALUE ( calendar[Data] )
     VAR Produtivos =
         CALCULATETABLE (
@@ -297,15 +248,10 @@ measures:
             UNION ( Produtivos, Improdutivos )
         )
     )
-
-
-
-    ```
 - name: "##Qtd Agendado"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR Dia = SELECTEDVALUE ( calendar[Data] )
     RETURN
     CALCULATE (
@@ -319,5 +265,3 @@ measures:
 
         TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = Dia
     )
-
-    ```

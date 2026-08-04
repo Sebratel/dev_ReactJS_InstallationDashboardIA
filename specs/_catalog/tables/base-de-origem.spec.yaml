@@ -10,4 +10,5 @@ columns:
   format: null
   source_column: "PROTOCOLOS GERAL[EQUIPES TEMPORARIAS]"
   calculated: false
+  dax: null
 measure_count: 0

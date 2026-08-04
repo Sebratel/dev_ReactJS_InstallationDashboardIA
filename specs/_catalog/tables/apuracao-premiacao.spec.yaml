@@ -10,19 +10,23 @@ columns:
   format: null
   source_column: INSTALADOR
   calculated: false
+  dax: null
 - name: QTD.
   type: int64
   format: "0"
   source_column: QTD.
   calculated: false
+  dax: null
 - name: FAIXAS
   type: string
   format: null
   source_column: FAIXAS
   calculated: false
+  dax: null
 - name: INSTALADOR_PAD
   type: null
   format: null
   source_column: null
   calculated: true
+  dax: "LOWER([INSTALADOR])"
 measure_count: 3

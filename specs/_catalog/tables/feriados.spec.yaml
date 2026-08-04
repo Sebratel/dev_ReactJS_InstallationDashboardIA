@@ -10,9 +10,11 @@ columns:
   format: Short Date
   source_column: Data
   calculated: false
+  dax: null
 - name: Feriado
   type: string
   format: null
   source_column: Feriado
   calculated: false
+  dax: null
 measure_count: 0

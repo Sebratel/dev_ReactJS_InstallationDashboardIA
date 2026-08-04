@@ -1,7 +1,13 @@
 // Parser leve para arquivos TMDL do Power BI (indentação por TAB).
-// Cobre o que precisamos: tabelas (colunas, medidas, partition/source) e expressions.
+// Cobre o que precisamos: tabelas (colunas, medidas, partition/source),
+// expressions e relacionamentos.
 
 const PROP_RE = /^(lineageTag|queryGroup|annotation|isHidden|description|displayFolder|formatString|summarizeBy|sourceColumn|dataType|dataCategory|changedProperty|formatStringDefinition|kpi|sortByColumn|isKey|relatedColumnDetails|variation)\b/;
+
+// TMDL delimita expressão multi-linha com ``` — é sintaxe do *arquivo*, não do
+// DAX. Se vazar para a spec, a primeira linha da medida passa a ser "```" e
+// qualquer parser de DAX quebra ali.
+const FENCE = '```';
 
 function depthOf(line) {
   const m = line.match(/^\t*/);
@@ -47,58 +53,95 @@ function collectDeeper(lines, startIdx, baseDepth) {
   return { body, nextIdx: i };
 }
 
+// Corpo indentado sem cerca: para na primeira propriedade (lineageTag, etc).
+function bodyUntilProps(bodyLines) {
+  const kept = [];
+  let ended = false;
+  for (const raw of bodyLines) {
+    if (raw.trim() === '') {
+      if (!ended && kept.length) kept.push('');
+      continue;
+    }
+    if (PROP_RE.test(raw.trim())) {
+      ended = true;
+      continue;
+    }
+    if (!ended) kept.push(raw);
+  }
+  return kept;
+}
+
+// Resolve a expressão de uma coluna/medida a partir do que veio depois do `=`
+// no header e das linhas indentadas abaixo dele. Trata as três formas do TMDL:
+//   1. `= EXPR`             — tudo na mesma linha
+//   2. `= ```(cerca)`       — corpo multi-linha até a linha que fecha a cerca
+//   3. `=` seguido de corpo — multi-linha sem cerca
+// A cerca NUNCA entra no resultado. Antes disso a spec saía com "```" como
+// primeira e última linha do DAX de 33 medidas e 11 colunas calculadas.
+function expressionFrom(inlineExpr, bodyLines) {
+  const inline = inlineExpr.trim();
+  if (inline !== FENCE) {
+    const dax = dedent(bodyUntilProps(bodyLines));
+    if (!inline) return dax;
+    return dax ? `${inline}\n${dax}`.trim() : inline;
+  }
+  const inner = [];
+  let closed = false;
+  for (const raw of bodyLines) {
+    if (raw.trim() === FENCE) {
+      closed = true;
+      break;
+    }
+    inner.push(raw);
+  }
+  // Cerca aberta e nunca fechada é arquivo malformado. Cair para o filtro de
+  // propriedades é melhor que devolver o resto do arquivo como se fosse DAX.
+  return dedent(closed ? inner : bodyUntilProps(inner));
+}
+
 function parseColumn(headerContent, bodyLines) {
-  // headerContent: "column NAME" ou "column 'NAME X' = expr"
+  // "column NAME" | "column 'NAME X' = expr" | "column NAME = ```(multi-linha)"
   const rest = headerContent.replace(/^column\s+/, '');
   let name;
-  let expression = null;
+  let inlineExpr = null;
   const eq = rest.indexOf(' = ');
   if (eq !== -1) {
     name = stripQuotes(rest.slice(0, eq));
-    expression = rest.slice(eq + 3).trim();
+    inlineExpr = rest.slice(eq + 3).trim();
   } else {
     name = stripQuotes(rest);
   }
   const col = { name };
-  if (expression) col.calculated = true;
   for (const raw of bodyLines) {
     const t = raw.trim();
     const kv = t.match(/^(dataType|formatString|summarizeBy|sourceColumn|isHidden|dataCategory|sortByColumn):\s*(.+)$/);
     if (kv) col[kv[1]] = kv[2].trim();
   }
-  if (expression) col.expression = expression;
+  if (inlineExpr !== null) {
+    col.calculated = true;
+    // Coluna calculada multi-linha (PESO, DentroDoIntervalo, ...) tinha o corpo
+    // descartado: a spec gravava só `calculated: true` e o DAX sumia. Seis
+    // medidas somam 'CALENDARIO INSTALADO'[PESO] — sem esta expressão elas não
+    // podem ser reimplementadas.
+    col.expression = expressionFrom(inlineExpr, bodyLines);
+  }
   return col;
 }
 
 function parseMeasure(headerContent, bodyLines) {
-  // "measure 'NAME' = expr" | "measure NAME =" (multi) | "measure 'NAME' ="
+  // "measure 'NAME' = expr" | "measure NAME =" (multi) | "measure 'NAME' = ```"
   const rest = headerContent.replace(/^measure\s+/, '');
   const eq = rest.indexOf('=');
   const name = stripQuotes(rest.slice(0, eq).trim());
   const inlineExpr = rest.slice(eq + 1).trim();
 
-  const daxLines = [];
   const props = {};
-  let daxEnded = false;
   for (const raw of bodyLines) {
-    const t = raw.trim();
-    if (t === '') {
-      if (!daxEnded && daxLines.length) daxLines.push('');
-      continue;
-    }
-    if (PROP_RE.test(t)) {
-      daxEnded = true;
-      const kv = t.match(/^(formatString|displayFolder):\s*(.+)$/);
-      if (kv) props[kv[1]] = kv[2].trim();
-      continue;
-    }
-    if (!daxEnded) daxLines.push(raw);
+    const kv = raw.trim().match(/^(formatString|displayFolder):\s*(.+)$/);
+    if (kv) props[kv[1]] = kv[2].trim();
   }
-  let expression = inlineExpr;
-  if (!expression) expression = dedent(daxLines);
-  else if (daxLines.length) expression = (inlineExpr + '\n' + dedent(daxLines)).trim();
 
-  const measure = { name, expression: expression.trim() };
+  const measure = { name, expression: expressionFrom(inlineExpr, bodyLines).trim() };
   if (props.formatString) measure.formatString = props.formatString;
   if (props.displayFolder) measure.displayFolder = props.displayFolder;
   return measure;
@@ -125,7 +168,18 @@ function parsePartition(headerContent, bodyLines) {
         if (depthOf(bodyLines[j]) > srcDepth) collected.push(bodyLines[j]);
         else break;
       }
-      partition.source = (inline ? inline + '\n' : '') + dedent(collected);
+      // `source = ```` também aparece cercado (PROTOCOLOS TELEFONIA). O M já é
+      // recortado por profundidade acima, então aqui basta cortar na cerca.
+      if (inline.trim() === FENCE) {
+        const inner = [];
+        for (const raw of collected) {
+          if (raw.trim() === FENCE) break;
+          inner.push(raw);
+        }
+        partition.source = dedent(inner);
+      } else {
+        partition.source = (inline ? inline + '\n' : '') + dedent(collected);
+      }
       break;
     }
   }
@@ -170,6 +224,77 @@ export function parseTmdlTable(text) {
     }
   }
   return table;
+}
+
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
 }
 
 export function parseTmdlExpressions(text) {

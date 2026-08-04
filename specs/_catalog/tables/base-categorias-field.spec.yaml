@@ -10,34 +10,41 @@ columns:
   format: "0"
   source_column: protocol
   calculated: false
+  dax: null
 - name: beginning_service_date
   type: dateTime
   format: General Date
   source_column: beginning_service_date
   calculated: false
+  dax: null
 - name: categoria1
   type: string
   format: null
   source_column: categoria1
   calculated: false
+  dax: null
 - name: categoria2
   type: string
   format: null
   source_column: categoria2
   calculated: false
+  dax: null
 - name: categoria3
   type: string
   format: null
   source_column: categoria3
   calculated: false
+  dax: null
 - name: categoria4
   type: string
   format: null
   source_column: categoria4
   calculated: false
+  dax: null
 - name: categoria5
   type: string
   format: null
   source_column: categoria5
   calculated: false
+  dax: null
 measure_count: 0

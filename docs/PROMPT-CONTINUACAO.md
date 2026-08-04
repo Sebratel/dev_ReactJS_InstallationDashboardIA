@@ -41,7 +41,8 @@ C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\
   INST - Relatório Instalação Gerencial.Report\        (páginas e visuais)
 ```
 
-Escala: **25 tabelas, 78 medidas DAX, 14 páginas, 306 visuais, 24 queries**.
+Escala: **25 tabelas, 78 medidas DAX, 43 colunas calculadas (também DAX),
+22 relacionamentos, 14 páginas, 306 visuais, 24 queries**.
 
 Fontes reais das 24 queries: **15** `dbVoalle` (PostgreSQL do ERP Voalle), **3** `dbMaria`
 (MariaDB `DB_Applicattion`: `Backlog_Installation`, `Backlog_Schedules`,
@@ -54,12 +55,13 @@ de premiação), **1** `web` (Open-Meteo), **1** `inline` (feriados embutidos no
 > troque o comportamento atual sem avisar.
 
 Achados sobre o comportamento atual que **aguardam decisão do Erick** ficam em
-[`docs/ACHADOS.md`](./ACHADOS.md) — leia antes da Fase 2. Já tem um que muda uma das
-78 medidas (`# MEDIA CRIADOS`: a tabela FERIADOS para em 2025).
+[`docs/ACHADOS.md`](./ACHADOS.md) — **leia antes da Fase 2b.** São 9, e dois deles
+mudam medidas: FERIADOS parando em 2025 (11 medidas afetadas) e a discordância
+sobre quanto vale um sábado.
 
 ## Estado atual (já pronto e testado)
 
-**116 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**167 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -67,8 +69,9 @@ Nenhum teste precisa de credencial ou banco.
 | 0 | Extrator PBIP → specs | ✅ |
 | 1 | Query Engine + Registry + cache | ✅ |
 | — | Infra de conexão + doctor + guard read-only | ✅ |
-| — | Harness de validação contra dados reais (`validate:queries`) | ✅ código, ⏳ aguarda `.env` |
-| 2 | Dataset/Measure Engine (78 medidas DAX) | ⏳ bloqueada pela validação |
+| — | Validação contra dados reais — 18/18 queries capturadas em `specs/golden/` | ✅ |
+| 2a | Modelo semântico completo + verificação de referências do DAX | ✅ |
+| 2b | Measure Engine — avaliador de DAX e as 78 medidas | ⏳ **próximo** |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -81,6 +84,16 @@ Já implementado em `packages/query-engine/`:
   `invalidateByTable()`
 - `Connectors` — porta com driver injetável; `SqlConnector`, `FakeConnector`,
   e os pools reais em `connectors-sql.ts`
+
+Já implementado em `packages/semantic-model/` (Fase 2a):
+- `SemanticModel` — carrega tabelas, colunas (com o DAX das calculadas), medidas e
+  relacionamentos. Resolve nome **sem distinguir caixa**: o modelo real escreve a
+  mesma tabela como `'FIELD AGENDA'` e `'Field Agenda'`, e a mesma coluna como
+  `[Protocolo]` e `[protocolo]`
+- `extractRefs` — scanner que tira de um DAX as referências `'Tabela'[Coluna]`,
+  `[Medida]` e tabela solta, pulando string e comentário. **Não é o parser** — é
+  o que responde "isto referencia coisa que existe?"
+- `checkModelRefs` — resolve as referências contra o modelo. `npm run validate:model`
 
 Em `tools/validate/` (`npm run validate:queries`):
 - executa as **18 queries SQL** (dbVoalle + dbMaria) nas fontes reais
@@ -111,16 +124,18 @@ Em `tools/validate/` (`npm run validate:queries`):
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (116 testes, sem credencial)
+npm test                              # suíte completa (167 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
+npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # configuração e conectividade (não imprime credencial)
 npm run validate:queries              # executa as queries reais e grava os goldens
 npm run validate:queries -- --check    # falha se o schema de alguma query mudou
 ```
 
-Os três respondem perguntas diferentes: `npm test` = o código respeita as specs;
-`doctor` = as fontes estão alcançáveis; `validate:queries` = as queries rodam e
-devolvem o quê. Só o primeiro dispensa `.env`.
+Os quatro respondem perguntas diferentes: `npm test` = o código respeita as specs;
+`validate:model` = o DAX aponta para tabelas/colunas que existem; `doctor` = as
+fontes estão alcançáveis; `validate:queries` = as queries rodam e devolvem o quê.
+Os dois primeiros dispensam `.env`.
 
 Node 24 roda TypeScript nativamente — **não há build step**.
 
@@ -139,28 +154,72 @@ Existe também uma cópia antiga do trabalho em
 `.claude/worktrees/analytics-platform-enterprise-394804` (repositório errado,
 `dev_Sebratel_Images`). **Ignore essa pasta** — o diretório acima é o canônico.
 
-## Próximo passo recomendado
+## Pendência com o Erick (não bloqueia começar)
 
-**A validação contra dados reais é o bloqueio da Fase 2.** O código está pronto e
-testado; falta só o `.env`. Sequência:
+Os 18 `rowCount` estão em `specs/golden/` e **ainda não foram conferidos contra os
+números do Power BI**. O Erick pediu para seguir sem isso ("prossiga sem isso,
+depois validaremos"). Continue — mas se um número divergir depois, a medida
+construída sobre aquela query nasce errada, então **não trate paridade como
+provada** até a conferência acontecer.
 
-1. Erick preenche o `.env` a partir do `.env.example` (você nunca vê os valores).
-2. `npm run doctor` — confirma conectividade e que a sessão Postgres está
-   somente-leitura. **Se o usuário do Postgres tiver permissão de escrita, avise:**
-   a camada 1 das 3 estaria faltando (as outras duas continuam valendo).
-3. `npm run validate:queries` — grava os 18 goldens.
-4. **Confira os `rowCount` com o Erick contra os números do Power BI.** Este é o
-   passo humano que nenhum teste substitui: se um `rowCount` divergir, a query foi
-   extraída errada e a medida construída sobre ela nasceria errada.
-5. Batendo, commite `specs/golden/`. Aí a Fase 2 tem linha de base.
+Também aguardam decisão dele os achados 1, 2, 3, 6 e 7 de
+[`docs/ACHADOS.md`](./ACHADOS.md). Os dois que mudam a Fase 2b:
 
-Se `dbMaria` ou `gsheets` não vierem no `.env`, siga com o que houver — o harness
-pula o que não está configurado e reporta o que ficou de fora. As 15 queries do
-`dbVoalle` já valem a validação.
+- **#1 — FERIADOS para em 2025 e afeta 11 das 78 medidas** (não 1, como estava
+  registrado antes: a coluna calculada `PESO` consulta FERIADOS e 8 medidas somam
+  `PESO`). Default: replicar fiel, inclusive o erro.
+- **#7 — `PESO` e `# MEDIA CRIADOS` discordam sobre quanto vale um sábado** (1 vs
+  1,5). Default: replicar as duas como estão e marcar a divergência.
 
-Depois disso, **Fase 2**: reimplementar as 78 medidas DAX de
-`specs/_catalog/measures/*.measures.yaml` como funções testáveis, comparando contra
-os goldens.
+## Próximo passo: Fase 2b — o avaliador de DAX
+
+**Decisão de arquitetura já tomada na 2a, e o motivo importa.** As 78 medidas
+**não** vão ser 78 funções TypeScript escritas à mão. O DAX da spec é a
+implementação: um avaliador de um subconjunto de DAX lê `measures/*.yaml` e
+calcula. Duas razões:
+
+1. `npm run extract` sobrescreve as specs. Função escrita à mão divergiria em
+   silêncio quando alguém mexesse no DAX do Power BI; um avaliador acompanha.
+2. Semântica de contexto de filtro (`CALCULATE`, `ALL`, `FILTER`, `TREATAS`)
+   reimplementada 78 vezes ad hoc dá mais código e menos correção do que uma vez
+   só, testada.
+
+**Princípio inegociável do avaliador: falhar alto.** Função DAX não suportada,
+construção não reconhecida, referência que não resolve → **erro**, nunca um
+palpite. Um avaliador parcial que devolve número errado em silêncio é pior que um
+que se recusa a rodar, porque o erro chega ao dashboard da operação como se fosse
+um dado.
+
+Inventário real do subconjunto a cobrir (por frequência nas 78 medidas):
+
+```
+CALCULATE:51  DISTINCTCOUNT:41  TODAY:23  DIVIDE:14  FILTER:12  TRUNC:11
+SUM:10  IF:10  SELECTEDVALUE:10  VALUES:10  YEAR:10  BLANK:9  COUNTROWS:9
+COUNT:8  ISBLANK:7  DATESBETWEEN:6  MONTH:6  WEEKDAY:6  DATE:5  ROUND:4
+TREATAS:4  SELECTCOLUMNS:4  CALCULATETABLE:4  ALL:4  QUOTIENT:4  MOD:4
+AVERAGEX:3  EOMONTH:3  DATESMTD:3  NOT:3  SWITCH:3  ENDOFMONTH:2  DISTINCT:2
+MIN:2  DATEDIFF:2  INTERSECT:1  EXCEPT:1  UNION:1  ISINSCOPE:1
+```
+
+Sequência sugerida (uma sessão de CLI por item):
+
+1. **Tokenizer + parser → AST**, em `packages/measure-engine/`. Prove com um teste
+   que **todas as 78 medidas e 43 colunas calculadas parseiam** — é a única
+   métrica honesta de cobertura do front-end. `extractRefs` em
+   `packages/semantic-model/src/refs.ts` já resolve as partes chatas do léxico
+   (aspas, colchetes, comentário, `.[Parte]` de hierarquia) e serve de referência.
+2. **Avaliador com contexto de filtro**, sobre linhas em memória vindas do Query
+   Engine. Comece pelas medidas de agregação simples (`COUNTROWS`,
+   `DISTINCTCOUNT` puro), depois `CALCULATE` + filtro de coluna, depois
+   `FILTER`/`ALL`, e só então time intelligence (`DATESMTD`, `DATESBETWEEN`).
+3. **Grafo de dependências entre medidas** com detecção de ciclo — `# BACKLOG`
+   depende de `# TOTAL BACKLOG AGENDADO` e de `# MEDIA INSTALADO BACKLOG`, e
+   `# PROJEÇÃO AGENDADA TOTAL` depende de outras duas.
+4. **Paridade**: comparar cada medida contra o Power BI. Aqui a conferência de
+   `rowCount` pendente volta a importar.
+
+Não comece a 2b pelas 3 medidas mortas do achado 6 — elas não têm resultado.
+O alvo é **75**.
 
 `gsheets` (3 queries) e `web` (1) só entram no `validate:queries` quando existirem
 connectors para eles — hoje o harness só sabe executar SQL.

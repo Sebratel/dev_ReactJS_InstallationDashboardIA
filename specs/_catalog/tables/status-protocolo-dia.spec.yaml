@@ -10,34 +10,105 @@ columns:
   format: Long Date
   source_column: "[Dia]"
   calculated: false
+  dax: null
 - name: Status
   type: null
   format: null
   source_column: "[Status]"
   calculated: false
+  dax: null
 - name: protocolo
   type: null
   format: null
   source_column: "[protocolo]"
   calculated: false
+  dax: null
 - name: Base Dia
   type: null
   format: null
   source_column: null
   calculated: true
+  dax: |-
+
+    VAR ProtocoloAtual =
+        'Status Protocolo Dia'[protocolo]
+
+    VAR DiaAtual =
+        'Status Protocolo Dia'[Dia]
+
+    RETURN
+    CALCULATE (
+        MAX ( 'FIELD AGENDA'[Base] ),
+        FILTER (
+            'FIELD AGENDA',
+            'FIELD AGENDA'[protocolo] = ProtocoloAtual
+                && TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = DiaAtual
+        )
+    )
 - name: Turno Dia
   type: null
   format: null
   source_column: null
   calculated: true
+  dax: |-
+
+    VAR ProtocoloAtual =
+        'Status Protocolo Dia'[protocolo]
+
+    VAR DiaAtual =
+        'Status Protocolo Dia'[Dia]
+
+    RETURN
+    CALCULATE (
+        MAX ( 'FIELD AGENDA'[Turno] ),
+        FILTER (
+            'FIELD AGENDA',
+            'FIELD AGENDA'[protocolo] = ProtocoloAtual
+                && TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = DiaAtual
+        )
+    )
 - name: Rank Protocolo Dia
   type: null
   format: "0"
   source_column: null
   calculated: true
+  dax: |-
+
+    VAR ProtocoloAtual =
+        'Status Protocolo Dia'[protocolo]
+
+    VAR DiaAtual =
+        'Status Protocolo Dia'[Dia]
+
+    RETURN
+    CALCULATE (
+        MAX ( 'FIELD AGENDA'[RankDataProtocolo] ),
+        FILTER (
+            'FIELD AGENDA',
+            'FIELD AGENDA'[protocolo] = ProtocoloAtual
+                && TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = DiaAtual
+        )
+    )
 - name: Tipo Protocolo Dia
   type: null
   format: null
   source_column: null
   calculated: true
+  dax: |-
+
+    VAR ProtocoloAtual =
+        'Status Protocolo Dia'[protocolo]
+
+    VAR DiaAtual =
+        'Status Protocolo Dia'[Dia]
+
+    RETURN
+    CALCULATE (
+        MAX ( 'FIELD AGENDA'[Tipo de Protocolo] ),
+        FILTER (
+            'FIELD AGENDA',
+            'FIELD AGENDA'[protocolo] = ProtocoloAtual
+                && TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = DiaAtual
+        )
+    )
 measure_count: 4

@@ -10,9 +10,11 @@ columns:
   format: "0"
   source_column: authentication_totalizer
   calculated: false
+  dax: null
 - name: created
   type: dateTime
   format: Long Date
   source_column: created
   calculated: false
+  dax: null
 measure_count: 0

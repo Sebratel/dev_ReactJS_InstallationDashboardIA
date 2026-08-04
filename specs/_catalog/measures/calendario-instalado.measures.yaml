@@ -12,7 +12,6 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]) + 
     (
         [# MEDIA INSTALADO MENSAL] * 
@@ -25,5 +24,3 @@ measures:
             )
         )
     )
-
-    ```

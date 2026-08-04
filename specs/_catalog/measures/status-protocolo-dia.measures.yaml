@@ -7,41 +7,28 @@ measures:
 - name: Qtd Protocolos Base
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    DISTINCTCOUNT ( 'Status Protocolo Dia'[protocolo] )
-
-    ```
+  dax: "DISTINCTCOUNT ( 'Status Protocolo Dia'[protocolo] )"
 - name: Produtivo
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE (
         [Qtd Protocolos Base],
         'Status Protocolo Dia'[Status] = "Produtivo"
     )
-
-    ```
 - name: Improdutivo
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE (
         [Qtd Protocolos Base],
         'Status Protocolo Dia'[Status] = "Improdutivo"
     )
-
-    ```
 - name: "Sem Ação"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE (
         [Qtd Protocolos Base],
         'Status Protocolo Dia'[Status] = "Sem Ação"
     )
-
-    ```

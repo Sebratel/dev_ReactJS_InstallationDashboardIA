@@ -7,11 +7,7 @@ measures:
 - name: Porcentagem
   format: "0.00%;-0.00%;0.00%"
   display_folder: null
-  dax: |-
-    ```
-    DIVIDE([CONTAGEM REINCIDENCIA], [CONTAGEM INSTALADO FIBRA])
-
-    ```
+  dax: "DIVIDE([CONTAGEM REINCIDENCIA], [CONTAGEM INSTALADO FIBRA])"
 - name: CONTAGEM REINCIDENCIA
   format: "0"
   display_folder: null

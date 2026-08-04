@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseTmdlTable, parseTmdlExpressions } from './tmdl.mjs';
+import { parseTmdlTable, parseTmdlExpressions, parseTmdlRelationships } from './tmdl.mjs';
 import { detectSource, extractSourceTables } from './mquery.mjs';
 import { toYaml } from './yaml.mjs';
 
@@ -65,6 +65,12 @@ function readExpressions(smDir) {
   return parseTmdlExpressions(fs.readFileSync(p, 'utf8'));
 }
 
+function readRelationships(smDir) {
+  const p = path.join(smDir, 'definition', 'relationships.tmdl');
+  if (!fs.existsSync(p)) return [];
+  return parseTmdlRelationships(fs.readFileSync(p, 'utf8'));
+}
+
 function readPages(reportDir) {
   const pagesDir = path.join(reportDir, 'definition', 'pages');
   if (!fs.existsSync(pagesDir)) return [];
@@ -115,6 +121,30 @@ function build(pbip) {
   const tables = readTables(pbip.semanticModel);
   const expressions = readExpressions(pbip.semanticModel);
   const pages = readPages(pbip.report);
+
+  // ---- Relacionamentos ----
+  // O Power BI cria uma LocalDateTable_<guid> por coluna de data (hierarquia
+  // automática de datas) e um relacionamento para cada uma. São ~2/3 do
+  // arquivo e não têm significado no nosso modelo. Ficam contados, não
+  // silenciosamente descartados: se o número mudar, algo mudou no PBIP.
+  const allRelationships = readRelationships(pbip.semanticModel);
+  const isAutoDate = (r) =>
+    IGNORE_TABLE.test(r.from?.table ?? '') || IGNORE_TABLE.test(r.to?.table ?? '');
+  const relationships = allRelationships
+    .filter((r) => r.from && r.to && !isAutoDate(r))
+    .map((r) => ({
+      id: r.id,
+      from_table: r.from.table,
+      from_column: r.from.column,
+      to_table: r.to.table,
+      to_column: r.to.column,
+      from_cardinality: r.fromCardinality,
+      to_cardinality: r.toCardinality,
+      active: r.isActive,
+      cross_filter: r.crossFilteringBehavior,
+      join_on_date_behavior: r.joinOnDateBehavior,
+    }));
+  const autoDateRelationships = allRelationships.filter(isAutoDate).length;
 
   // ---- Queries (de expressions + partitions de tabelas) ----
   const queries = [];
@@ -180,6 +210,10 @@ function build(pbip) {
         format: c.formatString || null,
         source_column: c.sourceColumn || null,
         calculated: c.calculated || false,
+        // Coluna calculada é DAX igual a medida — e várias medidas dependem
+        // dela (PESO carrega a regra de dia útil). Sem a expressão aqui, a
+        // spec afirma que a coluna existe mas não diz como é calculada.
+        dax: c.expression || null,
       })),
       measure_count: t.measures.length,
     });
@@ -229,9 +263,16 @@ function build(pbip) {
     tableSpecs,
     measureFiles,
     dashboards,
+    relationships,
+    autoDateRelationships,
     counts: {
       tables: tableSpecs.length,
       measures: measureFiles.reduce((a, m) => a + m.measures.length, 0),
+      calculated_columns: tableSpecs.reduce(
+        (a, t) => a + t.columns.filter((c) => c.calculated).length,
+        0,
+      ),
+      relationships: relationships.length,
       queries: queries.length,
       expressions: expressions.length,
       dashboards: dashboards.length,
@@ -254,6 +295,18 @@ function writeSpecs(model, outDir) {
     note: 'Sem credenciais. Conexão real fica em variáveis de ambiente do Core.',
     datasources: model.datasources,
   });
+  writeYaml(path.join(catalog, 'relationships.yaml'), {
+    spec: 'relationships',
+    note:
+      'Filtro propaga do lado "one" (to_*) para o lado "many" (from_*), salvo '
+      + 'cross_filter: bothDirections. active: false = relacionamento inativo, '
+      + 'só vale dentro de USERELATIONSHIP.',
+    auto_date_relationships_ignored: model.autoDateRelationships,
+    auto_date_note:
+      'Relacionamentos para LocalDateTable_<guid> (hierarquia automática de '
+      + 'datas do Power BI). Contados aqui para que uma mudança no PBIP apareça.',
+    relationships: model.relationships,
+  });
   for (const q of model.queries) writeYaml(path.join(catalog, 'queries', `${q.id}.spec.yaml`), q);
   for (const t of model.tableSpecs) writeYaml(path.join(catalog, 'tables', `${t.id}.spec.yaml`), t);
   for (const m of model.measureFiles) writeYaml(path.join(catalog, 'measures', `${m.id}.measures.yaml`), m);
@@ -270,6 +323,8 @@ function writeSpecs(model, outDir) {
     '|---|---|',
     `| Tabelas | ${model.counts.tables} |`,
     `| Medidas (DAX) | ${model.counts.measures} |`,
+    `| Colunas calculadas (DAX) | ${model.counts.calculated_columns} |`,
+    `| Relacionamentos | ${model.counts.relationships} |`,
     `| Queries (registry) | ${model.counts.queries} |`,
     `| Expressions (M compartilhadas) | ${model.counts.expressions} |`,
     `| Dashboards (páginas) | ${model.counts.dashboards} |`,

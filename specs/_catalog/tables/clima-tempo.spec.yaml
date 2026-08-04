@@ -10,39 +10,47 @@ columns:
   format: Long Date
   source_column: Data
   calculated: false
+  dax: null
 - name: Precipitacao_mm
   type: double
   format: null
   source_column: Precipitacao_mm
   calculated: false
+  dax: null
 - name: Probabilidade_Chuva_%
   type: double
   format: null
   source_column: Probabilidade_Chuva_%
   calculated: false
+  dax: null
 - name: Cidade
   type: string
   format: null
   source_column: Cidade
   calculated: false
+  dax: null
 - name: Tipo
   type: string
   format: null
   source_column: Tipo
   calculated: false
+  dax: null
 - name: Classificacao_Chuva
   type: string
   format: null
   source_column: Classificacao_Chuva
   calculated: false
+  dax: null
 - name: Classificacao
   type: string
   format: null
   source_column: Classificacao
   calculated: false
+  dax: null
 - name: Probabilidade_Chuva_Formatada =
   type: null
   format: null
   source_column: null
   calculated: false
+  dax: null
 measure_count: 0

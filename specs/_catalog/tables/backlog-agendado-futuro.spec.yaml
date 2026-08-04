@@ -10,19 +10,23 @@ columns:
   format: null
   source_column: protocolo_id
   calculated: false
+  dax: null
 - name: data_inicio_slot
   type: dateTime
   format: Short Date
   source_column: data_inicio_slot
   calculated: false
+  dax: null
 - name: data_carga
   type: dateTime
   format: Short Date
   source_column: data_carga
   calculated: false
+  dax: null
 - name: PROTOCOLOS GERAL.TIPO DE PROTOCOLO
   type: string
   format: null
   source_column: PROTOCOLOS GERAL.TIPO DE PROTOCOLO
   calculated: false
+  dax: null
 measure_count: 1

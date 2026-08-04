@@ -8,19 +8,15 @@ measures:
   format: null
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
          COUNT('CALENDARIO CRIADO'[data_vigente]),
         'CALENDARIO CRIADO'[data_vigente] = 1,
         YEAR('CALENDARIO CRIADO'[DATA CRIADO]) = YEAR(TODAY())
     )
-
-    ```
 - name: "# MEDIA CRIADOS"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR Total_Criados = 
         CALCULATE(
             DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
@@ -61,8 +57,6 @@ measures:
             DIVIDE(Total_Criados, Dias_Uteis_Ajustados),
             BLANK()
         )
-
-    ```
 - name: TotalEncerrados
   format: null
   display_folder: null
@@ -102,7 +96,6 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
         SUM('BACKLOG INSTALAÇÃO'[TOTAL]),
         FILTER(
@@ -116,11 +109,6 @@ measures:
             WEEKDAY('BACKLOG INSTALAÇÃO'[DATA HOJE], 2) <> 7  // Excluir domingos
         )
     )
-
-
-
-
-    ```
 - name: "# META"
   format: "0"
   display_folder: null
@@ -129,7 +117,6 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
         DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
         FILTER(
@@ -147,8 +134,6 @@ measures:
             )
         )
     )
-
-    ```
 - name: "# FALTA MÊS ATIVO"
   format: "0"
   display_folder: null
@@ -157,13 +142,9 @@ measures:
   format: "0.0"
   display_folder: null
   dax: |-
-    ```
     DIVIDE(
         DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]), COUNT('CAPACIDADE INSTALAÇÃO'[EQUIPE_BASE])
         )
-
-
-    ```
 - name: "# AA MÉDIA GERAL"
   format: "0.0"
   display_folder: null
@@ -176,19 +157,16 @@ measures:
   format: "0.00%;-0.00%;0.00%"
   display_folder: null
   dax: |-
-    ```
     DIVIDE(
 
         CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'PROTOCOLOS GERAL'[STATUS PROTOCOLO] <> "Não Instalado"),
         COUNT('PROTOCOLOS GERAL'[DATA AGENDA])
 
     )
-    ```
 - name: "# MEDIA INSTALADO MENSAL"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     -- Contabiliza
     VAR Total_Encerrados = 
 
@@ -214,7 +192,6 @@ measures:
         ROUND(DIVIDE(Total_Encerrados, Dias_Uteis_Ajustados), 0),
         BLANK()
     )
-    ```
 - name: "#DIAS_ÚTEIS_TRABALHADOS"
   format: null
   display_folder: null
@@ -242,7 +219,6 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
         DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Rádio" &&
@@ -252,13 +228,10 @@ measures:
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Migração com troca de Equipamento"
     )
-
-    ```
 - name: "TOTAL MÊS ATIVO RÁDIO"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     CALCULATE(
         DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Fibra" &&
@@ -269,13 +242,10 @@ measures:
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Migração com troca de Equipamento"
     )
-
-    ```
 - name: "DIAS_ÚTEIS_RESTANTES_NO_MÊS"
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR Hoje = TODAY()
     VAR UltimoDiaMes =
         EOMONTH(Hoje, 0)
@@ -288,8 +258,6 @@ measures:
                 UltimoDiaMes
             )
         )
-
-    ```
 - name: "# TOTAL BACKLOG AGENDADO"
   format: "0"
   display_folder: null
@@ -308,7 +276,6 @@ measures:
   format: "0"
   display_folder: null
   dax: |-
-    ```
     VAR ProtocoloAtual = SELECTEDVALUE('FIELD AGENDA'[protocolo])
     VAR DataInstalacao =
         CALCULATE(
@@ -321,16 +288,10 @@ measures:
         'FIELD AGENDA'[protocolo] = ProtocoloAtual,
         TRUNC('FIELD AGENDA'[Slot Agenda]) = DataInstalacao
     )
-
-    ```
 - name: Linhas CalendarioAgenda
   format: "0"
   display_folder: null
-  dax: |-
-    ```
-    COUNTROWS(calendar)
-
-    ```
+  dax: COUNTROWS(calendar)
 - name: "INSTALADOS ÚLTIMOS 30 DIAS"
   format: "0"
   display_folder: null

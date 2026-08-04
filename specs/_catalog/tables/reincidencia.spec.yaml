@@ -10,99 +10,126 @@ columns:
   format: null
   source_column: service_tag
   calculated: false
+  dax: null
 - name: cliente_nome
   type: string
   format: null
   source_column: cliente_nome
   calculated: false
+  dax: null
 - name: data_instalacao
   type: dateTime
   format: General Date
   source_column: data_instalacao
   calculated: false
+  dax: null
 - name: data_suporte
   type: dateTime
   format: General Date
   source_column: data_suporte
   calculated: false
+  dax: null
 - name: protocol
   type: int64
   format: "0"
   source_column: protocol
   calculated: false
+  dax: null
 - name: titulo_protocolo
   type: string
   format: null
   source_column: titulo_protocolo
   calculated: false
+  dax: null
 - name: TempoDifFormatado
   type: string
   format: null
   source_column: null
   calculated: true
+  dax: |-
+
+    VAR TotalMinutes = DATEDIFF('REINCIDÊNCIA'[data_instalacao], 'REINCIDÊNCIA'[data_suporte], MINUTE)
+    VAR Days = INT(TotalMinutes / 1440) -- 1440 minutos em um dia
+    VAR Hours = INT(MOD(TotalMinutes, 1440) / 60)
+    VAR Minutes = MOD(TotalMinutes, 60)
+    RETURN 
+        FORMAT(Days, "0") & "d " & FORMAT(Hours, "0") & "h " & FORMAT(Minutes, "0") & "min"
 - name: TempoTotalDias =
   type: double
   format: "0.0"
   source_column: null
   calculated: false
+  dax: null
 - name: "Protocolo Instalação"
   type: int64
   format: "0"
   source_column: "Protocolo Instalação"
   calculated: false
+  dax: null
 - name: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
   type: string
   format: null
   source_column: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
   calculated: false
+  dax: null
 - name: "ALOCAÇÃO PATRIMONIO.POSIÇÃO"
   type: string
   format: null
   source_column: "ALOCAÇÃO PATRIMONIO.POSIÇÃO"
   calculated: false
+  dax: null
 - name: protocol_type
   type: string
   format: null
   source_column: protocol_type
   calculated: false
+  dax: null
 - name: Data
   type: dateTime
   format: Long Date
   source_column: Data
   calculated: false
+  dax: null
 - name: categoria1
   type: string
   format: null
   source_column: categoria1
   calculated: false
+  dax: null
 - name: categoria2
   type: string
   format: null
   source_column: categoria2
   calculated: false
+  dax: null
 - name: categoria3
   type: string
   format: null
   source_column: categoria3
   calculated: false
+  dax: null
 - name: categoria4
   type: string
   format: null
   source_column: categoria4
   calculated: false
+  dax: null
 - name: categoria5
   type: string
   format: null
   source_column: categoria5
   calculated: false
+  dax: null
 - name: Tipo
   type: string
   format: null
   source_column: Tipo
   calculated: false
+  dax: null
 - name: solucao
   type: string
   format: null
   source_column: solucao
   calculated: false
+  dax: null
 measure_count: 6
