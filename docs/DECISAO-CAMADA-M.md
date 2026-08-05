@@ -194,3 +194,68 @@ Três condições, e a primeira é sua:
 O que **não** recomendo: começar pelas 11 colunas. Elas são a parte fácil (9 renomes) e
 fazê-las primeiro daria a sensação de progresso enquanto as 25 mudanças de linha — que
 são o que realmente muda número — continuariam de fora.
+
+---
+
+## Anexo: o "connector de Google Sheets" — o que é e como se consegue
+
+Não é nada que se baixe ou compre. São duas coisas separadas, e só a segunda depende de
+alguém de fora:
+
+1. **Código nosso**, ~100 linhas: uma classe que implementa a porta `Connector` que já
+   existe em `packages/query-engine/src/connectors.ts`, chamando a API REST do Google
+   Sheets (`sheets.googleapis.com/v4/spreadsheets/{id}/values/{aba}`). Do mesmo jeito
+   que `SqlConnector` recebe o driver injetado, o Engine não muda.
+2. **Uma credencial**, que é o que precisa ser providenciado.
+
+A forma da credencial já foi decidida na Fase 1 e está no `.env.example`:
+`GOOGLE_APPLICATION_CREDENTIALS` — uma **service account** do Google Cloud. É a opção
+certa para servidor: não depende de ninguém estar logado, e a permissão pode ser
+somente leitura, o que casa com a regra 3 do projeto.
+
+### Os passos, na ordem
+
+| # | Onde | O que fazer |
+|---|---|---|
+| 1 | `console.cloud.google.com` | Criar um projeto (ou reusar um da Sebratel) |
+| 2 | APIs e serviços → Biblioteca | Ativar a **Google Sheets API** |
+| 3 | APIs e serviços → Credenciais | Criar credencial → **Conta de serviço** |
+| 4 | Na conta de serviço → Chaves | Adicionar chave → **JSON**. Baixa um arquivo |
+| 5 | Máquina local | Guardar o JSON **fora do repositório** e apontar `GOOGLE_APPLICATION_CREDENTIALS` para ele no `.env` |
+| 6 | Cada uma das 3 planilhas | Compartilhar → colar o e-mail da conta de serviço (`algo@projeto.iam.gserviceaccount.com`) → **Leitor** |
+
+O passo 6 é o que costuma travar, e não por técnica: o e-mail da service account parece
+estranho, e `QUADRO FUNCIONAL` é planilha de **RH** — quem autoriza compartilhar
+provavelmente não é quem desenvolve. Vale começar por descobrir quem é o dono dela.
+
+O passo 1 também pode travar: muitos Google Workspace corporativos bloqueiam criação de
+projeto no Cloud por usuário comum. Se for o caso, é pedido para quem administra o
+Workspace da Sebratel.
+
+### O atalho que existe, e por que não serve para as três
+
+Planilha marcada como "qualquer pessoa com o link pode ver" é baixável como CSV sem
+credencial nenhuma:
+
+```
+https://docs.google.com/spreadsheets/d/<ID>/export?format=csv&gid=<GID>
+```
+
+Serve para desbloquear um teste em minutos. **Não serve para `QUADRO FUNCIONAL`**: tornar
+uma planilha de quadro de pessoal legível por qualquer um com o link é exposição de dado
+de RH, e não é uma troca que valha para economizar meia hora de configuração.
+
+### Isto bloqueia começar a 2b.8?
+
+**Não.** Bloqueia **uma** tabela. O plano é o engine de M erguer erro explícito
+("falta connector gsheets para a mesclagem com `quadro-funcional`") em vez de pular a
+mesclagem em silêncio — assim `PROTOCOLOS PRODUTIVIDADE` fica declaradamente pendente e
+as outras 17 tabelas andam.
+
+Prioridade entre as 3 planilhas, medida pelo uso no DAX:
+
+| Planilha | Quem lê | Urgência |
+|---|---|---|
+| `QUADRO FUNCIONAL` | mesclada em `PROTOCOLOS PRODUTIVIDADE`, que **9 medidas** leem | é a que importa |
+| `#APURAÇÃO PREMIAÇÃO` | **1** medida (`[Instalações Apuradas]`) | baixa |
+| `CAPACIDADE EQUIPE` | **nenhuma** medida cita a tabela | nenhuma |
