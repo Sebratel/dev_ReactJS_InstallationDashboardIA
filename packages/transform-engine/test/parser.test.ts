@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import yaml from 'yaml';
-import type { MBinary, MField, MLet, MNode, MRecord } from '../src/ast.ts';
+import type { MBinary, MField, MLet, MNode, MRecordExpr } from '../src/ast.ts';
 import { MSyntaxError, parseM, parseMLet } from '../src/parser.ts';
 import { tokenize } from '../src/tokenizer.ts';
 
@@ -116,7 +116,7 @@ test('`[A]` é campo do `_` implícito; `[A=1]` é registro', () => {
   assert.equal(campo.target, null);
   assert.equal(campo.field, 'GESTOR');
 
-  const reg = parseM('[PromoteAllScalars=true]') as MRecord;
+  const reg = parseM('[PromoteAllScalars=true]') as MRecordExpr;
   assert.equal(reg.type, 'Record');
   assert.deepEqual(reg.fields.map((f) => f.name), ['PromoteAllScalars']);
 });
@@ -133,7 +133,7 @@ test('`each [A] = "x"` é comparação, não construção de registro', () => {
 });
 
 test('registro vazio `[]` não é campo sem nome', () => {
-  const n = parseM('[]') as MRecord;
+  const n = parseM('[]') as MRecordExpr;
   assert.equal(n.type, 'Record');
   assert.equal(n.fields.length, 0);
 });

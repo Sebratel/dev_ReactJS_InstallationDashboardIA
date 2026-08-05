@@ -84,7 +84,7 @@ Nenhum teste precisa de credencial ou banco.
 | 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + 7 tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas — as 56 funções estão todas implementadas | ✅ |
-| 2b.8 | Camada M: parser pronto (24 queries, 327 passos); falta avaliador + 39 funções | 🚧 **em curso** |
+| 2b.8 | Camada M: parser + avaliador + 34/39 funções; faltam as 5 de fonte e ligar no Query Engine | 🚧 **em curso** |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
@@ -503,17 +503,34 @@ existe. Ele achou um bug real no primeiro disparo — ver ACHADOS #18.
 queries, **303** nas 23 do escopo. Funções chamadas nas 23: **19 `Table.*` + 5 de fonte
 + 15 de valor = 39**.
 
+**Também já está pronto** (mesma pasta, 115 testes no pacote):
+
+| Arquivo | O que faz |
+|---|---|
+| `src/value.ts` | `MTable` com **ordem de coluna e de linha explícitas**, e `toDatasetRows` — a fronteira com o `Dataset` do avaliador de DAX (normaliza nome, converte `time` para a época 1899-12-30 do Power BI, recusa célula não-escalar) |
+| `src/evaluator.ts` | Escopo do `let` com resolução preguiçosa por nome (M é mutuamente recursivo), ciclo com erro nomeado, `each` fechando sobre o ambiente, `[Coluna]` como campo do `_` |
+| `src/functions.ts` | **34 das 39** funções que o corpus chama, mais allowlist de enums/tipos |
+| `test/cobertura.test.ts` | Mede contra o corpus e **prende os números**: 39 chamadas distintas, 34 implementadas, e as 5 que faltam nominalmente |
+
 **O que falta, e é o próximo bloco:**
 
-1. **O avaliador** — `evaluator.ts`: percorrer os bindings do `let` em ordem, cada passo
-   vendo os anteriores por nome. Precisa de um valor de tabela (linhas + ordem de
-   coluna), `each` com `_` implícito, e `[Coluna]` resolvendo em campo de `_`.
-2. **As 39 funções** — mesma forma do `functions.ts` do avaliador de DAX: tabela de
-   nome → implementação, e **erro alto com o nome da função** no que não existe. Nunca
-   "passo desconhecido, sigo em frente".
-3. **Ordem de linha é semântica, não detalhe.** `Table.Distinct` mantém a primeira da
-   ordem corrente (ver item 1 dos abertos, abaixo). O valor de tabela tem que preservar
-   ordem desde o começo; enfiar ordem depois não funciona.
+1. **As 5 funções de fonte** — `Odbc.Query`, `GoogleSheets.Contents`, `Json.Document`,
+   `Binary.Decompress`, `Binary.FromText`. Não são transformação: são a **fronteira com
+   os connectors** da Fase 1, que já sabem buscar linha. É ligação, não linguagem.
+2. **O orquestrador entre queries.** `PROTOCOLOS GERAL` cita `#"GESTORES EQUIPES"` como
+   se fosse variável. O avaliador recebe `query(nome)` para isso, e falta quem resolva a
+   ordem de dependência entre as 23 e alimente esse callback. É o análogo de
+   `calculatedTableOrder` do lado do DAX.
+3. **Paridade contra dado real.** `avaliaQuery` devolve o valor de **cada passo** de
+   propósito: é o que permite comparar passo a passo com o Power Query quando um número
+   divergir. Sem isso, "a tabela deu 33.104 em vez de 33.101" não tem onde ser
+   investigado.
+
+**Um teste que vale entender antes de mexer:** *"cada query do escopo para no primeiro
+passo de fonte, e não antes"*. Ele avalia as 23 queries de verdade, sem credencial, e
+exige que o **único** motivo de parada seja ler a fonte (ou citar outra query). Qualquer
+outra parada é função ou semântica faltando, e aparece pelo nome. É o teste de execução
+mais forte que dá para ter antes de existir connector.
 
 **Ordem de trabalho definida pelo Erick:** seguir **sem** o Google Sheets e deixar
 `PROTOCOLOS PRODUTIVIDADE` — a única tabela que depende de planilha — para a **última
