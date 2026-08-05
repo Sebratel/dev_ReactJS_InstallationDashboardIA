@@ -223,7 +223,7 @@ test('let aninhado é sintaxe válida — quem recusa é o avaliador, não o par
 
 test('`type text` e `type nullable text` viram nó de tipo', () => {
   assert.deepEqual(parseM('type text'), {
-    type: 'Type', name: 'text', start: 0, line: 1, col: 1,
+    type: 'Type', name: 'text', fields: null, start: 0, line: 1, col: 1,
   });
   assert.equal(parseM('type nullable text').type === 'Type' ? (parseM('type nullable text') as { name: string }).name : '', 'nullable text');
 });

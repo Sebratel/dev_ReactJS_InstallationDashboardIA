@@ -33,6 +33,25 @@ function corpus(): QuerySpec[] {
     .filter((s) => Boolean(s.m_expression));
 }
 
+/**
+ * A culture do modelo, lida da spec gerada — não escrita à mão aqui.
+ *
+ * `feriados` traz as datas como texto `DD/MM/YYYY`, e sem a culture o engine
+ * recusa converter (e está certo). Ler de `model.yaml` faz o teste depender do
+ * PBIP, que é onde a informação vive.
+ */
+function cultureDoModelo(): string | null {
+  const p = path.join(ROOT, 'specs', '_catalog', 'model.yaml');
+  const m = yaml.parse(fs.readFileSync(p, 'utf8')) as { culture?: string | null };
+  return m.culture ?? null;
+}
+
+test('a culture do modelo está na spec, e é pt-BR', () => {
+  // Se isto virar null, toda conversão de texto para data para de funcionar — e o
+  // erro apareceria longe daqui, no meio de uma query.
+  assert.equal(cultureDoModelo(), 'pt-BR');
+});
+
 /** `clima-tempo` está fora do escopo desta fase: `let` aninhado + fonte `web`. */
 const NO_ESCOPO = (q: QuerySpec): boolean => q.id !== 'clima-tempo';
 
@@ -66,26 +85,24 @@ function chamadasDoEscopo(): Set<string> {
 }
 
 /**
- * As 5 funções de **fonte**: são a fronteira com a camada de connector, não
- * transformação. `Odbc.Query` não é implementável aqui sem um driver, e é o Query
+ * As 2 funções de fonte **externa**: fronteira com a camada de connector, não
+ * transformação. Nenhuma é implementável aqui sem driver ou credencial, e é o Query
  * Engine (Fase 1) que já sabe buscar linha. Ficam listadas nominalmente para
- * "faltam 5" nunca virar "faltam algumas".
+ * "faltam 2" nunca virar "faltam algumas".
+ *
+ * `Binary.FromText`, `Binary.Decompress` e `Json.Document` saíram desta lista: são
+ * puras (base64 -> deflate -> JSON) e foram implementadas, o que faz `feriados`
+ * rodar inteira sem credencial nenhuma.
  */
-const FONTES = [
-  'Binary.Decompress',
-  'Binary.FromText',
-  'GoogleSheets.Contents',
-  'Json.Document',
-  'Odbc.Query',
-];
+const FONTES = ['GoogleSheets.Contents', 'Odbc.Query'];
 
-test('as funções que a base chama: 39 distintas, 34 implementadas', () => {
+test('as funções que a base chama: 39 distintas, 37 implementadas', () => {
   const usadas = chamadasDoEscopo();
   assert.equal(usadas.size, 39);
 
   const conhecidas = new Set([...implementedMFunctions(), ...standardConstants().keys()]);
   const falta = [...usadas].filter((f) => !conhecidas.has(f)).sort();
-  assert.equal(usadas.size - falta.length, 34);
+  assert.equal(usadas.size - falta.length, 37);
   assert.deepEqual(falta, FONTES, 'o que falta tem que ser só fonte, não transformação');
 });
 
@@ -104,7 +121,7 @@ test('nenhuma função de transformação do escopo está faltando', () => {
 test('a tabela de funções não tem nome duplicado e o total está preso', () => {
   // `standardFunctions` já erra em duplicata; isto prende o total, para uma função
   // nova não entrar sem o README acompanhar.
-  assert.equal(implementedMFunctions().length, 57);
+  assert.equal(implementedMFunctions().length, 60);
   assert.doesNotThrow(() => standardFunctions());
 });
 
@@ -141,6 +158,7 @@ test('cada query do escopo para no primeiro passo de fonte, e não antes', () =>
     functions: standardFunctions(),
     constants: standardConstants(),
     agora: new Date(Date.UTC(2026, 7, 5)),
+    culture: cultureDoModelo(),
   });
   const inesperados: string[] = [];
   for (const q of corpus().filter(NO_ESCOPO)) {

@@ -820,3 +820,45 @@ de tabela + 15 de valor". Medido pelo parser, nas 23 queries do escopo são
 `Binary.Decompress`, `Binary.FromText`) + 15 de valor = 39**. O número de 23 tinha as
 funções de fonte misturadas na lista de tabela; as 15 de valor conferem exatamente.
 E a contagem de passos fecha: **303** nas 23 do escopo, **327** com `clima-tempo`.
+
+---
+
+## 19. `base-categorias-field` renomeia uma coluna que o SQL não devolve
+
+Achado da fase 2b.8, apontado pelo teste que executa as 23 queries do escopo contra
+o *shape* gravado nos goldens. Reproduzível com
+`node --test packages/transform-engine/test/runner.test.ts`.
+
+O último passo do M da query é:
+
+```m
+#"Colunas Renomeadas" = Table.RenameColumns(#"Linhas Filtradas", {{"categoria32", "categoria4"}})
+```
+
+E o golden — gravado executando o SQL de verdade contra o dbVoalle — registra as
+colunas `protocol`, `beginning_service_date`, `categoria1`, `categoria2`,
+`categoria3`, `categoria5`. **Não existe `categoria32`.**
+
+O passo **não** passa `MissingField.Ignore`. Em Power Query, `Table.RenameColumns`
+sem essa opção **erra** quando a coluna não está lá. Ou seja: não é uma tolerância
+do Power BI que o nosso engine deixou de reproduzir — é um erro que aconteceria lá
+também, com o dado que o golden registra.
+
+**Duas explicações possíveis, e nenhuma é adivinhável daqui:**
+
+1. As colunas vêm de um pivot cuja forma depende do dado, e no dia em que o golden
+   foi gravado o conjunto era outro. Reforça a suspeita: esta query tem **data fixa
+   no SQL** (achado #3), então o recorte que ela lê não muda com o tempo, mas o que
+   estava lá quando o relatório foi montado pode ter mudado desde então.
+2. A query está quebrada no relatório atual e ninguém notou — plausível, porque
+   `categoria4` (o nome de destino) não é citada por nenhuma medida.
+
+**O que fica registrado:** o engine erra alto, com o nome da coluna e a lista das
+que existem. O teste classifica esta falha como achado conhecido em vez de
+regressão, com referência a este item — quando a operação esclarecer qual dos dois
+casos é, o tratamento muda junto.
+
+**Por que isso não apareceu antes.** `validate:tables` compara coluna do modelo
+contra coluna da fonte, e `categoria32` não é coluna do modelo: é um nome
+intermediário, que existe só entre dois passos M. Só executando os passos ela
+aparece — que é exatamente o que a 2b.8 passou a fazer.

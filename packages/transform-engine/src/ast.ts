@@ -169,4 +169,13 @@ export interface MRecordExpr extends Position {
 export interface MType extends Position {
   readonly type: 'Type';
   readonly name: string;
+  /**
+   * Nomes de campo de `type table [Data = _t, Feriado = _t]`.
+   *
+   * Não é decoração: é a **única** fonte dos nomes de coluna em
+   * `Table.FromRows(rows, type table [...])`, que é como `feriados` nasce.
+   * Descartar o detalhe do tipo fazia a tabela nascer com uma coluna chamada
+   * "table".
+   */
+  readonly fields: readonly string[] | null;
 }

@@ -84,7 +84,7 @@ Nenhum teste precisa de credencial ou banco.
 | 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + 7 tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas — as 56 funções estão todas implementadas | ✅ |
-| 2b.8 | Camada M: parser + avaliador + 34/39 funções; faltam as 5 de fonte e ligar no Query Engine | 🚧 **em curso** |
+| 2b.8 | Camada M: parser + avaliador + orquestrador, 37/39 funções. Falta ligar no Query Engine (2 funções de fonte) e a paridade da 2b.9 | 🚧 **em curso** |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
@@ -512,19 +512,26 @@ queries, **303** nas 23 do escopo. Funções chamadas nas 23: **19 `Table.*` + 5
 | `src/functions.ts` | **34 das 39** funções que o corpus chama, mais allowlist de enums/tipos |
 | `test/cobertura.test.ts` | Mede contra o corpus e **prende os números**: 39 chamadas distintas, 34 implementadas, e as 5 que faltam nominalmente |
 
+**Também pronto:** `src/runner.ts` — o orquestrador. Resolve a citação entre queries
+(`PROTOCOLOS GERAL` cita `#"GESTORES EQUIPES"` como se fosse variável), ordena por
+dependência com ciclo nomeado, e busca as linhas **antes** de avaliar (ler fonte é
+assíncrono, avaliar M é síncrono). E `culture`: o extrator agora lê `culture: pt-BR`
+do `model.tmdl` para `specs/_catalog/model.yaml`, e é isso que permite converter
+`"01/01/2022"` em data e `"7637491824"` em Int64 — sem a culture, o engine recusa, e
+está certo.
+
 **O que falta, e é o próximo bloco:**
 
-1. **As 5 funções de fonte** — `Odbc.Query`, `GoogleSheets.Contents`, `Json.Document`,
-   `Binary.Decompress`, `Binary.FromText`. Não são transformação: são a **fronteira com
-   os connectors** da Fase 1, que já sabem buscar linha. É ligação, não linguagem.
-2. **O orquestrador entre queries.** `PROTOCOLOS GERAL` cita `#"GESTORES EQUIPES"` como
-   se fosse variável. O avaliador recebe `query(nome)` para isso, e falta quem resolva a
-   ordem de dependência entre as 23 e alimente esse callback. É o análogo de
-   `calculatedTableOrder` do lado do DAX.
-3. **Paridade contra dado real.** `avaliaQuery` devolve o valor de **cada passo** de
-   propósito: é o que permite comparar passo a passo com o Power Query quando um número
-   divergir. Sem isso, "a tabela deu 33.104 em vez de 33.101" não tem onde ser
-   investigado.
+1. **Ligar `Odbc.Query` e `GoogleSheets.Contents` nos connectors.** São as 2 únicas
+   funções que faltam, e não são linguagem: são a fronteira com o Query Engine da Fase 1,
+   que já sabe cache, timeout e read-only. O runner recebe `fonte` injetada — basta passar
+   o Engine ali. Atenção: o connector de Google Sheets tem que devolver a **tabela de
+   navegação** (uma linha por aba, dados na coluna `Data`), porque é assim que o M navega.
+2. **Paridade contra dado real (2b.9).** `avaliaQuery` devolve o valor de **cada passo**
+   de propósito: é o que permite comparar passo a passo com o Power Query quando um número
+   divergir. Sem isso, "a tabela deu 33.104 em vez de 33.101" não tem onde ser investigado.
+3. **ACHADOS #19** — `base-categorias-field` renomeia `categoria32`, que o SQL real não
+   devolve. Precisa da operação para saber se é pivot variável ou query quebrada.
 
 **Um teste que vale entender antes de mexer:** *"cada query do escopo para no primeiro
 passo de fonte, e não antes"*. Ele avalia as 23 queries de verdade, sem credencial, e

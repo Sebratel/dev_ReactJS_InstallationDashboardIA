@@ -197,7 +197,7 @@ class Parser {
         this.aceita('keyword', 'optional');
         const nome = this.nomeDePasso();
         let typeName: string | null = null;
-        if (this.aceita('keyword', 'as')) typeName = this.nomeDeTipo();
+        if (this.aceita('keyword', 'as')) typeName = this.nomeDeTipo().nome;
         params.push({ name: nome.value, typeName });
       } while (this.aceita('punct', ','));
       this.exige('punct', ')', 'fechando os parâmetros da função');
@@ -220,7 +220,7 @@ class Parser {
       // `as` e `is` têm tipo à direita, não expressão: `x as number`.
       const dir: MNode =
         t.value === 'as' || t.value === 'is'
-          ? { type: 'Type', name: this.nomeDeTipo(), ...this.pos(t) }
+          ? { type: 'Type', name: this.nomeDeTipo().nome, fields: null, ...this.pos(t) }
           : this.binaria(nivel + 1);
       esq = { type: 'Binary', op: t.value as MBinaryOp, left: esq, right: dir, ...this.pos(t) };
     }
@@ -326,7 +326,8 @@ class Parser {
       }
       if (t.value === 'type') {
         this.i++;
-        return { type: 'Type', name: this.nomeDeTipo(), ...this.pos(t) };
+        const { nome, fields } = this.nomeDeTipo();
+        return { type: 'Type', name: nome, fields, ...this.pos(t) };
       }
       // `let`/`if`/`each` aqui dentro são legítimos: `Table.AddColumn(t, "c", each
       // if [a] then 1 else 2)`. Voltam para a entrada.
@@ -454,21 +455,62 @@ class Parser {
    * Tipo depois de `type`, `as` ou `is`: `text`, `number`, `nullable text`,
    * `table`, `any`. O nome fica cru — quem interpreta é o avaliador.
    */
-  private nomeDeTipo(): string {
+  private nomeDeTipo(): { nome: string; fields: string[] | null } {
     let nome = '';
     if (this.aceita('keyword', 'nullable')) nome = 'nullable ';
     const t = this.atual;
     if (t.kind === 'ident' || t.kind === 'keyword') {
       this.i++;
       nome += t.value;
-      // `type table [A = text, B = number]` — o detalhe do registro de campos não
-      // muda nada para nós (quem tipa coluna é `TransformColumnTypes`), então é
-      // consumido e descartado, em vez de virar erro de sintaxe.
-      if (this.atual.kind === 'punct' && this.atual.value === '[') this.pulaBalanceado('[', ']');
+      let fields: string[] | null = null;
+      // `type table [Data = _t, Feriado = _t]` — os NOMES importam: são as colunas
+      // que `Table.FromRows` vai usar. Os tipos de cada campo, não: quem converte
+      // é `TransformColumnTypes`, no passo seguinte.
+      if (this.atual.kind === 'punct' && this.atual.value === '[') fields = this.camposDeTipo();
       if (this.atual.kind === 'punct' && this.atual.value === '{') this.pulaBalanceado('{', '}');
-      return nome;
+      return { nome, fields };
     }
     this.erro(`Esperava nome de tipo, veio \`${this.descreve()}\`.`, t);
+  }
+
+  /**
+   * Nomes de campo dentro de `[…]` de um tipo de tabela.
+   *
+   * O valor de cada campo é consumido sem avaliar — e é o que permite `feriados`
+   * funcionar: o tipo dela é `let _t = ((type nullable text) meta [...]) in type
+   * table [Data = _t, ...]`, e `meta` não está implementado. Como o valor nunca é
+   * lido, o `meta` nunca é avaliado.
+   */
+  private camposDeTipo(): string[] {
+    this.exige('punct', '[', 'abrindo os campos do tipo de tabela');
+    const nomes: string[] = [];
+    if (this.aceita('punct', ']')) return nomes;
+    for (;;) {
+      nomes.push(this.nomeDeCampo());
+      if (this.aceita('op', '=')) this.pulaValorDeCampo();
+      if (this.aceita('punct', ',')) continue;
+      this.exige('punct', ']', 'fechando os campos do tipo de tabela');
+      return nomes;
+    }
+  }
+
+  /** Consome um valor até a vírgula ou o `]` do nível corrente. */
+  private pulaValorDeCampo(): void {
+    let profundidade = 0;
+    for (;;) {
+      const t = this.atual;
+      if (t.kind === 'eof') this.erro('Campo de tipo sem fechamento.');
+      if (t.kind === 'punct') {
+        if ('([{'.includes(t.value)) profundidade++;
+        else if (')]}'.includes(t.value)) {
+          if (profundidade === 0) return; // é o `]` do tipo
+          profundidade--;
+        } else if (t.value === ',' && profundidade === 0) {
+          return;
+        }
+      }
+      this.i++;
+    }
   }
 
   private pulaBalanceado(abre: string, fecha: string): void {

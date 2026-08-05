@@ -389,9 +389,34 @@ test('DateTimeZone.SwitchZone desloca as horas — o caso de hora-atualizado', (
   assert.equal((v as Date).getTime(), HOJE.getTime() - 3 * 3_600_000);
 });
 
-test('Number.From recusa vírgula decimal, que depende de culture', () => {
-  assert.equal(ev().avaliaQuery('let a = Number.From("1.5") in a').valor, 1.5);
+test('Number.From depende da culture: em pt-BR a vírgula é decimal e o ponto é milhar', () => {
+  const br = new MEvaluator({
+    functions: standardFunctions(),
+    constants: standardConstants(),
+    agora: HOJE,
+    culture: 'pt-BR',
+  });
+  assert.equal(br.avaliaQuery('let a = Number.From("1,5") in a').valor, 1.5);
+  assert.equal(br.avaliaQuery('let a = Number.From("1.234,56") in a').valor, 1234.56);
+  assert.equal(br.avaliaQuery('let a = Number.From("7637491824") in a').valor, 7637491824);
+
+  // Sem culture, só dígito puro passa: "1.5" seria 1,5 ou 15 dependendo de quem lê.
+  assert.equal(ev().avaliaQuery('let a = Number.From("42") in a').valor, 42);
+  assert.throws(() => ev().avaliaQuery('let a = Number.From("1.5") in a'), /culture/);
   assert.throws(() => ev().avaliaQuery('let a = Number.From("1,5") in a'), /culture/);
+});
+
+test('texto numérico vira Int64 quando a culture é conhecida — o caso de PROTOCOLO:', () => {
+  // O golden registra `PROTOCOLO:` como string numérica e o M declara Int64.Type.
+  // Sem a culture, isto erraria alto e 8 queries parariam aqui.
+  const br = new MEvaluator({
+    functions: standardFunctions(),
+    constants: standardConstants(),
+    culture: 'pt-BR',
+    query: () => tab(['PROTOCOLO:'], [['7637491824']]),
+  });
+  const t = br.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"PROTOCOLO:", Int64.Type}}) in a');
+  assert.equal(t.rows[0].get('PROTOCOLO:'), 7637491824);
 });
 
 test('aridade errada erra citando o nome e o esperado', () => {

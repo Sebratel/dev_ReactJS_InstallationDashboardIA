@@ -38,7 +38,9 @@ export type MValue =
   | MRecord
   | MFunction
   | MTime
-  | MDuration;
+  | MDuration
+  /** Binário. `feriados` traz uma tabela inteira embutida como base64 + deflate. */
+  | Uint8Array;
 
 export type MList = readonly MValue[];
 
@@ -205,6 +207,7 @@ export function tipoDe(v: MValue): string {
   if (v instanceof MRecord) return 'record';
   if (v instanceof MTime) return 'time';
   if (v instanceof MDuration) return 'duration';
+  if (v instanceof Uint8Array) return 'binary';
   if (v instanceof Date) return 'datetime';
   if (Array.isArray(v)) return 'list';
   if (isFunction(v)) return 'function';
@@ -268,6 +271,12 @@ function escalar(v: MValue, coluna: string, iLinha: number, onde: string): Scala
   if (v === null) return null;
   if (v instanceof MTime) return new Date(EPOCH_MS + v.ms);
   if (v instanceof MDuration) return v.ms / 86_400_000; // duração em dias, como o DAX
+  if (v instanceof Uint8Array) {
+    throw new MEvalError(
+      `${onde}: a coluna '${coluna}' tem binário na linha ${iLinha + 1}. Binário é passo ` +
+        'intermediário (base64 → deflate → JSON), não valor de coluna.',
+    );
+  }
   if (v instanceof Date) return v;
   if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
   throw new MEvalError(

@@ -16,6 +16,8 @@
 //     do JS é estável desde o ES2019, então isto é garantia da linguagem — mas
 //     está dito aqui porque um dia alguém vai querer trocar por outra ordenação.
 
+import zlib from 'node:zlib';
+
 import {
   igual,
   type MCallContext,
@@ -107,7 +109,13 @@ function comoRegistro(t: MTable, r: MRow): MRecord {
  * está na expressão M. Converter na surdina aqui é exatamente o erro do achado 1
  * (o falso): ler março onde era abril, sem erro nenhum no caminho.
  */
-function converte(v: MValue, tipo: string, coluna: string, fn: string): MValue {
+function converte(
+  v: MValue,
+  tipo: string,
+  coluna: string,
+  fn: string,
+  culture: string | null,
+): MValue {
   if (v === null) return null;
   const t = tipo.replace(/^type\s+/, '').replace(/^nullable\s+/, '').trim();
 
@@ -127,9 +135,16 @@ function converte(v: MValue, tipo: string, coluna: string, fn: string): MValue {
     case 'Percentage.Type':
     case 'Currency.Type':
     case 'Double.Type': {
-      if (typeof v === 'number') return t === 'Int64.Type' || t === 'Int32.Type' ? Math.trunc(v) : v;
+      const inteiro = t === 'Int64.Type' || t === 'Int32.Type';
+      if (typeof v === 'number') return inteiro ? Math.trunc(v) : v;
       if (typeof v === 'boolean') return v ? 1 : 0;
-      throw naoConverte(v, t, coluna, fn, 'use Number.From se a conversão é intencional');
+      // Texto para número **é** conversão que o Power Query faz, e a base depende
+      // dela: o golden registra `PROTOCOLO:` e `NUMERO CONTRATO` como string
+      // numérica, e o M declara `Int64.Type`. Diferente de data, isto não é
+      // ambíguo quando a culture é conhecida — só o separador decimal muda.
+      const n = textoParaNumero(v, culture);
+      if (n !== null) return inteiro ? Math.trunc(n) : n;
+      throw naoConverte(v, t, coluna, fn, dicaDeNumero(v, culture));
     }
 
     case 'logical':
@@ -138,19 +153,22 @@ function converte(v: MValue, tipo: string, coluna: string, fn: string): MValue {
       throw naoConverte(v, 'logical', coluna, fn);
 
     case 'date':
-    case 'Date.Type':
+    case 'Date.Type': {
       if (v instanceof Date) return soData(v);
-      throw naoConverte(v, 'date', coluna, fn, formatoDeTexto(v));
+      const d = textoParaData(v, culture);
+      if (d) return soData(d);
+      throw naoConverte(v, 'date', coluna, fn, formatoDeTexto(v, culture));
+    }
 
     case 'datetime':
     case 'DateTime.Type':
-      if (v instanceof Date) return v;
-      throw naoConverte(v, 'datetime', coluna, fn, formatoDeTexto(v));
-
     case 'datetimezone':
-    case 'DateTimeZone.Type':
+    case 'DateTimeZone.Type': {
       if (v instanceof Date) return v;
-      throw naoConverte(v, 'datetimezone', coluna, fn, formatoDeTexto(v));
+      const d = textoParaData(v, culture);
+      if (d) return d;
+      throw naoConverte(v, t, coluna, fn, formatoDeTexto(v, culture));
+    }
 
     case 'time':
     case 'Time.Type':
@@ -179,11 +197,92 @@ function naoConverte(v: MValue, alvo: string, coluna: string, fn: string, dica?:
   );
 }
 
-function formatoDeTexto(v: MValue): string {
-  return typeof v === 'string'
-    ? 'o formato de data em texto depende da culture do arquivo (01/02 é 1º de fevereiro ' +
-        'ou 2 de janeiro?), e isso não está na expressão M'
-    : '';
+function formatoDeTexto(v: MValue, culture: string | null): string {
+  if (typeof v !== 'string') return '';
+  return culture
+    ? `a culture do modelo é '${culture}' e o texto não casa com nenhum formato de data dela`
+    : 'o formato de data em texto depende da culture do modelo (01/02 é 1º de fevereiro ' +
+        'ou 2 de janeiro?), e nenhuma culture foi informada ao engine';
+}
+
+/**
+ * Texto para número, **segundo a culture do modelo**.
+ *
+ * O que muda entre culturas é só o separador: em `pt-BR`, `.` agrupa milhar e `,`
+ * é decimal (`"1.234,56"` = 1234,56); em `en-US` é o contrário. Por isso a culture
+ * é necessária — e por isso, sem ela, só dígitos puros passam: `"1,5"` seria 1,5 ou
+ * 15 dependendo de quem lê.
+ *
+ * Devolve `null` quando não é número; quem chamou decide se isso é erro.
+ */
+function textoParaNumero(v: MValue, culture: string | null): number | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+
+  // Sem culture: só o que é igual em qualquer uma.
+  if (!culture) return /^[+-]?\d+$/.test(s) ? Number(s) : null;
+
+  if (culture === 'pt-BR') {
+    if (!/^[+-]?[\d.]*\d(?:,\d+)?$/.test(s)) return null;
+    const n = Number(s.replace(/\./g, '').replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  // Outras culturas: só dígitos puros, para não inventar convenção.
+  return /^[+-]?\d+$/.test(s) ? Number(s) : null;
+}
+
+function dicaDeNumero(v: MValue, culture: string | null): string {
+  if (typeof v !== 'string') return 'use Number.From se a conversão é intencional';
+  return culture
+    ? `a culture do modelo é '${culture}' e o texto não é número nela`
+    : 'sem culture, só dígitos puros são convertidos (`1,5` seria 1,5 ou 15?)';
+}
+
+/**
+ * Texto para data, **segundo a culture do modelo**.
+ *
+ * Só `pt-BR` está implementada, porque é a que o PBIP declara — o extrator lê
+ * `culture` de `model.tmdl` e grava em `specs/_catalog/model.yaml`. Culture
+ * diferente devolve `null` (e quem chamou erra alto) em vez de cair no formato
+ * brasileiro: no dia em que o modelo virar `en-US`, `01/02` muda de significado, e
+ * ninguém quer descobrir isso por uma média errada.
+ *
+ * ISO (`YYYY-MM-DD`) é aceito em qualquer culture, porque não é ambíguo.
+ */
+function textoParaData(v: MValue, culture: string | null): Date | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?$/.exec(s);
+  if (iso) {
+    return montaData(+iso[1], +iso[2], +iso[3], +(iso[4] ?? 0), +(iso[5] ?? 0), +(iso[6] ?? 0));
+  }
+
+  if (culture !== 'pt-BR') return null;
+  // pt-BR: dia primeiro. Aceita `/` e `-`, exige ano de 4 dígitos (ano de 2 seria
+  // outra adivinhação), hora opcional.
+  const br = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})(?:[T ](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(s);
+  if (!br) return null;
+  return montaData(+br[3], +br[2], +br[1], +(br[4] ?? 0), +(br[5] ?? 0), +(br[6] ?? 0));
+}
+
+/** Monta a data e **confere** que ela existe: 31/02 devolve null, não 03/03. */
+function montaData(
+  ano: number,
+  mes: number,
+  dia: number,
+  h: number,
+  mi: number,
+  seg: number,
+): Date | null {
+  const d = new Date(Date.UTC(ano, mes - 1, dia, h, mi, seg));
+  if (d.getUTCFullYear() !== ano || d.getUTCMonth() !== mes - 1 || d.getUTCDate() !== dia) {
+    return null;
+  }
+  return d;
 }
 
 function resumo(v: MValue): unknown {
@@ -466,7 +565,7 @@ const TABELA: MFunctionImpl[] = [
     name: 'Table.TransformColumnTypes',
     minArgs: 2,
     maxArgs: 3,
-    call: ([tv, tipos]) => {
+    call: ([tv, tipos], ctx) => {
       const t = exigeTabela(tv, 'Table.TransformColumnTypes');
       const pares = paresDeNome(tipos, 'Table.TransformColumnTypes');
       // Coluna citada que não existe é erro: é o sinal de que a fonte mudou.
@@ -478,7 +577,12 @@ const TABELA: MFunctionImpl[] = [
             t.columns.map((c) => {
               const tipo = porColuna.get(c);
               const v = r.get(c) ?? null;
-              return [c, tipo === undefined ? v : converte(v, tipo, c, 'Table.TransformColumnTypes')] as const;
+              return [
+                c,
+                tipo === undefined
+                  ? v
+                  : converte(v, tipo, c, 'Table.TransformColumnTypes', ctx.culture),
+              ] as const;
             }),
           ),
         ),
@@ -914,23 +1018,15 @@ const VALOR: MFunctionImpl[] = [
     name: 'Number.From',
     minArgs: 1,
     maxArgs: 2,
-    call: ([v]) => {
+    call: ([v], ctx) => {
       if (v === null) return null;
       if (typeof v === 'number') return v;
       if (typeof v === 'boolean') return v ? 1 : 0;
-      if (typeof v === 'string') {
-        // Só formato sem ambiguidade: dígitos com ponto decimal. Vírgula decimal
-        // depende de culture, e é onde 1,5 viraria 15.
-        const t = v.trim();
-        if (!/^[+-]?(\d+(\.\d+)?|\.\d+)$/.test(t)) {
-          throw new MEvalError(
-            `Number.From: '${t}' não é número sem ambiguidade de culture ` +
-              '(vírgula decimal muda de significado entre pt-BR e en-US).',
-          );
-        }
-        return Number(t);
-      }
-      throw new MEvalError(`Number.From: não converte ${tipoDe(v)}.`);
+      const n = textoParaNumero(v, ctx.culture);
+      if (n !== null) return n;
+      throw new MEvalError(
+        `Number.From: não converte ${tipoDe(v)} — ${dicaDeNumero(v, ctx.culture)}.`,
+      );
     },
   },
   {
@@ -990,12 +1086,14 @@ const VALOR: MFunctionImpl[] = [
     name: 'Date.From',
     minArgs: 1,
     maxArgs: 2,
-    call: ([v]) => {
+    call: ([v], ctx) => {
       if (v === null) return null;
       if (v instanceof Date) return soData(v);
+      const d = textoParaData(v, ctx.culture);
+      if (d) return soData(d);
       throw new MEvalError(
-        `Date.From: não converte ${tipoDe(v)} sem culture explícita (formato de data em ` +
-          'texto é ambíguo).',
+        `Date.From: não converte ${tipoDe(v)} para data — ` +
+          `${formatoDeTexto(v, ctx.culture) || 'tipo não suportado'}.`,
       );
     },
   },
@@ -1126,6 +1224,75 @@ const VALOR: MFunctionImpl[] = [
     },
   },
 ];
+
+// ── binário: a tabela embutida de `feriados` ──────────────────────────────────
+//
+// `feriados` não lê fonte externa: a tabela foi **colada** no Power Query e o
+// Power BI a guardou como base64 de um deflate de JSON. São três funções puras
+// encadeadas, então dá para executar essa query sem credencial nenhuma — e é a
+// única do escopo em que isso vale.
+
+const BINARIO: MFunctionImpl[] = [
+  {
+    name: 'Binary.FromText',
+    minArgs: 1,
+    maxArgs: 2,
+    call: ([texto, encoding]) => {
+      const s = exigeTexto(texto, 'Binary.FromText', 'o texto');
+      const enc = encoding === undefined || encoding === null ? 'BinaryEncoding.Base64' : String(encoding);
+      if (enc === 'BinaryEncoding.Base64') return new Uint8Array(Buffer.from(s, 'base64'));
+      if (enc === 'BinaryEncoding.Hex') return new Uint8Array(Buffer.from(s, 'hex'));
+      throw new MEvalError(`Binary.FromText: encoding '${enc}' não implementado.`);
+    },
+  },
+  {
+    name: 'Binary.Decompress',
+    minArgs: 2,
+    maxArgs: 2,
+    call: ([bin, compressao]) => {
+      if (!(bin instanceof Uint8Array)) {
+        throw new MEvalError(`Binary.Decompress: esperava binário, veio ${tipoDe(bin)}.`);
+      }
+      const modo = String(compressao);
+      // `Compression.Deflate` do M é deflate **cru** (sem cabeçalho zlib):
+      // `inflateSync` falharia com "incorrect header check".
+      if (modo === 'Compression.Deflate') return new Uint8Array(zlib.inflateRawSync(bin));
+      if (modo === 'Compression.GZip') return new Uint8Array(zlib.gunzipSync(bin));
+      if (modo === 'Compression.None') return bin;
+      throw new MEvalError(`Binary.Decompress: compressão '${modo}' não implementada.`);
+    },
+  },
+  {
+    name: 'Json.Document',
+    minArgs: 1,
+    maxArgs: 2,
+    call: ([bin]) => {
+      const texto = bin instanceof Uint8Array
+        ? Buffer.from(bin).toString('utf8')
+        : exigeTexto(bin, 'Json.Document', 'o conteúdo');
+      let json: unknown;
+      try {
+        json = JSON.parse(texto);
+      } catch (err) {
+        throw new MEvalError(
+          `Json.Document: conteúdo não é JSON válido (${err instanceof Error ? err.message : err}).`,
+        );
+      }
+      return deJson(json);
+    },
+  },
+];
+
+/** JSON para valor M: objeto vira registro, array vira lista. */
+function deJson(v: unknown): MValue {
+  if (v === null) return null;
+  if (Array.isArray(v)) return v.map(deJson);
+  if (typeof v === 'object') {
+    return new MRecord(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, deJson(x)] as const));
+  }
+  if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
+  throw new MEvalError(`Json.Document: valor de tipo ${typeof v} não suportado.`);
+}
 
 // ── substituidores e comparadores ────────────────────────────────────────────
 
@@ -1306,7 +1473,7 @@ export function standardConstants(): ReadonlyMap<string, MValue> {
 
 export function standardFunctions(): MFunctionTable {
   const m = new Map<string, MFunctionImpl>();
-  for (const f of [...TABELA, ...VALOR, ...AUXILIARES]) {
+  for (const f of [...TABELA, ...VALOR, ...BINARIO, ...AUXILIARES]) {
     if (m.has(f.name)) throw new Error(`Função M duplicada na tabela: ${f.name}`);
     m.set(f.name, f);
   }

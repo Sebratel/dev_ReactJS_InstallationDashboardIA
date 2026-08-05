@@ -53,6 +53,14 @@ export interface MFunctionImpl {
  */
 export interface MCallContext {
   readonly agora: Date;
+  /**
+   * Culture do modelo (`pt-BR`), extraída do PBIP para `specs/_catalog/model.yaml`.
+   *
+   * É o que decide se `"01/02/2026"` é 1º de fevereiro ou 2 de janeiro. Sem ela, a
+   * conversão de texto para data erra alto — de propósito: adivinhar aqui é o
+   * achado 1 (ler março onde era abril), e o dado da operação não avisa.
+   */
+  readonly culture: string | null;
   /** Resolve outra query pelo nome, para as mesclagens entre queries. */
   readonly query: (nome: string) => MValue;
 }
@@ -68,6 +76,8 @@ export interface MEvaluatorOptions {
    */
   readonly constants?: ReadonlyMap<string, MValue>;
   readonly agora?: Date;
+  /** Culture do modelo. Ausente = conversão de texto para data erra alto. */
+  readonly culture?: string | null;
   /**
    * Resolve uma query citada por nome. `PROTOCOLOS GERAL` referencia
    * `#"GESTORES EQUIPES"` como se fosse variável, e é assim que a mesclagem entre
@@ -139,6 +149,7 @@ export class MEvaluator {
     this.constants = opts.constants ?? new Map();
     this.ctx = {
       agora: opts.agora ?? new Date(),
+      culture: opts.culture ?? null,
       query:
         opts.query ??
         ((nome) => {
@@ -261,7 +272,12 @@ export class MEvaluator {
         // Tipo é valor de primeira classe em M, e chega como argumento de
         // `TransformColumnTypes`. Aqui viaja como texto: quem interpreta é a
         // função, que é onde a conversão de valor acontece de verdade.
-        return `type ${no.name}`;
+        //
+        // Exceção deliberada: `type table [A = …, B = …]` avalia para a **lista
+        // dos nomes**, porque o único lugar do corpus que recebe tipo de tabela é
+        // `Table.FromRows`, e o que ele precisa dali são os nomes de coluna. Um
+        // objeto de tipo completo seria mais fiel e não teria consumidor.
+        return no.fields ? [...no.fields] : `type ${no.name}`;
 
       default: {
         const _exaustivo: never = no;

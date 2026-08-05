@@ -51,3 +51,13 @@ export {
   type MValue,
   type ScalarOut,
 } from './value.ts';
+export {
+  deLinhas,
+  queryDependencies,
+  queryOrder,
+  runQueries,
+  type FonteDeLinhas,
+  type MQuerySpec,
+  type QueryExecutada,
+  type RunnerOptions,
+} from './runner.ts';

@@ -65,6 +65,28 @@ function readExpressions(smDir) {
   return parseTmdlExpressions(fs.readFileSync(p, 'utf8'));
 }
 
+/**
+ * `culture` e `sourceQueryCulture` do modelo.
+ *
+ * Não é metadado decorativo: é o que decide se `"01/02/2026"` no meio de um passo
+ * M é 1º de fevereiro ou 2 de janeiro. O engine de M recusa converter texto para
+ * data sem esta informação (ver ACHADOS #18 e o guarda em transform-engine), então
+ * ela precisa sair do PBIP e não de um default escrito em código.
+ */
+function readCulture(smDir) {
+  const p = path.join(smDir, 'definition', 'model.tmdl');
+  if (!fs.existsSync(p)) return { culture: null, source_query_culture: null };
+  const texto = fs.readFileSync(p, 'utf8');
+  const um = (chave) => {
+    // Regex montado sem template literal: num template, `\s` não é escape
+    // reconhecido e vira só `s` — o padrão passaria a exigir a letra "s" onde
+    // deveria aceitar espaço, e o campo viria sempre null.
+    const m = new RegExp('^[ \\t]*' + chave + ':[ \\t]*(\\S+)[ \\t]*$', 'm').exec(texto);
+    return m ? m[1] : null;
+  };
+  return { culture: um('culture'), source_query_culture: um('sourceQueryCulture') };
+}
+
 function readRelationships(smDir) {
   const p = path.join(smDir, 'definition', 'relationships.tmdl');
   if (!fs.existsSync(p)) return [];
@@ -118,6 +140,7 @@ function extractVisualFields(visual) {
 }
 
 function build(pbip) {
+  const culture = readCulture(pbip.semanticModel);
   const tables = readTables(pbip.semanticModel);
   const expressions = readExpressions(pbip.semanticModel);
   const pages = readPages(pbip.report);
@@ -270,6 +293,7 @@ function build(pbip) {
   }));
 
   return {
+    culture,
     datasources: [...datasources.values()],
     queries,
     tableSpecs,
@@ -303,6 +327,15 @@ function writeYaml(file, obj) {
 
 function writeSpecs(model, outDir) {
   const catalog = path.join(outDir, '_catalog');
+  writeYaml(path.join(catalog, 'model.yaml'), {
+    spec: 'model',
+    note:
+      'Metadados do modelo. `culture` decide como texto vira data na camada M: '
+      + 'em pt-BR, "01/02/2026" é 1º de fevereiro. O engine de M recusa essa '
+      + 'conversão sem culture explícita, para não ler março onde era abril.',
+    culture: model.culture.culture,
+    source_query_culture: model.culture.source_query_culture,
+  });
   writeYaml(path.join(catalog, 'datasources.yaml'), {
     spec: 'datasources',
     note: 'Sem credenciais. Conexão real fica em variáveis de ambiente do Core.',
