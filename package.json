@@ -18,6 +18,7 @@
     "test:extractor": "node --test tools/extractor/test/*.test.mjs",
     "test:engine": "node --test packages/query-engine/test/*.test.ts",
     "test:model": "node --test packages/semantic-model/test/*.test.ts",
+    "test:measures": "node --test packages/measure-engine/test/*.test.ts",
     "test:validate": "node --test tools/validate/test/*.test.ts",
     "doctor": "node tools/doctor/src/index.ts",
     "validate:model": "node tools/validate/src/model.ts",

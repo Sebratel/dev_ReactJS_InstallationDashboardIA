@@ -12,12 +12,13 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Infra de conexão + `doctor` + guard read-only | ✅ |
 | — | Validação contra dados reais — 18/18 queries capturadas | ✅ (⏳ `rowCount` a conferir com o Erick) |
 | 2a | Modelo semântico completo + verificação de referências | ✅ |
-| 2b | Measure Engine — avaliador de DAX e as 78 medidas | ⏳ próximo |
+| 2b.1 | Parser de DAX → AST (121/121 expressões parseiam) | ✅ |
+| 2b.2 | Avaliador com contexto de filtro (75 medidas) | ⏳ próximo |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**167 testes verdes.** Nenhum deles precisa de credencial.
+**214 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -42,6 +43,27 @@ colunas (incluindo as calculadas), medidas e relacionamentos — resolvendo nome
 das 78 medidas e das 43 colunas calculadas. Não precisa de `.env` nem de banco.
 Serve para responder *quais medidas são reimplementáveis* antes de escrever o
 avaliador — a resposta hoje é 75 de 78.
+
+### Measure Engine (Fase 2b)
+
+As 78 medidas **não** são 78 funções escritas à mão: o DAX da spec é a
+implementação. `packages/measure-engine/` lê `measures/*.yaml` e avalia — assim
+`npm run extract` não faz o código divergir em silêncio quando alguém mexe no
+Power BI.
+
+Pronto: **tokenizer e parser → AST**, com as **121 expressões da base parseando**
+(78 medidas + 43 colunas calculadas). Cobertura de parser medida sobre o DAX real,
+não sobre exemplos inventados. O AST é deliberadamente burro — quem decide se
+`[Data]` é medida ou coluna é o resolvedor, que conhece o modelo.
+
+Duas implementações independentes concordam sobre as referências de todas as 121
+expressões (o scanner por caractere do `semantic-model` e o parser com gramática),
+o que é evidência de que nenhuma das duas está lendo o DAX errado.
+
+**Princípio: falhar alto.** Função não suportada ou construção não reconhecida →
+erro com linha e coluna, nunca um palpite. Um avaliador que devolve número errado
+em silêncio é pior que um que se recusa a rodar, porque o erro chega ao dashboard
+da operação como se fosse dado.
 
 ### Query Engine (Fase 1)
 
@@ -69,7 +91,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (167 testes, sem credencial)
+npm test                              # suíte completa (214 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # valida configuração e conectividade
@@ -110,6 +132,7 @@ tools/doctor/             # valida configuração e conectividade
 tools/validate/           # queries contra o ERP + verificação do modelo
 packages/query-engine/    # Query Registry, Cache, Connectors, Engine
 packages/semantic-model/  # tabelas, colunas, medidas, relacionamentos + refs do DAX
+packages/measure-engine/  # tokenizer, parser e AST de DAX (avaliador vem a seguir)
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma

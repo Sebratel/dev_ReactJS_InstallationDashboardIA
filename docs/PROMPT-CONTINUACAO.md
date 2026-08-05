@@ -66,7 +66,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**167 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**214 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -76,7 +76,8 @@ Nenhum teste precisa de credencial ou banco.
 | — | Infra de conexão + doctor + guard read-only | ✅ |
 | — | Validação contra dados reais — 18/18 queries capturadas em `specs/golden/` | ✅ |
 | 2a | Modelo semântico completo + verificação de referências do DAX | ✅ |
-| 2b | Measure Engine — avaliador de DAX e as 78 medidas | ⏳ **próximo** |
+| 2b.1 | Parser de DAX → AST — as 121 expressões da base parseiam | ✅ |
+| 2b.2 | Avaliador com contexto de filtro (alvo: 75 medidas) | ⏳ **próximo** |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -129,7 +130,7 @@ Em `tools/validate/` (`npm run validate:queries`):
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (167 testes, sem credencial)
+npm test                              # suíte completa (214 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # configuração e conectividade (não imprime credencial)
@@ -198,33 +199,72 @@ palpite. Um avaliador parcial que devolve número errado em silêncio é pior qu
 que se recusa a rodar, porque o erro chega ao dashboard da operação como se fosse
 um dado.
 
-Inventário real do subconjunto a cobrir (por frequência nas 78 medidas):
+Inventário real, contado **sobre o AST** das 121 expressões (medidas + colunas
+calculadas) — não por regex, que subcontava feio: dizia `IF:10` quando são 31:
 
 ```
-CALCULATE:51  DISTINCTCOUNT:41  TODAY:23  DIVIDE:14  FILTER:12  TRUNC:11
-SUM:10  IF:10  SELECTEDVALUE:10  VALUES:10  YEAR:10  BLANK:9  COUNTROWS:9
-COUNT:8  ISBLANK:7  DATESBETWEEN:6  MONTH:6  WEEKDAY:6  DATE:5  ROUND:4
-TREATAS:4  SELECTCOLUMNS:4  CALCULATETABLE:4  ALL:4  QUOTIENT:4  MOD:4
-AVERAGEX:3  EOMONTH:3  DATESMTD:3  NOT:3  SWITCH:3  ENDOFMONTH:2  DISTINCT:2
-MIN:2  DATEDIFF:2  INTERSECT:1  EXCEPT:1  UNION:1  ISINSCOPE:1
+CALCULATE:50  DISTINCTCOUNT:37  IF:31  TODAY:25  FILTER:16  DIVIDE:14  BLANK:14
+ISBLANK:12  SUM:10  TRUNC:10  YEAR:9  COUNTROWS:9  SELECTEDVALUE:8  VALUES:8
+COUNT:7  MONTH:7  DATE:7  SWITCH:7  DATESBETWEEN:6  DATEDIFF:6  MAX:6
+WEEKDAY:5  ROUND:4  TREATAS:4  ALL:4  MOD:4  FORMAT:4  AVERAGEX:3  EOMONTH:3
+SELECTCOLUMNS:3  QUOTIENT:3  ENDOFMONTH:2  DISTINCT:2  CALCULATETABLE:2
+LOWER:2  CONTAINSSTRING:2  HOUR:2  NOW:2  INT:2  TIME:2  COALESCE:2
+INTERSECT:1  EXCEPT:1  UNION:1  DATESMTD:1  MIN:1  ISINSCOPE:1  STARTOFMONTH:1
+LOOKUPVALUE:1  DATEVALUE:1  RANKX:1  OR:1  SUBSTITUTE:1
 ```
 
-Sequência sugerida (uma sessão de CLI por item):
+### 2b.1 — parser: PRONTO
 
-1. **Tokenizer + parser → AST**, em `packages/measure-engine/`. Prove com um teste
-   que **todas as 78 medidas e 43 colunas calculadas parseiam** — é a única
-   métrica honesta de cobertura do front-end. `extractRefs` em
-   `packages/semantic-model/src/refs.ts` já resolve as partes chatas do léxico
-   (aspas, colchetes, comentário, `.[Parte]` de hierarquia) e serve de referência.
-2. **Avaliador com contexto de filtro**, sobre linhas em memória vindas do Query
-   Engine. Comece pelas medidas de agregação simples (`COUNTROWS`,
-   `DISTINCTCOUNT` puro), depois `CALCULATE` + filtro de coluna, depois
-   `FILTER`/`ALL`, e só então time intelligence (`DATESMTD`, `DATESBETWEEN`).
-3. **Grafo de dependências entre medidas** com detecção de ciclo — `# BACKLOG`
-   depende de `# TOTAL BACKLOG AGENDADO` e de `# MEDIA INSTALADO BACKLOG`, e
-   `# PROJEÇÃO AGENDADA TOTAL` depende de outras duas.
-4. **Paridade**: comparar cada medida contra o Power BI. Aqui a conferência de
-   `rowCount` pendente volta a importar.
+`packages/measure-engine/` tem tokenizer, parser (precedência por Pratt) e AST.
+**As 121 expressões da base parseiam** (78 medidas + 43 colunas calculadas) — é a
+métrica de cobertura que vale, medida sobre o DAX real. Ver
+`test/cobertura.test.ts`.
+
+Duas coisas que o parser trata de propósito e que quebram implementações
+ingênuas:
+
+- `==` é igualdade **estrita** do DAX (BLANK não equivale a 0 nem a `""`), não
+  dois `=`. Usado em `PROTOCOLOS GERAL[CONDICAO ITEM]`.
+- argumento **omitido** no meio da lista: `RANKX(t, e, , ASC, DENSE)` é real. Vira
+  nó `Missing`, não um valor inventado.
+
+O AST é burro por decisão: `Identifier` pode ser variável, tabela sem aspas ou
+enum (`ASC`/`DENSE`/`DAY`); `NameRef` (`[X]`) pode ser medida ou coluna local.
+**Quem resolve é o avaliador**, que conhece o modelo. Não "conserte" isso no
+parser — `[Data]` em `RANKX(TabelaDatas, [Data], ...)` é coluna de tabela anônima
+criada por `SELECTCOLUMNS`, e resolver cedo escolheria errado em silêncio.
+
+### 2b.2 — avaliador: PRÓXIMO
+
+O escopo é fechado e travado por teste: **53 funções**, listadas em
+`FUNCOES_ESPERADAS` em `packages/measure-engine/test/cobertura.test.ts`. Se o PBIP
+passar a usar uma função nova, aquele teste falha e diz qual.
+
+Ordem sugerida, de menos para mais contexto de filtro:
+
+1. **Escalares e agregação simples** — `COUNTROWS`, `DISTINCTCOUNT`, `COUNT`,
+   `SUM`, `MIN`/`MAX`, `DIVIDE`, `IF`, `SWITCH`, `BLANK`, `ISBLANK`, aritmética e
+   `&`. Já resolve medidas como `# META` (`3000`) e `Qtd Protocolos Distintos`.
+2. **Contexto de filtro** — `CALCULATE` com filtro de coluna
+   (`'T'[Col] = "x"`), depois `FILTER`, depois `ALL`. É o núcleo: 50 das 121
+   expressões chamam `CALCULATE`.
+3. **Relacionamentos** — `specs/_catalog/relationships.yaml`. Filtro propaga do
+   lado `to_*` (one) para o lado `from_*` (many); `cross_filter: bothDirections`
+   vai nos dois sentidos; `active: false` só vale dentro de `USERELATIONSHIP`.
+   Sem isso, `Contagem Solicitacao 2026` (filtra `PROTOCOLOS GERAL` por
+   `CALENDARIO INSTALADO`) não fecha.
+4. **Grafo de dependências entre medidas** com detecção de ciclo — `# BACKLOG`
+   depende de duas outras, `# PROJEÇÃO AGENDADA TOTAL` também.
+5. **Time intelligence** — `DATESMTD`, `DATESBETWEEN`, `EOMONTH`, `ENDOFMONTH`,
+   `STARTOFMONTH`. Deixe para o fim: é onde mais se erra e depende de tudo acima.
+6. **Tabelas e conjuntos** — `VALUES`, `DISTINCT`, `SELECTCOLUMNS`, `TREATAS`,
+   `INTERSECT`, `EXCEPT`, `UNION`, `CALCULATETABLE`, `AVERAGEX`, `RANKX`.
+7. **Paridade** contra o Power BI. Aqui a conferência de `rowCount` pendente
+   volta a importar.
+
+Cuidado concreto com datas: várias colunas chegam como texto `DD/MM/YYYY`.
+**Não ordene nem compare direto** — foi exatamente esse erro que gerou o achado 1
+falso. Converta para ISO antes.
 
 Não comece a 2b pelas 3 medidas mortas do achado 6 — elas não têm resultado.
 O alvo é **75**.
