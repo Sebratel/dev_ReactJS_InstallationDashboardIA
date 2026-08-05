@@ -1010,6 +1010,121 @@ defTable('SELECTCOLUMNS', (args, scope, ev, nome) => {
   return makeTableValue(null, nomes, rows);
 });
 
+/**
+ * `ADDCOLUMNS(tabela, "Nome", expr, ...)` — a tabela de origem com colunas novas,
+ * calculadas no contexto de linha de cada linha dela.
+ *
+ * Diferença que importa em relação a `SELECTCOLUMNS`: as colunas originais
+ * **continuam ali**. É o que faz `Status Protocolo Dia` ter `protocolo`, `Dia` e
+ * `Status`, e não só `Status`.
+ *
+ * As colunas novas são avaliadas sobre a linha de origem, não sobre a linha em
+ * construção: em DAX uma coluna acrescentada não vê as outras acrescentadas no
+ * mesmo `ADDCOLUMNS`.
+ *
+ * RECUSA tabela de origem **nomeada**, e não é falta de vontade. Em DAX as colunas
+ * acrescentadas não têm linhagem — a tabela resultante filtra pelas colunas da
+ * origem e ignora as novas. `TableValue` não sabe dizer "estas colunas têm
+ * linhagem e aquelas não" (ver `TableValue.columns`), então usar o resultado como
+ * filtro restringiria por uma coluna que não existe na tabela de destino: todo
+ * `keep` daria falso e o filtro zeraria a medida sem erro. A única chamada desta
+ * base é sobre tabela anônima (`DISTINCT(SELECTCOLUMNS(...))`), então nada é
+ * perdido — e o dia em que aparecer uma sobre tabela nomeada, é aqui que se olha.
+ */
+defTable('ADDCOLUMNS', (args, scope, ev, nome) => {
+  if (args.length < 3 || (args.length - 1) % 2 !== 0) {
+    throw new DaxEvalError(
+      `${nome}: esperava tabela + pares ("Nome", expressão); recebeu ${args.length} argumentos.`,
+    );
+  }
+  const origem = ev.evaluateTable(args[0]!, scope, nome);
+  if (origem.table !== null) {
+    throw new DaxEvalError(
+      `${nome}: origem é a tabela nomeada '${origem.table}', e coluna acrescentada não tem ` +
+        `linhagem em DAX. O modelo de filtro daqui não distingue as duas coisas, e usar ` +
+        `o resultado como filtro zeraria a medida em silêncio. Ver o comentário em functions.ts.`,
+    );
+  }
+
+  const nomes: string[] = [];
+  for (let i = 1; i < args.length; i += 2) {
+    const rotulo = args[i]!;
+    if (rotulo.type !== 'String') {
+      throw new DaxEvalError(`${nome}: o nome da coluna ${i} tem de ser texto literal.`);
+    }
+    const chave = rotulo.value.toLowerCase();
+    if (origem.columns.has(chave) || nomes.includes(chave)) {
+      throw new DaxEvalError(
+        `${nome}: a coluna ${JSON.stringify(rotulo.value)} já existe na origem. ` +
+          `Sobrescrever calado mudaria o valor de uma coluna que alguém já usa.`,
+      );
+    }
+    nomes.push(chave);
+  }
+
+  const rows = origem.rows.map((row) => {
+    const escopo = ev.scopeWithTableRow(scope, origem, row);
+    const nova: Row = { ...row };
+    for (let i = 1, k = 0; i < args.length; i += 2, k++) {
+      nova[nomes[k]!] = ev.evaluate(args[i + 1]!, escopo);
+    }
+    return nova;
+  });
+
+  return makeTableValue(origem.table, [...origem.columns, ...nomes], rows);
+});
+
+/**
+ * `CALENDAR(inicio, fim)` — a única função do avaliador que **gera** linhas.
+ *
+ * Todas as outras funções de data filtram valores que já existem numa coluna (ver
+ * `datasDaColuna`). Esta cria um dia por linha entre os dois extremos, inclusive,
+ * e é de onde vêm as linhas de três das sete tabelas calculadas. A coluna do
+ * resultado se chama `Date` — é o nome que o DAX dá, e é por ele que
+ * `sourceColumn: "[Date]"` casa na materialização.
+ *
+ * BLANK num extremo **erra alto**, e aqui há um desvio deliberado do Power BI. Lá
+ * BLANK vale 0, que é 30/12/1899, e `CALENDAR(BLANK(), DATE(2026,12,31))` produz
+ * uns 46 mil dias sem reclamar de nada. Ninguém percebe 46 mil linhas numa tabela
+ * de datas, mas toda média que divide por dia útil muda. `CALENDARIO INSTALADO`
+ * começa em `MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO])`: o dia em que essa coluna
+ * vier vazia, é melhor a materialização parar do que o dashboard dividir por 46 mil.
+ *
+ * Trunca a hora dos dois extremos, como o DAX: a fonte pode ser `dateTime` e um
+ * resto de hora deslocaria todos os dias gerados.
+ */
+defTable('CALENDAR', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 2, nome);
+  const ini = valor(args, 0, scope, ev, nome);
+  const fim = valor(args, 1, scope, ev, nome);
+  if (isBlank(ini) || isBlank(fim)) {
+    throw new DaxEvalError(
+      `${nome}: extremo ${isBlank(ini) ? 'inicial' : 'final'} veio BLANK. O Power BI trataria ` +
+        `como 30/12/1899 e geraria dezenas de milhares de dias; aqui isso para, porque ` +
+        `um calendário grande demais não aparece como erro, aparece como média errada.`,
+    );
+  }
+  const de = soDia(toDate(ini, nome));
+  const ate = soDia(toDate(fim, nome));
+  if (de > ate) {
+    throw new DaxEvalError(
+      `${nome}: início ${toText(new Date(de))} é depois do fim ${toText(new Date(ate))}. ` +
+        `Em DAX isso é erro, não tabela vazia.`,
+    );
+  }
+  const rows: Row[] = [];
+  for (let t = de; t <= ate; t += 86_400_000) rows.push({ [COLUNA_CALENDAR]: new Date(t) });
+  return makeTableValue(null, [COLUNA_CALENDAR], rows);
+});
+
+/** O nome que o DAX dá à coluna de `CALENDAR`. Casa com `sourceColumn: "[Date]"`. */
+const COLUNA_CALENDAR = 'date';
+
+/** Meia-noite UTC do dia, em milissegundos. Datas do modelo são meia-noite UTC. */
+function soDia(d: Date): number {
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+}
+
 /** Casa duas tabelas por **posição** de coluna, como o DAX faz em UNION/EXCEPT/INTERSECT. */
 function alinhar(
   a: TableValue,

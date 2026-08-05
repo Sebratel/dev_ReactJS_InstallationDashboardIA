@@ -17,6 +17,11 @@ import { fileURLToPath } from 'node:url';
 import { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
 import { walk } from '../src/ast.ts';
+import {
+  calculatedTableDependencies,
+  calculatedTableOrder,
+  materializeCalculatedTables,
+} from '../src/calculated.ts';
 import { Dataset, type Row } from '../src/dataset.ts';
 import { Evaluator } from '../src/evaluator.ts';
 import { isTableValue } from '../src/filter.ts';
@@ -30,25 +35,21 @@ const SPECS = path.join(ROOT, 'specs');
 const HOJE = makeDate(2026, 8, 4);
 
 /**
- * Tipo das 10 colunas físicas que o TMDL não declara (o Power BI infere da
- * fonte). Explícito e nomeado em vez de heurística por nome de coluna: uma
- * heurística que erra faz uma expressão falhar por motivo inventado, e a
- * contagem de cobertura deixa de significar algo.
+ * Tipo das colunas físicas que o TMDL não declara (o Power BI infere da fonte).
+ * Explícito e nomeado em vez de heurística por nome de coluna: uma heurística que
+ * erra faz uma expressão falhar por motivo inventado, e a contagem de cobertura
+ * deixa de significar algo.
  *
- * As de data são confirmadas pelo uso no DAX — WEEKDAY, FORMAT("dddd") e YEAR
- * são aplicados a elas.
+ * **Eram 10 antes da fase 2b.7, e 9 delas eram colunas de tabela calculada** —
+ * `calendar[Data]`, os três `CALENDARIO ...`, `BASE DE ORIGEM`, `PROTOCOLOS`,
+ * `Status Protocolo Dia`. Não faltava declaração nenhuma nessas: o tipo delas vem
+ * do DAX que produz a tabela, e o que faltava era avaliar esse DAX. Agora que a
+ * materialização existe, o palpite caiu para **uma** coluna — e ela é o achado 15,
+ * `PROTOCOLOS GERAL[EQUIPE_BASE]`, declarada `calculated` no TMDL sem expressão
+ * nenhuma.
  */
 const TIPO_NAO_DECLARADO: Record<string, 'data' | 'texto'> = {
-  'calendar[data]': 'data',
-  'calendario agendamento[data agendado]': 'data',
-  'calendario criado[data criado]': 'data',
-  'calendario instalado[data instalado]': 'data',
-  'calendar[protocolo]': 'texto',
-  'base de origem[equipes temporarias]': 'texto',
   'protocolos geral[equipe_base]': 'texto',
-  'protocolos[tipo de protocolo]': 'texto',
-  'status protocolo dia[status]': 'texto',
-  'status protocolo dia[protocolo]': 'texto',
 };
 
 /**
@@ -85,10 +86,20 @@ function valorSintetico(tipo: string | null, chave: string, i: number): DaxValue
   }
 }
 
-/** Dataset com 4 linhas por tabela, tipado pelas specs. */
+/**
+ * Dataset com uma linha por data em `DATAS`, tipado pelas specs — e **só das 18
+ * tabelas que vêm de query**.
+ *
+ * As 7 calculadas ficam de fora de propósito, e isso é a mudança da fase 2b.7.
+ * Antes elas entravam aqui com linhas inventadas, o que escondia duas coisas de
+ * uma vez: que o avaliador não sabia materializá-las, e que três delas são o
+ * caminho de propagação de filtro. Inventar linha para `CALENDARIO INSTALADO` é
+ * inventar o calendário que divide as médias.
+ */
 function datasetSintetico(model: SemanticModel): Dataset {
   const dataset = new Dataset();
   for (const t of model.tables.values() as Iterable<ModelTable>) {
+    if (t.tableDax) continue; // as linhas vêm do DAX; ver `ambiente`
     const rows: Row[] = [];
     for (let i = 0; i < DATAS.length; i++) {
       const row: Row = {};
@@ -102,6 +113,21 @@ function datasetSintetico(model: SemanticModel): Dataset {
     dataset.addTable(t.name, rows);
   }
   return dataset;
+}
+
+/**
+ * Avaliador pronto para uso: dataset sintético das 18 + as 7 calculadas
+ * materializadas a partir do DAX.
+ *
+ * A materialização acontece **dentro** do ambiente e não num passo separado
+ * porque ela depende do avaliador: as linhas das 7 saem de avaliar DAX sobre as
+ * 18. É a mesma ordem que o Power BI segue no refresh.
+ */
+function ambiente(model: SemanticModel, propagation?: Propagation) {
+  const dataset = datasetSintetico(model);
+  const ev = new Evaluator({ model, dataset, now: HOJE, propagation });
+  const materializadas = materializeCalculatedTables(ev);
+  return { dataset, ev, materializadas };
 }
 
 interface Expressao {
@@ -230,57 +256,97 @@ test('nenhuma função das 127 expressões escalares está sem implementação',
 });
 
 /**
- * As 7 tabelas calculadas: o avaliador ainda não materializa **nenhuma**.
+ * As 7 tabelas calculadas: todas materializam, e **como tabela**.
  *
- * Este teste é a fronteira honesta entre "o DAX está nas specs" e "o dado real
- * pode entrar". Capturar a expressão (o extrator agora captura) não avalia nada.
- * São três motivos distintos, e vale saber qual é qual:
+ * Este teste era o inverso até a fase 2b.7 — afirmava que nenhuma delas produzia
+ * tabela, e listava três motivos distintos. Ficam registrados porque cada um
+ * exigiu uma coisa diferente:
  *
- *  - `CALENDAR` e `ADDCOLUMNS` não existem no avaliador — 3 calendários e a
- *    `Status Protocolo Dia`;
- *  - `calendar` e `PROTOCOLOS` erram alto porque `evaluateExpression` coage
- *    tabela para escalar, e não há API pública que avalie expressão de tabela
- *    **como tabela**;
- *  - `BASE DE ORIGEM` é o caso perigoso: `DISTINCT` de uma coluna que no dado
- *    sintético tem um único valor cabe na coerção 1×1 → escalar, então ela
- *    **não falha** — devolve um texto onde deveria haver uma tabela.
- *
- * Por isso a asserção é sobre a forma do resultado, não sobre erro: o que
- * importa é que nenhuma das 7 produz tabela. Quando a materialização existir,
- * este teste falha — e é a hora de trocar o número de propósito.
+ *  - faltavam `CALENDAR` e `ADDCOLUMNS` (3 calendários + `Status Protocolo Dia`);
+ *  - faltava avaliar expressão de tabela **como tabela**: `evaluateExpression`
+ *    coage o resultado para escalar;
+ *  - `BASE DE ORIGEM` era o caso perigoso, e é por ele que a asserção olha a
+ *    **forma** do resultado em vez de só "não deu erro". `DISTINCT` de uma coluna
+ *    que no dado sintético tem um único valor cabia na coerção 1×1 → escalar, e
+ *    devolvia um texto onde deveria haver uma tabela. Não falhava.
  */
-test('nenhuma das 7 tabelas calculadas é materializável hoje', () => {
+test('as 7 tabelas calculadas viram tabela, não escalar', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
-  const dataset = datasetSintetico(model);
-  const ev = new Evaluator({ model, dataset, now: HOJE });
+  const { ev } = ambiente(model);
 
-  const viraramTabela: string[] = [];
+  const naoViraramTabela: string[] = [];
   for (const t of model.calculatedTables) {
-    let valor: unknown;
-    try {
-      valor = ev.evaluateExpression(t.tableDax!, ev.rootScope());
-    } catch {
-      continue; // erro alto é o comportamento correto enquanto falta suporte
-    }
-    if (isTableValue(valor)) viraramTabela.push(t.name);
+    const valor = ev.evaluateTableExpression(t.tableDax!, ev.rootScope(), t.name);
+    if (!isTableValue(valor)) naoViraramTabela.push(t.name);
   }
-  assert.deepEqual(viraramTabela, []);
+  assert.deepEqual(naoViraramTabela, []);
+
+  // E o caso perigoso, nomeado: pela coerção antiga isto devolvia texto.
+  const origem = ev.evaluateTableExpression(model.table('BASE DE ORIGEM')!.tableDax!);
+  assert.ok(isTableValue(origem));
+  assert.equal(origem.rows.length, 1, 'uma linha — foi isso que cabia na coerção 1×1');
 });
 
 /**
- * E as funções que faltam para elas são exatamente duas, nomeadas.
+ * Materializada, cada uma das 7 é uma tabela do dataset com as colunas que a spec
+ * declara — não com os nomes que o DAX devolveu.
  *
- * O teste acima diz que nenhuma roda; este diz **o que falta**, para a lacuna não
- * virar "o avaliador não dá conta de tabela calculada" sem tamanho. As outras 5
- * não precisam de função nova — precisam de materialização.
+ * A ponte é `sourceColumn`, e ela não é burocracia: o DAX de `CALENDARIO
+ * INSTALADO` devolve uma coluna chamada `Date` e a tabela do modelo chama a mesma
+ * coluna de `DATA INSTALADO`. Materializar com o nome do DAX não daria erro
+ * nenhum — daria um relacionamento que nunca casa, e medida zerada em silêncio.
  */
-test('às tabelas calculadas faltam só CALENDAR e ADDCOLUMNS', () => {
+test('as 7 entram no dataset com as colunas declaradas na spec', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
-  const faltam = new Set<string>();
+  const { dataset, materializadas } = ambiente(model);
+
+  assert.equal(materializadas.length, 7);
   for (const t of model.calculatedTables) {
-    for (const f of funcoesQueFaltam(t.tableDax!, model)) faltam.add(f);
+    assert.ok(dataset.hasTable(t.name), `${t.name} não entrou no dataset`);
+    for (const c of t.columns.filter((x) => !x.calculated)) {
+      assert.ok(
+        dataset.hasPhysicalColumn(t.name, c.name),
+        `'${t.name}'[${c.name}] deveria existir depois de materializar`,
+      );
+    }
   }
-  assert.deepEqual([...faltam].sort(), ['ADDCOLUMNS', 'CALENDAR']);
+
+  // O caso que dá o nome à regra: `[Date]` do DAX vira `DATA INSTALADO`.
+  const instalado = materializadas.find((m) => m.table === 'CALENDARIO INSTALADO')!;
+  assert.deepEqual([...instalado.columnMap], [['data instalado', 'date']]);
+});
+
+/**
+ * `Status Protocolo Dia[Dia]` sai como **data**, e sem isso a propagação erra alto.
+ *
+ * O DAX dessa coluna é `TRUNC('FIELD AGENDA'[Slot Agenda])`, e `TRUNC` em DAX
+ * devolve número — o número de série da data. Ela se liga a `calendar[Data]`, que
+ * é `DATEVALUE(...)` e portanto data. Sem aplicar o tipo declarado (`dateTime`) na
+ * materialização, a junção compararia número com data, nunca casaria, e o guarda
+ * de espécie de `FilteredContext.restringe` erraria alto — que é o certo, mas o
+ * conserto não é afrouxar o guarda: é a coluna nascer com o tipo que o TMDL declara.
+ */
+test('o tipo declarado é aplicado na materialização: Dia é data, não série', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { dataset } = ambiente(model);
+
+  const dias = dataset.rows('Status Protocolo Dia').map((r) => r['dia']);
+  assert.ok(dias.length > 0);
+  for (const d of dias) assert.ok(d instanceof Date, `esperava data e veio ${typeof d}`);
+
+  // E as duas pontas da junção com `calendar` são da mesma espécie.
+  for (const r of dataset.rows('calendar')) assert.ok(r['data'] instanceof Date);
+});
+
+/** Nenhuma das 7 depende de outra: o grafo é plano, medido em vez de suposto. */
+test('o grafo de dependência das tabelas calculadas é plano', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const comDependencia = model.calculatedTables
+    .map((t) => ({ nome: t.name, deps: calculatedTableDependencies(model, t) }))
+    .filter((x) => x.deps.length > 0);
+
+  assert.deepEqual(comDependencia, []);
+  assert.equal(calculatedTableOrder(model).length, 7);
 });
 
 /**
@@ -298,9 +364,9 @@ function executar(model: SemanticModel, propagation?: Propagation) {
 
   for (const e of noEscopo(model)) {
     // Dataset e Evaluator novos por expressão: a memorização de coluna calculada
-    // escreve na linha, e uma expressão não deve herdar o cache da anterior.
-    const dataset = datasetSintetico(model);
-    const ev = new Evaluator({ model, dataset, now: HOJE, propagation });
+    // escreve na linha, e uma expressão não deve herdar o cache da anterior. Isso
+    // vale também para as 7 calculadas, que são materializadas de novo a cada vez.
+    const { dataset, ev } = ambiente(model, propagation);
     try {
       const valor = e.medida
         ? ev.measure(e.nome.slice(e.nome.indexOf('[') + 1, e.nome.lastIndexOf(']')))
@@ -322,6 +388,54 @@ test(`o avaliador executa ${EXECUTAM} expressões reais de ponta a ponta`, () =>
   const { ok, falhas } = executar(model);
   const relatorio = falhas.map((f) => `  ${f.nome}\n      ${f.erro}`).join('\n');
   assert.equal(ok.length, EXECUTAM, `executadas ${ok.length}/${NO_ESCOPO}. Falharam:\n${relatorio}`);
+});
+
+/**
+ * O tamanho do que a materialização destrava: quantas expressões **param** de
+ * executar se as 7 não forem materializadas.
+ *
+ * Vale medir porque a fase inteira poderia ter sido cosmética. Não é: sem as 7 no
+ * dataset, `MATERIALIZACAO_DESTRAVA` expressões erram alto em "tabela não está no
+ * dataset". Antes desta fase esse número era **zero** — não porque estivesse
+ * resolvido, mas porque o dataset sintético inventava as linhas. É a diferença
+ * entre um teste que prova algo e um teste que se autoconvence.
+ */
+const MATERIALIZACAO_DESTRAVA = 46;
+
+test(`sem materializar as 7, ${MATERIALIZACAO_DESTRAVA} expressões deixam de executar`, () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const quebradas: string[] = [];
+
+  for (const e of noEscopo(model)) {
+    const dataset = datasetSintetico(model); // sem as 7
+    const ev = new Evaluator({ model, dataset, now: HOJE });
+    try {
+      if (e.medida) {
+        ev.measure(e.nome.slice(e.nome.indexOf('[') + 1, e.nome.lastIndexOf(']')));
+      } else {
+        // Coluna calculada de tabela calculada não tem nem linha para receber
+        // contexto: sem materialização a expressão não chega a ser tentada.
+        if (!dataset.hasTable(e.tabela)) {
+          quebradas.push(e.nome);
+          continue;
+        }
+        ev.evaluateExpression(
+          e.dax,
+          ev.scopeWithRow(ev.rootScope(), e.tabela, dataset.rows(e.tabela)[0]!),
+        );
+      }
+    } catch {
+      quebradas.push(e.nome);
+    }
+  }
+
+  // As 4 que não executam de qualquer jeito não contam como destravadas.
+  const semMaterializacao = quebradas.length - executar(model).falhas.length;
+  assert.equal(
+    semMaterializacao,
+    MATERIALIZACAO_DESTRAVA,
+    `quebraram ${quebradas.length}:\n${quebradas.map((n) => `  ${n}`).join('\n')}`,
+  );
 });
 
 /** Tabelas que uma expressão cita, seguindo as medidas que ela referencia. */

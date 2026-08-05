@@ -9,6 +9,13 @@ export {
   type ScopeValue,
 } from './evaluator.ts';
 export {
+  calculatedTableDependencies,
+  calculatedTableOrder,
+  materializeCalculatedTable,
+  materializeCalculatedTables,
+  type MaterializedTable,
+} from './calculated.ts';
+export {
   FilteredContext,
   filterFromTable,
   isTableValue,

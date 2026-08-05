@@ -67,7 +67,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**320 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**347 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -83,8 +83,8 @@ Nenhum teste precisa de credencial ou banco.
 | 2b.4 | Time intelligence, conjuntos, `RANKX` — 74 das 78 medidas executam | ✅ |
 | 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + 7 tabelas calculadas | ✅ |
-| 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) | ⏳ **próximo** |
-| 2b.8 | Camada M: as 11 colunas que o DAX usa e o SQL não devolve | ⏳ |
+| 2b.7 | Materializar as 7 tabelas calculadas — as 56 funções estão todas implementadas | ✅ |
+| 2b.8 | Camada M: as 11 colunas que o DAX usa e o SQL não devolve | ⏳ **próximo** |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
@@ -114,8 +114,8 @@ Em `tools/validate/` (`npm run validate:tables`) — fase 2b.6:
   e "este passo muda a contagem de linhas?". **Não é avaliador de M**; erra alto em
   função `Table.*` desconhecida e em `let` aninhado
 - `tables.ts` — classifica as 298 colunas físicas em SQL / alias repetido / passo M /
-  sem golden / sem explicação, e sai com código 1 se uma coluna **citada pelo DAX**
-  não for explicada por ninguém
+  DAX da própria tabela / sem golden / sem explicação, e sai com código 1 se uma coluna
+  **citada pelo DAX** não for explicada por ninguém
 
 Em `tools/validate/` (`npm run validate:queries`):
 - executa as **18 queries SQL** (dbVoalle + dbMaria) nas fontes reais
@@ -146,7 +146,7 @@ Em `tools/validate/` (`npm run validate:queries`):
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (320 testes, sem credencial)
+npm test                              # suíte completa (347 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem no MODELO? (sem banco)
 npm run validate:tables               # essas colunas existem no que a FONTE devolve? (sem banco)
@@ -228,8 +228,8 @@ um dado.
 
 Inventário real, contado **sobre o AST** das 127 expressões escalares (medidas +
 colunas calculadas) — não por regex, que subcontava feio: dizia `IF:10` quando são
-31. As 7 tabelas calculadas acrescentam `CALENDAR:3` e `ADDCOLUMNS:1`, as duas
-únicas funções da base ainda sem implementação (ver 2b.7):
+31. As 7 tabelas calculadas acrescentam `CALENDAR:3` e `ADDCOLUMNS:1`, implementadas na
+2b.7 — com elas, **as 56 funções da base estão todas cobertas**:
 
 ```
 CALCULATE:50  DISTINCTCOUNT:37  IF:31  TODAY:25  FILTER:16  DIVIDE:14  BLANK:14
@@ -355,10 +355,9 @@ faltantes está **vazia**, e falha dizendo o nome se o PBIP passar a usar funç�
 
 Cobertura: **123 das 127** expressões escalares e **74 das 78 medidas** executam.
 
-> Ressalva vinda da 2b.6: a base usa **56** funções, não 54. As duas que faltam
-> (`CALENDAR` e `ADDCOLUMNS`) só aparecem nas 7 tabelas calculadas, que não estavam
-> nas specs quando esta fase fechou. Elas estão declaradas e travadas por teste; o
-> alvo é a 2b.7.
+> Ressalva vinda da 2b.6: a base usa **56** funções, não 54 — as duas que faltavam
+> (`CALENDAR` e `ADDCOLUMNS`) só apareciam nas 7 tabelas calculadas, que não estavam
+> nas specs quando esta fase fechou. Foram implementadas na 2b.7.
 
 Escolhas de projeto desta etapa, todas com teste:
 
@@ -449,46 +448,51 @@ ACHADOS.md #15.
 Ferramenta nova: `npm run validate:tables`. Rode antes de qualquer trabalho com dado
 real — é ele que diz de onde vem cada coluna.
 
-### 2b.7 — materializar as 7 tabelas calculadas: PRÓXIMO
+### 2b.7 — materializar as 7 tabelas calculadas: PRONTO
 
-**Sem isto, nenhuma medida que passe por essas tabelas pode rodar contra dado real** —
-e três delas estão no caminho de propagação de filtro.
+`packages/measure-engine/src/calculated.ts`. O dataset de teste agora carrega **só as
+18 tabelas de query**; as 7 calculadas saem de avaliar o DAX delas, na ordem de
+dependência. A medida do que isso destravou: **sem materializar, 46 das 127 expressões
+param de executar** — e antes desta fase o número era zero, porque o dataset inventava
+as linhas.
 
-O que existe: o DAX das 7 nas specs (`table_dax`), todas parseando, e um teste
-(`nenhuma das 7 tabelas calculadas é materializável hoje`) que falha quando isto for
-implementado — é ele que marca a fronteira.
+As **56 funções da base estão todas implementadas** (`CALENDAR` e `ADDCOLUMNS` foram as
+duas últimas). O teste que afirmava o contrário virou o inverso, e o
+`FUNCOES_SEM_IMPLEMENTACAO` que só existia como comentário virou asserção de verdade.
 
-O que falta, e vale ler nesta ordem:
+Quatro coisas que valem saber ao mexer nisto:
 
-1. **Duas funções**: `CALENDAR(inicio, fim)` e `ADDCOLUMNS(tabela, nome, expr, ...)`.
-   `CALENDAR` **gera** datas, ao contrário de tudo que existe hoje em `functions.ts` —
-   as funções de tempo da 2b.4 **filtram** os valores que existem na coluna. Não
-   unifique as duas coisas sem pensar: um calendário com buracos continua com buracos
-   no Power BI, mas `CALENDAR` não tem buraco nenhum.
-2. **Avaliar expressão de tabela como tabela.** Hoje `evaluateExpression` coage para
-   escalar, e por isso `BASE DE ORIGEM` (`DISTINCT` de coluna com um único valor no
-   dado sintético) **devolve texto em vez de falhar**. Precisa de um caminho que
-   devolva `TableValue` sem coerção.
-3. **Ordem de dependência entre tabelas.** `CALENDARIO INSTALADO` começa em
-   `MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO])`, e `DATA INSTALAÇÃO` é **coluna
-   calculada**. Então materializar tabela exige avaliar coluna calculada de outra
-   tabela, que por sua vez pode depender de tabela materializada. Detecte ciclo e erre
-   alto, como já se faz entre medidas.
-4. **Tabela calculada vira `TableValue.table` nomeado**, não anônimo — ela participa de
-   relacionamento, e tabela anônima não pode virar filtro (regra da 2b.4).
+1. **`CALENDAR` é a única função que gera linhas** — todas as outras funções de data
+   filtram o que já existe numa coluna. Com extremo BLANK ela **erra alto**, e é
+   divergência deliberada do Power BI (registrada em ACHADOS.md, seção "Divergências
+   deliberadas"): lá BLANK = 30/12/1899 e sairiam ~46 mil dias em silêncio.
+2. **`ADDCOLUMNS` recusa tabela de origem nomeada.** Em DAX coluna acrescentada não tem
+   linhagem, e `TableValue` não sabe dizer "estas colunas têm linhagem e aquelas não".
+   Aceitar deixaria o resultado virar filtro por coluna inexistente no destino, o que
+   zera medida em silêncio. A única chamada da base é sobre tabela anônima. Se aparecer
+   uma sobre nomeada, o conserto é dar linhagem por coluna a `TableValue` — não relaxar
+   a recusa.
+3. **A materialização exige bijeção** entre coluna declarada na spec e coluna que o DAX
+   devolve, casadas por `sourceColumn` (`[Date]` → `DATA INSTALADO`). As duas direções
+   pegam erros diferentes; a segunda é a que pega coluna que o extrator perdeu.
+4. **O tipo declarado é aplicado** ao materializar. `Status Protocolo Dia[Dia]` é
+   `TRUNC(...)`, que devolve **número**, e se liga a uma coluna de **data**. Ver
+   ACHADOS.md #16 — e não afrouxe o guarda de espécie da 2b.5 para "resolver" isso.
 
-Cuidado com `Status Protocolo Dia`: ela usa `ADDCOLUMNS` sobre `SELECTCOLUMNS` e faz
-`VAR Protocolo = [protocolo]` — `[protocolo]` é coluna da **tabela anônima** que ela
-mesma está construindo, não de `FIELD AGENDA`. A regra de resolução "do contexto de
-linha mais interno para o mais externo" (2b.4) é exatamente o que faz isso funcionar.
+O grafo de dependência entre as 7 é **plano** (medido): todas dependem só de tabelas de
+query. A ordenação topológica existe pelo que recusa — ciclo erra alto nomeando o
+caminho. Se algum dia uma calculada passar a depender de outra, a ordem já funciona.
 
-### 2b.8 — a camada M: as 11 colunas que o SQL não devolve
+### 2b.8 — a camada M: as 11 colunas que o SQL não devolve — PRÓXIMO
 
-Depende de decidir uma coisa antes de escrever código: **implementar M ou substituí-lo
-por SQL?** As 11 colunas são coisas como `DateTime.Time([DATA CRIADO])`, mesclagem com
-outra query e renomeação. Nenhuma é difícil isoladamente; a pergunta é onde essa lógica
-deve viver na plataforma nova. Traga a recomendação com números — `validate:tables`
-lista as 11 e o passo que cria cada uma.
+**É o último bloqueio entre o avaliador e dado real.** Depende de decidir uma coisa
+antes de escrever código: **implementar M ou substituí-lo por SQL?** Essa decisão é do
+Erick — traga a recomendação com números, não escolha sozinho: ela define onde essa
+lógica passa a viver na plataforma.
+
+As 11 colunas são coisas como `DateTime.Time([DATA CRIADO])`, mesclagem com outra query
+e renomeação. Nenhuma é difícil isoladamente. `npm run validate:tables` lista as 11 e o
+passo M que cria cada uma — comece por ele.
 
 Note que o M também **filtra linha** (`[STATUS] <> "Cancelado"`, `Table.Distinct` por
 `SOLICITACAO`). Isso não é coluna faltando: é a tabela ser outra. Replicar fielmente
@@ -496,7 +500,7 @@ inclui isso.
 
 ### 2b.9 — paridade medida a medida
 
-Só depois de 2b.7 e 2b.8. Todos os números de cobertura de hoje vêm de **dados
+Só depois da 2b.8. Todos os números de cobertura de hoje vêm de **dados
 sintéticos**: eles provam que o avaliador roda, não que ele acerta. Não chame nada
 disso de paridade, e mantenha a distinção que o README faz em todas as menções.
 

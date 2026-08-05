@@ -39,7 +39,13 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-export type Procedencia = 'sql' | 'sql-duplicada' | 'm' | 'nao-conferivel' | 'sem-explicacao';
+export type Procedencia =
+  | 'sql'
+  | 'sql-duplicada'
+  | 'm'
+  | 'dax'
+  | 'nao-conferivel'
+  | 'sem-explicacao';
 
 /**
  * `CIDADE2` quando o golden só tem `CIDADE`: o SELECT de `contratos` pede
@@ -138,7 +144,15 @@ export function verificarTabela(
     let step: string | null = null;
     const daM = scan ? originOf(scan, source) : null;
 
-    if (golden && reais.has(normalizeColumn(source))) {
+    if (t.tableDax) {
+      // Tabela calculada: a coluna não vem de fonte nenhuma — ela é uma coluna do
+      // resultado do DAX da tabela, casada por `sourceColumn`. Quem confere isso é
+      // a materialização (fase 2b.7), que exige **bijeção** entre as colunas
+      // declaradas e as que o DAX devolve. Antes desta fase as 10 caíam em
+      // `nao-conferivel`, junto com as de gsheets/web — e isso lia como "não se
+      // sabe", quando na verdade se sabe e há teste.
+      procedencia = 'dax';
+    } else if (golden && reais.has(normalizeColumn(source))) {
       procedencia = 'sql';
     } else if (golden && !daM && ehDuplicataDeAlias(source, reais)) {
       procedencia = 'sql-duplicada';
@@ -218,12 +232,16 @@ function main(): void {
   console.log(`  ${conta('sql')} vêm do SELECT (confirmadas contra o golden)`);
   console.log(`  ${conta('sql-duplicada')} são alias repetido no SELECT, renomeado pelo Power Query`);
   console.log(`  ${conta('m')} nascem num passo M (Power Query)`);
+  console.log(`  ${conta('dax')} vêm do DAX da própria tabela (calculada, materializada)`);
   console.log(`  ${conta('nao-conferivel')} sem golden para conferir`);
   console.log(`  ${conta('sem-explicacao')} sem explicação`);
 
   const calculadas = tabelas.filter((t) => t.calculada);
   console.log(`\n  ${calculadas.length} tabelas são DAX puro (linhas vêm de expressão):`);
-  for (const t of calculadas) console.log(`      ${t.table}`);
+  for (const t of calculadas) {
+    const cols = t.colunas.map((c) => `${c.column} ← ${c.source}`).join(', ');
+    console.log(`      ${t.table}: ${cols}`);
+  }
 
   console.log('\n── Colunas que nascem em M (o dado real não as traz) ──────────');
   for (const t of tabelas) {

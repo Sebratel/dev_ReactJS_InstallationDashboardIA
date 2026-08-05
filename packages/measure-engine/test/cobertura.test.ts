@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { SemanticModel } from '../../semantic-model/src/model.ts';
 import { extractRefs } from '../../semantic-model/src/refs.ts';
 import { functionsUsed, walk } from '../src/ast.ts';
+import { implementedFunctions } from '../src/functions.ts';
 import { parseDax } from '../src/parser.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -87,14 +88,6 @@ const FUNCOES_ESPERADAS = [
   'TREATAS', 'TRUNC', 'UNION', 'VALUES', 'WEEKDAY', 'YEAR',
 ];
 
-/**
- * As duas que a base usa e o avaliador **não** implementa, ambas vindas das
- * tabelas calculadas: `CALENDAR` (gera linhas de data) e `ADDCOLUMNS` (acrescenta
- * coluna calculada a uma tabela). Ficam declaradas aqui, não escondidas: o teste
- * de execução em `avaliador-cobertura.test.ts` afirma que são exatamente estas.
- */
-const FUNCOES_SEM_IMPLEMENTACAO = ['ADDCOLUMNS', 'CALENDAR'];
-
 test('o escopo do avaliador são estas 56 funções', () => {
   const usadas = new Set<string>();
   for (const e of todasAsExpressoes()) {
@@ -105,6 +98,24 @@ test('o escopo do avaliador são estas 56 funções', () => {
     FUNCOES_ESPERADAS,
     'função DAX nova (ou removida) no PBIP — atualize o escopo do avaliador',
   );
+});
+
+/**
+ * E as 56 estão **todas implementadas**, incluindo as duas das tabelas calculadas.
+ *
+ * Este teste substitui uma constante que a fase anterior deixou aqui listando
+ * `['ADDCOLUMNS', 'CALENDAR']` como "as que faltam" — declarada, comentada e
+ * **nunca comparada com nada**. Lista de pendência que nenhuma asserção lê não
+ * segura pendência nenhuma: ela envelhece em silêncio, no lugar exato onde alguém
+ * vai procurar a verdade. Agora quem responde é o registro do avaliador.
+ */
+test('as 56 funções que a base usa estão todas implementadas', () => {
+  const implementadas = new Set(implementedFunctions());
+  const usadas = new Set<string>();
+  for (const e of todasAsExpressoes()) {
+    for (const f of functionsUsed(parseDax(e.dax))) usadas.add(f);
+  }
+  assert.deepEqual([...usadas].filter((f) => !implementadas.has(f)).sort(), []);
 });
 
 /**

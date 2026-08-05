@@ -274,13 +274,35 @@ test('CONTRATOS[CIDADE2] é alias repetido no SELECT, não coluna perdida', () =
   assert.equal(cidade2.procedencia, 'sql-duplicada');
 });
 
-test('as 7 tabelas calculadas não têm query e portanto não têm procedência de coluna a conferir', () => {
+/**
+ * As 7 calculadas não têm query, e as 10 colunas físicas delas têm procedência
+ * `dax` — não `nao-conferivel`.
+ *
+ * A distinção entrou na fase 2b.7 e não é cosmética. `nao-conferivel` quer dizer
+ * "não há como afirmar nem negar" (gsheets, web, o M ilegível de `Clima/ Tempo`).
+ * Estas 10 se conferem: a materialização exige bijeção entre a coluna declarada e
+ * a que o DAX devolve, e erra alto nas duas direções. Deixá-las no balaio do
+ * incerto fazia o relatório dizer que não se sabia o que se sabe.
+ */
+test('as 7 tabelas calculadas não têm query, e as colunas delas vêm do DAX', () => {
   const tabelas = verificarModelo(SPECS, GOLDEN);
   const calculadas = tabelas.filter((t) => t.calculada);
   assert.equal(calculadas.length, 7);
+
+  let colunas = 0;
   for (const t of calculadas) {
     assert.equal(t.queryRef, null, t.table);
     assert.equal(t.rowCountComparavel, null, `${t.table}: não há golden a comparar`);
+    for (const c of t.colunas) {
+      assert.equal(c.procedencia, 'dax', `${t.table}[${c.column}]`);
+      colunas++;
+    }
+  }
+  assert.equal(colunas, 10);
+
+  // E nenhuma tabela de query virou `dax` por acidente.
+  for (const t of tabelas.filter((x) => !x.calculada)) {
+    for (const c of t.colunas) assert.notEqual(c.procedencia, 'dax', `${t.table}[${c.column}]`);
   }
 });
 

@@ -18,14 +18,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.4 | Time intelligence, conjuntos, `RANKX` — **74 das 78 medidas executam** | ✅ |
 | 2b.5 | Propagação de filtro por relacionamento — **22 medidas dependiam dela** | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + tabelas calculadas | ✅ |
-| 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) | ⏳ próximo |
-| 2b.8 | Camada M: as 11 colunas que o DAX usa e o SQL não devolve | ⏳ |
+| 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) — **as 56 funções agora estão todas implementadas** | ✅ |
+| 2b.8 | Camada M: as 11 colunas que o DAX usa e o SQL não devolve | ⏳ próximo |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**320 testes verdes.** Nenhum deles precisa de credencial.
+**347 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -75,10 +75,9 @@ Duas implementações independentes concordam sobre as referências de todas as 
 expressões (o scanner por caractere do `semantic-model` e o parser com gramática),
 o que é evidência de que nenhuma das duas está lendo o DAX errado.
 
-**Avaliador (2b.2 a 2b.5).** Das **56 funções DAX que a base usa**, 54 estão
-implementadas — há teste que falha e diz qual, se o PBIP passar a usar uma nova.
-As 2 que faltam são `CALENDAR` e `ADDCOLUMNS`, e vêm das tabelas calculadas
-(fase 2b.7).
+**Avaliador (2b.2 a 2b.7).** As **56 funções DAX que a base usa** estão **todas
+implementadas** — há teste que falha e diz qual, se o PBIP passar a usar uma nova.
+As duas últimas a entrar foram `CALENDAR` e `ADDCOLUMNS`, das tabelas calculadas.
 Inclui contexto de filtro (`CALCULATE`, `FILTER`, `ALL`, `TREATAS`,
 `LOOKUPVALUE`, `SELECTEDVALUE`), *time intelligence* (`DATESBETWEEN`, `DATESMTD`,
 `ENDOFMONTH`, `STARTOFMONTH`), conjuntos (`INTERSECT`, `EXCEPT`, `UNION`,
@@ -87,14 +86,14 @@ de linha, `VAR` (inclusive guardando tabela), dependência entre medidas com
 detecção de ciclo, a hierarquia automática de datas (`[Data].[Dia]`) e a
 propagação de filtro pelos **21 relacionamentos ativos** do modelo.
 
-Quatro níveis de cobertura, porque medem coisas diferentes:
+Cinco níveis de cobertura, porque medem coisas diferentes:
 
 | Nível | Hoje | O que prova |
 |---|---|---|
 | Parseia | 134/134 | o DAX é lido inteiro, sem construção estranha |
-| Está no implementado | 127/134 | as 7 tabelas calculadas ficam fora: falta `CALENDAR`/`ADDCOLUMNS` e falta materializar |
-| **Executa de ponta a ponta** | **123/127** das escalares — e **74 das 78 medidas** | roda sobre dados e devolve valor |
-| Roda contra dado real | ⏳ | **não roda ainda** — faltam as 7 tabelas calculadas e as 11 colunas que nascem em M |
+| Está no implementado | **134/134** | nenhuma função da base fica fora do avaliador |
+| **Executa de ponta a ponta** | **123/127** das escalares — e **74 das 78 medidas**; + as **7 tabelas calculadas materializadas** | roda sobre dados e devolve valor |
+| Roda contra dado real | ⏳ | faltam as **11 colunas que nascem em M** ([ACHADOS](docs/ACHADOS.md) #15) |
 | Bate com o Power BI | ⏳ | **paridade — ainda não provada** |
 
 As duas últimas linhas são as que importam para migrar, e nenhuma foi feita. Os
@@ -102,18 +101,18 @@ testes rodam sobre dados sintéticos, então provam que o avaliador *funciona*, 
 que o número é o mesmo do relatório.
 
 A fase 2b.6 tornou a penúltima linha concreta, e ela não era o que parecia: não
-falta "conferir números", falta **código**. Duas lacunas, ambas invisíveis em dado
-sintético porque o dataset de teste inventa linhas para toda tabela e valores para
-toda coluna declarada:
+falta "conferir números", falta **código**. Eram duas lacunas, ambas invisíveis em
+dado sintético porque o dataset de teste inventava linhas para toda tabela e valores
+para toda coluna declarada:
 
 - **7 tabelas calculadas** (`CALENDARIO INSTALADO`, `calendar`,
   `Status Protocolo Dia` e mais 4) cujas linhas vêm de DAX. Três delas são por onde
   o filtro propaga — contra dado real nasceriam vazias, e vazio do lado que filtra
-  não dá erro: dá zero ([ACHADOS](docs/ACHADOS.md) #14).
+  não dá erro: dá zero ([ACHADOS](docs/ACHADOS.md) #14). **Fechada em 2b.7.**
 - **11 colunas que o DAX usa e o SQL não devolve** — nascem em passo M
   (`HORA CRIADO` é `DateTime.Time([DATA CRIADO])`; `DATA DA TROCA` vem de uma
   mesclagem). `validate:model` não pega porque confere modelo contra modelo
-  ([ACHADOS](docs/ACHADOS.md) #15).
+  ([ACHADOS](docs/ACHADOS.md) #15). É a fase 2b.8.
 
 A fase 2b.5 deu uma medida de **o quanto dado sintético não prova**. Das 22 medidas
 que dependem de propagação por relacionamento, o dataset sintético consegue mostrar
@@ -207,12 +206,6 @@ filtro propaga na 2b.5. Agora o campo `table_dax` carrega a expressão, o
 o invariante que pega a próxima perda: **nenhuma tabela sem origem** — 18 vêm de
 query, 7 vêm de DAX, e a soma tem de ser 25.
 
-Materializar ainda não existe, e o teste declara isso em vez de esconder: nenhuma
-das 7 é avaliável hoje. Uma delas, `BASE DE ORIGEM`, é o caso que vale conhecer —
-`DISTINCT` de uma coluna que no dado sintético tem um único valor cabe na coerção
-1×1 → escalar, então ela **não falha**: devolve um texto onde deveria haver uma
-tabela.
-
 *Segundo: existe uma camada M entre o SQL e a tabela.* São **303 passos** de Power
 Query depois do `Odbc.Query`, e eles não são cosméticos:
 
@@ -235,6 +228,46 @@ função não está na tabela de efeitos vira **erro com o nome do passo**. Foi 
 regra que expôs a `clima-tempo`, que define uma função M com `let` aninhado — em vez
 de achatar os passos internos na tabela de fora (o que atribuiria colunas à tabela
 errada, em silêncio), o scanner recusa a query e o relatório a lista à parte.
+
+**Materializar as 7 tabelas calculadas (2b.7).** O dataset dos testes agora carrega
+**só as 18 tabelas que vêm de query**; as 7 calculadas são produzidas avaliando o DAX
+delas, na mesma ordem que o Power BI segue no refresh. É a mudança que dá sentido aos
+números: sem materializar, **46 das 127 expressões param de executar** — e antes desta
+fase esse número era zero, não porque estivesse resolvido, mas porque o dataset
+inventava as linhas.
+
+Três coisas foram necessárias, e as duas últimas não eram óbvias:
+
+- **`CALENDAR` e `ADDCOLUMNS`.** `CALENDAR` é a única função do avaliador que
+  **gera** linhas — todas as outras funções de data filtram valores que já existem
+  numa coluna. Com um extremo BLANK ela **erra alto**, e é um desvio deliberado do
+  Power BI: lá BLANK vale 0, que é 30/12/1899, e `CALENDARIO INSTALADO` sairia com uns
+  46 mil dias sem reclamar de nada. Ninguém percebe isso numa tabela de datas, mas
+  toda média que divide por dia útil muda.
+- **Casar o nome da coluna, exigindo bijeção.** O DAX devolve uma coluna chamada
+  `Date`; a tabela do modelo chama a mesma coluna de `DATA INSTALADO`. Quem faz a
+  ponte é `sourceColumn`. Materializar com o nome do DAX não daria erro nenhum —
+  daria um relacionamento que nunca casa. A exigência vale nas duas direções, e a
+  segunda metade é a que pega o erro que já aconteceu: coluna que o DAX devolve e a
+  spec não declara é coluna que o extrator perdeu.
+- **Aplicar o tipo declarado da coluna.** `Status Protocolo Dia[Dia]` é
+  `TRUNC('FIELD AGENDA'[Slot Agenda])`, e `TRUNC` em DAX devolve **número** — a série
+  da data. Essa coluna se liga a `calendar[Data]`, que é `DATEVALUE(...)` e portanto
+  data. Sem aplicar o `dateTime` que o TMDL declara, a junção compara número com data
+  e o guarda de espécie erra alto — corretamente ([ACHADOS](docs/ACHADOS.md) #16).
+
+Dois efeitos colaterais que valem registro. O primeiro: o palpite de tipo do dataset
+de teste caiu de **10 colunas para 1**. Nove das dez eram colunas de tabela calculada,
+e o tipo delas nunca faltou — vinha do DAX, que não era avaliado. A que sobra é o
+achado 15, `PROTOCOLOS GERAL[EQUIPE_BASE]`. O segundo: `validate:tables` ganhou a
+procedência `dax` para as **10 colunas** dessas tabelas, que antes caíam em
+"sem golden para conferir" junto com as de gsheets e web — lia como *não se sabe*
+onde se sabe, e há teste.
+
+O grafo de dependência entre as 7 é **plano** nesta base (medido, não suposto): todas
+dependem só de tabelas que vêm de query. A ordenação topológica existe pelo que ela
+recusa — ciclo erra alto nomeando o caminho, em vez de deixar a última tabela do laço
+nascer vazia.
 
 ### Query Engine (Fase 1)
 
@@ -268,7 +301,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (320 testes, sem credencial)
+npm test                              # suíte completa (347 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

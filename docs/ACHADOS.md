@@ -24,6 +24,18 @@ Consequência prática por achado:
 | 11 — `DISTINCTCOUNT` sobre tabela vazia | suposição isolada em uma linha do código, a conferir contra o Power BI |
 | 12 — `ISINSCOPE` depende do visual | erra alto. A medida que a usa fica para a Fase 3: são **74** medidas agora, não 75 |
 
+### Divergências deliberadas em relação ao Power BI
+
+Uma só até agora, registrada aqui porque a decisão vigente exige que qualquer desvio
+seja explícito:
+
+| Onde | Power BI | Aqui | Por quê |
+|---|---|---|---|
+| `CALENDAR` com extremo BLANK (05/08/2026, fase 2b.7) | BLANK vale 0 = 30/12/1899, e gera **~46 mil dias** sem reclamar | erra alto e para a materialização | `CALENDARIO INSTALADO` começa em `MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO])`. Uma tabela de datas grande demais não aparece como erro — aparece como toda média por dia útil errada |
+
+Não muda número nenhum hoje: a coluna não vem vazia. É um desvio que só se manifesta
+no dia em que ela vier.
+
 O único item que **ainda depende de você** é a conferência dos `rowCount` contra
 o Power BI (`specs/golden/`), que você pediu para deixar para depois. Isso não é
 decisão de comportamento — é a verificação de que a query foi extraída certa.
@@ -580,13 +592,19 @@ agora verifica as referências dessas 7 também (passam limpas). Com elas, a bas
 tem **134 expressões DAX**, não 127, e usa **56 funções**, não 54 — as duas novas
 são `CALENDAR` e `ADDCOLUMNS`.
 
-**O que ainda não existe:** materializar. Nenhuma das 7 é avaliável hoje, e o teste
-`nenhuma das 7 tabelas calculadas é materializável hoje` trava isso de propósito.
-Duas faltam função; quatro erram alto porque não há API que avalie expressão de
-tabela **como tabela**; e `BASE DE ORIGEM` é o caso perigoso — cabe na coerção
-1×1 → escalar e **devolve um texto** em vez de falhar. Enquanto isso não existir,
-paridade contra dado real não é possível para nenhuma medida que passe por essas
-tabelas.
+**Materializar veio na fase 2b.7** e as 7 são avaliadas hoje
+(`packages/measure-engine/src/calculated.ts`). Vale registrar o que era o caso
+perigoso, porque ele descreve uma classe de erro e não um bug pontual:
+`BASE DE ORIGEM` **não falhava**. Ela é `DISTINCT` de uma coluna que no dado
+sintético tinha um único valor, então cabia na coerção 1×1 → escalar e devolvia um
+**texto** onde deveria haver uma tabela. Por isso o teste que a cobre olha a
+**forma** do resultado, não "se deu erro" — e por isso existe
+`evaluateTableExpression`, que avalia expressão de tabela sem coerção nenhuma.
+
+A ordem de dependência ganhou ordenação topológica com detecção de ciclo. Medindo o
+grafo real, ele é **plano**: as 7 dependem só de tabelas que vêm de query, nenhuma
+depende de outra calculada. Hoje qualquer ordem funcionaria — a ordenação existe pelo
+que ela recusa, e ciclo erra alto nomeando o caminho.
 
 O teste `nenhuma tabela fica sem origem: 18 vêm de query, 7 vêm de DAX` é o que
 pega a próxima perda dessas: tabela sem query e sem DAX não é tabela vazia, é
@@ -651,10 +669,57 @@ Duas colunas a mais que apareceram na verificação e valem registro:
   por nenhuma das 134 expressões e não sai de nenhuma fonte.
 
 **O que a plataforma faz.** Nada de silencioso. `npm run validate:tables` classifica
-cada uma das 298 colunas físicas em SQL / alias repetido / passo M / sem golden para
-conferir / sem explicação, e **sai com código 1** se uma coluna citada pelo DAX não
-for explicada por ninguém. Hoje não há nenhuma nessa situação.
+cada uma das 298 colunas físicas em SQL / alias repetido / passo M / DAX da própria
+tabela / sem golden para conferir / sem explicação, e **sai com código 1** se uma
+coluna citada pelo DAX não for explicada por ninguém. Hoje não há nenhuma nessa
+situação.
+
+A procedência `dax` entrou na fase 2b.7 e cobre as **10 colunas** das 7 tabelas
+calculadas. Antes elas caíam em "sem golden para conferir", junto com as de gsheets e
+web — e as duas coisas não são iguais: aquelas não têm como ser afirmadas nem negadas,
+estas se conferem, porque a materialização exige bijeção entre a coluna declarada e a
+que o DAX devolve. O balaio do incerto foi de 30 para 20 colunas sem que nada no PBIP
+mudasse.
 
 **Para a conferência pendente:** compare o `rowCount` só nas 6 tabelas em que ele é
 comparável. Nas outras 11, o número a comparar é o da tabela **depois do M** — ou,
 mais simples, compare a contagem de linhas do visual, não a da query.
+
+---
+
+## 16. `TRUNC` de data devolve número, e é o tipo declarado que salva a junção
+
+Achado da fase 2b.7, e do tipo que só aparece quando o dado passa a existir de
+verdade: enquanto as tabelas calculadas vinham do dataset sintético, esta coluna
+nascia com o tipo que o teste inventava.
+
+`Status Protocolo Dia[Dia]` é definida assim, dentro do DAX que cria a tabela:
+
+```dax
+"Dia", TRUNC ( 'FIELD AGENDA'[Slot Agenda] )
+```
+
+`TRUNC` em DAX devolve **número** — o número de série da data, `46032` para
+10/01/2026. E essa coluna é uma das duas pontas de um relacionamento:
+
+```
+Status Protocolo Dia[Dia]  →  calendar[Data]
+```
+
+Do outro lado, `calendar[Data]` vem de `'FIELD AGENDA'[Data]`, que é
+`DATEVALUE([Slot Agenda])` — portanto **data**. Número de um lado, data do outro:
+a junção não casa **nenhuma** linha.
+
+**Por que isso não é bug do Power BI.** Lá a coluna é declarada `dateTime` no TMDL,
+e o valor é armazenado como data — a série vira data na hora em que a coluna é
+materializada. O que faltava no avaliador era exatamente isso: aplicar o tipo
+declarado ao materializar (`aplicaTipo` em `calculated.ts`). Só este caso é
+convertido; texto onde se declarou data continua erro, porque converter `DD/MM/YYYY`
+na surdina é como se leu março onde era abril (achado 1, o falso).
+
+**O que impediu de passar em branco** foi o guarda de espécie em
+`FilteredContext.restringe`, escrito na fase 2b.5: junção entre data e número erra
+alto em vez de devolver zero com cara de filtro apertado. Sem ele, `Status Protocolo
+Dia` filtraria `calendar` para nada e toda medida que atravessa esse relacionamento
+sairia vazia — sem erro nenhum. **O conserto não era afrouxar o guarda**: era a
+coluna nascer com o tipo que o TMDL declara.
