@@ -422,7 +422,18 @@ somente leitura, o que casa com a regra 3 do projeto.
 | código: autenticação | ✅ `google-auth.ts`, fluxo JWT bearer com `node:crypto`, 11 testes sem rede |
 | código: connector | ⏳ falta, e só faz sentido depois do passo 6 |
 
-O passo 6 é o único que não é código, e é o que falta. Vale insistir num ponto que confunde:
+O passo 6 é o único que não é código, e é o que falta — **e não é o Erick que consegue
+fazê-lo.** Descoberto em 05/08/2026, ao tentar: no diálogo de Compartilhar aparece
+"Pedir ao proprietário para compartilhar" e "Seu papel é de leitor, por isso não é
+possível gerenciar o acesso". O Erick é Leitor nessas planilhas; quem concede é a
+proprietária (**Julya De Souza Rocha**, ao menos na que abriu, cujo arquivo se chama
+"STAGING"). Então o passo 6 é um pedido a terceiro, não uma tarefa nossa — o que muda a
+estimativa da fase: não depende de trabalho, depende de resposta.
+
+Registrado também porque é o tipo de coisa que se esquece: **o pedido tem que ser de
+Leitor**, não de Editor. O diálogo de solicitação vem com "Editor" pré-selecionado, e
+pedir escrita numa planilha de RH é mais fácil de ser negado — além de contrariar a
+regra 3 do projeto e o escopo `spreadsheets.readonly` que o código pede. Vale insistir num ponto que confunde:
 **ter acesso à planilha com a sua conta Google não dá acesso à conta de serviço.** São dois
 principais distintos; o Google responde `PERMISSION_DENIED` para o segundo mesmo com o
 primeiro dentro da planilha. Em cada uma das 3 planilhas:
