@@ -15,6 +15,7 @@ import {
   queryDependencies,
   queryOrder,
   runQueries,
+  usaFonteExterna,
   type MQuerySpec,
 } from '../src/runner.ts';
 import { MEvalError } from '../src/value.ts';
@@ -163,6 +164,26 @@ test('`apenas` roda a query pedida e as dependências dela, e mais nada', async 
   });
   assert.deepEqual([...feitas.keys()].sort(), ['a', 'b']);
   assert.ok(!buscadas.includes('c'), 'C não deveria ter sido buscada');
+});
+
+test('usaFonteExterna separa quem lê fonte de quem traz a tabela embutida', () => {
+  assert.equal(usaFonteExterna('let F = Odbc.Query("dsn=x","select 1") in F'), true);
+  assert.equal(usaFonteExterna('let F = GoogleSheets.Contents("https://x") in F'), true);
+  assert.equal(usaFonteExterna('let F = DateTime.LocalNow() in F'), false);
+  // Nome de passo parecido não conta: quem decide é o identificador na expressão.
+  assert.equal(usaFonteExterna('let #"Odbc.Query fake" = 1, b = #"Odbc.Query fake" in b'), false);
+});
+
+test('query que não lê fonte não chama a fonte injetada', async () => {
+  let chamou = false;
+  await runQueries({
+    specs: [q('a', 'A', 'let F = #table({"X"}, {{1}}) in F')],
+    fonte: async () => {
+      chamou = true;
+      return [];
+    },
+  });
+  assert.equal(chamou, false, 'buscar fonte para query sem fonte pediria connector inexistente');
 });
 
 test('query pedida que não existe erra dizendo o id', async () => {

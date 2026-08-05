@@ -42,6 +42,7 @@ sql: |-
   FROM PERSONALIZADO
   WHERE PERSONA1 = 1;
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - assignment_incidents

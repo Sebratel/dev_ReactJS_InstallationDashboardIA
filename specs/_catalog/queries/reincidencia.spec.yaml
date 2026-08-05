@@ -86,6 +86,7 @@ sql: |-
     AND ps.data_suporte <= pi.data_instalacao + INTERVAL '30 days'
   ORDER BY pi.data_instalacao DESC;
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - assignment_incidents

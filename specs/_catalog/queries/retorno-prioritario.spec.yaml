@@ -79,6 +79,7 @@ sql: |-
     AND rp.data_retorno <= pi.data_instalacao + INTERVAL '30 days'
   ORDER BY pi.data_instalacao DESC, rp.data_abertura DESC;
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - assignment_incidents

@@ -20,6 +20,7 @@ sql: |-
   	left join phone_numbers pn on pn.id = ci.phone_number_id
   	where c.v_status not like 'Cancelado'
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - contract_items

@@ -40,6 +40,7 @@ sql: |-
   	where cst2.deleted is not true
   	order by p.name asc
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - authentication_contracts

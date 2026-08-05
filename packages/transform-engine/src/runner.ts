@@ -37,6 +37,13 @@ export interface MQuerySpec {
   /** Nome como o M de outra query o cita: `PROTOCOLOS GERAL`. */
   readonly name: string;
   readonly m_expression?: string;
+  /**
+   * `odbc`, `googlesheets`, `inline`, `computed`… Só a fonte injetada usa; o
+   * runner não decide nada com isto. Está aqui para o adaptador do Query Engine
+   * receber a spec inteira sem precisar de um segundo mapa por id.
+   */
+  readonly source_type?: string;
+  readonly datasource?: string | null;
 }
 
 /**
@@ -112,6 +119,34 @@ export function queryDependencies(
   };
   anda(parseM(m), passos);
   return { dependencias: [...dependencias].sort(), orfaos: [...orfaos].sort() };
+}
+
+/**
+ * A query lê fonte externa?
+ *
+ * Três das 24 não leem: `feriados` traz a tabela embutida no próprio M (base64 +
+ * deflate), `hora-atualizado` é só `DateTime.LocalNow()`, e as calculadas em DAX
+ * nem chegam aqui. Perguntar antes evita chamar o Query Engine para elas — o que
+ * daria "sem connector para datasource inline", um erro sobre uma fonte que a
+ * query não usa.
+ */
+export function usaFonteExterna(m: string): boolean {
+  const nomes = new Set<string>(NOMES_DE_FONTE);
+  let achou = false;
+  const anda = (no: unknown): void => {
+    if (achou || typeof no !== 'object' || no === null) return;
+    const n = no as { type?: string; name?: string };
+    if (n.type === 'Identifier' && n.name && nomes.has(n.name)) {
+      achou = true;
+      return;
+    }
+    for (const v of Object.values(no) as unknown[]) {
+      if (Array.isArray(v)) for (const x of v) anda(x);
+      else anda(v);
+    }
+  };
+  anda(parseM(m));
+  return achou;
 }
 
 /**
@@ -206,8 +241,11 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
   for (const spec of ordem) {
     if (pedidas && !necessarias.has(spec.name)) continue;
 
-    const linhasDaFonte = await opts.fonte(spec);
-    const tabelaDaFonte = deLinhas(linhasDaFonte);
+    // Só busca se a query realmente lê fonte. `feriados` e `hora-atualizado` não
+    // leem, e chamá-las de fonte externa erraria por uma fonte inexistente.
+    const tabelaDaFonte = usaFonteExterna(spec.m_expression!)
+      ? deLinhas(await opts.fonte(spec))
+      : null;
 
     const funcoes = new Map(standardFunctions());
     for (const nome of NOMES_DE_FONTE) {
@@ -215,7 +253,15 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
         name: nome,
         minArgs: 0,
         maxArgs: 4,
-        call: () => tabelaDaFonte,
+        call: () => {
+          if (!tabelaDaFonte) {
+            throw new MEvalError(
+              `A query '${spec.id}' chamou ${nome}, mas o runner não buscou a fonte dela. ` +
+                'Isso é incoerência entre usaFonteExterna e o avaliador, não erro da expressão.',
+            );
+          }
+          return tabelaDaFonte;
+        },
       };
       funcoes.set(nome, impl);
     }

@@ -1,179 +1,233 @@
-# Design System Oficial — GER / Sebratel
+# Design System — Instalação dentro do HUBBI
 
-> Fonte: `GER_SEBRATEL_AI_INSTRUCTIONS.md` (documento oficial enviado pelo usuário).
-> **Prioridade máxima** sobre qualquer preferência visual genérica de IA ou de biblioteca.
-> Toda tela, componente, dashboard ou gráfico deste projeto DEVE seguir este documento.
+> **v2 — substitui a v1.** A v1 deste documento seguia o `GER_SEBRATEL_AI_INSTRUCTIONS.md`
+> (fundo `#F5F1E8`, DM Sans, sidebar fixa 256px, sem gradiente, sem vermelho). Essa
+> paleta era **aspiracional** — não correspondia a nenhum código real.
+>
+> Em 2026-08-04 confirmamos que este dashboard será aberto **dentro do HUBBI**
+> (`github.com/Sebratel/dev_HUBBI_ReactJS`), a plataforma de dashboards da Sebratel
+> já em produção. Lemos o código real —
+> `src/components/AppShell.js` e `src/styles/shared_layout.css` — e os tokens abaixo
+> são **cópia exata** dessas duas fontes, não uma interpretação.
+> **Esta versão é a autoritativa.** Se os dois documentos divergirem no futuro,
+> vale o que está no `shared_layout.css` do HUBBI, e este arquivo deve ser
+> atualizado para acompanhar.
 
 ---
 
 ## 1. Contexto do produto
 
-Plataforma corporativa de gestão e indicadores da Sebratel. Foco executivo e operacional.
+O relatório de Instalação não é uma aplicação standalone: é uma página que abre
+dentro do **AppShell** do HUBBI — o mesmo wrapper (sidebar + header) usado por
+todo o portal de dashboards da Sebratel. Isso significa que a página **não define
+sua própria navegação principal**; ela só preenche `headerLeft` e o conteúdo
+dentro de `content-area`.
 
-Obrigatório:
+Foco executivo e operacional, mesmo objetivo de sempre:
 
-- Visual limpo, baixa fadiga cognitiva
-- Interface corporativa, forte legibilidade
-- Layout previsível
-- Dashboard orientado a indicadores
-- Sem excesso de elementos visuais
-- Sem visual "startup moderna colorida"
-
-A experiência deve transmitir: confiabilidade, governança, controle, gestão, performance operacional.
+- Visual limpo, baixa fadiga cognitiva, forte legibilidade
+- Dashboard orientado a indicadores, sem excesso de elementos visuais
+- Confiabilidade, governança, controle, performance operacional
 
 ---
 
-## 2. Paleta oficial (tokens)
+## 2. Paleta oficial (tokens reais — `shared_layout.css`)
 
-| Token        | Hex       | Uso                                                            |
-| ------------ | --------- | -------------------------------------------------------------- |
-| `background` | `#F5F1E8` | Fundo da aplicação, área de conteúdo, containers externos       |
-| `foreground` | `#111111` | Textos principais, títulos, ícones principais                   |
-| `card`       | `#FFFFFF` | Cards, containers, modais, widgets                              |
-| `primary`    | `#FFB000` | Botões primários, ações principais, links de destaque, KPI foco |
-| `success`    | `#16A34A` | Metas atingidas, indicador positivo, status concluído           |
-| `danger`     | `#DC2626` | Falhas, ações destrutivas, indicador crítico, meta não atingida |
-| `grid`       | `#E5E0D5` | Grid / eixos de gráficos, divisores                             |
-| `no-data`    | cinza neutro | Ausência de dados / período sem informação                    |
+| Token             | Hex / valor                       | Uso                                                             |
+| ------------------ | ---------------------------------- | ---------------------------------------------------------------- |
+| `--amber`           | `#F59E0B`                          | Cor primária — ação principal, item ativo, destaque, KPI foco   |
+| `--amber-dark`      | `#D97706`                          | Hover/pressed do âmbar                                           |
+| `--amber-soft`      | `rgba(245,158,11,.10)`             | Fundo suave (hover de nav-item, badge admin)                     |
+| `--red`             | `#E30613`                          | **Marca Sebratel** — só no nome da marca na sidebar. NÃO é status. |
+| `--red-dark`        | `#C10511`                          | Variante da marca                                                |
+| `--green`           | `#10B981`                          | Status ativo / sucesso                                          |
+| `--danger`          | `#EF4444`                          | Alertas, logout, ações destrutivas                                |
+| `--danger-dark`     | `#DC2626`                          | Hover do danger                                                  |
+| `--bg`              | `#F4F4F5`                          | Fundo geral da aplicação                                         |
+| `--white`           | `#FFFFFF`                          | Cards, sidebar, header                                           |
+| `--text`            | `#111827`                          | Texto principal                                                  |
+| `--muted`           | `#6B7280`                          | Texto secundário, labels                                          |
+| `--border`          | `#E5E7EB`                          | Bordas e divisores                                               |
+| `--sidebar-w`       | `196px`                            | Largura da sidebar **expandida** (hover)                         |
+| `--sidebar-collapsed` | `62px`                            | Largura da sidebar **em repouso**                                 |
+| `--header-h`        | `52px`                             | Altura do header                                                 |
+| `--font`            | `'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif` | Fonte de toda a interface        |
 
-**Regra:** nunca usar HEX hardcoded em componente. Todo componente consome token
-(CSS var / Tailwind theme). Nunca inventar cor de status nova.
+**Vermelho tem dois papéis que não podem se confundir:** `--red` (`#E30613`) é a
+cor da marca — aparece só no texto "SEBRATEL" da sidebar. `--danger`/`--danger-dark`
+(`#EF4444`/`#DC2626`) é o vermelho de status/alerta. São hexadecimais diferentes
+de propósito; nunca usar um no lugar do outro.
 
-### Implementação sugerida (tokens → CSS vars → Tailwind)
+**Achado ainda em aberto:** `--font` declara Inter, mas o HUBBI real não carrega
+essa fonte em lugar nenhum (sem `<link>`, sem `@font-face`, sem pacote npm) —
+hoje cai silenciosamente para Segoe UI/system-ui. Enquanto isso não for corrigido
+no HUBBI, o visual real de produção usa a fonte do sistema, não Inter.
+
+### Implementação (CSS vars — copiar literalmente de `shared_layout.css`)
 
 ```css
 :root {
-  --background: #f5f1e8;
-  --foreground: #111111;
-  --card: #ffffff;
-  --primary: #ffb000;
-  --success: #16a34a;
-  --danger: #dc2626;
-  --grid: #e5e0d5;
-  --muted: #6b7280; /* no-data / cinza neutro */
+  --amber: #F59E0B; --amber-dark: #D97706; --amber-soft: rgba(245,158,11,.10);
+  --red: #E30613; --red-dark: #C10511;
+  --green: #10B981;
+  --danger: #EF4444; --danger-dark: #DC2626;
+  --sidebar-w: 196px; --sidebar-collapsed: 62px; --header-h: 52px;
+  --bg: #F4F4F5; --white: #FFFFFF; --text: #111827; --muted: #6B7280; --border: #E5E7EB;
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 ```
 
-Componentes usam `bg-background`, `bg-card`, `text-foreground`, `bg-primary`,
-`text-success`, `text-danger` — nunca `#FFB000` inline.
+Nunca HEX hardcoded em componente — sempre `var(--amber)` etc.
 
 ---
 
 ## 3. Semáforo corporativo
 
-| Estado    | Quando                                          | Classes                     |
-| --------- | ----------------------------------------------- | --------------------------- |
-| SUCCESS   | Meta atingida, processo concluído, KPI positivo | `text-success` / `bg-success` |
-| DANGER    | Meta não atingida, falha operacional, crítico   | `text-danger` / `bg-danger`   |
-| NO_DATA   | Dados indisponíveis, sem registros no período   | cinza neutro                |
+| Estado    | Quando                                          | Token                     |
+| --------- | ----------------------------------------------- | -------------------------- |
+| SUCCESS   | Meta atingida, processo concluído, KPI positivo | `--green` (`#10B981`)      |
+| DANGER    | Meta não atingida, falha operacional, crítico   | `--danger` (`#EF4444`)     |
+| NO_DATA   | Dados indisponíveis, sem registros no período   | cinza neutro (`#D1D5DB`)  |
 
-**Nunca usar vermelho para ausência de dados.** Verde = sucesso, vermelho = problema,
-cinza = sem dados. Sem interpretações alternativas.
+Badges reais (copiados do HUBBI, usar estes exatos, não inventar novos tons):
+
+```css
+/* ativo / sucesso */ background:#ECFDF5; color:#065F46; border:1px solid #A7F3D0;
+/* inativo / crítico */ background:#FEF2F2; color:#991B1B; border:1px solid #FECACA;
+/* destaque âmbar */ background:rgba(245,158,11,.12); color:var(--amber-dark); border:1px solid rgba(245,158,11,.3);
+```
+
+Nunca usar vermelho para ausência de dados.
 
 ---
 
 ## 4. Tipografia e shell
 
-- Fonte: **DM Sans**, exclusivamente, em toda a interface.
-- Sidebar: largura obrigatória **256px** (`w-64`). Nunca alterar no desktop.
-- Estrutura de toda tela nova: **Topbar → Sidebar → Área de conteúdo → Cards → Tabela/Dashboard → Ações**
-- Hierarquia de conteúdo: **Título → Subtítulo → KPIs → Gráficos → Detalhamento → Tabela**
+- Fonte: **Inter** (ver achado acima), pesos usados: 400/500/600/700/800.
+- Sidebar: **62px em repouso, expande para 196px no hover** (`transition: width
+  0.28s cubic-bezier(0.4,0,0.2,1)`) — não é uma largura fixa como na v1.
+- Header: **52px** de altura, fundo branco, `box-shadow: 0 1px 8px rgba(0,0,0,.04)`.
+- Estrutura de página (dentro do `content-area` do AppShell): filtros → KPIs →
+  gráficos → detalhamento/tabela. A sidebar e o header **não são desta página** —
+  são do AppShell do HUBBI.
 
 ---
 
-## 5. Componentes
+## 5. Componentes (classes reais do `shared_layout.css`)
+
+**Nav item da sidebar**
+
+```css
+.nav-item.active {
+  background: linear-gradient(90deg, var(--amber) 0%, var(--amber-dark) 100%);
+  color: #fff;
+  box-shadow: 0 3px 12px rgba(245,158,11,.38);
+}
+```
+
+Sim, **há gradiente** — só nesse estado, só na escala âmbar. Isso substitui a
+proibição de gradiente da v1, que não correspondia ao código real.
 
 **Botões**
 
-- Primário: `#FFB000` (ação principal da tela)
-- Outline: fundo transparente, borda suave, mesmo raio dos demais componentes
-- Ghost: sem preenchimento, sem destaque excessivo
-- Danger: `#DC2626` (exclusão, cancelamento, ação irreversível)
+- `.btn-primary` / `.btn-ver`: fundo `var(--amber)`, hover `var(--amber-dark)` +
+  `translateY(-1px)`, radius 8px
+- `.btn-secondary`: transparente, borda `var(--border)`, hover `var(--bg)`
+- `.btn-danger-solid`: fundo `var(--danger)`, hover `var(--danger-dark)`
+- `.btn-edit` / `.btn-delete`: outline, cor âmbar/danger, sem preenchimento
 
-**Cards** — fundo branco, cantos arredondados, sombra suave, visual limpo.
-Nunca: gradiente, borda colorida, glow, efeito exagerado.
+**Cards** (`.table-card`, `.section-card`)
 
----
+- Fundo branco, `border-radius: 14px`, borda `1px solid var(--border)`
+- Sombra: `0 1px 6px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04)`
+- Header do card com título 800/0.82rem + subtítulo muted 0.72rem
 
-## 6. Gráficos (Recharts)
+**Tabelas** (`.data-table`)
 
-| Papel     | Cor       |
-| --------- | --------- |
-| Positivo  | `#16A34A` |
-| Crítico   | `#DC2626` |
-| Destaque  | `#FFB000` |
-| Grid      | `#E5E0D5` |
-
-Dashboard executivo prioriza, nesta ordem: 1) KPIs principais, 2) tendências,
-3) evolução histórica, 4) comparativos, 5) alertas operacionais.
-Evitar decoração, widget sem valor de negócio, gráfico complexo demais.
+- Cabeçalho uppercase, `0.62rem`, cor `#9CA3AF`, fundo `#F8F9FA`
+- Linha com hover `rgba(245,158,11,.03)`
 
 ---
 
-## 7. Responsividade
+## 6. Gráficos
 
-Desktop é prioridade. Mobile adapta: sidebar colapsável, cards empilhados,
-tabelas com scroll horizontal. Largura da sidebar no desktop nunca muda.
+| Papel     | Token                     |
+| --------- | -------------------------- |
+| Positivo  | `--green` (`#10B981`)      |
+| Crítico   | `--danger` (`#EF4444`)     |
+| Destaque / meta | `--amber` (`#F59E0B`) |
+| Grid      | `--border` (`#E5E7EB`)     |
+
+Prioridade do dashboard executivo: 1) KPIs, 2) tendências, 3) evolução histórica,
+4) comparativos, 5) alertas operacionais. Sem decoração nem gráfico complexo demais.
+
+---
+
+## 7. Responsividade (regras reais do HUBBI)
+
+```css
+@media (max-width: 900px) { .app-sidebar { display: none; } }
+@media (max-width: 640px) { .header-left { display: none; } }
+```
 
 ---
 
 ## 8. Proibido
 
-- Azul corporativo, roxo, rosa
-- Gradientes internos, glassmorphism, neumorphism
-- Bordas neon / efeitos futuristas
-- Dark Mode como padrão, temas alternativos
-- Novas cores de status (só Success / Danger / No Data)
-- HEX hardcoded em componentes
+- Azul, roxo, rosa como cor de destaque/status
+- `--red` (`#E30613`, marca) usado como cor de status — status vermelho é
+  sempre `--danger`
+- Glassmorphism, neumorphism, bordas neon
+- Dark mode como padrão (o HUBBI real não tem alternância de tema)
+- Novas cores de status além de Success / Danger / No Data
+- HEX hardcoded em componente — sempre `var(--token)`
+
+**Não proibido (diferença da v1):** gradiente âmbar em estado ativo/avatar, e o
+vermelho da marca (`--red`) no nome "SEBRATEL" da sidebar.
 
 ---
 
 ## 9. Layout de referência do dashboard
 
-Referência de **estrutura** enviada pelo usuário (screenshot de um "Procurement
-Dashboard"): o que se adota é o **arranjo espacial**, não as cores.
+Estrutura adotada — arranjo do "Procurement Dashboard" (screenshot de
+referência do usuário) por dentro do AppShell real do HUBBI:
 
 ```
-┌────────────┬──────────────────────────────────────────────────────────────┐
-│  LOGO      │                     TÍTULO DA PÁGINA                        │  topbar
-│            ├──────────────────────────────────────────────────────────────┤
-│ ▸ Overview │ [Filtro 1▾] [Filtro 2▾] [Filtro 3▾] [Filtro 4▾] [Status▾]   │  linha de filtros
-│ ▸ Item 2   ├──────────────────────────────────────────────────────────────┤
-│ ▸ Item 3   │ ┌ KPI ─┐ ┌ KPI ─┐ ┌ KPI ─┐ ┌ KPI ─┐ ┌ KPI ─┐                │  KPI row
-│ ▸ Item 4   │ │ 500  │ │ 26K  │ │10.78M│ │23.41%│ │ 26M  │  valor grande  │  (4–5 cards)
-│ ▸ Item 5   │ └ label┘ └ label┘ └ label┘ └ label┘ └ label┘                │
-│            ├───────────────────────────────────┬──────────────────────────┤
-│            │  Série temporal (linha, larga)    │  Mapa / visual auxiliar  │
-│            ├─────────────┬─────────────────────┴──────────────────────────┤
-│  (rodapé)  │  Pizza      │  Barras horizontais ranqueadas                 │
-└────────────┴─────────────┴────────────────────────────────────────────────┘
+┌────┬──────────────────────────────────────────────────────────┐
+│LOGO│ Instalação / Visão Geral — atualizado 04/08         [↻][👤]│ header (52px)
+├────┼──────────────────────────────────────────────────────────┤
+│ ▤  │ [Mês▾] [Equipe▾] [Status▾] [Tecnologia▾] [Regional▾]      │ filtros
+│ ⚙  ├──────────────────────────────────────────────────────────┤
+│ 👥 │ ┌KPI─┐ ┌KPI─┐ ┌KPI─┐ ┌KPI─┐ ┌KPI─┐   valor grande + label │ KPI row
+│ 📊 │ └────┘ └────┘ └────┘ └────┘ └────┘                       │ (5 cards)
+│    ├───────────────────────────────────┬──────────────────────┤
+│(62)│ Instalado × Meta (linha, larga)   │ Equipes em Campo     │
+│    ├─────────────┬─────────────────────┴──────────────────────┤
+│SAIR│ Donut status │ Reincidência por Técnico (tabela ranqueada)│
+└────┴─────────────┴────────────────────────────────────────────┘
 ```
 
-Regras derivadas:
-
-- Sidebar fixa 256px, logo no topo, navegação vertical com item ativo destacado.
-- Filtros globais em uma faixa própria, dentro de cards brancos, acima dos KPIs.
-- KPI card = número grande (dominante) + label curto embaixo; 4–5 por linha no desktop.
-- Grade de gráficos: 1 visual largo de tendência, depois visuais de composição
-  (pizza/donut) e ranking (barras horizontais).
-- Rótulos de valor visíveis nos pontos/barras quando a densidade permitir.
-
-**Conflito consciente com a referência:** o screenshot usa roxo, item explicitamente
-proibido na seção 8. Adotar o layout com a paleta oficial — fundo `#F5F1E8`,
-cards brancos, sidebar em `#111111` (ou branco com texto `#111111`) e item ativo /
-destaques em `#FFB000`. Nunca replicar o roxo.
+- Sidebar (62px → 196px no hover) **não pertence a esta página** — é o menu
+  principal do HUBBI (MEUS DASHBOARDS / GERENCIAR DASH. / USUÁRIOS / ANALYTICS).
+  Os itens de menu **específicos do relatório de Instalação** (Visão Geral,
+  Relatório do Mês, Agendamento Field etc.) ainda não têm fonte confirmada —
+  aguardando leitura do projeto `by` para não inventar essa lista.
+- Logo: ícone circular real da Sebratel (`src/assets/logo_circular.png` no
+  HUBBI), nunca um mark genérico.
+- Sem mapa: não há evidência de dado geográfico nas queries extraídas do
+  Voalle. Usar painel de status operacional (ex.: "Equipes em Campo") no lugar.
 
 ---
 
 ## 10. Checklist antes de entregar
 
-- [ ] Fundo `#F5F1E8`
-- [ ] Cards brancos `#FFFFFF`
-- [ ] DM Sans aplicada
-- [ ] Sidebar 256px
-- [ ] Botões primários âmbar `#FFB000`
-- [ ] Indicadores no semáforo oficial (verde/vermelho/cinza)
-- [ ] Sem cores extras
-- [ ] Sem HEX hardcoded (tudo via token)
-- [ ] Responsividade funcional
-- [ ] Componentes reutilizáveis
+- [ ] Fundo `#F4F4F5`
+- [ ] Cards brancos, radius 14px, sombra `0 1px 6px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04)`
+- [ ] Fonte Inter (com `@font-face` real embutido — o HUBBI de produção ainda não carrega)
+- [ ] Sidebar não é desta página — parte do AppShell (62px/196px hover)
+- [ ] Botões/destaques em âmbar `#F59E0B`, hover `#D97706`
+- [ ] Vermelho de marca (`#E30613`) só no nome "SEBRATEL"; status vermelho é `#EF4444`/`#DC2626`
+- [ ] Indicadores no semáforo (verde `#10B981` / vermelho `#EF4444` / cinza `#D1D5DB`)
+- [ ] Sem HEX hardcoded — tudo via `var(--token)`
+- [ ] Logo real da Sebratel (`logo_circular.png`), não um placeholder
+- [ ] Responsivo: sidebar some <900px, header-left some <640px

@@ -46,6 +46,7 @@ sql: |-
   AND vsdspi.begin_date_slot >= DATE '2026-01-01'
   ORDER BY vsdspi.assignment_created DESC;
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - people

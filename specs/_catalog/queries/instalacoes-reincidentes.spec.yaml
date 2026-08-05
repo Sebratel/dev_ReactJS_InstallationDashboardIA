@@ -139,6 +139,7 @@ sql: |-
   WHERE rn = 1 OR rn IS NULL
   ORDER BY data_instalacao DESC;
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - assignment_incidents

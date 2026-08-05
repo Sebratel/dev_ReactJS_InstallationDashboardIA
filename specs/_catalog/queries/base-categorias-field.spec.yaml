@@ -23,6 +23,7 @@ sql: |-
   left join solicitation_service_categories ssc5 on ssc5.id = scm.service_category_id_5
   where ai.beginning_service_date > '2026-01-01'
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - assignment_incidents

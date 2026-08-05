@@ -262,6 +262,26 @@ test('detectSource: GoogleSheets', () => {
   assert.match(src.url, /https/);
 });
 
+test('detectSource: guarda a aba que o M navega', () => {
+  // O connector baixa só esta aba. As outras da mesma planilha têm CPF e RG, e
+  // ler o que não se usa é risco sem contrapartida.
+  const m = 'let Fonte = GoogleSheets.Contents("https://x/y"), '
+    + 'T = Fonte{[name="#APURAÇÃO PREMIAÇÃO",ItemKind="Table"]}[Data] in T';
+  assert.equal(detectSource(m).sheet, '#APURAÇÃO PREMIAÇÃO');
+});
+
+test('detectSource: aba com espaço em volta do = e aspas escapadas', () => {
+  const m = 'let F = GoogleSheets.Contents("https://x"), '
+    + 'T = F{[ name = "A ""B"" C" , ItemKind = "Table" ]}[Data] in T';
+  assert.equal(detectSource(m).sheet, 'A "B" C');
+});
+
+test('detectSource: planilha sem navegação por nome fica sem aba, não chuta', () => {
+  // Sem aba, o connector erra alto mandando rodar o extrator — melhor que baixar
+  // a primeira aba e produzir uma tabela plausível e errada.
+  assert.equal(detectSource('let F = GoogleSheets.Contents("https://x") in F').sheet, null);
+});
+
 test('detectSource: Web.Contents vira type=web com endpoints', () => {
   const m = 'let d = Json.Document(Web.Contents("https://api.open-meteo.com", [Q=1])), '
     + 'e = Json.Document(Web.Contents("https://archive-api.open-meteo.com")) in d';

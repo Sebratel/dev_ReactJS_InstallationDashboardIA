@@ -10,6 +10,12 @@ export interface QuerySpec {
   datasource: string | null;
   sql: string | null;
   url: string | null;
+  /**
+   * Aba que o M navega (`Fonte{[name="X", ItemKind="Table"]}`). Só em
+   * `source_type: googlesheets`. Sai do próprio M, não é escolha de ninguém — e
+   * é o que evita baixar as outras abas da planilha, que têm CPF e RG.
+   */
+  sheet?: string | null;
   /** Tabelas-fonte do SQL. Alimenta o Query Invalidator do realtime. */
   source_tables: string[];
   /** Expressão M original (referência; não é executada). */

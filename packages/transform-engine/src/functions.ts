@@ -155,6 +155,8 @@ function converte(
     case 'date':
     case 'Date.Type': {
       if (v instanceof Date) return soData(v);
+      // Número é o formato nativo de data na planilha (ver `dataDeSerial`).
+      if (typeof v === 'number') return soData(dataDeSerial(v));
       const d = textoParaData(v, culture);
       if (d) return soData(d);
       throw naoConverte(v, 'date', coluna, fn, formatoDeTexto(v, culture));
@@ -165,6 +167,7 @@ function converte(
     case 'datetimezone':
     case 'DateTimeZone.Type': {
       if (v instanceof Date) return v;
+      if (typeof v === 'number') return dataDeSerial(v);
       const d = textoParaData(v, culture);
       if (d) return d;
       throw naoConverte(v, t, coluna, fn, formatoDeTexto(v, culture));
@@ -296,6 +299,30 @@ function resumo(v: MValue): unknown {
 
 function soData(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+}
+
+/** Época do número de série de data no Power BI, no Excel e no Google Sheets. */
+const EPOCA_SERIAL_MS = Date.UTC(1899, 11, 30);
+
+/**
+ * Número de série para data.
+ *
+ * É por aqui que a planilha entrega data: o connector pede
+ * `valueRenderOption=UNFORMATTED_VALUE`, e nesse modo célula de data vem como
+ * número (dias desde 1899-12-30, fração = hora) — igual ao que o Power Query
+ * recebe. Sem isto, `{"DATA", type date}` de `CAPACIDADE EQUIPE` recusaria o
+ * próprio formato nativo da fonte.
+ *
+ * Diferente de texto para data, aqui **não há ambiguidade de culture**: o número
+ * não tem formato. Por isso a conversão é aceita sem `culture`.
+ */
+function dataDeSerial(n: number): Date {
+  if (!Number.isFinite(n)) {
+    throw new MEvalError(`Número de série de data inválido: ${n}.`);
+  }
+  // Arredonda no milissegundo: 0,354166… * 86_400_000 dá 30599999,99 em binário,
+  // e truncar transformaria 08:30 em 08:29:59.999.
+  return new Date(EPOCA_SERIAL_MS + Math.round(n * 86_400_000));
 }
 
 function horaDe(d: Date): MTime {
@@ -1089,6 +1116,9 @@ const VALOR: MFunctionImpl[] = [
     call: ([v], ctx) => {
       if (v === null) return null;
       if (v instanceof Date) return soData(v);
+      // `Date.From(45000)` é número de série, como no Excel. Mesma conversão que
+      // `type date` aplica.
+      if (typeof v === 'number') return soData(dataDeSerial(v));
       const d = textoParaData(v, ctx.culture);
       if (d) return soData(d);
       throw new MEvalError(
@@ -1408,7 +1438,7 @@ function chaveDe(valores: readonly MValue[]): string {
       if (typeof v === 'boolean') return `b:${v}`;
       throw new MEvalError(`Valor de tipo ${tipoDe(v)} não serve como chave.`);
     })
-    .join(' ');
+    .join('\u0000');
 }
 
 

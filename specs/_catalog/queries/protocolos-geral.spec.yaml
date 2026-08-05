@@ -120,6 +120,7 @@ sql: |-
   LEFT JOIN PLANOS_CONTRATO pc ON pc.contract_number = per."NUMERO CONTRATO"
   WHERE per.PERSONA1 = 1;
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - assignment_incidents

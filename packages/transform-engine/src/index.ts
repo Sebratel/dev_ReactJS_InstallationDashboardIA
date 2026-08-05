@@ -56,8 +56,15 @@ export {
   queryDependencies,
   queryOrder,
   runQueries,
+  usaFonteExterna,
   type FonteDeLinhas,
   type MQuerySpec,
   type QueryExecutada,
   type RunnerOptions,
 } from './runner.ts';
+export {
+  fonteDoEngine,
+  FonteError,
+  type ExecutorDeQuery,
+  type FonteDoEngineOptions,
+} from './fonte.ts';

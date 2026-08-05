@@ -28,6 +28,7 @@ sql: |-
   from PERSONALIZAR
   where PERSONA = 1
 url: null
+sheet: null
 endpoints: null
 source_tables:
 - assignment_incidents

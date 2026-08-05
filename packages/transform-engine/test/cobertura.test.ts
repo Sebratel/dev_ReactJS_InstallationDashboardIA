@@ -86,9 +86,15 @@ function chamadasDoEscopo(): Set<string> {
 
 /**
  * As 2 funções de fonte **externa**: fronteira com a camada de connector, não
- * transformação. Nenhuma é implementável aqui sem driver ou credencial, e é o Query
- * Engine (Fase 1) que já sabe buscar linha. Ficam listadas nominalmente para
- * "faltam 2" nunca virar "faltam algumas".
+ * transformação. Ficam listadas nominalmente para "faltam 2" nunca virar "faltam
+ * algumas".
+ *
+ * Elas não estão em `standardFunctions()` **de propósito**, e continuam fora
+ * mesmo agora que rodam: quem as liga é o runner, que amarra as duas ao resultado
+ * já buscado pelo Query Engine (`packages/transform-engine/src/fonte.ts`). Uma
+ * implementação na tabela de funções teria que buscar de dentro de uma avaliação
+ * síncrona — ou seja, ou bloquearia, ou inventaria um segundo caminho de I/O
+ * fora do Engine, sem cache nem read-only.
  *
  * `Binary.FromText`, `Binary.Decompress` e `Json.Document` saíram desta lista: são
  * puras (base64 -> deflate -> JSON) e foram implementadas, o que faz `feriados`

@@ -291,6 +291,36 @@ test('TransformColumnTypes NÃO adivinha data em texto — o erro cita a culture
   );
 });
 
+test('número vira data pela época 1899-12-30 — é como a planilha entrega', () => {
+  // Com `valueRenderOption=UNFORMATTED_VALUE`, célula de data vem como dias desde
+  // 1899-12-30 e a fração é a hora. Diferente de texto, aqui não há ambiguidade de
+  // culture: número não tem formato. Por isso vale sem culture nenhuma.
+  const e = ev({ T: tab(['D', 'H'], [[46037, 46037.5]]) });
+  const t = e.avaliaTabela(
+    'let a = Table.TransformColumnTypes(T, {{"D", type date}, {"H", type datetime}}) in a',
+  );
+  const [data, hora] = [t.rows[0].get('D'), t.rows[0].get('H')];
+  assert.ok(data instanceof Date && hora instanceof Date);
+  assert.equal(data.toISOString(), '2026-01-15T00:00:00.000Z');
+  assert.equal(hora.toISOString(), '2026-01-15T12:00:00.000Z');
+});
+
+test('serial fracionário não perde o milissegundo por arredondamento binário', () => {
+  // 0,354166… * 86 400 000 dá 30 599 999,99 em ponto flutuante; truncar faria
+  // 08:30 virar 08:29:59.999.
+  const e = ev({ T: tab(['H'], [[46037 + 30_600_000 / 86_400_000]]) });
+  const t = e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"H", type datetime}}) in a');
+  assert.equal((t.rows[0].get('H') as Date).toISOString(), '2026-01-15T08:30:00.000Z');
+});
+
+test('Date.From aceita número de série, como no Excel', () => {
+  const e = ev({});
+  assert.equal(
+    (e.avaliaQuery('let a = Date.From(46037) in a').valor as Date).toISOString(),
+    '2026-01-15T00:00:00.000Z',
+  );
+});
+
 test('PromoteHeaders usa a primeira linha e recusa cabeçalho vazio', () => {
   const e = ev({
     T: tab(['Column1', 'Column2'], [['NOME', 'GESTOR'], ['ana', 'bia']]),
