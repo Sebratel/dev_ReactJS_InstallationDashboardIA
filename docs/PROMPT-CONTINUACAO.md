@@ -84,7 +84,7 @@ Nenhum teste precisa de credencial ou banco.
 | 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + 7 tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas — as 56 funções estão todas implementadas | ✅ |
-| 2b.8 | Camada M: as 11 colunas que o DAX usa e o SQL não devolve | ⏳ **próximo** |
+| 2b.8 | Camada M: parser pronto (24 queries, 327 passos); falta avaliador + 39 funções | 🚧 **em curso** |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
@@ -483,13 +483,44 @@ O grafo de dependência entre as 7 é **plano** (medido): todas dependem só de 
 query. A ordenação topológica existe pelo que recusa — ciclo erra alto nomeando o
 caminho. Se algum dia uma calculada passar a depender de outra, a ordem já funciona.
 
-### 2b.8 — a camada M — PRÓXIMO, e espera decisão do Erick
+### 2b.8 — a camada M — EM CURSO. Opção A confirmada em 05/08/2026
 
 **É o último bloqueio entre o avaliador e dado real.**
 
-**Leia [DECISAO-CAMADA-M.md](./DECISAO-CAMADA-M.md) antes de escrever código.** O
-levantamento está feito, com números medidos no PBIP, e a recomendação está lá:
-**executar o M guiado pelas specs**, não traduzir para SQL. O resumo do porquê:
+**O que já está pronto** (`packages/transform-engine/`, 36 testes):
+
+| Arquivo | O que faz |
+|---|---|
+| `src/tokenizer.ts` | Léxico de M. As diferenças em relação ao DAX estão comentadas uma por uma — `--` **não** é comentário em M, `&` não tem irmão `&&`, `#"nome"` é identificador |
+| `src/ast.ts` | Nós. Discriminante é `type`, igual ao DAX. O escopo é o que o corpus usa, medido sem strings — `try/otherwise`, faixa `..` e recursão `@f` não existem na base e não têm nó |
+| `src/parser.ts` | Descendente recursivo, um nível por precedência do M |
+| `test/parser.test.ts` | Sintaxe isolada **+ o corpus real**: as 24 `m_expression` do PBIP parseiam |
+
+O teste de corpus é o que segura a fase: se o parser não lê a base, o resto não
+existe. Ele achou um bug real no primeiro disparo — ver ACHADOS #18.
+
+**Números medidos pelo parser** (e conferem com o levantamento): **327 passos** nas 24
+queries, **303** nas 23 do escopo. Funções chamadas nas 23: **19 `Table.*` + 5 de fonte
++ 15 de valor = 39**.
+
+**O que falta, e é o próximo bloco:**
+
+1. **O avaliador** — `evaluator.ts`: percorrer os bindings do `let` em ordem, cada passo
+   vendo os anteriores por nome. Precisa de um valor de tabela (linhas + ordem de
+   coluna), `each` com `_` implícito, e `[Coluna]` resolvendo em campo de `_`.
+2. **As 39 funções** — mesma forma do `functions.ts` do avaliador de DAX: tabela de
+   nome → implementação, e **erro alto com o nome da função** no que não existe. Nunca
+   "passo desconhecido, sigo em frente".
+3. **Ordem de linha é semântica, não detalhe.** `Table.Distinct` mantém a primeira da
+   ordem corrente (ver item 1 dos abertos, abaixo). O valor de tabela tem que preservar
+   ordem desde o começo; enfiar ordem depois não funciona.
+
+**Ordem de trabalho definida pelo Erick:** seguir **sem** o Google Sheets e deixar
+`PROTOCOLOS PRODUTIVIDADE` — a única tabela que depende de planilha — para a **última
+etapa**. As outras 17 tabelas não dependem de nada pendente.
+
+**Leia [DECISAO-CAMADA-M.md](./DECISAO-CAMADA-M.md) antes de continuar.** O
+levantamento está lá, com números medidos no PBIP. O resumo do porquê da opção A:
 
 - **3 das 15 mesclagens atravessam fonte de dados** (dbVoalle × dbMaria e
   dbVoalle × gsheets). Nenhum `SELECT` faz essas — a plataforma precisa de junção acima
@@ -512,6 +543,11 @@ Três coisas que a decisão deixa em aberto e que valem confirmar antes de codar
    contra dado real, e possivelmente uma divergência deliberada documentada.
 2. **`PROTOCOLOS PRODUTIVIDADE` está bloqueada** até existir connector de Google Sheets:
    a mesclagem com `quadro-funcional` é cross-source e um dos lados não é legível hoje.
+   A autenticação de service account já existe e está testada
+   (`packages/query-engine/src/google-auth.ts`); o que falta **não é código** — é a
+   proprietária das planilhas conceder Leitor à conta de serviço
+   (`npm run probe:gsheets` mostra o estado). Por decisão do Erick, esta tabela fica
+   para o fim; não bloqueia as outras 17. Ver ACHADOS #17 e o Anexo B da decisão.
 3. **`clima-tempo` segue fora** — `let` aninhado que o scanner recusa, e fonte `web` sem
    connector.
 

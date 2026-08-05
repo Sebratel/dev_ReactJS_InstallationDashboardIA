@@ -1,5 +1,11 @@
 # Decisão: implementar a camada M ou substituí-la por SQL?
 
+> **DECIDIDO em 05/08/2026: opção A** — executar o M com um transform engine guiado
+> pelas specs. O Erick também definiu a ordem: seguir sem o Google Sheets e deixar
+> `PROTOCOLOS PRODUTIVIDADE` (a única tabela que depende de planilha) para a última
+> etapa. Estado da implementação no README; o que segue é o levantamento que embasou a
+> decisão, mantido como está para o raciocínio ficar auditável.
+
 **Para o Erick decidir.** Fase 2b.8. Tudo abaixo foi medido no PBIP com
 `npm run validate:tables` e com o scanner de M (`tools/validate/src/mlayer.ts`), não
 estimado. Recomendação no fim, com o custo de cada caminho.

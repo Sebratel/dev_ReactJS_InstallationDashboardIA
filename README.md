@@ -19,14 +19,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.5 | Propagação de filtro por relacionamento — **22 medidas dependiam dela** | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) — **as 56 funções agora estão todas implementadas** | ✅ |
-| 2b.8 | Camada M — levantamento pronto, [recomendação](docs/DECISAO-CAMADA-M.md) aguardando decisão | ⏳ próximo |
+| 2b.8 | Camada M — **opção A confirmada** ([decisão](docs/DECISAO-CAMADA-M.md)). Parser de M lê as 24 queries (327 passos); avaliador e as 39 funções em seguida | 🚧 em curso |
 | — | Connector de Google Sheets: autenticação de service account pronta e testada; falta compartilhar as 3 planilhas com a conta de serviço ([Anexo B](docs/DECISAO-CAMADA-M.md)) | 🚧 |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**358 testes verdes.** Nenhum deles precisa de credencial.
+**394 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -327,7 +327,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (358 testes, sem credencial)
+npm test                              # suíte completa (394 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

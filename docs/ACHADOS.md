@@ -781,3 +781,42 @@ autenticação de service account já está escrita e testada (`google-auth.ts`,
 bearer com `node:crypto`, 11 testes sem rede) e a Sheets API está ativada; o que falta é
 compartilhar as planilhas com a conta de serviço como Leitor — `npm run probe:gsheets`
 mostra o estado.
+
+---
+
+## 18. Nome de coluna com espaço não usa aspas em M, e 5 queries dependem disso
+
+Achado da fase 2b.8, encontrado pelo teste de corpus do parser de M no primeiro
+disparo — e é a razão de esse teste existir.
+
+Em M, o nome dentro de `[...]` não é um identificador comum: é um **generalized
+identifier**, que pode conter espaço sem nenhuma aspa. A base usa isso à vontade:
+
+```m
+DateTime.Time([DATA CRIADO])
+each [CAPACIDADE MANHÃ] + [CAPACIDADE TARDE]
+```
+
+Um parser que exija identificador simples (ou `#"..."`) recusa **5 das 24 queries**:
+`protocolos-geral`, `protocolos-produtividade`, `protocolos-auxiliares`,
+`protocolos-telefonia` e `gestores-equipes` — ou seja, as duas maiores tabelas do
+modelo entre elas.
+
+**Onde isso quase virou bug silencioso.** O nome é recortado do texto original em vez
+de remontado a partir dos tokens. Remontar juntando com um espaço daria o mesmo
+resultado em 100% dos casos de hoje, e resultado **diferente** no dia em que alguém
+escrever `[DATA  CRIADO]` com dois espaços na fonte: o nome remontado casaria com a
+coluna do modelo e o recortado não — ou o contrário, dependendo de qual lado ficou
+com o espaço duplo. Nome de coluna é chave de junção com o modelo semântico; não é
+lugar para normalização implícita.
+
+A varredura tem um limite deliberado: o nome **não atravessa quebra de linha**. Um
+`]` esquecido faria o nome engolir o passo seguinte inteiro, e o erro apareceria
+longe da causa.
+
+**De quebra, duas correções de medição.** O levantamento de 2b.8 contou "23 funções
+de tabela + 15 de valor". Medido pelo parser, nas 23 queries do escopo são
+**19 `Table.*` + 5 de fonte (`Odbc.Query`, `GoogleSheets.Contents`, `Json.Document`,
+`Binary.Decompress`, `Binary.FromText`) + 15 de valor = 39**. O número de 23 tinha as
+funções de fonte misturadas na lista de tabela; as 15 de valor conferem exatamente.
+E a contagem de passos fecha: **303** nas 23 do escopo, **327** com `clima-tempo`.
