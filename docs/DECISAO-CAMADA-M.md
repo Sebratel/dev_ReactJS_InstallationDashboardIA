@@ -183,10 +183,22 @@ Três condições, e a primeira é sua:
    supervisor duplicado, e registrar o critério que reproduz. Se nenhum reproduzir de
    forma estável, isso vira **divergência deliberada** documentada — como a do `CALENDAR`
    na 2b.7 — e não um número silencioso.
-2. **`PROTOCOLOS PRODUTIVIDADE` fica bloqueada até existir o connector de Google
-   Sheets.** Não é limitação do engine de M: a mesclagem com `quadro-funcional` é
-   cross-source e um dos lados não tem como ser lido hoje. Vale decidir se o connector
-   entra antes da 2b.8 ou se essa tabela fica declaradamente pendente.
+2. ~~`PROTOCOLOS PRODUTIVIDADE` fica bloqueada até existir o connector de Google
+   Sheets.~~ **Superado em 05/08/2026.** `QUADRO FUNCIONAL` não vai ler de Google Sheets
+   na plataforma nova — vai ler do **Data Hub interno da Sebratel**
+   (`data-hub.sebratel.net.br`, dataset `clientes-ativos-na-base`, que apesar do nome é
+   dado de colaborador — confirmado com o Erick). É **divergência deliberada de fonte**
+   em relação ao Power BI de hoje, a registrar em ACHADOS.md quando o connector existir:
+   mesmo conteúdo (colaborador, gestor, CPF...), origem diferente.
+
+   **Isso não fecha sozinho** — falta verificar com token real se o shape da resposta
+   bate com o que a spec espera, e se o filtro por gestor
+   (`GESTOR = "Luis Aranda"/"Pablo Borges"/"Stefany Souza"`) já vem aplicado ou precisa
+   ser replicado. Ver `.env.example` para os detalhes e o que falta medir.
+
+   As outras duas planilhas (`#APURAÇÃO PREMIAÇÃO`, 1 medida, e `CAPACIDADE EQUIPE`,
+   nenhuma) continuam precisando do connector de Google Sheets do anexo abaixo — mas
+   nenhuma das duas bloqueia `PROTOCOLOS PRODUTIVIDADE`, então a urgência caiu.
 3. **`clima-tempo` continua fora.** Define função M com `let` aninhado, o scanner recusa
    por desenho, e a fonte é `web` (Open-Meteo) — sem connector. São duas pendências na
    mesma query, e nenhuma bloqueia o resto.
@@ -197,10 +209,62 @@ são o que realmente muda número — continuariam de fora.
 
 ---
 
-## Anexo: o "connector de Google Sheets" — o que é e como se consegue
+## Anexo A: `QUADRO FUNCIONAL` vem do Data Hub, não do Google Sheets — decisão de 05/08/2026
 
-Não é nada que se baixe ou compre. São duas coisas separadas, e só a segunda depende de
-alguém de fora:
+**Isto muda o plano de conector para a tabela mais importante das 3 planilhas**, e por
+isso vem antes do anexo de Google Sheets. `QUADRO FUNCIONAL` (dado de colaborador —
+`NOME`, `GESTOR`, `CPF`, `ADMISSÃO`, `DEMISSÃO`...) é mesclada dentro de
+`PROTOCOLOS PRODUTIVIDADE`, que **9 medidas** leem. No Power BI de hoje ela vem de uma
+planilha Google Sheets. Na plataforma nova, o Erick decidiu ler a mesma informação do
+**Data Hub interno da Sebratel** em vez disso:
+
+```
+https://data-hub.sebratel.net.br/api/public/v1/datasets/clientes-ativos-na-base/rows?token=<DATAHUB_TOKEN>
+```
+
+O nome do dataset — "clientes ativos na base" — sugere dado de **cliente**, não de
+**colaborador**. Perguntei antes de assumir, e a resposta foi que é dado de colaborador
+mesmo; o nome no Data Hub só não reflete o conteúdo. Fica registrado aqui porque é
+exatamente o tipo de discrepância que este documento existe para não deixar passar batido.
+
+**É divergência deliberada de fonte** em relação ao Power BI atual, e vai para
+`ACHADOS.md` quando o connector estiver implementado — a regra do projeto
+("replicar fielmente") pede decisão explícita registrada, não decisão silenciosa. O que
+precisa continuar igual é o **conteúdo**: mesmo colaborador, mesmo gestor, mesmo CPF.
+
+### O que falta verificar antes de codar — e por que não adivinho
+
+1. **O shape da resposta.** Não tenho token, então não vi um payload real. Preciso saber
+   se os campos vêm com os mesmos nomes que `quadro-funcional.spec.yaml` espera
+   (`NOME`, `GESTOR`, `CPF`, `ADMISSÃO`, `DEMISSÃO`, `CARGO`...) ou se o mapeamento
+   muda — nome de campo diferente não dá erro nenhum sozinho, dá coluna vazia depois.
+2. **O filtro por gestor.** O M de hoje filtra
+   `GESTOR = "Luis Aranda" or "Pablo Borges" or "Stefany Souza"` antes de qualquer outra
+   coisa. Se o Data Hub já devolve só esses três, o filtro é redundante; se devolve **todo
+   mundo**, o filtro precisa ser replicado depois de buscar — e não replicá-lo multiplicaria
+   linha na mesclagem com nomes que nunca deveriam entrar.
+3. **Paginação e volume.** `rows` num endpoint REST corporativo costuma paginar. Não sei o
+   tamanho da tabela nem se a API devolve tudo numa chamada só.
+
+Assim que houver um token de teste (ou uma amostra colada da resposta), estes três pontos
+se resolvem com uma chamada, não com suposição.
+
+### O connector é o mesmo tipo de trabalho que o de Google Sheets
+
+Uma classe nova implementando a porta `Connector` de
+`packages/query-engine/src/connectors.ts`, chamando REST com header/query de
+autenticação — mais simples que o de Google Sheets porque não tem OAuth de service
+account, só token. Token vai em `DATAHUB_TOKEN` no `.env` (ver `.env.example`), nunca na
+URL commitada.
+
+---
+
+## Anexo B: o "connector de Google Sheets" — as 2 planilhas que restam
+
+Com `QUADRO FUNCIONAL` movida para o Data Hub (Anexo A), sobram **duas** planilhas de
+baixíssima urgência: `#APURAÇÃO PREMIAÇÃO` (1 medida) e `CAPACIDADE EQUIPE` (nenhuma
+medida as cita). Não é nada que se baixe ou compre. São duas coisas separadas, e só a
+segunda depende de alguém de fora:
 
 1. **Código nosso**, ~100 linhas: uma classe que implementa a porta `Connector` que já
    existe em `packages/query-engine/src/connectors.ts`, chamando a API REST do Google
@@ -222,17 +286,12 @@ somente leitura, o que casa com a regra 3 do projeto.
 | 3 | APIs e serviços → Credenciais | Criar credencial → **Conta de serviço** |
 | 4 | Na conta de serviço → Chaves | Adicionar chave → **JSON**. Baixa um arquivo |
 | 5 | Máquina local | Guardar o JSON **fora do repositório** e apontar `GOOGLE_APPLICATION_CREDENTIALS` para ele no `.env` |
-| 6 | Cada uma das 3 planilhas | Compartilhar → colar o e-mail da conta de serviço (`algo@projeto.iam.gserviceaccount.com`) → **Leitor** |
+| 6 | Cada uma das 2 planilhas | Compartilhar → colar o e-mail da conta de serviço (`algo@projeto.iam.gserviceaccount.com`) → **Leitor** |
 
-O passo 6 é o que costuma travar, e não por técnica: o e-mail da service account parece
-estranho, e `QUADRO FUNCIONAL` é planilha de **RH** — quem autoriza compartilhar
-provavelmente não é quem desenvolve. Vale começar por descobrir quem é o dono dela.
+Já foi feito uma vez nesta fase (a credencial existe, criada para a conta de serviço
+`erick-project`); o que falta é só o passo 6 nas duas planilhas que restam.
 
-O passo 1 também pode travar: muitos Google Workspace corporativos bloqueiam criação de
-projeto no Cloud por usuário comum. Se for o caso, é pedido para quem administra o
-Workspace da Sebratel.
-
-### O atalho que existe, e por que não serve para as três
+### O atalho que existe
 
 Planilha marcada como "qualquer pessoa com o link pode ver" é baixável como CSV sem
 credencial nenhuma:
@@ -241,21 +300,19 @@ credencial nenhuma:
 https://docs.google.com/spreadsheets/d/<ID>/export?format=csv&gid=<GID>
 ```
 
-Serve para desbloquear um teste em minutos. **Não serve para `QUADRO FUNCIONAL`**: tornar
-uma planilha de quadro de pessoal legível por qualquer um com o link é exposição de dado
-de RH, e não é uma troca que valha para economizar meia hora de configuração.
+Serve para desbloquear um teste em minutos, e para estas duas (nenhuma é dado de RH) é
+uma opção razoável se o compartilhamento direto demorar.
 
 ### Isto bloqueia começar a 2b.8?
 
-**Não.** Bloqueia **uma** tabela. O plano é o engine de M erguer erro explícito
-("falta connector gsheets para a mesclagem com `quadro-funcional`") em vez de pular a
-mesclagem em silêncio — assim `PROTOCOLOS PRODUTIVIDADE` fica declaradamente pendente e
-as outras 17 tabelas andam.
+**Não.** Nenhuma das duas planilhas restantes bloqueia `PROTOCOLOS PRODUTIVIDADE` — essa
+dependência agora é do connector do Data Hub (Anexo A). O plano continua o mesmo: o
+engine de M ergue erro explícito nomeando o connector que falta, em vez de pular a
+mesclagem em silêncio, e as tabelas que não dependem dele andam.
 
-Prioridade entre as 3 planilhas, medida pelo uso no DAX:
+Prioridade entre as 2 planilhas que restam, medida pelo uso no DAX:
 
 | Planilha | Quem lê | Urgência |
 |---|---|---|
-| `QUADRO FUNCIONAL` | mesclada em `PROTOCOLOS PRODUTIVIDADE`, que **9 medidas** leem | é a que importa |
 | `#APURAÇÃO PREMIAÇÃO` | **1** medida (`[Instalações Apuradas]`) | baixa |
 | `CAPACIDADE EQUIPE` | **nenhuma** medida cita a tabela | nenhuma |
