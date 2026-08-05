@@ -356,6 +356,7 @@ test('build: extrai o PBIP real com contagens esperadas', () => {
   assert.equal(model.counts.dashboards, 14, 'páginas');
   assert.equal(model.counts.visuals, 306, 'visuais');
   assert.equal(model.counts.calculated_columns, 49, 'colunas calculadas');
+  assert.equal(model.counts.calculated_tables, 7, 'tabelas calculadas (partition = calculated)');
   assert.equal(model.counts.relationships, 22, 'relacionamentos (fora hierarquia de datas)');
   // datasources reais esperados
   const ids = model.datasources.map((d) => d.id);
@@ -395,6 +396,49 @@ test('build: nenhuma cerca ``` sobrevive no modelo real', () => {
   for (const q of model.queries) {
     assert.ok(!(q.m_expression || '').includes('```'), `cerca no M de ${q.id}`);
   }
+});
+
+// A tabela calculada é o outro tipo de DAX que a spec precisa carregar: aqui o
+// DAX produz as LINHAS, não um valor por linha. Ficou de fora até a fase 2b.6 —
+// a spec dizia `query_ref: null` e mais nada, e 'CALENDARIO INSTALADO' (por onde
+// o filtro propaga) nasceria vazia contra dado real, zerando medida sem erro.
+test('build: as 7 tabelas calculadas trazem o DAX que produz as linhas', () => {
+  let pbip;
+  try {
+    pbip = locatePbip();
+  } catch {
+    console.warn('PBIP não encontrado — pulando teste de integração.');
+    return;
+  }
+  const model = build(pbip);
+  const calculadas = model.tableSpecs.filter((t) => t.table_dax);
+  assert.deepEqual(
+    calculadas.map((t) => t.name).sort(),
+    [
+      'BASE DE ORIGEM', 'CALENDARIO AGENDAMENTO', 'CALENDARIO CRIADO',
+      'CALENDARIO INSTALADO', 'PROTOCOLOS', 'Status Protocolo Dia', 'calendar',
+    ],
+  );
+
+  for (const t of calculadas) {
+    assert.ok(!t.table_dax.includes('```'), `cerca no DAX da tabela ${t.name}`);
+    assert.ok(t.table_dax.trim().length > 0, `DAX vazio na tabela ${t.name}`);
+    assert.equal(t.query_ref, null, `${t.name} é calculada e não deveria ter query`);
+  }
+
+  // Tabela alimentada por query não pode ganhar DAX de tabela: seriam duas
+  // origens para as mesmas linhas.
+  for (const t of model.tableSpecs.filter((x) => x.query_ref)) {
+    assert.equal(t.table_dax, null, `${t.name} tem query e DAX de tabela`);
+  }
+
+  const instalado = calculadas.find((t) => t.name === 'CALENDARIO INSTALADO');
+  assert.match(instalado.table_dax, /CALENDAR\s*\(/, 'CALENDARIO INSTALADO usa CALENDAR');
+  assert.match(
+    instalado.table_dax,
+    /'PROTOCOLOS GERAL'\[DATA INSTALAÇÃO\]/,
+    'e o início do calendário depende de uma coluna CALCULADA de outra tabela',
+  );
 });
 
 test('build: PESO carrega a regra de dia útil (a coluna que 6 medidas somam)', () => {

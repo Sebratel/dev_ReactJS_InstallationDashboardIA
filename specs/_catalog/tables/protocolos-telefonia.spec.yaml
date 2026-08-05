@@ -4,6 +4,7 @@ spec: table
 id: protocolos-telefonia
 name: PROTOCOLOS TELEFONIA
 query_ref: protocolos-telefonia
+table_dax: null
 columns:
 - name: SOLICITACAO
   type: string

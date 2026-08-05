@@ -14,7 +14,7 @@ reimplementadas sobre dados nunca verificados.
 
 | Campo | Para que serve |
 |---|---|
-| `rowCount` | total **exato** de linhas — é este número que se compara com o Power BI |
+| `rowCount` | total **exato** de linhas da query SQL. Cuidado: não é a contagem da tabela no Power BI — ver abaixo |
 | `columns[]` | nome, tipo, nulos, distintos e agregados de cada coluna |
 | `columnsFromSample` | `true` = os agregados descrevem só a amostra (veja abaixo) |
 | `profiledRows` | quantas linhas alimentaram o perfil de colunas |
@@ -23,10 +23,41 @@ reimplementadas sobre dados nunca verificados.
 | `strategy` | `wrapped` (count exato + amostra) ou `direct` (fallback) |
 | `capturedAt` | quando foi capturado; fora dos fingerprints, de propósito |
 
+## `rowCount` é a contagem do SQL, não da tabela
+
+Isto aqui já afirmou que `rowCount` é "o número para conferir com o Power BI".
+Estava errado para **11 das 17** tabelas, e a correção importa porque muda o que
+uma divergência significa.
+
+Entre o SQL e a tabela que o DAX vê existe a camada **M (Power Query)**: 303
+passos nas 23 queries legíveis. Vários **mexem na contagem de linhas** depois do
+`count(*)` — `Table.SelectRows` filtra, `Table.Distinct` deduplica,
+`Table.ExpandTableColumn` multiplica, `Table.Combine` concatena. Em
+`protocolos-geral` são seis passos desses, incluindo `[STATUS] <> "Cancelado"` e
+um `Table.Distinct` por `SOLICITACAO`.
+
+Então, ao conferir:
+
+- **6 tabelas** têm `rowCount` comparável com o Power BI. Divergência ali é
+  extração errada e vale investigar.
+- **11 tabelas** têm um número diferente **por construção**. Comparar o
+  `rowCount` com o total do visual acusaria erro que não existe.
+
+Para saber em qual grupo cada tabela está, e qual passo faz a diferença:
+
+```bash
+npm run validate:tables
+```
+
+Um detalhe do perfilador que aparece na mesma conferência: as colunas são
+guardadas **por nome**, então alias repetido no SELECT desaparece. `contratos`
+pede `ac.city "CIDADE"` duas vezes e devolve 23 colunas; o golden lista 22. Para
+contar coluna, o golden não serve nesse caso.
+
 ## Exato vs. amostra — a distinção que importa
 
-`rowCount` é **exato**: vem de um `count(*)` sobre a query inteira. É o número
-para conferir com o Power BI.
+`rowCount` é **exato** no sentido de não ser amostrado: vem de um `count(*)` sobre
+a query inteira.
 
 Os agregados por coluna (`nulls`, `distinct`, `min`, `max`, `sum`) vêm das
 primeiras `profiledRows` linhas — 5000 por padrão. Quando `columnsFromSample` é

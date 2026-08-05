@@ -4,6 +4,7 @@ spec: table
 id: protocolos-produtividade
 name: PROTOCOLOS PRODUTIVIDADE
 query_ref: protocolos-produtividade
+table_dax: null
 columns:
 - name: SOLICITACAO
   type: string

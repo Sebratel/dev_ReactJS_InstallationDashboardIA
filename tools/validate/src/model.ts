@@ -37,7 +37,8 @@ function main(): void {
 
   console.log('Analytics Platform — verificação do modelo semântico');
   console.log(
-    `${model.tables.size} tabelas, ${model.measures.length} medidas, `
+    `${model.tables.size} tabelas (${model.calculatedTables.length} calculadas em DAX), `
+    + `${model.measures.length} medidas, `
     + `${model.calculatedColumns.length} colunas calculadas, `
     + `${model.relationships.length} relacionamentos `
     + `(+${model.autoDateRelationshipsIgnored} de hierarquia automática de datas, ignorados)\n`,

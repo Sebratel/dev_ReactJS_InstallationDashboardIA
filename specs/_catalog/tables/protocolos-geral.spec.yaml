@@ -4,6 +4,7 @@ spec: table
 id: protocolos-geral
 name: PROTOCOLOS GERAL
 query_ref: protocolos-geral
+table_dax: null
 columns:
 - name: SOLICITACAO
   type: string

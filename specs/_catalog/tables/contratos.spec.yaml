@@ -4,6 +4,7 @@ spec: table
 id: contratos
 name: CONTRATOS
 query_ref: contratos
+table_dax: null
 columns:
 - name: CLIENTE
   type: string

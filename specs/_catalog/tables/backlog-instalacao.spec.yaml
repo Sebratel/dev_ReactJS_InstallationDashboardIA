@@ -4,6 +4,7 @@ spec: table
 id: backlog-instalacao
 name: "BACKLOG INSTALAÇÃO"
 query_ref: backlog-instalacao
+table_dax: null
 columns:
 - name: TOTAL
   type: int64

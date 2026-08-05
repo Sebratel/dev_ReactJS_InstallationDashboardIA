@@ -4,6 +4,7 @@ spec: table
 id: consolidado-clientes
 name: CONSOLIDADO CLIENTES
 query_ref: consolidado-clientes
+table_dax: null
 columns:
 - name: authentication_totalizer
   type: int64

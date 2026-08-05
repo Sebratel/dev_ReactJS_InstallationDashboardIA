@@ -4,6 +4,7 @@ spec: table
 id: retorno-prioritario
 name: RETORNO PRIORITARIO
 query_ref: retorno-prioritario
+table_dax: null
 columns:
 - name: "Protocolo Instalação"
   type: int64

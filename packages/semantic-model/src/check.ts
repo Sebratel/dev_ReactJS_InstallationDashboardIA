@@ -95,9 +95,21 @@ function checkExpression(
   return problems;
 }
 
-/** Roda a verificação nas 78 medidas e nas colunas calculadas. */
+/** Roda a verificação nas 78 medidas, nas colunas calculadas e nas 7 tabelas calculadas. */
 export function checkModelRefs(model: SemanticModel): ModelRefProblem[] {
   const problems: ModelRefProblem[] = [];
+
+  for (const t of model.calculatedTables) {
+    // A tabela calculada não tem "tabela dona": `[Nome]` dentro dela é coluna da
+    // tabela anônima que ela mesma está construindo (`ADDCOLUMNS` sobre
+    // `SELECTCOLUMNS`). Passar o próprio nome como ownerTable é o mais próximo
+    // do certo, e a limitação já declarada no topo deste arquivo vale aqui em
+    // dobro — em `Status Protocolo Dia` os `[protocolo]`/`[Dia]` são exatamente
+    // esse caso.
+    problems.push(
+      ...checkExpression(model, `${t.name} (tabela calculada)`, t.name, t.tableDax!),
+    );
+  }
 
   for (const m of model.measures) {
     problems.push(...checkExpression(model, `${m.table}[${m.name}]`, m.table, m.dax));

@@ -22,6 +22,7 @@
     "test:validate": "node --test tools/validate/test/*.test.ts",
     "doctor": "node tools/doctor/src/index.ts",
     "validate:model": "node tools/validate/src/model.ts",
+    "validate:tables": "node tools/validate/src/tables.ts",
     "validate:queries": "node tools/validate/src/index.ts"
   },
   "dependencies": {

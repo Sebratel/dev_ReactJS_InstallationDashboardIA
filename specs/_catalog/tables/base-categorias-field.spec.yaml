@@ -4,6 +4,7 @@ spec: table
 id: base-categorias-field
 name: Base Categorias Field
 query_ref: base-categorias-field
+table_dax: null
 columns:
 - name: protocol
   type: int64

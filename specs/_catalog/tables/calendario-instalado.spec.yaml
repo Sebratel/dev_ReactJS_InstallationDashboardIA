@@ -4,6 +4,10 @@ spec: table
 id: calendario-instalado
 name: CALENDARIO INSTALADO
 query_ref: null
+table_dax: |-
+  CALENDAR(
+                      MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO]),
+                      DATE(2026,12,31))
 columns:
 - name: DATA INSTALADO
   type: null

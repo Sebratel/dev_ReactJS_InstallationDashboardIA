@@ -4,6 +4,14 @@ spec: table
 id: calendar
 name: calendar
 query_ref: null
+table_dax: |-
+  DISTINCT(    
+      SELECTCOLUMNS(
+          'FIELD AGENDA',
+          "Protocolo", 'FIELD AGENDA'[Protocolo],
+          "Data", 'FIELD AGENDA'[Data]
+      )
+  )
 columns:
 - name: Protocolo
   type: null

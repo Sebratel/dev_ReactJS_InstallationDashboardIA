@@ -4,6 +4,7 @@ spec: table
 id: protocolos
 name: PROTOCOLOS
 query_ref: null
+table_dax: "DISTINCT('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO])"
 columns:
 - name: TIPO DE PROTOCOLO
   type: null

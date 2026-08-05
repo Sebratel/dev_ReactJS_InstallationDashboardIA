@@ -28,6 +28,11 @@ O único item que **ainda depende de você** é a conferência dos `rowCount` co
 o Power BI (`specs/golden/`), que você pediu para deixar para depois. Isso não é
 decisão de comportamento — é a verificação de que a query foi extraída certa.
 
+> **Leia o achado 15 antes de conferir.** O `rowCount` do golden é a contagem do
+> **SQL**, e em **11 das 17** tabelas o Power Query ainda filtra, deduplica ou
+> expande linha depois disso. Nessas 11 os dois números são diferentes por
+> construção, e divergência não indica extração errada. Comparável em 6.
+
 Duas perguntas de negócio seguem abertas com o Fabrício, com o texto pronto para
 enviar em [PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md). Nenhuma bloqueia
 desenvolvimento: elas decidem se, mais para frente, vale registrar uma divergência
@@ -510,7 +515,7 @@ Dos 22 relacionamentos, um está marcado `active: false`:
 | `cross_filter` | `oneDirection` |
 
 Relacionamento inativo no Power BI só entra em jogo dentro de `USERELATIONSHIP`. E
-**`USERELATIONSHIP` não aparece em nenhuma das 127 expressões** — conferido por
+**`USERELATIONSHIP` não aparece em nenhuma das 134 expressões** — conferido por
 varredura no catálogo, junto com `RELATED`, `ALLEXCEPT` e `CROSSFILTER`, que também
 não aparecem.
 
@@ -532,3 +537,124 @@ A hipótese mais provável é que ele tenha sido desativado por criar **caminho
 ambíguo**: `PROTOCOLOS PRODUTIVIDADE` e `PROTOCOLOS GERAL` já se ligam indiretamente
 por `CALENDARIO INSTALADO`, e o Power BI recusa dois caminhos entre as mesmas tabelas.
 Se for isso, ele pode ser apagado do modelo sem consequência.
+
+---
+
+## 14. Sete tabelas existiam no modelo sem dizer de onde vinham as linhas (corrigido)
+
+Como o achado 8, não é decisão pendente: fica registrado porque explica por que as
+specs cresceram e porque este era um bloqueio da paridade que ninguém tinha visto.
+
+Sete das 25 tabelas são **calculadas**: no TMDL a partition é `= calculated` e o
+conteúdo é uma expressão DAX que produz as linhas. O extrator lia só a partition
+`= m` (a que virava query), então para essas sete a spec gravava
+`query_ref: null` e **mais nada**. A spec afirmava que a tabela existe e não dizia
+de onde vêm as linhas.
+
+| Tabela | DAX que a define |
+|---|---|
+| `CALENDARIO INSTALADO` | `CALENDAR(MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO]), DATE(2026,12,31))` |
+| `CALENDARIO AGENDAMENTO` | `CALENDAR` sobre `MIN`/`MAX` de `'PROTOCOLOS GERAL'[DATA AGENDA]` |
+| `CALENDARIO CRIADO` | `CALENDAR` de `MIN('PROTOCOLOS TELEFONIA'[DATA CRIADO])` a `MAX('PROTOCOLOS GERAL'[DATA CRIADO])` |
+| `calendar` | `DISTINCT(SELECTCOLUMNS('FIELD AGENDA', ...))` |
+| `Status Protocolo Dia` | `ADDCOLUMNS` sobre `DISTINCT(SELECTCOLUMNS('FIELD AGENDA', ...))`, com 3 `CALCULATE` |
+| `BASE DE ORIGEM` | `DISTINCT('PROTOCOLOS GERAL'[EQUIPES TEMPORARIAS])` |
+| `PROTOCOLOS` | `DISTINCT('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO])` |
+
+**Por que isso era grave e não aparecia.** Três dessas tabelas —
+`CALENDARIO INSTALADO`, `calendar` e `Status Protocolo Dia` — são exatamente por
+onde o filtro propaga (fase 2b.5). Contra dado real elas nasceriam **vazias**, e
+tabela vazia do lado que filtra não dá erro: dá zero, ou um filtro que não casa
+nada. Nos testes nunca apareceu porque o dataset sintético **inventa linhas para
+toda tabela do modelo**, calculada ou não — ele preenchia justamente o que faltava.
+
+Note a dependência que isso cria: `CALENDARIO INSTALADO` começa em
+`MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO])`, e `DATA INSTALAÇÃO` é uma **coluna
+calculada** que escolhe entre três colunas de data conforme o tipo do protocolo.
+Então materializar a tabela exige avaliar a coluna calculada de outra tabela
+primeiro — há ordem de dependência entre tabelas, não só entre medidas.
+
+**Corrigido** em `tools/extractor/src/index.mjs`: a spec de tabela ganhou o campo
+`table_dax`, o modelo semântico expõe `calculatedTables`, e o `validate:model`
+agora verifica as referências dessas 7 também (passam limpas). Com elas, a base
+tem **134 expressões DAX**, não 127, e usa **56 funções**, não 54 — as duas novas
+são `CALENDAR` e `ADDCOLUMNS`.
+
+**O que ainda não existe:** materializar. Nenhuma das 7 é avaliável hoje, e o teste
+`nenhuma das 7 tabelas calculadas é materializável hoje` trava isso de propósito.
+Duas faltam função; quatro erram alto porque não há API que avalie expressão de
+tabela **como tabela**; e `BASE DE ORIGEM` é o caso perigoso — cabe na coerção
+1×1 → escalar e **devolve um texto** em vez de falhar. Enquanto isso não existir,
+paridade contra dado real não é possível para nenhuma medida que passe por essas
+tabelas.
+
+O teste `nenhuma tabela fica sem origem: 18 vêm de query, 7 vêm de DAX` é o que
+pega a próxima perda dessas: tabela sem query e sem DAX não é tabela vazia, é
+tabela que o extrator perdeu.
+
+---
+
+## 15. O `rowCount` do golden não é a contagem da tabela no Power BI (11 das 17)
+
+**Este achado muda o que a conferência pendente significa**, então vale ler antes
+de conferir número nenhum.
+
+Entre o SQL e a tabela que o DAX vê existe a camada **M (Power Query)**: são **303
+passos** depois do `Odbc.Query` nas 23 queries que o scanner lê estaticamente (a
+24ª, `clima-tempo`, define uma função M com `let` aninhado e o scanner erra alto em
+vez de achatar os passos internos na tabela de fora). Esses passos não são
+cosméticos — eles criam coluna e **filtram linha**. O golden guarda `count(*)` do **SQL**; a
+tabela no Power BI é o resultado depois do M. Onde o M mexe em linha, os dois
+números são diferentes **por construção**, e divergência ali não indica extração
+errada.
+
+Rode `npm run validate:tables` para a lista completa. O caso mais forte é a maior
+tabela do relatório:
+
+```
+PROTOCOLOS GERAL (protocolos-geral)
+    Table.ExpandTableColumn (multiplica) em 'ALOCAÇÃO_PATRIMONIO Expandido'
+    Table.SelectRows       (reduz)      em 'Linhas Filtradas1'    → [STATUS] <> "Cancelado"
+    Table.ExpandTableColumn (multiplica) em 'TROCA ENDEREÇO Expandido'
+    Table.ExpandTableColumn (multiplica) em 'GESTORES EQUIPES Expandido'
+    Table.Distinct         (reduz)      em 'Duplicatas Removidas' → por SOLICITACAO
+    Table.ExpandTableColumn (multiplica) em 'TECNICOS AUXILIARES Expandido'
+```
+
+O golden diz `rowCount: 33438`. A tabela no Power BI tem outro número, e o certo é
+ter: quatro expansões podem multiplicar, um filtro tira os cancelados e um
+`Table.Distinct` deduplica por `SOLICITACAO` **depois** disso.
+
+**Balanço:** de 17 tabelas alimentadas por query escaneável, **6 têm `rowCount`
+comparável** e **11 não têm**. Em `#APURAÇÃO PREMIAÇÃO` é `Table.Skip`; em
+`FIELD AGENDA`, `CONTRATOS`, `Base Categorias Field`, `CAPACIDADE EQUIPE` e
+`PROTOCOLOS TELEFONIA` é um `Table.SelectRows`; em `BACKLOG AGENDADO FUTURO` e
+`RETORNO PRIORITARIO` é expansão de mesclagem; em `REINCIDÊNCIA` e
+`PROTOCOLOS PRODUTIVIDADE` é a combinação de tudo.
+
+**A outra metade do mesmo achado: 11 colunas que o DAX usa não saem do SELECT.**
+Elas nascem em passo M — `HORA CRIADO` é `DateTime.Time([DATA CRIADO])`,
+`DATA DA TROCA` vem de mesclar com a query `troca-endereco`, `TÉCNICO INSTALAÇÃO`
+é renomeação de uma coluna expandida. `validate:model` não pega isso porque
+confere modelo contra modelo: a coluna está declarada na spec da tabela, então
+passa. Contra dado real ela chegaria vazia.
+
+Duas colunas a mais que apareceram na verificação e valem registro:
+
+- `CONTRATOS[CIDADE2]` — o SELECT pede `ac.city "CIDADE"` **duas vezes**, e o
+  Power Query desempata a segunda com `2`. O efeito colateral é sobre o golden: o
+  perfilador guarda coluna por nome, então a duplicata desaparece e `contratos`
+  aparece com 22 colunas em vez de 23. `columns[]` do golden não serve para
+  contar coluna quando o SQL repete alias.
+- `PROTOCOLOS GERAL[EQUIPE_BASE]` — no TMDL é `type: calculated` e **não tem
+  expressão nenhuma**. Caso único no modelo: coluna calculada vazia. Não é citada
+  por nenhuma das 134 expressões e não sai de nenhuma fonte.
+
+**O que a plataforma faz.** Nada de silencioso. `npm run validate:tables` classifica
+cada uma das 298 colunas físicas em SQL / alias repetido / passo M / sem golden para
+conferir / sem explicação, e **sai com código 1** se uma coluna citada pelo DAX não
+for explicada por ninguém. Hoje não há nenhuma nessa situação.
+
+**Para a conferência pendente:** compare o `rowCount` só nas 6 tabelas em que ele é
+comparável. Nas outras 11, o número a comparar é o da tabela **depois do M** — ou,
+mais simples, compare a contagem de linhas do visual, não a da query.

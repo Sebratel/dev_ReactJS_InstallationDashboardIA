@@ -4,6 +4,7 @@ spec: table
 id: contratos-telefonia
 name: CONTRATOS TELEFONIA
 query_ref: contratos-telefonia
+table_dax: null
 columns:
 - name: CLIENTE
   type: string

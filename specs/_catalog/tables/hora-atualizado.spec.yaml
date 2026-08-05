@@ -4,6 +4,7 @@ spec: table
 id: hora-atualizado
 name: HORA ATUALIZADO
 query_ref: hora-atualizado
+table_dax: null
 columns:
 - name: DataHora
   type: dateTime

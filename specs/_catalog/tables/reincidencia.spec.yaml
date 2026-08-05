@@ -4,6 +4,7 @@ spec: table
 id: reincidencia
 name: "REINCIDÊNCIA"
 query_ref: reincidencia
+table_dax: null
 columns:
 - name: service_tag
   type: string

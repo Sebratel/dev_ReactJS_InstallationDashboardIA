@@ -31,6 +31,14 @@ export interface ModelTable {
   name: string;
   /** Query do registry que alimenta a tabela. null = calculada ou embutida. */
   queryRef: string | null;
+  /**
+   * DAX que **define a tabela inteira** (partition `= calculated` no TMDL).
+   * São 7 no modelo. Não confundir com coluna calculada: aqui o DAX produz as
+   * linhas, não um valor por linha. `CALENDARIO INSTALADO` é
+   * `CALENDAR(MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO]), DATE(2026,12,31))` — ou
+   * seja, uma tabela cujo conteúdo **depende de outra tabela**.
+   */
+  tableDax: string | null;
   columns: ModelColumn[];
 }
 

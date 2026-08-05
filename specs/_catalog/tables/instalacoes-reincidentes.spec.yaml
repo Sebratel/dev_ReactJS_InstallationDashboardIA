@@ -4,6 +4,7 @@ spec: table
 id: instalacoes-reincidentes
 name: "INSTALAÇÕES REINCIDENTES"
 query_ref: instalacoes-reincidentes
+table_dax: null
 columns:
 - name: protocolo_instalacao
   type: int64

@@ -153,6 +153,16 @@ vez de 78 (as 3 que não rodam), e as 5 ficam registradas em ACHADOS.md #6 e #10
 
 ## Pendência que é do Erick, não do Fabrício
 
-Conferir os 18 `rowCount` de `specs/golden/` contra os números do Power BI. Não é
+Conferir os `rowCount` de `specs/golden/` contra os números do Power BI. Não é
 decisão de negócio — é verificar se cada query foi extraída certa. Se um número
 divergir, toda medida construída sobre aquela query nasce errada.
+
+**Nota de 05/08/2026 — a conferência é de 6 tabelas, não de 18.** Ao verificar a
+camada Power Query apareceu que o `rowCount` do golden é a contagem do **SQL**, e
+em **11 das 17** tabelas o M ainda filtra, deduplica ou expande linha depois disso
+(`[STATUS] <> "Cancelado"` e `Table.Distinct` por `SOLICITACAO` em
+`PROTOCOLOS GERAL`, por exemplo). Nessas 11 os dois números são diferentes **por
+construção** — comparar acusaria erro que não existe.
+
+Rode `npm run validate:tables` para ver em qual grupo cada tabela está e qual passo
+faz a diferença. Detalhes em ACHADOS.md #15.

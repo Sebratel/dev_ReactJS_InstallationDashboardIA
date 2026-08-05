@@ -4,6 +4,7 @@ spec: table
 id: field-agenda
 name: FIELD AGENDA
 query_ref: field-agenda
+table_dax: null
 columns:
 - name: Protocolo
   type: string

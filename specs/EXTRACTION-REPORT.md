@@ -9,6 +9,7 @@
 | Tabelas | 25 |
 | Medidas (DAX) | 78 |
 | Colunas calculadas (DAX) | 49 |
+| Tabelas calculadas (DAX) | 7 |
 | Relacionamentos | 22 |
 | Queries (registry) | 24 |
 | Expressions (M compartilhadas) | 6 |

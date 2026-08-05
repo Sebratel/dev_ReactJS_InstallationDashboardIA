@@ -4,6 +4,55 @@ spec: table
 id: status-protocolo-dia
 name: Status Protocolo Dia
 query_ref: null
+table_dax: |-
+  VAR BaseAgenda =
+      DISTINCT (
+          SELECTCOLUMNS (
+              'FIELD AGENDA',
+              "protocolo", 'FIELD AGENDA'[protocolo],
+              "Dia", TRUNC ( 'FIELD AGENDA'[Slot Agenda] )
+          )
+      )
+  RETURN
+  ADDCOLUMNS (
+      BaseAgenda,
+
+      "Status",
+      VAR Protocolo = [protocolo]
+      VAR Dia = [Dia]
+
+      VAR InstaladoNoDia =
+          CALCULATE (
+              COUNTROWS ( 'PROTOCOLOS GERAL' ),
+              'PROTOCOLOS GERAL'[N°PROTOCOLO] = Protocolo,
+              TRUNC ( 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] ) = Dia
+          )
+
+      VAR ImprodutivoNoDia =
+          CALCULATE (
+              COUNTROWS ( 'FIELD AGENDA' ),
+              'FIELD AGENDA'[protocolo] = Protocolo,
+              'FIELD AGENDA'[CategoriaProdutividade] = "Improdutiva",
+              TRUNC ( 'FIELD AGENDA'[Data Relato] ) = Dia
+          )
+
+      VAR RelatoTecnicoNoDia =
+          CALCULATE (
+              COUNTROWS ( 'FIELD AGENDA' ),
+              'FIELD AGENDA'[protocolo] = Protocolo,
+              NOT ISBLANK ( 'FIELD AGENDA'[skill] ),
+              TRUNC ( 'FIELD AGENDA'[Data Relato] ) = Dia
+          )
+
+      RETURN
+          SWITCH (
+              TRUE(),
+              InstaladoNoDia > 0, "Produtivo",
+              ImprodutivoNoDia > 0, "Improdutivo",
+              RelatoTecnicoNoDia > 0, "Inconclusivo",
+              "Sem Ação"
+          )
+  )
 columns:
 - name: Dia
   type: dateTime

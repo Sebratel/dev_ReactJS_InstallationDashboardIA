@@ -4,6 +4,7 @@ spec: table
 id: apuracao-premiacao
 name: "#APURAÇÃO PREMIAÇÃO"
 query_ref: apuracao-premiacao
+table_dax: null
 columns:
 - name: INSTALADOR
   type: string

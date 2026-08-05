@@ -4,6 +4,7 @@ spec: table
 id: base-de-origem
 name: BASE DE ORIGEM
 query_ref: null
+table_dax: "DISTINCT('PROTOCOLOS GERAL'[EQUIPES TEMPORARIAS])"
 columns:
 - name: EQUIPES TEMPORARIAS
   type: null

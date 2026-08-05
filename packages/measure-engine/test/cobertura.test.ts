@@ -30,12 +30,20 @@ function todasAsExpressoes(): Expressao[] {
       nome: `${table.name}[${column.name}] (coluna)`,
       dax: column.dax!,
     })),
+    // As 7 tabelas calculadas entraram aqui quando o extrator passou a capturar
+    // a partition `= calculated`. Antes eram DAX que existia no PBIP e não
+    // existia nas specs — então "o parser dá conta de tudo" era uma afirmação
+    // sobre 127 de 134.
+    ...model.calculatedTables.map((t) => ({
+      nome: `${t.name} (tabela calculada)`,
+      dax: t.tableDax!,
+    })),
   ];
 }
 
-test('o parser dá conta das 127 expressões DAX da base', () => {
+test('o parser dá conta das 134 expressões DAX da base', () => {
   const expressoes = todasAsExpressoes();
-  assert.equal(expressoes.length, 127, '78 medidas + 49 colunas calculadas');
+  assert.equal(expressoes.length, 134, '78 medidas + 49 colunas + 7 tabelas calculadas');
 
   const falhas: string[] = [];
   for (const e of expressoes) {
@@ -67,7 +75,8 @@ test('nenhuma expressão parseia para algo vazio', () => {
  * este teste falha e mostra qual — em vez de o avaliador estourar em produção.
  */
 const FUNCOES_ESPERADAS = [
-  'ALL', 'AVERAGEX', 'BLANK', 'CALCULATE', 'CALCULATETABLE', 'COALESCE',
+  'ADDCOLUMNS', 'ALL', 'AVERAGEX', 'BLANK', 'CALCULATE', 'CALCULATETABLE',
+  'CALENDAR', 'COALESCE',
   'CONCATENATE', 'CONTAINSSTRING', 'COUNT', 'COUNTROWS', 'DATE', 'DATEDIFF',
   'DATESBETWEEN', 'DATESMTD', 'DATEVALUE', 'DISTINCT', 'DISTINCTCOUNT', 'DIVIDE',
   'ENDOFMONTH', 'EOMONTH', 'EXCEPT', 'FILTER', 'FORMAT', 'HOUR',
@@ -78,7 +87,15 @@ const FUNCOES_ESPERADAS = [
   'TREATAS', 'TRUNC', 'UNION', 'VALUES', 'WEEKDAY', 'YEAR',
 ];
 
-test('o escopo do avaliador são estas 54 funções', () => {
+/**
+ * As duas que a base usa e o avaliador **não** implementa, ambas vindas das
+ * tabelas calculadas: `CALENDAR` (gera linhas de data) e `ADDCOLUMNS` (acrescenta
+ * coluna calculada a uma tabela). Ficam declaradas aqui, não escondidas: o teste
+ * de execução em `avaliador-cobertura.test.ts` afirma que são exatamente estas.
+ */
+const FUNCOES_SEM_IMPLEMENTACAO = ['ADDCOLUMNS', 'CALENDAR'];
+
+test('o escopo do avaliador são estas 56 funções', () => {
   const usadas = new Set<string>();
   for (const e of todasAsExpressoes()) {
     for (const f of functionsUsed(parseDax(e.dax))) usadas.add(f);
@@ -100,7 +117,7 @@ test('o escopo do avaliador são estas 54 funções', () => {
  * divergirem, um dos dois está lendo o DAX errado — e é melhor descobrir aqui do
  * que num número de dashboard.
  */
-test('parser e scanner concordam sobre as referências das 127 expressões', () => {
+test('parser e scanner concordam sobre as referências das 134 expressões', () => {
   const divergencias: string[] = [];
 
   for (const e of todasAsExpressoes()) {
@@ -128,6 +145,30 @@ test('parser e scanner concordam sobre as referências das 127 expressões', () 
   }
 
   assert.deepEqual(divergencias, []);
+});
+
+/**
+ * **Toda** tabela do modelo declara de onde vêm as linhas: ou uma query, ou DAX.
+ *
+ * Este é o teste que pega a falha que existiu de verdade. Sete tabelas tinham
+ * `query_ref: null` e nenhum DAX — a spec afirmava que a tabela existe e não
+ * dizia de onde. E não eram tabelas de canto: `CALENDARIO INSTALADO`, `calendar`
+ * e `Status Protocolo Dia` são por onde o filtro propaga (fase 2b.5), então
+ * contra dado real elas nasceriam vazias e as medidas zerariam **sem erro**.
+ *
+ * Uma tabela sem nenhuma das duas origens não é "tabela vazia": é tabela que o
+ * extrator perdeu. Se este teste falhar, olhe a partition no TMDL antes de
+ * mexer em qualquer outra coisa.
+ */
+test('nenhuma tabela fica sem origem: 18 vêm de query, 7 vêm de DAX', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const semOrigem = [...model.tables.values()].filter((t) => !t.queryRef && !t.tableDax);
+  assert.deepEqual(semOrigem.map((t) => t.name), []);
+
+  const deQuery = [...model.tables.values()].filter((t) => t.queryRef).length;
+  assert.equal(deQuery, 18);
+  assert.equal(model.calculatedTables.length, 7);
+  assert.equal(deQuery + model.calculatedTables.length, model.tables.size);
 });
 
 test('as 3 medidas mortas do achado 6 parseiam — o problema delas não é sintaxe', () => {

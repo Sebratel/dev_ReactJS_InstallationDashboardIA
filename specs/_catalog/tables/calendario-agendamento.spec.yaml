@@ -4,6 +4,10 @@ spec: table
 id: calendario-agendamento
 name: CALENDARIO AGENDAMENTO
 query_ref: null
+table_dax: |-
+  CALENDAR(
+                      DATE(YEAR(MIN('PROTOCOLOS GERAL'[DATA AGENDA])), 1, 1),
+                      DATE(YEAR(MAX('PROTOCOLOS GERAL'[DATA AGENDA])), 12, 31))
 columns:
 - name: Data Agendado
   type: null

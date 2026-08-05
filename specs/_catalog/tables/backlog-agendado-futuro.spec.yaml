@@ -4,6 +4,7 @@ spec: table
 id: backlog-agendado-futuro
 name: BACKLOG AGENDADO FUTURO
 query_ref: backlog-agendado-futuro
+table_dax: null
 columns:
 - name: protocolo_id
   type: string

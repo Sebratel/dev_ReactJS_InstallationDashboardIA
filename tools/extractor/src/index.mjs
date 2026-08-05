@@ -181,7 +181,18 @@ function build(pbip) {
   const measureFiles = [];
   for (const t of tables) {
     let queryId = null;
+    let tableDax = null;
     for (const part of t.partitions) {
+      // Tabela CALCULADA: a tabela inteira é uma expressão DAX, não uma query.
+      // São 7 no modelo, e três delas — 'CALENDARIO INSTALADO', 'calendar' e
+      // 'Status Protocolo Dia' — são por onde o filtro propaga (Fase 2b.5).
+      // Sem esta expressão a spec afirma que a tabela existe e não diz de onde
+      // vêm as linhas: contra dado real ela nasceria vazia, e vazio propagado
+      // vira zero com cara de filtro apertado.
+      if (part.kind === 'calculated') {
+        if (part.source) tableDax = part.source.trim();
+        continue;
+      }
       if (part.kind !== 'm' || !part.source) continue;
       const src = detectSource(part.source);
       registerDs(src);
@@ -204,6 +215,7 @@ function build(pbip) {
       id: slugify(t.name),
       name: t.name,
       query_ref: queryId,
+      table_dax: tableDax,
       columns: t.columns.map((c) => ({
         name: c.name,
         type: c.dataType || null,
@@ -272,6 +284,7 @@ function build(pbip) {
         (a, t) => a + t.columns.filter((c) => c.calculated).length,
         0,
       ),
+      calculated_tables: tableSpecs.filter((t) => t.table_dax).length,
       relationships: relationships.length,
       queries: queries.length,
       expressions: expressions.length,
@@ -324,6 +337,7 @@ function writeSpecs(model, outDir) {
     `| Tabelas | ${model.counts.tables} |`,
     `| Medidas (DAX) | ${model.counts.measures} |`,
     `| Colunas calculadas (DAX) | ${model.counts.calculated_columns} |`,
+    `| Tabelas calculadas (DAX) | ${model.counts.calculated_tables} |`,
     `| Relacionamentos | ${model.counts.relationships} |`,
     `| Queries (registry) | ${model.counts.queries} |`,
     `| Expressions (M compartilhadas) | ${model.counts.expressions} |`,

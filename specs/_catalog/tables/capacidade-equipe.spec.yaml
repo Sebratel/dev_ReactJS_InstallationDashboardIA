@@ -4,6 +4,7 @@ spec: table
 id: capacidade-equipe
 name: CAPACIDADE EQUIPE
 query_ref: capacidade-equipe
+table_dax: null
 columns:
 - name: DATA
   type: dateTime

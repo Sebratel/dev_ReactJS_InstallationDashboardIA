@@ -4,6 +4,10 @@ spec: table
 id: calendario-criado
 name: CALENDARIO CRIADO
 query_ref: null
+table_dax: |-
+  CALENDAR(
+                      DATE(YEAR(MIN('PROTOCOLOS TELEFONIA'[DATA CRIADO])), 1, 1),
+                      DATE(YEAR(MAX('PROTOCOLOS GERAL'[DATA CRIADO])), 12, 31))
 columns:
 - name: DATA CRIADO
   type: null

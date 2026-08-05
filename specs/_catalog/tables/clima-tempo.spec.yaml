@@ -4,6 +4,7 @@ spec: table
 id: clima-tempo
 name: Clima/ Tempo
 query_ref: clima-tempo
+table_dax: null
 columns:
 - name: Data
   type: dateTime

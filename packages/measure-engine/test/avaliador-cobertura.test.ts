@@ -19,6 +19,7 @@ import type { ModelTable } from '../../semantic-model/src/types.ts';
 import { walk } from '../src/ast.ts';
 import { Dataset, type Row } from '../src/dataset.ts';
 import { Evaluator } from '../src/evaluator.ts';
+import { isTableValue } from '../src/filter.ts';
 import { lookupFunction, lookupTableFunction } from '../src/functions.ts';
 import { parseDax } from '../src/parser.ts';
 import { NO_PROPAGATION, type Propagation } from '../src/propagation.ts';
@@ -212,14 +213,74 @@ test(`as 127 expressões estão todas dentro do implementado`, () => {
  * ditava a ordem dos passos (`CALCULATE` liderava com 56). Agora a lista está
  * vazia, e a afirmação útil passou a ser o inverso: **se o PBIP ganhar uma função
  * nova, este teste falha e diz qual** — em vez de o avaliador estourar em produção.
+ *
+ * O escopo é o das **127 expressões escalares** (medidas e colunas calculadas).
+ * As 7 tabelas calculadas ficam de fora aqui de propósito: elas usam duas funções
+ * que não existem no avaliador, e isso está declarado e travado nos dois testes
+ * logo abaixo. Juntar as duas contagens transformaria uma lacuna nomeada numa
+ * lista genérica de faltantes.
  */
-test('nenhuma função DAX que a base usa está sem implementação', () => {
+test('nenhuma função das 127 expressões escalares está sem implementação', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const faltando = new Map<string, number>();
   for (const e of todasAsExpressoes(model)) {
     for (const f of funcoesQueFaltam(e.dax, model)) faltando.set(f, (faltando.get(f) ?? 0) + 1);
   }
   assert.deepEqual([...faltando.entries()], []);
+});
+
+/**
+ * As 7 tabelas calculadas: o avaliador ainda não materializa **nenhuma**.
+ *
+ * Este teste é a fronteira honesta entre "o DAX está nas specs" e "o dado real
+ * pode entrar". Capturar a expressão (o extrator agora captura) não avalia nada.
+ * São três motivos distintos, e vale saber qual é qual:
+ *
+ *  - `CALENDAR` e `ADDCOLUMNS` não existem no avaliador — 3 calendários e a
+ *    `Status Protocolo Dia`;
+ *  - `calendar` e `PROTOCOLOS` erram alto porque `evaluateExpression` coage
+ *    tabela para escalar, e não há API pública que avalie expressão de tabela
+ *    **como tabela**;
+ *  - `BASE DE ORIGEM` é o caso perigoso: `DISTINCT` de uma coluna que no dado
+ *    sintético tem um único valor cabe na coerção 1×1 → escalar, então ela
+ *    **não falha** — devolve um texto onde deveria haver uma tabela.
+ *
+ * Por isso a asserção é sobre a forma do resultado, não sobre erro: o que
+ * importa é que nenhuma das 7 produz tabela. Quando a materialização existir,
+ * este teste falha — e é a hora de trocar o número de propósito.
+ */
+test('nenhuma das 7 tabelas calculadas é materializável hoje', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const dataset = datasetSintetico(model);
+  const ev = new Evaluator({ model, dataset, now: HOJE });
+
+  const viraramTabela: string[] = [];
+  for (const t of model.calculatedTables) {
+    let valor: unknown;
+    try {
+      valor = ev.evaluateExpression(t.tableDax!, ev.rootScope());
+    } catch {
+      continue; // erro alto é o comportamento correto enquanto falta suporte
+    }
+    if (isTableValue(valor)) viraramTabela.push(t.name);
+  }
+  assert.deepEqual(viraramTabela, []);
+});
+
+/**
+ * E as funções que faltam para elas são exatamente duas, nomeadas.
+ *
+ * O teste acima diz que nenhuma roda; este diz **o que falta**, para a lacuna não
+ * virar "o avaliador não dá conta de tabela calculada" sem tamanho. As outras 5
+ * não precisam de função nova — precisam de materialização.
+ */
+test('às tabelas calculadas faltam só CALENDAR e ADDCOLUMNS', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const faltam = new Set<string>();
+  for (const t of model.calculatedTables) {
+    for (const f of funcoesQueFaltam(t.tableDax!, model)) faltam.add(f);
+  }
+  assert.deepEqual([...faltam].sort(), ['ADDCOLUMNS', 'CALENDAR']);
 });
 
 /**

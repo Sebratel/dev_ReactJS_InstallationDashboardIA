@@ -41,8 +41,9 @@ C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\
   INST - Relatório Instalação Gerencial.Report\        (páginas e visuais)
 ```
 
-Escala: **25 tabelas, 78 medidas DAX, 49 colunas calculadas (também DAX),
-22 relacionamentos, 14 páginas, 306 visuais, 24 queries**.
+Escala: **25 tabelas (7 delas calculadas em DAX), 78 medidas DAX, 49 colunas
+calculadas (também DAX), 22 relacionamentos, 14 páginas, 306 visuais, 24 queries
+com 303 passos de Power Query**.
 
 Fontes reais das 24 queries: **15** `dbVoalle` (PostgreSQL do ERP Voalle), **3** `dbMaria`
 (MariaDB `DB_Applicattion`: `Backlog_Installation`, `Backlog_Schedules`,
@@ -66,7 +67,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**298 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**320 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -76,12 +77,15 @@ Nenhum teste precisa de credencial ou banco.
 | — | Infra de conexão + doctor + guard read-only | ✅ |
 | — | Validação contra dados reais — 18/18 queries capturadas em `specs/golden/` | ✅ |
 | 2a | Modelo semântico completo + verificação de referências do DAX | ✅ |
-| 2b.1 | Parser de DAX → AST — as 127 expressões da base parseiam | ✅ |
+| 2b.1 | Parser de DAX → AST — as 134 expressões da base parseiam | ✅ |
 | 2b.2 | Avaliador: escalares e agregação | ✅ |
 | 2b.3 | Contexto de filtro (`CALCULATE`, `FILTER`, `ALL`, `TREATAS`) | ✅ |
 | 2b.4 | Time intelligence, conjuntos, `RANKX` — 74 das 78 medidas executam | ✅ |
 | 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
-| 2b.6 | Paridade contra dado real (conferência dos `rowCount`) | ⏳ **próximo** |
+| 2b.6 | O que separa o avaliador do dado real: camada M + 7 tabelas calculadas | ✅ |
+| 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) | ⏳ **próximo** |
+| 2b.8 | Camada M: as 11 colunas que o DAX usa e o SQL não devolve | ⏳ |
+| 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -104,6 +108,14 @@ Já implementado em `packages/semantic-model/` (Fase 2a):
   `[Medida]` e tabela solta, pulando string e comentário. **Não é o parser** — é
   o que responde "isto referencia coisa que existe?"
 - `checkModelRefs` — resolve as referências contra o modelo. `npm run validate:model`
+
+Em `tools/validate/` (`npm run validate:tables`) — fase 2b.6:
+- `mlayer.ts` — scanner estático da camada M. Responde "que coluna este passo cria?"
+  e "este passo muda a contagem de linhas?". **Não é avaliador de M**; erra alto em
+  função `Table.*` desconhecida e em `let` aninhado
+- `tables.ts` — classifica as 298 colunas físicas em SQL / alias repetido / passo M /
+  sem golden / sem explicação, e sai com código 1 se uma coluna **citada pelo DAX**
+  não for explicada por ninguém
 
 Em `tools/validate/` (`npm run validate:queries`):
 - executa as **18 queries SQL** (dbVoalle + dbMaria) nas fontes reais
@@ -134,18 +146,24 @@ Em `tools/validate/` (`npm run validate:queries`):
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (283 testes, sem credencial)
+npm test                              # suíte completa (320 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
-npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
+npm run validate:model                # o DAX referencia coisas que existem no MODELO? (sem banco)
+npm run validate:tables               # essas colunas existem no que a FONTE devolve? (sem banco)
 npm run doctor                        # configuração e conectividade (não imprime credencial)
 npm run validate:queries              # executa as queries reais e grava os goldens
 npm run validate:queries -- --check    # falha se o schema de alguma query mudou
 ```
 
-Os quatro respondem perguntas diferentes: `npm test` = o código respeita as specs;
-`validate:model` = o DAX aponta para tabelas/colunas que existem; `doctor` = as
+Os cinco respondem perguntas diferentes: `npm test` = o código respeita as specs;
+`validate:model` = o DAX aponta para tabela/coluna que existe **no modelo**;
+`validate:tables` = essa coluna existe no que a **fonte** devolve; `doctor` = as
 fontes estão alcançáveis; `validate:queries` = as queries rodam e devolvem o quê.
-Os dois primeiros dispensam `.env`.
+Os três primeiros dispensam `.env`.
+
+A diferença entre o segundo e o terceiro não é redundância: `validate:model` aprova
+`'PROTOCOLOS GERAL'[HORA CRIADO]` porque a coluna está declarada na spec da tabela.
+Ela **não sai do SELECT** — nasce num passo do Power Query.
 
 Node 24 roda TypeScript nativamente — **não há build step**.
 
@@ -166,11 +184,16 @@ Existe também uma cópia antiga do trabalho em
 
 ## Pendência com o Erick (não bloqueia começar)
 
-Os 18 `rowCount` estão em `specs/golden/` e **ainda não foram conferidos contra os
+Os `rowCount` estão em `specs/golden/` e **ainda não foram conferidos contra os
 números do Power BI**. O Erick pediu para seguir sem isso ("prossiga sem isso,
 depois validaremos"). Continue — mas se um número divergir depois, a medida
 construída sobre aquela query nasce errada, então **não trate paridade como
 provada** até a conferência acontecer.
+
+**A conferência é de 6 tabelas, não de 18** (descoberto na 2b.6). O `rowCount` do
+golden conta o **SQL**; em 11 das 17 tabelas o Power Query filtra, deduplica ou
+expande linha depois disso, e ali os dois números são diferentes por construção.
+`npm run validate:tables` diz em qual grupo cada tabela está. Ver ACHADOS.md #15.
 
 Os achados de comportamento **já foram decididos: replicar fielmente**
 ([`docs/ACHADOS.md`](./ACHADOS.md), seção "Decisão vigente"). O que isso impõe à
@@ -203,8 +226,10 @@ palpite. Um avaliador parcial que devolve número errado em silêncio é pior qu
 que se recusa a rodar, porque o erro chega ao dashboard da operação como se fosse
 um dado.
 
-Inventário real, contado **sobre o AST** das 127 expressões (medidas + colunas
-calculadas) — não por regex, que subcontava feio: dizia `IF:10` quando são 31:
+Inventário real, contado **sobre o AST** das 127 expressões escalares (medidas +
+colunas calculadas) — não por regex, que subcontava feio: dizia `IF:10` quando são
+31. As 7 tabelas calculadas acrescentam `CALENDAR:3` e `ADDCOLUMNS:1`, as duas
+únicas funções da base ainda sem implementação (ver 2b.7):
 
 ```
 CALCULATE:50  DISTINCTCOUNT:37  IF:31  TODAY:25  FILTER:16  DIVIDE:14  BLANK:14
@@ -220,9 +245,10 @@ LOOKUPVALUE:1  DATEVALUE:1  RANKX:1  OR:1  SUBSTITUTE:1
 ### 2b.1 — parser: PRONTO
 
 `packages/measure-engine/` tem tokenizer, parser (precedência por Pratt) e AST.
-**As 127 expressões da base parseiam** (78 medidas + 49 colunas calculadas) — é a
-métrica de cobertura que vale, medida sobre o DAX real. Ver
-`test/cobertura.test.ts`.
+**As 134 expressões da base parseiam** (78 medidas + 49 colunas calculadas + 7
+tabelas calculadas) — é a métrica de cobertura que vale, medida sobre o DAX real.
+Ver `test/cobertura.test.ts`. Eram 127 até a 2b.6 descobrir que faltavam as
+tabelas calculadas nas specs.
 
 Duas coisas que o parser trata de propósito e que quebram implementações
 ingênuas:
@@ -323,11 +349,16 @@ os dois modelos coincidem.
 
 ### 2b.4 — time intelligence, conjuntos e RANKX: PRONTO
 
-**Todas as 54 funções DAX que a base usa estão implementadas.** O teste que antes
-rankeava o que faltava virou o inverso: ele afirma que a lista de faltantes está
-**vazia**, e falha dizendo o nome se o PBIP passar a usar função nova.
+**Todas as 54 funções DAX que as 127 expressões escalares usam estão implementadas.**
+O teste que antes rankeava o que faltava virou o inverso: ele afirma que a lista de
+faltantes está **vazia**, e falha dizendo o nome se o PBIP passar a usar função nova.
 
-Cobertura: **123 das 127** expressões e **74 das 78 medidas** executam.
+Cobertura: **123 das 127** expressões escalares e **74 das 78 medidas** executam.
+
+> Ressalva vinda da 2b.6: a base usa **56** funções, não 54. As duas que faltam
+> (`CALENDAR` e `ADDCOLUMNS`) só aparecem nas 7 tabelas calculadas, que não estavam
+> nas specs quando esta fase fechou. Elas estão declaradas e travadas por teste; o
+> alvo é a 2b.7.
 
 Escolhas de projeto desta etapa, todas com teste:
 
@@ -361,7 +392,8 @@ citam mais de uma tabela sem `TREATAS`; todas dependiam disso.
 O grafo está em `packages/measure-engine/src/propagation.ts` (só responde "de onde o
 filtro chega e por qual coluna") e a travessia em `FilteredContext.linhasVisiveis`.
 21 dos 22 relacionamentos são ativos; o inativo só valeria dentro de
-`USERELATIONSHIP`, **confirmado ausente** das 127 expressões.
+`USERELATIONSHIP`, **confirmado ausente** das 134 expressões (reconferido na 2b.6,
+com as 7 tabelas calculadas incluídas).
 
 Decisões, todas com teste em `test/propagacao.test.ts`:
 
@@ -392,16 +424,81 @@ uma data de 2025 ao `DATAS` do teste de cobertura — sem ela o efeito medido er
 visível: é a demonstração mais concreta que o projeto tem de que **dado sintético não
 prova paridade**.
 
-### 2b.6 — paridade contra dado real: PRÓXIMO
+### 2b.6 — o que separa o avaliador do dado real: PRONTO
 
-**Paridade — o que falta de verdade.** Todos os números de cobertura de hoje
-vêm de **dados sintéticos**. Eles provam que o avaliador roda, não que ele acerta.
-Nada disso é paridade, e o README diz isso em todas as menções: mantenha essa
-distinção.
+Esta fase não escreveu avaliador. Ela foi **medir** o que falta para dado real
+entrar, porque "conferir os `rowCount`" era a descrição errada da tarefa. Achou duas
+lacunas na spec, ambas invisíveis em teste porque o dataset sintético inventa linha
+para toda tabela e valor para toda coluna declarada.
 
-O caminho: conferir os 18 `rowCount` de `specs/golden/` contra o Power BI (passo do
-Erick, pendente), depois avaliar as medidas contra dado real e comparar com o
-relatório. Só aí "executa" vira "está certo".
+**1. Sete tabelas não diziam de onde vinham as linhas.** No TMDL são
+`partition = calculated` — a tabela **é** uma expressão DAX. O extrator lia só a
+partition `= m`, então a spec gravava `query_ref: null` e mais nada. Três delas —
+`CALENDARIO INSTALADO`, `calendar` e `Status Protocolo Dia` — são por onde o filtro
+propaga na 2b.5: contra dado real nasceriam vazias, e vazio do lado que filtra não dá
+erro, dá zero. Corrigido: campo `table_dax`, `model.calculatedTables`,
+`validate:model` conferindo as 7 (passam limpas). A base tem **134 expressões DAX**,
+não 127, e **56 funções**, não 54. Detalhes em ACHADOS.md #14.
+
+**2. Existe uma camada M entre o SQL e a tabela** — 303 passos de Power Query. Ela
+cria **56 colunas** do modelo (11 delas citadas pelo DAX) e **muda a contagem de
+linhas em 11 das 17 tabelas**. Consequência direta: o `rowCount` do golden é a
+contagem do SQL e só é comparável com o Power BI em **6** tabelas. Detalhes em
+ACHADOS.md #15.
+
+Ferramenta nova: `npm run validate:tables`. Rode antes de qualquer trabalho com dado
+real — é ele que diz de onde vem cada coluna.
+
+### 2b.7 — materializar as 7 tabelas calculadas: PRÓXIMO
+
+**Sem isto, nenhuma medida que passe por essas tabelas pode rodar contra dado real** —
+e três delas estão no caminho de propagação de filtro.
+
+O que existe: o DAX das 7 nas specs (`table_dax`), todas parseando, e um teste
+(`nenhuma das 7 tabelas calculadas é materializável hoje`) que falha quando isto for
+implementado — é ele que marca a fronteira.
+
+O que falta, e vale ler nesta ordem:
+
+1. **Duas funções**: `CALENDAR(inicio, fim)` e `ADDCOLUMNS(tabela, nome, expr, ...)`.
+   `CALENDAR` **gera** datas, ao contrário de tudo que existe hoje em `functions.ts` —
+   as funções de tempo da 2b.4 **filtram** os valores que existem na coluna. Não
+   unifique as duas coisas sem pensar: um calendário com buracos continua com buracos
+   no Power BI, mas `CALENDAR` não tem buraco nenhum.
+2. **Avaliar expressão de tabela como tabela.** Hoje `evaluateExpression` coage para
+   escalar, e por isso `BASE DE ORIGEM` (`DISTINCT` de coluna com um único valor no
+   dado sintético) **devolve texto em vez de falhar**. Precisa de um caminho que
+   devolva `TableValue` sem coerção.
+3. **Ordem de dependência entre tabelas.** `CALENDARIO INSTALADO` começa em
+   `MIN('PROTOCOLOS GERAL'[DATA INSTALAÇÃO])`, e `DATA INSTALAÇÃO` é **coluna
+   calculada**. Então materializar tabela exige avaliar coluna calculada de outra
+   tabela, que por sua vez pode depender de tabela materializada. Detecte ciclo e erre
+   alto, como já se faz entre medidas.
+4. **Tabela calculada vira `TableValue.table` nomeado**, não anônimo — ela participa de
+   relacionamento, e tabela anônima não pode virar filtro (regra da 2b.4).
+
+Cuidado com `Status Protocolo Dia`: ela usa `ADDCOLUMNS` sobre `SELECTCOLUMNS` e faz
+`VAR Protocolo = [protocolo]` — `[protocolo]` é coluna da **tabela anônima** que ela
+mesma está construindo, não de `FIELD AGENDA`. A regra de resolução "do contexto de
+linha mais interno para o mais externo" (2b.4) é exatamente o que faz isso funcionar.
+
+### 2b.8 — a camada M: as 11 colunas que o SQL não devolve
+
+Depende de decidir uma coisa antes de escrever código: **implementar M ou substituí-lo
+por SQL?** As 11 colunas são coisas como `DateTime.Time([DATA CRIADO])`, mesclagem com
+outra query e renomeação. Nenhuma é difícil isoladamente; a pergunta é onde essa lógica
+deve viver na plataforma nova. Traga a recomendação com números — `validate:tables`
+lista as 11 e o passo que cria cada uma.
+
+Note que o M também **filtra linha** (`[STATUS] <> "Cancelado"`, `Table.Distinct` por
+`SOLICITACAO`). Isso não é coluna faltando: é a tabela ser outra. Replicar fielmente
+inclui isso.
+
+### 2b.9 — paridade medida a medida
+
+Só depois de 2b.7 e 2b.8. Todos os números de cobertura de hoje vêm de **dados
+sintéticos**: eles provam que o avaliador roda, não que ele acerta. Não chame nada
+disso de paridade, e mantenha a distinção que o README faz em todas as menções.
 
 Cuidado concreto com datas: várias colunas chegam como texto `DD/MM/YYYY`.
 **Não ordene nem compare direto** — foi exatamente esse erro que gerou o achado 1
@@ -414,7 +511,8 @@ Widget Engine responde (achado 12). Há teste **exigindo** que as quatro continu
 falhando. O alvo do avaliador é **74**; a 75ª chega com a Fase 3.
 
 `gsheets` (3 queries) e `web` (1) só entram no `validate:queries` quando existirem
-connectors para eles — hoje o harness só sabe executar SQL.
+connectors para eles — hoje o harness só sabe executar SQL. A `clima-tempo` (web) é
+também a única cujo M o scanner não lê: ela define função M com `let` aninhado.
 
 ## Como trabalhar
 
