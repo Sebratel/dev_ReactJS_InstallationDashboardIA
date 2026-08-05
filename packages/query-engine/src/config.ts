@@ -81,7 +81,18 @@ export interface PlatformConfig {
     ssl: boolean;
     sasl: { mechanism: string; username: string; password: string } | null;
   };
-  gsheets: { credentialsPath: string; quadroFuncionalId: string };
+  /**
+   * Data Hub interno da Sebratel — fonte de `QUADRO FUNCIONAL` na plataforma nova,
+   * em vez do Google Sheets do Power BI de hoje (divergência deliberada de fonte,
+   * ver docs/DECISAO-CAMADA-M.md, Anexo A).
+   */
+  datahub: { token: string; baseUrl: string; apis: { quadroFuncional: string } };
+  /** As 2 planilhas que sobraram: `QUADRO FUNCIONAL` saiu para o Data Hub. */
+  gsheets: {
+    credentialsPath: string;
+    apuracaoPremiacaoId: string;
+    capacidadeEquipeId: string;
+  };
 }
 
 export function loadConfig(): PlatformConfig {
@@ -127,20 +138,32 @@ export function loadConfig(): PlatformConfig {
           }
         : null,
     },
+    datahub: {
+      token: env('DATAHUB_TOKEN'),
+      baseUrl: env('DATAHUB_BASE_URL', 'https://data-hub.sebratel.net.br/api/public/v1'),
+      // O caminho é `/p/{api}`. A "api" é a publicação; o dataset por trás dela
+      // vem no envelope da resposta (`db-senior-collaborators`), não na URL.
+      apis: { quadroFuncional: env('DATAHUB_API_QUADRO_FUNCIONAL', 'dash-instalacao') },
+    },
     gsheets: {
       credentialsPath: env('GOOGLE_APPLICATION_CREDENTIALS'),
-      quadroFuncionalId: env('GSHEETS_QUADRO_FUNCIONAL_ID'),
+      apuracaoPremiacaoId: env('GSHEETS_APURACAO_PREMIACAO_ID'),
+      capacidadeEquipeId: env('GSHEETS_CAPACIDADE_EQUIPE_ID'),
     },
   };
 }
 
 /** Quais variáveis obrigatórias estão faltando para uma dada fonte. */
-export function missingFor(target: 'voalle' | 'maria' | 'redis' | 'kafka'): string[] {
+export function missingFor(
+  target: 'voalle' | 'maria' | 'redis' | 'kafka' | 'datahub',
+): string[] {
   const required: Record<string, string[]> = {
     voalle: ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD'],
     maria: ['MARIA_HOST', 'MARIA_DATABASE', 'MARIA_USER', 'MARIA_PASSWORD'],
     redis: ['REDIS_URL'],
     kafka: ['KAFKA_BROKERS'],
+    // baseUrl e dataset têm default no loadConfig; só o token não pode ter.
+    datahub: ['DATAHUB_TOKEN'],
   };
   return required[target].filter((k) => !env(k));
 }

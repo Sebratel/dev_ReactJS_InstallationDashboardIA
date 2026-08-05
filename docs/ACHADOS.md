@@ -723,3 +723,49 @@ alto em vez de devolver zero com cara de filtro apertado. Sem ele, `Status Proto
 Dia` filtraria `calendar` para nada e toda medida que atravessa esse relacionamento
 sairia vazia — sem erro nenhum. **O conserto não era afrouxar o guarda**: era a
 coluna nascer com o tipo que o TMDL declara.
+
+---
+
+## 17. O Data Hub tem o colaborador, mas não tem o gestor — e o gestor era o único motivo da mesclagem
+
+Achado de 05/08/2026, sondando a API do Data Hub que substituiria a planilha
+`QUADRO FUNCIONAL` (decisão registrada em `docs/DECISAO-CAMADA-M.md`, Anexo A).
+Reproduzível com `npm run probe:datahub`.
+
+`PROTOCOLOS PRODUTIVIDADE` — que 9 medidas leem — consome `QUADRO FUNCIONAL` em
+exatamente dois pontos do M:
+
+```m
+Table.NestedJoin(…, {"TECNICO"}, #"QUADRO FUNCIONAL", {"upper_name"}, …, JoinKind.LeftOuter)
+Table.ExpandTableColumn(…, "QUADRO FUNCIONAL", {"GESTOR"}, {"GESTOR"})
+```
+
+`NOME` é a chave (via `upper_name = Text.Upper([NOME])`) e **`GESTOR` é a única
+coluna expandida**. As outras 35 colunas da planilha não são consumidas por nada.
+
+A API (`/p/dash-instalacao`, dataset `db-senior-collaborators`) tem a chave: o campo
+`name`. E tem três campos de hierarquia — `supervisor_name`, `coordinator_name`,
+`manager_name` — **todos `null` em 100% das 2448 linhas**. Não é nome de campo
+diferente: é ausência de dado.
+
+**Por que isto é pior do que um erro.** `PROTOCOLOS PRODUTIVIDADE[GESTOR]` não é lida
+por nenhuma medida — as medidas de gestor usam `GESTORES[GERENTE/SUPERVISOR]`, com
+nome completo (`"LUIS FELIPE NAZARIO ARANDA"`). `[GESTOR]` é **campo de visual**: um
+slicer em `diario-instalacao`, um slicer e um campo em `premiacao-instalacao`. Coluna
+vazia ali não erra número nenhum — só esvazia o slicer, e o filtro por gestor desses
+dois dashboards deixa de existir sem ninguém receber sinal.
+
+**O que se decidiu.** Não escrever o connector até haver dado de gestor. Um connector
+que casa `name` e devolve `GESTOR` vazio passa em qualquer teste de shape e falha só
+em produção — mesma razão pela qual `CALENDAR` recusa BLANK em vez de gerar 1899 dias
+(ver "Divergências deliberadas"). Os três caminhos possíveis, e por que a escolha não
+é nossa, estão no Anexo A da decisão.
+
+**De quebra, três fatos úteis sobre a fonte**, todos do envelope e das contagens:
+
+- as 2448 linhas são **vínculo, não pessoa**: `record_type` é `terminated` (1820) ou
+  `admitted` (628), e as 628 sem `termination_date` batem com a soma dos status ativos;
+- por isso há **121 CPFs repetidos** (recontratação). `id` é único, `cpf` não é —
+  casar por CPF sem filtrar vínculo multiplicaria linha;
+- a API aceita autenticação por `?token=` **ou** header `X-Api-Token`. O connector usa
+  o header: token em query string vai para log de acesso e histórico de proxy.

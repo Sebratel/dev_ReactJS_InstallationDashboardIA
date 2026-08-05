@@ -8,10 +8,14 @@ Decisão geral do projeto: **replicar fielmente** o comportamento atual
 desenvolvimento — o que elas mudam é se, mais para frente, vale registrar uma
 divergência deliberada em relação ao Power BI de hoje.
 
+Com uma exceção, a de 05/08/2026: a pergunta 3 **bloqueia** a troca de `QUADRO
+FUNCIONAL` para o Data Hub. Não bloqueia o resto da fase 2b.8.
+
 | # | Pergunta | Para quem | Status |
 |---|---|---|---|
 | 1 | Quanto vale um sábado no cálculo de dia útil? | Fabrício | ⏳ aberta |
 | 2 | As 5 medidas sem uso eram de painel descontinuado? (+ 1 relacionamento inativo) | Fabrício | ⏳ aberta (limpeza) |
+| 3 | O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor? | quem publica o `dash-instalacao` (+ Fabrício, se for mapa) | ⏳ aberta (**bloqueia** troca de fonte) |
 
 ---
 
@@ -148,6 +152,62 @@ expressões, conferido por varredura, junto com `RELATED`, `ALLEXCEPT` e `CROSSF
 **Impacto se ficar sem resposta:** nenhum. A plataforma nova entrega 75 medidas em
 vez de 78 (as 3 que não rodam), e as 5 ficam registradas em ACHADOS.md #6 e #10.
 `TOTAL_DIAS` e `TOTAL_DIAS_ENCERRADOS` são replicadas como estão, defeito incluído.
+
+---
+
+## 3. O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?
+
+**Por que estou perguntando.** A decisão de 05/08/2026 foi ler `QUADRO FUNCIONAL`
+(dado de colaborador) do Data Hub interno em vez da planilha Google Sheets. Sondei a
+API antes de escrever o connector, e ela tem tudo **menos** a única coluna que a
+mesclagem usa.
+
+**A evidência.** `npm run probe:datahub` contra `/p/dash-instalacao` (dataset
+`db-senior-collaborators`), 2448 linhas, 19 campos:
+
+| campo de hierarquia | preenchidos em 2448 linhas |
+|---|---|
+| `supervisor_name` | **0** |
+| `coordinator_name` | **0** |
+| `manager_name` | **0** |
+
+E, do lado do Power BI, `PROTOCOLOS PRODUTIVIDADE` puxa da planilha exatamente uma
+coluna: `Table.ExpandTableColumn(…, {"GESTOR"}, {"GESTOR"})`. A tabela inteira existe
+para trazer o gestor; o resto das 37 colunas ninguém lê.
+
+**O que quebra sem isso.** Não é medida — `[GESTOR]` não aparece em nenhum DAX. É
+**slicer**: um em `diario-instalacao`, um em `premiacao-instalacao`, mais um campo de
+visual. Coluna vazia = slicer sem opção nenhuma, e o filtro por gestor desses dois
+dashboards deixa de existir. Sem erro, sem número torto: só desaparece.
+
+**As três saídas** (a primeira é de longe a melhor):
+
+1. **A publicação `dash-instalacao` preencher `manager_name` ou `supervisor_name`.**
+   Os campos já estão no contrato da API — só vêm vazios. Se o Senior tem o dado na
+   origem, é mudança na publicação, não no nosso lado. *Pergunta para quem publica.*
+2. **Mapear `team` → gestor.** A API traz `team` com 24 valores (`ADM`, `SVA`, `SCM`,
+   `GERAL`, `EXTERNO`, `TEC-INST FTTX`…) e `cost_center` com a mesma cardinalidade.
+   Se existir "time X responde ao gestor Y", dá para derivar. Mas isso é **regra de
+   negócio nova**, não replicação do que existe — precisa vir de alguém, por escrito.
+   *Pergunta para o Fabrício.*
+3. **`QUADRO FUNCIONAL` fica no Google Sheets** e o Data Hub entra depois, para o
+   resto. Custo baixo: a credencial de service account já existe, falta só
+   compartilhar a planilha como Leitor. *Decisão do Erick, não precisa de terceiro.*
+
+**Como enviar (opção 1), pronto para copiar:**
+
+> Oi! Estou consumindo a API pública do Data Hub `p/dash-instalacao` (dataset
+> `db-senior-collaborators`) para montar o painel de instalação. Vem tudo certo —
+> 2448 linhas, os campos de colaborador todos preenchidos. Só que os três campos de
+> hierarquia (`supervisor_name`, `coordinator_name`, `manager_name`) vêm `null` em
+> 100% das linhas. Preciso do gestor de cada colaborador; hoje esse dado vem de uma
+> planilha manual que estou justamente tentando aposentar. A origem no Senior tem
+> essa informação? Se tiver, dá para a publicação passar a trazer pelo menos um dos
+> três campos?
+
+**Enquanto não houver resposta**, o connector não é escrito e a divergência de fonte
+fica registrada mas não implementada (ACHADOS.md #17). Um connector que casa o nome e
+devolve `GESTOR` vazio passaria em todo teste de shape e falharia só em produção.
 
 ---
 

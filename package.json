@@ -23,7 +23,8 @@
     "doctor": "node tools/doctor/src/index.ts",
     "validate:model": "node tools/validate/src/model.ts",
     "validate:tables": "node tools/validate/src/tables.ts",
-    "validate:queries": "node tools/validate/src/index.ts"
+    "validate:queries": "node tools/validate/src/index.ts",
+    "probe:datahub": "node tools/probe/src/datahub.ts"
   },
   "dependencies": {
     "ioredis": "^6.0.0",

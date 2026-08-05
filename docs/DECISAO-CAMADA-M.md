@@ -232,30 +232,131 @@ exatamente o tipo de discrepância que este documento existe para não deixar pa
 ("replicar fielmente") pede decisão explícita registrada, não decisão silenciosa. O que
 precisa continuar igual é o **conteúdo**: mesmo colaborador, mesmo gestor, mesmo CPF.
 
-### O que falta verificar antes de codar — e por que não adivinho
+### Verificação feita em 05/08/2026 — e o resultado bloqueia a substituição
 
-1. **O shape da resposta.** Não tenho token, então não vi um payload real. Preciso saber
-   se os campos vêm com os mesmos nomes que `quadro-funcional.spec.yaml` espera
-   (`NOME`, `GESTOR`, `CPF`, `ADMISSÃO`, `DEMISSÃO`, `CARGO`...) ou se o mapeamento
-   muda — nome de campo diferente não dá erro nenhum sozinho, dá coluna vazia depois.
-2. **O filtro por gestor.** O M de hoje filtra
-   `GESTOR = "Luis Aranda" or "Pablo Borges" or "Stefany Souza"` antes de qualquer outra
-   coisa. Se o Data Hub já devolve só esses três, o filtro é redundante; se devolve **todo
-   mundo**, o filtro precisa ser replicado depois de buscar — e não replicá-lo multiplicaria
-   linha na mesclagem com nomes que nunca deveriam entrar.
-3. **Paginação e volume.** `rows` num endpoint REST corporativo costuma paginar. Não sei o
-   tamanho da tabela nem se a API devolve tudo numa chamada só.
+O token chegou e a API foi sondada de verdade (`npm run probe:datahub`,
+`tools/probe/src/datahub.ts`). O endpoint correto **não** é o do formato
+`/datasets/{slug}/rows` que veio na mensagem original: aquele devolve `403` para este
+token. O que responde é
 
-Assim que houver um token de teste (ou uma amostra colada da resposta), estes três pontos
-se resolvem com uma chamada, não com suposição.
+```
+GET {DATAHUB_BASE_URL}/p/dash-instalacao        →  HTTP 200
+```
+
+e o próprio envelope confirma que é dado de colaborador, como você disse:
+
+```
+api: "dash-instalacao"   dataset: "db-senior-collaborators"
+total: 2448   limit: 100   offset: 0   rows: [...]
+```
+
+Vale registrar um detalhe de diagnóstico que custou tempo: esta API responde **403
+idêntico** para "token sem permissão" e para "slug inexistente", e não há endpoint de
+catálogo (`/datasets`, `/me`, `/health` e a raiz todos dão `404 Rota não encontrada.`).
+Ou seja, um `403` aqui não distingue *falta liberação* de *slug errado* — é sempre uma
+pergunta para quem administra o Data Hub, nunca uma dedução.
+
+#### A resposta às três perguntas
+
+**3. Paginação e volume — resolvido.** `limit`/`offset` no envelope, default 100,
+`total: 2448`. O servidor honra `limit` arbitrário (`limit=5000` devolveu as 2448 numa
+chamada), mas o connector deve paginar por `offset` até bater o `total` de qualquer jeito:
+depender de um limite sem teto é depender de um comportamento que muda sem aviso, e a
+diferença apareceria como gente faltando numa medida, não como erro.
+
+As 2448 linhas são **histórico de vínculo, não pessoas**: `record_type` é `terminated`
+(1820) ou `admitted` (628), e as 628 sem `termination_date` batem exatamente com a soma dos
+status ativos (`Trabalhando` 579 + `Férias` 14 + `Auxílio Doença` 14 + `Lic. s/
+Remuneração` 7 + `Licença Maternidade` 6 + `Acidente Trabalho` 5 + `Atestado` 3 = 628).
+Daí também vêm os **121 CPFs repetidos** em 2448 linhas — recontratação, a mesma pessoa com
+mais de um vínculo. `id` é único; `cpf` não é. Casar por CPF sem filtrar vínculo ativo
+multiplicaria linha na mesclagem.
+
+**1. O shape — nada a ver com a spec.** A API é `snake_case` em inglês, **19 campos**; a
+spec espera **37** em maiúsculas com acento. Batem por nome apenas 3 (`id`, `cpf`,
+`status`). Os 19 campos: `id`, `name`, `registration`, `admission_date`, `status`,
+`operational_base`, `team`, `position`, `email`, `supervisor_name`, `coordinator_name`,
+`manager_name`, `cpf`, `company`, `cost_center`, `updated_at`, `termination_date`,
+`record_type`, `unique_key`.
+
+Isso por si só não é problema: renomear campo é trabalho mecânico, e a maioria das 37
+colunas da planilha (`MINDSIGTH`, `ETAPA`, `RECRUTADOR`, `LINKS`...) é de recrutamento e
+**ninguém consome**. O que importa é o que a mesclagem realmente usa — e é aqui que para.
+
+**2. O filtro por gestor — a coluna não existe com dado.** `PROTOCOLOS PRODUTIVIDADE`
+consome `QUADRO FUNCIONAL` em exatamente dois pontos:
+
+```m
+#"Consultas Mescladas3"     = Table.NestedJoin(…, {"TECNICO"}, #"QUADRO FUNCIONAL", {"upper_name"}, …, JoinKind.LeftOuter),
+#"QUADRO FUNCIONAL Expandido" = Table.ExpandTableColumn(…, "QUADRO FUNCIONAL", {"GESTOR"}, {"GESTOR"}),
+```
+
+Ou seja: `NOME` serve de chave de junção (via `upper_name = Text.Upper([NOME])`) e
+**`GESTOR` é a única coluna expandida**. A tabela inteira existe para trazer o gestor.
+
+Na API, a chave existe (`name`). O gestor **não**:
+
+| campo | preenchidos em 2448 linhas |
+|---|---|
+| `supervisor_name` | **0** |
+| `coordinator_name` | **0** |
+| `manager_name` | **0** |
+
+Os três campos de hierarquia vêm `null` em **todas** as 2448 linhas. Não é "nome
+diferente", é ausência de dado. Sem eles não há como aplicar o filtro dos 3 gestores
+(`Luis Aranda`, `Pablo Borges`, `Stefany Souza`) nem entregar a coluna que a mesclagem
+expande.
+
+#### Impacto: dois slicers, não nove medidas
+
+Verifiquei antes de dimensionar o estrago. `PROTOCOLOS PRODUTIVIDADE[GESTOR]` **não** é
+lida por nenhuma medida DAX — as medidas de gestor usam outra tabela
+(`GESTORES[GERENTE/SUPERVISOR]`, com nome completo: `"LUIS FELIPE NAZARIO ARANDA"`,
+`"STEFANY RODRIGUES"`). `[GESTOR]` aparece como **campo de visual**, em 3 lugares de 2
+dashboards: um **slicer** em `diario-instalacao`, um **slicer** e um campo de visual em
+`premiacao-instalacao`. Coluna vazia ali = slicer sem opção nenhuma; o filtro por gestor
+desses dois dashboards simplesmente deixa de existir.
+
+Menos grave do que "9 medidas erradas", e mais insidioso: some silenciosamente, sem
+número errado para ninguém desconfiar.
+
+#### O que precisa acontecer — e é com quem publica o dataset
+
+Três caminhos, em ordem de preferência. Nenhum é adivinhável daqui:
+
+1. **A publicação `dash-instalacao` passar a preencher `manager_name`** (ou
+   `supervisor_name`). Os campos já estão no contrato — vêm vazios. Se a origem Senior tem
+   o dado e a publicação só não o traz, é o caminho mais curto e resolve de vez.
+2. **Usar `team` como proxy** — 24 valores (`ADM`, `SVA`, `SCM`, `GERAL`, `EXTERNO`,
+   `TEC-INST FTTX`...) com `cost_center` espelhando a mesma cardinalidade. Só serve se
+   existir mapa time → gestor, e esse mapa seria **decisão de negócio nova**, não
+   replicação: precisa vir de alguém, e vai para `PERGUNTAS-NEGOCIO.md`.
+3. **`QUADRO FUNCIONAL` continuar no Google Sheets** e o Data Hub entrar depois, para o
+   resto. Custo: volta a depender do connector de Google Sheets (Anexo B) — que é a decisão
+   que esta troca de fonte tinha superado. Nada se perde: a credencial já existe, falta o
+   passo 6 na planilha.
+
+**Até uma das três, a divergência de fonte fica registrada mas não implementada.** Não vou
+escrever um connector que casa `name` e devolve `GESTOR` vazio: passaria em qualquer teste
+de shape, e o efeito só apareceria como slicer vazio em produção. É o mesmo motivo pelo qual
+`CALENDAR` recusa BLANK em vez de gerar 1899 dias — ver "Divergências deliberadas" em
+`ACHADOS.md`.
+
+### Um achado de segurança já incorporado
+
+A mensagem do 401 (`Token ausente (?token=… ou header X-Api-Token)`) revela que a API
+aceita **duas** formas de autenticação. A sonda usa o **header**, e o connector também
+deve. Token em query string vaza para log de acesso, histórico de proxy e telemetria de
+erro — lugares que ninguém trata como cofre. O `?token=` da URL que originou esta decisão
+serviu para descobrir o endpoint; não é o que vai para o código.
 
 ### O connector é o mesmo tipo de trabalho que o de Google Sheets
 
 Uma classe nova implementando a porta `Connector` de
-`packages/query-engine/src/connectors.ts`, chamando REST com header/query de
-autenticação — mais simples que o de Google Sheets porque não tem OAuth de service
-account, só token. Token vai em `DATAHUB_TOKEN` no `.env` (ver `.env.example`), nunca na
-URL commitada.
+`packages/query-engine/src/connectors.ts`, chamando REST com o header `X-Api-Token` —
+mais simples que o de Google Sheets porque não tem OAuth de service account, só token.
+Token vai em `DATAHUB_TOKEN` no `.env` (ver `.env.example`), nunca na URL commitada e
+nunca em query string.
 
 ---
 
