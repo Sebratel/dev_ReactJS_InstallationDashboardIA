@@ -19,7 +19,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.5 | Propagação de filtro por relacionamento — **22 medidas dependiam dela** | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) — **as 56 funções agora estão todas implementadas** | ✅ |
-| 2b.8 | Camada M: as 11 colunas que o DAX usa e o SQL não devolve | ⏳ próximo |
+| 2b.8 | Camada M — levantamento pronto, [recomendação](docs/DECISAO-CAMADA-M.md) aguardando decisão | ⏳ próximo |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
@@ -268,6 +268,31 @@ O grafo de dependência entre as 7 é **plano** nesta base (medido, não suposto
 dependem só de tabelas que vêm de query. A ordenação topológica existe pelo que ela
 recusa — ciclo erra alto nomeando o caminho, em vez de deixar a última tabela do laço
 nascer vazia.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
 
 ### Query Engine (Fase 1)
 

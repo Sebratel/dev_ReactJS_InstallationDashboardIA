@@ -483,20 +483,37 @@ O grafo de dependência entre as 7 é **plano** (medido): todas dependem só de 
 query. A ordenação topológica existe pelo que recusa — ciclo erra alto nomeando o
 caminho. Se algum dia uma calculada passar a depender de outra, a ordem já funciona.
 
-### 2b.8 — a camada M: as 11 colunas que o SQL não devolve — PRÓXIMO
+### 2b.8 — a camada M — PRÓXIMO, e espera decisão do Erick
 
-**É o último bloqueio entre o avaliador e dado real.** Depende de decidir uma coisa
-antes de escrever código: **implementar M ou substituí-lo por SQL?** Essa decisão é do
-Erick — traga a recomendação com números, não escolha sozinho: ela define onde essa
-lógica passa a viver na plataforma.
+**É o último bloqueio entre o avaliador e dado real.**
 
-As 11 colunas são coisas como `DateTime.Time([DATA CRIADO])`, mesclagem com outra query
-e renomeação. Nenhuma é difícil isoladamente. `npm run validate:tables` lista as 11 e o
-passo M que cria cada uma — comece por ele.
+**Leia [DECISAO-CAMADA-M.md](./DECISAO-CAMADA-M.md) antes de escrever código.** O
+levantamento está feito, com números medidos no PBIP, e a recomendação está lá:
+**executar o M guiado pelas specs**, não traduzir para SQL. O resumo do porquê:
 
-Note que o M também **filtra linha** (`[STATUS] <> "Cancelado"`, `Table.Distinct` por
-`SOLICITACAO`). Isso não é coluna faltando: é a tabela ser outra. Replicar fielmente
-inclui isso.
+- **3 das 15 mesclagens atravessam fonte de dados** (dbVoalle × dbMaria e
+  dbVoalle × gsheets). Nenhum `SELECT` faz essas — a plataforma precisa de junção acima
+  dos connectors de qualquer maneira.
+- **SQL escrito à mão não tem onde morar** sem violar a regra 2: as specs de query são
+  sobrescritas por `npm run extract`, e SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query do relatório.
+- Tamanho: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de DAX.
+
+**Não comece pelas 11 colunas.** 9 delas são renome puro — é a parte fácil, e fazê-la
+primeiro dá sensação de progresso enquanto as **25 mudanças de linha**, que são o que
+muda número de verdade, ficam de fora.
+
+Três coisas que a decisão deixa em aberto e que valem confirmar antes de codar:
+
+1. **A ordem do `Table.Distinct` de `PROTOCOLOS GERAL` não é derivável do M.** Um
+   `Table.Sort` no passo 47, uma mesclagem que multiplica linha no 51, e um
+   `Table.Distinct` por `SOLICITACAO` no 53 que mantém a **primeira** linha da ordem
+   corrente. Qual supervisor fica preso a cada protocolo depende disso. Exige medição
+   contra dado real, e possivelmente uma divergência deliberada documentada.
+2. **`PROTOCOLOS PRODUTIVIDADE` está bloqueada** até existir connector de Google Sheets:
+   a mesclagem com `quadro-funcional` é cross-source e um dos lados não é legível hoje.
+3. **`clima-tempo` segue fora** — `let` aninhado que o scanner recusa, e fonte `web` sem
+   connector.
 
 ### 2b.9 — paridade medida a medida
 
