@@ -62,12 +62,16 @@ columns:
         IF(SemanaDoMesNormal > 5,
            SemanaDoMesNormal - 5,
            SemanaDoMesNormal)
-- name: "'Semana Do Mes Texto' ="
+- name: Semana Do Mes Texto
   type: null
   format: null
   source_column: null
-  calculated: false
-  dax: null
+  calculated: true
+  dax: |-
+    VAR SemanaDoMesNum = [Num Semana]
+    VAR Sufixo = IF(SemanaDoMesNum = 1, "ª Semana", "ª Semana")
+    RETURN
+        CONCATENATE(SemanaDoMesNum, Sufixo)
 - name: "DATA VIGENTE?"
   type: null
   format: null

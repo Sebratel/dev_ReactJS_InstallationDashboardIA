@@ -119,10 +119,10 @@ columns:
   source_column: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
   calculated: false
   dax: null
-- name: TempoTotalDias =
+- name: TempoTotalDias
   type: null
   format: null
   source_column: null
-  calculated: false
-  dax: null
+  calculated: true
+  dax: "('RETORNO PRIORITARIO'[data_abertura] - 'RETORNO PRIORITARIO'[data_instalacao]) * 1.0"
 measure_count: 3

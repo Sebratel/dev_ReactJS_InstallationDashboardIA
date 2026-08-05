@@ -33,9 +33,9 @@ function todasAsExpressoes(): Expressao[] {
   ];
 }
 
-test('o parser dá conta das 121 expressões DAX da base', () => {
+test('o parser dá conta das 127 expressões DAX da base', () => {
   const expressoes = todasAsExpressoes();
-  assert.equal(expressoes.length, 121, '78 medidas + 43 colunas calculadas');
+  assert.equal(expressoes.length, 127, '78 medidas + 49 colunas calculadas');
 
   const falhas: string[] = [];
   for (const e of expressoes) {
@@ -68,16 +68,17 @@ test('nenhuma expressão parseia para algo vazio', () => {
  */
 const FUNCOES_ESPERADAS = [
   'ALL', 'AVERAGEX', 'BLANK', 'CALCULATE', 'CALCULATETABLE', 'COALESCE',
-  'CONTAINSSTRING', 'COUNT', 'COUNTROWS', 'DATE', 'DATEDIFF', 'DATESBETWEEN',
-  'DATESMTD', 'DATEVALUE', 'DISTINCT', 'DISTINCTCOUNT', 'DIVIDE', 'ENDOFMONTH',
-  'EOMONTH', 'EXCEPT', 'FILTER', 'FORMAT', 'HOUR', 'IF', 'INT', 'INTERSECT',
-  'ISBLANK', 'ISINSCOPE', 'LOOKUPVALUE', 'LOWER', 'MAX', 'MIN', 'MOD', 'MONTH',
-  'NOW', 'OR', 'QUOTIENT', 'RANKX', 'ROUND', 'SELECTCOLUMNS', 'SELECTEDVALUE',
-  'STARTOFMONTH', 'SUBSTITUTE', 'SUM', 'SWITCH', 'TIME', 'TODAY', 'TREATAS',
-  'TRUNC', 'UNION', 'VALUES', 'WEEKDAY', 'YEAR',
+  'CONCATENATE', 'CONTAINSSTRING', 'COUNT', 'COUNTROWS', 'DATE', 'DATEDIFF',
+  'DATESBETWEEN', 'DATESMTD', 'DATEVALUE', 'DISTINCT', 'DISTINCTCOUNT', 'DIVIDE',
+  'ENDOFMONTH', 'EOMONTH', 'EXCEPT', 'FILTER', 'FORMAT', 'HOUR',
+  'IF', 'INT', 'INTERSECT', 'ISBLANK', 'ISINSCOPE', 'LOOKUPVALUE',
+  'LOWER', 'MAX', 'MIN', 'MOD', 'MONTH', 'NOW',
+  'OR', 'QUOTIENT', 'RANKX', 'ROUND', 'SELECTCOLUMNS', 'SELECTEDVALUE',
+  'STARTOFMONTH', 'SUBSTITUTE', 'SUM', 'SWITCH', 'TIME', 'TODAY',
+  'TREATAS', 'TRUNC', 'UNION', 'VALUES', 'WEEKDAY', 'YEAR',
 ];
 
-test('o escopo do avaliador são estas 53 funções', () => {
+test('o escopo do avaliador são estas 54 funções', () => {
   const usadas = new Set<string>();
   for (const e of todasAsExpressoes()) {
     for (const f of functionsUsed(parseDax(e.dax))) usadas.add(f);
@@ -99,7 +100,7 @@ test('o escopo do avaliador são estas 53 funções', () => {
  * divergirem, um dos dois está lendo o DAX errado — e é melhor descobrir aqui do
  * que num número de dashboard.
  */
-test('parser e scanner concordam sobre as referências das 121 expressões', () => {
+test('parser e scanner concordam sobre as referências das 127 expressões', () => {
   const divergencias: string[] = [];
 
   for (const e of todasAsExpressoes()) {

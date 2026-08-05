@@ -47,10 +47,10 @@ columns:
   source_column: Classificacao
   calculated: false
   dax: null
-- name: Probabilidade_Chuva_Formatada =
+- name: Probabilidade_Chuva_Formatada
   type: null
   format: null
   source_column: null
-  calculated: false
-  dax: null
+  calculated: true
+  dax: "FORMAT('Clima/ Tempo'[Probabilidade_Chuva_%], \"0\") & \"%\""
 measure_count: 0

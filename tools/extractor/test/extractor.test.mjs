@@ -99,6 +99,14 @@ const SAMPLE_FENCED = `table 'CALENDARIO INSTALADO'
 \t\t\t\`\`\`
 \t\tformatString: 0
 \t\tsummarizeBy: sum
+
+\tcolumn 'Semana Do Mes Texto' =
+\t\t\t
+\t\t\tVAR SemanaDoMesNum = [Num Semana]
+\t\t\tRETURN
+\t\t\t    CONCATENATE(SemanaDoMesNum, "ª Semana")
+\t\tlineageTag: 6d6ee4ad
+\t\tsummarizeBy: none
 `;
 
 test('parseTmdlTable: a cerca ``` do TMDL não entra no DAX da medida', () => {
@@ -129,6 +137,22 @@ test('parseTmdlTable: coluna calculada de uma linha continua funcionando', () =>
   const c = t.columns.find((x) => x.name === 'DATA_VIGENTE');
   assert.equal(c.calculated, true);
   assert.equal(c.expression, `IF('CALENDARIO INSTALADO'[DATA INSTALADO] <= TODAY(), "Sim", "Não")`);
+});
+
+test('parseTmdlTable: nome citado com "=" no fim da linha guarda nome e DAX', () => {
+  // A busca por `' = '` exigia espaço DEPOIS do `=`. Quando a linha termina no
+  // `=` e o corpo vem indentado abaixo, nada casava: a coluna era gravada com o
+  // nome literal "'Semana Do Mes Texto' =", calculated=false e DAX nenhum.
+  // Seis colunas do modelo caíam nisso — e uma delas é a única que usa
+  // CONCATENATE, função que por isso não entrava no escopo do avaliador.
+  const t = parseTmdlTable(SAMPLE_FENCED);
+  const c = t.columns.find((x) => x.name === 'Semana Do Mes Texto');
+  assert.ok(c, `nome mal separado: ${JSON.stringify(t.columns.map((x) => x.name))}`);
+  assert.equal(c.calculated, true);
+  assert.match(c.expression, /VAR SemanaDoMesNum = \[Num Semana\]/);
+  assert.match(c.expression, /CONCATENATE\(SemanaDoMesNum, "ª Semana"\)/);
+  assert.ok(!c.expression.includes('lineageTag'), 'propriedade entrou no DAX');
+  assert.equal(c.summarizeBy, 'none', 'props depois do corpo continuam sendo lidas');
 });
 
 test('parseTmdlTable: coluna sem "=" não é calculada e não tem DAX', () => {
@@ -331,7 +355,7 @@ test('build: extrai o PBIP real com contagens esperadas', () => {
   assert.equal(model.counts.measures, 78, 'medidas');
   assert.equal(model.counts.dashboards, 14, 'páginas');
   assert.equal(model.counts.visuals, 306, 'visuais');
-  assert.equal(model.counts.calculated_columns, 43, 'colunas calculadas');
+  assert.equal(model.counts.calculated_columns, 49, 'colunas calculadas');
   assert.equal(model.counts.relationships, 22, 'relacionamentos (fora hierarquia de datas)');
   // datasources reais esperados
   const ids = model.datasources.map((d) => d.id);

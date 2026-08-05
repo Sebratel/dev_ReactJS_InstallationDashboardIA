@@ -11,7 +11,7 @@ divergência deliberada em relação ao Power BI de hoje.
 | # | Pergunta | Para quem | Status |
 |---|---|---|---|
 | 1 | Quanto vale um sábado no cálculo de dia útil? | Fabrício | ⏳ aberta |
-| 2 | As 3 medidas `# AA ...` eram de um painel descontinuado? | Fabrício | ⏳ aberta (limpeza) |
+| 2 | As 5 medidas sem uso eram de painel descontinuado? | Fabrício | ⏳ aberta (limpeza) |
 
 ---
 
@@ -73,6 +73,14 @@ nos meses com sábado trabalhado.
 > comportamento atual como está. Só quero saber qual dos dois números é o certo
 > antes de alguém tomar decisão em cima deles.
 
+**Nota de 04/08/2026 — existe uma terceira regra, mas ela não muda a pergunta.**
+Ao implementar o avaliador apareceu `CALENDARIO CRIADO[PESO]`, que trata sábado
+como **0,5** e traz os feriados chumbados no próprio DAX (2020, 2021 e um
+`DATE(2026,6,4)`; nada de 2022 a 2025). Conferi antes de incluir na pergunta:
+**nenhuma medida a soma e ela não está em nenhum dos 306 visuais.** É DAX morto,
+então não vale ocupar o tempo do Fabrício — fica só registrada em ACHADOS.md #7.
+A pergunta continua sendo entre as duas regras que estão em uso.
+
 **Se a resposta for "vale 1":** a correção é remover `+ (Quantidade_Sabados * 0.5)`
 de `# MEDIA CRIADOS`. Vale corrigir também no Power BI atual, que é o que a
 operação usa hoje. Do nosso lado passa a ser divergência deliberada, registrada em
@@ -80,38 +88,53 @@ ACHADOS.md.
 
 ---
 
-## 2. As 3 medidas `# AA ...` eram de um painel descontinuado?
+## 2. As 5 medidas sem uso eram de painel descontinuado?
 
-**Por que estou perguntando.** Três medidas do modelo apontam para tabelas que não
-existem mais — e nenhuma das três aparece em nenhuma das 14 páginas do relatório.
+**Por que estou perguntando.** Cinco das 78 medidas não são usadas por nenhuma
+outra medida nem por nenhum dos 306 visuais das 14 páginas. Três delas nem
+conseguiriam rodar.
 
-| Medida | Aponta para | Existe? |
+| Medida | Problema | Verificado |
 |---|---|---|
-| `# AA MÉDIA GERAL` | `GESTORES[GERENTE/SUPERVISOR]` | ❌ |
-| `# AA TOTAL EQUIPES` | `GESTORES[GERENTE/SUPERVISOR]` | ❌ |
-| `# AA MÉDIA EQUIPES` | `CAPACIDADE INSTALAÇÃO[EQUIPE_BASE]` | ❌ |
+| `# AA MÉDIA GERAL` | aponta para `GESTORES[GERENTE/SUPERVISOR]`, tabela inexistente | ❌ não roda |
+| `# AA TOTAL EQUIPES` | idem | ❌ não roda |
+| `# AA MÉDIA EQUIPES` | aponta para `CAPACIDADE INSTALAÇÃO[EQUIPE_BASE]`, inexistente | ❌ não roda |
+| `TOTAL_DIAS` | conta dia-do-mês (1..31) em vez de data — satura em 31 | ⚠️ roda, número enganoso |
+| `TOTAL_DIAS_ENCERRADOS` | idem | ⚠️ roda, número enganoso |
 
-Parece renomeação de tabela: `CAPACIDADE EQUIPE` **tem** uma coluna
-`GERENTE/SUPERVISOR`, que é exatamente o que `GESTORES` deveria ter. E existe uma
-consulta chamada `GESTORES EQUIPES` que hoje é mesclada dentro de
+Nas três primeiras parece renomeação de tabela: `CAPACIDADE EQUIPE` **tem** uma
+coluna `GERENTE/SUPERVISOR`, que é exatamente o que `GESTORES` deveria ter. E
+existe uma consulta `GESTORES EQUIPES` que hoje é mesclada dentro de
 `PROTOCOLOS GERAL` em vez de virar tabela.
+
+As duas últimas usam `[DATA CRIADO].[Dia]`, que no Power BI é `DAY(data)` — o dia
+do mês. `DISTINCTCOUNT` disso nunca passa de 31, então num trimestre daria ~31 em
+vez de ~90.
 
 **A pergunta.**
 
-> Fabrício, você lembra das medidas `# AA MÉDIA GERAL`, `# AA TOTAL EQUIPES` e
-> `# AA MÉDIA EQUIPES` do relatório de instalação?
+> Fabrício, cinco medidas do relatório de instalação não são usadas em nenhuma das
+> 14 páginas, e eu queria saber se são resto de painel antigo antes de deixá-las de
+> fora da plataforma nova.
 >
-> Elas apontam para uma tabela `GESTORES` e outra `CAPACIDADE INSTALAÇÃO` que não
+> Três são `# AA MÉDIA GERAL`, `# AA TOTAL EQUIPES` e `# AA MÉDIA EQUIPES`. Elas
+> apontam para uma tabela `GESTORES` e outra `CAPACIDADE INSTALAÇÃO` que não
 > existem mais no modelo — parece que as tabelas foram renomeadas e as medidas
-> ficaram para trás. Hoje elas dariam erro se alguém colocasse numa página, e
-> conferi: não estão em nenhuma das 14 páginas.
+> ficaram para trás. Hoje elas dariam erro se alguém as colocasse numa página.
 >
-> Eram de algum painel que saiu do ar? Se sim, dá para apagar as três, que aí o
-> modelo fica mais limpo. Se ainda deveriam funcionar, me diz o que elas
-> calculavam que eu vejo qual tabela deveria estar ali.
+> As outras duas são `TOTAL_DIAS` e `TOTAL_DIAS_ENCERRADOS`. Essas rodam, mas o
+> cálculo conta o **dia do mês** em vez da data: o resultado nunca passa de 31, então
+> num período de três meses daria 31 em vez de 90. Como ninguém as usa, isso não
+> está errando número em tela — mas erraria no dia em que alguém as usasse como
+> divisor de uma média.
+>
+> Eram de algum painel que saiu do ar? Se sim, dá para apagar as cinco e o modelo
+> fica mais limpo. Se alguma ainda deveria funcionar, me diz o que ela calculava
+> que eu ajusto.
 
 **Impacto se ficar sem resposta:** nenhum. A plataforma nova entrega 75 medidas em
-vez de 78, e as 3 ficam registradas como mortas em ACHADOS.md #6.
+vez de 78 (as 3 que não rodam), e as 5 ficam registradas em ACHADOS.md #6 e #10.
+`TOTAL_DIAS` e `TOTAL_DIAS_ENCERRADOS` são replicadas como estão, defeito incluído.
 
 ---
 

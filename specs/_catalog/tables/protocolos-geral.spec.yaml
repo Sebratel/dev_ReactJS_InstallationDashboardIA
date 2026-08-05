@@ -101,12 +101,34 @@ columns:
   source_column: DATA AGENDA
   calculated: false
   dax: null
-- name: GRUPO =
+- name: GRUPO
   type: null
   format: null
   source_column: null
-  calculated: false
-  dax: null
+  calculated: true
+  dax: |-
+    IF('PROTOCOLOS GERAL'[EQUIPE] == "Equipe de Reparo EIO/CAN", "MANUTENÇÃO",
+                IF('PROTOCOLOS GERAL'[EQUIPE] == "Equipe de Reparo NHO/SLE/SPS","MANUTENÇÃO",
+                    IF('PROTOCOLOS GERAL'[EQUIPE] == "Equipe de Tecnologia EIO/CAN","MANUTENÇÃO",
+                        IF('PROTOCOLOS GERAL'[EQUIPE] == "Equipe de Tecnologia NHO/SLE/SPS","MANUTENÇÃO",
+                            IF('PROTOCOLOS GERAL'[EQUIPE] == "Operacional Fibra – Manutenções", "MANUTENÇÃO",
+                                IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Ativação Diversos - CORPOATIVO", "INSTALAÇÃO",
+                                    IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Fibra - Reativação", "INSTALAÇÃO",
+                                        IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra", "INSTALAÇÃO",
+                                            IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra – CORPORATIVO", "INSTALAÇÃO",
+                                                IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra - Cortesia", "INSTALAÇÃO",
+                                                    IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Rádio", "INSTALAÇÃO",
+                                                        IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano", "INSTALAÇÃO",
+                                                            IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação Telefonia", "INSTALAÇÃO",
+                                                                IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação Telefonia com Portabilidade - Telefonia", "INSTALAÇÃO",
+                                                                    IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação [Brochier]", "INSTALAÇÃO",
+                                                                        IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação [Nova Santa Rita, Esteio]", "INSTALAÇÃO",
+                                                                            IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação [SLE/SPS/NHO/EIO/CAN]", "INSTALAÇÃO",
+                                                                                IF('PROTOCOLOS GERAL'[EQUIPE] == "Operacional Fibra – Instalações", "INSTALAÇÃO",
+                                                                                    IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Troca de Endereço", "INSTALAÇÃO",
+                                                                                        IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Suporte / Roubo, Furto, Quebra e/ou Equipamento Danificado", "MANUTENÇÃO",
+                                                                                            IF('PROTOCOLOS GERAL'[EQUIPE] == "Troca equipamentos enchente", "MANUTENÇÃO",
+                                                                                               IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação Corporativo", "INSTALAÇÃO", "OUTROS"))))))))))))))))))))))
 - name: TIPO DE PROTOCOLO
   type: string
   format: null
@@ -191,12 +213,17 @@ columns:
   source_column: EQUIPAMENTO
   calculated: false
   dax: null
-- name: "'EQUIPES TEMPORARIAS' ="
+- name: EQUIPES TEMPORARIAS
   type: null
   format: null
   source_column: null
-  calculated: false
-  dax: null
+  calculated: true
+  dax: |-
+    IF('PROTOCOLOS GERAL'[CIDADE] == "Novo Hamburgo", "BASE (NHO/SLE/SPS)",
+                                IF( 'PROTOCOLOS GERAL'[CIDADE] == "São Leopoldo", "BASE (NHO/SLE/SPS)",
+                                    IF( 'PROTOCOLOS GERAL'[CIDADE] == "Sapucaia Do Sul", "BASE (NHO/SLE/SPS)",
+                                        IF( 'PROTOCOLOS GERAL'[CIDADE] == "Esteio", "BASE (EIO/CAN)",
+                                            IF( 'PROTOCOLOS GERAL'[CIDADE] == "Canoas", "BASE (EIO/CAN)", "OUTROS")))))
 - name: CONTEXTO
   type: string
   format: null

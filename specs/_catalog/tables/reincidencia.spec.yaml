@@ -54,12 +54,12 @@ columns:
     VAR Minutes = MOD(TotalMinutes, 60)
     RETURN 
         FORMAT(Days, "0") & "d " & FORMAT(Hours, "0") & "h " & FORMAT(Minutes, "0") & "min"
-- name: TempoTotalDias =
+- name: TempoTotalDias
   type: double
   format: "0.0"
   source_column: null
-  calculated: false
-  dax: null
+  calculated: true
+  dax: "('REINCIDÊNCIA'[data_suporte] - 'REINCIDÊNCIA'[data_instalacao]) * 1.0"
 - name: "Protocolo Instalação"
   type: int64
   format: "0"

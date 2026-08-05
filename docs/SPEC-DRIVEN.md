@@ -34,12 +34,21 @@ São **três** lugares, não um. Ignorar qualquer um deles quebra a paridade:
 | Onde | Qtd | Por quê importa |
 |---|---|---|
 | `measures/*.measures.yaml` → `dax` | 78 | as medidas propriamente ditas |
-| `tables/*.spec.yaml` → `columns[].dax` | 43 | coluna calculada é DAX. `CALENDARIO INSTALADO[PESO]` carrega a regra de dia útil que 8 medidas somam |
+| `tables/*.spec.yaml` → `columns[].dax` | 49 | coluna calculada é DAX. `CALENDARIO INSTALADO[PESO]` carrega a regra de dia útil que 8 medidas somam |
 | `relationships.yaml` | 22 | define para onde o filtro propaga. Sem isso, medida que cruza tabelas não pode ser avaliada |
 
-O TMDL delimita expressão multi-linha com ``` ``` ```. **Essa cerca não é DAX** e
-não pode aparecer nas specs — se aparecer, o extrator regrediu (ver
-[ACHADOS](./ACHADOS.md) #8). Há teste travando isso.
+Total a reimplementar: **127 expressões** (78 + 49).
+
+Duas armadilhas do TMDL, as duas já corrigidas e travadas por teste — ambas
+faziam a spec sair **plausível e incompleta**, que é o pior resultado possível:
+
+1. A cerca ``` ``` ``` que delimita expressão multi-linha **não é DAX** e não pode
+   aparecer nas specs.
+2. `column 'Nome Citado' =` com o corpo indentado abaixo (nada depois do `=`) é
+   coluna calculada. Ler isso como nome sem expressão custou 6 colunas, 4 delas
+   usadas em visuais ao vivo.
+
+Se qualquer uma reaparecer, o extrator regrediu — ver [ACHADOS](./ACHADOS.md) #8.
 
 ## Regras
 

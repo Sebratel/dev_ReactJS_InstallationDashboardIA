@@ -41,7 +41,7 @@ C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\
   INST - Relatório Instalação Gerencial.Report\        (páginas e visuais)
 ```
 
-Escala: **25 tabelas, 78 medidas DAX, 43 colunas calculadas (também DAX),
+Escala: **25 tabelas, 78 medidas DAX, 49 colunas calculadas (também DAX),
 22 relacionamentos, 14 páginas, 306 visuais, 24 queries**.
 
 Fontes reais das 24 queries: **15** `dbVoalle` (PostgreSQL do ERP Voalle), **3** `dbMaria`
@@ -66,7 +66,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**214 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**249 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -76,8 +76,10 @@ Nenhum teste precisa de credencial ou banco.
 | — | Infra de conexão + doctor + guard read-only | ✅ |
 | — | Validação contra dados reais — 18/18 queries capturadas em `specs/golden/` | ✅ |
 | 2a | Modelo semântico completo + verificação de referências do DAX | ✅ |
-| 2b.1 | Parser de DAX → AST — as 121 expressões da base parseiam | ✅ |
-| 2b.2 | Avaliador com contexto de filtro (alvo: 75 medidas) | ⏳ **próximo** |
+| 2b.1 | Parser de DAX → AST — as 127 expressões da base parseiam | ✅ |
+| 2b.2 | Avaliador: escalares e agregação — executa 59/127 | ✅ |
+| 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL` | ⏳ **próximo** |
+| 2b.4 | Relacionamentos, time intelligence, funções de tabela | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -130,7 +132,7 @@ Em `tools/validate/` (`npm run validate:queries`):
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (214 testes, sem credencial)
+npm test                              # suíte completa (249 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # configuração e conectividade (não imprime credencial)
@@ -199,7 +201,7 @@ palpite. Um avaliador parcial que devolve número errado em silêncio é pior qu
 que se recusa a rodar, porque o erro chega ao dashboard da operação como se fosse
 um dado.
 
-Inventário real, contado **sobre o AST** das 121 expressões (medidas + colunas
+Inventário real, contado **sobre o AST** das 127 expressões (medidas + colunas
 calculadas) — não por regex, que subcontava feio: dizia `IF:10` quando são 31:
 
 ```
@@ -216,7 +218,7 @@ LOOKUPVALUE:1  DATEVALUE:1  RANKX:1  OR:1  SUBSTITUTE:1
 ### 2b.1 — parser: PRONTO
 
 `packages/measure-engine/` tem tokenizer, parser (precedência por Pratt) e AST.
-**As 121 expressões da base parseiam** (78 medidas + 43 colunas calculadas) — é a
+**As 127 expressões da base parseiam** (78 medidas + 49 colunas calculadas) — é a
 métrica de cobertura que vale, medida sobre o DAX real. Ver
 `test/cobertura.test.ts`.
 
@@ -234,40 +236,86 @@ enum (`ASC`/`DENSE`/`DAY`); `NameRef` (`[X]`) pode ser medida ou coluna local.
 parser — `[Data]` em `RANKX(TabelaDatas, [Data], ...)` é coluna de tabela anônima
 criada por `SELECTCOLUMNS`, e resolver cedo escolheria errado em silêncio.
 
-### 2b.2 — avaliador: PRÓXIMO
+### 2b.2 — avaliador de escalares e agregação: PRONTO
 
-O escopo é fechado e travado por teste: **53 funções**, listadas em
-`FUNCOES_ESPERADAS` em `packages/measure-engine/test/cobertura.test.ts`. Se o PBIP
-passar a usar uma função nova, aquele teste falha e diz qual.
+`packages/measure-engine/src/` ganhou `value.ts`, `dataset.ts`, `evaluator.ts` e
+`functions.ts`. **34 das 54 funções** que a base usa.
 
-Ordem sugerida, de menos para mais contexto de filtro:
+Feito: agregação (`SUM`, `COUNT`, `MIN`/`MAX`, `DISTINCTCOUNT`, `COUNTROWS`),
+lógica (`IF`, `SWITCH`, `COALESCE`, `OR`, `BLANK`, `ISBLANK`), matemática
+(`DIVIDE`, `ROUND`, `INT`, `TRUNC`, `MOD`, `QUOTIENT`), texto (`LOWER`,
+`SUBSTITUTE`, `CONTAINSSTRING`, `CONCATENATE`, `FORMAT`), data (`TODAY`, `NOW`,
+`DATE`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `WEEKDAY`, `TIME`, `EOMONTH`, `DATEVALUE`,
+`DATEDIFF`), `VAR`, `IN {...}`, dependência entre medidas com detecção de ciclo,
+coluna calculada em contexto de linha (memorizada na linha) e a hierarquia
+automática de datas (`[Data].[Dia]`).
 
-1. **Escalares e agregação simples** — `COUNTROWS`, `DISTINCTCOUNT`, `COUNT`,
-   `SUM`, `MIN`/`MAX`, `DIVIDE`, `IF`, `SWITCH`, `BLANK`, `ISBLANK`, aritmética e
-   `&`. Já resolve medidas como `# META` (`3000`) e `Qtd Protocolos Distintos`.
-2. **Contexto de filtro** — `CALCULATE` com filtro de coluna
-   (`'T'[Col] = "x"`), depois `FILTER`, depois `ALL`. É o núcleo: 50 das 121
-   expressões chamam `CALCULATE`.
-3. **Relacionamentos** — `specs/_catalog/relationships.yaml`. Filtro propaga do
+**Como a cobertura é medida** — em `test/avaliador-cobertura.test.ts`, e a
+distinção entre os níveis não é formalidade:
+
+| Nível | Hoje |
+|---|---|
+| Parseia | 127/127 |
+| Dentro do implementado (seguindo dependências) | 60/127 |
+| **Executa de ponta a ponta** | **59/127** |
+| Bate com o Power BI | ⏳ **não provado** |
+
+Os testes rodam sobre dados **sintéticos**. Eles provam que o avaliador funciona,
+**não** que o número é o do relatório. Não diga "paridade" com base neles.
+
+A diferença 60 → 59 é `# AA MÉDIA EQUIPES`, medida morta do achado 6, e há teste
+exigindo que ela continue falhando.
+
+Duas lições que já custaram retrabalho, registradas para não repetir:
+
+- **Contagem estática de cobertura mente se esquecer uma aresta.** A primeira
+  versão olhava só o AST da própria expressão e dizia 69; seguindo medidas caiu
+  para 62; seguindo colunas calculadas, 60. Quem expôs as duas faltas foi o teste
+  que *executa*, não o que analisa.
+- **A cultura do modelo é `pt-BR`** (lido em `model.tmdl`). `FORMAT(data,"dddd")`
+  tem de devolver `"domingo"`: o `SWITCH` do `[PESO]` compara com essa string, e
+  em inglês nenhum domingo casaria — todo domingo passaria a valer 1 dia útil.
+
+### 2b.3 — contexto de filtro: PRÓXIMO
+
+`CALCULATE` está no caminho de **56 das 127** expressões — é o maior bloqueio
+isolado, e o teste `'o que falta é liderado por CALCULATE'` mantém esse número
+honesto.
+
+O ponto de extensão já existe: `FilterContext` em `evaluator.ts`, hoje com a
+implementação `UnfilteredContext` (devolve a tabela inteira). Toda agregação já
+pergunta as linhas a ele, então `CALCULATE` entra por ali sem mexer em função de
+agregação nenhuma.
+
+Ordem, de menos para mais:
+
+1. **`CALCULATE`** com filtro de coluna (`'T'[Col] = "x"`), depois `FILTER`,
+   depois `ALL`. `FILTER` bloqueia 21 expressões; `ALL`, 4.
+2. **`LOOKUPVALUE`** — 11 expressões, e é o que falta para
+   `CALENDARIO INSTALADO[PESO]` rodar (ele consulta a tabela `FERIADOS`). Destrava
+   as 8 medidas de projeção/média de uma vez.
+3. **`SELECTEDVALUE`** (9) e **`VALUES`** (8).
+4. **Relacionamentos** — `specs/_catalog/relationships.yaml`. Filtro propaga do
    lado `to_*` (one) para o lado `from_*` (many); `cross_filter: bothDirections`
    vai nos dois sentidos; `active: false` só vale dentro de `USERELATIONSHIP`.
    Sem isso, `Contagem Solicitacao 2026` (filtra `PROTOCOLOS GERAL` por
    `CALENDARIO INSTALADO`) não fecha.
-4. **Grafo de dependências entre medidas** com detecção de ciclo — `# BACKLOG`
-   depende de duas outras, `# PROJEÇÃO AGENDADA TOTAL` também.
-5. **Time intelligence** — `DATESMTD`, `DATESBETWEEN`, `EOMONTH`, `ENDOFMONTH`,
+5. **Time intelligence** — `DATESMTD`, `DATESBETWEEN`, `ENDOFMONTH`,
    `STARTOFMONTH`. Deixe para o fim: é onde mais se erra e depende de tudo acima.
-6. **Tabelas e conjuntos** — `VALUES`, `DISTINCT`, `SELECTCOLUMNS`, `TREATAS`,
-   `INTERSECT`, `EXCEPT`, `UNION`, `CALCULATETABLE`, `AVERAGEX`, `RANKX`.
+6. **Tabelas e conjuntos** — `DISTINCT`, `SELECTCOLUMNS`, `TREATAS`, `INTERSECT`,
+   `EXCEPT`, `UNION`, `CALCULATETABLE`, `AVERAGEX`, `RANKX`, `ISINSCOPE`. Aqui
+   também entra `COUNTROWS` sobre expressão de tabela e `x IN <tabela>`, que hoje
+   erram alto de propósito.
 7. **Paridade** contra o Power BI. Aqui a conferência de `rowCount` pendente
-   volta a importar.
+   volta a importar — é ela que transforma "executa" em "está certo".
 
 Cuidado concreto com datas: várias colunas chegam como texto `DD/MM/YYYY`.
 **Não ordene nem compare direto** — foi exatamente esse erro que gerou o achado 1
-falso. Converta para ISO antes.
+falso. O avaliador já erra alto nessa comparação, com teste; não "facilite" a
+conversão para fazer uma expressão passar.
 
-Não comece a 2b pelas 3 medidas mortas do achado 6 — elas não têm resultado.
-O alvo é **75**.
+Não tente fazer as 3 medidas mortas do achado 6 rodarem — elas não têm resultado.
+O alvo é **75 medidas**.
 
 `gsheets` (3 queries) e `web` (1) só entram no `validate:queries` quando existirem
 connectors para eles — hoje o harness só sabe executar SQL.

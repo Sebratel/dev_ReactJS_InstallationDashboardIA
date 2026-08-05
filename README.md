@@ -12,21 +12,23 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Infra de conexão + `doctor` + guard read-only | ✅ |
 | — | Validação contra dados reais — 18/18 queries capturadas | ✅ (⏳ `rowCount` a conferir com o Erick) |
 | 2a | Modelo semântico completo + verificação de referências | ✅ |
-| 2b.1 | Parser de DAX → AST (121/121 expressões parseiam) | ✅ |
-| 2b.2 | Avaliador com contexto de filtro (75 medidas) | ⏳ próximo |
+| 2b.1 | Parser de DAX → AST (127/127 expressões parseiam) | ✅ |
+| 2b.2 | Avaliador: escalares e agregação — executa 59/127 | ✅ |
+| 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL` | ⏳ próximo |
+| 2b.4 | Relacionamentos, time intelligence, funções de tabela | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**214 testes verdes.** Nenhum deles precisa de credencial.
+**249 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
 | Artefato | Qtd |
 |---|---|
 | Tabelas | 25 |
-| Medidas (DAX) | 78 — 3 delas apontam para tabela inexistente ([ACHADOS](docs/ACHADOS.md) #6) |
-| Colunas calculadas (DAX) | 43 |
+| Medidas (DAX) | 78 — 5 não são usadas por nada ([ACHADOS](docs/ACHADOS.md) #6 e #10) |
+| Colunas calculadas (DAX) | 49 — 6 recuperadas em 04/08 ([ACHADOS](docs/ACHADOS.md) #8) |
 | Relacionamentos | 22 (+44 de hierarquia automática de datas, ignorados) |
 | Queries (Query Registry) | 24 — 15 `dbVoalle`, 3 `dbMaria`, 3 `gsheets`, 1 `web`, 1 `inline`, 1 `computed` |
 | Dashboards (páginas) | 14 |
@@ -40,7 +42,7 @@ colunas (incluindo as calculadas), medidas e relacionamentos — resolvendo nome
 `'FIELD AGENDA'` e `'Field Agenda'`.
 
 `npm run validate:model` resolve toda referência `'Tabela'[Coluna]` e `[Medida]`
-das 78 medidas e das 43 colunas calculadas. Não precisa de `.env` nem de banco.
+das 78 medidas e das 49 colunas calculadas. Não precisa de `.env` nem de banco.
 Serve para responder *quais medidas são reimplementáveis* antes de escrever o
 avaliador — a resposta hoje é 75 de 78.
 
@@ -51,19 +53,48 @@ implementação. `packages/measure-engine/` lê `measures/*.yaml` e avalia — a
 `npm run extract` não faz o código divergir em silêncio quando alguém mexe no
 Power BI.
 
-Pronto: **tokenizer e parser → AST**, com as **121 expressões da base parseando**
-(78 medidas + 43 colunas calculadas). Cobertura de parser medida sobre o DAX real,
-não sobre exemplos inventados. O AST é deliberadamente burro — quem decide se
-`[Data]` é medida ou coluna é o resolvedor, que conhece o modelo.
+**Front-end (2b.1).** Tokenizer e parser → AST, com as **127 expressões da base
+parseando** (78 medidas + 49 colunas calculadas). O AST é deliberadamente burro:
+quem decide se `[Data]` é medida ou coluna é o avaliador, que conhece o modelo.
 
-Duas implementações independentes concordam sobre as referências de todas as 121
+Duas implementações independentes concordam sobre as referências de todas as 127
 expressões (o scanner por caractere do `semantic-model` e o parser com gramática),
 o que é evidência de que nenhuma das duas está lendo o DAX errado.
 
-**Princípio: falhar alto.** Função não suportada ou construção não reconhecida →
-erro com linha e coluna, nunca um palpite. Um avaliador que devolve número errado
-em silêncio é pior que um que se recusa a rodar, porque o erro chega ao dashboard
-da operação como se fosse dado.
+**Avaliador (2b.2).** Escalares, agregação, colunas calculadas em contexto de
+linha, `VAR`, dependência entre medidas com detecção de ciclo, e a hierarquia
+automática de datas (`[Data].[Dia]`). **34 funções DAX das 54 que a base usa.**
+
+Quatro níveis de cobertura, porque medem coisas diferentes:
+
+| Nível | Hoje | O que prova |
+|---|---|---|
+| Parseia | 127/127 | o DAX é lido inteiro, sem construção estranha |
+| Está no implementado | 60/127 | nenhuma função ou dependência faltando |
+| **Executa de ponta a ponta** | **59/127** | roda sobre dados e devolve valor |
+| Bate com o Power BI | ⏳ | **paridade — depende de dado real, ainda não provada** |
+
+A última linha é a que importa para migrar, e ela ainda não foi feita: os testes
+rodam sobre dados sintéticos, então provam que o avaliador *funciona*, não que o
+número é o mesmo do relatório. Paridade depende da conferência dos `rowCount`.
+
+A diferença entre 60 e 59 é uma medida morta que aponta para tabela inexistente —
+e o avaliador falhar nela é o comportamento certo (ACHADOS #6).
+
+O que falta é liderado por `CALCULATE`, no caminho de **56 das 127** expressões.
+Daí a ordem: contexto de filtro é o próximo passo, não o último.
+
+**Princípio: falhar alto.** Função não suportada, construção não reconhecida,
+referência que não resolve, texto onde se espera número → erro com linha e coluna,
+nunca um palpite. Um avaliador que devolve número errado em silêncio é pior que um
+que se recusa a rodar, porque o erro chega ao dashboard da operação com a mesma
+cara de um número certo.
+
+Duas armadilhas do modelo real estão travadas por teste: `FORMAT(data,"dddd")`
+tem de sair **em português** (o `SWITCH` do `PESO` compara com `"domingo"`; em
+inglês nenhum domingo casaria e todo domingo passaria a valer um dia útil), e
+coluna de texto `DD/MM/YYYY` **não** é comparada com data — ordenar isso direto
+ordena por dia, que foi o erro que gerou o achado 1 falso.
 
 ### Query Engine (Fase 1)
 
@@ -91,7 +122,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (214 testes, sem credencial)
+npm test                              # suíte completa (249 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # valida configuração e conectividade
@@ -132,7 +163,7 @@ tools/doctor/             # valida configuração e conectividade
 tools/validate/           # queries contra o ERP + verificação do modelo
 packages/query-engine/    # Query Registry, Cache, Connectors, Engine
 packages/semantic-model/  # tabelas, colunas, medidas, relacionamentos + refs do DAX
-packages/measure-engine/  # tokenizer, parser e AST de DAX (avaliador vem a seguir)
+packages/measure-engine/  # DAX: tokenizer, parser, AST e avaliador
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma

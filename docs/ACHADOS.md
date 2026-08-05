@@ -19,7 +19,9 @@ Consequência prática por achado:
 | 2 — `field-agenda` infla por skill | mantém o `LEFT JOIN person_skills`, 1,4 mi de linhas. Nenhum `string_agg` |
 | 3 — data chumbada em `base-categorias-field` | mantém `> '2026-01-01'` literal |
 | 6 — 3 medidas apontam para tabela inexistente | **não** reimplementa: replicar fiel de "sem resultado" é não ter resultado. Alvo = **75 medidas** |
-| 7 — sábado vale 1 num lugar e 1,5 no outro | reproduz as duas contas como estão, cada uma com sua regra |
+| 7 — três definições de dia útil, sábado vale 1, 1,5 e 0,5 | reproduz as três como estão, cada uma com sua regra |
+| 10 — `TOTAL_DIAS` conta dia do mês, não data | replica. Nada consome as duas medidas, então não há número errado em tela |
+| 11 — `DISTINCTCOUNT` sobre tabela vazia | suposição isolada em uma linha do código, a conferir contra o Power BI |
 
 O único item que **ainda depende de você** é a conferência dos `rowCount` contra
 o Power BI (`specs/golden/`), que você pediu para deixar para depois. Isso não é
@@ -208,7 +210,7 @@ Fase 4 — o número acima é a linha de base que mostra por quê.
 ## 6. Três medidas apontam para uma tabela que não existe no modelo
 
 **Evidência.** `npm run validate:model` (novo) resolve toda referência
-`'Tabela'[Coluna]` e `[Medida]` das 78 medidas e das 43 colunas calculadas
+`'Tabela'[Coluna]` e `[Medida]` das 78 medidas e das 49 colunas calculadas
 contra o modelo. Três não resolvem:
 
 | Medida | Referência | Tabela existe? |
@@ -253,9 +255,29 @@ aparecer no PBIP, o `npm test` falha e aponta para cá.
 
 ---
 
-## 7. `PESO` e `# MEDIA CRIADOS` discordam sobre quanto vale um sábado
+## 7. Três definições de "dia útil" convivem no modelo, e discordam do sábado
 
-**Evidência.** Duas definições de "dia útil" convivem no modelo.
+**Evidência.** São três, não duas — a terceira apareceu ao implementar o
+avaliador (04/08/2026), porque o DAX dela só entrou nas specs com o conserto do
+extrator descrito no achado 8.
+
+| Definição | Feriado vem de | Sábado vale | Quem consome |
+|---|---|---|---|
+| `CALENDARIO INSTALADO[PESO]` | `LOOKUPVALUE` na tabela `FERIADOS` | **1** | as 8 medidas de projeção/média |
+| `PROTOCOLOS GERAL[# MEDIA CRIADOS]` | filtro sobre `FERIADOS` | **1,5** | ela mesma, exibida |
+| `CALENDARIO CRIADO[PESO]` | lista chumbada no DAX | **0,5** | **ninguém** |
+
+A terceira ignora a tabela `FERIADOS` e traz os feriados escritos à mão —
+2020, 2021 e um único `DATE(2026,6,4)`. Não há nenhum feriado de **2022 a 2025**
+nessa lista, então nesses anos todo feriado contaria como dia inteiro.
+
+**Só que ela não é consumida por nada.** Nenhuma das 78 medidas soma
+`'CALENDARIO CRIADO'[PESO]` (as 8 somam a de `CALENDARIO INSTALADO`), e a coluna
+não aparece em nenhum dos 306 visuais. É DAX morto: não produz número errado em
+tela hoje. Registrado porque quem for mexer em regra de dia útil vai encontrar as
+três e precisa saber que só duas estão em uso.
+
+Segue a comparação entre as duas que **estão** em uso:
 
 `CALENDARIO INSTALADO[PESO]` — sábado vale **1** (dia inteiro), e a decisão está
 registrada num comentário dentro do próprio DAX:
@@ -307,18 +329,46 @@ Se a resposta for "sábado vale 1", a correção é remover
 Não é decisão pendente — fica registrado porque explica por que as specs
 mudaram de tamanho e porque os achados 1 e 7 só apareceram agora.
 
-O TMDL delimita expressão multi-linha com ``` ``` ```. O extrator não removia a
-cerca e não descia no corpo dela. Três consequências:
+Quatro perdas distintas, todas de silêncio — a spec saía plausível e incompleta:
 
 | Problema | Efeito |
 |---|---|
-| Cerca no DAX | 33 medidas e 11 colunas começavam e terminavam com ` ``` ` — parser de DAX morre na linha 1 |
+| Cerca ` ``` ` do TMDL no DAX | 33 medidas e 11 colunas começavam e terminavam com ` ``` ` — parser de DAX morre na linha 1 |
 | Corpo de coluna calculada descartado | **43 colunas calculadas** gravavam `calculated: true` e nenhuma expressão. `PESO`, que carrega a regra de dia útil de 8 medidas, tinha o DAX inteiro perdido |
 | `relationships.tmdl` nunca lido | **22 relacionamentos** fora das specs. Sem eles não há como avaliar medida que cruza tabelas (`CALENDARIO INSTALADO` filtrando `PROTOCOLOS GERAL`) |
+| Nome citado com `=` no fim da linha | **6 colunas calculadas** perdidas por inteiro — nome e DAX (ver abaixo) |
 
-Corrigido em `tools/extractor/src/tmdl.mjs`, com teste para cada caso. O
-`specs/_catalog/relationships.yaml` é novo, e as specs de tabela agora têm o
-campo `dax` por coluna.
+A quarta apareceu em 04/08/2026, ao montar dados para o avaliador: a separação
+entre nome e expressão procurava por `' = '` **com espaço nos dois lados**. No
+TMDL a forma abaixo é comum, e nela não há espaço depois do `=`:
+
+```tmdl
+column 'Semana Do Mes Texto' =
+        VAR SemanaDoMesNum = [Num Semana]
+        RETURN CONCATENATE(SemanaDoMesNum, "ª Semana")
+```
+
+Resultado: a coluna era gravada com o nome literal `'Semana Do Mes Texto' =`,
+`calculated: false` e nenhum DAX. Não é cosmético — **4 das 6 colunas perdidas
+aparecem em visuais ao vivo**:
+
+| Coluna recuperada | Em visual? |
+|---|---|
+| `Clima/ Tempo[Probabilidade_Chuva_Formatada]` | ✅ |
+| `PROTOCOLOS GERAL[EQUIPES TEMPORARIAS]` | ✅ |
+| `REINCIDÊNCIA[TempoTotalDias]` | ✅ |
+| `RETORNO PRIORITARIO[TempoTotalDias]` | ✅ |
+| `CALENDARIO AGENDAMENTO[Semana Do Mes Texto]` | — |
+| `PROTOCOLOS GERAL[GRUPO]` | — |
+
+Duas consequências além das colunas: o inventário de funções DAX estava
+subestimado (`CONCATENATE` só existe numa dessas seis, então não constava do
+escopo do avaliador), e o total de expressões a reimplementar passou de **121 para
+127**.
+
+Corrigido em `tools/extractor/src/tmdl.mjs`, com teste para cada um dos quatro
+casos. O `specs/_catalog/relationships.yaml` é novo, e as specs de tabela agora
+têm o campo `dax` por coluna.
 
 Detalhe que quase passou: existe uma coluna cujo **nome contém ponto** —
 `'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'`. Um
@@ -341,7 +391,7 @@ Mas remover tem pré-requisitos concretos:
 | Medidas DAX extraídas | ✅ 78 em `specs/_catalog/measures/` |
 | Layout das páginas/visuais | ✅ 14 páginas, 306 visuais em `specs/dashboards/` |
 | Dados que só existiam no `.pbix` | ✅ feriados preservados em Base64 (ver achado 1) |
-| DAX das colunas calculadas | ✅ 43 colunas (ver achado 8 — faltava até agora) |
+| DAX das colunas calculadas | ✅ 49 colunas (ver achado 8 — 6 delas recuperadas em 04/08) |
 | Relacionamentos entre tabelas | ✅ 22 em `specs/_catalog/relationships.yaml` (achado 8) |
 | Queries executadas contra o ERP | ✅ 18/18 em `specs/golden/` |
 | `rowCount` conferido contra o Power BI | ⏳ passo humano, pendente com o Erick |
@@ -357,3 +407,57 @@ Recomendação: manter enquanto a Fase 2 e 3 rodarem (é a referência para conf
 paridade visual e numérica) e reavaliar quando os dashboards novos estiverem em
 uso. Se for para liberar os 73 MB antes disso, o caminho seguro é **arquivar** o
 `.pbix` fora da árvore de trabalho, não apagar.
+
+---
+
+## 10. `TOTAL_DIAS` conta dia do mês, não data — e ninguém a usa
+
+**Evidência.** Duas medidas contam distintos sobre a hierarquia automática de
+datas do Power BI:
+
+```dax
+TOTAL_DIAS            = DISTINCTCOUNT('CALENDARIO CRIADO'[DATA CRIADO].[Dia])
+TOTAL_DIAS_ENCERRADOS = DISTINCTCOUNT('CALENDARIO INSTALADO'[DATA INSTALADO].[Dia])
+```
+
+O `.[Dia]` não é a data. Lido no PBIP, em `LocalDateTable_*.tmdl`:
+
+```tmdl
+column Dia = DAY([Date])
+    dataType: int64
+```
+
+É o **dia do mês**, 1 a 31. Contar distintos disso satura em 31: num intervalo de
+três meses o resultado é ~31, não ~90. Comparar com `PROTOCOLOS
+PRODUTIVIDADE[Total Dias]`, que usa a coluna de data direto e por isso conta certo.
+
+**Consequência hoje: nenhuma.** Nenhuma das 78 medidas referencia as duas, e elas
+não aparecem em nenhum dos 306 visuais — mesma situação das 3 medidas do achado 6.
+São, portanto, **mais 2 medidas mortas**: 5 das 78 não são consumidas por nada.
+
+Fica registrado porque o defeito é latente: no dia em que alguém puser
+`TOTAL_DIAS` como denominador de uma média, o número sai baixo e plausível.
+
+**Decisão: replicar fielmente.** O avaliador implementa `.[Dia]` como `DAY()`,
+igual ao Power BI, e há teste fixando isso.
+
+---
+
+## 11. `DISTINCTCOUNT` sobre tabela vazia — suposição nossa, a conferir
+
+Diferente dos outros: não é achado sobre o Power BI, é **uma coisa que não sabemos**
+e que está escrita como suposição no código, em vez de escondida.
+
+Agregação do DAX sobre nenhuma linha devolve BLANK, não 0 — vale para `SUM`,
+`COUNT`, `MIN`, `MAX` e `COUNTROWS`, e é por isso que tanto DAX de produção
+escreve `COUNTROWS(x) + 0`. Para `DISTINCTCOUNT` não achamos documentação
+inequívoca de que seja BLANK e não 0.
+
+Escolhemos **BLANK**, por coerência com as demais, isolado numa linha em
+`packages/measure-engine/src/functions.ts`. A diferença é observável: `= 0` e
+`ISBLANK()` respondem coisas diferentes, e o cartão do Power BI mostra vazio em
+vez de zero.
+
+**Como resolver:** quando os `rowCount` forem conferidos contra o Power BI, medir
+também um `DISTINCTCOUNT` num filtro que não retorne linha. Se der 0, muda-se uma
+linha e o teste correspondente. Não bloqueia nada até lá.

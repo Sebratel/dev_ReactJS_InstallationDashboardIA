@@ -99,18 +99,34 @@ function expressionFrom(inlineExpr, bodyLines) {
   return dedent(closed ? inner : bodyUntilProps(inner));
 }
 
-function parseColumn(headerContent, bodyLines) {
-  // "column NAME" | "column 'NAME X' = expr" | "column NAME = ```(multi-linha)"
-  const rest = headerContent.replace(/^column\s+/, '');
-  let name;
-  let inlineExpr = null;
-  const eq = rest.indexOf(' = ');
-  if (eq !== -1) {
-    name = stripQuotes(rest.slice(0, eq));
-    inlineExpr = rest.slice(eq + 3).trim();
-  } else {
-    name = stripQuotes(rest);
+// Separa "NOME" de "NOME = expr" no header de uma coluna.
+//
+// Procurar por `' = '` (com espaço nos dois lados) perdia a forma em que a linha
+// TERMINA no `=` e o corpo vem indentado abaixo:
+//     column 'Semana Do Mes Texto' =
+//             VAR SemanaDoMesNum = [Num Semana]
+// Aí não há espaço depois do `=`, então nada casava: a coluna era gravada com o
+// nome "'Semana Do Mes Texto' =", `calculated: false` e o DAX descartado. Cinco
+// colunas do modelo caíam nisso — e uma delas usa CONCATENATE, função que por
+// isso não aparecia no inventário do avaliador.
+//
+// O `=` precisa ser procurado FORA das aspas: nome citado pode conter `=`.
+function splitColumnHeader(rest) {
+  let i = 0;
+  if (rest.startsWith("'")) {
+    const end = rest.indexOf("'", 1);
+    if (end === -1) throw new Error(`nome de coluna TMDL sem aspa de fechamento: ${rest}`);
+    i = end + 1;
   }
+  const eq = rest.indexOf('=', i);
+  if (eq === -1) return { name: stripQuotes(rest), inlineExpr: null };
+  return { name: stripQuotes(rest.slice(0, eq)), inlineExpr: rest.slice(eq + 1).trim() };
+}
+
+function parseColumn(headerContent, bodyLines) {
+  // "column NAME" | "column 'NAME X' = expr" | "column NAME =" (corpo abaixo)
+  const rest = headerContent.replace(/^column\s+/, '');
+  const { name, inlineExpr } = splitColumnHeader(rest);
   const col = { name };
   for (const raw of bodyLines) {
     const t = raw.trim();
