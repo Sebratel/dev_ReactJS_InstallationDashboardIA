@@ -769,3 +769,15 @@ em produção — mesma razão pela qual `CALENDAR` recusa BLANK em vez de gerar
   casar por CPF sem filtrar vínculo multiplicaria linha;
 - a API aceita autenticação por `?token=` **ou** header `X-Api-Token`. O connector usa
   o header: token em query string vai para log de acesso e histórico de proxy.
+
+**Desfecho, no mesmo dia.** Escolhida a terceira saída: `QUADRO FUNCIONAL` continua no
+Google Sheets. Logo **não há divergência de fonte** a registrar — a tabela lê de onde o
+Power BI lê hoje, que é o padrão do projeto. Este achado fica pelo motivo inverso:
+documenta por que a troca não foi feita, e o que precisaria mudar no Data Hub para ela
+voltar à mesa (um dos três campos de hierarquia preenchido).
+
+Consequência prática: o connector de Google Sheets voltou a ser caminho crítico. A
+autenticação de service account já está escrita e testada (`google-auth.ts`, fluxo JWT
+bearer com `node:crypto`, 11 testes sem rede) e a Sheets API está ativada; o que falta é
+compartilhar as planilhas com a conta de serviço como Leitor — `npm run probe:gsheets`
+mostra o estado.

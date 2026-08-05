@@ -20,13 +20,13 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.6 | O que separa o avaliador do dado real: camada M + tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) — **as 56 funções agora estão todas implementadas** | ✅ |
 | 2b.8 | Camada M — levantamento pronto, [recomendação](docs/DECISAO-CAMADA-M.md) aguardando decisão | ⏳ próximo |
-| — | `QUADRO FUNCIONAL` do Data Hub: API sondada, **bloqueada** por falta de dado de gestor ([#17](docs/ACHADOS.md), [pergunta 3](docs/PERGUNTAS-NEGOCIO.md)) | 🚧 |
+| — | Connector de Google Sheets: autenticação de service account pronta e testada; falta compartilhar as 3 planilhas com a conta de serviço ([Anexo B](docs/DECISAO-CAMADA-M.md)) | 🚧 |
 | 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**347 testes verdes.** Nenhum deles precisa de credencial.
+**358 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -327,7 +327,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (347 testes, sem credencial)
+npm test                              # suíte completa (358 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
@@ -335,9 +335,10 @@ npm run doctor                        # valida configuração e conectividade
 npm run validate:queries              # executa as queries reais e grava os goldens
 npm run validate:queries -- --check    # falha se o schema de alguma query mudou
 npm run probe:datahub                 # perfila a API do Data Hub (shape, nunca linha)
+npm run probe:gsheets                 # a service account alcança as planilhas?
 ```
 
-Os seis respondem perguntas diferentes, e só os três primeiros dispensam `.env`:
+Os sete respondem perguntas diferentes, e só os três primeiros dispensam `.env`:
 
 | Comando | Pergunta | Precisa de `.env`? |
 |---|---|---|
@@ -347,6 +348,7 @@ Os seis respondem perguntas diferentes, e só os três primeiros dispensam `.env
 | `doctor` | as fontes estão alcançáveis e a sessão é read-only? | sim |
 | `validate:queries` | as queries rodam e devolvem o quê? | sim |
 | `probe:datahub` | a API do Data Hub tem os campos que a mesclagem precisa? | sim |
+| `probe:gsheets` | a service account lê as planilhas, e o cabeçalho bate com a spec? | sim |
 
 A diferença entre o segundo e o terceiro é a razão de o terceiro existir:
 `validate:model` confere modelo contra modelo e aprova

@@ -183,22 +183,25 @@ Três condições, e a primeira é sua:
    supervisor duplicado, e registrar o critério que reproduz. Se nenhum reproduzir de
    forma estável, isso vira **divergência deliberada** documentada — como a do `CALENDAR`
    na 2b.7 — e não um número silencioso.
-2. ~~`PROTOCOLOS PRODUTIVIDADE` fica bloqueada até existir o connector de Google
-   Sheets.~~ **Superado em 05/08/2026.** `QUADRO FUNCIONAL` não vai ler de Google Sheets
-   na plataforma nova — vai ler do **Data Hub interno da Sebratel**
-   (`data-hub.sebratel.net.br`, dataset `clientes-ativos-na-base`, que apesar do nome é
-   dado de colaborador — confirmado com o Erick). É **divergência deliberada de fonte**
-   em relação ao Power BI de hoje, a registrar em ACHADOS.md quando o connector existir:
-   mesmo conteúdo (colaborador, gestor, CPF...), origem diferente.
+2. **`PROTOCOLOS PRODUTIVIDADE` fica bloqueada até existir o connector de Google
+   Sheets** — e essa condição sobreviveu a uma tentativa de contorná-la.
 
-   **Isso não fecha sozinho** — falta verificar com token real se o shape da resposta
-   bate com o que a spec espera, e se o filtro por gestor
-   (`GESTOR = "Luis Aranda"/"Pablo Borges"/"Stefany Souza"`) já vem aplicado ou precisa
-   ser replicado. Ver `.env.example` para os detalhes e o que falta medir.
+   O histórico, porque a ida e volta em si é informação: em 05/08/2026 decidiu-se ler
+   `QUADRO FUNCIONAL` do Data Hub interno em vez da planilha, o que teria dispensado o
+   connector. A API foi sondada em vez de suposta, e os três campos de hierarquia
+   (`manager_name`, `supervisor_name`, `coordinator_name`) vêm `null` em 100% das 2448
+   linhas — sendo `GESTOR` a única coluna que a mesclagem expande. No mesmo dia a decisão
+   voltou para o Google Sheets. Detalhes no **Anexo A**; o achado em `ACHADOS.md` #17.
 
-   As outras duas planilhas (`#APURAÇÃO PREMIAÇÃO`, 1 medida, e `CAPACIDADE EQUIPE`,
-   nenhuma) continuam precisando do connector de Google Sheets do anexo abaixo — mas
-   nenhuma das duas bloqueia `PROTOCOLOS PRODUTIVIDADE`, então a urgência caiu.
+   Então: `QUADRO FUNCIONAL` continua na fonte de hoje, **sem divergência de fonte a
+   registrar**, e o connector de Google Sheets é caminho crítico — não mais "baixíssima
+   urgência". Das três planilhas, esta é a que 9 medidas alcançam.
+
+   **O que já existe** (05/08/2026): a autenticação de service account está escrita e
+   testada (`packages/query-engine/src/google-auth.ts`, 11 testes, sem rede), a Sheets API
+   está ativada no projeto e o JWT é aceito pelo Google. **O que falta** é um passo que
+   não é código: compartilhar as 3 planilhas com o e-mail da conta de serviço como
+   **Leitor**. Hoje as três devolvem `PERMISSION_DENIED` — ver `npm run probe:gsheets`.
 3. **`clima-tempo` continua fora.** Define função M com `let` aninhado, o scanner recusa
    por desenho, e a fonte é `web` (Open-Meteo) — sem connector. São duas pendências na
    mesma query, e nenhuma bloqueia o resto.
@@ -342,6 +345,21 @@ de shape, e o efeito só apareceria como slicer vazio em produção. É o mesmo 
 `CALENDAR` recusa BLANK em vez de gerar 1899 dias — ver "Divergências deliberadas" em
 `ACHADOS.md`.
 
+#### Desfecho, no mesmo dia: escolhida a opção 3
+
+O Erick escolheu manter `QUADRO FUNCIONAL` no Google Sheets. Consequências, todas boas:
+
+- **A divergência deliberada de fonte deixa de existir.** `QUADRO FUNCIONAL` continua vindo
+  de onde o Power BI a lê hoje, o que é o padrão do projeto ("replicar fielmente") e não
+  precisa de registro em `ACHADOS.md` como divergência. O achado #17 permanece pelo motivo
+  oposto: documenta por que a troca **não** foi feita.
+- **O Data Hub não é descartado, fica adiado.** A sonda, a autenticação por header e o
+  mapeamento de campos ficam no repo (`npm run probe:datahub`). No dia em que
+  `manager_name` vier preenchido, o caminho está medido.
+- **O connector de Google Sheets voltou a ser caminho crítico** — e com ele a condição 2 da
+  recomendação, que havia sido marcada como superada em 05/08/2026. Ver Anexo B: a
+  autenticação já está escrita e testada; falta o compartilhamento.
+
 ### Um achado de segurança já incorporado
 
 A mensagem do 401 (`Token ausente (?token=… ou header X-Api-Token)`) revela que a API
@@ -362,10 +380,12 @@ nunca em query string.
 
 ## Anexo B: o "connector de Google Sheets" — as 2 planilhas que restam
 
-Com `QUADRO FUNCIONAL` movida para o Data Hub (Anexo A), sobram **duas** planilhas de
-baixíssima urgência: `#APURAÇÃO PREMIAÇÃO` (1 medida) e `CAPACIDADE EQUIPE` (nenhuma
-medida as cita). Não é nada que se baixe ou compre. São duas coisas separadas, e só a
-segunda depende de alguém de fora:
+São **três** planilhas, e a ordem de importância é bem desigual: `QUADRO FUNCIONAL`
+(alcançada por 9 medidas via `PROTOCOLOS PRODUTIVIDADE` — voltou para cá, ver Anexo A),
+`#APURAÇÃO PREMIAÇÃO` (1 medida) e `CAPACIDADE EQUIPE` (nenhuma medida a cita).
+
+Não é nada que se baixe ou compre. São duas coisas separadas, e só a segunda depende de
+alguém de fora:
 
 1. **Código nosso**, ~100 linhas: uma classe que implementa a porta `Connector` que já
    existe em `packages/query-engine/src/connectors.ts`, chamando a API REST do Google
@@ -389,8 +409,34 @@ somente leitura, o que casa com a regra 3 do projeto.
 | 5 | Máquina local | Guardar o JSON **fora do repositório** e apontar `GOOGLE_APPLICATION_CREDENTIALS` para ele no `.env` |
 | 6 | Cada uma das 2 planilhas | Compartilhar → colar o e-mail da conta de serviço (`algo@projeto.iam.gserviceaccount.com`) → **Leitor** |
 
-Já foi feito uma vez nesta fase (a credencial existe, criada para a conta de serviço
-`erick-project`); o que falta é só o passo 6 nas duas planilhas que restam.
+**Estado em 05/08/2026: passos 1 a 5 feitos, e o 1 do código também.** Verificado com
+`npm run probe:gsheets`:
+
+| # | Estado |
+|---|---|
+| 1 projeto | ✅ `erick-project-501315` |
+| 2 Sheets API ativada | ✅ — se não estivesse, o erro seria `SERVICE_DISABLED`, e não é |
+| 3–4 conta de serviço + chave JSON | ✅ `shets-consult-api@erick-project-501315.iam.gserviceaccount.com` |
+| 5 chave fora do repositório | ✅ `C:/Users/erick.azambuja/.secrets/`, e o `Desktop` é um repo git com remote real — nunca deixar chave lá |
+| **6 compartilhar cada planilha** | ❌ **as 3 devolvem `PERMISSION_DENIED`** |
+| código: autenticação | ✅ `google-auth.ts`, fluxo JWT bearer com `node:crypto`, 11 testes sem rede |
+| código: connector | ⏳ falta, e só faz sentido depois do passo 6 |
+
+O passo 6 é o único que não é código, e é o que falta. Vale insistir num ponto que confunde:
+**ter acesso à planilha com a sua conta Google não dá acesso à conta de serviço.** São dois
+principais distintos; o Google responde `PERMISSION_DENIED` para o segundo mesmo com o
+primeiro dentro da planilha. Em cada uma das 3 planilhas:
+
+> Compartilhar → colar `shets-consult-api@erick-project-501315.iam.gserviceaccount.com`
+> → papel **Leitor** → enviar (pode desmarcar "notificar", é uma conta de robô)
+
+Leitor, não Editor: a regra 3 do projeto é read-only, e o escopo OAuth pedido no código já é
+`spreadsheets.readonly` — Editor daria permissão que o código nem sabe usar.
+
+Depois de compartilhar, `npm run probe:gsheets` mostra as abas, compara as 37 colunas da
+spec com o cabeçalho real, conta quantas linhas sobram após o filtro dos 3 gestores e
+verifica se `upper_name` é chave única (se não for, a mesclagem multiplica linha — é o tipo
+de coisa que sobe medida sem erro).
 
 ### O atalho que existe
 

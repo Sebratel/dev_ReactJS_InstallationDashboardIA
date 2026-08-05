@@ -87,9 +87,13 @@ export interface PlatformConfig {
    * ver docs/DECISAO-CAMADA-M.md, Anexo A).
    */
   datahub: { token: string; baseUrl: string; apis: { quadroFuncional: string } };
-  /** As 2 planilhas que sobraram: `QUADRO FUNCIONAL` saiu para o Data Hub. */
+  /**
+   * As 3 planilhas. `QUADRO FUNCIONAL` voltou para cá em 05/08/2026: a troca
+   * para o Data Hub ficou bloqueada por falta de dado de gestor (ACHADOS.md #17).
+   */
   gsheets: {
     credentialsPath: string;
+    quadroFuncionalId: string;
     apuracaoPremiacaoId: string;
     capacidadeEquipeId: string;
   };
@@ -147,6 +151,7 @@ export function loadConfig(): PlatformConfig {
     },
     gsheets: {
       credentialsPath: env('GOOGLE_APPLICATION_CREDENTIALS'),
+      quadroFuncionalId: env('GSHEETS_QUADRO_FUNCIONAL_ID'),
       apuracaoPremiacaoId: env('GSHEETS_APURACAO_PREMIACAO_ID'),
       capacidadeEquipeId: env('GSHEETS_CAPACIDADE_EQUIPE_ID'),
     },

@@ -8,14 +8,14 @@ Decisão geral do projeto: **replicar fielmente** o comportamento atual
 desenvolvimento — o que elas mudam é se, mais para frente, vale registrar uma
 divergência deliberada em relação ao Power BI de hoje.
 
-Com uma exceção, a de 05/08/2026: a pergunta 3 **bloqueia** a troca de `QUADRO
-FUNCIONAL` para o Data Hub. Não bloqueia o resto da fase 2b.8.
+(A pergunta 3 chegou a ser um bloqueio e foi resolvida no mesmo dia, sem depender de
+terceiro: `QUADRO FUNCIONAL` fica no Google Sheets.)
 
 | # | Pergunta | Para quem | Status |
 |---|---|---|---|
 | 1 | Quanto vale um sábado no cálculo de dia útil? | Fabrício | ⏳ aberta |
 | 2 | As 5 medidas sem uso eram de painel descontinuado? (+ 1 relacionamento inativo) | Fabrício | ⏳ aberta (limpeza) |
-| 3 | O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor? | quem publica o `dash-instalacao` (+ Fabrício, se for mapa) | ⏳ aberta (**bloqueia** troca de fonte) |
+| 3 | ~~O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?~~ | — | ✅ resolvida em 05/08/2026: fica no Google Sheets |
 
 ---
 
@@ -155,7 +155,21 @@ vez de 78 (as 3 que não rodam), e as 5 ficam registradas em ACHADOS.md #6 e #10
 
 ---
 
-## 3. O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?
+## 3. ~~O Data Hub não tem gestor~~ — RESOLVIDA em 05/08/2026, fica no Google Sheets
+
+**Resolvida pela terceira saída, e sem precisar de ninguém de fora:** `QUADRO FUNCIONAL`
+continua lendo do Google Sheets, como o Power BI faz hoje. Nenhuma divergência de fonte,
+nenhuma regra de negócio nova. O texto abaixo fica registrado porque descreve uma
+alternativa que continua válida se o Data Hub passar a trazer hierarquia — e porque o
+diagnóstico (2448 vínculos, 121 CPFs repetidos, três campos de gestor vazios) é útil para
+quem for consumir esse dataset para outra coisa.
+
+O que **não** virou pergunta para o Fabrício: o mapa time → gestor. Ele só seria necessário
+na saída 2, que não foi escolhida.
+
+---
+
+### O texto original da pergunta
 
 **Por que estou perguntando.** A decisão de 05/08/2026 foi ler `QUADRO FUNCIONAL`
 (dado de colaborador) do Data Hub interno em vez da planilha Google Sheets. Sondei a
