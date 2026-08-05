@@ -66,7 +66,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**249 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**268 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -77,9 +77,9 @@ Nenhum teste precisa de credencial ou banco.
 | — | Validação contra dados reais — 18/18 queries capturadas em `specs/golden/` | ✅ |
 | 2a | Modelo semântico completo + verificação de referências do DAX | ✅ |
 | 2b.1 | Parser de DAX → AST — as 127 expressões da base parseiam | ✅ |
-| 2b.2 | Avaliador: escalares e agregação — executa 59/127 | ✅ |
-| 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL` | ⏳ **próximo** |
-| 2b.4 | Relacionamentos, time intelligence, funções de tabela | ⏳ |
+| 2b.2 | Avaliador: escalares e agregação | ✅ |
+| 2b.3 | Contexto de filtro — executa 107/127 | ✅ |
+| 2b.4 | Time intelligence, conjuntos, relacionamentos | ⏳ **próximo** |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -132,7 +132,7 @@ Em `tools/validate/` (`npm run validate:queries`):
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (249 testes, sem credencial)
+npm test                              # suíte completa (268 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # configuração e conectividade (não imprime credencial)
@@ -276,38 +276,84 @@ Duas lições que já custaram retrabalho, registradas para não repetir:
   tem de devolver `"domingo"`: o `SWITCH` do `[PESO]` compara com essa string, e
   em inglês nenhum domingo casaria — todo domingo passaria a valer 1 dia útil.
 
-### 2b.3 — contexto de filtro: PRÓXIMO
+### 2b.3 — contexto de filtro: PRONTO
 
-`CALCULATE` está no caminho de **56 das 127** expressões — é o maior bloqueio
-isolado, e o teste `'o que falta é liderado por CALCULATE'` mantém esse número
-honesto.
+`src/filter.ts` é novo e é onde vive o modelo. **Leia antes de mexer em qualquer
+coisa de filtro.**
 
-O ponto de extensão já existe: `FilterContext` em `evaluator.ts`, hoje com a
-implementação `UnfilteredContext` (devolve a tabela inteira). Toda agregação já
-pergunta as linhas a ele, então `CALCULATE` entra por ali sem mexer em função de
-agregação nenhuma.
+Cobertura foi de 59 para **107 de 127** expressões executando. Implementado:
+`CALCULATE`, `CALCULATETABLE`, `FILTER`, `ALL`, `VALUES`, `DISTINCT`, `TREATAS`,
+`LOOKUPVALUE`, `SELECTEDVALUE`, `AVERAGEX`, `COUNTROWS` sobre expressão de tabela,
+`x IN <tabela>`, e `VAR` guardando tabela. **44 das 54 funções.**
 
-Ordem, de menos para mais:
+**A regra central, e ela é contraintuitiva.** Filtro de `CALCULATE` **substitui** o
+filtro existente sobre a mesma coluna em vez de somar, e quem vence é o `CALCULATE`
+mais **interno**:
 
-1. **`CALCULATE`** com filtro de coluna (`'T'[Col] = "x"`), depois `FILTER`,
-   depois `ALL`. `FILTER` bloqueia 21 expressões; `ALL`, 4.
-2. **`LOOKUPVALUE`** — 11 expressões, e é o que falta para
-   `CALENDARIO INSTALADO[PESO]` rodar (ele consulta a tabela `FERIADOS`). Destrava
-   as 8 medidas de projeção/média de uma vez.
-3. **`SELECTEDVALUE`** (9) e **`VALUES`** (8).
-4. **Relacionamentos** — `specs/_catalog/relationships.yaml`. Filtro propaga do
+```dax
+// devolve o total de 2026. O Ano = 2025 pedido por fora é DESCARTADO.
+CALCULATE([Total 2026], 'VENDAS'[Ano] = 2025)
+```
+
+Se os filtros se intersectassem daria vazio — e vazio num cartão parece "sem
+dados", não erro. Cada filtro carrega **quais colunas restringe** (`TableFilter.columns`);
+é isso que permite saber o que substituir, e é por isso que o contexto não é só uma
+lista de linhas visíveis.
+
+Consequências que caem de graça desse desenho, e vale saber para não "melhorar":
+- `ALL('T'[C])` não tem tratamento especial. Ele devolve todos os valores de `C`;
+  como filtro novo substitui o antigo, substituir por "aceita tudo" **é** remover o
+  filtro.
+- `FILTER` é diferente de propósito: ele itera o que já está visível, então **soma**
+  ao contexto em vez de substituir. Daí o idioma `FILTER(ALL('T'), ...)` da base.
+
+**Transição de contexto** está em `Evaluator.transitionRowContext`. Duas regras:
+`CALCULATE` converte o contexto de linha em filtro e apaga o de linha (é por isso
+que os 5 `CALCULATE` de um argumento só da base não são inúteis); e **referência a
+medida traz um `CALCULATE` implícito**, então `AVERAGEX(VALUES('T'[C]), [Medida])`
+calcula por valor de `C`. Sem isso a média sairia igual ao total — errado de um jeito
+plausível.
+
+**Limite declarado do modelo**, no topo de `filter.ts`: o motor real do Power BI
+guarda tabelas de filtro, não predicados por coluna. A diferença aparece em filtro
+que correlaciona colunas (`FILTER(T, T[a] > T[b])`). Para as 60 chamadas desta base
+os dois modelos coincidem.
+
+### 2b.4 — time intelligence e conjuntos: PRÓXIMO
+
+Não há mais bloqueio único — há teste afirmando isso (`ranking[0] < 10`). O que
+sobra, por peso:
+
+| Falta | Expressões |
+|---|---|
+| `DATESBETWEEN` | 7 |
+| `SELECTCOLUMNS` | 7 |
+| `RANKX` | 5 |
+| `ENDOFMONTH` | 2 |
+| `DATESMTD`, `STARTOFMONTH`, `EOMONTH` em contexto | 1 cada |
+| `INTERSECT`, `EXCEPT`, `UNION`, `ISINSCOPE`, `CONCATENATE` em tabela | 1 cada |
+
+Ordem sugerida:
+
+1. **Time intelligence** — `DATESBETWEEN`, `DATESMTD`, `ENDOFMONTH`,
+   `STARTOFMONTH`. São funções de **tabela** (devolvem tabela de datas) e entram no
+   registro `TABELAS` de `functions.ts`, não no escalar. Como já são filtros de
+   coluna de data, o mecanismo de substituição existente vale para elas.
+2. **`SELECTCOLUMNS`** — cria tabela anônima com colunas novas. É o que destrava a
+   limitação registrada de `[Nome]` referindo coluna de tabela anônima (ver
+   `resolveNameRef`), usada por `RANKX(TabelaDatas, [Data], ...)`. Trate as duas
+   juntas.
+3. **`RANKX`** — depende de 2.
+4. **Conjuntos** — `INTERSECT`, `EXCEPT`, `UNION` sobre `TableValue`. Direto, agora
+   que `TableValue` existe.
+5. **Relacionamentos** — `specs/_catalog/relationships.yaml`. Filtro propaga do
    lado `to_*` (one) para o lado `from_*` (many); `cross_filter: bothDirections`
    vai nos dois sentidos; `active: false` só vale dentro de `USERELATIONSHIP`.
-   Sem isso, `Contagem Solicitacao 2026` (filtra `PROTOCOLOS GERAL` por
-   `CALENDARIO INSTALADO`) não fecha.
-5. **Time intelligence** — `DATESMTD`, `DATESBETWEEN`, `ENDOFMONTH`,
-   `STARTOFMONTH`. Deixe para o fim: é onde mais se erra e depende de tudo acima.
-6. **Tabelas e conjuntos** — `DISTINCT`, `SELECTCOLUMNS`, `TREATAS`, `INTERSECT`,
-   `EXCEPT`, `UNION`, `CALCULATETABLE`, `AVERAGEX`, `RANKX`, `ISINSCOPE`. Aqui
-   também entra `COUNTROWS` sobre expressão de tabela e `x IN <tabela>`, que hoje
-   erram alto de propósito.
-7. **Paridade** contra o Power BI. Aqui a conferência de `rowCount` pendente
-   volta a importar — é ela que transforma "executa" em "está certo".
+   Hoje **nada** propaga por relacionamento: as medidas que cruzam tabelas só
+   funcionam onde a base usou `TREATAS` explicitamente. Verifique
+   `Contagem Solicitacao 2026`.
+6. **Paridade** contra o Power BI. É o que transforma "executa" em "está certo", e
+   depende da conferência de `rowCount`.
 
 Cuidado concreto com datas: várias colunas chegam como texto `DD/MM/YYYY`.
 **Não ordene nem compare direto** — foi exatamente esse erro que gerou o achado 1
@@ -315,7 +361,8 @@ falso. O avaliador já erra alto nessa comparação, com teste; não "facilite" 
 conversão para fazer uma expressão passar.
 
 Não tente fazer as 3 medidas mortas do achado 6 rodarem — elas não têm resultado.
-O alvo é **75 medidas**.
+Elas falham hoje, e há teste **exigindo** que continuem falhando. O alvo é
+**75 medidas**.
 
 `gsheets` (3 queries) e `web` (1) só entram no `validate:queries` quando existirem
 connectors para eles — hoje o harness só sabe executar SQL.

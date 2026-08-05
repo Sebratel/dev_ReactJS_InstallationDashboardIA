@@ -4,12 +4,27 @@ export { functionsUsed, walk } from './ast.ts';
 export { Dataset, type Row } from './dataset.ts';
 export {
   Evaluator,
-  UnfilteredContext,
   type EvalScope,
   type EvaluatorOptions,
-  type FilterContext,
+  type ScopeValue,
 } from './evaluator.ts';
-export { implementedFunctions, lookupFunction, type DaxFunction } from './functions.ts';
+export {
+  FilteredContext,
+  filterFromTable,
+  isTableValue,
+  makeTableValue,
+  rowKey,
+  type FilterContext,
+  type TableFilter,
+  type TableValue,
+} from './filter.ts';
+export {
+  implementedFunctions,
+  lookupFunction,
+  lookupTableFunction,
+  type DaxFunction,
+  type TableFunction,
+} from './functions.ts';
 export {
   BLANK,
   DaxEvalError,

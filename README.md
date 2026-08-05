@@ -13,14 +13,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Validação contra dados reais — 18/18 queries capturadas | ✅ (⏳ `rowCount` a conferir com o Erick) |
 | 2a | Modelo semântico completo + verificação de referências | ✅ |
 | 2b.1 | Parser de DAX → AST (127/127 expressões parseiam) | ✅ |
-| 2b.2 | Avaliador: escalares e agregação — executa 59/127 | ✅ |
-| 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL` | ⏳ próximo |
-| 2b.4 | Relacionamentos, time intelligence, funções de tabela | ⏳ |
+| 2b.2 | Avaliador: escalares e agregação | ✅ |
+| 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL`, `TREATAS` — executa 107/127 | ✅ |
+| 2b.4 | Time intelligence, funções de conjunto, relacionamentos | ⏳ próximo |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**249 testes verdes.** Nenhum deles precisa de credencial.
+**268 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -61,28 +61,38 @@ Duas implementações independentes concordam sobre as referências de todas as 
 expressões (o scanner por caractere do `semantic-model` e o parser com gramática),
 o que é evidência de que nenhuma das duas está lendo o DAX errado.
 
-**Avaliador (2b.2).** Escalares, agregação, colunas calculadas em contexto de
-linha, `VAR`, dependência entre medidas com detecção de ciclo, e a hierarquia
-automática de datas (`[Data].[Dia]`). **34 funções DAX das 54 que a base usa.**
+**Avaliador (2b.2 e 2b.3).** Escalares, agregação, colunas calculadas em contexto
+de linha, `VAR` (inclusive guardando tabela), dependência entre medidas com
+detecção de ciclo, hierarquia automática de datas (`[Data].[Dia]`) e **contexto de
+filtro**: `CALCULATE`, `CALCULATETABLE`, `FILTER`, `ALL`, `VALUES`, `DISTINCT`,
+`TREATAS`, `LOOKUPVALUE`, `SELECTEDVALUE`, `AVERAGEX`. **44 funções DAX das 54 que
+a base usa.**
 
 Quatro níveis de cobertura, porque medem coisas diferentes:
 
 | Nível | Hoje | O que prova |
 |---|---|---|
 | Parseia | 127/127 | o DAX é lido inteiro, sem construção estranha |
-| Está no implementado | 60/127 | nenhuma função ou dependência faltando |
-| **Executa de ponta a ponta** | **59/127** | roda sobre dados e devolve valor |
+| Está no implementado | 110/127 | nenhuma função ou dependência faltando |
+| **Executa de ponta a ponta** | **107/127** | roda sobre dados e devolve valor |
 | Bate com o Power BI | ⏳ | **paridade — depende de dado real, ainda não provada** |
 
 A última linha é a que importa para migrar, e ela ainda não foi feita: os testes
 rodam sobre dados sintéticos, então provam que o avaliador *funciona*, não que o
 número é o mesmo do relatório. Paridade depende da conferência dos `rowCount`.
 
-A diferença entre 60 e 59 é uma medida morta que aponta para tabela inexistente —
-e o avaliador falhar nela é o comportamento certo (ACHADOS #6).
+As 3 que não executam são exatamente as 3 medidas mortas do achado 6, e há teste
+exigindo que continuem falhando. Duas rotas independentes chegaram à mesma lista:
+`validate:model` lendo referências, e o avaliador tentando calcular.
 
-O que falta é liderado por `CALCULATE`, no caminho de **56 das 127** expressões.
-Daí a ordem: contexto de filtro é o próximo passo, não o último.
+**A regra do contexto de filtro que decide números.** Filtro de `CALCULATE`
+**substitui** o filtro existente sobre a mesma coluna em vez de somar com ele, e
+quem vence é o `CALCULATE` mais **interno**. Então
+`CALCULATE([Total 2026], 'VENDAS'[Ano] = 2025)` devolve o total de **2026** — o
+pedido de fora é descartado. Se os filtros se intersectassem, daria vazio, e vazio
+num cartão parece "sem dados" em vez de erro. Está travado por teste em
+`test/filter.test.ts`, junto com `ALL` (que é o mesmo mecanismo: substituir o
+filtro por "aceita tudo") e a transição de contexto.
 
 **Princípio: falhar alto.** Função não suportada, construção não reconhecida,
 referência que não resolve, texto onde se espera número → erro com linha e coluna,
@@ -122,7 +132,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (249 testes, sem credencial)
+npm test                              # suíte completa (268 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # valida configuração e conectividade
@@ -163,7 +173,7 @@ tools/doctor/             # valida configuração e conectividade
 tools/validate/           # queries contra o ERP + verificação do modelo
 packages/query-engine/    # Query Registry, Cache, Connectors, Engine
 packages/semantic-model/  # tabelas, colunas, medidas, relacionamentos + refs do DAX
-packages/measure-engine/  # DAX: tokenizer, parser, AST e avaliador
+packages/measure-engine/  # DAX: tokenizer, parser, AST, avaliador e contexto de filtro
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma

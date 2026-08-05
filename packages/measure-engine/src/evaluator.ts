@@ -12,7 +12,14 @@ import type { SemanticModel } from '../../semantic-model/src/model.ts';
 import { normalizeName } from '../../semantic-model/src/model.ts';
 import type { DaxNode } from './ast.ts';
 import type { Dataset, Row } from './dataset.ts';
-import { lookupFunction } from './functions.ts';
+import {
+  FilteredContext,
+  type TableValue,
+  isTableValue,
+  makeTableValue,
+  rowKey,
+} from './filter.ts';
+import { lookupFunction, lookupTableFunction } from './functions.ts';
 import { parseDax } from './parser.ts';
 import {
   BLANK,
@@ -26,37 +33,17 @@ import {
   identityKey,
 } from './value.ts';
 
-/**
- * Quais linhas de cada tabela estão visíveis.
- *
- * No passo 1 é sempre "todas" — não há `CALCULATE` ainda. A interface existe
- * desde já porque contexto de filtro não é uma camada que se acrescenta depois
- * por cima: toda agregação tem de perguntar as linhas *a alguém*, e trocar isso
- * mais tarde mexeria em cada função de agregação.
- */
-export interface FilterContext {
-  rowsOf(table: string): Row[];
-}
+export { FilteredContext, type FilterContext, type TableFilter, type TableValue } from './filter.ts';
 
-/** Contexto de filtro sem filtro: a tabela inteira. */
-export class UnfilteredContext implements FilterContext {
-  private readonly dataset: Dataset;
-
-  constructor(dataset: Dataset) {
-    this.dataset = dataset;
-  }
-
-  rowsOf(table: string): Row[] {
-    return this.dataset.rows(table);
-  }
-}
+/** O que um `VAR` pode guardar: escalar ou tabela (`VAR x = FILTER(...)`). */
+export type ScopeValue = DaxValue | TableValue;
 
 export interface EvalScope {
-  readonly filter: FilterContext;
+  readonly filter: FilteredContext;
   /** contexto de linha: tabela normalizada -> linha corrente */
   readonly rows: ReadonlyMap<string, Row>;
   /** variáveis `VAR` visíveis */
-  readonly vars: ReadonlyMap<string, DaxValue>;
+  readonly vars: ReadonlyMap<string, ScopeValue>;
 }
 
 export interface EvaluatorOptions {
@@ -110,23 +97,9 @@ export class Evaluator {
   // API pública
   // -------------------------------------------------------------------------
 
-  /** Avalia uma medida do modelo pelo nome. */
+  /** Avalia uma medida do modelo pelo nome, sem filtro nenhum (o "total geral"). */
   measure(name: string): DaxValue {
-    const m = this.model.measure(name);
-    if (!m) throw new DaxEvalError(`Medida não existe no modelo: [${name}]`);
-
-    const key = normalizeName(name);
-    if (this.measureStack.includes(key)) {
-      throw new DaxEvalError(
-        `Ciclo entre medidas: ${[...this.measureStack, key].map((k) => `[${k}]`).join(' -> ')}`,
-      );
-    }
-    this.measureStack.push(key);
-    try {
-      return this.evaluate(this.ast(m.dax), this.rootScope());
-    } finally {
-      this.measureStack.pop();
-    }
+    return this.measureInScope(name, this.rootScope());
   }
 
   /** Avalia uma expressão DAX solta. Usado por teste e pelo futuro Query Engine. */
@@ -143,7 +116,7 @@ export class Evaluator {
 
   rootScope(): EvalScope {
     return {
-      filter: new UnfilteredContext(this.dataset),
+      filter: FilteredContext.unfiltered(this.dataset),
       rows: new Map(),
       vars: new Map(),
     };
@@ -156,8 +129,13 @@ export class Evaluator {
     return { filter: base.filter, rows, vars: base.vars };
   }
 
-  scopeWithVars(base: EvalScope, vars: ReadonlyMap<string, DaxValue>): EvalScope {
+  scopeWithVars(base: EvalScope, vars: ReadonlyMap<string, ScopeValue>): EvalScope {
     return { filter: base.filter, rows: base.rows, vars };
+  }
+
+  /** Escopo com outro contexto de filtro e **sem** contexto de linha (ver `CALCULATE`). */
+  scopeWithFilter(base: EvalScope, filter: FilteredContext): EvalScope {
+    return { filter, rows: new Map(), vars: base.vars };
   }
 
   ast(dax: string): DaxNode {
@@ -264,6 +242,106 @@ export class Evaluator {
   }
 
   // -------------------------------------------------------------------------
+  // Tabelas
+  // -------------------------------------------------------------------------
+
+  /** O nó devolve tabela (e não escalar)? Decide como avaliar um `VAR`. */
+  isTableExpression(node: DaxNode, scope: EvalScope): boolean {
+    if (node.type === 'TableRef') return true;
+    if (node.type === 'Call') return lookupTableFunction(node.name) !== undefined;
+    if (node.type === 'Identifier') {
+      const v = scope.vars.get(normalizeName(node.name));
+      if (v !== undefined) return isTableValue(v);
+      return this.model.table(node.name) !== null;
+    }
+    return false;
+  }
+
+  /**
+   * Avalia expressão de tabela. Erra alto para qualquer forma fora do subconjunto
+   * implementado — é o que impede um `FILTER` mal entendido de virar um conjunto de
+   * linhas plausível e errado.
+   */
+  evaluateTable(node: DaxNode, scope: EvalScope, onde: string): TableValue {
+    if (node.type === 'TableRef') return this.tableOf(node.name, scope);
+
+    if (node.type === 'Identifier') {
+      const v = scope.vars.get(normalizeName(node.name));
+      if (v !== undefined) {
+        if (isTableValue(v)) return v;
+        throw new DaxEvalError(`${onde}: a variável ${node.name} guarda valor escalar, não tabela.`);
+      }
+      if (this.model.table(node.name)) return this.tableOf(node.name, scope);
+      throw new DaxEvalError(`${onde}: ${node.name} não é tabela do modelo nem VAR em escopo.`);
+    }
+
+    if (node.type === 'Call') {
+      const fn = lookupTableFunction(node.name);
+      if (fn) return fn(node.args, scope, this, node.name.toUpperCase());
+      throw new DaxEvalError(
+        `${onde}: ${node.name.toUpperCase()} não devolve tabela ` +
+          `(linha ${node.pos.line}, coluna ${node.pos.col}).`,
+      );
+    }
+
+    throw new DaxEvalError(`${onde}: esperava expressão de tabela e recebeu nó ${node.type}.`);
+  }
+
+  /** A tabela do modelo como está no contexto de filtro corrente. */
+  tableOf(name: string, scope: EvalScope): TableValue {
+    const t = this.model.table(name);
+    if (!t) throw new DaxEvalError(`Tabela não existe no modelo: '${name}'`);
+    return makeTableValue(t.name, t.columns.map((c) => c.name), this.filterRows(scope, t.name));
+  }
+
+  /** Escalar ou tabela, conforme a forma do nó. Usado por `VAR`. */
+  evaluateAny(node: DaxNode, scope: EvalScope): ScopeValue {
+    return this.isTableExpression(node, scope)
+      ? this.evaluateTable(node, scope, 'VAR')
+      : this.evaluate(node, scope);
+  }
+
+  /** Liga as variáveis de um `VAR ... RETURN`. Escopo lexical acumulativo. */
+  private bindVars(
+    node: Extract<DaxNode, { type: 'VarBlock' }>,
+    scope: EvalScope,
+  ): Map<string, ScopeValue> {
+    const vars = new Map(scope.vars);
+    for (const v of node.vars) {
+      vars.set(normalizeName(v.name), this.evaluateAny(v.expr, this.scopeWithVars(scope, vars)));
+    }
+    return vars;
+  }
+
+  /**
+   * Transição de contexto: o contexto de linha vira contexto de filtro.
+   *
+   * É o que `CALCULATE` faz ao ser chamado dentro de um iterador ou de uma coluna
+   * calculada, e o que faz `AVERAGEX(VALUES('T'[C]), CALCULATE([Medida]))` calcular
+   * a medida **por valor de C** em vez de repetir o total geral.
+   *
+   * Filtra por **todas** as colunas presentes na linha, como o DAX faz — e não por
+   * uma chave, que o modelo pode não ter.
+   */
+  transitionRowContext(scope: EvalScope): FilteredContext {
+    let ctx = scope.filter;
+    for (const [tabela, row] of scope.rows) {
+      const columns = new Set(Object.keys(row));
+      if (columns.size === 0) continue;
+      const alvo = rowKey(row, columns);
+      ctx = ctx.with([
+        {
+          table: tabela,
+          columns,
+          origem: `transição de contexto de linha em '${tabela}'`,
+          keep: (r) => rowKey(r, columns) === alvo,
+        },
+      ]);
+    }
+    return ctx;
+  }
+
+  // -------------------------------------------------------------------------
   // Avaliação
   // -------------------------------------------------------------------------
 
@@ -307,8 +385,7 @@ export class Evaluator {
 
       case 'TableRef':
         throw new DaxEvalError(
-          `Tabela '${node.name}' usada onde se espera valor escalar ` +
-            `(linha ${node.pos.line}). Funções de tabela chegam no passo 6.`,
+          `Tabela '${node.name}' usada onde se espera valor escalar (linha ${node.pos.line}).`,
         );
 
       case 'Unary':
@@ -325,14 +402,8 @@ export class Evaluator {
           `Construtor de tabela { ... } fora de um IN (linha ${node.pos.line}).`,
         );
 
-      case 'VarBlock': {
-        // VAR é escopo lexical acumulativo: cada VAR vê as anteriores.
-        const vars = new Map(scope.vars);
-        for (const v of node.vars) {
-          vars.set(normalizeName(v.name), this.evaluate(v.expr, this.scopeWithVars(scope, vars)));
-        }
-        return this.evaluate(node.body, this.scopeWithVars(scope, vars));
-      }
+      case 'VarBlock':
+        return this.evaluate(node.body, this.scopeWithVars(scope, this.bindVars(node, scope)));
 
       case 'Call': {
         const fn = lookupFunction(node.name);
@@ -388,7 +459,7 @@ export class Evaluator {
     for (const [tabela, row] of scope.rows) {
       if (this.model.column(tabela, name)) return this.columnValue(tabela, name, row);
     }
-    if (this.model.measure(name)) return this.measure(name);
+    if (this.model.measure(name)) return this.measureInScope(name, scope);
     throw new DaxEvalError(
       `[${name}] não resolve: não é medida do modelo nem coluna de tabela em contexto de linha.`,
     );
@@ -396,16 +467,52 @@ export class Evaluator {
 
   private resolveIdentifier(name: string, scope: EvalScope): DaxValue {
     const key = normalizeName(name);
-    if (scope.vars.has(key)) return scope.vars.get(key)!;
+    if (scope.vars.has(key)) {
+      const v = scope.vars.get(key)!;
+      if (isTableValue(v)) {
+        throw new DaxEvalError(
+          `A variável ${name} guarda uma tabela e está sendo usada como valor escalar.`,
+        );
+      }
+      return v;
+    }
     if (this.model.table(name)) {
-      throw new DaxEvalError(
-        `Tabela ${name} usada onde se espera valor escalar. Funções de tabela chegam no passo 6.`,
-      );
+      throw new DaxEvalError(`Tabela ${name} usada onde se espera valor escalar.`);
     }
     throw new DaxEvalError(
       `Identificador não resolve: ${name}. Não é VAR em escopo nem tabela do modelo. ` +
         `Se é palavra-chave de função (ASC, DENSE, DAY...), a função que a recebe não a tratou.`,
     );
+  }
+
+  /**
+   * Avalia uma medida **no contexto corrente**, com a transição de contexto que o
+   * DAX aplica: referência a medida vem embrulhada num `CALCULATE` implícito.
+   *
+   * Consequência prática, e é ela que faz a regra valer a pena: dentro de
+   * `AVERAGEX(VALUES('T'[C]), [Medida])` a medida é calculada **por valor de C**.
+   * Sem a transição, ela devolveria o total geral em toda linha e a média sairia
+   * igual ao total — errado de um jeito que parece plausível.
+   */
+  measureInScope(name: string, scope: EvalScope): DaxValue {
+    const m = this.model.measure(name);
+    if (!m) throw new DaxEvalError(`Medida não existe no modelo: [${name}]`);
+
+    const key = normalizeName(name);
+    if (this.measureStack.includes(key)) {
+      throw new DaxEvalError(
+        `Ciclo entre medidas: ${[...this.measureStack, key].map((k) => `[${k}]`).join(' -> ')}`,
+      );
+    }
+    this.measureStack.push(key);
+    try {
+      return this.evaluate(
+        this.ast(m.dax),
+        this.scopeWithFilter(scope, this.transitionRowContext(scope)),
+      );
+    } finally {
+      this.measureStack.pop();
+    }
   }
 
   private evalUnary(node: Extract<DaxNode, { type: 'Unary' }>, scope: EvalScope): DaxValue {
@@ -483,9 +590,17 @@ export class Evaluator {
       return false;
     }
 
-    throw new DaxEvalError(
-      `${onde}: à direita do IN só há suporte para { ... } por ora. ` +
-        `Expressão de tabela chega no passo 6.`,
-    );
+    // `expr IN <tabela>` — a tabela tem de ter uma coluna só, como no DAX.
+    const tabela = this.evaluateTable(node.source, scope, onde);
+    if (tabela.columns.size !== 1) {
+      throw new DaxEvalError(
+        `${onde}: a tabela à direita tem ${tabela.columns.size} colunas; IN escalar exige 1.`,
+      );
+    }
+    const coluna = [...tabela.columns][0]!;
+    for (const row of tabela.rows) {
+      if (compareValues(alvo, row[coluna] ?? BLANK, false, onde) === 0) return true;
+    }
+    return false;
   }
 }

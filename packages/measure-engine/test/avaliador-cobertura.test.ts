@@ -6,7 +6,7 @@
 // sintéticos, então o número que sai não é o número do Power BI. Paridade exige
 // dado real e é a etapa adiada (ver specs/golden/README.md).
 //
-// A distinção importa porque "o avaliador roda 59 expressões" e "59 expressões
+// A distinção importa porque "o avaliador roda 107 expressões" e "107 expressões
 // batem com o relatório" são afirmações muito diferentes, e confundir as duas é
 // como um projeto de migração se declara pronto sem estar.
 
@@ -19,7 +19,7 @@ import type { ModelTable } from '../../semantic-model/src/types.ts';
 import { walk } from '../src/ast.ts';
 import { Dataset, type Row } from '../src/dataset.ts';
 import { Evaluator } from '../src/evaluator.ts';
-import { lookupFunction } from '../src/functions.ts';
+import { lookupFunction, lookupTableFunction } from '../src/functions.ts';
 import { parseDax } from '../src/parser.ts';
 import { type DaxValue, makeDate } from '../src/value.ts';
 
@@ -130,7 +130,9 @@ function funcoesQueFaltam(dax: string, model: SemanticModel, visitadas = new Set
   const dependencias: (() => string | null)[] = [];
 
   walk(parseDax(dax), (n) => {
-    if (n.type === 'Call' && !lookupFunction(n.name)) faltam.add(n.name.toUpperCase());
+    if (n.type === 'Call' && !lookupFunction(n.name) && !lookupTableFunction(n.name)) {
+      faltam.add(n.name.toUpperCase());
+    }
     if (n.type === 'NameRef') {
       dependencias.push(() => (`m:${n.name.toLowerCase()}`));
     }
@@ -163,10 +165,10 @@ function funcoesQueFaltam(dax: string, model: SemanticModel, visitadas = new Set
 // ---------------------------------------------------------------------------
 
 /** Dentro do implementado, contando dependências. Travado: se mudar, é informação. */
-const NO_ESCOPO = 60;
+const NO_ESCOPO = 110;
 
 /** Executam de fato. A diferença com `NO_ESCOPO` é explicada pelo teste abaixo. */
-const EXECUTAM = 59;
+const EXECUTAM = 107;
 
 function noEscopo(model: SemanticModel): Expressao[] {
   return todasAsExpressoes(model).filter((e) => funcoesQueFaltam(e.dax, model).length === 0);
@@ -174,18 +176,19 @@ function noEscopo(model: SemanticModel): Expressao[] {
 
 test(`${NO_ESCOPO} das 127 expressões estão inteiramente dentro do implementado`, () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
-  assert.equal(noEscopo(model).length, NO_ESCOPO, 'escopo do passo 1: escalares + agregação simples');
+  assert.equal(noEscopo(model).length, NO_ESCOPO, 'escalares, agregação e contexto de filtro');
 });
 
 /**
- * O que falta, ordenado por quantas expressões cada função destrava.
+ * O que falta, ordenado por quantas expressões cada função destrava. Contado
+ * transitivamente, seguindo medidas e colunas calculadas.
  *
- * Serve para a ordem dos passos seguintes não ser palpite: `CALCULATE` está no
- * caminho de 56 das 127 expressões, e é por isso que contexto de filtro é o
- * passo 2 e não o passo 5. Contado transitivamente — `[Porcentagem]` só mostra
- * `DIVIDE`, mas depende de CALCULATE por uma medida.
+ * Serve para a ordem dos passos não ser palpite. Quando `CALCULATE` faltava, ele
+ * liderava com 56 e por isso foi feito primeiro; agora o que sobrou é *time
+ * intelligence* e funções de conjunto, cada uma com peso pequeno — o que significa
+ * que não há mais um bloqueio único e vale fazer por bloco temático.
  */
-test('o que falta é liderado por CALCULATE — daí a ordem dos próximos passos', () => {
+test('o que falta agora são time intelligence e funções de conjunto, sem bloqueio único', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const bloqueios = new Map<string, number>();
   for (const e of todasAsExpressoes(model)) {
@@ -193,11 +196,15 @@ test('o que falta é liderado por CALCULATE — daí a ordem dos próximos passo
   }
   const ranking = [...bloqueios.entries()].sort((a, b) => b[1] - a[1]);
   assert.deepEqual(ranking.slice(0, 4), [
-    ['CALCULATE', 56],
-    ['FILTER', 21],
-    ['LOOKUPVALUE', 11],
-    ['SELECTEDVALUE', 9],
+    ['DATESBETWEEN', 7],
+    ['SELECTCOLUMNS', 7],
+    ['RANKX', 5],
+    ['ENDOFMONTH', 2],
   ]);
+  assert.ok(
+    ranking[0]![1] < 10,
+    `ainda há bloqueio grande: ${ranking[0]![0]} em ${ranking[0]![1]} expressões`,
+  );
 });
 
 /** Roda cada expressão do escopo e devolve o que passou e o que falhou. */
@@ -235,19 +242,34 @@ test(`o avaliador executa ${EXECUTAM} expressões reais de ponta a ponta`, () =>
 });
 
 /**
- * A única expressão do escopo que não executa, e ela deve continuar não
- * executando: é uma das 3 medidas mortas do achado 6, que somam uma tabela
- * `CAPACIDADE INSTALAÇÃO` que não existe no modelo.
+ * As únicas 3 que não executam são exatamente as 3 medidas mortas do achado 6, e
+ * elas devem continuar não executando: apontam para as tabelas `GESTORES` e
+ * `CAPACIDADE INSTALAÇÃO`, que não existem no modelo.
  *
- * Vale como confirmação independente do achado: o `validate:model` chegou nele
- * lendo referências, o avaliador chega tentando calcular. Se algum dia esta
- * medida passar a executar, ou a tabela voltou ou alguém a "consertou" sem
- * decisão — e a decisão vigente é replicar fielmente.
+ * Vale como confirmação **independente** do achado: o `validate:model` chegou nele
+ * lendo referências de texto; o avaliador chega tentando calcular. Dois caminhos
+ * diferentes, mesma lista de três.
+ *
+ * Se alguma passar a executar, ou a tabela voltou ao modelo ou alguém "consertou"
+ * a medida sem decisão — e a decisão vigente é replicar fielmente.
  */
-test('a única que não executa é medida morta do achado 6, e o erro diz exatamente isso', () => {
+test('as 3 que não executam são as 3 medidas mortas do achado 6, cada uma com seu motivo', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { falhas } = executar(model);
-  assert.equal(falhas.length, 1);
-  assert.equal(falhas[0]!.nome, 'PROTOCOLOS GERAL[# AA MÉDIA EQUIPES]');
-  assert.match(falhas[0]!.erro, /CAPACIDADE INSTALAÇÃO.*não está no dataset/);
+
+  assert.deepEqual(
+    falhas.map((f) => f.nome).sort(),
+    [
+      'PROTOCOLOS GERAL[# AA MÉDIA EQUIPES]',
+      'PROTOCOLOS GERAL[# AA MÉDIA GERAL]',
+      'PROTOCOLOS GERAL[# AA TOTAL EQUIPES]',
+    ],
+  );
+  for (const f of falhas) {
+    assert.match(
+      f.erro,
+      /CAPACIDADE INSTALAÇÃO|gestores/i,
+      `${f.nome} falhou por outro motivo: ${f.erro}`,
+    );
+  }
 });

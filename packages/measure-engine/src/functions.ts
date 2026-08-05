@@ -9,8 +9,15 @@
 // avaliador erra alto dizendo o nome da função. Este arquivo é, portanto, a
 // declaração honesta do escopo do avaliador.
 
-import type { DaxNode } from './ast.ts';
+import { walk, type DaxNode } from './ast.ts';
 import type { EvalScope, Evaluator } from './evaluator.ts';
+import {
+  type TableFilter,
+  type TableValue,
+  filterFromTable,
+  makeTableValue,
+  rowKey,
+} from './filter.ts';
 import {
   BLANK,
   DaxEvalError,
@@ -165,17 +172,7 @@ def('DISTINCTCOUNT', (args, scope, ev, nome) => {
  */
 def('COUNTROWS', (args, scope, ev, nome) => {
   exigeArgs(args, 1, 1, nome);
-  const n = args[0]!;
-  const tabela =
-    n.type === 'TableRef' ? n.name : n.type === 'Identifier' && ev.model.table(n.name) ? n.name : null;
-  if (tabela === null) {
-    throw new DaxEvalError(
-      `${nome}: esperava tabela do modelo e recebeu ${n.type}` +
-        (n.type === 'Identifier' ? ` (${n.name})` : '') +
-        `. Expressão de tabela (FILTER, VALUES, VAR de tabela) chega nos passos 2 e 6.`,
-    );
-  }
-  const linhas = ev.filterRows(scope, tabela).length;
+  const linhas = ev.evaluateTable(args[0]!, scope, nome).rows.length;
   return linhas === 0 ? BLANK : linhas;
 });
 
@@ -534,7 +531,352 @@ export function lookupFunction(nome: string): DaxFunction | undefined {
   return FUNCOES.get(nome.toUpperCase());
 }
 
+// ---------------------------------------------------------------------------
+// Contexto de filtro
+// ---------------------------------------------------------------------------
+
+/** Funções que devolvem tabela. Registro separado: o avaliador chama por outro caminho. */
+export type TableFunction = (
+  args: DaxNode[],
+  scope: EvalScope,
+  ev: Evaluator,
+  nome: string,
+) => TableValue;
+
+const TABELAS = new Map<string, TableFunction>();
+
+function defTable(nome: string, fn: TableFunction): void {
+  TABELAS.set(nome, fn);
+}
+
+/**
+ * As colunas que uma expressão booleana de filtro restringe, e de qual tabela.
+ *
+ * Um filtro booleano do `CALCULATE` tem de referenciar colunas de **uma só**
+ * tabela — é regra do DAX, e recusar aqui é melhor que escolher uma das tabelas.
+ * O DAX real escreve tanto `'T'[C] = "x"` quanto `YEAR('T'[C]) = YEAR(TODAY())`;
+ * as duas formas têm a coluna embrulhada em função, então é o AST que responde
+ * quais colunas estão em jogo, não o formato da expressão.
+ */
+function colunasDoFiltro(node: DaxNode, nome: string): { table: string; columns: Set<string> } {
+  const porTabela = new Map<string, Set<string>>();
+  walk(node, (n) => {
+    if (n.type !== 'ColumnRef') return;
+    const t = n.table.toLowerCase();
+    if (!porTabela.has(t)) porTabela.set(t, new Set());
+    porTabela.get(t)!.add(n.column.toLowerCase());
+  });
+
+  if (porTabela.size === 0) {
+    throw new DaxEvalError(
+      `${nome}: filtro booleano sem referência a coluna nenhuma. ` +
+        `Em DAX o filtro precisa dizer qual coluna restringe.`,
+    );
+  }
+  if (porTabela.size > 1) {
+    throw new DaxEvalError(
+      `${nome}: filtro booleano referencia colunas de ${porTabela.size} tabelas ` +
+        `(${[...porTabela.keys()].join(', ')}). DAX exige uma só.`,
+    );
+  }
+  const [table, columns] = [...porTabela.entries()][0]!;
+  return { table, columns };
+}
+
+/**
+ * Converte um argumento de filtro do `CALCULATE` em `TableFilter`.
+ *
+ * Dois casos, e só dois: expressão booleana ou expressão de tabela. Qualquer
+ * outra coisa erra alto.
+ */
+function filtroDe(node: DaxNode, scope: EvalScope, ev: Evaluator, nome: string): TableFilter {
+  if (ev.isTableExpression(node, scope)) {
+    return filterFromTable(ev.evaluateTable(node, scope, nome), `${nome}: expressão de tabela`);
+  }
+
+  const { table, columns } = colunasDoFiltro(node, nome);
+  const modelo = ev.model.table(table);
+  if (!modelo) throw new DaxEvalError(`${nome}: tabela '${table}' não existe no modelo.`);
+
+  // O filtro booleano é avaliado sobre a tabela SEM os filtros que ele próprio
+  // substitui — é o que faz CALCULATE([x], 'T'[Ano] = 2026) devolver 2026 mesmo
+  // dentro de um contexto já filtrado em 2025, em vez de vazio.
+  const semConflito = scope.filter.without(
+    (f) => f.table === table && (f.columns.size === 0 || [...columns].some((c) => f.columns.has(c))),
+  );
+  const escopoDoFiltro: EvalScope = { filter: semConflito, rows: new Map(), vars: scope.vars };
+
+  return {
+    table,
+    columns,
+    origem: `${nome}: filtro booleano`,
+    keep: (row) =>
+      toBoolean(ev.evaluate(node, ev.scopeWithRow(escopoDoFiltro, modelo.name, row)), nome),
+  };
+}
+
+/**
+ * `CALCULATE(expr, filtro1, filtro2, ...)`.
+ *
+ * Duas coisas acontecem, e as duas importam:
+ *
+ * 1. Os filtros **substituem** os filtros existentes sobre as mesmas colunas, em
+ *    vez de somar. Ver `FilteredContext.with`.
+ * 2. O contexto de linha vira contexto de filtro (transição de contexto) e é
+ *    apagado. É por isso que `CALCULATE` com um único argumento não é inútil: numa
+ *    coluna calculada ou dentro de um iterador, ele muda o resultado. A base tem 5
+ *    chamadas de um argumento só.
+ */
+def('CALCULATE', (args, scope, ev, nome) => {
+  if (args.length === 0) throw new DaxEvalError(`${nome}: esperava ao menos 1 argumento.`);
+  return ev.evaluate(args[0]!, contextoDeCalculate(args, scope, ev, nome));
+});
+
+function contextoDeCalculate(
+  args: DaxNode[],
+  scope: EvalScope,
+  ev: Evaluator,
+  nome: string,
+): EvalScope {
+  const transicionado = ev.scopeWithFilter(scope, ev.transitionRowContext(scope));
+  const novos = args.slice(1).map((a) => filtroDe(a, scope, ev, nome));
+  return ev.scopeWithFilter(transicionado, transicionado.filter.with(novos));
+}
+
+/** `CALCULATETABLE` é o `CALCULATE` que devolve tabela. Mesma semântica de filtro. */
+defTable('CALCULATETABLE', (args, scope, ev, nome) => {
+  if (args.length === 0) throw new DaxEvalError(`${nome}: esperava ao menos 1 argumento.`);
+  return ev.evaluateTable(args[0]!, contextoDeCalculate(args, scope, ev, nome), nome);
+});
+
+/**
+ * `FILTER(tabela, condição)` — itera a tabela **no contexto corrente** e mantém as
+ * linhas em que a condição é verdadeira. Diferente do filtro booleano de
+ * `CALCULATE`, não substitui nada: soma ao que já havia.
+ */
+defTable('FILTER', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 2, nome);
+  const origem = ev.evaluateTable(args[0]!, scope, nome);
+  const modelo = ev.model.table(origem.table);
+  const rotulo = modelo?.name ?? origem.table;
+  const rows = origem.rows.filter((row) =>
+    toBoolean(ev.evaluate(args[1]!, ev.scopeWithRow(scope, rotulo, row)), nome),
+  );
+  return makeTableValue(origem.table, origem.columns, rows);
+});
+
+/**
+ * `ALL('T'[C])` — todos os valores de `C`, ignorando o contexto de filtro.
+ *
+ * Não há tratamento especial de "remover filtro": como argumento de `CALCULATE`
+ * ele vira um filtro que aceita todo valor de `C`, e substituir o filtro anterior
+ * por "aceita tudo" **é** remover o filtro. Ver `filterFromTable`.
+ */
+defTable('ALL', (args, scope, ev, nome) => {
+  exigeArgs(args, 1, 1, nome);
+  const n = args[0]!;
+  if (n.type === 'ColumnRef') {
+    const semFiltro: EvalScope = {
+      filter: scope.filter.without((f) => f.table === n.table.toLowerCase()),
+      rows: new Map(),
+      vars: scope.vars,
+    };
+    return distintosDaColuna(n, semFiltro, ev, nome);
+  }
+  if (n.type === 'TableRef' || n.type === 'Identifier') {
+    const t = ev.model.table(n.type === 'TableRef' ? n.name : n.name);
+    if (!t) throw new DaxEvalError(`${nome}: '${n.name}' não é tabela do modelo.`);
+    return makeTableValue(t.name, t.columns.map((c) => c.name), ev.dataset.rows(t.name));
+  }
+  throw new DaxEvalError(`${nome}: esperava coluna ou tabela e recebeu nó ${n.type}.`);
+});
+
+/** Linhas de uma coluna, distintas, como tabela de uma coluna. */
+function distintosDaColuna(
+  n: Extract<DaxNode, { type: 'ColumnRef' }>,
+  scope: EvalScope,
+  ev: Evaluator,
+  nome: string,
+): TableValue {
+  const chave = n.column.toLowerCase();
+  const vistas = new Set<string>();
+  const rows = [];
+  for (const v of ev.valuesOfColumnRef(n, scope, nome)) {
+    const row = { [chave]: v };
+    const k = rowKey(row, [chave]);
+    if (vistas.has(k)) continue;
+    vistas.add(k);
+    rows.push(row);
+  }
+  return makeTableValue(n.table, [chave], rows);
+}
+
+/**
+ * `VALUES('T'[C])` e `DISTINCT('T'[C])` — valores distintos de `C` no contexto.
+ *
+ * A diferença entre as duas no DAX é o "blank extra" que `VALUES` acrescenta
+ * quando há violação de integridade referencial num relacionamento. Sem
+ * relacionamentos avaliados ainda (passo seguinte), as duas coincidem — e isso
+ * fica registrado aqui em vez de virar surpresa depois.
+ */
+defTable('VALUES', (args, scope, ev, nome) => {
+  exigeArgs(args, 1, 1, nome);
+  const n = args[0]!;
+  if (n.type !== 'ColumnRef') {
+    throw new DaxEvalError(`${nome}: só há suporte para VALUES de coluna; recebeu ${n.type}.`);
+  }
+  return distintosDaColuna(n, scope, ev, nome);
+});
+
+defTable('DISTINCT', (args, scope, ev, nome) => {
+  exigeArgs(args, 1, 1, nome);
+  const n = args[0]!;
+  if (n.type !== 'ColumnRef') {
+    throw new DaxEvalError(`${nome}: só há suporte para DISTINCT de coluna; recebeu ${n.type}.`);
+  }
+  return distintosDaColuna(n, scope, ev, nome);
+});
+
+/**
+ * `TREATAS(tabela, 'Destino'[Coluna])` — usa os valores de uma tabela como filtro
+ * de outra coluna, sem relacionamento entre elas.
+ *
+ * A base usa isso para cruzar `FIELD AGENDA` com `PROTOCOLOS GERAL` por número de
+ * protocolo. O resultado é a mesma lista de valores, apontada para a coluna de
+ * destino — daí ser só uma troca de rótulo.
+ */
+defTable('TREATAS', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 2, nome);
+  const origem = ev.evaluateTable(args[0]!, scope, nome);
+  const destino = args[1]!;
+  if (destino.type !== 'ColumnRef') {
+    throw new DaxEvalError(`${nome}: o destino tem de ser uma coluna; recebeu ${destino.type}.`);
+  }
+  if (origem.columns.size !== 1) {
+    throw new DaxEvalError(
+      `${nome}: a tabela de origem tem ${origem.columns.size} colunas; para uma coluna de ` +
+        `destino é preciso exatamente 1.`,
+    );
+  }
+  const de = [...origem.columns][0]!;
+  const para = destino.column.toLowerCase();
+  return makeTableValue(
+    destino.table,
+    [para],
+    origem.rows.map((r) => ({ [para]: r[de] ?? BLANK })),
+  );
+});
+
+/**
+ * `SELECTEDVALUE('T'[C], [alternativo])` — o valor de `C` se o contexto deixou
+ * exatamente um; senão o alternativo (BLANK por omissão).
+ *
+ * Devolver o primeiro valor quando há vários seria o erro clássico: o número sai
+ * plausível e depende da ordem das linhas.
+ */
+def('SELECTEDVALUE', (args, scope, ev, nome) => {
+  exigeArgs(args, 1, 2, nome);
+  const n = args[0]!;
+  if (n.type !== 'ColumnRef') {
+    throw new DaxEvalError(`${nome}: esperava coluna e recebeu ${n.type}.`);
+  }
+  const distintos = distintosDaColuna(n, scope, ev, nome);
+  if (distintos.rows.length === 1) {
+    return distintos.rows[0]![n.column.toLowerCase()] ?? BLANK;
+  }
+  const alt = presente(args, 1);
+  return alt ? ev.evaluate(alt, scope) : BLANK;
+});
+
+/**
+ * `LOOKUPVALUE('R'[Result], 'B'[Busca], <valor>, ...)` — procura a linha em que
+ * `Busca = valor` e devolve `Result`.
+ *
+ * BLANK quando não acha; **erro** quando acha valores de resultado diferentes. O
+ * DAX também erra nesse caso, e é o comportamento certo: `CALENDARIO
+ * INSTALADO[PESO]` usa esta função para saber se a data é feriado, e devolver
+ * silenciosamente um dos resultados mudaria o peso do dia.
+ *
+ * Ignora o contexto de filtro, como no DAX — a busca é sobre a tabela toda.
+ */
+def('LOOKUPVALUE', (args, scope, ev, nome) => {
+  if (args.length < 3 || args.length % 2 === 0) {
+    throw new DaxEvalError(
+      `${nome}: esperava resultado + pares (coluna, valor); recebeu ${args.length} argumentos.`,
+    );
+  }
+  const resultado = args[0]!;
+  if (resultado.type !== 'ColumnRef') {
+    throw new DaxEvalError(`${nome}: o primeiro argumento tem de ser coluna; veio ${resultado.type}.`);
+  }
+
+  const pares: { coluna: string; valor: DaxValue }[] = [];
+  for (let i = 1; i < args.length; i += 2) {
+    const col = args[i]!;
+    if (col.type !== 'ColumnRef') {
+      throw new DaxEvalError(`${nome}: argumento ${i + 1} tem de ser coluna; veio ${col.type}.`);
+    }
+    if (col.table.toLowerCase() !== resultado.table.toLowerCase()) {
+      throw new DaxEvalError(
+        `${nome}: a coluna de busca é de '${col.table}' e o resultado de ` +
+          `'${resultado.table}'. LOOKUPVALUE procura numa tabela só.`,
+      );
+    }
+    pares.push({ coluna: col.column, valor: valor(args, i + 1, scope, ev, nome) });
+  }
+
+  const encontrados = new Map<string, DaxValue>();
+  for (const row of ev.dataset.rows(resultado.table)) {
+    let casa = true;
+    for (const p of pares) {
+      if (compareValues(ev.columnValue(resultado.table, p.coluna, row), p.valor, false, nome) !== 0) {
+        casa = false;
+        break;
+      }
+    }
+    if (!casa) continue;
+    const v = ev.columnValue(resultado.table, resultado.column, row);
+    encontrados.set(identityKey(v), v);
+  }
+
+  if (encontrados.size === 0) return BLANK;
+  if (encontrados.size > 1) {
+    throw new DaxEvalError(
+      `${nome}: a busca casou ${encontrados.size} valores diferentes de ` +
+        `'${resultado.table}'[${resultado.column}]. Em DAX isso é erro, não "escolhe um".`,
+    );
+  }
+  return [...encontrados.values()][0]!;
+});
+
+/**
+ * `AVERAGEX(tabela, expressão)` — média da expressão avaliada linha a linha.
+ *
+ * Média de nada é BLANK, e linha cuja expressão dá BLANK **não entra na média** —
+ * não conta como zero. Contar BLANK como zero derrubaria a média sem erro nenhum.
+ */
+def('AVERAGEX', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 2, nome);
+  const tabela = ev.evaluateTable(args[0]!, scope, nome);
+  const rotulo = ev.model.table(tabela.table)?.name ?? tabela.table;
+  let soma = 0;
+  let n = 0;
+  for (const row of tabela.rows) {
+    const v = ev.evaluate(args[1]!, ev.scopeWithRow(scope, rotulo, row));
+    if (isBlank(v)) continue;
+    soma += toNumber(v, nome);
+    n++;
+  }
+  return n === 0 ? BLANK : soma / n;
+});
+
+// ---------------------------------------------------------------------------
+
 /** Nomes implementados. O teste de escopo compara isto com o que a base usa. */
 export function implementedFunctions(): string[] {
-  return [...FUNCOES.keys()].sort();
+  return [...new Set([...FUNCOES.keys(), ...TABELAS.keys()])].sort();
+}
+
+export function lookupTableFunction(nome: string): TableFunction | undefined {
+  return TABELAS.get(nome.toUpperCase());
 }
