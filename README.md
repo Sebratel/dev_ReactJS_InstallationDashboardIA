@@ -16,12 +16,13 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.2 | Avaliador: escalares e agregação | ✅ |
 | 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL`, `TREATAS` | ✅ |
 | 2b.4 | Time intelligence, conjuntos, `RANKX` — **74 das 78 medidas executam** | ✅ |
-| 2b.5 | Relacionamentos + paridade contra dado real | ⏳ próximo |
+| 2b.5 | Propagação de filtro por relacionamento — **22 medidas dependiam dela** | ✅ |
+| 2b.6 | Paridade contra dado real (conferência dos `rowCount`) | ⏳ próximo |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**283 testes verdes.** Nenhum deles precisa de credencial.
+**298 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -67,14 +68,15 @@ Duas implementações independentes concordam sobre as referências de todas as 
 expressões (o scanner por caractere do `semantic-model` e o parser com gramática),
 o que é evidência de que nenhuma das duas está lendo o DAX errado.
 
-**Avaliador (2b.2 a 2b.4).** **Todas as 54 funções DAX que a base usa** estão
+**Avaliador (2b.2 a 2b.5).** **Todas as 54 funções DAX que a base usa** estão
 implementadas — há teste que falha e diz qual, se o PBIP passar a usar uma nova.
 Inclui contexto de filtro (`CALCULATE`, `FILTER`, `ALL`, `TREATAS`,
 `LOOKUPVALUE`, `SELECTEDVALUE`), *time intelligence* (`DATESBETWEEN`, `DATESMTD`,
 `ENDOFMONTH`, `STARTOFMONTH`), conjuntos (`INTERSECT`, `EXCEPT`, `UNION`,
 `SELECTCOLUMNS`, `DISTINCT`), `RANKX`, `AVERAGEX`, colunas calculadas em contexto
 de linha, `VAR` (inclusive guardando tabela), dependência entre medidas com
-detecção de ciclo e a hierarquia automática de datas (`[Data].[Dia]`).
+detecção de ciclo, a hierarquia automática de datas (`[Data].[Dia]`) e a
+propagação de filtro pelos **21 relacionamentos ativos** do modelo.
 
 Quatro níveis de cobertura, porque medem coisas diferentes:
 
@@ -88,6 +90,13 @@ Quatro níveis de cobertura, porque medem coisas diferentes:
 A última linha é a que importa para migrar, e ela ainda não foi feita: os testes
 rodam sobre dados sintéticos, então provam que o avaliador *funciona*, não que o
 número é o mesmo do relatório. Paridade depende da conferência dos `rowCount`.
+
+A fase 2b.5 deu uma medida de **o quanto dado sintético não prova**. Das 22 medidas
+que dependem de propagação por relacionamento, o dataset sintético consegue mostrar
+**uma** mudando de valor quando a propagação é desligada — porque quatro linhas por
+tabela com valores uniformes fazem quase todo filtro aceitar tudo. As outras 21 só
+aparecem com dado real. Há teste fixando os dois números justamente para que a
+distância entre eles fique visível.
 
 As 4 que não executam têm cada uma seu motivo, e há teste exigindo que continuem
 falhando. Três são as medidas mortas do achado 6 — e isso é confirmação
@@ -103,6 +112,37 @@ pedido de fora é descartado. Se os filtros se intersectassem, daria vazio, e va
 num cartão parece "sem dados" em vez de erro. Está travado por teste em
 `test/filter.test.ts`, junto com `ALL` (que é o mesmo mecanismo: substituir o
 filtro por "aceita tudo") e a transição de contexto.
+
+**Propagação por relacionamento (2b.5), e a maior fonte de erro silencioso que o
+avaliador teve.** `Contagem Solicitacao 2026` é
+`CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(2026,1,1))`.
+Até a fase 2b.4 ela **rodava** e devolvia a contagem de todos os anos: o filtro
+pousava em `CALENDARIO INSTALADO` e nada atravessava para `PROTOCOLOS GERAL`. Sem
+erro, sem aviso, com cara de total de 2026.
+
+São **22 das 78 medidas** que citam mais de uma tabela sem usar `TREATAS` — todas
+dependiam disso, e há teste travando o número. O filtro anda do lado *one* para o
+lado *many*, nos dois sentidos com `cross_filter: bothDirections`, e é **recursivo**
+porque nesta base ele anda dois saltos de verdade (`calendar` → `Status Protocolo
+Dia` → `FIELD AGENDA`).
+
+Três decisões que a implementação exigiu:
+
+- **A coluna de junção pode ser calculada — e cinco são.** Entre elas
+  `'PROTOCOLOS GERAL'[DATA INSTALAÇÃO]`, que é justamente a do caso acima e escolhe
+  entre três colunas de data conforme o tipo do protocolo. Ler a linha crua devolve
+  vazio e a junção não casa nada, calada. Por isso o contexto de filtro recebe do
+  avaliador a função que resolve coluna.
+- **Origem que não está restringida não restringe ninguém.** Sem essa regra
+  propagar viraria `INNER JOIN` e sumiria com as linhas do lado *many* que não casam
+  — que no Power BI continuam visíveis. É também o que mantém `ALL` funcionando.
+- **Não voltar pelo mesmo relacionamento; caminho ambíguo é erro.** A primeira regra
+  é do DAX e é o que impede `bothDirections` de virar laço. A segunda: se duas
+  tabelas se ligam por dois caminhos distintos, o avaliador se recusa a escolher um
+  — o Power BI recusa esse modelo, e inventar um número aqui seria pior.
+
+Junção entre tipos diferentes (data de um lado, texto `DD/MM/YYYY` do outro) **erra
+alto**, porque ela nunca casa e o resultado sairia zero com cara de filtro apertado.
 
 **Princípio: falhar alto.** Função não suportada, construção não reconhecida,
 referência que não resolve, texto onde se espera número → erro com linha e coluna,
@@ -155,7 +195,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (283 testes, sem credencial)
+npm test                              # suíte completa (298 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # valida configuração e conectividade

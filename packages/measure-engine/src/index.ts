@@ -19,6 +19,13 @@ export {
   type TableValue,
 } from './filter.ts';
 export {
+  NO_PROPAGATION,
+  buildPropagation,
+  describeEdge,
+  type Propagation,
+  type PropagationEdge,
+} from './propagation.ts';
+export {
   implementedFunctions,
   lookupFunction,
   lookupTableFunction,

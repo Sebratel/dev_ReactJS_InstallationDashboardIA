@@ -495,3 +495,40 @@ do que o comentário do autor pede. Número plausível e errado, sem erro nenhum
 **Consequência:** o avaliador entrega **74 das 78** medidas em vez de 75. A que falta
 não precisa de mais DAX; precisa da Fase 3. Há teste fixando isso, para que a
 diferença não seja lida como regressão.
+
+---
+
+## 13. Um relacionamento existe no modelo e não pode ser usado por nada
+
+Dos 22 relacionamentos, um está marcado `active: false`:
+
+| | |
+|---|---|
+| De | `PROTOCOLOS PRODUTIVIDADE[SOLICITACAO]` (many) |
+| Para | `PROTOCOLOS GERAL[SOLICITACAO]` (one) |
+| `active` | `false` |
+| `cross_filter` | `oneDirection` |
+
+Relacionamento inativo no Power BI só entra em jogo dentro de `USERELATIONSHIP`. E
+**`USERELATIONSHIP` não aparece em nenhuma das 127 expressões** — conferido por
+varredura no catálogo, junto com `RELATED`, `ALLEXCEPT` e `CROSSFILTER`, que também
+não aparecem.
+
+Ou seja: ele está desenhado no modelo, é mantido pelo refresh, e não afeta número
+nenhum. É parente dos outros trechos mortos já registrados — as 3 medidas do achado 6,
+a `TOTAL_DIAS` do achado 10 e o `CALENDARIO CRIADO[PESO]` do achado 7.
+
+**O que isso muda para a plataforma:** nada, e é por isso que está aqui. Tratá-lo como
+ativo mudaria números de verdade, porque ele ligaria `PROTOCOLOS PRODUTIVIDADE` a
+`PROTOCOLOS GERAL` — duas tabelas grandes que hoje não se filtram. O avaliador o
+mantém fora do grafo de propagação, com teste.
+
+**Não vale uma pergunta própria ao Fabrício** — pelo mesmo critério que deixou o
+`CALENDARIO CRIADO[PESO]` fora: não afeta número em tela. Entrou como um parágrafo na
+pergunta 2, que já é sobre limpeza de resto de painel antigo, em
+[PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md).
+
+A hipótese mais provável é que ele tenha sido desativado por criar **caminho
+ambíguo**: `PROTOCOLOS PRODUTIVIDADE` e `PROTOCOLOS GERAL` já se ligam indiretamente
+por `CALENDARIO INSTALADO`, e o Power BI recusa dois caminhos entre as mesmas tabelas.
+Se for isso, ele pode ser apagado do modelo sem consequência.

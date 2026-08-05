@@ -66,7 +66,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**283 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**298 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -80,7 +80,8 @@ Nenhum teste precisa de credencial ou banco.
 | 2b.2 | Avaliador: escalares e agregação | ✅ |
 | 2b.3 | Contexto de filtro (`CALCULATE`, `FILTER`, `ALL`, `TREATAS`) | ✅ |
 | 2b.4 | Time intelligence, conjuntos, `RANKX` — 74 das 78 medidas executam | ✅ |
-| 2b.5 | Relacionamentos + paridade contra dado real | ⏳ **próximo** |
+| 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
+| 2b.6 | Paridade contra dado real (conferência dos `rowCount`) | ⏳ **próximo** |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -350,24 +351,50 @@ Escolhas de projeto desta etapa, todas com teste:
   `DATEVALUE([Slot Agenda])`, `Slot Agenda` tem hora, e o `RANKX` compara com uma
   lista feita de `TRUNC`. Mantendo a hora nada casaria e o rank sairia BLANK.
 
-### 2b.5 — relacionamentos e paridade: PRÓXIMO
+### 2b.5 — propagação de filtro por relacionamento: PRONTO
 
-Duas coisas, e a segunda é a que fecha a Fase 2.
+**Era a maior fonte de erro silencioso do avaliador.** `Contagem Solicitacao 2026`
+filtra `CALENDARIO INSTALADO` e conta `PROTOCOLOS GERAL`. Até a 2b.4 ela **rodava** e
+devolvia a contagem de todos os anos, sem erro nenhum. São **22 das 78 medidas** que
+citam mais de uma tabela sem `TREATAS`; todas dependiam disso.
 
-**1. Relacionamentos.** Hoje **nada propaga por relacionamento**: as medidas que
-cruzam tabelas só funcionam onde a base escreveu `TREATAS` explícito. Os 22
-relacionamentos estão em `specs/_catalog/relationships.yaml` e o modelo já os expõe
-(`SemanticModel.activeRelationshipsFor`), mas o contexto de filtro os ignora.
+O grafo está em `packages/measure-engine/src/propagation.ts` (só responde "de onde o
+filtro chega e por qual coluna") e a travessia em `FilteredContext.linhasVisiveis`.
+21 dos 22 relacionamentos são ativos; o inativo só valeria dentro de
+`USERELATIONSHIP`, **confirmado ausente** das 127 expressões.
 
-Regras: o filtro propaga do lado `to_*` (one) para o lado `from_*` (many);
-`cross_filter: bothDirections` vai nos dois sentidos; `active: false` só vale dentro
-de `USERELATIONSHIP` (que a base não usa — confira antes de implementar).
+Decisões, todas com teste em `test/propagacao.test.ts`:
 
-O ponto de entrada é `FilteredContext.rowsOf`: hoje ele só aplica os filtros
-declarados na própria tabela. Verifique com `Contagem Solicitacao 2026`, que filtra
-`PROTOCOLOS GERAL` por `CALENDARIO INSTALADO`.
+- **A coluna de junção pode ser calculada — e cinco são**, entre elas
+  `'PROTOCOLOS GERAL'[DATA INSTALAÇÃO]`, a do caso acima, que escolhe entre três
+  colunas de data conforme o tipo do protocolo. Por isso `Propagation` recebe do
+  avaliador a função que resolve coluna: ler a linha crua devolve vazio e a junção
+  não casa nada, calada.
+- **Origem que não está restringida não restringe ninguém.** Sem isso, propagar
+  viraria `INNER JOIN` e sumiria com as linhas do lado *many* que não casam — que no
+  Power BI continuam visíveis. É também o que mantém `ALL` funcionando sem caso
+  especial.
+- **A propagação é recursiva** porque nesta base o filtro anda dois saltos:
+  `calendar` → `Status Protocolo Dia` → `FIELD AGENDA`.
+- **Não voltar pelo mesmo relacionamento** (regra do DAX; é o que impede
+  `bothDirections` de virar laço) e **caminho ambíguo é erro alto** — se duas tabelas
+  se ligam por dois caminhos distintos, o Power BI recusa o modelo e o avaliador
+  também recusa, em vez de escolher um. O modelo real passou: nenhuma ambiguidade.
+- **Junção entre tipos diferentes erra alto.** Data de um lado e texto `DD/MM/YYYY`
+  do outro nunca casa, e o resultado sairia zero com cara de filtro apertado.
 
-**2. Paridade — o que falta de verdade.** Todos os números de cobertura de hoje
+**Uma medição que vale carregar para a 2b.6.** Das 22 medidas que dependem de
+propagação, o dataset sintético consegue mostrar **uma** mudando de valor quando a
+propagação é desligada. As outras 21 não aparecem porque quatro linhas por tabela com
+valores uniformes fazem quase todo filtro aceitar tudo. Isso obrigou a acrescentar
+uma data de 2025 ao `DATAS` do teste de cobertura — sem ela o efeito medido era
+**zero**. Dois testes fixam os dois números para que a distância entre eles fique
+visível: é a demonstração mais concreta que o projeto tem de que **dado sintético não
+prova paridade**.
+
+### 2b.6 — paridade contra dado real: PRÓXIMO
+
+**Paridade — o que falta de verdade.** Todos os números de cobertura de hoje
 vêm de **dados sintéticos**. Eles provam que o avaliador roda, não que ele acerta.
 Nada disso é paridade, e o README diz isso em todas as menções: mantenha essa
 distinção.

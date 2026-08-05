@@ -11,7 +11,7 @@ divergência deliberada em relação ao Power BI de hoje.
 | # | Pergunta | Para quem | Status |
 |---|---|---|---|
 | 1 | Quanto vale um sábado no cálculo de dia útil? | Fabrício | ⏳ aberta |
-| 2 | As 5 medidas sem uso eram de painel descontinuado? | Fabrício | ⏳ aberta (limpeza) |
+| 2 | As 5 medidas sem uso eram de painel descontinuado? (+ 1 relacionamento inativo) | Fabrício | ⏳ aberta (limpeza) |
 
 ---
 
@@ -131,6 +131,19 @@ vez de ~90.
 > Eram de algum painel que saiu do ar? Se sim, dá para apagar as cinco e o modelo
 > fica mais limpo. Se alguma ainda deveria funcionar, me diz o que ela calculava
 > que eu ajusto.
+>
+> Aproveitando a limpeza: existe também um relacionamento **desativado** entre
+> `PROTOCOLOS PRODUTIVIDADE[SOLICITACAO]` e `PROTOCOLOS GERAL[SOLICITACAO]`. Como
+> nenhuma medida usa `USERELATIONSHIP`, ele não afeta número nenhum — só fica ali.
+> Meu chute é que foi desativado porque criava dois caminhos entre as mesmas
+> tabelas (elas já se ligam por `CALENDARIO INSTALADO`) e o Power BI não aceita
+> isso. Se for esse o caso, pode apagar junto.
+
+**Nota de 05/08/2026 — o relacionamento inativo.** Entrou como parágrafo aqui em vez
+de virar pergunta 3 pelo mesmo critério que deixou o `CALENDARIO CRIADO[PESO]` de
+fora: não erra número em tela, então não justifica uma rodada própria de conversa.
+Evidência em ACHADOS.md #13 — `USERELATIONSHIP` não aparece em nenhuma das 127
+expressões, conferido por varredura, junto com `RELATED`, `ALLEXCEPT` e `CROSSFILTER`.
 
 **Impacto se ficar sem resposta:** nenhum. A plataforma nova entrega 75 medidas em
 vez de 78 (as 3 que não rodam), e as 5 ficam registradas em ACHADOS.md #6 e #10.

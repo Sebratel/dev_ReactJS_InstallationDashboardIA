@@ -21,7 +21,8 @@ import { Dataset, type Row } from '../src/dataset.ts';
 import { Evaluator } from '../src/evaluator.ts';
 import { lookupFunction, lookupTableFunction } from '../src/functions.ts';
 import { parseDax } from '../src/parser.ts';
-import { type DaxValue, makeDate } from '../src/value.ts';
+import { NO_PROPAGATION, type Propagation } from '../src/propagation.ts';
+import { type DaxValue, identityKey, makeDate } from '../src/value.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SPECS = path.join(ROOT, 'specs');
@@ -49,8 +50,20 @@ const TIPO_NAO_DECLARADO: Record<string, 'data' | 'texto'> = {
   'status protocolo dia[protocolo]': 'texto',
 };
 
-/** Datas com segunda, sexta, sábado e domingo — a regra de dia útil precisa das quatro. */
+/**
+ * Datas com segunda, sexta, sábado e domingo — a regra de dia útil precisa das
+ * quatro — e **uma fora de 2026**.
+ *
+ * A de 2025 entrou depois, e por um motivo medido: com as quatro datas todas em
+ * agosto de 2026, todo filtro de ano do tipo `>= DATE(2026,1,1)` aceitava as
+ * quatro linhas. Calendário aceito por inteiro não restringe nada, então a
+ * propagação por relacionamento **nunca disparava** e o teste de efeito da
+ * propagação media zero. O zero era sobre os dados, não sobre a propagação.
+ *
+ * 04/08/2025 também é segunda, então a cobertura de dia da semana continua igual.
+ */
 const DATAS = [
+  makeDate(2025, 8, 4),
   makeDate(2026, 8, 3),
   makeDate(2026, 8, 7),
   makeDate(2026, 8, 8),
@@ -170,6 +183,19 @@ const NO_ESCOPO = 127;
 /** Executam de fato. A diferença com `NO_ESCOPO` é explicada pelo teste abaixo. */
 const EXECUTAM = 123;
 
+/**
+ * Medidas que citam mais de uma tabela **sem** `TREATAS`, ou seja: que só dão o
+ * número certo se o filtro atravessar relacionamento. Antes da fase 2b.5, todas
+ * as 22 rodavam e devolviam número — nenhuma dava erro.
+ */
+const CRUZAM_SEM_TREATAS = 22;
+
+/**
+ * Dessas, quantas o dataset sintético consegue **mostrar** mudando de valor
+ * quando a propagação é desligada. Muito menor que 22, e o motivo está no teste.
+ */
+const PROPAGACAO_MUDA = 1;
+
 function noEscopo(model: SemanticModel): Expressao[] {
   return todasAsExpressoes(model).filter((e) => funcoesQueFaltam(e.dax, model).length === 0);
 }
@@ -196,31 +222,38 @@ test('nenhuma função DAX que a base usa está sem implementação', () => {
   assert.deepEqual([...faltando.entries()], []);
 });
 
-/** Roda cada expressão do escopo e devolve o que passou e o que falhou. */
-function executar(model: SemanticModel) {
+/**
+ * Roda cada expressão do escopo e devolve o que passou, o que falhou e o valor
+ * que saiu.
+ *
+ * `propagation` existe só para poder rodar tudo **sem** propagação por
+ * relacionamento e comparar — ver o teste de efeito da propagação. O caminho
+ * normal não passa nada.
+ */
+function executar(model: SemanticModel, propagation?: Propagation) {
   const ok: string[] = [];
   const falhas: { nome: string; erro: string }[] = [];
+  const valores = new Map<string, string>();
 
   for (const e of noEscopo(model)) {
     // Dataset e Evaluator novos por expressão: a memorização de coluna calculada
     // escreve na linha, e uma expressão não deve herdar o cache da anterior.
     const dataset = datasetSintetico(model);
-    const ev = new Evaluator({ model, dataset, now: HOJE });
+    const ev = new Evaluator({ model, dataset, now: HOJE, propagation });
     try {
-      if (e.medida) {
-        ev.measure(e.nome.slice(e.nome.indexOf('[') + 1, e.nome.lastIndexOf(']')));
-      } else {
-        ev.evaluateExpression(
-          e.dax,
-          ev.scopeWithRow(ev.rootScope(), e.tabela, dataset.rows(e.tabela)[0]!),
-        );
-      }
+      const valor = e.medida
+        ? ev.measure(e.nome.slice(e.nome.indexOf('[') + 1, e.nome.lastIndexOf(']')))
+        : ev.evaluateExpression(
+            e.dax,
+            ev.scopeWithRow(ev.rootScope(), e.tabela, dataset.rows(e.tabela)[0]!),
+          );
       ok.push(e.nome);
+      valores.set(e.nome, identityKey(valor));
     } catch (err) {
       falhas.push({ nome: e.nome, erro: (err as Error).message.split('\n')[0]! });
     }
   }
-  return { ok, falhas };
+  return { ok, falhas, valores };
 }
 
 test(`o avaliador executa ${EXECUTAM} expressões reais de ponta a ponta`, () => {
@@ -228,6 +261,82 @@ test(`o avaliador executa ${EXECUTAM} expressões reais de ponta a ponta`, () =>
   const { ok, falhas } = executar(model);
   const relatorio = falhas.map((f) => `  ${f.nome}\n      ${f.erro}`).join('\n');
   assert.equal(ok.length, EXECUTAM, `executadas ${ok.length}/${NO_ESCOPO}. Falharam:\n${relatorio}`);
+});
+
+/** Tabelas que uma expressão cita, seguindo as medidas que ela referencia. */
+function tabelasCitadas(dax: string, model: SemanticModel, vistos = new Set<string>()): Set<string> {
+  const out = new Set<string>();
+  walk(parseDax(dax), (n) => {
+    if (n.type === 'ColumnRef') out.add(n.table.toLowerCase());
+    if (n.type === 'TableRef') out.add(n.name.toLowerCase());
+    if (n.type === 'NameRef') {
+      const m = model.measure(n.name);
+      const chave = n.name.toLowerCase();
+      if (m && !vistos.has(chave)) {
+        vistos.add(chave);
+        for (const t of tabelasCitadas(m.dax, model, vistos)) out.add(t);
+      }
+    }
+  });
+  return out;
+}
+
+/**
+ * O tamanho da superfície de erro silencioso que a fase 2b.5 fechou.
+ *
+ * Uma medida que cita duas tabelas e não usa `TREATAS` só dá o número certo se o
+ * filtro atravessar relacionamento. São **22 das 78** — e antes desta fase todas
+ * as 22 rodavam, devolviam número, e o número saía de um filtro que nunca chegava
+ * ao destino. Nenhuma dava erro. É por isso que propagação não era um item de
+ * completude: era a maior fonte de erro silencioso do avaliador.
+ *
+ * Esta contagem é estática de propósito. O teste seguinte mede o efeito rodando,
+ * e mostra por que a medição por execução não substitui esta.
+ */
+test(`${CRUZAM_SEM_TREATAS} medidas cruzam tabela sem TREATAS e portanto dependem de relacionamento`, () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const cruzam = model.measures.filter(
+    (m) => tabelasCitadas(m.dax, model).size > 1 && !/TREATAS/i.test(m.dax),
+  );
+  assert.equal(
+    cruzam.length,
+    CRUZAM_SEM_TREATAS,
+    `são ${cruzam.length}:\n${cruzam.map((m) => `  ${m.name}`).join('\n')}`,
+  );
+});
+
+/**
+ * O mesmo efeito, medido rodando: as 123 duas vezes, com e sem propagação.
+ *
+ * Dá **1**, não 22 — e a distância entre os dois números é a lição do teste. Dado
+ * sintético tem quatro linhas por tabela com os mesmos valores em toda coluna do
+ * mesmo tipo; quase todo filtro aceita tudo, origem que aceita tudo não restringe,
+ * e propagação que não restringe não muda número. A única que aparece é
+ * `Contagem Solicitacao 2026`, porque `>= DATE(2026,1,1)` corta a linha de 2025.
+ *
+ * Ou seja: **execução em dado sintético não mede propagação**. Quem mede a regra é
+ * `propagacao.test.ts`, com dados desenhados à mão para o caso. E quem vai medir os
+ * outros 21 é a paridade contra dado real — a etapa adiada.
+ */
+test('rodando em dado sintético, só uma das 22 consegue mostrar a diferença', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const com = executar(model);
+  const sem = executar(model, NO_PROPAGATION);
+
+  // Ligar propagação não pode fazer expressão nenhuma parar de executar.
+  assert.deepEqual(com.falhas.map((f) => f.nome).sort(), sem.falhas.map((f) => f.nome).sort());
+
+  const mudaram = [...com.valores.entries()]
+    .filter(([nome, v]) => sem.valores.get(nome) !== v)
+    .map(([nome]) => nome)
+    .sort();
+
+  assert.equal(
+    mudaram.length,
+    PROPAGACAO_MUDA,
+    `mudaram ${mudaram.length}:\n${mudaram.map((n) => `  ${n}`).join('\n')}`,
+  );
+  assert.deepEqual(mudaram, ['PROTOCOLOS GERAL[Contagem Solicitacao 2026]']);
 });
 
 /**
