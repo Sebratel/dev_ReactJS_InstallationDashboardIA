@@ -32,8 +32,10 @@ const chave = (s: string): string =>
 
 // ------------------------------------------------------------------- token
 let token: string;
+let emailDaConta = '(desconhecido)';
 try {
   const sa = readServiceAccount(cfg.gsheets.credentialsPath);
+  emailDaConta = sa.client_email;
   console.log(`service account: ${sa.client_email}`);
   console.log(`projeto:         ${sa.project_id ?? '(não declarado)'}`);
   token = await accessToken(sa, [SCOPE_SHEETS_READONLY]);
@@ -46,16 +48,24 @@ try {
 const auth = { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } };
 
 /** Traduz os erros que realmente acontecem aqui em instrução, não em código HTTP. */
-function explica(status: number, corpo: string, id: string): string {
+function explica(status: number, corpo: string, id: string, email: string): string {
   const msg = (JSON.parse(corpo || '{}') as { error?: { message?: string } }).error?.message ?? '';
-  if (status === 403 && /Google Sheets API has not been used|disabled/i.test(msg)) {
+  if (status === 403 && /Google Sheets API has not been used|SERVICE_DISABLED|disabled/i.test(msg)) {
     return `a Google Sheets API não está ativada no projeto. Ative em\n` +
       `  console.cloud.google.com → APIs e serviços → Biblioteca → Google Sheets API`;
   }
   if (status === 403) {
-    return `a planilha existe, mas a service account não tem permissão. Abra a planilha\n` +
-      `  → Compartilhar → cole o e-mail da conta de serviço → Leitor.\n` +
-      `  (ter acesso com a sua conta Google não dá acesso à conta de serviço)`;
+    // O e-mail vai inteiro aqui, e não só no cabeçalho do relatório, porque o
+    // erro mais comum depois de "compartilhei sim" é ter compartilhado com um
+    // endereço *parecido*: o Google aceita e-mail inexistente sem reclamar, e o
+    // resultado é indistinguível de não ter compartilhado.
+    return `a planilha existe, mas ESTA conta não tem permissão. Compartilhe com\n\n` +
+      `      ${email}\n\n` +
+      `  como Leitor — copie e cole a linha acima, caractere por caractere.\n` +
+      `  Ter acesso com a sua conta Google não dá acesso à conta de serviço.\n` +
+      `  Se o compartilhamento foi feito e o erro persiste: confira se o e-mail na\n` +
+      `  lista de "Pessoas com acesso" é exatamente esse, e se a planilha não está\n` +
+      `  num Workspace que bloqueia compartilhar fora da organização.`;
   }
   if (status === 404) {
     return `nenhuma planilha com id ${id}. Confira o id no .env contra a URL da planilha.`;
@@ -67,7 +77,7 @@ async function pega(url: string, id: string): Promise<unknown> {
   const res = await fetch(url, auth);
   const corpo = await res.text();
   if (!res.ok) {
-    console.error(`  HTTP ${res.status} — ${explica(res.status, corpo, id)}`);
+    console.error(`  HTTP ${res.status} — ${explica(res.status, corpo, id, emailDaConta)}`);
     return null;
   }
   return JSON.parse(corpo);
