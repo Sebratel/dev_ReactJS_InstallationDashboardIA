@@ -10,12 +10,14 @@
 // declaração honesta do escopo do avaliador.
 
 import { walk, type DaxNode } from './ast.ts';
+import type { Row } from './dataset.ts';
 import type { EvalScope, Evaluator } from './evaluator.ts';
 import {
   type TableFilter,
   type TableValue,
   filterFromTable,
   makeTableValue,
+  orderedColumns,
   rowKey,
 } from './filter.ts';
 import {
@@ -466,29 +468,25 @@ def('EOMONTH', (args, scope, ev, nome) => {
  * resto em vez de deixar o `Date` do JS palpitar: `new Date("03/04/2026")` lê
  * **março**, e nesta base essa data é 3 de abril. Foi essa classe de erro que
  * produziu o achado falso dos feriados.
+ *
+ * **Descarta a hora**, como o DAX. Não é detalhe: a coluna `'FIELD
+ * AGENDA'[Data]` é `DATEVALUE('FIELD AGENDA'[Slot Agenda])`, e `Slot Agenda` é
+ * `dateTime` com hora ("General Date"). O `RANKX` de `[RankDataProtocolo]`
+ * compara esse valor com uma lista feita de `TRUNC('FIELD AGENDA'[Slot Agenda])`,
+ * que não tem hora. Mantendo a hora, nada casaria e o rank sairia BLANK.
  */
 def('DATEVALUE', (args, scope, ev, nome) => {
   exigeArgs(args, 1, 1, nome);
   const v = valor(args, 0, scope, ev, nome);
   if (isBlank(v)) return BLANK;
-  if (v instanceof Date) return v;
+  if (v instanceof Date) return makeDate(v.getUTCFullYear(), v.getUTCMonth() + 1, v.getUTCDate());
   const texto = toText(v).trim();
 
-  const ptBr = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?$/.exec(texto);
-  if (ptBr) {
-    const [, d, m, y, hh, mm, ss] = ptBr;
-    return new Date(
-      Date.UTC(+y!, +m! - 1, +d!, hh ? +hh : 0, mm ? +mm : 0, ss ? +ss : 0),
-    );
-  }
+  const ptBr = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(texto);
+  if (ptBr) return makeDate(+ptBr[3]!, +ptBr[2]!, +ptBr[1]!);
 
-  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(texto);
-  if (iso) {
-    const [, y, m, d, hh, mm, ss] = iso;
-    return new Date(
-      Date.UTC(+y!, +m! - 1, +d!, hh ? +hh : 0, mm ? +mm : 0, ss ? +ss : 0),
-    );
-  }
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(texto);
+  if (iso) return makeDate(+iso[1]!, +iso[2]!, +iso[3]!);
 
   throw new DaxEvalError(
     `${nome}: não reconheço ${JSON.stringify(texto)} como data. ` +
@@ -657,10 +655,8 @@ defTable('CALCULATETABLE', (args, scope, ev, nome) => {
 defTable('FILTER', (args, scope, ev, nome) => {
   exigeArgs(args, 2, 2, nome);
   const origem = ev.evaluateTable(args[0]!, scope, nome);
-  const modelo = ev.model.table(origem.table);
-  const rotulo = modelo?.name ?? origem.table;
   const rows = origem.rows.filter((row) =>
-    toBoolean(ev.evaluate(args[1]!, ev.scopeWithRow(scope, rotulo, row)), nome),
+    toBoolean(ev.evaluate(args[1]!, ev.scopeWithTableRow(scope, origem, row)), nome),
   );
   return makeTableValue(origem.table, origem.columns, rows);
 });
@@ -728,13 +724,25 @@ defTable('VALUES', (args, scope, ev, nome) => {
   return distintosDaColuna(n, scope, ev, nome);
 });
 
+/**
+ * `DISTINCT` aceita coluna **ou** tabela — a base usa as duas formas, e a de
+ * tabela é a que fecha `DISTINCT(SELECTCOLUMNS(...))`.
+ */
 defTable('DISTINCT', (args, scope, ev, nome) => {
   exigeArgs(args, 1, 1, nome);
   const n = args[0]!;
-  if (n.type !== 'ColumnRef') {
-    throw new DaxEvalError(`${nome}: só há suporte para DISTINCT de coluna; recebeu ${n.type}.`);
-  }
-  return distintosDaColuna(n, scope, ev, nome);
+  if (n.type === 'ColumnRef') return distintosDaColuna(n, scope, ev, nome);
+
+  const origem = ev.evaluateTable(n, scope, nome);
+  const colunas = orderedColumns(origem);
+  const vistas = new Set<string>();
+  const rows = origem.rows.filter((r) => {
+    const k = rowKey(r, colunas);
+    if (vistas.has(k)) return false;
+    vistas.add(k);
+    return true;
+  });
+  return makeTableValue(origem.table, colunas, rows);
 });
 
 /**
@@ -858,16 +866,271 @@ def('LOOKUPVALUE', (args, scope, ev, nome) => {
 def('AVERAGEX', (args, scope, ev, nome) => {
   exigeArgs(args, 2, 2, nome);
   const tabela = ev.evaluateTable(args[0]!, scope, nome);
-  const rotulo = ev.model.table(tabela.table)?.name ?? tabela.table;
   let soma = 0;
   let n = 0;
   for (const row of tabela.rows) {
-    const v = ev.evaluate(args[1]!, ev.scopeWithRow(scope, rotulo, row));
+    const v = ev.evaluate(args[1]!, ev.scopeWithTableRow(scope, tabela, row));
     if (isBlank(v)) continue;
     soma += toNumber(v, nome);
     n++;
   }
   return n === 0 ? BLANK : soma / n;
+});
+
+// ---------------------------------------------------------------------------
+// Time intelligence
+// ---------------------------------------------------------------------------
+
+/**
+ * As funções de data devolvem **tabela** de datas, não escalar — é assim no DAX, e
+ * é o que faz `CALCULATE(SUM(...), DATESBETWEEN(...))` funcionar pelo mesmo
+ * mecanismo de substituição de filtro de coluna que já existe.
+ *
+ * Todas trabalham sobre a coluna de data recebida, filtrando os valores dela que
+ * caem no intervalo. Não geram datas que não existam na coluna: um calendário com
+ * buracos continua com buracos, como no Power BI.
+ */
+function datasDaColuna(
+  n: DaxNode,
+  scope: EvalScope,
+  ev: Evaluator,
+  nome: string,
+): { ref: Extract<DaxNode, { type: 'ColumnRef' }>; datas: Date[] } {
+  if (n.type !== 'ColumnRef') {
+    throw new DaxEvalError(`${nome}: esperava coluna de data e recebeu ${n.type}.`);
+  }
+  const datas: Date[] = [];
+  for (const v of ev.valuesOfColumnRef(n, scope, nome)) {
+    if (isBlank(v)) continue;
+    datas.push(toDate(v, nome));
+  }
+  return { ref: n, datas };
+}
+
+function tabelaDeDatas(
+  ref: Extract<DaxNode, { type: 'ColumnRef' }>,
+  datas: Date[],
+): TableValue {
+  const chave = ref.column.toLowerCase();
+  const vistas = new Set<number>();
+  const rows = [];
+  for (const d of datas) {
+    if (vistas.has(d.getTime())) continue;
+    vistas.add(d.getTime());
+    rows.push({ [chave]: d });
+  }
+  return makeTableValue(ref.table, [chave], rows);
+}
+
+/** `DATESBETWEEN(coluna, inicio, fim)` — inclusivo nos dois extremos, como no DAX. */
+defTable('DATESBETWEEN', (args, scope, ev, nome) => {
+  exigeArgs(args, 3, 3, nome);
+  const { ref, datas } = datasDaColuna(args[0]!, scope, ev, nome);
+  const ini = valor(args, 1, scope, ev, nome);
+  const fim = valor(args, 2, scope, ev, nome);
+  // BLANK num extremo abre aquele lado, como no DAX.
+  const de = isBlank(ini) ? -Infinity : toDate(ini, nome).getTime();
+  const ate = isBlank(fim) ? Infinity : toDate(fim, nome).getTime();
+  return tabelaDeDatas(ref, datas.filter((d) => d.getTime() >= de && d.getTime() <= ate));
+});
+
+/**
+ * `DATESMTD(coluna)` — do primeiro dia do mês até a **última data visível no
+ * contexto**, não até hoje. Usar `TODAY()` aqui daria outro número em qualquer
+ * contexto filtrado para um mês passado.
+ */
+defTable('DATESMTD', (args, scope, ev, nome) => {
+  exigeArgs(args, 1, 1, nome);
+  const { ref, datas } = datasDaColuna(args[0]!, scope, ev, nome);
+  if (datas.length === 0) return tabelaDeDatas(ref, []);
+  const ultima = datas.reduce((a, b) => (b.getTime() > a.getTime() ? b : a));
+  const inicio = Date.UTC(ultima.getUTCFullYear(), ultima.getUTCMonth(), 1);
+  return tabelaDeDatas(
+    ref,
+    datas.filter((d) => d.getTime() >= inicio && d.getTime() <= ultima.getTime()),
+  );
+});
+
+/** Extremo do mês da última/primeira data visível. Devolve tabela de uma linha. */
+function extremoDoMes(qual: 'inicio' | 'fim'): TableFunction {
+  return (args, scope, ev, nome) => {
+    exigeArgs(args, 1, 1, nome);
+    const { ref, datas } = datasDaColuna(args[0]!, scope, ev, nome);
+    if (datas.length === 0) return tabelaDeDatas(ref, []);
+    // O DAX toma o mês da ÚLTIMA data do contexto nos dois casos.
+    const ultima = datas.reduce((a, b) => (b.getTime() > a.getTime() ? b : a));
+    const y = ultima.getUTCFullYear();
+    const m = ultima.getUTCMonth();
+    const d = qual === 'inicio' ? new Date(Date.UTC(y, m, 1)) : new Date(Date.UTC(y, m + 1, 0));
+    return tabelaDeDatas(ref, [d]);
+  };
+}
+
+defTable('STARTOFMONTH', extremoDoMes('inicio'));
+defTable('ENDOFMONTH', extremoDoMes('fim'));
+
+// ---------------------------------------------------------------------------
+// Conjuntos e tabelas derivadas
+// ---------------------------------------------------------------------------
+
+/**
+ * `SELECTCOLUMNS(tabela, "Nome", expr, ...)` — tabela **anônima** com colunas
+ * calculadas linha a linha.
+ *
+ * Anônima porque as colunas não existem em tabela nenhuma do modelo: por isso o
+ * resultado conta linha e cria contexto de linha, mas não pode virar filtro sem
+ * `TREATAS`. Ver `TableValue.table`.
+ */
+defTable('SELECTCOLUMNS', (args, scope, ev, nome) => {
+  if (args.length < 3 || (args.length - 1) % 2 !== 0) {
+    throw new DaxEvalError(
+      `${nome}: esperava tabela + pares ("Nome", expressão); recebeu ${args.length} argumentos.`,
+    );
+  }
+  const origem = ev.evaluateTable(args[0]!, scope, nome);
+
+  const nomes: string[] = [];
+  for (let i = 1; i < args.length; i += 2) {
+    const rotulo = args[i]!;
+    if (rotulo.type !== 'String') {
+      throw new DaxEvalError(`${nome}: o nome da coluna ${i} tem de ser texto literal.`);
+    }
+    nomes.push(rotulo.value.toLowerCase());
+  }
+
+  const rows = origem.rows.map((row) => {
+    const escopo = ev.scopeWithTableRow(scope, origem, row);
+    const nova: Row = {};
+    for (let i = 1, k = 0; i < args.length; i += 2, k++) {
+      nova[nomes[k]!] = ev.evaluate(args[i + 1]!, escopo);
+    }
+    return nova;
+  });
+
+  return makeTableValue(null, nomes, rows);
+});
+
+/** Casa duas tabelas por **posição** de coluna, como o DAX faz em UNION/EXCEPT/INTERSECT. */
+function alinhar(
+  a: TableValue,
+  b: TableValue,
+  nome: string,
+): { colunas: string[]; chaveA: (r: Row) => string; chaveB: (r: Row) => string } {
+  const colunas = orderedColumns(a);
+  const colunasB = orderedColumns(b);
+  if (colunas.length !== colunasB.length) {
+    throw new DaxEvalError(
+      `${nome}: tabelas com ${colunas.length} e ${colunasB.length} colunas. ` +
+        `O DAX casa por posição e exige o mesmo número.`,
+    );
+  }
+  return {
+    colunas,
+    chaveA: (r) => rowKey(r, colunas),
+    chaveB: (r) => rowKey(r, colunasB),
+  };
+}
+
+/** Renomeia as colunas de `b` para os nomes de `a`, casando por posição. */
+function reetiquetar(a: TableValue, b: TableValue): Row[] {
+  const ca = orderedColumns(a);
+  const cb = orderedColumns(b);
+  return b.rows.map((r) => {
+    const out: Row = {};
+    ca.forEach((nomeA, i) => {
+      out[nomeA] = r[cb[i]!] ?? BLANK;
+    });
+    return out;
+  });
+}
+
+/** `INTERSECT(a, b)` — linhas de `a` que também estão em `b`. Preserva duplicatas de `a`. */
+defTable('INTERSECT', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 2, nome);
+  const a = ev.evaluateTable(args[0]!, scope, nome);
+  const b = ev.evaluateTable(args[1]!, scope, nome);
+  const { colunas, chaveA, chaveB } = alinhar(a, b, nome);
+  const emB = new Set(b.rows.map(chaveB));
+  return makeTableValue(a.table, colunas, a.rows.filter((r) => emB.has(chaveA(r))));
+});
+
+/** `EXCEPT(a, b)` — linhas de `a` que não estão em `b`. */
+defTable('EXCEPT', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 2, nome);
+  const a = ev.evaluateTable(args[0]!, scope, nome);
+  const b = ev.evaluateTable(args[1]!, scope, nome);
+  const { colunas, chaveA, chaveB } = alinhar(a, b, nome);
+  const emB = new Set(b.rows.map(chaveB));
+  return makeTableValue(a.table, colunas, a.rows.filter((r) => !emB.has(chaveA(r))));
+});
+
+/**
+ * `UNION(a, b)` — concatena. **Mantém duplicatas**, como no DAX; quem quer
+ * distintos escreve `DISTINCT(UNION(...))`. Remover aqui mudaria a contagem.
+ */
+defTable('UNION', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 2, nome);
+  const a = ev.evaluateTable(args[0]!, scope, nome);
+  const b = ev.evaluateTable(args[1]!, scope, nome);
+  const { colunas } = alinhar(a, b, nome);
+  // Resultado é anônimo quando as origens são de tabelas diferentes: não há uma
+  // tabela do modelo a que a união pertença.
+  const mesmaOrigem = a.table !== null && a.table === b.table;
+  return makeTableValue(mesmaOrigem ? a.table : null, colunas, [
+    ...a.rows,
+    ...reetiquetar(a, b),
+  ]);
+});
+
+/**
+ * `RANKX(tabela, expressão, [valor], [ordem], [empates])`.
+ *
+ * `ordem` é `ASC` ou `DESC` (padrão do DAX: **DESC**). `empates` é `DENSE` ou
+ * `SKIP` (padrão: `SKIP`). Com `valor` omitido, ranqueia a própria `expressão`
+ * avaliada **fora** da iteração — é o caso da base.
+ */
+def('RANKX', (args, scope, ev, nome) => {
+  exigeArgs(args, 2, 5, nome);
+  const tabela = ev.evaluateTable(args[0]!, scope, nome);
+  const expr = args[1]!;
+
+  const lista: DaxValue[] = [];
+  for (const row of tabela.rows) {
+    const v = ev.evaluate(expr, ev.scopeWithTableRow(scope, tabela, row));
+    if (!isBlank(v)) lista.push(v);
+  }
+
+  const alvoNode = presente(args, 2);
+  const alvo = alvoNode ? ev.evaluate(alvoNode, scope) : ev.evaluate(expr, scope);
+  if (isBlank(alvo)) return BLANK;
+
+  const ordem = presente(args, 3) ? palavraChave(args, 3, nome, ['ASC', 'DESC']) : 'DESC';
+  const empates = presente(args, 4) ? palavraChave(args, 4, nome, ['DENSE', 'SKIP']) : 'SKIP';
+
+  // "Melhor" é menor em ASC e maior em DESC. O posto é quantos vêm antes, + 1 —
+  // e a diferença entre SKIP e DENSE é contar valores repetidos ou distintos.
+  const sinalMelhor = ordem === 'ASC' ? -1 : 1;
+  const melhores = lista.filter((v) => compareValues(v, alvo, false, nome) === sinalMelhor);
+  return empates === 'DENSE'
+    ? new Set(melhores.map(identityKey)).size + 1
+    : melhores.length + 1;
+});
+
+/**
+ * `ISINSCOPE('T'[C])` — a coluna está entre as que a **visualização** está
+ * agrupando?
+ *
+ * Não implementado, e não por falta de tempo: a resposta não existe neste nível.
+ * Depende do agrupamento do visual, que só passa a existir com o Widget Engine
+ * (Fase 3). Devolver `FALSE` faria `[Faixa 1 Premiação Total]` calcular em toda
+ * célula em vez de só no total — exatamente o contrário do que o comentário no DAX
+ * dela pede.
+ */
+def('ISINSCOPE', (_args, _scope, _ev, nome) => {
+  throw new DaxEvalError(
+    `${nome}: depende do agrupamento da visualização, que não existe no avaliador. ` +
+      `Chega com o Widget Engine (Fase 3). Ver docs/ACHADOS.md.`,
+  );
 });
 
 // ---------------------------------------------------------------------------

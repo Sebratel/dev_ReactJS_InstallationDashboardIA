@@ -14,13 +14,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2a | Modelo semântico completo + verificação de referências | ✅ |
 | 2b.1 | Parser de DAX → AST (127/127 expressões parseiam) | ✅ |
 | 2b.2 | Avaliador: escalares e agregação | ✅ |
-| 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL`, `TREATAS` — executa 107/127 | ✅ |
-| 2b.4 | Time intelligence, funções de conjunto, relacionamentos | ⏳ próximo |
+| 2b.3 | Contexto de filtro: `CALCULATE`, `FILTER`, `ALL`, `TREATAS` | ✅ |
+| 2b.4 | Time intelligence, conjuntos, `RANKX` — **74 das 78 medidas executam** | ✅ |
+| 2b.5 | Relacionamentos + paridade contra dado real | ⏳ próximo |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**268 testes verdes.** Nenhum deles precisa de credencial.
+**283 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -43,8 +44,13 @@ colunas (incluindo as calculadas), medidas e relacionamentos — resolvendo nome
 
 `npm run validate:model` resolve toda referência `'Tabela'[Coluna]` e `[Medida]`
 das 78 medidas e das 49 colunas calculadas. Não precisa de `.env` nem de banco.
-Serve para responder *quais medidas são reimplementáveis* antes de escrever o
-avaliador — a resposta hoje é 75 de 78.
+Serve para responder *quais medidas referenciam coisas que existem* — a resposta
+hoje é **75 de 78**, e as 3 que sobram são as medidas mortas do achado 6.
+
+Não confundir com as **74** que o avaliador executa: a diferença é
+`[Faixa 1 Premiação Total]`, cujas referências existem mas que usa `ISINSCOPE` —
+pergunta que só o Widget Engine responde ([ACHADOS](docs/ACHADOS.md) #12). Os dois
+números medem coisas diferentes: "aponta para o que existe" e "roda".
 
 ### Measure Engine (Fase 2b)
 
@@ -61,29 +67,33 @@ Duas implementações independentes concordam sobre as referências de todas as 
 expressões (o scanner por caractere do `semantic-model` e o parser com gramática),
 o que é evidência de que nenhuma das duas está lendo o DAX errado.
 
-**Avaliador (2b.2 e 2b.3).** Escalares, agregação, colunas calculadas em contexto
+**Avaliador (2b.2 a 2b.4).** **Todas as 54 funções DAX que a base usa** estão
+implementadas — há teste que falha e diz qual, se o PBIP passar a usar uma nova.
+Inclui contexto de filtro (`CALCULATE`, `FILTER`, `ALL`, `TREATAS`,
+`LOOKUPVALUE`, `SELECTEDVALUE`), *time intelligence* (`DATESBETWEEN`, `DATESMTD`,
+`ENDOFMONTH`, `STARTOFMONTH`), conjuntos (`INTERSECT`, `EXCEPT`, `UNION`,
+`SELECTCOLUMNS`, `DISTINCT`), `RANKX`, `AVERAGEX`, colunas calculadas em contexto
 de linha, `VAR` (inclusive guardando tabela), dependência entre medidas com
-detecção de ciclo, hierarquia automática de datas (`[Data].[Dia]`) e **contexto de
-filtro**: `CALCULATE`, `CALCULATETABLE`, `FILTER`, `ALL`, `VALUES`, `DISTINCT`,
-`TREATAS`, `LOOKUPVALUE`, `SELECTEDVALUE`, `AVERAGEX`. **44 funções DAX das 54 que
-a base usa.**
+detecção de ciclo e a hierarquia automática de datas (`[Data].[Dia]`).
 
 Quatro níveis de cobertura, porque medem coisas diferentes:
 
 | Nível | Hoje | O que prova |
 |---|---|---|
 | Parseia | 127/127 | o DAX é lido inteiro, sem construção estranha |
-| Está no implementado | 110/127 | nenhuma função ou dependência faltando |
-| **Executa de ponta a ponta** | **107/127** | roda sobre dados e devolve valor |
+| Está no implementado | 127/127 | nenhuma função ou dependência faltando |
+| **Executa de ponta a ponta** | **123/127** — e **74 das 78 medidas** | roda sobre dados e devolve valor |
 | Bate com o Power BI | ⏳ | **paridade — depende de dado real, ainda não provada** |
 
 A última linha é a que importa para migrar, e ela ainda não foi feita: os testes
 rodam sobre dados sintéticos, então provam que o avaliador *funciona*, não que o
 número é o mesmo do relatório. Paridade depende da conferência dos `rowCount`.
 
-As 3 que não executam são exatamente as 3 medidas mortas do achado 6, e há teste
-exigindo que continuem falhando. Duas rotas independentes chegaram à mesma lista:
-`validate:model` lendo referências, e o avaliador tentando calcular.
+As 4 que não executam têm cada uma seu motivo, e há teste exigindo que continuem
+falhando. Três são as medidas mortas do achado 6 — e isso é confirmação
+independente: `validate:model` chegou nelas lendo referências, o avaliador chega
+tentando calcular. A quarta usa `ISINSCOPE`, que pergunta *"o visual está agrupando
+por esta coluna?"* — resposta que não existe sem o Widget Engine ([ACHADOS](docs/ACHADOS.md) #12).
 
 **A regra do contexto de filtro que decide números.** Filtro de `CALCULATE`
 **substitui** o filtro existente sobre a mesma coluna em vez de somar com ele, e
@@ -100,11 +110,24 @@ nunca um palpite. Um avaliador que devolve número errado em silêncio é pior q
 que se recusa a rodar, porque o erro chega ao dashboard da operação com a mesma
 cara de um número certo.
 
-Duas armadilhas do modelo real estão travadas por teste: `FORMAT(data,"dddd")`
-tem de sair **em português** (o `SWITCH` do `PESO` compara com `"domingo"`; em
-inglês nenhum domingo casaria e todo domingo passaria a valer um dia útil), e
-coluna de texto `DD/MM/YYYY` **não** é comparada com data — ordenar isso direto
-ordena por dia, que foi o erro que gerou o achado 1 falso.
+Três armadilhas do modelo real estão travadas por teste:
+
+- `FORMAT(data,"dddd")` sai **em português** (`culture: pt-BR` no modelo). Em inglês
+  o `SWITCH` do `PESO` não casaria nenhum `"domingo"`, e todo domingo passaria a
+  valer um dia útil.
+- Coluna de texto `DD/MM/YYYY` **não** é comparada com data. Ordenar isso direto
+  ordena por dia — foi o erro que gerou o achado 1 falso.
+- `DATEVALUE` **descarta a hora**, como o DAX. `'FIELD AGENDA'[Data]` é
+  `DATEVALUE([Slot Agenda])` e `Slot Agenda` tem hora; o `RANKX` de
+  `[RankDataProtocolo]` compara esse valor com uma lista feita de `TRUNC`, que não
+  tem. Mantendo a hora, nada casaria e o rank sairia BLANK.
+
+E uma escolha de resolução de nome que decide um caso real: contextos de linha são
+percorridos **do mais interno para o mais externo**. Em
+`RANKX(TabelaDatas, [Data], , ASC, DENSE)` existem dois candidatos para `[Data]` — a
+coluna da tabela anônima do `SELECTCOLUMNS` e a coluna calculada
+`'FIELD AGENDA'[Data]`, que também existe. O DAX escolhe a do iterador mais interno;
+a ordem de inserção escolheria a outra e ranquearia errado em silêncio.
 
 ### Query Engine (Fase 1)
 
@@ -132,7 +155,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (268 testes, sem credencial)
+npm test                              # suíte completa (283 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # valida configuração e conectividade

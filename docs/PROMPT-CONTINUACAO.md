@@ -66,7 +66,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**268 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**283 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -78,8 +78,9 @@ Nenhum teste precisa de credencial ou banco.
 | 2a | Modelo semântico completo + verificação de referências do DAX | ✅ |
 | 2b.1 | Parser de DAX → AST — as 127 expressões da base parseiam | ✅ |
 | 2b.2 | Avaliador: escalares e agregação | ✅ |
-| 2b.3 | Contexto de filtro — executa 107/127 | ✅ |
-| 2b.4 | Time intelligence, conjuntos, relacionamentos | ⏳ **próximo** |
+| 2b.3 | Contexto de filtro (`CALCULATE`, `FILTER`, `ALL`, `TREATAS`) | ✅ |
+| 2b.4 | Time intelligence, conjuntos, `RANKX` — 74 das 78 medidas executam | ✅ |
+| 2b.5 | Relacionamentos + paridade contra dado real | ⏳ **próximo** |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -132,7 +133,7 @@ Em `tools/validate/` (`npm run validate:queries`):
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (268 testes, sem credencial)
+npm test                              # suíte completa (283 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run doctor                        # configuração e conectividade (não imprime credencial)
@@ -319,50 +320,71 @@ guarda tabelas de filtro, não predicados por coluna. A diferença aparece em fi
 que correlaciona colunas (`FILTER(T, T[a] > T[b])`). Para as 60 chamadas desta base
 os dois modelos coincidem.
 
-### 2b.4 — time intelligence e conjuntos: PRÓXIMO
+### 2b.4 — time intelligence, conjuntos e RANKX: PRONTO
 
-Não há mais bloqueio único — há teste afirmando isso (`ranking[0] < 10`). O que
-sobra, por peso:
+**Todas as 54 funções DAX que a base usa estão implementadas.** O teste que antes
+rankeava o que faltava virou o inverso: ele afirma que a lista de faltantes está
+**vazia**, e falha dizendo o nome se o PBIP passar a usar função nova.
 
-| Falta | Expressões |
-|---|---|
-| `DATESBETWEEN` | 7 |
-| `SELECTCOLUMNS` | 7 |
-| `RANKX` | 5 |
-| `ENDOFMONTH` | 2 |
-| `DATESMTD`, `STARTOFMONTH`, `EOMONTH` em contexto | 1 cada |
-| `INTERSECT`, `EXCEPT`, `UNION`, `ISINSCOPE`, `CONCATENATE` em tabela | 1 cada |
+Cobertura: **123 das 127** expressões e **74 das 78 medidas** executam.
 
-Ordem sugerida:
+Escolhas de projeto desta etapa, todas com teste:
 
-1. **Time intelligence** — `DATESBETWEEN`, `DATESMTD`, `ENDOFMONTH`,
-   `STARTOFMONTH`. São funções de **tabela** (devolvem tabela de datas) e entram no
-   registro `TABELAS` de `functions.ts`, não no escalar. Como já são filtros de
-   coluna de data, o mecanismo de substituição existente vale para elas.
-2. **`SELECTCOLUMNS`** — cria tabela anônima com colunas novas. É o que destrava a
-   limitação registrada de `[Nome]` referindo coluna de tabela anônima (ver
-   `resolveNameRef`), usada por `RANKX(TabelaDatas, [Data], ...)`. Trate as duas
-   juntas.
-3. **`RANKX`** — depende de 2.
-4. **Conjuntos** — `INTERSECT`, `EXCEPT`, `UNION` sobre `TableValue`. Direto, agora
-   que `TableValue` existe.
-5. **Relacionamentos** — `specs/_catalog/relationships.yaml`. Filtro propaga do
-   lado `to_*` (one) para o lado `from_*` (many); `cross_filter: bothDirections`
-   vai nos dois sentidos; `active: false` só vale dentro de `USERELATIONSHIP`.
-   Hoje **nada** propaga por relacionamento: as medidas que cruzam tabelas só
-   funcionam onde a base usou `TREATAS` explicitamente. Verifique
-   `Contagem Solicitacao 2026`.
-6. **Paridade** contra o Power BI. É o que transforma "executa" em "está certo", e
-   depende da conferência de `rowCount`.
+- **Funções de data devolvem tabela**, não escalar — é assim no DAX, e faz
+  `DATESBETWEEN` entrar como filtro pelo mesmo mecanismo de substituição de coluna
+  que já existia. Junto veio a coerção **tabela 1×1 → escalar**, que é o que faz
+  `DATESBETWEEN(col, TODAY(), ENDOFMONTH(col))` funcionar.
+- Elas **filtram** os valores que existem na coluna; não geram datas. Um calendário
+  com buracos continua com buracos, como no Power BI.
+- `DATESMTD` vai até a **última data visível no contexto**, não até hoje. Usar
+  `TODAY()` daria outro número em qualquer contexto de mês passado.
+- `SELECTCOLUMNS`, `INTERSECT` e `EXCEPT` produzem **tabela anônima**
+  (`TableValue.table === null`): as colunas não existem em tabela nenhuma do modelo.
+  Anônima conta linha e cria contexto de linha, mas **não pode virar filtro** — erra
+  alto sugerindo `TREATAS`.
+- `UNION` **mantém duplicatas**, como no DAX. Remover mudaria contagem.
+- `[Nome]` resolve do contexto de linha **mais interno para o mais externo**. Sem
+  isso, `RANKX(TabelaDatas, [Data], ...)` pegaria `'FIELD AGENDA'[Data]` (que existe
+  no modelo) em vez da coluna da tabela anônima, e ranquearia errado em silêncio.
+- `DATEVALUE` **descarta a hora**, como o DAX. Era bug meu: `'FIELD AGENDA'[Data]` é
+  `DATEVALUE([Slot Agenda])`, `Slot Agenda` tem hora, e o `RANKX` compara com uma
+  lista feita de `TRUNC`. Mantendo a hora nada casaria e o rank sairia BLANK.
+
+### 2b.5 — relacionamentos e paridade: PRÓXIMO
+
+Duas coisas, e a segunda é a que fecha a Fase 2.
+
+**1. Relacionamentos.** Hoje **nada propaga por relacionamento**: as medidas que
+cruzam tabelas só funcionam onde a base escreveu `TREATAS` explícito. Os 22
+relacionamentos estão em `specs/_catalog/relationships.yaml` e o modelo já os expõe
+(`SemanticModel.activeRelationshipsFor`), mas o contexto de filtro os ignora.
+
+Regras: o filtro propaga do lado `to_*` (one) para o lado `from_*` (many);
+`cross_filter: bothDirections` vai nos dois sentidos; `active: false` só vale dentro
+de `USERELATIONSHIP` (que a base não usa — confira antes de implementar).
+
+O ponto de entrada é `FilteredContext.rowsOf`: hoje ele só aplica os filtros
+declarados na própria tabela. Verifique com `Contagem Solicitacao 2026`, que filtra
+`PROTOCOLOS GERAL` por `CALENDARIO INSTALADO`.
+
+**2. Paridade — o que falta de verdade.** Todos os números de cobertura de hoje
+vêm de **dados sintéticos**. Eles provam que o avaliador roda, não que ele acerta.
+Nada disso é paridade, e o README diz isso em todas as menções: mantenha essa
+distinção.
+
+O caminho: conferir os 18 `rowCount` de `specs/golden/` contra o Power BI (passo do
+Erick, pendente), depois avaliar as medidas contra dado real e comparar com o
+relatório. Só aí "executa" vira "está certo".
 
 Cuidado concreto com datas: várias colunas chegam como texto `DD/MM/YYYY`.
 **Não ordene nem compare direto** — foi exatamente esse erro que gerou o achado 1
 falso. O avaliador já erra alto nessa comparação, com teste; não "facilite" a
 conversão para fazer uma expressão passar.
 
-Não tente fazer as 3 medidas mortas do achado 6 rodarem — elas não têm resultado.
-Elas falham hoje, e há teste **exigindo** que continuem falhando. O alvo é
-**75 medidas**.
+Não tente fazer as 4 medidas que falham rodarem. As 3 do achado 6 não têm resultado
+(tabela inexistente) e `[Faixa 1 Premiação Total]` depende de `ISINSCOPE`, que só o
+Widget Engine responde (achado 12). Há teste **exigindo** que as quatro continuem
+falhando. O alvo do avaliador é **74**; a 75ª chega com a Fase 3.
 
 `gsheets` (3 queries) e `web` (1) só entram no `validate:queries` quando existirem
 connectors para eles — hoje o harness só sabe executar SQL.

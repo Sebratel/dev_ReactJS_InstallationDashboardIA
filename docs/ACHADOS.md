@@ -22,6 +22,7 @@ Consequência prática por achado:
 | 7 — três definições de dia útil, sábado vale 1, 1,5 e 0,5 | reproduz as três como estão, cada uma com sua regra |
 | 10 — `TOTAL_DIAS` conta dia do mês, não data | replica. Nada consome as duas medidas, então não há número errado em tela |
 | 11 — `DISTINCTCOUNT` sobre tabela vazia | suposição isolada em uma linha do código, a conferir contra o Power BI |
+| 12 — `ISINSCOPE` depende do visual | erra alto. A medida que a usa fica para a Fase 3: são **74** medidas agora, não 75 |
 
 O único item que **ainda depende de você** é a conferência dos `rowCount` contra
 o Power BI (`specs/golden/`), que você pediu para deixar para depois. Isso não é
@@ -461,3 +462,36 @@ vez de zero.
 **Como resolver:** quando os `rowCount` forem conferidos contra o Power BI, medir
 também um `DISTINCTCOUNT` num filtro que não retorne linha. Se der 0, muda-se uma
 linha e o teste correspondente. Não bloqueia nada até lá.
+
+---
+
+## 12. `ISINSCOPE` não é resposta do avaliador — depende do visual
+
+Também não é achado sobre o Power BI: é uma **fronteira de arquitetura**, registrada
+para não ser confundida com lacuna de implementação.
+
+`PROTOCOLOS PRODUTIVIDADE[Faixa 1 Premiação Total]` usa `ISINSCOPE` para só
+calcular no total, e o próprio DAX explica a intenção num comentário:
+
+```dax
+// Esta verificação garante que o cálculo só será exibido nos totais,
+// e não nas colunas individuais de "Tipo de Protocolo".
+IF(
+    ISINSCOPE('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO]),
+    BLANK(),
+    ... calcula a faixa ...
+)
+```
+
+`ISINSCOPE(coluna)` responde *"a visualização está agrupando por esta coluna?"*. Não
+é propriedade do modelo nem do contexto de filtro: é propriedade do **visual** que
+fez a pergunta. O avaliador, sozinho, não tem essa informação — ela chega com o
+Widget Engine (Fase 3), que é quem sabe as linhas e colunas de cada visual.
+
+**Decisão: erra alto.** A alternativa seria devolver `FALSE`, e aí a medida
+calcularia a faixa em **toda** célula em vez de só no total — exatamente o contrário
+do que o comentário do autor pede. Número plausível e errado, sem erro nenhum.
+
+**Consequência:** o avaliador entrega **74 das 78** medidas em vez de 75. A que falta
+não precisa de mais DAX; precisa da Fase 3. Há teste fixando isso, para que a
+diferença não seja lida como regressão.

@@ -234,8 +234,10 @@ test('.[Dia] da hierarquia de datas é DAY, não a data — lido do LocalDateTab
 // ---------------------------------------------------------------------------
 
 test('função não implementada erra com o nome dela', () => {
+  // Toda função que a base usa já está implementada (ver avaliador-cobertura.test),
+  // então só um nome inventado exercita este caminho de erro.
   const ev = montar();
-  assert.throws(() => ev.evaluateExpression("DATESBETWEEN('CAL'[Data], 1, 2)"), /DATESBETWEEN/);
+  assert.throws(() => ev.evaluateExpression('ALGUMACOISA(1)'), /ALGUMACOISA/);
   assert.throws(() => ev.evaluateExpression('ALGUMACOISA(1)'), /não implementada/i);
 });
 

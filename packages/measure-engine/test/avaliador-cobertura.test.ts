@@ -6,7 +6,7 @@
 // sintéticos, então o número que sai não é o número do Power BI. Paridade exige
 // dado real e é a etapa adiada (ver specs/golden/README.md).
 //
-// A distinção importa porque "o avaliador roda 107 expressões" e "107 expressões
+// A distinção importa porque "o avaliador roda 123 expressões" e "123 expressões
 // batem com o relatório" são afirmações muito diferentes, e confundir as duas é
 // como um projeto de migração se declara pronto sem estar.
 
@@ -165,46 +165,35 @@ function funcoesQueFaltam(dax: string, model: SemanticModel, visitadas = new Set
 // ---------------------------------------------------------------------------
 
 /** Dentro do implementado, contando dependências. Travado: se mudar, é informação. */
-const NO_ESCOPO = 110;
+const NO_ESCOPO = 127;
 
 /** Executam de fato. A diferença com `NO_ESCOPO` é explicada pelo teste abaixo. */
-const EXECUTAM = 107;
+const EXECUTAM = 123;
 
 function noEscopo(model: SemanticModel): Expressao[] {
   return todasAsExpressoes(model).filter((e) => funcoesQueFaltam(e.dax, model).length === 0);
 }
 
-test(`${NO_ESCOPO} das 127 expressões estão inteiramente dentro do implementado`, () => {
+test(`as 127 expressões estão todas dentro do implementado`, () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
-  assert.equal(noEscopo(model).length, NO_ESCOPO, 'escalares, agregação e contexto de filtro');
+  assert.equal(noEscopo(model).length, NO_ESCOPO);
 });
 
 /**
- * O que falta, ordenado por quantas expressões cada função destrava. Contado
- * transitivamente, seguindo medidas e colunas calculadas.
+ * Nenhuma função DAX usada pela base está fora do avaliador.
  *
- * Serve para a ordem dos passos não ser palpite. Quando `CALCULATE` faltava, ele
- * liderava com 56 e por isso foi feito primeiro; agora o que sobrou é *time
- * intelligence* e funções de conjunto, cada uma com peso pequeno — o que significa
- * que não há mais um bloqueio único e vale fazer por bloco temático.
+ * Este teste mudou de papel. Enquanto faltava função, ele rankeava o que faltava e
+ * ditava a ordem dos passos (`CALCULATE` liderava com 56). Agora a lista está
+ * vazia, e a afirmação útil passou a ser o inverso: **se o PBIP ganhar uma função
+ * nova, este teste falha e diz qual** — em vez de o avaliador estourar em produção.
  */
-test('o que falta agora são time intelligence e funções de conjunto, sem bloqueio único', () => {
+test('nenhuma função DAX que a base usa está sem implementação', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
-  const bloqueios = new Map<string, number>();
+  const faltando = new Map<string, number>();
   for (const e of todasAsExpressoes(model)) {
-    for (const f of funcoesQueFaltam(e.dax, model)) bloqueios.set(f, (bloqueios.get(f) ?? 0) + 1);
+    for (const f of funcoesQueFaltam(e.dax, model)) faltando.set(f, (faltando.get(f) ?? 0) + 1);
   }
-  const ranking = [...bloqueios.entries()].sort((a, b) => b[1] - a[1]);
-  assert.deepEqual(ranking.slice(0, 4), [
-    ['DATESBETWEEN', 7],
-    ['SELECTCOLUMNS', 7],
-    ['RANKX', 5],
-    ['ENDOFMONTH', 2],
-  ]);
-  assert.ok(
-    ranking[0]![1] < 10,
-    `ainda há bloqueio grande: ${ranking[0]![0]} em ${ranking[0]![1]} expressões`,
-  );
+  assert.deepEqual([...faltando.entries()], []);
 });
 
 /** Roda cada expressão do escopo e devolve o que passou e o que falhou. */
@@ -242,34 +231,53 @@ test(`o avaliador executa ${EXECUTAM} expressões reais de ponta a ponta`, () =>
 });
 
 /**
- * As únicas 3 que não executam são exatamente as 3 medidas mortas do achado 6, e
- * elas devem continuar não executando: apontam para as tabelas `GESTORES` e
- * `CAPACIDADE INSTALAÇÃO`, que não existem no modelo.
+ * As 4 que não executam, e por que cada uma **deve** continuar não executando.
  *
- * Vale como confirmação **independente** do achado: o `validate:model` chegou nele
- * lendo referências de texto; o avaliador chega tentando calcular. Dois caminhos
- * diferentes, mesma lista de três.
+ * Três são as medidas mortas do achado 6, que apontam para as tabelas `GESTORES` e
+ * `CAPACIDADE INSTALAÇÃO`, inexistentes no modelo. Isso vale como confirmação
+ * **independente** do achado: o `validate:model` chegou nele lendo referências de
+ * texto; o avaliador chega tentando calcular. Dois caminhos, a mesma lista.
  *
- * Se alguma passar a executar, ou a tabela voltou ao modelo ou alguém "consertou"
- * a medida sem decisão — e a decisão vigente é replicar fielmente.
+ * A quarta é `ISINSCOPE`, e não é lacuna de implementação: a resposta depende do
+ * agrupamento da visualização, que só existe a partir do Widget Engine (Fase 3).
+ *
+ * Se alguma passar a executar sem que uma dessas duas coisas mude, alguém
+ * "consertou" o que a decisão vigente manda replicar.
  */
-test('as 3 que não executam são as 3 medidas mortas do achado 6, cada uma com seu motivo', () => {
+test('as 4 que não executam têm cada uma seu motivo declarado', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { falhas } = executar(model);
 
-  assert.deepEqual(
-    falhas.map((f) => f.nome).sort(),
-    [
-      'PROTOCOLOS GERAL[# AA MÉDIA EQUIPES]',
-      'PROTOCOLOS GERAL[# AA MÉDIA GERAL]',
-      'PROTOCOLOS GERAL[# AA TOTAL EQUIPES]',
-    ],
-  );
-  for (const f of falhas) {
-    assert.match(
-      f.erro,
-      /CAPACIDADE INSTALAÇÃO|gestores/i,
-      `${f.nome} falhou por outro motivo: ${f.erro}`,
-    );
+  assert.deepEqual(falhas.map((f) => f.nome).sort(), [
+    'PROTOCOLOS GERAL[# AA MÉDIA EQUIPES]',
+    'PROTOCOLOS GERAL[# AA MÉDIA GERAL]',
+    'PROTOCOLOS GERAL[# AA TOTAL EQUIPES]',
+    'PROTOCOLOS PRODUTIVIDADE[Faixa 1 Premiação Total]',
+  ]);
+
+  const porNome = new Map(falhas.map((f) => [f.nome, f.erro]));
+  for (const nome of ['# AA MÉDIA EQUIPES', '# AA MÉDIA GERAL', '# AA TOTAL EQUIPES']) {
+    assert.match(porNome.get(`PROTOCOLOS GERAL[${nome}]`)!, /CAPACIDADE INSTALAÇÃO|gestores/i);
   }
+  assert.match(
+    porNome.get('PROTOCOLOS PRODUTIVIDADE[Faixa 1 Premiação Total]')!,
+    /ISINSCOPE.*Fase 3/s,
+  );
+});
+
+/**
+ * A contagem que o projeto persegue: **medidas**, não expressões.
+ *
+ * O alvo declarado é 75 das 78 (as 3 mortas ficam de fora, ver ACHADOS #6). Faltam
+ * as 74 chegarem a 75, e o que falta é o Widget Engine — não o avaliador.
+ */
+test('74 das 78 medidas executam; a 75ª depende do Widget Engine', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ok, falhas } = executar(model);
+  const medidas = new Set(model.measures.map((m) => `${m.table}[${m.name}]`));
+  const okMedidas = ok.filter((n) => medidas.has(n));
+  const falhasMedidas = falhas.filter((f) => medidas.has(f.nome));
+
+  assert.equal(okMedidas.length, 74, `falharam: ${falhasMedidas.map((f) => f.nome).join(', ')}`);
+  assert.equal(falhasMedidas.length, 4);
 });
