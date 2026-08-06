@@ -33,6 +33,17 @@ const CRED: CredencialOAuthGravada = {
   scopes: ['escopo/sheets'],
   obtido_em: '2026-08-06T00:00:00.000Z',
   conta: 'erick.azambuja@sebratel.com.br',
+  formato: 'nosso',
+};
+
+/** O que `gcloud auth application-default login` grava: secret dentro do arquivo. */
+const CRED_GCLOUD: CredencialOAuthGravada = {
+  client_id: 'gcloud-cliente.apps.googleusercontent.com',
+  client_secret: 'segredo-do-gcloud',
+  refresh_token: '1//rt',
+  scopes: [],
+  obtido_em: '',
+  formato: 'authorized_user',
 };
 
 const SA = {
@@ -75,6 +86,36 @@ test('OAuth sem credencial gravada cai para a service account', () => {
     { leServiceAccount: leSaFalso, leCredencial: leCredFalso(null) },
   );
   assert.equal(id.tipo, 'service_account');
+});
+
+test('credencial do gcloud dispensa client id/secret no .env: eles estão no arquivo', () => {
+  const id = identidadeGoogle(
+    gsheets({
+      credentialsPath: '/k.json',
+      oauth: { clientId: '', clientSecret: '', tokenFile: '/fora/adc.json' },
+    }),
+    ['escopo/sheets'],
+    { leServiceAccount: leSaFalso, leCredencial: leCredFalso(CRED_GCLOUD) },
+  );
+  assert.equal(id.tipo, 'oauth');
+  // O rótulo diz de onde veio: o arquivo do gcloud não registra escopo, então
+  // saber a origem é o que explica um 403 de escopo depois.
+  assert.match(id.rotulo, /gcloud/);
+});
+
+test('refresh token sem secret em lugar nenhum falha dizendo por quê', () => {
+  assert.throws(
+    () =>
+      identidadeGoogle(
+        gsheets({
+          credentialsPath: '/k.json',
+          oauth: { clientId: 'c', clientSecret: '', tokenFile: '/fora/cred.json' },
+        }),
+        ['escopo/sheets'],
+        { leServiceAccount: leSaFalso, leCredencial: leCredFalso({ ...CRED, client_secret: undefined }) },
+      ),
+    /client secret/,
+  );
 });
 
 test('client id/secret sem tokenFile não vira OAuth: nem tenta ler arquivo', () => {
@@ -129,7 +170,10 @@ test('porQueNaoAOutra explica a escolha em cada combinação', () => {
     /precedência/,
   );
   assert.match(porQueNaoAOutra(gsheets({ oauth: OAUTH_CHEIO }), 'oauth'), /não há chave/);
-  assert.match(porQueNaoAOutra(gsheets({ credentialsPath: '/k.json' }), 'service_account'), /client id/);
+  assert.equal(
+    porQueNaoAOutra(gsheets({ credentialsPath: '/k.json' }), 'service_account'),
+    'OAuth não configurado',
+  );
   assert.match(
     porQueNaoAOutra(
       gsheets({
@@ -139,6 +183,18 @@ test('porQueNaoAOutra explica a escolha em cada combinação', () => {
       'service_account',
     ),
     /GOOGLE_OAUTH_TOKEN_FILE/,
+  );
+  // Arquivo apontado mas sem cliente: o texto tem de dizer que o arquivo também
+  // conta como fonte do client id/secret, senão manda mexer só no .env.
+  assert.match(
+    porQueNaoAOutra(
+      gsheets({
+        credentialsPath: '/k.json',
+        oauth: { clientId: '', clientSecret: '', tokenFile: '/fora/adc.json' },
+      }),
+      'service_account',
+    ),
+    /dentro do arquivo/,
   );
   assert.match(
     porQueNaoAOutra(gsheets({ credentialsPath: '/k.json', oauth: OAUTH_CHEIO }), 'service_account'),

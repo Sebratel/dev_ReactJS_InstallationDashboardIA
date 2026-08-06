@@ -90,6 +90,23 @@ export function explicaErroSheets(
     return 'a Google Sheets API não está ativada no projeto. Ative em\n' +
       '  console.cloud.google.com → APIs e serviços → Biblioteca → Google Sheets API';
   }
+  // Escopo é decidido no consentimento e não muda no refresh. O caso típico é
+  // credencial de `gcloud auth application-default login`, que concede
+  // `cloud-platform` — permissão de GCP, que não inclui ler planilha de ninguém.
+  if (
+    (status === 403 || status === 401) &&
+    /insufficient authentication scopes|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient_scope/i.test(msg)
+  ) {
+    return 'a credencial autenticou, mas SEM escopo para o Sheets.\n' +
+      '  Escopo é definido no consentimento e não pode ser ampliado no refresh.\n' +
+      '  Se a credencial veio de `gcloud auth application-default login`, ela concede\n' +
+      '  `cloud-platform` — permissão de GCP, que não é permissão de documento.\n' +
+      '  Corrija reautorizando com o escopo certo:\n' +
+      '    npm run auth:google\n' +
+      '  (ou `gcloud auth application-default login --scopes=' +
+      'https://www.googleapis.com/auth/spreadsheets.readonly,' +
+      'https://www.googleapis.com/auth/drive.metadata.readonly,openid,email`)';
+  }
   if (status === 403) {
     // O e-mail vai inteiro aqui, e não só num cabeçalho de relatório, porque o
     // erro mais comum depois de "compartilhei sim" é ter compartilhado com um

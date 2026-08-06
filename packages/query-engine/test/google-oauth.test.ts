@@ -250,6 +250,60 @@ test(
   }),
 );
 
+test(
+  'leCredencialOAuth: aceita o formato authorized_user do gcloud, com secret dentro',
+  comPastaTemporaria((dir) => {
+    // É o arquivo que `gcloud auth application-default login` grava. Contém
+    // exatamente o que precisamos, e recusá-lo obrigaria a refazer consentimento
+    // que já existe.
+    const arquivo = path.join(dir, 'adc.json');
+    fs.writeFileSync(
+      arquivo,
+      JSON.stringify({
+        client_id: 'gcloud-cliente.apps.googleusercontent.com',
+        client_secret: 'segredo-do-gcloud',
+        refresh_token: '1//rt',
+        type: 'authorized_user',
+        quota_project_id: 'projeto-qualquer',
+      }),
+    );
+    const cred = leCredencialOAuth(arquivo)!;
+    assert.equal(cred.formato, 'authorized_user');
+    assert.equal(cred.client_secret, 'segredo-do-gcloud');
+    assert.equal(cred.refresh_token, '1//rt');
+    // O gcloud não registra escopo: lista vazia significa "não sei", e por isso
+    // não pode virar bloqueio — quem recusa por escopo é o Google.
+    assert.deepEqual(cred.scopes, []);
+  }),
+);
+
+test(
+  'leCredencialOAuth: chave de service account no lugar errado diz qual variável usar',
+  comPastaTemporaria((dir) => {
+    const arquivo = path.join(dir, 'sa.json');
+    fs.writeFileSync(arquivo, JSON.stringify({ type: 'service_account', client_email: 'x@y' }));
+    assert.throws(() => leCredencialOAuth(arquivo), (err: Error) => {
+      assert.match(err.message, /GOOGLE_APPLICATION_CREDENTIALS/);
+      assert.match(err.message, /GOOGLE_OAUTH_TOKEN_FILE/);
+      return true;
+    });
+  }),
+);
+
+test(
+  'gravaCredencialOAuth: o nosso formato é lido de volta como "nosso"',
+  comPastaTemporaria((dir) => {
+    const arquivo = path.join(dir, 'nosso.json');
+    gravaCredencialOAuth(arquivo, {
+      client_id: CLIENTE.clientId,
+      refresh_token: 'rt',
+      scopes: ['a'],
+      obtido_em: '2026-08-06T00:00:00.000Z',
+    });
+    assert.equal(leCredencialOAuth(arquivo)!.formato, 'nosso');
+  }),
+);
+
 test('leCredencialOAuth: arquivo ausente é null, não erro', () => {
   assert.equal(leCredencialOAuth(path.join(os.tmpdir(), 'nao-existe-oauth-xyz.json')), null);
   assert.equal(leCredencialOAuth(''), null);

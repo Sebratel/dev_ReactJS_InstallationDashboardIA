@@ -253,9 +253,19 @@ export interface CredencialOAuthGravada {
   readonly scopes: string[];
   readonly obtido_em: string;
   readonly conta?: string;
+  /**
+   * Só vem preenchido quando o arquivo é do formato `authorized_user` do Google,
+   * que carrega o secret dentro dele. No nosso formato o secret fica no `.env`.
+   */
+  readonly client_secret?: string;
+  /** De onde o arquivo veio — muda o que se pode afirmar sobre os escopos. */
+  readonly formato: 'nosso' | 'authorized_user';
 }
 
-export function gravaCredencialOAuth(arquivo: string, cred: CredencialOAuthGravada): void {
+export function gravaCredencialOAuth(
+  arquivo: string,
+  cred: Omit<CredencialOAuthGravada, 'formato'>,
+): void {
   const dir = path.dirname(arquivo);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   // 0600: no Windows o modo é indicativo, mas a intenção fica registrada e vale
@@ -263,9 +273,22 @@ export function gravaCredencialOAuth(arquivo: string, cred: CredencialOAuthGrava
   fs.writeFileSync(arquivo, `${JSON.stringify(cred, null, 2)}\n`, { mode: 0o600 });
 }
 
+/**
+ * Lê a credencial de usuário, em qualquer um dos dois formatos que aparecem aqui.
+ *
+ * O segundo formato não é capricho: `gcloud auth application-default login` grava
+ * um `authorized_user`, que é **exatamente** o que este módulo precisa — client
+ * id, client secret e refresh token de uma pessoa que já consentiu. Aceitá-lo
+ * dispensa refazer o consentimento.
+ *
+ * **O que ele não diz: os escopos.** O arquivo do gcloud não os registra, e o
+ * consentimento dele normalmente concede `cloud-platform` — que **não** inclui
+ * Sheets nem Drive. Então este caminho pode autenticar e ainda assim ser recusado
+ * na leitura; quem diagnostica isso é `explicaErroSheets`, no 403 de escopo.
+ */
 export function leCredencialOAuth(arquivo: string): CredencialOAuthGravada | null {
   if (!arquivo || !fs.existsSync(arquivo)) return null;
-  let json: Partial<CredencialOAuthGravada>;
+  let json: Partial<CredencialOAuthGravada> & { type?: string; client_secret?: string };
   try {
     json = JSON.parse(fs.readFileSync(arquivo, 'utf8'));
   } catch (err) {
@@ -274,15 +297,30 @@ export function leCredencialOAuth(arquivo: string): CredencialOAuthGravada | nul
         'Apague e rode `npm run auth:google`.',
     );
   }
-  if (!json.refresh_token) {
-    throw new OAuthError(`${arquivo} não tem "refresh_token". Rode \`npm run auth:google\`.`);
+  if (json.type === 'service_account') {
+    throw new OAuthError(
+      `${arquivo} é uma chave de SERVICE ACCOUNT, não credencial de usuário. Ela vai ` +
+        'em GOOGLE_APPLICATION_CREDENTIALS, não em GOOGLE_OAUTH_TOKEN_FILE.',
+    );
   }
+  if (!json.refresh_token) {
+    throw new OAuthError(
+      `${arquivo} não tem "refresh_token" — sem ele não há acesso reutilizável. ` +
+        'Se o arquivo veio de outra pessoa, confira que é o completo; ou rode ' +
+        '`npm run auth:google` para gerar um.',
+    );
+  }
+  const authorizedUser = json.type === 'authorized_user';
   return {
     client_id: json.client_id ?? '',
     refresh_token: json.refresh_token,
+    // O formato do gcloud não registra escopo. Lista vazia significa "não sei",
+    // e é tratada como tal: não bloqueia, e o Google recusa se faltar.
     scopes: json.scopes ?? [],
     obtido_em: json.obtido_em ?? '',
     conta: json.conta,
+    ...(json.client_secret ? { client_secret: json.client_secret } : {}),
+    formato: authorizedUser ? 'authorized_user' : 'nosso',
   };
 }
 

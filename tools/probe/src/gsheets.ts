@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
 import { applyDotEnv, loadConfig } from '../../../packages/query-engine/src/config.ts';
+import { explicaErroSheets } from '../../../packages/query-engine/src/connectors-gsheets.ts';
 import {
   SCOPE_DRIVE_METADATA_READONLY,
   SCOPE_SHEETS_READONLY,
@@ -116,6 +117,11 @@ const urlDaPlanilha = (id: string): string => `https://docs.google.com/spreadshe
 /** Traduz os erros que realmente acontecem aqui em instrução, não em código HTTP. */
 function explica(status: number, corpo: string, id: string, email: string): string {
   const msg = (JSON.parse(corpo || '{}') as { error?: { message?: string } }).error?.message ?? '';
+  // Escopo insuficiente tem uma explicação só, e ela vive no connector — duas
+  // versões do mesmo texto divergiriam na primeira correção.
+  if (/insufficient authentication scopes|ACCESS_TOKEN_SCOPE_INSUFFICIENT|insufficient_scope/i.test(msg)) {
+    return explicaErroSheets(status, corpo, id, email);
+  }
   if (status === 403 && /Google Sheets API has not been used|SERVICE_DISABLED|disabled/i.test(msg)) {
     return `a Google Sheets API não está ativada no projeto. Ative em\n` +
       `  console.cloud.google.com → APIs e serviços → Biblioteca → Google Sheets API`;

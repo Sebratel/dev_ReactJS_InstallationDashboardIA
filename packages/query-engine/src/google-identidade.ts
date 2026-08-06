@@ -58,23 +58,36 @@ export function identidadeGoogle(
 ): IdentidadeGoogle {
   const leCred = opts.leCredencial ?? leCredencialOAuth;
   const leSa = opts.leServiceAccount ?? readServiceAccount;
-  const { clientId, clientSecret, tokenFile } = gsheets.oauth;
+  const { tokenFile } = gsheets.oauth;
 
-  let credencial: CredencialOAuthGravada | null = null;
-  if (clientId && clientSecret && tokenFile) credencial = leCred(tokenFile);
+  const credencial: CredencialOAuthGravada | null = tokenFile ? leCred(tokenFile) : null;
 
-  if (credencial) {
+  // O client id/secret pode vir do `.env` **ou** de dentro do próprio arquivo: o
+  // formato `authorized_user` do gcloud carrega os dois. Preferir o `.env` quando
+  // existe mantém possível apontar um cliente diferente sem editar a credencial.
+  const clientId = gsheets.oauth.clientId || credencial?.client_id || '';
+  const clientSecret = gsheets.oauth.clientSecret || credencial?.client_secret || '';
+
+  if (credencial && clientId && clientSecret) {
     const obtem = tokenDeUsuario(
       { cliente: { clientId, clientSecret }, credencial, scopes },
       opts.fetchImpl,
     );
+    const origem = credencial.formato === 'authorized_user' ? ' — arquivo do gcloud' : '';
     return {
       tipo: 'oauth',
       rotulo: credencial.conta
-        ? `${credencial.conta} (OAuth de usuário)`
-        : 'conta de usuário via OAuth',
+        ? `${credencial.conta} (OAuth de usuário${origem})`
+        : `conta de usuário via OAuth${origem}`,
       token: tokenComCache(obtem),
     };
+  }
+  if (credencial && !clientSecret) {
+    throw new Error(
+      `${tokenFile} tem refresh token, mas falta o client secret para usá-lo. Ele não ` +
+        'está no arquivo (formato sem `client_secret`) nem em GOOGLE_OAUTH_CLIENT_SECRET ' +
+        'no .env. Refresh token só é trocado por access token pelo cliente que o emitiu.',
+    );
   }
 
   if (gsheets.credentialsPath) {
@@ -108,7 +121,11 @@ export function porQueNaoAOutra(
       ? 'a service account existe, mas o OAuth gravado tem precedência'
       : 'não há chave de service account configurada';
   }
-  if (!clientId || !clientSecret) return 'OAuth não configurado (falta client id/secret)';
+  if (!tokenFile && !clientId && !clientSecret) return 'OAuth não configurado';
   if (!tokenFile) return 'OAuth sem GOOGLE_OAUTH_TOKEN_FILE definido';
+  // Chega aqui com arquivo apontado: ou ele não existe, ou não trouxe o cliente.
+  if (!clientId || !clientSecret) {
+    return 'OAuth sem client id/secret — nem no .env, nem dentro do arquivo apontado';
+  }
   return 'OAuth configurado mas sem credencial gravada — rode `npm run auth:google`';
 }
