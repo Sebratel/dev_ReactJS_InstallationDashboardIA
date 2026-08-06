@@ -76,27 +76,36 @@ visuals:
     y: 2.907109318281409
     width: 355.4744623316103
     height: 115.04279196562507
-  entities_used: []
+  entities_used:
+  - CALENDARIO CRIADO
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: Data Criado Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    hierarchy: Hierarquia de datas
+    level: Trimestre
     name: Data Criado Trimestre
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "Data Criado Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: Data Criado Dia
   filters: []
   filters_vazios: 2
@@ -114,6 +123,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0
@@ -131,6 +142,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS TELEFONIA
     property: CLIENTE
+    aggregation: count
+    aggregation_code: 2
     name: CLIENTES
   filters: []
   filters_vazios: 0
@@ -193,6 +206,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS TELEFONIA
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: PROTOCOLOS
   filters: []
   filters_vazios: 0
@@ -249,6 +264,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -271,6 +288,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS TELEFONIA
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: Contagem de N°PROTOCOLO1
   filters: []
   filters_vazios: 0
@@ -527,6 +546,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS TELEFONIA
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: TOTAL
   filters: []
   filters_vazios: 0

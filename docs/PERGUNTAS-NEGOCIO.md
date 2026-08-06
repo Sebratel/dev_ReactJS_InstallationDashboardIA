@@ -18,6 +18,7 @@ terceiro: `QUADRO FUNCIONAL` fica no Google Sheets.)
 | 3 | ~~O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?~~ | — | ✅ resolvida em 05/08/2026: fica no Google Sheets |
 | 4 | `categoria4`/`categoria5` de `Base Categorias Field` estão trocadas — é bug ou proposital? | Fabrício | ⏳ aberta |
 | 5 | Técnico recontratado contaria duas vezes na produtividade — junta por nome ou por vínculo? | Fabrício | ⏳ aberta (latente: 0 efeito hoje) |
+| 6 | O card `CLIENTES` da telefonia mostra 466 ou 558? (contagem distinta ou não) | Erick, olhando a tela | ⏳ aberta (afeta 2 de 64 cards) |
 
 ---
 
@@ -320,6 +321,39 @@ fielmente e um número "corrigido" aqui não fecharia com o relatório que a ope
 confere. A correção é de modelagem (juntar por nome **+ período de vínculo**, ou por
 matrícula), e muda número que alguém acompanha: não é decisão de quem escreve código.
 Detalhe técnico em ACHADOS.md #25.
+
+---
+
+## 6. O card `CLIENTES` da telefonia mostra 466 ou 558?
+
+Esta não é pergunta de negócio — é uma **observação de cinco segundos** que resolve uma
+ambiguidade do PBIP. Está aqui porque não tenho como fazê-la sozinho: exige o relatório
+aberto.
+
+**O que está ambíguo.** O PBIP grava a agregação de um campo como número
+(`Function: 2`). Provei pelo próprio PBIP que esse número se chama `Count` na
+nomenclatura da ferramenta (ver ACHADOS.md #28), mas o nome não diz qual das duas
+contagens do DAX ele é: `DISTINCTCOUNT` (valores distintos) ou `COUNTA` (linhas não
+vazias).
+
+**Quanto isso custa, medido.** Quase nada, e é por isso que não bloqueia nada: das 10
+cartas que usam `count`, 8 estão sobre colunas 100% distintas no perfil dos goldens — as
+duas leituras dão o mesmo número. Sobram **2 de 64 cards**, os dois sobre `CLIENTE`.
+
+**A observação que decide.** Página `TELEFONIA/OUVIDORIA`, card **`CLIENTES`**:
+
+| Se o card mostra | Então `count` é | E a plataforma usa |
+|---|---|---|
+| ~466 | contagem distinta | `DISTINCTCOUNT` |
+| 558 (igual ao card `PROTOCOLOS`) | contagem de não-vazios | `COUNTA` |
+
+(558 é o total de linhas de `PROTOCOLOS TELEFONIA`; 466 é quantos clientes distintos há
+nelas. Os números do dia podem ter mudado — o que importa é se `CLIENTES` está **igual**
+a `PROTOCOLOS` ou **menor**.)
+
+**Enquanto não houver resposta**, adoto contagem distinta, com uma evidência de dentro do
+próprio relatório: o card que alguém batizou de **`CLIENTES DISTINTOS`** na página
+`VISÃO GERAL` usa exatamente essa agregação. Se a tela disser o contrário, muda uma linha.
 
 ---
 

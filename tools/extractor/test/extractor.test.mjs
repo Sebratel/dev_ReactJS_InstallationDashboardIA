@@ -14,6 +14,8 @@ import {
   extractFilters,
   traduzCondicao,
   parseLiteral,
+  descreveCampo,
+  extractVisualFields,
 } from '../src/index.mjs';
 
 // ---------- Unit: TMDL table ----------
@@ -561,7 +563,9 @@ test('traduzCondicao: Comparison guarda o lado esquerdo e o tipo', () => {
   assert.equal(c.op, 'comparison');
   assert.equal(c.kind, 'gt');
   assert.equal(c.left_property, 'N°PROTOCOLO');
-  assert.equal(c.left_aggregation, 2);
+  // Mesmo vocabulário do campo de visual: `count`, não o número 2. Filtro e campo
+  // que falam idiomas diferentes é convite a ler um pelo outro.
+  assert.equal(c.left_aggregation, 'count');
   assert.equal(c.right, 0);
 });
 
@@ -676,4 +680,158 @@ test('integração: nenhum filtro do PBIP real fica sem tradução', () => {
   // no relatório e a paridade precisa acompanhar; se caírem, um filtro sumiu.
   assert.equal(comCondicao, 108, 'filtros que restringem de fato (6 de página + 102 de visual)');
   assert.equal(vazios, 176, 'cartões de filtro sem seleção — não mudam número');
+});
+
+// ---------- Unit: campos de visual ----------
+
+test('descreveCampo: Aggregation guarda a função, nome e número', () => {
+  // Sem a função, `agrega SOLICITACAO` não é calculável: contar distintos e contar
+  // não-vazios dão números diferentes e ambos parecem certos na tela.
+  const d = descreveCampo({
+    Aggregation: {
+      Expression: {
+        Column: { Expression: { SourceRef: { Entity: 'PROTOCOLOS GERAL' } }, Property: 'CLIENTE' },
+      },
+      Function: 2,
+    },
+  });
+  assert.equal(d.kind, 'aggregation');
+  assert.equal(d.entity, 'PROTOCOLOS GERAL');
+  assert.equal(d.property, 'CLIENTE');
+  assert.equal(d.aggregation, 'count');
+  // O número vem junto porque o nome é nossa leitura e o número é o dado.
+  assert.equal(d.aggregation_code, 2);
+});
+
+test('descreveCampo: função fora do vocabulário fica visível', () => {
+  // Mediana (6), desvio (7) e variância (8) não ocorrem hoje. Se ocorrerem, o nome
+  // denuncia em vez de virar `null` e ser lido como "sem agregação".
+  const d = descreveCampo({ Aggregation: { Expression: { Column: { Property: 'X' } }, Function: 6 } });
+  assert.equal(d.aggregation, 'desconhecida6');
+  assert.equal(d.aggregation_code, 6);
+});
+
+test('descreveCampo: HierarchyLevel resolve coluna de origem e nível', () => {
+  // A hierarquia automática de datas do Power BI. Antes isto chegava com
+  // entity/property nulos — 69 campos que a spec descrevia como "coluna nenhuma".
+  const d = descreveCampo({
+    HierarchyLevel: {
+      Expression: {
+        Hierarchy: {
+          Expression: {
+            PropertyVariationSource: {
+              Expression: { SourceRef: { Entity: 'calendar' } },
+              Name: 'Variation',
+              Property: 'Data',
+            },
+          },
+          Hierarchy: 'Hierarquia de datas',
+        },
+      },
+      Level: 'Ano',
+    },
+  });
+  assert.deepEqual(d, {
+    kind: 'hierarchy_level',
+    entity: 'calendar',
+    property: 'Data',
+    hierarchy: 'Hierarquia de datas',
+    level: 'Ano',
+  });
+});
+
+test('descreveCampo: Arithmetic descreve os dois lados, não vira coluna', () => {
+  // `Divide(CountNonNull(x), ScopedEval(CountNonNull(x), []))` é o "% do total": o
+  // denominador ignora o contexto do visual, e é o escopo vazio que diz isso.
+  const agg = {
+    Aggregation: {
+      Expression: { Column: { Expression: { SourceRef: { Entity: 'REINCIDÊNCIA' } }, Property: 'solucao' } },
+      Function: 5,
+    },
+  };
+  const d = descreveCampo({
+    Arithmetic: { Left: agg, Right: { ScopedEval: { Expression: agg, Scope: [] } }, Operator: 3 },
+  });
+  assert.equal(d.kind, 'arithmetic');
+  assert.equal(d.operator, 'divide');
+  assert.equal(d.left.aggregation, 'count_non_null');
+  assert.equal(d.right.kind, 'scoped_eval');
+  assert.deepEqual(d.right.scope, []);
+  assert.equal(d.right.expression.aggregation, 'count_non_null');
+});
+
+test('descreveCampo: forma desconhecida preserva o JSON cru', () => {
+  const d = descreveCampo({ AlgoNovo: { X: 1 } });
+  assert.equal(d.kind, 'desconhecido');
+  assert.deepEqual(d.raw, { AlgoNovo: { X: 1 } });
+});
+
+test('extractVisualFields usa displayName, e cai no nome da coluna quando não há', () => {
+  const visual = {
+    visual: {
+      query: {
+        queryState: {
+          Values: {
+            projections: [
+              { field: { Measure: { Expression: { SourceRef: { Entity: 'T' } }, Property: 'M' } }, displayName: 'Rótulo' },
+              { field: { Column: { Expression: { SourceRef: { Entity: 'T' } }, Property: 'C' } } },
+            ],
+          },
+        },
+      },
+    },
+  };
+  const fs_ = extractVisualFields(visual);
+  assert.equal(fs_[0].role, 'Values');
+  assert.equal(fs_[0].name, 'Rótulo');
+  assert.equal(fs_[1].name, 'C');
+});
+
+test('integração: todo campo de visual do PBIP real é calculável', () => {
+  // Irmã da guarda dos filtros. Um campo cuja forma o extrator não conhece chega
+  // como `kind: desconhecido` em vez de virar `column` com propriedade nula — que
+  // era o comportamento antigo e produzia visual "sem coluna" sem ninguém notar.
+  let pbip;
+  try {
+    pbip = locatePbip();
+  } catch {
+    console.warn('PBIP não encontrado — pulando teste de integração.');
+    return;
+  }
+  const model = build(pbip);
+
+  const problemas = [];
+  const porKind = new Map();
+  const porAgregacao = new Map();
+  for (const d of model.dashboards) {
+    for (const v of d.visuals) {
+      for (const f of v.fields ?? []) {
+        porKind.set(f.kind, (porKind.get(f.kind) ?? 0) + 1);
+        if (f.kind === 'desconhecido') problemas.push(`${d.id}/${v.type} ${v.id}: ${JSON.stringify(f.raw)}`);
+        if (f.kind === 'aggregation') {
+          porAgregacao.set(f.aggregation, (porAgregacao.get(f.aggregation) ?? 0) + 1);
+          if (String(f.aggregation).startsWith('desconhecida')) {
+            problemas.push(`${d.id}/${v.type} ${v.id}: agregação ${f.aggregation_code} em ${f.entity}[${f.property}]`);
+          }
+        }
+        // Campo que se refere a dado precisa dizer de onde. `arithmetic` é a
+        // exceção legítima: quem tem entidade são os operandos dele.
+        if (f.kind !== 'arithmetic' && f.entity === null) {
+          problemas.push(`${d.id}/${v.type} ${v.id}: campo '${f.name}' (${f.kind}) sem entidade`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(problemas, [], `campos que a spec não descreve o bastante:\n  ${problemas.join('\n  ')}`);
+  // Contagens de 06/08/2026. Prendem a distribuição: `hierarchy_level` virando
+  // `column` outra vez, por exemplo, apareceria aqui e não numa medida errada.
+  assert.deepEqual(
+    [...porKind].sort(),
+    [['aggregation', 84], ['arithmetic', 2], ['column', 252], ['hierarchy_level', 69], ['measure', 41]],
+  );
+  assert.deepEqual(
+    [...porAgregacao].sort(),
+    [['avg', 1], ['count', 34], ['count_non_null', 14], ['max', 3], ['min', 24], ['sum', 8]],
+  );
 });

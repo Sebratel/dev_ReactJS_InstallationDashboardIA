@@ -1388,3 +1388,81 @@ Três decisões de tradução que mudam resultado, e ficam registradas por isso:
 ponta, e a conferência de paridade fica mais barata do que era: em vez de alguém ditar
 78 totais de medida, compara-se **visual a visual** — o número está na tela. É também
 o que a 2b.9 precisava para deixar de depender de ditado.
+
+## 28. A agregação dos campos era jogada fora, e 84 campos de visual não eram calculáveis
+
+Segundo achado da Fase 3, na mesma pergunta que produziu o 27 — *a spec de um visual
+tem tudo que é preciso para calcular o número que ele mostra?* Com os filtros no lugar,
+a resposta continuou sendo não, por outro motivo: a spec dizia **qual** coluna o visual
+agrega e não dizia **como**.
+
+`{kind: aggregation, entity: 'PROTOCOLOS GERAL', property: 'SOLICITACAO'}` não é
+calculável. Somar, contar, contar distintos e pegar o mínimo daquela coluna dão quatro
+números diferentes, e os quatro têm a mesma cara de número certo na tela. Três das cinco
+formas de campo do PBIP saíam mutiladas:
+
+| Forma no PBIP | O que a spec dizia antes | Campos |
+|---|---|---|
+| `Aggregation` | agrega a coluna — sem dizer com qual função | **84** |
+| `HierarchyLevel` | `kind: column` com `entity: null, property: null` | **69** |
+| `Arithmetic` | `kind: column` com `entity: null, property: null` | **2** |
+
+Os 69 `HierarchyLevel` são a hierarquia automática de datas (`Data Criado Ano`). Como o
+campo aponta para a coluna de origem por `PropertyVariationSource`, o extrator antigo não
+achava `Property` e gravava nulo — 37 slicers e 32 eixos de gráfico descritos como
+"coluna nenhuma". Um efeito colateral visível: slicers com `entities_used: []`, isto é,
+visuais que a spec afirmava não ler tabela alguma.
+
+### `queryRef` parece a resposta e é uma armadilha
+
+O PBIP traz, ao lado de cada campo, o texto `queryRef` (`"Sum(CAPACIDADE EQUIPE.CAPACIDADE
+MANHÃ)"`) e `nativeQueryRef` (`"Contagem de protocolo"`). É tentador ler a função dali.
+**Medido neste PBIP, o mesmo `Function: 2` aparece com quatro textos diferentes** —
+`Count(...)`, `CountNonNull(...)`, `Sum(...)`, `Min(...)` e sem função nenhuma. O texto é
+congelado no momento em que o campo foi criado e nunca reescrito: há `queryRef` citando
+`HoraAtualizado` e `Protocolos/Telefonia`, nomes de tabela que já não existem no modelo.
+Só `Function` está atualizado.
+
+Por isso **`queryRef` não entra na spec**. Guardar um texto provado velho ao lado do dado
+correto seria deixar armadilha para quem viesse depois.
+
+### Mas o texto velho prova o vocabulário, justamente por ser histórico
+
+`Count(...)` aparece **só** com `Function: 2` — campos que ninguém alterou desde que
+foram criados. `CountNonNull(...)` aparece com 2 **e** com 5 — foram criados como 5 e
+alterados depois. Logo 2 é `Count` e 5 é `CountNonNull` na nomenclatura do próprio PBIP,
+e a spec grava o nome **e** o número (`aggregation: count`, `aggregation_code: 2`): o
+nome é nossa leitura, o número é o dado, e quem quiser refazer a leitura consegue.
+
+O vocabulário completo, medido: `count` 34, `min` 24, `count_non_null` 14, `sum` 8,
+`max` 3, `avg` 1. Nenhuma mediana, desvio ou variância — e se aparecerem, o nome sai
+`desconhecida6` e o teste de integração falha dizendo em qual visual, em vez de virar
+`null` e ser lido como "sem agregação".
+
+### O que ainda não se decide aqui, e quanto isso custa
+
+Falta a semântica DAX de `count`: contagem **distinta** ou contagem de **não-vazios**.
+Em vez de escolher no escuro, o tamanho da dúvida foi medido contra os goldens — e ele é
+pequeno:
+
+- das 10 cartas `count`, 8 estão sobre colunas **100% distintas** no perfil
+  (`SOLICITACAO` 5000/5000, `N°PROTOCOLO` 5000/5000, telefonia 558/558). Nessas, as duas
+  leituras dão o **mesmo** número;
+- sobram **2 de 64 cards**, ambos sobre `CLIENTE`, que repete (4404 distintos em 5000
+  perfilados na geral; 466 em 558 na telefonia).
+
+E a evidência de dentro do relatório aponta para contagem distinta: o card que alguém
+batizou de **`CLIENTES DISTINTOS`** é exatamente `Function: 2`. A confirmação de cinco
+segundos está em `docs/PERGUNTAS-NEGOCIO.md` #6 — olhar o card `CLIENTES` da página de
+telefonia e ver se ele mostra 466 ou 558.
+
+Nota de escopo semelhante: `avg` (1 campo, `Function: 1`) tem `queryRef` dizendo `Sum` —
+outra prova de texto velho. Está num gráfico combinado, não em card, e por isso não
+bloqueia a fatia atual.
+
+### O que isto habilita
+
+Somado ao 27, um card agora é calculável ponta a ponta: **um** campo (`role: Values`,
+sempre um só nos 64), com função de agregação explícita ou uma medida nomeada, mais os
+filtros de visual e de página. É o que faltava para o Widget Engine começar pelo caso
+mais barato de conferir.

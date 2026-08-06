@@ -38,6 +38,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0
@@ -55,6 +57,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -78,23 +82,30 @@ visuals:
     height: 1074.8633879781419
   entities_used:
   - BASE DE ORIGEM
+  - CALENDARIO INSTALADO
   - CONSOLIDADO CLIENTES
   - PROTOCOLOS GERAL
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: DATA INSTALADO Dia
   - role: Series
     kind: column
@@ -105,11 +116,15 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: "SOLICITAÇÕES"
   - role: Y2
     kind: aggregation
     entity: CONSOLIDADO CLIENTES
     property: authentication_totalizer
+    aggregation: avg
+    aggregation_code: 1
     name: TOTAL CLIENTES
   filters:
   - name: Filtera9878bdd4213e2a5715d
@@ -144,6 +159,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: TOTAL INSTALADOS
   filters:
   - name: 05cc1e418c9bbb475a0b
@@ -178,6 +195,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: DATA CRIADO
+    aggregation: count_non_null
+    aggregation_code: 5
     name: TOTAL CRIADOS
   filters: []
   filters_vazios: 2
@@ -258,6 +277,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count_non_null
+    aggregation_code: 5
     name: Contagem de SOLICITACAO
   filters:
   - name: d074e7789e6998372281

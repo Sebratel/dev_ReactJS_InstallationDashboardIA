@@ -100,6 +100,8 @@ visuals:
     kind: aggregation
     entity: Clima/ Tempo
     property: Classificacao
+    aggregation: min
+    aggregation_code: 3
     name: Primeiro Classificacao
   filters:
   - name: 190b102b80638eb8440c
@@ -248,6 +250,8 @@ visuals:
     kind: aggregation
     entity: Clima/ Tempo
     property: Probabilidade_Chuva_Formatada
+    aggregation: max
+    aggregation_code: 4
     name: "Último Probabilidade_Chuva_Formatada"
   filters:
   - name: 190b102b80638eb8440c
@@ -351,27 +355,36 @@ visuals:
     width: 1433.63074811256
     height: 438.1606039807824
   entities_used:
+  - CALENDARIO INSTALADO
   - PROTOCOLOS GERAL
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: DATA INSTALADO Dia
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: Contagem de SOLICITACAO1
   filters:
   - name: 014e56ff8a9eabc6c997
@@ -533,6 +546,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0
@@ -557,31 +572,42 @@ visuals:
   entities_used:
   - BACKLOG AGENDADO FUTURO
   - "BACKLOG INSTALAÇÃO"
+  - CALENDARIO AGENDAMENTO
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO AGENDAMENTO
+    property: Data Agendado
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: Dates Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO AGENDAMENTO
+    property: Data Agendado
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "Dates Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO AGENDAMENTO
+    property: Data Agendado
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: Dates Dia
   - role: Y
     kind: aggregation
     entity: "BACKLOG INSTALAÇÃO"
     property: TOTAL
+    aggregation: sum
+    aggregation_code: 0
     name: Abertos
   - role: Y
     kind: aggregation
     entity: BACKLOG AGENDADO FUTURO
     property: data_carga
+    aggregation: count_non_null
+    aggregation_code: 5
     name: Agendados
   filters:
   - name: f5f87a39d4085b246cb9
@@ -654,27 +680,36 @@ visuals:
     width: 1433.63074811256
     height: 442.0041180507893
   entities_used:
+  - CALENDARIO CRIADO
   - PROTOCOLOS GERAL
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: Data Criado Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "Data Criado Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: Data Criado Dia
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: PROTOCOLOS GERADOS
   filters:
   - name: Filtere31d9c54d46998966777
@@ -704,6 +739,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: PROTOCOLOS TOTAIS REALIZADOS
   filters:
   - name: 05cc1e418c9bbb475a0b
@@ -740,34 +777,46 @@ visuals:
   - calendar
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: Data Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "Data Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: Data Dia
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
     property: "CAPACIDADE MANHÃ"
+    aggregation: sum
+    aggregation_code: 0
     name: "CAPACIDADE MANHÃ"
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
     property: CAPACIDADE TARDE
+    aggregation: sum
+    aggregation_code: 0
     name: CAPACIDADE TARDE
   - role: Y2
     kind: aggregation
     entity: calendar
     property: Protocolo
+    aggregation: count_non_null
+    aggregation_code: 5
     name: Protocolo
   filters:
   - name: f70b659397da408cc5ce
@@ -842,6 +891,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -888,6 +939,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: TOTAL GERADOS
   filters:
   - name: 2accc86d520098c90684

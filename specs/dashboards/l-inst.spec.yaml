@@ -27,6 +27,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: CONTAGEM
+    aggregation: sum
+    aggregation_code: 0
     name: TOTAL
   - role: Values
     kind: column

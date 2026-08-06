@@ -27,10 +27,11 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.9 | Paridade medida a medida contra o relatório — **depende de alguém abrir o Power BI e ditar os totais**; do lado do código, `--passos` já localiza a divergência passo a passo | 🚧 em curso |
 | 3 | Widget/Dashboard Engine + Chart SDK | 🚧 **em curso** |
 | — | Filtros de página e visual passaram a ser extraídos: **102 de visual + 6 de página** restringem de fato, 176 são cartão sem seleção, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #27). Sem isso um card seria computado sem o filtro dele, em silêncio | ✅ |
+| — | Campos de visual passaram a dizer **como** agregam: 84 `Aggregation` com a função, 69 `HierarchyLevel` com coluna e nível (antes nulos), 2 `Arithmetic` descritos, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #28) | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**514 testes verdes.** Nenhum deles precisa de credencial.
+**577 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -331,7 +332,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (562 testes, sem credencial)
+npm test                              # suíte completa (577 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

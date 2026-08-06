@@ -113,6 +113,133 @@ function readPages(reportDir) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Campos de visual
+// ---------------------------------------------------------------------------
+//
+// **O que faltava aqui, e por que isso dava número errado calado.** A versão
+// anterior reduzia todo campo a `{kind, entity, property}` e jogava fora *como* o
+// campo é agregado. `Aggregation` sem a função não é calculável: `SOLICITACAO`
+// contado de um jeito dá dezenas de milhares, do outro dá uma dúzia — e a spec
+// dizia apenas "agrega SOLICITACAO". Três formas de campo saíam mutiladas:
+// 84 `Aggregation` (sem função), 69 `HierarchyLevel` (com `entity`/`property`
+// nulos, virando "coluna nenhuma") e 2 `Arithmetic` (que apareciam como coluna).
+//
+// **De onde vêm os nomes das funções — e por que NÃO de `queryRef`.** O PBIP traz
+// `queryRef`/`nativeQueryRef` em texto (`"Sum(T.C)"`, `"Contagem de X"`), o que
+// parece ser a resposta pronta. Não é: esse texto é **congelado no momento em que
+// o campo foi criado e nunca reescrito**. Medido neste PBIP, a mesma
+// `Function: 2` aparece com quatro textos diferentes — `Count(...)`,
+// `CountNonNull(...)`, `Sum(...)`, `Min(...)` e sem função nenhuma. Só `Function`
+// está atualizado, e por isso o texto não entra na spec: guardá-lo seria deixar
+// uma armadilha para quem viesse depois.
+//
+// Ainda assim o texto velho **prova** o vocabulário, justamente por ser histórico:
+// `Count(...)` só aparece com `Function: 2` (campos que ninguém mexeu), e
+// `CountNonNull(...)` aparece com 2 e com 5 (foram criados como 5 e alterados) —
+// logo 2 é `Count` e 5 é `CountNonNull`, na nomenclatura do próprio PBIP.
+//
+// O que **não** se decide aqui é a semântica DAX de `count` (contagem distinta ou
+// contagem de não-vazios). Vale a evidência de dentro do relatório — o card que
+// alguém batizou de `CLIENTES DISTINTOS` é `Function: 2` — e a confirmação de 5
+// segundos está registrada em docs/PERGUNTAS-NEGOCIO.md, não adivinhada aqui.
+const AGREGACAO = {
+  0: 'sum',
+  1: 'avg',
+  2: 'count',
+  3: 'min',
+  4: 'max',
+  5: 'count_non_null',
+};
+
+/** `Arithmetic.Operator`. Só `divide` ocorre hoje, e o `queryRef` dele confere. */
+const ARITMETICA = { 0: 'add', 1: 'subtract', 2: 'multiply', 3: 'divide' };
+
+/** Nome da agregação. Número fora do vocabulário fica visível, não silencioso. */
+function nomeDaAgregacao(fn) {
+  if (fn === null || fn === undefined) return null;
+  return AGREGACAO[fn] ?? `desconhecida${fn}`;
+}
+
+/**
+ * Descreve um `projection.field` do PBIP na forma que o Widget Engine consegue
+ * calcular. Forma não reconhecida vira `kind: 'desconhecido'` com o JSON cru — o
+ * mesmo contrato dos filtros, e há teste exigindo zero desconhecidos no PBIP de
+ * hoje.
+ */
+function descreveCampo(f) {
+  if (!f || typeof f !== 'object') return { kind: 'desconhecido', entity: null, property: null, raw: f ?? null };
+
+  if (f.Column) {
+    return {
+      kind: 'column',
+      entity: f.Column.Expression?.SourceRef?.Entity ?? null,
+      property: f.Column.Property ?? null,
+    };
+  }
+  if (f.Measure) {
+    return {
+      kind: 'measure',
+      entity: f.Measure.Expression?.SourceRef?.Entity ?? null,
+      property: f.Measure.Property ?? null,
+    };
+  }
+  if (f.Aggregation) {
+    const dentro = descreveCampo(f.Aggregation.Expression);
+    return {
+      kind: 'aggregation',
+      entity: dentro.entity,
+      property: dentro.property,
+      aggregation: nomeDaAgregacao(f.Aggregation.Function),
+      // O número vai junto do nome de propósito: o nome é nossa leitura, o número
+      // é o dado. Se a leitura estiver errada, o número permite refazê-la.
+      aggregation_code: f.Aggregation.Function ?? null,
+    };
+  }
+  if (f.HierarchyLevel) {
+    // Hierarquia automática de datas: o Power BI cria uma por coluna de data, e o
+    // campo aponta para a coluna de origem via `PropertyVariationSource`. Sem
+    // guardar `property` + `level`, um eixo "Data Ano" viraria coluna nenhuma.
+    const h = f.HierarchyLevel.Expression?.Hierarchy;
+    const variacao = h?.Expression?.PropertyVariationSource;
+    return {
+      kind: 'hierarchy_level',
+      entity: variacao?.Expression?.SourceRef?.Entity
+        ?? h?.Expression?.SourceRef?.Entity
+        ?? null,
+      property: variacao?.Property ?? null,
+      hierarchy: h?.Hierarchy ?? null,
+      level: f.HierarchyLevel.Level ?? null,
+    };
+  }
+  if (f.Arithmetic) {
+    return {
+      kind: 'arithmetic',
+      entity: null,
+      property: null,
+      operator: ARITMETICA[f.Arithmetic.Operator] ?? `desconhecido${f.Arithmetic.Operator}`,
+      left: descreveCampo(f.Arithmetic.Left),
+      right: descreveCampo(f.Arithmetic.Right),
+    };
+  }
+  if (f.ScopedEval) {
+    // `ScopedEval(expr, [])` é o "total sem o contexto do visual" — o denominador
+    // de um "% do total". O escopo vazio é o que dá esse significado, então ele é
+    // registrado em vez de presumido.
+    const dentro = descreveCampo(f.ScopedEval.Expression);
+    return { kind: 'scoped_eval', scope: f.ScopedEval.Scope ?? [], expression: dentro, entity: dentro.entity, property: dentro.property };
+  }
+  return { kind: 'desconhecido', entity: null, property: null, raw: f };
+}
+
+/** Entidades citadas por um campo, inclusive nas partes aninhadas de `Arithmetic`. */
+function entidadesDoCampo(f, out = new Set()) {
+  if (!f || typeof f !== 'object') return out;
+  if (typeof f.entity === 'string') out.add(f.entity);
+  for (const parte of [f.left, f.right, f.expression]) entidadesDoCampo(parte, out);
+  return out;
+}
+
 // Extrai campos/medidas usados por um visual.
 function extractVisualFields(visual) {
   const fields = [];
@@ -120,19 +247,11 @@ function extractVisualFields(visual) {
   if (!qs) return fields;
   for (const [role, section] of Object.entries(qs)) {
     for (const proj of section.projections || []) {
-      const f = proj.field || {};
-      const holder = f.Column || f.Measure || f.Aggregation?.Expression?.Column || {};
-      const kind = f.Measure ? 'measure' : f.Aggregation ? 'aggregation' : 'column';
-      const entity = holder?.Expression?.SourceRef?.Entity
-        || f.Aggregation?.Expression?.Column?.Expression?.SourceRef?.Entity
-        || null;
-      const property = holder?.Property || f.Aggregation?.Expression?.Column?.Property || null;
+      const campo = descreveCampo(proj.field);
       fields.push({
         role,
-        kind,
-        entity,
-        property,
-        name: proj.displayName || proj.nativeQueryRef || property || null,
+        ...campo,
+        name: proj.displayName || proj.nativeQueryRef || campo.property || null,
       });
     }
   }
@@ -173,20 +292,16 @@ function parseLiteral(bruto) {
   return s;
 }
 
-/** `{Column:{Property}}` ou `{Aggregation:{Expression:{Column:{Property}},Function}}`. */
+/**
+ * Lado esquerdo de uma comparação: `{Column:{Property}}` ou
+ * `{Aggregation:{...,Function}}`. Passa por `descreveCampo` para o filtro e o campo
+ * de visual falarem o **mesmo** vocabulário de agregação.
+ */
 function refDeCampo(expr) {
   if (!expr || typeof expr !== 'object') return null;
-  if (expr.Column) {
-    return { property: expr.Column.Property ?? null, aggregation: null };
-  }
-  if (expr.Aggregation) {
-    return {
-      property: expr.Aggregation.Expression?.Column?.Property ?? null,
-      // Número do Power BI: 0 Sum, 1 Avg, 2 Count, 3 Min, 4 Max, 5 CountNonNull.
-      aggregation: expr.Aggregation.Function ?? null,
-    };
-  }
-  return null;
+  const d = descreveCampo(expr);
+  if (d.kind === 'desconhecido') return null;
+  return { property: d.property, aggregation: d.aggregation ?? null };
 }
 
 /** `ComparisonKind` do PBIP. */
@@ -261,13 +376,13 @@ function extractFilters(node) {
       vazios++;
       continue;
     }
-    const campo = f.field?.Column || f.field?.Measure || f.field?.Aggregation?.Expression?.Column;
+    const campo = descreveCampo(f.field);
     const onde = f.filter.Where || [];
     filters.push({
       name: f.name ?? null,
       type: f.type ?? null,
-      entity: campo?.Expression?.SourceRef?.Entity ?? null,
-      property: campo?.Property ?? null,
+      entity: campo.entity,
+      property: campo.property,
       // Um filtro pode ter mais de uma cláusula; guardar todas evita o erro de
       // aplicar só a primeira e achar que aplicou o filtro.
       conditions: onde.map((w) => traduzCondicao(w.Condition)),
@@ -421,7 +536,9 @@ function build(pbip) {
     ...extractFilters(page),
     visuals: visuals.map((v) => {
       const fields = extractVisualFields(v);
-      const entities = [...new Set(fields.map((f) => f.entity).filter(Boolean))].sort();
+      // Anda nas partes aninhadas: a entidade de um `Arithmetic` está nos operandos,
+      // e somar só o nível de cima esconderia a tabela que o visual de fato lê.
+      const entities = [...fields.reduce((acc, f) => entidadesDoCampo(f, acc), new Set())].sort();
       return {
         id: v.name,
         type: v?.visual?.visualType || 'unknown',
@@ -547,7 +664,7 @@ export function run(argv = process.argv) {
 export { build };
 // Expostos para teste: as formas de filtro do PBIP são poucas, mas cada tradução
 // errada vira número errado num visual, em silêncio.
-export { extractFilters, traduzCondicao, parseLiteral };
+export { extractFilters, traduzCondicao, parseLiteral, descreveCampo, extractVisualFields };
 
 // Execução direta
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

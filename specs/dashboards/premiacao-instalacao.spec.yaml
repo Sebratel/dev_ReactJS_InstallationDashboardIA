@@ -38,6 +38,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0
@@ -48,28 +50,35 @@ visuals:
     y: 112
     width: 305
     height: 102
-  entities_used: []
+  entities_used:
+  - CALENDARIO INSTALADO
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: DATA INSTALADO Dia
   filters:
   - name: d0105f0477c4120e2be2
     type: Categorical
-    entity: null
-    property: null
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: "DATA ALOCAÇÃO"
     conditions:
     - op: not_in
       values:
@@ -99,6 +108,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: QTD.
   filters:
   - name: 217e9d4b147a33ed3854
@@ -118,7 +129,7 @@ visuals:
     - op: comparison
       kind: gt
       left_property: N°PROTOCOLO
-      left_aggregation: 2
+      left_aggregation: count
       right: 0
   - name: e1f39639037ca5e0cc5c
     type: Categorical
@@ -156,6 +167,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: "."
   - role: Values
     kind: column
@@ -188,7 +201,7 @@ visuals:
     - op: comparison
       kind: gt
       left_property: N°PROTOCOLO
-      left_aggregation: 2
+      left_aggregation: count
       right: 0
   - name: 5ca2a5cd7f1809e0096c
     type: Categorical
@@ -218,6 +231,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: QTD.
   - role: Values
     kind: measure
@@ -247,7 +262,7 @@ visuals:
     - op: comparison
       kind: gt
       left_property: N°PROTOCOLO
-      left_aggregation: 2
+      left_aggregation: count
       right: 0
   - name: 5ca2a5cd7f1809e0096c
     type: Categorical
@@ -295,6 +310,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: "."
   - role: Values
     kind: column
@@ -342,7 +359,7 @@ visuals:
     - op: comparison
       kind: gt
       left_property: N°PROTOCOLO
-      left_aggregation: 2
+      left_aggregation: count
       right: 0
   - name: 5ca2a5cd7f1809e0096c
     type: Categorical
@@ -395,6 +412,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -501,7 +520,7 @@ visuals:
     - op: comparison
       kind: gt
       left_property: N°PROTOCOLO
-      left_aggregation: 2
+      left_aggregation: count
       right: 0
   - name: 5ca2a5cd7f1809e0096c
     type: Categorical
@@ -559,6 +578,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: QTD. PROTOCOLOS
   - role: Values
     kind: column
@@ -583,7 +604,7 @@ visuals:
     - op: comparison
       kind: gt
       left_property: N°PROTOCOLO
-      left_aggregation: 2
+      left_aggregation: count
       right: 0
   - name: 6ab4e4500c05592cd507
     type: Categorical

@@ -49,6 +49,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -319,6 +321,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0

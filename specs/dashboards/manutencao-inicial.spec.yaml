@@ -107,6 +107,8 @@ visuals:
     kind: aggregation
     entity: RETORNO PRIORITARIO
     property: data_abertura
+    aggregation: count_non_null
+    aggregation_code: 5
     name: PROTOCOLOS RETORNOS
   filters:
   - name: ba096ec6250c34dc4922
@@ -223,11 +225,31 @@ visuals:
     kind: aggregation
     entity: "REINCIDÊNCIA"
     property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+    aggregation: count_non_null
+    aggregation_code: 5
     name: QTDE
   - role: Values
-    kind: column
+    kind: arithmetic
     entity: null
     property: null
+    operator: divide
+    left:
+      kind: aggregation
+      entity: "REINCIDÊNCIA"
+      property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+      aggregation: count_non_null
+      aggregation_code: 5
+    right:
+      kind: scoped_eval
+      scope: []
+      expression:
+        kind: aggregation
+        entity: "REINCIDÊNCIA"
+        property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
+        aggregation: count_non_null
+        aggregation_code: 5
+      entity: "REINCIDÊNCIA"
+      property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
     name: "%"
   filters:
   - name: 165d52ad1503069c716a
@@ -283,6 +305,8 @@ visuals:
     kind: aggregation
     entity: "REINCIDÊNCIA"
     property: TempoTotalDias
+    aggregation: sum
+    aggregation_code: 0
     name: DIAS
   - role: Values
     kind: column
@@ -358,6 +382,8 @@ visuals:
     kind: aggregation
     entity: "REINCIDÊNCIA"
     property: protocol
+    aggregation: count_non_null
+    aggregation_code: 5
     name: "TOTAL DE OCORRÊNCIAS"
   filters:
   - name: add57c4a11812122b3de
@@ -474,11 +500,31 @@ visuals:
     kind: aggregation
     entity: "REINCIDÊNCIA"
     property: solucao
+    aggregation: count_non_null
+    aggregation_code: 5
     name: QTDE
   - role: Values
-    kind: column
+    kind: arithmetic
     entity: null
     property: null
+    operator: divide
+    left:
+      kind: aggregation
+      entity: "REINCIDÊNCIA"
+      property: solucao
+      aggregation: count_non_null
+      aggregation_code: 5
+    right:
+      kind: scoped_eval
+      scope: []
+      expression:
+        kind: aggregation
+        entity: "REINCIDÊNCIA"
+        property: solucao
+        aggregation: count_non_null
+        aggregation_code: 5
+      entity: "REINCIDÊNCIA"
+      property: solucao
     name: "%"
   filters:
   - name: 165d52ad1503069c716a
@@ -501,24 +547,32 @@ visuals:
   - RETORNO PRIORITARIO
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: data_abertura Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "data_abertura Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: data_abertura Dia
   - role: Y
     kind: aggregation
     entity: RETORNO PRIORITARIO
     property: data_abertura
+    aggregation: count_non_null
+    aggregation_code: 5
     name: Contagem de data_abertura
   filters:
   - name: 7acd363c85002c71ab64
@@ -562,22 +616,29 @@ visuals:
     y: 148.6725663716814
     width: 277.0716009654063
     height: 94.60981496379726
-  entities_used: []
+  entities_used:
+  - CALENDARIO INSTALADO
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: DATA INSTALADO Dia
   filters:
   - name: 998ba96de06267501367
@@ -704,22 +765,29 @@ visuals:
     y: 148.6725663716814
     width: 292.83990345937247
     height: 94.60981496379726
-  entities_used: []
+  entities_used:
+  - "REINCIDÊNCIA"
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: "REINCIDÊNCIA"
+    property: data_suporte
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: data_suporte Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: "REINCIDÊNCIA"
+    property: data_suporte
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "data_suporte Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: "REINCIDÊNCIA"
+    property: data_suporte
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: data_suporte Dia
   filters:
   - name: fdaa09e0ca730dca6485
@@ -831,6 +899,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: TOTAL INSTALADOS
   filters:
   - name: 1a93d3d23e31db1784ee
@@ -866,6 +936,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0
@@ -919,6 +991,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -965,22 +1039,29 @@ visuals:
     y: 2360.7401448109413
     width: 299.597747385358
     height: 87.85197103781174
-  entities_used: []
+  entities_used:
+  - RETORNO PRIORITARIO
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: data_abertura Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "data_abertura Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: RETORNO PRIORITARIO
+    property: data_abertura
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: data_abertura Dia
   filters:
   - name: 998ba96de06267501367
@@ -1000,33 +1081,44 @@ visuals:
     width: 1835.880933226066
     height: 558.6484312148028
   entities_used:
+  - CALENDARIO INSTALADO
   - PROTOCOLOS GERAL
   - "REINCIDÊNCIA"
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: DATA INSTALADO Dia
   - role: Y
     kind: aggregation
     entity: "REINCIDÊNCIA"
     property: protocol
+    aggregation: count_non_null
+    aggregation_code: 5
     name: "OCORRÊNCIAS"
   - role: Y2
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
     name: "SOLICITAÇÕES"
   filters:
   - name: d347e5d0041cb5b87462

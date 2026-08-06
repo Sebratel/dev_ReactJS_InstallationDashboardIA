@@ -66,6 +66,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -77,17 +79,22 @@ visuals:
     width: 403.21802091713596
     height: 601.4481094127111
   entities_used:
+  - CALENDARIO INSTALADO
   - "INSTALAÇÕES REINCIDENTES"
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Values
     kind: measure
@@ -124,6 +131,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
+    aggregation: count_non_null
+    aggregation_code: 5
     name: Protocolos
   - role: Values
     kind: measure
@@ -232,6 +241,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: Instalados
   filters: []
   filters_vazios: 0
@@ -361,22 +372,29 @@ visuals:
     width: 1240.0895856662933
     height: 603.5834266517356
   entities_used:
+  - CALENDARIO INSTALADO
   - "INSTALAÇÕES REINCIDENTES"
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: DATA INSTALADO Dia
   - role: Series
     kind: column
@@ -387,6 +405,8 @@ visuals:
     kind: aggregation
     entity: "INSTALAÇÕES REINCIDENTES"
     property: protocolo_instalacao
+    aggregation: count_non_null
+    aggregation_code: 5
     name: Contagem de protocolo_instalacao
   filters:
   - name: e8a2f6f7b98fc36cb8a2
@@ -453,22 +473,29 @@ visuals:
     y: 148.6725663716814
     width: 304.1029766693483
     height: 94.60981496379726
-  entities_used: []
+  entities_used:
+  - "INSTALAÇÕES REINCIDENTES"
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: data_manutencao
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: data_manutencao Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: data_manutencao
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "data_manutencao Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: data_manutencao
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: data_manutencao Dia
   filters: []
   filters_vazios: 0
@@ -499,6 +526,8 @@ visuals:
     kind: aggregation
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
     name: "."
   - role: Values
     kind: column
@@ -623,6 +652,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0
@@ -667,22 +698,29 @@ visuals:
     y: 148.6725663716814
     width: 304.1029766693483
     height: 94.60981496379726
-  entities_used: []
+  entities_used:
+  - CALENDARIO INSTALADO
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: DATA INSTALADO Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "DATA INSTALADO Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: DATA INSTALADO Dia
   filters: []
   filters_vazios: 0

@@ -72,6 +72,8 @@ visuals:
     kind: aggregation
     entity: Status Protocolo Dia
     property: protocolo
+    aggregation: count
+    aggregation_code: 2
     name: Qtd
   filters: []
   filters_vazios: 0
@@ -89,6 +91,8 @@ visuals:
     kind: aggregation
     entity: FIELD AGENDA
     property: Protocolo
+    aggregation: count
+    aggregation_code: 2
     name: "."
   - role: Values
     kind: column
@@ -136,6 +140,8 @@ visuals:
     kind: aggregation
     entity: FIELD AGENDA
     property: Protocolo
+    aggregation: count
+    aggregation_code: 2
     name: Qtd
   filters: []
   filters_vazios: 0
@@ -170,6 +176,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Data
+    aggregation: min
+    aggregation_code: 3
     name: Data mais recente
   filters: []
   filters_vazios: 0
@@ -198,6 +206,8 @@ visuals:
     kind: aggregation
     entity: Clima/ Tempo
     property: Classificacao
+    aggregation: min
+    aggregation_code: 3
     name: Primeiro Classificacao
   filters: []
   filters_vazios: 1
@@ -208,22 +218,29 @@ visuals:
     y: 141.66733708769107
     width: 423.4915526950925
     height: 112.63073209975865
-  entities_used: []
+  entities_used:
+  - calendar
   fields:
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: Data Ano
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "Data Mês"
   - role: Values
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: Data Dia
   filters: []
   filters_vazios: 0
@@ -252,6 +269,8 @@ visuals:
     kind: aggregation
     entity: HORA ATUALIZADO
     property: Hora
+    aggregation: min
+    aggregation_code: 3
     name: Hora mais recente
   filters: []
   filters_vazios: 0
@@ -330,6 +349,8 @@ visuals:
     kind: aggregation
     entity: Clima/ Tempo
     property: Probabilidade_Chuva_Formatada
+    aggregation: max
+    aggregation_code: 4
     name: "Último Probabilidade_Chuva_Formatada"
   filters:
   - name: c8e0cec6e1b5029d6d09
@@ -360,6 +381,8 @@ visuals:
     kind: aggregation
     entity: Status Protocolo Dia
     property: protocolo
+    aggregation: count
+    aggregation_code: 2
     name: Qtd
   filters: []
   filters_vazios: 0
@@ -433,6 +456,8 @@ visuals:
     kind: aggregation
     entity: Status Protocolo Dia
     property: protocolo
+    aggregation: count
+    aggregation_code: 2
     name: Qtd
   filters: []
   filters_vazios: 0
@@ -467,6 +492,8 @@ visuals:
     kind: aggregation
     entity: FIELD AGENDA
     property: Protocolo
+    aggregation: count
+    aggregation_code: 2
     name: "."
   - role: Values
     kind: column
@@ -510,31 +537,42 @@ visuals:
   entities_used:
   - CAPACIDADE EQUIPE
   - Status Protocolo Dia
+  - calendar
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: Data Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "Data Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: Data Dia
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
     property: "CAPACIDADE MANHÃ"
+    aggregation: sum
+    aggregation_code: 0
     name: "CAPACIDADE MANHÃ"
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
     property: CAPACIDADE TARDE
+    aggregation: sum
+    aggregation_code: 0
     name: CAPACIDADE TARDE
   - role: Y2
     kind: measure
@@ -562,6 +600,8 @@ visuals:
     kind: aggregation
     entity: Status Protocolo Dia
     property: protocolo
+    aggregation: count
+    aggregation_code: 2
     name: Qtd
   filters: []
   filters_vazios: 0
@@ -618,6 +658,8 @@ visuals:
     kind: aggregation
     entity: FIELD AGENDA
     property: ClassificacaoRelato
+    aggregation: max
+    aggregation_code: 4
     name: Motivo
   filters:
   - name: 10967825240b49b3273c
@@ -841,21 +883,28 @@ visuals:
     height: 443.66812227074234
   entities_used:
   - Status Protocolo Dia
+  - calendar
   fields:
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Ano
     name: Data Ano
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: "Mês"
     name: "Data Mês"
   - role: Category
-    kind: column
-    entity: null
-    property: null
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Dia
     name: Data Dia
   - role: Series
     kind: column
@@ -905,6 +954,8 @@ visuals:
     kind: aggregation
     entity: Status Protocolo Dia
     property: protocolo
+    aggregation: count
+    aggregation_code: 2
     name: Qtd
   filters: []
   filters_vazios: 0
