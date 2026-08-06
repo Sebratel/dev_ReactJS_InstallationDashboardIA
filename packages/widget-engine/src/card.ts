@@ -171,9 +171,14 @@ export function valorDoCampo(
     return ev.evaluate(chamada, escopo);
   }
   throw new DaxEvalError(
-    `${onde}: campo com kind '${campo.kind}' não é calculável como valor único. ` +
-      `Card só tem column/aggregation/measure; hierarchy_level e arithmetic aparecem ` +
-      `em eixo e em "% do total", que são a próxima fatia.`,
+    `${onde}: campo '${campo.name ?? campo.property}' tem kind '${campo.kind}' e não é ` +
+      `calculável como valor único. Calculáveis: column (com agregação), aggregation e measure. ` +
+      (campo.kind === 'hierarchy_level'
+        ? `hierarchy_level é um nível da hierarquia de data ('${campo.entity}'[${campo.property}].` +
+          `[${campo.level}]) — ele é eixo, e como célula precisaria ser projetado da coluna.`
+        : campo.kind === 'arithmetic'
+          ? `arithmetic é a conta entre dois campos ("% do total"), e depende do total do visual.`
+          : `Nenhuma das três.`),
   );
 }
 

@@ -32,10 +32,13 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
 | — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
 | — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
+| — | **Agrupamento + tabela: 15 dos 29 `tableEx` calculam.** Uma tabela do Power BI mostra as *combinações distintas* das colunas que não agregam, não uma linha por registro. As 14 recusas caem todas em limite declarado, e o teste falha se alguma deixar de ter nome | ✅ |
+| — | **A 75ª medida chegou.** `[Faixa 1 Premiação Total]` não precisava de mais DAX: precisava de alguém que respondesse `ISINSCOPE`, que é propriedade do visual ([ACHADOS](docs/ACHADOS.md) #12). Calcula no total e fica em branco quando o visual agrupa — o que o comentário do autor pede | ✅ |
+| — | `'PROTOCOLOS GERAL'[CONTAGEM]` é o texto `"1"` declarado `int64`; 2 tabelas somam e param. Não convertido: a regra que resolveria abre a porta para converter texto em número em silêncio ([ACHADOS](docs/ACHADOS.md) #31) | ⚠️ decisão pendente |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**670 testes verdes.** Nenhum deles precisa de credencial.
+**709 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -64,10 +67,12 @@ de `.env` nem de banco.
 Serve para responder *quais medidas referenciam coisas que existem* — a resposta
 hoje é **75 de 78**, e as 3 que sobram são as medidas mortas do achado 6.
 
-Não confundir com as **74** que o avaliador executa: a diferença é
+Não confundir com as **74** que o avaliador executa **sozinho**: a diferença é
 `[Faixa 1 Premiação Total]`, cujas referências existem mas que usa `ISINSCOPE` —
-pergunta que só o Widget Engine responde ([ACHADOS](docs/ACHADOS.md) #12). Os dois
-números medem coisas diferentes: "aponta para o que existe" e "roda".
+pergunta que só o visual responde ([ACHADOS](docs/ACHADOS.md) #12). Com o Widget
+Engine informando o agrupamento, ela calcula, e o alvo de **75** está atingido. Os
+três números medem coisas diferentes: "aponta para o que existe" (75), "roda no
+avaliador" (74) e "roda dentro de um visual" (75).
 
 ### Measure Engine (Fase 2b)
 
@@ -325,13 +330,38 @@ Três partes, e cada uma existe por causa de um número errado específico:
   base incluem `#APURAÇÃO PREMIAÇÃO` e `ALOCAÇÃO PATRIMONIO.ALOCADO POR:`; um escape errado
   daria erro de sintaxe no melhor caso e a coluna errada no pior.
 
-**O que está medido, e o que ainda não se sabe.** Os 64 cards executam e 98 dos 108
-filtros do relatório aplicam — os 10 restantes são `COUNT(x) > 0`, recusados pelo nome
-([ACHADOS](docs/ACHADOS.md) #30). Mas **36 cards têm filtro e só 5 mudam de valor** sobre
-o dataset sintético: nos outros 31 o filtro aceita todas as linhas. O caminho de filtro
-*executa* em 36 e está *exercitado* em 5, e os dois números estão presos em
-`cobertura.test.ts` para que a distância entre eles fique visível. É a mesma lição da
-2b.5 — **dado sintético não prova paridade**.
+Depois do card veio o **agrupamento**, que é o que separa um card de todo o resto: um
+card é um número, uma tabela é *um número por grupo*.
+
+- **`grupos.ts`** — o grupo é um **filtro**, não um recorte de linhas. Calcular a
+  agregação direto sobre as linhas do grupo seria mais rápido e estaria errado para
+  medida: `[Ticket]` é `DIVIDE([Total], [Itens])`, e as duas de dentro precisam
+  enxergar o contexto do grupo. Filtrando, a propagação por relacionamento (2b.5) vem
+  de graça — agrupar por `'EQUIPES'[REGIAO]` restringe `OS` sem que este arquivo saiba
+  que existe relacionamento.
+- **`tabela.ts`** — os 29 `tableEx` têm tudo em `role: Values`, e isso **não** quer
+  dizer que a tabela não agrupa: quem agrupa são os campos sem função de agregação. Uma
+  tabela de três colunas de texto mostra as **combinações distintas**, não uma linha por
+  registro. Lida como listagem crua ela sairia maior que a da tela, com cara de dado a
+  mais em vez de erro.
+
+Com o agrupamento veio a **75ª medida**: `[Faixa 1 Premiação Total]` usa `ISINSCOPE`
+para só calcular no total, e `ISINSCOPE` é propriedade do visual, não do modelo. O
+avaliador ganhou `scopeWithGrouping`; sem ele, `ISINSCOPE` **continua errando alto** —
+conjunto vazio é "o visual não agrupa por nada", `undefined` é "não há visual", e a
+distinção é o que impede a medida de calcular em toda célula.
+
+**O que está medido, e o que ainda não se sabe.** Os 64 cards executam, 15 das 29
+tabelas calculam, e 98 dos 108 filtros aplicam. As recusas têm todas nome — filtro
+sobre agregado (5), chaves de mais de uma tabela (4), campo aritmético (2),
+`[CONTAGEM]` (2, [ACHADOS](docs/ACHADOS.md) #31), nível de hierarquia (1) — e o teste
+falha se alguma deixar de ter.
+
+Mas **36 cards têm filtro e só 5 mudam de valor** sobre o dataset sintético: nos outros
+31 o filtro aceita todas as linhas. O caminho de filtro *executa* em 36 e está
+*exercitado* em 5, e os dois números estão presos em `cobertura.test.ts` para que a
+distância entre eles fique visível. É a mesma lição da 2b.5 — **dado sintético não
+prova paridade**.
 
 ### Query Engine (Fase 1)
 
@@ -365,7 +395,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (670 testes, sem credencial)
+npm test                              # suíte completa (709 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

@@ -7,6 +7,14 @@ export {
   type ValorDeCard,
 } from './card.ts';
 export { traduzFiltros } from './filtro.ts';
+export { agrupar, chaveDoCampo, type Chave, type Grupo } from './grupos.ts';
+export {
+  calculaTabela,
+  separaCampos,
+  tabelasDoDashboard,
+  type CelulaTabela,
+  type ValorDeTabela,
+} from './tabela.ts';
 export { ancora, deslocar, resolveBorda, resolveSpan, truncar } from './datas.ts';
 export {
   loadDashboards,

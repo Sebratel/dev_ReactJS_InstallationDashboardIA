@@ -45,6 +45,16 @@ export interface EvalScope {
   readonly rows: ReadonlyMap<string, Row>;
   /** variáveis `VAR` visíveis */
   readonly vars: ReadonlyMap<string, ScopeValue>;
+  /**
+   * As colunas por que a **visualização** está agrupando, como `tabela[coluna]`
+   * normalizado. É a única pergunta que o avaliador não consegue responder sozinho,
+   * e é o que `ISINSCOPE` lê.
+   *
+   * `undefined` significa **"não há visual"**, e não "não agrupa por nada" — a
+   * distinção é o que mantém `ISINSCOPE` errando alto fora do Widget Engine. Um
+   * conjunto vazio é resposta legítima: é o total, onde `ISINSCOPE` é `FALSE`.
+   */
+  readonly agrupamento?: ReadonlySet<string>;
 }
 
 export interface EvaluatorOptions {
@@ -162,7 +172,7 @@ export class Evaluator {
   scopeWithRow(base: EvalScope, table: string, row: Row): EvalScope {
     const rows = new Map(base.rows);
     rows.set(normalizeName(table), row);
-    return { filter: base.filter, rows, vars: base.vars };
+    return { filter: base.filter, rows, vars: base.vars, agrupamento: base.agrupamento };
   }
 
   /**
@@ -174,7 +184,7 @@ export class Evaluator {
   scopeWithAnonRow(base: EvalScope, row: Row): EvalScope {
     const rows = new Map(base.rows);
     rows.set(`\u0000anon${this.anonSeq++}`, row);
-    return { filter: base.filter, rows, vars: base.vars };
+    return { filter: base.filter, rows, vars: base.vars, agrupamento: base.agrupamento };
   }
 
   /** Contexto de linha para uma tabela que pode ser do modelo ou anônima. */
@@ -184,12 +194,33 @@ export class Evaluator {
   }
 
   scopeWithVars(base: EvalScope, vars: ReadonlyMap<string, ScopeValue>): EvalScope {
-    return { filter: base.filter, rows: base.rows, vars };
+    return { filter: base.filter, rows: base.rows, vars, agrupamento: base.agrupamento };
+  }
+
+  /**
+   * Escopo que declara **por quais colunas a visualização está agrupando**.
+   *
+   * Quem chama é o Widget Engine, uma vez por célula. As colunas chegam como
+   * `'Tabela'[Coluna]` e são normalizadas aqui, para que `ISINSCOPE` não precise
+   * saber com que caixa o visual as escreveu.
+   *
+   * Note que ele **não filtra nada**: os filtros do grupo entram por `with()`,
+   * como qualquer filtro. Este campo responde uma pergunta diferente — "esta
+   * coluna é um eixo do visual?" — e é por isso que ele não podia ser deduzido do
+   * contexto de filtro: uma coluna pode estar filtrada sem ser eixo, e é
+   * exatamente o caso do total.
+   */
+  scopeWithGrouping(base: EvalScope, colunas: Iterable<readonly [string, string]>): EvalScope {
+    const chaves = new Set<string>();
+    for (const [tabela, coluna] of colunas) {
+      chaves.add(`${normalizeName(tabela)}[${normalizeName(coluna)}]`);
+    }
+    return { filter: base.filter, rows: base.rows, vars: base.vars, agrupamento: chaves };
   }
 
   /** Escopo com outro contexto de filtro e **sem** contexto de linha (ver `CALCULATE`). */
   scopeWithFilter(base: EvalScope, filter: FilteredContext): EvalScope {
-    return { filter, rows: new Map(), vars: base.vars };
+    return { filter, rows: new Map(), vars: base.vars, agrupamento: base.agrupamento };
   }
 
   ast(dax: string): DaxNode {

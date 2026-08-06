@@ -1597,3 +1597,74 @@ valores uniformes passam em quase qualquer predicado.
 É a mesma lição da 2b.5, onde 22 medidas dependiam de propagação e o dado sintético só
 conseguia mover **uma**. Os dois números ficam presos no teste para que a distância entre
 eles seja visível: o caminho de filtro *executa* em 36 e está *exercitado* em 5.
+
+## 31. `PROTOCOLOS GERAL[CONTAGEM]` é o texto `"1"` e se declara `int64`
+
+Coluna calculada cujo DAX é um literal de **texto**, com tipo declarado numérico:
+
+```yaml
+name: CONTAGEM
+type: int64
+calculated: true
+dax: '"1"'
+```
+
+É o idioma clássico de "coluna que sempre vale 1 para poder somar" — só que escrito
+com aspas. No Power BI isso não incomoda: o tipo declarado da coluna é `int64`, o
+motor armazena o inteiro 1, e `SUM('PROTOCOLOS GERAL'[CONTAGEM])` devolve a contagem
+de linhas. Aqui o avaliador calcula o DAX, obtém o texto `"1"`, e `SUM` **erra alto**:
+DAX não converte texto para número implicitamente, e o avaliador não converte na
+surdina.
+
+**Duas tabelas do relatório param nisso** (`l-inst` e `l-tec`, ambas somando
+`[CONTAGEM]` com três colunas de detalhe). Nenhum card é afetado.
+
+### Por que não foi "consertado" junto
+
+Porque o conserto é uma **regra**, não um caso, e a regra tem custo. Já existe
+`aplicaTipo` (measure-engine/calculated.ts), e ele é deliberadamente estreito: aplica
+só `dateTime`, e só converte número → data. Texto onde se declarou data **erra alto
+de propósito**, e o comentário no arquivo diz por quê — é a mesma classe de erro do
+achado 1 falso, onde um `DD/MM/YYYY` comparado direto vira março em vez de abril.
+
+Alargar `aplicaTipo` para "texto → número quando a coluna se declara numérica"
+resolveria estas duas tabelas e abriria a porta para converter texto de verdade em
+número em silêncio. Num modelo cuja cultura é `pt-BR`, `"1.234,56"` tem duas leituras
+plausíveis e nenhuma segura.
+
+Há ainda um segundo custo, e ele decide o tamanho: `aplicaTipo` hoje roda ao
+materializar **tabela calculada**. Coluna calculada de tabela de query é avaliada em
+`Evaluator.columnValue`, no caminho quente, que não aplica tipo nenhum. Fazer isso
+ali é mudança de semântica do avaliador inteiro — 49 colunas calculadas — e merece
+ser medida, não enfiada no meio de outra fatia.
+
+**Três saídas possíveis, para quem for decidir:**
+
+1. **Conversão estreita e nomeada:** ao materializar, texto que casa `/^-?\d+$/`
+   exatamente vira número quando a coluna se declara `int64`. Recusa qualquer outro
+   texto. Cobre o caso e não abre a porta.
+2. **Corrigir no Power BI:** trocar `"1"` por `1` no DAX da coluna. É onde o defeito
+   está de verdade, mas mexe na base de referência — que é read-only por regra.
+3. **Deixar como está**, com as duas tabelas recusando pelo nome. É o estado atual, e
+   é o único que não decide nada errado.
+
+`cobertura.test.ts` conta as duas recusas nominalmente, então a escolha aparece como
+mudança de número quando alguém a fizer.
+
+### Efeito colateral bom: os erros de agregação passaram a dizer a coluna
+
+Este achado só ficou legível porque a mensagem foi consertada. Ela era:
+
+```
+SUM: esperava número e recebeu o texto "1".
+```
+
+Num modelo de 298 colunas, isso não diz onde procurar. Agora `agregacao` leva a
+referência para dentro do erro do redutor:
+
+```
+SUM('PROTOCOLOS GERAL'[CONTAGEM]): esperava número e recebeu o texto "1".
+```
+
+Vale para `SUM`, `AVERAGE`, `MIN` e `MAX`. Foi o classificador de recusas do teste de
+cobertura que expôs a falta — ele não conseguia dizer de qual coluna a recusa era.

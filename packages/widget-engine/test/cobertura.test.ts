@@ -17,6 +17,7 @@ import { SPECS, ambiente } from '../../measure-engine/test/ambiente-sintetico.ts
 import { identityKey } from '../../measure-engine/src/value.ts';
 import { FUNCAO_DA_AGREGACAO, calculaCard, cardsDoDashboard, valorDoCampo } from '../src/card.ts';
 import { traduzFiltros } from '../src/filtro.ts';
+import { calculaTabela, tabelasDoDashboard } from '../src/tabela.ts';
 import {
   loadDashboards,
   type CondicaoSpec,
@@ -293,4 +294,143 @@ test('36 cards têm filtro; sobre dado sintético só 5 mudam de valor por causa
 
   assert.equal(comFiltro, 36);
   assert.equal(mudam, 5);
+});
+
+// ---------------------------------------------------------------------------
+// As tabelas
+// ---------------------------------------------------------------------------
+
+/**
+ * Em que família cai a recusa de uma tabela. Uma família por limite declarado.
+ *
+ * A classificação casa com o **texto que o erro obriga a existir** — a coluna em
+ * `SUM('T'[C])`, o `kind` do campo — e não com uma frase genérica. Foi a primeira
+ * versão deste classificador que mostrou que as mensagens não diziam qual coluna
+ * nem qual campo; as duas foram corrigidas por causa disto.
+ */
+function familiaDaRecusa(msg: string): string {
+  if (msg.includes('HAVING')) return 'filtro sobre agregado';
+  if (msg.includes('tabelas')) return 'chaves de mais de uma tabela';
+  if (msg.includes("kind 'hierarchy_level'")) return 'nível de hierarquia como célula';
+  if (msg.includes("kind 'arithmetic'")) return 'campo aritmético';
+  if (msg.includes("[CONTAGEM])")) return 'CONTAGEM: texto onde se declarou int64';
+  return `NÃO CLASSIFICADA: ${msg.slice(0, 120)}`;
+}
+
+/**
+ * **As 29 tabelas: 15 calculam, e as 14 recusas caem todas em limite declarado.**
+ *
+ * O valor deste teste não é o 15 — é a última asserção. Nenhuma recusa pode cair em
+ * `NÃO CLASSIFICADA`: enquanto todas têm nome, o que falta é conhecido e está
+ * escrito. Uma sem nome é um defeito que ninguém decidiu ter.
+ *
+ * As cinco famílias, e onde cada uma se resolve:
+ *
+ * | n | família | some quando |
+ * |---|---|---|
+ * | 5 | filtro sobre agregado (`COUNT(x) > 0`) | o agrupamento souber filtrar grupo (ACHADOS #30) |
+ * | 4 | chaves de mais de uma tabela | o agrupamento cruzar tabelas por relacionamento |
+ * | 2 | campo aritmético (`% do total`) | o campo `arithmetic` for calculável |
+ * | 2 | `[CONTAGEM]` é `"1"` (texto) e se declara `int64` | ACHADOS #31 for decidido |
+ * | 1 | nível de hierarquia como célula | projetar `[Data].[Mês]` for medido contra a tela |
+ */
+test('as 29 tabelas: 15 calculam, e as 14 recusas têm todas família nomeada', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let calculam = 0;
+  const familias: Record<string, number> = {};
+
+  for (const d of DASHBOARDS) {
+    for (const v of tabelasDoDashboard(d)) {
+      try {
+        calculaTabela(d, v, ev);
+        calculam++;
+      } catch (e) {
+        const f = familiaDaRecusa((e as Error).message);
+        familias[f] = (familias[f] ?? 0) + 1;
+      }
+    }
+  }
+
+  assert.equal(DASHBOARDS.reduce((n, d) => n + tabelasDoDashboard(d).length, 0), 29);
+  assert.equal(calculam, 15);
+  assert.deepEqual(familias, {
+    'filtro sobre agregado': 5,
+    'chaves de mais de uma tabela': 4,
+    'campo aritmético': 2,
+    'CONTAGEM: texto onde se declarou int64': 2,
+    'nível de hierarquia como célula': 1,
+  });
+});
+
+/**
+ * Uma tabela do Power BI **agrupa**: mostra as combinações distintas das colunas
+ * que não agregam, não uma linha por registro.
+ *
+ * O dataset sintético tem 5 linhas por tabela, então as 15 tabelas somam poucas
+ * linhas — e é justamente isso que o teste fixa. Se a leitura virasse "listagem
+ * crua", a soma pularia para 5 linhas por tabela e nada mais falharia: o número
+ * sairia maior, com cara de dado a mais.
+ */
+test('as 15 tabelas que calculam somam 44 linhas, não uma por registro', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let linhas = 0;
+  let calculadas = 0;
+  for (const d of DASHBOARDS) {
+    for (const v of tabelasDoDashboard(d)) {
+      try {
+        linhas += calculaTabela(d, v, ev).linhas.length;
+        calculadas++;
+      } catch {
+        /* recusa já contada e nomeada no teste acima */
+      }
+    }
+  }
+  assert.equal(calculadas, 15);
+  assert.equal(linhas, 44);
+});
+
+// ---------------------------------------------------------------------------
+// A 75ª medida
+// ---------------------------------------------------------------------------
+
+/**
+ * **`[Faixa 1 Premiação Total]` passa a calcular, e ela é a 75ª medida.**
+ *
+ * Ela não precisava de mais DAX: precisava de alguém que soubesse responder
+ * `ISINSCOPE`, e isso é propriedade do visual (ACHADOS #12). O DAX dela diz, em
+ * comentário do próprio autor, que o cálculo *"só será exibido nos totais, e não
+ * nas colunas individuais"* — e é exatamente esse o comportamento que o teste fixa:
+ * valor no total, BLANK quando o visual agrupa pela coluna.
+ *
+ * Os dois lados importam. Só o primeiro provaria que ela roda; é o segundo que
+ * prova que ela roda **pelo motivo certo**.
+ */
+test('a 75ª medida calcula no total e fica em branco quando o visual agrupa', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  const raiz = ev.rootScope();
+
+  const noTotal = ev.measureInScope('Faixa 1 Premiação Total', ev.scopeWithGrouping(raiz, []));
+  assert.notEqual(identityKey(noTotal), identityKey(null));
+
+  const agrupada = ev.measureInScope(
+    'Faixa 1 Premiação Total',
+    ev.scopeWithGrouping(raiz, [['PROTOCOLOS PRODUTIVIDADE', 'N°PROTOCOLO']]),
+  );
+  assert.equal(identityKey(agrupada), identityKey(null));
+});
+
+/**
+ * E fora de um visual ela continua **sem resposta**, que é o que mantém honesta a
+ * contagem de 74 do avaliador: a 75ª é do Widget Engine, não do avaliador de DAX.
+ */
+test('fora de um visual, a 75ª medida continua errando alto', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  assert.throws(
+    () => ev.measureInScope('Faixa 1 Premiação Total', ev.rootScope()),
+    /ISINSCOPE.*Widget Engine/s,
+  );
 });

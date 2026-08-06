@@ -9,6 +9,7 @@
 // avaliador erra alto dizendo o nome da função. Este arquivo é, portanto, a
 // declaração honesta do escopo do avaliador.
 
+import { normalizeName } from '../../semantic-model/src/model.ts';
 import { walk, type DaxNode } from './ast.ts';
 import type { Row } from './dataset.ts';
 import type { EvalScope, Evaluator } from './evaluator.ts';
@@ -110,7 +111,15 @@ function agregacao(
   const valores = ev.valuesOfColumnRef(args[0]!, scope, nome);
   const naoVazios = valores.filter((v) => !isBlank(v));
   if (naoVazios.length === 0) return BLANK;
-  return reduzir(naoVazios, nome);
+  // O rótulo leva a **coluna** para dentro do erro do redutor. `SUM: esperava
+  // número e recebeu o texto "1"` não diz onde procurar; `SUM('PROTOCOLOS
+  // GERAL'[CONTAGEM])` diz — e num modelo de 298 colunas essa diferença é a
+  // diferença entre um erro acionável e uma caça.
+  return reduzir(naoVazios, rotuloDaAgregacao(nome, args[0]!));
+}
+
+function rotuloDaAgregacao(nome: string, ref: DaxNode): string {
+  return ref.type === 'ColumnRef' ? `${nome}('${ref.table}'[${ref.column}])` : nome;
 }
 
 const FUNCOES = new Map<string, DaxFunction>();
@@ -120,7 +129,7 @@ function def(nome: string, fn: DaxFunction): void {
 }
 
 def('SUM', (a, s, ev, n) =>
-  agregacao(a, s, ev, n, (vs) => vs.reduce((acc, v) => acc + toNumber(v, n), 0)),
+  agregacao(a, s, ev, n, (vs, onde) => vs.reduce((acc, v) => acc + toNumber(v, onde), 0)),
 );
 
 def('COUNT', (a, s, ev, n) => agregacao(a, s, ev, n, (vs) => vs.length));
@@ -143,7 +152,7 @@ def('COUNTA', (a, s, ev, n) => agregacao(a, s, ev, n, (vs) => vs.length));
  * e é aí que ela difere de `SUM/COUNTROWS`.
  */
 def('AVERAGE', (a, s, ev, n) =>
-  agregacao(a, s, ev, n, (vs) => vs.reduce((acc, v) => acc + toNumber(v, n), 0) / vs.length),
+  agregacao(a, s, ev, n, (vs, onde) => vs.reduce((acc, v) => acc + toNumber(v, onde), 0) / vs.length),
 );
 
 def('MIN', (a, s, ev, n) => minMax(a, s, ev, n, -1));
@@ -1256,17 +1265,37 @@ def('RANKX', (args, scope, ev, nome) => {
  * `ISINSCOPE('T'[C])` — a coluna está entre as que a **visualização** está
  * agrupando?
  *
- * Não implementado, e não por falta de tempo: a resposta não existe neste nível.
- * Depende do agrupamento do visual, que só passa a existir com o Widget Engine
- * (Fase 3). Devolver `FALSE` faria `[Faixa 1 Premiação Total]` calcular em toda
- * célula em vez de só no total — exatamente o contrário do que o comentário no DAX
- * dela pede.
+ * A resposta não existe no avaliador sozinho: é propriedade do visual, não do
+ * modelo nem do contexto de filtro. Ela chega por `EvalScope.agrupamento`, que o
+ * Widget Engine preenche uma vez por célula (`Evaluator.scopeWithGrouping`).
+ *
+ * **`undefined` continua errando alto, e a distinção é o ponto.** Conjunto vazio
+ * significa "o visual não agrupa por nada" — o total, onde a resposta é `FALSE`.
+ * `undefined` significa "não há visual", e aí não há resposta: devolver `FALSE`
+ * faria `[Faixa 1 Premiação Total]` calcular em toda célula em vez de só no total,
+ * que é o contrário do que o comentário no DAX dela pede. Ver ACHADOS.md #12.
  */
-def('ISINSCOPE', (_args, _scope, _ev, nome) => {
-  throw new DaxEvalError(
-    `${nome}: depende do agrupamento da visualização, que não existe no avaliador. ` +
-      `Chega com o Widget Engine (Fase 3). Ver docs/ACHADOS.md.`,
-  );
+def('ISINSCOPE', (args, scope, ev, nome) => {
+  exigeArgs(args, 1, 1, nome);
+  const ref = args[0]!;
+  if (ref.type !== 'ColumnRef') {
+    throw new DaxEvalError(
+      `${nome}: o argumento tem de ser uma coluna ('Tabela'[Coluna]), e veio '${ref.type}'. ` +
+        `Só coluna pode ser eixo de visual.`,
+    );
+  }
+  if (scope.agrupamento === undefined) {
+    throw new DaxEvalError(
+      `${nome}: depende do agrupamento da visualização, e este cálculo não veio de um. ` +
+        `Quem informa é o Widget Engine (Evaluator.scopeWithGrouping). Ver docs/ACHADOS.md #12.`,
+    );
+  }
+  // Erra alto se a coluna não existe: `ISINSCOPE` de coluna inexistente é sempre
+  // FALSE, e um FALSE por erro de digitação some dentro de um IF sem deixar rastro.
+  if (!ev.model.column(ref.table, ref.column)) {
+    throw new DaxEvalError(`${nome}: a coluna '${ref.table}'[${ref.column}] não existe no modelo.`);
+  }
+  return scope.agrupamento.has(`${normalizeName(ref.table)}[${normalizeName(ref.column)}]`);
 });
 
 // ---------------------------------------------------------------------------

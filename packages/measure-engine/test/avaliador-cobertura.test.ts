@@ -451,9 +451,12 @@ test('as 4 que não executam têm cada uma seu motivo declarado', () => {
   for (const nome of ['# AA MÉDIA EQUIPES', '# AA MÉDIA GERAL', '# AA TOTAL EQUIPES']) {
     assert.match(porNome.get(`PROTOCOLOS GERAL[${nome}]`)!, /CAPACIDADE INSTALAÇÃO|gestores/i);
   }
+  // A mensagem mudou quando o agrupamento passou a existir (`scopeWithGrouping`),
+  // mas o fato não: avaliada **fora de um visual**, ela continua sem resposta. É o
+  // Widget Engine que fecha essa lacuna, e é lá que a 75ª medida é medida.
   assert.match(
     porNome.get('PROTOCOLOS PRODUTIVIDADE[Faixa 1 Premiação Total]')!,
-    /ISINSCOPE.*Fase 3/s,
+    /ISINSCOPE.*Widget Engine/s,
   );
 });
 

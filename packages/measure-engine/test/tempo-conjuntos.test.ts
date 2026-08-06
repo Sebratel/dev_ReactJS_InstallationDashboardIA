@@ -259,11 +259,47 @@ test('RANKX DESC é o padrão e SKIP pula postos em empate', () => {
 // ---------------------------------------------------------------------------
 
 test('ISINSCOPE erra dizendo que depende do Widget Engine, não que "não existe"', () => {
-  // Não é lacuna de implementação: a resposta depende do agrupamento do visual,
-  // que só passa a existir na Fase 3. Devolver FALSE faria
-  // [Faixa 1 Premiação Total] calcular em toda célula em vez de só no total.
+  // Não é lacuna de implementação: a resposta depende do agrupamento do visual.
+  // Devolver FALSE aqui faria [Faixa 1 Premiação Total] calcular em toda célula em
+  // vez de só no total. Quem responde é quem chama `scopeWithGrouping`.
   assert.throws(
     () => ev().evaluateExpression("ISINSCOPE('AGENDA'[Protocolo])"),
-    /agrupamento da visualização.*Fase 3/s,
+    /agrupamento da visualização.*Widget Engine/s,
   );
+});
+
+/**
+ * O outro lado da fronteira: **com** agrupamento declarado, `ISINSCOPE` responde.
+ *
+ * E a distinção que o teste fixa é a que dá sentido ao campo ser opcional:
+ * conjunto **vazio** é o total, onde a resposta é `FALSE`; `undefined` é "não há
+ * visual", onde não há resposta e o certo é o erro acima.
+ */
+test('ISINSCOPE responde quando o visual declara por onde agrupa', () => {
+  const e = ev();
+  const raiz = e.rootScope();
+
+  const agrupando = e.scopeWithGrouping(raiz, [['AGENDA', 'Protocolo']]);
+  assert.equal(e.evaluateExpression("ISINSCOPE('AGENDA'[Protocolo])", agrupando), true);
+  assert.equal(e.evaluateExpression("ISINSCOPE('AGENDA'[Data])", agrupando), false);
+
+  const total = e.scopeWithGrouping(raiz, []);
+  assert.equal(e.evaluateExpression("ISINSCOPE('AGENDA'[Protocolo])", total), false);
+});
+
+/** O agrupamento é declarado com a caixa do visual e resolvido sem distingui-la. */
+test('ISINSCOPE não distingue caixa no nome da coluna', () => {
+  const e = ev();
+  const escopo = e.scopeWithGrouping(e.rootScope(), [['agenda', 'PROTOCOLO']]);
+  assert.equal(e.evaluateExpression("ISINSCOPE('AGENDA'[Protocolo])", escopo), true);
+});
+
+/**
+ * Coluna inexistente é sempre `FALSE` — e um `FALSE` por erro de digitação some
+ * dentro de um `IF` sem deixar rastro. Por isso erra alto mesmo com agrupamento.
+ */
+test('ISINSCOPE de coluna que não existe erra alto', () => {
+  const e = ev();
+  const escopo = e.scopeWithGrouping(e.rootScope(), [['AGENDA', 'Protocolo']]);
+  assert.throws(() => e.evaluateExpression("ISINSCOPE('AGENDA'[Inventada])", escopo), /não existe/);
 });
