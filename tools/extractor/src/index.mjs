@@ -139,6 +139,143 @@ function extractVisualFields(visual) {
   return fields;
 }
 
+// ---------------------------------------------------------------------------
+// Filtros de página e de visual
+// ---------------------------------------------------------------------------
+//
+// **Por que isto existe, e por que não existia antes.** O `filterConfig` do PBIP
+// ficava de fora das specs, e um card computado sem o filtro dele dá número errado
+// **em silêncio** — que é o pior modo de falha possível num relatório. Medido no
+// PBIP de 06/08/2026: 102 filtros de visual e 6 de página **restringem de fato**.
+//
+// A outra metade é igualmente importante de registrar: 176 filtros existem sem
+// condição nenhuma (`filter` ausente). É o cartão de filtro que alguém abriu no
+// Power BI e não selecionou nada — ele **não muda número**. Por isso a contagem sai
+// separada em `filters` e `filters_vazios`, em vez de os vazios simplesmente
+// desaparecerem: um dia alguém vai comparar 108 com os 284 do PBIP e precisa achar
+// a explicação aqui, não deduzi-la.
+
+/** Literal do PBIP para valor JS. `"'texto'"`, `"null"`, `"0L"`, `"true"`. */
+function parseLiteral(bruto) {
+  if (typeof bruto !== 'string') return bruto ?? null;
+  const s = bruto.trim();
+  if (s === 'null') return null;
+  if (s === 'true') return true;
+  if (s === 'false') return false;
+  // Texto vem entre apóstrofos, e apóstrofo interno vem dobrado.
+  if (s.startsWith("'") && s.endsWith("'")) return s.slice(1, -1).replaceAll("''", "'");
+  // Sufixo de tipo numérico: 0L (int64), 1D (double), 2M (decimal).
+  const num = /^-?\d+(\.\d+)?[LDM]?$/.exec(s);
+  if (num) return Number(s.replace(/[LDM]$/, ''));
+  const dt = /^datetime'([^']+)'$/.exec(s);
+  if (dt) return dt[1];
+  // Não reconhecido: devolve como veio, e quem lê vê que é texto cru.
+  return s;
+}
+
+/** `{Column:{Property}}` ou `{Aggregation:{Expression:{Column:{Property}},Function}}`. */
+function refDeCampo(expr) {
+  if (!expr || typeof expr !== 'object') return null;
+  if (expr.Column) {
+    return { property: expr.Column.Property ?? null, aggregation: null };
+  }
+  if (expr.Aggregation) {
+    return {
+      property: expr.Aggregation.Expression?.Column?.Property ?? null,
+      // Número do Power BI: 0 Sum, 1 Avg, 2 Count, 3 Min, 4 Max, 5 CountNonNull.
+      aggregation: expr.Aggregation.Function ?? null,
+    };
+  }
+  return null;
+}
+
+/** `ComparisonKind` do PBIP. */
+const COMPARACAO = { 0: 'eq', 1: 'gt', 2: 'ge', 3: 'lt', 4: 'le' };
+
+/**
+ * Traduz uma condição de filtro. Forma não reconhecida vira `op: desconhecido` com o
+ * JSON cru — **nunca desaparece**. Há teste exigindo que o PBIP de hoje produza zero
+ * desconhecidos, então o dia em que o relatório usar uma forma nova o teste diz qual.
+ */
+function traduzCondicao(cond) {
+  if (!cond || typeof cond !== 'object') return { op: 'desconhecido', raw: cond ?? null };
+
+  if (cond.In) {
+    return {
+      op: 'in',
+      values: (cond.In.Values || []).map((linha) =>
+        (linha || []).map((v) => parseLiteral(v?.Literal?.Value))[0] ?? null,
+      ),
+    };
+  }
+  if (cond.Not?.Expression) {
+    const dentro = traduzCondicao(cond.Not.Expression);
+    if (dentro.op === 'in') return { op: 'not_in', values: dentro.values };
+    if (dentro.op === 'comparison') return { ...dentro, negado: true };
+    return { op: 'desconhecido', raw: cond };
+  }
+  if (cond.Comparison) {
+    const esq = refDeCampo(cond.Comparison.Left);
+    return {
+      op: 'comparison',
+      kind: COMPARACAO[cond.Comparison.ComparisonKind] ?? `kind${cond.Comparison.ComparisonKind}`,
+      left_property: esq?.property ?? null,
+      left_aggregation: esq?.aggregation ?? null,
+      // Data relativa aparece aqui como `DateSpan(Now())`: é "hoje" em unidade de
+      // tempo, não literal. Fica marcado para o Widget Engine resolver na execução.
+      right: cond.Comparison.Right?.Literal !== undefined
+        ? parseLiteral(cond.Comparison.Right.Literal.Value)
+        : cond.Comparison.Right?.DateSpan
+          ? { relativo: 'agora', time_unit: cond.Comparison.Right.DateSpan.TimeUnit ?? null }
+          : { raw: cond.Comparison.Right ?? null },
+    };
+  }
+  if (cond.Between) {
+    // Janela de data relativa. O que importa reter é o deslocamento em unidades de
+    // tempo — resolvê-lo aqui congelaria "os últimos 7 dias" na data da extração.
+    const desloc = (no, acc = []) => {
+      if (no?.DateSpan) return desloc(no.DateSpan.Expression, acc);
+      if (no?.DateAdd) {
+        acc.push({ amount: no.DateAdd.Amount ?? null, time_unit: no.DateAdd.TimeUnit ?? null });
+        return desloc(no.DateAdd.Expression, acc);
+      }
+      return acc;
+    };
+    return {
+      op: 'between_relativo',
+      property: cond.Between.Expression?.Column?.Property ?? null,
+      lower: desloc(cond.Between.LowerBound),
+      upper: desloc(cond.Between.UpperBound),
+    };
+  }
+  return { op: 'desconhecido', raw: cond };
+}
+
+/** Filtros de um `page.json` ou `visual.json`, já traduzidos. */
+function extractFilters(node) {
+  const brutos = node?.filterConfig?.filters || [];
+  const filters = [];
+  let vazios = 0;
+  for (const f of brutos) {
+    if (!f.filter) {
+      vazios++;
+      continue;
+    }
+    const campo = f.field?.Column || f.field?.Measure || f.field?.Aggregation?.Expression?.Column;
+    const onde = f.filter.Where || [];
+    filters.push({
+      name: f.name ?? null,
+      type: f.type ?? null,
+      entity: campo?.Expression?.SourceRef?.Entity ?? null,
+      property: campo?.Property ?? null,
+      // Um filtro pode ter mais de uma cláusula; guardar todas evita o erro de
+      // aplicar só a primeira e achar que aplicou o filtro.
+      conditions: onde.map((w) => traduzCondicao(w.Condition)),
+    });
+  }
+  return { filters, filters_vazios: vazios };
+}
+
 function build(pbip) {
   const culture = readCulture(pbip.semanticModel);
   const tables = readTables(pbip.semanticModel);
@@ -279,6 +416,9 @@ function build(pbip) {
     visibility: page.visibility || 'AlwaysVisible',
     size: { width: page.width ?? null, height: page.height ?? null },
     visual_count: visuals.length,
+    // Filtro de página vale para todos os visuais dela, então precisa estar aqui e
+    // não repetido em cada um.
+    ...extractFilters(page),
     visuals: visuals.map((v) => {
       const fields = extractVisualFields(v);
       const entities = [...new Set(fields.map((f) => f.entity).filter(Boolean))].sort();
@@ -290,6 +430,7 @@ function build(pbip) {
           : null,
         entities_used: entities,
         fields,
+        ...extractFilters(v),
       };
     }),
   }));
@@ -404,6 +545,9 @@ export function run(argv = process.argv) {
 
 // Export para testes
 export { build };
+// Expostos para teste: as formas de filtro do PBIP são poucas, mas cada tradução
+// errada vira número errado num visual, em silêncio.
+export { extractFilters, traduzCondicao, parseLiteral };
 
 // Execução direta
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

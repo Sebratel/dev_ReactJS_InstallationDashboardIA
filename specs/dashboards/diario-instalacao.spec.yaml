@@ -10,6 +10,8 @@ size:
   width: 1920
   height: 1080
 visual_count: 22
+filters: []
+filters_vazios: 0
 visuals:
 - id: 02784299e6697c7e331f
   type: image
@@ -20,6 +22,8 @@ visuals:
     height: 59.16666666666667
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 05f793bc7a37cd6f4c05
   type: card
   position:
@@ -35,6 +39,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Hora
     name: Hora mais recente
+  filters: []
+  filters_vazios: 0
 - id: 0bb4d36b48b8c9a98010
   type: card
   position:
@@ -50,6 +56,8 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "Média Geral"
     name: "MÉDIA GERAL"
+  filters: []
+  filters_vazios: 2
 - id: 0dab338295de8c4edaa7
   type: textbox
   position:
@@ -59,6 +67,8 @@ visuals:
     height: 61.66666666666667
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 14726a22603595dfb844
   type: slicer
   position:
@@ -74,6 +84,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: CIDADE
+  filters: []
+  filters_vazios: 1
 - id: 1497604e33608cf36797
   type: unknown
   position:
@@ -83,6 +95,8 @@ visuals:
     height: 65.5812266921998
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 2c224be87531efbec489
   type: pivotTable
   position:
@@ -108,6 +122,18 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
     name: QTD.
+  filters:
+  - name: 10d6c6fabb941d8ac4a0
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: 2
+      right: 0
+  filters_vazios: 6
 - id: 2dcb5aad7a0e75c647e7
   type: slicer
   position:
@@ -123,6 +149,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: DATA CRIADO
     name: DATA CRIADO
+  filters: []
+  filters_vazios: 0
 - id: 3044b4a5731a9776935e
   type: slicer
   position:
@@ -138,6 +166,8 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: GESTOR
     name: GESTOR
+  filters: []
+  filters_vazios: 1
 - id: 3556b2705b9e5d99e0b5
   type: shape
   position:
@@ -147,6 +177,8 @@ visuals:
     height: 65.38024971623156
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 40cb141ef58c218aafaa
   type: textbox
   position:
@@ -156,6 +188,8 @@ visuals:
     height: 38.7525430453908
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 46d8ac88ac0e09adaaa0
   type: card
   position:
@@ -171,6 +205,8 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "Média Protocolos por Dia"
     name: "MÉDIA POR DIA"
+  filters: []
+  filters_vazios: 2
 - id: 54649dd7f88306e975d7
   type: textbox
   position:
@@ -180,6 +216,8 @@ visuals:
     height: 50.67640244397258
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 63d0ee16573749b24a9e
   type: image
   position:
@@ -189,6 +227,8 @@ visuals:
     height: 53.65736729361802
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 7f769583b3a26b985b54
   type: pageNavigator
   position:
@@ -198,6 +238,8 @@ visuals:
     height: 40
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 9bfe0de74eded6604c04
   type: pivotTable
   position:
@@ -228,6 +270,18 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "Média Protocolos por Dia"
     name: "MÉDIA"
+  filters:
+  - name: 14a41f07c23410fa89d4
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: 2
+      right: 0
+  filters_vazios: 6
 - id: a6780196d498d8f9db9f
   type: slicer
   position:
@@ -243,6 +297,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: N°PROTOCOLO
+  filters: []
+  filters_vazios: 0
 - id: c19dd58d398564256c1c
   type: slicer
   position:
@@ -267,6 +323,16 @@ visuals:
     entity: null
     property: null
     name: DATA INSTALADO Dia
+  filters:
+  - name: d0105f0477c4120e2be2
+    type: Categorical
+    entity: null
+    property: null
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: d26bf2420a6d20dec8c6
   type: slicer
   position:
@@ -282,6 +348,8 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+  filters: []
+  filters_vazios: 0
 - id: e3446e1e9c13af37ca52
   type: slicer
   position:
@@ -297,6 +365,8 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: INSTALADOR
+  filters: []
+  filters_vazios: 0
 - id: e51b24381944279c8bbe
   type: card
   position:
@@ -312,6 +382,8 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: Total Protocolos
     name: REALIZADOS
+  filters: []
+  filters_vazios: 2
 - id: ea5c7143230acf5f95e9
   type: card
   position:
@@ -327,3 +399,5 @@ visuals:
     entity: HORA ATUALIZADO
     property: Data
     name: Data mais recente
+  filters: []
+  filters_vazios: 0

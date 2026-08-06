@@ -10,6 +10,8 @@ size:
   width: 550
   height: 400
 visual_count: 1
+filters: []
+filters_vazios: 0
 visuals:
 - id: b5f80346497ee95da54a
   type: tableEx
@@ -46,3 +48,5 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "HR. ALOCAÇÃO"
     name: "HR. ALOCAÇÃO"
+  filters: []
+  filters_vazios: 0

@@ -1330,3 +1330,61 @@ E fica o alerta que a medição expôs de graça: com 30 s de `statement_timeout
 statements de 17–31 s, a carga é **intermitente por construção**. Antes de discutir
 cache vale olhar índice no ERP — uma query que às vezes estoura o limite vai às vezes
 estourar o do usuário também.
+
+## 27. Os filtros dos visuais ficavam fora das specs, e sem eles o Widget Engine nasceria errado
+
+Primeiro achado da Fase 3, medido em 06/08/2026 antes de escrever uma linha do Widget
+Engine. A pergunta era simples: a spec de um visual tem tudo que é preciso para
+calcular o número que ele mostra? Não tinha.
+
+O `filterConfig` do PBIP — que existe em **página** e em **visual** — não era
+extraído. O efeito é o pior possível: um card com filtro de visual seria computado
+sem ele, daria um número maior, e **nada erraria no caminho**. Não é hipótese; é
+aritmética de contexto de filtro.
+
+**O tamanho, medido nos 306 visuais das 14 páginas:**
+
+| | quantidade |
+|---|---|
+| filtros de **visual** que restringem de fato | **102** |
+| filtros de **página** que restringem de fato | **6** |
+| cartões de filtro **sem seleção** (não mudam número) | **176** |
+| formas que o extrator não traduz | **0** |
+
+A separação entre as duas primeiras linhas e a terceira é o que impede a conta de
+confundir depois: 284 filtros existem no PBIP, e só 108 têm condição. Os outros 176
+são o cartão que alguém abriu no Power BI e deixou sem seleção — ele aparece na
+interface e não altera resultado. Por isso a spec grava `filters` e `filters_vazios`
+separados, em vez de os vazios desaparecerem: quem comparar 108 com 284 precisa achar
+a explicação escrita, não deduzi-la.
+
+**O vocabulário é pequeno, e isso foi verificado antes de traduzir** — não há forma
+"genérica" a adivinhar. São cinco condições e quatro formatos de literal:
+
+| Condição no PBIP | Vira | Ocorrências |
+|---|---|---|
+| `Not(In(...))` | `not_in` | 54 |
+| `Comparison` (com `ComparisonKind`) | `comparison` | 28 |
+| `In(...)` | `in` | 22 |
+| `Between` com `DateSpan`/`DateAdd`/`Now` | `between_relativo` | 4 |
+| `Not(Comparison(...))` | `comparison` + `negado: true` | (dentro dos 54/28) |
+
+Três decisões de tradução que mudam resultado, e ficam registradas por isso:
+
+1. **`In` e `Not(In)` são traduzidos separadamente.** A "seleção invertida" do Power
+   BI (`isInvertedSelectionMode`) chega como `Not(In)`, e a diferença entre os dois é
+   o relatório inteiro: "só estes" contra "todos menos estes". Traduzir os dois como
+   `in` daria número plausível e errado.
+2. **Data relativa guarda o deslocamento, não a data resolvida.** `Between` com
+   `DateAdd(Now(), -7)` vira `{amount: -7, time_unit: 0}`. Resolver na extração
+   congelaria "os últimos 7 dias" na data em que `npm run extract` rodou — o filtro
+   passaria a significar outra coisa a cada dia.
+3. **Forma desconhecida não desaparece:** vira `op: desconhecido` com o JSON cru, e
+   **há teste de integração exigindo zero desconhecidos** contra o PBIP real. No dia
+   em que alguém usar um filtro novo no Power BI, o teste falha dizendo em qual página
+   e visual — em vez de a plataforma calcular sem ele.
+
+**O que isto habilita.** Com filtro na spec, um visual passa a ser calculável ponta a
+ponta, e a conferência de paridade fica mais barata do que era: em vez de alguém ditar
+78 totais de medida, compara-se **visual a visual** — o número está na tela. É também
+o que a 2b.9 precisava para deixar de depender de ditado.

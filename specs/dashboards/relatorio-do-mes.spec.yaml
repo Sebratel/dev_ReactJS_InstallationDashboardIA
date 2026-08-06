@@ -10,6 +10,8 @@ size:
   width: 2800
   height: 2400
 visual_count: 36
+filters: []
+filters_vazios: 2
 visuals:
 - id: 00bd510021a87cd1dad3
   type: card
@@ -26,6 +28,20 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# MEDIA INSTALADO MENSAL"
     name: "MÉDIA REALIZADOS (MÊS ATUAL)"
+  filters:
+  - name: 278efb61c934c0a06e91
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 2
 - id: 0a375852e99a59d706e4
   type: textbox
   position:
@@ -35,6 +51,8 @@ visuals:
     height: 35.41315345699831
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 1085586a867295a67435
   type: shape
   position:
@@ -44,6 +62,8 @@ visuals:
     height: 75.06092607636067
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 1498680b5eef0ce5b663
   type: textbox
   position:
@@ -53,6 +73,8 @@ visuals:
     height: 34.59162663006177
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 1bb5d2e4002cb4703bde
   type: pivotTable
   position:
@@ -79,6 +101,20 @@ visuals:
     entity: Clima/ Tempo
     property: Classificacao
     name: Primeiro Classificacao
+  filters:
+  - name: 190b102b80638eb8440c
+    type: RelativeDate
+    entity: calendar
+    property: Data
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: Data
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: 20d23554c9b205376057
   type: card
   position:
@@ -94,6 +130,20 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "#DIAS_ÚTEIS_TRABALHADOS"
     name: "DIAS TRABALHADOS NO MÊS"
+  filters:
+  - name: 278efb61c934c0a06e91
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 2
 - id: 28b2fed3696b956b1a98
   type: card
   position:
@@ -109,6 +159,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# META"
     name: "META DO MÊS"
+  filters: []
+  filters_vazios: 0
 - id: 3241fd3b779d87605221
   type: textbox
   position:
@@ -118,6 +170,8 @@ visuals:
     height: 42.99765807962529
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 32bdea16073eb94d0642
   type: textbox
   position:
@@ -127,6 +181,8 @@ visuals:
     height: 36.513383665065206
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 34ef83e09ebbc207bcaf
   type: pageNavigator
   position:
@@ -136,6 +192,8 @@ visuals:
     height: 50
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 35c35445066c73fc984d
   type: card
   position:
@@ -151,6 +209,20 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# TOTAL MÊS ATIVO"
     name: "TOTAL MÊS ATIVO FIBRA"
+  filters:
+  - name: Filter134b83c1cae3d074b675
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: 381f3e30e0700e006aad
   type: pivotTable
   position:
@@ -177,6 +249,28 @@ visuals:
     entity: Clima/ Tempo
     property: Probabilidade_Chuva_Formatada
     name: "Último Probabilidade_Chuva_Formatada"
+  filters:
+  - name: 190b102b80638eb8440c
+    type: RelativeDate
+    entity: calendar
+    property: Data
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: Data
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  - name: c8e0cec6e1b5029d6d09
+    type: Categorical
+    entity: Clima/ Tempo
+    property: Tipo
+    conditions:
+    - op: in
+      values:
+      - "Previsão"
+  filters_vazios: 0
 - id: 46f466fa464ba5d15e47
   type: card
   position:
@@ -192,6 +286,20 @@ visuals:
     entity: CALENDARIO INSTALADO
     property: "# PROJEÇÃO"
     name: "PROJEÇÃO (MÉDIA REALIZADA)"
+  filters:
+  - name: 68a9a7d5bb0a04860853
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: 472098e3faec67cae276
   type: card
   position:
@@ -207,6 +315,8 @@ visuals:
     entity: FIELD AGENDA
     property: "Média Mensal Protocolos2"
     name: "MÉDIA AGENDADA (MÊS ATUAL)"
+  filters: []
+  filters_vazios: 0
 - id: 6fefdcc266cd5e1b69e5
   type: advancedSlicerVisual
   position:
@@ -222,6 +332,17 @@ visuals:
     entity: PROTOCOLOS
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+  filters:
+  - name: 06c4216e4bc6041ceac1
+    type: Categorical
+    entity: PROTOCOLOS
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - null
+      - "TEC - Suporte de Retorno Prioritário"
+  filters_vazios: 0
 - id: 74caae7037048fb1ad13
   type: lineChart
   position:
@@ -252,6 +373,28 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: Contagem de SOLICITACAO1
+  filters:
+  - name: 014e56ff8a9eabc6c997
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  - name: 410a4373bb88a6023b4c
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: STATUS PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - Instalado
+  filters_vazios: 4
 - id: 86f9814dea03cc6adb35
   type: unknown
   position:
@@ -261,6 +404,8 @@ visuals:
     height: 52.5
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 8769f73484f79cbacc84
   type: card
   position:
@@ -276,6 +421,20 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# FALTA MÊS ATIVO"
     name: RESTANTES
+  filters:
+  - name: Filter668b473ef2fd6a6a41bb
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: 880781fe2acd05b5c506
   type: textbox
   position:
@@ -285,6 +444,8 @@ visuals:
     height: 38.095238095238095
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 8de11f9835004031387c
   type: textbox
   position:
@@ -294,6 +455,8 @@ visuals:
     height: 40
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 8ffc57a7bf6467431ce6
   type: unknown
   position:
@@ -303,6 +466,8 @@ visuals:
     height: 53.10523147244007
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 923a9ae0662ca27f433c
   type: card
   position:
@@ -318,6 +483,8 @@ visuals:
     entity: FIELD AGENDA
     property: "Protocolos Restantes no Mês"
     name: AGENDADOS
+  filters: []
+  filters_vazios: 0
 - id: 95fe1259eb997b10b7dd
   type: card
   position:
@@ -333,6 +500,25 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# MEDIA INSTALADO BACKLOG"
     name: "MÉDIA REALIZADO BACKLOG"
+  filters:
+  - name: edaf6aecb6571fd43745
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: between_relativo
+      property: DATA INSTALADO
+      lower:
+      - amount: -7
+        time_unit: 0
+      - amount: 1
+        time_unit: 0
+      - amount: -1
+        time_unit: 0
+      upper:
+      - amount: -1
+        time_unit: 0
+  filters_vazios: 0
 - id: 9a7d36ddcbde8ec5135d
   type: card
   position:
@@ -348,6 +534,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Data
     name: Data mais recente
+  filters: []
+  filters_vazios: 0
 - id: 9dead5c82aa7fbf7bfa2
   type: image
   position:
@@ -357,6 +545,8 @@ visuals:
     height: 75
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: b191d2c2621275eb43b3
   type: clusteredColumnChart
   position:
@@ -393,6 +583,29 @@ visuals:
     entity: BACKLOG AGENDADO FUTURO
     property: data_carga
     name: Agendados
+  filters:
+  - name: f5f87a39d4085b246cb9
+    type: RelativeDate
+    entity: CALENDARIO AGENDAMENTO
+    property: Data Agendado
+    conditions:
+    - op: between_relativo
+      property: Data Agendado
+      lower:
+      - amount: -7
+        time_unit: 0
+      - amount: 1
+        time_unit: 0
+      upper: []
+  - name: 605ff6bcd0d7ad90d04d
+    type: Categorical
+    entity: CALENDARIO AGENDAMENTO
+    property: DiaDaSemana
+    conditions:
+    - op: not_in
+      values:
+      - domingo
+  filters_vazios: 10
 - id: bbc6684676e273565d65
   type: card
   position:
@@ -408,6 +621,20 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "DIAS_ÚTEIS_RESTANTES_NO_MÊS"
     name: "DIAS ÚTEIS RESTANTES NO MÊS"
+  filters:
+  - name: 278efb61c934c0a06e91
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 2
 - id: bdc924350c64cc92c0e2
   type: textbox
   position:
@@ -417,6 +644,8 @@ visuals:
     height: 51.88743994509266
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: d6780942e086341bde5a
   type: lineChart
   position:
@@ -447,6 +676,20 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: PROTOCOLOS GERADOS
+  filters:
+  - name: Filtere31d9c54d46998966777
+    type: RelativeDate
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA CRIADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: d914bdf23072848ca977
   type: card
   position:
@@ -462,6 +705,29 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: PROTOCOLOS TOTAIS REALIZADOS
+  filters:
+  - name: 05cc1e418c9bbb475a0b
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: STATUS PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "Instalado Pendência Financeira"
+      - Instalado
+  - name: 5ac1ae812ead75625488
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: dbb2eba36037470ca925
   type: lineStackedColumnComboChart
   position:
@@ -503,6 +769,20 @@ visuals:
     entity: calendar
     property: Protocolo
     name: Protocolo
+  filters:
+  - name: f70b659397da408cc5ce
+    type: RelativeDate
+    entity: calendar
+    property: Data
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: Data
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: dcc3106272278ce25a49
   type: card
   position:
@@ -518,6 +798,25 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# BACKLOG"
     name: BACKLOG AGENDADO
+  filters:
+  - name: edaf6aecb6571fd43745
+    type: RelativeDate
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: between_relativo
+      property: DATA INSTALADO
+      lower:
+      - amount: -7
+        time_unit: 0
+      - amount: 1
+        time_unit: 0
+      - amount: -1
+        time_unit: 0
+      upper:
+      - amount: -1
+        time_unit: 0
+  filters_vazios: 0
 - id: e2fc9924ee8243e8d5a5
   type: textbox
   position:
@@ -527,6 +826,8 @@ visuals:
     height: 67.5
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: e76f02844be92ab07edc
   type: card
   position:
@@ -542,6 +843,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Hora
     name: Hora mais recente
+  filters: []
+  filters_vazios: 0
 - id: f4049560074482060335
   type: card
   position:
@@ -557,6 +860,20 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# MEDIA CRIADOS"
     name: "MÉDIA GERADOS"
+  filters:
+  - name: 2aad4d13a2c1154da5a1
+    type: RelativeDate
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA CRIADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0
 - id: f8d993576d24ed2ca01a
   type: card
   position:
@@ -572,3 +889,17 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: TOTAL GERADOS
+  filters:
+  - name: 2accc86d520098c90684
+    type: RelativeDate
+    entity: CALENDARIO CRIADO
+    property: DATA CRIADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA CRIADO
+      left_aggregation: null
+      right:
+        relativo: agora
+        time_unit: 2
+  filters_vazios: 0

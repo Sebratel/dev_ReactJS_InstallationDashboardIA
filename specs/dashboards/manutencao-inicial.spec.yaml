@@ -10,6 +10,20 @@ size:
   width: 2800
   height: 3000
 visual_count: 41
+filters:
+- name: 2ff7b1096b80905c475c
+  type: RelativeDate
+  entity: CALENDARIO INSTALADO
+  property: DATA INSTALADO
+  conditions:
+  - op: comparison
+    kind: eq
+    left_property: DATA INSTALADO
+    left_aggregation: null
+    right:
+      relativo: agora
+      time_unit: 3
+filters_vazios: 0
 visuals:
 - id: 0147d7072c8525a2a802
   type: tableEx
@@ -66,6 +80,8 @@ visuals:
     entity: RETORNO PRIORITARIO
     property: service_tag
     name: SERIAL
+  filters: []
+  filters_vazios: 0
 - id: 01b1c7005b8de457349f
   type: textbox
   position:
@@ -75,6 +91,8 @@ visuals:
     height: 42.99765807962529
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 0a9c8fb6aeb367c4a9d6
   type: card
   position:
@@ -90,6 +108,16 @@ visuals:
     entity: RETORNO PRIORITARIO
     property: data_abertura
     name: PROTOCOLOS RETORNOS
+  filters:
+  - name: ba096ec6250c34dc4922
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "TEC - Suporte de Retorno Prioritário"
+  filters_vazios: 0
 - id: 148f6ba115cb24e32280
   type: slicer
   position:
@@ -105,6 +133,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: protocol_type
     name: protocol_type
+  filters:
+  - name: 2fcdbefc3770de97273b
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 18e2df7fcebe55422e22
   type: slicer
   position:
@@ -120,6 +158,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: solucao
     name: solucao
+  filters:
+  - name: b0a36835d4e09ba70b9a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 19f96719cb60517a5062
   type: card
   position:
@@ -135,6 +183,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "CASOS MÊS ATUAL (MTD)"
     name: "OCORRENCIAS MÊS ATUAL"
+  filters:
+  - name: f94d5d151235549b55c2
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 2128ca2bc5fa3dab2b60
   type: image
   position:
@@ -144,6 +202,8 @@ visuals:
     height: 75
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 2b170b73919d66acd4f9
   type: tableEx
   position:
@@ -169,6 +229,16 @@ visuals:
     entity: null
     property: null
     name: "%"
+  filters:
+  - name: 165d52ad1503069c716a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 2df4f6c42bfbfd487ab1
   type: tableEx
   position:
@@ -264,6 +334,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: solucao
     name: "SOLUÇÃO"
+  filters:
+  - name: 8d2c80cda7894430e619
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 39b8523db9e4024f345d
   type: card
   position:
@@ -279,6 +359,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: protocol
     name: "TOTAL DE OCORRÊNCIAS"
+  filters:
+  - name: add57c4a11812122b3de
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 455e4a8a0477ed34e806
   type: slicer
   position:
@@ -294,6 +384,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria5
     name: categoria5
+  filters:
+  - name: b0a36835d4e09ba70b9a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 47c5da4202802d657d5b
   type: slicer
   position:
@@ -309,6 +409,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria1
     name: categoria1
+  filters:
+  - name: b0a36835d4e09ba70b9a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 48c389bfa9f9c43bfcff
   type: unknown
   position:
@@ -318,6 +428,8 @@ visuals:
     height: 53.10523147244007
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 6bbd3fd0d32b0b83181a
   type: slicer
   position:
@@ -333,6 +445,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria4
     name: categoria4
+  filters:
+  - name: b0a36835d4e09ba70b9a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 6fd98c21010e7e22239b
   type: tableEx
   position:
@@ -358,6 +480,16 @@ visuals:
     entity: null
     property: null
     name: "%"
+  filters:
+  - name: 165d52ad1503069c716a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 702852fc76c92c8c0cd9
   type: lineStackedColumnComboChart
   position:
@@ -388,6 +520,16 @@ visuals:
     entity: RETORNO PRIORITARIO
     property: data_abertura
     name: Contagem de data_abertura
+  filters:
+  - name: 7acd363c85002c71ab64
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "TEC - Suporte de Retorno Prioritário"
+  filters_vazios: 5
 - id: 707565fef6b8f5cb35ee
   type: slicer
   position:
@@ -403,6 +545,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: cliente_nome
     name: cliente_nome
+  filters:
+  - name: 71dfe2930434e7097a9c
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 70a4682fdbd5f4414822
   type: slicer
   position:
@@ -427,6 +579,16 @@ visuals:
     entity: null
     property: null
     name: DATA INSTALADO Dia
+  filters:
+  - name: 998ba96de06267501367
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 77e715657d31d083dd84
   type: textbox
   position:
@@ -436,6 +598,8 @@ visuals:
     height: 33.14641744548287
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 79929c759b56d9c50002
   type: card
   position:
@@ -451,6 +615,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "MANUTENÇÕES ÚLTIMOS 30 DIAS"
     name: OCORRENCIAS 30 DIAS
+  filters:
+  - name: ef48573431906cbeee80
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 7c4900b4ab95e8e421c8
   type: card
   position:
@@ -466,6 +640,16 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "INSTALADOS ÚLTIMOS 30 DIAS"
     name: "INSTALADOS ÚLTIMOS 30 DIAS"
+  filters:
+  - name: 409d72acc8285071a893
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 812e60a64068500c1120
   type: textbox
   position:
@@ -475,6 +659,8 @@ visuals:
     height: 31.401869158878508
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 8a935f3996b42c20f865
   type: pageNavigator
   position:
@@ -484,6 +670,8 @@ visuals:
     height: 49.056603773584904
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 8eebca1b0652b988a8a8
   type: slicer
   position:
@@ -499,6 +687,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: Tipo
     name: Tipo
+  filters:
+  - name: 72587be442720079a12b
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 8f63123f92f546af4d24
   type: slicer
   position:
@@ -523,6 +721,16 @@ visuals:
     entity: null
     property: null
     name: data_suporte Dia
+  filters:
+  - name: fdaa09e0ca730dca6485
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 97806ae5a55362b8fe86
   type: textbox
   position:
@@ -532,6 +740,8 @@ visuals:
     height: 68
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 9eed3abce470029b5891
   type: card
   position:
@@ -547,6 +757,16 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "INSTALADOS MÊS ATUAL"
     name: "INSTALADOS MÊS ATUAL"
+  filters:
+  - name: 575285f1ec32c9e3e2ae
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: a8bb56155ea520769c12
   type: slicer
   position:
@@ -562,6 +782,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
     name: "TÉCNICO"
+  filters:
+  - name: 4f1ed6d21605eea147d3
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: a8ffb16abb690cc6147d
   type: card
   position:
@@ -577,6 +807,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "% MANUTENÇÕES / INSTALAÇÕES (30D)"
     name: "% SOBRE OS ULTIMOS 30 DIAS"
+  filters:
+  - name: d18f0b33bd8c92334410
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: ac8ae9e34e50c01060d3
   type: card
   position:
@@ -592,6 +832,26 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: TOTAL INSTALADOS
+  filters:
+  - name: 1a93d3d23e31db1784ee
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "#HR - TEC - Instalação de Fibra"
+      - "TEC - Instalação de Fibra"
+      - "TEC - Instalação de Fibra – CORPORATIVO"
+  - name: 73d437e40313868726b2
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: b277cbb3c0345505ddf8
   type: card
   position:
@@ -607,6 +867,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Data
     name: Data mais recente
+  filters: []
+  filters_vazios: 0
 - id: b3d817c3c57545262796
   type: textbox
   position:
@@ -616,6 +878,8 @@ visuals:
     height: 33.14641744548287
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: bc889c6e5aab180b4e49
   type: card
   position:
@@ -631,6 +895,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "% CASOS MÊS ATUAL"
     name: "% SOBRE O MÊS ATUAL"
+  filters:
+  - name: 5cd7f72a7062034b01a0
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: cacbda0fe3a81ece18c5
   type: card
   position:
@@ -646,6 +920,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Hora
     name: Hora mais recente
+  filters: []
+  filters_vazios: 0
 - id: ce735a6358c0af249bc2
   type: shape
   position:
@@ -655,6 +931,8 @@ visuals:
     height: 75.06092607636067
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: d607ef36b82b1c37ab2c
   type: slicer
   position:
@@ -670,6 +948,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria2
     name: categoria2
+  filters:
+  - name: b0a36835d4e09ba70b9a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: d6966d4cb0e0556e0952
   type: slicer
   position:
@@ -694,6 +982,16 @@ visuals:
     entity: null
     property: null
     name: data_abertura Dia
+  filters:
+  - name: 998ba96de06267501367
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: d97fe489202052421052
   type: lineStackedColumnComboChart
   position:
@@ -730,6 +1028,27 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: "SOLICITAÇÕES"
+  filters:
+  - name: d347e5d0041cb5b87462
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "#HR - TEC - Instalação de Fibra"
+      - "TEC - Instalação de Fibra"
+      - "TEC - Instalação de Fibra – CORPORATIVO"
+      - "TEC - Instalação de Fibra - Cortesia"
+  - name: 8a2a3c9878110ea02c08
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: df74c4fb0e50148b9851
   type: card
   position:
@@ -745,6 +1064,16 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: Porcentagem
     name: "MÉDIA GERAL"
+  filters:
+  - name: 30b73cadccc0430aca0d
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: fb9054faac5121289c51
   type: unknown
   position:
@@ -754,6 +1083,8 @@ visuals:
     height: 52.5
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: fefc9130d39cbbb0604a
   type: slicer
   position:
@@ -769,3 +1100,13 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria3
     name: categoria3
+  filters:
+  - name: b0a36835d4e09ba70b9a
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0

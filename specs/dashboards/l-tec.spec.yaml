@@ -10,6 +10,8 @@ size:
   width: 550
   height: 400
 visual_count: 1
+filters: []
+filters_vazios: 0
 visuals:
 - id: 8ea73a36c7da00d0613e
   type: tableEx
@@ -41,3 +43,5 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: PROTOCOLO
+  filters: []
+  filters_vazios: 0

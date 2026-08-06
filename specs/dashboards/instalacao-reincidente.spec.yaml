@@ -10,6 +10,47 @@ size:
   width: 2800
   height: 1800
 visual_count: 29
+filters:
+- name: e33b0ee1796f6eb86f24
+  type: Categorical
+  entity: CALENDARIO INSTALADO
+  property: DATA_VIGENTE_INSTALADO
+  conditions:
+  - op: in
+    values:
+    - Sim
+- name: aa796b05364602073831
+  type: Categorical
+  entity: PROTOCOLOS GERAL
+  property: STATUS PROTOCOLO
+  conditions:
+  - op: in
+    values:
+    - Instalado
+- name: f8726eae9fef34de2dd4
+  type: Categorical
+  entity: PROTOCOLOS GERAL
+  property: TIPO DE PROTOCOLO
+  conditions:
+  - op: in
+    values:
+    - "TEC - Instalação de Fibra - Cortesia"
+    - "TEC - Instalação de Fibra – CORPORATIVO"
+    - "TEC - Instalação de Fibra"
+    - "#HR - TEC - Instalação de Fibra"
+- name: 04de392877a970c77789
+  type: Advanced
+  entity: CALENDARIO INSTALADO
+  property: DATA INSTALADO
+  conditions:
+  - op: comparison
+    kind: ge
+    left_property: DATA INSTALADO
+    left_aggregation: null
+    right:
+      relativo: agora
+      time_unit: 5
+filters_vazios: 0
 visuals:
 - id: 03b4bcd9157cec19d13e
   type: card
@@ -26,6 +67,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Hora
     name: Hora mais recente
+  filters: []
+  filters_vazios: 0
 - id: 1a8f0f425eea4d91d7da
   type: tableEx
   position:
@@ -51,6 +94,16 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: "% Reincidencia"
     name: "% Reincidente"
+  filters:
+  - name: e60bcc0df23f376d8c36
+    type: Categorical
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: tipo_instalacao
+    conditions:
+    - op: not_in
+      values:
+      - "TEC - Instalação de Rádio"
+  filters_vazios: 4
 - id: 1bfe03ac7181a3ce2ace
   type: tableEx
   position:
@@ -82,6 +135,16 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: "% Reincidencia"
     name: "% Reincidente"
+  filters:
+  - name: e60bcc0df23f376d8c36
+    type: Categorical
+    entity: "INSTALAÇÕES REINCIDENTES"
+    property: tipo_instalacao
+    conditions:
+    - op: not_in
+      values:
+      - "TEC - Instalação de Rádio"
+  filters_vazios: 5
 - id: 1c15b278e5ca17bec2e8
   type: card
   position:
@@ -97,6 +160,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: Reincidentes
     name: Reincidentes
+  filters: []
+  filters_vazios: 0
 - id: 23e39b606638b87e8c8c
   type: slicer
   position:
@@ -112,6 +177,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: cliente
     name: cliente
+  filters: []
+  filters_vazios: 0
 - id: 2a4376d703bdcbe973ea
   type: unknown
   position:
@@ -121,6 +188,8 @@ visuals:
     height: 52.5
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 2e20bb37d3e6d566f9d3
   type: slicer
   position:
@@ -136,6 +205,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: catalogo
     name: catalogo
+  filters: []
+  filters_vazios: 0
 - id: 43cbfec92047966cb9ef
   type: pageNavigator
   position:
@@ -145,6 +216,8 @@ visuals:
     height: 49.056603773584904
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 5e81bd24691c29217be8
   type: card
   position:
@@ -160,6 +233,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: Instalados
+  filters: []
+  filters_vazios: 0
 - id: 62ff2e415274df7f7ad4
   type: slicer
   position:
@@ -175,6 +250,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: categoria_5
     name: categoria_5
+  filters: []
+  filters_vazios: 0
 - id: 6372fc0350f0434c7d93
   type: slicer
   position:
@@ -190,6 +267,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: categoria_2
     name: categoria_2
+  filters: []
+  filters_vazios: 0
 - id: 6bed9d362974c6733761
   type: card
   position:
@@ -205,6 +284,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: "% Reincidencia"
     name: "% Reincidencia"
+  filters: []
+  filters_vazios: 0
 - id: 7a16be6815b78ddf3680
   type: shape
   position:
@@ -214,6 +295,8 @@ visuals:
     height: 75.06092607636067
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 7a8fbba740dcd8d93ffe
   type: textbox
   position:
@@ -223,6 +306,8 @@ visuals:
     height: 68
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 81bd542c024a68a0b55a
   type: textbox
   position:
@@ -232,6 +317,8 @@ visuals:
     height: 42.99765807962529
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 95d7e33f240e61378a71
   type: slicer
   position:
@@ -247,6 +334,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: categoria_1
     name: categoria_1
+  filters: []
+  filters_vazios: 0
 - id: abd7e96af67e36e852c3
   type: slicer
   position:
@@ -262,6 +351,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: reincidente_30d
     name: reincidente_30d
+  filters: []
+  filters_vazios: 0
 - id: af1c3777d731245dd558
   type: lineStackedColumnComboChart
   position:
@@ -297,6 +388,36 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: protocolo_instalacao
     name: Contagem de protocolo_instalacao
+  filters:
+  - name: e8a2f6f7b98fc36cb8a2
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "#HR - TEC - Instalação de Fibra"
+      - "TEC - Instalação de Fibra"
+      - "TEC - Instalação de Fibra – CORPORATIVO"
+      - "TEC - Instalação de Fibra - Cortesia"
+  - name: Filter14c4c5ff6ad3679956c8
+    type: Categorical
+    entity: CALENDARIO INSTALADO
+    property: DATA_VIGENTE_INSTALADO
+    conditions:
+    - op: in
+      values:
+      - Sim
+  - name: Filtera9878bdd4213e2a5715d
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: STATUS PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - Instalado
+      - "Instalado Pendência Financeira"
+  filters_vazios: 10
 - id: b21a5d8ada09beaa839b
   type: slicer
   position:
@@ -312,6 +433,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: categoria_4
     name: categoria_4
+  filters: []
+  filters_vazios: 0
 - id: c2cda490384c68eb80e4
   type: image
   position:
@@ -321,6 +444,8 @@ visuals:
     height: 75
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: c8fbe163b6a8ae38cc23
   type: slicer
   position:
@@ -345,6 +470,8 @@ visuals:
     entity: null
     property: null
     name: data_manutencao Dia
+  filters: []
+  filters_vazios: 0
 - id: d8c18995b06efbc39921
   type: unknown
   position:
@@ -354,6 +481,8 @@ visuals:
     height: 53.10523147244007
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: d93e5f330d5c60355c53
   type: tableEx
   position:
@@ -461,6 +590,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: equipe
     name: Equipe
+  filters: []
+  filters_vazios: 0
 - id: e59df688d24f98b74fcb
   type: slicer
   position:
@@ -476,6 +607,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: equipe
     name: equipe
+  filters: []
+  filters_vazios: 0
 - id: e9f72a9a044c3d178fa1
   type: card
   position:
@@ -491,6 +624,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Data
     name: Data mais recente
+  filters: []
+  filters_vazios: 0
 - id: ec213222764661ec1ea8
   type: slicer
   position:
@@ -506,6 +641,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: tipo_manutencao
     name: tipo_manutencao
+  filters: []
+  filters_vazios: 0
 - id: f02ce57f966b7b0b41bc
   type: slicer
   position:
@@ -521,6 +658,8 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: contrato
     name: contrato
+  filters: []
+  filters_vazios: 0
 - id: f4ceefeee158fb0bacf9
   type: slicer
   position:
@@ -545,6 +684,8 @@ visuals:
     entity: null
     property: null
     name: DATA INSTALADO Dia
+  filters: []
+  filters_vazios: 0
 - id: fb5df651172fb9ad83ef
   type: slicer
   position:
@@ -560,3 +701,5 @@ visuals:
     entity: "INSTALAÇÕES REINCIDENTES"
     property: categoria_3
     name: categoria_3
+  filters: []
+  filters_vazios: 0

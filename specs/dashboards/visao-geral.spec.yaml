@@ -10,6 +10,8 @@ size:
   width: 2800
   height: 2130
 visual_count: 28
+filters: []
+filters_vazios: 0
 visuals:
 - id: 103b7a8ac1768abbaa22
   type: slicer
@@ -26,6 +28,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: STATUS
     name: STATUS
+  filters: []
+  filters_vazios: 0
 - id: 23c5a9bf78b33e02db74
   type: slicer
   position:
@@ -50,6 +54,8 @@ visuals:
     entity: null
     property: null
     name: Data Criado Dia
+  filters: []
+  filters_vazios: 0
 - id: 2ce6f3783f48638594d6
   type: card
   position:
@@ -65,6 +71,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Hora
     name: Hora mais recente
+  filters: []
+  filters_vazios: 0
 - id: 3b000fe189f5f6d62a62
   type: card
   position:
@@ -80,6 +88,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Data
     name: Data mais recente
+  filters: []
+  filters_vazios: 0
 - id: 50ae0cd55f11c1931830
   type: pageNavigator
   position:
@@ -89,6 +99,8 @@ visuals:
     height: 50
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 529693bd75399ddef31f
   type: advancedSlicerVisual
   position:
@@ -104,6 +116,16 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+  filters:
+  - name: 52151649e01c50a5a818
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: 562fcabd15abb1c7880a
   type: slicer
   position:
@@ -119,6 +141,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: ESTAGIO CONTRATO
     name: ESTAGIO CONTRATO
+  filters: []
+  filters_vazios: 0
 - id: 5a505e91ed658e6741da
   type: shape
   position:
@@ -128,6 +152,8 @@ visuals:
     height: 73.33333333333333
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 5eac559add4291af6196
   type: card
   position:
@@ -143,6 +169,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CLIENTE
     name: CLIENTES DISTINTOS
+  filters: []
+  filters_vazios: 0
 - id: 6b2781fa1e3b89ed0626
   type: slicer
   position:
@@ -158,6 +186,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "RESPONSÁVEL"
     name: "RESPONSÁVEL"
+  filters: []
+  filters_vazios: 0
 - id: 6f6ee418b1b95a80e2a4
   type: slicer
   position:
@@ -173,6 +203,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: N°PROTOCOLO
+  filters: []
+  filters_vazios: 0
 - id: 704b7bcb68fd3e17cd30
   type: tableEx
   position:
@@ -298,6 +330,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TMA
     name: TMA
+  filters: []
+  filters_vazios: 35
 - id: 71e5cb0109f72b45b16f
   type: card
   position:
@@ -313,6 +347,21 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: PROTOCOLOS AGENDADOS
+  filters:
+  - name: 428ec68e1468138e0832
+    type: RelativeDate
+    entity: FIELD AGENDA
+    property: Data
+    conditions:
+    - op: between_relativo
+      property: Data
+      lower: []
+      upper:
+      - amount: 365
+        time_unit: 0
+      - amount: -1
+        time_unit: 0
+  filters_vazios: 0
 - id: 747e8b722a3f0684bfd4
   type: image
   position:
@@ -322,6 +371,8 @@ visuals:
     height: 75
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 775229fb200e883f93bc
   type: unknown
   position:
@@ -331,6 +382,8 @@ visuals:
     height: 53.10523147244007
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 7db40203ca467b8165c6
   type: clusteredBarChart
   position:
@@ -356,6 +409,24 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: Contagem de N°PROTOCOLO
+  filters:
+  - name: 0ab70429517b55ed9b7b
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 1"
+    conditions:
+    - op: not_in
+      values:
+      - null
+  - name: 11e595d2556a0e703b15
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 2"
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 2
 - id: 843bcbb16b315e6a1887
   type: slicer
   position:
@@ -380,6 +451,19 @@ visuals:
     entity: null
     property: null
     name: DATA INSTALADO Dia
+  filters:
+  - name: 56d41f52937587e5b5de
+    type: Advanced
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: comparison
+      kind: eq
+      left_property: DATA INSTALADO
+      left_aggregation: null
+      right: null
+      negado: true
+  filters_vazios: 0
 - id: a26c18ffd99c49e69b3b
   type: textbox
   position:
@@ -389,6 +473,8 @@ visuals:
     height: 42.99765807962529
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: b346badbabf75059fb86
   type: barChart
   position:
@@ -409,6 +495,18 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: Contagem de SOLICITACAO1
+  filters:
+  - name: 6fe053d77eed2c821ebd
+    type: Advanced
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: SOLICITACAO
+      left_aggregation: 2
+      right: 100
+  filters_vazios: 0
 - id: b909e6c32f5fd8f54237
   type: textbox
   position:
@@ -418,6 +516,8 @@ visuals:
     height: 65.33973919011667
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: c8c7d1ae3d7a5907544c
   type: slicer
   position:
@@ -433,6 +533,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CLIENTE
     name: CLIENTE
+  filters: []
+  filters_vazios: 0
 - id: cbc30d7bc7375a004eac
   type: card
   position:
@@ -448,6 +550,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: PROTOCOLOS TOTAIS
+  filters: []
+  filters_vazios: 0
 - id: ce537446fc06ac83afea
   type: slicer
   position:
@@ -463,6 +567,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: EQUIPE
     name: EQUIPE
+  filters: []
+  filters_vazios: 0
 - id: cfe4382c2543d1fca3e3
   type: unknown
   position:
@@ -472,6 +578,8 @@ visuals:
     height: 52.5
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: d3f5075f753555c500ed
   type: advancedSlicerVisual
   position:
@@ -487,6 +595,16 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: STATUS PROTOCOLO
     name: STATUS PROTOCOLO
+  filters:
+  - name: d947ee0ba363ad8480e2
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: STATUS PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: d9713da4535926b79bd8
   type: columnChart
   position:
@@ -507,6 +625,18 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: SOLICITACAO
     name: TOTAL
+  filters:
+  - name: bdd09ecd0916cac88af5
+    type: Advanced
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: SOLICITACAO
+      left_aggregation: 2
+      right: 100
+  filters_vazios: 0
 - id: df93e688d86824150aee
   type: textbox
   position:
@@ -516,6 +646,8 @@ visuals:
     height: 36.513383665065206
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: f489778f1a41f78ed708
   type: card
   position:
@@ -531,3 +663,5 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "DATA INSTALAÇÃO"
     name: PROTOCOLOS INSTALADOS
+  filters: []
+  filters_vazios: 0

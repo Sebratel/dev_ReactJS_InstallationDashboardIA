@@ -8,7 +8,13 @@ import {
 } from '../src/tmdl.mjs';
 import { unescapeMString, detectSource, extractSourceTables } from '../src/mquery.mjs';
 import { toYaml } from '../src/yaml.mjs';
-import { locatePbip, build } from '../src/index.mjs';
+import {
+  locatePbip,
+  build,
+  extractFilters,
+  traduzCondicao,
+  parseLiteral,
+} from '../src/index.mjs';
 
 // ---------- Unit: TMDL table ----------
 const SAMPLE_TABLE = `table CONTRATOS
@@ -510,4 +516,164 @@ test('build: relacionamentos reais aparecem e a hierarquia de datas fica contada
   const inativo = model.relationships.filter((r) => !r.active);
   assert.equal(inativo.length, 1, 'exatamente um relacionamento inativo');
   assert.equal(inativo[0].from_table, 'PROTOCOLOS PRODUTIVIDADE');
+});
+
+// ---------- Unit: filtros de página e de visual ----------
+//
+// Cada tradução errada aqui vira número errado num visual, sem erro nenhum no
+// caminho — daí uma asserção por forma de condição, não uma amostra.
+
+test('parseLiteral cobre as 4 formas que o PBIP usa', () => {
+  assert.equal(parseLiteral("'Instalado'"), 'Instalado');
+  assert.equal(parseLiteral('null'), null);
+  assert.equal(parseLiteral('0L'), 0);
+  assert.equal(parseLiteral('true'), true);
+  // Apóstrofo interno vem dobrado no PBIP.
+  assert.equal(parseLiteral("'D''Oeste'"), "D'Oeste");
+  assert.equal(parseLiteral("datetime'2026-01-31T00:00:00'"), '2026-01-31T00:00:00');
+});
+
+test('traduzCondicao: In vira in, e Not(In) vira not_in', () => {
+  const inCond = {
+    In: {
+      Expressions: [{ Column: { Property: 'STATUS' } }],
+      Values: [[{ Literal: { Value: "'Instalado'" } }], [{ Literal: { Value: 'null' } }]],
+    },
+  };
+  assert.deepEqual(traduzCondicao(inCond), { op: 'in', values: ['Instalado', null] });
+
+  // A seleção invertida do Power BI chega como Not(In) — e a diferença entre as duas
+  // é o relatório inteiro: "só estes" contra "todos menos estes".
+  assert.deepEqual(traduzCondicao({ Not: { Expression: inCond } }), {
+    op: 'not_in',
+    values: ['Instalado', null],
+  });
+});
+
+test('traduzCondicao: Comparison guarda o lado esquerdo e o tipo', () => {
+  const c = traduzCondicao({
+    Comparison: {
+      ComparisonKind: 1,
+      Left: { Aggregation: { Expression: { Column: { Property: 'N°PROTOCOLO' } }, Function: 2 } },
+      Right: { Literal: { Value: '0L' } },
+    },
+  });
+  assert.equal(c.op, 'comparison');
+  assert.equal(c.kind, 'gt');
+  assert.equal(c.left_property, 'N°PROTOCOLO');
+  assert.equal(c.left_aggregation, 2);
+  assert.equal(c.right, 0);
+});
+
+test('traduzCondicao: Not(Comparison) marca negado em vez de virar desconhecido', () => {
+  // É como o Power BI escreve "não vazio": NOT(coluna = null).
+  const c = traduzCondicao({
+    Not: {
+      Expression: {
+        Comparison: {
+          ComparisonKind: 0,
+          Left: { Column: { Property: 'DATA INSTALADO' } },
+          Right: { Literal: { Value: 'null' } },
+        },
+      },
+    },
+  });
+  assert.equal(c.op, 'comparison');
+  assert.equal(c.negado, true);
+  assert.equal(c.right, null);
+});
+
+test('traduzCondicao: data relativa guarda o deslocamento, não a data resolvida', () => {
+  // Resolver aqui congelaria "os últimos 7 dias" na data da extração — o filtro
+  // passaria a significar outra coisa a cada dia que passa.
+  const c = traduzCondicao({
+    Between: {
+      Expression: { Column: { Property: 'DATA INSTALADO' } },
+      LowerBound: {
+        DateSpan: {
+          Expression: { DateAdd: { Expression: { Now: {} }, Amount: -7, TimeUnit: 0 } },
+          TimeUnit: 0,
+        },
+      },
+      UpperBound: { DateSpan: { Expression: { Now: {} }, TimeUnit: 0 } },
+    },
+  });
+  assert.equal(c.op, 'between_relativo');
+  assert.equal(c.property, 'DATA INSTALADO');
+  assert.deepEqual(c.lower, [{ amount: -7, time_unit: 0 }]);
+});
+
+test('traduzCondicao: forma desconhecida preserva o JSON cru em vez de desaparecer', () => {
+  const c = traduzCondicao({ FormaQueNaoExiste: { x: 1 } });
+  assert.equal(c.op, 'desconhecido');
+  assert.deepEqual(c.raw, { FormaQueNaoExiste: { x: 1 } });
+});
+
+test('extractFilters separa filtro com condição de cartão vazio', () => {
+  const node = {
+    filterConfig: {
+      filters: [
+        {
+          name: 'a',
+          type: 'Categorical',
+          field: { Column: { Expression: { SourceRef: { Entity: 'FIELD AGENDA' } }, Property: 'Turno' } },
+          filter: {
+            Where: [{ Condition: { In: { Values: [[{ Literal: { Value: "'Manhã'" } }]] } } }],
+          },
+        },
+        // Cartão de filtro aberto no Power BI e sem seleção: não muda número.
+        { name: 'b', type: 'Advanced', field: { Column: { Property: 'X' } } },
+      ],
+    },
+  };
+  const { filters, filters_vazios } = extractFilters(node);
+  assert.equal(filters_vazios, 1);
+  assert.equal(filters.length, 1);
+  assert.equal(filters[0].entity, 'FIELD AGENDA');
+  assert.equal(filters[0].property, 'Turno');
+  assert.deepEqual(filters[0].conditions, [{ op: 'in', values: ['Manhã'] }]);
+});
+
+test('integração: nenhum filtro do PBIP real fica sem tradução', () => {
+  // A guarda que impede a Fase 3 de nascer errada. Um filtro que o extrator não
+  // entende NÃO deixa de existir — ele chega como `op: desconhecido`, e este teste
+  // falha dizendo em qual página e visual. O contrário (descartar em silêncio) daria
+  // um card com número errado e nenhum erro no caminho.
+  let pbip;
+  try {
+    pbip = locatePbip();
+  } catch {
+    console.warn('PBIP não encontrado — pulando teste de integração.');
+    return;
+  }
+  const model = build(pbip);
+
+  const desconhecidos = [];
+  let comCondicao = 0;
+  let vazios = 0;
+  for (const d of model.dashboards) {
+    const escopos = [
+      { onde: `página ${d.id}`, f: d.filters, v: d.filters_vazios },
+      ...d.visuals.map((v) => ({ onde: `${d.id}/${v.type} ${v.id}`, f: v.filters, v: v.filters_vazios })),
+    ];
+    for (const { onde, f, v } of escopos) {
+      vazios += v ?? 0;
+      for (const filtro of f ?? []) {
+        comCondicao++;
+        for (const c of filtro.conditions ?? []) {
+          if (c.op === 'desconhecido') desconhecidos.push(`${onde}: ${JSON.stringify(c.raw)}`);
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(
+    desconhecidos,
+    [],
+    `formas de filtro que o extrator não traduz:\n  ${desconhecidos.join('\n  ')}`,
+  );
+  // Prende as contagens medidas em 06/08/2026. Se subirem, alguém filtrou algo novo
+  // no relatório e a paridade precisa acompanhar; se caírem, um filtro sumiu.
+  assert.equal(comCondicao, 108, 'filtros que restringem de fato (6 de página + 102 de visual)');
+  assert.equal(vazios, 176, 'cartões de filtro sem seleção — não mudam número');
 });

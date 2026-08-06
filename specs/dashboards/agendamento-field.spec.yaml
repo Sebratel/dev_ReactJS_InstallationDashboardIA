@@ -10,6 +10,20 @@ size:
   width: 2800
   height: 4400
 visual_count: 39
+filters:
+- name: 9119f22f030d3b89b9b6
+  type: Advanced
+  entity: FIELD AGENDA
+  property: Data
+  conditions:
+  - op: comparison
+    kind: gt
+    left_property: Data
+    left_aggregation: null
+    right:
+      relativo: agora
+      time_unit: 5
+filters_vazios: 0
 visuals:
 - id: 04979b00e5329b67f349
   type: pivotTable
@@ -37,6 +51,8 @@ visuals:
     entity: Status Protocolo Dia
     property: Qtd Protocolos Base
     name: Qtd Protocolos Base
+  filters: []
+  filters_vazios: 0
 - id: 05da970602ab7c4abced
   type: tableEx
   position:
@@ -57,6 +73,8 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: Qtd
+  filters: []
+  filters_vazios: 0
 - id: 084be384e4209a5a3674
   type: tableEx
   position:
@@ -97,6 +115,8 @@ visuals:
     entity: FIELD AGENDA
     property: ClassificacaoRelato
     name: "Relato Padrão/ Motivo"
+  filters: []
+  filters_vazios: 0
 - id: 0c0223c665b34f95121e
   type: tableEx
   position:
@@ -117,6 +137,8 @@ visuals:
     entity: FIELD AGENDA
     property: Protocolo
     name: Qtd
+  filters: []
+  filters_vazios: 0
 - id: 116ebf72cb2018a25249
   type: card
   position:
@@ -132,6 +154,8 @@ visuals:
     entity: FIELD AGENDA
     property: "Protocolos Manhã"
     name: "Agendados Manhã"
+  filters: []
+  filters_vazios: 1
 - id: 1570022d6bc4ade1da91
   type: card
   position:
@@ -147,6 +171,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Data
     name: Data mais recente
+  filters: []
+  filters_vazios: 0
 - id: 1a99bc9b51e27c00d2ba
   type: pivotTable
   position:
@@ -173,6 +199,8 @@ visuals:
     entity: Clima/ Tempo
     property: Classificacao
     name: Primeiro Classificacao
+  filters: []
+  filters_vazios: 1
 - id: 1dc987ba648f79f5596a
   type: slicer
   position:
@@ -197,6 +225,8 @@ visuals:
     entity: null
     property: null
     name: Data Dia
+  filters: []
+  filters_vazios: 0
 - id: 2a473e574b84005f5e0f
   type: shape
   position:
@@ -206,6 +236,8 @@ visuals:
     height: 73.33333333333333
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 33b3e9120b7574d09aec
   type: card
   position:
@@ -221,6 +253,8 @@ visuals:
     entity: HORA ATUALIZADO
     property: Hora
     name: Hora mais recente
+  filters: []
+  filters_vazios: 0
 - id: 45ddf57be8d24b6d5605
   type: textbox
   position:
@@ -230,6 +264,8 @@ visuals:
     height: 66
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 4745d75971884e728364
   type: pageNavigator
   position:
@@ -239,6 +275,8 @@ visuals:
     height: 50
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 4ed2f95067a113ca4998
   type: card
   position:
@@ -254,6 +292,8 @@ visuals:
     entity: FIELD AGENDA
     property: Protocolos Tarde
     name: Agendados Tarde
+  filters: []
+  filters_vazios: 1
 - id: 52886158dad03a84332b
   type: unknown
   position:
@@ -263,6 +303,8 @@ visuals:
     height: 53.10523147244007
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: 56d3352b476659cd7972
   type: pivotTable
   position:
@@ -289,6 +331,16 @@ visuals:
     entity: Clima/ Tempo
     property: Probabilidade_Chuva_Formatada
     name: "Último Probabilidade_Chuva_Formatada"
+  filters:
+  - name: c8e0cec6e1b5029d6d09
+    type: Categorical
+    entity: Clima/ Tempo
+    property: Tipo
+    conditions:
+    - op: in
+      values:
+      - "Previsão"
+  filters_vazios: 1
 - id: 56e400ca747d091eb7ba
   type: tableEx
   position:
@@ -309,6 +361,8 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: Qtd
+  filters: []
+  filters_vazios: 0
 - id: 5aa81d52fffb190a3b23
   type: slicer
   position:
@@ -324,6 +378,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TURNO
     name: TURNO
+  filters: []
+  filters_vazios: 0
 - id: 65f5a09384f836a7ab25
   type: slicer
   position:
@@ -339,6 +395,8 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: protocolo
+  filters: []
+  filters_vazios: 0
 - id: 670ac661701957510387
   type: slicer
   position:
@@ -354,6 +412,8 @@ visuals:
     entity: FIELD AGENDA
     property: CategoriaProdutividade
     name: CategoriaProdutividade
+  filters: []
+  filters_vazios: 0
 - id: 6ba6166050e14793b298
   type: tableEx
   position:
@@ -374,6 +434,8 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: Qtd
+  filters: []
+  filters_vazios: 0
 - id: 6ffe21030010501827da
   type: slicer
   position:
@@ -389,6 +451,8 @@ visuals:
     entity: FIELD AGENDA
     property: ClassificacaoRelato
     name: ClassificacaoRelato
+  filters: []
+  filters_vazios: 0
 - id: 815c09598bc48c8da49a
   type: tableEx
   position:
@@ -434,6 +498,8 @@ visuals:
     entity: FIELD AGENDA
     property: CategoriaProdutividade
     name: "Produtivo?"
+  filters: []
+  filters_vazios: 0
 - id: 84a15198c1b2672c001b
   type: lineStackedColumnComboChart
   position:
@@ -475,6 +541,8 @@ visuals:
     entity: Status Protocolo Dia
     property: Qtd Protocolos Base
     name: Qtd Protocolos Base
+  filters: []
+  filters_vazios: 0
 - id: a7119bca6c0795bd7269
   type: tableEx
   position:
@@ -495,6 +563,8 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: Qtd
+  filters: []
+  filters_vazios: 0
 - id: a88b32323b8c521eace1
   type: card
   position:
@@ -510,6 +580,8 @@ visuals:
     entity: FIELD AGENDA
     property: "Protocolos Restantes no Mês"
     name: Agendados Futuro
+  filters: []
+  filters_vazios: 0
 - id: ab1e84e5031aa3306102
   type: slicer
   position:
@@ -525,6 +597,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CLIENTE
     name: CLIENTE
+  filters: []
+  filters_vazios: 0
 - id: ae5871aa76bb028341c9
   type: tableEx
   position:
@@ -545,6 +619,16 @@ visuals:
     entity: FIELD AGENDA
     property: ClassificacaoRelato
     name: Motivo
+  filters:
+  - name: 10967825240b49b3273c
+    type: Categorical
+    entity: FIELD AGENDA
+    property: ClassificacaoRelato
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
 - id: bc2c33d2228ed29f910b
   type: card
   position:
@@ -560,6 +644,8 @@ visuals:
     entity: FIELD AGENDA
     property: "Média Mensal Protocolos"
     name: "Média Diária"
+  filters: []
+  filters_vazios: 0
 - id: d2f9f6c8a06f4afb8104
   type: advancedSlicerVisual
   position:
@@ -575,6 +661,19 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+  filters:
+  - name: 477184bd60a030118dc9
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - null
+      - "TEC - Instalação de Rádio"
+      - "TEC - Instalação de Radio – CORPORATIVO"
+      - "TEC - Migração com troca de Equipamento"
+  filters_vazios: 0
 - id: dde5aa90e4940ba62c04
   type: slicer
   position:
@@ -590,6 +689,8 @@ visuals:
     entity: FIELD AGENDA
     property: "Descrição"
     name: Tipo Relato
+  filters: []
+  filters_vazios: 0
 - id: e21a2a1ce6d1088b3b74
   type: slicer
   position:
@@ -605,6 +706,8 @@ visuals:
     entity: Status Protocolo Dia
     property: Status
     name: Status
+  filters: []
+  filters_vazios: 0
 - id: e2d5549b8d6d57e1439e
   type: tableEx
   position:
@@ -677,6 +780,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: RUA
     name: Rua
+  filters: []
+  filters_vazios: 0
 - id: e7998ec512080733935f
   type: slicer
   position:
@@ -692,6 +797,8 @@ visuals:
     entity: FIELD AGENDA
     property: Status Protocolo
     name: Status Protocolo
+  filters: []
+  filters_vazios: 0
 - id: e935fbbda9bc2ee0a5c1
   type: image
   position:
@@ -701,6 +808,8 @@ visuals:
     height: 75
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: ef774c82668251fc0b8e
   type: textbox
   position:
@@ -710,6 +819,8 @@ visuals:
     height: 42.99765807962529
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: f069e3f55a25859d6447
   type: unknown
   position:
@@ -719,6 +830,8 @@ visuals:
     height: 52.5
   entities_used: []
   fields: []
+  filters: []
+  filters_vazios: 0
 - id: fa2b2e6a3c02f745e8ec
   type: hundredPercentStackedColumnChart
   position:
@@ -754,6 +867,8 @@ visuals:
     entity: Status Protocolo Dia
     property: Qtd Protocolos Base
     name: Qtd Protocolos Base
+  filters: []
+  filters_vazios: 0
 - id: fb8f008029070e2adcfe
   type: slicer
   position:
@@ -769,6 +884,8 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: CIDADE
+  filters: []
+  filters_vazios: 0
 - id: ff38eddc2587e3beda21
   type: tableEx
   position:
@@ -789,3 +906,5 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: Qtd
+  filters: []
+  filters_vazios: 0

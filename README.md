@@ -25,7 +25,8 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Connector de Google Sheets pronto, testado e **em uso**: as 3 planilhas foram compartilhadas com a conta de serviço em 06/08/2026 ([Anexo B](docs/DECISAO-CAMADA-M.md)) | ✅ |
 | — | Goldens regravados contra o dbVoalle: `categoria32` e `CIDADE2` passaram a existir, e o corpus subiu para **23 de 23** queries executando inteiras ([ACHADOS](docs/ACHADOS.md) #19) | ✅ |
 | 2b.9 | Paridade medida a medida contra o relatório — **depende de alguém abrir o Power BI e ditar os totais**; do lado do código, `--passos` já localiza a divergência passo a passo | 🚧 em curso |
-| 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
+| 3 | Widget/Dashboard Engine + Chart SDK | 🚧 **em curso** |
+| — | Filtros de página e visual passaram a ser extraídos: **102 de visual + 6 de página** restringem de fato, 176 são cartão sem seleção, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #27). Sem isso um card seria computado sem o filtro dele, em silêncio | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
