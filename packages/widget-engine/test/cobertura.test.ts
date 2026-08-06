@@ -1,0 +1,296 @@
+// Quanto do relatório real o Widget Engine cobre — medido, não estimado.
+//
+// **O QUE ESTE ARQUIVO PROVA E O QUE NÃO PROVA.** Ele prova que os 64 cards do
+// relatório calculam de ponta a ponta e que os filtros deles traduzem. Ele **não**
+// prova paridade: o dataset é sintético, então o número que sai não é o da tela. A
+// medida mais honesta do arquivo é justamente a do tamanho dessa distância — 36
+// cards têm filtro e só 5 mudam de valor por causa dele.
+//
+// Os números estão presos de propósito. Um teste que diz "roda tudo que der" não
+// avisa quando o PBIP ganha uma construção nova; um que fixa a contagem, sim — e
+// falha dizendo o nome.
+
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { SemanticModel } from '../../semantic-model/src/model.ts';
+import { SPECS, ambiente } from '../../measure-engine/test/ambiente-sintetico.ts';
+import { identityKey } from '../../measure-engine/src/value.ts';
+import { FUNCAO_DA_AGREGACAO, calculaCard, cardsDoDashboard, valorDoCampo } from '../src/card.ts';
+import { traduzFiltros } from '../src/filtro.ts';
+import {
+  loadDashboards,
+  type CondicaoSpec,
+  type DashboardSpec,
+  type FiltroSpec,
+  type VisualSpec,
+} from '../src/spec.ts';
+
+const DASHBOARDS = loadDashboards(SPECS);
+
+/** Todos os filtros do relatório, de página e de visual, com onde cada um vive. */
+function todosOsFiltros(): { onde: string; filtro: FiltroSpec; visual: VisualSpec | null }[] {
+  const out: { onde: string; filtro: FiltroSpec; visual: VisualSpec | null }[] = [];
+  for (const d of DASHBOARDS) {
+    for (const f of d.filters ?? []) out.push({ onde: `${d.id}/pagina`, filtro: f, visual: null });
+    for (const v of d.visuals ?? []) {
+      for (const f of v.filters ?? []) out.push({ onde: `${d.id}/${v.id}`, filtro: f, visual: v });
+    }
+  }
+  return out;
+}
+
+function todasAsCondicoes(): CondicaoSpec[] {
+  return todosOsFiltros().flatMap((f) => f.filtro.conditions ?? []);
+}
+
+function todosOsCards(): { dash: DashboardSpec; visual: VisualSpec }[] {
+  return DASHBOARDS.flatMap((d) => cardsDoDashboard(d).map((v) => ({ dash: d, visual: v })));
+}
+
+function contar<T>(itens: readonly T[], chave: (t: T) => string | null): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const i of itens) {
+    const k = chave(i);
+    if (k !== null) out[k] = (out[k] ?? 0) + 1;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// A forma do relatório
+// ---------------------------------------------------------------------------
+
+test('o relatório tem 14 páginas e 306 visuais', () => {
+  assert.equal(DASHBOARDS.length, 14);
+  assert.equal(DASHBOARDS.reduce((n, d) => n + (d.visuals?.length ?? 0), 0), 306);
+});
+
+/**
+ * **A uniformidade dos cards é o que permite `campoUnico` ser estrito.** Se um
+ * único card tivesse dois campos, `calculaCard` teria de escolher — e escolher em
+ * silêncio é inventar. Este teste é o que autoriza a recusa.
+ */
+test('os 64 cards têm exatamente um campo, e ele está em Values', () => {
+  const cards = todosOsCards();
+  assert.equal(cards.length, 64);
+  for (const { dash, visual } of cards) {
+    const campos = visual.fields ?? [];
+    assert.equal(campos.length, 1, `${dash.id}/${visual.id} tem ${campos.length} campos`);
+    assert.equal(campos[0]!.role, 'Values', `${dash.id}/${visual.id}`);
+  }
+});
+
+test('as agregações e medidas dos cards, contadas', () => {
+  const campos = todosOsCards().map(({ visual }) => visual.fields![0]!);
+  assert.deepEqual(contar(campos, (c) => c.kind), { measure: 28, aggregation: 36 });
+  assert.deepEqual(
+    contar(campos.filter((c) => c.kind === 'aggregation'), (c) => c.aggregation ?? '(sem função)'),
+    { min: 22, count: 10, count_non_null: 4 },
+  );
+});
+
+/**
+ * Nenhuma agregação de card fica sem função DAX. Se o PBIP passar a usar mediana,
+ * desvio ou variância num card, é aqui que aparece — pelo nome, antes de virar
+ * exceção na tela.
+ */
+test('toda agregação usada em card tem função DAX no mapa', () => {
+  const semMapa = todosOsCards()
+    .map(({ visual }) => visual.fields![0]!)
+    .filter((c) => c.kind === 'aggregation')
+    .map((c) => c.aggregation)
+    .filter((a) => !a || !FUNCAO_DA_AGREGACAO[a]);
+  assert.deepEqual(semMapa, []);
+});
+
+// ---------------------------------------------------------------------------
+// A forma dos filtros
+// ---------------------------------------------------------------------------
+
+test('são 108 filtros, e cada um tem exatamente uma condição', () => {
+  const filtros = todosOsFiltros();
+  assert.equal(filtros.length, 108);
+  for (const { onde, filtro } of filtros) {
+    assert.equal(filtro.conditions?.length, 1, `${onde}: ${filtro.conditions?.length} condições`);
+  }
+});
+
+/**
+ * A soma das condições por operador. `desconhecido` **tem de ser zero**: é a
+ * condição que o extrator não soube traduzir, e uma só já significa que existe
+ * filtro no relatório que a plataforma não sabe reproduzir.
+ */
+test('os operadores das 108 condições, contados — e nenhum desconhecido', () => {
+  assert.deepEqual(contar(todasAsCondicoes(), (c) => c.op), {
+    not_in: 54,
+    comparison: 28,
+    in: 22,
+    between_relativo: 4,
+  });
+});
+
+/**
+ * **Nenhum `in`/`not_in` da base traz data.** É o que torna seguro a checagem de
+ * espécie recusar texto contra coluna de data: se o extrator passasse a gravar
+ * data como texto ISO nos valores, todo filtro categórico sobre data erraria alto
+ * — e o conserto seria no extrator, não afrouxar a checagem.
+ *
+ * Os 40 `null` são a outra metade do fato: é como o painel escreve "(Em branco)"
+ * entre as opções marcadas, e por isso vazio **não** tem espécie conferida.
+ */
+test('os valores de in/not_in são texto e null, nunca data', () => {
+  const valores = todasAsCondicoes().flatMap((c) => (c.op === 'in' || c.op === 'not_in' ? c.values ?? [] : []));
+  assert.deepEqual(contar(valores, (v) => (v === null ? 'null' : typeof v)), { string: 64, null: 40 });
+  const comCaraDeData = valores.filter((v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v));
+  assert.deepEqual(comCaraDeData, []);
+});
+
+/**
+ * **O fato que autoriza `filtro.ts` a recusar ordem contra span acima do dia.**
+ *
+ * Toda comparação de ordem (`gt`/`ge`) da base é contra número ou contra span de
+ * **segundo**, onde o span é um instante e a comparação é exata. As de mês e ano
+ * são todas `eq`, que tem leitura única ("cai dentro do intervalo"). Nenhuma pede
+ * a convenção que não está estabelecida — comparar com o início ou com o fim do
+ * intervalo.
+ */
+test('nenhuma comparação de ordem é contra span acima do dia', () => {
+  const SUBDIA = new Set(['second', 'minute', 'hour']);
+  for (const c of todasAsCondicoes()) {
+    if (c.op !== 'comparison' || c.kind === 'eq') continue;
+    const r = c.right;
+    const ehSpan = typeof r === 'object' && r !== null && 'anchor_kind' in r;
+    if (!ehSpan) continue;
+    assert.ok(
+      SUBDIA.has((r as { time_unit: string }).time_unit),
+      `comparação '${c.kind}' contra span de '${(r as { time_unit: string }).time_unit}'`,
+    );
+  }
+});
+
+test('as datas relativas: âncoras, unidades e deslocamentos', () => {
+  const cond = todasAsCondicoes();
+  const spans = cond.flatMap((c) =>
+    c.op === 'comparison' && typeof c.right === 'object' && c.right !== null && 'anchor_kind' in c.right
+      ? [c.right as { anchor_kind: string; time_unit: string | null }]
+      : [],
+  );
+  assert.deepEqual(contar(spans, (s) => s.time_unit), { month: 14, year: 1, second: 2 });
+
+  const bordas = cond.flatMap((c) => (c.op === 'between_relativo' ? [c.lower, c.upper] : []));
+  assert.equal(bordas.length, 8);
+  assert.deepEqual(contar(bordas, (b) => b.truncate), { day: 8 });
+  assert.deepEqual(contar(bordas.flatMap((b) => b.offsets ?? []), (o) => o.time_unit), { day: 12 });
+
+  // Nenhuma âncora ficou por resolver: `desconhecido` é o defeito do ACHADOS #29.
+  assert.deepEqual(contar([...spans, ...bordas], (x) => x.anchor_kind), { agora: 23, literal: 2 });
+});
+
+/**
+ * **Todos os deslocamentos são em dias.** É o que mantém fora de alcance a
+ * divergência declarada em datas.test.ts: somar mês no JS transborda no dia que
+ * não existe no mês destino (31/01 + 1 mês = 03/03), e o Power BI grampeia em
+ * 28/02. Se este teste falhar, aquela divergência virou real e precisa de conserto.
+ */
+test('nenhum deslocamento de data é em mês ou ano', () => {
+  const unidades = todasAsCondicoes()
+    .flatMap((c) => (c.op === 'between_relativo' ? [c.lower, c.upper] : []))
+    .flatMap((b) => b.offsets ?? [])
+    .map((o) => o.time_unit);
+  assert.deepEqual([...new Set(unidades)], ['day']);
+});
+
+// ---------------------------------------------------------------------------
+// Execução: o que roda de verdade
+// ---------------------------------------------------------------------------
+
+/**
+ * Os 108 filtros, traduzidos e **aplicados** sobre o dataset sintético.
+ *
+ * Aplicar e não só traduzir é o que exercita a checagem de espécie e a resolução
+ * de data — traduzir sozinho monta o predicado sem nunca chamá-lo.
+ *
+ * Os 10 recusados são os filtros sobre valor agregado (`COUNT(x) > 0`), e a recusa
+ * é o comportamento correto: são um HAVING sobre os grupos do visual, não um
+ * predicado de linha. Nenhum deles está em card — são 3 pivotTable, 5 tableEx, 1
+ * barChart e 1 columnChart, que é a próxima fatia. Quando o agrupamento existir,
+ * este número deve **cair para zero**, e é este teste que vai cobrar.
+ */
+test('os 108 filtros: 98 aplicam, e os 10 recusados são todos sobre agregado', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let aplicam = 0;
+  const recusados: string[] = [];
+  const inesperados: string[] = [];
+
+  for (const { onde, filtro } of todosOsFiltros()) {
+    try {
+      const traduzidos = traduzFiltros([filtro], ev, onde);
+      ev.rootScope().filter.with(traduzidos).rowsOf(filtro.entity!);
+      aplicam++;
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes('HAVING')) recusados.push(onde);
+      else inesperados.push(`${onde}: ${msg}`);
+    }
+  }
+
+  assert.deepEqual(inesperados, []);
+  assert.equal(aplicam, 98);
+  assert.equal(recusados.length, 10);
+});
+
+test('nenhum filtro sobre valor agregado está em card', () => {
+  const emCard = todosOsFiltros().filter(
+    (f) => f.visual?.type === 'card' && (f.filtro.conditions ?? []).some((c) => c.op === 'comparison' && c.left_aggregation),
+  );
+  assert.deepEqual(emCard.map((f) => f.onde), []);
+});
+
+/** A cobertura que dá nome ao arquivo: todo card do relatório produz um número. */
+test('os 64 cards calculam de ponta a ponta', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  const falharam: string[] = [];
+  for (const { dash, visual } of todosOsCards()) {
+    try {
+      calculaCard(dash, visual, ev);
+    } catch (e) {
+      falharam.push(`${dash.id}/${visual.id}: ${(e as Error).message.slice(0, 100)}`);
+    }
+  }
+  assert.deepEqual(falharam, []);
+});
+
+/**
+ * **A medida mais importante do arquivo, e é uma medida do que ainda NÃO se sabe.**
+ *
+ * 36 dos 64 cards têm ao menos um filtro. Sobre o dataset sintético, só **5**
+ * mudam de valor quando o filtro entra — nos outros 31 o filtro aceita todas as
+ * linhas, porque cinco linhas de valores uniformes passam em quase qualquer
+ * predicado.
+ *
+ * Ou seja: o caminho de filtro **executa** em 36 cards e está **exercitado** em 5.
+ * É a mesma lição que a propagação por relacionamento aprendeu na 2b.5 (lá era 1
+ * de 22), e é a demonstração mais concreta que o projeto tem de que dado sintético
+ * não prova paridade. Os dois números ficam presos para que a distância entre eles
+ * seja visível — e para que ela mude quando dado real entrar.
+ */
+test('36 cards têm filtro; sobre dado sintético só 5 mudam de valor por causa dele', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let comFiltro = 0;
+  let mudam = 0;
+
+  for (const { dash, visual } of todosOsCards()) {
+    const r = calculaCard(dash, visual, ev);
+    if (!r.filtros.length) continue;
+    comFiltro++;
+    const campo = visual.fields![0]!;
+    const semFiltro = valorDoCampo(campo, ev.rootScope(), ev, `${dash.id}/${visual.id} (sem filtro)`);
+    if (identityKey(semFiltro) !== identityKey(r.valor)) mudam++;
+  }
+
+  assert.equal(comFiltro, 36);
+  assert.equal(mudam, 5);
+});

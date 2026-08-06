@@ -29,10 +29,13 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Filtros de página e visual passaram a ser extraídos: **102 de visual + 6 de página** restringem de fato, 176 são cartão sem seleção, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #27). Sem isso um card seria computado sem o filtro dele, em silêncio | ✅ |
 | — | Campos de visual passaram a dizer **como** agregam: 84 `Aggregation` com a função, 69 `HierarchyLevel` com coluna e nível (antes nulos), 2 `Arithmetic` descritos, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #28) | ✅ |
 | — | Data relativa: a âncora de `DateSpan` passou a ser **lida** em vez de presumida `Now()`. Duas páginas inteiras eram filtradas a partir de *hoje* onde o filtro diz data fixa; `TimeUnit` ganhou nome apurado do próprio relatório (`day` 20, `month` 14, `second` 2, `year` 1) ([ACHADOS](docs/ACHADOS.md) #29) | ✅ |
+| — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
+| — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
+| — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**581 testes verdes.** Nenhum deles precisa de credencial.
+**670 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -301,6 +304,35 @@ por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** p
 das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
 ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
 
+### Widget Engine (Fase 3)
+
+`packages/widget-engine/` calcula o que um visual mostra. Começou pelo **card** porque
+ele é o caso mais barato de conferir do relatório inteiro: um número, sem eixo, sem
+ordenação, sem *top N* — dá para olhar a tela e comparar. São **64**, e todos calculam.
+
+Três partes, e cada uma existe por causa de um número errado específico:
+
+- **`filtro.ts`** — filtro de spec → `TableFilter`. Filtro de página e de visual entram
+  num `with()` **único**, nunca em dois encadeados: `FilteredContext.with()` implementa a
+  substituição do `CALCULATE` (filtro novo derruba o antigo que toque a mesma coluna), que
+  é a semântica certa do DAX e a errada aqui. Em duas etapas, o filtro do visual **apagaria**
+  o da página e o card mostraria um número maior, sem erro nenhum.
+- **`datas.ts`** — a data relativa é resolvida **na hora do cálculo**, não na extração:
+  resolver antes congelaria "os últimos 7 dias" no dia em que alguém rodou
+  `npm run extract`. O "agora" vem de `Evaluator.now`, e tudo é UTC — truncar em fuso
+  local moveria a fronteira do mês em três horas.
+- **`card.ts`** — a agregação vira **nó de AST**, não texto DAX reparseado. Os nomes desta
+  base incluem `#APURAÇÃO PREMIAÇÃO` e `ALOCAÇÃO PATRIMONIO.ALOCADO POR:`; um escape errado
+  daria erro de sintaxe no melhor caso e a coluna errada no pior.
+
+**O que está medido, e o que ainda não se sabe.** Os 64 cards executam e 98 dos 108
+filtros do relatório aplicam — os 10 restantes são `COUNT(x) > 0`, recusados pelo nome
+([ACHADOS](docs/ACHADOS.md) #30). Mas **36 cards têm filtro e só 5 mudam de valor** sobre
+o dataset sintético: nos outros 31 o filtro aceita todas as linhas. O caminho de filtro
+*executa* em 36 e está *exercitado* em 5, e os dois números estão presos em
+`cobertura.test.ts` para que a distância entre eles fique visível. É a mesma lição da
+2b.5 — **dado sintético não prova paridade**.
+
 ### Query Engine (Fase 1)
 
 - **Query Registry** — carrega as specs geradas e aplica as políticas de cache
@@ -333,7 +365,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (581 testes, sem credencial)
+npm test                              # suíte completa (670 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
@@ -391,6 +423,8 @@ tools/validate/           # queries contra o ERP, verificação do modelo e scan
 packages/query-engine/    # Query Registry, Cache, Connectors, Engine
 packages/semantic-model/  # tabelas, colunas, medidas, relacionamentos + refs do DAX
 packages/measure-engine/  # DAX: tokenizer, parser, AST, avaliador e contexto de filtro
+packages/transform-engine/# camada M: tokenizer, parser, avaliador, runner e connectors
+packages/widget-engine/   # o que um visual mostra: filtro de spec, data relativa e card
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma

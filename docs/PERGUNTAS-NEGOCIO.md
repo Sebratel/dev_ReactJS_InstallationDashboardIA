@@ -355,6 +355,29 @@ a `PROTOCOLOS` ou **menor**.)
 próprio relatório: o card que alguém batizou de **`CLIENTES DISTINTOS`** na página
 `VISÃO GERAL` usa exatamente essa agregação. Se a tela disser o contrário, muda uma linha.
 
+### 6b. E se for distinta: o vazio conta como um valor?
+
+Descoberto ao testar o card (06/08/2026), e é uma segunda pergunta **dentro** da primeira
+— não uma nova. Só importa se a resposta acima for "distinta".
+
+`DISTINCTCOUNT` do DAX conta o **vazio como um valor distinto**; quem o ignora é
+`DISTINCTCOUNTNOBLANK`. Então, numa coluna com buracos, o card sai **um a mais** do que a
+leitura intuitiva de "quantos valores diferentes existem":
+
+| coluna | valores distintos "de verdade" | `DISTINCTCOUNT` |
+|---|---|---|
+| Alfa, Alfa, Beta, *(vazio)* | 2 | **3** |
+
+A plataforma usa hoje o comportamento do DAX, que está correto para `DISTINCTCOUNT` — não
+foi alterado, e há teste fixando o número (`card.test.ts`). O ponto é que **a mesma
+observação de cinco segundos responde as duas perguntas**: se o card `CLIENTES` estiver
+entre os dois números da tabela acima (nem 466 nem 558, mas 467), a resposta é "distinta,
+e o vazio conta".
+
+Vale conferir se a coluna `CLIENTE` de `PROTOCOLOS TELEFONIA` tem linha vazia — se não
+tiver, a sub-pergunta não tem efeito neste card e fica adormecida até aparecer uma coluna
+com buraco.
+
 ---
 
 ## Pendência que é do Erick, não do Fabrício

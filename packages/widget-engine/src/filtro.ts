@@ -94,6 +94,26 @@ function predicado(
   const coluna = f.property!;
   const valor = (row: Row): DaxValue => ev.columnValue(tabela, coluna, row);
 
+  // **Filtro sobre agregado não é predicado de linha.** `left_aggregation` diz que
+  // o lado esquerdo da comparação é `COUNT(coluna)`, não `coluna`: é o "filtrar por
+  // valor agregado" do painel do Power BI, um HAVING, e ele decide quais **grupos**
+  // do visual aparecem — não quais linhas entram na conta.
+  //
+  // São 10 no relatório (`count > 0` em 8, `count > 100` em 2), todos em tabela ou
+  // gráfico; nenhum em card. Aplicado ao valor cru, `COUNT(protocolo) > 0` vira
+  // `protocolo > 0`, que é outro filtro inteiramente — e num campo numérico ele
+  // aceitaria quase tudo, em silêncio. O lugar de implementá-lo é o agrupamento do
+  // visual, que é a próxima fatia; até lá, parar é o certo.
+  if (c.op === 'comparison' && c.left_aggregation) {
+    throw new DaxEvalError(
+      `${onde}: o filtro compara ${c.left_aggregation.toUpperCase()}([${c.left_property}]) ` +
+        `e não [${c.left_property}] — é filtro sobre valor agregado (HAVING), que decide ` +
+        `quais grupos o visual mostra. Como predicado de linha ele vira outro filtro, ` +
+        `e num campo numérico aceitaria quase tudo sem erro nenhum. ` +
+        `Implementá-lo exige o agrupamento do visual (tabela/gráfico), que ainda não existe.`,
+    );
+  }
+
   // A coluna da condição tem de ser a do filtro. Hoje coincidem nos 108 filtros do
   // relatório; se um dia divergirem, aplicar a condição na coluna errada daria um
   // número plausível e errado — então o certo é parar.

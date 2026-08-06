@@ -318,6 +318,41 @@ test('filtro sem condição erra alto — cartão vazio não deveria chegar aqui
 });
 
 /**
+ * **Filtro sobre valor agregado (`COUNT(x) > 0`) é recusado pelo nome.**
+ *
+ * São 10 no relatório, e o dano de aceitá-los é o maior deste arquivo: aplicado ao
+ * valor cru, `COUNT(protocolo) > 0` vira `protocolo > 0`, que num campo numérico
+ * aceita quase toda linha. O filtro sumiria sem deixar erro.
+ *
+ * Ele não é um predicado de linha: decide quais **grupos** o visual mostra, e isso
+ * exige o agrupamento, que é a próxima fatia. Nenhum dos 10 está em card — travado
+ * em cobertura.test.ts.
+ */
+test('filtro sobre valor agregado erra alto — é HAVING, não predicado de linha', () => {
+  const f = filtro('VALOR', [
+    { op: 'comparison', kind: 'gt', left_property: 'VALOR', left_aggregation: 'count', right: 0 },
+  ]);
+  assert.throws(() => sobrevivem([f]), (e: unknown) => {
+    assert.ok(e instanceof DaxEvalError);
+    assert.match(e.message, /HAVING/);
+    assert.match(e.message, /COUNT/);
+    return true;
+  });
+});
+
+/**
+ * Sem `left_aggregation`, a mesma comparação passa — é o contraste que mostra o
+ * que o guarda pega. E aqui o predicado aceita as cinco linhas, que é exatamente o
+ * dano: se o guarda não existisse, o filtro sumiria sem deixar erro.
+ */
+test('a mesma comparação sem agregação continua funcionando', () => {
+  const f = filtro('VALOR', [
+    { op: 'comparison', kind: 'gt', left_property: 'VALOR', left_aggregation: null, right: 0 },
+  ]);
+  assert.deepEqual(sobrevivem([f]), [1, 2, 3, 4, 5]);
+});
+
+/**
  * Condição sobre coluna diferente da do filtro. Hoje coincidem nos 108 filtros do
  * relatório; aplicar a condição na coluna errada daria um número plausível.
  */

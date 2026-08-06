@@ -223,6 +223,12 @@ depender de uma query de 29s no caminho do usuário. É o que justifica o cache 
 Query Engine (TTL + single-flight, já prontos) e depois a invalidação por CDC da
 Fase 4 — o número acima é a linha de base que mostra por quê.
 
+Estes quatro números são exatamente os que expõem um risco na Fase 4 que
+ainda não tinha sido registrado: sob `realtime: true`, um evento CDC invalida
+o cache antes do TTL, então nada limita a cadência de recompute dessas
+mesmas quatro queries. Levantamento das opções e decisão adiada em
+[DECISAO-REALTIME.md](./DECISAO-REALTIME.md).
+
 ---
 
 ## 6. Três medidas apontam para uma tabela que não existe no modelo
@@ -1538,3 +1544,56 @@ dia de dados na ponta da janela. Agora a borda é um objeto com `anchor_kind`, `
 
 Efeito nas specs: 5 dashboards mudaram (`agendamento-field`, `instalacao-reincidente`,
 `manutencao-inicial`, `relatorio-do-mes`, `visao-geral`). 581 testes verdes.
+
+## 30. Dez filtros são `COUNT(coluna) > 0`, e como predicado de linha viram outro filtro
+
+Quarto achado da família do 27, 28 e 29 — e o primeiro que estava no **código**, não na
+extração. A spec já trazia o dado certo; o Widget Engine é que o ignorava.
+
+Uma condição de comparação tem `left_aggregation`, e ela não é decoração:
+
+```yaml
+# visao-geral, filtro de visual
+op: comparison
+kind: gt
+left_property: SOLICITACAO
+left_aggregation: count     # <- isto
+right: 100
+```
+
+O lado esquerdo é `COUNT('PROTOCOLOS GERAL'[SOLICITACAO])`, não `[SOLICITACAO]`. É o
+"filtrar por valor agregado" do painel do Power BI: um **HAVING**, que decide quais
+**grupos** o visual mostra, e não quais linhas entram na conta.
+
+`traduzFiltros` construía o predicado a partir de `left_property` e nunca olhava
+`left_aggregation`. O resultado é um filtro **diferente**, não um filtro aproximado:
+
+| o relatório diz | o que era aplicado |
+|---|---|
+| `COUNT(SOLICITACAO) > 100` — grupos com mais de 100 protocolos | `SOLICITACAO > 100` — linhas cujo número de protocolo passa de 100 |
+| `COUNT(N°PROTOCOLO) > 0` — grupos com algum protocolo | `N°PROTOCOLO > 0` — linhas com número positivo |
+
+Num campo numérico o segundo aceita **quase toda linha**, e o filtro some sem deixar erro.
+Hoje as duas colunas estão declaradas `string` no modelo, então o guarda de espécie
+pegaria — mas por acidente do tipo declarado, não por desenho.
+
+São 10 no relatório, medidos: `count > 0` em 8 e `count > 100` em 2, distribuídos em
+3 `pivotTable`, 5 `tableEx`, 1 `barChart` e 1 `columnChart`. **Nenhum em card** — é o que
+torna a correção barata agora: ela não muda número nenhum que já se calcula.
+
+Correção: `filtro.ts` **recusa pelo nome** condição com `left_aggregation`. Implementar de
+verdade exige o agrupamento do visual, que é a fatia seguinte (tabela e gráfico); até lá,
+recusar é o que impede o filtro de virar outro em silêncio. `cobertura.test.ts` prende os
+dois números — 98 dos 108 filtros aplicam, 10 são recusados — e quando o agrupamento
+existir, os 10 devem cair para zero. O teste cobra.
+
+### O que a medição de cobertura mostrou junto
+
+Os cards executam todos: **64 de 64**, com os filtros de página e de visual aplicados.
+Mas o número que importa é o outro: **36 cards têm filtro e só 5 mudam de valor** quando
+ele entra. Nos outros 31 o filtro aceita todas as linhas — cinco linhas sintéticas de
+valores uniformes passam em quase qualquer predicado.
+
+É a mesma lição da 2b.5, onde 22 medidas dependiam de propagação e o dado sintético só
+conseguia mover **uma**. Os dois números ficam presos no teste para que a distância entre
+eles seja visível: o caminho de filtro *executa* em 36 e está *exercitado* em 5.
