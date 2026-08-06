@@ -20,7 +20,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.6 | O que separa o avaliador do dado real: camada M + tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) — **as 56 funções agora estão todas implementadas** | ✅ |
 | 2b.8 | Camada M — **opção A confirmada** ([decisão](docs/DECISAO-CAMADA-M.md)). Parser + avaliador + orquestrador; **as 39 funções do escopo rodam** (37 na tabela de funções + as 2 de fonte, ligadas aos connectors). As 23 queries executam os 303 passos | ✅ |
-| — | **19 das 23 queries rodam contra a fonte real** (`npm run run:mlayer`), incluindo `field-agenda` com 1.445.730 linhas. As 4 que faltam são as de planilha — 3 diretas e `PROTOCOLOS PRODUTIVIDADE`, que mescla com uma delas — todas barradas no mesmo 403 | 🚧 |
+| — | **23 das 23 queries rodam contra a fonte real** (`npm run run:mlayer -- --all --memoria=8192`), incluindo `field-agenda` com 1.449.281 linhas e `protocolos-produtividade` com 60 passos. As 4 que faltavam eram as de planilha, desbloqueadas em 06/08/2026 | ✅ |
 | — | A camada M **não streama**: 4 GB de heap não bastam, 8 GB bastam hoje ([ACHADOS](docs/ACHADOS.md) #20). Decide a arquitetura da Fase 3 | ⚠️ |
 | — | Connector de Google Sheets pronto e testado; falta compartilhar as 3 planilhas com a conta de serviço ([Anexo B](docs/DECISAO-CAMADA-M.md)) | 🚧 |
 | 2b.9 | Paridade medida a medida contra o relatório | 🚧 em curso |
@@ -340,6 +340,7 @@ npm run probe:datahub                 # perfila a API do Data Hub (shape, nunca 
 npm run probe:gsheets                 # a identidade em uso alcança as planilhas?
 npm run auth:google                   # autoriza uma conta Google (uma vez) e grava o refresh token
 npm run run:mlayer -- --all --memoria=8192   # roda a camada M contra as fontes reais
+npm run run:mlayer -- --only=uma-query --passos   # linhas por passo, com seta em quem mudou
 ```
 
 Os nove respondem perguntas diferentes, e só os três primeiros dispensam `.env`:

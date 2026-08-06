@@ -84,7 +84,7 @@ Nenhum teste precisa de credencial ou banco.
 | 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + 7 tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas — as 56 funções estão todas implementadas | ✅ |
-| 2b.8 | Camada M: parser + avaliador + orquestrador + connectors. **19 das 23 queries rodam contra a fonte real**; 4 barradas no 403 da planilha | ✅ |
+| 2b.8 | Camada M: parser + avaliador + orquestrador + connectors. **23 das 23 queries rodam contra a fonte real** (as 4 de planilha desbloquearam em 06/08/2026) | ✅ |
 | 2b.9 | Paridade medida a medida contra o relatório | 🚧 **em curso** |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
@@ -528,8 +528,13 @@ transform-engine **não** depender do query-engine). O CLI é
 
 | | Queries |
 |---|---|
-| Rodam contra a fonte real | **19 de 23** |
-| Bloqueadas em 403 na planilha | 4 — as 3 de planilha + `PROTOCOLOS PRODUTIVIDADE`, que mescla com uma delas |
+| Rodam contra a fonte real | **23 de 23** (medido em 06/08/2026) |
+| Bloqueadas | nenhuma. As 4 de planilha saíram do 403 quando a service account recebeu Leitor — ver ACHADOS #23 |
+
+`--passos` imprime a contagem de linha de **cada passo** da query, com seta no passo
+que mudou o número. É por onde começa qualquer investigação de paridade: em
+`protocolos-produtividade` são 60 passos, e a diferença entre 33.143 e 65.259 linhas
+está toda num `Table.Combine`.
 
 Leia **ACHADOS #20, #21 e #22** antes de mexer nesta camada:
 
@@ -591,13 +596,13 @@ Três coisas que a decisão deixa em aberto e que valem confirmar antes de codar
    `Table.Distinct` por `SOLICITACAO` no 53 que mantém a **primeira** linha da ordem
    corrente. Qual supervisor fica preso a cada protocolo depende disso. Exige medição
    contra dado real, e possivelmente uma divergência deliberada documentada.
-2. **`PROTOCOLOS PRODUTIVIDADE` está bloqueada** até existir connector de Google Sheets:
-   a mesclagem com `quadro-funcional` é cross-source e um dos lados não é legível hoje.
-   A autenticação de service account já existe e está testada
-   (`packages/query-engine/src/google-auth.ts`); o que falta **não é código** — é a
-   proprietária das planilhas conceder Leitor à conta de serviço
-   (`npm run probe:gsheets` mostra o estado). Por decisão do Erick, esta tabela fica
-   para o fim; não bloqueia as outras 17. Ver ACHADOS #17 e o Anexo B da decisão.
+2. **~~`PROTOCOLOS PRODUTIVIDADE` está bloqueada`~~ — resolvido em 06/08/2026.** A
+   mesclagem com `quadro-funcional` é cross-source e o lado da planilha não era legível;
+   uma service account nova recebeu Leitor nas 3 planilhas e a query passou a rodar
+   inteira (65.259 linhas, 60 passos). Duas coisas saíram dessa primeira execução real e
+   valem leitura antes de mexer aqui: **ACHADOS #24** (o passo de tipo erra por célula,
+   não por tabela — sem isso `quadro-funcional` não roda) e **ACHADOS #25** (a chave de
+   junção tem nome repetido; efeito zero hoje, medido, mas latente).
 3. **`clima-tempo` segue fora** — `let` aninhado que o scanner recusa, e fonte `web` sem
    connector.
 

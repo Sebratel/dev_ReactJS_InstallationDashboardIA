@@ -23,6 +23,7 @@
 //   npm run run:mlayer -- --all
 //   npm run run:mlayer -- --all --memoria=8192      # heap por query, em MB
 //   npm run run:mlayer -- --only=protocolos-geral --colunas
+//   npm run run:mlayer -- --only=protocolos-produtividade --passos  # linhas por passo
 //   npm run run:mlayer -- --only=contratos --em-processo   # sem subprocesso (depurar)
 
 import { spawn } from 'node:child_process';
@@ -60,6 +61,7 @@ import {
   runQueries,
   usaFonteExterna,
 } from '../../../packages/transform-engine/src/runner.ts';
+import { isTable } from '../../../packages/transform-engine/src/value.ts';
 import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -79,6 +81,7 @@ interface Args {
   only: string[];
   all: boolean;
   colunas: boolean;
+  passos: boolean;
   memoria: number | null;
   emProcesso: boolean;
   /** Modo filho: roda exatamente esta query e imprime uma linha de JSON. */
@@ -90,6 +93,7 @@ function parseArgs(argv: string[]): Args {
     only: [],
     all: false,
     colunas: false,
+    passos: false,
     memoria: null,
     emProcesso: false,
     one: null,
@@ -97,6 +101,7 @@ function parseArgs(argv: string[]): Args {
   for (const raw of argv) {
     if (raw === '--all') args.all = true;
     else if (raw === '--colunas') args.colunas = true;
+    else if (raw === '--passos') args.passos = true;
     else if (raw === '--em-processo') args.emProcesso = true;
     else if (raw.startsWith('--only=')) {
       args.only = raw.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean);
@@ -149,6 +154,17 @@ interface Resultado {
   erro?: string;
   /** Divergência de contagem que o M **não** explica. */
   alerta?: string;
+  /**
+   * Contagem de linha de **cada passo de tabela**, na ordem em que o M os declara.
+   * Só é preenchida com `--passos`, porque a lista tem 60 itens nas queries grandes.
+   *
+   * Serve para responder *qual passo* mudou a contagem — que é a pergunta de toda
+   * investigação de paridade. `protocolos-produtividade` sai de 33.746 linhas de
+   * fonte e termina com 65.257: sem isto, saber se a diferença é o `Table.Combine`
+   * ou a mesclagem que multiplica linha (ACHADOS #25) exige ler 60 passos de M e
+   * adivinhar.
+   */
+  passosDetalhe?: { nome: string; linhas: number }[];
 }
 
 // ------------------------------------------------------------- conectar fontes
@@ -266,6 +282,13 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
       passos: r.passos.size,
       ms: Date.now() - inicio,
       alerta,
+      // Só passo que **é** tabela entra: `let` também guarda escalar e lista, e
+      // "linhas" não quer dizer nada para eles.
+      passosDetalhe: args.passos
+        ? [...r.passos].flatMap(([nome, v]) =>
+            isTable(v) ? [{ nome, linhas: v.rowCount }] : [],
+          )
+        : undefined,
     };
   } catch (err) {
     return {
@@ -324,6 +347,9 @@ async function rodaEmSubprocesso(q: ResolvedQuery): Promise<Resultado> {
     ...(args.memoria ? [`--max-old-space-size=${args.memoria}`] : []),
     fileURLToPath(import.meta.url),
     `--one=${q.id}`,
+    // O filho é quem tem as tabelas vivas: se o pai não repassar a flag, ele não
+    // coleta a contagem por passo e o `--passos` do pai não teria o que imprimir.
+    ...(args.passos ? ['--passos'] : []),
   ];
   return new Promise((resolve) => {
     const filho = spawn(process.execPath, argv, { cwd: ROOT });
@@ -392,6 +418,23 @@ const alertas = resultados.filter((r) => r.alerta);
 if (args.colunas) {
   for (const r of resultados.filter((x) => x.ok)) {
     console.log(`\n${r.id} (${r.colunas.length} colunas):\n  ${r.colunas.join(', ')}`);
+  }
+}
+
+if (args.passos) {
+  for (const r of resultados.filter((x) => x.passosDetalhe?.length)) {
+    console.log(`\n── ${r.id}: linhas por passo ──`);
+    let anterior: number | null = null;
+    for (const p of r.passosDetalhe!) {
+      // A seta só aparece quando o passo MUDA a contagem, que é o que se procura.
+      // Sem isso a lista de 60 passos obriga a comparar número a número na tela.
+      const delta =
+        anterior === null || p.linhas === anterior
+          ? ''
+          : `  ← ${p.linhas > anterior ? '+' : ''}${n(p.linhas - anterior)}`;
+      console.log(`  ${n(p.linhas).padStart(11)}  ${p.nome}${delta}`);
+      anterior = p.linhas;
+    }
   }
 }
 

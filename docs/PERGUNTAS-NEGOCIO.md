@@ -17,7 +17,7 @@ terceiro: `QUADRO FUNCIONAL` fica no Google Sheets.)
 | 2 | As 5 medidas sem uso eram de painel descontinuado? (+ 1 relacionamento inativo) | Fabrício | ⏳ aberta (limpeza) |
 | 3 | ~~O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?~~ | — | ✅ resolvida em 05/08/2026: fica no Google Sheets |
 | 4 | `categoria4`/`categoria5` de `Base Categorias Field` estão trocadas — é bug ou proposital? | Fabrício | ⏳ aberta |
-| 5 | Técnico recontratado conta duas vezes na produtividade — junta por nome ou por vínculo? | Fabrício | ⏳ aberta |
+| 5 | Técnico recontratado contaria duas vezes na produtividade — junta por nome ou por vínculo? | Fabrício | ⏳ aberta (latente: 0 efeito hoje) |
 
 ---
 
@@ -278,7 +278,7 @@ dashboards deixa de existir. Sem erro, sem número torto: só desaparece.
 fica registrada mas não implementada (ACHADOS.md #17). Um connector que casa o nome e
 devolve `GESTOR` vazio passaria em todo teste de shape e falharia só em produção.
 
-## 5. Técnico recontratado conta duas vezes na produtividade — junta por nome ou por vínculo?
+## 5. Técnico recontratado contaria duas vezes na produtividade — junta por nome ou por vínculo?
 
 **Por que estou perguntando.** `QUADRO FUNCIONAL` é ligada aos protocolos pelo
 **nome em maiúsculas** (`upper_name = Text.Upper([NOME])`), e nas 535 linhas que o
@@ -290,13 +290,19 @@ duas recontratações, a mesma pessoa com dois vínculos que não se sobrepõem.
 | `DJONATA … WEDY` | 28/03/2023 → 27/05/2024, gestor **Luis Aranda** | 19/11/2024 → 25/07/2025, gestor **Pablo Borges** |
 | `GABRIEL DA SILVA FREITAS` | 05/11/2024 → 17/06/2025, *Auxiliar*, demitido | em `Recrutamento` de novo, sem admissão, mesmo gestor |
 
-**O efeito, hoje, no relatório.** A mesclagem de `PROTOCOLOS PRODUTIVIDADE` casa por
-nome e expande as duas linhas, então **cada protocolo desses dois técnicos vira duas
-linhas**. No caso do `DJONATA`, uma com `GESTOR = Luis Aranda` e outra com
-`GESTOR = Pablo Borges` — o mesmo serviço creditado aos dois gestores ao mesmo tempo,
-sem olhar em qual vínculo ele foi executado. No caso do `GABRIEL`, duas vezes para a
-mesma gestora. Não aparece como erro em lugar nenhum: aparece como produtividade um
-pouco alta demais, e como total que não fecha com a soma das partes.
+**O número de hoje está certo — e é sorte, não desenho.** Medi: os dois nomes não
+aparecem no dado de 2026, porque a consulta que traz o nome do técnico filtra
+`out_date > 01/01/2026` e os dois vínculos encerraram em junho e julho de 2025. Então
+nenhuma linha está duplicada hoje.
+
+**O que acontece no dia em que um recontratado trabalhar dentro da janela.** A
+mesclagem casa por nome e expande as duas linhas do quadro funcional, então **cada
+serviço dele passa a valer duas linhas**. No caso de alguém como o `DJONATA`, uma com
+`GESTOR = Luis Aranda` e outra com `GESTOR = Pablo Borges`: o mesmo serviço creditado
+aos dois gestores ao mesmo tempo, sem olhar em qual vínculo foi executado. No caso do
+`GABRIEL`, duas vezes para a mesma gestora. E não aparece como erro em lugar nenhum —
+aparece como produtividade um pouco alta demais, e como total que não fecha com a soma
+das partes.
 
 **A pergunta, em duas partes:**
 

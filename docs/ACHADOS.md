@@ -1162,7 +1162,7 @@ vira célula de Erro (a classe `MTipoIncompativel`). Tipo que o engine não impl
 continua derrubando a query, porque uma coluna inteira virando Erro em silêncio
 pareceria sucesso — e o engine responderia "rodou" para uma query que não entendeu.
 
-## 25. A chave de junção de `quadro-funcional` tem nome repetido, e a mesclagem multiplica linha
+## 25. A chave de junção de `quadro-funcional` tem nome repetido — hoje inofensivo, por acidente de data
 
 Medido em 06/08/2026, no mesmo perfil. O último passo do M cria a chave que liga o
 quadro funcional ao resto do modelo:
@@ -1196,21 +1196,41 @@ se fosse chave de **pessoa**. Não há erro de cadastro para limpar.
 ```
 
 `NestedJoin` guarda as 2 linhas casadas numa tabela aninhada, e `ExpandTableColumn`
-as **abre em 2 linhas**. Então, para os dois técnicos:
+as **abre em 2 linhas**. Se um protocolo fosse desses dois técnicos, aconteceria isto:
 
-- **`DJONATA`**: cada protocolo instalado por ele vira 2 linhas, uma com
-  `GESTOR=Luis Aranda` e outra com `GESTOR=Pablo Borges`. O mesmo serviço é creditado
-  a **dois gestores ao mesmo tempo**, independente de quando foi executado — a junção
-  é por nome, não por período de vínculo. Some por gestor e o total passa do real;
-  compare gestor contra gestor e os dois estão inflados.
-- **`GABRIEL`**: as 2 linhas têm o mesmo gestor, então cada protocolo dele conta
-  **duas vezes para a mesma pessoa**. Sem ambiguidade de atribuição, só inflação.
+- **`DJONATA`**: cada protocolo dele viraria 2 linhas, uma com `GESTOR=Luis Aranda` e
+  outra com `GESTOR=Pablo Borges` — o mesmo serviço creditado a **dois gestores ao
+  mesmo tempo**, independente de quando foi executado, porque a junção é por nome e
+  não por período de vínculo.
+- **`GABRIEL`**: as 2 linhas têm o mesmo gestor, então contaria **duas vezes para a
+  mesma pessoa**. Sem ambiguidade de atribuição, só inflação.
 
-**O tamanho disso não foi medido, e o caminho está aqui.** Depende de quantos
-protocolos têm `INSTALADO POR:` igual a um desses 2 nomes, o que vem do ERP e não da
-planilha. Para medir: rodar `protocolos-produtividade` e contar as linhas por
-`INSTALADOR`. O teto é conhecido — 2 técnicos de 533 —, mas técnico com dois vínculos
-longos pode ter volume alto, então "2 de 533" não limita o erro em 0,4%.
+**O efeito hoje é ZERO, e isso foi medido — não inferido.** Duas medições
+independentes:
+
+1. `npm run run:mlayer -- --only=protocolos-produtividade --passos` mostra
+   `Consultas Mescladas3` e `QUADRO FUNCIONAL Expandido` com **exatamente a mesma
+   contagem**. Como a expansão emite `max(1, linhas_aninhadas)` linhas por linha da
+   esquerda, contagem igual **prova** que nenhuma linha casou com 2 — ou seja, a
+   chave duplicada não foi tocada.
+2. Consultando o ERP direto: os dois nomes estão **ausentes** dos alocadores de 2026.
+
+**E o motivo de ser zero não tem nada a ver com a junção — é um acidente de data.**
+`alocacao-patrimonio`, que é de onde `INSTALADO POR:` nasce, termina com
+`AND plis.out_date > '01/01/2026'`. Os dois vínculos duplicados encerraram em
+25/07/2025 e 17/06/2025. Eles não aparecem porque saíram antes da janela, não porque
+alguma coisa protege a junção.
+
+**Então isto é defeito latente, não defeito inexistente** — e é por isso que continua
+registrado. Basta um técnico ser recontratado e trabalhar dentro da janela para a
+duplicação começar, silenciosamente, num relatório que ninguém vai reconferir. Não
+tem erro, não tem aviso: só um número que passa a ser maior do que deveria.
+
+**Uma coisa que a medição confirmou de passagem, e que valia confirmar:** a mesclagem
+**funciona** — 30 nomes casam, cobrindo 8.584 linhas de alocação em 2026. A maioria
+dos alocadores não casa, e isso é **por desenho**: o M filtra `QUADRO FUNCIONAL` para
+3 dos 69 gestores, então técnico de fora dessas 3 equipes sai com `GESTOR` nulo, que
+é o que o relatório quer. Não confundir com falha de junção.
 
 **A plataforma replica, e isso é deliberado.** O Power BI de hoje faz exatamente
 isto, e a regra é replicar fielmente ([SPEC-DRIVEN](./SPEC-DRIVEN.md)); corrigir no
