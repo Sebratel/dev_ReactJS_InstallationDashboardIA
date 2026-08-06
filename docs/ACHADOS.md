@@ -1030,24 +1030,31 @@ final. Ou seja: uma das duas gasta rede e memória com uma coluna que ninguém u
 
 ## 22. O que o connector de planilha assume, e o que só a planilha aberta confirma
 
-Registrado em 06/08/2026, quando o `GoogleSheetsConnector` entrou. As 3 queries de
-planilha continuam bloqueadas em 403 ([Anexo B](./DECISAO-CAMADA-M.md)), então
-**nada abaixo foi verificado contra a planilha real** — está aqui para ser conferido
-no dia em que o acesso sair, em vez de virar surpresa depois.
+Registrado em 06/08/2026, quando o `GoogleSheetsConnector` entrou, com as 3 queries
+ainda bloqueadas em 403 — as quatro decisões eram inferência a partir do M, não
+medição. **O acesso saiu no mesmo dia** (ver o fim do #23) e as quatro se
+confirmaram contra a planilha real. A coluna da direita deixou de ser plano e passou
+a ser resultado.
 
-| Decisão | Por quê | Como conferir quando o acesso sair |
+| Decisão | Por quê | O que a planilha real mostrou |
 |---|---|---|
-| `valueRenderOption=UNFORMATTED_VALUE` + `dateTimeRenderOption=SERIAL_NUMBER` | é o que faz data virar número de série (dias desde 1899-12-30), como o Power Query recebe. `FORMATTED_VALUE` traria texto já formatado, e aí o tipo passaria a depender do formato de exibição de quem editou a célula | `npm run probe:gsheets` mostra o cabeçalho e o tipo do que chega |
-| célula vazia vira `null`, não `""` | é o que o Power Query mostra, e a diferença é visível: `Table.PromoteHeaders` sobre `""` daria coluna de nome vazio | conferir se alguma coluna final nasce com nome `ColumnN` |
-| colunas nascem `Column1..ColumnN` | quem promove cabeçalho é o passo `Table.PromoteHeaders` do M. Nomear pelo conteúdo da primeira linha faria o M promover duas vezes | as 3 queries têm `PromoteHeaders`; se o nome final bater com a spec, está certo |
-| baixa **só a aba que o M navega** | divergência deliberada: o conector do Power BI lista todas as abas da planilha. `QUADRO FUNCIONAL` tem CPF e RG, e ler aba que não se usa é risco sem contrapartida | a aba sai do próprio M (`sheet:` na spec, via `npm run extract`) |
+| `valueRenderOption=UNFORMATTED_VALUE` + `dateTimeRenderOption=SERIAL_NUMBER` | é o que faz data virar número de série (dias desde 1899-12-30), como o Power Query recebe. `FORMATTED_VALUE` traria texto já formatado, e aí o tipo passaria a depender do formato de exibição de quem editou a célula | **confere.** `DATA RECRUTAMENTO` chega com 16.138 valores numéricos e 0 texto; se viesse formatado, `Int64.Type` teria falhado em todas |
+| célula vazia vira `null`, não `""` | é o que o Power Query mostra, e a diferença é visível: `Table.PromoteHeaders` sobre `""` daria coluna de nome vazio | **confere.** nenhuma coluna final nasceu `ColumnN`, e o vazio é contado como vazio (14.595 em `ADMISSÃO`) em vez de virar texto |
+| colunas nascem `Column1..ColumnN` | quem promove cabeçalho é o passo `Table.PromoteHeaders` do M. Nomear pelo conteúdo da primeira linha faria o M promover duas vezes | **confere.** depois do `PromoteHeaders`, as 37 colunas da spec casam 37/37 com a planilha, sem faltar nem sobrar |
+| baixa **só a aba que o M navega** | divergência deliberada: o conector do Power BI lista todas as abas da planilha. `QUADRO FUNCIONAL` tem CPF e RG, e ler aba que não se usa é risco sem contrapartida | **vale a pena.** as 3 planilhas têm 8, 1 e 4 abas; o M navega uma de cada. `QUADRO FUNCIONAL` traz junto `ACESSOS`, `CANDIDATURAS` e `GESTORES`, que ninguém pediu |
 
-**A evidência que sustenta a primeira linha, e é indireta:** o M da planilha declara
-`ADMISSÃO`, `DEMISSÃO`, `DATA DE NASCIMENTO` e `DATA RECRUTAMENTO` como `Int64.Type`
-— tipo inteiro para colunas que são datas. Isso só faz sentido se o valor chega como
-número. E `CAPACIDADE EQUIPE` declara `{"DATA", type date}`, que a partir de um
-serial funciona. As duas coisas juntas são consistentes com `UNFORMATTED_VALUE` e
-inconsistentes com texto formatado — mas é inferência a partir do M, não medição.
+**A confirmação vale mais que as quatro linhas somadas:** `quadro-funcional` roda
+ponta a ponta e devolve **535 linhas × 38 colunas** (37 + `upper_name`), o mesmo
+número que `probe:gsheets` chegou por caminho independente — ele conta as linhas
+direto da API, sem passar pelo engine de M. Dois caminhos separados batendo no mesmo
+número é o que dá confiança de que o filtro de gestor e a tipagem estão fiéis.
+
+**Uma divergência que eu registrei e estava errada.** Anotei antes que a planilha de
+`CAPACIDADE EQUIPE` não teria a aba certa, porque suas abas são `STAGING, MEMORIES,
+STATUS, DEFAULT` e nenhuma se chama `CAPACIDADE EQUIPE`. Não é divergência: o M
+navega `Fonte{[name="STAGING"]}`, e `CAPACIDADE EQUIPE` é o nome da **tabela no
+modelo**, não da aba. Fica registrado porque o erro é fácil de repetir — no PBIP o
+nome da query e o nome da aba coincidem em `QUADRO FUNCIONAL` e não coincidem aqui.
 
 ## 23. Três credenciais do Google, e só uma delas é acesso
 
@@ -1087,3 +1094,127 @@ passe batido no dia em que alguém for para produção.
 com service account, compartilhar a planilha com um robô; com OAuth, reautorizar com
 uma conta que enxergue o documento. Uma mensagem que sirva para os dois casos não
 serve para nenhum — daí o texto do 403 ramificar por tipo de identidade.
+
+**Como terminou, em 06/08/2026: service account, e o OAuth nunca foi usado.** Uma
+segunda service account foi criada e recebeu Leitor nas 3 planilhas
+(`leitura-sheets-instalacao@n8n-workflow-staging…`, de um projeto GCP **diferente**
+do da primeira — o e-mail sozinho não serve, é a chave privada dele que autentica).
+As 3 abriram, e o desbloqueio veio pelo caminho que já era o certo para produção.
+Então o parágrafo acima sobre a divergência temporária **não se aplica ao estado
+atual**: nada depende de conta pessoal hoje. O código de OAuth fica, porque é o
+caminho de quando não se pode compartilhar com robô, e porque quem escolhe a
+identidade (`google-identidade.ts`) é o mesmo que imprime a escolha no probe.
+
+**O que a sequência ensina, e é o motivo de estar escrito:** as três tentativas
+custaram tempo porque cada uma foi discutida antes de ser medida. Quando alguém diz
+"já compartilhei", a Drive API responde em um segundo quantos arquivos aquela
+identidade alcança — e `0` encerra o assunto sem ninguém precisar ler tela em voz
+alta. Medir primeiro, investigar depois.
+
+## 24. `Table.TransformColumnTypes` erra por célula, não por tabela — e sem isso `quadro-funcional` não roda
+
+Medido em 06/08/2026, na primeira execução da camada M contra a planilha real. A
+query morreu com:
+
+```
+Table.TransformColumnTypes: a coluna 'MINDSIGTH' tem string ("Fit 52,0")
+e o passo pede number.
+```
+
+E o passo do M realmente pede: `{"MINDSIGTH", type number}`. O dado realmente é
+texto. Só que **no Power BI isso não é erro de query** — é célula de Erro, uma por
+célula, e a tabela carrega.
+
+O tamanho exato do problema, medido coluna por coluna sobre as 16.687 linhas:
+
+| Coluna | Tipo que o M pede | Não converte | Nas 535 linhas do filtro | Exemplos |
+|---|---|---|---|---|
+| `MINDSIGTH` | `type number` | **68** (24 distintos) | **0** | `"Fit 52,0"`, `"Fit cultural 50,67"`, `"Não se aplica"`, `"Não terminou"` |
+| `RG` | `Int64.Type` | **16** (16 distintos) | **0** | `"B057890-A"`, `"RJ - 268282886"`, `"5445157 (RG de SC)"` |
+
+As outras 5 colunas numéricas (`ADMISSÃO`, `DEMISSÃO`, `DATA DE NASCIMENTO `,
+`DATA RECRUTAMENTO`, `ID VAGA`) convertem 100%.
+
+**Por que o relatório de hoje funciona apesar disso.** Três coisas ao mesmo tempo: o
+passo de tipo roda **antes** do filtro de gestor, então as 84 células ruins existem;
+mas nenhuma delas cai nas 535 linhas que sobrevivem ao filtro; e nenhuma medida do
+modelo cita `MINDSIGTH` ou `RG`. O Power BI marca as células, ninguém lê, e o número
+final não muda. É um erro real que não tem consequência — ainda.
+
+**O que foi implementado, e por que não é afrouxar o fail-loud.** O engine ganhou
+`MCellError`, um valor M que carrega o motivo da falha. `Table.TransformColumnTypes`
+passa a produzi-lo em vez de derrubar a tabela, e a célula é **inerte** enquanto
+ninguém a lê: pode ser filtrada fora, reordenada, descartada. No instante em que
+alguém a *usa*, o erro original sobe:
+
+- `each [MINDSIGTH] + 1` → erro, citando `"Fit 52,0"`;
+- comparação, inclusive igualdade → erro. Este era o furo perigoso: `igual()`
+  devolveria `false` calado, e a linha seria filtrada fora sem ninguém saber;
+- ida para o modelo semântico (`toDatasetRows`) → erro, com coluna e linha.
+
+O que **não** acontece é a célula virar `null` nem continuar texto em silêncio. As
+duas seriam mais fáceis e as duas são o modo de falha do achado 1: número errado sem
+erro nenhum no caminho. O fail-loud não foi relaxado — mudou de lugar, do passo de
+tipo para o ponto de leitura, que é onde o Power Query também o coloca.
+
+**A distinção que impede a fidelidade de virar cegueira.** Só *dado incompatível*
+vira célula de Erro (a classe `MTipoIncompativel`). Tipo que o engine não implementa
+continua derrubando a query, porque uma coluna inteira virando Erro em silêncio
+pareceria sucesso — e o engine responderia "rodou" para uma query que não entendeu.
+
+## 25. A chave de junção de `quadro-funcional` tem nome repetido, e a mesclagem multiplica linha
+
+Medido em 06/08/2026, no mesmo perfil. O último passo do M cria a chave que liga o
+quadro funcional ao resto do modelo:
+
+```m
+#"Personalização Adicionada" = Table.AddColumn(#"Linhas Classificadas", "upper_name",
+    each Text.Upper([NOME]))
+```
+
+Nas 535 linhas que sobram do filtro de gestor: **535 preenchidos, 533 distintos, 0
+vazios**. Ou seja, **2 nomes aparecem duas vezes**. E os dois casos, olhados de
+perto, são a mesma coisa — **nenhum é duplicata de digitação**:
+
+| Nome | Linha 1 | Linha 2 |
+|---|---|---|
+| `DJONATA … WEDY` | 2023-03-28 → 2024-05-27, gestor **Luis Aranda**, *Técnico Instalador Jr N1* | 2024-11-19 → 2025-07-25, gestor **Pablo Borges**, *Instalador de Linhas de Telecom N1* |
+| `GABRIEL DA SILVA FREITAS` | 2024-11-05 → 2025-06-17, *Auxiliar de Instalador*, `SITUAÇÃO=Demitidos` | sem `ADMISSÃO`, `SITUAÇÃO=Recrutamento`, mesmo gestor (**Stefany Souza**) |
+
+São **recontratações**: a mesma pessoa com dois vínculos, sem sobreposição de
+período. A planilha é histórico de **vínculo**, e `upper_name` está sendo usada como
+se fosse chave de **pessoa**. Não há erro de cadastro para limpar.
+
+**O que a duplicidade faz, exatamente.** O único consumidor é
+`protocolos-produtividade`:
+
+```m
+#"Consultas Mescladas3" = Table.NestedJoin(#"Consulta Acrescentada", {"TECNICO"},
+    #"QUADRO FUNCIONAL", {"upper_name"}, "QUADRO FUNCIONAL", JoinKind.LeftOuter),
+#"QUADRO FUNCIONAL Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas3",
+    "QUADRO FUNCIONAL", {"GESTOR"}, {"GESTOR"})
+```
+
+`NestedJoin` guarda as 2 linhas casadas numa tabela aninhada, e `ExpandTableColumn`
+as **abre em 2 linhas**. Então, para os dois técnicos:
+
+- **`DJONATA`**: cada protocolo instalado por ele vira 2 linhas, uma com
+  `GESTOR=Luis Aranda` e outra com `GESTOR=Pablo Borges`. O mesmo serviço é creditado
+  a **dois gestores ao mesmo tempo**, independente de quando foi executado — a junção
+  é por nome, não por período de vínculo. Some por gestor e o total passa do real;
+  compare gestor contra gestor e os dois estão inflados.
+- **`GABRIEL`**: as 2 linhas têm o mesmo gestor, então cada protocolo dele conta
+  **duas vezes para a mesma pessoa**. Sem ambiguidade de atribuição, só inflação.
+
+**O tamanho disso não foi medido, e o caminho está aqui.** Depende de quantos
+protocolos têm `INSTALADO POR:` igual a um desses 2 nomes, o que vem do ERP e não da
+planilha. Para medir: rodar `protocolos-produtividade` e contar as linhas por
+`INSTALADOR`. O teto é conhecido — 2 técnicos de 533 —, mas técnico com dois vínculos
+longos pode ter volume alto, então "2 de 533" não limita o erro em 0,4%.
+
+**A plataforma replica, e isso é deliberado.** O Power BI de hoje faz exatamente
+isto, e a regra é replicar fielmente ([SPEC-DRIVEN](./SPEC-DRIVEN.md)); corrigir no
+engine faria os números divergirem do relatório que as pessoas conferem hoje. Mas a
+correção certa é de negócio, não de código: juntar por vínculo (nome + período) em
+vez de por nome, ou ter matrícula/CPF como chave. Registrado em
+[PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md).

@@ -33,12 +33,20 @@ export {
   type MFunctionImpl,
   type MFunctionTable,
 } from './evaluator.ts';
-export { implementedMFunctions, standardConstants, standardFunctions } from './functions.ts';
 export {
+  implementedMFunctions,
+  MTipoIncompativel,
+  standardConstants,
+  standardFunctions,
+} from './functions.ts';
+export {
+  exigeSemErro,
+  isCellError,
   isList,
   isRecord,
   isTable,
   linha,
+  MCellError,
   MDuration,
   MEvalError,
   MRecord,

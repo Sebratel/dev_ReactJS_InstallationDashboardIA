@@ -384,7 +384,12 @@ nunca em query string.
 
 ---
 
-## Anexo B: o "connector de Google Sheets" — as 2 planilhas que restam
+## Anexo B: o "connector de Google Sheets" — RESOLVIDO em 06/08/2026
+
+> **Estado final:** as 3 planilhas abrem e as 3 queries rodam ponta a ponta. O que
+> bloqueava era o passo 6 (compartilhar com a conta de serviço), resolvido com uma conta
+> nova — ver "Como o passo 6 foi resolvido" mais abaixo. O histórico fica porque a
+> sequência de tentativas é o que ensina, não o resultado.
 
 São **três** planilhas, e a ordem de importância é bem desigual: `QUADRO FUNCIONAL`
 (alcançada por 9 medidas via `PROTOCOLOS PRODUTIVIDADE` — voltou para cá, ver Anexo A),
@@ -424,9 +429,9 @@ somente leitura, o que casa com a regra 3 do projeto.
 | 2 Sheets API ativada | ✅ — se não estivesse, o erro seria `SERVICE_DISABLED`, e não é |
 | 3–4 conta de serviço + chave JSON | ✅ `shets-consult-api@erick-project-501315.iam.gserviceaccount.com` |
 | 5 chave fora do repositório | ✅ `C:/Users/erick.azambuja/.secrets/`, e o `Desktop` é um repo git com remote real — nunca deixar chave lá |
-| **6 compartilhar cada planilha** | ❌ **as 3 devolvem `PERMISSION_DENIED`** |
+| **6 compartilhar cada planilha** | ✅ **resolvido em 06/08/2026** — mas com **outra** conta de serviço; ver o fim deste anexo |
 | código: autenticação | ✅ `google-auth.ts`, fluxo JWT bearer com `node:crypto`, 11 testes sem rede |
-| código: connector | ⏳ falta, e só faz sentido depois do passo 6 |
+| código: connector | ✅ `connectors-gsheets.ts`; as 3 queries rodam ponta a ponta |
 
 O passo 6 é o único que não é código, e é o que falta — **e não é o Erick que consegue
 fazê-lo.** Descoberto em 05/08/2026, ao tentar: no diálogo de Compartilhar aparece
@@ -455,6 +460,11 @@ spec com o cabeçalho real, conta quantas linhas sobram após o filtro dos 3 ges
 verifica se `upper_name` é chave única (se não for, a mesclagem multiplica linha — é o tipo
 de coisa que sobe medida sem erro).
 
+**Essa última verificação pegou algo, na primeira vez que pôde rodar:** `upper_name` **não
+é única** — 535 linhas, 533 distintas. São 2 recontratações, e a mesclagem duplica os
+protocolos desses 2 técnicos. Foi exatamente o cenário que motivou a checagem existir.
+Ver ACHADOS #25 e PERGUNTAS-NEGOCIO #5.
+
 #### Como saber se o compartilhamento chegou, sem depender de olhar tela
 
 `PERMISSION_DENIED` não distingue "não compartilharam" de "compartilharam o documento
@@ -472,6 +482,28 @@ permissão não existia — nem em documento errado. Registrado porque a lição
 próxima vez: quando a resposta for "já compartilhei", medir antes de investigar id, cópia
 ou propagação (permissão do Google vale na hora, não há fila a esperar).
 
+#### Como o passo 6 foi resolvido, em 06/08/2026
+
+Não foi a conta de serviço deste anexo. Foi criada **outra**, num projeto GCP diferente
+(`leitura-sheets-instalacao@n8n-workflow-staging…`), e é ela que recebeu **Leitor** nas 3
+planilhas. O `.env` aponta `GOOGLE_APPLICATION_CREDENTIALS` para a chave dela, em
+`C:/Users/erick.azambuja/.secrets/`.
+
+Duas coisas ficam desta troca, porque as duas custaram tempo:
+
+- **O e-mail da conta de serviço não serve de credencial.** Ele identifica quem
+  compartilhar *com*; quem autentica é a **chave privada** do JSON, que vive no projeto
+  onde a conta foi criada. Receber só o e-mail não desbloqueia nada.
+- **Trocar de conta de serviço troca a identidade inteira.** O que foi compartilhado com
+  a antiga (`shets-consult-api@erick-project-501315…`) não vale para a nova. É por isso
+  que `probe:gsheets` imprime **qual identidade** está em uso antes de qualquer leitura:
+  ler o `403` sem saber quem falhou é o que fez a confusão durar três tentativas.
+
+Medido depois de compartilhar: as 3 planilhas abrem, `quadro-funcional` casa **37/37**
+colunas com a spec e as 3 queries rodam inteiras (ACHADOS #22). O caminho de OAuth, que
+tinha sido implementado como alternativa, **nunca precisou ser usado** — e isso é o
+melhor resultado, porque service account é o que serve para produção (ACHADOS #23).
+
 ### O atalho que existe
 
 Planilha marcada como "qualquer pessoa com o link pode ver" é baixável como CSV sem
@@ -481,8 +513,12 @@ credencial nenhuma:
 https://docs.google.com/spreadsheets/d/<ID>/export?format=csv&gid=<GID>
 ```
 
-Serve para desbloquear um teste em minutos, e para estas duas (nenhuma é dado de RH) é
-uma opção razoável se o compartilhamento direto demorar.
+**Não se aplica a estas 3, e isso foi medido:** a chave de API devolveu `403` (e não
+`404`) nas três, o que prova que existem e que **nenhuma é pública por link**. Bom que
+não seja — `QUADRO FUNCIONAL` tem CPF e RG, e uma versão anterior deste anexo dizia
+"nenhuma é dado de RH", o que era verdade quando eram só duas planilhas e deixou de ser
+quando `QUADRO FUNCIONAL` voltou (Anexo A). Fica registrado como armadilha: o atalho é
+tentador justamente quando a planilha é a mais sensível.
 
 ### Isto bloqueia começar a 2b.8?
 

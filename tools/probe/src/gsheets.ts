@@ -52,6 +52,7 @@ const PLANILHAS: { rotulo: string; id: string }[] = [
 if (cfg.gsheets.apiKey) {
   console.log('── Chave de API (GSHEETS_API_KEY) ────────────────────');
   let algumaAbriu = false;
+  const status: number[] = [];
   for (const p of PLANILHAS) {
     if (!p.id) continue;
     // Sem cabeçalho Authorization: é exatamente o que a chave sozinha alcança.
@@ -66,6 +67,7 @@ if (cfg.gsheets.apiKey) {
         return corpo.slice(0, 120);
       }
     })();
+    status.push(res.status);
     if (res.ok) {
       algumaAbriu = true;
       console.log(`  ${p.rotulo}: ABRIU com chave de API — ou seja, está PÚBLICA por link`);
@@ -79,11 +81,26 @@ if (cfg.gsheets.apiKey) {
         '  pessoa com o link, sem login. Se for a QUADRO FUNCIONAL, são CPF e RG\n' +
         '  expostos — o certo é fechar o link e compartilhar com a conta de serviço.',
     );
-  } else {
+  } else if (status.every((s) => s === 403)) {
+    // Só o 403 sustenta a conclusão: ele prova que a chave foi ACEITA e a leitura
+    // foi recusada por permissão. É a medição que interessa.
     console.log(
       '\n  Nenhuma abriu, e é o esperado: chave de API não tem permissão de\n' +
-        '  documento. O caminho continua sendo compartilhar com a conta de serviço\n' +
-        '  abaixo, ou OAuth com uma conta que já tem acesso.',
+        '  documento. Como o erro é 403 e não 404, também está provado que as\n' +
+        '  planilhas existem e que NENHUMA é pública por link.',
+    );
+  } else {
+    // O caso que a versão anterior explicava errado: com a chave inválida ou
+    // ausente (400 `API Key not found`), o Google recusa a CHAVE e nunca chega a
+    // avaliar permissão. Concluir "não tem permissão de documento" aqui seria
+    // afirmar o que não foi medido.
+    const quais = [...new Set(status)].join(', ');
+    console.log(
+      `\n  Nenhuma abriu, mas o status foi ${quais} — e isso não mede permissão.\n` +
+        '  400 significa que a própria chave foi recusada (revogada, com typo, ou\n' +
+        '  restrita a outra API): o Google nem chegou a olhar o documento. Para a\n' +
+        '  medição valer, é preciso uma chave válida devolvendo 403. Sem isso,\n' +
+        '  este bloco não diz nada — o que vale é a identidade abaixo.',
     );
   }
   console.log('');

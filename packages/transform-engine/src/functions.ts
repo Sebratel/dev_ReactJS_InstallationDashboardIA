@@ -30,6 +30,7 @@ import {
   isRecord,
   isTable,
   linha,
+  MCellError,
   MDuration,
   MEvalError,
   MRecord,
@@ -192,8 +193,55 @@ function converte(
   }
 }
 
-function naoConverte(v: MValue, alvo: string, coluna: string, fn: string, dica?: string): MEvalError {
-  return new MEvalError(
+/**
+ * `converte`, mas por célula: dado incompatível vira célula de Erro em vez de
+ * derrubar a tabela.
+ *
+ * É a semântica do Power Query, e a diferença é o que faz `quadro-funcional`
+ * rodar: `MINDSIGTH` é `type number` com 68 células de texto e `RG` é `Int64.Type`
+ * com 16, todas fora do filtro de gestor (ver `MCellError` e ACHADOS #24).
+ * Qualquer outra falha — tipo desconhecido, coluna ausente — continua subindo.
+ */
+function converteCelula(
+  v: MValue,
+  tipo: string,
+  coluna: string,
+  fn: string,
+  culture: string | null,
+): MValue {
+  try {
+    return converte(v, tipo, coluna, fn, culture);
+  } catch (e) {
+    if (e instanceof MTipoIncompativel) return new MCellError(e.message, coluna, v);
+    throw e;
+  }
+}
+
+/**
+ * Erro de **dado que não cabe no tipo pedido** — distinto de qualquer outra falha
+ * de conversão.
+ *
+ * A distinção é o que permite ser fiel sem ficar cego: só *este* caso vira célula
+ * de Erro em `Table.TransformColumnTypes`, porque é o único que o Power Query
+ * também tolera célula por célula. `tipo 'X' não implementado` é lacuna do engine
+ * e continua derrubando a query — uma coluna inteira virando célula de Erro em
+ * silêncio pareceria sucesso e não é.
+ */
+export class MTipoIncompativel extends MEvalError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'MTipoIncompativel';
+  }
+}
+
+function naoConverte(
+  v: MValue,
+  alvo: string,
+  coluna: string,
+  fn: string,
+  dica?: string,
+): MTipoIncompativel {
+  return new MTipoIncompativel(
     `${fn}: a coluna '${coluna}' tem ${tipoDe(v)} (${JSON.stringify(resumo(v))}) e o passo ` +
       `pede ${alvo}. O engine não converte implicitamente` +
       (dica ? ` — ${dica}.` : '.'),
@@ -618,7 +666,7 @@ const TABELA: MFunctionImpl[] = [
                 c,
                 tipo === undefined
                   ? v
-                  : converte(v, tipo, c, 'Table.TransformColumnTypes', ctx.culture),
+                  : converteCelula(v, tipo, c, 'Table.TransformColumnTypes', ctx.culture),
               ] as const;
             }),
           ),

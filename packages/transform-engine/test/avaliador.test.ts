@@ -17,6 +17,7 @@ import test from 'node:test';
 import { MEvaluator } from '../src/evaluator.ts';
 import { standardConstants, standardFunctions } from '../src/functions.ts';
 import {
+  isCellError,
   isTable,
   linha,
   MDuration,
@@ -281,14 +282,64 @@ test('TransformColumnTypes passa direto quando o valor já é do tipo pedido', (
   assert.deepEqual(grade(t).linhas, [[1, 'txt']]);
 });
 
-test('TransformColumnTypes NÃO adivinha data em texto — o erro cita a culture', () => {
+test('TransformColumnTypes NÃO adivinha data em texto — vira célula de Erro citando a culture', () => {
   // É o achado 1 (o falso) em forma de guarda: "01/02/2026" é 1º de fevereiro ou
   // 2 de janeiro dependendo da culture, que não está na expressão M.
+  //
+  // O que a célula de Erro mudou foi **onde** isto grita, não **se** grita: o passo
+  // de tipo não derruba mais a tabela (o Power Query também não), mas o valor
+  // continua sem virar data nenhuma, e ler a célula levanta o motivo.
   const e = ev({ T: tab(['D'], [['01/02/2026']]) });
-  assert.throws(
-    () => e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"D", type date}}) in a'),
-    /culture/,
+  const t = e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"D", type date}}) in a');
+  const celula = t.rows[0].get('D');
+  assert.ok(isCellError(celula), 'esperava célula de Erro, não data adivinhada');
+  assert.match(celula.motivo, /culture/);
+  assert.equal(celula.original, '01/02/2026', 'o valor de origem fica guardado para diagnóstico');
+});
+
+test('célula de Erro é inerte até alguém ler, e aí levanta o motivo', () => {
+  // O par que sustenta a fidelidade sem perder o fail-loud. `MINDSIGTH` em
+  // QUADRO FUNCIONAL é exatamente isto: 68 células ruins, todas fora do filtro.
+  const e = ev({ T: tab(['N', 'G'], [['Fit 52,0', 'fora'], [7, 'dentro']]) });
+  const tipado = 'Table.TransformColumnTypes(T, {{"N", type number}})';
+
+  // sobreviver a filtro e reordenação não lê a célula: passa
+  const filtrado = e.avaliaTabela(
+    `let a = ${tipado}, b = Table.SelectRows(a, each [G] = "dentro") in b`,
   );
+  assert.deepEqual(grade(filtrado).linhas, [[7, 'dentro']]);
+
+  // ler a célula, de qualquer jeito, levanta o motivo original
+  for (const expr of ['Table.SelectRows(a, each [N] > 1)', 'Table.AddColumn(a, "x", each [N] + 1)']) {
+    assert.throws(
+      () => e.avaliaTabela(`let a = ${tipado}, b = ${expr} in b`),
+      /Fit 52,0/,
+      `esperava o motivo original ao avaliar ${expr}`,
+    );
+  }
+
+  // e igualdade não devolve `false` calado, que filtraria a linha sem ninguém ver
+  assert.throws(
+    () => e.avaliaTabela(`let a = ${tipado}, b = Table.SelectRows(a, each [N] = 52) in b`),
+    /Fit 52,0/,
+  );
+});
+
+test('tipo não implementado continua derrubando a query, não vira célula de Erro', () => {
+  // A distinção que impede a fidelidade de virar cegueira: dado que não cabe é
+  // célula de Erro; lacuna do engine é falha, senão uma coluna inteira viraria
+  // Erro em silêncio e pareceria sucesso.
+  const e = ev({ T: tab(['A'], [['x']]) });
+  assert.throws(
+    () => e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"A", Guid.Type}}) in a'),
+    /não implementado/,
+  );
+});
+
+test('célula de Erro não atravessa a fronteira do modelo semântico', () => {
+  const e = ev({ T: tab(['N'], [['Fit 52,0']]) });
+  const t = e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"N", type number}}) in a');
+  assert.throws(() => toDatasetRows(t, 'quadro-funcional'), /célula de Erro na linha 1/);
 });
 
 test('número vira data pela época 1899-12-30 — é como a planilha entrega', () => {

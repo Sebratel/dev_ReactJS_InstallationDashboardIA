@@ -17,6 +17,7 @@ terceiro: `QUADRO FUNCIONAL` fica no Google Sheets.)
 | 2 | As 5 medidas sem uso eram de painel descontinuado? (+ 1 relacionamento inativo) | Fabrício | ⏳ aberta (limpeza) |
 | 3 | ~~O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?~~ | — | ✅ resolvida em 05/08/2026: fica no Google Sheets |
 | 4 | `categoria4`/`categoria5` de `Base Categorias Field` estão trocadas — é bug ou proposital? | Fabrício | ⏳ aberta |
+| 5 | Técnico recontratado conta duas vezes na produtividade — junta por nome ou por vínculo? | Fabrício | ⏳ aberta |
 
 ---
 
@@ -276,6 +277,43 @@ dashboards deixa de existir. Sem erro, sem número torto: só desaparece.
 **Enquanto não houver resposta**, o connector não é escrito e a divergência de fonte
 fica registrada mas não implementada (ACHADOS.md #17). Um connector que casa o nome e
 devolve `GESTOR` vazio passaria em todo teste de shape e falharia só em produção.
+
+## 5. Técnico recontratado conta duas vezes na produtividade — junta por nome ou por vínculo?
+
+**Por que estou perguntando.** `QUADRO FUNCIONAL` é ligada aos protocolos pelo
+**nome em maiúsculas** (`upper_name = Text.Upper([NOME])`), e nas 535 linhas que o
+filtro de gestor deixa passar há **2 nomes repetidos**. Não é erro de cadastro: são
+duas recontratações, a mesma pessoa com dois vínculos que não se sobrepõem.
+
+| Nome | Vínculo 1 | Vínculo 2 |
+|---|---|---|
+| `DJONATA … WEDY` | 28/03/2023 → 27/05/2024, gestor **Luis Aranda** | 19/11/2024 → 25/07/2025, gestor **Pablo Borges** |
+| `GABRIEL DA SILVA FREITAS` | 05/11/2024 → 17/06/2025, *Auxiliar*, demitido | em `Recrutamento` de novo, sem admissão, mesmo gestor |
+
+**O efeito, hoje, no relatório.** A mesclagem de `PROTOCOLOS PRODUTIVIDADE` casa por
+nome e expande as duas linhas, então **cada protocolo desses dois técnicos vira duas
+linhas**. No caso do `DJONATA`, uma com `GESTOR = Luis Aranda` e outra com
+`GESTOR = Pablo Borges` — o mesmo serviço creditado aos dois gestores ao mesmo tempo,
+sem olhar em qual vínculo ele foi executado. No caso do `GABRIEL`, duas vezes para a
+mesma gestora. Não aparece como erro em lugar nenhum: aparece como produtividade um
+pouco alta demais, e como total que não fecha com a soma das partes.
+
+**A pergunta, em duas partes:**
+
+1. Quando um técnico é recontratado, o serviço do vínculo antigo deve continuar
+   contando para o gestor antigo (é histórico) ou passar para o atual? Hoje conta
+   para os dois, o que provavelmente não é o que ninguém pediu.
+2. Existe matrícula, CPF ou ID de colaborador que a planilha e o ERP compartilhem?
+   Juntar por nome é o que cria o problema — e também significa que **homônimo de
+   verdade** já seria misturado hoje, sem aviso. `QUADRO FUNCIONAL` tem `ID`,
+   `MATRÍCULA` e `CPF`; o que falta é saber se algum deles existe do lado do ERP.
+
+**Enquanto não houver resposta, a plataforma replica o comportamento atual** — os
+mesmos números do Power BI de hoje, duplicação inclusa, porque a regra é replicar
+fielmente e um número "corrigido" aqui não fecharia com o relatório que a operação
+confere. A correção é de modelagem (juntar por nome **+ período de vínculo**, ou por
+matrícula), e muda número que alguém acompanha: não é decisão de quem escreve código.
+Detalhe técnico em ACHADOS.md #25.
 
 ---
 

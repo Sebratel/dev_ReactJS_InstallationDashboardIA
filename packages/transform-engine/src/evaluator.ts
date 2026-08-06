@@ -20,6 +20,8 @@
 import type { MBinding, MNode } from './ast.ts';
 import { parseM } from './parser.ts';
 import {
+  exigeSemErro,
+  isCellError,
   isFunction,
   isList,
   isRecord,
@@ -358,7 +360,10 @@ export class MEvaluator {
   private campo(alvo: MValue, nome: string, opcional: boolean): MValue {
     if (isRecord(alvo)) {
       if (!alvo.has(nome)) return opcional ? null : alvo.get(nome); // `get` erra com a lista
-      return alvo.get(nome);
+      // Ler célula de Erro num `each [Coluna]` propaga o erro, como em M. É aqui
+      // que a célula deixa de ser inerte: 103 acessos a campo no corpus passam por
+      // este ponto, e nenhum deles pode receber uma no lugar de um valor.
+      return exigeSemErro(alvo.get(nome), `acesso ao campo '${nome}'`);
     }
     if (isTable(alvo)) {
       // `tabela[Coluna]` em M é a **lista** dos valores daquela coluna.
@@ -523,6 +528,11 @@ function tempoMs(v: MValue): number | null {
  * de passos diferentes seriam diferentes e toda mesclagem por data falharia.
  */
 export function igual(a: MValue, b: MValue): boolean {
+  // Célula de Erro comparada não é "diferente": em M a comparação **propaga** o
+  // erro. Este é o único ponto do engine onde ela passaria calada — `false` daqui
+  // faria uma linha ser filtrada fora sem ninguém saber por quê.
+  if (isCellError(a)) exigeSemErro(a, 'comparação de igualdade');
+  if (isCellError(b)) exigeSemErro(b, 'comparação de igualdade');
   if (a === null || b === null) return a === b;
   const ta = tempoMs(a);
   const tb = tempoMs(b);
@@ -546,6 +556,11 @@ export function igual(a: MValue, b: MValue): boolean {
 }
 
 function compara(a: MValue, b: MValue, op: '<' | '<=' | '>' | '>='): boolean {
+  // Sem isto o erro ainda subiria (célula de Erro não é número nem texto), mas
+  // dizendo `entre célula de erro e number` em vez do motivo real. Quem lê quer
+  // saber que valor a planilha tinha.
+  exigeSemErro(a, `comparação \`${op}\``);
+  exigeSemErro(b, `comparação \`${op}\``);
   const ta = tempoMs(a);
   const tb = tempoMs(b);
   let x: number | string;
@@ -574,6 +589,8 @@ function compara(a: MValue, b: MValue, op: '<' | '<=' | '>' | '>='): boolean {
 }
 
 function aritmetica(a: MValue, b: MValue, op: '+' | '-' | '*' | '/'): MValue {
+  exigeSemErro(a, `operação \`${op}\``);
+  exigeSemErro(b, `operação \`${op}\``);
   // Data ± duração dá data; data − data dá duração. É o que `Duration.Days` usa.
   if (a instanceof Date && b instanceof MDuration) {
     if (op !== '+' && op !== '-') {

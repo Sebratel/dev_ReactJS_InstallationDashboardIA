@@ -40,7 +40,9 @@ export type MValue =
   | MTime
   | MDuration
   /** Binário. `feriados` traz uma tabela inteira embutida como base64 + deflate. */
-  | Uint8Array;
+  | Uint8Array
+  /** Célula de Erro. Ver `MCellError`. */
+  | MCellError;
 
 export type MList = readonly MValue[];
 
@@ -117,6 +119,57 @@ export class MEvalError extends Error {
     super(message);
     this.name = 'MEvalError';
   }
+}
+
+/**
+ * Uma **célula de Erro**: o valor que o Power Query guarda numa célula cuja
+ * conversão de tipo falhou, sem derrubar a tabela.
+ *
+ * Existe porque `Table.TransformColumnTypes` no Power Query é por célula, não por
+ * tabela. Em `QUADRO FUNCIONAL`, `MINDSIGTH` é declarada `type number` e tem 68
+ * células com texto (`"Fit 52,0"`, `"Não se aplica"`), e `RG` (`Int64.Type`) tem 16
+ * (`"B057890-A"`). O relatório de hoje funciona porque as 84 caem fora do filtro
+ * de gestor e nenhuma medida cita as duas colunas — o Power BI marca as células
+ * como Erro e segue. Derrubar a query aqui não seria rigor, seria divergir da
+ * fonte que estamos replicando (ACHADOS #24).
+ *
+ * **Isto não afrouxa o fail-loud, muda de onde ele grita.** A célula é inerte
+ * enquanto ninguém a lê: sobreviver a um filtro, ser reordenada, ser descartada.
+ * No instante em que alguém a *usa* — `[MINDSIGTH] + 1`, uma comparação, ou a
+ * ida para o modelo semântico — o erro original é levantado, com coluna e linha.
+ * O que nunca acontece é virar `null` ou continuar texto em silêncio, que é
+ * exatamente o modo de falha do achado 1.
+ */
+export class MCellError {
+  /** Por que a conversão falhou. É a mensagem que sobe quando alguém lê a célula. */
+  readonly motivo: string;
+  /** A coluna, para a mensagem dizer onde. */
+  readonly coluna: string;
+  /** O valor que estava lá antes. Guardado para diagnóstico, não para uso. */
+  readonly original: MValue;
+
+  constructor(motivo: string, coluna: string, original: MValue) {
+    this.motivo = motivo;
+    this.coluna = coluna;
+    this.original = original;
+  }
+}
+
+export function isCellError(v: MValue): v is MCellError {
+  return v instanceof MCellError;
+}
+
+/**
+ * Levanta o erro guardado se `v` for célula de Erro; devolve `v` intacto se não.
+ *
+ * É o ponto único onde a célula deixa de ser inerte. `onde` diz o que a estava
+ * lendo, porque a pergunta seguinte de quem vê o erro é sempre "qual passo".
+ */
+export function exigeSemErro(v: MValue, onde: string): MValue {
+  if (v instanceof MCellError) {
+    throw new MEvalError(`${onde}: ${v.motivo}`);
+  }
+  return v;
 }
 
 /** Uma linha: nome de coluna (como escrito) → valor. */
@@ -203,6 +256,7 @@ export function tabela(columns: readonly string[], linhas: readonly MRow[]): MTa
 
 export function tipoDe(v: MValue): string {
   if (v === null) return 'null';
+  if (v instanceof MCellError) return 'célula de erro';
   if (v instanceof MTable) return 'table';
   if (v instanceof MRecord) return 'record';
   if (v instanceof MTime) return 'time';
@@ -269,6 +323,18 @@ export function toDatasetRows(
 
 function escalar(v: MValue, coluna: string, iLinha: number, onde: string): ScalarOut {
   if (v === null) return null;
+  // Célula de Erro que chega até aqui é erro de verdade: o modelo semântico não
+  // tem como representá-la, e virar `null` seria inventar dado. No corpus de hoje
+  // isto não acontece (as 84 células ruins de QUADRO FUNCIONAL caem fora do
+  // filtro) — se um dia acontecer, é decisão de negócio, não de engine.
+  if (v instanceof MCellError) {
+    throw new MEvalError(
+      `${onde}: a coluna '${coluna}' tem célula de Erro na linha ${iLinha + 1} e o passo de ` +
+        `tipo a produziu de propósito (${v.motivo}). O modelo semântico não aceita ` +
+        'célula de Erro: trate na camada M (Table.RemoveRowsWithErrors, ' +
+        'Table.ReplaceErrorValues) como o Power Query exigiria.',
+    );
+  }
   if (v instanceof MTime) return new Date(EPOCH_MS + v.ms);
   if (v instanceof MDuration) return v.ms / 86_400_000; // duração em dias, como o DAX
   if (v instanceof Uint8Array) {
