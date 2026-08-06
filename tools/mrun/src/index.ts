@@ -151,6 +151,12 @@ interface Resultado {
   colunas: string[];
   passos: number;
   ms: number;
+  /** Tempo dentro do connector (banco/rede/HTTP), somando todas as buscas. */
+  msExecute?: number;
+  /** Tempo convertendo `Row[]` em valor de M, somando todas as buscas. */
+  msConversao?: number;
+  /** Linhas lidas de fonte, somando todas as buscas — o divisor de linhas/s. */
+  linhasLidas?: number;
   erro?: string;
   /** Divergência de contagem que o M **não** explica. */
   alerta?: string;
@@ -249,9 +255,20 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
 
   const engine = new QueryEngine({ registry, connectors, cache: new MemoryCache() });
   const buscas = new Map<string, number>();
+  // Somado sobre TODAS as buscas da execução, não só a desta query: rodar
+  // `protocolos-produtividade` puxa a fonte das queries que ela cita, e esse tempo é
+  // tempo dela. Separar por query aqui daria a impressão de que ela é rápida.
+  let msExecute = 0;
+  let msConversao = 0;
+  let linhasLidas = 0;
   const fonte = fonteDoEngine(engine, {
     onBusca: (e) => {
-      if (e.linhas !== undefined) buscas.set(e.id, e.linhas);
+      if (e.linhas !== undefined) {
+        buscas.set(e.id, e.linhas);
+        linhasLidas += e.linhas;
+      }
+      msExecute += e.msExecute ?? 0;
+      msConversao += e.msConversao ?? 0;
     },
   });
 
@@ -281,6 +298,9 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
       colunas: [...r.tabela.columns],
       passos: r.passos.size,
       ms: Date.now() - inicio,
+      msExecute,
+      msConversao,
+      linhasLidas,
       alerta,
       // Só passo que **é** tabela entra: `let` também guarda escalar e lista, e
       // "linhas" não quer dizer nada para eles.
@@ -410,6 +430,37 @@ for (const r of resultados) {
       `${n(r.linhasFinais).padStart(12)}${String(r.colunas.length).padStart(6)}` +
       `${String(r.passos).padStart(8)}${String(r.ms).padStart(9)}`,
   );
+}
+
+// Onde o tempo vai, que é a pergunta que decide o que otimizar. `M` sai por
+// subtração (total − fonte − conversão): é o tempo de avaliar os passos, e é o
+// único que não some ligando um cache na frente.
+{
+  const somaveis = resultados.filter((r) => r.ok && r.msExecute !== undefined);
+  if (somaveis.length) {
+    const sum = (f: (r: Resultado) => number): number => somaveis.reduce((a, r) => a + f(r), 0);
+    const total = sum((r) => r.ms);
+    const exec = sum((r) => r.msExecute ?? 0);
+    const conv = sum((r) => r.msConversao ?? 0);
+    const linhas = sum((r) => r.linhasLidas ?? 0);
+    const pct = (x: number): string => (total ? `${Math.round((x / total) * 100)}%` : '—');
+    console.log('\n── Onde o tempo vai ──');
+    console.log(`  fonte (banco/rede):  ${n(exec).padStart(9)} ms  ${pct(exec).padStart(4)}`);
+    console.log(`  conversão de linha:  ${n(conv).padStart(9)} ms  ${pct(conv).padStart(4)}`);
+    console.log(
+      `  avaliação de M:      ${n(total - exec - conv).padStart(9)} ms  ${pct(total - exec - conv).padStart(4)}`,
+    );
+    console.log(`  ${n(linhas)} linhas lidas de fonte`);
+    // Os 3 mais lentos, porque otimizar a média não faz ninguém esperar menos.
+    const piores = [...somaveis].sort((a, b) => b.ms - a.ms).slice(0, 3);
+    for (const r of piores) {
+      const m = r.ms - (r.msExecute ?? 0) - (r.msConversao ?? 0);
+      console.log(
+        `    ${r.id.padEnd(26)} ${n(r.ms).padStart(7)} ms = ${n(r.msExecute ?? 0)} fonte` +
+          ` + ${n(r.msConversao ?? 0)} conversão + ${n(m)} M`,
+      );
+    }
+  }
 }
 
 const falhas = resultados.filter((r) => !r.ok);

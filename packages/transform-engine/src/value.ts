@@ -46,15 +46,60 @@ export type MValue =
 
 export type MList = readonly MValue[];
 
-/** Registro M: campos ordenados, nome preservado como escrito. */
+/**
+ * Registro M: campos ordenados, nome preservado como escrito.
+ *
+ * **O `Map` é materializado só quando alguém precisa iterar os campos**, e isso é
+ * decisão de desempenho medida, não elegância. `Table.SelectRows` e
+ * `Table.AddColumn` criam um registro **por linha** só para o `each [COLUNA]` ler
+ * um campo; em `protocolos-produtividade` são 65 mil linhas × 60 passos. Copiar 48
+ * campos para responder um foi 24% do tempo em coletor de lixo no perfil de
+ * 06/08/2026. Um registro criado por `daLinha` compartilha o `Map` da linha, que já
+ * é imutável (`MRow` é `ReadonlyMap`), e não copia nada.
+ */
 export class MRecord {
-  readonly fields: ReadonlyMap<string, MValue>;
+  /** Materializado sob demanda quando o registro vem de `daLinha`. */
+  private mapa: Map<string, MValue> | null;
+  /** A forma do registro quando ele espelha uma linha: quem define é a tabela. */
+  private readonly colunas: readonly string[] | null;
+  private readonly linhaFonte: MRow | null;
 
-  constructor(fields: Iterable<readonly [string, MValue]>) {
-    this.fields = new Map(fields);
+  constructor(fields: Iterable<readonly [string, MValue]>);
+  /**
+   * Espelha uma linha, sem copiar campo. `colunas` é a **forma** — a da tabela, não
+   * a do `Map` da linha: linha que não guardou uma coluna a tem como `null`, e é
+   * isso que o M vê.
+   */
+  constructor(colunas: readonly string[], linha: MRow);
+  constructor(a: Iterable<readonly [string, MValue]> | readonly string[], linha?: MRow) {
+    if (linha !== undefined) {
+      this.mapa = null;
+      this.colunas = a as readonly string[];
+      this.linhaFonte = linha;
+      return;
+    }
+    this.mapa = new Map(a as Iterable<readonly [string, MValue]>);
+    this.colunas = null;
+    this.linhaFonte = null;
+  }
+
+  get fields(): ReadonlyMap<string, MValue> {
+    if (this.mapa === null) {
+      const m = new Map<string, MValue>();
+      for (const c of this.colunas!) m.set(c, this.linhaFonte!.get(c) ?? null);
+      this.mapa = m;
+    }
+    return this.mapa;
   }
 
   get(name: string): MValue {
+    // Caminho quente: o registro espelha uma linha e o campo está lá. `undefined`
+    // só acontece quando a linha não guardou a coluna — aí cai no caminho exato,
+    // que distingue "coluna existe e vale null" de "campo não existe".
+    if (this.mapa === null) {
+      const v = this.linhaFonte!.get(name);
+      if (v !== undefined) return v;
+    }
     if (!this.fields.has(name)) {
       throw new MEvalError(
         `Registro não tem o campo '${name}'. Campos: ${[...this.fields.keys()].join(', ') || '(nenhum)'}`,
@@ -64,6 +109,7 @@ export class MRecord {
   }
 
   has(name: string): boolean {
+    if (this.mapa === null && this.linhaFonte!.has(name)) return true;
     return this.fields.has(name);
   }
 
@@ -243,6 +289,31 @@ export function isList(v: MValue): v is MList {
 /** Constrói uma linha a partir de pares, na ordem dada. */
 export function linha(pares: Iterable<readonly [string, MValue]>): MRow {
   return new Map(pares);
+}
+
+/**
+ * Linha a partir das colunas e de um provedor de valor — **sem alocar par
+ * intermediário**.
+ *
+ * Existe por medição. O idioma natural, `linha(t.columns.map((c) => [c, r.get(c)]))`,
+ * cria um array de N arrays de dois elementos por linha, e o `Map` os descarta
+ * imediatamente: em `protocolos-produtividade` são 65 mil linhas × 48 colunas × 60
+ * passos de lixo puro, e o perfil de 06/08/2026 mediu 24% do tempo em coletor de
+ * lixo. Aqui o valor vai direto para o `Map`.
+ *
+ * A ordem de inserção segue `columns`, que é a ordem de coluna da tabela — e ordem
+ * de coluna é parte da semântica de M, não detalhe (ver o topo deste arquivo).
+ */
+export function linhaPor(
+  columns: readonly string[],
+  valor: (coluna: string, i: number) => MValue,
+): MRow {
+  const m = new Map<string, MValue>();
+  for (let i = 0; i < columns.length; i++) {
+    const c = columns[i]!;
+    m.set(c, valor(c, i));
+  }
+  return m;
 }
 
 /** Tabela a partir de registros, com a ordem de coluna dada explicitamente. */

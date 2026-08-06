@@ -30,6 +30,7 @@ import {
   isRecord,
   isTable,
   linha,
+  linhaPor,
   MCellError,
   MDuration,
   MEvalError,
@@ -91,7 +92,9 @@ function aplica1(f: MFunction, arg: MValue): MValue {
 
 /** Linha como registro, para passar a um `each`. */
 function comoRegistro(t: MTable, r: MRow): MRecord {
-  return new MRecord(t.columns.map((c) => [c, r.get(c) ?? null] as const));
+  // Espelha a linha em vez de copiá-la: é chamado uma vez por linha, e a cópia dos
+  // 48 campos para o `each` ler um foi o maior gerador de lixo do perfil.
+  return new MRecord(t.columns, r);
 }
 
 // ── conversão de tipo ─────────────────────────────────────────────────────────
@@ -413,7 +416,7 @@ const TABELA: MFunctionImpl[] = [
       }
       return new MTable(
         novas,
-        t.rows.map((r) => linha(t.columns.map((c, i) => [novas[i], r.get(c) ?? null] as const))),
+        t.rows.map((r) => linhaPor(novas, (_n, i) => r.get(t.columns[i]!) ?? null)),
       );
     },
   },
@@ -426,7 +429,7 @@ const TABELA: MFunctionImpl[] = [
       const fora = new Set(nomesDeColuna(cols, 'Table.RemoveColumns'));
       for (const c of fora) t.exigeColuna(c, 'Table.RemoveColumns');
       const ficam = t.columns.filter((c) => !fora.has(c));
-      return new MTable(ficam, t.rows.map((r) => linha(ficam.map((c) => [c, r.get(c) ?? null] as const))));
+      return new MTable(ficam, t.rows.map((r) => linhaPor(ficam, (c) => r.get(c) ?? null)));
     },
   },
   {
@@ -438,7 +441,7 @@ const TABELA: MFunctionImpl[] = [
       // Diferente de RemoveColumns, aqui a ordem é a **pedida**, não a original.
       const ficam = nomesDeColuna(cols, 'Table.SelectColumns');
       for (const c of ficam) t.exigeColuna(c, 'Table.SelectColumns');
-      return new MTable(ficam, t.rows.map((r) => linha(ficam.map((c) => [c, r.get(c) ?? null] as const))));
+      return new MTable(ficam, t.rows.map((r) => linhaPor(ficam, (c) => r.get(c) ?? null)));
     },
   },
   {
@@ -452,7 +455,7 @@ const TABELA: MFunctionImpl[] = [
       // As não citadas ficam depois, na ordem em que estavam.
       const resto = t.columns.filter((c) => !pedidas.includes(c));
       const ordem = [...pedidas, ...resto];
-      return new MTable(ordem, t.rows.map((r) => linha(ordem.map((c) => [c, r.get(c) ?? null] as const))));
+      return new MTable(ordem, t.rows.map((r) => linhaPor(ordem, (c) => r.get(c) ?? null)));
     },
   },
   {
@@ -470,8 +473,7 @@ const TABELA: MFunctionImpl[] = [
       const ordem = [...t.columns, nova];
       return new MTable(
         ordem,
-        t.rows.map((r) => linha([...t.columns.map((c) => [c, r.get(c) ?? null] as const),
-          [nova, r.get(origem) ?? null] as const])),
+        t.rows.map((r) => linhaPor(ordem, (c) => r.get(c === nova ? origem : c) ?? null)),
       );
     },
   },
@@ -493,7 +495,7 @@ const TABELA: MFunctionImpl[] = [
           // A função vê a linha **de origem**: coluna nova não vê coluna nova, o
           // que é o mesmo contrato do ADDCOLUMNS do lado do DAX.
           const v = aplica1(f, comoRegistro(t, r));
-          return linha([...t.columns.map((c) => [c, r.get(c) ?? null] as const), [nova, v] as const]);
+          return linhaPor(ordem, (c) => (c === nova ? v : r.get(c) ?? null));
         }),
       );
     },
@@ -600,14 +602,12 @@ const TABELA: MFunctionImpl[] = [
       const conjunto = new Set(alvo);
       return t.comLinhas(
         t.rows.map((r) =>
-          linha(
-            t.columns.map((c) => {
-              if (!conjunto.has(c)) return [c, r.get(c) ?? null] as const;
-              // O substituidor recebe (valorAtual, velho, novo): é a assinatura de
-              // Replacer.ReplaceValue e Replacer.ReplaceText.
-              return [c, f.call([r.get(c) ?? null, velho, novo])] as const;
-            }),
-          ),
+          linhaPor(t.columns, (c) => {
+            const v = r.get(c) ?? null;
+            // O substituidor recebe (valorAtual, velho, novo): é a assinatura de
+            // Replacer.ReplaceValue e Replacer.ReplaceText.
+            return conjunto.has(c) ? f.call([v, velho, novo]) : v;
+          }),
         ),
       );
     },
@@ -636,12 +636,10 @@ const TABELA: MFunctionImpl[] = [
       const porColuna = new Map(pares.map((p) => [p.coluna, p.f]));
       return t.comLinhas(
         t.rows.map((r) =>
-          linha(
-            t.columns.map((c) => {
-              const f = porColuna.get(c);
-              return [c, f ? aplica1(f, r.get(c) ?? null) : r.get(c) ?? null] as const;
-            }),
-          ),
+          linhaPor(t.columns, (c) => {
+            const f = porColuna.get(c);
+            return f ? aplica1(f, r.get(c) ?? null) : r.get(c) ?? null;
+          }),
         ),
       );
     },
@@ -658,18 +656,13 @@ const TABELA: MFunctionImpl[] = [
       const porColuna = new Map(pares);
       return t.comLinhas(
         t.rows.map((r) =>
-          linha(
-            t.columns.map((c) => {
-              const tipo = porColuna.get(c);
-              const v = r.get(c) ?? null;
-              return [
-                c,
-                tipo === undefined
-                  ? v
-                  : converteCelula(v, tipo, c, 'Table.TransformColumnTypes', ctx.culture),
-              ] as const;
-            }),
-          ),
+          linhaPor(t.columns, (c) => {
+            const tipo = porColuna.get(c);
+            const v = r.get(c) ?? null;
+            return tipo === undefined
+              ? v
+              : converteCelula(v, tipo, c, 'Table.TransformColumnTypes', ctx.culture);
+          }),
         ),
       );
     },
@@ -699,7 +692,7 @@ const TABELA: MFunctionImpl[] = [
       });
       return new MTable(
         novos,
-        t.rows.slice(1).map((r) => linha(t.columns.map((c, i) => [novos[i], r.get(c) ?? null] as const))),
+        t.rows.slice(1).map((r) => linhaPor(novos, (_n, i) => r.get(t.columns[i]!) ?? null)),
       );
     },
   },
@@ -720,7 +713,7 @@ const TABELA: MFunctionImpl[] = [
       const rows: MRow[] = [];
       for (const t of ts) {
         for (const r of t.rows) {
-          rows.push(linha(ordem.map((c) => [c, t.hasColumn(c) ? r.get(c) ?? null : null] as const)));
+          rows.push(linhaPor(ordem, (c) => (t.hasColumn(c) ? r.get(c) ?? null : null)));
         }
       }
       return new MTable(ordem, rows);
@@ -765,15 +758,15 @@ const TABELA: MFunctionImpl[] = [
         if (casam.length === 0 && REDUZEM.has(kind)) continue; // Inner e afins descartam
         if (casam.length > 0 && kind === 'JoinKind.LeftAnti') continue;
         if (casam.length === 0 && kind === 'JoinKind.LeftAnti') {
-          rows.push(linha([...esq.columns.map((c) => [c, r.get(c) ?? null] as const),
-            [nova, new MTable(dir.columns, [])] as const]));
+          const vazia = new MTable(dir.columns, []);
+          rows.push(linhaPor(ordem, (c) => (c === nova ? vazia : r.get(c) ?? null)));
           continue;
         }
         // A coluna nova é uma **tabela** por linha. Quem multiplica linha é o
         // `Table.ExpandTableColumn` depois — separar as duas coisas é o que
         // permite `Table.Distinct` no meio, como PROTOCOLOS GERAL faz.
-        rows.push(linha([...esq.columns.map((c) => [c, r.get(c) ?? null] as const),
-          [nova, new MTable(dir.columns, casam)] as const]));
+        const aninhada = new MTable(dir.columns, casam);
+        rows.push(linhaPor(ordem, (c) => (c === nova ? aninhada : r.get(c) ?? null)));
       }
       if (!CONHECIDOS.has(kind)) {
         throw new MEvalError(
@@ -805,9 +798,12 @@ const TABELA: MFunctionImpl[] = [
       const rows: MRow[] = [];
       for (const r of t.rows) {
         const dentro = r.get(col) ?? null;
-        const base = restantes.map((c) => [c, r.get(c) ?? null] as const);
+        // `i < restantes.length` divide a linha em duas metades: a da esquerda vem
+        // da linha original, a da direita da tabela aninhada (ou null, sem par).
+        const semPar = (): MRow =>
+          linhaPor(ordem, (c, i) => (i < restantes.length ? r.get(c) ?? null : null));
         if (dentro === null) {
-          rows.push(linha([...base, ...nomes.map((n) => [n, null] as const)]));
+          rows.push(semPar());
           continue;
         }
         if (!isTable(dentro)) {
@@ -819,12 +815,16 @@ const TABELA: MFunctionImpl[] = [
         if (dentro.rowCount === 0) {
           // LeftOuter sem par: a linha da esquerda sobrevive com null. É o que
           // mantém a contagem quando não há correspondência.
-          rows.push(linha([...base, ...nomes.map((n) => [n, null] as const)]));
+          rows.push(semPar());
           continue;
         }
         // AQUI é onde a linha se multiplica: uma por par casado.
         for (const rd of dentro.rows) {
-          rows.push(linha([...base, ...campos.map((c, i) => [nomes[i], rd.get(c) ?? null] as const)]));
+          rows.push(
+            linhaPor(ordem, (c, i) =>
+              i < restantes.length ? r.get(c) ?? null : rd.get(campos[i - restantes.length]!) ?? null,
+            ),
+          );
         }
       }
       return new MTable(ordem, rows);
@@ -861,7 +861,7 @@ const TABELA: MFunctionImpl[] = [
           // Mais partes que nomes: o excedente é DESCARTADO, como o default
           // ExtraValues.Ignore do Power Query. Menos partes: o resto vem null.
           const porNome = new Map(nomes.map((n, k) => [n, partes[k] ?? null] as const));
-          return linha(ordem.map((c) => [c, porNome.has(c) ? porNome.get(c)! : r.get(c) ?? null] as const));
+          return linhaPor(ordem, (c) => (porNome.has(c) ? porNome.get(c)! : r.get(c) ?? null));
         }),
       );
     },

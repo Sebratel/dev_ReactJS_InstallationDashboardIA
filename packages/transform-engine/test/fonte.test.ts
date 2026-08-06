@@ -119,16 +119,30 @@ test('falha de fonte vira FonteError, distinguível de erro de M', async () => {
   );
 });
 
-test('onBusca recebe contagem no sucesso e motivo na falha', async () => {
-  const eventos: unknown[] = [];
+test('onBusca recebe contagem e tempo no sucesso, e motivo na falha', async () => {
+  const eventos: {
+    id: string;
+    linhas?: number;
+    erro?: string;
+    msExecute?: number;
+    msConversao?: number;
+  }[] = [];
   const eng = executor({ a: [{ X: 1 }], b: new Error('timeout') });
   const fonte = fonteDoEngine(eng, { onBusca: (e) => eventos.push(e) });
   await fonte(spec({ id: 'a' }));
   await assert.rejects(() => fonte(spec({ id: 'b' })));
-  assert.deepEqual(eventos, [
-    { id: 'a', linhas: 1 },
-    { id: 'b', erro: 'timeout' },
-  ]);
+
+  // O tempo vem separado em banco/rede e conversão de linha porque as duas têm
+  // respostas diferentes quando uma query demora — ver o docstring de onBusca.
+  // Aqui não se afirma valor (é relógio), só que os dois campos chegam medidos.
+  const [sucesso, falha] = eventos;
+  assert.equal(sucesso!.id, 'a');
+  assert.equal(sucesso!.linhas, 1);
+  assert.equal(typeof sucesso!.msExecute, 'number');
+  assert.equal(typeof sucesso!.msConversao, 'number');
+
+  // Na falha não há o que medir, e o evento não finge que há.
+  assert.deepEqual(falha, { id: 'b', erro: 'timeout' });
 });
 
 test('forceRefresh chega no Engine', async () => {

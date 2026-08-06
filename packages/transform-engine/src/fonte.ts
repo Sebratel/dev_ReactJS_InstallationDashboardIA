@@ -26,8 +26,22 @@ export interface ExecutorDeQuery {
 export interface FonteDoEngineOptions {
   /** Ignora o cache de leitura. Usado pela validação de paridade. */
   readonly forceRefresh?: boolean;
-  /** Chamado antes e depois de cada busca — gancho de log/progresso. */
-  readonly onBusca?: (evento: { id: string; linhas?: number; erro?: string }) => void;
+  /**
+   * Chamado depois de cada busca — gancho de log/progresso.
+   *
+   * `msExecute` e `msConversao` vêm separados de propósito. As duas respondem
+   * perguntas diferentes quando uma query demora: `msExecute` é banco e rede (a
+   * resposta é índice, `LIMIT`, ou cache), `msConversao` é CPU nossa percorrendo
+   * linha por linha (a resposta é não percorrer). Numa tabela de 1,4 milhão de
+   * linhas o segundo pode passar o primeiro, e um número só não distinguiria.
+   */
+  readonly onBusca?: (evento: {
+    id: string;
+    linhas?: number;
+    erro?: string;
+    msExecute?: number;
+    msConversao?: number;
+  }) => void;
 }
 
 /**
@@ -46,9 +60,16 @@ export function fonteDoEngine(
 ): FonteDeLinhas {
   return async (spec: MQuerySpec) => {
     try {
+      const t0 = Date.now();
       const { rows } = await engine.execute(spec.id, { forceRefresh: opts.forceRefresh });
+      const t1 = Date.now();
       const convertidas = rows.map(comValoresAninhados);
-      opts.onBusca?.({ id: spec.id, linhas: convertidas.length });
+      opts.onBusca?.({
+        id: spec.id,
+        linhas: convertidas.length,
+        msExecute: t1 - t0,
+        msConversao: Date.now() - t1,
+      });
       return convertidas;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);

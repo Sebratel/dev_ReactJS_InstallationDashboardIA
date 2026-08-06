@@ -660,10 +660,11 @@ passa. Contra dado real ela chegaria vazia.
 Duas colunas a mais que apareceram na verificação e valem registro:
 
 - `CONTRATOS[CIDADE2]` — o SELECT pede `ac.city "CIDADE"` **duas vezes**, e o
-  Power Query desempata a segunda com `2`. O efeito colateral é sobre o golden: o
-  perfilador guarda coluna por nome, então a duplicata desaparece e `contratos`
-  aparece com 22 colunas em vez de 23. `columns[]` do golden não serve para
-  contar coluna quando o SQL repete alias.
+  Power Query desempata a segunda com `2`. **Atualizado em 06/08/2026:** a
+  observação de que a duplicata desaparecia do golden (`contratos` com 22 colunas
+  em vez de 23) **não vale mais** — a perda era do driver, não do perfilador, e
+  está corrigida (#19). O golden regravado tem as 23, e `columns[]` volta a servir
+  para contar coluna.
 - `PROTOCOLOS GERAL[EQUIPE_BASE]` — no TMDL é `type: calculated` e **não tem
   expressão nenhuma**. Caso único no modelo: coluna calculada vazia. Não é citada
   por nenhuma das 134 expressões e não sai de nenhuma fonte.
@@ -920,6 +921,13 @@ Achado da primeira execução da camada M contra as fontes reais
 (`npm run run:mlayer -- --all --memoria=8192`), 06/08/2026. Não é um achado sobre o
 Power BI — é
 sobre **o nosso** avaliador, e muda uma decisão de arquitetura, então fica aqui.
+
+> **Complemento de 06/08/2026 (ver #26):** a mesma causa que exige heap grande
+> aparecia como **24% do tempo em coletor de lixo** — um `Map` novo por linha por
+> passo, e antes dele um array de pares descartável. A parte descartável foi removida
+> e o avaliador ficou 2,7× mais rápido na query mais pesada, mas o consumo de memória
+> **continua o mesmo em ordem de grandeza**: as linhas seguem materializadas, e o
+> `let` de M mantém todos os passos vivos. As 8 GB continuam necessárias.
 
 **O que aconteceu.** Rodar 21 queries num processo só matou o processo:
 
@@ -1248,3 +1256,77 @@ engine faria os números divergirem do relatório que as pessoas conferem hoje. 
 correção certa é de negócio, não de código: juntar por vínculo (nome + período) em
 vez de por nome, ou ter matrícula/CPF como chave. Registrado em
 [PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md).
+
+## 26. Onde o tempo da camada M vai: 80% é o banco, e o que era nosso era lixo de alocação
+
+Medido em 06/08/2026, quando a pergunta passou a ser "carregar rápido". Antes disso
+ninguém tinha medido a divisão — e as duas suposições naturais estavam erradas.
+
+`run:mlayer` passou a separar três tempos (`onBusca` devolve `msExecute` e
+`msConversao`; o de M sai por subtração). Rodando as 23 queries:
+
+| | ms | % |
+|---|---|---|
+| fonte (banco/rede) | 136.307 | **80%** |
+| conversão de `Row[]` em valor de M | 438 | 0% |
+| avaliação dos 303 passos de M | 33.707 | 20% |
+
+**A primeira suposição errada era a conversão.** Parecia o suspeito óbvio —
+`field-agenda` tem 1,4 milhão de linhas e cada uma passa por `comValoresAninhados`.
+São 438 ms no total, 0%. Não é ali.
+
+**A segunda era o algoritmo.** Perfilando `protocolos-produtividade` com
+`node --cpu-prof` (60 passos, 65 mil linhas finais, 55 s):
+
+```
+  52%  (idle)              — esperando o banco
+  24%  (garbage collector)
+   7%  linha        value.ts
+   2%  Table.NestedJoin
+```
+
+`Table.NestedJoin` já era indexado por hash, e aparece com 2%. **O gargalo nosso era
+o coletor de lixo**, e a causa é um idioma que se repetia em 19 lugares:
+
+```ts
+linha(t.columns.map((c) => [c, r.get(c) ?? null] as const))
+```
+
+Cada linha de cada passo alocava um array de N arrays de dois elementos, só para o
+`Map` consumir e descartar. Em `protocolos-produtividade` são 65 mil linhas × 48
+colunas × 60 passos de lixo puro. E `comoRegistro` fazia o mesmo mais uma cópia de
+`Map` inteira **por linha**, para o `each [COLUNA]` ler **um** campo.
+
+**As duas correções, sem mudar semântica:**
+
+1. `linhaPor(columns, valor)` grava direto no `Map`, sem par intermediário. Substituiu
+   o idioma nos passos que reconstroem a linha (`RenameColumns`, `RemoveColumns`,
+   `SelectColumns`, `ReorderColumns`, `AddColumn`, `DuplicateColumn`, `ReplaceValue`,
+   `TransformColumns`, `TransformColumnTypes`, `PromoteHeaders`, `Combine`,
+   `NestedJoin`, `ExpandTableColumn`, `SplitColumn`).
+2. `MRecord` ganhou construção **por espelho**: `new MRecord(colunas, linha)` compartilha
+   o `Map` da linha (que já é imutável) e materializa os campos só se alguém precisar
+   iterá-los. `each [COLUNA]` nunca precisa.
+
+**Resultado medido, mesma máquina, mesma query, saída idêntica** (33.799 linhas de
+fonte → 65.363 finais, 48 colunas, nos dois lados):
+
+| | antes | depois |
+|---|---|---|
+| avaliação de M em `protocolos-produtividade` | 32.566 ms | **12.116 ms** |
+| avaliação de M nas 23 queries | 33% do tempo | **20%** |
+
+**O que isto diz para a Fase 3, e é a parte que importa.** Depois de 2,7× no
+avaliador, **80% do tempo continua sendo o banco** — e três statements pairam no
+`statement_timeout` de 30 s (`protocolos-geral`, `field-agenda`,
+`protocolos-auxiliares` estouraram numa execução e passaram na seguinte, sem
+mudança nossa). Ou seja: **otimizar o engine não vai fazer o dashboard abrir rápido.**
+O que faz é não repetir o `SELECT`, e a arquitetura para isso já está desenhada — o
+`Cache` é porta do Engine e `specs/_catalog/cache-policies.yaml` já tem TTL por query
+(60 s no operacional quente, 900 s em cadastro, 1 dia em feriado). O que falta medir,
+quando a Fase 3 chegar, é *hit rate*, não velocidade de M.
+
+E fica o alerta que a medição expôs de graça: com 30 s de `statement_timeout` e
+statements de 17–31 s, a carga é **intermitente por construção**. Antes de discutir
+cache vale olhar índice no ERP — uma query que às vezes estoura o limite vai às vezes
+estourar o do usuário também.
