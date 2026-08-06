@@ -553,16 +553,20 @@ Leia **ACHADOS #20, #21 e #22** antes de mexer nesta camada:
 
 **O que falta, e é o próximo bloco:**
 
-1. **Paridade contra dado real (2b.9).** `avaliaQuery` devolve o valor de **cada passo**
-   de propósito: é o que permite comparar passo a passo com o Power Query quando um número
-   divergir. Sem isso, "a tabela deu 33.104 em vez de 33.101" não tem onde ser investigado.
-   O `run:mlayer` já faz a checagem mais barata — quando nenhum passo M mexe em linha, a
-   contagem final tem que ser igual à da fonte, e hoje é em todas as 19.
-2. **Regravar os goldens** (`npm run validate:queries`) para `categoria32` aparecer: o
-   `postgresRunner` já preserva coluna duplicada, mas o golden committado é anterior a
-   isso, e o teste de corpus lê o golden, não o banco (ACHADOS #19).
-3. **ACHADOS #19** — o `SELECT` de `base-categorias-field` tem cara de bug de
-   copiar-e-colar. É pergunta de negócio, registrada em PERGUNTAS-NEGOCIO #4.
+1. **Paridade contra dado real (2b.9)** — é o que resta. `avaliaQuery` devolve o valor de
+   **cada passo** de propósito, e `npm run run:mlayer -- --only=X --passos` agora imprime a
+   contagem de linha passo a passo com seta em quem mudou: é por onde se investiga "a
+   tabela deu 33.104 em vez de 33.101". O `run:mlayer` já faz a checagem mais barata —
+   quando nenhum passo M mexe em linha, a contagem final tem que ser igual à da fonte, e
+   hoje é em todas as **23**. O que **não** existe ainda é comparação contra os números do
+   Power BI: para isso alguém precisa abrir o relatório e ditar os totais.
+2. ~~**Regravar os goldens**~~ — feito em 06/08/2026. `categoria32` (e `CIDADE2`, em
+   `contratos`) passaram a existir no golden, `base-categorias-field` voltou a executar
+   inteira, e o teste de corpus subiu para **23 de 23** com a lista de achado conhecido
+   vazia. Ver ACHADOS #19.
+3. **ACHADOS #19** — resolvido no técnico, aberto no negócio: o `SELECT` de
+   `base-categorias-field` tem cara de bug de copiar-e-colar (`ssc5` juntado e nunca
+   lido). PERGUNTAS-NEGOCIO #4.
 
 **Um teste que vale entender antes de mexer:** *"cada query do escopo para no primeiro
 passo de fonte, e não antes"*. Ele avalia as 23 queries de verdade, sem credencial, e

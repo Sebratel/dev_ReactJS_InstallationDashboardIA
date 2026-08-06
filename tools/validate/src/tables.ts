@@ -41,26 +41,23 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 export type Procedencia =
   | 'sql'
-  | 'sql-duplicada'
   | 'm'
   | 'dax'
   | 'nao-conferivel'
   | 'sem-explicacao';
 
-/**
- * `CIDADE2` quando o golden só tem `CIDADE`: o SELECT de `contratos` pede
- * `ac.city "CIDADE"` **duas vezes**, e o Power Query desempata a segunda
- * acrescentando `2`. Não é coluna nova nem erro do modelo.
- *
- * O detalhe que isto revela é sobre o golden, não sobre o M: o perfilador guarda
- * as colunas por nome, então a duplicata **desaparece** ali — `contratos` devolve
- * 23 colunas e o golden lista 22. Ou seja, `columns[]` do golden não serve para
- * contar colunas quando o SQL repete um alias.
- */
-function ehDuplicataDeAlias(source: string, reais: ReadonlySet<string>): boolean {
-  const m = /^(.*?)(\d+)$/.exec(source.trim());
-  return m !== null && reais.has(normalizeColumn(m[1]!));
-}
+// Havia aqui um `ehDuplicataDeAlias`, para explicar `CONTRATOS[CIDADE2]` quando o
+// golden só tinha `CIDADE`. **Removido em 06/08/2026, porque a causa foi corrigida
+// na raiz:** o SELECT de `contratos` pede `ac.city "CIDADE"` duas vezes e o golden
+// perdia a segunda — não por causa do M, mas porque o `postgresRunner` pedia o
+// resultado no modo objeto, que colapsa colunas de mesmo nome antes de a linha
+// existir (ACHADOS #19). Com `rowMode: 'array'` a duplicata é preservada com o mesmo
+// sufixo que o ODBC usa, e `CIDADE2` agora casa direto como `sql`.
+//
+// A heurística não fica "por segurança": ela classificava como explicada uma coluna
+// ausente do golden, então um golden velho passaria a leitura em silêncio em vez de
+// pedir `npm run validate:queries`. Sem ela, esse caso cai em `sem-explicacao`, que
+// é o alarme certo.
 
 export interface ColunaVerificada {
   readonly table: string;
@@ -154,8 +151,6 @@ export function verificarTabela(
       procedencia = 'dax';
     } else if (golden && reais.has(normalizeColumn(source))) {
       procedencia = 'sql';
-    } else if (golden && !daM && ehDuplicataDeAlias(source, reais)) {
-      procedencia = 'sql-duplicada';
     } else if (daM) {
       procedencia = 'm';
       step = daM.step;
@@ -230,7 +225,6 @@ function main(): void {
   console.log('── Resumo ────────────────────────────────────────────────────');
   console.log(`  ${total} colunas físicas em ${tabelas.length} tabelas`);
   console.log(`  ${conta('sql')} vêm do SELECT (confirmadas contra o golden)`);
-  console.log(`  ${conta('sql-duplicada')} são alias repetido no SELECT, renomeado pelo Power Query`);
   console.log(`  ${conta('m')} nascem num passo M (Power Query)`);
   console.log(`  ${conta('dax')} vêm do DAX da própria tabela (calculada, materializada)`);
   console.log(`  ${conta('nao-conferivel')} sem golden para conferir`);

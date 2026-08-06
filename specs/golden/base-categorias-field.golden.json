@@ -2,7 +2,7 @@
   "queryId": "base-categorias-field",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 233004,
+  "rowCount": 235280,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -42,6 +42,14 @@
     {
       "name": "categoria3",
       "type": "string",
+      "nulls": 2748,
+      "distinct": 75,
+      "minLength": 2,
+      "maxLength": 59
+    },
+    {
+      "name": "categoria32",
+      "type": "string",
       "nulls": 3887,
       "distinct": 44,
       "minLength": 2,
@@ -56,7 +64,7 @@
       "maxLength": 59
     }
   ],
-  "schemaFingerprint": "d5655df97d8bff49",
-  "dataFingerprint": "7b8e70de9867dff0",
-  "capturedAt": "2026-08-04T20:23:04.539Z"
+  "schemaFingerprint": "3c0a5041ec02d884",
+  "dataFingerprint": "d87969b60d77d541",
+  "capturedAt": "2026-08-06T16:45:57.379Z"
 }

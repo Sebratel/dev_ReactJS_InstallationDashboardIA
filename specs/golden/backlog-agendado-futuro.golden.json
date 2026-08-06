@@ -2,7 +2,7 @@
   "queryId": "backlog-agendado-futuro",
   "datasource": "dbMaria",
   "strategy": "wrapped",
-  "rowCount": 85921,
+  "rowCount": 86436,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -33,6 +33,6 @@
     }
   ],
   "schemaFingerprint": "4d3ffd0a7ff54a54",
-  "dataFingerprint": "dd6da3d8a9ea571b",
-  "capturedAt": "2026-08-04T20:23:04.243Z"
+  "dataFingerprint": "a53ec2e874ee4839",
+  "capturedAt": "2026-08-06T16:45:57.092Z"
 }

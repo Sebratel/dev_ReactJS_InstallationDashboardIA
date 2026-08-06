@@ -898,11 +898,21 @@ característica do M ou do SQL. Continua aberto — e agora é claramente
 pergunta de negócio, não mistério técnico: o `SELECT` em si tem cara de bug
 (`categoria4` não existe nele; `categoria5` duplica `categoria4`; `ssc5`
 juntado e ignorado). Registrado em
-[PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md) #4. O golden só vai mostrar
-`categoria32` depois de `npm run validate:queries` rodar de novo contra o
-dbVoalle real — o teste de corpus em `runner.test.ts` continua classificando
-esta query como achado conhecido até isso acontecer, porque ele lê o golden
-committado, não o banco.
+[PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md) #4.
+
+**Fechado do lado técnico em 06/08/2026.** Os goldens foram regravados contra o
+dbVoalle, `categoria32` passou a existir, e com ela o `Table.RenameColumns` acha o
+que renomear: `base-categorias-field` **executa inteira**. O teste de corpus subiu
+de 22 para **23 de 23** queries executando, e a lista de "achado conhecido" em
+`runner.test.ts` ficou vazia — deixá-la povoada esconderia a próxima regressão.
+
+**A mesma colisão existia numa segunda query, e só apareceu agora.** O golden
+regravado de `contratos` ganhou `CIDADE2`: o `SELECT` tem `ac.city "CIDADE"` **duas
+vezes**. Aqui, diferente do `base-categorias-field`, as duas expressões são
+idênticas — é redundância pura, não dado perdido, e nenhuma medida cita a segunda.
+Fica registrado por dois motivos: mostra que a colisão de nome no `SELECT` não é
+caso isolado desta base, e é o tipo de coisa que um `validate:queries -- --check`
+futuro vai acusar como "coluna nova" sem ser regressão nenhuma.
 
 ## 20. A camada M não streama: 1,4 milhão de linhas precisam de 8 GB de heap
 

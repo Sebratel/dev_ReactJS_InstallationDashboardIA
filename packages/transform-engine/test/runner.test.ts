@@ -267,16 +267,18 @@ test('as 23 queries do escopo executam os passos; o que falha é tipo do dado si
   const problemas: string[] = [];
 
   /**
-   * Falha conhecida e **não** do engine: `base-categorias-field` renomeia
-   * `categoria32`, e o golden — gravado contra o SQL real — só tem
-   * `categoria1/2/3/5`. O M não passa `MissingField.Ignore`, então no próprio
-   * Power Query esse passo quebra quando a coluna não vem. As colunas saem de um
-   * pivot cuja forma depende do dado, e o SQL tem data fixa (ACHADOS #3).
-   * Registrado em ACHADOS #19; sai desta lista quando for resolvido com a operação.
+   * Estava aqui `base-categorias-field`, por não achar a coluna `categoria32`
+   * (ACHADOS #19). **Resolvido em 06/08/2026 e por isso a lista está vazia:** a
+   * coluna faltava porque o `postgresRunner` pedia o resultado no modo objeto, que
+   * colapsa duas colunas de mesmo nome antes de a linha existir; com
+   * `rowMode: 'array'` ela passou a ser gravada, e o golden regravado a tem.
+   *
+   * A lista fica, vazia, porque o mecanismo é o certo para o próximo achado desta
+   * natureza — divergência real entre o M e o que a fonte devolve, que não é
+   * regressão do engine. O que **não** se faz é reintroduzir uma entrada para
+   * silenciar falha nova sem registrar o achado.
    */
-  const ACHADO_CONHECIDO = new Map([
-    ['base-categorias-field', /não tem a coluna 'categoria32'/],
-  ]);
+  const ACHADO_CONHECIDO = new Map<string, RegExp>();
 
   for (const spec of specs) {
     try {
@@ -302,8 +304,8 @@ test('as 23 queries do escopo executam os passos; o que falha é tipo do dado si
       // distingue: ela nomeia os dois tipos envolvidos.
       const conhecido = ACHADO_CONHECIDO.get(spec.id);
       if (conhecido?.test(msg)) {
-        // Divergência real entre o M e o que o SQL devolve. Não é regressão.
-        tipoDoFixture.push(`${spec.id} (ACHADOS #19): ${msg}`);
+        // Divergência real entre o M e o que a fonte devolve. Não é regressão.
+        tipoDoFixture.push(`${spec.id} (achado registrado): ${msg}`);
       } else if (/entre string e|esperava (datetime|number|text|logical)|pede (date|datetime|number|text)/.test(msg)) {
         tipoDoFixture.push(`${spec.id}: ${msg}`);
       } else {
@@ -320,10 +322,12 @@ test('as 23 queries do escopo executam os passos; o que falha é tipo do dado si
     `falhas que NÃO são tipo do fixture (função faltando, semântica, ordem):\n  ${lista(problemas)}`,
   );
   assert.equal(ok.length + tipoDoFixture.length, 23);
-  // Prende o piso: se cair, alguma coisa regrediu; se subir muito, o fixture
-  // melhorou e o README precisa acompanhar.
+  // Piso em 23 = **todas**. Era 22 enquanto `base-categorias-field` esbarrava em
+  // `categoria32`; com o golden regravado (06/08/2026) não sobrou nenhuma barrada,
+  // então o piso vira igualdade de fato. Se cair, alguma coisa regrediu — e a
+  // mensagem diz qual query e por quê.
   assert.ok(
-    ok.length >= 22,
+    ok.length >= 23,
     `só ${ok.length} de 23 executaram inteiras. Barradas por tipo do fixture:\n  ${lista(tipoDoFixture)}`,
   );
 });

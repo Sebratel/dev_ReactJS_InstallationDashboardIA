@@ -2,7 +2,7 @@
   "queryId": "alocacao-patrimonio",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 20891,
+  "rowCount": 21112,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -11,57 +11,57 @@
       "name": "SOLICITACAO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4809,
-      "minLength": 66,
+      "distinct": 4840,
+      "minLength": 73,
       "maxLength": 152
     },
     {
       "name": "N°PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4809,
+      "distinct": 4840,
       "numericString": true,
-      "sum": 7637491824
+      "sum": 7856161328
     },
     {
       "name": "EQUIPAMENTO",
       "type": "string",
       "nulls": 0,
-      "distinct": 25,
-      "minLength": 17,
-      "maxLength": 84
+      "distinct": 30,
+      "minLength": 14,
+      "maxLength": 120
     },
     {
       "name": "PATRIMONIO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4910,
-      "minLength": 3,
-      "maxLength": 8
+      "distinct": 4938,
+      "minLength": 6,
+      "maxLength": 24
     },
     {
       "name": "SERIAL",
       "type": "string",
       "nulls": 0,
-      "distinct": 4911,
+      "distinct": 4938,
       "minLength": 6,
-      "maxLength": 16
+      "maxLength": 19
     },
     {
       "name": "DATA SAIDA",
       "type": "date",
       "nulls": 0,
-      "distinct": 42,
-      "min": "2026-01-09T03:00:00.000Z",
-      "max": "2026-04-01T03:00:00.000Z"
+      "distinct": 174,
+      "min": "2026-01-02T03:00:00.000Z",
+      "max": "2026-08-06T03:00:00.000Z"
     },
     {
       "name": "DATA HORA SAIDA",
       "type": "date",
       "nulls": 0,
       "distinct": 5000,
-      "min": "2026-01-09T12:04:09.313Z",
-      "max": "2026-04-01T15:27:32.258Z"
+      "min": "2026-01-02T12:52:58.621Z",
+      "max": "2026-08-06T12:59:00.420Z"
     },
     {
       "name": "STATUS RETORNO",
@@ -69,21 +69,21 @@
       "nulls": 0,
       "distinct": 2,
       "numericString": true,
-      "sum": 1203
+      "sum": 554
     },
     {
       "name": "DATA DO RETORNO",
       "type": "date",
-      "nulls": 3797,
-      "distinct": 179,
-      "min": "2026-01-09T03:00:00.000Z",
-      "max": "2026-08-04T03:00:00.000Z"
+      "nulls": 4446,
+      "distinct": 147,
+      "min": "2026-01-03T03:00:00.000Z",
+      "max": "2026-08-06T03:00:00.000Z"
     },
     {
       "name": "RESPONSAVEL",
       "type": "string",
-      "nulls": 0,
-      "distinct": 58,
+      "nulls": 1,
+      "distinct": 78,
       "minLength": 7,
       "maxLength": 47
     },
@@ -91,7 +91,7 @@
       "name": "ALOCADO POR:",
       "type": "string",
       "nulls": 0,
-      "distinct": 58,
+      "distinct": 79,
       "minLength": 9,
       "maxLength": 39
     },
@@ -99,15 +99,15 @@
       "name": "CLIENTE",
       "type": "string",
       "nulls": 0,
-      "distinct": 4737,
+      "distinct": 4802,
       "minLength": 10,
-      "maxLength": 60
+      "maxLength": 58
     },
     {
       "name": "SITE",
       "type": "string",
-      "nulls": 4003,
-      "distinct": 19,
+      "nulls": 4186,
+      "distinct": 18,
       "minLength": 5,
       "maxLength": 11
     },
@@ -115,25 +115,25 @@
       "name": "CIDADE",
       "type": "string",
       "nulls": 0,
-      "distinct": 10,
+      "distinct": 13,
       "minLength": 6,
       "maxLength": 21
     },
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
-      "nulls": 3909,
-      "distinct": 105,
+      "nulls": 4095,
+      "distinct": 91,
       "minLength": 14,
       "maxLength": 69
     },
     {
       "name": "PROBLEMA",
       "type": "string",
-      "nulls": 4983,
-      "distinct": 5,
-      "minLength": 14,
-      "maxLength": 33
+      "nulls": 4986,
+      "distinct": 3,
+      "minLength": 5,
+      "maxLength": 29
     },
     {
       "name": "POSIÇÃO",
@@ -145,6 +145,6 @@
     }
   ],
   "schemaFingerprint": "34bc014eea8e0a14",
-  "dataFingerprint": "b1858cec19901b31",
-  "capturedAt": "2026-08-04T20:23:04.160Z"
+  "dataFingerprint": "a307a7db973631a5",
+  "capturedAt": "2026-08-06T16:45:57.016Z"
 }

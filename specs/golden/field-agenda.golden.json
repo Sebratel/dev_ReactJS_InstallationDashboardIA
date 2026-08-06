@@ -2,7 +2,7 @@
   "queryId": "field-agenda",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 1435852,
+  "rowCount": 1449538,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -11,9 +11,9 @@
       "name": "Protocolo",
       "type": "string",
       "nulls": 0,
-      "distinct": 295,
+      "distinct": 240,
       "numericString": true,
-      "sum": 8802798587
+      "sum": 8816910080
     },
     {
       "name": "Tipo de Protocolo",
@@ -27,9 +27,9 @@
       "name": "Status Protocolo",
       "type": "string",
       "nulls": 0,
-      "distinct": 9,
+      "distinct": 8,
       "minLength": 7,
-      "maxLength": 25
+      "maxLength": 21
     },
     {
       "name": "Base",
@@ -51,85 +51,85 @@
       "name": "Data Criado",
       "type": "date",
       "nulls": 0,
-      "distinct": 295,
-      "min": "2026-08-01T16:19:44.964Z",
-      "max": "2026-08-04T20:12:37.368Z"
+      "distinct": 240,
+      "min": "2026-08-04T18:04:10.163Z",
+      "max": "2026-08-06T16:07:23.840Z"
     },
     {
       "name": "Reagenda",
       "type": "number",
-      "nulls": 3023,
+      "nulls": 2806,
       "distinct": 2,
-      "sum": 5859
+      "sum": 6510
     },
     {
       "name": "Data finalizado atendimento app",
       "type": "date",
-      "nulls": 852,
-      "distinct": 116,
-      "min": "2026-08-03T13:11:46.000Z",
-      "max": "2026-08-04T20:23:09.000Z"
+      "nulls": 758,
+      "distinct": 113,
+      "min": "2026-08-04T19:22:17.000Z",
+      "max": "2026-08-06T16:39:23.000Z"
     },
     {
       "name": "Data primeiro Play app",
       "type": "date",
       "nulls": 0,
-      "distinct": 299,
-      "min": "2026-08-01T16:50:47.202Z",
-      "max": "2026-08-04T20:23:07.495Z"
+      "distinct": 244,
+      "min": "2026-08-04T18:34:48.704Z",
+      "max": "2026-08-06T16:43:56.443Z"
     },
     {
       "name": "Data ultimo play app",
       "type": "date",
-      "nulls": 1471,
-      "distinct": 225,
-      "min": "2026-08-03T12:07:10.247Z",
-      "max": "2026-08-04T20:22:47.061Z"
+      "nulls": 1509,
+      "distinct": 174,
+      "min": "2026-08-04T18:46:12.000Z",
+      "max": "2026-08-06T16:43:06.680Z"
     },
     {
       "name": "Prazo SLA",
       "type": "date",
       "nulls": 0,
-      "distinct": 232,
-      "min": "2026-08-03T19:00:00.000Z",
-      "max": "2026-09-05T19:00:00.000Z"
+      "distinct": 202,
+      "min": "2026-08-06T18:12:00.000Z",
+      "max": "2026-08-15T15:00:00.000Z"
     },
     {
       "name": "Inicio relato",
       "type": "date",
       "nulls": 0,
-      "distinct": 562,
-      "min": "2026-08-01T16:50:47.202Z",
-      "max": "2026-08-04T20:23:09.000Z"
+      "distinct": 513,
+      "min": "2026-08-04T18:34:48.704Z",
+      "max": "2026-08-06T16:43:56.443Z"
     },
     {
       "name": "Fim relato",
       "type": "date",
-      "nulls": 1471,
-      "distinct": 348,
-      "min": "2026-08-01T19:32:55.435Z",
-      "max": "2026-08-04T20:18:50.673Z"
+      "nulls": 1509,
+      "distinct": 299,
+      "min": "2026-08-04T18:36:39.776Z",
+      "max": "2026-08-06T16:43:06.680Z"
     },
     {
       "name": "Slot Agenda",
       "type": "date",
       "nulls": 0,
-      "distinct": 68,
-      "min": "2026-08-03T12:00:00.000Z",
-      "max": "2026-09-05T16:30:00.000Z"
+      "distinct": 54,
+      "min": "2026-08-04T19:00:00.000Z",
+      "max": "2026-08-15T12:00:00.000Z"
     },
     {
       "name": "Relator",
       "type": "string",
       "nulls": 0,
-      "distinct": 78,
+      "distinct": 75,
       "minLength": 13,
       "maxLength": 46
     },
     {
       "name": "Skill",
       "type": "string",
-      "nulls": 3575,
+      "nulls": 3464,
       "distinct": 1,
       "minLength": 15,
       "maxLength": 15
@@ -138,28 +138,28 @@
       "name": "Descrição",
       "type": "string",
       "nulls": 0,
-      "distinct": 6,
+      "distinct": 5,
       "minLength": 23,
-      "maxLength": 59
+      "maxLength": 44
     },
     {
       "name": "Relato",
       "type": "string",
       "nulls": 0,
-      "distinct": 749,
-      "minLength": 11,
-      "maxLength": 1728
+      "distinct": 702,
+      "minLength": 8,
+      "maxLength": 2526
     },
     {
       "name": "Data Relato",
       "type": "date",
       "nulls": 0,
-      "distinct": 1876,
-      "min": "2026-08-01T16:50:03.000Z",
-      "max": "2026-08-04T20:23:07.623Z"
+      "distinct": 1688,
+      "min": "2026-08-04T18:12:51.000Z",
+      "max": "2026-08-06T16:45:55.727Z"
     }
   ],
   "schemaFingerprint": "b82722536a33c0e3",
-  "dataFingerprint": "86a3eecb124d2186",
-  "capturedAt": "2026-08-04T20:23:26.241Z"
+  "dataFingerprint": "5c236d37ce497e4c",
+  "capturedAt": "2026-08-06T16:46:19.083Z"
 }

@@ -267,11 +267,18 @@ test('nenhuma coluna citada pelo DAX fica sem explicação', () => {
   );
 });
 
-test('CONTRATOS[CIDADE2] é alias repetido no SELECT, não coluna perdida', () => {
+test('CONTRATOS[CIDADE2] casa direto com o golden, sem heurística de alias', () => {
+  // Este teste já afirmou `sql-duplicada`, quando o golden perdia a segunda coluna
+  // de mesmo nome e uma heurística tinha de explicá-la. A perda era do driver, não
+  // do M: `postgresRunner` pedia o resultado no modo objeto, que colapsa colunas
+  // homônimas antes de a linha existir (ACHADOS #19). Com `rowMode: 'array'` e o
+  // golden regravado em 06/08/2026, `CIDADE2` existe na fonte e a heurística foi
+  // removida — coluna explicada por dado real vale mais que coluna explicada por
+  // padrão de nome.
   const tabelas = verificarModelo(SPECS, GOLDEN);
   const contratos = tabelas.find((t) => t.table === 'CONTRATOS')!;
   const cidade2 = contratos.colunas.find((c) => c.column === 'CIDADE2')!;
-  assert.equal(cidade2.procedencia, 'sql-duplicada');
+  assert.equal(cidade2.procedencia, 'sql');
 });
 
 /**

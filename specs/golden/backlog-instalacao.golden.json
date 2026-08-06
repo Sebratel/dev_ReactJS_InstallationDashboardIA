@@ -2,7 +2,7 @@
   "queryId": "backlog-instalacao",
   "datasource": "dbMaria",
   "strategy": "wrapped",
-  "rowCount": 5672,
+  "rowCount": 5686,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -49,6 +49,6 @@
     }
   ],
   "schemaFingerprint": "ebc85fb98367cb6d",
-  "dataFingerprint": "09fe853fd177e821",
-  "capturedAt": "2026-08-04T20:23:04.276Z"
+  "dataFingerprint": "8b0c081ed220d35c",
+  "capturedAt": "2026-08-06T16:45:57.126Z"
 }
