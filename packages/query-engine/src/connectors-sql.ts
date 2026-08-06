@@ -38,8 +38,36 @@ export function assertReadOnly(sql: string): void {
 // --------------------------------------------------------------------------
 
 export interface PgPoolLike {
-  query(config: { text: string; values?: unknown[] }): Promise<{ rows: Row[] }>;
+  query(config: {
+    text: string;
+    values?: unknown[];
+    rowMode?: 'array';
+  }): Promise<{ rows: Row[] | unknown[][]; fields?: readonly { name: string }[] }>;
   end(): Promise<void>;
+}
+
+/**
+ * Nomes de coluna no esquema do Power Query: a 1ª ocorrência de um nome fica
+ * como está; a 2ª em diante ganha o número da ocorrência colado no nome
+ * (`categoria3`, `categoria32`, `categoria33`...).
+ *
+ * Existe porque `ai.protocol, ssc4.title categoria3` com `categoria3` repetido
+ * no SELECT chega ao driver `pg` como duas colunas, mas `result.rows` no modo
+ * padrão (objeto) já as devolve coladas — a segunda sobrescreve a primeira, e
+ * o dado da primeira nunca chega ao processo. Isso não é bug do `pg`; é o
+ * mesmo motivo por que `Table.RenameColumns(..., {{"categoria32", "categoria4"}})`
+ * existe na spec — é o M do próprio Power BI resolvendo a mesma colisão do
+ * jeito que o `ODBC.Query` resolve. Sem reproduzir esse esquema aqui, o passo
+ * M não encontra `categoria32` e a query quebra por um motivo que não é dela
+ * (ACHADOS.md #19).
+ */
+export function nomesSemDuplicata(nomes: readonly string[]): string[] {
+  const vistas = new Map<string, number>();
+  return nomes.map((nome) => {
+    const ocorrencia = (vistas.get(nome) ?? 0) + 1;
+    vistas.set(nome, ocorrencia);
+    return ocorrencia === 1 ? nome : `${nome}${ocorrencia}`;
+  });
 }
 
 export async function createVoallePool(cfg: PostgresConfig): Promise<PgPoolLike> {
@@ -63,8 +91,19 @@ export async function createVoallePool(cfg: PostgresConfig): Promise<PgPoolLike>
 export function postgresRunner(pool: PgPoolLike): SqlRunner {
   return async (sql) => {
     assertReadOnly(sql);
-    const result = await pool.query({ text: sql });
-    return result.rows;
+    // `rowMode: 'array'` é o que preserva coluna duplicada: no modo padrão (objeto)
+    // o driver já colou as colunas de mesmo nome antes de `result.rows` existir, e
+    // não há como desfazer isso depois. `result.fields` é a lista ordenada de
+    // colunas do SELECT — inclusive as repetidas — como o Postgres devolveu.
+    const result = await pool.query({ text: sql, rowMode: 'array' });
+    const nomes = nomesSemDuplicata((result.fields ?? []).map((f) => f.name));
+    return (result.rows as unknown[][]).map((valores) => {
+      const linha: Row = {};
+      nomes.forEach((nome, i) => {
+        linha[nome] = valores[i];
+      });
+      return linha;
+    });
   };
 }
 

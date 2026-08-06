@@ -7,6 +7,13 @@
 // tinha rodado com linhas sintéticas; isto é a primeira execução com dado de
 // verdade, e é o começo da paridade da Fase 2b.9.
 //
+// UMA QUERY POR PROCESSO. O avaliador de M mantém **todos** os passos vivos ao
+// mesmo tempo — em M qualquer passo pode citar qualquer outro, então o escopo não
+// pode liberar nenhum antes do fim — e cada passo é uma tabela inteira. Rodar 21
+// queries num processo estourou o heap em 4 GB (medido). Com um processo por
+// query, a memória volta ao sistema entre uma e outra e uma query grande derruba
+// só a si mesma, em vez de matar o relatório inteiro.
+//
 // REGRA DE SAÍDA: nunca imprime valor de linha. Só id, contagem, nome de coluna e
 // tempo. `QUADRO FUNCIONAL` tem CPF e RG, e `field-agenda` tem endereço de
 // cliente — a saída daqui precisa ser segura para colar em ticket.
@@ -14,9 +21,11 @@
 // Uso:
 //   npm run run:mlayer -- --only=capacidade-equipe
 //   npm run run:mlayer -- --all
-//   npm run run:mlayer -- --all --force-grandes
+//   npm run run:mlayer -- --all --memoria=8192      # heap por query, em MB
 //   npm run run:mlayer -- --only=protocolos-geral --colunas
+//   npm run run:mlayer -- --only=contratos --em-processo   # sem subprocesso (depurar)
 
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -44,7 +53,7 @@ import {
   SCOPE_SHEETS_READONLY,
 } from '../../../packages/query-engine/src/google-auth.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
-import type { Connector } from '../../../packages/query-engine/src/types.ts';
+import type { Connector, ResolvedQuery } from '../../../packages/query-engine/src/types.ts';
 import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
 import { runQueries, usaFonteExterna } from '../../../packages/transform-engine/src/runner.ts';
 import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts';
@@ -52,32 +61,49 @@ import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 applyDotEnv(ROOT);
 
+/** Prefixo da linha de resultado do filho. Só ela é dado; o resto é log. */
+const MARCA = '##MRUN##';
+
 /**
- * Acima disto a query não roda sem `--force-grandes`.
- *
- * Não é limite de banco: é limite de memória **deste** processo. O avaliador de M
- * mantém a tabela inteira em memória a cada passo, como o Power Query faz, e
- * `field-agenda` tem 1,4 milhão de linhas × 19 colunas. Recusar dizendo o número
- * é melhor que morrer com "heap out of memory" no meio da carga.
+ * `clima-tempo` fica fora: define função dentro de `let` e lê `Web.Contents`, que
+ * não tem connector. É a mesma exclusão do teste de corpus.
  */
-const LIMITE_DE_LINHAS = 200_000;
+const FORA_DO_ESCOPO = new Set(['clima-tempo']);
 
 // ------------------------------------------------------------------ argumentos
 interface Args {
   only: string[];
   all: boolean;
-  forcaGrandes: boolean;
   colunas: boolean;
+  memoria: number | null;
+  emProcesso: boolean;
+  /** Modo filho: roda exatamente esta query e imprime uma linha de JSON. */
+  one: string | null;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { only: [], all: false, forcaGrandes: false, colunas: false };
+  const args: Args = {
+    only: [],
+    all: false,
+    colunas: false,
+    memoria: null,
+    emProcesso: false,
+    one: null,
+  };
   for (const raw of argv) {
     if (raw === '--all') args.all = true;
-    else if (raw === '--force-grandes') args.forcaGrandes = true;
     else if (raw === '--colunas') args.colunas = true;
+    else if (raw === '--em-processo') args.emProcesso = true;
     else if (raw.startsWith('--only=')) {
       args.only = raw.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (raw.startsWith('--one=')) args.one = raw.slice('--one='.length);
+    else if (raw.startsWith('--memoria=')) {
+      const n = Number.parseInt(raw.slice('--memoria='.length), 10);
+      if (!Number.isFinite(n) || n < 256) {
+        console.error('--memoria espera MB (mínimo 256)');
+        process.exit(2);
+      }
+      args.memoria = n;
     } else {
       console.error(`argumento desconhecido: ${raw}`);
       process.exit(2);
@@ -87,15 +113,8 @@ function parseArgs(argv: string[]): Args {
 }
 
 const args = parseArgs(process.argv.slice(2));
-if (!args.all && args.only.length === 0) {
-  console.error(
-    'Escolha o que rodar: --only=id1,id2 ou --all.\n' +
-      'Não há default de propósito: --all puxa a base inteira das fontes reais.',
-  );
-  process.exit(2);
-}
 
-// ------------------------------------------------------------------ registry
+// ------------------------------------------------------------------ catálogo
 const registry = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
 const cfg = loadConfig();
 
@@ -106,22 +125,8 @@ const culture = (
   ) as { culture?: string | null }
 ).culture ?? null;
 
-/**
- * `clima-tempo` fica fora: define função dentro de `let` e lê `Web.Contents`, que
- * não tem connector. É a mesma exclusão do teste de corpus (ACHADOS #16).
- */
-const FORA_DO_ESCOPO = new Set(['clima-tempo']);
-
 const todas = registry.list().filter((q) => q.m_expression && !FORA_DO_ESCOPO.has(q.id));
-const pedidas = args.all ? todas : todas.filter((q) => args.only.includes(q.id));
 
-const idsInvalidos = args.only.filter((id) => !todas.some((q) => q.id === id));
-if (idsInvalidos.length) {
-  console.error(`ids que não existem (ou estão fora do escopo): ${idsInvalidos.join(', ')}`);
-  process.exit(2);
-}
-
-// --------------------------------------------- linhas conhecidas pelo golden
 /** rowCount do SQL, gravado pelo `npm run validate:queries`. */
 function linhasDoGolden(id: string): number | null {
   const p = path.join(ROOT, 'specs', 'golden', `${id}.golden.json`);
@@ -129,33 +134,30 @@ function linhasDoGolden(id: string): number | null {
   return (JSON.parse(fs.readFileSync(p, 'utf8')) as { rowCount?: number }).rowCount ?? null;
 }
 
-const grandes = pedidas.filter((q) => (linhasDoGolden(q.id) ?? 0) > LIMITE_DE_LINHAS);
-if (grandes.length && !args.forcaGrandes) {
-  console.error('Estas queries passam do limite deste processo:\n');
-  for (const q of grandes) {
-    console.error(`  ${q.id}: ${linhasDoGolden(q.id)!.toLocaleString('pt-BR')} linhas no SQL`);
-  }
-  console.error(
-    `\nO avaliador de M guarda a tabela inteira em memória por passo (limite: ` +
-      `${LIMITE_DE_LINHAS.toLocaleString('pt-BR')}).\n` +
-      'Para tentar de todo modo: --force-grandes (considere ' +
-      'NODE_OPTIONS=--max-old-space-size=8192).',
-  );
-  process.exit(2);
+interface Resultado {
+  id: string;
+  ok: boolean;
+  linhasDaFonte: number | null;
+  linhasFinais: number | null;
+  colunas: string[];
+  passos: number;
+  ms: number;
+  erro?: string;
+  /** Divergência de contagem que o M **não** explica. */
+  alerta?: string;
 }
 
-// ---------------------------------------------------------------- connectors
-const connectors = new Map<string, Connector>();
-const fechar: (() => Promise<void>)[] = [];
-const precisa = new Set(pedidas.map((q) => q.datasource).filter((d): d is string => Boolean(d)));
-
-/** Monta só o que as queries pedidas usam: sem gsheets não precisa de credencial Google. */
-async function montaConnectors(): Promise<string[]> {
-  const problemas: string[] = [];
+// ------------------------------------------------------------- conectar fontes
+async function montaConnectors(
+  precisa: ReadonlySet<string>,
+): Promise<{ connectors: Map<string, Connector>; fechar: (() => Promise<void>)[]; avisos: string[] }> {
+  const connectors = new Map<string, Connector>();
+  const fechar: (() => Promise<void>)[] = [];
+  const avisos: string[] = [];
 
   if (precisa.has('dbVoalle')) {
     const falta = missingFor('voalle');
-    if (falta.length) problemas.push(`dbVoalle: falta no .env ${falta.join(', ')}`);
+    if (falta.length) avisos.push(`dbVoalle: falta no .env ${falta.join(', ')}`);
     else {
       const pool = await createVoallePool(cfg.voalle);
       connectors.set('dbVoalle', createVoalleConnector(pool));
@@ -164,7 +166,7 @@ async function montaConnectors(): Promise<string[]> {
   }
   if (precisa.has('dbMaria')) {
     const falta = missingFor('maria');
-    if (falta.length) problemas.push(`dbMaria: falta no .env ${falta.join(', ')}`);
+    if (falta.length) avisos.push(`dbMaria: falta no .env ${falta.join(', ')}`);
     else {
       const pool = await createMariaPool(cfg.maria);
       connectors.set('dbMaria', createMariaConnector(pool));
@@ -182,62 +184,41 @@ async function montaConnectors(): Promise<string[]> {
         }),
       );
     } catch (err) {
-      problemas.push(`gsheets: ${err instanceof Error ? err.message : err}`);
+      avisos.push(`gsheets: ${err instanceof Error ? err.message : err}`);
     }
   }
-  return problemas;
+  return { connectors, fechar, avisos };
 }
 
-const problemas = await montaConnectors();
-for (const p of problemas) console.log(`  aviso: ${p}`);
-
-const engine = new QueryEngine({
-  registry,
-  connectors,
-  // Cache em memória: um processo, uma passada. Redis aqui só adicionaria uma
-  // dependência para um cache que morre no fim do comando.
-  cache: new MemoryCache(),
-});
+/** Datasources que uma query e suas dependências usam. */
+function fontesDe(ids: readonly string[]): Set<string> {
+  const fontes = new Set<string>();
+  for (const q of todas) {
+    if (ids.includes(q.id) && q.datasource) fontes.add(q.datasource);
+  }
+  return fontes;
+}
 
 // ------------------------------------------------------------------ execução
-console.log(
-  `\nRodando ${pedidas.length} query(s) com culture=${culture ?? '(nenhuma)'}; ` +
-    `fontes: ${[...precisa].sort().join(', ')}\n`,
-);
-
-const buscas = new Map<string, number>();
-const fonte = fonteDoEngine(engine, {
-  onBusca: (e) => {
-    if (e.linhas !== undefined) buscas.set(e.id, e.linhas);
-  },
-});
-
-interface Resultado {
-  id: string;
-  ok: boolean;
-  linhasDaFonte: number | null;
-  linhasFinais: number | null;
-  colunas: string[];
-  passos: number;
-  ms: number;
-  erro?: string;
-  /** Divergência de contagem que o M **não** explica. */
-  alerta?: string;
-}
-
-const resultados: Resultado[] = [];
-
-for (const q of pedidas) {
+async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
   const inicio = Date.now();
+  // Dependência de outra query também busca fonte, então o connector dela precisa
+  // existir. `todas` entra inteira em `specs` e o runner resolve o fechamento.
+  const { connectors, fechar, avisos } = await montaConnectors(
+    new Set([...fontesDe(todas.map((x) => x.id))]),
+  );
+  for (const a of avisos) console.error(`  aviso: ${a}`);
+
+  const engine = new QueryEngine({ registry, connectors, cache: new MemoryCache() });
+  const buscas = new Map<string, number>();
+  const fonte = fonteDoEngine(engine, {
+    onBusca: (e) => {
+      if (e.linhas !== undefined) buscas.set(e.id, e.linhas);
+    },
+  });
+
   try {
-    // Uma query por vez, com o fechamento das dependências dela. Rodar tudo de uma
-    // vez seria mais rápido, e um erro no meio derrubaria o relatório inteiro.
-    const feitas = await runQueries({
-      specs: todas,
-      apenas: [q.id],
-      culture,
-      fonte,
-    });
+    const feitas = await runQueries({ specs: todas, apenas: [q.id], culture, fonte });
     const r = feitas.get(q.id)!;
     const daFonte = usaFonteExterna(q.m_expression!) ? (buscas.get(q.id) ?? null) : null;
 
@@ -251,10 +232,10 @@ for (const q of pedidas) {
       }
     } catch {
       // Query que o scanner estático não lê (função dentro de `let`). Não é falha
-      // desta execução — e o `--all` não deve parar por causa disso.
+      // desta execução.
     }
 
-    resultados.push({
+    return {
       id: q.id,
       ok: true,
       linhasDaFonte: daFonte,
@@ -263,9 +244,9 @@ for (const q of pedidas) {
       passos: r.passos.size,
       ms: Date.now() - inicio,
       alerta,
-    });
+    };
   } catch (err) {
-    resultados.push({
+    return {
       id: q.id,
       ok: false,
       linhasDaFonte: buscas.get(q.id) ?? null,
@@ -274,22 +255,110 @@ for (const q of pedidas) {
       passos: 0,
       ms: Date.now() - inicio,
       erro: err instanceof Error ? err.message : String(err),
-    });
+    };
+  } finally {
+    for (const f of fechar) await f().catch(() => {});
   }
 }
 
-for (const f of fechar) await f().catch(() => {});
+// ------------------------------------------------------------------ modo filho
+if (args.one) {
+  const q = todas.find((x) => x.id === args.one);
+  if (!q) {
+    console.error(`id não existe ou está fora do escopo: ${args.one}`);
+    process.exit(2);
+  }
+  const r = await rodaUma(q);
+  console.log(MARCA + JSON.stringify(r));
+  process.exit(0);
+}
+
+// ------------------------------------------------------------------- modo pai
+if (!args.all && args.only.length === 0) {
+  console.error(
+    'Escolha o que rodar: --only=id1,id2 ou --all.\n' +
+      'Não há default de propósito: --all puxa a base inteira das fontes reais.',
+  );
+  process.exit(2);
+}
+
+const pedidas = args.all ? todas : todas.filter((q) => args.only.includes(q.id));
+const idsInvalidos = args.only.filter((id) => !todas.some((q) => q.id === id));
+if (idsInvalidos.length) {
+  console.error(`ids que não existem (ou estão fora do escopo): ${idsInvalidos.join(', ')}`);
+  process.exit(2);
+}
+
+console.log(
+  `\nRodando ${pedidas.length} query(s) com culture=${culture ?? '(nenhuma)'}` +
+    `${args.emProcesso ? ' no mesmo processo' : ', uma por processo'}` +
+    `${args.memoria ? `, heap de ${args.memoria} MB` : ''}\n`,
+);
+
+/** Roda uma query num subprocesso e devolve o resultado que ele imprimiu. */
+async function rodaEmSubprocesso(q: ResolvedQuery): Promise<Resultado> {
+  const inicio = Date.now();
+  const argv = [
+    ...(args.memoria ? [`--max-old-space-size=${args.memoria}`] : []),
+    fileURLToPath(import.meta.url),
+    `--one=${q.id}`,
+  ];
+  return new Promise((resolve) => {
+    const filho = spawn(process.execPath, argv, { cwd: ROOT });
+    let saida = '';
+    let erro = '';
+    filho.stdout.on('data', (d: Buffer) => {
+      saida += d.toString();
+    });
+    filho.stderr.on('data', (d: Buffer) => {
+      erro += d.toString();
+    });
+    filho.on('close', (code, signal) => {
+      const linha = saida.split(/\r?\n/).find((l) => l.startsWith(MARCA));
+      if (linha) {
+        resolve(JSON.parse(linha.slice(MARCA.length)) as Resultado);
+        return;
+      }
+      // Sem linha de resultado: o processo morreu antes de terminar. O caso real é
+      // heap estourado — dizer isso poupa a caçada ao stack trace de V8.
+      const semMemoria = /heap out of memory|Ineffective mark-compacts/.test(erro);
+      resolve({
+        id: q.id,
+        ok: false,
+        linhasDaFonte: null,
+        linhasFinais: null,
+        colunas: [],
+        passos: 0,
+        ms: Date.now() - inicio,
+        erro: semMemoria
+          ? `estourou o heap do processo${args.memoria ? ` (${args.memoria} MB)` : ''}. ` +
+            'O avaliador guarda todos os passos vivos: tente --memoria=8192.'
+          : `processo terminou sem resultado (código ${code}, sinal ${signal}): ` +
+            erro.split(/\r?\n/).filter(Boolean).slice(-3).join(' | ').slice(0, 300),
+      });
+    });
+  });
+}
+
+const resultados: Resultado[] = [];
+for (const q of pedidas) {
+  process.stderr.write(`  ${q.id}… `);
+  const r = args.emProcesso ? await rodaUma(q) : await rodaEmSubprocesso(q);
+  process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
+  resultados.push(r);
+}
 
 // ------------------------------------------------------------------ relatório
 const n = (v: number | null): string => (v === null ? '-' : v.toLocaleString('pt-BR'));
 
-console.log('id'.padEnd(28) + 'fonte'.padStart(12) + 'final'.padStart(12) +
-  'cols'.padStart(6) + 'passos'.padStart(8) + 'ms'.padStart(9));
+console.log(
+  '\n' + 'id'.padEnd(28) + 'fonte'.padStart(12) + 'final'.padStart(12) +
+    'cols'.padStart(6) + 'passos'.padStart(8) + 'ms'.padStart(9),
+);
 console.log('-'.repeat(75));
 for (const r of resultados) {
-  const marca = r.ok ? ' ' : '✖';
   console.log(
-    `${marca}${r.id.padEnd(27)}${n(r.linhasDaFonte).padStart(12)}` +
+    `${r.ok ? ' ' : '✖'}${r.id.padEnd(27)}${n(r.linhasDaFonte).padStart(12)}` +
       `${n(r.linhasFinais).padStart(12)}${String(r.colunas.length).padStart(6)}` +
       `${String(r.passos).padStart(8)}${String(r.ms).padStart(9)}`,
   );
@@ -311,7 +380,10 @@ if (alertas.length) {
 
 if (falhas.length) {
   console.log('\n── Falhas ──');
-  for (const r of falhas) console.log(`  ${r.id}: ${r.erro}`);
+  for (const r of falhas) {
+    const dica = linhasDoGolden(r.id);
+    console.log(`  ${r.id}${dica ? ` (${dica.toLocaleString('pt-BR')} linhas no SQL)` : ''}: ${r.erro}`);
+  }
 }
 
 console.log(

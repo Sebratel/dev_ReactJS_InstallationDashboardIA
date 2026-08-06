@@ -18,7 +18,7 @@ import {
   usaFonteExterna,
   type MQuerySpec,
 } from '../src/runner.ts';
-import { MEvalError } from '../src/value.ts';
+import { MDuration, MEvalError } from '../src/value.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const HOJE = new Date(Date.UTC(2026, 7, 5, 12, 0, 0));
@@ -164,6 +164,37 @@ test('`apenas` roda a query pedida e as dependências dela, e mais nada', async 
   });
   assert.deepEqual([...feitas.keys()].sort(), ['a', 'b']);
   assert.ok(!buscadas.includes('c'), 'C não deveria ter sido buscada');
+});
+
+test('interval do Postgres vira duration — medido contra o driver pg', () => {
+  // Forma real do `PostgresInterval` (`node --test` não tem banco, então o objeto é
+  // reproduzido): só os campos não-zero como propriedade própria, e `toPostgres` no
+  // protótipo — é por isso que ele não aparece em `Object.keys`.
+  const proto = { toPostgres: () => 'x' };
+  const intervalo = (campos: Record<string, number>) => Object.assign(Object.create(proto), campos);
+
+  const t = deLinhas([
+    { I: intervalo({ days: 201, hours: 3, minutes: 30 }) },
+    { I: intervalo({ milliseconds: 250 }) },
+    { I: intervalo({}) },
+  ]);
+  const ms = t.rows.map((r) => (r.get('I') as MDuration).ms);
+  assert.deepEqual(ms, [201 * 86_400_000 + 3 * 3_600_000 + 30 * 60_000, 250, 0]);
+});
+
+test('interval com mês erra alto: mês não tem duração fixa', () => {
+  const comMes = Object.assign(Object.create({ toPostgres: () => '2 mons 3 days' }), {
+    months: 2,
+    days: 3,
+  });
+  assert.throws(() => deLinhas([{ I: comMes }]), /mês não tem duração fixa/);
+});
+
+test('objeto sem toPostgres continua recusado — jsonb não é duration', () => {
+  // `{}` de um `jsonb` é indistinguível de intervalo zero pelos campos; o que
+  // separa os dois é o método do driver.
+  assert.throws(() => deLinhas([{ J: {} }]), /não sabe representar/);
+  assert.throws(() => deLinhas([{ J: { days: 1 } }]), /não sabe representar/);
 });
 
 test('usaFonteExterna separa quem lê fonte de quem traz a tabela embutida', () => {

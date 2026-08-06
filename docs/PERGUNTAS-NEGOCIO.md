@@ -16,6 +16,7 @@ terceiro: `QUADRO FUNCIONAL` fica no Google Sheets.)
 | 1 | Quanto vale um sábado no cálculo de dia útil? | Fabrício | ⏳ aberta |
 | 2 | As 5 medidas sem uso eram de painel descontinuado? (+ 1 relacionamento inativo) | Fabrício | ⏳ aberta (limpeza) |
 | 3 | ~~O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?~~ | — | ✅ resolvida em 05/08/2026: fica no Google Sheets |
+| 4 | `categoria4`/`categoria5` de `Base Categorias Field` estão trocadas — é bug ou proposital? | Fabrício | ⏳ aberta |
 
 ---
 
@@ -152,6 +153,59 @@ expressões, conferido por varredura, junto com `RELATED`, `ALLEXCEPT` e `CROSSF
 **Impacto se ficar sem resposta:** nenhum. A plataforma nova entrega 75 medidas em
 vez de 78 (as 3 que não rodam), e as 5 ficam registradas em ACHADOS.md #6 e #10.
 `TOTAL_DIAS` e `TOTAL_DIAS_ENCERRADOS` são replicadas como estão, defeito incluído.
+
+---
+
+## 4. `categoria4`/`categoria5` de `Base Categorias Field` estão trocadas — é bug ou proposital?
+
+**Por que estou perguntando.** O SQL de `Base Categorias Field` junta 5 categorias de
+serviço (`ssc1`...`ssc5`), mas o `SELECT` tem um erro de cópia:
+
+```sql
+select ai.protocol, ai.beginning_service_date,
+    ssc1.title categoria1, ssc2.title categoria2,
+    ssc3.title categoria3, ssc4.title categoria3, ssc4.title categoria5
+    -- ssc5 é juntado (LEFT JOIN) mas ssc5.title nunca aparece no SELECT
+```
+
+`categoria3` é selecionada duas vezes (uma de `ssc3`, outra de `ssc4`), e
+`categoria5` repete `ssc4.title` em vez de usar `ssc5.title` — que está ali, juntado,
+sem nunca ser lido. O texto do `SELECT` é fixo (não é pivot, não depende do dado, e
+já tem data chumbada — achado #3), então não é uma coluna que varia: é sempre assim.
+
+**O efeito no relatório de hoje.** Um passo de Power Query depois (`Table.RenameColumns`)
+resolve a colisão dos dois `categoria3` renomeando o segundo para `categoria4` — é assim
+que o Power BI evita erro. O resultado prático: `categoria4` e `categoria5`, que deveriam
+mostrar a 4ª e a 5ª categoria de serviço, mostram **a mesma coisa** (`ssc4.title` nos
+dois), e a 5ª categoria de serviço de verdade nunca aparece em lugar nenhum — mesmo
+juntada, ninguém lê. Essas duas colunas aparecem em `manutencao-inicial`
+(`specs/dashboards/manutencao-inicial.spec.yaml`).
+
+**A pergunta.**
+
+> Fabrício, achei um erro de cópia no SQL de `Base Categorias Field` — a query que traz
+> as até 5 categorias de serviço de um protocolo (usada no painel de manutenção inicial).
+>
+> A 4ª e a 5ª coluna de categoria (`categoria4` e `categoria5`) hoje mostram exatamente o
+> mesmo valor (a 4ª categoria, repetida). A 5ª categoria de serviço de verdade nunca
+> aparece — a tabela que ela vem de dentro é buscada, mas ninguém lê o campo certo.
+>
+> Isso já está assim no relatório atual, não é nada que a plataforma nova introduziu — e
+> não estou corrigindo por conta própria porque pode ser que ninguém tenha reparado e
+> vocês queiram saber antes de eu replicar um número que parece errado. Faz sentido
+> corrigir (mostrar a 5ª categoria de verdade em vez de repetir a 4ª), ou tem algum motivo
+> pra ficar como está?
+
+**Se a resposta for "corrige":** troca `ssc4.title categoria5` por `ssc5.title categoria5`
+no SQL — no Power BI atual e na spec daqui. Do nosso lado vira divergência deliberada,
+registrada em [ACHADOS.md](./ACHADOS.md#19-base-categorias-field-renomeia-uma-coluna-que-o-sql-não-devolve).
+**Se a resposta for "fica como está":** replicamos fielmente, sem mudar nada — é a
+mesma regra que já vale para as perguntas 1 e 2.
+
+**Impacto se ficar sem resposta:** nenhum a curto prazo. A plataforma replica o
+comportamento atual (`categoria4` = `categoria5`, ambas `ssc4.title`) até haver decisão —
+o motivo técnico de `categoria32` não aparecer no golden já está resolvido (ver
+ACHADOS.md #19); o que falta é só a decisão de negócio sobre o conteúdo.
 
 ---
 

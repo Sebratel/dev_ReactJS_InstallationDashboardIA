@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { assertReadOnly, postgresRunner, mariaRunner } from '../src/connectors-sql.ts';
+import { assertReadOnly, postgresRunner, mariaRunner, nomesSemDuplicata } from '../src/connectors-sql.ts';
 import { loadDotEnv } from '../src/config.ts';
 
 test('assertReadOnly: permite SELECT e CTE de leitura', () => {
@@ -56,7 +56,7 @@ test('postgresRunner: recusa SQL de escrita antes de tocar o banco', async () =>
   const runner = postgresRunner({
     async query() {
       chamou = true;
-      return { rows: [] };
+      return { rows: [], fields: [] };
     },
     async end() {},
   });
@@ -81,11 +81,42 @@ test('postgresRunner: SELECT passa e devolve as linhas', async () => {
   const runner = postgresRunner({
     async query(c) {
       assert.equal(c.text, 'select 1');
-      return { rows: [{ n: 1 }] };
+      assert.equal(c.rowMode, 'array', 'precisa do modo array para não colar coluna repetida');
+      return { rows: [[1]], fields: [{ name: 'n' }] };
     },
     async end() {},
   });
   assert.deepEqual(await runner('select 1'), [{ n: 1 }]);
+});
+
+test('postgresRunner: coluna repetida no SELECT vira nome+ocorrência, como o Power Query faz', () => {
+  // ACHADOS.md #19: `ssc3.title categoria3, ssc4.title categoria3` no SQL de
+  // `base-categorias-field` chega ao driver como duas colunas chamadas
+  // `categoria3`. O modo objeto do `pg` colaria as duas e perderia a de ssc3
+  // antes até de o M rodar; é isso que este teste impede.
+  assert.deepEqual(nomesSemDuplicata(['protocol', 'categoria1', 'categoria2', 'categoria3', 'categoria3', 'categoria5']), [
+    'protocol',
+    'categoria1',
+    'categoria2',
+    'categoria3',
+    'categoria32',
+    'categoria5',
+  ]);
+});
+
+test('postgresRunner: monta a linha com as colunas repetidas preservadas', async () => {
+  const runner = postgresRunner({
+    async query() {
+      return {
+        rows: [['P1', 'A', 'B']],
+        fields: [{ name: 'protocol' }, { name: 'categoria3' }, { name: 'categoria3' }],
+      };
+    },
+    async end() {},
+  });
+  assert.deepEqual(await runner('select protocol, categoria3, categoria3 from t'), [
+    { protocol: 'P1', categoria3: 'A', categoria32: 'B' },
+  ]);
 });
 
 // ---------------------------------------------------------------- .env

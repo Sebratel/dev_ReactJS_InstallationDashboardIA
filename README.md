@@ -19,14 +19,16 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.5 | Propagação de filtro por relacionamento — **22 medidas dependiam dela** | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) — **as 56 funções agora estão todas implementadas** | ✅ |
-| 2b.8 | Camada M — **opção A confirmada** ([decisão](docs/DECISAO-CAMADA-M.md)). Parser + avaliador + orquestrador; **37 das 39 funções** (faltam 2, ambas de fonte externa). As 23 queries do escopo executam os 303 passos | 🚧 em curso |
-| — | Connector de Google Sheets: autenticação de service account pronta e testada; falta compartilhar as 3 planilhas com a conta de serviço ([Anexo B](docs/DECISAO-CAMADA-M.md)) | 🚧 |
-| 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
+| 2b.8 | Camada M — **opção A confirmada** ([decisão](docs/DECISAO-CAMADA-M.md)). Parser + avaliador + orquestrador; **as 39 funções do escopo rodam** (37 na tabela de funções + as 2 de fonte, ligadas aos connectors). As 23 queries executam os 303 passos | ✅ |
+| — | **19 das 23 queries rodam contra a fonte real** (`npm run run:mlayer`), incluindo `field-agenda` com 1.445.730 linhas. As 4 que faltam são as de planilha — 3 diretas e `PROTOCOLOS PRODUTIVIDADE`, que mescla com uma delas — todas barradas no mesmo 403 | 🚧 |
+| — | A camada M **não streama**: 4 GB de heap não bastam, 8 GB bastam hoje ([ACHADOS](docs/ACHADOS.md) #20). Decide a arquitetura da Fase 3 | ⚠️ |
+| — | Connector de Google Sheets pronto e testado; falta compartilhar as 3 planilhas com a conta de serviço ([Anexo B](docs/DECISAO-CAMADA-M.md)) | 🚧 |
+| 2b.9 | Paridade medida a medida contra o relatório | 🚧 em curso |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**473 testes verdes.** Nenhum deles precisa de credencial.
+**514 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -327,7 +329,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (473 testes, sem credencial)
+npm test                              # suíte completa (514 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
@@ -336,9 +338,10 @@ npm run validate:queries              # executa as queries reais e grava os gold
 npm run validate:queries -- --check    # falha se o schema de alguma query mudou
 npm run probe:datahub                 # perfila a API do Data Hub (shape, nunca linha)
 npm run probe:gsheets                 # a service account alcança as planilhas?
+npm run run:mlayer -- --all --memoria=8192   # roda a camada M contra as fontes reais
 ```
 
-Os sete respondem perguntas diferentes, e só os três primeiros dispensam `.env`:
+Os oito respondem perguntas diferentes, e só os três primeiros dispensam `.env`:
 
 | Comando | Pergunta | Precisa de `.env`? |
 |---|---|---|
@@ -349,6 +352,7 @@ Os sete respondem perguntas diferentes, e só os três primeiros dispensam `.env
 | `validate:queries` | as queries rodam e devolvem o quê? | sim |
 | `probe:datahub` | a API do Data Hub tem os campos que a mesclagem precisa? | sim |
 | `probe:gsheets` | a service account lê as planilhas, e o cabeçalho bate com a spec? | sim |
+| `run:mlayer` | os passos de Power Query rodam contra o dado real, e a contagem fecha? | sim |
 
 A diferença entre o segundo e o terceiro é a razão de o terceiro existir:
 `validate:model` confere modelo contra modelo e aprova

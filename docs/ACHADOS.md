@@ -862,3 +862,171 @@ casos é, o tratamento muda junto.
 contra coluna da fonte, e `categoria32` não é coluna do modelo: é um nome
 intermediário, que existe só entre dois passos M. Só executando os passos ela
 aparece — que é exatamente o que a 2b.8 passou a fazer.
+
+**Causa raiz encontrada — não é #1, é #2.** O SQL da query é texto fixo, sem
+pivot nenhum:
+
+```sql
+select ai.protocol, ai.beginning_service_date,
+    ssc1.title categoria1, ssc2.title categoria2,
+    ssc3.title categoria3, ssc4.title categoria3, ssc4.title categoria5
+    -- ...left join solicitation_service_categories ssc5 on ssc5.id = scm.service_category_id_5
+```
+
+`categoria3` está no `SELECT` **duas vezes** (`ssc3.title` e `ssc4.title`), e
+`ssc5` é `LEFT JOIN`ado mas `ssc5.title` nunca é selecionado — `categoria5` é
+`ssc4.title` de novo. A hipótese #1 (pivot que dependeria do dado) está
+descartada: o texto do `SELECT` é o mesmo sempre, não há `Table.Pivot` nem
+coluna gerada por valor. Sobra a #2: é a query quebrada, com jeito de erro de
+copiar-e-colar (`ssc4`/`ssc4` em vez de `ssc4`/`ssc5`).
+
+**Onde a coluna se perdia, e é aqui que estava o defeito nosso, não do PBIP.**
+`categoria32` nunca chegava ao golden porque `postgresRunner`
+(`packages/query-engine/src/connectors-sql.ts`) pedia o resultado do `pg` no
+modo objeto — que já colapsa as duas colunas chamadas `categoria3` **antes**
+de `result.rows` existir, sobrescrevendo a de `ssc3` com a de `ssc4`. O Power
+Query nunca teve esse problema: `ODBC.Query` resolve a colisão com o mesmo
+esquema de sufixo que o passo `Table.RenameColumns` da spec pressupõe
+(`categoria3`, `categoria32`). **Corrigido**: `postgresRunner` agora pede
+`rowMode: 'array'` e aplica `nomesSemDuplicata` (mesmo arquivo) para
+reproduzir esse esquema antes de montar a linha — testado sem credencial em
+`packages/query-engine/test/readonly.test.ts`.
+
+**O que isso resolve e o que continua aberto.** Resolvido: o motivo técnico de
+`categoria32` não existir no golden — era perda de dado no driver, não uma
+característica do M ou do SQL. Continua aberto — e agora é claramente
+pergunta de negócio, não mistério técnico: o `SELECT` em si tem cara de bug
+(`categoria4` não existe nele; `categoria5` duplica `categoria4`; `ssc5`
+juntado e ignorado). Registrado em
+[PERGUNTAS-NEGOCIO.md](./PERGUNTAS-NEGOCIO.md) #4. O golden só vai mostrar
+`categoria32` depois de `npm run validate:queries` rodar de novo contra o
+dbVoalle real — o teste de corpus em `runner.test.ts` continua classificando
+esta query como achado conhecido até isso acontecer, porque ele lê o golden
+committado, não o banco.
+
+## 20. A camada M não streama: 1,4 milhão de linhas precisam de 8 GB de heap
+
+Achado da primeira execução da camada M contra as fontes reais
+(`npm run run:mlayer --all`), 06/08/2026. Não é um achado sobre o Power BI — é
+sobre **o nosso** avaliador, e muda uma decisão de arquitetura, então fica aqui.
+
+**O que aconteceu.** Rodar 21 queries num processo só matou o processo:
+
+```
+FATAL ERROR: Ineffective mark-compacts near heap limit — JavaScript heap out of memory
+Mark-Compact 4070.7 (4119.7) -> 4059.3 (4121.2) MB
+```
+
+**Por que, e por que não é um vazamento.** Em M qualquer passo pode citar qualquer
+outro passo do mesmo `let` — `#"Linhas Filtradas1"` pode voltar a `Fonte`. O escopo
+não pode liberar nenhum passo antes do fim da query, porque não sabe qual ainda
+será citado. Então uma query de 56 passos mantém **56 tabelas vivas ao mesmo
+tempo**. Com `field-agenda` (1.445.730 linhas × 19 colunas) e `protocolos-geral`
+(56 passos × 50 colunas), 4 GB não chegam.
+
+O Power Query não tem esse problema porque **não é um avaliador de expressão**:
+ele dobra o que pode para dentro do SQL (*query folding*) e transmite o resto em
+lotes. Nós fizemos a escolha oposta de propósito — avaliar passo a passo é o que
+permite comparar passo a passo com o relatório atual.
+
+**Medido, com 8 GB por query e um processo por query:**
+
+| Query | Linhas da fonte | Linhas finais | Passos | Tempo |
+|---|---|---|---|---|
+| `field-agenda` | 1.445.730 | 1.445.730 | 3 | 37,7 s |
+| `backlog-agendado-futuro` | 86.436 | 86.436 | 4 | 23,2 s |
+| `protocolos-geral` | 33.687 | 32.248 | 56 | 21,4 s |
+| `protocolos-produtividade` | 33.438 | — | 56 | (bloqueada na planilha) |
+| `protocolos-auxiliares` | 32.514 | 32.057 | 56 | 19,6 s |
+| `base-categorias-field` | 234.679 | 183.169 | 4 | 1,1 s |
+
+Ou seja: o gargalo é **passo × largura**, não só contagem de linhas.
+`base-categorias-field` tem 7× mais linhas que `protocolos-geral` e roda 19× mais
+rápido, porque tem 4 passos e 7 colunas em vez de 56 passos e 50 colunas.
+
+**O que foi feito agora.** `npm run run:mlayer` roda **uma query por processo**
+(`tools/mrun/src/index.ts`). A memória volta ao sistema entre uma query e outra, e
+uma query grande derruba só a si mesma em vez de matar o relatório inteiro. Quando
+o processo morre sem resultado, o CLI diz "estourou o heap" em vez de despejar o
+stack trace nativo do V8.
+
+**O que isto decide para a Fase 3, e é a parte que importa.** Servir dashboard
+recarregando 1,4 milhão de linhas por requisição está fora de questão — a camada M
+como está serve para **validar paridade**, não para atender request. As saídas
+possíveis, em ordem de preferência:
+
+1. **Materializar.** Rodar a camada M num job (por query, por processo, como
+   agora) e gravar o resultado. O dashboard lê o materializado. É o que o refresh
+   do Power BI faz, e mantém a semântica M como fonte da verdade.
+2. **Dobrar para SQL o que dá.** Os passos de `field-agenda` são 3 e triviais;
+   traduzi-los para o `SELECT` elimina o pico de memória dessa query. Vale
+   **query por query**, e cada tradução é uma divergência que precisa de teste de
+   equivalência — não é otimização gratuita.
+3. Streaming de verdade no avaliador. Exigiria análise de dependência entre passos
+   para liberar tabela intermediária, e não resolve `Table.Sort` nem
+   `Table.Distinct`, que precisam do conjunto todo.
+
+Nada disso é decidido aqui. O que este achado fixa é o **número**: 4 GB não bastam,
+8 GB bastam hoje, e `field-agenda` cresce.
+
+## 21. O `interval` do Postgres não chegava ao engine, e duas queries paravam na primeira linha
+
+Achado da mesma execução. `reincidencia` e `retorno-prioritario` subtraem timestamps
+no próprio SQL:
+
+```sql
+ps.data_suporte - pi.data_instalacao AS intervalo_suporte
+```
+
+Em Postgres isso é `interval`, e o driver `pg` devolve um objeto `PostgresInterval`.
+O `comoM` do runner recusava — corretamente, porque recusar é melhor que inventar —
+com "a fonte devolveu um valor de tipo object que o engine de M não sabe
+representar".
+
+**Medido contra o driver, não suposto** (`select timestamp - timestamp`):
+
+| Expressão | O que o `pg` devolve |
+|---|---|
+| `'2026-08-04 12:00' - '2026-01-15 08:30'` | `PostgresInterval { days: 201, hours: 3, minutes: 30 }` |
+| `'...12:00:00.250' - '...12:00:00'` | `PostgresInterval { milliseconds: 250 }` |
+| intervalo zero | `PostgresInterval {}` — **nenhum campo** |
+| `date - date` | `201` — número, não interval |
+
+Duas consequências dessa medição:
+
+- **A detecção é pelo método `toPostgres`, não pelos campos.** O intervalo zero vem
+  como `{}`, indistinguível de um `jsonb` vazio se olharmos só as chaves — e `jsonb`
+  o engine **continua** recusando, que é o certo.
+- `date - date` já era número e nunca passou por aqui.
+
+`interval` com ano ou mês erra alto: mês não tem duração fixa e o `duration` de M
+não tem mês, então converter exigiria uma data de referência. Subtração de timestamp
+nunca produz mês, então isso só dispara se alguém selecionar uma coluna `interval`
+de verdade — e aí é decisão, não palpite de 30 dias.
+
+**Onde isso aparece no relatório de hoje:** em `reincidencia` o próprio M descarta a
+coluna no passo seguinte (`Table.RemoveColumns({"intervalo_suporte"})`) — o dado é
+lido e jogado fora. Em `retorno-prioritario` a coluna **sobrevive** até a tabela
+final. Ou seja: uma das duas gasta rede e memória com uma coluna que ninguém usa, e
+é assim que o relatório funciona hoje. Replicado como está.
+
+## 22. O que o connector de planilha assume, e o que só a planilha aberta confirma
+
+Registrado em 06/08/2026, quando o `GoogleSheetsConnector` entrou. As 3 queries de
+planilha continuam bloqueadas em 403 ([Anexo B](./DECISAO-CAMADA-M.md)), então
+**nada abaixo foi verificado contra a planilha real** — está aqui para ser conferido
+no dia em que o acesso sair, em vez de virar surpresa depois.
+
+| Decisão | Por quê | Como conferir quando o acesso sair |
+|---|---|---|
+| `valueRenderOption=UNFORMATTED_VALUE` + `dateTimeRenderOption=SERIAL_NUMBER` | é o que faz data virar número de série (dias desde 1899-12-30), como o Power Query recebe. `FORMATTED_VALUE` traria texto já formatado, e aí o tipo passaria a depender do formato de exibição de quem editou a célula | `npm run probe:gsheets` mostra o cabeçalho e o tipo do que chega |
+| célula vazia vira `null`, não `""` | é o que o Power Query mostra, e a diferença é visível: `Table.PromoteHeaders` sobre `""` daria coluna de nome vazio | conferir se alguma coluna final nasce com nome `ColumnN` |
+| colunas nascem `Column1..ColumnN` | quem promove cabeçalho é o passo `Table.PromoteHeaders` do M. Nomear pelo conteúdo da primeira linha faria o M promover duas vezes | as 3 queries têm `PromoteHeaders`; se o nome final bater com a spec, está certo |
+| baixa **só a aba que o M navega** | divergência deliberada: o conector do Power BI lista todas as abas da planilha. `QUADRO FUNCIONAL` tem CPF e RG, e ler aba que não se usa é risco sem contrapartida | a aba sai do próprio M (`sheet:` na spec, via `npm run extract`) |
+
+**A evidência que sustenta a primeira linha, e é indireta:** o M da planilha declara
+`ADMISSÃO`, `DEMISSÃO`, `DATA DE NASCIMENTO` e `DATA RECRUTAMENTO` como `Int64.Type`
+— tipo inteiro para colunas que são datas. Isso só faz sentido se o valor chega como
+número. E `CAPACIDADE EQUIPE` declara `{"DATA", type date}`, que a partir de um
+serial funciona. As duas coisas juntas são consistentes com `UNFORMATTED_VALUE` e
+inconsistentes com texto formatado — mas é inferência a partir do M, não medição.

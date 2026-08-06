@@ -43,8 +43,11 @@ function isExecutable(ds: string | null): ds is ExecutableDatasource {
 }
 
 /**
- * `gsheets` e `web` não entram: dependem de credencial de service account e de
- * API externa, e serão validados quando os connectors deles existirem.
+ * `gsheets` e `web` não entram, e o motivo mudou: o connector de Google Sheets já
+ * existe (`connectors-gsheets.ts`), mas **este** harness é moldado em SQL — grava
+ * golden a partir de `count(*)` e de uma amostra com `LIMIT`, que não existem em
+ * planilha. Quem exercita as queries de planilha é `npm run run:mlayer`, que roda
+ * os passos M contra a fonte. `web` continua sem connector.
  * `inline` e `computed` não têm fonte para consultar — são dados do próprio .pbix.
  */
 export function planValidation(queries: ResolvedQuery[], opts: PlanOptions): ValidationPlan {

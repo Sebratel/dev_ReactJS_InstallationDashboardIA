@@ -67,7 +67,7 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**347 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+**519 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
@@ -84,8 +84,8 @@ Nenhum teste precisa de credencial ou banco.
 | 2b.5 | Propagação de filtro por relacionamento — 22 medidas dependiam dela | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + 7 tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas — as 56 funções estão todas implementadas | ✅ |
-| 2b.8 | Camada M: parser + avaliador + orquestrador, 37/39 funções. Falta ligar no Query Engine (2 funções de fonte) e a paridade da 2b.9 | 🚧 **em curso** |
-| 2b.9 | Paridade medida a medida contra o relatório | ⏳ |
+| 2b.8 | Camada M: parser + avaliador + orquestrador + connectors. **19 das 23 queries rodam contra a fonte real**; 4 barradas no 403 da planilha | ✅ |
+| 2b.9 | Paridade medida a medida contra o relatório | 🚧 **em curso** |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
@@ -520,18 +520,44 @@ do `model.tmdl` para `specs/_catalog/model.yaml`, e é isso que permite converte
 `"01/01/2022"` em data e `"7637491824"` em Int64 — sem a culture, o engine recusa, e
 está certo.
 
+**Ligada nas fontes reais em 06/08/2026.** `Odbc.Query` e `GoogleSheets.Contents` não
+entraram na tabela de funções: quem as amarra é o runner, ao resultado que o Query
+Engine já buscou (`src/fonte.ts` — `fonteDoEngine`, com contrato estrutural para o
+transform-engine **não** depender do query-engine). O CLI é
+`npm run run:mlayer -- --all --memoria=8192`, e o estado medido é:
+
+| | Queries |
+|---|---|
+| Rodam contra a fonte real | **19 de 23** |
+| Bloqueadas em 403 na planilha | 4 — as 3 de planilha + `PROTOCOLOS PRODUTIVIDADE`, que mescla com uma delas |
+
+Leia **ACHADOS #20, #21 e #22** antes de mexer nesta camada:
+
+- **#20 — a camada M não streama.** Um processo com 21 queries estoura 4 GB de heap.
+  Em M qualquer passo pode citar qualquer outro, então o escopo não libera passo
+  nenhum antes do fim: `protocolos-geral` mantém 56 tabelas vivas. Por isso o CLI roda
+  **uma query por processo**. Isto decide a Fase 3 — a camada M serve para validar
+  paridade, não para atender request.
+- **#21 — `interval` do Postgres virou `duration`,** com a forma do driver medida, não
+  suposta. Detecção pelo método `toPostgres`, porque intervalo zero vem como `{}` e
+  `jsonb` continua (corretamente) recusado.
+- **#22 — o que o connector de planilha assume** e ainda não pôde ser conferido:
+  `UNFORMATTED_VALUE` + `SERIAL_NUMBER`, célula vazia como `null`, `Column1..N`, e
+  baixar **só** a aba que o M navega (divergência deliberada: o Power BI lista todas;
+  `QUADRO FUNCIONAL` tem CPF e RG).
+
 **O que falta, e é o próximo bloco:**
 
-1. **Ligar `Odbc.Query` e `GoogleSheets.Contents` nos connectors.** São as 2 únicas
-   funções que faltam, e não são linguagem: são a fronteira com o Query Engine da Fase 1,
-   que já sabe cache, timeout e read-only. O runner recebe `fonte` injetada — basta passar
-   o Engine ali. Atenção: o connector de Google Sheets tem que devolver a **tabela de
-   navegação** (uma linha por aba, dados na coluna `Data`), porque é assim que o M navega.
-2. **Paridade contra dado real (2b.9).** `avaliaQuery` devolve o valor de **cada passo**
+1. **Paridade contra dado real (2b.9).** `avaliaQuery` devolve o valor de **cada passo**
    de propósito: é o que permite comparar passo a passo com o Power Query quando um número
    divergir. Sem isso, "a tabela deu 33.104 em vez de 33.101" não tem onde ser investigado.
-3. **ACHADOS #19** — `base-categorias-field` renomeia `categoria32`, que o SQL real não
-   devolve. Precisa da operação para saber se é pivot variável ou query quebrada.
+   O `run:mlayer` já faz a checagem mais barata — quando nenhum passo M mexe em linha, a
+   contagem final tem que ser igual à da fonte, e hoje é em todas as 19.
+2. **Regravar os goldens** (`npm run validate:queries`) para `categoria32` aparecer: o
+   `postgresRunner` já preserva coluna duplicada, mas o golden committado é anterior a
+   isso, e o teste de corpus lê o golden, não o banco (ACHADOS #19).
+3. **ACHADOS #19** — o `SELECT` de `base-categorias-field` tem cara de bug de
+   copiar-e-colar. É pergunta de negócio, registrada em PERGUNTAS-NEGOCIO #4.
 
 **Um teste que vale entender antes de mexer:** *"cada query do escopo para no primeiro
 passo de fonte, e não antes"*. Ele avalia as 23 queries de verdade, sem credencial, e
