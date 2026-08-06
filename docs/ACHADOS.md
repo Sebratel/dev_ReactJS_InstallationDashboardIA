@@ -1581,11 +1581,34 @@ São 10 no relatório, medidos: `count > 0` em 8 e `count > 100` em 2, distribu�
 3 `pivotTable`, 5 `tableEx`, 1 `barChart` e 1 `columnChart`. **Nenhum em card** — é o que
 torna a correção barata agora: ela não muda número nenhum que já se calcula.
 
-Correção: `filtro.ts` **recusa pelo nome** condição com `left_aggregation`. Implementar de
-verdade exige o agrupamento do visual, que é a fatia seguinte (tabela e gráfico); até lá,
-recusar é o que impede o filtro de virar outro em silêncio. `cobertura.test.ts` prende os
-dois números — 98 dos 108 filtros aplicam, 10 são recusados — e quando o agrupamento
-existir, os 10 devem cair para zero. O teste cobra.
+Correção em duas etapas, e a segunda fechou.
+
+**Primeira (06/08/2026):** `filtro.ts` passou a **recusar pelo nome** condição com
+`left_aggregation`. Implementar de verdade exigia o agrupamento do visual, que ainda
+não existia; até lá, recusar é o que impede o filtro de virar outro em silêncio.
+
+**Segunda (06/08/2026, com o agrupamento pronto): implementado.** `separaFiltros`
+divide os filtros em dois momentos e `predicadoDeGrupo` avalia a agregação **dentro do
+escopo do grupo** — que é o que o HAVING sempre foi. A ordem entre os dois é a regra, e
+trocá-la não dá erro, dá outro número:
+
+| momento | quem | o que decide |
+|---|---|---|
+| antes de agrupar | filtro de linha | o que entra na conta |
+| depois de agrupar | filtro de grupo | quais grupos sobrevivem |
+
+`traduzFiltros` **continua recusando** — e isso não é resto de implementação. Ela
+traduz predicado de linha, e quem não sabe agrupar (o card) tem de receber o erro: um
+card não tem grupos para filtrar, e nenhum dos 10 está em card. Há teste dos dois lados.
+
+Efeito medido: as tabelas que calculam foram de **15 para 19** das 29. Quatro das cinco
+`tableEx` com HAVING passaram a rodar; a quinta caiu na família seguinte (chaves de mais
+de uma tabela), e é por isso que aquela subiu de 4 para 5.
+
+A função de agregação sai do **mesmo mapa** dos campos de visual (`agregacao.ts`, extraído
+de `card.ts` para os dois usarem um só). Isso liga o HAVING à PERGUNTAS-NEGOCIO #6: se
+`count` for contagem de não-vazios em vez de distinta, muda nos dois de uma vez. Duas
+cópias divergiriam exatamente no dia da resposta.
 
 ### O que a medição de cobertura mostrou junto
 

@@ -14,7 +14,8 @@
 // entre si.
 
 import { normalizeName as normaliza } from '../../semantic-model/src/model.ts';
-import type { Evaluator } from '../../measure-engine/src/evaluator.ts';
+import type { Position } from '../../measure-engine/src/ast.ts';
+import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
 import type { TableFilter } from '../../measure-engine/src/filter.ts';
 import type { Row } from '../../measure-engine/src/dataset.ts';
 import {
@@ -24,6 +25,7 @@ import {
   identityKey,
   isBlank,
 } from '../../measure-engine/src/value.ts';
+import { FUNCAO_DA_AGREGACAO } from './agregacao.ts';
 import { resolveBorda, resolveSpan, truncar } from './datas.ts';
 import type { CondicaoSpec, FiltroSpec, SpanSpec } from './spec.ts';
 
@@ -39,8 +41,110 @@ const COMPARA: Record<string, (c: number) => boolean> = {
 /** Unidades abaixo do dia. Nelas um `DateSpan` é um instante, não um intervalo. */
 const SUBDIA = new Set(['second', 'minute', 'hour']);
 
+/** Nó sintético: não veio de texto, então não há posição real a apontar. */
+const SEM_POSICAO: Position = { start: 0, line: 1, col: 1 };
+
 function ehSpan(r: unknown): r is SpanSpec {
   return typeof r === 'object' && r !== null && 'anchor_kind' in r;
+}
+
+/**
+ * O filtro age sobre **linha** ou sobre **grupo**?
+ *
+ * `left_aggregation` é o que separa os dois: com ele, o lado esquerdo da comparação
+ * é `COUNT(coluna)`, e a pergunta passa a ser sobre o grupo inteiro. São 10 no
+ * relatório (ACHADOS #30).
+ */
+export function ehFiltroDeGrupo(f: FiltroSpec): boolean {
+  return (f.conditions ?? []).some((c) => c.op === 'comparison' && !!c.left_aggregation);
+}
+
+/** Separa os dois tipos. Um filtro é inteiro de um ou de outro — ver `predicadoDeGrupo`. */
+export function separaFiltros(filtros: readonly FiltroSpec[]): {
+  deLinha: FiltroSpec[];
+  deGrupo: FiltroSpec[];
+} {
+  const deLinha: FiltroSpec[] = [];
+  const deGrupo: FiltroSpec[] = [];
+  for (const f of filtros) (ehFiltroDeGrupo(f) ? deGrupo : deLinha).push(f);
+  return { deLinha, deGrupo };
+}
+
+/**
+ * Traduz um filtro sobre valor agregado num predicado de **grupo** (o HAVING).
+ *
+ * Ele recebe o escopo do grupo — já com os filtros do grupo aplicados — e avalia a
+ * agregação ali dentro. É por isso que ele não podia existir antes do agrupamento:
+ * sem grupo não há o que agregar, e aplicado ao valor cru vira outro filtro
+ * (ACHADOS #30).
+ *
+ * **A função de agregação sai do mesmo mapa dos campos de visual**, e isso liga
+ * este filtro à pergunta em aberto PERGUNTAS-NEGOCIO #6: se `count` for contagem de
+ * não-vazios em vez de distinta, muda aqui junto. Ligar de propósito, num mapa só —
+ * duas cópias divergiriam no dia da resposta.
+ */
+export function predicadoDeGrupo(
+  f: FiltroSpec,
+  ev: Evaluator,
+  onde: string,
+): { origem: string; passa: (escopo: EvalScope) => boolean } {
+  if (!f.entity || !f.property) {
+    throw new DaxEvalError(`${onde}: filtro de grupo sem tabela ou coluna.`);
+  }
+  const rotulo = `${onde}: filtro de grupo ${f.type ?? '?'} '${f.entity}'[${f.property}]`;
+  const condicoes = f.conditions ?? [];
+  if (!condicoes.length) throw new DaxEvalError(`${rotulo}: sem condição.`);
+
+  const testes = condicoes.map((c) => {
+    if (c.op !== 'comparison' || !c.left_aggregation) {
+      // Um filtro que mistura condição de grupo e de linha teria de ser aplicado em
+      // dois momentos diferentes. Não ocorre na base (todo filtro tem uma condição
+      // só), e resolver às cegas é escolher um dos dois momentos no escuro.
+      throw new DaxEvalError(
+        `${rotulo}: mistura condição sobre agregado com condição sobre linha ` +
+          `(op '${c.op}'). As duas se aplicam em momentos diferentes — antes e depois ` +
+          `de agrupar — e nenhum filtro do relatório faz isso.`,
+      );
+    }
+    const aceita = COMPARA[c.kind];
+    if (!aceita) {
+      throw new DaxEvalError(`${rotulo}: comparação '${c.kind}' sem tradução.`);
+    }
+    if (c.right === null || typeof c.right === 'object') {
+      throw new DaxEvalError(
+        `${rotulo}: filtro sobre agregado comparado com ${JSON.stringify(c.right)}. ` +
+          `Os 10 do relatório comparam com número.`,
+      );
+    }
+    const funcao = FUNCAO_DA_AGREGACAO[c.left_aggregation];
+    if (!funcao) {
+      throw new DaxEvalError(
+        `${rotulo}: agregação '${c.left_aggregation}' sem função DAX. ` +
+          `Conhecidas: ${Object.keys(FUNCAO_DA_AGREGACAO).join(', ')}.`,
+      );
+    }
+    const alvo = c.right as DaxValue;
+    const inverte = c.negado === true;
+    const coluna = c.left_property ?? f.property!;
+
+    return (escopo: EvalScope): boolean => {
+      const valor = ev.evaluate(
+        {
+          type: 'Call',
+          name: funcao,
+          args: [{ type: 'ColumnRef', table: f.entity!, column: coluna, pos: SEM_POSICAO }],
+          pos: SEM_POSICAO,
+        },
+        escopo,
+      );
+      // Grupo cuja agregação é BLANK não passa em comparação de ordem — vazio não é
+      // "menor que tudo". Mesma regra do filtro de linha.
+      if (isBlank(valor)) return inverte;
+      return aceita(compareValues(valor, alvo, false, rotulo)) !== inverte;
+    };
+  });
+
+  return { origem: rotulo, passa: (escopo) => testes.every((t) => t(escopo)) };
 }
 
 /**
@@ -48,6 +152,11 @@ function ehSpan(r: unknown): r is SpanSpec {
  *
  * Falha alto em tudo que não souber: `op: desconhecido`, comparação sem tradução,
  * unidade de tempo estranha. Um filtro descartado em silêncio é um número errado.
+ *
+ * **Filtro sobre agregado não passa por aqui** — ele erra alto (ver `predicado`).
+ * Quem sabe agrupar chama `separaFiltros` antes e manda cada metade para o seu
+ * lugar; quem não sabe (o card) recebe o erro, que é a resposta certa: um card não
+ * tem grupos para filtrar.
  */
 export function traduzFiltros(
   filtros: readonly FiltroSpec[],

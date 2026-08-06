@@ -32,13 +32,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
 | — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
 | — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
-| — | **Agrupamento + tabela: 15 dos 29 `tableEx` calculam.** Uma tabela do Power BI mostra as *combinações distintas* das colunas que não agregam, não uma linha por registro. As 14 recusas caem todas em limite declarado, e o teste falha se alguma deixar de ter nome | ✅ |
+| — | **Agrupamento + tabela: 19 dos 29 `tableEx` calculam.** Uma tabela do Power BI mostra as *combinações distintas* das colunas que não agregam, não uma linha por registro. As 10 recusas caem todas em limite declarado, e o teste falha se alguma deixar de ter nome | ✅ |
+| — | **O filtro sobre agregado virou o HAVING que sempre foi** e o [ACHADOS](docs/ACHADOS.md) #30 fechou: filtro de linha vale *antes* de agrupar, filtro de grupo *depois*, e trocar a ordem não dá erro — dá outro número. Foi de 5 recusas a zero, e levou 4 tabelas junto | ✅ |
 | — | **A 75ª medida chegou.** `[Faixa 1 Premiação Total]` não precisava de mais DAX: precisava de alguém que respondesse `ISINSCOPE`, que é propriedade do visual ([ACHADOS](docs/ACHADOS.md) #12). Calcula no total e fica em branco quando o visual agrupa — o que o comentário do autor pede | ✅ |
 | — | `'PROTOCOLOS GERAL'[CONTAGEM]` é o texto `"1"` declarado `int64`; 2 tabelas somam e param. Não convertido: a regra que resolveria abre a porta para converter texto em número em silêncio ([ACHADOS](docs/ACHADOS.md) #31) | ⚠️ decisão pendente |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**709 testes verdes.** Nenhum deles precisa de credencial.
+**726 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -344,6 +345,10 @@ card é um número, uma tabela é *um número por grupo*.
   tabela de três colunas de texto mostra as **combinações distintas**, não uma linha por
   registro. Lida como listagem crua ela sairia maior que a da tela, com cara de dado a
   mais em vez de erro.
+- **os dois momentos do filtro** — o de linha vale antes de agrupar e decide o que entra
+  na conta; o de grupo (`COUNT(x) > 0`, o HAVING) vale depois e decide quais grupos
+  sobrevivem. Antes de existir grupo não há o que agregar, e é por isso que esse filtro
+  não podia ser implementado junto com o card.
 
 Com o agrupamento veio a **75ª medida**: `[Faixa 1 Premiação Total]` usa `ISINSCOPE`
 para só calcular no total, e `ISINSCOPE` é propriedade do visual, não do modelo. O
@@ -351,11 +356,12 @@ avaliador ganhou `scopeWithGrouping`; sem ele, `ISINSCOPE` **continua errando al
 conjunto vazio é "o visual não agrupa por nada", `undefined` é "não há visual", e a
 distinção é o que impede a medida de calcular em toda célula.
 
-**O que está medido, e o que ainda não se sabe.** Os 64 cards executam, 15 das 29
-tabelas calculam, e 98 dos 108 filtros aplicam. As recusas têm todas nome — filtro
-sobre agregado (5), chaves de mais de uma tabela (4), campo aritmético (2),
-`[CONTAGEM]` (2, [ACHADOS](docs/ACHADOS.md) #31), nível de hierarquia (1) — e o teste
-falha se alguma deixar de ter.
+**O que está medido, e o que ainda não se sabe.** Os 64 cards executam, 19 das 29
+tabelas calculam, e os 108 filtros do relatório têm todos quem os aplique — 98 como
+predicado de linha e 10 como HAVING sobre os grupos. As recusas restantes têm todas
+nome — chaves de mais de uma tabela (5), campo aritmético (2), `[CONTAGEM]` (2,
+[ACHADOS](docs/ACHADOS.md) #31), nível de hierarquia (1) — e o teste falha se alguma
+deixar de ter.
 
 Mas **36 cards têm filtro e só 5 mudam de valor** sobre o dataset sintético: nos outros
 31 o filtro aceita todas as linhas. O caminho de filtro *executa* em 36 e está
@@ -395,7 +401,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (709 testes, sem credencial)
+npm test                              # suíte completa (726 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

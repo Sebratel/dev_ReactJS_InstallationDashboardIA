@@ -16,7 +16,7 @@
 import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
 import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
-import { traduzFiltros } from './filtro.ts';
+import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
 import { agrupar, chaveDoCampo, type Chave } from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
@@ -86,9 +86,17 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
   }
 
   const { chaves } = separaCampos(visual, onde);
-  const filtros = traduzFiltros([...(dash.filters ?? []), ...(visual.filters ?? [])], ev, onde);
+
+  // **Os dois tipos de filtro entram em momentos diferentes, e a ordem é a regra.**
+  // O de linha restringe o que entra na conta e vale **antes** de agrupar; o de
+  // grupo (`COUNT(x) > 0`) decide quais grupos sobrevivem e só pode valer **depois**,
+  // porque antes de existir grupo não há o que agregar. Trocar a ordem não dá erro:
+  // dá outro número.
+  const { deLinha, deGrupo } = separaFiltros([...(dash.filters ?? []), ...(visual.filters ?? [])]);
+  const filtros = traduzFiltros(deLinha, ev, onde);
   const base = escopoComFiltros(ev, filtros);
-  const grupos = agrupar(chaves, base, ev, onde);
+  const having = deGrupo.map((f) => predicadoDeGrupo(f, ev, onde));
+  const grupos = agrupar(chaves, base, ev, onde).filter((g) => having.every((h) => h.passa(g.escopo)));
 
   // Qual chave é cada campo, para remontar a ordem da spec sem procurar por nome
   // (dois campos podem ter o mesmo `displayName`; em `agendamento-field` há um `.`).
@@ -111,7 +119,7 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
     visual: visual.id,
     colunas: campos.map((c) => c.name ?? null),
     linhas,
-    filtros: filtros.map((f) => f.origem),
+    filtros: [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
   };
 }
 

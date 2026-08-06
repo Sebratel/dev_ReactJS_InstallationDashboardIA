@@ -15,7 +15,7 @@ import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import { Dataset, type Row } from '../../measure-engine/src/dataset.ts';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
 import { DaxEvalError, makeDate } from '../../measure-engine/src/value.ts';
-import { traduzFiltros } from '../src/filtro.ts';
+import { ehFiltroDeGrupo, predicadoDeGrupo, separaFiltros, traduzFiltros } from '../src/filtro.ts';
 import type { CondicaoSpec, FiltroSpec } from '../src/spec.ts';
 
 /** 15/03/2026 14:37 — o mesmo "agora" de datas.test.ts, com hora para truncar. */
@@ -420,4 +420,72 @@ test('o `origem` do filtro diz tabela, coluna e tipo — é o que aparece no car
   assert.match(f!.origem, /'OS'\[CIDADE\]/);
   assert.deepEqual([...f!.columns], ['cidade']);
   assert.equal(f!.table, 'os');
+});
+
+// ---------------------------------------------------------------------------
+// A separação entre filtro de linha e filtro de grupo
+// ---------------------------------------------------------------------------
+
+const havingSpec: FiltroSpec = {
+  name: 'having', type: 'Advanced', entity: 'OS', property: 'VALOR',
+  conditions: [{ op: 'comparison', kind: 'gt', left_property: 'VALOR', left_aggregation: 'count', right: 1 }],
+};
+
+test('separaFiltros põe cada filtro do lado certo', () => {
+  const deLinhaSpec = filtro('CIDADE', [{ op: 'in', values: ['Jaú'] }]);
+  const { deLinha, deGrupo } = separaFiltros([deLinhaSpec, havingSpec]);
+  assert.deepEqual(deLinha, [deLinhaSpec]);
+  assert.deepEqual(deGrupo, [havingSpec]);
+});
+
+test('ehFiltroDeGrupo só é verdade quando há left_aggregation', () => {
+  assert.equal(ehFiltroDeGrupo(havingSpec), true);
+  assert.equal(ehFiltroDeGrupo(filtro('CIDADE', [{ op: 'in', values: ['Jaú'] }])), false);
+});
+
+/**
+ * O predicado de grupo avalia a agregação **dentro do escopo que recebe**. Sobre a
+ * tabela inteira são 5 linhas com `VALOR` não vazio em 4 delas; `DISTINCTCOUNT`
+ * conta 4 valores distintos + o vazio = 5.
+ */
+test('o predicado de grupo avalia a agregação no escopo dado', () => {
+  const ev = montar();
+  const h = predicadoDeGrupo(havingSpec, ev, 'teste');
+  const total = ev.scopeWithGrouping(ev.rootScope(), []);
+  assert.equal(h.passa(total), true);
+
+  const alto = predicadoDeGrupo(
+    { ...havingSpec, conditions: [{ ...havingSpec.conditions![0]!, right: 99 } as CondicaoSpec] },
+    ev, 'teste',
+  );
+  assert.equal(alto.passa(total), false);
+});
+
+test('a origem do filtro de grupo se identifica como tal', () => {
+  const ev = montar();
+  assert.match(predicadoDeGrupo(havingSpec, ev, 'pag/vis').origem, /filtro de grupo/);
+});
+
+/**
+ * Misturar condição de grupo com condição de linha no mesmo filtro exigiria aplicar
+ * as duas em momentos diferentes — antes e depois de agrupar. Nenhum filtro do
+ * relatório faz isso (todos têm uma condição só), e escolher um dos dois momentos
+ * no escuro daria um número plausível.
+ */
+test('filtro que mistura condição de grupo e de linha erra alto', () => {
+  const ev = montar();
+  const misto: FiltroSpec = {
+    ...havingSpec,
+    conditions: [havingSpec.conditions![0]!, { op: 'in', values: ['x'] }],
+  };
+  assert.throws(() => predicadoDeGrupo(misto, ev, 't'), /momentos diferentes/);
+});
+
+test('filtro de grupo comparado com data ou null erra alto', () => {
+  const ev = montar();
+  const comNull: FiltroSpec = {
+    ...havingSpec,
+    conditions: [{ ...havingSpec.conditions![0]!, right: null } as CondicaoSpec],
+  };
+  assert.throws(() => predicadoDeGrupo(comNull, ev, 't'), /comparam com número/);
 });

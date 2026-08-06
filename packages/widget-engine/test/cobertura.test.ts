@@ -16,7 +16,7 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import { SPECS, ambiente } from '../../measure-engine/test/ambiente-sintetico.ts';
 import { identityKey } from '../../measure-engine/src/value.ts';
 import { FUNCAO_DA_AGREGACAO, calculaCard, cardsDoDashboard, valorDoCampo } from '../src/card.ts';
-import { traduzFiltros } from '../src/filtro.ts';
+import { ehFiltroDeGrupo, predicadoDeGrupo, traduzFiltros } from '../src/filtro.ts';
 import { calculaTabela, tabelasDoDashboard } from '../src/tabela.ts';
 import {
   loadDashboards,
@@ -211,11 +211,14 @@ test('nenhum deslocamento de data é em mês ou ano', () => {
  * Aplicar e não só traduzir é o que exercita a checagem de espécie e a resolução
  * de data — traduzir sozinho monta o predicado sem nunca chamá-lo.
  *
- * Os 10 recusados são os filtros sobre valor agregado (`COUNT(x) > 0`), e a recusa
- * é o comportamento correto: são um HAVING sobre os grupos do visual, não um
- * predicado de linha. Nenhum deles está em card — são 3 pivotTable, 5 tableEx, 1
- * barChart e 1 columnChart, que é a próxima fatia. Quando o agrupamento existir,
- * este número deve **cair para zero**, e é este teste que vai cobrar.
+ * Os 10 que `traduzFiltros` recusa são os filtros sobre valor agregado
+ * (`COUNT(x) > 0`), e a recusa continua correta **aqui**: eles são um HAVING sobre
+ * os grupos do visual, e `traduzFiltros` traduz predicado de linha.
+ *
+ * O que mudou é que agora existe quem os aplique. `separaFiltros` manda cada metade
+ * para o seu lugar e `predicadoDeGrupo` avalia a agregação dentro do escopo do
+ * grupo — o teste logo abaixo exige que os 10 traduzam por lá. Quem não sabe
+ * agrupar (o card) continua recebendo o erro, que para ele é a resposta certa.
  */
 test('os 108 filtros: 98 aplicam, e os 10 recusados são todos sobre agregado', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
@@ -318,23 +321,28 @@ function familiaDaRecusa(msg: string): string {
 }
 
 /**
- * **As 29 tabelas: 15 calculam, e as 14 recusas caem todas em limite declarado.**
+ * **As 29 tabelas: 19 calculam, e as 10 recusas caem todas em limite declarado.**
  *
- * O valor deste teste não é o 15 — é a última asserção. Nenhuma recusa pode cair em
+ * O valor deste teste não é o 19 — é a última asserção. Nenhuma recusa pode cair em
  * `NÃO CLASSIFICADA`: enquanto todas têm nome, o que falta é conhecido e está
  * escrito. Uma sem nome é um defeito que ninguém decidiu ter.
  *
- * As cinco famílias, e onde cada uma se resolve:
+ * **Eram 15, e a família que sumiu prova que o teste funciona.** O filtro sobre
+ * agregado (`COUNT(x) > 0`) tinha 5 recusas e hoje tem zero: com o agrupamento
+ * existindo, ele virou o HAVING que sempre foi. Quatro dessas tabelas passaram a
+ * calcular; a quinta caiu na família seguinte, que é por isso que "chaves de mais
+ * de uma tabela" subiu de 4 para 5.
+ *
+ * As quatro famílias restantes, e onde cada uma se resolve:
  *
  * | n | família | some quando |
  * |---|---|---|
- * | 5 | filtro sobre agregado (`COUNT(x) > 0`) | o agrupamento souber filtrar grupo (ACHADOS #30) |
- * | 4 | chaves de mais de uma tabela | o agrupamento cruzar tabelas por relacionamento |
+ * | 5 | chaves de mais de uma tabela | o agrupamento cruzar tabelas por relacionamento |
  * | 2 | campo aritmético (`% do total`) | o campo `arithmetic` for calculável |
  * | 2 | `[CONTAGEM]` é `"1"` (texto) e se declara `int64` | ACHADOS #31 for decidido |
  * | 1 | nível de hierarquia como célula | projetar `[Data].[Mês]` for medido contra a tela |
  */
-test('as 29 tabelas: 15 calculam, e as 14 recusas têm todas família nomeada', () => {
+test('as 29 tabelas: 19 calculam, e as 10 recusas têm todas família nomeada', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let calculam = 0;
@@ -353,10 +361,9 @@ test('as 29 tabelas: 15 calculam, e as 14 recusas têm todas família nomeada', 
   }
 
   assert.equal(DASHBOARDS.reduce((n, d) => n + tabelasDoDashboard(d).length, 0), 29);
-  assert.equal(calculam, 15);
+  assert.equal(calculam, 19);
   assert.deepEqual(familias, {
-    'filtro sobre agregado': 5,
-    'chaves de mais de uma tabela': 4,
+    'chaves de mais de uma tabela': 5,
     'campo aritmético': 2,
     'CONTAGEM: texto onde se declarou int64': 2,
     'nível de hierarquia como célula': 1,
@@ -367,12 +374,12 @@ test('as 29 tabelas: 15 calculam, e as 14 recusas têm todas família nomeada', 
  * Uma tabela do Power BI **agrupa**: mostra as combinações distintas das colunas
  * que não agregam, não uma linha por registro.
  *
- * O dataset sintético tem 5 linhas por tabela, então as 15 tabelas somam poucas
+ * O dataset sintético tem 5 linhas por tabela, então as 19 tabelas somam poucas
  * linhas — e é justamente isso que o teste fixa. Se a leitura virasse "listagem
  * crua", a soma pularia para 5 linhas por tabela e nada mais falharia: o número
  * sairia maior, com cara de dado a mais.
  */
-test('as 15 tabelas que calculam somam 44 linhas, não uma por registro', () => {
+test('as 19 tabelas que calculam somam 51 linhas, não uma por registro', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let linhas = 0;
@@ -387,8 +394,8 @@ test('as 15 tabelas que calculam somam 44 linhas, não uma por registro', () => 
       }
     }
   }
-  assert.equal(calculadas, 15);
-  assert.equal(linhas, 44);
+  assert.equal(calculadas, 19);
+  assert.equal(linhas, 51);
 });
 
 // ---------------------------------------------------------------------------
@@ -433,4 +440,41 @@ test('fora de um visual, a 75ª medida continua errando alto', () => {
     () => ev.measureInScope('Faixa 1 Premiação Total', ev.rootScope()),
     /ISINSCOPE.*Widget Engine/s,
   );
+});
+
+/**
+ * **Os 10 filtros sobre agregado traduzem como HAVING, e são os mesmos 10.**
+ *
+ * O par com o teste acima é o que dá sentido aos dois: o mesmo filtro que
+ * `traduzFiltros` recusa, `predicadoDeGrupo` aceita. Não é contradição — é a
+ * separação entre "antes de agrupar" e "depois de agrupar", e é ela que impede o
+ * HAVING de virar predicado de linha (ACHADOS #30).
+ */
+test('os 10 filtros sobre agregado traduzem como predicado de grupo', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  const deGrupo = todosOsFiltros().filter((f) => ehFiltroDeGrupo(f.filtro));
+  assert.equal(deGrupo.length, 10);
+
+  const falharam: string[] = [];
+  for (const { onde, filtro } of deGrupo) {
+    try {
+      const h = predicadoDeGrupo(filtro, ev, onde);
+      // Avaliar sobre o total é o caso mais barato que exercita a agregação de
+      // verdade: se a função ou a coluna estivessem erradas, estouraria aqui.
+      h.passa(ev.scopeWithGrouping(ev.rootScope(), []));
+    } catch (e) {
+      falharam.push(`${onde}: ${(e as Error).message.slice(0, 100)}`);
+    }
+  }
+  assert.deepEqual(falharam, []);
+});
+
+/** Onde eles vivem — e o `tableEx` some desta lista à medida que a fatia avança. */
+test('os filtros sobre agregado estão em tabela e gráfico, nunca em card', () => {
+  const porTipo = contar(
+    todosOsFiltros().filter((f) => ehFiltroDeGrupo(f.filtro)),
+    (f) => f.visual?.type ?? 'pagina',
+  );
+  assert.deepEqual(porTipo, { tableEx: 5, pivotTable: 3, barChart: 1, columnChart: 1 });
 });

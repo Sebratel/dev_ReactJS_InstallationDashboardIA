@@ -21,28 +21,11 @@ import type { CallNode, ColumnRefNode, Position } from '../../measure-engine/src
 import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
 import type { TableFilter } from '../../measure-engine/src/filter.ts';
 import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
+import { FUNCAO_DA_AGREGACAO } from './agregacao.ts';
 import { traduzFiltros } from './filtro.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
-/**
- * Agregação do PBIP -> função DAX.
- *
- * `count` (`Function: 2`) é o único item **em aberto**, e está isolado aqui de
- * propósito: a evidência de dentro do relatório aponta para contagem distinta (o card
- * que alguém batizou de `CLIENTES DISTINTOS` é `Function: 2`), e o tamanho da dúvida
- * foi medido — 8 das 10 cartas `count` estão sobre colunas 100% distintas, onde as
- * duas leituras dão o mesmo número, sobrando 2 de 64 cards. A confirmação de cinco
- * segundos está em docs/PERGUNTAS-NEGOCIO.md #6. Se a resposta for "não distinto",
- * muda-se **esta linha**.
- */
-export const FUNCAO_DA_AGREGACAO: Record<string, string> = {
-  sum: 'SUM',
-  avg: 'AVERAGE',
-  count: 'DISTINCTCOUNT',
-  min: 'MIN',
-  max: 'MAX',
-  count_non_null: 'COUNTA',
-};
+export { FUNCAO_DA_AGREGACAO };
 
 /** Nó sintético: não veio de texto, então não há posição real a apontar. */
 const SEM_POSICAO: Position = { start: 0, line: 1, col: 1 };
