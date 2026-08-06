@@ -455,6 +455,23 @@ spec com o cabeçalho real, conta quantas linhas sobram após o filtro dos 3 ges
 verifica se `upper_name` é chave única (se não for, a mesclagem multiplica linha — é o tipo
 de coisa que sobe medida sem erro).
 
+#### Como saber se o compartilhamento chegou, sem depender de olhar tela
+
+`PERMISSION_DENIED` não distingue "não compartilharam" de "compartilharam o documento
+errado" — e a segunda hipótese é real, porque planilha homônima e cópia existem. Quando
+alguma planilha falha, o probe pergunta ao **Drive** quais arquivos a conta de serviço
+alcança (escopo `drive.metadata.readonly`, só metadado). A lista inclui o que foi
+compartilhado com ela, então **lista vazia é prova de que nenhum compartilhamento chegou
+nesta identidade**; lista com itens e sem os nossos ids é prova de documento errado.
+
+Isso exige a **Google Drive API** ativada no projeto — a Sheets API não basta, e o erro do
+Google traz o link de ativação. Ativada em 06/08/2026.
+
+Medido em 06/08/2026, depois de um "acho que dei permissão": **0 arquivos**. Ou seja, a
+permissão não existia — nem em documento errado. Registrado porque a lição vale para a
+próxima vez: quando a resposta for "já compartilhei", medir antes de investigar id, cópia
+ou propagação (permissão do Google vale na hora, não há fila a esperar).
+
 ### O atalho que existe
 
 Planilha marcada como "qualquer pessoa com o link pode ver" é baixável como CSV sem

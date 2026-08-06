@@ -19,6 +19,7 @@ import { applyDotEnv, loadConfig } from '../../../packages/query-engine/src/conf
 import {
   accessToken,
   readServiceAccount,
+  SCOPE_DRIVE_METADATA_READONLY,
   SCOPE_SHEETS_READONLY,
 } from '../../../packages/query-engine/src/google-auth.ts';
 
@@ -87,8 +88,10 @@ if (cfg.gsheets.apiKey) {
 // ------------------------------------------------------------------- token
 let token: string;
 let emailDaConta = '(desconhecido)';
+let conta: ReturnType<typeof readServiceAccount> | null = null;
 try {
   const sa = readServiceAccount(cfg.gsheets.credentialsPath);
+  conta = sa;
   emailDaConta = sa.client_email;
   console.log(`service account: ${sa.client_email}`);
   console.log(`projeto:         ${sa.project_id ?? '(não declarado)'}`);
@@ -171,6 +174,66 @@ for (const p of planilhas) {
   const abas = (meta.sheets ?? []).map((s) => s.properties?.title ?? '?');
   abasPor.set(p.rotulo, abas);
   console.log(`  ${p.rotulo}: OK — "${meta.properties?.title}", ${abas.length} aba(s): ${abas.join(', ')}`);
+}
+
+// ------------------------------------------- o que esta conta alcança, afinal
+// Roda só quando alguma planilha falhou, e responde a pergunta que o 403 deixa
+// aberta: "compartilhei — o problema é o documento errado ou a conta errada?".
+// O Drive lista o que a identidade autenticada alcança, incluindo o que foi
+// compartilhado com ela. Lista VAZIA prova que nenhum compartilhamento chegou
+// nesta conta, e isso encerra a discussão sem ninguém abrir tela nenhuma.
+//
+// Requer a Google Drive API ativada no projeto (a Sheets API não basta). Se
+// estiver desligada, o próprio erro do Google traz o link para ativar.
+const algumaFalhou = PLANILHAS.some((p) => p.id && !abasPor.has(p.rotulo));
+if (algumaFalhou && conta) {
+  console.log('\n── O que esta conta de serviço alcança ───────────────');
+  try {
+    const tokenDrive = await accessToken(conta, [SCOPE_DRIVE_METADATA_READONLY]);
+    const res = await fetch(
+      'https://www.googleapis.com/drive/v3/files?pageSize=50' +
+        '&fields=files(id,name,owners(emailAddress))' +
+        '&supportsAllDrives=true&includeItemsFromAllDrives=true',
+      { headers: { authorization: `Bearer ${tokenDrive}`, accept: 'application/json' } },
+    );
+    const corpo = await res.text();
+    if (!res.ok) {
+      const msg =
+        (JSON.parse(corpo || '{}') as { error?: { message?: string } }).error?.message ?? corpo;
+      console.log(`  não deu para medir: HTTP ${res.status} — ${msg.slice(0, 240)}`);
+    } else {
+      const arquivos = (JSON.parse(corpo).files ?? []) as Array<{
+        id: string;
+        name: string;
+        owners?: { emailAddress: string }[];
+      }>;
+      console.log(`  arquivos visíveis para ${emailDaConta}: ${arquivos.length}`);
+      for (const a of arquivos.slice(0, 20)) {
+        const daBase = PLANILHAS.find((p) => p.id === a.id);
+        console.log(
+          `    ${a.id}  ${a.name}${daBase ? `  ← ${daBase.rotulo}` : ''}` +
+            `  (dono: ${a.owners?.[0]?.emailAddress ?? '?'})`,
+        );
+      }
+      if (arquivos.length === 0) {
+        console.log(
+          '\n  ZERO arquivos. Isto é conclusivo: nenhum compartilhamento chegou a esta\n' +
+            '  conta. Não é id errado nem cópia do documento — a permissão não existe.\n' +
+            '  Quem for compartilhar precisa ser dono ou editor da planilha; quem só tem\n' +
+            '  acesso de Leitor não consegue conceder acesso a terceiros.',
+        );
+      } else {
+        const faltam = PLANILHAS.filter((p) => p.id && !arquivos.some((a) => a.id === p.id));
+        console.log(
+          faltam.length
+            ? `\n  Alcança ${arquivos.length}, mas AINDA falta(m): ${faltam.map((f) => f.rotulo).join(', ')}`
+            : '\n  Alcança as 3 da base — se ainda houve 403 acima, o problema não é permissão.',
+        );
+      }
+    }
+  } catch (err) {
+    console.log(`  não deu para medir: ${err instanceof Error ? err.message : err}`);
+  }
 }
 
 // ------------------------------------------------------- perfil de QUADRO FUNCIONAL
