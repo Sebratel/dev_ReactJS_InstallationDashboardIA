@@ -1048,3 +1048,42 @@ no dia em que o acesso sair, em vez de virar surpresa depois.
 número. E `CAPACIDADE EQUIPE` declara `{"DATA", type date}`, que a partir de um
 serial funciona. As duas coisas juntas são consistentes com `UNFORMATTED_VALUE` e
 inconsistentes com texto formatado — mas é inferência a partir do M, não medição.
+
+## 23. Três credenciais do Google, e só uma delas é acesso
+
+Registrado em 06/08/2026, depois de gastar três tentativas na mesma confusão. O
+console do Google Cloud oferece coisas de nomes parecidos e naturezas diferentes, e
+a diferença não é de configuração — é de **quem tem permissão**:
+
+| Credencial | O que identifica | Alcança planilha privada? |
+|---|---|---|
+| Chave de API | o **projeto** | **Não.** Não carrega permissão nenhuma; só chega a documento público por link |
+| Service account | uma **identidade própria** | Só se a planilha for compartilhada **com o e-mail dela** |
+| Cliente OAuth (id + secret) | o **aplicativo** | Sozinho, não. Vira acesso quando **uma pessoa consente**, e é o acesso *dessa pessoa* |
+
+O que cada um custou aqui:
+
+- **Chave de API.** Restringi-la "à API do Sheets" no console autoriza a chave a
+  *chamar* a API — não a ler documento privado. Medido: 403 nas 3. Efeito colateral
+  útil da medição: 403 também **prova que nenhuma das 3 é pública por link**, o que
+  importa porque `QUADRO FUNCIONAL` tem CPF e RG.
+- **Service account.** `PERMISSION_DENIED` não distingue "não compartilharam" de
+  "compartilharam o documento errado". Quem resolve isso é a Drive API:
+  `probe:gsheets` lista o que a conta alcança, e **0 arquivos** encerra a dúvida.
+  Medido em 06/08/2026: 0.
+- **Cliente OAuth.** É o caminho que **não exige compartilhar nada**, porque a
+  plataforma passa a agir como uma conta que já tem acesso — e o Erick é Leitor nas
+  3. Implementado em `npm run auth:google` (código + PKCE + loopback).
+
+**A divergência que isso cria, e que é temporária de propósito.** OAuth amarra a
+leitura a uma conta pessoal: o refresh token morre se a senha mudar, se a pessoa
+sair da empresa, ou em 7 dias se a tela de consentimento estiver em modo "Teste".
+Para produção o certo continua sendo a service account, que não depende de pessoa.
+Então OAuth aqui é **desbloqueio de desenvolvimento**, não decisão de arquitetura —
+e o `probe:gsheets` imprime qual identidade está em uso justamente para que isso não
+passe batido no dia em que alguém for para produção.
+
+**Por que um `403` precisa saber qual identidade falhou.** As soluções são opostas:
+com service account, compartilhar a planilha com um robô; com OAuth, reautorizar com
+uma conta que enxergue o documento. Uma mensagem que sirva para os dois casos não
+serve para nenhum — daí o texto do 403 ramificar por tipo de identidade.

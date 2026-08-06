@@ -17,11 +17,14 @@ import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
 import { applyDotEnv, loadConfig } from '../../../packages/query-engine/src/config.ts';
 import {
-  accessToken,
-  readServiceAccount,
   SCOPE_DRIVE_METADATA_READONLY,
   SCOPE_SHEETS_READONLY,
 } from '../../../packages/query-engine/src/google-auth.ts';
+import {
+  identidadeGoogle,
+  porQueNaoAOutra,
+  type IdentidadeGoogle,
+} from '../../../packages/query-engine/src/google-identidade.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 applyDotEnv(ROOT);
@@ -86,21 +89,24 @@ if (cfg.gsheets.apiKey) {
 }
 
 // ------------------------------------------------------------------- token
+// Duas identidades possíveis (service account ou OAuth de usuário) e soluções
+// OPOSTAS para o mesmo 403 — num caso compartilhar a planilha com um robô, no
+// outro reautorizar com uma conta que a enxergue. Por isso o relatório abre
+// dizendo qual está em uso, antes de qualquer resultado.
 let token: string;
-let emailDaConta = '(desconhecido)';
-let conta: ReturnType<typeof readServiceAccount> | null = null;
+let identidade: IdentidadeGoogle;
 try {
-  const sa = readServiceAccount(cfg.gsheets.credentialsPath);
-  conta = sa;
-  emailDaConta = sa.client_email;
-  console.log(`service account: ${sa.client_email}`);
-  console.log(`projeto:         ${sa.project_id ?? '(não declarado)'}`);
-  token = await accessToken(sa, [SCOPE_SHEETS_READONLY]);
-  console.log('token:           obtido (escopo spreadsheets.readonly)\n');
+  identidade = identidadeGoogle(cfg.gsheets, [SCOPE_SHEETS_READONLY]);
+  console.log(`identidade: ${identidade.tipo === 'oauth' ? 'OAuth de usuário' : 'service account'}`);
+  console.log(`quem:       ${identidade.rotulo}`);
+  console.log(`a outra:    ${porQueNaoAOutra(cfg.gsheets, identidade.tipo)}`);
+  token = await identidade.token();
+  console.log('token:      obtido (escopo spreadsheets.readonly)\n');
 } catch (err) {
   console.error(`FALHA na credencial: ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 }
+const emailDaConta = identidade.rotulo;
 
 const auth = { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } };
 
@@ -113,6 +119,17 @@ function explica(status: number, corpo: string, id: string, email: string): stri
   if (status === 403 && /Google Sheets API has not been used|SERVICE_DISABLED|disabled/i.test(msg)) {
     return `a Google Sheets API não está ativada no projeto. Ative em\n` +
       `  console.cloud.google.com → APIs e serviços → Biblioteca → Google Sheets API`;
+  }
+  if (status === 403 && identidade.tipo === 'oauth') {
+    // Com OAuth a instrução é outra: não há nada a compartilhar com robô nenhum.
+    // Ou a conta que autorizou não enxerga a planilha, ou autorizou-se a conta
+    // errada — e é o mesmo 403 do outro caso, com solução oposta.
+    return 'a planilha existe, mas a CONTA QUE AUTORIZOU não tem acesso a ela.\n' +
+      `  Autorizada: ${email}\n` +
+      `  Documento:  ${urlDaPlanilha(id)}\n\n` +
+      '  Abra o documento logado nessa conta: se também der "sem acesso" no navegador,\n' +
+      '  o problema não é a plataforma. Se abrir no navegador e não aqui, foi outra\n' +
+      '  conta que consentiu — rode `npm run auth:google` e escolha a certa.';
   }
   if (status === 403) {
     // O e-mail vai inteiro aqui, e não só no cabeçalho do relatório, porque o
@@ -185,11 +202,25 @@ for (const p of planilhas) {
 //
 // Requer a Google Drive API ativada no projeto (a Sheets API não basta). Se
 // estiver desligada, o próprio erro do Google traz o link para ativar.
+//
+// **Só para service account.** Conta de robô não tem arquivo próprio: tudo que
+// ela vê foi compartilhado com ela, e é isso que dá sentido à contagem. Listar o
+// Drive de uma PESSOA não diagnostica nada e imprimiria nome de arquivo pessoal
+// num relatório que existe para ser colado em ticket.
 const algumaFalhou = PLANILHAS.some((p) => p.id && !abasPor.has(p.rotulo));
-if (algumaFalhou && conta) {
-  console.log('\n── O que esta conta de serviço alcança ───────────────');
+if (algumaFalhou && identidade.tipo === 'oauth') {
+  console.log(
+    '\n  (a listagem do Drive é diagnóstico de conta de serviço; com OAuth, quem\n' +
+      '   decide o acesso é a conta que autorizou — veja a instrução do 403 acima)',
+  );
+}
+if (algumaFalhou && identidade.tipo === 'service_account') {
+  console.log(`\n── O que ${emailDaConta} alcança ───`);
   try {
-    const tokenDrive = await accessToken(conta, [SCOPE_DRIVE_METADATA_READONLY]);
+    // Identidade separada porque o escopo é outro.
+    const tokenDrive = await identidadeGoogle(cfg.gsheets, [
+      SCOPE_DRIVE_METADATA_READONLY,
+    ]).token();
     const res = await fetch(
       'https://www.googleapis.com/drive/v3/files?pageSize=50' +
         '&fields=files(id,name,owners(emailAddress))' +

@@ -21,6 +21,7 @@
     "test:measures": "node --test packages/measure-engine/test/*.test.ts",
     "test:validate": "node --test tools/validate/test/*.test.ts",
     "doctor": "node tools/doctor/src/index.ts",
+    "auth:google": "node tools/auth/src/google.ts",
     "validate:model": "node tools/validate/src/model.ts",
     "validate:tables": "node tools/validate/src/tables.ts",
     "validate:queries": "node tools/validate/src/index.ts",

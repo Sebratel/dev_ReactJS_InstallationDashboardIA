@@ -100,6 +100,17 @@ export interface PlatformConfig {
      * medição em vez de argumento — o connector de produção não a usa.
      */
     apiKey: string;
+    /**
+     * OAuth de usuário — caminho alternativo à service account.
+     *
+     * `clientId`/`clientSecret` identificam o *aplicativo*, não uma pessoa: eles
+     * não dão acesso a nada sozinhos. O acesso vem do refresh token gravado em
+     * `tokenFile` por `npm run auth:google`, e é o acesso da conta que consentiu.
+     *
+     * Existe porque as 3 planilhas não estão compartilhadas com a service
+     * account, e quem tem acesso a elas é uma pessoa (ver ACHADOS.md #23).
+     */
+    oauth: { clientId: string; clientSecret: string; tokenFile: string };
     quadroFuncionalId: string;
     apuracaoPremiacaoId: string;
     capacidadeEquipeId: string;
@@ -159,6 +170,14 @@ export function loadConfig(): PlatformConfig {
     gsheets: {
       credentialsPath: env('GOOGLE_APPLICATION_CREDENTIALS'),
       apiKey: env('GSHEETS_API_KEY'),
+      oauth: {
+        clientId: env('GOOGLE_OAUTH_CLIENT_ID'),
+        clientSecret: env('GOOGLE_OAUTH_CLIENT_SECRET'),
+        // Sem default para um caminho dentro do repositório: refresh token é
+        // credencial de longa duração, e o `Desktop` inteiro é um repo git sem
+        // .gitignore. Vazio significa "OAuth não configurado", não "no cwd".
+        tokenFile: env('GOOGLE_OAUTH_TOKEN_FILE'),
+      },
       quadroFuncionalId: env('GSHEETS_QUADRO_FUNCIONAL_ID'),
       apuracaoPremiacaoId: env('GSHEETS_APURACAO_PREMIACAO_ID'),
       capacidadeEquipeId: env('GSHEETS_CAPACIDADE_EQUIPE_ID'),

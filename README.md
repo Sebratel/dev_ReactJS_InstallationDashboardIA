@@ -329,7 +329,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (514 testes, sem credencial)
+npm test                              # suíte completa (552 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
@@ -337,11 +337,12 @@ npm run doctor                        # valida configuração e conectividade
 npm run validate:queries              # executa as queries reais e grava os goldens
 npm run validate:queries -- --check    # falha se o schema de alguma query mudou
 npm run probe:datahub                 # perfila a API do Data Hub (shape, nunca linha)
-npm run probe:gsheets                 # a service account alcança as planilhas?
+npm run probe:gsheets                 # a identidade em uso alcança as planilhas?
+npm run auth:google                   # autoriza uma conta Google (uma vez) e grava o refresh token
 npm run run:mlayer -- --all --memoria=8192   # roda a camada M contra as fontes reais
 ```
 
-Os oito respondem perguntas diferentes, e só os três primeiros dispensam `.env`:
+Os nove respondem perguntas diferentes, e só os três primeiros dispensam `.env`:
 
 | Comando | Pergunta | Precisa de `.env`? |
 |---|---|---|
@@ -351,7 +352,8 @@ Os oito respondem perguntas diferentes, e só os três primeiros dispensam `.env
 | `doctor` | as fontes estão alcançáveis e a sessão é read-only? | sim |
 | `validate:queries` | as queries rodam e devolvem o quê? | sim |
 | `probe:datahub` | a API do Data Hub tem os campos que a mesclagem precisa? | sim |
-| `probe:gsheets` | a service account lê as planilhas, e o cabeçalho bate com a spec? | sim |
+| `probe:gsheets` | a identidade em uso lê as planilhas, e o cabeçalho bate com a spec? | sim |
+| `auth:google` | qual conta Google a plataforma usa para ler as planilhas? | sim |
 | `run:mlayer` | os passos de Power Query rodam contra o dado real, e a contagem fecha? | sim |
 
 A diferença entre o segundo e o terceiro é a razão de o terceiro existir:
