@@ -39,8 +39,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 2
 - id: 0a375852e99a59d706e4
   type: textbox
@@ -114,8 +116,10 @@ visuals:
       left_property: Data
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: 20d23554c9b205376057
   type: card
@@ -143,8 +147,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 2
 - id: 28b2fed3696b956b1a98
   type: card
@@ -222,8 +228,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: 381f3e30e0700e006aad
   type: pivotTable
@@ -264,8 +272,10 @@ visuals:
       left_property: Data
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   - name: c8e0cec6e1b5029d6d09
     type: Categorical
     entity: Clima/ Tempo
@@ -301,8 +311,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: 472098e3faec67cae276
   type: card
@@ -397,8 +409,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   - name: 410a4373bb88a6023b4c
     type: Categorical
     entity: PROTOCOLOS GERAL
@@ -445,8 +459,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: 880781fe2acd05b5c506
   type: textbox
@@ -522,15 +538,29 @@ visuals:
     - op: between_relativo
       property: DATA INSTALADO
       lower:
-      - amount: -7
-        time_unit: 0
-      - amount: 1
-        time_unit: 0
-      - amount: -1
-        time_unit: 0
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets:
+        - amount: -7
+          time_unit: day
+          time_unit_code: 0
+        - amount: 1
+          time_unit: day
+          time_unit_code: 0
+        - amount: -1
+          time_unit: day
+          time_unit_code: 0
       upper:
-      - amount: -1
-        time_unit: 0
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets:
+        - amount: -1
+          time_unit: day
+          time_unit_code: 0
   filters_vazios: 0
 - id: 9a7d36ddcbde8ec5135d
   type: card
@@ -618,11 +648,23 @@ visuals:
     - op: between_relativo
       property: Data Agendado
       lower:
-      - amount: -7
-        time_unit: 0
-      - amount: 1
-        time_unit: 0
-      upper: []
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets:
+        - amount: -7
+          time_unit: day
+          time_unit_code: 0
+        - amount: 1
+          time_unit: day
+          time_unit_code: 0
+      upper:
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets: []
   - name: 605ff6bcd0d7ad90d04d
     type: Categorical
     entity: CALENDARIO AGENDAMENTO
@@ -658,8 +700,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 2
 - id: bdc924350c64cc92c0e2
   type: textbox
@@ -722,8 +766,10 @@ visuals:
       left_property: DATA CRIADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: d914bdf23072848ca977
   type: card
@@ -762,8 +808,10 @@ visuals:
       left_property: DATA INSTALADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: dbb2eba36037470ca925
   type: lineStackedColumnComboChart
@@ -829,8 +877,10 @@ visuals:
       left_property: Data
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: dcc3106272278ce25a49
   type: card
@@ -856,15 +906,29 @@ visuals:
     - op: between_relativo
       property: DATA INSTALADO
       lower:
-      - amount: -7
-        time_unit: 0
-      - amount: 1
-        time_unit: 0
-      - amount: -1
-        time_unit: 0
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets:
+        - amount: -7
+          time_unit: day
+          time_unit_code: 0
+        - amount: 1
+          time_unit: day
+          time_unit_code: 0
+        - amount: -1
+          time_unit: day
+          time_unit_code: 0
       upper:
-      - amount: -1
-        time_unit: 0
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets:
+        - amount: -1
+          time_unit: day
+          time_unit_code: 0
   filters_vazios: 0
 - id: e2fc9924ee8243e8d5a5
   type: textbox
@@ -922,8 +986,10 @@ visuals:
       left_property: DATA CRIADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0
 - id: f8d993576d24ed2ca01a
   type: card
@@ -953,6 +1019,8 @@ visuals:
       left_property: DATA CRIADO
       left_aggregation: null
       right:
-        relativo: agora
-        time_unit: 2
+        anchor_kind: agora
+        anchor: null
+        time_unit: month
+        time_unit_code: 2
   filters_vazios: 0

@@ -604,7 +604,78 @@ test('traduzCondicao: data relativa guarda o deslocamento, não a data resolvida
   });
   assert.equal(c.op, 'between_relativo');
   assert.equal(c.property, 'DATA INSTALADO');
-  assert.deepEqual(c.lower, [{ amount: -7, time_unit: 0 }]);
+  assert.deepEqual(c.lower, {
+    anchor_kind: 'agora',
+    anchor: null,
+    // O truncamento por fora do `DateAdd` é o que faz a janela começar à
+    // meia-noite em vez de na hora atual. Era descartado.
+    truncate: 'day',
+    truncate_code: 0,
+    offsets: [{ amount: -7, time_unit: 'day', time_unit_code: 0 }],
+  });
+  assert.deepEqual(c.upper, {
+    anchor_kind: 'agora',
+    anchor: null,
+    truncate: 'day',
+    truncate_code: 0,
+    offsets: [],
+  });
+});
+
+test('traduzCondicao: DateSpan ancorado em data fixa NÃO é lido como "agora"', () => {
+  // Isto é o defeito que existia, e ele valia por página inteira: os dois filtros
+  // `Advanced` deste relatório são de página e ancoram em data fixa. Lidos como
+  // "hoje", as páginas AGENDAMENTO FIELD e INSTALAÇÃO/ REINCIDENTE inteiras
+  // mudariam de resposta a cada dia.
+  const c = traduzCondicao({
+    Comparison: {
+      ComparisonKind: 2,
+      Left: { Column: { Property: 'DATA INSTALADO' } },
+      Right: {
+        DateSpan: {
+          Expression: { Literal: { Value: "datetime'2026-01-01T00:00:00'" } },
+          TimeUnit: 5,
+        },
+      },
+    },
+  });
+  assert.equal(c.kind, 'ge');
+  assert.deepEqual(c.right, {
+    anchor_kind: 'literal',
+    anchor: '2026-01-01T00:00:00',
+    time_unit: 'second',
+    time_unit_code: 5,
+  });
+});
+
+test('traduzCondicao: DateSpan(Now()) diz em que unidade, porque eq é "cai dentro"', () => {
+  // `coluna = DateSpan(Now(), mês)` é como o Power BI escreve "este mês". Sem a
+  // unidade, "este mês" e "este ano" ficariam indistinguíveis na spec.
+  const c = traduzCondicao({
+    Comparison: {
+      ComparisonKind: 0,
+      Left: { Column: { Property: 'DATA CRIADO' } },
+      Right: { DateSpan: { Expression: { Now: {} }, TimeUnit: 2 } },
+    },
+  });
+  assert.deepEqual(c.right, {
+    anchor_kind: 'agora',
+    anchor: null,
+    time_unit: 'month',
+    time_unit_code: 2,
+  });
+});
+
+test('traduzCondicao: TimeUnit fora do vocabulário fica visível, não vira dia', () => {
+  const c = traduzCondicao({
+    Comparison: {
+      ComparisonKind: 0,
+      Left: { Column: { Property: 'DATA CRIADO' } },
+      Right: { DateSpan: { Expression: { Now: {} }, TimeUnit: 42 } },
+    },
+  });
+  assert.equal(c.right.time_unit, 'unidade42');
+  assert.equal(c.right.time_unit_code, 42);
 });
 
 test('traduzCondicao: forma desconhecida preserva o JSON cru em vez de desaparecer', () => {
@@ -680,6 +751,66 @@ test('integração: nenhum filtro do PBIP real fica sem tradução', () => {
   // no relatório e a paridade precisa acompanhar; se caírem, um filtro sumiu.
   assert.equal(comCondicao, 108, 'filtros que restringem de fato (6 de página + 102 de visual)');
   assert.equal(vazios, 176, 'cartões de filtro sem seleção — não mudam número');
+});
+
+test('integração: toda âncora e unidade de tempo do PBIP real é reconhecida', () => {
+  // Guarda irmã da de cima, para o lado das datas. `op` reconhecido não basta: uma
+  // comparação com `anchor_kind: desconhecido` ou `time_unit: unidade9` é traduzida
+  // "com sucesso" e ainda assim não é calculável.
+  let pbip;
+  try {
+    pbip = locatePbip();
+  } catch {
+    console.warn('PBIP não encontrado — pulando teste de integração.');
+    return;
+  }
+  const model = build(pbip);
+
+  const problemas = [];
+  const porUnidade = new Map();
+  const porAncora = new Map();
+  const conta = (m, k) => m.set(k, (m.get(k) ?? 0) + 1);
+
+  const olhaSpan = (onde, s) => {
+    if (!s || typeof s !== 'object' || s.anchor_kind === undefined) return;
+    conta(porAncora, s.anchor_kind);
+    const u = s.time_unit ?? s.truncate;
+    conta(porUnidade, u);
+    if (s.anchor_kind === 'desconhecido') problemas.push(`${onde}: âncora não lida — ${JSON.stringify(s.raw)}`);
+    if (typeof u === 'string' && u.startsWith('unidade')) problemas.push(`${onde}: ${u}`);
+  };
+
+  for (const d of model.dashboards) {
+    const escopos = [
+      { onde: `página ${d.id}`, f: d.filters },
+      ...d.visuals.map((v) => ({ onde: `${d.id}/${v.type} ${v.id}`, f: v.filters })),
+    ];
+    for (const { onde, f } of escopos) {
+      for (const filtro of f ?? []) {
+        for (const c of filtro.conditions ?? []) {
+          if (c.op === 'comparison') olhaSpan(onde, c.right);
+          if (c.op === 'between_relativo') {
+            for (const b of [c.lower, c.upper]) {
+              olhaSpan(onde, b);
+              for (const o of b?.offsets ?? []) {
+                conta(porUnidade, o.time_unit);
+                if (String(o.time_unit).startsWith('unidade')) problemas.push(`${onde}: offset ${o.time_unit}`);
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  assert.deepEqual(problemas, [], `datas não calculáveis:\n  ${problemas.join('\n  ')}`);
+  // As duas âncoras `literal` são os filtros de página que a versão anterior
+  // chamava de "agora". Se voltarem a zero, o defeito voltou.
+  assert.deepEqual([...porAncora].sort(), [['agora', 23], ['literal', 2]]);
+  assert.deepEqual(
+    [...porUnidade].sort(),
+    [['day', 20], ['month', 14], ['second', 2], ['year', 1]],
+  );
 });
 
 // ---------- Unit: campos de visual ----------

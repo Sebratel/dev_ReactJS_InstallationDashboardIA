@@ -48,8 +48,10 @@ filters:
     left_property: DATA INSTALADO
     left_aggregation: null
     right:
-      relativo: agora
-      time_unit: 5
+      anchor_kind: literal
+      anchor: 2026-01-01T00:00:00
+      time_unit: second
+      time_unit_code: 5
 filters_vazios: 0
 visuals:
 - id: 03b4bcd9157cec19d13e

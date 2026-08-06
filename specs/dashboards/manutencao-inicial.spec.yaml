@@ -21,8 +21,10 @@ filters:
     left_property: DATA INSTALADO
     left_aggregation: null
     right:
-      relativo: agora
-      time_unit: 3
+      anchor_kind: agora
+      anchor: null
+      time_unit: year
+      time_unit_code: 3
 filters_vazios: 0
 visuals:
 - id: 0147d7072c8525a2a802

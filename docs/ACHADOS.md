@@ -1466,3 +1466,75 @@ Somado ao 27, um card agora é calculável ponta a ponta: **um** campo (`role: V
 sempre um só nos 64), com função de agregação explícita ou uma medida nomeada, mais os
 filtros de visual e de página. É o que faltava para o Widget Engine começar pelo caso
 mais barato de conferir.
+
+---
+
+## 29. Duas páginas inteiras eram filtradas "a partir de hoje" quando o filtro diz uma data fixa
+
+Terceiro achado da mesma família do 27 e do 28, e o de raio maior: o extrator lia **toda**
+`DateSpan` como se a âncora fosse `Now()`.
+
+```js
+right: cond.Comparison.Right?.DateSpan
+  ? { relativo: 'agora', time_unit: cond.Comparison.Right.DateSpan.TimeUnit ?? null }
+  : ...
+```
+
+`DateSpan` é `{Expression, TimeUnit}` — uma data truncada numa unidade — e a `Expression`
+**não é sempre `Now()`**. Medido no PBIP de 06/08/2026, das 21 datas relativas do
+relatório duas ancoram em data fixa, e as duas são filtros de **página**:
+
+| página | o PBIP diz | a spec dizia |
+|---|---|---|
+| AGENDAMENTO FIELD | `Data > DateSpan(datetime'2025-08-31T01:00:00', 5)` | `relativo: agora` |
+| INSTALAÇÃO/ REINCIDENTE | `DATA INSTALADO >= DateSpan(datetime'2026-01-01T00:00:00', 5)` | `relativo: agora` |
+
+Filtro de página vale para **todos** os visuais da página. Um Widget Engine lendo essa
+spec calcularia as duas páginas inteiras a partir de *hoje* em vez de 31/08/2025 e
+01/01/2026 — e o número mudaria sozinho todo dia, sempre com cara de número certo.
+
+Agora a âncora é lida, e `anchor_kind` (`agora` | `literal` | `desconhecido`) é explícito
+justamente para que os dois casos não possam ser confundidos por quem consome:
+
+```yaml
+right:
+  anchor_kind: literal
+  anchor: 2026-01-01T00:00:00
+  time_unit: second
+  time_unit_code: 5
+```
+
+### `TimeUnit`: os nomes foram apurados do próprio relatório, não copiados
+
+`DateSpan` e `DateAdd` compartilham o enum, e é isso que permite fixá-lo sem documentação:
+
+- os quatro `DateAdd` do relatório usam `TimeUnit: 0` com montantes `-7`, `-1`, `+1` e
+  `+365`. Só fazem sentido como **dia** ("últimos 7 dias", "próximos 365 dias") ⇒ **0 = dia**;
+- com 0 = dia, os outros valores caem na sequência de calendário crescente: **2** aparece
+  em 14 filtros `RelativeDate` de visual como `DateSpan(Now(), 2)` — "este mês" — e **3**
+  em 1 filtro de página, "este ano";
+- **5** aparece só nos dois filtros `Advanced`, sobre data **literal já alinhada ao
+  segundo**. Cai no bloco de unidades abaixo do dia, onde truncar não muda nada — por isso
+  aqueles dois estão seguros mesmo sem cravar se 5 é segundo, minuto ou hora.
+
+Medido: `day` 20, `month` 14, `second` 2, `year` 1. Valor nunca visto sai como
+`unidade<N>` em vez de virar dia por omissão, e o teste de integração falha dizendo onde:
+um filtro de semana lido como dia daria número errado calado.
+
+### E `eq` contra `DateSpan` não é igualdade
+
+`DateSpan` é um **intervalo**. `coluna = DateSpan(Now(), mês)` é como o Power BI escreve
+"este mês" — "cai dentro do intervalo", não "é igual a". Sem a unidade na spec, "este mês"
+e "este ano" ficariam indistinguíveis; é por isso que `time_unit` sobrevive até o cálculo
+em vez de ser resolvido na extração.
+
+### O truncamento das bordas de `Between` também era descartado
+
+A borda é `DateSpan(DateAdd(...DateAdd(Now())), unidade)`: deslocamentos encadeados e **um
+truncamento por fora**. Só os deslocamentos eram guardados. É o truncamento que faz
+"últimos 7 dias" começar à **meia-noite** em vez de na hora corrente — diferença de até um
+dia de dados na ponta da janela. Agora a borda é um objeto com `anchor_kind`, `truncate` e
+`offsets`, em vez de uma lista solta de deslocamentos.
+
+Efeito nas specs: 5 dashboards mudaram (`agendamento-field`, `instalacao-reincidente`,
+`manutencao-inicial`, `relatorio-do-mes`, `visao-geral`). 581 testes verdes.

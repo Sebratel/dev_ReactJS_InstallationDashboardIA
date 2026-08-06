@@ -307,6 +307,66 @@ function refDeCampo(expr) {
 /** `ComparisonKind` do PBIP. */
 const COMPARACAO = { 0: 'eq', 1: 'gt', 2: 'ge', 3: 'lt', 4: 'le' };
 
+// **`TimeUnit`, e como estes nomes foram apurados** (não copiados de documentação).
+//
+// `DateSpan` e `DateAdd` compartilham o mesmo enum, e é isso que permite fixá-lo:
+// os quatro `DateAdd` deste relatório usam `TimeUnit: 0` com montantes -7, -1, +1 e
+// +365, que só fazem sentido como **dia** ("últimos 7 dias", "próximos 365 dias").
+// Com 0 = dia, os outros valores observados caem na sequência de calendário
+// crescente: 2 aparece em 14 filtros `RelativeDate` de visual como `DateSpan(Now(),
+// 2)` ("este mês") e 3 em 1 filtro de página ("este ano"). 5 aparece só nos dois
+// filtros `Advanced`, sobre uma data **literal** já alinhada ao segundo — logo cai
+// no bloco de unidades abaixo do dia, onde truncar não muda nada. É por isso que
+// aqueles dois são seguros mesmo sem cravar se 5 é segundo, minuto ou hora.
+//
+// Valores nunca vistos aqui ficam como `unidade<N>` em vez de virar dia por
+// omissão: um filtro de semana lido como dia daria número errado calado.
+const UNIDADE_TEMPO = {
+  0: 'day',
+  1: 'week',
+  2: 'month',
+  3: 'year',
+  4: 'decade',
+  5: 'second',
+  6: 'minute',
+  7: 'hour',
+};
+
+function nomeDaUnidade(tu) {
+  if (tu === null || tu === undefined) return null;
+  return UNIDADE_TEMPO[tu] ?? `unidade${tu}`;
+}
+
+/**
+ * `DateSpan{Expression, TimeUnit}`: uma data truncada na unidade.
+ *
+ * **A âncora é lida, não presumida.** A versão anterior devolvia
+ * `{relativo: 'agora'}` para todo `DateSpan`, e os dois filtros `Advanced` deste
+ * relatório ancoram numa data **fixa** (`2025-08-31`, `2026-01-01`). Como são
+ * filtros de **página**, cada um valia para todos os visuais da página: as duas
+ * páginas seriam calculadas a partir de *hoje*. Por isso `anchor_kind` é explícito —
+ * quem consome não tem como confundir os dois casos.
+ */
+/** Desce a pilha de `DateAdd` até a âncora (`Now()` ou literal). */
+function fundo(no) {
+  return no?.DateAdd ? fundo(no.DateAdd.Expression) : no;
+}
+
+function traduzSpan(no) {
+  const ex = no?.Expression;
+  const unidade = {
+    time_unit: nomeDaUnidade(no?.TimeUnit),
+    time_unit_code: no?.TimeUnit ?? null,
+  };
+  if (ex?.Now !== undefined) return { anchor_kind: 'agora', anchor: null, ...unidade };
+  if (ex?.Literal !== undefined) {
+    return { anchor_kind: 'literal', anchor: parseLiteral(ex.Literal.Value), ...unidade };
+  }
+  // Âncora que não é `Now()` nem literal (`DateAdd` chega aqui só dentro de
+  // `Between`, tratado à parte). Fica visível em vez de virar "agora".
+  return { anchor_kind: 'desconhecido', anchor: null, ...unidade, raw: ex ?? null };
+}
+
 /**
  * Traduz uma condição de filtro. Forma não reconhecida vira `op: desconhecido` com o
  * JSON cru — **nunca desaparece**. Há teste exigindo que o PBIP de hoje produza zero
@@ -336,31 +396,59 @@ function traduzCondicao(cond) {
       kind: COMPARACAO[cond.Comparison.ComparisonKind] ?? `kind${cond.Comparison.ComparisonKind}`,
       left_property: esq?.property ?? null,
       left_aggregation: esq?.aggregation ?? null,
-      // Data relativa aparece aqui como `DateSpan(Now())`: é "hoje" em unidade de
-      // tempo, não literal. Fica marcado para o Widget Engine resolver na execução.
+      // `DateSpan` é um **intervalo**, e comparar data com intervalo por `eq`
+      // significa "cai dentro dele" — é assim que o Power BI escreve "este mês".
+      // Por isso a unidade tem de sobreviver até o cálculo, junto da âncora.
       right: cond.Comparison.Right?.Literal !== undefined
         ? parseLiteral(cond.Comparison.Right.Literal.Value)
         : cond.Comparison.Right?.DateSpan
-          ? { relativo: 'agora', time_unit: cond.Comparison.Right.DateSpan.TimeUnit ?? null }
+          ? traduzSpan(cond.Comparison.Right.DateSpan)
           : { raw: cond.Comparison.Right ?? null },
     };
   }
   if (cond.Between) {
     // Janela de data relativa. O que importa reter é o deslocamento em unidades de
     // tempo — resolvê-lo aqui congelaria "os últimos 7 dias" na data da extração.
+    //
+    // A borda é `DateSpan(DateAdd(...DateAdd(Now())), unidade)`: vários
+    // deslocamentos encadeados e **um truncamento por fora**. O truncamento era
+    // descartado; agora vem em `truncate`, porque é ele que faz "-7 dias" começar
+    // à meia-noite em vez de na hora atual.
     const desloc = (no, acc = []) => {
-      if (no?.DateSpan) return desloc(no.DateSpan.Expression, acc);
       if (no?.DateAdd) {
-        acc.push({ amount: no.DateAdd.Amount ?? null, time_unit: no.DateAdd.TimeUnit ?? null });
+        acc.push({
+          amount: no.DateAdd.Amount ?? null,
+          time_unit: nomeDaUnidade(no.DateAdd.TimeUnit),
+          time_unit_code: no.DateAdd.TimeUnit ?? null,
+        });
         return desloc(no.DateAdd.Expression, acc);
       }
       return acc;
     };
+    const borda = (no) => {
+      const span = no?.DateSpan;
+      if (!span) return { anchor_kind: 'desconhecido', offsets: [], raw: no ?? null };
+      const { anchor_kind, anchor, time_unit, time_unit_code } = traduzSpan({
+        // A âncora da borda está no fundo da pilha de `DateAdd`; `traduzSpan` só
+        // sabe ler `Now()`/literal, então desce até lá antes de perguntar.
+        Expression: fundo(span.Expression),
+        TimeUnit: span.TimeUnit,
+      });
+      return {
+        anchor_kind,
+        anchor,
+        truncate: time_unit,
+        truncate_code: time_unit_code,
+        // Do mais externo para o mais interno, como no JSON. A soma é o que importa,
+        // mas a ordem é preservada para conferência contra o PBIP.
+        offsets: desloc(span.Expression),
+      };
+    };
     return {
       op: 'between_relativo',
       property: cond.Between.Expression?.Column?.Property ?? null,
-      lower: desloc(cond.Between.LowerBound),
-      upper: desloc(cond.Between.UpperBound),
+      lower: borda(cond.Between.LowerBound),
+      upper: borda(cond.Between.UpperBound),
     };
   }
   return { op: 'desconhecido', raw: cond };

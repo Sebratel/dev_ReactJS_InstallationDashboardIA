@@ -21,8 +21,10 @@ filters:
     left_property: Data
     left_aggregation: null
     right:
-      relativo: agora
-      time_unit: 5
+      anchor_kind: literal
+      anchor: 2025-08-31T01:00:00
+      time_unit: second
+      time_unit_code: 5
 filters_vazios: 0
 visuals:
 - id: 04979b00e5329b67f349

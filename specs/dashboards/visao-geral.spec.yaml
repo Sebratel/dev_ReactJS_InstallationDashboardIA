@@ -370,12 +370,24 @@ visuals:
     conditions:
     - op: between_relativo
       property: Data
-      lower: []
+      lower:
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets: []
       upper:
-      - amount: 365
-        time_unit: 0
-      - amount: -1
-        time_unit: 0
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: 0
+        offsets:
+        - amount: 365
+          time_unit: day
+          time_unit_code: 0
+        - amount: -1
+          time_unit: day
+          time_unit_code: 0
   filters_vazios: 0
 - id: 747e8b722a3f0684bfd4
   type: image
