@@ -189,8 +189,10 @@ Três condições, e a primeira é sua:
    supervisor duplicado, e registrar o critério que reproduz. Se nenhum reproduzir de
    forma estável, isso vira **divergência deliberada** documentada — como a do `CALENDAR`
    na 2b.7 — e não um número silencioso.
-2. **`PROTOCOLOS PRODUTIVIDADE` fica bloqueada até existir o connector de Google
-   Sheets** — e essa condição sobreviveu a uma tentativa de contorná-la.
+2. **`PROTOCOLOS PRODUTIVIDADE` ficou bloqueada até existir o connector de Google
+   Sheets** — condição que sobreviveu a uma tentativa de contorná-la e foi
+   **resolvida em 06/08/2026** (as 3 planilhas abrem; ver o Anexo B). O histórico
+   abaixo fica porque a ida e volta é a informação, não o desfecho.
 
    O histórico, porque a ida e volta em si é informação: em 05/08/2026 decidiu-se ler
    `QUADRO FUNCIONAL` do Data Hub interno em vez da planilha, o que teria dispensado o
@@ -203,11 +205,16 @@ Três condições, e a primeira é sua:
    registrar**, e o connector de Google Sheets é caminho crítico — não mais "baixíssima
    urgência". Das três planilhas, esta é a que 9 medidas alcançam.
 
-   **O que já existe** (05/08/2026): a autenticação de service account está escrita e
+   **O que já existia** (05/08/2026): a autenticação de service account escrita e
    testada (`packages/query-engine/src/google-auth.ts`, 11 testes, sem rede), a Sheets API
-   está ativada no projeto e o JWT é aceito pelo Google. **O que falta** é um passo que
-   não é código: compartilhar as 3 planilhas com o e-mail da conta de serviço como
-   **Leitor**. Hoje as três devolvem `PERMISSION_DENIED` — ver `npm run probe:gsheets`.
+   ativada no projeto e o JWT aceito pelo Google. **O que faltava** era um passo que não
+   é código: compartilhar as 3 planilhas com o e-mail da conta de serviço como
+   **Leitor** — e as três devolviam `PERMISSION_DENIED`.
+
+   **Feito em 06/08/2026**, com uma conta de serviço nova (de outro projeto GCP). As 3
+   abrem, o connector existe e as 3 queries de planilha rodam. `npm run probe:gsheets`
+   mostra o estado, e ele imprime **qual identidade** está em uso — que é o que faltava
+   para não confundir "não compartilharam" com "compartilharam com a outra conta".
 3. **`clima-tempo` continua fora.** Define função M com `let` aninhado, o scanner recusa
    por desenho, e a fonte é `web` (Open-Meteo) — sem connector. São duas pendências na
    mesma query, e nenhuma bloqueia o resto.
