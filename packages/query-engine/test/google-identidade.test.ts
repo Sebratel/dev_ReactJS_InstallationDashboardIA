@@ -14,7 +14,7 @@ type Gsheets = PlatformConfig['gsheets'];
 const gsheets = (over: Partial<Gsheets> = {}): Gsheets => ({
   credentialsPath: '',
   apiKey: '',
-  oauth: { clientId: '', clientSecret: '', tokenFile: '' },
+  oauth: { clientId: '', clientSecret: '', refreshToken: '', tokenFile: '' },
   quadroFuncionalId: 'id-qf',
   apuracaoPremiacaoId: 'id-ap',
   capacidadeEquipeId: 'id-ce',
@@ -142,7 +142,47 @@ test('credencial OAuth sem conta registrada ainda produz rótulo legível', () =
   const id = identidadeGoogle(gsheets({ oauth: OAUTH_CHEIO }), ['escopo/sheets'], {
     leCredencial: leCredFalso({ ...CRED, conta: undefined }),
   });
-  assert.equal(id.rotulo, 'conta de usuário via OAuth');
+  // Sem conta, o rótulo ainda diz de qual arquivo veio o refresh token — é o que
+  // permite achar a credencial certa quando há mais de uma configurada.
+  assert.equal(id.rotulo, `conta de usuário via OAuth — arquivo ${OAUTH_CHEIO.tokenFile}`);
+});
+
+test('GOOGLE_OAUTH_REFRESH_TOKEN direto no .env dispensa arquivo, e ganha do tokenFile', () => {
+  // O caso que motivou este caminho: colar client id/secret/refresh token direto
+  // no .env, sem criar arquivo — mesma convenção de DATAHUB_TOKEN e afins. Não
+  // deve nem tentar ler o tokenFile quando o refresh token já veio do .env.
+  let leuArquivo = false;
+  const id = identidadeGoogle(
+    gsheets({
+      oauth: {
+        clientId: 'c',
+        clientSecret: 's',
+        refreshToken: 'rt-do-env',
+        tokenFile: '/nao/deveria/ser/lido.json',
+      },
+    }),
+    ['escopo/sheets'],
+    {
+      leCredencial: () => {
+        leuArquivo = true;
+        return null as never;
+      },
+    },
+  );
+  assert.equal(leuArquivo, false);
+  assert.equal(id.tipo, 'oauth');
+  // Rótulo sem "arquivo": veio do .env, não de um JSON em disco.
+  assert.doesNotMatch(id.rotulo, /arquivo/);
+});
+
+test('sem GOOGLE_OAUTH_REFRESH_TOKEN, cai para o tokenFile normalmente', () => {
+  const id = identidadeGoogle(
+    gsheets({ oauth: { ...OAUTH_CHEIO, refreshToken: '' } }),
+    ['escopo/sheets'],
+    { leCredencial: leCredFalso(CRED) },
+  );
+  assert.equal(id.tipo, 'oauth');
+  assert.match(id.rotulo, /arquivo/);
 });
 
 test('nenhuma credencial: o erro ensina os dois caminhos', () => {

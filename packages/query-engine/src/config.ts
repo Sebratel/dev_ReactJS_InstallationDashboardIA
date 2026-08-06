@@ -104,13 +104,20 @@ export interface PlatformConfig {
      * OAuth de usuário — caminho alternativo à service account.
      *
      * `clientId`/`clientSecret` identificam o *aplicativo*, não uma pessoa: eles
-     * não dão acesso a nada sozinhos. O acesso vem do refresh token gravado em
-     * `tokenFile` por `npm run auth:google`, e é o acesso da conta que consentiu.
+     * não dão acesso a nada sozinhos. O acesso vem de um refresh token, e é o
+     * acesso da conta que consentiu. O refresh token chega por uma destas duas
+     * vias (a primeira que existir vence, ver `google-identidade.ts`):
+     *
+     *   - `refreshToken` direto no `.env` — mesmo padrão de toda outra credencial
+     *     deste projeto (`DATAHUB_TOKEN`, `VOALLE_PASSWORD`, ...), sem arquivo à
+     *     parte;
+     *   - `tokenFile`, um caminho para JSON — o que `npm run auth:google` grava,
+     *     ou um `authorized_user` de `gcloud auth application-default login`.
      *
      * Existe porque as 3 planilhas não estão compartilhadas com a service
      * account, e quem tem acesso a elas é uma pessoa (ver ACHADOS.md #23).
      */
-    oauth: { clientId: string; clientSecret: string; tokenFile: string };
+    oauth: { clientId: string; clientSecret: string; refreshToken: string; tokenFile: string };
     quadroFuncionalId: string;
     apuracaoPremiacaoId: string;
     capacidadeEquipeId: string;
@@ -173,6 +180,7 @@ export function loadConfig(): PlatformConfig {
       oauth: {
         clientId: env('GOOGLE_OAUTH_CLIENT_ID'),
         clientSecret: env('GOOGLE_OAUTH_CLIENT_SECRET'),
+        refreshToken: env('GOOGLE_OAUTH_REFRESH_TOKEN'),
         // Sem default para um caminho dentro do repositório: refresh token é
         // credencial de longa duração, e o `Desktop` inteiro é um repo git sem
         // .gitignore. Vazio significa "OAuth não configurado", não "no cwd".

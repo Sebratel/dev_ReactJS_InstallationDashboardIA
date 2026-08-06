@@ -45,11 +45,18 @@ export interface OpcoesDeIdentidade {
 /**
  * Resolve a identidade a partir da configuração.
  *
- * Precedência: **OAuth ganha quando há credencial gravada.** Não por ser melhor
- * — é o contrário —, mas porque a existência do arquivo de refresh token é uma
- * decisão deliberada de alguém que rodou `npm run auth:google`, enquanto a
- * chave da service account está sempre lá. Deixar a service account ganhar
- * faria o fluxo autorizado ser ignorado em silêncio.
+ * Precedência entre as três fontes de OAuth: **`.env` direto (refresh token em
+ * `GOOGLE_OAUTH_REFRESH_TOKEN`) vence o arquivo apontado por `tokenFile`.** É a
+ * mesma convenção de toda outra credencial deste projeto — `.env` é a fonte
+ * simples, sem arquivo à parte — e evitar arquivo é o caso comum: quem colou o
+ * refresh token direto no `.env` normalmente não tem (nem quer criar) um JSON à
+ * parte, então ler o arquivo mesmo assim seria surpresa, não ajuda.
+ *
+ * E o par OAuth-vs-service-account: **OAuth ganha quando há refresh token, de
+ * qualquer uma das duas fontes.** Não por ser melhor — é o contrário —, mas
+ * porque ter um refresh token configurado é decisão deliberada de alguém,
+ * enquanto a chave da service account costuma estar sempre lá. Deixar a service
+ * account ganhar faria essa decisão ser ignorada em silêncio.
  */
 export function identidadeGoogle(
   gsheets: PlatformConfig['gsheets'],
@@ -58,11 +65,16 @@ export function identidadeGoogle(
 ): IdentidadeGoogle {
   const leCred = opts.leCredencial ?? leCredencialOAuth;
   const leSa = opts.leServiceAccount ?? readServiceAccount;
-  const { tokenFile } = gsheets.oauth;
+  const { tokenFile, refreshToken } = gsheets.oauth;
 
-  const credencial: CredencialOAuthGravada | null = tokenFile ? leCred(tokenFile) : null;
+  const credencial: CredencialOAuthGravada | null = refreshToken
+    ? { client_id: gsheets.oauth.clientId, refresh_token: refreshToken, scopes: [], obtido_em: '', formato: 'nosso' }
+    : tokenFile
+      ? leCred(tokenFile)
+      : null;
+  const doEnvDireto = Boolean(refreshToken);
 
-  // O client id/secret pode vir do `.env` **ou** de dentro do próprio arquivo: o
+  // O client id/secret pode vir do `.env` **ou** de dentro do arquivo apontado: o
   // formato `authorized_user` do gcloud carrega os dois. Preferir o `.env` quando
   // existe mantém possível apontar um cliente diferente sem editar a credencial.
   const clientId = gsheets.oauth.clientId || credencial?.client_id || '';
@@ -73,7 +85,11 @@ export function identidadeGoogle(
       { cliente: { clientId, clientSecret }, credencial, scopes },
       opts.fetchImpl,
     );
-    const origem = credencial.formato === 'authorized_user' ? ' — arquivo do gcloud' : '';
+    const origem = doEnvDireto
+      ? ''
+      : credencial.formato === 'authorized_user'
+        ? ' — arquivo do gcloud'
+        : ` — arquivo ${tokenFile}`;
     return {
       tipo: 'oauth',
       rotulo: credencial.conta
@@ -83,10 +99,12 @@ export function identidadeGoogle(
     };
   }
   if (credencial && !clientSecret) {
+    const onde = doEnvDireto ? 'GOOGLE_OAUTH_REFRESH_TOKEN' : tokenFile;
     throw new Error(
-      `${tokenFile} tem refresh token, mas falta o client secret para usá-lo. Ele não ` +
-        'está no arquivo (formato sem `client_secret`) nem em GOOGLE_OAUTH_CLIENT_SECRET ' +
-        'no .env. Refresh token só é trocado por access token pelo cliente que o emitiu.',
+      `Há refresh token em ${onde}, mas falta o client secret para usá-lo. Ele não ` +
+        'está em GOOGLE_OAUTH_CLIENT_SECRET no .env' +
+        (doEnvDireto ? '' : ' nem no arquivo (formato sem `client_secret`)') +
+        '. Refresh token só é trocado por access token pelo cliente que o emitiu.',
     );
   }
 
@@ -101,11 +119,15 @@ export function identidadeGoogle(
   }
 
   throw new Error(
-    'Nenhuma credencial do Google configurada. Há dois caminhos, e basta um:\n' +
+    'Nenhuma credencial do Google configurada. Há caminhos, e basta um:\n' +
       '  a) service account: GOOGLE_APPLICATION_CREDENTIALS apontando para o JSON da\n' +
       '     chave, e cada planilha compartilhada com o e-mail dela como Leitor;\n' +
-      '  b) OAuth de usuário: GOOGLE_OAUTH_CLIENT_ID + GOOGLE_OAUTH_CLIENT_SECRET +\n' +
-      '     GOOGLE_OAUTH_TOKEN_FILE, e então `npm run auth:google` uma vez.\n' +
+      '  b) OAuth de usuário, direto no .env: GOOGLE_OAUTH_CLIENT_ID + _CLIENT_SECRET\n' +
+      '     + GOOGLE_OAUTH_REFRESH_TOKEN (peça a quem já autorizou, ou rode\n' +
+      '     `npm run auth:google` e copie o refresh_token do arquivo gerado);\n' +
+      '  c) OAuth de usuário via arquivo: GOOGLE_OAUTH_TOKEN_FILE apontando para o\n' +
+      '     JSON gerado por `npm run auth:google` ou por\n' +
+      '     `gcloud auth application-default login`.\n' +
       'Ver .env.example.',
   );
 }
@@ -115,17 +137,21 @@ export function porQueNaoAOutra(
   gsheets: PlatformConfig['gsheets'],
   escolhida: TipoDeIdentidade,
 ): string {
-  const { clientId, clientSecret, tokenFile } = gsheets.oauth;
+  const { clientId, clientSecret, tokenFile, refreshToken } = gsheets.oauth;
   if (escolhida === 'oauth') {
     return gsheets.credentialsPath
-      ? 'a service account existe, mas o OAuth gravado tem precedência'
+      ? 'a service account existe, mas o OAuth configurado tem precedência'
       : 'não há chave de service account configurada';
   }
-  if (!tokenFile && !clientId && !clientSecret) return 'OAuth não configurado';
-  if (!tokenFile) return 'OAuth sem GOOGLE_OAUTH_TOKEN_FILE definido';
-  // Chega aqui com arquivo apontado: ou ele não existe, ou não trouxe o cliente.
+  if (!tokenFile && !refreshToken && !clientId && !clientSecret) return 'OAuth não configurado';
+  if (!tokenFile && !refreshToken) {
+    return 'OAuth sem refresh token — falta GOOGLE_OAUTH_REFRESH_TOKEN ou GOOGLE_OAUTH_TOKEN_FILE';
+  }
+  // Chega aqui com refresh token (do .env ou de arquivo): falta o cliente.
   if (!clientId || !clientSecret) {
-    return 'OAuth sem client id/secret — nem no .env, nem dentro do arquivo apontado';
+    return refreshToken
+      ? 'OAuth com refresh token no .env, mas sem GOOGLE_OAUTH_CLIENT_ID/_SECRET'
+      : 'OAuth sem client id/secret — nem no .env, nem dentro do arquivo apontado';
   }
   return 'OAuth configurado mas sem credencial gravada — rode `npm run auth:google`';
 }

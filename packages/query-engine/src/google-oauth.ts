@@ -288,13 +288,20 @@ export function gravaCredencialOAuth(
  */
 export function leCredencialOAuth(arquivo: string): CredencialOAuthGravada | null {
   if (!arquivo || !fs.existsSync(arquivo)) return null;
+  // Bloco Notas e PowerShell (`Out-File`, `Set-Content`) gravam UTF-8 **com BOM**
+  // por padrão no Windows, e `JSON.parse` rejeita o U+FEFF na frente do `{` — o
+  // erro que se vê é "Unexpected token" sem pista nenhuma de codificação. Quem
+  // colou um JSON à mão num editor comum é o caso mais provável de bater nisso,
+  // então descarta-se o BOM antes de tentar.
+  const bruto = fs.readFileSync(arquivo, 'utf8').replace(/^﻿/, '');
   let json: Partial<CredencialOAuthGravada> & { type?: string; client_secret?: string };
   try {
-    json = JSON.parse(fs.readFileSync(arquivo, 'utf8'));
+    json = JSON.parse(bruto);
   } catch (err) {
     throw new OAuthError(
       `${arquivo} não é JSON válido: ${err instanceof Error ? err.message : err}. ` +
-        'Apague e rode `npm run auth:google`.',
+        'Se você colou o conteúdo à mão, confira chaves/aspas com um validador de ' +
+        'JSON; ou apague e rode `npm run auth:google`.',
     );
   }
   if (json.type === 'service_account') {
