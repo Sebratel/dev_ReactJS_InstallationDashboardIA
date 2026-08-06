@@ -125,6 +125,27 @@ def('SUM', (a, s, ev, n) =>
 
 def('COUNT', (a, s, ev, n) => agregacao(a, s, ev, n, (vs) => vs.length));
 
+/**
+ * `COUNTA` conta os não-vazios de **qualquer** tipo, e é o que o Widget Engine
+ * chama para a agregação `count_non_null` (`Function: 5`) dos campos de visual.
+ *
+ * Não é redundante com o `COUNT` acima por acidente de implementação: no DAX,
+ * `COUNT` conta só número e data, e `COUNTA` conta texto também. O `COUNT` daqui
+ * é permissivo (conta qualquer não-vazio), o que é seguro para as expressões desta
+ * base — todas as chamadas de `COUNT` no DAX do modelo são sobre coluna numérica.
+ * Registrar `COUNTA` separado é o que deixa a intenção do chamador explícita em
+ * vez de depender dessa permissividade.
+ */
+def('COUNTA', (a, s, ev, n) => agregacao(a, s, ev, n, (vs) => vs.length));
+
+/**
+ * `AVERAGE`. Média dos não-vazios — vazio **não** conta como zero no denominador,
+ * e é aí que ela difere de `SUM/COUNTROWS`.
+ */
+def('AVERAGE', (a, s, ev, n) =>
+  agregacao(a, s, ev, n, (vs) => vs.reduce((acc, v) => acc + toNumber(v, n), 0) / vs.length),
+);
+
 def('MIN', (a, s, ev, n) => minMax(a, s, ev, n, -1));
 def('MAX', (a, s, ev, n) => minMax(a, s, ev, n, 1));
 
