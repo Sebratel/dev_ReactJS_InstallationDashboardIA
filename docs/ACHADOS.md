@@ -907,7 +907,8 @@ committado, não o banco.
 ## 20. A camada M não streama: 1,4 milhão de linhas precisam de 8 GB de heap
 
 Achado da primeira execução da camada M contra as fontes reais
-(`npm run run:mlayer --all`), 06/08/2026. Não é um achado sobre o Power BI — é
+(`npm run run:mlayer -- --all --memoria=8192`), 06/08/2026. Não é um achado sobre o
+Power BI — é
 sobre **o nosso** avaliador, e muda uma decisão de arquitetura, então fica aqui.
 
 **O que aconteceu.** Rodar 21 queries num processo só matou o processo:
@@ -943,6 +944,23 @@ permite comparar passo a passo com o relatório atual.
 Ou seja: o gargalo é **passo × largura**, não só contagem de linhas.
 `base-categorias-field` tem 7× mais linhas que `protocolos-geral` e roda 19× mais
 rápido, porque tem 4 passos e 7 colunas em vez de 56 passos e 50 colunas.
+
+**As contagens acima andam entre execuções, e isso é esperado:** a fonte é o ERP em
+produção. `field-agenda` deu 1.445.730, 1.445.786 e 1.445.878 em três execuções de
+05 e 06/08. Compare ordem de grandeza, não o número exato — e para comparar com o
+Power BI, os dois lados têm que olhar o mesmo instante.
+
+**Duas armadilhas de leitura do relatório**, ambas encontradas ao conferir:
+
+- **Falha de rede aparece como falha de query.** Uma execução mostrou
+  `instalacoes-reincidentes: read ECONNRESET`, e a mesma query passou sozinha na
+  repetição. O Query Engine **não tem retry** — leitura é idempotente, então retry
+  seria seguro, mas é decisão que ainda não foi tomada. Repita antes de acreditar
+  numa falha isolada de rede.
+- **Não edite fonte com um `--all` em andamento.** Cada query é um processo novo,
+  que carrega os arquivos **no momento em que sobe**. Salvar um `.ts` no meio da
+  execução faz os filhos seguintes morrerem com erro de módulo, e o relatório
+  mostra isso como se a query estivesse quebrada.
 
 **O que foi feito agora.** `npm run run:mlayer` roda **uma query por processo**
 (`tools/mrun/src/index.ts`). A memória volta ao sistema entre uma query e outra, e

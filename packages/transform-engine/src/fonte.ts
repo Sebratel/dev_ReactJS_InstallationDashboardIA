@@ -13,7 +13,7 @@
 // arquivo existe, e o teste satisfaz com quatro linhas.
 
 import { deLinhas, type FonteDeLinhas, type MQuerySpec } from './runner.ts';
-import { MEvalError, MTable, type MValue } from './value.ts';
+import { MEvalError, MTable } from './value.ts';
 
 /** Só o que o adaptador precisa do Query Engine. `QueryEngine` já satisfaz. */
 export interface ExecutorDeQuery {
@@ -64,27 +64,31 @@ export function fonteDoEngine(
 export class FonteError extends Error {}
 
 /**
- * Converte célula que contém tabela aninhada.
+ * Converte a tabela aninhada da navegação de planilha.
  *
- * O único caso real é a coluna `Data` da navegação do Google Sheets. A regra é
- * estrutural e vale só nesta fronteira: um driver não produz registro nem lista
- * de registros de M, então array de objetos aqui **é** tabela. Array de escalares
- * continua lista (`Text.Split` e afins produzem isso).
+ * Toca **uma** coluna e devolve a mesma linha quando não há nada a fazer — isto roda
+ * 1,4 milhão de vezes em `field-agenda`, onde nenhuma linha tem coluna aninhada.
  */
 function comValoresAninhados(row: Record<string, unknown>): Record<string, unknown> {
-  let mudou = false;
-  const saida: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(row)) {
-    const aninhada = comoTabela(v);
-    if (aninhada) {
-      saida[k] = aninhada;
-      mudou = true;
-    } else {
-      saida[k] = v;
-    }
-  }
-  return mudou ? saida : row;
+  const bruto = row[COLUNA_DE_NAVEGACAO];
+  const aninhada = comoTabela(bruto);
+  if (!aninhada) return row;
+  return { ...row, [COLUNA_DE_NAVEGACAO]: aninhada };
 }
+
+/**
+ * A única coluna em que uma tabela pode vir aninhada.
+ *
+ * Restringir a esta coluna, em vez de converter todo array de objetos, é o que
+ * mantém `jsonb` sendo **recusado**. Um `jsonb` que contenha `[{...}, {...}]` é
+ * indistinguível de uma grade de planilha olhando só a forma — e adivinhar ali
+ * produziria uma tabela plausível a partir de um dado que ninguém pediu para
+ * tabular. Hoje nenhuma query do escopo traz `jsonb` (só as duas de `interval`),
+ * então isto é guarda para o futuro, não correção de algo quebrado.
+ *
+ * O nome vem do M, não de nós: `Fonte{[name="STAGING", ItemKind="Table"]}[Data]`.
+ */
+const COLUNA_DE_NAVEGACAO = 'Data';
 
 function comoTabela(v: unknown): MTable | null {
   if (v instanceof MTable) return v;
@@ -109,6 +113,3 @@ function comoTabela(v: unknown): MTable | null {
     );
   }
 }
-
-/** Exportado para teste: o que o adaptador considera valor de M. */
-export type ValorDaFonte = MValue | Record<string, unknown>[];

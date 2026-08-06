@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import yaml from 'yaml';
 import { fonteDoEngine, FonteError, type ExecutorDeQuery } from '../src/fonte.ts';
-import { runQueries, type MQuerySpec } from '../src/runner.ts';
+import { deLinhas, runQueries, type MQuerySpec } from '../src/runner.ts';
 import { MTable } from '../src/value.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -70,6 +70,18 @@ test('fonteDoEngine converte a coluna Data da navegação em tabela de M', async
   assert.equal(dados.rowCount, 2);
   // Os outros campos passam intactos: o M filtra por eles.
   assert.equal(linhas[0].name, 'STAGING');
+});
+
+test('array de objetos fora da coluna Data continua recusado', async () => {
+  // `jsonb` com `[{…}]` tem a mesma forma de uma grade de planilha. Converter por
+  // forma daria uma tabela plausível a partir de um dado que ninguém pediu para
+  // tabular; recusar deixa o caso aparecer.
+  const eng = executor({ q: [{ PAYLOAD: [{ a: 1 }, { a: 2 }] }] });
+  const linhas = await fonteDoEngine(eng)(spec());
+  // O adaptador não mexe: passa adiante como veio…
+  assert.deepEqual(linhas[0].PAYLOAD, [{ a: 1 }, { a: 2 }]);
+  // …e a fronteira driver→M recusa, que é onde a decisão pertence.
+  assert.throws(() => deLinhas(linhas), /não sabe representar/);
 });
 
 test('lista de escalares continua lista — não é tabela aninhada', async () => {

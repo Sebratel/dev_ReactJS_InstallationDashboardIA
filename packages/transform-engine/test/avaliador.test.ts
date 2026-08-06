@@ -313,6 +313,14 @@ test('serial fracionário não perde o milissegundo por arredondamento binário'
   assert.equal((t.rows[0].get('H') as Date).toISOString(), '2026-01-15T08:30:00.000Z');
 });
 
+test('serial fora da faixa de data erra nomeando o número, não estoura depois', () => {
+  const e = ev({ T: tab(['D'], [[1e15]]) });
+  assert.throws(
+    () => e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"D", type date}}) in a'),
+    /não é um número de série de data válido/,
+  );
+});
+
 test('Date.From aceita número de série, como no Excel', () => {
   const e = ev({});
   assert.equal(

@@ -322,7 +322,17 @@ function dataDeSerial(n: number): Date {
   }
   // Arredonda no milissegundo: 0,354166… * 86_400_000 dá 30599999,99 em binário,
   // e truncar transformaria 08:30 em 08:29:59.999.
-  return new Date(EPOCA_SERIAL_MS + Math.round(n * 86_400_000));
+  const d = new Date(EPOCA_SERIAL_MS + Math.round(n * 86_400_000));
+  // Serial absurdo (célula com um número que não era data) estoura a faixa de
+  // `Date`. Sem esta guarda o erro sai só depois, como `RangeError` de
+  // `toISOString` em outra camada — longe da coluna que o causou.
+  if (Number.isNaN(d.getTime())) {
+    throw new MEvalError(
+      `O número ${n} não é um número de série de data válido: fora da faixa que uma ` +
+        'data representa. Confira se a coluna é data mesmo na origem.',
+    );
+  }
+  return d;
 }
 
 function horaDe(d: Date): MTime {

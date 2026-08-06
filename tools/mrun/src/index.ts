@@ -55,7 +55,11 @@ import {
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import type { Connector, ResolvedQuery } from '../../../packages/query-engine/src/types.ts';
 import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
-import { runQueries, usaFonteExterna } from '../../../packages/transform-engine/src/runner.ts';
+import {
+  queryDependencies,
+  runQueries,
+  usaFonteExterna,
+} from '../../../packages/transform-engine/src/runner.ts';
 import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -190,12 +194,32 @@ async function montaConnectors(
   return { connectors, fechar, avisos };
 }
 
-/** Datasources que uma query e suas dependências usam. */
-function fontesDe(ids: readonly string[]): Set<string> {
+/**
+ * Datasources que a query e suas dependências usam.
+ *
+ * O fechamento importa: `PROTOCOLOS PRODUTIVIDADE` é `dbVoalle` na spec e mescla
+ * com `QUADRO FUNCIONAL`, que é planilha. Mas o contrário também: rodar
+ * `--only=consolidado-clientes` não deve abrir pool no MariaDB nem ler a
+ * credencial do Google, e sem o fechamento a alternativa preguiçosa seria conectar
+ * em tudo sempre.
+ */
+function fontesDe(id: string): Set<string> {
+  const porNome = new Map(todas.map((q) => [q.name, q]));
+  const nomes = new Set(porNome.keys());
   const fontes = new Set<string>();
-  for (const q of todas) {
-    if (ids.includes(q.id) && q.datasource) fontes.add(q.datasource);
-  }
+  const vistas = new Set<string>();
+
+  const anda = (q: ResolvedQuery): void => {
+    if (vistas.has(q.id)) return;
+    vistas.add(q.id);
+    if (q.datasource) fontes.add(q.datasource);
+    for (const dep of queryDependencies(q.m_expression!, nomes).dependencias) {
+      const d = porNome.get(dep);
+      if (d) anda(d);
+    }
+  };
+  const inicial = todas.find((q) => q.id === id);
+  if (inicial) anda(inicial);
   return fontes;
 }
 
@@ -203,10 +227,8 @@ function fontesDe(ids: readonly string[]): Set<string> {
 async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
   const inicio = Date.now();
   // Dependência de outra query também busca fonte, então o connector dela precisa
-  // existir. `todas` entra inteira em `specs` e o runner resolve o fechamento.
-  const { connectors, fechar, avisos } = await montaConnectors(
-    new Set([...fontesDe(todas.map((x) => x.id))]),
-  );
+  // existir — daí o fechamento, e não só o datasource desta query.
+  const { connectors, fechar, avisos } = await montaConnectors(fontesDe(q.id));
   for (const a of avisos) console.error(`  aviso: ${a}`);
 
   const engine = new QueryEngine({ registry, connectors, cache: new MemoryCache() });
