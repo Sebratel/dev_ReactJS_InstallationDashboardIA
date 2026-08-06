@@ -30,6 +30,60 @@ const cfg = loadConfig();
 const chave = (s: string): string =>
   s.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[\s_-]+/g, '');
 
+const PLANILHAS: { rotulo: string; id: string }[] = [
+  { rotulo: 'QUADRO FUNCIONAL', id: cfg.gsheets.quadroFuncionalId },
+  { rotulo: '#APURAÇÃO PREMIAÇÃO', id: cfg.gsheets.apuracaoPremiacaoId },
+  { rotulo: 'CAPACIDADE EQUIPE', id: cfg.gsheets.capacidadeEquipeId },
+];
+
+// --------------------------------------------------- chave de API (diagnóstico)
+// Roda antes da service account e não interrompe nada: a pergunta que responde é
+// "a chave de API resolve?", e a resposta precisa ser medida, não argumentada.
+//
+// O que se espera: 403. Chave de API identifica o PROJETO, não uma PESSOA — ela
+// não carrega permissão, então só alcança planilha pública por link. Restringir a
+// chave "à API do Sheets" no console autoriza a chave a CHAMAR a API; não dá a ela
+// acesso a documento privado. São coisas diferentes e o console não as separa bem.
+if (cfg.gsheets.apiKey) {
+  console.log('── Chave de API (GSHEETS_API_KEY) ────────────────────');
+  let algumaAbriu = false;
+  for (const p of PLANILHAS) {
+    if (!p.id) continue;
+    // Sem cabeçalho Authorization: é exatamente o que a chave sozinha alcança.
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${p.id}` +
+      `?fields=properties.title&key=${encodeURIComponent(cfg.gsheets.apiKey)}`;
+    const res = await fetch(url, { headers: { accept: 'application/json' } });
+    const corpo = await res.text();
+    const msg = (() => {
+      try {
+        return (JSON.parse(corpo) as { error?: { message?: string } }).error?.message ?? '';
+      } catch {
+        return corpo.slice(0, 120);
+      }
+    })();
+    if (res.ok) {
+      algumaAbriu = true;
+      console.log(`  ${p.rotulo}: ABRIU com chave de API — ou seja, está PÚBLICA por link`);
+    } else {
+      console.log(`  ${p.rotulo}: HTTP ${res.status} — ${msg.slice(0, 110)}`);
+    }
+  }
+  if (algumaAbriu) {
+    console.log(
+      '\n  ATENÇÃO: planilha que abre com chave de API está acessível a QUALQUER\n' +
+        '  pessoa com o link, sem login. Se for a QUADRO FUNCIONAL, são CPF e RG\n' +
+        '  expostos — o certo é fechar o link e compartilhar com a conta de serviço.',
+    );
+  } else {
+    console.log(
+      '\n  Nenhuma abriu, e é o esperado: chave de API não tem permissão de\n' +
+        '  documento. O caminho continua sendo compartilhar com a conta de serviço\n' +
+        '  abaixo, ou OAuth com uma conta que já tem acesso.',
+    );
+  }
+  console.log('');
+}
+
 // ------------------------------------------------------------------- token
 let token: string;
 let emailDaConta = '(desconhecido)';
@@ -84,12 +138,7 @@ async function pega(url: string, id: string): Promise<unknown> {
 }
 
 // ------------------------------------------------------- acesso a cada planilha
-interface Planilha { rotulo: string; id: string }
-const planilhas: Planilha[] = [
-  { rotulo: 'QUADRO FUNCIONAL', id: cfg.gsheets.quadroFuncionalId },
-  { rotulo: '#APURAÇÃO PREMIAÇÃO', id: cfg.gsheets.apuracaoPremiacaoId },
-  { rotulo: 'CAPACIDADE EQUIPE', id: cfg.gsheets.capacidadeEquipeId },
-];
+const planilhas = PLANILHAS;
 
 console.log('── Acesso ────────────────────────────────────────────');
 const abasPor = new Map<string, string[]>();

@@ -274,6 +274,22 @@ test('aba vazia devolve navegação com tabela sem linha, não erro', async () =
 
 // ─────────────────────────────────────────────────────────── token
 
+test('o connector exige token — não aceita chave de API', async () => {
+  // Guarda de projeto, não de implementação: chave de API identifica o projeto e
+  // não carrega permissão de documento, então só alcançaria planilha pública por
+  // link. `QUADRO FUNCIONAL` tem CPF e RG. Se algum dia alguém acrescentar um
+  // caminho por `?key=`, este teste tem que ser removido de propósito, com decisão
+  // registrada — e não passar sem ninguém notar.
+  const { fetchImpl, urls, headers } = fakeFetch([
+    META_OK,
+    { casa: /\/values\//, body: { values: [['a']] } },
+  ]);
+  await new GoogleSheetsConnector({ token: async () => 'tok', fetchImpl }).execute(query());
+
+  for (const u of urls) assert.ok(!/[?&]key=/.test(u), `URL não deve levar chave de API: ${u}`);
+  for (const h of headers) assert.equal(h.authorization, 'Bearer tok');
+});
+
 test('tokenComCache reusa o token dentro da validade', async () => {
   let trocas = 0;
   let t = 0;

@@ -93,6 +93,13 @@ export interface PlatformConfig {
    */
   gsheets: {
     credentialsPath: string;
+    /**
+     * Chave de API do Google. **Não** substitui a service account: chave de API
+     * identifica o *projeto*, não uma *pessoa*, e por isso só alcança planilha
+     * pública por link. Existe aqui para o `probe:gsheets` poder provar isso com
+     * medição em vez de argumento — o connector de produção não a usa.
+     */
+    apiKey: string;
     quadroFuncionalId: string;
     apuracaoPremiacaoId: string;
     capacidadeEquipeId: string;
@@ -151,6 +158,7 @@ export function loadConfig(): PlatformConfig {
     },
     gsheets: {
       credentialsPath: env('GOOGLE_APPLICATION_CREDENTIALS'),
+      apiKey: env('GSHEETS_API_KEY'),
       quadroFuncionalId: env('GSHEETS_QUADRO_FUNCIONAL_ID'),
       apuracaoPremiacaoId: env('GSHEETS_APURACAO_PREMIACAO_ID'),
       capacidadeEquipeId: env('GSHEETS_CAPACIDADE_EQUIPE_ID'),
