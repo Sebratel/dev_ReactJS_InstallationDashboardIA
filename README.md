@@ -22,8 +22,9 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.8 | Camada M — **opção A confirmada** ([decisão](docs/DECISAO-CAMADA-M.md)). Parser + avaliador + orquestrador; **as 39 funções do escopo rodam** (37 na tabela de funções + as 2 de fonte, ligadas aos connectors). As 23 queries executam os 303 passos | ✅ |
 | — | **23 das 23 queries rodam contra a fonte real** (`npm run run:mlayer -- --all --memoria=8192`), incluindo `field-agenda` com 1.449.281 linhas e `protocolos-produtividade` com 60 passos. As 4 que faltavam eram as de planilha, desbloqueadas em 06/08/2026 | ✅ |
 | — | A camada M **não streama**: 4 GB de heap não bastam, 8 GB bastam hoje ([ACHADOS](docs/ACHADOS.md) #20). Decide a arquitetura da Fase 3 | ⚠️ |
-| — | Connector de Google Sheets pronto e testado; falta compartilhar as 3 planilhas com a conta de serviço ([Anexo B](docs/DECISAO-CAMADA-M.md)) | 🚧 |
-| 2b.9 | Paridade medida a medida contra o relatório | 🚧 em curso |
+| — | Connector de Google Sheets pronto, testado e **em uso**: as 3 planilhas foram compartilhadas com a conta de serviço em 06/08/2026 ([Anexo B](docs/DECISAO-CAMADA-M.md)) | ✅ |
+| — | Goldens regravados contra o dbVoalle: `categoria32` e `CIDADE2` passaram a existir, e o corpus subiu para **23 de 23** queries executando inteiras ([ACHADOS](docs/ACHADOS.md) #19) | ✅ |
+| 2b.9 | Paridade medida a medida contra o relatório — **depende de alguém abrir o Power BI e ditar os totais**; do lado do código, `--passos` já localiza a divergência passo a passo | 🚧 em curso |
 | 3 | Widget/Dashboard Engine + Chart SDK | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
