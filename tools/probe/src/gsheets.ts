@@ -101,6 +101,9 @@ try {
 
 const auth = { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } };
 
+/** URL do documento que o `.env` está apontando — o que abre no navegador. */
+const urlDaPlanilha = (id: string): string => `https://docs.google.com/spreadsheets/d/${id}/edit`;
+
 /** Traduz os erros que realmente acontecem aqui em instrução, não em código HTTP. */
 function explica(status: number, corpo: string, id: string, email: string): string {
   const msg = (JSON.parse(corpo || '{}') as { error?: { message?: string } }).error?.message ?? '';
@@ -116,10 +119,20 @@ function explica(status: number, corpo: string, id: string, email: string): stri
     return `a planilha existe, mas ESTA conta não tem permissão. Compartilhe com\n\n` +
       `      ${email}\n\n` +
       `  como Leitor — copie e cole a linha acima, caractere por caractere.\n` +
-      `  Ter acesso com a sua conta Google não dá acesso à conta de serviço.\n` +
-      `  Se o compartilhamento foi feito e o erro persiste: confira se o e-mail na\n` +
-      `  lista de "Pessoas com acesso" é exatamente esse, e se a planilha não está\n` +
-      `  num Workspace que bloqueia compartilhar fora da organização.`;
+      `  Ter acesso com a sua conta Google não dá acesso à conta de serviço.\n\n` +
+      `  O DOCUMENTO é exatamente este (abra e confira que é onde você compartilhou):\n\n` +
+      `      ${urlDaPlanilha(id)}\n\n` +
+      // A permissão do Google vale na hora: não existe fila de propagação a
+      // esperar. Então "compartilhei e continua 403" tem três causas possíveis, e
+      // todas são verificáveis pelo usuário — daí a lista, em vez de "tente de novo".
+      `  A permissão vale imediatamente. Se você compartilhou e o erro persiste, é\n` +
+      `  uma destas três, nesta ordem de probabilidade:\n` +
+      `    1. o compartilhamento foi em OUTRO documento (planilha de mesmo nome, ou\n` +
+      `       cópia) — compare com a URL acima;\n` +
+      `    2. o e-mail na lista de "Pessoas com acesso" está parecido mas não igual\n` +
+      `       (o Google aceita endereço inexistente sem reclamar);\n` +
+      `    3. a caixa de compartilhar foi fechada sem clicar em "Compartilhar"/"Enviar",\n` +
+      `       ou o Workspace bloqueia compartilhar fora da organização.`;
   }
   if (status === 404) {
     return `nenhuma planilha com id ${id}. Confira o id no .env contra a URL da planilha.`;
