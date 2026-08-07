@@ -13,6 +13,7 @@ import { normalizeName } from '../../semantic-model/src/model.ts';
 import { walk, type DaxNode } from './ast.ts';
 import type { Row } from './dataset.ts';
 import type { EvalScope, Evaluator } from './evaluator.ts';
+import { igualdadeIndexavel, indiceDe, MINIMO_PARA_INDEXAR } from './indice.ts';
 import {
   type TableFilter,
   type TableValue,
@@ -634,10 +635,26 @@ function filtroDe(node: DaxNode, scope: EvalScope, ev: Evaluator, nome: string):
   );
   const escopoDoFiltro: EvalScope = { filter: semConflito, rows: new Map(), vars: scope.vars };
 
+  // A mesma igualdade indexável do `FILTER` (ACHADOS #43), aqui pelo outro
+  // caminho: `CALCULATE(x, 'T'[c] = <var>)` também varre a tabela por chamada, e
+  // em `Status Protocolo Dia` são 2 das 7 varreduras por linha. O valor é avaliado
+  // agora, uma vez, no escopo do filtro — `keep` continua sendo a verdade, e o
+  // índice só diz por onde começar.
+  let igualdade: TableFilter['igualdade'];
+  const alvo = igualdadeIndexavel(node, table);
+  if (alvo) {
+    try {
+      igualdade = { coluna: alvo.coluna, valor: ev.evaluate(alvo.valor, escopoDoFiltro) };
+    } catch {
+      // `Identifier` que não era variável. Sem atalho; o `keep` responde.
+    }
+  }
+
   return {
     table,
     columns,
     origem: `${nome}: filtro booleano`,
+    igualdade,
     keep: (row) =>
       toBoolean(ev.evaluate(node, ev.scopeWithRow(escopoDoFiltro, modelo.name, row)), nome),
   };
@@ -685,11 +702,56 @@ defTable('CALCULATETABLE', (args, scope, ev, nome) => {
 defTable('FILTER', (args, scope, ev, nome) => {
   exigeArgs(args, 2, 2, nome);
   const origem = ev.evaluateTable(args[0]!, scope, nome);
-  const rows = origem.rows.filter((row) =>
-    toBoolean(ev.evaluate(args[1]!, ev.scopeWithTableRow(scope, origem, row)), nome),
+  const pred = args[1]!;
+  // Candidatos pelo índice quando o predicado traz uma igualdade indexável; a
+  // tabela inteira quando não traz. Nos dois casos o predicado abaixo é o mesmo e
+  // roda inteiro — o índice só encurta a lista (ACHADOS #43).
+  const candidatos = candidatosPorIndice(origem, pred, scope, ev, nome) ?? origem.rows;
+  const rows = candidatos.filter((row) =>
+    toBoolean(ev.evaluate(pred, ev.scopeWithTableRow(scope, origem, row)), nome),
   );
-  return makeTableValue(origem.table, origem.columns, rows);
+  return makeTableValue(origem.table, origem.columns, [...rows]);
 });
+
+/**
+ * As linhas de `origem` que podem satisfazer `pred`, ou `null` para "varra tudo".
+ *
+ * O ganho do achado #43 vem daqui, e a segurança vem de o resultado ser sempre um
+ * **superconjunto**: quem chama aplica o predicado inteiro por cima, então este
+ * atalho não pode mudar resposta — só pode encurtar a lista. Cada `null` abaixo é
+ * uma situação em que encurtar seria arriscado, e a resposta é não encurtar.
+ */
+function candidatosPorIndice(
+  origem: TableValue,
+  pred: DaxNode,
+  scope: EvalScope,
+  ev: Evaluator,
+  nome: string,
+): readonly Row[] | null {
+  // Tabela anônima não tem coluna de modelo, e `SELECTCOLUMNS` pode ter renomeado
+  // tudo: o nome no predicado não fala das linhas que estão aqui.
+  if (origem.table === null) return null;
+  if (origem.rows.length < MINIMO_PARA_INDEXAR) return null;
+
+  const alvo = igualdadeIndexavel(pred, origem.table);
+  if (!alvo || !origem.columns.has(alvo.coluna)) return null;
+
+  const indice = indiceDe(origem.rows, alvo.coluna);
+  if (!indice) return null;
+
+  // O valor é avaliado **sem** a linha varrida, que é o que torna uma avaliação só
+  // suficiente para todas elas. `avaliavelForaDaLinha` já garantiu que ele não
+  // depende da linha; o `try` é para o `Identifier` que não era variável (nome de
+  // tabela, enum): ali a avaliação erra, e a resposta certa é varrer, não propagar
+  // um erro que o caminho exato não daria.
+  let valor: DaxValue;
+  try {
+    valor = ev.evaluate(alvo.valor, scope);
+  } catch {
+    return null;
+  }
+  return indice.candidatos(valor);
+}
 
 /**
  * `ALL('T'[C])` — todos os valores de `C`, ignorando o contexto de filtro.

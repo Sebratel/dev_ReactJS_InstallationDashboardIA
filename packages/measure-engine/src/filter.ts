@@ -16,6 +16,7 @@
 
 import { normalizeName } from '../../semantic-model/src/model.ts';
 import type { Dataset, Row } from './dataset.ts';
+import { indiceDe } from './indice.ts';
 import { type Propagation, type PropagationEdge, describeEdge } from './propagation.ts';
 import { BLANK, DaxEvalError, type DaxValue, identityKey, isBlank } from './value.ts';
 
@@ -97,8 +98,60 @@ export function filterFromTable(tv: TableValue, origem: string): TableFilter {
     table: tabela,
     columns: new Set(tv.columns),
     origem,
+    igualdade: igualdadeConstante(tv),
     keep: (row) => permitidas.has(rowKey(row, tv.columns)),
   };
+}
+
+/**
+ * Uma coluna em que **todas** as linhas de `tv` têm o mesmo valor.
+ *
+ * É o que torna `CALCULATE(MAX('T'[x]), FILTER('T', 'T'[k] = <var>))` viável. O
+ * `FILTER` já ficou rápido pelo índice, mas o `MAX` depois dele avalia num contexto
+ * onde este filtro **substituiu** os anteriores sobre as mesmas colunas — então
+ * `linhasVisiveis` recomeça da tabela inteira e testa `keep` linha a linha, que em
+ * `FIELD AGENDA` é 1,46 milhão de `rowKey` sobre 19 colunas. Medido na reprodução
+ * sintética: 38 ms por consulta, contra 0 ms dos outros dois caminhos.
+ *
+ * **Por que derivar uma igualdade em vez de partir das linhas de `tv`.** Partir
+ * delas seria errado, e errado do jeito silencioso: este filtro derruba os filtros
+ * anteriores sobre as colunas dele, então uma linha que o contexto de fora escondia
+ * volta a ser visível e **passa** no `keep` se tiver os mesmos valores de alguma
+ * linha de `tv`. Ela não está em `tv.rows`, e começar por ali a perderia — número
+ * menor, plausível, sem aviso. É a mesma armadilha do achado #38.
+ *
+ * A igualdade não tem esse problema: se toda linha de `tv` tem `c = v`, então toda
+ * chave em `permitidas` tem `v` na posição de `c`, e **toda** linha que passa no
+ * `keep` tem `c = v` — inclusive a que estava escondida. O balde do índice contém
+ * todas elas.
+ *
+ * `tv.rows` aqui é o resultado de um filtro, quase sempre pequeno, e a varredura é
+ * abandonada no primeiro valor divergente de cada coluna.
+ */
+function igualdadeConstante(tv: TableValue): { coluna: string; valor: DaxValue } | undefined {
+  if (tv.rows.length === 0) return undefined;
+  const primeira = tv.rows[0]!;
+  for (const coluna of tv.columns) {
+    const valor = primeira[coluna] ?? (null as DaxValue);
+    // BLANK não serve: `candidatos()` recusa procurar por BLANK (ele casa com 0 e
+    // com ""), então derivá-la só gastaria a varredura abaixo à toa.
+    //
+    // **Isto é economia, não segurança** — e está dito porque o teste de mutação
+    // confirma: tirar esta linha não derruba teste nenhum, porque o guarda de
+    // `candidatos()` recusa a busca logo depois e o resultado não muda. Quem vier
+    // depois não deve confundi-la com os guardas de `indice.ts`, que são regra.
+    if (isBlank(valor)) continue;
+    const chave = identityKey(valor);
+    let constante = true;
+    for (let i = 1; i < tv.rows.length; i++) {
+      if (identityKey(tv.rows[i]![coluna] ?? (null as DaxValue)) !== chave) {
+        constante = false;
+        break;
+      }
+    }
+    if (constante) return { coluna, valor };
+  }
+  return undefined;
 }
 
 /** Um filtro sobre uma tabela do modelo. */
@@ -124,6 +177,17 @@ export interface TableFilter {
    * conjunto de linhas é o mesmo, e há teste diferencial que afirma isso.
    */
   grupo?: Materializacao;
+  /**
+   * Uma igualdade `coluna = valor` que este filtro **implica**, quando quem o
+   * montou soube extraí-la do predicado.
+   *
+   * Serve de ponto de partida por índice (`indice.ts`, ACHADOS #43), e é otimização
+   * como o `grupo`: com ela ou sem ela o conjunto de linhas é o mesmo, porque o
+   * `keep` continua rodando por cima. O que ela promete é só isto — **toda linha
+   * que passa no `keep` tem `valor` nesta coluna** —, e por isso só é preenchida a
+   * partir de conjunção de topo, nunca de disjunção.
+   */
+  igualdade?: { coluna: string; valor: DaxValue };
 }
 
 /**
@@ -239,9 +303,14 @@ export class FilteredContext implements FilterContext {
     // inteira à toa é o caso mais comum de todos.
     let visiveis: Row[];
     if (pronto === null) {
+      // Sem materialização de grupo, ainda pode haver partida por índice: um
+      // filtro `'T'[c] = v` diz quais linhas *podem* passar, e o `keep` de todos
+      // os filtros roda por cima do mesmo jeito (ACHADOS #43).
+      const porIndice = this.partidaIndexada(aplicaveis, todas);
+      const base = porIndice ?? todas;
       visiveis = aplicaveis.length === 0
-        ? todas
-        : todas.filter((row) => aplicaveis.every((f) => f.keep(row)));
+        ? base
+        : (base as Row[]).filter((row) => aplicaveis.every((f) => f.keep(row)));
     } else {
       // Os filtros do grupo escolhido já estão refletidos em `linhas` — pular o
       // `keep` deles é o grosso da economia, porque num agrupamento de 31 chaves
@@ -300,6 +369,34 @@ export class FilteredContext implements FilterContext {
    * eixo de coluna, as duas sobre a âncora. Começar pela menor e conferir a outra
    * por `keep` custa o tamanho do menor lado, não o da tabela.
    */
+  /**
+   * O menor conjunto de candidatos que os filtros de igualdade permitem, ou `null`
+   * para "comece pela tabela inteira".
+   *
+   * Só encurta a lista: `keep` de **todos** os filtros continua rodando por cima,
+   * então isto não pode mudar resposta. E como cada `igualdade` é implicada pelo
+   * seu filtro, nenhuma linha que passaria fica de fora.
+   *
+   * O menor entre os disponíveis porque dois filtros de igualdade sobre a mesma
+   * tabela dão dois baldes, e começar pelo menor é o que faz o custo ser o do
+   * balde, não o da tabela.
+   */
+  private partidaIndexada(
+    aplicaveis: readonly TableFilter[],
+    todas: readonly Row[],
+  ): readonly Row[] | null {
+    let melhor: readonly Row[] | null = null;
+    for (const f of aplicaveis) {
+      if (!f.igualdade) continue;
+      const indice = indiceDe(todas, f.igualdade.coluna);
+      if (!indice) return null;
+      const candidatos = indice.candidatos(f.igualdade.valor);
+      if (candidatos === null) continue;
+      if (melhor === null || candidatos.length < melhor.length) melhor = candidatos;
+    }
+    return melhor;
+  }
+
   private partidaMaterializada(key: string): Materializacao | null {
     let escolhida: Materializacao | null = null;
     let presentes: Map<object, number> | null = null;

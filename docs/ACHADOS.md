@@ -2524,3 +2524,94 @@ um dos filtros com `ALL()`.
 A única página fora é `agendamento-field`, por este achado. `field-agenda`
 materializou (1.458.244 linhas, 950 MB) e `clima-tempo` também (#42), então
 **nenhuma página está mais parada por falta de dado.**
+
+## 44. O índice de igualdade, e o que a medição desmentiu do #43
+
+O #43 mediu `Status Protocolo Dia` e disse que o custo de `agendamento-field` eram
+304,7 bilhões de visitas. **A conta estava certa e a conclusão estava errada**: essa
+tabela não é o gargalo principal. Ao instrumentar, o processo não saía do
+*carregamento* — e quem trava ali é a própria `FIELD AGENDA`, que tem **7 colunas
+calculadas**, duas delas varrendo `FIELD AGENDA` por linha de `FIELD AGENDA`:
+
+```
+RankDataProtocolo  = ... DISTINCT(SELECTCOLUMNS(FILTER('FIELD AGENDA',
+                         'FIELD AGENDA'[protocolo] = ProtocoloAtual), ...))
+RankAtualProtocolo = CALCULATE(MAX('FIELD AGENDA'[RankDataProtocolo]),
+                         FILTER('FIELD AGENDA', 'FIELD AGENDA'[protocolo] = ProtocoloAtual))
+```
+
+1.458.244 × 1.458.244 ≈ **2,1 × 10¹²** visitas — **sete vezes** o que o #43 tinha
+medido, e num lugar que ele não olhou. A lição de método é a de sempre neste
+projeto, e desta vez contra mim mesmo: **medir a parte que se suspeita não é medir
+onde o tempo vai.** O `Status Protocolo Dia` era o suspeito óbvio porque só aquela
+página o pede; o custo maior estava numa tabela que **outras páginas também
+carregam** — e que elas não pagavam porque nenhum visual delas toca essas colunas.
+
+### O conserto: inverter a coluna uma vez
+
+As três formas caras têm a mesma cara — `'T'[coluna] = <valor de fora>` — e é isso
+que dá para indexar. `FIELD AGENDA` tem 26.554 protocolos em 1,46 milhão de linhas,
+então o balde médio é de **55 linhas**.
+
+`packages/measure-engine/src/indice.ts` inverte a coluna sob demanda, guarda o
+índice num `WeakMap` pela **instância** do array de linhas (indexar por nome de
+tabela responderia sobre linhas que um filtro já tinha tirado), e é usado em três
+lugares:
+
+| caminho | onde | antes | depois |
+|---|---|---|---|
+| `CALCULATE(x, 'T'[c] = v)` | `partidaIndexada` em `filter.ts` | 0 ms/consulta¹ | 0 ms |
+| `FILTER('T', 'T'[c] = v && …)` | `candidatosPorIndice` em `functions.ts` | 0 ms¹ | 0 ms |
+| `CALCULATE(MAX(…), FILTER('T', 'T'[c] = v))` | `igualdadeConstante` em `filter.ts` | **38 ms** | **0 ms** |
+
+*(¹ medido na reprodução sintética de 200.000 linhas e 4.000 chaves, 200 consultas;
+os dois primeiros já saem em 0 ms porque a medição foi feita depois de eles
+existirem. O total do caso composto caiu de **7.626 ms para 12 ms** — 635×.)*
+
+O terceiro caminho foi o que quase escapou: o `FILTER` já estava rápido, mas o `MAX`
+**depois** dele avalia num contexto onde aquele filtro substituiu os anteriores, e
+`linhasVisiveis` recomeçava da tabela inteira testando `keep` linha a linha.
+
+### Por que não se pode partir das linhas do próprio `FILTER`
+
+Foi a primeira ideia, e é errada — do jeito silencioso. O filtro vindo de tabela
+**derruba** os filtros anteriores sobre as colunas dele; uma linha que o contexto de
+fora escondia volta a ser visível e **passa** no `keep` se tiver os mesmos valores de
+alguma linha do `FILTER`. Ela não está em `tv.rows`, e começar por ali a perderia.
+
+A saída foi derivar uma **igualdade**, não um conjunto de linhas: se toda linha de
+`tv` tem `c = v`, então toda chave permitida tem `v` na posição de `c`, e **toda**
+linha que passa no `keep` tem `c = v` — inclusive a escondida. O balde as contém
+todas. É a mesma armadilha do #38 (substituição de filtro) evitada por outro meio.
+
+### `=` do DAX não é igualdade de identidade, e é aí que mora o perigo
+
+Um índice que agrupasse por identidade responderia "nenhuma linha" onde o DAX diria
+"estas aqui". Por isso `candidatos()` devolve **"não sei, varre"** em três casos:
+
+- **o valor procurado é BLANK, `0` ou `""`** — `BLANK = 0` e `BLANK = ""` são
+  verdadeiros no DAX, então a busca atravessaria baldes;
+- **a coluna mistura texto e número** — ali o DAX **lança erro**, e devolver lista
+  vazia trocaria um problema visível por um invisível;
+- **a tabela é pequena** (< 1.000 linhas) — inverter custa mais que varrer.
+
+Fora disso, `identityKey` e `compareValues(_, _, false)` concordam: os dois usam
+`toLocaleLowerCase('pt-BR')` para texto e `serialFromDate`/0-1 para data e booleano.
+
+O analisador de predicado é igualmente conservador: só desce em **conjunção** (num
+`||` uma linha pode passar sem satisfazer a igualdade), só aceita `=` (nunca `==`,
+que é estrito com BLANK), e só aceita do outro lado literal ou variável — nunca uma
+chamada, que poderia esconder a linha que está sendo varrida.
+
+**Nada disso decide resultado.** Em todos os três caminhos o predicado inteiro roda
+por cima dos candidatos: o índice só encurta a lista. É o que os testes diferenciais
+afirmam — o mesmo cálculo com e sem índice, mesmo valor, inclusive o mesmo **erro**
+quando a coluna mistura tipos.
+
+### O que a mutação disse
+
+Sete regras quebradas de propósito, **seis derrubam teste**. A sétima — recusar BLANK
+em `igualdadeConstante` — não derruba nada, e a investigação mostrou que ela **não é
+regra**: o guarda de `candidatos()` recusa a busca logo depois e o resultado não muda.
+Está anotada no código como economia, não como segurança, para ninguém a confundir
+com as outras.

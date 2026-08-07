@@ -63,10 +63,13 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | `field-agenda` materializou com teto de 1800 s: **1.458.244 linhas, 950 MB**. `FORA_DO_ESCOPO` está **vazio** no `mrun` e no `snapshot` pela primeira vez, e as 24 queries do corpus rodam | ✅ |
 | — | **13 das 14 páginas carregam e os 96 visuais com número nelas calculam** (era 11 e 64) — 3.751.093 linhas, 53,1 s de carga e 31,1 s de cálculo | ✅ |
 | — | A que falta é `agendamento-field`, e **não é mais falta de dado**: a tabela calculada `Status Protocolo Dia` faz **7 varreduras de `FIELD AGENDA` por linha** e tem uma linha por par (protocolo, dia). Medido: 29.846 linhas × 7 = **208.922 varreduras de 1,46 M** = **304,7 bilhões de visitas**; 9 min de CPU sem sair do carregamento. É o #38 outra vez, na tabela calculada em vez da matriz ([ACHADOS](docs/ACHADOS.md) #43) | ⚠️ |
+| — | **Índice de igualdade por coluna** (`measure-engine/src/indice.ts`): as três formas caras são `'T'[c] = <valor de fora>`, e inverter a coluna uma vez troca 1,46 M linhas por um balde de ~55. Medido na reprodução sintética: `CALCULATE(MAX(…), FILTER(…))` de **7.626 ms para 12 ms**, **635×** ([ACHADOS](docs/ACHADOS.md) #44) | ✅ |
+| — | E a medição desmentiu o #43: o gargalo maior **não** é `Status Protocolo Dia`, e sim as 7 colunas calculadas da própria `FIELD AGENDA` — duas varrem `FIELD AGENDA` por linha de `FIELD AGENDA`, **2,1 × 10¹²** visitas, sete vezes mais, e num lugar que o achado não olhou. Outras páginas não pagavam porque nenhum visual delas toca essas colunas | ⚠️ |
+| — | Nada disso decide resultado: o predicado inteiro roda por cima dos candidatos, e os testes diferenciais afirmam o mesmo valor — e o mesmo **erro** — com e sem índice. `=` do DAX não é identidade (`BLANK = 0` é verdadeiro, texto contra número **lança**), e cada guarda existe por causa disso. 6 de 7 mutações derrubam teste; a 7ª não é regra, e está anotada como tal | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**939 testes verdes.** Nenhum deles precisa de credencial.
+**957 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
