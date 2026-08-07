@@ -2375,3 +2375,152 @@ número redondo.** Por isso `--timeout=` existe e o valor usado é impresso.
 
 **E nada disto é paridade.** 64 visuais calcularem quer dizer que a conta termina
 sobre estes dados. Que o número seja o do Power BI segue sem prova.
+
+## 41. `Table.FromColumns`: onde o M preenche com null, aqui recusa
+
+O M preenche a coluna mais curta com `null` quando as listas têm comprimentos
+diferentes. **Esta implementação recusa**, e é a primeira divergência deliberada de
+semântica do M nesta base — as outras 64 funções seguem o M como ele é.
+
+O motivo é o caminho que o `null` percorre depois. Em `clima-tempo` as três listas
+vêm de arrays paralelos da **mesma** resposta da Open-Meteo (`daily.time`,
+`daily.precipitation_sum`), e a query classifica logo abaixo:
+
+```
+if [Precipitacao_mm] = 0 then "Sem chuva"
+else if [Precipitacao_mm] < 5 then "Chuva fraca"
+else if [Precipitacao_mm] < 20 then "Chuva moderada"
+else "Chuva forte"
+```
+
+Com `null`, `= 0` é falso e `< 5` é `null` — os dois ramos escapam, e o dia **sem
+dado** sai como **"Chuva forte"** na tela. Não há erro em lugar nenhum: é o número
+plausível e errado, na forma mais direta que já apareceu neste projeto.
+
+Recusar não custa nada no corpus: o próprio autor do M iguala os comprimentos à
+mão, com `List.Repeat({null}, List.Count(datas))`. Ou seja, **a divergência só é
+observável sobre uma resposta que a API não deveria dar** — e é exatamente aí que
+ela precisa aparecer.
+
+## 42. `Web.Contents` não é pré-buscável, e a saída foi reavaliar
+
+`clima-tempo` estava fora do escopo desde a 2b.8, e o motivo registrado era "lê
+`Web.Contents`, que não tem connector". Escrever o connector era a parte fácil. O
+problema real é outro, e é de arquitetura:
+
+> **Avaliar M é síncrono; ler fonte é assíncrono.** Para `Odbc.Query` isso se
+> resolve pré-buscando — a spec diz qual é a fonte antes de a avaliação começar. Em
+> `clima-tempo` a URL sai de `cidade{1}` e de `Date.ToText(ontem, "yyyy-MM-dd")`:
+> **valores que só existem no meio da avaliação.** Não há o que pré-buscar.
+
+Três saídas foram consideradas:
+
+| saída | por que não / por que sim |
+|---|---|
+| tornar o avaliador assíncrono | 622 linhas de avaliador e 1.576 de funções, todas síncronas, e `await` no caminho quente de `field-agenda` (1,4 mi de linhas × 19 colunas). Caro e arriscado pelo pior motivo: uma query de 1.638 linhas |
+| valor "pendente" que se propaga | contamina toda a tabela de funções e produz resultado parcial plausível. É o erro que o projeto inteiro existe para não cometer |
+| **ponto-fixo: avalia, sinaliza, busca, reavalia** | **escolhida** |
+
+O laço vive em `runner.ts`. `Web.Contents` monta a URL (transformação pura, e por
+isso ela **está** em `standardFunctions`, diferente de `Odbc.Query`) e consulta o
+mapa de respostas; no que falta, lança um sinal interno. O runner busca, guarda, e
+avalia de novo do zero.
+
+Ele termina porque o mapa **só cresce**, e é correto porque a **última** passada
+roda inteira sem nenhuma busca pendente: nenhum resultado parcial sobrevive.
+
+**Medido em `clima-tempo`:** 14 requisições (7 cidades × 2 endpoints), 15 passadas,
+1.638 linhas. Da execução de 13,5 s, **13,4 s são rede** e **123 ms são M** — ou
+seja, reavaliar 15 vezes custa menos de 1% do total. O custo que parecia proibitivo
+no papel é ruído medido.
+
+### O guard read-only ganhou uma quarta camada, em HTTP
+
+As três camadas existentes (usuário somente-leitura, `default_transaction_read_only`,
+`assertReadOnly`) protegem o Postgres e não dizem nada sobre HTTP. Sem nada no lugar,
+uma expressão M passaria a escolher com quem a plataforma fala.
+
+- o método é **GET**, e não é parâmetro de lugar nenhum;
+- `Web.Contents` **recusa a opção `Content`**, que é o que faria um POST;
+- o host tem de estar em `endpoints` do `.spec.yaml` — que o **extrator gera do
+  PBIP**, então ampliar o alcance de rede exige mudar o Power BI, não o código;
+- comparação de host é exata: nem subdomínio (`mau.api.open-meteo.com`) nem
+  sufixo (`api.open-meteo.com.invalido`) passam;
+- só `http`/`https`: um M pedindo `file:///` leria o disco da máquina;
+- o corpo de uma resposta de erro **não** entra na mensagem — é texto de terceiro.
+
+### O que a mutação disse
+
+Quatro regras novas, quebradas de propósito, **todas derrubam teste**. Uma delas só
+depois de consertada: o teste de que `Date.ToText` lê em UTC passava por acidente do
+fuso da máquina (-03) e teria passado num CI em UTC — justamente onde ninguém
+olharia. Agora ele fixa `TZ` e falha nos dois.
+
+**Consequência:** `clima-tempo` materializa, e `FORA_DO_ESCOPO` está **vazio** no
+`mrun` e no `snapshot` pela primeira vez. As 24 queries do corpus rodam.
+
+## 43. `Status Protocolo Dia`: 304 bilhões de visitas, e o #38 de novo noutro lugar
+
+Destravar `clima-tempo` fez `relatorio-do-mes` e `visao-geral` carregarem. A terceira
+página, `agendamento-field`, **continua sem carregar — por outro motivo, que estava
+escondido atrás do primeiro.** Ela nunca tinha chegado a carregar, então este custo
+nunca havia sido pago.
+
+Não é visual nenhum: o processo **não termina o carregamento**. Quem trava é a
+tabela calculada `Status Protocolo Dia`, que só esta página pede.
+
+```
+VAR BaseAgenda = DISTINCT(SELECTCOLUMNS('FIELD AGENDA', "protocolo", …, "Dia", TRUNC(…)))
+RETURN ADDCOLUMNS(BaseAgenda,
+    "Status", … 3 × CALCULATE(COUNTROWS(…), 'FIELD AGENDA'[protocolo] = Protocolo, …))
+```
+
+mais **4 colunas calculadas**, cada uma um
+`CALCULATE(MAX('FIELD AGENDA'[X]), FILTER('FIELD AGENDA', [protocolo]=… && TRUNC([Slot Agenda])=…))`.
+
+São **7 varreduras de `FIELD AGENDA` por linha da tabela**, e a tabela tem uma linha
+por par (protocolo, dia).
+
+**Medido sobre o snapshot real:**
+
+| | |
+|---|---|
+| linhas de `FIELD AGENDA` | 1.458.244 |
+| protocolos distintos | 26.554 |
+| pares (protocolo, dia) = linhas de `Status Protocolo Dia` | **29.846** |
+| varreduras de `FIELD AGENDA` | 29.846 × 7 = **208.922** |
+| **visitas de linha** | **304.659.252.968** |
+
+Observado: **9 minutos de CPU sem sair do carregamento**, e sem crescer memória — é
+CPU pura, não vazamento. A 10 milhões de visitas por segundo, seriam ~8,5 horas.
+
+**É o achado #38 outra vez, na tabela calculada em vez da matriz.** Lá cada célula
+refiltrava as 65.563 linhas e o conserto não foi motor novo: a varredura que
+descobre as combinações **já separava as linhas de cada grupo** e as jogava fora.
+Aqui a forma é a mesma — `[protocolo] = X && TRUNC([Slot Agenda]) = Y` é exatamente
+a chave que o `DISTINCT` de cima já agrupou. O Power BI resolve com hash; o laço
+aninhado, não.
+
+**Não foi consertado nesta sessão**, e o motivo é de escopo: o caminho é o avaliador
+de DAX, onde um erro produz número plausível — a parte da base que menos tolera
+conserto apressado. O que existe agora é o número que dimensiona o trabalho, que é
+o que faltava para decidir.
+
+O perigo a evitar, herdado do #38: o agrupamento **não pode** ignorar a substituição
+de filtro. `MAX('FIELD AGENDA'[Base])` sob um `FILTER` que reconstrói o predicado não
+é a mesma coisa que ler o grupo já materializado se alguma medida da página derrubar
+um dos filtros com `ALL()`.
+
+### Estado do relatório depois desta sessão
+
+| | antes | agora |
+|---|---|---|
+| páginas que carregam | 11 de 14 | **13 de 14** |
+| visuais com número nelas | 64 | **96** |
+| calcularam | 64 | **96** |
+| linhas carregadas | 632.620 | 3.751.093 |
+| carga + cálculo | 11,9 s + 17,5 s | 53,1 s + 31,1 s |
+
+A única página fora é `agendamento-field`, por este achado. `field-agenda`
+materializou (1.458.244 linhas, 950 MB) e `clima-tempo` também (#42), então
+**nenhuma página está mais parada por falta de dado.**

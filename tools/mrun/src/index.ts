@@ -47,6 +47,7 @@ import {
   GoogleSheetsConnector,
   tokenComCache,
 } from '../../../packages/query-engine/src/connectors-gsheets.ts';
+import { buscadorWeb } from '../../../packages/query-engine/src/connectors-web.ts';
 import { QueryEngine } from '../../../packages/query-engine/src/engine.ts';
 import {
   accessToken,
@@ -71,10 +72,14 @@ applyDotEnv(ROOT);
 const MARCA = '##MRUN##';
 
 /**
- * `clima-tempo` fica fora: define função dentro de `let` e lê `Web.Contents`, que
- * não tem connector. É a mesma exclusão do teste de corpus.
+ * Nenhuma query fica fora hoje.
+ *
+ * `clima-tempo` ficava: define função dentro de `let` e lê `Web.Contents`, que não
+ * tinha connector. As duas coisas passaram a existir (achado #42), então a lista
+ * está vazia — e continua aqui porque a próxima query que a fonte não alcançar vai
+ * querer o mesmo mecanismo, com o motivo escrito ao lado.
  */
-const FORA_DO_ESCOPO = new Set(['clima-tempo']);
+const FORA_DO_ESCOPO = new Set<string>();
 
 // ------------------------------------------------------------------ argumentos
 interface Args {
@@ -261,6 +266,18 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
   let msExecute = 0;
   let msConversao = 0;
   let linhasLidas = 0;
+  // Allowlist só do que ESTA query declara. Passar os endpoints de todas as
+  // queries daria a `clima-tempo` alcance que o PBIP não deu a ela.
+  let buscasWeb = 0;
+  const web = q.endpoints?.length
+    ? buscadorWeb({
+        permitidos: q.endpoints,
+        onBusca: (e) => {
+          buscasWeb++;
+          msExecute += e.ms;
+        },
+      })
+    : undefined;
   const fonte = fonteDoEngine(engine, {
     onBusca: (e) => {
       if (e.linhas !== undefined) {
@@ -273,7 +290,7 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
   });
 
   try {
-    const feitas = await runQueries({ specs: todas, apenas: [q.id], culture, fonte });
+    const feitas = await runQueries({ specs: todas, apenas: [q.id], culture, fonte, web });
     const r = feitas.get(q.id)!;
     const daFonte = usaFonteExterna(q.m_expression!) ? (buscas.get(q.id) ?? null) : null;
 

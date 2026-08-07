@@ -44,6 +44,7 @@ import {
   GoogleSheetsConnector,
   tokenComCache,
 } from '../../../packages/query-engine/src/connectors-gsheets.ts';
+import { buscadorWeb } from '../../../packages/query-engine/src/connectors-web.ts';
 import { QueryEngine } from '../../../packages/query-engine/src/engine.ts';
 import {
   accessToken,
@@ -73,8 +74,12 @@ applyDotEnv(ROOT);
 /** Prefixo da linha de resultado do filho. Só ela é dado; o resto é log. */
 const MARCA = '##SNAP##';
 
-/** `clima-tempo` define função dentro de `let` e lê `Web.Contents` — sem connector. */
-const FORA_DO_ESCOPO = new Set(['clima-tempo']);
+/**
+ * Nenhuma query fica fora hoje. `clima-tempo` ficava, por causa do `Web.Contents`
+ * sem connector; passou a ter (achado #42). A lista continua porque é aqui que a
+ * próxima exclusão vai querer o motivo escrito ao lado.
+ */
+const FORA_DO_ESCOPO = new Set<string>();
 
 // ------------------------------------------------------------------ argumentos
 interface Args {
@@ -247,9 +252,11 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   const { connectors, fechar } = await montaConnectors(fontesDe(q.id));
   const engine = new QueryEngine({ registry, connectors, cache: new MemoryCache() });
   const fonte = fonteDoEngine(engine);
+  // Allowlist só do que ESTA query declara em `endpoints` (gerado do PBIP).
+  const web = q.endpoints?.length ? buscadorWeb({ permitidos: q.endpoints }) : undefined;
 
   try {
-    const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte });
+    const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
     const { columns, rows } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
 
     const arquivo = arquivoDaQuery(saida, q.id);

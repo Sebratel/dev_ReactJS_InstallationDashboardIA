@@ -1,7 +1,7 @@
 # Continuação — onde o trabalho parou
 
-> **Escrito em 07/08/2026**, no commit `9582fc1`. É o ponto de entrada de uma sessão
-> nova: autocontido, feito para ser lido antes de tocar em qualquer coisa.
+> **Atualizado em 07/08/2026**, depois do connector web. É o ponto de entrada de uma
+> sessão nova: autocontido, feito para ser lido antes de tocar em qualquer coisa.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
@@ -12,10 +12,11 @@
 ## 1. Em uma frase
 
 A **Analytics Platform Enterprise** substitui o Power BI da Sebratel. Hoje ela lê as
-fontes reais, calcula 64 visuais de 11 páginas do relatório e **abre uma página no
-navegador com número vindo do Voalle**. O que falta não é código de cálculo — é
-**paridade** (provar que o número é o mesmo da tela do Power BI) e três páginas
-bloqueadas por dado que ainda não materializa.
+fontes reais, calcula **96 visuais de 13 das 14 páginas** do relatório e **abre uma
+página no navegador com número vindo do Voalle**. **Nenhuma página está parada por
+falta de dado** — as 24 queries do corpus materializam. O que falta é **paridade**
+(provar que o número é o mesmo da tela do Power BI) e **uma** página, travada por
+desempenho de tabela calculada, não por dado.
 
 ---
 
@@ -27,7 +28,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 898 testes, ~4 s, NENHUM precisa de credencial
+npm test          # 939 testes, ~4 s, NENHUM precisa de credencial
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -57,22 +58,24 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**898 testes verdes.** Nenhum precisa de credencial.
+**939 testes verdes.** Nenhum precisa de credencial.
 
 | camada | estado |
 |---|---|
 | Extrator PBIP → specs | ✅ 14 páginas, 306 visuais, 78 medidas, 49 colunas calculadas, 7 tabelas calculadas, 24 queries |
-| Query Engine + camada M | ✅ 23 das 24 queries rodam contra a fonte real |
+| Query Engine + camada M | ✅ **as 24 de 24** queries rodam contra a fonte real |
 | Modelo semântico + avaliador DAX | ✅ as 56 funções que a base usa, 75 medidas |
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
 | **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco |
 | **API + tela** (`apps/api`) | ✅ somente leitura, uma página por pedido |
-| **Relatório inteiro** (`tools/paginas`) | ✅ 11/14 páginas, **64 de 64 visuais calculam** |
+| **Relatório inteiro** (`tools/paginas`) | ✅ **13/14 páginas, 96 de 96 visuais calculam** |
 | **Paridade** | ❌ **não provada** — é o próximo grande passo |
 
-Últimos quatro commits, que são a fase 3 inteira:
+Os commits que são a fase 3 inteira:
 
 ```
+(este)   clima-tempo materializa: a URL que so existe avaliando
+f0e3341  docs/CONTINUACAO.md: o ponto de entrada de quem assume o projeto
 9582fc1  O relatorio inteiro contra dado real: 64 de 64 visuais calculam
 8bbefa4  A tela existe: uma pagina do relatorio abre no navegador
 aaae46f  As linhas do grupo ja estavam na mao: 246x, o mesmo sha256
@@ -124,7 +127,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 40 entradas.
+   registro; hoje tem 43 entradas.
 
 ---
 
@@ -135,42 +138,49 @@ E uma regra de método, que é a que mais rendeu:
 A conta `erickazambuja-Sebratel` **não tem permissão de escrita** no repositório da
 organização. O remoto está configurado
 (`git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git`), mas **não existe
-`origin/main`** e os **59 commits do repositório vivem só nesta máquina**. Não tente
+`origin/main`** e os **61 commits do repositório vivem só nesta máquina**. Não tente
 contornar — é permissão, não configuração.
 
 Confira com:
 
 ```bash
-git rev-list --count HEAD          # 59 no momento em que este arquivo foi escrito
+git rev-list --count HEAD          # 61 no momento em que este arquivo foi escrito
 git rev-parse --verify origin/main # falha: o ref não existe
 ```
 
-### 5.2 Três páginas não carregam
+### 5.2 Uma página não carrega — e **não é falta de dado**
 
-| página | falta |
+As três de antes eram falta de dado, e as duas causas se resolveram:
+
+- **`field-agenda` materializou**: 1.458.244 linhas, 950 MB, com `--timeout=1800`.
+  Isso destravou `visao-geral`.
+- **`clima-tempo` materializou** (achado #42): 1.638 linhas. Isso destravou
+  `relatorio-do-mes`, que hoje calcula **22 de 22** visuais em 25 s.
+
+Sobra `agendamento-field`, e a causa é outra — estava escondida atrás da primeira,
+porque a página nunca havia chegado a carregar. **O processo não termina o
+carregamento**, e não é visual nenhum: é a tabela calculada `Status Protocolo Dia`,
+que só esta página pede.
+
+Ela faz `DISTINCT(protocolo, dia)` sobre `FIELD AGENDA` e depois, **por linha**, 3
+`CALCULATE` mais 4 colunas calculadas, cada uma com
+`FILTER('FIELD AGENDA', [protocolo]=… && TRUNC([Slot Agenda])=…)` — 7 varreduras da
+tabela inteira por linha.
+
+| | |
 |---|---|
-| `visao-geral` | `FIELD AGENDA` |
-| `agendamento-field` | `FIELD AGENDA` + `Clima/ Tempo` |
-| `relatorio-do-mes` | `FIELD AGENDA` + `Clima/ Tempo` |
+| linhas de `Status Protocolo Dia` | 29.846 |
+| varreduras de `FIELD AGENDA` (1,46 M) | 208.922 |
+| **visitas de linha** | **304.659.252.968** |
 
-- **`clima-tempo` não tem como ser materializada.** O M dela define função dentro de
-  `let` e lê `Web.Contents`, que não tem connector. Precisa de um connector HTTP no
-  Query Engine (a query é a Open-Meteo). É trabalho de umas poucas horas e destrava
-  duas páginas.
-- **`field-agenda` (1,4 milhão de linhas) estourou o `statement_timeout` de 600 s** —
-  quem cancelou foi o **Postgres**, não o heap do processo. Ficou uma execução em curso
-  com teto de 30 minutos, e **o resultado dela não era conhecido quando este arquivo
-  foi escrito**. Confira o que há em disco antes de refazer:
+Observado: **9 minutos de CPU sem sair do carregamento**, memória estável em 2,1 GB.
 
-  ```bash
-  ls snapshot/field-agenda.jsonl                  # existe? então funcionou
-  npm run snapshot -- --query=field-agenda --memoria=8192 --timeout=1800
-  ```
-
-  Se falhar de novo, o próximo passo **não é subir o teto outra vez**. É abrir o SQL em
-  `specs/_catalog/queries/field-agenda.*` e perguntar se o relatório precisa mesmo de
-  1,4 milhão de linhas, ou se há filtro de data que o Power BI aplica depois e que
-  poderia ir para a fonte. Subir o teto adia; a pergunta resolve.
+**É o achado #38 outra vez**, na tabela calculada em vez da matriz — e o conserto de
+lá é a pista: a varredura que descobre as combinações **já separa as linhas de cada
+grupo**, e `[protocolo] = X && TRUNC([Slot Agenda]) = Y` é exatamente a chave que o
+`DISTINCT` de cima agrupou. Leia o #38 **inteiro** antes de tentar: ele traz o
+perigo junto, que é a substituição de filtro (`ALL()` numa medida da página derruba
+um filtro do grupo, e as linhas materializadas ficariam estreitas demais).
 
 ### 5.3 Paridade — depende de alguém abrir o Power BI
 
@@ -193,15 +203,14 @@ tela:
    um arquivo onde o Erick dite os números da tela e a ferramenta compare. Sugestão:
    `specs/paridade/<pagina>.yaml` com `visual: id, esperado: <número>`, e
    `npm run paridade` apontando as divergências. Sem isso, cada conferência é manual e
-   se perde.
-2. **Connector HTTP para `clima-tempo`** — destrava `agendamento-field` e
-   `relatorio-do-mes`, duas das três páginas que faltam.
-3. **Resolver `field-agenda`** (ver 5.2) — destrava `visao-geral`.
-4. **Filtros na tela.** O relatório tem segmentações (`slicer`) que hoje aparecem como
+   se perde. **Agora vale para 96 visuais, não 64** — é mais valioso que era.
+2. **`Status Protocolo Dia`** (ver 5.2) — destrava a 14ª página. O número que
+   dimensiona o trabalho já está medido; o desenho vem do achado #38.
+3. **Filtros na tela.** O relatório tem segmentações (`slicer`) que hoje aparecem como
    "sem número". Fazê-las filtrar de verdade é o que separa "página que abre" de
    "dashboard que se usa". Os filtros de página e de visual **já** são aplicados; o que
    falta é a interação.
-5. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
+4. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
    de passagem seria decidir por uma peça que tem dono. Quando for hora, é decisão
    registrada, não escolha de conveniência.
 
@@ -244,6 +253,17 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
   caminho absoluto `file:///.../node_modules/yaml/dist/index.js`.
 - **Não rode `npm run snapshot -- --todas` sem necessidade.** São ~20 minutos e 123 MB.
   Materialize por página.
+- **`npm run paginas` roda as páginas em série, e uma que trava esconde as outras.**
+  `agendamento-field` é a primeira em ordem alfabética e não termina (5.2): rodando
+  sem `--pagina=`, o relatório inteiro parece travado. Use a lista explícita das 13
+  enquanto o #43 não fechar.
+- **Script de rascunho: o stdout do Node vira buffer de bloco quando é cano.** Um
+  processo que trava não imprime *nada* do que já tinha feito, e a saída vazia se
+  parece com "não começou". Em script de diagnóstico, grave com `appendFileSync` a
+  cada item — foi o que separou "trava num visual" de "trava no carregamento".
+- **Confira se sobrou processo `node` de uma execução anterior.** Dois `paginas` de
+  8 GB de heap disputando a máquina fazem qualquer medida de tempo mentir.
+  `Get-Process node | Where-Object { $_.CPU -gt 10 }`.
 
 **Sobre o repositório**
 
@@ -278,7 +298,7 @@ tools/
   paginas/          calcula o relatório inteiro e conta o que fecha
 specs/              GERADO pelo extrator — o contrato. Não editar à mão.
 docs/
-  ACHADOS.md          40 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          43 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa

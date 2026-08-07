@@ -52,8 +52,15 @@ test('a culture do modelo está na spec, e é pt-BR', () => {
   assert.equal(cultureDoModelo(), 'pt-BR');
 });
 
-/** `clima-tempo` está fora do escopo desta fase: `let` aninhado + fonte `web`. */
-const NO_ESCOPO = (q: QuerySpec): boolean => q.id !== 'clima-tempo';
+/**
+ * As 24 queries do corpus estão no escopo — **nenhuma exclusão hoje**.
+ *
+ * `clima-tempo` ficava de fora (`let` aninhado + fonte `web`) e entrou com o
+ * achado #42. O predicado continua aqui, e verdadeiro, porque é ele que faz a
+ * cobertura abaixo valer sobre a query inteira: apagá-lo tiraria o lugar onde a
+ * próxima exclusão teria de justificar-se.
+ */
+const NO_ESCOPO = (_q: QuerySpec): boolean => true;
 
 /**
  * Nomes chamados como função em toda a expressão.
@@ -102,13 +109,16 @@ function chamadasDoEscopo(): Set<string> {
  */
 const FONTES = ['GoogleSheets.Contents', 'Odbc.Query'];
 
-test('as funções que a base chama: 39 distintas, 37 implementadas', () => {
+test('as funções que a base chama: 49 distintas, 47 implementadas', () => {
+  // 39 → 49 quando `clima-tempo` entrou no escopo (achado #42). As 10 novas são
+  // dela, e 5 precisaram ser escritas: Date.ToText, Table.FromColumns,
+  // Table.ToRecords, List.Repeat e Web.Contents.
   const usadas = chamadasDoEscopo();
-  assert.equal(usadas.size, 39);
+  assert.equal(usadas.size, 49);
 
   const conhecidas = new Set([...implementedMFunctions(), ...standardConstants().keys()]);
   const falta = [...usadas].filter((f) => !conhecidas.has(f)).sort();
-  assert.equal(usadas.size - falta.length, 37);
+  assert.equal(usadas.size - falta.length, 47);
   assert.deepEqual(falta, FONTES, 'o que falta tem que ser só fonte, não transformação');
 });
 
@@ -127,7 +137,9 @@ test('nenhuma função de transformação do escopo está faltando', () => {
 test('a tabela de funções não tem nome duplicado e o total está preso', () => {
   // `standardFunctions` já erra em duplicata; isto prende o total, para uma função
   // nova não entrar sem o README acompanhar.
-  assert.equal(implementedMFunctions().length, 60);
+  // 60 → 65 com `clima-tempo`: Date.ToText, Table.FromColumns, Table.ToRecords,
+  // List.Repeat e Web.Contents (achado #42).
+  assert.equal(implementedMFunctions().length, 65);
   assert.doesNotThrow(() => standardFunctions());
 });
 
@@ -174,7 +186,12 @@ test('cada query do escopo para no primeiro passo de fonte, e não antes', () =>
       // DateTime.LocalNow(). Não é erro.
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const ehFonte = FONTES.some((f) => msg.includes(f));
+      // `Web.Contents` é fonte também, mas de um terceiro tipo: está em
+      // `standardFunctions` (porque **montar a URL** é transformação pura) e ainda
+      // assim não busca nada sozinha. Sem `web` injetado ela erra dizendo isso, e
+      // essa parada é tão legítima quanto a de `Odbc.Query`.
+      const ehFonte =
+        FONTES.some((f) => msg.includes(f)) || /não recebeu `web`/.test(msg);
       // Citar outra query também é parada legítima: a resolução entre queries é
       // do orquestrador, não do avaliador.
       const ehOutraQuery = /não é passo deste `let`/.test(msg);
@@ -196,8 +213,10 @@ test('o corpus continua com 24 queries e 327 passos', () => {
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
     327,
   );
+  // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
+  // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    303,
+    327,
   );
 });

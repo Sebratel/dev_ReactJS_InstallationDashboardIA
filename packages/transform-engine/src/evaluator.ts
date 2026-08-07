@@ -65,6 +65,28 @@ export interface MCallContext {
   readonly culture: string | null;
   /** Resolve outra query pelo nome, para as mesclagens entre queries. */
   readonly query: (nome: string) => MValue;
+  /**
+   * Devolve o corpo de uma resposta HTTP **já buscada**.
+   *
+   * Síncrona porque avaliar M é síncrono, e é aí que está a diferença em relação a
+   * `Odbc.Query`: o runner pré-busca a fonte de uma query porque sabe qual é antes
+   * de avaliar, e aqui não sabe — a URL de `clima-tempo` sai de `cidade{1}` e de
+   * `Date.ToText(ontem)`, valores que só existem no meio da avaliação. Quem
+   * implementa isto resolve pelo cache e, no que faltar, sinaliza para o runner
+   * buscar e reavaliar (ver `PrecisaBuscarWeb` em runner.ts).
+   */
+  readonly web: (pedido: PedidoWeb) => Uint8Array;
+}
+
+/**
+ * Um GET. É tudo que `Web.Contents` sabe pedir, e é de propósito: a plataforma
+ * nunca escreve na fonte, e um verbo configurável aqui seria a quarta camada do
+ * guard read-only virando opcional.
+ */
+export interface PedidoWeb {
+  /** URL absoluta final, já com `RelativePath` e `Query` aplicados. */
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
 }
 
 export type MFunctionTable = ReadonlyMap<string, MFunctionImpl>;
@@ -86,6 +108,12 @@ export interface MEvaluatorOptions {
    * queries chega aqui. Ausente = citar outra query é erro que nomeia a query.
    */
   readonly query?: (nome: string) => MValue;
+  /**
+   * Resolve um GET já buscado. Ausente = `Web.Contents` é erro que diz que ninguém
+   * injetou fonte web — nunca uma resposta vazia. Uma tabela de clima vazia passa
+   * por "não choveu", que é exatamente o número plausível e errado.
+   */
+  readonly web?: (pedido: PedidoWeb) => Uint8Array;
 }
 
 /** Ambiente de nomes: escopo aninhado com resolução preguiçosa. */
@@ -158,6 +186,14 @@ export class MEvaluator {
           throw new MEvalError(
             `A expressão cita '${nome}', que não é passo deste \`let\` nem função conhecida. ` +
               'Se é outra query, o avaliador precisa receber `query` para resolvê-la.',
+          );
+        }),
+      web:
+        opts.web ??
+        ((pedido) => {
+          throw new MEvalError(
+            `A expressão chamou Web.Contents(${pedido.url}), mas o avaliador não recebeu ` +
+              '`web`. Quem roda a expressão precisa injetar a busca HTTP.',
           );
         }),
     };

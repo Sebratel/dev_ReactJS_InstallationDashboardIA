@@ -16,6 +16,16 @@ export interface QuerySpec {
    * é o que evita baixar as outras abas da planilha, que têm CPF e RG.
    */
   sheet?: string | null;
+  /**
+   * Hosts que o M desta query alcança por HTTP, extraídos das chamadas
+   * `Web.Contents` do PBIP. São a **allowlist** do buscador web: URL montada em
+   * tempo de avaliação que caia fora daqui é recusada.
+   *
+   * Vem do extrator, não de decisão humana — é o mesmo motivo de `source_tables`
+   * estar aqui: o alcance de rede da query é fato do PBIP, e mantê-lo gerado
+   * impede que alguém amplie o alcance sem que o `.spec.yaml` mostre.
+   */
+  endpoints?: string[];
   /** Tabelas-fonte do SQL. Alimenta o Query Invalidator do realtime. */
   source_tables: string[];
   /** Expressão M original (referência; não é executada). */

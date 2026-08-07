@@ -17,7 +17,7 @@
 // `field-agenda` tem 1,4 milhão de linhas e quatro queries passam de 10s
 // (ACHADOS #2 e #4), então o gargalo provavelmente não é a serialização.
 
-import { MEvaluator, type MFunctionImpl } from './evaluator.ts';
+import { MEvaluator, type MFunctionImpl, type PedidoWeb } from './evaluator.ts';
 import { standardConstants, standardFunctions } from './functions.ts';
 import { parseM, parseMLet } from './parser.ts';
 import {
@@ -56,9 +56,101 @@ export interface MQuerySpec {
  */
 export type FonteDeLinhas = (spec: MQuerySpec) => Promise<readonly Record<string, unknown>[]>;
 
+/**
+ * Faz um GET e devolve o corpo. Injetado, como `fonte`: em produção é o buscador
+ * do query-engine (que sabe allowlist, timeout e o guard de método); em teste é
+ * uma função que devolve bytes.
+ */
+export type BuscadorWeb = (pedido: PedidoWeb) => Promise<Uint8Array>;
+
+/**
+ * Sinal interno: a avaliação pediu uma URL que ainda não foi buscada.
+ *
+ * Não é erro — é a única forma de uma função síncrona pedir I/O assíncrono. O
+ * laço em `avaliaComWeb` captura, busca, e reavalia. Se escapar dali é bug, e a
+ * mensagem diz isso em vez de virar "falha de rede".
+ */
+class PrecisaBuscarWeb extends Error {
+  readonly pedido: PedidoWeb;
+
+  constructor(pedido: PedidoWeb) {
+    super(`Web.Contents: ${pedido.url} ainda não foi buscada (sinal interno do runner).`);
+    this.pedido = pedido;
+  }
+}
+
+/**
+ * Teto de buscas HTTP numa única query.
+ *
+ * `clima-tempo` faz 14 (7 cidades × 2 endpoints). O teto existe porque o laço é
+ * de ponto-fixo: uma expressão cuja URL dependesse da resposta anterior poderia
+ * pedir sem fim, e um travamento silencioso é pior que um erro que diz o número.
+ */
+const TETO_DE_BUSCAS_WEB = 200;
+
+/** Duas requisições são a mesma quando URL e headers batem. */
+function chaveDoPedido(p: PedidoWeb): string {
+  const hs = Object.keys(p.headers).sort().map((k) => `${k}: ${p.headers[k]}`).join('\n');
+  return `GET ${p.url}\n${hs}`;
+}
+
+/**
+ * Avalia uma query que pode chamar `Web.Contents`, buscando o que faltar.
+ *
+ * **Por que reavaliar em vez de buscar na hora.** Avaliar M é síncrono (o mesmo
+ * contrato do avaliador de DAX, e o que faz o teste rodar sem credencial), então
+ * uma função M não pode esperar por rede. Para `Odbc.Query` isso se resolve
+ * pré-buscando: a spec diz qual é a fonte antes de a avaliação começar. Para
+ * `Web.Contents` não dá — em `clima-tempo` a URL sai de `cidade{1}` e de
+ * `Date.ToText(ontem)`, que só existem no meio da avaliação.
+ *
+ * Então: avalia; na primeira URL não vista, `ctx.web` sinaliza; o laço busca,
+ * guarda, e avalia de novo do zero. Cada passada resolve uma requisição a mais e
+ * o mapa só cresce, então o laço termina, e a **última** passada é a que vale —
+ * ela roda inteira sem nenhuma busca pendente, com todas as respostas na mão.
+ * Nenhum resultado parcial sobrevive.
+ *
+ * O custo é reavaliar N+1 vezes uma expressão que, nas passadas iniciais, para na
+ * primeira URL nova. Medido em `clima-tempo`: 15 passadas. É barato porque a
+ * reavaliação não repete I/O — só o que já está em memória.
+ */
+async function avaliaComWeb(
+  ev: MEvaluator,
+  m: string,
+  respostas: Map<string, Uint8Array>,
+  buscar: BuscadorWeb | undefined,
+  id: string,
+): Promise<{ valor: MValue; passos: Map<string, MValue> }> {
+  for (let passada = 0; ; passada++) {
+    try {
+      return ev.avaliaQuery(m);
+    } catch (err) {
+      if (!(err instanceof PrecisaBuscarWeb)) throw err;
+      if (!buscar) {
+        throw new MEvalError(
+          `A query '${id}' chama Web.Contents(${err.pedido.url}), mas o runner não recebeu ` +
+            '`web`. Passe `web` em RunnerOptions para rodá-la.',
+        );
+      }
+      if (passada >= TETO_DE_BUSCAS_WEB) {
+        throw new MEvalError(
+          `A query '${id}' passou de ${TETO_DE_BUSCAS_WEB} buscas HTTP numa avaliação. ` +
+            'Provável URL que depende da resposta anterior, que este laço não resolve.',
+        );
+      }
+      respostas.set(chaveDoPedido(err.pedido), await buscar(err.pedido));
+    }
+  }
+}
+
 export interface RunnerOptions {
   readonly specs: readonly MQuerySpec[];
   readonly fonte: FonteDeLinhas;
+  /**
+   * Busca HTTP para `Web.Contents`. Ausente = a query que chamar erra dizendo que
+   * falta injetar — nunca devolve vazio. Só `clima-tempo` usa.
+   */
+  readonly web?: BuscadorWeb;
   readonly agora?: Date;
   /**
    * Culture do modelo — vem de `specs/_catalog/model.yaml` (`pt-BR`), que o
@@ -266,11 +358,21 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
       funcoes.set(nome, impl);
     }
 
+    // Respostas HTTP desta query. Vive fora do avaliador porque precisa
+    // SOBREVIVER às reavaliações do laço de ponto-fixo — é ele que faz a passada
+    // seguinte ir mais longe que a anterior.
+    const respostasWeb = new Map<string, Uint8Array>();
+
     const ev = new MEvaluator({
       functions: funcoes,
       constants: standardConstants(),
       agora: opts.agora,
       culture: opts.culture,
+      web: (pedido) => {
+        const bytes = respostasWeb.get(chaveDoPedido(pedido));
+        if (bytes === undefined) throw new PrecisaBuscarWeb(pedido);
+        return bytes;
+      },
       query: (nome) => {
         const t = porNomeProntas.get(nome);
         if (!t) {
@@ -283,7 +385,13 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
       },
     });
 
-    const { valor, passos } = ev.avaliaQuery(spec.m_expression!);
+    const { valor, passos } = await avaliaComWeb(
+      ev,
+      spec.m_expression!,
+      respostasWeb,
+      opts.web,
+      spec.id,
+    );
     if (!(valor instanceof MTable)) {
       throw new MEvalError(
         `A query '${spec.id}' devolveu algo que não é tabela. Toda query do modelo vira tabela.`,

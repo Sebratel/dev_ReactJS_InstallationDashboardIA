@@ -21,7 +21,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 2b.5 | Propagação de filtro por relacionamento — **22 medidas dependiam dela** | ✅ |
 | 2b.6 | O que separa o avaliador do dado real: camada M + tabelas calculadas | ✅ |
 | 2b.7 | Materializar as 7 tabelas calculadas (`CALENDAR`, `ADDCOLUMNS`) — **as 56 funções agora estão todas implementadas** | ✅ |
-| 2b.8 | Camada M — **opção A confirmada** ([decisão](docs/DECISAO-CAMADA-M.md)). Parser + avaliador + orquestrador; **as 39 funções do escopo rodam** (37 na tabela de funções + as 2 de fonte, ligadas aos connectors). As 23 queries executam os 303 passos | ✅ |
+| 2b.8 | Camada M — **opção A confirmada** ([decisão](docs/DECISAO-CAMADA-M.md)). Parser + avaliador + orquestrador; **as 39 funções do escopo rodam** (37 na tabela de funções + as 2 de fonte, ligadas aos connectors). As 23 queries executam os 303 passos<br>*(hoje são **49 funções, 47 na tabela**, e as **24** queries com **327** passos: `clima-tempo` entrou no escopo no [ACHADOS](docs/ACHADOS.md) #42)* | ✅ |
 | — | **23 das 23 queries rodam contra a fonte real** (`npm run run:mlayer -- --all --memoria=8192`), incluindo `field-agenda` com 1.449.281 linhas e `protocolos-produtividade` com 60 passos. As 4 que faltavam eram as de planilha, desbloqueadas em 06/08/2026 | ✅ |
 | — | A camada M **não streama**: 4 GB de heap não bastam, 8 GB bastam hoje ([ACHADOS](docs/ACHADOS.md) #20). Decide a arquitetura da Fase 3 | ⚠️ |
 | — | Connector de Google Sheets pronto, testado e **em uso**: as 3 planilhas foram compartilhadas com a conta de serviço em 06/08/2026 ([Anexo B](docs/DECISAO-CAMADA-M.md)) | ✅ |
@@ -55,11 +55,18 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **O relatório inteiro contra dado real: `npm run paginas`.** 11 das 14 páginas carregam e **os 64 visuais com número nelas calculam** — 632.620 linhas, 11,9 s de carga e 17,5 s de cálculo. Outra pergunta que a cobertura da fase 3: lá era "o avaliador sabe fazer a conta" sobre tabelas de 5 linhas ([ACHADOS](docs/ACHADOS.md) #40) | ✅ |
 | — | Na primeira passada eram 63: **o tipo declarado valia só para coluna calculada**. `'CONSOLIDADO CLIENTES'[authentication_totalizer]` declara `int64` e a camada M entrega texto. É o #31 um nível acima, e nenhum dos 898 testes podia pegar — em dado sintético o teste sempre põe número em coluna numérica. Medido: **14 colunas** declaram número e chegam texto, e em todas **todo valor é literal limpo** | ✅ |
 | — | As 4 do sentido contrário (declaram texto, chegam data/número) ficam como estão: `'PROTOCOLOS GERAL'[DATA FINAL]` é data de verdade, e convertê-la para texto quebraria todo `YEAR()` sobre ela | ⚠️ registrado |
-| — | 3 páginas não carregam. `clima-tempo` **não tem como ser materializada** (função dentro de `let` + `Web.Contents`, sem connector) e leva 2 páginas junto; `field-agenda`, de 1,4 M de linhas, **estourou o `statement_timeout` de 600 s no servidor** — o teto certo de um refresh depende da query, não de um número redondo | ⚠️ |
+| — | 3 páginas não carregam. `clima-tempo` **não tem como ser materializada** (função dentro de `let` + `Web.Contents`, sem connector) e leva 2 páginas junto; `field-agenda`, de 1,4 M de linhas, **estourou o `statement_timeout` de 600 s no servidor** — o teto certo de um refresh depende da query, não de um número redondo | ✅ resolvido abaixo |
+| — | **`clima-tempo` materializa: `Web.Contents` não era pré-buscável, e a saída foi reavaliar.** Avaliar M é síncrono e a URL dela sai de `cidade{1}` e de `Date.ToText(ontem)` — valores que só existem no meio da avaliação, então não há o que pré-buscar como se faz com `Odbc.Query`. O runner avalia, é sinalizado, busca e reavalia; termina porque o mapa de respostas só cresce, e a **última** passada roda inteira sem pendência ([ACHADOS](docs/ACHADOS.md) #42) | ✅ |
+| — | Medido: **14 requisições** (7 cidades × 2 endpoints), 15 passadas, 1.638 linhas. Dos 13,5 s, **13,4 s são rede e 123 ms são M** — reavaliar 15 vezes custa menos de 1% | ✅ |
+| — | **Quarta camada do guard read-only, agora em HTTP**: método sempre `GET`, `Web.Contents` recusa a opção `Content` (que faria POST), host tem de estar em `endpoints` do `.spec.yaml` — que o **extrator gera do PBIP**, então ampliar o alcance de rede exige mudar o Power BI. Comparação de host exata: nem subdomínio nem sufixo passam; só `http`/`https` | ✅ |
+| — | `Table.FromColumns` **diverge do M de propósito**: coluna mais curta é erro, não preenchimento com null. Com null, a classificação da própria query (`if = 0 … else "Chuva forte"`) faria o dia **sem dado** sair como **chuva forte** na tela, sem erro nenhum ([ACHADOS](docs/ACHADOS.md) #41) | ✅ |
+| — | `field-agenda` materializou com teto de 1800 s: **1.458.244 linhas, 950 MB**. `FORA_DO_ESCOPO` está **vazio** no `mrun` e no `snapshot` pela primeira vez, e as 24 queries do corpus rodam | ✅ |
+| — | **13 das 14 páginas carregam e os 96 visuais com número nelas calculam** (era 11 e 64) — 3.751.093 linhas, 53,1 s de carga e 31,1 s de cálculo | ✅ |
+| — | A que falta é `agendamento-field`, e **não é mais falta de dado**: a tabela calculada `Status Protocolo Dia` faz **7 varreduras de `FIELD AGENDA` por linha** e tem uma linha por par (protocolo, dia). Medido: 29.846 linhas × 7 = **208.922 varreduras de 1,46 M** = **304,7 bilhões de visitas**; 9 min de CPU sem sair do carregamento. É o #38 outra vez, na tabela calculada em vez da matriz ([ACHADOS](docs/ACHADOS.md) #43) | ⚠️ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**898 testes verdes.** Nenhum deles precisa de credencial.
+**939 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -337,7 +344,9 @@ O scanner de M (`tools/validate/src/mlayer.ts`) é para a camada M o que o
 duas perguntas estáticas — que nome de coluna este passo produz, e ele pode mudar a
 contagem de linhas. Segue o mesmo princípio do avaliador: passo `Table.*` cuja
 função não está na tabela de efeitos vira **erro com o nome do passo**. Foi essa
-regra que expôs a `clima-tempo`, que define uma função M com `let` aninhado — em vez
+regra que expôs a `clima-tempo` (que **hoje roda**: o avaliador a executa desde o
+[ACHADOS](docs/ACHADOS.md) #42, e o que segue vale só para o scanner estático), que
+define uma função M com `let` aninhado — em vez
 de achatar os passos internos na tabela de fora (o que atribuiria colunas à tabela
 errada, em silêncio), o scanner recusa a query e o relatório a lista à parte.
 

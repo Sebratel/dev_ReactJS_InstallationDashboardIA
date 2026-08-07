@@ -900,6 +900,58 @@ const TABELA: MFunctionImpl[] = [
     },
   },
   {
+    // `Table.FromColumns({colA, colB}, {"A","B"})` — a transposta de `FromRows`:
+    // cada item da lista externa é uma COLUNA inteira, não uma linha.
+    //
+    // **Diverge do M de propósito: coluna de comprimento diferente é erro.** O M
+    // preenche a mais curta com null, e aqui isso seria silêncio caro. Em
+    // `clima-tempo` as três listas vêm de arrays paralelos da mesma resposta da
+    // Open-Meteo (`daily.time`, `daily.precipitation_sum`); se a API devolvesse uma
+    // mais curta, o null viraria `Precipitacao_mm` nula, e a classificação logo
+    // abaixo na query (`if = 0 … else if < 5 … else "Chuva forte"`) cai no último
+    // ramo com null — o dia sem dado sairia como **chuva forte** na tela, sem erro
+    // nenhum. É o achado #41. O próprio autor do M já iguala os comprimentos com
+    // `List.Repeat({null}, List.Count(datas))`, então recusar não custa nada no
+    // corpus e pega a anomalia da fonte no dia em que ela acontecer.
+    name: 'Table.FromColumns',
+    minArgs: 1,
+    maxArgs: 2,
+    call: ([colunasV, nomesV]) => {
+      const fn = 'Table.FromColumns';
+      if (!isList(colunasV)) {
+        throw new MEvalError(`${fn}: esperava lista de colunas, veio ${tipoDe(colunasV)}.`);
+      }
+      const colunas = colunasV.map((c, i) => {
+        if (!isList(c)) {
+          throw new MEvalError(`${fn}: a coluna na posição ${i} é ${tipoDe(c)}, esperava lista.`);
+        }
+        return c;
+      });
+      const nomes = nomesV === undefined || nomesV === null
+        ? colunas.map((_, k) => `Column${k + 1}`)
+        : nomesDeColuna(nomesV, fn);
+      if (nomes.length !== colunas.length) {
+        throw new MEvalError(
+          `${fn}: ${colunas.length} coluna(s) e ${nomes.length} nome(s) de coluna.`,
+        );
+      }
+      const altura = colunas[0]?.length ?? 0;
+      for (const [i, c] of colunas.entries()) {
+        if (c.length !== altura) {
+          throw new MEvalError(
+            `${fn}: a coluna '${nomes[i]}' tem ${c.length} valor(es) e a primeira tem ${altura}. ` +
+              'Recusado de propósito: preencher com null aqui esconde fonte truncada.',
+          );
+        }
+      }
+      const linhas: MRow[] = [];
+      for (let i = 0; i < altura; i++) {
+        linhas.push(linhaPor(nomes, (_c, k) => colunas[k][i]));
+      }
+      return new MTable(nomes, linhas);
+    },
+  },
+  {
     // `#table({"A","B"}, {{1,2}})` — construtor, mesma semântica de FromRows com os
     // argumentos na ordem inversa.
     //
@@ -944,6 +996,18 @@ const TABELA: MFunctionImpl[] = [
     minArgs: 1,
     maxArgs: 1,
     call: ([tv]) => [...exigeTabela(tv, 'Table.ColumnNames').columns],
+  },
+  {
+    // Tabela → lista de registros. A **forma** de cada registro é a da tabela, não
+    // a do `Map` da linha: coluna que a linha não guardou vale null, que é o que o
+    // M vê. É para isso que `MRecord` tem o construtor `(colunas, linha)`.
+    name: 'Table.ToRecords',
+    minArgs: 1,
+    maxArgs: 1,
+    call: ([tv]) => {
+      const t = exigeTabela(tv, 'Table.ToRecords');
+      return t.rows.map((r) => new MRecord(t.columns, r));
+    },
   },
   {
     name: 'Table.Buffer',
@@ -1216,6 +1280,78 @@ const VALOR: MFunctionImpl[] = [
     },
   },
   {
+    // `Date.ToText(d, "yyyy-MM-dd")` — a inversa de `Date.From`, e a saída dela vai
+    // para a URL da Open-Meteo em `clima-tempo` (`end_date` = ontem).
+    //
+    // Só os tokens **numéricos** estão implementados. `MMMM`/`ddd` (nome de mês, de
+    // dia) dependem de culture, e a culture do modelo é `pt-BR` enquanto o
+    // `toLocaleString` do Node depende do ICU compilado — o mesmo formato daria
+    // texto diferente por máquina. Erra alto nomeando o token, como o resto da
+    // tabela, em vez de emitir "January" num relatório em português.
+    //
+    // Formato ausente também erra: o default do M é o formato longo da culture, e
+    // adivinhá-lo é a mesma armadilha do achado 1 pela outra ponta.
+    name: 'Date.ToText',
+    minArgs: 1,
+    maxArgs: 3,
+    call: ([v, formatoV]) => {
+      const fn = 'Date.ToText';
+      if (v === null) return null;
+      if (!(v instanceof Date)) throw new MEvalError(`${fn}: esperava data, veio ${tipoDe(v)}.`);
+      if (formatoV === undefined || formatoV === null) {
+        throw new MEvalError(
+          `${fn}: sem formato explícito o resultado depende da culture do modelo. ` +
+            'Passe o formato, ex.: Date.ToText(d, "yyyy-MM-dd").',
+        );
+      }
+      if (isRecord(formatoV)) {
+        throw new MEvalError(
+          `${fn}: a forma nova com registro de opções ([Format=…, Culture=…]) não está ` +
+            'implementada. Passe o formato como texto.',
+        );
+      }
+      const formato = exigeTexto(formatoV, fn, 'o formato');
+      // O valor viaja em UTC (`soData`/`#date` constroem com `Date.UTC`), então ler
+      // com `getUTC*` é o que devolve o mesmo dia que entrou. `getDate()` daria o
+      // dia anterior em qualquer fuso a oeste de Greenwich — e a máquina do Erick
+      // está em -03.
+      const partes: Record<string, string> = {
+        yyyy: String(v.getUTCFullYear()).padStart(4, '0'),
+        yy: String(v.getUTCFullYear() % 100).padStart(2, '0'),
+        MM: String(v.getUTCMonth() + 1).padStart(2, '0'),
+        M: String(v.getUTCMonth() + 1),
+        dd: String(v.getUTCDate()).padStart(2, '0'),
+        d: String(v.getUTCDate()),
+        HH: String(v.getUTCHours()).padStart(2, '0'),
+        mm: String(v.getUTCMinutes()).padStart(2, '0'),
+        ss: String(v.getUTCSeconds()).padStart(2, '0'),
+      };
+      let saida = '';
+      let i = 0;
+      while (i < formato.length) {
+        const c = formato[i]!;
+        if (!/[A-Za-z]/.test(c)) {
+          // Não-letra é literal: o `-` de "yyyy-MM-dd", `/`, `:`, espaço.
+          saida += c;
+          i++;
+          continue;
+        }
+        let j = i;
+        while (j < formato.length && formato[j] === c) j++;
+        const token = formato.slice(i, j);
+        if (!(token in partes)) {
+          throw new MEvalError(
+            `${fn}: o token '${token}' do formato '${formato}' não está implementado. ` +
+              `Implementados: ${Object.keys(partes).join(', ')}.`,
+          );
+        }
+        saida += partes[token];
+        i = j;
+      }
+      return saida;
+    },
+  },
+  {
     name: 'Duration.Days',
     minArgs: 1,
     maxArgs: 1,
@@ -1293,6 +1429,27 @@ const VALOR: MFunctionImpl[] = [
     },
   },
   {
+    // `List.Repeat({null}, 3)` = `{null,null,null}` — repete a lista INTEIRA n
+    // vezes, não cada item n vezes. Em `clima-tempo` é o que dá à coluna
+    // `Probabilidade_Chuva_%` do histórico o mesmo comprimento das outras duas.
+    name: 'List.Repeat',
+    minArgs: 2,
+    maxArgs: 2,
+    call: ([v, n]) => {
+      const fn = 'List.Repeat';
+      if (!isList(v)) throw new MEvalError(`${fn}: esperava lista, veio ${tipoDe(v)}.`);
+      if (typeof n !== 'number') {
+        throw new MEvalError(`${fn}: a contagem é ${tipoDe(n)}, esperava número.`);
+      }
+      if (!Number.isInteger(n) || n < 0) {
+        throw new MEvalError(`${fn}: a contagem é ${n}, esperava inteiro não negativo.`);
+      }
+      const saida: MValue[] = [];
+      for (let i = 0; i < n; i++) saida.push(...v);
+      return saida;
+    },
+  },
+  {
     name: 'List.Transform',
     minArgs: 2,
     maxArgs: 2,
@@ -1348,6 +1505,94 @@ const BINARIO: MFunctionImpl[] = [
       if (modo === 'Compression.GZip') return new Uint8Array(zlib.gunzipSync(bin));
       if (modo === 'Compression.None') return bin;
       throw new MEvalError(`Binary.Decompress: compressão '${modo}' não implementada.`);
+    },
+  },
+  {
+    // `Web.Contents(url, [RelativePath=…, Query=[…], Headers=[…]])` → os bytes da
+    // resposta. Devolve binário, não tabela: quem interpreta é o `Json.Document`
+    // logo em volta, como no M.
+    //
+    // **A URL só se conhece avaliando.** É o que separa esta função de
+    // `Odbc.Query`: o runner pré-busca a fonte de uma query porque a spec diz qual
+    // é, e aqui `RelativePath`/`Query` saem de `cidade{1}` e de `Date.ToText(ontem)`
+    // — valores que não existem antes da avaliação começar. Por isso a busca não
+    // acontece aqui: `ctx.web` resolve pelo que já foi buscado, e quem cuida do que
+    // falta é o laço de ponto-fixo do runner.
+    //
+    // `RelativePath` é montado com `URL`, não concatenado: `"…/v1" + "/archive"`
+    // com uma barra a mais ou a menos vira 404, e o M normaliza.
+    name: 'Web.Contents',
+    minArgs: 1,
+    maxArgs: 2,
+    call: ([urlV, opcoesV], ctx) => {
+      const fn = 'Web.Contents';
+      const base = exigeTexto(urlV, fn, 'a URL');
+      let url: URL;
+      try {
+        url = new URL(base);
+      } catch {
+        throw new MEvalError(`${fn}: '${base}' não é uma URL absoluta.`);
+      }
+      const headers: Record<string, string> = {};
+
+      if (opcoesV !== undefined && opcoesV !== null) {
+        if (!isRecord(opcoesV)) {
+          throw new MEvalError(`${fn}: o 2º argumento é ${tipoDe(opcoesV)}, esperava registro.`);
+        }
+        for (const [chave, v] of opcoesV.fields) {
+          switch (chave) {
+            case 'RelativePath': {
+              const rel = exigeTexto(v, fn, 'RelativePath');
+              // Base sem barra final perderia o último segmento na resolução de
+              // `URL`; garantir a barra deixa `RelativePath` sempre relativo à raiz
+              // que o M usa.
+              url = new URL(rel.replace(/^\//, ''), url.href.endsWith('/') ? url.href : `${url.href}/`);
+              break;
+            }
+            case 'Query': {
+              if (!isRecord(v)) {
+                throw new MEvalError(`${fn}: Query é ${tipoDe(v)}, esperava registro.`);
+              }
+              for (const [p, pv] of v.fields) {
+                // Só texto e número. Data aqui dependeria de formato, e escolher um
+                // em silêncio manda a data errada para a API — o M também exige que
+                // o valor já seja texto.
+                if (typeof pv === 'string') url.searchParams.set(p, pv);
+                else if (typeof pv === 'number') url.searchParams.set(p, String(pv));
+                else {
+                  throw new MEvalError(
+                    `${fn}: o parâmetro Query '${p}' é ${tipoDe(pv)}. Converta para texto ` +
+                      'antes (ex.: Date.ToText(d, "yyyy-MM-dd")).',
+                  );
+                }
+              }
+              break;
+            }
+            case 'Headers': {
+              if (!isRecord(v)) {
+                throw new MEvalError(`${fn}: Headers é ${tipoDe(v)}, esperava registro.`);
+              }
+              for (const [h, hv] of v.fields) {
+                headers[h] = exigeTexto(hv, fn, `o header '${h}'`);
+              }
+              break;
+            }
+            case 'Content':
+              // `Content` é o que torna a requisição um POST. Recusar aqui é a
+              // camada do guard read-only que vive na camada M.
+              throw new MEvalError(
+                `${fn}: a opção Content faria um POST. A plataforma só lê da fonte.`,
+              );
+            default:
+              throw new MEvalError(
+                `${fn}: a opção '${chave}' não está implementada. ` +
+                  'Implementadas: RelativePath, Query, Headers.',
+              );
+          }
+        }
+      }
+
+      return ctx.web({ url: url.href, headers });
     },
   },
   {
