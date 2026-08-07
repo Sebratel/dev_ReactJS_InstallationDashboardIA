@@ -219,12 +219,18 @@ test('campo fora de Values erra alto dizendo o papel', () => {
   });
 });
 
-test('chave de duas tabelas erra alto pelo agrupamento', () => {
+/**
+ * Duas tabelas **sem relacionamento** continuam recusadas, e a mensagem diz o porquê
+ * certo: não há caminho. Cruzar tabelas passou a funcionar quando existe um
+ * relacionamento a seguir (`expansao.ts`); sem ele, qualquer combinação seria
+ * produto cartesiano.
+ */
+test('chave de duas tabelas sem relacionamento erra alto', () => {
   const ev = montar();
   ev.model.addTable({ id: 'eq', name: 'EQUIPES', queryRef: null, columns: [col('NOME')] });
   ev.dataset.addTable('EQUIPES', [{ NOME: 'Alfa' }]);
   const v = visual([coluna('CIDADE'), { ...coluna('NOME'), entity: 'EQUIPES' }]);
-  assert.throws(() => calculaTabela(dashboard([v]), v, ev), /2 tabelas/);
+  assert.throws(() => calculaTabela(dashboard([v]), v, ev), /não se alcançam por relacionamento nenhum/);
 });
 
 // ---------------------------------------------------------------------------

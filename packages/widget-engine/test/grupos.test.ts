@@ -204,17 +204,20 @@ test('o agrupamento respeita o filtro que já estava no escopo', () => {
  * combinações existem. O produto cartesiano criaria linhas que a tela não mostra.
  * São 4 dos 29 `tableEx` e 5 dos 8 `pivotTable` — a fatia seguinte.
  */
-test('chaves de tabelas diferentes erram alto', () => {
+/**
+ * Chaves de tabelas diferentes **atravessam o relacionamento** — a varredura sai da
+ * tabela do lado "muitos" e segue até a do lado "um" (ver `expansao.test.ts`, que é
+ * onde essa semântica é provada contra o produto cartesiano). Aqui só se fixa que o
+ * caminho está ligado: `OS` tem 2 cidades, `EQUIPES` tem 2 regiões, e o produto daria
+ * 4 combinações onde existem 3.
+ */
+test('chaves de tabelas diferentes atravessam o relacionamento', () => {
   const ev = montar();
-  assert.throws(
-    () => agrupar([chave('OS', 'CIDADE'), chave('EQUIPES', 'REGIAO')], ev.rootScope(), ev, 't'),
-    (e: unknown) => {
-      assert.ok(e instanceof DaxEvalError);
-      assert.match(e.message, /2 tabelas/);
-      assert.match(e.message, /cartesiano/);
-      return true;
-    },
-  );
+  assert.deepEqual(porGrupo([chave('OS', 'CIDADE'), chave('EQUIPES', 'REGIAO')], ev), [
+    ['Bauru', 'Centro', 300],
+    ['Jaú', 'Sul', 700],
+    ['Jaú', null, 500],
+  ]);
 });
 
 const campo = (kind: string, extra: Partial<CampoSpec> = {}): CampoSpec => ({

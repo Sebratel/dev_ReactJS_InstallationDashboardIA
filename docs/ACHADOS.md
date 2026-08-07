@@ -1806,3 +1806,75 @@ Com mais de um nível ativo, o eixo é a combinação de todos (`2026`/`janeiro`
 só o mais fino. Dentro de um único ano as duas leituras dão o mesmo resultado; elas
 divergem quando o período atravessa o ano. É a pergunta 7 de PERGUNTAS-NEGOCIO.md, e
 é uma observação de cinco segundos na tela.
+
+---
+
+## 34. Cruzar tabelas não é produto cartesiano — e o erro seria uma tabela plausível
+
+Treze visuais agrupam por colunas de **mais de uma tabela**: 5 `tableEx`, 3 gráficos
+e 5 `pivotTable`. Até aqui todos eram recusados, e a recusa era honesta: as duas
+saídas óbvias estão erradas.
+
+| leitura | o que dá |
+|---|---|
+| produto cartesiano das colunas | cada protocolo em **cada** data — 5 linhas viram 25 |
+| varrer só uma das tabelas | falta a coluna da outra |
+
+Nenhuma das duas quebra. O produto cartesiano dá uma tabela maior, ordenada, com
+valores que somam certo — parece detalhamento.
+
+### A regra é a tabela expandida do DAX
+
+A *tabela expandida* de `T` é `T` mais tudo que se alcança dela seguindo
+relacionamentos **muitos→um**. Se todas as colunas de agrupamento estão na expandida
+de uma delas, essa é a **âncora**: varrê-la seguindo os relacionamentos dá exatamente
+as combinações que existem, uma vez cada.
+
+`bothDirections` **não** entra na expansão. Ele muda por onde o filtro propaga, não o
+que a tabela contém — e se entrasse, qualquer dimensão viraria âncora do próprio
+fato, com a varredura saindo da tabela errada.
+
+### A medição que definiu o escopo
+
+| caso | n | resultado |
+|---|---|---|
+| âncora única entre as próprias tabelas de chave | 12 | resolvido |
+| âncora só fora delas | 1 | recusado, com os candidatos nomeados |
+| nenhuma âncora | 0 | — |
+
+O caso de fora é `relatorio-do-ano/2d498e...`: `CALENDARIO INSTALADO` e `BASE DE
+ORIGEM` são duas dimensões que não se alcançam, e quem as liga é uma tabela de fato
+**ausente do visual**. Há 4 candidatas (`FIELD AGENDA`, `INSTALAÇÕES REINCIDENTES`,
+`PROTOCOLOS GERAL`, `Status Protocolo Dia`) e cada uma dá um conjunto de combinações
+diferente. Escolher em silêncio seria escolher o número.
+
+Também erra alto quando há **dois caminhos do mesmo tamanho** entre as duas tabelas:
+são duas junções diferentes — o caso clássico de um fato com data de criação e data
+de instalação apontando para o mesmo calendário —, e qual delas vale é decisão do
+relatório.
+
+### A linha em branco do relacionamento, que aqui não existe
+
+Foi o defeito que os testes pegaram, e ele é sutil. Uma linha de fato cuja chave
+estrangeira não casa com dimensão nenhuma aparece na tela com a coluna da dimensão em
+branco — e o valor dela **conta**. Expressar esse grupo como "filtre `'EQUIPES'[REGIAO]`
+igual a branco" não seleciona nada: não existe linha de `EQUIPES` com região em
+branco. O DAX resolve com a *linha em branco* que todo relacionamento ganha; aqui ela
+não existe, e o grupo saía vazio.
+
+O número sairia BLANK onde a tela mostra o valor — e um BLANK numa linha de tabela
+não chama atenção nenhuma. Hoje esse grupo é expresso como filtro **sobre a âncora**:
+"as linhas cujo caminho não chega a lugar nenhum". Sem coluna declarada, para que um
+`CALCULATE` sobre a coluna da dimensão não derrube o grupo inteiro.
+
+### O que isto destravou, e o que continua não provado
+
+Tabelas foram de 20 para **25** das 29; gráficos, de 13 para **15** das 16. A família
+"chaves de mais de uma tabela" foi de 5 recusas a zero, e restam duas famílias:
+campo aritmético (2) e `[CONTAGEM]` (2, achado #31).
+
+**Mas das 5 tabelas cruzadas, só 2 trazem linha sobre dado sintético** — nas outras 3
+o filtro de linha esvazia a âncora antes de agrupar. Zero linha é resultado legítimo
+e prova nenhuma. Quem prova a semântica é `expansao.test.ts`, com um dataset montado
+para que o produto cartesiano dê 4 combinações onde existem 3, e onde uma delas o
+produto nem conhece.
