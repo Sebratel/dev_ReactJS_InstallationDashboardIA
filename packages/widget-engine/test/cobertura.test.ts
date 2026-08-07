@@ -18,6 +18,7 @@ import { identityKey } from '../../measure-engine/src/value.ts';
 import { FUNCAO_DA_AGREGACAO, calculaCard, cardsDoDashboard, valorDoCampo } from '../src/card.ts';
 import { ehFiltroDeGrupo, predicadoDeGrupo, traduzFiltros } from '../src/filtro.ts';
 import { calculaTabela, tabelasDoDashboard } from '../src/tabela.ts';
+import { calculaGrafico, graficosDoDashboard } from '../src/grafico.ts';
 import {
   loadDashboards,
   type CondicaoSpec,
@@ -314,35 +315,33 @@ test('36 cards têm filtro; sobre dado sintético só 5 mudam de valor por causa
 function familiaDaRecusa(msg: string): string {
   if (msg.includes('HAVING')) return 'filtro sobre agregado';
   if (msg.includes('tabelas')) return 'chaves de mais de uma tabela';
-  if (msg.includes("kind 'hierarchy_level'")) return 'nível de hierarquia como célula';
   if (msg.includes("kind 'arithmetic'")) return 'campo aritmético';
   if (msg.includes("[CONTAGEM])")) return 'CONTAGEM: texto onde se declarou int64';
   return `NÃO CLASSIFICADA: ${msg.slice(0, 120)}`;
 }
 
 /**
- * **As 29 tabelas: 19 calculam, e as 10 recusas caem todas em limite declarado.**
+ * **As 29 tabelas: 20 calculam, e as 9 recusas caem todas em limite declarado.**
  *
- * O valor deste teste não é o 19 — é a última asserção. Nenhuma recusa pode cair em
+ * O valor deste teste não é o 20 — é a última asserção. Nenhuma recusa pode cair em
  * `NÃO CLASSIFICADA`: enquanto todas têm nome, o que falta é conhecido e está
  * escrito. Uma sem nome é um defeito que ninguém decidiu ter.
  *
- * **Eram 15, e a família que sumiu prova que o teste funciona.** O filtro sobre
- * agregado (`COUNT(x) > 0`) tinha 5 recusas e hoje tem zero: com o agrupamento
- * existindo, ele virou o HAVING que sempre foi. Quatro dessas tabelas passaram a
- * calcular; a quinta caiu na família seguinte, que é por isso que "chaves de mais
- * de uma tabela" subiu de 4 para 5.
+ * **Foram 15, depois 19, agora 20, e as famílias que sumiram provam que o teste
+ * funciona.** O filtro sobre agregado (`COUNT(x) > 0`) tinha 5 recusas e hoje tem
+ * zero: com o agrupamento existindo, virou o HAVING que sempre foi. O nível de
+ * hierarquia tinha 1 e hoje tem zero: agrupar por `[Data].[Mês]` deixou de ser
+ * recusa quando o eixo dos gráficos precisou dela.
  *
- * As quatro famílias restantes, e onde cada uma se resolve:
+ * As três famílias restantes, e onde cada uma se resolve:
  *
  * | n | família | some quando |
  * |---|---|---|
  * | 5 | chaves de mais de uma tabela | o agrupamento cruzar tabelas por relacionamento |
  * | 2 | campo aritmético (`% do total`) | o campo `arithmetic` for calculável |
  * | 2 | `[CONTAGEM]` é `"1"` (texto) e se declara `int64` | ACHADOS #31 for decidido |
- * | 1 | nível de hierarquia como célula | projetar `[Data].[Mês]` for medido contra a tela |
  */
-test('as 29 tabelas: 19 calculam, e as 10 recusas têm todas família nomeada', () => {
+test('as 29 tabelas: 20 calculam, e as 9 recusas têm todas família nomeada', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let calculam = 0;
@@ -361,12 +360,11 @@ test('as 29 tabelas: 19 calculam, e as 10 recusas têm todas família nomeada', 
   }
 
   assert.equal(DASHBOARDS.reduce((n, d) => n + tabelasDoDashboard(d).length, 0), 29);
-  assert.equal(calculam, 19);
+  assert.equal(calculam, 20);
   assert.deepEqual(familias, {
     'chaves de mais de uma tabela': 5,
     'campo aritmético': 2,
     'CONTAGEM: texto onde se declarou int64': 2,
-    'nível de hierarquia como célula': 1,
   });
 });
 
@@ -374,12 +372,12 @@ test('as 29 tabelas: 19 calculam, e as 10 recusas têm todas família nomeada', 
  * Uma tabela do Power BI **agrupa**: mostra as combinações distintas das colunas
  * que não agregam, não uma linha por registro.
  *
- * O dataset sintético tem 5 linhas por tabela, então as 19 tabelas somam poucas
+ * O dataset sintético tem 5 linhas por tabela, então as 20 tabelas somam poucas
  * linhas — e é justamente isso que o teste fixa. Se a leitura virasse "listagem
  * crua", a soma pularia para 5 linhas por tabela e nada mais falharia: o número
  * sairia maior, com cara de dado a mais.
  */
-test('as 19 tabelas que calculam somam 51 linhas, não uma por registro', () => {
+test('as 20 tabelas que calculam somam 59 linhas, não uma por registro', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let linhas = 0;
@@ -394,8 +392,8 @@ test('as 19 tabelas que calculam somam 51 linhas, não uma por registro', () => 
       }
     }
   }
-  assert.equal(calculadas, 19);
-  assert.equal(linhas, 51);
+  assert.equal(calculadas, 20);
+  assert.equal(linhas, 59);
 });
 
 // ---------------------------------------------------------------------------
@@ -525,4 +523,118 @@ test('os níveis de hierarquia da base são Ano, Mês, Dia (e um Trimestre)', ()
   assert.deepEqual(contar(niveis, (c) => c.level ?? '(sem nível)'), {
     Ano: 23, 'Mês': 23, Dia: 22, Trimestre: 1,
   });
+});
+
+// ---------------------------------------------------------------------------
+// Os gráficos
+// ---------------------------------------------------------------------------
+
+/** Todos os gráficos do relatório, com a página a que pertencem. */
+function todosOsGraficos(): { d: DashboardSpec; v: VisualSpec }[] {
+  return DASHBOARDS.flatMap((d) => graficosDoDashboard(d).map((v) => ({ d, v })));
+}
+
+/**
+ * **Os 16 gráficos: 13 calculam, e as 3 recusas são a mesma família das tabelas.**
+ *
+ * Não é coincidência: os três têm `Series` numa tabela diferente da do eixo
+ * (`Status Protocolo Dia`, `INSTALAÇÕES REINCIDENTES`, `BASE DE ORIGEM`), e cruzar
+ * tabelas é a mesma peça que falta para 5 dos 29 `tableEx`. Uma fatia resolve as
+ * duas — e é por isso que a família tem um nome só.
+ */
+test('os 16 gráficos: 13 calculam, e as 3 recusas são chaves de mais de uma tabela', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let calculam = 0;
+  const familias: Record<string, number> = {};
+  for (const { d, v } of todosOsGraficos()) {
+    try {
+      calculaGrafico(d, v, ev);
+      calculam++;
+    } catch (e) {
+      const f = familiaDaRecusa((e as Error).message);
+      familias[f] = (familias[f] ?? 0) + 1;
+    }
+  }
+  assert.equal(todosOsGraficos().length, 16);
+  assert.equal(calculam, 13);
+  assert.deepEqual(familias, { 'chaves de mais de uma tabela': 3 });
+});
+
+/**
+ * **99 pontos e 19 séries**, sobre 5 linhas por tabela.
+ *
+ * O número que importa é o dos pontos, e ele é maior que o de linhas de propósito:
+ * os eixos de data agrupam pela tabela-calendário, que tem um dia por linha. Dois
+ * gráficos dão 31 pontos cada — um mês de dias — e é isso que prova que o nível
+ * `Dia` está sendo projetado em vez de ignorado. Se o eixo caísse para `Mês`, a
+ * soma despencaria sem nada falhar.
+ */
+test('os 13 gráficos que calculam somam 99 pontos e 19 séries', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let pontos = 0;
+  let series = 0;
+  let calculados = 0;
+  for (const { d, v } of todosOsGraficos()) {
+    try {
+      const r = calculaGrafico(d, v, ev);
+      calculados++;
+      pontos += r.pontos.length;
+      series += r.series.length;
+    } catch {
+      /* recusa já contada e nomeada no teste acima */
+    }
+  }
+  assert.equal(calculados, 13);
+  assert.equal(pontos, 99);
+  assert.equal(series, 19);
+});
+
+/**
+ * **Os dois gráficos com HAVING dão zero ponto — e o teste prova que o zero é do
+ * HAVING, não de tabela vazia.**
+ *
+ * O limite dos dois é `COUNT(...) > 100` e o dataset sintético tem 5 linhas por
+ * tabela: nenhum grupo chega perto, e zero é a resposta certa. Um zero sozinho não
+ * provaria nada — poderia ser tabela vazia ou filtro de linha errado. Por isso o
+ * teste calcula os mesmos dois **sem** o filtro e exige que aí apareçam pontos.
+ *
+ * É também a evidência de que ACHADOS #30 continua fechado: lido como filtro de
+ * linha, `SOLICITACAO > 100` deixaria quase tudo passar e os dois teriam pontos
+ * com o filtro ligado.
+ */
+test('os 2 gráficos com HAVING zeram por causa do HAVING, não por falta de linha', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  const comHaving = todosOsGraficos().filter(({ d, v }) =>
+    [...(d.filters ?? []), ...(v.filters ?? [])].some(ehFiltroDeGrupo),
+  );
+  assert.equal(comHaving.length, 2);
+
+  for (const { d, v } of comHaving) {
+    assert.equal(calculaGrafico(d, v, ev).pontos.length, 0, `${d.id}/${v.id} deveria zerar`);
+
+    const semHaving = { ...v, filters: (v.filters ?? []).filter((f) => !ehFiltroDeGrupo(f)) };
+    const pagina = { ...d, filters: (d.filters ?? []).filter((f) => !ehFiltroDeGrupo(f)) };
+    assert.ok(
+      calculaGrafico(pagina, semHaving, ev).pontos.length > 0,
+      `${d.id}/${v.id} zerou sem o HAVING — então o zero não era do HAVING`,
+    );
+  }
+});
+
+/**
+ * Os papéis que os 16 gráficos usam. Um papel novo aqui é uma dimensão nova no
+ * visual, e `separaPapeis` erra alto nela — este teste é o aviso antecipado.
+ */
+test('os gráficos usam quatro papéis: Category, Series, Y e Y2', () => {
+  const campos = todosOsGraficos().flatMap(({ v }) => v.fields ?? []);
+  assert.deepEqual(contar(campos, (c) => c.role), {
+    Category: 37, Y: 19, Y2: 4, Series: 3,
+  });
+  assert.deepEqual(
+    contar(campos.filter((c) => c.active !== false && c.kind === 'hierarchy_level'), (c) => c.level!),
+    { Ano: 10, 'Mês': 10, Dia: 6 },
+  );
 });

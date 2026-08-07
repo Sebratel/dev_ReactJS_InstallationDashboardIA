@@ -67,7 +67,12 @@ o resto do projeto.
 
 ## Estado atual (já pronto e testado)
 
-**519 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
+> **A tabela de fases viva é a do [README](../README.md#estado-atual), não a daqui.**
+> Esta seção parou na Fase 2b e a de baixo ("Próximo passo") também; as duas ficam
+> como registro do que se sabia então. Hoje (07/08/2026) o projeto está na **Fase 3**,
+> Widget Engine: cards, tabelas e gráficos calculam. Leia o README primeiro.
+
+**774 testes verdes.** Rode `npm test` para confirmar antes de mexer em qualquer coisa.
 Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |

@@ -380,6 +380,36 @@ com buraco.
 
 ---
 
+## 7. Com `Ano` e `Mês` ativos, o eixo do gráfico mostra `2026 janeiro` ou só `janeiro`?
+
+Também não é pergunta de negócio — é outra **observação de cinco segundos**, e vale
+para 10 dos 16 gráficos.
+
+**O que está ambíguo.** A hierarquia de datas chega na spec sempre inteira (`Ano`,
+`Mês`, `Dia`), e o `active` diz quais estão na tela (ACHADOS.md #32). Em 10 gráficos
+há **mais de um nível ativo ao mesmo tempo**. As duas leituras possíveis são:
+
+| leitura | eixo | `janeiro/2025` e `janeiro/2026` |
+|---|---|---|
+| **composta** (a que está implementada) | um ponto por combinação dos níveis ativos | dois pontos |
+| só o nível mais fino | um ponto por `Mês` | um ponto, com os dois somados |
+
+**Quanto isso custa, medido.** Menos do que parece, e por isso não bloqueia nada: os
+gráficos com eixo de data estão filtrados a um período curto, e dentro de um único
+ano as duas leituras dão **o mesmo número de pontos e os mesmos valores** — muda só
+o rótulo. A diferença só aparece quando o período atravessa o ano, e aí a leitura
+errada **soma anos diferentes no mesmo ponto** sem nada indicar.
+
+**A observação que decide.** Qualquer gráfico de `RELATÓRIO DO MÊS` com eixo de
+data: se o rótulo do eixo traz o ano junto do mês (ou se há um cabeçalho de ano
+acima dos meses), é a leitura composta; se traz só `janeiro`, é a outra.
+
+A plataforma usa hoje a composta, com teste que separa as duas
+(`eixo-de-data.test.ts`, "agrupar por ano e mês distingue janeiro de 2025 de janeiro
+de 2026").
+
+---
+
 ## Pendência que é do Erick, não do Fabrício
 
 Conferir os `rowCount` de `specs/golden/` contra os números do Power BI. Não é

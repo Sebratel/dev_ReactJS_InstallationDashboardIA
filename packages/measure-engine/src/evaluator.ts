@@ -94,6 +94,22 @@ const MESES_PT = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ];
 
+/**
+ * A projeção de um nível da hierarquia de datas, ou `undefined` se o nível não
+ * existe.
+ *
+ * Exportada porque o eixo de um gráfico **agrupa** por `[Data].[Mês]`, e agrupar
+ * exige projetar o nível linha a linha. Ter uma segunda tabela de meses no Widget
+ * Engine seria ter duas respostas possíveis para `março`; esta é a que as medidas
+ * já usam.
+ */
+export function projecaoDeHierarquia(parte: string): ((d: Date) => DaxValue) | undefined {
+  return HIERARQUIA[normalizeName(parte)];
+}
+
+/** Os níveis que `projecaoDeHierarquia` conhece — para mensagem de erro. */
+export const NIVEIS_DE_HIERARQUIA: readonly string[] = Object.keys(HIERARQUIA);
+
 export class Evaluator {
   readonly model: SemanticModel;
   readonly dataset: Dataset;
@@ -210,10 +226,19 @@ export class Evaluator {
    * contexto de filtro: uma coluna pode estar filtrada sem ser eixo, e é
    * exatamente o caso do total.
    */
-  scopeWithGrouping(base: EvalScope, colunas: Iterable<readonly [string, string]>): EvalScope {
+  scopeWithGrouping(
+    base: EvalScope,
+    colunas: Iterable<readonly [string, string] | readonly [string, string, string | null]>,
+  ): EvalScope {
     const chaves = new Set<string>();
-    for (const [tabela, coluna] of colunas) {
-      chaves.add(`${normalizeName(tabela)}[${normalizeName(coluna)}]`);
+    for (const [tabela, coluna, nivel] of colunas) {
+      // Um nível de hierarquia entra sob chave própria (`t[c].[mês]`), e não sob a
+      // da coluna base. Agrupar por `[DATA].[Mês]` **não** põe `[DATA]` em escopo:
+      // duas datas do mesmo mês caem no mesmo grupo, então a coluna não está
+      // determinada. Registrá-la faria `ISINSCOPE('T'[DATA])` responder TRUE numa
+      // linha onde a data ainda varia.
+      const daColuna = `${normalizeName(tabela)}[${normalizeName(coluna)}]`;
+      chaves.add(nivel ? `${daColuna}.[${normalizeName(nivel)}]` : daColuna);
     }
     return { filter: base.filter, rows: base.rows, vars: base.vars, agrupamento: chaves };
   }

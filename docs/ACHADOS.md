@@ -1760,3 +1760,49 @@ para o dia em que mover: sem ele, a mudança pareceria regressão em vez de corr
 
 O ganho é adiantado, e é para a fatia dos gráficos: 5 das 21 estão nos gráficos que
 vêm a seguir, e sem isto eles nasceriam agrupando por dia.
+
+---
+
+## 33. O eixo de datas não é uma coluna, e ignorá-lo custaria 356 pontos falsos
+
+Não é um defeito do PBIP — é uma armadilha da leitura, e ela só aparece quando se
+tenta desenhar o gráfico. Fica registrada porque a decisão que a desarma é
+invisível no código de quem só lê a spec.
+
+**`'T'[Data].[Mês]` não existe como coluna.** É uma projeção da coluna de data,
+gerada pelo Power BI numa tabela local (`LocalDateTable_*`). Agrupar por ela exige
+projetar o nível linha a linha; procurar uma coluna chamada `Mês` não acha nada, e
+o caminho fácil dali é agrupar pela data crua — que dá **um ponto por data**, não
+por mês.
+
+### O tamanho do erro, medido
+
+O eixo de 10 dos 16 gráficos é essa hierarquia. Com os níveis inativos entrando no
+agrupamento, os 13 gráficos que calculam dão **455 pontos** em vez de 99. É 4,6× a
+mais, e nenhum deles com cara de erro: são pontos plausíveis, ordenados, com
+valores que somam certo. Um gráfico de linha com 4,6× os pontos parece um gráfico
+mais detalhado.
+
+O número foi obtido trocando `campoAtivo` por `return true` e rodando a cobertura —
+está no teste `os 13 gráficos que calculam somam 99 pontos e 19 séries`, que é o que
+falha se a projeção ou o `active` pararem de valer.
+
+### O que o nível põe em escopo — e o que não põe
+
+Agrupar por `[DATA].[Mês]` **não** põe `'T'[DATA]` em escopo. Dentro do ponto
+`janeiro` a data ainda varia entre o dia 10 e o dia 25, então a coluna não está
+determinada e `ISINSCOPE('T'[DATA])` tem de responder FALSE. O nível entra sob chave
+própria (`t[data].[mês]`).
+
+O filtro do grupo, porém, restringe a **coluna base** — e a assimetria é
+deliberada. É ela que faz um `CALCULATE(..., ALL('T'[DATA]))` de dentro de uma
+medida sobrepor o eixo, como a inteligência de tempo espera. Registrado sob a chave
+do nível, o filtro do eixo sobreviveria ao `CALCULATE` e o número sairia menor sem
+nada apontar por quê.
+
+### O que ficou por decidir
+
+Com mais de um nível ativo, o eixo é a combinação de todos (`2026`/`janeiro`) e não
+só o mais fino. Dentro de um único ano as duas leituras dão o mesmo resultado; elas
+divergem quando o período atravessa o ano. É a pergunta 7 de PERGUNTAS-NEGOCIO.md, e
+é uma observação de cinco segundos na tela.

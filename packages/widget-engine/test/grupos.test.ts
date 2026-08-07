@@ -65,7 +65,9 @@ function montar(os: Row[] = OS) {
   return new Evaluator({ model, dataset, now: AGORA });
 }
 
-const chave = (tabela: string, coluna: string): Chave => ({ tabela, coluna, nome: coluna });
+const chave = (tabela: string, coluna: string, nivel: string | null = null): Chave => ({
+  tabela, coluna, nivel, nome: coluna,
+});
 
 /** O total de `[Total]` em cada grupo, junto com os valores da chave. */
 function porGrupo(chaves: Chave[], ev = montar(), medida = 'Total') {
@@ -219,11 +221,30 @@ const campo = (kind: string, extra: Partial<CampoSpec> = {}): CampoSpec => ({
   role: 'Values', kind, entity: 'OS', property: 'CIDADE', name: 'Cidade', ...extra,
 });
 
-test('nível de hierarquia não é chave, e o erro diz por quê', () => {
-  assert.throws(() => chaveDoCampo(campo('hierarchy_level', { level: 'Mês' }), 'x'), (e: unknown) => {
+test('nível de hierarquia é chave, e leva o nível junto', () => {
+  assert.deepEqual(chaveDoCampo(campo('hierarchy_level', { level: 'Mês' }), 'x'), {
+    tabela: 'OS', coluna: 'CIDADE', nivel: 'Mês', nome: 'Cidade',
+  });
+});
+
+/**
+ * O nível é **obrigatório**, e a mensagem diz o tamanho do estrago: `[Data].[Ano]`
+ * e `[Data].[Dia]` são o mesmo campo com um nome diferente, e escolher em silêncio
+ * troca 1 ponto no eixo por 365.
+ */
+test('nível de hierarquia sem o nome do nível erra alto', () => {
+  assert.throws(() => chaveDoCampo(campo('hierarchy_level', { level: null }), 'x'), (e: unknown) => {
     assert.ok(e instanceof DaxEvalError);
-    assert.match(e.message, /hierarquia/);
-    assert.match(e.message, /ISINSCOPE/);
+    assert.match(e.message, /sem nome do nível/);
+    return true;
+  });
+});
+
+test('nível de hierarquia que não existe erra alto e lista os que existem', () => {
+  assert.throws(() => chaveDoCampo(campo('hierarchy_level', { level: 'Semana' }), 'x'), (e: unknown) => {
+    assert.ok(e instanceof DaxEvalError);
+    assert.match(e.message, /Semana/);
+    assert.match(e.message, /Suportados:.*trimestre/);
     return true;
   });
 });
@@ -240,6 +261,6 @@ test('chave sem tabela ou coluna erra alto', () => {
 
 test('chaveDoCampo devolve tabela, coluna e o rótulo da tela', () => {
   assert.deepEqual(chaveDoCampo(campo('column', { name: 'Município' }), 'x'), {
-    tabela: 'OS', coluna: 'CIDADE', nome: 'Município',
+    tabela: 'OS', coluna: 'CIDADE', nivel: null, nome: 'Município',
   });
 });

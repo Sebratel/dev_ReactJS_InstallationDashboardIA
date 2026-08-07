@@ -62,10 +62,20 @@ export function separaCampos(
   const chaves: Chave[] = [];
   const calculados: CampoSpec[] = [];
   for (const c of camposAtivos(visual)) {
-    if (c.kind === 'column' && !c.aggregation) chaves.push(chaveDoCampo(c, onde));
+    if (ehChave(c)) chaves.push(chaveDoCampo(c, onde));
     else calculados.push(c);
   }
   return { chaves, calculados };
+}
+
+/**
+ * O campo agrupa, em vez de virar célula calculada?
+ *
+ * `column` e `hierarchy_level` **sem** função de agregação. Uma coluna com
+ * `aggregation` é `MIN('T'[C])`, que é um número; sem ela é a coluna, que é chave.
+ */
+function ehChave(c: CampoSpec): boolean {
+  return (c.kind === 'column' || c.kind === 'hierarchy_level') && !c.aggregation;
 }
 
 /**
@@ -120,7 +130,7 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
   // (dois campos podem ter o mesmo `displayName`; em `agendamento-field` há um `.`).
   const indiceDaChave = new Map<CampoSpec, number>();
   let n = 0;
-  for (const c of campos) if (c.kind === 'column' && !c.aggregation) indiceDaChave.set(c, n++);
+  for (const c of campos) if (ehChave(c)) indiceDaChave.set(c, n++);
 
   const linhas = grupos.map((grupo) =>
     campos.map((campo): CelulaTabela => {

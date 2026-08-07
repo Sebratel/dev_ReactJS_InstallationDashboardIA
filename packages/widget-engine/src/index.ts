@@ -7,7 +7,24 @@ export {
   type ValorDeCard,
 } from './card.ts';
 export { traduzFiltros } from './filtro.ts';
-export { agrupar, campoAtivo, chaveDoCampo, type Chave, type Grupo } from './grupos.ts';
+export {
+  agrupar,
+  campoAtivo,
+  chaveDoCampo,
+  valorDaChave,
+  type Chave,
+  type Grupo,
+} from './grupos.ts';
+export {
+  TIPOS_DE_GRAFICO,
+  calculaGrafico,
+  graficosDoDashboard,
+  separaPapeis,
+  type ChaveDeGrafico,
+  type PontoDeGrafico,
+  type SerieDeGrafico,
+  type ValorDeGrafico,
+} from './grafico.ts';
 export {
   calculaTabela,
   camposAtivos,
