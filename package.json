@@ -27,7 +27,9 @@
     "validate:queries": "node tools/validate/src/index.ts",
     "run:mlayer": "node tools/mrun/src/index.ts",
     "probe:datahub": "node tools/probe/src/datahub.ts",
-    "probe:gsheets": "node tools/probe/src/gsheets.ts"
+    "probe:gsheets": "node tools/probe/src/gsheets.ts",
+    "snapshot": "node tools/snapshot/src/index.ts",
+    "test:snapshot": "node --test packages/snapshot/test/*.test.ts"
   },
   "dependencies": {
     "ioredis": "^6.0.0",

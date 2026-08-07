@@ -41,10 +41,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Cruzar tabelas: a expansão do DAX, não o produto cartesiano.** Agrupar por colunas de tabelas diferentes exige achar a **âncora** — aquela cuja *tabela expandida* cobre as outras — e varrê-la seguindo os relacionamentos. O produto daria 25 linhas onde existem 5, com cara de detalhamento. Destravou 5 tabelas e 2 gráficos; a linha em branco do relacionamento foi o defeito que os testes pegaram ([ACHADOS](docs/ACHADOS.md) #34) | ✅ |
 | — | **Matriz: os 8 `pivotTable` calculam.** Uma matriz **não** é uma tabela com duas chaves: os eixos são agrupados em separado, a combinação que não existe é **célula vazia** (não linha ausente), e o HAVING vale por célula. A poda de linha/coluna vazia é o padrão do Power BI, e o resultado carrega quantas descartou ([ACHADOS](docs/ACHADOS.md) #35) | ✅ |
 | — | **Os últimos 5 visuais, e as duas regras que faltavam.** `% do total` (`Arithmetic` + `ScopedEval`): o denominador é o total **do visual**, não o da tabela — a leitura errada dá porcentagens plausíveis que somam menos de 1. E a âncora de duas dimensões é a tabela **de onde saem os números do visual**, não uma das 4 candidatas do modelo ([ACHADOS](docs/ACHADOS.md) #36) | ✅ |
+| — | **O primeiro número real: a camada M chegou ao avaliador.** `toDatasetRows` — a ponte entre a camada M e o `Dataset` — existia desde a 2b.8 e **só era chamada em teste**: as engines calculavam sobre dado sintético e nada na plataforma tocava a fonte. `npm run snapshot` materializa o que uma **página** alcança e `carrega()` monta o avaliador. O fechamento não é a lista do visual — `FERIADOS` entra em **9 páginas e nenhum visual a nomeia**, quem a puxa é o DAX de `'CALENDARIO INSTALADO'[PESO]` ([ACHADOS](docs/ACHADOS.md) #37) | ✅ |
+| — | Medido em `diario-instalacao`: 4 queries, **98.111 linhas, 75,2 MB** em disco, 2m13s para materializar e **1,76 s para carregar**. Os **5 cards da página calculam com dado real** | ✅ |
+| — | **A matriz custa 33.945 varreduras onde o Power BI faz uma.** 93 técnicos × 365 datas, e cada célula refiltra as 65.563 linhas: **2,2 bilhões** de visitas de linha contra **65.563** de uma varredura única — razão de ~34.000×. A página não terminou em 400 s. O conserto é varrer uma vez e agrupar em balde, e vale para os 4 tipos de visual ([ACHADOS](docs/ACHADOS.md) #38) | 🚧 **próxima fatia** |
+| — | Front-end e API **não existem ainda** — e o #38 diz por que não fazia sentido escrevê-los antes: com o cálculo por célula, uma página levaria ~4 min para responder | ⏳ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**832 testes verdes.** Nenhum deles precisa de credencial.
+**860 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -59,6 +63,37 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | Queries (Query Registry) | 24 — 15 `dbVoalle`, 3 `dbMaria`, 3 `gsheets`, 1 `web`, 1 `inline`, 1 `computed` |
 | Dashboards (páginas) | 14 |
 | Visuais | 306 |
+
+### Snapshot da camada M (Fase 3)
+
+`packages/snapshot/` e `npm run snapshot` são a costura entre as duas metades que
+funcionavam sem se tocar: a camada M, que sabia buscar da fonte, e o avaliador, que
+calculava sobre `Dataset` montado à mão no teste.
+
+```
+npm run snapshot -- --pagina=diario-instalacao --plano      # só diz o que faria
+npm run snapshot -- --pagina=diario-instalacao --memoria=8192
+npm run snapshot -- --todas --memoria=8192
+```
+
+**Uma query por processo**, pelo motivo já medido no [ACHADOS](docs/ACHADOS.md) #20: o
+avaliador de M mantém todos os passos vivos ao mesmo tempo, e as queries num processo
+só estouraram 4 GB de heap. Em disco sobra a tabela **final**, não os 60 passos que a
+produziram — e é por isso que a API carrega arquivo em vez de rodar M no arranque.
+
+**Só o que a página alcança é materializado.** O fechamento anda por quatro arestas
+— visual → tabela·medida, medida → DAX, coluna calculada → DAX, tabela calculada →
+DAX — e não pela lista de `entities_used`, que deixaria `FERIADOS` de fora de 9
+páginas. As 14 juntas fecham em 23 tabelas e 16 queries; uma página típica pede 4.
+
+**O formato guarda o tipo.** `JSON.stringify` de uma data devolve texto, e texto onde
+o modelo espera data faz `YEAR()` errar alto — todas as datas de uma vez, longe da
+causa. O arquivo é colunar com o tipo de cada coluna no cabeçalho, apurado varrendo a
+coluna inteira.
+
+> **`snapshot/` contém dado de cliente** — endereço em `field-agenda`, CPF e RG em
+> `QUADRO FUNCIONAL`. Está no `.gitignore`, e nem a ferramenta nem os testes imprimem
+> valor de linha.
 
 ### Modelo semântico (Fase 2a)
 

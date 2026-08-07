@@ -2029,3 +2029,148 @@ recusa nova não some na contagem: aparece como `NÃO CLASSIFICADA`.
 mudam de valor sobre dado sintético; das 5 tabelas cruzadas só 2 trazem linha; das 8
 matrizes, 6. O que falta para paridade não é código — é alguém abrir o Power BI e
 ditar os totais.
+
+---
+
+## 37. A camada M nunca havia chegado ao avaliador: `toDatasetRows` só era chamada em teste
+
+**Medido em 07/08/2026.** Desde a fase 2b.8 existia uma função chamada
+`toDatasetRows` — a ponte entre a tabela que a camada M produz e o `Dataset` sobre o
+qual o DAX é avaliado. Ela tinha teste, passava, e **nenhum caminho de produção a
+chamava**. Grep no repositório: 3 ocorrências, todas em
+`transform-engine/test/avaliador.test.ts`.
+
+O efeito é sutil porque nada falhava. As engines calculavam, os 860 testes passavam,
+e o número que saía vinha de `Dataset` montado à mão no teste. A plataforma tinha
+duas metades que funcionavam e não se tocavam:
+
+```
+fontes reais → Query Engine → camada M → (fim: só contagem impressa pelo mrun)
+
+Dataset sintético → Evaluator → Widget Engine → número (só em teste)
+```
+
+`npm run snapshot` é a costura. E o percurso completo, agora exercitado:
+
+```
+fontes → Query Engine → camada M → toDatasetRows → snapshot em disco
+                                                         │
+                                       carrega() ────────┘
+                                           │
+                     Dataset + tabelas calculadas materializadas
+                                           │
+                       Evaluator → Widget Engine → número
+```
+
+### Por que disco, e não a camada M no arranque da API
+
+Não foi escolha de gosto: o #20 já tinha medido. O avaliador de M mantém **todos** os
+passos vivos ao mesmo tempo — em M qualquer passo pode citar qualquer outro, então o
+escopo não libera nenhum antes do fim — e rodar as queries num processo só estourou o
+heap em 4 GB. Uma API que rodasse a camada M no arranque seria exatamente esse
+processo. Em disco sobra a tabela **final**, não os 60 passos que a produziram.
+
+### O fechamento não é a lista de `entities_used` — e `FERIADOS` prova
+
+Materializar "as tabelas que o visual nomeia" deixa de fora tudo o que o DAX
+alcança. Medido nas 14 páginas:
+
+| tabela | páginas | quem a puxa |
+|---|---|---|
+| `FERIADOS` | **9** | o DAX de `'CALENDARIO INSTALADO'[PESO]` — **nenhum visual a nomeia** |
+
+Sem ela, 9 páginas buscariam tudo o mais nas fontes reais e só então morreriam com
+`Tabela 'FERIADOS' não está no dataset`, no meio de um cálculo, longe da causa. O
+fechamento anda por quatro arestas: visual → tabela·medida, medida → DAX,
+coluna calculada → DAX, tabela calculada → DAX.
+
+### O que o fechamento economiza
+
+| query | em quantas das 14 páginas |
+|---|---|
+| `protocolos-geral` | 13 — é a espinha do relatório |
+| `hora-atualizado` | 13 |
+| `field-agenda` (1,4 M de linhas) | **3** |
+
+As 14 páginas juntas fecham em **23 tabelas e 16 queries** — não nas 24 do
+registry. Uma página típica pede 4.
+
+### `statement_timeout` de 30 s é o teto certo para uma tela e o errado para um refresh
+
+Primeira execução: `protocolos-geral` e `protocolos-auxiliares` foram **canceladas
+pelo servidor** — `canceling statement due to statement timeout`. O `.env` traz 30 s,
+que é o valor certo para um widget: passou disso, alguém está esperando.
+
+Materialização não é pedido de tela. A ferramenta usa 600 s **e imprime que
+substituiu o valor do `.env`**, com `--timeout=` para mandar. Sobrescrever calado
+seria pior que o timeout. Com o teto novo: `protocolos-geral` 45 s,
+`protocolos-produtividade` 87 s.
+
+### O formato existe por causa da data
+
+`JSON.stringify(new Date())` devolve string e `JSON.parse` devolve a string de volta.
+Guardar a camada M em JSON puro transformaria **toda** coluna de data em texto, e aí
+`YEAR()`, `DATESMTD` e a hierarquia `[Data].[Mês]` passariam a errar alto — todas, e
+longe da causa. O snapshot é colunar com **o tipo de cada coluna no cabeçalho**, e o
+tipo é apurado varrendo a coluna inteira: olhar só o primeiro não-nulo erra na coluna
+que começa data e termina texto, e aí a leitura devolveria `Invalid Date` calada.
+
+### O arquivo é dado de cliente
+
+`field-agenda` tem endereço, `QUADRO FUNCIONAL` tem CPF e RG. `snapshot/` está no
+`.gitignore`, a gravação é em temporário com `rename` no fim, e a saída da ferramenta
+nunca imprime valor de linha — só id, contagem, nome de coluna e tempo, a mesma regra
+do `mrun`, para poder colar em ticket.
+
+**Medido em `diario-instalacao`:** 4 queries, **98.111 linhas, 75,2 MB** em disco, 2
+min 13 s para materializar, **1,76 s para carregar** (incluindo materializar
+`CALENDARIO INSTALADO`, 364 linhas, de DAX).
+
+---
+
+## 38. A matriz custa 33.945 varreduras onde o Power BI faz uma
+
+**O primeiro número real quebrou o desenho, e só dado real quebraria.** Com o
+snapshot carregado, os 5 cards de `diario-instalacao` calcularam. A página não
+terminou: uma das duas matrizes não devolveu em **mais de 400 segundos**.
+
+A causa não é o volume. É a forma do cálculo. `matriz.ts` agrupa os dois eixos em
+separado (o que está certo, #35) e depois, **para cada célula**, monta um contexto de
+filtro e reavalia a medida — que varre a tabela inteira.
+
+Medido no visual `diario-instalacao/2c224be87531efbec489`:
+
+| | |
+|---|---|
+| eixo de linha | `'PROTOCOLOS PRODUTIVIDADE'[INSTALADOR]` — 93 distintos |
+| eixo de coluna | `[DATA INSTALAÇÃO]` — 365 distintos |
+| grade | **33.945 células** |
+| combinações que **existem** | 8.524 (25,1%) |
+| linhas da tabela | 65.563 |
+| **visitas de linha, por célula** | **2,2 bilhões** |
+| **visitas de linha, varredura única** | **65.563** |
+
+A razão é de **~34.000×**. A 10 milhões de visitas por segundo — que é a taxa medida
+na matriz vizinha, 93 × 1 células com 3 medidas em 1.951 ms — a grade custa ~220 s.
+A página inteira ficaria em torno de 4 minutos.
+
+O Power BI resolve o visual com **um** `SUMMARIZECOLUMNS`: varre uma vez, agrupa por
+chave e agrega incrementalmente. O custo é O(linhas), não O(células × linhas).
+
+### O que **não** serve como conserto
+
+- **Pular a célula cuja combinação não existe.** Ganharia 4× (25,1% das células) e
+  está errado no geral: uma medida com `ALL(...)` ignora o filtro da célula e devolve
+  número mesmo com zero linhas; `SELECTEDVALUE` devolve o rótulo. Célula vazia não
+  quer dizer valor em branco.
+- **Calcular uma vez o "valor da célula vazia" e repetir.** Mesmo problema: os
+  contextos de filtro de duas células vazias são **diferentes** ainda que os dois
+  selecionem zero linhas.
+
+O conserto é o do Power BI — varrer uma vez e agrupar em balde — e é a próxima fatia.
+Vale para os quatro tipos de visual, não só para a matriz: hoje toda medida de todo
+grupo refiltra a tabela.
+
+**Nada disto aparecia em dado sintético**, onde as tabelas de teste têm 3 a 5 linhas
+e 33.945 células custam microssegundos. É a mesma lição da 2b.5 e da 2b.6, agora sobre
+desempenho: o teste provava que o cálculo *funciona*, não que ele *termina*.
