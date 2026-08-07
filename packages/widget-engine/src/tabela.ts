@@ -17,7 +17,7 @@ import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts
 import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
-import { agrupar, chaveDoCampo, type Chave } from './grupos.ts';
+import { agrupar, campoAtivo, chaveDoCampo, type Chave } from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
 export interface CelulaTabela {
@@ -61,11 +61,22 @@ export function separaCampos(
 
   const chaves: Chave[] = [];
   const calculados: CampoSpec[] = [];
-  for (const c of campos) {
+  for (const c of camposAtivos(visual)) {
     if (c.kind === 'column' && !c.aggregation) chaves.push(chaveDoCampo(c, onde));
     else calculados.push(c);
   }
   return { chaves, calculados };
+}
+
+/**
+ * Os campos que a tela mostra.
+ *
+ * Campo inativo não é "não agrupa" — é **não aparece**. Ele é um nível de
+ * hierarquia acima do drill corrente, e deixá-lo como coluna criaria uma coluna que
+ * a tela não tem. Ver ACHADOS.md #32.
+ */
+export function camposAtivos(visual: VisualSpec): CampoSpec[] {
+  return (visual.fields ?? []).filter(campoAtivo);
 }
 
 /**
@@ -80,9 +91,16 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
   if (visual.type !== 'tableEx') {
     throw new DaxEvalError(`${onde}: não é tableEx, é '${visual.type}'.`);
   }
-  const campos = visual.fields ?? [];
-  if (campos.length === 0) {
+  if ((visual.fields ?? []).length === 0) {
     throw new DaxEvalError(`${onde}: tabela sem campo nenhum.`);
+  }
+  const campos = camposAtivos(visual);
+  if (campos.length === 0) {
+    throw new DaxEvalError(
+      `${onde}: todos os ${visual.fields!.length} campos da tabela estão inativos. ` +
+        `A tela não mostraria coluna nenhuma, e isso não é uma tabela vazia — é uma ` +
+        `leitura errada do estado de drill (ACHADOS.md #32).`,
+    );
   }
 
   const { chaves } = separaCampos(visual, onde);

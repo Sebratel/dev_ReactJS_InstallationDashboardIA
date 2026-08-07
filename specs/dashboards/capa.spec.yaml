@@ -52,6 +52,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 213f32271435d9c7a8bf
@@ -324,6 +325,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: e86388cc1bb08a494dae

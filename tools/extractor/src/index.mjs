@@ -252,6 +252,15 @@ function extractVisualFields(visual) {
         role,
         ...campo,
         name: proj.displayName || proj.nativeQueryRef || campo.property || null,
+        // `active` diz quais projeções de um poço estão **em jogo**. Um eixo com a
+        // hierarquia de datas lista Ano, Mês e Dia; só as ativas entram no
+        // agrupamento, e um gráfico agrupado por Dia quando a tela mostra Mês tem
+        // um ponto por dia em vez de um por mês. Ver ACHADOS.md #32.
+        //
+        // `null` é distinto de `true` de propósito: 302 das 448 projeções não
+        // trazem o campo (poço de um campo só, onde a pergunta não se coloca), e
+        // gravar `true` ali afirmaria um estado de drill que o PBIP não declarou.
+        active: typeof proj.active === 'boolean' ? proj.active : null,
       });
     }
   }

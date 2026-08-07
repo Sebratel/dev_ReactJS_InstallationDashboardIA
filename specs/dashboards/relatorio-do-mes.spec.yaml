@@ -28,6 +28,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# MEDIA INSTALADO MENSAL"
     name: "MÉDIA REALIZADOS (MÊS ATUAL)"
+    active: null
   filters:
   - name: 278efb61c934c0a06e91
     type: RelativeDate
@@ -93,11 +94,13 @@ visuals:
     entity: calendar
     property: Data
     name: Data
+    active: true
   - role: Rows
     kind: column
     entity: Clima/ Tempo
     property: Cidade
     name: Cidade
+    active: true
   - role: Values
     kind: aggregation
     entity: Clima/ Tempo
@@ -105,6 +108,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Primeiro Classificacao
+    active: null
   filters:
   - name: 190b102b80638eb8440c
     type: RelativeDate
@@ -136,6 +140,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "#DIAS_ÚTEIS_TRABALHADOS"
     name: "DIAS TRABALHADOS NO MÊS"
+    active: null
   filters:
   - name: 278efb61c934c0a06e91
     type: RelativeDate
@@ -167,6 +172,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# META"
     name: "META DO MÊS"
+    active: null
   filters: []
   filters_vazios: 0
 - id: 3241fd3b779d87605221
@@ -217,6 +223,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# TOTAL MÊS ATIVO"
     name: "TOTAL MÊS ATIVO FIBRA"
+    active: null
   filters:
   - name: Filter134b83c1cae3d074b675
     type: RelativeDate
@@ -249,11 +256,13 @@ visuals:
     entity: calendar
     property: Data
     name: Data
+    active: true
   - role: Rows
     kind: column
     entity: Clima/ Tempo
     property: Cidade
     name: Cidade
+    active: true
   - role: Values
     kind: aggregation
     entity: Clima/ Tempo
@@ -261,6 +270,7 @@ visuals:
     aggregation: max
     aggregation_code: 4
     name: "Último Probabilidade_Chuva_Formatada"
+    active: null
   filters:
   - name: 190b102b80638eb8440c
     type: RelativeDate
@@ -300,6 +310,7 @@ visuals:
     entity: CALENDARIO INSTALADO
     property: "# PROJEÇÃO"
     name: "PROJEÇÃO (MÉDIA REALIZADA)"
+    active: null
   filters:
   - name: 68a9a7d5bb0a04860853
     type: RelativeDate
@@ -331,6 +342,7 @@ visuals:
     entity: FIELD AGENDA
     property: "Média Mensal Protocolos2"
     name: "MÉDIA AGENDADA (MÊS ATUAL)"
+    active: null
   filters: []
   filters_vazios: 0
 - id: 6fefdcc266cd5e1b69e5
@@ -348,6 +360,7 @@ visuals:
     entity: PROTOCOLOS
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: null
   filters:
   - name: 06c4216e4bc6041ceac1
     type: Categorical
@@ -377,6 +390,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: DATA INSTALADO Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -384,6 +398,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "DATA INSTALADO Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -391,6 +406,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: DATA INSTALADO Dia
+    active: true
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS GERAL
@@ -398,6 +414,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Contagem de SOLICITACAO1
+    active: null
   filters:
   - name: 014e56ff8a9eabc6c997
     type: RelativeDate
@@ -448,6 +465,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# FALTA MÊS ATIVO"
     name: RESTANTES
+    active: null
   filters:
   - name: Filter668b473ef2fd6a6a41bb
     type: RelativeDate
@@ -512,6 +530,7 @@ visuals:
     entity: FIELD AGENDA
     property: "Protocolos Restantes no Mês"
     name: AGENDADOS
+    active: null
   filters: []
   filters_vazios: 0
 - id: 95fe1259eb997b10b7dd
@@ -529,6 +548,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# MEDIA INSTALADO BACKLOG"
     name: "MÉDIA REALIZADO BACKLOG"
+    active: null
   filters:
   - name: edaf6aecb6571fd43745
     type: RelativeDate
@@ -579,6 +599,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 9dead5c82aa7fbf7bfa2
@@ -611,6 +632,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Dates Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO AGENDAMENTO
@@ -618,6 +640,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Dates Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO AGENDAMENTO
@@ -625,6 +648,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Dates Dia
+    active: true
   - role: Y
     kind: aggregation
     entity: "BACKLOG INSTALAÇÃO"
@@ -632,6 +656,7 @@ visuals:
     aggregation: sum
     aggregation_code: 0
     name: Abertos
+    active: null
   - role: Y
     kind: aggregation
     entity: BACKLOG AGENDADO FUTURO
@@ -639,6 +664,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: Agendados
+    active: null
   filters:
   - name: f5f87a39d4085b246cb9
     type: RelativeDate
@@ -689,6 +715,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "DIAS_ÚTEIS_RESTANTES_NO_MÊS"
     name: "DIAS ÚTEIS RESTANTES NO MÊS"
+    active: null
   filters:
   - name: 278efb61c934c0a06e91
     type: RelativeDate
@@ -734,6 +761,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Data Criado Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO CRIADO
@@ -741,6 +769,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Data Criado Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO CRIADO
@@ -748,6 +777,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Data Criado Dia
+    active: true
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS GERAL
@@ -755,6 +785,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: PROTOCOLOS GERADOS
+    active: null
   filters:
   - name: Filtere31d9c54d46998966777
     type: RelativeDate
@@ -788,6 +819,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: PROTOCOLOS TOTAIS REALIZADOS
+    active: null
   filters:
   - name: 05cc1e418c9bbb475a0b
     type: Categorical
@@ -831,6 +863,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Data Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: calendar
@@ -838,6 +871,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Data Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: calendar
@@ -845,6 +879,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Data Dia
+    active: true
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
@@ -852,6 +887,7 @@ visuals:
     aggregation: sum
     aggregation_code: 0
     name: "CAPACIDADE MANHÃ"
+    active: null
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
@@ -859,6 +895,7 @@ visuals:
     aggregation: sum
     aggregation_code: 0
     name: CAPACIDADE TARDE
+    active: null
   - role: Y2
     kind: aggregation
     entity: calendar
@@ -866,6 +903,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: Protocolo
+    active: null
   filters:
   - name: f70b659397da408cc5ce
     type: RelativeDate
@@ -897,6 +935,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# BACKLOG"
     name: BACKLOG AGENDADO
+    active: null
   filters:
   - name: edaf6aecb6571fd43745
     type: RelativeDate
@@ -958,6 +997,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: f4049560074482060335
@@ -975,6 +1015,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "# MEDIA CRIADOS"
     name: "MÉDIA GERADOS"
+    active: null
   filters:
   - name: 2aad4d13a2c1154da5a1
     type: RelativeDate
@@ -1008,6 +1049,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: TOTAL GERADOS
+    active: null
   filters:
   - name: 2accc86d520098c90684
     type: RelativeDate

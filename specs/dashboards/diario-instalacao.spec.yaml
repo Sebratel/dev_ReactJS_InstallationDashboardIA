@@ -41,6 +41,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 0bb4d36b48b8c9a98010
@@ -58,6 +59,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "Média Geral"
     name: "MÉDIA GERAL"
+    active: null
   filters: []
   filters_vazios: 2
 - id: 0dab338295de8c4edaa7
@@ -86,6 +88,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: CIDADE
+    active: true
   filters: []
   filters_vazios: 1
 - id: 1497604e33608cf36797
@@ -114,11 +117,13 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "DATA INSTALAÇÃO"
     name: "DATA INSTALAÇÃO"
+    active: true
   - role: Rows
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: TECNICO
+    active: true
   - role: Values
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
@@ -126,6 +131,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: QTD.
+    active: null
   filters:
   - name: 10d6c6fabb941d8ac4a0
     type: Advanced
@@ -153,6 +159,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: DATA CRIADO
     name: DATA CRIADO
+    active: true
   filters: []
   filters_vazios: 0
 - id: 3044b4a5731a9776935e
@@ -170,6 +177,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: GESTOR
     name: GESTOR
+    active: true
   filters: []
   filters_vazios: 1
 - id: 3556b2705b9e5d99e0b5
@@ -209,6 +217,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "Média Protocolos por Dia"
     name: "MÉDIA POR DIA"
+    active: null
   filters: []
   filters_vazios: 2
 - id: 54649dd7f88306e975d7
@@ -259,21 +268,25 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: TECNICO
+    active: true
   - role: Values
     kind: measure
     entity: PROTOCOLOS PRODUTIVIDADE
     property: Total Protocolos
     name: REALIZADOS
+    active: null
   - role: Values
     kind: measure
     entity: PROTOCOLOS PRODUTIVIDADE
     property: Total Dias
     name: DIAS
+    active: null
   - role: Values
     kind: measure
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "Média Protocolos por Dia"
     name: "MÉDIA"
+    active: null
   filters:
   - name: 14a41f07c23410fa89d4
     type: Advanced
@@ -301,6 +314,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: N°PROTOCOLO
+    active: true
   filters: []
   filters_vazios: 0
 - id: c19dd58d398564256c1c
@@ -320,6 +334,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: DATA INSTALADO Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -327,6 +342,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "DATA INSTALADO Mês"
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -334,6 +350,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: DATA INSTALADO Dia
+    active: false
   filters:
   - name: d0105f0477c4120e2be2
     type: Categorical
@@ -359,6 +376,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: true
   filters: []
   filters_vazios: 0
 - id: e3446e1e9c13af37ca52
@@ -376,6 +394,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: INSTALADOR
+    active: true
   filters: []
   filters_vazios: 0
 - id: e51b24381944279c8bbe
@@ -393,6 +412,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: Total Protocolos
     name: REALIZADOS
+    active: null
   filters: []
   filters_vazios: 2
 - id: ea5c7143230acf5f95e9
@@ -412,5 +432,6 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0

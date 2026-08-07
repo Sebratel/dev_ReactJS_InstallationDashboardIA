@@ -43,16 +43,19 @@ visuals:
     entity: calendar
     property: Data
     name: Data
+    active: true
   - role: Rows
     kind: column
     entity: Status Protocolo Dia
     property: Status
     name: Status
+    active: true
   - role: Values
     kind: measure
     entity: Status Protocolo Dia
     property: Qtd Protocolos Base
     name: Qtd Protocolos Base
+    active: null
   filters: []
   filters_vazios: 0
 - id: 05da970602ab7c4abced
@@ -70,6 +73,7 @@ visuals:
     entity: Status Protocolo Dia
     property: Rank Protocolo Dia
     name: Vezes Agendado
+    active: null
   - role: Values
     kind: aggregation
     entity: Status Protocolo Dia
@@ -77,6 +81,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Qtd
+    active: null
   filters: []
   filters_vazios: 0
 - id: 084be384e4209a5a3674
@@ -96,31 +101,37 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: "."
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Protocolo
     name: Protocolo
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Data Relato
     name: Data Relato
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: "Descrição"
     name: Tipo Relato
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: CategoriaProdutividade
     name: "Produtivo?"
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: ClassificacaoRelato
     name: "Relato Padrão/ Motivo"
+    active: null
   filters: []
   filters_vazios: 0
 - id: 0c0223c665b34f95121e
@@ -138,6 +149,7 @@ visuals:
     entity: FIELD AGENDA
     property: Status SLA
     name: Status SLA
+    active: null
   - role: Values
     kind: aggregation
     entity: FIELD AGENDA
@@ -145,6 +157,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Qtd
+    active: null
   filters: []
   filters_vazios: 0
 - id: 116ebf72cb2018a25249
@@ -162,6 +175,7 @@ visuals:
     entity: FIELD AGENDA
     property: "Protocolos Manhã"
     name: "Agendados Manhã"
+    active: null
   filters: []
   filters_vazios: 1
 - id: 1570022d6bc4ade1da91
@@ -181,6 +195,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 1a99bc9b51e27c00d2ba
@@ -199,11 +214,13 @@ visuals:
     entity: calendar
     property: Data
     name: Data
+    active: true
   - role: Rows
     kind: column
     entity: Clima/ Tempo
     property: Cidade
     name: Cidade
+    active: true
   - role: Values
     kind: aggregation
     entity: Clima/ Tempo
@@ -211,6 +228,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Primeiro Classificacao
+    active: null
   filters: []
   filters_vazios: 1
 - id: 1dc987ba648f79f5596a
@@ -230,6 +248,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Data Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: calendar
@@ -237,6 +256,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Data Mês"
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: calendar
@@ -244,6 +264,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Data Dia
+    active: false
   filters: []
   filters_vazios: 0
 - id: 2a473e574b84005f5e0f
@@ -274,6 +295,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 45ddf57be8d24b6d5605
@@ -313,6 +335,7 @@ visuals:
     entity: FIELD AGENDA
     property: Protocolos Tarde
     name: Agendados Tarde
+    active: null
   filters: []
   filters_vazios: 1
 - id: 52886158dad03a84332b
@@ -342,11 +365,13 @@ visuals:
     entity: calendar
     property: Data
     name: Data
+    active: true
   - role: Rows
     kind: column
     entity: Clima/ Tempo
     property: Cidade
     name: Cidade
+    active: true
   - role: Values
     kind: aggregation
     entity: Clima/ Tempo
@@ -354,6 +379,7 @@ visuals:
     aggregation: max
     aggregation_code: 4
     name: "Último Probabilidade_Chuva_Formatada"
+    active: null
   filters:
   - name: c8e0cec6e1b5029d6d09
     type: Categorical
@@ -379,6 +405,7 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: Protocolo
+    active: null
   - role: Values
     kind: aggregation
     entity: Status Protocolo Dia
@@ -386,6 +413,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Qtd
+    active: null
   filters: []
   filters_vazios: 0
 - id: 5aa81d52fffb190a3b23
@@ -403,6 +431,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TURNO
     name: TURNO
+    active: true
   filters: []
   filters_vazios: 0
 - id: 65f5a09384f836a7ab25
@@ -420,6 +449,7 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: protocolo
+    active: true
   filters: []
   filters_vazios: 0
 - id: 670ac661701957510387
@@ -437,6 +467,7 @@ visuals:
     entity: FIELD AGENDA
     property: CategoriaProdutividade
     name: CategoriaProdutividade
+    active: true
   filters: []
   filters_vazios: 0
 - id: 6ba6166050e14793b298
@@ -454,6 +485,7 @@ visuals:
     entity: Status Protocolo Dia
     property: Tipo Protocolo Dia
     name: Tipo Protocolo
+    active: null
   - role: Values
     kind: aggregation
     entity: Status Protocolo Dia
@@ -461,6 +493,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Qtd
+    active: null
   filters: []
   filters_vazios: 0
 - id: 6ffe21030010501827da
@@ -478,6 +511,7 @@ visuals:
     entity: FIELD AGENDA
     property: ClassificacaoRelato
     name: ClassificacaoRelato
+    active: true
   filters: []
   filters_vazios: 0
 - id: 815c09598bc48c8da49a
@@ -497,36 +531,43 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: "."
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Protocolo
     name: Protocolo
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Data Relato
     name: Data Relato
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: "Descrição"
     name: Tipo Relato
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Relato
     name: Relato
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: ClassificacaoRelato
     name: ClassificacaoRelato
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: CategoriaProdutividade
     name: "Produtivo?"
+    active: null
   filters: []
   filters_vazios: 0
 - id: 84a15198c1b2672c001b
@@ -548,6 +589,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Data Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: calendar
@@ -555,6 +597,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Data Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: calendar
@@ -562,6 +605,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Data Dia
+    active: true
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
@@ -569,6 +613,7 @@ visuals:
     aggregation: sum
     aggregation_code: 0
     name: "CAPACIDADE MANHÃ"
+    active: null
   - role: Y
     kind: aggregation
     entity: CAPACIDADE EQUIPE
@@ -576,11 +621,13 @@ visuals:
     aggregation: sum
     aggregation_code: 0
     name: CAPACIDADE TARDE
+    active: null
   - role: Y2
     kind: measure
     entity: Status Protocolo Dia
     property: Qtd Protocolos Base
     name: Qtd Protocolos Base
+    active: null
   filters: []
   filters_vazios: 0
 - id: a7119bca6c0795bd7269
@@ -598,6 +645,7 @@ visuals:
     entity: Status Protocolo Dia
     property: Base Dia
     name: Base
+    active: null
   - role: Values
     kind: aggregation
     entity: Status Protocolo Dia
@@ -605,6 +653,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Qtd
+    active: null
   filters: []
   filters_vazios: 0
 - id: a88b32323b8c521eace1
@@ -622,6 +671,7 @@ visuals:
     entity: FIELD AGENDA
     property: "Protocolos Restantes no Mês"
     name: Agendados Futuro
+    active: null
   filters: []
   filters_vazios: 0
 - id: ab1e84e5031aa3306102
@@ -639,6 +689,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CLIENTE
     name: CLIENTE
+    active: true
   filters: []
   filters_vazios: 0
 - id: ae5871aa76bb028341c9
@@ -656,6 +707,7 @@ visuals:
     entity: FIELD AGENDA
     property: Protocolo
     name: Protocolo
+    active: null
   - role: Values
     kind: aggregation
     entity: FIELD AGENDA
@@ -663,6 +715,7 @@ visuals:
     aggregation: max
     aggregation_code: 4
     name: Motivo
+    active: null
   filters:
   - name: 10967825240b49b3273c
     type: Categorical
@@ -688,6 +741,7 @@ visuals:
     entity: FIELD AGENDA
     property: "Média Mensal Protocolos"
     name: "Média Diária"
+    active: null
   filters: []
   filters_vazios: 0
 - id: d2f9f6c8a06f4afb8104
@@ -705,6 +759,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: null
   filters:
   - name: 477184bd60a030118dc9
     type: Categorical
@@ -733,6 +788,7 @@ visuals:
     entity: FIELD AGENDA
     property: "Descrição"
     name: Tipo Relato
+    active: true
   filters: []
   filters_vazios: 0
 - id: e21a2a1ce6d1088b3b74
@@ -750,6 +806,7 @@ visuals:
     entity: Status Protocolo Dia
     property: Status
     name: Status
+    active: true
   filters: []
   filters_vazios: 0
 - id: e2d5549b8d6d57e1439e
@@ -769,61 +826,73 @@ visuals:
     entity: Status Protocolo Dia
     property: protocolo
     name: protocolo
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Slot Agenda
     name: Slot Agenda
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Turno
     name: Turno
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Tipo de Protocolo
     name: Tipo de Protocolo
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Base
     name: Base
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: RankDataProtocolo
     name: Rank Agenda
+    active: null
   - role: Values
     kind: column
     entity: FIELD AGENDA
     property: Status Protocolo
     name: Status Protocolo
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "TÉCNICO 1"
     name: Instalador
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: CLIENTE
     name: Cliente
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: Cidade
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: BAIRRO
     name: Bairro
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: RUA
     name: Rua
+    active: null
   filters: []
   filters_vazios: 0
 - id: e7998ec512080733935f
@@ -841,6 +910,7 @@ visuals:
     entity: FIELD AGENDA
     property: Status Protocolo
     name: Status Protocolo
+    active: true
   filters: []
   filters_vazios: 0
 - id: e935fbbda9bc2ee0a5c1
@@ -894,6 +964,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Data Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: calendar
@@ -901,6 +972,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Data Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: calendar
@@ -908,16 +980,19 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Data Dia
+    active: true
   - role: Series
     kind: column
     entity: Status Protocolo Dia
     property: Status
     name: Status
+    active: null
   - role: Y
     kind: measure
     entity: Status Protocolo Dia
     property: Qtd Protocolos Base
     name: Qtd Protocolos Base
+    active: null
   filters: []
   filters_vazios: 0
 - id: fb8f008029070e2adcfe
@@ -935,6 +1010,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: CIDADE
+    active: true
   filters: []
   filters_vazios: 0
 - id: ff38eddc2587e3beda21
@@ -952,6 +1028,7 @@ visuals:
     entity: Status Protocolo Dia
     property: Turno Dia
     name: Turno
+    active: null
   - role: Values
     kind: aggregation
     entity: Status Protocolo Dia
@@ -959,5 +1036,6 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Qtd
+    active: null
   filters: []
   filters_vazios: 0

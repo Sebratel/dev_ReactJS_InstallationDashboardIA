@@ -36,10 +36,11 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **O filtro sobre agregado virou o HAVING que sempre foi** e o [ACHADOS](docs/ACHADOS.md) #30 fechou: filtro de linha vale *antes* de agrupar, filtro de grupo *depois*, e trocar a ordem não dá erro — dá outro número. Foi de 5 recusas a zero, e levou 4 tabelas junto | ✅ |
 | — | **A 75ª medida chegou.** `[Faixa 1 Premiação Total]` não precisava de mais DAX: precisava de alguém que respondesse `ISINSCOPE`, que é propriedade do visual ([ACHADOS](docs/ACHADOS.md) #12). Calcula no total e fica em branco quando o visual agrupa — o que o comentário do autor pede | ✅ |
 | — | `'PROTOCOLOS GERAL'[CONTAGEM]` é o texto `"1"` declarado `int64`; 2 tabelas somam e param. Não convertido: a regra que resolveria abre a porta para converter texto em número em silêncio ([ACHADOS](docs/ACHADOS.md) #31) | ⚠️ decisão pendente |
+| — | **O estado de drill era descartado.** O PBIP marca cada projeção com `active`, e um eixo de datas lista Ano/Mês/Dia sempre — só as ativas entram. Medido: **21 de 448 são inativas**, e agrupar por elas daria um ponto por dia num gráfico que mostra um por mês. Nenhuma está em tabela, então a cobertura não mudou; o ganho é para os gráficos ([ACHADOS](docs/ACHADOS.md) #32) | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**726 testes verdes.** Nenhum deles precisa de credencial.
+**736 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -401,7 +402,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (726 testes, sem credencial)
+npm test                              # suíte completa (736 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

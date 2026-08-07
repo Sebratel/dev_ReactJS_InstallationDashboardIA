@@ -41,6 +41,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 39b19854921925b379c2
@@ -60,6 +61,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: DATA INSTALADO Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -67,6 +69,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "DATA INSTALADO Mês"
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -74,6 +77,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: DATA INSTALADO Dia
+    active: true
   filters:
   - name: d0105f0477c4120e2be2
     type: Categorical
@@ -99,11 +103,13 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: true
   - role: Rows
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: INSTALADOR
+    active: true
   - role: Values
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
@@ -111,6 +117,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: QTD.
+    active: null
   filters:
   - name: 217e9d4b147a33ed3854
     type: Categorical
@@ -170,11 +177,13 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: "."
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: INSTALADOR
+    active: null
   filters:
   - name: 217e9d4b147a33ed3854
     type: Categorical
@@ -227,6 +236,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: INSTALADOR
+    active: null
   - role: Values
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
@@ -234,16 +244,19 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: QTD.
+    active: null
   - role: Values
     kind: measure
     entity: PROTOCOLOS PRODUTIVIDADE
     property: Faixas
     name: FAIXAS
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: GESTOR
     name: GESTOR
+    active: null
   filters:
   - name: 217e9d4b147a33ed3854
     type: Categorical
@@ -313,26 +326,31 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: "."
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: INSTALADOR
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
     name: PROTOCOLO
+    active: null
   - role: Values
     kind: column
     entity: CONTRATOS
     property: PLANO
     name: PLANO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: "DATA ALOCAÇÃO"
     name: "ALOCAÇÃO"
+    active: null
   filters:
   - name: 217e9d4b147a33ed3854
     type: Categorical
@@ -385,6 +403,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: TECNICO
+    active: true
   filters: []
   filters_vazios: 0
 - id: 81053b5794ce66d1e2b7
@@ -415,6 +434,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: a938a9db928c8d795d02
@@ -454,6 +474,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: N°PROTOCOLO
     name: N°PROTOCOLO
+    active: true
   filters: []
   filters_vazios: 0
 - id: b1f10a8a169a9e6937c0
@@ -482,26 +503,31 @@ visuals:
     entity: "#APURAÇÃO PREMIAÇÃO"
     property: INSTALADOR
     name: INSTALADOR
+    active: null
   - role: Values
     kind: column
     entity: "#APURAÇÃO PREMIAÇÃO"
     property: QTD.
     name: QTD.
+    active: null
   - role: Values
     kind: column
     entity: "#APURAÇÃO PREMIAÇÃO"
     property: FAIXAS
     name: FAIXAS
+    active: null
   - role: Values
     kind: measure
     entity: "#APURAÇÃO PREMIAÇÃO"
     property: "Diferença"
     name: "Diferença"
+    active: null
   - role: Values
     kind: measure
     entity: "#APURAÇÃO PREMIAÇÃO"
     property: "% Diferença"
     name: "%"
+    active: null
   filters:
   - name: 217e9d4b147a33ed3854
     type: Categorical
@@ -557,6 +583,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: GESTOR
     name: GESTOR
+    active: true
   filters: []
   filters_vazios: 1
 - id: e42420359d507de64376
@@ -574,6 +601,7 @@ visuals:
     entity: PROTOCOLOS PRODUTIVIDADE
     property: INSTALADOR
     name: INSTALADOR
+    active: null
   - role: Values
     kind: aggregation
     entity: PROTOCOLOS PRODUTIVIDADE
@@ -581,11 +609,13 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: QTD. PROTOCOLOS
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS PRODUTIVIDADE
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: null
   filters:
   - name: 217e9d4b147a33ed3854
     type: Categorical

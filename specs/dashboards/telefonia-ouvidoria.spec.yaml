@@ -28,6 +28,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: STATUS
     name: STATUS
+    active: true
   filters: []
   filters_vazios: 0
 - id: 07fe8193d8e499ceda06
@@ -67,6 +68,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: EQUIPE
     name: EQUIPE
+    active: true
   filters: []
   filters_vazios: 0
 - id: 230e44503581313eabc2
@@ -86,6 +88,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Data Criado Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO CRIADO
@@ -93,6 +96,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Trimestre
     name: Data Criado Trimestre
+    active: false
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO CRIADO
@@ -100,6 +104,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Data Criado Mês"
+    active: false
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO CRIADO
@@ -107,6 +112,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Data Criado Dia
+    active: false
   filters: []
   filters_vazios: 2
 - id: 4580554505674d5d2c43
@@ -126,6 +132,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 471e980bb59d8e69e613
@@ -145,6 +152,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: CLIENTES
+    active: null
   filters: []
   filters_vazios: 0
 - id: 4c6e6cd02d03488b4a37
@@ -162,6 +170,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: "RESPONSÁVEL"
     name: "RESPONSÁVEL"
+    active: true
   filters: []
   filters_vazios: 0
 - id: 54114d94597293813209
@@ -179,6 +188,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: "SITUAÇÃO"
     name: "SITUAÇÃO"
+    active: null
   filters: []
   filters_vazios: 0
 - id: 5a1eaa2c036bc396f005
@@ -209,6 +219,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: PROTOCOLOS
+    active: null
   filters: []
   filters_vazios: 0
 - id: 5f38a256874bf2affa50
@@ -237,6 +248,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: CLIENTE
     name: CLIENTE
+    active: true
   filters: []
   filters_vazios: 0
 - id: 7446052c5bf3d08506ef
@@ -267,6 +279,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: ab7101a5e56c701ac5f7
@@ -284,6 +297,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: CIDADE
     name: CIDADE
+    active: true
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS TELEFONIA
@@ -291,6 +305,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Contagem de N°PROTOCOLO1
+    active: null
   filters: []
   filters_vazios: 0
 - id: c6d331b4655d2552f84e
@@ -308,6 +323,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: N°PROTOCOLO
     name: N°PROTOCOLO
+    active: true
   filters: []
   filters_vazios: 1
 - id: e233496cb4a9c9d05787
@@ -325,6 +341,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: STATUS CONTRATO
     name: STATUS CONTRATO
+    active: null
   filters:
   - name: c33161ab25493a969950
     type: Categorical
@@ -350,6 +367,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: true
   filters:
   - name: Filter1013a73dc4910a653794
     type: Categorical
@@ -375,156 +393,187 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: N°PROTOCOLO
     name: N°PROTOCOLO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: DATA CRIADO
     name: DATA CRIADO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: HORA CRIADO
     name: HORA CRIADO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: DATA ENCERRADO
     name: DATA ENCERRADO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: TMA
     name: TMA
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: CLIENTE
     name: CLIENTE1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: TELEFONE
     name: TELEFONE1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: STATUS
     name: STATUS1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: "TÍTULO RECEBÍVEL"
     name: "TÍTULO RECEBÍVEL"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: CIDADE
     name: CIDADE1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: BAIRRO
     name: BAIRRO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: RUA
     name: RUA1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: NUMERO
     name: NUMERO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: EQUIPE
     name: EQUIPE1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: "RESPONSÁVEL"
     name: "RESPONSÁVEL1"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: PONTO DE ACESSO
     name: PONTO DE ACESSO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: POP
     name: POP1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: SLOT
     name: SLOT
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: PORTA
     name: PORTA
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: STATUS CONTRATO
     name: STATUS CONTRATO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: ITEM
     name: ITEM1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: OLT
     name: OLT1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: CTO
     name: CTO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: EQUIPAMENTO
     name: EQUIPAMENTO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: CONTEXTO
     name: CONTEXTO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: PROBLEMA
     name: PROBLEMA1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: "CRIADO POR:"
     name: CRIADO POR:1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: "POSIÇÃO"
     name: "POSIÇÃO1"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: "USUÁRIO"
     name: "USUÁRIO1"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS TELEFONIA
     property: NUMERO CONTRATO
     name: NUMERO CONTRATO1
+    active: null
   filters: []
   filters_vazios: 0
 - id: ead55782fbeeb19a0921
@@ -542,6 +591,7 @@ visuals:
     entity: PROTOCOLOS TELEFONIA
     property: EQUIPE
     name: EQUIPE
+    active: true
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS TELEFONIA
@@ -549,6 +599,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: TOTAL
+    active: null
   filters: []
   filters_vazios: 0
 - id: eae1bc0c50c747f4112a

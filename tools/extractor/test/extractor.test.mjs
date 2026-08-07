@@ -966,3 +966,86 @@ test('integração: todo campo de visual do PBIP real é calculável', () => {
     [['avg', 1], ['count', 34], ['count_non_null', 14], ['max', 3], ['min', 24], ['sum', 8]],
   );
 });
+
+// ---------------------------------------------------------------------------
+// `active`: qual projeção está em jogo (ACHADOS #32)
+// ---------------------------------------------------------------------------
+
+test('extractVisualFields guarda `active`, e distingue ausente de verdadeiro', () => {
+  const col = (p) => ({ Column: { Expression: { SourceRef: { Entity: 'T' } }, Property: p } });
+  const visual = {
+    visual: {
+      query: {
+        queryState: {
+          Category: {
+            projections: [
+              { field: col('A'), active: true },
+              { field: col('B'), active: false },
+              { field: col('C') },
+            ],
+          },
+        },
+      },
+    },
+  };
+  const campos = extractVisualFields(visual);
+  assert.equal(campos[0].active, true);
+  assert.equal(campos[1].active, false);
+  // Ausente vira `null`, não `true`: gravar `true` afirmaria um estado de drill que
+  // o PBIP não declarou. Quem decide o que `null` significa é o Widget Engine.
+  assert.equal(campos[2].active, null);
+});
+
+/**
+ * **A medição que prova que `active` carrega informação.**
+ *
+ * Se todas as projeções fossem ativas, o campo seria decorativo e ignorá-lo não
+ * custaria nada. Medido no PBIP de 07/08/2026: **21 são `false`**, e são níveis de
+ * hierarquia de data abaixo do drill corrente (mais uma coluna de eixo). Agrupar por
+ * elas daria um ponto por dia num gráfico que mostra um ponto por mês.
+ *
+ * Os números estão presos para que uma mudança no relatório apareça — e para que
+ * ninguém "simplifique" o campo de volta para um booleano com default.
+ */
+test('integração: no PBIP real, `active` discrimina — 125 ativas, 21 inativas, 302 sem estado', () => {
+  let pbip;
+  try {
+    pbip = locatePbip();
+  } catch {
+    console.warn('PBIP não encontrado — pulando teste de integração.');
+    return;
+  }
+  const model = build(pbip);
+  const conta = { true: 0, false: 0, null: 0 };
+  for (const d of model.dashboards) {
+    for (const v of d.visuals) {
+      for (const f of v.fields ?? []) conta[String(f.active)]++;
+    }
+  }
+  assert.deepEqual(conta, { true: 125, false: 21, null: 302 });
+});
+
+/** Onde as inativas vivem. Nenhuma em `tableEx` — por isso a tabela não mudou. */
+test('integração: as projeções inativas estão em slicer e gráfico, nunca em tabela', () => {
+  let pbip;
+  try {
+    pbip = locatePbip();
+  } catch {
+    console.warn('PBIP não encontrado — pulando teste de integração.');
+    return;
+  }
+  const model = build(pbip);
+  const porTipo = {};
+  for (const d of model.dashboards) {
+    for (const v of d.visuals) {
+      for (const f of v.fields ?? []) {
+        if (f.active === false) porTipo[v.type] = (porTipo[v.type] ?? 0) + 1;
+      }
+    }
+  }
+  assert.deepEqual(porTipo, {
+    slicer: 16,
+    lineStackedColumnComboChart: 4,
+    clusteredBarChart: 1,
+  });
+});

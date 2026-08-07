@@ -1691,3 +1691,72 @@ SUM('PROTOCOLOS GERAL'[CONTAGEM]): esperava número e recebeu o texto "1".
 
 Vale para `SUM`, `AVERAGE`, `MIN` e `MAX`. Foi o classificador de recusas do teste de
 cobertura que expôs a falta — ele não conseguia dizer de qual coluna a recusa era.
+
+## 32. O estado de drill era descartado: 21 projeções que a tela não mostra
+
+Quinto achado da família do 27, 28, 29 e 30 — e o segundo que estava na **extração**.
+O PBIP marca cada projeção de um poço com `active`, e o extrator lia o campo sem
+gravá-lo.
+
+```json
+"Category": { "projections": [
+  { "field": { "HierarchyLevel": { ..., "Level": "Ano" } }, "active": true  },
+  { "field": { "HierarchyLevel": { ..., "Level": "Mês" } }, "active": true  },
+  { "field": { "HierarchyLevel": { ..., "Level": "Dia" } }, "active": false }
+]}
+```
+
+Um eixo com a hierarquia automática de datas lista **os três níveis sempre**. Quem
+diz o que a tela mostra é o `active`: acima, o gráfico tem um ponto por **mês**.
+Agrupando pelos três, ele teria um ponto por **dia** — trinta vezes mais pontos, e
+nenhum erro.
+
+### A medição que mostra que o campo não é decorativo
+
+Se todas as projeções fossem ativas, ignorar `active` não custaria nada. Medido no
+PBIP de 07/08/2026, sobre 448 projeções:
+
+| `active` | n | o que é |
+|---|---|---|
+| `true` | 125 | declaradamente em jogo |
+| `false` | **21** | a tela não mostra |
+| ausente | 302 | poço de um campo só, onde a pergunta não se coloca |
+
+E as 21 não estão espalhadas ao acaso:
+
+| onde | n | |
+|---|---|---|
+| `slicer` | 16 | níveis de hierarquia abaixo do drill |
+| `lineStackedColumnComboChart` | 4 | o `Dia` de gráficos que exibem por mês |
+| `clusteredBarChart` | 1 | **uma coluna comum**, não nível de hierarquia |
+
+A última linha é a que generaliza a regra. `active` não é sobre hierarquia de datas:
+é sobre **quais projeções do poço estão em jogo**, e duas colunas comuns num eixo
+formam uma hierarquia de drill do mesmo jeito.
+
+### `null` não é `true`, e a distinção é da spec
+
+O extrator grava `true`, `false` ou `null` — e `null` significa "o PBIP não declarou
+estado", não "está ativo". São 302, todas de poço de um campo só.
+
+Gravar `true` ali seria afirmar um estado de drill que ninguém escreveu. Quem decide
+que na prática `null` e `true` levam ao mesmo lugar é **uma função só**,
+`campoAtivo` em `grupos.ts`, e é lá que a decisão fica visível se um dia mudar.
+
+### Campo inativo não aparece — nem como coluna, nem como chave
+
+Foi a segunda coisa a acertar. "Inativo" não é "não agrupa por ele": é **não está no
+visual**. Mantido como coluna da tabela, criaria uma coluna que a tela não tem;
+mantido como chave, refinaria o agrupamento. As duas com cara de dado.
+
+Tabela cujos campos são **todos** inativos erra alto: não existe tabela sem coluna
+nenhuma na tela, e o caso só pode ser leitura errada do estado.
+
+### Por que a cobertura não mudou, e por que isso está testado
+
+**Nenhuma das 21 está em `tableEx`** — são 16 de slicer e 5 de gráfico. Ligar
+`active` não moveu as 19 tabelas que calculam, e há teste afirmando isso. Ele existe
+para o dia em que mover: sem ele, a mudança pareceria regressão em vez de correção.
+
+O ganho é adiantado, e é para a fatia dos gráficos: 5 das 21 estão nos gráficos que
+vêm a seguir, e sem isto eles nasceriam agrupando por dia.

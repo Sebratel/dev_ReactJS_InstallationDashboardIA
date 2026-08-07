@@ -42,46 +42,55 @@ visuals:
     entity: RETORNO PRIORITARIO
     property: cliente_nome_instalacao
     name: CLIENTE
+    active: null
   - role: Values
     kind: column
     entity: RETORNO PRIORITARIO
     property: "Protocolo Instalação"
     name: "PROT. INSTALAÇÃO"
+    active: null
   - role: Values
     kind: column
     entity: RETORNO PRIORITARIO
     property: data_instalacao
     name: "DATA INSTALAÇÃO"
+    active: null
   - role: Values
     kind: column
     entity: RETORNO PRIORITARIO
     property: "Protocolo Retorno Prioritário"
     name: PROTOCOLO RETORNO
+    active: null
   - role: Values
     kind: column
     entity: RETORNO PRIORITARIO
     property: data_retorno
     name: DATA RETORNO
+    active: null
   - role: Values
     kind: measure
     entity: RETORNO PRIORITARIO
     property: TempoDifFormatado
     name: "TEMPO ATÉ OCORRÊNCIA"
+    active: null
   - role: Values
     kind: column
     entity: RETORNO PRIORITARIO
     property: TempoTotalDias
     name: DIAS
+    active: null
   - role: Values
     kind: column
     entity: RETORNO PRIORITARIO
     property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
     name: "TÉCNICO"
+    active: null
   - role: Values
     kind: column
     entity: RETORNO PRIORITARIO
     property: service_tag
     name: SERIAL
+    active: null
   filters: []
   filters_vazios: 0
 - id: 01b1c7005b8de457349f
@@ -112,6 +121,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: PROTOCOLOS RETORNOS
+    active: null
   filters:
   - name: ba096ec6250c34dc4922
     type: Categorical
@@ -137,6 +147,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: protocol_type
     name: protocol_type
+    active: true
   filters:
   - name: 2fcdbefc3770de97273b
     type: Categorical
@@ -162,6 +173,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: solucao
     name: solucao
+    active: true
   filters:
   - name: b0a36835d4e09ba70b9a
     type: Categorical
@@ -187,6 +199,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "CASOS MÊS ATUAL (MTD)"
     name: "OCORRENCIAS MÊS ATUAL"
+    active: null
   filters:
   - name: f94d5d151235549b55c2
     type: Categorical
@@ -223,6 +236,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
     name: "TÉCNICOS OFENSORES"
+    active: null
   - role: Values
     kind: aggregation
     entity: "REINCIDÊNCIA"
@@ -230,6 +244,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: QTDE
+    active: null
   - role: Values
     kind: arithmetic
     entity: null
@@ -253,6 +268,7 @@ visuals:
       entity: "REINCIDÊNCIA"
       property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
     name: "%"
+    active: null
   filters:
   - name: 165d52ad1503069c716a
     type: Categorical
@@ -278,31 +294,37 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: cliente_nome
     name: CLIENTE
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: "Protocolo Instalação"
     name: "PROT. INSTALAÇÃO"
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: data_instalacao
     name: "DATA INSTALAÇÃO"
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: protocol
     name: "PROT. MANUTENÇÃO"
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: data_suporte
     name: "DATA GERADO MANUTENÇÃO"
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: TempoDifFormatado
     name: "TEMPO ATÉ OCORRÊNCIA"
+    active: null
   - role: Values
     kind: aggregation
     entity: "REINCIDÊNCIA"
@@ -310,56 +332,67 @@ visuals:
     aggregation: sum
     aggregation_code: 0
     name: DIAS
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
     name: "TÉCNICO"
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: "ALOCAÇÃO PATRIMONIO.POSIÇÃO"
     name: EFETIVO
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: service_tag
     name: SERIAL
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: protocol_type
     name: TIPO PROTOCOLO
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: categoria1
     name: CAT 1
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: categoria2
     name: CAT 2
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: categoria3
     name: CAT 3
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: categoria4
     name: CAT 4
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: categoria5
     name: CAT 5
+    active: null
   - role: Values
     kind: column
     entity: "REINCIDÊNCIA"
     property: solucao
     name: "SOLUÇÃO"
+    active: null
   filters:
   - name: 8d2c80cda7894430e619
     type: Categorical
@@ -387,6 +420,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: "TOTAL DE OCORRÊNCIAS"
+    active: null
   filters:
   - name: add57c4a11812122b3de
     type: Categorical
@@ -412,6 +446,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria5
     name: categoria5
+    active: true
   filters:
   - name: b0a36835d4e09ba70b9a
     type: Categorical
@@ -437,6 +472,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria1
     name: categoria1
+    active: true
   filters:
   - name: b0a36835d4e09ba70b9a
     type: Categorical
@@ -473,6 +509,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria4
     name: categoria4
+    active: true
   filters:
   - name: b0a36835d4e09ba70b9a
     type: Categorical
@@ -498,6 +535,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: solucao
     name: "SOLUÇÃO"
+    active: null
   - role: Values
     kind: aggregation
     entity: "REINCIDÊNCIA"
@@ -505,6 +543,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: QTDE
+    active: null
   - role: Values
     kind: arithmetic
     entity: null
@@ -528,6 +567,7 @@ visuals:
       entity: "REINCIDÊNCIA"
       property: solucao
     name: "%"
+    active: null
   filters:
   - name: 165d52ad1503069c716a
     type: Categorical
@@ -555,6 +595,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: data_abertura Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: RETORNO PRIORITARIO
@@ -562,6 +603,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "data_abertura Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: RETORNO PRIORITARIO
@@ -569,6 +611,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: data_abertura Dia
+    active: false
   - role: Y
     kind: aggregation
     entity: RETORNO PRIORITARIO
@@ -576,6 +619,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: Contagem de data_abertura
+    active: null
   filters:
   - name: 7acd363c85002c71ab64
     type: Categorical
@@ -601,6 +645,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: cliente_nome
     name: cliente_nome
+    active: true
   filters:
   - name: 71dfe2930434e7097a9c
     type: Categorical
@@ -628,6 +673,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: DATA INSTALADO Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -635,6 +681,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "DATA INSTALADO Mês"
+    active: false
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -642,6 +689,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: DATA INSTALADO Dia
+    active: false
   filters:
   - name: 998ba96de06267501367
     type: Categorical
@@ -678,6 +726,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "MANUTENÇÕES ÚLTIMOS 30 DIAS"
     name: OCORRENCIAS 30 DIAS
+    active: null
   filters:
   - name: ef48573431906cbeee80
     type: Categorical
@@ -703,6 +752,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "INSTALADOS ÚLTIMOS 30 DIAS"
     name: "INSTALADOS ÚLTIMOS 30 DIAS"
+    active: null
   filters:
   - name: 409d72acc8285071a893
     type: Categorical
@@ -750,6 +800,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: Tipo
     name: Tipo
+    active: true
   filters:
   - name: 72587be442720079a12b
     type: Categorical
@@ -777,6 +828,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: data_suporte Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: "REINCIDÊNCIA"
@@ -784,6 +836,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "data_suporte Mês"
+    active: false
   - role: Values
     kind: hierarchy_level
     entity: "REINCIDÊNCIA"
@@ -791,6 +844,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: data_suporte Dia
+    active: false
   filters:
   - name: fdaa09e0ca730dca6485
     type: Categorical
@@ -827,6 +881,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "INSTALADOS MÊS ATUAL"
     name: "INSTALADOS MÊS ATUAL"
+    active: null
   filters:
   - name: 575285f1ec32c9e3e2ae
     type: Categorical
@@ -852,6 +907,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "ALOCAÇÃO PATRIMONIO.ALOCADO POR:"
     name: "TÉCNICO"
+    active: true
   filters:
   - name: 4f1ed6d21605eea147d3
     type: Categorical
@@ -877,6 +933,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "% MANUTENÇÕES / INSTALAÇÕES (30D)"
     name: "% SOBRE OS ULTIMOS 30 DIAS"
+    active: null
   filters:
   - name: d18f0b33bd8c92334410
     type: Categorical
@@ -904,6 +961,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: TOTAL INSTALADOS
+    active: null
   filters:
   - name: 1a93d3d23e31db1784ee
     type: Categorical
@@ -941,6 +999,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: b3d817c3c57545262796
@@ -969,6 +1028,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: "% CASOS MÊS ATUAL"
     name: "% SOBRE O MÊS ATUAL"
+    active: null
   filters:
   - name: 5cd7f72a7062034b01a0
     type: Categorical
@@ -996,6 +1056,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: ce735a6358c0af249bc2
@@ -1024,6 +1085,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria2
     name: categoria2
+    active: true
   filters:
   - name: b0a36835d4e09ba70b9a
     type: Categorical
@@ -1051,6 +1113,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: data_abertura Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: RETORNO PRIORITARIO
@@ -1058,6 +1121,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "data_abertura Mês"
+    active: false
   - role: Values
     kind: hierarchy_level
     entity: RETORNO PRIORITARIO
@@ -1065,6 +1129,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: data_abertura Dia
+    active: false
   filters:
   - name: 998ba96de06267501367
     type: Categorical
@@ -1094,6 +1159,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: DATA INSTALADO Ano
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -1101,6 +1167,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "DATA INSTALADO Mês"
+    active: true
   - role: Category
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -1108,6 +1175,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: DATA INSTALADO Dia
+    active: false
   - role: Y
     kind: aggregation
     entity: "REINCIDÊNCIA"
@@ -1115,6 +1183,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: "OCORRÊNCIAS"
+    active: null
   - role: Y2
     kind: aggregation
     entity: PROTOCOLOS GERAL
@@ -1122,6 +1191,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: "SOLICITAÇÕES"
+    active: null
   filters:
   - name: d347e5d0041cb5b87462
     type: Categorical
@@ -1158,6 +1228,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: Porcentagem
     name: "MÉDIA GERAL"
+    active: null
   filters:
   - name: 30b73cadccc0430aca0d
     type: Categorical
@@ -1194,6 +1265,7 @@ visuals:
     entity: "REINCIDÊNCIA"
     property: categoria3
     name: categoria3
+    active: true
   filters:
   - name: b0a36835d4e09ba70b9a
     type: Categorical

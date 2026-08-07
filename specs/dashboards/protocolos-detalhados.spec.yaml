@@ -28,6 +28,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: CIDADE
+    active: true
   filters: []
   filters_vazios: 1
 - id: 104a464c4cf23ca1b442
@@ -45,6 +46,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: STATUS
     name: STATUS
+    active: true
   filters: []
   filters_vazios: 0
 - id: 13e266901bcb96c7dee7
@@ -62,6 +64,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: instalador_Unificado
     name: instalador_Unificado
+    active: true
   filters: []
   filters_vazios: 0
 - id: 14489d96e48e5b1da392
@@ -79,6 +82,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: true
   filters: []
   filters_vazios: 0
 - id: 2b1d0cdb06764745d106
@@ -98,6 +102,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 4e468085563d400c423e
@@ -138,26 +143,31 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: N°PROTOCOLO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: instalador_Unificado
     name: INSTALADOR
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: DATA CRIADO
     name: DATA CRIADO
+    active: null
   - role: Values
     kind: column
     entity: CALENDARIO INSTALADO
     property: DATA INSTALADO
     name: DATA INSTALADO
+    active: null
   filters:
   - name: 011568044e7b709035c5
     type: Categorical
@@ -227,6 +237,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: DATA CRIADO
     name: DATA CRIADO
+    active: true
   filters: []
   filters_vazios: 0
 - id: a3efd3196d0e7d0750e3
@@ -246,6 +257,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: DATA INSTALADO Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -253,6 +265,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "DATA INSTALADO Mês"
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -260,6 +273,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: DATA INSTALADO Dia
+    active: false
   filters:
   - name: d0105f0477c4120e2be2
     type: Categorical
@@ -285,6 +299,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: N°PROTOCOLO
+    active: true
   filters: []
   filters_vazios: 0
 - id: cd782c152880065974b4
@@ -316,36 +331,43 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: "."
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: N°PROTOCOLO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: instalador_Unificado
     name: INSTALADOR
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: TECNICOS AUXILIARES.AUXILIAR
     name: AUXILIAR
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: DATA CRIADO
     name: DATA CRIADO
+    active: null
   - role: Values
     kind: column
     entity: CALENDARIO INSTALADO
     property: DATA INSTALADO
     name: DATA INSTALADO
+    active: null
   filters: []
   filters_vazios: 13
 - id: d2b95fd070ee3e408a01
@@ -365,6 +387,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: d38465a71e637be9b23d

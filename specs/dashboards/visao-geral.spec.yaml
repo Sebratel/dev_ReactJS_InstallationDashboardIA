@@ -28,6 +28,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: STATUS
     name: STATUS
+    active: true
   filters: []
   filters_vazios: 0
 - id: 23c5a9bf78b33e02db74
@@ -47,6 +48,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: Data Criado Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO CRIADO
@@ -54,6 +56,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "Data Criado Mês"
+    active: false
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO CRIADO
@@ -61,6 +64,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: Data Criado Dia
+    active: false
   filters: []
   filters_vazios: 0
 - id: 2ce6f3783f48638594d6
@@ -80,6 +84,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Hora mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 3b000fe189f5f6d62a62
@@ -99,6 +104,7 @@ visuals:
     aggregation: min
     aggregation_code: 3
     name: Data mais recente
+    active: null
   filters: []
   filters_vazios: 0
 - id: 50ae0cd55f11c1931830
@@ -127,6 +133,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: null
   filters:
   - name: 52151649e01c50a5a818
     type: Categorical
@@ -152,6 +159,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: ESTAGIO CONTRATO
     name: ESTAGIO CONTRATO
+    active: true
   filters: []
   filters_vazios: 0
 - id: 5a505e91ed658e6741da
@@ -182,6 +190,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: CLIENTES DISTINTOS
+    active: null
   filters: []
   filters_vazios: 0
 - id: 6b2781fa1e3b89ed0626
@@ -199,6 +208,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "RESPONSÁVEL"
     name: "RESPONSÁVEL"
+    active: true
   filters: []
   filters_vazios: 0
 - id: 6f6ee418b1b95a80e2a4
@@ -216,6 +226,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: N°PROTOCOLO
+    active: true
   filters: []
   filters_vazios: 0
 - id: 704b7bcb68fd3e17cd30
@@ -233,116 +244,139 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: PROTOCOLO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: DATA CRIADO
     name: DATA CRIADO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "DATA INSTALAÇÃO"
     name: DATA INSTALADO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: STATUS
     name: STATUS PROTOCOLO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: CLIENTE
     name: CLIENTE
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: NUMERO CONTRATO
     name: CONTRATO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: PLANO
     name: "PLANO/ PLANO²"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: TELEFONE
     name: TELEFONE
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: CIDADE
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: BAIRRO
     name: BAIRRO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: RUA
     name: RUA
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: EQUIPE
     name: EQUIPE
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "RESPONSÁVEL"
     name: "RESPONSÁVEL"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: STATUS FINANCEIRO
     name: STATUS FINANCEIRO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: STATUS CONTRATO
     name: STATUS CONTRATO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: EQUIPAMENTO
     name: EQUIPAMENTO1
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: TIPO DE PROTOCOLO
     name: TIPO DE PROTOCOLO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: CRIADO POR
     name: CRIADO POR
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "USUÁRIO"
     name: "CONEXÃO"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "POSIÇÃO"
     name: "POSIÇÃO"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "TÉCNICO 1"
     name: "TÉCNICO 1"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "TÉCNICO 2"
     name: "TÉCNICO 2"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: TMA
     name: TMA
+    active: null
   filters: []
   filters_vazios: 35
 - id: 71e5cb0109f72b45b16f
@@ -362,6 +396,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: PROTOCOLOS AGENDADOS
+    active: null
   filters:
   - name: 428ec68e1468138e0832
     type: RelativeDate
@@ -426,11 +461,13 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: "TÉCNICO 1"
     name: "TÉCNICO 1"
+    active: true
   - role: Category
     kind: column
     entity: PROTOCOLOS GERAL
     property: "TÉCNICO 2"
     name: "Contagem de TÉCNICO 2"
+    active: false
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS GERAL
@@ -438,6 +475,7 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: Contagem de N°PROTOCOLO
+    active: null
   filters:
   - name: 0ab70429517b55ed9b7b
     type: Categorical
@@ -473,6 +511,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Ano
     name: DATA INSTALADO Ano
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -480,6 +519,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: "Mês"
     name: "DATA INSTALADO Mês"
+    active: true
   - role: Values
     kind: hierarchy_level
     entity: CALENDARIO INSTALADO
@@ -487,6 +527,7 @@ visuals:
     hierarchy: Hierarquia de datas
     level: Dia
     name: DATA INSTALADO Dia
+    active: true
   filters:
   - name: 56d41f52937587e5b5de
     type: Advanced
@@ -526,6 +567,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: EQUIPE
     name: EQUIPE
+    active: true
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS GERAL
@@ -533,6 +575,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: Contagem de SOLICITACAO1
+    active: null
   filters:
   - name: 6fe053d77eed2c821ebd
     type: Advanced
@@ -571,6 +614,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CLIENTE
     name: CLIENTE
+    active: true
   filters: []
   filters_vazios: 0
 - id: cbc30d7bc7375a004eac
@@ -590,6 +634,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: PROTOCOLOS TOTAIS
+    active: null
   filters: []
   filters_vazios: 0
 - id: ce537446fc06ac83afea
@@ -607,6 +652,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: EQUIPE
     name: EQUIPE
+    active: true
   filters: []
   filters_vazios: 0
 - id: cfe4382c2543d1fca3e3
@@ -635,6 +681,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: STATUS PROTOCOLO
     name: STATUS PROTOCOLO
+    active: null
   filters:
   - name: d947ee0ba363ad8480e2
     type: Categorical
@@ -660,6 +707,7 @@ visuals:
     entity: PROTOCOLOS GERAL
     property: CIDADE
     name: CIDADE
+    active: true
   - role: Y
     kind: aggregation
     entity: PROTOCOLOS GERAL
@@ -667,6 +715,7 @@ visuals:
     aggregation: count
     aggregation_code: 2
     name: TOTAL
+    active: null
   filters:
   - name: bdd09ecd0916cac88af5
     type: Advanced
@@ -707,5 +756,6 @@ visuals:
     aggregation: count_non_null
     aggregation_code: 5
     name: PROTOCOLOS INSTALADOS
+    active: null
   filters: []
   filters_vazios: 0

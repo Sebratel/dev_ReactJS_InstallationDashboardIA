@@ -30,20 +30,24 @@ visuals:
     aggregation: sum
     aggregation_code: 0
     name: TOTAL
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: "TÉCNICO 1"
     name: "INSTALADO POR:"
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: NUMERO CONTRATO
     name: CONTRATO
+    active: null
   - role: Values
     kind: column
     entity: PROTOCOLOS GERAL
     property: N°PROTOCOLO
     name: PROTOCOLO
+    active: null
   filters: []
   filters_vazios: 0

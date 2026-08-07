@@ -323,3 +323,52 @@ test('o card continua recusando filtro sobre agregado', () => {
   const v = { ...visual([medida('Total')], [having('gt', 0)], 'card'), id: 'c1' };
   assert.throws(() => calculaCard(dashboard([v]), v, montar()), /HAVING/);
 });
+
+// ---------------------------------------------------------------------------
+// `active`: a projeção que a tela não mostra (ACHADOS #32)
+// ---------------------------------------------------------------------------
+
+/**
+ * **Campo inativo não aparece — nem como coluna, nem no agrupamento.**
+ *
+ * Ele é um nível de hierarquia abaixo do drill corrente. Mantido como chave, ele
+ * refinaria o agrupamento (mais linhas do que a tela tem); mantido como coluna,
+ * criaria uma coluna que a tela não tem. As duas coisas com cara de dado.
+ */
+test('campo inativo não vira coluna nem chave', () => {
+  const campos = [coluna('CIDADE'), { ...coluna('TIPO'), active: false }];
+  const v = visual(campos);
+  const r = calculaTabela(dashboard([v]), v, montar());
+  assert.deepEqual(r.colunas, ['CIDADE']);
+  assert.deepEqual(r.linhas.map((l) => l.map((c) => c.valor)), [['Bauru'], ['Jaú']]);
+});
+
+/** `active: true` e ausente levam ao mesmo lugar — a distinção existe só na spec. */
+test('active ausente e active: true agrupam igual', () => {
+  const semEstado = valores([coluna('CIDADE'), coluna('TIPO')]);
+  const explicito = valores([
+    { ...coluna('CIDADE'), active: true },
+    { ...coluna('TIPO'), active: true },
+  ]);
+  assert.deepEqual(explicito, semEstado);
+});
+
+test('agregação inativa também some da tabela', () => {
+  const campos = [coluna('CIDADE'), { ...agregacao('VALOR', 'sum'), active: false }];
+  const v = visual(campos);
+  assert.deepEqual(calculaTabela(dashboard([v]), v, montar()).colunas, ['CIDADE']);
+});
+
+/**
+ * Todos inativos não é "tabela vazia" — é leitura errada do estado de drill. Uma
+ * tabela sem coluna nenhuma na tela não existe.
+ */
+test('tabela com todos os campos inativos erra alto', () => {
+  const v = visual([{ ...coluna('CIDADE'), active: false }]);
+  assert.throws(() => calculaTabela(dashboard([v]), v, montar()), (e: unknown) => {
+    assert.ok(e instanceof DaxEvalError);
+    assert.match(e.message, /inativos/);
+    assert.match(e.message, /#32/);
+    return true;
+  });
+});

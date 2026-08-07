@@ -478,3 +478,51 @@ test('os filtros sobre agregado estão em tabela e gráfico, nunca em card', () 
   );
   assert.deepEqual(porTipo, { tableEx: 5, pivotTable: 3, barChart: 1, columnChart: 1 });
 });
+
+// ---------------------------------------------------------------------------
+// `active`: o estado de drill (ACHADOS #32)
+// ---------------------------------------------------------------------------
+
+/**
+ * **A medição que prova que `active` carrega informação**, do lado de quem consome.
+ *
+ * O extrator tem a sua (extractor.test.mjs); esta afirma o mesmo pela spec, que é
+ * o que o Widget Engine lê. Se as duas discordarem, `npm run extract` não rodou.
+ */
+test('as projeções inativas do relatório: 21, todas em slicer e gráfico', () => {
+  const campos = DASHBOARDS.flatMap((d) => (d.visuals ?? []).flatMap((v) =>
+    (v.fields ?? []).map((c) => ({ tipo: v.type, campo: c })),
+  ));
+  assert.deepEqual(contar(campos, (x) => String(x.campo.active)), {
+    true: 125, null: 302, false: 21,
+  });
+  assert.deepEqual(
+    contar(campos.filter((x) => x.campo.active === false), (x) => x.tipo),
+    { slicer: 16, lineStackedColumnComboChart: 4, clusteredBarChart: 1 },
+  );
+});
+
+/**
+ * **Nenhuma inativa está em `tableEx`** — e é por isso que ligar `active` não moveu
+ * a cobertura das tabelas. O teste existe para que, no dia em que mover, o motivo
+ * seja visível em vez de parecer regressão.
+ */
+test('nenhuma projeção inativa está em tabela, então a cobertura de tabela não muda por causa dela', () => {
+  const emTabela = DASHBOARDS.flatMap((d) => tabelasDoDashboard(d))
+    .flatMap((v) => v.fields ?? [])
+    .filter((c) => c.active === false);
+  assert.deepEqual(emTabela, []);
+});
+
+/**
+ * Os níveis de hierarquia sempre vêm em trio (`Ano`, `Mês`, `Dia`) — é a hierarquia
+ * automática de datas do Power BI. O que muda entre visuais é **quantos estão
+ * ativos**, e é aí que mora a diferença entre um ponto por mês e um por dia.
+ */
+test('os níveis de hierarquia da base são Ano, Mês, Dia (e um Trimestre)', () => {
+  const niveis = DASHBOARDS.flatMap((d) => (d.visuals ?? []).flatMap((v) => v.fields ?? []))
+    .filter((c) => c.kind === 'hierarchy_level');
+  assert.deepEqual(contar(niveis, (c) => c.level ?? '(sem nível)'), {
+    Ano: 23, 'Mês': 23, Dia: 22, Trimestre: 1,
+  });
+});
