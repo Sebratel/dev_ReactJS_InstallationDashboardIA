@@ -1,5 +1,11 @@
 # Prompt de continuação — Analytics Platform Enterprise
 
+> **Começando agora? Leia [CONTINUACAO.md](./CONTINUACAO.md) primeiro.**
+> Ele traz o estado de 07/08/2026 — o que roda, o que está bloqueado e o que
+> fazer a seguir. Este arquivo aqui é o histórico longo: fundamento, decisões
+> antigas e o caminho das fases 0 a 2b. Partes dele envelheceram; onde os dois
+> divergirem, **vale o CONTINUACAO.md**.
+>
 > Cole o bloco abaixo em uma sessão nova (Antigravity, Claude Code CLI, etc.).
 > Ele é autocontido: reconstrói o contexto lendo o repositório, não a conversa.
 

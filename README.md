@@ -3,6 +3,8 @@
 Plataforma corporativa de Analytics que substitui o Power BI da Sebratel.
 Orientada por **Engines** e **metadados** — dashboards são apenas uma das funcionalidades.
 
+> **Assumindo o projeto?** Comece por [docs/CONTINUACAO.md](docs/CONTINUACAO.md): como rodar, o estado exato, o que está bloqueado e o que fazer a seguir.
+
 ## Estado atual
 
 | Fase | Escopo | Status |
