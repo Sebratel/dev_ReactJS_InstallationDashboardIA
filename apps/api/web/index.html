@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Analytics Platform — Instalação</title>
+<!--
+  A tela do relatório.
+
+  SEM SIDEBAR DE PROPÓSITO. O `docs/DESIGN-SYSTEM.md` v2 diz que esta página abre
+  dentro do AppShell do HUBBI: a navegação principal e o header de 52px são de lá,
+  e esta página só preenche o `content-area`. Desenhar uma sidebar aqui seria
+  inventar uma navegação que a plataforma real já tem.
+
+  A barra de cima daqui é a do *ambiente de desenvolvimento* — serve para trocar de
+  página enquanto não há AppShell em volta, e some quando houver.
+
+  TOKENS COPIADOS DO shared_layout.css, via DESIGN-SYSTEM.md v2. Nenhum HEX solto
+  fora do :root.
+-->
+<style>
+:root {
+  --amber: #F59E0B; --amber-dark: #D97706; --amber-soft: rgba(245,158,11,.10);
+  --red: #E30613; --red-dark: #C10511;
+  --green: #10B981;
+  --danger: #EF4444; --danger-dark: #DC2626;
+  --sidebar-w: 196px; --sidebar-collapsed: 62px; --header-h: 52px;
+  --bg: #F4F4F5; --white: #FFFFFF; --text: #111827; --muted: #6B7280; --border: #E5E7EB;
+  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --sem-dado: #D1D5DB;
+  --sombra-card: 0 1px 6px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
+  --cabecalho-tabela: #F8F9FA;
+  --texto-cabecalho: #9CA3AF;
+  --ok-bg: #ECFDF5; --ok-fg: #065F46; --ok-bd: #A7F3D0;
+  --erro-bg: #FEF2F2; --erro-fg: #991B1B; --erro-bd: #FECACA;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: var(--font); font-size: 14px;
+}
+header {
+  height: var(--header-h); background: var(--white); border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 8px rgba(0,0,0,.04);
+  display: flex; align-items: center; gap: 16px; padding: 0 20px;
+  position: sticky; top: 0; z-index: 10;
+}
+.marca { font-weight: 800; letter-spacing: .5px; color: var(--red); font-size: .82rem; }
+.titulo { font-weight: 700; font-size: .86rem; }
+.sub { color: var(--muted); font-size: .72rem; }
+.espaco { flex: 1; }
+
+select, button {
+  font-family: var(--font); font-size: .78rem; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--white); color: var(--text);
+  padding: 6px 10px; cursor: pointer;
+}
+button.primario { background: var(--amber); border-color: var(--amber); color: var(--white); font-weight: 600; }
+button.primario:hover { background: var(--amber-dark); transform: translateY(-1px); }
+
+main { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+
+.faixa {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  font-size: .72rem; color: var(--muted);
+}
+.selo {
+  border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: .68rem;
+  background: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-bd);
+}
+.selo.ruim { background: var(--erro-bg); color: var(--erro-fg); border-color: var(--erro-bd); }
+.selo.neutro { background: var(--amber-soft); color: var(--amber-dark); border: 1px solid rgba(245,158,11,.3); }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.card {
+  background: var(--white); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: var(--sombra-card); padding: 14px 16px;
+}
+.card h3 {
+  margin: 0 0 6px; font-size: .62rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--texto-cabecalho);
+}
+.valor { font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
+.valor.vazio { color: var(--sem-dado); font-size: 1.1rem; font-weight: 600; }
+.origem { margin-top: 6px; font-size: .66rem; color: var(--muted); }
+
+.largo { grid-column: 1 / -1; }
+.card > header {
+  all: unset; display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px;
+}
+.card h2 { margin: 0; font-size: .82rem; font-weight: 800; }
+.card .sub { font-size: .72rem; }
+
+.rolagem { overflow: auto; max-height: 460px; }
+table.dados { border-collapse: collapse; width: 100%; font-size: .76rem; }
+table.dados th {
+  position: sticky; top: 0; background: var(--cabecalho-tabela); color: var(--texto-cabecalho);
+  text-transform: uppercase; font-size: .62rem; letter-spacing: .04em;
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+table.dados td {
+  padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+table.dados tbody tr:hover { background: rgba(245,158,11,.03); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.sem { color: var(--sem-dado); }
+
+.barras { display: flex; flex-direction: column; gap: 5px; }
+.barra { display: grid; grid-template-columns: minmax(90px, 210px) 1fr auto; gap: 10px; align-items: center; }
+.barra .rot { font-size: .72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barra .trilho { background: var(--bg); border-radius: 4px; height: 14px; overflow: hidden; }
+.barra .preenche { background: var(--amber); height: 100%; border-radius: 4px; }
+.barra .n { font-size: .72rem; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+
+.erro {
+  background: var(--erro-bg); border: 1px solid var(--erro-bd); color: var(--erro-fg);
+  border-radius: 10px; padding: 10px 12px; font-size: .74rem; white-space: pre-wrap;
+}
+.vazio-pagina { color: var(--muted); padding: 40px; text-align: center; }
+@media (max-width: 640px) { .titulo, .sub { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <span class="marca">SEBRATEL</span>
+  <span class="titulo" id="titulo">Instalação</span>
+  <span class="sub" id="subtitulo"></span>
+  <span class="espaco"></span>
+  <select id="paginas"></select>
+  <button class="primario" id="recarregar">Recarregar</button>
+</header>
+
+<main id="tela"><div class="vazio-pagina">Carregando…</div></main>
+
+<script type="module">
+const tela = document.getElementById('tela');
+const seletor = document.getElementById('paginas');
+const titulo = document.getElementById('titulo');
+const subtitulo = document.getElementById('subtitulo');
+
+const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
+const nfInt = new Intl.NumberFormat('pt-BR');
+const df = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' });
+const dfh = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'UTC' });
+
+/**
+ * Formata um valor pelo tipo que a API mandou.
+ *
+ * O tipo vem do servidor de propósito: JSON não tem data, e adivinhar pelo formato
+ * do texto transformaria em data qualquer protocolo que se pareça com uma.
+ */
+function formata(v, tipo) {
+  if (v === null || v === undefined) return { texto: '—', vazio: true };
+  if (tipo === 'date') {
+    const d = new Date(v);
+    const soData = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
+    return { texto: (soData ? df : dfh).format(d), num: true };
+  }
+  if (tipo === 'number') return { texto: Number.isInteger(v) ? nfInt.format(v) : nf.format(v), num: true };
+  if (tipo === 'boolean') return { texto: v ? 'Sim' : 'Não' };
+  return { texto: String(v) };
+}
+
+function el(tag, props = {}, filhos = []) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') n.className = v;
+    else if (k === 'texto') n.textContent = v;
+    else n.setAttribute(k, v);
+  }
+  for (const f of filhos) if (f) n.append(f);
+  return n;
+}
+
+function cartao(titulo, sub, corpo, largo) {
+  const c = el('section', { class: 'card' + (largo ? ' largo' : '') });
+  if (titulo) {
+    c.append(el('header', {}, [
+      el('h2', { texto: titulo }),
+      sub ? el('span', { class: 'sub', texto: sub }) : null,
+    ]));
+  }
+  c.append(corpo);
+  return c;
+}
+
+// --------------------------------------------------------------- desenhos
+
+function desenhaCard(v) {
+  const d = v.dados;
+  const f = formata(d.valor, d.tipoDoValor);
+  const c = el('section', { class: 'card' });
+  c.append(el('h3', { texto: d.nome ?? '(sem rótulo)' }));
+  c.append(el('div', { class: 'valor' + (f.vazio ? ' vazio' : ''), texto: f.texto }));
+  const origem = d.origem.kind === 'measure'
+    ? `medida [${d.origem.measure}]`
+    : `${d.origem.aggregation.toUpperCase()} de ${d.origem.table}[${d.origem.column}]`;
+  c.append(el('div', { class: 'origem', texto: origem + (d.filtros.length ? ` · ${d.filtros.length} filtro(s)` : '') }));
+  return c;
+}
+
+function desenhaTabela(v) {
+  const d = v.dados;
+  const tabela = el('table', { class: 'dados' });
+  const cab = el('tr');
+  for (const col of d.colunas) {
+    cab.append(el('th', { class: col.tipo === 'number' || col.tipo === 'date' ? 'num' : '', texto: col.nome ?? '—' }));
+  }
+  tabela.append(el('thead', {}, [cab]));
+
+  const corpo = el('tbody');
+  for (const linha of d.linhas) {
+    const tr = el('tr');
+    linha.forEach((valor, i) => {
+      const col = d.colunas[i];
+      const f = formata(valor, col.tipo);
+      tr.append(el('td', { class: [f.num ? 'num' : '', f.vazio ? 'sem' : ''].filter(Boolean).join(' '), texto: f.texto }));
+    });
+    corpo.append(tr);
+  }
+  tabela.append(corpo);
+
+  const janela = el('div', { class: 'rolagem' }, [tabela]);
+  // O corte é dito, nunca silencioso.
+  const sub = d.linhasTotais > d.linhas.length
+    ? `${nfInt.format(d.linhas.length)} de ${nfInt.format(d.linhasTotais)} linhas`
+    : `${nfInt.format(d.linhasTotais)} linhas`;
+  return cartao(rotuloDe(v), sub, janela, true);
+}
+
+function desenhaMatriz(v) {
+  const d = v.dados;
+  const tabela = el('table', { class: 'dados' });
+  const cab = el('tr');
+  cab.append(el('th', { texto: d.chavesDeLinha.map((c) => c.nome ?? c.coluna).join(' / ') }));
+  const semEixoDeColuna = d.colunas.length === 1 && d.colunas[0].length === 0;
+  for (const c of d.colunas) {
+    for (const m of d.medidas) {
+      const rot = semEixoDeColuna
+        ? (m ?? '—')
+        : c.map((x, i) => formata(x, d.tiposDeColuna[i]).texto).join(' / ') + (d.medidas.length > 1 ? ` · ${m ?? ''}` : '');
+      cab.append(el('th', { class: 'num', texto: rot }));
+    }
+  }
+  tabela.append(el('thead', {}, [cab]));
+
+  const corpo = el('tbody');
+  d.linhas.forEach((linha, i) => {
+    const tr = el('tr');
+    tr.append(el('td', { texto: linha.map((x, j) => formata(x, d.tiposDeLinha[j]).texto).join(' / ') }));
+    for (const celula of d.celulas[i]) {
+      for (const valor of celula) {
+        const f = formata(valor, typeof valor === 'number' ? 'number' : null);
+        tr.append(el('td', { class: 'num' + (f.vazio ? ' sem' : ''), texto: f.texto }));
+      }
+    }
+    corpo.append(tr);
+  });
+  tabela.append(corpo);
+
+  const partes = [`${nfInt.format(d.linhasTotais)} × ${nfInt.format(d.colunas.length)}`];
+  if (d.linhasTotais > d.linhas.length) partes.push(`mostrando ${nfInt.format(d.linhas.length)}`);
+  if (d.descartadas.linhas || d.descartadas.colunas) {
+    partes.push(`${d.descartadas.linhas + d.descartadas.colunas} posição(ões) vazia(s) podada(s)`);
+  }
+  return cartao(rotuloDe(v), partes.join(' · '), el('div', { class: 'rolagem' }, [tabela]), true);
+}
+
+/**
+ * Gráfico como barras em HTML.
+ *
+ * Deliberadamente sem biblioteca: o Chart SDK é uma peça própria da Fase 3 e
+ * escolher uma biblioteca aqui, de passagem, seria decidir por ele. Barra
+ * proporcional já mostra a forma do dado e prova que os pontos chegam certos.
+ */
+function desenhaGrafico(v) {
+  const d = v.dados;
+  const pontos = d.pontos.slice(0, 40);
+  const valores = pontos.map((p) => (typeof p.valores[0] === 'number' ? p.valores[0] : 0));
+  const maior = Math.max(1, ...valores.map(Math.abs));
+
+  const caixa = el('div', { class: 'barras' });
+  pontos.forEach((p, i) => {
+    const rot = p.categoria.map((c, j) => formata(c, d.tiposDeChave[j]).texto).join(' / ');
+    const f = formata(p.valores[0], d.tiposDeSerie[0]);
+    const trilho = el('div', { class: 'trilho' });
+    trilho.append(el('div', { class: 'preenche', style: `width:${(Math.abs(valores[i]) / maior) * 100}%` }));
+    caixa.append(el('div', { class: 'barra' }, [
+      el('div', { class: 'rot', title: rot, texto: rot }),
+      trilho,
+      el('div', { class: 'n', texto: f.texto }),
+    ]));
+  });
+
+  const sub = [`${d.tipo}`, `${nfInt.format(d.pontos.length)} pontos`, `${d.series.length} série(s)`];
+  if (d.pontos.length > pontos.length) sub.push(`mostrando ${pontos.length}`);
+  return cartao(rotuloDe(v), sub.join(' · '), caixa, true);
+}
+
+function rotuloDe(v) {
+  return v.tipo + ' · ' + v.id.slice(0, 8);
+}
+
+// ----------------------------------------------------------------- página
+
+async function carregaLista() {
+  const r = await fetch('/api/dashboards').then((x) => x.json());
+  seletor.replaceChildren(...r.dashboards.map((d) =>
+    el('option', { value: d.id, texto: `${d.nome}${d.pronta ? '' : ' (sem snapshot)'}` })));
+  return r.dashboards;
+}
+
+async function desenhaPagina(id) {
+  tela.replaceChildren(el('div', { class: 'vazio-pagina', texto: 'Calculando…' }));
+  const resp = await fetch(`/api/dashboards/${encodeURIComponent(id)}`);
+  const p = await resp.json();
+
+  if (!resp.ok) {
+    tela.replaceChildren(el('div', { class: 'erro', texto: p.erro }));
+    subtitulo.textContent = '';
+    return;
+  }
+
+  titulo.textContent = p.nome;
+  subtitulo.textContent = `dado de ${p.dadoDe ? dfh.format(new Date(p.dadoDe)) : '—'}`;
+
+  const faixa = el('div', { class: 'faixa' }, [
+    el('span', { class: 'selo', texto: `${p.resumo.calculados} calculados` }),
+    p.resumo.falharam
+      ? el('span', { class: 'selo ruim', texto: `${p.resumo.falharam} com erro` })
+      : null,
+    el('span', { class: 'selo neutro', texto: `${p.resumo.semCalculo} sem número` }),
+    el('span', { texto: `${p.ms} ms de cálculo` }),
+    el('span', { texto: p.tabelas.map((t) => `${t.nome}: ${nfInt.format(t.linhas)}`).join(' · ') }),
+  ]);
+
+  const kpis = el('div', { class: 'kpis' });
+  const blocos = [];
+  for (const v of p.visuais) {
+    if (v.erro) {
+      blocos.push(cartao(rotuloDe(v), 'não calculou', el('div', { class: 'erro', texto: v.erro }), true));
+      continue;
+    }
+    if (v.conteudo === 'card') kpis.append(desenhaCard(v));
+    else if (v.conteudo === 'tabela') blocos.push(desenhaTabela(v));
+    else if (v.conteudo === 'matriz') blocos.push(desenhaMatriz(v));
+    else if (v.conteudo === 'grafico') blocos.push(desenhaGrafico(v));
+  }
+
+  tela.replaceChildren(faixa, ...(kpis.childElementCount ? [kpis] : []), ...blocos);
+  if (!kpis.childElementCount && blocos.length === 0) {
+    tela.append(el('div', { class: 'vazio-pagina', texto: 'Esta página não tem visual com número.' }));
+  }
+}
+
+const dashboards = await carregaLista();
+const inicial = dashboards.find((d) => d.pronta) ?? dashboards[0];
+seletor.value = inicial.id;
+seletor.addEventListener('change', () => desenhaPagina(seletor.value));
+document.getElementById('recarregar').addEventListener('click', () => desenhaPagina(seletor.value));
+await desenhaPagina(inicial.id);
+</script>
+</body>
+</html>

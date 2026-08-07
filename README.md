@@ -46,11 +46,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **A matriz custava 33.945 varreduras onde o Power BI faz uma — resolvido.** Cada célula refiltrava as 65.563 linhas: 2,2 bilhões de visitas contra 65.563 de uma varredura única. O conserto não foi um motor novo: a varredura que descobre as combinações **já separava as linhas de cada grupo** e as jogava fora. O perigo era a substituição do DAX — `ALL()` de uma das chaves derruba um filtro do grupo, e as linhas materializadas ficariam estreitas demais ([ACHADOS](docs/ACHADOS.md) #38) | ✅ |
 | — | Medido em dado real contra o mesmo cálculo sem o caminho rápido: `protocolos-detalhados` em **1.519 ms contra 374.260 ms**, com **`sha256` idêntico** sobre 23,8 MB de saída — **246×**, byte a byte o mesmo número. A matriz que não terminava em 400 s: **1.610 ms** | ✅ |
 | — | A conferência que torna isso seguro **não era coberta por teste nenhum**: removida, os 860 continuavam passando. Veio de mutação, e hoje 2 testes a pegam. A outra mutação — truncar as linhas materializadas — derruba 38 | ✅ |
-| — | Front-end e API **não existem ainda**. Antes do #38 não fazia sentido escrevê-los: uma página levava ~4 min para responder. Hoje `diario-instalacao` calcula em **4,0 s** sobre 98 mil linhas, mais 1,8 s de carregamento | ⏳ **próxima fatia** |
+| — | **A tela existe: `apps/api` serve a API de leitura e o dashboard.** Uma página do relatório abre no navegador com número calculado a partir da fonte real. `diario-instalacao`: **7 visuais com número, 0 falharam**, 3,8 s por pedido; a tabela de 32.462 linhas sai em 48 KB em vez de 23,8 MB, dizendo o total ([ACHADOS](docs/ACHADOS.md) #39) | ✅ |
+| — | **Somente leitura no protocolo**: só `GET`/`HEAD`, qualquer outro método leva 405 antes do roteamento. É a quarta camada — as outras três ficam no Query Engine, que a API nem chama: ela lê snapshot | ✅ |
+| — | Divergência registrada do `ARCHITECTURE.md`: **`node:http` em vez de Fastify**. Cinco rotas `GET` sem corpo, sem escrita e sem autenticação não pagam um framework, e o repositório segue sem passo de build. Revisar nas Fases 4 e 5 | ⚠️ |
+| — | A regra 5 do `PROMPT-CONTINUACAO.md` mandava a paleta **v1** (`#F5F1E8`, DM Sans, 256px), que o próprio design system marca como substituída. Corrigida para a **v2** real do HUBBI (`#F4F4F5`, âmbar `#F59E0B`) | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**872 testes verdes.** Nenhum deles precisa de credencial.
+**892 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -65,6 +68,35 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | Queries (Query Registry) | 24 — 15 `dbVoalle`, 3 `dbMaria`, 3 `gsheets`, 1 `web`, 1 `inline`, 1 `computed` |
 | Dashboards (páginas) | 14 |
 | Visuais | 306 |
+
+### API e tela (Fase 3)
+
+```
+npm run snapshot -- --pagina=diario-instalacao --memoria=8192   # uma vez
+npm run api                                                     # http://localhost:3100
+```
+
+`apps/api` é o fim do caminho: lê o snapshot em disco, calcula a página com as
+engines e devolve JSON; a tela em `apps/api/web/` desenha. Não toca fonte nenhuma —
+quem busca é `npm run snapshot`.
+
+| rota | |
+|---|---|
+| `GET /api/saude` | o que há em disco, quantas linhas, de quando |
+| `GET /api/dashboards` | as 14 páginas, e quais têm snapshot |
+| `GET /api/dashboards/:id?de=&linhas=` | a página calculada |
+
+Qualquer método que não seja `GET`/`HEAD` leva **405 antes do roteamento**.
+
+Três coisas na resposta que não são das engines e estão em teste: **um visual que
+falha não derruba a página** (vira `erro` nele, e a página conta), **tabela grande
+vem cortada dizendo o total** (23,8 MB → 48 KB) e **o tipo do valor viaja junto**
+(JSON não tem data).
+
+A tela **não desenha sidebar**: pelo [DESIGN-SYSTEM](docs/DESIGN-SYSTEM.md) v2 esta
+página abre dentro do AppShell do HUBBI, e a navegação é de lá. E não usa biblioteca
+de gráfico — o Chart SDK é peça própria, e escolher uma de passagem seria decidir
+por ele.
 
 ### Snapshot da camada M (Fase 3)
 

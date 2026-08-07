@@ -2229,3 +2229,68 @@ célula de matriz ainda percorre as linhas do menor dos dois eixos, e uma medida
 `CALCULATE` que troca o contexto volta a varrer. Para os visuais desta base isso
 basta; se um dia não bastar, o passo seguinte é agregar durante a varredura em vez de
 depois dela.
+
+---
+
+## 39. A tela existe, e três decisões dela não são de engine
+
+Com o snapshot (#37) e o caminho rápido (#38), uma página passou a responder em
+segundos — e só aí fazia sentido escrever API e tela. `apps/api` serve as duas.
+
+### `node:http` em vez de Fastify — divergência do `ARCHITECTURE.md`, registrada
+
+O `docs/ARCHITECTURE.md` declara Fastify. São cinco rotas `GET` sobre um snapshot
+em disco: nada de corpo para validar, nada de escrita, nada de autenticação ainda.
+O repositório roda sem passo de build e com quatro dependências, e `node:http`
+mantém isso. **Quando existirem Permission Engine, corpo de requisição e WebSocket
+de realtime — Fases 4 e 5 — a conta muda e esta decisão deve ser revista.**
+
+### Somente leitura no protocolo, e é a quarta camada
+
+Só `GET` e `HEAD` passam; qualquer outro método leva 405 **antes** de qualquer
+roteamento. As outras três camadas (usuário do banco, `default_transaction_read_only`,
+`assertReadOnly`) ficam no Query Engine, que esta API **nem chama** — ela lê
+snapshot em disco. Esta é a única que um cliente enxerga.
+
+### As três decisões que a resposta carrega
+
+| decisão | por quê |
+|---|---|
+| **um visual que falha não derruba a página** | são 306 visuais; um erro vira `erro` naquele visual, com a mensagem inteira, e a página conta quantos falharam. O que não pode é o erro sumir |
+| **tabela grande vem cortada, e a resposta diz o total** | as duas tabelas de `protocolos-detalhados` somam 23,8 MB de JSON. A janela é 200 linhas e `linhasTotais` viaja junto — corte silencioso seria pior que o peso |
+| **o tipo do valor viaja com o valor** | JSON não tem data. Sem o tipo por coluna, a tela não sabe se `"2026-08-07T…"` é uma data ou um protocolo que se parece com uma. Mesma razão do formato do snapshot (#37) |
+
+Medido em `diario-instalacao`: **7 visuais com número, 0 falharam, 15 sem número**
+(imagem, caixa de texto, forma). Primeiro pedido 6,58 s (inclui 1,8 s de
+carregamento do snapshot), pedidos seguintes **3,8 s**, 237 KB. Em
+`protocolos-detalhados` o corte leva a resposta de 23,8 MB para **48.735 bytes**.
+
+### A tela: sem sidebar, sem biblioteca de gráfico
+
+Dois recortes deliberados, os dois por não inventar decisão alheia:
+
+- **Sem sidebar.** O `DESIGN-SYSTEM.md` v2 diz que esta página abre dentro do
+  AppShell do HUBBI: a navegação principal e o header de 52px são de lá. Desenhar
+  uma sidebar aqui seria inventar uma navegação que a plataforma real já tem.
+- **Sem biblioteca de gráfico.** O Chart SDK é peça própria da Fase 3; escolher uma
+  biblioteca de passagem seria decidir por ele. Barra proporcional em HTML já mostra
+  a forma do dado e prova que os pontos chegam certos.
+
+### A regra 5 do `PROMPT-CONTINUACAO.md` estava desatualizada
+
+Ela mandava usar fundo `#F5F1E8`, DM Sans, sidebar 256px e âmbar `#FFB000` — a
+**v1** do design system, que o próprio documento marca como substituída por ser
+paleta *aspiracional*, sem código real por trás. Vale a **v2**, copiada do
+`shared_layout.css` do HUBBI: fundo `#F4F4F5`, Inter/system, âmbar `#F59E0B`.
+A regra foi corrigida.
+
+### Conferido e descartado
+
+O card `REALIZADOS` mostra **32.463** e a tabela `PROTOCOLOS GERAL` tem **32.462**
+linhas — proximidade que parece erro de um. Não é: `[Total Protocolos]` é
+`DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO])`, outra tabela, com 65.563
+linhas e 32.463 protocolos distintos. Medido também que **não há branco** naquela
+coluna, então o `DISTINCTCOUNT` não está contando a linha em branco como valor.
+
+**E isto continua não sendo paridade.** A tela mostra números calculados a partir da
+fonte real, o que é novo; que eles sejam os *mesmos* do Power BI segue sem prova.

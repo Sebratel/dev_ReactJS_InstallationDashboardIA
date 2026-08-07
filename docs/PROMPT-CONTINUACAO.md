@@ -142,9 +142,14 @@ Em `tools/validate/` (`npm run validate:queries`):
    barrando DDL/DML antes de a query sair do processo. Não afrouxe isso.
 4. **Toda implementação vem com teste.** Nenhuma fase fecha sem testes verdes de
    paridade contra a spec. É o que impede quebrar o que já existe.
-5. **Toda UI segue `docs/DESIGN-SYSTEM.md`.** Fundo `#F5F1E8`, cards brancos,
-   DM Sans, sidebar 256px, primária âmbar `#FFB000`, semáforo verde/vermelho/cinza.
-   Sem roxo/azul/gradiente/dark mode e sem HEX hardcoded — só tokens.
+5. **Toda UI segue `docs/DESIGN-SYSTEM.md`.** Cuidado: esta regra citava a **v1**
+   (`#F5F1E8`, DM Sans, sidebar 256px, âmbar `#FFB000`), que o próprio documento
+   marca como **substituída** — era paleta aspiracional, sem código real por trás.
+   Vale a **v2**, copiada do `shared_layout.css` do HUBBI: fundo `#F4F4F5`, cards
+   brancos radius 14px, Inter/system, âmbar `#F59E0B` (hover `#D97706`), semáforo
+   verde `#10B981` / vermelho `#EF4444` / cinza `#D1D5DB`. O vermelho da marca
+   (`#E30613`) **não** é status. A sidebar não é desta página — é do AppShell do
+   HUBBI. Gradiente âmbar é permitido em estado ativo. Sem HEX hardcoded — só tokens.
 6. **Nunca peça nem aceite credenciais em texto.** Elas vivem só no `.env` local,
    que o git ignora. A saída de `npm run doctor` é mascarada e segura.
 
