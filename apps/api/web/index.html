@@ -108,9 +108,21 @@ td.sem { color: var(--sem-dado); }
 .barras { display: flex; flex-direction: column; gap: 5px; }
 .barra { display: grid; grid-template-columns: minmax(90px, 210px) 1fr auto; gap: 10px; align-items: center; }
 .barra .rot { font-size: .72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.barra .trilho { background: var(--bg); border-radius: 4px; height: 14px; overflow: hidden; }
-.barra .preenche { background: var(--amber); height: 100%; border-radius: 4px; }
-.barra .n { font-size: .72rem; font-variant-numeric: tabular-nums; min-width: 70px; text-align: right; }
+.pilha { display: flex; flex-direction: column; gap: 2px; }
+.trilho { background: var(--bg); border-radius: 4px; height: 12px; overflow: hidden; }
+.preenche { height: 100%; border-radius: 4px; background: var(--amber); }
+/* Papéis de gráfico do design system: destaque, positivo, crítico, grid. */
+.preenche.s1 { background: var(--green); }
+.preenche.s2 { background: var(--danger); }
+.preenche.s3 { background: var(--muted); }
+.barra .n { font-size: .72rem; font-variant-numeric: tabular-nums; min-width: 74px; text-align: right;
+  display: flex; flex-direction: column; gap: 2px; }
+.legenda { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; font-size: .7rem; color: var(--muted); }
+.legenda .chave { display: inline-flex; align-items: center; gap: 5px; }
+.legenda .ponto { width: 9px; height: 9px; border-radius: 2px; background: var(--amber); display: inline-block; }
+.legenda .ponto.s1 { background: var(--green); }
+.legenda .ponto.s2 { background: var(--danger); }
+.legenda .ponto.s3 { background: var(--muted); }
 
 .erro {
   background: var(--erro-bg); border: 1px solid var(--erro-bd); color: var(--erro-fg);
@@ -249,10 +261,12 @@ function desenhaMatriz(v) {
     const tr = el('tr');
     tr.append(el('td', { texto: linha.map((x, j) => formata(x, d.tiposDeLinha[j]).texto).join(' / ') }));
     for (const celula of d.celulas[i]) {
-      for (const valor of celula) {
-        const f = formata(valor, typeof valor === 'number' ? 'number' : null);
+      // O tipo vem do servidor, por medida. Deduzir do valor faria uma medida de
+      // data virar texto — a mesma adivinhação que o tipo explícito evita.
+      celula.forEach((valor, m) => {
+        const f = formata(valor, d.tiposDeMedida[m]);
         tr.append(el('td', { class: 'num' + (f.vazio ? ' sem' : ''), texto: f.texto }));
-      }
+      });
     }
     corpo.append(tr);
   });
@@ -276,19 +290,42 @@ function desenhaMatriz(v) {
 function desenhaGrafico(v) {
   const d = v.dados;
   const pontos = d.pontos.slice(0, 40);
-  const valores = pontos.map((p) => (typeof p.valores[0] === 'number' ? p.valores[0] : 0));
-  const maior = Math.max(1, ...valores.map(Math.abs));
+  const num = (x) => (typeof x === 'number' ? x : 0);
+  // A escala é comum a todas as séries: uma escala por série faria duas barras de
+  // tamanho igual representarem números diferentes.
+  const maior = Math.max(1, ...pontos.flatMap((p) => p.valores.map((x) => Math.abs(num(x)))));
 
   const caixa = el('div', { class: 'barras' });
-  pontos.forEach((p, i) => {
+  if (d.series.length > 1) {
+    const legenda = el('div', { class: 'legenda' });
+    d.series.forEach((s, k) => {
+      legenda.append(el('span', { class: 'chave' }, [
+        el('i', { class: `ponto s${Math.min(k, 3)}` }),
+        el('span', { texto: `${s.nome ?? '(sem rótulo)'}${s.papel === 'Y2' ? ' · eixo secundário' : ''}` }),
+      ]));
+    });
+    caixa.append(legenda);
+  }
+
+  pontos.forEach((p) => {
     const rot = p.categoria.map((c, j) => formata(c, d.tiposDeChave[j]).texto).join(' / ');
-    const f = formata(p.valores[0], d.tiposDeSerie[0]);
-    const trilho = el('div', { class: 'trilho' });
-    trilho.append(el('div', { class: 'preenche', style: `width:${(Math.abs(valores[i]) / maior) * 100}%` }));
+    // Uma barra por série, não só a primeira: com 2 e 3 séries nesta base, desenhar
+    // a primeira e calar as outras esconderia metade do gráfico.
+    const pilha = el('div', { class: 'pilha' });
+    const numeros = el('div', { class: 'n' });
+    p.valores.forEach((valor, k) => {
+      const trilho = el('div', { class: 'trilho' });
+      trilho.append(el('div', {
+        class: `preenche s${Math.min(k, 3)}`,
+        style: `width:${(Math.abs(num(valor)) / maior) * 100}%`,
+      }));
+      pilha.append(trilho);
+      numeros.append(el('div', { texto: formata(valor, d.tiposDeSerie[k]).texto }));
+    });
     caixa.append(el('div', { class: 'barra' }, [
       el('div', { class: 'rot', title: rot, texto: rot }),
-      trilho,
-      el('div', { class: 'n', texto: f.texto }),
+      pilha,
+      numeros,
     ]));
   });
 

@@ -134,6 +134,82 @@ test('tabela fora do plano não é carregada nem materializada', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// O tipo declarado vale também para coluna física
+// ---------------------------------------------------------------------------
+
+/**
+ * **O achado #40, e ele só aparece com dado real.** A regra do #31 — o tipo
+ * declarado da coluna vale ao materializar — tinha entrado só no caminho da coluna
+ * *calculada*, porque em dado sintético o teste sempre põe número em coluna
+ * numérica. Contra a base, `'CONSOLIDADO CLIENTES'[authentication_totalizer]`
+ * declara `int64` e a camada M entrega o texto `"83205"`: o `AVERAGE` do gráfico
+ * errava alto.
+ */
+test('coluna física declarada int64 que chega texto vira número, e SUM soma', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snaptipo-'));
+  await escreve(
+    arquivoDaQuery(dir, 'q-os'),
+    { query: 'q-os', tabelas: ['OS'], geradoEm: '2026-08-07T09:00:00.000Z' },
+    ['valor', 'cidade', 'quando'],
+    [{ valor: '10', cidade: 'Bauru', quando: null }, { valor: '30', cidade: 'Jaú', quando: null }],
+  );
+  const dash = pagina([card('Total')]);
+  const { ev, convertidas } = await carrega({ dir, model: modelo(), dashboards: [dash], now: AGORA });
+  assert.equal(calculaCard(dash, dash.visuals[0]!, ev).valor, 40);
+  assert.deepEqual(convertidas, ["'OS'[VALOR] string -> int64"]);
+});
+
+/**
+ * O sentido contrário fica de fora **de propósito**: quatro colunas da base
+ * declaram texto e chegam número ou data, e converter uma data de verdade para
+ * texto quebraria todo `YEAR()` sobre ela.
+ */
+test('coluna declarada texto que chega data não é convertida', async () => {
+  const m = modelo();
+  m.table('OS')!.columns.find((c) => c.name === 'CIDADE')!.type = 'string';
+  const dir = await comSnapshot();
+  const dash = pagina([card('Total')]);
+  const { ev, convertidas } = await carrega({ dir, model: m, dashboards: [dash], now: AGORA });
+  assert.deepEqual(convertidas, []);
+  assert.ok(ev.columnValues('OS', 'QUANDO')[0] instanceof Date);
+});
+
+test('coluna que já chega no tipo certo não é tocada nem listada', async () => {
+  const dir = await comSnapshot();
+  const dash = pagina([card('Total')]);
+  const { convertidas } = await carrega({ dir, model: modelo(), dashboards: [dash], now: AGORA });
+  assert.deepEqual(convertidas, []);
+});
+
+test('coluna só de nulos não é convertida — não há o que converter', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapnulo-'));
+  await escreve(
+    arquivoDaQuery(dir, 'q-os'),
+    { query: 'q-os', tabelas: ['OS'], geradoEm: '2026-08-07T09:00:00.000Z' },
+    ['valor', 'cidade', 'quando'],
+    [{ valor: null, cidade: 'Bauru', quando: null }],
+  );
+  const dash = pagina([card('Total')]);
+  const { convertidas } = await carrega({ dir, model: modelo(), dashboards: [dash], now: AGORA });
+  assert.deepEqual(convertidas, []);
+});
+
+/** A trava do #31 continua valendo um nível acima: literal ambíguo erra alto. */
+test('texto com separador de milhar em coluna numérica erra alto no carregamento', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapmil-'));
+  await escreve(
+    arquivoDaQuery(dir, 'q-os'),
+    { query: 'q-os', tabelas: ['OS'], geradoEm: '2026-08-07T09:00:00.000Z' },
+    ['valor', 'cidade', 'quando'],
+    [{ valor: '1.234,56', cidade: 'Bauru', quando: null }],
+  );
+  await assert.rejects(
+    () => carrega({ dir, model: modelo(), dashboards: [pagina([card('Total')])], now: AGORA }),
+    /não é um literal numérico/,
+  );
+});
+
+// ---------------------------------------------------------------------------
 // O que erra alto
 // ---------------------------------------------------------------------------
 

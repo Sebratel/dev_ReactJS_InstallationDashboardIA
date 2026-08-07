@@ -208,6 +208,12 @@ function dadosDo(
     colunas: r.colunas.map((c) => c.valores.map(serializa)),
     tiposDeLinha: r.chavesDeLinha.map((_, i) => tipoDaColuna(r.linhas.map((l) => l.valores[i]!))),
     tiposDeColuna: r.chavesDeColuna.map((_, i) => tipoDaColuna(r.colunas.map((c) => c.valores[i]!))),
+    // O tipo de cada medida, varrendo as células dela. Sem isto a tela teria de
+    // adivinhar pelo formato do valor — e adivinhar é justamente o que o tipo
+    // explícito existe para evitar (uma medida de data viraria texto).
+    tiposDeMedida: r.medidas.map((_, m) =>
+      tipoDaColuna(r.celulas.flatMap((linha) => linha.map((celula) => celula[m]!))),
+    ),
     celulas: r.celulas
       .slice(janela.de, janela.de + janela.linhas)
       .map((linha) => linha.map((celula) => celula.map(serializa))),

@@ -31,7 +31,8 @@
     "snapshot": "node tools/snapshot/src/index.ts",
     "test:snapshot": "node --test packages/snapshot/test/*.test.ts",
     "api": "node apps/api/src/index.ts",
-    "test:api": "node --test apps/api/test/*.test.ts"
+    "test:api": "node --test apps/api/test/*.test.ts",
+    "paginas": "node --max-old-space-size=8192 tools/paginas/src/index.ts"
   },
   "dependencies": {
     "ioredis": "^6.0.0",

@@ -2294,3 +2294,84 @@ coluna, então o `DISTINCTCOUNT` não está contando a linha em branco como valo
 
 **E isto continua não sendo paridade.** A tela mostra números calculados a partir da
 fonte real, o que é novo; que eles sejam os *mesmos* do Power BI segue sem prova.
+
+---
+
+## 40. O relatório inteiro contra dado real, e o que só ele mostra
+
+`npm run paginas` calcula as 14 páginas sobre o snapshot e conta o que fecha. É
+outra pergunta que a cobertura da fase 3: lá era "o avaliador sabe fazer a conta"
+sobre tabelas sintéticas de 3 a 5 linhas; aqui é "a conta termina sobre estes
+dados".
+
+| | |
+|---|---|
+| páginas que carregaram | **11 de 14** |
+| visuais com número nelas | 64 |
+| **calcularam** | **64** |
+| visuais sem número | 139 |
+| linhas carregadas | 632.620 |
+| carga + cálculo | 11,9 s + 17,5 s |
+
+Na primeira passada eram **63 de 64**, e o que faltava era um defeito de verdade.
+
+### O tipo declarado valia só para coluna calculada
+
+`relatorio-do-ano/2d498e…` parou com:
+
+```
+AVERAGE('CONSOLIDADO CLIENTES'[authentication_totalizer]):
+  esperava número e recebeu o texto "83205"
+```
+
+O modelo declara a coluna `int64`; a camada M entrega texto. **É o achado #31 um
+nível acima**: lá a regra "o tipo declarado da coluna vale ao materializar" entrou
+no caminho da coluna *calculada*, e coluna física ficou de fora — porque em dado
+sintético o teste sempre põe número em coluna numérica. Nenhum dos 898 testes podia
+pegar isso.
+
+**Medido antes de mexer, sobre as 14 tabelas materializadas:**
+
+| divergência entre tipo declarado e tipo entregue | n |
+|---|---|
+| declara número, chega **texto** | **14** |
+| declara texto, chega número ou data | 4 |
+
+E, nas 14, **todo valor não-nulo é literal numérico limpo** — nenhum `"1.234,56"`,
+nenhum `"R$ 10"`. Sem essa medição a conversão trocaria "funciona" por "erra alto"
+em qualquer coluna com um valor sujo; com ela, o alcance é conhecido.
+
+**As 4 do sentido contrário ficam como estão, de propósito.**
+`'PROTOCOLOS GERAL'[DATA FINAL]` é data de verdade e se declara `string`; convertê-la
+para texto quebraria todo `YEAR()` sobre ela. Perda, não ganho.
+
+A conversão acontece no carregamento do snapshot, usa a **mesma** `aplicaTipo` do
+#31 — uma regra, um lugar — e decide pelo tipo apurado no cabeçalho, que já foi
+varrido sobre a coluna inteira. Coluna que chega no tipo certo não é tocada. E
+`npm run paginas` **lista as colunas convertidas**: é a única parte do carregamento
+que muda o dado, e conversão calada é o erro mais caro desta base.
+
+### As 3 páginas que não carregam, e por quê
+
+| página | falta |
+|---|---|
+| `visao-geral` | `FIELD AGENDA` |
+| `agendamento-field` | `FIELD AGENDA` + `Clima/ Tempo` |
+| `relatorio-do-mes` | `FIELD AGENDA` + `Clima/ Tempo` |
+
+- **`clima-tempo` não tem como ser materializada.** Define função dentro de `let` e
+  lê `Web.Contents`, que não tem connector. É a mesma exclusão do `mrun` desde a
+  2b.8, e agora ela custa duas páginas inteiras.
+- **`field-agenda` estourou o `statement_timeout` de 600 s no servidor.** É a query
+  de 1,4 milhão de linhas. Não é limite do processo nem de heap: foi o Postgres que
+  cancelou. Com teto de 1800 s ela segue em curso.
+
+### `statement_timeout`: 30 s serve para tela, 600 s não serve para refresh
+
+O #37 tinha subido o teto de materialização de 30 s para 600 s e resolvido
+`protocolos-geral` (45 s) e `protocolos-produtividade` (87 s). `field-agenda` mostra
+que 600 s também é chute: **o teto certo de um refresh depende da query, não de um
+número redondo.** Por isso `--timeout=` existe e o valor usado é impresso.
+
+**E nada disto é paridade.** 64 visuais calcularem quer dizer que a conta termina
+sobre estes dados. Que o número seja o do Power BI segue sem prova.

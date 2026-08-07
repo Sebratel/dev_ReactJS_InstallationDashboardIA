@@ -50,10 +50,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Somente leitura no protocolo**: só `GET`/`HEAD`, qualquer outro método leva 405 antes do roteamento. É a quarta camada — as outras três ficam no Query Engine, que a API nem chama: ela lê snapshot | ✅ |
 | — | Divergência registrada do `ARCHITECTURE.md`: **`node:http` em vez de Fastify**. Cinco rotas `GET` sem corpo, sem escrita e sem autenticação não pagam um framework, e o repositório segue sem passo de build. Revisar nas Fases 4 e 5 | ⚠️ |
 | — | A regra 5 do `PROMPT-CONTINUACAO.md` mandava a paleta **v1** (`#F5F1E8`, DM Sans, 256px), que o próprio design system marca como substituída. Corrigida para a **v2** real do HUBBI (`#F4F4F5`, âmbar `#F59E0B`) | ✅ |
+| — | **O relatório inteiro contra dado real: `npm run paginas`.** 11 das 14 páginas carregam e **os 64 visuais com número nelas calculam** — 632.620 linhas, 11,9 s de carga e 17,5 s de cálculo. Outra pergunta que a cobertura da fase 3: lá era "o avaliador sabe fazer a conta" sobre tabelas de 5 linhas ([ACHADOS](docs/ACHADOS.md) #40) | ✅ |
+| — | Na primeira passada eram 63: **o tipo declarado valia só para coluna calculada**. `'CONSOLIDADO CLIENTES'[authentication_totalizer]` declara `int64` e a camada M entrega texto. É o #31 um nível acima, e nenhum dos 898 testes podia pegar — em dado sintético o teste sempre põe número em coluna numérica. Medido: **14 colunas** declaram número e chegam texto, e em todas **todo valor é literal limpo** | ✅ |
+| — | As 4 do sentido contrário (declaram texto, chegam data/número) ficam como estão: `'PROTOCOLOS GERAL'[DATA FINAL]` é data de verdade, e convertê-la para texto quebraria todo `YEAR()` sobre ela | ⚠️ registrado |
+| — | 3 páginas não carregam. `clima-tempo` **não tem como ser materializada** (função dentro de `let` + `Web.Contents`, sem connector) e leva 2 páginas junto; `field-agenda`, de 1,4 M de linhas, **estourou o `statement_timeout` de 600 s no servidor** — o teto certo de um refresh depende da query, não de um número redondo | ⚠️ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**892 testes verdes.** Nenhum deles precisa de credencial.
+**898 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -97,6 +101,22 @@ A tela **não desenha sidebar**: pelo [DESIGN-SYSTEM](docs/DESIGN-SYSTEM.md) v2 
 página abre dentro do AppShell do HUBBI, e a navegação é de lá. E não usa biblioteca
 de gráfico — o Chart SDK é peça própria, e escolher uma de passagem seria decidir
 por ele.
+
+### O relatório inteiro (Fase 3)
+
+```
+npm run paginas                              # as 14 páginas
+npm run paginas -- --pagina=visao-geral
+npm run paginas -- --erros                   # só as mensagens, inteiras
+```
+
+Calcula todos os visuais de todas as páginas sobre o snapshot e conta o que fecha.
+Nunca imprime valor de linha — só id, tipo, contagem, tempo e mensagem de erro —,
+então a saída é segura para colar em ticket.
+
+Também **lista as colunas convertidas para o tipo declarado**: é a única parte do
+carregamento que muda o dado, e conversão calada é o erro mais caro desta base
+([ACHADOS](docs/ACHADOS.md) #31 e #40).
 
 ### Snapshot da camada M (Fase 3)
 

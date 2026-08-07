@@ -31,7 +31,9 @@ import {
 } from '../../measure-engine/src/calculated.ts';
 import { normalizeName as normaliza, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
-import { le } from './formato.ts';
+import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
+import type { ModelTable } from '../../semantic-model/src/types.ts';
+import { le, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
 
@@ -53,6 +55,14 @@ export interface Carregado {
   plano: PlanoDeSnapshot;
   /** Nome da tabela → quantas linhas entraram, de arquivo ou de DAX. */
   linhasPorTabela: Map<string, number>;
+  /**
+   * As colunas cujo valor foi convertido para o tipo declarado no carregamento.
+   *
+   * Fica no resultado porque é a única parte do carregamento que **muda o dado**, e
+   * conversão calada é a coisa que mais custa caro nesta base. Ver
+   * `aplicaTiposDeclarados`.
+   */
+  convertidas: string[];
   /** A materialização mais antiga entre as tabelas usadas — a idade do dado. */
   dadoDe: string | null;
   ms: number;
@@ -89,9 +99,11 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     );
   }
 
+  const convertidas: string[] = [];
   for (const t of plano.tabelas) {
     if (t.query === null) continue;
     const { cabecalho, linhas } = await le(arquivoDaQuery(opts.dir, t.query));
+    convertidas.push(...aplicaTiposDeclarados(opts.model.table(t.nome)!, cabecalho, linhas));
     dataset.addTable(t.nome, linhas);
     linhasPorTabela.set(t.nome, linhas.length);
     datas.push(cabecalho.geradoEm);
@@ -113,9 +125,73 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     ev,
     plano,
     linhasPorTabela,
+    convertidas,
     dadoDe: datas.sort()[0] ?? null,
     ms: Date.now() - inicio,
   };
+}
+
+/** Tipo de snapshot que cada tipo declarado do modelo espera encontrar. */
+const ESPERADO: Record<string, string> = {
+  int64: 'number',
+  double: 'number',
+  decimal: 'number',
+  dateTime: 'date',
+};
+
+/**
+ * O tipo declarado da coluna vale ao materializar — também para coluna **física**.
+ *
+ * **É a mesma regra do [ACHADOS](../../../docs/ACHADOS.md) #31, um nível acima.**
+ * Lá, `'PROTOCOLOS GERAL'[CONTAGEM]` era DAX `"1"` declarada `int64`, e a conversão
+ * entrou no caminho da coluna *calculada*. Coluna física ficou de fora porque em
+ * dado sintético o teste sempre põe número em coluna numérica. Contra a base real,
+ * não: `'CONSOLIDADO CLIENTES'[authentication_totalizer]` declara `int64` e a camada
+ * M entrega o texto `"83205"`, e o `AVERAGE` do gráfico errava alto.
+ *
+ * **Medido em 07/08/2026, sobre as 14 tabelas materializadas:** de todas as colunas
+ * físicas, **14** declaram número e chegam texto. Nelas, **todo** valor não-nulo é
+ * literal numérico limpo — nenhum `"1.234,56"`, nenhum `"R$ 10"` —, então a
+ * conversão não troca "funciona" por "erra alto" em lugar nenhum.
+ *
+ * **O sentido contrário fica de fora, de propósito.** Quatro colunas declaram texto
+ * e chegam número ou data (`'PROTOCOLOS GERAL'[DATA FINAL]` é data e se declara
+ * `string`). Converter uma data de verdade para texto quebraria todo `YEAR()` sobre
+ * ela — perda, não ganho. Ficam como estão, e este comentário é o registro.
+ *
+ * A conversão é decidida pelo **tipo apurado no cabeçalho** do snapshot, que foi
+ * varrido sobre a coluna inteira. Coluna que já chega no tipo certo não é tocada, e
+ * é por isso que o custo disto é proporcional às 14, não às centenas.
+ */
+function aplicaTiposDeclarados(
+  t: ModelTable,
+  cabecalho: CabecalhoDeSnapshot,
+  linhas: Record<string, Escalar>[],
+): string[] {
+  const doDisco = new Map(cabecalho.colunas.map((c) => [normaliza(c.nome), c]));
+  const converter: { chave: string; col: (typeof t.columns)[number] }[] = [];
+  const nomes: string[] = [];
+
+  for (const col of t.columns) {
+    if (col.calculated || !col.type || !ESPERADO[col.type]) continue;
+    const chave = [col.sourceColumn, col.name]
+      .filter((x): x is string => !!x)
+      .map(normaliza)
+      .find((k) => doDisco.has(k));
+    if (chave === undefined) continue;
+    const emDisco = doDisco.get(chave)!;
+    // `vazia` é coluna só de nulos: não há o que converter.
+    if (emDisco.tipo === 'vazia' || emDisco.tipo === ESPERADO[col.type]) continue;
+    converter.push({ chave, col });
+    nomes.push(`'${t.name}'[${col.name}] ${emDisco.tipo} -> ${col.type}`);
+  }
+
+  for (const linha of linhas) {
+    for (const { chave, col } of converter) {
+      linha[chave] = aplicaTipo(col, linha[chave] ?? null, t.name) as Escalar;
+    }
+  }
+  return nomes;
 }
 
 /** O caminho padrão do snapshot, a partir da raiz do repositório. */

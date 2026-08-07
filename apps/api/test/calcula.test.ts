@@ -151,6 +151,46 @@ test('data vira ISO na resposta, não objeto nem número', () => {
   assert.match(d.linhas[0]![0] as string, /^2026-03-01T/);
 });
 
+/**
+ * A matriz declara o tipo **por medida**, varrendo as células. Sem isso a tela
+ * deduziria do valor, e uma medida de data viraria texto — a mesma adivinhação
+ * que o tipo explícito existe para evitar.
+ */
+test('matriz declara o tipo de cada medida, e ele sai das células', () => {
+  const model = new SemanticModel();
+  model.addTable({
+    id: 'os', name: 'OS', queryRef: null,
+    columns: [col('CIDADE'), col('TIPO'), col('VALOR'), col('QUANDO', { type: 'dateTime' })],
+  });
+  model.addMeasure({ name: 'Total', table: 'OS', format: null, displayFolder: null, dax: "SUM('OS'[VALOR])" });
+  model.addMeasure({ name: 'Última', table: 'OS', format: null, displayFolder: null, dax: "MAX('OS'[QUANDO])" });
+  const dataset = new Dataset();
+  dataset.addTable('OS', [
+    { CIDADE: 'Bauru', TIPO: 'A', VALOR: 10, QUANDO: makeDate(2026, 3, 1) },
+    { CIDADE: 'Jaú', TIPO: 'B', VALOR: 20, QUANDO: makeDate(2026, 4, 1) },
+  ]);
+  const ev = new Evaluator({ model, dataset, now: AGORA });
+
+  const v: VisualSpec = {
+    id: 'm', type: 'pivotTable',
+    position: { x: 0, y: 0, width: 10, height: 10 },
+    entities_used: ['OS'],
+    fields: [
+      { role: 'Rows', kind: 'column', entity: 'OS', property: 'CIDADE', name: 'CIDADE' },
+      { role: 'Columns', kind: 'column', entity: 'OS', property: 'TIPO', name: 'TIPO' },
+      { role: 'Values', kind: 'measure', entity: 'OS', property: 'Total', name: 'Total' },
+      { role: 'Values', kind: 'measure', entity: 'OS', property: 'Última', name: 'Última' },
+    ],
+    filters: [], filters_vazios: 0,
+  };
+
+  const p = calculaPagina(pagina([v]), ev);
+  const d = p.visuais[0]!.dados as { tiposDeMedida: (string | null)[]; celulas: unknown[][][] };
+  assert.deepEqual(d.tiposDeMedida, ['number', 'date']);
+  // A célula vazia da diagonal não estraga o tipo: ele vem do primeiro não-branco.
+  assert.equal(d.celulas[0]![1]![0], null);
+});
+
 test('tipoDe: BLANK é null, e é o que a tela desenha como travessão', () => {
   assert.equal(tipoDe(null), null);
   assert.equal(tipoDe(0), 'number');
