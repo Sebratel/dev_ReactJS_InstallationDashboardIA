@@ -1,7 +1,8 @@
 # Continuação — onde o trabalho parou
 
-> **Atualizado em 07/08/2026**, depois do connector web. É o ponto de entrada de uma
-> sessão nova: autocontido, feito para ser lido antes de tocar em qualquer coisa.
+> **Atualizado em 07/08/2026**, depois do connector web e do índice de igualdade. É o
+> ponto de entrada de uma sessão nova: autocontido, feito para ser lido antes de
+> tocar em qualquer coisa.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
@@ -12,11 +13,11 @@
 ## 1. Em uma frase
 
 A **Analytics Platform Enterprise** substitui o Power BI da Sebratel. Hoje ela lê as
-fontes reais, calcula **96 visuais de 13 das 14 páginas** do relatório e **abre uma
-página no navegador com número vindo do Voalle**. **Nenhuma página está parada por
-falta de dado** — as 24 queries do corpus materializam. O que falta é **paridade**
-(provar que o número é o mesmo da tela do Power BI) e **uma** página, travada por
-desempenho de tabela calculada, não por dado.
+fontes reais, calcula **117 visuais das 14 páginas** do relatório e **abre uma página
+no navegador com número vindo do Voalle**. **As 14 páginas calculam** e nenhuma está
+parada por falta de dado. O que falta é **paridade** (provar que o número é o mesmo
+da tela do Power BI) e **desempenho de uma página**: `agendamento-field` termina, mas
+leva 104 minutos.
 
 ---
 
@@ -28,7 +29,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 939 testes, ~4 s, NENHUM precisa de credencial
+npm test          # 957 testes, ~4 s, NENHUM precisa de credencial
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -45,9 +46,13 @@ npm run api        # http://localhost:3100
 E para medir o relatório inteiro:
 
 ```bash
-npm run paginas            # as 14 páginas, o que calcula e o que não
 npm run paginas -- --erros # só as mensagens de erro, inteiras
 ```
+
+> **Não rode `npm run paginas` sem `--pagina=`.** `agendamento-field` é a primeira em
+> ordem alfabética e leva **104 minutos** (5.2), então o relatório inteiro parece
+> travado por quase duas horas. A lista das outras treze — 96 visuais em 84 s — está
+> na seção 7.
 
 > `snapshot/` **contém dado de cliente** (endereço em `field-agenda`, CPF e RG em
 > `QUADRO FUNCIONAL`). Está no `.gitignore`, ancorado na raiz. Nenhuma ferramenta
@@ -58,7 +63,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**939 testes verdes.** Nenhum precisa de credencial.
+**957 testes verdes.** Nenhum precisa de credencial.
 
 | camada | estado |
 |---|---|
@@ -68,13 +73,14 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
 | **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco |
 | **API + tela** (`apps/api`) | ✅ somente leitura, uma página por pedido |
-| **Relatório inteiro** (`tools/paginas`) | ✅ **13/14 páginas, 96 de 96 visuais calculam** |
+| **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam** — mas `agendamento-field` leva 104 min (achado #45) |
 | **Paridade** | ❌ **não provada** — é o próximo grande passo |
 
 Os commits que são a fase 3 inteira:
 
 ```
-(este)   clima-tempo materializa: a URL que so existe avaliando
+(este)   Indice de igualdade: inverter a coluna uma vez, 635x
+819cfc5  clima-tempo materializa: a URL que so existe avaliando
 f0e3341  docs/CONTINUACAO.md: o ponto de entrada de quem assume o projeto
 9582fc1  O relatorio inteiro contra dado real: 64 de 64 visuais calculam
 8bbefa4  A tela existe: uma pagina do relatorio abre no navegador
@@ -127,7 +133,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 43 entradas.
+   registro; hoje tem 45 entradas.
 
 ---
 
@@ -138,49 +144,58 @@ E uma regra de método, que é a que mais rendeu:
 A conta `erickazambuja-Sebratel` **não tem permissão de escrita** no repositório da
 organização. O remoto está configurado
 (`git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git`), mas **não existe
-`origin/main`** e os **61 commits do repositório vivem só nesta máquina**. Não tente
+`origin/main`** e os **63 commits do repositório vivem só nesta máquina**. Não tente
 contornar — é permissão, não configuração.
 
 Confira com:
 
 ```bash
-git rev-list --count HEAD          # 61 no momento em que este arquivo foi escrito
+git rev-list --count HEAD          # 63 no momento em que este arquivo foi escrito
 git rev-parse --verify origin/main # falha: o ref não existe
 ```
 
-### 5.2 Uma página não carrega — e **não é falta de dado**
+### 5.2 As 14 páginas calculam. Uma leva 104 minutos.
 
-As três de antes eram falta de dado, e as duas causas se resolveram:
+Nenhuma página está parada por falta de dado: `field-agenda` materializou
+(1.458.244 linhas, 950 MB, `--timeout=1800`) e `clima-tempo` também (achado #42,
+1.638 linhas). O índice de igualdade (#44) destravou o resto.
 
-- **`field-agenda` materializou**: 1.458.244 linhas, 950 MB, com `--timeout=1800`.
-  Isso destravou `visao-geral`.
-- **`clima-tempo` materializou** (achado #42): 1.638 linhas. Isso destravou
-  `relatorio-do-mes`, que hoje calcula **22 de 22** visuais em 25 s.
-
-Sobra `agendamento-field`, e a causa é outra — estava escondida atrás da primeira,
-porque a página nunca havia chegado a carregar. **O processo não termina o
-carregamento**, e não é visual nenhum: é a tabela calculada `Status Protocolo Dia`,
-que só esta página pede.
-
-Ela faz `DISTINCT(protocolo, dia)` sobre `FIELD AGENDA` e depois, **por linha**, 3
-`CALCULATE` mais 4 colunas calculadas, cada uma com
-`FILTER('FIELD AGENDA', [protocolo]=… && TRUNC([Slot Agenda])=…)` — 7 varreduras da
-tabela inteira por linha.
+`agendamento-field` **termina** — 21 de 21 visuais, 0 erros, pela primeira vez — mas:
 
 | | |
 |---|---|
-| linhas de `Status Protocolo Dia` | 29.846 |
-| varreduras de `FIELD AGENDA` (1,46 M) | 208.922 |
-| **visitas de linha** | **304.659.252.968** |
+| carga | **25,6 s** |
+| **cálculo** | **104 minutos** |
 
-Observado: **9 minutos de CPU sem sair do carregamento**, memória estável em 2,1 GB.
+As outras treze somam 96 visuais em 84 s. Enquanto for assim, **não rode
+`npm run paginas` sem `--pagina=`**: a lista das 13 está na seção 7.
 
-**É o achado #38 outra vez**, na tabela calculada em vez da matriz — e o conserto de
-lá é a pista: a varredura que descobre as combinações **já separa as linhas de cada
-grupo**, e `[protocolo] = X && TRUNC([Slot Agenda]) = Y` é exatamente a chave que o
-`DISTINCT` de cima agrupou. Leia o #38 **inteiro** antes de tentar: ele traz o
-perigo junto, que é a substituição de filtro (`ALL()` numa medida da página derruba
-um filtro do grupo, e as linhas materializadas ficariam estreitas demais).
+**O que já foi feito, para não refazer.** O índice de igualdade
+(`packages/measure-engine/src/indice.ts`) cobre as três formas caras —
+`CALCULATE(x, 'T'[c]=v)`, `FILTER('T', 'T'[c]=v && …)` e
+`CALCULATE(MAX(…), FILTER(…))`. Ele funciona: mediu 635× na reprodução sintética e
+tirou a carga desta página de "nunca vista terminar" para 25,6 s.
+
+**O que sobra, e por onde começar.** As 7 colunas calculadas de `FIELD AGENDA`
+materializam **sob demanda**, e quem as toca são os visuais — por isso o custo saiu
+da carga e apareceu no cálculo. Duas delas varrem `FIELD AGENDA` por linha de
+`FIELD AGENDA`:
+
+```
+RankDataProtocolo  = … DISTINCT(SELECTCOLUMNS(FILTER('FIELD AGENDA',
+                       'FIELD AGENDA'[protocolo] = ProtocoloAtual), …))
+RankAtualProtocolo = CALCULATE(MAX('FIELD AGENDA'[RankDataProtocolo]),
+                       FILTER('FIELD AGENDA', 'FIELD AGENDA'[protocolo] = ProtocoloAtual))
+```
+
+**Não escolha um suspeito — meça primeiro.** Três vezes seguidas neste projeto o
+gargalo não estava onde o instrumento apontava. Não se sabe qual dos 21 visuais
+consome os 104 minutos. O perfil por visual está descrito na seção 7.
+
+E vale a pergunta de desenho antes de qualquer índice novo: essas duas colunas são
+**rank por protocolo**, e o Power BI as calcula no refresh, **uma vez**, não a cada
+abertura. Se elas pertencem ao snapshot em vez do avaliador, isso vale mais que
+otimizar o avaliador — e é decisão a registrar, não conserto a fazer.
 
 ### 5.3 Paridade — depende de alguém abrir o Power BI
 
@@ -204,8 +219,10 @@ tela:
    `specs/paridade/<pagina>.yaml` com `visual: id, esperado: <número>`, e
    `npm run paridade` apontando as divergências. Sem isso, cada conferência é manual e
    se perde. **Agora vale para 96 visuais, não 64** — é mais valioso que era.
-2. **`Status Protocolo Dia`** (ver 5.2) — destrava a 14ª página. O número que
-   dimensiona o trabalho já está medido; o desenho vem do achado #38.
+2. **Os 104 minutos de `agendamento-field`** (ver 5.2). A página já calcula; o que
+   falta é ser usável. Meça por visual **antes** de escolher o que otimizar, e
+   considere a pergunta de desenho (rank no snapshot, não no avaliador) antes de
+   qualquer índice novo.
 3. **Filtros na tela.** O relatório tem segmentações (`slicer`) que hoje aparecem como
    "sem número". Fazê-las filtrar de verdade é o que separa "página que abre" de
    "dashboard que se usa". Os filtros de página e de visual **já** são aplicados; o que
@@ -253,10 +270,14 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
   caminho absoluto `file:///.../node_modules/yaml/dist/index.js`.
 - **Não rode `npm run snapshot -- --todas` sem necessidade.** São ~20 minutos e 123 MB.
   Materialize por página.
-- **`npm run paginas` roda as páginas em série, e uma que trava esconde as outras.**
-  `agendamento-field` é a primeira em ordem alfabética e não termina (5.2): rodando
-  sem `--pagina=`, o relatório inteiro parece travado. Use a lista explícita das 13
-  enquanto o #43 não fechar.
+- **`npm run paginas` roda as páginas em série, e a primeira leva 104 minutos.**
+  `agendamento-field` é a primeira em ordem alfabética (5.2): rodando sem
+  `--pagina=`, o relatório inteiro parece travado por quase duas horas. Use a lista
+  das outras treze enquanto o #45 não fechar:
+
+  ```bash
+  npm run paginas -- --pagina=capa,diario-instalacao,instalacao-reincidente,l-inst,  l-mapa,l-tec,manutencao-inicial,premiacao-instalacao,protocolos-detalhados,  relatorio-do-ano,relatorio-do-mes,telefonia-ouvidoria,visao-geral
+  ```
 - **Script de rascunho: o stdout do Node vira buffer de bloco quando é cano.** Um
   processo que trava não imprime *nada* do que já tinha feito, e a saída vazia se
   parece com "não começou". Em script de diagnóstico, grave com `appendFileSync` a
@@ -298,7 +319,7 @@ tools/
   paginas/          calcula o relatório inteiro e conta o que fecha
 specs/              GERADO pelo extrator — o contrato. Não editar à mão.
 docs/
-  ACHADOS.md          43 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          45 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa

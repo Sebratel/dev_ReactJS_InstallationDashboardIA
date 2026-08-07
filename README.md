@@ -67,6 +67,8 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | E a medição desmentiu o #43: o gargalo maior **não** é `Status Protocolo Dia`, e sim as 7 colunas calculadas da própria `FIELD AGENDA` — duas varrem `FIELD AGENDA` por linha de `FIELD AGENDA`, **2,1 × 10¹²** visitas, sete vezes mais, e num lugar que o achado não olhou. Outras páginas não pagavam porque nenhum visual delas toca essas colunas | ⚠️ |
 | — | Nada disso decide resultado: o predicado inteiro roda por cima dos candidatos, e os testes diferenciais afirmam o mesmo valor — e o mesmo **erro** — com e sem índice. `=` do DAX não é identidade (`BLANK = 0` é verdadeiro, texto contra número **lança**), e cada guarda existe por causa disso. 6 de 7 mutações derrubam teste; a 7ª não é regra, e está anotada como tal | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
+| — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45) | ⚠️ |
+| — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
 **957 testes verdes.** Nenhum deles precisa de credencial.

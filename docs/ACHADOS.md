@@ -2615,3 +2615,59 @@ em `igualdadeConstante` — não derruba nada, e a investigação mostrou que el
 regra**: o guarda de `candidatos()` recusa a busca logo depois e o resultado não muda.
 Está anotada no código como economia, não como segurança, para ninguém a confundir
 com as outras.
+
+## 45. `agendamento-field` termina — em 104 minutos, que não é usável
+
+Com o índice do #44, a 14ª página **calcula**: 21 de 21 visuais, 0 erros. É a
+primeira vez que ela termina. E o número que interessa não é esse:
+
+| | |
+|---|---|
+| linhas carregadas | 1.561.770 |
+| **carga** | **25,6 s** |
+| **cálculo** | **6.251.082 ms = 104 minutos** |
+| total | 104m38s |
+
+**Duas correções ao que os #43 e #44 afirmaram, e as duas importam.**
+
+**1. Não era "o processo não sai do carregamento".** Era, antes do índice — e é
+justamente por isso que a frase envelheceu: a carga agora leva **25,6 s**, e o
+tempo mudou de fase. As tabelas calculadas que a página pede (`Status Protocolo
+Dia` entre elas) materializam dentro dela, e essa parte está resolvida. O que
+sobra está nos **visuais**.
+
+**2. O ganho é real e é grande, e mesmo assim não entrega a página.** De "nunca
+vista terminar" para 25,6 s de carga é o conserto funcionando. Só que as colunas
+calculadas de `FIELD AGENDA` são materializadas **sob demanda, na primeira vez que
+alguém as toca** — e quem as toca são os visuais, não o carregamento. O custo não
+foi eliminado: foi adiado para depois do ponto que estava sendo medido.
+
+É a terceira vez neste projeto que a mesma armadilha aparece: **o gargalo não está
+onde o instrumento aponta, e sim onde o instrumento acaba.** O #43 mediu a tabela
+suspeita e o custo estava noutra; o #44 mediu a carga e o custo estava no cálculo.
+
+### O que não foi feito, e o que perguntar antes de fazer
+
+Não foi medido **qual** dos 21 visuais consome os 104 minutos, nem quanto cabe a
+cada coluna calculada de `FIELD AGENDA`. Sem isso, otimizar seria repetir o erro
+acima — escolher um suspeito.
+
+O caminho é o mesmo perfil por visual que achou este achado
+(`calculaPagina` visual a visual, gravando com `appendFileSync`), agora sobre a
+página que termina. E vale perguntar antes de acelerar: `RankDataProtocolo` e
+`RankAtualProtocolo` são **rank por protocolo** sobre 1,46 milhão de linhas. O
+Power BI as calcula no refresh, uma vez, não a cada abertura. A pergunta de
+desenho — se elas pertencem ao snapshot em vez do avaliador — pode valer mais que
+qualquer índice, e é decisão a registrar, não otimização a fazer.
+
+### Estado do relatório
+
+| | antes desta sessão | agora |
+|---|---|---|
+| páginas que carregam | 11 de 14 | **14 de 14** |
+| visuais com número nelas | 64 | **117** |
+| calcularam | 64 | **117** |
+
+**As 14 páginas calculam.** Treze delas somam 96 visuais em 84 s. A décima quarta
+sozinha leva 104 minutos, e enquanto for assim ela não entra em `npm run paginas`
+sem `--pagina=`.
