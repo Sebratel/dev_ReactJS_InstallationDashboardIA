@@ -32,18 +32,19 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
 | — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
 | — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
-| — | **Agrupamento + tabela: 25 dos 29 `tableEx` calculam.** Uma tabela do Power BI mostra as *combinações distintas* das colunas que não agregam, não uma linha por registro. As 4 recusas caem todas em limite declarado, e o teste falha se alguma deixar de ter nome | ✅ |
+| — | **Agrupamento + tabela: os 29 `tableEx` calculam.** Uma tabela do Power BI mostra as *combinações distintas* das colunas que não agregam, não uma linha por registro. O teste de cobertura passou a exigir mapa de recusas **vazio** | ✅ |
 | — | **O filtro sobre agregado virou o HAVING que sempre foi** e o [ACHADOS](docs/ACHADOS.md) #30 fechou: filtro de linha vale *antes* de agrupar, filtro de grupo *depois*, e trocar a ordem não dá erro — dá outro número. Foi de 5 recusas a zero, e levou 4 tabelas junto | ✅ |
 | — | **A 75ª medida chegou.** `[Faixa 1 Premiação Total]` não precisava de mais DAX: precisava de alguém que respondesse `ISINSCOPE`, que é propriedade do visual ([ACHADOS](docs/ACHADOS.md) #12). Calcula no total e fica em branco quando o visual agrupa — o que o comentário do autor pede | ✅ |
-| — | `'PROTOCOLOS GERAL'[CONTAGEM]` é o texto `"1"` declarado `int64`; 2 tabelas somam e param. Não convertido: a regra que resolveria abre a porta para converter texto em número em silêncio ([ACHADOS](docs/ACHADOS.md) #31) | ⚠️ decisão pendente |
+| — | `'PROTOCOLOS GERAL'[CONTAGEM]` é o texto `"1"` declarado `int64`. **Resolvido**: o tipo declarado da coluna vale ao materializar, como no Power BI — não é `SUM` que converte. Só literal sem ambiguidade; `"1.234,56"` erra alto. Raio de alcance medido: **1 coluna em 49** ([ACHADOS](docs/ACHADOS.md) #31) | ✅ |
 | — | **O estado de drill era descartado.** O PBIP marca cada projeção com `active`, e um eixo de datas lista Ano/Mês/Dia sempre — só as ativas entram. Medido: **21 de 448 são inativas**, e agrupar por elas daria um ponto por dia num gráfico que mostra um por mês. Nenhuma está em tabela, então a cobertura não mudou; o ganho é para os gráficos ([ACHADOS](docs/ACHADOS.md) #32) | ✅ |
-| — | **Gráficos: 15 dos 16 calculam.** Um ponto de gráfico é uma linha de tabela desenhada — mesmo agrupamento, mesmo contexto de filtro. O que é só do gráfico é o eixo de datas: `'T'[Data].[Mês]` não é coluna, é projeção, e ignorar o `active` daria **455 pontos onde a tela tem 99** ([ACHADOS](docs/ACHADOS.md) #33) | ✅ |
+| — | **Gráficos: os 16 calculam.** Um ponto de gráfico é uma linha de tabela desenhada — mesmo agrupamento, mesmo contexto de filtro. O que é só do gráfico é o eixo de datas: `'T'[Data].[Mês]` não é coluna, é projeção, e ignorar o `active` daria **455 pontos onde a tela tem 99** ([ACHADOS](docs/ACHADOS.md) #33) | ✅ |
 | — | **Cruzar tabelas: a expansão do DAX, não o produto cartesiano.** Agrupar por colunas de tabelas diferentes exige achar a **âncora** — aquela cuja *tabela expandida* cobre as outras — e varrê-la seguindo os relacionamentos. O produto daria 25 linhas onde existem 5, com cara de detalhamento. Destravou 5 tabelas e 2 gráficos; a linha em branco do relacionamento foi o defeito que os testes pegaram ([ACHADOS](docs/ACHADOS.md) #34) | ✅ |
 | — | **Matriz: os 8 `pivotTable` calculam.** Uma matriz **não** é uma tabela com duas chaves: os eixos são agrupados em separado, a combinação que não existe é **célula vazia** (não linha ausente), e o HAVING vale por célula. A poda de linha/coluna vazia é o padrão do Power BI, e o resultado carrega quantas descartou ([ACHADOS](docs/ACHADOS.md) #35) | ✅ |
+| — | **Os últimos 5 visuais, e as duas regras que faltavam.** `% do total` (`Arithmetic` + `ScopedEval`): o denominador é o total **do visual**, não o da tabela — a leitura errada dá porcentagens plausíveis que somam menos de 1. E a âncora de duas dimensões é a tabela **de onde saem os números do visual**, não uma das 4 candidatas do modelo ([ACHADOS](docs/ACHADOS.md) #36) | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**811 testes verdes.** Nenhum deles precisa de credencial.
+**832 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -387,14 +388,16 @@ avaliador ganhou `scopeWithGrouping`; sem ele, `ISINSCOPE` **continua errando al
 conjunto vazio é "o visual não agrupa por nada", `undefined` é "não há visual", e a
 distinção é o que impede a medida de calcular em toda célula.
 
-**O que está medido, e o que ainda não se sabe.** Os quatro tipos de visual com
-número estão cobertos — card 64/64, tabela 25/29, gráfico 15/16, matriz 8/8 —, e os
-108 filtros do relatório têm todos quem os aplique — 98 como predicado de linha e 10 como HAVING sobre os grupos. As recusas
-restantes têm todas nome — campo aritmético (2), `[CONTAGEM]` (2,
-[ACHADOS](docs/ACHADOS.md) #31) e um gráfico cujo fato de ligação não está no visual —
-e o teste falha se alguma deixar de ter. Eram cinco famílias e hoje são três: o
-HAVING, o nível de hierarquia e o cruzamento entre tabelas fecharam, cada um levando
-visuais junto.
+**O que está medido, e o que ainda não se sabe.** **Os 117 visuais com número
+calculam** — card 64/64, tabela 29/29, gráfico 16/16, matriz 8/8 —, e os 108 filtros
+do relatório têm todos quem os aplique: 98 como predicado de linha e 10 como HAVING
+sobre os grupos. Os testes de cobertura passaram a exigir que o mapa de recusas saia
+**vazio**, então uma recusa nova aparece como `NÃO CLASSIFICADA` em vez de sumir na
+contagem.
+
+Foram cinco famílias de recusa, e cada uma fechou por um motivo diferente: o HAVING,
+o nível de hierarquia, o cruzamento entre tabelas, o tipo declarado da coluna e o
+campo aritmético.
 
 Três distâncias continuam medidas e presas em teste, porque são o tamanho do que
 **não** está provado: **36 cards têm filtro e só 5 mudam de valor** sobre o dataset
@@ -436,7 +439,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (811 testes, sem credencial)
+npm test                              # suíte completa (832 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

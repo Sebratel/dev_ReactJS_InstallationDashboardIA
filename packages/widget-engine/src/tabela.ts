@@ -138,7 +138,10 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
       if (i !== undefined) {
         return { nome: campo.name ?? null, valor: grupo.valores[i]!, chave: true };
       }
-      return { nome: campo.name ?? null, valor: valorDoCampo(campo, grupo.escopo, ev, onde), chave: false };
+      // `base` é o total do visual: o denominador de um campo `% do total`, que
+      // precisa da mesma conta sem o agrupamento da linha.
+      const valor = valorDoCampo(campo, grupo.escopo, ev, onde, base);
+      return { nome: campo.name ?? null, valor, chave: false };
     }),
   );
 

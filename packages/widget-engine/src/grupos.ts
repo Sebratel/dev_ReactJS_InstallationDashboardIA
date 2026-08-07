@@ -153,8 +153,14 @@ export function chaveDoCampo(campo: CampoSpec, onde: string): Chave {
  * ordenada: a ordenação de um visual é propriedade dele (`Table.Sort` do PBIP),
  * e inventar uma aqui esconderia que ela ainda não foi lida.
  */
-export function agrupar(chaves: readonly Chave[], base: EvalScope, ev: Evaluator, onde: string): Grupo[] {
-  return prepara(chaves, base, ev, onde).grupos;
+export function agrupar(
+  chaves: readonly Chave[],
+  base: EvalScope,
+  ev: Evaluator,
+  onde: string,
+  tabelasDosValores: readonly string[] = [],
+): Grupo[] {
+  return prepara(chaves, base, ev, onde, tabelasDosValores).grupos;
 }
 
 /**
@@ -179,6 +185,7 @@ export function prepara(
   base: EvalScope,
   ev: Evaluator,
   onde: string,
+  tabelasDosValores: readonly string[] = [],
 ): Agrupamento {
   const declaracao: [string, string, string | null][] = chaves.map((c) => [
     c.tabela,
@@ -196,7 +203,7 @@ export function prepara(
     };
   }
 
-  const plano = planeja(chaves, base, ev, onde);
+  const plano = planeja(chaves, base, ev, onde, tabelasDosValores);
   const combinacoes = enumeraCombinacoes(chaves, plano, base, ev, onde);
 
   // Todos os filtros do grupo num `with()` único — pelo mesmo motivo que os filtros
@@ -233,10 +240,11 @@ function planeja(
   base: EvalScope,
   ev: Evaluator,
   onde: string,
+  tabelasDosValores: readonly string[],
 ): Plano | null {
   const tabelas = [...new Map(chaves.map((c) => [normaliza(c.tabela), c.tabela])).values()];
   if (tabelas.length === 1) return null;
-  const ancora = escolheAncora(tabelas, ev.model, onde);
+  const ancora = escolheAncora(tabelas, ev.model, onde, tabelasDosValores);
   return {
     ancora,
     navegador: new Navegador(ev, base),

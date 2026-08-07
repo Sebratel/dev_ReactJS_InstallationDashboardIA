@@ -11,6 +11,7 @@
 import type { SemanticModel } from '../../semantic-model/src/model.ts';
 import { normalizeName } from '../../semantic-model/src/model.ts';
 import type { DaxNode } from './ast.ts';
+import { aplicaTipo } from './calculated.ts';
 import type { Dataset, Row } from './dataset.ts';
 import {
   FilteredContext,
@@ -296,9 +297,20 @@ export class Evaluator {
     }
     this.columnStack.push(key);
     try {
-      const valor = this.evaluate(
-        this.ast(col.dax),
-        this.scopeWithRow(this.rootScope(), table, row),
+      // **O tipo declarado da coluna vale na hora de materializar.** É o que o Power
+      // BI faz: a expressão produz um valor, e a coluna o armazena no tipo em que
+      // foi declarada. `'PROTOCOLOS GERAL'[CONTAGEM]` é o DAX `"1"` — texto —
+      // declarada `int64`, e é assim que `SUM` sobre ela soma no relatório
+      // (ACHADOS.md #31).
+      //
+      // A conversão mora aqui e **não** em `SUM` de propósito. Em `SUM` ela valeria
+      // para qualquer texto que chegasse a qualquer agregação, e numa base `pt-BR`
+      // isso é a porta para `"1.234"` virar 1,234. Aqui ela vale para uma coluna que
+      // alguém declarou numérica, e só para literal sem ambiguidade.
+      const valor = aplicaTipo(
+        col,
+        this.evaluate(this.ast(col.dax), this.scopeWithRow(this.rootScope(), table, row)),
+        table,
       );
       row[ck] = valor;
       return valor;

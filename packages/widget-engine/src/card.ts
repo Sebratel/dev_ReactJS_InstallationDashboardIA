@@ -20,7 +20,7 @@
 import type { CallNode, ColumnRefNode, Position } from '../../measure-engine/src/ast.ts';
 import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
 import type { TableFilter } from '../../measure-engine/src/filter.ts';
-import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
+import { BLANK, DaxEvalError, isBlank, toNumber, type DaxValue } from '../../measure-engine/src/value.ts';
 import { FUNCAO_DA_AGREGACAO } from './agregacao.ts';
 import { traduzFiltros } from './filtro.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
@@ -136,12 +136,19 @@ function partesDaAgregacao(campo: CampoSpec, onde: string) {
   return { tabela, coluna, agregacao, funcao };
 }
 
-/** O valor de um campo `Values` num escopo já filtrado. */
+/**
+ * O valor de um campo `Values` num escopo já filtrado.
+ *
+ * `escopoDoTotal` é o escopo do visual **antes de agrupar** — o que um `ScopedEval`
+ * de escopo vazio pede, e o denominador de um "% do total". Onde não há agrupamento
+ * (o card) ele é o próprio escopo, e é por isso que tem padrão.
+ */
 export function valorDoCampo(
   campo: CampoSpec,
   escopo: EvalScope,
   ev: Evaluator,
   onde: string,
+  escopoDoTotal: EvalScope = escopo,
 ): DaxValue {
   if (campo.kind === 'measure') {
     if (!campo.property) throw new DaxEvalError(`${onde}: medida sem nome.`);
@@ -153,17 +160,113 @@ export function valorDoCampo(
     const chamada: CallNode = { type: 'Call', name: funcao, args: [ref], pos: SEM_POSICAO };
     return ev.evaluate(chamada, escopo);
   }
+  if (campo.kind === 'arithmetic') {
+    return valorAritmetico(campo, escopo, ev, onde, escopoDoTotal);
+  }
+  if (campo.kind === 'scoped_eval') {
+    return valorEscopado(campo, ev, onde, escopoDoTotal);
+  }
   throw new DaxEvalError(
     `${onde}: campo '${campo.name ?? campo.property}' tem kind '${campo.kind}' e não é ` +
-      `calculável como valor único. Calculáveis: column (com agregação), aggregation e measure. ` +
+      `calculável como valor único. Calculáveis: column (com agregação), aggregation, ` +
+      `measure, arithmetic e scoped_eval. ` +
       (campo.kind === 'hierarchy_level'
         ? `hierarchy_level é um nível da hierarquia de data ('${campo.entity}'[${campo.property}].` +
           `[${campo.level}]) — ele é eixo, e como célula precisaria ser projetado da coluna.`
-        : campo.kind === 'arithmetic'
-          ? `arithmetic é a conta entre dois campos ("% do total"), e depende do total do visual.`
-          : `Nenhuma das três.`),
+        : `Nenhuma delas.`),
   );
 }
+
+/**
+ * `ScopedEval(expr, [])` — a expressão avaliada **sem o agrupamento do visual**.
+ *
+ * É o denominador do "% do total": a mesma contagem, no visual inteiro em vez de na
+ * linha. O escopo vazio é o que dá esse significado; escopo **não** vazio retém
+ * parte do eixo, e é outra coisa — que esta base não usa, daí a recusa.
+ *
+ * Note o que fica de fora: `escopoDoTotal` mantém os filtros de página e de visual.
+ * "Total" aqui é o do visual, não o da tabela. Fosse o da tabela, cada porcentagem
+ * sairia menor e a coluna não somaria 100%.
+ */
+function valorEscopado(
+  campo: CampoSpec,
+  ev: Evaluator,
+  onde: string,
+  escopoDoTotal: EvalScope,
+): DaxValue {
+  const niveis = campo.scope ?? [];
+  if (niveis.length > 0) {
+    throw new DaxEvalError(
+      `${onde}: ScopedEval com escopo de ${niveis.length} nível(is) ` +
+        `(${JSON.stringify(niveis).slice(0, 120)}). Só o escopo vazio — "o total do ` +
+        `visual" — ocorre nesta base. Escopo não vazio retém parte do eixo, e tratá-lo ` +
+        `como vazio daria um denominador maior e porcentagens menores.`,
+    );
+  }
+  if (!campo.expression) {
+    throw new DaxEvalError(`${onde}: ScopedEval sem expressão dentro.`);
+  }
+  return valorDoCampo(campo.expression, escopoDoTotal, ev, onde, escopoDoTotal);
+}
+
+/**
+ * `Arithmetic` — a conta entre dois campos. Nesta base é sempre `A / total(A)`, o
+ * "% do total".
+ *
+ * **Cada operando é calculado no seu próprio escopo**, e é isso que faz a conta ter
+ * sentido: o de cima na linha, o de baixo no visual inteiro. Calculados os dois, a
+ * conta em si é feita aqui, sobre valores — não há como delegá-la ao avaliador,
+ * porque não existe nó de AST que carregue "um valor já calculado".
+ */
+function valorAritmetico(
+  campo: CampoSpec,
+  escopo: EvalScope,
+  ev: Evaluator,
+  onde: string,
+  escopoDoTotal: EvalScope,
+): DaxValue {
+  if (!campo.left || !campo.right) {
+    throw new DaxEvalError(
+      `${onde}: campo aritmético sem os dois operandos ` +
+        `(left=${campo.left ? 'ok' : 'faltando'}, right=${campo.right ? 'ok' : 'faltando'}).`,
+    );
+  }
+  const conta = CONTA_DA_ARITMETICA[campo.operator ?? ''];
+  if (!conta) {
+    throw new DaxEvalError(
+      `${onde}: operador aritmético '${campo.operator}' desconhecido. ` +
+        `Conhecidos: ${Object.keys(CONTA_DA_ARITMETICA).join(', ')}. ` +
+        `Um 'desconhecidoN' aqui veio do PBIP usando um operador novo, e o lugar de ` +
+        `nomeá-lo é tools/extractor.`,
+    );
+  }
+  const rotulo = `${onde}: ${campo.operator} de '${campo.name ?? '(sem nome)'}'`;
+  return conta(
+    valorDoCampo(campo.left, escopo, ev, onde, escopoDoTotal),
+    valorDoCampo(campo.right, escopo, ev, onde, escopoDoTotal),
+    rotulo,
+  );
+}
+
+/**
+ * Os quatro operadores de `Arithmetic`.
+ *
+ * Só `divide` ocorre hoje. Os outros três estão aqui porque o mapa do extrator os
+ * nomeia, e um mapa pela metade viraria recusa onde existe resposta.
+ *
+ * **`divide` segue `DIVIDE` do DAX, não `/`:** denominador zero **ou BLANK** dá
+ * BLANK, não infinito. É o que a tela mostra numa linha sem denominador, e é o
+ * único ponto em que as duas leituras divergem — `/` mostraria `∞` numa coluna de
+ * porcentagem. `toNumber` é o mesmo do avaliador, então BLANK conta como 0 nas
+ * outras três e texto continua errando alto.
+ */
+const CONTA_DA_ARITMETICA: Record<string, (a: DaxValue, b: DaxValue, onde: string) => DaxValue> = {
+  add: (a, b, onde) => toNumber(a, onde) + toNumber(b, onde),
+  subtract: (a, b, onde) => toNumber(a, onde) - toNumber(b, onde),
+  multiply: (a, b, onde) => toNumber(a, onde) * toNumber(b, onde),
+  divide: (a, b, onde) =>
+    isBlank(b) || toNumber(b, onde) === 0 ? BLANK : toNumber(a, onde) / toNumber(b, onde),
+};
 
 /** Todos os cards de um dashboard, na ordem em que a spec os traz. */
 export function cardsDoDashboard(dash: DashboardSpec): VisualSpec[] {

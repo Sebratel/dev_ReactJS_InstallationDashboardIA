@@ -324,26 +324,24 @@ function familiaDaRecusa(msg: string): string {
 }
 
 /**
- * **As 29 tabelas: 25 calculam, e as 4 recusas caem todas em limite declarado.**
+ * **As 29 tabelas calculam — todas.**
  *
- * O valor deste teste não é o 25 — é a última asserção. Nenhuma recusa pode cair em
- * `NÃO CLASSIFICADA`: enquanto todas têm nome, o que falta é conhecido e está
- * escrito. Uma sem nome é um defeito que ninguém decidiu ter.
+ * O valor deste teste nunca foi o número: é a última asserção. Enquanto ela exigia
+ * que **toda** recusa tivesse família nomeada, o que faltava era conhecido e estava
+ * escrito. Hoje o mapa de famílias tem de sair **vazio**, e uma recusa nova aparece
+ * como `NÃO CLASSIFICADA` em vez de sumir na contagem.
  *
- * **Foram 15, 19, 20 e agora 25, e as famílias que sumiram provam que o teste
- * funciona.** Três já fecharam: o filtro sobre agregado virou o HAVING que sempre
- * foi (5 recusas → 0), o nível de hierarquia virou chave quando o eixo dos gráficos
- * precisou dela (1 → 0), e as chaves de mais de uma tabela passaram a atravessar o
- * relacionamento (5 → 0).
+ * O caminho foi 15 → 19 → 20 → 25 → 29, e cada salto fechou uma família:
  *
- * As duas famílias restantes, e onde cada uma se resolve:
- *
- * | n | família | some quando |
- * |---|---|---|
- * | 2 | campo aritmético (`% do total`) | o campo `arithmetic` for calculável |
- * | 2 | `[CONTAGEM]` é `"1"` (texto) e se declara `int64` | ACHADOS #31 for decidido |
+ * | família | fechou quando |
+ * |---|---|
+ * | filtro sobre agregado (5) | virou o HAVING que sempre foi |
+ * | nível de hierarquia (1) | o eixo dos gráficos precisou dele como chave |
+ * | chaves de mais de uma tabela (5) | o agrupamento passou a seguir relacionamento |
+ * | `[CONTAGEM]` texto declarado `int64` (2) | o tipo declarado da coluna passou a valer |
+ * | campo aritmético `% do total` (2) | `Arithmetic` + `ScopedEval` viraram cálculo |
  */
-test('as 29 tabelas: 25 calculam, e as 4 recusas têm todas família nomeada', () => {
+test('as 29 tabelas calculam, e não sobra recusa nenhuma', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let calculam = 0;
@@ -362,23 +360,20 @@ test('as 29 tabelas: 25 calculam, e as 4 recusas têm todas família nomeada', (
   }
 
   assert.equal(DASHBOARDS.reduce((n, d) => n + tabelasDoDashboard(d).length, 0), 29);
-  assert.equal(calculam, 25);
-  assert.deepEqual(familias, {
-    'campo aritmético': 2,
-    'CONTAGEM: texto onde se declarou int64': 2,
-  });
+  assert.equal(calculam, 29);
+  assert.deepEqual(familias, {});
 });
 
 /**
  * Uma tabela do Power BI **agrupa**: mostra as combinações distintas das colunas
  * que não agregam, não uma linha por registro.
  *
- * O dataset sintético tem 5 linhas por tabela, então as 25 tabelas somam poucas
+ * O dataset sintético tem 5 linhas por tabela, então as 29 tabelas somam poucas
  * linhas — e é justamente isso que o teste fixa. Se a leitura virasse "listagem
  * crua", a soma pularia para 5 linhas por tabela e nada mais falharia: o número
  * sairia maior, com cara de dado a mais.
  */
-test('as 25 tabelas que calculam somam 68 linhas, não uma por registro', () => {
+test('as 29 tabelas somam 76 linhas, não uma por registro', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let linhas = 0;
@@ -393,8 +388,8 @@ test('as 25 tabelas que calculam somam 68 linhas, não uma por registro', () => 
       }
     }
   }
-  assert.equal(calculadas, 25);
-  assert.equal(linhas, 68);
+  assert.equal(calculadas, 29);
+  assert.equal(linhas, 76);
 });
 
 // ---------------------------------------------------------------------------
@@ -536,15 +531,15 @@ function todosOsGraficos(): { d: DashboardSpec; v: VisualSpec }[] {
 }
 
 /**
- * **Os 16 gráficos: 15 calculam, e a única recusa é o fato que não está no visual.**
+ * **Os 16 gráficos calculam — todos.**
  *
  * Eram 3 recusas, todas de `Series` numa tabela diferente da do eixo. Duas passaram
- * quando o agrupamento aprendeu a atravessar relacionamento. A que sobra é
- * `relatorio-do-ano/2d498e...`: `CALENDARIO INSTALADO` e `BASE DE ORIGEM` são duas
- * dimensões que não se alcançam, e quem as liga é uma tabela de fato ausente do
- * visual — com 4 candidatas, cada uma dando um conjunto de combinações diferente.
+ * quando o agrupamento aprendeu a atravessar relacionamento; a terceira
+ * (`relatorio-do-ano/2d498e...`) quando a âncora passou a poder ser a tabela **de
+ * onde saem os números do visual** — ali, `PROTOCOLOS GERAL`, que liga
+ * `CALENDARIO INSTALADO` a `BASE DE ORIGEM`.
  */
-test('os 16 gráficos: 15 calculam, e a única recusa é o fato fora do visual', () => {
+test('os 16 gráficos calculam, e não sobra recusa nenhuma', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let calculam = 0;
@@ -559,12 +554,12 @@ test('os 16 gráficos: 15 calculam, e a única recusa é o fato fora do visual',
     }
   }
   assert.equal(todosOsGraficos().length, 16);
-  assert.equal(calculam, 15);
-  assert.deepEqual(familias, { 'fato fora do visual': 1 });
+  assert.equal(calculam, 16);
+  assert.deepEqual(familias, {});
 });
 
 /**
- * **104 pontos e 21 séries**, sobre 5 linhas por tabela.
+ * **106 pontos e 23 séries**, sobre 5 linhas por tabela.
  *
  * O número que importa é o dos pontos, e ele é maior que o de linhas de propósito:
  * os eixos de data agrupam pela tabela-calendário, que tem um dia por linha. Dois
@@ -572,7 +567,7 @@ test('os 16 gráficos: 15 calculam, e a única recusa é o fato fora do visual',
  * `Dia` está sendo projetado em vez de ignorado. Se o eixo caísse para `Mês`, a
  * soma despencaria sem nada falhar.
  */
-test('os 15 gráficos que calculam somam 104 pontos e 21 séries', () => {
+test('os 16 gráficos somam 106 pontos e 23 séries', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ev } = ambiente(model);
   let pontos = 0;
@@ -588,9 +583,9 @@ test('os 15 gráficos que calculam somam 104 pontos e 21 séries', () => {
       /* recusa já contada e nomeada no teste acima */
     }
   }
-  assert.equal(calculados, 15);
-  assert.equal(pontos, 104);
-  assert.equal(series, 21);
+  assert.equal(calculados, 16);
+  assert.equal(pontos, 106);
+  assert.equal(series, 23);
 });
 
 /**
@@ -669,8 +664,14 @@ test('os visuais cruzados e a âncora de cada um', () => {
       const tabelas = [...new Set(chaves.map((c) => c.tabela))];
       if (tabelas.length <= 1) continue;
       cruzados++;
+      // As tabelas dos valores importam quando as chaves são duas dimensões — é
+      // exatamente o que `grafico.ts` passa, e sem isso um dos oito recusaria.
+      const dosValores = (v.fields ?? [])
+        .filter((c) => c.role === 'Y' || c.role === 'Y2' || c.role === 'Values')
+        .map((c) => c.entity)
+        .filter((t): t is string => !!t);
       try {
-        const a = escolheAncora(tabelas, model, onde);
+        const a = escolheAncora(tabelas, model, onde, dosValores);
         ancoras[a] = (ancoras[a] ?? 0) + 1;
       } catch {
         ancoras['(recusado)'] = (ancoras['(recusado)'] ?? 0) + 1;
@@ -682,9 +683,8 @@ test('os visuais cruzados e a âncora de cada um', () => {
     'FIELD AGENDA': 1,
     'INSTALAÇÕES REINCIDENTES': 2,
     CONTRATOS: 1,
-    'PROTOCOLOS GERAL': 2,
+    'PROTOCOLOS GERAL': 3,
     'Status Protocolo Dia': 1,
-    '(recusado)': 1,
   });
 });
 

@@ -1621,7 +1621,7 @@ valores uniformes passam em quase qualquer predicado.
 conseguia mover **uma**. Os dois números ficam presos no teste para que a distância entre
 eles seja visível: o caminho de filtro *executa* em 36 e está *exercitado* em 5.
 
-## 31. `PROTOCOLOS GERAL[CONTAGEM]` é o texto `"1"` e se declara `int64`
+## 31. `PROTOCOLOS GERAL[CONTAGEM]` é o texto `"1"` e se declara `int64` — RESOLVIDO em 07/08/2026
 
 Coluna calculada cujo DAX é um literal de **texto**, com tipo declarado numérico:
 
@@ -1691,6 +1691,30 @@ SUM('PROTOCOLOS GERAL'[CONTAGEM]): esperava número e recebeu o texto "1".
 
 Vale para `SUM`, `AVERAGE`, `MIN` e `MAX`. Foi o classificador de recusas do teste de
 cobertura que expôs a falta — ele não conseguia dizer de qual coluna a recusa era.
+
+### Resolvido em 07/08/2026, e o que decidiu foi a medição
+
+A hesitação acima era sobre o **tamanho** da regra, não sobre o caso. Medido: das 49
+colunas calculadas da base, **3** declaram tipo, e **1** devolve texto onde declarou
+número. O raio de alcance da regra é uma coluna.
+
+E a regra que ficou não é a que estava sendo temida. Não é *"SUM converte texto"* —
+essa valeria para qualquer texto chegando a qualquer agregação, e é a porta para
+`"1.234"` virar 1,234. É *"o tipo declarado da coluna vale na hora de materializar"*,
+que é o que o Power BI faz: a expressão produz um valor, e a coluna o armazena no
+tipo em que foi declarada. A conversão é **da coluna**, não da soma, e mora em
+`aplicaTipo` junto com a de `dateTime` que já existia.
+
+Duas travas mantêm a regra honesta, e as duas têm teste:
+
+- **só literal sem ambiguidade** (`/^-?\d+(\.\d+)?$/`). `"1.234,56"`, `"1,234.56"`,
+  `"1 234"` e `"R$ 10"` **erram alto**. Numa base `pt-BR` a diferença entre as duas
+  leituras de `"1.234"` é de mil vezes, e nenhuma pode ser escolhida em silêncio.
+- **a agregação continua sem converter.** `1 + "2"` erra alto como antes.
+
+As 2 tabelas passaram a calcular.
+
+---
 
 ## 32. O estado de drill era descartado: 21 projeções que a tela não mostra
 
@@ -1936,3 +1960,72 @@ duas têm **gêmea na mesma página**, com a mesma chave de linha e o mesmo eixo
 coluna, diferindo por um filtro a mais — e as gêmeas trazem linha. É a terceira vez
 que a distância entre "calcula" e "está exercitado" precisa ser medida e presa em
 teste.
+
+---
+
+## 36. Os últimos cinco visuais, e as duas regras que faltavam
+
+Fechados os quatro tipos de visual, sobravam cinco casos. Dois deles pediam regra
+nova; o terceiro era o #31, resolvido acima.
+
+### `% do total`: o denominador tem três leituras, e duas somam errado
+
+Dois `tableEx` têm um campo `Arithmetic`, e a forma é sempre a mesma:
+
+```
+divide( COUNTA('T'[C]),  ScopedEval( COUNTA('T'[C]), [] ) )
+```
+
+`ScopedEval(expr, [])` é "a mesma conta **sem o agrupamento do visual**" — o total.
+E "total" tem três leituras que só divergem quando existe filtro:
+
+| leitura | denominador | efeito |
+|---|---|---|
+| total do **visual** | respeita filtro de página e de visual | a coluna soma 1,0 |
+| total da **tabela** | ignora os filtros | porcentagens menores, soma < 1 |
+| total do **grupo** | o próprio numerador | tudo 1,0 |
+
+A do meio é a que engana: os números saem pequenos e plausíveis, e ninguém soma uma
+coluna de porcentagem para conferir. Por isso o teste central de `aritmetica.test.ts`
+tem filtro e afirma que **a coluna soma 1,0** — sem filtro, as três leituras dariam o
+mesmo resultado e o teste não provaria nada.
+
+Duas decisões menores, ambas com teste:
+
+- **`divide` é `DIVIDE` do DAX, não `/`.** Denominador zero ou BLANK dá BLANK, não
+  `Infinity` — que numa coluna de porcentagem apareceria como `∞`.
+- **escopo não vazio erra alto.** Ele reteria parte do eixo, e tratá-lo como vazio
+  daria denominador maior e porcentagens menores. Não ocorre nesta base.
+
+### A âncora de duas dimensões é a tabela de onde saem os números
+
+O achado #34 deixou um caso em aberto: `relatorio-do-ano/2d498e...`, com eixo em
+`CALENDARIO INSTALADO` e legenda em `BASE DE ORIGEM` — duas dimensões que não se
+alcançam. Havia 4 tabelas de fato capazes de ligá-las, e escolher uma seria escolher
+o número.
+
+A regra que faltava estava no próprio visual: **a âncora é a tabela de onde saem os
+valores.** Ali, `Y` conta `'PROTOCOLOS GERAL'[SOLICITACAO]` — e é `PROTOCOLOS GERAL`
+que o `SUMMARIZECOLUMNS` do Power BI varre. Não é uma escolha entre as 4 candidatas
+do modelo: é a única das **tabelas do visual** que liga as duas dimensões.
+
+A recusa continua de pé quando a regra não decide, e agora com três mensagens
+distintas: nenhuma tabela de valor liga as dimensões (diz quais são e quais ligariam
+de fora), mais de uma liga, ou não há caminho nenhum.
+
+### O estado ao fechar
+
+| visual | calcula | |
+|---|---|---|
+| card | 64/64 | |
+| tableEx | 29/29 | 76 linhas |
+| gráfico | 16/16 | 106 pontos, 23 séries |
+| pivotTable | 8/8 | 39 células |
+
+Os testes de cobertura passaram a exigir que o mapa de recusas saia **vazio**. Uma
+recusa nova não some na contagem: aparece como `NÃO CLASSIFICADA`.
+
+**E nada disto é paridade.** Continua valendo, e medido: 36 cards têm filtro e só 5
+mudam de valor sobre dado sintético; das 5 tabelas cruzadas só 2 trazem linha; das 8
+matrizes, 6. O que falta para paridade não é código — é alguém abrir o Power BI e
+ditar os totais.
