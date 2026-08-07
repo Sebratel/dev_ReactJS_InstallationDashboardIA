@@ -1878,3 +1878,61 @@ o filtro de linha esvazia a âncora antes de agrupar. Zero linha é resultado le
 e prova nenhuma. Quem prova a semântica é `expansao.test.ts`, com um dataset montado
 para que o produto cartesiano dê 4 combinações onde existem 3, e onde uma delas o
 produto nem conhece.
+
+---
+
+## 35. Uma matriz não é uma tabela com duas chaves
+
+Os 8 `pivotTable` do relatório são uniformes: papéis `Rows`, `Columns` e `Values`,
+todas as chaves `kind: column` (nenhum nível de hierarquia), no máximo uma chave por
+direção. Sete têm as duas direções; um tem só linhas, com três medidas lado a lado.
+
+A tentação é óbvia — já existe `agrupar`, é só passar as chaves das duas direções
+juntas. E **está errado**, de um jeito que não quebra.
+
+| | tabela | matriz |
+|---|---|---|
+| combinação que não existe | não aparece | **célula vazia** |
+| conjunto de colunas | por linha | o mesmo em todas |
+
+Com o dado onde `Bauru` não tem `Reparo`: a leitura de tabela dá 3 linhas; a matriz
+dá 2 linhas × 2 colunas, e a célula `Bauru`/`Reparo` é vazia. As duas somam o mesmo
+total. O que muda é a forma — e uma matriz cujas linhas têm conjuntos de colunas
+diferentes não é uma matriz, é uma tabela com cara de matriz.
+
+Por isso os dois eixos são agrupados **em separado**, sobre a mesma base, e a célula
+é o cruzamento: os filtros dos dois lados num `with()` único.
+
+### O HAVING é da célula, não da linha
+
+A consulta que o Power BI monta para um visual é um `SUMMARIZECOLUMNS` sobre
+**todas** as colunas de eixo juntas, e o filtro de agregado é um HAVING sobre esse
+agrupamento. Numa matriz, esse agrupamento é a célula.
+
+A diferença aparece quando só algumas células de uma linha passam: aplicado por
+linha, o filtro derruba a linha inteira; aplicado por célula, apaga as células
+reprovadas e a linha some **só** se nenhuma passar. São 3 dos 8.
+
+### A poda de vazios, e a propriedade que não foi lida
+
+Linha ou coluna **inteiramente** vazia some — é o padrão da matriz do Power BI. Sem
+isso, um eixo de datas traria o mês inteiro de colunas onde a tela mostra os poucos
+dias com dado.
+
+**A propriedade que desliga esse padrão ("mostrar itens sem dados") não é lida do
+PBIP.** Se algum dos 8 a tiver ligada, a poda tira colunas que a tela mostra. Por
+isso o resultado carrega `descartadas: { linhas, colunas }`: o descarte fica contável
+em vez de invisível, e o lugar de resolver isso — quando alguém abrir o relatório e
+confirmar — é o extrator, não este arquivo.
+
+### O que isto fechou, e o que continua não provado
+
+As 8 calculam, somando **39 células**. Com isso os quatro tipos de visual com número
+estão cobertos: card 64/64, tabela 25/29, gráfico 15/16, matriz 8/8.
+
+**Mas 2 das 8 saem sem linha nenhuma sobre dado sintético** — o filtro de linha
+esvazia a tabela do eixo antes de agrupar. E o detalhe que torna isso legível: as
+duas têm **gêmea na mesma página**, com a mesma chave de linha e o mesmo eixo de
+coluna, diferindo por um filtro a mais — e as gêmeas trazem linha. É a terceira vez
+que a distância entre "calcula" e "está exercitado" precisa ser medida e presa em
+teste.

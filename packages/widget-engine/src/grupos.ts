@@ -154,30 +154,64 @@ export function chaveDoCampo(campo: CampoSpec, onde: string): Chave {
  * e inventar uma aqui esconderia que ela ainda não foi lida.
  */
 export function agrupar(chaves: readonly Chave[], base: EvalScope, ev: Evaluator, onde: string): Grupo[] {
-  if (chaves.length === 0) {
-    // Sem chave é o total: um grupo só, sem filtro, e `ISINSCOPE` responde FALSE
-    // para tudo. É o caso que faz `[Faixa 1 Premiação Total]` calcular.
-    return [{ valores: [], escopo: ev.scopeWithGrouping(base, []) }];
-  }
+  return prepara(chaves, base, ev, onde).grupos;
+}
 
-  const plano = planeja(chaves, base, ev, onde);
-  const combinacoes = enumeraCombinacoes(chaves, plano, base, ev, onde);
+/**
+ * O agrupamento com a **construção de filtro exposta**.
+ *
+ * `agrupar` basta para tabela e gráfico, onde cada linha é uma combinação e pronto.
+ * A matriz precisa de mais: os dois eixos são agrupados **em separado** (as colunas
+ * da matriz são as mesmas em todas as linhas), e cada célula é o cruzamento de uma
+ * combinação de linha com uma de coluna. Cruzar exige os filtros dos dois lados
+ * juntos, num `with()` único — daí `filtrosDe`.
+ */
+export interface Agrupamento {
+  grupos: Grupo[];
+  /** Os `TableFilter` que definem uma combinação de valores destas chaves. */
+  filtrosDe: (valores: readonly DaxValue[]) => TableFilter[];
+  /** As chaves, no formato que `scopeWithGrouping` espera. */
+  declaracao: [string, string, string | null][];
+}
 
-  const agrupamento: [string, string, string | null][] = chaves.map((c) => [
+export function prepara(
+  chaves: readonly Chave[],
+  base: EvalScope,
+  ev: Evaluator,
+  onde: string,
+): Agrupamento {
+  const declaracao: [string, string, string | null][] = chaves.map((c) => [
     c.tabela,
     c.coluna,
     c.nivel,
   ]);
 
-  return [...combinacoes.values()].map((valores) => {
-    // Todos os filtros do grupo num `with()` único — pelo mesmo motivo que os
-    // filtros de página e visual: dentro de um `with()` os novos não se substituem
-    // entre si. Em chamadas separadas, a segunda chave apagaria a primeira e o
-    // "grupo" seria mais largo do que é.
-    const filtros = chaves.flatMap((c, i) => filtrosDaChave(c, valores[i]!, i, plano, base, ev, onde));
-    const comFiltro = ev.scopeWithFilter(base, base.filter.with(filtros));
-    return { valores, escopo: ev.scopeWithGrouping(comFiltro, agrupamento) };
+  if (chaves.length === 0) {
+    // Sem chave é o total: um grupo só, sem filtro, e `ISINSCOPE` responde FALSE
+    // para tudo. É o caso que faz `[Faixa 1 Premiação Total]` calcular.
+    return {
+      grupos: [{ valores: [], escopo: ev.scopeWithGrouping(base, []) }],
+      filtrosDe: () => [],
+      declaracao,
+    };
+  }
+
+  const plano = planeja(chaves, base, ev, onde);
+  const combinacoes = enumeraCombinacoes(chaves, plano, base, ev, onde);
+
+  // Todos os filtros do grupo num `with()` único — pelo mesmo motivo que os filtros
+  // de página e visual: dentro de um `with()` os novos não se substituem entre si.
+  // Em chamadas separadas, a segunda chave apagaria a primeira e o "grupo" seria
+  // mais largo do que é.
+  const filtrosDe = (valores: readonly DaxValue[]): TableFilter[] =>
+    chaves.flatMap((c, i) => filtrosDaChave(c, valores[i]!, i, plano, base, ev, onde));
+
+  const grupos = [...combinacoes.values()].map((valores) => {
+    const comFiltro = ev.scopeWithFilter(base, base.filter.with(filtrosDe(valores)));
+    return { valores, escopo: ev.scopeWithGrouping(comFiltro, declaracao) };
   });
+
+  return { grupos, filtrosDe, declaracao };
 }
 
 /** Como as combinações vão ser enumeradas. `null` = todas as chaves numa tabela só. */

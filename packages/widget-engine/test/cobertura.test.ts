@@ -20,6 +20,7 @@ import { ehFiltroDeGrupo, predicadoDeGrupo, traduzFiltros } from '../src/filtro.
 import { calculaTabela, separaCampos, tabelasDoDashboard } from '../src/tabela.ts';
 import { calculaGrafico, graficosDoDashboard, separaPapeis } from '../src/grafico.ts';
 import { escolheAncora } from '../src/expansao.ts';
+import { calculaMatriz, matrizesDoDashboard } from '../src/matriz.ts';
 import {
   loadDashboards,
   type CondicaoSpec,
@@ -721,4 +722,73 @@ test('das 5 tabelas cruzadas, só 2 trazem linha sobre dado sintético', () => {
   }
   assert.equal(cruzadas, 5);
   assert.equal(comLinha, 2);
+});
+
+// ---------------------------------------------------------------------------
+// As matrizes (ACHADOS #35)
+// ---------------------------------------------------------------------------
+
+/** A forma dos 8 `pivotTable`, medida — é ela que autoriza `separaEixos` a ser estrito. */
+test('os 8 pivotTable usam Rows, Columns e Values, e nenhuma chave é hierarquia', () => {
+  const matrizes = DASHBOARDS.flatMap((d) => matrizesDoDashboard(d));
+  assert.equal(matrizes.length, 8);
+  const campos = matrizes.flatMap((v) => v.fields ?? []);
+  assert.deepEqual(contar(campos, (c) => `${c.role}/${c.kind}`), {
+    'Columns/column': 7,
+    'Rows/column': 8,
+    'Values/measure': 4,
+    'Values/aggregation': 6,
+  });
+  // Sete têm as duas direções; um tem só linhas, com três medidas lado a lado.
+  assert.equal(matrizes.filter((v) => (v.fields ?? []).some((c) => c.role === 'Columns')).length, 7);
+});
+
+/**
+ * **As 8 matrizes calculam, e somam 39 células.**
+ *
+ * O número de células é linhas × colunas de cada uma, **depois** de tirar as vazias.
+ * Ele cai se a poda ficar agressiva demais e sobe se a matriz virar tabela — as duas
+ * leituras erradas mexem nele em direções opostas, e é por isso que vale prendê-lo.
+ */
+test('as 8 matrizes calculam e somam 39 células', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let calculam = 0;
+  let celulas = 0;
+  const familias: Record<string, number> = {};
+  for (const d of DASHBOARDS) {
+    for (const v of matrizesDoDashboard(d)) {
+      try {
+        const r = calculaMatriz(d, v, ev);
+        calculam++;
+        celulas += r.linhas.length * r.colunas.length;
+      } catch (e) {
+        const f = familiaDaRecusa((e as Error).message);
+        familias[f] = (familias[f] ?? 0) + 1;
+      }
+    }
+  }
+  assert.equal(calculam, 8);
+  assert.equal(celulas, 39);
+  assert.deepEqual(familias, {});
+});
+
+/**
+ * **A distância entre "calcula" e "está exercitada", pela terceira vez.**
+ *
+ * Duas das 8 saem sem linha nenhuma sobre dado sintético: o filtro de linha esvazia
+ * a tabela do eixo antes de agrupar. Calculam, e não provam nada. O par que deixa
+ * isso visível é que **as duas têm gêmea na mesma página** — mesma chave de linha,
+ * mesmo eixo de coluna, filtro a mais — e as gêmeas trazem linha.
+ */
+test('das 8 matrizes, 6 trazem linha sobre dado sintético', () => {
+  const model = SemanticModel.fromSpecsDir(SPECS);
+  const { ev } = ambiente(model);
+  let comLinha = 0;
+  for (const d of DASHBOARDS) {
+    for (const v of matrizesDoDashboard(d)) {
+      if (calculaMatriz(d, v, ev).linhas.length > 0) comLinha++;
+    }
+  }
+  assert.equal(comLinha, 6);
 });

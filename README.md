@@ -39,10 +39,11 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **O estado de drill era descartado.** O PBIP marca cada projeção com `active`, e um eixo de datas lista Ano/Mês/Dia sempre — só as ativas entram. Medido: **21 de 448 são inativas**, e agrupar por elas daria um ponto por dia num gráfico que mostra um por mês. Nenhuma está em tabela, então a cobertura não mudou; o ganho é para os gráficos ([ACHADOS](docs/ACHADOS.md) #32) | ✅ |
 | — | **Gráficos: 15 dos 16 calculam.** Um ponto de gráfico é uma linha de tabela desenhada — mesmo agrupamento, mesmo contexto de filtro. O que é só do gráfico é o eixo de datas: `'T'[Data].[Mês]` não é coluna, é projeção, e ignorar o `active` daria **455 pontos onde a tela tem 99** ([ACHADOS](docs/ACHADOS.md) #33) | ✅ |
 | — | **Cruzar tabelas: a expansão do DAX, não o produto cartesiano.** Agrupar por colunas de tabelas diferentes exige achar a **âncora** — aquela cuja *tabela expandida* cobre as outras — e varrê-la seguindo os relacionamentos. O produto daria 25 linhas onde existem 5, com cara de detalhamento. Destravou 5 tabelas e 2 gráficos; a linha em branco do relacionamento foi o defeito que os testes pegaram ([ACHADOS](docs/ACHADOS.md) #34) | ✅ |
+| — | **Matriz: os 8 `pivotTable` calculam.** Uma matriz **não** é uma tabela com duas chaves: os eixos são agrupados em separado, a combinação que não existe é **célula vazia** (não linha ausente), e o HAVING vale por célula. A poda de linha/coluna vazia é o padrão do Power BI, e o resultado carrega quantas descartou ([ACHADOS](docs/ACHADOS.md) #35) | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**793 testes verdes.** Nenhum deles precisa de credencial.
+**811 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 
@@ -362,6 +363,11 @@ card é um número, uma tabela é *um número por grupo*.
   Se as colunas cabem na expandida de uma delas, essa é a **âncora**, e varrê-la
   seguindo os relacionamentos dá as combinações que existem, uma vez cada. O produto
   cartesiano daria 25 linhas onde existem 5 — maior, ordenado, somando certo.
+- **`matriz.ts`** — a matriz **não** é uma tabela com duas chaves. Os dois eixos são
+  agrupados em separado, sobre a mesma base, e a célula é o cruzamento: a combinação
+  que não existe é uma **célula vazia**, não uma linha ausente, e o conjunto de
+  colunas é o mesmo em todas as linhas. Reaproveitar `agrupar` com as chaves das duas
+  direções juntas daria uma tabela com cara de matriz.
 
 O que é só do gráfico é o **eixo de datas**, e ele é a armadilha da fatia
 ([ACHADOS](docs/ACHADOS.md) #33). `'T'[Data].[Mês]` não existe como coluna — é uma
@@ -381,21 +387,22 @@ avaliador ganhou `scopeWithGrouping`; sem ele, `ISINSCOPE` **continua errando al
 conjunto vazio é "o visual não agrupa por nada", `undefined` é "não há visual", e a
 distinção é o que impede a medida de calcular em toda célula.
 
-**O que está medido, e o que ainda não se sabe.** Os 64 cards executam, 25 das 29
-tabelas e 15 dos 16 gráficos calculam, e os 108 filtros do relatório têm todos quem os
-aplique — 98 como predicado de linha e 10 como HAVING sobre os grupos. As recusas
+**O que está medido, e o que ainda não se sabe.** Os quatro tipos de visual com
+número estão cobertos — card 64/64, tabela 25/29, gráfico 15/16, matriz 8/8 —, e os
+108 filtros do relatório têm todos quem os aplique — 98 como predicado de linha e 10 como HAVING sobre os grupos. As recusas
 restantes têm todas nome — campo aritmético (2), `[CONTAGEM]` (2,
 [ACHADOS](docs/ACHADOS.md) #31) e um gráfico cujo fato de ligação não está no visual —
 e o teste falha se alguma deixar de ter. Eram cinco famílias e hoje são três: o
 HAVING, o nível de hierarquia e o cruzamento entre tabelas fecharam, cada um levando
 visuais junto.
 
-Duas distâncias continuam medidas e presas em teste, porque são o tamanho do que
+Três distâncias continuam medidas e presas em teste, porque são o tamanho do que
 **não** está provado: **36 cards têm filtro e só 5 mudam de valor** sobre o dataset
-sintético, e **das 5 tabelas cruzadas só 2 trazem linha** — nas outras 3 o filtro
-esvazia a âncora antes de agrupar. Zero linha é resultado legítimo e prova nenhuma.
-Os quatro números estão presos em `cobertura.test.ts` justamente para que a distância
-fique visível. É a mesma lição da 2b.5 — **dado sintético não prova paridade**.
+sintético, **das 5 tabelas cruzadas só 2 trazem linha**, e **das 8 matrizes só 6**.
+Nos casos que faltam o filtro esvazia a tabela do eixo antes de agrupar: zero linha é
+resultado legítimo e prova nenhuma. Os números estão presos em `cobertura.test.ts`
+justamente para que a distância fique visível. É a mesma lição da 2b.5 — **dado
+sintético não prova paridade**.
 
 ### Query Engine (Fase 1)
 
@@ -429,7 +436,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (793 testes, sem credencial)
+npm test                              # suíte completa (811 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
