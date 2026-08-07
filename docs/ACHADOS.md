@@ -2128,7 +2128,7 @@ min 13 s para materializar, **1,76 s para carregar** (incluindo materializar
 
 ---
 
-## 38. A matriz custa 33.945 varreduras onde o Power BI faz uma
+## 38. A matriz custa 33.945 varreduras onde o Power BI faz uma — RESOLVIDO em 07/08/2026
 
 **O primeiro número real quebrou o desenho, e só dado real quebraria.** Com o
 snapshot carregado, os 5 cards de `diario-instalacao` calcularam. A página não
@@ -2174,3 +2174,58 @@ grupo refiltra a tabela.
 **Nada disto aparecia em dado sintético**, onde as tabelas de teste têm 3 a 5 linhas
 e 33.945 células custam microssegundos. É a mesma lição da 2b.5 e da 2b.6, agora sobre
 desempenho: o teste provava que o cálculo *funciona*, não que ele *termina*.
+
+---
+
+### Resolução: as linhas já estavam na mão e eram jogadas fora
+
+O conserto não foi escrever um motor de agregação. Foi notar que
+`enumeraCombinacoes` **já varre a âncora uma vez** para descobrir quais
+combinações existem — e descartava as linhas de cada uma. Elas passaram a ser
+entregues ao contexto de filtro como ponto de partida, em vez de ele redescobri-las
+varrendo a tabela por grupo.
+
+### O perigo era a substituição do DAX, não o desempenho
+
+`CALCULATE(x, ALL('T'[TIPO]))` derruba o filtro de tipo e mantém o de cidade. Se as
+linhas materializadas do grupo `(cidade, tipo)` continuassem valendo depois disso, o
+grupo ficaria estreito demais — número **menor, plausível, sem aviso**. É a mesma
+família de erro do #30 e do #36.
+
+Por isso a materialização é do **grupo inteiro**, não de um filtro: a mesma instância
+vai em todos os filtros que ele põe no contexto, e o contexto só usa o caminho rápido
+enquanto encontra **todos** eles. Derrubou um, o carimbo não fecha a conta e o cálculo
+volta ao predicado exato.
+
+**Isto veio de teste de mutação, não de análise.** Tirando a conferência de validade,
+os 860 testes do repositório continuavam passando — nenhum exercitava `ALL` de uma
+chave dentro de um agrupamento de duas. Os dois testes que hoje pegam a mutação foram
+escritos por causa dela. A outra mutação, truncar as linhas materializadas para uma
+só, derruba 38 testes: o caminho rápido está exercido.
+
+### Medido em dado real, contra o mesmo cálculo sem o caminho rápido
+
+Página `protocolos-detalhados`, duas tabelas de detalhe de 32.462 linhas cada
+(agrupamentos de 5 e 7 chaves, uma linha por combinação — o caso O(linhas²)):
+
+| | com | sem |
+|---|---|---|
+| tempo | **1.519 ms** | 374.260 ms |
+| saída | 23.819.414 bytes | 23.819.414 bytes |
+| `sha256` | `65def8f4…c28f` | `65def8f4…c28f` |
+
+**246× mais rápido, byte a byte o mesmo resultado.** O hash é sobre a saída inteira
+dos 4 visuais — é o teste diferencial que os testes unitários fazem em pequeno.
+
+A matriz que abriu este achado, 93 × 365 sobre 65.563 linhas: **não terminava em 400 s,
+passou a 1.610 ms**. A vizinha, 93 × 1 com 3 medidas: 1.951 ms → **194 ms**. A página
+`diario-instalacao` inteira — 7 visuais com número — calcula em **4,0 s**, mais 1,8 s
+de carregamento do snapshot.
+
+### O que sobra
+
+O caminho rápido é o ponto de partida da tabela, não uma agregação incremental. Uma
+célula de matriz ainda percorre as linhas do menor dos dois eixos, e uma medida com
+`CALCULATE` que troca o contexto volta a varrer. Para os visuais desta base isso
+basta; se um dia não bastar, o passo seguinte é agregar durante a varredura em vez de
+depois dela.

@@ -20,7 +20,7 @@ import {
   type EvalScope,
   type Evaluator,
 } from '../../measure-engine/src/evaluator.ts';
-import type { TableFilter } from '../../measure-engine/src/filter.ts';
+import type { Materializacao, TableFilter } from '../../measure-engine/src/filter.ts';
 import type { Row } from '../../measure-engine/src/dataset.ts';
 import { BLANK, DaxEvalError, isBlank, type DaxValue, identityKey } from '../../measure-engine/src/value.ts';
 import { Navegador, caminhoAte, escolheAncora, type Aresta } from './expansao.ts';
@@ -205,20 +205,53 @@ export function prepara(
 
   const plano = planeja(chaves, base, ev, onde, tabelasDosValores);
   const combinacoes = enumeraCombinacoes(chaves, plano, base, ev, onde);
+  // A tabela que a varredura percorreu — é dela que as linhas materializadas são.
+  const ancora = normaliza(plano?.ancora ?? chaves[0]!.tabela);
 
   // Todos os filtros do grupo num `with()` único — pelo mesmo motivo que os filtros
   // de página e visual: dentro de um `with()` os novos não se substituem entre si.
   // Em chamadas separadas, a segunda chave apagaria a primeira e o "grupo" seria
   // mais largo do que é.
-  const filtrosDe = (valores: readonly DaxValue[]): TableFilter[] =>
-    chaves.flatMap((c, i) => filtrosDaChave(c, valores[i]!, i, plano, base, ev, onde));
+  //
+  // **E todos levam o mesmo carimbo de materialização.** A varredura que descobriu
+  // as combinações já separou as linhas de cada uma; entregá-las junto poupa o
+  // contexto de filtro de revarrer a tabela a cada grupo (ACHADOS #38). O carimbo é
+  // do grupo inteiro, não de um filtro: se `ALL()` derrubar qualquer um deles, as
+  // linhas deixam de valer e o contexto volta ao predicado exato.
+  const filtrosDe = (valores: readonly DaxValue[]): TableFilter[] => {
+    const filtros = chaves.flatMap((c, i) =>
+      filtrosDaChave(c, valores[i]!, i, plano, base, ev, onde),
+    );
+    const combinacao = combinacoes.get(chaveDeValores(valores));
+    if (!combinacao || filtros.length === 0) return filtros;
+    combinacao.materializacao ??= {
+      marca: {},
+      filtros: filtros.length,
+      tabela: ancora,
+      linhas: combinacao.linhas,
+    };
+    const grupo = combinacao.materializacao;
+    // Guarda para o caso de um chamador montar um número diferente de filtros para a
+    // mesma combinação: aí o carimbo mentiria sobre quantos esperar, e a conferência
+    // de validade do contexto passaria quando não devia.
+    if (grupo.filtros !== filtros.length) return filtros;
+    return filtros.map((f) => ({ ...f, grupo }));
+  };
 
-  const grupos = [...combinacoes.values()].map((valores) => {
+  const grupos = [...combinacoes.values()].map(({ valores }) => {
     const comFiltro = ev.scopeWithFilter(base, base.filter.with(filtrosDe(valores)));
     return { valores, escopo: ev.scopeWithGrouping(comFiltro, declaracao) };
   });
 
   return { grupos, filtrosDe, declaracao };
+}
+
+/** Uma combinação de valores e as linhas da âncora que caem nela. */
+interface Combinacao {
+  valores: DaxValue[];
+  linhas: Row[];
+  /** Criada na primeira vez que os filtros do grupo são montados, e reusada. */
+  materializacao: Materializacao | null;
 }
 
 /** Como as combinações vão ser enumeradas. `null` = todas as chaves numa tabela só. */
@@ -317,16 +350,18 @@ function enumeraCombinacoes(
   base: EvalScope,
   ev: Evaluator,
   onde: string,
-): Map<string, DaxValue[]> {
-  const combinacoes = new Map<string, DaxValue[]>();
-  const guarda = (valores: DaxValue[]): void => {
-    const k = valores.map(identityKey).join(' ');
-    if (!combinacoes.has(k)) combinacoes.set(k, valores);
+): Map<string, Combinacao> {
+  const combinacoes = new Map<string, Combinacao>();
+  const guarda = (valores: DaxValue[], linha: Row): void => {
+    const k = chaveDeValores(valores);
+    const achada = combinacoes.get(k);
+    if (achada) achada.linhas.push(linha);
+    else combinacoes.set(k, { valores, linhas: [linha], materializacao: null });
   };
 
   if (plano === null) {
     for (const linha of base.filter.rowsOf(chaves[0]!.tabela)) {
-      guarda(chaves.map((c) => valorDaChave(c, linha, ev, onde)));
+      guarda(chaves.map((c) => valorDaChave(c, linha, ev, onde)), linha);
     }
     return combinacoes;
   }
@@ -336,7 +371,13 @@ function enumeraCombinacoes(
       chaves.map((c, i) =>
         projetaNivel(c, plano.navegador.valor(plano.caminhos[i]!, linha, c.tabela, c.coluna), onde),
       ),
+      linha,
     );
   }
   return combinacoes;
+}
+
+/** A chave de identidade de uma combinação de valores. */
+function chaveDeValores(valores: readonly DaxValue[]): string {
+  return valores.map(identityKey).join(' ');
 }

@@ -43,12 +43,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Os últimos 5 visuais, e as duas regras que faltavam.** `% do total` (`Arithmetic` + `ScopedEval`): o denominador é o total **do visual**, não o da tabela — a leitura errada dá porcentagens plausíveis que somam menos de 1. E a âncora de duas dimensões é a tabela **de onde saem os números do visual**, não uma das 4 candidatas do modelo ([ACHADOS](docs/ACHADOS.md) #36) | ✅ |
 | — | **O primeiro número real: a camada M chegou ao avaliador.** `toDatasetRows` — a ponte entre a camada M e o `Dataset` — existia desde a 2b.8 e **só era chamada em teste**: as engines calculavam sobre dado sintético e nada na plataforma tocava a fonte. `npm run snapshot` materializa o que uma **página** alcança e `carrega()` monta o avaliador. O fechamento não é a lista do visual — `FERIADOS` entra em **9 páginas e nenhum visual a nomeia**, quem a puxa é o DAX de `'CALENDARIO INSTALADO'[PESO]` ([ACHADOS](docs/ACHADOS.md) #37) | ✅ |
 | — | Medido em `diario-instalacao`: 4 queries, **98.111 linhas, 75,2 MB** em disco, 2m13s para materializar e **1,76 s para carregar**. Os **5 cards da página calculam com dado real** | ✅ |
-| — | **A matriz custa 33.945 varreduras onde o Power BI faz uma.** 93 técnicos × 365 datas, e cada célula refiltra as 65.563 linhas: **2,2 bilhões** de visitas de linha contra **65.563** de uma varredura única — razão de ~34.000×. A página não terminou em 400 s. O conserto é varrer uma vez e agrupar em balde, e vale para os 4 tipos de visual ([ACHADOS](docs/ACHADOS.md) #38) | 🚧 **próxima fatia** |
-| — | Front-end e API **não existem ainda** — e o #38 diz por que não fazia sentido escrevê-los antes: com o cálculo por célula, uma página levaria ~4 min para responder | ⏳ |
+| — | **A matriz custava 33.945 varreduras onde o Power BI faz uma — resolvido.** Cada célula refiltrava as 65.563 linhas: 2,2 bilhões de visitas contra 65.563 de uma varredura única. O conserto não foi um motor novo: a varredura que descobre as combinações **já separava as linhas de cada grupo** e as jogava fora. O perigo era a substituição do DAX — `ALL()` de uma das chaves derruba um filtro do grupo, e as linhas materializadas ficariam estreitas demais ([ACHADOS](docs/ACHADOS.md) #38) | ✅ |
+| — | Medido em dado real contra o mesmo cálculo sem o caminho rápido: `protocolos-detalhados` em **1.519 ms contra 374.260 ms**, com **`sha256` idêntico** sobre 23,8 MB de saída — **246×**, byte a byte o mesmo número. A matriz que não terminava em 400 s: **1.610 ms** | ✅ |
+| — | A conferência que torna isso seguro **não era coberta por teste nenhum**: removida, os 860 continuavam passando. Veio de mutação, e hoje 2 testes a pegam. A outra mutação — truncar as linhas materializadas — derruba 38 | ✅ |
+| — | Front-end e API **não existem ainda**. Antes do #38 não fazia sentido escrevê-los: uma página levava ~4 min para responder. Hoje `diario-instalacao` calcula em **4,0 s** sobre 98 mil linhas, mais 1,8 s de carregamento | ⏳ **próxima fatia** |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**860 testes verdes.** Nenhum deles precisa de credencial.
+**872 testes verdes.** Nenhum deles precisa de credencial.
 
 ### Extraído do Power BI
 

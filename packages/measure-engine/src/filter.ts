@@ -117,6 +117,45 @@ export interface TableFilter {
   /** Descrição para mensagem de erro. */
   origem: string;
   keep: (row: Row) => boolean;
+  /**
+   * Resposta pronta para `keep`, quando quem montou o filtro já sabia dela.
+   *
+   * Ver `Materializacao`. É otimização, nunca regra: com ela ou sem ela o
+   * conjunto de linhas é o mesmo, e há teste diferencial que afirma isso.
+   */
+  grupo?: Materializacao;
+}
+
+/**
+ * Um agrupamento que já varreu a tabela e sabe quais linhas caem em cada grupo.
+ *
+ * **Por que existe.** Um visual monta um contexto de filtro por grupo e avalia a
+ * medida nele. Sem isto, cada avaliação varre a tabela inteira de novo: a matriz
+ * medida no [ACHADOS](../../../docs/ACHADOS.md) #38 tem 93 × 365 = 33.945 células
+ * sobre 65.563 linhas, o que dá 2,2 bilhões de visitas de linha onde o Power BI
+ * faz uma varredura só. Mas quem monta os grupos **já varreu** a tabela para
+ * descobrir as combinações — as linhas de cada grupo estavam na mão e eram jogadas
+ * fora.
+ *
+ * **Por que não basta pendurar as linhas num filtro.** O DAX substitui filtro:
+ * `CALCULATE(x, ALL('T'[CIDADE]))` derruba o filtro de cidade e mantém os outros.
+ * Se as linhas materializadas de um grupo `(cidade, técnico)` estivessem penduradas
+ * no filtro de técnico, elas sobreviveriam à remoção do de cidade — e o grupo
+ * ficaria estreito demais, com um número menor e nenhum aviso.
+ *
+ * Por isso a materialização é do **grupo inteiro**: a mesma instância vai em todos
+ * os filtros que ele põe no contexto, e só vale enquanto os `filtros` estiverem
+ * todos presentes. Removeu um, o caminho rápido some e sobra a semântica exata.
+ */
+export interface Materializacao {
+  /** Identidade do grupo. Comparada por referência — dois grupos nunca a dividem. */
+  marca: object;
+  /** Quantos filtros o grupo pôs no contexto, somando todas as tabelas. */
+  filtros: number;
+  /** Tabela cujas linhas foram materializadas, normalizada. */
+  tabela: string;
+  /** As linhas visíveis dessa tabela quando os `filtros` todos valem. */
+  linhas: readonly Row[];
 }
 
 export interface FilterContext {
@@ -192,9 +231,26 @@ export class FilteredContext implements FilterContext {
 
     const aplicaveis = this.filters.filter((f) => f.table === key);
     const todas = this.dataset.rows(key);
-    let visiveis = aplicaveis.length === 0
-      ? todas
-      : todas.filter((row) => aplicaveis.every((f) => f.keep(row)));
+    // Ponto de partida: as linhas já materializadas do menor grupo válido, quando
+    // existe um. É o caminho rápido do achado #38, e é só um ponto de partida — os
+    // outros filtros continuam sendo aplicados por cima, um a um.
+    const pronto = this.partidaMaterializada(key);
+    // Sem filtro e sem materialização, devolve o próprio array: copiar a tabela
+    // inteira à toa é o caso mais comum de todos.
+    let visiveis: Row[];
+    if (pronto === null) {
+      visiveis = aplicaveis.length === 0
+        ? todas
+        : todas.filter((row) => aplicaveis.every((f) => f.keep(row)));
+    } else {
+      // Os filtros do grupo escolhido já estão refletidos em `linhas` — pular o
+      // `keep` deles é o grosso da economia, porque num agrupamento de 31 chaves
+      // são 31 predicados por linha.
+      const outros = aplicaveis.filter((f) => f.grupo !== pronto);
+      visiveis = outros.length === 0
+        ? [...pronto.linhas]
+        : pronto.linhas.filter((row) => outros.every((f) => f.keep(row)));
+    }
 
     caminho.push(key);
     try {
@@ -230,6 +286,38 @@ export class FilteredContext implements FilterContext {
 
     this.cache.set(ck, visiveis);
     return visiveis;
+  }
+
+  /**
+   * A menor materialização **válida** para esta tabela, ou `null`.
+   *
+   * Válida quer dizer: todos os filtros que o grupo pôs no contexto continuam
+   * nele. É essa conferência que torna o caminho rápido seguro sob substituição —
+   * `ALL('T'[CIDADE])` derruba um dos filtros do grupo, a contagem não fecha, e o
+   * cálculo volta a ser o predicado exato. Ver `Materializacao`.
+   *
+   * A **menor** porque uma célula de matriz tem duas: a do eixo de linha e a do
+   * eixo de coluna, as duas sobre a âncora. Começar pela menor e conferir a outra
+   * por `keep` custa o tamanho do menor lado, não o da tabela.
+   */
+  private partidaMaterializada(key: string): Materializacao | null {
+    let escolhida: Materializacao | null = null;
+    let presentes: Map<object, number> | null = null;
+
+    for (const f of this.filters) {
+      const g = f.grupo;
+      if (!g || g.tabela !== key) continue;
+      if (escolhida !== null && g.linhas.length >= escolhida.linhas.length) continue;
+      if (presentes === null) {
+        presentes = new Map();
+        for (const outro of this.filters) {
+          if (!outro.grupo) continue;
+          presentes.set(outro.grupo.marca, (presentes.get(outro.grupo.marca) ?? 0) + 1);
+        }
+      }
+      if (presentes.get(g.marca) === g.filtros) escolhida = g;
+    }
+    return escolhida;
   }
 
   /** Mantém as linhas cujo valor de junção aparece na origem. */
