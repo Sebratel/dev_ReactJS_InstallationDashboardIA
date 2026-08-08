@@ -133,7 +133,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 45 entradas.
+   registro; hoje tem 46 entradas.
 
 ---
 
@@ -188,14 +188,25 @@ RankAtualProtocolo = CALCULATE(MAX('FIELD AGENDA'[RankDataProtocolo]),
                        FILTER('FIELD AGENDA', 'FIELD AGENDA'[protocolo] = ProtocoloAtual))
 ```
 
-**Não escolha um suspeito — meça primeiro.** Três vezes seguidas neste projeto o
-gargalo não estava onde o instrumento apontava. Não se sabe qual dos 21 visuais
-consome os 104 minutos. O perfil por visual está descrito na seção 7.
+**Já medido (achado #46): não é visual nenhum, é uma coluna.**
 
-E vale a pergunta de desenho antes de qualquer índice novo: essas duas colunas são
-**rank por protocolo**, e o Power BI as calcula no refresh, **uma vez**, não a cada
-abertura. Se elas pertencem ao snapshot em vez do avaliador, isso vale mais que
-otimizar o avaliador — e é decisão a registrar, não conserto a fazer.
+| coluna calculada de `FIELD AGENDA` | µs/linha |
+|---|---|
+| **`RankAtualProtocolo`** | **697** — ~90% do total |
+| `RankDataProtocolo` | 77 |
+| as outras cinco | 2 a 25 |
+
+O custo é **linear** nas fatias medidas, o que confirma que o índice do #44 pegou:
+sem ele estas duas seriam quadráticas. O que sobrou é **custo constante por
+chamada** — `filterFromTable` monta chave de linha sobre as **26 colunas** de
+`FIELD AGENDA`, ~3.000 a 4.000 composições de chave por linha da tabela.
+
+**A decisão vem antes da próxima otimização**, e está aberta em
+`docs/PERGUNTAS-NEGOCIO.md` #8: essas duas colunas são *rank por protocolo*, e o
+Power BI as calcula **no refresh, uma vez**. Materializá-las no snapshot tira os 104
+minutos do caminho da tela — nenhuma otimização de avaliador chega perto, porque o
+problema não é a velocidade do cálculo, é o **momento** dele. Em troca, o snapshot
+deixa de ser "a camada M em disco" e vira "o dataset materializado".
 
 ### 5.3 Paridade — depende de alguém abrir o Power BI
 
@@ -219,10 +230,10 @@ tela:
    `specs/paridade/<pagina>.yaml` com `visual: id, esperado: <número>`, e
    `npm run paridade` apontando as divergências. Sem isso, cada conferência é manual e
    se perde. **Agora vale para 96 visuais, não 64** — é mais valioso que era.
-2. **Os 104 minutos de `agendamento-field`** (ver 5.2). A página já calcula; o que
-   falta é ser usável. Meça por visual **antes** de escolher o que otimizar, e
-   considere a pergunta de desenho (rank no snapshot, não no avaliador) antes de
-   qualquer índice novo.
+2. **Os 104 minutos de `agendamento-field`** (ver 5.2). Já está medido: 90% é
+   `RankAtualProtocolo` (achado #46). O que falta é **a decisão** de
+   `PERGUNTAS-NEGOCIO.md` #8 — materializar coluna calculada no snapshot, ou
+   otimizar o avaliador pela quarta vez. Não comece a otimizar antes dela.
 3. **Filtros na tela.** O relatório tem segmentações (`slicer`) que hoje aparecem como
    "sem número". Fazê-las filtrar de verdade é o que separa "página que abre" de
    "dashboard que se usa". Os filtros de página e de visual **já** são aplicados; o que
@@ -319,7 +330,7 @@ tools/
   paginas/          calcula o relatório inteiro e conta o que fecha
 specs/              GERADO pelo extrator — o contrato. Não editar à mão.
 docs/
-  ACHADOS.md          45 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          46 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa

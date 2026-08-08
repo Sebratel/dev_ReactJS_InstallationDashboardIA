@@ -2671,3 +2671,61 @@ qualquer índice, e é decisão a registrar, não otimização a fazer.
 **As 14 páginas calculam.** Treze delas somam 96 visuais em 84 s. A décima quarta
 sozinha leva 104 minutos, e enquanto for assim ela não entra em `npm run paginas`
 sem `--pagina=`.
+
+## 46. Os 104 minutos têm dono: `RankAtualProtocolo`, 90% deles
+
+O #45 dizia que não se sabia qual dos 21 visuais consumia os 104 minutos, e que
+escolher um suspeito seria repetir o erro. Medindo antes: **não é visual nenhum.**
+É uma coluna calculada, e uma só.
+
+Custo por coluna calculada de `FIELD AGENDA`, cada uma num avaliador novo para a
+memorização de uma não pagar a conta da outra:
+
+| coluna | 20.000 linhas | 40.000 linhas | µs/linha |
+|---|---|---|---|
+| **`RankAtualProtocolo`** | **13.591 ms** | **27.888 ms** | **697** |
+| `RankDataProtocolo` | 1.493 ms | 3.081 ms | 77 |
+| `CategoriaProdutividade` | 505 ms | 1.004 ms | 25 |
+| `ClassificacaoRelato` | 471 ms | 924 ms | 23 |
+| `Status SLA` | 56 ms | 106 ms | 2,6 |
+| `Data` | 54 ms | 90 ms | 2,3 |
+| `Turno` | 46 ms | 89 ms | 2,2 |
+
+O custo é **linear** nas duas fatias (74,6 → 77 e 679,5 → 697 µs/linha), o que
+confirma que o índice do #44 está funcionando: sem ele estas duas seriam
+quadráticas. E ainda assim `RankAtualProtocolo` sozinha é **9×** a segunda colocada
+e ~90% do total.
+
+### Por que 697 µs, se o índice já reduziu o balde a ~55 linhas
+
+```
+RankAtualProtocolo = CALCULATE(MAX('FIELD AGENDA'[RankDataProtocolo]),
+                       FILTER('FIELD AGENDA', 'FIELD AGENDA'[protocolo] = ProtocoloAtual))
+```
+
+O `FILTER` devolve ~55 linhas — rápido. O que custa é o que vem **depois** dele:
+`filterFromTable` monta um `Set` de `rowKey` sobre as **26 colunas** de
+`FIELD AGENDA`, e o `keep` recalcula `rowKey` por candidato. São ~55 linhas × 26
+colunas em cada ponta, mais a varredura de `igualdadeConstante`: da ordem de 3.000 a
+4.000 composições de chave **por linha de `FIELD AGENDA`**. A ~5 milhões de
+operações por segundo, isso dá ~700 µs — que é exatamente o medido.
+
+Ou seja: o achado #44 tirou o custo quadrático, e o que sobrou é o **custo constante
+por chamada** de um filtro que identifica linha por tupla de 26 colunas. Otimizá-lo
+mais dentro do avaliador é possível, e é a terceira rodada de aceleração no mesmo
+lugar.
+
+### A pergunta que vem antes da quarta rodada
+
+`RankDataProtocolo` e `RankAtualProtocolo` são **rank por protocolo**. O Power BI as
+calcula **no refresh, uma vez** — não a cada abertura do relatório. Aqui elas são
+recalculadas em toda carga de página que as toque.
+
+Materializá-las no snapshot, junto com as linhas, tiraria os 104 minutos do caminho
+da tela e os poria onde eles já existem no modelo original: no refresh. Nenhuma
+otimização do avaliador chega perto disso, porque o problema não é a velocidade do
+cálculo — é o **momento** dele.
+
+Isso muda o que o snapshot é (hoje ele guarda a camada M; passaria a guardar também
+coluna calculada em DAX), e por isso é **decisão a registrar**, não conserto a fazer.
+Está em `docs/PERGUNTAS-NEGOCIO.md`.

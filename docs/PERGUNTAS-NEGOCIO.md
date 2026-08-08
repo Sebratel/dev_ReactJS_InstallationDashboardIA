@@ -425,3 +425,29 @@ construção** — comparar acusaria erro que não existe.
 
 Rode `npm run validate:tables` para ver em qual grupo cada tabela está e qual passo
 faz a diferença. Detalhes em ACHADOS.md #15.
+
+---
+
+## 8. Coluna calculada em DAX deve entrar no snapshot?
+
+**Não é pergunta de negócio — é de arquitetura, e por isso está aqui: ela muda o
+que o snapshot é, e essa decisão tem dono.**
+
+`agendamento-field` calcula em **104 minutos**, e ~90% disso é uma coluna:
+`'FIELD AGENDA'[RankAtualProtocolo]`, um rank por protocolo sobre 1,46 milhão de
+linhas (medido no ACHADOS #46). Duas saídas:
+
+| | o que é | o que custa |
+|---|---|---|
+| **A. Acelerar mais o avaliador** | quarta rodada de otimização no mesmo lugar (o #38, o #44 e o #46 são as três primeiras) | mantém o desenho atual; ganho incerto, porque o custo que sobrou é constante por chamada, não quadrático |
+| **B. Materializar no snapshot** | o snapshot passa a guardar **coluna calculada em DAX**, não só a camada M | é o que o Power BI faz: calcula no **refresh**, uma vez, não a cada abertura |
+
+O argumento de B é que o problema não é a velocidade do cálculo — é o **momento**
+dele. Nenhuma otimização de avaliador chega perto de não calcular.
+
+O argumento contra B é que o snapshot deixa de ser "a camada M em disco" e vira
+"o dataset materializado", o que muda a fronteira entre as fases 2b e 3 e o que
+`npm run snapshot` promete.
+
+**Pergunta:** vale mudar o que o snapshot guarda, ou o desenho atual (camada M em
+disco, DAX sempre ao vivo) é para manter?
