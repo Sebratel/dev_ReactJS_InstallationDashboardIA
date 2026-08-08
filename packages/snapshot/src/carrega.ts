@@ -33,7 +33,7 @@ import { normalizeName as normaliza, type SemanticModel } from '../../semantic-m
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
-import { le, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
+import { le, shaDeDax, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
 
@@ -103,6 +103,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   for (const t of plano.tabelas) {
     if (t.query === null) continue;
     const { cabecalho, linhas } = await le(arquivoDaQuery(opts.dir, t.query));
+    conferaColunasCalculadas(opts.model.table(t.nome)!, cabecalho, t.query, opts.dir);
     convertidas.push(...aplicaTiposDeclarados(opts.model.table(t.nome)!, cabecalho, linhas));
     dataset.addTable(t.nome, linhas);
     linhasPorTabela.set(t.nome, linhas.length);
@@ -197,4 +198,50 @@ function aplicaTiposDeclarados(
 /** O caminho padrão do snapshot, a partir da raiz do repositório. */
 export function diretorioPadrao(root: string): string {
   return path.join(root, 'snapshot');
+}
+
+/**
+ * Confere que toda coluna calculada gravada no arquivo ainda corresponde ao DAX
+ * que o modelo declara hoje.
+ *
+ * **É o guarda que torna materializar coluna calculada uma coisa segura de fazer.**
+ * Uma coluna calculada em disco é um valor congelado, e o avaliador não desconfia
+ * dela: `columnValue` acha o nome na linha e devolve o valor sem perguntar de onde
+ * veio. Sem esta conferência, mudar o DAX no Power BI e rodar `npm run extract`
+ * deixaria o relatório servindo o número velho **sem nenhum sinal** — que é o erro
+ * plausível e silencioso que este projeto não pode cometer.
+ *
+ * Erra alto em vez de recalcular. Recalcular calado seria defensável se fosse
+ * barato, e não é: são os 104 minutos do achado #46 reaparecendo no meio de uma
+ * carga que deveria levar 25 segundos, sem ninguém entender por quê.
+ */
+function conferaColunasCalculadas(
+  tabela: ModelTable,
+  cabecalho: CabecalhoDeSnapshot,
+  query: string,
+  dir: string,
+): void {
+  for (const c of cabecalho.colunas) {
+    if (c.daxSha === undefined) continue;
+    const col = tabela.columns.find((x) => normaliza(x.name) === normaliza(c.nome));
+
+    // A coluna deixou de ser calculada (ou sumiu) no modelo: o valor em disco não
+    // tem mais dono, e mantê-lo seria servir o resultado de um DAX que não existe.
+    if (!col?.calculated || !col.dax) {
+      throw new Error(
+        `Snapshot desatualizado: '${tabela.name}'[${c.nome}] está materializada em ` +
+          `${arquivoDaQuery(dir, query)}, mas ${col ? 'não é mais coluna calculada' : 'não existe mais'} ` +
+          `no modelo. Rode: npm run snapshot -- --query=${query}`,
+      );
+    }
+
+    const agora = shaDeDax(col.dax);
+    if (agora !== c.daxSha) {
+      throw new Error(
+        `Snapshot desatualizado: o DAX de '${tabela.name}'[${c.nome}] mudou desde a ` +
+          `materialização (${c.daxSha} -> ${agora}). O valor em disco é o do DAX antigo. ` +
+          `Rode: npm run snapshot -- --query=${query}`,
+      );
+    }
+  }
 }

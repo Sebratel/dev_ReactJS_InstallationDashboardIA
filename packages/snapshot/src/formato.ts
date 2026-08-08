@@ -25,6 +25,7 @@
 // tem CPF e RG. O diretório do snapshot está no `.gitignore` e nada neste arquivo
 // imprime valor de linha.
 
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import readline from 'node:readline';
 import { pipeline } from 'node:stream/promises';
@@ -40,6 +41,29 @@ export interface ColunaDeSnapshot {
   tipo: TipoDeColuna;
   /** Quantos nulos — a contagem que diz se a coluna está de fato preenchida. */
   nulos: number;
+  /**
+   * `sha256` do DAX que produziu esta coluna. Presente **só** em coluna calculada
+   * materializada (ACHADOS #47).
+   *
+   * É o que torna a obsolescência **detectável**. Uma coluna calculada gravada em
+   * disco é um valor congelado; se alguém mudar o DAX dela no Power BI e rodar
+   * `npm run extract`, o arquivo continua com o número velho e **nada denuncia** —
+   * o avaliador acha a coluna na linha e a usa sem perguntar. Guardar o hash faz o
+   * carregamento comparar e **errar alto**, em vez de servir número desatualizado
+   * com cara de atual.
+   */
+  daxSha?: string;
+}
+
+/**
+ * `sha256` de uma expressão DAX, normalizada em espaço em branco.
+ *
+ * Normaliza porque reindentar o DAX no Power BI não muda o que ele calcula, e
+ * invalidar 950 MB de snapshot por causa de um espaço seria um alarme que ensina
+ * a ignorar alarmes.
+ */
+export function shaDeDax(dax: string): string {
+  return createHash('sha256').update(dax.replace(/\s+/g, ' ').trim()).digest('hex').slice(0, 16);
 }
 
 export interface CabecalhoDeSnapshot {
@@ -135,8 +159,13 @@ export async function escreve(
   cab: Omit<CabecalhoDeSnapshot, 'formato' | 'linhas' | 'colunas'>,
   colunas: readonly string[],
   linhas: readonly Record<string, Escalar>[],
+  /** `sha256` do DAX, por coluna calculada materializada. Ver `ColunaDeSnapshot`. */
+  daxSha?: ReadonlyMap<string, string>,
 ): Promise<CabecalhoDeSnapshot> {
-  const apuradas = apuraColunas(colunas, linhas);
+  const apuradas = apuraColunas(colunas, linhas).map((c) => {
+    const sha = daxSha?.get(c.nome);
+    return sha === undefined ? c : { ...c, daxSha: sha };
+  });
   const cabecalho: CabecalhoDeSnapshot = {
     formato: 1,
     ...cab,

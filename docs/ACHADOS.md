@@ -2729,3 +2729,76 @@ cálculo — é o **momento** dele.
 Isso muda o que o snapshot é (hoje ele guarda a camada M; passaria a guardar também
 coluna calculada em DAX), e por isso é **decisão a registrar**, não conserto a fazer.
 Está em `docs/PERGUNTAS-NEGOCIO.md`.
+
+## 47. Coluna calculada entra no snapshot — decidido, e o guarda que o torna seguro
+
+> **Decisão de 08/08/2026 — Erick.** O snapshot passa a guardar **coluna calculada
+> em DAX**, não só a camada M. É a opção B da pergunta #8 de `PERGUNTAS-NEGOCIO.md`.
+
+O motivo está no #46: `agendamento-field` levava 104 minutos e ~90% era
+`'FIELD AGENDA'[RankAtualProtocolo]`, um rank por protocolo sobre 1,46 milhão de
+linhas. O Power BI calcula essa coluna **no refresh, uma vez**. O problema nunca foi
+a velocidade do cálculo — era o **momento** dele, e nenhuma otimização de avaliador
+chega perto de não calcular.
+
+### O avaliador não precisou mudar, e é isso que assusta
+
+`columnValue` devolve o valor quando o nome está na linha, **sem perguntar de onde
+veio**. Uma coluna calculada gravada no arquivo é usada como se fosse física. Isso é
+o que torna a mudança barata de implementar — e é exatamente o que a torna perigosa:
+**valor congelado que ninguém desconfia.**
+
+Mudar o DAX no Power BI e rodar `npm run extract` deixaria o relatório servindo o
+número do DAX antigo, sem sinal nenhum. Por isso metade deste trabalho é o guarda:
+
+- cada coluna calculada materializada carrega o **`sha256` do DAX** que a produziu,
+  no cabeçalho do arquivo;
+- o carregamento compara com o DAX que o modelo declara **hoje** e **erra alto** se
+  divergir, dizendo o comando que refaz;
+- coluna que deixou de ser calculada (ou sumiu) no modelo também erra alto: o valor
+  em disco não tem mais dono;
+- o hash normaliza espaço em branco, porque reindentar no Power BI não muda o que a
+  coluna calcula, e invalidar 950 MB por um espaço é um alarme que ensina a ignorar
+  alarmes.
+
+**Erra alto em vez de recalcular calado.** Recalcular seria defensável se fosse
+barato, e não é: são os 104 minutos reaparecendo no meio de uma carga que deveria
+levar 25 segundos, sem ninguém entender por quê.
+
+### Só coluna que depende da própria tabela
+
+O snapshot materializa **uma query por processo** (a regra de memória da 2b.8), e
+uma coluna que cite outra tabela precisaria dela carregada. Materializar sobre um
+dataset incompleto daria BLANK onde havia número — calado.
+
+A detecção é conservadora de propósito: `Identifier` é ambíguo em DAX (variável,
+enum ou tabela sem aspas) e conta como possível tabela, então o resultado erra para
+o lado de **não materializar**. Medido no catálogo:
+
+| tabela | calculadas | materializáveis |
+|---|---|---|
+| `FIELD AGENDA` | 7 | **7** |
+| `PROTOCOLOS GERAL` | 13 | **13** |
+| `Status Protocolo Dia` | 4 | **0** — as quatro citam `FIELD AGENDA` |
+
+As que não passam continuam nascendo no carregamento, como sempre.
+
+### Uma mudança de comportamento, dita por extenso
+
+`'FIELD AGENDA'[Status SLA]` usa `NOW()`. Materializada, ela **congela no instante
+da materialização**, não no da abertura da tela. É o que o Power BI faz — coluna
+calculada congela no refresh —, então é replicar e não divergir. Mas é diferente de
+ontem, e o `AGORA` do `tools/snapshot` é único para toda a execução: um relógio por
+query poria instantes diferentes em tabelas do mesmo snapshot, e a divergência
+apareceria depois como erro de paridade sem causa visível.
+
+### Estado
+
+Implementado e testado: 964 testes, 7 novos, e **as 4 mutações do guarda derrubam
+teste** (não conferir o sha, não conferir se ainda é calculada, não chamar a
+conferência, e materializar coluna que cita outra tabela).
+
+**O ganho ainda não foi medido contra a base real.** Falta rematerializar
+`field-agenda` com as colunas (`npm run snapshot -- --query=field-agenda --refazer
+--memoria=8192 --timeout=1800`) e rodar `agendamento-field` de novo. O custo sai do
+caminho da tela e vai para o snapshot; **quanto** é o número que falta.

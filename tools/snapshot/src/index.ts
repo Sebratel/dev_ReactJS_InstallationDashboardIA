@@ -45,6 +45,7 @@ import {
   tokenComCache,
 } from '../../../packages/query-engine/src/connectors-gsheets.ts';
 import { buscadorWeb } from '../../../packages/query-engine/src/connectors-web.ts';
+import { materializaColunas } from '../../../packages/snapshot/src/colunas-calculadas.ts';
 import { QueryEngine } from '../../../packages/query-engine/src/engine.ts';
 import {
   accessToken,
@@ -158,6 +159,16 @@ const args = parseArgs(process.argv.slice(2));
 // ------------------------------------------------------------------- catálogo
 const registry = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
 const model = SemanticModel.fromSpecsDir(path.join(ROOT, 'specs'));
+
+/**
+ * O "agora" de toda a execução, tirado uma vez só.
+ *
+ * `'FIELD AGENDA'[Status SLA]` usa `NOW()`, e a coluna calculada é **congelada** no
+ * arquivo. Um relógio por query poria instantes diferentes em tabelas do mesmo
+ * snapshot, e a divergência apareceria depois como erro de paridade sem causa
+ * visível.
+ */
+const AGORA = new Date();
 const cfg = loadConfig();
 
 const culture = (
@@ -259,6 +270,23 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
     const { columns, rows } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
 
+    // Colunas calculadas em DAX entram no arquivo, como o Power BI faz no refresh
+    // (ACHADOS #47). Só as que dependem da própria tabela — o resto continua
+    // nascendo no carregamento. `AGORA` é o mesmo para toda a execução: `Status SLA`
+    // usa `NOW()`, e duas colunas com instantes diferentes no mesmo arquivo seriam
+    // uma divergência que ninguém conseguiria explicar depois.
+    const daxSha = new Map<string, string>();
+    for (const nome of tabelasDaQuery(q.id)) {
+      const t = model.table(nome);
+      if (!t) continue;
+      const m = materializaColunas(t, model, rows, AGORA);
+      for (const c of m.colunas) if (!columns.includes(c)) columns.push(c);
+      for (const [k, v] of m.daxSha) daxSha.set(k, v);
+      if (m.colunas.length) {
+        console.error(`    ${m.colunas.length} coluna(s) calculada(s) em ${m.ms} ms`);
+      }
+    }
+
     const arquivo = arquivoDaQuery(saida, q.id);
     fs.mkdirSync(path.dirname(arquivo), { recursive: true });
     // Grava num temporário e renomeia: um processo morto no meio da escrita deixa
@@ -270,6 +298,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       { query: q.id, tabelas: tabelasDaQuery(q.id), geradoEm: new Date().toISOString() },
       columns,
       rows,
+      daxSha,
     );
     fs.renameSync(temp, arquivo);
 
