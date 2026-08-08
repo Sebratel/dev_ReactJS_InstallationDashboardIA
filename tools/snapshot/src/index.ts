@@ -270,6 +270,14 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
     const { columns, rows } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
 
+    // **Solta a camada M antes de materializar.** `toDatasetRows` já copiou tudo o
+    // que interessa para `rows`, e o que fica em `feitas` é a mesma tabela na
+    // representação do avaliador de M — uma linha é um `Map`, bem mais gordo que o
+    // objeto simples. Manter as duas vivas foi o que estourou o heap em `field-agenda`
+    // (ACHADOS #48): 1,46 milhão de linhas em dobro, e a materialização ainda por
+    // vir. Nada abaixo daqui lê `feitas`.
+    feitas.clear();
+
     // Colunas calculadas em DAX entram no arquivo, como o Power BI faz no refresh
     // (ACHADOS #47). Só as que dependem da própria tabela — o resto continua
     // nascendo no carregamento. `AGORA` é o mesmo para toda a execução: `Status SLA`

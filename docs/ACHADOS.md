@@ -2802,3 +2802,44 @@ conferência, e materializar coluna que cita outra tabela).
 `field-agenda` com as colunas (`npm run snapshot -- --query=field-agenda --refazer
 --memoria=8192 --timeout=1800`) e rodar `agendamento-field` de novo. O custo sai do
 caminho da tela e vai para o snapshot; **quanto** é o número que falta.
+
+---
+
+## #48 — A materialização copiava a tabela inteira para poder escrever nela
+
+**Encontrado enquanto a rematerialização de `field-agenda` rodava**, olhando a
+memória do processo em vez do relógio: 6,1 GB de heap aos 22 minutos, 7,0 GB aos 45,
+com teto de 8192 MB. O `--refazer` ainda nem tinha chegado à escrita do arquivo.
+
+O culpado não é o volume de dado, é uma cópia que ninguém precisava. `materializaColunas`
+registrava a tabela com `Dataset.addTable`, e `addTable` **copia as linhas** —
+deliberadamente, e por um bom motivo: o avaliador memoriza coluna calculada
+escrevendo na própria linha, e mexer no objeto de quem chamou surpreenderia. Só que
+a materialização do snapshot quer **exatamente** esse efeito: o valor tem de cair na
+linha que vai ser gravada. A cópia era pura perda, e a perda tem tamanho: 1,46 milhão
+de linhas com ~30 colunas vivas duas vezes, dentro de um processo que ainda segura a
+camada M da mesma tabela. Três representações do mesmo dado ao mesmo tempo.
+
+### `adotaTabela`, e o que ela conferiu para poder ser barata
+
+O contrário de `addTable`: registra as linhas **sem copiar**, e o avaliador memoriza
+direto no objeto do chamador. O preço é que a chave já tem de vir normalizada —
+`toDatasetRows` normaliza (`trim().toLowerCase()`), então no caminho do snapshot ela
+vem.
+
+**Isso é conferido, não assumido.** Uma chave fora do padrão não daria erro: o
+avaliador procuraria a coluna, não acharia, e devolveria BLANK — a coluna inteira
+sairia zero no arquivo, calada. É o mesmo formato de estrago do achado #47, e a
+mesma resposta: errar alto. A conferência varre **todas** as linhas (não só a
+primeira: a chave torta apareceria justo na linha que ganhou uma coluna a mais), e é
+barata porque cada chave distinta é normalizada uma vez e as repetições são busca em
+`Set` sobre a mesma string — sem alocar nada por linha.
+
+### Estado
+
+970 testes, 6 novos. A mutação que confere só a primeira linha derruba teste.
+
+**O processo que estava rodando não pegou a correção** — o Node já tinha carregado o
+módulo quando ela foi escrita. Se ele estourar o heap, a próxima execução já vai com
+a adoção; se não estourar, a correção continua valendo, porque a cópia era perda em
+qualquer cenário.

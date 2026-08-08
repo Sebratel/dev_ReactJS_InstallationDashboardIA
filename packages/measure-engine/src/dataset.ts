@@ -47,6 +47,46 @@ export class Dataset {
     this.tables.set(key, { name, rows: copiadas, physical });
   }
 
+  /**
+   * Registra a tabela **adotando** as linhas: sem cópia, e escrevendo nelas.
+   *
+   * `addTable` copia porque memorizar coluna calculada mexe no objeto de quem
+   * chamou, e ninguém espera isso. Aqui é exatamente o contrário: a materialização
+   * do snapshot **quer** que o valor caia nas linhas que ela vai gravar, e a cópia
+   * é o problema. `field-agenda` tem 1,46 milhão de linhas com ~30 colunas; copiá-la
+   * significa manter duas tabelas inteiras vivas no pico de um processo que já
+   * carrega a camada M da mesma tabela. É gigabyte, não margem.
+   *
+   * **O preço da adoção é a chave já vir normalizada**, e isso é conferido aqui em
+   * vez de assumido. Uma chave fora do padrão não daria erro no avaliador: ele
+   * procuraria a coluna, não acharia, e devolveria BLANK — a coluna inteira viraria
+   * zero calado no arquivo. A conferência varre **todas** as linhas, e é barata
+   * porque cada chave distinta só é normalizada uma vez; as repetições são busca em
+   * `Set` sobre a mesma string.
+   */
+  adotaTabela(name: string, rows: Row[]): void {
+    const key = normalizeName(name);
+    if (this.tables.has(key)) {
+      throw new DaxEvalError(`Tabela já registrada no dataset: ${name}`);
+    }
+    const physical = new Set<string>();
+    for (const r of rows) {
+      for (const col in r) {
+        if (physical.has(col)) continue;
+        if (normalizeName(col) !== col) {
+          throw new DaxEvalError(
+            `adotaTabela('${name}'): a chave '${col}' não está normalizada ` +
+              `(esperado '${normalizeName(col)}'). Adotar exige chave já normalizada — ` +
+              `sem isso o avaliador não acharia a coluna e devolveria BLANK, calado. ` +
+              `Use addTable se as linhas vêm de fora do pipeline.`,
+          );
+        }
+        physical.add(col);
+      }
+    }
+    this.tables.set(key, { name, rows, physical });
+  }
+
   hasTable(name: string): boolean {
     return this.tables.has(normalizeName(name));
   }

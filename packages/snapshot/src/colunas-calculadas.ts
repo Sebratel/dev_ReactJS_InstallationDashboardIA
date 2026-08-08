@@ -99,25 +99,29 @@ export function materializaColunas(
   const alvo = materializaveis(t, model);
   if (alvo.length === 0) return { colunas: [], daxSha: new Map(), ms: 0 };
 
-  // Dataset próprio, com esta tabela só. `addTable` copia as linhas, então o
-  // avaliador memoriza na cópia dele — e é de lá que os valores são lidos de volta.
+  // Dataset próprio, com esta tabela só, **adotando** as linhas em vez de copiá-las.
+  //
+  // `addTable` copiaria, e a cópia é o que não cabe: são as mesmas 1,46 milhão de
+  // linhas de `field-agenda` vivas duas vezes, dentro de um processo que ainda
+  // segura a camada M da mesma tabela. Adotando, o avaliador memoriza direto na
+  // linha que vai ser gravada — que é justamente o efeito que se quer aqui.
   const dataset = new Dataset();
-  dataset.addTable(t.name, linhas as never);
+  dataset.adotaTabela(t.name, linhas as never);
   const ev = new Evaluator({ model, dataset, now: agora });
-  const copiadas = dataset.rows(t.name);
 
   const daxSha = new Map<string, string>();
   const colunas: string[] = [];
   for (const c of alvo) {
-    const chave = normalizeName(c.nome);
-    for (let i = 0; i < copiadas.length; i++) {
-      // `columnValue` avalia e memoriza na linha da cópia.
-      const v = ev.columnValue(t.name, c.nome, copiadas[i]!);
+    for (let i = 0; i < linhas.length; i++) {
+      // `columnValue` avalia e memoriza na própria linha, sob o nome normalizado.
+      // A escrita abaixo é sob o nome de exibição, que é o que vai no cabeçalho do
+      // arquivo — as duas chaves apontam para o mesmo valor, e é assim que a
+      // gravação encontra a coluna por `c.nome`.
+      const v = ev.columnValue(t.name, c.nome, linhas[i] as never);
       linhas[i]![c.nome] = (v ?? null) as Escalar;
     }
     colunas.push(c.nome);
     daxSha.set(c.nome, shaDeDax(c.dax));
-    void chave;
   }
   return { colunas, daxSha, ms: Date.now() - inicio };
 }
