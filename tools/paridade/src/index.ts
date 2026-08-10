@@ -167,32 +167,65 @@ async function principal(): Promise<number> {
 
   const gabaritos = leGabaritos(pedidas);
   if (gabaritos.length === 0) {
+    // Distinguir "não há gabarito nenhum" de "não há gabarito DESTA página": quem
+    // digitou o nome errado precisa saber que digitou errado, e não concluir que o
+    // harness não existe.
+    if (pedidas.length > 0) {
+      console.error(`Nenhum gabarito para: ${pedidas.join(', ')}.`);
+      const existem = fs.existsSync(DIR_GABARITOS)
+        ? fs.readdirSync(DIR_GABARITOS).filter((f) => f.endsWith('.yaml')).map((f) => f.replace(/\.yaml$/, ''))
+        : [];
+      console.error(existem.length ? `Existem: ${existem.join(', ')}` : 'Não há gabarito nenhum ainda.');
+      return 2;
+    }
     console.log('Nenhum gabarito em specs/paridade/.');
     console.log('Gere um com: npm run paridade -- --esqueleto=<pagina>');
     return 0;
   }
 
+  // **Confere TODOS os gabaritos antes de tocar em disco.**
+  //
+  // A versão anterior conferia dentro do laço, e isso é diferente do que parece:
+  // carregar `agendamento-field` custa minutos, então um id errado no gabarito da
+  // terceira página só apareceria depois de duas cargas. Erro de digitação tem de
+  // custar um segundo, não uma tarde. (Aprendido hoje, do jeito caro.)
   const declaradas = new Set(model.divergencias.map((a) => a.divergencia.id));
-  const agora = new Date();
-  const resultados: Resultado[] = [];
-
+  const problemas: string[] = [];
   for (const g of gabaritos) {
     const dash = dashboards.find((d) => d.id === g.pagina);
     if (!dash) {
-      console.error(`gabarito aponta para página inexistente: '${g.pagina}'`);
-      return 1;
+      problemas.push(`gabarito aponta para página inexistente: '${g.pagina}'`);
+      continue;
     }
+    const idsDaPagina = new Set((dash.visuals ?? []).map((v) => v.id));
     for (const c of g.cards ?? []) {
+      if (!idsDaPagina.has(c.visual)) {
+        problemas.push(
+          `${g.pagina}/${c.visual}: este visual não existe na página. A spec pode ter ` +
+            `sido regerada — confira o id antes de apagar a linha, o número ditado é caro.`,
+        );
+      }
       if (c.divergente && !declaradas.has(c.divergente)) {
-        console.error(
+        problemas.push(
           `${g.pagina}/${c.visual}: 'divergente: ${c.divergente}' não existe em ` +
             `specs/_catalog/divergencias.yaml. Ou a divergência foi removida sem revisar ` +
             `o gabarito, ou o id está errado.`,
         );
-        return 1;
       }
     }
+  }
+  if (problemas.length > 0) {
+    // Todos de uma vez: consertar um por execução, cada uma custando uma carga, é o
+    // que faz alguém desistir da conferência.
+    for (const p of problemas) console.error(p);
+    return 1;
+  }
 
+  const agora = new Date();
+  const resultados: Resultado[] = [];
+
+  for (const g of gabaritos) {
+    const dash = dashboards.find((d) => d.id === g.pagina)!;
     const { ev } = await carrega({
       dir: path.join(ROOT, DIRETORIO_PADRAO),
       model,
