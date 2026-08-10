@@ -211,3 +211,63 @@ test('coluna toda em branco declara tipo null', () => {
   const d = p.visuais[0]!.dados as { colunas: { tipo: string | null }[] };
   assert.deepEqual(d.colunas.map((c) => c.tipo), ['string', null]);
 });
+
+// ---------------------------------------------------------------------------
+// Visual sob demanda
+// ---------------------------------------------------------------------------
+
+/**
+ * **O caso `Relato`.** Uma coluna deixada fora da carga por decisão
+ * (`specs/_catalog/projecao.yaml`) não pode derrubar a página: o visual que a amarra
+ * vira "sob demanda", e os outros 38 calculam normalmente.
+ *
+ * A diferença entre isto e um `erro` não é cosmética. Erro diz "algo quebrou, alguém
+ * conserte"; sob demanda diz "isto está aqui, custa caro, peça se quiser". A tela
+ * desenha um botão em vez de um alerta vermelho, e o resumo da página não conta uma
+ * falha que não existe.
+ */
+function montarComOmitida(): Evaluator {
+  const model = new SemanticModel();
+  model.addTable({
+    id: 'os', name: 'OS', queryRef: null,
+    columns: [col('ID'), col('CIDADE'), col('VALOR'), col('RELATO')],
+  });
+  model.addMeasure({ name: 'Total', table: 'OS', format: null, displayFolder: null, dax: "SUM('OS'[VALOR])" });
+  const linhas: Row[] = Array.from({ length: 10 }, (_, i) => ({ id: i, cidade: 'Bauru', valor: i }));
+  const dataset = new Dataset();
+  dataset.adotaTabela('OS', linhas, ['relato']);
+  return new Evaluator({ model, dataset, now: AGORA });
+}
+
+test('visual que amarra coluna sob demanda não falha: fica sob demanda', () => {
+  const comRelato = visual([chave('RELATO'), medida()], 'tableEx', 'v-relato');
+  const semRelato = visual([chave('CIDADE'), medida()], 'tableEx', 'v-cidade');
+  const p = calculaPagina(pagina([comRelato, semRelato]), montarComOmitida());
+
+  const alvo = p.visuais.find((v) => v.id === 'v-relato')!;
+  assert.equal(alvo.erro, undefined, 'sob demanda não é falha');
+  assert.match(alvo.semCalculo!, /sob demanda/);
+  assert.deepEqual(alvo.sobDemanda, ["'OS'[RELATO]"]);
+
+  // E o resto da página segue calculando — é o ponto todo.
+  assert.equal(p.visuais.find((v) => v.id === 'v-cidade')!.erro, undefined);
+  assert.equal(p.resumo.falharam, 0);
+  assert.equal(p.resumo.calculados, 1);
+  assert.equal(p.resumo.semCalculo, 1);
+});
+
+/**
+ * O outro lado: uma **medida** que dependa da coluna omitida tem de errar alto. Sob
+ * demanda é decisão sobre o que a tela mostra, não licença para a conta ignorar dado.
+ */
+test('medida que depende de coluna omitida ERRA ALTO — não vira sob demanda', () => {
+  const ev = montarComOmitida();
+  ev.model.addMeasure({
+    name: 'Relatos', table: 'OS', format: null, displayFolder: null,
+    dax: "COUNTROWS(VALUES('OS'[RELATO]))",
+  });
+  const v = visual([{ role: 'Values', kind: 'measure', entity: 'OS', property: 'Relatos', name: 'Relatos' }], 'card');
+  const p = calculaPagina(pagina([v]), ev);
+  assert.equal(p.resumo.falharam, 1);
+  assert.match(p.visuais[0]!.erro!, /omitida da carga/);
+});

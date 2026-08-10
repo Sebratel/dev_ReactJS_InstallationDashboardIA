@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { aplicaDivergencias, leDivergencias, type Aplicada } from './divergencias.ts';
+import { leSobDemanda, type SobDemanda } from './projecao.ts';
 import type { ModelColumn, ModelMeasure, ModelRelationship, ModelTable } from './types.ts';
 
 interface TableSpecFile {
@@ -80,6 +81,14 @@ export class SemanticModel {
    * diferente porque erramos".
    */
   divergencias: Aplicada[] = [];
+  /**
+   * Colunas que a página usa e que ficam **fora da carga por decisão**.
+   *
+   * Vazio em modelo montado à mão. Mora no modelo, e não numa opção de `carrega`,
+   * porque a alternativa era cada chamador lembrar de ler o arquivo — e o chamador que
+   * esquecesse traria 350 MB de volta à memória sem ninguém notar.
+   */
+  sobDemanda: SobDemanda[] = [];
   /** Quantos relacionamentos de hierarquia automática de datas foram ignorados. */
   autoDateRelationshipsIgnored = 0;
 
@@ -156,6 +165,7 @@ export class SemanticModel {
     // o `sha256` do original, então uma extração que mude a fórmula do Power BI erra
     // alto aqui em vez de ser silenciosamente sobrescrita.
     model.divergencias = aplicaDivergencias(model, leDivergencias(specsDir));
+    model.sobDemanda = leSobDemanda(specsDir);
 
     return model;
   }

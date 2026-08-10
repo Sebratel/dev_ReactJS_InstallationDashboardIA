@@ -26,6 +26,7 @@
 import { extractRefs } from '../../semantic-model/src/refs.ts';
 import { normalizeName as normaliza, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { DashboardSpec, CampoSpec, FiltroSpec } from '../../widget-engine/src/spec.ts';
+export { leSobDemanda, sobDemandaDe, type SobDemanda } from '../../semantic-model/src/projecao.ts';
 
 /** Nome de tabela normalizado → colunas normalizadas que a página precisa. */
 export type ColunasUsadas = Map<string, Set<string>>;
@@ -142,10 +143,14 @@ export function omissiveis(
   emDisco: readonly string[],
   usadas: ColunasUsadas,
   model: SemanticModel,
+  /** Colunas usadas que saem assim mesmo, por decisão. Ver `leSobDemanda`. */
+  sobDemanda: ReadonlySet<string> = new Set(),
 ): string[] {
   const t = model.table(tabela);
   if (!t) return [];
-  const precisa = usadas.get(normaliza(tabela)) ?? new Set<string>();
+  const precisa = new Set(usadas.get(normaliza(tabela)) ?? []);
+  // A decisão humana ganha da derivação: aqui a coluna é usada e sai mesmo assim.
+  for (const c of sobDemanda) precisa.delete(c);
 
   // `sourceColumn` é o nome na fonte; o cabeçalho pode trazer qualquer um dos dois.
   const apelidos = new Map<string, string>();

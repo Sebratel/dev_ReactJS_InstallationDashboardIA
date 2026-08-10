@@ -18,7 +18,7 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import type { DashboardSpec, VisualSpec } from '../../widget-engine/src/spec.ts';
 import { carrega } from '../src/carrega.ts';
-import { colunasUsadas, omissiveis } from '../src/colunas-usadas.ts';
+import { colunasUsadas, leSobDemanda, omissiveis, sobDemandaDe } from '../src/colunas-usadas.ts';
 import { escreve } from '../src/formato.ts';
 import { arquivoDaQuery } from '../src/manifesto.ts';
 
@@ -120,6 +120,60 @@ test('coluna do arquivo que o modelo não declara nunca é omitida', () => {
   const m = modelo();
   const fora = omissiveis('OS', [...EM_DISCO, 'coluna_so_do_m'], colunasUsadas([pagina()], m), m);
   assert.ok(!fora.includes('coluna_so_do_m'), 'o que o modelo não conhece fica, por precaução');
+});
+
+// ---------------------------------------------------------------------------
+// Sob demanda: a coluna É usada, e sai assim mesmo
+// ---------------------------------------------------------------------------
+
+/**
+ * A decisão humana ganha da derivação — este é o ponto do mecanismo.
+ *
+ * `CIDADE` está amarrada a um visual, então `colunasUsadas` a mantém e está certa. O
+ * `projecao.yaml` é onde alguém diz "sei que é usada, e mesmo assim não quero pagar
+ * por ela em toda abertura de página". Foi o caso do `Relato`: 350 MB para um visual
+ * entre 39.
+ */
+test('coluna sob demanda sai mesmo sendo usada por um visual', () => {
+  const m = modelo();
+  const usadas = colunasUsadas([pagina()], m);
+  assert.ok(!omissiveis('OS', EM_DISCO, usadas, m).includes('cidade'), 'sem a decisão, fica');
+  assert.ok(
+    omissiveis('OS', EM_DISCO, usadas, m, new Set(['cidade'])).includes('cidade'),
+    'com a decisão, sai',
+  );
+});
+
+test('sob demanda não ressuscita coluna calculada nem inventa coluna', () => {
+  const m = modelo();
+  const fora = omissiveis('OS', EM_DISCO, colunasUsadas([pagina()], m), m, new Set(['dobro', 'nao_existe']));
+  assert.ok(!fora.includes('dobro'), 'calculada nunca entra na projeção');
+  assert.ok(!fora.includes('nao_existe'));
+});
+
+test('leSobDemanda exige data, dono e motivo — senão vira mistério na próxima sessão', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapsd-'));
+  fs.mkdirSync(path.join(dir, '_catalog'), { recursive: true });
+  const arq = path.join(dir, '_catalog', 'projecao.yaml');
+
+  fs.writeFileSync(arq, 'sob_demanda:\n  - tabela: OS\n    coluna: SOBRA\n', 'utf8');
+  assert.throws(() => leSobDemanda(dir), /sem 'decidido'/);
+
+  fs.writeFileSync(
+    arq,
+    "sob_demanda:\n  - tabela: OS\n    coluna: SOBRA\n    decidido: '2026-08-10'\n    por: Erick\n    porque: porque sim\n",
+    'utf8',
+  );
+  assert.deepEqual(sobDemandaDe('OS', leSobDemanda(dir)), new Set(['sobra']));
+});
+
+test('o projecao.yaml real declara Relato de FIELD AGENDA', async () => {
+  const { SemanticModel } = await import('../../semantic-model/src/model.ts');
+  const real = SemanticModel.fromSpecsDir('specs');
+  assert.deepEqual(sobDemandaDe('FIELD AGENDA', real.sobDemanda), new Set(['relato']));
+  for (const s of real.sobDemanda) {
+    assert.ok(s.porque.length > 60, `${s.tabela}[${s.coluna}]: 'porque' curto demais`);
+  }
 });
 
 // ---------------------------------------------------------------------------

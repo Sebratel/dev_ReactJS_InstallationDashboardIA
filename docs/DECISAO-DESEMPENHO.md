@@ -135,7 +135,26 @@ carga não era `JSON.parse` nenhum — era a cópia. Otimizar o formato do arqui
 atacado a metade menor. Falta agora quebrar o que sobrou dos 25,6 s entre `JSON.parse`
 e conversão de tipo; é essa medida que decide se o passo 5 vale alguma coisa.
 
-## O caso `Relato`
+## O caso `Relato` — decidido em 10/08/2026
+
+> **DECIDIDO pelo Erick: sob demanda.** A página abre sem a tabela de relatos; quem
+> quiser os relatos os pede. Declarado em `specs/_catalog/projecao.yaml`.
+>
+> **A primeira ideia não funcionava, e vale registrar por quê.** O plano era buscar o
+> texto por linha, depois de paginar. Não dá: no `tableEx` 815c0959 o `Relato` entra
+> como campo **sem agregação**, o que no Power BI significa **chave de agrupamento** —
+> a tabela mostra as combinações distintas. Formar os grupos exige o valor de todas as
+> 1,46 milhão de linhas, e a paginação só existe depois disso. Paginar-e-buscar
+> resolveria um problema que não é o que está ali.
+>
+> O que sobrou é melhor mesmo assim, e é a diferença entre relatório e aplicação: o
+> visual não é calculado na abertura. Ele aparece como *sob demanda* — não como erro —
+> e os outros 38 seguem normalmente. `ClassificacaoRelato` continua funcionando: ela é
+> coluna congelada no snapshot desde o [ACHADOS](./ACHADOS.md) #47, calculada no
+> refresh a partir do `Relato`, então os cartões e gráficos que classificam relato não
+> dependem do texto estar em memória.
+
+
 
 `'FIELD AGENDA'[Relato]` é **36,8% dos bytes** da maior tabela da base — ~350 MB — e
 a projeção de colunas **não** o descarta. A derivação está certa em mantê-lo: o campo

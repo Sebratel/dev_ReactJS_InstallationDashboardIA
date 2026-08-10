@@ -1,0 +1,38 @@
+# MANTIDO POR HUMANOS — este arquivo NÃO é sobrescrito por `npm run extract`.
+#
+# Colunas que a página **usa** e que mesmo assim ficam fora da carga, por decisão.
+#
+# Não confundir com a projeção automática de `packages/snapshot/src/colunas-usadas.ts`:
+# aquela descarta o que ninguém toca, é derivada e não precisa de decisão nenhuma. Esta
+# aqui é o contrário — a coluna É usada, e alguém decidiu que o custo de tê-la em
+# memória a cada abertura de página não se paga.
+#
+# **Consequência, dita em voz alta:** todo visual que amarra uma destas colunas deixa de
+# ser calculado na abertura da página. Ele aparece como "sob demanda", e não como erro.
+# Qualquer OUTRO uso da coluna — uma medida, uma coluna calculada — erra alto, porque aí
+# é engano, não decisão.
+#
+# Ver docs/DECISAO-DESEMPENHO.md, seção "O caso Relato".
+
+sob_demanda:
+  - tabela: FIELD AGENDA
+    coluna: Relato
+    decidido: '2026-08-10'
+    por: Erick
+    porque: >
+      36,8% dos bytes da maior tabela da base — ~350 MB de texto livre, em 1,46 milhão
+      de linhas — para alimentar UM visual entre os 39 de `agendamento-field`.
+
+      A primeira ideia era buscar o texto sob demanda por linha, depois de paginar. Não
+      dá: no `tableEx` 815c0959 o `Relato` entra como campo **sem agregação**, ou seja,
+      é chave de agrupamento. O Power BI mostra as combinações distintas dos campos sem
+      agregação, então formar os grupos exige o valor de todas as linhas — a paginação
+      só existe depois disso.
+
+      O que dá, e é o comportamento de aplicação em vez de relatório: a página abre sem
+      essa tabela, e quem quiser os relatos os pede. Aí sim a coluna entra, para aquele
+      pedido.
+
+      A classificação do texto não se perde: `ClassificacaoRelato` já é coluna
+      congelada no snapshot (ACHADOS #47), calculada no refresh a partir do `Relato`.
+      Os cartões e gráficos que dependem dela continuam funcionando com a coluna fora.

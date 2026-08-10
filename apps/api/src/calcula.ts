@@ -71,6 +71,13 @@ export interface VisualCalculado {
   conteudo: 'card' | 'tabela' | 'grafico' | 'matriz' | null;
   /** Por que não calcula, quando `conteudo` é `null`. */
   semCalculo?: string;
+  /**
+   * Colunas fora da carga por decisão que este visual precisa, como `'T'[c]`.
+   *
+   * Presente só nos visuais sob demanda. É o que a tela usa para desenhar "abrir" em
+   * vez de "erro", e o que diz ao pedido seguinte o que carregar.
+   */
+  sobDemanda?: string[];
   erro?: string;
   dados?: unknown;
 }
@@ -125,6 +132,24 @@ export function calculaPagina(
       continue;
     }
 
+    // Visual que amarra coluna deixada fora da carga por decisão não é falha: é um
+    // visual **sob demanda**. Ver `specs/_catalog/projecao.yaml`.
+    //
+    // A checagem vem antes do cálculo, e não depois do erro, por um motivo: depois do
+    // erro seria adivinhação — a mensagem viria de dentro do avaliador, misturada com
+    // erros de verdade. Aqui a página sabe, antes de tentar, que a coluna não está.
+    const faltando = colunasSobDemanda(v, ev);
+    if (faltando.length > 0) {
+      semCalculo++;
+      visuais.push({
+        ...base,
+        conteudo: null,
+        semCalculo: `sob demanda: ${faltando.join(', ')}`,
+        sobDemanda: faltando,
+      });
+      continue;
+    }
+
     try {
       base.dados = dadosDo(conteudo, dash, v, ev, janela);
       calculados++;
@@ -146,6 +171,27 @@ export function calculaPagina(
     resumo: { calculados, falharam, semCalculo },
     ms: Date.now() - inicio,
   };
+}
+
+/**
+ * As colunas sob demanda que este visual amarra — vazio no caso normal.
+ *
+ * Só campo de visual e filtro de visual: se uma **medida** dependesse de coluna
+ * omitida, o certo seria errar alto, e o avaliador já faz isso. Sob demanda é uma
+ * decisão sobre o que a tela mostra, não sobre o que a conta pode ignorar.
+ */
+function colunasSobDemanda(v: VisualSpec, ev: Evaluator): string[] {
+  const fora: string[] = [];
+  const olha = (entity: string | null, property: string | null): void => {
+    if (!entity || !property) return;
+    if (ev.dataset.omitida(entity, property)) {
+      const rotulo = `'${entity}'[${property}]`;
+      if (!fora.includes(rotulo)) fora.push(rotulo);
+    }
+  };
+  for (const c of v.fields ?? []) if (c.kind !== 'measure') olha(c.entity, c.property);
+  for (const f of v.filters ?? []) olha(f.entity, f.property);
+  return fora;
 }
 
 function dadosDo(

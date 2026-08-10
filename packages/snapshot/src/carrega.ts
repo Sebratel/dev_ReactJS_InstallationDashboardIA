@@ -33,7 +33,7 @@ import { normalizeName as normaliza, type SemanticModel } from '../../semantic-m
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
-import { colunasUsadas, omissiveis } from './colunas-usadas.ts';
+import { colunasUsadas, omissiveis, sobDemandaDe } from './colunas-usadas.ts';
 import { le, leCabecalho, shaDeDax, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
@@ -127,7 +127,13 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     const arquivo = arquivoDaQuery(opts.dir, t.query);
     const fora = usadas === null
       ? []
-      : omissiveis(t.nome, leCabecalho(arquivo).colunas.map((c) => c.nome), usadas, opts.model);
+      : omissiveis(
+          t.nome,
+          leCabecalho(arquivo).colunas.map((c) => c.nome),
+          usadas,
+          opts.model,
+          sobDemandaDe(t.nome, opts.model.sobDemanda),
+        );
     for (const c of fora) omitidas.push(`'${t.nome}'[${c}]`);
 
     const { cabecalho, linhas } = await le(arquivo, new Set(fora));
