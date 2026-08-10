@@ -19,6 +19,7 @@
 //   npm run paginas
 //   npm run paginas -- --pagina=diario-instalacao
 //   npm run paginas -- --erros          # só as mensagens, inteiras
+//   npm run paginas -- --visuais        # quanto cada visual custou, do maior ao menor
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,12 +33,13 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 const args = process.argv.slice(2);
 const soErros = args.includes('--erros');
+const porVisual = args.includes('--visuais');
 const pedidas = args
   .filter((a) => a.startsWith('--pagina='))
   .flatMap((a) => a.slice('--pagina='.length).split(',').map((s) => s.trim()))
   .filter(Boolean);
 for (const a of args) {
-  if (a !== '--erros' && !a.startsWith('--pagina=')) {
+  if (a !== '--erros' && a !== '--visuais' && !a.startsWith('--pagina=')) {
     console.error(`argumento desconhecido: ${a}`);
     process.exit(2);
   }
@@ -72,6 +74,10 @@ interface Linha {
   falhas: { visual: string; tipo: string; erro: string }[];
   /** Colunas convertidas para o tipo declarado no carregamento. */
   convertidas: string[];
+  /** Colunas deixadas fora da carga pela projeção. */
+  omitidas: string[];
+  /** Custo de cada visual, para `--visuais`. */
+  visuais: { id: string; tipo: string; ms: number; nota: string }[];
 }
 
 const resultados: Linha[] = [];
@@ -100,6 +106,11 @@ for (const dash of alvo as DashboardSpec[]) {
         .filter((v: VisualCalculado) => v.erro)
         .map((v) => ({ visual: v.id, tipo: v.tipo, erro: v.erro! })),
       convertidas: c.convertidas,
+      omitidas: c.omitidas,
+      visuais: p.visuais.map((v: VisualCalculado) => ({
+        id: v.id, tipo: v.tipo, ms: v.ms,
+        nota: v.erro ? 'erro' : v.semCalculo ?? '',
+      })),
     });
     process.stderr.write(`${p.resumo.calculados} ok, ${p.resumo.falharam} erro(s)\n`);
   } catch (err) {
@@ -112,6 +123,8 @@ for (const dash of alvo as DashboardSpec[]) {
       linhas: 0,
       falhas: [],
       convertidas: [],
+      omitidas: [],
+      visuais: [],
     });
     process.stderr.write('não carregou\n');
   }
@@ -119,6 +132,26 @@ for (const dash of alvo as DashboardSpec[]) {
 
 // ---------------------------------------------------------------------- saída
 const n = (v: number): string => v.toLocaleString('pt-BR');
+
+/**
+ * O custo de cada visual, do maior para o menor.
+ *
+ * **É o instrumento que faltava.** O total da página não diz onde gastar esforço: os
+ * 104 minutos do achado #46 eram 90% de um visual só, e descobrir isso custou uma hora
+ * de relógio por hipótese. Uma lista ordenada troca a suspeita por leitura.
+ */
+if (porVisual) {
+  for (const r of resultados) {
+    if (r.visuais.length === 0) continue;
+    console.log(`
+${r.pagina} — ${r.visuais.length} visuais, ${n(r.msCalculo)} ms de cálculo`);
+    console.log('  ' + 'ms'.padStart(9) + '  ' + 'tipo'.padEnd(28) + 'visual');
+    for (const v of [...r.visuais].sort((a, b) => b.ms - a.ms)) {
+      const nota = v.nota ? `  (${v.nota})` : '';
+      console.log(`  ${n(v.ms).padStart(9)}  ${v.tipo.padEnd(28)}${v.id.slice(0, 8)}${nota}`);
+    }
+  }
+}
 
 if (!soErros) {
   console.log(

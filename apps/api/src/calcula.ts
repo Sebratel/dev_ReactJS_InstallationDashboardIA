@@ -80,6 +80,15 @@ export interface VisualCalculado {
   sobDemanda?: string[];
   erro?: string;
   dados?: unknown;
+  /**
+   * Quanto este visual custou, em ms.
+   *
+   * **Existe porque a página inteira em milissegundos não diz onde gastar esforço.**
+   * `agendamento-field` levava 104 minutos e a suspeita apontava para o carregamento;
+   * eram 90% de uma coluna calculada (ACHADOS #46). Cada rodada de suspeita custava
+   * uma hora de relógio. Um número por visual troca a suspeita por uma lista ordenada.
+   */
+  ms: number;
 }
 
 export interface PaginaCalculada {
@@ -124,7 +133,8 @@ export function calculaPagina(
 
   for (const v of dash.visuals ?? []) {
     const conteudo = conteudoDe(v.type);
-    const base: VisualCalculado = { id: v.id, tipo: v.type, posicao: v.position, conteudo };
+    const tVisual = Date.now();
+    const base: VisualCalculado = { id: v.id, tipo: v.type, posicao: v.position, conteudo, ms: 0 };
 
     if (conteudo === null) {
       semCalculo++;
@@ -159,6 +169,9 @@ export function calculaPagina(
       // encurtá-las aqui jogaria fora a parte útil.
       base.erro = err instanceof Error ? err.message : String(err);
     }
+    // Também no caminho do erro: um visual que falha depois de 20 minutos é uma
+    // informação diferente de um que falha na hora.
+    base.ms = Date.now() - tVisual;
     visuais.push(base);
   }
 
