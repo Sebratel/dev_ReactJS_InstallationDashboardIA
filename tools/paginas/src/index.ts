@@ -81,6 +81,7 @@ interface Linha {
 }
 
 const resultados: Linha[] = [];
+const n = (v: number): string => v.toLocaleString('pt-BR');
 
 for (const dash of alvo as DashboardSpec[]) {
   process.stderr.write(`  ${dash.id}… `);
@@ -95,7 +96,24 @@ for (const dash of alvo as DashboardSpec[]) {
       now: AGORA,
     });
     const msCarga = Date.now() - t0;
-    const p = calculaPagina(dash, c.ev, { de: 0, linhas: 1 });
+    // Com `--visuais`, cada visual se anuncia ao terminar. Numa página de 40 minutos,
+    // esperar a saída do fim significa gastar a execução inteira só para descobrir
+    // qual visual é o caro — e interromper para olhar joga fora tudo o que já rodou.
+    const p = calculaPagina(
+      dash,
+      c.ev,
+      { de: 0, linhas: 1 },
+      porVisual
+        ? (v, i, total) => {
+            const nota = v.erro ? ' ERRO' : v.semCalculo ? ` (${v.semCalculo})` : '';
+            process.stderr.write(
+              `\n      [${String(i).padStart(2)}/${total}] ${n(v.ms).padStart(9)} ms  ` +
+                `${v.tipo.padEnd(30)}${v.id.slice(0, 8)}${nota}`,
+            );
+          }
+        : undefined,
+    );
+    if (porVisual) process.stderr.write('\n  ');
     resultados.push({
       pagina: dash.id,
       resumo: p.resumo,
@@ -131,7 +149,6 @@ for (const dash of alvo as DashboardSpec[]) {
 }
 
 // ---------------------------------------------------------------------- saída
-const n = (v: number): string => v.toLocaleString('pt-BR');
 
 /**
  * O custo de cada visual, do maior para o menor.

@@ -120,13 +120,26 @@ function conteudoDe(tipo: string): VisualCalculado['conteudo'] {
   return null;
 }
 
+/**
+ * Chamado ao fim de cada visual, se quem chamou quiser acompanhar.
+ *
+ * **Existe porque uma página pode levar 40 minutos.** Sem isto, `npm run paginas`
+ * fica meia hora sem escrever nada e a única saída aparece no fim — então descobrir
+ * qual visual é o caro custa a execução inteira, e interromper para investigar joga
+ * fora tudo o que já foi calculado. Com isto, o visual caro se denuncia enquanto ainda
+ * está rodando o seguinte.
+ */
+export type AoTerminarVisual = (v: VisualCalculado, indice: number, total: number) => void;
+
 export function calculaPagina(
   dash: DashboardSpec,
   ev: Evaluator,
   janela: Janela = { de: 0, linhas: LINHAS_PADRAO },
+  aoTerminar?: AoTerminarVisual,
 ): PaginaCalculada {
   const inicio = Date.now();
   const visuais: VisualCalculado[] = [];
+  const total = (dash.visuals ?? []).length;
   let calculados = 0;
   let falharam = 0;
   let semCalculo = 0;
@@ -138,7 +151,9 @@ export function calculaPagina(
 
     if (conteudo === null) {
       semCalculo++;
-      visuais.push({ ...base, semCalculo: SEM_CALCULO[v.type] ?? `tipo '${v.type}' não calcula` });
+      const feito = { ...base, semCalculo: SEM_CALCULO[v.type] ?? `tipo '${v.type}' não calcula` };
+      visuais.push(feito);
+      aoTerminar?.(feito, visuais.length, total);
       continue;
     }
 
@@ -151,12 +166,14 @@ export function calculaPagina(
     const faltando = colunasSobDemanda(v, ev);
     if (faltando.length > 0) {
       semCalculo++;
-      visuais.push({
+      const feito = {
         ...base,
         conteudo: null,
         semCalculo: `sob demanda: ${faltando.join(', ')}`,
         sobDemanda: faltando,
-      });
+      };
+      visuais.push(feito);
+      aoTerminar?.(feito, visuais.length, total);
       continue;
     }
 
@@ -173,6 +190,7 @@ export function calculaPagina(
     // informação diferente de um que falha na hora.
     base.ms = Date.now() - tVisual;
     visuais.push(base);
+    aoTerminar?.(base, visuais.length, total);
   }
 
   return {
