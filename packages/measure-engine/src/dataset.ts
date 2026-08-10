@@ -16,6 +16,17 @@ interface TableData {
   readonly rows: Row[];
   /** colunas que vieram nos dados (as calculadas não estão aqui) */
   readonly physical: Set<string>;
+  /**
+   * Colunas que existem no arquivo e foram **deixadas de fora de propósito** — a
+   * projeção de `docs/DECISAO-DESEMPENHO.md`.
+   *
+   * Guardar isto não muda cálculo nenhum: muda a **mensagem** de quem pedir uma
+   * delas. "não veio nos dados, o dataset do teste está incompleto" manda a próxima
+   * pessoa procurar no lugar errado; "foi omitida pela projeção, e é por isto" manda
+   * ela para a linha que decide. É a diferença entre um erro que ensina e um que
+   * atrapalha, e é o que torna a projeção uma coisa segura de ligar.
+   */
+  readonly omitidas: Set<string>;
 }
 
 export class Dataset {
@@ -44,7 +55,7 @@ export class Dataset {
       }
       return out;
     });
-    this.tables.set(key, { name, rows: copiadas, physical });
+    this.tables.set(key, { name, rows: copiadas, physical, omitidas: new Set() });
   }
 
   /**
@@ -64,7 +75,7 @@ export class Dataset {
    * porque cada chave distinta só é normalizada uma vez; as repetições são busca em
    * `Set` sobre a mesma string.
    */
-  adotaTabela(name: string, rows: Row[]): void {
+  adotaTabela(name: string, rows: Row[], omitidas: Iterable<string> = []): void {
     const key = normalizeName(name);
     if (this.tables.has(key)) {
       throw new DaxEvalError(`Tabela já registrada no dataset: ${name}`);
@@ -84,11 +95,21 @@ export class Dataset {
         physical.add(col);
       }
     }
-    this.tables.set(key, { name, rows, physical });
+    this.tables.set(key, {
+      name,
+      rows,
+      physical,
+      omitidas: new Set([...omitidas].map(normalizeName)),
+    });
   }
 
   hasTable(name: string): boolean {
     return this.tables.has(normalizeName(name));
+  }
+
+  /** A coluna existe no arquivo e ficou de fora da carga de propósito? */
+  omitida(table: string, column: string): boolean {
+    return this.tables.get(normalizeName(table))?.omitidas.has(normalizeName(column)) ?? false;
   }
 
   /** Linhas físicas da tabela. Erra alto se a tabela não foi carregada. */

@@ -257,6 +257,14 @@ function chavesNormalizadas(cab: CabecalhoDeSnapshot, onde: string): string[] {
  */
 export async function le(
   arquivo: string,
+  /**
+   * Colunas a **não** carregar, em nome normalizado. O valor ainda é lido do disco
+   * — ele está no meio da linha —, mas não vira propriedade de objeto, que é onde
+   * mora o custo: são 1,46 milhão de linhas. Quem decide a lista é
+   * `colunas-usadas.ts`; o cabeçalho devolvido continua descrevendo o arquivo
+   * inteiro, para quem precisa saber o que ficou de fora.
+   */
+  omitir?: ReadonlySet<string>,
 ): Promise<{ cabecalho: CabecalhoDeSnapshot; linhas: Record<string, Escalar>[] }> {
   const rl = readline.createInterface({
     input: fs.createReadStream(arquivo, { encoding: 'utf8' }),
@@ -267,6 +275,8 @@ export async function le(
   const linhas: Record<string, Escalar>[] = [];
   /** Chave normalizada de cada coluna, na ordem do cabeçalho. Calculada uma vez. */
   let chaves: string[] = [];
+  /** Índices que entram na linha — as omitidas já saíram daqui. */
+  let entram: number[] = [];
   let n = 0;
 
   for await (const texto of rl) {
@@ -274,12 +284,13 @@ export async function le(
     if (cabecalho === null) {
       cabecalho = confereFormato(JSON.parse(texto) as CabecalhoDeSnapshot, arquivo);
       chaves = chavesNormalizadas(cabecalho, arquivo);
+      entram = chaves.map((_, i) => i).filter((i) => !omitir?.has(chaves[i]!));
       continue;
     }
     n++;
     const valores = JSON.parse(texto) as unknown[];
     const linha: Record<string, Escalar> = {};
-    for (let i = 0; i < cabecalho.colunas.length; i++) {
+    for (const i of entram) {
       linha[chaves[i]!] = decodifica(valores[i], cabecalho.colunas[i]!.tipo, `${arquivo}:${n}`);
     }
     linhas.push(linha);

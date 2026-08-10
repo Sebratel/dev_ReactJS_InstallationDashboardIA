@@ -283,6 +283,15 @@ export class Evaluator {
       throw new DaxEvalError(`Coluna não existe no modelo: '${table}'[${column}]`);
     }
     if (!col.calculated || !col.dax) {
+      if (this.dataset.omitida(table, column)) {
+        throw new DaxEvalError(
+          `Coluna '${table}'[${column}] existe no snapshot mas foi **omitida da carga** ` +
+            `pela projeção de colunas (docs/DECISAO-DESEMPENHO.md). Isto é um erro alto ` +
+            `de propósito: a alternativa seria BLANK calado. Se a página precisa dela, ` +
+            `o cálculo de 'packages/snapshot/src/colunas-usadas.ts' não a alcançou — ` +
+            `veja por qual das cinco arestas ela deveria ter entrado.`,
+        );
+      }
       throw new DaxEvalError(
         `Coluna '${table}'[${column}] existe no modelo mas não veio nos dados ` +
           `e não é calculada — o dataset do teste está incompleto.`,

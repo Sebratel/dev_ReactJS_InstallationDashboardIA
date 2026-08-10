@@ -33,7 +33,8 @@ import { normalizeName as normaliza, type SemanticModel } from '../../semantic-m
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
-import { le, shaDeDax, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
+import { colunasUsadas, omissiveis } from './colunas-usadas.ts';
+import { le, leCabecalho, shaDeDax, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
 
@@ -48,6 +49,14 @@ export interface CarregaOptions {
    * — um resultado que muda à meia-noite não é conferível.
    */
   now: Date;
+  /**
+   * Projetar colunas? Padrão `true`.
+   *
+   * `false` carrega o arquivo inteiro, e existe para uma coisa só: comparar o
+   * mesmo cálculo com e sem projeção. É o interruptor honesto que o teste de
+   * diferencial precisa — o mesmo papel que `MINIMO_PARA_INDEXAR` faz no índice.
+   */
+  projetar?: boolean;
 }
 
 export interface Carregado {
@@ -63,6 +72,14 @@ export interface Carregado {
    * `aplicaTiposDeclarados`.
    */
   convertidas: string[];
+  /**
+   * As colunas que a projeção deixou fora da carga, como `'TABELA'[coluna]`.
+   *
+   * Sai no resultado pelo mesmo motivo de `convertidas`: é a outra coisa que o
+   * carregamento faz e que **muda o que o avaliador enxerga**. Carga que omite sem
+   * dizer é indistinguível de bug; esta lista é o que a torna auditável.
+   */
+  omitidas: string[];
   /** A materialização mais antiga entre as tabelas usadas — a idade do dado. */
   dadoDe: string | null;
   ms: number;
@@ -99,19 +116,36 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     );
   }
 
+  // As colunas que estas páginas alcançam. Tudo que sobra é candidato a não entrar
+  // na memória — ver `colunas-usadas.ts` e `docs/DECISAO-DESEMPENHO.md`.
+  const usadas = opts.projetar === false ? null : colunasUsadas(opts.dashboards, opts.model);
+  const omitidas: string[] = [];
+
   const convertidas: string[] = [];
   for (const t of plano.tabelas) {
     if (t.query === null) continue;
-    const { cabecalho, linhas } = await le(arquivoDaQuery(opts.dir, t.query));
+    const arquivo = arquivoDaQuery(opts.dir, t.query);
+    const fora = usadas === null
+      ? []
+      : omissiveis(t.nome, leCabecalho(arquivo).colunas.map((c) => c.nome), usadas, opts.model);
+    for (const c of fora) omitidas.push(`'${t.nome}'[${c}]`);
+
+    const { cabecalho, linhas } = await le(arquivo, new Set(fora));
     conferaColunasCalculadas(opts.model.table(t.nome)!, cabecalho, t.query, opts.dir);
-    convertidas.push(...aplicaTiposDeclarados(opts.model.table(t.nome)!, cabecalho, linhas));
+    // `fora` também aqui, e não é detalhe: sem ele a conversão de tipo escreveria
+    // `linha[chave] = aplicaTipo(col, null)` na coluna omitida e a **traria de
+    // volta**, agora valendo BLANK em todas as linhas. Seria a projeção produzindo
+    // exatamente o número errado silencioso que ela promete não produzir.
+    convertidas.push(
+      ...aplicaTiposDeclarados(opts.model.table(t.nome)!, cabecalho, linhas, new Set(fora)),
+    );
     // **Adotar, não copiar.** `addTable` remonta objeto por objeto para normalizar o
     // nome das colunas — trabalho que em `field-agenda` são 1,46 milhão de linhas
     // reconstruídas campo a campo, e um segundo exemplar delas vivo até o GC passar,
     // numa máquina de 16 GB. `le` já devolve chave normalizada, então não há o que
     // normalizar: a cópia era pura perda. Se algum dia deixar de ser verdade,
     // `adotaTabela` erra alto nomeando a chave — não devolve BLANK calado.
-    dataset.adotaTabela(t.nome, linhas as never);
+    dataset.adotaTabela(t.nome, linhas as never, fora);
     linhasPorTabela.set(t.nome, linhas.length);
     datas.push(cabecalho.geradoEm);
   }
@@ -133,6 +167,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     plano,
     linhasPorTabela,
     convertidas,
+    omitidas,
     dadoDe: datas.sort()[0] ?? null,
     ms: Date.now() - inicio,
   };
@@ -174,6 +209,8 @@ function aplicaTiposDeclarados(
   t: ModelTable,
   cabecalho: CabecalhoDeSnapshot,
   linhas: Record<string, Escalar>[],
+  /** Colunas que não foram carregadas. Converter uma delas a ressuscitaria como BLANK. */
+  omitidas: ReadonlySet<string> = new Set(),
 ): string[] {
   const doDisco = new Map(cabecalho.colunas.map((c) => [normaliza(c.nome), c]));
   const converter: { chave: string; col: (typeof t.columns)[number] }[] = [];
@@ -185,7 +222,7 @@ function aplicaTiposDeclarados(
       .filter((x): x is string => !!x)
       .map(normaliza)
       .find((k) => doDisco.has(k));
-    if (chave === undefined) continue;
+    if (chave === undefined || omitidas.has(chave)) continue;
     const emDisco = doDisco.get(chave)!;
     // `vazia` é coluna só de nulos: não há o que converter.
     if (emDisco.tipo === 'vazia' || emDisco.tipo === ESPERADO[col.type]) continue;
