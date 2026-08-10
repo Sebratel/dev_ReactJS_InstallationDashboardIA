@@ -7,6 +7,17 @@
 # Quando o número DEVE dar diferente porque a gente decidiu assim, ponha o id da
 # entrada de `specs/_catalog/divergencias.yaml` em `divergente:`. Aí bater vira
 # falha — é o que impede uma divergência de ficar só no papel.
+#
+# AS SEIS MARCAS `divergente:` DESTE ARQUIVO foram derivadas, não escolhidas a dedo:
+# são os cards cuja medida alcança `'CALENDARIO INSTALADO'[PESO]`, direta ou através de
+# outra medida. O PESO mudou em 10/08/2026 (sábado e domingo passam a valer 0,5), então
+# estes números TÊM de diferir do Power BI antigo.
+#
+# `#DIAS_ÚTEIS_TRABALHADOS` soma o PESO direto. `# BACKLOG` chega lá por dois saltos,
+# via `# MEDIA INSTALADO BACKLOG`. Se algum deles acabar batendo com o Power BI, o
+# harness acusa "deveria divergir e não diverge" — isso é um pedido de atenção, não
+# necessariamente um bug: pode ser que a mudança de peso não mova aquele número
+# específico depois do arredondamento.
 
 pagina: relatorio-do-mes
 conferido_em: null
@@ -17,9 +28,11 @@ cards:
   - visual: 00bd510021a87cd1dad3
     rotulo: "MÉDIA REALIZADOS (MÊS ATUAL)"
     powerbi: null   # <-- o número que aparece na tela
+    divergente: peso-instalado-fim-de-semana
   - visual: 20d23554c9b205376057
     rotulo: "DIAS TRABALHADOS NO MÊS"
     powerbi: null   # <-- o número que aparece na tela
+    divergente: peso-instalado-fim-de-semana
   - visual: 28b2fed3696b956b1a98
     rotulo: "META DO MÊS"
     powerbi: null   # <-- o número que aparece na tela
@@ -29,6 +42,7 @@ cards:
   - visual: 46f466fa464ba5d15e47
     rotulo: "PROJEÇÃO (MÉDIA REALIZADA)"
     powerbi: null   # <-- o número que aparece na tela
+    divergente: peso-instalado-fim-de-semana
   - visual: 472098e3faec67cae276
     rotulo: "MÉDIA AGENDADA (MÊS ATUAL)"
     powerbi: null   # <-- o número que aparece na tela
@@ -41,18 +55,21 @@ cards:
   - visual: 95fe1259eb997b10b7dd
     rotulo: "MÉDIA REALIZADO BACKLOG"
     powerbi: null   # <-- o número que aparece na tela
+    divergente: peso-instalado-fim-de-semana
   - visual: 9a7d36ddcbde8ec5135d
     rotulo: "Data mais recente"
     powerbi: null   # <-- o número que aparece na tela
   - visual: bbc6684676e273565d65
     rotulo: "DIAS ÚTEIS RESTANTES NO MÊS"
     powerbi: null   # <-- o número que aparece na tela
+    divergente: peso-instalado-fim-de-semana
   - visual: d914bdf23072848ca977
     rotulo: "PROTOCOLOS TOTAIS REALIZADOS"
     powerbi: null   # <-- o número que aparece na tela
   - visual: dcc3106272278ce25a49
     rotulo: "BACKLOG AGENDADO"
     powerbi: null   # <-- o número que aparece na tela
+    divergente: peso-instalado-fim-de-semana
   - visual: e76f02844be92ab07edc
     rotulo: "Hora mais recente"
     powerbi: null   # <-- o número que aparece na tela
