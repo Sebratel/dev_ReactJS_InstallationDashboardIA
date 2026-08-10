@@ -164,72 +164,76 @@ git rev-list --count HEAD          # 63 no momento em que este arquivo foi escri
 git rev-parse --verify origin/main # falha: o ref não existe
 ```
 
-### 5.2 As 14 páginas calculam. Uma leva 104 minutos.
+### 5.2 As 14 páginas calculam. `agendamento-field` foi o problema do dia 10/08.
 
 Nenhuma página está parada por falta de dado: `field-agenda` materializou
-(1.458.244 linhas, 950 MB, `--timeout=1800`) e `clima-tempo` também (achado #42,
-1.638 linhas). O índice de igualdade (#44) destravou o resto.
+(1.466.202 linhas, 1,06 GB, `--timeout=1800`) e `clima-tempo` também (achado #42,
+1.638 linhas). As outras treze somam 96 visuais em 84 s.
 
-`agendamento-field` **termina** — 21 de 21 visuais, 0 erros, pela primeira vez — mas:
+**A régua mudou em 10/08/2026** — leia `docs/DECISAO-DESEMPENHO.md` (regra 9) antes de
+mexer aqui. O alvo é **abrir em menos de 2 s a frio**, e o refresh não tem teto.
 
-| | |
-|---|---|
-| carga | **25,6 s** |
-| **cálculo** | **104 minutos** |
+**O que foi feito, na ordem em que a medição mandou:**
 
-As outras treze somam 96 visuais em 84 s. Enquanto for assim, **não rode
-`npm run paginas` sem `--pagina=`**: a lista das 13 está na seção 7.
+| # | o quê | efeito medido |
+|---|---|---|
+| #46 | achar o dono dos 104 min: `RankAtualProtocolo`, 90% | — |
+| #47 | coluna calculada **congela no snapshot**, com guarda de `sha256` | tira o rank do caminho da tela |
+| #48 | materialização adota a tabela em vez de copiá-la | o heap parava de estourar |
+| #49 | **a carga** também copiava | a cópia custava 337 ms contra 332 ms de ler o arquivo |
+| #50 | o índice devolvia BLANK sobre coluna calculada | 5 medidas desta página estavam nesse caminho |
+| #52 | projeção derivada de colunas | **45 de 107** colunas não viram memória |
+| #52 | `Relato` sob demanda | 9 de 26 colunas fora de `FIELD AGENDA`; ~350 MB |
 
-**O que já foi feito, para não refazer.** O índice de igualdade
-(`packages/measure-engine/src/indice.ts`) cobre as três formas caras —
-`CALCULATE(x, 'T'[c]=v)`, `FILTER('T', 'T'[c]=v && …)` e
-`CALCULATE(MAX(…), FILTER(…))`. Ele funciona: mediu 635× na reprodução sintética e
-tirou a carga desta página de "nunca vista terminar" para 25,6 s.
+**O tempo final ainda não tem número confiável**, e o motivo é uma lição:
+três medições de 10/08 foram perdidas por **execuções concorrentes de `npm run paginas`
+na mesma máquina** — ver §7. Rode uma de cada vez, e confira com
+`Get-CimInstance Win32_Process -Filter "Name='node.exe'"` antes de começar.
 
-**O que sobra, e por onde começar.** As 7 colunas calculadas de `FIELD AGENDA`
-materializam **sob demanda**, e quem as toca são os visuais — por isso o custo saiu
-da carga e apareceu no cálculo. Duas delas varrem `FIELD AGENDA` por linha de
-`FIELD AGENDA`:
+**O instrumento para a próxima rodada já existe:** `npm run paginas -- --visuais`
+lista o custo de cada visual, do maior para o menor. Use-o **antes** de otimizar
+qualquer coisa; os 104 minutos eram 90% de um lugar só, e cada hipótese testada às
+cegas custou uma hora de relógio.
 
+**O que sobra, se ainda não couber no orçamento:** agregar `FIELD AGENDA` ao grão
+`(protocolo, slot agenda)` — 1.458.244 linhas viram **30.252**, 48× menos. É o passo 4
+da `DECISAO-DESEMPENHO.md`, o maior ganho que resta e também o mais delicado: exige
+saber, visual por visual, qual mede slot e qual mede relato. O Erick sugeriu fazer isso
+no **SQL**, e ele está certo — o Postgres agrupa 1,46 milhão de linhas em segundos, e
+aí nem se trafega nem se materializa o que vai ser jogado fora.
+
+### 5.3 Paridade — o harness existe; faltam os números
+
+**É o único passo que não dá para fazer sozinho.** 117 visuais calcularem quer dizer
+que a conta *termina*, não que o número é o mesmo da tela.
+
+O harness está pronto desde 10/08:
+
+```bash
+npm run paridade                              # confere tudo que tem gabarito
+npm run paridade -- --pagina=visao-geral
+npm run paridade -- --esqueleto=<pagina>      # gera o gabarito em branco
 ```
-RankDataProtocolo  = … DISTINCT(SELECTCOLUMNS(FILTER('FIELD AGENDA',
-                       'FIELD AGENDA'[protocolo] = ProtocoloAtual), …))
-RankAtualProtocolo = CALCULATE(MAX('FIELD AGENDA'[RankDataProtocolo]),
-                       FILTER('FIELD AGENDA', 'FIELD AGENDA'[protocolo] = ProtocoloAtual))
-```
 
-**Já medido (achado #46): não é visual nenhum, é uma coluna.**
+`specs/paridade/*.yaml` tem **11 páginas e 64 cards** esperando número. Abra a página no
+Power BI e escreva o valor em `powerbi:`. Só card, de propósito: card é um número sem
+agrupamento nem paginação, então ditar o valor é inequívoco.
 
-| coluna calculada de `FIELD AGENDA` | µs/linha |
-|---|---|
-| **`RankAtualProtocolo`** | **697** — ~90% do total |
-| `RankDataProtocolo` | 77 |
-| as outras cinco | 2 a 25 |
+**Depois da regra 9 o trabalho dele mudou de nome:** não é provar que é *idêntico* ao
+Power BI, é provar que é o **pretendido**. Um card marcado `divergente: <id>` **tem** de
+diferir — bater ali vira falha, e é o que impede uma decisão de ficar só no papel. Os 6
+cards de `relatorio-do-mes` que dependem do `PESO` já estão marcados.
 
-O custo é **linear** nas fatias medidas, o que confirma que o índice do #44 pegou:
-sem ele estas duas seriam quadráticas. O que sobrou é **custo constante por
-chamada** — `filterFromTable` monta chave de linha sobre as **26 colunas** de
-`FIELD AGENDA`, ~3.000 a 4.000 composições de chave por linha da tabela.
+Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 
-**A decisão vem antes da próxima otimização**, e está aberta em
-`docs/PERGUNTAS-NEGOCIO.md` #8: essas duas colunas são *rank por protocolo*, e o
-Power BI as calcula **no refresh, uma vez**. Materializá-las no snapshot tira os 104
-minutos do caminho da tela — nenhuma otimização de avaliador chega perto, porque o
-problema não é a velocidade do cálculo, é o **momento** dele. Em troca, o snapshot
-deixa de ser "a camada M em disco" e vira "o dataset materializado".
-
-### 5.3 Paridade — depende de alguém abrir o Power BI
-
-**Este é o próximo grande passo, e é o único que não dá para fazer sozinho.** 64
-visuais calcularem quer dizer que a conta *termina*; não que o número é o mesmo.
-
-Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam do Erick na frente da
-tela:
-
-- **#6 / #6b** — card `CLIENTES` dá 466 aqui e 558 no relatório.
-- **#7** — o rótulo do eixo de datas: `2026 janeiro` ou `janeiro`?
-- **#1** — sábado conta como dia útil no cálculo?
-- O `rowCount` de **6 tabelas**, a conferir contra a tela.
+- **#6 / #6b** — card `CLIENTES` dá 466 aqui e 558 no relatório. *(Erick, na tela.)*
+- **#7** — rótulo do eixo de datas: `2026 janeiro` ou `janeiro`? *(Erick, na tela.)*
+- **#2 / #4 / #5** — limpeza e `categoria4`/`categoria5`. *(Fabrício.)*
+- **`# MEDIA CRIADOS`** — adiada pelo Erick em 10/08 ("como está no Power BI"). O
+  denominador conta sábado como **1,5** e o numerador exclui domingo; mudar exige as
+  duas pontas juntas. O mecanismo está pronto: é uma entrada em
+  `specs/_catalog/divergencias.yaml`.
+- **#1** — ✅ respondida e **implementada**: sábado e domingo valem 0,5.
 
 ---
 
@@ -279,6 +283,30 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
   pior resultado possível aqui.
 - **Conversão de tipo nunca é silenciosa.** `npm run paginas` lista as colunas
   convertidas. Se você acrescentar outra conversão, ela tem de aparecer em algum lugar.
+
+**Sobre medir**
+
+- **Uma medição de cada vez, e confira antes de começar.** Em 10/08/2026 **três**
+  medições de `agendamento-field` foram perdidas: duas porque havia outro
+  `npm run paginas` da mesma página rodando em paralelo — dois processos de 8 GB numa
+  máquina de 16 disputando tudo —, e uma porque eu matei o que achei ser duplicata.
+  Custou a manhã. Antes de medir:
+
+  ```powershell
+  Get-CimInstance Win32_Process -Filter "Name='node.exe'" | Select-Object ProcessId,CommandLine
+  ```
+
+  E olhe a **linha de comando**, não só o PID: os dois eram idênticos exceto por
+  `--max-old-space-size`, e foi só aí que ficou claro que um não era meu.
+- **`kill -0 <pid>` do Git Bash mente sobre PID do Windows.** MSYS tem espaço de PID
+  próprio, então o watcher deu "processo terminou" com o processo vivo. Use
+  `Get-Process -Id <pid> -ErrorAction SilentlyContinue`.
+- **Saída canalizada para `tail` só aparece no fim.** Um `npm run paginas | tail -60`
+  em segundo plano fica 45 minutos sem escrever nada, e não dá para saber se avançou.
+  Redirecione para arquivo (`> arquivo 2>&1`) e leia o arquivo.
+- **Antes de otimizar, rode `npm run paginas -- --visuais`.** Ele lista o custo de cada
+  visual, do maior para o menor. Os 104 minutos do #46 eram 90% de um lugar só, e cada
+  hipótese testada sem esse número custou uma hora.
 
 **Sobre o ambiente**
 
