@@ -34,6 +34,7 @@ import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
 import { colunasUsadas, omissiveis, sobDemandaLiberada } from './colunas-usadas.ts';
+import { arquivoDaCalculada, shaDaCalculada } from './tabelas-calculadas.ts';
 import { le, leCabecalho, shaDeDax, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
@@ -66,6 +67,15 @@ export interface CarregaOptions {
    * mostra, em vez de trazer todo o texto livre da base de volta por um clique.
    */
   liberaSobDemanda?: readonly string[];
+  /**
+   * Ler tabela calculada de disco quando houver arquivo? Padrão `true`.
+   *
+   * `false` força o cálculo a partir do DAX, e existe para duas coisas: o programa que
+   * **grava** esses arquivos (senão ele leria o que deveria produzir) e o teste
+   * diferencial, que compara ler contra calcular. É o mesmo interruptor honesto de
+   * `projetar`.
+   */
+  lerCalculadas?: boolean;
 }
 
 export interface Carregado {
@@ -89,6 +99,14 @@ export interface Carregado {
    * dizer é indistinguível de bug; esta lista é o que a torna auditável.
    */
   omitidas: string[];
+  /**
+   * Tabelas calculadas que vieram **de disco** em vez de serem recalculadas.
+   *
+   * Como `convertidas` e `omitidas`: o que o carregamento faz de diferente tem de ser
+   * dizível. Uma tabela congelada é um valor que o avaliador não desconfia, e saber
+   * quais são é o que separa "rápido" de "misteriosamente rápido".
+   */
+  congeladas: string[];
   /** A materialização mais antiga entre as tabelas usadas — a idade do dado. */
   dadoDe: string | null;
   ms: number;
@@ -172,8 +190,24 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   // tabela calculada pode nascer de outra, e materializar fora de ordem daria
   // "não está no dataset" longe da causa.
   const noPlano = new Set(plano.calculadas.map(normaliza));
+  const congeladas: string[] = [];
   for (const t of calculatedTableOrder(opts.model)) {
     if (!noPlano.has(normaliza(t.name))) continue;
+
+    // Congelada em disco? Então não recalcula. Foram ~21 dos ~25 minutos de
+    // `agendamento-field` (ACHADOS #53): quatro colunas calculadas desta tabela,
+    // recalculadas a cada abertura de página. O Power BI as calcula no refresh.
+    const arq = arquivoDaCalculada(opts.dir, t.name);
+    if (opts.lerCalculadas !== false && fs.existsSync(arq)) {
+      const { cabecalho, linhas } = await le(arq);
+      confereTabelaCalculada(t, cabecalho, opts.dir);
+      dataset.adotaTabela(t.name, linhas as never);
+      linhasPorTabela.set(t.name, linhas.length);
+      datas.push(cabecalho.geradoEm);
+      congeladas.push(t.name);
+      continue;
+    }
+
     const m = materializeCalculatedTable(ev, t);
     linhasPorTabela.set(t.name, m.rowCount);
   }
@@ -184,6 +218,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     linhasPorTabela,
     convertidas,
     omitidas,
+    congeladas,
     dadoDe: datas.sort()[0] ?? null,
     ms: Date.now() - inicio,
   };
@@ -302,5 +337,40 @@ function conferaColunasCalculadas(
           `Rode: npm run snapshot -- --query=${query}`,
       );
     }
+  }
+}
+
+/**
+ * Confere que a tabela calculada em disco ainda corresponde ao DAX de hoje.
+ *
+ * **É o guarda que torna congelar tabela calculada uma coisa segura de fazer**, e é o
+ * do ACHADOS #47 um nível acima. Lá, o `sha256` cobria o DAX de uma coluna; aqui cobre
+ * o corpo da tabela **e** o de todas as colunas calculadas dela, porque mudar o corpo
+ * muda quais linhas existem — e um valor de coluna gravado contra as linhas antigas não
+ * tem como ser aproveitado.
+ *
+ * Erra alto em vez de recalcular calado. Recalcular seria defensável se fosse barato, e
+ * não é: são os ~21 minutos do #53 reaparecendo no meio de uma carga que deveria levar
+ * segundos, sem ninguém entender por quê.
+ */
+function confereTabelaCalculada(
+  t: ModelTable,
+  cabecalho: CabecalhoDeSnapshot,
+  dir: string,
+): void {
+  const comando = `npm run snapshot:calculadas -- --tabela=${t.name}`;
+  if (cabecalho.tabelaSha === undefined) {
+    throw new Error(
+      `${arquivoDaCalculada(dir, t.name)} não declara 'tabelaSha' — ele não foi gravado ` +
+        `como tabela calculada, ou é de um formato anterior. Rode: ${comando}`,
+    );
+  }
+  const agora = shaDaCalculada(t);
+  if (agora !== cabecalho.tabelaSha) {
+    throw new Error(
+      `Snapshot desatualizado: a definição de '${t.name}' mudou desde a materialização ` +
+        `(${cabecalho.tabelaSha} -> ${agora}). As linhas em disco são as do DAX antigo — ` +
+        `da tabela ou de alguma coluna calculada dela. Rode: ${comando}`,
+    );
   }
 }

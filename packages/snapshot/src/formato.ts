@@ -85,6 +85,16 @@ export interface CabecalhoDeSnapshot {
   colunas: ColunaDeSnapshot[];
   /** ISO UTC. É a "data do dado" que a tela precisa mostrar. */
   geradoEm: string;
+  /**
+   * `sha256` da definição inteira de uma **tabela calculada** — o DAX das linhas mais
+   * o de cada coluna calculada. Ausente em arquivo de query.
+   *
+   * Presente, ele torna o arquivo verificável: se o DAX mudou desde a materialização,
+   * as linhas em disco são as do DAX antigo e o carregamento **erra alto** em vez de
+   * servi-las. É o guarda do ACHADOS #47 um nível acima — lá era por coluna, aqui é a
+   * tabela toda, porque mudar o corpo dela muda **quais linhas existem**.
+   */
+  tabelaSha?: string;
 }
 
 /** Etiquetas de valor em coluna `misto`. Uma letra para não engordar o arquivo. */

@@ -29,6 +29,7 @@
     "probe:datahub": "node tools/probe/src/datahub.ts",
     "probe:gsheets": "node tools/probe/src/gsheets.ts",
     "snapshot": "node tools/snapshot/src/index.ts",
+    "snapshot:calculadas": "node --max-old-space-size=8192 tools/snapshot/src/calculadas.ts",
     "test:snapshot": "node --test packages/snapshot/test/*.test.ts",
     "api": "node apps/api/src/index.ts",
     "test:api": "node --test apps/api/test/*.test.ts",
