@@ -129,6 +129,13 @@ td.sem { color: var(--sem-dado); }
   border-radius: 10px; padding: 10px 12px; font-size: .74rem; white-space: pre-wrap;
 }
 .vazio-pagina { color: var(--muted); padding: 40px; text-align: center; }
+
+/* Visual sob demanda: existe, custa caro, e o botão é o que o traz. O botão é o
+   `primario` que já existe — um segundo estilo de botão seria o começo de duas
+   linguagens visuais na mesma tela. Só o estado desabilitado faltava. */
+.sob-demanda { color: var(--muted); padding: 24px; text-align: center; }
+.sob-demanda p { margin: 0 0 16px; max-width: 60ch; margin-inline: auto; }
+button.primario:disabled { background: var(--sem-dado); border-color: var(--sem-dado); cursor: default; transform: none; }
 @media (max-width: 640px) { .titulo, .sub { display: none; } }
 </style>
 </head>
@@ -338,6 +345,51 @@ function rotuloDe(v) {
   return v.tipo + ' · ' + v.id.slice(0, 8);
 }
 
+/**
+ * O visual que a página não trouxe, e o botão que o traz.
+ *
+ * O texto diz **por que** está vazio, e não só que está: "sob demanda" sem explicação
+ * parece defeito. Quem clicar espera, porque o pedido carrega a coluna cara — então o
+ * botão avisa antes, e troca para "carregando…" enquanto acontece.
+ */
+function desenhaSobDemanda(pagina, v) {
+  const corpo = el('div', { class: 'sob-demanda' });
+  const botao = el('button', { class: 'primario', texto: 'Carregar' });
+
+  corpo.append(
+    el('p', { texto: `Este visual usa ${v.sobDemanda.join(', ')}, que fica fora da abertura da página por ser grande demais para carregar sempre.` }),
+    botao,
+  );
+
+  botao.addEventListener('click', async () => {
+    botao.disabled = true;
+    botao.textContent = 'carregando…';
+    try {
+      const resp = await fetch(
+        `/api/dashboards/${encodeURIComponent(pagina)}?visual=${encodeURIComponent(v.id)}`,
+      );
+      const p = await resp.json();
+      if (!resp.ok) throw new Error(p.erro || `HTTP ${resp.status}`);
+      const pronto = (p.visuais || []).find((x) => x.id === v.id);
+      if (!pronto) throw new Error('a resposta não trouxe este visual');
+      if (pronto.erro) throw new Error(pronto.erro);
+
+      const desenho =
+        pronto.conteudo === 'tabela' ? desenhaTabela(pronto)
+        : pronto.conteudo === 'matriz' ? desenhaMatriz(pronto)
+        : pronto.conteudo === 'grafico' ? desenhaGrafico(pronto)
+        : pronto.conteudo === 'card' ? desenhaCard(pronto)
+        : null;
+      if (!desenho) throw new Error(`conteúdo '${pronto.conteudo}' não desenha aqui`);
+      corpo.replaceChildren(desenho);
+    } catch (err) {
+      corpo.replaceChildren(el('div', { class: 'erro', texto: String(err.message || err) }));
+    }
+  });
+
+  return cartao(rotuloDe(v), 'sob demanda', corpo, true);
+}
+
 // ----------------------------------------------------------------- página
 
 async function carregaLista() {
@@ -376,6 +428,14 @@ async function desenhaPagina(id) {
   for (const v of p.visuais) {
     if (v.erro) {
       blocos.push(cartao(rotuloDe(v), 'não calculou', el('div', { class: 'erro', texto: v.erro }), true));
+      continue;
+    }
+    // Visual sob demanda: a página não o calculou de propósito, porque uma coluna
+    // dele é cara demais para entrar em toda abertura. Sem este bloco ele
+    // simplesmente sumiria da tela — e some é pior que caro: ninguém sabe que
+    // existe. Ver specs/_catalog/projecao.yaml.
+    if (v.sobDemanda) {
+      blocos.push(desenhaSobDemanda(id, v));
       continue;
     }
     if (v.conteudo === 'card') kpis.append(desenhaCard(v));
