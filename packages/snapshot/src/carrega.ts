@@ -105,7 +105,13 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     const { cabecalho, linhas } = await le(arquivoDaQuery(opts.dir, t.query));
     conferaColunasCalculadas(opts.model.table(t.nome)!, cabecalho, t.query, opts.dir);
     convertidas.push(...aplicaTiposDeclarados(opts.model.table(t.nome)!, cabecalho, linhas));
-    dataset.addTable(t.nome, linhas);
+    // **Adotar, não copiar.** `addTable` remonta objeto por objeto para normalizar o
+    // nome das colunas — trabalho que em `field-agenda` são 1,46 milhão de linhas
+    // reconstruídas campo a campo, e um segundo exemplar delas vivo até o GC passar,
+    // numa máquina de 16 GB. `le` já devolve chave normalizada, então não há o que
+    // normalizar: a cópia era pura perda. Se algum dia deixar de ser verdade,
+    // `adotaTabela` erra alto nomeando a chave — não devolve BLANK calado.
+    dataset.adotaTabela(t.nome, linhas as never);
     linhasPorTabela.set(t.nome, linhas.length);
     datas.push(cabecalho.geradoEm);
   }

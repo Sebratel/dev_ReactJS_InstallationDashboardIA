@@ -130,6 +130,32 @@ test('formato de versão desconhecida erra alto e manda regerar', async () => {
   await assert.rejects(() => le(arq), /formato de snapshot 2/);
 });
 
+// ---------------------------------------------------------------------------
+// Chave normalizada na leitura
+// ---------------------------------------------------------------------------
+
+/**
+ * **`materializaColunas` grava sob o nome de exibição.** `'FIELD AGENDA'[Status SLA]`
+ * vai para o cabeçalho assim, com maiúscula e espaço, enquanto toda coluna física
+ * vem normalizada de `toDatasetRows`. Quem consome as linhas é o `Dataset`, que só
+ * acha coluna por chave normalizada — e `adotaTabela` recusa o resto. Normalizar aqui
+ * é o que deixa o carregamento adotar em vez de copiar 1,46 milhão de linhas.
+ */
+test('a leitura normaliza a chave — coluna calculada vem com nome de exibição', async () => {
+  const r = await volta(['Status SLA', 'protocolo'], [{ 'Status SLA': 'No prazo', protocolo: 'P1' }]);
+  assert.deepEqual(Object.keys(r.linhas[0]!), ['status sla', 'protocolo']);
+  assert.equal(r.linhas[0]!['status sla'], 'No prazo');
+  // O cabeçalho preserva o nome de exibição: é o que a tela e o guarda de sha usam.
+  assert.equal(r.cabecalho.colunas[0]!.nome, 'Status SLA');
+});
+
+test('duas colunas que normalizam para a mesma chave erram alto, nomeando as duas', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl');
+  await escreve(arq, CAB, ['Turno', 'turno'], [{ Turno: 'Manhã', turno: 'Tarde' }]);
+  await assert.rejects(() => le(arq), /'Turno' e 'turno'.*mesma chave 'turno'/s);
+});
+
 test('leCabecalho não lê as linhas', async () => {
   const dir = tmp();
   const arq = path.join(dir, 'q.jsonl');

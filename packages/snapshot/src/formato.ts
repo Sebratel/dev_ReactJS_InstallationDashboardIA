@@ -29,6 +29,10 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import readline from 'node:readline';
 import { pipeline } from 'node:stream/promises';
+// Importado, não reescrito: `normalizeName` é uma linha, e duas cópias de uma
+// linha é exatamente o tipo de coisa que diverge sem ninguém notar. O que o
+// `Dataset` considera "normalizado" tem de ser o que esta leitura produz.
+import { normalizeName } from '../../semantic-model/src/model.ts';
 
 /** Escalar que a camada M entrega (`toDatasetRows`) e o `Dataset` aceita. */
 export type Escalar = number | string | boolean | Date | null;
@@ -216,8 +220,40 @@ function confereFormato(cab: CabecalhoDeSnapshot, onde: string): CabecalhoDeSnap
 }
 
 /**
- * Lê a tabela inteira. Devolve as linhas como o `Dataset` as espera — chaves já
- * são os nomes normalizados que `toDatasetRows` gravou.
+ * As chaves normalizadas do cabeçalho, conferindo que não colidem.
+ *
+ * Duas colunas que normalizam para a mesma chave — `Data` e `data`, ou `Turno` e
+ * ` turno ` — fariam a segunda sobrescrever a primeira em toda linha, e o relatório
+ * serviria a coluna errada **sem erro nenhum**. É a classe de falha que este projeto
+ * não aceita, então erra alto aqui, onde ainda dá para nomear as duas.
+ */
+function chavesNormalizadas(cab: CabecalhoDeSnapshot, onde: string): string[] {
+  const chaves = cab.colunas.map((c) => normalizeName(c.nome));
+  const vistas = new Map<string, string>();
+  for (let i = 0; i < chaves.length; i++) {
+    const anterior = vistas.get(chaves[i]!);
+    if (anterior !== undefined) {
+      throw new Error(
+        `${onde}: as colunas '${anterior}' e '${cab.colunas[i]!.nome}' normalizam para ` +
+          `a mesma chave '${chaves[i]}'. Uma sobrescreveria a outra em toda linha.`,
+      );
+    }
+    vistas.set(chaves[i]!, cab.colunas[i]!.nome);
+  }
+  return chaves;
+}
+
+/**
+ * Lê a tabela inteira. Devolve as linhas como o `Dataset` as espera: **chave
+ * normalizada**, sempre.
+ *
+ * **Por que normalizar aqui, e não confiar no arquivo.** Até a materialização de
+ * coluna calculada (ACHADOS #47), toda chave vinha de `toDatasetRows` e já chegava
+ * normalizada — esta função só repassava. `materializaColunas` grava a coluna sob o
+ * **nome de exibição** (`Status SLA`), então o cabeçalho passou a misturar os dois
+ * estilos. Normalizar na leitura é o único ponto em que dá para consertar isso sem
+ * invalidar arquivo já gravado, e é o que permite ao carregamento **adotar** as
+ * linhas em vez de copiá-las — `adotaTabela` exige chave normalizada.
  */
 export async function le(
   arquivo: string,
@@ -229,20 +265,22 @@ export async function le(
 
   let cabecalho: CabecalhoDeSnapshot | null = null;
   const linhas: Record<string, Escalar>[] = [];
+  /** Chave normalizada de cada coluna, na ordem do cabeçalho. Calculada uma vez. */
+  let chaves: string[] = [];
   let n = 0;
 
   for await (const texto of rl) {
     if (texto === '') continue;
     if (cabecalho === null) {
       cabecalho = confereFormato(JSON.parse(texto) as CabecalhoDeSnapshot, arquivo);
+      chaves = chavesNormalizadas(cabecalho, arquivo);
       continue;
     }
     n++;
     const valores = JSON.parse(texto) as unknown[];
     const linha: Record<string, Escalar> = {};
     for (let i = 0; i < cabecalho.colunas.length; i++) {
-      const c = cabecalho.colunas[i]!;
-      linha[c.nome] = decodifica(valores[i], c.tipo, `${arquivo}:${n}`);
+      linha[chaves[i]!] = decodifica(valores[i], cabecalho.colunas[i]!.tipo, `${arquivo}:${n}`);
     }
     linhas.push(linha);
   }

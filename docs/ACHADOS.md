@@ -2843,3 +2843,151 @@ barata porque cada chave distinta é normalizada uma vez e as repetições são 
 módulo quando ela foi escrita. Se ele estourar o heap, a próxima execução já vai com
 a adoção; se não estourar, a correção continua valendo, porque a cópia era perda em
 qualquer cenário.
+
+---
+
+## #49 — A **carga** também copiava, e a cópia custa o mesmo que ler o arquivo
+
+O achado #48 tirou a cópia da **materialização** (`npm run snapshot`, uma vez por
+refresh). Ficou de fora o caminho que roda a cada processo que serve a página:
+`carrega.ts` também chamava `Dataset.addTable`, e pelo mesmo motivo de sempre —
+normalizar o nome das colunas. Só que `le()` devolve as linhas prontas: as chaves já
+vêm normalizadas de `toDatasetRows`. A cópia normalizava o que já estava normalizado.
+
+### O número
+
+Medido em 10/08/2026 sobre `snapshot/contratos.jsonl` — 86.501 linhas, 23 colunas.
+Tabela pequena de propósito: a máquina tem 16 GB e havia um `--refazer` de
+`field-agenda` rodando com 5 GB.
+
+| | |
+|---|---|
+| `le()` — ler e decodificar o arquivo | 332 ms |
+| `addTable` — só a cópia | **337 ms** |
+| `adotaTabela` — só a conferência | **46 ms** |
+| Heap extra que a cópia segurava | **128 MB** |
+
+**A cópia custava mais que ler o arquivo do disco.** Não "um pouco a mais na conta":
+dobrava o custo da carga.
+
+Extrapolando para `field-agenda` — 1.458.244 linhas, ~26 colunas, 16,9x mais linha —
+são ~6 s dos 25,6 s de carga e ~2,4 GB de heap, gastos para reconstruir objeto por
+objeto um dado que já estava do jeito certo.
+
+### O que mudou, e a armadilha que apareceu no meio
+
+Duas linhas, uma delas inesperada:
+
+1. `carrega.ts` passa a **adotar** as linhas.
+2. `le()` passa a **normalizar a chave** ao montar a linha.
+
+A segunda não estava no plano. `le()` documentava que devolvia chave normalizada, e
+isso deixou de ser verdade no achado #47: `materializaColunas` grava a coluna
+calculada sob o **nome de exibição** (`Status SLA`, com maiúscula e espaço), então o
+cabeçalho passou a misturar os dois estilos. `adotaTabela` teria recusado o arquivo —
+errando alto, como projetada. Consertar na leitura, e não na escrita, é o que permitiu
+fazer isso **sem invalidar arquivo já gravado**, inclusive o `--refazer` que estava em
+voo naquele momento.
+
+Normalizar cria uma colisão possível que antes não existia: duas colunas cujos nomes
+só diferem em caixa ou espaço passariam a ser a mesma chave, e a segunda sobrescreveria
+a primeira em toda linha — número errado, sem erro. `chavesNormalizadas` confere isso
+uma vez, no cabeçalho, e erra alto nomeando as duas colunas.
+
+### Estado
+
+972 testes, 2 novos. Falta a medida que importa: a carga de `field-agenda` de ponta a
+ponta, que só dá para fazer quando o `--refazer` terminar.
+
+---
+
+## #50 — O índice de igualdade devolvia BLANK sobre coluna calculada, e só em tabela grande
+
+**Encontrado indo verificar outra coisa.** A `DECISAO-DESEMPENHO.md` autoriza deixar
+coluna fora da carga, e eu fui conferir se o avaliador erra alto quando alguém pede uma
+coluna que não veio. Erra: `columnValue` tem a mensagem certa. Mas `columnValue` não é o
+único caminho que lê uma linha — o **índice de igualdade** do #44 lê `row[coluna]`
+direto, para ser rápido. E `row[coluna] ?? null` não distingue duas coisas
+completamente diferentes:
+
+- a coluna está na linha e **vale BLANK**;
+- a coluna **não está na linha**.
+
+Coluna calculada não está na linha até alguém pedi-la: o avaliador a memoiza sob
+demanda, e é isso que torna o custo dela proporcional ao uso. Indexar antes disso jogava
+**a tabela inteira** no balde do branco. Aí `candidatos("baixo")` procurava o balde de
+`"baixo"`, não achava, e devolvia lista vazia — e como quem chama só aplica o predicado
+**aos candidatos**, o predicado nunca rodava, a coluna nunca era materializada, e o
+número saía BLANK.
+
+### O mínimo reproduzível
+
+1.500 linhas, coluna calculada `grupo = IF([valor] < 50, "baixo", "alto")`:
+
+| | `CALCULATE(COUNTROWS('T'), 'T'[grupo] = "baixo")` |
+|---|---|
+| 1.500 linhas (com índice) | **BLANK** |
+| 999 linhas (sem índice) | 529 — certo |
+| 1.500 linhas, depois da correção | **795** — certo |
+
+**O gatilho é `MINIMO_PARA_INDEXAR`.** Abaixo de 1.000 linhas não há índice e a conta sai
+certa; acima, sai BLANK. Isto é a definição de um erro que nenhum teste com dado
+sintético pega e que só existe contra a base real — que é a razão de o #44 ter sido
+escrito quase todo em guardas, e de faltar justamente este.
+
+### Quantas medidas reais estavam nesse caminho
+
+Varrendo as expressões do modelo atrás de `'T'[coluna calculada] = <valor>`:
+
+```
+[ATINGIDO] 'FIELD AGENDA'[RankAtualProtocolo]    (1.458.244 linhas)  [QtdProtocolosPorRankAtual]
+[ATINGIDO] 'FIELD AGENDA'[Turno]                 (1.458.244 linhas)  [Protocolos Manhã]
+[ATINGIDO] 'FIELD AGENDA'[Turno]                 (1.458.244 linhas)  [Protocolos Tarde]
+[ATINGIDO] 'FIELD AGENDA'[CategoriaProdutividade](1.458.244 linhas)  [##Qtd Improdutivo]
+[ATINGIDO] 'FIELD AGENDA'[CategoriaProdutividade](1.458.244 linhas)  [##Qtd Sem Ação]
+'CALENDARIO CRIADO'[data_vigente]                (abaixo do mínimo)  [& DIAS VIGENTES …] x2
+```
+
+**Cinco medidas de `agendamento-field`, todas sobre a tabela de 1,46 milhão de linhas.**
+Se cada uma de fato saiu BLANK na tela depende da ordem de avaliação da página — um
+visual anterior que tivesse lido `[Turno]` linha a linha já teria memoizado a coluna e o
+índice acertaria. Não foi conferido visual a visual: o `--refazer` estava rodando, e a
+correção não depende dessa resposta.
+
+**O #47 mascara três delas a partir de agora, por acidente.** `Turno`,
+`CategoriaProdutividade` e `RankAtualProtocolo` passaram a ser materializadas **no
+arquivo**, então chegam presentes em toda linha e o índice as trata bem. Isso não conserta
+nada: qualquer coluna calculada que dependa de outra tabela continua nascendo sob demanda,
+e cairia no mesmo buraco. A correção é no índice.
+
+### A correção
+
+`in`, não `?? null`. Se a coluna falta em **qualquer** linha, o índice se declara
+inutilizável e `candidatos()` devolve `null` — o quarto guarda do arquivo. `null` nunca é
+erro: quem chama varre, a varredura passa por `columnValue`, e aí acontece a coisa certa
+nos dois casos — coluna calculada é materializada, coluna que não veio na carga **erra
+alto**. É esse guarda que autoriza a projeção de colunas da `DECISAO-DESEMPENHO.md`.
+
+Sai na primeira linha faltante, então o caso ruim custa O(1) e o caso bom custa um `in`
+por linha.
+
+### Os outros lugares que leem a linha direto — conferidos, e limpos
+
+`columnValue` é o caminho seguro, mas não é o único que toca uma linha. Os outros três
+foram testados com a mesma coluna calculada, e **nenhum tem o problema**:
+
+| onde | lê | veredito |
+|---|---|---|
+| `evaluator.ts` `resolveNameRef` | `if (key in row)` e senão `columnValue` | já usava `in` — correto |
+| `filter.ts` `rowKey` (via `filterFromTable`) | `row[c] ?? null` | as linhas chegam de `ALL`/`VALUES`, que passam por `columnValue` e materializam antes |
+| `evaluator.ts` `expr IN <tabela>` | `row[coluna] ?? BLANK` | idem |
+
+Medido: `ALL`, `VALUES`, `FILTER(ALL(col))`, `IN {…}`, `IN VALUES` e `DISTINCTCOUNT`
+sobre a coluna calculada dão o número certo com 1.500 linhas e com 999. O buraco era do
+índice, e só dele — porque o índice é o único que substitui a varredura em vez de
+preceder uma.
+
+### Estado
+
+975 testes, 3 novos. Mutação conferida: apagar `if (!this.completo) return null;` derruba
+os 3, e só eles.

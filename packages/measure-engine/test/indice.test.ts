@@ -220,6 +220,79 @@ test('diferencial: coluna com texto e número dá o MESMO erro com e sem índice
   );
 });
 
+// ─────────────────────────────────── coluna que não está em todas as linhas (#50)
+
+/** Como `monta`, mas `grupo` é **calculada** — não está nas linhas até alguém pedir. */
+function montaComCalculada(linhas: Row[]) {
+  const model = new SemanticModel();
+  model.addTable({
+    id: 't',
+    name: 'T',
+    queryRef: null,
+    columns: [
+      col('protocolo'),
+      col('valor'),
+      col('grupo', { calculated: true, dax: 'IF([valor] < 50, "baixo", "alto")' }),
+    ],
+  });
+  const dataset = new Dataset();
+  dataset.addTable('T', linhas);
+  return new Evaluator({ dataset, model, now: new Date(Date.UTC(2026, 7, 7)) });
+}
+
+/**
+ * **O achado #50, e o teste que o pega.**
+ *
+ * Coluna calculada nasce sob demanda: o avaliador a memoiza na linha na primeira vez
+ * que alguém a lê. Antes disso ela **não está na linha** — e `row[coluna] ?? null`
+ * não distinguia isso de BLANK, então o índice jogava as 1.500 linhas no balde do
+ * branco e `candidatos("baixo")` devolvia lista vazia. O `COUNTROWS` dava BLANK onde
+ * a resposta era 795.
+ *
+ * O gatilho é `MINIMO_PARA_INDEXAR`: abaixo de 1.000 linhas não há índice e a conta
+ * sai certa. Ou seja — o erro só aparecia contra a base real.
+ */
+test('diferencial: coluna CALCULADA dá o mesmo número com e sem índice', () => {
+  const n = MINIMO_PARA_INDEXAR + 500;
+  const linhas: Row[] = Array.from({ length: n }, (_, i) => ({
+    protocolo: `P${i % 50}`,
+    valor: i % 97,
+  }));
+  const esperado = linhas.filter((l) => (l.valor as number) < 50).length;
+
+  for (const dax of [
+    "CALCULATE(COUNTROWS('T'), 'T'[grupo] = \"baixo\")",
+    "COUNTROWS(FILTER('T', 'T'[grupo] = \"baixo\"))",
+  ]) {
+    assert.equal(montaComCalculada(linhas).evaluateExpression(dax), esperado, dax);
+  }
+});
+
+/**
+ * O outro lado do mesmo guarda: coluna que **ficou fora da carga** tem de errar alto.
+ *
+ * É o que autoriza a projeção de colunas de `DECISAO-DESEMPENHO.md` — sem isto, uma
+ * coluna omitida por engano viraria zero calado justamente nas tabelas grandes.
+ */
+test('coluna que não veio nos dados erra alto mesmo acima do mínimo de indexação', () => {
+  const linhas: Row[] = Array.from({ length: MINIMO_PARA_INDEXAR + 500 }, (_, i) => ({
+    protocolo: `P${i % 50}`,
+  }));
+  assert.throws(
+    () => monta(linhas).evaluateExpression("COUNTROWS(FILTER('T', 'T'[valor] = 3))"),
+    /não veio nos dados/,
+  );
+});
+
+test('candidatos() recusa quando a coluna falta em qualquer linha', () => {
+  const linhas: Row[] = tabela(3000, 10);
+  // Uma só linha sem a chave já basta: indexar as outras responderia menos.
+  delete linhas[1234]!.protocolo;
+  assert.equal(new IndiceDeIgualdade(linhas, 'protocolo').candidatos('P3'), null);
+  // A coluna íntegra continua respondendo.
+  assert.ok(new IndiceDeIgualdade(tabela(3000, 10), 'protocolo').candidatos('P3'));
+});
+
 test('diferencial: ALL sobre a chave indexada não muda a resposta', () => {
   // O perigo do #38 na forma nova: a igualdade derivada de `filterFromTable` não
   // pode fazer o caminho rápido sobreviver a uma substituição de filtro.

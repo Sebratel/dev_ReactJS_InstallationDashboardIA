@@ -26,12 +26,23 @@
 // aviso**, que é a única classe de erro que este projeto não pode cometer.
 //
 // Por isso `candidatos()` devolve `null` — "não sei responder, varra" — em vez de
-// arriscar, em três situações:
+// arriscar, em quatro situações:
 //
 //   1. o valor procurado é BLANK, `0` ou `""` (as bordas da coerção acima);
 //   2. a coluna tem valor de classe diferente da do procurado (texto vs. número),
 //      onde o DAX **lança erro** e o índice daria silêncio;
-//   3. a tabela é pequena, e varrer custa menos que inverter.
+//   3. a tabela é pequena, e varrer custa menos que inverter;
+//   4. a coluna **não está em todas as linhas**.
+//
+// O guarda (4) é o achado #50, e é o mais caro dos quatro em lição. O índice lia
+// `row[coluna] ?? null`, que não distingue "a coluna vale BLANK aqui" de "a coluna
+// não está nesta linha" — e coluna **calculada** não está na linha até alguém pedi-la
+// (o avaliador a memoriza sob demanda). Indexar antes disso jogava a tabela inteira
+// no balde do BLANK, e `CALCULATE(COUNTROWS('T'), 'T'[calculada] = "x")` devolvia
+// BLANK onde a resposta era 795 — só em tabela acima de `MINIMO_PARA_INDEXAR`, que
+// é dizer: só contra a base real, nunca no teste. Distinguir com `in` é uma linha; a
+// resposta certa a "não está em todas" é varrer, porque a varredura passa por
+// `columnValue`, que materializa a coluna calculada e erra alto na que não existe.
 //
 // Fora dessas, `identityKey` e `compareValues(_, _, false)` concordam: os dois
 // usam `toLocaleLowerCase('pt-BR')` para texto, e `serialFromDate`/0-1 para data e
@@ -70,11 +81,23 @@ export class IndiceDeIgualdade {
   private readonly baldes: Map<string, Row[]>;
   /** Classes que ocorrem na coluna. Decide se a busca é respondível. */
   private readonly classes: Set<ClasseDeValor>;
+  /**
+   * A coluna estava presente em **todas** as linhas? Ver o guarda (4) em
+   * `candidatos()`. Falso torna o índice inútil, de propósito.
+   */
+  private readonly completo: boolean;
 
   constructor(rows: readonly Row[], coluna: string) {
     this.baldes = new Map();
     this.classes = new Set();
+    let completo = true;
     for (const row of rows) {
+      // `in`, e não `?? null`: coluna calculada ainda não memoizada e coluna que
+      // ficou fora da carga são **ausentes**, não brancas. Ver o guarda (4).
+      if (!(coluna in row)) {
+        completo = false;
+        break;
+      }
       const v = row[coluna] ?? null;
       this.classes.add(classeDe(v));
       const k = identityKey(v);
@@ -82,6 +105,8 @@ export class IndiceDeIgualdade {
       if (balde) balde.push(row);
       else this.baldes.set(k, [row]);
     }
+    this.completo = completo;
+    if (!completo) this.baldes.clear();
   }
 
   /** Quantos valores distintos — só para medir e para teste. */
@@ -101,6 +126,9 @@ export class IndiceDeIgualdade {
    * de fora.
    */
   candidatos(valor: DaxValue): readonly Row[] | null {
+    // (4) A coluna não está em todas as linhas. Ver `completo`.
+    if (!this.completo) return null;
+
     const classe = classeDe(valor);
     // (1) BLANK casa com 0 e com "". Procurar BLANK, `0` ou `""` atravessa baldes
     // diferentes, e responder por um só perderia linha.

@@ -29,7 +29,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 957 testes, ~4 s, NENHUM precisa de credencial
+npm test          # 975 testes, ~4 s, NENHUM precisa de credencial
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -63,7 +63,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**957 testes verdes.** Nenhum precisa de credencial.
+**975 testes verdes.** Nenhum precisa de credencial.
 
 | camada | estado |
 |---|---|
@@ -133,7 +133,17 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 46 entradas.
+   registro; hoje tem 50 entradas.
+
+E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
+`docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
+
+9. **Velocidade acima de fidelidade ao Power BI.** "Bate com o Power BI" deixou de ser
+   a régua única. A régua é: número **certo e explicável**, tela **rápida** — abrir em
+   menos de 2 s a frio, menos de 300 ms a quente. Refresh não tem teto, e é para lá que
+   todo trabalho caro deve ir. Divergir do Power BI é permitido; divergir **em silêncio**
+   não. O que a decisão *não* autoriza está listado no documento, e a regra 4 continua
+   valendo inteira: coluna omitida da carga erra alto, nunca devolve BLANK calado.
 
 ---
 
@@ -144,7 +154,7 @@ E uma regra de método, que é a que mais rendeu:
 A conta `erickazambuja-Sebratel` **não tem permissão de escrita** no repositório da
 organização. O remoto está configurado
 (`git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git`), mas **não existe
-`origin/main`** e os **63 commits do repositório vivem só nesta máquina**. Não tente
+`origin/main`** e os **66 commits do repositório vivem só nesta máquina**. Não tente
 contornar — é permissão, não configuração.
 
 Confira com:
