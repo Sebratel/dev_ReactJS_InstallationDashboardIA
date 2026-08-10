@@ -110,8 +110,15 @@ Nenhuma das três era desperdício. A conta fecha em grão: 26.554 protocolos ×
 
 ## O plano, na ordem que a medição dita
 
-1. **`Relato` fora da carga** — 37% dos bytes, um só visual o exibe.
-2. **As 11 colunas físicas não usadas fora da carga** — com (1), 950 MB → ~250 MB.
+1. **`Relato` fora da carga** — ⚠️ **não feito, e agora se sabe por quê.** A derivação
+   de `colunas-usadas.ts` o **mantém**, e está certa: um `tableEx` da página o exibe
+   como campo. Tirá-lo não é otimização, é decisão de produto — ver
+   [O caso `Relato`](#o-caso-relato).
+2. **Colunas não usadas fora da carga** — ✅ **feito em 10/08/2026**
+   ([ACHADOS](./ACHADOS.md) #51 e o commit da projeção). Derivado, não escrito à mão:
+   **45 de 107 colunas** das tabelas de `agendamento-field` não viram memória —
+   8 de 26 em `FIELD AGENDA`, 29 de 63 em `PROTOCOLOS GERAL`, 5 de 8 em
+   `CAPACIDADE EQUIPE`. Pedir uma coluna omitida erra alto com mensagem própria.
 3. **`adotaTabela` no caminho de carga**, no lugar de `addTable` — ✅ **feito em
    10/08/2026** ([ACHADOS](./ACHADOS.md) #49). A carga copiava 1,46 milhão de linhas
    campo a campo só para normalizar nome de coluna que o arquivo já traz normalizado.
@@ -127,6 +134,22 @@ O passo 3 antes do 5 não é acaso, e a medição já mostrou por quê: metade d
 carga não era `JSON.parse` nenhum — era a cópia. Otimizar o formato do arquivo teria
 atacado a metade menor. Falta agora quebrar o que sobrou dos 25,6 s entre `JSON.parse`
 e conversão de tipo; é essa medida que decide se o passo 5 vale alguma coisa.
+
+## O caso `Relato`
+
+`'FIELD AGENDA'[Relato]` é **36,8% dos bytes** da maior tabela da base — ~350 MB — e
+a projeção de colunas **não** o descarta. A derivação está certa em mantê-lo: o campo
+está ligado a um `tableEx` da página, e coluna que um visual exibe é coluna que a
+página usa.
+
+Então a pergunta não é técnica. É esta: **uma tabela paginada que mostra texto de
+relato precisa dos 1,46 milhão de relatos em memória para mostrar as 50 linhas da
+primeira página?** Num relatório de Power BI, sim — o modelo é todo carregado. Numa
+aplicação, não: essa tabela busca sob demanda.
+
+Enquanto isso não for decidido, 350 MB são carregados para alimentar um visual entre
+39. É o maior item isolado que sobra, e ele depende de uma escolha de produto, não de
+uma otimização.
 
 ## O que muda no harness de paridade
 
