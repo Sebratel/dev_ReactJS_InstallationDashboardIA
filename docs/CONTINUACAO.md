@@ -29,7 +29,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1008 testes, ~4 s, NENHUM precisa de credencial
+npm test          # 1011 testes, ~4 s, NENHUM precisa de credencial
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -63,7 +63,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1008 testes verdes.** Nenhum precisa de credencial.
+**1011 testes verdes.** Nenhum precisa de credencial.
 
 | camada | estado |
 |---|---|
