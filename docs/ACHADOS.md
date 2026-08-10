@@ -3056,3 +3056,83 @@ seria adivinhar. Fica registrado no próprio `divergencias.yaml`, como pergunta 
 
 989 testes, 6 novos. Os três erros altos têm teste, e o teste do arquivo real falha se
 alguém apagar uma decisão sem reabrir a pergunta.
+
+---
+
+## #52 — A página carrega o que toca, e o `Relato` revelou o que "sob demanda" custa
+
+Dois passos da `DECISAO-DESEMPENHO.md`, e o segundo só existiu porque o primeiro
+esbarrou numa semântica do Power BI que eu não esperava.
+
+### A projeção derivada
+
+`FIELD AGENDA` tem 26 colunas; `agendamento-field` usa 17. `PROTOCOLOS GERAL` tem 63 e
+usa 34. Somando as tabelas da página: **45 de 107 colunas não viram memória**.
+
+A lista é **derivada**, e isso não é preciosismo. Uma lista de "colunas que a página
+usa" escrita à mão apodrece no primeiro `npm run extract` — alguém acrescenta um campo
+num visual e a lista não sabe. O conjunto sai do mesmo fechamento que `plano.ts` já faz
+para tabelas, por cinco arestas: campo de visual, filtro, DAX (medida, coluna calculada
+e tabela calculada), as duas pontas de cada relacionamento, e o `[X]` sem tabela —
+esse último marcado em **toda** tabela que tenha coluna com esse nome, porque só o
+avaliador sabe qual era, e só em tempo de execução.
+
+**O erro possível tem um lado só, e não é silencioso.** Omitir coluna que a página usa
+faz `columnValue` errar alto, e o índice de igualdade recusar responder (#50). Foi por
+isso que o #50 veio antes: sem ele, uma coluna omitida por engano viraria zero calado em
+tabela grande. Com ele, a projeção é segura de ligar.
+
+A armadilha mais discreta não estava na projeção, estava ao lado dela:
+`aplicaTiposDeclarados` percorre as colunas **do modelo** e escreve o valor convertido na
+linha. Sem excluir as omitidas, ela as **ressuscitaria valendo BLANK** — a projeção
+produzindo exatamente o número errado silencioso que promete não produzir. Tem guarda,
+tem teste e tem mutação.
+
+### O `Relato`, e por que "paginar e buscar" não funciona
+
+`'FIELD AGENDA'[Relato]` é **36,8% dos bytes** da maior tabela — ~350 MB de texto livre
+— e a derivação o **mantém**, corretamente: um `tableEx` da página o exibe.
+
+O plano era buscar o texto sob demanda, por linha, depois de paginar. **Não dá**, e o
+motivo é uma semântica do Power BI que o próprio `tabela.ts` já documentava sem que eu
+tivesse ligado os pontos:
+
+```
+visual 815c0959 (tableEx)
+   count  [Protocolo]
+   chave  [Protocolo]  [Data Relato]  [Descrição]
+   chave  [Relato]          ← campo sem agregação = CHAVE DE AGRUPAMENTO
+   chave  [ClassificacaoRelato]  [CategoriaProdutividade]
+```
+
+Um `tableEx` mostra as **combinações distintas** dos campos sem agregação. Formar os
+grupos exige o valor de `Relato` em todas as 1,46 milhão de linhas — e a paginação só
+existe **depois** do agrupamento. Paginar-e-buscar resolveria um problema que não é o
+que está ali.
+
+### O que sobrou é melhor, e é a diferença entre relatório e aplicação
+
+O visual não é calculado na abertura da página. Ele vira **sob demanda** — não erro — e
+os outros 38 seguem. `GET /api/dashboards/<id>?visual=<id>` libera as colunas que
+**aquele** visual amarra, e só elas.
+
+Três detalhes que decidem se isso funciona ou vira mentira:
+
+1. **A chave do cache inclui o que foi liberado.** Com cache por página, a primeira
+   pessoa a pedir os relatos deixaria os 350 MB residentes para todos os pedidos
+   seguintes, e a versão cara viraria a versão de todo mundo.
+2. **Liberar é explícito e por coluna.** Um booleano "carregue tudo" acabaria ligado em
+   algum script até virar o padrão de novo, calado.
+3. **Sob demanda vale para o que a tela mostra, não para o que a conta ignora.** Medida
+   que dependa de coluna omitida continua errando alto.
+
+`ClassificacaoRelato` não se perde: é coluna congelada no snapshot desde o #47, calculada
+no refresh a partir do `Relato`. Os cartões e gráficos que classificam relato funcionam
+com o texto fora da memória — o #47 pagou por este passo sem saber.
+
+### Estado
+
+1008 testes, 17 novos entre projeção, sob demanda e a rota. Em `FIELD AGENDA` saem
+**9 de 26** colunas. O efeito em tempo ainda não está medido: as três tentativas de hoje
+foram invalidadas por execuções concorrentes na mesma máquina (ver `CONTINUACAO` §7 — o
+aviso estava lá e eu demorei a segui-lo).

@@ -29,7 +29,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 989 testes, ~4 s, NENHUM precisa de credencial
+npm test          # 1008 testes, ~4 s, NENHUM precisa de credencial
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -63,7 +63,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**989 testes verdes.** Nenhum precisa de credencial.
+**1008 testes verdes.** Nenhum precisa de credencial.
 
 | camada | estado |
 |---|---|
@@ -133,7 +133,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 51 entradas.
+   registro; hoje tem 52 entradas.
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
