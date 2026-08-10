@@ -26,7 +26,13 @@
 import { extractRefs } from '../../semantic-model/src/refs.ts';
 import { normalizeName as normaliza, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { DashboardSpec, CampoSpec, FiltroSpec } from '../../widget-engine/src/spec.ts';
-export { leSobDemanda, sobDemandaDe, type SobDemanda } from '../../semantic-model/src/projecao.ts';
+export {
+  leSobDemanda,
+  rotuloDeColuna,
+  sobDemandaDe,
+  sobDemandaLiberada,
+  type SobDemanda,
+} from '../../semantic-model/src/projecao.ts';
 
 /** Nome de tabela normalizado → colunas normalizadas que a página precisa. */
 export type ColunasUsadas = Map<string, Set<string>>;

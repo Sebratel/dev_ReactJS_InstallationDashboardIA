@@ -246,3 +246,66 @@ test('caminho com .. não sai do diretório de estáticos', async () => {
     await s.fecha();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Visual sob demanda
+// ---------------------------------------------------------------------------
+
+/**
+ * **A rota que devolve o que a página deixou de trazer.**
+ *
+ * `specs/_catalog/projecao.yaml` tira `'FIELD AGENDA'[Relato]` da abertura de
+ * `agendamento-field` — 350 MB de texto livre para um visual entre 39. Sem um caminho
+ * para pedir aquele visual, a decisão não seria "sob demanda", seria "removido".
+ *
+ * Este teste não abre `agendamento-field` (precisaria de 1 GB de snapshot). Ele guarda
+ * o contrato da rota: visual inexistente dá 404, e o corpo diz o que ficou de fora.
+ */
+test('?visual= com id que não existe na página dá 404, não 500', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const r = await s.busca('/api/dashboards/capa?visual=nao-existe');
+    assert.equal(r.status, 404);
+    assert.match((await r.json() as { erro: string }).erro, /Visual 'nao-existe' não existe/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('?visual= calcula só aquele visual', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const inteira = await (await s.busca('/api/dashboards/capa')).json() as { visuais: { id: string }[] };
+    const alvo = inteira.visuais[0]!.id;
+
+    const uma = await (await s.busca(`/api/dashboards/capa?visual=${alvo}`)).json() as {
+      visuais: { id: string }[];
+    };
+    assert.equal(uma.visuais.length, 1);
+    assert.equal(uma.visuais[0]!.id, alvo);
+    assert.ok(inteira.visuais.length > 1, 'a página inteira tem mais de um visual');
+  } finally {
+    await s.fecha();
+  }
+});
+
+/**
+ * O corpo diz o que a projeção deixou de carregar.
+ *
+ * Sem isto, uma página com número faltando é indistinguível de uma página com bug: a
+ * tela não teria como saber se o visual está vazio porque não há dado ou porque a
+ * coluna não veio. A regra 9 permite divergir e proíbe divergir em silêncio — aqui a
+ * resposta HTTP é onde o "não em silêncio" acontece.
+ */
+test('a resposta declara as colunas que ficaram fora da carga', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const corpo = await (await s.busca('/api/dashboards/capa')).json() as { omitidas: string[] };
+    assert.ok(Array.isArray(corpo.omitidas), 'a resposta precisa declarar as omitidas');
+  } finally {
+    await s.fecha();
+  }
+});

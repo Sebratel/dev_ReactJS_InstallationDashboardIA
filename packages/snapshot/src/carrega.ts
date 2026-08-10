@@ -33,7 +33,7 @@ import { normalizeName as normaliza, type SemanticModel } from '../../semantic-m
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
-import { colunasUsadas, omissiveis, sobDemandaDe } from './colunas-usadas.ts';
+import { colunasUsadas, omissiveis, sobDemandaLiberada } from './colunas-usadas.ts';
 import { le, leCabecalho, shaDeDax, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
@@ -57,6 +57,15 @@ export interface CarregaOptions {
    * diferencial precisa — o mesmo papel que `MINIMO_PARA_INDEXAR` faz no índice.
    */
   projetar?: boolean;
+  /**
+   * Colunas sob demanda a **liberar** nesta carga, como `'TABELA'[coluna]`.
+   *
+   * É o outro lado de `specs/_catalog/projecao.yaml`: a coluna fica fora da abertura
+   * da página, e entra quando alguém pede o visual que depende dela. Liberar só o que
+   * foi pedido — e não tudo — é o que mantém o pedido caro proporcional ao que ele
+   * mostra, em vez de trazer todo o texto livre da base de volta por um clique.
+   */
+  liberaSobDemanda?: readonly string[];
 }
 
 export interface Carregado {
@@ -120,6 +129,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   // na memória — ver `colunas-usadas.ts` e `docs/DECISAO-DESEMPENHO.md`.
   const usadas = opts.projetar === false ? null : colunasUsadas(opts.dashboards, opts.model);
   const omitidas: string[] = [];
+  const liberadas = new Set((opts.liberaSobDemanda ?? []).map((r) => normaliza(r)));
 
   const convertidas: string[] = [];
   for (const t of plano.tabelas) {
@@ -132,7 +142,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
           leCabecalho(arquivo).colunas.map((c) => c.nome),
           usadas,
           opts.model,
-          sobDemandaDe(t.nome, opts.model.sobDemanda),
+          sobDemandaLiberada(t.nome, opts.model.sobDemanda, liberadas),
         );
     for (const c of fora) omitidas.push(`'${t.nome}'[${c}]`);
 

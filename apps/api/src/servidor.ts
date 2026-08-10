@@ -22,7 +22,8 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
+import { normalizeName, SemanticModel } from '../../../packages/semantic-model/src/model.ts';
+import { rotuloDeColuna } from '../../../packages/semantic-model/src/projecao.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
 import { leManifesto, maisAntigo } from '../../../packages/snapshot/src/manifesto.ts';
@@ -141,9 +142,20 @@ export class Servidor {
     const de = inteiro(url.searchParams.get('de'), 0, 0, Number.MAX_SAFE_INTEGER);
     const linhas = inteiro(url.searchParams.get('linhas'), LINHAS_PADRAO, 1, LINHAS_MAXIMO);
 
+    // `?visual=<id>` — o pedido de um visual **sob demanda**. Ver
+    // `specs/_catalog/projecao.yaml`: a página abre sem as colunas caras, e este é o
+    // caminho por onde elas entram, uma de cada vez e só para quem pediu.
+    const soVisual = url.searchParams.get('visual');
+    if (soVisual !== null && !(dash.visuals ?? []).some((v) => v.id === soVisual)) {
+      responde(res, 404, {
+        erro: `Visual '${soVisual}' não existe na página '${id}'.`,
+      });
+      return;
+    }
+
     let carregado: Carregado;
     try {
-      carregado = await this.carrega(dash);
+      carregado = await this.carrega(dash, soVisual);
     } catch (err) {
       // Snapshot faltando é o erro esperado, e a mensagem de `carrega` já traz o
       // comando. 409: o pedido está certo, o estado do servidor é que não está.
@@ -151,10 +163,17 @@ export class Servidor {
       return;
     }
 
-    const pagina: PaginaCalculada = calculaPagina(dash, carregado.ev, { de, linhas });
+    // Com `?visual=`, calcula só ele: o pedido sob demanda existe para mostrar uma
+    // tabela cara, não para recalcular os outros 38 visuais que a página já mostrou.
+    const alvo: DashboardSpec = soVisual === null
+      ? dash
+      : { ...dash, visuals: (dash.visuals ?? []).filter((v) => v.id === soVisual) };
+
+    const pagina: PaginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas });
     responde(res, 200, {
       ...pagina,
       dadoDe: carregado.dadoDe,
+      omitidas: carregado.omitidas,
       tabelas: [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n })),
     });
   }
@@ -180,21 +199,60 @@ export class Servidor {
 
   // ------------------------------------------------------------------ apoio
 
-  private carrega(dash: DashboardSpec): Promise<Carregado> {
-    const pronto = this.carregadas.get(dash.id);
+  /**
+   * O avaliador de uma página, cacheado.
+   *
+   * **A chave do cache inclui o que foi liberado**, e isso é o que impede a versão
+   * cara de virar a versão de todo mundo: pedir `?visual=` da tabela de relatos carrega
+   * um segundo dataset, com o texto livre dentro, sob outra chave. Quem abrir a página
+   * depois continua recebendo a leve. Um cache por página só devolveria a última
+   * carregada, e a primeira pessoa a pedir os relatos deixaria os 350 MB residentes
+   * para todos os pedidos seguintes — exatamente o que a decisão evita.
+   */
+  private carrega(dash: DashboardSpec, soVisual: string | null = null): Promise<Carregado> {
+    const libera = soVisual === null ? [] : this.sobDemandaDoVisual(dash, soVisual);
+    const chave = libera.length === 0 ? dash.id : `${dash.id} ${[...libera].sort().join(',')}`;
+
+    const pronto = this.carregadas.get(chave);
     if (pronto) return pronto;
     const promessa = carrega({
       dir: this.opts.snapshotDir,
       model: this.model,
       dashboards: [dash],
       now: this.opts.agora(),
+      liberaSobDemanda: libera,
     }).catch((err: unknown) => {
       // Falhou: sai do cache, senão o erro fica grudado até reiniciar o processo.
-      this.carregadas.delete(dash.id);
+      this.carregadas.delete(chave);
       throw err;
     });
-    this.carregadas.set(dash.id, promessa);
+    this.carregadas.set(chave, promessa);
     return promessa;
+  }
+
+  /**
+   * As colunas sob demanda que **este** visual amarra — e só elas.
+   *
+   * Pedir um visual não libera o texto livre da base inteira: libera as colunas que
+   * aquele visual mostra. É o que mantém o custo do pedido proporcional ao que ele
+   * entrega.
+   */
+  private sobDemandaDoVisual(dash: DashboardSpec, visualId: string): string[] {
+    const v = (dash.visuals ?? []).find((x) => x.id === visualId);
+    if (!v) return [];
+    const declaradas = new Map(
+      this.model.sobDemanda.map((s) => [
+        normalizeName(rotuloDeColuna(s.tabela, s.coluna)),
+        rotuloDeColuna(s.tabela, s.coluna),
+      ]),
+    );
+    const fora = new Set<string>();
+    for (const c of v.fields ?? []) {
+      if (c.kind === 'measure' || !c.entity || !c.property) continue;
+      const r = declaradas.get(normalizeName(rotuloDeColuna(c.entity, c.property)));
+      if (r) fora.add(r);
+    }
+    return [...fora];
   }
 
   private queriesDe(dash: DashboardSpec): string[] {
