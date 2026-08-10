@@ -1,0 +1,64 @@
+# MANTIDO POR HUMANOS — gabarito de paridade.
+#
+# Abra a página no Power BI e escreva em `powerbi:` o número que aparece em cada
+# card. `null` significa "ainda não conferido", e o programa diz isso em vez de
+# fingir que passou.
+#
+# Quando o número DEVE dar diferente porque a gente decidiu assim, ponha o id da
+# entrada de `specs/_catalog/divergencias.yaml` em `divergente:`. Aí bater vira
+# falha — é o que impede uma divergência de ficar só no papel.
+
+pagina: relatorio-do-mes
+conferido_em: null
+por: null
+tolerancia: 0.005
+
+cards:
+  - visual: 00bd510021a87cd1dad3
+    rotulo: "MÉDIA REALIZADOS (MÊS ATUAL)"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 20d23554c9b205376057
+    rotulo: "DIAS TRABALHADOS NO MÊS"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 28b2fed3696b956b1a98
+    rotulo: "META DO MÊS"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 35c35445066c73fc984d
+    rotulo: "TOTAL MÊS ATIVO FIBRA"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 46f466fa464ba5d15e47
+    rotulo: "PROJEÇÃO (MÉDIA REALIZADA)"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 472098e3faec67cae276
+    rotulo: "MÉDIA AGENDADA (MÊS ATUAL)"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 8769f73484f79cbacc84
+    rotulo: "RESTANTES"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 923a9ae0662ca27f433c
+    rotulo: "AGENDADOS"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 95fe1259eb997b10b7dd
+    rotulo: "MÉDIA REALIZADO BACKLOG"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 9a7d36ddcbde8ec5135d
+    rotulo: "Data mais recente"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: bbc6684676e273565d65
+    rotulo: "DIAS ÚTEIS RESTANTES NO MÊS"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: d914bdf23072848ca977
+    rotulo: "PROTOCOLOS TOTAIS REALIZADOS"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: dcc3106272278ce25a49
+    rotulo: "BACKLOG AGENDADO"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: e76f02844be92ab07edc
+    rotulo: "Hora mais recente"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: f4049560074482060335
+    rotulo: "MÉDIA GERADOS"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: f8d993576d24ed2ca01a
+    rotulo: "TOTAL GERADOS"
+    powerbi: null   # <-- o número que aparece na tela

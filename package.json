@@ -14,7 +14,7 @@
   },
   "scripts": {
     "extract": "node tools/extractor/src/index.mjs",
-    "test": "node --test tools/extractor/test/*.test.mjs tools/validate/test/*.test.ts packages/*/test/*.test.ts apps/*/test/*.test.ts",
+    "test": "node --test tools/extractor/test/*.test.mjs tools/validate/test/*.test.ts tools/paridade/test/*.test.ts packages/*/test/*.test.ts apps/*/test/*.test.ts",
     "test:extractor": "node --test tools/extractor/test/*.test.mjs",
     "test:engine": "node --test packages/query-engine/test/*.test.ts",
     "test:model": "node --test packages/semantic-model/test/*.test.ts",
@@ -32,7 +32,8 @@
     "test:snapshot": "node --test packages/snapshot/test/*.test.ts",
     "api": "node apps/api/src/index.ts",
     "test:api": "node --test apps/api/test/*.test.ts",
-    "paginas": "node --max-old-space-size=8192 tools/paginas/src/index.ts"
+    "paginas": "node --max-old-space-size=8192 tools/paginas/src/index.ts",
+    "paridade": "node tools/paridade/src/index.ts"
   },
   "dependencies": {
     "ioredis": "^6.0.0",

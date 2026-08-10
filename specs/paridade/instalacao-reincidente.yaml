@@ -1,0 +1,31 @@
+# MANTIDO POR HUMANOS — gabarito de paridade.
+#
+# Abra a página no Power BI e escreva em `powerbi:` o número que aparece em cada
+# card. `null` significa "ainda não conferido", e o programa diz isso em vez de
+# fingir que passou.
+#
+# Quando o número DEVE dar diferente porque a gente decidiu assim, ponha o id da
+# entrada de `specs/_catalog/divergencias.yaml` em `divergente:`. Aí bater vira
+# falha — é o que impede uma divergência de ficar só no papel.
+
+pagina: instalacao-reincidente
+conferido_em: null
+por: null
+tolerancia: 0.005
+
+cards:
+  - visual: 03b4bcd9157cec19d13e
+    rotulo: "Hora mais recente"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 1c15b278e5ca17bec2e8
+    rotulo: "Reincidentes"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 5e81bd24691c29217be8
+    rotulo: "Instalados"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: 6bed9d362974c6733761
+    rotulo: "% Reincidencia"
+    powerbi: null   # <-- o número que aparece na tela
+  - visual: e9f72a9a044c3d178fa1
+    rotulo: "Data mais recente"
+    powerbi: null   # <-- o número que aparece na tela
