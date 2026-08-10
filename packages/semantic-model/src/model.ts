@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import { aplicaDivergencias, leDivergencias, type Aplicada } from './divergencias.ts';
 import type { ModelColumn, ModelMeasure, ModelRelationship, ModelTable } from './types.ts';
 
 interface TableSpecFile {
@@ -70,6 +71,15 @@ function readYaml<T>(file: string): T {
 export class SemanticModel {
   readonly tables = new Map<string, ModelTable>();
   readonly relationships: ModelRelationship[] = [];
+  /**
+   * As divergências deliberadas em relação ao Power BI que foram aplicadas.
+   *
+   * Vazio em modelo montado à mão (teste). Existe para ser **relatado**: a regra 9
+   * permite divergir e proíbe divergir em silêncio, e é esta lista que o harness de
+   * paridade usa para separar "número diferente porque decidimos" de "número
+   * diferente porque erramos".
+   */
+  divergencias: Aplicada[] = [];
   /** Quantos relacionamentos de hierarquia automática de datas foram ignorados. */
   autoDateRelationshipsIgnored = 0;
 
@@ -140,6 +150,12 @@ export class SemanticModel {
         });
       }
     }
+
+    // Por último, de propósito: as divergências trocam DAX de objeto que só existe
+    // depois que tabelas e medidas entraram. Ver `divergencias.ts` — cada uma carrega
+    // o `sha256` do original, então uma extração que mude a fórmula do Power BI erra
+    // alto aqui em vez de ser silenciosamente sobrescrita.
+    model.divergencias = aplicaDivergencias(model, leDivergencias(specsDir));
 
     return model;
   }

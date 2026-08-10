@@ -2991,3 +2991,68 @@ preceder uma.
 
 975 testes, 3 novos. Mutação conferida: apagar `if (!this.completo) return null;` derruba
 os 3, e só eles.
+
+---
+
+## #51 — Onde mora uma divergência deliberada, e o guarda que a mantém honesta
+
+**A PERGUNTAS-NEGOCIO #1 ficou respondida e não implementada por dois dias**, e não
+por falta de resposta. O Fabrício respondeu em 08/08/2026: *"sábado conta como 0.5 e
+domingo 0,5 pois é equipe reduzida"*. O que faltava era **lugar**: as fórmulas moram em
+`specs/_catalog/{tables,measures}/`, que `npm run extract` sobrescreve (regra 2). Editar
+ali é escrever na areia; não editar é servir a conta que o negócio disse estar errada.
+
+`specs/_catalog/divergencias.yaml` é o lugar — mesmo padrão do `cache-policies.yaml`,
+que já resolvia isso para cache. Cada entrada substitui o DAX de uma coluna ou medida e
+declara a pergunta que a decidiu, a data, o porquê, e o `sha256` do DAX **original**.
+
+### O `original_sha` é a metade que importa
+
+Sem ele, isto seria uma bomba de efeito retardado: alguém corrige a fórmula no Power BI,
+o extrator traz a versão nova, e o arquivo a descarta **em silêncio** para continuar
+aplicando um remendo decidido contra outra fórmula — para sempre, e sem sinal nenhum. É
+o mesmo formato de estrago do #47, e a mesma resposta: comparar e errar alto.
+
+São três erros altos, e nenhum deles é zelo: o objeto que sumiu (a spec foi regenerada e
+mudou de nome), o objeto sem DAX (trocar fórmula de coluna física não significa nada), e
+o sha que não bate. Todos nomeiam a pergunta, para a próxima pessoa começar pela decisão
+e não pelo código.
+
+### O que mudou de número
+
+As duas colunas `PESO` do modelo **discordavam entre si**, o que já era sinal:
+
+| | feriado | domingo | sábado |
+|---|---|---|---|
+| `CALENDARIO INSTALADO[PESO]` (Power BI) | 0 | 0 | **1** |
+| `CALENDARIO CRIADO[PESO]` (Power BI) | 0 | **0** | 0,5 |
+| **Nossa regra, a partir de agora** | 0 | **0,5** | **0,5** |
+
+No `INSTALADO`, o `0.5` do sábado estava lá — comentado, com a nota *"Cerqueira afirmou
+que o sábado era 100% 19/05/2025"*. Aproveitei para trocar o `SWITCH` sobre
+`[DIA_SEMANA]`, que compara o **nome do dia em texto**, por `WEEKDAY(_, 2)`: o resultado
+deixa de depender do idioma da fonte.
+
+**Não** foi mexida a lista de feriados chumbada no DAX do `CRIADO` (2020, 2021 e
+2026-06-04, em vez da tabela `FERIADOS`). É o achado #7, é outro problema, e corrigir de
+carona seria esconder uma mudança dentro de outra.
+
+### O que ficou de fora, e por quê
+
+`'PROTOCOLOS GERAL'[# MEDIA CRIADOS]` é atingida pela mesma pergunta e **não** foi
+mexida. O DAX dela faz duas coisas que a resposta não cobre:
+
+- o denominador conta sábado como 1 (ele passa no filtro `WEEKDAY <> 7`) e **depois**
+  soma mais 0,5 por sábado — sábado vale **1,5**. Isso é claramente errado;
+- o **numerador** exclui domingo, então protocolo criado no domingo não conta. Mas a
+  regra nova diz que domingo é dia de equipe reduzida, não dia parado. Somar 0,5 no
+  denominador e manter o numerador excluindo domingo derruba a média por um motivo que
+  ninguém pediu.
+
+Consertar só o denominador deixaria a medida internamente incoerente, e escolher o resto
+seria adivinhar. Fica registrado no próprio `divergencias.yaml`, como pergunta aberta.
+
+### Estado
+
+989 testes, 6 novos. Os três erros altos têm teste, e o teste do arquivo real falha se
+alguém apagar uma decisão sem reabrir a pergunta.

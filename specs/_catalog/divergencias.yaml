@@ -1,0 +1,97 @@
+# MANTIDO POR HUMANOS — este arquivo NÃO é sobrescrito por `npm run extract`.
+#
+# Onde mora uma decisão de negócio que faz a plataforma **divergir de propósito** do
+# Power BI. É o outro lado da regra 9 do CONTINUACAO: divergir é permitido, divergir
+# em silêncio não.
+#
+# Cada entrada declara:
+#
+#   id            identificador curto, aparece na mensagem de erro e no relatório
+#   tipo          coluna | medida
+#   tabela        tabela do objeto (para medida, onde ela está declarada)
+#   objeto        nome da coluna ou da medida
+#   pergunta      a pergunta de docs/PERGUNTAS-NEGOCIO.md que decidiu
+#   decidido      AAAA-MM-DD
+#   porque        por que o Power BI está errado — em português, para quem vier depois
+#   original_sha  sha256 do DAX gerado que esta entrada substitui
+#   dax           o DAX que passa a valer
+#
+# `original_sha` não é burocracia: sem ele, alguém corrige a fórmula no Power BI, o
+# extrator traz a versão nova, e este arquivo a joga fora em silêncio para continuar
+# aplicando um remendo decidido contra outra fórmula. Com ele, a extração que mudar o
+# original **erra alto** e obriga a reler a decisão.
+#
+# Para recalcular um sha depois de conferir a mudança:
+#   node -e "import('./packages/semantic-model/src/divergencias.ts').then(m=>console.log(m.shaDeDax(process.argv[1])))" "<dax>"
+
+divergencias:
+  - id: peso-instalado-fim-de-semana
+    tipo: coluna
+    tabela: CALENDARIO INSTALADO
+    objeto: PESO
+    pergunta: PERGUNTAS-NEGOCIO#1
+    decidido: '2026-08-08'
+    porque: >
+      Fabrício: "sábado conta como 0.5 e domingo 0,5 pois é equipe reduzida". O DAX do
+      Power BI dava domingo 0 e sábado 1 — o 0,5 do sábado estava lá, comentado, com a
+      nota "Cerqueira afirmou que o sábado era 100% 19/05/2025". As duas pontas estão
+      erradas: domingo não é dia parado e sábado não é dia cheio. Trocado também o
+      SWITCH sobre [DIA_SEMANA], que compara o nome do dia em texto, por WEEKDAY(_, 2):
+      o resultado deixa de depender do idioma da fonte.
+    original_sha: 3d02c52af9b3657f
+    dax: |
+      VAR Feriado =
+          NOT(ISBLANK(LOOKUPVALUE(FERIADOS[Feriado], FERIADOS[Data], 'CALENDARIO INSTALADO'[DATA INSTALADO])))
+      VAR DiaDaSemana = WEEKDAY('CALENDARIO INSTALADO'[DATA INSTALADO], 2)
+      RETURN
+          IF(Feriado, 0,
+              IF(DiaDaSemana >= 6, 0.5, 1)
+          )
+
+  - id: peso-criado-domingo
+    tipo: coluna
+    tabela: CALENDARIO CRIADO
+    objeto: PESO
+    pergunta: PERGUNTAS-NEGOCIO#1
+    decidido: '2026-08-08'
+    porque: >
+      Mesma decisão da 'peso-instalado-fim-de-semana'. Aqui o sábado já valia 0,5 e só
+      o domingo estava zerado — as duas colunas PESO do modelo discordavam entre si, o
+      que por si só já era sinal de que uma estava errada. NÃO foi mexida a lista de
+      feriados chumbada no DAX (2020, 2021 e 2026-06-04, em vez da tabela FERIADOS):
+      isso é o ACHADOS #7, é outro problema, e corrigir de carona seria esconder uma
+      mudança dentro de outra.
+    original_sha: 68dba23b8a13d10a
+    dax: |
+      VAR DiaDaSemana = WEEKDAY('CALENDARIO CRIADO'[DATA CRIADO], 2)
+      VAR Feriados =
+          SWITCH(
+              TRUE(),
+              'CALENDARIO CRIADO'[DATA CRIADO] IN {DATE(2020,1,1), DATE(2020,4,10), DATE(2020,4,21), DATE(2020,5,1),
+                                    DATE(2020,9,7), DATE(2020,10,12), DATE(2020,11,2), DATE(2020,11,15),
+                                    DATE(2020,12,25), DATE(2021,1,1), DATE(2021,4,2), DATE(2021,4,21),
+                                    DATE(2021,5,1), DATE(2021,9,7), DATE(2021,10,12), DATE(2021,11,2),
+                                    DATE(2021,11,15), DATE(2021,12,25), DATE(2026,6,4)},
+              1,
+              0
+          )
+      RETURN
+          IF(Feriados = 1, 0,
+              IF(DiaDaSemana >= 6, 0.5, 1)
+          )
+
+# AINDA NÃO DECIDIDA — '# MEDIA CRIADOS' (PROTOCOLOS GERAL).
+#
+# A mesma pergunta #1 atinge esta medida, e aqui a resposta não basta. O DAX faz duas
+# coisas que a resposta não cobre:
+#
+#   - o denominador conta sábado como 1 (ele passa no filtro `WEEKDAY <> 7`) e depois
+#     soma mais 0,5 por sábado: sábado vale **1,5**. Isso é claramente errado, e a
+#     regra nova diz 0,5;
+#   - o **numerador** exclui domingo (`WEEKDAY <> 7`), ou seja, protocolo criado no
+#     domingo não conta. Mas a regra nova diz que domingo é dia de equipe reduzida, e
+#     não dia parado — se o domingo passa a somar 0,5 no denominador e continua fora
+#     do numerador, a média cai por um motivo que ninguém pediu.
+#
+# Trocar só o denominador deixaria a medida internamente incoerente. Falta o Erick ou
+# o Fabrício dizerem se protocolo criado no domingo entra na conta.
