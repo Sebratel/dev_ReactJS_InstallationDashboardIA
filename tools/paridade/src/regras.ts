@@ -28,6 +28,19 @@ export interface CardEsperado {
    * divergência de ser decidida, documentada, e nunca chegar ao número.
    */
   divergente?: string | null;
+  /**
+   * Motivo para **não** conferir este card. Preenchido, ele sai da conta.
+   *
+   * Existe por um caso concreto que é um terço do checklist: **22 dos 64 cards** são
+   * `Hora mais recente` / `Data mais recente`, o carimbo de quando o dado foi
+   * atualizado. Compará-los com um Power BI aberto em outro momento não mede paridade
+   * nenhuma — mede o relógio. Pedir 22 números sem sentido a quem está conferindo é o
+   * jeito mais rápido de fazer a pessoa desistir da conferência inteira.
+   *
+   * Exige motivo em texto, e não um booleano, para que "ignorado" nunca vire uma forma
+   * silenciosa de esconder um card que não bate.
+   */
+  ignorar?: string | null;
   observacao?: string | null;
 }
 
@@ -48,7 +61,8 @@ export type Veredito =
   | 'divergencia-confirmada'
   | 'divergencia-nao-aplicada'
   | 'sem-gabarito'
-  | 'nao-calculou';
+  | 'nao-calculou'
+  | 'ignorado';
 
 export interface Resultado {
   pagina: string;
@@ -77,6 +91,8 @@ export function confere(
   erro: string | undefined,
   tolerancia: number,
 ): { veredito: Veredito; delta?: number } {
+  // Antes de tudo: um card marcado para não conferir não vira erro nem pendência.
+  if (esperado.ignorar) return { veredito: 'ignorado' };
   if (erro !== undefined || obtido === null) return { veredito: 'nao-calculou' };
   if (esperado.powerbi === null || esperado.powerbi === undefined) {
     return { veredito: 'sem-gabarito' };

@@ -17,6 +17,10 @@ cards:
   - visual: 2b1d0cdb06764745d106
     rotulo: "Hora mais recente"
     powerbi: null   # <-- o número que aparece na tela
+    ignorar: >-
+      carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade
   - visual: d2b95fd070ee3e408a01
     rotulo: "Data mais recente"
     powerbi: null   # <-- o número que aparece na tela
+    ignorar: >-
+      carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade

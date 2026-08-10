@@ -41,12 +41,16 @@ cards:
   - visual: b277cbb3c0345505ddf8
     rotulo: "Data mais recente"
     powerbi: null   # <-- o número que aparece na tela
+    ignorar: >-
+      carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade
   - visual: bc889c6e5aab180b4e49
     rotulo: "% SOBRE O MÊS ATUAL"
     powerbi: null   # <-- o número que aparece na tela
   - visual: cacbda0fe3a81ece18c5
     rotulo: "Hora mais recente"
     powerbi: null   # <-- o número que aparece na tela
+    ignorar: >-
+      carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade
   - visual: df74c4fb0e50148b9851
     rotulo: "MÉDIA GERAL"
     powerbi: null   # <-- o número que aparece na tela

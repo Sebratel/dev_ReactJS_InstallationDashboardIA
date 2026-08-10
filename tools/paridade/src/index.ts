@@ -106,6 +106,10 @@ function esqueleto(dash: DashboardSpec): string {
     '# Quando o número DEVE dar diferente porque a gente decidiu assim, ponha o id da',
     '# entrada de `specs/_catalog/divergencias.yaml` em `divergente:`. Aí bater vira',
     '# falha — é o que impede uma divergência de ficar só no papel.',
+    '#',
+    '# `ignorar:` já vem preenchido nos cards de carimbo de refresh. Não os apague: eles',
+    '# ficam na lista para constar que existem, e fora da conta para não pedir número',
+    '# que não mede nada.',
     '',
     `pagina: ${dash.id}`,
     `conferido_em: null`,
@@ -129,6 +133,7 @@ const SIMBOLO: Record<Veredito, string> = {
   'divergencia-nao-aplicada': '!DIV!!',
   'sem-gabarito': '  ??  ',
   'nao-calculou': ' ERRO ',
+  ignorado: '  --  ',
 };
 
 async function principal(): Promise<number> {
@@ -248,6 +253,7 @@ async function principal(): Promise<number> {
   }
 
   for (const r of resultados) {
+    if (r.veredito === 'ignorado') continue;
     const delta = r.delta === undefined ? '' : ` (${(r.delta * 100).toFixed(2)}%)`;
     const nums = r.veredito === 'nao-calculou'
       ? (r.erro ?? 'sem número')
