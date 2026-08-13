@@ -76,6 +76,10 @@ interface Linha {
   convertidas: string[];
   /** Colunas deixadas fora da carga pela projeção. */
   omitidas: string[];
+  /** Conversões suprimidas para não quebrar um relacionamento. */
+  juncoesPreservadas: string[];
+  /** Tabelas calculadas congeladas que mesmo assim foram recalculadas, com o motivo. */
+  recalculadas: string[];
   /** Custo de cada visual, para `--visuais`. */
   visuais: { id: string; tipo: string; ms: number; nota: string }[];
 }
@@ -125,6 +129,8 @@ for (const dash of alvo as DashboardSpec[]) {
         .map((v) => ({ visual: v.id, tipo: v.tipo, erro: v.erro! })),
       convertidas: c.convertidas,
       omitidas: c.omitidas,
+      juncoesPreservadas: c.juncoesPreservadas,
+      recalculadas: c.recalculadas,
       visuais: p.visuais.map((v: VisualCalculado) => ({
         id: v.id, tipo: v.tipo, ms: v.ms,
         nota: v.erro ? 'erro' : v.semCalculo ?? '',
@@ -142,6 +148,8 @@ for (const dash of alvo as DashboardSpec[]) {
       falhas: [],
       convertidas: [],
       omitidas: [],
+      juncoesPreservadas: [],
+      recalculadas: [],
       visuais: [],
     });
     process.stderr.write('não carregou\n');
@@ -210,6 +218,23 @@ const convertidas = [...new Set(carregadas.flatMap((r) => r.convertidas))].sort(
 if (convertidas.length) {
   console.log(`\n── Colunas convertidas para o tipo declarado (${convertidas.length}) ──`);
   for (const c of convertidas) console.log(`  ${c}`);
+}
+
+// A conversão **não** feita também muda o dado — e pela mesma razão tem de aparecer.
+// É a regra do #40 encontrando o limite dela numa coluna de junção: converter só um
+// lado punha número contra texto, e o relacionamento não casava nunca.
+const preservadas = [...new Set(carregadas.flatMap((r) => r.juncoesPreservadas))].sort();
+if (preservadas.length) {
+  console.log(`\n── Conversões suprimidas para preservar a junção (${preservadas.length}) ──`);
+  for (const c of preservadas) console.log(`  ${c}`);
+}
+
+// Recalcular uma tabela que estava congelada custa tempo e muda o número. As duas
+// coisas precisam ser visíveis, senão a página "às vezes demora" sem explicação.
+const recalculadas = [...new Set(carregadas.flatMap((r) => r.recalculadas))].sort();
+if (recalculadas.length) {
+  console.log(`\n── Tabelas calculadas recalculadas apesar do congelado (${recalculadas.length}) ──`);
+  for (const c of recalculadas) console.log(`  ${c}`);
 }
 
 const falhas = carregadas.flatMap((r) => r.falhas.map((f) => ({ ...f, pagina: r.pagina })));
