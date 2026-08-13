@@ -71,13 +71,20 @@ if (!Number.isFinite(limiteMs) || limiteMs < 0) {
 const BASE = `http://localhost:${porta}`;
 
 /** Aquece uma API que já está no ar e sai. É o `npm run aquece`. */
-async function soAquecer(): Promise<never> {
+async function soAquecer(): Promise<void> {
   if (!(await respondeSaude())) {
     console.error(`API não responde em ${BASE}. Suba com 'npm start' antes.`);
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
   const v = await aquecer();
-  process.exit(v.ok ? 0 : 1);
+  // `process.exitCode` e **não** `process.exit()`: sair no meio de um pedido HTTP
+  // deixa socket de keep-alive em fechamento, e o Windows derruba o processo com
+  // `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` **depois** de imprimir o
+  // relatório. Um comando que termina com uma linha de crash logo abaixo de "pode
+  // apresentar" ensina a desconfiar do relatório certo. Assim ele sai quando o laço
+  // drena, com o código certo.
+  process.exitCode = v.ok ? 0 : 1;
 }
 
 async function respondeSaude(): Promise<boolean> {
@@ -95,10 +102,10 @@ async function respondeSaude(): Promise<boolean> {
  * O teto existe para não deixar `npm start` pendurado para sempre quando a API morre
  * no arranque: nesse caso a mensagem tem de ser "ela não subiu", não um cursor parado.
  */
-async function esperaSaude(limiteMs = 90_000): Promise<boolean> {
+async function esperaSaude(filho: ChildProcess, limiteMs = 90_000): Promise<boolean> {
   const ate = Date.now() + limiteMs;
   while (Date.now() < ate) {
-    if (api?.exitCode !== null && api?.exitCode !== undefined) return false;
+    if (filho.exitCode !== null) return false;
     if (await respondeSaude()) return true;
     await new Promise((r) => setTimeout(r, 250));
   }
@@ -122,7 +129,12 @@ async function aquecer(): Promise<ReturnType<typeof veredito>> {
 
 // ---------------------------------------------------------------------------
 
-if (soAquece) await soAquecer();
+// `--so-aquece` termina aqui: ele não sobe API nenhuma, e por isso pode sair pelo
+// `process.exitCode` — deixando o laço drenar em vez de matar o processo no meio de um
+// socket de keep-alive.
+if (soAquece) {
+  await soAquecer();
+} else {
 
 // 1. O snapshot. Sem ele a API sobe, mas toda página devolve 409 — e descobrir isso
 //    pelo aquecimento gasta minutos para dizer o que este `if` diz na hora.
@@ -139,7 +151,12 @@ if (manifesto === null || manifesto.tabelas.length === 0) {
 const dist = path.join(ROOT, 'apps', 'api', 'web', 'dist', 'index.html');
 if (!semBuild) {
   console.log('Compilando a tela (npm run web:build)…');
-  const r = spawnSync('npm', ['run', 'web:build'], {
+  // Comando inteiro numa string só, e não `('npm', ['run', …])`: com `shell: true` o
+  // Node avisa (DEP0190) que argumentos em lista não são escapados, só concatenados —
+  // e ele está certo. Aqui não há entrada de usuário nenhuma, mas um aviso de
+  // segurança impresso a cada subida ensina a ignorar avisos de segurança.
+  // `shell` é necessário no Windows, onde `npm` é `npm.cmd`.
+  const r = spawnSync('npm run web:build', {
     cwd: ROOT,
     stdio: 'inherit',
     shell: true,
@@ -182,7 +199,7 @@ api.on('exit', (codigo) => {
   }
 });
 
-if (!(await esperaSaude())) {
+if (!(await esperaSaude(api))) {
   console.error(`\nA API não respondeu em ${BASE}/api/saude. Parando.`);
   encerra(1);
 }
@@ -201,3 +218,5 @@ console.log(`\n  tela   ${BASE}/`);
 console.log(`  saúde  ${BASE}/api/saude`);
 console.log(`  legado ${BASE}/legado`);
 console.log('\nCtrl+C encerra a API.\n');
+
+}

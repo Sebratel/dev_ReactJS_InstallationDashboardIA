@@ -1,7 +1,7 @@
 # Continuação — onde o trabalho parou
 
-> **Atualizado em 11/08/2026**, depois de a tela virar aplicação React e as
-> segmentações passarem a filtrar. É o ponto de entrada de uma sessão nova:
+> **Atualizado em 13/08/2026**, depois de a subida virar um comando (`npm start`) e de
+> a junção texto×número ser consertada. É o ponto de entrada de uma sessão nova:
 > autocontido, feito para ser lido antes de tocar em qualquer coisa.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
@@ -15,10 +15,15 @@
 A **Analytics Platform Enterprise** substitui o Power BI da Sebratel. Hoje ela lê as
 fontes reais, calcula **117 visuais das 14 páginas** do relatório e é uma **aplicação
 React** que navega entre as páginas, **filtra pelas segmentações** e põe o estado na
-URL. **As 14 páginas calculam** e nenhuma está parada por falta de dado. O que falta é
-**paridade** (provar que o número é o mesmo da tela do Power BI) e **desempenho de uma
-página**: `agendamento-field` termina, mas o tempo depois das otimizações de 10/08
-ainda não foi medido.
+URL. **As 14 páginas calculam** e nenhuma está parada por falta de dado.
+
+A **paridade está medida**, e é o número a bater: dos 64 cards com gabarito ditado do
+Power BI, **18 batem**, 18 diferem, 6 divergem porque foi decidido, e **0 deixam de
+calcular** (eram 2 até 13/08 — ver ACHADOS #61). Dos 18 que diferem, **11 estão nas 3
+páginas cujo gabarito é sabidamente inválido** (`docs/PARIDADE-11-08.md`: quem leu os
+números no navegador limpou os filtros da página antes de ler). A fila real são **7
+divergências**, e a primeira é `manutencao-inicial`, que diverge no sentido oposto e
+ainda não tem causa provada.
 
 ---
 
@@ -93,7 +98,9 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | **Autenticação** | ❌ **não existe** — costura pronta (`apps/api/src/identidade.ts`), formato da decisão em `specs/_catalog/permissoes.yaml`, sem leitor e sem login |
 | **Tela** (`apps/web`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
 | **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam** — mas `agendamento-field` leva 104 min (achado #45) |
-| **Paridade** | ❌ **não provada** — é o próximo grande passo |
+| **Paridade** | 🚧 **medida, não fechada** — 18 batem, 18 diferem (11 delas com gabarito inválido), 6 divergem por decisão, **0 não calculam** |
+| **Subida** (`tools/subir`) | ✅ `npm start` — build + API + aquecimento das 14 páginas, com teto por página e veredito |
+| **Conferência do snapshot** (`npm run snapshot:confere`) | ✅ acha coluna inteira nula e calculada obsoleta em milissegundos — hoje aponta **4 erros e 5 avisos** |
 
 Os commits que são a fase 3 inteira:
 
@@ -428,12 +435,14 @@ apps/
                     (formato, rota, api, rotulos) e só o desenho em `.tsx` —
                     `node --test` roda TypeScript, mas não JSX.
 tools/
-  extractor/ validate/ doctor/ auth/ probe/ mrun/
-  snapshot/         materializa a camada M em disco
+  extractor/ validate/ doctor/ auth/ probe/ mrun/ cdc/ powerbi/
+  snapshot/         materializa a camada M em disco; `confere.ts` audita o que ficou lá
+  subir/            `npm start`: build + API + aquecimento das 14 páginas, com teto
   paginas/          calcula o relatório inteiro e conta o que fecha
+  paridade/         compara com o gabarito ditado do Power BI
 specs/              GERADO pelo extrator — o contrato. Não editar à mão.
 docs/
-  ACHADOS.md          46 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          63 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa

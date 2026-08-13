@@ -90,9 +90,18 @@ export async function aquecePagina(
   const url = `${opts.base}/api/dashboards/${pagina}`;
   const limite = opts.limiteMs ?? LIMITE_PADRAO_MS;
 
-  const relogio = limite > 0 ? AbortSignal.timeout(limite) : undefined;
+  // `AbortController` + `setTimeout` desarmável, e **não** `AbortSignal.timeout`: aquele
+  // deixa um timer armado que ninguém pode cancelar, e um `process.exit()` com ele
+  // pendente derruba o libuv no Windows com `Assertion failed:
+  // !(handle->flags & UV_HANDLE_CLOSING)`. `unref` para o timer não segurar o processo.
+  const freio = new AbortController();
+  const timer =
+    limite > 0
+      ? setTimeout(() => freio.abort(new DOMException('teto', 'TimeoutError')), limite)
+      : null;
+  timer?.unref?.();
   const pedido = (): Promise<Response> =>
-    buscar(url, relogio ? ({ signal: relogio } as RequestInit) : undefined);
+    buscar(url, limite > 0 ? ({ signal: freio.signal } as RequestInit) : undefined);
 
   const t0 = agora();
   try {
@@ -131,6 +140,8 @@ export async function aquecePagina(
           ? err.message
           : String(err),
     };
+  } finally {
+    if (timer !== null) clearTimeout(timer);
   }
 }
 
