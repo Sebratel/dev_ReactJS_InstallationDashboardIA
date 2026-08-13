@@ -36,3 +36,45 @@ sob_demanda:
       A classificação do texto não se perde: `ClassificacaoRelato` já é coluna
       congelada no snapshot (ACHADOS #47), calculada no refresh a partir do `Relato`.
       Os cartões e gráficos que dependem dela continuam funcionando com a coluna fora.
+
+  - tabela: INSTALAÇÕES REINCIDENTES
+    coluna: dias_para_reincidencia
+    decidido: '2026-08-13'
+    por: Claude, sob autorização do Erick para decidir sem perguntar
+    porque: >
+      É uma das quatro colunas amarradas SÓ pelo `tableEx` d93e5f33 — a tabela de
+      detalhe de 19 campos que cruza INSTALAÇÕES REINCIDENTES, PROTOCOLOS GERAL e
+      CALENDARIO INSTALADO. Nenhuma medida, nenhuma coluna calculada e nenhum outro
+      visual das 14 páginas a citam (conferido, não suposto).
+
+      Esse visual **não existia de fato até hoje**: ele atravessa o relacionamento
+      'PROTOCOLOS GERAL'[N°PROTOCOLO] -> 'INSTALAÇÕES REINCIDENTES'[protocolo_instalacao],
+      que comparava texto com número e errava alto na hora (ACHADOS #61). Com a junção
+      casando, ele passou a calcular — e **passou de 40 minutos sozinho**, medido em
+      13/08/2026, contra os 2 s que a regra 9 orça para a página inteira. Os outros 28
+      visuais da página somam ~4 s.
+
+      Trocar "erra alto em 1 s" por "calcula certo em 40 min" não é progresso: a página
+      deixaria de abrir. Com esta linha, `instalacao-reincidente` abre com os 28 visuais
+      e a tabela de detalhe aparece como "sob demanda" — que é o comportamento de
+      aplicação, e é o mesmo caminho já decidido para o `Relato` de FIELD AGENDA.
+
+      **O custo não sumiu, mudou de lugar**, e continua alto: quem pedir a tabela vai
+      esperar. Baixá-lo é trabalho de agregação no grão certo, como o passo 4 da
+      DECISAO-DESEMPENHO — não de projeção. Fica registrado como dívida, com número.
+
+  - tabela: INSTALAÇÕES REINCIDENTES
+    coluna: protocolo_manutencao
+    decidido: '2026-08-13'
+    por: Claude, sob autorização do Erick para decidir sem perguntar
+    porque: >
+      Mesma decisão de `dias_para_reincidencia`: amarrada só pelo `tableEx` d93e5f33.
+      Some junto com ele, e mantê-la em memória para um visual que não abre na página
+      seria pagar sem receber.
+
+  - tabela: INSTALAÇÕES REINCIDENTES
+    coluna: tecnico_responsavel
+    decidido: '2026-08-13'
+    por: Claude, sob autorização do Erick para decidir sem perguntar
+    porque: >
+      Mesma decisão de `dias_para_reincidencia`: amarrada só pelo `tableEx` d93e5f33.

@@ -1,8 +1,8 @@
 # Continuação — onde o trabalho parou
 
-> **Atualizado em 07/08/2026**, depois do connector web e do índice de igualdade. É o
-> ponto de entrada de uma sessão nova: autocontido, feito para ser lido antes de
-> tocar em qualquer coisa.
+> **Atualizado em 11/08/2026**, depois de a tela virar aplicação React e as
+> segmentações passarem a filtrar. É o ponto de entrada de uma sessão nova:
+> autocontido, feito para ser lido antes de tocar em qualquer coisa.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
@@ -13,11 +13,12 @@
 ## 1. Em uma frase
 
 A **Analytics Platform Enterprise** substitui o Power BI da Sebratel. Hoje ela lê as
-fontes reais, calcula **117 visuais das 14 páginas** do relatório e **abre uma página
-no navegador com número vindo do Voalle**. **As 14 páginas calculam** e nenhuma está
-parada por falta de dado. O que falta é **paridade** (provar que o número é o mesmo
-da tela do Power BI) e **desempenho de uma página**: `agendamento-field` termina, mas
-leva 104 minutos.
+fontes reais, calcula **117 visuais das 14 páginas** do relatório e é uma **aplicação
+React** que navega entre as páginas, **filtra pelas segmentações** e põe o estado na
+URL. **As 14 páginas calculam** e nenhuma está parada por falta de dado. O que falta é
+**paridade** (provar que o número é o mesmo da tela do Power BI) e **desempenho de uma
+página**: `agendamento-field` termina, mas o tempo depois das otimizações de 10/08
+ainda não foi medido.
 
 ---
 
@@ -29,19 +30,35 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1011 testes, ~4 s, NENHUM precisa de credencial
+npm test          # 1232 testes, ~5 s, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
-Para ver a tela com dado real são dois passos, nesta ordem:
+Para ver a tela com dado real são **dois** passos, nesta ordem:
 
 ```bash
 # 1. Materializa a camada M em disco. Uma vez; demora. Só GET nas fontes.
 npm run snapshot -- --pagina=diario-instalacao --memoria=8192
 
-# 2. Sobe API + tela
-npm run api        # http://localhost:3100
+# 2. Compila a tela, sobe a API e aquece as 14 páginas. Fica no ar até o Ctrl+C.
+npm start          # http://localhost:3100
 ```
+
+> **13/08/2026: `npm start` substituiu a sequência decorada** de `web:build` + `api` +
+> `bash tools/aquece.sh`. Quem pulava o aquecimento abria a apresentação numa tela
+> branca de ~1 min; quem pulava o build servia a tela de ontem. O `aquece.sh` era bash
+> numa máquina Windows — agora é `tools/subir/`, TypeScript e com teste.
+
+Em desenvolvimento da tela, com recarga a quente, são dois processos:
+
+```bash
+npm run api        # 3100
+npm run web        # 5173, com proxy de /api para 3100
+```
+
+> A tela antiga (uma página só, sem filtro) continua em `http://localhost:3100/legado`.
+> Ela é a referência com que comparar a nova durante a conferência — ver
+> `docs/DECISAO-TELA.md` §4.
 
 E para medir o relatório inteiro:
 
@@ -63,7 +80,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1011 testes verdes.** Nenhum precisa de credencial.
+**1232 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
 
 | camada | estado |
 |---|---|
@@ -72,7 +89,9 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | Modelo semântico + avaliador DAX | ✅ as 56 funções que a base usa, 75 medidas |
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
 | **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco |
-| **API + tela** (`apps/api`) | ✅ somente leitura, uma página por pedido |
+| **API** (`apps/api`) | ✅ somente leitura, uma página por pedido, `?filtro=` e rota de valores; cache da resposta (Redis ou memória) desde 11/08 |
+| **Autenticação** | ❌ **não existe** — costura pronta (`apps/api/src/identidade.ts`), formato da decisão em `specs/_catalog/permissoes.yaml`, sem leitor e sem login |
+| **Tela** (`apps/web`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
 | **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam** — mas `agendamento-field` leva 104 min (achado #45) |
 | **Paridade** | ❌ **não provada** — é o próximo grande passo |
 
@@ -239,30 +258,61 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 
 ## 6. O que fazer a seguir (ordem sugerida)
 
-1. **Montar o harness de paridade.** Hoje `npm run paginas` diz *que calculou*; falta
-   um arquivo onde o Erick dite os números da tela e a ferramenta compare. Sugestão:
-   `specs/paridade/<pagina>.yaml` com `visual: id, esperado: <número>`, e
-   `npm run paridade` apontando as divergências. Sem isso, cada conferência é manual e
-   se perde. **Agora vale para 96 visuais, não 64** — é mais valioso que era.
-2. **Os 104 minutos de `agendamento-field`** (ver 5.2). Já está medido: 90% é
-   `RankAtualProtocolo` (achado #46). O que falta é **a decisão** de
-   `PERGUNTAS-NEGOCIO.md` #8 — materializar coluna calculada no snapshot, ou
-   otimizar o avaliador pela quarta vez. Não comece a otimizar antes dela.
-3. **Filtros na tela.** O relatório tem segmentações (`slicer`) que hoje aparecem como
-   "sem número". Fazê-las filtrar de verdade é o que separa "página que abre" de
-   "dashboard que se usa". Os filtros de página e de visual **já** são aplicados; o que
-   falta é a interação.
-4. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
+> **O perímetro foi fechado em 11/08/2026** — [ACHADOS](ACHADOS.md) #56, a partir da
+> revisão de arquitetura do #55. Já estão feitos: parâmetro de SQL (o valor de um
+> filtro nunca vira texto de query), o cache da resposta calculada ligado com Redis
+> e degradação para memória, `ARCHITECTURE.md` separado entre o que existe e o que é
+> desenho, e a costura de identidade da Fase 4. **Nada disso destrava o item 1** —
+> paridade continua sendo o bloqueio, e ele depende de gente.
+
+1. **Ditar os 42 números de paridade.** É o único passo que ninguém faz sozinho, e
+   agora não há mais desculpa de ferramenta: o harness existe, a tela existe, o filtro
+   existe. Abra `http://localhost:3100` ao lado do Power BI, ache a linha
+   `visual: <id>` em `specs/paridade/<pagina>.yaml` — **o id aparece embaixo de cada
+   card na tela, de propósito** — e escreva o valor em `powerbi:`. São 64 cards, dos
+   quais 22 já saíram por serem carimbo de refresh.
+2. **Medir `agendamento-field` outra vez.** Os passos 1 a 3 da `DECISAO-DESEMPENHO.md`
+   estão feitos (projeção de colunas, `adotaTabela`, `Relato` sob demanda, colunas e
+   tabelas calculadas congeladas) e **o tempo depois deles nunca foi medido** — as três
+   tentativas de 10/08 morreram por execução concorrente. Rode uma de cada vez, com
+   `--visuais`, conferindo `node.exe` antes. É barato e destrava a decisão do passo 4.
+3. **Regenerar o resto das tabelas calculadas congeladas.** O [ACHADOS](ACHADOS.md) #54
+   corrigiu a gravação, e `CALENDARIO CRIADO`, `CALENDARIO INSTALADO` e `calendar` já
+   foram refeitas. Confira as demais com o cabeçalho do arquivo — coluna com
+   `"tipo":"vazia"` e `nulos` igual a `linhas` é o sintoma. **Todo número calculado
+   sobre tabela calculada antes de 11/08/2026 é suspeito.**
+4. **Empurrar para SQL o que o SQL faz melhor** — as mesclagens de **mesma fonte** e a
+   agregação de `FIELD AGENDA` ao grão `(protocolo, slot)`, que é o passo 4 da
+   `DECISAO-DESEMPENHO.md` e o maior ganho que resta (1.458.244 linhas → 30.252).
+   **Depois do item 1**, e o motivo é a rede de segurança: sem gabarito de paridade
+   verde, um `LEFT JOIN` que multiplica linha passa despercebido. As 3 mesclagens
+   *cross-source* ficam na camada M — a `DECISAO-CAMADA-M` vale onde o argumento dela
+   vale. O SQL escrito à mão não pode morar em `specs/_catalog/queries/` (regra 2);
+   o lugar é um `sql-override.yaml` no molde de `divergencias.yaml`, com
+   `original_sha` da expressão M que ele substitui.
+5. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
    de passagem seria decidir por uma peça que tem dono. Quando for hora, é decisão
    registrada, não escolha de conveniência.
 
 Não faça na frente disso, e o motivo:
 
-- **Não migre para Fastify/React/Vite ainda.** O `ARCHITECTURE.md` os declara, e a API
-  atual diverge de propósito (`node:http`, sem build) — está registrado no
-  [ACHADOS](ACHADOS.md) #39, com a condição de revisão: Permission Engine, corpo de
-  requisição e WebSocket de realtime. Antes disso é troca de peça que funciona.
-- **Não mexa na Fase 4 (realtime).** Há decisão pendente em `docs/DECISAO-REALTIME.md`.
+- **Não migre a API para Fastify ainda.** Metade desta espera terminou em 11/08 — a
+  tela virou React/Vite (`DECISAO-TELA.md`) —, mas a API **continua** em `node:http` de
+  propósito. A condição de revisão do [ACHADOS](ACHADOS.md) #39 não mudou: Permission
+  Engine, corpo de requisição e WebSocket de realtime. Antes disso é troca de peça que
+  funciona.
+- **Não mexa na Fase 4 (realtime).** A decisão está tomada em
+  [DECISAO-REALTIME.md](DECISAO-REALTIME.md), escrita em 11/08/2026: TTL + refresh
+  agendado até que **duas medições** mostrem que eles não bastam. O gatilho está lá,
+  e ele é um número — não a disponibilidade do Kafka no Portainer.
+  **O instrumento da medição já existe** (`npm run cdc:observa`), e ele só conta.
+  Fazer o evento CDC *agir* — invalidar cache ou rematerializar — é que continua
+  fora.
+- **Não registre conector Debezium sem o monitor de slot de pé.**
+  `npm run cdc:slot -- --vigia`. Slot sem consumidor retém WAL até o disco do ERP
+  encher, e o incidente é no Voalle, em produção. Leia
+  [RUNBOOK-CDC.md](RUNBOOK-CDC.md) antes — inclusive o rollback, que tem ordem certa
+  (parar o conector **antes** de derrubar o slot, senão ele o recria).
 
 ---
 
@@ -301,6 +351,18 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
 - **`kill -0 <pid>` do Git Bash mente sobre PID do Windows.** MSYS tem espaço de PID
   próprio, então o watcher deu "processo terminou" com o processo vivo. Use
   `Get-Process -Id <pid> -ErrorAction SilentlyContinue`.
+- **Parar a tarefa de background mata o `npm`, não o `node` filho.** Em 11/08 isso me
+  deu `EADDRINUSE` e, pior, um servidor **com código velho** respondendo como se fosse
+  o novo. Para matar de verdade, ache o dono da porta:
+
+  ```powershell
+  $c = Get-NetTCPConnection -LocalPort 3100 -State Listen; Stop-Process -Id $c.OwningProcess -Force
+  ```
+
+  E prefira `PORT=3101 npm run api` a matar o servidor de outra sessão.
+- **`chrome --headless --screenshot` não grava arquivo; `--headless=old` grava.** O
+  `--dump-dom` funciona nos dois, e é ele que prova que o React montou. Um screenshot
+  que não sai parece "a página não renderizou" quando o DOM está perfeito.
 - **Saída canalizada para `tail` só aparece no fim.** Um `npm run paginas | tail -60`
   em segundo plano fica 45 minutos sem escrever nada, e não dá para saber se avançou.
   Redirecione para arquivo (`> arquivo 2>&1`) e leia o arquivo.
@@ -361,7 +423,10 @@ packages/
   widget-engine/    card, tabela, gráfico e matriz — o cálculo de um visual
   snapshot/         formato em disco, plano por página, carregamento
 apps/
-  api/              servidor somente-leitura + a tela
+  api/              servidor somente-leitura; serve a tela compilada e `/legado`
+  web/              a tela: React 19 + Vite. A lógica testável mora em `.ts` puro
+                    (formato, rota, api, rotulos) e só o desenho em `.tsx` —
+                    `node --test` roda TypeScript, mas não JSX.
 tools/
   extractor/ validate/ doctor/ auth/ probe/ mrun/
   snapshot/         materializa a camada M em disco

@@ -3136,3 +3136,1346 @@ com o texto fora da memória — o #47 pagou por este passo sem saber.
 **9 de 26** colunas. O efeito em tempo ainda não está medido: as três tentativas de hoje
 foram invalidadas por execuções concorrentes na mesma máquina (ver `CONTINUACAO` §7 — o
 aviso estava lá e eu demorei a segui-lo).
+
+---
+
+## #53 — "Não existe aplicação para eu validar", e o que a frase estava certa em dizer
+
+O Erick olhou o projeto em 11/08/2026 e disse que não havia frontend nem backend. A
+frase era **factualmente errada**: os dois existiam e estavam no ar. Meu próprio
+`npm run api` falhou com `EADDRINUSE` porque um servidor de sessão anterior já
+segurava a 3100, com `agendamento-field` carregada. `GET /api/dashboards` devolvia as
+14 páginas, todas `pronta: true`, e `visao-geral` calculava 28 visuais em 2,3 s.
+
+E ainda assim ele estava **substancialmente certo**, que é o achado.
+
+### A diferença entre uma tela e uma aplicação
+
+O que existia era uma tela de conferência: 461 linhas de HTML, um `<select>` de
+páginas, uma página por vez. O que faltava não era código de desenho — era tudo que
+transforma "abre" em "dá para usar":
+
+| o que existia | o que faltava |
+|---|---|
+| card, tabela, matriz e gráfico desenhando número real | navegação entre as 14 páginas |
+| filtro de página e de visual aplicados no cálculo | **as segmentações não filtravam nada** |
+| a página inteira num pedido | estado na URL — nenhuma vista era compartilhável |
+
+A terceira linha é a que doía. As `slicer` do relatório chegavam à tela como
+`semCalculo: 'segmentação de dados'` e viravam caixa morta. Uma página com dez
+controles que não fazem nada não é um dashboard incompleto: é um dashboard que
+**mente sobre o que oferece**.
+
+### A lição de método
+
+Eu tinha medido tudo neste projeto — 104 minutos, 45 de 107 colunas, 36,8% dos bytes —
+e não tinha medido **a distância entre o que a tela mostra e o que alguém consegue
+fazer com ela**. `npm run paginas` dizia "117 de 117 visuais calculam", e essa métrica
+está certa e é inútil para responder "dá para conferir?". O `CONTINUACAO` chegou a
+listar "filtros na tela" como item 3 da ordem sugerida, atrás de otimizar
+`agendamento-field` — e o item 3 era o que bloqueava a pessoa que ia usar a coisa.
+
+**Métrica de engenharia não substitui a pergunta "o que a pessoa consegue fazer".**
+
+### O que a correção custou, e o que ela não mexeu
+
+`apps/web` em React 19 + Vite 7, e o filtro de tela atravessando como `FiltroSpec`
+sintético — nenhuma engine mudou, porque `traduzFiltros` já sabia aplicar
+`FiltroSpec`. O caminho inteiro do filtro é uma URL virando uma entrada na lista de
+filtros de página.
+
+Medido em `visao-geral` com `[EQUIPE] = 'Equipe Field Service'`: `CLIENTES DISTINTOS`
+28.253 → **2.973**, `PROTOCOLOS TOTAIS` 32.744 → **3.030**, `PROTOCOLOS INSTALADOS`
+24.400 → **2.503**. Conferido em Chrome headless, renderizando a URL com o filtro:
+o controle vem marcado, a faixa diz "1 segmentação(ões) aplicada(s)", e os números
+são os filtrados.
+
+### As duas armadilhas do caminho
+
+- **`TaskStop` mata o wrapper do `npm`, não o `node` filho.** Parei a tarefa de
+  background, subi outra na mesma porta e levei `EADDRINUSE` — o processo antigo
+  ainda estava lá, servindo **código velho**, e por um momento a resposta pareceu um
+  bug meu. Para matar de verdade: achar o dono da porta
+  (`Get-NetTCPConnection -LocalPort <p>`) e `Stop-Process` nele. É primo da armadilha
+  do `kill -0` do Git Bash já registrada no `CONTINUACAO` §7.
+- **`chrome --headless --screenshot` não grava nada; `--headless=old` grava.** O
+  `--dump-dom` funciona nos dois. Um screenshot que não sai parece "a página não
+  renderizou", quando o DOM está perfeito.
+
+### Estado
+
+1063 testes, 52 novos: o codec de filtro (11, quase todos sobre erro que produziria
+número errado calado), a formatação da tela (11), o estado na URL (12), as
+segmentações (5), as rotas novas da API (9) e as siglas da navegação (4). A decisão
+está em
+`docs/DECISAO-TELA.md`; a API **continua** em `node:http`, porque só metade da espera
+do `CONTINUACAO` §6 terminou.
+
+---
+
+## #54 — A tabela calculada congelada gravou a coluna-chave inteira nula, e ninguém viu
+
+Achado ao ligar a segmentação de hierarquia de datas: pedi a lista de anos distintos de
+`'CALENDARIO CRIADO'[DATA CRIADO]` e a API devolveu **um valor: `null`**. A coluna
+existia no modelo, a tabela tinha 365 linhas, e mesmo assim o dataset lia vazio.
+
+### O que estava errado
+
+`escreve` lê `linha[nome]` usando o nome do **modelo** (`DATA CRIADO`). O `Dataset`
+guarda toda linha sob a chave **normalizada** (`addTable` normaliza na entrada — é a
+mesma regra que o `adotaTabela` do #49 exige). As duas nunca se encontraram.
+
+Resultado: **toda coluna cujo nome difere do normalizado foi gravada como `null`.**
+
+| arquivo | coluna | linhas nulas |
+|---|---|---|
+| `calc.calendario-criado` | `DATA CRIADO` | 365 de 365 |
+| `calc.calendario-instalado` | `DATA INSTALADO` | 364 de 364 |
+| `calc.calendar` | `Protocolo` **e** `Data` | 30.009 de 30.009 — a tabela inteira |
+| `calc.status-protocolo-dia` | `Dia`, `Status` | 30.009 de 30.009 |
+
+São **chaves de relacionamento**. Uma tabela de calendário sem data não propaga filtro
+nenhum, e `calendar` inteira era ruído.
+
+### Por que passou por um commit inteiro
+
+Três coisas se somaram, e cada uma sozinha teria sido pega:
+
+1. **As colunas calculadas escapavam por acidente.** O laço que as preenche gravava o
+   valor sob o **nome de exibição** (`linhas[i][nome] = v`), criando uma chave paralela
+   que `escreve` encontrava. Então `PESO` e `data_vigente` saíam certos, e o arquivo
+   *parecia* bom. O acidente escondia o defeito exatamente nas colunas que o commit
+   existia para produzir.
+2. **`apuraColunas` registra `tipo: 'vazia', nulos: 365` sem reclamar.** Está certo —
+   coluna legitimamente vazia existe. Mas nada distinguia "vazia porque o dado é vazio"
+   de "vazia porque a chave não existe".
+3. **O commit não trouxe teste.** `4024ace` acrescentou 235 linhas e **zero** testes,
+   contra a regra 4 do `CONTINUACAO`. Um teste de ida e volta pelo arquivo — gravar e
+   reler — teria pego na primeira execução, e é o que existe agora.
+
+### A correção
+
+`paraGravacao(linhas, colunas, onde)` em `packages/snapshot/src/tabelas-calculadas.ts`:
+projeta as linhas para as chaves que o cabeçalho declara, lendo pela chave normalizada.
+Usada pela biblioteca **e** pela ferramenta — duas projeções divergiriam no primeiro
+nome esquisito, e a divergência sairia como coluna nula outra vez.
+
+O guarda é a metade que importa: **coluna do modelo que não existe na linha é erro**,
+não `null`. Coluna legitimamente vazia continua passando; o que não passa é a coluna que
+não está lá. Sete testes, um deles gravando e relendo o arquivo de verdade.
+
+### O byte NUL no fonte
+
+O mesmo commit gravou `tabelas-calculadas.ts` com um **byte NUL literal** dentro de
+`partes.join('…')` — o separador do `sha`, escrito como byte cru em vez de escape. O
+git classificou o arquivo como binário (`Bin 0 -> 5033 bytes` no commit), então ele não
+tem diff, não normaliza fim de linha, e algumas ferramentas de edição o recusam.
+Trocado por `\u0000`, que produz **a mesma string** — conferido: os quatro `tabelaSha`
+gravados nos arquivos continuam idênticos aos recalculados.
+
+### O raio de alcance, medido — e menor do que parecia
+
+Corrigido o arquivo, refiz `visao-geral` e comparei **visual a visual** contra a
+resposta gravada antes da correção: **10 visuais com número, 10 idênticos, 0 mudaram.**
+Os 6 cards da página contam sobre `PROTOCOLOS GERAL` e não atravessam o calendário.
+
+Isso não diminui o defeito — o dado no disco estava errado —, mas impede a conclusão
+exagerada de que "todo número do relatório estava errado". O que ainda **não** foi
+medido é o efeito nas páginas que usam medida por data sobre as tabelas de calendário
+(`relatorio-do-mes`, `diario-instalacao`). O A/B honesto ali é rodar `npm run paginas`
+antes e depois, e é uma razão a mais para a medição que já estava na fila.
+
+Vale notar o que **não** estava nulo: `PESO`, `data_vigente` e as outras colunas
+calculadas. Ou seja, a decisão do sábado/domingo valendo 0,5 (#51) nunca foi afetada —
+o que estava vazio eram as **chaves**, não os pesos.
+
+### A varredura dos outros 19 arquivos
+
+Seis arquivos do snapshot têm alguma coluna 100% nula, mas **só um é este defeito**. Os
+outros cinco (`protocolos-geral`, `protocolos-produtividade`, `protocolos-telefonia`,
+`retorno-prioritario`, `backlog-agendado-futuro`) têm nomes de coluna **já
+normalizados** — `técnico 2`, `categoria4`, `gerente/supervisor` —, então `linha[nome]`
+os encontra. São colunas genuinamente vazias na fonte, e duas delas já são pergunta
+aberta: `categoria3/4/5` é a #4 e `gerente/supervisor` é a #2 do `PERGUNTAS-NEGOCIO`.
+
+A distinção é conferível em uma linha: o defeito atinge **só** coluna cujo nome difere
+do normalizado. Em `calc.status-protocolo-dia`, `protocolo` (minúsculo) tinha valores e
+`Dia`/`Status` não — no mesmo arquivo, na mesma gravação.
+
+### A lição
+
+**O acidente que faz metade do resultado parecer certo é pior que a falha inteira.** Se
+nenhuma coluna tivesse valor, o arquivo teria denunciado o problema na primeira leitura.
+Como as calculadas saíam certas — e eram elas o assunto do commit —, o arquivo passou
+por revisão parecendo o que deveria ser.
+
+E a segunda: **o bug foi achado por uma funcionalidade nova, não por um teste.** A rota
+de valores distintos existe para alimentar um controle de tela; ela leu a coluna e a
+mostrou vazia. Ferramenta que exibe dado cru encontra o que teste sobre dado sintético
+não encontra — é o mesmo mecanismo dos achados #38 e #40.
+
+---
+
+## #55 — Revisão de arquitetura do código real, contra o desenho documentado
+
+**Encontrado em 11/08/2026, numa revisão pedida do lado de fora do código** (sem
+medir incidente nenhum) — lendo o grafo de dependência real entre pacotes e
+comparando com o pipeline que `README.md`/`ARCHITECTURE.md` descrevem. Cinco pontos,
+nenhum é bug de cálculo; são estrutura.
+
+### `packages/snapshot` já invoca o Evaluator — a composição não é só de `apps/api`
+
+`packages/snapshot/src/carrega.ts:27` importa `Evaluator` de `measure-engine` e o
+instancia em `carrega.ts:187`; `plano.ts:34` e `colunas-usadas.ts:28` importam o tipo
+`DashboardSpec` de `widget-engine/src/spec.ts`. O pipeline documentado é
+`Evaluator → Widget Engine → apps/api`, mas na prática `snapshot` já monta o
+Evaluator para descobrir quais colunas materializar — faz sentido (ele precisa saber
+o que cada página consome), só que o desenho documentado sugere uma fronteira mais
+limpa do que a que existe.
+
+### Fronteira entre pacotes é convenção de pasta, não é imposta
+
+Só `apps/web` e `tools/extractor` têm `package.json` próprio; `query-engine`,
+`transform-engine`, `semantic-model`, `measure-engine`, `widget-engine`, `snapshot` e
+`apps/api` não têm. Nenhum import no repo usa `@analytics/...` — tudo é caminho
+relativo direto para dentro do `src/` de outro pacote (ex.: `apps/api/src/servidor.ts`
+importa de quatro pacotes por caminho relativo). Cada pacote tem um `index.ts` de
+barrel, mas só um import no repo inteiro o usa (`apps/api/src/calcula.ts:26`) — todo
+o resto fura o barrel. Renomear um arquivo interno de `measure-engine` quebra
+`widget-engine`, `snapshot` e `apps/api` ao mesmo tempo, sem nenhuma camada de API
+pública para avisar antes.
+
+### Seis ferramentas de `tools/` não têm teste nenhum
+
+Confirmado (zero arquivos `*.test.*` em cada uma): `tools/auth`, `tools/doctor`,
+`tools/mrun` (526 linhas), `tools/paginas`, `tools/probe`, `tools/snapshot`
+(547 linhas). São os orquestradores CLI que materializam a camada M em disco — a
+regra 4 ("todo teste tem de falhar se a regra sumir") vale hoje para as engines, não
+para os scripts que as acionam.
+
+### `packages/measure-engine/src/evaluator.ts` é o arquivo com mais responsabilidade concentrada
+
+813 linhas — avaliação de AST, contexto de filtro e time intelligence juntos. Os
+`functions.ts` grandes (`transform-engine`: 1.821 linhas; `measure-engine`:
+1.372 linhas) são tabelas de função DAX/M, coesão esperada para o tamanho;
+`evaluator.ts` é o único arquivo grande onde separar por responsabilidade
+provavelmente ajudaria a navegar.
+
+### Lógica de negócio dentro de um `.tsx`
+
+`apps/web/src/componentes/Segmentacao.tsx:70-166` embute `mesmoValor` (dedup),
+`visiveis` (filtro de busca) e `resumo` (formação de texto) direto no componente.
+Só os `.ts` puros de `apps/web` têm teste (`formato.ts`, `janela.ts`, `rota.ts`,
+`rotulos.ts`) — nenhum `.tsx` é testado —, então essa lógica está no único lugar da
+tela que o padrão do próprio projeto não cobre.
+
+### O que não é problema, conferido
+
+Grafo de dependência entre pacotes é um DAG limpo — nenhum ciclo encontrado
+(`semantic-model ← measure-engine ← widget-engine ← snapshot ← apps/api`;
+`query-engine` e `transform-engine` são independentes entre si). O guard read-only
+da API está centralizado uma única vez, no topo de `atende()`
+(`apps/api/src/servidor.ts:92-100`), antes de qualquer roteamento — sem duplicação.
+
+### Estado
+
+Nada aqui foi corrigido. É registro de risco estrutural para decisão futura, não
+conserto — no espírito da regra 8 (medir antes de decidir): os cinco pontos foram
+conferidos por leitura direta do código e contagem de linha/arquivo, não por leitura
+superficial da documentação.
+
+---
+
+## #56 — O perímetro, fechado no que não dependia de gente
+
+> 11/08/2026. É a execução das Fases 1.0, 2, 3 e 4 do plano montado a partir do
+> [#55](#55--revisão-de-arquitetura-do-código-real-contra-o-desenho-documentado).
+> Nada aqui toca cálculo: o núcleo continua o mesmo, e paridade continua sendo o
+> bloqueio de verdade — ela depende de alguém com o Power BI aberto.
+
+### O valor de um filtro nunca vira texto de SQL
+
+`SqlRunner` **já declarava** `params?: Record<string, unknown>` desde a fase 2, e
+`SqlConnector.execute` já o repassava. Os dois runners o ignoravam: `postgresRunner`
+mandava `{ text: sql }` sem `values`, `mariaRunner` chamava `pool.query(sql)` cru. O
+contrato existia e não chegava a lugar nenhum.
+
+`traduzParametros` fecha isso em `connectors-sql.ts`: `:nome` vira `$1..$n` no
+Postgres e `?` com `execute()` **preparado** no MariaDB. Um pool MariaDB sem
+`execute` recebendo parâmetro **derruba** em vez de cair na interpolação.
+
+Três detalhes que só aparecem escrevendo:
+
+- **`::time` não é parâmetro.** Três queries do catálogo dependem do cast. O
+  scanner copia `::` inteiro antes de procurar nome.
+- **O mesmo nome duas vezes vira dois marcadores.** `$1` repetido funcionaria no
+  Postgres; `?` do MySQL é posicional. Uma regra só, e a que serve aos dois.
+- **`assertReadOnly` roda sobre o texto traduzido**, que é o que sai do processo. Os
+  valores não passam por ela de propósito: eles não são SQL.
+
+Erra alto nas duas pontas — nome citado sem valor, e valor que veio e não foi usado.
+O segundo é o que importa: uma consulta que ignora o recorte pedido devolve o
+conjunto errado calada.
+
+**Por que agora, se nada passa parâmetro hoje.** Conferido: `grep` por `:nome` fora
+de `::` nas 24 specs de query devolve **zero**. E `?filtro=` nunca toca SQL —
+`decodificaFiltros` produz `FiltroSpec` que o avaliador aplica em memória. A
+superfície de injeção nasce no dia em que uma segmentação virar `WHERE`, que é
+exatamente o passo 1.2/1.3 do plano. O caminho tinha de existir antes.
+
+### O cache que existia e não era usado
+
+`RedisCache` estava pronto e testado desde a fase 2 — `SCAN` em vez de `KEYS`,
+`ioredis` já como dependência de raiz — e `new RedisCache(...)` só aparecia em
+`packages/query-engine/test/cache.test.ts`. A API não usava cache nenhum.
+
+Agora `apps/api` cacheia a **resposta calculada**, não a linha de fonte. O snapshot
+em disco continua sendo a verdade; o que estava caro era recalcular.
+
+A decisão que faz diferença é **onde** a consulta ao cache entra: **antes** de
+`carrega()`. Num acerto o pedido não abre o snapshot, não materializa tabela
+calculada e não roda o avaliador — o teste prova isso olhando `paginasCarregadas` do
+`/api/saude` continuar vazio depois de uma resposta 200. Cachear só a serialização
+não caberia nos 300 ms da regra 9.
+
+A chave carrega tudo que muda o número:
+
+```
+resp:v1:<usuario>:<pagina>:<sha filtros normalizados>:<visual|*>:<de>:<linhas>:<carimbo>
+```
+
+- **`<carimbo>`** é o sha do manifesto (`query@geradoEm#linhas`). É o que faz
+  `npm run snapshot` invalidar sozinho — sem ele, "o refresh rodou e o painel não
+  mudou", que é o tipo de erro que ninguém percebe.
+- **filtros normalizados**: ordem dos filtros e ordem dos valores não mudam a chave
+  (`IN (a,b)` e `IN (b,a)` filtram igual), mas o **tipo** entra — `IN ('2026')` e
+  `IN (2026)` não podem colidir. O `nivel` também: filtrar pelo ano de uma data e
+  pela data crua dá números diferentes sobre a mesma coluna.
+- **`<usuario>`** entra **antes de existir RLS**, e é a única parte disto que é
+  desenho. Depois de existir recorte por linha, uma chave sem usuário serve a página
+  do gestor A para o gestor B — cache virando vazamento. Custa um campo agora;
+  custaria lembrar na hora certa depois.
+
+TTL: o **menor** entre os das queries da página, de `cache-policies.yaml` — servir
+`protocolos-geral` com o TTL de `feriados` mostraria ontem por 24 h. Query fora do
+registry, ou plano indeterminado, **desliga** o cache.
+
+**O Redis caído é um miss, nunca um erro de pedido.** É a única exceção à regra
+"erre alto" desta base, e é deliberada: o cache não participa do valor da resposta,
+só do tempo dela. A falha vai para `aoFalhar` — degrada, não silencia. O 409 de
+snapshot faltando **não** entra no cache: guardá-lo travaria a página por um TTL
+inteiro depois de o snapshot já existir.
+
+### A documentação declarava uma plataforma que não está aqui
+
+`docs/ARCHITECTURE.md` listava 15 Engines; `packages/` tem 6. O diagrama de
+Debezium → Kafka → Redis Streams → SSE aparecia como descrição do sistema, e
+`kafka`/`debezium` têm **zero** ocorrências em código.
+
+O arquivo agora tem duas metades: **Parte 1 — Implementado** (com o arquivo ao lado
+de cada afirmação) e **Parte 2 — Projetado, sem código**. Uma linha só troca de
+metade quando o código dela existe.
+
+E `docs/DECISAO-REALTIME.md` **passou a existir**: o `CONTINUACAO.md` §6 mandava não
+mexer na Fase 4 "porque há decisão pendente" nesse arquivo, e o arquivo nunca tinha
+sido escrito. A decisão é TTL + refresh agendado, com um **gatilho medido** para
+abrir a Fase 4 — e, quando ele disparar, o próximo passo ainda não é Kafka: é
+polling incremental por `updated_at` no mesmo Query Invalidator, que já existe em
+`QueryRegistry.queriesForTable()`.
+
+### O que continua não existindo, e está escrito onde
+
+Autenticação. `specs/_catalog/permissoes.yaml` (mantido por humanos, no molde de
+`cache-policies.yaml`) tem o **formato** da decisão e nenhum leitor;
+`apps/api/src/identidade.ts` tem a costura e devolve sempre `local`. Ele
+deliberadamente **não** lê cabeçalho nem cookie: um `X-Usuario` aceito sem
+verificação seria pior que não ter identidade, porque a plataforma passaria a
+*parecer* que controla acesso.
+
+### Medição
+
+**Contra o snapshot real** (16 queries em disco, dado de 07/08/2026 13:34 UTC), API
+em `PORT=3101` para não derrubar a de outra sessão:
+
+| página | 1º pedido | 2º pedido | 3º |
+|---|---|---|---|
+| `visao-geral` (28 visuais) | **7,75 s** `miss` | **5,6 ms** `hit` | 25 ms `hit` |
+| `diario-instalacao` (22 visuais) | **3,03 s** `miss` | **4,6 ms** `hit` | 4,3 ms `hit` |
+| `capa` | 16 ms `miss` | 2,2 ms `hit` | 2,4 ms `hit` |
+
+E a prova de que a chave não colide: o mesmo `diario-instalacao` com `?linhas=50`
+volta a `miss` e leva 2,61 s — ele **não** reaproveitou a resposta da janela padrão.
+
+Duas leituras:
+
+- **O orçamento de 300 ms a quente da regra 9 está atendido com folga** — 5 ms, três
+  ordens de grandeza abaixo. Era o que a Fase 2 tinha de entregar.
+- **O de 2 s a frio não está**, e o cache não o resolve por construção: o primeiro
+  pedido paga a carga inteira. Quem ataca isso é o passo 4 do `CONTINUACAO.md` §6
+  (empurrar mesclagem e agregação para SQL), e ele vem **depois** da paridade — sem
+  gabarito verde, um `LEFT JOIN` que multiplica linha passa despercebido.
+
+`npm test`: **1136 verdes**, 33 deles novos (16 de parâmetro, 17 de cache). Teste de
+mutação em todas as regras novas, como manda a regra 4 — sete mutações, sete
+derrubaram teste:
+
+| mutação | teste que caiu |
+|---|---|
+| runner volta a ignorar `params` | injeção chega como valor |
+| `::` deixa de ser cast | `::time` é cast |
+| parâmetro sem uso passa calado | parâmetro sem uso derruba |
+| carimbo sai da chave | snapshot refeito invalida |
+| janela sai da chave | janela diferente recalcula |
+| `get` que falha propaga | Redis fora do ar não derruba |
+| usuário sai da chave | usuários não compartilham resposta |
+
+---
+
+## #57 — CDC ligado, mas como instrumento de medida: o observador que só conta
+
+> 11/08/2026, mesmo dia do #56. O Erick pediu Kafka e Debezium "para testar a
+> aplicação"; as três escolhas — capturar do **Voalle de produção**, evento em modo
+> **só observar e medir**, Redis apontando para o **Portainer** — são dele, feitas
+> depois de eu registrar os riscos abaixo.
+
+### Dois fatos que mudaram o que "testar com CDC" significa
+
+**1. Debezium contra o Voalle não é leitura.** Replicação lógica exige
+`wal_level=logical` (restart do Postgres do ERP), `CREATE PUBLICATION` (DDL), uma
+role com `REPLICATION` e um slot. O usuário somente-leitura da plataforma não faz
+nenhuma dessas coisas, e não deve fazer — a regra inviolável 3 fica inteira. Tudo
+isso saiu de código e foi para [RUNBOOK-CDC.md](RUNBOOK-CDC.md), para mão humana com
+permissão.
+
+**2. Hoje o CDC não deixaria número mais fresco.** A API lê `snapshot/*.jsonl` em
+disco. Um evento invalidando cache só faria ela recalcular **sobre o mesmo arquivo**
+— mesmos números, mais lento. Para o CDC valer alguma coisa, o evento teria de
+disparar rematerialização, que é outra decisão e tem outro custo (`protocolos-geral`
+leva ~21 s).
+
+Essas duas juntas são o motivo de o modo escolhido — **só observar** — ser o único
+que rende alguma coisa hoje: ele produz a condição 1 do gatilho do
+`DECISAO-REALTIME.md` sem mudar comportamento nenhum.
+
+### O risco que virou pré-requisito, não aviso
+
+**Slot de replicação retém WAL até o consumidor confirmar leitura.** Consumidor
+parado — container derrubado, fim de semana — e o WAL cresce sem limite até o disco
+encher. O banco que para é o Voalle, em produção.
+
+Por isso `npm run cdc:slot` foi escrito **antes** de qualquer conector existir, e a
+regra que ficou no CONTINUACAO é: sem o monitor de pé, não se registra conector. Ele
+lê `pg_replication_slots` — `SELECT` em catálogo, passa por `assertReadOnly`, sessão
+somente-leitura — e alerta em três casos: slot inativo, WAL retido acima do teto
+(1 GB por padrão) e `wal_status='lost'`.
+
+**Medição contra o Voalle real, 11/08/2026 17:39 UTC: nenhum slot de replicação
+existe.** É a baseline — se um aparecer, é nosso.
+
+Duas armadilhas que entraram no runbook porque não são óbvias:
+
+- **`heartbeat.interval.ms` não é enfeite.** Sem heartbeat, uma base cujas tabelas
+  *capturadas* mudam pouco deixa o `restart_lsn` parado enquanto o resto do servidor
+  gera WAL — e o servidor retém tudo. O gráfico de eventos/min fica em **zero**
+  enquanto o disco some. É o modo silencioso da falha.
+- **O rollback tem ordem.** Derrubar o slot com o conector vivo faz o Debezium
+  recriá-lo em segundos, e parece que o rollback não funcionou. Para o conector
+  primeiro.
+
+### O payload não entra, por construção
+
+Um evento Debezium carrega a linha inteira: `field-agenda` tem endereço de cliente,
+`QUADRO FUNCIONAL` tem CPF e RG. `EventoMinimo` **não tem campo** para isso — não é
+uma regra de disciplina, é ausência de caminho. `leEnvelope` reduz a mensagem a
+`{topico, schema, tabela, op, ts, recebidoEm}` e o resto morre ali.
+
+O teste que trava isso não olha campo escolhido a dedo: ele serializa o objeto
+inteiro e procura vazamento. Um campo novo que carregasse payload cai sem ninguém
+precisar lembrar.
+
+### Duas decisões de medida que mudam o resultado
+
+- **Mediana, não média.** Um lote de 500 alterações num segundo (uma importação, um
+  job noturno) puxaria a média para perto de zero e faria a base parecer que muda o
+  tempo todo. A mediana descreve o intervalo *típico*, que é o que decide se o
+  refresh agendado dá conta.
+- **Do fim do tópico, não do começo.** A pergunta é a taxa de **agora**;
+  `--desde-inicio` existe, mas o padrão não o usa, porque o histórico distorceria.
+
+E duas de convivência: grupo de consumo **próprio** (`<grupo>-observador`), para não
+roubar mensagem de um ingestor de verdade caso um dia exista; e janela de amostras
+limitada a 5.000 por query, para um observador esquecido no fim de semana não virar
+vazamento de memória por guardar carimbo de tempo.
+
+### O mapa já existia
+
+`tabela → queries afetadas` não foi escrito aqui: é `QueryRegistry.queriesForTable()`
+alimentado pelo `source_tables` de cada spec. A única sutileza é que as duas formas
+convivem — `dbVoalle` declara `assignment_incidents` pelado, `dbMaria` declara
+`db_applicattion.installation_teams` —, e procurar só uma deixaria metade das queries
+fora do mapa em silêncio. Tem teste para as duas.
+
+### Estado
+
+| peça | estado |
+|---|---|
+| `tools/cdc` observador + medidor | ✅ 15 testes verdes |
+| `tools/cdc/src/slot.ts` monitor de WAL | ✅ **validado contra o Voalle real** |
+| `tools/probe/src/redis.ts` | ✅ escrito; falta `REDIS_URL` no `.env` |
+| `docker/cdc/` stack local (compose + seed + conector + scripts) | ⏸ escrito, **não executado** |
+| conector Debezium no Voalle | ❌ depende de DBA — ver runbook |
+
+**O stack local não subiu**: `com.docker.service` está parada no Windows e iniciá-la
+exige elevação. O `docker compose up` falhou em `npm pipe not found`, não por erro de
+configuração — o `docker-compose.yml` continua não verificado por execução, e isso
+está dito aqui em vez de presumido.
+
+`npm test`: **1151 verdes** (1136 do #56 + 15 do medidor).
+
+---
+
+## #58 — `Protocolos Manhã` dava 20 contra 12.269, e a culpa era do fuso do Windows
+
+**Encontrado em 11/08/2026**, ao triar as divergências que a primeira leitura de
+paridade deixou sem explicação (`docs/PARIDADE-11-08.md`). É o achado mais caro do
+dia: não é bug de cálculo, é dado deslocado antes de qualquer cálculo começar.
+
+### O sintoma
+
+| card | Power BI | nós |
+|---|---|---|
+| `Agendados Manhã` | 12.269 | **20** |
+| `Agendados Tarde` | 16.091 | 26.691 |
+
+Somando, os dois lados chegam perto (28.360 contra 26.711): o total estava razoável e
+**a divisão entre os dois turnos estava destruída**. Isso já dizia onde procurar — o
+problema não era quantos protocolos existem, era em qual balde cada um caía.
+
+A medida não deixa margem para dúvida:
+
+```dax
+Protocolos Manhã =
+CALCULATE( DISTINCTCOUNT('FIELD AGENDA'[Protocolo]), 'FIELD AGENDA'[Turno] = "Manhã" )
+```
+
+E `Turno` é coluna calculada:
+
+```dax
+Turno = IF( HOUR('FIELD AGENDA'[Slot Agenda]) < 12, "Manhã", "Tarde" )
+```
+
+Nada aqui pode dar errado por conta própria. Então o errado era o `Slot Agenda`.
+
+### A linha que se denunciou sozinha
+
+Uma linha qualquer do snapshot tem `slot agenda = "2026-08-10T13:00:00.000Z"` e, na
+mesma linha, o campo `relato` diz por escrito:
+
+> *"Agendamento para 10/08/2026 no turno da MANHÃ."*
+
+**Às 13h nada é manhã.** E o dado carregava a própria refutação ao lado — um campo de
+texto que ninguém tinha pensado em usar como gabarito.
+
+### A medida, no volume inteiro
+
+Histograma da hora de `slot agenda` nas 1.466.202 linhas, lida das duas maneiras:
+
+| hora | como UTC (o que `HOUR()` via) | convertida para UTC−3 |
+|---|---|---|
+| 08h | — | 630 |
+| 09h | — | **252.543** |
+| 10h | — | 226.449 |
+| 11h | 630 | 138.043 |
+| 12h | **252.543** | 21.060 |
+| 13h | 226.449 | **249.703** |
+| 14h | 138.043 | 217.604 |
+| … | … | … |
+| 20h | 45.902 | 973 |
+
+A leitura em UTC tem **zero agendamentos entre 02h e 10h** e pico às 12h e 16h. A
+leitura em UTC−3 começa às 08h, tem dois picos (09h e 13h) e acaba à noite — é um dia
+de trabalho de campo, com turno da manhã e da tarde. Não é questão de gosto: **só uma
+das duas é uma agenda de serviço.**
+
+E os dois picos reais, 09h e 13h, sob UTC viram 12h e 16h — **os dois ≥ 12**, os dois
+"Tarde". É por isso que a manhã sumiu inteira.
+
+Reproduzindo a medida das duas formas:
+
+| | Manhã | Tarde |
+|---|---|---|
+| hora em UTC (o que estava rodando) | **20** | 26.691 |
+| hora em UTC−3 | 12.150 | 15.956 |
+| **Power BI na tela** | **12.269** | **16.091** |
+
+12.150 contra 12.269 é 0,97% para baixo; 15.956 contra 16.091 é 0,84%. Essa é
+exatamente a assinatura da defasagem de 4,2 dias do snapshot, e sempre no mesmo
+sentido. **Os dois cards passam a bater dentro da folga da defasagem.**
+
+Terceira testemunha, independente das outras duas — cruzando o turno que o texto do
+relato declara contra o turno calculado:
+
+| linhas | texto diz | UTC calcula | UTC−3 calcula |
+|---|---|---|---|
+| 127.548 | Manhã | Tarde ❌ | **Manhã ✅** |
+| 106 | Manhã | Manhã | Manhã |
+
+127.548 contra 106. Não há empate a desfazer.
+
+### A causa
+
+`npm run probe:tipos-data` (criado para esta investigação) pergunta o tipo à origem:
+
+```
+  reports.beginning_date                        timestamp without time zone
+  vsdspi.begin_date_slot                        timestamp without time zone
+  vsdspi.begin_date / end_date / final_date     timestamp without time zone
+  vsdspi.assignment_created / conclusion_date   timestamp without time zone
+```
+
+**As sete são `timestamp without time zone`.** Um `timestamp without time zone` não
+tem fuso: `2026-08-10 10:00:00` é dez da manhã e ponto. O driver `pg`, sem fuso
+declarado para usar, adota o do processo — e o processo roda em `America/Sao_Paulo`:
+
+```
+  fuso do Node : America/Sao_Paulo (offset -3h)
+```
+
+Dez da manhã em Brasília é o instante `13:00Z`. O `toISOString()` do snapshot grava
+`13:00Z`, e `HOUR()` — que lê componente UTC, como YEAR/MONTH/DAY — responde 13.
+
+Não é bug do `pg`: sem fuso declarado ele **tem** de escolher um. É bug de quem não
+escolheu.
+
+### O que resolveu a contradição que quase me fez errar o diagnóstico
+
+Duas colunas do mesmo banco pareciam exigir hipóteses opostas: `slot agenda` chegava
+a `13:00Z` (deslocada) e `data relato` a `00:00:00.000Z` exato (não deslocada). Sob
+uma única hipótese, uma das duas tinha de estar errada.
+
+Não estava. `r.beginning_date` valia `2026-08-09 21:00:00` — e 21h em Brasília **é**
+meia-noite UTC do dia seguinte. As duas colunas confirmam a mesma coisa; a segunda
+só parecia inocente por coincidência de horário. Foi o que fechou o diagnóstico
+antes de escrever código, e é o motivo de o probe existir em vez de um chute.
+
+### O conserto
+
+`packages/query-engine/src/connectors-sql.ts`, bloco "Data e hora sem fuso":
+
+- `parseSemFuso()` lê `YYYY-MM-DD[ HH:MM:SS[.ffffff]]` **como UTC** — o único fuso
+  que não move o relógio.
+- `tiposSemFuso()` monta a opção `types` do pool, interceptando só os OIDs **1114**
+  (`timestamp without time zone`) e **1082** (`date`).
+- **1184 (`timestamptz`) fica de fora de propósito.** Ali o instante é real e o `pg`
+  acerta; trocar o parser dele moveria dado que estava certo. É o erro simétrico
+  deste conserto, e tem teste dedicado.
+- Não usa `pg.types.setTypeParser`: aquele é global ao módulo. Bastaria um segundo
+  consumidor de `pg` no processo para herdar a nossa decisão sem pedir.
+- **MariaDB tinha o mesmo bug por outro caminho**: `DATETIME` do MySQL também não tem
+  fuso, e o padrão do `mysql2` é `timezone: 'local'`. Agora é `timezone: 'Z'`.
+
+`Date.UTC` **rola** o que não existe — mês 13 vira janeiro do ano seguinte, dia 99
+vira três meses depois, calado. `parseSemFuso` confere a volta e erra alto. Isso não
+saiu de código defensivo: o primeiro teste que escrevi pegou o buraco
+(`2026-13-99 10:00:00` passava), o que foi um lembrete barato de que este arquivo
+existe exatamente porque data errada em silêncio viaja longe.
+
+### O raio de alcance, medido — e o que ele NÃO é
+
+Varrendo os 21 arquivos do snapshot, coluna de data por coluna de data:
+
+| | valores |
+|---|---|
+| com hora, deslocados +3h | **12.798.071** |
+| que trocam de **DIA** com o conserto | **31.398** (0,25% dos que têm hora) |
+
+A segunda linha é a que importa, e ela é bem menor do que a primeira sugere. Colunas
+de **grão de dia** — `contratos.criado`, `protocolos-geral.data criado`,
+`data encerrado`, `data da troca` — estão em meia-noite UTC **exata**, ou seja não
+carregam hora nenhuma e não estão deslocadas. A maior parte do relatório agrupa por
+dia, e essa parte estava certa.
+
+O estrago concentra-se em quem lê **hora**: `Turno` foi o caso extremo (100% errado),
+e o resto é a virada de dia de quem trabalha depois das 21h. Duas colunas se
+destacam e merecem atenção separada:
+
+| coluna | troca de dia |
+|---|---|
+| `reincidencia.data_suporte` | **7,70%** |
+| `instalacoes-reincidentes.data_manutencao` | **7,21%** |
+
+As duas são de reincidência — a mesma página com 4 cards que não calcularam e as
+maiores divergências restantes. Provavelmente não é coincidência, e é o próximo fio
+a puxar.
+
+Primeira versão deste número saiu **19× maior** (595.982), porque o contador tratava
+meia-noite UTC exata como "vira dia". Meia-noite exata é grão de dia, não timestamp
+deslocado — um timestamp deslocado cairia em `03:00Z`. Corrigido antes de entrar
+aqui; fica registrado porque a conta errada era grande o bastante para mudar a
+conclusão.
+
+### O que NÃO muda agora
+
+**O snapshot em disco continua deslocado.** O conserto age na leitura da fonte, então
+só vale depois de `npm run snapshot -- --todas --memoria=8192`. Isso é bom para hoje:
+os números da demo continuam sendo os que foram medidos, e a rematerialização —
+que troca o carimbo do manifesto e derruba todo o cache de resposta — fica para
+depois de apresentar.
+
+### Estado
+
+| peça | estado |
+|---|---|
+| `parseSemFuso` + `tiposSemFuso` | ✅ 11 testes, mutação inclusa |
+| `mariaRunner` com `timezone: 'Z'` | ✅ mesma classe de bug, fechada junto |
+| `npm run probe:tipos-data` | ✅ **validado contra o Voalle real** |
+| snapshot rematerializado | ⏸ **depois da demo**, por causa do cache |
+| `Agendados Manhã` / `Tarde` na paridade | ⏸ passam a bater só após rematerializar |
+
+`npm test`: **1168 verdes** (1157 do #57 + 11 do fuso).
+
+
+### O mesmo bug, segundo card: `MÉDIA POR DIA` errado por um fator de exatamente 2
+
+Achado logo depois, puxando o fio do "divisor errado" que a triagem tinha marcado.
+É a **mesma causa** — por isso está aqui e não num achado novo —, mas o mecanismo é
+outro, e vale conhecer os dois porque procuram-se de jeitos diferentes.
+
+```dax
+MÉDIA POR DIA = DIVIDE( [Total Protocolos], [Total Dias] )
+  Total Protocolos = DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO])
+  Total Dias       = DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[DATA INSTALAÇÃO])
+```
+
+Power BI 178,63 contra os nossos 88,94 — razão 2,009. Razão perto de um inteiro
+redondo raramente é coincidência: alguma coisa estava sendo contada duas vezes.
+
+Reproduzindo o denominador de três maneiras, sobre as mesmas 65.563 linhas:
+
+| `DISTINCTCOUNT(DATA INSTALAÇÃO)` contando | valor | `MÉDIA POR DIA` |
+|---|---|---|
+| **instante cheio** (o que rodava) | **364** | **89,18** |
+| dia, truncado em UTC | 186 | 174,53 |
+| dia, truncado em UTC−3 | 215 | 150,99 |
+
+E pelo outro lado, com o número do Power BI: `33.046 ÷ 178,63 = 185,0 dias`. Contra
+os nossos **186**. As duas contas fecham na mesma leitura: **o denominador tem de
+contar DIAS, e o nosso contava INSTANTES.**
+
+Faltava explicar por que havia quase exatamente dois instantes por dia. O histograma
+da hora-do-dia de `DATA ALOCAÇÃO` respondeu de um jeito que não deixa dúvida:
+
+```
+distintas horas-do-dia em `data alocação`: 1
+   03:00:00    41192
+```
+
+**Uma só, e é `03:00:00`.** `data alocação` é `date` no Postgres (OID 1082), e
+meia-noite lida como hora de Brasília é exatamente `03:00Z`. Todos os 41.192.
+
+`DATA INSTALAÇÃO` é calculada e escolhe entre três colunas:
+
+| coluna | transform na camada M | onde caía |
+|---|---|---|
+| `DATA AGENDA` | `type date` | `00:00Z` ✅ |
+| `DATA DA TROCA` | — | `00:00Z` ✅ |
+| `DATA ALOCAÇÃO` | **nenhum** | `03:00Z` ❌ |
+
+`DATA AGENDA` passa por `Table.TransformColumnTypes(..., type date)`, que trunca.
+`DATA ALOCAÇÃO` não passa por transform nenhum: vai crua do SQL para o modelo, com o
+horário que o driver inventou. Misturar as duas dá, para **o mesmo dia do
+calendário**, dois instantes distintos — `00:00Z` e `03:00Z`. Daí 364 ≈ 2 × 186, e
+daí o fator 2.
+
+**A previsão sai sem rematerializar nada.** `03:00Z → 00:00Z` é o mesmo dia em UTC,
+então o conserto colapsa o denominador de 364 para exatamente os 186 dias distintos.
+Com o numerador sem a defasagem de 4,2 dias: `33.046 ÷ 185 = 178,6` — o número que
+está na tela do Power BI.
+
+### O que este segundo card mudou na cabeça do conserto
+
+Eu quase escrevi `tiposSemFuso` só para o OID **1114** (`timestamp`). O card do
+`Turno` sozinho não pedia mais que isso: `begin_date_slot` é `timestamp`, e incluir o
+**1082** (`date`) parecia zelo — meia-noite deslocada continua sendo o mesmo dia, e
+`YEAR`/`MONTH`/`DAY` não notariam.
+
+`MÉDIA POR DIA` mostra o custo de ter parado ali. Meia-noite deslocada **não** é
+inofensiva quando ela encontra uma meia-noite não deslocada: `DISTINCTCOUNT` vê dois
+valores onde há um dia, e o resultado sai pela metade sem erro nenhum. O 1082 estava
+certo por um motivo que eu não tinha na hora de decidir — fica registrado porque na
+próxima vez o argumento é este, não a intuição.
+
+### E o terceiro, que é o maior: um relacionamento inteiro morto
+
+Puxando os 4 cards que "não calcularam", chegou-se ao mesmo bug pela terceira vez —
+e desta vez o estrago não é de um card, é de uma **junção**.
+
+Três cards de `INSTALAÇÃO/ REINCIDENTE` devolviam BLANK: `Reincidentes`,
+`% Reincidencia` e `Instalados`. O terceiro é que denuncia, porque ele é
+`COUNT('PROTOCOLOS GERAL'[N°PROTOCOLO])` — uma contagem crua, que só dá vazio se
+**nada sobrar**. E não era filtro mal escrito: os quatro filtros da página encontram
+valor de sobra quando olhados um a um (`STATUS PROTOCOLO = "Instalado"` casa com
+24.400 linhas; `DATA_VIGENTE_INSTALADO = "Sim"` casa com 222 dias).
+
+O que estava morto era o encontro entre as duas tabelas:
+
+```
+  CALENDARIO INSTALADO[DATA INSTALADO]   364 instantes, TODOS às 00:00:00
+  PROTOCOLOS GERAL[data alocação]        181 instantes, TODOS às 03:00:00
+
+  instantes em comum: 0 de 181
+```
+
+**Zero.** Duas páginas de filtro sobre uma junção que nunca casa uma linha. A página
+inteira dependia de restringir `PROTOCOLOS GERAL` através do `CALENDARIO INSTALADO`,
+e a ponte não existia.
+
+`CALENDARIO INSTALADO` é tabela calculada — nasce aqui, com datas limpas à meia-noite
+UTC. `data alocação` vem do Postgres como `date` e chegava às `03:00Z`. Nenhuma das
+duas está "errada" sozinha; elas só não se encontram.
+
+### O que isso explica de uma vez
+
+`DATA INSTALAÇÃO` de `PROTOCOLOS GERAL` é calculada e escolhe entre três colunas —
+das quais só uma está deslocada. O resultado é uma tabela partida ao meio:
+
+| `DATA INSTALAÇÃO` cai em | linhas | casa com o calendário? |
+|---|---|---|
+| `03:00:00` (veio de `DATA ALOCAÇÃO`) | 19.965 | ❌ |
+| `00:00:00` (veio de `DATA DA TROCA`/`AGENDA`) | **4.435** | ✅ |
+| em branco | 8.344 | — |
+
+Não-vazias: 24.400 — exatamente o `PROTOCOLOS INSTALADOS` da `VISÃO GERAL`. Ou seja,
+**de cada 24.400 instalações, só 4.435 conseguiam ser alcançadas pelo calendário.**
+
+```
+  24.400 / 4.435 = 5,50
+```
+
+E o bloco "MÊS ATUAL" de `relatorio-do-mes`, que a triagem tinha marcado como
+"~5× menor, sem explicação":
+
+| card | Power BI | nós | razão |
+|---|---|---|---|
+| `MÉDIA REALIZADOS (MÊS ATUAL)` | 156 | 29 | **5,38** |
+| `PROTOCOLOS TOTAIS REALIZADOS` | 1.248 | 228 | **5,47** |
+| `MÉDIA REALIZADO BACKLOG` | 152 | 27 | **5,63** |
+| `PROJEÇÃO (MÉDIA REALIZADA)` | 4.056 | 750 | **5,41** |
+
+Quatro cards, quatro razões entre 5,38 e 5,63, contra **5,50 previsto pela conta
+acima**. Não é uma família de bugs: é um bug com quatro sintomas.
+
+Depois do conserto, `data alocação` passa de `03:00Z` para `00:00Z` — o mesmo dia —,
+a junção volta a casar as 24.400, e os quatro cards sobem junto.
+
+### O que NÃO está provado aqui
+
+`manutencao-inicial` tem divergências grandes no **sentido oposto** (`TOTAL INSTALADOS`
+26.165 nossos contra 19.581 do Power BI — nosso é *maior*). Junção morta também
+produz número alto quando o que falha é uma restrição em vez de uma soma, então é
+plausível que seja a mesma causa. **Plausível não é medido**, e essa página também
+está entre as três cujo gabarito foi lido com filtro limpo. Fica para depois de
+rematerializar, com gabarito novo — não vai para a conta de vitórias deste achado.
+
+### Por que um bug de fuso conseguiu apagar uma junção
+
+Vale dizer em voz alta, porque a lição não é sobre fuso. Uma data deslocada em três
+horas continua sendo **a mesma data para um humano**: `10/08 03:00` e `10/08 00:00`
+são o mesmo dia 10 em qualquer conversa. Toda inspeção visual do dado passa. O que
+não passa é a igualdade — e é a igualdade que junção e `DISTINCTCOUNT` usam.
+
+Foi por isso que o mesmo bug apareceu de três formas que não se pareciam entre si:
+um card com o balde trocado (`Turno`), uma média pela metade (`DISTINCTCOUNT`
+contando dois instantes por dia), e uma página em branco (junção sem par). Procurar
+os três separadamente teria custado o triplo — e dois deles pareciam problema de
+regra de negócio, não de leitura de dado.
+### A lição que vale mais que o card
+
+Este bug **desaparece na máquina errada**. Em CI com `TZ=UTC` ele não se manifesta —
+o teste de mutação diz isso por escrito e se auto-desliga fora de UTC−3. Sobreviveu
+porque produzia números plausíveis: 26.691 protocolos à tarde não parece absurdo, e
+`Agendados Tarde` errado por 66% passaria por variação de dado.
+
+O que o pegou não foi ler código. Foi um harness que exige gabarito externo e
+**reprova `null`**, e um campo de texto que a própria fonte escreveu contando o que o
+número deveria ser. Sem os 42 cards ditados, `Protocolos Manhã` continuaria valendo
+20 na tela de um gestor.
+
+---
+
+## #59 — A transição de contexto era opaca para o índice, e um card sozinho custava 32 s
+
+**Encontrado em 11/08/2026**, ao medir onde os 86 s de `agendamento-field` iam.
+Este achado tem duas metades: a primeira é uma otimização que funcionou muito bem;
+a segunda é uma regressão que ela causou e que **não está resolvida**.
+
+### Antes de otimizar, duas hipóteses minhas caíram
+
+**Primeira: "o gargalo são as colunas calculadas O(n²)."** O #44 mediu que o
+processo não saía do carregamento, por causa de `RankDataProtocolo` e
+`RankAtualProtocolo`, que varrem `FIELD AGENDA` por linha de `FIELD AGENDA`. Errado
+hoje: as **sete** colunas calculadas de `FIELD AGENDA` já estão materializadas no
+snapshot (`daxSha` no cabeçalho). Não são recalculadas no pedido.
+
+**Segunda: "então o gargalo é o JSON de 1 GB."** `field-agenda.jsonl` tem 1.010 MB, e
+eu afirmei que ler isso era a parede. A medida:
+
+| | ms | share |
+|---|---|---|
+| carga (ler + `JSON.parse` de 1 GB) | **7.410** | 9% |
+| cálculo (os visuais) | **75.409** | **91%** |
+
+Ler o giga custa 7 segundos. **A parede é o cálculo**, e eu tinha dito o contrário
+em voz alta antes de medir — pela terceira vez neste projeto a lição é a mesma:
+*medir a parte que se suspeita não é medir onde o tempo vai.*
+
+### O tempo estava em três visuais
+
+| ms | % | acum. | visual |
+|---|---|---|---|
+| **32.581** | 48,7% | 48,7% | card `bc2c33d2` — `Média Diária` |
+| 19.351 | 28,9% | 77,6% | tableEx `e2d5549b` — `Status Protocolo Dia` × `Slot Agenda` |
+| 6.704 | 10,0% | **87,6%** | tableEx `084be384` |
+| | | | *os outros 36 somam ~8 s* |
+
+O pior é uma medida de quatro linhas:
+
+```dax
+Média Mensal Protocolos =
+AVERAGEX( VALUES('FIELD AGENDA'[Data]), CALCULATE( DISTINCTCOUNT('FIELD AGENDA'[Protocolo]) ) )
+```
+
+364 datas × 1.466.202 linhas ≈ **534 milhões de visitas** para produzir um número.
+
+### A causa: o `keep` da transição é opaco
+
+`AVERAGEX(VALUES(c), CALCULATE(...))` faz **transição de contexto** a cada iteração,
+e `transitionRowContext` montava o filtro assim:
+
+```ts
+keep: (r) => rowKey(r, columns) === alvo
+```
+
+O índice de igualdade do #44 existe e funciona — mas ele lê igualdade **da AST**
+(`igualdadeIndexavel`). Uma closure não tem AST. Então a cada uma das 364 datas o
+`linhasVisiveis` recomeçava da tabela inteira chamando `keep` linha a linha.
+
+O mecanismo que faltava **já estava no tipo**: `TableFilter.igualdade`, criado pelo
+#44, é exatamente "uma igualdade `coluna = valor` que este filtro implica", e
+`partidaIndexada` a consome. A transição implica isso trivialmente e não declarava.
+
+### Por que declarar é seguro — a verificação que veio antes do código
+
+O `keep` da transição aceita a linha que casa em **todas** as colunas. Logo, para
+qualquer uma delas, toda linha que passa tem ali o valor da linha de fora — que é
+literalmente o que `igualdade` promete.
+
+Faltava um detalhe que poderia ter estragado tudo em silêncio: **`rowKey` e o índice
+codificam valor do mesmo jeito?** Se `rowKey` fosse insensível a caixa e o índice
+sensível, o balde perderia linha que o `keep` aceita, e o número sairia menor,
+plausível e sem aviso.
+
+Não é o caso: `rowKey` chama `identityKey` por coluna, e o índice monta os baldes com
+o mesmo `identityKey`. O balde é sempre **superconjunto** do que o `keep` aceita.
+Confirmado por leitura antes de mexer, e é o motivo de este achado não ter um
+"corrigido depois" no meio.
+
+### O conserto, e o que ele deliberadamente não faz
+
+`igualdadeDaTransicao(row, columns)` em `evaluator.ts`, declarada no filtro que
+`transitionRowContext` monta. Ela devolve `undefined` quando a linha tem **mais de
+uma coluna**, e isso é escolha, não preguiça: com várias, qualquer uma seria
+*correta*, mas o índice cobra uma varredura para inverter a coluna, e escolher a
+errada é pagar isso para receber um balde do tamanho da tabela. Sem saber a
+seletividade de antemão, o chute tem valor esperado negativo.
+
+Uma coluna é o caso que estava caro e o caso sem ambiguidade: `VALUES('T'[C])` itera
+linhas de uma coluna só.
+
+### O resultado, medido duas vezes
+
+| visual | antes | depois (1ª) | depois (2ª) | delta |
+|---|---|---|---|---|
+| `bc2c33d2` `Média Diária` | 32.581 | 1.765 | 1.711 | **−30.870 (19×)** |
+| `e2d5549b` | 19.351 | 24.217 | 24.471 | **+5.120 (+26%)** |
+| `084be384` | 6.704 | 8.734 | 8.799 | **+2.095 (+31%)** |
+| **total dos visuais** | **66.166** | 44.519 | **43.934** | **−22.232 (−34%)** |
+
+Página inteira, pela API: **86,5 s → 62,6 s** a frio. A quente continua em
+milissegundos, como já estava.
+
+### A regressão é real, e eu quase a chamei de ruído
+
+Dois visuais ficaram **mais lentos**, e a primeira leitura sugeria que todos tinham
+ficado — o que pareceria ruído de máquina. Rodei a medição **duas vezes com o mesmo
+código** para separar as coisas, e foi o que salvou a conclusão:
+
+| | variação entre duas rodadas IGUAIS |
+|---|---|
+| `e2d5549b`, `084be384` (os grandes) | **±1%** |
+| visuais pequenos (`a88b3232`, `ae5871aa`…) | até **±28%** |
+
+Os pequenos oscilam demais para dizer qualquer coisa sobre eles. Os dois grandes são
+estáveis em ±1%, então **+26% e +31% são efeito da mudança, não da máquina.** Sem a
+segunda rodada eu teria escrito "o resto é ruído" e estaria errado.
+
+### O que causa a regressão: não sei ainda, e duas hipóteses já caíram
+
+- **"O índice é reconstruído a cada contexto."** Não: `partidaIndexada` recebe
+  `todas = this.dataset.rows(key)`, que é sempre a **mesma instância** do array, e
+  `indiceDe` cacheia num `WeakMap` por instância. Construção é uma vez por
+  (tabela, coluna).
+- **"`partidaIndexada` desiste e joga fora um bom `melhor`."** Ela tem
+  `if (!indice) return null`, mas `indiceDe` só devolve `null` para tabela abaixo de
+  `MINIMO_PARA_INDEXAR` (1.000). Com 1,46 milhão de linhas isso não acontece.
+
+A hipótese que sobra, **não medida**: o índice paga uma varredura de 1,46 milhão de
+linhas mais os baldes para cada coluna nova que passa a ser indexada, e nesses dois
+visuais a coluna da transição é consultada poucas vezes — então o custo de inverter
+não se amortiza. `MINIMO_PARA_INDEXAR` guarda o **tamanho da tabela**, não o
+**número de consultas**, e é essa a lacuna. O conserto certo seria construir o índice
+só depois de N consultas na mesma coluna, o que é mudança em `indice.ts` com risco
+próprio.
+
+**Fica registrado como dívida, com número.** O saldo é −34% e por isso a mudança
+entra, mas ela não é gratuita e não vale fingir que é.
+
+### Os testes, e por que a maioria deles não mata o mutante
+
+12 testes novos em `packages/measure-engine/test/transicao-indexada.test.ts`, todos
+com **3.000 linhas** — `MINIMO_PARA_INDEXAR` é 1.000, e um teste de 10 linhas passaria
+verde sem nunca ter exercitado o caminho. Foi assim que o #50 escapou.
+
+Sete deles afirmam que o número **não muda**: texto com caixa diferente, coluna com
+BLANK, zero e vazio, data com hora, `DISTINCTCOUNT` por grupo, transição de várias
+colunas. Nenhum deles cai se alguém apagar a otimização — e isso é correto, porque a
+declaração não é regra: o `keep` decide o resultado sozinho.
+
+A regra 4 pede um teste que caia quando a regra sumir, e a regra aqui não é "o número
+é X" — é **"a transição declara a igualdade que ela implica"**. Os cinco últimos
+testes afirmam isso direto, sem relógio: um teste de tempo mentiria numa máquina
+rápida e falharia numa lenta. Mutação: apagada a linha em `transitionRowContext`,
+**exatamente um** teste cai — `a igualdade chega ao filtro que a transição monta`.
+
+`npm test`: **1183 verdes** (1171 do #58 + 12).
+
+### O que sobra em `agendamento-field`
+
+Os 62,6 s restantes estão quase todos em `e2d5549b` (24,5 s) e `084be384` (8,8 s) —
+os dois que pioraram. O passo 4 da `DECISAO-DESEMPENHO` (agregar `FIELD AGENDA` ao
+grão `(protocolo, slot)` no SQL, 1.458.244 → 30.252 linhas) ataca os dois de uma vez,
+e ataca também os 7,8 s de carga. Continua sendo o próximo passo — só não é mais o
+primeiro por eliminação, e sim por medida.
+
+---
+
+## #60 — A tabela calculada congelada não tinha guarda de **data**, e a hipótese que ela explicava era falsa
+
+**13/08/2026.** O snapshot tinha 4 das 7 tabelas calculadas congeladas em 11/08, antes
+do conserto de fuso do #58. A hipótese era direta e parecia forte: **as 18 divergências
+de paridade vêm daí.** Congelei as 7 (`npm run snapshot:calculadas`, 2 h 24 min, das
+quais 2 h 23 min só de `Status Protocolo Dia`) e rodei a paridade de novo.
+
+### A hipótese caiu, e o número é pequeno
+
+```
+antes: 64 card(s): 16 batem, 18 diferem, 6 divergem, 2 não calcularam
+depois: 64 card(s): 16 batem, 18 diferem, 6 divergem, 2 não calcularam
+```
+
+**Um único card mudou:** `instalacao-reincidente/Instalados`, de 19.659 para 19.666 —
+sete linhas, 0,34% → 0,37% de diferença contra o Power BI. Nada mais se moveu.
+
+As tabelas congeladas velhas custavam **7 linhas em 1 card**, não as 18 divergências.
+Sem a segunda medição eu teria passado o dia consertando a coisa errada, e teria
+escrito no relatório que consertei.
+
+### Mas o buraco é real, e o número dele cresce sozinho
+
+As 7 linhas não são ruído: são exatamente o que
+`'CALENDARIO INSTALADO'[DATA_VIGENTE_INSTALADO]` deixou de contar, porque ela é
+
+```dax
+IF('CALENDARIO INSTALADO'[DATA INSTALADO] <= TODAY(), "Sim", "Não")
+```
+
+congelada com `TODAY()` = 11/08 — **e é filtro de página** de `instalacao-reincidente`
+(`IN ["Sim"]`, 29 visuais). Dois dias de defasagem = 7 protocolos sumidos. Uma semana
+= a semana inteira. E some **calado**: o `daxSha` do #47 confere se o DAX mudou, e o
+DAX não mudou. Mudou o **dia**.
+
+São duas obsolescências diferentes, e nenhuma das duas tinha guarda:
+
+| | pergunta | quem respondia | agora |
+|---|---|---|---|
+| DAX | a fórmula é a mesma? | `tabelaSha` (#47) | igual |
+| **dado** | as linhas de origem são as mesmas? | **ninguém** | erra alto |
+| **relógio** | é o mesmo dia? | **ninguém** | recalcula, e diz |
+
+### Por que uma erra alto e a outra recalcula
+
+**Dado velho erra alto.** Só acontece depois de um `npm run snapshot`, que é ação de
+operador; o remédio é o comando que a mensagem traz, e depois de um refresh se ia
+rodar de qualquer jeito. O critério é conservador de propósito — compara com a
+materialização de query mais recente **do plano**, não com as dependências apuradas do
+DAX. Apurar dependência erraria para o lado permissivo se a leitura do DAX falhasse, e
+o lado permissivo aqui é servir número velho calado.
+
+**Relógio recalcula.** Errar alto aqui quebraria o relatório **toda meia-noite**, e um
+painel que não abre de manhã não é mais correto que um painel errado — é só inútil de
+outro jeito. Recalcular é viável porque a regra **não é transitiva**: ela olha só o DAX
+*da própria tabela* (corpo e colunas calculadas dela). Nesta base isso dá
+`CALENDARIO CRIADO` (9 ms) e `CALENDARIO INSTALADO` (13 ms) — **22 ms**. Puxar a
+transitividade para dentro arrastaria `Status Protocolo Dia` por causa de um `NOW()`
+que já está materializado dentro de `field-agenda.jsonl`, e o guarda passaria a custar
+**2 h 23 min por meia-noite**. A recalculação sai em `Carregado.recalculadas`, vai para
+o log da API e para o relatório do `npm run paginas`: recalcular custa tempo e muda o
+número, e as duas coisas precisam ser visíveis.
+
+### Três coisas menores, encontradas no caminho, todas do mesmo feitio
+
+1. **`dadoDe` devolvia a materialização mais NOVA.** O comentário do campo prometia a
+   mais antiga, `manifesto.maisAntigo` calcula a mais antiga, e `carrega` fazia
+   `datas.sort()[datas.length - 1]`. A tela escreve "dado de <isto>" — a promessa é que
+   *nada* ali é mais velho que a data mostrada, e o código invertia exatamente essa
+   promessa, escondendo a tabela atrasada atrás da mais recente.
+2. **O carimbo do cache de resposta não enxergava os `calc.*.jsonl`.** Ele saía só do
+   `manifesto.json`, que lista query e nada mais. `npm run snapshot:calculadas`
+   reescrevia 3,7 MB de `Status Protocolo Dia` e o cache continuava servindo a resposta
+   anterior ao refresh até o TTL vencer.
+3. **`Servidor.carregadas` só era limpo em erro.** O comentário dizia "quem refaz é
+   `npm run snapshot`, e aí o processo é reiniciado" — verdade até o dia em que o
+   aquecimento passa a rodar junto do refresh. Agora as duas camadas usam **o mesmo**
+   carimbo, e enxergam a troca no mesmo instante.
+
+### O que trava isso
+
+8 testes novos em `packages/snapshot/test/carrega.test.ts` (congelada antes da origem
+erra alto e nomeia o comando; congelada depois é usada; com `TODAY()` em outro dia é
+recalculada **e o valor do disco é descartado**; no mesmo dia continua sendo lida), 6
+em `tabelas-calculadas.test.ts` (incluindo `NOW()` dentro de literal de texto **não**
+contar — sem isso, uma tabela que só *escreve* "NOW()" num rótulo seria recalculada
+toda meia-noite) e 2 em `apps/api/test/cache.test.ts`.
+
+---
+
+## #61 — A junção comparava texto com número, e quem a quebrou foi a nossa própria conversão
+
+**13/08/2026.** Dois cards de `instalacao-reincidente` não calculavam — erravam alto,
+todo dia, desde que a paridade existe:
+
+```
+[ERRO] instalacao-reincidente/1c15b278  Reincidentes
+[ERRO] instalacao-reincidente/6bed9d36  % Reincidencia
+  Junção 'PROTOCOLOS GERAL'[N°PROTOCOLO] -> 'INSTALAÇÕES REINCIDENTES'[protocolo_instalacao]
+  compara texto com número: nunca casa, e o resultado sairia vazio como se fosse filtro.
+```
+
+A leitura óbvia é "a camada M está entregando um dos lados no tipo errado". **Ela está
+errada.** Os dois lados chegam do disco como texto:
+
+```
+snapshot/protocolos-geral.jsonl        {"nome":"n°protocolo","tipo":"string","nulos":0}
+snapshot/instalacoes-reincidentes.jsonl {"nome":"protocolo_instalacao","tipo":"string","nulos":0}
+```
+
+Quem os separa é o **carregamento**. O PBIP declara `protocolo_instalacao` como
+`int64`, e a regra do #40 — "o tipo declarado vence ao materializar" — converte esse
+lado para número. O outro se declara `string` e fica texto. A conversão que existe para
+consertar agregação (`AVERAGE` sobre o texto `"83205"`) quebra o relacionamento.
+
+### A regra, e por que ela é estreita
+
+**As duas pontas de um relacionamento têm de chegar na mesma espécie.** Quando as duas
+chegam do disco iguais e é a *declaração* que as separaria, a conversão é suprimida.
+Quando elas já chegam diferentes, nada é suprimido e a junção continua errando alto —
+esse guarda é do #58 e não pode ser enfraquecido.
+
+Sobre o modelo real, o critério dispara **exatamente uma vez** entre os 22
+relacionamentos:
+
+```
+'INSTALAÇÕES REINCIDENTES'[protocolo_instalacao] fica string (declara number):
+  a junção com 'PROTOCOLOS GERAL'[N°PROTOCOLO] exige a mesma espécie nos dois lados
+```
+
+E ela é **dita**, nunca calada: sai em `Carregado.juncoesPreservadas` e no relatório do
+`npm run paginas`, ao lado das conversões que *foram* feitas. Uma conversão suprimida
+muda o dado tanto quanto uma aplicada.
+
+### A prova é o gabarito ditado do Power BI
+
+```
+antes:  16 batem, 18 diferem, 6 divergem, 2 NÃO CALCULARAM
+depois: 18 batem, 18 diferem, 6 divergem, 0 não calcularam
+
+[OK] Reincidentes    PBI=1272    nós=1276              (0,31%)
+[OK] % Reincidencia  PBI=0,0649  nós=0,06488355537476  (0,03%)
+```
+
+Os dois entram dentro da tolerância de 0,5%, e **nenhum outro card se moveu** — o que é
+a metade que importa: uma regra sobre conversão de tipo podia ter mexido em qualquer
+lugar, e o diff mostra que não mexeu.
+
+### O que trava isso
+
+4 testes em `packages/snapshot/test/carrega.test.ts`. O central monta o caso reduzido —
+duas tabelas, uma declarando `int64` sobre texto, um filtro de página que força a
+propagação — e afirma o número **2**; sem a supressão ele erra alto. O contraste está
+no teste seguinte: tirado o relacionamento, a mesma coluna volta a ser convertida. Sem
+esse par, a supressão poderia estar simplesmente matando a regra do #40 inteira.
+
+---
+
+## #62 — A subida era uma sequência decorada, e dois dos passos prescritos eram no-op
+
+**13/08/2026.** Ter o relatório no ar eram três comandos em três terminais:
+`npm run web:build`, `npm run api`, `bash tools/aquece.sh`. Quem pulasse o terceiro
+abria a apresentação numa tela branca de ~1 min (`agendamento-field` a frio); quem
+pulasse o primeiro servia a tela de ontem sem saber. **Uma sequência que só funciona
+quando ninguém erra a ordem não é uma entrega.**
+
+E o terceiro comando era **bash, numa máquina Windows**. `tools/aquece.sh` dependia de
+`curl`, `mktemp` e `cut`: ele morria com erro de shell antes de medir coisa alguma.
+Estava prescrito no `DEMO-HOJE.md` como "NÃO PULE".
+
+### `npm start`
+
+Um comando: compila a tela, sobe a API com o heap certo, espera a saúde responder,
+aquece as 14 páginas uma de cada vez e imprime frio, quente, visuais e erros. Fica no
+ar até o Ctrl+C.
+
+Ele **reprova** em três casos — visual com erro, página que não respondeu, e cache que
+não pegou — e reprovando **deixa a API no ar**: derrubá-la ali só tiraria de quem está
+olhando a chance de abrir a página e ver o que houve.
+
+O terceiro caso é o que o antecessor mais errava em não ter: a segunda abertura é o que
+a regra 9 orça em 300 ms, e um `miss` ali quer dizer que o carimbo do snapshot está
+mudando sozinho — isso é problema, não lentidão.
+
+12 testes em `tools/subir/test/aquece.test.ts`, com `fetch` injetado. O antecessor não
+tinha nenhum, e não por descuido: um script que só se verifica subindo a API inteira
+não se verifica — ninguém roda o caminho triste de propósito, então o caminho triste é
+o que nunca foi exercitado. Um dos testes afirma que **nunca há dois pedidos ao mesmo
+tempo**, que é a armadilha que custou a manhã de 10/08 em outro lugar.
+
+### Os dois no-ops
+
+**`npm run snapshot -- --todas` não rebusca nada.** O mapa `jaTem`
+(`tools/snapshot/src/index.ts`) pula toda query que já tem arquivo em disco, a menos
+que venha `--refazer`. O `DEMO-HOJE.md` prescrevia, como primeiro passo depois da demo,
+exatamente o comando sem `--refazer` — "aplica o conserto do fuso e zera a defasagem"
+era literalmente um comando que não fazia nada.
+
+**E faltava o segundo passo.** As 7 tabelas calculadas nascem das de query; refazer as
+de query sem refazer as calculadas deixa em disco um congelado velho. Até hoje isso era
+servido calado; com o #60 ele erra alto, o que transforma um passo esquecido numa
+página que não abre — em vez de um número plausível.
+
+### `npm run snapshot:confere`
+
+O snapshot em disco está servível? Duas perguntas, respondidas lendo só a **primeira
+linha** de cada arquivo (milissegundos sobre 1,3 GB): alguma coluna veio inteira nula, e
+alguma tabela calculada é mais velha que o dado dela.
+
+A primeira é o sintoma do #54, e ele é calado por construção — `apuraColunas` registra a
+coluna como `tipo: 'vazia'` sem reclamar, o carregamento a lê como BLANK, e o visual
+mostra vazio como se o filtro estivesse apertado. Rodado hoje sobre a base:
+
+```
+23 arquivo(s), 1.860.444 linhas (7 de tabela calculada).
+4 erro(s), 5 aviso(s)
+```
+
+| coluna | linhas nulas | de mescla? |
+|---|---|---|
+| `BACKLOG AGENDADO FUTURO[protocolos geral.tipo de protocolo]` | 87.805 | sim |
+| `PROTOCOLOS GERAL[técnico 2]` | 33.187 | (de mescla, renomeada) |
+| `PROTOCOLOS GERAL[tecnicos auxiliares.auxiliar]` | 33.187 | sim |
+| `PROTOCOLOS TELEFONIA[data encerrado]` | 555 | não |
+
+**Erro e aviso são coisas diferentes, e a separação é o ponto.** Erro é coluna que
+alguma página ou algum DAX **lê** — hoje elas leem BLANK. Aviso é coluna que ninguém
+alcança: chamar isso de falha ensinaria a ignorar falhas, e são 5 delas.
+
+Três das quatro nasceram de `Table.ExpandTableColumn`, e o nome com ponto denuncia. As
+chaves das mesclas são:
+
+```
+protocolo_id                     -> 'PROTOCOLOS GERAL'[N°PROTOCOLO]
+'N°PROTOCOLO'                    -> 'TECNICOS AUXILIARES'[PROTOCOLO:]
+{INSTALADO POR:, DATA FINAL}     -> 'GESTORES EQUIPES'{TÉCNICO 1, DATA}
+```
+
+Mescla inteira nula é a assinatura de uma junção que **não casou nunca** — é o #61 um
+andar abaixo, dentro da camada M, onde não há guarda de espécie nenhum. Consertar exige
+rematerializar da fonte e fica para a próxima sessão; o que muda hoje é que deixou de
+ser invisível: são 4 linhas de saída, com o arquivo, a contagem e a pista.
+
+11 testes em `packages/snapshot/test/confere.test.ts`.
+
+---
+
+## #63 — Consertar a junção destravou um visual de 40 minutos, e a regra 9 decidiu o que fazer com ele
+
+**13/08/2026, consequência direta do #61.** Com a junção casando,
+`instalacao-reincidente` passou de "abre rápido com 2 cards errando alto" para "não
+abre". A paridade, que rodava em ~9 min, passou de 50.
+
+O custo estava inteiro em **um** visual:
+
+```
+[23/29]  d93e5f33  tableEx   > 40 min (interrompido)
+os outros 28 visuais         ~4 s somados
+```
+
+`d93e5f33` é a tabela de detalhe de **19 campos** cruzando `INSTALAÇÕES REINCIDENTES`,
+`PROTOCOLOS GERAL` e `CALENDARIO INSTALADO`. Ela nunca tinha calculado: atravessa
+exatamente o relacionamento que errava alto, então até ontem ela custava 1 ms e um erro.
+
+### A decisão, pela regra 9
+
+> Velocidade acima de fidelidade ao Power BI. Divergir é permitido; divergir em
+> silêncio, não.
+
+Trocar "erra alto em 1 s" por "calcula certo em 40 min" **não é progresso** — a página
+deixa de abrir, e um painel que não abre não é mais correto, é inútil de outro jeito.
+
+O mecanismo para isso já existia e é do #52: `specs/_catalog/projecao.yaml`, o arquivo
+onde uma coluna **usada** fica fora da carga por decisão humana, e todo visual que a
+amarra passa a ser **"sob demanda"** — não erro. Foi o caminho decidido para o `Relato`
+de `FIELD AGENDA` em 10/08.
+
+Três colunas entram: `dias_para_reincidencia`, `protocolo_manutencao` e
+`tecnico_responsavel`. O critério foi conferido, não suposto — nas **14 páginas**, elas
+são amarradas por **um único visual** (este), e **nenhuma medida, coluna calculada ou
+tabela calculada** as cita. `tipo_instalacao` seria a quarta e ficou de fora: dois
+outros visuais a usam como filtro.
+
+### Medido depois
+
+```
+página                     ok  erro  s/nº      linhas    carga  cálculo
+ instalacao-reincidente     8     0    21      53.598   322 ms  3835 ms
+
+  d93e5f33  tableEx  (sob demanda: 'INSTALAÇÕES REINCIDENTES'[dias_para_reincidencia], …)
+```
+
+**De >40 min para 4,2 s**, com os 8 visuais que têm número calculando e zero erros. E
+os dois cards do #61 continuam batendo com o Power BI: eles não amarram nenhuma das
+três colunas.
+
+### O que isso **não** resolve
+
+O custo não sumiu — mudou de lugar. Quem pedir a tabela de detalhe vai esperar os 40
+min. Baixar isso é trabalho de **agregar no grão certo**, como o passo 4 da
+`DECISAO-DESEMPENHO`, e não de projeção. Fica registrado como dívida, com número, e é o
+primeiro candidato da próxima sessão junto com as 4 colunas nulas do #62.
+
+### E o teto que impede a subida de travar
+
+`npm start` aquece com **teto de 180 s por página** (`--limite=`): uma página cara vira
+uma linha `passou de 180s — investigue esta página`, e não um cursor parado sem uma
+palavra sobre o que está acontecendo. O teto **não** torna a página barata — abortar o
+pedido não para o cálculo do outro lado —, ele serve para **dizer qual é**.
+

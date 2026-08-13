@@ -50,7 +50,9 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | A conferência que torna isso seguro **não era coberta por teste nenhum**: removida, os 860 continuavam passando. Veio de mutação, e hoje 2 testes a pegam. A outra mutação — truncar as linhas materializadas — derruba 38 | ✅ |
 | — | **A tela existe: `apps/api` serve a API de leitura e o dashboard.** Uma página do relatório abre no navegador com número calculado a partir da fonte real. `diario-instalacao`: **7 visuais com número, 0 falharam**, 3,8 s por pedido; a tabela de 32.462 linhas sai em 48 KB em vez de 23,8 MB, dizendo o total ([ACHADOS](docs/ACHADOS.md) #39) | ✅ |
 | — | **Somente leitura no protocolo**: só `GET`/`HEAD`, qualquer outro método leva 405 antes do roteamento. É a quarta camada — as outras três ficam no Query Engine, que a API nem chama: ela lê snapshot | ✅ |
-| — | Divergência registrada do `ARCHITECTURE.md`: **`node:http` em vez de Fastify**. Cinco rotas `GET` sem corpo, sem escrita e sem autenticação não pagam um framework, e o repositório segue sem passo de build. Revisar nas Fases 4 e 5 | ⚠️ |
+| — | Divergência registrada do `ARCHITECTURE.md`: **`node:http` em vez de Fastify**. Cinco rotas `GET` sem corpo, sem escrita e sem autenticação não pagam um framework. Continua valendo — a condição de revisão (Permission Engine, corpo, WebSocket) não foi atingida | ⚠️ |
+| — | **A tela virou aplicação: `apps/web` em React 19 + Vite.** 14 páginas navegáveis, estado na URL e as **segmentações filtrando de verdade** — a escolha vira um `FiltroSpec` sintético e entra na mesma lista dos filtros de página, sem tocar em engine. Medido em `visao-geral` com `[EQUIPE] = Equipe Field Service`: `CLIENTES DISTINTOS` **28.253 → 2.973** ([DECISAO-TELA](docs/DECISAO-TELA.md)) | ✅ |
+| — | **Tabela calculada congelada gravava a coluna-chave inteira nula**, e o acidente que fazia as calculadas saírem certas escondeu isso por um commit. `calendar` inteira eram 30.009 linhas vazias. Achado por uma funcionalidade que **exibe dado cru**, não por teste ([ACHADOS](docs/ACHADOS.md) #54) | ✅ |
 | — | A regra 5 do `PROMPT-CONTINUACAO.md` mandava a paleta **v1** (`#F5F1E8`, DM Sans, 256px), que o próprio design system marca como substituída. Corrigida para a **v2** real do HUBBI (`#F4F4F5`, âmbar `#F59E0B`) | ✅ |
 | — | **O relatório inteiro contra dado real: `npm run paginas`.** 11 das 14 páginas carregam e **os 64 visuais com número nelas calculam** — 632.620 linhas, 11,9 s de carga e 17,5 s de cálculo. Outra pergunta que a cobertura da fase 3: lá era "o avaliador sabe fazer a conta" sobre tabelas de 5 linhas ([ACHADOS](docs/ACHADOS.md) #40) | ✅ |
 | — | Na primeira passada eram 63: **o tipo declarado valia só para coluna calculada**. `'CONSOLIDADO CLIENTES'[authentication_totalizer]` declara `int64` e a camada M entrega texto. É o #31 um nível acima, e nenhum dos 898 testes podia pegar — em dado sintético o teste sempre põe número em coluna numérica. Medido: **14 colunas** declaram número e chegam texto, e em todas **todo valor é literal limpo** | ✅ |
@@ -71,7 +73,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**957 testes verdes.** Nenhum deles precisa de credencial.
+**1232 testes verdes.** Nenhum deles precisa de credencial, e nenhum precisa de build.
 
 ### Extraído do Power BI
 
@@ -91,18 +93,31 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 
 ```
 npm run snapshot -- --pagina=diario-instalacao --memoria=8192   # uma vez
-npm run api                                                     # http://localhost:3100
+npm start                                                       # http://localhost:3100
 ```
 
+`npm start` compila a tela, sobe a API e **aquece as 14 páginas** antes de dizer que
+está pronto — `agendamento-field` custa ~1 min na primeira abertura, e um minuto de
+tela branca é a diferença entre uma demo e um constrangimento. Ele reprova se algum
+visual falhar, se alguma página não responder ou se o cache não pegar, e mesmo
+reprovando deixa a API no ar para você olhar. Ver `tools/subir/`.
+
 `apps/api` é o fim do caminho: lê o snapshot em disco, calcula a página com as
-engines e devolve JSON; a tela em `apps/api/web/` desenha. Não toca fonte nenhuma —
-quem busca é `npm run snapshot`.
+engines e devolve JSON. Não toca fonte nenhuma — quem busca é `npm run snapshot`.
+
+`apps/web` é a tela: **React 19 + Vite**, navegando pelas 14 páginas, com as
+segmentações (`slicer`) filtrando de verdade e o estado na URL. A API serve o build na
+raiz; em desenvolvimento, `npm run web` sobe o Vite em 5173 com proxy para a API. A
+tela anterior — uma página só, sem filtro — continua em `/legado`, como referência de
+comparação durante a conferência de paridade. Ver [DECISAO-TELA](docs/DECISAO-TELA.md).
 
 | rota | |
 |---|---|
 | `GET /api/saude` | o que há em disco, quantas linhas, de quando |
 | `GET /api/dashboards` | as 14 páginas, e quais têm snapshot |
 | `GET /api/dashboards/:id?de=&linhas=` | a página calculada |
+| `GET /api/dashboards/:id?filtro=…` | a página calculada **com as segmentações da tela** aplicadas |
+| `GET /api/dashboards/:id/valores?tabela=&coluna=&nivel=` | os valores distintos que uma segmentação oferece |
 
 Qualquer método que não seja `GET`/`HEAD` leva **405 antes do roteamento**.
 
@@ -111,10 +126,12 @@ falha não derruba a página** (vira `erro` nele, e a página conta), **tabela g
 vem cortada dizendo o total** (23,8 MB → 48 KB) e **o tipo do valor viaja junto**
 (JSON não tem data).
 
-A tela **não desenha sidebar**: pelo [DESIGN-SYSTEM](docs/DESIGN-SYSTEM.md) v2 esta
-página abre dentro do AppShell do HUBBI, e a navegação é de lá. E não usa biblioteca
-de gráfico — o Chart SDK é peça própria, e escolher uma de passagem seria decidir
-por ele.
+A sidebar da tela é **andaime local, marcado como tal**: pelo
+[DESIGN-SYSTEM](docs/DESIGN-SYSTEM.md) v2 esta página abre dentro do AppShell do
+HUBBI, e a navegação principal é de lá. O andaime usa as medidas reais (62px → 196px
+no hover, header 52px) para que embuti-la no HUBBI seja **apagar um arquivo**, não
+redesenhar o resto. E não usa biblioteca de gráfico — o Chart SDK é peça própria, e
+escolher uma de passagem seria decidir por ele.
 
 ### O relatório inteiro (Fase 3)
 
@@ -141,8 +158,14 @@ calculava sobre `Dataset` montado à mão no teste.
 ```
 npm run snapshot -- --pagina=diario-instalacao --plano      # só diz o que faria
 npm run snapshot -- --pagina=diario-instalacao --memoria=8192
-npm run snapshot -- --todas --memoria=8192
+npm run snapshot -- --todas --refazer --memoria=8192       # sem --refazer, pula o que já existe
+npm run snapshot:calculadas -- --pagina=diario-instalacao  # e as 7 tabelas calculadas depois
 ```
+
+> **`--refazer` e o passo das calculadas não são detalhe.** Sem `--refazer`, `--todas`
+> pula toda query que já tem arquivo e não rebusca nada. E as 7 tabelas calculadas
+> nascem das de query: rematerializar as segundas sem refazer as primeiras deixa em
+> disco um congelado velho — que desde 13/08 **erra alto** em vez de ser servido calado.
 
 **Uma query por processo**, pelo motivo já medido no [ACHADOS](docs/ACHADOS.md) #20: o
 avaliador de M mantém todos os passos vivos ao mesmo tempo, e as queries num processo
