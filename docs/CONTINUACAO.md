@@ -376,6 +376,14 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
 - **Antes de otimizar, rode `npm run paginas -- --visuais`.** Ele lista o custo de cada
   visual, do maior para o menor. Os 104 minutos do #46 eram 90% de um lugar só, e cada
   hipótese testada sem esse número custou uma hora.
+- **`npm run paridade` só imprime no fim.** Ele calcula as 14 páginas e só então escreve
+  as 64 linhas. Um arquivo de saída vazio depois de 30 minutos **não** quer dizer que
+  travou — confira o processo (`Get-Process node`) e olhe o CPU subindo. Em 13/08 isso
+  me fez suspeitar de laço infinito onde o programa estava trabalhando.
+- **`npm start` reprova e mesmo assim deixa a API no ar.** Se ele disser "passou de
+  180s" numa página, essa página é o problema — rode
+  `npm run paginas -- --pagina=<ela> --visuais` e olhe o visual mais caro. Foi assim que
+  o `tableEx` de 40 min do #63 apareceu.
 
 **Sobre o ambiente**
 
