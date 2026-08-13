@@ -34,8 +34,20 @@ import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
 import { colunasUsadas, omissiveis, sobDemandaLiberada } from './colunas-usadas.ts';
-import { arquivoDaCalculada, shaDaCalculada } from './tabelas-calculadas.ts';
-import { le, leCabecalho, shaDeDax, type CabecalhoDeSnapshot, type Escalar } from './formato.ts';
+import {
+  arquivoDaCalculada,
+  dependeDoRelogio,
+  mesmoDiaLocal,
+  shaDaCalculada,
+} from './tabelas-calculadas.ts';
+import {
+  le,
+  leCabecalho,
+  shaDeDax,
+  type CabecalhoDeSnapshot,
+  type Escalar,
+  type TipoDeColuna,
+} from './formato.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
 
@@ -107,6 +119,23 @@ export interface Carregado {
    * quais são é o que separa "rápido" de "misteriosamente rápido".
    */
   congeladas: string[];
+  /**
+   * Tabelas calculadas que tinham arquivo congelado e mesmo assim foram
+   * recalculadas, com o motivo.
+   *
+   * Hoje só há um motivo: o DAX depende do relógio e o arquivo é de outro dia. Ver
+   * `dependeDoRelogio`. Sai no resultado porque recalcular é uma decisão sobre o
+   * dado e tem custo — e as duas coisas precisam ser visíveis.
+   */
+  recalculadas: string[];
+  /**
+   * As conversões de tipo que **não** foram feitas para não quebrar um
+   * relacionamento. Ver `preservaEspecieDeJuncao`.
+   *
+   * Sai no resultado pela mesma razão de `convertidas`: é uma decisão do
+   * carregamento sobre o dado, e decisão calada é indistinguível de bug.
+   */
+  juncoesPreservadas: string[];
   /** A materialização mais antiga entre as tabelas usadas — a idade do dado. */
   dadoDe: string | null;
   ms: number;
@@ -125,6 +154,8 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const dataset = new Dataset();
   const linhasPorTabela = new Map<string, number>();
   const datas: string[] = [];
+  /** A materialização de query mais recente entre as carregadas. Ver `confereIdadeDaCalculada`. */
+  let maisNovoDeQuery: string | null = null;
 
   const faltando: { tabela: string; query: string }[] = [];
   for (const t of plano.tabelas) {
@@ -149,6 +180,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const omitidas: string[] = [];
   const liberadas = new Set((opts.liberaSobDemanda ?? []).map((r) => normaliza(r)));
 
+  const juncao = preservaEspecieDeJuncao(opts.model, opts.dir, plano);
   const convertidas: string[] = [];
   for (const t of plano.tabelas) {
     if (t.query === null) continue;
@@ -171,7 +203,13 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // volta**, agora valendo BLANK em todas as linhas. Seria a projeção produzindo
     // exatamente o número errado silencioso que ela promete não produzir.
     convertidas.push(
-      ...aplicaTiposDeclarados(opts.model.table(t.nome)!, cabecalho, linhas, new Set(fora)),
+      ...aplicaTiposDeclarados(
+        opts.model.table(t.nome)!,
+        cabecalho,
+        linhas,
+        new Set(fora),
+        juncao.suprimir,
+      ),
     );
     // **Adotar, não copiar.** `addTable` remonta objeto por objeto para normalizar o
     // nome das colunas — trabalho que em `field-agenda` são 1,46 milhão de linhas
@@ -182,6 +220,9 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     dataset.adotaTabela(t.nome, linhas as never, fora);
     linhasPorTabela.set(t.nome, linhas.length);
     datas.push(cabecalho.geradoEm);
+    if (maisNovoDeQuery === null || cabecalho.geradoEm > maisNovoDeQuery) {
+      maisNovoDeQuery = cabecalho.geradoEm;
+    }
   }
 
   const ev = new Evaluator({ model: opts.model, dataset, now: opts.now });
@@ -191,6 +232,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   // "não está no dataset" longe da causa.
   const noPlano = new Set(plano.calculadas.map(normaliza));
   const congeladas: string[] = [];
+  const recalculadas: string[] = [];
   for (const t of calculatedTableOrder(opts.model)) {
     if (!noPlano.has(normaliza(t.name))) continue;
 
@@ -199,13 +241,26 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // recalculadas a cada abertura de página. O Power BI as calcula no refresh.
     const arq = arquivoDaCalculada(opts.dir, t.name);
     if (opts.lerCalculadas !== false && fs.existsSync(arq)) {
-      const { cabecalho, linhas } = await le(arq);
-      confereTabelaCalculada(t, cabecalho, opts.dir);
-      dataset.adotaTabela(t.name, linhas as never);
-      linhasPorTabela.set(t.name, linhas.length);
-      datas.push(cabecalho.geradoEm);
-      congeladas.push(t.name);
-      continue;
+      const cab = leCabecalho(arq);
+      confereTabelaCalculada(t, cab, opts.dir);
+      confereIdadeDaCalculada(t, cab, maisNovoDeQuery, opts.dir);
+
+      // O relógio andou: o valor congelado é o de outro dia. Recalcular aqui é
+      // barato **porque a regra não é transitiva** — as duas tabelas desta base que
+      // dependem do relógio somam ~22 ms. Ver `dependeDoRelogio`.
+      if (dependeDoRelogio(t) && !mesmoDiaLocal(new Date(cab.geradoEm), opts.now)) {
+        recalculadas.push(
+          `${t.name}: congelada em ${cab.geradoEm}, e o DAX dela chama TODAY()/NOW() — ` +
+            `o valor em disco é o de outro dia`,
+        );
+      } else {
+        const { cabecalho, linhas } = await le(arq);
+        dataset.adotaTabela(t.name, linhas as never);
+        linhasPorTabela.set(t.name, linhas.length);
+        datas.push(cabecalho.geradoEm);
+        congeladas.push(t.name);
+        continue;
+      }
     }
 
     const m = materializeCalculatedTable(ev, t);
@@ -219,18 +274,109 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     convertidas,
     omitidas,
     congeladas,
-    dadoDe: datas.sort()[0] ?? null,
+    recalculadas,
+    juncoesPreservadas: juncao.notas,
+    // **A mais ANTIGA, não a mais nova.** A tela escreve "dado de <isto>", e o que
+    // ela promete é que *nada* do que está ali é mais velho que a data mostrada.
+    // Devolver a mais nova invertia a promessa: uma tabela congelada há dois dias
+    // ao lado de uma rematerializada agora apareceria com a hora de agora, que é
+    // exatamente o número plausível e errado que este projeto não pode cometer.
+    // É a mesma conta de `manifesto.maisAntigo`, e agora com a mesma resposta.
+    dadoDe: datas.length ? datas.sort()[0]! : null,
     ms: Date.now() - inicio,
   };
 }
 
 /** Tipo de snapshot que cada tipo declarado do modelo espera encontrar. */
-const ESPERADO: Record<string, string> = {
+const ESPERADO: Record<string, TipoDeColuna> = {
   int64: 'number',
   double: 'number',
   decimal: 'number',
   dateTime: 'date',
 };
+
+/** A chave de uma coluna nos conjuntos deste arquivo. */
+function chaveDeColuna(tabela: string, coluna: string): string {
+  return `${normaliza(tabela)} ${normaliza(coluna)}`;
+}
+
+export interface PreservacaoDeJuncao {
+  /** Colunas cuja conversão de tipo foi suprimida, por `chaveDeColuna`. */
+  suprimir: Set<string>;
+  /** O que foi preservado, em texto — vai para `Carregado.juncoesPreservadas`. */
+  notas: string[];
+}
+
+/**
+ * As duas pontas de um relacionamento têm de chegar na **mesma espécie**.
+ *
+ * **É a conversão do #40 encontrando o seu próprio limite.** A regra "o tipo
+ * declarado vence ao materializar" conserta agregação (`AVERAGE` sobre o texto
+ * `"83205"`); numa **coluna de junção** ela faz o contrário: quebra o
+ * relacionamento. O caso real é
+ * `'INSTALAÇÕES REINCIDENTES'[protocolo_instalacao]` — o PBIP declara `int64`, a
+ * camada M entrega texto, e o outro lado
+ * (`'PROTOCOLOS GERAL'[N°PROTOCOLO]`, declarado `string`) fica texto. Converter só
+ * um lado põe número contra texto: a junção não casa **nunca**, e os dois cards de
+ * `instalacao-reincidente` erravam alto todo dia.
+ *
+ * O critério é estreito de propósito: só preserva quando as duas colunas chegam do
+ * disco **na mesma espécie** e é a declaração que as separaria. Se elas já chegam
+ * diferentes, o dado é que está errado, e aí a junção continua errando alto — que é
+ * o guarda de `filter.restringe` e ele não deve ser enfraquecido.
+ *
+ * Preservar é uma decisão sobre o dado, então ela é **dita** (`notas`), nunca calada.
+ */
+export function preservaEspecieDeJuncao(
+  model: SemanticModel,
+  dir: string,
+  plano: PlanoDeSnapshot,
+): PreservacaoDeJuncao {
+  const cabecalhos = new Map<string, CabecalhoDeSnapshot>();
+  for (const t of plano.tabelas) {
+    if (t.query === null) continue;
+    cabecalhos.set(normaliza(t.nome), leCabecalho(arquivoDaQuery(dir, t.query)));
+  }
+
+  const ponta = (tabela: string, coluna: string) => {
+    const col = model.column(tabela, coluna);
+    const cab = cabecalhos.get(normaliza(tabela));
+    const nomes = [col?.sourceColumn, col?.name, coluna]
+      .filter((x): x is string => !!x)
+      .map(normaliza);
+    const disco = cab?.colunas.find((c) => nomes.includes(normaliza(c.nome)))?.tipo ?? null;
+    // Coluna calculada nasce de DAX: o tipo declarado não a converte, e o disco
+    // não a descreve. Fora do critério.
+    const declarada = col && !col.calculated && col.type ? (ESPERADO[col.type] ?? null) : null;
+    return { tabela, coluna, disco, final: declarada ?? disco, converte: declarada !== null };
+  };
+
+  const suprimir = new Set<string>();
+  const notas: string[] = [];
+
+  for (const r of model.relationships) {
+    if (!r.active) continue;
+    const a = ponta(r.fromTable, r.fromColumn);
+    const b = ponta(r.toTable, r.toColumn);
+    // Só quando as duas chegam do disco na mesma espécie utilizável. `vazia` e
+    // `misto` não afirmam espécie nenhuma.
+    if (a.disco === null || b.disco === null) continue;
+    if (a.disco !== b.disco || a.disco === 'vazia' || a.disco === 'misto') continue;
+    if (a.final === b.final) continue;
+
+    for (const p of [a, b]) {
+      if (!p.converte || p.final === p.disco) continue;
+      const outra = p === a ? b : a;
+      suprimir.add(chaveDeColuna(p.tabela, p.coluna));
+      notas.push(
+        `'${p.tabela}'[${p.coluna}] fica ${p.disco} (declara ${p.final}): a junção com ` +
+          `'${outra.tabela}'[${outra.coluna}] exige a mesma espécie nos dois lados`,
+      );
+    }
+  }
+
+  return { suprimir, notas };
+}
 
 /**
  * O tipo declarado da coluna vale ao materializar — também para coluna **física**.
@@ -262,6 +408,8 @@ function aplicaTiposDeclarados(
   linhas: Record<string, Escalar>[],
   /** Colunas que não foram carregadas. Converter uma delas a ressuscitaria como BLANK. */
   omitidas: ReadonlySet<string> = new Set(),
+  /** Colunas de junção cuja conversão quebraria o relacionamento. Ver `preservaEspecieDeJuncao`. */
+  suprimir: ReadonlySet<string> = new Set(),
 ): string[] {
   const doDisco = new Map(cabecalho.colunas.map((c) => [normaliza(c.nome), c]));
   const converter: { chave: string; col: (typeof t.columns)[number] }[] = [];
@@ -269,6 +417,7 @@ function aplicaTiposDeclarados(
 
   for (const col of t.columns) {
     if (col.calculated || !col.type || !ESPERADO[col.type]) continue;
+    if (suprimir.has(chaveDeColuna(t.name, col.name))) continue;
     const chave = [col.sourceColumn, col.name]
       .filter((x): x is string => !!x)
       .map(normaliza)
@@ -373,4 +522,37 @@ function confereTabelaCalculada(
         `da tabela ou de alguma coluna calculada dela. Rode: ${comando}`,
     );
   }
+}
+
+/**
+ * Confere que a tabela calculada em disco não é mais **velha que o dado** de que ela
+ * nasceu.
+ *
+ * **É o buraco que o `tabelaSha` não cobre, e ele custou uma manhã de investigação.**
+ * O sha responde "o DAX é o mesmo?"; ninguém respondia "as linhas de origem são as
+ * mesmas?". `npm run snapshot` troca `protocolos-geral.jsonl` por baixo, o
+ * `calc.*.jsonl` continua lá com o DAX idêntico, e o guarda deixa passar: a página
+ * serve o número de anteontem **com cara de hoje**. É exatamente o "número plausível
+ * e errado" que a regra 9 proíbe, e ele não deixava nenhum rastro.
+ *
+ * **O critério é conservador de propósito.** Compara com a materialização de query
+ * mais recente **do plano**, não com as dependências apuradas do DAX. Apurar
+ * dependência erraria para o lado permissivo se a leitura do DAX falhasse — e o lado
+ * permissivo aqui é servir número velho calado. O preço é um falso positivo quando se
+ * rematerializa uma query que a tabela não usa; o remédio é o comando que a mensagem
+ * já traz, e que depois de um refresh se ia rodar de qualquer jeito.
+ */
+function confereIdadeDaCalculada(
+  t: ModelTable,
+  cabecalho: CabecalhoDeSnapshot,
+  maisNovoDeQuery: string | null,
+  dir: string,
+): void {
+  if (maisNovoDeQuery === null || cabecalho.geradoEm >= maisNovoDeQuery) return;
+  throw new Error(
+    `Snapshot desatualizado: '${t.name}' foi congelada em ${cabecalho.geradoEm}, antes da ` +
+      `materialização mais recente das tabelas de origem (${maisNovoDeQuery}). As linhas em ` +
+      `${arquivoDaCalculada(dir, t.name)} são as do dado antigo, e o DAX igual não denuncia ` +
+      `isso. Rode: npm run snapshot:calculadas -- --tabela=${t.name}`,
+  );
 }
