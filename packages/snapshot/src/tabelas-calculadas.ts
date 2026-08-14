@@ -26,6 +26,7 @@
 // alto é obrigatório — servir o resultado de um DAX que não existe mais é o número
 // plausível e errado que este projeto não pode cometer.
 
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
@@ -33,6 +34,46 @@ import { materializeCalculatedTable } from '../../measure-engine/src/calculated.
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
 import { shaDeDax, type Escalar } from './formato.ts';
+
+/**
+ * A identidade da **ordem das linhas** de uma tabela, pelas colunas dadas.
+ *
+ * **Existe para tornar seguro juntar o trabalho de processos diferentes.** Congelar
+ * `Status Protocolo Dia` num processo só leva 14 h 28 min; uma coluna por processo leva
+ * ~24 min (ACHADOS #67). Só que as quatro colunas caem no **mesmo arquivo**, e juntá-las
+ * por posição supõe que cada processo produziu as linhas na mesma ordem. Se não
+ * produziu, o arquivo sai com o valor de uma linha no lugar de outra — plausível e
+ * errado, que é o único resultado que este projeto não aceita.
+ *
+ * Então quem junta confere isto antes. É o mesmo desenho de `daxSha` e `original_sha`:
+ * o guarda é a metade que importa.
+ *
+ * **A espécie entra no dígito.** Sem ela o número `1` e o texto `"1"` dariam a mesma
+ * chave, e uma ponta que mudasse de tipo passaria pelo guarda em silêncio.
+ */
+export function shaDasChaves(
+  linhas: readonly Record<string, Escalar>[],
+  colunas: readonly string[],
+): string {
+  const h = createHash('sha256');
+  // Nome canônico e ordem fixa: a mesma tabela lida por dois processos pode ter as
+  // colunas em ordens diferentes no cabeçalho, e isso **não** é divergência de linha.
+  const chaves = [...colunas].map(normalizeName).sort();
+  h.update(`${chaves.join(' ')}\n`);
+  for (const linha of linhas) {
+    for (const c of chaves) h.update(digito(linha[c] ?? null));
+    h.update('\n');
+  }
+  return h.digest('hex').slice(0, 16);
+}
+
+function digito(v: Escalar): string {
+  if (v === null) return 'n:';
+  if (v instanceof Date) return `d:${v.getTime()}`;
+  if (typeof v === 'number') return `f:${v}`;
+  if (typeof v === 'boolean') return `b:${v}`;
+  return `s:${v}`;
+}
 
 /** O arquivo de uma tabela calculada. `calc.` no nome para não colidir com query. */
 export function arquivoDaCalculada(dir: string, tabela: string): string {

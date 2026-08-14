@@ -1,12 +1,9 @@
 # Continuação — onde o trabalho parou
 
 > **Atualizado em 14/08/2026**, depois de as mesclagens mortas da camada M serem
-> achadas e decididas (#64) e de o congelamento de `Status Protocolo Dia` revelar
-> **14 h 28 min** (#66). É o ponto de entrada de uma sessão nova: autocontido, feito
-> para ser lido antes de tocar em qualquer coisa.
->
-> **Se for ler uma coisa só antes de escolher o que fazer, leia o #67.** Ele é o maior
-> número aberto do projeto — 38× no congelamento — e passou na frente da paridade.
+> achadas e decididas (#64) e de o congelamento das tabelas calculadas cair de
+> **14 h 28 min para 26 min** (#66 → #67 → #68). É o ponto de entrada de uma sessão
+> nova: autocontido, feito para ser lido antes de tocar em qualquer coisa.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
@@ -29,11 +26,11 @@ números no navegador limpou os filtros da página antes de ler). A fila real s�
 divergências**, e a primeira é `manutencao-inicial`, que diverge no sentido oposto e
 ainda não tem causa provada.
 
-> **Mas a paridade deixou de ser o primeiro item em 14/08.** Congelar
-> `Status Protocolo Dia` leva **14 h 28 min**, e 12 h 50 disso é **uma coluna
-> calculada** ([ACHADOS](ACHADOS.md) #66). Como a guarda de idade do #60 obriga a
-> regenerá-la sempre que uma origem é rematerializada, hoje **o snapshot não pode ser
-> atualizado num dia de trabalho**. Isso é bloqueio de operação, não lentidão.
+> **O bloqueio de operação de 14/08 está resolvido.** Congelar `Status Protocolo Dia`
+> levava **14 h 28 min** — 12 h 50 numa coluna só. A causa não era a coluna: era **um
+> processo compartilhado** entre as quatro ([ACHADOS](ACHADOS.md) #66 → #67). Com um
+> processo por coluna são **26 min 14 s**, e o arquivo sai **idêntico byte a byte**
+> (#68). O refresh inteiro volta a caber numa janela, e a paridade volta a ser a fila.
 
 ---
 
@@ -45,7 +42,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1257 testes, ~5 s, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 1264 testes, ~5 s, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -97,7 +94,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1257 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
+**1264 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
 
 | camada | estado |
 |---|---|
@@ -105,7 +102,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | Query Engine + camada M | ✅ **as 24 de 24** queries rodam contra a fonte real |
 | Modelo semântico + avaliador DAX | ✅ as 56 funções que a base usa, 75 medidas |
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
-| **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco. ⚠️ **Congelar as calculadas leva 14 h 28 min** — 6 delas em 7 s e `Status Protocolo Dia` no resto (#66) |
+| **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco. Congelar as 7 calculadas leva **~26 min** — um processo por coluna, com guarda de ordem de linha (#68). Era 14 h 28 min |
 | **Camada M — mesclagens** | ✅ junção que não casa **nenhuma** linha emite nota com o número; reconciliar exige decisão em `specs/_catalog/juncoes.yaml` (#64). 2 das 3 mortas resolvidas |
 | **API** (`apps/api`) | ✅ somente leitura, uma página por pedido, `?filtro=` e rota de valores; cache da resposta (Redis ou memória) desde 11/08 |
 | **Autenticação** | ❌ **não existe** — costura pronta (`apps/api/src/identidade.ts`), formato da decisão em `specs/_catalog/permissoes.yaml`, sem leitor e sem login |
@@ -173,7 +170,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 65 entradas.
+   registro; hoje tem 68 entradas.
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
@@ -285,25 +282,15 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 > e degradação para memória, `ARCHITECTURE.md` separado entre o que existe e o que é
 > desenho, e a costura de identidade da Fase 4.
 
-1. **Um processo por coluna calculada** — [ACHADOS](ACHADOS.md) **#67**, e a causa já
-   está medida: as 14 h 28 min não são uma coluna ruim, são **o processo compartilhado**.
-   Cada coluna sozinha custa 9 a 12 ms/linha; em sequência, a primeira segue barata e
-   **todas as outras ficam 5× mais caras**. Isoladas, as quatro fazem as 30.404 linhas em
-   **~23 min** contra 14 h 28 min — **38×**.
-   O desenho está no #67, e o perigo dele também: `npm run snapshot` já faz `spawn` por
-   query, mas lá cada filho grava **um arquivo inteiro**; aqui as quatro colunas caem
-   **no mesmo arquivo**, e juntar por posição supõe ordem de linha idêntica entre
-   processos. Sem um `chaveSha` conferido antes de juntar, o arquivo sai plausível e
-   errado. **Não implemente sem esse guarda.**
-   É o maior ganho por hora de trabalho que existe hoje, e enquanto não sair **o
-   snapshot não pode ser atualizado num dia útil**.
-2. **Ditar os 42 números de paridade.** É o único passo que ninguém faz sozinho, e
-   agora não há mais desculpa de ferramenta: o harness existe, a tela existe, o filtro
-   existe. Abra `http://localhost:3100` ao lado do Power BI, ache a linha
-   `visual: <id>` em `specs/paridade/<pagina>.yaml` — **o id aparece embaixo de cada
-   card na tela, de propósito** — e escreva o valor em `powerbi:`. São 64 cards, dos
-   quais 22 já saíram por serem carimbo de refresh.
-3. **Investigar a terceira mesclagem morta**, a de `GESTORES EQUIPES`
+1. **Ditar os números de paridade que faltam.** Voltou a ser o primeiro item: o bloqueio
+   de operação de 14/08 foi resolvido ([ACHADOS](ACHADOS.md) #68 — o congelamento caiu de
+   14 h 28 min para 26 min), e a paridade é o único passo que ninguém faz sozinho. Abra
+   `http://localhost:3100` ao lado do Power BI, ache a linha `visual: <id>` em
+   `specs/paridade/<pagina>.yaml` — **o id aparece embaixo de cada card na tela, de
+   propósito** — e escreva o valor em `powerbi:`. As 3 páginas cujo gabarito é inválido
+   (`docs/PARIDADE-11-08.md`) são 11 das 18 divergências: elas vêm primeiro. São 64 cards,
+   dos quais 22 já saíram por serem carimbo de refresh.
+2. **Investigar a terceira mesclagem morta**, a de `GESTORES EQUIPES`
    ([ACHADOS](ACHADOS.md) #64). É a origem de `'PROTOCOLOS GERAL'[TÉCNICO 2]` inteira
    nula, e `visao-geral` a usa **como filtro `not_in [null]`** — sobre uma coluna 100%
    nula, esse filtro descarta toda linha do visual. As chaves são
@@ -311,7 +298,7 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
    é o caso texto×número que o `juncoes.yaml` resolve. Suspeite da **data** primeiro
    (`DATA FINAL` chega meia-noite UTC; `DATA` vem do MariaDB e ninguém olhou ainda).
    Medido: 0 de 25.472 linhas de chave completa contra 5.619 do outro lado.
-4. **Empurrar para SQL o que o SQL faz melhor** — as mesclagens de **mesma fonte** e a
+3. **Empurrar para SQL o que o SQL faz melhor** — as mesclagens de **mesma fonte** e a
    agregação de `FIELD AGENDA` ao grão `(protocolo, slot)`, que é o passo 4 da
    `DECISAO-DESEMPENHO.md` e o maior ganho que resta (1.458.244 linhas → 30.252).
    **Depois do item 1**, e o motivo é a rede de segurança: sem gabarito de paridade
@@ -320,7 +307,7 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
    vale. O SQL escrito à mão não pode morar em `specs/_catalog/queries/` (regra 2);
    o lugar é um `sql-override.yaml` no molde de `divergencias.yaml`, com
    `original_sha` da expressão M que ele substitui.
-5. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
+4. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
    de passagem seria decidir por uma peça que tem dono. Quando for hora, é decisão
    registrada, não escolha de conveniência.
 
@@ -477,7 +464,7 @@ specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
   _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          65 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          68 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa

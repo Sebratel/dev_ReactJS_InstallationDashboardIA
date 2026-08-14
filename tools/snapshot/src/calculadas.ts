@@ -37,19 +37,22 @@
 // `[Tipo Protocolo Dia]` **sozinha e primeiro** é o que separa "esta coluna é cara" de
 // "esta coluna pagou a conta das outras".
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SemanticModel, normalizeName } from '../../../packages/semantic-model/src/model.ts';
+import type { ModelTable } from '../../../packages/semantic-model/src/types.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { carrega } from '../../../packages/snapshot/src/carrega.ts';
-import { escreve } from '../../../packages/snapshot/src/formato.ts';
+import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import {
   arquivoDaCalculada,
   paraGravacao,
   shaDaCalculada,
+  shaDasChaves,
 } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { calculatedTableOrder } from '../../../packages/measure-engine/src/calculated.ts';
 
@@ -83,6 +86,29 @@ const amostra = args.some((a) => a.startsWith('--amostra='))
 const pular = args.some((a) => a.startsWith('--pular='))
   ? Number.parseInt(args.find((a) => a.startsWith('--pular='))!.slice('--pular='.length), 10)
   : 0;
+/**
+ * Modo filho: calcule **uma** coluna e grave o resultado neste arquivo parcial.
+ *
+ * O parcial é um snapshot de verdade, escrito com o mesmo `escreve` e lido com o mesmo
+ * `le`. Não é preciosismo: os valores incluem `Date`, e um formato próprio de troca entre
+ * processos teria de reimplementar a codificação — na primeira divergência, uma data
+ * viraria texto e o cabeçalho final diria `"tipo":"string"` sem ninguém notar.
+ */
+const parcial = args.find((a) => a.startsWith('--parcial='))?.slice('--parcial='.length) ?? '';
+const isolarPedido = args.includes('--isolar');
+const semIsolar = args.includes('--sem-isolar');
+/**
+ * De quantas linhas em diante vale gastar um processo por coluna.
+ *
+ * A penalidade de compartilhar processo **cresce com a escala** (ACHADOS #67): em 12.800
+ * linhas ela é ~5×; nas 30.404 de `Status Protocolo Dia` é 36×. Abaixo disso o custo fixo
+ * ganha — as outras seis tabelas calculadas congelam em **7 segundos somados**, e quatro
+ * cargas de snapshot a 16 s cada tornariam o caminho comum pior.
+ *
+ * O número é um proxy: o que encarece é varrer tabela grande, não ter muitas linhas. Mas
+ * é o proxy que a medição sustenta, e `--isolar` / `--sem-isolar` mandam mais que ele.
+ */
+const MINIMO_PARA_ISOLAR = 5_000;
 for (const a of args) {
   const conhecido =
     a === '--plano' ||
@@ -90,14 +116,26 @@ for (const a of args) {
     a.startsWith('--tabela=') ||
     a.startsWith('--coluna=') ||
     a.startsWith('--amostra=') ||
-    a.startsWith('--pular=');
+    a.startsWith('--pular=') ||
+    a.startsWith('--parcial=') ||
+    a === '--isolar' ||
+    a === '--sem-isolar';
   if (!conhecido) {
     console.error(`argumento desconhecido: ${a}`);
     console.error(
-      'use: --pagina=<id> | --tabela="<nome>" | --plano | --amostra=N | --pular=N | --coluna="<nome>"',
+      'use: --pagina=<id> | --tabela="<nome>" | --plano | --amostra=N | --pular=N |\n' +
+        '     --coluna="<nome>" | --isolar | --sem-isolar',
     );
     process.exit(2);
   }
+}
+if (isolarPedido && semIsolar) {
+  console.error('--isolar e --sem-isolar ao mesmo tempo. Escolha um.');
+  process.exit(2);
+}
+if (parcial && colunas.length !== 1) {
+  console.error('--parcial= é o modo filho: exige exatamente um --coluna=.');
+  process.exit(2);
 }
 if (!Number.isFinite(amostra) || amostra < 0) {
   console.error('--amostra= espera um número de linhas (0 = todas, e aí GRAVA).');
@@ -106,9 +144,10 @@ if (!Number.isFinite(amostra) || amostra < 0) {
 // `--coluna=` sem `--amostra=` seria uma gravação com colunas de menos: o arquivo sairia
 // com a coluna omitida ausente do cabeçalho, e a carga a criaria nula em silêncio — o
 // sintoma exato que o #54 levou dias para achar.
-if (colunas.length && amostra === 0) {
-  console.error('--coluna= só faz sentido com --amostra=: sem ela, gravaria o arquivo');
-  console.error('sem as colunas que você não pediu, e a carga as leria como nulas.');
+if (colunas.length && amostra === 0 && !parcial) {
+  console.error('--coluna= só faz sentido com --amostra= ou --parcial=: sem uma das duas,');
+  console.error('gravaria o arquivo sem as colunas que você não pediu, e a carga as leria');
+  console.error('como nulas.');
   process.exit(2);
 }
 if (paginas.length === 0 && tabelas.length === 0) {
@@ -148,31 +187,185 @@ for (const t of escolhidas) {
 }
 if (soPlano) process.exit(0);
 
+const t0 = Date.now();
+
+/** Quantas linhas o arquivo congelado diz ter, ou `null` se ele não existe. */
+function linhasCongeladas(t: ModelTable): number | null {
+  const arq = arquivoDaCalculada(DIR, t.name);
+  if (!fs.existsSync(arq)) return null;
+  try {
+    return leCabecalho(arq).linhas;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Quais tabelas ganham **um processo por coluna calculada**.
+ *
+ * Ver ACHADOS #67: num processo só, a primeira coluna sai barata e todas as outras ficam
+ * ~5× mais caras, e a penalidade cresce com a escala — 36× nas 30.404 linhas de
+ * `Status Protocolo Dia` (14 h 28 min contra ~24 min).
+ *
+ * A decisão é tomada **antes** de carregar o snapshot, de propósito: no caminho isolado o
+ * pai não carrega nada, e é isso que mantém um único processo pesado por vez nesta
+ * máquina de 16 GB.
+ */
+const paraIsolar = new Set<string>();
+if (!parcial && amostra === 0 && !semIsolar) {
+  for (const t of escolhidas) {
+    if (t.columns.filter((x) => x.calculated && x.dax).length < 2) continue;
+    const n = linhasCongeladas(t);
+    if (isolarPedido || (n !== null && n >= MINIMO_PARA_ISOLAR)) {
+      paraIsolar.add(t.name);
+    } else if (n === null) {
+      console.error(
+        `  ${t.name}: nunca foi congelada, então não sei quantas linhas tem — ` +
+          'vai num processo só. Se demorar, refaça com --isolar.',
+      );
+    }
+  }
+}
+
+/** Onde os parciais vivem. Subdiretório para nenhuma varredura de `*.jsonl` os ver. */
+const DIR_PARCIAIS = path.join(DIR, '_parciais');
+
+/**
+ * Congela uma tabela calculada com **um processo por coluna**, e junta no fim.
+ *
+ * A ordem importa: os filhos rodam **em série** (a máquina tem 16 GB e cada um passa de
+ * 2 GB), e o pai só junta depois de todos. É o mesmo desenho de `npm run snapshot`, com
+ * uma diferença que é a parte perigosa: lá cada filho grava um arquivo **inteiro**, e aqui
+ * as colunas caem no **mesmo** arquivo e são juntadas **por posição**.
+ *
+ * Daí o `shaDasChaves`. Se dois filhos produzirem as linhas em ordens diferentes, o valor
+ * de uma linha entraria em outra — plausível e errado, o único resultado que este projeto
+ * não aceita. O pai confere antes de juntar, e recusa em vez de improvisar.
+ */
+async function congelaIsolada(t: ModelTable): Promise<void> {
+  const inicio = Date.now();
+  const fisicas = t.columns.filter((x) => !x.calculated).map((x) => x.name);
+  const calc = t.columns.filter((x) => x.calculated && x.dax).map((x) => x.name);
+  const slug = normalizeName(t.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  process.stderr.write(
+    `\n${t.name}… um processo por coluna (${calc.length} colunas, ACHADOS #67)\n`,
+  );
+
+  fs.mkdirSync(DIR_PARCIAIS, { recursive: true });
+  const parciais = calc.map((_c, k) => path.join(DIR_PARCIAIS, `${slug}.${k}.jsonl`));
+  // Restos de uma execução interrompida seriam lidos como se fossem desta. O `chaveSha`
+  // provavelmente os pegaria; apagar é mais barato que depender disso.
+  for (const p of parciais) fs.rmSync(p, { force: true });
+
+  try {
+    for (const [k, nome] of calc.entries()) {
+      const tc = Date.now();
+      process.stderr.write(`  --- [${nome}] processo ${k + 1}/${calc.length}\n`);
+      const r = spawnSync(
+        process.execPath,
+        // `execArgv` para o filho herdar o `--max-old-space-size` que o operador deu ao
+        // pai: sem ele o filho sobe com o heap padrão e morre onde o pai ia bem.
+        [...process.execArgv, fileURLToPath(import.meta.url),
+          `--tabela=${t.name}`, `--coluna=${nome}`, `--parcial=${parciais[k]}`],
+        { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] },
+      );
+      if (r.status !== 0) {
+        console.error(
+          `\nERRO: o processo de '${nome}' saiu com ${r.status ?? r.signal}. ` +
+            'Nada foi gravado — o arquivo congelado continua sendo o de antes.',
+        );
+        process.exit(1);
+      }
+      process.stderr.write(`  --- [${nome}] ${(Date.now() - tc).toLocaleString('pt-BR')} ms\n`);
+    }
+
+    // Junta. O primeiro parcial dá as colunas físicas; os outros só a sua calculada.
+    let base: Record<string, Escalar>[] | null = null;
+    let sha: string | null = null;
+    for (const [k, arq] of parciais.entries()) {
+      const { linhas } = await le(arq);
+      const s = shaDasChaves(linhas, fisicas);
+      if (base === null) {
+        base = linhas;
+        sha = s;
+        continue;
+      }
+      if (linhas.length !== base.length || s !== sha) {
+        console.error(
+          `\nERRO: '${calc[k]}' descreve linhas diferentes de '${calc[0]}' ` +
+            `(${linhas.length} linhas / ${s} contra ${base.length} / ${sha}).\n` +
+            'Juntar por posição poria o valor de uma linha em outra. Nada foi gravado.\n' +
+            'Provável causa: a origem mudou no meio da execução. Rode de novo.',
+        );
+        process.exit(1);
+      }
+      const chave = normalizeName(calc[k]!);
+      for (let i = 0; i < linhas.length; i++) base[i]![chave] = linhas[i]![chave]!;
+    }
+
+    const nomes = [...fisicas, ...calc];
+    const cab = await escreve(
+      arquivoDaCalculada(DIR, t.name),
+      {
+        query: `calc.${slug}`,
+        tabelas: [t.name],
+        geradoEm: new Date().toISOString(),
+        tabelaSha: shaDaCalculada(t),
+      },
+      nomes,
+      paraGravacao(base ?? [], nomes, t.name),
+    );
+    const bytes = fs.statSync(arquivoDaCalculada(DIR, t.name)).size;
+    process.stderr.write(
+      `  ${cab.linhas.toLocaleString('pt-BR')} linhas, ${cab.colunas.length} colunas, ` +
+        `${(bytes / 1048576).toFixed(1)} MB, ${(Date.now() - inicio).toLocaleString('pt-BR')} ms\n`,
+    );
+  } finally {
+    for (const p of parciais) fs.rmSync(p, { force: true });
+    try {
+      if (fs.readdirSync(DIR_PARCIAIS).length === 0) fs.rmdirSync(DIR_PARCIAIS);
+    } catch {
+      // Diretório com resto de outra execução em curso: deixar é melhor que apagar.
+    }
+  }
+}
+
+const isoladas = escolhidas.filter((t) => paraIsolar.has(t.name));
+const emProcessoUnico = escolhidas.filter((t) => !paraIsolar.has(t.name));
+
+for (const t of isoladas) await congelaIsolada(t);
+
 // **`lerCalculadas: false`**: sem isto o carregamento leria o arquivo que este programa
 // existe para produzir, e a segunda execução gravaria de volta o que já estava lá — um
 // arquivo que nunca mais se atualizaria, e ninguém notaria.
-const t0 = Date.now();
-console.error('\ncarregando o snapshot…');
-const c = await carrega({
-  dir: DIR,
-  model,
-  dashboards: alvo,
-  now: new Date(),
-  lerCalculadas: false,
-});
-console.error(`  carga: ${(Date.now() - t0).toLocaleString('pt-BR')} ms`);
+//
+// E só carrega se sobrou alguém: no caminho isolado quem carrega são os filhos, e um pai
+// de 2 GB parado ao lado deles quebraria a regra de um processo pesado por vez.
+let c: Awaited<ReturnType<typeof carrega>> | null = null;
+if (emProcessoUnico.length > 0) {
+  const tc = Date.now();
+  console.error('\ncarregando o snapshot…');
+  c = await carrega({
+    dir: DIR,
+    model,
+    dashboards: alvo,
+    now: new Date(),
+    lerCalculadas: false,
+  });
+  console.error(`  carga: ${(Date.now() - tc).toLocaleString('pt-BR')} ms`);
+}
 
 // As tabelas do plano já foram materializadas por `carrega` **sem** as colunas
 // calculadas. Para gravá-las preenchidas, o dataset precisa recebê-las de novo — então
 // este programa refaz a materialização numa cópia limpa do avaliador por tabela.
-for (const t of escolhidas) {
+for (const t of emProcessoUnico) {
   const inicio = Date.now();
   process.stderr.write(`\n${t.name}… `);
 
   // O avaliador de `carrega` já tem a tabela dentro (sem as colunas calculadas
   // preenchidas). Preencher no lugar é o caminho barato e correto: `columnValue`
   // memoiza na própria linha, que é a linha que vai ser gravada.
-  const linhas = c.ev.dataset.rows(t.name) as unknown as Record<string, unknown>[];
+  const linhas = c!.ev.dataset.rows(t.name) as unknown as Record<string, unknown>[];
   const fisicas = t.columns.filter((x) => !x.calculated).map((x) => x.name);
   const todasCalc = t.columns.filter((x) => x.calculated && x.dax).map((x) => x.name);
   // `--coluna=` respeita a ORDEM em que foi pedida, não a do modelo: é ela que decide
@@ -206,7 +399,7 @@ for (const t of escolhidas) {
     // sob o nome original criaria uma chave paralela que só este programa enxerga.
     const chave = normalizeName(nome);
     for (let i = de; i < ate; i++) {
-      const v = c.ev.columnValue(t.name, nome, linhas[i] as never);
+      const v = c!.ev.columnValue(t.name, nome, linhas[i] as never);
       linhas[i]![chave] = (v ?? null) as never;
     }
     const ms = Date.now() - tc;
@@ -242,7 +435,11 @@ for (const t of escolhidas) {
     process.exit(1);
   }
 
-  const arq = arquivoDaCalculada(DIR, t.name);
+  // No modo filho o destino e o parcial, NUNCA o arquivo congelado. Um filho que grava
+  // no arquivo final o deixa com uma coluna calculada so, e a carga le as outras como
+  // nulas -- foi exatamente o que aconteceu no primeiro teste deste modo.
+  const arq = parcial || arquivoDaCalculada(DIR, t.name);
+  if (parcial) fs.mkdirSync(path.dirname(arq), { recursive: true });
   const cab = await escreve(
     arq,
     {

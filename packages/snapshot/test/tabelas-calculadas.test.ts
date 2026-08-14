@@ -18,7 +18,12 @@ import test from 'node:test';
 import { normalizeName } from '../../semantic-model/src/model.ts';
 import type { ModelColumn, ModelTable } from '../../semantic-model/src/types.ts';
 import { escreve, le } from '../src/formato.ts';
-import { dependeDoRelogio, mesmoDiaLocal, paraGravacao } from '../src/tabelas-calculadas.ts';
+import {
+  dependeDoRelogio,
+  mesmoDiaLocal,
+  paraGravacao,
+  shaDasChaves,
+} from '../src/tabelas-calculadas.ts';
 
 /** Uma linha como o `Dataset` a guarda: chaves normalizadas. */
 function linhaDoDataset(pares: Record<string, unknown>): Record<string, never> {
@@ -158,4 +163,76 @@ test('ida e volta pelo arquivo preserva o valor da coluna de nome composto', asy
 
   const lido = await le(arq);
   assert.equal(lido.linhas.length, 1);
+});
+
+// ─────────────────────────────────── shaDasChaves: o guarda de juntar processos
+//
+// Congelar uma coluna por processo cai de 14 h 28 min para ~24 min (ACHADOS #67), mas as
+// colunas caem no MESMO arquivo e são juntadas por POSIÇÃO. Se dois processos produzirem
+// as linhas em ordens diferentes, o valor de uma linha vai para outra: plausível e
+// errado. Este sha é o que transforma isso em erro alto. O que se prova aqui é que ele
+// **muda** quando deveria — um guarda que nunca discorda não é guarda.
+
+const L = (protocolo: unknown, dia: unknown): Record<string, never> =>
+  ({ protocolo, dia }) as never;
+
+test('mesmas linhas, mesma ordem: mesmo sha (e a ordem das COLUNAS não conta)', () => {
+  const a = [L(1, 'x'), L(2, 'y')];
+  assert.equal(shaDasChaves(a, ['protocolo', 'dia']), shaDasChaves(a, ['dia', 'protocolo']));
+  assert.equal(
+    shaDasChaves(a, ['protocolo', 'dia']),
+    shaDasChaves([L(1, 'x'), L(2, 'y')], ['PROTOCOLO', 'Dia']),
+    'nome normalizado: o cabeçalho pode grafar diferente sem ser divergência de linha',
+  );
+});
+
+test('linhas TROCADAS de posição mudam o sha — é o caso que ele existe para pegar', () => {
+  const a = shaDasChaves([L(1, 'x'), L(2, 'y')], ['protocolo', 'dia']);
+  const b = shaDasChaves([L(2, 'y'), L(1, 'x')], ['protocolo', 'dia']);
+  assert.notEqual(a, b);
+});
+
+test('linha a mais, linha a menos e valor diferente mudam o sha', () => {
+  const base = shaDasChaves([L(1, 'x'), L(2, 'y')], ['protocolo', 'dia']);
+  assert.notEqual(base, shaDasChaves([L(1, 'x')], ['protocolo', 'dia']));
+  assert.notEqual(base, shaDasChaves([L(1, 'x'), L(2, 'y'), L(3, 'z')], ['protocolo', 'dia']));
+  assert.notEqual(base, shaDasChaves([L(1, 'x'), L(2, 'Y')], ['protocolo', 'dia']));
+});
+
+/**
+ * A espécie entra no dígito. Sem isso uma ponta que passasse a devolver o protocolo como
+ * texto casaria com a que devolve número, e o guarda aprovaria uma junção entre dois
+ * arquivos que descrevem a tabela de formas diferentes.
+ */
+test('número 1 e texto "1" não dão o mesmo sha', () => {
+  assert.notEqual(
+    shaDasChaves([L(1, 'x')], ['protocolo', 'dia']),
+    shaDasChaves([L('1', 'x')], ['protocolo', 'dia']),
+  );
+});
+
+test('null e string vazia não dão o mesmo sha', () => {
+  assert.notEqual(
+    shaDasChaves([L(null, 'x')], ['protocolo', 'dia']),
+    shaDasChaves([L('', 'x')], ['protocolo', 'dia']),
+  );
+});
+
+test('Date sobrevive ao round-trip do formato e mantém o sha', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sha-chaves-'));
+  try {
+    const linhas = [L(1, new Date(Date.UTC(2026, 7, 14))), L(2, new Date(Date.UTC(2026, 7, 15)))];
+    const antes = shaDasChaves(linhas, ['protocolo', 'dia']);
+    const arq = path.join(dir, 'p.jsonl');
+    await escreve(arq, { query: 'p', tabelas: ['T'], geradoEm: 'z' }, ['protocolo', 'dia'], linhas as never);
+    const { linhas: lidas } = await le(arq);
+    assert.equal(shaDasChaves(lidas, ['protocolo', 'dia']), antes,
+      'o guarda tem de sobreviver a gravar e ler — é assim que os processos se comparam');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('tabela vazia tem sha, e ele não é o de uma linha nula', () => {
+  assert.notEqual(shaDasChaves([], ['protocolo']), shaDasChaves([L(null, null)], ['protocolo']));
 });

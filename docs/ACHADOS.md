@@ -4748,6 +4748,9 @@ mexer em SQL nenhum.
 
 ## #67 — As 14 h 28 min do #66 eram **um processo compartilhado**, não uma coluna ruim: 38×
 
+> **CONSERTADO no #68**, e o numero saiu melhor que a projecao: 14 h 28 min -> 26 min 14 s,
+> com o arquivo IDENTICO byte a byte. As quatro colunas passaram a custar a mesma coisa.
+
 **14/08/2026.** O #66 registrou o número e deixou a causa aberta de propósito, porque
 testar hipótese custava um ciclo de 14 horas. A saída não foi arriscar um palpite: foi
 construir o instrumento que tira o ciclo de 14 horas do caminho —
@@ -4855,3 +4858,102 @@ O desenho, então, tem de carregar a garantia junto, no molde dos outros guardas
 Enquanto isso não existir, quem precisar recongelar `Status Protocolo Dia` tem o
 paliativo medido: rodar **uma coluna por vez** com
 `--coluna=` (e, hoje, sem gravar), ou aceitar as 14 h 28 min.
+
+## #68 — Um processo por coluna: 14 h 28 min viraram 26 min, com o arquivo idêntico
+
+**14/08/2026, o conserto do #67.** Medido, e o número é o do arquivo, não de projeção:
+
+```
+Status Protocolo Dia, as 30.404 linhas
+
+  ontem, um processo para as quatro colunas
+    [Base Dia]              383.137 ms
+    [Turno Dia]           2.733.054 ms
+    [Rank Protocolo Dia]  2.746.957 ms
+    [Tipo Protocolo Dia] 46.202.829 ms
+                        -------------
+                         52.069.946 ms   14 h 28 min
+
+  hoje, um processo por coluna
+    [Base Dia]              400.546 ms
+    [Turno Dia]             386.188 ms
+    [Rank Protocolo Dia]    388.700 ms
+    [Tipo Protocolo Dia]    398.329 ms
+                        -------------
+                          1.574.292 ms   26 min 14 s
+```
+
+**33×.** E as quatro colunas passaram a custar **a mesma coisa** — 386 a 400 s, incluindo
+a carga de snapshot de cada filho —, que é a confirmação final do #67: nunca houve coluna
+cara, havia processo cansado.
+
+### O arquivo é o mesmo, e isso foi conferido
+
+```
+linhas                     30.404 = 30.404
+colunas e tipos            iguais (7 colunas, mesma ordem, mesmos tipos)
+tabelaSha                  igual
+nulos por coluna           0 em todas, nos dois
+linhas de dados diferentes 0 de 30.404
+```
+
+Byte a byte. Não é "provavelmente equivalente": é o mesmo arquivo, em 1/33 do tempo.
+
+### O guarda, que é a parte que não podia estar errada
+
+As quatro colunas caem no **mesmo** arquivo e são juntadas **por posição**. Se dois
+processos produzirem as linhas em ordens diferentes, o valor de uma linha entra em outra —
+plausível e errado, o único resultado que este projeto não aceita.
+
+`shaDasChaves(linhas, colunas)` é a identidade da ordem das linhas pelas colunas físicas.
+Cada filho grava um parcial; o pai calcula o sha de cada um e **só junta se todos
+baterem**. Divergência = erro alto, e nada é gravado. Oito testes provam que ele discorda
+quando deve: linha trocada de posição, linha a mais, linha a menos, valor diferente,
+número `1` contra texto `"1"`, `null` contra `""` — e que sobrevive a gravar e ler, que é
+como os processos se comparam.
+
+**Os parciais são snapshots de verdade**, escritos com `escreve` e lidos com `le`. Um
+formato próprio de troca entre processos teria de reimplementar a codificação, e os
+valores incluem `Date`: na primeira divergência uma data viraria texto e o cabeçalho final
+diria `"tipo":"string"` sem ninguém notar.
+
+### O limiar, e por que ele existe
+
+Isolar custa uma carga de snapshot por coluna (~16 s). As outras **seis** tabelas
+calculadas congelam em **7 segundos somados** — para elas, isolar seria trocar 7 s por 2
+minutos. Então o automático só vale de **5.000 linhas** para cima, e com 2+ colunas
+calculadas. `--isolar` e `--sem-isolar` mandam mais que o limiar.
+
+O número é um proxy honesto: o que encarece é varrer tabela grande, não ter muitas linhas.
+Mas é o proxy que a medição sustenta, e ele está no código com essa ressalva escrita.
+
+### O que o teste pegou, e por que ele existia
+
+O primeiro ensaio do modo isolado — feito de propósito numa tabela **pequena**
+(`CALENDARIO INSTALADO`, 364 linhas, 4 colunas calculadas, ~70 s) — falhou de duas
+formas, e a primeira era grave: **o filho gravou no arquivo final em vez do parcial**,
+deixando a tabela com 2 colunas em vez de 5. Ou seja: produziu exatamente o arquivo
+plausível-e-errado que este achado passa o tempo dizendo que não pode existir. Havia
+backup, e o arquivo foi restaurado.
+
+Duas lições que valem mais que o conserto:
+
+- **Ensaie o caminho novo na tabela barata.** O mesmo bug descoberto em
+  `Status Protocolo Dia` custaria 26 minutos por tentativa em vez de 70 segundos, e teria
+  ficado escondido atrás da espera.
+- **Copie o arquivo antes.** O modo novo sobrescreve o congelado, e "regerar" não é
+  desfazer: sem o backup, restaurar `CALENDARIO INSTALADO` teria exigido recalcular.
+
+Depois do conserto, a mesma tabela pequena saiu com cabeçalho, tipos e `tabelaSha`
+idênticos, e **361 das 364 linhas** iguais. As 3 que mudaram são só nas duas colunas com
+`TODAY()`, nas linhas da virada do dia — relógio, não junção. É o comportamento que o #60
+já tinha desenhado.
+
+### O que isto destrava
+
+O #66 dizia que **o snapshot não podia ser atualizado num dia de trabalho**. Agora pode:
+o congelamento das 7 tabelas calculadas passa de 14 h 28 min para **~26 min**, e a
+materialização das queries é minutos. O refresh inteiro cabe numa janela noturna com
+folga — e cabe até no meio da tarde.
+
+Com isso, a fila volta a ser a paridade, que é onde ela estava antes do #66.
