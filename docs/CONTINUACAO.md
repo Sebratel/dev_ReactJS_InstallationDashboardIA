@@ -1,8 +1,12 @@
 # Continuação — onde o trabalho parou
 
-> **Atualizado em 13/08/2026**, depois de a subida virar um comando (`npm start`) e de
-> a junção texto×número ser consertada. É o ponto de entrada de uma sessão nova:
-> autocontido, feito para ser lido antes de tocar em qualquer coisa.
+> **Atualizado em 14/08/2026**, depois de as mesclagens mortas da camada M serem
+> achadas e decididas (#64) e de o congelamento de `Status Protocolo Dia` revelar
+> **14 h 28 min** (#66). É o ponto de entrada de uma sessão nova: autocontido, feito
+> para ser lido antes de tocar em qualquer coisa.
+>
+> **Se for ler uma coisa só antes de escolher o que fazer, leia o #66.** Ele é o maior
+> número aberto do projeto e passou na frente da paridade.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
@@ -25,6 +29,12 @@ números no navegador limpou os filtros da página antes de ler). A fila real s�
 divergências**, e a primeira é `manutencao-inicial`, que diverge no sentido oposto e
 ainda não tem causa provada.
 
+> **Mas a paridade deixou de ser o primeiro item em 14/08.** Congelar
+> `Status Protocolo Dia` leva **14 h 28 min**, e 12 h 50 disso é **uma coluna
+> calculada** ([ACHADOS](ACHADOS.md) #66). Como a guarda de idade do #60 obriga a
+> regenerá-la sempre que uma origem é rematerializada, hoje **o snapshot não pode ser
+> atualizado num dia de trabalho**. Isso é bloqueio de operação, não lentidão.
+
 ---
 
 ## 2. Rodar em cinco minutos
@@ -35,7 +45,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1232 testes, ~5 s, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 1257 testes, ~5 s, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -72,9 +82,11 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 ```
 
 > **Não rode `npm run paginas` sem `--pagina=`.** `agendamento-field` é a primeira em
-> ordem alfabética e leva **104 minutos** (5.2), então o relatório inteiro parece
-> travado por quase duas horas. A lista das outras treze — 96 visuais em 84 s — está
-> na seção 7.
+> ordem alfabética e era a que levava **104 minutos** (5.2). Esse número é de **antes**
+> das otimizações #46-#52 e nunca foi remedido neste harness; o que **foi** medido é a
+> página pela API, que abre em **48,6 s a frio** (`npm start`, 13/08). Enquanto o
+> `paginas` não tiver número novo, trate a execução sem `--pagina=` como se ainda
+> fossem duas horas. A lista das outras treze está na seção 7.
 
 > `snapshot/` **contém dado de cliente** (endereço em `field-agenda`, CPF e RG em
 > `QUADRO FUNCIONAL`). Está no `.gitignore`, ancorado na raiz. Nenhuma ferramenta
@@ -85,7 +97,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1232 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
+**1257 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
 
 | camada | estado |
 |---|---|
@@ -93,14 +105,15 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | Query Engine + camada M | ✅ **as 24 de 24** queries rodam contra a fonte real |
 | Modelo semântico + avaliador DAX | ✅ as 56 funções que a base usa, 75 medidas |
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
-| **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco |
+| **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco. ⚠️ **Congelar as calculadas leva 14 h 28 min** — 6 delas em 7 s e `Status Protocolo Dia` no resto (#66) |
+| **Camada M — mesclagens** | ✅ junção que não casa **nenhuma** linha emite nota com o número; reconciliar exige decisão em `specs/_catalog/juncoes.yaml` (#64). 2 das 3 mortas resolvidas |
 | **API** (`apps/api`) | ✅ somente leitura, uma página por pedido, `?filtro=` e rota de valores; cache da resposta (Redis ou memória) desde 11/08 |
 | **Autenticação** | ❌ **não existe** — costura pronta (`apps/api/src/identidade.ts`), formato da decisão em `specs/_catalog/permissoes.yaml`, sem leitor e sem login |
 | **Tela** (`apps/web`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
-| **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam** — mas `agendamento-field` leva 104 min (achado #45) |
+| **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam**. `agendamento-field` abre em **48,6 s a frio** pela API (medido em 13/08 no `npm start`) — os 104 min do #45 são de ANTES das otimizações #46-#52 e nunca foram remedidos no `npm run paginas` |
 | **Paridade** | 🚧 **medida, não fechada** — 18 batem, 18 diferem (11 delas com gabarito inválido), 6 divergem por decisão, **0 não calculam** |
 | **Subida** (`tools/subir`) | ✅ `npm start` — build + API + aquecimento das 14 páginas, com teto por página e veredito |
-| **Conferência do snapshot** (`npm run snapshot:confere`) | ✅ acha coluna inteira nula e calculada obsoleta em milissegundos — hoje aponta **4 erros e 5 avisos** |
+| **Conferência do snapshot** (`npm run snapshot:confere`) | ✅ acha coluna inteira nula e calculada obsoleta em milissegundos — hoje aponta **2 erros e 5 avisos** (eram 4; ver #64) |
 
 Os commits que são a fase 3 inteira:
 
@@ -138,7 +151,8 @@ plausível**, que é o único tipo de erro que este projeto não pode cometer.
    pasta pai.
 2. **Arquivo gerado vs. humano.** Tudo em `specs/_catalog/queries|tables|measures/` e
    `specs/dashboards/` é **sobrescrito** por `npm run extract`. Nenhuma decisão humana
-   mora lá — decisões vão em `specs/_catalog/cache-policies.yaml`.
+   mora lá — decisões vão em `specs/_catalog/cache-policies.yaml`, `divergencias.yaml`,
+   `projecao.yaml` ou `juncoes.yaml`, conforme o tipo.
 3. **A plataforma nunca escreve no ERP.** Quatro camadas: usuário somente-leitura,
    `default_transaction_read_only=on` na sessão, `assertReadOnly()` antes de a query
    sair do processo, e a API que só aceita `GET`/`HEAD`. Não afrouxe nenhuma.
@@ -159,7 +173,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 52 entradas.
+   registro; hoje tem 65 entradas.
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
@@ -269,25 +283,30 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 > revisão de arquitetura do #55. Já estão feitos: parâmetro de SQL (o valor de um
 > filtro nunca vira texto de query), o cache da resposta calculada ligado com Redis
 > e degradação para memória, `ARCHITECTURE.md` separado entre o que existe e o que é
-> desenho, e a costura de identidade da Fase 4. **Nada disso destrava o item 1** —
-> paridade continua sendo o bloqueio, e ele depende de gente.
+> desenho, e a costura de identidade da Fase 4.
 
-1. **Ditar os 42 números de paridade.** É o único passo que ninguém faz sozinho, e
+1. **Achar o 120% de `[Tipo Protocolo Dia]`** — [ACHADOS](ACHADOS.md) #66. Quatro
+   colunas calculadas com **a mesma expressão** custam 383 s, 2.733 s, 2.747 s e
+   **46.203 s**. As quatro hipóteses baratas já foram descartadas (estão na tabela do
+   #66, cada uma com a conferência); o que falta é uma execução **instrumentada**, e o
+   ciclo dela é longo — então instrumente antes de rodar, não depois. Se as quatro
+   custassem o que a primeira custa, o congelamento cai de **14 h 28 min para ~26 min**
+   sem tocar em SQL nenhum. É o maior ganho por hora de trabalho que existe hoje, e
+   enquanto ele não sair **o snapshot não pode ser atualizado num dia útil**.
+2. **Ditar os 42 números de paridade.** É o único passo que ninguém faz sozinho, e
    agora não há mais desculpa de ferramenta: o harness existe, a tela existe, o filtro
    existe. Abra `http://localhost:3100` ao lado do Power BI, ache a linha
    `visual: <id>` em `specs/paridade/<pagina>.yaml` — **o id aparece embaixo de cada
    card na tela, de propósito** — e escreva o valor em `powerbi:`. São 64 cards, dos
    quais 22 já saíram por serem carimbo de refresh.
-2. **Medir `agendamento-field` outra vez.** Os passos 1 a 3 da `DECISAO-DESEMPENHO.md`
-   estão feitos (projeção de colunas, `adotaTabela`, `Relato` sob demanda, colunas e
-   tabelas calculadas congeladas) e **o tempo depois deles nunca foi medido** — as três
-   tentativas de 10/08 morreram por execução concorrente. Rode uma de cada vez, com
-   `--visuais`, conferindo `node.exe` antes. É barato e destrava a decisão do passo 4.
-3. **Regenerar o resto das tabelas calculadas congeladas.** O [ACHADOS](ACHADOS.md) #54
-   corrigiu a gravação, e `CALENDARIO CRIADO`, `CALENDARIO INSTALADO` e `calendar` já
-   foram refeitas. Confira as demais com o cabeçalho do arquivo — coluna com
-   `"tipo":"vazia"` e `nulos` igual a `linhas` é o sintoma. **Todo número calculado
-   sobre tabela calculada antes de 11/08/2026 é suspeito.**
+3. **Investigar a terceira mesclagem morta**, a de `GESTORES EQUIPES`
+   ([ACHADOS](ACHADOS.md) #64). É a origem de `'PROTOCOLOS GERAL'[TÉCNICO 2]` inteira
+   nula, e `visao-geral` a usa **como filtro `not_in [null]`** — sobre uma coluna 100%
+   nula, esse filtro descarta toda linha do visual. As chaves são
+   `{INSTALADO POR:, DATA FINAL} × {TÉCNICO 1, DATA}`: nome×nome e data×data, então não
+   é o caso texto×número que o `juncoes.yaml` resolve. Suspeite da **data** primeiro
+   (`DATA FINAL` chega meia-noite UTC; `DATA` vem do MariaDB e ninguém olhou ainda).
+   Medido: 0 de 25.472 linhas de chave completa contra 5.619 do outro lado.
 4. **Empurrar para SQL o que o SQL faz melhor** — as mesclagens de **mesma fonte** e a
    agregação de `FIELD AGENDA` ao grão `(protocolo, slot)`, que é o passo 4 da
    `DECISAO-DESEMPENHO.md` e o maior ganho que resta (1.458.244 linhas → 30.252).
@@ -449,8 +468,12 @@ tools/
   paginas/          calcula o relatório inteiro e conta o que fecha
   paridade/         compara com o gabarito ditado do Power BI
 specs/              GERADO pelo extrator — o contrato. Não editar à mão.
+  _catalog/cache-policies.yaml  decisões humanas de cache
+  _catalog/divergencias.yaml    onde o DAX diverge do PBI, com o sha do original
+  _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
+  _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          63 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          65 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa
