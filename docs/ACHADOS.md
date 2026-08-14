@@ -4479,3 +4479,263 @@ uma linha `passou de 180s — investigue esta página`, e não um cursor parado 
 palavra sobre o que está acontecendo. O teto **não** torna a página barata — abortar o
 pedido não para o cálculo do outro lado —, ele serve para **dizer qual é**.
 
+
+
+## #64 — Três mesclagens da camada M não casavam **nenhuma** linha, e o motor não tinha como dizer isso
+
+**13/08/2026.** O `npm run snapshot:confere` do #62 apontava 4 colunas inteiras nulas
+que alguma página lê. Duas delas tinham ponto no nome — a assinatura de expansão de
+mescla. Esta entrada é a investigação delas.
+
+O #61 já tinha consertado uma junção texto×número, mas **no relacionamento DAX**. Estas
+são uma camada antes, no `Table.NestedJoin` do Power Query, e ninguém tinha olhado ali
+porque **a camada M não tinha onde falar**: uma mescla que não casa nada devolve a
+tabela aninhada vazia, o `Table.ExpandTableColumn` a expande para nulo, e o resultado é
+uma coluna com 87.805 nulos e nenhuma mensagem. O defeito só apareceu semanas depois,
+como um card em branco.
+
+### O que a medição mostrou
+
+```
+Table.NestedJoin 'protocolo_id' × 'N°PROTOCOLO'        (backlog-agendado-futuro)
+  0 de 88.143 casam por espécie · 60.425 (68,6%) casariam como inteiro
+
+Table.NestedJoin 'N°PROTOCOLO' × 'PROTOCOLO:'          (protocolos-geral)
+  0 de 33.459 casam por espécie · 25.707 (76,8%) casariam como inteiro
+
+Table.NestedJoin 'INSTALADO POR:' + 'DATA FINAL' × 'TÉCNICO 1' + 'DATA'  (protocolos-geral)
+  0 de 25.472 casam · as chaves NÃO são texto×número — sem reconciliação provável
+```
+
+As duas primeiras são o mesmo erro escrito duas vezes: um lado declara
+`{"protocolo_id", Int64.Type}` (ou `{"PROTOCOLO:", Int64.Type}`) e o outro deixa
+`N°PROTOCOLO` como texto, porque `ai.protocol` vem do Voalle como `varchar` e nenhum
+passo o converte. O Power Query compara chave por espécie, então **o Power BI mostra
+essas colunas em branco também**. Não é divergência nossa: é um defeito que herdamos
+fielmente.
+
+### A regra que entrou, e a que **não** entrou
+
+O caminho óbvio — comparar como inteiro quando as espécies diferem — foi escrito,
+testado, e **descartado**. O teste que o derrubou já existia desde a primeira versão do
+avaliador:
+
+> `a chave de junção distingue tipo: número 1 não casa com texto "1"` — *"se casasse,
+> uma junção por código de equipe passaria a casar coisa errada dependendo de a fonte
+> devolver o campo como texto ou como inteiro."*
+
+Ele está certo. Reconciliar por conta própria troca uma junção **morta** por uma
+**viva e possivelmente errada**: dois espaços de identificador que por acaso sejam
+inteiros pequenos passam a casar, e sai um número plausível — o único erro que este
+projeto não pode cometer. Uma junção morta é escandalosa; uma junção errada é
+invisível.
+
+Então o motor ficou com **duas responsabilidades e nenhuma decisão**:
+
+1. **Detectar e falar.** Zero linhas casadas com as duas pontas cheias não é um
+   resultado, é um sintoma. Toda mesclagem nessa situação emite uma nota, e a nota traz
+   o número que permite decidir: quantas casariam como inteiro, e em que percentual.
+2. **Obedecer, se alguém decidir.** `specs/_catalog/juncoes.yaml` — arquivo humano, no
+   molde de `divergencias.yaml` e `projecao.yaml`. Cada entrada declara a query, as duas
+   listas de chave **na ordem**, o número medido, a data, quem decidiu e por quê. Falta
+   qualquer um deles e o carregador erra alto: reconciliação sem o número que a
+   justificou é remendo, não decisão.
+
+O padrão do avaliador é **não** reconciliar. Quem não injeta nada não ganha o conserto.
+
+### Dois detalhes que a implementação obrigou a acertar
+
+**`null` casa com `null` em M, e isso mascarava a morte.** Uma mescla com duas linhas
+de chave nula dos dois lados casaria "duas linhas" e escaparia do diagnóstico enquanto
+as outras 87.803 saíam nulas. O contador de "esta junção está viva?" passou a olhar só
+**linhas de chave completa**. O resultado da junção não mudou — só o diagnóstico.
+
+**A comparação frouxa é estreita de propósito.** Só inteiro: `"007"` casa com `7` e
+`" 8 "` com `8`, mas `9.5` não é identificador e `"10x"` não é inteiro. Data em texto
+**não** entra — `"01/02"` depende da culture, e adivinhar ali é o achado #1. Em chave
+composta, só a posição texto×número afrouxa; as outras continuam comparadas por
+espécie.
+
+### O risco que quase passou, e a medição que o fechou
+
+`Table.ExpandTableColumn` **multiplica linha** quando a tabela aninhada tem mais de uma.
+Enquanto a junção estava morta, toda aninhada tinha zero linhas e a expansão era 1:1.
+Ligá-la podia mudar a contagem de linhas de `PROTOCOLOS GERAL` — e aí **toda** medida
+sobre aquela tabela, não só a coluna em branco. Um protocolo com dois auxiliares faria
+exatamente isso.
+
+Medido antes de aplicar, numa saída separada:
+
+```
+                          linhas antes  linhas depois  SOLICITACAO distintas
+backlog-agendado-futuro         88.143         88.143  —
+protocolos-geral                33.459         33.462             33.462
+```
+
+Nenhuma linha multiplicada — `33.462` linhas para `33.462` SOLICITACAO distintas. O
+`Table.Distinct` por SOLICITACAO vem antes da mescla e, no dado de hoje, cada protocolo
+casa com um auxiliar só. **É a propriedade a reconferir se a decisão for revista**, e
+está escrita no `porque:` da entrada.
+
+### O resultado
+
+```
+'BACKLOG AGENDADO FUTURO'[PROTOCOLOS GERAL.TIPO DE PROTOCOLO]   0 → 60.425 não nulas
+'PROTOCOLOS GERAL'[TECNICOS AUXILIARES.AUXILIAR]                0 → 25.707 não nulas
+```
+
+`npm run snapshot:confere` caiu de 4 erros para 2.
+
+### A terceira, que continua morta
+
+`{INSTALADO POR:, DATA FINAL} × {TÉCNICO 1, DATA}`, contra `GESTORES EQUIPES`. É a
+origem de `'PROTOCOLOS GERAL'[TÉCNICO 2]` e `[GERENTE/SUPERVISOR]` inteiras nulas, e
+`visao-geral` lê `TÉCNICO 2` — inclusive como filtro `not_in [null]`, que sobre uma
+coluna 100% nula descarta **toda** linha. As chaves não são texto×número (nome × nome,
+data × data), então este mecanismo não tem o que dizer sobre ela e o motor não inventa:
+a nota diz "sem reconciliação provável, confira as duas pontas". Fica registrada como a
+próxima a investigar, com o número (`0 de 25.472` contra `5.619` do outro lado).
+
+### O que o teste de mutação pega
+
+Apague a checagem de `ctx.reconcilia` e cai *"sem decisão registrada, a junção morta
+continua morta"*. Apague a nota e cai *"texto×número sem decisão: a nota traz o número
+que decidiria"*. Aceite `esquerda: []` como campo declarado e cai *"lista de chaves
+vazia conta como ausente"* — essa é a traiçoeira, porque uma lista vazia liberaria a
+reconciliação de **qualquer** mesclagem daquela query.
+
+---
+
+## #65 — O `TMA` da telefonia mede contra hoje, e a causa é um `"Finalizado"` comparado com `"FINALIZADO"`
+
+**13/08/2026, achado ao investigar a quarta coluna nula do #62.**
+`'PROTOCOLOS TELEFONIA'[DATA ENCERRADO]` é 100% nula nas 562 linhas, e não é junção:
+não saiu nota nenhuma da camada M. É a expressão que a cria.
+
+```m
+#"Personalização Adicionada" = Table.AddColumn(…, "SITUAÇÃO", each
+    if [STATUS] = "Encerrado" and … then "Finalizado"
+    else if …                      then "Finalizado Pendência Financeira"
+    else "Pendente")
+
+//if [STATUS] = "Encerrado" and [TÍTULO RECEBÍVEL] <> null then "FINALIZADO" else "PENDENTE")
+                                                               ↑ a versão anterior, comentada logo abaixo
+
+#"Personalização Adicionada1" = Table.AddColumn(…, "PERSONALIZAÇÃO", each
+    if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO]-[DATA CRIADO]
+    else [DATA HOJE] - [DATA CRIADO]),
+#"Dias Inseridos" = … Duration.Days([PERSONALIZAÇÃO]) …  → renomeada para "TMA"
+
+#"Personalização Adicionada2" = Table.AddColumn(…, "DATA ENCERRADO", each
+    if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO] else null),
+```
+
+`SITUAÇÃO` recebe `"Finalizado"`. As duas comparações abaixo testam `"FINALIZADO"`. Em
+M, comparação de texto é **sensível a maiúscula**, então as duas são **sempre falsas**.
+A linha comentada logo abaixo do primeiro passo mostra o que houve: a versão anterior
+escrevia `"FINALIZADO"` em caixa alta; quando o valor virou `"Finalizado"`, as duas
+comparações lá embaixo ficaram para trás.
+
+Duas consequências, e a segunda é a que importa:
+
+- **`DATA ENCERRADO` é sempre nula** — a coluna aparece vazia num visual de detalhe de
+  `telefonia-ouvidoria`.
+- **`TMA` mede sempre contra `DATA HOJE`**, nunca contra a data de encerramento. Ou
+  seja: o tempo de atendimento de um protocolo **já encerrado** continua crescendo todo
+  dia. Quanto mais antigo o protocolo, mais errado o número — e ele está no mesmo
+  visual, ao lado da coluna vazia.
+
+**Isto não é divergência nossa.** O Power Query compara texto do mesmo jeito, então o
+Power BI mostra exatamente os mesmos valores. É um defeito do relatório que a plataforma
+reproduz com fidelidade — e que só ficou visível porque `snapshot:confere` reclamou da
+coluna nula.
+
+**Não foi corrigido aqui, de propósito.** O conserto é trocar `"FINALIZADO"` por
+`"Finalizado"` em dois lugares do PBIP — trinta segundos no Power BI, e
+`npm run extract` traz a correção. Criar um quarto mecanismo de override na camada M
+para um erro de digitação seria construir uma peça permanente para um problema que tem
+conserto na origem. E o PBIP é read-only para esta plataforma (regra 1).
+
+Está em `docs/PERGUNTAS-NEGOCIO.md` como **#8**, com o número: 562 linhas, 100% da
+coluna, e um `TMA` que erra proporcionalmente à idade do protocolo.
+
+## #66 — Congelar `Status Protocolo Dia` leva **14 h 28 min**, e 12 h 50 min é uma coluna só
+
+**13→14/08/2026, medido por acidente.** Rematerializar `protocolos-geral` para o #64
+deixou as 7 tabelas calculadas obsoletas, e a guarda de idade do #60 mandou regenerá-las.
+Seis levaram **7 segundos somados**. A sétima levou o resto da noite.
+
+```
+BASE DE ORIGEM, calendar, CALENDARIO AGENDAMENTO/CRIADO/INSTALADO, PROTOCOLOS
+  → prontas 13/08 17:54:52   (7 s somados)
+
+Status Protocolo Dia
+  [Base Dia]                     383.137 ms   ·  6 min 23
+  [Turno Dia]                  2.733.054 ms   · 45 min 33
+  [Rank Protocolo Dia]         2.746.957 ms   · 45 min 47
+  [Tipo Protocolo Dia]        46.202.829 ms   · 12 h 50 min
+  30.404 linhas, 7 colunas     52.069.946 ms  · 14 h 28 min
+  → pronta 14/08 08:22:42
+```
+
+O tempo de cada coluna é **por coluna**, não acumulado (`tc = Date.now()` está dentro
+do laço), e o relógio de parede confirma: 17:54:52 → 08:22:42.
+
+### A forma do custo
+
+As quatro colunas calculadas são **a mesma expressão**, mudando só o que agregam:
+
+```dax
+CALCULATE (
+    MAX ( 'FIELD AGENDA'[<coluna>] ),
+    FILTER (
+        'FIELD AGENDA',
+        'FIELD AGENDA'[protocolo] = ProtocoloAtual
+            && TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = DiaAtual
+    )
+)
+```
+
+30.404 linhas × 1.466.202 linhas de `FIELD AGENDA` = **44,6 bilhões** de avaliações de
+linha, quatro vezes. E a tabela pai (`table_dax`) faz o mesmo padrão outra vez, contra
+`PROTOCOLOS GERAL`.
+
+### O que **não** explica o 120× entre colunas idênticas
+
+`[Base Dia]` custa 383 s e `[Tipo Protocolo Dia]` custa 46.203 s com **a mesma
+estrutura**. As hipóteses baratas foram descartadas, cada uma com a conferência:
+
+| hipótese | conferido | veredito |
+|---|---|---|
+| a coluna agregada é calculada e recomputa 44,6 bi de vezes | `Turno` e `RankDataProtocolo` **são** calculadas e custam 2,7 ks; `Base` e `Tipo de Protocolo` **não são** e custam 383 s e 46 ks | ❌ o padrão é o inverso |
+| `Tipo de Protocolo` está `sob_demanda` e cai num caminho lento | `specs/_catalog/projecao.yaml` só lista `Relato` | ❌ |
+| `MAX` sobre texto usa comparação com locale | não há `localeCompare` nem `Intl.Collator` em `measure-engine` nem `widget-engine` | ❌ |
+| tempo acumulado, não por coluna | `tc` é reatribuído dentro do laço | ❌ |
+
+**Fica sem causa provada, de propósito.** A diferença de 120× entre duas expressões
+idênticas é a pista, e ela não se resolve lendo código: precisa de uma execução
+instrumentada, e o ciclo dela é de 14 horas. Chutar aqui seria exatamente o que a regra
+8 proíbe — e o #46 já ensinou o preço: cada hipótese testada sem número custou uma hora.
+
+### Por que isso é bloqueio, e não só lentidão
+
+A regra 9 diz que **refresh não tem teto**. Ela pressupõe que o refresh caiba numa
+janela: 14 h 28 min não cabe em nada. E o gatilho não é raro — é **toda** vez que
+`field-agenda`, `protocolos-geral` ou qualquer origem desta tabela é rematerializada,
+porque a guarda do #60 (corretamente) recusa a versão velha.
+
+Ou seja: hoje o snapshot não pode ser atualizado num dia de trabalho. **É o maior número
+aberto do projeto**, na frente das divergências de paridade.
+
+### O caminho que a medição sugere
+
+O passo 4 da `DECISAO-DESEMPENHO` — agregar `FIELD AGENDA` ao grão
+`(protocolo, slot agenda)`, 1.458.244 linhas → 30.252 — é exatamente o grão que estas
+quatro colunas procuram linha por linha. Feita a agregação no SQL, o `FILTER` deixa de
+varrer 1,46 milhão de linhas e passa a procurar numa tabela do tamanho do resultado.
+O Erick já havia apontado o SQL como lugar certo, e este número é o argumento que
+faltava: não é economia de memória, é a diferença entre poder e não poder atualizar.
+
+Antes disso, porém, vale o mais barato: **descobrir o 120×**. Se as quatro colunas
+deveriam custar 383 s cada, o congelamento inteiro cai de 14 h 28 para ~26 min sem
+mexer em SQL nenhum.

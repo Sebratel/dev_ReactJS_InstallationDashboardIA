@@ -451,3 +451,100 @@ O argumento contra B é que o snapshot deixa de ser "a camada M em disco" e vira
 
 **Pergunta:** vale mudar o que o snapshot guarda, ou o desenho atual (camada M em
 disco, DAX sempre ao vivo) é para manter?
+
+---
+
+## 9. O `Qtd` de `FIELD AGENDA` deve contar relato, ou (relato × skill do relator)?
+
+**Do Fabrício.** Levantada em 12/08/2026, ao decidir a agregação de `FIELD AGENDA` —
+não é pergunta de gosto, ela muda dois números na tela.
+
+> **É o follow-up que o `ACHADOS.md` #2 reservou em 04/08/2026.** Lá a multiplicação
+> por skill foi medida e decidida — **"replicar fielmente" (Erick)** — com a ressalva
+> escrita de que *"continua valendo perguntar se a granularidade por skill é
+> necessária, mas como melhoria futura"*. O futuro chegou porque agora ela custa
+> velocidade, e porque descobriu-se algo que o #2 não sabia: as duas colunas que a
+> multiplicação alimenta **não têm consumidor nenhum**.
+
+O SQL de `field-agenda` junta o relator e depois as skills dele:
+
+```sql
+LEFT JOIN reports r        ON vsdspi.assignment_id = r.assignment_id
+LEFT JOIN people p         ON p.id = r.person_id
+LEFT JOIN person_skills ps ON ps.person_id = p.id      -- <── multiplica
+LEFT JOIN skills s         ON s.id = ps.skill_id
+```
+
+Um relator com 3 skills cadastradas faz **cada relato dele aparecer 3 vezes**.
+
+Duas colunas saem daí, `Relator` e `Skill`, e nenhuma das duas é usada por visual
+nenhum nem por medida nenhuma — varredura em `specs/dashboards/` e `specs/_catalog/`:
+zero ocorrências. Elas só existem no `SELECT`.
+
+Mas as linhas que elas multiplicam **são contadas**:
+
+| visual | campo | efeito |
+|---|---|---|
+| `0c0223c6` (Status SLA) | `Qtd` = `count(Protocolo)` | conta (relato × skill) |
+| `084be384` (tabela de relatos) | `.` = `count(Protocolo)` | conta (relato × skill) |
+
+Os cards de `DISTINCTCOUNT` **não** são afetados — `Protocolos Manhã` e companhia
+contam protocolo distinto e passam ilesos.
+
+**O Power BI faz a mesma multiplicação**, porque roda este mesmo SQL. Então hoje os
+dois números batem com ele. Tirar os dois joins baixaria `Qtd` — e isso é
+**divergência deliberada**, não conserto, então precisa de dono e de entrada em
+`specs/_catalog/divergencias.yaml`.
+
+**Pergunta:** quando o painel diz `Qtd` numa linha de Status SLA, o número que se
+espera ali é *quantos relatos* (tira-se os joins de skill) ou é para manter idêntico ao
+Power BI de hoje (mantém-se)?
+
+> Efeito colateral que vale saber junto: os joins de skill custam varredura em 1,46
+> milhão de linhas para alimentar duas colunas que ninguém lê. Se a resposta for
+> "quantos relatos", a decisão é de graça e ainda deixa a página mais rápida.
+
+---
+
+## 10. O `TMA` da telefonia está errado no Power BI — conserta lá ou divergimos aqui?
+
+**Achada em 13/08/2026 pela conferência do snapshot (ACHADOS #65). É do Erick.**
+
+Na query `PROTOCOLOS TELEFONIA`, a coluna `SITUAÇÃO` recebe o texto `"Finalizado"`.
+Dois passos abaixo, duas expressões testam `[SITUAÇÃO] = "FINALIZADO"` — em caixa alta.
+Comparação de texto em M é sensível a maiúscula, então **as duas são sempre falsas**:
+
+```m
+… "SITUAÇÃO",       each if … then "Finalizado" …            ← o valor que existe
+… "PERSONALIZAÇÃO", each if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO]-[DATA CRIADO]
+                                                       else [DATA HOJE] - [DATA CRIADO]
+… "DATA ENCERRADO", each if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO] else null
+```
+
+A própria query tem, comentada logo abaixo do primeiro passo, a versão anterior que
+escrevia `"FINALIZADO"` em caixa alta. O valor mudou; as duas comparações não.
+
+**O que isso faz hoje, medido nas 562 linhas:**
+
+| coluna | efeito |
+|---|---|
+| `DATA ENCERRADO` | **100% nula** — aparece vazia no visual de detalhe de `telefonia-ouvidoria` |
+| `TMA` | mede **sempre contra hoje**, nunca contra a data de encerramento |
+
+O segundo é o que importa: o tempo de atendimento de um protocolo **já encerrado**
+continua crescendo todo dia. Quanto mais antigo o protocolo, maior o erro — e o número
+está no mesmo visual, ao lado da coluna vazia.
+
+**Isto não é diferença entre a plataforma e o Power BI.** O Power Query compara texto
+do mesmo jeito, então o relatório mostra exatamente estes mesmos valores. A plataforma
+está reproduzindo o defeito com fidelidade.
+
+**Pergunta:** o conserto é trocar `"FINALIZADO"` por `"Finalizado"` nos dois lugares do
+PBIP — trinta segundos no Power BI, e `npm run extract` traz a correção para cá. Faz
+sentido? Ou o `TMA` "contra hoje" é intencional para algum uso que eu não conheço?
+
+> Por que não foi consertado aqui: o PBIP é read-only para esta plataforma (regra 1), e
+> criar um mecanismo de override na camada M para um erro de digitação seria construir
+> uma peça permanente para um problema que tem conserto na origem. Se a resposta for
+> "não posso mexer no PBIP agora", aí sim vale a divergência registrada — e ela é
+> barata de fazer.
