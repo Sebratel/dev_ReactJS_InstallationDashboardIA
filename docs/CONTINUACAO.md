@@ -390,6 +390,12 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
   as 64 linhas. Um arquivo de saída vazio depois de 30 minutos **não** quer dizer que
   travou — confira o processo (`Get-Process node`) e olhe o CPU subindo. Em 13/08 isso
   me fez suspeitar de laço infinito onde o programa estava trabalhando.
+- **`npm start` com a porta ocupada aquecia o servidor de OUTRA sessão** — e o
+  relatório saía bonito. O filho morria com `EADDRINUSE`, o `esperaSaude` recebia 200
+  do processo alheio, e o programa concluía "subiu". Consertado em 14/08: ele confere
+  a porta **antes** de subir (`tools/subir/src/porta.ts`, com teste) e diz o que fazer.
+  Se você vir a mensagem, as saídas são `--porta=3101`, `npm run aquece`, ou matar o
+  dono da porta.
 - **`npm start` reprova e mesmo assim deixa a API no ar.** Se ele disser "passou de
   180s" numa página, essa página é o problema — rode
   `npm run paginas -- --pagina=<ela> --visuais` e olhe o visual mais caro. Foi assim que

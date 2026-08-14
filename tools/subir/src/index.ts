@@ -27,6 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
+import { portaOcupada } from './porta.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -174,7 +175,31 @@ if (!semBuild) {
   process.exit(1);
 }
 
-// 3. A API. `--max-old-space-size=8192` é o mesmo do `npm run api`: sem ele,
+// 3. A porta, **antes** de subir. Ver `porta.ts` para o porquê: com a porta tomada, o
+//    filho morre com `EADDRINUSE`, o `esperaSaude` recebe 200 do processo alheio, e este
+//    programa aquece o servidor de outra sessão e imprime um relatório correto sobre um
+//    servidor que não é o dele. Aconteceu em 14/08/2026.
+if (await portaOcupada(porta)) {
+  const nossa = await respondeSaude();
+  console.error(`\nA porta ${porta} já está ocupada.`);
+  console.error(
+    nossa
+      ? '  E quem responde ali parece ser uma API desta plataforma — provavelmente um\n' +
+          '  `npm start` que ficou no ar. Aquecer aquela em vez desta daria um relatório\n' +
+          '  bonito sobre um servidor que pode estar servindo código de antes.'
+      : '  E quem está ali não responde /api/saude, então não é uma API desta plataforma.',
+  );
+  console.error('\nEscolha um:');
+  console.error(`  npm start -- --porta=${porta + 1}       # sobe do lado`);
+  if (nossa) console.error('  npm run aquece                    # só aquece a que já está no ar');
+  console.error(
+    '  $c = Get-NetTCPConnection -LocalPort ' +
+      `${porta} -State Listen; Stop-Process -Id $c.OwningProcess -Force`,
+  );
+  process.exit(1);
+}
+
+// 4. A API. `--max-old-space-size=8192` é o mesmo do `npm run api`: sem ele,
 //    `field-agenda` (1,48 milhão de linhas) estoura o heap padrão.
 console.log(`\nSubindo a API na porta ${porta}…`);
 const api: ChildProcess = spawn(
@@ -204,7 +229,7 @@ if (!(await esperaSaude(api))) {
   encerra(1);
 }
 
-// 4. O aquecimento. Sequencial: a API é um processo só, e duas páginas ao mesmo tempo
+// 5. O aquecimento. Sequencial: a API é um processo só, e duas páginas ao mesmo tempo
 //    dobrariam o pico de memória numa máquina de 16 GB.
 if (!semAquecer) {
   const v = await aquecer();
