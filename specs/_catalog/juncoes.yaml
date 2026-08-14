@@ -1,0 +1,74 @@
+# Mesclagens da camada M que podem comparar a chave como inteiro.
+#
+# ARQUIVO HUMANO. `npm run extract` não o toca. Ver packages/semantic-model/src/juncoes.ts.
+#
+# Só entra aqui mesclagem que **não casa nenhuma linha** e cujas duas pontas são
+# texto×número. O motor mede e conta; ele nunca reconcilia por conta própria, porque
+# trocar uma junção morta por uma viva e errada é o único erro que este projeto não
+# pode cometer. Cada entrada copia o número medido — sem ele, não é decisão.
+#
+# Reconciliar é DIVERGIR do Power BI de propósito (regra 9): o Power Query também
+# compara por espécie e também não casaria. A materialização imprime que aplicou.
+
+reconciliar_como_inteiro:
+  - query: backlog-agendado-futuro
+    esquerda: [protocolo_id]
+    direita: ["N°PROTOCOLO"]
+    medido: >-
+      0 de 88.143 linhas casavam por espécie; 60.425 (68,6%) casam comparando
+      protocolo_id como inteiro. Expansão medida em 13/08/2026: 88.143 linhas antes
+      e 88.143 depois — nenhuma linha multiplicada. A coluna
+      'PROTOCOLOS GERAL.TIPO DE PROTOCOLO' passou de 0 para 60.425 não nulas.
+    decidido: 2026-08-13
+    por: "Claude, sob a autorização do Erick de decidir sem perguntar (12/08/2026)"
+    porque: |
+      As duas pontas são o mesmo protocolo. `backlog-agendado-futuro` declara
+      `{"protocolo_id", Int64.Type}` e `PROTOCOLOS GERAL` deixa `N°PROTOCOLO` como
+      texto (`ai.protocol`, do Voalle) — nenhum passo o converte. O resultado era
+      uma mescla que não casava NADA, e 87.805 linhas de
+      'PROTOCOLOS GERAL.TIPO DE PROTOCOLO' saíam nulas; `npm run snapshot:confere`
+      as marcava como erro porque uma página as lê, e lia BLANK.
+
+      O que decidiu: 68,6% das chaves casam como inteiro, e as duas listas têm o
+      mesmo formato (7 dígitos). Isso não é coincidência de dois espaços de ID
+      diferentes — é a mesma chave escrita de dois jeitos.
+
+      O que tornou seguro: a expansão NÃO multiplica linha (medido acima). Então
+      nenhuma contagem sobre esta tabela muda; o que muda é uma coluna que era
+      inteira nula passar a ter valor. Se um dia essa propriedade deixar de valer,
+      é aqui que se relê a decisão.
+
+      O Power BI mostra essa coluna em branco, porque o Power Query compara por
+      espécie do mesmo jeito. Divergimos dele de propósito — regra 9.
+
+  - query: protocolos-geral
+    esquerda: ["N°PROTOCOLO"]
+    direita: ["PROTOCOLO:"]
+    medido: >-
+      0 de 33.459 linhas casavam por espécie; 25.707 (76,8%) casam comparando
+      N°PROTOCOLO como inteiro. Expansão medida em 13/08/2026: 33.462 linhas e
+      33.462 SOLICITACAO distintas — nenhuma linha multiplicada. A coluna
+      'TECNICOS AUXILIARES.AUXILIAR' passou de 0 para 25.707 não nulas.
+    decidido: 2026-08-13
+    por: "Claude, sob a autorização do Erick de decidir sem perguntar (12/08/2026)"
+    porque: |
+      Mesmo defeito da entrada acima, na mescla com `TECNICOS AUXILIARES`: aquela
+      query faz `Table.TransformColumnTypes(Fonte,{{"PROTOCOLO:", Int64.Type}})` e
+      `PROTOCOLOS GERAL` mantém `N°PROTOCOLO` em texto. A coluna
+      'TECNICOS AUXILIARES.AUXILIAR' saía inteira nula (33.187 linhas), e
+      `protocolos-detalhados` a lê.
+
+      O risco desta era maior que o da outra, porque um protocolo pode ter mais de
+      um auxiliar e a expansão multiplicaria linha — o que mudaria TODA contagem
+      sobre `PROTOCOLOS GERAL`, não só esta coluna. Medido: não multiplica (33.462
+      linhas para 33.462 SOLICITACAO distintas). O `Table.Distinct` por SOLICITACAO
+      vem antes da mescla e, no dado de hoje, cada protocolo casa com um auxiliar
+      só. **É a propriedade a reconferir se esta decisão for revista.**
+
+# NÃO entrou aqui, e o porquê está medido:
+#
+#   protocolos-geral: {INSTALADO POR:, DATA FINAL} × {TÉCNICO 1, DATA}
+#     0 de 25.472 linhas de chave completa casam com as 5.619 de GESTORES EQUIPES,
+#     e as chaves NÃO são texto×número — então não há reconciliação provável e este
+#     arquivo não tem o que dizer sobre ela. É a origem de 'TÉCNICO 2' e
+#     'GERENTE/SUPERVISOR' inteiras nulas. Ver docs/ACHADOS.md #64.

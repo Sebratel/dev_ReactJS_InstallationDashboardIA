@@ -32,6 +32,7 @@ export {
   type MEvaluatorOptions,
   type MFunctionImpl,
   type MFunctionTable,
+  type NotaM,
 } from './evaluator.ts';
 export {
   implementedMFunctions,

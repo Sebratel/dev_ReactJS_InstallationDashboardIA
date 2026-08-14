@@ -17,7 +17,12 @@
 // `field-agenda` tem 1,4 milhão de linhas e quatro queries passam de 10s
 // (ACHADOS #2 e #4), então o gargalo provavelmente não é a serialização.
 
-import { MEvaluator, type MFunctionImpl, type PedidoWeb } from './evaluator.ts';
+import {
+  MEvaluator,
+  type MFunctionImpl,
+  type NotaM,
+  type PedidoWeb,
+} from './evaluator.ts';
 import { standardConstants, standardFunctions } from './functions.ts';
 import { parseM, parseMLet } from './parser.ts';
 import {
@@ -163,6 +168,18 @@ export interface RunnerOptions {
    * entram sozinhas, mesmo fora desta lista.
    */
   readonly apenas?: readonly string[];
+  /**
+   * Dada uma query, o predicado que libera a comparação por inteiro numa mesclagem
+   * morta. Ausente = nenhuma é liberada, e a nota diz o número que a justificaria.
+   *
+   * Recebe o `id` da query porque `Table.NestedJoin` só conhece nomes de coluna, e
+   * duas queries podem mesclar pelas mesmas chaves com só uma tendo decisão. Quem
+   * monta isto é `reconciliadorDe` sobre `specs/_catalog/juncoes.yaml`.
+   */
+  readonly reconcilia?: (queryId: string) => (
+    esq: readonly string[],
+    dir: readonly string[],
+  ) => boolean;
 }
 
 /** As 5 funções de fonte. `Odbc.Query` e `GoogleSheets.Contents` vêm do runner. */
@@ -292,6 +309,13 @@ export interface QueryExecutada {
   readonly tabela: MTable;
   /** Valor de cada passo, para comparar passo a passo com o Power Query. */
   readonly passos: Map<string, MValue>;
+  /**
+   * O que a avaliação fez e precisa ser dito — hoje, junção que não casou nada.
+   *
+   * Vazio é o normal. Quem materializa **tem** de imprimir o que vier aqui: a razão
+   * de existir é que uma mescla morta devolvia 87.805 nulos calada.
+   */
+  readonly notas: readonly NotaM[];
 }
 
 /**
@@ -363,6 +387,11 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
     // seguinte ir mais longe que a anterior.
     const respostasWeb = new Map<string, Uint8Array>();
 
+    // Fora do avaliador pela mesma razão que `respostasWeb`: o laço de ponto-fixo
+    // reavalia a expressão inteira, e uma nota por passada viraria três notas iguais.
+    // O `Map` por texto é o que faz a última passada valer, e não a soma delas.
+    const notas = new Map<string, NotaM>();
+
     const ev = new MEvaluator({
       functions: funcoes,
       constants: standardConstants(),
@@ -373,6 +402,8 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
         if (bytes === undefined) throw new PrecisaBuscarWeb(pedido);
         return bytes;
       },
+      nota: (n) => notas.set(`${n.fn} ${n.assunto}`, n),
+      reconcilia: opts.reconcilia?.(spec.id),
       query: (nome) => {
         const t = porNomeProntas.get(nome);
         if (!t) {
@@ -397,7 +428,13 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
         `A query '${spec.id}' devolveu algo que não é tabela. Toda query do modelo vira tabela.`,
       );
     }
-    prontas.set(spec.id, { id: spec.id, name: spec.name, tabela: valor, passos });
+    prontas.set(spec.id, {
+      id: spec.id,
+      name: spec.name,
+      tabela: valor,
+      passos,
+      notas: [...notas.values()],
+    });
     porNomeProntas.set(spec.name, valor);
   }
 

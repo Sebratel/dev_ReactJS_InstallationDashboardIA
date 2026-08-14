@@ -76,6 +76,38 @@ export interface MCallContext {
    * buscar e reavaliar (ver `PrecisaBuscarWeb` em runner.ts).
    */
   readonly web: (pedido: PedidoWeb) => Uint8Array;
+  /**
+   * Registra que a avaliação fez algo que quem lê o número precisa saber.
+   *
+   * Existe por causa da regra "conversão de tipo nunca é silenciosa". Até aqui a
+   * camada M não tinha onde dizer nada: `Table.NestedJoin` que não casa **nenhuma**
+   * linha devolvia 87.805 nulos sem uma palavra, e o defeito só aparecia dias depois
+   * como um card em branco. Uma nota não muda o resultado — ela obriga o resultado a
+   * se explicar.
+   */
+  readonly nota: (n: NotaM) => void;
+  /**
+   * Esta mesclagem pode comparar as chaves como inteiro, em vez de por espécie?
+   *
+   * Só é consultada quando a junção estrita não casou **nenhuma** linha e as duas
+   * pontas são texto×número. O padrão é `false`, e ele é o certo: reconciliar por
+   * conta própria trocaria uma junção morta por uma viva e possivelmente errada.
+   * Quem responde `true` é uma decisão humana em `specs/_catalog/juncoes.yaml`.
+   */
+  readonly reconcilia: (esq: readonly string[], dir: readonly string[]) => boolean;
+}
+
+/**
+ * Uma coisa que a avaliação fez e que precisa aparecer no relatório de quem
+ * materializa. Não é erro (o valor saiu) nem log (não some no ruído).
+ */
+export interface NotaM {
+  /** A função que gerou a nota: `Table.NestedJoin`. */
+  readonly fn: string;
+  /** Sobre o quê, para agrupar: `'protocolo_id' × 'N°PROTOCOLO'`. */
+  readonly assunto: string;
+  /** O que aconteceu, em uma frase que baste para decidir. */
+  readonly mensagem: string;
 }
 
 /**
@@ -114,6 +146,18 @@ export interface MEvaluatorOptions {
    * por "não choveu", que é exatamente o número plausível e errado.
    */
   readonly web?: (pedido: PedidoWeb) => Uint8Array;
+  /**
+   * Recebe as notas da avaliação. Ausente = elas se perdem, e é assim de propósito
+   * para os testes de expressão solta: quem **materializa** é que tem de coletá-las
+   * (ver `runQueries`), porque é lá que existe um relatório para elas aparecerem.
+   */
+  readonly nota?: (n: NotaM) => void;
+  /**
+   * Libera a comparação por inteiro numa mesclagem morta. Ausente = ninguém libera,
+   * que é o padrão seguro: a junção continua saindo nula e a nota diz o número que
+   * justificaria a decisão.
+   */
+  readonly reconcilia?: (esq: readonly string[], dir: readonly string[]) => boolean;
 }
 
 /** Ambiente de nomes: escopo aninhado com resolução preguiçosa. */
@@ -196,6 +240,8 @@ export class MEvaluator {
               '`web`. Quem roda a expressão precisa injetar a busca HTTP.',
           );
         }),
+      nota: opts.nota ?? ((): void => {}),
+      reconcilia: opts.reconcilia ?? ((): boolean => false),
     };
   }
 

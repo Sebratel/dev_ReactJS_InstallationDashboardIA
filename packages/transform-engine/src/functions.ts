@@ -538,7 +538,9 @@ const TABELA: MFunctionImpl[] = [
       const vistas = new Set<string>();
       const ficam: MRow[] = [];
       for (const r of t.rows) {
-        const k = chaveDe(chaves.map((c) => r.get(c) ?? null));
+        // `!` e não `?? ''`: sem `frouxas`, `chaveDe` nunca devolve null, e um
+        // fallback aqui juntaria linhas distintas na mesma chave em silêncio.
+        const k = chaveDe(chaves.map((c) => r.get(c) ?? null))!;
         if (vistas.has(k)) continue;
         vistas.add(k);
         ficam.push(r);
@@ -723,7 +725,7 @@ const TABELA: MFunctionImpl[] = [
     name: 'Table.NestedJoin',
     minArgs: 5,
     maxArgs: 6,
-    call: ([esqV, chaveEsq, dirV, chaveDir, nomeNovo, tipoJoin]) => {
+    call: ([esqV, chaveEsq, dirV, chaveDir, nomeNovo, tipoJoin], ctx) => {
       const fn = 'Table.NestedJoin';
       const esq = exigeTabela(esqV, fn);
       const dir = exigeTabela(dirV, fn, 'o 3º argumento');
@@ -739,41 +741,133 @@ const TABELA: MFunctionImpl[] = [
       const kind = tipoJoin === undefined || tipoJoin === null
         ? 'JoinKind.LeftOuter'
         : String(tipoJoin);
-
-      // Índice do lado direito, para não varrer a tabela por linha da esquerda:
-      // `protocolos-geral` tem 33 mil linhas e a junção aninhada é O(n×m) sem isto.
-      const indice = new Map<string, MRow[]>();
-      for (const r of dir.rows) {
-        const k = chaveDe(kd.map((c) => r.get(c) ?? null));
-        const lista = indice.get(k);
-        if (lista) lista.push(r);
-        else indice.set(k, [r]);
-      }
-
-      const ordem = [...esq.columns, nova];
-      const rows: MRow[] = [];
-      for (const r of esq.rows) {
-        const k = chaveDe(ke.map((c) => r.get(c) ?? null));
-        const casam = indice.get(k) ?? [];
-        if (casam.length === 0 && REDUZEM.has(kind)) continue; // Inner e afins descartam
-        if (casam.length > 0 && kind === 'JoinKind.LeftAnti') continue;
-        if (casam.length === 0 && kind === 'JoinKind.LeftAnti') {
-          const vazia = new MTable(dir.columns, []);
-          rows.push(linhaPor(ordem, (c) => (c === nova ? vazia : r.get(c) ?? null)));
-          continue;
-        }
-        // A coluna nova é uma **tabela** por linha. Quem multiplica linha é o
-        // `Table.ExpandTableColumn` depois — separar as duas coisas é o que
-        // permite `Table.Distinct` no meio, como PROTOCOLOS GERAL faz.
-        const aninhada = new MTable(dir.columns, casam);
-        rows.push(linhaPor(ordem, (c) => (c === nova ? aninhada : r.get(c) ?? null)));
-      }
+      // Antes de trabalhar, e não depois: um JoinKind desconhecido percorria as duas
+      // tabelas inteiras como se fosse LeftOuter para só então errar.
       if (!CONHECIDOS.has(kind)) {
         throw new MEvalError(
           `${fn}: JoinKind '${kind}' não implementado. Implementados: ${[...CONHECIDOS].join(', ')}.`,
         );
       }
-      return new MTable(ordem, rows);
+
+      const assunto = `${ke.map((c) => `'${c}'`).join(' + ')} × ${kd.map((c) => `'${c}'`).join(' + ')}`;
+      /**
+       * `casaram` conta só as linhas de **chave completa**.
+       *
+       * Em M, `null` casa com `null` — e é assim que fica. Mas um par nulo×nulo não é
+       * prova de que a junção funciona: uma mescla com duas chaves nulas dos dois
+       * lados casaria "duas linhas" e escaparia do diagnóstico enquanto as outras
+       * 87.803 saem nulas. Quem responde "esta junção está viva?" tem de ignorá-los.
+       */
+      const junta = (
+        frouxas: readonly boolean[] | null,
+      ): { rows: MRow[]; casaram: number; comChave: number } => {
+        // Índice do lado direito, para não varrer a tabela por linha da esquerda:
+        // `protocolos-geral` tem 33 mil linhas e a junção aninhada é O(n×m) sem isto.
+        const indice = new Map<string, MRow[]>();
+        for (const r of dir.rows) {
+          const k = chaveDe(kd.map((c) => r.get(c) ?? null), frouxas);
+          if (k === null) continue;
+          const lista = indice.get(k);
+          if (lista) lista.push(r);
+          else indice.set(k, [r]);
+        }
+
+        const rows: MRow[] = [];
+        let casaram = 0;
+        let comChave = 0;
+        for (const r of esq.rows) {
+          const valores = ke.map((c) => r.get(c) ?? null);
+          const completa = valores.every((v) => v !== null);
+          if (completa) comChave++;
+          const k = chaveDe(valores, frouxas);
+          const casam = (k === null ? undefined : indice.get(k)) ?? [];
+          if (casam.length > 0 && completa) casaram++;
+          if (casam.length === 0 && REDUZEM.has(kind)) continue; // Inner e afins descartam
+          if (casam.length > 0 && kind === 'JoinKind.LeftAnti') continue;
+          if (casam.length === 0 && kind === 'JoinKind.LeftAnti') {
+            const vazia = new MTable(dir.columns, []);
+            rows.push(linhaPor(ordem, (c) => (c === nova ? vazia : r.get(c) ?? null)));
+            continue;
+          }
+          // A coluna nova é uma **tabela** por linha. Quem multiplica linha é o
+          // `Table.ExpandTableColumn` depois — separar as duas coisas é o que
+          // permite `Table.Distinct` no meio, como PROTOCOLOS GERAL faz.
+          const aninhada = new MTable(dir.columns, casam);
+          rows.push(linhaPor(ordem, (c) => (c === nova ? aninhada : r.get(c) ?? null)));
+        }
+        return { rows, casaram, comChave };
+      };
+
+      const ordem = [...esq.columns, nova];
+      const estrita = junta(null);
+      // Junção viva, ou sem o que casar (ponta vazia, ou esquerda toda de chave
+      // nula): zero aí é resultado, não sintoma. Nada muda em relação ao que este
+      // arquivo sempre fez.
+      if (estrita.casaram > 0 || estrita.comChave === 0 || dir.rowCount === 0) {
+        return new MTable(ordem, estrita.rows);
+      }
+
+      // Daqui para baixo: zero de zero linhas casadas, com as duas pontas cheias.
+      //
+      // Isso não é um resultado, é a assinatura de chave que não conversa — 87.805
+      // linhas de `BACKLOG AGENDADO FUTURO` liam BLANK porque `protocolo_id` chegava
+      // número e `N°PROTOCOLO` chegava texto (achado #64).
+      //
+      // **O motor não decide sozinho, e a razão é a que ele mesmo defende.** Comparar
+      // como inteiro por conta própria trocaria uma junção morta por uma junção viva
+      // e possivelmente errada: dois espaços de identificador diferentes que por acaso
+      // sejam inteiros pequenos casariam, e o resultado seria um número plausível —
+      // exatamente o único erro que este projeto não pode cometer. Então aqui ele
+      // **mede** e **conta**; quem libera é uma decisão humana em
+      // `specs/_catalog/juncoes.yaml`, com o número que a justificou escrito nela.
+      const frouxas = ke.map((_c, i) => reconciliavel(esq, ke[i]!, dir, kd[i]!));
+      if (!frouxas.some(Boolean)) {
+        ctx.nota({
+          fn,
+          assunto,
+          mensagem:
+            `nenhuma das ${estrita.comChave} linhas de chave completa casou com as ${dir.rowCount} do outro lado, ` +
+            'e as chaves não são texto×número — não há reconciliação provável. ' +
+            'A coluna aninhada sai INTEIRA NULA: confira as duas pontas no `m_expression`.',
+        });
+        return new MTable(ordem, estrita.rows);
+      }
+
+      const solta = junta(frouxas);
+      const quais = ke.filter((_c, i) => frouxas[i]).join(', ');
+      if (solta.casaram === 0) {
+        ctx.nota({
+          fn,
+          assunto,
+          mensagem:
+            `nenhuma das ${estrita.comChave} linhas de chave completa casou, nem comparando ${quais} como inteiro. ` +
+            'A coluna aninhada sai INTEIRA NULA — os identificadores são de espaços diferentes.',
+        });
+        return new MTable(ordem, estrita.rows);
+      }
+
+      const pct = ((100 * solta.casaram) / estrita.comChave).toFixed(1);
+      if (!ctx.reconcilia(ke, kd)) {
+        ctx.nota({
+          fn,
+          assunto,
+          mensagem:
+            `0 de ${estrita.comChave} linhas casam por espécie, e ${solta.casaram} (${pct}%) casariam ` +
+            `comparando ${quais} como inteiro — uma ponta declara Int64.Type e a outra fica texto. ` +
+            'A coluna aninhada sai INTEIRA NULA, como no Power Query. Para reconciliar, ' +
+            'registre a decisão em `specs/_catalog/juncoes.yaml` com este número.',
+        });
+        return new MTable(ordem, estrita.rows);
+      }
+      ctx.nota({
+        fn,
+        assunto,
+        mensagem:
+          `reconciliada por decisão registrada: ${solta.casaram} de ${estrita.comChave} (${pct}%) ` +
+          `casam comparando ${quais} como inteiro, contra 0 por espécie. ` +
+          'O Power Query não casaria — este número DIVERGE do dele, de propósito.',
+      });
+      return new MTable(ordem, solta.rows);
     },
   },
   {
@@ -1729,19 +1823,72 @@ function ordena(a: MValue, b: MValue): number {
  * mesclagem, e uma junção por código de equipe passaria a casar coisa errada
  * dependendo de a fonte devolver o campo como texto ou como inteiro.
  */
-function chaveDe(valores: readonly MValue[]): string {
-  return valores
-    .map((v) => {
-      if (v === null) return 'n:';
-      if (v instanceof Date) return `d:${v.getTime()}`;
-      if (v instanceof MTime) return `t:${v.ms}`;
-      if (v instanceof MDuration) return `u:${v.ms}`;
-      if (typeof v === 'string') return `s:${v}`;
-      if (typeof v === 'number') return `f:${v}`;
-      if (typeof v === 'boolean') return `b:${v}`;
-      throw new MEvalError(`Valor de tipo ${tipoDe(v)} não serve como chave.`);
-    })
-    .join('\u0000');
+function chaveDe(
+  valores: readonly MValue[],
+  frouxas: readonly boolean[] | null = null,
+): string | null {
+  const partes: string[] = [];
+  for (const [i, v] of valores.entries()) {
+    if (frouxas?.[i]) {
+      const k = comoInteiro(v);
+      if (k === null) return null;
+      partes.push(`i:${k}`);
+    } else if (v === null) partes.push('n:');
+    else if (v instanceof Date) partes.push(`d:${v.getTime()}`);
+    else if (v instanceof MTime) partes.push(`t:${v.ms}`);
+    else if (v instanceof MDuration) partes.push(`u:${v.ms}`);
+    else if (typeof v === 'string') partes.push(`s:${v}`);
+    else if (typeof v === 'number') partes.push(`f:${v}`);
+    else if (typeof v === 'boolean') partes.push(`b:${v}`);
+    else throw new MEvalError(`Valor de tipo ${tipoDe(v)} não serve como chave.`);
+  }
+  return partes.join('\u0000');
+}
+
+/**
+ * O valor como identificador inteiro canônico, ou `null` se ele não for um.
+ *
+ * Estreito de propósito. Um protocolo é um inteiro escrito de dois jeitos, e é isso
+ * que se reconcilia. Fracionário não é identificador; texto com letra não é; data em
+ * texto **também não** — `"01/02"` depende da culture, e adivinhar ali é o achado 1.
+ */
+function comoInteiro(v: MValue): string | null {
+  if (typeof v === 'number') return Number.isInteger(v) ? String(v) : null;
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!/^[+-]?\d+$/.test(s)) return null;
+    return String(BigInt(s)); // canônico: mata zero à esquerda e o `+`
+  }
+  return null;
+}
+
+/**
+ * As duas pontas desta chave são o mesmo identificador escrito em espécies
+ * diferentes?
+ *
+ * Só responde sim para texto×número, e só quando **cada** ponta é de uma espécie só.
+ * Coluna misturada já é outro problema, e resolver dois de uma vez é justamente como
+ * se erra em silêncio.
+ */
+function reconciliavel(esq: MTable, ce: string, dir: MTable, cd: string): boolean {
+  const e = especiesDe(esq, ce);
+  const d = especiesDe(dir, cd);
+  if (e.size !== 1 || d.size !== 1) return false;
+  const [ue] = [...e];
+  const [ud] = [...d];
+  return (ue === 'string' && ud === 'number') || (ue === 'number' && ud === 'string');
+}
+
+/** As espécies não nulas presentes numa coluna. Nulo não conta: ele nunca casa. */
+function especiesDe(t: MTable, coluna: string): Set<string> {
+  const s = new Set<string>();
+  for (const r of t.rows) {
+    const v = r.get(coluna) ?? null;
+    if (v === null) continue;
+    s.add(typeof v === 'string' ? 'string' : typeof v === 'number' ? 'number' : 'outra');
+    if (s.size > 1) break;
+  }
+  return s;
 }
 
 

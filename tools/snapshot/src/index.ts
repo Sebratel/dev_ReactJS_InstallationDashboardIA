@@ -46,6 +46,7 @@ import {
 } from '../../../packages/query-engine/src/connectors-gsheets.ts';
 import { buscadorWeb } from '../../../packages/query-engine/src/connectors-web.ts';
 import { materializaColunas } from '../../../packages/snapshot/src/colunas-calculadas.ts';
+import { resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
 import { QueryEngine } from '../../../packages/query-engine/src/engine.ts';
 import {
   accessToken,
@@ -58,6 +59,7 @@ import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
 import { queryDependencies, runQueries } from '../../../packages/transform-engine/src/runner.ts';
 import { toDatasetRows } from '../../../packages/transform-engine/src/value.ts';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
+import { leJuncoes, reconciliadorDe } from '../../../packages/semantic-model/src/juncoes.ts';
 import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { escreve, leCabecalho } from '../../../packages/snapshot/src/formato.ts';
@@ -177,6 +179,14 @@ const culture = (
   }
 ).culture ?? null;
 
+/**
+ * Quais mesclagens mortas podem comparar a chave como inteiro.
+ *
+ * Decisão humana, em `specs/_catalog/juncoes.yaml`. Vazio = nenhuma, e a nota da
+ * materialização diz o número que justificaria cada uma.
+ */
+const reconcilia = reconciliadorDe(leJuncoes(path.join(ROOT, 'specs')));
+
 const todasAsQueries = registry.list().filter((q) => q.m_expression && !FORA_DO_ESCOPO.has(q.id));
 
 /** As tabelas do modelo que carregam do arquivo desta query. */
@@ -256,6 +266,13 @@ interface Resultado {
   bytes: number | null;
   ms: number;
   erro?: string;
+  /**
+   * O que a camada M fez e precisa ser dito — hoje, mesclagem que não casou nada.
+   *
+   * Viaja no resultado e **não** no stderr porque o pai só lê o stderr do filho
+   * quando ele falha, e uma junção morta é justamente o caso em que tudo dá ok.
+   */
+  notas?: string[];
 }
 
 async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> {
@@ -267,7 +284,18 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   const web = q.endpoints?.length ? buscadorWeb({ permitidos: q.endpoints }) : undefined;
 
   try {
-    const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
+    const feitas = await runQueries({
+      specs: todasAsQueries,
+      apenas: [q.id],
+      culture,
+      fonte,
+      web,
+      reconcilia,
+    });
+    // As notas da camada M saem ANTES de qualquer outra linha desta query. Elas
+    // dizem o que a mesclagem fez, e uma mesclagem que não casou nada é a diferença
+    // entre 87.805 linhas de dado e 87.805 nulos que a tela lê como BLANK (#64).
+    const notas = feitas.get(q.id)!.notas.map((n) => `${n.fn} ${n.assunto}: ${n.mensagem}`);
     const { columns, rows } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
 
     // **Solta a camada M antes de materializar.** `toDatasetRows` já copiou tudo o
@@ -317,6 +345,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       colunas: cab.colunas.length,
       bytes: fs.statSync(arquivo).size,
       ms: Date.now() - inicio,
+      notas,
     };
   } catch (err) {
     return {
@@ -437,6 +466,25 @@ if (aBuscar.length) {
 }
 console.log('');
 
+/**
+ * O stderr inteiro num arquivo ao lado do snapshot, e o caminho dele na mensagem.
+ *
+ * 400 caracteres de resumo servem para ler no terminal; não servem para achar em que
+ * linha de que arquivo o erro nasceu. O diretório já está no `.gitignore` e já contém
+ * dado de cliente, então é o lugar certo — e o nome termina em `.erro.log` para não
+ * ser confundido com tabela por `leManifesto`.
+ */
+function guardaErro(id: string, erro: string): string {
+  if (!erro.trim()) return '';
+  try {
+    const alvo = path.join(args.saida, `${id}.erro.log`);
+    fs.writeFileSync(alvo, erro, 'utf8');
+    return ` — stderr completo em ${alvo}`;
+  } catch {
+    return '';
+  }
+}
+
 async function rodaEmSubprocesso(id: string): Promise<Resultado> {
   const inicio = Date.now();
   const argv = [
@@ -470,7 +518,7 @@ async function rodaEmSubprocesso(id: string): Promise<Resultado> {
           ? `estourou o heap${args.memoria ? ` (${args.memoria} MB)` : ''}. ` +
             'O avaliador de M guarda todos os passos vivos: tente --memoria=8192.'
           : `processo terminou sem resultado (código ${code}, sinal ${signal}): ` +
-            erro.split(/\r?\n/).filter(Boolean).slice(-3).join(' | ').slice(0, 300),
+            resumoDoErro(erro) + guardaErro(id, erro),
       });
     });
   });
@@ -481,6 +529,10 @@ for (const id of aBuscar) {
   process.stderr.write(`  ${id}… `);
   const r = await rodaEmSubprocesso(id);
   process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
+  // Logo abaixo da linha da query, e não num resumo no fim: quem materializa uma
+  // mesclagem morta precisa ver a nota ao lado do nome dela, não a três telas de
+  // distância. Junção que não casa nada é a diferença entre dado e BLANK (#64).
+  for (const n of r.notas ?? []) process.stderr.write(`      ${n}\n`);
   resultados.push(r);
 }
 
