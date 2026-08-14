@@ -5,8 +5,8 @@
 > **14 h 28 min** (#66). É o ponto de entrada de uma sessão nova: autocontido, feito
 > para ser lido antes de tocar em qualquer coisa.
 >
-> **Se for ler uma coisa só antes de escolher o que fazer, leia o #66.** Ele é o maior
-> número aberto do projeto e passou na frente da paridade.
+> **Se for ler uma coisa só antes de escolher o que fazer, leia o #67.** Ele é o maior
+> número aberto do projeto — 38× no congelamento — e passou na frente da paridade.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
@@ -285,14 +285,18 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 > e degradação para memória, `ARCHITECTURE.md` separado entre o que existe e o que é
 > desenho, e a costura de identidade da Fase 4.
 
-1. **Achar o 120% de `[Tipo Protocolo Dia]`** — [ACHADOS](ACHADOS.md) #66. Quatro
-   colunas calculadas com **a mesma expressão** custam 383 s, 2.733 s, 2.747 s e
-   **46.203 s**. As quatro hipóteses baratas já foram descartadas (estão na tabela do
-   #66, cada uma com a conferência); o que falta é uma execução **instrumentada**, e o
-   ciclo dela é longo — então instrumente antes de rodar, não depois. Se as quatro
-   custassem o que a primeira custa, o congelamento cai de **14 h 28 min para ~26 min**
-   sem tocar em SQL nenhum. É o maior ganho por hora de trabalho que existe hoje, e
-   enquanto ele não sair **o snapshot não pode ser atualizado num dia útil**.
+1. **Um processo por coluna calculada** — [ACHADOS](ACHADOS.md) **#67**, e a causa já
+   está medida: as 14 h 28 min não são uma coluna ruim, são **o processo compartilhado**.
+   Cada coluna sozinha custa 9 a 12 ms/linha; em sequência, a primeira segue barata e
+   **todas as outras ficam 5× mais caras**. Isoladas, as quatro fazem as 30.404 linhas em
+   **~23 min** contra 14 h 28 min — **38×**.
+   O desenho está no #67, e o perigo dele também: `npm run snapshot` já faz `spawn` por
+   query, mas lá cada filho grava **um arquivo inteiro**; aqui as quatro colunas caem
+   **no mesmo arquivo**, e juntar por posição supõe ordem de linha idêntica entre
+   processos. Sem um `chaveSha` conferido antes de juntar, o arquivo sai plausível e
+   errado. **Não implemente sem esse guarda.**
+   É o maior ganho por hora de trabalho que existe hoje, e enquanto não sair **o
+   snapshot não pode ser atualizado num dia útil**.
 2. **Ditar os 42 números de paridade.** É o único passo que ninguém faz sozinho, e
    agora não há mais desculpa de ferramenta: o harness existe, a tela existe, o filtro
    existe. Abra `http://localhost:3100` ao lado do Power BI, ache a linha

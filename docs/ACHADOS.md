@@ -4661,6 +4661,12 @@ coluna, e um `TMA` que erra proporcionalmente à idade do protocolo.
 
 ## #66 — Congelar `Status Protocolo Dia` leva **14 h 28 min**, e 12 h 50 min é uma coluna só
 
+> **CORRIGIDO PELO #67.** O número (14 h 28 min) está certo; a leitura dele estava
+> errada. Não existe coluna 120× mais cara e não é distorção de dado — a mesma coluna
+> custa 9,2 ms/linha sozinha e 52,4 rodando em quarto lugar. A causa é o processo
+> compartilhado, e a conta é 38×. Leia o #67; o que fica de pé aqui é a medição bruta e
+> o argumento de por que isso é bloqueio de operação.
+
 **13→14/08/2026, medido por acidente.** Rematerializar `protocolos-geral` para o #64
 deixou as 7 tabelas calculadas obsoletas, e a guarda de idade do #60 mandou regenerá-las.
 Seis levaram **7 segundos somados**. A sétima levou o resto da noite.
@@ -4739,3 +4745,113 @@ faltava: não é economia de memória, é a diferença entre poder e não poder 
 Antes disso, porém, vale o mais barato: **descobrir o 120×**. Se as quatro colunas
 deveriam custar 383 s cada, o congelamento inteiro cai de 14 h 28 para ~26 min sem
 mexer em SQL nenhum.
+
+## #67 — As 14 h 28 min do #66 eram **um processo compartilhado**, não uma coluna ruim: 38×
+
+**14/08/2026.** O #66 registrou o número e deixou a causa aberta de propósito, porque
+testar hipótese custava um ciclo de 14 horas. A saída não foi arriscar um palpite: foi
+construir o instrumento que tira o ciclo de 14 horas do caminho —
+`snapshot:calculadas --amostra=N --pular=N --coluna=`. Com ele, cada hipótese passou a
+custar minutos, e **duas afirmações do #66 caíram**.
+
+### Medido
+
+**1. Não existe coluna 120× mais cara.** A mesma expressão, na mesma tabela:
+
+```
+[Tipo Protocolo Dia], sozinha, processo limpo
+   3.200 linhas     9,1 ms/linha
+  12.800 linhas     9,2 ms/linha
+  30.404 linhas    11,2 ms/linha   → 5 min 41 s para a TABELA INTEIRA
+```
+
+Linear até o fim, e é o número que fecha o caso: a mesma coluna que a execução real de
+13/08 levou **12 h 50 min** para calcular faz as mesmas 30.404 linhas em **5 min 41 s**
+quando é a única coisa que o processo está fazendo. **135×.**
+
+**2. Não é distorção de dado.** Faixas de 400 linhas em três pontos da tabela:
+
+```
+  linhas      0–   400   14,6 ms/linha
+  linhas 14.000–14.400   16,0 ms/linha
+  linhas 28.800–29.200   14,3 ms/linha
+```
+
+O `--pular=` existe por causa disto: amostra é sempre prefixo, e prefixo não distingue
+"custo que cresce" de "dado que fica mais caro no fim".
+
+**3. O que importa é a ordem.** As quatro colunas, 12.800 linhas, cada uma medida
+sozinha num processo limpo e depois em sequência num processo só:
+
+| coluna | sozinha | em sequência | penalidade |
+|---|---|---|---|
+| `[Base Dia]` (1ª) | 12,5 ms/linha | 13,1 | 1,0× |
+| `[Turno Dia]` (2ª) | 11,6 | 57,6 | **5,0×** |
+| `[Rank Protocolo Dia]` (3ª) | 10,9 | 56,2 | **5,2×** |
+| `[Tipo Protocolo Dia]` (4ª) | 9,2 | 52,4 | **5,7×** |
+
+Sozinhas elas custam **a mesma coisa** — 9 a 12 ms/linha. Juntas, a primeira continua
+barata e **todas as outras ficam 5× mais caras**. É **degrau, não rampa**: o salto
+acontece na segunda coluna e depois estabiliza.
+
+E é o que a execução real dizia sem que ninguém lesse: 383 → 2.733 → 2.747 → 46.203 s,
+**monotônico na ordem de execução**. A "coluna de 12 h 50" era simplesmente a última da
+fila.
+
+### A conta
+
+```
+isolada por coluna, projetada para as 30.404 linhas
+  [Base Dia]            381 s
+  [Turno Dia]           353 s
+  [Rank Protocolo Dia]  330 s
+  [Tipo Protocolo Dia]  279 s
+  + 4 cargas de snapshot (~16 s cada)
+  ------------------------------------
+  ~24 min   (e a de 30.404 linhas medida de verdade: 5 min 41 s)
+
+compartilhando um processo (medido, 13→14/08)
+  14 h 28 min
+```
+
+**36×.** E a penalidade **cresce com a escala**: em 12.800 linhas ela é 4,1× (somando
+ms/linha), na execução inteira é 38×. Ou seja, o efeito não é um custo fixo por coluna —
+ele compõe com o tamanho da tabela, o que é coerente com pressão de memória (o processo
+real chegou perto do teto de 8 GB) e não com uma constante de código.
+
+### A causa provável, e o que ainda não está provado
+
+As quatro colunas varrem `FIELD AGENDA` (1.466.202 linhas), e `columnValue` **memoiza na
+própria linha**. `Turno` e `RankDataProtocolo` são colunas calculadas *de `FIELD AGENDA`*,
+então calculá-las escreve campo novo em mais de um milhão de objetos. Suspeita: as linhas
+degradam de forma (V8 sai da hidden class e vai para modo dicionário), e daí em diante
+**toda** leitura de propriedade nelas fica mais lenta — inclusive a de
+`[Tipo Protocolo Dia]`, que só lê uma coluna física.
+
+Encaixa com o degrau na segunda coluna e com a penalidade compondo com a escala. **Mas
+não está provado**, e não precisa estar para consertar: o remédio é o mesmo para qualquer
+estado acumulado no processo.
+
+### O conserto, e o perigo dele
+
+`npm run snapshot` já resolve isto por query, com `spawn` por id. O equivalente aqui é
+**um processo por coluna calculada** — e ele tem um perigo que o caso da query não tem:
+lá cada processo escreve **um arquivo inteiro**; aqui os quatro têm de acabar **no mesmo
+arquivo**, e juntar resultados de processos diferentes por posição supõe que a ordem das
+linhas é idêntica nos dois. Se não for, o arquivo sai **plausível e errado** — o único
+resultado que este projeto não aceita.
+
+O desenho, então, tem de carregar a garantia junto, no molde dos outros guardas
+(`daxSha`, `tabelaSha`, `original_sha`):
+
+- o **primeiro** filho grava as colunas físicas mais a sua calculada;
+- cada filho grava também um **`chaveSha`**: o `sha256` dos valores das colunas físicas,
+  na ordem das linhas;
+- o pai só junta por posição depois de conferir que **todos** os `chaveSha` são iguais.
+  Diferente = erra alto, e não junta nada;
+- o pai fica leve (só orquestra e junta), e cada filho é o único processo pesado da vez —
+  que é a regra desta máquina.
+
+Enquanto isso não existir, quem precisar recongelar `Status Protocolo Dia` tem o
+paliativo medido: rodar **uma coluna por vez** com
+`--coluna=` (e, hoje, sem gravar), ou aceitar as 14 h 28 min.
