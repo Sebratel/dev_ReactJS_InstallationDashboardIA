@@ -27,6 +27,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
+import { esperaAquecimento, type EstadoDeSaude } from './aquecimento.ts';
 import { portaOcupada } from './porta.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -97,46 +98,24 @@ async function respondeSaude(): Promise<boolean> {
   }
 }
 
-interface Saude {
-  aquecimento?: { ativo: boolean; pronto: boolean };
-}
-
-async function saude(): Promise<Saude | null> {
+async function saude(): Promise<EstadoDeSaude | null> {
   try {
     const r = await fetch(`${BASE}/api/saude`);
-    return r.ok ? ((await r.json()) as Saude) : null;
+    return r.ok ? ((await r.json()) as EstadoDeSaude) : null;
   } catch {
     return null;
   }
 }
 
-/**
- * Espera o aquecimento **da própria API** terminar, se houver um.
- *
- * A API aquece a si mesma no arranque desde 17/08/2026. Medir por cima disso poria
- * dois aquecimentos correndo juntos, calculando as mesmas páginas em duplicata num
- * processo só — então aqui a gente espera, e o `aquecer()` que vem depois vira uma
- * medição do estado quente em vez de uma segunda subida.
- *
- * **Pergunta em vez de adivinhar.** A saúde diz `ativo` e `pronto`. Sem esses dois
- * campos, o erro viria nas duas direções: esperar dez minutos por um aquecedor
- * desligado com `--sem-aquecer`, ou desistir cedo demais achando que a demora é
- * ausência. `ativo: false` volta na hora.
- */
-async function esperaAquecimento(limiteMs = 900_000): Promise<void> {
-  const primeira = await saude();
-  if (primeira?.aquecimento?.ativo !== true) return;
-
-  console.log('\nA API está se aquecendo sozinha. Esperando ela terminar…');
-  const ate = Date.now() + limiteMs;
-  while (Date.now() < ate) {
-    const s = await saude();
-    // API caiu no meio: quem reclama é o `api.on('exit')`, não esta espera.
-    if (s === null) return;
-    if (s.aquecimento?.pronto === true) return;
-    await new Promise((r) => setTimeout(r, 1000));
+/** Espera o aquecimento da própria API, e diz por que parou de esperar. */
+async function esperaOAquecimentoDaApi(): Promise<void> {
+  const v = await esperaAquecimento({ saude });
+  if (v === 'estourou') {
+    console.error('O aquecimento da API passou de 15 min. Medindo assim mesmo —');
+    console.error('a coluna "a frio" abaixo vai medir o que ele ainda não cobriu.');
+  } else if (v === 'sem-resposta') {
+    console.error('A saúde da API parou de responder durante a espera. Medindo assim mesmo.');
   }
-  console.error('O aquecimento da API passou de 15 min. Medindo assim mesmo.');
 }
 
 /**
@@ -281,7 +260,7 @@ if (!(await esperaSaude(api))) {
 //    medimos — o que também melhora o relatório, porque a coluna "a frio" passa a
 //    mostrar o que a **tela** vai sentir, e não o custo que o servidor já absorveu.
 if (!semAquecer) {
-  await esperaAquecimento();
+  await esperaOAquecimentoDaApi();
   const v = await aquecer();
   if (!v.ok) {
     console.error('\nA API continua no ar — o aquecimento reprovou, mas derrubá-la agora');

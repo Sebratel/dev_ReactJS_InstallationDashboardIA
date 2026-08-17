@@ -130,7 +130,10 @@ export class Servidor {
     this.dashboards = loadDashboards(path.join(opts.root, 'specs'));
     this.registry = QueryRegistry.fromSpecsDir(path.join(opts.root, 'specs'));
     const adapter = cache ?? new MemoryCache();
-    this.tipoDeCache = adapter.constructor.name;
+    // `nome` quando o adapter tem um (`CacheEmCamadas` diz "MemoryCache+RedisCache"):
+    // saber que o Redis entrou não basta, é preciso saber que ele entrou **atrás** da
+    // memória e não no lugar dela.
+    this.tipoDeCache = (adapter as { nome?: string }).nome ?? adapter.constructor.name;
     this.cache = new CacheDeResposta({
       cache: adapter,
       ...(aoFalharCache ? { aoFalhar: aoFalharCache } : {}),

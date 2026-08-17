@@ -8,6 +8,8 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
+import { CacheEmCamadas } from '../../../packages/query-engine/src/cache-camadas.ts';
+import { MemoryCache } from '../../../packages/query-engine/src/cache-memory.ts';
 import { RedisCache } from '../../../packages/query-engine/src/cache-redis.ts';
 import type { Cache } from '../../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
@@ -19,11 +21,18 @@ const ROOT = path.resolve(AQUI, '..', '..', '..');
 applyDotEnv(ROOT);
 
 /**
- * O Redis, se houver `REDIS_URL`.
+ * O Redis, se houver `REDIS_URL` — **na frente dele, sempre a memória**.
  *
- * **Sem ele a API sobe igual**, com o cache em memória: o Redis acelera o segundo
- * pedido *depois de um restart*, e nada mais. Trocar isso por uma dependência de
- * arranque transformaria uma otimização em motivo de a tela não abrir.
+ * **Sem ele a API sobe igual.** Trocar isso por uma dependência de arranque
+ * transformaria uma otimização em motivo de a tela não abrir.
+ *
+ * **E com ele a API não fica mais lenta**, que é o que aconteceria na versão
+ * anterior desta função. Ela devolvia o `RedisCache` **no lugar** do `MemoryCache`,
+ * e ligar o Redis teria feito cada acerto pagar uma ida e volta de rede mais um
+ * `JSON.parse` de até 172 KB, no lugar de uma leitura de `Map`. As duas camadas
+ * resolvem coisas diferentes: a memória dá a latência, o Redis dá a permanência
+ * (sobreviver ao restart, e ser compartilhado entre processos). Ver
+ * `cache-camadas.ts`.
  *
  * O `import` é dinâmico porque `ioredis` abre conexão ao ser instanciado, e quem
  * roda sem `REDIS_URL` não deve pagar nem por carregar o driver.
@@ -35,7 +44,17 @@ async function cacheDaEnv(): Promise<Cache | undefined> {
     const { default: Redis } = await import('ioredis');
     // `lazyConnect`: a conexão sai na primeira operação, não no arranque. Um Redis
     // fora do ar vira miss em `CacheDeResposta`, e não uma exceção aqui.
-    return new RedisCache(new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 }));
+    const redis = new RedisCache(new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 }));
+    return new CacheEmCamadas({
+      rapida: new MemoryCache(),
+      duravel: redis,
+      aoFalhar: (op, err) => {
+        console.error(
+          `[cache] Redis falhou em ${op} (a memória continua servindo): ` +
+            `${err instanceof Error ? err.message : String(err)}`,
+        );
+      },
+    });
   } catch (err) {
     console.error(
       `[cache] REDIS_URL existe mas o driver não subiu (seguindo em memória): ` +
@@ -76,7 +95,9 @@ servidor.criaHttp().listen(porta, () => {
   console.log(`  saúde http://localhost:${porta}/api/saude`);
   console.log(`\n  Somente GET. Nenhuma rota escreve em fonte nenhuma.`);
   console.log(`  Os dados vêm do snapshot em disco, não das fontes.`);
-  console.log(`  Cache da resposta: ${cache ? 'Redis (REDIS_URL)' : 'memória'}`);
+  console.log(
+    `  Cache da resposta: ${cache ? 'memória + Redis (REDIS_URL)' : 'memória'}`,
+  );
   console.log(`  Reaquecimento: ${semAquecer ? 'desligado (--sem-aquecer)' : 'automático'}\n`);
 
   if (!semAquecer) {

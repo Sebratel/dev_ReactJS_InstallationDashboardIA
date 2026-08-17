@@ -5067,3 +5067,49 @@ Duas decisões dele que não são óbvias:
 `REDIS_URL` não existe na `.env` (só `REDIS_KEY_PREFIX`), então o adapter é o de
 memória e o cache morre no restart — o que o reaquecimento de arranque agora cobre. O
 código do Redis já está pronto e entra sozinho no dia em que a URL aparecer.
+
+### Ligar o Redis teria deixado a API **mais lenta** (e isso quase passou)
+
+`index.ts` escolhia o adapter de forma **exclusiva**: `RedisCache` **no lugar do**
+`MemoryCache` quando `REDIS_URL` existisse. Como a `.env` só tem `REDIS_KEY_PREFIX` e
+nunca teve a URL, esse caminho jamais rodou — e no dia em que rodasse, cada acerto
+passaria a pagar ida e volta de rede mais `JSON.parse` de até 172 KB no lugar de uma
+leitura de `Map`. Uma peça de infraestrutura que piora o número que deveria melhorar é
+pior que a ausência dela, porque ninguém vai procurar ali.
+
+As duas camadas resolvem coisas diferentes e agora são duas
+(`packages/query-engine/src/cache-camadas.ts`): a **memória** dá a latência (o acerto
+não sai do processo), o **Redis** dá a permanência (sobrevive ao restart, é
+compartilhado entre processos). Escreve nas duas, lê da rápida primeiro, promove o que
+achar na durável. Redis fora do ar vira miss e nunca exceção.
+
+### Um defeito meu, achado porque o `npm start` foi rodado de verdade
+
+Com a API se aquecendo sozinha, `npm start` não pode disparar o aquecimento dele por
+cima — seriam dois calculando as mesmas páginas num processo só. A espera foi escrita
+e, na primeira execução real, **não esperou**: o relatório saiu com
+`diario-instalacao` a 4,13 s numa rodada que deveria ser toda de acertos, e o
+`[aquecedor] 14 páginas quentes em 194,8s` apareceu **depois** de metade da tabela.
+
+A causa era uma linha:
+
+```ts
+const s = await saude();
+if (s === null) return;   // ← trata falha transitória como "a API sumiu"
+```
+
+Falhar ali é **esperado**: enquanto a API calcula `agendamento-field`, o laço de
+eventos dela fica travado por dezenas de segundos e um socket de keep-alive
+reaproveitado cai nesse intervalo. `npm start` saiu da espera com o aquecedor na **2ª
+de 14** páginas.
+
+Agora são 15 falhas **seguidas** para desistir (~15 s sem nenhuma resposta), o
+contador zera a cada resposta boa, e a espera devolve um veredito
+(`ausente` / `pronto` / `sem-resposta` / `estourou`) em vez de `void` — quem chama
+precisa poder dizer por que parou de esperar. Extraída para
+`tools/subir/src/aquecimento.ts`, com 9 testes, porque inline em `index.ts` ela era
+intestável e foi exatamente aí que o defeito se escondeu.
+
+**A lição operacional:** o defeito não apareceu em teste nenhum, apareceu em rodar o
+comando de verdade e **ler a tabela**. Os tempos na coluna "a frio" não faziam sentido
+para uma rodada que deveria ser toda quente, e era só isso que denunciava.
