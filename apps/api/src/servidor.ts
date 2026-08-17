@@ -43,7 +43,9 @@ import {
   CacheDeResposta,
   carimboDoSnapshot,
   chaveDaResposta,
-  ttlDaPagina,
+  diaDoCalculo,
+  identidadeDoCalculo,
+  retencaoDaPagina,
   type EstadoDoCache,
 } from './cache-resposta.ts';
 import { identificaLocal, type Identidade } from './identidade.ts';
@@ -90,6 +92,14 @@ export interface ServidorOptions {
    * única peça da Fase 4 que já custa alguma coisa depois: ver `identidade.ts`.
    */
   identifica?: (req: http.IncomingMessage) => Identidade;
+  /**
+   * O estado do reaquecimento automático, para `GET /api/saude`.
+   *
+   * Entra por função, e não por valor, porque o `Aquecedor` só pode ser construído
+   * **depois** do servidor — ele precisa da porta em que o servidor foi escutar.
+   * Padrão: desligado, que é o que `npm run api -- --sem-aquecer` e todo teste veem.
+   */
+  aquecimento?: () => { ativo: boolean; pronto: boolean };
 }
 
 export class Servidor {
@@ -110,7 +120,12 @@ export class Servidor {
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, ...resto } = opts;
-    this.opts = { agora: () => new Date(), identifica: identificaLocal, ...resto };
+    this.opts = {
+      agora: () => new Date(),
+      identifica: identificaLocal,
+      aquecimento: () => ({ ativo: false, pronto: false }),
+      ...resto,
+    };
     this.model = SemanticModel.fromSpecsDir(path.join(opts.root, 'specs'));
     this.dashboards = loadDashboards(path.join(opts.root, 'specs'));
     this.registry = QueryRegistry.fromSpecsDir(path.join(opts.root, 'specs'));
@@ -192,6 +207,10 @@ export class Servidor {
       paginasCarregadas: [...this.carregadas.keys()].sort(),
       dashboards: this.dashboards.length,
       cache: { adapter: this.tipoDeCache },
+      // Sem isto, `npm start` teria de **adivinhar** se a API está se aquecendo
+      // sozinha — e adivinharia errado nas duas direções: esperando dez minutos por
+      // um aquecedor desligado, ou disparando o seu por cima de um que está no meio.
+      aquecimento: this.opts.aquecimento(),
     });
   }
 
@@ -255,7 +274,7 @@ export class Servidor {
     // não materializa tabela calculada e não roda o avaliador. É esse pulo que
     // cabe nos 300 ms da regra 9 — recalcular e só economizar a serialização não
     // caberia.
-    const ttl = ttlDaPagina(this.queriesDe(dash), this.registry);
+    const ttl = retencaoDaPagina(this.queriesDe(dash), this.registry);
     const chave = chaveDaResposta({
       usuario: quem.usuario,
       pagina: dash.id,
@@ -264,6 +283,7 @@ export class Servidor {
       de,
       linhas,
       carimbo: this.carimboAtual(),
+      dia: diaDoCalculo(this.opts.agora()),
     });
 
     if (ttl > 0) {
@@ -473,7 +493,16 @@ export class Servidor {
     // aquecimento roda junto do refresh: a API serviria o dado antigo até alguém
     // lembrar de reiniciar. O carimbo é o mesmo do cache de resposta, então as duas
     // camadas enxergam a troca no mesmo instante.
-    const carimbo = this.carimboAtual();
+    //
+    // **E o dia entra junto, pelo mesmo motivo que entrou na chave da resposta.** O
+    // avaliador congela o `now` que recebeu aqui embaixo (`carrega({ now })`), e
+    // `TODAY()` sai dele. Um servidor que atravessa a meia-noite sem esta parte
+    // continuaria servindo o `TODAY()` de ontem por tempo indeterminado — e o
+    // estrago seria pior **depois** do dia entrar na chave da resposta, não antes:
+    // a chave nova daria miss, o recálculo pegaria este avaliador velho, e a
+    // resposta de hoje seria gravada com o ontem dentro. As duas camadas medem a
+    // mesma identidade ou nenhuma das duas mede.
+    const carimbo = this.identidadeAtual();
     if (this.carimboDasCarregadas !== carimbo) {
       this.carregadas.clear();
       this.carimboDasCarregadas = carimbo;
@@ -510,12 +539,43 @@ export class Servidor {
    * Uma função só, usada pelas duas camadas de cache. Duas contas separadas para a
    * "mesma" identidade divergiriam no primeiro arquivo que uma delas não olhasse — e
    * foi exatamente assim que os `calc.*.jsonl` ficaram de fora do carimbo.
+   *
+   * **Isto custa 0,57 ms por pedido e fica assim.** É o maior custo fixo de um
+   * acerto de cache — mais que serializar uma página de 96 KB —, quase todo em
+   * `leManifesto` (ler o arquivo e fazer `JSON.parse`). A tentação de memoizá-lo
+   * atrás de uma conferência barata é óbvia, e foi tentada em 17/08/2026: guardar o
+   * carimbo e só recalculá-lo quando `mtime` e tamanho do manifesto mudassem.
+   *
+   * **Não funciona, e o teste provou antes de o código sair daqui.** Reescrever o
+   * manifesto trocando só a hora de `geradoEm` não muda um byte do tamanho — a data
+   * tem largura fixa —, então sobra o `mtime` para separar as duas versões. E o
+   * `mtime` desta máquina tem granularidade medida de **~2,45 ms** (4.000 escritas,
+   * 265 carimbos de tempo distintos): duas reescritas dentro dessa janela são
+   * indistinguíveis. O memo devolveria o carimbo velho, a chave da resposta apontaria
+   * para a resposta anterior ao refresh, e a tela mostraria o número de antes sem
+   * nada dizendo que era de antes.
+   *
+   * 0,4 ms não compra um modo de desatualização silenciosa. A economia equivalente
+   * está no corpo pré-serializado do cache, que não custa exatidão nenhuma.
    */
   private carimboAtual(): string {
     return carimboDoSnapshot(
       leManifesto(this.opts.snapshotDir),
       carimboDasCalculadas(this.opts.snapshotDir),
     );
+  }
+
+  /**
+   * A identidade completa do que a API responderia agora: o dado em disco e o dia.
+   *
+   * **Pública porque o aquecedor precisa dela**, e precisa dela *exatamente* como as
+   * duas camadas de cache a calculam. Um aquecedor que vigiasse só o carimbo dormiria
+   * na virada da meia-noite — que é justamente o instante em que o cache inteiro fica
+   * inalcançável de uma vez, pelas 32 chamadas a `TODAY()`. A tela do primeiro
+   * expediente é a que pagaria.
+   */
+  identidadeAtual(): string {
+    return identidadeDoCalculo(this.carimboAtual(), diaDoCalculo(this.opts.agora()));
   }
 
   /**

@@ -23,8 +23,11 @@ import {
   CacheDeResposta,
   carimboDoSnapshot,
   chaveDaResposta,
+  diaDoCalculo,
+  identidadeDoCalculo,
   normalizaFiltros,
-  ttlDaPagina,
+  RETENCAO_PADRAO,
+  retencaoDaPagina,
 } from '../src/cache-resposta.ts';
 import { Servidor } from '../src/servidor.ts';
 
@@ -68,7 +71,7 @@ test('normalizaFiltros: o nível faz parte da identidade do filtro', () => {
   );
 });
 
-test('chaveDaResposta: usuário, página, visual, janela e carimbo mudam a chave', () => {
+test('chaveDaResposta: usuário, página, visual, janela, carimbo e dia mudam a chave', () => {
   const base = {
     usuario: 'local',
     pagina: 'capa',
@@ -77,6 +80,7 @@ test('chaveDaResposta: usuário, página, visual, janela e carimbo mudam a chave
     de: 0,
     linhas: 200,
     carimbo: 'c1',
+    dia: '2026-08-07',
   };
   const k = chaveDaResposta(base);
   // O usuário entra na chave **antes** de existir RLS. Depois dele, uma chave sem
@@ -87,7 +91,48 @@ test('chaveDaResposta: usuário, página, visual, janela e carimbo mudam a chave
   assert.notEqual(k, chaveDaResposta({ ...base, de: 200 }));
   assert.notEqual(k, chaveDaResposta({ ...base, linhas: 50 }));
   assert.notEqual(k, chaveDaResposta({ ...base, carimbo: 'c2' }));
+  // O dia, com o **mesmo** carimbo: o dado em disco não mudou e a resposta mudou
+  // assim mesmo, porque 25 das 121 expressões chamam `TODAY()`. É a única parte da
+  // identidade que não vem do disco.
+  assert.notEqual(k, chaveDaResposta({ ...base, dia: '2026-08-08' }));
   assert.equal(k, chaveDaResposta({ ...base }), 'o mesmo pedido dá a mesma chave');
+});
+
+/**
+ * O dia da chave tem de ser o dia que o **cálculo** enxerga.
+ *
+ * `TODAY()` é `getUTCFullYear/getUTCMonth/getUTCDate` sobre o `now` injetado. Se
+ * este dia fosse o local, a chave viraria à meia-noite de Brasília e o `TODAY()`
+ * três horas depois — e nessa janela a página serviria o dia novo com o número do
+ * dia velho. As duas datas abaixo são o mesmo instante visto dos dois fusos.
+ */
+test('diaDoCalculo: é o dia UTC, que é o que TODAY() enxerga', () => {
+  // 21:00 em Brasília (UTC-3) do dia 7 já é dia 8 em UTC — e `TODAY()` diz 8.
+  assert.equal(diaDoCalculo(new Date('2026-08-08T00:30:00.000Z')), '2026-08-08');
+  assert.equal(diaDoCalculo(new Date('2026-08-07T23:59:59.999Z')), '2026-08-07');
+  assert.equal(diaDoCalculo(new Date('2026-08-08T00:00:00.000Z')), '2026-08-08');
+  // A hora não entra: o cache não pode virar de hora em hora, só na virada do dia.
+  assert.equal(
+    diaDoCalculo(new Date('2026-08-07T03:00:00.000Z')),
+    diaDoCalculo(new Date('2026-08-07T21:00:00.000Z')),
+  );
+});
+
+/**
+ * As duas camadas de cache — respostas prontas e avaliadores carregados — têm de
+ * medir a **mesma** identidade.
+ *
+ * Este teste existe porque a divergência entre elas não daria erro nenhum: daria um
+ * número. Se a chave da resposta soubesse do dia e o mapa de avaliadores não, a
+ * virada da meia-noite daria miss (certo), o recálculo pegaria o avaliador de ontem
+ * (errado) e o `TODAY()` de ontem seria gravado sob a chave de hoje — o cache
+ * carimbando o erro em vez de expô-lo. Uma função só é o que impede isso.
+ */
+test('identidadeDoCalculo: o dado e o dia, e os dois mudam a identidade', () => {
+  const base = identidadeDoCalculo('c1', '2026-08-07');
+  assert.notEqual(base, identidadeDoCalculo('c1', '2026-08-08'), 'o dia sozinho basta');
+  assert.notEqual(base, identidadeDoCalculo('c2', '2026-08-07'), 'o carimbo sozinho basta');
+  assert.equal(base, identidadeDoCalculo('c1', '2026-08-07'), 'e é estável');
 });
 
 test('carimboDoSnapshot: rematerializar muda o carimbo; sem snapshot tem carimbo próprio', () => {
@@ -142,23 +187,55 @@ test('carimboDoSnapshot: a ordem das entradas do manifesto não importa', () => 
 // O TTL
 // ---------------------------------------------------------------------------
 
-test('ttlDaPagina: vale o menor TTL das queries da página', () => {
+/**
+ * **Este teste mudou de lado de propósito, e a versão antiga dele está citada
+ * abaixo.** Ele afirmava que a página valia o menor TTL das suas queries: 86400
+ * para `feriados`, 60 para `protocolos-geral`. Era uma decisão tomada para o cache
+ * do Query Engine, onde o TTL segura idas ao ERP — e que tinha vazado para o cache
+ * da resposta, onde não há ERP nenhum: a resposta é calculada sobre o `snapshot/`
+ * em disco, que só muda quando `npm run snapshot` roda.
+ *
+ * O preço medido daquele 60 estava em `visao-geral`: 36 s de recálculo uma vez por
+ * minuto, com o disco intacto e ninguém tendo reiniciado nada.
+ */
+test('retencaoDaPagina: o relógio não expira mais a resposta — a chave expira', () => {
   const r = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
-  // Números de `specs/_catalog/cache-policies.yaml`: operacional quente 60,
-  // referência quase estática 86400.
-  assert.equal(ttlDaPagina(['feriados'], r), 86400);
-  assert.equal(ttlDaPagina(['protocolos-geral'], r), 60);
-  assert.equal(
-    ttlDaPagina(['feriados', 'protocolos-geral'], r),
-    60,
-    'servir o operacional com o TTL do feriado mostraria ontem por 24 h',
-  );
+  // Antes: 86400, 60 e 60.
+  assert.equal(retencaoDaPagina(['feriados'], r), RETENCAO_PADRAO);
+  assert.equal(retencaoDaPagina(['protocolos-geral'], r), RETENCAO_PADRAO);
+  assert.equal(retencaoDaPagina(['feriados', 'protocolos-geral'], r), RETENCAO_PADRAO);
+  // O que substituiu o frescor é `carimbo` + `dia` na chave. Uma retenção menor que
+  // um dia traria o recálculo de volta pela porta dos fundos, sem ninguém decidir.
+  assert.ok(RETENCAO_PADRAO >= 24 * 60 * 60, 'retenção abaixo de um dia é TTL disfarçado');
 });
 
-test('ttlDaPagina: query desconhecida (ou plano indeterminado) desliga o cache', () => {
+/**
+ * As duas saídas por `0` sobrevivem à mudança porque nunca foram sobre tempo.
+ */
+test('retencaoDaPagina: query desconhecida e ttl 0 continuam desligando o cache', () => {
   const r = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
-  assert.equal(ttlDaPagina(['(indeterminado)'], r), 0);
-  assert.equal(ttlDaPagina(['feriados', '(indeterminado)'], r), 0);
+  // Plano indeterminado: não dá para saber de que dado a resposta depende, então
+  // ela não pode ser guardada sob um carimbo que talvez não a descreva.
+  assert.equal(retencaoDaPagina(['(indeterminado)'], r), 0);
+  assert.equal(retencaoDaPagina(['feriados', '(indeterminado)'], r), 0);
+
+  // `ttl: 0` é alguém escrevendo "esta não se guarda" em `cache-policies.yaml`.
+  // É decisão humana registrada, e a retenção não pode passar por cima dela.
+  const comZero = new QueryRegistry();
+  comZero.add(
+    {
+      id: 'nunca-cacheia',
+      name: 'nunca-cacheia',
+      origin: 'expression',
+      source_type: 'unknown',
+      datasource: null,
+      sql: null,
+      url: null,
+      source_tables: [],
+    },
+    { ttl: 0, realtime: false },
+  );
+  assert.equal(retencaoDaPagina(['nunca-cacheia'], comZero), 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -234,12 +311,14 @@ async function sobe(
   cache?: Cache,
   aoFalharCache?: (op: 'get' | 'set', erro: unknown) => void,
   usuario?: string,
+  /** O relógio. Injetável para atravessar a meia-noite sem esperar por ela. */
+  agora: () => Date = () => AGORA,
 ): Promise<{ busca: (rota: string) => Promise<Response>; fecha: () => Promise<void> }> {
   const http = new Servidor({
     root: ROOT,
     snapshotDir,
     webDir: WEB,
-    agora: () => AGORA,
+    agora,
     ...(cache ? { cache } : {}),
     ...(aoFalharCache ? { aoFalharCache } : {}),
     ...(usuario ? { identifica: () => ({ usuario, papeis: [usuario] }) } : {}),
@@ -325,6 +404,42 @@ test('snapshot refeito invalida: a tela não continua servindo o número velho',
   }
 });
 
+/**
+ * A meia-noite invalida; a hora, não.
+ *
+ * As duas metades importam. Sem a primeira, a resposta de ontem serviria hoje —
+ * 25 das 121 expressões chamam `TODAY()`. Sem a segunda, o cache viraria a cada
+ * relógio novo e a página voltaria a custar os segundos que ela custa a frio, que é
+ * o desperdício que o TTL de 60 s cobrava sem que ninguém tivesse decidido isso.
+ */
+test('a virada do dia invalida, mesmo com o snapshot intacto', async () => {
+  const dir = await dirComCapa();
+  let relogio = new Date('2026-08-07T20:00:00.000Z');
+  const s = await sobe(dir, new MemoryCache(), undefined, undefined, () => relogio);
+  try {
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'miss');
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
+
+    // Mesmo dia UTC, quase na virada: ainda é acerto.
+    relogio = new Date('2026-08-07T23:59:59.000Z');
+    assert.equal(
+      (await (await s.busca('/api/dashboards/capa')).json()).cache,
+      'hit',
+      'a hora não pode invalidar — só o dia',
+    );
+
+    // Passou. O disco não mudou uma linha; `TODAY()` mudou.
+    relogio = new Date('2026-08-08T00:00:01.000Z');
+    assert.equal(
+      (await (await s.busca('/api/dashboards/capa')).json()).cache,
+      'miss',
+      'depois da virada, a resposta de ontem é o TODAY() errado com cara de certo',
+    );
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('Redis fora do ar não derruba o pedido — só tira o acerto', async () => {
   const falhas: string[] = [];
   const s = await sobe(await dirComCapa(), CACHE_QUEBRADO, (op) => falhas.push(op));
@@ -397,5 +512,43 @@ test('a saúde diz qual adapter de cache está ligado', async () => {
     assert.equal(j.cache.adapter, 'MemoryCache');
   } finally {
     await s.fecha();
+  }
+});
+
+/**
+ * A saúde tem de dizer se o reaquecimento automático está ligado e se já terminou.
+ *
+ * É por estes dois campos que `npm start` decide **esperar** em vez de disparar um
+ * segundo aquecimento por cima do da API. Adivinhar erraria nas duas direções: dez
+ * minutos parado esperando um aquecedor desligado, ou dois aquecimentos calculando
+ * as mesmas páginas ao mesmo tempo num processo só.
+ */
+test('a saúde diz o estado do reaquecimento, e o padrão é desligado', async () => {
+  const sem = await sobe(dirVazio(), new MemoryCache());
+  try {
+    const j = await (await sem.busca('/api/saude')).json();
+    assert.deepEqual(
+      j.aquecimento,
+      { ativo: false, pronto: false },
+      'sem aquecedor a saúde diz que não há — e não omite o campo',
+    );
+  } finally {
+    await sem.fecha();
+  }
+
+  const http = new Servidor({
+    root: ROOT,
+    snapshotDir: dirVazio(),
+    webDir: WEB,
+    agora: () => AGORA,
+    aquecimento: () => ({ ativo: true, pronto: true }),
+  }).criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  try {
+    const { port } = http.address() as { port: number };
+    const j = await (await fetch(`http://127.0.0.1:${port}/api/saude`)).json();
+    assert.deepEqual(j.aquecimento, { ativo: true, pronto: true });
+  } finally {
+    await new Promise<void>((ok) => http.close(() => ok()));
   }
 });

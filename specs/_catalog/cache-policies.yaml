@@ -5,6 +5,43 @@
 #
 #   ttl:      segundos no cache Redis (0 = nunca cacheia)
 #   realtime: se true, eventos CDC (Debezium) das source_tables invalidam a query
+#
+# ---------------------------------------------------------------------------
+# LEIA ISTO ANTES DE MEXER NOS `ttl` ABAIXO — 17/08/2026
+#
+# Existem DOIS caches nesta plataforma, e os números deste arquivo valem para um
+# só deles.
+#
+#   1. O cache do QUERY ENGINE, que guarda o resultado de ir à fonte. É para ele
+#      que estes `ttl` existem e continuam valendo: 60 s aqui quer dizer "não
+#      martele o Voalle mais que isso".
+#
+#   2. O cache da RESPOSTA CALCULADA (`apps/api/src/cache-resposta.ts`), que
+#      guarda a página pronta. Ele NÃO usa mais estes números como prazo de
+#      validade, e a razão está medida.
+#
+# O que mudou, e por quê. A API não consulta fonte nenhuma: ela calcula sobre o
+# `snapshot/` em disco, que só muda quando `npm run snapshot` roda. Aplicar um TTL
+# de 60 s ali fazia a resposta ser jogada fora a cada minuto para ser recalculada
+# a partir de um arquivo que não tinha mudado uma linha. O preço, medido em
+# 17/08/2026 com a API no ar desde a véspera: `visao-geral` levou 36 s para
+# responder e 22 ms no pedido seguinte. Uma vez por minuto, o dia inteiro.
+#
+# O que faz o papel do frescor agora é a CHAVE da resposta, que carrega:
+#   - o carimbo do snapshot (manifesto + tabelas calculadas) — refez o snapshot,
+#     toda entrada anterior fica inalcançável no mesmo instante, sem a janela em
+#     que o TTL ainda não venceu e o dado já é outro;
+#   - o dia UTC do cálculo — porque 32 expressões chamam `TODAY()`.
+#
+# Fora esses dois, a resposta é a mesma função dos mesmos dados. O `ttl` virou
+# prazo de GUARDA (`RETENCAO_PADRAO`, 7 dias), só para entrada morta não ficar
+# guardada para sempre.
+#
+# O QUE AINDA VALE AQUI PARA O CACHE DA RESPOSTA: `ttl: 0`. Continua querendo
+# dizer "esta query nunca se guarda", e desliga o cache da página inteira que a
+# usa. É a única forma de vetar o cache de uma página, e é decisão humana — não
+# prazo.
+# ---------------------------------------------------------------------------
 
 default:
   ttl: 300 # 5 min

@@ -244,6 +244,46 @@ test('o manifesto diz a idade do dado mais antigo', () => {
   assert.equal(leManifesto(fs.mkdtempSync(path.join(os.tmpdir(), 'snapnada-'))), null);
 });
 
+/**
+ * **Metade da prova de que `stat` não serve para detectar um refresh** — e é a
+ * metade que dá para afirmar sem depender do relógio da máquina.
+ *
+ * Existe para impedir uma otimização que parece segura e não é: memoizar o carimbo
+ * do snapshot na API e só recalculá-lo quando o manifesto "mudar" segundo um `stat`.
+ * Tentada em 17/08/2026 para tirar 0,41 ms de cada acerto de cache, e revertida.
+ *
+ * O que este teste prende é que o **tamanho** não separa duas versões: `geradoEm`
+ * tem largura fixa, então trocar 11h por 18h não muda um byte. Sobra o `mtime`, cuja
+ * granularidade foi medida em ~2,45 ms nesta máquina (4.000 escritas produziram 265
+ * carimbos de tempo distintos) — duas reescritas consecutivas cabem dentro de uma
+ * janela dessas. Essa metade não vira asserção de propósito: seria afirmar o
+ * resultado de uma corrida, e teste instável é pior que teste nenhum. O número está
+ * em ACHADOS #69.
+ *
+ * Quem confiasse nesse par serviria a resposta anterior ao refresh, sem nada na tela
+ * dizendo que era a anterior.
+ */
+test('o tamanho do manifesto não distingue dois refreshes', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapass-'));
+  const e = (geradoEm: string) => ({
+    query: 'a', tabelas: ['A'], linhas: 1, colunas: 1, bytes: 10, geradoEm,
+  });
+  const tamanho = (): number => fs.statSync(path.join(dir, 'manifesto.json')).size;
+
+  escreveManifesto(dir, [e('2026-08-07T11:00:00.000Z')]);
+  const antes = tamanho();
+  const conteudoAntes = leManifesto(dir);
+
+  escreveManifesto(dir, [e('2026-08-07T18:00:00.000Z')]);
+
+  assert.notDeepEqual(leManifesto(dir), conteudoAntes, 'o conteúdo mudou de verdade');
+  assert.equal(
+    tamanho(),
+    antes,
+    'e o arquivo tem exatamente o mesmo tamanho — `geradoEm` tem largura fixa',
+  );
+});
+
 // ---------------------------------------------------------------------------
 // A tabela calculada congelada tem de ser mais nova que o dado dela
 // ---------------------------------------------------------------------------

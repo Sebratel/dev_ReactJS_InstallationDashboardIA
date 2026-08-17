@@ -47,6 +47,13 @@ export function leManifesto(dir: string): Manifesto | null {
   return m;
 }
 
+// NÃO acrescente aqui uma "assinatura barata" do manifesto (`mtime` + tamanho) para
+// evitar o `leManifesto` do caminho quente da API. Foi tentado em 17/08/2026 e é
+// insuficiente: reescrever o manifesto trocando só a hora de `geradoEm` não muda o
+// tamanho (a data tem largura fixa), e o `mtime` desta máquina tem granularidade
+// medida de ~2,45 ms. Duas reescritas dentro dessa janela ficam indistinguíveis, e o
+// preço do erro é a API servir o número anterior ao refresh. Ver ACHADOS #69.
+
 export function escreveManifesto(dir: string, tabelas: EntradaDeManifesto[]): Manifesto {
   fs.mkdirSync(dir, { recursive: true });
   const m: Manifesto = { formato: 1, tabelas };

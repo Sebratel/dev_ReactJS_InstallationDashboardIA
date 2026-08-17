@@ -97,6 +97,48 @@ async function respondeSaude(): Promise<boolean> {
   }
 }
 
+interface Saude {
+  aquecimento?: { ativo: boolean; pronto: boolean };
+}
+
+async function saude(): Promise<Saude | null> {
+  try {
+    const r = await fetch(`${BASE}/api/saude`);
+    return r.ok ? ((await r.json()) as Saude) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Espera o aquecimento **da própria API** terminar, se houver um.
+ *
+ * A API aquece a si mesma no arranque desde 17/08/2026. Medir por cima disso poria
+ * dois aquecimentos correndo juntos, calculando as mesmas páginas em duplicata num
+ * processo só — então aqui a gente espera, e o `aquecer()` que vem depois vira uma
+ * medição do estado quente em vez de uma segunda subida.
+ *
+ * **Pergunta em vez de adivinhar.** A saúde diz `ativo` e `pronto`. Sem esses dois
+ * campos, o erro viria nas duas direções: esperar dez minutos por um aquecedor
+ * desligado com `--sem-aquecer`, ou desistir cedo demais achando que a demora é
+ * ausência. `ativo: false` volta na hora.
+ */
+async function esperaAquecimento(limiteMs = 900_000): Promise<void> {
+  const primeira = await saude();
+  if (primeira?.aquecimento?.ativo !== true) return;
+
+  console.log('\nA API está se aquecendo sozinha. Esperando ela terminar…');
+  const ate = Date.now() + limiteMs;
+  while (Date.now() < ate) {
+    const s = await saude();
+    // API caiu no meio: quem reclama é o `api.on('exit')`, não esta espera.
+    if (s === null) return;
+    if (s.aquecimento?.pronto === true) return;
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  console.error('O aquecimento da API passou de 15 min. Medindo assim mesmo.');
+}
+
 /**
  * Espera a API responder, ou desiste.
  *
@@ -231,7 +273,15 @@ if (!(await esperaSaude(api))) {
 
 // 5. O aquecimento. Sequencial: a API é um processo só, e duas páginas ao mesmo tempo
 //    dobrariam o pico de memória numa máquina de 16 GB.
+//
+//    **E a API agora aquece a si mesma no arranque** (`apps/api/src/aquecedor.ts`).
+//    Sair medindo por cima disso poria dois aquecimentos correndo juntos: um pedindo
+//    a página 3 enquanto o outro pede a 1, dobrando o trabalho e disputando CPU para
+//    calcular exatamente a mesma coisa. Então esperamos o dele terminar e só então
+//    medimos — o que também melhora o relatório, porque a coluna "a frio" passa a
+//    mostrar o que a **tela** vai sentir, e não o custo que o servidor já absorveu.
 if (!semAquecer) {
+  await esperaAquecimento();
   const v = await aquecer();
   if (!v.ok) {
     console.error('\nA API continua no ar — o aquecimento reprovou, mas derrubá-la agora');

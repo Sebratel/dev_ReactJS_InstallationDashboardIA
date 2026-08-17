@@ -4957,3 +4957,113 @@ materialização das queries é minutos. O refresh inteiro cabe numa janela notu
 folga — e cabe até no meio da tarde.
 
 Com isso, a fila volta a ser a paridade, que é onde ela estava antes do #66.
+
+---
+
+## #69 — O painel recalculava 36 s **uma vez por minuto**, e o TTL de 60 s era a causa
+
+**17/08/2026.** A queixa era "o backend demora a carregar". A medição desmontou a
+hipótese óbvia — não era lentidão de cálculo, era cache jogado fora enquanto ainda
+valia.
+
+O primeiro número já apontava para o lugar errado do costume:
+
+```
+página              1ª chamada   2ª chamada
+capa                    0,07 s      0,006 s
+visao-geral            36,1  s      0,022 s
+relatorio-do-mes        8,3  s      0,004 s
+```
+
+A API estava no ar desde a véspera, **ninguém tinha reiniciado nada e o disco não
+tinha mudado uma linha**. Mesmo assim `visao-geral` custou 36 s. O que tinha
+acontecido entre a última visita e aquela era só uma coisa: o relógio.
+
+### A causa
+
+`ttlDaPagina` devolvia o **menor TTL entre as queries da página** — 60 s para o
+operacional quente, de `cache-policies.yaml`. A cada minuto a resposta pronta era
+descartada e o próximo visitante pagava o recálculo inteiro. O dia todo.
+
+Aqueles 60 s nunca foram sobre esta camada. Eles foram decididos para o cache do
+**Query Engine**, onde o TTL segura o quanto se vai ao ERP — e lá continuam valendo.
+Este outro cache guarda a resposta calculada sobre o `snapshot/` **em disco**, que não
+muda sozinho: quem o troca é `npm run snapshot`. Esperar 60 s não traz dado novo
+porque não há de onde vir. O número vazou de uma camada para a outra e ninguém tinha
+motivo para notar, porque o efeito era lentidão — não erro.
+
+### O que substituiu o TTL, e por que ele já estava lá
+
+A chave da resposta já carregava o `carimbo` do snapshot. Isso é *melhor* que TTL nos
+dois sentidos: invalida no **instante** do refresh, e não tem a janela em que o TTL
+ainda não venceu e o dado já é outro. O TTL virou prazo de **guarda** (7 dias), só
+para entrada morta não ficar guardada para sempre.
+
+### A correção que tinha de vir antes, e que quase não veio
+
+Esticar o TTL sozinho teria trocado uma lentidão diária por um **número errado**
+diário. A chave tinha `carimbo` mas não tinha o **dia**, e 32 expressões chamam
+`TODAY()`. O TTL de 60 s escondia isso por acidente: apagava a entrada muito antes de
+a meia-noite chegar. Ou seja, o cache estava certo **por acidente**, e o acidente
+custava 36 s por minuto para evitar um erro uma vez por dia.
+
+O dia entrou na chave, em **UTC** — porque `TODAY()` é `getUTCFullYear/Month/Date`.
+Com o dia local, a chave viraria à meia-noite de Brasília e o `TODAY()` só três horas
+depois; nessa janela a página serviria o dia novo com o número do dia velho.
+
+E o dia teve de entrar **também** no mapa de avaliadores (`Servidor.carregadas`),
+que era chaveado só pelo carimbo. O avaliador congela o `now` que recebeu ao carregar.
+Sem essa segunda metade, o estrago ficaria **pior** depois da primeira: a chave nova
+daria miss (certo), o recálculo pegaria o avaliador de ontem (errado), e o `TODAY()`
+de ontem seria gravado sob a chave de hoje — o cache carimbando o erro em vez de
+expô-lo. As duas camadas agora medem `identidadeDoCalculo(carimbo, dia)`, uma função
+só.
+
+### Uma otimização tentada e revertida (0,4 ms não compra desatualização silenciosa)
+
+A decomposição do caminho quente mostrou onde vão os milissegundos de um acerto:
+
+```
+carimboAtual()                    0,57 ms   ← I/O de disco, todo pedido
+  leManifesto (ler + JSON.parse)    0,41 ms
+  carimboDasCalculadas              0,13 ms
+JSON.stringify de 96 KB           0,56 ms
+chave + dia                       0,002 ms
+```
+
+O `carimboAtual` é o maior custo fixo, e memoizá-lo atrás de um `stat` (mtime +
+tamanho) parecia livre. Não é, e o teste pegou antes de o código sair do diretório:
+
+- o **tamanho** não separa duas versões do manifesto — `geradoEm` tem largura fixa,
+  então trocar 11h por 18h não muda um byte;
+- o **mtime** desta máquina tem granularidade medida de **~2,45 ms** (4.000 escritas
+  produziram 265 carimbos de tempo distintos), e duas reescritas cabem dentro dela.
+
+O memo devolveria o carimbo velho e a tela mostraria o número anterior ao refresh, sem
+nada dizendo que era o anterior. Revertido, com o aviso no código e um teste que
+prende a metade determinística (a do tamanho). A metade do mtime **não** virou
+asserção de propósito: seria afirmar o resultado de uma corrida, e teste instável é
+pior que teste nenhum.
+
+### O reaquecimento, que é o que faltava para "sempre pronto"
+
+Consertar o TTL tira o recálculo de 36 s **por minuto**, mas não tira o **primeiro** de
+cada ciclo: depois de um refresh ou de um restart, a conta ainda cai em quem abrir a
+página primeiro. `apps/api/src/aquecedor.ts` passa essa conta para o servidor —
+aquece no arranque e sempre que a identidade muda (dado **ou** dia).
+
+Duas decisões dele que não são óbvias:
+
+- **Por HTTP contra si mesmo**, e não chamando o cálculo por dentro. O cache é
+  endereçado pela chave exata do pedido; reaquecer por um caminho paralelo encheria
+  chaves *parecidas* e o acerto nunca aconteceria.
+- **Relógio aqui é legítimo, e no caminho da resposta não.** Este laço não decide o
+  que responder, só quando adiantar trabalho: chegar atrasado não produz número
+  errado, produz um visitante que pagou o que o laço ia pagar por ele. Por isso o
+  carimbo continua sendo recalculado a cada pedido, exato, e a vigilância é a cada 5 s.
+
+### O estado depois
+
+`REDIS_URL` não existe na `.env` (só `REDIS_KEY_PREFIX`), então o adapter é o de
+memória e o cache morre no restart — o que o reaquecimento de arranque agora cobre. O
+código do Redis já está pronto e entra sozinho no dia em que a URL aparecer.
