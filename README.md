@@ -73,7 +73,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**1297 testes verdes.** Nenhum deles precisa de credencial, e nenhum precisa de build.
+**1317 testes verdes.** Nenhum deles precisa de credencial, e nenhum precisa de build.
 
 ### Extraído do Power BI
 

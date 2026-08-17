@@ -5113,3 +5113,125 @@ intestável e foi exatamente aí que o defeito se escondeu.
 **A lição operacional:** o defeito não apareceu em teste nenhum, apareceu em rodar o
 comando de verdade e **ler a tabela**. Os tempos na coluna "a frio" não faziam sentido
 para uma rodada que deveria ser toda quente, e era só isso que denunciava.
+
+---
+
+## #70 — Trocar de página estava rápido; **paginar uma tabela** custava até 8 s, e o cálculo já tinha sido feito
+
+**17/08/2026.** Depois do #69 o Erick disse: *"quando clico para ir para próxima
+página isso demora bastante em toda aplicação"*. O #69 tinha acabado de medir a troca
+de página do menu em milissegundos, então a primeira coisa foi **não acreditar em
+nenhuma das duas versões** e medir o caminho inteiro, do clique ao pixel.
+
+### O que foi medido, e com o quê
+
+A API respondendo é fácil de medir com `curl`. O que faltava era o pedaço entre a
+resposta e a tela — e para isso subiu um Chrome de verdade (headless, via CDP sobre
+o `WebSocket` embutido do Node 24, sem dependência nova), instrumentado com um
+`MutationObserver` na área de conteúdo. Cada clique no menu foi decomposto em
+**clique → resposta** e **resposta → DOM parado**:
+
+| página | rede | render | total | nós no DOM |
+|---|---:|---:|---:|---:|
+| AGENDAMENTO FIELD | 13 ms | 14 ms | **27 ms** | 9.034 |
+| DIÁRIO INSTALAÇÃO | 5 ms | 22 ms | **27 ms** | 18.233 |
+| VISÃO GERAL | 8 ms | 5 ms | **13 ms** | 5.029 |
+| CAPA | 8 ms | 1 ms | **9 ms** | 19 |
+
+As 14 páginas ficaram entre 5 ms e 27 ms. **A navegação do menu não era o problema**,
+e insistir nela teria consumido o dia inteiro.
+
+### Onde o tempo estava
+
+O clique que custa não é o do menu — é o **"próxima" de uma tabela**. Ele pede
+`?visual=X&de=200`, que é uma chave de resposta diferente da que o aquecimento
+encheu, e cai no caminho frio:
+
+| ação | 1ª vez | repetida |
+|---|---:|---:|
+| `protocolos-detalhados`, janela 100→200 | **2,90 s** | 2 ms |
+| `protocolos-detalhados`, janela 200→300 | **7,99 s** | — |
+| `visao-geral`, tabela de 33.462 linhas | **1,28 s** | 14 ms |
+| aplicar um filtro em `relatorio-do-mes` | **3,35 s** | 15 ms |
+| abrir uma segmentação (`/valores`) | 9–95 ms | 20 ms |
+
+O `ms` que a própria resposta declara confirmou de onde vinha: **2.879 ms de cálculo
+para devolver 200 linhas**.
+
+### A causa, e por que ela é constrangedora
+
+```ts
+const r = calculaTabela(dash, v, ev);            // 33.462 linhas
+const fatia = r.linhas.slice(de, de + linhas);   // 200 sobrevivem
+```
+
+A tabela inteira é calculada e **99,4% dela é jogada fora**. A cada clique. E a parte
+constrangedora: a abertura da página já tinha feito esse mesmo cálculo inteiro, e já
+tinha jogado fora as mesmas 33.262 linhas, minutos antes.
+
+### O conserto
+
+O resultado inteiro passa a ser guardado (`apps/api/src/cache-visual.ts`), com chave
+igual à da resposta **menos `de` e `linhas`** (`chaveDoCompleto`). A ausência da
+janela na chave *é* a otimização: a janela não muda o resultado, ela recorta o
+resultado.
+
+O ganho não custa CPU nenhuma, e é por isso que ele existe: o cálculo já acontecia. O
+que se paga é memória, e ela tem orçamento — LRU com teto de 512 MB
+(`CACHE_VISUAL_MB=0` desliga). O tamanho de tudo que é paginável nas 14 páginas foi
+medido antes de escolher o teto:
+
+| visual | linhas | bytes/linha | total |
+|---|---:|---:|---:|
+| `agendamento-field` tabela maior | 323.680 | 88 B | 27,1 MB |
+| `visao-geral` detalhe | 33.462 | 424 B | 13,5 MB |
+| `agendamento-field` relatos | 33.303 | 226 B | 7,2 MB |
+| `protocolos-detalhados` detalhe | 33.462 | 151 B | 4,8 MB |
+| — demais | — | — | 2,8 MB |
+| **soma de todos** | | | **~55 MB de JSON** |
+
+Como o aquecimento calcula a página inteira, ele agora deixa **todas** as janelas de
+todas as tabelas prontas de uma vez — sem calcular nada a mais do que já calculava.
+
+### Duas armadilhas que o conserto tinha
+
+**A chave "completa" demais.** O instinto de quem lê `chaveDaResposta` é que a chave
+carrega tudo que muda a resposta — e `de` muda a resposta. Pôr `de` aqui seria
+tecnicamente correto e destruiria o ganho inteiro. Virou teste com o motivo escrito
+dentro (`chaveDoCompleto: a janela NÃO entra na chave`).
+
+**A espécie suposta.** Recortar um resultado guardado exige saber se ele é tabela ou
+matriz. Uma spec regerada pode trocar o tipo de um visual mantendo o id, e recortar
+uma matriz como tabela devolveria uma tabela **vazia sem erro nenhum** — número
+plausível e errado, o pior resultado deste projeto. O `especie` é conferido, não
+suposto.
+
+### O que continua caro, e por quê
+
+Aplicar um **filtro novo** ainda custa o cálculo (1,3 a 3,4 s na primeira vez com
+aquela combinação): é resultado que nunca existiu, não há o que reaproveitar. O
+aquecimento cobre a página sem filtro, que é como ela abre. Segmentação com muitos
+valores marcados um a um paga uma vez por combinação — e cada uma fica guardada.
+
+### O resultado, medido no navegador depois do conserto
+
+Clique em "próxima", do clique ao DOM parado, Chrome real:
+
+| página | linhas da tabela | 1º clique | 2º | 3º |
+|---|---:|---:|---:|---:|
+| `agendamento-field` | 323.680 | 8 ms | 7 ms | 8 ms |
+| `protocolos-detalhados` | 33.462 | 10 ms | 6 ms | 8 ms |
+| `visao-geral` | 33.462 | 27 ms | 11 ms | 10 ms |
+| `agendamento-field` (relatos) | 33.303 | 9 ms | 14 ms | 9 ms |
+| `manutencao-inicial` | 1.227 | 15 ms | 11 ms | 12 ms |
+
+**O primeiro clique também é rápido** — é o que prova que o aquecimento está deixando
+o resultado inteiro pronto, e não que o segundo clique aproveitou o primeiro.
+
+`protocolos-detalhados`, tabela de 33.462 linhas: **2,90 s → 0,010 s**.
+
+O aquecimento de arranque não ficou mais lento com a serialização do resultado
+inteiro: 95,9 s nesta rodada, contra 157,5 s / 194,8 s / 264,0 s nas três anteriores
+ao conserto. A variação entre rodadas é do disco, não do conserto — o que se pode
+afirmar é que **não houve regressão**, não que houve ganho. Ocupação do orçamento com
+as 14 páginas quentes: **153,3 MB de 512 MB**, 35 resultados guardados.

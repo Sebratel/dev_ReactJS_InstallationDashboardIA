@@ -43,11 +43,13 @@ import {
   CacheDeResposta,
   carimboDoSnapshot,
   chaveDaResposta,
+  chaveDoCompleto,
   diaDoCalculo,
   identidadeDoCalculo,
   retencaoDaPagina,
   type EstadoDoCache,
 } from './cache-resposta.ts';
+import { CacheDeVisual, TETO_PADRAO_MB } from './cache-visual.ts';
 import { identificaLocal, type Identidade } from './identidade.ts';
 import {
   calculaPagina,
@@ -100,6 +102,12 @@ export interface ServidorOptions {
    * Padrão: desligado, que é o que `npm run api -- --sem-aquecer` e todo teste veem.
    */
   aquecimento?: () => { ativo: boolean; pronto: boolean };
+  /**
+   * Teto de memória, em MB, do cache de resultado inteiro por visual. Ver
+   * `cache-visual.ts`. Zero desliga — e desligar devolve o recálculo por clique de
+   * "próxima", que é o defeito que ele conserta.
+   */
+  tetoDeVisuaisMB?: number;
 }
 
 export class Servidor {
@@ -117,6 +125,12 @@ export class Servidor {
   private readonly carregadas = new Map<string, Promise<Carregado>>();
   /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
   private carimboDasCarregadas: string | null = null;
+  /**
+   * O resultado inteiro de cada tabela e matriz já calculada, para que a janela
+   * seguinte seja um `slice`. Ver `cache-visual.ts` — e note que ele **não** é o
+   * adapter de `cache`: estas entradas têm dezenas de MB e nunca vão para o Redis.
+   */
+  private readonly completos: CacheDeVisual;
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, ...resto } = opts;
@@ -124,8 +138,22 @@ export class Servidor {
       agora: () => new Date(),
       identifica: identificaLocal,
       aquecimento: () => ({ ativo: false, pronto: false }),
+      tetoDeVisuaisMB: TETO_PADRAO_MB,
       ...resto,
     };
+    this.completos = new CacheDeVisual({
+      tetoBytes: this.opts.tetoDeVisuaisMB * 1024 * 1024,
+      aoRecusar: (chave, bytes, teto) => {
+        // Recusa não é falha, é orçamento — mas cala-la faria a lentidão daquele
+        // visual parecer inexplicável. O `console.error` é o mesmo canal por onde
+        // as outras notas do servidor saem.
+        console.error(
+          `[cache-visual] ${chave} não coube: ${(bytes / 1048576).toFixed(1)} MB ` +
+            `contra um teto de ${(teto / 1048576).toFixed(0)} MB. ` +
+            `A janela deste visual vai recalcular a cada clique.`,
+        );
+      },
+    });
     this.model = SemanticModel.fromSpecsDir(path.join(opts.root, 'specs'));
     this.dashboards = loadDashboards(path.join(opts.root, 'specs'));
     this.registry = QueryRegistry.fromSpecsDir(path.join(opts.root, 'specs'));
@@ -209,7 +237,17 @@ export class Servidor {
           },
       paginasCarregadas: [...this.carregadas.keys()].sort(),
       dashboards: this.dashboards.length,
-      cache: { adapter: this.tipoDeCache },
+      cache: {
+        adapter: this.tipoDeCache,
+        // Quanto do orçamento de resultado inteiro está em uso. É o número que diz,
+        // olhando de fora, se a paginação vai ser um `slice` ou um recálculo — e o
+        // primeiro a olhar quando alguém disser que "a próxima página demora".
+        visuais: {
+          itens: this.completos.itens,
+          mb: Math.round((this.completos.bytes / 1048576) * 10) / 10,
+          tetoMB: Math.round(this.completos.tetoBytes / 1048576),
+        },
+      },
       // Sem isto, `npm start` teria de **adivinhar** se a API está se aquecendo
       // sozinha — e adivinharia errado nas duas direções: esperando dez minutos por
       // um aquecedor desligado, ou disparando o seu por cima de um que está no meio.
@@ -278,6 +316,8 @@ export class Servidor {
     // cabe nos 300 ms da regra 9 — recalcular e só economizar a serialização não
     // caberia.
     const ttl = retencaoDaPagina(this.queriesDe(dash), this.registry);
+    const carimbo = this.carimboAtual();
+    const dia = diaDoCalculo(this.opts.agora());
     const chave = chaveDaResposta({
       usuario: quem.usuario,
       pagina: dash.id,
@@ -285,8 +325,8 @@ export class Servidor {
       visual: soVisual,
       de,
       linhas,
-      carimbo: this.carimboAtual(),
-      dia: diaDoCalculo(this.opts.agora()),
+      carimbo,
+      dia,
     });
 
     if (ttl > 0) {
@@ -325,7 +365,31 @@ export class Servidor {
       filters: [...(dash.filters ?? []), ...daTela],
     };
 
-    const pagina: PaginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas });
+    // O memo do resultado inteiro. Vale para os dois caminhos, e é no caminho da
+    // **página inteira** que ele rende mais: o aquecimento já calcula as 33.462
+    // linhas da tabela e joga 33.262 fora no recorte. Guardando-as, o primeiro
+    // clique em "próxima" já encontra tudo pronto — sem calcular nada a mais do que
+    // a página sempre calculou.
+    const memo = {
+      le: (visual: string): unknown | undefined =>
+        this.completos.le(
+          chaveDoCompleto({ usuario: quem.usuario, pagina: dash.id, filtros: daTela, visual, carimbo, dia }),
+        ),
+      guarda: (visual: string, completo: unknown): void => {
+        this.completos.guarda(
+          chaveDoCompleto({ usuario: quem.usuario, pagina: dash.id, filtros: daTela, visual, carimbo, dia }),
+          completo,
+        );
+      },
+    };
+
+    const pagina: PaginaCalculada = calculaPagina(
+      alvo,
+      carregado.ev,
+      { de, linhas },
+      undefined,
+      memo,
+    );
     const corpo = {
       ...pagina,
       dadoDe: carregado.dadoDe,
@@ -508,6 +572,10 @@ export class Servidor {
     const carimbo = this.identidadeAtual();
     if (this.carimboDasCarregadas !== carimbo) {
       this.carregadas.clear();
+      // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
+      // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
+      // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
+      this.completos.limpa();
       this.carimboDasCarregadas = carimbo;
     }
 

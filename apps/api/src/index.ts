@@ -68,6 +68,16 @@ const cache = await cacheDaEnv();
 const porta = Number.parseInt(process.env.PORT ?? '3100', 10);
 
 /**
+ * Teto do cache de resultado inteiro por visual, em MB. `CACHE_VISUAL_MB=0` desliga.
+ *
+ * Existe como saída de emergência, não como afinação: numa máquina apertada é melhor
+ * a paginação recalcular do que a API morrer sem memória. Ver `cache-visual.ts`.
+ */
+const tetoDeVisuaisMB = process.env.CACHE_VISUAL_MB
+  ? Number.parseInt(process.env.CACHE_VISUAL_MB, 10)
+  : undefined;
+
+/**
  * O aquecedor só nasce depois do `listen` — ele precisa da porta. Até lá a saúde
  * responde "desligado", que é a verdade naquele instante.
  */
@@ -79,6 +89,9 @@ const servidor = new Servidor({
   webDir: path.resolve(AQUI, '..', 'web'),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   ...(cache ? { cache } : {}),
+  ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
+    ? { tetoDeVisuaisMB }
+    : {}),
 });
 
 /**
@@ -98,7 +111,10 @@ servidor.criaHttp().listen(porta, () => {
   console.log(
     `  Cache da resposta: ${cache ? 'memória + Redis (REDIS_URL)' : 'memória'}`,
   );
-  console.log(`  Reaquecimento: ${semAquecer ? 'desligado (--sem-aquecer)' : 'automático'}\n`);
+  console.log(`  Reaquecimento: ${semAquecer ? 'desligado (--sem-aquecer)' : 'automático'}`);
+  console.log(
+    `  Paginação: ${tetoDeVisuaisMB === 0 ? 'sem cache de visual (CACHE_VISUAL_MB=0) — cada janela recalcula' : 'janela sai do resultado já calculado'}\n`,
+  );
 
   if (!semAquecer) {
     // `127.0.0.1` e não `localhost`: em máquina com IPv6 o `localhost` pode resolver

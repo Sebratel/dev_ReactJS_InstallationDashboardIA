@@ -42,7 +42,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1297 testes, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 1317 testes, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -94,7 +94,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1297 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
+**1317 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
 
 | camada | estado |
 |---|---|
@@ -107,6 +107,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | **API** (`apps/api`) | ✅ somente leitura, uma página por pedido, `?filtro=` e rota de valores; cache da resposta desde 11/08 |
 | **Cache da resposta** | ✅ quem invalida é o **dado**, não o relógio: a chave carrega carimbo do snapshot **e** dia UTC (32 expressões chamam `TODAY()`). O TTL virou prazo de guarda. Medido: 2 a 7 ms por página, e **continua acerto depois de 95 s parado** — antes custava 8 a 36 s a cada minuto (#69) |
 | **Reaquecimento** (`apps/api/src/aquecedor.ts`) | ✅ a API se aquece no arranque e sempre que a identidade muda (snapshot refeito **ou** virada do dia). ~3 min para as 14 páginas. `npm start` espera por ele em vez de disputar |
+| **Paginação de tabela** (`apps/api/src/cache-visual.ts`) | ✅ o resultado inteiro do visual fica guardado e a janela é um `slice`. Antes, cada clique em "próxima" recalculava as 33.462 linhas para entregar 200 — **2,9 s a 8,0 s por clique**, medido (#70). Orçamento LRU de 512 MB, `CACHE_VISUAL_MB=0` desliga |
 | **Redis** | ⏳ **não configurado** — a `.env` tem `REDIS_KEY_PREFIX` mas **não** `REDIS_URL`, então o cache é só memória e morre no restart (o aquecimento de arranque cobre). Basta pôr `REDIS_URL=redis://host:6379/0` para ele entrar **atrás** da memória, não no lugar dela (#69) |
 | **Autenticação** | ❌ **não existe** — costura pronta (`apps/api/src/identidade.ts`), formato da decisão em `specs/_catalog/permissoes.yaml`, sem leitor e sem login |
 | **Tela** (`apps/web`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
@@ -473,7 +474,7 @@ specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
   _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          69 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          70 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa

@@ -11,7 +11,7 @@ import { Dataset, type Row } from '../../../packages/measure-engine/src/dataset.
 import { Evaluator } from '../../../packages/measure-engine/src/evaluator.ts';
 import { makeDate } from '../../../packages/measure-engine/src/value.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { calculaPagina, LINHAS_PADRAO, tipoDe } from '../src/calcula.ts';
+import { calculaPagina, segmentacaoDe, LINHAS_PADRAO, tipoDe } from '../src/calcula.ts';
 
 const AGORA = makeDate(2026, 8, 7);
 
@@ -191,6 +191,89 @@ test('matriz declara o tipo de cada medida, e ele sai das células', () => {
   assert.equal(d.celulas[0]![1]![0], null);
 });
 
+// ---------------------------------------------------------------------------
+// O resultado inteiro guardado, e a janela recortada dele
+//
+// Medido em 17/08/2026: clicar em "próxima" numa tabela de 33.462 linhas custava
+// 2,9 s porque a tabela era recalculada inteira para serializar 200 linhas. O memo
+// existe para que isso aconteça uma vez. O que estes testes guardam é o que essa
+// troca **não** pode custar: a janela vinda do cache tem de ser byte a byte a mesma
+// que o recálculo daria, senão o ganho de tempo virou número errado.
+// ---------------------------------------------------------------------------
+
+/** Um memo de mentira que conta quantas vezes cada visual foi calculado. */
+function memoEspiao(): { le: (id: string) => unknown; guarda: (id: string, c: unknown) => void; guardados: string[] } {
+  const dentro = new Map<string, unknown>();
+  const guardados: string[] = [];
+  return {
+    le: (id) => dentro.get(id),
+    guarda: (id, c) => {
+      guardados.push(id);
+      dentro.set(id, c);
+    },
+    guardados,
+  };
+}
+
+test('com memo, a segunda janela não recalcula o visual', () => {
+  const m = memoEspiao();
+  const v = visual([chave('CIDADE'), medida()], 'tableEx');
+  calculaPagina(pagina([v]), montar(500), { de: 0, linhas: 200 }, undefined, m);
+  calculaPagina(pagina([v]), montar(500), { de: 200, linhas: 200 }, undefined, m);
+  assert.deepEqual(m.guardados, ['v1'], 'o segundo pedido tinha de sair do que já estava guardado');
+});
+
+/**
+ * **O teste que impede a troca de velocidade por número errado.** Se um dia o recorte
+ * do cache divergir do recorte do cálculo — um `de` esquecido, um `slice` fora de
+ * lugar —, a tela mostra linhas de outra janela com o rótulo desta.
+ */
+test('a janela que vem do cache é idêntica à recalculada', () => {
+  const v = visual([chave('CIDADE'), medida()], 'tableEx');
+  for (const janela of [{ de: 0, linhas: 200 }, { de: 200, linhas: 200 }, { de: 450, linhas: 200 }]) {
+    const semMemo = calculaPagina(pagina([v]), montar(500), janela);
+    const m = memoEspiao();
+    calculaPagina(pagina([v]), montar(500), { de: 0, linhas: 1 }, undefined, m); // enche o memo
+    const comMemo = calculaPagina(pagina([v]), montar(500), janela, undefined, m);
+    assert.deepEqual(
+      comMemo.visuais[0]!.dados,
+      semMemo.visuais[0]!.dados,
+      `a janela de=${janela.de} divergiu entre o cache e o cálculo`,
+    );
+  }
+});
+
+/** `especie` é de dentro do cache. Vazando, a tela ganharia um campo que não existia. */
+test('o campo interno do cache não vaza para a resposta', () => {
+  const m = memoEspiao();
+  const v = visual([chave('CIDADE'), medida()], 'tableEx');
+  const p = calculaPagina(pagina([v]), montar(10), { de: 0, linhas: 200 }, undefined, m);
+  assert.equal((p.visuais[0]!.dados as Record<string, unknown>).especie, undefined);
+});
+
+/**
+ * Uma spec editada pode trocar o tipo do visual mantendo o id. Recortar uma matriz
+ * como se fosse tabela devolveria uma tabela vazia **sem erro** — número plausível e
+ * errado, que é o pior resultado possível neste projeto.
+ */
+test('memo com a espécie errada é ignorado, não recortado', () => {
+  const m = memoEspiao();
+  m.guarda('v1', { especie: 'matriz', linhas: [], celulas: [], linhasTotais: 0 });
+  const v = visual([chave('CIDADE'), medida()], 'tableEx');
+  const p = calculaPagina(pagina([v]), montar(10), { de: 0, linhas: 200 }, undefined, m);
+  const d = p.visuais[0]!.dados as { linhas: unknown[]; linhasTotais: number };
+  assert.equal(d.linhasTotais, 10, 'tinha de recalcular a tabela, não recortar a matriz guardada');
+  assert.equal(d.linhas.length, 10);
+});
+
+test('sem memo, o comportamento é o de antes', () => {
+  const v = visual([chave('CIDADE'), medida()], 'tableEx');
+  const p = calculaPagina(pagina([v]), montar(500), { de: 450, linhas: 200 });
+  const d = p.visuais[0]!.dados as { linhas: unknown[][]; de: number };
+  assert.equal(d.linhas.length, 50);
+  assert.equal(d.de, 450);
+});
+
 test('tipoDe: BLANK é null, e é o que a tela desenha como travessão', () => {
   assert.equal(tipoDe(null), null);
   assert.equal(tipoDe(0), 'number');
@@ -270,4 +353,120 @@ test('medida que depende de coluna omitida ERRA ALTO — não vira sob demanda',
   const p = calculaPagina(pagina([v]), ev);
   assert.equal(p.resumo.falharam, 1);
   assert.match(p.visuais[0]!.erro!, /omitida da carga/);
+});
+
+// ---------------------------------------------------------------------------
+// Segmentações
+// ---------------------------------------------------------------------------
+
+/**
+ * **A segmentação viaja no payload para virar controle, não para virar número.**
+ *
+ * Antes disto a API mandava `semCalculo: 'segmentação de dados'` e a tela desenhava
+ * uma caixa morta. Se a `segmentacao` sumir do payload, o `slicer` volta a ser uma
+ * caixa que não filtra — e a página parece ter filtros que não fazem nada.
+ */
+test('slicer de coluna vira segmentação com tabela, coluna e rótulo', () => {
+  const s = segmentacaoDe({
+    id: 'x', type: 'slicer', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [{ role: 'Values', kind: 'column', entity: 'PROTOCOLOS GERAL', property: 'EQUIPE', name: 'EQUIPE' }],
+  });
+  assert.deepEqual(s, { tabela: 'PROTOCOLOS GERAL', coluna: 'EQUIPE', rotulo: 'EQUIPE' });
+});
+
+test('advancedSlicerVisual também é segmentação', () => {
+  const s = segmentacaoDe({
+    id: 'x', type: 'advancedSlicerVisual', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [{ role: 'Values', kind: 'column', entity: 'T', property: 'c', name: null }],
+  });
+  assert.equal(s?.coluna, 'c');
+});
+
+/**
+ * **Hierarquia com um nível ativo filtra, e devolve o nível.**
+ *
+ * É o formato real de `visao-geral`: Ano ativo, Mês e Dia inativos. O `nivel` é o que
+ * faz o predicado comparar `YEAR(data)` em vez de `data` — sem ele o filtro nem sai,
+ * porque o guarda de espécie recusa número contra data.
+ */
+test('slicer de hierarquia com um nível ativo filtra, e diz qual nível', () => {
+  const s = segmentacaoDe({
+    id: 'x', type: 'slicer', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [
+      { role: 'Values', kind: 'hierarchy_level', entity: 'CALENDARIO CRIADO', property: 'DATA CRIADO', level: 'Ano', name: 'Data Criado Ano', active: true },
+      { role: 'Values', kind: 'hierarchy_level', entity: 'CALENDARIO CRIADO', property: 'DATA CRIADO', level: 'Mês', name: 'Data Criado Mês', active: false },
+      { role: 'Values', kind: 'hierarchy_level', entity: 'CALENDARIO CRIADO', property: 'DATA CRIADO', level: 'Dia', name: 'Data Criado Dia', active: false },
+    ],
+  });
+  assert.equal(s?.naoFiltra, undefined);
+  assert.equal(s?.nivel, 'Ano');
+  assert.equal(s?.coluna, 'DATA CRIADO');
+});
+
+/**
+ * **Mais de um nível ativo é controle de drill, e não filtra.**
+ *
+ * `visao-geral` tem uma assim (`DATA INSTALADO`, Ano/Mês/Dia todos ativos). A escolha
+ * do usuário ali é um caminho na hierarquia, não um conjunto de valores de um nível;
+ * aplicar o primeiro nível seria aplicar um filtro que ninguém pediu.
+ */
+test('slicer de hierarquia com vários níveis ativos não filtra, e explica por quê', () => {
+  const nivel = (level: string) => ({
+    role: 'Values', kind: 'hierarchy_level', entity: 'CALENDARIO INSTALADO',
+    property: 'DATA INSTALADO', level, name: level, active: true,
+  });
+  const s = segmentacaoDe({
+    id: 'x', type: 'slicer', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [nivel('Ano'), nivel('Mês'), nivel('Dia')],
+  });
+  assert.ok(s?.naoFiltra, 'drill de três níveis tem de vir desabilitado');
+  assert.match(s.naoFiltra, /drill/);
+  assert.equal(s.nivel, undefined);
+});
+
+/**
+ * `active: null` conta como ativo — é a regra de `campoAtivo` do widget-engine
+ * (ACHADOS #32): o PBIP não declara estado em poço de um campo só, e `null` é
+ * distinto de `true`. Se esta função usasse `=== true`, ela discordaria do
+ * agrupamento sobre a mesma spec.
+ */
+test('active null conta como ativo, igual ao agrupamento', () => {
+  const s = segmentacaoDe({
+    id: 'x', type: 'slicer', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [{ role: 'Values', kind: 'hierarchy_level', entity: 'T', property: 'D', level: 'Ano', name: 'Ano', active: null }],
+  });
+  assert.equal(s?.nivel, 'Ano');
+  assert.equal(s?.naoFiltra, undefined);
+});
+
+test('nível ativo sem nome do nível não filtra', () => {
+  const s = segmentacaoDe({
+    id: 'x', type: 'slicer', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [{ role: 'Values', kind: 'hierarchy_level', entity: 'T', property: 'D', level: null, name: 'x', active: true }],
+  });
+  assert.match(s?.naoFiltra ?? '', /sem nome do nível/);
+});
+
+test('kind desconhecido vem desabilitado dizendo o kind, em vez de virar coluna', () => {
+  const s = segmentacaoDe({
+    id: 'x', type: 'slicer', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [{ role: 'Values', kind: 'algo_novo', entity: 'T', property: 'c', name: 'c' }],
+  });
+  assert.match(s?.naoFiltra ?? '', /algo_novo/);
+});
+
+test('visual que não é segmentação não ganha segmentação', () => {
+  const s = segmentacaoDe({
+    id: 'x', type: 'card', position: { x: 0, y: 0, width: 1, height: 1 },
+    entities_used: [], filters: [], filters_vazios: 0,
+    fields: [{ role: 'Values', kind: 'column', entity: 'T', property: 'c', name: 'c' }],
+  });
+  assert.equal(s, undefined);
 });

@@ -23,6 +23,7 @@ import {
   CacheDeResposta,
   carimboDoSnapshot,
   chaveDaResposta,
+  chaveDoCompleto,
   diaDoCalculo,
   identidadeDoCalculo,
   normalizaFiltros,
@@ -272,6 +273,65 @@ test('CacheDeResposta: ttl 0 não grava', async () => {
   const c = new CacheDeResposta({ cache: memoria });
   await c.guarda('k', { a: 1 }, 0);
   assert.equal(memoria.size, 0);
+});
+
+// ---------------------------------------------------------------------------
+// A chave do resultado inteiro
+// ---------------------------------------------------------------------------
+
+/**
+ * **A ausência de `de` e `linhas` É a otimização.** Uma chave por janela faz cada
+ * clique em "próxima" recalcular a tabela inteira — 2,9 s medidos em 17/08/2026.
+ * Se alguém acrescentar a janela aqui achando que "a chave tem de carregar tudo que
+ * muda a resposta", o cache volta a errar por excesso de zelo: a janela não muda o
+ * resultado, ela recorta o resultado.
+ */
+test('chaveDoCompleto: a janela NÃO entra na chave', () => {
+  const base = {
+    usuario: 'local',
+    pagina: 'protocolos-detalhados',
+    filtros: [],
+    visual: 'v1',
+    carimbo: 'c1',
+    dia: '2026-08-07',
+  };
+  const k = chaveDoCompleto(base);
+  assert.ok(!k.includes('200'), `a chave não pode carregar janela: ${k}`);
+  assert.equal(k, chaveDoCompleto({ ...base }), 'a mesma entrada dá a mesma chave');
+});
+
+test('chaveDoCompleto: tudo que muda o RESULTADO entra', () => {
+  const base = {
+    usuario: 'local',
+    pagina: 'protocolos-detalhados',
+    filtros: [],
+    visual: 'v1',
+    carimbo: 'c1',
+    dia: '2026-08-07',
+  };
+  const k = chaveDoCompleto(base);
+  assert.notEqual(k, chaveDoCompleto({ ...base, usuario: 'outro' }));
+  assert.notEqual(k, chaveDoCompleto({ ...base, pagina: 'visao-geral' }));
+  // Sem o visual, as duas tabelas da mesma página disputariam a mesma entrada — e a
+  // segunda serviria as linhas da primeira.
+  assert.notEqual(k, chaveDoCompleto({ ...base, visual: 'v2' }));
+  assert.notEqual(k, chaveDoCompleto({ ...base, filtros: [filtro('T', 'a', ['x'])] }));
+  assert.notEqual(k, chaveDoCompleto({ ...base, carimbo: 'c2' }));
+  assert.notEqual(k, chaveDoCompleto({ ...base, dia: '2026-08-08' }));
+});
+
+test('chaveDoCompleto não colide com chaveDaResposta', () => {
+  // Os dois vivem em caches diferentes hoje, mas prefixos distintos são o que
+  // permite que um dia dividam um espaço de chaves sem uma servir pela outra.
+  const k = chaveDoCompleto({
+    usuario: 'local', pagina: 'capa', filtros: [], visual: 'v1', carimbo: 'c1', dia: '2026-08-07',
+  });
+  const r = chaveDaResposta({
+    usuario: 'local', pagina: 'capa', filtros: [], visual: 'v1', de: 0, linhas: 200, carimbo: 'c1', dia: '2026-08-07',
+  });
+  assert.notEqual(k, r);
+  assert.ok(k.startsWith('full:'));
+  assert.ok(r.startsWith('resp:'));
 });
 
 // ---------------------------------------------------------------------------
@@ -548,6 +608,44 @@ test('a saúde diz o estado do reaquecimento, e o padrão é desligado', async (
     const { port } = http.address() as { port: number };
     const j = await (await fetch(`http://127.0.0.1:${port}/api/saude`)).json();
     assert.deepEqual(j.aquecimento, { ativo: true, pronto: true });
+  } finally {
+    await new Promise<void>((ok) => http.close(() => ok()));
+  }
+});
+
+/**
+ * O orçamento do cache de resultado inteiro tem de aparecer de fora.
+ *
+ * É o primeiro número a olhar quando alguém disser que "a próxima página demora":
+ * `itens: 0` com o servidor no ar há horas quer dizer que o cache está desligado ou
+ * que nada coube nele — duas causas com conserto diferente, e nenhuma das duas
+ * visível sem este campo.
+ */
+test('a saúde diz quanto do orçamento de visual está em uso', async () => {
+  const s = await sobe(dirVazio(), new MemoryCache());
+  try {
+    const j = await (await s.busca('/api/saude')).json();
+    assert.equal(typeof j.cache.visuais.itens, 'number');
+    assert.equal(typeof j.cache.visuais.mb, 'number');
+    assert.ok(j.cache.visuais.tetoMB > 0, 'o teto padrão tem de estar ligado');
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('teto zero desliga o cache de visual, e a saúde mostra isso', async () => {
+  const http = new Servidor({
+    root: ROOT,
+    snapshotDir: dirVazio(),
+    webDir: WEB,
+    agora: () => AGORA,
+    tetoDeVisuaisMB: 0,
+  }).criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  try {
+    const { port } = http.address() as { port: number };
+    const j = await (await fetch(`http://127.0.0.1:${port}/api/saude`)).json();
+    assert.equal(j.cache.visuais.tetoMB, 0);
   } finally {
     await new Promise<void>((ok) => http.close(() => ok()));
   }

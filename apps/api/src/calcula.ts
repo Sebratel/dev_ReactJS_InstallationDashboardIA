@@ -28,6 +28,35 @@ import type { DashboardSpec, VisualSpec } from '../../../packages/widget-engine/
 import type { Evaluator } from '../../../packages/measure-engine/src/evaluator.ts';
 import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
 
+/**
+ * A coluna que uma segmentação (`slicer`) recorta, quando a tela consegue recortá-la.
+ *
+ * **Por que a segmentação viaja no payload.** Ela não produz número — nunca produziu —
+ * mas produz *escolha*, e sem a coluna a tela não tem como desenhar um controle: ela
+ * desenhava uma caixa morta rotulada "sem número". Com a coluna, o mesmo visual vira o
+ * filtro que o relatório sempre teve.
+ */
+export interface Segmentacao {
+  tabela: string;
+  coluna: string;
+  rotulo: string;
+  /**
+   * Nível da hierarquia de datas que esta segmentação recorta, quando é uma.
+   *
+   * A tela o devolve intacto no filtro; é ele que faz a comparação acontecer sobre
+   * `YEAR(data)` em vez de sobre a data.
+   */
+  nivel?: string;
+  /**
+   * Por que esta segmentação **não** filtra, quando não filtra.
+   *
+   * Presente é o caso interessante: a tela desenha o controle desabilitado com este
+   * motivo, em vez de um controle que parece funcionar e não muda número nenhum. Uma
+   * segmentação que finge filtrar é a mesma classe de erro que um BLANK calado.
+   */
+  naoFiltra?: string;
+}
+
 /** Quantas linhas de tabela a resposta manda quando ninguém pede outra coisa. */
 export const LINHAS_PADRAO = 200;
 /** Teto duro. Acima disto a resposta passa de dezenas de MB e o navegador engasga. */
@@ -63,6 +92,57 @@ export interface Janela {
   linhas: number;
 }
 
+/**
+ * Onde o resultado **inteiro** de um visual paginável é guardado entre um pedido e
+ * outro. Quem implementa é `apps/api/src/cache-visual.ts`; aqui só o contrato.
+ *
+ * **Por que este arquivo precisa saber disso.** Tabela e matriz calculam todas as
+ * linhas e devolvem uma janela. Sem memória entre pedidos, clicar em "próxima"
+ * recalcula as 33.462 linhas para serializar 200 — 2,9 s por clique, medido. Com
+ * ela, o cálculo acontece uma vez e cada janela é um `slice`.
+ *
+ * É opcional em todo lugar de propósito: `tools/paginas` e `tools/paridade` chamam
+ * `calculaPagina` uma vez por página e nada teriam a ganhar guardando resultado —
+ * só pagariam a memória.
+ */
+export interface MemoDeCompletos {
+  le(visualId: string): unknown | undefined;
+  guarda(visualId: string, completo: unknown): void;
+}
+
+/**
+ * O resultado inteiro de uma tabela: todas as linhas, já serializadas.
+ *
+ * `especie` não viaja na resposta — ela existe para que `janelaDe` recorte a forma
+ * certa sem receber o tipo do visual por fora, que seria um segundo lugar por onde
+ * tabela e matriz poderiam divergir.
+ */
+export interface TabelaCompleta {
+  especie: 'tabela';
+  colunas: { nome: string | null; tipo: TipoDeValor; chave: boolean }[];
+  linhas: unknown[][];
+  linhasTotais: number;
+  filtros: string[];
+}
+
+export interface MatrizCompleta {
+  especie: 'matriz';
+  chavesDeLinha: unknown;
+  chavesDeColuna: unknown;
+  medidas: unknown;
+  linhas: unknown[][];
+  colunas: unknown[][];
+  tiposDeLinha: TipoDeValor[];
+  tiposDeColuna: TipoDeValor[];
+  tiposDeMedida: TipoDeValor[];
+  celulas: unknown[][][];
+  linhasTotais: number;
+  descartadas: unknown;
+  filtros: string[];
+}
+
+export type Completo = TabelaCompleta | MatrizCompleta;
+
 export interface VisualCalculado {
   id: string;
   tipo: string;
@@ -78,6 +158,8 @@ export interface VisualCalculado {
    * vez de "erro", e o que diz ao pedido seguinte o que carregar.
    */
   sobDemanda?: string[];
+  /** Presente só nas segmentações. Ver `Segmentacao`. */
+  segmentacao?: Segmentacao;
   erro?: string;
   dados?: unknown;
   /**
@@ -108,9 +190,78 @@ const SEM_CALCULO: Record<string, string> = {
   textbox: 'caixa de texto',
   shape: 'forma',
   slicer: 'segmentação de dados',
+  advancedSlicerVisual: 'segmentação de dados',
   actionButton: 'botão',
   basicShape: 'forma',
 };
+
+/** Os dois tipos de segmentação que o relatório usa. */
+const SEGMENTACOES = new Set(['slicer', 'advancedSlicerVisual']);
+
+/**
+ * A coluna que uma segmentação recorta — ou o motivo de ela não recortar nada.
+ *
+ * **Dois formatos filtram.** `kind: 'column'` é o caso direto. `kind:
+ * 'hierarchy_level'` é a segmentação de Ano/Mês/Dia sobre uma hierarquia de datas:
+ * ela não filtra a coluna, filtra uma **projeção** dela, e por isso devolve o
+ * `nivel` junto — é ele que faz `traduzFiltros` comparar `YEAR(data)` em vez de
+ * `data`. Sem o nível o filtro não sai errado em silêncio: o guarda de espécie do
+ * `filtro.ts` recusa comparar número com data e erra alto. O nível é o que torna a
+ * segmentação **possível**.
+ *
+ * **Uma hierarquia com mais de um nível ativo não filtra.** Ela é um controle de
+ * *drill* — Ano → Mês → Dia — e a escolha do usuário ali não é um conjunto de
+ * valores de um nível, é um caminho. Tratá-la como se fosse o primeiro nível
+ * aplicaria um filtro que o usuário não pediu.
+ */
+export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
+  if (!SEGMENTACOES.has(v.type)) return undefined;
+
+  const campos = (v.fields ?? []).filter((c) => c.role === 'Values');
+  if (campos.length === 0) return undefined;
+
+  const primeiro = campos[0]!;
+  if (!primeiro.entity || !primeiro.property) return undefined;
+
+  const base = {
+    tabela: primeiro.entity,
+    coluna: primeiro.property,
+    rotulo: primeiro.name ?? primeiro.property,
+  };
+
+  if (campos.some((c) => c.kind === 'hierarchy_level')) {
+    // `active !== false` — a mesma regra de `campoAtivo` do widget-engine. `null`
+    // conta como ativo e é distinto de `true`: o PBIP não declara estado em poço de
+    // um campo só (ACHADOS #32). Duplicar a regra com `=== true` faria esta função
+    // discordar do agrupamento sobre a mesma spec.
+    const ativos = campos.filter((c) => c.active !== false);
+
+    if (ativos.length !== 1) {
+      return {
+        ...base,
+        naoFiltra:
+          `segmentação de hierarquia com ${ativos.length} níveis ativos ` +
+          `(${ativos.map((c) => c.level ?? '?').join('/')}). Ela é um controle de drill, ` +
+          `e a escolha ali é um caminho, não um conjunto de valores de um nível — ` +
+          `filtrar pelo primeiro aplicaria um filtro que ninguém pediu.`,
+      };
+    }
+
+    const nivel = ativos[0]!.level;
+    if (!nivel) {
+      return { ...base, naoFiltra: 'nível de hierarquia sem nome do nível na spec.' };
+    }
+    return { ...base, coluna: ativos[0]!.property ?? base.coluna, nivel, rotulo: ativos[0]!.name ?? base.rotulo };
+  }
+
+  // Um `kind` novo do Power BI cai aqui. Desabilitar dizendo o nome é melhor que
+  // presumir que se comporta como coluna: presumir é o caminho do zero calado.
+  if (primeiro.kind !== 'column') {
+    return { ...base, naoFiltra: `segmentação com kind '${primeiro.kind}', que a tela não sabe filtrar.` };
+  }
+
+  return base;
+}
 
 function conteudoDe(tipo: string): VisualCalculado['conteudo'] {
   if (tipo === 'card' || tipo === 'multiRowCard') return 'card';
@@ -131,11 +282,20 @@ function conteudoDe(tipo: string): VisualCalculado['conteudo'] {
  */
 export type AoTerminarVisual = (v: VisualCalculado, indice: number, total: number) => void;
 
+/**
+ * Uma página do relatório, calculada.
+ *
+ * O `memo` é o único parâmetro que muda o **custo** sem mudar o resultado: com ele,
+ * tabela e matriz calculadas uma vez servem todas as janelas seguintes por `slice`.
+ * Quem chama uma vez por página (`tools/paginas`, `tools/paridade`) não passa nada e
+ * não paga nada; quem serve cliques (`apps/api/src/servidor.ts`) passa.
+ */
 export function calculaPagina(
   dash: DashboardSpec,
   ev: Evaluator,
   janela: Janela = { de: 0, linhas: LINHAS_PADRAO },
   aoTerminar?: AoTerminarVisual,
+  memo?: MemoDeCompletos,
 ): PaginaCalculada {
   const inicio = Date.now();
   const visuais: VisualCalculado[] = [];
@@ -151,7 +311,12 @@ export function calculaPagina(
 
     if (conteudo === null) {
       semCalculo++;
-      const feito = { ...base, semCalculo: SEM_CALCULO[v.type] ?? `tipo '${v.type}' não calcula` };
+      const seg = segmentacaoDe(v);
+      const feito: VisualCalculado = {
+        ...base,
+        semCalculo: SEM_CALCULO[v.type] ?? `tipo '${v.type}' não calcula`,
+        ...(seg ? { segmentacao: seg } : {}),
+      };
       visuais.push(feito);
       aoTerminar?.(feito, visuais.length, total);
       continue;
@@ -178,7 +343,7 @@ export function calculaPagina(
     }
 
     try {
-      base.dados = dadosDo(conteudo, dash, v, ev, janela);
+      base.dados = dadosDo(conteudo, dash, v, ev, janela, memo);
       calculados++;
     } catch (err) {
       falharam++;
@@ -225,13 +390,36 @@ function colunasSobDemanda(v: VisualSpec, ev: Evaluator): string[] {
   return fora;
 }
 
+/**
+ * Os dados de um visual, na janela pedida.
+ *
+ * Card e gráfico não têm janela e são calculados direto. Tabela e matriz passam pelo
+ * `memo`: o resultado inteiro é calculado **uma vez** e cada janela sai de um `slice`
+ * dele. Sem `memo` o comportamento é o de antes — calcula inteiro, recorta, descarta.
+ */
 function dadosDo(
   conteudo: NonNullable<VisualCalculado['conteudo']>,
   dash: DashboardSpec,
   v: VisualSpec,
   ev: Evaluator,
   janela: Janela,
+  memo?: MemoDeCompletos,
 ): unknown {
+  if (conteudo === 'tabela' || conteudo === 'matriz') {
+    const guardado = memo?.le(v.id) as Completo | undefined;
+    // A espécie é conferida, e não suposta: uma spec editada entre dois pedidos pode
+    // trocar o tipo do visual com o mesmo id, e recortar uma matriz como tabela
+    // devolveria uma tabela vazia sem erro nenhum — número plausível e errado.
+    const completo =
+      guardado?.especie === conteudo
+        ? guardado
+        : conteudo === 'tabela'
+          ? tabelaCompleta(dash, v, ev)
+          : matrizCompleta(dash, v, ev);
+    if (completo !== guardado) memo?.guarda(v.id, completo);
+    return janelaDe(completo, janela);
+  }
+
   if (conteudo === 'card') {
     const r = calculaCard(dash, v, ev);
     return {
@@ -243,45 +431,54 @@ function dadosDo(
     };
   }
 
-  if (conteudo === 'tabela') {
-    const r = calculaTabela(dash, v, ev);
-    const fatia = r.linhas.slice(janela.de, janela.de + janela.linhas);
-    return {
-      colunas: r.colunas.map((nome, i) => ({
-        nome,
-        tipo: tipoDaColuna(r.linhas.map((l) => l[i]!.valor)),
-        chave: r.linhas[0]?.[i]?.chave ?? true,
-      })),
-      linhas: fatia.map((l) => l.map((c) => serializa(c.valor))),
-      linhasTotais: r.linhas.length,
-      de: janela.de,
-      filtros: r.filtros,
-    };
-  }
-
-  if (conteudo === 'grafico') {
-    const r = calculaGrafico(dash, v, ev);
-    return {
-      tipo: r.tipo,
-      chaves: r.chaves,
-      series: r.series,
-      tiposDeSerie: r.series.map((_, i) => tipoDaColuna(r.pontos.map((p) => p.valores[i]!))),
-      tiposDeChave: r.chaves.map((_, i) => tipoDaColuna(r.pontos.map((p) => p.categoria[i]!))),
-      pontos: r.pontos.map((p) => ({
-        categoria: p.categoria.map(serializa),
-        valores: p.valores.map(serializa),
-      })),
-      filtros: r.filtros,
-    };
-  }
-
-  const r = calculaMatriz(dash, v, ev);
-  const fatia = r.linhas.slice(janela.de, janela.de + janela.linhas);
+  const r = calculaGrafico(dash, v, ev);
   return {
+    tipo: r.tipo,
+    chaves: r.chaves,
+    series: r.series,
+    tiposDeSerie: r.series.map((_, i) => tipoDaColuna(r.pontos.map((p) => p.valores[i]!))),
+    tiposDeChave: r.chaves.map((_, i) => tipoDaColuna(r.pontos.map((p) => p.categoria[i]!))),
+    pontos: r.pontos.map((p) => ({
+      categoria: p.categoria.map(serializa),
+      valores: p.valores.map(serializa),
+    })),
+    filtros: r.filtros,
+  };
+}
+
+/**
+ * A tabela inteira, serializada.
+ *
+ * **Serializar tudo é trabalho novo, e é o trabalho certo.** Antes, só a janela
+ * passava por `serializa` — mas o `tipoDaColuna` de cada coluna já varria todas as
+ * linhas, então a varredura completa sempre esteve aqui. O que muda é o `map` sobre
+ * o resultado inteiro, uma vez, em troca de todas as janelas seguintes saírem de um
+ * `slice`. Guardar a forma crua da engine em vez desta seria pior: lá cada célula é
+ * um objeto `{valor, chave}`, e são duas células por valor útil.
+ */
+function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): TabelaCompleta {
+  const r = calculaTabela(dash, v, ev);
+  return {
+    especie: 'tabela',
+    colunas: r.colunas.map((nome, i) => ({
+      nome,
+      tipo: tipoDaColuna(r.linhas.map((l) => l[i]!.valor)),
+      chave: r.linhas[0]?.[i]?.chave ?? true,
+    })),
+    linhas: r.linhas.map((l) => l.map((c) => serializa(c.valor))),
+    linhasTotais: r.linhas.length,
+    filtros: r.filtros,
+  };
+}
+
+function matrizCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): MatrizCompleta {
+  const r = calculaMatriz(dash, v, ev);
+  return {
+    especie: 'matriz',
     chavesDeLinha: r.chavesDeLinha,
     chavesDeColuna: r.chavesDeColuna,
     medidas: r.medidas,
-    linhas: fatia.map((l) => l.valores.map(serializa)),
+    linhas: r.linhas.map((l) => l.valores.map(serializa)),
     colunas: r.colunas.map((c) => c.valores.map(serializa)),
     tiposDeLinha: r.chavesDeLinha.map((_, i) => tipoDaColuna(r.linhas.map((l) => l.valores[i]!))),
     tiposDeColuna: r.chavesDeColuna.map((_, i) => tipoDaColuna(r.colunas.map((c) => c.valores[i]!))),
@@ -291,12 +488,31 @@ function dadosDo(
     tiposDeMedida: r.medidas.map((_, m) =>
       tipoDaColuna(r.celulas.flatMap((linha) => linha.map((celula) => celula[m]!))),
     ),
-    celulas: r.celulas
-      .slice(janela.de, janela.de + janela.linhas)
-      .map((linha) => linha.map((celula) => celula.map(serializa))),
+    celulas: r.celulas.map((linha) => linha.map((celula) => celula.map(serializa))),
     linhasTotais: r.linhas.length,
-    de: janela.de,
     descartadas: r.descartadas,
     filtros: r.filtros,
+  };
+}
+
+/**
+ * A janela recortada de um resultado inteiro.
+ *
+ * `especie` fica de fora do que sai daqui: ela é de dentro do cache, e a tela nunca a
+ * viu. Os demais campos saem idênticos ao que a resposta sempre teve — este recorte
+ * não é um formato novo, é o mesmo `slice` que estava embutido no cálculo.
+ */
+export function janelaDe(completo: Completo, janela: Janela): unknown {
+  const ate = janela.de + janela.linhas;
+  if (completo.especie === 'tabela') {
+    const { especie: _, linhas, ...resto } = completo;
+    return { ...resto, linhas: linhas.slice(janela.de, ate), de: janela.de };
+  }
+  const { especie: _, linhas, celulas, ...resto } = completo;
+  return {
+    ...resto,
+    linhas: linhas.slice(janela.de, ate),
+    celulas: celulas.slice(janela.de, ate),
+    de: janela.de,
   };
 }
