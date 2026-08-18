@@ -20,41 +20,51 @@
 # específico depois do arredondamento.
 
 pagina: relatorio-do-mes
-conferido_em: null
-por: null
+conferido_em: "2026-08-11T15:10:00-03:00"
+por: "Claude no navegador — LEIA A RESSALVA em docs/PARIDADE-11-08.md"
 tolerancia: 0.005
 
 cards:
   - visual: 00bd510021a87cd1dad3
     rotulo: "MÉDIA REALIZADOS (MÊS ATUAL)"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 156   # <-- o número que aparece na tela
     divergente: peso-instalado-fim-de-semana
   - visual: 20d23554c9b205376057
     rotulo: "DIAS TRABALHADOS NO MÊS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 8   # <-- o número que aparece na tela
     divergente: peso-instalado-fim-de-semana
+    observacao: >-
+      ATENÇÃO ao ler o veredito deste card: ele BATE com o Power BI (8 dos dois
+      lados) e o harness marca 'divergencia-nao-aplicada'. Isso NÃO quer dizer que a
+      decisão do PESO ficou no papel — a coluna traz sábado 0,5 e domingo 0,5, como
+      decidido. É aritmética: um fim de semana completo vale 1,0 nas duas regras
+      (0,5+0,5 contra 1+0), e a janela 01–10/08/2026 tem só fins de semana inteiros.
+      As duas regras só divergem quando a janela tem sábados e domingos em número
+      diferente. Provado em packages/semantic-model/test/divergencias.test.ts
+      ("PESO: janela com sábado ou domingo solto DISTINGUE as regras") e explicado em
+      docs/ACHADOS.md #58. Verificado em 11/08/2026 — não reabrir sem ler isso.
   - visual: 28b2fed3696b956b1a98
     rotulo: "META DO MÊS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 3000   # <-- o número que aparece na tela
   - visual: 35c35445066c73fc984d
     rotulo: "TOTAL MÊS ATIVO FIBRA"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 935   # <-- o número que aparece na tela
   - visual: 46f466fa464ba5d15e47
     rotulo: "PROJEÇÃO (MÉDIA REALIZADA)"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 4056   # <-- o número que aparece na tela
     divergente: peso-instalado-fim-de-semana
   - visual: 472098e3faec67cae276
     rotulo: "MÉDIA AGENDADA (MÊS ATUAL)"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 166   # <-- o número que aparece na tela
   - visual: 8769f73484f79cbacc84
     rotulo: "RESTANTES"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: -2065   # <-- o número que aparece na tela
   - visual: 923a9ae0662ca27f433c
     rotulo: "AGENDADOS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 306   # <-- o número que aparece na tela
   - visual: 95fe1259eb997b10b7dd
     rotulo: "MÉDIA REALIZADO BACKLOG"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 152   # <-- o número que aparece na tela
     divergente: peso-instalado-fim-de-semana
   - visual: 9a7d36ddcbde8ec5135d
     rotulo: "Data mais recente"
@@ -63,14 +73,19 @@ cards:
       carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade
   - visual: bbc6684676e273565d65
     rotulo: "DIAS ÚTEIS RESTANTES NO MÊS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 18   # <-- o número que aparece na tela
     divergente: peso-instalado-fim-de-semana
+    observacao: >-
+      Mesmo caso do card DIAS TRABALHADOS NO MÊS — leia a observação de lá antes de
+      investigar. A janela 11–31/08/2026 tem três fins de semana completos, e fim de
+      semana completo vale 1,0 nas duas regras. Bater aqui é esperado; não é sinal de
+      que a divergência do PESO não chegou ao resultado.
   - visual: d914bdf23072848ca977
     rotulo: "PROTOCOLOS TOTAIS REALIZADOS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 1248   # <-- o número que aparece na tela
   - visual: dcc3106272278ce25a49
     rotulo: "BACKLOG AGENDADO"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 1.5   # <-- o número que aparece na tela
     divergente: peso-instalado-fim-de-semana
   - visual: e76f02844be92ab07edc
     rotulo: "Hora mais recente"
@@ -79,7 +94,7 @@ cards:
       carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade
   - visual: f4049560074482060335
     rotulo: "MÉDIA GERADOS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 153   # <-- o número que aparece na tela
   - visual: f8d993576d24ed2ca01a
     rotulo: "TOTAL GERADOS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 1534   # <-- o número que aparece na tela

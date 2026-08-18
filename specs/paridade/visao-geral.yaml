@@ -9,8 +9,8 @@
 # falha — é o que impede uma divergência de ficar só no papel.
 
 pagina: visao-geral
-conferido_em: null
-por: null
+conferido_em: "2026-08-11T15:10:00-03:00"
+por: "Claude no navegador — LEIA A RESSALVA em docs/PARIDADE-11-08.md"
 tolerancia: 0.005
 
 cards:
@@ -26,13 +26,13 @@ cards:
       carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade
   - visual: 5eac559add4291af6196
     rotulo: "CLIENTES DISTINTOS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 28481   # <-- o número que aparece na tela
   - visual: 71e5cb0109f72b45b16f
     rotulo: "PROTOCOLOS AGENDADOS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 33032   # <-- o número que aparece na tela
   - visual: cbc30d7bc7375a004eac
     rotulo: "PROTOCOLOS TOTAIS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 33032   # <-- o número que aparece na tela
   - visual: f489778f1a41f78ed708
     rotulo: "PROTOCOLOS INSTALADOS"
-    powerbi: null   # <-- o número que aparece na tela
+    powerbi: 24644   # <-- o número que aparece na tela
