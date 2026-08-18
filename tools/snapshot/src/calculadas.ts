@@ -61,6 +61,7 @@ const DIR = path.join(ROOT, DIRETORIO_PADRAO);
 
 const args = process.argv.slice(2);
 const soPlano = args.includes('--plano');
+const todasFlag = args.includes('--todas');
 const paginas = args
   .filter((a) => a.startsWith('--pagina='))
   .flatMap((a) => a.slice('--pagina='.length).split(',').map((s) => s.trim()))
@@ -112,6 +113,7 @@ const MINIMO_PARA_ISOLAR = 5_000;
 for (const a of args) {
   const conhecido =
     a === '--plano' ||
+    a === '--todas' ||
     a.startsWith('--pagina=') ||
     a.startsWith('--tabela=') ||
     a.startsWith('--coluna=') ||
@@ -123,7 +125,7 @@ for (const a of args) {
   if (!conhecido) {
     console.error(`argumento desconhecido: ${a}`);
     console.error(
-      'use: --pagina=<id> | --tabela="<nome>" | --plano | --amostra=N | --pular=N |\n' +
+      'use: --pagina=<id> | --tabela="<nome>" | --todas | --plano | --amostra=N | --pular=N |\n' +
         '     --coluna="<nome>" | --isolar | --sem-isolar',
     );
     process.exit(2);
@@ -150,8 +152,8 @@ if (colunas.length && amostra === 0 && !parcial) {
   console.error('como nulas.');
   process.exit(2);
 }
-if (paginas.length === 0 && tabelas.length === 0) {
-  console.error('diga o que congelar: --pagina=<id> ou --tabela="<nome>"');
+if (!todasFlag && paginas.length === 0 && tabelas.length === 0) {
+  console.error('diga o que congelar: --pagina=<id>, --tabela="<nome>" ou --todas');
   process.exit(2);
 }
 
