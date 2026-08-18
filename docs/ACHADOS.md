@@ -5388,3 +5388,128 @@ repositório sozinho.
 
 A stack de `docker/cdc/` foi derrubada ao final (`docker compose down -v`),
 como o `RUNBOOK-CDC.md` manda.
+
+---
+
+## #73 — A terceira mesclagem morta não tinha conserto: a fonte parou de ser alimentada 13 meses antes
+
+**18/08/2026.** A pendência que o #64 deixou registrada: a mescla
+`PROTOCOLOS GERAL {INSTALADO POR:, DATA FINAL} × GESTORES EQUIPES {TÉCNICO 1, DATA}`
+casava 0 de 25.472 linhas, as chaves não eram texto×número, e o mecanismo de
+`juncoes.yaml` não tinha o que dizer sobre ela. O `CONTINUACAO.md` registrava a
+hipótese: *"suspeite da data primeiro — `DATA FINAL` chega meia-noite UTC; `DATA`
+vem do MariaDB e ninguém olhou ainda."*
+
+A hipótese estava certa quanto à coluna e **errada quanto ao motivo**.
+
+### A medição, componente por componente
+
+A chave é composta, então a pergunta útil é qual das duas colunas mata a junção.
+Medindo cada uma sozinha:
+
+```
+COMPONENTE 1 — O NOME
+  distintos: esq 93 · dir 70 · interseção EXATA 26
+  linhas da esquerda cujo nome existe na direita: 11.703 de 34.025
+
+COMPONENTE 2 — A DATA
+  distintas: esq 190 · dir 187 · interseção EXATA 0
+  faixa esq: 2026-01-02 → 2026-08-18
+  faixa dir: 2025-01-01 → 2025-07-16
+  interseção ignorando hora (só YYYY-MM-DD): 0 de 34.025
+```
+
+**O nome casa.** 26 dos 70 técnicos da direita existem na esquerda, cobrindo 11.703
+linhas. A expressão M está correta; não é normalização, não é acento, não é espaço
+em volta — `trim+upper+espaço colapsado` não muda nada (93 × 70 → interseção 26,
+igual).
+
+**A data não tem como casar.** As duas faixas **não se sobrepõem em um único dia**.
+Não é fuso: ignorar a hora inteira mantém a interseção em zero. Não é tipo: a
+esquerda é data e a direita é `Date` nas duas pontas.
+
+### A causa, na fonte crua
+
+`DB_Applicattion.Installation_Teams` no dbMaria, **antes** de qualquer filtro do M:
+
+```
+10.795 linhas · DATA de 2024-08-01 a 2025-07-16 · 0 nulas
+por ano:  2024: 5.153   ·   2025: 5.642   ·   2026: 0
+por mês:  2025-05: 923 · 2025-06: 988 · 2025-07: 566  ← e para aqui
+```
+
+**A tabela parou de receber linha em 16/07/2025** — 13 meses antes desta medição.
+Julho de 2025 tem 566 linhas contra ~900 dos meses cheios: parou no meio do mês.
+
+Confirmado que não é filtro nosso escondendo dado recente, contando linha por passo
+(`run:mlayer --passos`): `CAPACIDADE TOTAL <> null` corta **19** linhas,
+`Table.Distinct` corta 27, e o `[DATA] > #date(2024,12,31)` corta 5.130 — todas de
+2024. Zero linhas de 2026 na fonte crua, com ou sem filtro.
+
+### O que isto significa para a plataforma
+
+**Não há conserto em código, e `juncoes.yaml` não serve.** Reconciliar tipo não
+casa faixa disjunta: se um lado termina antes de o outro começar, não existe par
+possível em comparação nenhuma. `TÉCNICO 2` e `GERENTE/SUPERVISOR` continuam
+inteiras nulas, e **o Power BI mostra o mesmo** — ele lê a mesma tabela do MariaDB.
+É defeito herdado com fidelidade, como as duas primeiras mesclagens do #64.
+
+A consequência que importa: `visao-geral` filtra `TÉCNICO 2` com `not_in [null]`
+sobre uma coluna 100% nula, o que **descarta toda linha do visual**. Esse visual
+está vazio aqui e está vazio no Power BI. Vira pergunta de negócio
+(`PERGUNTAS-NEGOCIO.md` #11), não item de fila técnica: ou a tabela volta a ser
+alimentada, ou o visual precisa de outra origem.
+
+### O que virou código: fazer o motor dizer a causa
+
+A nota antiga terminava em *"confira as duas pontas no `m_expression`"* — e mandava
+procurar defeito onde não havia nenhum. Foi o que custou esta manhã de medição.
+`Table.NestedJoin` agora checa faixa de data **antes** de falar de tipo:
+
+```
+nenhuma das 26130 linhas de chave completa casou, e a causa é a faixa de
+'DATA FINAL' × 'DATA': ela é data nas duas pontas e as faixas NÃO SE TOCAM —
+esquerda de 2026-01-02 a 2026-08-18, direita de 2025-01-01 a 2025-07-16.
+Nenhuma reconciliação de tipo casaria: não existe par possível. A coluna
+aninhada sai INTEIRA NULA, e isto é dado que parou de chegar, não chave errada.
+```
+
+Diagnóstico causal em uma linha, contra a base real. **Antes de tipo** de propósito:
+faixa disjunta explica a morte inteira e nenhuma reconciliação a conserta, então
+falar de `Int64.Type` primeiro seria enterrar a resposta.
+
+Onde ela **não** dispara, e cada caso tem teste: faixas que se sobrepõem sem casar
+dia nenhum (aí "confira as duas pontas" é o conselho certo), faixas que encostam
+pela ponta (casam de verdade — não são disjuntas), e coluna de espécie misturada
+(sem faixa; afirmar uma seria resolver dois defeitos ao mesmo tempo, que é o que o
+`reconciliavel` já evita). Numa chave composta, uma posição impossível basta, e a
+nota nomeia **qual** posição. Teste de mutação: anulando a chamada de
+`faixaDisjunta`, **3 dos 17** testes de `juncao-morta.test.ts` caem.
+
+### Dois buracos no `run:mlayer` que esta investigação achou
+
+Os dois valem mais que o achado em si, porque afetam toda investigação futura da
+camada M:
+
+1. **Ele engolia as notas.** O `tools/snapshot` as imprime desde o #64; o
+   `run:mlayer` as descartava. A ferramenta de *investigar* a camada M era a única
+   que não mostrava o diagnóstico que a camada M produz. Agora imprime, **antes** dos
+   alertas de contagem — junção morta costuma ser a causa da contagem estranha.
+2. **Ele não carregava `juncoes.yaml`.** Pior que faltar recurso: as duas ferramentas
+   rodam a mesma camada M e davam diagnóstico **diferente**. O `run:mlayer` reportava
+   como morta a junção de `N°PROTOCOLO` que o `snapshot` reconcilia por decisão
+   registrada — alarme falso na ferramenta usada para investigar alarme.
+
+### Um erro meu que vale registrar
+
+A primeira rodada do diagnóstico disse que as duas colunas da direita eram
+**100% nulas** — o que contradizia o próprio filtro `[DATA] > #date(2024,12,31)`
+da query, que 5.619 linhas atravessam. A contradição é que denunciou o erro:
+`MRow` é `ReadonlyMap`, e eu lia `r['DATA']` em vez de `r.get('DATA')`. Devolvia
+`undefined`, que meu contador classificava como `null`.
+
+Se eu tivesse acreditado na primeira saída, a conclusão registrada seria "a tabela
+de gestores está vazia" — plausível, e errada. **Número que contradiz uma regra
+conhecida do sistema é sinal de instrumento quebrado antes de ser sinal de dado
+quebrado.** O diagnóstico passou a separar `undefined` de `null` na saída, com o
+motivo escrito ao lado.

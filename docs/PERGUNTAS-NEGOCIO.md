@@ -548,3 +548,50 @@ sentido? Ou o `TMA` "contra hoje" é intencional para algum uso que eu não conh
 > uma peça permanente para um problema que tem conserto na origem. Se a resposta for
 > "não posso mexer no PBIP agora", aí sim vale a divergência registrada — e ela é
 > barata de fazer.
+
+---
+
+## 11. `Installation_Teams` parou de receber linha em 16/07/2025 — isso é esperado?
+
+**Quem responde:** o Erick, ou quem alimenta a planilha/sistema que grava nessa tabela.
+
+**O número.** `DB_Applicattion.Installation_Teams` no dbMaria, lida crua, sem nenhum
+filtro nosso:
+
+```
+10.795 linhas · DATA de 2024-08-01 a 2025-07-16
+2024: 5.153 linhas   ·   2025: 5.642   ·   2026: 0
+
+últimos meses:  2025-05: 923  ·  2025-06: 988  ·  2025-07: 566  ← e para
+```
+
+Nenhuma linha de 2026. Julho de 2025 tem 566 contra ~900 de um mês cheio: parou no
+meio do mês, não numa virada.
+
+**O que isso quebra hoje.** A tabela é a origem de `TÉCNICO 2` e
+`GERENTE/SUPERVISOR` em `PROTOCOLOS GERAL`, por uma mescla em
+`{INSTALADO POR:, DATA FINAL} × {TÉCNICO 1, DATA}`. Como `PROTOCOLOS GERAL` só
+carrega 2026 e a tabela de gestores termina em 2025, **as faixas de data não se
+sobrepõem em um único dia** — a junção casa 0 de 26.130 linhas e as duas colunas
+saem inteiras nulas.
+
+O nome do técnico casa: 26 dos 70 técnicos da tabela existem no protocolo, cobrindo
+11.703 linhas. **Se a tabela voltasse a ser alimentada, a junção funcionaria** sem
+mudar uma linha de código.
+
+**O efeito visível.** `visao-geral` filtra `TÉCNICO 2` com `not_in [null]`. Sobre uma
+coluna 100% nula esse filtro descarta **toda** linha do visual. Ele está vazio aqui —
+e está vazio no Power BI também, que lê a mesma tabela. Não é divergência nossa.
+
+**Pergunta, em três partes:**
+
+1. A tabela devia continuar sendo alimentada, e paramos de alimentá-la por acidente?
+2. Ou ela foi substituída por outra origem de equipe/gestor, e a mescla do PBIP é que
+   está apontando para o lugar velho?
+3. Ou a informação de gestor/técnico 2 deixou de ser usada, e o visual de
+   `visao-geral` que depende dela deve sair?
+
+> Não há conserto em código para escolher no lugar dessa resposta. `juncoes.yaml`
+> reconcilia **tipo** de chave; faixa de data disjunta não é problema de tipo — se um
+> lado termina antes de o outro começar, não existe par possível em comparação
+> nenhuma. Medido e registrado em [ACHADOS](ACHADOS.md) #73.

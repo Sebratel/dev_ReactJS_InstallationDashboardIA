@@ -2,7 +2,10 @@
 
 > **Atualizado em 18/08/2026**, depois de a Fase 4 sair do papel: um
 > `iniciaKafkaCDC` sem medição foi revertido (#71) e substituído pelo **ingestor de
-> rematerialização**, validado ponta a ponta contra a stack descartável (#72). Antes
+> rematerialização**, validado ponta a ponta contra a stack descartável (#72). No mesmo
+> dia, a terceira mesclagem morta ficou explicada e **saiu da fila técnica**: a fonte
+> dela parou de ser alimentada em 16/07/2025, e isso é pergunta de negócio, não código
+> (#73). Antes
 > disso, em 14/08, as mesclagens mortas da camada M foram achadas e decididas (#64) e
 > o congelamento das tabelas calculadas caiu de **14 h 28 min para 26 min**
 > (#66 → #67 → #68). É o ponto de entrada de uma sessão nova: autocontido, feito para
@@ -45,7 +48,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1322 testes, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 1328 testes, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -97,7 +100,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1322 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
+**1328 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
 
 | camada | estado |
 |---|---|
@@ -106,7 +109,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | Modelo semântico + avaliador DAX | ✅ as 56 funções que a base usa, 75 medidas |
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
 | **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco. Congelar as 7 calculadas leva **~26 min** — um processo por coluna, com guarda de ordem de linha (#68). Era 14 h 28 min |
-| **Camada M — mesclagens** | ✅ junção que não casa **nenhuma** linha emite nota com o número; reconciliar exige decisão em `specs/_catalog/juncoes.yaml` (#64). 2 das 3 mortas resolvidas |
+| **Camada M — mesclagens** | ✅ junção que não casa **nenhuma** linha emite nota com o número; faixa de data disjunta é nomeada como causa (#73); reconciliar exige decisão em `specs/_catalog/juncoes.yaml` (#64). 2 das 3 mortas resolvidas; a 3ª **não tem conserto em código** — a fonte parou em 16/07/2025 (#73, PERGUNTAS-NEGOCIO #11) |
 | **API** (`apps/api`) | ✅ somente leitura, uma página por pedido, `?filtro=` e rota de valores; cache da resposta desde 11/08 |
 | **Cache da resposta** | ✅ quem invalida é o **dado**, não o relógio: a chave carrega carimbo do snapshot **e** dia UTC (32 expressões chamam `TODAY()`). O TTL virou prazo de guarda. Medido: 2 a 7 ms por página, e **continua acerto depois de 95 s parado** — antes custava 8 a 36 s a cada minuto (#69) |
 | **Reaquecimento** (`apps/api/src/aquecedor.ts`) | ✅ a API se aquece no arranque e sempre que a identidade muda (snapshot refeito **ou** virada do dia). ~3 min para as 14 páginas. `npm start` espera por ele em vez de disputar |
@@ -178,7 +181,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 72 entradas.
+   registro; hoje tem 73 entradas.
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
@@ -303,14 +306,19 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
    propósito** — e escreva o valor em `powerbi:`. As 3 páginas cujo gabarito é inválido
    (`docs/PARIDADE-11-08.md`) são 11 das 18 divergências: elas vêm primeiro. São 64 cards,
    dos quais 22 já saíram por serem carimbo de refresh.
-2. **Investigar a terceira mesclagem morta**, a de `GESTORES EQUIPES`
-   ([ACHADOS](ACHADOS.md) #64). É a origem de `'PROTOCOLOS GERAL'[TÉCNICO 2]` inteira
-   nula, e `visao-geral` a usa **como filtro `not_in [null]`** — sobre uma coluna 100%
-   nula, esse filtro descarta toda linha do visual. As chaves são
-   `{INSTALADO POR:, DATA FINAL} × {TÉCNICO 1, DATA}`: nome×nome e data×data, então não
-   é o caso texto×número que o `juncoes.yaml` resolve. Suspeite da **data** primeiro
-   (`DATA FINAL` chega meia-noite UTC; `DATA` vem do MariaDB e ninguém olhou ainda).
-   Medido: 0 de 25.472 linhas de chave completa contra 5.619 do outro lado.
+2. ✅ **A terceira mesclagem morta foi investigada em 18/08/2026 — e não tem conserto
+   em código.** [ACHADOS](ACHADOS.md) #73. `DB_Applicattion.Installation_Teams` **parou
+   de receber linha em 16/07/2025**: 0 registros de 2026. Como `PROTOCOLOS GERAL` só
+   carrega 2026, as faixas de data **não se sobrepõem em um único dia** — a junção casa
+   0 de 26.130 e `TÉCNICO 2`/`GERENTE/SUPERVISOR` saem inteiras nulas, aqui e no Power
+   BI. O nome casa (26 dos 70 técnicos, 11.703 linhas): se a tabela voltar a ser
+   alimentada, a junção funciona sem mudar código.
+
+   Virou **`PERGUNTAS-NEGOCIO.md` #11**, não item de fila técnica. `juncoes.yaml`
+   reconcilia *tipo* de chave; faixa disjunta não é problema de tipo. O que saiu de
+   código foi diagnóstico: `Table.NestedJoin` agora nomeia a faixa disjunta em vez de
+   mandar "conferir as duas pontas", e o `run:mlayer` passou a imprimir as notas da
+   camada M e a honrar o `juncoes.yaml` — ele fazia nem uma nem outra.
 3. **Empurrar para SQL o que o SQL faz melhor** — as mesclagens de **mesma fonte** e a
    agregação de `FIELD AGENDA` ao grão `(protocolo, slot)`, que é o passo 4 da
    `DECISAO-DESEMPENHO.md` e o maior ganho que resta (1.458.244 linhas → 30.252).
@@ -499,7 +507,7 @@ specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
   _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          72 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          73 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa
