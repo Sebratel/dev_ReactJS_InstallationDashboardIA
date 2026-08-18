@@ -489,3 +489,85 @@ test('filtro de grupo comparado com data ou null erra alto', () => {
   };
   assert.throws(() => predicadoDeGrupo(comNull, ev, 't'), /comparam com número/);
 });
+
+// ---------------------------------------------------------------------------
+// Nível de hierarquia de datas — o filtro da segmentação da tela
+// ---------------------------------------------------------------------------
+
+/**
+ * **A regra que este bloco guarda.**
+ *
+ * `f.nivel` faz o predicado comparar a **projeção** da coluna, não a coluna. Sem ele,
+ * `DATA IN [2026]` compara o número 2026 contra um `Date` e não casa com linha
+ * nenhuma — zero em toda a página, com a segmentação parecendo aplicada. É a única
+ * razão de o campo existir, e o extrator nunca o escreve: dos 108 filtros do
+ * relatório, 0 têm nível.
+ */
+test('nível Ano compara o ano, não a data', () => {
+  // 2026 em três linhas (15/03, 10/03, 20/02); 2025 numa; uma sem data.
+  assert.deepEqual(sobrevivem([filtro('DATA', [{ op: 'in', values: [2026] }], { nivel: 'Ano' })]), [1, 2, 3]);
+  assert.deepEqual(sobrevivem([filtro('DATA', [{ op: 'in', values: [2025] }], { nivel: 'Ano' })]), [5]);
+});
+
+/**
+ * **O mesmo filtro sem nível não devolve zero: ele erra alto.**
+ *
+ * Descobri isto escrevendo este teste, e a descoberta é boa notícia sobre o engine:
+ * `confereEspecie` já compara as espécies dos dois lados e recusa número contra data,
+ * com a frase exata do risco ("sairia vazio como se o filtro estivesse apenas
+ * apertado"). Ou seja, o `nivel` não existe para **evitar um zero silencioso** — o
+ * guarda dos filtros já cobria isso. Ele existe para tornar o filtro **possível**:
+ * sem ele, a segmentação de Ano não tem como funcionar de jeito nenhum.
+ *
+ * Se este teste passar a devolver `[]` em vez de lançar, o guarda de espécie caiu — e
+ * aí sim a classe de erro silencioso volta a existir, para todo filtro do relatório.
+ */
+test('sem nível, o mesmo filtro erra alto por comparar número com data', () => {
+  assert.throws(
+    () => sobrevivem([filtro('DATA', [{ op: 'in', values: [2026] }])]),
+    (e: unknown) => e instanceof DaxEvalError && /compara número com data/.test((e as Error).message),
+  );
+});
+
+test('nível Mês usa o nome do mês em português, o mesmo do eixo de gráfico', () => {
+  assert.deepEqual(sobrevivem([filtro('DATA', [{ op: 'in', values: ['março'] }], { nivel: 'Mês' })]), [1, 2]);
+  assert.deepEqual(sobrevivem([filtro('DATA', [{ op: 'in', values: ['fevereiro'] }], { nivel: 'Mês' })]), [3]);
+});
+
+test('nível Dia projeta o dia do mês', () => {
+  assert.deepEqual(sobrevivem([filtro('DATA', [{ op: 'in', values: [15] }], { nivel: 'Dia' })]), [1]);
+});
+
+/**
+ * BLANK continua BLANK. Projetar o vazio o transformaria no ano de 1970 — e pior,
+ * `new Date(0)` daria 1970, então uma linha **sem data** casaria com um ano de
+ * verdade se alguém marcasse 1970. A linha 4 não tem data e não pode entrar em
+ * filtro de ano nenhum.
+ */
+test('linha sem data não casa com ano nenhum', () => {
+  for (const ano of [2026, 2025, 1970]) {
+    assert.ok(
+      !sobrevivem([filtro('DATA', [{ op: 'in', values: [ano] }], { nivel: 'Ano' })]).includes(4),
+      `ano ${ano} não pode trazer a linha sem data`,
+    );
+  }
+});
+
+test('nível sobre coluna que não é data erra alto, dizendo o tipo', () => {
+  assert.throws(
+    () => sobrevivem([filtro('STATUS', [{ op: 'in', values: [2026] }], { nivel: 'Ano' })]),
+    (e: unknown) => e instanceof DaxEvalError && /não data|não é data/.test((e as Error).message),
+  );
+});
+
+test('nível que a projeção não conhece erra alto e lista os suportados', () => {
+  assert.throws(
+    () => sobrevivem([filtro('DATA', [{ op: 'in', values: [1] }], { nivel: 'Semana' })]),
+    (e: unknown) => e instanceof DaxEvalError && /não suportado.*Suportados:/s.test((e as Error).message),
+  );
+});
+
+/** O nível não atrapalha o resto: filtro de coluna comum continua igual. */
+test('filtro sem nível continua comparando a coluna crua', () => {
+  assert.deepEqual(sobrevivem([filtro('CIDADE', [{ op: 'in', values: ['Bauru'] }])]), [1, 2]);
+});

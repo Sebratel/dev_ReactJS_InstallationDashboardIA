@@ -332,6 +332,7 @@ function filtrosDaChave(
     table: normaliza(c.tabela),
     columns: new Set([normaliza(c.coluna)]),
     origem: `${onde}: grupo ${rotulo}`,
+    igualdade: !c.nivel && !isBlank(valor) ? { coluna: normaliza(c.coluna), valor } : undefined,
     keep: (row: Row) => identityKey(valorDaChave(c, row, ev, onde)) === alvo,
   }];
 }

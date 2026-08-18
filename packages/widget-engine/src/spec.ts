@@ -56,6 +56,21 @@ export interface FiltroSpec {
   entity: string | null;
   property: string | null;
   conditions: CondicaoSpec[];
+  /**
+   * Nível da hierarquia de datas que este filtro recorta (`Ano`, `Mês`, `Dia`…).
+   *
+   * **O extrator nunca escreve isto, e a afirmação é medida:** dos **108** filtros do
+   * relatório — de página e de visual —, **0** carregam nível. Filtro por nível só
+   * nasce da segmentação da tela (`filtro-url.ts`), onde o usuário escolhe "2026" num
+   * `slicer` de `[DATA CRIADO].[Ano]`.
+   *
+   * Com ele presente, o predicado compara a **projeção** da coluna, não a coluna:
+   * `YEAR(data) IN [2026]` em vez de `data IN [2026]`. Sem ele a segmentação de ano
+   * não erra em silêncio — `confereEspecie` recusa comparar número com data e
+   * **erra alto** —, ela simplesmente não tem como funcionar. Ver `leitorDeValor`
+   * em `filtro.ts`.
+   */
+  nivel?: string | null;
 }
 
 export interface CampoSpec {

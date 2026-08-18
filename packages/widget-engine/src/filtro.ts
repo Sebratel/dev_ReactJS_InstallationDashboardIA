@@ -16,6 +16,10 @@
 import { normalizeName as normaliza } from '../../semantic-model/src/model.ts';
 import type { Position } from '../../measure-engine/src/ast.ts';
 import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
+import {
+  NIVEIS_DE_HIERARQUIA,
+  projecaoDeHierarquia,
+} from '../../measure-engine/src/evaluator.ts';
 import type { TableFilter } from '../../measure-engine/src/filter.ts';
 import type { Row } from '../../measure-engine/src/dataset.ts';
 import {
@@ -183,14 +187,81 @@ export function traduzFiltros(
     // todas juntas (E). Como restringem a mesma coluna, vão para **um** predicado
     // em vez de um `TableFilter` por condição.
     const predicados = f.conditions.map((c) => predicado(c, f, ev, rotulo));
+    const igualdade = extraiIgualdade(f);
     out.push({
       table: normaliza(f.entity),
       columns: new Set([normaliza(f.property)]),
       origem: rotulo,
+      ...(igualdade ? { igualdade } : {}),
       keep: (row: Row) => predicados.every((p) => p(row)),
     });
   }
   return out;
+}
+
+function extraiIgualdade(f: FiltroSpec): { coluna: string; valor: DaxValue } | undefined {
+  if (!f.entity || !f.property || f.nivel || !f.conditions || f.conditions.length !== 1) {
+    return undefined;
+  }
+  const c = f.conditions[0]!;
+  if (c.op === 'in' && c.values && c.values.length === 1) {
+    const val = c.values[0];
+    if (val !== null && typeof val !== 'object') {
+      return { coluna: normaliza(f.property), valor: val as DaxValue };
+    }
+  }
+  if (c.op === 'comparison' && c.kind === 'eq' && !c.negado && !c.left_aggregation) {
+    const right = c.right;
+    if (right !== null && typeof right !== 'object') {
+      return { coluna: normaliza(f.property), valor: right as DaxValue };
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Como o predicado lê o valor da linha: a coluna, ou uma **projeção** dela.
+ *
+ * Sem `f.nivel` é a coluna, que é o caso dos 108 filtros do relatório. Com ele, é o
+ * nível da hierarquia de datas — `YEAR(data)` em vez de `data`.
+ *
+ * **O que acontece sem o nível, medido em teste:** `confereEspecie` recusa comparar
+ * número com data e erra alto. Então este campo não existe para tapar um zero
+ * silencioso — o guarda de espécie já cobria isso. Ele existe porque, sem ele, a
+ * segmentação de ano não tem como funcionar de jeito nenhum.
+ *
+ * A projeção é a **mesma** que o eixo de gráfico usa (`projecaoDeHierarquia`, do
+ * measure-engine). Uma segunda tabela de meses aqui daria duas respostas possíveis
+ * para "março", e a divergência apareceria como número, não como erro.
+ */
+function leitorDeValor(f: FiltroSpec, ev: Evaluator, onde: string): (row: Row) => DaxValue {
+  const tabela = f.entity!;
+  const coluna = f.property!;
+  if (!f.nivel) return (row: Row) => ev.columnValue(tabela, coluna, row);
+
+  const projeta = projecaoDeHierarquia(f.nivel);
+  if (!projeta) {
+    throw new DaxEvalError(
+      `${onde}: nível de hierarquia de datas não suportado: ` +
+        `'${tabela}'[${coluna}].[${f.nivel}]. Suportados: ${NIVEIS_DE_HIERARQUIA.join(', ')}.`,
+    );
+  }
+
+  return (row: Row): DaxValue => {
+    const cru = ev.columnValue(tabela, coluna, row);
+    // BLANK continua BLANK: projetar o vazio o transformaria no ano de 1970, e uma
+    // linha sem data passaria a casar com um ano de verdade.
+    if (isBlank(cru)) return cru;
+    if (!(cru instanceof Date)) {
+      // Erra alto em vez de projetar o que não é data. Um `String(x).slice()` daria
+      // um "ano" plausível para qualquer texto.
+      throw new DaxEvalError(
+        `${onde}: o filtro pede o nível [${f.nivel}] de '${tabela}'[${coluna}], mas a ` +
+          `coluna tem ${typeof cru}, não data. Nível de hierarquia só existe sobre data.`,
+      );
+    }
+    return projeta(cru);
+  };
 }
 
 function predicado(
@@ -201,7 +272,7 @@ function predicado(
 ): (row: Row) => boolean {
   const tabela = f.entity!;
   const coluna = f.property!;
-  const valor = (row: Row): DaxValue => ev.columnValue(tabela, coluna, row);
+  const valor = leitorDeValor(f, ev, onde);
 
   // **Filtro sobre agregado não é predicado de linha.** `left_aggregation` diz que
   // o lado esquerdo da comparação é `COUNT(coluna)`, não `coluna`: é o "filtrar por
