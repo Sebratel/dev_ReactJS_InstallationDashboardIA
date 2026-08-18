@@ -123,6 +123,8 @@ export class Servidor {
   /** Página → avaliador carregado. A promessa entra no mapa **antes** de resolver,
    * para que dois pedidos simultâneos da mesma página não carreguem duas vezes. */
   private readonly carregadas = new Map<string, Promise<Carregado>>();
+  /** Cache dos valores distintos de segmentações (categorias) para eliminar buscas repetidas de disco/dataset. */
+  private readonly cacheValoresDistintos = new Map<string, DaxValue[]>();
   /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
   private carimboDasCarregadas: string | null = null;
   /**
@@ -318,6 +320,7 @@ export class Servidor {
     const ttl = retencaoDaPagina(this.queriesDe(dash), this.registry);
     const carimbo = this.carimboAtual();
     const dia = diaDoCalculo(this.opts.agora());
+    const recalcula = url.searchParams.get('recalcula') === '1';
     const chave = chaveDaResposta({
       usuario: quem.usuario,
       pagina: dash.id,
@@ -329,7 +332,7 @@ export class Servidor {
       dia,
     });
 
-    if (ttl > 0) {
+    if (ttl > 0 && !recalcula) {
       const guardado = await this.cache.le<object>(chave);
       if (guardado !== undefined) {
         responde(res, 200, { ...guardado, cache: 'hit' satisfies EstadoDoCache });
@@ -481,13 +484,17 @@ export class Servidor {
     }
 
     const teto = inteiro(url.searchParams.get('teto'), VALORES_PADRAO, 1, VALORES_MAXIMO);
-    let distintos: DaxValue[];
-    try {
-      distintos = valoresDistintos(carregado.ev, tabela, coluna, nivel);
-    } catch (err) {
-      // Nível que a projeção não conhece. 400: o pedido está errado, não o estado.
-      responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
-      return;
+    const chaveValores = `${id}\u0000${normalizeName(tabela)}\u0000${normalizeName(coluna)}\u0000${normalizeName(nivel ?? '')}`;
+    let distintos = this.cacheValoresDistintos.get(chaveValores);
+    if (!distintos) {
+      try {
+        distintos = valoresDistintos(carregado.ev, tabela, coluna, nivel);
+        this.cacheValoresDistintos.set(chaveValores, distintos);
+      } catch (err) {
+        // Nível que a projeção não conhece. 400: o pedido está errado, não o estado.
+        responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
+        return;
+      }
     }
     responde(res, 200, {
       tabela,
@@ -572,6 +579,7 @@ export class Servidor {
     const carimbo = this.identidadeAtual();
     if (this.carimboDasCarregadas !== carimbo) {
       this.carregadas.clear();
+      this.cacheValoresDistintos.clear();
       // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
       // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
       // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
