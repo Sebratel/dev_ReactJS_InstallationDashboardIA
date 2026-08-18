@@ -228,6 +228,11 @@ export interface FilterContext {
   readonly filters: readonly TableFilter[];
 }
 
+const restringeCache = new WeakMap<
+  readonly Row[],
+  WeakMap<readonly Row[], Map<string, Row[]>>
+>();
+
 export class FilteredContext implements FilterContext {
   readonly filters: readonly TableFilter[];
   private readonly dataset: Dataset;
@@ -321,6 +326,11 @@ export class FilteredContext implements FilterContext {
         : pronto.linhas.filter((row) => outros.every((f) => f.keep(row)));
     }
 
+    if (pronto !== null && pronto.tabela === key && this.filters.every((f) => f.grupo === pronto)) {
+      this.cache.set(ck, visiveis);
+      return visiveis;
+    }
+
     caminho.push(key);
     try {
       for (const aresta of this.propagation.incoming(key)) {
@@ -337,6 +347,11 @@ export class FilteredContext implements FilterContext {
         // Tabela fora do dataset não tem filtro nenhum, logo não restringe.
         // Acontece em teste que carrega um subconjunto do modelo.
         if (!this.dataset.hasTable(aresta.source)) continue;
+
+        if (pronto !== null && pronto.tabela === key) {
+          const fsFonte = this.filters.filter((f) => f.table === aresta.source);
+          if (fsFonte.every((f) => f.grupo === pronto)) continue;
+        }
 
         relsNoCaminho.add(aresta.relationship);
         let fonte: Row[];
@@ -423,20 +438,65 @@ export class FilteredContext implements FilterContext {
     fonte: readonly Row[],
     aresta: PropagationEdge,
   ): Row[] {
-    const permitidos = new Set<string>();
+    let m1 = restringeCache.get(alvo);
+    if (m1) {
+      const m2 = m1.get(fonte);
+      if (m2) {
+        const res = m2.get(aresta.relationship);
+        if (res) return res;
+      }
+    }
+
+    const permitidosKeys = new Set<string>();
+    const permitidosValores: DaxValue[] = [];
     let amostraFonte: DaxValue = BLANK;
     for (const row of fonte) {
       const v = this.propagation.joinValue(aresta.sourceTable, aresta.sourceColumn, row);
       if (isBlank(amostraFonte)) amostraFonte = v;
-      permitidos.add(identityKey(v));
+      const k = identityKey(v);
+      if (!permitidosKeys.has(k)) {
+        permitidosKeys.add(k);
+        permitidosValores.push(v);
+      }
     }
 
-    const saida: Row[] = [];
+    let saida: Row[] = [];
     let amostraAlvo: DaxValue = BLANK;
-    for (const row of alvo) {
-      const v = this.propagation.joinValue(aresta.targetTable, aresta.targetColumn, row);
-      if (isBlank(amostraAlvo)) amostraAlvo = v;
-      if (permitidos.has(identityKey(v))) saida.push(row);
+
+    // Primeiro garante que a coluna de junção esteja presente na amostra do alvo se for calculada
+    if (alvo.length > 0) {
+      amostraAlvo = this.propagation.joinValue(aresta.targetTable, aresta.targetColumn, alvo[0]!);
+    }
+
+    const targetCol = normalizeName(aresta.targetColumn);
+    const ind = indiceDe(alvo as Row[], targetCol);
+    let usaIndice = false;
+
+    if (ind !== null) {
+      let falhouIndice = false;
+      const acumulado: Row[] = [];
+      for (const v of permitidosValores) {
+        const cand = ind.candidatos(v);
+        if (cand === null) {
+          falhouIndice = true;
+          break;
+        }
+        for (let i = 0; i < cand.length; i++) acumulado.push(cand[i]!);
+      }
+      if (!falhouIndice) {
+        usaIndice = true;
+        saida = acumulado;
+      }
+    }
+
+    if (!usaIndice) {
+      const acumulado: Row[] = [];
+      for (const row of alvo) {
+        const v = this.propagation.joinValue(aresta.targetTable, aresta.targetColumn, row);
+        if (isBlank(amostraAlvo)) amostraAlvo = v;
+        if (permitidosKeys.has(identityKey(v))) acumulado.push(row);
+      }
+      saida = acumulado;
     }
 
     // Espécies diferentes nas duas pontas da junção não casam NUNCA, e o
@@ -453,6 +513,17 @@ export class FilteredContext implements FilterContext {
           `chegando no tipo errado dos dados.`,
       );
     }
+
+    if (!m1) {
+      m1 = new WeakMap();
+      restringeCache.set(alvo, m1);
+    }
+    let m2 = m1.get(fonte);
+    if (!m2) {
+      m2 = new Map();
+      m1.set(fonte, m2);
+    }
+    m2.set(aresta.relationship, saida);
 
     return saida;
   }

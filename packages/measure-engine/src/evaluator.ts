@@ -508,6 +508,12 @@ export class Evaluator {
   /**
    * Transição de contexto: o contexto de linha vira contexto de filtro.
    *
+   * O `keep` que ela monta é uma closure sobre `rowKey`, e por isso é **opaco**
+   * para `partidaIndexada` — que sabe ler igualdade de AST (`igualdadeIndexavel`,
+   * ACHADOS #44) e não sabe olhar dentro de uma função. `igualdadeDaTransicao`
+   * declara a igualdade que a transição já implica, e é só isso que faltava para o
+   * índice pegar este caminho. Ver ACHADOS #59.
+   *
    * É o que `CALCULATE` faz ao ser chamado dentro de um iterador ou de uma coluna
    * calculada, e o que faz `AVERAGEX(VALUES('T'[C]), CALCULATE([Medida]))` calcular
    * a medida **por valor de C** em vez de repetir o total geral.
@@ -527,6 +533,7 @@ export class Evaluator {
           columns,
           origem: `transição de contexto de linha em '${tabela}'`,
           keep: (r) => rowKey(r, columns) === alvo,
+          igualdade: igualdadeDaTransicao(row, columns),
         },
       ]);
     }
@@ -810,4 +817,42 @@ export class Evaluator {
     }
     return false;
   }
+}
+
+/**
+ * A igualdade que uma transição de contexto **implica**, para servir de ponto de
+ * partida por índice — ou `undefined` quando não vale a pena declarar.
+ *
+ * **A promessa.** O `keep` da transição é `rowKey(r, columns) === alvo`: a linha
+ * passa se casar com a linha de fora em **todas** as colunas. Logo, para qualquer
+ * uma dessas colunas, toda linha que passa tem ali o valor da linha de fora — que é
+ * exatamente o que `TableFilter.igualdade` promete. E `rowKey` codifica com o mesmo
+ * `identityKey` que o índice usa para montar os baldes, então o balde é sempre
+ * **superconjunto** do que o `keep` aceita. Nunca menos.
+ *
+ * Por isso isto é otimização e não regra: com ela ou sem ela o conjunto de linhas é
+ * o mesmo, porque o `keep` roda por cima. Há teste diferencial afirmando isso.
+ *
+ * **Por que só com uma coluna.** Com várias, qualquer uma delas seria correta — a
+ * promessa vale para todas — mas o índice cobra uma varredura para inverter a
+ * coluna, e escolher a errada é pagar isso para receber um balde do tamanho da
+ * tabela. Numa coluna booleana o balde é metade das linhas, e o resultado é mais
+ * lento que varrer. Sem saber a seletividade de antemão, o chute tem valor
+ * esperado negativo.
+ *
+ * Uma coluna é o caso que estava caro e é o caso sem ambiguidade:
+ * `AVERAGEX(VALUES('T'[C]), CALCULATE(...))` itera linhas de uma coluna só. Era o
+ * visual `Média Diária` de `agendamento-field`, 32,6 s sozinho — 364 datas × 1,46
+ * milhão de linhas. Ver ACHADOS #59.
+ */
+export function igualdadeDaTransicao(
+  row: Row,
+  columns: ReadonlySet<string>,
+): { coluna: string; valor: DaxValue } | undefined {
+  if (columns.size !== 1) return undefined;
+  const [coluna] = columns;
+  // `in`, não `?? null`: ausente não é branco. O índice tem o mesmo cuidado no
+  // guarda (4) de `candidatos()` — ver ACHADOS #50.
+  if (!(coluna in row)) return undefined;
+  return { coluna, valor: row[coluna] ?? BLANK };
 }
