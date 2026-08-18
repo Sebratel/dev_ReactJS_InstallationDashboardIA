@@ -1,9 +1,12 @@
 # Continuação — onde o trabalho parou
 
-> **Atualizado em 14/08/2026**, depois de as mesclagens mortas da camada M serem
-> achadas e decididas (#64) e de o congelamento das tabelas calculadas cair de
-> **14 h 28 min para 26 min** (#66 → #67 → #68). É o ponto de entrada de uma sessão
-> nova: autocontido, feito para ser lido antes de tocar em qualquer coisa.
+> **Atualizado em 18/08/2026**, depois de a Fase 4 sair do papel: um
+> `iniciaKafkaCDC` sem medição foi revertido (#71) e substituído pelo **ingestor de
+> rematerialização**, validado ponta a ponta contra a stack descartável (#72). Antes
+> disso, em 14/08, as mesclagens mortas da camada M foram achadas e decididas (#64) e
+> o congelamento das tabelas calculadas caiu de **14 h 28 min para 26 min**
+> (#66 → #67 → #68). É o ponto de entrada de uma sessão nova: autocontido, feito para
+> ser lido antes de tocar em qualquer coisa.
 >
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
@@ -42,7 +45,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1317 testes, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 1322 testes, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -94,7 +97,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1317 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
+**1322 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
 
 | camada | estado |
 |---|---|
@@ -109,6 +112,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 | **Reaquecimento** (`apps/api/src/aquecedor.ts`) | ✅ a API se aquece no arranque e sempre que a identidade muda (snapshot refeito **ou** virada do dia). ~3 min para as 14 páginas. `npm start` espera por ele em vez de disputar |
 | **Paginação de tabela** (`apps/api/src/cache-visual.ts`) | ✅ o resultado inteiro do visual fica guardado e a janela é um `slice`. Antes, cada clique em "próxima" recalculava as 33.462 linhas para entregar 200 — **2,9 s a 8,0 s por clique**, medido (#70). Orçamento LRU de 512 MB, `CACHE_VISUAL_MB=0` desliga |
 | **Redis** | ⏳ **não configurado** — a `.env` tem `REDIS_KEY_PREFIX` mas **não** `REDIS_URL`, então o cache é só memória e morre no restart (o aquecimento de arranque cobre). Basta pôr `REDIS_URL=redis://host:6379/0` para ele entrar **atrás** da memória, não no lugar dela (#69) |
+| **CDC / Fase 4** (`tools/cdc`) | 🚧 **o código existe, o gatilho não foi atingido.** `cdc:observa` conta, `cdc:slot` vigia o slot, `cdc:ingere` rematerializa só as queries afetadas (debounce + guarda de concorrência). Validado contra `docker/cdc/`: 15 eventos → 1 rodada de 13 queries, 12 materializaram, 2.090.676 linhas (#72). Contra o **Voalle de produção não há slot, não há medição e não está ligado** — ver §6 |
 | **Autenticação** | ❌ **não existe** — costura pronta (`apps/api/src/identidade.ts`), formato da decisão em `specs/_catalog/permissoes.yaml`, sem leitor e sem login |
 | **Tela** (`apps/web`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
 | **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam**. `agendamento-field` abre em **48,6 s a frio** pela API (medido em 13/08 no `npm start`) — os 104 min do #45 são de ANTES das otimizações #46-#52 e nunca foram remedidos no `npm run paginas` |
@@ -174,7 +178,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 68 entradas.
+   registro; hoje tem 72 entradas.
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
@@ -195,13 +199,18 @@ E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 A conta `erickazambuja-Sebratel` **não tem permissão de escrita** no repositório da
 organização. O remoto está configurado
 (`git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git`), mas **não existe
-`origin/main`** e os **66 commits do repositório vivem só nesta máquina**. Não tente
+`origin/main`** e os **113 commits do repositório vivem só nesta máquina**. Não tente
 contornar — é permissão, não configuração.
+
+> **18/08/2026 — `apps/web/` estava fora do git.** A tela inteira, 28 arquivos,
+> existia só no disco. Foi commitada junto com o resto do acúmulo (13 commits). Vale
+> como aviso permanente: **rode `git status` no começo da sessão**, não no fim. Um
+> `?? apps/web/` no meio da lista não parece um incidente, e era.
 
 Confira com:
 
 ```bash
-git rev-list --count HEAD          # 63 no momento em que este arquivo foi escrito
+git rev-list --count HEAD          # 113 no momento em que este arquivo foi escrito
 git rev-parse --verify origin/main # falha: o ref não existe
 ```
 
@@ -322,13 +331,26 @@ Não faça na frente disso, e o motivo:
   propósito. A condição de revisão do [ACHADOS](ACHADOS.md) #39 não mudou: Permission
   Engine, corpo de requisição e WebSocket de realtime. Antes disso é troca de peça que
   funciona.
-- **Não mexa na Fase 4 (realtime).** A decisão está tomada em
-  [DECISAO-REALTIME.md](DECISAO-REALTIME.md), escrita em 11/08/2026: TTL + refresh
-  agendado até que **duas medições** mostrem que eles não bastam. O gatilho está lá,
-  e ele é um número — não a disponibilidade do Kafka no Portainer.
-  **O instrumento da medição já existe** (`npm run cdc:observa`), e ele só conta.
-  Fazer o evento CDC *agir* — invalidar cache ou rematerializar — é que continua
-  fora.
+- **Não aponte o CDC para o Voalle.** Isto mudou em 18/08/2026 e mudou só pela
+  metade — leia [ACHADOS](ACHADOS.md) #71 e #72 antes.
+
+  **O que passou a existir:** `npm run cdc:ingere`. Ele resolve as queries afetadas
+  pelo evento e roda `snapshot --query=<ids> --refazer` só nelas, com debounce e
+  guarda de concorrência. Não inventa invalidação: o carimbo do snapshot novo já está
+  na chave do cache, então o cache cai sozinho. Está **validado ponta a ponta** contra
+  a stack de `docker/cdc/` — 15 eventos crus coalesceram em 1 rodada de 13 queries,
+  12 materializaram, 2.090.676 linhas.
+
+  **O que continua fora:** o gatilho de
+  [DECISAO-REALTIME.md](DECISAO-REALTIME.md) — as **duas medições** — segue **não
+  medido e não atingido contra o Voalle de produção**. Existir o consumidor não
+  autoriza ligá-lo lá. O que autoriza é o número, e ele é um número: não a
+  disponibilidade do Kafka no Portainer, nem o fato de o código estar pronto.
+  `npm run cdc:observa` continua sendo o instrumento, e continua só contando.
+
+  **A ordem, quando for a hora:** medir com `cdc:observa` numa janela de verdade
+  (minutos, não milissegundos — 4 eventos em 56 ms foi exatamente o que enganou no
+  #71) → confrontar com o gatilho → só então o RUNBOOK.
 - **Não registre conector Debezium sem o monitor de slot de pé.**
   `npm run cdc:slot -- --vigia`. Slot sem consumidor retém WAL até o disco do ERP
   encher, e o incidente é no Voalle, em produção. Leia
@@ -436,14 +458,17 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
 
 - **Outra sessão pode estar commitando em paralelo.** Rode `git status` e confira o que
   está staged **antes** de commitar; um `git add -A` distraído leva o trabalho dela
-  junto. Hoje são dela: `prototype.html`, `docs/DECISAO-REALTIME.md`,
+  junto. Em 18/08/2026 os arquivos que eram dela — `prototype.html`,
   `docs/DOCUMENTACAO_ARQUITETURA.md`, `docs/diagrama_arquitetura.svg`,
-  `docs/miro_diagrams/`, e **uma linha do `README.md`** (a do risco de recompute, na
-  tabela de fases). O procedimento usado até aqui: tirar a linha dela, `git add`,
-  commitar, e devolvê-la sem staging.
-- **`prototype.html` é maquete, e os números dele são inventados.** Foi alinhado aos
-  tokens da v2 e ganhou uma faixa fixa dizendo isso. Não o use como referência de
-  número, e não o confunda com `apps/api/web/index.html`, que é a tela real.
+  `docs/miro_diagrams/` — **não existem mais no disco**, e `docs/DECISAO-REALTIME.md`
+  está commitado. A armadilha continua valendo como método; a lista, não.
+- **`git status` no começo da sessão, não no fim.** Foi assim que `apps/web/` passou
+  dias inteiro fora do git — ver §5.1.
+- **`docker-compose.yml` da raiz é armadilha, e está fora do git de propósito.** É a
+  variante incompleta descrita no [ACHADOS](ACHADOS.md) #71 — sem Postgres falso e sem
+  conector — e ela **briga por porta** com `docker/cdc/docker-compose.yml`, que é a que
+  o [RUNBOOK-CDC.md](RUNBOOK-CDC.md) manda usar. Foi ela que produziu os "4 eventos em
+  56 ms" que quase passaram por medição. Não a versione; se for apagar, apague.
 
 ---
 
@@ -474,7 +499,7 @@ specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
   _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          70 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          72 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa
