@@ -189,6 +189,103 @@ test('coluna de espécie misturada não é reconciliável — dois defeitos de u
 
 // ───────────────────────────────────────────── 5. a chave composta
 
+// ─────────────────────────────── 6. faixa de data que não se toca: a causa, não a pista
+//
+// Achado #73. `GESTORES EQUIPES` parou de ser alimentada em 16/07/2025 e
+// `PROTOCOLOS GERAL` só tem 2026 — a junção nunca teve como casar. A nota antiga
+// dizia "confira as duas pontas no m_expression", onde não havia nada errado, e
+// descobrir isso levou uma manhã de medição. Estes testes são para que a próxima vez
+// custe uma linha de saída.
+//
+// O teste de mutação: apague a chamada de `faixaDisjunta` no `Table.NestedJoin` e o
+// primeiro teste daqui cai — a nota volta a ser a genérica.
+
+const D = (iso: string): Date => new Date(`${iso}T00:00:00.000Z`);
+const JUNTA_DATA = 'let m = Table.NestedJoin(E, {"DIA"}, D, {"DT"}, "N") in m';
+
+test('faixas de data que não se tocam: a nota diz a causa, com as duas faixas', () => {
+  const { ev, notas, perguntas } = monta({
+    E: tab(['DIA'], [[D('2026-01-02')], [D('2026-08-18')]]),
+    D: tab(['DT'], [[D('2024-08-01')], [D('2025-07-16')]]),
+  });
+  const t = ev.avaliaTabela(JUNTA_DATA);
+
+  assert.equal(comPar(t), 0, 'o resultado não muda: a nota explica, não conserta');
+  assert.equal(notas.length, 1);
+  assert.match(notas[0]!.mensagem, /NÃO SE TOCAM/);
+  assert.match(notas[0]!.mensagem, /esquerda de 2026-01-02 a 2026-08-18/);
+  assert.match(notas[0]!.mensagem, /direita de 2024-08-01 a 2025-07-16/);
+  assert.match(notas[0]!.mensagem, /dado que parou de chegar, não chave errada/);
+  assert.doesNotMatch(
+    notas[0]!.mensagem,
+    /m_expression/,
+    'não manda procurar defeito onde não tem',
+  );
+  assert.deepEqual(perguntas, [], 'reconciliação não tem nada a oferecer aqui');
+});
+
+test('faixas que se sobrepõem sem casar nenhum dia: a nota volta a ser a genérica', () => {
+  // Mesmo período dos dois lados, dias diferentes. Aqui "confira as duas pontas" é o
+  // conselho certo — a hipótese de dado parado está descartada pela própria faixa.
+  const { ev, notas } = monta({
+    E: tab(['DIA'], [[D('2026-01-02')], [D('2026-01-04')]]),
+    D: tab(['DT'], [[D('2026-01-03')], [D('2026-01-05')]]),
+  });
+  ev.avaliaTabela(JUNTA_DATA);
+  assert.equal(notas.length, 1);
+  assert.match(notas[0]!.mensagem, /não são texto×número/);
+  assert.doesNotMatch(notas[0]!.mensagem, /NÃO SE TOCAM/);
+});
+
+test('faixas que só encostam pelas pontas não são disjuntas', () => {
+  // max da direita == min da esquerda. Não casa nenhuma linha por outro motivo, e
+  // afirmar "faixas não se tocam" aqui seria mentira.
+  const { ev, notas } = monta({
+    E: tab(['DIA'], [[D('2026-01-03')], [D('2026-01-04')]]),
+    D: tab(['DT'], [[D('2026-01-01')], [D('2026-01-03')]]),
+  });
+  const t = ev.avaliaTabela(JUNTA_DATA);
+  assert.equal(comPar(t), 1, 'o dia que encosta casa de verdade');
+  assert.deepEqual(notas, [], 'junção viva é silêncio');
+});
+
+test('faixa disjunta é diagnosticada de qualquer lado — direita à frente também', () => {
+  const { ev, notas } = monta({
+    E: tab(['DIA'], [[D('2024-01-01')]]),
+    D: tab(['DT'], [[D('2026-05-05')]]),
+  });
+  ev.avaliaTabela(JUNTA_DATA);
+  assert.match(notas[0]!.mensagem, /NÃO SE TOCAM/);
+  assert.match(notas[0]!.mensagem, /esquerda de 2024-01-01 a 2024-01-01/);
+});
+
+test('coluna de data misturada com texto não tem faixa — e não ganha o diagnóstico', () => {
+  const { ev, notas } = monta({
+    E: tab(['DIA'], [[D('2026-01-02')], ['2026-01-03']]),
+    D: tab(['DT'], [[D('2024-08-01')]]),
+  });
+  ev.avaliaTabela(JUNTA_DATA);
+  assert.equal(notas.length, 1);
+  assert.doesNotMatch(
+    notas[0]!.mensagem,
+    /NÃO SE TOCAM/,
+    'espécie misturada é outro defeito; afirmar faixa aqui seria resolver dois de uma vez',
+  );
+});
+
+test('chave composta: basta UMA posição de data impossível para explicar a morte', () => {
+  const { ev, notas } = monta({
+    E: tab(['NOME', 'DIA'], [['ana', D('2026-01-02')], ['bia', D('2026-03-04')]]),
+    D: tab(['N2', 'DT'], [['ana', D('2025-01-02')], ['bia', D('2025-03-04')]]),
+  });
+  ev.avaliaTabela('let m = Table.NestedJoin(E, {"NOME", "DIA"}, D, {"N2", "DT"}, "N") in m');
+  assert.equal(notas.length, 1);
+  assert.match(notas[0]!.mensagem, /NÃO SE TOCAM/);
+  assert.match(notas[0]!.mensagem, /'DIA' × 'DT'/, 'nomeia a posição impossível, não a chave toda');
+});
+
+// ───────────────────────────────────────────── 7. a chave composta
+
 test('chave composta reconcilia só a posição que é texto×número', () => {
   const { ev, notas } = monta(
     {

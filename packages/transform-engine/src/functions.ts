@@ -820,6 +820,27 @@ const TABELA: MFunctionImpl[] = [
       // exatamente o único erro que este projeto não pode cometer. Então aqui ele
       // **mede** e **conta**; quem libera é uma decisão humana em
       // `specs/_catalog/juncoes.yaml`, com o número que a justificou escrito nela.
+      // ANTES de falar de tipo: faixa de data que não se toca explica a morte
+      // inteira, e é a explicação mais útil que existe aqui. Nenhuma reconciliação a
+      // conserta — se um lado termina antes de o outro começar, não há par possível
+      // em comparação nenhuma —, então dizer "confira as duas pontas" seria mandar a
+      // pessoa procurar defeito onde não tem. Ver ACHADOS #73.
+      const disjunta = faixaDisjunta(esq, ke, dir, kd);
+      if (disjunta !== null) {
+        ctx.nota({
+          fn,
+          assunto,
+          mensagem:
+            `nenhuma das ${estrita.comChave} linhas de chave completa casou, e a causa é a faixa de ` +
+            `'${disjunta.esqColuna}' × '${disjunta.dirColuna}': ela é data nas duas pontas e as faixas ` +
+            `NÃO SE TOCAM — esquerda de ${soDia(disjunta.esq.min)} a ${soDia(disjunta.esq.max)}, ` +
+            `direita de ${soDia(disjunta.dir.min)} a ${soDia(disjunta.dir.max)}. ` +
+            'Nenhuma reconciliação de tipo casaria: não existe par possível. ' +
+            'A coluna aninhada sai INTEIRA NULA, e isto é dado que parou de chegar, não chave errada.',
+        });
+        return new MTable(ordem, estrita.rows);
+      }
+
       const frouxas = ke.map((_c, i) => reconciliavel(esq, ke[i]!, dir, kd[i]!));
       if (!frouxas.some(Boolean)) {
         ctx.nota({
@@ -1889,6 +1910,71 @@ function especiesDe(t: MTable, coluna: string): Set<string> {
     if (s.size > 1) break;
   }
   return s;
+}
+
+interface FaixaDeData {
+  readonly min: Date;
+  readonly max: Date;
+}
+
+/**
+ * A faixa de data de uma coluna, ou `null` se ela não é **só** data.
+ *
+ * Sai fora no primeiro valor que não é `Date`: coluna de espécie misturada não tem
+ * faixa, e afirmar uma seria o mesmo erro de resolver dois defeitos ao mesmo tempo
+ * que `reconciliavel` evita.
+ */
+function faixaDeData(t: MTable, coluna: string): FaixaDeData | null {
+  let min: Date | null = null;
+  let max: Date | null = null;
+  for (const r of t.rows) {
+    const v = r.get(coluna) ?? null;
+    if (v === null) continue;
+    if (!(v instanceof Date)) return null;
+    if (min === null || v < min) min = v;
+    if (max === null || v > max) max = v;
+  }
+  return min === null || max === null ? null : { min, max };
+}
+
+/** `2026-08-18`. A hora não entra: quem lê a nota decide por dia. */
+function soDia(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * A primeira posição da chave em que as duas pontas são data e as faixas **não se
+ * tocam** — ou `null` quando isso não acontece.
+ *
+ * **Por que isto merece uma nota própria.** Faixa disjunta explica a junção morta
+ * **inteira**, e nenhuma reconciliação de tipo a conserta: se um lado termina antes
+ * de o outro começar, não existe par possível em comparação nenhuma. É diagnóstico
+ * causal, não pista.
+ *
+ * Foi o caso de `GESTORES EQUIPES` (ACHADOS #73): a tabela de origem parou de ser
+ * alimentada em 16/07/2025 e o outro lado só tem 2026. A nota antiga mandava
+ * "conferir as duas pontas no `m_expression`", onde não havia nada errado — e a
+ * investigação que descobriu isso levou uma manhã que esta função encurta para uma
+ * linha de saída.
+ *
+ * Numa chave composta basta **uma** posição impossível para matar a junção, então a
+ * primeira que aparecer já é resposta suficiente.
+ */
+function faixaDisjunta(
+  esq: MTable,
+  ke: readonly string[],
+  dir: MTable,
+  kd: readonly string[],
+): { esqColuna: string; dirColuna: string; esq: FaixaDeData; dir: FaixaDeData } | null {
+  for (let i = 0; i < ke.length; i++) {
+    const a = faixaDeData(esq, ke[i]!);
+    const b = faixaDeData(dir, kd[i]!);
+    if (a === null || b === null) continue;
+    if (a.max < b.min || b.max < a.min) {
+      return { esqColuna: ke[i]!, dirColuna: kd[i]!, esq: a, dir: b };
+    }
+  }
+  return null;
 }
 
 
