@@ -55,6 +55,7 @@ import {
   SCOPE_SHEETS_READONLY,
 } from '../../../packages/query-engine/src/google-auth.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
+import { leJuncoes, reconciliadorDe } from '../../../packages/semantic-model/src/juncoes.ts';
 import type { Connector, ResolvedQuery } from '../../../packages/query-engine/src/types.ts';
 import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
 import {
@@ -141,6 +142,18 @@ const culture = (
 
 const todas = registry.list().filter((q) => q.m_expression && !FORA_DO_ESCOPO.has(q.id));
 
+/**
+ * Quais mesclagens mortas podem comparar a chave como inteiro — decisão humana em
+ * `specs/_catalog/juncoes.yaml`.
+ *
+ * O `tools/snapshot` injeta isto desde o #64; aqui faltava, e o efeito era pior que
+ * "faltou um recurso": as duas ferramentas rodam a MESMA camada M e davam diagnóstico
+ * diferente. `run:mlayer` reportava como morta a junção de `N°PROTOCOLO` que o
+ * `snapshot` reconcilia por decisão registrada — alarme falso justamente na
+ * ferramenta que se usa para investigar. Achado #73.
+ */
+const reconcilia = reconciliadorDe(leJuncoes(path.join(ROOT, 'specs')));
+
 /** rowCount do SQL, gravado pelo `npm run validate:queries`. */
 function linhasDoGolden(id: string): number | null {
   const p = path.join(ROOT, 'specs', 'golden', `${id}.golden.json`);
@@ -165,6 +178,14 @@ interface Resultado {
   erro?: string;
   /** Divergência de contagem que o M **não** explica. */
   alerta?: string;
+  /**
+   * O que a avaliação da camada M precisou dizer — hoje, junção que não casou nada.
+   *
+   * Vazio é o normal. Elas atravessam o subprocesso junto com o resto do resultado
+   * porque a decisão de #64 é que quem executa a camada M **tem** de imprimi-las: uma
+   * mescla morta devolvia 87.805 nulos calada.
+   */
+  notas?: string[];
   /**
    * Contagem de linha de **cada passo de tabela**, na ordem em que o M os declara.
    * Só é preenchida com `--passos`, porque a lista tem 60 itens nas queries grandes.
@@ -290,7 +311,14 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
   });
 
   try {
-    const feitas = await runQueries({ specs: todas, apenas: [q.id], culture, fonte, web });
+    const feitas = await runQueries({
+      specs: todas,
+      apenas: [q.id],
+      culture,
+      fonte,
+      web,
+      reconcilia,
+    });
     const r = feitas.get(q.id)!;
     const daFonte = usaFonteExterna(q.m_expression!) ? (buscas.get(q.id) ?? null) : null;
 
@@ -319,6 +347,11 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
       msConversao,
       linhasLidas,
       alerta,
+      // O `tools/snapshot` imprime as notas desde o #64; este aqui as engolia. É a
+      // ferramenta de INVESTIGAR a camada M — rodar `--only=protocolos-geral` para
+      // entender uma junção morta e não ver a nota que a explica é o oposto do que
+      // ela existe para fazer. Achado #73.
+      notas: r.notas.map((n) => `${n.fn} ${n.assunto}: ${n.mensagem}`),
       // Só passo que **é** tabela entra: `let` também guarda escalar e lista, e
       // "linhas" não quer dizer nada para eles.
       passosDetalhe: args.passos
@@ -503,6 +536,16 @@ if (args.passos) {
       console.log(`  ${n(p.linhas).padStart(11)}  ${p.nome}${delta}`);
       anterior = p.linhas;
     }
+  }
+}
+
+// Antes dos alertas e das falhas de propósito: uma junção morta costuma ser a CAUSA
+// de uma contagem estranha, então ler a nota primeiro é ler na ordem em que ajuda.
+const comNotas = resultados.filter((r) => r.notas?.length);
+if (comNotas.length) {
+  console.log('\n── O que a camada M precisou dizer ──');
+  for (const r of comNotas) {
+    for (const nota of r.notas!) console.log(`  ${r.id}: ${nota}`);
   }
 }
 
