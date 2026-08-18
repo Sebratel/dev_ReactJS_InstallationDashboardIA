@@ -5235,3 +5235,156 @@ inteiro: 95,9 s nesta rodada, contra 157,5 s / 194,8 s / 264,0 s nas três anter
 ao conserto. A variação entre rodadas é do disco, não do conserto — o que se pode
 afirmar é que **não houve regressão**, não que houve ganho. Ocupação do orçamento com
 as 14 páginas quentes: **153,3 MB de 512 MB**, 35 resultados guardados.
+
+## #71 — Um `iniciaKafkaCDC` que **age** apareceu no diff sem gatilho medido; a medição real deu 4 eventos em 56 ms
+
+**18/08/2026.** Uma sessão de continuação encontrou, não commitado, um
+`apps/api/src/index.ts` com `iniciaKafkaCDC`: um consumer Kafka de verdade que, a
+cada evento, chamava `srv.notificaMudanca()` para invalidar cache e empurrar por SSE
+(`/api/realtime`, `servidor.ts`). Isso é exatamente o que o
+[DECISAO-REALTIME.md](DECISAO-REALTIME.md) diz, por escrito, que não está
+autorizado: *"Fazer o evento CDC agir — invalidar cache ou rematerializar — é que
+continua fora."* Não havia registro de que o gatilho (as duas condições do
+documento) tivesse sido medido.
+
+### O que a medição real mostrou
+
+Três checagens, todas somente-leitura:
+
+1. `npm run cdc:slot` contra o Voalle: **nenhum slot de replicação**. Igual estava em
+   11/08 — nenhuma captura ativa contra produção.
+2. `npm run cdc:observa` com o `KAFKA_BROKERS` do `.env` (`localhost:9092`):
+   `ECONNREFUSED`. Nenhum broker de pé para conectar.
+3. A stack local descartável (`docker-compose.yml` da raiz — variante incompleta da
+   de `docker/cdc/`, sem Postgres fake nem conector) estava com os quatro containers
+   parados (`Exited`). Subindo-os: `GET :8083/connectors` devolveu `[]` — nenhum
+   conector registrado —, mas o tópico `voalle.public.v_service_desk_slots_productivity_informative`
+   já existia, sobra de uma captura anterior. Lendo-o do início
+   (`cdc:observa -- --desde-inicio`): **4 eventos, todos dentro de uma janela de
+   56 ms**.
+
+O próprio `cdc:observa` calcula "intervalo típico: 0 ms" a partir desses 4 eventos e
+imprime "isso satisfaz a condição 1 do gatilho" — mas isso é um artefato de amostra
+pequena (4 eventos colados, provavelmente sobra do *snapshot* inicial de um teste),
+não uma taxa de mudança real. O `DECISAO-REALTIME.md` pede uma janela de observação
+de verdade (minutos, não milissegundos) antes de contar como medição.
+
+### Por que reverter, e não só "faltou medir"
+
+Mesmo com uma medição de verdade da condição 1, agir sobre o evento hoje não traria
+dado mais fresco: a API não consulta fonte nenhuma, ela lê o snapshot que
+`npm run snapshot` materializou em disco. Invalidar o cache de resposta faria o
+próximo pedido recalcular sobre o **mesmo arquivo** — um cache-miss que parece fresco
+e não é, que é exatamente a classe "número plausível e errado" que a regra 4 não
+aceita. Fazer o CDC valer a pena exige antes um dos dois: rematerializar o snapshot
+no evento (a operação de 26 min do #68, que não pode rodar concorrente com nada,
+ver §7) ou um modelo de carga incremental — nenhum dos dois existe. Ou seja: o
+bloqueio não é só "faltou medir a condição 1", é que a condição 2
+("a conta do refresh não cabe mais") e a arquitetura de leitura por snapshot
+continuam de pé independentemente do resultado da medição.
+
+### O que foi feito
+
+`iniciaKafkaCDC`, `notificaMudanca`, `clientesSSE` e a rota `/api/realtime` foram
+revertidos de `apps/api/src/{index,servidor}.ts` antes de qualquer commit — a Fase 4
+continua bloqueada como o `DECISAO-REALTIME.md` já dizia. O resto do diff da sessão
+(parâmetros de SQL, o fix de fuso horário sem-timezone, a otimização por índice da
+transição de contexto, o nível de hierarquia de data em filtro) não tem relação com
+CDC e não foi tocado. `tools/cdc` continua existindo e sendo apenas o instrumento de
+medição — nenhuma mudança nele.
+
+**Se alguém reabrir isto:** meça de verdade primeiro — `npm run cdc:slot -- --vigia`
+numa janela, depois `npm run cdc:observa -- --minutos=60` contra uma fonte real (o
+Voalle com conector de DBA, ou a stack de `docker/cdc/` com `gera-mudancas.sh`
+simulando volume real) —, e resolva a arquitetura de invalidação-sem-rematerialização
+antes de reintroduzir `iniciaKafkaCDC`.
+
+## #72 — O Change Ingestor existe: evento CDC rematerializa só o que sujou, dado real do Voalle, sem tocar produção
+
+**18/08/2026.** Depois do #71 (o `iniciaKafkaCDC` revertido por não ter medição
+nem resolver a arquitetura de invalidação-sem-rematerialização), o Erick decidiu
+abrir a Fase 4 de verdade — não contra o Voalle de produção (isso continua
+exigindo as etapas de DBA do `RUNBOOK-CDC.md`), mas construindo e validando o
+Change Ingestor contra a stack descartável de `docker/cdc/`, que já existia
+parada no Docker.
+
+### O desenho: rematerializar, não só invalidar
+
+A pergunta que o #71 deixou em aberto: o que o Change Ingestor deve fazer quando
+chega um evento, já que invalidar cache sozinho não deixa nada mais fresco (a API
+lê snapshot em disco)? A resposta escolhida: **rematerializar só as queries que a
+tabela suja**, via `npm run snapshot --query=<ids> --refazer` — que já existe e já
+faz exatamente isso. O manifesto novo em disco já é o que invalida o cache da
+resposta sozinho (o carimbo entra na chave, ACHADOS #47/#66), então não precisou
+de rota nova, SSE nem gateway de fan-out — a única invalidação que existe continua
+sendo a que já existia.
+
+Duas peças novas, as duas com teste:
+
+- **`tools/cdc/src/fila.ts`** (`FilaDeRematerializacao`) — acumula queries sujas e
+  roda uma rematerialização por rajada (debounce), **nunca duas ao mesmo tempo**.
+  É a lição do §7 aplicada aqui: dois `npm run paginas` de 8 GB brigando pela
+  mesma máquina já custaram uma manhã de medição perdida; o mesmo risco existe
+  entre um Kafka barulhento e uma rematerialização lenta. O teste que mais valeu:
+  `roda()` que rejeita tinha um `finally` sem `catch` em volta — a rejeição
+  escapava do `void this.#tentaRodar()` (fire-and-forget) como *unhandled
+  rejection*, e teria derrubado o processo inteiro na primeira falha de
+  rematerialização. Pego pelo teste antes de rodar contra Kafka de verdade.
+- **`tools/cdc/src/ingestor.ts`** (`npm run cdc:ingere`) — a parte que fala com o
+  Kafka: `leEnvelope` e a nova `queriesDoEvento` (extraída de `medidor.ts`, para
+  observador e ingestor nunca discordarem sobre o que uma tabela suja) resolvem o
+  evento, `fila.ts` decide quando rodar.
+
+### A validação, com número
+
+A stack de `docker/cdc/docker-compose.yml` nunca tinha subido neste ambiente.
+Duas coisas quebraram antes de funcionar, as duas específicas deste ambiente
+Windows:
+
+1. O healthcheck do zookeeper (`echo ruok | nc ...`) falhava com `nc: command not
+   found` — a imagem `quay.io/debezium/zookeeper:2.7` não tem `nc`. O processo
+   estava saudável (log confirma), só o healthcheck mentia. Trocado para
+   `curl http://localhost:8080/commands/ruok` — o AdminServer HTTP que a mesma
+   imagem já expõe.
+2. `docker/cdc/registra-conector.sh` fazia `node -e "require('$AQUI/conector.json')"`
+   com `$AQUI` no formato `/c/Users/...` do Git Bash. Interpolado dentro da string
+   do script, o MSYS não traduz para `C:/...` (só traduz argumento que *é* um
+   caminho inteiro) — `MODULE_NOT_FOUND`. Corrigido passando o caminho como
+   `process.argv[1]`, argumento separado: aí a tradução automática do Git Bash
+   entra, e funciona nos dois mundos (no Linux/Mac o argv passa direto, sem
+   tradução nenhuma a fazer).
+
+Com a stack de pé e o conector registrado, `bash docker/cdc/gera-mudancas.sh 15`
+gerou eventos reais de Debezium em `erp.contracts`, `erp.assignment_incidents` e
+`erp.tabela_que_ninguem_usa` (a terceira, de propósito, para provar que tabela sem
+query dona não dispara nada). O ingestor:
+
+- resolveu corretamente as 19 queries afetadas pelas duas tabelas reais (união de
+  `contracts` e `assignment_incidents`);
+- ignorou `tabela_que_ninguem_usa` com a mensagem certa, sem tentar rematerializar
+  nada;
+- **coalesceu os 15 eventos brutos numa rodada só** — não 15, não 2 (uma por
+  tabela): o debounce de 5 s juntou tudo antes de disparar. É a prova de que
+  `fila.ts` funciona contra Kafka de verdade, não só contra o agendador de mentira
+  do teste.
+
+A rodada então chamou `npm run snapshot --query=<13 ids> --refazer` contra o
+**Voalle de produção real** — leitura, o mesmo `npm run snapshot` que já roda
+rotineiramente, nenhum risco novo. Resultado: **12 de 13 sucesso, 2.090.676
+linhas, 1218,2 MB**, entre 792 ms (`tecnicos-auxiliares`) e 30,2 s
+(`protocolos-geral`). A 13ª (`protocolos-produtividade`) estourou o heap padrão —
+característica já conhecida desta query, não bug novo — e terminou com sucesso
+rodando `--memoria=8192` isolada (68.707 linhas, 52,7 s). O ingestor já aceita
+`--memoria=` para isto; só não veio setado nesta rodada de validação.
+
+### O que isto prova, e o que continua faltando
+
+Prova o pipeline inteiro, ponta a ponta, com dado real: evento → tabela → queries
+afetadas → uma rematerialização por rajada → cache invalidado pelo mecanismo que
+já existia. **Não prova o gatilho do `DECISAO-REALTIME.md`** — isso exige medir
+contra o Voalle de verdade, com um conector de DBA, e continua não feito. Ligar
+isto contra produção é a próxima decisão, e ela é do Erick com um DBA, não deste
+repositório sozinho.
+
+A stack de `docker/cdc/` foi derrubada ao final (`docker compose down -v`),
+como o `RUNBOOK-CDC.md` manda.
