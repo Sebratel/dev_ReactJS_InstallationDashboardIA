@@ -595,3 +595,60 @@ e está vazio no Power BI também, que lê a mesma tabela. Não é divergência 
 > reconcilia **tipo** de chave; faixa de data disjunta não é problema de tipo — se um
 > lado termina antes de o outro começar, não existe par possível em comparação
 > nenhuma. Medido e registrado em [ACHADOS](ACHADOS.md) #73.
+
+---
+
+## 12. O painel do ano é "2026" ou "o ano corrente"? O corte está fixo em 11 lugares
+
+**Quem responde:** o Erick, ou quem pediu o `relatorio-do-ano`.
+
+**O número.** O recorte anual não é uma regra, são **onze literais iguais** escritos
+à mão no SQL de onze queries:
+
+```
+'2026-01-01'  em  base-categorias-field, field-agenda, instalacoes-reincidentes,
+                  protocolos-auxiliares, protocolos-geral, protocolos-produtividade,
+                  protocolos-telefonia, reincidencia, retorno-prioritario,
+                  tecnicos-auxiliares, troca-endereco
+```
+
+É o único literal de data em todo o corpus de 24 queries.
+
+**O que isso quebra, e quando.** Em **01/01/2027** o painel do ano continua mostrando
+2026, e vai mostrando 2026 + 2027 juntos conforme o ano anda. Não dá erro, não gera
+alerta: só passa a somar dois anos sob o rótulo de um. É a pior forma de defeito de
+data — a que o painel exibe com confiança.
+
+**Um segundo problema, hoje.** As duas pontas da janela filtram **colunas
+diferentes**:
+
+```
+piso  = SQL   a.created >= '2026-01-01'        → DATA CRIADO
+teto  = DAX   DATA INSTALADO <= TODAY()        → DATA INSTALAÇÃO
+```
+
+Logo, protocolo **criado em 2025 e instalado em 2026** não entra — e para a operação
+ele é instalação de 2026. Medindo a defasagem criar→instalar no que sobrou:
+p50 0 dias, p95 **7 dias**, p99 30, máximo 227. Ou seja, o efeito é pequeno e se
+concentra nos primeiros dias de janeiro.
+
+> **Não consigo medir o tamanho exato daqui.** O que ficou de fora foi descartado
+> pelo SQL antes de chegar ao snapshot; e os primeiros dias de janeiro também são
+> feriado e recesso, então a queda ali não separa "corte" de "ninguém trabalhando".
+> Para o número real preciso de um `SELECT` de contagem novo, read-only, com
+> `a.created >= '2025-12-01'`.
+
+**Pergunta, em três partes:**
+
+1. O painel é **"2026"** (um ano fixo, que alguém troca à mão todo janeiro) ou
+   **"o ano corrente"** (deveria virar sozinho)? Se for o segundo, o corte precisa
+   deixar de ser literal.
+2. Instalação **realizada** em 2026 de protocolo **aberto** em 2025 conta como
+   instalação de 2026? Pela leitura operacional, sim — e hoje ela não entra.
+3. Quer que eu meça primeiro quantos protocolos de dezembro/2025 foram instalados em
+   2026, antes de decidir? É uma consulta de contagem, sem valor de linha.
+
+> Consertar isso **não** é conserto de código nosso: o literal está na expressão M do
+> PBIP, que é read-only aqui (regra 1). Divergir de propósito exigiria o
+> `sql-override.yaml` que ainda não existe (item 3 da fila). Medido em
+> [ACHADOS](ACHADOS.md) #74.

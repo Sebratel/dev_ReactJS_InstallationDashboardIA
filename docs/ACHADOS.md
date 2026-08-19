@@ -5513,3 +5513,130 @@ de gestores está vazia" — plausível, e errada. **Número que contradiz uma r
 conhecida do sistema é sinal de instrumento quebrado antes de ser sinal de dado
 quebrado.** O diagnóstico passou a separar `undefined` de `null` na saída, com o
 motivo escrito ao lado.
+
+---
+
+## #74 — Duas queries são a mesma menos dois IDs, uma é subconjunto da outra, e o corte do ano está escrito onze vezes
+
+**18/08/2026.** Pergunta do usuário: *"sobre redundância de querys, existe algo que
+podemos reutilizar que traz a mesma coisa?"* Medi as 24 queries do catálogo por
+quatro eixos independentes, porque cada um erra sozinho: duas queries podem ler as
+mesmas tabelas e devolver coisas diferentes (agregação distinta), e podem ter SQL
+parecido com recortes opostos. Nenhum valor de linha foi lido — só metadado do
+catálogo.
+
+### 1. `protocolos-auxiliares` × `protocolos-produtividade` = **99,4%**
+
+Jaccard de trigramas sobre o SQL canonizado (espaço colapsado, minúsculas,
+`AS "apelido"` removido — dois `SELECT` iguais com apelidos diferentes ainda são a
+mesma leitura). O diff de tokens em ~3.070 caracteres: **zero tokens exclusivos de
+`auxiliares`**, e exclusivos de `produtividade` apenas `'1256'` e `'279'`, na lista
+comentada *"Filtrando os tipos de protocolo"*:
+
+```
+auxiliares    it.id IN ('12','1014','1254','1255',       '1136','249','268','1160','1015',      '15')
+produtividade it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
+```
+
+Todo o resto é idêntico, inclusive `AND a.created >= '2026-01-01'` e o
+`WHERE PERSONA1 = 1;` final.
+
+E as duas não são independentes: **`protocolos-produtividade` cita
+`PROTOCOLOS AUXILIARES` no M *e* tem `Odbc.Query` próprio.** Materializar
+`produtividade` faz duas idas ao Voalle com o mesmo SQL menos dois IDs.
+
+### 2. `protocolos-produtividade` é **subconjunto** de `protocolos-geral`
+
+Diff de tokens `geral` (3.656 ch) × `produtividade` (3.078 ch): **zero tokens
+exclusivos de `produtividade`**. Mesma lista de 12 tipos, mesmo corte de data.
+`geral` só acrescenta `PLANOS_CONTRATO` (um `STRING_AGG(DISTINCT sp2.title…)` sobre
+`service_products`) e projeções `per."…"`, e usa `WHERE per.PERSONA1 = 1;`.
+
+As duas leem **as mesmas linhas da fonte**; `geral` calcula mais colunas. Custo no
+manifesto do snapshot:
+
+```
+protocolos-auxiliares    33.804 linhas · 46 col · 26,0 MB · tabelas: []
+protocolos-geral         34.025 linhas · 63 col · 34,8 MB
+protocolos-produtividade 68.707 linhas · 51 col · 57,5 MB
+```
+
+`protocolos-auxiliares` tem **`tabelas: []`** — não é tabela do modelo, existe só
+para alimentar as outras duas. É a candidata que dá para remover sem que nenhum
+visual perceba.
+
+E as três citam **as mesmas três** auxiliares (`alocacao-patrimonio`,
+`tecnicos-auxiliares`, `troca-endereco`): não são queries parecidas por acaso, são
+três variações do mesmo recorte.
+
+### 3. `'2026-01-01'` está em **11 das 24 queries**
+
+```
+base-categorias-field, field-agenda, instalacoes-reincidentes, protocolos-auxiliares,
+protocolos-geral, protocolos-produtividade, protocolos-telefonia, reincidencia,
+retorno-prioritario, tecnicos-auxiliares, troca-endereco
+```
+
+É o único literal de data no corpus, e é o mesmo que **não vira o ano** — em
+01/01/2027 o painel continua mostrando 2026 (medido junto: o piso é este literal em
+`a.created`, o teto é `DATA INSTALADO <= TODAY()` em DAX, duas colunas diferentes).
+Uma decisão de negócio escrita onze vezes: consertar o rollover hoje é acertar onze
+lugares no Power BI e não errar nenhum.
+
+### 4. Quanto reuso já existe, e onde ele falha
+
+```
+alocacao-patrimonio  ←  5 queries        protocolos-geral      ←  backlog-agendado-futuro
+tecnicos-auxiliares  ←  3                gestores-equipes      ←  protocolos-geral
+troca-endereco       ←  3                protocolos-auxiliares ←  protocolos-produtividade
+quadro-funcional     ←  1
+7 queries são reusadas · 17 são folhas
+```
+
+O padrão de citação existe e funciona — essas são resolvidas uma vez por processo.
+**O que falha é o único caso em que a citação convive com duplicação:**
+`auxiliares` é citada *e* refeita.
+
+Contexto de fonte: **29 de 48 tabelas são lidas por mais de uma query** —
+`people` por 13, `assignment_incidents` por 11, `assignments` e `incident_types`
+por 10, `contract_service_tags` por 9. Isso **não** é defeito: é `LEFT JOIN` de
+dimensão, e cada query precisa dela. Registro para não confundir depois com o
+item 1, que é.
+
+Demais pares acima de 50%: 88,4% `auxiliares × geral`, 78,1%
+`reincidencia × retorno-prioritario`, 77,3 / 77,1 / 69,5 / 59,9 / 57,0.
+**9 pares de 153 possíveis, 0 idêntico após canonizar.**
+
+### O que não dá para fazer daqui, e por quê
+
+O SQL mora nas expressões M do PBIP, e o PBIP é read-only (regra 1). Divergir de
+propósito exigiria um `sql-override.yaml` no molde de `divergencias.yaml`, com
+`original_sha` da expressão que ele substitui — **esse mecanismo não existe**, e é o
+item 3 da fila do `CONTINUACAO.md`, que manda fazê-lo **depois** da paridade: sem
+gabarito verde, um `LEFT JOIN` que multiplica linha passa despercebido. E
+`produtividade` sai com 68.707 linhas contra 34.025 de `geral`, ou seja, existe um
+passo que multiplica linha exatamente ali.
+
+Ordem por risco crescente, se e quando for mexer:
+
+1. **O `'2026-01-01'`** — não é desempenho, é correção, e é a única com data marcada
+   para quebrar. Virou `PERGUNTAS-NEGOCIO.md` #12.
+2. **Remover `protocolos-auxiliares`** — maior ganho, menor risco conceitual: não é
+   tabela do modelo, e a diferença é uma lista `IN`. Um `Table.SelectRows` sobre
+   `produtividade` faz o mesmo sem segunda ida ao banco.
+3. **Fundir `geral` e `produtividade`** — maior ganho e maior risco, pelo fator de
+   multiplicação acima. Depende da paridade.
+
+### Terceiro buraco no `run:mlayer` no mesmo dia
+
+**`run:mlayer` não consegue rodar `protocolos-produtividade`.** Falhou em 34.975 ms
+com *"Falha ao ler a fonte da query `protocolos-auxiliares`: canceling statement due
+to statement timeout"*. Causa: `mrun` não tem `--timeout=` e cai no padrão do `.env`
+(`VOALLE_STATEMENT_TIMEOUT_MS = 30_000`), que o próprio `tools/snapshot` documenta
+como *"teto de pedido de tela, não de materialização"* — e o `snapshot` tem o flag.
+
+A falha é a prova do item 1: é a **busca dupla** que estoura os 30 s. O instrumento
+quebrou justamente no lugar que ele deveria medir, pela terceira vez hoje (#73 tinha
+achado as notas engolidas e o `juncoes.yaml` não carregado). **Ferramenta de
+diagnóstico que não alcança o caso mais pesado do corpus não está pronta**, e três
+buracos no mesmo dia dizem que ela nunca foi exercitada contra a query mais cara.

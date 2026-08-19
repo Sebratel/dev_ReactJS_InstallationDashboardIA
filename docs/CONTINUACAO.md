@@ -5,7 +5,9 @@
 > rematerialização**, validado ponta a ponta contra a stack descartável (#72). No mesmo
 > dia, a terceira mesclagem morta ficou explicada e **saiu da fila técnica**: a fonte
 > dela parou de ser alimentada em 16/07/2025, e isso é pergunta de negócio, não código
-> (#73). Antes
+> (#73). E a redundância entre as 24 queries foi medida (#74): duas delas são a
+> mesma menos dois IDs, e o corte do ano está escrito **onze vezes** — o que virou
+> `PERGUNTAS-NEGOCIO` #12, porque ele quebra em 01/01/2027. Antes
 > disso, em 14/08, as mesclagens mortas da camada M foram achadas e decididas (#64) e
 > o congelamento das tabelas calculadas caiu de **14 h 28 min para 26 min**
 > (#66 → #67 → #68). É o ponto de entrada de uma sessão nova: autocontido, feito para
@@ -181,7 +183,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 73 entradas.
+   registro; hoje tem 74 entradas.
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
@@ -279,6 +281,11 @@ cards de `relatorio-do-mes` que dependem do `PESO` já estão marcados.
 
 Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 
+- **#12** — o painel do ano é "2026" ou "o ano corrente"? O corte está **fixo em
+  11 queries** como o literal `'2026-01-01'`, então em 01/01/2027 ele soma dois anos
+  sob o rótulo de um, sem erro e sem alerta. Tem prazo. *(Erick.)*
+- **#11** — `Installation_Teams` parou de receber linha em 16/07/2025. *(Erick, ou
+  quem alimenta a tabela.)*
 - **#6 / #6b** — card `CLIENTES` dá 466 aqui e 558 no relatório. *(Erick, na tela.)*
 - **#7** — rótulo do eixo de datas: `2026 janeiro` ou `janeiro`? *(Erick, na tela.)*
 - **#2 / #4 / #5** — limpeza e `categoria4`/`categoria5`. *(Fabrício.)*
@@ -328,7 +335,32 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
    vale. O SQL escrito à mão não pode morar em `specs/_catalog/queries/` (regra 2);
    o lugar é um `sql-override.yaml` no molde de `divergencias.yaml`, com
    `original_sha` da expressão M que ele substitui.
-4. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
+
+   **A redundância que esse item resolve foi medida em 18/08/2026**
+   ([ACHADOS](ACHADOS.md) #74), e o alvo mais barato não é o que parecia:
+   `protocolos-auxiliares` e `protocolos-produtividade` têm **99,4%** de SQL em comum
+   e diferem por **dois IDs** numa lista `IN` — e `produtividade` já **cita**
+   `auxiliares` no M *além* de refazer o `Odbc.Query`, ou seja, materializá-la faz
+   duas idas ao Voalle pela mesma coisa. `auxiliares` tem `tabelas: []`: não é tabela
+   do modelo, só alimenta as outras duas. Comece por ela. Fundir `geral` e
+   `produtividade` fica para depois: `produtividade` sai com **68.707** linhas contra
+   **34.025** de `geral` sobre as mesmas linhas de fonte, então existe um passo que
+   multiplica linha ali — que é exatamente o defeito que a paridade pega e o olho não.
+
+   Não confunda com as **29 de 48** tabelas de fonte lidas por mais de uma query
+   (`people` por 13, `assignment_incidents` por 11): isso é `LEFT JOIN` de dimensão,
+   é esperado, e não é o que este item ataca.
+
+4. **`run:mlayer` não alcança a query mais pesada do corpus.** Ele não tem
+   `--timeout=` e cai no padrão do `.env` (`VOALLE_STATEMENT_TIMEOUT_MS = 30_000`),
+   que o `tools/snapshot` documenta como *"teto de pedido de tela, não de
+   materialização"* — e o `snapshot` **tem** o flag. Resultado:
+   `run:mlayer --only=protocolos-produtividade` falha em 34.975 ms com
+   *"canceling statement due to statement timeout"*. É conserto pequeno, mas mexe na
+   ferramenta que se usa para investigar tudo o mais, então vale o teste da regra 4.
+   Terceiro buraco achado no `mrun` no mesmo dia (#73 achou dois): ela nunca foi
+   exercitada contra a query mais cara.
+5. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
    de passagem seria decidir por uma peça que tem dono. Quando for hora, é decisão
    registrada, não escolha de conveniência.
 
@@ -507,7 +539,7 @@ specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
   _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          73 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          74 achados. É a memória técnica do projeto — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa
