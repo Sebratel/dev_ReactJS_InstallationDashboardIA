@@ -5640,3 +5640,84 @@ quebrou justamente no lugar que ele deveria medir, pela terceira vez hoje (#73 t
 achado as notas engolidas e o `juncoes.yaml` não carregado). **Ferramenta de
 diagnóstico que não alcança o caso mais pesado do corpus não está pronta**, e três
 buracos no mesmo dia dizem que ela nunca foi exercitada contra a query mais cara.
+
+---
+
+## #75 — O primeiro item da fila pedia, havia oito dias, um trabalho que não existia
+
+**19/08/2026.** Ao escrever um roteiro de finalização com critério de saída por item,
+o primeiro item da fila não passou. Ele dizia:
+
+> *"Ditar os números de paridade que faltam… São 64 cards, dos quais 22 já saíram por
+> serem carimbo de refresh."*
+
+Contei os cards em vez de acreditar na frase:
+
+```
+pág.                    cards  ignor.  em jogo  ditados  FALTAM
+agendamento-field           6       2        4        4       0
+capa                        2       2        0        0       0
+diario-instalacao           5       2        3        3       0
+instalacao-reincidente      5       2        3        3       0
+manutencao-inicial         12       2       10       10       0
+premiacao-instalacao        2       2        0        0       0
+protocolos-detalhados       2       2        0        0       0
+relatorio-do-ano            4       2        2        2       0
+relatorio-do-mes           16       2       14       14       0
+telefonia-ouvidoria         4       2        2        2       0
+visao-geral                 6       2        4        4       0
+
+TOTAL: 64 cards · 22 carimbo · 42 em jogo · 42 ditados · 0 FALTAM
+```
+
+**Nenhum número falta.** Os 42 cards em jogo têm todos o `powerbi:` preenchido desde
+11/08. O que existe não é gabarito vazio — é gabarito **contaminado**, e a diferença
+entre as duas coisas muda o trabalho inteiro:
+
+| a descrição pedia | a medição pede |
+|---|---|
+| ditar 42 números | reler **17** |
+| em 11 páginas | em **3** |
+| tarefa manual inteira | 2 dos 3 passos são da máquina |
+
+As 3 são `AGENDAMENTO FIELD`, `INSTALAÇÃO/ REINCIDENTE` e `MANUTENÇÃO INICIAL` — as
+únicas que declaram filtro de página, e a leitura de 11/08 foi feita com os filtros
+apagados. O `PARIDADE-11-08.md` **já tinha medido isso e já tinha escrito a receita de
+três passos**; ela só nunca chegou ao item da fila.
+
+### A causa: dois documentos com donos diferentes e nenhum critério de saída
+
+O `PARIDADE-11-08.md` é registro de uma medição — imutável, e estava certo. O
+`CONTINUACAO.md` §6 é fila de trabalho — mutável, e ficou velho. Entre 11/08 e 19/08
+ninguém releu um contra o outro, porque **nada obrigava**: o item da fila não tinha
+critério de saída, e item sem critério de saída não tem como ser conferido. Ele só
+podia envelhecer.
+
+O sintoma tinha aparecido antes e passou: a §1 dizia "os 64 cards **com gabarito
+ditado**" e a §5.3, quarenta linhas abaixo, dizia "64 cards **esperando número**". As
+duas frases não podem ser verdadeiras juntas. Estavam no mesmo arquivo, e ninguém
+tropeçou nelas — inclusive eu, que li o arquivo inteiro três vezes nesta semana.
+
+### O que virou estrutura
+
+Duas seções novas no `CONTINUACAO.md`, e as duas existem por causa desta falha:
+
+- **§0, o painel.** Sete números, cada um com **o comando que o regenera** ao lado.
+  Não é para ser lido e crido: é para ser conferido em segundos. Os três primeiros
+  foram conferidos ao escrever, e dois estavam velhos — 113 commits eram **118**, e
+  "74 achados" eram **73 numerados até #74** (o #5 nunca existiu; contagem e maior
+  número são grandezas diferentes, e confundi-las é como o contador andou sozinho).
+- **§9, o roteiro.** Todo item pendente tem `critério de saída`, `quem destrava` e
+  `o que já está pronto`. É a peça que faltava: agora um item pode ser **conferido**
+  contra a realidade, e não só relido.
+
+### A lição, que é mais geral que a paridade
+
+Este projeto tem a regra 8 — *meça antes de decidir, e registre o número*. Faltava a
+outra metade: **um item de fila sem critério de saída é uma afirmação que ninguém vai
+verificar.** Ele não fica errado por descuido; fica errado porque não existe operação
+que o teste. Oito dias é pouco — este item teria envelhecido por meses do mesmo jeito.
+
+E vale notar de onde veio a descoberta: não de reler a documentação, mas de tentar
+escrever **quando parar**. A pergunta "como eu sei que isto acabou?" é um teste, e ela
+reprovou o item na primeira tentativa de responder.

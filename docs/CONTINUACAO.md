@@ -1,6 +1,10 @@
 # Continuação — onde o trabalho parou
 
-> **Atualizado em 18/08/2026**, depois de a Fase 4 sair do papel: um
+> **Atualizado em 19/08/2026.** A §0 é o placar e a §9 é o roteiro até pronto, com
+> critério de saída por item — e foi escrevendo a §9 que se descobriu que o item 1 da
+> fila pedia um trabalho que não existe (a paridade não tem número faltando; ver §9.1).
+>
+> **18/08/2026**, quando a Fase 4 saiu do papel: um
 > `iniciaKafkaCDC` sem medição foi revertido (#71) e substituído pelo **ingestor de
 > rematerialização**, validado ponta a ponta contra a stack descartável (#72). No mesmo
 > dia, a terceira mesclagem morta ficou explicada e **saiu da fila técnica**: a fonte
@@ -16,6 +20,32 @@
 > Para o histórico longo do projeto (o que é, de onde veio, as fases 0 a 2b), leia o
 > `README.md` e o `docs/PROMPT-CONTINUACAO.md`. Este arquivo é só **o estado de
 > agora e o que fazer a seguir**.
+
+---
+
+## 0. Painel — onde paramos
+
+**Estes são os números que mudam**, e cada linha traz o comando que a regenera. Se o
+valor daqui estiver velho, o comando mostra em segundos: **não confie na tabela,
+confira.** Foi exatamente assim que se descobriu, em 19/08, que o item 1 da fila
+estava descrito errado havia oito dias.
+
+| o quê | em 19/08/2026 | como conferir |
+|---|---|---|
+| **Testes** | **1328** verdes, 0 falhando. Nenhum precisa de credencial nem de build | `npm test` |
+| **Achados** | **74** entradas, numeradas até **#75** — o #5 nunca existiu | `grep -coE '^## #?[0-9]+' docs/ACHADOS.md` |
+| **Commits** | **118**, e **nenhum empurrado** — ver §5.1 e §9.0 | `git rev-list --count HEAD` |
+| **Páginas** | **14 de 14** calculam, **117 de 117** visuais | `npm run paginas -- --pagina=<uma>` |
+| **Paridade** | 64 cards: 22 são carimbo (fora do jogo), **42 em jogo e 42 já ditados — 0 faltam**. Mas 17 estão sob ressalva e todos carregam 4,2 dias de defasagem — §9.1 | `npm run paridade` |
+| **Perguntas de negócio** | 12 numeradas, **10 abertas** (só a #1 e a #3 estão fechadas) | `docs/PERGUNTAS-NEGOCIO.md` |
+| **Fases** | 0 a 2b.8 ✅ · 2b.9 🚧 · 3 🚧 · 4 tem código e não tem gatilho · 5 ⏳ | `README.md` e §9 |
+
+**O que está em risco, em uma frase:** os 118 commits existem em **um disco só**. Todo
+o resto deste arquivo é trabalho que espera; esse é o único item cuja demora tem
+consequência permanente.
+
+> Para **o que falta e como saber que acabou**, vá à §9. Para o estado detalhado de
+> cada camada, §3. Esta seção é só o placar.
 
 ---
 
@@ -183,7 +213,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem 74 entradas.
+   registro; hoje tem **74** entradas, numeradas até **#75** (o #5 nunca existiu).
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
@@ -204,7 +234,7 @@ E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 A conta `erickazambuja-Sebratel` **não tem permissão de escrita** no repositório da
 organização. O remoto está configurado
 (`git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git`), mas **não existe
-`origin/main`** e os **113 commits do repositório vivem só nesta máquina**. Não tente
+`origin/main`** e os **118 commits do repositório vivem só nesta máquina**. Não tente
 contornar — é permissão, não configuração.
 
 > **18/08/2026 — `apps/web/` estava fora do git.** A tela inteira, 28 arquivos,
@@ -215,7 +245,7 @@ contornar — é permissão, não configuração.
 Confira com:
 
 ```bash
-git rev-list --count HEAD          # 113 no momento em que este arquivo foi escrito
+git rev-list --count HEAD          # 118 em 19/08/2026 — ver §0
 git rev-parse --verify origin/main # falha: o ref não existe
 ```
 
@@ -257,7 +287,7 @@ saber, visual por visual, qual mede slot e qual mede relato. O Erick sugeriu faz
 no **SQL**, e ele está certo — o Postgres agrupa 1,46 milhão de linhas em segundos, e
 aí nem se trafega nem se materializa o que vai ser jogado fora.
 
-### 5.3 Paridade — o harness existe; faltam os números
+### 5.3 Paridade — o harness existe e os números estão ditados; falta relimpar 3 páginas
 
 **É o único passo que não dá para fazer sozinho.** 117 visuais calcularem quer dizer
 que a conta *termina*, não que o número é o mesmo da tela.
@@ -270,9 +300,11 @@ npm run paridade -- --pagina=visao-geral
 npm run paridade -- --esqueleto=<pagina>      # gera o gabarito em branco
 ```
 
-`specs/paridade/*.yaml` tem **11 páginas e 64 cards** esperando número. Abra a página no
-Power BI e escreva o valor em `powerbi:`. Só card, de propósito: card é um número sem
-agrupamento nem paginação, então ditar o valor é inequívoco.
+`specs/paridade/*.yaml` tem **11 páginas e 64 cards**, e **todos os 42 em jogo já estão
+ditados** — 22 são carimbo de refresh e ficam fora. O que falta não é ditar número, é
+reler **3 páginas sem limpar filtro**: ver **§9.1**, que tem os três passos e o critério
+de saída. Só card, de propósito: card é um número sem agrupamento nem paginação, então
+ditar o valor é inequívoco.
 
 **Depois da regra 9 o trabalho dele mudou de nome:** não é provar que é *idêntico* ao
 Power BI, é provar que é o **pretendido**. Um card marcado `divergente: <id>` **tem** de
@@ -305,14 +337,21 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 > e degradação para memória, `ARCHITECTURE.md` separado entre o que existe e o que é
 > desenho, e a costura de identidade da Fase 4.
 
-1. **Ditar os números de paridade que faltam.** Voltou a ser o primeiro item: o bloqueio
-   de operação de 14/08 foi resolvido ([ACHADOS](ACHADOS.md) #68 — o congelamento caiu de
-   14 h 28 min para 26 min), e a paridade é o único passo que ninguém faz sozinho. Abra
-   `http://localhost:3100` ao lado do Power BI, ache a linha `visual: <id>` em
-   `specs/paridade/<pagina>.yaml` — **o id aparece embaixo de cada card na tela, de
-   propósito** — e escreva o valor em `powerbi:`. As 3 páginas cujo gabarito é inválido
-   (`docs/PARIDADE-11-08.md`) são 11 das 18 divergências: elas vêm primeiro. São 64 cards,
-   dos quais 22 já saíram por serem carimbo de refresh.
+1. **Fechar a paridade — e o trabalho é menor do que este arquivo dizia.** Medido em
+   19/08/2026: **não falta ditar número nenhum.** Dos 64 cards, 22 são carimbo de refresh
+   e estão fora do jogo; os **42 em jogo têm todos o `powerbi:` preenchido**. Esta linha
+   pedia, havia oito dias, um trabalho que não existe.
+
+   O que falta são **três passos**, e só um deles é seu: (1) rematerializar o snapshot,
+   para os dois lados serem do mesmo dia — hoje há **4,2 dias** de defasagem e ela
+   explica ~0,9% de diferença em toda medida acumulada; (2) **reler 3 páginas** no Power
+   BI **sem limpar filtro nenhum** — `AGENDAMENTO FIELD`, `INSTALAÇÃO/ REINCIDENTE` e
+   `MANUTENÇÃO INICIAL`, 17 cards; (3) `npm run paridade`. As outras 8 páginas não têm
+   filtro de página e a leitura delas continua valendo.
+
+   **Os passos, o critério de saída e o que já foi resolvido estão na §9.1.** Abra
+   `http://localhost:3100` ao lado do Power BI — o id do card aparece embaixo dele na
+   tela, de propósito, e é a linha `visual: <id>` em `specs/paridade/<pagina>.yaml`.
 2. ✅ **A terceira mesclagem morta foi investigada em 18/08/2026 — e não tem conserto
    em código.** [ACHADOS](ACHADOS.md) #73. `DB_Applicattion.Installation_Teams` **parou
    de receber linha em 16/07/2025**: 0 registros de 2026. Como `PROTOCOLOS GERAL` só
@@ -539,12 +578,147 @@ specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
   _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          74 achados. É a memória técnica do projeto — leia antes de
+  ACHADOS.md          74 achados (numerados até #75). A memória técnica — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa
   ARCHITECTURE.md      o desenho alvo (a API diverge dele de propósito, ver #39)
 ```
+
+---
+
+## 9. Roteiro até pronto — o que falta, e como saber que acabou
+
+Cada item tem **critério de saída**: a frase que, quando for verdade, fecha o item.
+Item sem critério não sai da fila, porque ninguém sabe dizer que ele acabou — foi o que
+aconteceu com a paridade, descrita por oito dias como "faltam os números" quando não
+faltava nenhum. A ordem é a da §6; o que esta seção acrescenta é **quando parar**.
+
+### 9.0 Empurrar o repositório — o único item irreversível
+
+- **Critério de saída:** `git rev-parse --verify origin/main` responde um sha.
+- **Quem destrava:** um admin da org Sebratel, dando permissão de escrita a
+  `erickazambuja-Sebratel`. É permissão, não configuração — não há como contornar (§5.1).
+- **Por que vem antes de tudo:** os outros itens são *trabalho*; este é *exposição*. O
+  extrator, as cinco engines, a tela React, 74 achados e 118 commits estão num disco só.
+  Nenhum outro item deste roteiro tem consequência permanente se atrasar uma semana.
+
+### 9.1 Fase 2b.9 — Paridade
+
+> **Corrigido em 19/08/2026.** O item 1 da §6 dizia "ditar os números de paridade que
+> faltam… são 64 cards". **Não falta nenhum.** Dos 64, 22 são carimbo de refresh e
+> estão fora do jogo; os **42 em jogo têm todos o `powerbi:` preenchido**. O trabalho
+> que resta é outro, é menor, e depende do Erick em **3 páginas**, não em 11.
+
+O que falta está na última seção de [PARIDADE-11-08.md](PARIDADE-11-08.md), em três
+passos nesta ordem, porque cada um remove uma variável:
+
+| # | passo | quem faz | o que remove |
+|---|---|---|---|
+| 1 | `npm run snapshot -- --todas --memoria=8192` (~20 min) | a máquina | a defasagem de **4,2 dias**. Hoje toda medida acumulada sai ~0,9% menor do nosso lado, **sempre no mesmo sentido** — assinatura de dado velho, não de erro de conta |
+| 2 | reler **3 páginas** no Power BI, **sem limpar filtro nenhum** | o Erick | a contaminação da leitura de 11/08, feita com os filtros de página apagados |
+| 3 | `npm run paridade` | a máquina | nada. O que sobrar daqui **é nosso**, e só aí vale investigar |
+
+As 3 páginas do passo 2 são `AGENDAMENTO FIELD`, `INSTALAÇÃO/ REINCIDENTE` e
+`MANUTENÇÃO INICIAL` — **17 cards em jogo**. São as três que declaram filtro de página,
+e a evidência de que é isso que as separa está medida: no agrupamento de 11/08, os
+cards de páginas **com** filtro tinham mediana de diferença de **20,13%** (1 de 14
+dentro de 2%), contra **1,76%** nas páginas **sem** filtro (12 de 22 dentro de 2%). As
+outras 8 páginas não têm filtro de página, e para os **25 cards** delas a leitura de
+11/08 continua valendo.
+
+- **Critério de saída:** `npm run paridade` sai **sem diferença não declarada** — toda
+  diferença restante é ou uma entrada em `specs/_catalog/divergencias.yaml`, ou um card
+  consertado. E os cards marcados `divergente:` **diferem**: bater ali é falha, de
+  propósito, e é o que impede uma decisão de ficar só no papel.
+- **Armadilha:** **não rode o passo 1 antes de uma demo.** Rematerializar troca o
+  carimbo do snapshot, derruba todo o cache de resposta, e `agendamento-field` volta a
+  levar ~2 min a frio.
+- **Já resolvido — não reabra:** `Agendados Manhã` (era fuso; o pico das 9h virava 12h
+  e a manhã inteira sumia, #58), `MÉDIA POR DIA` (o divisor contava *instante* em vez de
+  *dia*, #58) e os 4 cards em branco (#61).
+- **O que sobra de verdade:** `TOTAL INSTALADOS` de `manutencao-inicial`, **34% maior**
+  do nosso lado. Diverge no sentido oposto ao da defasagem, então nenhuma das duas
+  causas conhecidas o explica. É a primeira investigação depois do passo 3.
+
+### 9.2 Fase 3 — Chart SDK
+
+- **Critério de saída:** uma `docs/DECISAO-CHART-SDK.md` registrada (qual biblioteca,
+  medida contra o quê, o que ela substitui) **e** os 16 gráficos continuando a passar a
+  paridade depois da troca.
+- **Quem destrava:** ninguém — é decisão técnica, e está adiada de propósito.
+- **Por que não agora:** a tela desenha barra em HTML porque escolher uma biblioteca de
+  passagem seria decidir por uma peça que tem dono. Os gráficos **já calculam** (#33):
+  o que falta é desenho, não número.
+
+### 9.3 Fase 4 — Realtime
+
+- **Critério de saída:** as **duas medições** da
+  [DECISAO-REALTIME.md](DECISAO-REALTIME.md) atingidas **contra o Voalle de produção**,
+  medidas com `npm run cdc:observa` numa janela de minutos — e só então o
+  [RUNBOOK-CDC.md](RUNBOOK-CDC.md).
+- **Quem destrava:** o número. Não a disponibilidade do Kafka no Portainer, não o
+  código estar pronto, não o Debezium subir.
+- **O que já existe:** `cdc:ingere` rematerializa só as queries que o evento sujou, com
+  debounce e guarda de concorrência, validado ponta a ponta contra `docker/cdc/` — 15
+  eventos → 1 rodada de 13 queries, 12 materializaram, 2.090.676 linhas (#72).
+- **A armadilha que já morderam:** **4 eventos em 56 ms** quase passaram por medição
+  (#71). Janela curta não mede taxa; mede o instante em que você olhou.
+
+### 9.4 Fase 5 — Permission Engine, IA, Export
+
+- **Critério de saída da parte que bloqueia o resto:** existir **login**. Hoje a
+  autenticação **não existe** — há costura (`apps/api/src/identidade.ts`) e formato de
+  decisão (`specs/_catalog/permissoes.yaml`), sem leitor e sem tela de entrada.
+- **Quem destrava:** decisão de produto sobre de onde vem a identidade (SSO do HUBBI?
+  usuário local?). Enquanto ela não vier, não há o que implementar sem chutar.
+- **Consequência hoje:** a plataforma serve **todo** número a **todo** pedido. Isso é
+  aceitável numa máquina de desenvolvimento e **não é** aceitável em rede da empresa —
+  o `snapshot/` tem endereço de cliente e CPF/RG (§2). É o item que separa "roda aqui"
+  de "pode ser publicada".
+- IA e Export não têm critério ainda, e não deveriam ter antes do login.
+
+### 9.5 Dívida técnica com dono (itens 3 e 4 da §6)
+
+| item | critério de saída | depende de |
+|---|---|---|
+| **`sql-override.yaml`** — empurrar para SQL o que o SQL faz melhor | `protocolos-auxiliares` deixa de existir sem que nenhum visual mude de número, e a agregação de `FIELD AGENDA` sai de 1.458.244 para 30.252 linhas com a paridade verde antes e depois | **9.1** — sem gabarito bom, um `LEFT JOIN` que multiplica linha passa calado (#74) |
+| **`--timeout=` no `run:mlayer`** | `npm run run:mlayer -- --only=protocolos-produtividade` termina, com teste que falha se o flag sumir (regra 4) | nada. É o item mais barato da fila |
+
+### 9.6 As 10 perguntas de negócio abertas
+
+Elas não são "documentação pendente": **cada uma é um número que ninguém pode decidir
+sozinho.** A lista com dono está na §5.3.
+
+- **Critério de saída:** cada pergunta virou uma de três coisas — código, entrada em
+  `divergencias.yaml`, ou "o visual sai". Nenhuma continua sendo pergunta.
+
+Duas têm urgência diferente das outras:
+
+- **#12 tem prazo.** O corte do ano é o literal `'2026-01-01'` escrito em 11 queries;
+  em 01/01/2027 o painel passa a somar dois anos sob o rótulo de um, sem erro e sem
+  alerta (#74). É a única pendência do projeto com data de quebra.
+- **#11 não tem conserto em código.** `Installation_Teams` parou de receber linha em
+  16/07/2025, e por isso um visual de `visao-geral` está vazio aqui **e no Power BI**
+  (#73). Ou a tabela volta a ser alimentada, ou o visual sai.
+
+### 9.7 O que "pronto" significa para o projeto inteiro
+
+O objetivo é **substituir o Power BI**, e substituir tem três condições. Vale marcar
+que duas delas não são código:
+
+1. **O número é confiável** — 9.1 fechada, e as perguntas de negócio decididas (9.6).
+   Sem isso a plataforma é uma segunda opinião, não uma substituição.
+2. **A tela pode ser publicada** — 9.4, o login. Enquanto não houver, ela roda numa
+   máquina, não na empresa.
+3. **O dado se atualiza sem alguém lembrar** — 9.3, ou uma tarefa agendada de
+   `npm run snapshot`. Hoje o refresh é alguém digitando um comando, e isso é o que
+   mais depressa faz um painel novo virar um painel velho.
+
+O que **não** é condição: bater com o Power BI em todo card. A regra 9 já decidiu isso
+— a régua é número **certo e explicável**, e divergir é permitido desde que registrado.
+
+---
 
 **Se for ler um documento só antes de mexer no cálculo, leia `docs/ACHADOS.md`.** Quase
 toda coisa que parece um bug já está lá, explicada, com o número que a mediu.
