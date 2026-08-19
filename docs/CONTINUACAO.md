@@ -3,6 +3,10 @@
 > **Atualizado em 19/08/2026.** A §0 é o placar e a §9 é o roteiro até pronto, com
 > critério de saída por item — e foi escrevendo a §9 que se descobriu que o item 1 da
 > fila pedia um trabalho que não existe (a paridade não tem número faltando; ver §9.1).
+> No mesmo dia o item 4 saiu da fila: o `run:mlayer` ganhou `--timeout=` e passou a
+> alcançar a query mais cara do corpus, que ele nunca tinha terminado (#76) — **78,8 s
+> de fonte contra um teto de 30 s**, e um achado de mesclagem morta que o timeout
+> escondia.
 >
 > **18/08/2026**, quando a Fase 4 saiu do papel: um
 > `iniciaKafkaCDC` sem medição foi revertido (#71) e substituído pelo **ingestor de
@@ -32,15 +36,15 @@ estava descrito errado havia oito dias.
 
 | o quê | em 19/08/2026 | como conferir |
 |---|---|---|
-| **Testes** | **1328** verdes, 0 falhando. Nenhum precisa de credencial nem de build | `npm test` |
-| **Achados** | **74** entradas, numeradas até **#75** — o #5 nunca existiu | `grep -coE '^## #?[0-9]+' docs/ACHADOS.md` |
-| **Commits** | **118**, e **nenhum empurrado** — ver §5.1 e §9.0 | `git rev-list --count HEAD` |
+| **Testes** | **1335** verdes, 0 falhando. Nenhum precisa de credencial nem de build | `npm test` |
+| **Achados** | **75** entradas, numeradas até **#76** — o #5 nunca existiu | `grep -coE '^## #?[0-9]+' docs/ACHADOS.md` |
+| **Commits** | **120**, e **nenhum empurrado** — ver §5.1 e §9.0 | `git rev-list --count HEAD` |
 | **Páginas** | **14 de 14** calculam, **117 de 117** visuais | `npm run paginas -- --pagina=<uma>` |
 | **Paridade** | 64 cards: 22 são carimbo (fora do jogo), **42 em jogo e 42 já ditados — 0 faltam**. Mas 17 estão sob ressalva e todos carregam 4,2 dias de defasagem — §9.1 | `npm run paridade` |
 | **Perguntas de negócio** | 12 numeradas, **10 abertas** (só a #1 e a #3 estão fechadas) | `docs/PERGUNTAS-NEGOCIO.md` |
 | **Fases** | 0 a 2b.8 ✅ · 2b.9 🚧 · 3 🚧 · 4 tem código e não tem gatilho · 5 ⏳ | `README.md` e §9 |
 
-**O que está em risco, em uma frase:** os 118 commits existem em **um disco só**. Todo
+**O que está em risco, em uma frase:** os 120 commits existem em **um disco só**. Todo
 o resto deste arquivo é trabalho que espera; esse é o único item cuja demora tem
 consequência permanente.
 
@@ -80,7 +84,7 @@ repositório — ele existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1328 testes, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 1335 testes, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -132,7 +136,7 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1328 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
+**1335 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
 
 | camada | estado |
 |---|---|
@@ -213,7 +217,7 @@ E uma regra de método, que é a que mais rendeu:
 8. **Meça antes de decidir, e registre o número.** Toda decisão difícil deste projeto
    foi resolvida contando alguma coisa primeiro — quantas colunas a regra atinge,
    quantos visuais mudam, quantas linhas o corte descarta. `docs/ACHADOS.md` é o
-   registro; hoje tem **74** entradas, numeradas até **#75** (o #5 nunca existiu).
+   registro; hoje tem **75** entradas, numeradas até **#76** (o #5 nunca existiu).
 
 E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 `docs/DECISAO-DESEMPENHO.md` antes de mexer no caminho de carga ou de cálculo:
@@ -234,7 +238,7 @@ E uma regra de prioridade, decidida pelo Erick em 10/08/2026 — leia
 A conta `erickazambuja-Sebratel` **não tem permissão de escrita** no repositório da
 organização. O remoto está configurado
 (`git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git`), mas **não existe
-`origin/main`** e os **118 commits do repositório vivem só nesta máquina**. Não tente
+`origin/main`** e os **120 commits do repositório vivem só nesta máquina**. Não tente
 contornar — é permissão, não configuração.
 
 > **18/08/2026 — `apps/web/` estava fora do git.** A tela inteira, 28 arquivos,
@@ -245,7 +249,7 @@ contornar — é permissão, não configuração.
 Confira com:
 
 ```bash
-git rev-list --count HEAD          # 118 em 19/08/2026 — ver §0
+git rev-list --count HEAD          # 120 em 19/08/2026 — ver §0
 git rev-parse --verify origin/main # falha: o ref não existe
 ```
 
@@ -390,15 +394,25 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
    (`people` por 13, `assignment_incidents` por 11): isso é `LEFT JOIN` de dimensão,
    é esperado, e não é o que este item ataca.
 
-4. **`run:mlayer` não alcança a query mais pesada do corpus.** Ele não tem
-   `--timeout=` e cai no padrão do `.env` (`VOALLE_STATEMENT_TIMEOUT_MS = 30_000`),
-   que o `tools/snapshot` documenta como *"teto de pedido de tela, não de
-   materialização"* — e o `snapshot` **tem** o flag. Resultado:
-   `run:mlayer --only=protocolos-produtividade` falha em 34.975 ms com
-   *"canceling statement due to statement timeout"*. É conserto pequeno, mas mexe na
-   ferramenta que se usa para investigar tudo o mais, então vale o teste da regra 4.
-   Terceiro buraco achado no `mrun` no mesmo dia (#73 achou dois): ela nunca foi
-   exercitada contra a query mais cara.
+4. ✅ **`run:mlayer` já alcança a query mais pesada do corpus** — feito em 19/08/2026,
+   [ACHADOS](ACHADOS.md) #76. Ele não tinha `--timeout=` e caía no padrão do `.env`
+   (`VOALLE_STATEMENT_TIMEOUT_MS = 30_000`), que o `tools/snapshot` documenta como
+   *"teto de pedido de tela, não de materialização"* — e o `snapshot` **tem** o flag.
+   Agora o default é **600 s**, igual ao do `snapshot` e pela mesma razão, impresso na
+   saída com o valor do `.env` ao lado quando difere.
+
+   A medição diz por quanto o teto era o problema: `protocolos-produtividade` termina em
+   **93.440 ms**, dos quais **78.806 ms (84%) são fonte** — 2,6× o teto de 30 s. E os
+   84% são argumento a favor do item 3: o tempo está no banco, não na avaliação de M.
+
+   **Precisa de `--memoria=8192`**, e isso só apareceu depois: com o timeout corrigido e
+   sem o heap, a query roda 138 s e estoura. Um limite escondido atrás de outro não é
+   visível até o primeiro cair.
+
+   Sobrou um achado que o timeout escondia: a junção `N°PROTOCOLO` × `PROTOCOLO:` desta
+   query é **mesclagem morta reconciliável** — 0 de 35.083 casam por espécie, 27.058
+   (77,1%) casariam como inteiro. É do tipo do #64 (tem conserto em `juncoes.yaml`), não
+   do #73. Fica registrada, não decidida: 77,1% não é 100%.
 5. **Chart SDK.** A tela desenha barra em HTML de propósito — escolher uma biblioteca
    de passagem seria decidir por uma peça que tem dono. Quando for hora, é decisão
    registrada, não escolha de conveniência.
@@ -578,7 +592,7 @@ specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
   _catalog/juncoes.yaml         mesclagem morta que pode casar como inteiro (#64)
 docs/
-  ACHADOS.md          74 achados (numerados até #75). A memória técnica — leia antes de
+  ACHADOS.md          75 achados (numerados até #76). A memória técnica — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
   DESIGN-SYSTEM.md     v2 — autoritativa
@@ -600,7 +614,7 @@ faltava nenhum. A ordem é a da §6; o que esta seção acrescenta é **quando p
 - **Quem destrava:** um admin da org Sebratel, dando permissão de escrita a
   `erickazambuja-Sebratel`. É permissão, não configuração — não há como contornar (§5.1).
 - **Por que vem antes de tudo:** os outros itens são *trabalho*; este é *exposição*. O
-  extrator, as cinco engines, a tela React, 74 achados e 118 commits estão num disco só.
+  extrator, as cinco engines, a tela React, 75 achados e 120 commits estão num disco só.
   Nenhum outro item deste roteiro tem consequência permanente se atrasar uma semana.
 
 ### 9.1 Fase 2b.9 — Paridade
@@ -683,7 +697,7 @@ outras 8 páginas não têm filtro de página, e para os **25 cards** delas a le
 | item | critério de saída | depende de |
 |---|---|---|
 | **`sql-override.yaml`** — empurrar para SQL o que o SQL faz melhor | `protocolos-auxiliares` deixa de existir sem que nenhum visual mude de número, e a agregação de `FIELD AGENDA` sai de 1.458.244 para 30.252 linhas com a paridade verde antes e depois | **9.1** — sem gabarito bom, um `LEFT JOIN` que multiplica linha passa calado (#74) |
-| **`--timeout=` no `run:mlayer`** | `npm run run:mlayer -- --only=protocolos-produtividade` termina, com teste que falha se o flag sumir (regra 4) | nada. É o item mais barato da fila |
+| ✅ **`--timeout=` no `run:mlayer`** | **fechado em 19/08/2026** (#76): `--only=protocolos-produtividade --memoria=8192` termina em 93,4 s, e as duas mutações (apagar o repasse ao filho; baixar o default para 30 s) derrubam teste | — |
 
 ### 9.6 As 10 perguntas de negócio abertas
 

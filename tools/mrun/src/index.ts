@@ -25,6 +25,7 @@
 //   npm run run:mlayer -- --only=protocolos-geral --colunas
 //   npm run run:mlayer -- --only=protocolos-produtividade --passos  # linhas por passo
 //   npm run run:mlayer -- --only=contratos --em-processo   # sem subprocesso (depurar)
+//   npm run run:mlayer -- --only=protocolos-geral --timeout=1800    # segundos por query
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -65,6 +66,7 @@ import {
 } from '../../../packages/transform-engine/src/runner.ts';
 import { isTable } from '../../../packages/transform-engine/src/value.ts';
 import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts';
+import { argvDoFilho, ErroDeArgumento, parseArgs, type Args } from './args.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 applyDotEnv(ROOT);
@@ -83,51 +85,16 @@ const MARCA = '##MRUN##';
 const FORA_DO_ESCOPO = new Set<string>();
 
 // ------------------------------------------------------------------ argumentos
-interface Args {
-  only: string[];
-  all: boolean;
-  colunas: boolean;
-  passos: boolean;
-  memoria: number | null;
-  emProcesso: boolean;
-  /** Modo filho: roda exatamente esta query e imprime uma linha de JSON. */
-  one: string | null;
-}
-
-function parseArgs(argv: string[]): Args {
-  const args: Args = {
-    only: [],
-    all: false,
-    colunas: false,
-    passos: false,
-    memoria: null,
-    emProcesso: false,
-    one: null,
-  };
-  for (const raw of argv) {
-    if (raw === '--all') args.all = true;
-    else if (raw === '--colunas') args.colunas = true;
-    else if (raw === '--passos') args.passos = true;
-    else if (raw === '--em-processo') args.emProcesso = true;
-    else if (raw.startsWith('--only=')) {
-      args.only = raw.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (raw.startsWith('--one=')) args.one = raw.slice('--one='.length);
-    else if (raw.startsWith('--memoria=')) {
-      const n = Number.parseInt(raw.slice('--memoria='.length), 10);
-      if (!Number.isFinite(n) || n < 256) {
-        console.error('--memoria espera MB (mínimo 256)');
-        process.exit(2);
-      }
-      args.memoria = n;
-    } else {
-      console.error(`argumento desconhecido: ${raw}`);
-      process.exit(2);
-    }
+// O parser mora em `args.ts` para ter teste: importar este arquivo lê o `.env` e
+// abre o catálogo, e nada disso cabe num `node --test`.
+const args: Args = ((): Args => {
+  try {
+    return parseArgs(process.argv.slice(2));
+  } catch (err) {
+    console.error(err instanceof ErroDeArgumento ? err.message : String(err));
+    process.exit(2);
   }
-  return args;
-}
-
-const args = parseArgs(process.argv.slice(2));
+})();
 
 // ------------------------------------------------------------------ catálogo
 const registry = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
@@ -207,11 +174,16 @@ async function montaConnectors(
   const fechar: (() => Promise<void>)[] = [];
   const avisos: string[] = [];
 
+  // O teto de tempo é desta execução, não do `.env`: ver TIMEOUT_PADRAO_S em `args.ts`.
+  // Sem isto, `protocolos-produtividade` era cancelada pelo servidor aos 30 s — a query
+  // mais cara do corpus, na ferramenta que existe para investigar a camada M.
+  const statementTimeoutMs = args.segundos * 1000;
+
   if (precisa.has('dbVoalle')) {
     const falta = missingFor('voalle');
     if (falta.length) avisos.push(`dbVoalle: falta no .env ${falta.join(', ')}`);
     else {
-      const pool = await createVoallePool(cfg.voalle);
+      const pool = await createVoallePool({ ...cfg.voalle, statementTimeoutMs });
       connectors.set('dbVoalle', createVoalleConnector(pool));
       fechar.push(() => pool.end());
     }
@@ -220,7 +192,7 @@ async function montaConnectors(
     const falta = missingFor('maria');
     if (falta.length) avisos.push(`dbMaria: falta no .env ${falta.join(', ')}`);
     else {
-      const pool = await createMariaPool(cfg.maria);
+      const pool = await createMariaPool({ ...cfg.maria, statementTimeoutMs });
       connectors.set('dbMaria', createMariaConnector(pool));
       fechar.push(() => pool.end());
     }
@@ -407,20 +379,27 @@ if (idsInvalidos.length) {
 console.log(
   `\nRodando ${pedidas.length} query(s) com culture=${culture ?? '(nenhuma)'}` +
     `${args.emProcesso ? ' no mesmo processo' : ', uma por processo'}` +
-    `${args.memoria ? `, heap de ${args.memoria} MB` : ''}\n`,
+    `${args.memoria ? `, heap de ${args.memoria} MB` : ''}`,
 );
+
+// O teto de tempo é impresso sempre, e com o número que ele substituiu. Trocar o
+// valor do `.env` calado seria pior que o timeout: quem lê a saída precisa poder
+// dizer se a query demorou ou se a régua era outra.
+{
+  const doEnv = Math.round(cfg.voalle.statementTimeoutMs / 1000);
+  console.log(
+    `  statement_timeout de ${args.segundos}s nesta execução` +
+      (doEnv !== args.segundos
+        ? ` (o .env traz ${doEnv}s — teto de pedido de tela, não de materialização; --timeout= manda)`
+        : ''),
+  );
+}
+console.log('');
 
 /** Roda uma query num subprocesso e devolve o resultado que ele imprimiu. */
 async function rodaEmSubprocesso(q: ResolvedQuery): Promise<Resultado> {
   const inicio = Date.now();
-  const argv = [
-    ...(args.memoria ? [`--max-old-space-size=${args.memoria}`] : []),
-    fileURLToPath(import.meta.url),
-    `--one=${q.id}`,
-    // O filho é quem tem as tabelas vivas: se o pai não repassar a flag, ele não
-    // coleta a contagem por passo e o `--passos` do pai não teria o que imprimir.
-    ...(args.passos ? ['--passos'] : []),
-  ];
+  const argv = argvDoFilho(args, q.id, fileURLToPath(import.meta.url));
   return new Promise((resolve) => {
     const filho = spawn(process.execPath, argv, { cwd: ROOT });
     let saida = '';

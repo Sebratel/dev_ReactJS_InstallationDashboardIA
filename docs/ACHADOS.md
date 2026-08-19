@@ -5721,3 +5721,88 @@ que o teste. Oito dias é pouco — este item teria envelhecido por meses do mes
 E vale notar de onde veio a descoberta: não de reler a documentação, mas de tentar
 escrever **quando parar**. A pergunta "como eu sei que isto acabou?" é um teste, e ela
 reprovou o item na primeira tentativa de responder.
+
+---
+
+## #76 — A ferramenta de investigar a camada M não alcançava a query mais cara: 30 s de teto para 78,8 s de fonte
+
+**19/08/2026.** Item 4 da fila da `CONTINUACAO.md` §6, e o mais barato dela. O
+`run:mlayer` não tinha `--timeout=` e caía no default do `.env`
+(`VOALLE_STATEMENT_TIMEOUT_MS = 30_000`). O `tools/snapshot` documenta esse número
+como *"teto de pedido de tela, não de materialização"* — e **tinha** o flag desde
+sempre. Duas ferramentas rodando a **mesma** camada M, uma alcançando a query mais
+cara do corpus e a outra não.
+
+Terceiro buraco achado no `mrun` em dois dias: o #73 achou dois (não imprimia as notas
+da camada M, não honrava o `juncoes.yaml`). O padrão é o mesmo nos três — **ela nunca
+foi exercitada contra a query mais cara**, então todo defeito que só aparece lá ficou.
+
+### A medição, que diz que o teto era o problema e por quanto
+
+Depois do conserto, `--only=protocolos-produtividade --memoria=8192`:
+
+```
+protocolos-produtividade   35.652 fonte → 69.062 final · 48 col · 60 passos · 93.440 ms
+
+  fonte (banco/rede):     78.806 ms   84%
+  conversão de linha:        183 ms    0%
+  avaliação de M:         14.451 ms   15%
+  127.872 linhas lidas de fonte
+```
+
+**78,8 s só de banco, contra um teto de 30 s.** Não era margem apertada: era 2,6× o
+teto. E os 84% explicam por que nenhuma otimização de M resolveria — o tempo está na
+fonte, que é exatamente o argumento do item 3 da fila (empurrar para SQL, #74).
+
+### A segunda parede, que só apareceu depois de derrubar a primeira
+
+Com o timeout corrigido e **sem** `--memoria=`, a query rodou **138.490 ms** e estourou
+o heap. O `--memoria=` já existia; o que não existia era chegar longe o bastante para
+precisar dele. Vale como método: **um limite escondido atrás de outro não é visível até
+o primeiro cair**, e por isso "consertei o timeout" não era resposta — a resposta é a
+query terminando.
+
+### O que mudou no código
+
+- `tools/mrun/src/args.ts`, novo: o parser saiu do `index.ts` para ter teste. Importar
+  o `index.ts` lê o `.env` e abre o catálogo, e nada disso cabe num `node --test`.
+  Erro de argumento **lança** (`ErroDeArgumento`) em vez de chamar `process.exit`, para
+  o teste poder afirmar a recusa sem derrubar o runner junto.
+- `TIMEOUT_PADRAO_S = 600` — o mesmo número e a mesma justificativa do
+  `tools/snapshot`. O default é **impresso na saída, com o valor do `.env` ao lado**
+  quando difere: trocar o teto calado seria pior que o timeout, porque quem lê a saída
+  precisa poder dizer se a query demorou ou se a régua era outra.
+- `argvDoFilho()`, também em `args.ts`, porque a metade que quebra é o **repasse**: o
+  filho é quem abre o pool, então uma flag que o pai lê e não passa adiante não faz
+  nada, e não faz nada em silêncio.
+
+### O teste, e as duas mutações que ele derruba (regra 4)
+
+`tools/mrun/test/args.test.ts`, 7 casos, registrado no `npm test` e em `test:mlayer`.
+Conferido quebrando a regra de propósito, que é o que a regra 4 exige:
+
+| mutação | o que cai |
+|---|---|
+| apagar `--timeout=` de `argvDoFilho` | *o pai repassa o timeout ao filho — ida e volta* |
+| `TIMEOUT_PADRAO_S` de 600 para 30 | *sem `--timeout=`, o default é de materialização e não de tela* |
+
+O teste do ida-e-volta (`parseArgs(argvDoFilho(...))`) cai nos **dois** sentidos — se o
+pai parar de passar, ou se o filho parar de ler. É a forma que pega o defeito real,
+porque um flag lido e não repassado deixa o pai imprimindo "600s" enquanto o filho abre
+o pool com 30.
+
+### O bônus que estava escondido atrás do timeout
+
+Com a query terminando, a nota da camada M apareceu — e ela nunca tinha sido vista
+nesta query, porque a execução morria antes:
+
+```
+Table.NestedJoin 'N°PROTOCOLO' × 'PROTOCOLO:': 0 de 35083 linhas casam por espécie,
+e 27058 (77,1%) casariam comparando N°PROTOCOLO como inteiro
+```
+
+É uma mesclagem morta reconciliável, do tipo do #64: uma ponta declara `Int64.Type` e a
+outra fica texto. **Não** é a do #73 (aquela é faixa de data disjunta, sem conserto em
+código). Esta tem conserto — uma entrada em `specs/_catalog/juncoes.yaml` com o número
+—, e fica registrada aqui em vez de decidida agora: 77,1% não é 100%, e o que fazer com
+os 22,9% restantes é decisão, não conserto.

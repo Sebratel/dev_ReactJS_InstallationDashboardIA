@@ -14,7 +14,7 @@
   },
   "scripts": {
     "extract": "node tools/extractor/src/index.mjs",
-    "test": "node --test tools/extractor/test/*.test.mjs tools/validate/test/*.test.ts tools/paridade/test/*.test.ts tools/cdc/test/*.test.ts tools/powerbi/test/*.test.ts tools/subir/test/*.test.ts packages/*/test/*.test.ts apps/*/test/*.test.ts",
+    "test": "node --test tools/extractor/test/*.test.mjs tools/validate/test/*.test.ts tools/paridade/test/*.test.ts tools/cdc/test/*.test.ts tools/powerbi/test/*.test.ts tools/subir/test/*.test.ts tools/mrun/test/*.test.ts packages/*/test/*.test.ts apps/*/test/*.test.ts",
     "test:extractor": "node --test tools/extractor/test/*.test.mjs",
     "test:engine": "node --test packages/query-engine/test/*.test.ts",
     "test:model": "node --test packages/semantic-model/test/*.test.ts",
@@ -26,6 +26,7 @@
     "validate:tables": "node tools/validate/src/tables.ts",
     "validate:queries": "node tools/validate/src/index.ts",
     "run:mlayer": "node tools/mrun/src/index.ts",
+    "test:mlayer": "node --test tools/mrun/test/*.test.ts",
     "probe:datahub": "node tools/probe/src/datahub.ts",
     "probe:gsheets": "node tools/probe/src/gsheets.ts",
     "probe:redis": "node tools/probe/src/redis.ts",
