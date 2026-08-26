@@ -7,45 +7,17 @@ export {
   type ValorDeCard,
 } from './card.ts';
 export { traduzFiltros } from './filtro.ts';
-export {
-  agrupar,
-  campoAtivo,
-  chaveDoCampo,
-  prepara,
-  projetaNivel,
-  valorDaChave,
-  type Agrupamento,
-  type Chave,
-  type Grupo,
-} from './grupos.ts';
-export {
-  Navegador,
-  arestasDeExpansao,
-  caminhoAte,
-  escolheAncora,
-  tabelaExpandida,
-  type Aresta,
-} from './expansao.ts';
-export {
-  calculaMatriz,
-  matrizesDoDashboard,
-  separaEixos,
-  type EixoDeMatriz,
-  type ValorDeMatriz,
-} from './matriz.ts';
-export {
-  TIPOS_DE_GRAFICO,
-  calculaGrafico,
-  graficosDoDashboard,
-  separaPapeis,
-  type ChaveDeGrafico,
-  type PontoDeGrafico,
-  type SerieDeGrafico,
-  type ValorDeGrafico,
-} from './grafico.ts';
+export { agrupar, chaveDoCampo, type Chave, type Grupo } from './grupos.ts';
 export {
   calculaTabela,
-  camposAtivos,
+  separaCampos,
+  tabelasDoDashboard,
+  type CelulaTabela,
+  type ValorDeTabela,
+} from './tabela.ts';
+export { agrupar, chaveDoCampo, type Chave, type Grupo } from './grupos.ts';
+export {
+  calculaTabela,
   separaCampos,
   tabelasDoDashboard,
   type CelulaTabela,

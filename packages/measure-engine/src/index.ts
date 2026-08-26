@@ -4,41 +4,12 @@ export { functionsUsed, walk } from './ast.ts';
 export { Dataset, type Row } from './dataset.ts';
 export {
   Evaluator,
+  UnfilteredContext,
   type EvalScope,
   type EvaluatorOptions,
-  type ScopeValue,
-} from './evaluator.ts';
-export {
-  calculatedTableDependencies,
-  calculatedTableOrder,
-  materializeCalculatedTable,
-  materializeCalculatedTables,
-  type MaterializedTable,
-} from './calculated.ts';
-export {
-  FilteredContext,
-  filterFromTable,
-  isTableValue,
-  makeTableValue,
-  rowKey,
   type FilterContext,
-  type TableFilter,
-  type TableValue,
-} from './filter.ts';
-export {
-  NO_PROPAGATION,
-  buildPropagation,
-  describeEdge,
-  type Propagation,
-  type PropagationEdge,
-} from './propagation.ts';
-export {
-  implementedFunctions,
-  lookupFunction,
-  lookupTableFunction,
-  type DaxFunction,
-  type TableFunction,
-} from './functions.ts';
+} from './evaluator.ts';
+export { implementedFunctions, lookupFunction, type DaxFunction } from './functions.ts';
 export {
   BLANK,
   DaxEvalError,

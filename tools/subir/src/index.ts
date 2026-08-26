@@ -27,8 +27,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
-import { esperaAquecimento, type EstadoDeSaude } from './aquecimento.ts';
-import { portaOcupada } from './porta.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -95,26 +93,6 @@ async function respondeSaude(): Promise<boolean> {
     return r.ok;
   } catch {
     return false;
-  }
-}
-
-async function saude(): Promise<EstadoDeSaude | null> {
-  try {
-    const r = await fetch(`${BASE}/api/saude`);
-    return r.ok ? ((await r.json()) as EstadoDeSaude) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Espera o aquecimento da própria API, e diz por que parou de esperar. */
-async function esperaOAquecimentoDaApi(): Promise<void> {
-  const v = await esperaAquecimento({ saude });
-  if (v === 'estourou') {
-    console.error('O aquecimento da API passou de 15 min. Medindo assim mesmo —');
-    console.error('a coluna "a frio" abaixo vai medir o que ele ainda não cobriu.');
-  } else if (v === 'sem-resposta') {
-    console.error('A saúde da API parou de responder durante a espera. Medindo assim mesmo.');
   }
 }
 
@@ -250,17 +228,93 @@ if (!(await esperaSaude(api))) {
   encerra(1);
 }
 
-// 5. O aquecimento. Sequencial: a API é um processo só, e duas páginas ao mesmo tempo
-//    dobrariam o pico de memória numa máquina de 16 GB.
+// 4b. O endereço sai AQUI, e não no fim.
 //
-//    **E a API agora aquece a si mesma no arranque** (`apps/api/src/aquecedor.ts`).
-//    Sair medindo por cima disso poria dois aquecimentos correndo juntos: um pedindo
-//    a página 3 enquanto o outro pede a 1, dobrando o trabalho e disputando CPU para
-//    calcular exatamente a mesma coisa. Então esperamos o dele terminar e só então
-//    medimos — o que também melhora o relatório, porque a coluna "a frio" passa a
-//    mostrar o que a **tela** vai sentir, e não o custo que o servidor já absorveu.
+// **A espera era real, mas a maior parte dela era desnecessária.** A API já responde
+// neste ponto — ela serve a tela e calcula qualquer página sob demanda. O que vem
+// depois (aquecimento + medição) só torna as páginas *mais rápidas*; nada ali é
+// pré-requisito para abrir. Mesmo assim o endereço só aparecia depois de tudo, com um
+// teto de 15 min, então quem subia ficava olhando um cursor parado sem saber que já
+// podia trabalhar — e o que ele conclui é que a plataforma leva 15 min para subir.
+//
+// Agora o endereço aparece assim que existe, e o aquecimento vira progresso visível
+// embaixo. Quem quiser o terminal livre na hora usa `--sem-aquecer`: a tela abre igual,
+// só paga o cálculo na primeira visita de cada página.
+console.log(`\n  tela   ${BASE}/`);
+console.log(`  saúde  ${BASE}/api/saude`);
+console.log(`  legado ${BASE}/legado`);
 if (!semAquecer) {
-  await esperaOAquecimentoDaApi();
+  console.log('\n  A tela JÁ ABRE. O aquecimento segue abaixo e é só velocidade:');
+  console.log('  até ele passar por uma página, a primeira visita a ela calcula na hora.');
+}
+console.log('\nCtrl+C encerra a API.');
+
+// 4b. O endereço sai AQUI, e não no fim.
+//
+// **A espera era real, mas a maior parte dela era desnecessária.** A API já responde
+// neste ponto — ela serve a tela e calcula qualquer página sob demanda. O que vem
+// depois (aquecimento + medição) só torna as páginas *mais rápidas*; nada ali é
+// pré-requisito para abrir. Mesmo assim o endereço só aparecia depois de tudo, com um
+// teto de 15 min, então quem subia ficava olhando um cursor parado sem saber que já
+// podia trabalhar — e o que ele conclui é que a plataforma leva 15 min para subir.
+//
+// Agora o endereço aparece assim que existe, e o aquecimento vira progresso visível
+// embaixo. Quem quiser o terminal livre na hora usa `--sem-aquecer`: a tela abre igual,
+// só paga o cálculo na primeira visita de cada página.
+console.log(`\n  tela   ${BASE}/`);
+console.log(`  saúde  ${BASE}/api/saude`);
+console.log(`  legado ${BASE}/legado`);
+if (!semAquecer) {
+  console.log('\n  A tela JÁ ABRE. O aquecimento segue abaixo e é só velocidade:');
+  console.log('  até ele passar por uma página, a primeira visita a ela calcula na hora.');
+}
+console.log('\nCtrl+C encerra a API.');
+
+// 4b. O endereço sai AQUI, e não no fim.
+//
+// **A espera era real, mas a maior parte dela era desnecessária.** A API já responde
+// neste ponto — ela serve a tela e calcula qualquer página sob demanda. O que vem
+// depois (aquecimento + medição) só torna as páginas *mais rápidas*; nada ali é
+// pré-requisito para abrir. Mesmo assim o endereço só aparecia depois de tudo, com um
+// teto de 15 min, então quem subia ficava olhando um cursor parado sem saber que já
+// podia trabalhar — e o que ele conclui é que a plataforma leva 15 min para subir.
+//
+// Agora o endereço aparece assim que existe, e o aquecimento vira progresso visível
+// embaixo. Quem quiser o terminal livre na hora usa `--sem-aquecer`: a tela abre igual,
+// só paga o cálculo na primeira visita de cada página.
+console.log(`\n  tela   ${BASE}/`);
+console.log(`  saúde  ${BASE}/api/saude`);
+console.log(`  legado ${BASE}/legado`);
+if (!semAquecer) {
+  console.log('\n  A tela JÁ ABRE. O aquecimento segue abaixo e é só velocidade:');
+  console.log('  até ele passar por uma página, a primeira visita a ela calcula na hora.');
+}
+console.log('\nCtrl+C encerra a API.');
+
+// 4b. O endereço sai AQUI, e não no fim.
+//
+// **A espera era real, mas a maior parte dela era desnecessária.** A API já responde
+// neste ponto — ela serve a tela e calcula qualquer página sob demanda. O que vem
+// depois (aquecimento + medição) só torna as páginas *mais rápidas*; nada ali é
+// pré-requisito para abrir. Mesmo assim o endereço só aparecia depois de tudo, com um
+// teto de 15 min, então quem subia ficava olhando um cursor parado sem saber que já
+// podia trabalhar — e o que ele conclui é que a plataforma leva 15 min para subir.
+//
+// Agora o endereço aparece assim que existe, e o aquecimento vira progresso visível
+// embaixo. Quem quiser o terminal livre na hora usa `--sem-aquecer`: a tela abre igual,
+// só paga o cálculo na primeira visita de cada página.
+console.log(`\n  tela   ${BASE}/`);
+console.log(`  saúde  ${BASE}/api/saude`);
+console.log(`  legado ${BASE}/legado`);
+if (!semAquecer) {
+  console.log('\n  A tela JÁ ABRE. O aquecimento segue abaixo e é só velocidade:');
+  console.log('  até ele passar por uma página, a primeira visita a ela calcula na hora.');
+}
+console.log('\nCtrl+C encerra a API.');
+
+// 4. O aquecimento. Sequencial: a API é um processo só, e duas páginas ao mesmo tempo
+//    dobrariam o pico de memória numa máquina de 16 GB.
+if (!semAquecer) {
   const v = await aquecer();
   if (!v.ok) {
     console.error('\nA API continua no ar — o aquecimento reprovou, mas derrubá-la agora');

@@ -157,12 +157,18 @@ async function mensagemDeFalha(r: Response, onde: string): Promise<string> {
 export function daUrl(url: string): { reportId?: string; tenant?: string } {
   try {
     const u = new URL(url);
-    const reportId = u.searchParams.get('reportId') ?? undefined;
     const tenant = u.searchParams.get('ctid') ?? undefined;
-    if (reportId || tenant) return { reportId, tenant };
-    // Formato de caminho: /groups/<g>/reports/<r>/<pagina>
-    const m = /\/reports\/([0-9a-f-]{36})/i.exec(u.pathname);
-    return m ? { reportId: m[1] } : {};
+    // As duas formas convivem no MESMO link: o que o navegador mostra traz o
+    // `ctid` na query e o reportId no CAMINHO
+    // (/groups/<g>/reports/<r>/<pagina>?ctid=<t>). Procurar nos dois lugares
+    // sempre; sair cedo por ter achado só o tenant fazia a ferramenta dizer
+    // "faltou o relatório" com o link certo na mão.
+    const reportId =
+      u.searchParams.get('reportId') ??
+      /\/reports\/([0-9a-f-]{36})/i.exec(u.pathname)?.[1] ??
+      undefined;
+    // Sem chaves com `undefined`: quem chama compara o objeto vazio.
+    return { ...(reportId ? { reportId } : {}), ...(tenant ? { tenant } : {}) };
   } catch {
     return {};
   }

@@ -25,16 +25,7 @@ import {
 } from './evaluator.ts';
 import { standardConstants, standardFunctions } from './functions.ts';
 import { parseM, parseMLet } from './parser.ts';
-import {
-  linha,
-  MDuration,
-  MEvalError,
-  MRecord,
-  MTable,
-  MTime,
-  type MRow,
-  type MValue,
-} from './value.ts';
+import { linha, MEvalError, MTable, type MRow, type MValue } from './value.ts';
 
 /** O que o runner precisa saber de uma query. Subconjunto do `QuerySpec`. */
 export interface MQuerySpec {
@@ -42,13 +33,6 @@ export interface MQuerySpec {
   /** Nome como o M de outra query o cita: `PROTOCOLOS GERAL`. */
   readonly name: string;
   readonly m_expression?: string;
-  /**
-   * `odbc`, `googlesheets`, `inline`, `computed`… Só a fonte injetada usa; o
-   * runner não decide nada com isto. Está aqui para o adaptador do Query Engine
-   * receber a spec inteira sem precisar de um segundo mapa por id.
-   */
-  readonly source_type?: string;
-  readonly datasource?: string | null;
 }
 
 /**
@@ -231,34 +215,6 @@ export function queryDependencies(
 }
 
 /**
- * A query lê fonte externa?
- *
- * Três das 24 não leem: `feriados` traz a tabela embutida no próprio M (base64 +
- * deflate), `hora-atualizado` é só `DateTime.LocalNow()`, e as calculadas em DAX
- * nem chegam aqui. Perguntar antes evita chamar o Query Engine para elas — o que
- * daria "sem connector para datasource inline", um erro sobre uma fonte que a
- * query não usa.
- */
-export function usaFonteExterna(m: string): boolean {
-  const nomes = new Set<string>(NOMES_DE_FONTE);
-  let achou = false;
-  const anda = (no: unknown): void => {
-    if (achou || typeof no !== 'object' || no === null) return;
-    const n = no as { type?: string; name?: string };
-    if (n.type === 'Identifier' && n.name && nomes.has(n.name)) {
-      achou = true;
-      return;
-    }
-    for (const v of Object.values(no) as unknown[]) {
-      if (Array.isArray(v)) for (const x of v) anda(x);
-      else anda(v);
-    }
-  };
-  anda(parseM(m));
-  return achou;
-}
-
-/**
  * Ordem topológica das queries: dependência antes de dependente.
  *
  * Ciclo é erro que **nomeia o ciclo**, não recursão infinita. Órfão também erra:
@@ -357,11 +313,8 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
   for (const spec of ordem) {
     if (pedidas && !necessarias.has(spec.name)) continue;
 
-    // Só busca se a query realmente lê fonte. `feriados` e `hora-atualizado` não
-    // leem, e chamá-las de fonte externa erraria por uma fonte inexistente.
-    const tabelaDaFonte = usaFonteExterna(spec.m_expression!)
-      ? deLinhas(await opts.fonte(spec))
-      : null;
+    const linhasDaFonte = await opts.fonte(spec);
+    const tabelaDaFonte = deLinhas(linhasDaFonte);
 
     const funcoes = new Map(standardFunctions());
     for (const nome of NOMES_DE_FONTE) {
@@ -369,15 +322,7 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
         name: nome,
         minArgs: 0,
         maxArgs: 4,
-        call: () => {
-          if (!tabelaDaFonte) {
-            throw new MEvalError(
-              `A query '${spec.id}' chamou ${nome}, mas o runner não buscou a fonte dela. ` +
-                'Isso é incoerência entre usaFonteExterna e o avaliador, não erro da expressão.',
-            );
-          }
-          return tabelaDaFonte;
-        },
+        call: () => tabelaDaFonte,
       };
       funcoes.set(nome, impl);
     }
@@ -402,7 +347,9 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
         if (bytes === undefined) throw new PrecisaBuscarWeb(pedido);
         return bytes;
       },
-      nota: (n) => notas.set(`${n.fn} ${n.assunto}`, n),
+      nota: (n) => notas.set(`${n.fn} ${n.assunto}`, n),
+      reconcilia: opts.reconcilia?.(spec.id),
+      nota: (n) => notas.set(`${n.fn} ${n.assunto}`, n),
       reconcilia: opts.reconcilia?.(spec.id),
       query: (nome) => {
         const t = porNomeProntas.get(nome);
@@ -491,63 +438,7 @@ function comoM(v: unknown): MValue {
     return v;
   }
   if (Array.isArray(v)) return v.map(comoM);
-  const duracao = comoDuracao(v);
-  if (duracao) return duracao;
   throw new MEvalError(
     `A fonte devolveu um valor de tipo ${typeof v} que o engine de M não sabe representar.`,
-  );
-}
-
-/** Campos que o `interval` do Postgres pode trazer, via driver `pg`. */
-const CAMPOS_DE_INTERVALO = [
-  'years', 'months', 'days', 'hours', 'minutes', 'seconds', 'milliseconds',
-] as const;
-
-/**
- * `interval` do Postgres para `duration` de M.
- *
- * Duas queries do escopo subtraem timestamps no próprio SQL (`data_suporte -
- * data_instalacao`), e `interval` é o tipo natural disso. O driver `pg` devolve um
- * `PostgresInterval` — objeto com só os campos não-zero (medido: `{days: 201,
- * hours: 3, minutes: 30}`; intervalo zero vem como `{}`). Sem esta conversão,
- * `reincidencia` e `retorno-prioritario` param na primeira linha.
- *
- * A detecção é por `toPostgres`, não pela lista de campos: é o que distingue o
- * intervalo zero (`{}`) de um `jsonb` vazio, que o engine **não** sabe representar
- * e deve continuar recusando.
- *
- * `years`/`months` erram alto: mês não tem duração fixa, e M não tem mês em
- * `duration`. Subtração de timestamp nunca produz mês, então isto só dispara se
- * alguém selecionar uma coluna `interval` de verdade — e aí a conversão precisa de
- * uma decisão, não de um palpite de 30 dias.
- */
-function comoDuracao(v: unknown): MDuration | null {
-  if (typeof v !== 'object' || v === null) return null;
-  const o = v as Record<string, unknown> & { toPostgres?: unknown };
-  if (typeof o.toPostgres !== 'function') return null;
-  // No `pg`, `toPostgres` vem do protótipo e não aparece em `Object.keys`. A
-  // exceção para função existe para não depender disso.
-  const camposEstranhos = Object.entries(o).filter(
-    ([k, valor]) =>
-      typeof valor !== 'function' && !(CAMPOS_DE_INTERVALO as readonly string[]).includes(k),
-  );
-  if (camposEstranhos.length) return null;
-  const num = (k: (typeof CAMPOS_DE_INTERVALO)[number]): number => {
-    const x = o[k];
-    return typeof x === 'number' ? x : 0;
-  };
-  if (num('years') !== 0 || num('months') !== 0) {
-    throw new MEvalError(
-      `A fonte devolveu um interval com ano/mês (${String(o.toPostgres())}), e mês não tem ` +
-        'duração fixa: converter exigiria uma data de referência. O duration de M só ' +
-        'tem dia, hora, minuto, segundo.',
-    );
-  }
-  return new MDuration(
-    num('days') * 86_400_000 +
-      num('hours') * 3_600_000 +
-      num('minutes') * 60_000 +
-      num('seconds') * 1000 +
-      num('milliseconds'),
   );
 }

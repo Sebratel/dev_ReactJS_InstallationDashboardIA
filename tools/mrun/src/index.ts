@@ -59,11 +59,8 @@ import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { leJuncoes, reconciliadorDe } from '../../../packages/semantic-model/src/juncoes.ts';
 import type { Connector, ResolvedQuery } from '../../../packages/query-engine/src/types.ts';
 import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
-import {
-  queryDependencies,
-  runQueries,
-  usaFonteExterna,
-} from '../../../packages/transform-engine/src/runner.ts';
+import { runQueries, usaFonteExterna } from '../../../packages/transform-engine/src/runner.ts';
+import { isTable } from '../../../packages/transform-engine/src/value.ts';
 import { isTable } from '../../../packages/transform-engine/src/value.ts';
 import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts';
 import { argvDoFilho, ErroDeArgumento, parseArgs, type Args } from './args.ts';
@@ -85,16 +82,52 @@ const MARCA = '##MRUN##';
 const FORA_DO_ESCOPO = new Set<string>();
 
 // ------------------------------------------------------------------ argumentos
-// O parser mora em `args.ts` para ter teste: importar este arquivo lê o `.env` e
-// abre o catálogo, e nada disso cabe num `node --test`.
-const args: Args = ((): Args => {
-  try {
-    return parseArgs(process.argv.slice(2));
-  } catch (err) {
-    console.error(err instanceof ErroDeArgumento ? err.message : String(err));
-    process.exit(2);
+interface Args {
+  only: string[];
+  all: boolean;
+  colunas: boolean;
+  passos: boolean;
+  memoria: number | null;
+  emProcesso: boolean;
+  /** Modo filho: roda exatamente esta query e imprime uma linha de JSON. */
+  one: string | null;
+}
+
+function parseArgs(argv: string[]): Args {
+  const args: Args = {
+    only: [],
+    all: false,
+    colunas: false,
+    passos: false,
+    memoria: null,
+    emProcesso: false,
+    one: null,
+  };
+  for (const raw of argv) {
+    if (raw === '--all') args.all = true;
+    else if (raw === '--colunas') args.colunas = true;
+    else if (raw === '--passos') args.passos = true;
+    else if (raw === '--passos') args.passos = true;
+    else if (raw === '--em-processo') args.emProcesso = true;
+    else if (raw.startsWith('--only=')) {
+      args.only = raw.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean);
+    } else if (raw.startsWith('--one=')) args.one = raw.slice('--one='.length);
+    else if (raw.startsWith('--memoria=')) {
+      const n = Number.parseInt(raw.slice('--memoria='.length), 10);
+      if (!Number.isFinite(n) || n < 256) {
+        console.error('--memoria espera MB (mínimo 256)');
+        process.exit(2);
+      }
+      args.memoria = n;
+    } else {
+      console.error(`argumento desconhecido: ${raw}`);
+      process.exit(2);
+    }
   }
-})();
+  return args;
+}
+
+const args = parseArgs(process.argv.slice(2));
 
 // ------------------------------------------------------------------ catálogo
 const registry = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
@@ -492,12 +525,60 @@ for (const r of resultados) {
   }
 }
 
+// Onde o tempo vai, que é a pergunta que decide o que otimizar. `M` sai por
+// subtração (total − fonte − conversão): é o tempo de avaliar os passos, e é o
+// único que não some ligando um cache na frente.
+{
+  const somaveis = resultados.filter((r) => r.ok && r.msExecute !== undefined);
+  if (somaveis.length) {
+    const sum = (f: (r: Resultado) => number): number => somaveis.reduce((a, r) => a + f(r), 0);
+    const total = sum((r) => r.ms);
+    const exec = sum((r) => r.msExecute ?? 0);
+    const conv = sum((r) => r.msConversao ?? 0);
+    const linhas = sum((r) => r.linhasLidas ?? 0);
+    const pct = (x: number): string => (total ? `${Math.round((x / total) * 100)}%` : '—');
+    console.log('\n── Onde o tempo vai ──');
+    console.log(`  fonte (banco/rede):  ${n(exec).padStart(9)} ms  ${pct(exec).padStart(4)}`);
+    console.log(`  conversão de linha:  ${n(conv).padStart(9)} ms  ${pct(conv).padStart(4)}`);
+    console.log(
+      `  avaliação de M:      ${n(total - exec - conv).padStart(9)} ms  ${pct(total - exec - conv).padStart(4)}`,
+    );
+    console.log(`  ${n(linhas)} linhas lidas de fonte`);
+    // Os 3 mais lentos, porque otimizar a média não faz ninguém esperar menos.
+    const piores = [...somaveis].sort((a, b) => b.ms - a.ms).slice(0, 3);
+    for (const r of piores) {
+      const m = r.ms - (r.msExecute ?? 0) - (r.msConversao ?? 0);
+      console.log(
+        `    ${r.id.padEnd(26)} ${n(r.ms).padStart(7)} ms = ${n(r.msExecute ?? 0)} fonte` +
+          ` + ${n(r.msConversao ?? 0)} conversão + ${n(m)} M`,
+      );
+    }
+  }
+}
+
 const falhas = resultados.filter((r) => !r.ok);
 const alertas = resultados.filter((r) => r.alerta);
 
 if (args.colunas) {
   for (const r of resultados.filter((x) => x.ok)) {
     console.log(`\n${r.id} (${r.colunas.length} colunas):\n  ${r.colunas.join(', ')}`);
+  }
+}
+
+if (args.passos) {
+  for (const r of resultados.filter((x) => x.passosDetalhe?.length)) {
+    console.log(`\n── ${r.id}: linhas por passo ──`);
+    let anterior: number | null = null;
+    for (const p of r.passosDetalhe!) {
+      // A seta só aparece quando o passo MUDA a contagem, que é o que se procura.
+      // Sem isso a lista de 60 passos obriga a comparar número a número na tela.
+      const delta =
+        anterior === null || p.linhas === anterior
+          ? ''
+          : `  ← ${p.linhas > anterior ? '+' : ''}${n(p.linhas - anterior)}`;
+      console.log(`  ${n(p.linhas).padStart(11)}  ${p.nome}${delta}`);
+      anterior = p.linhas;
+    }
   }
 }
 

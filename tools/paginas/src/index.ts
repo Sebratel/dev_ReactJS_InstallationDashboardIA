@@ -19,7 +19,6 @@
 //   npm run paginas
 //   npm run paginas -- --pagina=diario-instalacao
 //   npm run paginas -- --erros          # só as mensagens, inteiras
-//   npm run paginas -- --visuais        # quanto cada visual custou, do maior ao menor
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,13 +32,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 
 const args = process.argv.slice(2);
 const soErros = args.includes('--erros');
-const porVisual = args.includes('--visuais');
 const pedidas = args
   .filter((a) => a.startsWith('--pagina='))
   .flatMap((a) => a.slice('--pagina='.length).split(',').map((s) => s.trim()))
   .filter(Boolean);
 for (const a of args) {
-  if (a !== '--erros' && a !== '--visuais' && !a.startsWith('--pagina=')) {
+  if (a !== '--erros' && !a.startsWith('--pagina=')) {
     console.error(`argumento desconhecido: ${a}`);
     process.exit(2);
   }
@@ -74,18 +72,9 @@ interface Linha {
   falhas: { visual: string; tipo: string; erro: string }[];
   /** Colunas convertidas para o tipo declarado no carregamento. */
   convertidas: string[];
-  /** Colunas deixadas fora da carga pela projeção. */
-  omitidas: string[];
-  /** Conversões suprimidas para não quebrar um relacionamento. */
-  juncoesPreservadas: string[];
-  /** Tabelas calculadas congeladas que mesmo assim foram recalculadas, com o motivo. */
-  recalculadas: string[];
-  /** Custo de cada visual, para `--visuais`. */
-  visuais: { id: string; tipo: string; ms: number; nota: string }[];
 }
 
 const resultados: Linha[] = [];
-const n = (v: number): string => v.toLocaleString('pt-BR');
 
 for (const dash of alvo as DashboardSpec[]) {
   process.stderr.write(`  ${dash.id}… `);
@@ -100,24 +89,7 @@ for (const dash of alvo as DashboardSpec[]) {
       now: AGORA,
     });
     const msCarga = Date.now() - t0;
-    // Com `--visuais`, cada visual se anuncia ao terminar. Numa página de 40 minutos,
-    // esperar a saída do fim significa gastar a execução inteira só para descobrir
-    // qual visual é o caro — e interromper para olhar joga fora tudo o que já rodou.
-    const p = calculaPagina(
-      dash,
-      c.ev,
-      { de: 0, linhas: 1 },
-      porVisual
-        ? (v, i, total) => {
-            const nota = v.erro ? ' ERRO' : v.semCalculo ? ` (${v.semCalculo})` : '';
-            process.stderr.write(
-              `\n      [${String(i).padStart(2)}/${total}] ${n(v.ms).padStart(9)} ms  ` +
-                `${v.tipo.padEnd(30)}${v.id.slice(0, 8)}${nota}`,
-            );
-          }
-        : undefined,
-    );
-    if (porVisual) process.stderr.write('\n  ');
+    const p = calculaPagina(dash, c.ev, { de: 0, linhas: 1 });
     resultados.push({
       pagina: dash.id,
       resumo: p.resumo,
@@ -127,14 +99,6 @@ for (const dash of alvo as DashboardSpec[]) {
       falhas: p.visuais
         .filter((v: VisualCalculado) => v.erro)
         .map((v) => ({ visual: v.id, tipo: v.tipo, erro: v.erro! })),
-      convertidas: c.convertidas,
-      omitidas: c.omitidas,
-      juncoesPreservadas: c.juncoesPreservadas,
-      recalculadas: c.recalculadas,
-      visuais: p.visuais.map((v: VisualCalculado) => ({
-        id: v.id, tipo: v.tipo, ms: v.ms,
-        nota: v.erro ? 'erro' : v.semCalculo ?? '',
-      })),
     });
     process.stderr.write(`${p.resumo.calculados} ok, ${p.resumo.falharam} erro(s)\n`);
   } catch (err) {
@@ -146,37 +110,13 @@ for (const dash of alvo as DashboardSpec[]) {
       msCalculo: 0,
       linhas: 0,
       falhas: [],
-      convertidas: [],
-      omitidas: [],
-      juncoesPreservadas: [],
-      recalculadas: [],
-      visuais: [],
     });
     process.stderr.write('não carregou\n');
   }
 }
 
 // ---------------------------------------------------------------------- saída
-
-/**
- * O custo de cada visual, do maior para o menor.
- *
- * **É o instrumento que faltava.** O total da página não diz onde gastar esforço: os
- * 104 minutos do achado #46 eram 90% de um visual só, e descobrir isso custou uma hora
- * de relógio por hipótese. Uma lista ordenada troca a suspeita por leitura.
- */
-if (porVisual) {
-  for (const r of resultados) {
-    if (r.visuais.length === 0) continue;
-    console.log(`
-${r.pagina} — ${r.visuais.length} visuais, ${n(r.msCalculo)} ms de cálculo`);
-    console.log('  ' + 'ms'.padStart(9) + '  ' + 'tipo'.padEnd(28) + 'visual');
-    for (const v of [...r.visuais].sort((a, b) => b.ms - a.ms)) {
-      const nota = v.nota ? `  (${v.nota})` : '';
-      console.log(`  ${n(v.ms).padStart(9)}  ${v.tipo.padEnd(28)}${v.id.slice(0, 8)}${nota}`);
-    }
-  }
-}
+const n = (v: number): string => v.toLocaleString('pt-BR');
 
 if (!soErros) {
   console.log(
@@ -211,13 +151,38 @@ if (naoCarregaram.length) {
   }
 }
 
-// A conversão de tipo é a única coisa no carregamento que **muda o dado**. Se ela
-// não aparecer aqui, ela é silenciosa — e conversão silenciosa é o erro mais caro
-// desta base (ACHADOS #31 e #40).
-const convertidas = [...new Set(carregadas.flatMap((r) => r.convertidas))].sort();
-if (convertidas.length) {
-  console.log(`\n── Colunas convertidas para o tipo declarado (${convertidas.length}) ──`);
-  for (const c of convertidas) console.log(`  ${c}`);
+// A conversão **não** feita também muda o dado — e pela mesma razão tem de aparecer.
+// É a regra do #40 encontrando o limite dela numa coluna de junção: converter só um
+// lado punha número contra texto, e o relacionamento não casava nunca.
+const preservadas = [...new Set(carregadas.flatMap((r) => r.juncoesPreservadas))].sort();
+if (preservadas.length) {
+  console.log(`\n── Conversões suprimidas para preservar a junção (${preservadas.length}) ──`);
+  for (const c of preservadas) console.log(`  ${c}`);
+}
+
+// Recalcular uma tabela que estava congelada custa tempo e muda o número. As duas
+// coisas precisam ser visíveis, senão a página "às vezes demora" sem explicação.
+const recalculadas = [...new Set(carregadas.flatMap((r) => r.recalculadas))].sort();
+if (recalculadas.length) {
+  console.log(`\n── Tabelas calculadas recalculadas apesar do congelado (${recalculadas.length}) ──`);
+  for (const c of recalculadas) console.log(`  ${c}`);
+}
+
+// A conversão **não** feita também muda o dado — e pela mesma razão tem de aparecer.
+// É a regra do #40 encontrando o limite dela numa coluna de junção: converter só um
+// lado punha número contra texto, e o relacionamento não casava nunca.
+const preservadas = [...new Set(carregadas.flatMap((r) => r.juncoesPreservadas))].sort();
+if (preservadas.length) {
+  console.log(`\n── Conversões suprimidas para preservar a junção (${preservadas.length}) ──`);
+  for (const c of preservadas) console.log(`  ${c}`);
+}
+
+// Recalcular uma tabela que estava congelada custa tempo e muda o número. As duas
+// coisas precisam ser visíveis, senão a página "às vezes demora" sem explicação.
+const recalculadas = [...new Set(carregadas.flatMap((r) => r.recalculadas))].sort();
+if (recalculadas.length) {
+  console.log(`\n── Tabelas calculadas recalculadas apesar do congelado (${recalculadas.length}) ──`);
+  for (const c of recalculadas) console.log(`  ${c}`);
 }
 
 // A conversão **não** feita também muda o dado — e pela mesma razão tem de aparecer.

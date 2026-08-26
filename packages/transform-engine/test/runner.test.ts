@@ -1,6 +1,6 @@
 // Testes do orquestrador.
 //
-// O teste que importa é o último: as 23 queries do escopo rodam ponta a ponta com
+// O teste que importa é o último: as 22 queries do escopo rodam ponta a ponta com
 // linhas sintéticas, na ordem de dependência, e devolvem tabela. Sem credencial.
 
 import assert from 'node:assert/strict';
@@ -15,21 +15,12 @@ import {
   queryDependencies,
   queryOrder,
   runQueries,
-  usaFonteExterna,
   type MQuerySpec,
 } from '../src/runner.ts';
-import { MDuration, MEvalError } from '../src/value.ts';
+import { MEvalError } from '../src/value.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const HOJE = new Date(Date.UTC(2026, 7, 5, 12, 0, 0));
-
-/** Culture do modelo, da spec gerada. `feriados` depende dela. */
-function cultureDoModelo(): string | null {
-  const m = yaml.parse(
-    fs.readFileSync(path.join(ROOT, 'specs', '_catalog', 'model.yaml'), 'utf8'),
-  ) as { culture?: string | null };
-  return m.culture ?? null;
-}
 
 function corpus(): MQuerySpec[] {
   const dir = path.join(ROOT, 'specs', '_catalog', 'queries');
@@ -166,57 +157,6 @@ test('`apenas` roda a query pedida e as dependências dela, e mais nada', async 
   assert.ok(!buscadas.includes('c'), 'C não deveria ter sido buscada');
 });
 
-test('interval do Postgres vira duration — medido contra o driver pg', () => {
-  // Forma real do `PostgresInterval` (`node --test` não tem banco, então o objeto é
-  // reproduzido): só os campos não-zero como propriedade própria, e `toPostgres` no
-  // protótipo — é por isso que ele não aparece em `Object.keys`.
-  const proto = { toPostgres: () => 'x' };
-  const intervalo = (campos: Record<string, number>) => Object.assign(Object.create(proto), campos);
-
-  const t = deLinhas([
-    { I: intervalo({ days: 201, hours: 3, minutes: 30 }) },
-    { I: intervalo({ milliseconds: 250 }) },
-    { I: intervalo({}) },
-  ]);
-  const ms = t.rows.map((r) => (r.get('I') as MDuration).ms);
-  assert.deepEqual(ms, [201 * 86_400_000 + 3 * 3_600_000 + 30 * 60_000, 250, 0]);
-});
-
-test('interval com mês erra alto: mês não tem duração fixa', () => {
-  const comMes = Object.assign(Object.create({ toPostgres: () => '2 mons 3 days' }), {
-    months: 2,
-    days: 3,
-  });
-  assert.throws(() => deLinhas([{ I: comMes }]), /mês não tem duração fixa/);
-});
-
-test('objeto sem toPostgres continua recusado — jsonb não é duration', () => {
-  // `{}` de um `jsonb` é indistinguível de intervalo zero pelos campos; o que
-  // separa os dois é o método do driver.
-  assert.throws(() => deLinhas([{ J: {} }]), /não sabe representar/);
-  assert.throws(() => deLinhas([{ J: { days: 1 } }]), /não sabe representar/);
-});
-
-test('usaFonteExterna separa quem lê fonte de quem traz a tabela embutida', () => {
-  assert.equal(usaFonteExterna('let F = Odbc.Query("dsn=x","select 1") in F'), true);
-  assert.equal(usaFonteExterna('let F = GoogleSheets.Contents("https://x") in F'), true);
-  assert.equal(usaFonteExterna('let F = DateTime.LocalNow() in F'), false);
-  // Nome de passo parecido não conta: quem decide é o identificador na expressão.
-  assert.equal(usaFonteExterna('let #"Odbc.Query fake" = 1, b = #"Odbc.Query fake" in b'), false);
-});
-
-test('query que não lê fonte não chama a fonte injetada', async () => {
-  let chamou = false;
-  await runQueries({
-    specs: [q('a', 'A', 'let F = #table({"X"}, {{1}}) in F')],
-    fonte: async () => {
-      chamou = true;
-      return [];
-    },
-  });
-  assert.equal(chamou, false, 'buscar fonte para query sem fonte pediria connector inexistente');
-});
-
 test('query pedida que não existe erra dizendo o id', async () => {
   await assert.rejects(
     () => runQueries({ specs: [q('a', 'A', 'let x = 1 in x')], apenas: ['zz'], fonte: async () => [] }),
@@ -239,7 +179,6 @@ test('feriados roda inteira sem fonte externa: base64 + deflate + JSON', async (
   const feitas = await runQueries({
     specs: [spec!],
     agora: HOJE,
-    culture: cultureDoModelo(),
     fonte: async () => [],
   });
   const t = feitas.get('feriados')!.tabela;
@@ -247,117 +186,22 @@ test('feriados roda inteira sem fonte externa: base64 + deflate + JSON', async (
   assert.ok(t.columns.length > 0);
 });
 
-test('as 23 queries do escopo executam os passos; o que falha é tipo do dado sintético', async () => {
-  // O que este teste PODE provar sem credencial: que nenhuma query para por função
-  // faltando, semântica não implementada ou ordem errada entre queries.
-  //
-  // O que ele NÃO pode provar: que os valores estão certos — isso é a fase 2b.9,
-  // com dado real. E há um limite claro: o dado sintético não sabe o tipo de toda
-  // coluna. O tipo só é conhecido onde o próprio M declara
-  // (`Table.TransformColumnTypes`) ou onde o uso revela (aritmética). Onde não sabe,
-  // gera texto — e o engine então recusa comparar texto com data, **corretamente**.
-  //
-  // Por isso o teste classifica as falhas em vez de exigir zero. Falha de tipo do
-  // fixture é aceitável e está listada; qualquer outra é bug de verdade e reprova.
+test('as 22 queries do escopo rodam ponta a ponta com linha sintética', async () => {
+  // Sintética, mas não arbitrária: as colunas vêm do que o próprio M cita, então
+  // cada passo encontra o que procura. O que se prova é que os 303 passos
+  // executam e produzem tabela — não que os valores estão certos, que é 2b.9.
   const specs = corpus().filter((s) => s.id !== 'clima-tempo');
-  const culture = cultureDoModelo();
-
-  const ok: string[] = [];
-  const tipoDoFixture: string[] = [];
-  const problemas: string[] = [];
-
-  /**
-   * Estava aqui `base-categorias-field`, por não achar a coluna `categoria32`
-   * (ACHADOS #19). **Resolvido em 06/08/2026 e por isso a lista está vazia:** a
-   * coluna faltava porque o `postgresRunner` pedia o resultado no modo objeto, que
-   * colapsa duas colunas de mesmo nome antes de a linha existir; com
-   * `rowMode: 'array'` ela passou a ser gravada, e o golden regravado a tem.
-   *
-   * A lista fica, vazia, porque o mecanismo é o certo para o próximo achado desta
-   * natureza — divergência real entre o M e o que a fonte devolve, que não é
-   * regressão do engine. O que **não** se faz é reintroduzir uma entrada para
-   * silenciar falha nova sem registrar o achado.
-   */
-  const ACHADO_CONHECIDO = new Map<string, RegExp>();
-
-  for (const spec of specs) {
-    try {
-      const feitas = await runQueries({
-        specs,
-        apenas: [spec.id],
-        agora: HOJE,
-        culture,
-        fonte: async (s) => {
-          // Golden primeiro: nome e tipo reais do SQL. Sem golden (planilha, tabela
-          // embutida), cai para o que o texto do M revela.
-          const g = colunasDoGolden(s.id);
-          return g && g.length ? linhasDoGolden(g) : linhasSinteticas(s.m_expression!);
-        },
-      });
-      const r = feitas.get(spec.id)!;
-      assert.ok(r.tabela.columns.length > 0, `${spec.id} devolveu tabela sem coluna`);
-      assert.ok(r.passos.size > 0, `${spec.id} não registrou passos`);
-      ok.push(spec.id);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Tipo que o fixture não soube adivinhar. A mensagem do engine é o que
-      // distingue: ela nomeia os dois tipos envolvidos.
-      const conhecido = ACHADO_CONHECIDO.get(spec.id);
-      if (conhecido?.test(msg)) {
-        // Divergência real entre o M e o que a fonte devolve. Não é regressão.
-        tipoDoFixture.push(`${spec.id} (achado registrado): ${msg}`);
-      } else if (/entre string e|esperava (datetime|number|text|logical)|pede (date|datetime|number|text)/.test(msg)) {
-        tipoDoFixture.push(`${spec.id}: ${msg}`);
-      } else {
-        problemas.push(`${spec.id}: ${msg}`);
-      }
-    }
+  const feitas = await runQueries({
+    specs,
+    agora: HOJE,
+    fonte: async (s) => linhasSinteticas(s.m_expression!),
+  });
+  assert.equal(feitas.size, 22);
+  for (const [id, r] of feitas) {
+    assert.ok(r.tabela.columns.length > 0, `${id} devolveu tabela sem coluna`);
+    assert.ok(r.passos.size > 0, `${id} não registrou passos`);
   }
-
-  const lista = (xs: string[]): string => xs.join('\n  ');
-
-  assert.deepEqual(
-    problemas,
-    [],
-    `falhas que NÃO são tipo do fixture (função faltando, semântica, ordem):\n  ${lista(problemas)}`,
-  );
-  assert.equal(ok.length + tipoDoFixture.length, 23);
-  // Piso em 23 = **todas**. Era 22 enquanto `base-categorias-field` esbarrava em
-  // `categoria32`; com o golden regravado (06/08/2026) não sobrou nenhuma barrada,
-  // então o piso vira igualdade de fato. Se cair, alguma coisa regrediu — e a
-  // mensagem diz qual query e por quê.
-  assert.ok(
-    ok.length >= 23,
-    `só ${ok.length} de 23 executaram inteiras. Barradas por tipo do fixture:\n  ${lista(tipoDoFixture)}`,
-  );
 });
-
-/**
- * Nome da aba que a query navega: `Fonte{[name="X", ItemKind="Table"]}`.
- *
- * Existe porque o connector de Google Sheets **não** devolve os dados direto: ele
- * devolve uma tabela de navegação com uma linha por aba e a tabela de dados dentro
- * da coluna `Data`. O M da base sempre navega assim, e o runner só repassa o que a
- * fonte deu — então é a fonte que precisa entregar nesse formato.
- */
-function abaNavegada(m: string): string | null {
-  let achado: string | null = null;
-  const anda = (no: unknown): void => {
-    if (achado || typeof no !== 'object' || no === null) return;
-    const n = no as { type?: string; fields?: { name: string; expr: { value?: unknown } }[] };
-    if (n.type === 'Record' && n.fields?.some((f) => f.name === 'ItemKind')) {
-      const nome = n.fields.find((f) => f.name === 'name')?.expr?.value;
-      if (typeof nome === 'string') achado = nome;
-      return;
-    }
-    for (const v of Object.values(no) as unknown[]) {
-      if (Array.isArray(v)) for (const x of v) anda(x);
-      else anda(v);
-    }
-  };
-  anda(parseM(m));
-  return achado;
-}
 
 /**
  * Duas linhas com todas as colunas que o M da query menciona.
@@ -367,72 +211,13 @@ function abaNavegada(m: string): string | null {
  * texto onde a query declara `type datetime` faria o passo errar alto — que é o
  * comportamento certo, e aqui atrapalharia o teste de execução.
  */
-/**
- * Colunas e tipos que o SQL da query devolve **de verdade**, lidos do golden.
- *
- * Isto é muito melhor que adivinhar a partir do texto do M: o golden foi gravado
- * executando a query contra a fonte real (`npm run validate:queries`) e registra
- * nome e tipo de cada coluna — só shape, nunca linha, por causa do PII. 18 das 24
- * queries têm golden; as outras 6 são as que não leem SQL (planilha, tabela
- * embutida, `DateTime.LocalNow`).
- */
-function colunasDoGolden(
-  id: string,
-): { nome: string; tipo: string; numerica: boolean }[] | null {
-  const p = path.join(ROOT, 'specs', 'golden', `${id}.golden.json`);
-  if (!fs.existsSync(p)) return null;
-  const g = JSON.parse(fs.readFileSync(p, 'utf8')) as {
-    columns?: { name: string; type: string; numericString?: boolean }[];
-  };
-  return (g.columns ?? []).map((c) => ({
-    nome: c.name,
-    tipo: c.type,
-    // O golden registra quais colunas de texto contêm número (`PROTOCOLO:`,
-    // `NUMERO CONTRATO`). O M declara essas como Int64, e a conversão só funciona
-    // se o dado sintético também for numérico — como o real é.
-    numerica: c.numericString === true,
-  }));
-}
-
-/** Linhas sintéticas a partir do golden: nome e tipo vêm do que o SQL devolveu. */
-function linhasDoGolden(
-  cols: { nome: string; tipo: string; numerica: boolean }[],
-): Record<string, unknown>[] {
-  const valor = (c: { tipo: string; numerica: boolean }): unknown => {
-    if (c.tipo === 'date') return new Date(Date.UTC(2026, 0, 15, 8, 30, 0));
-    if (c.tipo === 'number') return 1;
-    if (c.tipo === 'null') return null;
-    // `object` no golden é jsonb do Postgres; o M dessas queries não navega nele.
-    if (c.tipo === 'object') return null;
-    return c.numerica ? '1' : 'v';
-  };
-  const uma = (): Record<string, unknown> =>
-    Object.fromEntries(cols.map((c) => [c.nome, valor(c)]));
-  return [uma(), uma()];
-}
-
 function linhasSinteticas(m: string): Record<string, unknown>[] {
-  // `Data` é a coluna em que a navegação do Sheets guarda a tabela; nunca é coluna
-  // de dado, então fica fora da coleta.
-
   const tipos = new Map<string, string>();
   const colunas = new Set<string>();
-  /** Nomes que o próprio M cria; não podem vir da fonte. */
-  const criadas = new Set<string>();
-  /** Colunas usadas em aritmética: precisam de número, não de texto. */
-  const numericas = new Set<string>();
   const anda = (no: unknown): void => {
     if (typeof no !== 'object' || no === null) return;
     const n = no as { type?: string; field?: string; callee?: { name?: string }; args?: unknown[] };
     if (n.type === 'Field' && n.field) colunas.add(n.field);
-    // `[A] + [B]` exige número dos dois lados — o engine recusa `+` entre textos,
-    // que é a semântica de M. Então a fonte sintética tem que dar número aqui.
-    const bin = no as { type?: string; op?: string; left?: { field?: string }; right?: { field?: string } };
-    if (bin.type === 'Binary' && ['+', '-', '*', '/'].includes(bin.op ?? '')) {
-      for (const lado of [bin.left, bin.right]) {
-        if (lado?.field) numericas.add(lado.field);
-      }
-    }
     // `Table.TransformColumnTypes(t, {{"COL", type X}, …})`: pega o par.
     if (n.type === 'Call' && n.callee?.name === 'Table.TransformColumnTypes') {
       const lista = n.args?.[1] as { items?: unknown[] } | undefined;
@@ -474,7 +259,6 @@ function linhasSinteticas(m: string): Record<string, unknown>[] {
   anda(parseM(m));
 
   const valor = (col: string): unknown => {
-    if (numericas.has(col) && !tipos.has(col)) return 1;
     const t = (tipos.get(col) ?? '').replace(/^nullable\s+/, '');
     if (/^(date|datetime|datetimezone|time)$/.test(t) || /^(Date|DateTime|DateTimeZone|Time)\.Type$/.test(t)) {
       return new Date(Date.UTC(2026, 0, 15, 8, 30, 0));
@@ -486,29 +270,8 @@ function linhasSinteticas(m: string): Record<string, unknown>[] {
     if (/^(duration|Duration\.Type)$/.test(t)) return null;
     return `v ${col}`;
   };
-  for (const c of criadas) colunas.delete(c);
   const uma = (): Record<string, unknown> => Object.fromEntries([...colunas].map((c) => [c, valor(c)]));
-  const dados = [uma(), uma()];
-
-  // Query que promove cabeçalho (as de planilha) lê os nomes da **primeira linha**
-  // que sobra depois do `Table.Skip`. `#APURAÇÃO PREMIAÇÃO` tem uma linha de título
-  // acima do cabeçalho, e por isso pula 1 antes de promover — então o dado
-  // sintético precisa ter a linha de título também, senão o cabeçalho é o que é
-  // descartado e as colunas nascem com os valores como nome.
-  if (/Table\.PromoteHeaders/.test(m)) {
-    const cabecalho = Object.fromEntries([...colunas].map((c) => [c, c]));
-    const lixo = Object.fromEntries([...colunas].map((c) => [c, null]));
-    const pula = Number(/Table\.Skip\([^,]+,\s*(\d+)\s*\)/.exec(m)?.[1] ?? 0);
-    dados.unshift(cabecalho);
-    for (let i = 0; i < pula; i++) dados.unshift({ ...lixo });
-  }
-
-  // Google Sheets: a fonte devolve navegação, não dados.
-  const aba = abaNavegada(m);
-  if (aba) {
-    return [{ name: aba, ItemKind: 'Table', Data: deLinhas(dados) }];
-  }
-  return dados;
+  return [uma(), uma()];
 }
 
 /** Strings literais dentro de listas e argumentos — são nomes de coluna. */

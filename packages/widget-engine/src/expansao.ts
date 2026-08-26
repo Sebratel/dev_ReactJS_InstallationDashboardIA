@@ -96,12 +96,7 @@ export function tabelaExpandida(model: SemanticModel, tabela: string): Set<strin
  * - **mais de uma âncora**: há caminho nos dois sentidos, e as duas varreduras
  *   podem discordar. Nunca acontece nesta base — a recusa é para quando acontecer.
  */
-export function escolheAncora(
-  tabelas: readonly string[],
-  model: SemanticModel,
-  onde: string,
-  tabelasDosValores: readonly string[] = [],
-): string {
+export function escolheAncora(tabelas: readonly string[], model: SemanticModel, onde: string): string {
   const cobre = (t: string): boolean => {
     const e = tabelaExpandida(model, t);
     return tabelas.every((o) => e.has(normaliza(o)));
@@ -118,38 +113,18 @@ export function escolheAncora(
     );
   }
 
-  // **Nenhuma chave alcança as outras: são dimensões, e o fato está no meio.**
-  // O fato certo não é "qualquer tabela que alcance as duas" — é aquela de onde os
-  // **números do visual** saem. É ela que o `SUMMARIZECOLUMNS` do Power BI varre, e
-  // é por isso que a lista de candidatas vem dos valores e não do modelo inteiro.
-  const dosValores = [...new Map(tabelasDosValores.map((t) => [normaliza(t), t])).values()]
-    .filter((t) => !tabelas.some((k) => normaliza(k) === normaliza(t)))
-    .filter(cobre);
-
-  if (dosValores.length === 1) return dosValores[0]!;
-
-  const noModelo = [...model.tables.values()]
+  const deFora = [...model.tables.values()]
     .map((t) => t.name)
     .filter((t) => !tabelas.some((k) => normaliza(k) === normaliza(t)))
     .filter(cobre);
 
-  if (dosValores.length > 1) {
-    throw new DaxEvalError(
-      `${onde}: as tabelas de agrupamento (${tabelas.join(', ')}) são dimensões, e ` +
-        `${dosValores.length} das tabelas de onde saem os valores do visual alcançam as ` +
-        `duas (${dosValores.join(', ')}). Cada uma dá um conjunto de combinações ` +
-        `diferente, e escolher em silêncio é escolher o número.`,
-    );
-  }
-
-  if (noModelo.length > 0) {
+  if (deFora.length > 0) {
     throw new DaxEvalError(
       `${onde}: as tabelas de agrupamento (${tabelas.join(', ')}) são dimensões que não ` +
-        `se alcançam entre si, e **nenhuma das tabelas de onde saem os valores do ` +
-        `visual** as liga` +
-        (tabelasDosValores.length > 0 ? ` (valores em: ${[...new Set(tabelasDosValores)].join(', ')})` : ' (o visual não declarou tabela de valor)') +
-        `. Ligam, mas de fora do visual: ${noModelo.join(', ')} — e varrer uma tabela ` +
-        `que o visual não menciona é escolher o número por conta própria.`,
+        `se alcançam entre si — quem as liga é uma tabela de fato que **não está no ` +
+        `visual**. Candidatas: ${deFora.join(', ')}. Cada uma dá um conjunto de ` +
+        `combinações diferente, então escolher uma aqui seria escolher o número. ` +
+        `Não implementado nesta fatia.`,
     );
   }
 

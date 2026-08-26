@@ -1,11 +1,15 @@
-// A segmentação de dados — o `slicer` do Power BI, que até aqui era uma caixa morta.
+// Uma segmentação: o botão na barra de filtros e o diálogo que escolhe os valores.
 //
-// **A lista de valores só é buscada quando o painel abre.** Uma página de
-// `visao-geral` tem 10 segmentações; buscar as dez na abertura pagaria dez varreduras
-// do dataset por uma lista que talvez ninguém abra — e a régua da DECISAO-DESEMPENHO é
-// abrir em menos de 2 s.
+// **DIÁLOGO, NÃO POPOVER.** O painel era `position: absolute` ancorado no botão. Isso
+// não funciona quando o gatilho vive dentro de uma barra que rola de lado (é o caso:
+// `.filtros` tem `overflow-x`) — a borda do contêiner corta o painel, e com a lista
+// interna rolando dentro dele o usuário empilha três recortes para marcar um item.
+// A regra do padrão: gatilho dentro de área com `overflow`, ou lista com mais de ~10
+// itens, pede diálogo centralizado com portal no `body`. Nada recorta, cabe grade de
+// 2 colunas, e há busca e rodapé de confirmação.
 
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   pegaValores,
   type Segmentacao as SegmentacaoSpec,
@@ -13,6 +17,7 @@ import {
   type Valor,
 } from '../api.ts';
 import { formata, inteiro } from '../formato.ts';
+import { X, ChevronDown } from 'lucide-react';
 
 export function Segmentacao(props: {
   pagina: string;
@@ -27,27 +32,9 @@ export function Segmentacao(props: {
   const [busca, setBusca] = useState('');
   const [cortado, setCortado] = useState(false);
 
-  // Segmentação que não sabe filtrar aparece desabilitada **com o motivo**. Um
-  // controle que parece funcionar e não muda número nenhum é pior que controle
-  // nenhum: ele faz a pessoa acreditar num número que não foi filtrado.
-  if (props.spec.naoFiltra) {
-    // O motivo inteiro fica no `title`, não no corpo: são duas destas em
-    // `visao-geral`, e o texto solto empurrava as oito segmentações que funcionam
-    // para fora da primeira linha — o aviso escondia justamente o que ele explica.
-    return (
-      <div className="filtro">
-        <span className="filtro-rotulo">{props.spec.rotulo}</span>
-        <div className="filtro-desabilitado" title={props.spec.naoFiltra}>
-          não filtra ⓘ
-        </div>
-      </div>
-    );
-  }
-
   async function abre(): Promise<void> {
-    const vai = !aberto;
-    setAberto(vai);
-    if (!vai || opcoes !== null || carregando) return;
+    setAberto(true);
+    if (opcoes !== null || carregando) return;
     setCarregando(true);
     setErro(null);
     try {
@@ -75,9 +62,6 @@ export function Segmentacao(props: {
     busca === '' ? true : rotulo(o.valor, o.tipo).toLowerCase().includes(busca.toLowerCase()),
   );
 
-  // O tipo da coluna, tirado da lista quando ela já veio. Sem ela o resumo mostra o
-  // valor cru — que é o certo: inventar 'date' para um ISO não conferido é a mesma
-  // adivinhação que o tipo explícito existe para evitar.
   const tipoDaColuna: TipoDeValor = opcoes?.find((o) => o.tipo !== null)?.tipo ?? null;
 
   const resumo =
@@ -93,88 +77,102 @@ export function Segmentacao(props: {
       <button
         className={`filtro-botao${props.selecao.length ? ' marcado' : ''}`}
         onClick={abre}
+        aria-haspopup="dialog"
         aria-expanded={aberto}
+        title={props.selecao.length ? resumo : `Escolher ${props.spec.rotulo}`}
       >
         <span className="filtro-resumo">{resumo}</span>
-        {props.selecao.length ? <span className="filtro-conta">{props.selecao.length}</span> : null}
-        <span aria-hidden>▾</span>
+        {props.selecao.length > 0 && <span className="filtro-conta">{props.selecao.length}</span>}
+        <ChevronDown size={12} />
       </button>
 
-      {aberto ? (
-        <div className="filtro-painel">
-          {carregando ? <span className="filtro-nota">carregando valores…</span> : null}
-          {erro ? <div className="erro">{erro}</div> : null}
-
-          {opcoes ? (
-            <>
-              <input
-                className="filtro-busca"
-                placeholder="filtrar a lista…"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-              />
-              <div className="filtro-lista">
-                {visiveis.map((o, i) => {
-                  const marcado = props.selecao.some((x) => mesmoValor(x, o.valor));
-                  const f = formata(o.valor, o.tipo);
-                  return (
-                    <label className="filtro-opcao" key={i}>
-                      <input type="checkbox" checked={marcado} onChange={() => alterna(o.valor)} />
-                      {/* BLANK marcado como "(vazio)": é um valor que dá para escolher,
-                          e escondê-lo faria a soma das partes não fechar com o total. */}
-                      <span className={o.valor === null ? 'vazio' : ''}>
-                        {o.valor === null ? '(vazio)' : f.texto}
-                      </span>
-                    </label>
-                  );
-                })}
-                {visiveis.length === 0 ? <span className="filtro-nota">nada com esse texto.</span> : null}
+      {aberto &&
+        createPortal(
+          <div
+            className="fundo-dialogo"
+            role="presentation"
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setAberto(false);
+            }}
+          >
+            <div className="dialogo" role="dialog" aria-modal="true" aria-label={props.spec.rotulo}>
+              <div className="dialogo-topo">
+                <h3>{props.spec.rotulo}</h3>
+                <button className="btn-icone" onClick={() => setAberto(false)} title="Fechar">
+                  <X size={13} />
+                </button>
               </div>
-              <div className="filtro-acoes">
+
+              <div className="dialogo-corpo">
+                {/* Os três estados, também aqui: uma lista em branco sem explicação
+                    parece "não há valores" quando na verdade a busca ainda nem voltou. */}
+                {carregando && <span className="filtro-nota">Carregando valores…</span>}
+                {erro && <div className="erro">{erro}</div>}
+
+                {opcoes && (
+                  <>
+                    <input
+                      className="filtro-busca"
+                      placeholder="Filtrar opções…"
+                      value={busca}
+                      onChange={(e) => setBusca(e.target.value)}
+                      autoFocus
+                    />
+                    {visiveis.length === 0 ? (
+                      <span className="filtro-nota">Nenhum resultado para esta busca.</span>
+                    ) : (
+                      <div className="filtro-lista">
+                        {visiveis.map((o, i) => {
+                          const marcado = props.selecao.some((x) => mesmoValor(x, o.valor));
+                          const f = formata(o.valor, o.tipo);
+                          return (
+                            <label key={i} className="filtro-opcao">
+                              <input type="checkbox" checked={marcado} onChange={() => alterna(o.valor)} />
+                              <span className={o.valor === null ? 'vazio' : ''}>
+                                {o.valor === null ? '(vazio)' : f.texto}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              <div className="dialogo-rodape">
                 <span className="filtro-nota">
-                  {inteiro(visiveis.length)} de {inteiro(opcoes.length)}
-                  {cortado ? ' · lista cortada no teto' : ''}
+                  {inteiro(visiveis.length)} de {inteiro(opcoes?.length ?? 0)}
+                  {cortado ? ' · limite atingido' : ''}
                 </span>
                 <div className="filtro-botoes-acao">
                   <button
                     className="secundario"
-                    onClick={() => {
-                      const novos = [...new Set([...props.selecao, ...visiveis.map((o) => o.valor)])];
-                      props.aoMudar(novos);
-                    }}
+                    onClick={() => props.aoMudar([...new Set([...props.selecao, ...visiveis.map((o) => o.valor)])])}
                     disabled={visiveis.length === 0}
                   >
-                    Marcar Todos
+                    Todos
                   </button>
-                  <button
-                    className="secundario"
-                    onClick={() => props.aoMudar([])}
-                    disabled={props.selecao.length === 0}
-                  >
+                  <button className="secundario" onClick={() => props.aoMudar([])} disabled={props.selecao.length === 0}>
                     Limpar
+                  </button>
+                  <button className="primario" onClick={() => setAberto(false)}>
+                    Aplicar
                   </button>
                 </div>
               </div>
-            </>
-          ) : null}
-        </div>
-      ) : null}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
 
-/** Rótulo curto de um valor, para o resumo do botão e para a busca da lista. */
 function rotulo(v: Valor, tipo: TipoDeValor): string {
   return v === null ? '(vazio)' : formata(v, tipo).texto;
 }
 
-/**
- * Igualdade de valor de filtro.
- *
- * `===` basta porque tudo que chega aqui já veio serializado do JSON: data é string
- * ISO, número é número. Comparar `Date` com `===` compararia referências e nenhuma
- * marcação persistiria — o motivo de a serialização acontecer no servidor.
- */
 function mesmoValor(a: Valor, b: Valor): boolean {
   return a === b;
 }

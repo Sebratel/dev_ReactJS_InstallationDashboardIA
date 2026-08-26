@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import yaml from 'yaml';
-import type { MBinary, MField, MLet, MNode, MRecordExpr } from '../src/ast.ts';
+import type { MBinary, MField, MLet, MNode, MRecord } from '../src/ast.ts';
 import { MSyntaxError, parseM, parseMLet } from '../src/parser.ts';
 import { tokenize } from '../src/tokenizer.ts';
 
@@ -116,7 +116,7 @@ test('`[A]` é campo do `_` implícito; `[A=1]` é registro', () => {
   assert.equal(campo.target, null);
   assert.equal(campo.field, 'GESTOR');
 
-  const reg = parseM('[PromoteAllScalars=true]') as MRecordExpr;
+  const reg = parseM('[PromoteAllScalars=true]') as MRecord;
   assert.equal(reg.type, 'Record');
   assert.deepEqual(reg.fields.map((f) => f.name), ['PromoteAllScalars']);
 });
@@ -133,7 +133,7 @@ test('`each [A] = "x"` é comparação, não construção de registro', () => {
 });
 
 test('registro vazio `[]` não é campo sem nome', () => {
-  const n = parseM('[]') as MRecordExpr;
+  const n = parseM('[]') as MRecord;
   assert.equal(n.type, 'Record');
   assert.equal(n.fields.length, 0);
 });
@@ -145,28 +145,6 @@ test('campo depois de expressão encadeia: Fonte{[name="X"]}[Data]', () => {
   assert.equal(n.target?.type, 'Item');
   const item = n.target as { selector: MNode };
   assert.equal(item.selector.type, 'Record');
-});
-
-test('nome de campo com espaço sem aspas — o corpus real quebrou o parser aqui', () => {
-  // `[DATA CRIADO]`, `[CAPACIDADE MANHÃ]`, `[HR. ALOCAÇÃO]`: generalized
-  // identifier do M. Exigir `#"..."` recusava 5 das 24 queries.
-  assert.equal((parseM('[DATA CRIADO]') as MField).field, 'DATA CRIADO');
-  assert.equal((parseM('[CAPACIDADE MANHÃ]') as MField).field, 'CAPACIDADE MANHÃ');
-  assert.equal((parseM('DateTime.Time([DATA CRIADO])').type), 'Call');
-});
-
-test('nome com espaço não engole o operador seguinte', () => {
-  // `[A] + [B]` não pode virar um campo chamado "A + B".
-  const n = parseM('[CAPACIDADE MANHÃ] + [CAPACIDADE TARDE]') as MBinary;
-  assert.equal(n.op, '+');
-  assert.equal((n.left as MField).field, 'CAPACIDADE MANHÃ');
-  assert.equal((n.right as MField).field, 'CAPACIDADE TARDE');
-});
-
-test('nome de campo não atravessa quebra de linha', () => {
-  // Um `]` esquecido faria o nome engolir o passo seguinte inteiro, e o erro
-  // apareceria longe da causa.
-  assert.throws(() => parseM('[DATA\nCRIADO]'), /campo|Esperava/);
 });
 
 test('campo opcional `[X]?` é distinto de `[X]`', () => {
@@ -223,7 +201,7 @@ test('let aninhado é sintaxe válida — quem recusa é o avaliador, não o par
 
 test('`type text` e `type nullable text` viram nó de tipo', () => {
   assert.deepEqual(parseM('type text'), {
-    type: 'Type', name: 'text', fields: null, start: 0, line: 1, col: 1,
+    type: 'Type', name: 'text', start: 0, line: 1, col: 1,
   });
   assert.equal(parseM('type nullable text').type === 'Type' ? (parseM('type nullable text') as { name: string }).name : '', 'nullable text');
 });

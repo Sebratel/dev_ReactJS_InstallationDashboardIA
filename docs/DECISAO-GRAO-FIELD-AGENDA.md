@@ -11,62 +11,13 @@ A query é, em uma linha:
 
 ```sql
 FROM v_service_desk_slots_productivity_informative vsdspi
-LEFT JOIN reports r       ON vsdspi.assignment_id = r.assignment_id
-LEFT JOIN people p        ON p.id = r.person_id
-LEFT JOIN person_skills ps ON ps.person_id = p.id
-LEFT JOIN skills s        ON s.id = ps.skill_id
-```
-
-O grão real tem **três** níveis: **(slot, relato, skill)** — não (protocolo, slot), e
-não (slot, relato) como uma primeira leitura deste documento dizia. Cada agendamento
-tem vários relatos, e cada relator com 8 skills cadastradas multiplica **cada relato
-dele por 8**.
-
-> **Isto não é achado novo: é o `ACHADOS.md` #2, de 04/08/2026**, que já mediu a
-> multiplicação e já tem decisão do Erick — **"replicar fielmente"** — mais a ressalva
-> textual de que *"continua valendo perguntar se a granularidade por skill é
-> necessária, mas como melhoria futura"*. Este documento não reabre a decisão; ele
-> chega ao ponto que o #2 reservou, e por isso a pergunta abaixo é follow-up, não
-> descoberta.
-
-O que **é** novo aqui: **`Skill` e `Relator` não são usados por visual nenhum nem por
-DAX nenhum.** Varredura em `specs/dashboards/` e `specs/_catalog/`: zero ocorrências de
-`property: Skill`, `property: Relator`, `[Skill]`, `[Relator]`. As duas colunas que
-justificam a multiplicação só existem no `SELECT`.
-
-Isso **não** autoriza removê-las, e o motivo é o mesmo de sempre: `Qtd` de
-`0c0223c6` e `084be384` é `aggregation: count` sobre `Protocolo` — **contagem de
-linha** — e o Power BI conta sobre o grão multiplicado também. Tirar os dois joins
-faz esses dois números caírem. Isso é **divergência**, não conserto, e o lugar dela é
-`divergencias.yaml` com decisão de dono: *`Qtd` deve contar relato, ou (relato ×
-skill)?* Registrado como pergunta #9 em `docs/PERGUNTAS-NEGOCIO.md`.
-
-## A armadilha: aquele `LEFT JOIN` é um `INNER JOIN`
-
-```sql
 LEFT JOIN reports r ON vsdspi.assignment_id = r.assignment_id
-WHERE ...
-  AND ( r.title NOT LIKE 'Execução:%' AND r.title NOT LIKE 'Manutenção de Solicitação%' AND ... )
+LEFT JOIN people p  ON p.id = r.person_id
+LEFT JOIN skills s  ON s.id = ps.skill_id
 ```
 
-Com `r.title` nulo, `NOT LIKE` avalia para **NULL**, a cadeia de `AND` vira NULL, e o
-`WHERE` rejeita a linha. **Slot sem relato qualificado não está na tabela.**
-
-Consequência direta para o passo abaixo: a forma de slot **não pode** ser "a mesma
-query sem o join de `reports`". Isso traria slots que hoje não existem — total maior,
-plausível, sem aviso nenhum. Ela precisa preservar a existência:
-
-```sql
-AND EXISTS (
-  SELECT 1 FROM reports r
-   WHERE r.assignment_id = vsdspi.assignment_id
-     AND r.title NOT LIKE 'Execução:%'
-     AND ...   -- os seis filtros, idênticos
-)
-```
-
-(Isso também é um fato de negócio que ninguém pediu: um agendamento sem relato é
-**invisível** no relatório de hoje. Não é decisão nossa mudar; é decisão nossa avisar.)
+O grão real é **(slot, relato)**, não (protocolo, slot). Cada agendamento tem vários
+relatos, e é o `LEFT JOIN reports` que multiplica.
 
 E o corte é limpo, o que é a boa notícia deste documento:
 
@@ -83,32 +34,20 @@ texto do relato (grão de relato).
 
 Levantado das especificações extraídas, não de leitura de DAX à mão:
 
-O que decide não é a coluna, é **se o visual conta linha**. Um `tableEx` de colunas
-puras agrupa pela tupla e é *provadamente* insensível à multiplicação; um
-`aggregation: count` sobre `Protocolo` mede exatamente a multiplicação.
-
-| visual | custo | o que ele faz | grão exigido |
+| visual | custo | colunas cruas | grão exigido |
 |---|---|---|---|
-| `e2d5549b` | **24,5 s** | `tableEx` de 9 colunas, **zero agregação** | **slot** ✅ |
-| `084be384` | **8,8 s** | `count(Protocolo)` + Data Relato, Descrição, CategoriaProdutividade | **relato** ❌ |
-| `0c0223c6` | 1,9 s | Status SLA + **`count(Protocolo)`** | **relato** ❌ |
+| `e2d5549b` | **24,5 s** | Slot Agenda, Turno, Tipo de Protocolo, Base, RankDataProtocolo, Status Protocolo | **slot** ✅ |
+| `084be384` | **8,8 s** | Protocolo, Data Relato, Descrição, CategoriaProdutividade, ClassificacaoRelato | **relato** ❌ |
 | `815c0959` | (sob demanda) | + Relato | **relato** ❌ |
+| `0c0223c6` | 1,9 s | Status SLA | slot ✅ |
 | `ae5871aa` | 1,5 s | Protocolo, `max(ClassificacaoRelato)` | agregável ✅ |
 | `670ac661`, `6ffe2103`, `dde5aa90` | slicers | CategoriaProdutividade, ClassificacaoRelato, Descrição | **relato** ❌ |
 | `e7998ec5` | slicer | Status Protocolo | slot ✅ |
 | `116ebf72`, `4ed2f950`, `a88b3232`, `bc2c33d2` | cards | só medidas (`DISTINCTCOUNT`) | qualquer ✅ |
 
-**O maior visual, o de 24,5 s, precisa só do grão de slot** — e a prova não é
-"as colunas dele são de slot", é que ele **não agrega nada**: `tableEx` sem agregação
-agrupa pela tupla, então três linhas idênticas de skill diferente já colapsam hoje,
-dentro do avaliador, depois de terem sido carregadas e varridas. Servir a ele o grão de
-slot devolve **o mesmo resultado** fazendo o colapso no Postgres.
-
-`0c0223c6` mudou de lado nesta revisão: a coluna dele é de slot, mas o `Qtd` é
-contagem de linha, e isso amarra o grão. São 1,9 s — cabe na forma de relato sem dor.
-
-Agregar a tabela inteira serve `e2d5549b` e **apaga** os outros: o passo 4, como está
-escrito, troca uma lentidão por um número errado.
+**O maior visual, o de 24,5 s, precisa só do grão de slot.** O segundo, de 8,8 s,
+precisa do grão de relato. Agregar a tabela inteira serve o primeiro e **apaga** o
+segundo — o passo 4, como está escrito, troca uma lentidão por um número errado.
 
 ## Por que "só desligar as colunas de relato" não resolve
 
@@ -136,52 +75,12 @@ Duas linhas de ação, nesta ordem:
 Extensão do que já existe: a query passa a ter **duas formas**, e qual delas roda
 depende de o pedido tocar ou não coluna de grão de relato.
 
-- forma **slot** (padrão): `vsdspi` com `EXISTS` em `reports` — **não** "sem o join",
-  pelo motivo da seção anterior — e sem `people`/`person_skills`/`skills` → ~30 mil linhas
+- forma **slot** (padrão): `vsdspi` sem o join de `reports` → ~30 mil linhas
 - forma **relato** (sob demanda, por `?visual=`): a query de hoje, inteira
 
-Isso serve `e2d5549b` (24,5 s), `e7998ec5` e os quatro cards — a maior parte do custo —
-e deixa `084be384`, `0c0223c6` e os três slicers pagando o grão fino, que é o que eles
-de fato precisam.
-
-**Por onde os 24,5 s passam, lido no código e não suposto.** `calculaTabela`
-(`packages/widget-engine/src/tabela.ts:99`) chama `agrupar`, e `e2d5549b` **não tem
-campo agregado nenhum** — todos os 9 são chave. Então `valorDoCampo` nunca é chamado, e
-o custo inteiro é `enumeraCombinacoes` (`grupos.ts:207`): uma varredura das 1,46 milhão
-de linhas em que, para as chaves de `PROTOCOLOS GERAL` e `Status Protocolo Dia`, cada
-linha ainda **atravessa relacionamento** pelo `Navegador`. Depois disso, cada combinação
-guarda as linhas dela numa `Materializacao`.
-
-Isso fecha o argumento: o visual produz as combinações distintas de 9 colunas, e o grão
-de slot **já contém exatamente essas combinações** — a deduplicação hoje acontece
-dentro do avaliador, depois de carregar e varrer tudo. A forma de slot faz a mesma
-deduplicação no Postgres, antes. Mesma saída, 48× menos linha varrida e menos travessia
-de relacionamento.
-
-**O que faz a forma de slot ser conferível, e não uma aposta:** as duas formas têm de
-concordar em tudo que não é contagem de linha. Como `e2d5549b` não agrega, o teste é
-uma igualdade exata — a tupla de 9 colunas dele, no grão de slot, tem de ser **o mesmo
-conjunto** que a de hoje. E `DISTINCTCOUNT('FIELD AGENDA'[Protocolo])` tem de dar
-idêntico nas duas formas, porque protocolo distinto não vê multiplicação. São essas
-duas afirmações que vão para o teste, não "ficou mais rápido".
-
-**O preço, dito antes de alguém descobrir sozinho: cinco dos 39 visuais deixam de ser
-calculados na abertura da página.** `084be384`, `0c0223c6` e os três slicers
-(`670ac661`, `6ffe2103`, `dde5aa90`) precisam do grão fino; se a página abre na forma de
-slot, eles aparecem como "sob demanda", igual ao `815c0959` de hoje. Três deles são
-slicers, o que é ruim: slicer sob demanda é filtro que não está lá quando a pessoa
-quer filtrar.
-
-Isso torna a decisão **menos óbvia do que o passo 4 fazia parecer**, e é por isso que
-existe uma segunda saída, mais caras de implementar e sem esse preço:
-
-| saída | o que faz | preço |
-|---|---|---|
-| **A. duas formas, uma por pedido** | a página abre no grão de slot; quem precisa do fino pede | 5 visuais sob demanda, 3 deles slicers |
-| **B. as duas formas na memória** | carrega slot (~30 mil) **e** relato (1,46 M); o avaliador redireciona o visual que pode | nada muda na tela; exige o avaliador saber redirecionar — é *user-defined aggregation* do Power BI, e errar nisso é justamente a classe de erro silencioso que este projeto não aceita |
-
-B é o desenho certo e o trabalho maior. A é entregável até sexta. **A escolha é do
-Erick**, e depende de quanto vale ter os três slicers ao abrir.
+Isso serve `e2d5549b` (24,5 s), `0c0223c6`, `e7998ec5` e os quatro cards — a maior
+parte do custo — e deixa `084be384` e os três slicers pagando o grão fino, que é o
+que eles de fato precisam.
 
 O roteamento por visual **já existe** (`sobDemandaDoVisual`, `servidor.ts:491`), e a
 chave de cache já inclui o conjunto de colunas liberadas (`servidor.ts:465`). O que

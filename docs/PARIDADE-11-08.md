@@ -148,6 +148,59 @@ Isto justificou incluir o OID 1082 (`date`) no conserto, e não só o 1114
 (`timestamp`) que o card do `Turno` pedia — meia-noite deslocada é inofensiva até
 encontrar uma meia-noite não deslocada.
 
+### `MÉDIA POR DIA` — mesma causa, mecanismo diferente
+
+`MÉDIA POR DIA = DISTINCTCOUNT(N°PROTOCOLO) / DISTINCTCOUNT(DATA INSTALAÇÃO)`. O
+denominador contava **instantes** (364) onde devia contar **dias** (186), porque
+`DATA ALOCAÇÃO` — um `date` do Postgres — caía toda em `03:00Z` enquanto
+`DATA AGENDA` e `DATA DA TROCA` caíam em `00:00Z`. Mesmo dia, dois instantes.
+
+A conta fecha pelos dois lados: `33.046 ÷ 178,63 = 185,0 dias`, contra os nossos 186.
+Depois do conserto o denominador colapsa para 186 e a medida dá **178,6**.
+
+Isto justificou incluir o OID 1082 (`date`) no conserto, e não só o 1114
+(`timestamp`) que o card do `Turno` pedia — meia-noite deslocada é inofensiva até
+encontrar uma meia-noite não deslocada.
+
+Conserto, raio de alcance medido e a lição: `docs/ACHADOS.md` #58.
+
+### `Agendados Manhã` — resolvido no mesmo dia, e era grande
+
+**Causa: fuso.** `Turno` é `IF(HOUR([Slot Agenda]) < 12, "Manhã", "Tarde")`, e o
+`Slot Agenda` do snapshot chegava três horas adiantado — as colunas de origem são
+`timestamp without time zone` e o driver `pg`, sem fuso declarado, adotava o da
+máquina (`America/Sao_Paulo`). Os dois picos reais da agenda, 09h e 13h, viravam 12h
+e 16h: **ambos ≥ 12, ambos "Tarde"**. A manhã inteira sumiu.
+
+Recontando com a hora certa:
+
+| | Manhã | Tarde |
+|---|---|---|
+| como estava rodando | **20** | 26.691 |
+| com a hora certa | 12.150 | 15.956 |
+| Power BI | 12.269 | 16.091 |
+
+Sobra 0,97% e 0,84% — a assinatura da defasagem de 4,2 dias, no sentido certo.
+
+**Esta comparação é legítima apesar da ressalva desta página.** A recontagem varreu o
+dataset inteiro **sem filtro**, e o navegador leu o Power BI **com os filtros
+limpos**: os dois lados estavam sem filtro. É o único par de cards de
+`agendamento-field` que a limpeza não invalida — por acidente, mas vale.
+
+### `MÉDIA POR DIA` — mesma causa, mecanismo diferente
+
+`MÉDIA POR DIA = DISTINCTCOUNT(N°PROTOCOLO) / DISTINCTCOUNT(DATA INSTALAÇÃO)`. O
+denominador contava **instantes** (364) onde devia contar **dias** (186), porque
+`DATA ALOCAÇÃO` — um `date` do Postgres — caía toda em `03:00Z` enquanto
+`DATA AGENDA` e `DATA DA TROCA` caíam em `00:00Z`. Mesmo dia, dois instantes.
+
+A conta fecha pelos dois lados: `33.046 ÷ 178,63 = 185,0 dias`, contra os nossos 186.
+Depois do conserto o denominador colapsa para 186 e a medida dá **178,6**.
+
+Isto justificou incluir o OID 1082 (`date`) no conserto, e não só o 1114
+(`timestamp`) que o card do `Turno` pedia — meia-noite deslocada é inofensiva até
+encontrar uma meia-noite não deslocada.
+
 Conserto, raio de alcance medido e a lição: `docs/ACHADOS.md` #58.
 
 E dois achados que independem de tudo acima:

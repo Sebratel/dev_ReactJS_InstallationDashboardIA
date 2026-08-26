@@ -88,6 +88,15 @@ export interface CampoSpec {
    * ACHADOS.md #32.
    */
   active?: boolean | null;
+  /**
+   * A projeção está **em jogo** no visual?
+   *
+   * Um eixo com a hierarquia de datas lista Ano, Mês e Dia; só as ativas entram no
+   * agrupamento. `null` é distinto de `true`: significa que o PBIP não declarou
+   * estado nenhum (poço de um campo só), e não que o estado seja "ativo". Ver
+   * ACHADOS.md #32.
+   */
+  active?: boolean | null;
   /** Só em `kind: aggregation`. Nome apurado do `Function` do PBIP. */
   aggregation?: string | null;
   aggregation_code?: number | null;

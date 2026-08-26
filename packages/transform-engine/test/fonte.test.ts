@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import yaml from 'yaml';
 import { fonteDoEngine, FonteError, type ExecutorDeQuery } from '../src/fonte.ts';
-import { deLinhas, runQueries, type MQuerySpec } from '../src/runner.ts';
+import { runQueries, type MQuerySpec } from '../src/runner.ts';
 import { MTable } from '../src/value.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');

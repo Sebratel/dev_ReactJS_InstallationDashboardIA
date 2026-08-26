@@ -111,8 +111,16 @@ measures:
     )
 - name: "# META"
   format: "0"
+  # NÚMERO DE NEGÓCIO, não cálculo: é a meta mensal, digitada à mão no relatório.
+  # Era 3000 aqui — valor extraído do PBIP `INST - Relatório Instalação Gerencial`,
+  # que está desatualizado. O relatório VIVO devolve 2928, e é constante mesmo:
+  # sondado em 25/08/2026 sob quatro contextos de filtro diferentes (sem filtro,
+  # só 2026, só janeiro, só um tipo de protocolo) e deu 2928 nos quatro.
+  # A API não entrega o `Expression` desta medida, então o valor foi obtido
+  # avaliando-a, não lendo a fórmula.
+  # Se a meta mudar de novo, ela muda AQUI — e convém confirmar com quem a define.
   display_folder: null
-  dax: "3000"
+  dax: "2928"
 - name: "# TOTAL MÊS ATIVO"
   format: "0"
   display_folder: null

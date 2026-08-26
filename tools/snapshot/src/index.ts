@@ -26,10 +26,17 @@
 //   npm run snapshot -- --todas --memoria=8192
 //   npm run snapshot -- --pagina=visao-geral --plano     # só diz o que faria
 //   npm run snapshot -- --query=protocolos-geral --refazer
+//   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
+//   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
+//   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
+//   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
+//   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
+//   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
+//   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
 import { MemoryCache } from '../../../packages/query-engine/src/cache-memory.ts';
@@ -45,8 +52,6 @@ import {
   tokenComCache,
 } from '../../../packages/query-engine/src/connectors-gsheets.ts';
 import { buscadorWeb } from '../../../packages/query-engine/src/connectors-web.ts';
-import { materializaColunas } from '../../../packages/snapshot/src/colunas-calculadas.ts';
-import { resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
 import { QueryEngine } from '../../../packages/query-engine/src/engine.ts';
 import {
   accessToken,
@@ -58,11 +63,19 @@ import type { Connector, ResolvedQuery } from '../../../packages/query-engine/sr
 import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
 import { queryDependencies, runQueries } from '../../../packages/transform-engine/src/runner.ts';
 import { toDatasetRows } from '../../../packages/transform-engine/src/value.ts';
-import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
-import { leJuncoes, reconciliadorDe } from '../../../packages/semantic-model/src/juncoes.ts';
+import { normalizeName, SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
-import { escreve, leCabecalho } from '../../../packages/snapshot/src/formato.ts';
+import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
+import {
+  comoDia,
+  costura,
+  decideIncremental,
+  lePoliticas,
+  marcaDe,
+  mescla,
+  type PoliticaIncremental,
+} from '../../../packages/snapshot/src/incremental.ts';
 import {
   DIRETORIO_PADRAO,
   arquivoDaQuery,
@@ -95,6 +108,17 @@ interface Args {
   memoria: number | null;
   segundos: number;
   uma: string | null;
+  /** Não encadeia o congelamento das calculadas no fim. Ver o rodapé deste arquivo. */
+  semCalculadas: boolean;
+  /**
+   * Busca só o que mudou, em quem tem política em `specs/_catalog/incremental.yaml`.
+   *
+   * Implica refazer **todas** as pedidas: quem tem política paga o delta, quem não
+   * tem é buscada inteira. A alternativa — pular as que já estão em disco — deixaria
+   * o refresh incompleto justamente na volta que ele deveria ser barato o bastante
+   * para rodar sempre.
+   */
+  incremental: boolean;
 }
 
 /**
@@ -122,6 +146,8 @@ function parseArgs(argv: string[]): Args {
     memoria: null,
     segundos: TIMEOUT_PADRAO_S,
     uma: null,
+    semCalculadas: false,
+    incremental: false,
   };
   const lista = (raw: string, pref: string): string[] =>
     raw.slice(pref.length).split(',').map((s) => s.trim()).filter(Boolean);
@@ -130,6 +156,18 @@ function parseArgs(argv: string[]): Args {
     if (raw === '--todas') a.todas = true;
     else if (raw === '--plano') a.plano = true;
     else if (raw === '--refazer') a.refazer = true;
+    else if (raw === '--sem-calculadas') a.semCalculadas = true;
+    else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--sem-calculadas') a.semCalculadas = true;
+    else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--sem-calculadas') a.semCalculadas = true;
+    else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--sem-calculadas') a.semCalculadas = true;
+    else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--incremental') a.incremental = true;
     else if (raw.startsWith('--pagina=')) a.paginas.push(...lista(raw, '--pagina='));
     else if (raw.startsWith('--query=')) a.queries.push(...lista(raw, '--query='));
     else if (raw.startsWith('--saida=')) a.saida = path.resolve(ROOT, raw.slice('--saida='.length));
@@ -161,16 +199,6 @@ const args = parseArgs(process.argv.slice(2));
 // ------------------------------------------------------------------- catálogo
 const registry = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
 const model = SemanticModel.fromSpecsDir(path.join(ROOT, 'specs'));
-
-/**
- * O "agora" de toda a execução, tirado uma vez só.
- *
- * `'FIELD AGENDA'[Status SLA]` usa `NOW()`, e a coluna calculada é **congelada** no
- * arquivo. Um relógio por query poria instantes diferentes em tabelas do mesmo
- * snapshot, e a divergência apareceria depois como erro de paridade sem causa
- * visível.
- */
-const AGORA = new Date();
 const cfg = loadConfig();
 
 const culture = (
@@ -178,14 +206,6 @@ const culture = (
     culture?: string | null;
   }
 ).culture ?? null;
-
-/**
- * Quais mesclagens mortas podem comparar a chave como inteiro.
- *
- * Decisão humana, em `specs/_catalog/juncoes.yaml`. Vazio = nenhuma, e a nota da
- * materialização diz o número que justificaria cada uma.
- */
-const reconcilia = reconciliadorDe(leJuncoes(path.join(ROOT, 'specs')));
 
 const todasAsQueries = registry.list().filter((q) => q.m_expression && !FORA_DO_ESCOPO.has(q.id));
 
@@ -266,13 +286,6 @@ interface Resultado {
   bytes: number | null;
   ms: number;
   erro?: string;
-  /**
-   * O que a camada M fez e precisa ser dito — hoje, mesclagem que não casou nada.
-   *
-   * Viaja no resultado e **não** no stderr porque o pai só lê o stderr do filho
-   * quando ele falha, e uma junção morta é justamente o caso em que tudo dá ok.
-   */
-  notas?: string[];
 }
 
 async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> {
@@ -284,27 +297,8 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   const web = q.endpoints?.length ? buscadorWeb({ permitidos: q.endpoints }) : undefined;
 
   try {
-    const feitas = await runQueries({
-      specs: todasAsQueries,
-      apenas: [q.id],
-      culture,
-      fonte,
-      web,
-      reconcilia,
-    });
-    // As notas da camada M saem ANTES de qualquer outra linha desta query. Elas
-    // dizem o que a mesclagem fez, e uma mesclagem que não casou nada é a diferença
-    // entre 87.805 linhas de dado e 87.805 nulos que a tela lê como BLANK (#64).
-    const notas = feitas.get(q.id)!.notas.map((n) => `${n.fn} ${n.assunto}: ${n.mensagem}`);
+    const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
     const { columns, rows } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
-
-    // **Solta a camada M antes de materializar.** `toDatasetRows` já copiou tudo o
-    // que interessa para `rows`, e o que fica em `feitas` é a mesma tabela na
-    // representação do avaliador de M — uma linha é um `Map`, bem mais gordo que o
-    // objeto simples. Manter as duas vivas foi o que estourou o heap em `field-agenda`
-    // (ACHADOS #48): 1,46 milhão de linhas em dobro, e a materialização ainda por
-    // vir. Nada abaixo daqui lê `feitas`.
-    feitas.clear();
 
     // Colunas calculadas em DAX entram no arquivo, como o Power BI faz no refresh
     // (ACHADOS #47). Só as que dependem da própria tabela — o resto continua
@@ -334,7 +328,6 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       { query: q.id, tabelas: tabelasDaQuery(q.id), geradoEm: new Date().toISOString() },
       columns,
       rows,
-      daxSha,
     );
     fs.renameSync(temp, arquivo);
 
@@ -345,7 +338,6 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       colunas: cab.colunas.length,
       bytes: fs.statSync(arquivo).size,
       ms: Date.now() - inicio,
-      notas,
     };
   } catch (err) {
     return {
@@ -356,6 +348,9 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       bytes: null,
       ms: Date.now() - inicio,
       erro: err instanceof Error ? err.message : String(err),
+      // A janela escolhida vai junto: um erro de carga incremental sem saber com
+      // que `:desde` ela rodou é um erro que não dá para reproduzir.
+      ...(avisos.length ? { notas: avisos } : {}),
     };
   } finally {
     for (const f of fechar) await f().catch(() => {});
@@ -429,21 +424,40 @@ if (args.plano) {
   process.exit(0);
 }
 
-/** O que já está em disco e continua válido — não se busca de novo sem `--refazer`. */
+/**
+ * A entrada de manifesto de um arquivo que já está em disco.
+ *
+ * Copia do cabeçalho, que é quem manda: `linhas`, `marca` e `modo` são
+ * propriedades do arquivo, e o manifesto é só o índice delas.
+ */
+function entradaDoArquivo(id: string, arquivo: string): EntradaDeManifesto {
+  const cab = leCabecalho(arquivo);
+  return {
+    query: id,
+    tabelas: cab.tabelas,
+    linhas: cab.linhas,
+    colunas: cab.colunas.length,
+    bytes: fs.statSync(arquivo).size,
+    geradoEm: cab.geradoEm,
+    ...(cab.marca ? { marca: cab.marca } : {}),
+    ...(cab.modo ? { modo: cab.modo } : {}),
+    ...(cab.completoEm ? { completoEm: cab.completoEm } : {}),
+  };
+}
+
+/**
+ * O que já está em disco e continua válido — não se busca de novo sem `--refazer`.
+ *
+ * `--incremental` esvazia esta lista de propósito: ele existe para **refrescar** o
+ * conjunto inteiro barato, e pular o que já está em disco daria um refresh que não
+ * refresca. Quem tem política paga só o delta; quem não tem é buscada inteira.
+ */
 const jaTem = new Map<string, EntradaDeManifesto>();
 for (const id of materializaveis) {
   const arquivo = arquivoDaQuery(args.saida, id);
-  if (args.refazer || !fs.existsSync(arquivo)) continue;
+  if (args.refazer || args.incremental || !fs.existsSync(arquivo)) continue;
   try {
-    const cab = leCabecalho(arquivo);
-    jaTem.set(id, {
-      query: id,
-      tabelas: cab.tabelas,
-      linhas: cab.linhas,
-      colunas: cab.colunas.length,
-      bytes: fs.statSync(arquivo).size,
-      geradoEm: cab.geradoEm,
-    });
+    jaTem.set(id, entradaDoArquivo(id, arquivo));
   } catch {
     // Cabeçalho ilegível é arquivo de versão antiga ou truncado: refaz.
   }
@@ -455,6 +469,48 @@ console.log(
     (jaTem.size ? `, ${jaTem.size} já em disco (use --refazer para rebuscar)` : '') +
     `${args.memoria ? `, heap de ${args.memoria} MB por processo` : ''}`,
 );
+if (args.incremental) {
+  const comPolitica = aBuscar.filter((id) => politicas.has(id));
+  console.log(
+    `  --incremental: ${comPolitica.length} com política` +
+      (comPolitica.length ? ` (${comPolitica.join(', ')})` : '') +
+      `, ${aBuscar.length - comPolitica.length} buscada(s) inteira(s).`,
+  );
+  if (comPolitica.length === 0) {
+    console.log(
+      `  Nenhuma das pedidas é incremental — isto vai custar o mesmo que --refazer. ` +
+        `As políticas vivem em specs/_catalog/incremental.yaml.`,
+    );
+  }
+}
+if (args.incremental) {
+  const comPolitica = aBuscar.filter((id) => politicas.has(id));
+  console.log(
+    `  --incremental: ${comPolitica.length} com política` +
+      (comPolitica.length ? ` (${comPolitica.join(', ')})` : '') +
+      `, ${aBuscar.length - comPolitica.length} buscada(s) inteira(s).`,
+  );
+  if (comPolitica.length === 0) {
+    console.log(
+      `  Nenhuma das pedidas é incremental — isto vai custar o mesmo que --refazer. ` +
+        `As políticas vivem em specs/_catalog/incremental.yaml.`,
+    );
+  }
+}
+if (args.incremental) {
+  const comPolitica = aBuscar.filter((id) => politicas.has(id));
+  console.log(
+    `  --incremental: ${comPolitica.length} com política` +
+      (comPolitica.length ? ` (${comPolitica.join(', ')})` : '') +
+      `, ${aBuscar.length - comPolitica.length} buscada(s) inteira(s).`,
+  );
+  if (comPolitica.length === 0) {
+    console.log(
+      `  Nenhuma das pedidas é incremental — isto vai custar o mesmo que --refazer. ` +
+        `As políticas vivem em specs/_catalog/incremental.yaml.`,
+    );
+  }
+}
 if (aBuscar.length) {
   const doEnv = Math.round(cfg.voalle.statementTimeoutMs / 1000);
   console.log(
@@ -493,6 +549,9 @@ async function rodaEmSubprocesso(id: string): Promise<Resultado> {
     `--uma=${id}`,
     `--saida=${args.saida}`,
     `--timeout=${args.segundos}`,
+    // Quem decide se a carga é incremental é o filho, olhando o cabeçalho do
+    // arquivo — mas a intenção é do pai, e só chega lá por aqui.
+    ...(args.incremental ? ['--incremental'] : []),
   ];
   return new Promise((resolve) => {
     const filho = spawn(process.execPath, argv, { cwd: ROOT });
@@ -533,6 +592,10 @@ for (const id of aBuscar) {
   // mesclagem morta precisa ver a nota ao lado do nome dela, não a três telas de
   // distância. Junção que não casa nada é a diferença entre dado e BLANK (#64).
   for (const n of r.notas ?? []) process.stderr.write(`      ${n}\n`);
+  // Logo abaixo da linha da query, e não num resumo no fim: quem materializa uma
+  // mesclagem morta precisa ver a nota ao lado do nome dela, não a três telas de
+  // distância. Junção que não casa nada é a diferença entre dado e BLANK (#64).
+  for (const n of r.notas ?? []) process.stderr.write(`      ${n}\n`);
   resultados.push(r);
 }
 
@@ -540,15 +603,7 @@ for (const id of aBuscar) {
 const entradas: EntradaDeManifesto[] = [...jaTem.values()];
 for (const r of resultados) {
   if (!r.ok) continue;
-  const cab = leCabecalho(arquivoDaQuery(args.saida, r.query));
-  entradas.push({
-    query: r.query,
-    tabelas: cab.tabelas,
-    linhas: cab.linhas,
-    colunas: cab.colunas.length,
-    bytes: r.bytes!,
-    geradoEm: cab.geradoEm,
-  });
+  entradas.push(entradaDoArquivo(r.query, arquivoDaQuery(args.saida, r.query)));
 }
 
 // O manifesto acumula: materializar `visao-geral` depois de `diario-instalacao`
@@ -565,14 +620,14 @@ const mb = (b: number): string => `${(b / 1024 / 1024).toFixed(1)} MB`;
 if (resultados.length) {
   console.log(
     '\n' + 'query'.padEnd(28) + 'linhas'.padStart(12) + 'cols'.padStart(6) +
-      'tamanho'.padStart(11) + 'ms'.padStart(9),
+      'tamanho'.padStart(11) + 'ms'.padStart(9) + '  modo',
   );
-  console.log('-'.repeat(66));
+  console.log('-'.repeat(80));
   for (const r of resultados) {
     console.log(
       `${r.ok ? ' ' : '✖'}${r.query.padEnd(27)}${n(r.linhas).padStart(12)}` +
         `${n(r.colunas).padStart(6)}${(r.bytes === null ? '-' : mb(r.bytes)).padStart(11)}` +
-        `${String(r.ms).padStart(9)}`,
+        `${String(r.ms).padStart(9)}  ${r.modo ?? '-'}`,
     );
   }
 }
@@ -594,6 +649,76 @@ if (plano?.calculadas.length) {
       plano.calculadas.join(', '),
   );
 }
-console.log('  Contém dado de cliente. O diretório está no .gitignore.');
+
+// A idade da última carga COMPLETA, por query incremental.
+//
+// Sai sempre que houver política, e não só quando `--incremental` roda: é a
+// pergunta que ninguém faz sozinho e que decide se o conjunto ainda é confiável.
+// A incremental não enxerga linha que sumiu da fonte sem deixar data, e o único
+// remédio é a completa — então o relógio dela tem de ficar à vista.
+const incrementais = manifesto.tabelas.filter((e) => politicas.has(e.query));
+if (incrementais.length) {
+  console.log('\n── Carga incremental ──');
+  for (const e of incrementais) {
+    const p = politicas.get(e.query)!;
+    const completoEm = e.completoEm ?? e.geradoEm;
+    const dias = (Date.now() - new Date(completoEm).getTime()) / 86_400_000;
+    const marca = e.marca ? comoDia(new Date(e.marca)) : '(sem marca)';
+    const alerta = dias > p.idadeMaximaDias ? '  ← PASSOU DO TETO' : '';
+    console.log(
+      `  ${e.query.padEnd(28)}${(e.modo ?? 'completo').padEnd(13)}` +
+        `marca até ${marca}   última completa há ${dias.toFixed(1)} d ` +
+        `(teto ${p.idadeMaximaDias})${alerta}`,
+    );
+  }
+  const vencidas = incrementais.filter((e) => {
+    const p = politicas.get(e.query)!;
+    return (Date.now() - new Date(e.completoEm ?? e.geradoEm).getTime()) / 86_400_000 > p.idadeMaximaDias;
+  });
+  if (vencidas.length) {
+    console.log(
+      `\n  Rode uma carga completa: npm run snapshot -- --query=${vencidas.map((e) => e.query).join(',')} --refazer`,
+    );
+  }
+}
+
+console.log('\n  Contém dado de cliente. O diretório está no .gitignore.');
+
+// ------------------------------------------------- a segunda metade do refresh
+//
+// **Buscar das fontes é metade do trabalho; a outra metade é congelar o DAX.** As
+// tabelas calculadas nascem das que acabaram de ser materializadas, então uma query
+// nova as deixa velhas no mesmo instante — e o carregamento tem uma trava contra
+// exatamente isso (`packages/snapshot/src/confere.ts`), que responde **HTTP 409** e
+// derruba a página inteira.
+//
+// Era um passo separado que só a memória de quem rodava ligava ao primeiro. Em
+// 24/08/2026 as queries foram refeitas às 21:42 e as calculadas ficaram nas 18:41:
+// cinco das catorze páginas pararam de abrir, e a mensagem que sobrou para o usuário
+// foi "nada está carregando". O comando existia e estava certo; o que faltava era
+// alguém lembrar de rodá-lo.
+//
+// Encadear é a correção. `--sem-calculadas` sai fora para quem está depurando uma
+// query só e não quer pagar o congelamento a cada tentativa.
+if (!args.semCalculadas && resultados.some((r) => r.ok)) {
+  console.log('\n── Congelando as tabelas calculadas (a outra metade do refresh) ──');
+  const calc = spawnSync(
+    process.execPath,
+    [
+      ...(args.memoria ? [`--max-old-space-size=${args.memoria}`] : []),
+      path.join(ROOT, 'tools', 'snapshot', 'src', 'calculadas.ts'),
+      '--todas',
+    ],
+    { cwd: ROOT, stdio: 'inherit' },
+  );
+  if (calc.status !== 0) {
+    console.error(
+      '\nAs queries foram materializadas, mas o congelamento das calculadas FALHOU.\n' +
+        'O snapshot está inconsistente e as páginas vão responder 409 até isto rodar:\n' +
+        '  npm run snapshot:calculadas -- --todas',
+    );
+    process.exit(1);
+  }
+}
 
 process.exit(falhas.length ? 1 : 0);

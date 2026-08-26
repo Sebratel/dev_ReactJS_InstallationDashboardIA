@@ -14,6 +14,8 @@ export function Paginacao(props: {
   janela: Janela;
   carregando: boolean;
   vaiPara: (de: number) => void;
+  /** De quanto anda o "anterior". Ver `LINHAS_VISIVEIS` em `janela.ts`. */
+  passo?: number;
 }) {
   const { janela: j } = props;
   // Tabela que cabe inteira não ganha botão: dois controles desabilitados ao lado de
@@ -34,7 +36,7 @@ export function Paginacao(props: {
       </button>
       <button
         className="secundario"
-        onClick={() => props.vaiPara(anteriorDe(j))}
+        onClick={() => props.vaiPara(anteriorDe(j, props.passo))}
         disabled={!podeVoltar(j) || props.carregando}
       >
         anterior

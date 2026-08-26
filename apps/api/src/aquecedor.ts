@@ -59,6 +59,23 @@ export interface OpcoesDoAquecedor {
   intervaloMs?: number;
   /** Onde as linhas aparecem. Padrão: `console.error`, que não suja a saída de dados. */
   anuncia?: (linha: string) => void;
+  /**
+   * Chamado quando o dado mudou **e** as páginas novas já estão quentes.
+   *
+   * É o que fecha a ponte com a tela: a API já tinha o transporte (`/api/events/stream`)
+   * e o navegador já escutava (`useRealtimeStream.ts`), mas ninguém disparava o aviso
+   * a não ser a rota manual `/api/events/invalidate`. Quem sabe que o dado mudou é este
+   * laço — ele já compara o carimbo a cada volta para decidir se reaquece.
+   *
+   * **Depois de aquecer, nunca antes.** Avisar ao *detectar* a mudança mandaria a tela
+   * pedir a página no exato instante em que ela é mais cara, que é o custo que este
+   * módulo existe para pagar no lugar de quem está olhando.
+   *
+   * **E não no arranque.** A primeira passada não é mudança de dado nenhuma — é o
+   * processo subindo. Avisar ali faria toda tela aberta recarregar de graça a cada
+   * restart da API.
+   */
+  aoMudar?: (carimbo: string) => void;
 }
 
 export class Aquecedor {
@@ -68,9 +85,18 @@ export class Aquecedor {
   readonly #agora: () => number;
   readonly #intervaloMs: number;
   readonly #anuncia: (linha: string) => void;
+  readonly #aoMudar: (carimbo: string) => void;
 
   /** O carimbo que já foi aquecido. `null` = nada foi aquecido ainda. */
   #aquecido: string | null = null;
+  /**
+   * Já houve uma passada completa nesta vida do processo?
+   *
+   * Não dá para usar `#aquecido` para isto: uma passada obsoleta o zera de volta para
+   * `null`, e aí a passada seguinte se anunciaria como arranque e engoliria o aviso de
+   * uma mudança real. Este campo só anda para frente.
+   */
+  #jaCompletou = false;
   /** Guarda contra duas passadas ao mesmo tempo. Ver `passada`. */
   #ocupado = false;
   #timer: ReturnType<typeof setInterval> | null = null;
@@ -82,6 +108,7 @@ export class Aquecedor {
     this.#agora = opts.agora ?? (() => Date.now());
     this.#intervaloMs = opts.intervaloMs ?? INTERVALO_PADRAO_MS;
     this.#anuncia = opts.anuncia ?? ((l) => console.error(l));
+    this.#aoMudar = opts.aoMudar ?? ((): void => {});
   }
 
   /**
@@ -155,6 +182,14 @@ export class Aquecedor {
       const agora = this.#carimbo();
       const obsoleta = agora !== carimbo;
       this.#aquecido = obsoleta ? null : carimbo;
+
+      // A tela só é avisada de uma passada que valeu: uma passada obsoleta aqueceu o
+      // dado de antes, e mandar a tela recarregar para buscar aquilo seria pedir a ela
+      // que exibisse o número velho com cara de novo. A próxima volta refaz e avisa.
+      if (!obsoleta) {
+        if (this.#jaCompletou) this.#aoMudar(carimbo);
+        this.#jaCompletou = true;
+      }
 
       const ms = this.#agora() - t0;
       const erros = paginas.filter((p) => p.status !== 200).length;

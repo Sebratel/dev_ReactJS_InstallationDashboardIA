@@ -135,7 +135,57 @@ carga não era `JSON.parse` nenhum — era a cópia. Otimizar o formato do arqui
 atacado a metade menor. Falta agora quebrar o que sobrou dos 25,6 s entre `JSON.parse`
 e conversão de tipo; é essa medida que decide se o passo 5 vale alguma coisa.
 
-## O caso `Relato` — decidido em 10/08/2026
+## O caso `Relato` — revertido em 24/08/2026
+
+> **A decisão de 10/08 (logo abaixo) não vale mais, e o motivo é que a medição que a
+> embasou deixou de valer.** Ela foi feita sobre um `field-agenda.jsonl` de
+> **1.458.244 linhas e 950 MB**. O snapshot de hoje tem **103.913 linhas e 120 MB**.
+> `'FIELD AGENDA'[Relato]` voltou para a carga normal, e
+> `specs/_catalog/projecao.yaml` está vazio.
+
+Medido em 24/08/2026, processo frio, `agendamento-field`:
+
+| Caminho | Custo |
+|---|---|
+| Página sem `Relato`, e depois a tabela sob demanda | 5,9 s + **12,0 s** = 17,9 s |
+| Processo frio pedindo **só** a tabela (carrega tudo + `Relato`) | **2,5 s** |
+| Página inteira com `Relato` dentro, de uma vez | **6,9 s** |
+
+A linha do meio é a que explica as outras duas. Dos 12,0 s do caminho sob demanda,
+**só 1,0 s era cálculo** — os outros 11 s eram `carrega` montando um **segundo**
+dataset da página inteira (as mesmas `PROTOCOLOS GERAL`, `PROTOCOLOS PRODUTIVIDADE`
+e companhia relidas e reconvertidas), com o primeiro ainda residente. O preço nunca
+foi ler o texto livre: foi ter dois datasets vivos na mesma máquina, disputando heap.
+
+Então o sob demanda estava **pagando para ser mais lento**: 17,9 s divididos em duas
+esperas, contra 6,9 s numa só. E também em memória — 1,4 GB de RSS num dataset, contra
+~2,0 GB somando os dois.
+
+**O que isto muda na tela.** As duas tabelas de relato aparecem junto com o resto da
+página, aquecidas pelo `Aquecedor` como qualquer outro visual. Ninguém mais vê o
+cartão "sob demanda" com o botão *Carregar*.
+
+**O que isto não muda.** O mecanismo continua inteiro e testado — `sobDemandaDoVisual`,
+`aqueceSobDemanda`, `SobDemanda.tsx`, o guarda de `porque` em `colunas-usadas.test.ts`.
+Nenhuma coluna precisa dele hoje. Se um snapshot voltar a crescer uma ordem de
+grandeza, a decisão se registra de novo — com a medição junto, como esta. O que **não**
+volta é declarar sob demanda por estimativa: foi assim que uma medição de 950 MB
+sobreviveu duas semanas a um arquivo de 120 MB.
+
+**Também mudou no servidor, no mesmo dia** (ver `apps/api/src/servidor.ts`):
+
+- `emVoo` — dois pedidos com a mesma chave de cache esperam o mesmo cálculo em vez de
+  o repetirem. Antes, o aquecimento de fundo e o pedido do navegador calculavam a
+  mesma tabela em paralelo.
+- `aqueceSobDemanda` — adianta, em segundo plano e **com os filtros do pedido**, os
+  visuais sob demanda da página. Substitui um bloco que iterava `carregado.omitidas`
+  (uma lista de **colunas**, como `'FIELD AGENDA'[relato]`) como se fossem **ids de
+  visual**: `calculaPagina` filtrava por um id que não existia, não calculava nada, e
+  o aquecimento nunca aconteceu — em silêncio, a cada miss de cache.
+
+---
+
+## O caso `Relato` — decidido em 10/08/2026 (histórico)
 
 > **DECIDIDO pelo Erick: sob demanda.** A página abre sem a tabela de relatos; quem
 > quiser os relatos os pede. Declarado em `specs/_catalog/projecao.yaml`.

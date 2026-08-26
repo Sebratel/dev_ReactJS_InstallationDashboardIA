@@ -313,6 +313,503 @@ export function parseTmdlRelationships(text) {
   return relationships;
 }
 
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
+}
+
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
+}
+
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
+}
+
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
+}
+
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
+}
+
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
+}
+
+// Lê um identificador TMDL: 'entre aspas simples' ou nu (até o próximo ponto).
+// Devolve [nome, resto].
+function readIdent(s) {
+  if (s.startsWith("'")) {
+    const end = s.indexOf("'", 1);
+    if (end === -1) throw new Error(`identificador TMDL sem aspa de fechamento: ${s}`);
+    return [s.slice(1, end), s.slice(end + 1)];
+  }
+  const m = /^[^.\s]+/.exec(s);
+  if (!m) throw new Error(`identificador TMDL vazio: ${s}`);
+  return [m[0], s.slice(m[0].length)];
+}
+
+// `'PROTOCOLOS GERAL'.'DATA AGENDA'` -> { table, column }
+//
+// Não dá para fazer split('.'): existe no modelo uma coluna cujo *nome contém
+// ponto* — 'BACKLOG AGENDADO FUTURO'.'PROTOCOLOS GERAL.TIPO DE PROTOCOLO'.
+// Split ingênuo devolveria a tabela certa e a coluna "PROTOCOLOS GERAL",
+// que existe — um relacionamento silenciosamente errado, não um erro.
+export function parseColumnRef(text) {
+  const [table, rest] = readIdent(text.trim());
+  if (!rest.startsWith('.')) {
+    throw new Error(`referência de coluna TMDL sem ponto: ${text}`);
+  }
+  const [column] = readIdent(rest.slice(1));
+  return { table, column };
+}
+
+const REL_PROP_RE =
+  /^(fromColumn|toColumn|isActive|crossFilteringBehavior|fromCardinality|toCardinality|joinOnDateBehavior|relyOnReferentialIntegrity):\s*(.+)$/;
+
+export function parseTmdlRelationships(text) {
+  const lines = text.split(/\r?\n/);
+  const relationships = [];
+  let cur = null;
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (t === '') continue;
+    if (depthOf(raw) === 0 && /^relationship\s+/.test(t)) {
+      // Defaults do TMDL, explícitos aqui porque o arquivo só grava o que
+      // difere: many-to-one, ativo, filtro numa direção.
+      cur = {
+        id: t.replace(/^relationship\s+/, '').trim(),
+        from: null,
+        to: null,
+        fromCardinality: 'many',
+        toCardinality: 'one',
+        isActive: true,
+        crossFilteringBehavior: 'oneDirection',
+        joinOnDateBehavior: null,
+      };
+      relationships.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    const kv = t.match(REL_PROP_RE);
+    if (!kv) continue;
+    const [, key, value] = kv;
+    if (key === 'fromColumn' || key === 'toColumn') {
+      cur[key === 'fromColumn' ? 'from' : 'to'] = parseColumnRef(value);
+    } else if (key === 'isActive') {
+      cur.isActive = value.trim() !== 'false';
+    } else if (key === 'relyOnReferentialIntegrity') {
+      // irrelevante para nós: é dica de otimização de join, não semântica
+    } else {
+      cur[key] = value.trim();
+    }
+  }
+  return relationships;
+}
+
 export function parseTmdlExpressions(text) {
   const lines = text.split(/\r?\n/);
   const expressions = [];

@@ -50,6 +50,18 @@ test('daUrl: também lê o formato de caminho /groups/<g>/reports/<r>', () => {
   assert.equal(r.reportId, '5576f259-5fe4-41ec-9b16-c1248191d46d');
 });
 
+// Esta é a forma que o navegador realmente mostra, e era a única que falhava:
+// achar o `ctid` fazia a função devolver cedo, sem nunca olhar o caminho.
+test('daUrl: caminho com reportId E ctid na query — as duas coisas juntas', () => {
+  const r = daUrl(
+    'https://app.powerbi.com/groups/11111111-2222-3333-4444-555555555555' +
+      '/reports/5576f259-5fe4-41ec-9b16-c1248191d46d/ReportSection' +
+      '?ctid=022ee013-720c-4beb-a166-aaf0ae268166&experience=power-bi',
+  );
+  assert.equal(r.reportId, '5576f259-5fe4-41ec-9b16-c1248191d46d');
+  assert.equal(r.tenant, '022ee013-720c-4beb-a166-aaf0ae268166');
+});
+
 test('daUrl: lixo não derruba, devolve vazio', () => {
   assert.deepEqual(daUrl('nao é url'), {});
   assert.deepEqual(daUrl('https://exemplo.com/'), {});

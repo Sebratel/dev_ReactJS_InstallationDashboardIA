@@ -86,6 +86,66 @@ export interface CabecalhoDeSnapshot {
   /** ISO UTC. É a "data do dado" que a tela precisa mostrar. */
   geradoEm: string;
   /**
+   * Até onde este arquivo é verdade: o **maior** valor das colunas de marca da
+   * política incremental (ISO UTC). Ausente em query que não é incremental.
+   *
+   * É daqui que a próxima carga incremental parte, e por isso mora no arquivo e
+   * não só no manifesto: o arquivo é o dado, e a marca é uma propriedade dele.
+   * Manifesto e arquivo separados divergiriam no dia em que um fosse reescrito
+   * sem o outro — e a divergência custaria rebuscar de menos, calada.
+   */
+  marca?: string;
+  /**
+   * Como este arquivo foi montado. Ausente = completo (o caso de sempre).
+   *
+   * `incremental` é o que faz `--incremental` conseguir contar há quantos dias
+   * não roda uma carga completa. Sem isso, uma cadeia infinita de cargas
+   * incrementais nunca se denunciaria.
+   */
+  modo?: 'completo' | 'incremental';
+  /** ISO UTC da última carga COMPLETA desta query. Viaja pelas incrementais. */
+  completoEm?: string;
+  /**
+   * Até onde este arquivo é verdade: o **maior** valor das colunas de marca da
+   * política incremental (ISO UTC). Ausente em query que não é incremental.
+   *
+   * É daqui que a próxima carga incremental parte, e por isso mora no arquivo e
+   * não só no manifesto: o arquivo é o dado, e a marca é uma propriedade dele.
+   * Manifesto e arquivo separados divergiriam no dia em que um fosse reescrito
+   * sem o outro — e a divergência custaria rebuscar de menos, calada.
+   */
+  marca?: string;
+  /**
+   * Como este arquivo foi montado. Ausente = completo (o caso de sempre).
+   *
+   * `incremental` é o que faz `--incremental` conseguir contar há quantos dias
+   * não roda uma carga completa. Sem isso, uma cadeia infinita de cargas
+   * incrementais nunca se denunciaria.
+   */
+  modo?: 'completo' | 'incremental';
+  /** ISO UTC da última carga COMPLETA desta query. Viaja pelas incrementais. */
+  completoEm?: string;
+  /**
+   * Até onde este arquivo é verdade: o **maior** valor das colunas de marca da
+   * política incremental (ISO UTC). Ausente em query que não é incremental.
+   *
+   * É daqui que a próxima carga incremental parte, e por isso mora no arquivo e
+   * não só no manifesto: o arquivo é o dado, e a marca é uma propriedade dele.
+   * Manifesto e arquivo separados divergiriam no dia em que um fosse reescrito
+   * sem o outro — e a divergência custaria rebuscar de menos, calada.
+   */
+  marca?: string;
+  /**
+   * Como este arquivo foi montado. Ausente = completo (o caso de sempre).
+   *
+   * `incremental` é o que faz `--incremental` conseguir contar há quantos dias
+   * não roda uma carga completa. Sem isso, uma cadeia infinita de cargas
+   * incrementais nunca se denunciaria.
+   */
+  modo?: 'completo' | 'incremental';
+  /** ISO UTC da última carga COMPLETA desta query. Viaja pelas incrementais. */
+  completoEm?: string;
+  /**
    * `sha256` da definição inteira de uma **tabela calculada** — o DAX das linhas mais
    * o de cada coluna calculada. Ausente em arquivo de query.
    *
@@ -144,7 +204,15 @@ function codifica(v: Escalar, tipo: TipoDeColuna): unknown {
   return v instanceof Date ? v.toISOString() : v;
 }
 
-function decodifica(v: unknown, tipo: TipoDeColuna, onde: string): Escalar {
+/**
+ * Exportada para o benchmark de carga (`npm run bench:carga`) medir o degrau
+ * "montar o objeto da linha" separado do `JSON.parse` que vem antes dele.
+ *
+ * A alternativa era o benchmark reescrever a decodificação, e aí ele mediria a
+ * cópia dele em vez do carregamento — o mesmo erro do `normalizeName` duplicado
+ * que o comentário do topo deste arquivo evita.
+ */
+export function decodifica(v: unknown, tipo: TipoDeColuna, onde: string): Escalar {
   if (v === null || v === undefined) return null;
   if (tipo === 'misto') {
     if (!Array.isArray(v) || v.length !== 2) {

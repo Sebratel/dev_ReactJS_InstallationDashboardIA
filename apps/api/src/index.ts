@@ -44,13 +44,54 @@ async function cacheDaEnv(): Promise<Cache | undefined> {
     const { default: Redis } = await import('ioredis');
     // `lazyConnect`: a conexão sai na primeira operação, não no arranque. Um Redis
     // fora do ar vira miss em `CacheDeResposta`, e não uma exceção aqui.
-    const redis = new RedisCache(new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 }));
+    //
+    // **`enableOfflineQueue: false` é o que impede a espera**, e o motivo tem número.
+    // Com a fila ligada (o padrão), um comando emitido enquanto não há conexão fica
+    // **enfileirado** até o `ioredis` conseguir conectar ou desistir. Medido em
+    // 24/08/2026 nesta máquina, com `REDIS_URL=redis://localhost:6379/0` no `.env` e
+    // nada escutando: cada miss de cache pagava a espera duas vezes — no `get` e no
+    // `set` — e custava **15 a 20 s**. Sem a fila, o comando falha na hora, e a falha
+    // é o que `CacheEmCamadas` já sabe tratar.
+    //
+    // O `connectTimeout` e o `retryStrategy` fecham o resto: um Redis que existe mas
+    // está lento não pode segurar a resposta, e a reconexão não pode virar uma
+    // tentativa por milissegundo.
+    const cliente = new Redis(url, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+      enableOfflineQueue: false,
+      connectTimeout: 1_000,
+      retryStrategy: (tentativas: number) => Math.min(tentativas * 1_000, 30_000),
+    });
+
+    // **Conecta AQUI, e não na primeira operação.** `lazyConnect` sozinho já servia,
+    // mas junto com `enableOfflineQueue: false` ele custava o arranque: a primeira
+    // operação é a que dispara a conexão *e* é rejeitada por ela ainda não existir
+    // (`Stream isn't writeable`). Essa rejeição abre o disjuntor de `CacheEmCamadas`
+    // por 5 s, e nesse intervalo o aquecedor calcula páginas cujo resultado não chega
+    // ao Redis — logo o cache durável nasce furado justamente na volta que mais
+    // escreve. Reproduzido em 25/08/2026: 1ª operação falha, 2ª e 3ª passam.
+    //
+    // O `await` não é risco de arranque: `connectTimeout` é 1 s e a falha é engolida
+    // logo abaixo. Redis fora do ar continua sendo degradação silenciosa e não motivo
+    // para a tela não abrir — que é a promessa desta função desde o começo.
+    try {
+      await cliente.connect();
+    } catch (err) {
+      console.error(
+        `[cache] Redis não conectou no arranque (seguindo em memória, e ele entra ` +
+          `sozinho quando voltar): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    const redis = new RedisCache(cliente);
     return new CacheEmCamadas({
       rapida: new MemoryCache(),
       duravel: redis,
       aoFalhar: (op, err) => {
         console.error(
-          `[cache] Redis falhou em ${op} (a memória continua servindo): ` +
+          `[cache] Redis falhou em ${op} — a memória continua servindo, e o Redis fica ` +
+            `de fora por alguns segundos antes da próxima tentativa: ` +
             `${err instanceof Error ? err.message : String(err)}`,
         );
       },
@@ -122,6 +163,13 @@ servidor.criaHttp().listen(porta, () => {
     aquecedor = new Aquecedor({
       base: `http://127.0.0.1:${porta}`,
       carimbo: () => servidor.identidadeAtual(),
+      // Fecha a ponte com a tela. `avisaClientes` e não `notificaInvalida`: o aviso sai
+      // com as páginas **já quentes**, e descartar `carregadas` neste ponto desfaria o
+      // aquecimento que acabou de ser pago. Ver `servidor.avisaClientes`.
+      aoMudar: () => {
+        servidor.avisaClientes('*');
+        console.error('[aquecedor] a tela foi avisada — o dado novo já está quente.');
+      },
     });
     aquecedor.inicia();
   }

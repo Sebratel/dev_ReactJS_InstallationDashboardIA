@@ -10,8 +10,12 @@
 // `GOOGLE_OAUTH_TOKEN_FILE` não tem default dentro do repo: o `Desktop` inteiro é
 // um repositório git com remoto configurado.
 //
-// **Somente leitura, de novo.** Os escopos pedidos são de leitura
-// (`Dataset.Read.All`, `Report.Read.All`). Nada aqui grava no Power BI.
+// **Onde a garantia de somente-leitura realmente mora.** NÃO é no escopo: o
+// `ESCOPO` abaixo pede `.default`, que devolve tudo o que a sua conta pode fazer
+// no Power BI — inclusive escrita. Quem impede a escrita é `assertSomenteEvaluate`
+// em `api.ts`, que recusa qualquer DAX que não comece por `EVALUATE`, e o fato de
+// a Execute Queries API não ter verbo de gravação. Trate o arquivo de token como
+// credencial plena da sua conta, não como um token de leitura.
 
 import fs from 'node:fs';
 import os from 'node:os';

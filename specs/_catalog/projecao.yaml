@@ -12,69 +12,32 @@
 # Qualquer OUTRO uso da coluna — uma medida, uma coluna calculada — erra alto, porque aí
 # é engano, não decisão.
 #
-# Ver docs/DECISAO-DESEMPENHO.md, seção "O caso Relato".
+# Ver docs/DECISAO-DESEMPENHO.md.
 
-sob_demanda:
-  - tabela: FIELD AGENDA
-    coluna: Relato
-    decidido: '2026-08-10'
-    por: Erick
-    porque: >
-      36,8% dos bytes da maior tabela da base — ~350 MB de texto livre, em 1,46 milhão
-      de linhas — para alimentar UM visual entre os 39 de `agendamento-field`.
-
-      A primeira ideia era buscar o texto sob demanda por linha, depois de paginar. Não
-      dá: no `tableEx` 815c0959 o `Relato` entra como campo **sem agregação**, ou seja,
-      é chave de agrupamento. O Power BI mostra as combinações distintas dos campos sem
-      agregação, então formar os grupos exige o valor de todas as linhas — a paginação
-      só existe depois disso.
-
-      O que dá, e é o comportamento de aplicação em vez de relatório: a página abre sem
-      essa tabela, e quem quiser os relatos os pede. Aí sim a coluna entra, para aquele
-      pedido.
-
-      A classificação do texto não se perde: `ClassificacaoRelato` já é coluna
-      congelada no snapshot (ACHADOS #47), calculada no refresh a partir do `Relato`.
-      Os cartões e gráficos que dependem dela continuam funcionando com a coluna fora.
-
-  - tabela: INSTALAÇÕES REINCIDENTES
-    coluna: dias_para_reincidencia
-    decidido: '2026-08-13'
-    por: Claude, sob autorização do Erick para decidir sem perguntar
-    porque: >
-      É uma das quatro colunas amarradas SÓ pelo `tableEx` d93e5f33 — a tabela de
-      detalhe de 19 campos que cruza INSTALAÇÕES REINCIDENTES, PROTOCOLOS GERAL e
-      CALENDARIO INSTALADO. Nenhuma medida, nenhuma coluna calculada e nenhum outro
-      visual das 14 páginas a citam (conferido, não suposto).
-
-      Esse visual **não existia de fato até hoje**: ele atravessa o relacionamento
-      'PROTOCOLOS GERAL'[N°PROTOCOLO] -> 'INSTALAÇÕES REINCIDENTES'[protocolo_instalacao],
-      que comparava texto com número e errava alto na hora (ACHADOS #61). Com a junção
-      casando, ele passou a calcular — e **passou de 40 minutos sozinho**, medido em
-      13/08/2026, contra os 2 s que a regra 9 orça para a página inteira. Os outros 28
-      visuais da página somam ~4 s.
-
-      Trocar "erra alto em 1 s" por "calcula certo em 40 min" não é progresso: a página
-      deixaria de abrir. Com esta linha, `instalacao-reincidente` abre com os 28 visuais
-      e a tabela de detalhe aparece como "sob demanda" — que é o comportamento de
-      aplicação, e é o mesmo caminho já decidido para o `Relato` de FIELD AGENDA.
-
-      **O custo não sumiu, mudou de lugar**, e continua alto: quem pedir a tabela vai
-      esperar. Baixá-lo é trabalho de agregação no grão certo, como o passo 4 da
-      DECISAO-DESEMPENHO — não de projeção. Fica registrado como dívida, com número.
-
-  - tabela: INSTALAÇÕES REINCIDENTES
-    coluna: protocolo_manutencao
-    decidido: '2026-08-13'
-    por: Claude, sob autorização do Erick para decidir sem perguntar
-    porque: >
-      Mesma decisão de `dias_para_reincidencia`: amarrada só pelo `tableEx` d93e5f33.
-      Some junto com ele, e mantê-la em memória para um visual que não abre na página
-      seria pagar sem receber.
-
-  - tabela: INSTALAÇÕES REINCIDENTES
-    coluna: tecnico_responsavel
-    decidido: '2026-08-13'
-    por: Claude, sob autorização do Erick para decidir sem perguntar
-    porque: >
-      Mesma decisão de `dias_para_reincidencia`: amarrada só pelo `tableEx` d93e5f33.
+# Vazio, e isso é uma decisão medida — não um esquecimento.
+#
+# `'FIELD AGENDA'[Relato]` morou aqui de 10/08/2026 a 24/08/2026. Ele saiu porque a
+# medição que o pôs aqui deixou de valer: ela foi feita sobre um `field-agenda.jsonl`
+# de 1.458.244 linhas e 950 MB, e o snapshot de hoje tem **103.913 linhas e 120 MB**.
+#
+# Medido em 24/08/2026, processo frio, `agendamento-field`:
+#
+# | Caminho | Custo |
+# |---|---|
+# | Página sem `Relato`, e depois a tabela sob demanda | 5,9 s + **12,0 s** = 17,9 s |
+# | Página com `Relato` dentro, tudo de uma vez | **6,9 s** |
+#
+# Os 12,0 s do sob demanda não eram parse: só 1,0 s deles era cálculo. Os outros 11 s
+# eram `carrega` montando um **segundo** dataset da página inteira — as mesmas
+# `PROTOCOLOS GERAL`, `PROTOCOLOS PRODUTIVIDADE` e companhia relidas e reconvertidas —
+# com o primeiro ainda residente. O preço não era a coluna de texto; era ter dois
+# datasets vivos na mesma máquina. Num processo frio, carregar tudo **com** `Relato` e
+# calcular só aquela tabela custa 2,5 s.
+#
+# Fica também a memória: um dataset de 1,4 GB de RSS no lugar de dois somando ~2,0 GB.
+#
+# O mecanismo continua inteiro e testado — `sobDemandaDoVisual`, `aqueceSobDemanda`,
+# `SobDemanda.tsx`. O que mudou é que nenhuma coluna precisa dele hoje. Se um snapshot
+# voltar a crescer uma ordem de grandeza, é aqui que a decisão se registra de novo —
+# com a medição junto, como esta.
+sob_demanda: []

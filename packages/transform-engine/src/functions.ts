@@ -16,8 +16,6 @@
 //     do JS é estável desde o ES2019, então isto é garantia da linguagem — mas
 //     está dito aqui porque um dia alguém vai querer trocar por outra ordenação.
 
-import zlib from 'node:zlib';
-
 import {
   igual,
   type MCallContext,
@@ -30,7 +28,6 @@ import {
   isRecord,
   isTable,
   linha,
-  linhaPor,
   MCellError,
   MDuration,
   MEvalError,
@@ -92,9 +89,7 @@ function aplica1(f: MFunction, arg: MValue): MValue {
 
 /** Linha como registro, para passar a um `each`. */
 function comoRegistro(t: MTable, r: MRow): MRecord {
-  // Espelha a linha em vez de copiá-la: é chamado uma vez por linha, e a cópia dos
-  // 48 campos para o `each` ler um foi o maior gerador de lixo do perfil.
-  return new MRecord(t.columns, r);
+  return new MRecord(t.columns.map((c) => [c, r.get(c) ?? null] as const));
 }
 
 // ── conversão de tipo ─────────────────────────────────────────────────────────
@@ -159,8 +154,6 @@ function converte(
     case 'date':
     case 'Date.Type': {
       if (v instanceof Date) return soData(v);
-      // Número é o formato nativo de data na planilha (ver `dataDeSerial`).
-      if (typeof v === 'number') return soData(dataDeSerial(v));
       const d = textoParaData(v, culture);
       if (d) return soData(d);
       throw naoConverte(v, 'date', coluna, fn, formatoDeTexto(v, culture));
@@ -171,7 +164,6 @@ function converte(
     case 'datetimezone':
     case 'DateTimeZone.Type': {
       if (v instanceof Date) return v;
-      if (typeof v === 'number') return dataDeSerial(v);
       const d = textoParaData(v, culture);
       if (d) return d;
       throw naoConverte(v, t, coluna, fn, formatoDeTexto(v, culture));
@@ -193,6 +185,30 @@ function converte(
         `${fn}: tipo '${tipo}' não implementado (coluna '${coluna}'). ` +
           'O engine não adivinha conversão de tipo desconhecido.',
       );
+  }
+}
+
+/**
+ * `converte`, mas por célula: dado incompatível vira célula de Erro em vez de
+ * derrubar a tabela.
+ *
+ * É a semântica do Power Query, e a diferença é o que faz `quadro-funcional`
+ * rodar: `MINDSIGTH` é `type number` com 68 células de texto e `RG` é `Int64.Type`
+ * com 16, todas fora do filtro de gestor (ver `MCellError` e ACHADOS #24).
+ * Qualquer outra falha — tipo desconhecido, coluna ausente — continua subindo.
+ */
+function converteCelula(
+  v: MValue,
+  tipo: string,
+  coluna: string,
+  fn: string,
+  culture: string | null,
+): MValue {
+  try {
+    return converte(v, tipo, coluna, fn, culture);
+  } catch (e) {
+    if (e instanceof MTipoIncompativel) return new MCellError(e.message, coluna, v);
+    throw e;
   }
 }
 
@@ -352,40 +368,6 @@ function soData(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
 
-/** Época do número de série de data no Power BI, no Excel e no Google Sheets. */
-const EPOCA_SERIAL_MS = Date.UTC(1899, 11, 30);
-
-/**
- * Número de série para data.
- *
- * É por aqui que a planilha entrega data: o connector pede
- * `valueRenderOption=UNFORMATTED_VALUE`, e nesse modo célula de data vem como
- * número (dias desde 1899-12-30, fração = hora) — igual ao que o Power Query
- * recebe. Sem isto, `{"DATA", type date}` de `CAPACIDADE EQUIPE` recusaria o
- * próprio formato nativo da fonte.
- *
- * Diferente de texto para data, aqui **não há ambiguidade de culture**: o número
- * não tem formato. Por isso a conversão é aceita sem `culture`.
- */
-function dataDeSerial(n: number): Date {
-  if (!Number.isFinite(n)) {
-    throw new MEvalError(`Número de série de data inválido: ${n}.`);
-  }
-  // Arredonda no milissegundo: 0,354166… * 86_400_000 dá 30599999,99 em binário,
-  // e truncar transformaria 08:30 em 08:29:59.999.
-  const d = new Date(EPOCA_SERIAL_MS + Math.round(n * 86_400_000));
-  // Serial absurdo (célula com um número que não era data) estoura a faixa de
-  // `Date`. Sem esta guarda o erro sai só depois, como `RangeError` de
-  // `toISOString` em outra camada — longe da coluna que o causou.
-  if (Number.isNaN(d.getTime())) {
-    throw new MEvalError(
-      `O número ${n} não é um número de série de data válido: fora da faixa que uma ` +
-        'data representa. Confira se a coluna é data mesmo na origem.',
-    );
-  }
-  return d;
-}
-
 function horaDe(d: Date): MTime {
   return new MTime(
     d.getUTCHours() * 3_600_000 + d.getUTCMinutes() * 60_000 +
@@ -416,7 +398,7 @@ const TABELA: MFunctionImpl[] = [
       }
       return new MTable(
         novas,
-        t.rows.map((r) => linhaPor(novas, (_n, i) => r.get(t.columns[i]!) ?? null)),
+        t.rows.map((r) => linha(t.columns.map((c, i) => [novas[i], r.get(c) ?? null] as const))),
       );
     },
   },
@@ -429,7 +411,7 @@ const TABELA: MFunctionImpl[] = [
       const fora = new Set(nomesDeColuna(cols, 'Table.RemoveColumns'));
       for (const c of fora) t.exigeColuna(c, 'Table.RemoveColumns');
       const ficam = t.columns.filter((c) => !fora.has(c));
-      return new MTable(ficam, t.rows.map((r) => linhaPor(ficam, (c) => r.get(c) ?? null)));
+      return new MTable(ficam, t.rows.map((r) => linha(ficam.map((c) => [c, r.get(c) ?? null] as const))));
     },
   },
   {
@@ -441,7 +423,7 @@ const TABELA: MFunctionImpl[] = [
       // Diferente de RemoveColumns, aqui a ordem é a **pedida**, não a original.
       const ficam = nomesDeColuna(cols, 'Table.SelectColumns');
       for (const c of ficam) t.exigeColuna(c, 'Table.SelectColumns');
-      return new MTable(ficam, t.rows.map((r) => linhaPor(ficam, (c) => r.get(c) ?? null)));
+      return new MTable(ficam, t.rows.map((r) => linha(ficam.map((c) => [c, r.get(c) ?? null] as const))));
     },
   },
   {
@@ -455,7 +437,7 @@ const TABELA: MFunctionImpl[] = [
       // As não citadas ficam depois, na ordem em que estavam.
       const resto = t.columns.filter((c) => !pedidas.includes(c));
       const ordem = [...pedidas, ...resto];
-      return new MTable(ordem, t.rows.map((r) => linhaPor(ordem, (c) => r.get(c) ?? null)));
+      return new MTable(ordem, t.rows.map((r) => linha(ordem.map((c) => [c, r.get(c) ?? null] as const))));
     },
   },
   {
@@ -473,7 +455,8 @@ const TABELA: MFunctionImpl[] = [
       const ordem = [...t.columns, nova];
       return new MTable(
         ordem,
-        t.rows.map((r) => linhaPor(ordem, (c) => r.get(c === nova ? origem : c) ?? null)),
+        t.rows.map((r) => linha([...t.columns.map((c) => [c, r.get(c) ?? null] as const),
+          [nova, r.get(origem) ?? null] as const])),
       );
     },
   },
@@ -495,7 +478,7 @@ const TABELA: MFunctionImpl[] = [
           // A função vê a linha **de origem**: coluna nova não vê coluna nova, o
           // que é o mesmo contrato do ADDCOLUMNS do lado do DAX.
           const v = aplica1(f, comoRegistro(t, r));
-          return linhaPor(ordem, (c) => (c === nova ? v : r.get(c) ?? null));
+          return linha([...t.columns.map((c) => [c, r.get(c) ?? null] as const), [nova, v] as const]);
         }),
       );
     },
@@ -604,12 +587,14 @@ const TABELA: MFunctionImpl[] = [
       const conjunto = new Set(alvo);
       return t.comLinhas(
         t.rows.map((r) =>
-          linhaPor(t.columns, (c) => {
-            const v = r.get(c) ?? null;
-            // O substituidor recebe (valorAtual, velho, novo): é a assinatura de
-            // Replacer.ReplaceValue e Replacer.ReplaceText.
-            return conjunto.has(c) ? f.call([v, velho, novo]) : v;
-          }),
+          linha(
+            t.columns.map((c) => {
+              if (!conjunto.has(c)) return [c, r.get(c) ?? null] as const;
+              // O substituidor recebe (valorAtual, velho, novo): é a assinatura de
+              // Replacer.ReplaceValue e Replacer.ReplaceText.
+              return [c, f.call([r.get(c) ?? null, velho, novo])] as const;
+            }),
+          ),
         ),
       );
     },
@@ -638,10 +623,12 @@ const TABELA: MFunctionImpl[] = [
       const porColuna = new Map(pares.map((p) => [p.coluna, p.f]));
       return t.comLinhas(
         t.rows.map((r) =>
-          linhaPor(t.columns, (c) => {
-            const f = porColuna.get(c);
-            return f ? aplica1(f, r.get(c) ?? null) : r.get(c) ?? null;
-          }),
+          linha(
+            t.columns.map((c) => {
+              const f = porColuna.get(c);
+              return [c, f ? aplica1(f, r.get(c) ?? null) : r.get(c) ?? null] as const;
+            }),
+          ),
         ),
       );
     },
@@ -658,13 +645,18 @@ const TABELA: MFunctionImpl[] = [
       const porColuna = new Map(pares);
       return t.comLinhas(
         t.rows.map((r) =>
-          linhaPor(t.columns, (c) => {
-            const tipo = porColuna.get(c);
-            const v = r.get(c) ?? null;
-            return tipo === undefined
-              ? v
-              : converteCelula(v, tipo, c, 'Table.TransformColumnTypes', ctx.culture);
-          }),
+          linha(
+            t.columns.map((c) => {
+              const tipo = porColuna.get(c);
+              const v = r.get(c) ?? null;
+              return [
+                c,
+                tipo === undefined
+                  ? v
+                  : converteCelula(v, tipo, c, 'Table.TransformColumnTypes', ctx.culture),
+              ] as const;
+            }),
+          ),
         ),
       );
     },
@@ -694,7 +686,7 @@ const TABELA: MFunctionImpl[] = [
       });
       return new MTable(
         novos,
-        t.rows.slice(1).map((r) => linhaPor(novos, (_n, i) => r.get(t.columns[i]!) ?? null)),
+        t.rows.slice(1).map((r) => linha(t.columns.map((c, i) => [novos[i], r.get(c) ?? null] as const))),
       );
     },
   },
@@ -715,7 +707,7 @@ const TABELA: MFunctionImpl[] = [
       const rows: MRow[] = [];
       for (const t of ts) {
         for (const r of t.rows) {
-          rows.push(linhaPor(ordem, (c) => (t.hasColumn(c) ? r.get(c) ?? null : null)));
+          rows.push(linha(ordem.map((c) => [c, t.hasColumn(c) ? r.get(c) ?? null : null] as const)));
         }
       }
       return new MTable(ordem, rows);
@@ -741,154 +733,41 @@ const TABELA: MFunctionImpl[] = [
       const kind = tipoJoin === undefined || tipoJoin === null
         ? 'JoinKind.LeftOuter'
         : String(tipoJoin);
-      // Antes de trabalhar, e não depois: um JoinKind desconhecido percorria as duas
-      // tabelas inteiras como se fosse LeftOuter para só então errar.
+
+      // Índice do lado direito, para não varrer a tabela por linha da esquerda:
+      // `protocolos-geral` tem 33 mil linhas e a junção aninhada é O(n×m) sem isto.
+      const indice = new Map<string, MRow[]>();
+      for (const r of dir.rows) {
+        const k = chaveDe(kd.map((c) => r.get(c) ?? null));
+        const lista = indice.get(k);
+        if (lista) lista.push(r);
+        else indice.set(k, [r]);
+      }
+
+      const ordem = [...esq.columns, nova];
+      const rows: MRow[] = [];
+      for (const r of esq.rows) {
+        const k = chaveDe(ke.map((c) => r.get(c) ?? null));
+        const casam = indice.get(k) ?? [];
+        if (casam.length === 0 && REDUZEM.has(kind)) continue; // Inner e afins descartam
+        if (casam.length > 0 && kind === 'JoinKind.LeftAnti') continue;
+        if (casam.length === 0 && kind === 'JoinKind.LeftAnti') {
+          rows.push(linha([...esq.columns.map((c) => [c, r.get(c) ?? null] as const),
+            [nova, new MTable(dir.columns, [])] as const]));
+          continue;
+        }
+        // A coluna nova é uma **tabela** por linha. Quem multiplica linha é o
+        // `Table.ExpandTableColumn` depois — separar as duas coisas é o que
+        // permite `Table.Distinct` no meio, como PROTOCOLOS GERAL faz.
+        rows.push(linha([...esq.columns.map((c) => [c, r.get(c) ?? null] as const),
+          [nova, new MTable(dir.columns, casam)] as const]));
+      }
       if (!CONHECIDOS.has(kind)) {
         throw new MEvalError(
           `${fn}: JoinKind '${kind}' não implementado. Implementados: ${[...CONHECIDOS].join(', ')}.`,
         );
       }
-
-      const assunto = `${ke.map((c) => `'${c}'`).join(' + ')} × ${kd.map((c) => `'${c}'`).join(' + ')}`;
-      /**
-       * `casaram` conta só as linhas de **chave completa**.
-       *
-       * Em M, `null` casa com `null` — e é assim que fica. Mas um par nulo×nulo não é
-       * prova de que a junção funciona: uma mescla com duas chaves nulas dos dois
-       * lados casaria "duas linhas" e escaparia do diagnóstico enquanto as outras
-       * 87.803 saem nulas. Quem responde "esta junção está viva?" tem de ignorá-los.
-       */
-      const junta = (
-        frouxas: readonly boolean[] | null,
-      ): { rows: MRow[]; casaram: number; comChave: number } => {
-        // Índice do lado direito, para não varrer a tabela por linha da esquerda:
-        // `protocolos-geral` tem 33 mil linhas e a junção aninhada é O(n×m) sem isto.
-        const indice = new Map<string, MRow[]>();
-        for (const r of dir.rows) {
-          const k = chaveDe(kd.map((c) => r.get(c) ?? null), frouxas);
-          if (k === null) continue;
-          const lista = indice.get(k);
-          if (lista) lista.push(r);
-          else indice.set(k, [r]);
-        }
-
-        const rows: MRow[] = [];
-        let casaram = 0;
-        let comChave = 0;
-        for (const r of esq.rows) {
-          const valores = ke.map((c) => r.get(c) ?? null);
-          const completa = valores.every((v) => v !== null);
-          if (completa) comChave++;
-          const k = chaveDe(valores, frouxas);
-          const casam = (k === null ? undefined : indice.get(k)) ?? [];
-          if (casam.length > 0 && completa) casaram++;
-          if (casam.length === 0 && REDUZEM.has(kind)) continue; // Inner e afins descartam
-          if (casam.length > 0 && kind === 'JoinKind.LeftAnti') continue;
-          if (casam.length === 0 && kind === 'JoinKind.LeftAnti') {
-            const vazia = new MTable(dir.columns, []);
-            rows.push(linhaPor(ordem, (c) => (c === nova ? vazia : r.get(c) ?? null)));
-            continue;
-          }
-          // A coluna nova é uma **tabela** por linha. Quem multiplica linha é o
-          // `Table.ExpandTableColumn` depois — separar as duas coisas é o que
-          // permite `Table.Distinct` no meio, como PROTOCOLOS GERAL faz.
-          const aninhada = new MTable(dir.columns, casam);
-          rows.push(linhaPor(ordem, (c) => (c === nova ? aninhada : r.get(c) ?? null)));
-        }
-        return { rows, casaram, comChave };
-      };
-
-      const ordem = [...esq.columns, nova];
-      const estrita = junta(null);
-      // Junção viva, ou sem o que casar (ponta vazia, ou esquerda toda de chave
-      // nula): zero aí é resultado, não sintoma. Nada muda em relação ao que este
-      // arquivo sempre fez.
-      if (estrita.casaram > 0 || estrita.comChave === 0 || dir.rowCount === 0) {
-        return new MTable(ordem, estrita.rows);
-      }
-
-      // Daqui para baixo: zero de zero linhas casadas, com as duas pontas cheias.
-      //
-      // Isso não é um resultado, é a assinatura de chave que não conversa — 87.805
-      // linhas de `BACKLOG AGENDADO FUTURO` liam BLANK porque `protocolo_id` chegava
-      // número e `N°PROTOCOLO` chegava texto (achado #64).
-      //
-      // **O motor não decide sozinho, e a razão é a que ele mesmo defende.** Comparar
-      // como inteiro por conta própria trocaria uma junção morta por uma junção viva
-      // e possivelmente errada: dois espaços de identificador diferentes que por acaso
-      // sejam inteiros pequenos casariam, e o resultado seria um número plausível —
-      // exatamente o único erro que este projeto não pode cometer. Então aqui ele
-      // **mede** e **conta**; quem libera é uma decisão humana em
-      // `specs/_catalog/juncoes.yaml`, com o número que a justificou escrito nela.
-      // ANTES de falar de tipo: faixa de data que não se toca explica a morte
-      // inteira, e é a explicação mais útil que existe aqui. Nenhuma reconciliação a
-      // conserta — se um lado termina antes de o outro começar, não há par possível
-      // em comparação nenhuma —, então dizer "confira as duas pontas" seria mandar a
-      // pessoa procurar defeito onde não tem. Ver ACHADOS #73.
-      const disjunta = faixaDisjunta(esq, ke, dir, kd);
-      if (disjunta !== null) {
-        ctx.nota({
-          fn,
-          assunto,
-          mensagem:
-            `nenhuma das ${estrita.comChave} linhas de chave completa casou, e a causa é a faixa de ` +
-            `'${disjunta.esqColuna}' × '${disjunta.dirColuna}': ela é data nas duas pontas e as faixas ` +
-            `NÃO SE TOCAM — esquerda de ${soDia(disjunta.esq.min)} a ${soDia(disjunta.esq.max)}, ` +
-            `direita de ${soDia(disjunta.dir.min)} a ${soDia(disjunta.dir.max)}. ` +
-            'Nenhuma reconciliação de tipo casaria: não existe par possível. ' +
-            'A coluna aninhada sai INTEIRA NULA, e isto é dado que parou de chegar, não chave errada.',
-        });
-        return new MTable(ordem, estrita.rows);
-      }
-
-      const frouxas = ke.map((_c, i) => reconciliavel(esq, ke[i]!, dir, kd[i]!));
-      if (!frouxas.some(Boolean)) {
-        ctx.nota({
-          fn,
-          assunto,
-          mensagem:
-            `nenhuma das ${estrita.comChave} linhas de chave completa casou com as ${dir.rowCount} do outro lado, ` +
-            'e as chaves não são texto×número — não há reconciliação provável. ' +
-            'A coluna aninhada sai INTEIRA NULA: confira as duas pontas no `m_expression`.',
-        });
-        return new MTable(ordem, estrita.rows);
-      }
-
-      const solta = junta(frouxas);
-      const quais = ke.filter((_c, i) => frouxas[i]).join(', ');
-      if (solta.casaram === 0) {
-        ctx.nota({
-          fn,
-          assunto,
-          mensagem:
-            `nenhuma das ${estrita.comChave} linhas de chave completa casou, nem comparando ${quais} como inteiro. ` +
-            'A coluna aninhada sai INTEIRA NULA — os identificadores são de espaços diferentes.',
-        });
-        return new MTable(ordem, estrita.rows);
-      }
-
-      const pct = ((100 * solta.casaram) / estrita.comChave).toFixed(1);
-      if (!ctx.reconcilia(ke, kd)) {
-        ctx.nota({
-          fn,
-          assunto,
-          mensagem:
-            `0 de ${estrita.comChave} linhas casam por espécie, e ${solta.casaram} (${pct}%) casariam ` +
-            `comparando ${quais} como inteiro — uma ponta declara Int64.Type e a outra fica texto. ` +
-            'A coluna aninhada sai INTEIRA NULA, como no Power Query. Para reconciliar, ' +
-            'registre a decisão em `specs/_catalog/juncoes.yaml` com este número.',
-        });
-        return new MTable(ordem, estrita.rows);
-      }
-      ctx.nota({
-        fn,
-        assunto,
-        mensagem:
-          `reconciliada por decisão registrada: ${solta.casaram} de ${estrita.comChave} (${pct}%) ` +
-          `casam comparando ${quais} como inteiro, contra 0 por espécie. ` +
-          'O Power Query não casaria — este número DIVERGE do dele, de propósito.',
-      });
-      return new MTable(ordem, solta.rows);
+      return new MTable(ordem, rows);
     },
   },
   {
@@ -913,12 +792,9 @@ const TABELA: MFunctionImpl[] = [
       const rows: MRow[] = [];
       for (const r of t.rows) {
         const dentro = r.get(col) ?? null;
-        // `i < restantes.length` divide a linha em duas metades: a da esquerda vem
-        // da linha original, a da direita da tabela aninhada (ou null, sem par).
-        const semPar = (): MRow =>
-          linhaPor(ordem, (c, i) => (i < restantes.length ? r.get(c) ?? null : null));
+        const base = restantes.map((c) => [c, r.get(c) ?? null] as const);
         if (dentro === null) {
-          rows.push(semPar());
+          rows.push(linha([...base, ...nomes.map((n) => [n, null] as const)]));
           continue;
         }
         if (!isTable(dentro)) {
@@ -930,174 +806,15 @@ const TABELA: MFunctionImpl[] = [
         if (dentro.rowCount === 0) {
           // LeftOuter sem par: a linha da esquerda sobrevive com null. É o que
           // mantém a contagem quando não há correspondência.
-          rows.push(semPar());
+          rows.push(linha([...base, ...nomes.map((n) => [n, null] as const)]));
           continue;
         }
         // AQUI é onde a linha se multiplica: uma por par casado.
         for (const rd of dentro.rows) {
-          rows.push(
-            linhaPor(ordem, (c, i) =>
-              i < restantes.length ? r.get(c) ?? null : rd.get(campos[i - restantes.length]!) ?? null,
-            ),
-          );
+          rows.push(linha([...base, ...campos.map((c, i) => [nomes[i], rd.get(c) ?? null] as const)]));
         }
       }
       return new MTable(ordem, rows);
-    },
-  },
-  {
-    name: 'Table.SplitColumn',
-    minArgs: 3,
-    maxArgs: 5,
-    call: ([tv, colV, splitterV, nomesV]) => {
-      const fn = 'Table.SplitColumn';
-      const t = exigeTabela(tv, fn);
-      const col = exigeTexto(colV, fn, 'a coluna a dividir');
-      t.exigeColuna(col, fn);
-      const splitter = exigeFuncao(splitterV, fn, 'o divisor');
-      const nomes = nomesV === undefined || nomesV === null
-        ? [`${col}.1`, `${col}.2`]
-        : nomesDeColuna(nomesV, fn);
-      const restantes = t.columns.filter((c) => c !== col);
-      for (const n of nomes) {
-        if (restantes.includes(n)) throw new MEvalError(`${fn}: a coluna '${n}' já existe.`);
-      }
-      // A coluna dividida ocupa a posição da original, não vai para o fim: a
-      // ordem de coluna é observável (`Table.ReorderColumns` depois conta com ela).
-      const i = t.columns.indexOf(col);
-      const ordem = [...t.columns.slice(0, i), ...nomes, ...t.columns.slice(i + 1)];
-      return new MTable(
-        ordem,
-        t.rows.map((r) => {
-          const partes = splitter.call([r.get(col) ?? null]);
-          if (!isList(partes)) {
-            throw new MEvalError(`${fn}: o divisor devolveu ${tipoDe(partes)}, esperava lista.`);
-          }
-          // Mais partes que nomes: o excedente é DESCARTADO, como o default
-          // ExtraValues.Ignore do Power Query. Menos partes: o resto vem null.
-          const porNome = new Map(nomes.map((n, k) => [n, partes[k] ?? null] as const));
-          return linhaPor(ordem, (c) => (porNome.has(c) ? porNome.get(c)! : r.get(c) ?? null));
-        }),
-      );
-    },
-  },
-  {
-    name: 'Table.FromRows',
-    minArgs: 1,
-    maxArgs: 3,
-    call: ([linhasV, colunasV]) => {
-      const fn = 'Table.FromRows';
-      if (!isList(linhasV)) {
-        throw new MEvalError(`${fn}: esperava lista de listas, veio ${tipoDe(linhasV)}.`);
-      }
-      const nomes = colunasV === undefined || colunasV === null
-        ? null
-        : nomesDeColuna(colunasV, fn);
-      const linhas = linhasV.map((r, i) => {
-        if (!isList(r)) {
-          throw new MEvalError(`${fn}: a linha ${i} é ${tipoDe(r)}, esperava lista.`);
-        }
-        return r;
-      });
-      const largura = nomes?.length ?? linhas[0]?.length ?? 0;
-      const cols = nomes ?? Array.from({ length: largura }, (_, k) => `Column${k + 1}`);
-      // Linha com largura diferente do cabeçalho é erro: preencher com null
-      // esconderia dado deslocado, que é o pior tipo de silêncio numa tabela
-      // colada à mão (é assim que `feriados` nasce).
-      for (const [i, r] of linhas.entries()) {
-        if (r.length !== largura) {
-          throw new MEvalError(
-            `${fn}: a linha ${i} tem ${r.length} valor(es) e o cabeçalho tem ${largura}.`,
-          );
-        }
-      }
-      return new MTable(cols, linhas.map((r) => linha(cols.map((c, k) => [c, r[k]] as const))));
-    },
-  },
-  {
-    // `Table.FromColumns({colA, colB}, {"A","B"})` — a transposta de `FromRows`:
-    // cada item da lista externa é uma COLUNA inteira, não uma linha.
-    //
-    // **Diverge do M de propósito: coluna de comprimento diferente é erro.** O M
-    // preenche a mais curta com null, e aqui isso seria silêncio caro. Em
-    // `clima-tempo` as três listas vêm de arrays paralelos da mesma resposta da
-    // Open-Meteo (`daily.time`, `daily.precipitation_sum`); se a API devolvesse uma
-    // mais curta, o null viraria `Precipitacao_mm` nula, e a classificação logo
-    // abaixo na query (`if = 0 … else if < 5 … else "Chuva forte"`) cai no último
-    // ramo com null — o dia sem dado sairia como **chuva forte** na tela, sem erro
-    // nenhum. É o achado #41. O próprio autor do M já iguala os comprimentos com
-    // `List.Repeat({null}, List.Count(datas))`, então recusar não custa nada no
-    // corpus e pega a anomalia da fonte no dia em que ela acontecer.
-    name: 'Table.FromColumns',
-    minArgs: 1,
-    maxArgs: 2,
-    call: ([colunasV, nomesV]) => {
-      const fn = 'Table.FromColumns';
-      if (!isList(colunasV)) {
-        throw new MEvalError(`${fn}: esperava lista de colunas, veio ${tipoDe(colunasV)}.`);
-      }
-      const colunas = colunasV.map((c, i) => {
-        if (!isList(c)) {
-          throw new MEvalError(`${fn}: a coluna na posição ${i} é ${tipoDe(c)}, esperava lista.`);
-        }
-        return c;
-      });
-      const nomes = nomesV === undefined || nomesV === null
-        ? colunas.map((_, k) => `Column${k + 1}`)
-        : nomesDeColuna(nomesV, fn);
-      if (nomes.length !== colunas.length) {
-        throw new MEvalError(
-          `${fn}: ${colunas.length} coluna(s) e ${nomes.length} nome(s) de coluna.`,
-        );
-      }
-      const altura = colunas[0]?.length ?? 0;
-      for (const [i, c] of colunas.entries()) {
-        if (c.length !== altura) {
-          throw new MEvalError(
-            `${fn}: a coluna '${nomes[i]}' tem ${c.length} valor(es) e a primeira tem ${altura}. ` +
-              'Recusado de propósito: preencher com null aqui esconde fonte truncada.',
-          );
-        }
-      }
-      const linhas: MRow[] = [];
-      for (let i = 0; i < altura; i++) {
-        linhas.push(linhaPor(nomes, (_c, k) => colunas[k][i]));
-      }
-      return new MTable(nomes, linhas);
-    },
-  },
-  {
-    // `#table({"A","B"}, {{1,2}})` — construtor, mesma semântica de FromRows com os
-    // argumentos na ordem inversa.
-    //
-    // O 1º argumento também pode ser o **número** de colunas, e aí os nomes viram
-    // `Column1`…`ColumnN`. É a forma que `hora-atualizado` usa (`#table(1, …)`), e
-    // é por isso que o passo seguinte dela renomeia "Column1".
-    name: '#table',
-    minArgs: 0,
-    maxArgs: 2,
-    call: ([colunasV, linhasV]) => {
-      const fn = '#table';
-      if (colunasV === undefined) return new MTable([], []);
-      const nomes = typeof colunasV === 'number'
-        ? Array.from({ length: colunasV }, (_, k) => `Column${k + 1}`)
-        : nomesDeColuna(colunasV, fn);
-      if (linhasV === undefined || linhasV === null) return new MTable(nomes, []);
-      if (!isList(linhasV)) {
-        throw new MEvalError(`${fn}: esperava lista de linhas, veio ${tipoDe(linhasV)}.`);
-      }
-      return new MTable(
-        nomes,
-        linhasV.map((r, i) => {
-          if (!isList(r)) throw new MEvalError(`${fn}: a linha ${i} é ${tipoDe(r)}, esperava lista.`);
-          if (r.length !== nomes.length) {
-            throw new MEvalError(
-              `${fn}: a linha ${i} tem ${r.length} valor(es) e há ${nomes.length} coluna(s).`,
-            );
-          }
-          return linha(nomes.map((c, k) => [c, r[k]] as const));
-        }),
-      );
     },
   },
   {
@@ -1282,15 +999,23 @@ const VALOR: MFunctionImpl[] = [
     name: 'Number.From',
     minArgs: 1,
     maxArgs: 2,
-    call: ([v], ctx) => {
+    call: ([v]) => {
       if (v === null) return null;
       if (typeof v === 'number') return v;
       if (typeof v === 'boolean') return v ? 1 : 0;
-      const n = textoParaNumero(v, ctx.culture);
-      if (n !== null) return n;
-      throw new MEvalError(
-        `Number.From: não converte ${tipoDe(v)} — ${dicaDeNumero(v, ctx.culture)}.`,
-      );
+      if (typeof v === 'string') {
+        // Só formato sem ambiguidade: dígitos com ponto decimal. Vírgula decimal
+        // depende de culture, e é onde 1,5 viraria 15.
+        const t = v.trim();
+        if (!/^[+-]?(\d+(\.\d+)?|\.\d+)$/.test(t)) {
+          throw new MEvalError(
+            `Number.From: '${t}' não é número sem ambiguidade de culture ` +
+              '(vírgula decimal muda de significado entre pt-BR e en-US).',
+          );
+        }
+        return Number(t);
+      }
+      throw new MEvalError(`Number.From: não converte ${tipoDe(v)}.`);
     },
   },
   {
@@ -1353,9 +1078,6 @@ const VALOR: MFunctionImpl[] = [
     call: ([v], ctx) => {
       if (v === null) return null;
       if (v instanceof Date) return soData(v);
-      // `Date.From(45000)` é número de série, como no Excel. Mesma conversão que
-      // `type date` aplica.
-      if (typeof v === 'number') return soData(dataDeSerial(v));
       const d = textoParaData(v, ctx.culture);
       if (d) return soData(d);
       throw new MEvalError(
@@ -1585,163 +1307,6 @@ const VALOR: MFunctionImpl[] = [
   },
 ];
 
-// ── binário: a tabela embutida de `feriados` ──────────────────────────────────
-//
-// `feriados` não lê fonte externa: a tabela foi **colada** no Power Query e o
-// Power BI a guardou como base64 de um deflate de JSON. São três funções puras
-// encadeadas, então dá para executar essa query sem credencial nenhuma — e é a
-// única do escopo em que isso vale.
-
-const BINARIO: MFunctionImpl[] = [
-  {
-    name: 'Binary.FromText',
-    minArgs: 1,
-    maxArgs: 2,
-    call: ([texto, encoding]) => {
-      const s = exigeTexto(texto, 'Binary.FromText', 'o texto');
-      const enc = encoding === undefined || encoding === null ? 'BinaryEncoding.Base64' : String(encoding);
-      if (enc === 'BinaryEncoding.Base64') return new Uint8Array(Buffer.from(s, 'base64'));
-      if (enc === 'BinaryEncoding.Hex') return new Uint8Array(Buffer.from(s, 'hex'));
-      throw new MEvalError(`Binary.FromText: encoding '${enc}' não implementado.`);
-    },
-  },
-  {
-    name: 'Binary.Decompress',
-    minArgs: 2,
-    maxArgs: 2,
-    call: ([bin, compressao]) => {
-      if (!(bin instanceof Uint8Array)) {
-        throw new MEvalError(`Binary.Decompress: esperava binário, veio ${tipoDe(bin)}.`);
-      }
-      const modo = String(compressao);
-      // `Compression.Deflate` do M é deflate **cru** (sem cabeçalho zlib):
-      // `inflateSync` falharia com "incorrect header check".
-      if (modo === 'Compression.Deflate') return new Uint8Array(zlib.inflateRawSync(bin));
-      if (modo === 'Compression.GZip') return new Uint8Array(zlib.gunzipSync(bin));
-      if (modo === 'Compression.None') return bin;
-      throw new MEvalError(`Binary.Decompress: compressão '${modo}' não implementada.`);
-    },
-  },
-  {
-    // `Web.Contents(url, [RelativePath=…, Query=[…], Headers=[…]])` → os bytes da
-    // resposta. Devolve binário, não tabela: quem interpreta é o `Json.Document`
-    // logo em volta, como no M.
-    //
-    // **A URL só se conhece avaliando.** É o que separa esta função de
-    // `Odbc.Query`: o runner pré-busca a fonte de uma query porque a spec diz qual
-    // é, e aqui `RelativePath`/`Query` saem de `cidade{1}` e de `Date.ToText(ontem)`
-    // — valores que não existem antes da avaliação começar. Por isso a busca não
-    // acontece aqui: `ctx.web` resolve pelo que já foi buscado, e quem cuida do que
-    // falta é o laço de ponto-fixo do runner.
-    //
-    // `RelativePath` é montado com `URL`, não concatenado: `"…/v1" + "/archive"`
-    // com uma barra a mais ou a menos vira 404, e o M normaliza.
-    name: 'Web.Contents',
-    minArgs: 1,
-    maxArgs: 2,
-    call: ([urlV, opcoesV], ctx) => {
-      const fn = 'Web.Contents';
-      const base = exigeTexto(urlV, fn, 'a URL');
-      let url: URL;
-      try {
-        url = new URL(base);
-      } catch {
-        throw new MEvalError(`${fn}: '${base}' não é uma URL absoluta.`);
-      }
-      const headers: Record<string, string> = {};
-
-      if (opcoesV !== undefined && opcoesV !== null) {
-        if (!isRecord(opcoesV)) {
-          throw new MEvalError(`${fn}: o 2º argumento é ${tipoDe(opcoesV)}, esperava registro.`);
-        }
-        for (const [chave, v] of opcoesV.fields) {
-          switch (chave) {
-            case 'RelativePath': {
-              const rel = exigeTexto(v, fn, 'RelativePath');
-              // Base sem barra final perderia o último segmento na resolução de
-              // `URL`; garantir a barra deixa `RelativePath` sempre relativo à raiz
-              // que o M usa.
-              url = new URL(rel.replace(/^\//, ''), url.href.endsWith('/') ? url.href : `${url.href}/`);
-              break;
-            }
-            case 'Query': {
-              if (!isRecord(v)) {
-                throw new MEvalError(`${fn}: Query é ${tipoDe(v)}, esperava registro.`);
-              }
-              for (const [p, pv] of v.fields) {
-                // Só texto e número. Data aqui dependeria de formato, e escolher um
-                // em silêncio manda a data errada para a API — o M também exige que
-                // o valor já seja texto.
-                if (typeof pv === 'string') url.searchParams.set(p, pv);
-                else if (typeof pv === 'number') url.searchParams.set(p, String(pv));
-                else {
-                  throw new MEvalError(
-                    `${fn}: o parâmetro Query '${p}' é ${tipoDe(pv)}. Converta para texto ` +
-                      'antes (ex.: Date.ToText(d, "yyyy-MM-dd")).',
-                  );
-                }
-              }
-              break;
-            }
-            case 'Headers': {
-              if (!isRecord(v)) {
-                throw new MEvalError(`${fn}: Headers é ${tipoDe(v)}, esperava registro.`);
-              }
-              for (const [h, hv] of v.fields) {
-                headers[h] = exigeTexto(hv, fn, `o header '${h}'`);
-              }
-              break;
-            }
-            case 'Content':
-              // `Content` é o que torna a requisição um POST. Recusar aqui é a
-              // camada do guard read-only que vive na camada M.
-              throw new MEvalError(
-                `${fn}: a opção Content faria um POST. A plataforma só lê da fonte.`,
-              );
-            default:
-              throw new MEvalError(
-                `${fn}: a opção '${chave}' não está implementada. ` +
-                  'Implementadas: RelativePath, Query, Headers.',
-              );
-          }
-        }
-      }
-
-      return ctx.web({ url: url.href, headers });
-    },
-  },
-  {
-    name: 'Json.Document',
-    minArgs: 1,
-    maxArgs: 2,
-    call: ([bin]) => {
-      const texto = bin instanceof Uint8Array
-        ? Buffer.from(bin).toString('utf8')
-        : exigeTexto(bin, 'Json.Document', 'o conteúdo');
-      let json: unknown;
-      try {
-        json = JSON.parse(texto);
-      } catch (err) {
-        throw new MEvalError(
-          `Json.Document: conteúdo não é JSON válido (${err instanceof Error ? err.message : err}).`,
-        );
-      }
-      return deJson(json);
-    },
-  },
-];
-
-/** JSON para valor M: objeto vira registro, array vira lista. */
-function deJson(v: unknown): MValue {
-  if (v === null) return null;
-  if (Array.isArray(v)) return v.map(deJson);
-  if (typeof v === 'object') {
-    return new MRecord(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, deJson(x)] as const));
-  }
-  if (typeof v === 'number' || typeof v === 'string' || typeof v === 'boolean') return v;
-  throw new MEvalError(`Json.Document: valor de tipo ${typeof v} não suportado.`);
-}
-
 // ── substituidores e comparadores ────────────────────────────────────────────
 
 const AUXILIARES: MFunctionImpl[] = [
@@ -1844,17 +1409,28 @@ function ordena(a: MValue, b: MValue): number {
  * mesclagem, e uma junção por código de equipe passaria a casar coisa errada
  * dependendo de a fonte devolver o campo como texto ou como inteiro.
  */
-function chaveDe(
-  valores: readonly MValue[],
-  frouxas: readonly boolean[] | null = null,
-): string | null {
+/**
+ * A chave de agrupamento/junção de uma linha.
+ *
+ * O prefixo de espécie (`s:`, `f:`) não é decoração: sem ele o texto `"1"` e o
+ * número `1` colidiriam, e uma junção casaria linha que o Power Query não casa.
+ *
+ * `frouxas` marca, **por posição**, uma chave a comparar como inteiro em vez de por
+ * espécie. Só `Table.NestedJoin` usa isso, e só depois de provar que a junção
+ * estrita não casou nada — ver a nota lá. Devolve `null` quando a linha não tem como
+ * participar da comparação frouxa (nulo, fracionário, texto que não é inteiro):
+ * quem chama trata isso como "esta linha não casa", que é o que ela já fazia.
+ */
+function chaveDe(valores: readonly MValue[], frouxas: readonly boolean[] | null = null): string | null {
   const partes: string[] = [];
   for (const [i, v] of valores.entries()) {
     if (frouxas?.[i]) {
       const k = comoInteiro(v);
       if (k === null) return null;
       partes.push(`i:${k}`);
-    } else if (v === null) partes.push('n:');
+      continue;
+    }
+    if (v === null) partes.push('n:');
     else if (v instanceof Date) partes.push(`d:${v.getTime()}`);
     else if (v instanceof MTime) partes.push(`t:${v.ms}`);
     else if (v instanceof MDuration) partes.push(`u:${v.ms}`);
@@ -1863,7 +1439,7 @@ function chaveDe(
     else if (typeof v === 'boolean') partes.push(`b:${v}`);
     else throw new MEvalError(`Valor de tipo ${tipoDe(v)} não serve como chave.`);
   }
-  return partes.join('\u0000');
+  return partes.join(' ');
 }
 
 /**
@@ -1884,12 +1460,12 @@ function comoInteiro(v: MValue): string | null {
 }
 
 /**
- * As duas pontas desta chave são o mesmo identificador escrito em espécies
+ * As duas pontas desta chave são o mesmo identificador escrito de espécies
  * diferentes?
  *
  * Só responde sim para texto×número, e só quando **cada** ponta é de uma espécie só.
- * Coluna misturada já é outro problema, e resolver dois de uma vez é justamente como
- * se erra em silêncio.
+ * Coluna misturada já é outro problema, e resolver dois de uma vez é como se erra
+ * silenciosamente.
  */
 function reconciliavel(esq: MTable, ce: string, dir: MTable, cd: string): boolean {
   const e = especiesDe(esq, ce);
@@ -1977,69 +1553,11 @@ function faixaDisjunta(
   return null;
 }
 
-
-// ── constantes de enumeração e de tipo ────────────────────────────────────────
-
-/**
- * `Order.Ascending`, `JoinKind.LeftOuter`, `Int64.Type`: identificadores que não
- * são função nem passo, e que em M são **valores de enumeração**.
- *
- * Cada um avalia para o próprio nome, como texto. Não é gambiarra: o que as
- * funções precisam é distinguir um do outro, e o nome já é o identificador único.
- * Um enum como objeto opaco daria a mesma coisa com mais cerimônia e mensagens de
- * erro piores (`[object Object]` em vez de `JoinKind.FullOuter`).
- *
- * **A lista é allowlist de propósito.** Enum desconhecido cai no erro de nome não
- * encontrado, e é o que se quer: `Order.Decreasing` (que não existe) viraria uma
- * string qualquer e o `Table.Sort` ordenaria ascendente em silêncio.
- */
-const ENUMS: readonly string[] = [
-  // usados pelo corpus
-  'JoinKind.Inner', 'JoinKind.LeftOuter', 'JoinKind.RightOuter', 'JoinKind.FullOuter',
-  'JoinKind.LeftAnti', 'JoinKind.RightAnti',
-  'Order.Ascending', 'Order.Descending',
-  'QuoteStyle.Csv', 'QuoteStyle.None',
-  'BinaryEncoding.Base64', 'BinaryEncoding.Hex',
-  // Acompanha `Binary.Decompress` na tabela colada à mão de `feriados`. Faltava, e
-  // o teste de cobertura contra o corpus é que apontou.
-  'Compression.Deflate', 'Compression.GZip', 'Compression.None',
-  // não aparecem hoje, mas são os default de funções que aparecem — deixar de
-  // fora faria a query quebrar só quando alguém tornasse o default explícito
-  'Occurrence.First', 'Occurrence.Last', 'Occurrence.All',
-  'ExtraValues.List', 'ExtraValues.Error', 'ExtraValues.Ignore',
-  'MissingField.Error', 'MissingField.Ignore', 'MissingField.UseNull',
-  'JoinAlgorithm.Dynamic', 'JoinAlgorithm.SortMerge',
-  'Precision.Double', 'Precision.Decimal',
-  'RoundingMode.Up', 'RoundingMode.Down', 'RoundingMode.AwayFromZero',
-  'RoundingMode.TowardZero', 'RoundingMode.ToEven',
-];
-
-/**
- * Identificadores de tipo na forma `X.Type`.
- *
- * São o outro jeito de escrever `type X` — `Int64.Type` e `type number` chegam à
- * mesma conversão. `converte()` aceita as duas grafias por isso.
- */
-const TIPOS: readonly string[] = [
-  'Any.Type', 'Text.Type', 'Number.Type', 'Int64.Type', 'Int32.Type', 'Int16.Type',
-  'Byte.Type', 'Double.Type', 'Single.Type', 'Decimal.Type', 'Currency.Type',
-  'Percentage.Type', 'Logical.Type', 'Date.Type', 'DateTime.Type', 'DateTimeZone.Type',
-  'Time.Type', 'Duration.Type', 'Binary.Type', 'Guid.Type',
-  'Table.Type', 'Record.Type', 'List.Type', 'Function.Type', 'Type.Type', 'None.Type',
-];
-
-/** Constantes que o avaliador resolve por nome, antes de procurar função. */
-export function standardConstants(): ReadonlyMap<string, MValue> {
-  const m = new Map<string, MValue>();
-  for (const nome of [...ENUMS, ...TIPOS]) m.set(nome, nome);
-  return m;
-}
-
 // ── a tabela ──────────────────────────────────────────────────────────────────
 
 export function standardFunctions(): MFunctionTable {
   const m = new Map<string, MFunctionImpl>();
-  for (const f of [...TABELA, ...VALOR, ...BINARIO, ...AUXILIARES]) {
+  for (const f of [...TABELA, ...VALOR, ...AUXILIARES]) {
     if (m.has(f.name)) throw new Error(`Função M duplicada na tabela: ${f.name}`);
     m.set(f.name, f);
   }

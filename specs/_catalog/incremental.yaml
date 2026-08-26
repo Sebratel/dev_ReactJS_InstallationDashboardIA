@@ -1,0 +1,112 @@
+# Carga incremental — MANTIDO POR HUMANOS.
+#
+# Fica aqui, e não em `specs/_catalog/queries/*.spec.yaml`, pelo mesmo motivo de
+# `cache-policies.yaml` e `juncoes.yaml`: aquelas specs são GERADAS e
+# `npm run extract` as sobrescreve. "Quanto de histórico rebuscar" e "o que
+# identifica a linha" são decisões, não extração.
+#
+# Query que não aparece aqui **não é incremental**, e isso não é falta: é o estado
+# de 21 das 22. `npm run snapshot -- --incremental` simplesmente as busca inteiras.
+#
+# O motivo de cada campo está em `packages/snapshot/src/incremental.ts`. O que
+# importa saber antes de acrescentar uma query:
+#
+#   1. a camada M dela precisa ser LINHA A LINHA. `protocolos-geral` não é
+#      (`Table.Distinct` e `Table.Sort` decidem sobre o conjunto inteiro), então
+#      ela não entra aqui mesmo sendo pesada;
+#   2. a `marca` tem de captar MODIFICAÇÃO, não só criação;
+#   3. a `chave` nomeia o grupo que a fonte reentrega junto — e a costura do SQL
+#      tem de garantir que ele venha inteiro.
+
+formato: 1
+
+queries:
+  # -------------------------------------------------------------------------
+  # protocolos-produtividade — 190,3 s inteira, 1,2 s com janela de 7 dias.
+  # Medido em 25/08/2026 por `npm run probe:custo-incremental`.
+  # -------------------------------------------------------------------------
+  protocolos-produtividade:
+    parametro: desde
+    # O piso do recorte de negócio: "só 2026". É o valor de `:desde` na carga
+    # completa, e o chão de que a incremental nunca desce.
+    piso: '2026-01-01'
+    # A marca é o MÁXIMO das duas. `DATA ENCERRADO` é `a.modified` e é NULA em
+    # solicitação que nunca mudou — sozinha, ela perderia toda linha nova.
+    marca:
+      - DATA CRIADO
+      - DATA ENCERRADO
+    # `SOLICITACAO` (= `a.title`) é o que `PARTITION BY` usa para escolher quem
+    # sobrevive. A mesclagem apaga a solicitação inteira antes de inserir a nova,
+    # porque o append dos dois ramos entrega a mesma linha duas vezes DE PROPÓSITO
+    # e a contagem depende disso.
+    chave:
+      - SOLICITACAO
+    # Dois dias de folga porque a marca tem granularidade de DIA: o SELECT final
+    # faz `"DATA CRIADO"::date` e `"DATA ENCERRADO"::date`, então a marca de uma
+    # linha modificada às 14h é a meia-noite daquele dia. Um dia já bastaria; dois
+    # custam segundos e cobrem também registro lançado com data retroativa.
+    margem_dias: 2
+    # A incremental não enxerga linha que sumiu da fonte sem deixar data. Uma
+    # semana é o que se aceita andar sem uma carga completa por baixo.
+    idade_maxima_dias: 7
+
+    # -----------------------------------------------------------------------
+    # A costura: como o SQL completo vira o SQL incremental.
+    #
+    # `alvos` responde "quais solicitações mudaram desde :desde". São três ramos
+    # porque três coisas diferentes mudam a linha, e medir mostrou que uma só não
+    # basta (25/08/2026):
+    #
+    #   1. a própria solicitação — cobre 100% dos relatos, medido: todo relato
+    #      novo marca a solicitação-pai como modificada;
+    #   2. alocação de patrimônio — cobre os 15,8% que o ramo 1 NÃO pega. Só
+    #      84,2% das alocações recentes tocam a solicitação-pai, e as outras
+    #      mudariam `INSTALADO POR:` de um protocolo velho sem aviso;
+    #   3. técnico auxiliar (RAUX) — o relato mora na solicitação FILHA e casa com
+    #      a mãe pelo número do protocolo, então o ramo 1 nunca a alcançaria.
+    #
+    # `a.title IN (SELECT ...)` e não um `WHERE` por linha: ver a armadilha 2 em
+    # `incremental.ts` — 9,57% dos títulos de 2026 se repetem, e meia partição
+    # daria um PERSONA1 diferente.
+    # -----------------------------------------------------------------------
+    costura:
+      - de: 'WITH bruto AS ('
+        para: |
+          WITH alvos AS (
+              -- 1. a solicitação nasceu ou mudou.
+              SELECT DISTINCT a.title
+              FROM assignments a
+              WHERE a.created >= '2026-01-01'
+                AND GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde
+
+              UNION
+
+              -- 2. alocação de patrimônio nova ou mexida.
+              SELECT DISTINCT a.title
+              FROM patrimony_packing_list_items plis
+              JOIN patrimony_packing_lists ppl ON ppl.id = plis.patrimony_packing_list_id
+              JOIN assignments a ON a.id = ppl.assignment_id
+              WHERE a.created >= '2026-01-01'
+                AND GREATEST(plis.created, COALESCE(plis.modified, plis.created)) >= :desde
+
+              UNION
+
+              -- 3. relato de técnico auxiliar (RAUX): mora na filha, casa pelo
+              --    número do protocolo com as solicitações de 2026 que o carregam.
+              SELECT DISTINCT a.title
+              FROM reports r
+              JOIN assignments raux ON raux.id = r.assignment_id
+              JOIN assignment_incidents ai
+                    ON NULLIF(regexp_replace(r.tags::text, '\D', '', 'g'), '')::bigint = ai.protocol
+              JOIN assignments a ON a.id = ai.assignment_id
+              WHERE raux.assignment_type = 'RAUX'
+                AND raux.corresponding_parent_id IS NOT NULL
+                AND raux.final_date >= '2026-01-01'
+                AND a.created >= '2026-01-01'
+                AND GREATEST(raux.created, COALESCE(raux.modified, raux.created)) >= :desde
+          ),
+          bruto AS (
+      - de: "      AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo"
+        para: |2
+                AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo
+                AND a.title IN (SELECT title FROM alvos)

@@ -176,10 +176,21 @@ m_expression: |-
       #"Colunas Renomeadas4" = Table.RenameColumns(#"Personalização Adicionada",{{"DATA ENCERRRADO", "DATA MODIFICADO"}}),
       #"Personalização Adicionada3" = Table.AddColumn(#"Colunas Renomeadas4", "DATA HOJE", each DateTime.LocalNow()),
       #"Tipo Alterado3" = Table.TransformColumnTypes(#"Personalização Adicionada3",{{"DATA HOJE", type date}}),
-      #"Personalização Adicionada1" = Table.AddColumn(#"Tipo Alterado3", "PERSONALIZAÇÃO", each if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO]-[DATA CRIADO] else [DATA HOJE] - [DATA CRIADO]),
+      // CORRIGIDO EM 25/08/2026 -- os dois `if` abaixo comparavam com "FINALIZADO",
+      // em caixa alta, e o passo acima produz "Finalizado". Comparacao de texto em M
+      // e SENSIVEL A CAIXA, entao a condicao era SEMPRE falsa:
+      //   - DATA ENCERRADO saia nula nas 1.995 linhas, inclusive nas 1.004 encerradas;
+      //   - TMA contava HOJE - DATA CRIADO tambem para as encerradas, e a mediana
+      //     chegou a 366 dias.
+      // "FINALIZADO" era o vocabulario da versao comentada logo acima, que dizia
+      // `then "FINALIZADO" else "PENDENTE"`. Quando SITUACAO passou a ter tres valores,
+      // as duas comparacoes ficaram para tras. O equivalente exato de "FINALIZADO" no
+      // vocabulario novo e "Finalizado" -- as 38 linhas de "Finalizado Pendencia
+      // Financeira" seguem contando como pendentes, como contavam antes.
+      #"Personalização Adicionada1" = Table.AddColumn(#"Tipo Alterado3", "PERSONALIZAÇÃO", each if [SITUAÇÃO] = "Finalizado" then [DATA MODIFICADO]-[DATA CRIADO] else [DATA HOJE] - [DATA CRIADO]),
       #"Dias Inseridos" = Table.AddColumn(#"Personalização Adicionada1", "Dias", each Duration.Days([PERSONALIZAÇÃO]), Int64.Type),
       #"Colunas Renomeadas5" = Table.RenameColumns(#"Dias Inseridos",{{"Dias", "TMA"}}),
-      #"Personalização Adicionada2" = Table.AddColumn(#"Colunas Renomeadas5", "DATA ENCERRADO", each if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO] else null),
+      #"Personalização Adicionada2" = Table.AddColumn(#"Colunas Renomeadas5", "DATA ENCERRADO", each if [SITUAÇÃO] = "Finalizado" then [DATA MODIFICADO] else null),
       #"Colunas Removidas" = Table.RemoveColumns(#"Personalização Adicionada2",{"PERSONALIZAÇÃO"})
   in
       #"Colunas Removidas"

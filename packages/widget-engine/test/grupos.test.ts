@@ -65,9 +65,7 @@ function montar(os: Row[] = OS) {
   return new Evaluator({ model, dataset, now: AGORA });
 }
 
-const chave = (tabela: string, coluna: string, nivel: string | null = null): Chave => ({
-  tabela, coluna, nivel, nome: coluna,
-});
+const chave = (tabela: string, coluna: string): Chave => ({ tabela, coluna, nome: coluna });
 
 /** O total de `[Total]` em cada grupo, junto com os valores da chave. */
 function porGrupo(chaves: Chave[], ev = montar(), medida = 'Total') {
@@ -204,50 +202,28 @@ test('o agrupamento respeita o filtro que já estava no escopo', () => {
  * combinações existem. O produto cartesiano criaria linhas que a tela não mostra.
  * São 4 dos 29 `tableEx` e 5 dos 8 `pivotTable` — a fatia seguinte.
  */
-/**
- * Chaves de tabelas diferentes **atravessam o relacionamento** — a varredura sai da
- * tabela do lado "muitos" e segue até a do lado "um" (ver `expansao.test.ts`, que é
- * onde essa semântica é provada contra o produto cartesiano). Aqui só se fixa que o
- * caminho está ligado: `OS` tem 2 cidades, `EQUIPES` tem 2 regiões, e o produto daria
- * 4 combinações onde existem 3.
- */
-test('chaves de tabelas diferentes atravessam o relacionamento', () => {
+test('chaves de tabelas diferentes erram alto', () => {
   const ev = montar();
-  assert.deepEqual(porGrupo([chave('OS', 'CIDADE'), chave('EQUIPES', 'REGIAO')], ev), [
-    ['Bauru', 'Centro', 300],
-    ['Jaú', 'Sul', 700],
-    ['Jaú', null, 500],
-  ]);
+  assert.throws(
+    () => agrupar([chave('OS', 'CIDADE'), chave('EQUIPES', 'REGIAO')], ev.rootScope(), ev, 't'),
+    (e: unknown) => {
+      assert.ok(e instanceof DaxEvalError);
+      assert.match(e.message, /2 tabelas/);
+      assert.match(e.message, /cartesiano/);
+      return true;
+    },
+  );
 });
 
 const campo = (kind: string, extra: Partial<CampoSpec> = {}): CampoSpec => ({
   role: 'Values', kind, entity: 'OS', property: 'CIDADE', name: 'Cidade', ...extra,
 });
 
-test('nível de hierarquia é chave, e leva o nível junto', () => {
-  assert.deepEqual(chaveDoCampo(campo('hierarchy_level', { level: 'Mês' }), 'x'), {
-    tabela: 'OS', coluna: 'CIDADE', nivel: 'Mês', nome: 'Cidade',
-  });
-});
-
-/**
- * O nível é **obrigatório**, e a mensagem diz o tamanho do estrago: `[Data].[Ano]`
- * e `[Data].[Dia]` são o mesmo campo com um nome diferente, e escolher em silêncio
- * troca 1 ponto no eixo por 365.
- */
-test('nível de hierarquia sem o nome do nível erra alto', () => {
-  assert.throws(() => chaveDoCampo(campo('hierarchy_level', { level: null }), 'x'), (e: unknown) => {
+test('nível de hierarquia não é chave, e o erro diz por quê', () => {
+  assert.throws(() => chaveDoCampo(campo('hierarchy_level', { level: 'Mês' }), 'x'), (e: unknown) => {
     assert.ok(e instanceof DaxEvalError);
-    assert.match(e.message, /sem nome do nível/);
-    return true;
-  });
-});
-
-test('nível de hierarquia que não existe erra alto e lista os que existem', () => {
-  assert.throws(() => chaveDoCampo(campo('hierarchy_level', { level: 'Semana' }), 'x'), (e: unknown) => {
-    assert.ok(e instanceof DaxEvalError);
-    assert.match(e.message, /Semana/);
-    assert.match(e.message, /Suportados:.*trimestre/);
+    assert.match(e.message, /hierarquia/);
+    assert.match(e.message, /ISINSCOPE/);
     return true;
   });
 });
@@ -264,6 +240,6 @@ test('chave sem tabela ou coluna erra alto', () => {
 
 test('chaveDoCampo devolve tabela, coluna e o rótulo da tela', () => {
   assert.deepEqual(chaveDoCampo(campo('column', { name: 'Município' }), 'x'), {
-    tabela: 'OS', coluna: 'CIDADE', nivel: null, nome: 'Município',
+    tabela: 'OS', coluna: 'CIDADE', nome: 'Município',
   });
 });

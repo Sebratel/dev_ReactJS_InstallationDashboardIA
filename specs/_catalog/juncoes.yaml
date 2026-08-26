@@ -68,7 +68,27 @@ reconciliar_como_inteiro:
 # NÃO entrou aqui, e o porquê está medido:
 #
 #   protocolos-geral: {INSTALADO POR:, DATA FINAL} × {TÉCNICO 1, DATA}
-#     0 de 25.472 linhas de chave completa casam com as 5.619 de GESTORES EQUIPES,
-#     e as chaves NÃO são texto×número — então não há reconciliação provável e este
-#     arquivo não tem o que dizer sobre ela. É a origem de 'TÉCNICO 2' e
-#     'GERENTE/SUPERVISOR' inteiras nulas. Ver docs/ACHADOS.md #64.
+#     0 de 25.997 linhas de chave completa casam com GESTORES EQUIPES. É a origem
+#     de 'TÉCNICO 2' e 'GERENTE/SUPERVISOR' inteiras nulas (34.978 linhas).
+#
+#     ATENÇÃO — a causa registrada aqui até 25/08/2026 estava ERRADA. Dizia que "as
+#     chaves NÃO são texto×número, então não há reconciliação provável", o que faz
+#     parecer problema de tipo e manda quem lê procurar no lugar errado. Não é. A
+#     causa, medida em 25/08/2026:
+#
+#       GESTORES EQUIPES lê `DB_Applicattion.Installation_Teams` (dbMaria), e essa
+#       tabela **parou de ser alimentada**: última escrita em 16/06/2025, último
+#       valor de `DATA` em 15/07/2025. Todas as outras 13 tabelas do mesmo schema
+#       são atualizadas diariamente — só esta morreu.
+#
+#       `PROTOCOLOS GERAL` traz `DATA FINAL` de 02/01/2026 a 24/08/2026. As duas
+#       faixas de data têm **zero dias em comum**, e a junção é por (técnico, data).
+#
+#       O nome nunca foi o problema: 26 dos 93 técnicos de PROTOCOLOS GERAL casam
+#       por nome com os 70 de GESTORES EQUIPES quando se ignora a data.
+#
+#     Logo, isto NÃO se conserta neste repositório e não é caso de reconciliação de
+#     chave. Só volta a funcionar quando alguém retomar a carga de
+#     `Installation_Teams`. Enquanto isso, `visao-geral` mostra 'TÉCNICO 2' vazio em
+#     duas visuais — e `npm run snapshot:confere` erra alto sobre isso a cada refresh,
+#     que é o comportamento certo até a fonte voltar.

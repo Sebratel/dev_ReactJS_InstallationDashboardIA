@@ -183,19 +183,14 @@ test('campo de eixo com agregação erra alto', () => {
   );
 });
 
-/** Sem relacionamento não há caminho, e a recusa nomeia as duas tabelas. */
-test('Series de tabela sem relacionamento com o eixo erra alto', () => {
+test('chaves de duas tabelas continuam recusadas, com o nome das duas', () => {
   const ev = montar();
   const v = grafico([
     eixo('CIDADE'),
     { role: 'Series', kind: 'column', entity: 'EQUIPES', property: 'REGIAO', name: null },
     soma(),
   ]);
-  assert.throws(() => calculaGrafico(pagina([v]), v, ev), (e: unknown) => {
-    assert.match((e as Error).message, /\(OS, EQUIPES\)/);
-    assert.match((e as Error).message, /não se alcançam por relacionamento nenhum/);
-    return true;
-  });
+  assert.throws(() => calculaGrafico(pagina([v]), v, ev), /2 tabelas/);
 });
 
 // ---------------------------------------------------------------------------

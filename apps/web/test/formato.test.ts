@@ -34,6 +34,15 @@ test('data com hora mostra a hora; meia-noite exata mostra só a data', () => {
   assert.match(formata('2026-08-10T09:08:59.000Z', 'date').texto, /10\/08\/2026.*09:08/);
 });
 
+test('campo só-de-hora (época 1899) mostra só a hora, não a data da época', () => {
+  // `MIN de HORA ATUALIZADO[Hora]` é um `time` gravado sobre 1899-12-30. Antes disto a
+  // tela mostrava "30/12/1899, 18:23"; o ano da época não é dado desta operação.
+  const f = formata('1899-12-30T18:23:00.000Z', 'date');
+  assert.equal(f.texto, '18:23');
+  assert.equal(f.numerico, true);
+  assert.equal(f.vazio, false);
+});
+
 test('data é formatada em UTC, não no fuso local', () => {
   // O snapshot grava instante. Formatar no fuso local faria a mesma data virar o dia
   // anterior para quem estivesse a oeste de Greenwich — e o Brasil está.

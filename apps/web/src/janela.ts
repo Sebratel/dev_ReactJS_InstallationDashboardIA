@@ -12,6 +12,37 @@
 /** Quantas linhas por janela. É o `LINHAS_PADRAO` da API — mudar aqui não muda lá. */
 export const LINHAS_POR_JANELA = 200;
 
+/**
+ * Quantas linhas a TELA mostra por vez — e por que não são as 200 da busca.
+ *
+ * São duas janelas empilhadas de propósito, com trabalhos diferentes:
+ *
+ *   LINHAS_POR_JANELA (200)  o que o servidor MANDA por requisição
+ *   LINHAS_VISIVEIS   (20)   o que a tela DESENHA por vez
+ *
+ * Até 26/08/2026 só existia a primeira: a tela desenhava as 200 de uma vez. Na
+ * ANÁLISE DETALHADA do AGENDAMENTO FIELD isso são seis tabelas lado a lado com 200
+ * linhas cada — a seção descia centenas de linhas e a página virava um rolo, que foi
+ * exatamente a reclamação ("está usando muito da página").
+ *
+ * A janela de 20 é do CLIENTE: virar página dentro das 200 já carregadas é instantâneo
+ * e não custa requisição. Só a cada 10 páginas se busca a próxima fatia no servidor.
+ * Ou seja, a tela ficou 10x mais curta E fez menos pedidos, não mais.
+ */
+export const LINHAS_VISIVEIS = 20;
+
+/**
+ * Onde começa a janela de servidor que contém a linha global `linha`.
+ *
+ * Alinhar em múltiplos de `LINHAS_POR_JANELA` é o que mantém o cache de
+ * `usaJanela` útil: ele guarda por `de`, então pedir 200, 400, 600 reaproveita,
+ * enquanto pedir 20, 40, 60 criaria uma entrada nova a cada clique.
+ */
+export function janelaDeServidorPara(linha: number): number {
+  if (linha <= 0) return 0;
+  return Math.floor(linha / LINHAS_POR_JANELA) * LINHAS_POR_JANELA;
+}
+
 export interface Janela {
   /** Índice da primeira linha desta janela, base zero. */
   de: number;
@@ -40,8 +71,15 @@ export function proximoDe(j: Janela): number {
   return podeAvancar(j) ? j.de + j.mostradas : j.de;
 }
 
-export function anteriorDe(j: Janela): number {
-  return Math.max(0, j.de - LINHAS_POR_JANELA);
+/**
+ * O `de` da janela anterior.
+ *
+ * `passo` existe porque agora há duas janelas (ver `LINHAS_VISIVEIS`): a tabela anda
+ * de 20 em 20 e a matriz continua andando de 200 em 200. Voltar por `j.mostradas`
+ * seria tentador e errado — numa última janela curta (3 linhas) ele voltaria 3.
+ */
+export function anteriorDe(j: Janela, passo: number = LINHAS_POR_JANELA): number {
+  return Math.max(0, j.de - passo);
 }
 
 /**

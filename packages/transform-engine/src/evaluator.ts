@@ -125,15 +125,7 @@ export type MFunctionTable = ReadonlyMap<string, MFunctionImpl>;
 
 export interface MEvaluatorOptions {
   readonly functions: MFunctionTable;
-  /**
-   * Constantes de enumeração e de tipo (`Order.Ascending`, `Int64.Type`). Ausentes
-   * = qualquer enum vira "nome não encontrado", que é o certo: enum inventado não
-   * pode virar string qualquer e mudar comportamento em silêncio.
-   */
-  readonly constants?: ReadonlyMap<string, MValue>;
   readonly agora?: Date;
-  /** Culture do modelo. Ausente = conversão de texto para data erra alto. */
-  readonly culture?: string | null;
   /**
    * Resolve uma query citada por nome. `PROTOCOLOS GERAL` referencia
    * `#"GESTORES EQUIPES"` como se fosse variável, e é assim que a mesclagem entre
@@ -215,12 +207,10 @@ class Escopo {
 
 export class MEvaluator {
   private readonly functions: MFunctionTable;
-  private readonly constants: ReadonlyMap<string, MValue>;
   private readonly ctx: MCallContext;
 
   constructor(opts: MEvaluatorOptions) {
     this.functions = opts.functions;
-    this.constants = opts.constants ?? new Map();
     this.ctx = {
       agora: opts.agora ?? new Date(),
       culture: opts.culture ?? null,
@@ -356,12 +346,7 @@ export class MEvaluator {
         // Tipo é valor de primeira classe em M, e chega como argumento de
         // `TransformColumnTypes`. Aqui viaja como texto: quem interpreta é a
         // função, que é onde a conversão de valor acontece de verdade.
-        //
-        // Exceção deliberada: `type table [A = …, B = …]` avalia para a **lista
-        // dos nomes**, porque o único lugar do corpus que recebe tipo de tabela é
-        // `Table.FromRows`, e o que ele precisa dali são os nomes de coluna. Um
-        // objeto de tipo completo seria mais fiel e não teria consumidor.
-        return no.fields ? [...no.fields] : `type ${no.name}`;
+        return `type ${no.name}`;
 
       default: {
         const _exaustivo: never = no;
@@ -380,9 +365,6 @@ export class MEvaluator {
    */
   private identificador(nome: string, escopo: Escopo): MValue {
     if (escopo.tem(nome)) return escopo.resolve(nome);
-    // Constante antes de função: `Date.Type` é constante e `Date.From` é função,
-    // e nenhum nome é os dois — mas a ordem deixa isso explícito.
-    if (this.constants.has(nome)) return this.constants.get(nome)!;
     const f = this.functions.get(nome);
     if (f) {
       return this.funcaoDe(f.maxArgs, (args) => {
@@ -408,7 +390,7 @@ export class MEvaluator {
   private chamada(callee: MNode, args: readonly MNode[], escopo: Escopo): MValue {
     // Caminho direto para função conhecida: evita empacotar num MFunction só para
     // desempacotar, e deixa o erro de aridade citar o nome real.
-    if (callee.type === 'Identifier' && !escopo.tem(callee.name) && !this.constants.has(callee.name)) {
+    if (callee.type === 'Identifier' && !escopo.tem(callee.name)) {
       const f = this.functions.get(callee.name);
       if (f) {
         this.confereAridade(f, args.length);

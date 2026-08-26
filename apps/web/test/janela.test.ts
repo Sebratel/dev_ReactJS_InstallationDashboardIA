@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   anteriorDe,
+  janelaDeServidorPara,
   LINHAS_POR_JANELA,
+  LINHAS_VISIVEIS,
   podeAvancar,
   podeVoltar,
   proximoDe,
@@ -56,6 +58,75 @@ test('anteriorDe nunca fica negativo', () => {
   assert.equal(anteriorDe({ de: 0, mostradas: 200, total: 1000 }), 0);
   assert.equal(anteriorDe({ de: 100, mostradas: 100, total: 1000 }), 0);
   assert.equal(anteriorDe({ de: 400, mostradas: 200, total: 1000 }), 400 - LINHAS_POR_JANELA);
+});
+
+/* ==========================================================================
+   AS DUAS JANELAS EMPILHADAS
+
+   `LINHAS_POR_JANELA` (200) é o que o servidor manda; `LINHAS_VISIVEIS` (20) é o
+   que a tela desenha. `janelaDeServidorPara` é a costura entre as duas.
+   ========================================================================== */
+
+test('a janela visível é menor que a do servidor, e cabe um número inteiro de vezes', () => {
+  assert.ok(LINHAS_VISIVEIS < LINHAS_POR_JANELA);
+  assert.equal(
+    LINHAS_POR_JANELA % LINHAS_VISIVEIS,
+    0,
+    'se não couber inteiro, a última página de uma fatia fica curta sem ser o fim dos dados',
+  );
+});
+
+test('janelaDeServidorPara alinha em múltiplos, que é o que mantém o cache útil', () => {
+  assert.equal(janelaDeServidorPara(0), 0);
+  assert.equal(janelaDeServidorPara(19), 0);
+  assert.equal(janelaDeServidorPara(199), 0);
+  assert.equal(janelaDeServidorPara(200), 200, 'a borda pertence à fatia seguinte');
+  assert.equal(janelaDeServidorPara(201), 200);
+  assert.equal(janelaDeServidorPara(32461), 32400);
+});
+
+test('janelaDeServidorPara não devolve negativo', () => {
+  assert.equal(janelaDeServidorPara(-1), 0);
+  assert.equal(janelaDeServidorPara(-999), 0);
+});
+
+/**
+ * Andar 20 a 20 dentro de uma fatia de 200 dá dez páginas ANTES de buscar de novo.
+ * É esse o ganho: a tela encurta 10x e o número de requisições não muda.
+ */
+test('dez páginas de 20 cabem numa fatia de 200 sem nova busca', () => {
+  const inicioDaFatia = 400;
+  const linhas: number[] = [];
+  for (let p = 0; p < LINHAS_POR_JANELA / LINHAS_VISIVEIS; p += 1) {
+    linhas.push(inicioDaFatia + p * LINHAS_VISIVEIS);
+  }
+  assert.equal(linhas.length, 10);
+  for (const l of linhas) {
+    assert.equal(janelaDeServidorPara(l), inicioDaFatia, `a linha ${l} ainda está na fatia`);
+  }
+  // a 11ª página sai da fatia e aí sim busca
+  assert.equal(janelaDeServidorPara(inicioDaFatia + 10 * LINHAS_VISIVEIS), 600);
+});
+
+/** O passo do "anterior" é o da janela que está sendo navegada, não sempre 200. */
+test('anteriorDe respeita o passo de quem chama', () => {
+  const j: Janela = { de: 60, mostradas: 20, total: 1000 };
+  assert.equal(anteriorDe(j, LINHAS_VISIVEIS), 40, 'a tabela anda de 20 em 20');
+  assert.equal(anteriorDe(j), 0, 'sem passo, continua o padrão de 200 da matriz');
+});
+
+test('anteriorDe com passo nunca fica negativo', () => {
+  assert.equal(anteriorDe({ de: 10, mostradas: 10, total: 1000 }, LINHAS_VISIVEIS), 0);
+});
+
+/**
+ * A armadilha que o `passo` evita: voltar por `mostradas` numa última página curta.
+ * Com 3 linhas na tela, "anterior" andaria 3 e a pessoa veria 17 repetidas.
+ */
+test('a última página curta volta uma página inteira, não o tamanho dela', () => {
+  const ultima: Janela = { de: 243, mostradas: 3, total: 246 };
+  assert.equal(anteriorDe(ultima, LINHAS_VISIVEIS), 223);
+  assert.notEqual(anteriorDe(ultima, LINHAS_VISIVEIS), ultima.de - ultima.mostradas);
 });
 
 /** O rótulo conta em base 1, que é como uma pessoa conta linha. */

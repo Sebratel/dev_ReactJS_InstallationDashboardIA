@@ -36,31 +36,98 @@ import { loadDashboards, type DashboardSpec } from '../../../packages/widget-eng
 import { carrega } from '../../../packages/snapshot/src/carrega.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { calculaPagina } from '../../../apps/api/src/calcula.ts';
-import {
-  confere,
-  TOLERANCIA_PADRAO,
-  type CardEsperado,
-  type Gabarito,
-  type Resultado,
-  type Veredito,
-} from './regras.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DIR_GABARITOS = path.join(ROOT, 'specs', 'paridade');
 
+/** Um número ditado da tela do Power BI. */
+export interface CardEsperado {
+  visual: string;
+  /** Rótulo do card. Só para quem lê o arquivo — a comparação é por id. */
+  rotulo?: string | null;
+  /**
+   * O valor que aparece na tela. `null` = ainda não conferido, e o programa diz isso
+   * em vez de comparar com nada.
+   */
+  powerbi: number | null;
+  /**
+   * Id de `divergencias.yaml`, quando este card **deve** dar diferente.
+   *
+   * Preenchido, inverte a expectativa: bater vira falha. É o que impede uma
+   * divergência de ser decidida, documentada, e nunca chegar ao número.
+   */
+  divergente?: string | null;
+  observacao?: string | null;
+}
+
+export interface Gabarito {
+  pagina: string;
+  conferido_em?: string;
+  por?: string;
+  /** Diferença relativa aceita. Padrão 0,5% — arredondamento de tela, não de conta. */
+  tolerancia?: number;
+  cards: CardEsperado[];
+}
+
+const TOLERANCIA_PADRAO = 0.005;
+
+export type Veredito =
+  | 'bate'
+  | 'difere'
+  | 'divergencia-confirmada'
+  | 'divergencia-nao-aplicada'
+  | 'sem-gabarito'
+  | 'nao-calculou';
+
+export interface Resultado {
+  pagina: string;
+  visual: string;
+  rotulo: string | null;
+  esperado: number | null;
+  obtido: number | null;
+  erro?: string;
+  veredito: Veredito;
+  /** Diferença relativa, quando os dois lados são número. */
+  delta?: number;
+}
+
 /**
- * O valor de um card já calculado, ou `null` quando ele não produziu valor nenhum.
+ * Compara um card. Toda a lógica de veredito mora aqui, sem I/O, para ter teste.
  *
- * Número e texto passam; BLANK e `NaN` não. Um card em branco **é** um resultado
- * possível no Power BI, mas aqui ele não tem como ser comparado com um gabarito
- * ditado — e chamá-lo de "não calculou" é mais honesto que compará-lo com zero.
+ * A regra que não é óbvia é a da divergência declarada: ali, **bater é falha**. Se
+ * `peso-instalado-fim-de-semana` mudou o peso do sábado, um card que depende disso
+ * *tem* que dar outro número — e se der o mesmo, ou a divergência não chegou ao
+ * cálculo, ou o card não dependia dela e a anotação está errada. Nos dois casos alguém
+ * precisa olhar.
  */
-function valorDoCard(dados: unknown): number | string | null {
-  const d = dados as { valor?: unknown } | undefined;
-  if (!d) return null;
-  if (typeof d.valor === 'number') return Number.isFinite(d.valor) ? d.valor : null;
-  if (typeof d.valor === 'string') return d.valor;
-  return null;
+export function confere(
+  esperado: CardEsperado,
+  obtido: number | null,
+  erro: string | undefined,
+  tolerancia: number,
+): { veredito: Veredito; delta?: number } {
+  if (erro !== undefined || obtido === null) return { veredito: 'nao-calculou' };
+  if (esperado.powerbi === null || esperado.powerbi === undefined) {
+    return { veredito: 'sem-gabarito' };
+  }
+
+  const base = Math.abs(esperado.powerbi);
+  // Divisão por zero: quando o esperado é 0, "relativo" não quer dizer nada e a
+  // comparação vira exata. É o certo — um zero que virou 0,3 não é arredondamento.
+  const delta = base === 0 ? (obtido === 0 ? 0 : 1) : Math.abs(obtido - esperado.powerbi) / base;
+  const igual = delta <= tolerancia;
+
+  if (esperado.divergente) {
+    return { veredito: igual ? 'divergencia-nao-aplicada' : 'divergencia-confirmada', delta };
+  }
+  return { veredito: igual ? 'bate' : 'difere', delta };
+}
+
+/** O número de um card já calculado, ou `null` se ele não produziu número. */
+function valorDoCard(dados: unknown): number | null {
+  const d = dados as { valor?: unknown; tipoDoValor?: string } | undefined;
+  if (!d || typeof d.valor !== 'number' || !Number.isFinite(d.valor)) return null;
+  return d.valor;
 }
 
 function leGabaritos(pedidas: readonly string[]): Gabarito[] {
@@ -106,10 +173,6 @@ function esqueleto(dash: DashboardSpec): string {
     '# Quando o número DEVE dar diferente porque a gente decidiu assim, ponha o id da',
     '# entrada de `specs/_catalog/divergencias.yaml` em `divergente:`. Aí bater vira',
     '# falha — é o que impede uma divergência de ficar só no papel.',
-    '#',
-    '# `ignorar:` já vem preenchido nos cards de carimbo de refresh. Não os apague: eles',
-    '# ficam na lista para constar que existem, e fora da conta para não pedir número',
-    '# que não mede nada.',
     '',
     `pagina: ${dash.id}`,
     `conferido_em: null`,
@@ -133,7 +196,6 @@ const SIMBOLO: Record<Veredito, string> = {
   'divergencia-nao-aplicada': '!DIV!!',
   'sem-gabarito': '  ??  ',
   'nao-calculou': ' ERRO ',
-  ignorado: '  --  ',
 };
 
 async function principal(): Promise<number> {
@@ -253,7 +315,6 @@ async function principal(): Promise<number> {
   }
 
   for (const r of resultados) {
-    if (r.veredito === 'ignorado') continue;
     const delta = r.delta === undefined ? '' : ` (${(r.delta * 100).toFixed(2)}%)`;
     const nums = r.veredito === 'nao-calculou'
       ? (r.erro ?? 'sem número')

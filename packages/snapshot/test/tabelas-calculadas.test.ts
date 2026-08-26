@@ -141,6 +141,177 @@ test('mesmoDiaLocal compara o dia do calendário, não o instante', () => {
   assert.equal(mesmoDiaLocal(new Date(2025, 7, 13), new Date(2026, 7, 13)), false);
 });
 
+// ---------------------------------------------------------------------------
+// A obsolescência que o `daxSha` não vê: o DAX não mudou, o DIA mudou
+// ---------------------------------------------------------------------------
+
+function coluna(name: string, extra: Partial<ModelColumn> = {}): ModelColumn {
+  return { name, type: null, format: null, sourceColumn: null, calculated: false, dax: null, ...extra };
+}
+
+function tabela(tableDax: string | null, colunas: ModelColumn[]): ModelTable {
+  return { id: 't', name: 'T', queryRef: null, tableDax, columns: colunas };
+}
+
+test('TODAY() no corpo da tabela conta como dependência de relógio', () => {
+  assert.equal(dependeDoRelogio(tabela('CALENDAR(TODAY(), TODAY()+30)', [])), true);
+});
+
+test('TODAY() numa coluna calculada da tabela também conta', () => {
+  const t = tabela("DISTINCT('OS'[CIDADE])", [
+    coluna('CIDADE'),
+    coluna('VIGENTE', { calculated: true, dax: 'IF([DATA] <= TODAY(), "Sim", "Não")' }),
+  ]);
+  assert.equal(dependeDoRelogio(t), true);
+});
+
+test('NOW, UTCNOW e UTCTODAY contam; SNOWFLAKE não vira NOW por causa do sufixo', () => {
+  assert.equal(dependeDoRelogio(tabela('NOW()', [])), true);
+  assert.equal(dependeDoRelogio(tabela('UTCNOW()', [])), true);
+  assert.equal(dependeDoRelogio(tabela('UTCTODAY()', [])), true);
+  assert.equal(dependeDoRelogio(tabela("SUM('T'[SNOWNOW])", [])), false);
+});
+
+/**
+ * O literal de texto não é chamada de função. Sem isto, uma tabela que só *escreve*
+ * "NOW()" num rótulo seria recalculada toda meia-noite — e se ela fosse a de 2,4 h,
+ * o guarda passaria a ser o problema.
+ */
+test('a palavra dentro de um literal de texto não conta', () => {
+  const t = tabela(null, [
+    coluna('R', { calculated: true, dax: 'IF([X] = 1, "atualizado em NOW()", "antigo")' }),
+  ]);
+  assert.equal(dependeDoRelogio(t), false);
+});
+
+test('tabela sem relógio nenhum é falso — é o caso das caras', () => {
+  const t = tabela("DISTINCT('FIELD AGENDA'[Slot])", [
+    coluna('Slot'),
+    coluna('Rank', { calculated: true, dax: "RANKX(ALL('T'), 'T'[Slot])" }),
+  ]);
+  assert.equal(dependeDoRelogio(t), false);
+});
+
+test('mesmoDiaLocal compara o dia do calendário, não o instante', () => {
+  assert.equal(mesmoDiaLocal(new Date(2026, 7, 13, 0, 1), new Date(2026, 7, 13, 23, 59)), true);
+  assert.equal(mesmoDiaLocal(new Date(2026, 7, 13, 23, 59), new Date(2026, 7, 14, 0, 1)), false);
+  assert.equal(mesmoDiaLocal(new Date(2025, 7, 13), new Date(2026, 7, 13)), false);
+});
+
+// ---------------------------------------------------------------------------
+// A obsolescência que o `daxSha` não vê: o DAX não mudou, o DIA mudou
+// ---------------------------------------------------------------------------
+
+function coluna(name: string, extra: Partial<ModelColumn> = {}): ModelColumn {
+  return { name, type: null, format: null, sourceColumn: null, calculated: false, dax: null, ...extra };
+}
+
+function tabela(tableDax: string | null, colunas: ModelColumn[]): ModelTable {
+  return { id: 't', name: 'T', queryRef: null, tableDax, columns: colunas };
+}
+
+test('TODAY() no corpo da tabela conta como dependência de relógio', () => {
+  assert.equal(dependeDoRelogio(tabela('CALENDAR(TODAY(), TODAY()+30)', [])), true);
+});
+
+test('TODAY() numa coluna calculada da tabela também conta', () => {
+  const t = tabela("DISTINCT('OS'[CIDADE])", [
+    coluna('CIDADE'),
+    coluna('VIGENTE', { calculated: true, dax: 'IF([DATA] <= TODAY(), "Sim", "Não")' }),
+  ]);
+  assert.equal(dependeDoRelogio(t), true);
+});
+
+test('NOW, UTCNOW e UTCTODAY contam; SNOWFLAKE não vira NOW por causa do sufixo', () => {
+  assert.equal(dependeDoRelogio(tabela('NOW()', [])), true);
+  assert.equal(dependeDoRelogio(tabela('UTCNOW()', [])), true);
+  assert.equal(dependeDoRelogio(tabela('UTCTODAY()', [])), true);
+  assert.equal(dependeDoRelogio(tabela("SUM('T'[SNOWNOW])", [])), false);
+});
+
+/**
+ * O literal de texto não é chamada de função. Sem isto, uma tabela que só *escreve*
+ * "NOW()" num rótulo seria recalculada toda meia-noite — e se ela fosse a de 2,4 h,
+ * o guarda passaria a ser o problema.
+ */
+test('a palavra dentro de um literal de texto não conta', () => {
+  const t = tabela(null, [
+    coluna('R', { calculated: true, dax: 'IF([X] = 1, "atualizado em NOW()", "antigo")' }),
+  ]);
+  assert.equal(dependeDoRelogio(t), false);
+});
+
+test('tabela sem relógio nenhum é falso — é o caso das caras', () => {
+  const t = tabela("DISTINCT('FIELD AGENDA'[Slot])", [
+    coluna('Slot'),
+    coluna('Rank', { calculated: true, dax: "RANKX(ALL('T'), 'T'[Slot])" }),
+  ]);
+  assert.equal(dependeDoRelogio(t), false);
+});
+
+test('mesmoDiaLocal compara o dia do calendário, não o instante', () => {
+  assert.equal(mesmoDiaLocal(new Date(2026, 7, 13, 0, 1), new Date(2026, 7, 13, 23, 59)), true);
+  assert.equal(mesmoDiaLocal(new Date(2026, 7, 13, 23, 59), new Date(2026, 7, 14, 0, 1)), false);
+  assert.equal(mesmoDiaLocal(new Date(2025, 7, 13), new Date(2026, 7, 13)), false);
+});
+
+// ---------------------------------------------------------------------------
+// A obsolescência que o `daxSha` não vê: o DAX não mudou, o DIA mudou
+// ---------------------------------------------------------------------------
+
+function coluna(name: string, extra: Partial<ModelColumn> = {}): ModelColumn {
+  return { name, type: null, format: null, sourceColumn: null, calculated: false, dax: null, ...extra };
+}
+
+function tabela(tableDax: string | null, colunas: ModelColumn[]): ModelTable {
+  return { id: 't', name: 'T', queryRef: null, tableDax, columns: colunas };
+}
+
+test('TODAY() no corpo da tabela conta como dependência de relógio', () => {
+  assert.equal(dependeDoRelogio(tabela('CALENDAR(TODAY(), TODAY()+30)', [])), true);
+});
+
+test('TODAY() numa coluna calculada da tabela também conta', () => {
+  const t = tabela("DISTINCT('OS'[CIDADE])", [
+    coluna('CIDADE'),
+    coluna('VIGENTE', { calculated: true, dax: 'IF([DATA] <= TODAY(), "Sim", "Não")' }),
+  ]);
+  assert.equal(dependeDoRelogio(t), true);
+});
+
+test('NOW, UTCNOW e UTCTODAY contam; SNOWFLAKE não vira NOW por causa do sufixo', () => {
+  assert.equal(dependeDoRelogio(tabela('NOW()', [])), true);
+  assert.equal(dependeDoRelogio(tabela('UTCNOW()', [])), true);
+  assert.equal(dependeDoRelogio(tabela('UTCTODAY()', [])), true);
+  assert.equal(dependeDoRelogio(tabela("SUM('T'[SNOWNOW])", [])), false);
+});
+
+/**
+ * O literal de texto não é chamada de função. Sem isto, uma tabela que só *escreve*
+ * "NOW()" num rótulo seria recalculada toda meia-noite — e se ela fosse a de 2,4 h,
+ * o guarda passaria a ser o problema.
+ */
+test('a palavra dentro de um literal de texto não conta', () => {
+  const t = tabela(null, [
+    coluna('R', { calculated: true, dax: 'IF([X] = 1, "atualizado em NOW()", "antigo")' }),
+  ]);
+  assert.equal(dependeDoRelogio(t), false);
+});
+
+test('tabela sem relógio nenhum é falso — é o caso das caras', () => {
+  const t = tabela("DISTINCT('FIELD AGENDA'[Slot])", [
+    coluna('Slot'),
+    coluna('Rank', { calculated: true, dax: "RANKX(ALL('T'), 'T'[Slot])" }),
+  ]);
+  assert.equal(dependeDoRelogio(t), false);
+});
+
+test('mesmoDiaLocal compara o dia do calendário, não o instante', () => {
+  assert.equal(mesmoDiaLocal(new Date(2026, 7, 13, 0, 1), new Date(2026, 7, 13, 23, 59)), true);
+  assert.equal(mesmoDiaLocal(new Date(2026, 7, 13, 23, 59), new Date(2026, 7, 14, 0, 1)), false);
+  assert.equal(mesmoDiaLocal(new Date(2025, 7, 13), new Date(2026, 7, 13)), false);
+});
+
 /**
  * Ponta a ponta contra o formato real: grava e lê de volta. É o teste que teria
  * pegado o bug original, porque o bug só aparecia depois de `escreve`.

@@ -53,7 +53,7 @@ export interface Gabarito {
   cards: CardEsperado[];
 }
 
-export const TOLERANCIA_PADRAO = 0.005;
+export export const TOLERANCIA_PADRAO = 0.005;
 
 export type Veredito =
   | 'bate'

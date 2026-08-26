@@ -22,12 +22,13 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { normalizeName, SemanticModel } from '../../../packages/semantic-model/src/model.ts';
-import { rotuloDeColuna } from '../../../packages/semantic-model/src/projecao.ts';
+import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec, type FiltroSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
 import { leManifesto, maisAntigo } from '../../../packages/snapshot/src/manifesto.ts';
+import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
+import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
@@ -123,16 +124,24 @@ export class Servidor {
   /** Página → avaliador carregado. A promessa entra no mapa **antes** de resolver,
    * para que dois pedidos simultâneos da mesma página não carreguem duas vezes. */
   private readonly carregadas = new Map<string, Promise<Carregado>>();
-  /** Cache dos valores distintos de segmentações (categorias) para eliminar buscas repetidas de disco/dataset. */
-  private readonly cacheValoresDistintos = new Map<string, DaxValue[]>();
+  /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
+  private carimboDasCarregadas: string | null = null;
   /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
   private carimboDasCarregadas: string | null = null;
   /**
-   * O resultado inteiro de cada tabela e matriz já calculada, para que a janela
-   * seguinte seja um `slice`. Ver `cache-visual.ts` — e note que ele **não** é o
-   * adapter de `cache`: estas entradas têm dezenas de MB e nunca vão para o Redis.
+   * O último carimbo calculado, junto da assinatura barata que o produziu. Ver
+   * `carimboAtual`: sem isto, todo acerto de cache pagava um `JSON.parse` do
+   * manifesto para chegar a um valor que quase nunca muda.
    */
-  private readonly completos: CacheDeVisual;
+  private carimboMemo: { assinatura: string; carimbo: string } | null = null;
+  /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
+  private carimboDasCarregadas: string | null = null;
+  /**
+   * O último carimbo calculado, junto da assinatura barata que o produziu. Ver
+   * `carimboAtual`: sem isto, todo acerto de cache pagava um `JSON.parse` do
+   * manifesto para chegar a um valor que quase nunca muda.
+   */
+  private carimboMemo: { assinatura: string; carimbo: string } | null = null;
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, ...resto } = opts;
@@ -140,22 +149,8 @@ export class Servidor {
       agora: () => new Date(),
       identifica: identificaLocal,
       aquecimento: () => ({ ativo: false, pronto: false }),
-      tetoDeVisuaisMB: TETO_PADRAO_MB,
       ...resto,
     };
-    this.completos = new CacheDeVisual({
-      tetoBytes: this.opts.tetoDeVisuaisMB * 1024 * 1024,
-      aoRecusar: (chave, bytes, teto) => {
-        // Recusa não é falha, é orçamento — mas cala-la faria a lentidão daquele
-        // visual parecer inexplicável. O `console.error` é o mesmo canal por onde
-        // as outras notas do servidor saem.
-        console.error(
-          `[cache-visual] ${chave} não coube: ${(bytes / 1048576).toFixed(1)} MB ` +
-            `contra um teto de ${(teto / 1048576).toFixed(0)} MB. ` +
-            `A janela deste visual vai recalcular a cada clique.`,
-        );
-      },
-    });
     this.model = SemanticModel.fromSpecsDir(path.join(opts.root, 'specs'));
     this.dashboards = loadDashboards(path.join(opts.root, 'specs'));
     this.registry = QueryRegistry.fromSpecsDir(path.join(opts.root, 'specs'));
@@ -320,7 +315,6 @@ export class Servidor {
     const ttl = retencaoDaPagina(this.queriesDe(dash), this.registry);
     const carimbo = this.carimboAtual();
     const dia = diaDoCalculo(this.opts.agora());
-    const recalcula = url.searchParams.get('recalcula') === '1';
     const chave = chaveDaResposta({
       usuario: quem.usuario,
       pagina: dash.id,
@@ -332,7 +326,7 @@ export class Servidor {
       dia,
     });
 
-    if (ttl > 0 && !recalcula) {
+    if (ttl > 0) {
       const guardado = await this.cache.le<object>(chave);
       if (guardado !== undefined) {
         responde(res, 200, { ...guardado, cache: 'hit' satisfies EstadoDoCache });
@@ -484,17 +478,13 @@ export class Servidor {
     }
 
     const teto = inteiro(url.searchParams.get('teto'), VALORES_PADRAO, 1, VALORES_MAXIMO);
-    const chaveValores = `${id}\u0000${normalizeName(tabela)}\u0000${normalizeName(coluna)}\u0000${normalizeName(nivel ?? '')}`;
-    let distintos = this.cacheValoresDistintos.get(chaveValores);
-    if (!distintos) {
-      try {
-        distintos = valoresDistintos(carregado.ev, tabela, coluna, nivel);
-        this.cacheValoresDistintos.set(chaveValores, distintos);
-      } catch (err) {
-        // Nível que a projeção não conhece. 400: o pedido está errado, não o estado.
-        responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
-        return;
-      }
+    let distintos: DaxValue[];
+    try {
+      distintos = valoresDistintos(carregado.ev, tabela, coluna, nivel);
+    } catch (err) {
+      // Nível que a projeção não conhece. 400: o pedido está errado, não o estado.
+      responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
+      return;
     }
     responde(res, 200, {
       tabela,
@@ -559,7 +549,19 @@ export class Servidor {
    */
   private carrega(dash: DashboardSpec, soVisual: string | null = null): Promise<Carregado> {
     const libera = soVisual === null ? [] : this.sobDemandaDoVisual(dash, soVisual);
-    const chave = libera.length === 0 ? dash.id : `${dash.id}\u0000${[...libera].sort().join(',')}`;
+    const chave = libera.length === 0 ? dash.id : `${dash.id} ${[...libera].sort().join(',')}`;
+
+    // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
+    // era limpo em erro, e o comentário do topo deste arquivo ("quem refaz é `npm run
+    // snapshot`, e aí o processo é reiniciado") virou mentira no dia em que o
+    // aquecimento passou a rodar junto com o refresh: a API servia o dado antigo até
+    // alguém lembrar de reiniciar. O carimbo é o mesmo do cache de resposta, então as
+    // duas camadas viram a troca no mesmo instante.
+    const carimbo = this.carimboAtual();
+    if (this.carimboDasCarregadas !== carimbo) {
+      this.carregadas.clear();
+      this.carimboDasCarregadas = carimbo;
+    }
 
     // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
     // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
@@ -579,11 +581,63 @@ export class Servidor {
     const carimbo = this.identidadeAtual();
     if (this.carimboDasCarregadas !== carimbo) {
       this.carregadas.clear();
-      this.cacheValoresDistintos.clear();
       // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
       // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
       // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
       this.completos.limpa();
+      // E o mesmo na camada durável, pelo mesmo motivo — só que lá o lixo é pior:
+      // ele sobrevive ao restart. Ver `CacheDeResposta.varreCarimbosAntigos`.
+      //
+      // **Sem `await`, e de propósito.** Isto roda no caminho de um pedido, e uma
+      // varredura de Redis não pode ser o que o usuário espera. O pior caso de
+      // deixá-la solta é o lixo ficar mais um pouco; o pior caso de esperá-la é a
+      // página demorar por causa de faxina.
+      this.varreCacheDuravel(carimbo);
+      this.carimboDasCarregadas = carimbo;
+    }
+
+    // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
+    // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
+    // snapshot`, e aí o processo é reiniciado") deixa de valer no dia em que o
+    // aquecimento roda junto do refresh: a API serviria o dado antigo até alguém
+    // lembrar de reiniciar. O carimbo é o mesmo do cache de resposta, então as duas
+    // camadas enxergam a troca no mesmo instante.
+    //
+    // **E o dia entra junto, pelo mesmo motivo que entrou na chave da resposta.** O
+    // avaliador congela o `now` que recebeu aqui embaixo (`carrega({ now })`), e
+    // `TODAY()` sai dele. Um servidor que atravessa a meia-noite sem esta parte
+    // continuaria servindo o `TODAY()` de ontem por tempo indeterminado — e o
+    // estrago seria pior **depois** do dia entrar na chave da resposta, não antes:
+    // a chave nova daria miss, o recálculo pegaria este avaliador velho, e a
+    // resposta de hoje seria gravada com o ontem dentro. As duas camadas medem a
+    // mesma identidade ou nenhuma das duas mede.
+    const carimbo = this.identidadeAtual();
+    if (this.carimboDasCarregadas !== carimbo) {
+      this.carregadas.clear();
+      // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
+      // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
+      // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
+      this.completos.limpa();
+      // E o mesmo na camada durável, pelo mesmo motivo — só que lá o lixo é pior:
+      // ele sobrevive ao restart. Ver `CacheDeResposta.varreCarimbosAntigos`.
+      //
+      // **Sem `await`, e de propósito.** Isto roda no caminho de um pedido, e uma
+      // varredura de Redis não pode ser o que o usuário espera. O pior caso de
+      // deixá-la solta é o lixo ficar mais um pouco; o pior caso de esperá-la é a
+      // página demorar por causa de faxina.
+      this.varreCacheDuravel(carimbo);
+      this.carimboDasCarregadas = carimbo;
+    }
+
+    // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
+    // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
+    // snapshot`, e aí o processo é reiniciado") deixa de valer no dia em que o
+    // aquecimento roda junto do refresh: a API serviria o dado antigo até alguém
+    // lembrar de reiniciar. O carimbo é o mesmo do cache de resposta, então as duas
+    // camadas enxergam a troca no mesmo instante.
+    const carimbo = this.carimboAtual();
+    if (this.carimboDasCarregadas !== carimbo) {
+      this.carregadas.clear();
       this.carimboDasCarregadas = carimbo;
     }
 
@@ -655,6 +709,65 @@ export class Servidor {
    */
   identidadeAtual(): string {
     return identidadeDoCalculo(this.carimboAtual(), diaDoCalculo(this.opts.agora()));
+  }
+
+  /**
+   * A identidade do que está em disco **agora**: manifesto mais tabelas calculadas.
+   *
+   * Uma função só, usada pelas duas camadas de cache. Duas contas separadas para a
+   * "mesma" identidade divergiriam no primeiro arquivo que uma delas não olhasse — e
+   * foi exatamente assim que os `calc.*.jsonl` ficaram de fora do carimbo.
+   *
+   * **Isto custa 0,57 ms por pedido e fica assim.** É o maior custo fixo de um
+   * acerto de cache — mais que serializar uma página de 96 KB —, quase todo em
+   * `leManifesto` (ler o arquivo e fazer `JSON.parse`). A tentação de memoizá-lo
+   * atrás de uma conferência barata é óbvia, e foi tentada em 17/08/2026: guardar o
+   * carimbo e só recalculá-lo quando `mtime` e tamanho do manifesto mudassem.
+   *
+   * **Não funciona, e o teste provou antes de o código sair daqui.** Reescrever o
+   * manifesto trocando só a hora de `geradoEm` não muda um byte do tamanho — a data
+   * tem largura fixa —, então sobra o `mtime` para separar as duas versões. E o
+   * `mtime` desta máquina tem granularidade medida de **~2,45 ms** (4.000 escritas,
+   * 265 carimbos de tempo distintos): duas reescritas dentro dessa janela são
+   * indistinguíveis. O memo devolveria o carimbo velho, a chave da resposta apontaria
+   * para a resposta anterior ao refresh, e a tela mostraria o número de antes sem
+   * nada dizendo que era de antes.
+   *
+   * 0,4 ms não compra um modo de desatualização silenciosa. A economia equivalente
+   * está no corpo pré-serializado do cache, que não custa exatidão nenhuma.
+   */
+  private carimboAtual(): string {
+    return carimboDoSnapshot(
+      leManifesto(this.opts.snapshotDir),
+      carimboDasCalculadas(this.opts.snapshotDir),
+    );
+  }
+
+  /**
+   * A identidade completa do que a API responderia agora: o dado em disco e o dia.
+   *
+   * **Pública porque o aquecedor precisa dela**, e precisa dela *exatamente* como as
+   * duas camadas de cache a calculam. Um aquecedor que vigiasse só o carimbo dormiria
+   * na virada da meia-noite — que é justamente o instante em que o cache inteiro fica
+   * inalcançável de uma vez, pelas 32 chamadas a `TODAY()`. A tela do primeiro
+   * expediente é a que pagaria.
+   */
+  identidadeAtual(): string {
+    return identidadeDoCalculo(this.carimboAtual(), diaDoCalculo(this.opts.agora()));
+  }
+
+  /**
+   * A identidade do que está em disco **agora**: manifesto mais tabelas calculadas.
+   *
+   * Uma função só, usada pelas duas camadas de cache. Duas contas separadas para a
+   * "mesma" identidade divergiriam no primeiro arquivo que uma delas não olhasse — e
+   * foi exatamente assim que os `calc.*.jsonl` ficaram de fora do carimbo.
+   */
+  private carimboAtual(): string {
+    return carimboDoSnapshot(
+      leManifesto(this.opts.snapshotDir),
+      carimboDasCalculadas(this.opts.snapshotDir),
+    );
   }
 
   /**
@@ -746,7 +859,7 @@ function valoresDistintos(
     const v = projeta && !isBlank(cru) && cru instanceof Date ? projeta(cru) : cru;
     // Data como chave precisa ser o instante, não o objeto: dois `Date` do mesmo
     // milissegundo são chaves diferentes num `Set`, e a lista viria com repetido.
-    const chave = isBlank(v) ? '\u0000blank' : v instanceof Date ? `d${v.getTime()}` : `${typeof v}:${String(v)}`;
+    const chave = isBlank(v) ? ' blank' : v instanceof Date ? `d${v.getTime()}` : `${typeof v}:${String(v)}`;
     if (!vistos.has(chave)) vistos.set(chave, v);
   }
 

@@ -195,6 +195,22 @@ export function queriesDoEvento(registry: QueryRegistry, e: EventoMinimo): strin
 }
 
 /**
+ * As queries que a tabela de um evento suja — a mesma conta para quem só observa
+ * (`Medidor`) e para quem age (`ingestor.ts`), de propósito: as duas nunca podem
+ * discordar sobre o que uma mudança de tabela afeta.
+ *
+ * Tenta `schema.tabela` **antes** de `tabela` porque as duas formas convivem nas
+ * specs: `dbVoalle` declara `assignment_incidents` (o schema `erp` fica de fora) e
+ * `dbMaria` declara `db_applicattion.installation_teams`. Procurar só uma das duas
+ * deixaria metade das queries fora do mapa em silêncio.
+ */
+export function queriesDoEvento(registry: QueryRegistry, e: EventoMinimo): string[] {
+  const comSchema = e.schema ? registry.queriesForTable(`${e.schema}.${e.tabela}`) : [];
+  if (comSchema.length > 0) return comSchema;
+  return registry.queriesForTable(e.tabela);
+}
+
+/**
  * Lê o envelope de um evento Debezium e devolve só o que não é dado.
  *
  * Aceita as duas formas: com schema (`{schema, payload}`) e já desembrulhada. E

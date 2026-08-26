@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import { ProvedorModo } from './modo.tsx';
 import './estilo.css';
 
 const raiz = document.getElementById('raiz');
@@ -9,6 +10,8 @@ if (!raiz) throw new Error("index.html precisa de um elemento com id='raiz'.");
 
 createRoot(raiz).render(
   <StrictMode>
-    <App />
+    <ProvedorModo>
+      <App />
+    </ProvedorModo>
   </StrictMode>,
 );

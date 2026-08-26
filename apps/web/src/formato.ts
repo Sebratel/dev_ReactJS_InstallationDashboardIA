@@ -32,9 +32,24 @@ const dfh = new Intl.DateTimeFormat('pt-BR', {
   timeStyle: 'short',
   timeZone: 'UTC',
 });
+const dfHora = new Intl.DateTimeFormat('pt-BR', { timeStyle: 'short', timeZone: 'UTC' });
 
-export function formata(v: unknown, tipo: TipoDeValor): Formatado {
+/**
+ * O nível [Ano] da hierarquia de datas ("DATA INSTALADO Ano", "Data Criado Ano" — a
+ * convenção do extrator é sempre terminar em " Ano") chega como `number` puro
+ * (2025), e o formatador genérico aplicaria o separador de milhar do pt-BR — "2.025".
+ * Ano não é quantidade: nunca leva separador de milhar.
+ */
+export function ehColunaDeAno(nomeDaColuna: string | null | undefined): boolean {
+  return /\bano$/i.test((nomeDaColuna ?? '').trim());
+}
+
+export function formata(v: unknown, tipo: TipoDeValor, opts?: { semAgrupamento?: boolean }): Formatado {
   if (v === null || v === undefined) return { texto: '—', numerico: false, vazio: true };
+
+  if (opts?.semAgrupamento && tipo === 'number' && Number.isInteger(v)) {
+    return { texto: String(v), numerico: true, vazio: false };
+  }
 
   if (tipo === 'date') {
     const d = new Date(v as string);
@@ -42,6 +57,13 @@ export function formata(v: unknown, tipo: TipoDeValor): Formatado {
     // defeito está no dado. Dizer o valor cru é o que deixa a causa achável.
     if (Number.isNaN(d.getTime())) {
       return { texto: `data inválida: ${String(v)}`, numerico: false, vazio: false };
+    }
+    // Campo só-de-hora: a origem é `time`, que o snapshot grava sobre a época OLE
+    // (1899-12-30). Mostrar "30/12/1899, 18:23" expõe um detalhe de armazenamento como
+    // se fosse a data do dado — aqui vale só a hora. Qualquer ano <= 1900 é época, não
+    // dado real desta operação.
+    if (d.getUTCFullYear() <= 1900) {
+      return { texto: dfHora.format(d), numerico: true, vazio: false };
     }
     // Meia-noite exata é data pura; qualquer hora e a hora importa. É o que separa
     // "10/08/2026" de "10/08/2026 09:08" no mesmo card.
@@ -66,6 +88,20 @@ export function formata(v: unknown, tipo: TipoDeValor): Formatado {
 /** Inteiro com separador de milhar — contagens de linha, totais, etc. */
 export function inteiro(n: number): string {
   return nfInt.format(n);
+}
+
+/**
+ * Uma medida de porcentagem como texto de tela.
+ *
+ * O relatório guarda `%` como **razão** (`0,0525`) e o Power BI a exibe multiplicada por
+ * 100 (`5,25%`) — foi o que a conferência de paridade documentou. Casar com o Power BI é
+ * o certo. Um valor já em escala de percentual (> 1,5, como `45`) não é multiplicado de
+ * novo: só recebe o sinal.
+ */
+export function percentualDeRazao(v: unknown): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  const escala = Math.abs(v) <= 1.5 ? v * 100 : v;
+  return `${nf.format(escala)}%`;
 }
 
 /** Data e hora de um ISO, para o carimbo de "dado de". */

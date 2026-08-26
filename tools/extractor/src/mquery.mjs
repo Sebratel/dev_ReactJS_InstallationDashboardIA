@@ -49,6 +49,22 @@ function navigatedSheet(mText) {
   return m ? unescapeMString(m[1]) : null;
 }
 
+// Aba que uma query de planilha navega:
+//
+//   Fonte{[name="QUADRO FUNCIONAL",ItemKind="Table"]}[Data]
+//
+// Não é opcional saber isto. `GoogleSheets.Contents` devolve a planilha inteira, e
+// só o nome da aba permite ao connector baixar UMA aba em vez de todas — as
+// outras têm CPF e RG, e ler o que não se usa é risco sem contrapartida.
+//
+// A leitura é do texto porque o extrator não tem parser de M (o parser vive em
+// packages/transform-engine). O padrão é literal e igual nas 3 queries; se mudar,
+// vira null e o connector erra alto dizendo que a spec não tem aba.
+function navigatedSheet(mText) {
+  const m = /\{\s*\[\s*name\s*=\s*"((?:[^"]|"")*)"\s*,\s*ItemKind\s*=\s*"Table"\s*\]\s*\}/.exec(mText);
+  return m ? unescapeMString(m[1]) : null;
+}
+
 // Detecta o tipo de fonte e o SQL/URL a partir do texto M completo de uma query.
 export function detectSource(mText) {
   // Odbc.Query("dsn=NOME", "SQL...")

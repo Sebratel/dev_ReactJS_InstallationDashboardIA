@@ -16,8 +16,8 @@
 import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
 import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
-import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
-import { agrupar, campoAtivo, chaveDoCampo, type Chave } from './grupos.ts';
+import { traduzFiltros } from './filtro.ts';
+import { agrupar, chaveDoCampo, type Chave } from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
 export interface CelulaTabela {
@@ -62,20 +62,10 @@ export function separaCampos(
   const chaves: Chave[] = [];
   const calculados: CampoSpec[] = [];
   for (const c of camposAtivos(visual)) {
-    if (ehChave(c)) chaves.push(chaveDoCampo(c, onde));
+    if (c.kind === 'column' && !c.aggregation) chaves.push(chaveDoCampo(c, onde));
     else calculados.push(c);
   }
   return { chaves, calculados };
-}
-
-/**
- * O campo agrupa, em vez de virar célula calculada?
- *
- * `column` e `hierarchy_level` **sem** função de agregação. Uma coluna com
- * `aggregation` é `MIN('T'[C])`, que é um número; sem ela é a coluna, que é chave.
- */
-function ehChave(c: CampoSpec): boolean {
-  return (c.kind === 'column' || c.kind === 'hierarchy_level') && !c.aggregation;
 }
 
 /**
@@ -101,16 +91,9 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
   if (visual.type !== 'tableEx') {
     throw new DaxEvalError(`${onde}: não é tableEx, é '${visual.type}'.`);
   }
-  if ((visual.fields ?? []).length === 0) {
-    throw new DaxEvalError(`${onde}: tabela sem campo nenhum.`);
-  }
-  const campos = camposAtivos(visual);
+  const campos = visual.fields ?? [];
   if (campos.length === 0) {
-    throw new DaxEvalError(
-      `${onde}: todos os ${visual.fields!.length} campos da tabela estão inativos. ` +
-        `A tela não mostraria coluna nenhuma, e isso não é uma tabela vazia — é uma ` +
-        `leitura errada do estado de drill (ACHADOS.md #32).`,
-    );
+    throw new DaxEvalError(`${onde}: tabela sem campo nenhum.`);
   }
 
   const { chaves } = separaCampos(visual, onde);
@@ -130,7 +113,7 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
   // (dois campos podem ter o mesmo `displayName`; em `agendamento-field` há um `.`).
   const indiceDaChave = new Map<CampoSpec, number>();
   let n = 0;
-  for (const c of campos) if (ehChave(c)) indiceDaChave.set(c, n++);
+  for (const c of campos) if (c.kind === 'column' && !c.aggregation) indiceDaChave.set(c, n++);
 
   const linhas = grupos.map((grupo) =>
     campos.map((campo): CelulaTabela => {
@@ -138,10 +121,7 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
       if (i !== undefined) {
         return { nome: campo.name ?? null, valor: grupo.valores[i]!, chave: true };
       }
-      // `base` é o total do visual: o denominador de um campo `% do total`, que
-      // precisa da mesma conta sem o agrupamento da linha.
-      const valor = valorDoCampo(campo, grupo.escopo, ev, onde, base);
-      return { nome: campo.name ?? null, valor, chave: false };
+      return { nome: campo.name ?? null, valor: valorDoCampo(campo, grupo.escopo, ev, onde), chave: false };
     }),
   );
 
@@ -150,7 +130,7 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
     visual: visual.id,
     colunas: campos.map((c) => c.name ?? null),
     linhas,
-    filtros: [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
+    filtros: filtros.map((f) => f.origem),
   };
 }
 

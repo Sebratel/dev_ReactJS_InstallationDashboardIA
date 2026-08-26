@@ -29,7 +29,6 @@ import {
   identityKey,
   isBlank,
 } from '../../measure-engine/src/value.ts';
-import { FUNCAO_DA_AGREGACAO } from './agregacao.ts';
 import { resolveBorda, resolveSpan, truncar } from './datas.ts';
 import type { CondicaoSpec, FiltroSpec, SpanSpec } from './spec.ts';
 
@@ -44,6 +43,9 @@ const COMPARA: Record<string, (c: number) => boolean> = {
 
 /** Unidades abaixo do dia. Nelas um `DateSpan` é um instante, não um intervalo. */
 const SUBDIA = new Set(['second', 'minute', 'hour']);
+
+/** Nó sintético: não veio de texto, então não há posição real a apontar. */
+const SEM_POSICAO: Position = { start: 0, line: 1, col: 1 };
 
 /** Nó sintético: não veio de texto, então não há posição real a apontar. */
 const SEM_POSICAO: Position = { start: 0, line: 1, col: 1 };
@@ -187,36 +189,19 @@ export function traduzFiltros(
     // todas juntas (E). Como restringem a mesma coluna, vão para **um** predicado
     // em vez de um `TableFilter` por condição.
     const predicados = f.conditions.map((c) => predicado(c, f, ev, rotulo));
-    const igualdade = extraiIgualdade(f);
     out.push({
       table: normaliza(f.entity),
       columns: new Set([normaliza(f.property)]),
       origem: rotulo,
-      ...(igualdade ? { igualdade } : {}),
       keep: (row: Row) => predicados.every((p) => p(row)),
     });
   }
   return out;
 }
 
-function extraiIgualdade(f: FiltroSpec): { coluna: string; valor: DaxValue } | undefined {
-  if (!f.entity || !f.property || f.nivel || !f.conditions || f.conditions.length !== 1) {
-    return undefined;
-  }
-  const c = f.conditions[0]!;
-  if (c.op === 'in' && c.values && c.values.length === 1) {
-    const val = c.values[0];
-    if (val !== null && typeof val !== 'object') {
-      return { coluna: normaliza(f.property), valor: val as DaxValue };
-    }
-  }
-  if (c.op === 'comparison' && c.kind === 'eq' && !c.negado && !c.left_aggregation) {
-    const right = c.right;
-    if (right !== null && typeof right !== 'object') {
-      return { coluna: normaliza(f.property), valor: right as DaxValue };
-    }
-  }
-  return undefined;
+/** `normalizeName` do modelo, sem importar o módulo inteiro por uma função. */
+function normaliza(s: string): string {
+  return s.trim().toLowerCase();
 }
 
 /**
@@ -273,6 +258,26 @@ function predicado(
   const tabela = f.entity!;
   const coluna = f.property!;
   const valor = leitorDeValor(f, ev, onde);
+
+  // **Filtro sobre agregado não é predicado de linha.** `left_aggregation` diz que
+  // o lado esquerdo da comparação é `COUNT(coluna)`, não `coluna`: é o "filtrar por
+  // valor agregado" do painel do Power BI, um HAVING, e ele decide quais **grupos**
+  // do visual aparecem — não quais linhas entram na conta.
+  //
+  // São 10 no relatório (`count > 0` em 8, `count > 100` em 2), todos em tabela ou
+  // gráfico; nenhum em card. Aplicado ao valor cru, `COUNT(protocolo) > 0` vira
+  // `protocolo > 0`, que é outro filtro inteiramente — e num campo numérico ele
+  // aceitaria quase tudo, em silêncio. O lugar de implementá-lo é o agrupamento do
+  // visual, que é a próxima fatia; até lá, parar é o certo.
+  if (c.op === 'comparison' && c.left_aggregation) {
+    throw new DaxEvalError(
+      `${onde}: o filtro compara ${c.left_aggregation.toUpperCase()}([${c.left_property}]) ` +
+        `e não [${c.left_property}] — é filtro sobre valor agregado (HAVING), que decide ` +
+        `quais grupos o visual mostra. Como predicado de linha ele vira outro filtro, ` +
+        `e num campo numérico aceitaria quase tudo sem erro nenhum. ` +
+        `Implementá-lo exige o agrupamento do visual (tabela/gráfico), que ainda não existe.`,
+    );
+  }
 
   // **Filtro sobre agregado não é predicado de linha.** `left_aggregation` diz que
   // o lado esquerdo da comparação é `COUNT(coluna)`, não `coluna`: é o "filtrar por

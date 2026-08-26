@@ -123,9 +123,102 @@ test('Redis fora do ar: a memória continua servindo, e a falha aparece', async 
   assert.deepEqual(await c.keys('n'), [], 'keys degrada para o que a memória sabe');
   assert.equal(await c.delMany(['x']), 0);
 
-  assert.ok(falhas.includes('get'), 'nenhuma das falhas some calada');
-  assert.ok(falhas.includes('set'));
-  assert.ok(falhas.includes('del'));
+  assert.ok(falhas.length >= 1, 'a falha não some calada');
+  // Uma linha por pausa, e não uma por operação: depois da primeira falha o disjuntor
+  // abre e as operações seguintes nem tentam. Ver `#desliga`.
+  assert.equal(falhas[0], 'set', 'a primeira operação a bater no Redis caído é a que aparece');
+});
+
+/**
+ * **O que este teste guarda vale 15 s por miss, medidos.** Com
+ * `REDIS_URL=redis://localhost:6379/0` no `.env` e nada escutando nessa porta, cada
+ * miss de cache da API custava 15 a 20 s — o `ioredis` reconectando no `get` e de novo
+ * no `set`. A falha era engolida e a resposta saía certa; só saía muito depois, e a
+ * única pista era uma linha de log que ninguém olhando um dashboard lê.
+ */
+test('camada durável lenta não segura o pedido: passou do teto, é miss', async () => {
+  const falhas: string[] = [];
+  /** Um Redis que nunca responde. */
+  const LERDO: Cache = {
+    get: () => new Promise(() => {}),
+    set: () => new Promise(() => {}),
+    del: () => new Promise(() => {}),
+    delMany: () => new Promise(() => {}),
+    keys: () => new Promise(() => {}),
+  };
+
+  const c = new CacheEmCamadas({
+    rapida: new MemoryCache(),
+    duravel: LERDO,
+    tempoLimiteMs: 20,
+    aoFalhar: (op, err) => falhas.push(`${op}: ${err instanceof Error ? err.message : ''}`),
+  });
+
+  const t0 = Date.now();
+  await c.set('k', { a: 1 }, 60);
+  assert.ok(Date.now() - t0 < 1_000, 'a escrita não esperou o Redis que nunca responde');
+  assert.deepEqual(await c.get('k'), { a: 1 }, 'e o valor está lá, vindo da memória');
+  assert.ok(falhas[0]?.includes('20 ms'), `a falha diz que foi o teto: ${falhas[0]}`);
+});
+
+test('o disjuntor tira o Redis de circulação e o devolve sozinho', async () => {
+  let relogio = 1_000;
+  const falhas: string[] = [];
+  let quedas = 3;
+  const chamadas: string[] = [];
+  /** Cai as três primeiras vezes; depois volta a funcionar. */
+  const INTERMITENTE: Cache = {
+    async get<T>(k: string): Promise<T | undefined> {
+      chamadas.push(`get ${k}`);
+      if (quedas-- > 0) throw new Error('ECONNREFUSED');
+      return undefined;
+    },
+    async set(): Promise<void> {},
+    async del(): Promise<void> {},
+    async delMany(): Promise<number> {
+      return 0;
+    },
+    async keys(): Promise<string[]> {
+      return [];
+    },
+  };
+
+  const c = new CacheEmCamadas({
+    rapida: new MemoryCache(),
+    duravel: INTERMITENTE,
+    pausaMs: 5_000,
+    aoFalhar: (op) => falhas.push(op),
+    agora: () => relogio,
+  });
+
+  await c.get('a');
+  assert.deepEqual(chamadas, ['get a'], 'a primeira tentou');
+  assert.equal(c.nome, 'MemoryCache+Object (pausado)', 'a saúde diz que ele está de fora');
+
+  // Dentro da pausa: nem tenta. É isto que impede o teto de ser cobrado por pedido.
+  relogio += 4_000;
+  await c.get('b');
+  await c.get('c');
+  assert.deepEqual(chamadas, ['get a'], 'dentro da pausa, nenhuma ida ao Redis');
+  assert.equal(falhas.length, 1, 'e nenhuma linha de log repetida');
+
+  // Passada a pausa, tenta de novo — e cai de novo, o que renova a pausa.
+  relogio += 2_000;
+  await c.get('d');
+  assert.deepEqual(chamadas, ['get a', 'get d']);
+  assert.equal(falhas.length, 2);
+
+  // Terceira queda, e depois o Redis volta. Ninguém religou nada.
+  relogio += 6_000;
+  await c.get('e');
+  relogio += 6_000;
+  await c.get('f');
+  assert.equal(c.pausada, false, 'o sucesso fechou o disjuntor');
+  assert.equal(c.nome, 'MemoryCache+Object', 'e a saúde volta a dizer que ele serve');
+
+  relogio += 1;
+  await c.get('g');
+  assert.deepEqual(chamadas, ['get a', 'get d', 'get e', 'get f', 'get g'], 'sem pausa, todas passam');
 });
 
 test('ttl 0 não grava em camada nenhuma', async () => {

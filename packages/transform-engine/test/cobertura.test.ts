@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import yaml from 'yaml';
+import type { MNode } from '../src/ast.ts';
 import { MEvaluator } from '../src/evaluator.ts';
 import { implementedMFunctions, standardConstants, standardFunctions } from '../src/functions.ts';
 import { parseM, parseMLet } from '../src/parser.ts';
@@ -34,25 +35,6 @@ function corpus(): QuerySpec[] {
 }
 
 /**
- * A culture do modelo, lida da spec gerada — não escrita à mão aqui.
- *
- * `feriados` traz as datas como texto `DD/MM/YYYY`, e sem a culture o engine
- * recusa converter (e está certo). Ler de `model.yaml` faz o teste depender do
- * PBIP, que é onde a informação vive.
- */
-function cultureDoModelo(): string | null {
-  const p = path.join(ROOT, 'specs', '_catalog', 'model.yaml');
-  const m = yaml.parse(fs.readFileSync(p, 'utf8')) as { culture?: string | null };
-  return m.culture ?? null;
-}
-
-test('a culture do modelo está na spec, e é pt-BR', () => {
-  // Se isto virar null, toda conversão de texto para data para de funcionar — e o
-  // erro apareceria longe daqui, no meio de uma query.
-  assert.equal(cultureDoModelo(), 'pt-BR');
-});
-
-/**
  * As 24 queries do corpus estão no escopo — **nenhuma exclusão hoje**.
  *
  * `clima-tempo` ficava de fora (`let` aninhado + fonte `web`) e entrou com o
@@ -62,25 +44,21 @@ test('a culture do modelo está na spec, e é pt-BR', () => {
  */
 const NO_ESCOPO = (_q: QuerySpec): boolean => true;
 
-/**
- * Nomes chamados como função em toda a expressão.
- *
- * Desce em **qualquer** objeto, não só em nós. `MBinding` (o passo do `let`) e o
- * campo de registro não têm campo `type` — filtrar por "tem type" fazia a
- * varredura parar no primeiro `let` e devolver conjunto vazio, com os testes de
- * "nada faltando" passando à toa.
- */
-function chamadas(no: unknown, achadas = new Set<string>()): Set<string> {
-  if (typeof no !== 'object' || no === null) return achadas;
-  const n = no as { type?: string; callee?: { type?: string; name?: string } };
-  if (n.type === 'Call' && n.callee?.type === 'Identifier' && n.callee.name) {
-    achadas.add(n.callee.name);
-  }
+/** Nomes chamados como função em toda a expressão. */
+function chamadas(no: MNode, achadas = new Set<string>()): Set<string> {
+  if (no.type === 'Call' && no.callee.type === 'Identifier') achadas.add(no.callee.name);
   for (const v of Object.values(no) as unknown[]) {
-    if (Array.isArray(v)) for (const x of v) chamadas(x, achadas);
-    else chamadas(v, achadas);
+    if (Array.isArray(v)) {
+      for (const x of v) if (ehNo(x)) chamadas(x as MNode, achadas);
+    } else if (ehNo(v)) {
+      chamadas(v as MNode, achadas);
+    }
   }
   return achadas;
+}
+
+function ehNo(v: unknown): boolean {
+  return typeof v === 'object' && v !== null && typeof (v as { type?: unknown }).type === 'string';
 }
 
 function chamadasDoEscopo(): Set<string> {
@@ -92,33 +70,26 @@ function chamadasDoEscopo(): Set<string> {
 }
 
 /**
- * As 2 funções de fonte **externa**: fronteira com a camada de connector, não
- * transformação. Ficam listadas nominalmente para "faltam 2" nunca virar "faltam
- * algumas".
- *
- * Elas não estão em `standardFunctions()` **de propósito**, e continuam fora
- * mesmo agora que rodam: quem as liga é o runner, que amarra as duas ao resultado
- * já buscado pelo Query Engine (`packages/transform-engine/src/fonte.ts`). Uma
- * implementação na tabela de funções teria que buscar de dentro de uma avaliação
- * síncrona — ou seja, ou bloquearia, ou inventaria um segundo caminho de I/O
- * fora do Engine, sem cache nem read-only.
- *
- * `Binary.FromText`, `Binary.Decompress` e `Json.Document` saíram desta lista: são
- * puras (base64 -> deflate -> JSON) e foram implementadas, o que faz `feriados`
- * rodar inteira sem credencial nenhuma.
+ * As 5 funções de **fonte**: são a fronteira com a camada de connector, não
+ * transformação. `Odbc.Query` não é implementável aqui sem um driver, e é o Query
+ * Engine (Fase 1) que já sabe buscar linha. Ficam listadas nominalmente para
+ * "faltam 5" nunca virar "faltam algumas".
  */
-const FONTES = ['GoogleSheets.Contents', 'Odbc.Query'];
+const FONTES = [
+  'Binary.Decompress',
+  'Binary.FromText',
+  'GoogleSheets.Contents',
+  'Json.Document',
+  'Odbc.Query',
+];
 
-test('as funções que a base chama: 49 distintas, 47 implementadas', () => {
-  // 39 → 49 quando `clima-tempo` entrou no escopo (achado #42). As 10 novas são
-  // dela, e 5 precisaram ser escritas: Date.ToText, Table.FromColumns,
-  // Table.ToRecords, List.Repeat e Web.Contents.
+test('as funções que a base chama: 39 distintas, 34 implementadas', () => {
   const usadas = chamadasDoEscopo();
-  assert.equal(usadas.size, 49);
+  assert.equal(usadas.size, 39);
 
   const conhecidas = new Set([...implementedMFunctions(), ...standardConstants().keys()]);
   const falta = [...usadas].filter((f) => !conhecidas.has(f)).sort();
-  assert.equal(usadas.size - falta.length, 47);
+  assert.equal(usadas.size - falta.length, 34);
   assert.deepEqual(falta, FONTES, 'o que falta tem que ser só fonte, não transformação');
 });
 
@@ -137,9 +108,7 @@ test('nenhuma função de transformação do escopo está faltando', () => {
 test('a tabela de funções não tem nome duplicado e o total está preso', () => {
   // `standardFunctions` já erra em duplicata; isto prende o total, para uma função
   // nova não entrar sem o README acompanhar.
-  // 60 → 65 com `clima-tempo`: Date.ToText, Table.FromColumns, Table.ToRecords,
-  // List.Repeat e Web.Contents (achado #42).
-  assert.equal(implementedMFunctions().length, 65);
+  assert.equal(implementedMFunctions().length, 57);
   assert.doesNotThrow(() => standardFunctions());
 });
 
@@ -150,16 +119,17 @@ test('todo enum e todo tipo citado pelo corpus está na allowlist de constantes'
   const funcoes = new Set(implementedMFunctions());
   const citados = new Set<string>();
   for (const q of corpus().filter(NO_ESCOPO)) {
-    const anda = (no: unknown): void => {
-      if (typeof no !== 'object' || no === null) return;
-      const n = no as { type?: string; name?: string };
-      // Identificador pontuado é enum, tipo ou função qualificada.
-      if (n.type === 'Identifier' && n.name && /^[A-Za-z]+[0-9]*\.[A-Za-z]+$/.test(n.name)) {
-        citados.add(n.name);
+    const anda = (no: MNode): void => {
+      // Identificador pontuado que não é chamado é enum ou tipo.
+      if (no.type === 'Identifier' && /^[A-Za-z]+[0-9]*\.[A-Za-z]+$/.test(no.name)) {
+        citados.add(no.name);
       }
       for (const v of Object.values(no) as unknown[]) {
-        if (Array.isArray(v)) for (const x of v) anda(x);
-        else anda(v);
+        if (Array.isArray(v)) {
+          for (const x of v) if (ehNo(x)) anda(x as MNode);
+        } else if (ehNo(v)) {
+          anda(v as MNode);
+        }
       }
     };
     anda(parseM(q.m_expression!));
@@ -176,7 +146,6 @@ test('cada query do escopo para no primeiro passo de fonte, e não antes', () =>
     functions: standardFunctions(),
     constants: standardConstants(),
     agora: new Date(Date.UTC(2026, 7, 5)),
-    culture: cultureDoModelo(),
   });
   const inesperados: string[] = [];
   for (const q of corpus().filter(NO_ESCOPO)) {

@@ -154,17 +154,13 @@ export function calculaGrafico(
   const filtros = traduzFiltros(deLinha, ev, onde);
   const base = escopoComFiltros(ev, filtros);
   const having = deGrupo.map((f) => predicadoDeGrupo(f, ev, onde));
-  // **As tabelas de onde saem os números.** Só importam quando as chaves são
-  // dimensões que não se alcançam: aí o fato que as liga é o que produz os valores,
-  // e não uma tabela qualquer do modelo. Ver `escolheAncora`.
-  const tabelasDosValores = series.map((s) => s.campo.entity).filter((t): t is string => !!t);
-  const grupos = agrupar(chaves, base, ev, onde, tabelasDosValores).filter((g) =>
+  const grupos = agrupar(chaves, base, ev, onde).filter((g) =>
     having.every((h) => h.passa(g.escopo)),
   );
 
   const pontos = grupos.map((grupo): PontoDeGrafico => ({
     categoria: grupo.valores,
-    valores: series.map(({ campo }) => valorDoCampo(campo, grupo.escopo, ev, onde, base)),
+    valores: series.map(({ campo }) => valorDoCampo(campo, grupo.escopo, ev, onde)),
   }));
 
   return {

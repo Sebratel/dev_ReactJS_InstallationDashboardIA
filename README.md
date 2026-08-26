@@ -4,6 +4,11 @@ Plataforma corporativa de Analytics que substitui o Power BI da Sebratel.
 Orientada por **Engines** e **metadados** — dashboards são apenas uma das funcionalidades.
 
 > **Assumindo o projeto?** Comece por [docs/CONTINUACAO.md](docs/CONTINUACAO.md): como rodar, o estado exato, o que está bloqueado e o que fazer a seguir.
+>
+> **Vai publicar isto?** [docs/DEPLOY.md](docs/DEPLOY.md) é o plano de entrega — o que
+> está pronto com o número que prova, o que falta de infraestrutura, e os dois
+> bloqueios que **não** são de infraestrutura (não existe login, e o `snapshot/` tem
+> CPF, RG e endereço de cliente).
 
 ## Estado atual
 
@@ -30,7 +35,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 3 | Widget/Dashboard Engine + Chart SDK | 🚧 **em curso** |
 | — | Filtros de página e visual passaram a ser extraídos: **102 de visual + 6 de página** restringem de fato, 176 são cartão sem seleção, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #27). Sem isso um card seria computado sem o filtro dele, em silêncio | ✅ |
 | — | Campos de visual passaram a dizer **como** agregam: 84 `Aggregation` com a função, 69 `HierarchyLevel` com coluna e nível (antes nulos), 2 `Arithmetic` descritos, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #28) | ✅ |
+| — | Campos de visual passaram a dizer **como** agregam: 84 `Aggregation` com a função, 69 `HierarchyLevel` com coluna e nível (antes nulos), 2 `Arithmetic` descritos, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #28) | ✅ |
 | — | Data relativa: a âncora de `DateSpan` passou a ser **lida** em vez de presumida `Now()`. Duas páginas inteiras eram filtradas a partir de *hoje* onde o filtro diz data fixa; `TimeUnit` ganhou nome apurado do próprio relatório (`day` 20, `month` 14, `second` 2, `year` 1) ([ACHADOS](docs/ACHADOS.md) #29) | ✅ |
+| — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
+| — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
+| — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
+| — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
+| — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
+| — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
 | — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
 | — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
 | — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
@@ -68,12 +80,26 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Índice de igualdade por coluna** (`measure-engine/src/indice.ts`): as três formas caras são `'T'[c] = <valor de fora>`, e inverter a coluna uma vez troca 1,46 M linhas por um balde de ~55. Medido na reprodução sintética: `CALCULATE(MAX(…), FILTER(…))` de **7.626 ms para 12 ms**, **635×** ([ACHADOS](docs/ACHADOS.md) #44) | ✅ |
 | — | E a medição desmentiu o #43: o gargalo maior **não** é `Status Protocolo Dia`, e sim as 7 colunas calculadas da própria `FIELD AGENDA` — duas varrem `FIELD AGENDA` por linha de `FIELD AGENDA`, **2,1 × 10¹²** visitas, sete vezes mais, e num lugar que o achado não olhou. Outras páginas não pagavam porque nenhum visual delas toca essas colunas | ⚠️ |
 | — | Nada disso decide resultado: o predicado inteiro roda por cima dos candidatos, e os testes diferenciais afirmam o mesmo valor — e o mesmo **erro** — com e sem índice. `=` do DAX não é identidade (`BLANK = 0` é verdadeiro, texto contra número **lança**), e cada guarda existe por causa disso. 6 de 7 mutações derrubam teste; a 7ª não é regra, e está anotada como tal | ✅ |
+| — | **Índice de igualdade por coluna** (`measure-engine/src/indice.ts`): as três formas caras são `'T'[c] = <valor de fora>`, e inverter a coluna uma vez troca 1,46 M linhas por um balde de ~55. Medido na reprodução sintética: `CALCULATE(MAX(…), FILTER(…))` de **7.626 ms para 12 ms**, **635×** ([ACHADOS](docs/ACHADOS.md) #44) | ✅ |
+| — | E a medição desmentiu o #43: o gargalo maior **não** é `Status Protocolo Dia`, e sim as 7 colunas calculadas da própria `FIELD AGENDA` — duas varrem `FIELD AGENDA` por linha de `FIELD AGENDA`, **2,1 × 10¹²** visitas, sete vezes mais, e num lugar que o achado não olhou. Outras páginas não pagavam porque nenhum visual delas toca essas colunas | ⚠️ |
+| — | Nada disso decide resultado: o predicado inteiro roda por cima dos candidatos, e os testes diferenciais afirmam o mesmo valor — e o mesmo **erro** — com e sem índice. `=` do DAX não é identidade (`BLANK = 0` é verdadeiro, texto contra número **lança**), e cada guarda existe por causa disso. 6 de 7 mutações derrubam teste; a 7ª não é regra, e está anotada como tal | ✅ |
+| — | **Gráficos: 13 dos 16 calculam.** Um ponto de gráfico é uma linha de tabela desenhada — mesmo agrupamento, mesmo contexto de filtro. O que é só do gráfico é o eixo de datas: `'T'[Data].[Mês]` não é coluna, é projeção, e ignorar o `active` daria **455 pontos onde a tela tem 99**. As 3 recusas são a mesma família dos `tableEx`: chaves de mais de uma tabela ([ACHADOS](docs/ACHADOS.md) #33) | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
+| — | Risco de recompute nas 4 queries pesadas (`protocolos-geral`, `protocolos-produtividade`, `protocolos-auxiliares`, `field-agenda`) mapeado — TTL não limita recompute sob `realtime: true`. Decisão entre debounce, materialização (Fase 3) ou TTL-only adiada até medir frequência real de CDC ([DECISAO-REALTIME](docs/DECISAO-REALTIME.md)) | ⚠️ decisão pendente |
 | — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45) | ⚠️ |
 | — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
+| — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45) | ⚠️ |
+| — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
+| — | Risco de recompute nas 4 queries pesadas (`protocolos-geral`, `protocolos-produtividade`, `protocolos-auxiliares`, `field-agenda`) mapeado — TTL não limita recompute sob `realtime: true`. Decisão entre debounce, materialização (Fase 3) ou TTL-only adiada até medir frequência real de CDC ([DECISAO-REALTIME](docs/DECISAO-REALTIME.md)) | ⚠️ decisão pendente |
+| — | **Data ISO no filtro da URL vira `Date` antes de comparar** (`widget-engine/src/filtro-url.ts`). O DAX não compara texto com data — ele **lança** —, e a tela manda `2026-01-28T00:00:00.000Z` no `?filtro=`. Sem a conversão, toda segmentação de calendário derrubava o visual. Com ela, os 21 visuais de `agendamento-field` calculam limpos. **O ramo novo ainda não tem teste** ([DEPLOY](docs/DEPLOY.md) §4) | ⚠️ |
+| — | **O aquecedor deixou de aquecer só a página.** `tools/subir/src/aquece.ts` pergunta à própria API quais segmentações de hierarquia de data a página declara e pré-aquece **Ano** (2024/2025/2026) e as combinações Ano+Mês — o primeiro clique num ano gerava chave nova e pagava o recálculo inteiro, com o `Atualizando…` de volta. Descobrir os slicers em vez de tentar todos os calendários é o que impede o aquecimento de gastar timeout em página que não tem calendário. **Sem teste, e com uma constante de timeout declarada e não usada** | ⚠️ |
+| — | **A tela avisa que o dado mudou: SSE em `/api/events/stream`.** O ingestor de CDC chama `/api/events/invalidate` ao terminar, o servidor limpa as páginas carregadas e empurra `invalidate`; `useRealtimeStream` invalida a chave do React Query e a aba se redesenha sem F5. **Duas ressalvas registradas**: a rota de invalidar é um `GET` **com efeito colateral** e sem autenticação, e o id que o ingestor manda é de **query** enquanto a tela o lê como id de **página** ([DEPLOY](docs/DEPLOY.md) §4) | ⚠️ |
+| — | **O estado dos filtros saiu do componente e virou store** (`useFilterStore`, Zustand + React Query). A URL é lida **uma vez** no arranque: antes, remover um pill ou apertar "Limpar Filtros" fazia o efeito reler o `?filtro=` e **ressuscitar** o que o usuário tinha acabado de tirar | ✅ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**1317 testes verdes.** Nenhum deles precisa de credencial, e nenhum precisa de build.
+**1355 testes verdes.** Nenhum deles precisa de credencial, e nenhum precisa de build.
+Três dos comportamentos de 21/08 **não estão entre eles** — a suíte passa sem cobri-los,
+e a lista está em [DEPLOY](docs/DEPLOY.md) §4.
 
 ### Extraído do Power BI
 
@@ -82,6 +108,14 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | Tabelas | 25 |
 | Medidas (DAX) | 78 — 5 não são usadas por nada ([ACHADOS](docs/ACHADOS.md) #6 e #10) |
 | Colunas calculadas (DAX) | 49 — 6 recuperadas em 04/08 ([ACHADOS](docs/ACHADOS.md) #8) |
+| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
+| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
+| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
+| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
+| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
+| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
+| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
+| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
 | **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
 | Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
 | Relacionamentos | 22 (+44 de hierarquia automática de datas, ignorados) |
@@ -102,6 +136,16 @@ tela branca é a diferença entre uma demo e um constrangimento. Ele reprova se 
 visual falhar, se alguma página não responder ou se o cache não pegar, e mesmo
 reprovando deixa a API no ar para você olhar. Ver `tools/subir/`.
 
+**Desde 21/08 ele aquece mais do que a página.** Aquecer a página sem filtro resolve o
+spinner da abertura e não resolve o **segundo**: o primeiro clique em `Data.Ano: 2026`
+é uma chave de cache nova, e paga o recálculo inteiro. Então, depois de cada página, o
+aquecedor pergunta à própria API **quais segmentações de hierarquia de data aquela
+página declara** e aquece Ano (2024/2025/2026) e as combinações Ano+Mês mais usadas.
+Descobrir em vez de tentar todos os calendários é o que evita gastar o timeout em
+página que não tem nenhum. Erro no pré-aquecimento é **silenciado de propósito** —
+adiantar trabalho é boa vontade, não contrato, e uma combinação que falha não deve
+reprovar a subida.
+
 `apps/api` é o fim do caminho: lê o snapshot em disco, calcula a página com as
 engines e devolve JSON. Não toca fonte nenhuma — quem busca é `npm run snapshot`.
 
@@ -111,11 +155,27 @@ raiz; em desenvolvimento, `npm run web` sobe o Vite em 5173 com proxy para a API
 tela anterior — uma página só, sem filtro — continua em `/legado`, como referência de
 comparação durante a conferência de paridade. Ver [DECISAO-TELA](docs/DECISAO-TELA.md).
 
+O estado dos filtros mora em **`useFilterStore` (Zustand)** e os dados em **React
+Query**; o `?filtro=` da URL é lido **uma vez, no arranque**. A leitura repetida era um
+defeito com cara de teimosia: remover um pill ou apertar "Limpar Filtros" fazia o
+efeito reler a URL e devolver o filtro que o usuário tinha acabado de tirar.
+
 | rota | |
 |---|---|
-| `GET /api/saude` | o que há em disco, quantas linhas, de quando |
+| `GET /api/saude` | o que há em disco, quantas linhas, de quando, o adapter de cache e a **memória do processo** (`rssMB`, `heapUsedMB`) |
 | `GET /api/dashboards` | as 14 páginas, e quais têm snapshot |
 | `GET /api/dashboards/:id?de=&linhas=` | a página calculada |
+| `GET /api/dashboards/:id?filtro=…` | a página calculada **com as segmentações da tela** aplicadas |
+| `GET /api/dashboards/:id/valores?tabela=&coluna=&nivel=` | os valores distintos que uma segmentação oferece |
+| `GET /api/events/stream` | SSE: `connected`, `ping` a cada 15 s, e `invalidate` quando o dado muda |
+| `GET /api/events/invalidate?id=…` | descarrega o que está em memória e avisa as telas abertas |
+
+> **A rota de invalidar é a única com efeito colateral, e é um `GET` sem
+> autenticação.** Até 21/08 a garantia de que nenhum pedido mudava estado da API era o
+> método — `GET`/`HEAD` e mais nada. Ela continua não escrevendo em fonte, mas descarta
+> tabela carregada, e chamá-la em laço troca milissegundos por dezenas de segundos por
+> página. Antes de qualquer publicação, ela precisa ser inalcançável de fora
+> ([DEPLOY](docs/DEPLOY.md) §4).
 | `GET /api/dashboards/:id?filtro=…` | a página calculada **com as segmentações da tela** aplicadas |
 | `GET /api/dashboards/:id/valores?tabela=&coluna=&nivel=` | os valores distintos que uma segmentação oferece |
 
@@ -314,6 +374,161 @@ Três decisões que a implementação exigiu:
 Junção entre tipos diferentes (data de um lado, texto `DD/MM/YYYY` do outro) **erra
 alto**, porque ela nunca casa e o resultado sairia zero com cara de filtro apertado.
 
+**Propagação por relacionamento (2b.5), e a maior fonte de erro silencioso que o
+avaliador teve.** `Contagem Solicitacao 2026` é
+`CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(2026,1,1))`.
+Até a fase 2b.4 ela **rodava** e devolvia a contagem de todos os anos: o filtro
+pousava em `CALENDARIO INSTALADO` e nada atravessava para `PROTOCOLOS GERAL`. Sem
+erro, sem aviso, com cara de total de 2026.
+
+São **22 das 78 medidas** que citam mais de uma tabela sem usar `TREATAS` — todas
+dependiam disso, e há teste travando o número. O filtro anda do lado *one* para o
+lado *many*, nos dois sentidos com `cross_filter: bothDirections`, e é **recursivo**
+porque nesta base ele anda dois saltos de verdade (`calendar` → `Status Protocolo
+Dia` → `FIELD AGENDA`).
+
+Três decisões que a implementação exigiu:
+
+- **A coluna de junção pode ser calculada — e cinco são.** Entre elas
+  `'PROTOCOLOS GERAL'[DATA INSTALAÇÃO]`, que é justamente a do caso acima e escolhe
+  entre três colunas de data conforme o tipo do protocolo. Ler a linha crua devolve
+  vazio e a junção não casa nada, calada. Por isso o contexto de filtro recebe do
+  avaliador a função que resolve coluna.
+- **Origem que não está restringida não restringe ninguém.** Sem essa regra
+  propagar viraria `INNER JOIN` e sumiria com as linhas do lado *many* que não casam
+  — que no Power BI continuam visíveis. É também o que mantém `ALL` funcionando.
+- **Não voltar pelo mesmo relacionamento; caminho ambíguo é erro.** A primeira regra
+  é do DAX e é o que impede `bothDirections` de virar laço. A segunda: se duas
+  tabelas se ligam por dois caminhos distintos, o avaliador se recusa a escolher um
+  — o Power BI recusa esse modelo, e inventar um número aqui seria pior.
+
+Junção entre tipos diferentes (data de um lado, texto `DD/MM/YYYY` do outro) **erra
+alto**, porque ela nunca casa e o resultado sairia zero com cara de filtro apertado.
+
+**Propagação por relacionamento (2b.5), e a maior fonte de erro silencioso que o
+avaliador teve.** `Contagem Solicitacao 2026` é
+`CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(2026,1,1))`.
+Até a fase 2b.4 ela **rodava** e devolvia a contagem de todos os anos: o filtro
+pousava em `CALENDARIO INSTALADO` e nada atravessava para `PROTOCOLOS GERAL`. Sem
+erro, sem aviso, com cara de total de 2026.
+
+São **22 das 78 medidas** que citam mais de uma tabela sem usar `TREATAS` — todas
+dependiam disso, e há teste travando o número. O filtro anda do lado *one* para o
+lado *many*, nos dois sentidos com `cross_filter: bothDirections`, e é **recursivo**
+porque nesta base ele anda dois saltos de verdade (`calendar` → `Status Protocolo
+Dia` → `FIELD AGENDA`).
+
+Três decisões que a implementação exigiu:
+
+- **A coluna de junção pode ser calculada — e cinco são.** Entre elas
+  `'PROTOCOLOS GERAL'[DATA INSTALAÇÃO]`, que é justamente a do caso acima e escolhe
+  entre três colunas de data conforme o tipo do protocolo. Ler a linha crua devolve
+  vazio e a junção não casa nada, calada. Por isso o contexto de filtro recebe do
+  avaliador a função que resolve coluna.
+- **Origem que não está restringida não restringe ninguém.** Sem essa regra
+  propagar viraria `INNER JOIN` e sumiria com as linhas do lado *many* que não casam
+  — que no Power BI continuam visíveis. É também o que mantém `ALL` funcionando.
+- **Não voltar pelo mesmo relacionamento; caminho ambíguo é erro.** A primeira regra
+  é do DAX e é o que impede `bothDirections` de virar laço. A segunda: se duas
+  tabelas se ligam por dois caminhos distintos, o avaliador se recusa a escolher um
+  — o Power BI recusa esse modelo, e inventar um número aqui seria pior.
+
+Junção entre tipos diferentes (data de um lado, texto `DD/MM/YYYY` do outro) **erra
+alto**, porque ela nunca casa e o resultado sairia zero com cara de filtro apertado.
+
+**Propagação por relacionamento (2b.5), e a maior fonte de erro silencioso que o
+avaliador teve.** `Contagem Solicitacao 2026` é
+`CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(2026,1,1))`.
+Até a fase 2b.4 ela **rodava** e devolvia a contagem de todos os anos: o filtro
+pousava em `CALENDARIO INSTALADO` e nada atravessava para `PROTOCOLOS GERAL`. Sem
+erro, sem aviso, com cara de total de 2026.
+
+São **22 das 78 medidas** que citam mais de uma tabela sem usar `TREATAS` — todas
+dependiam disso, e há teste travando o número. O filtro anda do lado *one* para o
+lado *many*, nos dois sentidos com `cross_filter: bothDirections`, e é **recursivo**
+porque nesta base ele anda dois saltos de verdade (`calendar` → `Status Protocolo
+Dia` → `FIELD AGENDA`).
+
+Três decisões que a implementação exigiu:
+
+- **A coluna de junção pode ser calculada — e cinco são.** Entre elas
+  `'PROTOCOLOS GERAL'[DATA INSTALAÇÃO]`, que é justamente a do caso acima e escolhe
+  entre três colunas de data conforme o tipo do protocolo. Ler a linha crua devolve
+  vazio e a junção não casa nada, calada. Por isso o contexto de filtro recebe do
+  avaliador a função que resolve coluna.
+- **Origem que não está restringida não restringe ninguém.** Sem essa regra
+  propagar viraria `INNER JOIN` e sumiria com as linhas do lado *many* que não casam
+  — que no Power BI continuam visíveis. É também o que mantém `ALL` funcionando.
+- **Não voltar pelo mesmo relacionamento; caminho ambíguo é erro.** A primeira regra
+  é do DAX e é o que impede `bothDirections` de virar laço. A segunda: se duas
+  tabelas se ligam por dois caminhos distintos, o avaliador se recusa a escolher um
+  — o Power BI recusa esse modelo, e inventar um número aqui seria pior.
+
+Junção entre tipos diferentes (data de um lado, texto `DD/MM/YYYY` do outro) **erra
+alto**, porque ela nunca casa e o resultado sairia zero com cara de filtro apertado.
+
+**Propagação por relacionamento (2b.5), e a maior fonte de erro silencioso que o
+avaliador teve.** `Contagem Solicitacao 2026` é
+`CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(2026,1,1))`.
+Até a fase 2b.4 ela **rodava** e devolvia a contagem de todos os anos: o filtro
+pousava em `CALENDARIO INSTALADO` e nada atravessava para `PROTOCOLOS GERAL`. Sem
+erro, sem aviso, com cara de total de 2026.
+
+São **22 das 78 medidas** que citam mais de uma tabela sem usar `TREATAS` — todas
+dependiam disso, e há teste travando o número. O filtro anda do lado *one* para o
+lado *many*, nos dois sentidos com `cross_filter: bothDirections`, e é **recursivo**
+porque nesta base ele anda dois saltos de verdade (`calendar` → `Status Protocolo
+Dia` → `FIELD AGENDA`).
+
+Três decisões que a implementação exigiu:
+
+- **A coluna de junção pode ser calculada — e cinco são.** Entre elas
+  `'PROTOCOLOS GERAL'[DATA INSTALAÇÃO]`, que é justamente a do caso acima e escolhe
+  entre três colunas de data conforme o tipo do protocolo. Ler a linha crua devolve
+  vazio e a junção não casa nada, calada. Por isso o contexto de filtro recebe do
+  avaliador a função que resolve coluna.
+- **Origem que não está restringida não restringe ninguém.** Sem essa regra
+  propagar viraria `INNER JOIN` e sumiria com as linhas do lado *many* que não casam
+  — que no Power BI continuam visíveis. É também o que mantém `ALL` funcionando.
+- **Não voltar pelo mesmo relacionamento; caminho ambíguo é erro.** A primeira regra
+  é do DAX e é o que impede `bothDirections` de virar laço. A segunda: se duas
+  tabelas se ligam por dois caminhos distintos, o avaliador se recusa a escolher um
+  — o Power BI recusa esse modelo, e inventar um número aqui seria pior.
+
+Junção entre tipos diferentes (data de um lado, texto `DD/MM/YYYY` do outro) **erra
+alto**, porque ela nunca casa e o resultado sairia zero com cara de filtro apertado.
+
+**Propagação por relacionamento (2b.5), e a maior fonte de erro silencioso que o
+avaliador teve.** `Contagem Solicitacao 2026` é
+`CALCULATE(COUNT('PROTOCOLOS GERAL'[SOLICITACAO]), 'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(2026,1,1))`.
+Até a fase 2b.4 ela **rodava** e devolvia a contagem de todos os anos: o filtro
+pousava em `CALENDARIO INSTALADO` e nada atravessava para `PROTOCOLOS GERAL`. Sem
+erro, sem aviso, com cara de total de 2026.
+
+São **22 das 78 medidas** que citam mais de uma tabela sem usar `TREATAS` — todas
+dependiam disso, e há teste travando o número. O filtro anda do lado *one* para o
+lado *many*, nos dois sentidos com `cross_filter: bothDirections`, e é **recursivo**
+porque nesta base ele anda dois saltos de verdade (`calendar` → `Status Protocolo
+Dia` → `FIELD AGENDA`).
+
+Três decisões que a implementação exigiu:
+
+- **A coluna de junção pode ser calculada — e cinco são.** Entre elas
+  `'PROTOCOLOS GERAL'[DATA INSTALAÇÃO]`, que é justamente a do caso acima e escolhe
+  entre três colunas de data conforme o tipo do protocolo. Ler a linha crua devolve
+  vazio e a junção não casa nada, calada. Por isso o contexto de filtro recebe do
+  avaliador a função que resolve coluna.
+- **Origem que não está restringida não restringe ninguém.** Sem essa regra
+  propagar viraria `INNER JOIN` e sumiria com as linhas do lado *many* que não casam
+  — que no Power BI continuam visíveis. É também o que mantém `ALL` funcionando.
+- **Não voltar pelo mesmo relacionamento; caminho ambíguo é erro.** A primeira regra
+  é do DAX e é o que impede `bothDirections` de virar laço. A segunda: se duas
+  tabelas se ligam por dois caminhos distintos, o avaliador se recusa a escolher um
+  — o Power BI recusa esse modelo, e inventar um número aqui seria pior.
+
+Junção entre tipos diferentes (data de um lado, texto `DD/MM/YYYY` do outro) **erra
+alto**, porque ela nunca casa e o resultado sairia zero com cara de filtro apertado.
+
 **Princípio: falhar alto.** Função não suportada, construção não reconhecida,
 referência que não resolve, texto onde se espera número → erro com linha e coluna,
 nunca um palpite. Um avaliador que devolve número errado em silêncio é pior que um
@@ -338,6 +553,616 @@ percorridos **do mais interno para o mais externo**. Em
 coluna da tabela anônima do `SELECTCOLUMNS` e a coluna calculada
 `'FIELD AGENDA'[Data]`, que também existe. O DAX escolhe a do iterador mais interno;
 a ordem de inserção escolheria a outra e ranquearia errado em silêncio.
+
+**O que separa o avaliador do dado real (2b.6).** Esta fase não escreveu avaliador
+nenhum: ela foi medir o que falta, e o que achou foi que a spec estava incompleta em
+dois lugares — nos dois casos sem dar erro, porque o dataset sintético dos testes
+preenche exatamente o que faltava.
+
+*Primeiro: sete tabelas não diziam de onde vinham as linhas.* No TMDL elas são
+`partition = calculated` — a tabela **é** uma expressão DAX. O extrator lia só a
+partition `= m`, então a spec gravava `query_ref: null` e mais nada. Três dessas
+sete — `CALENDARIO INSTALADO`, `calendar` e `Status Protocolo Dia` — são por onde o
+filtro propaga na 2b.5. Agora o campo `table_dax` carrega a expressão, o
+`validate:model` confere as referências das 7 (passam limpas) e há um teste que trava
+o invariante que pega a próxima perda: **nenhuma tabela sem origem** — 18 vêm de
+query, 7 vêm de DAX, e a soma tem de ser 25.
+
+*Segundo: existe uma camada M entre o SQL e a tabela.* São **303 passos** de Power
+Query depois do `Odbc.Query`, e eles não são cosméticos:
+
+| | |
+|---|---|
+| **56 colunas** do modelo nascem em passo M, não no SELECT | e **11 delas são citadas pelo DAX** — `HORA CRIADO` é `DateTime.Time([DATA CRIADO])`, `DATA DA TROCA` vem de uma mesclagem, `TÉCNICO INSTALAÇÃO` é renomeação de coluna expandida |
+| **11 das 17** tabelas têm `rowCount` que **não** é comparável com o Power BI | o golden conta o SQL; o M ainda filtra, deduplica e expande depois. Em `PROTOCOLOS GERAL` são seis passos, incluindo `[STATUS] <> "Cancelado"` e `Table.Distinct` por `SOLICITACAO` |
+
+`npm run validate:tables` é o quarto nível de verificação e existe por causa da
+diferença com o segundo: `validate:model` confere **modelo contra modelo**, então
+`'PROTOCOLOS GERAL'[HORA CRIADO]` passa — está declarada na spec da tabela. O que
+não existe é a coluna no resultado do SELECT. Contra dado real ela chegaria vazia, e
+vazio não dá erro: dá zero, BLANK, ou junção que não casa nada.
+
+O scanner de M (`tools/validate/src/mlayer.ts`) é para a camada M o que o
+`extractRefs` é para o DAX: **não é um avaliador**, não executa nada, e responde
+duas perguntas estáticas — que nome de coluna este passo produz, e ele pode mudar a
+contagem de linhas. Segue o mesmo princípio do avaliador: passo `Table.*` cuja
+função não está na tabela de efeitos vira **erro com o nome do passo**. Foi essa
+regra que expôs a `clima-tempo` (que **hoje roda**: o avaliador a executa desde o
+[ACHADOS](docs/ACHADOS.md) #42, e o que segue vale só para o scanner estático), que
+define uma função M com `let` aninhado — em vez
+de achatar os passos internos na tabela de fora (o que atribuiria colunas à tabela
+errada, em silêncio), o scanner recusa a query e o relatório a lista à parte.
+
+**Materializar as 7 tabelas calculadas (2b.7).** O dataset dos testes agora carrega
+**só as 18 tabelas que vêm de query**; as 7 calculadas são produzidas avaliando o DAX
+delas, na mesma ordem que o Power BI segue no refresh. É a mudança que dá sentido aos
+números: sem materializar, **46 das 127 expressões param de executar** — e antes desta
+fase esse número era zero, não porque estivesse resolvido, mas porque o dataset
+inventava as linhas.
+
+Três coisas foram necessárias, e as duas últimas não eram óbvias:
+
+- **`CALENDAR` e `ADDCOLUMNS`.** `CALENDAR` é a única função do avaliador que
+  **gera** linhas — todas as outras funções de data filtram valores que já existem
+  numa coluna. Com um extremo BLANK ela **erra alto**, e é um desvio deliberado do
+  Power BI: lá BLANK vale 0, que é 30/12/1899, e `CALENDARIO INSTALADO` sairia com uns
+  46 mil dias sem reclamar de nada. Ninguém percebe isso numa tabela de datas, mas
+  toda média que divide por dia útil muda.
+- **Casar o nome da coluna, exigindo bijeção.** O DAX devolve uma coluna chamada
+  `Date`; a tabela do modelo chama a mesma coluna de `DATA INSTALADO`. Quem faz a
+  ponte é `sourceColumn`. Materializar com o nome do DAX não daria erro nenhum —
+  daria um relacionamento que nunca casa. A exigência vale nas duas direções, e a
+  segunda metade é a que pega o erro que já aconteceu: coluna que o DAX devolve e a
+  spec não declara é coluna que o extrator perdeu.
+- **Aplicar o tipo declarado da coluna.** `Status Protocolo Dia[Dia]` é
+  `TRUNC('FIELD AGENDA'[Slot Agenda])`, e `TRUNC` em DAX devolve **número** — a série
+  da data. Essa coluna se liga a `calendar[Data]`, que é `DATEVALUE(...)` e portanto
+  data. Sem aplicar o `dateTime` que o TMDL declara, a junção compara número com data
+  e o guarda de espécie erra alto — corretamente ([ACHADOS](docs/ACHADOS.md) #16).
+
+Dois efeitos colaterais que valem registro. O primeiro: o palpite de tipo do dataset
+de teste caiu de **10 colunas para 1**. Nove das dez eram colunas de tabela calculada,
+e o tipo delas nunca faltou — vinha do DAX, que não era avaliado. A que sobra é o
+achado 15, `PROTOCOLOS GERAL[EQUIPE_BASE]`. O segundo: `validate:tables` ganhou a
+procedência `dax` para as **10 colunas** dessas tabelas, que antes caíam em
+"sem golden para conferir" junto com as de gsheets e web — lia como *não se sabe*
+onde se sabe, e há teste.
+
+O grafo de dependência entre as 7 é **plano** nesta base (medido, não suposto): todas
+dependem só de tabelas que vêm de query. A ordenação topológica existe pelo que ela
+recusa — ciclo erra alto nomeando o caminho, em vez de deixar a última tabela do laço
+nascer vazia.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+### Widget Engine (Fase 3)
+
+`packages/widget-engine/` calcula o que um visual mostra. Começou pelo **card** porque
+ele é o caso mais barato de conferir do relatório inteiro: um número, sem eixo, sem
+ordenação, sem *top N* — dá para olhar a tela e comparar. São **64**, e todos calculam.
+
+Três partes, e cada uma existe por causa de um número errado específico:
+
+- **`filtro.ts`** — filtro de spec → `TableFilter`. Filtro de página e de visual entram
+  num `with()` **único**, nunca em dois encadeados: `FilteredContext.with()` implementa a
+  substituição do `CALCULATE` (filtro novo derruba o antigo que toque a mesma coluna), que
+  é a semântica certa do DAX e a errada aqui. Em duas etapas, o filtro do visual **apagaria**
+  o da página e o card mostraria um número maior, sem erro nenhum.
+- **`datas.ts`** — a data relativa é resolvida **na hora do cálculo**, não na extração:
+  resolver antes congelaria "os últimos 7 dias" no dia em que alguém rodou
+  `npm run extract`. O "agora" vem de `Evaluator.now`, e tudo é UTC — truncar em fuso
+  local moveria a fronteira do mês em três horas.
+- **`card.ts`** — a agregação vira **nó de AST**, não texto DAX reparseado. Os nomes desta
+  base incluem `#APURAÇÃO PREMIAÇÃO` e `ALOCAÇÃO PATRIMONIO.ALOCADO POR:`; um escape errado
+  daria erro de sintaxe no melhor caso e a coluna errada no pior.
+
+Depois do card veio o **agrupamento**, que é o que separa um card de todo o resto: um
+card é um número, uma tabela é *um número por grupo*.
+
+- **`grupos.ts`** — o grupo é um **filtro**, não um recorte de linhas. Calcular a
+  agregação direto sobre as linhas do grupo seria mais rápido e estaria errado para
+  medida: `[Ticket]` é `DIVIDE([Total], [Itens])`, e as duas de dentro precisam
+  enxergar o contexto do grupo. Filtrando, a propagação por relacionamento (2b.5) vem
+  de graça — agrupar por `'EQUIPES'[REGIAO]` restringe `OS` sem que este arquivo saiba
+  que existe relacionamento.
+- **`tabela.ts`** — os 29 `tableEx` têm tudo em `role: Values`, e isso **não** quer
+  dizer que a tabela não agrupa: quem agrupa são os campos sem função de agregação. Uma
+  tabela de três colunas de texto mostra as **combinações distintas**, não uma linha por
+  registro. Lida como listagem crua ela sairia maior que a da tela, com cara de dado a
+  mais em vez de erro.
+- **os dois momentos do filtro** — o de linha vale antes de agrupar e decide o que entra
+  na conta; o de grupo (`COUNT(x) > 0`, o HAVING) vale depois e decide quais grupos
+  sobrevivem. Antes de existir grupo não há o que agregar, e é por isso que esse filtro
+  não podia ser implementado junto com o card.
+- **`grafico.ts`** — um ponto de gráfico é uma linha de tabela desenhada: mesmo
+  agrupamento, mesmo contexto de filtro, mesma ordem de filtros. A diferença é de
+  arrumação — `Category` e `Series` agrupam, `Y` e `Y2` viram número. Papel fora
+  desses quatro **erra alto**: é uma dimensão que o visual ganhou, e ignorá-la daria
+  menos pontos do que a tela tem.
+
+O que é só do gráfico é o **eixo de datas**, e ele é a armadilha da fatia
+([ACHADOS](docs/ACHADOS.md) #33). `'T'[Data].[Mês]` não existe como coluna — é uma
+projeção da coluna de data —, e é o eixo de 10 dos 16. Duas coisas se decidem aí:
+
+- **quais níveis contam.** A hierarquia chega sempre inteira (Ano, Mês, Dia) e o
+  `active` diz quais estão na tela. Ignorando isso, os 13 gráficos que calculam dão
+  **455 pontos em vez de 99** — 4,6× a mais, todos plausíveis, nenhum com cara de erro.
+- **o que o nível põe em escopo.** Agrupar por `[DATA].[Mês]` **não** põe `[DATA]` em
+  escopo: dentro de `janeiro` a data ainda varia, então `ISINSCOPE('T'[DATA])` é FALSE.
+  Já o *filtro* do grupo restringe a coluna base — é ela que um `CALCULATE` de dentro
+  de uma medida precisa conseguir sobrepor.
+- **`grafico.ts`** — um ponto de gráfico é uma linha de tabela desenhada: mesmo
+  agrupamento, mesmo contexto de filtro, mesma ordem de filtros. A diferença é de
+  arrumação — `Category` e `Series` agrupam, `Y` e `Y2` viram número. Papel fora
+  desses quatro **erra alto**: é uma dimensão que o visual ganhou, e ignorá-la daria
+  menos pontos do que a tela tem.
+- **`expansao.ts`** — agrupar por colunas de **tabelas diferentes**. A regra é a
+  *tabela expandida* do DAX: `T` mais tudo alcançável por relacionamentos muitos→um.
+  Se as colunas cabem na expandida de uma delas, essa é a **âncora**, e varrê-la
+  seguindo os relacionamentos dá as combinações que existem, uma vez cada. O produto
+  cartesiano daria 25 linhas onde existem 5 — maior, ordenado, somando certo.
+- **`matriz.ts`** — a matriz **não** é uma tabela com duas chaves. Os dois eixos são
+  agrupados em separado, sobre a mesma base, e a célula é o cruzamento: a combinação
+  que não existe é uma **célula vazia**, não uma linha ausente, e o conjunto de
+  colunas é o mesmo em todas as linhas. Reaproveitar `agrupar` com as chaves das duas
+  direções juntas daria uma tabela com cara de matriz.
+
+O que é só do gráfico é o **eixo de datas**, e ele é a armadilha da fatia
+([ACHADOS](docs/ACHADOS.md) #33). `'T'[Data].[Mês]` não existe como coluna — é uma
+projeção da coluna de data —, e é o eixo de 10 dos 16. Duas coisas se decidem aí:
+
+- **quais níveis contam.** A hierarquia chega sempre inteira (Ano, Mês, Dia) e o
+  `active` diz quais estão na tela. Ignorando isso, os 13 gráficos que calculam dão
+  **455 pontos em vez de 99** — 4,6× a mais, todos plausíveis, nenhum com cara de erro.
+- **o que o nível põe em escopo.** Agrupar por `[DATA].[Mês]` **não** põe `[DATA]` em
+  escopo: dentro de `janeiro` a data ainda varia, então `ISINSCOPE('T'[DATA])` é FALSE.
+  Já o *filtro* do grupo restringe a coluna base — é ela que um `CALCULATE` de dentro
+  de uma medida precisa conseguir sobrepor.
+
+Com o agrupamento veio a **75ª medida**: `[Faixa 1 Premiação Total]` usa `ISINSCOPE`
+para só calcular no total, e `ISINSCOPE` é propriedade do visual, não do modelo. O
+avaliador ganhou `scopeWithGrouping`; sem ele, `ISINSCOPE` **continua errando alto** —
+conjunto vazio é "o visual não agrupa por nada", `undefined` é "não há visual", e a
+distinção é o que impede a medida de calcular em toda célula.
+
+**O que está medido, e o que ainda não se sabe.** **Os 117 visuais com número
+calculam** — card 64/64, tabela 29/29, gráfico 16/16, matriz 8/8 —, e os 108 filtros
+do relatório têm todos quem os aplique: 98 como predicado de linha e 10 como HAVING
+sobre os grupos. Os testes de cobertura passaram a exigir que o mapa de recusas saia
+**vazio**, então uma recusa nova aparece como `NÃO CLASSIFICADA` em vez de sumir na
+contagem.
+
+Foram cinco famílias de recusa, e cada uma fechou por um motivo diferente: o HAVING,
+o nível de hierarquia, o cruzamento entre tabelas, o tipo declarado da coluna e o
+campo aritmético.
+
+Três distâncias continuam medidas e presas em teste, porque são o tamanho do que
+**não** está provado: **36 cards têm filtro e só 5 mudam de valor** sobre o dataset
+sintético, **das 5 tabelas cruzadas só 2 trazem linha**, e **das 8 matrizes só 6**.
+Nos casos que faltam o filtro esvazia a tabela do eixo antes de agrupar: zero linha é
+resultado legítimo e prova nenhuma. Os números estão presos em `cobertura.test.ts`
+justamente para que a distância fique visível. É a mesma lição da 2b.5 — **dado
+sintético não prova paridade**.
+
+**O que separa o avaliador do dado real (2b.6).** Esta fase não escreveu avaliador
+nenhum: ela foi medir o que falta, e o que achou foi que a spec estava incompleta em
+dois lugares — nos dois casos sem dar erro, porque o dataset sintético dos testes
+preenche exatamente o que faltava.
+
+*Primeiro: sete tabelas não diziam de onde vinham as linhas.* No TMDL elas são
+`partition = calculated` — a tabela **é** uma expressão DAX. O extrator lia só a
+partition `= m`, então a spec gravava `query_ref: null` e mais nada. Três dessas
+sete — `CALENDARIO INSTALADO`, `calendar` e `Status Protocolo Dia` — são por onde o
+filtro propaga na 2b.5. Agora o campo `table_dax` carrega a expressão, o
+`validate:model` confere as referências das 7 (passam limpas) e há um teste que trava
+o invariante que pega a próxima perda: **nenhuma tabela sem origem** — 18 vêm de
+query, 7 vêm de DAX, e a soma tem de ser 25.
+
+*Segundo: existe uma camada M entre o SQL e a tabela.* São **303 passos** de Power
+Query depois do `Odbc.Query`, e eles não são cosméticos:
+
+| | |
+|---|---|
+| **56 colunas** do modelo nascem em passo M, não no SELECT | e **11 delas são citadas pelo DAX** — `HORA CRIADO` é `DateTime.Time([DATA CRIADO])`, `DATA DA TROCA` vem de uma mesclagem, `TÉCNICO INSTALAÇÃO` é renomeação de coluna expandida |
+| **11 das 17** tabelas têm `rowCount` que **não** é comparável com o Power BI | o golden conta o SQL; o M ainda filtra, deduplica e expande depois. Em `PROTOCOLOS GERAL` são seis passos, incluindo `[STATUS] <> "Cancelado"` e `Table.Distinct` por `SOLICITACAO` |
+
+`npm run validate:tables` é o quarto nível de verificação e existe por causa da
+diferença com o segundo: `validate:model` confere **modelo contra modelo**, então
+`'PROTOCOLOS GERAL'[HORA CRIADO]` passa — está declarada na spec da tabela. O que
+não existe é a coluna no resultado do SELECT. Contra dado real ela chegaria vazia, e
+vazio não dá erro: dá zero, BLANK, ou junção que não casa nada.
+
+O scanner de M (`tools/validate/src/mlayer.ts`) é para a camada M o que o
+`extractRefs` é para o DAX: **não é um avaliador**, não executa nada, e responde
+duas perguntas estáticas — que nome de coluna este passo produz, e ele pode mudar a
+contagem de linhas. Segue o mesmo princípio do avaliador: passo `Table.*` cuja
+função não está na tabela de efeitos vira **erro com o nome do passo**. Foi essa
+regra que expôs a `clima-tempo` (que **hoje roda**: o avaliador a executa desde o
+[ACHADOS](docs/ACHADOS.md) #42, e o que segue vale só para o scanner estático), que
+define uma função M com `let` aninhado — em vez
+de achatar os passos internos na tabela de fora (o que atribuiria colunas à tabela
+errada, em silêncio), o scanner recusa a query e o relatório a lista à parte.
+
+**Materializar as 7 tabelas calculadas (2b.7).** O dataset dos testes agora carrega
+**só as 18 tabelas que vêm de query**; as 7 calculadas são produzidas avaliando o DAX
+delas, na mesma ordem que o Power BI segue no refresh. É a mudança que dá sentido aos
+números: sem materializar, **46 das 127 expressões param de executar** — e antes desta
+fase esse número era zero, não porque estivesse resolvido, mas porque o dataset
+inventava as linhas.
+
+Três coisas foram necessárias, e as duas últimas não eram óbvias:
+
+- **`CALENDAR` e `ADDCOLUMNS`.** `CALENDAR` é a única função do avaliador que
+  **gera** linhas — todas as outras funções de data filtram valores que já existem
+  numa coluna. Com um extremo BLANK ela **erra alto**, e é um desvio deliberado do
+  Power BI: lá BLANK vale 0, que é 30/12/1899, e `CALENDARIO INSTALADO` sairia com uns
+  46 mil dias sem reclamar de nada. Ninguém percebe isso numa tabela de datas, mas
+  toda média que divide por dia útil muda.
+- **Casar o nome da coluna, exigindo bijeção.** O DAX devolve uma coluna chamada
+  `Date`; a tabela do modelo chama a mesma coluna de `DATA INSTALADO`. Quem faz a
+  ponte é `sourceColumn`. Materializar com o nome do DAX não daria erro nenhum —
+  daria um relacionamento que nunca casa. A exigência vale nas duas direções, e a
+  segunda metade é a que pega o erro que já aconteceu: coluna que o DAX devolve e a
+  spec não declara é coluna que o extrator perdeu.
+- **Aplicar o tipo declarado da coluna.** `Status Protocolo Dia[Dia]` é
+  `TRUNC('FIELD AGENDA'[Slot Agenda])`, e `TRUNC` em DAX devolve **número** — a série
+  da data. Essa coluna se liga a `calendar[Data]`, que é `DATEVALUE(...)` e portanto
+  data. Sem aplicar o `dateTime` que o TMDL declara, a junção compara número com data
+  e o guarda de espécie erra alto — corretamente ([ACHADOS](docs/ACHADOS.md) #16).
+
+Dois efeitos colaterais que valem registro. O primeiro: o palpite de tipo do dataset
+de teste caiu de **10 colunas para 1**. Nove das dez eram colunas de tabela calculada,
+e o tipo delas nunca faltou — vinha do DAX, que não era avaliado. A que sobra é o
+achado 15, `PROTOCOLOS GERAL[EQUIPE_BASE]`. O segundo: `validate:tables` ganhou a
+procedência `dax` para as **10 colunas** dessas tabelas, que antes caíam em
+"sem golden para conferir" junto com as de gsheets e web — lia como *não se sabe*
+onde se sabe, e há teste.
+
+O grafo de dependência entre as 7 é **plano** nesta base (medido, não suposto): todas
+dependem só de tabelas que vêm de query. A ordenação topológica existe pelo que ela
+recusa — ciclo erra alto nomeando o caminho, em vez de deixar a última tabela do laço
+nascer vazia.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+**O que separa o avaliador do dado real (2b.6).** Esta fase não escreveu avaliador
+nenhum: ela foi medir o que falta, e o que achou foi que a spec estava incompleta em
+dois lugares — nos dois casos sem dar erro, porque o dataset sintético dos testes
+preenche exatamente o que faltava.
+
+*Primeiro: sete tabelas não diziam de onde vinham as linhas.* No TMDL elas são
+`partition = calculated` — a tabela **é** uma expressão DAX. O extrator lia só a
+partition `= m`, então a spec gravava `query_ref: null` e mais nada. Três dessas
+sete — `CALENDARIO INSTALADO`, `calendar` e `Status Protocolo Dia` — são por onde o
+filtro propaga na 2b.5. Agora o campo `table_dax` carrega a expressão, o
+`validate:model` confere as referências das 7 (passam limpas) e há um teste que trava
+o invariante que pega a próxima perda: **nenhuma tabela sem origem** — 18 vêm de
+query, 7 vêm de DAX, e a soma tem de ser 25.
+
+*Segundo: existe uma camada M entre o SQL e a tabela.* São **303 passos** de Power
+Query depois do `Odbc.Query`, e eles não são cosméticos:
+
+| | |
+|---|---|
+| **56 colunas** do modelo nascem em passo M, não no SELECT | e **11 delas são citadas pelo DAX** — `HORA CRIADO` é `DateTime.Time([DATA CRIADO])`, `DATA DA TROCA` vem de uma mesclagem, `TÉCNICO INSTALAÇÃO` é renomeação de coluna expandida |
+| **11 das 17** tabelas têm `rowCount` que **não** é comparável com o Power BI | o golden conta o SQL; o M ainda filtra, deduplica e expande depois. Em `PROTOCOLOS GERAL` são seis passos, incluindo `[STATUS] <> "Cancelado"` e `Table.Distinct` por `SOLICITACAO` |
+
+`npm run validate:tables` é o quarto nível de verificação e existe por causa da
+diferença com o segundo: `validate:model` confere **modelo contra modelo**, então
+`'PROTOCOLOS GERAL'[HORA CRIADO]` passa — está declarada na spec da tabela. O que
+não existe é a coluna no resultado do SELECT. Contra dado real ela chegaria vazia, e
+vazio não dá erro: dá zero, BLANK, ou junção que não casa nada.
+
+O scanner de M (`tools/validate/src/mlayer.ts`) é para a camada M o que o
+`extractRefs` é para o DAX: **não é um avaliador**, não executa nada, e responde
+duas perguntas estáticas — que nome de coluna este passo produz, e ele pode mudar a
+contagem de linhas. Segue o mesmo princípio do avaliador: passo `Table.*` cuja
+função não está na tabela de efeitos vira **erro com o nome do passo**. Foi essa
+regra que expôs a `clima-tempo` (que **hoje roda**: o avaliador a executa desde o
+[ACHADOS](docs/ACHADOS.md) #42, e o que segue vale só para o scanner estático), que
+define uma função M com `let` aninhado — em vez
+de achatar os passos internos na tabela de fora (o que atribuiria colunas à tabela
+errada, em silêncio), o scanner recusa a query e o relatório a lista à parte.
+
+**O que separa o avaliador do dado real (2b.6).** Esta fase não escreveu avaliador
+nenhum: ela foi medir o que falta, e o que achou foi que a spec estava incompleta em
+dois lugares — nos dois casos sem dar erro, porque o dataset sintético dos testes
+preenche exatamente o que faltava.
+
+*Primeiro: sete tabelas não diziam de onde vinham as linhas.* No TMDL elas são
+`partition = calculated` — a tabela **é** uma expressão DAX. O extrator lia só a
+partition `= m`, então a spec gravava `query_ref: null` e mais nada. Três dessas
+sete — `CALENDARIO INSTALADO`, `calendar` e `Status Protocolo Dia` — são por onde o
+filtro propaga na 2b.5. Agora o campo `table_dax` carrega a expressão, o
+`validate:model` confere as referências das 7 (passam limpas) e há um teste que trava
+o invariante que pega a próxima perda: **nenhuma tabela sem origem** — 18 vêm de
+query, 7 vêm de DAX, e a soma tem de ser 25.
+
+*Segundo: existe uma camada M entre o SQL e a tabela.* São **303 passos** de Power
+Query depois do `Odbc.Query`, e eles não são cosméticos:
+
+| | |
+|---|---|
+| **56 colunas** do modelo nascem em passo M, não no SELECT | e **11 delas são citadas pelo DAX** — `HORA CRIADO` é `DateTime.Time([DATA CRIADO])`, `DATA DA TROCA` vem de uma mesclagem, `TÉCNICO INSTALAÇÃO` é renomeação de coluna expandida |
+| **11 das 17** tabelas têm `rowCount` que **não** é comparável com o Power BI | o golden conta o SQL; o M ainda filtra, deduplica e expande depois. Em `PROTOCOLOS GERAL` são seis passos, incluindo `[STATUS] <> "Cancelado"` e `Table.Distinct` por `SOLICITACAO` |
+
+`npm run validate:tables` é o quarto nível de verificação e existe por causa da
+diferença com o segundo: `validate:model` confere **modelo contra modelo**, então
+`'PROTOCOLOS GERAL'[HORA CRIADO]` passa — está declarada na spec da tabela. O que
+não existe é a coluna no resultado do SELECT. Contra dado real ela chegaria vazia, e
+vazio não dá erro: dá zero, BLANK, ou junção que não casa nada.
+
+O scanner de M (`tools/validate/src/mlayer.ts`) é para a camada M o que o
+`extractRefs` é para o DAX: **não é um avaliador**, não executa nada, e responde
+duas perguntas estáticas — que nome de coluna este passo produz, e ele pode mudar a
+contagem de linhas. Segue o mesmo princípio do avaliador: passo `Table.*` cuja
+função não está na tabela de efeitos vira **erro com o nome do passo**. Foi essa
+regra que expôs a `clima-tempo` (que **hoje roda**: o avaliador a executa desde o
+[ACHADOS](docs/ACHADOS.md) #42, e o que segue vale só para o scanner estático), que
+define uma função M com `let` aninhado — em vez
+de achatar os passos internos na tabela de fora (o que atribuiria colunas à tabela
+errada, em silêncio), o scanner recusa a query e o relatório a lista à parte.
+
+**Materializar as 7 tabelas calculadas (2b.7).** O dataset dos testes agora carrega
+**só as 18 tabelas que vêm de query**; as 7 calculadas são produzidas avaliando o DAX
+delas, na mesma ordem que o Power BI segue no refresh. É a mudança que dá sentido aos
+números: sem materializar, **46 das 127 expressões param de executar** — e antes desta
+fase esse número era zero, não porque estivesse resolvido, mas porque o dataset
+inventava as linhas.
+
+Três coisas foram necessárias, e as duas últimas não eram óbvias:
+
+- **`CALENDAR` e `ADDCOLUMNS`.** `CALENDAR` é a única função do avaliador que
+  **gera** linhas — todas as outras funções de data filtram valores que já existem
+  numa coluna. Com um extremo BLANK ela **erra alto**, e é um desvio deliberado do
+  Power BI: lá BLANK vale 0, que é 30/12/1899, e `CALENDARIO INSTALADO` sairia com uns
+  46 mil dias sem reclamar de nada. Ninguém percebe isso numa tabela de datas, mas
+  toda média que divide por dia útil muda.
+- **Casar o nome da coluna, exigindo bijeção.** O DAX devolve uma coluna chamada
+  `Date`; a tabela do modelo chama a mesma coluna de `DATA INSTALADO`. Quem faz a
+  ponte é `sourceColumn`. Materializar com o nome do DAX não daria erro nenhum —
+  daria um relacionamento que nunca casa. A exigência vale nas duas direções, e a
+  segunda metade é a que pega o erro que já aconteceu: coluna que o DAX devolve e a
+  spec não declara é coluna que o extrator perdeu.
+- **Aplicar o tipo declarado da coluna.** `Status Protocolo Dia[Dia]` é
+  `TRUNC('FIELD AGENDA'[Slot Agenda])`, e `TRUNC` em DAX devolve **número** — a série
+  da data. Essa coluna se liga a `calendar[Data]`, que é `DATEVALUE(...)` e portanto
+  data. Sem aplicar o `dateTime` que o TMDL declara, a junção compara número com data
+  e o guarda de espécie erra alto — corretamente ([ACHADOS](docs/ACHADOS.md) #16).
+
+Dois efeitos colaterais que valem registro. O primeiro: o palpite de tipo do dataset
+de teste caiu de **10 colunas para 1**. Nove das dez eram colunas de tabela calculada,
+e o tipo delas nunca faltou — vinha do DAX, que não era avaliado. A que sobra é o
+achado 15, `PROTOCOLOS GERAL[EQUIPE_BASE]`. O segundo: `validate:tables` ganhou a
+procedência `dax` para as **10 colunas** dessas tabelas, que antes caíam em
+"sem golden para conferir" junto com as de gsheets e web — lia como *não se sabe*
+onde se sabe, e há teste.
+
+O grafo de dependência entre as 7 é **plano** nesta base (medido, não suposto): todas
+dependem só de tabelas que vêm de query. A ordenação topológica existe pelo que ela
+recusa — ciclo erra alto nomeando o caminho, em vez de deixar a última tabela do laço
+nascer vazia.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
+
+**A camada M (2b.8): decisão pendente, levantamento pronto.** Sobra um bloqueio entre o
+avaliador e dado real, e ele exige uma decisão de arquitetura: **executar o M ou traduzi-lo
+para SQL?** O levantamento com números está em
+[docs/DECISAO-CAMADA-M.md](docs/DECISAO-CAMADA-M.md); a recomendação é **executar**, por
+dois motivos que fecham a questão antes do gosto pessoal:
+
+- **3 das 15 mesclagens atravessam fonte de dados** — dbVoalle × dbMaria e
+  dbVoalle × gsheets. Nenhum `SELECT` faz essas três, e duas delas são `PROTOCOLOS GERAL`
+  e `PROTOCOLOS PRODUTIVIDADE`. A plataforma precisa de junção acima dos connectors de
+  qualquer maneira.
+- **SQL escrito à mão não tem onde morar.** As specs de query são sobrescritas por
+  `npm run extract` (regra 2), então SQL humano ali diverge em silêncio no dia em que
+  alguém mexer no Power Query — o mesmo argumento que impediu as 78 medidas de virarem 78
+  funções TypeScript.
+
+Tamanho da camada: **23 funções de tabela + 15 de valor**, contra as 56 do avaliador de
+DAX. E as 11 colunas que o DAX usa e o SQL não devolve são a parte fácil — **9 são renome
+puro**. O que muda número de verdade são as **25 mudanças de linha**.
+
+Um ponto não é replicável só lendo o M, e está registrado como tal: em `PROTOCOLOS GERAL`
+um `Table.Sort` (passo 47), uma mesclagem que multiplica linha (51) e um `Table.Distinct`
+por `SOLICITACAO` (53) decidem **qual supervisor fica preso a cada protocolo** pela ordem
+das linhas. `Table.Distinct` mantém a primeira ocorrência, e nada no M diz o que a
+ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado real.
 
 **O que separa o avaliador do dado real (2b.6).** Esta fase não escreveu avaliador
 nenhum: ela foi medir o que falta, e o que achou foi que a spec estava incompleta em
@@ -478,37 +1303,6 @@ card é um número, uma tabela é *um número por grupo*.
   tabela de três colunas de texto mostra as **combinações distintas**, não uma linha por
   registro. Lida como listagem crua ela sairia maior que a da tela, com cara de dado a
   mais em vez de erro.
-- **os dois momentos do filtro** — o de linha vale antes de agrupar e decide o que entra
-  na conta; o de grupo (`COUNT(x) > 0`, o HAVING) vale depois e decide quais grupos
-  sobrevivem. Antes de existir grupo não há o que agregar, e é por isso que esse filtro
-  não podia ser implementado junto com o card.
-- **`grafico.ts`** — um ponto de gráfico é uma linha de tabela desenhada: mesmo
-  agrupamento, mesmo contexto de filtro, mesma ordem de filtros. A diferença é de
-  arrumação — `Category` e `Series` agrupam, `Y` e `Y2` viram número. Papel fora
-  desses quatro **erra alto**: é uma dimensão que o visual ganhou, e ignorá-la daria
-  menos pontos do que a tela tem.
-- **`expansao.ts`** — agrupar por colunas de **tabelas diferentes**. A regra é a
-  *tabela expandida* do DAX: `T` mais tudo alcançável por relacionamentos muitos→um.
-  Se as colunas cabem na expandida de uma delas, essa é a **âncora**, e varrê-la
-  seguindo os relacionamentos dá as combinações que existem, uma vez cada. O produto
-  cartesiano daria 25 linhas onde existem 5 — maior, ordenado, somando certo.
-- **`matriz.ts`** — a matriz **não** é uma tabela com duas chaves. Os dois eixos são
-  agrupados em separado, sobre a mesma base, e a célula é o cruzamento: a combinação
-  que não existe é uma **célula vazia**, não uma linha ausente, e o conjunto de
-  colunas é o mesmo em todas as linhas. Reaproveitar `agrupar` com as chaves das duas
-  direções juntas daria uma tabela com cara de matriz.
-
-O que é só do gráfico é o **eixo de datas**, e ele é a armadilha da fatia
-([ACHADOS](docs/ACHADOS.md) #33). `'T'[Data].[Mês]` não existe como coluna — é uma
-projeção da coluna de data —, e é o eixo de 10 dos 16. Duas coisas se decidem aí:
-
-- **quais níveis contam.** A hierarquia chega sempre inteira (Ano, Mês, Dia) e o
-  `active` diz quais estão na tela. Ignorando isso, os 13 gráficos que calculam dão
-  **455 pontos em vez de 99** — 4,6× a mais, todos plausíveis, nenhum com cara de erro.
-- **o que o nível põe em escopo.** Agrupar por `[DATA].[Mês]` **não** põe `[DATA]` em
-  escopo: dentro de `janeiro` a data ainda varia, então `ISINSCOPE('T'[DATA])` é FALSE.
-  Já o *filtro* do grupo restringe a coluna base — é ela que um `CALCULATE` de dentro
-  de uma medida precisa conseguir sobrepor.
 
 Com o agrupamento veio a **75ª medida**: `[Faixa 1 Premiação Total]` usa `ISINSCOPE`
 para só calcular no total, e `ISINSCOPE` é propriedade do visual, não do modelo. O
@@ -516,24 +1310,71 @@ avaliador ganhou `scopeWithGrouping`; sem ele, `ISINSCOPE` **continua errando al
 conjunto vazio é "o visual não agrupa por nada", `undefined` é "não há visual", e a
 distinção é o que impede a medida de calcular em toda célula.
 
-**O que está medido, e o que ainda não se sabe.** **Os 117 visuais com número
-calculam** — card 64/64, tabela 29/29, gráfico 16/16, matriz 8/8 —, e os 108 filtros
-do relatório têm todos quem os aplique: 98 como predicado de linha e 10 como HAVING
-sobre os grupos. Os testes de cobertura passaram a exigir que o mapa de recusas saia
-**vazio**, então uma recusa nova aparece como `NÃO CLASSIFICADA` em vez de sumir na
-contagem.
+**O que está medido, e o que ainda não se sabe.** Os 64 cards executam, 15 das 29
+tabelas calculam, e 98 dos 108 filtros aplicam. As recusas têm todas nome — filtro
+sobre agregado (5), chaves de mais de uma tabela (4), campo aritmético (2),
+`[CONTAGEM]` (2, [ACHADOS](docs/ACHADOS.md) #31), nível de hierarquia (1) — e o teste
+falha se alguma deixar de ter.
 
-Foram cinco famílias de recusa, e cada uma fechou por um motivo diferente: o HAVING,
-o nível de hierarquia, o cruzamento entre tabelas, o tipo declarado da coluna e o
-campo aritmético.
+Mas **36 cards têm filtro e só 5 mudam de valor** sobre o dataset sintético: nos outros
+31 o filtro aceita todas as linhas. O caminho de filtro *executa* em 36 e está
+*exercitado* em 5, e os dois números estão presos em `cobertura.test.ts` para que a
+distância entre eles fique visível. É a mesma lição da 2b.5 — **dado sintético não
+prova paridade**.
 
-Três distâncias continuam medidas e presas em teste, porque são o tamanho do que
-**não** está provado: **36 cards têm filtro e só 5 mudam de valor** sobre o dataset
-sintético, **das 5 tabelas cruzadas só 2 trazem linha**, e **das 8 matrizes só 6**.
-Nos casos que faltam o filtro esvazia a tabela do eixo antes de agrupar: zero linha é
-resultado legítimo e prova nenhuma. Os números estão presos em `cobertura.test.ts`
-justamente para que a distância fique visível. É a mesma lição da 2b.5 — **dado
-sintético não prova paridade**.
+### Widget Engine (Fase 3)
+
+`packages/widget-engine/` calcula o que um visual mostra. Começou pelo **card** porque
+ele é o caso mais barato de conferir do relatório inteiro: um número, sem eixo, sem
+ordenação, sem *top N* — dá para olhar a tela e comparar. São **64**, e todos calculam.
+
+Três partes, e cada uma existe por causa de um número errado específico:
+
+- **`filtro.ts`** — filtro de spec → `TableFilter`. Filtro de página e de visual entram
+  num `with()` **único**, nunca em dois encadeados: `FilteredContext.with()` implementa a
+  substituição do `CALCULATE` (filtro novo derruba o antigo que toque a mesma coluna), que
+  é a semântica certa do DAX e a errada aqui. Em duas etapas, o filtro do visual **apagaria**
+  o da página e o card mostraria um número maior, sem erro nenhum.
+- **`datas.ts`** — a data relativa é resolvida **na hora do cálculo**, não na extração:
+  resolver antes congelaria "os últimos 7 dias" no dia em que alguém rodou
+  `npm run extract`. O "agora" vem de `Evaluator.now`, e tudo é UTC — truncar em fuso
+  local moveria a fronteira do mês em três horas.
+- **`card.ts`** — a agregação vira **nó de AST**, não texto DAX reparseado. Os nomes desta
+  base incluem `#APURAÇÃO PREMIAÇÃO` e `ALOCAÇÃO PATRIMONIO.ALOCADO POR:`; um escape errado
+  daria erro de sintaxe no melhor caso e a coluna errada no pior.
+
+Depois do card veio o **agrupamento**, que é o que separa um card de todo o resto: um
+card é um número, uma tabela é *um número por grupo*.
+
+- **`grupos.ts`** — o grupo é um **filtro**, não um recorte de linhas. Calcular a
+  agregação direto sobre as linhas do grupo seria mais rápido e estaria errado para
+  medida: `[Ticket]` é `DIVIDE([Total], [Itens])`, e as duas de dentro precisam
+  enxergar o contexto do grupo. Filtrando, a propagação por relacionamento (2b.5) vem
+  de graça — agrupar por `'EQUIPES'[REGIAO]` restringe `OS` sem que este arquivo saiba
+  que existe relacionamento.
+- **`tabela.ts`** — os 29 `tableEx` têm tudo em `role: Values`, e isso **não** quer
+  dizer que a tabela não agrupa: quem agrupa são os campos sem função de agregação. Uma
+  tabela de três colunas de texto mostra as **combinações distintas**, não uma linha por
+  registro. Lida como listagem crua ela sairia maior que a da tela, com cara de dado a
+  mais em vez de erro.
+
+Com o agrupamento veio a **75ª medida**: `[Faixa 1 Premiação Total]` usa `ISINSCOPE`
+para só calcular no total, e `ISINSCOPE` é propriedade do visual, não do modelo. O
+avaliador ganhou `scopeWithGrouping`; sem ele, `ISINSCOPE` **continua errando alto** —
+conjunto vazio é "o visual não agrupa por nada", `undefined` é "não há visual", e a
+distinção é o que impede a medida de calcular em toda célula.
+
+**O que está medido, e o que ainda não se sabe.** Os 64 cards executam, 15 das 29
+tabelas calculam, e 98 dos 108 filtros aplicam. As recusas têm todas nome — filtro
+sobre agregado (5), chaves de mais de uma tabela (4), campo aritmético (2),
+`[CONTAGEM]` (2, [ACHADOS](docs/ACHADOS.md) #31), nível de hierarquia (1) — e o teste
+falha se alguma deixar de ter.
+
+Mas **36 cards têm filtro e só 5 mudam de valor** sobre o dataset sintético: nos outros
+31 o filtro aceita todas as linhas. O caminho de filtro *executa* em 36 e está
+*exercitado* em 5, e os dois números estão presos em `cobertura.test.ts` para que a
+distância entre eles fique visível. É a mesma lição da 2b.5 — **dado sintético não
+prova paridade**.
 
 ### Query Engine (Fase 1)
 
@@ -567,7 +1408,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (832 testes, sem credencial)
+npm test                              # suíte completa (1355 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
@@ -606,6 +1447,8 @@ Node 24 roda TypeScript nativamente — não há build step.
 
 ```
 docs/
+  CONTINUACAO.md       # o estado de agora, o que está bloqueado e o roteiro até pronto
+  DEPLOY.md            # plano de entrega: o que está pronto, o que falta, em que ordem
   ARCHITECTURE.md      # Engines, stack e arquitetura de real-time (Debezium/Kafka/Redis)
   SPEC-DRIVEN.md       # como as specs governam a implementação
 specs/
@@ -627,6 +1470,10 @@ packages/semantic-model/  # tabelas, colunas, medidas, relacionamentos + refs do
 packages/measure-engine/  # DAX: tokenizer, parser, AST, avaliador e contexto de filtro
 packages/transform-engine/# camada M: tokenizer, parser, avaliador, runner e connectors
 packages/widget-engine/   # o que um visual mostra: filtro, agrupamento, card, tabela e gráfico
+packages/snapshot/        # plano de materialização, formato em disco, manifesto e carga
+apps/api/                 # a API de leitura (node:http), cache da resposta, SSE e estáticos
+apps/web/                 # a tela: React 19 + Vite, store de filtros, React Query
+docker/                   # infra local; docker-compose.yml da raiz sobe Redis e Kafka
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma

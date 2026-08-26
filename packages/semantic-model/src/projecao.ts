@@ -82,3 +82,30 @@ export function sobDemandaLiberada(
   }
   return fora;
 }
+
+/** Como uma coluna sob demanda é nomeada num pedido: `'TABELA'[coluna]`. */
+export function rotuloDeColuna(tabela: string, coluna: string): string {
+  return `'${tabela}'[${coluna}]`;
+}
+
+/**
+ * As colunas sob demanda de `tabela` que continuam fora — descontando as liberadas.
+ *
+ * Liberar é sempre **explícito e por coluna**. A tentação seria um booleano "carregue
+ * tudo", e ele acabaria ligado em algum caminho de teste ou de script até virar o
+ * padrão de novo, calado. Uma lista obriga quem pede a nomear o que quer.
+ */
+export function sobDemandaLiberada(
+  tabela: string,
+  lista: readonly SobDemanda[],
+  liberadas: ReadonlySet<string>,
+): Set<string> {
+  const alvo = normalizeName(tabela);
+  const fora = new Set<string>();
+  for (const s of lista) {
+    if (normalizeName(s.tabela) !== alvo) continue;
+    if (liberadas.has(normalizeName(rotuloDeColuna(s.tabela, s.coluna)))) continue;
+    fora.add(normalizeName(s.coluna));
+  }
+  return fora;
+}

@@ -56,7 +56,7 @@ O cache é por `(usuário, página, filtros, visual, janela, carimbo do snapshot
 reaqueça. E:
 
 > **Não rode `npm run snapshot` antes de apresentar.** Ele troca o carimbo do
-> manifesto e derruba o cache inteiro — `agendamento-field` volta ao minuto.
+> manifesto e derruba o cache inteiro — `agendamento-field` volta ao minuto e meio.
 
 ## Estado real
 
@@ -65,7 +65,7 @@ reaqueça. E:
 | Tela React | ✅ 212 kB (67 kB gzip), `tsc --noEmit` limpo |
 | As 14 páginas | ✅ **306 visuais, zero erros** |
 | Cache da resposta | ✅ ligado — 2ª abertura em ms |
-| Testes | ✅ **1.183 verdes** |
+| Testes | ✅ **1.171 verdes** |
 | Paridade | ⚠️ 42 cards ditados, **provisórios** — ver abaixo |
 
 Sem `REDIS_URL` no `.env` o cache cai para memória, e a API diz isso ao subir
@@ -81,7 +81,7 @@ resto é conversa.
 
 ### 1. `visao-geral` — "isto é o relatório, reconstruído"
 
-Abra e deixe carregar (11 s a frio, instantâneo aquecido). 28 visuais.
+Abra e deixe carregar (2,4 s a frio, instantâneo aquecido). 28 visuais.
 
 > *"Nada aqui é print nem mock. Cada número foi calculado agora, a partir do dado do
 > Voalle, por um interpretador de DAX escrito do zero."*
@@ -98,10 +98,9 @@ Abra e deixe carregar (11 s a frio, instantâneo aquecido). 28 visuais.
 39 visuais sobre 1,46 milhão de linhas.
 
 > *"Esta é a mais pesada do relatório. Aqui ela abre — mas quero ser honesto: aberta
-> a frio, ela leva um minuto. Eu aqueci antes. Hoje de manhã levava um minuto e meio;
-> caiu para um porque a gente mediu onde o tempo ia e achou um card que sozinho
-> custava 32 segundos — agora custa 1,7. O próximo passo já está medido: agregar
-> `FIELD AGENDA` no grão certo no SQL derruba 1,46 milhão de linhas para 30 mil."*
+> a frio, ela leva um minuto e meio. Eu aqueci antes. O caminho para resolver está
+> mapeado e medido: agregar `FIELD AGENDA` no grão certo no SQL derruba 1,46 milhão
+> de linhas para 30 mil."*
 
 Não esconda o aquecimento. Alguém vai perguntar, e admitir antes vale mais.
 

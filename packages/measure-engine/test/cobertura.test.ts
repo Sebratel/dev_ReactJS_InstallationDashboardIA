@@ -128,7 +128,7 @@ test('as 56 funções que a base usa estão todas implementadas', () => {
  * divergirem, um dos dois está lendo o DAX errado — e é melhor descobrir aqui do
  * que num número de dashboard.
  */
-test('parser e scanner concordam sobre as referências das 134 expressões', () => {
+test('parser e scanner concordam sobre as referências das 121 expressões', () => {
   const divergencias: string[] = [];
 
   for (const e of todasAsExpressoes()) {

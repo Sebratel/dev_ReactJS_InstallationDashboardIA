@@ -1,326 +1,580 @@
-/*
-  Tokens copiados de `docs/DESIGN-SYSTEM.md` v2, que por sua vez os copiou do
-  `shared_layout.css` do HUBBI. Nenhum HEX fora deste `:root` — a regra 5 do
-  CONTINUACAO, e a razão dela: cor solta em componente é a forma como um vermelho de
-  marca vira vermelho de status sem ninguém decidir isso.
-*/
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+/* ===========================================================================
+   PALETA — padrão `padrao-frontend-dashboards` (dashboard COM · Gestão Comercial)
+   ===========================================================================
+
+   A paleta é **herdada do relatório**, não escolhida: são as cores do Power BI que
+   esta tela substitui, para o time reconhecer o número que já usa. Divergem dos
+   tokens do HUBBI (âmbar #F59E0B) de propósito — ver a seção 0 do
+   docs/DESIGN-SYSTEM.md.
+
+   Definida **duas vezes de propósito**:
+   - em `@theme`, para virar utilitário do Tailwind (`bg-pbi-primary`, `text-pbi-muted`);
+   - em `:root`, para o CSS puro deste arquivo e para o `style` dos SVG.
+   Manter os dois lados sincronizados é o preço de misturar utilitário e CSS.
+
+   NENHUM HEXADECIMAL FORA DESTE BLOCO.
+   =========================================================================== */
+
+@theme {
+  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  --color-pbi-primary: #880F17;
+  --color-pbi-primary-dark: #6b2328;
+  --color-pbi-gold: #D9B300;
+  --color-pbi-gold-light: #f0e199;
+  --color-pbi-gold-200: #EED790;
+  --color-pbi-gold-600: #D49F00;
+  --color-pbi-gold-soft: #E0C233;
+  --color-pbi-orange: #E66C37;
+  --color-pbi-orange-soft: #EB895F;
+  --color-pbi-green: #0E9224;
+  --color-pbi-ink: #252423;
+  --color-pbi-muted: #605E5C;
+  --color-pbi-grid: #E1DFDD;
+  --color-pbi-borda: #E3E0DC;
+  --color-pbi-superficie: #FFFFFF;
+  --color-pbi-fundo: #F3F2F1;
+  --color-pbi-critico: #b3261e;
+  --color-pbi-neutro: #C8C6C4;
+
+  /* Escuro: os mesmos papéis, não outras cores. */
+  --color-pbi-escuro-fundo: #1B1A19;
+  --color-pbi-escuro-superficie: #252423;
+  --color-pbi-escuro-borda: #3B3A39;
+  --color-pbi-escuro-texto: #F3F2F1;
+  --color-pbi-escuro-muted: #A19F9D;
+}
+
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --amber: #F59E0B; --amber-dark: #D97706; --amber-soft: rgba(245,158,11,.10);
-  --red: #E30613; --red-dark: #C10511;
-  --green: #10B981;
-  --danger: #EF4444; --danger-dark: #DC2626;
-  --sidebar-w: 196px; --sidebar-collapsed: 62px; --header-h: 52px;
-  --bg: #F4F4F5; --white: #FFFFFF; --text: #111827; --muted: #6B7280; --border: #E5E7EB;
+  --pbi-primary: #880F17;
+  --pbi-primary-dark: #6b2328;
+  --pbi-gold: #D9B300;
+  --pbi-gold-light: #f0e199;
+  --pbi-gold-200: #EED790;
+  --pbi-gold-600: #D49F00;
+  --pbi-gold-soft: #E0C233;
+  --pbi-orange: #E66C37;
+  --pbi-orange-soft: #EB895F;
+  --pbi-green: #0E9224;
+  --pbi-ink: #252423;
+  --pbi-muted: #605E5C;
+  --pbi-grid: #E1DFDD;
+  --pbi-borda: #E3E0DC;
+  --pbi-superficie: #FFFFFF;
+  --pbi-fundo: #F3F2F1;
+  --pbi-critico: #b3261e;
+  --pbi-neutro: #C8C6C4;
+
+  /* Fundos de estado: derivados por mistura, para não inventar hexadecimal novo. */
+  --pbi-ok-bg: color-mix(in srgb, var(--pbi-green) 10%, var(--pbi-superficie));
+  --pbi-erro-bg: color-mix(in srgb, var(--pbi-critico) 9%, var(--pbi-superficie));
+  --pbi-aviso-bg: color-mix(in srgb, var(--pbi-gold-200) 55%, var(--pbi-superficie));
+  --pbi-primary-soft: color-mix(in srgb, var(--pbi-primary) 8%, var(--pbi-superficie));
+
+  /* Papéis, para o resto do arquivo não citar cor e sim função. */
+  --superficie: var(--pbi-superficie);
+  --fundo: var(--pbi-fundo);
+  --texto: var(--pbi-ink);
+  --muted: var(--pbi-muted);
+  --borda: var(--pbi-borda);
+  --grade: var(--pbi-grid);
+  --sem-dado: var(--pbi-neutro);
+
   --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
 
-  --sem-dado: #D1D5DB;
-  --sombra-card: 0 1px 6px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
-  --cabecalho-tabela: #F8F9FA;
-  --texto-cabecalho: #9CA3AF;
-  --ok-bg: #ECFDF5; --ok-fg: #065F46; --ok-bd: #A7F3D0;
-  --erro-bg: #FEF2F2; --erro-fg: #991B1B; --erro-bd: #FECACA;
+  /* -------------------------------------------------------------------------
+     A CONTA QUE FAZ A TELA CABER
+
+     Cada gráfico maior que a tela é um gráfico que ninguém vê inteiro. A altura
+     de card não é chutada em pixel: é derivada do que sobra depois do cromo.
+
+     `--h-nav` é 0 aqui porque **a navegação desta tela é a barra lateral**, não
+     uma faixa horizontal — ela gasta largura, não altura. O token fica, com o
+     valor honesto, para a conta continuar legível.
+     ------------------------------------------------------------------------- */
+  --h-topbar: 52px;
+  --h-nav: 0px;
+  --h-filtros: 50px;
+  --gap: 10px;
+  --chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 34px);
+  --util: calc(100vh - var(--chrome));
+
+  --sidebar-w: 230px;
+}
+
+/* Escuro: só os tokens mudam. Nenhuma regra abaixo tem variante própria de cor —
+   é o que impede as duas metades do arquivo divergirem com o tempo. */
+.dark {
+  --pbi-superficie: #252423;
+  --pbi-fundo: #1B1A19;
+  --pbi-ink: #F3F2F1;
+  --pbi-muted: #A19F9D;
+  --pbi-borda: #3B3A39;
+  --pbi-grid: #3B3A39;
+  --pbi-neutro: #605E5C;
+  --superficie: var(--pbi-superficie);
+  --fundo: var(--pbi-fundo);
+  --texto: var(--pbi-ink);
+  --muted: var(--pbi-muted);
+  --borda: var(--pbi-borda);
+  --grade: var(--pbi-grid);
+  --sem-dado: var(--pbi-neutro);
 }
 
 * { box-sizing: border-box; }
 html, body, #raiz { height: 100%; }
 body {
-  margin: 0; background: var(--bg); color: var(--text);
-  font-family: var(--font); font-size: 14px;
+  margin: 0; background: var(--fundo); color: var(--texto);
+  font-family: var(--font); font-size: 13px;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ------------------------------------------------------------------ AppShell */
-
-.shell { display: grid; grid-template-columns: var(--sidebar-collapsed) 1fr; min-height: 100%; }
+/* ============================================================== barra lateral */
 
 .barra-lateral {
-  position: fixed; top: 0; left: 0; bottom: 0; z-index: 20;
-  width: var(--sidebar-collapsed);
-  background: var(--white); border-right: 1px solid var(--border);
-  display: flex; flex-direction: column; overflow: hidden;
-  transition: width .28s cubic-bezier(.4,0,.2,1);
+  width: var(--sidebar-w); flex: none;
+  background: var(--superficie); border-right: 1px solid var(--borda);
+  display: flex; flex-direction: column;
+  position: sticky; top: 0; height: 100vh; z-index: 30;
 }
-.barra-lateral:hover, .barra-lateral:focus-within { width: var(--sidebar-w); }
-
 .marca-topo {
-  height: var(--header-h); display: flex; align-items: center; gap: 10px;
-  padding: 0 16px; border-bottom: 1px solid var(--border); flex: none;
-}
-.marca-bolha {
-  width: 30px; height: 30px; border-radius: 50%; flex: none;
-  background: linear-gradient(135deg, var(--amber) 0%, var(--amber-dark) 100%);
-  color: var(--white); font-weight: 800; font-size: .8rem;
-  display: flex; align-items: center; justify-content: center;
+  height: var(--h-topbar); display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; border-bottom: 1px solid var(--borda); flex: none;
 }
 .marca-nome {
-  font-weight: 800; letter-spacing: .5px; color: var(--red); font-size: .82rem; white-space: nowrap;
+  font-weight: 800; letter-spacing: .06em; color: var(--pbi-primary);
+  font-size: .82rem; line-height: 1.1;
 }
+.marca-sub { font-size: .62rem; color: var(--muted); }
 
-.menu { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 8px; display: flex; flex-direction: column; gap: 3px; }
+.menu { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
 .menu-titulo {
-  font-size: .58rem; text-transform: uppercase; letter-spacing: .08em;
-  color: var(--texto-cabecalho); padding: 8px 10px 4px; white-space: nowrap;
+  font-size: .6rem; text-transform: uppercase; letter-spacing: .1em;
+  color: var(--muted); padding: 6px 10px 4px; white-space: nowrap; font-weight: 700;
 }
 .item-menu {
   display: flex; align-items: center; gap: 10px;
-  padding: 8px 10px; border-radius: 8px; border: 0; background: none;
-  font: inherit; font-size: .74rem; color: var(--text); cursor: pointer;
-  text-align: left; width: 100%; white-space: nowrap;
+  padding: 7px 10px; border-radius: 2px; border: 0; background: none;
+  border-left: 3px solid transparent;
+  font: inherit; font-size: .76rem; color: var(--texto); cursor: pointer;
+  text-align: left; width: 100%; white-space: nowrap; font-weight: 600;
 }
-.item-menu:hover { background: var(--amber-soft); }
+.item-menu:hover { background: var(--pbi-primary-soft); }
+/* Navegação ativa na primária — o mesmo papel que ela cumpre no cabeçalho do visual. */
 .item-menu.ativo {
-  background: linear-gradient(90deg, var(--amber) 0%, var(--amber-dark) 100%);
-  color: var(--white); box-shadow: 0 3px 12px rgba(245,158,11,.38); font-weight: 600;
+  background: var(--pbi-primary); color: var(--pbi-superficie);
+  border-left-color: var(--pbi-gold); font-weight: 700;
 }
 .item-menu:disabled { color: var(--sem-dado); cursor: default; }
 .item-menu:disabled:hover { background: none; }
-.item-sigla {
-  width: 26px; height: 26px; border-radius: 7px; flex: none;
-  display: flex; align-items: center; justify-content: center;
-  background: var(--bg); font-size: .6rem; font-weight: 700; color: var(--muted);
-}
-.item-menu.ativo .item-sigla { background: rgba(255,255,255,.22); color: var(--white); }
 .item-rotulo { overflow: hidden; text-overflow: ellipsis; }
+.rodape-lateral {
+  padding: 10px 14px; border-top: 1px solid var(--borda);
+  font-size: .62rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px;
+}
 
-.coluna-direita { grid-column: 2; display: flex; flex-direction: column; min-width: 0; }
+/* =================================================================== cabeçalho */
 
 .cabecalho {
-  height: var(--header-h); background: var(--white); border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 8px rgba(0,0,0,.04);
-  display: flex; align-items: center; gap: 14px; padding: 0 20px;
-  position: sticky; top: 0; z-index: 10; flex: none;
+  height: var(--h-topbar); background: var(--superficie); border-bottom: 1px solid var(--borda);
+  display: flex; align-items: center; gap: 14px; padding: 0 16px;
+  position: sticky; top: 0; z-index: 20; flex: none;
 }
-.cabecalho-titulo { font-weight: 700; font-size: .86rem; white-space: nowrap; }
+.cabecalho-titulo { font-weight: 700; font-size: .95rem; white-space: nowrap; color: var(--texto); }
 .cabecalho-sub { color: var(--muted); font-size: .72rem; white-space: nowrap; }
-.grupo-acoes-cabecalho { display: flex; align-items: center; gap: 8px; }
+.grupo-acoes-cabecalho { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.carimbo-cabecalho {
+  display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25;
+  padding: 0 10px; border-left: 1px solid var(--borda);
+}
+.carimbo-cabecalho .rot {
+  font-size: .58rem; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted);
+}
+.carimbo-cabecalho .val { font-size: .72rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.btn-icone {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; padding: 0; border-radius: 2px;
+  border: 1px solid var(--grade); background: var(--superficie); color: var(--muted); cursor: pointer;
+}
+.btn-icone:hover { border-color: var(--pbi-primary); color: var(--pbi-primary); }
+.btn-icone.ativo { border-color: var(--pbi-primary); color: var(--pbi-primary); background: var(--pbi-primary-soft); }
+
 .selo-realtime {
-  display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
-  background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);
-  border-radius: 999px; font-size: .68rem; font-weight: 700; color: #059669;
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
+  background: var(--pbi-ok-bg); border: 1px solid var(--pbi-green);
+  border-radius: 999px; font-size: .68rem; font-weight: 700; color: var(--pbi-green);
+}
+.ponto-pulso { width: 7px; height: 7px; border-radius: 50%; background: var(--pbi-green); animation: pulso 2s infinite; }
+@keyframes pulso {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 60%, transparent); }
+  70%  { box-shadow: 0 0 0 7px color-mix(in srgb, var(--pbi-green) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) { .ponto-pulso { animation: none; } }
+
+/* ================================================================ área/grade */
+
+.area { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+
+.grid { display: grid; gap: var(--gap); }
+.linha-principal { grid-template-columns: minmax(360px, 64fr) minmax(148px, 13fr) minmax(230px, 23fr); }
+.linha-33-67     { grid-template-columns: minmax(250px, 33fr) minmax(400px, 67fr); }
+.linha-dupla     { grid-template-columns: minmax(340px, 52fr) minmax(320px, 48fr); }
+/* A faixa principal: conteúdo à esquerda, coluna estreita de indicadores à direita —
+   as proporções do relatório de origem (64fr de visual contra 23fr de KPI). */
+.faixa-principal { grid-template-columns: minmax(360px, 1fr) minmax(190px, 230px); }
+@media (max-width: 1100px) { .faixa-principal { grid-template-columns: 1fr; } }
+.grid > * { min-height: 0; min-width: 0; }
+@media (max-width: 1100px) {
+  .linha-principal, .linha-33-67, .linha-dupla { grid-template-columns: 1fr; }
 }
 
-.area { padding: 18px 20px 40px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* A coluna de KPI: estreita, empilhada, com rolagem própria quando a página tem
+   muitos indicadores — esticar a faixa devolveria a rolagem que a conta evita. */
+.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: var(--gap); }
+.kpi-pilha { display: flex; flex-direction: column; gap: var(--gap); min-width: 0; overflow: auto; }
 
-/* --------------------------------------------------------------- controles */
+/* Alturas: fração da área útil, com piso (abaixo é ilegível) e teto (acima
+   desperdiça densidade). 0,455 + 0,545 = 1 → duas faixas são uma tela. */
+/* Os dois seletores de propósito: a faixa (um `div` de grade) e o card em si. Sem a
+   forma `.cartao.v-*`, o `height: 100%` de `.cartao` — que vem depois no arquivo e tem
+   a mesma especificidade — ganharia da conta, e a tabela voltaria a ter 5.441px. */
+.v-grafico, .cartao.v-grafico { height: clamp(258px, calc((var(--util) - var(--gap)) * 0.455), 430px); }
+.v-tabela,  .cartao.v-tabela  { height: clamp(280px, calc((var(--util) - var(--gap)) * 0.545), 500px); }
+.v-meia,    .cartao.v-meia    { height: clamp(255px, calc((var(--util) - var(--gap)) * 0.5),   440px); }
+.v-matriz,  .cartao.v-matriz  { height: clamp(360px, var(--util), 900px); }
+.v-auto,    .cartao.v-auto    { height: auto; }
+
+.secao-graficos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: var(--gap); }
+.secao-matrizes-grid { display: flex; flex-direction: column; gap: var(--gap); }
+.largo { grid-column: 1 / -1; }
+
+.titulo-secao {
+  display: flex; align-items: center; gap: 10px; margin: 4px 0 0;
+  font-size: .64rem; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted);
+}
+.titulo-secao .risca { flex: 1; height: 1px; background: var(--borda); }
+
+/* ==================================================================== Visual */
+/* O card do padrão: cabeçalho colorido, subtítulo, slot de ações. Tudo que é
+   "desta visão" mora no cabeçalho, em vez de repetir markup em cada tela. */
+
+.cartao {
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 2px;
+  display: flex; flex-direction: column; overflow: hidden; min-width: 0; height: 100%;
+}
+.cartao > .cartao-topo {
+  background: var(--pbi-primary); color: var(--pbi-superficie);
+  display: flex; align-items: center; gap: 10px; padding: 5px 10px; flex: 0 0 auto;
+}
+.cartao > .cartao-topo h2 {
+  margin: 0; font-size: .74rem; font-weight: 700; letter-spacing: .02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cartao > .cartao-topo .sub {
+  color: var(--pbi-gold-light); font-size: .68rem;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cartao > .cartao-topo .id-visual { color: var(--pbi-gold-light); }
+.cartao-acoes { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; align-items: center; }
+.cartao-acoes button, .cartao-acoes input {
+  background: transparent; border-color: var(--pbi-gold-light); color: var(--pbi-superficie);
+  padding: 2px 8px; font-size: .68rem; border-radius: 2px;
+}
+.cartao-acoes button:hover { background: var(--pbi-primary-dark); }
+.cartao-acoes input::placeholder { color: var(--pbi-gold-light); }
+.cartao-corpo {
+  flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 10px;
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+.id-visual {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .62rem; color: var(--muted); user-select: all;
+}
+
+/* ======================================================================= KPI */
+
+.cartao-kpi {
+  background: var(--superficie); border: 1px solid var(--borda);
+  border-left: 3px solid var(--pbi-gold); border-radius: 2px;
+  padding: 8px 10px; min-width: 0; display: flex; flex-direction: column; justify-content: space-between;
+}
+.kpi-nome {
+  margin: 0 0 3px; font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* O valor nunca vai na cor da série: a identidade fica no marcador, não no texto. */
+.kpi-valor {
+  font-size: 1.4rem; font-weight: 700; line-height: 1.1;
+  font-variant-numeric: tabular-nums; color: var(--texto); letter-spacing: -.02em;
+}
+.cartao-kpi.destaque .kpi-valor { font-size: 1.9rem; }
+.kpi-valor.vazio { color: var(--sem-dado); font-size: 1rem; font-weight: 600; }
+.kpi-origem {
+  margin-top: 4px; font-size: .62rem; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.kpi-filtros { margin-top: 4px; font-size: .62rem; font-weight: 700; color: var(--pbi-gold-600); }
+
+/* ================================================================== controles */
 
 button, select, input {
-  font-family: var(--font); font-size: .76rem; border-radius: 8px;
-  border: 1px solid var(--border); background: var(--white); color: var(--text);
-  padding: 6px 10px;
+  font-family: var(--font); font-size: .74rem; border-radius: 2px;
+  border: 1px solid var(--grade); background: var(--superficie); color: var(--texto);
+  padding: 5px 10px;
 }
 button { cursor: pointer; }
 button.primario {
-  background: var(--amber); border-color: var(--amber); color: var(--white); font-weight: 600;
+  background: var(--pbi-primary); border-color: var(--pbi-primary);
+  color: var(--pbi-superficie); font-weight: 600;
 }
-button.primario:hover:not(:disabled) { background: var(--amber-dark); transform: translateY(-1px); }
+button.primario:hover:not(:disabled) { background: var(--pbi-primary-dark); border-color: var(--pbi-primary-dark); }
 button.primario:disabled { background: var(--sem-dado); border-color: var(--sem-dado); cursor: default; }
-button.secundario { background: transparent; }
-button.secundario:hover:not(:disabled) { background: var(--bg); }
+button.secundario { background: var(--superficie); font-weight: 600; }
+button.secundario:hover:not(:disabled) { border-color: var(--pbi-primary); color: var(--pbi-primary); }
+button:disabled { opacity: .55; cursor: default; }
 
-/* ---------------------------------------------------------------- faixa/selos */
+/* ================================================================ faixa/selos */
 
-.faixa { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .72rem; color: var(--muted); }
+.faixa { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .7rem; color: var(--muted); }
 .selo {
-  border-radius: 999px; padding: 3px 10px; font-weight: 600; font-size: .68rem;
-  background: var(--ok-bg); color: var(--ok-fg); border: 1px solid var(--ok-bd);
+  border-radius: 999px; padding: 3px 9px; font-weight: 700; font-size: .66rem;
+  background: var(--pbi-ok-bg); color: var(--pbi-green); border: 1px solid var(--pbi-green);
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
 }
-.selo.ruim { background: var(--erro-bg); color: var(--erro-fg); border-color: var(--erro-bd); }
-.selo.neutro { background: var(--amber-soft); color: var(--amber-dark); border: 1px solid rgba(245,158,11,.3); }
-.selo.apagado { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
+.selo.ruim { background: var(--pbi-erro-bg); color: var(--pbi-critico); border-color: var(--pbi-critico); }
+.selo.neutro { background: var(--pbi-aviso-bg); color: var(--pbi-gold-600); border-color: var(--pbi-gold-600); }
+.selo.apagado { background: var(--fundo); color: var(--muted); border-color: var(--borda); }
+.carimbo { font-size: .68rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
 
-/* ------------------------------------------------------------- segmentações */
+/* ============================================================== segmentações */
+/* Barra de filtros em uma linha de botões, não seis cartões de slicer: numa tela
+   em que a altura é o recurso escasso, a diferença é uma faixa inteira de gráfico. */
 
 .filtros {
-  background: var(--white); border: 1px solid var(--border); border-radius: 14px;
-  box-shadow: var(--sombra-card); padding: 12px 14px;
-  display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-start;
+  min-height: var(--h-filtros);
+  background: var(--superficie); border-bottom: 1px solid var(--borda);
+  padding: 0 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  position: sticky; top: var(--h-topbar); z-index: 15;
 }
-.filtro { position: relative; min-width: 180px; }
+.filtro { position: relative; min-width: 150px; display: flex; align-items: center; gap: 6px; }
 .filtro-rotulo {
-  font-size: .6rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
-  color: var(--texto-cabecalho); display: block; margin-bottom: 4px;
+  font-size: .6rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap;
 }
 .filtro-botao {
-  width: 100%; text-align: left; display: flex; align-items: center; gap: 8px;
-  background: var(--white);
+  text-align: left; display: flex; align-items: center; gap: 6px;
+  background: var(--superficie); font-weight: 600; min-width: 110px;
 }
-.filtro-botao.marcado { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+.filtro-botao.marcado { border-color: var(--pbi-primary); color: var(--pbi-primary); }
 .filtro-resumo { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filtro-conta {
-  font-size: .62rem; font-weight: 700; border-radius: 999px; padding: 1px 7px;
-  background: var(--amber-soft); color: var(--amber-dark);
+  font-size: .62rem; font-weight: 800; border-radius: 999px; padding: 1px 7px;
+  background: var(--pbi-primary); color: var(--pbi-superficie);
 }
-.filtro-painel {
-  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; width: 300px; max-width: 80vw;
-  background: var(--white); border: 1px solid var(--border); border-radius: 12px;
-  box-shadow: var(--sombra-card); padding: 10px; display: flex; flex-direction: column; gap: 8px;
+
+/* DIÁLOGO, NÃO POPOVER. Popover ancorado dentro de contêiner com rolagem é
+   cortado pela borda dele, e a lista interna rolando dentro de um painel rolando
+   empilha três recortes para escolher um item. Aqui é portal no body, centralizado:
+   nada recorta, cabe grade de 2 colunas, e há busca e rodapé de confirmação. */
+.fundo-dialogo {
+  position: fixed; inset: 0; z-index: 60;
+  background: color-mix(in srgb, var(--pbi-ink) 45%, transparent);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.dialogo {
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 2px;
+  width: min(560px, 100%); max-height: min(70vh, 560px);
+  display: flex; flex-direction: column; overflow: hidden;
+}
+.dialogo-topo {
+  background: var(--pbi-primary); color: var(--pbi-superficie);
+  padding: 6px 10px; display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
+}
+.dialogo-topo h3 { margin: 0; font-size: .76rem; font-weight: 700; }
+.dialogo-topo .btn-icone {
+  margin-left: auto; background: transparent; border-color: var(--pbi-gold-light);
+  color: var(--pbi-superficie); width: 24px; height: 24px;
+}
+.dialogo-corpo { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.dialogo-rodape {
+  flex: 0 0 auto; border-top: 1px solid var(--borda); padding: 8px 10px;
+  display: flex; align-items: center; gap: 8px;
 }
 .filtro-busca { width: 100%; }
-.filtro-lista { max-height: 240px; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; }
+.filtro-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px; }
 .filtro-opcao {
-  display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 6px;
+  display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 2px;
   font-size: .74rem; cursor: pointer;
 }
-.filtro-opcao:hover { background: var(--amber-soft); }
-.filtro-opcao input { width: auto; padding: 0; }
+.filtro-opcao:hover { background: var(--pbi-primary-soft); }
+.filtro-opcao input { width: auto; padding: 0; accent-color: var(--pbi-primary); }
 .filtro-opcao .vazio { color: var(--sem-dado); font-style: italic; }
-.filtro-acoes { display: flex; gap: 6px; justify-content: space-between; align-items: center; }
 .filtro-nota { font-size: .66rem; color: var(--muted); }
-.filtro-desabilitado {
-  font-size: .68rem; color: var(--muted); background: var(--bg);
-  border: 1px dashed var(--border); border-radius: 8px; padding: 6px 8px; max-width: 320px;
-}
+.filtro-botoes-acao { display: flex; gap: 6px; margin-left: auto; }
 
-/* ------------------------------------------------------------- painel de filtro ativo */
-
-.painel-filtros-ativos {
-  background: var(--white); border: 1px solid var(--border); border-radius: 12px;
-  padding: 10px 14px; display: flex; flex-direction: column; gap: 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.03);
-}
-.cabecalho-filtros-ativos { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.titulo-filtros-ativos { font-size: .7rem; font-weight: 700; color: var(--text); }
-.btn-limpar-tudo {
-  font-size: .66rem; padding: 3px 8px; color: var(--danger); border-color: var(--danger);
-  border-radius: 6px; cursor: pointer; transition: all .15s ease;
-}
-.btn-limpar-tudo:hover { background: var(--erro-bg); }
-.lista-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .pill-filtro {
-  display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px;
-  background: var(--amber-soft); border: 1px solid rgba(245,158,11,.3);
-  border-radius: 999px; font-size: .68rem; color: var(--amber-dark);
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
+  background: var(--pbi-primary-soft); border: 1px solid var(--pbi-primary);
+  border-radius: 999px; font-size: .68rem; color: var(--pbi-primary); font-weight: 600;
 }
-.pill-rotulo { font-weight: 700; }
-.pill-valores { font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pill-rotulo { font-weight: 800; }
+.pill-valores { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-remover-pill {
-  border: 0; background: transparent; padding: 0; margin-left: 2px;
-  font-size: .68rem; cursor: pointer; color: var(--amber-dark); opacity: .7;
+  border: 0; background: transparent; padding: 0; margin-left: 2px; line-height: 0;
+  cursor: pointer; color: var(--pbi-primary);
 }
-.btn-remover-pill:hover { opacity: 1; color: var(--danger-dark); }
+.btn-remover-pill:hover { color: var(--pbi-critico); }
 
-/* -------------------------------------------------------------------- cards */
+/* ==================================================================== tabelas */
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(196px, 1fr)); gap: 12px; }
-.cartao {
-  background: var(--white); border: 1px solid var(--border); border-radius: 14px;
-  box-shadow: var(--sombra-card); padding: 14px 16px; min-width: 0; position: relative;
-}
-.cartao-acoes { position: absolute; top: 12px; right: 14px; z-index: 5; }
-.btn-exportar {
-  font-size: .64rem; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border);
-  background: var(--white); color: var(--muted); cursor: pointer; transition: all .15s ease;
-}
-.btn-exportar:hover { background: var(--bg); color: var(--text); border-color: var(--amber); }
-.cartao-topo { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
-.cartao-topo h2 { margin: 0; font-size: .82rem; font-weight: 800; }
-.cartao-topo .sub { font-size: .72rem; color: var(--muted); }
-.kpi-nome {
-  margin: 0 0 6px; font-size: .62rem; font-weight: 700; letter-spacing: .06em;
-  text-transform: uppercase; color: var(--texto-cabecalho);
-}
-.kpi-valor { font-size: 1.7rem; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.kpi-valor.vazio { color: var(--sem-dado); font-size: 1.1rem; font-weight: 600; }
-.kpi-origem { margin-top: 6px; font-size: .66rem; color: var(--muted); }
-/* O id do visual, que é a chave de `specs/paridade/*.yaml`. Ver o comentário do Card. */
-.id-visual {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: .6rem; color: var(--texto-cabecalho); user-select: all;
-}
-.largo { grid-column: 1 / -1; }
-
-/* ------------------------------------------------------------------ tabelas */
-
-.rolagem { overflow: auto; max-height: 460px; }
-table.dados { border-collapse: collapse; width: 100%; font-size: .76rem; }
+.rolagem { flex: 1 1 auto; min-height: 0; overflow: auto; }
+table.dados { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .72rem; }
 table.dados th {
-  position: sticky; top: 0; background: var(--cabecalho-tabela); color: var(--texto-cabecalho);
-  text-transform: uppercase; font-size: .62rem; letter-spacing: .04em;
-  text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+  position: sticky; top: 0; z-index: 2;
+  background: var(--pbi-primary); color: var(--pbi-superficie);
+  text-transform: uppercase; font-size: .64rem; letter-spacing: .03em; font-weight: 700;
+  text-align: left; padding: 5px 8px; white-space: nowrap;
+  border-bottom: 1px solid var(--pbi-primary-dark);
 }
 table.dados th.th-clicavel { cursor: pointer; user-select: none; }
-table.dados th.th-clicavel:hover { background: var(--border); color: var(--text); }
-.icone-ordem { font-size: .6rem; opacity: .7; }
-table.dados td { padding: 6px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-table.dados tbody tr:hover { background: rgba(245,158,11,.03); }
+table.dados th.th-clicavel:hover { background: var(--pbi-primary-dark); }
+.icone-ordem { margin-left: 4px; vertical-align: -1px; }
+table.dados td {
+  padding: 4px 8px; border-bottom: 1px solid var(--grade); white-space: nowrap;
+  color: var(--texto); overflow: hidden; text-overflow: ellipsis;
+}
+table.dados tbody tr:hover td { background: var(--fundo); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.sem { color: var(--sem-dado); }
 
-/* --------------------------------------------------------------- paginação */
+/* Barra de dados dentro da célula, em um só tom claro → escuro: é magnitude, e o
+   Power BI economiza um visual inteiro fazendo assim. */
+td.barra-dado { position: relative; }
+td.barra-dado .fundo-barra {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+  height: 62%; background: var(--pbi-gold-light); border-radius: 1px; z-index: 0;
+}
+td.barra-dado > span { position: relative; z-index: 1; }
+
+/* Primeira coluna fixa em tabela larga (detalhe de 24+ colunas, matriz de datas).
+   `table-layout: fixed` porque a distribuição automática dá 34% da tabela para a
+   coluna de texto e espreme as de dado; o preço é cortar com reticências e manter
+   o valor inteiro no `title`. */
+table.dados.matriz { table-layout: fixed; }
+table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 296px; }
+.rolagem table.dados th:first-child,
+.rolagem table.dados td:first-child {
+  position: sticky; left: 0; z-index: 1; background: var(--superficie);
+  box-shadow: 1px 0 0 var(--grade);
+}
+.rolagem table.dados thead th:first-child { z-index: 3; background: var(--pbi-primary); }
+.rolagem table.dados tbody tr:hover td:first-child { background: var(--fundo); }
+
+.badge-status {
+  display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px;
+  font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+}
+.badge-status.badge-sim { background: var(--pbi-ok-bg); color: var(--pbi-green); border: 1px solid var(--pbi-green); }
+.badge-status.badge-nao { background: var(--fundo); color: var(--muted); border: 1px solid var(--borda); }
+.badge-status.badge-alerta { background: var(--pbi-erro-bg); color: var(--pbi-critico); border: 1px solid var(--pbi-critico); }
+.badge-status.badge-info { background: var(--pbi-aviso-bg); color: var(--pbi-gold-600); border: 1px solid var(--pbi-gold-600); }
+
+.tabela-cabecalho-acoes { display: flex; align-items: center; gap: 8px; }
+.tabela-busca-input { min-width: 170px; }
 
 .paginacao {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
-  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  flex: 0 0 auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding-top: 6px; border-top: 1px solid var(--grade); font-weight: 600;
 }
-.paginacao button { font-size: .72rem; padding: 4px 10px; }
+.paginacao .espaco { flex: 1; }
 
-.filtro-botoes-acao { display: flex; gap: 4px; }
-.filtro-botoes-acao button { font-size: .62rem; padding: 2px 6px; }
+/* =================================================================== gráficos */
 
-/* ----------------------------------------------------------------- gráficos */
+.rolagem-grafico { flex: 1 1 auto; min-height: 0; overflow: auto; }
+.grafico-svg { background: transparent; display: block; overflow: visible; }
+/* Grade recessiva: horizontal apenas, tracejada. */
+.grade { stroke: var(--grade); stroke-dasharray: 4 4; stroke-width: 1px; }
+.tick { fill: var(--muted); font-size: 10px; font-weight: 600; font-family: var(--font); }
+.eixo { stroke: var(--grade); stroke-width: 1px; }
+.rotulo-x { fill: var(--muted); font-size: 10px; font-weight: 600; font-family: var(--font); }
+.rotulo-x.sob { fill: var(--texto); font-weight: 800; }
+.banda { fill: transparent; }
+.banda.sob { fill: var(--pbi-primary-soft); }
+.linha-serie { fill: none; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; }
+.ponto-serie { stroke: var(--superficie); stroke-width: 2px; }
+/* Valor e rótulo em tinta, nunca na cor da série. */
+.rotulo-valor { fill: var(--texto); font-size: 10px; font-weight: 700; font-family: var(--font); }
+.aviso-grafico { font-size: .68rem; color: var(--muted); margin: 0; }
 
-.barras { display: flex; flex-direction: column; gap: 5px; }
-.barra { display: grid; grid-template-columns: minmax(90px, 210px) 1fr auto; gap: 10px; align-items: center; }
-.barra.barra-clicavel { cursor: pointer; border-radius: 6px; padding: 2px 4px; transition: background .15s ease; }
-.barra.barra-clicavel:hover { background: var(--amber-soft); }
-.barra.barra-clicavel:hover .rot { color: var(--text); font-weight: 600; }
-.barra .rot { font-size: .72rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Barras horizontais (listas curtas): mesma ordem de cor da série. */
+.barras { display: flex; flex-direction: column; gap: 4px; }
+.barra { display: grid; grid-template-columns: minmax(100px, 220px) 1fr auto; gap: 10px; align-items: center; }
+.barra.barra-clicavel { cursor: pointer; }
+.barra.barra-clicavel:hover { background: var(--pbi-primary-soft); }
+.barra .rot { font-size: .7rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pilha { display: flex; flex-direction: column; gap: 2px; }
-.trilho { background: var(--bg); border-radius: 4px; height: 14px; overflow: hidden; }
-.preenche { height: 100%; border-radius: 4px; background: var(--amber); transition: width .3s ease; }
-.preenche.s1 { background: var(--green); }
-.preenche.s2 { background: var(--danger); }
-.preenche.s3 { background: var(--muted); }
+.trilho { background: var(--fundo); border-radius: 0 3px 3px 0; height: 12px; overflow: hidden; }
+.preenche { height: 100%; border-radius: 0 3px 3px 0; background: var(--pbi-gold); }
 .barra .n {
-  font-size: .72rem; font-variant-numeric: tabular-nums; min-width: 90px; text-align: right;
-  display: flex; flex-direction: column; gap: 2px;
+  font-size: .7rem; font-variant-numeric: tabular-nums; min-width: 80px; text-align: right;
+  display: flex; flex-direction: column; gap: 2px; font-weight: 600; color: var(--texto);
 }
-.valor-item { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
-.pct-badge {
-  font-size: .58rem; font-weight: 700; color: var(--muted);
-  background: var(--bg); border-radius: 4px; padding: 1px 4px;
-}
-.legenda { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; font-size: .7rem; color: var(--muted); }
-.chave { display: inline-flex; align-items: center; gap: 5px; }
-.ponto { width: 9px; height: 9px; border-radius: 2px; background: var(--amber); display: inline-block; }
-.ponto.s1 { background: var(--green); }
-.ponto.s2 { background: var(--danger); }
-.ponto.s3 { background: var(--muted); }
+.pct-badge { font-size: .6rem; font-weight: 700; color: var(--muted); }
 
-/* ------------------------------------------------------------------ estados */
+/* Legenda: presente sempre que houver 2+ séries. Gold e orange separam 17,7 em
+   OKLab (piso 15) — a identidade não pode depender só da cor. */
+.legenda { display: flex; gap: 14px; flex-wrap: wrap; font-size: .7rem; color: var(--muted); font-weight: 600; }
+.chave { display: inline-flex; align-items: center; gap: 6px; }
+.ponto { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.tracinho { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
+/* ==================================================================== estados */
+/* Os três não são opcionais: tela de dashboard passa a vida carregando, filtrando
+   para vazio e tomando erro de rede. Sem os três o usuário vê card branco e
+   conclui que o número é zero. */
 
 .erro {
-  background: var(--erro-bg); border: 1px solid var(--erro-bd); color: var(--erro-fg);
-  border-radius: 10px; padding: 10px 12px; font-size: .74rem; white-space: pre-wrap;
+  background: var(--pbi-erro-bg); border: 1px solid var(--pbi-critico); color: var(--pbi-critico);
+  border-radius: 2px; padding: 8px 10px; font-size: .74rem; white-space: pre-wrap; font-weight: 600;
 }
 .aviso {
-  background: var(--amber-soft); border: 1px solid rgba(245,158,11,.3); color: var(--amber-dark);
-  border-radius: 10px; padding: 10px 12px; font-size: .74rem;
+  background: var(--pbi-aviso-bg); border: 1px solid var(--pbi-gold-600); color: var(--pbi-gold-600);
+  border-radius: 2px; padding: 8px 10px; font-size: .74rem; font-weight: 600;
 }
-.vazio-pagina { color: var(--muted); padding: 48px; text-align: center; }
-.sob-demanda { color: var(--muted); padding: 24px; text-align: center; }
-.sob-demanda p { margin: 0 0 16px; max-width: 60ch; margin-inline: auto; }
+.vazio-pagina, .sob-demanda {
+  color: var(--muted); padding: 24px 12px; text-align: center; font-size: .76rem;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; height: 100%;
+}
+.sob-demanda p { margin: 0; max-width: 60ch; }
 
-/* O esqueleto de carregamento: a tela diz que está viva. Uma página fria leva
-   segundos, e uma área em branco por 10 s é indistinguível de uma tela quebrada. */
-.esqueleto { display: flex; flex-direction: column; gap: 12px; }
+.esqueleto { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .esqueleto-linha {
-  height: 84px; border-radius: 14px; background: var(--white);
-  border: 1px solid var(--border); position: relative; overflow: hidden;
+  height: 68px; border-radius: 2px; background: var(--superficie);
+  border: 1px solid var(--borda); position: relative; overflow: hidden;
 }
 .esqueleto-linha::after {
   content: ''; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, var(--bg), transparent);
+  background: linear-gradient(90deg, transparent, var(--fundo), transparent);
   animation: varre 1.3s infinite;
 }
 @keyframes varre { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .esqueleto-linha::after { animation: none; } }
 
-/* ------------------------------------------------------- responsivo (HUBBI) */
+/* ================================================================ responsivo */
 
 @media (max-width: 900px) {
   .barra-lateral { display: none; }
-  .shell { grid-template-columns: 1fr; }
-  .coluna-direita { grid-column: 1; }
 }
 @media (max-width: 640px) {
   .cabecalho-titulo, .cabecalho-sub { display: none; }

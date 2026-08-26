@@ -138,8 +138,7 @@ export function calculaMatriz(
       // O HAVING é da célula: reprovada, ela fica vazia — e é isso que faz uma linha
       // ou coluna inteira sumir quando nenhuma das células dela passa.
       if (!having.every((h) => h.passa(escopo))) return medidas.map(() => null as DaxValue);
-      // `base` é o total do visual — sem linha e sem coluna.
-      return medidas.map((m) => valorDoCampo(m, escopo, ev, onde, base));
+      return medidas.map((m) => valorDoCampo(m, escopo, ev, onde));
     }),
   );
 

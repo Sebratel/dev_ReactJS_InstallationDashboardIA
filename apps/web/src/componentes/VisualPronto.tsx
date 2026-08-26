@@ -5,7 +5,7 @@
 // visual pronto. Um importando o outro fecha um ciclo de módulos; com este terceiro
 // arquivo, os dois dependem dele e nenhum depende do outro.
 
-import type { FiltroDaTela, Valor, VisualCalculado } from '../api.ts';
+import type { FiltroDaTela, VisualCalculado } from '../api.ts';
 import { Card } from './Card.tsx';
 import { Cartao, Erro } from './Cartao.tsx';
 import { Grafico } from './Grafico.tsx';
@@ -16,12 +16,10 @@ export function VisualPronto({
   pagina,
   visual,
   filtros,
-  aoFiltrar,
 }: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
-  aoFiltrar?: (tabela: string, coluna: string, valor: Valor) => void;
 }) {
   // O erro de um visual é informação, e viaja no payload justamente para aparecer.
   // Esconder o card quebrado deixaria a página com um buraco silencioso.
@@ -40,7 +38,7 @@ export function VisualPronto({
   if (visual.conteudo === 'matriz') {
     return <Matriz pagina={pagina} visual={visual} filtros={filtros} />;
   }
-  if (visual.conteudo === 'grafico') return <Grafico visual={visual} aoFiltrar={aoFiltrar} />;
+  if (visual.conteudo === 'grafico') return <Grafico visual={visual} />;
 
   // `conteudo: null` sem ser segmentação nem sob demanda: imagem, forma, caixa de
   // texto. São 189 no relatório inteiro e não têm número — a página os conta na

@@ -140,7 +140,7 @@ export interface FiltroDaTela {
 export function urlDaPagina(
   id: string,
   filtros: readonly FiltroDaTela[] = [],
-  opcoes: { visual?: string; linhas?: number; de?: number; recalcula?: boolean } = {},
+  opcoes: { visual?: string; linhas?: number; de?: number } = {},
 ): string {
   const p = new URLSearchParams();
   for (const f of filtros) {
@@ -152,8 +152,9 @@ export function urlDaPagina(
   }
   if (opcoes.visual) p.set('visual', opcoes.visual);
   if (opcoes.linhas) p.set('linhas', String(opcoes.linhas));
+  // `de=0` é o padrão da API e não precisa viajar; mandá-lo sujaria toda URL de
+  // primeira janela. Só a partir da segunda o parâmetro diz alguma coisa.
   if (opcoes.de) p.set('de', String(opcoes.de));
-  if (opcoes.recalcula) p.set('recalcula', '1');
   const q = p.toString();
   return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
 }
@@ -195,7 +196,7 @@ export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[] }> =
 export const pegaPagina = (
   id: string,
   filtros: readonly FiltroDaTela[],
-  opcoes?: { visual?: string; de?: number; linhas?: number; recalcula?: boolean },
+  opcoes?: { visual?: string; de?: number; linhas?: number },
 ): Promise<PaginaCalculada> => pega(urlDaPagina(id, filtros, opcoes));
 
 export const pegaValores = (

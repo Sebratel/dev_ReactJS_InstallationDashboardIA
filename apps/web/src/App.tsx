@@ -9,14 +9,16 @@ import {
   type PaginaCalculada,
   type Valor,
 } from './api.ts';
-import { dataHora, duracao, inteiro } from './formato.ts';
+import { dataHora, duracao, formata, inteiro } from './formato.ts';
 import { aplicaSelecao, escreveRota, leRota, selecaoDe } from './rota.ts';
 import { AppShell } from './componentes/AppShell.tsx';
 import { Erro } from './componentes/Cartao.tsx';
 import { Segmentacao } from './componentes/Segmentacao.tsx';
 import { Visual } from './componentes/Visual.tsx';
+import { usaModo } from './modo.tsx';
 
 export function App() {
+  const { conferencia, alterna } = usaModo();
   const inicial = useMemo(() => leRota(window.location.search), []);
   const [paginas, setPaginas] = useState<DashboardDaLista[]>([]);
   const [atual, setAtual] = useState<string | null>(inicial.pagina);
@@ -34,25 +36,6 @@ export function App() {
       })
       .catch((err: unknown) => setErro(err instanceof Error ? err.message : String(err)));
   }, []);
-
-  // Realtime EventSource (SSE): ativado via Kafka/CDC em tempo real
-  useEffect(() => {
-    if (!atual) return;
-    const es = new EventSource('/api/realtime');
-    es.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data) as { tipo?: string };
-        if (data.tipo === 'invalida') {
-          pegaPagina(atual, filtros)
-            .then((p) => setPagina(p))
-            .catch(() => {});
-        }
-      } catch {
-        // ignora mensagens fora do formato
-      }
-    };
-    return () => es.close();
-  }, [atual, filtros]);
 
   // Página ou filtro mudou: pede de novo, e escreve o estado na URL.
   //
@@ -88,6 +71,9 @@ export function App() {
 
   const escolhe = useCallback((id: string) => {
     setAtual(id);
+    // Os filtros não atravessam a troca de página: uma segmentação de
+    // `'PROTOCOLOS GERAL'[EQUIPE]` numa página que não usa essa tabela faria a API
+    // errar alto, e o erro seria confuso — a pessoa só clicou noutra página.
     setFiltros([]);
     setPagina(null);
   }, []);
@@ -115,11 +101,15 @@ export function App() {
       titulo={nome}
       sub={pagina ? `dado de ${dataHora(pagina.dadoDe)}` : ''}
       acoes={
-        <div className="grupo-acoes-cabecalho">
-          <span className="selo-realtime" title="Conectado ao fluxo de eventos em tempo real via Kafka/Debezium">
-            🟢 Realtime CDC
-          </span>
-        </div>
+        <button
+          className="primario"
+          // Cópia rasa força o efeito de busca a rodar de novo: o array de filtros
+          // muda de identidade sem mudar de conteúdo, e é a identidade que o React compara.
+          onClick={() => setFiltros((f) => [...f])}
+          disabled={carregando || !atual}
+        >
+          {carregando ? 'calculando…' : 'Recalcular'}
+        </button>
       }
     >
       {inicial.invalidos.length > 0 ? (
@@ -147,35 +137,7 @@ export function App() {
         </div>
       ) : null}
 
-      {filtros.length > 0 ? (
-        <div className="painel-filtros-ativos">
-          <div className="cabecalho-filtros-ativos">
-            <span className="titulo-filtros-ativos">🏷️ Filtros Ativos ({filtros.length}):</span>
-            <button className="secundario btn-limpar-tudo" onClick={() => setFiltros([])}>
-              🧹 Limpar Todos os Filtros
-            </button>
-          </div>
-          <div className="lista-pills">
-            {filtros.map((f) => (
-              <span key={`${f.tabela}-${f.coluna}-${f.nivel ?? ''}`} className="pill-filtro">
-                <span className="pill-rotulo">{f.coluna}{f.nivel ? `.${f.nivel}` : ''}:</span>
-                <span className="pill-valores">
-                  {f.valores.map((v) => (v === null ? '(vazio)' : String(v))).join(', ')}
-                </span>
-                <button
-                  className="btn-remover-pill"
-                  title="Remover este filtro"
-                  onClick={() => mudaFiltro(f.tabela, f.coluna, [], f.nivel)}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {pagina ? (
+      {conferencia && pagina ? (
         <div className="faixa">
           <span className="selo">{pagina.resumo.calculados} calculados</span>
           {pagina.resumo.falharam ? (
@@ -205,25 +167,13 @@ export function App() {
       {cards.length > 0 ? (
         <div className="kpis">
           {cards.map((v) => (
-            <Visual
-              key={v.id}
-              pagina={atual!}
-              visual={v}
-              filtros={filtros}
-              aoFiltrar={(t, c, val) => mudaFiltro(t, c, [val])}
-            />
+            <Visual key={v.id} pagina={atual!} visual={v} filtros={filtros} />
           ))}
         </div>
       ) : null}
 
       {blocos.map((v) => (
-        <Visual
-          key={v.id}
-          pagina={atual!}
-          visual={v}
-          filtros={filtros}
-          aoFiltrar={(t, c, val) => mudaFiltro(t, c, [val])}
-        />
+        <Visual key={v.id} pagina={atual!} visual={v} filtros={filtros} />
       ))}
 
       {pagina && cards.length === 0 && blocos.length === 0 ? (

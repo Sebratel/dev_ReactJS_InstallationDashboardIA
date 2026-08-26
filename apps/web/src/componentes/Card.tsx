@@ -2,8 +2,10 @@
 
 import type { DadosDeCard, VisualCalculado } from '../api.ts';
 import { formata } from '../formato.ts';
+import { usaModo } from '../modo.tsx';
 
 export function Card({ visual }: { visual: VisualCalculado }) {
+  const { conferencia } = usaModo();
   const d = visual.dados as DadosDeCard;
   const f = formata(d.valor, d.tipoDoValor);
 
@@ -19,15 +21,24 @@ export function Card({ visual }: { visual: VisualCalculado }) {
     <section className="cartao">
       <h3 className="kpi-nome">{d.nome ?? '(sem rótulo)'}</h3>
       <div className={`kpi-valor${f.vazio ? ' vazio' : ''}`}>{f.texto}</div>
-      <div className="kpi-origem">
-        {origem}
-        {d.filtros.length ? ` · ${d.filtros.length} filtro(s)` : ''}
-      </div>
-      <div className="kpi-origem">
-        <span className="id-visual" title="id do visual — a chave de specs/paridade">
-          {visual.id}
-        </span>
-      </div>
+      {d.filtros.length ? (
+        <div className="kpi-filtros" title="Segmentações que afetam este número">
+          {d.filtros.length} filtro(s) aplicado(s)
+        </div>
+      ) : null}
+      {conferencia ? (
+        <>
+          <div className="kpi-origem">
+            {origem}
+            {d.filtros.length ? ` · ${d.filtros.length} filtro(s)` : ''}
+          </div>
+          <div className="kpi-origem">
+            <span className="id-visual" title="id do visual — a chave de specs/paridade">
+              {visual.id}
+            </span>
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

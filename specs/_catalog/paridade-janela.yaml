@@ -1,0 +1,83 @@
+# Janela de dados: como perguntar ao Power BI a MESMA fatia que temos em disco.
+#
+# ARQUIVO HUMANO. Não é gerado por `npm run extract` — decisão nossa, como
+# `divergencias.yaml` e `juncoes.yaml`.
+#
+# POR QUE EXISTE. O modelo publicado carrega mais história do que a plataforma
+# materializa. Medido em 25/08/2026, `PROTOCOLOS PRODUTIVIDADE` tinha 187.534
+# linhas no Power BI e 70.868 aqui, porque o SQL corta em `a.created >=
+# '2026-01-01'`. Gravar em `specs/paridade/*.yaml` a medida SEM filtro poria no
+# gabarito um número que a plataforma nunca vai produzir. Um gabarito impossível
+# não detecta regressão — ele ensina a ignorar o alarme.
+#
+# REGRA DO CAMPO `verificado`: só entra aqui predicado que, aplicado no Power BI,
+# devolve a contagem de linhas que temos em disco. O número fica registrado para
+# que a próxima pessoa possa refazer a conta em vez de acreditar.
+#
+# COMO CONFERIR DE NOVO:
+#   EVALUATE ROW("n", CALCULATE(COUNTROWS('TABELA'), <o dax abaixo>))
+# e compare com a entrada da tabela em snapshot/manifesto.json.
+
+tabelas:
+  # SQL: `WHERE ... AND a.created >= '2026-01-01'`
+  # (specs/_catalog/queries/protocolos-produtividade.spec.yaml, e o mesmo piso
+  # está em incremental.yaml como `piso: '2026-01-01'`).
+  #
+  # CUIDADO, e é a armadilha desta tabela: o corte é por DATA CRIADO, mas quase
+  # toda medida agrega por DATA INSTALAÇÃO. Protocolo criado em 2025 e instalado
+  # em 2026 existe lá e não existe aqui — 328 casos em 2026, concentrados na
+  # primeira semana de janeiro. Por isso o predicado é na coluna do CORTE, não na
+  # da agregação: é ele que reproduz o conjunto de linhas que temos.
+  PROTOCOLOS PRODUTIVIDADE:
+    dax: "'PROTOCOLOS PRODUTIVIDADE'[DATA CRIADO] >= DATE(2026,1,1)"
+    verificado:
+      pbi: 70879
+      nos: 70868
+      em: '2026-08-25'
+
+  # SQL: `WHERE it.id IN (...) AND a.created >= '2026-01-01'`
+  # (specs/_catalog/queries/protocolos-geral.spec.yaml, linha ~71).
+  PROTOCOLOS GERAL:
+    dax: "'PROTOCOLOS GERAL'[DATA CRIADO] >= DATE(2026,1,1)"
+    verificado:
+      pbi: 35095
+      nos: 34978
+      em: '2026-08-25'
+
+# Tabelas em que NENHUM predicado equaliza, porque os dois lados não são a mesma
+# coisa. Card cujo alcance toca uma destas não recebe número automático.
+bloqueadas:
+  FIELD AGENDA: >-
+    As duas tabelas têm definições diferentes, não janelas diferentes. O nosso SQL
+    filtra região (`region_title LIKE '%Base Canoas (Ativação)%' OR '%Base São
+    Leopoldo (Ativação)%'`) e exclui relatos por título (`Execução:%`,
+    `Manutenção de Solicitação%`, ...); o modelo publicado não faz nada disso.
+    Medido em 25/08/2026: 1.587.041 linhas lá contra 41.255 aqui, e o recorte de
+    3 meses do SQL sozinho explica só até 641.996 — sobra um fator de 15.
+    Some-se que a última carga desta query MORREU (`snapshot/field-agenda.erro.log`,
+    ECONNRESET em 19/08 após 38 min de colunas calculadas), então o arquivo em
+    disco também está incompleto. Resolver a carga antes de tentar equalizar.
+
+  # Este bloqueio não é de janela — é de CONFIANÇA na fonte, e o motivo importa
+  # porque aqui quem regrediu foi o Power BI, não a plataforma.
+  INSTALAÇÕES REINCIDENTES: >-
+    A base de reincidência do modelo publicado congelou. Medido em 25/08/2026: as
+    linhas marcadas `reincidente_30d = "SIM"` vão de 2026-01-02 até **2026-04-13**
+    e param, enquanto as marcadas "NÃO" seguem até 2026-08-25 — fonte que parou de
+    alimentar, não regra de negócio. Total lá: 444. Aqui: 1.372, distribuídos de
+    forma estável (212, 157, 176, 195, 193, 185, 165, 89 por mês).
+    A prova de que os 444 são o desvio, e não nós: o gabarito de
+    `specs/paridade/instalacao-reincidente.yaml`, ditado DA TELA em 11/08/2026,
+    registra `Reincidentes: 1272` e `% Reincidencia: 0.0649` — e a nossa
+    `% Reincidencia` dá 0.064911, erro de 0,02%. O relatório mostrava o número
+    certo em agosto e passou a mostrar 444 depois. Preencher o gabarito pela API
+    aqui trocaria um número correto por um regredido. Reavaliar quando a fonte
+    de manutenções do Power BI voltar a alimentar.
+
+  BACKLOG AGENDADO FUTURO: >-
+    Formas incompatíveis. No Power BI é uma tabela de 5 colunas
+    (`protocolo_id`, `data_inicio_slot`, `data_carga`) com 91.335 linhas; aqui são
+    147.936 — nós temos MAIS, então não é recorte de data, e um predicado de
+    janela não teria o que cortar. Provavelmente granularidade de carga diferente
+    (`data_carga` sugere um acumulado diário lá). Investigar a definição antes de
+    declarar qualquer predicado.
