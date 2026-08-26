@@ -28,8 +28,6 @@ import { decodificaFiltros } from '../../../packages/widget-engine/src/filtro-ur
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
 import { leManifesto, maisAntigo } from '../../../packages/snapshot/src/manifesto.ts';
 import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
-import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
-import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
 import {
@@ -126,22 +124,6 @@ export class Servidor {
   private readonly carregadas = new Map<string, Promise<Carregado>>();
   /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
   private carimboDasCarregadas: string | null = null;
-  /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
-  private carimboDasCarregadas: string | null = null;
-  /**
-   * O último carimbo calculado, junto da assinatura barata que o produziu. Ver
-   * `carimboAtual`: sem isto, todo acerto de cache pagava um `JSON.parse` do
-   * manifesto para chegar a um valor que quase nunca muda.
-   */
-  private carimboMemo: { assinatura: string; carimbo: string } | null = null;
-  /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
-  private carimboDasCarregadas: string | null = null;
-  /**
-   * O último carimbo calculado, junto da assinatura barata que o produziu. Ver
-   * `carimboAtual`: sem isto, todo acerto de cache pagava um `JSON.parse` do
-   * manifesto para chegar a um valor que quase nunca muda.
-   */
-  private carimboMemo: { assinatura: string; carimbo: string } | null = null;
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, ...resto } = opts;
@@ -563,84 +545,6 @@ export class Servidor {
       this.carimboDasCarregadas = carimbo;
     }
 
-    // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
-    // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
-    // snapshot`, e aí o processo é reiniciado") deixa de valer no dia em que o
-    // aquecimento roda junto do refresh: a API serviria o dado antigo até alguém
-    // lembrar de reiniciar. O carimbo é o mesmo do cache de resposta, então as duas
-    // camadas enxergam a troca no mesmo instante.
-    //
-    // **E o dia entra junto, pelo mesmo motivo que entrou na chave da resposta.** O
-    // avaliador congela o `now` que recebeu aqui embaixo (`carrega({ now })`), e
-    // `TODAY()` sai dele. Um servidor que atravessa a meia-noite sem esta parte
-    // continuaria servindo o `TODAY()` de ontem por tempo indeterminado — e o
-    // estrago seria pior **depois** do dia entrar na chave da resposta, não antes:
-    // a chave nova daria miss, o recálculo pegaria este avaliador velho, e a
-    // resposta de hoje seria gravada com o ontem dentro. As duas camadas medem a
-    // mesma identidade ou nenhuma das duas mede.
-    const carimbo = this.identidadeAtual();
-    if (this.carimboDasCarregadas !== carimbo) {
-      this.carregadas.clear();
-      // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
-      // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
-      // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
-      this.completos.limpa();
-      // E o mesmo na camada durável, pelo mesmo motivo — só que lá o lixo é pior:
-      // ele sobrevive ao restart. Ver `CacheDeResposta.varreCarimbosAntigos`.
-      //
-      // **Sem `await`, e de propósito.** Isto roda no caminho de um pedido, e uma
-      // varredura de Redis não pode ser o que o usuário espera. O pior caso de
-      // deixá-la solta é o lixo ficar mais um pouco; o pior caso de esperá-la é a
-      // página demorar por causa de faxina.
-      this.varreCacheDuravel(carimbo);
-      this.carimboDasCarregadas = carimbo;
-    }
-
-    // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
-    // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
-    // snapshot`, e aí o processo é reiniciado") deixa de valer no dia em que o
-    // aquecimento roda junto do refresh: a API serviria o dado antigo até alguém
-    // lembrar de reiniciar. O carimbo é o mesmo do cache de resposta, então as duas
-    // camadas enxergam a troca no mesmo instante.
-    //
-    // **E o dia entra junto, pelo mesmo motivo que entrou na chave da resposta.** O
-    // avaliador congela o `now` que recebeu aqui embaixo (`carrega({ now })`), e
-    // `TODAY()` sai dele. Um servidor que atravessa a meia-noite sem esta parte
-    // continuaria servindo o `TODAY()` de ontem por tempo indeterminado — e o
-    // estrago seria pior **depois** do dia entrar na chave da resposta, não antes:
-    // a chave nova daria miss, o recálculo pegaria este avaliador velho, e a
-    // resposta de hoje seria gravada com o ontem dentro. As duas camadas medem a
-    // mesma identidade ou nenhuma das duas mede.
-    const carimbo = this.identidadeAtual();
-    if (this.carimboDasCarregadas !== carimbo) {
-      this.carregadas.clear();
-      // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
-      // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
-      // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
-      this.completos.limpa();
-      // E o mesmo na camada durável, pelo mesmo motivo — só que lá o lixo é pior:
-      // ele sobrevive ao restart. Ver `CacheDeResposta.varreCarimbosAntigos`.
-      //
-      // **Sem `await`, e de propósito.** Isto roda no caminho de um pedido, e uma
-      // varredura de Redis não pode ser o que o usuário espera. O pior caso de
-      // deixá-la solta é o lixo ficar mais um pouco; o pior caso de esperá-la é a
-      // página demorar por causa de faxina.
-      this.varreCacheDuravel(carimbo);
-      this.carimboDasCarregadas = carimbo;
-    }
-
-    // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
-    // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
-    // snapshot`, e aí o processo é reiniciado") deixa de valer no dia em que o
-    // aquecimento roda junto do refresh: a API serviria o dado antigo até alguém
-    // lembrar de reiniciar. O carimbo é o mesmo do cache de resposta, então as duas
-    // camadas enxergam a troca no mesmo instante.
-    const carimbo = this.carimboAtual();
-    if (this.carimboDasCarregadas !== carimbo) {
-      this.carregadas.clear();
-      this.carimboDasCarregadas = carimbo;
-    }
-
     const pronto = this.carregadas.get(chave);
     if (pronto) return pronto;
     const promessa = carrega({
@@ -698,76 +602,8 @@ export class Servidor {
     );
   }
 
-  /**
-   * A identidade completa do que a API responderia agora: o dado em disco e o dia.
-   *
-   * **Pública porque o aquecedor precisa dela**, e precisa dela *exatamente* como as
-   * duas camadas de cache a calculam. Um aquecedor que vigiasse só o carimbo dormiria
-   * na virada da meia-noite — que é justamente o instante em que o cache inteiro fica
-   * inalcançável de uma vez, pelas 32 chamadas a `TODAY()`. A tela do primeiro
-   * expediente é a que pagaria.
-   */
   identidadeAtual(): string {
     return identidadeDoCalculo(this.carimboAtual(), diaDoCalculo(this.opts.agora()));
-  }
-
-  /**
-   * A identidade do que está em disco **agora**: manifesto mais tabelas calculadas.
-   *
-   * Uma função só, usada pelas duas camadas de cache. Duas contas separadas para a
-   * "mesma" identidade divergiriam no primeiro arquivo que uma delas não olhasse — e
-   * foi exatamente assim que os `calc.*.jsonl` ficaram de fora do carimbo.
-   *
-   * **Isto custa 0,57 ms por pedido e fica assim.** É o maior custo fixo de um
-   * acerto de cache — mais que serializar uma página de 96 KB —, quase todo em
-   * `leManifesto` (ler o arquivo e fazer `JSON.parse`). A tentação de memoizá-lo
-   * atrás de uma conferência barata é óbvia, e foi tentada em 17/08/2026: guardar o
-   * carimbo e só recalculá-lo quando `mtime` e tamanho do manifesto mudassem.
-   *
-   * **Não funciona, e o teste provou antes de o código sair daqui.** Reescrever o
-   * manifesto trocando só a hora de `geradoEm` não muda um byte do tamanho — a data
-   * tem largura fixa —, então sobra o `mtime` para separar as duas versões. E o
-   * `mtime` desta máquina tem granularidade medida de **~2,45 ms** (4.000 escritas,
-   * 265 carimbos de tempo distintos): duas reescritas dentro dessa janela são
-   * indistinguíveis. O memo devolveria o carimbo velho, a chave da resposta apontaria
-   * para a resposta anterior ao refresh, e a tela mostraria o número de antes sem
-   * nada dizendo que era de antes.
-   *
-   * 0,4 ms não compra um modo de desatualização silenciosa. A economia equivalente
-   * está no corpo pré-serializado do cache, que não custa exatidão nenhuma.
-   */
-  private carimboAtual(): string {
-    return carimboDoSnapshot(
-      leManifesto(this.opts.snapshotDir),
-      carimboDasCalculadas(this.opts.snapshotDir),
-    );
-  }
-
-  /**
-   * A identidade completa do que a API responderia agora: o dado em disco e o dia.
-   *
-   * **Pública porque o aquecedor precisa dela**, e precisa dela *exatamente* como as
-   * duas camadas de cache a calculam. Um aquecedor que vigiasse só o carimbo dormiria
-   * na virada da meia-noite — que é justamente o instante em que o cache inteiro fica
-   * inalcançável de uma vez, pelas 32 chamadas a `TODAY()`. A tela do primeiro
-   * expediente é a que pagaria.
-   */
-  identidadeAtual(): string {
-    return identidadeDoCalculo(this.carimboAtual(), diaDoCalculo(this.opts.agora()));
-  }
-
-  /**
-   * A identidade do que está em disco **agora**: manifesto mais tabelas calculadas.
-   *
-   * Uma função só, usada pelas duas camadas de cache. Duas contas separadas para a
-   * "mesma" identidade divergiriam no primeiro arquivo que uma delas não olhasse — e
-   * foi exatamente assim que os `calc.*.jsonl` ficaram de fora do carimbo.
-   */
-  private carimboAtual(): string {
-    return carimboDoSnapshot(
-      leManifesto(this.opts.snapshotDir),
-      carimboDasCalculadas(this.opts.snapshotDir),
-    );
   }
 
   /**

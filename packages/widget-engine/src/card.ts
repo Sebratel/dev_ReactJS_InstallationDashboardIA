@@ -27,6 +27,16 @@ import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 /** Nó sintético: não veio de texto, então não há posição real a apontar. */
 const SEM_POSICAO: Position = { start: 0, line: 1, col: 1 };
 
+export const FUNCAO_DA_AGREGACAO: Record<string, string> = {
+  sum: 'SUM',
+  avg: 'AVERAGE',
+  min: 'MIN',
+  max: 'MAX',
+  count: 'COUNTROWS',
+  count_non_null: 'COUNTA',
+  distinct_count: 'DISTINCTCOUNT',
+};
+
 export interface ValorDeCard {
   dashboard: string;
   visual: string;

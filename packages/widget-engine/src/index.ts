@@ -15,14 +15,21 @@ export {
   type CelulaTabela,
   type ValorDeTabela,
 } from './tabela.ts';
-export { agrupar, chaveDoCampo, type Chave, type Grupo } from './grupos.ts';
 export {
-  calculaTabela,
-  separaCampos,
-  tabelasDoDashboard,
-  type CelulaTabela,
-  type ValorDeTabela,
-} from './tabela.ts';
+  TIPOS_DE_GRAFICO,
+  calculaGrafico,
+  graficosDoDashboard,
+  separaPapeis,
+  type ChaveDeGrafico,
+  type PontoDeGrafico,
+  type SerieDeGrafico,
+  type ValorDeGrafico,
+} from './grafico.ts';
+export {
+  calculaMatriz,
+  matrizesDoDashboard,
+  type ValorDeMatriz,
+} from './matriz.ts';
 export { ancora, deslocar, resolveBorda, resolveSpan, truncar } from './datas.ts';
 export {
   loadDashboards,

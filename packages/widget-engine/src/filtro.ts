@@ -1,17 +1,4 @@
 // Filtro de spec -> `TableFilter` do measure-engine.
-//
-// **Onde está o número errado que este arquivo evita.** Um card computado sem o
-// filtro dele mostra o total geral com cara de total filtrado. Foi por isso que a
-// Fase 3 começou pelos filtros (ACHADOS #27) e não pelo cálculo.
-//
-// **A regra que dá forma ao arquivo, e é fácil errar:** filtro de página e filtro
-// de visual sobre a **mesma coluna** se somam (E), não se substituem. No
-// measure-engine, `FilteredContext.with()` implementa a substituição do DAX — filtro
-// novo derruba o antigo que toque a mesma coluna. Aplicar em duas etapas
-// (`.with(pagina).with(visual)`) faria o filtro de visual **apagar** o da página e
-// alargar o número em silêncio. Por isso `traduzFiltros` devolve uma lista só, para
-// um `with()` único: dentro de um mesmo `with()` os filtros novos não se substituem
-// entre si.
 
 import { normalizeName as normaliza } from '../../semantic-model/src/model.ts';
 import type { Position } from '../../measure-engine/src/ast.ts';
@@ -31,8 +18,8 @@ import {
 } from '../../measure-engine/src/value.ts';
 import { resolveBorda, resolveSpan, truncar } from './datas.ts';
 import type { CondicaoSpec, FiltroSpec, SpanSpec } from './spec.ts';
+import { FUNCAO_DA_AGREGACAO } from './card.ts';
 
-/** Comparações que a spec pode trazer, e o sinal que cada uma aceita. */
 const COMPARA: Record<string, (c: number) => boolean> = {
   eq: (c) => c === 0,
   gt: (c) => c > 0,
@@ -41,31 +28,17 @@ const COMPARA: Record<string, (c: number) => boolean> = {
   le: (c) => c <= 0,
 };
 
-/** Unidades abaixo do dia. Nelas um `DateSpan` é um instante, não um intervalo. */
 const SUBDIA = new Set(['second', 'minute', 'hour']);
-
-/** Nó sintético: não veio de texto, então não há posição real a apontar. */
-const SEM_POSICAO: Position = { start: 0, line: 1, col: 1 };
-
-/** Nó sintético: não veio de texto, então não há posição real a apontar. */
 const SEM_POSICAO: Position = { start: 0, line: 1, col: 1 };
 
 function ehSpan(r: unknown): r is SpanSpec {
   return typeof r === 'object' && r !== null && 'anchor_kind' in r;
 }
 
-/**
- * O filtro age sobre **linha** ou sobre **grupo**?
- *
- * `left_aggregation` é o que separa os dois: com ele, o lado esquerdo da comparação
- * é `COUNT(coluna)`, e a pergunta passa a ser sobre o grupo inteiro. São 10 no
- * relatório (ACHADOS #30).
- */
 export function ehFiltroDeGrupo(f: FiltroSpec): boolean {
   return (f.conditions ?? []).some((c) => c.op === 'comparison' && !!c.left_aggregation);
 }
 
-/** Separa os dois tipos. Um filtro é inteiro de um ou de outro — ver `predicadoDeGrupo`. */
 export function separaFiltros(filtros: readonly FiltroSpec[]): {
   deLinha: FiltroSpec[];
   deGrupo: FiltroSpec[];
@@ -76,19 +49,6 @@ export function separaFiltros(filtros: readonly FiltroSpec[]): {
   return { deLinha, deGrupo };
 }
 
-/**
- * Traduz um filtro sobre valor agregado num predicado de **grupo** (o HAVING).
- *
- * Ele recebe o escopo do grupo — já com os filtros do grupo aplicados — e avalia a
- * agregação ali dentro. É por isso que ele não podia existir antes do agrupamento:
- * sem grupo não há o que agregar, e aplicado ao valor cru vira outro filtro
- * (ACHADOS #30).
- *
- * **A função de agregação sai do mesmo mapa dos campos de visual**, e isso liga
- * este filtro à pergunta em aberto PERGUNTAS-NEGOCIO #6: se `count` for contagem de
- * não-vazios em vez de distinta, muda aqui junto. Ligar de propósito, num mapa só —
- * duas cópias divergiriam no dia da resposta.
- */
 export function predicadoDeGrupo(
   f: FiltroSpec,
   ev: Evaluator,
@@ -103,9 +63,6 @@ export function predicadoDeGrupo(
 
   const testes = condicoes.map((c) => {
     if (c.op !== 'comparison' || !c.left_aggregation) {
-      // Um filtro que mistura condição de grupo e de linha teria de ser aplicado em
-      // dois momentos diferentes. Não ocorre na base (todo filtro tem uma condição
-      // só), e resolver às cegas é escolher um dos dois momentos no escuro.
       throw new DaxEvalError(
         `${rotulo}: mistura condição sobre agregado com condição sobre linha ` +
           `(op '${c.op}'). As duas se aplicam em momentos diferentes — antes e depois ` +
@@ -143,8 +100,6 @@ export function predicadoDeGrupo(
         },
         escopo,
       );
-      // Grupo cuja agregação é BLANK não passa em comparação de ordem — vazio não é
-      // "menor que tudo". Mesma regra do filtro de linha.
       if (isBlank(valor)) return inverte;
       return aceita(compareValues(valor, alvo, false, rotulo)) !== inverte;
     };
@@ -153,17 +108,6 @@ export function predicadoDeGrupo(
   return { origem: rotulo, passa: (escopo) => testes.every((t) => t(escopo)) };
 }
 
-/**
- * Traduz uma lista de filtros de spec (página + visual, juntos) em `TableFilter[]`.
- *
- * Falha alto em tudo que não souber: `op: desconhecido`, comparação sem tradução,
- * unidade de tempo estranha. Um filtro descartado em silêncio é um número errado.
- *
- * **Filtro sobre agregado não passa por aqui** — ele erra alto (ver `predicado`).
- * Quem sabe agrupar chama `separaFiltros` antes e manda cada metade para o seu
- * lugar; quem não sabe (o card) recebe o erro, que é a resposta certa: um card não
- * tem grupos para filtrar.
- */
 export function traduzFiltros(
   filtros: readonly FiltroSpec[],
   ev: Evaluator,
@@ -185,9 +129,6 @@ export function traduzFiltros(
       );
     }
 
-    // As condições de um filtro são cláusulas do mesmo `Where` do PBIP: valem
-    // todas juntas (E). Como restringem a mesma coluna, vão para **um** predicado
-    // em vez de um `TableFilter` por condição.
     const predicados = f.conditions.map((c) => predicado(c, f, ev, rotulo));
     out.push({
       table: normaliza(f.entity),
@@ -199,26 +140,6 @@ export function traduzFiltros(
   return out;
 }
 
-/** `normalizeName` do modelo, sem importar o módulo inteiro por uma função. */
-function normaliza(s: string): string {
-  return s.trim().toLowerCase();
-}
-
-/**
- * Como o predicado lê o valor da linha: a coluna, ou uma **projeção** dela.
- *
- * Sem `f.nivel` é a coluna, que é o caso dos 108 filtros do relatório. Com ele, é o
- * nível da hierarquia de datas — `YEAR(data)` em vez de `data`.
- *
- * **O que acontece sem o nível, medido em teste:** `confereEspecie` recusa comparar
- * número com data e erra alto. Então este campo não existe para tapar um zero
- * silencioso — o guarda de espécie já cobria isso. Ele existe porque, sem ele, a
- * segmentação de ano não tem como funcionar de jeito nenhum.
- *
- * A projeção é a **mesma** que o eixo de gráfico usa (`projecaoDeHierarquia`, do
- * measure-engine). Uma segunda tabela de meses aqui daria duas respostas possíveis
- * para "março", e a divergência apareceria como número, não como erro.
- */
 function leitorDeValor(f: FiltroSpec, ev: Evaluator, onde: string): (row: Row) => DaxValue {
   const tabela = f.entity!;
   const coluna = f.property!;
@@ -234,12 +155,8 @@ function leitorDeValor(f: FiltroSpec, ev: Evaluator, onde: string): (row: Row) =
 
   return (row: Row): DaxValue => {
     const cru = ev.columnValue(tabela, coluna, row);
-    // BLANK continua BLANK: projetar o vazio o transformaria no ano de 1970, e uma
-    // linha sem data passaria a casar com um ano de verdade.
     if (isBlank(cru)) return cru;
     if (!(cru instanceof Date)) {
-      // Erra alto em vez de projetar o que não é data. Um `String(x).slice()` daria
-      // um "ano" plausível para qualquer texto.
       throw new DaxEvalError(
         `${onde}: o filtro pede o nível [${f.nivel}] de '${tabela}'[${coluna}], mas a ` +
           `coluna tem ${typeof cru}, não data. Nível de hierarquia só existe sobre data.`,
@@ -259,16 +176,6 @@ function predicado(
   const coluna = f.property!;
   const valor = leitorDeValor(f, ev, onde);
 
-  // **Filtro sobre agregado não é predicado de linha.** `left_aggregation` diz que
-  // o lado esquerdo da comparação é `COUNT(coluna)`, não `coluna`: é o "filtrar por
-  // valor agregado" do painel do Power BI, um HAVING, e ele decide quais **grupos**
-  // do visual aparecem — não quais linhas entram na conta.
-  //
-  // São 10 no relatório (`count > 0` em 8, `count > 100` em 2), todos em tabela ou
-  // gráfico; nenhum em card. Aplicado ao valor cru, `COUNT(protocolo) > 0` vira
-  // `protocolo > 0`, que é outro filtro inteiramente — e num campo numérico ele
-  // aceitaria quase tudo, em silêncio. O lugar de implementá-lo é o agrupamento do
-  // visual, que é a próxima fatia; até lá, parar é o certo.
   if (c.op === 'comparison' && c.left_aggregation) {
     throw new DaxEvalError(
       `${onde}: o filtro compara ${c.left_aggregation.toUpperCase()}([${c.left_property}]) ` +
@@ -279,29 +186,6 @@ function predicado(
     );
   }
 
-  // **Filtro sobre agregado não é predicado de linha.** `left_aggregation` diz que
-  // o lado esquerdo da comparação é `COUNT(coluna)`, não `coluna`: é o "filtrar por
-  // valor agregado" do painel do Power BI, um HAVING, e ele decide quais **grupos**
-  // do visual aparecem — não quais linhas entram na conta.
-  //
-  // São 10 no relatório (`count > 0` em 8, `count > 100` em 2), todos em tabela ou
-  // gráfico; nenhum em card. Aplicado ao valor cru, `COUNT(protocolo) > 0` vira
-  // `protocolo > 0`, que é outro filtro inteiramente — e num campo numérico ele
-  // aceitaria quase tudo, em silêncio. O lugar de implementá-lo é o agrupamento do
-  // visual, que é a próxima fatia; até lá, parar é o certo.
-  if (c.op === 'comparison' && c.left_aggregation) {
-    throw new DaxEvalError(
-      `${onde}: o filtro compara ${c.left_aggregation.toUpperCase()}([${c.left_property}]) ` +
-        `e não [${c.left_property}] — é filtro sobre valor agregado (HAVING), que decide ` +
-        `quais grupos o visual mostra. Como predicado de linha ele vira outro filtro, ` +
-        `e num campo numérico aceitaria quase tudo sem erro nenhum. ` +
-        `Implementá-lo exige o agrupamento do visual (tabela/gráfico), que ainda não existe.`,
-    );
-  }
-
-  // A coluna da condição tem de ser a do filtro. Hoje coincidem nos 108 filtros do
-  // relatório; se um dia divergirem, aplicar a condição na coluna errada daria um
-  // número plausível e errado — então o certo é parar.
   const daCondicao = c.op === 'comparison' ? c.left_property : c.op === 'between_relativo' ? c.property : null;
   if (daCondicao != null && normaliza(daCondicao) !== normaliza(coluna)) {
     throw new DaxEvalError(
@@ -335,11 +219,6 @@ function predicado(
         );
       }
 
-      // `coluna = null` é como o Power BI escreve "é vazio" no painel de filtro, e
-      // ele é tratado como **vazio mesmo** — não pelo `=` do DAX, sob o qual BLANK
-      // equivale a 0 e a "". A diferença só apareceria numa coluna numérica com
-      // zeros; nas de data deste relatório não muda nada. DESVIO DELIBERADO,
-      // registrado: a intenção do painel é "vazio", não "igual a zero".
       if (c.right === null) {
         if (c.kind !== 'eq') {
           throw new DaxEvalError(`${onde}: comparação '${c.kind}' contra null não tem leitura óbvia.`);
@@ -355,9 +234,6 @@ function predicado(
         }
         const alvo = resolveSpan(span, ev.now, onde);
 
-        // `coluna = DateSpan(agora, mês)` NÃO é igualdade: `DateSpan` é um
-        // intervalo, e `eq` contra intervalo significa "cai dentro dele". É assim
-        // que o Power BI escreve "este mês".
         if (c.kind === 'eq') {
           return (row) => {
             const v = valor(row);
@@ -367,10 +243,6 @@ function predicado(
           };
         }
 
-        // Ordem contra um intervalo: em unidade abaixo do dia o intervalo é um
-        // instante e a comparação é exata. Acima do dia, "maior que este mês"
-        // depende de o Power BI comparar com o início ou com o fim do intervalo —
-        // convenção que este relatório não exercita, e que não se adivinha.
         if (!SUBDIA.has(unidade)) {
           throw new DaxEvalError(
             `${onde}: comparação '${c.kind}' contra DateSpan de '${unidade}'. ` +
@@ -414,7 +286,6 @@ function predicado(
             `Nenhuma linha passaria, e o card mostraria vazio como se não houvesse dado.`,
         );
       }
-      // `Between` do PBIP é inclusivo nas duas pontas.
       return (row) => {
         const v = valor(row);
         if (isBlank(v)) return false;
@@ -446,15 +317,6 @@ function exigeData(v: DaxValue, onde: string): Date {
   );
 }
 
-/**
- * Espécies diferentes nas duas pontas do filtro nunca casam, e o resultado seria
- * zero com cara de filtro apertado.
- *
- * É a mesma armadilha que `restringe` já cobre nas junções (measure-engine/filter.ts):
- * coluna que chega como texto `DD/MM/YYYY` contra valor de data. Aqui a checagem é
- * feita na primeira linha vista, não no resultado — um filtro que legitimamente não
- * casa com nada é possível, e não deve virar erro.
- */
 function confereEspecie(v: DaxValue, valores: readonly DaxValue[], onde: string): void {
   const doDado = especie(v);
   if (!doDado) return;

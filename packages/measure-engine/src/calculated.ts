@@ -257,7 +257,7 @@ function chaveDeOrigem(sourceColumn: string): string {
  * classe de erro que gerou o achado 1 falso, e converter na surdina é como um
  * `DD/MM/YYYY` viraria março em vez de abril.
  */
-function aplicaTipo(c: ModelColumn, v: DaxValue, tabela: string): DaxValue {
+export function aplicaTipo(c: ModelColumn, v: DaxValue, tabela: string): DaxValue {
   if (c.type !== 'dateTime' || isBlank(v)) return v;
   if (typeof v === 'number') return dateFromSerial(v);
   if (typeof v === 'string') {

@@ -116,10 +116,6 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const datas: string[] = [];
   /** A materialização de query mais recente entre as carregadas. Ver `confereIdadeDaCalculada`. */
   let maisNovoDeQuery: string | null = null;
-  /** A materialização de query mais recente entre as carregadas. Ver `confereIdadeDaCalculada`. */
-  let maisNovoDeQuery: string | null = null;
-  /** A materialização de query mais recente entre as carregadas. Ver `confereIdadeDaCalculada`. */
-  let maisNovoDeQuery: string | null = null;
 
   const faltando: { tabela: string; query: string }[] = [];
   for (const t of plano.tabelas) {
@@ -246,7 +242,7 @@ export interface PreservacaoDeJuncao {
  *
  * Preservar é uma decisão sobre o dado, então ela é **dita** (`notas`), nunca calada.
  */
-export export export function preservaEspecieDeJuncao(
+export function preservaEspecieDeJuncao(
   model: SemanticModel,
   dir: string,
   plano: PlanoDeSnapshot,
