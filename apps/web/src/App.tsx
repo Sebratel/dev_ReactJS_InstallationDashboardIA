@@ -1,4 +1,4 @@
-// A tela: escolhe a página, aplica as segmentações e desenha os visuais.
+// A tela: escolhe a página, aplica as segmentações e desenha os visuais em formato Dashboard Sebratel.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -14,8 +14,9 @@ import { aplicaSelecao, escreveRota, leRota, selecaoDe } from './rota.ts';
 import { AppShell } from './componentes/AppShell.tsx';
 import { Erro } from './componentes/Cartao.tsx';
 import { Segmentacao } from './componentes/Segmentacao.tsx';
-import { Visual } from './componentes/Visual.tsx';
 import { usaModo } from './modo.tsx';
+import { KpiGridSection } from './atomic/organisms/KpiGridSection.tsx';
+import { VisualGridSection } from './atomic/organisms/VisualGridSection.tsx';
 
 export function App() {
   const { conferencia } = usaModo();
@@ -27,7 +28,6 @@ export function App() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  // A lista, uma vez. A primeira página pronta é a inicial quando a URL não diz qual.
   useEffect(() => {
     listaDashboards()
       .then((r) => {
@@ -37,11 +37,6 @@ export function App() {
       .catch((err: unknown) => setErro(err instanceof Error ? err.message : String(err)));
   }, []);
 
-  // Página ou filtro mudou: pede de novo, e escreve o estado na URL.
-  //
-  // `cancelado` não é zelo abstrato. Uma página fria leva segundos; trocar de página
-  // enquanto a anterior carrega faria a resposta antiga chegar depois e sobrescrever a
-  // nova — a tela mostraria os números de uma página com o nome da outra.
   useEffect(() => {
     if (!atual) return;
     let cancelado = false;
@@ -71,9 +66,6 @@ export function App() {
 
   const escolhe = useCallback((id: string) => {
     setAtual(id);
-    // Os filtros não atravessam a troca de página: uma segmentação de
-    // `'PROTOCOLOS GERAL'[EQUIPE]` numa página que não usa essa tabela faria a API
-    // errar alto, e o erro seria confuso — a pessoa só clicou noutra página.
     setFiltros([]);
     setPagina(null);
   }, []);
@@ -85,10 +77,19 @@ export function App() {
     [],
   );
 
+  const aoFiltrarValor = useCallback(
+    (tabela: string, coluna: string, valor: Valor) => {
+      mudaFiltro(tabela, coluna, valor === null ? [] : [valor]);
+    },
+    [mudaFiltro],
+  );
+
   const segmentacoes = (pagina?.visuais ?? []).filter((v) => v.segmentacao);
   const cards = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'card' && !v.erro);
-  const blocos = (pagina?.visuais ?? []).filter(
-    (v) => v.sobDemanda || v.erro || (v.conteudo && v.conteudo !== 'card'),
+  const graficos = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'grafico');
+  const matrizes = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'matriz');
+  const tabelasEBlocos = (pagina?.visuais ?? []).filter(
+    (v) => v.sobDemanda || v.erro || (v.conteudo && v.conteudo !== 'card' && v.conteudo !== 'grafico' && v.conteudo !== 'matriz'),
   );
 
   const nome = paginas.find((p) => p.id === atual)?.nome ?? 'Instalação';
@@ -103,8 +104,6 @@ export function App() {
       acoes={
         <button
           className="primario"
-          // Cópia rasa força o efeito de busca a rodar de novo: o array de filtros
-          // muda de identidade sem mudar de conteúdo, e é a identidade que o React compara.
           onClick={() => setFiltros((f) => [...f])}
           disabled={carregando || !atual}
         >
@@ -164,19 +163,20 @@ export function App() {
         </div>
       ) : null}
 
-      {cards.length > 0 ? (
-        <div className="kpis">
-          {cards.map((v) => (
-            <Visual key={v.id} pagina={atual!} visual={v} filtros={filtros} />
-          ))}
-        </div>
-      ) : null}
+      {/* Faixa de KPIs em Grid Responsivo */}
+      <KpiGridSection pagina={atual!} cards={cards} filtros={filtros} aoFiltrar={aoFiltrarValor} />
 
-      {blocos.map((v) => (
-        <Visual key={v.id} pagina={atual!} visual={v} filtros={filtros} />
-      ))}
+      {/* Seção de Gráficos, Matrizes e Análise Detalhada */}
+      <VisualGridSection
+        pagina={atual!}
+        graficos={graficos}
+        matrizes={matrizes}
+        tabelasEBlocos={tabelasEBlocos}
+        filtros={filtros}
+        aoFiltrar={aoFiltrarValor}
+      />
 
-      {pagina && cards.length === 0 && blocos.length === 0 ? (
+      {pagina && cards.length === 0 && graficos.length === 0 && matrizes.length === 0 && tabelasEBlocos.length === 0 ? (
         <div className="vazio-pagina">Esta página não tem visual com número.</div>
       ) : null}
     </AppShell>
