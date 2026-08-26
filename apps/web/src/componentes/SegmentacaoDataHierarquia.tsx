@@ -13,8 +13,7 @@ import {
   type MudancaDeNivel,
 } from '../hierarquia-data.ts';
 
-/** Teto pedido à API: dois anos de datas distintas passam do padrão de 500. */
-const TETO_DE_DATAS = 5000;
+
 
 /**
  * O filtro de data em árvore — Ano > Mês > Dia — no lugar de dois seletores planos.
@@ -54,7 +53,7 @@ export function SegmentacaoDataHierarquia(props: {
       // Sem `nivel`: a árvore precisa das datas cruas para saber **quais** meses
       // existem em cada ano. Pedir nível por nível traria três listas soltas, e o
       // cruzamento delas ofereceria mês que aquele ano não tem.
-      const r = await pegaValores(props.pagina, props.tabela, props.coluna, undefined, TETO_DE_DATAS);
+      const r = await pegaValores(props.pagina, props.tabela, props.coluna, undefined);
       const montada = montaArvore(r.valores);
       setArvore(montada);
       setCortado(r.cortado);

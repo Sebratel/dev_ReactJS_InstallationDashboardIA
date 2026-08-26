@@ -11,8 +11,7 @@
 import { useState } from 'react';
 import type { DadosDeGrafico, Valor, VisualCalculado } from '../api.ts';
 import { formata, inteiro } from '../formato.ts';
-import { corNoTema, maiorValorDe, marcasDoEixo, montaGrafico, tetoDasAreas } from '../grafico-forma.ts';
-import { useThemeStore } from '../store/useThemeStore.ts';
+import { maiorValorDe, marcasDoEixo, montaGrafico, tetoDasAreas } from '../grafico-forma.ts';
 import { Cartao } from './Cartao.tsx';
 import { tituloDoVisual } from '../rotulos.ts';
 import { usaModo } from '../modo.tsx';
@@ -67,34 +66,32 @@ export function Grafico({
   const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda - 10));
   const larguraDaFatia = g.empilha ? larguraDaMarca : Math.max(3, (larguraDaMarca - VAO * (areas.length - 1)) / Math.max(areas.length, 1));
 
+  const chavesArray = (d.chaves ?? []) as { papel?: string; tabela?: string; coluna?: string; nome?: string }[];
   const clica = (i: number) => {
-    const chaveDeEixo = (d.chaves ?? []).find((c) => (c.papel ?? 'Category') === 'Category');
+    const chaveDeEixo = chavesArray.find((c) => (c.papel ?? 'Category') === 'Category');
     const valor = g.categorias[i]?.valores[0];
-    if (aoFiltrar && chaveDeEixo && valor !== undefined) aoFiltrar(chaveDeEixo.tabela, chaveDeEixo.coluna, valor);
+    if (aoFiltrar && chaveDeEixo && valor !== undefined) {
+      const tabela = chaveDeEixo.tabela ?? '';
+      const coluna = chaveDeEixo.coluna ?? '';
+      aoFiltrar(tabela, coluna, valor);
+    }
   };
 
-  // Em apresentação, a contagem de pontos e séries é ruído — a legenda já nomeia as
-  // séries e o eixo já mostra as categorias. Sobra só a dica que muda a leitura do
-  // gráfico: que ele é proporção, não valor absoluto.
   const sub = conferencia
     ? [`${inteiro(d.pontos.length)} pontos`, `${g.series.length} série(s)`, ...(g.percentual ? ['100% empilhado'] : [])]
     : g.percentual
       ? ['100% empilhado']
       : [];
 
-  // Título auto-descritivo quando o visual não tem título próprio no relatório: em vez
-  // de "Gráfico de colunas", diz o que ele mede e por qual eixo — "Qtd Protocolos por
-  // EQUIPE". O nome cru do tipo não ajudava a operação a saber o que está vendo.
-  const eixo = (d.chaves ?? []).find((c) => (c.papel ?? 'Category') === 'Category');
+  const eixo = chavesArray.find((c) => (c.papel ?? 'Category') === 'Category');
   const nomesMedidas = (d.series ?? []).map((s) => s.nome).filter((n): n is string => !!n);
-  const nomeEixo = eixo?.nome ?? eixo?.coluna;
+  const nomeEixo = (eixo as { nome?: string; coluna?: string })?.nome ?? (eixo as { nome?: string; coluna?: string })?.coluna;
+  const tituloVisualVisual = (visual as { titulo?: string }).titulo;
   const titulo =
-    visual.titulo?.trim() || !(nomesMedidas.length && nomeEixo)
+    tituloVisualVisual?.trim() || !(nomesMedidas.length && nomeEixo)
       ? tituloDoVisual(visual)
       : `${nomesMedidas.slice(0, 3).join(' · ')} por ${nomeEixo}`;
 
-  // Sem nenhuma categoria, ou tudo zerado/nulo: um eixo vazio com um "0" solto confunde
-  // mais do que informa. Dizemos que não há dado para os filtros atuais.
   const semDados = g.categorias.length === 0 || g.series.every((s) => s.valores.every((v) => v === null || v === 0));
   if (semDados) {
     return (
@@ -104,54 +101,8 @@ export function Grafico({
     );
   }
 
-  // Rótulos de eixo hierárquicos ("2026 / agosto / 5") repetem os níveis altos em toda
-  // barra. Removemos o prefixo comum a todas as categorias — sobra o que varia, como no
-  // eixo hierárquico do Power BI. O rótulo cheio continua no tooltip da barra.
-  // O prefixo comum sai de TODAS as categorias, não das da página. Se saísse da
-  // página, virar de página poderia mudar o que o rótulo significa — numa página
-  // de um mês só o mês seria "comum" e desapareceria, na seguinte não.
-  const partesPorCat = gTudo.categorias.map((c) => c.rotulo.split(' / '));
-  let prefixoComum = 0;
-  if (partesPorCat.length > 1) {
-    const min = Math.min(...partesPorCat.map((p) => p.length));
-    while (
-      prefixoComum < min - 1 &&
-      partesPorCat.every((p) => p[prefixoComum] === partesPorCat[0]![prefixoComum])
-    ) {
-      prefixoComum++;
-    }
-  }
-
-  /**
-   * O rótulo do eixo, montado DO NÍVEL MAIS ESPECÍFICO PARA TRÁS.
-   *
-   * Corrigido em 26/08/2026, e o sintoma era óbvio na tela: numa hierarquia de
-   * data o rótulo virava `"julho / 15"` e o corte por orçamento de caracteres
-   * ("primeiros N, depois …") devolvia **"julho /…"** — cortava exatamente o dia,
-   * que é a única parte que distingue uma coluna da vizinha. Um eixo com vinte
-   * rótulos idênticos é pior do que um eixo sem rótulo, porque parece informar.
-   *
-   * A regra do padrão é "extraia a parte que distingue". Então começamos pelo
-   * último nível e só acrescentamos os anteriores enquanto couberem, com `/`
-   * apertado em vez de ` / `: com 8 caracteres de orçamento, `"julho / 15"` vira
-   * **"julho/15"** em vez de "julho /…".
-   */
-  const rotuloEixo = (iVisivel: number, orcamento: number): string => {
-    const partes = partesPorCat[de + iVisivel]?.slice(prefixoComum) ?? [];
-    const base = partes.length > 0 ? partes : [g.categorias[iVisivel]?.rotulo ?? ''];
-    let texto = base[base.length - 1] ?? '';
-    for (let k = base.length - 2; k >= 0; k -= 1) {
-      const tentativa = `${base[k]}/${texto}`;
-      if (tentativa.length > orcamento) break;
-      texto = tentativa;
-    }
-    // Sobrando só um nível longo (nome de cidade, de equipe), aí sim corta no fim.
-    return texto.length > orcamento ? `${texto.slice(0, orcamento - 1)}…` : texto;
-  };
-
   return (
     <Cartao titulo={titulo} sub={sub.join(' · ')} id={visual.id} largo>
-      {/* Legenda sempre que há duas séries: identidade nunca fica só na cor. */}
       {g.series.length > 1 ? (
         <div className="legenda">
           {g.series.map((s) => (
@@ -181,7 +132,6 @@ export function Grafico({
           role="img"
           aria-label={tituloDoVisual(visual)}
         >
-          {/* Grade e marcas: hairline sólido, um passo do fundo, recuado. */}
           {marcas.map((m) => (
             <g key={m}>
               <line className="grade" x1={MARGEM.esquerda} x2={largura - MARGEM.direita} y1={y(m)} y2={y(m)} />
@@ -201,7 +151,6 @@ export function Grafico({
                 onMouseEnter={() => setSob(i)}
                 onMouseLeave={() => setSob(null)}
               >
-                {/* Alvo de clique/hover maior que a marca — a banda inteira. */}
                 <rect
                   className={`banda${sob === i ? ' sob' : ''}`}
                   x={MARGEM.esquerda + banda * i}
@@ -239,7 +188,6 @@ export function Grafico({
             );
           })}
 
-          {/* Linha do eixo e rótulos das categorias. */}
           <line className="eixo" x1={MARGEM.esquerda} x2={largura - MARGEM.direita} y1={y(0)} y2={y(0)} />
           {g.categorias.map((c, i) => (
             <text
@@ -254,7 +202,6 @@ export function Grafico({
             </text>
           ))}
 
-          {/* A linha por cima das colunas, na mesma escala. */}
           {linhasJuntas.map((s) => (
             <g key={s.chave}>
               <path className="linha-serie" d={caminho(s.valores, xMeio, y)} stroke={s.cor} />
@@ -268,7 +215,6 @@ export function Grafico({
             </g>
           ))}
 
-          {/* Rótulo direto só no extremo de cada série de linha — nunca em todo ponto. */}
           {linhasJuntas.map((s) => {
             const iMax = maiorIndice(s.valores);
             if (iMax === null) return null;
@@ -279,7 +225,6 @@ export function Grafico({
             );
           })}
 
-          {/* Painel próprio da linha, quando a escala não dá para dividir. */}
           {naFaceta ? (
             <FacetaDeLinha
               series={linhas}
@@ -296,7 +241,6 @@ export function Grafico({
   );
 }
 
-/** O painel de baixo: a linha na escala dela, compartilhando o eixo X de cima. */
 function FacetaDeLinha({
   series,
   xMeio,
@@ -339,7 +283,6 @@ function FacetaDeLinha({
   );
 }
 
-/** O `d` do path, quebrando em `null` — buraco no dado é buraco na linha, não zero. */
 function caminho(valores: readonly (number | null)[], x: (i: number) => number, y: (v: number) => number): string {
   const partes: string[] = [];
   let abriu = false;

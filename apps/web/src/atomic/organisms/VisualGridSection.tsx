@@ -116,7 +116,7 @@ export function VisualGridSection({
             <div className="flex flex-wrap gap-5">
               {tabelasEstreitas.map((v) => (
                 <div key={v.id} className="flex-1 basis-[300px] min-w-0">
-                  {item(v)}
+                  {itemEstreito(v)}
                 </div>
               ))}
             </div>

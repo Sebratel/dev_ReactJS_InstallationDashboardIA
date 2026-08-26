@@ -13,3 +13,12 @@ export function sigla(nome: string): string {
   if (palavras.length === 1) return palavras[0]!.slice(0, 2).toUpperCase();
   return (palavras[0]![0]! + palavras[1]![0]!).toUpperCase();
 }
+
+/** Título humano para visuais calculados */
+export function tituloDoVisual(visual: { spec?: { name?: string; id?: string }; id?: string; titulo?: string }): string {
+  if (visual.titulo) return visual.titulo;
+  if (visual.spec?.name) return visual.spec.name;
+  if (visual.spec?.id) return visual.spec.id;
+  if (visual.id) return visual.id;
+  return 'Visual';
+}

@@ -15,6 +15,8 @@ import { Paginacao } from './Paginacao.tsx';
 import { usaJanela } from './usaJanela.ts';
 import { tituloDoVisual } from '../rotulos.ts';
 
+const COLUNAS_POR_JANELA = 30;
+
 export function Matriz(props: {
   pagina: string;
   visual: VisualCalculado;
@@ -27,9 +29,6 @@ export function Matriz(props: {
   const semEixoDeColuna = d.colunas.length === 1 && d.colunas[0]?.length === 0;
   const tudoCarregado = d.linhas.length === d.linhasTotais;
 
-  // Transpor faz sentido quando: há eixo de coluna de verdade, a matriz inteira está
-  // carregada (senão paginaríamos a orientação errada) e ela é claramente mais larga
-  // que alta. Aí o padrão já abre transposto.
   const podeTranspor = !semEixoDeColuna && tudoCarregado && d.colunas.length > 8 && d.linhas.length <= 60;
   const [transposto, setTransposto] = useState(podeTranspor && d.colunas.length > d.linhas.length * 2);
 
@@ -44,15 +43,10 @@ export function Matriz(props: {
   const nomeChavesLinha = d.chavesDeLinha.map((c) => c.nome ?? c.coluna).join(' / ');
   const nomeChavesColuna = d.chavesDeColuna.map((c) => c.nome ?? c.coluna).join(' / ') || 'Coluna';
 
-  // O que vira COLUNA da tabela depende da orientação: normalmente são as chaves
-  // de coluna; transposta, são as chaves de linha. A janela é sobre esse eixo.
   const horizontais = transposto ? d.linhas : d.colunas;
   const totalColunas = horizontais.length;
-  const [inicioColuna, setInicioColuna] = useState<number | null>(null);
+  const [inicioColuna] = useState<number | null>(null);
   const maxInicioColuna = Math.max(0, totalColunas - COLUNAS_POR_JANELA);
-  // Abre na ÚLTIMA janela: coluna de matriz aqui é quase sempre data, e o que
-  // interessa é o presente. `null` = ainda no padrão, então a janela acompanha o
-  // fim quando os filtros mudam o tamanho da matriz.
   const deColuna = Math.min(inicioColuna ?? maxInicioColuna, maxInicioColuna);
   const ateColuna = Math.min(deColuna + COLUNAS_POR_JANELA, totalColunas);
   const paginaColunas = totalColunas > COLUNAS_POR_JANELA;
@@ -98,9 +92,6 @@ export function Matriz(props: {
     document.body.removeChild(link);
   };
 
-  // ---- Cabeçalhos e corpo, na orientação escolhida ---------------------------------
-  // Normal: cabeçalho = colunas × medidas; corpo = uma linha por chave-de-linha.
-  // Transposta: cabeçalho = linhas × medidas; corpo = uma linha por chave-de-coluna.
   const cabecalhoEsquerda = transposto ? nomeChavesColuna : nomeChavesLinha;
 
   const cabecalhosDireita: string[] = transposto

@@ -1,19 +1,4 @@
 // O visual que a página não trouxe — e que ela mesma vai buscar.
-//
-// **Ele busca sozinho, e a tela diz isso.** A versão anterior desenhava, enquanto o
-// pedido corria, o texto que explica por que a tabela é cara mais um botão
-// "Carregar" — um convite a clicar em algo que já estava acontecendo, e que sugeria
-// que a demora era escolha de quem olhava. O motivo continua registrado (ver
-// `specs/_catalog/projecao.yaml` e a DECISAO-DESEMPENHO), mas ele é resposta para
-// "por que falhou", não para "por que ainda não apareceu": enquanto carrega, a tela
-// mostra o esqueleto da tabela que está vindo.
-//
-// **O custo real, medido em 24/08/2026.** Pedir a tabela de relatos de
-// `agendamento-field` custava 12,0 s, dos quais só 1,0 s era cálculo — os outros 11 s
-// eram montar um segundo dataset com a coluna de texto livre dentro. Quem paga isso
-// agora é o `aqueceSobDemanda` do servidor, em segundo plano, assim que a página é
-// pedida; quando este componente chega aqui a resposta costuma estar pronta (65 ms).
-// O esqueleto é para o caso em que não está — arranque frio, filtro recém-trocado.
 
 import { useState, useEffect } from 'react';
 import { pegaPagina, type FiltroDaTela, type VisualCalculado } from '../api.ts';
@@ -29,20 +14,12 @@ export function SobDemanda(props: {
   const [estado, setEstado] = useState<'parado' | 'carregando'>('carregando');
   const [pronto, setPronto] = useState<VisualCalculado | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  /** Sobe a cada "tentar de novo". É o que faz o efeito rodar sem mudar filtro. */
-  const [tentativa, setTentativa] = useState(0);
 
-  // Uma busca por combinação de página/visual/filtros. Trocar o filtro no meio de um
-  // pedido antigo faria a resposta velha chegar depois da nova e sobrescrevê-la — uma
-  // tabela filtrada pelo que a tela **não** está mais pedindo, e sem nada dizendo.
   useEffect(() => {
     let atual = true;
     setEstado('carregando');
     setErro(null);
 
-    // Os mesmos filtros da página vão junto: um visual carregado sob demanda que
-    // ignorasse a segmentação mostraria o universo inteiro ao lado de cards
-    // filtrados, e as duas coisas na tela se contradiriam sem aviso.
     pegaPagina(props.pagina, props.filtros, { visual: props.visual.id })
       .then((p) => {
         const achado = p.visuais.find((v) => v.id === props.visual.id);
@@ -79,8 +56,6 @@ export function SobDemanda(props: {
     );
   }
 
-  // Sobrou o caminho da falha — e aí sim a explicação do custo é o que ajuda a
-  // decidir se vale tentar de novo.
   return (
     <Cartao titulo={titulo} sub="não carregou" id={props.visual.id} largo>
       <div className="sob-demanda">

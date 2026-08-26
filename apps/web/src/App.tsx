@@ -9,7 +9,7 @@ import {
   type PaginaCalculada,
   type Valor,
 } from './api.ts';
-import { dataHora, duracao, formata, inteiro } from './formato.ts';
+import { dataHora, duracao, inteiro } from './formato.ts';
 import { aplicaSelecao, escreveRota, leRota, selecaoDe } from './rota.ts';
 import { AppShell } from './componentes/AppShell.tsx';
 import { Erro } from './componentes/Cartao.tsx';
@@ -18,7 +18,7 @@ import { Visual } from './componentes/Visual.tsx';
 import { usaModo } from './modo.tsx';
 
 export function App() {
-  const { conferencia, alterna } = usaModo();
+  const { conferencia } = usaModo();
   const inicial = useMemo(() => leRota(window.location.search), []);
   const [paginas, setPaginas] = useState<DashboardDaLista[]>([]);
   const [atual, setAtual] = useState<string | null>(inicial.pagina);
