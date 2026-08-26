@@ -36,7 +36,9 @@ export function Tabela(props: {
   filtros: readonly FiltroDaTela[];
 }) {
   const janela = usaJanela(props.pagina, props.visual, props.filtros);
-  const d = janela.visual.dados as DadosDeTabela;
+  const d = janela.visual.dados as DadosDeTabela | undefined;
+
+  if (!d || !d.colunas || !d.linhas) return null;
 
   const [colOrdenada, setColOrdenada] = useState<number | null>(null);
   const [ordemDesc, setOrdemDesc] = useState<boolean>(false);

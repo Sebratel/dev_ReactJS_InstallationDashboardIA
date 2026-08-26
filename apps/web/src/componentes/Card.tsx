@@ -6,7 +6,8 @@ import { usaModo } from '../modo.tsx';
 
 export function Card({ visual }: { visual: VisualCalculado }) {
   const { conferencia } = usaModo();
-  const d = visual.dados as DadosDeCard;
+  const d = visual.dados as DadosDeCard | undefined;
+  if (!d) return null;
   const f = formata(d.valor, d.tipoDoValor);
 
   // A origem some da tela quando o card está certo e aparece quando alguém duvida

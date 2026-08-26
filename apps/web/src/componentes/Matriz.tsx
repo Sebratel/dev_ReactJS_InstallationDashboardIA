@@ -24,7 +24,9 @@ export function Matriz(props: {
 }) {
   const janela = usaJanela(props.pagina, props.visual, props.filtros);
   const visual = janela.visual;
-  const d = visual.dados as DadosDeMatriz;
+  const d = visual.dados as DadosDeMatriz | undefined;
+
+  if (!d || !d.colunas || !d.linhas) return null;
 
   const semEixoDeColuna = d.colunas.length === 1 && d.colunas[0]?.length === 0;
   const tudoCarregado = d.linhas.length === d.linhasTotais;

@@ -27,7 +27,9 @@ export function KpiCard({ visual, destaque = false }: { visual: VisualCalculado;
     tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null;
     origem?: { kind: string; measure?: string; table?: string; column?: string; aggregation?: string };
     filtros?: string[];
-  };
+  } | undefined;
+
+  if (!d) return null;
 
   const f = formata(d.valor, d.tipoDoValor ?? null);
   const nomeKpi = (d.nome ?? '(sem rótulo)').toUpperCase();

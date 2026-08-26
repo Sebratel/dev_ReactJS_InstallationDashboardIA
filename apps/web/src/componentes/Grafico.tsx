@@ -33,7 +33,8 @@ export function Grafico({
   aoFiltrar?: (tabela: string, coluna: string, valor: Valor) => void;
 }) {
   const { conferencia } = usaModo();
-  const d = visual.dados as DadosDeGrafico;
+  const d = visual.dados as DadosDeGrafico | undefined;
+  if (!d || !d.series || !d.pontos) return null;
   const g = montaGrafico(d);
   const [sob, setSob] = useState<number | null>(null);
 
