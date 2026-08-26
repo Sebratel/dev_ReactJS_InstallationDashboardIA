@@ -124,6 +124,7 @@ export class Servidor {
   private readonly carregadas = new Map<string, Promise<Carregado>>();
   /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
   private carimboDasCarregadas: string | null = null;
+  private readonly completos: CacheDeVisual;
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, ...resto } = opts;
@@ -136,6 +137,7 @@ export class Servidor {
     this.model = SemanticModel.fromSpecsDir(path.join(opts.root, 'specs'));
     this.dashboards = loadDashboards(path.join(opts.root, 'specs'));
     this.registry = QueryRegistry.fromSpecsDir(path.join(opts.root, 'specs'));
+    this.completos = new CacheDeVisual(opts.tetoDeVisuaisMB ?? TETO_PADRAO_MB);
     const adapter = cache ?? new MemoryCache();
     // `nome` quando o adapter tem um (`CacheEmCamadas` diz "MemoryCache+RedisCache"):
     // saber que o Redis entrou não basta, é preciso saber que ele entrou **atrás** da
