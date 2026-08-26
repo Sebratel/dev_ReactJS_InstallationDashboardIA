@@ -149,7 +149,7 @@ if (soAquece) {
   console.log(`\nSubindo a API na porta ${porta}…`);
   const api: ChildProcess = spawn(
     process.execPath,
-    ['--max-old-space-size=8192', path.join(ROOT, 'apps', 'api', 'src', 'index.ts')],
+    ['--max-old-space-size=8192', path.join(ROOT, 'apps', 'api', 'src', 'index.ts'), '--sem-aquecer'],
     { cwd: ROOT, stdio: 'inherit', env: { ...process.env, PORT: String(porta) } },
   );
 
