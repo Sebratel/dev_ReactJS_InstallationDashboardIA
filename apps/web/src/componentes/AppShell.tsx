@@ -1,8 +1,4 @@
-// A casca: barra lateral de navegação e a coluna de conteúdo.
-//
-// A navegação desta tela gasta **largura**, não altura — por isso `--h-nav` é 0 na
-// conta do cromo. O item ativo vai na primária, o mesmo papel que ela cumpre no
-// cabeçalho de cada visual: quem olha a tela sabe onde está pela mesma cor.
+// A casca: barra lateral de navegação e a coluna de conteúdo com cabeçalho e área principal.
 
 import type { ReactNode } from 'react';
 import type { DashboardDaLista } from '../api.ts';
@@ -86,7 +82,21 @@ export function AppShell(props: {
         </div>
       </aside>
 
-      <div className="flex-1 min-w-0 flex flex-col">{props.children}</div>
+      <div className="flex-1 min-w-0 flex flex-col">
+        <header className="cabecalho">
+          <div>
+            <h1 className="cabecalho-titulo">{props.titulo}</h1>
+            {props.sub ? <span className="cabecalho-sub">{props.sub}</span> : null}
+          </div>
+          <div className="grupo-acoes-cabecalho">
+            {props.acoes}
+          </div>
+        </header>
+
+        <main className="area">
+          {props.children}
+        </main>
+      </div>
     </div>
   );
 }
