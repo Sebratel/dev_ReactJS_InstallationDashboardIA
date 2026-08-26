@@ -70,7 +70,7 @@ queries:
     # daria um PERSONA1 diferente.
     # -----------------------------------------------------------------------
     costura:
-      - de: 'WITH bruto AS ('
+      - de: 'WITH PERSONALIZADO AS ('
         para: |
           WITH alvos AS (
               -- 1. a solicitação nasceu ou mudou.
