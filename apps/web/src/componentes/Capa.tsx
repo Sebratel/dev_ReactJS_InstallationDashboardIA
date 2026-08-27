@@ -41,7 +41,8 @@ export function Capa({ dadoDe }: { dadoDe?: string | null }) {
           style={{ background: 'linear-gradient(120deg, var(--red-dark) 0%, var(--red) 55%, var(--amber) 130%)' }}
         >
           <div>
-            <h1 className="text-2xl md:text-3xl font-black tracking-tight">INST — Instalação Gerencial</h1>
+            {/* O relatório é o de INSTALAÇÃO, não o "Instalação Gerencial" — são dois. */}
+            <h1 className="text-2xl md:text-3xl font-black tracking-tight">INST — Relatório Instalação</h1>
             <p className="mt-1 text-sm md:text-base font-medium text-white/90">
               Plataforma de indicadores de instalação · Sebratel Tecnologia
             </p>

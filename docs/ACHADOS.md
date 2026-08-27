@@ -128,6 +128,52 @@ título, o modelo publicado não. 1.587.041 linhas lá contra 41.255 aqui, e o r
 Enquanto isso, `FIELD AGENDA` está em `bloqueadas` na paridade — 7 medidas ficam sem
 gabarito automático. Resolver a carga antes de tentar equalizar.
 
+### A janela de 3 meses tinha saído do `sql:` (achado de 27/08/2026)
+
+O recorte de 3 meses citado acima **não estava mais na spec** quando fui conferir. O
+`sql:` de `field-agenda` cortava em `DATE '2026-01-01'` — o valor extraído do PBIP —
+porque um `git reset --hard` de outro agente em 26/08 devolveu o campo à versão
+gerada, junto com o SQL de dois ramos de `protocolos-produtividade`.
+
+Restaurado em 27/08 (`docs/SPEC-DRIVEN.md`, "Edições à mão em spec gerada"). Não de
+memória — por três medidas que fecham entre si:
+
+| Evidência | O que diz |
+|---|---|
+| `tools/probe/src/custo-incremental.ts:75-81` | declara "janela deslizante" e casa `(CURRENT_DATE - INTERVAL '3 months')` — uma sonda procurando literal que ninguém escrevia |
+| `snapshot/field-agenda.jsonl` | gerado 25/08; mínimo de `slot agenda` = **2026-05-25**, que é 25/08 − 3 meses ao dia |
+| `data criado` no mesmo arquivo | desce a **2025-10-24**, então o corte é em `begin_date_slot` e em nenhum outro campo |
+
+**A janela do snapshot em disco, medida (41.773 linhas, 26 colunas):**
+
+| coluna | com data | nulo | min | max | dias |
+|---|---|---|---|---|---|
+| data criado | 41.773 | 0 | 2025-10-24 | 2026-08-25 | 101 |
+| slot agenda | 41.773 | 0 | **2026-05-25** | 2026-09-05 | 87 |
+| data relato | 41.773 | 0 | 2025-10-24 | 2026-08-25 | 84 |
+| data ultimo play app | 30.808 | 10.965 | 2026-05-25 | 2026-08-25 | 85 |
+
+Sem a janela, a próxima carga completa buscaria ~8 meses em vez de 3, na query que já
+morreu de `ECONNRESET`. Regressão silenciosa: mais linhas, nenhum erro.
+
+### O snapshot de `protocolos-produtividade` está À FRENTE da spec
+
+Mesma família de perda, e esta **não** foi refeita. O cabeçalho real do arquivo em
+disco (`snapshot/protocolos-produtividade.jsonl`, 25/08 19:34) diz:
+
+```
+linhas=70991  modo=completo  marca=2026-08-25T00:00:00.000Z
+```
+
+**70.991 é o número dos DOIS RAMOS** — o `UNION ALL` que reproduzia o `INSTALADOR` do
+relatório original. O `sql:` de hoje tem um ramo só e dá **70.868**
+(`specs/_catalog/paridade-janela.yaml` registra `nos: 70868`, medido no mesmo dia).
+
+Ou seja: o dado em disco é a saída de um SQL que não existe mais no repositório. A
+próxima carga dessa query **derruba 123 linhas e esvazia o `INSTALADOR` do ramo
+acrescentado**, sem erro e sem teste vermelho. Ver a nota longa em
+`specs/_catalog/incremental.yaml` para como refazer, e MEÇA os dois números.
+
 ---
 
 ## `BACKLOG AGENDADO FUTURO`: nós temos mais linhas que eles

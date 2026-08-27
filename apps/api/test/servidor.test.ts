@@ -270,3 +270,233 @@ test('caminho com .. não sai do diretório de estáticos', async () => {
     await s.fecha();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Visual sob demanda
+// ---------------------------------------------------------------------------
+
+/**
+ * **A rota que devolve o que a página deixou de trazer.**
+ *
+ * `specs/_catalog/projecao.yaml` tira `'FIELD AGENDA'[Relato]` da abertura de
+ * `agendamento-field` — 350 MB de texto livre para um visual entre 39. Sem um caminho
+ * para pedir aquele visual, a decisão não seria "sob demanda", seria "removido".
+ *
+ * Este teste não abre `agendamento-field` (precisaria de 1 GB de snapshot). Ele guarda
+ * o contrato da rota: visual inexistente dá 404, e o corpo diz o que ficou de fora.
+ */
+test('?visual= com id que não existe na página dá 404, não 500', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const r = await s.busca('/api/dashboards/capa?visual=nao-existe');
+    assert.equal(r.status, 404);
+    assert.match((await r.json() as { erro: string }).erro, /Visual 'nao-existe' não existe/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('?visual= calcula só aquele visual', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const inteira = await (await s.busca('/api/dashboards/capa')).json() as { visuais: { id: string }[] };
+    const alvo = inteira.visuais[0]!.id;
+
+    const uma = await (await s.busca(`/api/dashboards/capa?visual=${alvo}`)).json() as {
+      visuais: { id: string }[];
+    };
+    assert.equal(uma.visuais.length, 1);
+    assert.equal(uma.visuais[0]!.id, alvo);
+    assert.ok(inteira.visuais.length > 1, 'a página inteira tem mais de um visual');
+  } finally {
+    await s.fecha();
+  }
+});
+
+/**
+ * O corpo diz o que a projeção deixou de carregar.
+ *
+ * Sem isto, uma página com número faltando é indistinguível de uma página com bug: a
+ * tela não teria como saber se o visual está vazio porque não há dado ou porque a
+ * coluna não veio. A regra 9 permite divergir e proíbe divergir em silêncio — aqui a
+ * resposta HTTP é onde o "não em silêncio" acontece.
+ */
+test('a resposta declara as colunas que ficaram fora da carga', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const corpo = await (await s.busca('/api/dashboards/capa')).json() as { omitidas: string[] };
+    assert.ok(Array.isArray(corpo.omitidas), 'a resposta precisa declarar as omitidas');
+  } finally {
+    await s.fecha();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Segmentação da tela: `?filtro=` e a lista de valores
+// ---------------------------------------------------------------------------
+
+/**
+ * **Filtro que não decodifica derruba o pedido, e isso é a regra.**
+ *
+ * Aplicar os filtros que deram certo e calar os que não deram mostraria um número
+ * filtrado pela metade com a tela dizendo que está filtrado — número errado plausível.
+ * O 400 vem **antes** de carregar qualquer coisa: o pedido está errado, não o estado.
+ */
+test('?filtro= inválido dá 400 com a mensagem inteira, sem carregar nada', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/capa?filtro=naoEhJson');
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).erro, /não é JSON/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('?filtro= com valores vazio dá 400 e explica por que vazio não é "sem filtro"', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const f = encodeURIComponent(JSON.stringify({ tabela: 'T', coluna: 'c', valores: [] }));
+    const r = await s.busca(`/api/dashboards/capa?filtro=${f}`);
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).erro, /não mande o parâmetro/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/**
+ * A resposta devolve o que a tela mandou. Sem isso não há como conferir, olhando o
+ * payload, se o número está filtrado pelo que a tela acha que mandou — e a conferência
+ * de paridade depende exatamente dessa checagem.
+ */
+test('a resposta ecoa os filtros da tela que foram aplicados', async () => {
+  const s = await servidor(await dirComCapa());
+  try {
+    const f = encodeURIComponent(
+      JSON.stringify({ tabela: 'HORA ATUALIZADO', coluna: 'data', valores: ['2026-08-07'] }),
+    );
+    const r = await s.busca(`/api/dashboards/capa?filtro=${f}`);
+    assert.equal(r.status, 200);
+    const corpo = await r.json();
+    assert.deepEqual(corpo.filtrosDaTela, [
+      { tabela: 'HORA ATUALIZADO', coluna: 'data', valores: ['2026-08-07'] },
+    ]);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('sem filtro nenhum, o eco vem vazio', async () => {
+  const s = await servidor(await dirComCapa());
+  try {
+    const corpo = await (await s.busca('/api/dashboards/capa')).json();
+    assert.deepEqual(corpo.filtrosDaTela, []);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/**
+ * **A trava que impede a rota de virar um dump do modelo.**
+ *
+ * `snapshot/` tem endereço de cliente em `field-agenda` e CPF/RG em `QUADRO
+ * FUNCIONAL`. Uma rota que listasse valor distinto de coluna qualquer os entregaria a
+ * quem montasse a URL. Só coluna de segmentação **desta página** passa.
+ */
+test('valores de coluna que não é segmentação da página dá 404', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/visao-geral/valores?tabela=CONTRATOS&coluna=CPF');
+    assert.equal(r.status, 404);
+    assert.match((await r.json()).erro, /não é a coluna de nenhuma segmentação/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('valores sem tabela ou sem coluna dá 400 com um exemplo de uso', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/visao-geral/valores');
+    assert.equal(r.status, 400);
+    assert.match((await r.json()).erro, /valores\?tabela=/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('sub-rota desconhecida de uma página dá 404, não 500', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/capa/inventada');
+    assert.equal(r.status, 404);
+    assert.match((await r.json()).erro, /sub-rotas: valores/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/** A rota de valores é `GET`, como todo o resto. */
+test('a rota de valores também recusa método que não é GET', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/visao-geral/valores', { method: 'POST' });
+    assert.equal(r.status, 405);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/**
+ * A rota de valores só aceita o nível **daquela** segmentação. Pedir `nivel=Dia` numa
+ * segmentação de Ano listaria 365 valores que o controle nunca ofereceria — e a
+ * checagem de permissão é o mesmo lugar que impede o dump de coluna qualquer.
+ */
+test('valores com nível diferente do da segmentação dá 404', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca(
+      '/api/dashboards/visao-geral/valores?tabela=CALENDARIO CRIADO&coluna=DATA CRIADO&nivel=Dia',
+    );
+    assert.equal(r.status, 404);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/** Segmentação de hierarquia sem o nível também não passa: são chaves diferentes. */
+test('valores de coluna de hierarquia sem nível dá 404', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca(
+      '/api/dashboards/visao-geral/valores?tabela=CALENDARIO CRIADO&coluna=DATA CRIADO',
+    );
+    assert.equal(r.status, 404);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/**
+ * O nível vai no eco. Sem ele, olhando a resposta não dá para distinguir um filtro
+ * pelo **ano** de uma data de um filtro pela data crua — e os dois produzem números
+ * diferentes sobre a mesma coluna. É a mesma razão de o eco existir.
+ */
+test('o eco do filtro carrega o nível quando ele existe', async () => {
+  const s = await servidor(await dirComCapa());
+  try {
+    const f = encodeURIComponent(
+      JSON.stringify({ tabela: 'HORA ATUALIZADO', coluna: 'data', nivel: 'Ano', valores: [2026] }),
+    );
+    const corpo = await (await s.busca(`/api/dashboards/capa?filtro=${f}`)).json();
+    assert.deepEqual(corpo.filtrosDaTela, [
+      { tabela: 'HORA ATUALIZADO', coluna: 'data', nivel: 'Ano', valores: [2026] },
+    ]);
+  } finally {
+    await s.fecha();
+  }
+});

@@ -150,6 +150,58 @@ export function alcance(nome: string, model: ModeloDeMedidas): Set<string> {
   return tabelas;
 }
 
+
+/**
+ * Funções cujo resultado muda sozinho com a passagem do tempo.
+ *
+ * Mesma lista de `packages/snapshot/src/tabelas-calculadas.ts` — `TODAY` e `NOW`
+ * são as duas que aparecem na base; `UTCNOW`/`UTCTODAY` entram porque custam nada
+ * e a ausência delas seria uma fresta. O `\(` no fim é o que separa a CHAMADA do
+ * nome: sem ele, `SUM('T'[SNOWNOW])` casaria.
+ */
+const RELOGIO = /\b(TODAY|NOW|UTCNOW|UTCTODAY)\s*\(/i;
+
+/**
+ * A medida depende do **relógio**?
+ *
+ * **Por que existe.** Medida cuja janela termina em `TODAY()`/`NOW()` não é
+ * comparável a um número fixo: o dia de hoje está pela metade dos dois lados e
+ * cada lado o congelou num instante diferente. Ela continua sendo PERGUNTADA — ver
+ * os dois números lado a lado é útil —, mas não recebe veredito nem vai para o
+ * gabarito de `specs/paridade/*.yaml`. Sem esta distinção, a comparação marcaria
+ * `difere` numa medida que está certa, e alguém iria "consertar" o que não está
+ * quebrado.
+ *
+ * **Segue as medidas chamadas**, pelo mesmo motivo que `alcance` segue: uma medida
+ * que só faz `DIVIDE([Instaladas Hoje], [Meta])` não cita relógio nenhum no próprio
+ * DAX e é tão móvel quanto a que chama. O `vistas` corta ciclo — medida que se
+ * referencia indiretamente existe em DAX e faria isto rodar para sempre.
+ *
+ * Usa `limpaDax` e não só o filtro de literais: assim um comentário
+ * `-- antes usava TODAY()` também deixa de contar.
+ */
+export function dependeDoRelogio(nome: string, model: ModeloDeMedidas): boolean {
+  const vistas = new Set<string>();
+
+  const anda = (n: string): boolean => {
+    const chave = normaliza(n);
+    if (vistas.has(chave)) return false;
+    vistas.add(chave);
+
+    const m = model.measure(n);
+    if (!m) return false;
+
+    const limpo = limpaDax(m.dax);
+    if (RELOGIO.test(limpo)) return true;
+
+    return medidasCitadas(m.dax)
+      .filter((x) => model.measure(x) !== null)
+      .some((x) => anda(x));
+  };
+
+  return anda(nome);
+}
+
 export interface PlanoDeJanela {
   /** Predicados DAX a aplicar, já deduplicados. */
   predicados: string[];

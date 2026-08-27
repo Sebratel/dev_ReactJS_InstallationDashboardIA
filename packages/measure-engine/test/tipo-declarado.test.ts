@@ -19,7 +19,7 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import { Dataset } from '../src/dataset.ts';
 import { Evaluator } from '../src/evaluator.ts';
-import { DaxEvalError, makeDate } from '../src/value.ts';
+import { BLANK, DaxEvalError, makeDate } from '../src/value.ts';
 
 const AGORA = makeDate(2026, 8, 7);
 
@@ -107,12 +107,20 @@ test('SUM continua sem converter texto que não veio de coluna tipada', () => {
 });
 
 test('coluna declarada texto não é tocada', () => {
-  const ev = montar('string', '"1"');
-  assert.equal(ev.evaluateExpression("CONCATENATEX('OS', 'OS'[C], \",\")"), '1,1');
+  assert.deepEqual(montar('string', '"1"').columnValues('OS', 'C'), ['1', '1']);
 });
 
-/** BLANK continua BLANK: coluna numérica vazia não vira zero na materialização. */
+test('coluna declarada int64 guarda número, não o texto', () => {
+  assert.deepEqual(montar('int64', '"1"').columnValues('OS', 'C'), [1, 1]);
+});
+
+/**
+ * BLANK atravessa sem virar zero. E `COUNTA` de coluna toda em branco devolve
+ * **BLANK**, não 0 — é o DAX, e a asserção original dizia 0 por engano meu.
+ */
 test('BLANK atravessa a conversão sem virar zero', () => {
   const ev = montar('int64', 'BLANK()');
-  assert.equal(ev.evaluateExpression("COUNTA('OS'[C])"), 0);
+  assert.deepEqual(ev.columnValues('OS', 'C'), [BLANK, BLANK]);
+  assert.equal(ev.evaluateExpression("COUNTA('OS'[C])"), BLANK);
+  assert.equal(ev.evaluateExpression("SUM('OS'[C])"), BLANK);
 });

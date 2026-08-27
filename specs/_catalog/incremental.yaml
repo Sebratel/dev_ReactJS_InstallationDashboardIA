@@ -106,7 +106,44 @@ queries:
                 AND GREATEST(raux.created, COALESCE(raux.modified, raux.created)) >= :desde
           ),
           bruto AS (
-      - de: "      AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo"
-        para: |2
-                AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo
-                AND a.title IN (SELECT title FROM alvos)
+      # ⚠️ A ÂNCORA FOI REBAIXADA EM 27/08/2026, E ISSO REGISTRA UMA PERDA.
+      #
+      # Ela dizia `AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos;
+      # cada um se recorta abaixo`, com o comentário fazendo parte da âncora. Aquele
+      # comentário existia porque o SQL de `protocolos-produtividade` tinha DOIS
+      # RAMOS unidos por `UNION ALL` (`ramo_produtividade` e `ramo_auxiliares`), a
+      # correção que reproduzia o `INSTALADOR` do relatório original.
+      #
+      # **Esse SQL de dois ramos foi perdido** num `git reset --hard` de outro agente
+      # em 26/08/2026, e não estava em nenhum commit — só na árvore de trabalho. O SQL
+      # de hoje voltou a ter um ramo só, então a âncora com o comentário aparecia 0
+      # vez e a costura incremental falhava alto (é para isso que ela erra alto).
+      #
+      # A âncora agora casa com o SQL que existe. **Isto não conserta o INSTALADOR**:
+      # enquanto o SQL tiver um ramo, a coluna volta a sair errada, porque no
+      # relatório original ela vem de `Table.Combine` — o auxiliar OCUPA o lugar do
+      # técnico numa LINHA ACRESCENTADA, não numa coluna preenchida por precedência.
+      #
+      # PARA REFAZER: `../QUERIES-DASHBOARD-INSTALACAO/m/protocolos-produtividade.m`,
+      # passo `#"Consulta Acrescentada" = Table.Combine({#"Colunas Removidas1",
+      # #"PROTOCOLOS AUXILIARES"})` na linha 65, com `TECNICO` renomeado para
+      # `INSTALADOR` na linha 68. Depende de PROTOCOLOS AUXILIARES, TECNICOS
+      # AUXILIARES e QUADRO FUNCIONAL, e o resultado tem de ser MEDIDO (a carga
+      # completa dava 70.991 linhas contra 70.868 do ramo único).
+      # Ao restaurar os dois ramos, devolva o comentário a esta âncora.
+      # DUAS LINHAS NA ÂNCORA, e o motivo é sutil.
+      #
+      # A âncora antiga era a linha do piso MAIS o comentário
+      # `-- o mais largo dos dois ramos; cada um se recorta abaixo`. Aquele comentário
+      # não era decoração: era o DESAMBIGUADOR. A costura roda em sequência, e a
+      # primeira insere o CTE `alvos` — cujo ramo 3 contém, ele próprio,
+      # `AND a.created >= '2026-01-01'` com a mesma indentação. Sem o comentário, a
+      # segunda âncora casa duas vezes e a costura erra alto (corretamente).
+      #
+      # O comentário sumiu junto com o SQL de dois ramos (ver o bloco acima). No lugar
+      # dele, a âncora passa a levar a linha ANTERIOR — o `WHERE it.id IN (...)`, que
+      # aparece exatamente uma vez no SQL e não existe no texto inserido. Ancorar em
+      # contexto é mais robusto que ancorar em comentário: comentário se edita sem
+      # pensar, `WHERE` não.
+      - de: "    WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo\n      AND a.created >= '2026-01-01'"
+        para: "    WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo\n      AND a.created >= '2026-01-01'\n      AND a.title IN (SELECT title FROM alvos)"

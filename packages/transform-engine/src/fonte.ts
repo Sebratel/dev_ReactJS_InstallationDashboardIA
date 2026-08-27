@@ -13,49 +13,19 @@
 // arquivo existe, e o teste satisfaz com quatro linhas.
 
 import { deLinhas, type FonteDeLinhas, type MQuerySpec } from './runner.ts';
-import { MEvalError, MTable, type MValue } from './value.ts';
+import { MEvalError, MTable } from './value.ts';
 
 /** Só o que o adaptador precisa do Query Engine. `QueryEngine` já satisfaz. */
 export interface ExecutorDeQuery {
   execute(
     queryId: string,
-    options?: { forceRefresh?: boolean; params?: Record<string, unknown> },
+    options?: { forceRefresh?: boolean },
   ): Promise<{ rows: readonly Record<string, unknown>[] }>;
 }
 
 export interface FonteDoEngineOptions {
   /** Ignora o cache de leitura. Usado pela validação de paridade. */
   readonly forceRefresh?: boolean;
-  /**
-   * Parâmetros da consulta, por id de query. `undefined` = a query roda como
-   * está, que é o caso de 21 das 22 hoje.
-   *
-   * É por aqui que a **carga incremental** entrega o `:desde`. O valor não vira
-   * texto de SQL em lugar nenhum: `traduzParametros` o passa pelo protocolo do
-   * driver (ver `connectors-sql.ts`). E ele entra na chave de cache do Engine,
-   * então uma janela diferente nunca lê o resultado da anterior.
-   */
-  readonly params?: (id: string) => Record<string, unknown> | undefined;
-  /**
-   * Parâmetros da consulta, por id de query. `undefined` = a query roda como
-   * está, que é o caso de 21 das 22 hoje.
-   *
-   * É por aqui que a **carga incremental** entrega o `:desde`. O valor não vira
-   * texto de SQL em lugar nenhum: `traduzParametros` o passa pelo protocolo do
-   * driver (ver `connectors-sql.ts`). E ele entra na chave de cache do Engine,
-   * então uma janela diferente nunca lê o resultado da anterior.
-   */
-  readonly params?: (id: string) => Record<string, unknown> | undefined;
-  /**
-   * Parâmetros da consulta, por id de query. `undefined` = a query roda como
-   * está, que é o caso de 21 das 22 hoje.
-   *
-   * É por aqui que a **carga incremental** entrega o `:desde`. O valor não vira
-   * texto de SQL em lugar nenhum: `traduzParametros` o passa pelo protocolo do
-   * driver (ver `connectors-sql.ts`). E ele entra na chave de cache do Engine,
-   * então uma janela diferente nunca lê o resultado da anterior.
-   */
-  readonly params?: (id: string) => Record<string, unknown> | undefined;
   /**
    * Chamado depois de cada busca — gancho de log/progresso.
    *
@@ -91,13 +61,7 @@ export function fonteDoEngine(
   return async (spec: MQuerySpec) => {
     try {
       const t0 = Date.now();
-      const params = opts.params?.(spec.id);
-      const { rows } = await engine.execute(spec.id, {
-        forceRefresh: opts.forceRefresh,
-        // Omitido quando não há: `cacheKeyFor` distingue `undefined` de `{}`, e um
-        // objeto vazio também trocaria o caminho do driver `pg` (ver `postgresRunner`).
-        ...(params ? { params } : {}),
-      });
+      const { rows } = await engine.execute(spec.id, { forceRefresh: opts.forceRefresh });
       const t1 = Date.now();
       const convertidas = rows.map(comValoresAninhados);
       opts.onBusca?.({

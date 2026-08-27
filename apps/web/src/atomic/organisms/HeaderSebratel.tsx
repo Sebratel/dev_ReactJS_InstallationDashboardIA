@@ -31,7 +31,8 @@ export function HeaderSebratel({
     <header className="cabecalho">
       <span className="cabecalho-titulo">{titulo}</span>
       <span className="cabecalho-sub">
-        {sub || 'Relatório Instalação Gerencial — Sebratel Field Service'}
+        {/* NÃO é "Instalação Gerencial": esse é outro relatório. */}
+        {sub || 'Relatório Instalação — Sebratel Field Service'}
       </span>
 
       <div className="grupo-acoes-cabecalho">

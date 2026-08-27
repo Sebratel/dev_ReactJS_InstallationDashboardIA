@@ -11,6 +11,7 @@ import {
   alcance,
   planoDeJanela,
   comJanela,
+  dependeDoRelogio,
   ARQUIVO_JANELA,
   type ModeloDeMedidas,
 } from '../src/janela.ts';
@@ -224,5 +225,78 @@ describe('o arquivo real do catálogo', () => {
     for (const [nome, motivo] of j.bloqueadas) {
       assert.ok(motivo.trim().length > 40, `${nome}: o motivo do bloqueio está curto demais`);
     }
+  });
+});
+
+describe('dependeDoRelogio', () => {
+  // Esta função foi PERDIDA num reset em 26/08/2026 e o `tools/powerbi` parou de
+  // iniciar (`SyntaxError`, import de export inexistente). Nada a cobria — é por
+  // isso que estes testes existem.
+
+  test('TODAY() e NOW() no próprio DAX', () => {
+    const m = modelo({
+      'Instaladas Hoje': { table: 'PROTOCOLOS GERAL', dax: "CALCULATE([Qtd], 'CALENDARIO'[Data] = TODAY())" },
+      'Agora': { table: 'PROTOCOLOS GERAL', dax: 'NOW()' },
+      'Fixa': { table: 'PROTOCOLOS GERAL', dax: "CALCULATE([Qtd], 'CALENDARIO'[Data] = DATE(2026,1,1))" },
+    });
+    assert.equal(dependeDoRelogio('Instaladas Hoje', m), true);
+    assert.equal(dependeDoRelogio('Agora', m), true);
+    assert.equal(dependeDoRelogio('Fixa', m), false);
+  });
+
+  test('UTCNOW e UTCTODAY também contam', () => {
+    const m = modelo({
+      'A': { table: 'T', dax: 'UTCNOW()' },
+      'B': { table: 'T', dax: 'UTCTODAY()' },
+    });
+    assert.equal(dependeDoRelogio('A', m), true);
+    assert.equal(dependeDoRelogio('B', m), true);
+  });
+
+  // A armadilha que o `\(` da expressão regular fecha: sem ele, qualquer coluna
+  // com "NOW" no nome tornaria a medida móvel.
+  test('nome de coluna com NOW dentro NÃO é chamada de relógio', () => {
+    const m = modelo({ 'X': { table: 'T', dax: "SUM('T'[SNOWNOW])" } });
+    assert.equal(dependeDoRelogio('X', m), false);
+  });
+
+  test('literal de texto e comentário não contam', () => {
+    const m = modelo({
+      'Texto': { table: 'T', dax: 'IF([Y] = "usa TODAY() no relato", 1, 2)' },
+      'Comentada': { table: 'T', dax: '-- antes usava TODAY()\nSUM(\'T\'[V])' },
+    });
+    assert.equal(dependeDoRelogio('Texto', m), false);
+    assert.equal(dependeDoRelogio('Comentada', m), false);
+  });
+
+  // O ponto todo: quem chama uma medida móvel é móvel. `DIVIDE([Hoje],[Meta])` não
+  // cita relógio nenhum e é tão incomparável quanto `[Hoje]`.
+  test('segue as medidas chamadas (transitivo)', () => {
+    const m = modelo({
+      'Hoje': { table: 'T', dax: "CALCULATE([Base], 'C'[D] = TODAY())" },
+      'Meta': { table: 'T', dax: '2928' },
+      'Atingimento': { table: 'T', dax: 'DIVIDE([Hoje], [Meta])' },
+      'Sobre Atingimento': { table: 'T', dax: '[Atingimento] * 100' },
+      'Limpa': { table: 'T', dax: 'DIVIDE([Base], [Meta])' },
+      'Base': { table: 'T', dax: "SUM('T'[V])" },
+    });
+    assert.equal(dependeDoRelogio('Atingimento', m), true);
+    assert.equal(dependeDoRelogio('Sobre Atingimento', m), true, 'dois níveis acima');
+    assert.equal(dependeDoRelogio('Limpa', m), false);
+  });
+
+  test('ciclo de medidas não roda para sempre', () => {
+    const m = modelo({
+      'A': { table: 'T', dax: '[B] + 1' },
+      'B': { table: 'T', dax: '[A] + 1' },
+      'C': { table: 'T', dax: '[D] + TODAY()' },
+      'D': { table: 'T', dax: '[C] + 1' },
+    });
+    assert.equal(dependeDoRelogio('A', m), false, 'ciclo sem relógio termina');
+    assert.equal(dependeDoRelogio('D', m), true, 'ciclo COM relógio acha e termina');
+  });
+
+  test('medida que não existe no modelo não é móvel', () => {
+    assert.equal(dependeDoRelogio('Fantasma', modelo({})), false);
   });
 });

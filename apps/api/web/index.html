@@ -353,8 +353,8 @@ function rotuloDe(v) {
  * botão avisa antes, e troca para "carregando…" enquanto acontece.
  */
 function desenhaSobDemanda(pagina, v) {
-  const corpo = el('div', { class: 'vazio' });
-  const botao = el('button', { class: 'botao', texto: 'Carregar' });
+  const corpo = el('div', { class: 'sob-demanda' });
+  const botao = el('button', { class: 'primario', texto: 'Carregar' });
 
   corpo.append(
     el('p', { texto: `Este visual usa ${v.sobDemanda.join(', ')}, que fica fora da abertura da página por ser grande demais para carregar sempre.` }),

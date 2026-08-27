@@ -43,7 +43,12 @@ sql: |-
       AND r.title NOT LIKE 'Reabertura (Retrabalho)'
       AND r.title NOT LIKE 'Reabertura (Simples)%'
   )
-  AND vsdspi.begin_date_slot >= DATE '2026-01-01'
+  -- JANELA DESLIZANTE: divergência DE PROPÓSITO do relatório original, que corta
+  -- em '2026-01-01' (ver o `m_expression` abaixo, que é o extraído do PBIP).
+  -- Esta é a query mais pesada do corpus — grão (slot, relato) — e a última carga
+  -- completa MORREU com ECONNRESET após 38 min. Perdida num reset em 26/08/2026 e
+  -- restaurada em 27/08 por medição: ver docs/ACHADOS.md e docs/SPEC-DRIVEN.md.
+  AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
   ORDER BY vsdspi.assignment_created DESC;
 url: null
 sheet: null

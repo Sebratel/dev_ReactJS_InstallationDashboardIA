@@ -86,11 +86,7 @@ export interface PlatformConfig {
    * em vez do Google Sheets do Power BI de hoje (divergência deliberada de fonte,
    * ver docs/DECISAO-CAMADA-M.md, Anexo A).
    */
-  datahub: {
-    token: string;
-    baseUrl: string;
-    apis: { quadroFuncional: string; protocolosProdutividade: string };
-  };
+  datahub: { token: string; baseUrl: string; apis: { quadroFuncional: string } };
   /**
    * As 3 planilhas. `QUADRO FUNCIONAL` voltou para cá em 05/08/2026: a troca
    * para o Data Hub ficou bloqueada por falta de dado de gestor (ACHADOS.md #17).
@@ -176,46 +172,10 @@ export function loadConfig(): PlatformConfig {
       baseUrl: env('DATAHUB_BASE_URL', 'https://data-hub.sebratel.net.br/api/public/v1'),
       // O caminho é `/p/{api}`. A "api" é a publicação; o dataset por trás dela
       // vem no envelope da resposta (`db-senior-collaborators`), não na URL.
-      // Um slug por publicação, e a chave é o **id da query** que o consome. Antes
-      // havia um `apiSlug` só no connector, herdado de quando a única publicação era
-      // a de colaboradores: apontar duas queries para o Data Hub dava a mesma URL
-      // para as duas, e a segunda leria as linhas da primeira sem erro nenhum.
-      // Vazio = esta query não está no Data Hub; o connector erra alto se for pedida.
-      apis: {
-        quadroFuncional: env('DATAHUB_API_QUADRO_FUNCIONAL', 'dash-instalacao'),
-        protocolosProdutividade: env('DATAHUB_API_PROTOCOLOS_PRODUTIVIDADE'),
-      },
+      apis: { quadroFuncional: env('DATAHUB_API_QUADRO_FUNCIONAL', 'dash-instalacao') },
     },
     gsheets: {
       credentialsPath: env('GOOGLE_APPLICATION_CREDENTIALS'),
-      apiKey: env('GSHEETS_API_KEY'),
-      oauth: {
-        clientId: env('GOOGLE_OAUTH_CLIENT_ID'),
-        clientSecret: env('GOOGLE_OAUTH_CLIENT_SECRET'),
-        refreshToken: env('GOOGLE_OAUTH_REFRESH_TOKEN'),
-        // Sem default para um caminho dentro do repositório: refresh token é
-        // credencial de longa duração, e o `Desktop` inteiro é um repo git sem
-        // .gitignore. Vazio significa "OAuth não configurado", não "no cwd".
-        tokenFile: env('GOOGLE_OAUTH_TOKEN_FILE'),
-      },
-      oauth: {
-        clientId: env('GOOGLE_OAUTH_CLIENT_ID'),
-        clientSecret: env('GOOGLE_OAUTH_CLIENT_SECRET'),
-        refreshToken: env('GOOGLE_OAUTH_REFRESH_TOKEN'),
-        // Sem default para um caminho dentro do repositório: refresh token é
-        // credencial de longa duração, e o `Desktop` inteiro é um repo git sem
-        // .gitignore. Vazio significa "OAuth não configurado", não "no cwd".
-        tokenFile: env('GOOGLE_OAUTH_TOKEN_FILE'),
-      },
-      oauth: {
-        clientId: env('GOOGLE_OAUTH_CLIENT_ID'),
-        clientSecret: env('GOOGLE_OAUTH_CLIENT_SECRET'),
-        refreshToken: env('GOOGLE_OAUTH_REFRESH_TOKEN'),
-        // Sem default para um caminho dentro do repositório: refresh token é
-        // credencial de longa duração, e o `Desktop` inteiro é um repo git sem
-        // .gitignore. Vazio significa "OAuth não configurado", não "no cwd".
-        tokenFile: env('GOOGLE_OAUTH_TOKEN_FILE'),
-      },
       apiKey: env('GSHEETS_API_KEY'),
       oauth: {
         clientId: env('GOOGLE_OAUTH_CLIENT_ID'),

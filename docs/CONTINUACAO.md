@@ -135,9 +135,13 @@ fontes → Query Engine → camada M → toDatasetRows → snapshot/*.jsonl
 Elas não são estilo. Cada uma existe porque quebrá-la produz **número errado
 plausível**, que é o único tipo de erro que este projeto não pode cometer.
 
-1. **O PBIP é read-only.** Só o extrator lê. Nunca escreva em
-   `INST - Relatório Instalação Gerencial.pbix` / `.Report` / `.SemanticModel`, na
-   pasta pai.
+1. **A base de referência é read-only — e o PBIP não está mais no disco.**
+   Verificado em 27/08/2026: não há `.pbix` / `.pbip` / `.Report` /
+   `.SemanticModel` na pasta pai. O que existe é a **extração**, em
+   `../QUERIES-DASHBOARD-INSTALACAO/`, e ela só se lê.
+   **Nunca procure nem exija um `.pbip`** (regra 1 do `CLAUDE.md`).
+   E cuidado com o nome: o alvo é o `INST - Relatório Instalação`, **não** o
+   `... Gerencial` — são dois relatórios (Erick, 27/08/2026).
 2. **Arquivo gerado vs. humano.** Tudo em `specs/_catalog/queries|tables|measures/` e
    `specs/dashboards/` é **sobrescrito** por `npm run extract`. Nenhuma decisão humana
    mora lá — decisões vão em `specs/_catalog/cache-policies.yaml`.

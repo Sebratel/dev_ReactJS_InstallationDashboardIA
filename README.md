@@ -1482,7 +1482,18 @@ docker/                   # infra local; docker-compose.yml da raiz sobe Redis e
 
 ## Base de referência (read-only)
 
-O projeto Power BI `INST - Relatório Instalação Gerencial` (pasta pai) é a fonte da
-verdade do comportamento atual. **Não é modificado** — apenas lido pelo extrator.
+> **Dois nomes, dois relatórios.** O alvo é o `INST - Relatório Instalação`.
+> O `INST - Relatório Instalação Gerencial` é OUTRO relatório (Erick, 27/08/2026).
+> Apontar a paridade para o errado não dá erro — dá número plausível e diferente.
+> Ver `docs/SPEC-DRIVEN.md`, "Qual relatório é o original".
+
+A fonte da verdade do comportamento atual é a **extração** do relatório, em
+`../QUERIES-DASHBOARD-INSTALACAO/` (`m/`, `sql/`, `dax/`, `_meta.json`).
+**Não é modificada** — só lida.
+
+**O PBIP não está mais no disco.** Verificado em 27/08/2026: não há `.pbix`,
+`.pbip`, `.Report` nem `.SemanticModel` na pasta pai — só a extração e este
+projeto. Por isso a regra 1 do `CLAUDE.md` diz para **nunca procurar ou exigir** um
+`.pbip`: ele não existe, e caçá-lo é tempo perdido.
 
 Ver [docs/SPEC-DRIVEN.md](docs/SPEC-DRIVEN.md) e [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).

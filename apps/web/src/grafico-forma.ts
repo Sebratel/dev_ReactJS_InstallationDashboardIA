@@ -34,15 +34,51 @@ export interface GraficoMontado {
   avisos: string[];
 }
 
+/**
+ * As cores das séries — bordô Sebratel.
+ *
+ * A ordem é fixa e a cor segue a **identidade** da série, nunca a posição dela na
+ * lista: um filtro que tira uma série não pode repintar as que ficaram, ou quem
+ * aprendeu "bordô é instalação" passa a ler o gráfico errado.
+ *
+ * **Estes hexadecimais são a exceção consciente à regra "nenhum hex fora do
+ * `:root`".** Cor de série vai para atributo SVG (`fill`, `stroke`), que não lê
+ * variável de CSS por caminho de dado. Se `estilo.css` mudar, mude aqui junto.
+ *
+ * Antes daqui isto era a paleta CRUA do Power BI (azul, laranja, aqua, amarelo,
+ * magenta, violeta...) — oito matizes sem relação com a marca e escolhidos por
+ * matiz, não por luminância.
+ *
+ * **Separação medida em OKLab (x100).** Piso: 15 em visão normal, 8 em daltonismo.
+ *
+ *                     normal   deutan   tritan
+ *   bordô x dourado     41,4     38,0     56,8   <- os dois primeiros
+ *   bordô x cinza       17,0     10,8     89,6
+ *   dourado x cinza     33,3     34,1    126,5
+ *
+ * Pior par vizinho da lista: **19,8**. Pior caso em daltonismo entre os três
+ * primeiros: **10,8**, acima do piso 8. A separação vem de LUMINÂNCIA (bordô
+ * escuro, dourado claro, cinza no meio), e luminância sobrevive a qualquer
+ * dicromacia — matiz não.
+ *
+ * **O dourado tem só 2,0:1 contra o branco do card**, e isso é aceito: a série é
+ * uma área PREENCHIDA, não um traço fino, e o mínimo de 3:1 do WCAG 1.4.11 vale
+ * para contorno de gráfico essencial. Barra sólida se enxerga bem a 2:1 — o que
+ * não se enxerga é texto, e por isso o dourado de LETRA é outro token
+ * (`--pbi-gold-600`).
+ *
+ * A contrapartida do padrão continua valendo: **legenda sempre presente** com 2+
+ * séries e rótulo direto no extremo da linha. Identidade nunca fica só na cor.
+ */
 const SLOTS: readonly string[] = [
-  '#2a78d6', // azul
-  '#eb6834', // laranja
-  '#1baf7a', // aqua
-  '#eda100', // amarelo
-  '#e87ba4', // magenta
-  '#4a3aa7', // violeta
-  '#008300', // verde
-  '#e34948', // vermelho
+  '#880F17', // bordô          — a série principal (--pbi-primary)
+  '#D9B300', // dourado        — a segunda, o par histórico do bordô
+  '#605E5C', // cinza          — a terceira (--pbi-muted)
+  '#C9707A', // bordô claro    — a quarta
+  '#f0e199', // dourado claro
+  '#A19F9D', // cinza claro
+  '#252423', // tinta          (--pbi-ink)
+  '#C8C6C4', // neutro         — "Outros", nunca uma categoria de verdade
 ];
 
 const POR_SIGNIFICADO: ReadonlyMap<string, string> = new Map([
@@ -70,12 +106,51 @@ export function corDaSerie(nome: string, indice: number): string {
   return POR_SIGNIFICADO.get(chaveDeCor(nome)) ?? SLOTS[indice % SLOTS.length]!;
 }
 
+/**
+ * Os slots que somem no TEMA ESCURO, e a troca mínima que os salva.
+ *
+ * Uma cor de série cuja luminância bate com a do fundo escuro não fica discreta:
+ * ela **desaparece**, sem erro no console e sem teste falhando. Foi visto na tela:
+ * uma série inteira do AGENDAMENTO FIELD não existia nem na legenda nem nas
+ * colunas, e o gráfico mostrava metade do dado que dizia mostrar.
+ *
+ * Medido contra a superfície escura `#252423` (mínimo 3:1, WCAG 1.4.11 para
+ * elemento gráfico). Três slots reprovam e só eles trocam — mexer nos outros faria
+ * a mesma série mudar de cor entre temas sem motivo:
+ *
+ *   0 bordô   #880F17  1,57  ->  #E08B94  6,12   bordô claro
+ *   2 cinza   #605E5C  2,40  ->  #C8C6C4  9,10   cinza claro
+ *   6 tinta   #252423  1,00  ->  #F3F2F1 13,86
+ *   7 Outros  #C8C6C4  9,10  ->  #605E5C  2,40   recessivo, ver abaixo
+ *
+ * O slot 2 foi para `#C8C6C4` e não para um cinza médio porque `#8A8886`, a
+ * escolha óbvia, ficava a **11,2** do bordô claro vizinho — abaixo do piso 15.
+ * Com `#C8C6C4` os vizinhos medem 16,4 e 21,1.
+ *
+ * O slot 7 abaixo de 3:1 é DELIBERADO e não é desvio novo: no tema claro ele mede
+ * 1,55:1 (`#C8C6C4` sobre branco). "Outros" tem de ser recessivo — ele nunca
+ * carrega uma categoria de verdade.
+ */
+const NO_ESCURO: Readonly<Record<string, string>> = {
+  '#880F17': '#E08B94',
+  '#605E5C': '#C8C6C4',
+  '#252423': '#F3F2F1',
+  '#C8C6C4': '#605E5C',
+};
+
+/**
+ * Traduz uma cor de série para o tema em uso.
+ *
+ * Fica FORA de `corDaSerie` de propósito: aquela função é pura e a suíte fixa o
+ * resultado dela por índice. Tema é decisão de renderização, não de forma — quem
+ * sabe o tema é a tela, então é lá que a tradução se aplica.
+ *
+ * Cor de ESTADO (`POR_SIGNIFICADO`) não entra: aquelas quatro foram medidas e
+ * passam nos dois fundos.
+ */
 export function corNoTema(cor: string, isDark = false): string {
   if (!isDark) return cor;
-  if (cor === '#2a78d6') return '#4ba3ff';
-  if (cor === '#eb6834') return '#ff8c5a';
-  if (cor === '#1baf7a') return '#3cdba2';
-  return cor;
+  return NO_ESCURO[cor] ?? cor;
 }
 
 const POR_TIPO: Record<string, { forma: Forma; empilha: boolean; percentual: boolean }> = {

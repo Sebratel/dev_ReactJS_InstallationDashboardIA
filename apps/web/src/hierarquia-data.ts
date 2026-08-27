@@ -46,9 +46,21 @@ export function montaArvore(
     dias.add(d.getUTCDate());
   }
 
-  // Garantir ano 2025 se 2026 existir, marcando semDado se não tiver registros
-  if (porAno.has(2026) && !porAno.has(2025)) {
-    porAno.set(2025, new Map());
+  // O ANO ANTERIOR AO PRIMEIRO COM DADO APARECE VAZIO, e é deliberado.
+  //
+  // A origem de PROTOCOLOS GERAL corta em 2026-01-01 e o CALENDARIO INSTALADO
+  // começa na menor data instalada. Sem este piso o seletor mostraria só 2026, e
+  // quem procura 2025 concluiria que a tela perdeu dado — em vez de ver um ano
+  // clicável e vazio, que diz onde a base começa.
+  //
+  // ANTES ISTO ERA `if (porAno.has(2026) && !porAno.has(2025))`: os dois anos
+  // cravados no código. Além de virar mentira em 2027, o número mágico fazia o
+  // teste "data é lida em UTC" falhar, porque injetava um 2025 que aquele teste
+  // não esperava. Derivar do MENOR ano presente diz a mesma coisa e envelhece.
+  const anos = [...porAno.keys()];
+  if (anos.length > 0) {
+    const anterior = Math.min(...anos) - 1;
+    if (anterior > 1900 && !porAno.has(anterior)) porAno.set(anterior, new Map());
   }
 
   return [...porAno.entries()]

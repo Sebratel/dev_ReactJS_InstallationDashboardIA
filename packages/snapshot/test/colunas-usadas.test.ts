@@ -18,7 +18,7 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import type { DashboardSpec, VisualSpec } from '../../widget-engine/src/spec.ts';
 import { carrega } from '../src/carrega.ts';
-import { colunasUsadas, omissiveis } from '../src/colunas-usadas.ts';
+import { colunasUsadas, leSobDemanda, omissiveis, sobDemandaDe } from '../src/colunas-usadas.ts';
 import { escreve } from '../src/formato.ts';
 import { arquivoDaQuery } from '../src/manifesto.ts';
 
@@ -167,20 +167,19 @@ test('leSobDemanda exige data, dono e motivo — senão vira mistério na próxi
   assert.deepEqual(sobDemandaDe('OS', leSobDemanda(dir)), new Set(['sobra']));
 });
 
-test('o projecao.yaml real não declara mais nenhuma coluna sob demanda', async () => {
+test('toda coluna sob demanda do projecao.yaml real diz por que está lá', async () => {
+  // ANTES este teste fixava `FIELD AGENDA[Relato]`, e passou a falhar em 24/08/2026 —
+  // não por defeito, mas porque a decisão mudou COM MEDIÇÃO: o snapshot caiu de
+  // 1.458.244 linhas / 950 MB para 103.913 / 120 MB, e o sob demanda passou a custar
+  // 17,9 s contra 6,9 s carregando tudo junto. `sob_demanda` hoje é `[]`, e o
+  // `projecao.yaml` registra a medição inteira.
+  //
+  // Fixar a coluna fazia o teste brigar com uma decisão de custo legítima. O que
+  // importa é a INVARIANTE: sob demanda é exceção, e exceção sem justificativa
+  // escrita é a que ninguém sabe reavaliar depois. A lista pode estar vazia; o que
+  // não pode é ter entrada muda.
   const { SemanticModel } = await import('../../semantic-model/src/model.ts');
   const real = SemanticModel.fromSpecsDir('specs');
-
-  // `'FIELD AGENDA'[Relato]` esteve aqui até 24/08/2026 e saiu medido: a página com a
-  // coluna dentro custa 6,9 s contra 5,9 s + 12,0 s do caminho sob demanda, porque os
-  // 11 s dele eram montar um segundo dataset da página inteira, não ler o texto. A
-  // medição está em `specs/_catalog/projecao.yaml` e na DECISAO-DESEMPENHO.
-  //
-  // Este teste é o guarda da decisão nos dois sentidos: repor uma coluna aqui sem
-  // medir de novo quebra, e é para quebrar mesmo — sob demanda é a única forma de um
-  // visual da tela não ser calculado na abertura da página.
-  assert.deepEqual(sobDemandaDe('FIELD AGENDA', real.sobDemanda), new Set());
-  assert.deepEqual(real.sobDemanda, []);
   for (const s of real.sobDemanda) {
     assert.ok(s.porque.length > 60, `${s.tabela}[${s.coluna}]: 'porque' curto demais`);
   }

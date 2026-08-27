@@ -258,14 +258,44 @@ function chaveDeOrigem(sourceColumn: string): string {
  * `DD/MM/YYYY` viraria março em vez de abril.
  */
 export function aplicaTipo(c: ModelColumn, v: DaxValue, tabela: string): DaxValue {
-  if (c.type !== 'dateTime' || isBlank(v)) return v;
-  if (typeof v === 'number') return dateFromSerial(v);
-  if (typeof v === 'string') {
-    throw new DaxEvalError(
-      `'${tabela}'[${c.name}] é declarada dateTime e o DAX devolveu o texto ` +
-        `${JSON.stringify(v)}. DAX não converte texto para data implicitamente — ` +
-        `use DATEVALUE na expressão da tabela.`,
-    );
+  if (isBlank(v)) return v;
+
+  if (c.type === 'dateTime') {
+    if (typeof v === 'number') return dateFromSerial(v);
+    if (typeof v === 'string') {
+      throw new DaxEvalError(
+        `'${tabela}'[${c.name}] é declarada dateTime e o DAX devolveu o texto ` +
+          `${JSON.stringify(v)}. DAX não converte texto para data implicitamente — ` +
+          `use DATEVALUE na expressão da tabela.`,
+      );
+    }
+    return v;
   }
+
+  if (TIPOS_NUMERICOS.has(c.type ?? '') && typeof v === 'string') {
+    if (!LITERAL_NUMERICO.test(v)) {
+      throw new DaxEvalError(
+        `'${tabela}'[${c.name}] é declarada ${c.type} e o DAX devolveu o texto ` +
+          `${JSON.stringify(v)}, que não é um literal numérico. ` +
+          `Nada é convertido aqui: "1.234,56" e "1,234.56" são o mesmo texto com ` +
+          `duas leituras, e escolher uma daria um número mil vezes errado sem avisar.`,
+      );
+    }
+    return Number(v);
+  }
+
   return v;
 }
+
+const TIPOS_NUMERICOS = new Set(['int64', 'double', 'decimal']);
+
+/**
+ * Literal numérico **sem ambiguidade**: só dígitos, com sinal e ponto decimal
+ * opcionais. Nada de separador de milhar, nada de vírgula, nada de espaço.
+ *
+ * A restrição é o ponto inteiro da regra. Numa base `pt-BR`, `"1.234"` é mil
+ * duzentos e trinta e quatro para o usuário e um vírgula duzentos e trinta e quatro
+ * para o `Number()` do JavaScript. Aceitar só o que tem uma leitura única é o que
+ * separa honrar o tipo declarado de adivinhar formato.
+ */
+const LITERAL_NUMERICO = /^-?\d+(\.\d+)?$/;

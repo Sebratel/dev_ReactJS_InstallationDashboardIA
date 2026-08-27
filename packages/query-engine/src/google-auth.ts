@@ -110,25 +110,3 @@ export const SCOPE_SHEETS_READONLY = 'https://www.googleapis.com/auth/spreadshee
  */
 export const SCOPE_DRIVE_METADATA_READONLY =
   'https://www.googleapis.com/auth/drive.metadata.readonly';
-
-/**
- * Só metadado do Drive (id, nome, dono) — nem conteúdo de arquivo.
- *
- * Usado apenas pelo `probe:gsheets`, para listar o que a conta de serviço
- * alcança. É a diferença entre "acho que compartilhei" e uma contagem: lista
- * vazia prova que o compartilhamento não chegou nesta identidade, sem precisar
- * que alguém abra a caixa de compartilhamento e leia o e-mail em voz alta.
- */
-export const SCOPE_DRIVE_METADATA_READONLY =
-  'https://www.googleapis.com/auth/drive.metadata.readonly';
-
-/**
- * Só metadado do Drive (id, nome, dono) — nem conteúdo de arquivo.
- *
- * Usado apenas pelo `probe:gsheets`, para listar o que a conta de serviço
- * alcança. É a diferença entre "acho que compartilhei" e uma contagem: lista
- * vazia prova que o compartilhamento não chegou nesta identidade, sem precisar
- * que alguém abra a caixa de compartilhamento e leia o e-mail em voz alta.
- */
-export const SCOPE_DRIVE_METADATA_READONLY =
-  'https://www.googleapis.com/auth/drive.metadata.readonly';

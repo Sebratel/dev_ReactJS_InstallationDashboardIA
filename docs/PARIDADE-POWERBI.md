@@ -2,8 +2,15 @@
 
 > Pergunta do Erick: "temos todos os dados e funcionalidades iguais ao dashboard
 > antigo de instalação?". Esta é a resposta com evidência — comparando o **bruto da
-> definição** do PBIP (`INST - Relatório Instalação Gerencial.Report` +
-> `.SemanticModel`) contra a nossa implementação (specs + engine + app React).
+> definição** extraído do PBIP (`../QUERIES-DASHBOARD-INSTALACAO/`) contra a nossa
+> implementação (specs + engine + app React).
+>
+> ⚠️ **27/08/2026 — de qual relatório saiu esta definição?** O `README.md` da
+> extração diz `INST - Relatório Instalação Gerencial`; o Erick diz que o alvo é o
+> `INST - Relatório Instalação`, que é OUTRO relatório. Esta auditoria não registra
+> contra qual dos dois mediu, e nem `POWERBI_URL` nem `POWERBI_REPORT_ID` existem
+> no `.env`. Enquanto isso não fechar, trate os "100%" abaixo como paridade contra
+> a extração de 11/08 — não como paridade contra o relatório que o time usa.
 >
 > **O que esta auditoria NÃO cobre:** conferência do *valor renderizado* visual por
 > visual dentro do Power BI Desktop aberto. Isso depende de abrir o aplicativo (feito

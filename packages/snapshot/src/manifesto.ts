@@ -25,17 +25,6 @@ export interface EntradaDeManifesto {
   bytes: number;
   /** ISO UTC de quando a query foi materializada. */
   geradoEm: string;
-  /**
-   * Cópia do que o cabeçalho do arquivo diz sobre a carga incremental. Ausentes
-   * em query que não é incremental — que é o caso de 21 das 22.
-   *
-   * Cópia, e não fonte: quem manda é o cabeçalho (ver `CabecalhoDeSnapshot`).
-   * Estão aqui só para `npm run snapshot` responder "de quando é isto e há
-   * quantos dias não roda uma completa" sem abrir 22 arquivos.
-   */
-  marca?: string;
-  modo?: 'completo' | 'incremental';
-  completoEm?: string;
 }
 
 export interface Manifesto {

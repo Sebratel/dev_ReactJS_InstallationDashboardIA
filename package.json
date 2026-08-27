@@ -52,6 +52,15 @@
     "kafkajs": "^2.2.4"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "lucide-react": "^1.34.0",
+    "mariadb": "^3.5.3",
+    "pg": "^8.23.0",
+    "playwright": "^1.62.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
     "yaml": "^2.5.0"
   }
 }

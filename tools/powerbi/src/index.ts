@@ -38,7 +38,6 @@ import { carrega } from '../../../packages/snapshot/src/carrega.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { pegaToken } from './auth.ts';
 import { PowerBI, daUrl } from './api.ts';
-import { carregaJanelas, planoDeJanela, comJanela, type PlanoDeJanela } from './janela.ts';
 import {
   carregaJanelas,
   planoDeJanela,

@@ -112,9 +112,9 @@ function porGrupo(chaves: Chave[], ev = montar(), medida = 'Total') {
 
 test('a expandida do fato alcança as dimensões; a da dimensão não alcança o fato', () => {
   const ev = montar();
-  assert.deepEqual([...tabelaExpandida(ev.model, 'OS')].sort(), ['cal', 'equipes', 'os', 'regioes']);
+  assert.deepEqual([...tabelaExpandida(ev.model, 'OS')].sort(), ['calendario', 'equipes', 'os', 'regioes']);
   assert.deepEqual([...tabelaExpandida(ev.model, 'EQUIPES')].sort(), ['equipes', 'regioes']);
-  assert.deepEqual([...tabelaExpandida(ev.model, 'CALENDARIO')], ['cal']);
+  assert.deepEqual([...tabelaExpandida(ev.model, 'CALENDARIO')], ['calendario']);
 });
 
 /**
@@ -141,19 +141,46 @@ test('a âncora é o fato, não a dimensão', () => {
 });
 
 /**
- * Duas dimensões sem caminho entre si: quem as liga é o fato, e ele **não está no
- * visual**. É o caso de `relatorio-do-ano/2d498e...`, o único do relatório. A
- * mensagem nomeia os candidatos porque cada um dá um conjunto de combinações
- * diferente.
+ * **Duas dimensões que não se alcançam: a âncora é a tabela de onde saem os
+ * números.**
+ *
+ * `EQUIPES` e `CALENDARIO` são dimensões penduradas em `OS`. Nenhuma alcança a
+ * outra, mas o visual conta linhas de `OS` — e é `OS` que o Power BI varre. A
+ * candidata não vem do modelo inteiro: vem dos valores do próprio visual, e é isso
+ * que separa uma regra de um palpite.
+ *
+ * É o caso de `relatorio-do-ano/2d498e...`, o único do relatório: eixo em
+ * `CALENDARIO INSTALADO`, legenda em `BASE DE ORIGEM`, e `Y` contando
+ * `'PROTOCOLOS GERAL'[SOLICITACAO]`.
  */
-test('duas dimensões sem o fato no visual erram alto, nomeando os candidatos', () => {
+test('sem âncora entre as chaves, a âncora é a tabela dos valores do visual', () => {
+  const ev = montar();
+  assert.equal(escolheAncora(['EQUIPES', 'CALENDARIO'], ev.model, 't', ['OS']), 'OS');
+});
+
+/** Sem saber de onde vêm os números, continua recusando — e diz o que ligaria. */
+test('sem as tabelas dos valores, duas dimensões erram alto', () => {
   const ev = montar();
   assert.throws(() => escolheAncora(['EQUIPES', 'CALENDARIO'], ev.model, 't'), (e: unknown) => {
     assert.ok(e instanceof DaxEvalError);
-    assert.match(e.message, /não está no \*\*visual\*\*/);
-    assert.match(e.message, /Candidatas: OS/);
+    assert.match(e.message, /não declarou tabela de valor/);
+    assert.match(e.message, /de fora do visual: OS/);
     return true;
   });
+});
+
+/** Valor numa tabela que não liga as duas: também recusa, e nomeia as duas coisas. */
+test('valores numa tabela que não liga as dimensões erram alto', () => {
+  const ev = montar();
+  assert.throws(
+    () => escolheAncora(['EQUIPES', 'CALENDARIO'], ev.model, 't', ['REGIOES']),
+    (e: unknown) => {
+      assert.ok(e instanceof DaxEvalError);
+      assert.match(e.message, /valores em: REGIOES/);
+      assert.match(e.message, /de fora do visual: OS/);
+      return true;
+    },
+  );
 });
 
 test('tabelas que não se falam erram alto sem falar em candidato', () => {

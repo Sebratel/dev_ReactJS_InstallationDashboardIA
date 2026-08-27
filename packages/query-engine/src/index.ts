@@ -19,18 +19,5 @@ export type {
   GoogleSheetsConnectorOptions,
   LinhaDeNavegacao,
 } from './connectors-gsheets.ts';
-export {
-  explicaErroSheets,
-  GoogleSheetsConnector,
-  gradeParaLinhas,
-  rangeDaAba,
-  spreadsheetIdFromUrl,
-  tokenComCache,
-} from './connectors-gsheets.ts';
-export type {
-  FetchLike,
-  GoogleSheetsConnectorOptions,
-  LinhaDeNavegacao,
-} from './connectors-gsheets.ts';
 export { QueryEngine, cacheKeyFor, CACHE_PREFIX } from './engine.ts';
 export type { QueryEngineOptions, ExecuteOptions, EngineEvent } from './engine.ts';

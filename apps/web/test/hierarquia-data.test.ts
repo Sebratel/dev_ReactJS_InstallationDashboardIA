@@ -33,8 +33,15 @@ test('2025 aparece mesmo sem dado, marcado como semDado', () => {
 
 test('data é lida em UTC — 01/01 não vira 31/12 do ano anterior', () => {
   const a = montaArvore([d('2026-01-01T00:00:00.000Z')], []);
-  assert.deepEqual(a.map((x) => x.ano), [2026]);
-  assert.deepEqual(a[0]!.meses[0]!.dias, [1]);
+
+  // A asserção era `a.map(x => x.ano)` igual a `[2026]`, e isso passou a testar
+  // duas coisas ao mesmo tempo: a leitura em UTC E a ausência do piso de ano
+  // vazio. Quando o piso entrou, este teste caiu sem que a leitura em UTC tivesse
+  // qualquer problema. Agora ele verifica só o que o nome dele promete.
+  const comDado = a.filter((x) => !x.semDado);
+  assert.deepEqual(comDado.map((x) => x.ano), [2026], 'o ano com dado é 2026, não 2025');
+  assert.deepEqual(comDado[0]!.meses.map((m) => m.nome), ['janeiro'], 'janeiro, não dezembro');
+  assert.deepEqual(comDado[0]!.meses[0]!.dias, [1], 'dia 1, não 31');
 });
 
 test('época 1899 (campo só-de-hora) não vira ano na árvore', () => {

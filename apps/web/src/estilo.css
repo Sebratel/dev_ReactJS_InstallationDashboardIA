@@ -5,10 +5,21 @@
    PALETA — padrão `padrao-frontend-dashboards` (dashboard COM · Gestão Comercial)
    ===========================================================================
 
-   A paleta é **herdada do relatório**, não escolhida: são as cores do Power BI que
-   esta tela substitui, para o time reconhecer o número que já usa. Divergem dos
-   tokens do HUBBI (âmbar #F59E0B) de propósito — ver a seção 0 do
-   docs/DESIGN-SYSTEM.md.
+   A primária é o **bordô 880F17**, com o dourado D9B300 como par. Escolha do Erick,
+   confirmada em 26 e 27/08/2026 — diverge dos tokens do HUBBI (âmbar F59E0B) de
+   propósito.
+
+   NÃO repita que a paleta é "herdada do relatório que esta tela substitui": era o
+   que este comentário afirmava, e é falso. Estas são as cores do dashboard
+   COM · Gestão Comercial, que é o EXEMPLO da skill `padrao-frontend-dashboards`, e
+   vieram copiadas junto com o padrão. A cor ficou porque o Erick a quis; o que
+   estava errado era a justificativa.
+
+   A REGRA QUE MAIS CUSTOU CARO, e vale para qualquer primária:
+   **cor CHEIA é FUNDO, cor ESCURECIDA é LETRA.** Escrever a cor de marca direto num
+   `color:` deixou cabeçalho de card, de tabela, de diálogo e a aba ativa ilegíveis
+   de uma vez quando a paleta trocou. Por isso existem os tokens `sobre-*` e
+   `*-texto` abaixo, com o contraste medido ao lado de cada um.
 
    Definida **duas vezes de propósito**:
    - em `@theme`, para virar utilitário do Tailwind (`bg-pbi-primary`, `text-pbi-muted`);
@@ -23,10 +34,16 @@
 
   --color-pbi-primary: #880F17;
   --color-pbi-primary-dark: #6b2328;
+  /* Foreground POR PAPEL — a medição fica em `:root`. */
+  --color-pbi-sobre-primary: #FFFFFF;
+  --color-pbi-sobre-primary-fraco: #f0e199;
+  --color-pbi-primary-texto: #880F17;
+  --color-pbi-green-texto: #0B7A1E;
+  --color-pbi-critico-texto: #b3261e;
   --color-pbi-gold: #D9B300;
   --color-pbi-gold-light: #f0e199;
   --color-pbi-gold-200: #EED790;
-  --color-pbi-gold-600: #D49F00;
+  --color-pbi-gold-600: #8A6600;
   --color-pbi-gold-soft: #E0C233;
   --color-pbi-orange: #E66C37;
   --color-pbi-orange-soft: #EB895F;
@@ -53,10 +70,37 @@
 :root {
   --pbi-primary: #880F17;
   --pbi-primary-dark: #6b2328;
+
+  /* -------------------------------------------------------------------------
+     FOREGROUND POR PAPEL — e por que não é hexadecimal solto em cada regra.
+
+     Medido em 27/08/2026, nesta paleta:
+       branco sobre a primária ............ 9,87:1
+       branco sobre a ponta escura ....... 11,07:1  (o gradiente do cabeçalho)
+       dourado claro, o subtítulo ......... 7,49:1
+       a primária COMO LETRA no branco .... 9,87:1  (8,83 no fundo geral)
+
+     NÃO derive nenhum destes da primária nem de `--pbi-ink`: são papéis
+     independentes, e é essa independência que faz uma troca de paleta custar uma
+     edição aqui em vez de virar caçada a `color: #FFFFFF` pelo arquivo inteiro.
+     ------------------------------------------------------------------------- */
+  --pbi-sobre-primary: #FFFFFF;
+  --pbi-sobre-primary-fraco: var(--pbi-gold-light);
+  /* Bordô é escuro, então ele mesmo serve de letra no tema claro. No ESCURO não
+     — 1,57:1 sobre a superfície escura —, e `.dark` o substitui pelo dourado. */
+  --pbi-primary-texto: var(--pbi-primary);
+
+  /* Verde e vermelho como LETRA nos selos. O verde da paleta (#0E9224) mede
+     3,59:1 sobre o próprio fundo suave — reprova. #0B7A1E é o mesmo papel a
+     4,85:1. O vermelho (#b3261e) já passa, a 5,63:1, e fica como está. */
+  --pbi-green-texto: #0B7A1E;
+  --pbi-critico-texto: var(--pbi-critico);
   --pbi-gold: #D9B300;
   --pbi-gold-light: #f0e199;
   --pbi-gold-200: #EED790;
-  --pbi-gold-600: #D49F00;
+  /* #D49F00, o valor original, era descrito como "texto sobre fundo claro" e
+     media 2,14:1 no fundo geral — nunca serviu para isso. Mesmo papel a 4,72:1. */
+  --pbi-gold-600: #8A6600;
   --pbi-gold-soft: #E0C233;
   --pbi-orange: #E66C37;
   --pbi-orange-soft: #EB895F;
@@ -117,6 +161,11 @@
   --pbi-borda: #3B3A39;
   --pbi-grid: #3B3A39;
   --pbi-neutro: #605E5C;
+  /* O bordô como LETRA não serve aqui (1,57:1); quem assume o papel é o dourado,
+     a 7,67:1 — o par histórico dele, então a identidade não se perde.
+     `--pbi-sobre-primary` NÃO entra: a superfície bordô é a mesma nos dois temas,
+     e o que separa o cabeçalho do corpo escuro é a borda dourada. */
+  --pbi-primary-texto: var(--pbi-gold);
   --superficie: var(--pbi-superficie);
   --fundo: var(--pbi-fundo);
   --texto: var(--pbi-ink);
@@ -147,7 +196,7 @@ body {
   padding: 0 14px; border-bottom: 1px solid var(--borda); flex: none;
 }
 .marca-nome {
-  font-weight: 800; letter-spacing: .06em; color: var(--pbi-primary);
+  font-weight: 800; letter-spacing: .06em; color: var(--pbi-primary-texto);
   font-size: .82rem; line-height: 1.1;
 }
 .marca-sub { font-size: .62rem; color: var(--muted); }
@@ -167,7 +216,7 @@ body {
 .item-menu:hover { background: var(--pbi-primary-soft); }
 /* Navegação ativa na primária — o mesmo papel que ela cumpre no cabeçalho do visual. */
 .item-menu.ativo {
-  background: var(--pbi-primary); color: var(--pbi-superficie);
+  background: var(--pbi-primary); color: var(--pbi-sobre-primary);
   border-left-color: var(--pbi-gold); font-weight: 700;
 }
 .item-menu:disabled { color: var(--sem-dado); cursor: default; }
@@ -202,13 +251,13 @@ body {
   width: 30px; height: 30px; padding: 0; border-radius: 2px;
   border: 1px solid var(--grade); background: var(--superficie); color: var(--muted); cursor: pointer;
 }
-.btn-icone:hover { border-color: var(--pbi-primary); color: var(--pbi-primary); }
-.btn-icone.ativo { border-color: var(--pbi-primary); color: var(--pbi-primary); background: var(--pbi-primary-soft); }
+.btn-icone:hover { border-color: var(--pbi-primary-texto); color: var(--pbi-primary-texto); }
+.btn-icone.ativo { border-color: var(--pbi-primary-texto); color: var(--pbi-primary-texto); background: var(--pbi-primary-soft); }
 
 .selo-realtime {
   display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px;
   background: var(--pbi-ok-bg); border: 1px solid var(--pbi-green);
-  border-radius: 999px; font-size: .68rem; font-weight: 700; color: var(--pbi-green);
+  border-radius: 999px; font-size: .68rem; font-weight: 700; color: var(--pbi-green-texto);
 }
 .ponto-pulso { width: 7px; height: 7px; border-radius: 50%; background: var(--pbi-green); animation: pulso 2s infinite; }
 @keyframes pulso {
@@ -271,7 +320,7 @@ body {
   display: flex; flex-direction: column; overflow: hidden; min-width: 0; height: 100%;
 }
 .cartao > .cartao-topo {
-  background: var(--pbi-primary); color: var(--pbi-superficie);
+  background: var(--pbi-primary); color: var(--pbi-sobre-primary);
   display: flex; align-items: center; gap: 10px; padding: 5px 10px; flex: 0 0 auto;
 }
 .cartao > .cartao-topo h2 {
@@ -279,17 +328,17 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .cartao > .cartao-topo .sub {
-  color: var(--pbi-gold-light); font-size: .68rem;
+  color: var(--pbi-sobre-primary-fraco); font-size: .68rem;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.cartao > .cartao-topo .id-visual { color: var(--pbi-gold-light); }
+.cartao > .cartao-topo .id-visual { color: var(--muted); }
 .cartao-acoes { margin-left: auto; display: flex; gap: 6px; flex: 0 0 auto; align-items: center; }
 .cartao-acoes button, .cartao-acoes input {
-  background: transparent; border-color: var(--pbi-gold-light); color: var(--pbi-superficie);
+  background: transparent; border-color: var(--pbi-sobre-primary-fraco); color: var(--pbi-sobre-primary);
   padding: 2px 8px; font-size: .68rem; border-radius: 2px;
 }
 .cartao-acoes button:hover { background: var(--pbi-primary-dark); }
-.cartao-acoes input::placeholder { color: var(--pbi-gold-light); }
+.cartao-acoes input::placeholder { color: var(--pbi-sobre-primary-fraco); }
 .cartao-corpo {
   flex: 1 1 auto; min-height: 0; overflow: auto; padding: 8px 10px;
   display: flex; flex-direction: column; gap: 6px;
@@ -327,20 +376,38 @@ body {
 
 /* ================================================================== controles */
 
-button, select, input {
-  font-family: var(--font); font-size: .74rem; border-radius: 2px;
-  border: 1px solid var(--grade); background: var(--superficie); color: var(--texto);
-  padding: 5px 10px;
+/* ---------------------------------------------------------------------------
+   ISTO PRECISA FICAR EM `@layer base`, E O MOTIVO NÃO É ESTÉTICO.
+
+   `@import "tailwindcss"` põe as utilidades em `@layer utilities`. Na cascata,
+   declaração FORA de camada vence qualquer declaração DENTRO de camada,
+   independente de especificidade — um seletor de elemento sem camada ganha de
+   `.bg-pbi-primary`. Enquanto este bloco esteve solto, todo `bg-*`, `text-*` e
+   `border-*` aplicado a `<button>` na aplicação inteira era descartado em
+   silêncio: a aba ativa pedia fundo na primária e renderizava branca com texto
+   escuro, idêntica às inativas. Era esse o bug de "clico e não fica marcado".
+
+   Padrão da casa: RESET de elemento vai em `@layer base`; classe de componente
+   (`.primario`, `.cartao`) fica solta de propósito, para continuar vencendo
+   utilidade.
+   --------------------------------------------------------------------------- */
+@layer base {
+  button, select, input {
+    font-family: var(--font); font-size: .74rem; border-radius: 2px;
+    border: 1px solid var(--grade); background: var(--superficie); color: var(--texto);
+    padding: 5px 10px;
+  }
+  button { cursor: pointer; }
 }
-button { cursor: pointer; }
+
 button.primario {
-  background: var(--pbi-primary); border-color: var(--pbi-primary);
-  color: var(--pbi-superficie); font-weight: 600;
+  background: var(--pbi-primary); border-color: var(--pbi-primary-texto);
+  color: var(--pbi-sobre-primary); font-weight: 600;
 }
 button.primario:hover:not(:disabled) { background: var(--pbi-primary-dark); border-color: var(--pbi-primary-dark); }
 button.primario:disabled { background: var(--sem-dado); border-color: var(--sem-dado); cursor: default; }
 button.secundario { background: var(--superficie); font-weight: 600; }
-button.secundario:hover:not(:disabled) { border-color: var(--pbi-primary); color: var(--pbi-primary); }
+button.secundario:hover:not(:disabled) { border-color: var(--pbi-primary-texto); color: var(--pbi-primary-texto); }
 button:disabled { opacity: .55; cursor: default; }
 
 /* ================================================================ faixa/selos */
@@ -348,10 +415,10 @@ button:disabled { opacity: .55; cursor: default; }
 .faixa { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; font-size: .7rem; color: var(--muted); }
 .selo {
   border-radius: 999px; padding: 3px 9px; font-weight: 700; font-size: .66rem;
-  background: var(--pbi-ok-bg); color: var(--pbi-green); border: 1px solid var(--pbi-green);
+  background: var(--pbi-ok-bg); color: var(--pbi-green-texto); border: 1px solid var(--pbi-green);
   display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
 }
-.selo.ruim { background: var(--pbi-erro-bg); color: var(--pbi-critico); border-color: var(--pbi-critico); }
+.selo.ruim { background: var(--pbi-erro-bg); color: var(--pbi-critico-texto); border-color: var(--pbi-critico-texto); }
 .selo.neutro { background: var(--pbi-aviso-bg); color: var(--pbi-gold-600); border-color: var(--pbi-gold-600); }
 .selo.apagado { background: var(--fundo); color: var(--muted); border-color: var(--borda); }
 .carimbo { font-size: .68rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -375,11 +442,11 @@ button:disabled { opacity: .55; cursor: default; }
   text-align: left; display: flex; align-items: center; gap: 6px;
   background: var(--superficie); font-weight: 600; min-width: 110px;
 }
-.filtro-botao.marcado { border-color: var(--pbi-primary); color: var(--pbi-primary); }
+.filtro-botao.marcado { border-color: var(--pbi-primary-texto); color: var(--pbi-primary-texto); }
 .filtro-resumo { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .filtro-conta {
   font-size: .62rem; font-weight: 800; border-radius: 999px; padding: 1px 7px;
-  background: var(--pbi-primary); color: var(--pbi-superficie);
+  background: var(--pbi-primary); color: var(--pbi-sobre-primary);
 }
 
 /* DIÁLOGO, NÃO POPOVER. Popover ancorado dentro de contêiner com rolagem é
@@ -397,13 +464,13 @@ button:disabled { opacity: .55; cursor: default; }
   display: flex; flex-direction: column; overflow: hidden;
 }
 .dialogo-topo {
-  background: var(--pbi-primary); color: var(--pbi-superficie);
+  background: var(--pbi-primary); color: var(--pbi-sobre-primary);
   padding: 6px 10px; display: flex; align-items: center; gap: 10px; flex: 0 0 auto;
 }
 .dialogo-topo h3 { margin: 0; font-size: .76rem; font-weight: 700; }
 .dialogo-topo .btn-icone {
-  margin-left: auto; background: transparent; border-color: var(--pbi-gold-light);
-  color: var(--pbi-superficie); width: 24px; height: 24px;
+  margin-left: auto; background: transparent; border-color: var(--pbi-sobre-primary-fraco);
+  color: var(--pbi-sobre-primary); width: 24px; height: 24px;
 }
 .dialogo-corpo { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .dialogo-rodape {
@@ -417,6 +484,8 @@ button:disabled { opacity: .55; cursor: default; }
   font-size: .74rem; cursor: pointer;
 }
 .filtro-opcao:hover { background: var(--pbi-primary-soft); }
+/* `accent-color` pinta o PREENCHIMENTO da caixa: aqui a primária é fundo, não
+   letra — o navegador escolhe a marca de visto com contraste. */
 .filtro-opcao input { width: auto; padding: 0; accent-color: var(--pbi-primary); }
 .filtro-opcao .vazio { color: var(--sem-dado); font-style: italic; }
 .filtro-nota { font-size: .66rem; color: var(--muted); }
@@ -425,15 +494,15 @@ button:disabled { opacity: .55; cursor: default; }
 .pill-filtro {
   display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
   background: var(--pbi-primary-soft); border: 1px solid var(--pbi-primary);
-  border-radius: 999px; font-size: .68rem; color: var(--pbi-primary); font-weight: 600;
+  border-radius: 999px; font-size: .68rem; color: var(--pbi-primary-texto); font-weight: 600;
 }
 .pill-rotulo { font-weight: 800; }
 .pill-valores { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .btn-remover-pill {
   border: 0; background: transparent; padding: 0; margin-left: 2px; line-height: 0;
-  cursor: pointer; color: var(--pbi-primary);
+  cursor: pointer; color: var(--pbi-primary-texto);
 }
-.btn-remover-pill:hover { color: var(--pbi-critico); }
+.btn-remover-pill:hover { color: var(--pbi-critico-texto); }
 
 /* ==================================================================== tabelas */
 
@@ -441,7 +510,7 @@ button:disabled { opacity: .55; cursor: default; }
 table.dados { border-collapse: separate; border-spacing: 0; width: 100%; font-size: .72rem; }
 table.dados th {
   position: sticky; top: 0; z-index: 2;
-  background: var(--pbi-primary); color: var(--pbi-superficie);
+  background: var(--pbi-primary); color: var(--pbi-sobre-primary);
   text-transform: uppercase; font-size: .64rem; letter-spacing: .03em; font-weight: 700;
   text-align: left; padding: 5px 8px; white-space: nowrap;
   border-bottom: 1px solid var(--pbi-primary-dark);
@@ -484,9 +553,9 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
   display: inline-flex; align-items: center; padding: 1px 8px; border-radius: 999px;
   font-size: .64rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
 }
-.badge-status.badge-sim { background: var(--pbi-ok-bg); color: var(--pbi-green); border: 1px solid var(--pbi-green); }
+.badge-status.badge-sim { background: var(--pbi-ok-bg); color: var(--pbi-green-texto); border: 1px solid var(--pbi-green); }
 .badge-status.badge-nao { background: var(--fundo); color: var(--muted); border: 1px solid var(--borda); }
-.badge-status.badge-alerta { background: var(--pbi-erro-bg); color: var(--pbi-critico); border: 1px solid var(--pbi-critico); }
+.badge-status.badge-alerta { background: var(--pbi-erro-bg); color: var(--pbi-critico-texto); border: 1px solid var(--pbi-critico); }
 .badge-status.badge-info { background: var(--pbi-aviso-bg); color: var(--pbi-gold-600); border: 1px solid var(--pbi-gold-600); }
 
 .tabela-cabecalho-acoes { display: flex; align-items: center; gap: 8px; }
@@ -500,7 +569,62 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
 
 /* =================================================================== gráficos */
 
-.rolagem-grafico { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* A caixa do gráfico. `overflow: hidden` é deliberado e é a regra desta tela:
+   gráfico NÃO rola. Se não cabe, o componente pagina — ver o cabeçalho do
+   `Grafico.tsx`. Substituiu `.rolagem-grafico`, que rolava na horizontal e fazia
+   o usuário arrastar metade do desenho.
+
+   `min-width`/`min-height` zero porque este é um item de flex: sem eles o
+   conteúdo define o mínimo, a caixa nunca encolhe, e a rolagem volta pelo pai. */
+.caixa-grafico {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  display: block;
+
+  /* A ALTURA VEM DA JANELA, e não do conteúdo — e isto não é estética.
+     
+     O componente MEDE esta caixa e desenha o `<svg>` com a medida dela. Se a
+     altura vier do conteúdo, a conta fica circular: o `<svg>` define a altura da
+     caixa, que define a altura do `<svg>`. Medido em 27/08/2026, ela estacionava
+     nos 260px do valor padrão do componente e o desenho saía com 318px — os 58px
+     do eixo girado eram CORTADOS por este `overflow: hidden`, em silêncio.
+     
+     Derivar da janela quebra o ciclo e é a mesma regra do resto da tela: altura de
+     visual não é pixel chutado, é o que sobra depois do cromo. O piso de 300px é
+     onde o eixo girado ainda cabe; o teto de 460 evita card gigante em monitor
+     alto, que só desperdiça densidade. */
+  height: clamp(300px, calc(100vh - 340px), 460px);
+}
+
+/* ------------------------------------------------------ paginador do gráfico */
+.grupo-acoes-grafico { display: inline-flex; align-items: center; gap: 6px; }
+.paginador-grafico {
+  display: inline-flex; align-items: center; gap: 1px;
+  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 35%, transparent);
+  border-radius: 3px; overflow: hidden;
+}
+.paginador-grafico button,
+.controles-zoom button {
+  background: transparent; border: 0; border-radius: 0;
+  color: var(--pbi-sobre-primary); padding: 1px 6px; font-size: .8rem; line-height: 1.2;
+}
+.paginador-grafico button:hover:not(:disabled),
+.controles-zoom button:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--pbi-sobre-primary) 18%, transparent);
+}
+.paginador-grafico button:disabled,
+.controles-zoom button:disabled { opacity: .38; cursor: default; }
+.paginador-rotulo, .zoom-rotulo {
+  font-size: .66rem; font-weight: 800; color: var(--pbi-sobre-primary);
+  padding: 0 5px; white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.paginador-rotulo .de { font-weight: 600; color: var(--pbi-sobre-primary-fraco); }
+.controles-zoom {
+  display: inline-flex; align-items: center; gap: 1px;
+  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 35%, transparent);
+  border-radius: 3px; overflow: hidden;
+}
 .grafico-svg { background: transparent; display: block; overflow: visible; }
 /* Grade recessiva: horizontal apenas, tracejada. */
 .grade { stroke: var(--grade); stroke-dasharray: 4 4; stroke-width: 1px; }
@@ -544,7 +668,7 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
    conclui que o número é zero. */
 
 .erro {
-  background: var(--pbi-erro-bg); border: 1px solid var(--pbi-critico); color: var(--pbi-critico);
+  background: var(--pbi-erro-bg); border: 1px solid var(--pbi-critico); color: var(--pbi-critico-texto);
   border-radius: 2px; padding: 8px 10px; font-size: .74rem; white-space: pre-wrap; font-weight: 600;
 }
 .aviso {

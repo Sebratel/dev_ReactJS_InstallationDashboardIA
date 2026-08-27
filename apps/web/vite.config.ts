@@ -13,12 +13,26 @@
 
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwind from '@tailwindcss/vite';
 
 /** A API de leitura. `PORT` do `npm run api` manda aqui também. */
 const API = `http://localhost:${process.env.PORT_API ?? '3100'}`;
 
 export default defineConfig({
-  plugins: [react()],
+  // O PLUGIN DO TAILWIND NÃO É OPCIONAL, e a falta dele falha em silêncio.
+  //
+  // O `estilo.css` abre com `@import "tailwindcss"`. Sem este plugin, o Vite
+  // resolve esse import como CSS comum e o `@tailwind utilities;` de dentro dele
+  // vai INTEIRO para o pacote, como texto — o navegador ignora, e toda classe do
+  // Tailwind na aplicação deixa de existir. Nada quebra, nada avisa: só o layout
+  // desmonta.
+  //
+  // Foi o que se viu em 27/08/2026: `div.flex min-h-screen` computava
+  // `display: block`, a barra lateral empilhava ACIMA do conteúdo em vez de ficar
+  // ao lado, e a área de visuais começava em `top: 1052` — fora da tela. As cores
+  // continuavam certas, porque vivem em `:root` como CSS puro; só o que dependia
+  // de utilitário sumiu.
+  plugins: [react(), tailwind()],
   server: {
     port: 5173,
     // `api.ts` importa o codec de filtro de `packages/widget-engine`, que está fora

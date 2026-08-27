@@ -128,10 +128,21 @@ test('o filtro de página conta no denominador tanto quanto o de visual', () => 
   assert.deepEqual(r.linhas.map((l) => l[2]!.valor), [0.4, 0.6]);
 });
 
-/** Sem agrupamento não há o que dividir: numerador e denominador são o mesmo. */
-test('num card, o % do total é 1,0', () => {
+/**
+ * **Card com campo aritmético continua recusado, e a recusa é o certo.**
+ *
+ * `valorDoCampo` sabe calcular a conta — sem agrupamento, numerador e denominador
+ * seriam o mesmo e daria 1,0. Mas os 64 cards do relatório são `measure` (28) ou
+ * `aggregation` (36), nenhum aritmético, e `calculaCard` registra a **origem** de
+ * cada número para conferência contra a tela. Aceitar um formato que a base não tem
+ * seria inventar a origem dele.
+ *
+ * Este teste existe porque a primeira versão dele afirmava o contrário: montei um
+ * card aritmético, ele falhou, e o certo era o código — não o teste.
+ */
+test('card com campo aritmético é recusado, nomeando o kind', () => {
   const v = visual([porcentagem()], [], 'card');
-  assert.equal(calculaCard(pagina([v]), v, montar()).valor, 1);
+  assert.throws(() => calculaCard(pagina([v]), v, montar()), /card com kind 'arithmetic'/);
 });
 
 // ---------------------------------------------------------------------------

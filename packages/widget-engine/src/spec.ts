@@ -88,7 +88,6 @@ export interface CampoSpec {
    * ACHADOS.md #32.
    */
   active?: boolean | null;
-
   /** Só em `kind: aggregation`. Nome apurado do `Function` do PBIP. */
   aggregation?: string | null;
   aggregation_code?: number | null;

@@ -47,7 +47,10 @@ export function Matriz(props: {
 
   const horizontais = transposto ? d.linhas : d.colunas;
   const totalColunas = horizontais.length;
-  const [inicioColuna] = useState<number | null>(null);
+  // Com setter: sem ele a janela ficava presa na última página e os controles não
+  // tinham como existir. `null` = ainda no padrão, então ela acompanha o fim
+  // quando um filtro muda o tamanho da matriz.
+  const [inicioColuna, setInicioColuna] = useState<number | null>(null);
   const maxInicioColuna = Math.max(0, totalColunas - COLUNAS_POR_JANELA);
   const deColuna = Math.min(inicioColuna ?? maxInicioColuna, maxInicioColuna);
   const ateColuna = Math.min(deColuna + COLUNAS_POR_JANELA, totalColunas);
@@ -96,27 +99,39 @@ export function Matriz(props: {
 
   const cabecalhoEsquerda = transposto ? nomeChavesColuna : nomeChavesLinha;
 
+  // `slice` ANTES do `flatMap`: é o `flatMap` que multiplica por medida, então
+  // cortar depois já teria pago o custo.
   const cabecalhosDireita: string[] = transposto
-    ? d.linhas.flatMap((linha) =>
-        d.medidas.map((m) => rotuloDaLinha(linha) + (d.medidas.length > 1 ? ` · ${m ?? ''}` : '')),
-      )
-    : d.colunas.flatMap((c) =>
-        d.medidas.map((m) => (semEixoDeColuna ? (m ?? '—') : rotuloDaColuna(c) + (d.medidas.length > 1 ? ` · ${m ?? ''}` : ''))),
-      );
+    ? d.linhas
+        .slice(deColuna, ateColuna)
+        .flatMap((linha) =>
+          d.medidas.map((m) => rotuloDaLinha(linha) + (d.medidas.length > 1 ? ` · ${m ?? ''}` : '')),
+        )
+    : d.colunas
+        .slice(deColuna, ateColuna)
+        .flatMap((c) =>
+          d.medidas.map((m) => (semEixoDeColuna ? (m ?? '—') : rotuloDaColuna(c) + (d.medidas.length > 1 ? ` · ${m ?? ''}` : ''))),
+        );
 
+  // A JANELA CORTA DE VERDADE. Antes daqui `deColuna`/`ateColuna` eram calculados,
+  // apareciam no subtítulo e **nada cortava**: a matriz dizia "colunas 1–30 de 197"
+  // e desenhava as 197. Um paginador que mente é pior que nenhum — ele promete um
+  // custo que não paga (a DIÁRIO INSTALAÇÃO chegava a dezenas de milhares de
+  // células) e faz acreditar que o problema de carga já foi resolvido.
   const corpo: { rotulo: string; celulas: { texto: string; vazio: boolean }[] }[] = transposto
     ? d.colunas.map((c, ci) => ({
         rotulo: rotuloDaColuna(c),
-        celulas: d.linhas.flatMap((_, li) =>
-          (d.celulas[li]?.[ci] ?? d.medidas.map(() => null)).map((valor, mi) => {
+        celulas: d.linhas.slice(deColuna, ateColuna).flatMap((_, k) => {
+          const li = deColuna + k;
+          return (d.celulas[li]?.[ci] ?? d.medidas.map(() => null)).map((valor, mi) => {
             const f = formata(valor, d.tiposDeMedida[mi] ?? null);
             return { texto: f.texto, vazio: f.vazio };
-          }),
-        ),
+          });
+        }),
       }))
     : d.linhas.map((linha, i) => ({
         rotulo: rotuloDaLinha(linha),
-        celulas: (d.celulas[i] ?? []).flatMap((celula) =>
+        celulas: (d.celulas[i] ?? []).slice(deColuna, ateColuna).flatMap((celula) =>
           celula.map((valor, mi) => {
             const f = formata(valor, d.tiposDeMedida[mi] ?? null);
             return { texto: f.texto, vazio: f.vazio };
@@ -127,6 +142,46 @@ export function Matriz(props: {
   return (
     <Cartao titulo={tituloDoVisual(visual)} sub={partes.join(' · ')} id={visual.id} largo>
       <div className="cartao-acoes" style={{ display: 'flex', gap: 6 }}>
+        {paginaColunas && (
+          <span className="paginador-grafico" title={`${totalColunas} colunas no total`}>
+            <button
+              type="button"
+              title="Primeiras colunas"
+              disabled={deColuna === 0}
+              onClick={() => setInicioColuna(0)}
+            >
+              «
+            </button>
+            <button
+              type="button"
+              title="Colunas anteriores"
+              disabled={deColuna === 0}
+              onClick={() => setInicioColuna(Math.max(0, deColuna - COLUNAS_POR_JANELA))}
+            >
+              ‹
+            </button>
+            <span className="paginador-rotulo">
+              {inteiro(deColuna + 1)}–{inteiro(ateColuna)}{' '}
+              <span className="de">de {inteiro(totalColunas)}</span>
+            </span>
+            <button
+              type="button"
+              title="Colunas seguintes"
+              disabled={deColuna >= maxInicioColuna}
+              onClick={() => setInicioColuna(Math.min(maxInicioColuna, deColuna + COLUNAS_POR_JANELA))}
+            >
+              ›
+            </button>
+            <button
+              type="button"
+              title="Últimas colunas (mais recentes)"
+              disabled={deColuna >= maxInicioColuna}
+              onClick={() => setInicioColuna(maxInicioColuna)}
+            >
+              »
+            </button>
+          </span>
+        )}
         {podeTranspor && (
           <button
             className="secundario btn-exportar"

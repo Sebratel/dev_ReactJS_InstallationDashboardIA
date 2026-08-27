@@ -18,8 +18,12 @@ import type { ComponentType } from 'react';
 
 const ICONES_MENU: Record<string, ComponentType<{ size?: number }>> = {
   'visao-geral': LayoutDashboard,
-  'relatorio-mes': CalendarDays,
-  'relatorio-ano': Calendar,
+  // ATENCAO AOS IDS: sao `relatorio-do-mes` e `relatorio-do-ano`, COM o `-do-`.
+  // Estava sem, e como o mapa e indexado por id essas duas telas ficavam sem
+  // icone na navegacao — falha silenciosa, porque um icone ausente nao quebra
+  // nada. Os ids reais estao em `specs/dashboards/*.spec.yaml`.
+  'relatorio-do-mes': CalendarDays,
+  'relatorio-do-ano': Calendar,
   'diario-instalacao': Clock,
   'agendamento-field': CalendarCheck,
   'protocolos-detalhados': FileText,
@@ -66,7 +70,7 @@ export function AppShell(props: {
                 className={`item-menu${ativo ? ' ativo' : ''}`}
                 onClick={() => props.aoEscolher(p.id)}
                 disabled={!p.pronta}
-                aria-current={ativo}
+                aria-current={ativo ? 'page' : undefined}
                 title={p.pronta ? p.nome : `${p.nome} — sem snapshot`}
               >
                 <Icone size={15} />

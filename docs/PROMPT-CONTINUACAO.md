@@ -29,13 +29,27 @@ Domínio: operação de **instalação / field service de ISP**.
 
 ## Base de referência — LEIA, NUNCA MODIFIQUE
 
-O projeto Power BI PBIP fica na pasta **pai**:
+> **Dois nomes, dois relatórios.** O alvo é o `INST - Relatório Instalação`.
+> O `INST - Relatório Instalação Gerencial` é OUTRO relatório (Erick, 27/08/2026).
+> Apontar a paridade para o errado não dá erro — dá número plausível e diferente.
+> Ver `docs/SPEC-DRIVEN.md`, "Qual relatório é o original".
+
+⚠️ **Este bloco estava errado e mandava você caçar arquivo que não existe.**
+Verificado em 27/08/2026: a pasta pai tem só `QUERIES-DASHBOARD-INSTALACAO/`,
+`dev_ReactJS_InstallationDashboardIA/` e dois `.md` de padrão. Nenhum `.pbix`,
+`.pbip`, `.Report` ou `.SemanticModel`. A regra 1 do `CLAUDE.md` —
+"nunca procurar ou exigir arquivos `.pbip`" — existe por causa disto.
+
+O que existe, e é a base de referência, é a **extração**:
 
 ```
 C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\
-  INST - Relatório Instalação Gerencial.pbix          (73 MB)
-  INST - Relatório Instalação Gerencial.SemanticModel\ (tabelas, medidas, queries M)
-  INST - Relatório Instalação Gerencial.Report\        (páginas e visuais)
+  QUERIES-DASHBOARD-INSTALACAO\
+    QUERIES.md    <- comece aqui: as 24 queries, ordem e baseline de linhas
+    sql\          <- 18 blocos SQL
+    m\            <- 24 expressões M (as transformações pós-SQL, que MUDAM o resultado)
+    dax\          <- 78 medidas, 49 colunas calculadas, 7 tabelas calculadas
+    MODELO.md, PAGINAS.md, FONTES.md, _meta.json
 ```
 
 Escala: **25 tabelas, 78 medidas DAX, 14 páginas, 306 visuais, 24 queries**.

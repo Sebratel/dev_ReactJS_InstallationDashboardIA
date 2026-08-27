@@ -11,6 +11,7 @@ import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import { Dataset, type Row } from '../../measure-engine/src/dataset.ts';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
 import { DaxEvalError, makeDate } from '../../measure-engine/src/value.ts';
+import { calculaCard } from '../src/card.ts';
 import { calculaTabela, separaCampos, tabelasDoDashboard } from '../src/tabela.ts';
 import type { CampoSpec, DashboardSpec, FiltroSpec, VisualSpec } from '../src/spec.ts';
 
@@ -218,12 +219,18 @@ test('campo fora de Values erra alto dizendo o papel', () => {
   });
 });
 
-test('chave de duas tabelas erra alto pelo agrupamento', () => {
+/**
+ * Duas tabelas **sem relacionamento** continuam recusadas, e a mensagem diz o porquê
+ * certo: não há caminho. Cruzar tabelas passou a funcionar quando existe um
+ * relacionamento a seguir (`expansao.ts`); sem ele, qualquer combinação seria
+ * produto cartesiano.
+ */
+test('chave de duas tabelas sem relacionamento erra alto', () => {
   const ev = montar();
   ev.model.addTable({ id: 'eq', name: 'EQUIPES', queryRef: null, columns: [col('NOME')] });
   ev.dataset.addTable('EQUIPES', [{ NOME: 'Alfa' }]);
   const v = visual([coluna('CIDADE'), { ...coluna('NOME'), entity: 'EQUIPES' }]);
-  assert.throws(() => calculaTabela(dashboard([v]), v, ev), /2 tabelas/);
+  assert.throws(() => calculaTabela(dashboard([v]), v, ev), /não se alcançam por relacionamento nenhum/);
 });
 
 // ---------------------------------------------------------------------------
@@ -235,4 +242,139 @@ test('tabelasDoDashboard traz só os tableEx, na ordem da spec', () => {
   const card = { ...visual([medida('Total')], [], 'card'), id: 'c1' };
   const t2 = { ...visual([coluna('TIPO')]), id: 't2' };
   assert.deepEqual(tabelasDoDashboard(dashboard([t1, card, t2])).map((v) => v.id), ['t1', 't2']);
+});
+
+// ---------------------------------------------------------------------------
+// Filtro sobre valor agregado (o HAVING)
+// ---------------------------------------------------------------------------
+
+/** `COUNT('OS'[ID]) > n` — filtro de grupo, não de linha. */
+const having = (kind: string, right: number, aggregation = 'count'): FiltroSpec => ({
+  name: 'having', type: 'Advanced', entity: 'OS', property: 'ID',
+  conditions: [{ op: 'comparison', kind, left_property: 'ID', left_aggregation: aggregation, right }],
+});
+
+/**
+ * **O filtro sobre agregado remove GRUPOS, não linhas.**
+ *
+ * `Bauru`/`Instalação` tem 2 registros, os outros dois grupos têm 1. Com
+ * `COUNT(ID) > 1` sobra um grupo só. Aplicado como predicado de linha — que é o que
+ * acontecia antes do agrupamento existir — ele viraria `ID > 1` e deixaria passar
+ * quase tudo (ACHADOS #30).
+ */
+test('o filtro sobre agregado descarta grupos inteiros', () => {
+  assert.deepEqual(valores([coluna('CIDADE'), coluna('TIPO')], [having('gt', 1)]), [
+    ['Bauru', 'Instalação'],
+  ]);
+});
+
+test('nenhum grupo passa quando o corte é alto demais', () => {
+  assert.deepEqual(valores([coluna('CIDADE'), coluna('TIPO')], [having('gt', 99)]), []);
+});
+
+test('todos passam quando o corte é `> 0`, que é o caso mais comum da base', () => {
+  assert.equal(valores([coluna('CIDADE'), coluna('TIPO')], [having('gt', 0)]).length, 3);
+});
+
+/**
+ * **A ordem entre os dois tipos de filtro muda o número, e é por isso que ela é
+ * regra e não detalhe.**
+ *
+ * O filtro de linha (`CIDADE = Bauru`) vale **antes** de agrupar, então `COUNT` só
+ * conta o que sobrou dele. Aqui `Bauru`/`Instalação` continua com 2 e passa; se o
+ * HAVING fosse avaliado antes do filtro de linha, o resultado seria o mesmo por
+ * acaso — então o teste usa um corte que separa: `> 1` sobre Jaú, que tem 1 registro
+ * em cada grupo, não sobra nada.
+ */
+test('o filtro de linha vale antes do de grupo', () => {
+  const soJau: FiltroSpec = {
+    name: 'f', type: 'Categorical', entity: 'OS', property: 'CIDADE',
+    conditions: [{ op: 'in', values: ['Jaú'] }],
+  };
+  assert.deepEqual(valores([coluna('CIDADE'), coluna('TIPO')], [soJau, having('gt', 1)]), []);
+  assert.deepEqual(valores([coluna('CIDADE'), coluna('TIPO')], [soJau, having('gt', 0)]), [
+    ['Jaú', 'Instalação'],
+  ]);
+});
+
+test('o HAVING também vale vindo da página', () => {
+  assert.deepEqual(valores([coluna('CIDADE'), coluna('TIPO')], [], [having('gt', 1)]), [
+    ['Bauru', 'Instalação'],
+  ]);
+});
+
+test('a tabela reporta o filtro de grupo junto com os de linha', () => {
+  const v = visual([coluna('CIDADE')], [having('gt', 0)]);
+  const r = calculaTabela(dashboard([v]), v, montar());
+  assert.equal(r.filtros.length, 1);
+  assert.match(r.filtros[0]!, /filtro de grupo/);
+});
+
+/** Sem chave nenhuma, o HAVING decide se o único grupo — o total — aparece. */
+test('sem chave, o HAVING decide se o total aparece', () => {
+  assert.equal(valores([agregacao('VALOR', 'sum')], [having('gt', 0)]).length, 1);
+  assert.equal(valores([agregacao('VALOR', 'sum')], [having('gt', 99)]).length, 0);
+});
+
+test('agregação sem função DAX no HAVING erra alto', () => {
+  const v = visual([coluna('CIDADE')], [having('gt', 0, 'mediana')]);
+  assert.throws(() => calculaTabela(dashboard([v]), v, montar()), /sem função DAX/);
+});
+
+/**
+ * Um card não tem grupos, então para ele o filtro sobre agregado continua sendo
+ * erro — e é a resposta certa. Nenhum dos 10 do relatório está em card.
+ */
+test('o card continua recusando filtro sobre agregado', () => {
+  const v = { ...visual([medida('Total')], [having('gt', 0)], 'card'), id: 'c1' };
+  assert.throws(() => calculaCard(dashboard([v]), v, montar()), /HAVING/);
+});
+
+// ---------------------------------------------------------------------------
+// `active`: a projeção que a tela não mostra (ACHADOS #32)
+// ---------------------------------------------------------------------------
+
+/**
+ * **Campo inativo não aparece — nem como coluna, nem no agrupamento.**
+ *
+ * Ele é um nível de hierarquia abaixo do drill corrente. Mantido como chave, ele
+ * refinaria o agrupamento (mais linhas do que a tela tem); mantido como coluna,
+ * criaria uma coluna que a tela não tem. As duas coisas com cara de dado.
+ */
+test('campo inativo não vira coluna nem chave', () => {
+  const campos = [coluna('CIDADE'), { ...coluna('TIPO'), active: false }];
+  const v = visual(campos);
+  const r = calculaTabela(dashboard([v]), v, montar());
+  assert.deepEqual(r.colunas, ['CIDADE']);
+  assert.deepEqual(r.linhas.map((l) => l.map((c) => c.valor)), [['Bauru'], ['Jaú']]);
+});
+
+/** `active: true` e ausente levam ao mesmo lugar — a distinção existe só na spec. */
+test('active ausente e active: true agrupam igual', () => {
+  const semEstado = valores([coluna('CIDADE'), coluna('TIPO')]);
+  const explicito = valores([
+    { ...coluna('CIDADE'), active: true },
+    { ...coluna('TIPO'), active: true },
+  ]);
+  assert.deepEqual(explicito, semEstado);
+});
+
+test('agregação inativa também some da tabela', () => {
+  const campos = [coluna('CIDADE'), { ...agregacao('VALOR', 'sum'), active: false }];
+  const v = visual(campos);
+  assert.deepEqual(calculaTabela(dashboard([v]), v, montar()).colunas, ['CIDADE']);
+});
+
+/**
+ * Todos inativos não é "tabela vazia" — é leitura errada do estado de drill. Uma
+ * tabela sem coluna nenhuma na tela não existe.
+ */
+test('tabela com todos os campos inativos erra alto', () => {
+  const v = visual([{ ...coluna('CIDADE'), active: false }]);
+  assert.throws(() => calculaTabela(dashboard([v]), v, montar()), (e: unknown) => {
+    assert.ok(e instanceof DaxEvalError);
+    assert.match(e.message, /inativos/);
+    assert.match(e.message, /#32/);
+    return true;
+  });
 });

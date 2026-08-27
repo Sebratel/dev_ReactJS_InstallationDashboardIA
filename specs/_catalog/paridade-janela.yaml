@@ -54,6 +54,12 @@ bloqueadas:
     `Manutenção de Solicitação%`, ...); o modelo publicado não faz nada disso.
     Medido em 25/08/2026: 1.587.041 linhas lá contra 41.255 aqui, e o recorte de
     3 meses do SQL sozinho explica só até 641.996 — sobra um fator de 15.
+    (Esse recorte de 3 meses saiu do `sql:` num reset em 26/08 e foi restaurado em
+    27/08 por medição — ver docs/ACHADOS.md. O snapshot de 25/08 tem 41.773 linhas.)
+    E antes de tratar a diferença como defeito nosso: NINGUÉM REGISTRA CONTRA QUAL
+    RELATÓRIO os números de `pbi:` foram medidos. Erick, 27/08: o alvo é o
+    `INST - Relatório Instalação`, NÃO o `... Gerencial`. "Definições diferentes"
+    é exatamente a cara de ter consultado o relatório errado.
     Some-se que a última carga desta query MORREU (`snapshot/field-agenda.erro.log`,
     ECONNRESET em 19/08 após 38 min de colunas calculadas), então o arquivo em
     disco também está incompleto. Resolver a carga antes de tentar equalizar.
@@ -75,6 +81,10 @@ bloqueadas:
     de manutenções do Power BI voltar a alimentar.
 
   BACKLOG AGENDADO FUTURO: >-
+    ⚠️ ESTA CONTAGEM ESTÁ VELHA — reconferir. O `snapshot/manifesto.json` (carga de
+    25/08/2026 19:53) diz que `backlog-agendado-futuro` tem **91.335 linhas**, que é
+    EXATAMENTE o número do Power BI abaixo. Se confirmar, o bloqueio caiu.
+    O texto original, de quando aqui havia 147.936:
     Formas incompatíveis. No Power BI é uma tabela de 5 colunas
     (`protocolo_id`, `data_inicio_slot`, `data_carga`) com 91.335 linhas; aqui são
     147.936 — nós temos MAIS, então não é recorte de data, e um predicado de

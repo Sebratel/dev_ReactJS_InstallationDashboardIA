@@ -24,7 +24,7 @@ export interface Position {
 export type MNode =
   | MLet
   | MEach
-  | MFunction
+  | MFunctionExpr
   | MIf
   | MBinary
   | MUnary
@@ -33,8 +33,8 @@ export type MNode =
   | MItem
   | MIdentifier
   | MLiteral
-  | MList
-  | MRecord
+  | MListExpr
+  | MRecordExpr
   | MType;
 
 /** `let nome = expr, ... in corpo` */
@@ -61,8 +61,15 @@ export interface MEach extends Position {
   readonly body: MNode;
 }
 
-/** `(x, y) => corpo`, com anotação de tipo opcional em cada parâmetro. */
-export interface MFunction extends Position {
+/**
+ * `(x, y) => corpo`, com anotação de tipo opcional em cada parâmetro.
+ *
+ * Sufixo `Expr` porque `MFunction` e `MRecord` (sem sufixo) são os **valores** em
+ * `value.ts`. Dois `MRecord` no mesmo pacote — um "texto que constrói registro" e
+ * outro "registro" — é o tipo de ambiguidade que faz alguém importar o errado e
+ * só descobrir em runtime.
+ */
+export interface MFunctionExpr extends Position {
   readonly type: 'Function';
   readonly params: readonly { readonly name: string; readonly typeName: string | null }[];
   readonly body: MNode;
@@ -142,12 +149,12 @@ export interface MLiteral extends Position {
   readonly value: number | string | boolean | null;
 }
 
-export interface MList extends Position {
+export interface MListExpr extends Position {
   readonly type: 'List';
   readonly items: readonly MNode[];
 }
 
-export interface MRecord extends Position {
+export interface MRecordExpr extends Position {
   readonly type: 'Record';
   readonly fields: readonly { readonly name: string; readonly expr: MNode }[];
 }
@@ -162,4 +169,13 @@ export interface MRecord extends Position {
 export interface MType extends Position {
   readonly type: 'Type';
   readonly name: string;
+  /**
+   * Nomes de campo de `type table [Data = _t, Feriado = _t]`.
+   *
+   * Não é decoração: é a **única** fonte dos nomes de coluna em
+   * `Table.FromRows(rows, type table [...])`, que é como `feriados` nasce.
+   * Descartar o detalhe do tipo fazia a tabela nascer com uma coluna chamada
+   * "table".
+   */
+  readonly fields: readonly string[] | null;
 }

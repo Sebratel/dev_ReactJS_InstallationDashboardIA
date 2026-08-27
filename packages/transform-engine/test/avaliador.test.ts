@@ -15,7 +15,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { MEvaluator } from '../src/evaluator.ts';
-import { standardFunctions } from '../src/functions.ts';
+import { standardConstants, standardFunctions } from '../src/functions.ts';
 import {
   isCellError,
   isTable,
@@ -33,6 +33,7 @@ const HOJE = new Date(Date.UTC(2026, 7, 5, 12, 30, 0));
 function ev(queries: Record<string, MValue> = {}): MEvaluator {
   return new MEvaluator({
     functions: standardFunctions(),
+    constants: standardConstants(),
     agora: HOJE,
     query: (nome) => {
       if (nome in queries) return queries[nome];
@@ -240,15 +241,25 @@ test('coluna citada que não existe erra listando as que existem', () => {
   );
 });
 
-test('AddColumn vê a linha de origem: coluna nova não vê coluna nova', () => {
+test('AddColumn: coluna nova só é visível no passo seguinte, não no mesmo', () => {
   const e = ev({ T: tab(['A'], [[1]]) });
-  assert.throws(
-    () => e.avaliaTabela(
-      'let a = Table.AddColumn(T, "B", each [A] + 1), b = Table.AddColumn(a, "C", each [B] + 1) in b',
-    ),
-    // Este encadeamento funciona (B existe no passo seguinte)…
-    { message: /nunca/ },
+  // Encadeado em dois passos funciona: no 2º passo, B já é coluna da tabela.
+  const ok = e.avaliaTabela(
+    'let a = Table.AddColumn(T, "B", each [A] + 1), b = Table.AddColumn(a, "C", each [B] + 1) in b',
   );
+  assert.deepEqual(grade(ok).linhas, [[1, 2, 3]]);
+
+  // No MESMO passo não existe: o gerador vê a linha de origem. É o mesmo
+  // contrato do ADDCOLUMNS no avaliador de DAX.
+  assert.throws(
+    () => e.avaliaTabela('let a = Table.AddColumn(T, "B", each [B]?  ?? 0) in a'),
+    /Esperava|campo/,
+  );
+});
+
+test('AddColumn recusa nome de coluna que já existe', () => {
+  const e = ev({ T: tab(['A'], [[1]]) });
+  assert.throws(() => e.avaliaTabela('let a = Table.AddColumn(T, "A", each 1) in a'), /já existe/);
 });
 
 test('ReplaceValue troca valor exato; ReplaceText troca dentro do texto', () => {
@@ -329,6 +340,44 @@ test('célula de Erro não atravessa a fronteira do modelo semântico', () => {
   const e = ev({ T: tab(['N'], [['Fit 52,0']]) });
   const t = e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"N", type number}}) in a');
   assert.throws(() => toDatasetRows(t, 'quadro-funcional'), /célula de Erro na linha 1/);
+});
+
+test('número vira data pela época 1899-12-30 — é como a planilha entrega', () => {
+  // Com `valueRenderOption=UNFORMATTED_VALUE`, célula de data vem como dias desde
+  // 1899-12-30 e a fração é a hora. Diferente de texto, aqui não há ambiguidade de
+  // culture: número não tem formato. Por isso vale sem culture nenhuma.
+  const e = ev({ T: tab(['D', 'H'], [[46037, 46037.5]]) });
+  const t = e.avaliaTabela(
+    'let a = Table.TransformColumnTypes(T, {{"D", type date}, {"H", type datetime}}) in a',
+  );
+  const [data, hora] = [t.rows[0].get('D'), t.rows[0].get('H')];
+  assert.ok(data instanceof Date && hora instanceof Date);
+  assert.equal(data.toISOString(), '2026-01-15T00:00:00.000Z');
+  assert.equal(hora.toISOString(), '2026-01-15T12:00:00.000Z');
+});
+
+test('serial fracionário não perde o milissegundo por arredondamento binário', () => {
+  // 0,354166… * 86 400 000 dá 30 599 999,99 em ponto flutuante; truncar faria
+  // 08:30 virar 08:29:59.999.
+  const e = ev({ T: tab(['H'], [[46037 + 30_600_000 / 86_400_000]]) });
+  const t = e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"H", type datetime}}) in a');
+  assert.equal((t.rows[0].get('H') as Date).toISOString(), '2026-01-15T08:30:00.000Z');
+});
+
+test('serial fora da faixa de data erra nomeando o número, não estoura depois', () => {
+  const e = ev({ T: tab(['D'], [[1e15]]) });
+  assert.throws(
+    () => e.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"D", type date}}) in a'),
+    /não é um número de série de data válido/,
+  );
+});
+
+test('Date.From aceita número de série, como no Excel', () => {
+  const e = ev({});
+  assert.equal(
+    (e.avaliaQuery('let a = Date.From(46037) in a').valor as Date).toISOString(),
+    '2026-01-15T00:00:00.000Z',
+  );
 });
 
 test('PromoteHeaders usa a primeira linha e recusa cabeçalho vazio', () => {
@@ -429,9 +478,34 @@ test('DateTimeZone.SwitchZone desloca as horas — o caso de hora-atualizado', (
   assert.equal((v as Date).getTime(), HOJE.getTime() - 3 * 3_600_000);
 });
 
-test('Number.From recusa vírgula decimal, que depende de culture', () => {
-  assert.equal(ev().avaliaQuery('let a = Number.From("1.5") in a').valor, 1.5);
+test('Number.From depende da culture: em pt-BR a vírgula é decimal e o ponto é milhar', () => {
+  const br = new MEvaluator({
+    functions: standardFunctions(),
+    constants: standardConstants(),
+    agora: HOJE,
+    culture: 'pt-BR',
+  });
+  assert.equal(br.avaliaQuery('let a = Number.From("1,5") in a').valor, 1.5);
+  assert.equal(br.avaliaQuery('let a = Number.From("1.234,56") in a').valor, 1234.56);
+  assert.equal(br.avaliaQuery('let a = Number.From("7637491824") in a').valor, 7637491824);
+
+  // Sem culture, só dígito puro passa: "1.5" seria 1,5 ou 15 dependendo de quem lê.
+  assert.equal(ev().avaliaQuery('let a = Number.From("42") in a').valor, 42);
+  assert.throws(() => ev().avaliaQuery('let a = Number.From("1.5") in a'), /culture/);
   assert.throws(() => ev().avaliaQuery('let a = Number.From("1,5") in a'), /culture/);
+});
+
+test('texto numérico vira Int64 quando a culture é conhecida — o caso de PROTOCOLO:', () => {
+  // O golden registra `PROTOCOLO:` como string numérica e o M declara Int64.Type.
+  // Sem a culture, isto erraria alto e 8 queries parariam aqui.
+  const br = new MEvaluator({
+    functions: standardFunctions(),
+    constants: standardConstants(),
+    culture: 'pt-BR',
+    query: () => tab(['PROTOCOLO:'], [['7637491824']]),
+  });
+  const t = br.avaliaTabela('let a = Table.TransformColumnTypes(T, {{"PROTOCOLO:", Int64.Type}}) in a');
+  assert.equal(t.rows[0].get('PROTOCOLO:'), 7637491824);
 });
 
 test('aridade errada erra citando o nome e o esperado', () => {
