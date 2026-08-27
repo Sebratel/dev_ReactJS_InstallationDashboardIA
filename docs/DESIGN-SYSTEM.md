@@ -288,15 +288,34 @@ de 8 e é pior que os **10,6** de hoje. A ordem da pilha (`Inconclusivo` entre o
 Altura de card **nunca** é pixel chutado: é fração da área útil.
 
 ```css
---chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 34px);  /* 210px */
+--chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 60px);  /* 257px */
 --util:   calc(100vh - var(--chrome));
 ```
 
-`52 + 74 + 50 + 34 = 210`. **`--h-nav` não é constante: o `AppShell` mede a faixa de
-telas e publica a altura real aqui em tempo de execução** (ver § 5). Os 64px do
-`:root` são só o chão; medido em 27/08/2026, com as 14 telas ela quebra em duas linhas
-e vale **74px** de 1366 a 1920 de largura. Fixar o número mentiria para a conta em
-metade das resoluções, e o sintoma seria card estourando a tela só em monitor pequeno.
+**Nenhum desses quatro números pode ser chutado, e três deles já foram.** Medido no
+navegador em 27/08/2026, igual nas três resoluções de referência:
+
+| termo | vale | como se sabe |
+|---|---|---|
+| `--h-topbar` | 52px | altura fixa da `.topo`, declarada |
+| `--h-nav` | **74px** | MEDIDO: as 14 telas quebram em duas linhas |
+| `--h-filtros` | **71px** | MEDIDO: 110px na MANUTENÇÃO INICIAL a 1366×768, que tem 13 controles |
+| resto | **60px** | rodapé 32 + padding da `.area` 28 |
+
+Os dois do meio são **publicados em tempo de execução** por `altura-medida.ts`: os
+valores do `:root` (64 e 50) são só o chão, para o primeiro quadro não sair absurdo.
+
+Duas correções que esta tabela representa, e as duas eram silenciosas:
+
+- **`--h-filtros` valia 50px fixos contra 71px reais.** Uma barra com 10, 11 ou 13
+  controles quebra em duas ou três linhas — a conta errava por 21px em toda página e
+  por **60px** na pior.
+- **o "resto" valia 34px, descrito como "cobre paddings e bordas", e esquecia o
+  rodapé inteiro** (32px).
+
+Somados, `--util` saía **26px otimista em toda resolução**. Otimismo aqui não é
+arredondamento: é card mais alto do que a tela, que é exatamente o defeito que esta
+conta existe para impedir.
 
 As duas frações **têm de somar 1** — com `(util - gap) * 1 + gap = util`, duas faixas
 cabem exatamente numa tela. E a fração do gráfico precisa ficar **acima do piso dele**
@@ -306,40 +325,49 @@ Corrigido em 26/08/2026: estava `0,52 + 0,545 = 1,065`, e a tela de duas faixas 
 em **toda** resolução de referência. Três comentários no código já diziam "somam uma
 tela"; só a implementação discordava. Hoje: **0,455 + 0,545 = 1**.
 
-### O piso do gráfico é derivado, não escolhido
+### O piso do gráfico é o limite de legibilidade, e a fronteira é sabida
 
-Ele vale **309px**, e o número sai da própria invariante, no ponto de virada — a
-resolução de referência do meio:
+Duas regras disputam a altura do gráfico, e é preciso saber qual está mandando:
+
+- a **fração** (`0,455`) faz duas faixas caberem exatamente numa tela;
+- o **piso** (`309px`) diz onde o visual deixa de comunicar.
+
+Enquanto a fração ideal for maior que o piso, a igualdade vale. O ponto de virada, com
+o cromo real de 257px:
 
 ```
-1440x900:  útil    = 900 - 210 = 690
-           gráfico = (690 - 10) x 0,455 = 309,4
-           tabela  = (690 - 10) x 0,545 = 370,6
-           309,4 + 370,6 + 10 = 690   <- cabe, exatamente
+(útil - 10) x 0,455 >= 309   ->   útil >= 689   ->   vh >= 946
 ```
 
-Qualquer piso **acima de 309** quebra a igualdade nessa tela. Em 27/08/2026 ele esteve
-em 330 por um dia — posto sem essa conta, ao subir a navegação para o topo — e 1440×900
-passou a rolar 21px: a pior rolagem que existe, longa o bastante para o usuário ver a
-barra e curta demais para valer o gesto.
-
-O 330 tentava resolver um problema real. O piso **anterior** era 258px, calibrado
-quando `--h-nav` valia 0 porque a navegação era lateral e gastava LARGURA. A faixa de
-topo cobra ~74px de ALTURA, `--util` caiu de 632 para 558 em 1366×768, e a fração de
-45,5% passou a valer 249px — o piso deixou de ser limite teórico e virou o valor real,
-com **188px de desenho dentro**. Os 309px de hoje deixam ~240px de caixa e ainda são
-51px a mais que o piso antigo.
+**A igualdade vale de ~950px de altura de janela para cima.** Abaixo disso o piso
+vence e a página rola — e isso é escolha, não descuido: abaixo do piso o visual fica
+ilegível, e o padrão manda preferir rolar a comprimir.
 
 **Medido no navegador em 27/08/2026**, na AGENDAMENTO FIELD:
 
-| resolução | `--h-nav` | útil | gráfico | tabela | soma + gap | |
-|---|---|---|---|---|---|---|
-| 1366×768 | 74px | 558 | 309 | 299 | 618 | rola 60px (pisos vencem, deliberado) |
-| 1440×900 | 74px | 690 | 309 | 371 | **690** | cabe |
-| 1920×1080 | 74px | 870 | 391 | 469 | **870** | cabe |
+| resolução | útil | gráfico | tabela | soma + gap | |
+|---|---|---|---|---|---|
+| 1366×768 | 511 | 309 | 280 | 599 | rola 88px (piso vence, deliberado) |
+| 1440×900 | 643 | 309 | 345 | 664 | rola 21px (piso vence, deliberado) |
+| 1920×1080 | 823 | 370 | 443 | **823** | cabe, ao pixel |
+| 1920×1200 | 943 | 425 | 500 | 935 | cabe (a tabela bate no teto de 500) |
 
-Em 1366×768 a rolagem é escolha: abaixo dos pisos o visual fica ilegível, e o padrão
-manda preferir rolar a comprimir.
+**Essa fronteira subiu porque o cromo cresceu, e vale saber por quê.** Com a navegação
+LATERAL, `--h-nav` era 0: a barra gastava largura, não altura. Com a faixa no topo
+(74px) mais a barra de filtros medida (71px), o cromo foi de ~178px para 257px. São
+~79px que saíram da área de conteúdo — o preço de ter **230px a mais de largura**, que
+é o que decide quantas categorias cabem por página de gráfico e de matriz.
+
+Sobre o 309 em si: o piso anterior era 258px, calibrado com `--h-nav: 0`, e nesta
+casca ele deixava **188px de desenho** dentro do card. 309px deixa ~240px, que é onde
+o eixo girado a 45° ainda cabe.
+
+> **Duas derivações erradas antes desta, e as duas pelo mesmo motivo.** Primeiro pus
+> 330px sem conta nenhuma; depois 309px derivando de 1440×900 com o cromo de 231px.
+> A segunda parecia rigorosa e não era — o erro não estava na álgebra, estava em
+> `--h-filtros` mentir 21px. **Derivar de um número declarado é tão chute quanto
+> chutar; a diferença é que parece cuidadoso.** Meça as faixas antes de usá-las numa
+> conta.
 
 **Página com muitas faixas rola, e isso não é defeito.** A invariante é sobre uma tela
 de DUAS faixas e sobre nenhum card passar da janela. A AGENDAMENTO FIELD tem 18
@@ -466,6 +494,41 @@ Conferido na tela: na VISÃO GERAL o clique cai numa coluna que já tem slicer e
 nenhuma pill aparece; na RELATÓRIO DO MÊS ele cai em `Data Agendado`, que não tem, a
 pill aparece, e o `x` limpa o filtro e o parâmetro da URL.
 
+### A página abre PRÉ-FILTRADA, e por isso precisa da árvore de data
+
+O relatório original abre com um recorte de data aplicado — `jul/2026` na Visão Geral,
+Agendamento, Diário e Protocolos; `2026` em Manutenção e Instalação/Reincidente. Era o
+**gap nº 1** da auditoria de paridade, e `apps/web/src/filtros-padrao.ts` o resolve
+desde 20/08… mas ficou **sem chamador**. Medido em 27/08/2026 na VISÃO GERAL: sem
+filtro a tela abre com **35.166** protocolos; com jul/2026, com **3.238**, que é o
+número do relatório. Onze vezes de diferença, e nada na tela dizendo por quê.
+
+O padrão é semeado **só na abertura e na troca de tela**. Quem limpa o filtro fica
+limpo — nenhum efeito o reaplica a cada render. Recarregar traz o padrão de volta,
+igual ao original.
+
+**Abrir pré-filtrado obriga a ter o controle daquele recorte.** Sem ele, a única coisa
+que o usuário pode fazer com o mês padrão é apagá-lo: não há como pedir junho. E o
+controle não pode ser um seletor plano, porque o motor **recusa** reduzir aquela
+segmentação a um nível — a spec diz, com todas as letras: *"segmentação de hierarquia
+com 3 níveis ativos (Ano/Mês/Dia). Ela é um controle de drill, e a escolha ali é um
+caminho, não um conjunto de valores de um nível — filtrar pelo primeiro aplicaria um
+filtro que ninguém pediu."*
+
+Por isso a barra monta a **árvore Ano > Mês > Dia**
+(`SegmentacaoDataHierarquia.tsx`, com `hierarquia-data.ts` testado ao lado) **no lugar**
+daquele controle, e não ao lado dele: o slicer marcado `naoFiltra` desenhava um botão
+que dizia "todos" com a página filtrada em julho. Um controle que mente é pior que
+controle nenhum.
+
+A rota `/valores` precisou abrir para esse caso, e a abertura é estreita: só
+segmentação de **hierarquia** (campo `niveis`, estrutural — não a frase em português do
+`naoFiltra`) e só **sem `nivel`**, que são as datas cruas de que a árvore precisa para
+saber quais meses cada ano tem. A trava que importa continua inteira — a coluna tem de
+ser segmentação **desta** página. Levantado antes de mexer: as **seis** segmentações
+`naoFiltra` do modelo inteiro são hierarquia de data, então não existe caso em que isto
+alcance coluna com dado de cliente.
+
 ---
 
 ## 5. A casca: topo, navegação e os dois interruptores
@@ -531,5 +594,10 @@ troque só aquele bloco do `AppShell.tsx`.
     no `localStorage` e não tem botão, você acabou de trancar o usuário lá dentro.
 11. **Filtre clicando num visual** e confirme que o recorte aparece na tela e sai por
     um clique — ver § 4.
+11b. **Abra a página e confira o recorte inicial.** Se ela abre pré-filtrada, tem de
+    haver na barra um controle que MUDA aquele recorte, não só um que o apaga.
+12b. **Meça as faixas de cromo (`.topo`, `.nav-telas`, `.filtros`, `.rodape`) contra
+    os tokens.** Faixa que quebra em duas linhas e token que não acompanha é o defeito
+    mais caro deste arquivo, e já apareceu três vezes.
 12. **Meça a invariante das duas faixas** em 1440×900 e 1920×1080: `gráfico + tabela
     + gap` tem de dar `--util` exatamente. Piso acima da fração ideal quebra isso.

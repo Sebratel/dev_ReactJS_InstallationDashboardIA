@@ -137,7 +137,25 @@ bruto acima:
 
 ### Achados novos do renderizado que a auditoria do bruto NÃO pegou
 
-1. **[FILTRO-DEFAULT] — gap nº1 — ✅ RESOLVIDO (20/08).** O original abre
+1. **[FILTRO-DEFAULT] — gap nº1 — ✅ RESOLVIDO (20/08), REGREDIU, RELIGADO (27/08).**
+
+   > **Ficou quebrado entre 26 e 27/08/2026, e este parágrafo dizia que estava
+   > resolvido o tempo todo.** O `filtros-padrao.ts` sobreviveu; a metade que o
+   > chamava, no `App.tsx`, não — `escolhe()` fazia `setFiltros([])` e o estado
+   > inicial ignorava o padrão. O módulo ficou sem nenhum importador, e nada acusou:
+   > não há teste que ligue os dois, a build passa, e a tela abre bonita mostrando o
+   > universo inteiro. Medido em 27/08 na VISÃO GERAL: **35.166** protocolos sem
+   > filtro contra **3.238** com jul/2026.
+   >
+   > Religado em 27/08 com o controle que faltava junto — a árvore Ano > Mês > Dia
+   > (`SegmentacaoDataHierarquia`), sem a qual dá para APAGAR o mês padrão mas não
+   > para trocá-lo. Ver `DESIGN-SYSTEM.md` § 4.
+   >
+   > A lição não é sobre este arquivo: **"resolvido" num documento é uma afirmação
+   > sobre o código, e some sem avisar.** O que sustenta é teste, e este gap não
+   > tinha nenhum.
+
+   O original abre
    **pré-filtrado**: `jul/2026` em Visão Geral, Agendamento, Diário e Protocolos; `2026`
    em Manutenção e Instalação/Reincidente. Nossa app abria **sem filtro**. **Implementado**
    em `apps/web/src/filtros-padrao.ts` (+ `App.tsx`): as 4 páginas de mês abrem no

@@ -341,30 +341,35 @@ body {
 /* Os dois seletores de propósito: a faixa (um `div` de grade) e o card em si. Sem a
    forma `.cartao.v-*`, o `height: 100%` de `.cartao` — que vem depois no arquivo e tem
    a mesma especificidade — ganharia da conta, e a tabela voltaria a ter 5.441px. */
-/* O PISO DO GRÁFICO É 309px, E O NÚMERO É DERIVADO — não escolhido.
+/* O PISO DO GRÁFICO É 309px, E ELE É O LIMITE DE LEGIBILIDADE — não a fração.
 
-   A regra que ele serve: `0,455 + 0,545 = 1`, logo `gráfico + tabela + gap = útil`
-   e duas faixas cabem EXATAMENTE numa tela. Mas isso só vale enquanto a fração
-   ideal ficar ACIMA do piso; assim que o piso vence, ele empurra a soma para fora
-   e a tela de duas faixas volta a rolar.
+   Duas regras convivem aqui, e é preciso saber qual está mandando:
+     - a FRAÇÃO (`0,455 + 0,545 = 1`) faz duas faixas caberem exatamente numa tela;
+     - o PISO diz onde o visual deixa de comunicar, e ele vence quando a tela é baixa.
 
-   O ponto de virada é a resolução de referência do meio, 1440x900:
-     útil    = 900 - (52 + 74 + 50 + 34) = 690
-     gráfico = (690 - 10) x 0,455 = 309,4
-     tabela  = (690 - 10) x 0,545 = 370,6   ->  309,4 + 370,6 + 10 = 690, cabe
-   Qualquer piso acima de 309 quebra a igualdade nessa tela. Eu tinha posto 330 —
-   sem essa conta — e ela passou a rolar 21px: a pior rolagem que existe, longa o
-   bastante para o usuário ver a barra e curta demais para valer o gesto.
+   Enquanto a fração ideal for maior que o piso, a igualdade vale e a tela de duas
+   faixas não rola. O ponto de virada, com o cromo REAL de 257px (ver acima):
 
-   O 330 tentava resolver um problema real: o piso ANTERIOR era 258px, calibrado
-   com `--h-nav: 0`, de quando a navegação era lateral e gastava LARGURA. A faixa
-   de topo cobra ~74px de ALTURA, `--util` caiu de 632 para 558 a 1366x768, e a
-   fração de 45,5% passou a valer 249px — o piso deixou de ser limite teórico e
-   virou o valor real, com 188px de desenho dentro. 309px deixa ~240px de caixa, o
-   suficiente para o eixo girado, e ainda é 51px a mais que o piso antigo.
+       util(vh)      = vh - 257
+       gráfico ideal = (util - 10) x 0,455 >= 309  ->  util >= 689  ->  vh >= 946
 
-   Em 1366x768 a página continua rolando ~60px, e isso é escolha: abaixo dos pisos
-   o visual fica ilegível, e o padrão manda preferir rolar a comprimir. */
+   Ou seja: **a igualdade vale de ~950px de altura de janela para cima.** Em
+   1920x1080 ela fecha ao pixel. Em 1440x900 e 1366x768 o piso vence e a página rola,
+   e isso é escolha — o padrão manda preferir rolar a comprimir abaixo da
+   legibilidade.
+
+   Essa fronteira subiu porque o cromo cresceu, e vale saber por quê. Com a navegação
+   LATERAL, `--h-nav` era 0: a barra gastava largura, não altura. Com a faixa no topo
+   (74px) mais a barra de filtros medida (71px, e 110px onde há 13 controles), o cromo
+   foi de ~178px para 257px. São ~79px que saíram da área de conteúdo — o preço de ter
+   230px a mais de LARGURA, que é o que decide quantas categorias cabem por página de
+   gráfico e de matriz.
+
+   Sobre o 309 em si: o piso anterior era 258px, calibrado com `--h-nav: 0`, e nesta
+   casca ele deixava **188px de desenho** dentro do card. 309px deixa ~240px, que é
+   onde o eixo girado a 45 graus ainda cabe. Eu cheguei a pôr 330 sem conta nenhuma,
+   e depois 309 derivando de 1440x900 com o cromo ERRADO (231px) — as duas contas
+   estavam furadas pelo mesmo motivo: `--h-filtros` mentia. */
 .v-grafico, .cartao.v-grafico { height: clamp(309px, calc((var(--util) - var(--gap)) * 0.455), 430px); }
 .v-tabela,  .cartao.v-tabela  { height: clamp(280px, calc((var(--util) - var(--gap)) * 0.545), 500px); }
 .v-meia,    .cartao.v-meia    { height: clamp(255px, calc((var(--util) - var(--gap)) * 0.5),   440px); }

@@ -94,6 +94,20 @@ function regra(qual: keyof typeof REGRA): string {
   return m![1]!;
 }
 
+/**
+ * O cromo REAL, medido no navegador em 27/08/2026 e igual nas três resoluções de
+ * referência: topo 52 + nav 74 + filtros 71 + (rodapé 32 + padding da área 28) = 257.
+ *
+ * `--h-nav` e `--h-filtros` no `:root` são só o CHÃO — a tela mede as duas faixas e
+ * reescreve os tokens (`altura-medida.ts`). Por isso a conta de referência usa as
+ * medidas, e não o que está escrito no CSS: usar o CSS aqui foi o que fez a derivação
+ * do piso sair errada duas vezes.
+ */
+const H_NAV_MEDIDO = 74;
+const H_FILTROS_MEDIDO = 71;
+const cromo = () => token('h-topbar') + H_NAV_MEDIDO + H_FILTROS_MEDIDO + 60;
+const utilEm = (vh: number) => vh - cromo();
+
 function numero(texto: string, re: RegExp, oque: string): number {
   const m = re.exec(texto);
   assert.ok(m, 'não consegui ler ' + oque);
@@ -106,23 +120,50 @@ test('as duas frações somam 1 — duas faixas são uma tela', () => {
   assert.equal(fracao('grafico') + fracao('tabela'), 1, 'gráfico + tabela têm de dar 1');
 });
 
-test('o piso do gráfico não vence a fração ideal em 1440x900', () => {
-  // Piso acima da fração ideal empurra a soma para fora, e a tela de duas faixas
-  // volta a rolar — foi o que 330px fez por um dia.
+/**
+ * As duas faixas cabem na resolução de referência ALTA — e a fronteira é sabida.
+ *
+ * Duas regras disputam a altura do gráfico: a FRAÇÃO, que faz duas faixas darem uma
+ * tela exata, e o PISO, que diz onde o visual deixa de comunicar. O piso vence em
+ * tela baixa, e aí a página rola de propósito.
+ *
+ * O que este teste guarda é o outro lado: em 1920x1080 a fração TEM de vencer. Se um
+ * piso subir acima dela, a tela que deveria caber passa a rolar — e foi assim que
+ * 330px entrou por um dia. Medido no navegador em 27/08/2026: 370 + 443 + 10 = 823 =
+ * `--util`, ao pixel.
+ */
+test('o piso do gráfico não vence a fração ideal em 1920x1080', () => {
   const r = regra('grafico');
   const piso = numero(r, /clamp\((\d+)px/, 'o piso do gráfico');
   const fracao = numero(r, /\*\s*(0?\.\d+)\)/, 'a fração do gráfico');
-
-  // `--h-nav` no `:root` é só o chão: quem manda é a medida que o AppShell publica,
-  // 74px com as 14 telas em duas linhas. É esse valor que a conta de referência usa.
-  const H_NAV_MEDIDO = 74;
-  const cromo = token('h-topbar') + H_NAV_MEDIDO + token('h-filtros') + 34;
-  const ideal = (900 - cromo - token('gap')) * fracao;
+  const ideal = (utilEm(1080) - token('gap')) * fracao;
 
   assert.ok(
     piso <= ideal,
-    'o piso do gráfico (' + piso + 'px) passou da fração ideal em 1440x900 (' +
-      ideal.toFixed(1) + 'px): a tela de duas faixas volta a rolar',
+    'o piso do gráfico (' + piso + 'px) passou da fração ideal em 1920x1080 (' +
+      ideal.toFixed(1) + 'px): a tela que deveria caber volta a rolar',
+  );
+});
+
+/**
+ * E a fronteira abaixo da qual o piso vence continua onde a documentação diz.
+ *
+ * Não é um limite a evitar — é um número que o `DESIGN-SYSTEM.md` §3 publica, e que
+ * decide em quais monitores a tela de duas faixas rola. Se ele se mover sem o
+ * documento se mover junto, é o começo do problema que a seção 0 daquele arquivo
+ * descreve.
+ */
+test('a fronteira em que o piso passa a vencer fica em ~950px de janela', () => {
+  const r = regra('grafico');
+  const piso = numero(r, /clamp\((\d+)px/, 'o piso do gráfico');
+  const fracao = numero(r, /\*\s*(0?\.\d+)\)/, 'a fração do gráfico');
+  // `(util - gap) * fracao = piso`  ->  util  ->  soma o cromo de volta.
+  const vh = Math.ceil(piso / fracao + token('gap')) + cromo();
+
+  assert.ok(
+    vh >= 900 && vh <= 1000,
+    'a fronteira foi para ' + vh + 'px de altura de janela; o DESIGN-SYSTEM §3 diz ' +
+      '~950. Mova o documento junto, ou o próximo a ler acredita no número velho',
   );
 });
 
@@ -151,4 +192,64 @@ test('a barra lateral não deixou restos', () => {
   assert.ok(!css.includes('.barra-lateral'), 'sobrou regra de `.barra-lateral` no CSS');
   assert.ok(!css.includes('--sidebar-w'), 'sobrou o token `--sidebar-w`');
   assert.match(css, /\.nav-telas\s*\{/, 'a faixa de navegação `.nav-telas` sumiu do CSS');
+});
+
+/* ============================================================== módulo órfão */
+
+/**
+ * NENHUM MÓDULO SEM IMPORTADOR.
+ *
+ * Este é o teste que teria pego, de uma vez, os **quatro** achados mais caros de
+ * 27/08/2026 — todos da mesma forma: código bom, escrito, revisado, e desligado.
+ *
+ *   `HeaderSebratel.tsx` ......... o cabeçalho com os dois interruptores globais.
+ *                                  Sem ele, tema e modo conferência ficaram sem botão.
+ *   `Capa.tsx` ................... a capa inteira. Enquanto isso a CAPA gerada da spec
+ *                                  desenhava dois cartões de indicador num vazio.
+ *   `filtros-padrao.ts` .......... o gap nº1 da auditoria de paridade. A tela abria
+ *                                  com 35.166 protocolos onde o relatório mostra 3.238.
+ *   `SegmentacaoDataHierarquia` .. o único controle possível para a coluna de data.
+ *
+ * Nenhum deles quebrava build, teste ou console. `docs/PARIDADE-POWERBI.md` chegou a
+ * dizer "✅ RESOLVIDO" sobre um módulo que ninguém chamava — porque "resolvido" num
+ * documento é uma afirmação sobre o código, e ela some sem avisar.
+ *
+ * Se este teste falhar, a pergunta não é "como faço ele passar": é **por que aquilo
+ * foi escrito**. Ou liga, ou apaga. Manter no meio é a pior das três.
+ */
+test('nenhum módulo de apps/web/src ficou sem importador', () => {
+  const raiz = path.join(web, 'src');
+
+  /** Só o ponto de entrada pode não ter importador — quem o chama é o `index.html`. */
+  const ENTRADAS = new Set(['main.tsx']);
+
+  const arquivos: string[] = [];
+  const anda = (dir: string) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) anda(p);
+      else if (/\.tsx?$/.test(e.name)) arquivos.push(p);
+    }
+  };
+  anda(raiz);
+
+  const fontes = new Map(arquivos.map((f) => [f, semComentario(fs.readFileSync(f, 'utf8'))]));
+  const orfaos = arquivos.filter((f) => {
+    if (ENTRADAS.has(path.basename(f))) return false;
+    // O import cita o arquivo COM extensão (`./api.ts`, `../componentes/Capa.tsx`) —
+    // é a convenção deste repositório, e o `tsc` a exige.
+    const alvo = '/' + path.basename(f);
+    for (const [outro, fonte] of fontes) {
+      if (outro === f) continue;
+      if (fonte.includes(alvo) || fonte.includes("'" + path.basename(f))) return false;
+    }
+    return true;
+  });
+
+  assert.deepEqual(
+    orfaos.map((f) => path.relative(raiz, f).split(path.sep).join('/')),
+    [],
+    'módulo sem nenhum importador: ou liga no App, ou apaga — no meio ele apodrece ' +
+      'enquanto a documentação continua dizendo que a funcionalidade existe',
+  );
 });
