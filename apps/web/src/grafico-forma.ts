@@ -173,7 +173,23 @@ interface ChaveDoGrafico {
 
 const num = (v: Valor): number | null => (typeof v === 'number' ? v : null);
 
-export const MAXIMO_DE_CATEGORIAS = 62;
+/**
+ * Teto de cardinalidade — GUARDA, não "o que cabe na tela".
+ *
+ * Ele valia **62** e esse número era "quantas colunas cabem num card", de quando o
+ * gráfico não paginava. Agora quem faz caber é a janela de categorias do
+ * `Grafico.tsx` (medida, com paginador), e o teto antigo passou a **cortar dado que
+ * a paginação alcançaria**: na AGENDAMENTO FIELD eram 87 categorias, o paginador
+ * dizia "38–62 de 62" e as outras 25 não existiam para ele. Paginador que anuncia um
+ * total menor que o real é pior que nenhum — ele afirma que você viu tudo.
+ *
+ * O que sobra é o papel de guarda contra cardinalidade patológica: eixo montado
+ * sobre uma coluna de identidade (protocolo, contrato) traria dezenas de milhares de
+ * categorias, e aí o custo é de montar os objetos, não de desenhar — o desenho já é
+ * limitado pela página. Mil cobre com folga o que a operação tem (366 dias do ano,
+ * equipes, cidades, tipos) e ainda para um acidente.
+ */
+export const MAXIMO_DE_CATEGORIAS = 1000;
 
 export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
   const base = POR_TIPO[d.tipo] ?? { forma: 'colunas' as Forma, empilha: false, percentual: false };
@@ -242,7 +258,13 @@ export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
 
   const cortadas = categorias.length - Math.min(categorias.length, MAXIMO_DE_CATEGORIAS);
   if (cortadas > 0) {
-    avisos.push(`${cortadas} de ${categorias.length} categorias fora do desenho — as primeiras ${MAXIMO_DE_CATEGORIAS} estão à mostra.`);
+    // Chegar aqui agora é anormal — a paginação alcança tudo abaixo do teto. Este
+    // aviso passou a significar PERDA DE DADO, e é por isso que ele diz o que fazer.
+    avisos.push(
+      `${categorias.length} categorias neste eixo, e o teto é ${MAXIMO_DE_CATEGORIAS}: ` +
+        `${cortadas} ficaram FORA e o paginador não as alcança. Agrupe o eixo (mês em vez ` +
+        `de dia) ou filtre — não é limite de desenho, é dado que não está na conta.`,
+    );
   }
 
   const facetada = decideFaceta(series, base.empilha);

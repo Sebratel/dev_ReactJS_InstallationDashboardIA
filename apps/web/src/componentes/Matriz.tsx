@@ -140,7 +140,20 @@ export function Matriz(props: {
       }));
 
   return (
-    <Cartao titulo={tituloDoVisual(visual)} sub={partes.join(' · ')} id={visual.id} largo>
+    // `altura="matriz"` NAO e enfeite: sem ela o Cartao cai no padrao `auto`, o
+    // `height: clamp(360px, var(--util), 900px)` do `.v-matriz` nunca se aplica, e o
+    // cartao cresce com o numero de linhas. Medido em 27/08/2026 na AGENDAMENTO
+    // FIELD, a 1366x768: os dois cartoes de matriz tinham **2.386px e 2.123px** —
+    // tres telas de card — e a pagina inteira, 8.460px. `.cartao-corpo` e `.rolagem`
+    // ja tinham `overflow: auto` e `min-height: 0`; faltava alguem limitar a altura
+    // para eles terem o que rolar. Rolagem contida pode; cartao maior que a tela nao.
+    <Cartao
+      titulo={tituloDoVisual(visual)}
+      sub={partes.join(' · ')}
+      id={visual.id}
+      largo
+      altura="matriz"
+    >
       <div className="cartao-acoes" style={{ display: 'flex', gap: 6 }}>
         {paginaColunas && (
           <span className="paginador-grafico" title={`${totalColunas} colunas no total`}>
