@@ -1,6 +1,6 @@
 # Deploy — plano de entrega para produção
 
-> **Escrito em 21/08/2026.** Este documento tem uma regra só: **separar o que está
+> **Escrito em 21/08/2026, corrigido em 27/08/2026.** Este documento tem uma regra só: **separar o que está
 > pronto do que parece pronto.** Ele não repete o histórico (isso é o `README.md`) nem
 > o estado detalhado de cada camada (isso é o `CONTINUACAO.md`). Ele responde
 > *"podemos publicar isto amanhã, e se não, o que falta exatamente?"*.
@@ -14,12 +14,12 @@
 
 ## 0. Painel de prontidão
 
-| frente | estado em 21/08/2026 | bloqueia deploy? |
+| frente | estado em 27/08/2026 | bloqueia deploy? |
 |---|---|---|
 | Motor DAX + Widget Engine | 14 páginas, **117 de 117 visuais calculam**, 0 erros | não |
-| Testes | **1355 verdes**, 0 falhando, nenhum precisa de credencial nem de build | não |
-| Cache + pré-aquecimento | resposta a quente medida em **2,9–6,2 ms**; `npm start` aquece as 14 páginas + anos + combinações Ano/Mês | não |
-| Tela React | 14 páginas navegáveis, filtros na URL, Zustand + React Query, SSE ligado | não |
+| Testes | **1357 verdes**, 0 falhando, nenhum precisa de credencial nem de build — mas ver §4.1 | não |
+| Cache + pré-aquecimento | resposta a quente medida em **2,9–6,2 ms**; `npm start` aquece as 14 páginas sem filtro (o pré-aquecimento por Ano/Mês foi perdido, §4) | não |
+| Tela React | 14 páginas navegáveis, filtros na URL. **Sem SSE e sem store de filtros** — perdidos com a árvore de 21/08 (§4) | não |
 | **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.3) | **sim, para "substituir"** |
 | **Autenticação** | **não existe.** A API serve todo número a todo pedido | **sim, e é o primeiro** |
 | **Refresh do dado** | manual — alguém digita `npm run snapshot` | **sim** |
@@ -40,7 +40,7 @@ Cada linha aqui tem um comando que reproduz a afirmação. Linha sem comando nã
 
 | afirmação | como conferir |
 |---|---|
-| 1355 testes verdes, sem credencial e sem build | `npm test` |
+| 1357 testes verdes, sem credencial e sem build | `npm test` |
 | as 14 páginas calculam, 117 visuais, 0 erros | `npm run paginas -- --pagina=<uma>` |
 | a API responde a quente em milissegundos, e diz qual adapter de cache está ligado | `curl localhost:3100/api/saude` |
 | a tela sobe compilada, aquecida, e reprova se algum visual falhar | `npm start` |
@@ -153,37 +153,35 @@ outro servindo a API é peça a mais sem problema que resolva — o proxy entra 
 - **Critério de saída:** `docker compose -f docker-compose.prod.yml up -d` sobe tudo, e
   matar o container da API o traz de volta sozinho pelo healthcheck.
 
-### 3.3 Proxy reverso, TLS e o detalhe do SSE
+### 3.3 Proxy reverso e TLS
 
-Não existe arquivo de Nginx no repositório. O que precisa estar nele, e o que morre em
-silêncio se faltar:
+Não existe arquivo de Nginx no repositório. O que precisa estar nele:
 
-- proxy de `/` e de `/api/` para a porta da API;
-- **SSE quebra atrás de proxy com a configuração padrão.** `proxy_buffering off`,
-  `proxy_http_version 1.1`, `proxy_set_header Connection ''` e
-  `chunked_transfer_encoding off`. Sem isso o Nginx segura o `text/event-stream` no
-  buffer e a tela **não recebe evento nenhum** — sem erro, sem log, com cara de "não
-  mudou nada". O heartbeat de 15 s do `eventsStream` existe para manter a conexão viva,
-  e é ele que o buffer engole primeiro;
-- `proxy_read_timeout` alto na rota do stream — o padrão de 60 s derruba a conexão a
-  cada minuto e o cliente reconecta em laço;
-- **CORS.** O `eventsStream` responde hoje `Access-Control-Allow-Origin: *`. Numa rede
-  interna com dado pessoal isso precisa virar a origem exata do HUBBI, **no código**,
-  não no Nginx;
+- proxy de `/` e de `/api/` para a porta da API — a API serve a tela e o JSON;
+- `proxy_read_timeout` que caiba o pedido a frio: `agendamento-field` chega a ~1 min na
+  primeira abertura, e o padrão de 60 s do Nginx corta exatamente aí, devolvendo 504 na
+  página mais lenta do relatório;
 - certificado: Let's Encrypt só se o host for alcançável de fora; para rede interna, o
   certificado da Sebratel. Isto é decisão de infraestrutura, não do repositório.
 
-- **Critério de saída:** com o proxy no caminho, `npm run cdc:ingere` rematerializando
-  uma query faz a aba aberta no navegador atualizar **sem F5** — é o único teste que
-  prova os quatro cabeçalhos de uma vez.
+> **Se um dia o SSE voltar, o Nginx precisa de mais quatro linhas** —
+> `proxy_buffering off`, `proxy_http_version 1.1`, `proxy_set_header Connection ''` e
+> `chunked_transfer_encoding off`. Sem elas o proxy segura o `text/event-stream` no
+> buffer e não chega evento nenhum, sem erro e sem log. Fica registrado aqui porque é o
+> tipo de coisa que só se descobre em produção.
+
+- **Critério de saída:** as 14 páginas abrem pelo endereço real com TLS, incluindo a
+  mais lenta a frio, e nenhum pedido volta 504.
 
 ### 3.4 Supervisão e observabilidade
 
 - reinício automático: healthcheck do compose contra `GET /api/saude`, ou PM2/systemd se
   o deploy não for containerizado. **Uma das duas coisas, não as duas.**
-- `GET /api/saude` já devolve `memoria.rssMB`, `heapUsedMB` e `heapTotalMB` — é o que um
-  Prometheus ou um UptimeRobot precisa raspar. O sinal que importa não é "está no ar": é
-  o RSS subindo entre refreshes, que é como um vazamento aparece antes do OOM.
+- **Falta o que raspar.** `GET /api/saude` responde o que há em disco, de quando e qual
+  adapter de cache está ligado — mas **não** a memória do processo. Um `memoria` com
+  `rssMB`/`heapUsedMB` existiu na árvore perdida (§4) e é o primeiro acréscimo a fazer:
+  o sinal que importa não é "está no ar", é o RSS subindo entre refreshes, que é como um
+  vazamento aparece antes do OOM num processo de 10 GB de heap.
 - **Log:** hoje a saída é `console`. Nenhuma ferramenta imprime valor de linha, e essa
   disciplina é o que permite colar log em ticket. **Mantenha ao encaminhar log para
   qualquer coletor.**
@@ -203,35 +201,56 @@ silêncio se faltar:
 
 ---
 
-## 4. Riscos abertos no código de 21/08 — o que revisar antes de empacotar
+## 4. O risco que já se materializou duas vezes: trabalho fora do git
 
-O trabalho de 21/08 (pré-aquecedor dinâmico, datas ISO, SSE, store de filtros) está
-**inteiro não commitado**, e três comportamentos novos **não têm teste**. A suíte de
-1355 passa sem eles: ela não os cobre.
+**Em 26 e 27/08 a árvore de trabalho foi apagada duas vezes**, e o que não estava
+commitado sumiu — a causa não foi um comando deste repositório; outro agente/IDE desfez
+trabalho solto ([RECUPERACAO-27-08](RECUPERACAO-27-08.md)). **Tudo que estava commitado
+sobreviveu, sem exceção.** O que se perdeu:
 
-| # | o quê | por que importa no deploy |
-|---|---|---|
-| 1 | `GET /api/events/invalidate` **tem efeito colateral**: limpa as páginas carregadas em memória. É um `GET`, sem autenticação, e o que impedia efeito colateral na API era exatamente o método | Um laço de `curl` nessa rota força recarga de tabela a cada pedido — de milissegundos para dezenas de segundos por página. Precisa ser interna (bind em loopback, ou negada no proxy) **antes** de haver proxy |
-| 2 | O ingestor manda `?id=<id da query>`; a tela usa esse id como **id de página** (`queryKey ['pagina', id]`) | Rematerializar **uma** query invalida uma chave que não existe: a tela não atualiza e nada erra. Desaparece quando o id é `*`, o que esconde o defeito justamente nos casos com muitas queries |
-| 3 | Datas ISO no `decodificaFiltro` — o ramo novo **não tem teste** em `filtro-url.test.ts` | É a correção que fez os visuais de `agendamento-field` calcularem limpos. Sem teste, a próxima mexida no decodificador a desfaz em silêncio |
-| 4 | Pré-aquecimento de anos e meses — sem teste em `tools/subir/test/aquece.test.ts`, e `TIMEOUT_FILTRO_ANO_MS` está **declarado e não usado** | O `fetch` de aquecimento sem timeout pode pendurar a subida numa página lenta. A constante morta diz que a intenção era outra |
-| 5 | Anos (`2024`, `2025`, `2026`) e meses cravados no código do aquecedor | Em 01/01/2027 o pré-aquecimento aquece três anos velhos. É o mesmo prazo da pergunta de negócio #12 (o literal `'2026-01-01'` em 11 queries), e vale resolver junto |
-| 6 | O diff apagou comentários que registravam decisões em `servidor.ts` (o `identifica()`, o corte do `id` antes do `decodeURIComponent`) | Nesta base o comentário é o registro da decisão. Reponha antes do commit, ou a próxima pessoa refaz o bug que ele evitava |
+- a passada de densidade do front-end de 26/08 (reconstituível: as fontes estão no
+  scratchpad da sessão, e servem de especificação, não de patch para reaplicar às cegas);
+- **~5.600 linhas de documentação de decisões** — o `ACHADOS.md` sozinho carregava os
+  achados #1 a #76, a memória numerada que o resto dos documentos referencia;
+- e o pacote de 21/08 que **este documento chegou a descrever como pronto**: SSE,
+  `useFilterStore`, o ramo de data ISO no `filtro-url.ts` e o pré-aquecimento por
+  Ano/Mês. Nada disso está no repositório.
 
-- **Critério de saída desta seção:** os itens 1 e 2 corrigidos, 3 e 4 com teste, e o
-  trabalho **commitado**. Empacotar imagem a partir de árvore suja é a única forma
-  garantida de gerar um artefato que ninguém consegue reproduzir depois.
+Duas consequências para o deploy, e a segunda é a que importa:
 
----
+1. **A versão anterior deste plano listava seis riscos em código que não existe.** Eles
+   ficam registrados onde pertencem — os defeitos do SSE em `ARCHITECTURE.md` §6.2, os
+   do aquecedor no §6.1 —, para quem reconstruir não reencontrá-los do zero. Não são
+   mais itens de deploy.
+2. **A regra que passa a valer:** só se documenta, empacota ou promete o que está
+   **commitado**. Empacotar imagem a partir de árvore suja é a forma garantida de gerar
+   um artefato que ninguém consegue reproduzir — e, aqui, já foi a forma de perder o
+   trabalho duas vezes.
+
+**Estado hoje (27/08/2026):** árvore limpa, `main` == `staging` == `origin/main` ==
+`origin/staging`, **1357 testes verdes**. Não há mais nada em risco fora do git.
+
+- **Critério de saída desta seção:** nenhum documento afirma comportamento que não
+  esteja num commit, e cada fase de trabalho termina com commit em `staging` antes de ir
+  para `main`.
+
+### 4.1 A discrepância de testes que ainda está aberta
+
+A árvore pré-reset de 26/08 marcava **1438 testes com 4 falhando**; hoje são **1357 com
+0**. Os 87 arquivos `*.test.ts` existem e o glob do `npm test` alcança todos — então os
+~81 de diferença foram acrescentados **dentro de arquivos existentes** e se perderam com
+a árvore. Enquanto não forem identificados, "suíte verde" mede menos do que media.
 
 ## 5. O que **não** vai neste deploy, de propósito
 
 - **Kafka, Debezium e CDC contra o Voalle real.** O ingestor está validado contra a
   stack descartável de `docker/cdc/`, e o gatilho para ligá-lo em produção é um número
   medido (`DECISAO-REALTIME.md`), não a disponibilidade do Kafka no Portainer. O
-  refresh agendado do §2.2 resolve o frescor do dado sem nenhuma dessas peças. **O SSE
-  fica no ar** — ele é útil sem CDC, disparado por `npm run cdc:ingere` ou por um
-  refresh manual.
+  refresh agendado do §2.2 resolve o frescor do dado sem nenhuma dessas peças.
+- **Realtime na tela.** Não existe (§4), e `DECISAO-REALTIME.md` decidiu não construir
+  enquanto o gatilho medido não aparecer. Sem ele, quem abriu a página antes do refresh
+  vê o dado antigo até recarregar — o que é aceitável num painel cujo dado é
+  materializado uma vez por dia, e precisa ser dito a quem for usar.
 - **Chart SDK.** Os 16 gráficos calculam; a tela desenha barra em HTML. Escolher uma
   biblioteca sob pressão de deploy é decidir por uma peça que tem dono
   (`CONTINUACAO.md` §9.2).
@@ -245,15 +264,21 @@ Três ondas. A ordem não é preferência: cada onda remove um bloqueio da segui
 
 ### Onda 1 — fechar o que está na mão (não depende de ninguém de fora)
 
-1. Corrigir os itens 1 e 2 do §4; cobrir 3 e 4 com teste; repor os comentários.
-2. `npm test` verde e **commitar** o trabalho de 21/08.
-3. Empurrar o repositório — `CONTINUACAO.md` §9.0. **É o único item do projeto cuja
-   demora tem consequência permanente:** 123 commits em um disco só.
-4. Escrever o `Dockerfile` da API (com o heap), o `docker-compose.prod.yml` e o
-   `nginx.conf` com os quatro cabeçalhos de SSE.
+1. **Restaurar a memória do projeto** — o `ACHADOS.md` de hoje tem 217 linhas onde tinha
+   5.808, e os achados #1 a #76 são referenciados por todos os outros documentos. O
+   plano de fusão (nunca sobrescrita) está em
+   [RECUPERACAO-27-08](RECUPERACAO-27-08.md) §4, Fase 0. É o item mais barato e o de
+   maior alcance: sem ele, metade das referências deste repositório aponta para o vazio.
+2. **Devolver a altura aos gráficos** — `Grafico.tsx` não passa `altura`, então todo
+   gráfico cai fora do sistema de alturas e a página tem 8.460 px
+   ([RECUPERACAO-27-08](RECUPERACAO-27-08.md) §3.1). É o defeito visível.
+3. Escrever o `Dockerfile` da API (com o heap), o `docker-compose.prod.yml` e o
+   `nginx.conf`.
+4. `npm test` verde e **commit em `staging`** ao fim de cada item — nada fica solto na
+   árvore entre etapas. Foi trabalho solto que se perdeu duas vezes (§4).
 
 - **Critério de saída da onda:** a stack sobe por compose numa máquina que não é a do
-  Erick, com o snapshot montado como volume, e a aba atualiza sozinha ao rematerializar.
+  Erick, com o snapshot montado como volume, e as 14 páginas abrem.
 
 ### Onda 2 — o que depende de decisão de outra pessoa
 
@@ -281,7 +306,7 @@ Três ondas. A ordem não é preferência: cada onda remove um bloqueio da segui
 
 Antes:
 
-- [ ] `npm test` verde na máquina que vai empacotar (1355)
+- [ ] `npm test` verde na máquina que vai empacotar (1357)
 - [ ] árvore limpa (`git status` sem modificação) e commit empurrado
 - [ ] `npm run paginas -- --pagina=<três páginas diferentes>` sem erro
 - [ ] `snapshot/` do dia, e `npm run snapshot:confere` sem divergência de tipo
@@ -290,12 +315,12 @@ Antes:
 
 Depois, na ordem:
 
-- [ ] `GET /api/saude` — adapter de cache, data do snapshot, `memoria.rssMB` de partida
+- [ ] `GET /api/saude` — adapter de cache e data do snapshot (memória: ver §3.4)
 - [ ] `GET /api/dashboards` — 14 páginas, todas `pronta: true`
 - [ ] uma página abrindo pelo navegador, no endereço real, com TLS
 - [ ] um `POST` qualquer levando **405**
-- [ ] o stream: `curl -N https://<host>/api/events/stream` recebendo `connected` e, em
-      15 s, o `ping` — se o `ping` não chega, o buffer do proxy está ligado (§3.3)
+- [ ] a página mais lenta a frio (`agendamento-field`) abrindo sem 504 — é o teto do
+      `proxy_read_timeout` que se está medindo, não a página
 - [ ] RSS medido de novo 30 min depois, sob uso real
 
 Rollback: parar o container e subir a etiqueta anterior. **O snapshot é compatível entre

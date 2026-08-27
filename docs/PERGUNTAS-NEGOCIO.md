@@ -8,10 +8,17 @@ Decisão geral do projeto: **replicar fielmente** o comportamento atual
 desenvolvimento — o que elas mudam é se, mais para frente, vale registrar uma
 divergência deliberada em relação ao Power BI de hoje.
 
+(A pergunta 3 chegou a ser um bloqueio e foi resolvida no mesmo dia, sem depender de
+terceiro: `QUADRO FUNCIONAL` fica no Google Sheets.)
+
 | # | Pergunta | Para quem | Status |
 |---|---|---|---|
 | 1 | Quanto vale um sábado no cálculo de dia útil? | Fabrício | ⏳ aberta |
 | 2 | As 5 medidas sem uso eram de painel descontinuado? (+ 1 relacionamento inativo) | Fabrício | ⏳ aberta (limpeza) |
+| 3 | ~~O Data Hub não tem gestor: liberar o campo, ou mapear time → gestor?~~ | — | ✅ resolvida em 05/08/2026: fica no Google Sheets |
+| 4 | `categoria4`/`categoria5` de `Base Categorias Field` estão trocadas — é bug ou proposital? | Fabrício | ⏳ aberta |
+| 5 | Técnico recontratado contaria duas vezes na produtividade — junta por nome ou por vínculo? | Fabrício | ⏳ aberta (latente: 0 efeito hoje) |
+| 6 | O card `CLIENTES` da telefonia mostra 466 ou 558? (contagem distinta ou não) | Erick, olhando a tela | ⏳ aberta (afeta 2 de 64 cards) |
 
 ---
 
@@ -151,6 +158,172 @@ vez de 78 (as 3 que não rodam), e as 5 ficam registradas em ACHADOS.md #6 e #10
 
 ---
 
+## 4. `categoria4`/`categoria5` de `Base Categorias Field` estão trocadas — é bug ou proposital?
+
+**Por que estou perguntando.** O SQL de `Base Categorias Field` junta 5 categorias de
+serviço (`ssc1`...`ssc5`), mas o `SELECT` tem um erro de cópia:
+
+```sql
+select ai.protocol, ai.beginning_service_date,
+    ssc1.title categoria1, ssc2.title categoria2,
+    ssc3.title categoria3, ssc4.title categoria3, ssc4.title categoria5
+    -- ssc5 é juntado (LEFT JOIN) mas ssc5.title nunca aparece no SELECT
+```
+
+`categoria3` é selecionada duas vezes (uma de `ssc3`, outra de `ssc4`), e
+`categoria5` repete `ssc4.title` em vez de usar `ssc5.title` — que está ali, juntado,
+sem nunca ser lido. O texto do `SELECT` é fixo (não é pivot, não depende do dado, e
+já tem data chumbada — achado #3), então não é uma coluna que varia: é sempre assim.
+
+**O efeito no relatório de hoje.** Um passo de Power Query depois (`Table.RenameColumns`)
+resolve a colisão dos dois `categoria3` renomeando o segundo para `categoria4` — é assim
+que o Power BI evita erro. O resultado prático: `categoria4` e `categoria5`, que deveriam
+mostrar a 4ª e a 5ª categoria de serviço, mostram **a mesma coisa** (`ssc4.title` nos
+dois), e a 5ª categoria de serviço de verdade nunca aparece em lugar nenhum — mesmo
+juntada, ninguém lê. Essas duas colunas aparecem em `manutencao-inicial`
+(`specs/dashboards/manutencao-inicial.spec.yaml`).
+
+**A pergunta.**
+
+> Fabrício, achei um erro de cópia no SQL de `Base Categorias Field` — a query que traz
+> as até 5 categorias de serviço de um protocolo (usada no painel de manutenção inicial).
+>
+> A 4ª e a 5ª coluna de categoria (`categoria4` e `categoria5`) hoje mostram exatamente o
+> mesmo valor (a 4ª categoria, repetida). A 5ª categoria de serviço de verdade nunca
+> aparece — a tabela que ela vem de dentro é buscada, mas ninguém lê o campo certo.
+>
+> Isso já está assim no relatório atual, não é nada que a plataforma nova introduziu — e
+> não estou corrigindo por conta própria porque pode ser que ninguém tenha reparado e
+> vocês queiram saber antes de eu replicar um número que parece errado. Faz sentido
+> corrigir (mostrar a 5ª categoria de verdade em vez de repetir a 4ª), ou tem algum motivo
+> pra ficar como está?
+
+**Se a resposta for "corrige":** troca `ssc4.title categoria5` por `ssc5.title categoria5`
+no SQL — no Power BI atual e na spec daqui. Do nosso lado vira divergência deliberada,
+registrada em [ACHADOS.md](./ACHADOS.md#19-base-categorias-field-renomeia-uma-coluna-que-o-sql-não-devolve).
+**Se a resposta for "fica como está":** replicamos fielmente, sem mudar nada — é a
+mesma regra que já vale para as perguntas 1 e 2.
+
+**Impacto se ficar sem resposta:** nenhum a curto prazo. A plataforma replica o
+comportamento atual (`categoria4` = `categoria5`, ambas `ssc4.title`) até haver decisão —
+o motivo técnico de `categoria32` não aparecer no golden já está resolvido (ver
+ACHADOS.md #19); o que falta é só a decisão de negócio sobre o conteúdo.
+
+---
+
+## 3. ~~O Data Hub não tem gestor~~ — RESOLVIDA em 05/08/2026, fica no Google Sheets
+
+**Resolvida pela terceira saída, e sem precisar de ninguém de fora:** `QUADRO FUNCIONAL`
+continua lendo do Google Sheets, como o Power BI faz hoje. Nenhuma divergência de fonte,
+nenhuma regra de negócio nova. O texto abaixo fica registrado porque descreve uma
+alternativa que continua válida se o Data Hub passar a trazer hierarquia — e porque o
+diagnóstico (2448 vínculos, 121 CPFs repetidos, três campos de gestor vazios) é útil para
+quem for consumir esse dataset para outra coisa.
+
+O que **não** virou pergunta para o Fabrício: o mapa time → gestor. Ele só seria necessário
+na saída 2, que não foi escolhida.
+
+---
+
+### O texto original da pergunta
+
+**Por que estou perguntando.** A decisão de 05/08/2026 foi ler `QUADRO FUNCIONAL`
+(dado de colaborador) do Data Hub interno em vez da planilha Google Sheets. Sondei a
+API antes de escrever o connector, e ela tem tudo **menos** a única coluna que a
+mesclagem usa.
+
+**A evidência.** `npm run probe:datahub` contra `/p/dash-instalacao` (dataset
+`db-senior-collaborators`), 2448 linhas, 19 campos:
+
+| campo de hierarquia | preenchidos em 2448 linhas |
+|---|---|
+| `supervisor_name` | **0** |
+| `coordinator_name` | **0** |
+| `manager_name` | **0** |
+
+E, do lado do Power BI, `PROTOCOLOS PRODUTIVIDADE` puxa da planilha exatamente uma
+coluna: `Table.ExpandTableColumn(…, {"GESTOR"}, {"GESTOR"})`. A tabela inteira existe
+para trazer o gestor; o resto das 37 colunas ninguém lê.
+
+**O que quebra sem isso.** Não é medida — `[GESTOR]` não aparece em nenhum DAX. É
+**slicer**: um em `diario-instalacao`, um em `premiacao-instalacao`, mais um campo de
+visual. Coluna vazia = slicer sem opção nenhuma, e o filtro por gestor desses dois
+dashboards deixa de existir. Sem erro, sem número torto: só desaparece.
+
+**As três saídas** (a primeira é de longe a melhor):
+
+1. **A publicação `dash-instalacao` preencher `manager_name` ou `supervisor_name`.**
+   Os campos já estão no contrato da API — só vêm vazios. Se o Senior tem o dado na
+   origem, é mudança na publicação, não no nosso lado. *Pergunta para quem publica.*
+2. **Mapear `team` → gestor.** A API traz `team` com 24 valores (`ADM`, `SVA`, `SCM`,
+   `GERAL`, `EXTERNO`, `TEC-INST FTTX`…) e `cost_center` com a mesma cardinalidade.
+   Se existir "time X responde ao gestor Y", dá para derivar. Mas isso é **regra de
+   negócio nova**, não replicação do que existe — precisa vir de alguém, por escrito.
+   *Pergunta para o Fabrício.*
+3. **`QUADRO FUNCIONAL` fica no Google Sheets** e o Data Hub entra depois, para o
+   resto. Custo baixo: a credencial de service account já existe, falta só
+   compartilhar a planilha como Leitor. *Decisão do Erick, não precisa de terceiro.*
+
+**Como enviar (opção 1), pronto para copiar:**
+
+> Oi! Estou consumindo a API pública do Data Hub `p/dash-instalacao` (dataset
+> `db-senior-collaborators`) para montar o painel de instalação. Vem tudo certo —
+> 2448 linhas, os campos de colaborador todos preenchidos. Só que os três campos de
+> hierarquia (`supervisor_name`, `coordinator_name`, `manager_name`) vêm `null` em
+> 100% das linhas. Preciso do gestor de cada colaborador; hoje esse dado vem de uma
+> planilha manual que estou justamente tentando aposentar. A origem no Senior tem
+> essa informação? Se tiver, dá para a publicação passar a trazer pelo menos um dos
+> três campos?
+
+**Enquanto não houver resposta**, o connector não é escrito e a divergência de fonte
+fica registrada mas não implementada (ACHADOS.md #17). Um connector que casa o nome e
+devolve `GESTOR` vazio passaria em todo teste de shape e falharia só em produção.
+
+## 5. Técnico recontratado contaria duas vezes na produtividade — junta por nome ou por vínculo?
+
+**Por que estou perguntando.** `QUADRO FUNCIONAL` é ligada aos protocolos pelo
+**nome em maiúsculas** (`upper_name = Text.Upper([NOME])`), e nas 535 linhas que o
+filtro de gestor deixa passar há **2 nomes repetidos**. Não é erro de cadastro: são
+duas recontratações, a mesma pessoa com dois vínculos que não se sobrepõem.
+
+| Nome | Vínculo 1 | Vínculo 2 |
+|---|---|---|
+| `DJONATA … WEDY` | 28/03/2023 → 27/05/2024, gestor **Luis Aranda** | 19/11/2024 → 25/07/2025, gestor **Pablo Borges** |
+| `GABRIEL DA SILVA FREITAS` | 05/11/2024 → 17/06/2025, *Auxiliar*, demitido | em `Recrutamento` de novo, sem admissão, mesmo gestor |
+
+**O número de hoje está certo — e é sorte, não desenho.** Medi: os dois nomes não
+aparecem no dado de 2026, porque a consulta que traz o nome do técnico filtra
+`out_date > 01/01/2026` e os dois vínculos encerraram em junho e julho de 2025. Então
+nenhuma linha está duplicada hoje.
+
+**O que acontece no dia em que um recontratado trabalhar dentro da janela.** A
+mesclagem casa por nome e expande as duas linhas do quadro funcional, então **cada
+serviço dele passa a valer duas linhas**. No caso de alguém como o `DJONATA`, uma com
+`GESTOR = Luis Aranda` e outra com `GESTOR = Pablo Borges`: o mesmo serviço creditado
+aos dois gestores ao mesmo tempo, sem olhar em qual vínculo foi executado. No caso do
+`GABRIEL`, duas vezes para a mesma gestora. E não aparece como erro em lugar nenhum —
+aparece como produtividade um pouco alta demais, e como total que não fecha com a soma
+das partes.
+
+**A pergunta, em duas partes:**
+
+1. Quando um técnico é recontratado, o serviço do vínculo antigo deve continuar
+   contando para o gestor antigo (é histórico) ou passar para o atual? Hoje conta
+   para os dois, o que provavelmente não é o que ninguém pediu.
+2. Existe matrícula, CPF ou ID de colaborador que a planilha e o ERP compartilhem?
+   Juntar por nome é o que cria o problema — e também significa que **homônimo de
+   verdade** já seria misturado hoje, sem aviso. `QUADRO FUNCIONAL` tem `ID`,
+   `MATRÍCULA` e `CPF`; o que falta é saber se algum deles existe do lado do ERP.
+
+**Enquanto não houver resposta, a plataforma replica o comportamento atual** — os
+mesmos números do Power BI de hoje, duplicação inclusa, porque a regra é replicar
+fielmente e um número "corrigido" aqui não fecharia com o relatório que a operação
+confere. A correção é de modelagem (juntar por nome **+ período de vínculo**, ou por
+matrícula), e muda número que alguém acompanha: não é decisão de quem escreve código.
+Detalhe técnico em ACHADOS.md #25.
+
+---
+
 ## 6. O card `CLIENTES` da telefonia mostra 466 ou 558?
 
 Esta não é pergunta de negócio — é uma **observação de cinco segundos** que resolve uma
@@ -252,3 +425,230 @@ construção** — comparar acusaria erro que não existe.
 
 Rode `npm run validate:tables` para ver em qual grupo cada tabela está e qual passo
 faz a diferença. Detalhes em ACHADOS.md #15.
+
+---
+
+## 8. Coluna calculada em DAX deve entrar no snapshot?
+
+**Não é pergunta de negócio — é de arquitetura, e por isso está aqui: ela muda o
+que o snapshot é, e essa decisão tem dono.**
+
+`agendamento-field` calcula em **104 minutos**, e ~90% disso é uma coluna:
+`'FIELD AGENDA'[RankAtualProtocolo]`, um rank por protocolo sobre 1,46 milhão de
+linhas (medido no ACHADOS #46). Duas saídas:
+
+| | o que é | o que custa |
+|---|---|---|
+| **A. Acelerar mais o avaliador** | quarta rodada de otimização no mesmo lugar (o #38, o #44 e o #46 são as três primeiras) | mantém o desenho atual; ganho incerto, porque o custo que sobrou é constante por chamada, não quadrático |
+| **B. Materializar no snapshot** | o snapshot passa a guardar **coluna calculada em DAX**, não só a camada M | é o que o Power BI faz: calcula no **refresh**, uma vez, não a cada abertura |
+
+O argumento de B é que o problema não é a velocidade do cálculo — é o **momento**
+dele. Nenhuma otimização de avaliador chega perto de não calcular.
+
+O argumento contra B é que o snapshot deixa de ser "a camada M em disco" e vira
+"o dataset materializado", o que muda a fronteira entre as fases 2b e 3 e o que
+`npm run snapshot` promete.
+
+**Pergunta:** vale mudar o que o snapshot guarda, ou o desenho atual (camada M em
+disco, DAX sempre ao vivo) é para manter?
+
+---
+
+## 9. O `Qtd` de `FIELD AGENDA` deve contar relato, ou (relato × skill do relator)?
+
+**Do Fabrício.** Levantada em 12/08/2026, ao decidir a agregação de `FIELD AGENDA` —
+não é pergunta de gosto, ela muda dois números na tela.
+
+> **É o follow-up que o `ACHADOS.md` #2 reservou em 04/08/2026.** Lá a multiplicação
+> por skill foi medida e decidida — **"replicar fielmente" (Erick)** — com a ressalva
+> escrita de que *"continua valendo perguntar se a granularidade por skill é
+> necessária, mas como melhoria futura"*. O futuro chegou porque agora ela custa
+> velocidade, e porque descobriu-se algo que o #2 não sabia: as duas colunas que a
+> multiplicação alimenta **não têm consumidor nenhum**.
+
+O SQL de `field-agenda` junta o relator e depois as skills dele:
+
+```sql
+LEFT JOIN reports r        ON vsdspi.assignment_id = r.assignment_id
+LEFT JOIN people p         ON p.id = r.person_id
+LEFT JOIN person_skills ps ON ps.person_id = p.id      -- <── multiplica
+LEFT JOIN skills s         ON s.id = ps.skill_id
+```
+
+Um relator com 3 skills cadastradas faz **cada relato dele aparecer 3 vezes**.
+
+Duas colunas saem daí, `Relator` e `Skill`, e nenhuma das duas é usada por visual
+nenhum nem por medida nenhuma — varredura em `specs/dashboards/` e `specs/_catalog/`:
+zero ocorrências. Elas só existem no `SELECT`.
+
+Mas as linhas que elas multiplicam **são contadas**:
+
+| visual | campo | efeito |
+|---|---|---|
+| `0c0223c6` (Status SLA) | `Qtd` = `count(Protocolo)` | conta (relato × skill) |
+| `084be384` (tabela de relatos) | `.` = `count(Protocolo)` | conta (relato × skill) |
+
+Os cards de `DISTINCTCOUNT` **não** são afetados — `Protocolos Manhã` e companhia
+contam protocolo distinto e passam ilesos.
+
+**O Power BI faz a mesma multiplicação**, porque roda este mesmo SQL. Então hoje os
+dois números batem com ele. Tirar os dois joins baixaria `Qtd` — e isso é
+**divergência deliberada**, não conserto, então precisa de dono e de entrada em
+`specs/_catalog/divergencias.yaml`.
+
+**Pergunta:** quando o painel diz `Qtd` numa linha de Status SLA, o número que se
+espera ali é *quantos relatos* (tira-se os joins de skill) ou é para manter idêntico ao
+Power BI de hoje (mantém-se)?
+
+> Efeito colateral que vale saber junto: os joins de skill custam varredura em 1,46
+> milhão de linhas para alimentar duas colunas que ninguém lê. Se a resposta for
+> "quantos relatos", a decisão é de graça e ainda deixa a página mais rápida.
+
+---
+
+## 10. O `TMA` da telefonia está errado no Power BI — conserta lá ou divergimos aqui?
+
+**Achada em 13/08/2026 pela conferência do snapshot (ACHADOS #65). É do Erick.**
+
+Na query `PROTOCOLOS TELEFONIA`, a coluna `SITUAÇÃO` recebe o texto `"Finalizado"`.
+Dois passos abaixo, duas expressões testam `[SITUAÇÃO] = "FINALIZADO"` — em caixa alta.
+Comparação de texto em M é sensível a maiúscula, então **as duas são sempre falsas**:
+
+```m
+… "SITUAÇÃO",       each if … then "Finalizado" …            ← o valor que existe
+… "PERSONALIZAÇÃO", each if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO]-[DATA CRIADO]
+                                                       else [DATA HOJE] - [DATA CRIADO]
+… "DATA ENCERRADO", each if [SITUAÇÃO] = "FINALIZADO" then [DATA MODIFICADO] else null
+```
+
+A própria query tem, comentada logo abaixo do primeiro passo, a versão anterior que
+escrevia `"FINALIZADO"` em caixa alta. O valor mudou; as duas comparações não.
+
+**O que isso faz hoje, medido nas 562 linhas:**
+
+| coluna | efeito |
+|---|---|
+| `DATA ENCERRADO` | **100% nula** — aparece vazia no visual de detalhe de `telefonia-ouvidoria` |
+| `TMA` | mede **sempre contra hoje**, nunca contra a data de encerramento |
+
+O segundo é o que importa: o tempo de atendimento de um protocolo **já encerrado**
+continua crescendo todo dia. Quanto mais antigo o protocolo, maior o erro — e o número
+está no mesmo visual, ao lado da coluna vazia.
+
+**Isto não é diferença entre a plataforma e o Power BI.** O Power Query compara texto
+do mesmo jeito, então o relatório mostra exatamente estes mesmos valores. A plataforma
+está reproduzindo o defeito com fidelidade.
+
+**Pergunta:** o conserto é trocar `"FINALIZADO"` por `"Finalizado"` nos dois lugares do
+PBIP — trinta segundos no Power BI, e `npm run extract` traz a correção para cá. Faz
+sentido? Ou o `TMA` "contra hoje" é intencional para algum uso que eu não conheço?
+
+> Por que não foi consertado aqui: o PBIP é read-only para esta plataforma (regra 1), e
+> criar um mecanismo de override na camada M para um erro de digitação seria construir
+> uma peça permanente para um problema que tem conserto na origem. Se a resposta for
+> "não posso mexer no PBIP agora", aí sim vale a divergência registrada — e ela é
+> barata de fazer.
+
+---
+
+## 11. `Installation_Teams` parou de receber linha em 16/07/2025 — isso é esperado?
+
+**Quem responde:** o Erick, ou quem alimenta a planilha/sistema que grava nessa tabela.
+
+**O número.** `DB_Applicattion.Installation_Teams` no dbMaria, lida crua, sem nenhum
+filtro nosso:
+
+```
+10.795 linhas · DATA de 2024-08-01 a 2025-07-16
+2024: 5.153 linhas   ·   2025: 5.642   ·   2026: 0
+
+últimos meses:  2025-05: 923  ·  2025-06: 988  ·  2025-07: 566  ← e para
+```
+
+Nenhuma linha de 2026. Julho de 2025 tem 566 contra ~900 de um mês cheio: parou no
+meio do mês, não numa virada.
+
+**O que isso quebra hoje.** A tabela é a origem de `TÉCNICO 2` e
+`GERENTE/SUPERVISOR` em `PROTOCOLOS GERAL`, por uma mescla em
+`{INSTALADO POR:, DATA FINAL} × {TÉCNICO 1, DATA}`. Como `PROTOCOLOS GERAL` só
+carrega 2026 e a tabela de gestores termina em 2025, **as faixas de data não se
+sobrepõem em um único dia** — a junção casa 0 de 26.130 linhas e as duas colunas
+saem inteiras nulas.
+
+O nome do técnico casa: 26 dos 70 técnicos da tabela existem no protocolo, cobrindo
+11.703 linhas. **Se a tabela voltasse a ser alimentada, a junção funcionaria** sem
+mudar uma linha de código.
+
+**O efeito visível.** `visao-geral` filtra `TÉCNICO 2` com `not_in [null]`. Sobre uma
+coluna 100% nula esse filtro descarta **toda** linha do visual. Ele está vazio aqui —
+e está vazio no Power BI também, que lê a mesma tabela. Não é divergência nossa.
+
+**Pergunta, em três partes:**
+
+1. A tabela devia continuar sendo alimentada, e paramos de alimentá-la por acidente?
+2. Ou ela foi substituída por outra origem de equipe/gestor, e a mescla do PBIP é que
+   está apontando para o lugar velho?
+3. Ou a informação de gestor/técnico 2 deixou de ser usada, e o visual de
+   `visao-geral` que depende dela deve sair?
+
+> Não há conserto em código para escolher no lugar dessa resposta. `juncoes.yaml`
+> reconcilia **tipo** de chave; faixa de data disjunta não é problema de tipo — se um
+> lado termina antes de o outro começar, não existe par possível em comparação
+> nenhuma. Medido e registrado em [ACHADOS](ACHADOS.md) #73.
+
+---
+
+## 12. O painel do ano é "2026" ou "o ano corrente"? O corte está fixo em 11 lugares
+
+**Quem responde:** o Erick, ou quem pediu o `relatorio-do-ano`.
+
+**O número.** O recorte anual não é uma regra, são **onze literais iguais** escritos
+à mão no SQL de onze queries:
+
+```
+'2026-01-01'  em  base-categorias-field, field-agenda, instalacoes-reincidentes,
+                  protocolos-auxiliares, protocolos-geral, protocolos-produtividade,
+                  protocolos-telefonia, reincidencia, retorno-prioritario,
+                  tecnicos-auxiliares, troca-endereco
+```
+
+É o único literal de data em todo o corpus de 24 queries.
+
+**O que isso quebra, e quando.** Em **01/01/2027** o painel do ano continua mostrando
+2026, e vai mostrando 2026 + 2027 juntos conforme o ano anda. Não dá erro, não gera
+alerta: só passa a somar dois anos sob o rótulo de um. É a pior forma de defeito de
+data — a que o painel exibe com confiança.
+
+**Um segundo problema, hoje.** As duas pontas da janela filtram **colunas
+diferentes**:
+
+```
+piso  = SQL   a.created >= '2026-01-01'        → DATA CRIADO
+teto  = DAX   DATA INSTALADO <= TODAY()        → DATA INSTALAÇÃO
+```
+
+Logo, protocolo **criado em 2025 e instalado em 2026** não entra — e para a operação
+ele é instalação de 2026. Medindo a defasagem criar→instalar no que sobrou:
+p50 0 dias, p95 **7 dias**, p99 30, máximo 227. Ou seja, o efeito é pequeno e se
+concentra nos primeiros dias de janeiro.
+
+> **Não consigo medir o tamanho exato daqui.** O que ficou de fora foi descartado
+> pelo SQL antes de chegar ao snapshot; e os primeiros dias de janeiro também são
+> feriado e recesso, então a queda ali não separa "corte" de "ninguém trabalhando".
+> Para o número real preciso de um `SELECT` de contagem novo, read-only, com
+> `a.created >= '2025-12-01'`.
+
+**Pergunta, em três partes:**
+
+1. O painel é **"2026"** (um ano fixo, que alguém troca à mão todo janeiro) ou
+   **"o ano corrente"** (deveria virar sozinho)? Se for o segundo, o corte precisa
+   deixar de ser literal.
+2. Instalação **realizada** em 2026 de protocolo **aberto** em 2025 conta como
+   instalação de 2026? Pela leitura operacional, sim — e hoje ela não entra.
+3. Quer que eu meça primeiro quantos protocolos de dezembro/2025 foram instalados em
+   2026, antes de decidir? É uma consulta de contagem, sem valor de linha.
+
+> Consertar isso **não** é conserto de código nosso: o literal está na expressão M do
+> PBIP, que é read-only aqui (regra 1). Divergir de propósito exigiria o
+> `sql-override.yaml` que ainda não existe (item 3 da fila). Medido em
+> [ACHADOS](ACHADOS.md) #74.

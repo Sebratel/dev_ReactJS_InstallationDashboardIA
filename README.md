@@ -91,15 +91,15 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45) | ⚠️ |
 | — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
 | — | Risco de recompute nas 4 queries pesadas (`protocolos-geral`, `protocolos-produtividade`, `protocolos-auxiliares`, `field-agenda`) mapeado — TTL não limita recompute sob `realtime: true`. Decisão entre debounce, materialização (Fase 3) ou TTL-only adiada até medir frequência real de CDC ([DECISAO-REALTIME](docs/DECISAO-REALTIME.md)) | ⚠️ decisão pendente |
-| — | **Data ISO no filtro da URL vira `Date` antes de comparar** (`widget-engine/src/filtro-url.ts`). O DAX não compara texto com data — ele **lança** —, e a tela manda `2026-01-28T00:00:00.000Z` no `?filtro=`. Sem a conversão, toda segmentação de calendário derrubava o visual. Com ela, os 21 visuais de `agendamento-field` calculam limpos. **O ramo novo ainda não tem teste** ([DEPLOY](docs/DEPLOY.md) §4) | ⚠️ |
-| — | **O aquecedor deixou de aquecer só a página.** `tools/subir/src/aquece.ts` pergunta à própria API quais segmentações de hierarquia de data a página declara e pré-aquece **Ano** (2024/2025/2026) e as combinações Ano+Mês — o primeiro clique num ano gerava chave nova e pagava o recálculo inteiro, com o `Atualizando…` de volta. Descobrir os slicers em vez de tentar todos os calendários é o que impede o aquecimento de gastar timeout em página que não tem calendário. **Sem teste, e com uma constante de timeout declarada e não usada** | ⚠️ |
-| — | **A tela avisa que o dado mudou: SSE em `/api/events/stream`.** O ingestor de CDC chama `/api/events/invalidate` ao terminar, o servidor limpa as páginas carregadas e empurra `invalidate`; `useRealtimeStream` invalida a chave do React Query e a aba se redesenha sem F5. **Duas ressalvas registradas**: a rota de invalidar é um `GET` **com efeito colateral** e sem autenticação, e o id que o ingestor manda é de **query** enquanto a tela o lê como id de **página** ([DEPLOY](docs/DEPLOY.md) §4) | ⚠️ |
-| — | **O estado dos filtros saiu do componente e virou store** (`useFilterStore`, Zustand + React Query). A URL é lida **uma vez** no arranque: antes, remover um pill ou apertar "Limpar Filtros" fazia o efeito reler o `?filtro=` e **ressuscitar** o que o usuário tinha acabado de tirar | ✅ |
+| — | **26 e 27/08: a árvore de trabalho foi apagada duas vezes, e o que não estava commitado sumiu.** Não foi um comando deste repositório — outro agente/IDE desfez trabalho solto ([RECUPERACAO-27-08](docs/RECUPERACAO-27-08.md)). **Tudo que estava commitado sobreviveu, sem exceção**; o que se perdeu foi a passada de densidade do front e ~5.600 linhas de documentação de decisões | ⚠️ |
+| — | **Quatro coisas que este README chegou a descrever não existem no repositório**: SSE em `/api/events/stream`, `useFilterStore`, o ramo de data ISO no `filtro-url.ts` e o pré-aquecimento por Ano/Mês. Elas existiam numa árvore não commitada, e foram documentadas a partir dela — o que é o erro que este arquivo mais tenta evitar. **A linha só volta quando o código voltar** | ⚠️ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**1355 testes verdes.** Nenhum deles precisa de credencial, e nenhum precisa de build.
-Três dos comportamentos de 21/08 **não estão entre eles** — a suíte passa sem cobri-los,
-e a lista está em [DEPLOY](docs/DEPLOY.md) §4.
+**1357 testes verdes** (medido em 27/08/2026). Nenhum deles precisa de credencial, e
+nenhum precisa de build. A auditoria aponta uma discrepância aberta: a árvore
+pré-reset de 26/08 marcava **1438 com 4 falhando**, e os ~81 de diferença foram
+acrescentados dentro de arquivos que existem — falta identificar quais
+([RECUPERACAO-27-08](docs/RECUPERACAO-27-08.md) §3.4).
 
 ### Extraído do Power BI
 
@@ -136,15 +136,13 @@ tela branca é a diferença entre uma demo e um constrangimento. Ele reprova se 
 visual falhar, se alguma página não responder ou se o cache não pegar, e mesmo
 reprovando deixa a API no ar para você olhar. Ver `tools/subir/`.
 
-**Desde 21/08 ele aquece mais do que a página.** Aquecer a página sem filtro resolve o
-spinner da abertura e não resolve o **segundo**: o primeiro clique em `Data.Ano: 2026`
-é uma chave de cache nova, e paga o recálculo inteiro. Então, depois de cada página, o
-aquecedor pergunta à própria API **quais segmentações de hierarquia de data aquela
-página declara** e aquece Ano (2024/2025/2026) e as combinações Ano+Mês mais usadas.
-Descobrir em vez de tentar todos os calendários é o que evita gastar o timeout em
-página que não tem nenhum. Erro no pré-aquecimento é **silenciado de propósito** —
-adiantar trabalho é boa vontade, não contrato, e uma combinação que falha não deve
-reprovar a subida.
+**Ele aquece a página sem filtro, e só isso.** O que fica de fora é o **segundo**
+spinner: o primeiro clique em `Data.Ano: 2026` é uma chave de cache nova e paga o
+recálculo inteiro. Um aquecedor que descobria as segmentações de data de cada página e
+pré-aquecia Ano e Ano+Mês existiu numa árvore não commitada de 21/08 e **não está no
+repositório** — reconstruí-lo é trabalho aberto, e o pé de ouvido que ele já tinha fica
+registrado desde já: anos cravados no código ficam velhos em 01/01/2027, e `fetch` de
+aquecimento sem teto pendura a subida numa página lenta.
 
 `apps/api` é o fim do caminho: lê o snapshot em disco, calcula a página com as
 engines e devolve JSON. Não toca fonte nenhuma — quem busca é `npm run snapshot`.
@@ -155,29 +153,25 @@ raiz; em desenvolvimento, `npm run web` sobe o Vite em 5173 com proxy para a API
 tela anterior — uma página só, sem filtro — continua em `/legado`, como referência de
 comparação durante a conferência de paridade. Ver [DECISAO-TELA](docs/DECISAO-TELA.md).
 
-O estado dos filtros mora em **`useFilterStore` (Zustand)** e os dados em **React
-Query**; o `?filtro=` da URL é lido **uma vez, no arranque**. A leitura repetida era um
-defeito com cara de teimosia: remover um pill ou apertar "Limpar Filtros" fazia o
-efeito reler a URL e devolver o filtro que o usuário tinha acabado de tirar.
+O estado dos filtros mora no componente e na URL. **Não há store de filtros** — houve
+uma (`useFilterStore`, Zustand), numa árvore que foi apagada antes de virar commit; o
+que sobrou de Zustand é `useThemeStore`. O defeito que a store resolvia continua sendo
+o de reler o `?filtro=` a cada render, o que ressuscita o filtro removido.
 
 | rota | |
 |---|---|
-| `GET /api/saude` | o que há em disco, quantas linhas, de quando, o adapter de cache e a **memória do processo** (`rssMB`, `heapUsedMB`) |
+| `GET /api/saude` | o que há em disco, quantas linhas, de quando, e o adapter de cache |
 | `GET /api/dashboards` | as 14 páginas, e quais têm snapshot |
 | `GET /api/dashboards/:id?de=&linhas=` | a página calculada |
 | `GET /api/dashboards/:id?filtro=…` | a página calculada **com as segmentações da tela** aplicadas |
 | `GET /api/dashboards/:id/valores?tabela=&coluna=&nivel=` | os valores distintos que uma segmentação oferece |
-| `GET /api/events/stream` | SSE: `connected`, `ping` a cada 15 s, e `invalidate` quando o dado muda |
-| `GET /api/events/invalidate?id=…` | descarrega o que está em memória e avisa as telas abertas |
 
-> **A rota de invalidar é a única com efeito colateral, e é um `GET` sem
-> autenticação.** Até 21/08 a garantia de que nenhum pedido mudava estado da API era o
-> método — `GET`/`HEAD` e mais nada. Ela continua não escrevendo em fonte, mas descarta
-> tabela carregada, e chamá-la em laço troca milissegundos por dezenas de segundos por
-> página. Antes de qualquer publicação, ela precisa ser inalcançável de fora
-> ([DEPLOY](docs/DEPLOY.md) §4).
-| `GET /api/dashboards/:id?filtro=…` | a página calculada **com as segmentações da tela** aplicadas |
-| `GET /api/dashboards/:id/valores?tabela=&coluna=&nivel=` | os valores distintos que uma segmentação oferece |
+> **Não há rota de eventos, e nenhuma rota tem efeito colateral.** `/api/events/stream`
+> e `/api/events/invalidate` chegaram a existir na árvore perdida de 21/08 e **não estão
+> no repositório**. A garantia continua inteira: `GET`/`HEAD` e mais nada, e nenhum
+> pedido muda estado — nem da fonte, nem da API. Antes de reconstruir aquilo, leia
+> `DECISAO-REALTIME.md`, que decidiu **não** construir realtime enquanto o gatilho
+> medido não aparecer.
 
 Qualquer método que não seja `GET`/`HEAD` leva **405 antes do roteamento**.
 
@@ -1408,7 +1402,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (1355 testes, sem credencial)
+npm test                              # suíte completa (1357 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
@@ -1472,13 +1466,19 @@ packages/transform-engine/# camada M: tokenizer, parser, avaliador, runner e con
 packages/widget-engine/   # o que um visual mostra: filtro, agrupamento, card, tabela e gráfico
 packages/snapshot/        # plano de materialização, formato em disco, manifesto e carga
 apps/api/                 # a API de leitura (node:http), cache da resposta, SSE e estáticos
-apps/web/                 # a tela: React 19 + Vite, store de filtros, React Query
+apps/web/                 # a tela: React 19 + Vite, 14 páginas, estado dos filtros na URL
 docker/                   # infra local; docker-compose.yml da raiz sobe Redis e Kafka
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma
 > decisão humana pode viver dentro deles. Por isso as políticas de cache ficam
 > em `cache-policies.yaml`, separado.
+>
+> **⚠️ 27/08/2026: `npm run extract` perdeu a fonte.** Os arquivos do Power BI não
+> estão mais na pasta pai (§ *Base de referência*), então **regenerar as specs não é
+> mais possível** — elas deixaram de ser derivadas e passaram a ser o original. O
+> rótulo GERADO continua valendo como aviso ("não escreva decisão aqui"), e deixou de
+> valer como rede de segurança ("dá para refazer").
 
 ## Base de referência (read-only)
 

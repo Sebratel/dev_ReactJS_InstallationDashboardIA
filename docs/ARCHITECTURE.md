@@ -14,12 +14,16 @@
 > entre "consome" e "reage" é justamente o que este documento existe para não deixar
 > borrar de novo.
 >
-> **21/08/2026: outra linha atravessou, e só uma.** O **SSE existe** (§6.2) — a tela
-> recebe `invalidate` e se redesenha sem F5. O que **não** existe continua sendo o
-> resto do diagrama do §9: fan-out por Redis Streams e patch de widget. A tela pede a
-> página inteira de novo; o evento diz *quando* pedir, não *o que* mudou. E o CDC
-> continua sem apontar para o Voalle de produção — o gatilho para isso é um número
-> medido, não o SSE estar pronto.
+> **27/08/2026: nenhuma linha atravessou, e uma foi devolvida.** Entre 21 e 26/08 este
+> documento chegou a descrever um gateway SSE na parte 1. **Ele não existe no
+> repositório** — existiu numa árvore que foi apagada antes de virar commit, e
+> descrevê-la aqui foi exatamente o erro que este cabeçalho existe para impedir. A
+> linha voltou para a parte 2, com os defeitos que ela já tinha registrados no §6.2.
+> O que aconteceu está em [RECUPERACAO-27-08.md](RECUPERACAO-27-08.md).
+>
+> **A regra fica mais estreita:** uma linha muda de metade quando o código dela existe
+> **e está commitado**. Trabalho solto na árvore não é evidência — já se perdeu duas
+> vezes.
 >
 > **Para publicar isto, leia [DEPLOY.md](DEPLOY.md).** Ele é o único documento que
 > lista o que falta de infraestrutura, e por que dois dos bloqueios não são dela.
@@ -68,15 +72,14 @@ processo que já se sabe que não cabe.
 | `packages/measure-engine` | o avaliador DAX — 56 funções, 75 medidas |
 | `packages/widget-engine` | as specs de dashboard e a decodificação do filtro da URL |
 | `packages/snapshot` | plano de materialização, formato em disco, manifesto, carga |
-| `apps/api` | a API de leitura (`node:http`), o cache da resposta, o **stream SSE** e os estáticos |
-| `apps/web` | a tela (React 19 + Vite), 14 páginas, segmentações filtrando, estado na URL, store de filtros (Zustand) e React Query |
+| `apps/api` | a API de leitura (`node:http`), o cache da resposta, o aquecedor interno e os estáticos |
+| `apps/web` | a tela (React 19 + Vite), 14 páginas, segmentações filtrando, estado dos filtros na URL |
 
-**`apps/web` ganhou três pastas em 21/08, e a divisão não é decoração.**
-`store/useFilterStore.ts` guarda os filtros da tela — antes eles moravam no componente
-e o efeito relia o `?filtro=` da URL a cada render, o que **ressuscitava** o filtro que
-o usuário tinha acabado de remover. Hoje a URL é lida **uma vez, no arranque**.
-`hooks/useRealtimeStream.ts` mantém o `EventSource` e traduz `invalidate` em invalidação
-de chave do React Query. `services/analyticsService.ts` concentra as chamadas.
+**O que `apps/web/src/store/` tem é `useThemeStore`, e só.** Uma `useFilterStore`
+existiu na árvore perdida de 21/08 — junto com `hooks/useRealtimeStream.ts` e
+`services/analyticsService.ts` —, e nenhuma das três está no repositório. O defeito que
+a primeira resolvia continua de pé: o efeito relê o `?filtro=` da URL, o que
+**ressuscita** o filtro que o usuário acabou de remover.
 
 Ferramentas de linha de comando em `tools/`: `extractor`, `validate`, `doctor`,
 `probe`, `auth`, `mrun`, `snapshot`, `paginas`, `paridade`, `cdc`.
@@ -92,12 +95,10 @@ monitor de slot (`npm run cdc:slot`) é pré-requisito operacional, não acessó
 `ingestor.ts` (`npm run cdc:ingere`) **age**: quando uma tabela suja, ele
 rematerializa (`npm run snapshot --query=`) só as queries que dependem dela —
 `fila.ts` garante uma rematerialização de cada vez, nunca duas em paralelo (a
-lição do [ACHADOS](ACHADOS.md) §7). **Desde 21/08 ele avisa a API** ao terminar
-(`GET /api/events/invalidate?id=…`, ver §6.2) — mas isso é *aviso*, não
-invalidação: o manifesto novo em disco continua sendo o que invalida o cache da
-resposta sozinho, porque o carimbo do snapshot entra na chave (§6). Sem o aviso,
-o dado novo já apareceria; o que ele muda é a pessoa não precisar apertar F5 para
-descobrir. **Validado em 18/08/2026 contra a stack descartável de
+lição do [ACHADOS](ACHADOS.md) §7). **Ele não fala com a API nem com a tela**: o
+manifesto novo em disco já é o que invalida o cache da resposta sozinho, porque o
+carimbo do snapshot entra na chave (§6) — a única invalidação que existe é a que já
+existia. **Validado em 18/08/2026 contra a stack descartável de
 `docker/cdc/`** ([ACHADOS](ACHADOS.md) #72): pipeline completo, dado real do
 Voalle, sem tocar produção. **Ainda não aponta para o Voalle real** — isso exige
 as etapas 1.1/1.2 do runbook, que são trabalho de DBA, fora do escopo deste
@@ -129,15 +130,12 @@ Regra inviolável 3 do [CONTINUACAO](CONTINUACAO.md). Nenhuma pode ser afrouxada
 | 3 | `assertReadOnly()` antes de o SQL sair do processo | `connectors-sql.ts` |
 | 4 | a API só aceita `GET`/`HEAD`; qualquer outro método leva 405 | `apps/api/src/servidor.ts` |
 
-> **A camada 4 ficou mais estreita em 21/08, e vale dizer em que sentido.** Ela continua
-> valendo para as **fontes**: nenhum pedido HTTP escreve no Voalle ou no MariaDB, e as
-> camadas 1 a 3 são independentes disto. O que mudou é dentro do processo:
-> `GET /api/events/invalidate` **descarta as tabelas carregadas em memória**, então
-> "`GET` não muda estado" deixou de ser verdade para o estado *da API*. Não é um furo
-> no read-only; é uma rota interna exposta na mesma superfície das outras, sem
-> autenticação — e chamá-la em laço troca uma resposta de milissegundos por uma recarga
-> de tabela. Enquanto não houver Permission Engine, ela precisa ser inalcançável de
-> fora ([DEPLOY](DEPLOY.md) §4).
+> **A camada 4 vale inteira, e uma tentativa de estreitá-la ficou pelo caminho.** Entre
+> 21 e 26/08 existiu (em árvore não commitada) um `GET /api/events/invalidate` que
+> descartava tabela carregada — um `GET` **com efeito colateral**, o que quebra a leitura
+> simples de "nenhum pedido muda estado". Ele não está no repositório. Se voltar, volta
+> com trava: inalcançável de fora enquanto não houver Permission Engine
+> ([DEPLOY](DEPLOY.md) §4).
 
 Uma quinta trava, contra *leitura do conjunto errado*: **valor de filtro nunca vira
 texto de SQL**. `traduzParametros` (`connectors-sql.ts`) troca `:nome` pelo marcador
@@ -168,43 +166,38 @@ primeiro, e elas não são a mesma:
   mesmo**, porque a chave do cache é a do pedido exato e reaquecer por um caminho
   paralelo encheria chaves *parecidas* com as que a tela pede.
 - **`tools/subir/src/aquece.ts`** roda no `npm start`, antes de dizer que está pronto, e
-  desde 21/08 aquece **mais do que a página**: para cada página ele pergunta à própria
-  API quais segmentações de hierarquia de data ela declara e aquece **Ano** (2024, 2025,
-  2026) e as combinações **Ano+Mês** mais usadas. O motivo é o segundo spinner — a
-  página sem filtro ficava quente e o primeiro clique num ano era chave nova, com o
-  recálculo inteiro por trás.
+  aquece **a página sem filtro** — as 14, uma de cada vez, reprovando se algum visual
+  falhar, se alguma página não responder ou se o cache não pegar.
 
-**Descobrir os slicers em vez de tentar todos os calendários** é o que impede o
-aquecimento de gastar timeout em página que não tem nenhum. E **erro no pré-aquecimento
-é silenciado de propósito**: adiantar trabalho é boa vontade, não contrato, e uma
-combinação que falha não deve reprovar a subida — o que reprova a subida continua sendo
-visual com erro, página que não responde e cache que não pegou.
+**O que nenhum dos dois cobre é o segundo spinner.** A página sem filtro fica quente, e
+o primeiro clique em `Data.Ano: 2026` é uma chave de cache nova: paga o recálculo
+inteiro. Um aquecedor que perguntava à própria API quais segmentações de data cada
+página declara e pré-aquecia Ano e Ano+Mês **existiu numa árvore não commitada de 21/08
+e não está no repositório** ([RECUPERACAO-27-08](RECUPERACAO-27-08.md)).
 
-Duas ressalvas que ficam registradas por serem verdade hoje: os anos e meses estão
-**cravados no código** (em 2027 o aquecedor aquece três anos velhos, mesmo prazo da
-pergunta de negócio #12), e o caminho novo **não tem teste**.
+Se ele for reconstruído, três coisas que a primeira versão já ensinou: **descobrir** os
+slicers em vez de tentar todos os calendários (senão o aquecimento gasta timeout em
+página sem calendário), **silenciar erro de pré-aquecimento** (adiantar trabalho é boa
+vontade, não contrato) e **não cravar os anos no código** — em 01/01/2027 eles ficam
+velhos, mesmo prazo da pergunta de negócio #12.
 
-## 6.2 Realtime, a metade que existe: SSE
+### 6.2 Realtime: continua não existindo, e isso é decisão
 
-`GET /api/events/stream` mantém um `text/event-stream` por cliente, com `ping` a cada
-15 s. `GET /api/events/invalidate?id=…` descarta o que está carregado e empurra
-`invalidate`; na tela, `useRealtimeStream` invalida a chave do React Query e a aba se
-redesenha sem F5. Quem chama a rota de invalidar hoje é o `ingestor.ts` ao terminar uma
-rematerialização.
+Não há SSE, não há WebSocket, não há fan-out. A tela pede; nada é empurrado para ela.
 
-**Isto não é o gateway de fan-out do §9** — não há Redis Streams, não há patch de
-widget, e a tela continua **pedindo** a página inteira de novo; o que o evento faz é
-dizer *quando* pedir. A invalidação de verdade continua sendo a do carimbo (§6): o
-snapshot novo em disco já muda a chave sozinho, e o SSE só evita que a pessoa descubra
-isso apertando F5.
+Isso **já foi decidido**, em [DECISAO-REALTIME.md](DECISAO-REALTIME.md) (11/08): a API
+lê snapshot em disco, então invalidar cache por evento não deixaria número mais fresco —
+faria a API **recalcular sobre o mesmo arquivo**. Quem deixa o dado fresco é
+`npm run snapshot`, e quem invalida o cache é o **carimbo** dele (§6), sozinho.
 
-Duas coisas para não descobrir em produção:
-
-- **o id não bate.** O ingestor manda o id da **query** rematerializada; a tela usa esse
-  valor como id de **página** (`queryKey ['pagina', id]`). Uma query só ⇒ invalida uma
-  chave que não existe, sem erro. Some quando o id é `*`;
-- **SSE morre atrás de proxy com a configuração padrão** — `proxy_buffering off` e
-  companhia. O sintoma é não receber evento nenhum, sem log ([DEPLOY](DEPLOY.md) §3.3).
+> Um par de rotas (`/api/events/stream` e `/api/events/invalidate`) e um
+> `useRealtimeStream` chegaram a existir numa árvore não commitada de 21/08. Ficam
+> registrados aqui os dois defeitos que aquela versão tinha, porque quem reconstruir vai
+> reencontrá-los: a rota de invalidar era um **`GET` com efeito colateral e sem
+> autenticação** (chamada em laço, força recarga de tabela por pedido), e o ingestor
+> mandava o id da **query** onde a tela esperava id de **página** — invalidava chave que
+> não existe, sem erro. E SSE atrás de Nginx exige `proxy_buffering off`; sem isso não
+> chega evento nenhum, sem log ([DEPLOY](DEPLOY.md) §3.3).
 
 ## 7. Stack, de verdade
 
@@ -213,8 +206,9 @@ Duas coisas para não descobrir em produção:
   quinta entrou em 11/08/2026 pelo observador de CDC. Escrever o protocolo do Kafka à
   mão não era alternativa séria; a conta a manter é *poucas dependências, cada uma
   com motivo escrito*, não um número.
-- **Client:** React 19 · Vite · React Query (dados) · Zustand (filtros) · Tailwind 4 ·
-  `lucide-react` · **sem biblioteca de gráfico** (barra em HTML; ver `CONTINUACAO.md` §6.4)
+- **Client:** React 19 · Vite · Tailwind 4 · `lucide-react` · React Query e Zustand
+  **declarados** no `package.json` (o Zustand em uso é o `useThemeStore`) ·
+  **sem biblioteca de gráfico** (barra em HTML; ver `CONTINUACAO.md` §6.4)
 - **Design System:** ver [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) — v2, tokens do HUBBI
 
 As dependências do cliente são do `apps/web`, não da raiz: a conta de "poucas
@@ -223,11 +217,11 @@ separadas porque a API não carrega nenhuma delas.
 
 **Sem Fastify, de propósito.** A divergência está registrada no cabeçalho de
 `apps/api/src/servidor.ts` e a condição de revisão é a do [ACHADOS](ACHADOS.md) #39:
-Permission Engine **+** corpo de requisição **+** WebSocket. **O SSE de 21/08 não
-atinge a condição** — `text/event-stream` é resposta `GET` que não fecha, e
-`res.write()` de `node:http` faz isso sem framework; WebSocket, que exige upgrade de
-protocolo, continua não existindo. Enquanto forem sete rotas `GET` sobre um snapshot,
-`node:http` é a peça certa.
+Permission Engine **+** corpo de requisição **+** WebSocket. Nenhuma das três chegou —
+e vale registrar que **SSE não atingiria a condição** de todo modo:
+`text/event-stream` é resposta `GET` que não fecha, e `res.write()` de `node:http` faz
+isso sem framework. Enquanto forem cinco rotas `GET` sobre um snapshot, `node:http` é a
+peça certa.
 
 ---
 
@@ -243,11 +237,11 @@ Widget · Dashboard · Cache · Realtime · Visualization · AI · Export · Not
 Audit · Observability.
 
 **Seis existem**, com os nomes que a parte 1 lista (Query, Dataset/Snapshot,
-Analytics/Measure, Widget, Cache, e o modelo semântico). O **Realtime tem um pedaço**
-desde 21/08 — o SSE (§6.2) e o ingestor —, e chamá-lo de Engine ainda seria generoso:
-são duas rotas e um `EventSource`. Os outros **oito não têm código**: Identity,
-Permission, Dashboard como serviço, Visualization, AI, Export, Notification, Audit,
-Observability — desta última existe só o que o `/api/saude` responde.
+Analytics/Measure, Widget, Cache, e o modelo semântico). Do **Realtime** existe o
+ingestor de CDC, que rematerializa — e nada no caminho de leitura (§6.2). Os outros
+**nove não têm código**: Identity, Permission, Dashboard como serviço, Realtime como
+serviço, Visualization, AI, Export, Notification, Audit, Observability — desta última
+existe só o que o `/api/saude` responde.
 
 Os dois que bloqueiam produção multiusuário são **Identity** e **Permission** — a API
 não autentica ninguém hoje. O ponto de costura está preparado em
@@ -259,16 +253,16 @@ não autentica ninguém hoje. O ponto de costura está preparado em
 A infra existe no Portainer da Sebratel. **Desde 18/08/2026 existe um Change
 Ingestor** (`tools/cdc/src/ingestor.ts`, `npm run cdc:ingere`) — mas ele é mais
 simples que o diagrama abaixo, de propósito: quando uma tabela suja, ele
-rematerializa (`npm run snapshot --query=`) só as queries afetadas, e avisa a API
-quando termina. O manifesto novo em disco já invalida o cache da resposta sozinho
-(§6) — o aviso não é a invalidação, é a notificação.
+rematerializa (`npm run snapshot --query=`) só as queries afetadas, e para por aí. O
+manifesto novo em disco já invalida o cache da resposta sozinho (§6) — não existe
+fan-out, Redis Streams, gateway SSE/WebSocket nem patch de widget, porque nenhum
+deles é necessário para o dado ficar fresco: o mecanismo de invalidação por carimbo
+que já existia resolve isso sem peça nova.
 
-**Do diagrama abaixo, uma peça saiu do papel em 21/08: o gateway SSE** (§6.2). Ele
-é mais simples que o desenho: não há Redis Streams, não há fan-out por widget e não
-há patch — a tela recebe "isto mudou" e **pede a página inteira de novo**. Continua
-não existindo: Redis Streams, patch de widget e WebSocket. E continuam não existindo
-por escolha, não por falta de tempo: o mecanismo de invalidação por carimbo já deixa
-o dado fresco sem nenhum deles. **Validado contra a stack
+> **Uma tentativa de gateway SSE existiu entre 21 e 26/08, em árvore não commitada, e
+> não está no repositório** ([RECUPERACAO-27-08](RECUPERACAO-27-08.md)). Os dois
+> defeitos que ela tinha estão registrados no §6.2, para quem reconstruir não
+> reencontrá-los do zero. **Validado contra a stack
 descartável de `docker/cdc/`, com dado real do Voalle** ([ACHADOS](ACHADOS.md)
 #72) — **ainda não contra o Voalle de produção**, que exige as etapas de DBA do
 [RUNBOOK-CDC.md](RUNBOOK-CDC.md) (role de replicação, publication), fora do
