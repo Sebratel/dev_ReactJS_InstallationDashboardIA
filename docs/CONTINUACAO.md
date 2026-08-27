@@ -662,9 +662,14 @@ faltava nenhum. A ordem é a da §6; o que esta seção acrescenta é **quando p
   escritas contra uma `estilo.css` que mudou depois (`RECUPERACAO-27-08.md` §3.2).
 - ⏳ **Os ~81 testes de 26/08** que existiam dentro de arquivos que continuam aqui
   (§3.4 de lá). Enquanto não voltarem, "suíte verde" mede menos do que media.
-- ⏳ **A altura dos gráficos** — `Grafico.tsx` não passa `altura`, todo gráfico cai fora
-  do sistema de alturas e a página tem 8.460 px. É o defeito visível, e o §3.1 de lá tem
-  a tabela de quem passa e quem não passa.
+- ✅ **A altura dos gráficos** (27/08): `Grafico.tsx` passou a mandar `altura="grafico"`,
+  e os cartões de espera nascem com a altura do visual que vão substituir. Medido:
+  `agendamento-field` 5.564 → **5.133 px**, `visao-geral` 1.727 → **1.343 px**, zero
+  `v-auto`, zero rolagem horizontal. **Os 8.460 px do relatório eram de antes do conserto
+  da matriz** — corrigido lá. O ganho maior não foi o comprimento: era um gráfico de
+  **112 px** ao lado de dois de 475 px, e agora os três medem o mesmo.
+- ⏳ **A página ainda rola** — 6,7 telas em `agendamento-field`, com 15 cartões. Fazer
+  caber é a Fase 2 (densidade), não altura de cartão.
 
 ### 9.1 Fase 2b.9 — Paridade
 

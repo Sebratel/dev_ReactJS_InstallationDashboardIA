@@ -7,6 +7,14 @@
 > Conclusão em uma frase: **nada é irrecuperável**, o repositório está íntegro e
 > publicado, e o que falta é **uma coisa só de verdade** — o sistema de alturas do
 > front-end nunca chega aos gráficos.
+>
+> **Atualização de 27/08, mais tarde:** as duas frentes mais urgentes fecharam. A
+> memória numerada voltou (Fase 0: `ACHADOS.md` com os #1 a #76, e mais três documentos)
+> e os gráficos ganharam altura (Fase 1, medida). Ficam abertas a **Fase 2**
+> (densidade) e a **Fase 3** (os ~81 testes de 26/08). E ficou registrado um terceiro
+> episódio: entre 21 e 26/08, quatro comportamentos que só existiam na árvore de
+> trabalho foram **documentados como prontos** no `README.md` e no `ARCHITECTURE.md` —
+> corrigido no mesmo dia.
 
 ---
 
@@ -49,7 +57,32 @@ commitado sobreviveu a ambos os episódios, sem exceção.
 
 ## 3. O que falta
 
-### 3.1 O defeito de verdade — o sistema de alturas não alcança os gráficos
+### 3.1 ✅ O sistema de alturas não alcançava os gráficos — CONSERTADO em 27/08
+
+> **Fechado.** `Grafico.tsx` passou a mandar `altura="grafico"`, `largo` saiu das duas
+> chamadas e os cartões de espera (`SobDemanda`, ramo de erro do `VisualPronto`) nascem
+> com a altura do visual que vão substituir, por `alturaDoConteudo()`. O diagnóstico
+> abaixo fica como registro, com **duas correções que a medição impôs**:
+>
+> **1. Os 8.460px eram de antes do conserto da matriz.** Aquele número foi medido quando
+> as matrizes estavam em `v-auto` (2.386px e 2.123px); o conserto delas já estava
+> commitado quando este começou. Medido com playwright, `agendamento-field` a 1366×768
+> estava em **5.564px** e ficou em **5.133px**; `visao-geral`, de **1.727px** para
+> **1.343px**.
+>
+> **2. `largo` estava inerte, não somando.** `.largo` é `grid-column: 1 / -1`, e só faz
+> efeito dentro de um pai `display: grid` — quem posiciona os gráficos é o
+> `VisualGridSection`, que usa **flex**. Nenhum gráfico ocupava uma linha inteira por
+> causa dele; o lado a lado dos compactos sempre veio de lá. Removê-lo foi tirar um
+> controle que não controlava nada.
+>
+> **E o ganho maior não foi a página mais curta.** Em `visao-geral`, os três gráficos
+> mediam **475px, 475px e 112px** — em `auto`, a moldura vem do conteúdo, e um gráfico de
+> poucas categorias nascia ilegível ao lado de dois grandes. Agora os três têm 283px.
+> Uma linha de gráficos só parece uma linha quando eles têm a mesma altura.
+>
+> Nenhuma das 3 páginas × 2 resoluções medidas tinha cartão maior que a tela, `v-auto`
+> remanescente ou rolagem horizontal.
 
 `Cartao.tsx` faz `props.altura ?? 'auto'`, e `v-auto` é `height: auto`. Quem **não**
 passa `altura` cai fora de `--util`, dos `clamp` e da regra "duas faixas = uma tela":
@@ -58,8 +91,8 @@ passa `altura` cai fora de `--util`, dos `clamp` e da regra "duas faixas = uma t
 |---|---|
 | `Matriz.tsx:155` | sim (`"matriz"`) — e o comentário da linha 143 avisa da armadilha |
 | `Tabela.tsx:224` | sim (`"tabela"`) |
-| **`Grafico.tsx:306` e `:313`** | **não** |
-| `SobDemanda.tsx:48,60`, `VisualPronto.tsx:24` | não (estados de carga/erro) |
+| **`Grafico.tsx:306` e `:313`** | **não** → hoje sim (`"grafico"`) |
+| `SobDemanda.tsx:48,60`, `VisualPronto.tsx:24` | não → hoje sim, por `alturaDoConteudo()` |
 
 Como gráfico é a maioria dos visuais, o efeito é a página inteira: **8.460px**.
 Some-se `largo` em todas as chamadas do `Grafico` (= `grid-column: 1 / -1`), e cada
@@ -133,15 +166,21 @@ Cada fase é uma sessão curta, com commit em `staging` no fim. **Nada fica solt
 4. **Critério de saída:** nenhum documento referencia um achado que não existe, e a
    `CONTINUACAO.md` deixa de estar datada de 14/08.
 
-### Fase 1 — devolver a altura aos gráficos  *(a de maior efeito visual)*
+### Fase 1 — ✅ devolver a altura aos gráficos — FEITA em 27/08
 
-1. `Grafico.tsx:306,313`: passar `altura="grafico"` e remover `largo`.
-2. Decidir o que fazer com `SobDemanda` e `VisualPronto` — hoje um cartão "carregando"
-   tem altura diferente do gráfico que vai substituí-lo, e a tela pula.
-3. Medir antes/depois com o `medir.mjs` do scratchpad, em 1366×768, 1440×900,
-   1706×1000 (o viewport real: 2560×1600 a 150%) e 1920×1080.
-4. **Critério de saída:** a página deixa de ter 8.460px e passa a caber, ou a rolar
-   por decisão registrada; nenhuma rolagem horizontal.
+1. ✅ `Grafico.tsx`: `altura="grafico"` nas duas chamadas, `largo` removido (estava inerte).
+2. ✅ `SobDemanda` e `VisualPronto` recebem a altura do visual que os substitui
+   (`alturaDoConteudo()`), então a tela não pula quando a resposta chega.
+3. ✅ Medido antes/depois com playwright em **1366×768 e 1920×1080**, em 3 páginas —
+   revertendo só os 4 arquivos para medir o antes. As outras duas resoluções do plano
+   (1440×900 e 1706×1000) **não** foram medidas: as duas medidas cercam a faixa, e o
+   `clamp` é contínuo entre elas.
+4. ✅ **Critério de saída atingido:** `agendamento-field` 5.564 → **5.133px**,
+   `visao-geral` 1.727 → **1.343px**, zero cartões maiores que a tela, zero `v-auto`,
+   zero rolagem horizontal. A página **continua rolando** — 6,7 telas em
+   `agendamento-field` —, e isso é a decisão registrada: são 15 cartões, entre eles 3
+   matrizes no clamp delas. Rolagem contida pode; cartão maior que a tela não.
+   **O que falta para a página caber é a Fase 2** (densidade), não altura de cartão.
 
 ### Fase 2 — refazer a densidade sobre a base de hoje
 

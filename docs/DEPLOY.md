@@ -269,9 +269,10 @@ Três ondas. A ordem não é preferência: cada onda remove um bloqueio da segui
    plano de fusão (nunca sobrescrita) está em
    [RECUPERACAO-27-08](RECUPERACAO-27-08.md) §4, Fase 0. É o item mais barato e o de
    maior alcance: sem ele, metade das referências deste repositório aponta para o vazio.
-2. **Devolver a altura aos gráficos** — `Grafico.tsx` não passa `altura`, então todo
-   gráfico cai fora do sistema de alturas e a página tem 8.460 px
-   ([RECUPERACAO-27-08](RECUPERACAO-27-08.md) §3.1). É o defeito visível.
+2. ✅ **Altura dos gráficos** (27/08): medido, 5.564 → 5.133 px em `agendamento-field` e
+   1.727 → 1.343 px em `visao-geral`, sem `v-auto` e sem rolagem horizontal. O que sobra
+   é a densidade ([RECUPERACAO-27-08](RECUPERACAO-27-08.md) §3.2), que é trabalho de
+   régua e medição, não de deploy.
 3. Escrever o `Dockerfile` da API (com o heap), o `docker-compose.prod.yml` e o
    `nginx.conf`.
 4. `npm test` verde e **commit em `staging`** ao fim de cada item — nada fica solto na
