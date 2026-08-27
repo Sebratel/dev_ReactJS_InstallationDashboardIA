@@ -303,14 +303,22 @@ export function Grafico({
   const semDados = g.categorias.length === 0 || g.series.every((s) => s.valores.every((v) => v === null || v === 0));
   if (semDados) {
     return (
-      <Cartao titulo={titulo} sub={sub.join(' · ')} id={visual.id} largo>
+      // `altura="grafico"` pelo mesmo motivo da Matriz (ver Matriz.tsx): sem ela o
+      // Cartao cai em `auto`, o clamp do `.v-grafico` nunca se aplica e o cartao
+      // cresce com o conteudo. Como grafico e a maioria dos visuais, era essa a
+      // parcela grande dos 8.460px da pagina medidos em 27/08/2026.
+      <Cartao titulo={titulo} sub={sub.join(' · ')} id={visual.id} altura="grafico">
         <p className="sob-demanda">Sem dados para os filtros atuais.</p>
       </Cartao>
     );
   }
 
   return (
-    <Cartao titulo={titulo} sub={sub.join(' · ')} id={visual.id} largo acoes={acoesGrafico}>
+    // `largo` saiu junto: ele so vale dentro de um pai `display: grid`
+    // (`.largo { grid-column: 1 / -1 }`), e quem posiciona os graficos hoje e o
+    // `VisualGridSection`, que usa flex. Ficava inerte, sugerindo um controle de
+    // largura que nao existia — e o lado a lado dos compactos ja vem de la.
+    <Cartao titulo={titulo} sub={sub.join(' · ')} id={visual.id} altura="grafico" acoes={acoesGrafico}>
       {g.series.length > 1 ? (
         <div className="legenda">
           {g.series.map((s) => (

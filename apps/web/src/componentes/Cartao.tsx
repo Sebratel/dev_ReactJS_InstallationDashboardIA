@@ -9,10 +9,32 @@
 // chutado: gráfico maior que a tela é gráfico que ninguém vê inteiro.
 
 import type { ReactNode } from 'react';
+import type { VisualCalculado } from '../api.ts';
 import { usaModo } from '../modo.tsx';
 
 /** As faixas do padrão. `grafico` + `tabela` somam exatamente uma tela. */
 export type AlturaDeVisual = 'grafico' | 'tabela' | 'meia' | 'matriz' | 'auto';
+
+/**
+ * A altura que um visual VAI ter quando terminar de carregar.
+ *
+ * O cartao de "carregando" e o de "nao calculou" precisam da **mesma** altura do
+ * visual que os substitui. Sem isso a tela pula quando a resposta chega — e pula uma
+ * vez por visual sob demanda, que e justamente o caso em que a espera e longa e a
+ * pessoa esta olhando. `card` fica em `auto` de proposito: KPI tem altura propria.
+ */
+export function alturaDoConteudo(conteudo: VisualCalculado['conteudo']): AlturaDeVisual {
+  switch (conteudo) {
+    case 'grafico':
+      return 'grafico';
+    case 'tabela':
+      return 'tabela';
+    case 'matriz':
+      return 'matriz';
+    default:
+      return 'auto';
+  }
+}
 
 const CLASSE_DE_ALTURA: Record<AlturaDeVisual, string> = {
   grafico: 'v-grafico',

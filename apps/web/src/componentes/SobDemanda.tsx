@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { pegaPagina, type FiltroDaTela, type VisualCalculado } from '../api.ts';
-import { Cartao, Erro } from './Cartao.tsx';
+import { Cartao, Erro, alturaDoConteudo } from './Cartao.tsx';
 import { VisualPronto } from './VisualPronto.tsx';
 import { tituloDoVisual } from '../rotulos.ts';
 
@@ -42,10 +42,12 @@ export function SobDemanda(props: {
   if (pronto) return <VisualPronto pagina={props.pagina} visual={pronto} filtros={props.filtros} />;
 
   const titulo = tituloDoVisual(props.visual);
+  // A mesma altura do visual que vai substituir este cartao — ver `alturaDoConteudo`.
+  const altura = alturaDoConteudo(props.visual.conteudo);
 
   if (estado === 'carregando') {
     return (
-      <Cartao titulo={titulo} sub="carregando…" id={props.visual.id} largo>
+      <Cartao titulo={titulo} sub="carregando…" id={props.visual.id} altura={altura}>
         <div className="esqueleto" aria-busy="true" aria-live="polite">
           <span className="sr-only">Carregando {titulo}…</span>
           <div className="esqueleto-linha" />
@@ -57,7 +59,7 @@ export function SobDemanda(props: {
   }
 
   return (
-    <Cartao titulo={titulo} sub="não carregou" id={props.visual.id} largo>
+    <Cartao titulo={titulo} sub="não carregou" id={props.visual.id} altura={altura}>
       <div className="sob-demanda">
         {erro ? <Erro>{erro}</Erro> : null}
         <p>

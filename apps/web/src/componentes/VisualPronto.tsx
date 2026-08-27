@@ -2,7 +2,7 @@
 
 import type { FiltroDaTela, Valor, VisualCalculado } from '../api.ts';
 import { Card } from './Card.tsx';
-import { Cartao, Erro } from './Cartao.tsx';
+import { Cartao, Erro, alturaDoConteudo } from './Cartao.tsx';
 import { Grafico } from './Grafico.tsx';
 import { Matriz } from './Matriz.tsx';
 import { Tabela } from './Tabela.tsx';
@@ -21,7 +21,7 @@ export function VisualPronto({
 }) {
   if (visual.erro) {
     return (
-      <Cartao titulo={visual.tipo} sub="não calculou" id={visual.id} largo>
+      <Cartao titulo={visual.tipo} sub="não calculou" id={visual.id} altura={alturaDoConteudo(visual.conteudo)}>
         <Erro>{visual.erro}</Erro>
       </Cartao>
     );
