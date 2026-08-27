@@ -137,18 +137,19 @@
      Cada gráfico maior que a tela é um gráfico que ninguém vê inteiro. A altura
      de card não é chutada em pixel: é derivada do que sobra depois do cromo.
 
-     `--h-nav` é 0 aqui porque **a navegação desta tela é a barra lateral**, não
-     uma faixa horizontal — ela gasta largura, não altura. O token fica, com o
-     valor honesto, para a conta continuar legível.
+     `--h-nav` é a faixa horizontal de telas, e o valor abaixo é só o CHÃO: quem
+     manda é a medida real, que o `AppShell` publica aqui em tempo de execução.
+     Com 14 telas ela quebra em duas linhas em monitor estreito (~64px) e pode
+     caber em uma no largo — fixar um número mentiria para a conta em metade das
+     resoluções, e o sintoma seria card estourando a tela só em quem tem monitor
+     pequeno.
      ------------------------------------------------------------------------- */
   --h-topbar: 52px;
-  --h-nav: 0px;
+  --h-nav: 64px;
   --h-filtros: 50px;
   --gap: 10px;
   --chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 34px);
   --util: calc(100vh - var(--chrome));
-
-  --sidebar-w: 230px;
 }
 
 /* Escuro: só os tokens mudam. Nenhuma regra abaixo tem variante própria de cor —
@@ -183,48 +184,80 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* ============================================================== barra lateral */
+/* ==================================================== casca: topo e navegação */
 
-.barra-lateral {
-  width: var(--sidebar-w); flex: none;
-  background: var(--superficie); border-right: 1px solid var(--borda);
-  display: flex; flex-direction: column;
-  position: sticky; top: 0; height: 100vh; z-index: 30;
+/* O formato é o do padrão de dashboards — topbar, faixa de navegação entre telas,
+   barra de filtros, área — e não a barra lateral que morava aqui.
+
+   A lateral gastava 230px de LARGURA, permanentemente. Numa tela de 1366 isso é
+   17% do horizontal fora do conteúdo, e largura é justamente o que o gráfico e a
+   matriz mais precisam: é ela que decide quantas categorias cabem por página. A
+   nav de topo cobra ~64px de ALTURA em troca, e a altura é dividida entre menos
+   coisas. */
+
+.casca { display: flex; flex-direction: column; min-height: 100vh; }
+
+.topo {
+  height: var(--h-topbar); flex: none;
+  background: var(--superficie); border-bottom: 1px solid var(--borda);
+  display: flex; align-items: center; gap: 16px; padding: 0 16px;
+  position: sticky; top: 0; z-index: 30;
 }
-.marca-topo {
-  height: var(--h-topbar); display: flex; align-items: center; gap: 10px;
-  padding: 0 14px; border-bottom: 1px solid var(--borda); flex: none;
-}
+.marca { display: flex; align-items: center; gap: 10px; flex: none; }
+.marca-textos { display: flex; flex-direction: column; }
 .marca-nome {
   font-weight: 800; letter-spacing: .06em; color: var(--pbi-primary-texto);
   font-size: .82rem; line-height: 1.1;
 }
 .marca-sub { font-size: .62rem; color: var(--muted); }
 
-.menu { flex: 1; overflow-y: auto; overflow-x: hidden; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
-.menu-titulo {
-  font-size: .6rem; text-transform: uppercase; letter-spacing: .1em;
-  color: var(--muted); padding: 6px 10px 4px; white-space: nowrap; font-weight: 700;
+/* A régua à esquerda separa o título da tela da marca — sem ela as duas colunas de
+   texto se leem como um bloco só. */
+.titulo-tela {
+  display: flex; flex-direction: column; min-width: 0;
+  padding-left: 16px; border-left: 1px solid var(--borda);
 }
-.item-menu {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 10px; border-radius: 2px; border: 0; background: none;
-  border-left: 3px solid transparent;
-  font: inherit; font-size: .76rem; color: var(--texto); cursor: pointer;
-  text-align: left; width: 100%; white-space: nowrap; font-weight: 600;
+
+/* A FAIXA DE NAVEGAÇÃO.
+
+   `flex-wrap`, não `overflow-x`. Com 14 telas os rótulos somam 1.511px só de texto
+   e 2.113px com ícone e respiro (medido em 27/08/2026), contra 1.366px de tela —
+   não cabe em uma linha em monitor comum. Rolagem horizontal aqui esconderia metade
+   das telas atrás de um gesto que ninguém adivinha; quebrar em duas linhas mostra
+   as 14 de uma vez.
+
+   A altura REAL é medida pelo `AppShell` e publicada em `--h-nav`, porque `--util`
+   a soma e todo card depende disso. Fixar o número mentiria em metade das
+   resoluções. */
+.nav-telas {
+  flex: none; display: flex; flex-wrap: wrap; gap: 3px;
+  padding: 5px 16px; background: var(--superficie);
+  border-bottom: 1px solid var(--borda);
+  position: sticky; top: var(--h-topbar); z-index: 25;
 }
-.item-menu:hover { background: var(--pbi-primary-soft); }
-/* Navegação ativa na primária — o mesmo papel que ela cumpre no cabeçalho do visual. */
-.item-menu.ativo {
+.aba {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 10px; border-radius: 2px; border: 0; background: none;
+  border-bottom: 2px solid transparent;
+  font: inherit; font-size: .74rem; font-weight: 600; color: var(--texto);
+  cursor: pointer; white-space: nowrap;
+}
+.aba:hover { background: var(--pbi-primary-soft); }
+/* Navegação ativa na primária — o mesmo papel que ela cumpre no cabeçalho do visual.
+   Cor CHEIA é fundo, e a letra vem do token do papel: 9,87:1. */
+.aba.ativo {
   background: var(--pbi-primary); color: var(--pbi-sobre-primary);
-  border-left-color: var(--pbi-gold); font-weight: 700;
+  border-bottom-color: var(--pbi-gold); font-weight: 700;
 }
-.item-menu:disabled { color: var(--sem-dado); cursor: default; }
-.item-menu:disabled:hover { background: none; }
-.item-rotulo { overflow: hidden; text-overflow: ellipsis; }
-.rodape-lateral {
-  padding: 10px 14px; border-top: 1px solid var(--borda);
-  font-size: .62rem; color: var(--muted); display: flex; flex-direction: column; gap: 2px;
+.aba:disabled { color: var(--sem-dado); cursor: default; }
+.aba:disabled:hover { background: none; }
+.aba-rotulo { overflow: hidden; text-overflow: ellipsis; }
+
+.rodape {
+  flex: none; margin-top: auto;
+  padding: 8px 16px; border-top: 1px solid var(--borda);
+  font-size: .62rem; color: var(--muted);
+  display: flex; gap: 16px; flex-wrap: wrap;
 }
 
 /* =================================================================== cabeçalho */
@@ -294,7 +327,15 @@ body {
 /* Os dois seletores de propósito: a faixa (um `div` de grade) e o card em si. Sem a
    forma `.cartao.v-*`, o `height: 100%` de `.cartao` — que vem depois no arquivo e tem
    a mesma especificidade — ganharia da conta, e a tabela voltaria a ter 5.441px. */
-.v-grafico, .cartao.v-grafico { height: clamp(258px, calc((var(--util) - var(--gap)) * 0.455), 430px); }
+/* O piso subiu de 258px para 330px em 27/08/2026, junto com a nav de topo.
+   Aquele 258 foi calibrado com `--h-nav: 0` (a navegação era lateral e gastava
+   LARGURA). A faixa de telas cobra ~74px de altura, `--util` caiu de 632 para 558
+   a 1366x768, e a fração de 45,5% passou a dar 249px — ou seja, o piso deixou de
+   ser um limite teórico e virou o valor real, com 188px de desenho dentro.
+   330px deixa ~260px de caixa, que é onde o eixo girado ainda cabe. O preço é a
+   página rolar mais, e essa é a troca certa: o padrão manda preferir rolar a
+   comprimir abaixo da legibilidade. */
+.v-grafico, .cartao.v-grafico { height: clamp(330px, calc((var(--util) - var(--gap)) * 0.455), 430px); }
 .v-tabela,  .cartao.v-tabela  { height: clamp(280px, calc((var(--util) - var(--gap)) * 0.545), 500px); }
 .v-meia,    .cartao.v-meia    { height: clamp(255px, calc((var(--util) - var(--gap)) * 0.5),   440px); }
 .v-matriz,  .cartao.v-matriz  { height: clamp(360px, var(--util), 900px); }
@@ -582,19 +623,30 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
   overflow: hidden;
   display: block;
 
-  /* A ALTURA VEM DA JANELA, e não do conteúdo — e isto não é estética.
-     
-     O componente MEDE esta caixa e desenha o `<svg>` com a medida dela. Se a
-     altura vier do conteúdo, a conta fica circular: o `<svg>` define a altura da
-     caixa, que define a altura do `<svg>`. Medido em 27/08/2026, ela estacionava
-     nos 260px do valor padrão do componente e o desenho saía com 318px — os 58px
-     do eixo girado eram CORTADOS por este `overflow: hidden`, em silêncio.
-     
-     Derivar da janela quebra o ciclo e é a mesma regra do resto da tela: altura de
-     visual não é pixel chutado, é o que sobra depois do cromo. O piso de 300px é
-     onde o eixo girado ainda cabe; o teto de 460 evita card gigante em monitor
-     alto, que só desperdiça densidade. */
-  height: clamp(300px, calc(100vh - 340px), 460px);
+  /* A ALTURA VEM DO CARTÃO, e não do conteúdo nem de uma conta própria.
+
+     Duas coisas, nesta ordem:
+
+     1. **Não pode vir do conteúdo.** O componente MEDE esta caixa e desenha o
+        `<svg>` com a medida dela. Se a altura viesse do conteúdo, a conta ficaria
+        circular: o `<svg>` define a caixa, que define o `<svg>`. Medido em
+        27/08/2026: ela estacionava nos 260px do valor padrão do componente e o
+        desenho saía com 318px — os 58px do eixo girado eram CORTADOS por este
+        `overflow: hidden`, em silêncio.
+
+     2. **Nem de uma conta própria.** Ela teve, por algumas horas, um
+        `height: clamp(..., var(--util) * 0.74, ...)`. Isso criou DUAS fontes de
+        verdade para a mesma altura — o `clamp` do `.v-grafico` no cartão e este —
+        e quem perde é o filho: o `flex: 1 1 auto` acima encolhe a caixa para
+        caber no que o cartão deu. Medido: o cartão tinha 258px, esta caixa pedia
+        413px e ficava com **188px**. Uma altura que o layout ignora é pior que
+        nenhuma, porque parece resolvida.
+
+     Agora a fonte é única: `.v-grafico` dá a altura do cartão, `.cartao-corpo`
+     desconta o cabeçalho e a legenda, e esta caixa fica com o resto. `min-height:
+     0` porque, sem ele, o conteúdo define o mínimo do item de flex e a rolagem
+     volta pelo pai. */
+  min-height: 0;
 }
 
 /* ------------------------------------------------------ paginador do gráfico */
