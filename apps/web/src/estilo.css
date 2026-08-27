@@ -148,7 +148,21 @@
   --h-nav: 64px;
   --h-filtros: 50px;
   --gap: 10px;
-  --chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 34px);
+  /* Os 60px são o RESTO DO CROMO, e o número é medido, não arredondado:
+       rodapé ................. 32px  (8px de padding em cima e embaixo + linha + borda)
+       padding de `.area` ..... 28px  (12 em cima, 16 embaixo)
+                                ----
+                                60px
+     Aqui estava **34px**, descrito como "cobre paddings e bordas" — um palpite que
+     esquecia o rodapé inteiro. Somado ao `--h-filtros` fixo em 50px contra 71px
+     reais, `--util` saía **26px otimista em toda resolução**, e otimismo aqui é card
+     mais alto do que cabe. Medido em 27/08/2026 em 1366x768, 1440x900 e 1920x1080:
+     o cromo real deu 257px nas três, contra os 231px que esta conta declarava.
+
+     `--h-nav` e `--h-filtros` NÃO são estes valores em tempo de execução: a tela mede
+     as duas faixas e reescreve os tokens (`altura-medida.ts`). O que está aqui é só o
+     chão, para o primeiro quadro não sair absurdo. */
+  --chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 60px);
   --util: calc(100vh - var(--chrome));
 }
 
@@ -762,6 +776,58 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
 }
 @keyframes varre { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .esqueleto-linha::after { animation: none; } }
+
+/* --------------------------------------------- a árvore de data (Ano > Mês > Dia)
+
+   Ela substitui a segmentação de `DATA INSTALADO`, que o motor marca `naoFiltra`
+   por ser controle de DRILL: a escolha ali é um caminho, não um conjunto de valores
+   de um nível. Sem esta árvore aquele controle desenha "todos" com a página
+   filtrada — pior que não ter controle, porque afirma o contrário do que a tela
+   mostra.
+
+   Cor só de token de papel. A versão anterior pintava a seleção com `brand-yellow`,
+   que não existe no `:root`: o dia marcado ficava sem destaque nenhum. */
+
+.arvore { display: flex; flex-direction: column; gap: 1px; }
+.arvore-nivel { padding-left: 16px; }
+
+.arvore-linha { display: flex; align-items: center; gap: 4px; border-radius: 3px; }
+.arvore-linha:hover { background: var(--pbi-primary-soft); }
+
+.arvore-seta {
+  width: 16px; padding: 0; border: 0; background: none; cursor: pointer;
+  font-size: .6rem; color: var(--muted); line-height: 1;
+}
+.arvore-seta:hover { color: var(--pbi-primary-texto); }
+
+.arvore-rotulo {
+  flex: 1 1 auto; display: flex; align-items: center; gap: 8px;
+  padding: 3px 4px; font-size: .74rem; color: var(--texto); cursor: pointer;
+}
+.arvore-rotulo.forte { font-weight: 700; }
+.arvore-rotulo input { width: auto; padding: 0; accent-color: var(--pbi-primary); }
+
+/* Grade de dias: 7 colunas, como calendário. */
+.arvore-dias {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+  padding: 3px 0 5px 20px;
+}
+.arvore-dia {
+  display: flex; align-items: center; justify-content: center;
+  font-size: .66rem; padding: 3px 0; border-radius: 3px;
+  color: var(--texto); cursor: pointer; font-variant-numeric: tabular-nums;
+}
+.arvore-dia:hover { background: var(--pbi-primary-soft); }
+/* Cor CHEIA é fundo, e a letra vem do token do papel: 9,87:1. */
+.arvore-dia.marcado {
+  background: var(--pbi-primary); color: var(--pbi-sobre-primary); font-weight: 700;
+}
+/* A caixa some, mas continua sendo ela quem carrega o estado para o teclado e o
+   leitor de tela — `display: none` tiraria o controle do foco. */
+.arvore-dia input {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 /* ======================================================================= capa
 

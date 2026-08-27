@@ -76,7 +76,16 @@ function usaCaixa(): [React.RefObject<HTMLDivElement | null>, { w: number; h: nu
     });
   }, []);
 
-  useLayoutEffect(medir, [medir]);
+  // SEM LISTA DE DEPENDÊNCIAS, de propósito: com `[medir]` (um callback estável) isto
+  // roda UMA vez, na montagem, e a caixa nunca é remedida se ela mudar de tamanho sem
+  // um `resize` de janela. Foi visto na tela em 27/08/2026: `<svg height="372">` dentro
+  // de uma caixa de 344px na MANUTENÇÃO INICIAL — o desenho fora medido antes de a
+  // barra de filtros publicar a altura real dela, `--util` encolheu 21px depois, e o
+  // gráfico ficou com o tamanho antigo transbordando por 28px.
+  //
+  // Rodar a cada render é seguro porque `setCaixa` compara antes de trocar o estado:
+  // medida igual não gera render, então não há laço.
+  useLayoutEffect(medir);
   useEffect(() => {
     window.addEventListener('resize', medir);
     return () => window.removeEventListener('resize', medir);

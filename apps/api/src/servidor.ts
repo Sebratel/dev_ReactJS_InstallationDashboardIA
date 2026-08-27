@@ -462,10 +462,27 @@ export class Servidor {
     // dump de qualquer coluna do modelo — inclusive as que carregam dado de cliente.
     const permitida = (dash.visuals ?? []).some((v) => {
       const s = segmentacaoDe(v);
-      return s !== undefined && s.naoFiltra === undefined
-        && normalizeName(s.tabela) === normalizeName(tabela)
-        && normalizeName(s.coluna) === normalizeName(coluna)
-        && normalizeName(s.nivel ?? '') === normalizeName(nivel ?? '');
+      if (s === undefined) return false;
+      if (normalizeName(s.tabela) !== normalizeName(tabela)) return false;
+      if (normalizeName(s.coluna) !== normalizeName(coluna)) return false;
+
+      // Segmentação de HIERARQUIA (`niveis`) é o único `naoFiltra` que a rota
+      // atende, e só **sem `nivel`**: são as datas cruas que a árvore Ano > Mês >
+      // Dia da tela precisa para saber quais meses cada ano tem.
+      //
+      // Antes daqui a condição era `s.naoFiltra === undefined`, e o efeito não era
+      // proteger nada: a árvore recebia 404 e abria vazia, então a única tela em que
+      // a coluna de data aparece como controle desenhava "0 anos". A trava que
+      // importa — a coluna tem de ser segmentação DESTA página — continua inteira, e
+      // é ela que impede a rota virar dump de coluna qualquer.
+      //
+      // Levantado em 27/08/2026: as **seis** segmentações `naoFiltra` do modelo
+      // inteiro são hierarquia de data. Não existe caso em que isto alcance coluna
+      // com dado de cliente.
+      if (s.niveis !== undefined) return !nivel;
+      if (s.naoFiltra !== undefined) return false;
+
+      return normalizeName(s.nivel ?? '') === normalizeName(nivel ?? '');
     });
     if (!permitida) {
       responde(res, 404, {

@@ -14,9 +14,9 @@
 // gráfico, pelo mesmo motivo — no dashboard de referência o observer não disparou e
 // os visuais ficaram invisíveis, sem erro no console.
 
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { DashboardDaLista } from '../api.ts';
+import { usaAlturaMedida } from '../altura-medida.ts';
 import { useThemeStore } from '../store/useThemeStore.ts';
 import { usaModo } from '../modo.tsx';
 import {
@@ -53,35 +53,6 @@ const ICONES_MENU: Record<string, ComponentType<{ size?: number }>> = {
   'instalacao-reincidente': RotateCcw,
 };
 
-/**
- * Mede a faixa de navegação e publica a altura em `--h-nav`.
- *
- * Escreve no `documentElement` porque `--util` é lido por regras que não descendem
- * da nav (`.v-matriz`, `.caixa-grafico`). Só escreve quando o valor MUDA — sem essa
- * guarda, cada render reescreveria a variável e dispararia o próximo layout.
- */
-function usaAlturaDaNav(): React.RefObject<HTMLElement | null> {
-  const ref = useRef<HTMLElement | null>(null);
-  const ultima = useRef<number>(-1);
-
-  const medir = useCallback(() => {
-    const h = ref.current?.getBoundingClientRect().height;
-    if (h === undefined) return;
-    const px = Math.round(h);
-    if (px === ultima.current) return;
-    ultima.current = px;
-    document.documentElement.style.setProperty('--h-nav', `${px}px`);
-  }, []);
-
-  useLayoutEffect(medir);
-  useEffect(() => {
-    window.addEventListener('resize', medir);
-    return () => window.removeEventListener('resize', medir);
-  }, [medir]);
-
-  return ref;
-}
-
 export function AppShell(props: {
   paginas: DashboardDaLista[];
   atual: string | null;
@@ -91,7 +62,9 @@ export function AppShell(props: {
   acoes?: ReactNode;
   children: ReactNode;
 }) {
-  const navRef = usaAlturaDaNav();
+  // A altura real da faixa entra em `--util`, e todo card depende dela. Ver
+  // `altura-medida.ts` para o porquê de medir em vez de declarar.
+  const navRef = usaAlturaMedida<HTMLElement>('--h-nav');
   const { isDark, toggleTheme } = useThemeStore();
   const { conferencia, alterna } = usaModo();
 

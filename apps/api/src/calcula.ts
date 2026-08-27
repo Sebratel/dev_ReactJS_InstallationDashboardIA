@@ -55,6 +55,18 @@ export interface Segmentacao {
    * segmentação que finge filtrar é a mesma classe de erro que um BLANK calado.
    */
   naoFiltra?: string;
+  /**
+   * Os níveis, quando a segmentação é uma HIERARQUIA que não reduz a um nível só.
+   *
+   * Existe para a rota `/valores` distinguir estruturalmente esse caso dos outros
+   * dois motivos de `naoFiltra` — sem ter de ler a frase em português do
+   * `naoFiltra`, que é texto para humano e pode ser reescrito a qualquer momento.
+   *
+   * A tela usa a lista para montar a árvore Ano > Mês > Dia, que É o controle certo
+   * para um poço de drill: a escolha ali é um caminho, e um caminho precisa dos
+   * níveis todos.
+   */
+  niveis?: string[];
 }
 
 /** Quantas linhas de tabela a resposta manda quando ninguém pede outra coisa. */
@@ -239,6 +251,7 @@ export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
     if (ativos.length !== 1) {
       return {
         ...base,
+        niveis: ativos.map((c) => c.level ?? '?'),
         naoFiltra:
           `segmentação de hierarquia com ${ativos.length} níveis ativos ` +
           `(${ativos.map((c) => c.level ?? '?').join('/')}). Ela é um controle de drill, ` +

@@ -34,6 +34,20 @@ const POR_PAGINA: Record<string, DataPadrao> = {
   'instalacao-reincidente': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'ano' },
 };
 
+/**
+ * A coluna de data que a página trava por padrão — ou `null` se ela não trava nenhuma.
+ *
+ * Exportada porque **quem abre pré-filtrado precisa de um controle para mudar o
+ * recorte**. Sem isto a única coisa que o usuário pode fazer com o mês padrão é
+ * apagá-lo: não há como pedir junho. É a barra de filtros que consome isto, para
+ * montar a árvore Ano > Mês > Dia sobre a mesma coluna.
+ */
+export function dataDaPagina(pagina: string | null): { tabela: string; coluna: string } | null {
+  if (!pagina) return null;
+  const cfg = POR_PAGINA[pagina];
+  return cfg ? { tabela: cfg.tabela, coluna: cfg.coluna } : null;
+}
+
 /** Último mês fechado (o anterior ao corrente) e o ano a que ele pertence. */
 function ultimoMesFechado(hoje: Date): { ano: number; mes: string } {
   let ano = hoje.getFullYear();

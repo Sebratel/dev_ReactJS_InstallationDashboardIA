@@ -468,7 +468,57 @@ test('valores com nível diferente do da segmentação dá 404', async () => {
   }
 });
 
-/** Segmentação de hierarquia sem o nível também não passa: são chaves diferentes. */
+/**
+ * A hierarquia de DRILL é o único `naoFiltra` que a rota atende — e só sem `nivel`.
+ *
+ * `CALENDARIO INSTALADO[DATA INSTALADO]` na visao-geral tem 3 níveis ativos, então o
+ * motor a marca `naoFiltra` (a escolha ali é um caminho, não um conjunto de valores
+ * de um nível) e lhe dá `niveis`. A árvore Ano > Mês > Dia da tela precisa das datas
+ * CRUAS para saber quais meses cada ano tem — pedir nível por nível traria três
+ * listas soltas, e cruzá-las ofereceria mês que aquele ano não tem.
+ *
+ * Enquanto a trava era `naoFiltra === undefined`, essa chamada dava 404 e a árvore
+ * abria com "0 anos" — a única tela onde a coluna de data aparece como controle não
+ * tinha controle nenhum. A trava que importa segue inteira e é testada logo abaixo:
+ * a coluna tem de ser segmentação DESTA página.
+ */
+test('valores de hierarquia de drill passam quando não se pede nível', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca(
+      '/api/dashboards/visao-geral/valores?tabela=CALENDARIO INSTALADO&coluna=DATA INSTALADO',
+    );
+    assert.notEqual(r.status, 404, 'a hierarquia de drill voltou a ser recusada pela trava');
+  } finally {
+    await s.fecha();
+  }
+});
+
+/** Mas pedir um NÍVEL dela continua barrado: o controle é a árvore, não um nível. */
+test('valores de hierarquia de drill COM nível continuam 404', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca(
+      '/api/dashboards/visao-geral/valores?tabela=CALENDARIO INSTALADO&coluna=DATA INSTALADO&nivel=Dia',
+    );
+    assert.equal(r.status, 404);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/** E coluna que não é segmentação da página segue barrada — a trava que importa. */
+test('a abertura para hierarquia não alcança coluna que não é segmentação', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/visao-geral/valores?tabela=CONTRATOS&coluna=CPF');
+    assert.equal(r.status, 404);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/** Segmentação de hierarquia que REDUZ a um nível sem o nível não passa: chaves diferentes. */
 test('valores de coluna de hierarquia sem nível dá 404', async () => {
   const s = await servidor(dirVazio());
   try {
