@@ -2269,9 +2269,16 @@ carregamento do snapshot), pedidos seguintes **3,8 s**, 237 KB. Em
 
 Dois recortes deliberados, os dois por não inventar decisão alheia:
 
-- **Sem sidebar.** O `DESIGN-SYSTEM.md` v2 diz que esta página abre dentro do
-  AppShell do HUBBI: a navegação principal e o header de 52px são de lá. Desenhar
+- **Sem sidebar.** O `DESIGN-SYSTEM.md` v2 dizia que esta página abre dentro do
+  AppShell do HUBBI: a navegação principal e o header de 52px seriam de lá. Desenhar
   uma sidebar aqui seria inventar uma navegação que a plataforma real já tem.
+
+  > **Corrigido em 27/08/2026.** A sidebar chegou a existir aqui — veio junto com o
+  > AppShell do HUBBI em `dfe40b9` — e saiu. A navegação hoje é a **faixa de telas no
+  > topo**, do próprio produto. O motivo é medido: a lateral gastava 230px de LARGURA
+  > permanentemente (17% do horizontal em 1366px), e largura é o que decide quantas
+  > categorias cabem por página de gráfico e de matriz. A faixa cobra ~74px de altura
+  > em troca. Ver `DESIGN-SYSTEM.md` § 5.
 - **Sem biblioteca de gráfico.** O Chart SDK é peça própria da Fase 3; escolher uma
   biblioteca de passagem seria decidir por ele. Barra proporcional em HTML já mostra
   a forma do dado e prova que os pontos chegam certos.

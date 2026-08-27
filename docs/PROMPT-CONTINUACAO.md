@@ -40,8 +40,10 @@ Repositório: `git@github.com:Sebratel/dev_ReactJS_InstallationDashboardIA.git` 
 **Comece lendo, nesta ordem:** `README.md`, `docs/ARCHITECTURE.md`, `docs/SPEC-DRIVEN.md`,
 `specs/golden/README.md`, `specs/EXTRACTION-REPORT.md`. Eles contêm todo o estado do projeto.
 Antes de escrever **qualquer** UI (componente, página, dashboard, gráfico), leia
-`docs/DESIGN-SYSTEM.md` — é o Design System oficial GER/Sebratel e tem prioridade
-máxima sobre qualquer default visual.
+`docs/DESIGN-SYSTEM.md`. Ele tem prioridade máxima sobre qualquer default visual —
+mas **não é o Design System do GER/HUBBI**, como esta linha dizia: é o desta
+plataforma, que diverge daquele de propósito (primária bordô `#880F17`, não âmbar).
+Quando os dois discordarem, aqui vale este.
 
 ## O que é o projeto
 
@@ -176,14 +178,23 @@ Em `tools/validate/` (`npm run validate:queries`):
    barrando DDL/DML antes de a query sair do processo. Não afrouxe isso.
 4. **Toda implementação vem com teste.** Nenhuma fase fecha sem testes verdes de
    paridade contra a spec. É o que impede quebrar o que já existe.
-5. **Toda UI segue `docs/DESIGN-SYSTEM.md`.** Cuidado: esta regra citava a **v1**
-   (`#F5F1E8`, DM Sans, sidebar 256px, âmbar `#FFB000`), que o próprio documento
-   marca como **substituída** — era paleta aspiracional, sem código real por trás.
-   Vale a **v2**, copiada do `shared_layout.css` do HUBBI: fundo `#F4F4F5`, cards
-   brancos radius 14px, Inter/system, âmbar `#F59E0B` (hover `#D97706`), semáforo
-   verde `#10B981` / vermelho `#EF4444` / cinza `#D1D5DB`. O vermelho da marca
-   (`#E30613`) **não** é status. A sidebar não é desta página — é do AppShell do
-   HUBBI. Gradiente âmbar é permitido em estado ativo. Sem HEX hardcoded — só tokens.
+5. **Toda UI segue `docs/DESIGN-SYSTEM.md`, e a fonte da verdade é o
+   `apps/web/src/estilo.css`.** A primária é o **bordô `#880F17`**, com o dourado
+   `#D9B300` como par; fundo geral `#F3F2F1`, superfície `#FFFFFF`, tinta `#252423`,
+   secundário `#605E5C`, verde `#0E9224`, vermelho `#b3261e`, neutro `#C8C6C4`.
+
+   **Esta regra já mandou duas paletas erradas seguidas** — primeiro a "v1"
+   aspiracional (`#F5F1E8`, DM Sans, `#FFB000`), depois a "v2" copiada do
+   `shared_layout.css` do HUBBI (`#F4F4F5`, âmbar `#F59E0B`, `#10B981`, `#EF4444`).
+   **Nenhum desses valores está no `estilo.css`**, e foi lendo isto que a cor da
+   plataforma trocou duas vezes num dia. Esta divergência do HUBBI é DELIBERADA: a
+   escolha é do dono do relatório. Se um documento discordar do `estilo.css`, o
+   documento está velho.
+
+   **Cor CHEIA é FUNDO, cor ESCURECIDA é LETRA** — use os tokens de papel
+   (`--pbi-sobre-primary`, `--pbi-primary-texto`), nunca a primária num `color:`.
+   **Não há sidebar:** a navegação é a faixa de telas no topo desde 27/08/2026; a
+   lateral vinha do AppShell do HUBBI. Sem HEX solto — só tokens.
 6. **Nunca peça nem aceite credenciais em texto.** Elas vivem só no `.env` local,
    que o git ignora. A saída de `npm run doctor` é mascarada e segura.
 

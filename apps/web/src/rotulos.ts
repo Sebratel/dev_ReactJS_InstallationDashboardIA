@@ -1,18 +1,11 @@
-// Rótulos curtos da navegação. Sem JSX, para caber em `npm test`.
-
-/**
- * Duas letras para o ícone da barra lateral fechada, onde só cabem elas.
- *
- * O ponto separa como o espaço separa: sem isso `L.INST`, `L.MAPA` e `L.TEC` viravam
- * três ícones "L." idênticos, e a barra fechada — que é o estado de repouso — não
- * distinguia três das catorze páginas.
- */
-export function sigla(nome: string): string {
-  const palavras = nome.split(/[\s/&.-]+/).filter(Boolean);
-  if (palavras.length === 0) return '??';
-  if (palavras.length === 1) return palavras[0]!.slice(0, 2).toUpperCase();
-  return (palavras[0]![0]! + palavras[1]![0]!).toUpperCase();
-}
+// Rótulos de visual.
+//
+// Aqui morava também `sigla()`, que espremia o nome da página em duas letras para
+// caber no ícone da barra lateral FECHADA (62px). Essa barra não existe mais — a
+// navegação é a faixa de topo, com o rótulo inteiro visível — e a função ficou sem
+// chamador, mas COM quatro testes passando. É a pior forma de código morto: a suíte
+// dizia que estava coberto, e o comentário dos testes descrevia uma tela que ninguém
+// pode mais abrir. Removida junto com `apps/web/test/rotulos.test.ts`.
 
 /** Título humano para visuais calculados */
 export function tituloDoVisual(visual: { spec?: { name?: string; id?: string }; id?: string; titulo?: string }): string {

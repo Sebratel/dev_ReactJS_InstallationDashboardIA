@@ -237,13 +237,21 @@ plausível**, que é o único tipo de erro que este projeto não pode cometer.
    sair do processo, e a API que só aceita `GET`/`HEAD`. Não afrouxe nenhuma.
 4. **Toda implementação vem com teste**, e o teste tem de **falhar** se a regra sumir.
    Ver a seção 7: teste de mutação já pegou duas regras sem cobertura nenhuma.
-5. **Toda UI segue `docs/DESIGN-SYSTEM.md` — a v2.** Fundo `#F4F4F5`, cards brancos
-   radius 14px, Inter/system, âmbar `#F59E0B` (hover `#D97706`), semáforo verde
-   `#10B981` / vermelho `#EF4444` / cinza `#D1D5DB`. O vermelho da marca `#E30613`
-   **não é status**. A sidebar **não é desta página** — vem do AppShell do HUBBI. Sem
-   HEX solto: só tokens.
-   *(A v1 — `#F5F1E8`, DM Sans, sidebar 256px, `#FFB000` — era aspiracional e está
-   substituída. Se encontrar esses valores em algum documento, o documento está velho.)*
+5. **Toda UI segue `docs/DESIGN-SYSTEM.md`.** A primária é o **bordô `#880F17`**, com o
+   dourado `#D9B300` como par — escolha do Erick, e ela **diverge do HUBBI de
+   propósito**. Fundo geral `#F3F2F1`, superfície `#FFFFFF`, tinta `#252423`,
+   secundário `#605E5C`, verde `#0E9224`, vermelho `#b3261e`, neutro `#C8C6C4`.
+
+   *(Este item já mandou usar o âmbar `#F59E0B` do HUBBI e os cinzas do Tailwind
+   `#F4F4F5` / `#111827` / `#6B7280` / `#E5E7EB`. Nada disso está no `estilo.css` —
+   e foi lendo isto aqui que a paleta trocou duas vezes num dia. Se você encontrar
+   esses valores em qualquer documento, o documento está velho: o `estilo.css` é
+   quem manda, e o `DESIGN-SYSTEM.md` foi remedido contra ele em 27/08/2026.)*
+
+   **Cor CHEIA é FUNDO, cor ESCURECIDA é LETRA** — nunca escreva a primária num
+   `color:`; use os tokens de papel (`--pbi-sobre-primary`, `--pbi-primary-texto`).
+   **Não há sidebar:** a navegação é a faixa de telas no topo. A lateral vinha do
+   AppShell do HUBBI e saiu em 27/08/2026. Sem HEX solto: só tokens.
 6. **Nunca peça nem aceite credencial em texto.** Elas vivem só no `.env` local.
 7. **Escreva em português.**
 
@@ -629,7 +637,7 @@ docs/
   ACHADOS.md          75 achados (numerados até #76). A memória técnica — leia antes de
                       "consertar" qualquer coisa que pareça estranha.
   PERGUNTAS-NEGOCIO.md o que só o Erick responde
-  DESIGN-SYSTEM.md     v2 — autoritativa
+  DESIGN-SYSTEM.md     autoritativa — remedida contra o `estilo.css` em 27/08/2026
   ARCHITECTURE.md      o desenho alvo (a API diverge dele de propósito, ver #39)
 ```
 

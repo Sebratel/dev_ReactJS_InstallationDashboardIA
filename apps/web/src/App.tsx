@@ -12,9 +12,11 @@ import {
 import { dataHora, duracao, inteiro } from './formato.ts';
 import { aplicaSelecao, escreveRota, leRota, selecaoDe } from './rota.ts';
 import { AppShell } from './componentes/AppShell.tsx';
+import { Capa } from './componentes/Capa.tsx';
 import { Erro } from './componentes/Cartao.tsx';
 import { Segmentacao } from './componentes/Segmentacao.tsx';
 import { usaModo } from './modo.tsx';
+import { ActiveFilterPill } from './atomic/molecules/ActiveFilterPill.tsx';
 import { KpiGridSection } from './atomic/organisms/KpiGridSection.tsx';
 import { VisualGridSection } from './atomic/organisms/VisualGridSection.tsx';
 
@@ -85,6 +87,23 @@ export function App() {
   );
 
   const segmentacoes = (pagina?.visuais ?? []).filter((v) => v.segmentacao);
+
+  // FILTRO SEM SEGMENTAÇÃO NA TELA É RECORTE INVISÍVEL.
+  //
+  // Nem todo filtro nasce de um slicer: clicar num card ou numa barra faz
+  // filtragem cruzada, e a URL pode trazer um filtro de coluna que esta página
+  // nem segmenta. Esses não apareciam em lugar nenhum — os números mudavam, a
+  // causa não estava na tela e a única saída era recarregar. É a diferença entre
+  // "o dashboard está com número errado" e "há um recorte aplicado".
+  //
+  // Os que TÊM slicer ficam de fora de propósito: o botão já mostra a seleção e a
+  // contagem, e repetir a mesma informação em dois lugares vira ruído.
+  const comSlicer = new Set(
+    segmentacoes.map((v) => `${v.segmentacao!.tabela}.${v.segmentacao!.coluna}.${v.segmentacao!.nivel ?? ''}`),
+  );
+  const filtrosOcultos = filtros.filter(
+    (f) => f.valores.length > 0 && !comSlicer.has(`${f.tabela}.${f.coluna}.${f.nivel ?? ''}`),
+  );
   const cards = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'card' && !v.erro);
   const graficos = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'grafico');
   const matrizes = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'matriz');
@@ -119,8 +138,15 @@ export function App() {
 
       {erro ? <Erro>{erro}</Erro> : null}
 
-      {segmentacoes.length > 0 ? (
+      {segmentacoes.length > 0 || filtrosOcultos.length > 0 ? (
         <div className="filtros">
+          {filtrosOcultos.map((f) => (
+            <ActiveFilterPill
+              key={`${f.tabela}.${f.coluna}.${f.nivel ?? ''}`}
+              filtro={f}
+              aoRemover={() => mudaFiltro(f.tabela, f.coluna, [], f.nivel)}
+            />
+          ))}
           {segmentacoes.map((v) => {
             const s = v.segmentacao!;
             return (
@@ -162,6 +188,13 @@ export function App() {
           <div className="esqueleto-linha" />
         </div>
       ) : null}
+
+      {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas
+          que a spec traz para ela, 28 não têm número — a tela gerada renderizava
+          DOIS cartões de indicador num vazio. O componente que a substitui existia
+          desde 26/08 e nunca foi importado; os dois KPIs continuam abaixo, porque
+          são dado de verdade. */}
+      {atual === 'capa' ? <Capa dadoDe={pagina?.dadoDe ?? null} /> : null}
 
       {/* Faixa de KPIs em Grid Responsivo */}
       <KpiGridSection pagina={atual!} cards={cards} filtros={filtros} aoFiltrar={aoFiltrarValor} />

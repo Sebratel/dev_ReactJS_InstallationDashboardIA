@@ -209,7 +209,9 @@ faria a API **recalcular sobre o mesmo arquivo**. Quem deixa o dado fresco é
 - **Client:** React 19 · Vite · Tailwind 4 · `lucide-react` · React Query e Zustand
   **declarados** no `package.json` (o Zustand em uso é o `useThemeStore`) ·
   **sem biblioteca de gráfico** (barra em HTML; ver `CONTINUACAO.md` §6.4)
-- **Design System:** ver [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) — v2, tokens do HUBBI
+- **Design System:** ver [DESIGN-SYSTEM.md](./DESIGN-SYSTEM.md) — primária bordô
+  `#880F17`, que **diverge do HUBBI de propósito**. (Esta linha dizia "tokens do
+  HUBBI" e era falsa: nenhum token do HUBBI está no `estilo.css`.)
 
 As dependências do cliente são do `apps/web`, não da raiz: a conta de "poucas
 dependências, cada uma com motivo escrito" vale nos dois lugares, e são contas

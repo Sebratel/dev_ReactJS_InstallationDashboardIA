@@ -17,6 +17,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type { DashboardDaLista } from '../api.ts';
+import { useThemeStore } from '../store/useThemeStore.ts';
+import { usaModo } from '../modo.tsx';
 import {
   LayoutDashboard,
   CalendarDays,
@@ -28,6 +30,9 @@ import {
   Phone,
   Wrench,
   RotateCcw,
+  Sun,
+  Moon,
+  Eye,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -87,18 +92,38 @@ export function AppShell(props: {
   children: ReactNode;
 }) {
   const navRef = usaAlturaDaNav();
+  const { isDark, toggleTheme } = useThemeStore();
+  const { conferencia, alterna } = usaModo();
 
   return (
     <div className="casca">
       <header className="topo">
+        {/* A MARCA É DESENHADA, NÃO BAIXADA.
+            Aqui havia `<img src="/assets/logo-sebratel-circular.png">`, e esse
+            arquivo NUNCA existiu no repositório — não há `apps/web/public/`, e o
+            `dist` só tem o CSS e o JS. Resultado: 404 em toda carga de página e o
+            ícone quebrado do navegador ao lado do nome da empresa, desde
+            `0aae15c`. Imagem quebrada em cabeçalho de relatório é a primeira coisa
+            que alguém vê e a última que confia.
+            Um `<svg>` inline não pede rede, não quebra e acompanha a paleta. Se o
+            arquivo oficial entrar em `apps/web/public/`, troque só este bloco. */}
         <div className="marca">
-          <img
-            src="/assets/logo-sebratel-circular.png"
-            alt="Sebratel"
-            width={30}
-            height={30}
-            style={{ borderRadius: '50%', objectFit: 'contain', flex: 'none' }}
-          />
+          <svg width={30} height={30} viewBox="0 0 30 30" aria-hidden="true" style={{ flex: 'none' }}>
+            <circle cx="15" cy="15" r="14" fill="var(--pbi-primary)" />
+            <circle cx="15" cy="15" r="14" fill="none" stroke="var(--pbi-gold)" strokeWidth="1.5" />
+            <text
+              x="15"
+              y="15"
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="var(--pbi-sobre-primary)"
+              fontSize="14"
+              fontWeight="800"
+              fontFamily="var(--font)"
+            >
+              S
+            </text>
+          </svg>
           <div className="marca-textos">
             <span className="marca-nome">SEBRATEL</span>
             <span className="marca-sub">Relatório Instalação</span>
@@ -110,7 +135,36 @@ export function AppShell(props: {
           {props.sub ? <span className="cabecalho-sub">{props.sub}</span> : null}
         </div>
 
-        <div className="grupo-acoes-cabecalho">{props.acoes}</div>
+        {/* OS DOIS INTERRUPTORES GLOBAIS MORAM AQUI, e não numa tela.
+            Ambos gravam no localStorage e sobrevivem ao F5 — de propósito, mas isso
+            os torna ARMADILHA quando não há botão: os dois estavam órfãos (o tema no
+            `useThemeStore`, o modo no `usaModo`), ligados por código e desligáveis
+            por ninguém. Quem caísse em conferência ou no escuro ficava lá. */}
+        <div className="grupo-acoes-cabecalho">
+          <button
+            className={`btn-icone${conferencia ? ' ativo' : ''}`}
+            onClick={alterna}
+            aria-pressed={conferencia}
+            title={
+              conferencia
+                ? 'Modo conferência: id do visual, origem DAX e faixa de cálculo à vista. Clique para apresentar.'
+                : 'Modo apresentação. Clique para conferir contra o Power BI.'
+            }
+          >
+            {conferencia ? <Wrench size={15} /> : <Eye size={15} />}
+          </button>
+
+          <button
+            className="btn-icone"
+            onClick={toggleTheme}
+            aria-pressed={isDark}
+            title={isDark ? 'Tema escuro. Clique para o claro.' : 'Tema claro. Clique para o escuro.'}
+          >
+            {isDark ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+
+          {props.acoes}
+        </div>
       </header>
 
       {/* `flex-wrap` e não rolagem horizontal: aba escondida atrás de um scroll é
@@ -139,7 +193,7 @@ export function AppShell(props: {
       <main className="area">{props.children}</main>
 
       <footer className="rodape">
-        <span>Fonte: dbValle · dbMaria · GSheets</span>
+        <span>Fonte: dbVoalle · dbMaria · GSheets</span>
         <span>Somente leitura · snapshot agendado</span>
       </footer>
     </div>

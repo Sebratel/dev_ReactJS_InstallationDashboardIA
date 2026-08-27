@@ -327,15 +327,31 @@ body {
 /* Os dois seletores de propósito: a faixa (um `div` de grade) e o card em si. Sem a
    forma `.cartao.v-*`, o `height: 100%` de `.cartao` — que vem depois no arquivo e tem
    a mesma especificidade — ganharia da conta, e a tabela voltaria a ter 5.441px. */
-/* O piso subiu de 258px para 330px em 27/08/2026, junto com a nav de topo.
-   Aquele 258 foi calibrado com `--h-nav: 0` (a navegação era lateral e gastava
-   LARGURA). A faixa de telas cobra ~74px de altura, `--util` caiu de 632 para 558
-   a 1366x768, e a fração de 45,5% passou a dar 249px — ou seja, o piso deixou de
-   ser um limite teórico e virou o valor real, com 188px de desenho dentro.
-   330px deixa ~260px de caixa, que é onde o eixo girado ainda cabe. O preço é a
-   página rolar mais, e essa é a troca certa: o padrão manda preferir rolar a
-   comprimir abaixo da legibilidade. */
-.v-grafico, .cartao.v-grafico { height: clamp(330px, calc((var(--util) - var(--gap)) * 0.455), 430px); }
+/* O PISO DO GRÁFICO É 309px, E O NÚMERO É DERIVADO — não escolhido.
+
+   A regra que ele serve: `0,455 + 0,545 = 1`, logo `gráfico + tabela + gap = útil`
+   e duas faixas cabem EXATAMENTE numa tela. Mas isso só vale enquanto a fração
+   ideal ficar ACIMA do piso; assim que o piso vence, ele empurra a soma para fora
+   e a tela de duas faixas volta a rolar.
+
+   O ponto de virada é a resolução de referência do meio, 1440x900:
+     útil    = 900 - (52 + 74 + 50 + 34) = 690
+     gráfico = (690 - 10) x 0,455 = 309,4
+     tabela  = (690 - 10) x 0,545 = 370,6   ->  309,4 + 370,6 + 10 = 690, cabe
+   Qualquer piso acima de 309 quebra a igualdade nessa tela. Eu tinha posto 330 —
+   sem essa conta — e ela passou a rolar 21px: a pior rolagem que existe, longa o
+   bastante para o usuário ver a barra e curta demais para valer o gesto.
+
+   O 330 tentava resolver um problema real: o piso ANTERIOR era 258px, calibrado
+   com `--h-nav: 0`, de quando a navegação era lateral e gastava LARGURA. A faixa
+   de topo cobra ~74px de ALTURA, `--util` caiu de 632 para 558 a 1366x768, e a
+   fração de 45,5% passou a valer 249px — o piso deixou de ser limite teórico e
+   virou o valor real, com 188px de desenho dentro. 309px deixa ~240px de caixa, o
+   suficiente para o eixo girado, e ainda é 51px a mais que o piso antigo.
+
+   Em 1366x768 a página continua rolando ~60px, e isso é escolha: abaixo dos pisos
+   o visual fica ilegível, e o padrão manda preferir rolar a comprimir. */
+.v-grafico, .cartao.v-grafico { height: clamp(309px, calc((var(--util) - var(--gap)) * 0.455), 430px); }
 .v-tabela,  .cartao.v-tabela  { height: clamp(280px, calc((var(--util) - var(--gap)) * 0.545), 500px); }
 .v-meia,    .cartao.v-meia    { height: clamp(255px, calc((var(--util) - var(--gap)) * 0.5),   440px); }
 .v-matriz,  .cartao.v-matriz  { height: clamp(360px, var(--util), 900px); }
@@ -747,11 +763,119 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
 @keyframes varre { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .esqueleto-linha::after { animation: none; } }
 
+/* ======================================================================= capa
+
+   A capa é a única tela escrita à mão: a CAPA gerada da spec traz 30 visuais, e
+   28 deles são forma decorativa do Power BI — a página renderizava DOIS cartões de
+   indicador num vazio. O conteúdo (objetivo, cadência do dado, histórico de
+   versões) é o mesmo do original; a forma é a da plataforma.
+
+   **Tudo aqui é token de PAPEL, não utilidade de cor do Tailwind.** A versão
+   anterior deste componente pintava com `amber-500`, `slate-200`, `zinc-800` e
+   `var(--red)` / `var(--amber)` — âmbar do HUBBI misturado com três tokens que não
+   existem no `:root`. O `background` inválido não desenhava nada, e o `text-white`
+   por cima ficava BRANCO NO BRANCO. Com papéis, o tema escuro sai de graça: quem
+   troca é o bloco `.dark`, e não há par `dark:` para manter em dia. */
+
+.capa { display: flex; flex-direction: column; gap: 16px; padding-bottom: 16px; }
+
+.capa-cartao {
+  background: var(--superficie); border: 1px solid var(--borda);
+  border-radius: 10px; overflow: hidden;
+}
+
+/* O gradiente vai da primária à ponta escura — os dois papéis medidos: branco
+   sobre eles dá 9,87:1 e 11,07:1. */
+.capa-topo {
+  background: linear-gradient(135deg, var(--pbi-primary) 0%, var(--pbi-primary-dark) 100%);
+  color: var(--pbi-sobre-primary);
+  padding: 10px 20px; font-weight: 800; font-size: .78rem;
+  letter-spacing: .06em; text-align: center;
+  border-bottom: 2px solid var(--pbi-gold);
+}
+
+.capa-hero {
+  display: flex; align-items: center; justify-content: space-between; gap: 24px;
+  padding: 26px 24px;
+  background: linear-gradient(120deg, var(--pbi-primary-dark) 0%, var(--pbi-primary) 60%, var(--pbi-gold-600) 140%);
+  color: var(--pbi-sobre-primary);
+}
+.capa-hero h1 { margin: 0; font-size: 1.7rem; font-weight: 900; letter-spacing: -.01em; }
+.capa-hero p { margin: 4px 0 0; font-size: .86rem; color: var(--pbi-sobre-primary-fraco); }
+.capa-hero-marca {
+  flex: none; background: var(--pbi-superficie); border-radius: 12px; padding: 10px 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+.capa-hero-marca-nome {
+  font-weight: 900; letter-spacing: .08em; font-size: .9rem; color: var(--pbi-primary-texto);
+}
+@media (max-width: 700px) { .capa-hero-marca { display: none; } }
+
+.capa-corpo { padding: 16px 20px; font-size: .82rem; line-height: 1.6; color: var(--texto); }
+.capa-corpo .carimbo { display: block; margin-top: 8px; font-size: .7rem; font-weight: 700; color: var(--muted); }
+
+.capa-duas { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; align-items: start; }
+@media (max-width: 1000px) { .capa-duas { grid-template-columns: 1fr; } }
+
+.capa-lista { margin: 0; padding: 16px 20px; list-style: none; display: flex; flex-direction: column; gap: 9px; }
+.capa-lista li { display: flex; gap: 9px; font-size: .8rem; line-height: 1.45; color: var(--texto); }
+/* O marcador em dourado ESCURO: o dourado cheio mede 1,9:1 no branco e some. */
+.capa-lista .marca { color: var(--pbi-gold-600); font-weight: 900; flex: none; }
+
+.capa-nota {
+  background: var(--pbi-primary-soft); border: 1px solid var(--borda);
+  border-radius: 8px; padding: 12px 14px;
+}
+.capa-nota .rot {
+  font-size: .66rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--pbi-primary-texto);
+}
+.capa-nota p { margin: 4px 0 0; font-size: .8rem; line-height: 1.55; color: var(--texto); }
+
+.capa-tempo { margin: 0; padding: 18px 20px; list-style: none; display: flex; flex-direction: column; }
+.capa-tempo li { display: flex; gap: 14px; }
+.capa-trilho { display: flex; flex-direction: column; align-items: center; flex: none; }
+.capa-ponto { width: 11px; height: 11px; border-radius: 50%; background: var(--sem-dado); margin-top: 4px; flex: none; }
+.capa-ponto.marco { background: var(--pbi-gold); box-shadow: 0 0 0 4px var(--pbi-gold-200); }
+.capa-fio { width: 1px; flex: 1 1 auto; background: var(--borda); margin: 4px 0; }
+.capa-tempo .conteudo { padding-bottom: 16px; min-width: 0; }
+.capa-tempo li:last-child .conteudo { padding-bottom: 0; }
+.capa-selo-versao {
+  font-size: .66rem; font-weight: 800; padding: 1px 7px; border-radius: 4px;
+  background: var(--fundo); color: var(--texto); border: 1px solid var(--borda);
+}
+.capa-selo-versao.marco {
+  background: var(--pbi-primary); color: var(--pbi-sobre-primary); border-color: var(--pbi-primary);
+}
+.capa-tempo .data { font-size: .68rem; font-weight: 700; color: var(--muted); }
+.capa-tempo .marco-rot {
+  font-size: .6rem; font-weight: 800; text-transform: uppercase;
+  letter-spacing: .08em; color: var(--pbi-gold-600);
+}
+.capa-tempo .alteracao { margin: 3px 0 0; font-size: .8rem; line-height: 1.45; color: var(--texto); }
+
+.capa-rodape {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 0 4px; font-size: .7rem; color: var(--muted);
+}
+.capa-rodape a { color: var(--pbi-primary-texto); font-weight: 700; }
+
 /* ================================================================ responsivo */
 
+/* A regra daqui escondia `.barra-lateral` abaixo de 900px. Essa barra não existe
+   mais — a navegação é a faixa de topo — e a classe não é escrita por nenhum
+   componente: CSS morto que descrevia um layout que ninguém pode abrir.
+
+   No lugar dela, o que a faixa de topo precisa em tela estreita: a aba encolhe e o
+   rótulo cede espaço ao ícone, em vez de a faixa virar quatro linhas e comer a
+   altura que os cards usam (`--h-nav` entra em `--chrome`). */
 @media (max-width: 900px) {
-  .barra-lateral { display: none; }
+  .aba { padding: 5px 7px; gap: 5px; font-size: .70rem; }
+  .aba-rotulo { max-width: 11ch; }
 }
 @media (max-width: 640px) {
   .cabecalho-titulo, .cabecalho-sub { display: none; }
+  /* Só o ícone: com o título da tela já escondido, a faixa inteira cabe em duas
+     linhas. O nome completo continua no `title` de cada aba. */
+  .aba-rotulo { display: none; }
 }

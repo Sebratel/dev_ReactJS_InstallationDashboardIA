@@ -195,10 +195,17 @@ que `/legado` responde e que os tokens ali são os da v2.
 
 ## 5. O andaime do AppShell
 
-`docs/DESIGN-SYSTEM.md` v2 é explícito: em produção esta página abre **dentro do
-AppShell do HUBBI**, e a navegação principal é de lá. `apps/web/src/componentes/AppShell.tsx`
-é um **andaime local** — existe porque, sem ele, não há como navegar entre as 14
-páginas fora do HUBBI, e navegar entre elas é o que a conferência exige.
+> **Esta seção descreve um plano abandonado. Lida em 27/08/2026, ela manda medir a
+> tela contra uma navegação que não existe mais** — os "62px → 196px no hover" e o
+> "gradiente âmbar no item ativo" abaixo não têm nada correspondente no código. O
+> `AppShell.tsx` deixou de ser andaime: é a casca do produto, com a navegação em
+> faixa no TOPO e a aba ativa em bordô cheio. Mantida como registro da decisão de
+> agosto; a descrição válida está em `DESIGN-SYSTEM.md` § 5.
+
+`docs/DESIGN-SYSTEM.md` v2 era explícito: em produção esta página abriria **dentro do
+AppShell do HUBBI**, e a navegação principal seria de lá. `apps/web/src/componentes/AppShell.tsx`
+era um **andaime local** — existia porque, sem ele, não haveria como navegar entre as
+14 páginas fora do HUBBI, e navegar entre elas é o que a conferência exige.
 
 As medidas são as reais (62px → 196px no hover, mesma curva, mesmo gradiente âmbar no
 item ativo, header 52px), de modo que embutir a página no HUBBI depois seja **apagar

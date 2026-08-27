@@ -1,7 +1,15 @@
-# Design System — HUBBI v2
+# Design System — Analytics Platform (bordô Sebratel)
 
 Referência da interface desta plataforma. O `CLAUDE.md` (regra 4) e o cabeçalho de
 `apps/web/src/estilo.css` apontam para cá.
+
+> **Este arquivo se chamava "HUBBI v2", e o nome era o começo do problema.** O HUBBI
+> é outro design system, real, com paleta própria (âmbar `#F59E0B`). Esta plataforma
+> diverge dele **de propósito** — a primária é o bordô `#880F17`, escolha do dono do
+> relatório. Enquanto o título disse HUBBI, a tabela de tokens abaixo carregou valores
+> do HUBBI enquanto a tela rodava em bordô, e quem lia o documento reintroduzia a cor
+> errada de boa-fé. Corrigido em 27/08/2026 medindo token por token contra o
+> `estilo.css`.
 
 ---
 
@@ -44,22 +52,38 @@ Definidos **duas vezes de propósito** em `apps/web/src/estilo.css`:
 - em `@theme`, para virar utilitário do Tailwind (`bg-pbi-primary`, `text-pbi-muted`);
 - em `:root`, para o CSS puro do arquivo e para o `style` dos SVG.
 
+Os valores abaixo foram **conferidos linha a linha contra o `estilo.css` em
+27/08/2026**. Todos os que estavam aqui antes eram do HUBBI e nenhum batia com a tela.
+
 | Papel | Token | Valor |
 |---|---|---|
-| Primária — cabeçalho de visual, navegação ativa | `--pbi-primary` | `#F59E0B` |
-| Hover da primária, bordas | `--pbi-primary-dark` | `#D97706` |
-| Fundo suave da primária | `--pbi-primary-soft` | `color-mix` 8% |
-| Sucesso / ativo | `--pbi-green` | `#10B981` |
-| Erro / alerta | `--pbi-critico` | `#EF4444` |
-| Texto principal | `--pbi-ink` | `#111827` |
-| Texto secundário, rótulo de eixo | `--pbi-muted` | `#6B7280` |
-| Bordas e divisores | `--pbi-borda` / `--pbi-grid` | `#E5E7EB` |
-| Fundo geral | `--pbi-fundo` | `#F4F4F5` |
+| Primária — cabeçalho de visual, aba ativa | `--pbi-primary` | `#880F17` |
+| Ponta escura do gradiente do cabeçalho | `--pbi-primary-dark` | `#6b2328` |
+| Fundo suave da primária (hover de aba, pill) | `--pbi-primary-soft` | `color-mix` 8% |
+| Par histórico da primária, série 2, borda ativa | `--pbi-gold` | `#D9B300` |
+| Sucesso / ativo | `--pbi-green` | `#0E9224` |
+| Erro / alerta | `--pbi-critico` | `#b3261e` |
+| Texto principal | `--pbi-ink` | `#252423` |
+| Texto secundário, rótulo de eixo | `--pbi-muted` | `#605E5C` |
+| Bordas / grade | `--pbi-borda` / `--pbi-grid` | `#E3E0DC` / `#E1DFDD` |
+| Fundo geral | `--pbi-fundo` | `#F3F2F1` |
 | Superfície de card | `--pbi-superficie` | `#FFFFFF` |
-| Sem dado / "Outros" | `--pbi-neutro` | `#D1D5DB` |
+| Sem dado / "Outros" | `--pbi-neutro` | `#C8C6C4` |
 
-**`--red` (#E30613) é exclusivo do texto da logo.** Erro é `--pbi-critico` (#EF4444).
-Confundir os dois é o erro que a regra 4 do `CLAUDE.md` nomeia.
+Escuro — os mesmos papéis, não outras cores:
+
+| Papel | Token | Valor |
+|---|---|---|
+| Fundo geral | `--pbi-escuro-fundo` | `#1B1A19` |
+| Superfície de card | `--pbi-escuro-superficie` | `#252423` |
+| Borda / grade | `--pbi-escuro-borda` | `#3B3A39` |
+| Texto principal | `--pbi-escuro-texto` | `#F3F2F1` |
+| Texto secundário | `--pbi-escuro-muted` | `#A19F9D` |
+
+**Não existe token `--red`.** A linha que estava aqui mandava reservar `--red`
+(`#E30613`) para o texto da logo e citava a regra 4 do `CLAUDE.md` — mas esse token
+não está no `estilo.css` e nunca esteve nesta plataforma; é do HUBBI. Erro é
+`--pbi-critico` (`#b3261e`), e como LETRA é `--pbi-critico-texto`.
 
 ### 1.1 A regra que faltava: **cor CHEIA é FUNDO, cor ESCURECIDA é LETRA**
 
@@ -83,14 +107,17 @@ foreground estar **escrito à mão em cada regra** em vez de vir de um papel.
 Com os tokens por papel, a volta ao bordô custou trocar valores num lugar só — contra
 77 substituições espalhadas na ida.
 
-| papel | token | valor (bordô) | contraste |
-|---|---|---|---|
-| texto sobre a primária | `--pbi-sobre-primary` | `#FFFFFF` | 9,87:1 (11,07 na ponta escura do gradiente) |
-| subtítulo sobre a primária | `--pbi-sobre-primary-fraco` | `#F0E199` | 7,49:1 |
-| a primária como letra | `--pbi-primary-texto` | `#880F17` | 9,87:1 no branco, 8,98 no fundo geral |
-| o dourado como letra | `--pbi-gold-600` | `#8A6600` | 4,80:1 |
-| verde como letra | `--pbi-green-texto` | `#047857` | 4,99:1 |
-| vermelho como letra | `--pbi-critico-texto` | `#B91C1C` | 5,75:1 |
+Remedido em 27/08/2026 (os valores anteriores desta tabela vinham de dois tokens que
+a tela não usa — `#047857` e `#B91C1C` são do HUBBI):
+
+| papel | token | valor (bordô) | contraste no branco | no fundo geral |
+|---|---|---|---|---|
+| texto sobre a primária | `--pbi-sobre-primary` | `#FFFFFF` | **9,87:1** | 11,07 na ponta escura do gradiente |
+| subtítulo sobre a primária | `--pbi-sobre-primary-fraco` | `#f0e199` | **7,49:1** | — |
+| a primária como letra | `--pbi-primary-texto` | `#880F17` | **9,87:1** | 8,83:1 |
+| o dourado como letra | `--pbi-gold-600` | `#8A6600` | **5,27:1** | 4,72:1 |
+| verde como letra | `--pbi-green-texto` | `#0B7A1E` | **5,50:1** | 4,92:1 |
+| vermelho como letra | `--pbi-critico-texto` | `#b3261e` | **6,54:1** | 5,85:1 |
 
 Duas armadilhas que a medição pegou:
 
@@ -99,17 +126,18 @@ Duas armadilhas que a medição pegou:
 - **`--pbi-gold-600` valia `#D49F00`**, herdado, e era descrito como "texto sobre fundo
   claro" — mas media **2,18:1** no fundo geral. Nunca serviu para o que dizia servir.
 
-**No tema escuro**, `--pbi-primary-texto` vira o dourado: o bordô como letra mede
-1,80:1 sobre `#111827`. A **superfície** bordô, porém, não muda — ver § 1.3.
+**No tema escuro**, `--pbi-primary-texto` vira o dourado: o bordô como LETRA mede
+**1,57:1** sobre a superfície escura `#252423`, e o dourado no lugar dele mede
+**7,67:1**. A **superfície** bordô, porém, não muda — ver § 1.3.
 
 ### 1.3 Um bordô só, nos dois temas
 
-Contra o corpo escuro do card, o bordô mede 1,80:1: o bloco do cabeçalho não se
-destaca. A saída óbvia seria clarear a primária no escuro — o único valor que fecha
-3:1 é `#C42A38`. **Não foi o caminho**, por duas razões medidas:
+Contra o corpo escuro do card (`#252423`), o bordô mede **1,57:1**: o bloco do
+cabeçalho não se destaca. A saída óbvia seria clarear a primária no escuro — o único
+valor que fecha 3:1 é `#C42A38`. **Não foi o caminho**, por duas razões medidas:
 
 1. **a separação já existe e é melhor:** o cabeçalho tem `border-bottom: 2px` em
-   dourado, que mede **8,78:1** contra o corpo escuro. Separar por traço é mais forte
+   dourado, que mede **7,67:1** contra o corpo escuro. Separar por traço é mais forte
    que separar por preenchimento;
 2. **em `#C42A38` o texto perde folga:** branco cai de 9,87 para 5,62 e o subtítulo
    dourado para 4,27 — abaixo do mínimo. Trocaríamos um bloco mais visível por um
@@ -138,10 +166,10 @@ inativas. Conferido no CSS gerado — `.bg-pbi-primary` em `@layer utilities`,
 `stroke`) e atributo não lê variável de CSS. Se mudar aqui, mude lá junto.
 
 > **Sobre os nomes dos tokens.** Com a volta ao bordô, `--pbi-gold` voltou a valer
-> dourado de verdade (`#D9B300`) — o nome descreve a cor de novo. Sobra `--pbi-orange`
-> (`#111827`) e `--pbi-orange-soft` (`#6B7280`), que hoje são tinta e cinza: esses dois
-> mentem. Renomear são poucos usos, mas nenhum comportamento muda; fica como dívida
-> registrada, não esquecida.
+> dourado de verdade (`#D9B300`) — o nome descreve a cor de novo. `--pbi-orange`
+> (`#E66C37`) e `--pbi-orange-soft` (`#EB895F`) continuam laranja de verdade no
+> `estilo.css`, mas **não entram na rampa de séries** (ver § 2): ficaram herdados do
+> padrão e hoje não têm consumidor. Dívida registrada, não esquecida.
 >
 > Vale a observação geral: **nome de token deve dizer o PAPEL, não a cor.**
 > `--pbi-primary` sobreviveu a duas trocas de paleta sem virar mentira; `--pbi-gold`
@@ -156,15 +184,21 @@ posição no ranking — filtro que tira uma série não pode repintar as que fi
 
 Separação medida em OKLab (×100). Piso: **15** em visão normal, **8** em daltonismo.
 
+Os oito slots, na ordem de `SLOTS` em `grafico-forma.ts`: bordô `#880F17`, dourado
+`#D9B300`, cinza `#605E5C`, bordô claro `#C9707A`, dourado claro `#f0e199`, cinza
+claro `#A19F9D`, tinta `#252423`, neutro `#C8C6C4` ("Outros").
+
 | par | normal | deutan | tritan |
 |---|---|---|---|
 | bordô × dourado | **41,4** | 38,0 | 56,8 |
-| bordô × cinza | 22,3 | 17,8 | 97,5 |
-| dourado × cinza | 29,1 | 30,2 | 131,5 |
+| bordô × cinza | 17,0 | **10,8** | 89,6 |
+| dourado × cinza | 33,3 | 34,1 | 126,5 |
 
-Nenhum par vizinho fica abaixo de **15,6**, e o pior caso em daltonismo é **17,8** —
-mais que o dobro do piso. A separação vem de **luminância** (bordô escuro, dourado
-claro, cinza no meio), e luminância sobrevive a qualquer dicromacia.
+Pior par vizinho da lista: **19,8**. Pior caso em daltonismo entre os três primeiros:
+**10,8** — acima do piso 8, mas com bem menos folga do que esta tabela dizia antes
+(ela trazia 22,3 / 17,8 / 29,1, que são de outra rampa). A separação vem de
+**luminância** (bordô escuro, dourado claro, cinza no meio), e luminância sobrevive a
+qualquer dicromacia.
 
 **Isto não é a rampa bordô/dourado antiga**, que media 17,7 em visão normal e
 despencava para **5,4 em tritanopia**, com o 4º par em 4,0. Aquela punha `gold` e
@@ -192,26 +226,48 @@ que é **exatamente** `--pbi-superficie` dentro de `.dark` — 1,00:1 —, e a s
 `CAPACIDADE TARDE` não existia no AGENDAMENTO FIELD, nem na legenda nem nas colunas.
 O gráfico mostrava metade do dado que dizia mostrar.
 
-Com o bordô o problema muda de dono mas não some: o próprio bordô mede **1,80:1**
-sobre `#111827`. A troca é **mínima de propósito** — só os três slots que reprovam;
-mudar os outros faria a mesma série trocar de cor entre temas sem motivo:
+Com o bordô o problema muda de dono mas não some: o próprio bordô mede **1,57:1**
+sobre a superfície escura `#252423`, e a tinta do slot 6 **é** essa superfície —
+1,00:1, invisível por construção. A troca é **mínima de propósito**; mudar os outros
+faria a mesma série trocar de cor entre temas sem motivo. O mapa real é o `NO_ESCURO`
+de `grafico-forma.ts`, com **quatro** entradas (remedidas em 27/08/2026):
 
-| slot | claro | → escuro | contraste no escuro |
+| slot | claro | → escuro | no escuro |
 |---|---|---|---|
-| 0 bordô | `#880F17` (1,80) | **`#E08B94`** | 7,00 |
-| 6 tinta | `#374151` (1,72) | **`#F4F4F5`** | 16,14 |
-| 7 "Outros" | `#D1D5DB` | **`#4B5563`** | 2,35 — recessivo de propósito |
-| 1 dourado | `#D9B300` | — | 8,78 |
-| 2 cinza | `#6B7280` | — | 3,67 |
-| 3 bordô claro | `#C9707A` | — | 5,14 |
-| 4 dourado claro | `#F0E199` | — | 13,46 |
-| 5 cinza claro | `#9CA3AF` | — | 6,99 |
+| 0 bordô | `#880F17` (1,57) | **`#E08B94`** | 6,12 |
+| 2 cinza | `#605E5C` (2,40) | **`#C8C6C4`** | 9,10 |
+| 6 tinta | `#252423` (1,00) | **`#F3F2F1`** | 13,86 |
+| 7 "Outros" | `#C8C6C4` (9,10) | **`#605E5C`** | 2,40 — recessivo de propósito |
+| 1 dourado | `#D9B300` | — | passa |
+| 3 bordô claro | `#C9707A` | — | passa |
+| 4 dourado claro | `#f0e199` | — | passa |
+| 5 cinza claro | `#A19F9D` | — | passa |
 
-Mantendo a ordem, a separação entre vizinhos continua a da rampa clara, exceto nos
-pares que tocam os trocados — remedidos: 0×1 = 18,2, 5×6 = 25,4, 6×7 = 52,2.
+O slot 2 foi para `#C8C6C4` e **não** para o cinza médio óbvio (`#8A8886`) porque
+aquele ficava a 11,2 em OKLab do bordô claro vizinho — abaixo do piso 15. Com
+`#C8C6C4` os vizinhos medem 16,4 e 21,1.
 
-O slot 7 abaixo de 3:1 **não é desvio novo**: no tema claro ele mede 1,47:1
-(`#D1D5DB` sobre branco). "Outros" nunca carrega categoria de verdade.
+O slot 7 abaixo de 3:1 **não é desvio novo**: no tema claro ele mede 1,70:1
+(`#C8C6C4` sobre branco). "Outros" nunca carrega categoria de verdade.
+
+### O tema escuro esteve DESLIGADO até 27/08/2026 — e isso era pior que não ter tema
+
+Todo o parágrafo acima descrevia um caminho que não executava. O `useThemeStore`
+gravava a classe **`tema-escuro`** no `<html>`; o `estilo.css` reage a **`.dark`**,
+que é o contrato do `@custom-variant` do Tailwind e o seletor do bloco de tokens.
+Nomes diferentes, nenhum erro, nenhum teste falhando. Resultado:
+
+- a página ficava **clara**, porque nenhuma regra respondia;
+- mas o `Grafico.tsx` lê `isDark` do mesmo store e repinta as séries com `corNoTema`
+  — então quem tivesse `dark` no `localStorage` via um dashboard claro com as séries
+  pintadas para fundo escuro. O bordô virava `#E08B94` sobre branco (2,4:1) e a
+  tinta virava `#F3F2F1`, que **some** no card branco.
+
+Ou seja: o mapa que existe para impedir série invisível passou a causá-la, no outro
+tema. E não havia botão nenhum para sair — ver § 5.
+
+**Só `useThemeStore.ts` escreve a classe, e ela se chama `dark`, em inglês, porque é
+nome do Tailwind e não convenção nossa.**
 
 A tradução vive em `corNoTema(cor, escuro)` e é aplicada **na renderização**, não em
 `corDaSerie` — aquela é pura e a suíte fixa o resultado dela por índice. Tema é
@@ -232,29 +288,63 @@ de 8 e é pior que os **10,6** de hoje. A ordem da pilha (`Inconclusivo` entre o
 Altura de card **nunca** é pixel chutado: é fração da área útil.
 
 ```css
---chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 34px);  /* 170px */
+--chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 34px);  /* 210px */
 --util:   calc(100vh - var(--chrome));
 ```
+
+`52 + 74 + 50 + 34 = 210`. **`--h-nav` não é constante: o `AppShell` mede a faixa de
+telas e publica a altura real aqui em tempo de execução** (ver § 5). Os 64px do
+`:root` são só o chão; medido em 27/08/2026, com as 14 telas ela quebra em duas linhas
+e vale **74px** de 1366 a 1920 de largura. Fixar o número mentiria para a conta em
+metade das resoluções, e o sintoma seria card estourando a tela só em monitor pequeno.
 
 As duas frações **têm de somar 1** — com `(util - gap) * 1 + gap = util`, duas faixas
 cabem exatamente numa tela. E a fração do gráfico precisa ficar **acima do piso dele**
 na resolução de referência, senão o piso vence e reempurra a soma para fora.
 
 Corrigido em 26/08/2026: estava `0,52 + 0,545 = 1,065`, e a tela de duas faixas rolava
-em **toda** resolução de referência — 46px além em 1440×900, 58px em 1920×1080 — que é
-exatamente o que esta conta existe para impedir. Três comentários no código já diziam
-"somam uma tela"; só a implementação discordava.
+em **toda** resolução de referência. Três comentários no código já diziam "somam uma
+tela"; só a implementação discordava. Hoje: **0,455 + 0,545 = 1**.
 
-Hoje: **0,473 + 0,527**.
+### O piso do gráfico é derivado, não escolhido
 
-| resolução | útil | gráfico | tabela | soma | |
-|---|---|---|---|---|---|
-| 1366×768 | 598 | 340 | 310 | 660 | rola 62px (pisos vencem, deliberado) |
-| 1440×900 | 730 | 341 | 379 | **730** | cabe |
-| 1920×1080 | 910 | 426 | 474 | **910** | cabe |
+Ele vale **309px**, e o número sai da própria invariante, no ponto de virada — a
+resolução de referência do meio:
+
+```
+1440x900:  útil    = 900 - 210 = 690
+           gráfico = (690 - 10) x 0,455 = 309,4
+           tabela  = (690 - 10) x 0,545 = 370,6
+           309,4 + 370,6 + 10 = 690   <- cabe, exatamente
+```
+
+Qualquer piso **acima de 309** quebra a igualdade nessa tela. Em 27/08/2026 ele esteve
+em 330 por um dia — posto sem essa conta, ao subir a navegação para o topo — e 1440×900
+passou a rolar 21px: a pior rolagem que existe, longa o bastante para o usuário ver a
+barra e curta demais para valer o gesto.
+
+O 330 tentava resolver um problema real. O piso **anterior** era 258px, calibrado
+quando `--h-nav` valia 0 porque a navegação era lateral e gastava LARGURA. A faixa de
+topo cobra ~74px de ALTURA, `--util` caiu de 632 para 558 em 1366×768, e a fração de
+45,5% passou a valer 249px — o piso deixou de ser limite teórico e virou o valor real,
+com **188px de desenho dentro**. Os 309px de hoje deixam ~240px de caixa e ainda são
+51px a mais que o piso antigo.
+
+**Medido no navegador em 27/08/2026**, na AGENDAMENTO FIELD:
+
+| resolução | `--h-nav` | útil | gráfico | tabela | soma + gap | |
+|---|---|---|---|---|---|---|
+| 1366×768 | 74px | 558 | 309 | 299 | 618 | rola 60px (pisos vencem, deliberado) |
+| 1440×900 | 74px | 690 | 309 | 371 | **690** | cabe |
+| 1920×1080 | 74px | 870 | 391 | 469 | **870** | cabe |
 
 Em 1366×768 a rolagem é escolha: abaixo dos pisos o visual fica ilegível, e o padrão
 manda preferir rolar a comprimir.
+
+**Página com muitas faixas rola, e isso não é defeito.** A invariante é sobre uma tela
+de DUAS faixas e sobre nenhum card passar da janela. A AGENDAMENTO FIELD tem 18
+visuais e mede ~6.300px: você rola entre faixas, mas cada card cabe inteiro e cada um
+rola por dentro — ver § 3.3.
 
 ---
 
@@ -356,7 +446,73 @@ passa da tela.
 `.rolagem`, que é justamente o caso legítimo. É preciso subir pelos ancestrais e só
 acusar quando **nenhum** deles tem `overflow` `auto`/`scroll`/`hidden`/`clip`.
 
-## 4. Antes de dizer que está pronto
+## 4. Interação: filtro que não aparece na tela é recorte invisível
+
+Nem todo filtro nasce de um *slicer* da barra. Clicar numa barra do gráfico faz
+**filtragem cruzada**, e a URL pode trazer um filtro de coluna que a página nem
+segmenta. Até 27/08/2026 esses não apareciam em lugar nenhum: os números mudavam, a
+causa não estava na tela, e a única saída era recarregar. É exatamente a diferença
+entre alguém dizer *"o dashboard está com número errado"* e *"há um recorte
+aplicado"* — a primeira frase vira chamado.
+
+**Regra:** todo filtro em vigor tem de estar visível e ser removível.
+
+O `App.tsx` compara os filtros com as segmentações que a página desenha e mostra uma
+*pill* (`ActiveFilterPill`) para cada um **sem slicer próprio**, com o `x` que o
+remove. Os que TÊM slicer ficam de fora de propósito: o botão já mostra a seleção e a
+contagem, e repetir a mesma informação em dois lugares vira ruído.
+
+Conferido na tela: na VISÃO GERAL o clique cai numa coluna que já tem slicer e
+nenhuma pill aparece; na RELATÓRIO DO MÊS ele cai em `Data Agendado`, que não tem, a
+pill aparece, e o `x` limpa o filtro e o parâmetro da URL.
+
+---
+
+## 5. A casca: topo, navegação e os dois interruptores
+
+O formato é o do padrão de dashboards — **topbar, faixa de navegação entre telas,
+barra de filtros, área** —, não barra lateral. A lateral gastava 230px de LARGURA
+permanentemente: 17% do horizontal em 1366px, fora do conteúdo. E largura é o que
+gráfico e matriz mais precisam, porque é ela que decide quantas categorias cabem por
+página. A faixa de topo cobra ~74px de ALTURA em troca, e altura é dividida entre
+menos coisas.
+
+**A faixa mede a própria altura.** Os 14 rótulos somam 1.511px só de texto e 2.113px
+com ícone e respiro, contra 1.366px de tela: não cabe em uma linha. Ela usa
+`flex-wrap` (aba escondida atrás de rolagem horizontal é aba que ninguém acha) e o
+`AppShell` publica a altura real em `--h-nav`, porque `--util` a soma e todo card
+depende dela. `useLayoutEffect` + `resize`, **não** `ResizeObserver` — mesma escolha
+do medidor do gráfico, pelo mesmo motivo: no dashboard de referência o observer não
+disparou e os visuais ficaram invisíveis, sem erro no console.
+
+### Interruptor de estado global precisa de botão. Sempre.
+
+O tema (claro/escuro) e o **modo conferência** gravam no `localStorage` e sobrevivem
+ao F5 — de propósito: quem confere não quer reativar a cada recarga. Mas isso os
+torna **armadilha** quando não há como desligá-los.
+
+Foi o que aconteceu: os dois ficaram órfãos. O `useThemeStore` e o `alterna` do
+`usaModo` eram lidos por componentes, mas **nenhum botão os chamava** — o cabeçalho
+que os tinha (`HeaderSebratel.tsx`) nunca chegou a ser usado pelo `App.tsx`. Quem
+caísse em conferência ou no escuro ficava lá, e no caso do tema o estado nem sequer
+pintava a página (§ 2).
+
+Hoje vivem no `grupo-acoes-cabecalho` do `AppShell`, com `aria-pressed` e `title` que
+diz o estado atual **e** o que o clique faz. Regra que fica: **estado que persiste
+precisa de controle visível na mesma tela**; se você adicionar um, o botão faz parte
+da entrega, não do polimento.
+
+### A marca é desenhada, não baixada
+
+O topo tinha `<img src="/assets/logo-sebratel-circular.png">` e esse arquivo **nunca
+existiu no repositório** — não há `apps/web/public/`. Eram 404 em toda carga e o ícone
+quebrado do navegador ao lado do nome da empresa. Hoje é um `<svg>` inline, que não
+pede rede e acompanha a paleta. Se o arquivo oficial entrar em `apps/web/public/`,
+troque só aquele bloco do `AppShell.tsx`.
+
+---
+
+## 6. Antes de dizer que está pronto
 
 1. Abra no navegador — build que passa não garante tela que renderiza.
 2. Nenhum **card** mais alto que a janela — é o que a conta de `--util` garante.
@@ -366,3 +522,14 @@ acusar quando **nenhum** deles tem `overflow` `auto`/`scroll`/`hidden`/`clip`.
 5. Console limpo, sem aviso de `key` nem de prop inválida.
 6. Clique **dentro** de cada aba e diálogo, não só na navegação.
 7. `grep -rn "#[0-9a-fA-F]\{6\}" apps/web/src --include=*.tsx` deve voltar vazio.
+8. **Zero 404 na aba de rede.** Imagem quebrada em cabeçalho de relatório é a primeira
+   coisa que alguém vê e a última em que confia — e não aparece no console como erro
+   de JS, só como recurso ausente.
+9. **Abra nos DOIS temas.** Tema que ninguém abre é tema que não existe: o escuro
+   ficou desligado por uma classe com nome trocado, sem erro e sem teste falhando.
+10. **Clique em cada interruptor que persiste, recarregue, e desligue.** Se ele grava
+    no `localStorage` e não tem botão, você acabou de trancar o usuário lá dentro.
+11. **Filtre clicando num visual** e confirme que o recorte aparece na tela e sai por
+    um clique — ver § 4.
+12. **Meça a invariante das duas faixas** em 1440×900 e 1920×1080: `gráfico + tabela
+    + gap` tem de dar `--util` exatamente. Piso acima da fração ideal quebra isso.
