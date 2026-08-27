@@ -315,3 +315,40 @@ test('a política de verdade do catálogo carrega e costura o SQL de produção'
     assert.ok(saida.length > sql.length, `${id}: a costura não acrescentou nada ao SQL`);
   }
 });
+
+test('o sql: de protocolos-produtividade é cópia FIEL do SQL de produção em docs/', () => {
+  // ESTE É O TESTE QUE FALTAVA, e a falta dele custou o `INSTALADOR`.
+  //
+  // O teste acima já costurava o SQL real — e passou, verde, durante o dia inteiro
+  // de 26/08/2026 com o SQL ERRADO. Ele guardava a ÂNCORA, não o CONTEÚDO: um
+  // `git reset --hard` devolveu o `sql:` à versão extraída do PBIP (100 linhas, um
+  // ramo, sem `INSTALADOR`), alguém reancorou a costura para casar com ela, e a
+  // suíte continuou verde. O snapshot em disco ficou com 70.991 linhas — saída do
+  // SQL de dois ramos — enquanto a spec produzia 70.868.
+  //
+  // `docs/sql/datahub-protocolos-produtividade.sql` diz no próprio cabeçalho:
+  // "ESTE SQL É O QUE RODA EM PRODUÇÃO DESDE 25/08/2026 ... o campo `sql:` da spec
+  // é uma cópia deste arquivo". Este teste transforma essa frase em invariante.
+  //
+  // Se você mudou o SQL de propósito: mude os DOIS arquivos. O documento é onde
+  // vive o porquê de cada CTE; a spec é o que executa. Divergir é como se perde.
+  const raiz = path.resolve(import.meta.dirname, '..', '..', '..');
+  const doc = path.join(raiz, 'docs', 'sql', 'datahub-protocolos-produtividade.sql');
+  const spec = path.join(raiz, 'specs', '_catalog', 'queries', 'protocolos-produtividade.spec.yaml');
+
+  const daDoc = fs.readFileSync(doc, 'utf8').replace(/\r\n/g, '\n').replace(/\n+$/, '');
+  const { sql } = parseYaml(fs.readFileSync(spec, 'utf8')) as { sql: string | null };
+  assert.ok(sql, 'a spec não tem campo sql:');
+
+  assert.equal(
+    sql.replace(/\r\n/g, '\n'),
+    daDoc,
+    'o `sql:` da spec divergiu de docs/sql/datahub-protocolos-produtividade.sql',
+  );
+
+  // As marcas do que se perdeu, nomeadas. Se o `assert.equal` acima falhar, estas
+  // dizem O QUE falta — e é isso que se quer ler numa saída de teste.
+  for (const marca of ['ramo_produtividade AS (', 'ramo_auxiliares AS (', 'UNION ALL', '"INSTALADOR"']) {
+    assert.ok(sql.includes(marca), `o SQL perdeu \`${marca}\` — é o append dos dois ramos`);
+  }
+});

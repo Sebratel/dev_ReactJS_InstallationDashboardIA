@@ -156,25 +156,58 @@ memória — por três medidas que fecham entre si:
 Sem a janela, a próxima carga completa buscaria ~8 meses em vez de 3, na query que já
 morreu de `ECONNRESET`. Regressão silenciosa: mais linhas, nenhum erro.
 
-### O snapshot de `protocolos-produtividade` está À FRENTE da spec
+### O snapshot de `protocolos-produtividade` estava À FRENTE da spec — RESOLVIDO em 27/08
 
-Mesma família de perda, e esta **não** foi refeita. O cabeçalho real do arquivo em
-disco (`snapshot/protocolos-produtividade.jsonl`, 25/08 19:34) diz:
+O cabeçalho real do arquivo em disco (`snapshot/protocolos-produtividade.jsonl`,
+25/08 19:34) dizia:
 
 ```
 linhas=70991  modo=completo  marca=2026-08-25T00:00:00.000Z
 ```
 
-**70.991 é o número dos DOIS RAMOS** — o `UNION ALL` que reproduzia o `INSTALADOR` do
-relatório original. O `sql:` de hoje tem um ramo só e dá **70.868**
-(`specs/_catalog/paridade-janela.yaml` registra `nos: 70868`, medido no mesmo dia).
+**70.991 é o número dos DOIS RAMOS** — o `UNION ALL` que reproduz o `INSTALADOR`.
+O `sql:` da spec tinha voltado a ter um ramo só e daria **70.868**. Ou seja: o dado
+em disco era a saída de um SQL que a spec já não continha, e a próxima carga
+derrubaria 123 linhas e esvaziaria o `INSTALADOR`, sem erro e sem teste vermelho.
 
-Ou seja: o dado em disco é a saída de um SQL que não existe mais no repositório. A
-próxima carga dessa query **derruba 123 linhas e esvazia o `INSTALADOR` do ramo
-acrescentado**, sem erro e sem teste vermelho. Ver a nota longa em
-`specs/_catalog/incremental.yaml` para como refazer, e MEÇA os dois números.
+**E eu escrevi aqui que isso não era recuperável. Estava errado.**
 
----
+O SQL de produção **nunca esteve perdido**: mora em
+`docs/sql/datahub-protocolos-produtividade.sql`, 422 linhas, e o cabeçalho dele diz
+*"ESTE SQL É O QUE RODA EM PRODUÇÃO DESDE 25/08/2026 ... o campo `sql:` da spec é
+uma cópia deste arquivo"*. O que o `git reset --hard` apagou foi a **cópia**. A
+busca que me fez errar procurava `ramo_auxiliares` só em `specs/` — e ele estava em
+`docs/`.
+
+Restaurado por cópia verbatim em 27/08. Medido:
+
+| | antes | depois |
+|---|---|---|
+| `sql:` da spec | 100 linhas / 3.636 chars | **422 linhas / 23.264 chars** |
+| `ramo_produtividade` | 0 | 3 |
+| `ramo_auxiliares` | 0 | 3 |
+| `UNION ALL` | 0 | 1 |
+| `"INSTALADOR"` | 0 | 1 |
+| idêntico ao doc | não | **sim** |
+
+A costura incremental foi conferida sobre o SQL restaurado, sem tocar no banco:
+422 → 457 linhas, `WITH alvos AS (` 1x, `AND a.title IN (SELECT title FROM alvos)`
+1x, `:desde` 3x, parênteses com saldo 0 e mínimo 0. A âncora de duas linhas voltou
+ao original — com o comentário `-- o mais largo dos dois ramos`, que é o
+desambiguador contra o `a.created >= '2026-01-01'` que o próprio ramo 3 do `alvos`
+insere.
+
+**O guard que faltava.** O teste "a política de verdade do catálogo carrega e
+costura o SQL de produção" já existia e **passou verde o dia 26 inteiro com o SQL
+errado** — ele guardava a ÂNCORA, não o CONTEÚDO. O novo teste
+`o sql: de protocolos-produtividade é cópia FIEL do SQL de produção em docs/`
+compara os dois arquivos byte a byte. Conferi que ele falha: removendo uma linha do
+`UNION ALL`, ele quebra com mensagem nomeada — e o teste antigo continua passando.
+
+**Falta MEDIR contra o banco.** A contagem esperada é 70.991 (o que está em disco),
+mas o dado andou desde 25/08. Uma carga completa custa ~190 s de dbVoalle e uma
+incremental ~67 s. Só depois dessa medição o `pbi:`/`nos:` de
+`specs/_catalog/paridade-janela.yaml` (que registra `nos: 70868`) pode ser corrigido.
 
 ## `BACKLOG AGENDADO FUTURO`: nós temos mais linhas que eles
 
