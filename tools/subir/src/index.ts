@@ -8,6 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
 import { portaOcupada } from './porta.ts';
+// A mensagem e a descoberta do PID moram junto da API, que é quem liga na porta — e é
+// o `index.ts` dela que precisa do mesmo texto no `error` do servidor. Duas cópias do
+// mesmo aviso divergem no primeiro conserto, e foi assim que a instrução daqui ficou
+// oito dias mandando um comando que não roda.
+import { comoLiberar, derruba, quemOcupa } from '../../../apps/api/src/porta.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -16,6 +21,9 @@ const args = process.argv.slice(2);
 const semBuild = args.includes('--sem-build');
 const semAquecer = args.includes('--sem-aquecer');
 const soAquece = args.includes('--so-aquece');
+/** Derruba quem estiver na porta antes de subir. Explícito de propósito: matar processo
+ *  alheio não pode ser efeito colateral de um comando que a pessoa digitou para subir. */
+const mata = args.includes('--mata');
 const porta = Number.parseInt(
   args.find((a) => a.startsWith('--porta='))?.slice('--porta='.length) ??
     process.env.PORT ??
@@ -32,14 +40,14 @@ const limiteMs = args.some((a) => a.startsWith('--limite='))
 
 for (const a of args) {
   const conhecido =
-    ['--sem-build', '--sem-aquecer', '--so-aquece'].includes(a) ||
+    ['--sem-build', '--sem-aquecer', '--so-aquece', '--mata'].includes(a) ||
     a.startsWith('--porta=') ||
     a.startsWith('--pagina=') ||
     a.startsWith('--limite=');
   if (!conhecido) {
     console.error(`argumento desconhecido: ${a}`);
     console.error(
-      'use: --sem-build | --sem-aquecer | --so-aquece | --porta=N | --pagina=id,id | --limite=segundos',
+      'use: --sem-build | --sem-aquecer | --so-aquece | --mata | --porta=N | --pagina=id,id | --limite=segundos',
     );
     process.exit(2);
   }
@@ -128,22 +136,47 @@ if (soAquece) {
 
   if (await portaOcupada(porta)) {
     const nossa = await respondeSaude();
-    console.error(`\nA porta ${porta} já está ocupada.`);
+    const pids = quemOcupa(porta);
     console.error(
       nossa
-        ? '  E quem responde ali parece ser uma API desta plataforma — provavelmente um\n' +
-            '  `npm start` que ficou no ar. Aquecer aquela em vez desta daria um relatório\n' +
+        ? `\n  Quem responde na porta ${porta} parece ser uma API desta plataforma — provavelmente\n` +
+            '  um `npm start` que ficou no ar. Aquecer aquela em vez desta daria um relatório\n' +
             '  bonito sobre um servidor que pode estar servindo código de antes.'
-        : '  E quem está ali não responde /api/saude, então não é uma API desta plataforma.',
+        : `\n  Quem está na porta ${porta} não responde /api/saude, então não é uma API desta plataforma.`,
     );
-    console.error('\nEscolha um:');
-    console.error(`  npm start -- --porta=${porta + 1}       # sobe do lado`);
-    if (nossa) console.error('  npm run aquece                    # só aquece a que já está no ar');
-    console.error(
-      '  $c = Get-NetTCPConnection -LocalPort ' +
-        `${porta} -State Listen; Stop-Process -Id $c.OwningProcess -Force`,
-    );
-    process.exit(1);
+
+    if (!mata) {
+      console.error(comoLiberar(porta, pids, 'subir'));
+      process.exit(1);
+    }
+
+    // `--mata`: derrubar é o pedido explícito de quem digitou a flag. O que NÃO pode
+    // acontecer é seguir em frente sem ter certeza de que a porta vagou — era esse o
+    // desfecho antigo, em que o filho subia, morria de `EADDRINUSE` e o pai aquecia o
+    // servidor alheio. Quem decide não é o código de saída do `taskkill`; é a porta.
+    if (pids.length === 0) {
+      console.error(
+        `\n--mata, mas não descobri quem está na porta ${porta}. Nada foi derrubado.`,
+      );
+      console.error(comoLiberar(porta, pids, 'subir'));
+      process.exit(1);
+    }
+    console.error(`\n--mata: derrubando ${pids.length === 1 ? 'o PID' : 'os PIDs'} ${pids.join(', ')}…`);
+    derruba(pids);
+
+    const ATE = 5000, PASSO = 250;
+    let esperou = 0;
+    while ((await portaOcupada(porta)) && esperou < ATE) {
+      await new Promise((r) => setTimeout(r, PASSO));
+      esperou += PASSO;
+    }
+    if (await portaOcupada(porta)) {
+      console.error(`\nA porta ${porta} continua ocupada ${esperou / 1000}s depois. Parando aqui:`);
+      console.error('subir sem a porta livre é como o defeito começava.');
+      console.error(comoLiberar(porta, quemOcupa(porta), 'subir'));
+      process.exit(1);
+    }
+    console.error(`  porta ${porta} livre em ${esperou / 1000}s.`);
   }
 
   console.log(`\nSubindo a API na porta ${porta}…`);

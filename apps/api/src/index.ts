@@ -14,6 +14,7 @@ import { RedisCache } from '../../../packages/query-engine/src/cache-redis.ts';
 import type { Cache } from '../../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { Aquecedor } from './aquecedor.ts';
+import { comoLiberar } from './porta.ts';
 import { Servidor } from './servidor.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -102,7 +103,25 @@ const servidor = new Servidor({
  */
 const semAquecer = process.argv.includes('--sem-aquecer') || process.env.SEM_AQUECER === '1';
 
-servidor.criaHttp().listen(porta, () => {
+const http = servidor.criaHttp();
+
+/**
+ * `EADDRINUSE` não pode sair como stack trace.
+ *
+ * A guarda do `tools/subir` roda ANTES de subir, e não alcança quem chega por outro
+ * caminho: `npm run api`, um script, ou um `npm start` que perdeu a corrida entre a
+ * checagem e o `listen`. Nesses casos o Node emitia `Unhandled 'error' event` com 12
+ * linhas de pilha e nenhuma palavra sobre o que fazer — e a saída era procurar o PID à
+ * mão, toda vez. Aqui a mensagem é a mesma do `tools/subir`, do mesmo módulo, porque
+ * duas cópias do mesmo texto divergem no primeiro conserto.
+ */
+http.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code !== 'EADDRINUSE') throw err;
+  console.error(comoLiberar(porta));
+  process.exit(1);
+});
+
+http.listen(porta, () => {
   console.log(`\nAnalytics Platform — API de leitura`);
   console.log(`  tela  http://localhost:${porta}/`);
   console.log(`  saúde http://localhost:${porta}/api/saude`);

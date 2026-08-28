@@ -8,6 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv, loadConfig, missingFor } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
+import { checaLocal, pior } from './local.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 applyDotEnv(ROOT);
@@ -15,6 +16,7 @@ applyDotEnv(ROOT);
 const OK = '  OK  ';
 const FAIL = ' FALHA';
 const SKIP = ' PULA ';
+const AVISO = ' AVISO';
 
 let failures = 0;
 
@@ -200,10 +202,45 @@ async function checkKafka() {
   line(SKIP, 'conexão', 'cliente Kafka entra na Fase 4');
 }
 
+/**
+ * O estado local vem PRIMEIRO, e roda sem credencial nenhuma.
+ *
+ * As quatro coisas que mais custaram tempo neste repositório em agosto de 2026 —
+ * porta ocupada, trabalho solto na árvore, snapshot velho, tela compilada velha —
+ * não têm nada a ver com fonte de dado, e nenhuma delas dá erro. Ver
+ * [local.ts](./local.ts).
+ *
+ * `--local` para nisto: é a checagem de meio minuto, para rodar antes de começar.
+ */
+function checkLocal() {
+  console.log('\n── Estado local (não precisa de credencial) ───────────');
+  const achados = checaLocal(ROOT);
+  for (const a of achados) {
+    line(a.estado === 'ok' ? OK : a.estado === 'aviso' ? AVISO : FAIL, a.rotulo, a.detalhe);
+    if (a.acao && a.estado !== 'ok') console.log(`         → ${a.acao}`);
+    if (a.estado === 'falha') failures++;
+  }
+  return pior(achados);
+}
+
 // ---------------------------------------------------------------- main
 async function main() {
   console.log('Analytics Platform — doctor');
   console.log('(nenhuma credencial é exibida nesta saída)');
+
+  const local = checkLocal();
+  if (process.argv.includes('--local')) {
+    console.log('\n───────────────────────────────────────────────────────');
+    console.log(
+      local === 'ok'
+        ? 'Ambiente local pronto.'
+        : local === 'aviso'
+          ? 'Ambiente local com avisos — leia as setas acima antes de começar.'
+          : 'Ambiente local com falha.',
+    );
+    process.exit(local === 'falha' ? 1 : 0);
+  }
+
   await checkSpecs();
   await checkVoalle();
   await checkMaria();
