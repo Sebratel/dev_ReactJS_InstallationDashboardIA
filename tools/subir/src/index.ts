@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
-import { portaOcupada } from './porta.ts';
+import { decideDerrubada, portaOcupada } from './porta.ts';
 // A mensagem e a descoberta do PID moram junto da API, que é quem liga na porta — e é
 // o `index.ts` dela que precisa do mesmo texto no `error` do servidor. Duas cópias do
 // mesmo aviso divergem no primeiro conserto, e foi assim que a instrução daqui ficou
@@ -21,9 +21,12 @@ const args = process.argv.slice(2);
 const semBuild = args.includes('--sem-build');
 const semAquecer = args.includes('--sem-aquecer');
 const soAquece = args.includes('--so-aquece');
-/** Derruba quem estiver na porta antes de subir. Explícito de propósito: matar processo
- *  alheio não pode ser efeito colateral de um comando que a pessoa digitou para subir. */
+/** Derruba MESMO que quem esteja na porta não seja uma API desta plataforma. Sem ela, o
+ *  padrão já derruba a nossa — ver `decideDerrubada`. */
 const mata = args.includes('--mata');
+/** Não derruba nada, nem a nossa. Para quando a API no ar é justamente a que se quer
+ *  manter (uma comparação lado a lado, um aquecimento em curso). */
+const semMata = args.includes('--sem-mata');
 const porta = Number.parseInt(
   args.find((a) => a.startsWith('--porta='))?.slice('--porta='.length) ??
     process.env.PORT ??
@@ -40,14 +43,14 @@ const limiteMs = args.some((a) => a.startsWith('--limite='))
 
 for (const a of args) {
   const conhecido =
-    ['--sem-build', '--sem-aquecer', '--so-aquece', '--mata'].includes(a) ||
+    ['--sem-build', '--sem-aquecer', '--so-aquece', '--mata', '--sem-mata'].includes(a) ||
     a.startsWith('--porta=') ||
     a.startsWith('--pagina=') ||
     a.startsWith('--limite=');
   if (!conhecido) {
     console.error(`argumento desconhecido: ${a}`);
     console.error(
-      'use: --sem-build | --sem-aquecer | --so-aquece | --mata | --porta=N | --pagina=id,id | --limite=segundos',
+      'use: --sem-build | --sem-aquecer | --so-aquece | --mata | --sem-mata | --porta=N | --pagina=id,id | --limite=segundos',
     );
     process.exit(2);
   }
@@ -137,31 +140,29 @@ if (soAquece) {
   if (await portaOcupada(porta)) {
     const nossa = await respondeSaude();
     const pids = quemOcupa(porta);
+    const decisao = decideDerrubada({ mata, semMata, nossa, achouPid: pids.length > 0 });
+
+    if (!decisao.derruba) {
+      console.error(`\n  A porta ${porta} está ocupada e não vou derrubar: ${decisao.motivo}.`);
+      if (nossa) {
+        console.error(
+          '  Mas quem responde ali É uma API desta plataforma. Aquecer aquela em vez desta\n' +
+            '  daria um relatório bonito sobre um servidor que pode estar servindo código de antes.',
+        );
+      }
+      console.error(comoLiberar(porta, pids, 'subir'));
+      process.exit(1);
+    }
+
+    // O que NÃO pode acontecer é seguir em frente sem ter certeza de que a porta vagou —
+    // era esse o desfecho antigo, em que o filho subia, morria de `EADDRINUSE` e o pai
+    // aquecia o servidor alheio. Quem decide não é o código de saída do `taskkill`; é a
+    // porta. E derrubar sempre aparece na tela: processo morto em silêncio é a mesma
+    // classe de defeito que este arquivo existe para consertar.
     console.error(
-      nossa
-        ? `\n  Quem responde na porta ${porta} parece ser uma API desta plataforma — provavelmente\n` +
-            '  um `npm start` que ficou no ar. Aquecer aquela em vez desta daria um relatório\n' +
-            '  bonito sobre um servidor que pode estar servindo código de antes.'
-        : `\n  Quem está na porta ${porta} não responde /api/saude, então não é uma API desta plataforma.`,
+      `\n  Porta ${porta} ocupada — ${decisao.motivo}.` +
+        `\n  Derrubando ${pids.length === 1 ? 'o PID' : 'os PIDs'} ${pids.join(', ')}…`,
     );
-
-    if (!mata) {
-      console.error(comoLiberar(porta, pids, 'subir'));
-      process.exit(1);
-    }
-
-    // `--mata`: derrubar é o pedido explícito de quem digitou a flag. O que NÃO pode
-    // acontecer é seguir em frente sem ter certeza de que a porta vagou — era esse o
-    // desfecho antigo, em que o filho subia, morria de `EADDRINUSE` e o pai aquecia o
-    // servidor alheio. Quem decide não é o código de saída do `taskkill`; é a porta.
-    if (pids.length === 0) {
-      console.error(
-        `\n--mata, mas não descobri quem está na porta ${porta}. Nada foi derrubado.`,
-      );
-      console.error(comoLiberar(porta, pids, 'subir'));
-      process.exit(1);
-    }
-    console.error(`\n--mata: derrubando ${pids.length === 1 ? 'o PID' : 'os PIDs'} ${pids.join(', ')}…`);
     derruba(pids);
 
     const ATE = 5000, PASSO = 250;
