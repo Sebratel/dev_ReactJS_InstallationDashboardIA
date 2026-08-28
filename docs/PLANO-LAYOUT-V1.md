@@ -9,6 +9,23 @@
 > trabalho de tela encaixado nela. O que este documento acrescenta é **o contrato**: como
 > mexer em toda a tela sem que "não quebrou nada" seja opinião.
 
+## Checkpoint
+
+```
+Item zero (§2)  [DONE]  28/08/2026 — 3 testes de cross-filter (fixture com role
+                        errado) + doc/teste de cromo reconciliados (867px) +
+                        _dbg.test.ts removido. 1403/1403, build verde.
+Fase L1 (§3)    [DONE]  28/08/2026 — tools/layout/ (extrai/valida/golden) +
+                        specs/layout/*.layout.yaml (14) + specs/golden/layout/
+                        (14). 1410/1410, build verde, bundle idêntico.
+Fase L2 (§4)    [TODO]  arnês de medição em navegador (tools/tela/)
+Fase L3 (§5)    [TODO]  densidade, medida (não chutada)
+Fase L4 (§6)    [TODO]  VisualGridSection lê o contrato — heurística morre
+Fase L5 (§7)    [TODO]  contrato de carregamento (R1-R6)
+Fase L6 (§8)    [TODO]  6 visuais novos, custo de dado zero
+Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
+```
+
 ---
 
 ## 0. A ideia central, em um parágrafo
