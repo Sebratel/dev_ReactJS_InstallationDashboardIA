@@ -72,13 +72,13 @@ const base = { mata: false, semMata: false, nossa: false, achouPid: true };
 test('API nossa no ar: derruba sozinho, sem flag nenhuma', () => {
   const d = decideDerrubada({ ...base, nossa: true });
   assert.equal(d.derruba, true);
-  assert.match(d.motivo, /saude/, 'e o motivo diz qual foi a evidência');
+  assert.match(d.motivo, /desta plataforma/);
 });
 
-test('quem não responde /api/saude NÃO é derrubado por padrão', () => {
+test('quem não parece nosso NÃO é derrubado por padrão', () => {
   const d = decideDerrubada(base);
   assert.equal(d.derruba, false);
-  assert.match(d.motivo, /pode não ser nosso/);
+  assert.match(d.motivo, /não parece ser desta plataforma/);
 });
 
 test('--mata força mesmo o que não é nosso', () => {

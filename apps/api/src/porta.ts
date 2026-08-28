@@ -82,6 +82,77 @@ export function quemOcupa(porta: number): number[] {
 }
 
 /**
+ * A LINHA DE COMANDO de um processo — a prova mais forte de "é nosso".
+ *
+ * **Por que ela existe ao lado do `/api/saude`, e não no lugar dele.** A checagem HTTP
+ * só prova identidade DEPOIS que o processo respondeu — e o caso que mais importa
+ * matar é o oposto: uma API travada no aquecimento, com a porta tomada e nenhuma
+ * resposta ainda. Ali `respondeSaude()` diz "não sei" para sempre, e "não sei" virava
+ * "não mata" — exatamente o processo que a pessoa quer derrubar. A linha de comando
+ * não depende de o processo estar vivo o bastante para responder; só de ele ter sido
+ * lançado com o caminho deste repositório no argv, e isso é verdade desde o primeiro
+ * milissegundo.
+ *
+ * **A codificação é a armadilha, e já mordeu uma vez neste mesmo arquivo de trabalho.**
+ * PowerShell 5.1 escreve saída redirecionada na codepage do console, não em UTF-8 —
+ * medido: pedir a `CommandLine` direto devolvia `Instala��o` no lugar de `Instalação`,
+ * e o PRÓPRIO caminho deste repositório tem esse acento. Um `includes()` ingênuo teria
+ * dado falso-negativo justo na conta que mais importa. A correção é pedir ao
+ * PowerShell para devolver Base64 de UTF-8 — puro ASCII, imune a qualquer codepage —
+ * e decodificar do lado de cá.
+ *
+ * `null` = não consegui descobrir (permissão, `powershell`/`ps` ausente, o processo já
+ * morreu entre a descoberta do PID e esta chamada). Nunca vira `true` por omissão —
+ * ver `algumEhNosso`.
+ */
+export function linhaDeComando(pid: number): string | null {
+  if (!Number.isInteger(pid) || pid <= 0) return null;
+  try {
+    if (process.platform === 'win32') {
+      const script = [
+        `$cl = (Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
+        `if ($cl) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cl)) }`,
+      ].join('; ');
+      const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+        encoding: 'utf8', timeout: 5000,
+      });
+      const b64 = r.stdout?.trim();
+      return b64 ? Buffer.from(b64, 'base64').toString('utf8') : null;
+    }
+    const r = spawnSync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf8', timeout: 5000 });
+    const linha = r.stdout?.trim();
+    return linha ? linha : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * O caminho deste repositório aparece na linha de comando?
+ *
+ * Comparação por CONTÉM, não por igualdade: a linha carrega o executável do node, os
+ * flags de memória e o caminho do entrypoint — não só a raiz. E é case-insensitive com
+ * separador normalizado, porque quem montou o `spawn` (`tools/subir`) usa `path.join`
+ * e o resultado mistura `/` e `\` conforme a plataforma e quem chama.
+ */
+export function linhaContemRaiz(linha: string | null, raiz: string): boolean {
+  if (!linha) return false;
+  const normaliza = (s: string) => s.toLowerCase().replace(/\\/g, '/');
+  return normaliza(linha).includes(normaliza(raiz));
+}
+
+/**
+ * Algum dos PIDs foi lançado de dentro deste repositório?
+ *
+ * **Fail-closed.** Sem conseguir ler a linha de comando de nenhum PID, a resposta é
+ * "não" — nunca "sim por omissão". Uma evidência que falha silenciosamente para "mata"
+ * é pior que nenhuma evidência: transforma "não sei" em licença.
+ */
+export function algumEhNosso(pids: readonly number[], raiz: string): boolean {
+  return pids.some((pid) => linhaContemRaiz(linhaDeComando(pid), raiz));
+}
+
+/**
  * O comando que realmente mata quem está na porta.
  *
  * Com o PID conhecido, é ele direto — sem pipeline, sem variável, sem chance de

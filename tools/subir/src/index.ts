@@ -12,7 +12,7 @@ import { decideDerrubada, portaOcupada } from './porta.ts';
 // o `index.ts` dela que precisa do mesmo texto no `error` do servidor. Duas cópias do
 // mesmo aviso divergem no primeiro conserto, e foi assim que a instrução daqui ficou
 // oito dias mandando um comando que não roda.
-import { comoLiberar, derruba, quemOcupa } from '../../../apps/api/src/porta.ts';
+import { algumEhNosso, comoLiberar, derruba, quemOcupa } from '../../../apps/api/src/porta.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -138,15 +138,24 @@ if (soAquece) {
   }
 
   if (await portaOcupada(porta)) {
-    const nossa = await respondeSaude();
     const pids = quemOcupa(porta);
+
+    // DUAS EVIDÊNCIAS, não uma. `/api/saude` só prova identidade DEPOIS que o processo
+    // respondeu — e o caso que mais importa matar é o oposto: uma API nossa travada no
+    // aquecimento, com a porta tomada e nenhuma resposta ainda. Ali a checagem HTTP diz
+    // "não sei" para sempre. A linha de comando (`algumEhNosso`) não depende disso: só
+    // de o processo ter sido lançado com o caminho deste repositório no argv, verdade
+    // desde o primeiro milissegundo. Ver `apps/api/src/porta.ts`.
+    const respondeuSaude = await respondeSaude();
+    const porIdentidade = !respondeuSaude && algumEhNosso(pids, ROOT);
+    const nossa = respondeuSaude || porIdentidade;
     const decisao = decideDerrubada({ mata, semMata, nossa, achouPid: pids.length > 0 });
 
     if (!decisao.derruba) {
       console.error(`\n  A porta ${porta} está ocupada e não vou derrubar: ${decisao.motivo}.`);
       if (nossa) {
         console.error(
-          '  Mas quem responde ali É uma API desta plataforma. Aquecer aquela em vez desta\n' +
+          '  Mas quem está ali É desta plataforma. Aquecer aquele em vez de subir outro\n' +
             '  daria um relatório bonito sobre um servidor que pode estar servindo código de antes.',
         );
       }
@@ -157,10 +166,15 @@ if (soAquece) {
     // O que NÃO pode acontecer é seguir em frente sem ter certeza de que a porta vagou —
     // era esse o desfecho antigo, em que o filho subia, morria de `EADDRINUSE` e o pai
     // aquecia o servidor alheio. Quem decide não é o código de saída do `taskkill`; é a
-    // porta. E derrubar sempre aparece na tela: processo morto em silêncio é a mesma
-    // classe de defeito que este arquivo existe para consertar.
+    // porta. E derrubar sempre aparece na tela, com a EVIDÊNCIA usada: processo morto em
+    // silêncio é a mesma classe de defeito que este arquivo existe para consertar.
+    const evidencia = respondeuSaude
+      ? 'responde /api/saude'
+      : porIdentidade
+        ? 'o processo foi lançado desta pasta (ainda não respondia /api/saude)'
+        : decisao.motivo;
     console.error(
-      `\n  Porta ${porta} ocupada — ${decisao.motivo}.` +
+      `\n  Porta ${porta} ocupada — ${evidencia}.` +
         `\n  Derrubando ${pids.length === 1 ? 'o PID' : 'os PIDs'} ${pids.join(', ')}…`,
     );
     derruba(pids);

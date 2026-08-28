@@ -64,10 +64,14 @@ export function decideDerrubada(o: {
   // Sem PID não há o que matar, e seguir em frente seria subir para morrer no listen.
   if (!o.achouPid) return { derruba: false, motivo: 'não descobri qual processo está na porta' };
   if (o.mata) return { derruba: true, motivo: 'você pediu (--mata)' };
-  if (o.nossa) return { derruba: true, motivo: 'é uma API desta plataforma (responde /api/saude)' };
+  // Texto GENÉRICO de propósito: esta função só recebe um booleano, e "nossa" hoje tem
+  // duas fontes possíveis — responder `/api/saude`, ou a linha de comando trazer o
+  // caminho do repositório (`algumEhNosso`). Quem monta `o.nossa` sabe qual evidência
+  // valeu e escreve a mensagem específica para a tela; esta função não deveria chutar.
+  if (o.nossa) return { derruba: true, motivo: 'é um processo desta plataforma' };
   return {
     derruba: false,
-    motivo: 'quem está na porta não responde /api/saude, então pode não ser nosso',
+    motivo: 'quem está na porta não parece ser desta plataforma',
   };
 }
 

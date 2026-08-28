@@ -16,10 +16,14 @@
 // a ferramenta parece ter funcionado.
 
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import test from 'node:test';
 import {
+  algumEhNosso,
   comandoParaMatar,
   comoLiberar,
+  linhaContemRaiz,
+  linhaDeComando,
   pidsDoLsof,
   pidsDoNetstat,
 } from '../src/porta.ts';
@@ -127,4 +131,73 @@ test('sem descobrir o PID, a mensagem diz isso em vez de inventar', () => {
 test('dois PIDs na mesma porta aparecem os dois', () => {
   const m = comoLiberar(3100, [41004, 7]);
   assert.match(m, /PIDs 41004, 7/);
+});
+
+// ---------------------------------------------------------------------------
+// Identidade por linha de comando — a evidência que não depende do processo
+// ter respondido nada
+// ---------------------------------------------------------------------------
+//
+// Por que ela existe ao lado do `/api/saude`: o caso que mais importa matar é uma API
+// nossa TRAVADA no aquecimento — porta tomada, zero resposta HTTP. Ali a checagem de
+// saúde diz "não sei" para sempre. A linha de comando prova identidade desde o
+// primeiro milissegundo do processo, porque é o `argv` com que ele foi lançado.
+
+test('linha contém raiz: mesmo caminho, barras diferentes, maiúsculas diferentes', () => {
+  const linha = String.raw`"C:\Program Files\nodejs\node.exe" "C:\Repo\apps\api\src\index.ts"`;
+  assert.equal(linhaContemRaiz(linha, 'c:/repo'), true, 'barra e caixa não podem impedir o match');
+  assert.equal(linhaContemRaiz(linha, String.raw`C:\Repo`), true);
+  assert.equal(linhaContemRaiz(linha, String.raw`C:\OutroRepo`), false);
+  assert.equal(linhaContemRaiz(null, String.raw`C:\Repo`), false, 'sem linha, não é nosso — nunca por omissão');
+});
+
+test('algumEhNosso: fail-closed quando ninguém tem a linha de comando descoberta', () => {
+  // PIDs que quase certamente não existem nesta máquina — `linhaDeComando` devolve
+  // `null` para eles, e a resposta tem de ser "não", nunca "sim por não saber".
+  assert.equal(algumEhNosso([999999, 999998], 'qualquer coisa'), false);
+});
+
+test('algumEhNosso: lista vazia de PIDs nunca é nosso', () => {
+  assert.equal(algumEhNosso([], 'qualquer coisa'), false);
+});
+
+/**
+ * A prova real, contra um processo de verdade nesta máquina.
+ *
+ * **É este teste que teria pego o defeito de codificação.** Medido em 28/08/2026: pedir
+ * a `CommandLine` direto do PowerShell 5.1 devolvia `Instala??o` no lugar de
+ * `Instalação` — a codepage do console, não UTF-8 — e o CAMINHO DESTE REPOSITÓRIO tem
+ * esse acento. Um `includes()` ingênuo teria dado falso-negativo bem na conta que mais
+ * importa. A correção pede Base64 de UTF-8 ao PowerShell (puro ASCII, imune a
+ * codepage) e decodifica do lado de cá — este teste garante que ela continua valendo.
+ */
+test('linhaDeComando acha um processo real, com acento no argv, sem corromper', async () => {
+  const marcador = 'raiz-com-acento-Instalação-teste-9f31';
+  const filho = spawn(process.execPath, ['-e', `setTimeout(()=>{}, 6000); // ${marcador}`], {
+    stdio: 'ignore',
+  });
+  try {
+    // Dar tempo do SO registrar o processo antes de perguntar por ele.
+    await new Promise((r) => setTimeout(r, 400));
+    const linha = linhaDeComando(filho.pid);
+    assert.ok(linha, 'deveria achar a linha de comando de um processo que sabemos que existe');
+    assert.ok(
+      linha.includes(marcador),
+      `a linha não trouxe o marcador acentuado sem corromper: ${JSON.stringify(linha)}`,
+    );
+    assert.equal(algumEhNosso([filho.pid], marcador), true, 'e algumEhNosso reconhece pelo mesmo caminho');
+    assert.equal(
+      algumEhNosso([filho.pid], 'outro-marcador-que-não-está-aqui'),
+      false,
+      'e recusa quando o marcador não bate',
+    );
+  } finally {
+    filho.kill();
+  }
+});
+
+test('linhaDeComando com pid inválido não lança e não inventa resposta', () => {
+  assert.equal(linhaDeComando(-1), null);
+  assert.equal(linhaDeComando(0), null);
+  assert.equal(linhaDeComando(1.5), null);
 });
