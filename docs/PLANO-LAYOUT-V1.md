@@ -18,7 +18,12 @@ Item zero (§2)  [DONE]  28/08/2026 — 3 testes de cross-filter (fixture com ro
 Fase L1 (§3)    [DONE]  28/08/2026 — tools/layout/ (extrai/valida/golden) +
                         specs/layout/*.layout.yaml (14) + specs/golden/layout/
                         (14). 1410/1410, build verde, bundle idêntico.
-Fase L2 (§4)    [TODO]  arnês de medição em navegador (tools/tela/)
+Fase L2 (§4)    [DONE]  28/08/2026 — tools/tela/ (Playwright) rodou 112 combinações
+                        (14 páginas × 4 resoluções × 2 temas): zero cartão maior que
+                        a viewport, zero rolagem horizontal, zero v-auto, zero linha
+                        divergente. Achou 5 pares de contraste abaixo de 4,5:1 (1
+                        claro, 4 escuro) — registrado em MEDIDAS-TELA.md, não
+                        corrigido (fora do escopo). 1425/1425, build verde.
 Fase L3 (§5)    [TODO]  densidade, medida (não chutada)
 Fase L4 (§6)    [TODO]  VisualGridSection lê o contrato — heurística morre
 Fase L5 (§7)    [TODO]  contrato de carregamento (R1-R6)
@@ -141,16 +146,31 @@ do que a tela faz hoje**, e provar que ela continua idêntica.
 Invariante que não é comando é intenção. `tools/tela/` (playwright já é dependência):
 
 ```bash
-npm run tela                      # 9 páginas × 4 resoluções × 2 temas
-npm run tela -- --pagina=visao-geral --largura=1366 --altura=768
+npm run tela                      # 14 páginas × 4 resoluções × 2 temas = 112 combinações
+npm run tela -- --pagina=visao-geral --largura=1366 --altura=768 --tema=claro
 ```
+
+> "9 páginas" era o número de 26-27/08 (`docs/RECUPERACAO-27-08.md`, "11 telas" /
+> "9 páginas × 4 resoluções"), antes de várias páginas existirem. Hoje há **14**
+> `specs/dashboards/*.spec.yaml` — o mesmo conjunto que a Fase L1 já extraiu — e o
+> `tools/tela/` roda contra as 14 por padrão.
 
 Reprova quando: algum cartão for mais alto que a viewport; a **página** rolar na
 horizontal; sobrar `v-auto`; um par texto/fundo dos tokens ficar abaixo de 4,5:1; ou dois
 gráficos da mesma linha terminarem com alturas diferentes. Emite `docs/MEDIDAS-TELA.md`
 com os números.
 
-- **Critério de saída:** limpo nas 72 combinações, e o arquivo de medidas commitado.
+- **Critério de saída:** limpo nas 112 combinações, e o arquivo de medidas commitado.
+  Rodado em 28/08/2026: **zero** cartão maior que a viewport, zero rolagem horizontal,
+  zero `v-auto` e zero linha com alturas divergentes — nas 112. O que sobrou foi
+  contraste: **5 pares abaixo de 4,5:1**, todos os "escurecidos como letra" (dourado,
+  verde, vermelho) contra os fundos de estado (`--pbi-ok-bg`/`--pbi-erro-bg`/
+  `--pbi-aviso-bg`) — 1 no tema claro (4,36:1) e 4 no escuro, o pior em **1,47:1**
+  (dourado sobre o próprio aviso). Os números do `CLAUDE.md` (4,72:1 etc.) foram
+  medidos contra `--fundo`/`--superficie` no tema claro; nunca contra os fundos
+  `color-mix()` de selo/badge, nem contra o tema escuro. Fica **registrado, não
+  corrigido** — é ajuste de paleta, fora do escopo desta fase (que é só o arnês);
+  ver `docs/MEDIDAS-TELA.md` para o detalhe por par.
 
 ---
 

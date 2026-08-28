@@ -47,6 +47,7 @@
     "layout:extrai": "node --max-old-space-size=8192 tools/layout/src/extrai.ts",
     "layout:valida": "node tools/layout/src/valida-cli.ts",
     "layout:golden": "node --max-old-space-size=8192 tools/layout/src/golden.ts",
+    "tela": "node tools/tela/src/varre.ts",
     "web": "npm run dev --workspace @analytics/web",
     "web:build": "npm run build --workspace @analytics/web"
   },
