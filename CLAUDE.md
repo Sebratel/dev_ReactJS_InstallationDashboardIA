@@ -92,7 +92,7 @@ A fonte da verdade é [`apps/web/src/estilo.css`](apps/web/src/estilo.css) (bloc
   --pbi-sobre-primary: #FFFFFF;       /* Texto sobre a primária .......... 9,87:1 */
   --pbi-sobre-primary-fraco: #f0e199; /* Subtítulo sobre a primária ...... 7,49:1 */
   --pbi-primary-texto: #880F17;       /* A primária COMO LETRA ........... 9,87:1 */
-  --pbi-gold-600: #8A6600;            /* O dourado COMO LETRA ............ 4,72:1 */
+  --pbi-gold-600: #856200;            /* O dourado COMO LETRA ............ 5,02:1 */
   --pbi-green-texto: #0B7A1E;         /* Verde COMO LETRA ................ 4,85:1 */
   --pbi-critico-texto: #b3261e;       /* Vermelho COMO LETRA ............. 5,63:1 */
 }

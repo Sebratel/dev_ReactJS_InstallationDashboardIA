@@ -115,7 +115,7 @@ a tela não usa — `#047857` e `#B91C1C` são do HUBBI):
 | texto sobre a primária | `--pbi-sobre-primary` | `#FFFFFF` | **9,87:1** | 11,07 na ponta escura do gradiente |
 | subtítulo sobre a primária | `--pbi-sobre-primary-fraco` | `#f0e199` | **7,49:1** | — |
 | a primária como letra | `--pbi-primary-texto` | `#880F17` | **9,87:1** | 8,83:1 |
-| o dourado como letra | `--pbi-gold-600` | `#8A6600` | **5,27:1** | 4,72:1 |
+| o dourado como letra | `--pbi-gold-600` | `#856200` | **5,61:1** | 5,02:1 |
 | verde como letra | `--pbi-green-texto` | `#0B7A1E` | **5,50:1** | 4,92:1 |
 | vermelho como letra | `--pbi-critico-texto` | `#b3261e` | **6,54:1** | 5,85:1 |
 
@@ -125,6 +125,31 @@ Duas armadilhas que a medição pegou:
   independentes, e é essa independência que faz a próxima troca ser barata.
 - **`--pbi-gold-600` valia `#D49F00`**, herdado, e era descrito como "texto sobre fundo
   claro" — mas media **2,18:1** no fundo geral. Nunca serviu para o que dizia servir.
+
+### 1.1.1 A medição de 27/08 tinha um fundo que faltava — achado pelo `tools/tela` em 28/08
+
+A tabela acima mede contra `--pbi-superficie`/`--fundo`. Nenhuma das duas é o fundo
+**de verdade** de um `.selo`/`.badge-status`: esses usam `--pbi-ok-bg`/`--pbi-erro-bg`/
+`--pbi-aviso-bg`, tons derivados por `color-mix()` — e a Fase L2 do
+`PLANO-LAYOUT-V1.md` (arnês de navegador, `tools/tela/`) mediu contra o fundo real pela
+primeira vez. Achou dois defeitos:
+
+1. **`--pbi-gold-600` contra `--pbi-aviso-bg` claro: 4,36:1** — abaixo do piso, por
+   pouco. Corrigido escurecendo um degrau (`#8A6600` → `#856200`, linha da tabela
+   acima já atualizada).
+2. **No tema escuro, os três nunca tinham sido medidos contra o `-bg` de verdade.**
+   `--pbi-ok-bg`/`--pbi-erro-bg`/`--pbi-aviso-bg` são herdados via `color-mix()` com
+   `var(--pbi-superficie)`, que MUDA no `.dark` — mas o percentual de mistura (10/9/55%)
+   foi calibrado para uma superfície branca. 55% de dourado claro sobre um fundo escuro
+   não "aclara de leve": pesa a média inteira e produz um midtom (`#94865F`) contra o
+   qual **até branco puro só alcançava 3,6:1**. Corrigido em duas partes: o percentual
+   de mistura virou `--pct-ok-bg`/`--pct-erro-bg`/`--pct-aviso-bg`, redeclarado para
+   12% dentro de `.dark` (a fórmula e a cor de base continuam as mesmas); e os três
+   "-texto" ganharam override em `.dark` — `--pbi-gold-600` reaproveita `--pbi-gold`
+   (8,61:1 no fundo escuro), `--pbi-green-texto` e `--pbi-critico-texto` precisaram de
+   tom novo (`#10AE2B` a 4,64:1, `#E56B64` a 4,62:1, os dois contra o `-bg` escuro
+   recalibrado). Ver `docs/MEDIDAS-TELA.md` para os 5 números originais e
+   `apps/web/src/estilo.css` para os comentários ao lado de cada valor.
 
 **No tema escuro**, `--pbi-primary-texto` vira o dourado: o bordô como LETRA mede
 **1,57:1** sobre a superfície escura `#252423`, e o dourado no lugar dele mede

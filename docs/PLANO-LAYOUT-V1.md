@@ -22,8 +22,10 @@ Fase L2 (§4)    [DONE]  28/08/2026 — tools/tela/ (Playwright) rodou 112 combi
                         (14 páginas × 4 resoluções × 2 temas): zero cartão maior que
                         a viewport, zero rolagem horizontal, zero v-auto, zero linha
                         divergente. Achou 5 pares de contraste abaixo de 4,5:1 (1
-                        claro, 4 escuro) — registrado em MEDIDAS-TELA.md, não
-                        corrigido (fora do escopo). 1425/1425, build verde.
+                        claro, 4 escuro) — corrigidos no mesmo dia (--pbi-gold-600
+                        escurecido no claro; --pct-*-bg e 3 "-texto" com override em
+                        .dark). Reconfirmado: 112/112 sem problema. 1425/1425, build
+                        verde.
 Fase L3 (§5)    [TODO]  densidade, medida (não chutada)
 Fase L4 (§6)    [TODO]  VisualGridSection lê o contrato — heurística morre
 Fase L5 (§7)    [TODO]  contrato de carregamento (R1-R6)
@@ -166,11 +168,19 @@ com os números.
   contraste: **5 pares abaixo de 4,5:1**, todos os "escurecidos como letra" (dourado,
   verde, vermelho) contra os fundos de estado (`--pbi-ok-bg`/`--pbi-erro-bg`/
   `--pbi-aviso-bg`) — 1 no tema claro (4,36:1) e 4 no escuro, o pior em **1,47:1**
-  (dourado sobre o próprio aviso). Os números do `CLAUDE.md` (4,72:1 etc.) foram
+  (dourado sobre o próprio aviso). Os números do `CLAUDE.md` (4,72:1 etc.) tinham sido
   medidos contra `--fundo`/`--superficie` no tema claro; nunca contra os fundos
-  `color-mix()` de selo/badge, nem contra o tema escuro. Fica **registrado, não
-  corrigido** — é ajuste de paleta, fora do escopo desta fase (que é só o arnês);
-  ver `docs/MEDIDAS-TELA.md` para o detalhe por par.
+  `color-mix()` de selo/badge, nem contra o tema escuro.
+
+  **Corrigido no mesmo dia**, a pedido do Erick ("decide você"): `--pbi-gold-600`
+  escureceu um degrau no claro (`#8A6600` → `#856200`); no escuro, o percentual de
+  mistura dos três `-bg` virou variável (`--pct-ok-bg`/`--pct-erro-bg`/
+  `--pct-aviso-bg`, redeclaradas em `.dark` para 12% — os 55% do claro produziam um
+  midtom contra o qual nem branco puro alcançava o piso) e os três "-texto" ganharam
+  override em `.dark` (`--pbi-gold-600` reaproveita `--pbi-gold`; `--pbi-green-texto`/
+  `--pbi-critico-texto` ganharam tom novo). Reconfirmado com `npm run tela`: **112/112
+  sem problema**. Ver `apps/web/src/estilo.css` (comentários ao lado de cada valor) e
+  `docs/DESIGN-SYSTEM.md` §1.1.1 para a derivação completa.
 
 ---
 

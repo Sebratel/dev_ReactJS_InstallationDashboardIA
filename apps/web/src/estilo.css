@@ -99,8 +99,12 @@
   --pbi-gold-light: #f0e199;
   --pbi-gold-200: #EED790;
   /* #D49F00, o valor original, era descrito como "texto sobre fundo claro" e
-     media 2,14:1 no fundo geral — nunca serviu para isso. Mesmo papel a 4,72:1. */
-  --pbi-gold-600: #8A6600;
+     media 2,14:1 no fundo geral — nunca serviu para isso. #8A6600 era o mesmo papel
+     a 4,72:1 no fundo geral, mas o `tools/tela` (Fase L2, 28/08/2026) mediu contra
+     `--pbi-aviso-bg` de verdade — o fundo do PRÓPRIO selo que usa esta cor — e achou
+     4,36:1, abaixo do piso. #856200 é o mesmo papel escurecido um degrau: 5,02:1 no
+     fundo geral, 4,63:1 no aviso. */
+  --pbi-gold-600: #856200;
   --pbi-gold-soft: #E0C233;
   --pbi-orange: #E66C37;
   --pbi-orange-soft: #EB895F;
@@ -114,10 +118,21 @@
   --pbi-critico: #b3261e;
   --pbi-neutro: #C8C6C4;
 
-  /* Fundos de estado: derivados por mistura, para não inventar hexadecimal novo. */
-  --pbi-ok-bg: color-mix(in srgb, var(--pbi-green) 10%, var(--pbi-superficie));
-  --pbi-erro-bg: color-mix(in srgb, var(--pbi-critico) 9%, var(--pbi-superficie));
-  --pbi-aviso-bg: color-mix(in srgb, var(--pbi-gold-200) 55%, var(--pbi-superficie));
+  /* Fundos de estado: derivados por mistura, para não inventar hexadecimal novo.
+
+     O PERCENTUAL é variável de propósito, não só a cor. Os mesmos 10/9/55% que dão
+     um fundo quase branco sobre `--pbi-superficie` clara (28/07/2026) davam um
+     MIDTOM sobre a superfície ESCURA — 55% de dourado claro num fundo escuro não
+     "aclara de leve", pesa a média inteira. Medido pelo `tools/tela` em
+     28/08/2026: até BRANCO PURO só alcançava 3,6:1 contra o `--pbi-aviso-bg` que
+     essa fórmula produzia no escuro. `.dark` redeclara só o percentual — a fórmula
+     e a cor de base continuam as mesmas, então a Fase L6 pode confiar. */
+  --pct-ok-bg: 10%;
+  --pct-erro-bg: 9%;
+  --pct-aviso-bg: 55%;
+  --pbi-ok-bg: color-mix(in srgb, var(--pbi-green) var(--pct-ok-bg), var(--pbi-superficie));
+  --pbi-erro-bg: color-mix(in srgb, var(--pbi-critico) var(--pct-erro-bg), var(--pbi-superficie));
+  --pbi-aviso-bg: color-mix(in srgb, var(--pbi-gold-200) var(--pct-aviso-bg), var(--pbi-superficie));
   --pbi-primary-soft: color-mix(in srgb, var(--pbi-primary) 8%, var(--pbi-superficie));
 
   /* Papéis, para o resto do arquivo não citar cor e sim função. */
@@ -207,6 +222,23 @@
   --borda: var(--pbi-borda);
   --grade: var(--pbi-grid);
   --sem-dado: var(--pbi-neutro);
+
+  /* Os três "-texto" de selo/badge, medidos pelo `tools/tela` (Fase L2, 28/08/2026)
+     contra o `--pbi-*-bg` escuro DE VERDADE, não contra o fundo geral — mesmo
+     defeito do `--pbi-gold-600` acima, e mesma causa: cor pensada para superfície
+     clara, nunca reavaliada aqui. Piso é 4,5:1; os três têm folga. */
+  --pct-ok-bg: 12%;
+  --pct-erro-bg: 12%;
+  --pct-aviso-bg: 12%;
+  /* --pbi-gold já é o par histórico do dourado-como-letra no escuro (linha do
+     --pbi-primary-texto acima) — reaproveitado aqui em vez de um hex novo: 8,61:1
+     no fundo, 5,69:1 no aviso. */
+  --pbi-gold-600: var(--pbi-gold);
+  /* Verde e vermelho da paleta (#0E9224, #b3261e) não passam nem clareados até o
+     piso do próprio -bg escuro sem sair da família de cor — precisaram de tom
+     novo, mesmo papel: */
+  --pbi-green-texto: #10AE2B;   /* 4,64:1 no --pbi-ok-bg escuro (12%), 5,25:1 na superfície */
+  --pbi-critico-texto: #E56B64; /* 4,62:1 no --pbi-erro-bg escuro (12%), 4,88:1 na superfície */
 }
 
 * { box-sizing: border-box; }

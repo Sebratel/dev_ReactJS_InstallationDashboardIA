@@ -2,12 +2,12 @@
 
 > GERADO POR `npm run tela` — não editar à mão. Ver `docs/PLANO-LAYOUT-V1.md` §4.
 
-Gerado em 2026-08-28T17:25:27.874Z.
+Gerado em 2026-08-28T17:39:55.253Z.
 
 ## Contraste (por tema — os tokens de cor não variam por resolução)
 
-- **claro**: dourado como letra, sobre o aviso (selo/badge) (4.36:1)
-- **escuro**: dourado como letra, sobre o fundo (3.29:1); dourado como letra, sobre o aviso (selo/badge) (1.47:1); verde como letra, sobre o ok (selo/badge) (2.54:1); vermelho como letra, sobre o erro (selo/badge) (2.27:1)
+- **claro**: nenhum par abaixo de 4,5:1
+- **escuro**: nenhum par abaixo de 4,5:1
 
 ## Por página × resolução × tema
 
