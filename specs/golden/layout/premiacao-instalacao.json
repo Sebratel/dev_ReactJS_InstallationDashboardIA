@@ -1,0 +1,50 @@
+[
+  {
+    "faixa": 0,
+    "titulo": null,
+    "visual": "e42420359d507de64376",
+    "span": 6,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 0,
+    "titulo": null,
+    "visual": "50d44b50c8a7c764fda7",
+    "span": 6,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 1,
+    "titulo": null,
+    "visual": "5b536b4ab2c996794f97",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 2,
+    "titulo": null,
+    "visual": "bb2892e77821cc094c8d",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 3,
+    "titulo": null,
+    "visual": "493e6d1252b54c3061b1",
+    "span": 12,
+    "altura": "matriz",
+    "render": "pivotTable"
+  },
+  {
+    "faixa": 4,
+    "titulo": null,
+    "visual": "77ebfd004e4106f33165",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  }
+]

@@ -1,0 +1,122 @@
+[
+  {
+    "faixa": 0,
+    "titulo": "Gráficos e tendências",
+    "visual": "84a15198c1b2672c001b",
+    "span": 12,
+    "altura": "grafico",
+    "render": "lineStackedColumnComboChart"
+  },
+  {
+    "faixa": 1,
+    "titulo": null,
+    "visual": "fa2b2e6a3c02f745e8ec",
+    "span": 12,
+    "altura": "grafico",
+    "render": "hundredPercentStackedColumnChart"
+  },
+  {
+    "faixa": 2,
+    "titulo": "Análise detalhada",
+    "visual": "56e400ca747d091eb7ba",
+    "span": 3,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 2,
+    "titulo": "Análise detalhada",
+    "visual": "6ba6166050e14793b298",
+    "span": 3,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 2,
+    "titulo": "Análise detalhada",
+    "visual": "a7119bca6c0795bd7269",
+    "span": 3,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 2,
+    "titulo": "Análise detalhada",
+    "visual": "05da970602ab7c4abced",
+    "span": 3,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 3,
+    "titulo": null,
+    "visual": "ff38eddc2587e3beda21",
+    "span": 4,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 3,
+    "titulo": null,
+    "visual": "0c0223c665b34f95121e",
+    "span": 4,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 3,
+    "titulo": null,
+    "visual": "ae5871aa76bb028341c9",
+    "span": 4,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 4,
+    "titulo": null,
+    "visual": "04979b00e5329b67f349",
+    "span": 12,
+    "altura": "matriz",
+    "render": "pivotTable"
+  },
+  {
+    "faixa": 5,
+    "titulo": null,
+    "visual": "1a99bc9b51e27c00d2ba",
+    "span": 12,
+    "altura": "matriz",
+    "render": "pivotTable"
+  },
+  {
+    "faixa": 6,
+    "titulo": null,
+    "visual": "56d3352b476659cd7972",
+    "span": 12,
+    "altura": "matriz",
+    "render": "pivotTable"
+  },
+  {
+    "faixa": 7,
+    "titulo": null,
+    "visual": "e2d5549b8d6d57e1439e",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 8,
+    "titulo": null,
+    "visual": "084be384e4209a5a3674",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 9,
+    "titulo": null,
+    "visual": "815c09598bc48c8da49a",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  }
+]

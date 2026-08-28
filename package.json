@@ -44,6 +44,9 @@
     "paginas": "node --max-old-space-size=8192 tools/paginas/src/index.ts",
     "bench:carga": "node --max-old-space-size=8192 --expose-gc tools/bench/src/carga.ts",
     "paridade": "node tools/paridade/src/index.ts",
+    "layout:extrai": "node --max-old-space-size=8192 tools/layout/src/extrai.ts",
+    "layout:valida": "node tools/layout/src/valida-cli.ts",
+    "layout:golden": "node --max-old-space-size=8192 tools/layout/src/golden.ts",
     "web": "npm run dev --workspace @analytics/web",
     "web:build": "npm run build --workspace @analytics/web"
   },

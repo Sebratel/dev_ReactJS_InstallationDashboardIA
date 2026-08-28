@@ -1,6 +1,7 @@
 import type { FiltroDaTela, VisualCalculado } from '../../api.ts';
 import type { AoFiltrar } from '../../rota.ts';
 import { Visual } from '../../componentes/Visual.tsx';
+import { LIMIAR_LARGO, contaPontos, ehTabelaProntaEstreita, porPosicao } from './heuristica-grade.ts';
 
 /**
  * O corpo da página: gráficos, matrizes e detalhamento, em seções nomeadas.
@@ -39,27 +40,6 @@ function TituloSecao({ children }: { children: string }) {
     </h2>
   );
 }
-
-/** Muitas categorias pedem largura; poucas cabem lado a lado. O limiar é o ponto em que
- *  um gráfico deixa de ser "um punhado de barras" e vira uma série que precisa de espaço. */
-const LIMIAR_LARGO = 24;
-const contaPontos = (v: VisualCalculado): number =>
-  ((v.dados as { pontos?: unknown[] } | undefined)?.pontos?.length) ?? 0;
-
-/** Uma tabela de "rótulo + Qtd" tem 2–3 colunas; a de detalhe tem 12+. O piso do lado a
- *  lado é aqui: até 3 colunas cabem numa coluna estreita da grade sem cortar nada. */
-const LIMIAR_ESTREITA = 3;
-const contaColunas = (v: VisualCalculado): number =>
-  ((v.dados as { colunas?: unknown[] } | undefined)?.colunas?.length) ?? Infinity;
-const ehTabelaProntaEstreita = (v: VisualCalculado): boolean =>
-  v.conteudo === 'tabela' && !v.sobDemanda && !v.erro && contaColunas(v) <= LIMIAR_ESTREITA;
-
-/** Ordem de leitura do relatório: de cima para baixo, da esquerda para a direita. */
-const porPosicao = (a: VisualCalculado, b: VisualCalculado): number => {
-  const ay = a.posicao?.y ?? 0, by = b.posicao?.y ?? 0;
-  if (Math.abs(ay - by) > 8) return ay - by;
-  return (a.posicao?.x ?? 0) - (b.posicao?.x ?? 0);
-};
 
 export function VisualGridSection({
   pagina,

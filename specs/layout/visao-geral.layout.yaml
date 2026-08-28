@@ -1,0 +1,79 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `visao-geral` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: visao-geral
+base: specs/dashboards/visao-geral.spec.yaml
+kpis:
+  - visual: 2ce6f3783f48638594d6
+    enfase: normal
+  - visual: 3b000fe189f5f6d62a62
+    enfase: normal
+  - visual: 5eac559add4291af6196
+    enfase: normal
+  - visual: 71e5cb0109f72b45b16f
+    enfase: normal
+  - visual: cbc30d7bc7375a004eac
+    enfase: normal
+  - visual: f489778f1a41f78ed708
+    enfase: normal
+faixas:
+  - titulo: Gráficos e tendências
+    altura: grafico
+    colunas:
+      - visual: 7db40203ca467b8165c6
+        span: 4
+        render: clusteredBarChart
+      - visual: b346badbabf75059fb86
+        span: 4
+        render: barChart
+      - visual: d9713da4535926b79bd8
+        span: 4
+        render: columnChart
+  - titulo: Análise detalhada
+    altura: tabela
+    colunas:
+      - visual: 704b7bcb68fd3e17cd30
+        span: 12
+        render: tableEx
+ocultos:
+  - visual: 103b7a8ac1768abbaa22
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 23c5a9bf78b33e02db74
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 50ae0cd55f11c1931830
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 529693bd75399ddef31f
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 562fcabd15abb1c7880a
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 5a505e91ed658e6741da
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 6b2781fa1e3b89ed0626
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 6f6ee418b1b95a80e2a4
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 747e8b722a3f0684bfd4
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 775229fb200e883f93bc
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 843bcbb16b315e6a1887
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: a26c18ffd99c49e69b3b
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: b909e6c32f5fd8f54237
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: c8c7d1ae3d7a5907544c
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: ce537446fc06ac83afea
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: cfe4382c2543d1fca3e3
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: d3f5075f753555c500ed
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: df93e688d86824150aee
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+improvements: []

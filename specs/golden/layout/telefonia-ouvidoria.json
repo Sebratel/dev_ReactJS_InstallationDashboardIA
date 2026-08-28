@@ -1,0 +1,26 @@
+[
+  {
+    "faixa": 0,
+    "titulo": "Gráficos e tendências",
+    "visual": "ab7101a5e56c701ac5f7",
+    "span": 6,
+    "altura": "grafico",
+    "render": "columnChart"
+  },
+  {
+    "faixa": 0,
+    "titulo": "Gráficos e tendências",
+    "visual": "ead55782fbeeb19a0921",
+    "span": 6,
+    "altura": "grafico",
+    "render": "columnChart"
+  },
+  {
+    "faixa": 1,
+    "titulo": "Análise detalhada",
+    "visual": "e5ffac48cee4968a3737",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  }
+]

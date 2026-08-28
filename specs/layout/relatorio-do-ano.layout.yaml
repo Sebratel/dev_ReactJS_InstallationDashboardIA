@@ -1,0 +1,45 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `relatorio-do-ano` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: relatorio-do-ano
+base: specs/dashboards/relatorio-do-ano.spec.yaml
+kpis:
+  - visual: 08b3a855d0ea88074546
+    enfase: normal
+  - visual: 193ecfd32794b8820a34
+    enfase: normal
+  - visual: 410a4f77a85cc3dd51d3
+    enfase: normal
+  - visual: 5b18ee85a8688e8cc625
+    enfase: normal
+faixas:
+  - altura: grafico
+    colunas:
+      - visual: 2d498e7a60ec27af9ead
+        span: 6
+        render: lineStackedColumnComboChart
+      - visual: ea214b703c020e5c31cd
+        span: 6
+        render: clusteredBarChart
+ocultos:
+  - visual: 06a491ea04cbed19da23
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 2389e34767d010a25d0d
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 6e9773f32c0c19838e05
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 74c7edfd2c72d6cd11c6
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 8a61fe97dc1dc734183a
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 9a7fff1878546348595b
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: f52f807228d135e6a523
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: f62c068c1b563b37998a
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+improvements: []

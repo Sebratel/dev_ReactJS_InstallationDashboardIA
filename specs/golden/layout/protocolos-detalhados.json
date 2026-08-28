@@ -1,0 +1,18 @@
+[
+  {
+    "faixa": 0,
+    "titulo": null,
+    "visual": "ce6625eb09750a404bda",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 1,
+    "titulo": null,
+    "visual": "5cb978f65eb4630d78a1",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  }
+]

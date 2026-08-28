@@ -1,0 +1,50 @@
+[
+  {
+    "faixa": 0,
+    "titulo": "Gráficos e tendências",
+    "visual": "b191d2c2621275eb43b3",
+    "span": 12,
+    "altura": "grafico",
+    "render": "clusteredColumnChart"
+  },
+  {
+    "faixa": 1,
+    "titulo": null,
+    "visual": "74caae7037048fb1ad13",
+    "span": 12,
+    "altura": "grafico",
+    "render": "lineChart"
+  },
+  {
+    "faixa": 2,
+    "titulo": null,
+    "visual": "d6780942e086341bde5a",
+    "span": 12,
+    "altura": "grafico",
+    "render": "lineChart"
+  },
+  {
+    "faixa": 3,
+    "titulo": null,
+    "visual": "dbb2eba36037470ca925",
+    "span": 12,
+    "altura": "grafico",
+    "render": "lineStackedColumnComboChart"
+  },
+  {
+    "faixa": 4,
+    "titulo": "Análise detalhada",
+    "visual": "1bb5d2e4002cb4703bde",
+    "span": 12,
+    "altura": "matriz",
+    "render": "pivotTable"
+  },
+  {
+    "faixa": 5,
+    "titulo": null,
+    "visual": "381f3e30e0700e006aad",
+    "span": 12,
+    "altura": "matriz",
+    "render": "pivotTable"
+  }
+]

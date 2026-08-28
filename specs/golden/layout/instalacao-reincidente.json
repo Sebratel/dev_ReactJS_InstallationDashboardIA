@@ -1,0 +1,34 @@
+[
+  {
+    "faixa": 0,
+    "titulo": "Gráficos e tendências",
+    "visual": "af1c3777d731245dd558",
+    "span": 12,
+    "altura": "grafico",
+    "render": "lineStackedColumnComboChart"
+  },
+  {
+    "faixa": 1,
+    "titulo": "Análise detalhada",
+    "visual": "1a8f0f425eea4d91d7da",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 2,
+    "titulo": null,
+    "visual": "1bfe03ac7181a3ce2ace",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  },
+  {
+    "faixa": 3,
+    "titulo": null,
+    "visual": "d93e5f330d5c60355c53",
+    "span": 12,
+    "altura": "tabela",
+    "render": "tableEx"
+  }
+]

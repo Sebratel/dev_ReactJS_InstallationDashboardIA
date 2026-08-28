@@ -1,0 +1,18 @@
+[
+  {
+    "faixa": 0,
+    "titulo": null,
+    "visual": "2d498e7a60ec27af9ead",
+    "span": 6,
+    "altura": "grafico",
+    "render": "lineStackedColumnComboChart"
+  },
+  {
+    "faixa": 0,
+    "titulo": null,
+    "visual": "ea214b703c020e5c31cd",
+    "span": 6,
+    "altura": "grafico",
+    "render": "clusteredBarChart"
+  }
+]

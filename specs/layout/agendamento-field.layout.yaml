@@ -1,0 +1,128 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `agendamento-field` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: agendamento-field
+base: specs/dashboards/agendamento-field.spec.yaml
+kpis:
+  - visual: 116ebf72cb2018a25249
+    enfase: normal
+  - visual: 1570022d6bc4ade1da91
+    enfase: normal
+  - visual: 33b3e9120b7574d09aec
+    enfase: normal
+  - visual: 4ed2f95067a113ca4998
+    enfase: normal
+  - visual: a88b32323b8c521eace1
+    enfase: normal
+  - visual: bc2c33d2228ed29f910b
+    enfase: normal
+faixas:
+  - titulo: Gráficos e tendências
+    altura: grafico
+    colunas:
+      - visual: 84a15198c1b2672c001b
+        span: 12
+        render: lineStackedColumnComboChart
+  - altura: grafico
+    colunas:
+      - visual: fa2b2e6a3c02f745e8ec
+        span: 12
+        render: hundredPercentStackedColumnChart
+  - titulo: Análise detalhada
+    altura: tabela
+    colunas:
+      - visual: 56e400ca747d091eb7ba
+        span: 3
+        render: tableEx
+      - visual: 6ba6166050e14793b298
+        span: 3
+        render: tableEx
+      - visual: a7119bca6c0795bd7269
+        span: 3
+        render: tableEx
+      - visual: 05da970602ab7c4abced
+        span: 3
+        render: tableEx
+  - altura: tabela
+    colunas:
+      - visual: ff38eddc2587e3beda21
+        span: 4
+        render: tableEx
+      - visual: 0c0223c665b34f95121e
+        span: 4
+        render: tableEx
+      - visual: ae5871aa76bb028341c9
+        span: 4
+        render: tableEx
+  - altura: matriz
+    colunas:
+      - visual: 04979b00e5329b67f349
+        span: 12
+        render: pivotTable
+  - altura: matriz
+    colunas:
+      - visual: 1a99bc9b51e27c00d2ba
+        span: 12
+        render: pivotTable
+  - altura: matriz
+    colunas:
+      - visual: 56d3352b476659cd7972
+        span: 12
+        render: pivotTable
+  - altura: tabela
+    colunas:
+      - visual: e2d5549b8d6d57e1439e
+        span: 12
+        render: tableEx
+  - altura: tabela
+    colunas:
+      - visual: 084be384e4209a5a3674
+        span: 12
+        render: tableEx
+  - altura: tabela
+    colunas:
+      - visual: 815c09598bc48c8da49a
+        span: 12
+        render: tableEx
+ocultos:
+  - visual: 1dc987ba648f79f5596a
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 2a473e574b84005f5e0f
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 45ddf57be8d24b6d5605
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 4745d75971884e728364
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 52886158dad03a84332b
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 5aa81d52fffb190a3b23
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 65f5a09384f836a7ab25
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 670ac661701957510387
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 6ffe21030010501827da
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: ab1e84e5031aa3306102
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: d2f9f6c8a06f4afb8104
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: dde5aa90e4940ba62c04
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: e21a2a1ce6d1088b3b74
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: e7998ec512080733935f
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: e935fbbda9bc2ee0a5c1
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: ef774c82668251fc0b8e
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: f069e3f55a25859d6447
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: fb8f008029070e2adcfe
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+improvements: []
