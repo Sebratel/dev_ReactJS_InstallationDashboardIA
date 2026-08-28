@@ -1,4 +1,5 @@
-import type { FiltroDaTela, Valor, VisualCalculado } from '../../api.ts';
+import type { FiltroDaTela, VisualCalculado } from '../../api.ts';
+import type { AoFiltrar } from '../../rota.ts';
 import { Visual } from '../../componentes/Visual.tsx';
 
 /**
@@ -21,9 +22,18 @@ import { Visual } from '../../componentes/Visual.tsx';
  * A ordem dentro de cada grupo é a do Power BI (definida em `App.tsx` por `posicao`).
  * Também corrige o bug antigo em que, sem matriz, a 1ª tabela era renderizada duas vezes.
  */
+/**
+ * O rótulo de seção custa altura, e a conta de `--util` conta com ele.
+ *
+ * Tinha `mt-2 mb-1` DENTRO de um pai com `gap`: em flex a margem não colapsa, então
+ * cada rótulo cobrava 24px (14 de texto + 10 de margem) mais dois gaps de 17,5px. Dois
+ * rótulos numa página de duas faixas somavam ~118px — a diferença entre caber em
+ * 1706x1000 e rolar. Sem margem própria, quem separa é o `gap` do pai, e ele é o mesmo
+ * `--gap` que a conta de altura usa.
+ */
 function TituloSecao({ children }: { children: string }) {
   return (
-    <h2 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 dark:text-zinc-500 mt-2 mb-1 flex items-center gap-3">
+    <h2 className="text-xs font-extrabold uppercase tracking-widest text-slate-400 dark:text-zinc-500 m-0 flex items-center gap-3">
       <span>{children}</span>
       <span className="flex-1 h-px bg-slate-200 dark:bg-zinc-800" />
     </h2>
@@ -64,7 +74,7 @@ export function VisualGridSection({
   matrizes: VisualCalculado[];
   tabelasEBlocos: VisualCalculado[];
   filtros: FiltroDaTela[];
-  aoFiltrar: (tabela: string, coluna: string, valor: Valor) => void;
+  aoFiltrar: AoFiltrar;
 }) {
   const compactos = graficos.filter((v) => contaPontos(v) <= LIMIAR_LARGO);
   const largos = graficos.filter((v) => contaPontos(v) > LIMIAR_LARGO);
@@ -89,13 +99,13 @@ export function VisualGridSection({
   );
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-[var(--gap)]">
       {temGraficos && (
         <>
           {rotula && <TituloSecao>Gráficos e tendências</TituloSecao>}
           {/* Compactos lado a lado: cada um cresce para preencher, com piso confortável. */}
           {compactos.length > 0 && (
-            <div className="flex flex-wrap gap-5">
+            <div className="flex flex-wrap gap-[var(--gap)]">
               {compactos.map((v) => (
                 <div key={v.id} className="flex-1 basis-[440px] min-w-0">
                   {item(v)}
@@ -104,7 +114,7 @@ export function VisualGridSection({
             </div>
           )}
           {/* Largos (séries temporais) em largura cheia. */}
-          {largos.length > 0 && <div className="flex flex-col gap-5">{largos.map(item)}</div>}
+          {largos.length > 0 && <div className="flex flex-col gap-[var(--gap)]">{largos.map(item)}</div>}
         </>
       )}
 
@@ -113,7 +123,7 @@ export function VisualGridSection({
           {rotula && <TituloSecao>Análise detalhada</TituloSecao>}
           {/* Tabelas-resumo (rótulo + Qtd) numa linha, como no relatório original. */}
           {tabelasEstreitas.length > 0 && (
-            <div className="flex flex-wrap gap-5">
+            <div className="flex flex-wrap gap-[var(--gap)]">
               {tabelasEstreitas.map((v) => (
                 <div key={v.id} className="flex-1 basis-[300px] min-w-0">
                   {itemEstreito(v)}
@@ -123,7 +133,7 @@ export function VisualGridSection({
           )}
           {/* Matrizes e tabelas largas em largura cheia, em ordem de leitura. */}
           {emLarguraCheia.length > 0 && (
-            <div className="flex flex-col gap-5">{emLarguraCheia.map(item)}</div>
+            <div className="flex flex-col gap-[var(--gap)]">{emLarguraCheia.map(item)}</div>
           )}
         </>
       )}

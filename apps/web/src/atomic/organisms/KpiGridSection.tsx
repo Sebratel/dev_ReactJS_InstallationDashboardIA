@@ -1,4 +1,4 @@
-import type { FiltroDaTela, Valor, VisualCalculado } from '../../api.ts';
+import type { FiltroDaTela, VisualCalculado } from '../../api.ts';
 import { KpiCard } from '../molecules/KpiCard.tsx';
 
 /**
@@ -19,13 +19,12 @@ export function KpiGridSection({
   pagina?: string;
   cards: VisualCalculado[];
   filtros?: FiltroDaTela[];
-  aoFiltrar?: (tabela: string, coluna: string, valor: Valor) => void;
   idsDestaque?: ReadonlySet<string>;
 }) {
   if (cards.length === 0) return null;
 
   return (
-    <section aria-label="Indicadores" className="grid gap-4 [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
+    <section aria-label="Indicadores" className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
       {cards.map((v) => (
         <KpiCard key={v.id} visual={v} destaque={idsDestaque?.has(v.id) ?? false} />
       ))}

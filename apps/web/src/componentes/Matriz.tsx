@@ -12,8 +12,10 @@ import type { DadosDeMatriz, FiltroDaTela, VisualCalculado } from '../api.ts';
 import { ehColunaDeAno, formata, inteiro } from '../formato.ts';
 import { Cartao, Erro } from './Cartao.tsx';
 import { Paginacao } from './Paginacao.tsx';
+import { Transpor } from './icones.tsx';
 import { usaJanela } from './usaJanela.ts';
-import { tituloDoVisual } from '../rotulos.ts';
+import { tituloDeMatriz } from '../rotulos.ts';
+import { Download } from 'lucide-react';
 
 const COLUNAS_POR_JANELA = 30;
 
@@ -148,7 +150,7 @@ export function Matriz(props: {
     // ja tinham `overflow: auto` e `min-height: 0`; faltava alguem limitar a altura
     // para eles terem o que rolar. Rolagem contida pode; cartao maior que a tela nao.
     <Cartao
-      titulo={tituloDoVisual(visual)}
+      titulo={tituloDeMatriz(visual, d)}
       sub={partes.join(' · ')}
       id={visual.id}
       largo
@@ -197,15 +199,14 @@ export function Matriz(props: {
         )}
         {podeTranspor && (
           <button
-            className="secundario btn-exportar"
             onClick={() => setTransposto((t) => !t)}
             title="Alterna linhas e colunas — útil quando há muitas colunas"
           >
-            ⇄ {transposto ? 'Desfazer transposição' : 'Transpor'}
+            <Transpor /> {transposto ? 'Desfazer transposição' : 'Transpor'}
           </button>
         )}
-        <button className="secundario btn-exportar" onClick={exportarCSV} title="Exportar matriz em formato CSV">
-          📥 Exportar CSV
+        <button onClick={exportarCSV} title="Exportar matriz em formato CSV">
+          <Download size={12} /> CSV
         </button>
       </div>
       {janela.erro ? <Erro>{janela.erro}</Erro> : null}

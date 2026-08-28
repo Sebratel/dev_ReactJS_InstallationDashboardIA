@@ -9,12 +9,13 @@
 // Aqui é só geometria.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { DadosDeGrafico, Valor, VisualCalculado } from '../api.ts';
+import type { DadosDeGrafico, FiltroDaTela, VisualCalculado } from '../api.ts';
 import { formata, inteiro } from '../formato.ts';
 import { corNoTema, maiorValorDe, marcasDoEixo, montaGrafico, tetoDasAreas } from '../grafico-forma.ts';
 import { useThemeStore } from '../store/useThemeStore.ts';
 import { Cartao } from './Cartao.tsx';
 import { tituloDoVisual } from '../rotulos.ts';
+import { selecaoDe, type AoFiltrar } from '../rota.ts';
 import { usaModo } from '../modo.tsx';
 
 const FACETA = 96;
@@ -68,10 +69,23 @@ function usaCaixa(): [React.RefObject<HTMLDivElement | null>, { w: number; h: nu
 
   const medir = useCallback(() => {
     const r = ref.current?.getBoundingClientRect();
-    if (!r || r.width < 1) return;
+    // Caixa ainda não dimensionada: fica com a anterior. Medir zero apagaria o desenho.
+    if (!r || r.width < 1 || r.height < 1) return;
     setCaixa((antes) => {
       const w = Math.floor(r.width);
-      const h = Math.max(Math.floor(r.height), 160);
+      // A ALTURA É A DA CAIXA, SEM PISO — e aqui havia um, de 160px.
+      //
+      // O cabeçalho do `.caixa-grafico` no CSS diz, com todas as letras, que piso
+      // acima da caixa faz o `<svg>` transbordar. Esta linha era esse piso, uma
+      // camada acima: quando o corpo do card sobrava menos de 160px para o desenho,
+      // a medida MENTIA 160 e o `<svg>` saía maior que a caixa que o contém, cortado
+      // pelo `overflow: hidden` dela — sem erro, sem rolagem, sem nada acusando.
+      //
+      // Medido em 27/08/2026 no RELATÓRIO DO ANO a 1366x768: card de 273px em que a
+      // legenda e dois avisos comem 164px, caixa real de **109px**, `<svg>` desenhado
+      // com **160px**. Aparecia só em 1366 e 1440 — nas telas altas a caixa passava
+      // dos 160 e o piso nunca pegava.
+      const h = Math.floor(r.height);
       return antes.w === w && antes.h === h ? antes : { w, h };
     });
   }, []);
@@ -88,6 +102,11 @@ function usaCaixa(): [React.RefObject<HTMLDivElement | null>, { w: number; h: nu
   useLayoutEffect(medir);
   useEffect(() => {
     window.addEventListener('resize', medir);
+    // E quando a fonte chega: a legenda troca de largura, quebra em outro número de
+    // linhas e a caixa encolhe — sem render de React nenhum para disparar a remedida.
+    // Mesmo defeito que deixava `--h-nav` 30px otimista (ver `altura-medida.ts`).
+    const fontes = (document as Document & { fonts?: FontFaceSet }).fonts;
+    if (fontes !== undefined) void fontes.ready.then(() => medir());
     return () => window.removeEventListener('resize', medir);
   }, [medir]);
 
@@ -97,9 +116,11 @@ function usaCaixa(): [React.RefObject<HTMLDivElement | null>, { w: number; h: nu
 export function Grafico({
   visual,
   aoFiltrar,
+  filtros,
 }: {
   visual: VisualCalculado;
-  aoFiltrar?: (tabela: string, coluna: string, valor: Valor) => void;
+  aoFiltrar?: AoFiltrar;
+  filtros?: readonly FiltroDaTela[];
 }) {
   const { conferencia } = usaModo();
   const { isDark } = useThemeStore();
@@ -156,10 +177,14 @@ export function Grafico({
   // A altura é EXATAMENTE a da caixa, sem piso: piso acima dela faz o `<svg>`
   // transbordar e devolve a rolagem, agora vertical. Quem cede é a margem de
   // baixo, não o tamanho do desenho.
-  const alturaSvg = Math.max(120, caixa.h);
+  // E aqui havia o SEGUNDO piso, de 120px, contradizendo o comentário logo acima.
+  // Somados aos 160 de `usaCaixa`, eram dois números que garantiam o transbordo em vez
+  // de evitá-lo. Sem piso nenhum, `topo + plot + base` fecha EXATAMENTE em `alturaSvg`:
+  // `base` é no máximo 30% do espaço, então o que sobra para o plot é sempre positivo.
+  const alturaSvg = caixa.h;
   const espacoAbaixoDoTopo = alturaSvg - MARGEM.topo - (naFaceta ? FACETA : 0);
   const base = Math.max(18, Math.min(MARGEM.base, Math.round(espacoAbaixoDoTopo * 0.3)));
-  const alturaDoPlot = Math.max(48, espacoAbaixoDoTopo - base);
+  const alturaDoPlot = Math.max(1, espacoAbaixoDoTopo - base);
   /** Rótulo girado a 45° só cabe se a margem de baixo der ~34px. */
   const cabemRotulos = base >= 34;
   const banda = nCat > 0 ? larguraDoPlot / nCat : larguraDoPlot;
@@ -188,15 +213,86 @@ export function Grafico({
   const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda - 10));
   const larguraDaFatia = g.empilha ? larguraDaMarca : Math.max(3, (larguraDaMarca - VAO * (areas.length - 1)) / Math.max(areas.length, 1));
 
-  const chavesArray = (d.chaves ?? []) as { papel?: string; tabela?: string; coluna?: string; nome?: string }[];
+  const chavesArray = (d.chaves ?? []) as {
+    papel?: string;
+    tabela?: string;
+    coluna?: string;
+    nivel?: string | null;
+    nome?: string;
+  }[];
+
+  /**
+   * O clique manda a CATEGORIA INTEIRA, um alvo por chave de eixo.
+   *
+   * A ordem casa porque as duas listas saem do mesmo filtro: `grafico-forma.ts` monta
+   * `iEixo` filtrando `chaves` por papel e projeta `categorias[].valores` por esse
+   * mesmo `iEixo` (linhas 199 e 214 de lá). Posição a posição, `chavesDeEixo[k]`
+   * descreve `valores[k]`.
+   *
+   * Antes daqui saía UM par, da primeira chave e do primeiro valor — numa hierarquia
+   * de data isso virava `Data = 2026` sem nível, com a barra significando um dia. Ver
+   * `AlvoDeFiltro` em `rota.ts` para o estrago que isso fazia na tela.
+   *
+   * Valor nulo sai da lista: `(vazio)` não é valor de banco, e filtrar por ele
+   * devolveria tela vazia. Se a categoria inteira for nula não sobra alvo e o clique
+   * não faz nada — que é o certo para um rótulo-sentinela.
+   */
+  const alvosDa = (i: number) => {
+    const chavesDeEixo = chavesArray.filter((c) => (c.papel ?? 'Category') === 'Category');
+    const valores = g.categorias[i]?.valores ?? [];
+    return chavesDeEixo
+      .map((c, k) => ({
+        tabela: c.tabela ?? '',
+        coluna: c.coluna ?? '',
+        ...(c.nivel ? { nivel: c.nivel } : {}),
+        valor: valores[k] ?? null,
+      }))
+      .filter((a) => a.tabela !== '' && a.coluna !== '' && a.valor !== null);
+  };
+
+  /**
+   * CURSOR DE MÃO SÓ ONDE O CLIQUE FILTRA — e ele não estava em lugar nenhum.
+   *
+   * `.col-grupo` tinha `onClick` e nenhuma regra de `cursor`: medido em 28/08/2026,
+   * zero elementos com cursor de mão no `<svg>`. O gráfico inteiro era clicável em
+   * silêncio, e a barra que NÃO filtra (categoria nula, eixo sem tabela) parecia igual
+   * à que filtra. Promessa falsa nos dois sentidos.
+   */
+  const podeClicar = (i: number) => aoFiltrar !== undefined && alvosDa(i).length > 0;
+
+  /**
+   * O QUE ESTÁ SELECIONADO NO EIXO — e por que o gráfico precisa saber disto.
+   *
+   * Com a auto-exclusão do servidor, o visual clicado volta com TODAS as categorias:
+   * é o que faz clicar em SÃO LEOPOLDO manter as outras cidades na tela, em vez de
+   * deixar uma barra só e matar a comparação que motivou o clique. Mas aí o clique
+   * não teria efeito VISÍVEL nenhum — a mesma tela de antes. Quem carrega o recorte
+   * é o destaque: a selecionada fica cheia, as outras esmaecem.
+   *
+   * `null` num nível significa "sem filtro nele", e aí ele não restringe nada. Sem
+   * filtro em nenhum nível do eixo, `haSelecao` é falso e nada esmaece — tela sem
+   * clique é tela normal.
+   */
+  const selecaoDoEixo = chavesArray
+    .filter((c) => (c.papel ?? 'Category') === 'Category')
+    .map((c) => {
+      if (!filtros || !c.tabela || !c.coluna) return null;
+      const sel = selecaoDe(filtros, c.tabela, c.coluna, c.nivel ?? undefined);
+      return sel.length > 0 ? sel : null;
+    });
+  const haSelecao = selecaoDoEixo.some((s) => s !== null);
+
+  const estaSelecionada = (i: number) => {
+    const valores = g.categorias[i]?.valores ?? [];
+    return selecaoDoEixo.every(
+      (sel, k) => sel === null || sel.some((v) => Object.is(v, valores[k] ?? null)),
+    );
+  };
+
   const clica = (i: number) => {
-    const chaveDeEixo = chavesArray.find((c) => (c.papel ?? 'Category') === 'Category');
-    const valor = g.categorias[i]?.valores[0];
-    if (aoFiltrar && chaveDeEixo && valor !== undefined) {
-      const tabela = chaveDeEixo.tabela ?? '';
-      const coluna = chaveDeEixo.coluna ?? '';
-      aoFiltrar(tabela, coluna, valor);
-    }
+    if (!aoFiltrar) return;
+    const alvos = alvosDa(i);
+    if (alvos.length > 0) aoFiltrar(alvos);
   };
 
   const sub = conferencia
@@ -377,7 +473,11 @@ export function Grafico({
             return (
               <g
                 key={i}
-                className="col-grupo"
+                className={
+                  'col-grupo' +
+                  (podeClicar(i) ? ' clicavel' : '') +
+                  (haSelecao && !estaSelecionada(i) ? ' apagada' : '')
+                }
                 onClick={() => clica(i)}
                 onMouseEnter={() => setSob(i)}
                 onMouseLeave={() => setSob(null)}

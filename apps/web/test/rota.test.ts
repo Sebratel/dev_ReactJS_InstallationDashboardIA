@@ -3,7 +3,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { urlDaPagina, urlDeValores, type FiltroDaTela } from '../src/api.ts';
-import { aplicaSelecao, escreveRota, leRota, selecaoDe } from '../src/rota.ts';
+import {
+  alternaAlvos,
+  aplicaSelecao,
+  escreveRota,
+  leRota,
+  selecaoDe,
+  type AlvoDeFiltro,
+} from '../src/rota.ts';
 
 const equipe: FiltroDaTela = {
   tabela: 'PROTOCOLOS GERAL',
@@ -99,4 +106,94 @@ test('o filtro da URL da tela é idêntico ao do pedido à API', () => {
   const daTela = new URLSearchParams(escreveRota('visao-geral', [equipe])).getAll('filtro');
   const doPedido = new URLSearchParams(urlDaPagina('visao-geral', [equipe]).split('?')[1]).getAll('filtro');
   assert.deepEqual(daTela, doPedido);
+});
+
+/* ========================================================= o clique num visual */
+
+/** A hierarquia de data da AGENDAMENTO FIELD, como a API a devolve. */
+const dia26: AlvoDeFiltro[] = [
+  { tabela: 'calendar', coluna: 'Data', nivel: 'Ano', valor: 2026 },
+  { tabela: 'calendar', coluna: 'Data', nivel: 'Mês', valor: 'agosto' },
+  { tabela: 'calendar', coluna: 'Data', nivel: 'Dia', valor: 26 },
+];
+
+/** O que a página abre travada: último mês fechado. */
+const padrao: FiltroDaTela[] = [
+  { tabela: 'calendar', coluna: 'Data', nivel: 'Ano', valores: [2026] },
+  { tabela: 'calendar', coluna: 'Data', nivel: 'Mês', valores: ['julho'] },
+];
+
+/**
+ * **O defeito de 28/08/2026, guardado.**
+ *
+ * O clique mandava a primeira chave de eixo com o primeiro valor da tupla: a barra do
+ * dia 26 escrevia `Data = 2026` SEM NÍVEL. Como o nível entra na identidade do filtro,
+ * isso não substituía o `Mês` que já valia — somava um terceiro filtro sobre a mesma
+ * coluna, e o cruzamento não casava com linha nenhuma. Os 15 cards da página exibiam
+ * "Nenhuma linha para os filtros atuais".
+ *
+ * O que este teste exige é que TODO alvo chegue com o seu nível, e que o mês novo
+ * SUBSTITUA o antigo em vez de conviver com ele.
+ */
+test('o clique aplica a tupla inteira, um filtro por nível', () => {
+  const depois = alternaAlvos(padrao, dia26, padrao);
+
+  assert.equal(depois.length, 3, 'saiu um filtro por nível da hierarquia');
+  assert.deepEqual(selecaoDe(depois, 'calendar', 'Data', 'Ano'), [2026]);
+  assert.deepEqual(selecaoDe(depois, 'calendar', 'Data', 'Mês'), ['agosto']);
+  assert.deepEqual(selecaoDe(depois, 'calendar', 'Data', 'Dia'), [26]);
+
+  assert.deepEqual(
+    selecaoDe(depois, 'calendar', 'Data'),
+    [],
+    'nenhum filtro sem nível: era ele que cruzava com os outros e esvaziava a tela',
+  );
+});
+
+/**
+ * O segundo clique na mesma marca desfaz — e para no PADRÃO da página, não além dele.
+ *
+ * Devolver a tela para "sem filtro nenhum" alargaria o recorte para além do ponto de
+ * partida: a página abre travada no último mês fechado, e sair do clique para a base
+ * inteira é mais do que a pessoa pediu ao desfazer.
+ */
+test('clicar de novo na mesma marca volta ao padrão da página', () => {
+  const filtrado = alternaAlvos(padrao, dia26, padrao);
+  const desfeito = alternaAlvos(filtrado, dia26, padrao);
+
+  assert.deepEqual(selecaoDe(desfeito, 'calendar', 'Data', 'Dia'), [], 'o Dia saiu');
+  assert.deepEqual(selecaoDe(desfeito, 'calendar', 'Data', 'Mês'), ['julho'], 'o mês padrão voltou');
+  assert.deepEqual(selecaoDe(desfeito, 'calendar', 'Data', 'Ano'), [2026]);
+});
+
+/** Alternar só desfaz quando a tupla vale INTEIRA — meia seleção é um clique novo. */
+test('tupla parcialmente aplicada é aplicada, não desfeita', () => {
+  const soOAno: FiltroDaTela[] = [
+    { tabela: 'calendar', coluna: 'Data', nivel: 'Ano', valores: [2026] },
+  ];
+  const depois = alternaAlvos(soOAno, dia26, padrao);
+  assert.deepEqual(selecaoDe(depois, 'calendar', 'Data', 'Dia'), [26]);
+});
+
+/** Desfazer não mexe em filtro de OUTRA coluna: ele não é assunto deste clique. */
+test('desfazer preserva o filtro de outra coluna', () => {
+  const comEquipe = [...padrao, equipe];
+  const filtrado = alternaAlvos(comEquipe, dia26, padrao);
+  const desfeito = alternaAlvos(filtrado, dia26, padrao);
+  assert.deepEqual(
+    selecaoDe(desfeito, equipe.tabela, equipe.coluna),
+    equipe.valores,
+    'a seleção de EQUIPE veio de um slicer e sobrevive ao desfazer do clique',
+  );
+});
+
+/** O estado que o clique produz tem de sobreviver à ida e volta pela URL. */
+test('o recorte de um clique sobrevive ao link compartilhado', () => {
+  const depois = alternaAlvos(padrao, dia26, padrao);
+  const lida = leRota(escreveRota('agendamento-field', depois));
+  assert.deepEqual(lida.invalidos, []);
+  assert.deepEqual(
+    [...lida.filtros].sort((a, b) => (a.nivel ?? '').localeCompare(b.nivel ?? '')),
+    [...depois].sort((a, b) => (a.nivel ?? '').localeCompare(b.nivel ?? '')),
+  );
 });

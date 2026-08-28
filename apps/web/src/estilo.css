@@ -147,23 +147,42 @@
   --h-topbar: 52px;
   --h-nav: 64px;
   --h-filtros: 50px;
+  --h-antes: 0px;
+  --h-entre: 0px;
   --gap: 10px;
-  /* Os 60px são o RESTO DO CROMO, e o número é medido, não arredondado:
-       rodapé ................. 32px  (8px de padding em cima e embaixo + linha + borda)
-       padding de `.area` ..... 28px  (12 em cima, 16 embaixo)
-                                ----
-                                60px
-     Aqui estava **34px**, descrito como "cobre paddings e bordas" — um palpite que
-     esquecia o rodapé inteiro. Somado ao `--h-filtros` fixo em 50px contra 71px
-     reais, `--util` saía **26px otimista em toda resolução**, e otimismo aqui é card
-     mais alto do que cabe. Medido em 27/08/2026 em 1366x768, 1440x900 e 1920x1080:
-     o cromo real deu 257px nas três, contra os 231px que esta conta declarava.
+  /* O QUE `--util` PRECISA DESCONTAR, e o erro que esta conta cometia.
 
-     `--h-nav` e `--h-filtros` NÃO são estes valores em tempo de execução: a tela mede
-     as duas faixas e reescreve os tokens (`altura-medida.ts`). O que está aqui é só o
+     Até 27/08 ela somava topo + nav + filtros + 60px de rodapé e padding. Estava
+     certa no que citava e **cega para o que a página põe entre a barra de filtros e
+     o primeiro visual**: a faixa de indicadores e o título de seção. Medido no
+     navegador em 27/08/2026, esse "antes" vale, do topo do conteúdo da `.area` até
+     o primeiro card:
+
+       visao-geral / agendamento-field ....... 199px   (filtros 71 + KPIs 61 + título)
+       manutencao-inicial .................... 269px   (filtros 71 + KPIs 131)
+       relatorio-do-mes ...................... 300px   (KPIs em 3 linhas: 202px)
+
+     Ou seja: a conta prometia 643px de área útil em 1440x900 e a primeira faixa de
+     card só começava com 444px de tela pela frente. Duas faixas NUNCA caberiam, não
+     por causa do piso, mas porque a conta media a tela errada.
+
+     Por isso o termo é UM só e é MEDIDO: `--h-antes` é a distância do topo do
+     conteúdo da `.area` até o topo do primeiro visual, publicada pela tela
+     (`altura-medida.ts`). Ela já inclui a barra de filtros, o aviso de URL, a faixa
+     do modo conferência, os indicadores, o título de seção e todos os gaps entre
+     eles — some qualquer um e o número cai sozinho, sem ninguém lembrar de mexer
+     aqui. `--h-filtros` continua existindo para o `min-height` e o `top` da própria
+     barra, e SAIU do cromo: contá-lo aqui e dentro do `--h-antes` seria descontar
+     a mesma faixa duas vezes.
+
+     Os 52px restantes são o que fica FORA da `.area`, e o número é medido:
+       rodapé ................. 32px  (8px de padding em cima e embaixo + borda)
+       padding de `.area` ..... 20px  (8 em cima, 12 embaixo)
+
+     `--h-nav` também é medido em tempo de execução — o valor no `:root` é só o
      chão, para o primeiro quadro não sair absurdo. */
-  --chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 60px);
-  --util: calc(100vh - var(--chrome));
+  --chrome: calc(var(--h-topbar) + var(--h-nav) + 50px);
+  --util: calc(100vh - var(--chrome) - var(--h-antes) - var(--h-entre));
 }
 
 /* Escuro: só os tokens mudam. Nenhuma regra abaixo tem variante própria de cor —
@@ -192,9 +211,33 @@
 
 * { box-sizing: border-box; }
 html, body, #raiz { height: 100%; }
+
+/* ---------------------------------------------------------------------------
+   A RÉGUA DA DENSIDADE: 14px, e não os 16px que o navegador assume.
+
+   Quase todo tamanho desta tela é `rem` — os deste arquivo e também as utilidades
+   do Tailwind (`text-xs`, `gap-5`, `mt-2` saem de `rem`). A raiz é, por isso, o
+   único lugar em que a densidade da tela inteira se ajusta de uma vez, sem `zoom`
+   e sem reescrever componente por componente. 14/16 = 0,875 tira 12,5% de tudo
+   que é rem.
+
+   POR QUE MEXER, e a medida é de 27/08/2026: com a raiz em 16px, AGENDAMENTO
+   FIELD media 5.506px de página para 1.000 de tela (5,5 telas) e VISÃO GERAL
+   1.186px para 1.000. A altura é o recurso escasso desta tela, e o cromo já
+   custava 257px antes do primeiro card.
+
+   POR QUE 14 E NÃO 13: o menor texto de dado é o rótulo de eixo, e ele NÃO é rem
+   — `.tick` é 10px fixo, de propósito, para o eixo não afinar junto. O que a
+   régua encolhe é rótulo de interface (aba, cabeçalho de tabela, nome de KPI), e
+   a 13px eles caem abaixo de 8,5px. A máquina da operação roda Windows a 150%
+   num 2560x1600 — o viewport é ~1706x1000 e cada px CSS vira 1,5 físico —, mas
+   quem abre num notebook 1366 a 100% vê o número CSS, e é ele que manda no piso.
+   --------------------------------------------------------------------------- */
+html { font-size: 14px; }
+
 body {
   margin: 0; background: var(--fundo); color: var(--texto);
-  font-family: var(--font); font-size: 13px;
+  font-family: var(--font); font-size: .86rem;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -316,7 +359,7 @@ body {
 
 /* ================================================================ área/grade */
 
-.area { padding: 12px 16px 16px; display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
+.area { padding: 8px 12px 12px; display: flex; flex-direction: column; gap: var(--gap); min-width: 0; }
 
 .grid { display: grid; gap: var(--gap); }
 .linha-principal { grid-template-columns: minmax(360px, 64fr) minmax(148px, 13fr) minmax(230px, 23fr); }
@@ -370,9 +413,9 @@ body {
    onde o eixo girado a 45 graus ainda cabe. Eu cheguei a pôr 330 sem conta nenhuma,
    e depois 309 derivando de 1440x900 com o cromo ERRADO (231px) — as duas contas
    estavam furadas pelo mesmo motivo: `--h-filtros` mentia. */
-.v-grafico, .cartao.v-grafico { height: clamp(309px, calc((var(--util) - var(--gap)) * 0.455), 430px); }
-.v-tabela,  .cartao.v-tabela  { height: clamp(280px, calc((var(--util) - var(--gap)) * 0.545), 500px); }
-.v-meia,    .cartao.v-meia    { height: clamp(255px, calc((var(--util) - var(--gap)) * 0.5),   440px); }
+.v-grafico, .cartao.v-grafico { height: clamp(273px, calc(var(--util) * 0.455), 430px); }
+.v-tabela,  .cartao.v-tabela  { height: clamp(280px, calc(var(--util) * 0.545), 500px); }
+.v-meia,    .cartao.v-meia    { height: clamp(255px, calc(var(--util) * 0.5),   440px); }
 .v-matriz,  .cartao.v-matriz  { height: clamp(360px, var(--util), 900px); }
 .v-auto,    .cartao.v-auto    { height: auto; }
 
@@ -413,6 +456,11 @@ body {
   background: transparent; border-color: var(--pbi-sobre-primary-fraco); color: var(--pbi-sobre-primary);
   padding: 2px 8px; font-size: .68rem; border-radius: 2px;
 }
+/* O ícone é irmão do texto, e a linha de base não os alinha: um SVG inline assenta
+   sobre a base da letra e desce a caixa do botão. Como estes botões vivem no cabeçalho
+   colorido, cada pixel de altura extra empurra o corpo do card — que é justamente a
+   altura que `--util` já disputa. `inline-flex` centraliza os dois pelo meio. */
+.cartao-acoes button { display: inline-flex; align-items: center; gap: 4px; }
 .cartao-acoes button:hover { background: var(--pbi-primary-dark); }
 .cartao-acoes input::placeholder { color: var(--pbi-sobre-primary-fraco); }
 .cartao-corpo {
@@ -503,11 +551,21 @@ button:disabled { opacity: .55; cursor: default; }
 /* Barra de filtros em uma linha de botões, não seis cartões de slicer: numa tela
    em que a altura é o recurso escasso, a diferença é uma faixa inteira de gráfico. */
 
+/* A BARRA DE FILTROS GRUDA ABAIXO DA NAVEGAÇÃO, e o `top` tem de dizer isso.
+
+   Ela estava com `top: var(--h-topbar)` — herança da casca antiga, em que a
+   navegação era LATERAL e não havia faixa entre o topo e o conteúdo. Com a nav no
+   topo, medido em 27/08/2026 na AGENDAMENTO FIELD a 1440x900: rolando 400px, a
+   barra grudava em 52..123 e a nav ocupava 52..126, com `z-index` 25 contra 15 —
+   a barra de filtros ficava INTEIRA atrás da navegação, e sumia da tela nos 4,5
+   telas seguintes de rolagem. "Filtro que não aparece na tela é recorte invisível"
+   é a regra da §4 do DESIGN-SYSTEM, e ela estava sendo quebrada pelo próprio
+   cromo. */
 .filtros {
   min-height: var(--h-filtros);
   background: var(--superficie); border-bottom: 1px solid var(--borda);
   padding: 0 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-  position: sticky; top: var(--h-topbar); z-index: 15;
+  position: sticky; top: calc(var(--h-topbar) + var(--h-nav)); z-index: 15;
 }
 .filtro { position: relative; min-width: 150px; display: flex; align-items: center; gap: 6px; }
 .filtro-rotulo {
@@ -721,6 +779,15 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
 .rotulo-x.sob { fill: var(--texto); font-weight: 800; }
 .banda { fill: transparent; }
 .banda.sob { fill: var(--pbi-primary-soft); }
+/* Cursor de mão SÓ na marca que filtra. Ver `podeClicar` no `Grafico.tsx`: a barra de
+   categoria nula não vira filtro, e prometer o clique nela seria o mesmo defeito do
+   paginador que anuncia um total que não entrega. */
+.col-grupo.clicavel { cursor: pointer; }
+/* A categoria fora do recorte ESMAECE, não some: com a auto-exclusão o visual clicado
+   volta com todas as categorias, e é este contraste que mostra qual delas está valendo.
+   Ver `estaSelecionada` no `Grafico.tsx`. 0,32 mantém a barra legível como referência
+   de comparação sem competir com a selecionada. */
+.col-grupo.apagada { opacity: .32; }
 .linha-serie { fill: none; stroke-width: 2px; stroke-linecap: round; stroke-linejoin: round; }
 .ponto-serie { stroke: var(--superficie); stroke-width: 2px; }
 /* Valor e rótulo em tinta, nunca na cor da série. */

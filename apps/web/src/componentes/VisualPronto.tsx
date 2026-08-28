@@ -1,6 +1,7 @@
 // Um visual que já tem número: escolhe o desenho pelo `conteudo` que a API declarou.
 
-import type { FiltroDaTela, Valor, VisualCalculado } from '../api.ts';
+import type { FiltroDaTela, VisualCalculado } from '../api.ts';
+import type { AoFiltrar } from '../rota.ts';
 import { Card } from './Card.tsx';
 import { Cartao, Erro, alturaDoConteudo } from './Cartao.tsx';
 import { Grafico } from './Grafico.tsx';
@@ -16,7 +17,7 @@ export function VisualPronto({
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
-  aoFiltrar?: (tabela: string, coluna: string, valor: Valor) => void;
+  aoFiltrar?: AoFiltrar;
   tabelaEstreita?: boolean;
 }) {
   if (visual.erro) {
@@ -34,7 +35,9 @@ export function VisualPronto({
   if (visual.conteudo === 'matriz') {
     return <Matriz pagina={pagina} visual={visual} filtros={filtros} />;
   }
-  if (visual.conteudo === 'grafico') return <Grafico visual={visual} aoFiltrar={aoFiltrar} />;
+  if (visual.conteudo === 'grafico') {
+    return <Grafico visual={visual} aoFiltrar={aoFiltrar} filtros={filtros} />;
+  }
 
   return null;
 }

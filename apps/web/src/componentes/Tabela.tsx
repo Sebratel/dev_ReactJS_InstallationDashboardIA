@@ -12,7 +12,7 @@ import { Cartao, Erro } from './Cartao.tsx';
 import { Paginacao } from './Paginacao.tsx';
 import { SetaDeOrdem } from './icones.tsx';
 import { usaJanela } from './usaJanela.ts';
-import { tituloDoVisual } from '../rotulos.ts';
+import { tituloDeTabela } from '../rotulos.ts';
 import { Download } from 'lucide-react';
 import { janelaDeServidorPara, LINHAS_VISIVEIS } from '../janela.ts';
 
@@ -218,7 +218,7 @@ export function Tabela(props: {
 
   return (
     <Cartao
-      titulo={tituloDoVisual(props.visual)}
+      titulo={tituloDeTabela(props.visual, d.colunas)}
       id={props.visual.id}
       largo
       altura="tabela"

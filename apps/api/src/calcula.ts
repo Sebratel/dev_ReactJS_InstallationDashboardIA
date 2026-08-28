@@ -24,7 +24,8 @@ import {
   calculaTabela,
   TIPOS_DE_GRAFICO,
 } from '../../../packages/widget-engine/src/index.ts';
-import type { DashboardSpec, VisualSpec } from '../../../packages/widget-engine/src/spec.ts';
+import type { DashboardSpec, FiltroSpec, VisualSpec } from '../../../packages/widget-engine/src/spec.ts';
+import { TIPO_DE_TELA } from '../../../packages/widget-engine/src/filtro-url.ts';
 import type { Evaluator } from '../../../packages/measure-engine/src/evaluator.ts';
 import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
 
@@ -309,6 +310,8 @@ export function calculaPagina(
   janela: Janela = { de: 0, linhas: LINHAS_PADRAO },
   aoTerminar?: AoTerminarVisual,
   memo?: MemoDeCompletos,
+  /** As colunas cujo filtro nasceu de clique. Ver `filtrosDoVisual`. */
+  clicados: readonly { tabela: string; coluna: string }[] = [],
 ): PaginaCalculada {
   const inicio = Date.now();
   const visuais: VisualCalculado[] = [];
@@ -356,7 +359,12 @@ export function calculaPagina(
     }
 
     try {
-      base.dados = dadosDo(conteudo, dash, v, ev, janela, memo);
+      // Cada visual vê os filtros da página MENOS os campos que ele próprio desenha e
+      // que vieram de clique — ver `filtrosDoVisual`. Sem clique, é o mesmo `dash`.
+      const filtrosAqui = filtrosDoVisual(dash.filters ?? [], v, clicados);
+      const dashAqui =
+        filtrosAqui === dash.filters ? dash : { ...dash, filters: [...filtrosAqui] };
+      base.dados = dadosDo(conteudo, dashAqui, v, ev, janela, memo);
       calculados++;
     } catch (err) {
       falharam++;
@@ -380,6 +388,64 @@ export function calculaPagina(
     resumo: { calculados, falharam, semCalculo },
     ms: Date.now() - inicio,
   };
+}
+
+/**
+ * AUTO-EXCLUSÃO: o visual que MOSTRA um campo é calculado sem o filtro daquele campo.
+ *
+ * **O que ela conserta.** Sem isto, clicar em SÃO LEOPOLDO no gráfico de cidades
+ * deixa uma barra só — e some justamente a comparação que motivou o clique. Medido em
+ * 28/08/2026 na VISÃO GERAL: o gráfico "TOTAL por CIDADE" caía de 6 categorias para 1.
+ * O visual clicado tem de DESTACAR, não colapsar.
+ *
+ * **Só o que veio de CLIQUE se auto-exclui**, e essa distinção é o coração da função.
+ * Um seletor filtra tudo, inclusive o visual que desenha aquela coluna — é assim no
+ * Power BI e é o que a pessoa espera do controle que ela mesma abriu. Se a regra fosse
+ * "todo filtro da tela se auto-exclui", o gráfico por Data Ano passaria a ignorar o
+ * seletor de período e mostraria a base inteira — mais lento e simplesmente errado.
+ * Por isso a lista `clicados` viaja em parâmetro próprio (`?clicado=`), separada dos
+ * `?filtro=`.
+ *
+ * **"Mostra" quer dizer campo não-medida**: eixo, série, linha ou coluna de matriz. Uma
+ * medida sobre a coluna não conta — `COUNT(cidade)` não desenha cidade nenhuma, e
+ * excluir o filtro ali daria um número do universo inteiro num card que se diz filtrado.
+ *
+ * **Custo zero sem clique**: com `clicados` vazio a função devolve a mesma referência de
+ * filtros que entrou, e nenhum visual paga nada.
+ */
+function filtrosDoVisual(
+  filtros: readonly FiltroSpec[],
+  v: VisualSpec,
+  clicados: readonly { tabela: string; coluna: string }[],
+): readonly FiltroSpec[] {
+  if (clicados.length === 0) return filtros;
+
+  const mostrados = new Set<string>();
+  for (const c of v.fields ?? []) {
+    if (c.kind === 'measure' || !c.entity || !c.property) continue;
+    mostrados.add(`${c.entity}
+${c.property}`);
+  }
+  if (mostrados.size === 0) return filtros;
+
+  const excluir = new Set(
+    clicados
+      .filter((c) => mostrados.has(`${c.tabela}
+${c.coluna}`))
+      .map((c) => `${c.tabela}
+${c.coluna}`),
+  );
+  if (excluir.size === 0) return filtros;
+
+  // SÓ O FILTRO VINDO DA TELA sai. Um filtro da spec do relatório sobre a mesma coluna
+  // é desenho do relatório, não escolha de quem está explorando — no Power BI o filtro
+  // de página recorta o visual inclusive quando ele desenha aquele campo. Descartá-lo
+  // aqui mostraria, num único visual, um universo maior do que o da página inteira.
+  // `TIPO_DE_TELA` é o marcador que `filtro-url.ts` já carimba em tudo que veio de `?filtro=`.
+  return filtros.filter(
+    (f) => f.type !== TIPO_DE_TELA || !excluir.has(`${f.entity ?? ''}
+${f.property ?? ''}`),
+  );
 }
 
 /**

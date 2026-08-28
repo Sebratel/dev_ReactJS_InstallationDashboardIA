@@ -152,8 +152,11 @@ test('o piso do gráfico não vence a fração ideal em 1920x1080', () => {
  * decide em quais monitores a tela de duas faixas rola. Se ele se mover sem o
  * documento se mover junto, é o começo do problema que a seção 0 daquele arquivo
  * descreve.
+ *
+ * A faixa era 900–1000 (~950px). Em 28/08/2026 o piso do gráfico caiu de 309 para
+ * 273px e a fronteira foi para 867px — `DESIGN-SYSTEM.md` §3 foi remedido junto.
  */
-test('a fronteira em que o piso passa a vencer fica em ~950px de janela', () => {
+test('a fronteira em que o piso passa a vencer fica em ~867px de janela', () => {
   const r = regra('grafico');
   const piso = numero(r, /clamp\((\d+)px/, 'o piso do gráfico');
   const fracao = numero(r, /\*\s*(0?\.\d+)\)/, 'a fração do gráfico');
@@ -161,9 +164,9 @@ test('a fronteira em que o piso passa a vencer fica em ~950px de janela', () => 
   const vh = Math.ceil(piso / fracao + token('gap')) + cromo();
 
   assert.ok(
-    vh >= 900 && vh <= 1000,
+    vh >= 820 && vh <= 920,
     'a fronteira foi para ' + vh + 'px de altura de janela; o DESIGN-SYSTEM §3 diz ' +
-      '~950. Mova o documento junto, ou o próximo a ler acredita no número velho',
+      '~867. Mova o documento junto, ou o próximo a ler acredita no número velho',
   );
 });
 

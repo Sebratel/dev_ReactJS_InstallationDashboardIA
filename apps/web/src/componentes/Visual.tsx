@@ -1,6 +1,7 @@
 // Um visual da página: pronto, ou sob demanda.
 
-import type { FiltroDaTela, Valor, VisualCalculado } from '../api.ts';
+import type { FiltroDaTela, VisualCalculado } from '../api.ts';
+import type { AoFiltrar } from '../rota.ts';
 import { SobDemanda } from './SobDemanda.tsx';
 import { VisualPronto } from './VisualPronto.tsx';
 
@@ -8,7 +9,7 @@ export function Visual(props: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
-  aoFiltrar?: (tabela: string, coluna: string, valor: Valor) => void;
+  aoFiltrar?: AoFiltrar;
   tabelaEstreita?: boolean;
 }) {
   if (props.visual.sobDemanda) {

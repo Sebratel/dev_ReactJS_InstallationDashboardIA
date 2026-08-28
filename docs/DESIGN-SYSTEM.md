@@ -287,10 +287,24 @@ de 8 e é pior que os **10,6** de hoje. A ordem da pilha (`Inconclusivo` entre o
 
 Altura de card **nunca** é pixel chutado: é fração da área útil.
 
+> **Atualizado em 28/08/2026.** `--h-filtros` saiu do `--chrome` — a barra de filtros
+> agora entra em `--h-antes` (ver abaixo), porque contá-la nos dois termos ao mesmo
+> tempo descontaria a mesma faixa duas vezes. A tabela e o parágrafo "Medido no
+> navegador em 27/08/2026" logo adiante ainda descrevem o cromo ANTERIOR a esta
+> mudança — remedir é a Fase L2 de `docs/PLANO-LAYOUT-V1.md` (o arnês `tools/tela/`),
+> não um número para chutar aqui.
+
 ```css
---chrome: calc(var(--h-topbar) + var(--h-nav) + var(--h-filtros) + 60px);  /* 257px */
---util:   calc(100vh - var(--chrome));
+--chrome: calc(var(--h-topbar) + var(--h-nav) + 50px);
+--util:   calc(100vh - var(--chrome) - var(--h-antes) - var(--h-entre));
 ```
+
+`--h-antes` é a distância medida (por `altura-medida.ts`) do topo do conteúdo da
+`.area` até o primeiro card — inclui filtros, avisos, KPIs e título de seção. `--h-entre`
+é a distância entre o primeiro par de cards empilhados. Os dois variam por página e por
+resolução (61 a 300px medidos em 27/08/2026); é por isso que passaram a ser termo
+medido, e não constante declarada — declarar um único valor era o mesmo erro que
+`--h-nav`/`--h-filtros` já tinham custado duas vezes.
 
 **Nenhum desses quatro números pode ser chutado, e três deles já foram.** Medido no
 navegador em 27/08/2026, igual nas três resoluções de referência:
@@ -330,18 +344,29 @@ tela"; só a implementação discordava. Hoje: **0,455 + 0,545 = 1**.
 Duas regras disputam a altura do gráfico, e é preciso saber qual está mandando:
 
 - a **fração** (`0,455`) faz duas faixas caberem exatamente numa tela;
-- o **piso** (`309px`) diz onde o visual deixa de comunicar.
+- o **piso** (`273px`, atualizado em 28/08/2026 — era `309px`) diz onde o visual
+  deixa de comunicar.
 
-Enquanto a fração ideal for maior que o piso, a igualdade vale. O ponto de virada, com
-o cromo real de 257px:
+Enquanto a fração ideal for maior que o piso, a igualdade vale. `apps/web/test/casca.test.ts`
+deriva o ponto de virada lendo `--h-topbar` do CSS e usando o cromo/gap como
+`H_NAV_MEDIDO=74`, `H_FILTROS_MEDIDO=71`, `gap=10`, `+60` de rodapé/padding —
+o mesmo cromo "antigo" da nota no topo desta seção, ainda não remedido para o
+`--h-antes`/`--h-entre` novos:
 
 ```
-(útil - 10) x 0,455 >= 309   ->   útil >= 689   ->   vh >= 946
+273 / 0,455 + 10 (gap)  ->  util >= 610   ->   vh >= 610 + 257 = 867
 ```
 
-**A igualdade vale de ~950px de altura de janela para cima.** Abaixo disso o piso
-vence e a página rola — e isso é escolha, não descuido: abaixo do piso o visual fica
-ilegível, e o padrão manda preferir rolar a comprimir.
+**A igualdade vale de ~867px de altura de janela para cima** (era ~950px antes do piso
+cair de 309 para 273 em 28/08/2026 — `apps/web/test/casca.test.ts:156` é o teste que
+prende os dois números juntos). Abaixo disso o piso vence e a página rola — e isso é
+escolha, não descuido: abaixo do piso o visual fica ilegível, e o padrão manda preferir
+rolar a comprimir.
+
+> A tabela abaixo ("Medido no navegador em 27/08/2026") e o cálculo acima ainda usam o
+> cromo de 257px de ANTES do `--h-antes`/`--h-entre` (nota no topo da seção). Remedir
+> com o cromo novo é a Fase L2 do plano de layout — os números aqui continuam válidos
+> como registro histórico, não como estado atual da tela.
 
 **Medido no navegador em 27/08/2026**, na AGENDAMENTO FIELD:
 

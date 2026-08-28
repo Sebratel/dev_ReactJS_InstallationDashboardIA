@@ -141,6 +141,7 @@ export function urlDaPagina(
   id: string,
   filtros: readonly FiltroDaTela[] = [],
   opcoes: { visual?: string; linhas?: number; de?: number } = {},
+  clicados: readonly { tabela: string; coluna: string }[] = [],
 ): string {
   const p = new URLSearchParams();
   for (const f of filtros) {
@@ -149,6 +150,12 @@ export function urlDaPagina(
       'filtro',
       codificaFiltro({ tabela: f.tabela, coluna: f.coluna, valores: f.valores, nivel: f.nivel }),
     );
+  }
+  // Quais colunas nasceram de clique. É o que permite ao servidor auto-excluir o
+  // filtro do visual que desenha aquela coluna, sem fazer o mesmo com o seletor —
+  // ver `CampoClicado` em `rota.ts`.
+  for (const c of clicados) {
+    p.append('clicado', JSON.stringify({ tabela: c.tabela, coluna: c.coluna }));
   }
   if (opcoes.visual) p.set('visual', opcoes.visual);
   if (opcoes.linhas) p.set('linhas', String(opcoes.linhas));
@@ -177,8 +184,8 @@ export function urlDeValores(
  * (o comando do snapshot que falta, o formato do filtro que não decodificou). Trocar
  * isso por "HTTP 409" jogaria fora justamente a parte útil.
  */
-export async function pega<T>(url: string): Promise<T> {
-  const resp = await fetch(url);
+export async function pega<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const resp = await fetch(url, signal ? { signal } : undefined);
   const corpo: unknown = await resp.json().catch(() => null);
   if (!resp.ok) {
     const erro =
@@ -193,11 +200,26 @@ export async function pega<T>(url: string): Promise<T> {
 export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[] }> =>
   pega('/api/dashboards');
 
+/**
+ * O `signal` existe para o pedido ANTERIOR morrer quando chega um novo.
+ *
+ * Filtragem cruzada é clique em rajada: a pessoa clica em quatro categorias seguidas
+ * e, sem cancelamento, as quatro requisições vão até o fim. A penúltima resposta pode
+ * chegar DEPOIS da última — e aí a tela pinta o recorte anterior enquanto a barra de
+ * filtros mostra o novo. É o pior tipo de erro de dashboard: número plausível, causa
+ * invisível, e some ao recarregar.
+ *
+ * A flag `cancelado` do chamador impedia o `setState` tardio, mas não impedia o
+ * trabalho: a API seguia calculando a página inteira para uma resposta que ninguém
+ * ia usar.
+ */
 export const pegaPagina = (
   id: string,
   filtros: readonly FiltroDaTela[],
   opcoes?: { visual?: string; de?: number; linhas?: number },
-): Promise<PaginaCalculada> => pega(urlDaPagina(id, filtros, opcoes));
+  signal?: AbortSignal,
+  clicados?: readonly { tabela: string; coluna: string }[],
+): Promise<PaginaCalculada> => pega(urlDaPagina(id, filtros, opcoes, clicados), signal);
 
 export const pegaValores = (
   id: string,

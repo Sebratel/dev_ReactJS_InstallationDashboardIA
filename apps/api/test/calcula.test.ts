@@ -12,6 +12,7 @@ import { Evaluator } from '../../../packages/measure-engine/src/evaluator.ts';
 import { makeDate } from '../../../packages/measure-engine/src/value.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { calculaPagina, segmentacaoDe, LINHAS_PADRAO, tipoDe } from '../src/calcula.ts';
+import { TIPO_DE_TELA } from '../../../packages/widget-engine/src/filtro-url.ts';
 
 const AGORA = makeDate(2026, 8, 7);
 
@@ -469,4 +470,119 @@ test('visual que não é segmentação não ganha segmentação', () => {
     fields: [{ role: 'Values', kind: 'column', entity: 'T', property: 'c', name: 'c' }],
   });
   assert.equal(s, undefined);
+});
+
+/* ========================================================= auto-exclusão do clique */
+
+/** Um filtro como `filtro-url.ts` o produz: carimbado com `TIPO_DE_TELA`. */
+function daTela(property: string, valores: (string | number)[]) {
+  return {
+    name: `segmentação da tela: 'OS'[${property}]`,
+    type: TIPO_DE_TELA,
+    entity: 'OS',
+    property,
+    conditions: [{ op: 'in' as const, values: valores }],
+  };
+}
+
+/**
+ * Uma página com um gráfico por CIDADE e um card que só soma.
+ *
+ * Reaproveita `pagina()` em vez de montar o `DashboardSpec` à mão — a versão anterior
+ * fazia isso e escondia campos faltando atrás de `as DashboardSpec`.
+ *
+ * **A causa real dos três testes vermelhos:** o campo de valor do gráfico usava
+ * `medida()`, que é `role: 'Values'` — papel válido para card e tabela, mas
+ * `calculaGrafico` só aceita `Category`/`Series` (eixo) e `Y`/`Y2` (valor) — ver
+ * `PAPEIS_DE_VALOR` em `grafico.ts`. Com o papel errado o visual lançava dentro do
+ * `try` de `calculaPagina` e saía sem `.dados`, com ou sem clique.
+ */
+function paginaComCidade(filtros: ReturnType<typeof daTela>[]): DashboardSpec {
+  return {
+    ...pagina([
+      {
+        ...visual(
+          [
+            { role: 'Category', kind: 'column', entity: 'OS', property: 'CIDADE', name: 'CIDADE' },
+            { role: 'Y', kind: 'measure', entity: 'OS', property: 'Total', name: 'Total' },
+          ],
+          'columnChart',
+          'grafico',
+        ),
+      },
+      { ...visual([medida()], 'card', 'card') },
+    ]),
+    filters: filtros,
+  };
+}
+
+const clicouCidade = [{ tabela: 'OS', coluna: 'CIDADE' }];
+const categorias = (p: ReturnType<typeof calculaPagina>) =>
+  (p.visuais.find((v) => v.id === 'grafico')!.dados as { pontos: unknown[] }).pontos.length;
+const valorDoCard = (p: ReturnType<typeof calculaPagina>) =>
+  (p.visuais.find((v) => v.id === 'card')!.dados as { valor: unknown }).valor;
+
+/**
+ * **O visual que MOSTRA o campo é calculado sem o filtro daquele campo.**
+ *
+ * Sem isto, clicar numa cidade deixa uma barra só — e some justamente a comparação
+ * que motivou o clique. Medido em 28/08/2026 na VISÃO GERAL: "TOTAL por CIDADE" caía
+ * de 6 categorias para 1.
+ */
+test('o gráfico clicado mantém todas as categorias; o card ao lado não', () => {
+  const ev = montar(20);
+  const filtros = [daTela('CIDADE', ['Cidade 0003'])];
+
+  const semMarca = calculaPagina(paginaComCidade(filtros), ev, undefined, undefined, undefined, []);
+  const comMarca = calculaPagina(paginaComCidade(filtros), ev, undefined, undefined, undefined, clicouCidade);
+
+  assert.equal(categorias(semMarca), 1, 'sem marca de clique é um seletor, e seletor recorta tudo');
+  assert.equal(categorias(comMarca), 20, 'com marca de clique o gráfico volta inteiro, para destacar');
+
+  assert.equal(
+    valorDoCard(comMarca),
+    valorDoCard(semMarca),
+    'o card não desenha CIDADE, então continua recortado — auto-exclusão que vaza para ' +
+      'a página inteira é um número do universo num card que se diz filtrado',
+  );
+  assert.notEqual(
+    valorDoCard(comMarca),
+    valorDoCard(calculaPagina(paginaComCidade([]), ev, undefined, undefined, undefined, [])),
+    'e o card recortado tem de diferir do card sem filtro nenhum',
+  );
+});
+
+/** Sem clique, nada muda — e a função devolve os mesmos filtros, sem custo. */
+test('sem campo clicado o resultado é idêntico ao de antes', () => {
+  const ev = montar(20);
+  const filtros = [daTela('CIDADE', ['Cidade 0003'])];
+  const a = calculaPagina(paginaComCidade(filtros), ev, undefined, undefined, undefined, []);
+  const b = calculaPagina(paginaComCidade(filtros), ev);
+  assert.equal(categorias(a), categorias(b));
+  assert.equal(valorDoCard(a), valorDoCard(b));
+});
+
+/**
+ * Só o filtro VINDO DA TELA se auto-exclui.
+ *
+ * Um filtro da spec do relatório sobre a mesma coluna é desenho do relatório, não
+ * escolha de quem explora: descartá-lo mostraria, num único visual, um universo
+ * maior do que o da página inteira.
+ */
+test('filtro da spec sobre a coluna clicada NÃO é auto-excluído', () => {
+  const ev = montar(20);
+  const daSpec = {
+    name: 'filtro de página',
+    type: 'Categorical',
+    entity: 'OS',
+    property: 'CIDADE',
+    conditions: [{ op: 'in' as const, values: ['Cidade 0001', 'Cidade 0002', 'Cidade 0003'] }],
+  };
+  const pagina = { ...paginaComCidade([]), filters: [daSpec, daTela('CIDADE', ['Cidade 0003'])] } as DashboardSpec;
+  const p = calculaPagina(pagina, ev, undefined, undefined, undefined, clicouCidade);
+  assert.equal(
+    categorias(p),
+    3,
+    'as 3 do filtro de página: o clique soltou o filtro DA TELA e manteve o da spec',
+  );
 });

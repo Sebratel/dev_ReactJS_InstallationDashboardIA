@@ -1,6 +1,6 @@
 // A tela: escolhe a página, aplica as segmentações e desenha os visuais em formato Dashboard Sebratel.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   listaDashboards,
   pegaPagina,
@@ -10,9 +10,18 @@ import {
   type Valor,
 } from './api.ts';
 import { dataHora, duracao, inteiro } from './formato.ts';
-import { usaAlturaMedida } from './altura-medida.ts';
+import { usaAlturaMedida, usaEspacoSemVisual } from './altura-medida.ts';
 import { dataDaPagina, filtrosPadrao } from './filtros-padrao.ts';
-import { aplicaSelecao, escreveRota, leRota, selecaoDe } from './rota.ts';
+import {
+  alternaAlvos,
+  aplicaSelecao,
+  chaveDeCampo,
+  escreveRota,
+  leRota,
+  selecaoDe,
+  type AlvoDeFiltro,
+  type CampoClicado,
+} from './rota.ts';
 import { AppShell } from './componentes/AppShell.tsx';
 import { Capa } from './componentes/Capa.tsx';
 import { Erro } from './componentes/Cartao.tsx';
@@ -32,6 +41,12 @@ export function App() {
   // (a CAPA), o `ref` fica vazio e o hook publica `0px` — a faixa que não existe
   // devolve o espaço.
   const barraFiltrosRef = usaAlturaMedida<HTMLDivElement>('--h-filtros');
+  // E `--util` também precisa descontar o que a página gasta e NÃO é card: a faixa de
+  // indicadores (56px, 121px ou 187px conforme a página), o título de seção antes da
+  // primeira faixa (`--h-antes`) e o outro título, entre as duas faixas (`--h-entre`).
+  // Sem esses dois termos a conta media uma tela que o card não tem pela frente — ver
+  // `usaEspacoSemVisual`.
+  const antesDosVisuaisRef = usaEspacoSemVisual<HTMLDivElement>('--h-antes', '--h-entre');
   const inicial = useMemo(() => leRota(window.location.search), []);
   const [paginas, setPaginas] = useState<DashboardDaLista[]>([]);
   const [atual, setAtual] = useState<string | null>(inicial.pagina);
@@ -50,6 +65,11 @@ export function App() {
   const [filtros, setFiltros] = useState<FiltroDaTela[]>(
     inicial.filtros.length > 0 ? inicial.filtros : filtrosPadrao(inicial.pagina),
   );
+  // QUAIS COLUNAS NASCERAM DE CLIQUE. Não dá para derivar dos filtros: um recorte por
+  // CIDADE tem a mesma cara vindo de clique ou de seletor, e a auto-exclusão só vale
+  // para o primeiro. Mora na URL junto com os filtros, senão recarregar (ou abrir o
+  // link) transformaria um destaque em colapso sem ninguém tocar em nada.
+  const [clicados, setClicados] = useState<CampoClicado[]>(inicial.clicados);
   const [pagina, setPagina] = useState<PaginaCalculada | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -70,23 +90,63 @@ export function App() {
       .catch((err: unknown) => setErro(err instanceof Error ? err.message : String(err)));
   }, []);
 
+  // DE ONDE VEIO A MUDANÇA, para decidir o que fazer com o histórico.
+  //
+  // **O clique EMPILHA; o resto SUBSTITUI.** Filtragem cruzada é exploração: a pessoa
+  // clica em cinco categorias seguidas e espera que voltar desfaça. Os seletores da
+  // barra não podem empilhar — ali o valor muda a cada caixa marcada e a cada tecla da
+  // busca, e o histórico viraria uma pilha de passos que ninguém quer desfazer um a um.
+  //
+  // Até 28/08 TUDO passava por `replaceState`, o clique junto: `history.length` não se
+  // mexia, e não havia como voltar de um recorte que esvaziava a tela.
+  const origemDaMudanca = useRef<'clique' | 'historico' | 'outro'>('outro');
+
+  // VOLTAR E AVANÇAR TÊM DE LER A URL DE VOLTA. Sem este ouvinte o `pushState` abaixo
+  // só mexeria na barra de endereço: o navegador restauraria a URL antiga e a tela
+  // continuaria mostrando o recorte novo, agora divergindo do link.
+  useEffect(() => {
+    const aoAndarNoHistorico = () => {
+      const r = leRota(window.location.search);
+      origemDaMudanca.current = 'historico';
+      if (r.pagina) setAtual(r.pagina);
+      setFiltros(r.filtros);
+      setClicados(r.clicados);
+    };
+    window.addEventListener('popstate', aoAndarNoHistorico);
+    return () => window.removeEventListener('popstate', aoAndarNoHistorico);
+  }, []);
+
   useEffect(() => {
     if (!atual) return;
     let cancelado = false;
+    // Ver `pegaPagina`: sem cancelar, quatro cliques em rajada viram quatro cálculos
+    // completos, e a penúltima resposta pode chegar depois da última.
+    const aborta = new AbortController();
 
     setCarregando(true);
     setErro(null);
-    window.history.replaceState(null, '', escreveRota(atual, filtros));
+    // Voltar/avançar JÁ mexeu no histórico. Escrever de novo aqui criaria uma entrada
+    // a cada clique no botão voltar, e a pessoa ficaria presa oscilando entre dois
+    // estados sem nunca sair do lugar.
+    const origem = origemDaMudanca.current;
+    origemDaMudanca.current = 'outro';
+    if (origem !== 'historico') {
+      const rota = escreveRota(atual, filtros, clicados);
+      if (origem === 'clique') window.history.pushState(null, '', rota);
+      else window.history.replaceState(null, '', rota);
+    }
 
-    pegaPagina(atual, filtros)
+    pegaPagina(atual, filtros, undefined, aborta.signal, clicados)
       .then((p) => {
         if (!cancelado) setPagina(p);
       })
       .catch((err: unknown) => {
-        if (!cancelado) {
-          setPagina(null);
-          setErro(err instanceof Error ? err.message : String(err));
-        }
+        // Pedido cancelado não é falha: quem cancelou foi o clique seguinte, e a tela
+        // já está carregando o recorte novo. Pintar "erro" aqui faria a exploração
+        // piscar uma mensagem vermelha a cada clique em rajada.
+        if (cancelado || (err instanceof DOMException && err.name === 'AbortError')) return;
+        setPagina(null);
+        setErro(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
         if (!cancelado) setCarregando(false);
@@ -94,27 +154,56 @@ export function App() {
 
     return () => {
       cancelado = true;
+      aborta.abort();
     };
-  }, [atual, filtros]);
+  }, [atual, filtros, clicados]);
 
   const escolhe = useCallback((id: string) => {
     setAtual(id);
     setFiltros(filtrosPadrao(id));
+    setClicados([]);
     setPagina(null);
   }, []);
 
   const mudaFiltro = useCallback(
     (tabela: string, coluna: string, valores: Valor[], nivel?: string) => {
       setFiltros((f) => aplicaSelecao(f, tabela, coluna, valores, nivel));
+      // Mexer no seletor (ou apagar o chip) TIRA a marca de clique daquela coluna: a
+      // escolha passou a ser do controle, e controle recorta tudo — inclusive o visual
+      // que desenha a coluna. Deixar a marca faria o gráfico ignorar o próprio seletor.
+      setClicados((antes) => antes.filter((c) => chaveDeCampo(c) !== chaveDeCampo({ tabela, coluna })));
     },
     [],
   );
 
-  const aoFiltrarValor = useCallback(
-    (tabela: string, coluna: string, valor: Valor) => {
-      mudaFiltro(tabela, coluna, valor === null ? [] : [valor]);
+  // O clique num visual: aplica a tupla inteira, ou a desfaz se já estiver valendo.
+  // O `filtrosPadrao` é o piso do desfazer — ver `alternaAlvos`.
+  const aoFiltrarAlvos = useCallback(
+    (alvos: readonly AlvoDeFiltro[]) => {
+      origemDaMudanca.current = 'clique';
+      const padrao = filtrosPadrao(atual);
+      setFiltros((f) => {
+        const depois = alternaAlvos(f, alvos, padrao);
+        // A marca de "clicado" acompanha o filtro: as colunas do alvo que CONTINUAM
+        // filtradas depois da alternância entram; as que saíram (o segundo clique,
+        // que desfaz) saem. Sem isto, desfazer deixaria a coluna marcada e o visual
+        // seguiria auto-excluindo um filtro que já não existe.
+        const aindaFiltradas = new Set(
+          depois.filter((x) => x.valores.length > 0).map(chaveDeCampo),
+        );
+        setClicados((antes) => {
+          const mapa = new Map(antes.map((c) => [chaveDeCampo(c), c]));
+          for (const a of alvos) {
+            const k = chaveDeCampo(a);
+            if (aindaFiltradas.has(k)) mapa.set(k, { tabela: a.tabela, coluna: a.coluna });
+            else mapa.delete(k);
+          }
+          return [...mapa.values()];
+        });
+        return depois;
+      });
     },
-    [mudaFiltro],
+    [atual],
   );
 
   const dataDaTela = dataDaPagina(atual);
@@ -267,17 +356,22 @@ export function App() {
       {atual === 'capa' ? <Capa dadoDe={pagina?.dadoDe ?? null} /> : null}
 
       {/* Faixa de KPIs em Grid Responsivo */}
-      <KpiGridSection pagina={atual!} cards={cards} filtros={filtros} aoFiltrar={aoFiltrarValor} />
+      <KpiGridSection pagina={atual!} cards={cards} filtros={filtros} />
 
-      {/* Seção de Gráficos, Matrizes e Análise Detalhada */}
-      <VisualGridSection
-        pagina={atual!}
-        graficos={graficos}
-        matrizes={matrizes}
-        tabelasEBlocos={tabelasEBlocos}
-        filtros={filtros}
-        aoFiltrar={aoFiltrarValor}
-      />
+      {/* Seção de Gráficos, Matrizes e Análise Detalhada.
+          O `div` existe para medir: é dele que sai `--h-antes`, a distância do topo
+          do conteúdo até o primeiro card. Ele não tem estilo — a grade continua
+          sendo a do `VisualGridSection`. */}
+      <div ref={antesDosVisuaisRef}>
+        <VisualGridSection
+          pagina={atual!}
+          graficos={graficos}
+          matrizes={matrizes}
+          tabelasEBlocos={tabelasEBlocos}
+          filtros={filtros}
+          aoFiltrar={aoFiltrarAlvos}
+        />
+      </div>
 
       {pagina && cards.length === 0 && graficos.length === 0 && matrizes.length === 0 && tabelasEBlocos.length === 0 ? (
         <div className="vazio-pagina">Esta página não tem visual com número.</div>

@@ -301,6 +301,35 @@ export class Servidor {
       return;
     }
 
+    // `?clicado=` — quais colunas do recorte nasceram de CLIQUE num visual, e não de
+    // seletor. É o que permite auto-excluir o filtro do visual que desenha aquela
+    // coluna (o clicado DESTACA em vez de colapsar) sem fazer o mesmo com o seletor,
+    // que tem de recortar tudo. Ver `filtrosDoVisual` em `calcula.ts`.
+    //
+    // Erra alto, pela mesma razão que `?filtro=`: um `clicado` descartado em silêncio
+    // muda a leitura do gráfico sem nada dizer por quê.
+    const clicados: { tabela: string; coluna: string }[] = [];
+    for (const bruto of url.searchParams.getAll('clicado')) {
+      let ok = false;
+      try {
+        const o: unknown = JSON.parse(bruto);
+        const t = (o as { tabela?: unknown }).tabela;
+        const c = (o as { coluna?: unknown }).coluna;
+        if (typeof t === 'string' && typeof c === 'string' && t !== '' && c !== '') {
+          clicados.push({ tabela: t, coluna: c });
+          ok = true;
+        }
+      } catch {
+        ok = false;
+      }
+      if (!ok) {
+        responde(res, 400, {
+          erro: `clicado '${bruto}' não é um objeto {tabela, coluna} válido.`,
+        });
+        return;
+      }
+    }
+
     // `?visual=<id>` — o pedido de um visual **sob demanda**. Ver
     // `specs/_catalog/projecao.yaml`: a página abre sem as colunas caras, e este é o
     // caminho por onde elas entram, uma de cada vez e só para quem pediu.
@@ -325,6 +354,7 @@ export class Servidor {
       usuario: quem.usuario,
       pagina: dash.id,
       filtros: daTela,
+      clicados,
       visual: soVisual,
       de,
       linhas,
@@ -376,11 +406,27 @@ export class Servidor {
     const memo = {
       le: (visual: string): unknown | undefined =>
         this.completos.le(
-          chaveDoCompleto({ usuario: quem.usuario, pagina: dash.id, filtros: daTela, visual, carimbo, dia }),
+          chaveDoCompleto({
+            usuario: quem.usuario,
+            pagina: dash.id,
+            filtros: daTela,
+            clicados,
+            visual,
+            carimbo,
+            dia,
+          }),
         ),
       guarda: (visual: string, completo: unknown): void => {
         this.completos.guarda(
-          chaveDoCompleto({ usuario: quem.usuario, pagina: dash.id, filtros: daTela, visual, carimbo, dia }),
+          chaveDoCompleto({
+            usuario: quem.usuario,
+            pagina: dash.id,
+            filtros: daTela,
+            clicados,
+            visual,
+            carimbo,
+            dia,
+          }),
           completo,
         );
       },
@@ -392,6 +438,7 @@ export class Servidor {
       { de, linhas },
       undefined,
       memo,
+      clicados,
     );
     const corpo = {
       ...pagina,
