@@ -91,6 +91,151 @@ export function usaAlturaMedida<T extends HTMLElement>(
 }
 
 /**
+ * A FRAÇÃO de `--util` reservada para cada TIPO de faixa de largura cheia — a mesma
+ * fração que `.v-grafico`/`.v-tabela`/`.v-matriz` já usavam sozinhas (`estilo.css`).
+ *
+ * **A primeira versão desta conta dividia `--util` INTEIRO entre TODAS as faixas
+ * juntas, com um peso por tipo** (grafico=1, tabela=1.2, matriz=1.5). Regrediu página
+ * leve: uma página com só UMA tabela larga (`visao-geral`, `telefonia-ouvidoria`) e
+ * nenhum gráfico largo passava a reivindicar `--util` INTEIRO para aquela tabela
+ * (soma dos pesos = ela mesma, então fração = 100%), contra os 54,5% de hoje —
+ * `npm run tela` mediu a página crescendo de ~973px para ~1200px, o oposto do que a
+ * fase pede. A causa: `--pbi-gold-600`-style, matriz sempre foi desenhada para pegar
+ * `--util` SOZINHA (100%) quando está só, mas gráfico e tabela foram desenhados para
+ * DIVIDIR um `--util` já com os dois presentes (45,5%+54,5%=100%) — são dois desenhos
+ * diferentes, e um peso relativo entre os três não captura os dois ao mesmo tempo.
+ *
+ * A correção: cada TIPO mantém sua fração de hoje como um "pool" PRÓPRIO, e só
+ * DIVIDE esse pool quando há mais de uma faixa do MESMO tipo. Com N=1 (o caso comum,
+ * e o único que existia até esta fase) o resultado é IDÊNTICO ao de antes — zero
+ * regressão possível nesse caso, porque a fórmula degenera para a de sempre.
+ */
+const FRACAO_POOL = { grafico: 0.455, tabela: 0.545, matriz: 1 } as const;
+
+const PISO_TETO_FAIXA = {
+  grafico: [273, 430],
+  tabela: [280, 500],
+  matriz: [360, 900],
+} as const;
+
+/**
+ * O PIXEL de verdade por trás de `--util` — não `getPropertyValue('--util')` direto.
+ *
+ * `--util` é uma CUSTOM PROPERTY definida por `calc(100vh - var(--chrome) - ...)`.
+ * `getComputedStyle().getPropertyValue()` numa custom property devolve a string BRUTA,
+ * sem substituir os `var()` de dentro — é a mesma armadilha de `tools/tela/src/
+ * contraste.ts` com `color-mix()`. Isto já quebrou aqui uma vez: `parseFloat` da string
+ * bruta dá `NaN`, vira `"NaNpx"` (token válido para uma custom property, mas INVÁLIDO
+ * como `height`), e o navegador cai para `height: auto` — cartão do tamanho do
+ * conteúdo cru, 2.312px/4.024px medidos, exatamente o oposto do que a conta deveria
+ * produzir. Um elemento-sonda com `height: var(--util)` força a resolução: `height` é
+ * propriedade típica, e essa SIM resolve a cadeia de `var()`/`calc()` inteira. */
+function utilEmPx(): number {
+  const sonda = document.createElement('div');
+  sonda.style.position = 'fixed';
+  sonda.style.visibility = 'hidden';
+  sonda.style.height = 'var(--util)';
+  document.body.appendChild(sonda);
+  const px = Number.parseFloat(getComputedStyle(sonda).height);
+  sonda.remove();
+  return px;
+}
+
+export interface AlturasDeFaixa {
+  grafico: number;
+  tabela: number;
+  matriz: number;
+}
+
+/**
+ * A conta pura por trás de `usaAlturaDasFaixasLargas` — sem DOM, para ser testável.
+ *
+ * Devolve `null` quando a página não tem faixa de largura cheia nenhuma, OU quando
+ * `utilPx` não é um número finito: os dois casos significam "não publique nada", nunca
+ * "publique um número quebrado". Ver `utilEmPx` para o porquê de `utilPx` poder chegar
+ * não-finito na prática (já aconteceu, com a versão anterior que lia `--util` sem sonda).
+ *
+ * Cada tipo tem seu PRÓPRIO pool (`FRACAO_POOL`); com `n=1` (o caso de sempre) o
+ * resultado é idêntico ao `clamp()` que `estilo.css` já tinha antes desta fase.
+ */
+export function calculaAlturasDeFaixa(
+  nGrafico: number,
+  nTabela: number,
+  nMatriz: number,
+  utilPx: number,
+): AlturasDeFaixa | null {
+  if (nGrafico + nTabela + nMatriz === 0 || !Number.isFinite(utilPx)) return null;
+
+  const alturaDoTipo = (n: number, fracao: number, [piso, teto]: readonly [number, number]) =>
+    n === 0 ? piso : Math.round(Math.min(teto, Math.max(piso, (utilPx * fracao) / n)));
+  return {
+    grafico: alturaDoTipo(nGrafico, FRACAO_POOL.grafico, PISO_TETO_FAIXA.grafico),
+    tabela: alturaDoTipo(nTabela, FRACAO_POOL.tabela, PISO_TETO_FAIXA.tabela),
+    matriz: alturaDoTipo(nMatriz, FRACAO_POOL.matriz, PISO_TETO_FAIXA.matriz),
+  };
+}
+
+/**
+ * Divide `--util` entre as faixas de LARGURA CHEIA que a página tem — em vez da fração
+ * fixa que `.v-grafico`/`.v-tabela`/`.v-matriz` usavam sozinhas.
+ *
+ * **O defeito que isto conserta.** `.v-matriz { height: clamp(360px, var(--util), 900px) }`
+ * deixa CADA matriz reivindicar a área útil inteira, sem saber se há outra faixa de
+ * largura cheia na mesma página. Certo para uma página com uma matriz só; em
+ * `agendamento-field`, com três matrizes mais dois gráficos largos e três tabelas
+ * largas, a soma passava de 5.000px (Fase L2, `docs/MEDIDAS-TELA.md`). As contagens são
+ * as MESMAS que `VisualGridSection.tsx` já calcula para decidir o que é compacto e o que
+ * é largo — não é medição de DOM nova, só uma conta em cima de números que já existiam.
+ *
+ * Cartões COMPACTOS (lado a lado, `basis-440px`/`basis-300px`) não passam por aqui: no
+ * máximo 3-4 por linha, a fração fixa já serve, e são um seletor CSS diferente
+ * (`.filas-largas` só envolve os contêineres de EMPILHADOS — ver `VisualGridSection.tsx`).
+ *
+ * **Por que não há dependência circular com `--util`.** `--util` desconta `--h-antes`/
+ * `--h-entre`, que medem a POSIÇÃO do primeiro cartão e o GAP entre o primeiro par
+ * empilhado — nenhum dos dois depende da ALTURA dos cartões (o gap é constante,
+ * independente de quão alto cada lado é). Mudar `--h-faixa-*` não realimenta `--util`:
+ * converge num passe só.
+ */
+export function usaAlturaDasFaixasLargas(nGrafico: number, nTabela: number, nMatriz: number): void {
+  // Guarda pelo RESULTADO publicado, não pelas contagens de entrada: `--util` muda no
+  // `resize` mesmo com as mesmas contagens, e o `resize` chama `medir()` direto (sem
+  // passar por render de React) — guardar pela entrada perderia essa remedição.
+  const ultimo = useRef<string>('');
+
+  const medir = useCallback(() => {
+    const precisaDeUtil = nGrafico + nTabela + nMatriz > 0;
+    const alturas = precisaDeUtil ? calculaAlturasDeFaixa(nGrafico, nTabela, nMatriz, utilEmPx()) : null;
+
+    const proximo = alturas === null ? '' : `${alturas.grafico}|${alturas.tabela}|${alturas.matriz}`;
+    if (proximo === ultimo.current) return;
+    ultimo.current = proximo;
+
+    const nomes = ['--h-faixa-grafico', '--h-faixa-tabela', '--h-faixa-matriz'] as const;
+    if (alturas === null) {
+      // Sem faixa de largura cheia nesta página, OU a sonda não resolveu um pixel (não
+      // deveria acontecer, mas propagar NaN seria pior: "NaNpx" é um token VÁLIDO de
+      // custom property, e só quebra quando `height: var(...)` o usa — em silêncio, com
+      // o cartão caindo para `auto` (foi o defeito medido aqui antes de existir a sonda
+      // de `utilEmPx`). O valor de uma página anterior também não pode sobreviver:
+      // `documentElement` persiste entre trocas de tela nesta SPA.
+      for (const nome of nomes) document.documentElement.style.removeProperty(nome);
+      return;
+    }
+    document.documentElement.style.setProperty(nomes[0], `${alturas.grafico}px`);
+    document.documentElement.style.setProperty(nomes[1], `${alturas.tabela}px`);
+    document.documentElement.style.setProperty(nomes[2], `${alturas.matriz}px`);
+  }, [nGrafico, nTabela, nMatriz]);
+
+  useLayoutEffect(medir);
+  useEffect(() => {
+    window.addEventListener('resize', medir);
+    remedeQuandoAFonteChegar(medir);
+    return () => window.removeEventListener('resize', medir);
+  }, [medir]);
+}
+
+/**
  * Mede TUDO O QUE A PÁGINA GASTA E NÃO É CARD, e publica em dois nomes.
  *
  * **O erro que isto conserta.** `--util` descontava topo, nav, filtros e rodapé — e

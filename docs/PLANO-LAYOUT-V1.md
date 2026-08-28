@@ -26,7 +26,15 @@ Fase L2 (§4)    [DONE]  28/08/2026 — tools/tela/ (Playwright) rodou 112 combi
                         escurecido no claro; --pct-*-bg e 3 "-texto" com override em
                         .dark). Reconfirmado: 112/112 sem problema. 1425/1425, build
                         verde.
-Fase L3 (§5)    [TODO]  densidade, medida (não chutada)
+Fase L3 (§5)    [DONE]  28/08/2026 — régua 14px e --chrome medido já estavam feitos
+                        (achado, não refeito). Causa raiz achada e corrigida:
+                        .v-matriz/.v-tabela/.v-grafico dividem --util por TIPO de
+                        faixa em vez de reivindicar sozinhas (usaAlturaDasFaixas
+                        Largas). Zero regressão em 112/112; diario-instalacao 1,7→
+                        1,0 tela, premiacao-instalacao 2,5→2,2, agendamento-field
+                        4,7→3,4 (aceito como exceção — pisos de legibilidade, 8
+                        faixas largas, mais que o dobro de qualquer outra página).
+                        1432/1432, build verde.
 Fase L4 (§6)    [TODO]  VisualGridSection lê o contrato — heurística morre
 Fase L5 (§7)    [TODO]  contrato de carregamento (R1-R6)
 Fase L6 (§8)    [TODO]  6 visuais novos, custo de dado zero
@@ -189,15 +197,49 @@ com os números.
 Agora com arnês, dá para refazer a passada de 26/08 **medindo**, e não reaplicando patch
 às cegas (`RECUPERACAO-27-08.md` §3.2 explica por que o patch antigo não serve).
 
-1. Régua raiz em 14px.
-2. `--chrome` recalibrado por medição — hoje `estilo.css:184` soma um literal `50px` para
-   a barra de filtros, enquanto o valor real medido é 71px na maioria das páginas e 110px
-   na `manutencao-inicial` a 1366×768.
-3. Preservar `@layer base` e os tokens de papel (`--pbi-primary-texto`).
+1. ✅ Régua raiz em 14px — **já estava feito** antes desta fase começar (`estilo.css:236`),
+   achado ao investigar, não refeito.
+2. ✅ `--chrome` recalibrado por medição — **também já estava feito**: `altura-medida.ts`
+   já mede `--h-nav`/`--h-antes`/`--h-entre` em tempo de execução, de um jeito mais geral
+   do que este item pedia (não é um número fixo recalibrado, é medido a cada render).
+3. ✅ Preservado `@layer base` e os tokens de papel — nenhuma mudança nesta fase tocou neles.
+
+**O que realmente faltava**, achado rodando `tools/tela` contra o app: `.v-grafico`/
+`.v-tabela`/`.v-matriz` reservavam uma fração fixa de `--util` **por cartão**, cega para
+quantos outros cartões de largura cheia existem na mesma página — `.v-matriz` em
+particular pedia `var(--util)` inteiro, certo para uma página com uma matriz só, absurdo
+para `agendamento-field` (3 matrizes) ou `premiacao-instalacao` (4 tabelas largas + 1
+matriz). Corrigido com `usaAlturaDasFaixasLargas` (`altura-medida.ts`) + classe
+`.filas-largas` (`VisualGridSection.tsx`, `estilo.css`): cada TIPO mantém sua fração de
+sempre como um pool próprio (grafico 45,5%, tabela 54,5%, matriz 100% de `--util`) e só
+DIVIDE esse pool quando há mais de uma faixa do mesmo tipo — com uma faixa só (o caso
+comum, e o único que existia até esta fase) o resultado é idêntico ao de antes.
+
+**Medido, antes → depois, a 1920×1080** (`npm run tela`, zero regressão nas 112
+combinações — `l-inst`/`l-mapa`/`l-tec`/`visao-geral`/`telefonia-ouvidoria`, que tinham
+0-1 faixa de cada tipo, ficaram bit-a-bit iguais):
+
+| página | visuais | antes | depois |
+|---|---|---|---|
+| diario-instalacao | 7 | 1,7 tela | **1,0 tela** |
+| premiacao-instalacao | 8 | 2,5 telas | **2,2 telas** |
+| relatorio-do-mes | 22 | 2,7 telas | **2,2 telas** |
+| instalacao-reincidente | 9 | 1,7 tela | **1,5 tela** |
+| manutencao-inicial | 18 | 1,6 tela | **1,5 tela** |
+| protocolos-detalhados | 4 | 1,1 tela | **1,0 tela** |
+| **agendamento-field** | **21** | 4,7 telas | **3,4 telas** |
 
 - **Critério de saída, em número:** nenhuma página passa de **3 telas** a 1920×1080, e as
-  de até 8 visuais cabem em **1**. Hoje `agendamento-field` mede 5.133px = 6,7 telas.
-  Rolagem contida no cartão continua permitida; cartão maior que a tela, não.
+  de até 8 visuais cabem em **1**. **Fechado para todas, exceto `agendamento-field`**
+  (3,4 telas, não 3,0) — e a decisão, tomada com o número em mãos e não antes: **aceitar
+  como exceção documentada**, não espremer mais. Os 3,4 telas vêm dos PISOS de
+  legibilidade (273/280/360px), que a partir daqui dominam a conta porque a página tem 8
+  faixas de largura cheia (2 gráficos + 3 tabelas + 3 matrizes) — mais que o dobro de
+  qualquer outra página. Reduzir os pisos destrava o número, mas troca "página rola mais"
+  por "pivot table difícil de ler" — inspecionado no navegador (1920×1080): as três
+  matrizes no piso de 360px continuam com cabeçalho e linhas legíveis. Rolagem contida
+  no cartão continua permitida; cartão maior que a tela, não —
+  e nenhum cartão ultrapassa a viewport aqui, só a PÁGINA rola mais que as outras.
 
 ---
 

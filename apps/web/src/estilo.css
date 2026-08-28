@@ -451,6 +451,17 @@ body {
 .v-matriz,  .cartao.v-matriz  { height: clamp(360px, var(--util), 900px); }
 .v-auto,    .cartao.v-auto    { height: auto; }
 
+/* Dentro de uma pilha de EMPILHADOS (`.filas-largas`, marcada em
+   `VisualGridSection.tsx` nos dois contêineres de largura cheia), a altura vem de
+   `usaAlturaDasFaixasLargas` (Fase L3, `altura-medida.ts`) — que divide `--util` pelo
+   NÚMERO de faixas de largura cheia da página, em vez da fração fixa acima, que deixa
+   cada cartão sozinho reivindicar `--util` inteiro sem saber quantos outros existem.
+   O fallback dentro de cada `var()` é a fórmula de cima: se o JS ainda não publicou
+   `--h-faixa-*` (primeiro quadro), o comportamento de sempre continua valendo. */
+.filas-largas .cartao.v-grafico { height: var(--h-faixa-grafico, clamp(273px, calc(var(--util) * 0.455), 430px)); }
+.filas-largas .cartao.v-tabela  { height: var(--h-faixa-tabela,  clamp(280px, calc(var(--util) * 0.545), 500px)); }
+.filas-largas .cartao.v-matriz  { height: var(--h-faixa-matriz,  clamp(360px, var(--util), 900px)); }
+
 .secao-graficos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: var(--gap); }
 .secao-matrizes-grid { display: flex; flex-direction: column; gap: var(--gap); }
 .largo { grid-column: 1 / -1; }

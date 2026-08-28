@@ -1,4 +1,5 @@
 import type { FiltroDaTela, VisualCalculado } from '../../api.ts';
+import { usaAlturaDasFaixasLargas } from '../../altura-medida.ts';
 import type { AoFiltrar } from '../../rota.ts';
 import { Visual } from '../../componentes/Visual.tsx';
 import { LIMIAR_LARGO, contaPontos, ehTabelaProntaEstreita, porPosicao } from './heuristica-grade.ts';
@@ -62,10 +63,12 @@ export function VisualGridSection({
   // Detalhamento: as tabelas estreitas ("rótulo + Qtd") viram uma linha; matrizes e
   // tabelas largas ficam em largura cheia, na ordem de leitura do relatório.
   const tabelasEstreitas = tabelasEBlocos.filter(ehTabelaProntaEstreita);
-  const emLarguraCheia = [
-    ...matrizes,
-    ...tabelasEBlocos.filter((v) => !ehTabelaProntaEstreita(v)),
-  ].sort(porPosicao);
+  const tabelasLargas = tabelasEBlocos.filter((v) => !ehTabelaProntaEstreita(v));
+  const emLarguraCheia = [...matrizes, ...tabelasLargas].sort(porPosicao);
+
+  // Divide --util entre as faixas de largura cheia que ESTA página tem, em vez da
+  // fração fixa que cada `.v-*` reservava sozinha — ver `altura-medida.ts`.
+  usaAlturaDasFaixasLargas(largos.length, tabelasLargas.length, matrizes.length);
 
   const temGraficos = graficos.length > 0;
   const temDetalhe = tabelasEstreitas.length > 0 || emLarguraCheia.length > 0;
@@ -94,7 +97,7 @@ export function VisualGridSection({
             </div>
           )}
           {/* Largos (séries temporais) em largura cheia. */}
-          {largos.length > 0 && <div className="flex flex-col gap-[var(--gap)]">{largos.map(item)}</div>}
+          {largos.length > 0 && <div className="flex flex-col gap-[var(--gap)] filas-largas">{largos.map(item)}</div>}
         </>
       )}
 
@@ -113,7 +116,7 @@ export function VisualGridSection({
           )}
           {/* Matrizes e tabelas largas em largura cheia, em ordem de leitura. */}
           {emLarguraCheia.length > 0 && (
-            <div className="flex flex-col gap-[var(--gap)]">{emLarguraCheia.map(item)}</div>
+            <div className="flex flex-col gap-[var(--gap)] filas-largas">{emLarguraCheia.map(item)}</div>
           )}
         </>
       )}
