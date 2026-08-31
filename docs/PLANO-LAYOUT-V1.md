@@ -83,7 +83,7 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         prender a página seguinte por vários segundos porque o
                         servidor é um processo só. Documentado, não corrigido nesta
                         fase. 1461/1461, build verde, tela 112/112.
-Fase L6 (§8)    [PARCIAL] 31/08/2026 — 3 de 6 visuais.
+Fase L6 (§8)    [PARCIAL] 31/08/2026 — 4 de 6 visuais.
                         1) rosca com centro numérico (Rosca.tsx, novo). Mesmo
                         DadosDeTabela que Tabela.tsx já lia (zero requisição, zero
                         campo novo) — só troca o desenho: a coluna marcada `chave`
@@ -155,9 +155,47 @@ Fase L6 (§8)    [PARCIAL] 31/08/2026 — 3 de 6 visuais.
                         timeout de .selo isolado em páginas SEM bullet, cada vez
                         numa página diferente — mesmo padrão de carga de sistema
                         das duas fases anteriores, refeito limpo).
-                        1461/1461, build verde. Faltam 3 visuais: heatmap de
-                        calendário, data bar na matriz, ranking-barra — cada um seu
-                        próprio commit, mesmo padrão.
+                        4) calendário de dia (Calendario.tsx, novo), lido de um novo
+                        campo `kpis[].calendario` (mesmo desenho de `tendencia`/
+                        `meta`, mas apontando uma MATRIZ da página em vez de um
+                        gráfico ou KPI). Nenhuma das duas páginas candidatas do §8
+                        (diario-instalacao, agendamento-field) tinha um gráfico de
+                        30 barras de verdade — pesquisado antes de implementar: os
+                        dois gráficos de agendamento-field são combo/100%-empilhado
+                        com 2-3 medidas por dia, incompatíveis com um heatmap de UM
+                        valor por célula; diario-instalacao tem uma matriz técnico×
+                        dia (2c224be8..., DATA INSTALAÇÃO em coluna) que É a mesma
+                        ideia — "30 colunas de data" em vez de "30 barras". Em vez
+                        de reescrever a matriz inteira (Matriz.tsx já resolve
+                        paginação de coluna, transposição e export CSV — trocar o
+                        render ali é risco fora de escala para este commit), o
+                        calendário é um RESUMO adicional no KPI "REALIZADOS"
+                        (e51b2438...): soma as linhas da mesma matriz por coluna de
+                        data, client-side, e desenha uma grade de 7 dias — a matriz
+                        detalhada continua intacta na tela, sem substituição.
+                        Guarda dupla contra número errado: só soma se a matriz
+                        estiver INTEIRAMENTE carregada (`linhas.length ===
+                        linhasTotais` — usaJanela.ts pagina de 200 em 200) e se
+                        todas as colunas caírem no mesmo ano/mês (duas datas de
+                        meses diferentes com o mesmo dia-do-mês se confundiriam na
+                        mesma célula); fora dessas condições o componente devolve
+                        `null` e o card desenha como antes. Cor por OPACIDADE de um
+                        só token (--pbi-gold), sem hex nem interpolação — a mesma
+                        leitura "claro→escuro, um só tom" que a paleta reserva para
+                        magnitude. Sem número dentro do quadrado (mesma escolha da
+                        Sparkline): a forma mostra quais dias pesam mais, o valor
+                        exato mora no `title` — texto sobre um preenchimento de
+                        opacidade variável não tem contraste garantido em todo o
+                        intervalo. Verificado no navegador (Playwright), claro e
+                        escuro: 31 dias + 4 células vazias de padding (julho de
+                        2026 começa numa quarta), opacidade variando de 0,12 a 1,0,
+                        boa leitura nos dois temas. tela 112/112 (cinco tentativas
+                        pegaram timeout de .selo isolado em páginas SEM calendário,
+                        cada vez numa página diferente — mesmo padrão de carga de
+                        sistema das três fases anteriores, refeito limpo).
+                        1461/1461, build verde. Faltam 2 visuais: data bar na
+                        matriz, ranking-barra — cada um seu próprio commit, mesmo
+                        padrão.
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
 ```
 

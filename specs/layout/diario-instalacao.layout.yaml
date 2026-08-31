@@ -16,6 +16,7 @@ kpis:
     enfase: normal
   - visual: e51b24381944279c8bbe
     enfase: normal
+    calendario: 2c224be87531efbec489
   - visual: ea5c7143230acf5f95e9
     enfase: normal
 faixas:
@@ -60,4 +61,9 @@ ocultos:
     porque: vira controle de filtro na barra (segmentação), não card da grade
   - visual: e3446e1e9c13af37ca52
     porque: vira controle de filtro na barra (segmentação), não card da grade
-improvements: []
+improvements:
+  - visual: e51b24381944279c8bbe
+    original: card
+    virou: card+calendario
+    porque: "grade de semana lida da matriz 2c224be87531efbec489 (DATA INSTALAÇÃO em coluna, TECNICO em linha, já na mesma página — só 2 faixas, ambas dentro do corte eager); soma as linhas por coluna de data, sem requisição nova; a matriz original permanece intacta na tela — isto é resumo adicional, não substituição — Fase L6, docs/PLANO-LAYOUT-V1.md §8"
+    numero_muda: false

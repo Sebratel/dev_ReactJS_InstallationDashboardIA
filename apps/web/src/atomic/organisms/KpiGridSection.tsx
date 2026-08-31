@@ -16,7 +16,8 @@ import { KpiCard } from '../molecules/KpiCard.tsx';
  * **Fase L6**: `kpis[].tendencia` (opcional) aponta o id de um gráfico JÁ presente em
  * `visuais` — a mesma lista que a página inteira recebeu, sem requisição extra. `porId`
  * é o mesmo mapa que já resolve o KPI; resolver a tendência nele é reaproveitar, não
- * duplicar. `kpis[].meta` segue o mesmo princípio, apontando outro KPI da página.
+ * duplicar. `kpis[].meta` e `kpis[].calendario` seguem o mesmo princípio, apontando
+ * outro KPI ou uma matriz da mesma página.
  */
 export function KpiGridSection({
   layout,
@@ -44,6 +45,7 @@ export function KpiGridSection({
           destaque={idsDestaque.has(visual.id)}
           tendencia={entrada.tendencia ? porId.get(entrada.tendencia) : undefined}
           meta={entrada.meta ? porId.get(entrada.meta) : undefined}
+          calendario={entrada.calendario ? porId.get(entrada.calendario) : undefined}
         />
       ))}
     </section>

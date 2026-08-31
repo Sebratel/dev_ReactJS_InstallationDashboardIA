@@ -560,6 +560,18 @@ body {
   position: absolute; top: -2px; bottom: -2px; width: 2px;
   background: var(--pbi-ink); transform: translateX(-1px);
 }
+/* O Calendário (Fase L6): magnitude por OPACIDADE de um só token (`--pbi-gold`), não
+   hex interpolado — o mesmo "claro → escuro, um só tom" que a paleta reserva para
+   magnitude. 7 colunas fixas (dias da semana); linhas nascem do conteúdo do mês. */
+.kpi-calendario { width: 100%; margin-top: 6px; }
+.kpi-calendario-cabecalho, .kpi-calendario-grade {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+}
+.kpi-calendario-cabecalho {
+  margin-bottom: 2px; font-size: .55rem; font-weight: 700; color: var(--muted); text-align: center;
+}
+.kpi-calendario-dia { aspect-ratio: 1; border-radius: 2px; background: var(--pbi-gold); }
+.kpi-calendario-dia.vazio { background: none; }
 .kpi-origem {
   margin-top: 4px; font-size: .62rem; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

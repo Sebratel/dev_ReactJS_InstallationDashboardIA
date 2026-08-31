@@ -1,8 +1,9 @@
-import type { DadosDeGrafico, VisualCalculado } from '../../api.ts';
+import type { DadosDeGrafico, DadosDeMatriz, VisualCalculado } from '../../api.ts';
 import { formata, percentualDeRazao } from '../../formato.ts';
 import { usaModo } from '../../modo.tsx';
 import { Sparkline } from '../../componentes/Sparkline.tsx';
 import { Bullet } from '../../componentes/Bullet.tsx';
+import { Calendario } from '../../componentes/Calendario.tsx';
 
 /**
  * O cartão de um indicador.
@@ -29,17 +30,25 @@ import { Bullet } from '../../componentes/Bullet.tsx';
  * `meta` é o mesmo princípio para `kpis[].meta` (Fase L6, §8): OUTRO KPI da mesma
  * página, cujo valor vira a barra "realizado × meta" do Bullet. KPI está sempre no
  * fetch eager (nunca precisa do corte de faixa que `tendencia` precisa checar).
+ *
+ * `calendario` segue o mesmo princípio para `kpis[].calendario` (Fase L6, §8): uma
+ * MATRIZ da mesma página (técnico × dia, por exemplo), cujas linhas o `Calendario`
+ * soma por coluna de data para desenhar uma grade de semana. `Calendario` recusa
+ * sozinho a matriz que não estiver inteiramente carregada ou que cobrir mais de um
+ * mês — nesses casos o card desenha exatamente como antes.
  */
 export function KpiCard({
   visual,
   destaque = false,
   tendencia,
   meta,
+  calendario,
 }: {
   visual: VisualCalculado;
   destaque?: boolean;
   tendencia?: VisualCalculado;
   meta?: VisualCalculado;
+  calendario?: VisualCalculado;
 }) {
   const { conferencia } = usaModo();
   const d = visual.dados as {
@@ -74,6 +83,11 @@ export function KpiCard({
     dadosDaMeta?.tipoDoValor === 'number' && typeof dadosDaMeta.valor === 'number' ? dadosDaMeta.valor : undefined;
   const valorNumerico = d.tipoDoValor === 'number' && typeof d.valor === 'number' ? d.valor : undefined;
 
+  const dadosDoCalendario =
+    calendario && !calendario.erro && calendario.conteudo === 'matriz'
+      ? (calendario.dados as DadosDeMatriz | undefined)
+      : undefined;
+
   return (
     <section className={`cartao-kpi${destaque ? ' destaque' : ''}`}>
       <h3 className="kpi-nome" title={nomeKpi}>
@@ -84,6 +98,7 @@ export function KpiCard({
       {metaValor !== undefined && valorNumerico !== undefined ? (
         <Bullet valor={valorNumerico} meta={metaValor} />
       ) : null}
+      {dadosDoCalendario ? <Calendario dados={dadosDoCalendario} /> : null}
       {conferencia && origem ? (
         <div className="kpi-origem" title={`${origem} · ${visual.id}`}>
           {origem} · <span className="id-visual">{visual.id}</span>

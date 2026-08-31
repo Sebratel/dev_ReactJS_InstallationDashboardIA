@@ -25,6 +25,7 @@ export interface KpiEntry {
   enfase: 'alta' | 'normal';
   tendencia?: string;
   meta?: string;
+  calendario?: string;
 }
 
 export interface OcultoEntry {
