@@ -14,6 +14,7 @@ import {
 } from './api.ts';
 import { dataHora, duracao, inteiro } from './formato.ts';
 import { usaAlturaMedida, usaEspacoSemVisual } from './altura-medida.ts';
+import { idsIniciais } from './carga-progressiva.ts';
 import { dataDaPagina, filtrosPadrao } from './filtros-padrao.ts';
 import {
   alternaAlvos,
@@ -149,6 +150,23 @@ export function App() {
 
   useEffect(() => {
     if (!atual) return;
+
+    // FASE L5, R4: a abertura só pede o que está acima da dobra, não a página
+    // inteira — e para saber o corte precisa da FORMA primeiro (`idsIniciais`, lida
+    // de `layout.yaml`). Lê do REF (`layoutsVistos`), não do estado `layout`: o ref
+    // já está correto no instante em que este efeito roda, mesmo antes de o estado
+    // (que só atualiza num próximo render) refletir a troca de página — ler o
+    // estado aqui arriscaria montar `idsIniciais` em cima do LAYOUT DA PÁGINA
+    // ANTERIOR, por uma corrida entre os dois efeitos desta troca de `atual`.
+    // `layout` continua na lista de dependências só para ESTE efeito rodar de novo
+    // quando o cache-miss for resolvido (o ref, sozinho, não dispara re-render).
+    const layoutAtual = layoutsVistos.current.get(atual);
+    if (!layoutAtual) {
+      setCarregando(true);
+      setErro(null);
+      return;
+    }
+
     let cancelado = false;
     // Ver `pegaPagina`: sem cancelar, quatro cliques em rajada viram quatro cálculos
     // completos, e a penúltima resposta pode chegar depois da última.
@@ -167,7 +185,7 @@ export function App() {
       else window.history.replaceState(null, '', rota);
     }
 
-    pegaPagina(atual, filtros, undefined, aborta.signal, clicados)
+    pegaPagina(atual, filtros, { visuais: idsIniciais(layoutAtual) }, aborta.signal, clicados)
       .then((p) => {
         if (!cancelado) setPagina(p);
       })
@@ -187,7 +205,7 @@ export function App() {
       cancelado = true;
       aborta.abort();
     };
-  }, [atual, filtros, clicados]);
+  }, [atual, filtros, clicados, layout]);
 
   const escolhe = useCallback((id: string) => {
     setAtual(id);
@@ -403,6 +421,7 @@ export function App() {
           layout={layout}
           visuais={visuais}
           filtros={filtros}
+          clicados={clicados}
           aoFiltrar={aoFiltrarAlvos}
         />
       </div>

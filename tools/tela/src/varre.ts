@@ -240,6 +240,15 @@ function montaRelatorio(
 }
 
 async function main(): Promise<void> {
+  // `--perf` desvia inteiro para o orçamento de carregamento (Fase L5, §7) — é um
+  // arnês diferente (mede rede/tempo, não geometria/contraste), mas mora no mesmo
+  // comando por conveniência: quem já sabe `npm run tela` não precisa aprender um
+  // segundo nome.
+  if (process.argv.includes('--perf')) {
+    const { main: perf } = await import('./perf.ts');
+    return perf();
+  }
+
   const args = parseArgs(process.argv.slice(2));
   const BASE = `http://localhost:${args.porta}`;
 

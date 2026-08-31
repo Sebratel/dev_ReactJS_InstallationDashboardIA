@@ -9,10 +9,18 @@ export function Visual(props: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
+  clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
 }) {
   if (props.visual.sobDemanda) {
-    return <SobDemanda pagina={props.pagina} visual={props.visual} filtros={props.filtros} />;
+    return (
+      <SobDemanda
+        pagina={props.pagina}
+        visual={props.visual}
+        filtros={props.filtros}
+        clicados={props.clicados}
+      />
+    );
   }
   return (
     <VisualPronto

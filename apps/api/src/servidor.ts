@@ -378,15 +378,23 @@ export class Servidor {
       }
     }
 
-    // `?visual=<id>` — o pedido de um visual **sob demanda**. Ver
-    // `specs/_catalog/projecao.yaml`: a página abre sem as colunas caras, e este é o
-    // caminho por onde elas entram, uma de cada vez e só para quem pediu.
-    const soVisual = url.searchParams.get('visual');
-    if (soVisual !== null && !(dash.visuals ?? []).some((v) => v.id === soVisual)) {
-      responde(res, 404, {
-        erro: `Visual '${soVisual}' não existe na página '${id}'.`,
-      });
-      return;
+    // `?visual=<id>` (um ou mais) — o pedido de um subconjunto de visuais, não a
+    // página inteira. Dois usos: o sob-demanda de sempre (uma coluna cara demais
+    // para a abertura, ver `specs/_catalog/projecao.yaml`) e, desde a Fase L5 (R4),
+    // a abertura pedindo só o que está "acima da dobra" — o resto chega por
+    // interseção conforme a pessoa rola. `getAll` é o mesmo padrão já usado por
+    // `?filtro=`/`?clicado=` acima; ausente devolve `[]`, que aqui quer dizer
+    // "página inteira", não "lista vazia de verdade".
+    const visuaisArr = url.searchParams.getAll('visual');
+    const visuaisPedidos: readonly string[] | null = visuaisArr.length > 0 ? visuaisArr : null;
+    if (visuaisPedidos) {
+      const idsConhecidos = new Set((dash.visuals ?? []).map((v) => v.id));
+      for (const vid of visuaisPedidos) {
+        if (!idsConhecidos.has(vid)) {
+          responde(res, 404, { erro: `Visual '${vid}' não existe na página '${id}'.` });
+          return;
+        }
+      }
     }
 
     // --------------------------------------------------------------- cache
@@ -403,7 +411,7 @@ export class Servidor {
       pagina: dash.id,
       filtros: daTela,
       clicados,
-      visual: soVisual,
+      visuais: visuaisPedidos,
       de,
       linhas,
       carimbo,
@@ -420,7 +428,7 @@ export class Servidor {
 
     let carregado: Carregado;
     try {
-      carregado = await this.carrega(dash, soVisual);
+      carregado = await this.carrega(dash, visuaisPedidos);
     } catch (err) {
       // Snapshot faltando é o erro esperado, e a mensagem de `carrega` já traz o
       // comando. 409: o pedido está certo, o estado do servidor é que não está.
@@ -430,11 +438,14 @@ export class Servidor {
       return;
     }
 
-    // Com `?visual=`, calcula só ele: o pedido sob demanda existe para mostrar uma
-    // tabela cara, não para recalcular os outros 38 visuais que a página já mostrou.
-    const visuais = soVisual === null
+    // Com `?visual=`, calcula só os pedidos: o pedido isolado existe para mostrar
+    // uma tabela cara ou completar o que a rolagem revelou, não para recalcular os
+    // outros 38 visuais que a página já mostrou. `.filter` preserva a ordem de
+    // `dash.visuals` (a ordem do relatório), não a ordem em que os ids chegaram.
+    const idsPedidos = visuaisPedidos ? new Set(visuaisPedidos) : null;
+    const visuais = idsPedidos === null
       ? (dash.visuals ?? [])
-      : (dash.visuals ?? []).filter((v) => v.id === soVisual);
+      : (dash.visuals ?? []).filter((v) => idsPedidos.has(v.id));
 
     // O filtro da tela entra como filtro **de página**, que é o escopo de uma
     // segmentação no Power BI: ela recorta todos os visuais da página, não só um.
@@ -669,8 +680,13 @@ export class Servidor {
    * carregada, e a primeira pessoa a pedir os relatos deixaria os 350 MB residentes
    * para todos os pedidos seguintes — exatamente o que a decisão evita.
    */
-  private carrega(dash: DashboardSpec, soVisual: string | null = null): Promise<Carregado> {
-    const libera = soVisual === null ? [] : this.sobDemandaDoVisual(dash, soVisual);
+  private carrega(dash: DashboardSpec, visuaisPedidos: readonly string[] | null = null): Promise<Carregado> {
+    // A UNIÃO das colunas que os visuais pedidos amarram — pedir três visuais numa
+    // rolagem rápida não pode liberar três vezes o mesmo texto livre, nem esquecer a
+    // coluna de um deles porque outro já tinha liberado a sua.
+    const libera = visuaisPedidos === null
+      ? []
+      : [...new Set(visuaisPedidos.flatMap((vid) => this.sobDemandaDoVisual(dash, vid)))];
     const chave = libera.length === 0 ? dash.id : `${dash.id}\u0000${[...libera].sort().join(',')}`;
 
     // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só

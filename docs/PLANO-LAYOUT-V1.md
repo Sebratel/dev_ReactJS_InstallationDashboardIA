@@ -46,7 +46,22 @@ Fase L4 (§6)    [DONE]  31/08/2026 — nova rota GET /api/dashboards/:id/layout
                         limpo (após reaquecer — virada de dia invalidou o cache no meio
                         da sessão, não é defeito). MEDIDAS-TELA.md sem regressão de
                         telas em nenhuma página. 1437/1437, build verde.
-Fase L5 (§7)    [TODO]  contrato de carregamento (R1-R6)
+Fase L5 (§7)    [PARCIAL] 31/08/2026 — R3+R2: usaVisualSobDemanda (hook
+                        cancelável/single-flight, retry corrigido) +
+                        EsqueletoDaPagina (esqueleto lê layout, sem salto). R4
+                        completo: ?visual= vira lista (getAll, chave ordenada);
+                        idsIniciais corta kpis+2 faixas; VisualNaDobra dispara por
+                        IntersectionObserver (200px, não 100% — a de 100% carregava
+                        toda faixa "perto" de mais em página curta, medido em
+                        agendamento-field). tools/tela/src/perf.ts (novo) mede
+                        docs/PERF-CARGA.md. Achado à parte, fora do escopo de R4:
+                        carrega() (servidor.ts) tem cache single-flight por dash.id
+                        sem tratar aborto — um cliente que cancela um pedido ainda
+                        construindo o avaliador pela primeira vez e repete na hora
+                        pode prender a repetição por vários segundos (servidor
+                        isolado, via curl, sempre respondeu rápido; documentado, não
+                        corrigido nesta fase). 1448/1448, build verde, tela 112/112.
+                        R5 (cache SWR de página) e R6 (prefetch de aba) seguem TODO.
 Fase L6 (§8)    [TODO]  6 visuais novos, custo de dado zero
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
 ```

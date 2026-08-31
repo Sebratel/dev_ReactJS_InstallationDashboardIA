@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import type { ColunaDeFaixa, FiltroDaTela, LayoutSpec, VisualCalculado } from '../../api.ts';
+import type { FiltroDaTela, LayoutSpec, VisualCalculado } from '../../api.ts';
 import { contaFaixasLargasPorAltura, usaAlturaDasFaixasLargas } from '../../altura-medida.ts';
 import type { AoFiltrar } from '../../rota.ts';
 import { Visual } from '../../componentes/Visual.tsx';
+import { VisualNaDobra } from '../../componentes/VisualNaDobra.tsx';
 
 /**
  * O corpo da página: gráficos, matrizes e detalhamento, em faixas.
@@ -18,18 +19,26 @@ import { Visual } from '../../componentes/Visual.tsx';
  * `.filas-largas` e disputa o pool de altura por tipo (`usaAlturaDasFaixasLargas`, Fase
  * L3). Uma faixa de **várias colunas** é o "compacto"/"estreita" de antes — usa a
  * fração fixa de `estilo.css`, sem pool (ver `contaFaixasLargasPorAltura`).
+ *
+ * **Fase L5, R4 — nem toda coluna tem visual calculado.** A abertura só pede
+ * `idsIniciais(layout)` (`App.tsx`) — as duas primeiras faixas mais os KPIs; o resto
+ * chega por rolagem. Uma coluna sem `porId.get(id)` não é erro nem faixa incompleta:
+ * é um visual que ainda não foi pedido, e vira `VisualNaDobra` (que dispara o próprio
+ * fetch quando o `IntersectionObserver` disparar).
  */
 export function VisualGridSection({
   pagina,
   layout,
   visuais,
   filtros,
+  clicados,
   aoFiltrar,
 }: {
   pagina: string;
   layout: LayoutSpec | null;
   visuais: VisualCalculado[];
   filtros: FiltroDaTela[];
+  clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar: AoFiltrar;
 }) {
   const porId = useMemo(() => new Map(visuais.map((v) => [v.id, v])), [visuais]);
@@ -44,21 +53,38 @@ export function VisualGridSection({
   return (
     <div className="flex flex-col gap-[var(--gap)]">
       {layout.faixas.map((faixa, i) => {
+        if (faixa.colunas.length === 0) return null;
         const cheia = faixa.colunas.length === 1;
-        const itens = faixa.colunas
-          .map((col) => ({ col, visual: porId.get(col.visual) }))
-          .filter((x): x is { col: ColunaDeFaixa; visual: VisualCalculado } => x.visual != null);
-        if (itens.length === 0) return null;
 
         return (
           <div key={i} className="flex flex-col gap-[var(--gap)]">
             {faixa.titulo ? <TituloSecao>{faixa.titulo}</TituloSecao> : null}
             <div className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
-              {itens.map(({ col, visual }) => (
-                <div key={col.visual} style={{ gridColumn: `span ${col.span}` }}>
-                  <Visual pagina={pagina} visual={visual} filtros={filtros} aoFiltrar={aoFiltrar} />
-                </div>
-              ))}
+              {faixa.colunas.map((col) => {
+                const visual = porId.get(col.visual);
+                return (
+                  <div key={col.visual} style={{ gridColumn: `span ${col.span}` }}>
+                    {visual ? (
+                      <Visual
+                        pagina={pagina}
+                        visual={visual}
+                        filtros={filtros}
+                        clicados={clicados}
+                        aoFiltrar={aoFiltrar}
+                      />
+                    ) : (
+                      <VisualNaDobra
+                        pagina={pagina}
+                        id={col.visual}
+                        altura={faixa.altura}
+                        filtros={filtros}
+                        clicados={clicados}
+                        aoFiltrar={aoFiltrar}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );

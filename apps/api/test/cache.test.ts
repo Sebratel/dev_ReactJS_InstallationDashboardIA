@@ -72,12 +72,12 @@ test('normalizaFiltros: o nível faz parte da identidade do filtro', () => {
   );
 });
 
-test('chaveDaResposta: usuário, página, visual, janela, carimbo e dia mudam a chave', () => {
+test('chaveDaResposta: usuário, página, visuais, janela, carimbo e dia mudam a chave', () => {
   const base = {
     usuario: 'local',
     pagina: 'capa',
     filtros: [],
-    visual: null,
+    visuais: null,
     de: 0,
     linhas: 200,
     carimbo: 'c1',
@@ -88,7 +88,7 @@ test('chaveDaResposta: usuário, página, visual, janela, carimbo e dia mudam a 
   // isto serviria a página do gestor A para o gestor B.
   assert.notEqual(k, chaveDaResposta({ ...base, usuario: 'outro' }));
   assert.notEqual(k, chaveDaResposta({ ...base, pagina: 'visao-geral' }));
-  assert.notEqual(k, chaveDaResposta({ ...base, visual: 'v1' }));
+  assert.notEqual(k, chaveDaResposta({ ...base, visuais: ['v1'] }));
   assert.notEqual(k, chaveDaResposta({ ...base, de: 200 }));
   assert.notEqual(k, chaveDaResposta({ ...base, linhas: 50 }));
   assert.notEqual(k, chaveDaResposta({ ...base, carimbo: 'c2' }));
@@ -97,6 +97,16 @@ test('chaveDaResposta: usuário, página, visual, janela, carimbo e dia mudam a 
   // identidade que não vem do disco.
   assert.notEqual(k, chaveDaResposta({ ...base, dia: '2026-08-08' }));
   assert.equal(k, chaveDaResposta({ ...base }), 'o mesmo pedido dá a mesma chave');
+});
+
+test('chaveDaResposta: a ORDEM da lista de visuais não muda a chave', () => {
+  // A rolagem dispara `?visual=` na ordem em que a pessoa rola, não na ordem do
+  // layout — dois pedidos com os MESMOS ids em ordem diferente são o MESMO pedido.
+  const base = {
+    usuario: 'local', pagina: 'capa', filtros: [], visuais: ['v1', 'v2', 'v3'],
+    de: 0, linhas: 200, carimbo: 'c1', dia: '2026-08-07',
+  };
+  assert.equal(chaveDaResposta(base), chaveDaResposta({ ...base, visuais: ['v3', 'v1', 'v2'] }));
 });
 
 /**
@@ -327,7 +337,7 @@ test('chaveDoCompleto não colide com chaveDaResposta', () => {
     usuario: 'local', pagina: 'capa', filtros: [], visual: 'v1', carimbo: 'c1', dia: '2026-08-07',
   });
   const r = chaveDaResposta({
-    usuario: 'local', pagina: 'capa', filtros: [], visual: 'v1', de: 0, linhas: 200, carimbo: 'c1', dia: '2026-08-07',
+    usuario: 'local', pagina: 'capa', filtros: [], visuais: ['v1'], de: 0, linhas: 200, carimbo: 'c1', dia: '2026-08-07',
   });
   assert.notEqual(k, r);
   assert.ok(k.startsWith('full:'));

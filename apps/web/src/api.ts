@@ -143,7 +143,10 @@ export interface FiltroDaTela {
 export function urlDaPagina(
   id: string,
   filtros: readonly FiltroDaTela[] = [],
-  opcoes: { visual?: string; linhas?: number; de?: number } = {},
+  // `visual` (um) é o pedido sob demanda de sempre; `visuais` (vários — Fase L5, R4)
+  // é a abertura pedindo só o que está acima da dobra. Os dois viram o MESMO `?visual=`
+  // repetido na URL; a API não distingue de onde veio.
+  opcoes: { visual?: string; visuais?: readonly string[]; linhas?: number; de?: number } = {},
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): string {
   const p = new URLSearchParams();
@@ -160,7 +163,8 @@ export function urlDaPagina(
   for (const c of clicados) {
     p.append('clicado', JSON.stringify({ tabela: c.tabela, coluna: c.coluna }));
   }
-  if (opcoes.visual) p.set('visual', opcoes.visual);
+  if (opcoes.visual) p.append('visual', opcoes.visual);
+  for (const v of opcoes.visuais ?? []) p.append('visual', v);
   if (opcoes.linhas) p.set('linhas', String(opcoes.linhas));
   // `de=0` é o padrão da API e não precisa viajar; mandá-lo sujaria toda URL de
   // primeira janela. Só a partir da segunda o parâmetro diz alguma coisa.
@@ -227,7 +231,7 @@ export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[] }> =
 export const pegaPagina = (
   id: string,
   filtros: readonly FiltroDaTela[],
-  opcoes?: { visual?: string; de?: number; linhas?: number },
+  opcoes?: { visual?: string; visuais?: readonly string[]; de?: number; linhas?: number },
   signal?: AbortSignal,
   clicados?: readonly { tabela: string; coluna: string }[],
 ): Promise<PaginaCalculada> => pega(urlDaPagina(id, filtros, opcoes, clicados), signal);

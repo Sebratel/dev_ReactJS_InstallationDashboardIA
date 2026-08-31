@@ -340,6 +340,39 @@ test('?visual= calcula só aquele visual', async () => {
   }
 });
 
+test('?visual= repetido (Fase L5, R4) pede vários e mantém a ordem do relatório', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const inteira = await (await s.busca('/api/dashboards/capa')).json() as { visuais: { id: string }[] };
+    assert.ok(inteira.visuais.length >= 2, 'precisa de pelo menos 2 visuais para testar ordem');
+    const [primeiro, segundo] = inteira.visuais;
+
+    // Pede na ordem INVERTIDA da spec — a resposta tem de vir na ordem do relatório,
+    // não na ordem em que os `?visual=` chegaram na URL.
+    const r = await s.busca(`/api/dashboards/capa?visual=${segundo!.id}&visual=${primeiro!.id}`);
+    const corpo = await r.json() as { visuais: { id: string }[] };
+    assert.equal(corpo.visuais.length, 2);
+    assert.deepEqual(corpo.visuais.map((v) => v.id), [primeiro!.id, segundo!.id]);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('?visual= repetido com um id inexistente dá 404, sem calcular nada', async () => {
+  const dir = await dirComCapa();
+  const s = await servidor(dir);
+  try {
+    const inteira = await (await s.busca('/api/dashboards/capa')).json() as { visuais: { id: string }[] };
+    const valido = inteira.visuais[0]!.id;
+    const r = await s.busca(`/api/dashboards/capa?visual=${valido}&visual=naoexiste`);
+    assert.equal(r.status, 404);
+    assert.match((await r.json()).erro, /'naoexiste' não existe/);
+  } finally {
+    await s.fecha();
+  }
+});
+
 /**
  * O corpo diz o que a projeção deixou de carregar.
  *
