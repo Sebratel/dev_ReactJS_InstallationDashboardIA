@@ -15,6 +15,7 @@ export function SobDemanda(props: {
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
+  render?: string;
 }) {
   const { estado, pronto, erro, tentarDeNovo } = usaVisualSobDemanda(
     props.pagina,
@@ -23,7 +24,11 @@ export function SobDemanda(props: {
     props.clicados,
   );
 
-  if (pronto) return <VisualPronto pagina={props.pagina} visual={pronto} filtros={props.filtros} />;
+  if (pronto) {
+    return (
+      <VisualPronto pagina={props.pagina} visual={pronto} filtros={props.filtros} render={props.render} />
+    );
+  }
 
   const titulo = tituloDoVisual(props.visual);
   // A mesma altura do visual que vai substituir este cartao — ver `alturaDoConteudo`.

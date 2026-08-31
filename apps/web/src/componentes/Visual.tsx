@@ -11,6 +11,7 @@ export function Visual(props: {
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
+  render?: string;
 }) {
   if (props.visual.sobDemanda) {
     return (
@@ -19,6 +20,7 @@ export function Visual(props: {
         visual={props.visual}
         filtros={props.filtros}
         clicados={props.clicados}
+        render={props.render}
       />
     );
   }
@@ -28,6 +30,7 @@ export function Visual(props: {
       visual={props.visual}
       filtros={props.filtros}
       aoFiltrar={props.aoFiltrar}
+      render={props.render}
     />
   );
 }

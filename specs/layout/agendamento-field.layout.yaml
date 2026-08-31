@@ -51,10 +51,10 @@ faixas:
     colunas:
       - visual: ff38eddc2587e3beda21
         span: 4
-        render: tableEx
+        render: rosca
       - visual: 0c0223c665b34f95121e
         span: 4
-        render: tableEx
+        render: rosca
       - visual: ae5871aa76bb028341c9
         span: 4
         render: tableEx
@@ -125,4 +125,14 @@ ocultos:
     porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
   - visual: fb8f008029070e2adcfe
     porque: vira controle de filtro na barra (segmentação), não card da grade
-improvements: []
+improvements:
+  - visual: ff38eddc2587e3beda21
+    original: tableEx
+    virou: rosca
+    porque: "composição de poucas categorias (Turno); a barra-por-linha gastava uma linha inteira por valor — a rosca mostra a proporção inteira de um golpe só, com o total no centro"
+    numero_muda: false
+  - visual: 0c0223c665b34f95121e
+    original: tableEx
+    virou: rosca
+    porque: "composição de poucas categorias (Status SLA); mesmo motivo — Fase L6, docs/PLANO-LAYOUT-V1.md §8"
+    numero_muda: false

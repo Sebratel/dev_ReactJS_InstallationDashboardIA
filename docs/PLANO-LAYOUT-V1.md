@@ -83,7 +83,34 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         prender a página seguinte por vários segundos porque o
                         servidor é um processo só. Documentado, não corrigido nesta
                         fase. 1461/1461, build verde, tela 112/112.
-Fase L6 (§8)    [TODO]  6 visuais novos, custo de dado zero
+Fase L6 (§8)    [PARCIAL] 31/08/2026 — 1 de 6 visuais: rosca com centro numérico
+                        (Rosca.tsx, novo). Mesmo DadosDeTabela que Tabela.tsx já lia
+                        (zero requisição, zero campo novo) — só troca o desenho: a
+                        coluna marcada `chave` vira categoria, a primeira numérica
+                        que sobrar vira valor, corDaSerie/corNoTema dão a MESMA
+                        identidade de cor que o resto da tela já usa para a mesma
+                        categoria. A troca é DECLARADA (layout.yaml `render: rosca`
+                        + `improvements:` com `numero_muda: false`), nunca decidida
+                        por cardinalidade em tempo de render — mesma disciplina
+                        anti-heurística da Fase L4. Piloto em agendamento-field: Turno
+                        e Status SLA (ff38eddc.../0c0223c6...), as duas tableEx de
+                        composição pequena que o §8 cita como exemplo. VisualPronto
+                        ganhou o prop `render` (a forma de layout.yaml), threadado por
+                        Visual/SobDemanda/VisualNaDobra até o funil único de
+                        VisualPronto — cobre os três caminhos de carregamento (direto,
+                        sob demanda, fora da dobra) com uma mudança só. `usaCaixa`
+                        (o AutoSizer do Grafico.tsx) extraído para usa-caixa.ts,
+                        compartilhado — Rosca precisa da mesma medida, e duplicar
+                        divergiria no primeiro ajuste feito só de um lado. Verificado
+                        no navegador (Playwright), claro e escuro: rosca desenha com
+                        a paleta e o total certos, mesma altura de card que a tableEx
+                        que substituiu. tela 112/112 (duas tentativas pegaram um
+                        timeout de .selo isolado, em página SEM rosca — diario-
+                        instalacao e depois manutencao-inicial, cada vez numa página
+                        diferente — refeito limpo; carga de sistema, não regressão).
+                        1461/1461, build verde. Faltam 5 visuais: sparkline no KPI,
+                        bullet, heatmap de calendário, data bar na matriz, ranking-
+                        barra — cada um seu próprio commit, mesmo padrão.
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
 ```
 

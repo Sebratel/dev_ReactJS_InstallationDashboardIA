@@ -71,6 +71,7 @@ export function VisualGridSection({
                         filtros={filtros}
                         clicados={clicados}
                         aoFiltrar={aoFiltrar}
+                        render={col.render}
                       />
                     ) : (
                       <VisualNaDobra
@@ -80,6 +81,7 @@ export function VisualGridSection({
                         filtros={filtros}
                         clicados={clicados}
                         aoFiltrar={aoFiltrar}
+                        render={col.render}
                       />
                     )}
                   </div>

@@ -40,6 +40,7 @@ export function VisualNaDobra(props: {
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
+  render?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [visivel, setVisivel] = useState(false);
@@ -70,6 +71,7 @@ export function VisualNaDobra(props: {
         filtros={props.filtros}
         clicados={props.clicados}
         aoFiltrar={props.aoFiltrar}
+        render={props.render}
       />
     );
   }
@@ -98,6 +100,7 @@ function VisualBuscado(props: {
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
+  render?: string;
 }) {
   const { estado, pronto, erro, tentarDeNovo } = usaVisualSobDemanda(
     props.pagina,
@@ -107,7 +110,15 @@ function VisualBuscado(props: {
   );
 
   if (pronto) {
-    return <VisualPronto pagina={props.pagina} visual={pronto} filtros={props.filtros} aoFiltrar={props.aoFiltrar} />;
+    return (
+      <VisualPronto
+        pagina={props.pagina}
+        visual={pronto}
+        filtros={props.filtros}
+        aoFiltrar={props.aoFiltrar}
+        render={props.render}
+      />
+    );
   }
 
   const titulo = tituloDoVisual({ id: props.id });

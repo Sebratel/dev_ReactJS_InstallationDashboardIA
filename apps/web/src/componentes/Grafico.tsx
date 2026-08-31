@@ -8,7 +8,7 @@
 // A decisão de forma, escala e cor está em `grafico-forma.ts`, que `npm test` cobre.
 // Aqui é só geometria.
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { DadosDeGrafico, FiltroDaTela, VisualCalculado } from '../api.ts';
 import { formata, inteiro } from '../formato.ts';
 import { corNoTema, maiorValorDe, marcasDoEixo, montaGrafico, tetoDasAreas } from '../grafico-forma.ts';
@@ -17,6 +17,7 @@ import { Cartao } from './Cartao.tsx';
 import { tituloDoVisual } from '../rotulos.ts';
 import { selecaoDe, type AoFiltrar } from '../rota.ts';
 import { usaModo } from '../modo.tsx';
+import { usaCaixa } from './usa-caixa.ts';
 
 const FACETA = 96;
 // `base` de 64 e nao 46: a margem de baixo e o teto do rotulo girado, e com 46 ele
@@ -51,67 +52,29 @@ const VAO = 2;
 const BANDA_MINIMA = [24, 40, 64];
 /** Abaixo de 4 categorias por página o gráfico deixa de comunicar tendência. */
 const MINIMO_POR_PAGINA = 4;
-/** Enquanto a caixa real não foi medida — evita o primeiro quadro em zero. */
-const CAIXA_PADRAO = { w: 640, h: 260 };
 
-/**
- * Mede a caixa do próprio nó, como o `AutoSizer` do padrão de dashboards.
- *
- * `useLayoutEffect` e não `useEffect` porque a medida tem de acontecer ANTES da
- * pintura: com `useEffect` o primeiro quadro sai com largura zero. E não usa
- * `ResizeObserver` — no dashboard de referência ele não disparou e os gráficos
- * ficaram invisíveis, sem erro no console; `getBoundingClientRect` no `resize` é
- * mais bruto e sempre funciona.
- */
-function usaCaixa(): [React.RefObject<HTMLDivElement | null>, { w: number; h: number }] {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [caixa, setCaixa] = useState(CAIXA_PADRAO);
-
-  const medir = useCallback(() => {
-    const r = ref.current?.getBoundingClientRect();
-    // Caixa ainda não dimensionada: fica com a anterior. Medir zero apagaria o desenho.
-    if (!r || r.width < 1 || r.height < 1) return;
-    setCaixa((antes) => {
-      const w = Math.floor(r.width);
-      // A ALTURA É A DA CAIXA, SEM PISO — e aqui havia um, de 160px.
-      //
-      // O cabeçalho do `.caixa-grafico` no CSS diz, com todas as letras, que piso
-      // acima da caixa faz o `<svg>` transbordar. Esta linha era esse piso, uma
-      // camada acima: quando o corpo do card sobrava menos de 160px para o desenho,
-      // a medida MENTIA 160 e o `<svg>` saía maior que a caixa que o contém, cortado
-      // pelo `overflow: hidden` dela — sem erro, sem rolagem, sem nada acusando.
-      //
-      // Medido em 27/08/2026 no RELATÓRIO DO ANO a 1366x768: card de 273px em que a
-      // legenda e dois avisos comem 164px, caixa real de **109px**, `<svg>` desenhado
-      // com **160px**. Aparecia só em 1366 e 1440 — nas telas altas a caixa passava
-      // dos 160 e o piso nunca pegava.
-      const h = Math.floor(r.height);
-      return antes.w === w && antes.h === h ? antes : { w, h };
-    });
-  }, []);
-
-  // SEM LISTA DE DEPENDÊNCIAS, de propósito: com `[medir]` (um callback estável) isto
-  // roda UMA vez, na montagem, e a caixa nunca é remedida se ela mudar de tamanho sem
-  // um `resize` de janela. Foi visto na tela em 27/08/2026: `<svg height="372">` dentro
-  // de uma caixa de 344px na MANUTENÇÃO INICIAL — o desenho fora medido antes de a
-  // barra de filtros publicar a altura real dela, `--util` encolheu 21px depois, e o
-  // gráfico ficou com o tamanho antigo transbordando por 28px.
-  //
-  // Rodar a cada render é seguro porque `setCaixa` compara antes de trocar o estado:
-  // medida igual não gera render, então não há laço.
-  useLayoutEffect(medir);
-  useEffect(() => {
-    window.addEventListener('resize', medir);
-    // E quando a fonte chega: a legenda troca de largura, quebra em outro número de
-    // linhas e a caixa encolhe — sem render de React nenhum para disparar a remedida.
-    // Mesmo defeito que deixava `--h-nav` 30px otimista (ver `altura-medida.ts`).
-    const fontes = (document as Document & { fonts?: FontFaceSet }).fonts;
-    if (fontes !== undefined) void fontes.ready.then(() => medir());
-    return () => window.removeEventListener('resize', medir);
-  }, [medir]);
-
-  return [ref, caixa];
-}
+// A ALTURA É A DA CAIXA, SEM PISO — e aqui havia um, de 160px, dentro de `usaCaixa`
+// (agora em `usa-caixa.ts`, compartilhado com `Rosca.tsx`).
+//
+// O cabeçalho do `.caixa-grafico` no CSS diz, com todas as letras, que piso acima da
+// caixa faz o `<svg>` transbordar. Aquela linha era esse piso, uma camada acima: quando
+// o corpo do card sobrava menos de 160px para o desenho, a medida MENTIA 160 e o `<svg>`
+// saía maior que a caixa que o contém, cortado pelo `overflow: hidden` dela — sem erro,
+// sem rolagem, sem nada acusando.
+//
+// Medido em 27/08/2026 no RELATÓRIO DO ANO a 1366x768: card de 273px em que a legenda e
+// dois avisos comem 164px, caixa real de **109px**, `<svg>` desenhado com **160px**.
+// Aparecia só em 1366 e 1440 — nas telas altas a caixa passava dos 160 e o piso nunca
+// pegava. E o SEGUNDO piso, de 120px, contradizia o comentário — somados aos 160,
+// garantiam o transbordo em vez de evitá-lo. Sem piso nenhum, `topo + plot + base` fecha
+// EXATAMENTE em `alturaSvg`: `base` é no máximo 30% do espaço, então o que sobra para o
+// plot é sempre positivo.
+//
+// Foi visto também na MANUTENÇÃO INICIAL (27/08/2026): `<svg height="372">` dentro de
+// uma caixa de 344px — o desenho fora medido antes de a barra de filtros publicar a
+// altura real dela, `--util` encolheu 21px depois, e o gráfico ficou com o tamanho
+// antigo transbordando por 28px. `usa-caixa.ts` remede no `resize` e quando a fonte
+// carrega, exatamente para pegar esses dois casos.
 
 export function Grafico({
   visual,
