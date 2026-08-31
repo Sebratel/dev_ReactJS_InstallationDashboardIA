@@ -2,6 +2,7 @@ import type { DadosDeGrafico, VisualCalculado } from '../../api.ts';
 import { formata, percentualDeRazao } from '../../formato.ts';
 import { usaModo } from '../../modo.tsx';
 import { Sparkline } from '../../componentes/Sparkline.tsx';
+import { Bullet } from '../../componentes/Bullet.tsx';
 
 /**
  * O cartão de um indicador.
@@ -24,15 +25,21 @@ import { Sparkline } from '../../componentes/Sparkline.tsx';
  * gráfico que JÁ está calculado na mesma página, sem requisição nova. Ausente (id não
  * declarado, ou o visual apontado ainda não chegou — ex.: fora do corte eager) o card
  * desenha exatamente como antes.
+ *
+ * `meta` é o mesmo princípio para `kpis[].meta` (Fase L6, §8): OUTRO KPI da mesma
+ * página, cujo valor vira a barra "realizado × meta" do Bullet. KPI está sempre no
+ * fetch eager (nunca precisa do corte de faixa que `tendencia` precisa checar).
  */
 export function KpiCard({
   visual,
   destaque = false,
   tendencia,
+  meta,
 }: {
   visual: VisualCalculado;
   destaque?: boolean;
   tendencia?: VisualCalculado;
+  meta?: VisualCalculado;
 }) {
   const { conferencia } = usaModo();
   const d = visual.dados as {
@@ -59,6 +66,14 @@ export function KpiCard({
       ? (tendencia.dados as DadosDeGrafico | undefined)
       : undefined;
 
+  const dadosDaMeta =
+    meta && !meta.erro && meta.conteudo === 'card'
+      ? (meta.dados as { valor?: unknown; tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null } | undefined)
+      : undefined;
+  const metaValor =
+    dadosDaMeta?.tipoDoValor === 'number' && typeof dadosDaMeta.valor === 'number' ? dadosDaMeta.valor : undefined;
+  const valorNumerico = d.tipoDoValor === 'number' && typeof d.valor === 'number' ? d.valor : undefined;
+
   return (
     <section className={`cartao-kpi${destaque ? ' destaque' : ''}`}>
       <h3 className="kpi-nome" title={nomeKpi}>
@@ -66,6 +81,9 @@ export function KpiCard({
       </h3>
       <div className={`kpi-valor${f.vazio ? ' vazio' : ''}`}>{valorTexto}</div>
       {dadosDaTendencia ? <Sparkline dados={dadosDaTendencia} /> : null}
+      {metaValor !== undefined && valorNumerico !== undefined ? (
+        <Bullet valor={valorNumerico} meta={metaValor} />
+      ) : null}
       {conferencia && origem ? (
         <div className="kpi-origem" title={`${origem} · ${visual.id}`}>
           {origem} · <span className="id-visual">{visual.id}</span>

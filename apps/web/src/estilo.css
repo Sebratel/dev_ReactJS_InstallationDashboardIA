@@ -547,6 +547,19 @@ body {
    isso o traço engrossaria ou afinaria com a largura real do card. */
 .kpi-sparkline { width: 100%; height: 28px; display: block; margin-top: 6px; overflow: visible; }
 .sparkline-linha { stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+/* O Bullet (Fase L6): verde/dourado são token de ESTADO (`estilo.css` já os troca por
+   tema), não cor de série — por isso `background: var(...)` chega, sem hex nem SVG. */
+.kpi-bullet { width: 100%; margin-top: 6px; }
+.kpi-bullet-trilha { position: relative; height: 7px; border-radius: 4px; background: var(--pbi-grid); }
+.kpi-bullet-preenchido {
+  position: absolute; inset: 0 auto 0 0; height: 100%; border-radius: 4px;
+  background: var(--pbi-gold);
+}
+.kpi-bullet-preenchido.atingiu { background: var(--pbi-green); }
+.kpi-bullet-meta {
+  position: absolute; top: -2px; bottom: -2px; width: 2px;
+  background: var(--pbi-ink); transform: translateX(-1px);
+}
 .kpi-origem {
   margin-top: 4px; font-size: .62rem; color: var(--muted);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;

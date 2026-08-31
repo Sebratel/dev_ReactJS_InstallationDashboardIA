@@ -16,6 +16,7 @@ kpis:
     enfase: normal
   - visual: 35c35445066c73fc984d
     enfase: normal
+    meta: 28b2fed3696b956b1a98
   - visual: 46f466fa464ba5d15e47
     enfase: normal
   - visual: 472098e3faec67cae276
@@ -108,4 +109,9 @@ improvements:
     original: card
     virou: card+sparkline
     porque: "12 pontos de contexto lidos do lineChart 74caae7037048fb1ad13 (Contagem de SOLICITACAO1, mesmo entity/property/aggregation do KPI — PROTOCOLOS GERAL[SOLICITACAO] count), já calculado na mesma página; zero requisição nova — Fase L6, docs/PLANO-LAYOUT-V1.md §8"
+    numero_muda: false
+  - visual: 35c35445066c73fc984d
+    original: card
+    virou: card+bullet
+    porque: "barra realizado×meta lida do KPI 28b2fed3696b956b1a98 (# META, já na mesma página); a própria medida '# FALTA MÊS ATIVO' é definida como [# TOTAL MÊS ATIVO] - [# META] no catálogo (protocolos-geral.measures.yaml), então o par não é achado por nome — é o mesmo par que a medida de negócio já usa; zero requisição nova — Fase L6, docs/PLANO-LAYOUT-V1.md §8"
     numero_muda: false

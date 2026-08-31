@@ -83,7 +83,7 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         prender a página seguinte por vários segundos porque o
                         servidor é um processo só. Documentado, não corrigido nesta
                         fase. 1461/1461, build verde, tela 112/112.
-Fase L6 (§8)    [PARCIAL] 31/08/2026 — 2 de 6 visuais.
+Fase L6 (§8)    [PARCIAL] 31/08/2026 — 3 de 6 visuais.
                         1) rosca com centro numérico (Rosca.tsx, novo). Mesmo
                         DadosDeTabela que Tabela.tsx já lia (zero requisição, zero
                         campo novo) — só troca o desenho: a coluna marcada `chave`
@@ -131,7 +131,31 @@ Fase L6 (§8)    [PARCIAL] 31/08/2026 — 2 de 6 visuais.
                         `--pagina=X` REESCREVE MEDIDAS-TELA.md do zero em vez de
                         somar ao lote anterior, então o artefato final só pode vir de
                         um sweep completo numa passada só).
-                        1461/1461, build verde. Faltam 4 visuais: bullet, heatmap de
+                        3) bullet realizado×meta (Bullet.tsx, novo), lido de um novo
+                        campo `kpis[].meta` (mesmo desenho de `tendencia`, mas
+                        apontando OUTRO KPI da página em vez de um gráfico — KPI
+                        está sempre no fetch eager, então não precisa da checagem
+                        de faixa que `tendencia` precisa). Piloto em
+                        relatorio-do-mes: KPI "TOTAL MÊS ATIVO FIBRA"
+                        (35c35445...) ganha a barra contra "META DO MÊS"
+                        (28b2fed3...) — par achado sem heurística nenhuma, porque a
+                        PRÓPRIA medida de negócio já os liga (`# FALTA MÊS ATIVO`
+                        no catálogo é literalmente `[# TOTAL MÊS ATIVO] - [# META]`
+                        — protocolos-geral.measures.yaml). Escala do desenho é
+                        `max(valor, meta)`: passou da meta, a barra enche e a marca
+                        aparece antes do fim; não passou, a barra para antes da
+                        marca. Verde/dourado são token de ESTADO já tratado por
+                        tema em estilo.css (`--pbi-green`/`--pbi-gold`), não cor de
+                        série — por isso é `background: var(...)` puro, sem hex nem
+                        SVG, diferente de Rosca/Sparkline. Verificado no navegador
+                        (Playwright), claro e escuro, os dois estados (dourado
+                        abaixo da meta — o caso real de hoje — e verde simulado,
+                        para confirmar o token antes de qualquer mês em que a meta
+                        seja batida). tela 112/112 (cinco tentativas pegaram
+                        timeout de .selo isolado em páginas SEM bullet, cada vez
+                        numa página diferente — mesmo padrão de carga de sistema
+                        das duas fases anteriores, refeito limpo).
+                        1461/1461, build verde. Faltam 3 visuais: heatmap de
                         calendário, data bar na matriz, ranking-barra — cada um seu
                         próprio commit, mesmo padrão.
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
