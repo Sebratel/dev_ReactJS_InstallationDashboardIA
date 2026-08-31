@@ -32,6 +32,7 @@ kpis:
     enfase: normal
   - visual: d914bdf23072848ca977
     enfase: normal
+    tendencia: 74caae7037048fb1ad13
   - visual: dcc3106272278ce25a49
     enfase: normal
   - visual: e76f02844be92ab07edc
@@ -102,4 +103,9 @@ ocultos:
     porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
   - visual: e2fc9924ee8243e8d5a5
     porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
-improvements: []
+improvements:
+  - visual: d914bdf23072848ca977
+    original: card
+    virou: card+sparkline
+    porque: "12 pontos de contexto lidos do lineChart 74caae7037048fb1ad13 (Contagem de SOLICITACAO1, mesmo entity/property/aggregation do KPI — PROTOCOLOS GERAL[SOLICITACAO] count), já calculado na mesma página; zero requisição nova — Fase L6, docs/PLANO-LAYOUT-V1.md §8"
+    numero_muda: false

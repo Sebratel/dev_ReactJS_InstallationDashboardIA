@@ -1,4 +1,4 @@
-import type { LayoutSpec, VisualCalculado } from '../../api.ts';
+import type { KpiEntry, LayoutSpec, VisualCalculado } from '../../api.ts';
 import { KpiCard } from '../molecules/KpiCard.tsx';
 
 /**
@@ -12,6 +12,11 @@ import { KpiCard } from '../molecules/KpiCard.tsx';
  * **Fase L4**: ordem e destaque vêm de `layout.kpis` (`specs/layout/*.layout.yaml`), não
  * de uma prop `idsDestaque` que nunca teve chamador. Um card com `.erro` continua fora
  * da faixa — mesma regra de antes, agora aplicada aqui em vez de em `App.tsx`.
+ *
+ * **Fase L6**: `kpis[].tendencia` (opcional) aponta o id de um gráfico JÁ presente em
+ * `visuais` — a mesma lista que a página inteira recebeu, sem requisição extra. `porId`
+ * é o mesmo mapa que já resolve o KPI; resolver a tendência nele é reaproveitar, não
+ * duplicar.
  */
 export function KpiGridSection({
   layout,
@@ -22,8 +27,8 @@ export function KpiGridSection({
 }) {
   const porId = new Map(visuais.map((v) => [v.id, v]));
   const cards = (layout?.kpis ?? [])
-    .map((k) => porId.get(k.visual))
-    .filter((v): v is VisualCalculado => v != null && !v.erro);
+    .map((k) => ({ entrada: k, visual: porId.get(k.visual) }))
+    .filter((x): x is { entrada: KpiEntry; visual: VisualCalculado } => x.visual != null && !x.visual.erro);
   const idsDestaque = new Set(
     (layout?.kpis ?? []).filter((k) => k.enfase === 'alta').map((k) => k.visual),
   );
@@ -32,8 +37,13 @@ export function KpiGridSection({
 
   return (
     <section aria-label="Indicadores" className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
-      {cards.map((v) => (
-        <KpiCard key={v.id} visual={v} destaque={idsDestaque.has(v.id)} />
+      {cards.map(({ entrada, visual }) => (
+        <KpiCard
+          key={visual.id}
+          visual={visual}
+          destaque={idsDestaque.has(visual.id)}
+          tendencia={entrada.tendencia ? porId.get(entrada.tendencia) : undefined}
+        />
       ))}
     </section>
   );

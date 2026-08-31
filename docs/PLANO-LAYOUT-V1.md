@@ -83,19 +83,20 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         prender a página seguinte por vários segundos porque o
                         servidor é um processo só. Documentado, não corrigido nesta
                         fase. 1461/1461, build verde, tela 112/112.
-Fase L6 (§8)    [PARCIAL] 31/08/2026 — 1 de 6 visuais: rosca com centro numérico
-                        (Rosca.tsx, novo). Mesmo DadosDeTabela que Tabela.tsx já lia
-                        (zero requisição, zero campo novo) — só troca o desenho: a
-                        coluna marcada `chave` vira categoria, a primeira numérica
-                        que sobrar vira valor, corDaSerie/corNoTema dão a MESMA
-                        identidade de cor que o resto da tela já usa para a mesma
-                        categoria. A troca é DECLARADA (layout.yaml `render: rosca`
-                        + `improvements:` com `numero_muda: false`), nunca decidida
-                        por cardinalidade em tempo de render — mesma disciplina
-                        anti-heurística da Fase L4. Piloto em agendamento-field: Turno
-                        e Status SLA (ff38eddc.../0c0223c6...), as duas tableEx de
-                        composição pequena que o §8 cita como exemplo. VisualPronto
-                        ganhou o prop `render` (a forma de layout.yaml), threadado por
+Fase L6 (§8)    [PARCIAL] 31/08/2026 — 2 de 6 visuais.
+                        1) rosca com centro numérico (Rosca.tsx, novo). Mesmo
+                        DadosDeTabela que Tabela.tsx já lia (zero requisição, zero
+                        campo novo) — só troca o desenho: a coluna marcada `chave`
+                        vira categoria, a primeira numérica que sobrar vira valor,
+                        corDaSerie/corNoTema dão a MESMA identidade de cor que o
+                        resto da tela já usa para a mesma categoria. A troca é
+                        DECLARADA (layout.yaml `render: rosca` + `improvements:` com
+                        `numero_muda: false`), nunca decidida por cardinalidade em
+                        tempo de render — mesma disciplina anti-heurística da Fase
+                        L4. Piloto em agendamento-field: Turno e Status SLA
+                        (ff38eddc.../0c0223c6...), as duas tableEx de composição
+                        pequena que o §8 cita como exemplo. VisualPronto ganhou o
+                        prop `render` (a forma de layout.yaml), threadado por
                         Visual/SobDemanda/VisualNaDobra até o funil único de
                         VisualPronto — cobre os três caminhos de carregamento (direto,
                         sob demanda, fora da dobra) com uma mudança só. `usaCaixa`
@@ -108,9 +109,31 @@ Fase L6 (§8)    [PARCIAL] 31/08/2026 — 1 de 6 visuais: rosca com centro numé
                         timeout de .selo isolado, em página SEM rosca — diario-
                         instalacao e depois manutencao-inicial, cada vez numa página
                         diferente — refeito limpo; carga de sistema, não regressão).
-                        1461/1461, build verde. Faltam 5 visuais: sparkline no KPI,
-                        bullet, heatmap de calendário, data bar na matriz, ranking-
-                        barra — cada um seu próprio commit, mesmo padrão.
+                        2) sparkline no KPI (Sparkline.tsx, novo), lido do campo
+                        `tendencia` do schema (existia desde L1/L2, nunca consumido).
+                        O par KPI↔gráfico é achado por igualdade EXATA de
+                        entity+property+aggregation entre o campo do KPI e a série
+                        Y/Y2 de um gráfico já na MESMA página — nunca por nome ou
+                        heurística fuzzy — e restrito às 2 primeiras faixas
+                        (N_FAIXAS_EAGER da Fase L5/R4), porque um `tendencia` fora do
+                        corte eager quebraria a garantia de "zero requisição nova" se
+                        o usuário nunca rolar até lá. Piloto em relatorio-do-mes: KPI
+                        "PROTOCOLOS TOTAIS REALIZADOS" (d914bdf2...) lê 12 pontos do
+                        lineChart "Contagem de SOLICITACAO1" (74caae70...), mesmo
+                        entity/property/aggregation. Mesma disciplina de cor
+                        dark-theme-safe da Rosca (corDaSerie+corNoTema, nunca CSS
+                        estático). Verificado no navegador (Playwright), claro e
+                        escuro. tela 112/112 (quatro tentativas de sweep completo
+                        pegaram timeout de .selo isolado em páginas SEM sparkline,
+                        cada vez numa página diferente; separado em dois lotes de 7
+                        páginas para isolar, e o sweep completo refeito limpo depois
+                        — carga de sistema, não regressão; confirmado que rodar só
+                        `--pagina=X` REESCREVE MEDIDAS-TELA.md do zero em vez de
+                        somar ao lote anterior, então o artefato final só pode vir de
+                        um sweep completo numa passada só).
+                        1461/1461, build verde. Faltam 4 visuais: bullet, heatmap de
+                        calendário, data bar na matriz, ranking-barra — cada um seu
+                        próprio commit, mesmo padrão.
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
 ```
 

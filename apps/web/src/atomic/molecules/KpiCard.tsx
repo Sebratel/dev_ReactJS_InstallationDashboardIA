@@ -1,6 +1,7 @@
-import type { VisualCalculado } from '../../api.ts';
+import type { DadosDeGrafico, VisualCalculado } from '../../api.ts';
 import { formata, percentualDeRazao } from '../../formato.ts';
 import { usaModo } from '../../modo.tsx';
+import { Sparkline } from '../../componentes/Sparkline.tsx';
 
 /**
  * O cartão de um indicador.
@@ -18,8 +19,21 @@ import { usaModo } from '../../modo.tsx';
  * cor de estado é reservada — o cartão tem uma faixa em ouro, e o número fica em tinta.
  *
  * `destaque` aumenta o corpo do cartão para o KPI principal da página.
+ *
+ * `tendencia` é OPCIONAL e vem de `layout.yaml` (`kpis[].tendencia`, Fase L6, §8): um
+ * gráfico que JÁ está calculado na mesma página, sem requisição nova. Ausente (id não
+ * declarado, ou o visual apontado ainda não chegou — ex.: fora do corte eager) o card
+ * desenha exatamente como antes.
  */
-export function KpiCard({ visual, destaque = false }: { visual: VisualCalculado; destaque?: boolean }) {
+export function KpiCard({
+  visual,
+  destaque = false,
+  tendencia,
+}: {
+  visual: VisualCalculado;
+  destaque?: boolean;
+  tendencia?: VisualCalculado;
+}) {
   const { conferencia } = usaModo();
   const d = visual.dados as {
     nome?: string;
@@ -40,12 +54,18 @@ export function KpiCard({ visual, destaque = false }: { visual: VisualCalculado;
   const ehPercentual = nomeKpi.includes('%') && d.tipoDoValor === 'number';
   const valorTexto = f.vazio ? '—' : ehPercentual ? percentualDeRazao(d.valor) : f.texto;
 
+  const dadosDaTendencia =
+    tendencia && !tendencia.erro && tendencia.conteudo === 'grafico'
+      ? (tendencia.dados as DadosDeGrafico | undefined)
+      : undefined;
+
   return (
     <section className={`cartao-kpi${destaque ? ' destaque' : ''}`}>
       <h3 className="kpi-nome" title={nomeKpi}>
         {nomeKpi}
       </h3>
       <div className={`kpi-valor${f.vazio ? ' vazio' : ''}`}>{valorTexto}</div>
+      {dadosDaTendencia ? <Sparkline dados={dadosDaTendencia} /> : null}
       {conferencia && origem ? (
         <div className="kpi-origem" title={`${origem} · ${visual.id}`}>
           {origem} · <span className="id-visual">{visual.id}</span>

@@ -2,7 +2,7 @@
 
 > GERADO POR `npm run tela` — não editar à mão. Ver `docs/PLANO-LAYOUT-V1.md` §4.
 
-Gerado em 2026-08-31T18:22:09.846Z.
+Gerado em 2026-08-31T20:35:12.132Z.
 
 ## Contraste (por tema — os tokens de cor não variam por resolução)
 
@@ -24,7 +24,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | claro | 1366×768 | 1806/768 | 2.4 | — |
 | protocolos-detalhados | claro | 1366×768 | 916/768 | 1.2 | — |
 | relatorio-do-ano | claro | 1366×768 | 768/768 | 1.0 | — |
-| relatorio-do-mes | claro | 1366×768 | 2398/768 | 3.1 | — |
+| relatorio-do-mes | claro | 1366×768 | 2432/768 | 3.2 | — |
 | telefonia-ouvidoria | claro | 1366×768 | 897/768 | 1.2 | — |
 | visao-geral | claro | 1366×768 | 957/768 | 1.2 | — |
 | agendamento-field | claro | 1440×900 | 3517/900 | 3.9 | — |
@@ -38,7 +38,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | claro | 1440×900 | 1855/900 | 2.1 | — |
 | protocolos-detalhados | claro | 1440×900 | 916/900 | 1.0 | — |
 | relatorio-do-ano | claro | 1440×900 | 900/900 | 1.0 | — |
-| relatorio-do-mes | claro | 1440×900 | 2398/900 | 2.7 | — |
+| relatorio-do-mes | claro | 1440×900 | 2432/900 | 2.7 | — |
 | telefonia-ouvidoria | claro | 1440×900 | 900/900 | 1.0 | — |
 | visao-geral | claro | 1440×900 | 957/900 | 1.1 | — |
 | agendamento-field | claro | 1706×1000 | 3626/1000 | 3.6 | — |
@@ -52,7 +52,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | claro | 1706×1000 | 1910/1000 | 1.9 | — |
 | protocolos-detalhados | claro | 1706×1000 | 1000/1000 | 1.0 | — |
 | relatorio-do-ano | claro | 1706×1000 | 1000/1000 | 1.0 | — |
-| relatorio-do-mes | claro | 1706×1000 | 2398/1000 | 2.4 | — |
+| relatorio-do-mes | claro | 1706×1000 | 2432/1000 | 2.4 | — |
 | telefonia-ouvidoria | claro | 1706×1000 | 1000/1000 | 1.0 | — |
 | visao-geral | claro | 1706×1000 | 1000/1000 | 1.0 | — |
 | agendamento-field | claro | 1920×1080 | 3714/1080 | 3.4 | — |
@@ -66,7 +66,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | claro | 1920×1080 | 1953/1080 | 1.8 | — |
 | protocolos-detalhados | claro | 1920×1080 | 1080/1080 | 1.0 | — |
 | relatorio-do-ano | claro | 1920×1080 | 1080/1080 | 1.0 | — |
-| relatorio-do-mes | claro | 1920×1080 | 2301/1080 | 2.1 | — |
+| relatorio-do-mes | claro | 1920×1080 | 2335/1080 | 2.2 | — |
 | telefonia-ouvidoria | claro | 1920×1080 | 1080/1080 | 1.0 | — |
 | visao-geral | claro | 1920×1080 | 1080/1080 | 1.0 | — |
 | agendamento-field | escuro | 1366×768 | 3510/768 | 4.6 | — |
@@ -80,7 +80,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | escuro | 1366×768 | 1806/768 | 2.4 | — |
 | protocolos-detalhados | escuro | 1366×768 | 916/768 | 1.2 | — |
 | relatorio-do-ano | escuro | 1366×768 | 768/768 | 1.0 | — |
-| relatorio-do-mes | escuro | 1366×768 | 2398/768 | 3.1 | — |
+| relatorio-do-mes | escuro | 1366×768 | 2432/768 | 3.2 | — |
 | telefonia-ouvidoria | escuro | 1366×768 | 897/768 | 1.2 | — |
 | visao-geral | escuro | 1366×768 | 957/768 | 1.2 | — |
 | agendamento-field | escuro | 1440×900 | 3517/900 | 3.9 | — |
@@ -94,7 +94,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | escuro | 1440×900 | 1855/900 | 2.1 | — |
 | protocolos-detalhados | escuro | 1440×900 | 916/900 | 1.0 | — |
 | relatorio-do-ano | escuro | 1440×900 | 900/900 | 1.0 | — |
-| relatorio-do-mes | escuro | 1440×900 | 2398/900 | 2.7 | — |
+| relatorio-do-mes | escuro | 1440×900 | 2432/900 | 2.7 | — |
 | telefonia-ouvidoria | escuro | 1440×900 | 900/900 | 1.0 | — |
 | visao-geral | escuro | 1440×900 | 957/900 | 1.1 | — |
 | agendamento-field | escuro | 1706×1000 | 3626/1000 | 3.6 | — |
@@ -108,7 +108,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | escuro | 1706×1000 | 1910/1000 | 1.9 | — |
 | protocolos-detalhados | escuro | 1706×1000 | 1000/1000 | 1.0 | — |
 | relatorio-do-ano | escuro | 1706×1000 | 1000/1000 | 1.0 | — |
-| relatorio-do-mes | escuro | 1706×1000 | 2398/1000 | 2.4 | — |
+| relatorio-do-mes | escuro | 1706×1000 | 2432/1000 | 2.4 | — |
 | telefonia-ouvidoria | escuro | 1706×1000 | 1000/1000 | 1.0 | — |
 | visao-geral | escuro | 1706×1000 | 1000/1000 | 1.0 | — |
 | agendamento-field | escuro | 1920×1080 | 3714/1080 | 3.4 | — |
@@ -122,7 +122,7 @@ Gerado em 2026-08-31T18:22:09.846Z.
 | premiacao-instalacao | escuro | 1920×1080 | 1953/1080 | 1.8 | — |
 | protocolos-detalhados | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
 | relatorio-do-ano | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
-| relatorio-do-mes | escuro | 1920×1080 | 2301/1080 | 2.1 | — |
+| relatorio-do-mes | escuro | 1920×1080 | 2335/1080 | 2.2 | — |
 | telefonia-ouvidoria | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
 | visao-geral | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
 
