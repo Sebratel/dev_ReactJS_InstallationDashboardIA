@@ -181,6 +181,14 @@ export function urlDeValores(
 }
 
 /**
+ * Um pedido cancelado não é uma falha — é o pedido seguinte fazendo o trabalho certo.
+ * Compartilhada entre `App.tsx` e `usa-visual-sob-demanda.ts` para as duas checagens
+ * nunca divergirem (a mesma razão de `codificaFiltro` ser importado, não reescrito).
+ */
+export const ehAbortError = (err: unknown): boolean =>
+  err instanceof DOMException && err.name === 'AbortError';
+
+/**
  * `GET` que erra alto.
  *
  * A API põe a explicação inteira em `erro`, e as mensagens dela dizem o que fazer

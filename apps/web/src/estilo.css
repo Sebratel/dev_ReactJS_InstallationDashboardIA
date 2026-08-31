@@ -897,6 +897,9 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
 }
 @keyframes varre { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
 @media (prefers-reduced-motion: reduce) { .esqueleto-linha::after { animation: none; } }
+/* O esqueleto de página inteira (Fase L5, R2) desenha um `.cartao-kpi` de verdade por
+   KPI — a linha padrão de 68px estoura a altura natural do card, que é conteúdo. */
+.kpi-esqueleto-linha { height: 40px; }
 
 /* --------------------------------------------- a árvore de data (Ano > Mês > Dia)
 

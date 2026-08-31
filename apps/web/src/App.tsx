@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ehAbortError,
   listaDashboards,
   pegaLayout,
   pegaPagina,
@@ -27,6 +28,7 @@ import {
 import { AppShell } from './componentes/AppShell.tsx';
 import { Capa } from './componentes/Capa.tsx';
 import { Erro } from './componentes/Cartao.tsx';
+import { EsqueletoDaPagina } from './componentes/EsqueletoDaPagina.tsx';
 import { Segmentacao } from './componentes/Segmentacao.tsx';
 import { SegmentacaoDataHierarquia } from './componentes/SegmentacaoDataHierarquia.tsx';
 import { usaModo } from './modo.tsx';
@@ -97,7 +99,7 @@ export function App() {
         setLayout(l);
       })
       .catch((err: unknown) => {
-        if (err instanceof DOMException && err.name === 'AbortError') return;
+        if (ehAbortError(err)) return;
         setErro(err instanceof Error ? err.message : String(err));
       });
     return () => aborta.abort();
@@ -173,7 +175,7 @@ export function App() {
         // Pedido cancelado não é falha: quem cancelou foi o clique seguinte, e a tela
         // já está carregando o recorte novo. Pintar "erro" aqui faria a exploração
         // piscar uma mensagem vermelha a cada clique em rajada.
-        if (cancelado || (err instanceof DOMException && err.name === 'AbortError')) return;
+        if (cancelado || ehAbortError(err)) return;
         setPagina(null);
         setErro(err instanceof Error ? err.message : String(err));
       })
@@ -367,11 +369,18 @@ export function App() {
       ) : null}
 
       {carregando && !pagina ? (
-        <div className="esqueleto">
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-        </div>
+        layout ? (
+          <EsqueletoDaPagina layout={layout} />
+        ) : (
+          // Janela residual em que nem `layout` chegou ainda — tipicamente um
+          // sub-frame (Fase L4: o endpoint é um mapa em memória). Sem a forma real
+          // ainda para copiar, o bloco genérico de antes é o fallback.
+          <div className="esqueleto">
+            <div className="esqueleto-linha" />
+            <div className="esqueleto-linha" />
+            <div className="esqueleto-linha" />
+          </div>
+        )
       ) : null}
 
       {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas

@@ -2,7 +2,7 @@
 
 > GERADO POR `npm run tela` — não editar à mão. Ver `docs/PLANO-LAYOUT-V1.md` §4.
 
-Gerado em 2026-08-31T12:35:01.626Z.
+Gerado em 2026-08-31T13:31:51.535Z.
 
 ## Contraste (por tema — os tokens de cor não variam por resolução)
 
@@ -21,7 +21,7 @@ Gerado em 2026-08-31T12:35:01.626Z.
 | l-mapa | claro | 1366×768 | 768/768 | 1.0 | — |
 | l-tec | claro | 1366×768 | 768/768 | 1.0 | — |
 | manutencao-inicial | claro | 1366×768 | 1635/768 | 2.1 | — |
-| premiacao-instalacao | claro | 1366×768 | 1852/768 | 2.4 | — |
+| premiacao-instalacao | claro | 1366×768 | 1919/768 | 2.5 | — |
 | protocolos-detalhados | claro | 1366×768 | 932/768 | 1.2 | — |
 | relatorio-do-ano | claro | 1366×768 | 768/768 | 1.0 | — |
 | relatorio-do-mes | claro | 1366×768 | 2437/768 | 3.2 | — |
@@ -35,7 +35,7 @@ Gerado em 2026-08-31T12:35:01.626Z.
 | l-mapa | claro | 1440×900 | 900/900 | 1.0 | — |
 | l-tec | claro | 1440×900 | 900/900 | 1.0 | — |
 | manutencao-inicial | claro | 1440×900 | 1635/900 | 1.8 | — |
-| premiacao-instalacao | claro | 1440×900 | 2079/900 | 2.3 | — |
+| premiacao-instalacao | claro | 1440×900 | 1873/900 | 2.1 | — |
 | protocolos-detalhados | claro | 1440×900 | 916/900 | 1.0 | — |
 | relatorio-do-ano | claro | 1440×900 | 900/900 | 1.0 | — |
 | relatorio-do-mes | claro | 1440×900 | 2437/900 | 2.7 | — |
@@ -49,11 +49,11 @@ Gerado em 2026-08-31T12:35:01.626Z.
 | l-mapa | claro | 1706×1000 | 1000/1000 | 1.0 | — |
 | l-tec | claro | 1706×1000 | 1000/1000 | 1.0 | — |
 | manutencao-inicial | claro | 1706×1000 | 1635/1000 | 1.6 | — |
-| premiacao-instalacao | claro | 1706×1000 | 2234/1000 | 2.2 | — |
+| premiacao-instalacao | claro | 1706×1000 | 1928/1000 | 1.9 | — |
 | protocolos-detalhados | claro | 1706×1000 | 1000/1000 | 1.0 | — |
 | relatorio-do-ano | claro | 1706×1000 | 1000/1000 | 1.0 | — |
 | relatorio-do-mes | claro | 1706×1000 | 2437/1000 | 2.4 | — |
-| telefonia-ouvidoria | claro | 1706×1000 | 1019/1000 | 1.0 | — |
+| telefonia-ouvidoria | claro | 1706×1000 | 1009/1000 | 1.0 | — |
 | visao-geral | claro | 1706×1000 | 1009/1000 | 1.0 | — |
 | agendamento-field | claro | 1920×1080 | 3711/1080 | 3.4 | — |
 | capa | claro | 1920×1080 | 1696/1080 | 1.6 | — |
@@ -63,7 +63,7 @@ Gerado em 2026-08-31T12:35:01.626Z.
 | l-mapa | claro | 1920×1080 | 1080/1080 | 1.0 | — |
 | l-tec | claro | 1920×1080 | 1080/1080 | 1.0 | — |
 | manutencao-inicial | claro | 1920×1080 | 1670/1080 | 1.5 | — |
-| premiacao-instalacao | claro | 1920×1080 | 2357/1080 | 2.2 | — |
+| premiacao-instalacao | claro | 1920×1080 | 1971/1080 | 1.8 | — |
 | protocolos-detalhados | claro | 1920×1080 | 1080/1080 | 1.0 | — |
 | relatorio-do-ano | claro | 1920×1080 | 1080/1080 | 1.0 | — |
 | relatorio-do-mes | claro | 1920×1080 | 2340/1080 | 2.2 | — |
@@ -77,7 +77,7 @@ Gerado em 2026-08-31T12:35:01.626Z.
 | l-mapa | escuro | 1366×768 | 768/768 | 1.0 | — |
 | l-tec | escuro | 1366×768 | 768/768 | 1.0 | — |
 | manutencao-inicial | escuro | 1366×768 | 1635/768 | 2.1 | — |
-| premiacao-instalacao | escuro | 1366×768 | 1910/768 | 2.5 | — |
+| premiacao-instalacao | escuro | 1366×768 | 1919/768 | 2.5 | — |
 | protocolos-detalhados | escuro | 1366×768 | 932/768 | 1.2 | — |
 | relatorio-do-ano | escuro | 1366×768 | 768/768 | 1.0 | — |
 | relatorio-do-mes | escuro | 1366×768 | 2437/768 | 3.2 | — |
@@ -91,7 +91,7 @@ Gerado em 2026-08-31T12:35:01.626Z.
 | l-mapa | escuro | 1440×900 | 900/900 | 1.0 | — |
 | l-tec | escuro | 1440×900 | 900/900 | 1.0 | — |
 | manutencao-inicial | escuro | 1440×900 | 1635/900 | 1.8 | — |
-| premiacao-instalacao | escuro | 1440×900 | 2012/900 | 2.2 | — |
+| premiacao-instalacao | escuro | 1440×900 | 2079/900 | 2.3 | — |
 | protocolos-detalhados | escuro | 1440×900 | 916/900 | 1.0 | — |
 | relatorio-do-ano | escuro | 1440×900 | 900/900 | 1.0 | — |
 | relatorio-do-mes | escuro | 1440×900 | 2437/900 | 2.7 | — |
@@ -113,8 +113,8 @@ Gerado em 2026-08-31T12:35:01.626Z.
 | visao-geral | escuro | 1706×1000 | 1009/1000 | 1.0 | — |
 | agendamento-field | escuro | 1920×1080 | 3711/1080 | 3.4 | — |
 | capa | escuro | 1920×1080 | 1696/1080 | 1.6 | — |
-| diario-instalacao | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
-| instalacao-reincidente | escuro | 1920×1080 | 1562/1080 | 1.4 | — |
+| diario-instalacao | escuro | 1920×1080 | 1082/1080 | 1.0 | — |
+| instalacao-reincidente | escuro | 1920×1080 | 1580/1080 | 1.5 | — |
 | l-inst | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
 | l-mapa | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
 | l-tec | escuro | 1920×1080 | 1080/1080 | 1.0 | — |
