@@ -31,7 +31,7 @@ import {
   contaPontos,
   ehTabelaProntaEstreita,
   porPosicao,
-} from '../../../apps/web/src/atomic/organisms/heuristica-grade.ts';
+} from './heuristica-original.ts';
 import type { AlturaClasse, ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec, OcultoEntry } from './schema.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');

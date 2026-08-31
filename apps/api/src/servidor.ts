@@ -59,6 +59,8 @@ import {
   LINHAS_PADRAO,
   type PaginaCalculada,
 } from './calcula.ts';
+import { carregaLayout } from '../../../tools/layout/src/valida.ts';
+import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 
 /** Quantos valores de segmentação a resposta manda por padrão. */
 export const VALORES_PADRAO = 500;
@@ -70,6 +72,23 @@ export const VALORES_PADRAO = 500;
  * O teto corta, e a resposta **diz** que cortou.
  */
 export const VALORES_MAXIMO = 5000;
+
+/**
+ * Carrega `specs/layout/*.layout.yaml` uma vez, na subida. Diretório ausente vira mapa
+ * vazio — mesmo espírito de `leManifesto`: falta de arquivo é estado, não exceção. Uma
+ * página sem `.layout.yaml` simplesmente não aparece no mapa, e a rota devolve 404 com
+ * o comando que resolve (`npm run layout:extrai`).
+ */
+function carregaLayouts(dirLayout: string): Map<string, LayoutSpec> {
+  const mapa = new Map<string, LayoutSpec>();
+  if (!fs.existsSync(dirLayout)) return mapa;
+  for (const arquivo of fs.readdirSync(dirLayout)) {
+    if (!arquivo.endsWith('.layout.yaml')) continue;
+    const id = arquivo.slice(0, -'.layout.yaml'.length);
+    mapa.set(id, carregaLayout(path.join(dirLayout, arquivo)));
+  }
+  return mapa;
+}
 
 export interface ServidorOptions {
   /** Raiz do repositório — de onde saem `specs/` e o `snapshot/`. */
@@ -114,6 +133,10 @@ export class Servidor {
   private readonly opts: Required<Omit<ServidorOptions, 'cache' | 'aoFalharCache'>>;
   private readonly model: SemanticModel;
   private readonly dashboards: DashboardSpec[];
+  /** `specs/layout/*.layout.yaml`, carregado uma vez — não muda em runtime, e ler o
+   *  disco por pedido não caberia nos ~10ms de resposta a quente. Página sem arquivo
+   *  simplesmente não entra no mapa; ver Fase L4 de docs/PLANO-LAYOUT-V1.md §6. */
+  private readonly layouts: Map<string, LayoutSpec>;
   /** De onde saem os TTLs — `specs/_catalog/cache-policies.yaml`, já decididos. */
   private readonly registry: QueryRegistry;
   private readonly cache: CacheDeResposta;
@@ -158,6 +181,7 @@ export class Servidor {
     });
     this.model = SemanticModel.fromSpecsDir(path.join(opts.root, 'specs'));
     this.dashboards = loadDashboards(path.join(opts.root, 'specs'));
+    this.layouts = carregaLayouts(path.join(opts.root, 'specs', 'layout'));
     this.registry = QueryRegistry.fromSpecsDir(path.join(opts.root, 'specs'));
     const adapter = cache ?? new MemoryCache();
     // `nome` quando o adapter tem um (`CacheEmCamadas` diz "MemoryCache+RedisCache"):
@@ -210,8 +234,9 @@ export class Servidor {
 
       if (sub === '') return this.pagina(res, id, url, quem);
       if (sub === 'valores') return this.valores(res, id, url, quem);
+      if (sub === 'layout') return this.layoutDe(res, id);
       responde(res, 404, {
-        erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores.`,
+        erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores, layout.`,
       });
       return;
     }
@@ -270,6 +295,29 @@ export class Servidor {
         pronta: this.queriesDe(d).every((q) => emDisco.has(q)),
       })),
     });
+  }
+
+  /**
+   * A forma declarada da página — `specs/layout/<id>.layout.yaml`, cru. Sem filtro, sem
+   * cálculo: é por isso que esta rota não precisa do snapshot carregado nem de `quem`.
+   */
+  private layoutDe(res: http.ServerResponse, id: string): void {
+    const dash = this.dashboards.find((d) => d.id === id);
+    if (!dash) {
+      responde(res, 404, {
+        erro: `Página '${id}' não existe. As ${this.dashboards.length}: ` +
+          this.dashboards.map((d) => d.id).join(', '),
+      });
+      return;
+    }
+    const layout = this.layouts.get(id);
+    if (!layout) {
+      responde(res, 404, {
+        erro: `'${id}' não tem specs/layout/${id}.layout.yaml — rode 'npm run layout:extrai'.`,
+      });
+      return;
+    }
+    responde(res, 200, layout);
   }
 
   private async pagina(

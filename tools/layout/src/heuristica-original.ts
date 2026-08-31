@@ -1,10 +1,14 @@
-// A heurística de layout de hoje — separada de `VisualGridSection.tsx` (que é `.tsx`,
-// com JSX) para `tools/layout/src/extrai.ts` (script Node puro, sem transformação de
-// JSX) poder importar a MESMA função, em vez de reimplementá-la num segundo lugar. Ver
-// docs/PLANO-LAYOUT-V1.md §1 (Fase L1) — esta heurística é o que o `layout.yaml` vem
-// substituir na Fase L4; até lá, ela continua sendo a única fonte da forma da tela.
+// A heurística de layout de ANTES da Fase L4 — só `extrai.ts` importa daqui hoje.
+//
+// Até a Fase L4 este arquivo morava em `apps/web/src/atomic/organisms/heuristica-grade.ts`
+// e era a fonte da forma da tela em tempo de render. A Fase L4 trocou isso: quem decide
+// a forma agora é `specs/layout/*.layout.yaml`, e `VisualGridSection.tsx` só lê o
+// arquivo — nenhuma leitura de `v.dados` sobra no bundle de produção para decidir
+// layout. Esta heurística continua existindo só para `npm run layout:extrai` poder
+// REGENERAR um `.layout.yaml` a partir da forma derivada, quando alguém quiser voltar a
+// ela (ver o cabeçalho do `.layout.yaml` gerado). Ver docs/PLANO-LAYOUT-V1.md §6.
 
-import type { VisualCalculado } from '../../api.ts';
+import type { VisualCalculado } from '../../../apps/web/src/api.ts';
 
 /** Muitas categorias pedem largura; poucas cabem lado a lado. O limiar é o ponto em que
  *  um gráfico deixa de ser "um punhado de barras" e vira uma série que precisa de espaço. */

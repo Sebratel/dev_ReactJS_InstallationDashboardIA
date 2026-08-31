@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculaAlturasDeFaixa } from '../src/altura-medida.ts';
+import { calculaAlturasDeFaixa, contaFaixasLargasPorAltura } from '../src/altura-medida.ts';
 
 test('sem faixa de largura cheia, não publica nada (null)', () => {
   assert.equal(calculaAlturasDeFaixa(0, 0, 0, 585), null);
@@ -49,4 +49,29 @@ test('nunca fica abaixo do piso, não importa quantas faixas do mesmo tipo exist
   assert.equal(r.grafico, 273);
   assert.equal(r.tabela, 280);
   assert.equal(r.matriz, 360);
+});
+
+test('contaFaixasLargasPorAltura: só conta faixa de 1 coluna (span 12)', () => {
+  const faixas = [
+    { altura: 'grafico', colunas: [1, 2, 3] }, // compacto — 3 colunas, não conta
+    { altura: 'grafico', colunas: [1] }, // largo — conta
+    { altura: 'tabela', colunas: [1] },
+    { altura: 'tabela', colunas: [1] },
+    { altura: 'matriz', colunas: [1, 2, 3, 4] }, // hipotético compacto de matriz — não conta
+  ];
+  assert.deepEqual(contaFaixasLargasPorAltura(faixas), { grafico: 1, tabela: 2, matriz: 0 });
+});
+
+test('contaFaixasLargasPorAltura: sem faixa nenhuma dá zero em tudo', () => {
+  assert.deepEqual(contaFaixasLargasPorAltura([]), { grafico: 0, tabela: 0, matriz: 0 });
+});
+
+test('contaFaixasLargasPorAltura: visao-geral de hoje (1 faixa de 3 gráficos, 1 faixa de 1 tabela)', () => {
+  // Reproduz specs/layout/visao-geral.layout.yaml — prova que a Fase L4 não muda o
+  // número de entrada de `usaAlturaDasFaixasLargas` nesta página.
+  const faixas = [
+    { altura: 'grafico', colunas: [1, 2, 3] },
+    { altura: 'tabela', colunas: [1] },
+  ];
+  assert.deepEqual(contaFaixasLargasPorAltura(faixas), { grafico: 0, tabela: 1, matriz: 0 });
 });

@@ -175,6 +175,32 @@ export function calculaAlturasDeFaixa(
   };
 }
 
+export interface FaixaContavel {
+  altura: string;
+  colunas: readonly unknown[];
+}
+
+/**
+ * Quantas faixas de largura cheia (1 coluna só, `span: 12`) cada altura tem — a entrada
+ * de `usaAlturaDasFaixasLargas`, agora lida de `layout.yaml` em vez de contada em cima
+ * de `v.dados` (Fase L4, `docs/PLANO-LAYOUT-V1.md` §6).
+ *
+ * **Por que só conta faixas de 1 coluna.** Medindo as 14 `layout.yaml` da Fase L1: toda
+ * faixa de mais de uma coluna é o grupo "lado a lado" (3 compactos, 4 tabelas estreitas)
+ * que a Fase L3 desenhou para usar a fração fixa, sem pool — são no máximo 3-4 por
+ * linha e cabem bem do jeito de sempre. Toda faixa de 1 coluna é o que já entrava em
+ * `.filas-largas`. Esse predicado reproduz `largos.length`/`tabelasLargas.length`/
+ * `matrizes.length` de antes da Fase L4 faixa por faixa — mesma partição, fonte
+ * diferente. Unificar as duas contas (pool único para TODA faixa, mesmo as de várias
+ * colunas) mudaria a divisão em páginas como `agendamento-field` (tabela ÷3 viraria ÷5)
+ * e fica fora desta fase — ver o plano.
+ */
+export function contaFaixasLargasPorAltura(faixas: readonly FaixaContavel[]): AlturasDeFaixa {
+  const largas = faixas.filter((f) => f.colunas.length === 1);
+  const conta = (altura: string) => largas.filter((f) => f.altura === altura).length;
+  return { grafico: conta('grafico'), tabela: conta('tabela'), matriz: conta('matriz') };
+}
+
 /**
  * Divide `--util` entre as faixas de LARGURA CHEIA que a página tem — em vez da fração
  * fixa que `.v-grafico`/`.v-tabela`/`.v-matriz` usavam sozinhas.

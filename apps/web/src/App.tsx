@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   listaDashboards,
+  pegaLayout,
   pegaPagina,
   type DashboardDaLista,
   type FiltroDaTela,
+  type LayoutSpec,
   type PaginaCalculada,
   type Valor,
 } from './api.ts';
@@ -73,6 +75,33 @@ export function App() {
   const [pagina, setPagina] = useState<PaginaCalculada | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // A FORMA da página (Fase L4): não depende de filtro nem de clique, só de qual
+  // página está aberta — por isso vive num efeito à parte, e não no de `pegaPagina`
+  // abaixo. Cache por página nesta sessão: o arquivo não muda em runtime, e refazer o
+  // pedido a cada volta a uma página já vista seria trabalho à toa.
+  const [layout, setLayout] = useState<LayoutSpec | null>(null);
+  const layoutsVistos = useRef<Map<string, LayoutSpec>>(new Map());
+
+  useEffect(() => {
+    if (!atual) return;
+    const doCache = layoutsVistos.current.get(atual);
+    if (doCache) {
+      setLayout(doCache);
+      return;
+    }
+    setLayout(null);
+    const aborta = new AbortController();
+    pegaLayout(atual, aborta.signal)
+      .then((l) => {
+        layoutsVistos.current.set(atual, l);
+        setLayout(l);
+      })
+      .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        setErro(err instanceof Error ? err.message : String(err));
+      });
+    return () => aborta.abort();
+  }, [atual]);
 
   useEffect(() => {
     listaDashboards()
@@ -247,12 +276,9 @@ export function App() {
       !comSlicer.has(`${f.tabela}.${f.coluna}.${f.nivel ?? ''}`) &&
       !cobertoPelaArvore(f),
   );
-  const cards = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'card' && !v.erro);
-  const graficos = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'grafico');
-  const matrizes = (pagina?.visuais ?? []).filter((v) => v.conteudo === 'matriz');
-  const tabelasEBlocos = (pagina?.visuais ?? []).filter(
-    (v) => v.sobDemanda || v.erro || (v.conteudo && v.conteudo !== 'card' && v.conteudo !== 'grafico' && v.conteudo !== 'matriz'),
-  );
+  // A Fase L4 leu `.conteudo` aqui até virar `layout.kpis`/`layout.faixas` (lidos
+  // dentro de `KpiGridSection`/`VisualGridSection`) — ver docs/PLANO-LAYOUT-V1.md §6.
+  const visuais = pagina?.visuais ?? [];
 
   const nome = paginas.find((p) => p.id === atual)?.nome ?? 'Instalação';
 
@@ -356,7 +382,7 @@ export function App() {
       {atual === 'capa' ? <Capa dadoDe={pagina?.dadoDe ?? null} /> : null}
 
       {/* Faixa de KPIs em Grid Responsivo */}
-      <KpiGridSection pagina={atual!} cards={cards} filtros={filtros} />
+      <KpiGridSection layout={layout} visuais={visuais} />
 
       {/* Seção de Gráficos, Matrizes e Análise Detalhada.
           O `div` existe para medir: é dele que sai `--h-antes`, a distância do topo
@@ -365,15 +391,14 @@ export function App() {
       <div ref={antesDosVisuaisRef}>
         <VisualGridSection
           pagina={atual!}
-          graficos={graficos}
-          matrizes={matrizes}
-          tabelasEBlocos={tabelasEBlocos}
+          layout={layout}
+          visuais={visuais}
           filtros={filtros}
           aoFiltrar={aoFiltrarAlvos}
         />
       </div>
 
-      {pagina && cards.length === 0 && graficos.length === 0 && matrizes.length === 0 && tabelasEBlocos.length === 0 ? (
+      {pagina && visuais.every((v) => v.conteudo === null) ? (
         <div className="vazio-pagina">Esta página não tem visual com número.</div>
       ) : null}
     </AppShell>

@@ -209,6 +209,31 @@ test('página inexistente dá 404 e lista as que existem', async () => {
   }
 });
 
+test('/layout devolve o layout.yaml da página, sem precisar de snapshot', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/capa/layout');
+    assert.equal(r.status, 200);
+    const layout = await r.json();
+    assert.equal(layout.pagina, 'capa');
+    assert.equal(layout.kpis.length, 2);
+    assert.deepEqual(layout.faixas, []);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('/layout de página inexistente dá 404 e lista as que existem', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards/naoexiste/layout');
+    assert.equal(r.status, 404);
+    assert.match((await r.json()).erro, /não existe. As 14: .*capa/);
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('rota de api desconhecida dá 404 e aponta a saúde', async () => {
   const s = await servidor(dirVazio());
   try {

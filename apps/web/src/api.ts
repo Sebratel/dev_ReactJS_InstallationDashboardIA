@@ -12,8 +12,11 @@
 
 import { codificaFiltro } from '../../../packages/widget-engine/src/filtro-url.ts';
 import type { TipoDeValor } from './formato.ts';
+// Tipo só — `tools/layout` é consumido aqui só pelo formato do contrato, sem custo de
+// bundle (é `import type`, o esbuild apaga por completo). Ver docs/PLANO-LAYOUT-V1.md §6.
+import type { ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec } from '../../../tools/layout/src/schema.ts';
 
-export type { TipoDeValor };
+export type { TipoDeValor, ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec };
 
 /** Um valor de célula já serializado — data vira ISO, BLANK vira `null`. */
 export type Valor = string | number | boolean | null;
@@ -220,6 +223,11 @@ export const pegaPagina = (
   signal?: AbortSignal,
   clicados?: readonly { tabela: string; coluna: string }[],
 ): Promise<PaginaCalculada> => pega(urlDaPagina(id, filtros, opcoes, clicados), signal);
+
+/** A forma declarada da página (`specs/layout/<id>.layout.yaml`) — não depende de
+ *  filtro nem de clique, só de qual página está aberta. Ver Fase L4. */
+export const pegaLayout = (id: string, signal?: AbortSignal): Promise<LayoutSpec> =>
+  pega(`/api/dashboards/${encodeURIComponent(id)}/layout`, signal);
 
 export const pegaValores = (
   id: string,

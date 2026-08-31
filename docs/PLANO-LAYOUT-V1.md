@@ -35,7 +35,17 @@ Fase L3 (§5)    [DONE]  28/08/2026 — régua 14px e --chrome medido já estava
                         4,7→3,4 (aceito como exceção — pisos de legibilidade, 8
                         faixas largas, mais que o dobro de qualquer outra página).
                         1432/1432, build verde.
-Fase L4 (§6)    [TODO]  VisualGridSection lê o contrato — heurística morre
+Fase L4 (§6)    [DONE]  31/08/2026 — nova rota GET /api/dashboards/:id/layout;
+                        VisualGridSection e KpiGridSection passam a ler layout.kpis/
+                        layout.faixas por id, nenhum lê mais v.dados para decidir
+                        posição. heuristica-grade.ts saiu do bundle web e virou
+                        tools/layout/src/heuristica-original.ts (só layout:extrai usa).
+                        Faixa virou grid de 12 colunas com span declarado; a distinção
+                        pool-vs-fração-fixa do L3 sobrevive, agora por contagem de
+                        colunas da faixa (contaFaixasLargasPorAltura). tela 112/112
+                        limpo (após reaquecer — virada de dia invalidou o cache no meio
+                        da sessão, não é defeito). MEDIDAS-TELA.md sem regressão de
+                        telas em nenhuma página. 1437/1437, build verde.
 Fase L5 (§7)    [TODO]  contrato de carregamento (R1-R6)
 Fase L6 (§8)    [TODO]  6 visuais novos, custo de dado zero
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
@@ -243,7 +253,7 @@ combinações — `l-inst`/`l-mapa`/`l-tec`/`visao-geral`/`telefonia-ouvidoria`,
 
 ---
 
-## 6. Fase L4 — a grade declarada substitui as heurísticas
+## 6. Fase L4 — a grade declarada substitui as heurísticas [DONE] 31/08/2026
 
 `VisualGridSection.tsx` passa a **ler o layout spec** em vez de contar pontos. As
 constantes `LIMIAR_LARGO` e `LIMIAR_ESTREITA` saem do código. A grade vira 12 colunas com
@@ -251,6 +261,53 @@ constantes `LIMIAR_LARGO` e `LIMIAR_ESTREITA` saem do código. A grade vira 12 c
 
 - **Critério de saída:** o golden dos três recortes fica **igual entre si e igual ao de
   L1**, `npm run tela` limpo, e nenhuma leitura de `v.dados` sobra em `apps/web/src/atomic/`.
+
+### O que mudou
+
+`GET /api/dashboards/:id/layout` é rota nova: `specs/layout/*.layout.yaml` carrega uma
+vez na subida (`carregaLayouts`, `apps/api/src/servidor.ts`) e serve o `LayoutSpec` cru,
+sem cálculo — por isso não depende do snapshot nem de filtro. `apps/web/src/App.tsx`
+busca o layout da página num efeito próprio (chaveado só em `atual`, cache em memória
+por sessão) e entrega o array inteiro de `visuais` para `KpiGridSection`/
+`VisualGridSection`, que agora fazem sua própria busca por id em cima de `layout.kpis`/
+`layout.faixas` — nenhum dos dois lê `.dados` para decidir posição, só para desenhar.
+
+`heuristica-grade.ts` saiu de `apps/web/src/atomic/` (bundle de produção) e virou
+`tools/layout/src/heuristica-original.ts`: só `npm run layout:extrai` ainda a usa, para
+regenerar um `.layout.yaml` a partir da forma derivada quando alguém quiser. Rodar
+`layout:extrai` de novo depois da mudança provou diff vazio (só a data do cabeçalho),
+confirmando que a heurística não mudou de comportamento na mudança de endereço.
+
+A faixa virou `<div class="faixa-grade">` (`display: grid; grid-template-columns:
+repeat(12, ...)`), com cada coluna em `grid-column: span <n>`. A distinção
+"compacto/estreita vs largo" do L3 (fração fixa vs pool por tipo) não morreu — só trocou
+de fonte: uma faixa de **1 coluna só** ainda ganha a classe `.filas-largas` (participa do
+pool de `usaAlturaDasFaixasLargas`); uma faixa de **várias colunas** usa a fração fixa,
+sem pool. `contaFaixasLargasPorAltura` (`altura-medida.ts`) faz essa contagem a partir do
+`layout.yaml` em vez de `largos.length`/`tabelasLargas.length`/`matrizes.length` — mesma
+partição, fonte diferente, sem reabrir a conta de altura que o L3 mediu.
+
+### Medido
+
+`npm run tela` limpo nas 112 combinações (14 páginas × 4 resoluções × 2 temas), depois
+de reaquecer as páginas — o meio da sessão cruzou a virada do dia (30→31/08), e a chave
+do cache de resposta inclui o dia UTC do cálculo (`diaDoCalculo`), então a primeira
+rodada pós-virada recalculou tudo do zero e estourou o timeout de 15s do arnês em
+páginas aleatórias — não é defeito desta fase, é o comportamento já documentado em
+`specs/_catalog/cache-policies.yaml`. `npm run aquece` resolveu.
+
+`docs/MEDIDAS-TELA.md` contra o commit da L3: nenhuma página mudou de "telas" de forma
+que importe — as diferenças são de poucos pixels (deriva do dado do dia, não do
+layout): `premiacao-instalacao` 2,5→2,4 tela (melhorou), `instalacao-reincidente` e
+`relatorio-do-mes` variam <40px, `agendamento-field` continua em 3,4 (a exceção aceita
+na L3, intocada). Inspeção visual em `visao-geral` (3 gráficos lado a lado, `span: 4`
+cada) e `agendamento-field` (faixas de 3 e 4 colunas) em 1366×768 confirmou que a grade
+de 12 colunas não deixou nenhuma coluna estreita demais para ler — mesma legibilidade de
+antes do flex-wrap.
+
+1437/1437 testes (+5 em `altura-medida.test.ts`, +2 em `servidor.test.ts` sobre os
+1432/1432 herdados da L3, e a suíte já tinha crescido para 1432 antes desta fase), build
+limpo (264,6 kB / 84,95 kB gzip, ante 263,6/84,6 da L3 — o custo do fetch de layout).
 
 ---
 

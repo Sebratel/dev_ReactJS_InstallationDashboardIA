@@ -10,7 +10,6 @@ export function Visual(props: {
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
   aoFiltrar?: AoFiltrar;
-  tabelaEstreita?: boolean;
 }) {
   if (props.visual.sobDemanda) {
     return <SobDemanda pagina={props.pagina} visual={props.visual} filtros={props.filtros} />;
@@ -21,7 +20,6 @@ export function Visual(props: {
       visual={props.visual}
       filtros={props.filtros}
       aoFiltrar={props.aoFiltrar}
-      tabelaEstreita={props.tabelaEstreita}
     />
   );
 }

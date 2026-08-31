@@ -18,7 +18,6 @@ export function VisualPronto({
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
   aoFiltrar?: AoFiltrar;
-  tabelaEstreita?: boolean;
 }) {
   if (visual.erro) {
     return (

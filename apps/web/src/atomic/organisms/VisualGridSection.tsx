@@ -1,29 +1,72 @@
-import type { FiltroDaTela, VisualCalculado } from '../../api.ts';
-import { usaAlturaDasFaixasLargas } from '../../altura-medida.ts';
+import { useMemo } from 'react';
+import type { ColunaDeFaixa, FiltroDaTela, LayoutSpec, VisualCalculado } from '../../api.ts';
+import { contaFaixasLargasPorAltura, usaAlturaDasFaixasLargas } from '../../altura-medida.ts';
 import type { AoFiltrar } from '../../rota.ts';
 import { Visual } from '../../componentes/Visual.tsx';
-import { LIMIAR_LARGO, contaPontos, ehTabelaProntaEstreita, porPosicao } from './heuristica-grade.ts';
 
 /**
- * O corpo da página: gráficos, matrizes e detalhamento, em seções nomeadas.
+ * O corpo da página: gráficos, matrizes e detalhamento, em faixas.
  *
- * **Preencher a tela, sem espremer.** A versão anterior empilhava todo gráfico em largura
- * cheia — numa página como VISÃO GERAL, com 3 gráficos de poucas categorias, isso deixava
- * cada um largo e vazio, com sensação de incompleto. Agora os gráficos **compactos**
- * (poucas categorias) ficam lado a lado numa grade que preenche a linha, e só as séries
- * **largas** (temporais, muitas categorias) tomam a largura inteira, que é o que elas
- * precisam.
+ * **Fase L4 — o `layout.yaml` decide, não mais `heuristica-grade.ts`.** Até esta fase,
+ * este componente contava `v.dados.pontos.length`/`v.dados.colunas.length` em tempo de
+ * render para separar gráfico compacto de largo, tabela estreita de larga — a MESMA
+ * heurística que já tinha gerado `specs/layout/*.layout.yaml` na Fase L1, rodando de
+ * novo, à toa. Agora ele só lê `layout.faixas`: cada faixa é uma linha de 12 colunas,
+ * com `span` e `altura` já decididos. `docs/PLANO-LAYOUT-V1.md` §6 tem a medição.
  *
- * **Tabelas-resumo lado a lado.** O mesmo vale para o detalhamento: as tabelas estreitas
- * (as de "rótulo + Qtd", como PROTOCOLOS POR TIPO, PRAZO SLA, TURNO) ficavam cada uma
- * esticada na largura inteira, vazias à direita — exatamente a sensação de "desalinhado"
- * que a operação relatou. Agora elas se agrupam numa linha, como no relatório original.
- * As tabelas largas (o detalhe de 12+ colunas, o histórico de relatos) e as matrizes
- * seguem em largura cheia, em ordem de leitura (posição no relatório).
- *
- * A ordem dentro de cada grupo é a do Power BI (definida em `App.tsx` por `posicao`).
- * Também corrige o bug antigo em que, sem matriz, a 1ª tabela era renderizada duas vezes.
+ * Uma faixa de **1 coluna só** (`span: 12`) é a "largo" de antes — entra em
+ * `.filas-largas` e disputa o pool de altura por tipo (`usaAlturaDasFaixasLargas`, Fase
+ * L3). Uma faixa de **várias colunas** é o "compacto"/"estreita" de antes — usa a
+ * fração fixa de `estilo.css`, sem pool (ver `contaFaixasLargasPorAltura`).
  */
+export function VisualGridSection({
+  pagina,
+  layout,
+  visuais,
+  filtros,
+  aoFiltrar,
+}: {
+  pagina: string;
+  layout: LayoutSpec | null;
+  visuais: VisualCalculado[];
+  filtros: FiltroDaTela[];
+  aoFiltrar: AoFiltrar;
+}) {
+  const porId = useMemo(() => new Map(visuais.map((v) => [v.id, v])), [visuais]);
+  const contagem = layout ? contaFaixasLargasPorAltura(layout.faixas) : { grafico: 0, tabela: 0, matriz: 0 };
+  usaAlturaDasFaixasLargas(contagem.grafico, contagem.tabela, contagem.matriz);
+
+  // `App.tsx` só monta este bloco depois que `pagina` respondeu; `layout` chega antes
+  // ou junto (é um arquivo pequeno, servido de um mapa em memória — ver `servidor.ts`).
+  // Nulo aqui é só a janela entre trocar de página e o fetch de layout resolver.
+  if (!layout) return null;
+
+  return (
+    <div className="flex flex-col gap-[var(--gap)]">
+      {layout.faixas.map((faixa, i) => {
+        const cheia = faixa.colunas.length === 1;
+        const itens = faixa.colunas
+          .map((col) => ({ col, visual: porId.get(col.visual) }))
+          .filter((x): x is { col: ColunaDeFaixa; visual: VisualCalculado } => x.visual != null);
+        if (itens.length === 0) return null;
+
+        return (
+          <div key={i} className="flex flex-col gap-[var(--gap)]">
+            {faixa.titulo ? <TituloSecao>{faixa.titulo}</TituloSecao> : null}
+            <div className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
+              {itens.map(({ col, visual }) => (
+                <div key={col.visual} style={{ gridColumn: `span ${col.span}` }}>
+                  <Visual pagina={pagina} visual={visual} filtros={filtros} aoFiltrar={aoFiltrar} />
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * O rótulo de seção custa altura, e a conta de `--util` conta com ele.
  *
@@ -39,87 +82,5 @@ function TituloSecao({ children }: { children: string }) {
       <span>{children}</span>
       <span className="flex-1 h-px bg-slate-200 dark:bg-zinc-800" />
     </h2>
-  );
-}
-
-export function VisualGridSection({
-  pagina,
-  graficos,
-  matrizes,
-  tabelasEBlocos,
-  filtros,
-  aoFiltrar,
-}: {
-  pagina: string;
-  graficos: VisualCalculado[];
-  matrizes: VisualCalculado[];
-  tabelasEBlocos: VisualCalculado[];
-  filtros: FiltroDaTela[];
-  aoFiltrar: AoFiltrar;
-}) {
-  const compactos = graficos.filter((v) => contaPontos(v) <= LIMIAR_LARGO);
-  const largos = graficos.filter((v) => contaPontos(v) > LIMIAR_LARGO);
-
-  // Detalhamento: as tabelas estreitas ("rótulo + Qtd") viram uma linha; matrizes e
-  // tabelas largas ficam em largura cheia, na ordem de leitura do relatório.
-  const tabelasEstreitas = tabelasEBlocos.filter(ehTabelaProntaEstreita);
-  const tabelasLargas = tabelasEBlocos.filter((v) => !ehTabelaProntaEstreita(v));
-  const emLarguraCheia = [...matrizes, ...tabelasLargas].sort(porPosicao);
-
-  // Divide --util entre as faixas de largura cheia que ESTA página tem, em vez da
-  // fração fixa que cada `.v-*` reservava sozinha — ver `altura-medida.ts`.
-  usaAlturaDasFaixasLargas(largos.length, tabelasLargas.length, matrizes.length);
-
-  const temGraficos = graficos.length > 0;
-  const temDetalhe = tabelasEstreitas.length > 0 || emLarguraCheia.length > 0;
-  const rotula = temGraficos && temDetalhe;
-
-  const item = (v: VisualCalculado) => (
-    <Visual key={v.id} pagina={pagina} visual={v} filtros={filtros} aoFiltrar={aoFiltrar} />
-  );
-  const itemEstreito = (v: VisualCalculado) => (
-    <Visual key={v.id} pagina={pagina} visual={v} filtros={filtros} aoFiltrar={aoFiltrar} tabelaEstreita />
-  );
-
-  return (
-    <div className="flex flex-col gap-[var(--gap)]">
-      {temGraficos && (
-        <>
-          {rotula && <TituloSecao>Gráficos e tendências</TituloSecao>}
-          {/* Compactos lado a lado: cada um cresce para preencher, com piso confortável. */}
-          {compactos.length > 0 && (
-            <div className="flex flex-wrap gap-[var(--gap)]">
-              {compactos.map((v) => (
-                <div key={v.id} className="flex-1 basis-[440px] min-w-0">
-                  {item(v)}
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Largos (séries temporais) em largura cheia. */}
-          {largos.length > 0 && <div className="flex flex-col gap-[var(--gap)] filas-largas">{largos.map(item)}</div>}
-        </>
-      )}
-
-      {temDetalhe && (
-        <>
-          {rotula && <TituloSecao>Análise detalhada</TituloSecao>}
-          {/* Tabelas-resumo (rótulo + Qtd) numa linha, como no relatório original. */}
-          {tabelasEstreitas.length > 0 && (
-            <div className="flex flex-wrap gap-[var(--gap)]">
-              {tabelasEstreitas.map((v) => (
-                <div key={v.id} className="flex-1 basis-[300px] min-w-0">
-                  {itemEstreito(v)}
-                </div>
-              ))}
-            </div>
-          )}
-          {/* Matrizes e tabelas largas em largura cheia, em ordem de leitura. */}
-          {emLarguraCheia.length > 0 && (
-            <div className="flex flex-col gap-[var(--gap)] filas-largas">{emLarguraCheia.map(item)}</div>
-          )}
-        </>
-      )}
-    </div>
   );
 }
