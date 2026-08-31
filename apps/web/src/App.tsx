@@ -6,6 +6,7 @@ import {
   listaDashboards,
   pegaLayout,
   pegaPagina,
+  urlDaPagina,
   type DashboardDaLista,
   type FiltroDaTela,
   type LayoutSpec,
@@ -14,6 +15,7 @@ import {
 } from './api.ts';
 import { dataHora, duracao, inteiro } from './formato.ts';
 import { usaAlturaMedida, usaEspacoSemVisual } from './altura-medida.ts';
+import { guardaPaginaVista } from './cache-pagina.ts';
 import { idsIniciais } from './carga-progressiva.ts';
 import { dataDaPagina, filtrosPadrao } from './filtros-padrao.ts';
 import {
@@ -84,6 +86,14 @@ export function App() {
   // pedido a cada volta a uma página já vista seria trabalho à toa.
   const [layout, setLayout] = useState<LayoutSpec | null>(null);
   const layoutsVistos = useRef<Map<string, LayoutSpec>>(new Map());
+  // FASE L5, R5 — stale-while-revalidate de `pagina`, por URL (a mesma chave que
+  // já vai para a rede: page+filtros+visuais+clicados). Diferente de `layoutsVistos`
+  // (que nunca revalida — layout não muda em runtime), aqui a rede SEMPRE roda atrás;
+  // o cache só evita mostrar o esqueleto de novo numa combinação já vista nesta
+  // sessão. Teto simples por ordem de inserção: sem ele, uma sessão de filtragem
+  // cruzada longa (`aoFiltrarAlvos` acima) acumula uma chave por combinação de
+  // filtro+clique sem nunca podar.
+  const paginasVistas = useRef<Map<string, PaginaCalculada>>(new Map());
 
   useEffect(() => {
     if (!atual) return;
@@ -167,6 +177,18 @@ export function App() {
       return;
     }
 
+    // FASE L5, R5 — a MESMA chamada que monta a URL de rede vira a chave do cache:
+    // arriscar uma chave separada é arriscar as duas divergirem no primeiro caso
+    // esquisito (ver `urlDaPagina`).
+    const opcoesEager = { visuais: idsIniciais(layoutAtual) };
+    const chave = urlDaPagina(atual, filtros, opcoesEager, clicados);
+    const doCache = paginasVistas.current.get(chave);
+    // Mostra o velho JÁ, síncrono — antes até do `fetch` sair. Numa combinação
+    // repetida (voltar de aba, ou a mesma aba que R6 pré-buscou no hover) isso evita
+    // o esqueleto de R2 aparecer de novo; a rede roda de qualquer jeito, atrás, para
+    // revalidar — nunca serve só o cache sem checar se mudou.
+    if (doCache) setPagina(doCache);
+
     let cancelado = false;
     // Ver `pegaPagina`: sem cancelar, quatro cliques em rajada viram quatro cálculos
     // completos, e a penúltima resposta pode chegar depois da última.
@@ -185,8 +207,13 @@ export function App() {
       else window.history.replaceState(null, '', rota);
     }
 
-    pegaPagina(atual, filtros, { visuais: idsIniciais(layoutAtual) }, aborta.signal, clicados)
+    pegaPagina(atual, filtros, opcoesEager, aborta.signal, clicados)
       .then((p) => {
+        // Grava mesmo se ESTE pedido foi cancelado: a chave é a combinação exata de
+        // página+filtros+visuais+clicados no momento do pedido, e essa combinação não
+        // muda só porque a pessoa já saiu dela — o próximo a passar por aqui de novo
+        // aproveita.
+        guardaPaginaVista(paginasVistas.current, chave, p);
         if (!cancelado) setPagina(p);
       })
       .catch((err: unknown) => {
@@ -211,8 +238,66 @@ export function App() {
     setAtual(id);
     setFiltros(filtrosPadrao(id));
     setClicados([]);
+    // Sincroniza `layout` com a página nova NO MESMO lote que zera `pagina` — sem
+    // isto, o primeiro render pós-clique combina o `layout` (ainda da página
+    // ANTERIOR, só o efeito de `atual` troca) com `visuais = []` (já da nova). Toda
+    // coluna do layout velho fica sem par em `porId` e cai no caminho "sem shell" de
+    // `VisualNaDobra` — um flash de esqueleto rotulado com os ids da página errada, a
+    // cada troca de aba. Ler o mesmo `layoutsVistos` que R6 pré-aquece resolve os dois
+    // problemas juntos: página já vista mostra o layout CERTO desde o primeiro frame;
+    // página nova mostra `null`, que já cai no fallback existente de L2/R2.
+    setLayout(layoutsVistos.current.get(id) ?? null);
     setPagina(null);
   }, []);
+
+  // FASE L5, R6 — prefetch da aba sob o cursor. DEPENDE de R5 (`paginasVistas`) já
+  // existir: sem cache de página, adiantar o fetch aqui só moveria a espera de "depois
+  // do clique" para "antes do clique", sem economizar nada quando o clique realmente
+  // vier. Nunca mexe em estado visível (`atual`/`pagina`/`filtros`) — só pré-aquece os
+  // dois Maps, para o efeito de cima (e o de `layout`) acharem tudo pronto.
+  const timeoutHover = useRef<number | null>(null);
+
+  const cancelaPrefetch = useCallback(() => {
+    if (timeoutHover.current !== null) {
+      window.clearTimeout(timeoutHover.current);
+      timeoutHover.current = null;
+    }
+  }, []);
+
+  const prefetchaPagina = useCallback((id: string) => {
+    // Em touch, hover e clique chegam quase juntos — sem esta guarda, todo toque
+    // dispararia DOIS pedidos (o prefetch e o da abertura de verdade) em vez de um.
+    if (!window.matchMedia('(pointer: fine)').matches) return;
+    cancelaPrefetch();
+    // "Intenção de hover": só adianta o pedido se o mouse ficar parado ali um
+    // instante — um mouse só de passagem por cima de várias abas (indo para outro
+    // lugar da tela) não pode disparar uma rajada de prefetch, um por aba.
+    timeoutHover.current = window.setTimeout(() => {
+      timeoutHover.current = null;
+      void (async () => {
+        let l = layoutsVistos.current.get(id);
+        if (!l) {
+          try {
+            l = await pegaLayout(id);
+            layoutsVistos.current.set(id, l);
+          } catch {
+            return; // prefetch é otimização: falhar aqui não pode aparecer em lugar nenhum visível.
+          }
+        }
+        const filtrosDoPrefetch = filtrosPadrao(id);
+        const opcoesEager = { visuais: idsIniciais(l) };
+        const chave = urlDaPagina(id, filtrosDoPrefetch, opcoesEager, []);
+        if (paginasVistas.current.has(chave)) return; // já quente — nada a adiantar.
+        try {
+          const p = await pegaPagina(id, filtrosDoPrefetch, opcoesEager, undefined, []);
+          guardaPaginaVista(paginasVistas.current, chave, p);
+        } catch {
+          // idem: sem sinal visível. O clique real vai tentar de novo e, se falhar,
+          // é ELE que mostra o erro.
+        }
+      })();
+    }, 180);
+  }, [cancelaPrefetch]);
 
   const mudaFiltro = useCallback(
     (tabela: string, coluna: string, valores: Valor[], nivel?: string) => {
@@ -307,6 +392,8 @@ export function App() {
       paginas={paginas}
       atual={atual}
       aoEscolher={escolhe}
+      aoPassarMouse={prefetchaPagina}
+      aoSairDoMouse={cancelaPrefetch}
       titulo={nome}
       sub={pagina ? `dado de ${dataHora(pagina.dadoDe)}` : ''}
       acoes={

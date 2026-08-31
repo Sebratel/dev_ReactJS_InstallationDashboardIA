@@ -46,7 +46,7 @@ Fase L4 (§6)    [DONE]  31/08/2026 — nova rota GET /api/dashboards/:id/layout
                         limpo (após reaquecer — virada de dia invalidou o cache no meio
                         da sessão, não é defeito). MEDIDAS-TELA.md sem regressão de
                         telas em nenhuma página. 1437/1437, build verde.
-Fase L5 (§7)    [PARCIAL] 31/08/2026 — R3+R2: usaVisualSobDemanda (hook
+Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         cancelável/single-flight, retry corrigido) +
                         EsqueletoDaPagina (esqueleto lê layout, sem salto). R4
                         completo: ?visual= vira lista (getAll, chave ordenada);
@@ -54,14 +54,35 @@ Fase L5 (§7)    [PARCIAL] 31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         IntersectionObserver (200px, não 100% — a de 100% carregava
                         toda faixa "perto" de mais em página curta, medido em
                         agendamento-field). tools/tela/src/perf.ts (novo) mede
-                        docs/PERF-CARGA.md. Achado à parte, fora do escopo de R4:
-                        carrega() (servidor.ts) tem cache single-flight por dash.id
-                        sem tratar aborto — um cliente que cancela um pedido ainda
-                        construindo o avaliador pela primeira vez e repete na hora
-                        pode prender a repetição por vários segundos (servidor
-                        isolado, via curl, sempre respondeu rápido; documentado, não
-                        corrigido nesta fase). 1448/1448, build verde, tela 112/112.
-                        R5 (cache SWR de página) e R6 (prefetch de aba) seguem TODO.
+                        docs/PERF-CARGA.md. R5: paginasVistas (Map por urlDaPagina,
+                        teto de 30 por ordem de inserção em cache-pagina.ts) mostra o
+                        snapshot velho síncrono antes do fetch, que sempre revalida
+                        atrás. R6: hover >180ms sobre aba pronta pré-aquece layout+
+                        página (guarda pointer:fine); cancela se o mouse sai antes.
+                        Dois achados DURANTE a verificação de R5/R6, corrigidos nesta
+                        fase (não deixados para depois, por serem causados por R4):
+                        (1) escolhe() zerava `pagina` mas deixava `layout` (estado)
+                        apontando para a página ANTERIOR por um render — toda coluna
+                        do layout velho ficava sem par em porId e piscava esqueleto
+                        rotulado com os ids da página ERRADA a cada troca de aba;
+                        corrigido lendo layoutsVistos (ref) no mesmo lote que zera
+                        pagina. (2) o aquecimento (aquecedor.ts e tools/subir/
+                        aquece.ts) sempre pediu /api/dashboards/:id SEM ?visual= —
+                        que desde R4 enche a chave de cache '*', que o navegador
+                        NUNCA pede mais (ele sempre lista idsIniciais). O servidor
+                        anunciava "quente" sem aquecer a chave que a tela de fato
+                        usa; ambos agora buscam /layout primeiro e aquecem com os
+                        MESMOS ?visual= do navegador (tools/layout/src/corte-eager.ts,
+                        fonte única, reexportada por carga-progressiva.ts), com
+                        fallback para a URL antiga se o layout não responder.
+                        Achado à parte, ainda fora de escopo: carrega() (servidor.ts)
+                        tem cache single-flight por dash.id sem tratar aborto — só
+                        reproduzido de propósito ao navegar para outra aba enquanto
+                        os visuais sob-demanda de uma página pesada ainda calculam em
+                        segundo plano (não ao abrir uma página já assentada); pode
+                        prender a página seguinte por vários segundos porque o
+                        servidor é um processo só. Documentado, não corrigido nesta
+                        fase. 1461/1461, build verde, tela 112/112.
 Fase L6 (§8)    [TODO]  6 visuais novos, custo de dado zero
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
 ```

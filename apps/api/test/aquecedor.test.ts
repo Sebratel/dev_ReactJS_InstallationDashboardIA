@@ -16,7 +16,15 @@ import { Aquecedor } from '../src/aquecedor.ts';
 
 const PAGINAS = { dashboards: [{ id: 'capa' }, { id: 'visao-geral' }] };
 
-/** Uma API de mentira que anota o que pediram para ela. */
+/**
+ * Uma API de mentira que anota o que pediram para ela.
+ *
+ * **`/layout` sempre 404 aqui, de propósito.** Estes testes são sobre o CICLO do
+ * aquecimento (obsolescência, concorrência, falha isolada) — não sobre o corte eager
+ * (isso é `#idsEager`, coberto à parte em `aquecedor-eager.test.ts`). Um 404 faz
+ * `#idsEager` cair no fallback sem lançar, e `pedidos` continua só com ids de PÁGINA,
+ * exatamente como antes de R4 pedir `/layout` primeiro.
+ */
 function apiFalsa(opts: { falha?: Set<string>; status?: Map<string, number> } = {}): {
   buscar: typeof fetch;
   pedidos: string[];
@@ -29,6 +37,9 @@ function apiFalsa(opts: { falha?: Set<string>; status?: Map<string, number> } = 
         status: 200,
         headers: { 'content-type': 'application/json' },
       });
+    }
+    if (u.endsWith('/layout')) {
+      return new Response('não encontrado', { status: 404 });
     }
     const id = decodeURIComponent(u.split('/').pop() ?? '');
     pedidos.push(id);
@@ -137,8 +148,9 @@ test('não roda duas passadas ao mesmo tempo', async () => {
   const buscar = (async (url: string | URL): Promise<Response> => {
     const u = String(url);
     if (u.endsWith('/api/dashboards')) return new Response(JSON.stringify(PAGINAS), { status: 200 });
+    if (u.endsWith('/layout')) return new Response('não encontrado', { status: 404 });
     pedidos.push(decodeURIComponent(u.split('/').pop() ?? ''));
-    await presa; // a primeira passada fica pendurada aqui
+    await presa; // a primeira passada fica pendurada aqui — no pedido de PÁGINA
     return new Response('{}', { status: 200 });
   }) as unknown as typeof fetch;
 

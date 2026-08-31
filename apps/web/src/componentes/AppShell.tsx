@@ -57,6 +57,13 @@ export function AppShell(props: {
   paginas: DashboardDaLista[];
   atual: string | null;
   aoEscolher: (id: string) => void;
+  /** FASE L5, R6: o mouse parou sobre uma aba — chance de já ter o dado pronto
+   *  quando o clique vier. Opcional porque o teste de layout/estados de AppShell
+   *  não precisa simular hover para continuar válido. */
+  aoPassarMouse?: (id: string) => void;
+  /** FASE L5, R6: o mouse saiu da aba antes do debounce de hover disparar — cancela
+   *  o prefetch pendente. Mesmo motivo de opcional que `aoPassarMouse`. */
+  aoSairDoMouse?: () => void;
   titulo: string;
   sub: string;
   acoes?: ReactNode;
@@ -152,6 +159,10 @@ export function AppShell(props: {
               key={p.id}
               className={`aba${ativo ? ' ativo' : ''}`}
               onClick={() => props.aoEscolher(p.id)}
+              // Nem a aba já ativa (nada para adiantar) nem uma sem snapshot (o
+              // clique nem chega a `aoEscolher` — `disabled` abaixo já barra isso).
+              onMouseEnter={ativo || !p.pronta ? undefined : () => props.aoPassarMouse?.(p.id)}
+              onMouseLeave={ativo || !p.pronta ? undefined : () => props.aoSairDoMouse?.()}
               disabled={!p.pronta}
               aria-current={ativo ? 'page' : undefined}
               title={p.pronta ? p.nome : `${p.nome} — sem snapshot`}

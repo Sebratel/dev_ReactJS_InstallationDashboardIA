@@ -2,7 +2,7 @@
 
 > GERADO POR `npm run tela` — não editar à mão. Ver `docs/PLANO-LAYOUT-V1.md` §4.
 
-Gerado em 2026-08-31T15:12:30.267Z.
+Gerado em 2026-08-31T17:39:40.474Z.
 
 ## Contraste (por tema — os tokens de cor não variam por resolução)
 

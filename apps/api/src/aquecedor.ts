@@ -25,6 +25,17 @@
 // impossível encher a chave errada.
 //
 // REGRA DE SAÍDA: nunca imprime valor de linha. Só nome de página, tempo e contagem.
+//
+// **Por que busca `/layout` antes de aquecer.** Fase L5, R4: o navegador nunca pede a
+// página inteira — sempre lista um subconjunto explícito de visuais (`idsIniciais`, o
+// corte acima da dobra). Aquecer `/api/dashboards/:id` sem `?visual=` enche a chave de
+// cache `'*'` (`ChaveDeResposta`), que o navegador NUNCA pede depois de R4 — este laço
+// continuaria se anunciando "quente" sem nunca acertar a chave que a tela realmente
+// pede. Qualquer falha ao buscar o layout cai de volta para a URL antiga: aquecer a
+// chave errada é melhor do que não aquecer nenhuma.
+
+import { idsIniciais } from '../../../tools/layout/src/corte-eager.ts';
+import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 
 /** O intervalo padrão entre duas conferidas do carimbo. */
 export const INTERVALO_PADRAO_MS = 5_000;
@@ -183,10 +194,34 @@ export class Aquecedor {
     }
   }
 
+  /**
+   * Os ids que a abertura real vai pedir eager, ou `null` se não deu para saber. Nunca
+   * lança: uma falha aqui cai de volta para a URL sem `?visual=` em `#aquece`, não
+   * derruba o laço de aquecimento inteiro.
+   */
+  async #idsEager(pagina: string): Promise<string[] | null> {
+    try {
+      const r = await this.#buscar(
+        `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}/layout`,
+      );
+      if (!r.ok) return null;
+      const layout = (await r.json()) as LayoutSpec;
+      return idsIniciais(layout);
+    } catch {
+      return null;
+    }
+  }
+
   async #aquece(pagina: string): Promise<PaginaAquecida> {
     const t0 = this.#agora();
     try {
-      const r = await this.#buscar(`${this.#base}/api/dashboards/${encodeURIComponent(pagina)}`);
+      const idsEager = await this.#idsEager(pagina);
+      const url =
+        idsEager && idsEager.length > 0
+          ? `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}?` +
+            idsEager.map((id) => `visual=${encodeURIComponent(id)}`).join('&')
+          : `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}`;
+      const r = await this.#buscar(url);
       // O corpo precisa ser drenado: sem isto o socket fica com resposta pendurada e
       // o `fetch` seguinte espera por ele.
       await r.arrayBuffer();

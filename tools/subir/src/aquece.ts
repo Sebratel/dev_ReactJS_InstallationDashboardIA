@@ -15,6 +15,17 @@
 // Sem isso, a única forma de testar seria subir a API — e aí o teste vira demo.
 //
 // REGRA DE SAÍDA: nunca imprime valor de linha. Só nome de página, tempo e contagem.
+//
+// **Por que busca `/layout` antes de aquecer.** Fase L5, R4: o navegador nunca pede a
+// página inteira — sempre lista um subconjunto explícito de visuais (`idsIniciais`, o
+// corte acima da dobra). Aquecer `/api/dashboards/:id` sem `?visual=` enche a chave de
+// cache `'*'` (`ChaveDeResposta`), que o navegador NUNCA pede depois de R4 — o
+// aquecimento não erra, aquece a chave errada, o que por fora parece igual a não
+// aquecer nada. Qualquer falha ao buscar o layout (rede, formato inesperado) cai de
+// volta para a URL antiga: melhor aquecer a chave errada do que não aquecer nenhuma.
+
+import { idsIniciais } from '../../layout/src/corte-eager.ts';
+import type { LayoutSpec } from '../../layout/src/schema.ts';
 
 export interface Medida {
   pagina: string;
@@ -87,7 +98,6 @@ export async function aquecePagina(
 ): Promise<Medida> {
   const buscar = opts.buscar ?? fetch;
   const agora = opts.agora ?? (() => Date.now());
-  const url = `${opts.base}/api/dashboards/${pagina}`;
   const limite = opts.limiteMs ?? LIMITE_PADRAO_MS;
 
   // `AbortController` + `setTimeout` desarmável, e **não** `AbortSignal.timeout`: aquele
@@ -100,11 +110,22 @@ export async function aquecePagina(
       ? setTimeout(() => freio.abort(new DOMException('teto', 'TimeoutError')), limite)
       : null;
   timer?.unref?.();
-  const pedido = (): Promise<Response> =>
-    buscar(url, limite > 0 ? ({ signal: freio.signal } as RequestInit) : undefined);
+  const sinal = limite > 0 ? freio.signal : undefined;
 
   const t0 = agora();
   try {
+    // Resolvido DENTRO do try: se o teto estourar durante a busca do layout, o erro
+    // (com `sinal` já abortado) segue para o mesmo catch de baixo — mesma mensagem de
+    // "página cara" que já existia, agora cobrindo layout+página em vez de só página.
+    const idsEager = await buscaIdsEager(opts.base, pagina, buscar, sinal);
+    const url =
+      idsEager && idsEager.length > 0
+        ? `${opts.base}/api/dashboards/${pagina}?` +
+          idsEager.map((id) => `visual=${encodeURIComponent(id)}`).join('&')
+        : `${opts.base}/api/dashboards/${pagina}`;
+    const pedido = (): Promise<Response> =>
+      buscar(url, sinal ? ({ signal: sinal } as RequestInit) : undefined);
+
     const primeira = await pedido();
     // O corpo da primeira é lido e descartado: sem isso a conexão pode ficar
     // pendurada e a segunda chamada mediria a espera da primeira.
@@ -142,6 +163,36 @@ export async function aquecePagina(
     };
   } finally {
     if (timer !== null) clearTimeout(timer);
+  }
+}
+
+/**
+ * Os ids que a abertura real vai pedir eager, ou `null` se não deu para saber (rede,
+ * layout ausente, formato inesperado). `null` faz `aquecePagina` cair de volta para a
+ * URL sem `?visual=` — pior aquecimento, nunca pior que travar a subida por um layout
+ * que não respondeu.
+ *
+ * Uma falha por TIMEOUT (o `sinal` já abortado) não é "layout indisponível" — é a
+ * página inteira estourando o teto, e precisa subir para o catch de `aquecePagina`
+ * produzir a MESMA mensagem de "página cara" que produziria sem esta busca extra.
+ */
+async function buscaIdsEager(
+  base: string,
+  pagina: string,
+  buscar: typeof fetch,
+  sinal: AbortSignal | undefined,
+): Promise<string[] | null> {
+  try {
+    const r = await buscar(
+      `${base}/api/dashboards/${encodeURIComponent(pagina)}/layout`,
+      sinal ? ({ signal: sinal } as RequestInit) : undefined,
+    );
+    if (!r.ok) return null;
+    const layout = (await r.json()) as LayoutSpec;
+    return idsIniciais(layout);
+  } catch (err) {
+    if (sinal?.aborted) throw err;
+    return null;
   }
 }
 

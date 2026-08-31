@@ -100,6 +100,59 @@ test('HTTP 500 na segunda chamada também é falha', async () => {
 });
 
 // ---------------------------------------------------------------------------
+// O corte eager (Fase L5, R4) — aquecer a chave que o navegador REALMENTE pede
+// ---------------------------------------------------------------------------
+
+const layoutUrl = (id: string): string => `${pag(id)}/layout`;
+const layoutFalso = (
+  faixas: { colunas: { visual: string }[] }[],
+  kpis: { visual: string }[] = [],
+) => ({ pagina: 'x', base: 'x', kpis, faixas, ocultos: [], improvements: [] });
+
+test('com layout disponível, aquece com `?visual=` — a MESMA chave que o navegador pede', async () => {
+  const idPagina = 'agendamento-field';
+  // 3 faixas: só as 2 primeiras (g1, t1) entram no corte eager — igual a `idsIniciais`.
+  const layout = layoutFalso(
+    [
+      { colunas: [{ visual: 'g1' }] },
+      { colunas: [{ visual: 't1' }] },
+      { colunas: [{ visual: 'm1' }] },
+    ],
+    [{ visual: 'k1' }],
+  );
+  const urlEsperada = `${pag(idPagina)}?visual=k1&visual=g1&visual=t1`;
+  const { buscar, chamadas } = fetchFalso({
+    [layoutUrl(idPagina)]: layout,
+    [urlEsperada]: (n: number) => ({ visuais: [{}, {}, {}], cache: n === 1 ? 'miss' : 'hit' }),
+  });
+
+  const m = await aquecePagina(idPagina, { base: BASE, buscar, agora: relogio([0, 100, 105]) });
+
+  assert.equal(chamadas.get(urlEsperada), 2, 'a URL com o corte eager foi chamada duas vezes');
+  assert.equal(chamadas.get(pag(idPagina)), undefined, 'a URL SEM corte — a chave errada — não foi tocada');
+  assert.equal(m.cache, 'hit');
+});
+
+test('sem layout disponível (rede falhou), cai de volta para a URL antiga — não trava a subida', async () => {
+  const { buscar, chamadas } = fetchFalso({
+    [pag('p')]: (n: number) => ({ visuais: [{}], cache: n === 1 ? 'miss' : 'hit' }),
+  });
+  const m = await aquecePagina('p', { base: BASE, buscar, agora: relogio([0, 1, 2]) });
+  assert.equal(chamadas.get(pag('p')), 2, 'o fallback ainda aquece a página, só que na chave antiga');
+  assert.equal(m.cache, 'hit');
+});
+
+test('layout com formato inesperado (sem kpis/faixas) também cai de volta, sem lançar', async () => {
+  const { buscar, chamadas } = fetchFalso({
+    [layoutUrl('p')]: { visuais: [], cache: 'hit' }, // corpo de PÁGINA, não de layout
+    [pag('p')]: (n: number) => ({ visuais: [{}], cache: n === 1 ? 'miss' : 'hit' }),
+  });
+  const m = await aquecePagina('p', { base: BASE, buscar, agora: relogio([0, 1, 2]) });
+  assert.equal(chamadas.get(pag('p')), 2);
+  assert.equal(m.cache, 'hit');
+});
+
+// ---------------------------------------------------------------------------
 // A lista e a ordem
 // ---------------------------------------------------------------------------
 
