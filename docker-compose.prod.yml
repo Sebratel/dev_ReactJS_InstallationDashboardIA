@@ -1,0 +1,54 @@
+# Produção — arquivo SEPARADO do docker-compose.yml de desenvolvimento (que
+# sobe infraestrutura de observação, não a aplicação). A tela NÃO é serviço
+# próprio: a API já serve o build estático na mesma porta (docs/DEPLOY.md §3.2).
+#
+# Uso:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   docker compose -f docker-compose.prod.yml logs -f api
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      # O snapshot é dado de cliente (CPF/RG/endereço, ~371 MB) — nunca entra
+      # na imagem. Aponte SNAPSHOT_DIR_HOST para onde o refresh agendado
+      # (docs/DEPLOY.md §2.2) materializa no host.
+      - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
+    ports:
+      - '3100:3100'
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3100/api/saude').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-dados:/data
+
+  proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - '80:80'
+      # TLS é decisão de infraestrutura, fora deste repositório
+      # (docs/DEPLOY.md §3.3) — descomente e monte o certificado quando existir.
+      # - '443:443'
+    restart: unless-stopped
+
+volumes:
+  redis-dados:

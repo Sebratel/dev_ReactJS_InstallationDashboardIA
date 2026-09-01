@@ -103,6 +103,20 @@ test('sem snapshot a API sobe e a saúde diz o comando que falta', async () => {
   }
 });
 
+test('a saúde expõe RSS e heap — o sinal que denuncia vazamento antes do OOM', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/saude');
+    const j = await r.json();
+    assert.ok(Number.isFinite(j.memoria.rssMB));
+    assert.ok(j.memoria.rssMB > 0);
+    assert.ok(Number.isFinite(j.memoria.heapUsedMB));
+    assert.ok(j.memoria.heapUsedMB > 0);
+  } finally {
+    await s.fecha();
+  }
+});
+
 /**
  * 409 e não 500: o pedido está correto, o **estado do servidor** é que não está. E
  * a mensagem vem inteira de `carrega`, com a tabela, a query e o comando.

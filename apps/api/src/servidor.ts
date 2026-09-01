@@ -275,6 +275,13 @@ export class Servidor {
           tetoMB: Math.round(this.completos.tetoBytes / 1048576),
         },
       },
+      // O sinal que denuncia vazamento ANTES do OOM, num processo com heap de
+      // 10 GB (docs/DEPLOY.md §3.4) — sem isto, ninguém vê o RSS subindo entre
+      // refreshes até o processo já ter morrido.
+      memoria: {
+        rssMB: Math.round(process.memoryUsage().rss / 1048576),
+        heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+      },
       // Sem isto, `npm start` teria de **adivinhar** se a API está se aquecendo
       // sozinha — e adivinharia errado nas duas direções: esperando dez minutos por
       // um aquecedor desligado, ou disparando o seu por cima de um que está no meio.

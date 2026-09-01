@@ -1,0 +1,16 @@
+# O que NUNCA pode entrar numa camada de imagem — dado de cliente e segredo,
+# não só peso morto.
+snapshot/
+.env
+.env.*
+!.env.example
+
+node_modules/
+.git/
+.claude/
+docs/
+apps/web/node_modules/
+apps/web/dist/
+apps/api/web/dist/
+coverage/
+*.log
