@@ -134,6 +134,16 @@
   --pbi-erro-bg: color-mix(in srgb, var(--pbi-critico) var(--pct-erro-bg), var(--pbi-superficie));
   --pbi-aviso-bg: color-mix(in srgb, var(--pbi-gold-200) var(--pct-aviso-bg), var(--pbi-superficie));
   --pbi-primary-soft: color-mix(in srgb, var(--pbi-primary) 8%, var(--pbi-superficie));
+  /* A barra de dados (Tabela.tsx/Matriz.tsx, `magnitude.ts`). 40% é o percentual que
+     reproduz `#f0e199` exato contra a superfície clara — não é escolha nova, é o
+     valor antigo de `--pbi-gold-light` reescrito como mistura, para herdar o
+     `.dark` abaixo em vez de ficar hexadecimal fixo. Medido nesta fase: os mesmos
+     40% contra a superfície ESCURA dão só 1,18:1 contra `--texto` escuro (quase
+     branco sobre quase branco) — o texto de qualquer célula com barra ficava
+     ilegível bem onde a barra cobre. `.dark` redeclara o percentual sozinho, mesma
+     receita do aviso acima. */
+  --pct-barra-bg: 40%;
+  --pbi-barra-fundo: color-mix(in srgb, var(--pbi-gold) var(--pct-barra-bg), var(--pbi-superficie));
 
   /* Papéis, para o resto do arquivo não citar cor e sim função. */
   --superficie: var(--pbi-superficie);
@@ -230,6 +240,10 @@
   --pct-ok-bg: 12%;
   --pct-erro-bg: 12%;
   --pct-aviso-bg: 12%;
+  /* 18%, não os 40% da superfície clara: contra `--pbi-superficie` escura já dá
+     9,6:1 com `--texto` quase branco — e fica sutil (a mesma barra a 40% pesava
+     "midtom", igual ao defeito já registrado do aviso acima). */
+  --pct-barra-bg: 18%;
   /* --pbi-gold já é o par histórico do dourado-como-letra no escuro (linha do
      --pbi-primary-texto acima) — reaproveitado aqui em vez de um hex novo: 8,61:1
      no fundo, 5,69:1 no aviso. */
@@ -741,11 +755,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.sem { color: var(--sem-dado); }
 
 /* Barra de dados dentro da célula, em um só tom claro → escuro: é magnitude, e o
-   Power BI economiza um visual inteiro fazendo assim. */
+   Power BI economiza um visual inteiro fazendo assim. `--pbi-barra-fundo` (não
+   `--pbi-gold-light` direto): a barra é FUNDO atrás do texto da própria célula, e
+   o texto muda de cor por tema — precisa de um fundo que também mude, não um
+   hexadecimal fixo (ver o comentário de `--pbi-barra-fundo` no :root). */
 td.barra-dado { position: relative; }
 td.barra-dado .fundo-barra {
   position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-  height: 62%; background: var(--pbi-gold-light); border-radius: 1px; z-index: 0;
+  height: 62%; background: var(--pbi-barra-fundo); border-radius: 1px; z-index: 0;
 }
 td.barra-dado > span { position: relative; z-index: 1; }
 

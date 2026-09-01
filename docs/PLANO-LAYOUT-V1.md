@@ -83,7 +83,7 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         prender a página seguinte por vários segundos porque o
                         servidor é um processo só. Documentado, não corrigido nesta
                         fase. 1461/1461, build verde, tela 112/112.
-Fase L6 (§8)    [PARCIAL] 31/08/2026 — 4 de 6 visuais.
+Fase L6 (§8)    [PARCIAL] 01/09/2026 — 5 de 6 visuais.
                         1) rosca com centro numérico (Rosca.tsx, novo). Mesmo
                         DadosDeTabela que Tabela.tsx já lia (zero requisição, zero
                         campo novo) — só troca o desenho: a coluna marcada `chave`
@@ -193,8 +193,58 @@ Fase L6 (§8)    [PARCIAL] 31/08/2026 — 4 de 6 visuais.
                         pegaram timeout de .selo isolado em páginas SEM calendário,
                         cada vez numa página diferente — mesmo padrão de carga de
                         sistema das três fases anteriores, refeito limpo).
-                        1461/1461, build verde. Faltam 2 visuais: data bar na
-                        matriz, ranking-barra — cada um seu próprio commit, mesmo
+                        1461/1461, build verde.
+                        5) barra de dados na matriz (Matriz.tsx). Diferente das 4
+                        anteriores, não precisou de campo novo em layout.yaml:
+                        Tabela.tsx já tinha barra de dados por magnitude
+                        (`ehMagnitude`, de uma fase anterior a L6) e o próprio §8
+                        já apontava a lacuna certa — faltava só o segundo
+                        consumidor. `ehMagnitude`/a largura da barra saíram para
+                        `magnitude.ts` (compartilhado, mesmo raciocínio de
+                        usa-caixa.ts) em vez de duplicados. A escala é por MEDIDA,
+                        não por coluna como em Tabela.tsx — numa matriz a coluna
+                        nasce do dado (um tipo de protocolo), então toda célula da
+                        mesma medida mede a mesma grandeza, e comparar dentro de
+                        uma coluna isolada faria menos sentido que comparar a
+                        matriz inteira. Piloto em premiacao-instalacao: matriz
+                        INSTALADOR × TIPO DE PROTOCOLO (493e6d12...), medida
+                        "QTD.". Automático — qualquer matriz cuja medida bater
+                        `ehMagnitude` ganha a barra, sem exigir opt-in por página
+                        (mesmo comportamento que Tabela.tsx já tinha).
+                        Achado ao verificar no navegador: a linha "—" (instalador
+                        em branco) é 8-700x maior que qualquer técnico nomeado,
+                        então a escala global deixa a maioria das barras com
+                        largura de fração de pixel — fiel ao dado real (a barra
+                        não inventa um "quase no topo" que não existe), mas vale
+                        reavaliar se esse desequilíbrio se repetir nas próximas
+                        páginas.
+                        Achado mais sério, corrigido nesta mesma fase: com o tema
+                        escuro, `--texto` vira quase-branco (#F3F2F1) mas a barra
+                        usava `--pbi-gold-light` (#f0e199) FIXO — quase-branco
+                        sobre quase-branco mede 1,18:1 (medido), bem abaixo do
+                        piso de 4,5:1, e o último dígito de cada número ficava
+                        ilegível bem em cima da barra. Isto já valia para
+                        Tabela.tsx (que existe desde antes de L6) — ficou invisível
+                        até um consumidor novo (a matriz) tornar o padrão mais
+                        visível. Corrigido na raiz, não em cada consumidor: novo
+                        token `--pbi-barra-fundo` (estilo.css), pela MESMA receita
+                        de `--pbi-aviso-bg` (`color-mix` contra `--pbi-superficie`,
+                        com `--pct-barra-bg` redeclarado só no `.dark`) em vez de
+                        hexadecimal fixo. 40% no claro reproduz o `#f0e199`
+                        original exato (confirmado bit a bit) — zero mudança
+                        visual aí; 18% no escuro mede 9,6:1 contra `--texto`
+                        (calculado) e o tools/tela não acusou regressão de
+                        contraste no sweep. Tabela.tsx herda o mesmo conserto de
+                        graça, por usar o mesmo token.
+                        Verificado no navegador (Playwright), claro e escuro, com
+                        inspeção de estilo computado célula a célula (não só
+                        screenshot) para confirmar que a barra pequena realmente
+                        tem largura e cor corretas, não é só "parece vazia".
+                        1461/1461, build verde, layout:valida 14/14 (nenhum
+                        layout.yaml mudou). tela 112/112 (seis tentativas com
+                        timeout de .selo isolado em páginas sem matriz nova, mesmo
+                        padrão das quatro fases anteriores). Falta 1 visual:
+                        ranking-barra com rótulo dentro — próprio commit, mesmo
                         padrão.
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
 ```

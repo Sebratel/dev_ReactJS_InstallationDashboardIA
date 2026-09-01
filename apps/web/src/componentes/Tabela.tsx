@@ -8,6 +8,7 @@
 import { useMemo, useState } from 'react';
 import type { DadosDeTabela, FiltroDaTela, VisualCalculado } from '../api.ts';
 import { formata } from '../formato.ts';
+import { ehMagnitude, larguraDaBarra } from '../magnitude.ts';
 import { Cartao, Erro } from './Cartao.tsx';
 import { Paginacao } from './Paginacao.tsx';
 import { SetaDeOrdem } from './icones.tsx';
@@ -15,20 +16,6 @@ import { usaJanela } from './usaJanela.ts';
 import { tituloDeTabela } from '../rotulos.ts';
 import { Download } from 'lucide-react';
 import { janelaDeServidorPara, LINHAS_VISIVEIS } from '../janela.ts';
-
-/**
- * Uma coluna numérica ganha barra de dados quando ela é **magnitude**, não código.
- *
- * Nem toda coluna de número é grandeza: desenhar barra num protocolo diria que
- * "32.461 é quase o máximo" de coisa nenhuma. O critério é conservador — a coluna
- * precisa ser numérica, ter nome de contagem/valor e variar dentro de uma ordem de
- * grandeza razoável. Na dúvida, não desenha.
- */
-const NOME_DE_MEDIDA = /(qtd|quantidade|total|soma|contagem|valor|m[ée]dia|percentual|%|dias|horas)/i;
-
-function ehMagnitude(nome: string | null, tipo: unknown): boolean {
-  return tipo === 'number' && !!nome && NOME_DE_MEDIDA.test(nome);
-}
 
 export function Tabela(props: {
   pagina: string;
@@ -277,10 +264,7 @@ export function Tabela(props: {
                         title={f.texto}
                       >
                         {temBarra ? (
-                          <i
-                            className="fundo-barra"
-                            style={{ width: `${(Math.abs(valor as number) / escala!) * 70}%` }}
-                          />
+                          <i className="fundo-barra" style={{ width: `${larguraDaBarra(valor as number, escala!)}%` }} />
                         ) : null}
                         <span>{renderizaValor(valor, d.colunas[j]?.tipo ?? null)}</span>
                       </td>

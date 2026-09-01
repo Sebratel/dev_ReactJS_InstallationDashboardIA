@@ -6,10 +6,19 @@
 // matriz cabe inteira em memória e tem muito mais colunas que linhas, ela é exibida
 // **transposta** por padrão (datas viram linhas, status viram colunas), e um botão
 // alterna a orientação. O CSV continua saindo na orientação original.
+//
+// **Barra de dados por medida (Fase L6, §8).** Mesmo critério de `Tabela.tsx`
+// (`ehMagnitude`, compartilhado via `magnitude.ts`), mas a escala é por MEDIDA, não
+// por coluna: numa matriz a coluna nasce do dado (um dia, um status), então todo
+// cruzamento da mesma medida mede a mesma grandeza — o maior valor de TODAS as
+// células é a escala, não o maior de uma coluna isolada. Sobre as células já
+// carregadas (o que a janela de linhas trouxe), o mesmo recorte que `Tabela.tsx` já
+// aceita — não é o maior valor "verdadeiro" da consulta inteira, é o maior visível.
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { DadosDeMatriz, FiltroDaTela, VisualCalculado } from '../api.ts';
 import { ehColunaDeAno, formata, inteiro } from '../formato.ts';
+import { ehMagnitude, larguraDaBarra } from '../magnitude.ts';
 import { Cartao, Erro } from './Cartao.tsx';
 import { Paginacao } from './Paginacao.tsx';
 import { Transpor } from './icones.tsx';
@@ -46,6 +55,26 @@ export function Matriz(props: {
       .join(' / ');
   const nomeChavesLinha = d.chavesDeLinha.map((c) => c.nome ?? c.coluna).join(' / ');
   const nomeChavesColuna = d.chavesDeColuna.map((c) => c.nome ?? c.coluna).join(' / ') || 'Coluna';
+
+  // Escala por MEDIDA (não por coluna — ver o comentário do topo do arquivo).
+  const escalasPorMedida = useMemo(() => {
+    return d.medidas.map((nome, mi) => {
+      if (!ehMagnitude(nome, d.tiposDeMedida[mi])) return undefined;
+      let maior = 0;
+      let menor = Number.POSITIVE_INFINITY;
+      for (const linha of d.celulas) {
+        for (const celula of linha ?? []) {
+          const v = celula?.[mi];
+          if (typeof v !== 'number') continue;
+          const a = Math.abs(v);
+          if (a > maior) maior = a;
+          if (a < menor) menor = a;
+        }
+      }
+      // Mesma regra de Tabela.tsx: sem variação, a barra é só tinta — não desenha.
+      return maior > 0 && menor !== maior ? maior : undefined;
+    });
+  }, [d.celulas, d.medidas, d.tiposDeMedida]);
 
   const horizontais = transposto ? d.linhas : d.colunas;
   const totalColunas = horizontais.length;
@@ -120,14 +149,16 @@ export function Matriz(props: {
   // e desenhava as 197. Um paginador que mente é pior que nenhum — ele promete um
   // custo que não paga (a DIÁRIO INSTALAÇÃO chegava a dezenas de milhares de
   // células) e faz acreditar que o problema de carga já foi resolvido.
-  const corpo: { rotulo: string; celulas: { texto: string; vazio: boolean }[] }[] = transposto
+  const corpo: { rotulo: string; celulas: { texto: string; vazio: boolean; largura?: number }[] }[] = transposto
     ? d.colunas.map((c, ci) => ({
         rotulo: rotuloDaColuna(c),
         celulas: d.linhas.slice(deColuna, ateColuna).flatMap((_, k) => {
           const li = deColuna + k;
           return (d.celulas[li]?.[ci] ?? d.medidas.map(() => null)).map((valor, mi) => {
             const f = formata(valor, d.tiposDeMedida[mi] ?? null);
-            return { texto: f.texto, vazio: f.vazio };
+            const escala = escalasPorMedida[mi];
+            const largura = escala !== undefined && typeof valor === 'number' ? larguraDaBarra(valor, escala) : undefined;
+            return { texto: f.texto, vazio: f.vazio, largura };
           });
         }),
       }))
@@ -136,7 +167,9 @@ export function Matriz(props: {
         celulas: (d.celulas[i] ?? []).slice(deColuna, ateColuna).flatMap((celula) =>
           celula.map((valor, mi) => {
             const f = formata(valor, d.tiposDeMedida[mi] ?? null);
-            return { texto: f.texto, vazio: f.vazio };
+            const escala = escalasPorMedida[mi];
+            const largura = escala !== undefined && typeof valor === 'number' ? larguraDaBarra(valor, escala) : undefined;
+            return { texto: f.texto, vazio: f.vazio, largura };
           }),
         ),
       }));
@@ -227,8 +260,9 @@ export function Matriz(props: {
               <tr key={i}>
                 <td>{linha.rotulo}</td>
                 {linha.celulas.map((cel, j) => (
-                  <td key={j} className={`num${cel.vazio ? ' sem' : ''}`}>
-                    {cel.texto}
+                  <td key={j} className={`num${cel.vazio ? ' sem' : ''}${cel.largura !== undefined ? ' barra-dado' : ''}`}>
+                    {cel.largura !== undefined ? <i className="fundo-barra" style={{ width: `${cel.largura}%` }} /> : null}
+                    <span>{cel.texto}</span>
                   </td>
                 ))}
               </tr>
