@@ -223,8 +223,13 @@ test('a barra lateral não deixou restos', () => {
 test('nenhum módulo de apps/web/src ficou sem importador', () => {
   const raiz = path.join(web, 'src');
 
-  /** Só o ponto de entrada pode não ter importador — quem o chama é o `index.html`. */
-  const ENTRADAS = new Set(['main.tsx']);
+  /**
+   * Os arquivos que não têm (e não podem ter) importador por design:
+   * `main.tsx` — o ponto de entrada, chamado pelo `index.html`;
+   * `vite-env.d.ts` — declaração ambiente do Vite (dá tipo a
+   * `import.meta.env`), lida pelo `tsc` via `include`, nunca por um `import`.
+   */
+  const ENTRADAS = new Set(['main.tsx', 'vite-env.d.ts']);
 
   const arquivos: string[] = [];
   const anda = (dir: string) => {

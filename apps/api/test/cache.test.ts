@@ -391,7 +391,11 @@ async function sobe(
     agora,
     ...(cache ? { cache } : {}),
     ...(aoFalharCache ? { aoFalharCache } : {}),
-    ...(usuario ? { identifica: () => ({ usuario, papeis: [usuario] }) } : {}),
+    // Sempre autenticado, com ou sem `usuario` explícito — sem cookie de
+    // sessão de verdade, o `fetch` de teste levaria 401 em qualquer
+    // `/api/dashboards/*` se caísse no padrão real (identidade.test.ts cobre
+    // o portão de sessão em si).
+    identifica: () => ({ usuario: usuario ?? 'teste', papeis: [usuario ?? 'teste'] }),
   }).criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
   const { port } = http.address() as { port: number };

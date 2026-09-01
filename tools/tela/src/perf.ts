@@ -18,8 +18,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
+import { logaComoFerramenta, type CookieDeSessao } from './login-interno.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+applyDotEnv(ROOT);
 const RESOLUCAO_DE_REFERENCIA = { largura: 1920, altura: 1080 };
 
 const PAGINAS = [
@@ -45,6 +48,7 @@ async function medeUmaPassada(
   base: string,
   pagina: string,
   passada: 'fria' | 'quente',
+  cookieDeSessao: CookieDeSessao,
 ): Promise<MedidaDePerf> {
   // Um `BrowserContext` novo a cada passada — não `page.close()` + `newPage()` no
   // mesmo contexto. Medido: reaproveitar o contexto faz a passada seguinte herdar o
@@ -56,6 +60,7 @@ async function medeUmaPassada(
   const context = await browser.newContext({
     viewport: { width: RESOLUCAO_DE_REFERENCIA.largura, height: RESOLUCAO_DE_REFERENCIA.altura },
   });
+  await context.addCookies([{ ...cookieDeSessao, url: base }]);
   // `.selo` (o sinal de "pronto" que `waitForSelector` espera) só desenha em modo
   // conferência — mesma técnica de `varre.ts`. Tema não importa para perf.
   await context.addInitScript(() => localStorage.setItem('modo-conferencia', '1'));
@@ -166,13 +171,15 @@ export async function main(): Promise<void> {
     process.exit(2);
   }
 
+  const cookieDeSessao = await logaComoFerramenta(base);
+
   const browser = await chromium.launch();
   const medidas: MedidaDePerf[] = [];
   try {
     for (const pagina of alvo) {
       process.stderr.write(`  ${pagina}… `);
-      const fria = await medeUmaPassada(browser, base, pagina, 'fria');
-      const quente = await medeUmaPassada(browser, base, pagina, 'quente');
+      const fria = await medeUmaPassada(browser, base, pagina, 'fria', cookieDeSessao);
+      const quente = await medeUmaPassada(browser, base, pagina, 'quente', cookieDeSessao);
       medidas.push(fria, quente);
       process.stderr.write(
         `fria ${fria.tempoAteProntoMs}ms/${fria.requisicoes}req — quente ${quente.tempoAteProntoMs}ms/${quente.requisicoes}req\n`,

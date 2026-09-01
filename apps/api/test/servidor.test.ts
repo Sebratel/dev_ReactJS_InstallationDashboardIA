@@ -15,23 +15,78 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import type { TokenPayload } from 'google-auth-library';
 import { escreve } from '../../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
+import type { VerificadorDeToken } from '../src/auth-google.ts';
 import { Servidor } from '../src/servidor.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const WEB = path.join(ROOT, 'apps', 'api', 'web');
 const AGORA = new Date('2026-08-07T12:00:00.000Z');
 
-/** Sobe o servidor numa porta livre e devolve um `fetch` já com a base. */
+/**
+ * Sobe o servidor numa porta livre e devolve um `fetch` já com a base.
+ *
+ * `identifica` fixo, autenticado, **de propósito**: estes testes são sobre
+ * dado e cálculo, não sobre login — a sessão real (`Map` de `identidade.ts`)
+ * tem teste próprio em `identidade.test.ts`, e o portão de 401 mais abaixo
+ * neste arquivo usa `servidorComLogin`, não este helper. Sem este override,
+ * todo teste aqui que bate em `/api/dashboards/*` passaria a levar 401,
+ * porque o `fetch` de teste nunca manda cookie de sessão.
+ */
 async function servidor(snapshotDir: string): Promise<{
   busca: (rota: string, init?: RequestInit) => Promise<Response>;
   fecha: () => Promise<void>;
 }> {
-  const http = new Servidor({ root: ROOT, snapshotDir, webDir: WEB, agora: () => AGORA }).criaHttp();
+  const http = new Servidor({
+    root: ROOT,
+    snapshotDir,
+    webDir: WEB,
+    agora: () => AGORA,
+    identifica: () => ({ usuario: 'teste', papeis: ['autenticado'] }),
+  }).criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
   const { port } = http.address() as { port: number };
   return {
+    busca: (rota, init) => fetch(`http://127.0.0.1:${port}${rota}`, init),
+    fecha: () => new Promise<void>((ok) => http.close(() => ok())),
+  };
+}
+
+/**
+ * Sobe o servidor com o `identifica` REAL (sessão por cookie) — o oposto do
+ * helper acima. Usa este para testar o portão de 401 e o fluxo de login em
+ * si; `verificadorGoogle` injetado substitui a rede pelo Google real.
+ */
+async function servidorComLogin(
+  snapshotDir: string,
+  opts: {
+    googleClientId?: string;
+    dominioCorporativo?: string;
+    verificadorGoogle?: VerificadorDeToken;
+    tokenInterno?: string;
+  } = {},
+): Promise<{
+  servidor: Servidor;
+  busca: (rota: string, init?: RequestInit) => Promise<Response>;
+  fecha: () => Promise<void>;
+}> {
+  const servidor = new Servidor({
+    root: ROOT,
+    snapshotDir,
+    webDir: WEB,
+    agora: () => AGORA,
+    googleClientId: opts.googleClientId ?? '123.apps.googleusercontent.com',
+    dominioCorporativo: opts.dominioCorporativo ?? 'sebratel.com.br',
+    ...(opts.verificadorGoogle ? { verificadorGoogle: opts.verificadorGoogle } : {}),
+    ...(opts.tokenInterno !== undefined ? { tokenInterno: opts.tokenInterno } : {}),
+  });
+  const http = servidor.criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  const { port } = http.address() as { port: number };
+  return {
+    servidor,
     busca: (rota, init) => fetch(`http://127.0.0.1:${port}${rota}`, init),
     fecha: () => new Promise<void>((ok) => http.close(() => ok())),
   };
@@ -70,13 +125,15 @@ async function dirComCapa(): Promise<string> {
  * A quarta camada da regra de somente-leitura, e a única que um cliente enxerga.
  * As outras três ficam no Query Engine, que esta API nem chama — ela lê snapshot.
  */
-test('todo método que não é GET nem HEAD leva 405 antes de qualquer rota', async () => {
+test('todo método que não é GET nem HEAD leva 405 em /api/*, mesmo POST', async () => {
   const s = await servidor(dirVazio());
   try {
     for (const method of ['POST', 'PUT', 'PATCH', 'DELETE']) {
       const r = await s.busca('/api/dashboards', { method });
       assert.equal(r.status, 405, method);
-      assert.equal(r.headers.get('allow'), 'GET, HEAD');
+      // 'POST' está no Allow porque /auth/google e /auth/logout aceitam —
+      // mas nenhuma rota de dado aceita, e é isso que este teste prova.
+      assert.equal(r.headers.get('allow'), 'GET, HEAD, POST');
       assert.match((await r.json()).erro, /somente leitura/);
     }
   } finally {
@@ -620,5 +677,268 @@ test('o eco do filtro carrega o nível quando ele existe', async () => {
     ]);
   } finally {
     await s.fecha();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Login (SSO Google) — o portão de sessão em cima de um pedido de verdade.
+// Os casos de identidade.ts/auth-google.ts em isolamento moram nos testes
+// deles próprios; aqui é ponta a ponta: cookie entra, cookie sai, 401 no meio.
+// ---------------------------------------------------------------------------
+
+function clienteQueDevolve(payload: Partial<TokenPayload> | undefined): VerificadorDeToken {
+  return {
+    async verifyIdToken() {
+      return { getPayload: () => payload as TokenPayload | undefined };
+    },
+  };
+}
+
+/** O cookie de sessão de uma resposta de login, pronto para reenviar. */
+function cookieDe(resposta: Response): string {
+  const bruto = resposta.headers.get('set-cookie');
+  assert.ok(bruto, 'resposta de login sem Set-Cookie');
+  return bruto.split(';')[0]!;
+}
+
+test('sem cookie de sessão, /api/* leva 401 antes de qualquer rota', async () => {
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards');
+    assert.equal(r.status, 401);
+    assert.match((await r.json()).erro, /Faça login/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('/api/saude responde sem sessão — é o que o healthcheck do container bate', async () => {
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const r = await s.busca('/api/saude');
+    assert.equal(r.status, 200);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('a tela (estático) é servida sem sessão — é ela que mostra o login', async () => {
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const r = await s.busca('/');
+    assert.notEqual(r.status, 401);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('login de verdade: idToken válido cria sessão, e o cookie libera /api/*', async () => {
+  const s = await servidorComLogin(dirVazio(), {
+    verificadorGoogle: clienteQueDevolve({ email: 'fulano@sebratel.com.br', hd: 'sebratel.com.br' }),
+  });
+  try {
+    const antes = await s.busca('/api/dashboards');
+    assert.equal(antes.status, 401);
+
+    const login = await s.busca('/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'qualquer-coisa-aqui' }),
+    });
+    assert.equal(login.status, 200);
+    assert.deepEqual(await login.json(), { usuario: 'fulano@sebratel.com.br' });
+    const cookie = cookieDe(login);
+    assert.match(cookie, /^sessao=/);
+
+    const depois = await s.busca('/api/dashboards', { headers: { cookie } });
+    assert.equal(depois.status, 200);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('login com domínio fora de sebratel.com.br: 401, sem cookie nenhum', async () => {
+  const s = await servidorComLogin(dirVazio(), {
+    verificadorGoogle: clienteQueDevolve({ email: 'fulano@gmail.com', hd: 'gmail.com' }),
+  });
+  try {
+    const login = await s.busca('/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'qualquer-coisa-aqui' }),
+    });
+    assert.equal(login.status, 401);
+    assert.equal(login.headers.get('set-cookie'), null);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('login sem idToken no corpo: 400', async () => {
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const r = await s.busca('/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(r.status, 400);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('login com corpo que não é JSON: 400, não 500', async () => {
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const r = await s.busca('/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'isto não é json',
+    });
+    assert.equal(r.status, 400);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('GOOGLE_CLIENT_ID ausente: login recusa mesmo token válido — falha fechada', async () => {
+  const s = await servidorComLogin(dirVazio(), {
+    googleClientId: '',
+    verificadorGoogle: clienteQueDevolve({ email: 'fulano@sebratel.com.br', hd: 'sebratel.com.br' }),
+  });
+  try {
+    const r = await s.busca('/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'qualquer-coisa-aqui' }),
+    });
+    assert.equal(r.status, 401);
+    assert.match((await r.json()).erro, /não configurado/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('logout apaga a sessão: depois dele, /api/* volta a 401', async () => {
+  const s = await servidorComLogin(dirVazio(), {
+    verificadorGoogle: clienteQueDevolve({ email: 'fulano@sebratel.com.br', hd: 'sebratel.com.br' }),
+  });
+  try {
+    const login = await s.busca('/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'qualquer-coisa-aqui' }),
+    });
+    const cookie = cookieDe(login);
+    assert.equal((await s.busca('/api/dashboards', { headers: { cookie } })).status, 200);
+
+    const logout = await s.busca('/auth/logout', { method: 'POST', headers: { cookie } });
+    assert.equal(logout.status, 200);
+
+    const depois = await s.busca('/api/dashboards', { headers: { cookie } });
+    assert.equal(depois.status, 401);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('GET em /auth/google: não é rota de dado, cai no estático e dá 404 — não 401', async () => {
+  // /auth/google só existe para POST (guarda de rota, não guarda de sessão).
+  // Um GET nele não é "sem sessão" (401) nem "verbo errado" (405, que é só
+  // para as rotas de dado sob /api/*) — é, sem mais nada registrado ali,
+  // um caminho estático que não existe.
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const r = await s.busca('/auth/google');
+    assert.equal(r.status, 404);
+  } finally {
+    await s.fecha();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// /auth/interno — login de ferramenta (tools/tela), sem conta do Google
+// ---------------------------------------------------------------------------
+
+test('token interno certo: cria sessão igual ao login do Google', async () => {
+  const s = await servidorComLogin(dirVazio(), { tokenInterno: 'segredo-de-teste' });
+  try {
+    const login = await s.busca('/auth/interno', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'segredo-de-teste' }),
+    });
+    assert.equal(login.status, 200);
+    const cookie = cookieDe(login);
+    assert.match(cookie, /^sessao=/);
+    assert.equal((await s.busca('/api/dashboards', { headers: { cookie } })).status, 200);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('token interno errado: 401, sem cookie', async () => {
+  const s = await servidorComLogin(dirVazio(), { tokenInterno: 'segredo-de-teste' });
+  try {
+    const login = await s.busca('/auth/interno', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'chute' }),
+    });
+    assert.equal(login.status, 401);
+    assert.equal(login.headers.get('set-cookie'), null);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('TOKEN_INTERNO não configurado: recusa até um corpo vazio "combinando" com vazio', async () => {
+  const s = await servidorComLogin(dirVazio(), { tokenInterno: '' });
+  try {
+    const login = await s.busca('/auth/interno', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: '' }),
+    });
+    assert.equal(login.status, 401);
+  } finally {
+    await s.fecha();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// O cabeçalho do Aquecedor — o próprio servidor não pode levar 401 de si mesmo
+// ---------------------------------------------------------------------------
+
+test('cabeçalho x-aquecedor-interno certo libera /api/* sem cookie nenhum', async () => {
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const segredo = s.servidor.segredoInterno();
+    const r = await s.busca('/api/dashboards', { headers: { 'x-aquecedor-interno': segredo } });
+    assert.equal(r.status, 200);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('cabeçalho x-aquecedor-interno errado continua levando 401', async () => {
+  const s = await servidorComLogin(dirVazio());
+  try {
+    const r = await s.busca('/api/dashboards', { headers: { 'x-aquecedor-interno': 'chute-qualquer' } });
+    assert.equal(r.status, 401);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('o segredo do Aquecedor muda a cada instância — dois servidores, dois segredos', async () => {
+  const s1 = await servidorComLogin(dirVazio());
+  const s2 = await servidorComLogin(dirVazio());
+  try {
+    assert.notEqual(s1.servidor.segredoInterno(), s2.servidor.segredoInterno());
+  } finally {
+    await s1.fecha();
+    await s2.fecha();
   }
 });

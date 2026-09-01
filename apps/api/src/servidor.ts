@@ -19,6 +19,7 @@
 // calculada). O cache é por página e não expira: o snapshot em disco não muda
 // sozinho — quem o refaz é `npm run snapshot`, e aí o processo é reiniciado.
 
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -50,7 +51,15 @@ import {
   type EstadoDoCache,
 } from './cache-resposta.ts';
 import { CacheDeVisual, TETO_PADRAO_MB } from './cache-visual.ts';
-import { identificaLocal, type Identidade } from './identidade.ts';
+import {
+  apagaSessaoDoPedido,
+  cookieDeSessao,
+  criaSessao,
+  identificaPorSessao,
+  type Identidade,
+  type Sessoes,
+} from './identidade.ts';
+import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import {
   calculaPagina,
   segmentacaoDe,
@@ -108,11 +117,30 @@ export interface ServidorOptions {
   /** Onde a falha do cache aparece. Ela nunca derruba o pedido. */
   aoFalharCache?: (operacao: 'get' | 'set', erro: unknown) => void;
   /**
-   * Quem está pedindo. Padrão: `identificaLocal` — o usuário fixo de uma
-   * instalação de uma pessoa só. É por aqui que o Permission Engine entra, e é a
-   * única peça da Fase 4 que já custa alguma coisa depois: ver `identidade.ts`.
+   * Quem está pedindo. Padrão: sessão real por cookie (`identidade.ts`) — sem
+   * sessão válida, `null`, e `/api/*` responde 401 antes do roteamento
+   * (`docs/DEPLOY.md` §2.1). Sobrescrever isto é o jeito de teste injetar uma
+   * identidade sem passar pelo login de verdade; é por aqui também que o
+   * Permission Engine (papéis/recorte por linha) entraria depois.
    */
-  identifica?: (req: http.IncomingMessage) => Identidade;
+  identifica?: (req: http.IncomingMessage) => Identidade | null;
+  /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
+   *  token — falha fechada, não aberta, enquanto não configurado. */
+  googleClientId?: string;
+  /** Domínio do Google Workspace que pode logar. */
+  dominioCorporativo?: string;
+  /** Por quanto tempo uma sessão criada em `/auth/google` vale. */
+  sessaoTtlHoras?: number;
+  /** Substitui o cliente real do Google em teste — ver `auth-google.ts`. */
+  verificadorGoogle?: VerificadorDeToken;
+  /**
+   * Segredo compartilhado (`.env`, `TOKEN_INTERNO`) que libera `POST
+   * /auth/interno` — a única forma de uma ferramenta de linha de comando
+   * (hoje: `tools/tela`, que dirige um navegador de verdade) logar sem conta
+   * do Google. Vazio (padrão) desliga a rota inteira: nenhum token, nem o
+   * certo, autentica — falha fechada, igual ao `googleClientId` vazio.
+   */
+  tokenInterno?: string;
   /**
    * O estado do reaquecimento automático, para `GET /api/saude`.
    *
@@ -130,7 +158,26 @@ export interface ServidorOptions {
 }
 
 export class Servidor {
-  private readonly opts: Required<Omit<ServidorOptions, 'cache' | 'aoFalharCache'>>;
+  private readonly opts: Required<Omit<ServidorOptions, 'cache' | 'aoFalharCache' | 'verificadorGoogle'>>;
+  /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
+   *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
+   *  "padrão" que faça sentido preencher, diferente dos outros campos. */
+  private readonly verificadorGoogle: VerificadorDeToken | undefined;
+  /** Sessões de login ativas, em memória — mesmo desenho de `carregadas`/
+   *  `completos`: não sobrevive a um restart, e está certo (perder sessão pede
+   *  login de novo, nunca serve dado de ninguém). */
+  private readonly sessoes: Sessoes = new Map();
+  /**
+   * Segredo gerado uma vez por processo — NUNCA configurável, NUNCA escrito
+   * em disco, nunca sai deste processo a não ser no cabeçalho que o próprio
+   * `Aquecedor` manda de volta pra si mesmo (`index.ts`). Existe porque o
+   * `Aquecedor` bate em `/api/dashboards/*` por HTTP de propósito (comentário
+   * no topo de `aquecedor.ts` explica: é o único jeito de acertar a MESMA
+   * chave de cache que o navegador usaria) — e essas rotas agora exigem
+   * sessão. Trocar a cada boot é a defesa: nada fora deste processo em
+   * execução pode ter adivinhado o valor de antemão.
+   */
+  private readonly segredoAquecedor = crypto.randomUUID();
   private readonly model: SemanticModel;
   private readonly dashboards: DashboardSpec[];
   /** `specs/layout/*.layout.yaml`, carregado uma vez — não muda em runtime, e ler o
@@ -158,12 +205,17 @@ export class Servidor {
   private readonly completos: CacheDeVisual;
 
   constructor(opts: ServidorOptions) {
-    const { cache, aoFalharCache, ...resto } = opts;
+    const { cache, aoFalharCache, verificadorGoogle, ...resto } = opts;
+    this.verificadorGoogle = verificadorGoogle;
     this.opts = {
       agora: () => new Date(),
-      identifica: identificaLocal,
+      identifica: (req) => identificaPorSessao(this.sessoes, req),
       aquecimento: () => ({ ativo: false, pronto: false }),
       tetoDeVisuaisMB: TETO_PADRAO_MB,
+      googleClientId: '',
+      dominioCorporativo: 'sebratel.com.br',
+      sessaoTtlHoras: 12,
+      tokenInterno: '',
       ...resto,
     };
     this.completos = new CacheDeVisual({
@@ -194,6 +246,12 @@ export class Servidor {
     });
   }
 
+  /** O segredo desta subida, para `index.ts` repassar ao `Aquecedor` — ver o
+   *  campo `segredoAquecedor` acima para o porquê de existir. */
+  segredoInterno(): string {
+    return this.segredoAquecedor;
+  }
+
   /** O `http.Server`, sem escutar porta nenhuma — quem escuta é o `index.ts`. */
   criaHttp(): http.Server {
     return http.createServer((req, res) => {
@@ -204,47 +262,145 @@ export class Servidor {
   }
 
   private async atende(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.setHeader('Allow', 'GET, HEAD');
-      responde(res, 405, {
-        erro: `Método ${req.method} não existe nesta API. A plataforma é somente ` +
-          `leitura: nenhuma rota escreve em fonte nenhuma.`,
-      });
-      return;
-    }
-
-    // Quem está pedindo, resolvido uma vez e no começo. Hoje é sempre `local` e
-    // não muda resposta nenhuma — é a costura por onde o Permission Engine entra,
-    // e ela já é load-bearing num ponto: a chave do cache carrega o usuário, para
-    // que nenhum recorte futuro possa ser servido para a pessoa errada.
-    const quem = this.opts.identifica(req);
-
     const url = new URL(req.url ?? '/', 'http://localhost');
     const rota = url.pathname.replace(/\/+$/, '') || '/';
 
-    if (rota === '/api/saude') return this.saude(res);
-    if (rota === '/api/dashboards') return this.lista(res);
-    if (rota.startsWith('/api/dashboards/')) {
-      // `<id>` ou `<id>/valores`. O `id` é decodificado depois do corte: há página
-      // com acento, e decodificar antes faria um `%2F` no nome virar separador.
-      const resto = rota.slice('/api/dashboards/'.length);
-      const barra = resto.indexOf('/');
-      const id = decodeURIComponent(barra === -1 ? resto : resto.slice(0, barra));
-      const sub = barra === -1 ? '' : resto.slice(barra + 1);
+    // Autenticação: as ÚNICAS rotas que aceitam POST, e as únicas que criam ou
+    // apagam estado (sessão) em vez de servir dado calculado. Ficam ANTES de
+    // qualquer outra guarda — pedir login não pode exigir já estar logado, e
+    // a guarda de método abaixo é justamente o que barraria um POST.
+    if (rota === '/auth/google' && req.method === 'POST') return this.autenticaGoogle(req, res);
+    if (rota === '/auth/interno' && req.method === 'POST') return this.autenticaInterno(req, res);
+    if (rota === '/auth/logout' && req.method === 'POST') return this.logout(req, res);
 
-      if (sub === '') return this.pagina(res, id, url, quem);
-      if (sub === 'valores') return this.valores(res, id, url, quem);
-      if (sub === 'layout') return this.layoutDe(res, id);
-      responde(res, 404, {
-        erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores, layout.`,
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.setHeader('Allow', 'GET, HEAD, POST');
+      responde(res, 405, {
+        erro: `Método ${req.method} não existe nesta rota. A API é somente leitura ` +
+          `— as únicas exceções são POST /auth/google, /auth/interno e /auth/logout.`,
       });
       return;
     }
+
+    // /api/saude fica de fora da guarda de sessão: quem bate nela é o
+    // healthcheck do container (docker-compose.prod.yml), que não tem como
+    // logar — e ela não expõe dado de cliente, só metadado operacional.
+    if (rota === '/api/saude') return this.saude(res);
+
+    // O Aquecedor bate nestas mesmas rotas por HTTP, de propósito (ver o
+    // comentário de `segredoAquecedor` acima) — reconhecê-lo aqui, antes do
+    // cookie de sessão, é o que evita ele levar 401 de si mesmo.
+    const cabecalhoAquecedor = req.headers['x-aquecedor-interno'];
+    const ehAquecedor =
+      typeof cabecalhoAquecedor === 'string' && cabecalhoAquecedor === this.segredoAquecedor;
+
+    // Quem está pedindo. `null` sem sessão válida — e é aqui, antes de
+    // qualquer roteamento de `/api/*`, que isso vira 401 (docs/DEPLOY.md
+    // §2.1: "um pedido sem sessão válida recebe 401 antes do roteamento").
+    // A chave do cache carrega o usuário desde antes do login existir, para
+    // que nenhum recorte futuro possa ser servido para a pessoa errada.
+    const quem = ehAquecedor
+      ? { usuario: 'aquecedor-interno', papeis: ['interno'] }
+      : this.opts.identifica(req);
     if (rota.startsWith('/api/')) {
+      if (!quem) {
+        responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/google.' });
+        return;
+      }
+      if (rota === '/api/dashboards') return this.lista(res);
+      if (rota.startsWith('/api/dashboards/')) {
+        // `<id>` ou `<id>/valores`. O `id` é decodificado depois do corte: há página
+        // com acento, e decodificar antes faria um `%2F` no nome virar separador.
+        const resto = rota.slice('/api/dashboards/'.length);
+        const barra = resto.indexOf('/');
+        const id = decodeURIComponent(barra === -1 ? resto : resto.slice(0, barra));
+        const sub = barra === -1 ? '' : resto.slice(barra + 1);
+
+        if (sub === '') return this.pagina(res, id, url, quem);
+        if (sub === 'valores') return this.valores(res, id, url, quem);
+        if (sub === 'layout') return this.layoutDe(res, id);
+        responde(res, 404, {
+          erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores, layout.`,
+        });
+        return;
+      }
       responde(res, 404, { erro: `Rota '${rota}' não existe. Veja GET /api/saude.` });
       return;
     }
+
+    // A tela (estático) é servida SEM sessão de propósito — é ela que mostra
+    // o botão de login. A própria aplicação React decide o que desenhar
+    // conforme as chamadas a /api/* voltarem 200 ou 401.
     this.estatico(res, rota);
+  }
+
+  // -------------------------------------------------------------- login
+
+  private async autenticaGoogle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    let corpo: unknown;
+    try {
+      corpo = JSON.parse(await leCorpo(req));
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { idToken }.' });
+      return;
+    }
+    const idToken = (corpo as { idToken?: unknown } | null)?.idToken;
+    if (typeof idToken !== 'string' || idToken === '') {
+      responde(res, 400, { erro: 'Faltou "idToken" no corpo do pedido.' });
+      return;
+    }
+    if (!this.opts.googleClientId) {
+      // Falha FECHADA: sem client id configurado, nenhum token — nem um de
+      // verdade do Google — consegue logar. Ver ServidorOptions.googleClientId.
+      responde(res, 401, { erro: 'Login não configurado neste ambiente (GOOGLE_CLIENT_ID ausente).' });
+      return;
+    }
+    const identidade = await verificaIdToken(idToken, {
+      clientId: this.opts.googleClientId,
+      dominioCorporativo: this.opts.dominioCorporativo,
+      ...(this.verificadorGoogle ? { cliente: this.verificadorGoogle } : {}),
+    });
+    if (!identidade) {
+      responde(res, 401, {
+        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+      });
+      return;
+    }
+    const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
+    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras));
+    responde(res, 200, { usuario: identidade.email });
+  }
+
+  /**
+   * O login de uma ferramenta de linha de comando (`tools/tela`, que dirige
+   * um navegador de verdade — o React roda dentro dele e pede `/api/*` como
+   * qualquer visitante, então precisa de sessão de verdade, não de um atalho
+   * de teste). Exige `TOKEN_INTERNO` configurado E batendo — os dois vazios
+   * (ambiente sem a variável) já recusa, nunca "combina porque os dois são
+   * nada".
+   */
+  private async autenticaInterno(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    let corpo: unknown;
+    try {
+      corpo = JSON.parse(await leCorpo(req));
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { token }.' });
+      return;
+    }
+    const token = (corpo as { token?: unknown } | null)?.token;
+    if (!this.opts.tokenInterno || typeof token !== 'string' || !tokensIguais(token, this.opts.tokenInterno)) {
+      responde(res, 401, { erro: 'Token interno inválido, ou TOKEN_INTERNO não configurado neste ambiente.' });
+      return;
+    }
+    const sessao = criaSessao(this.sessoes, 'ferramenta-interna', this.opts.sessaoTtlHoras);
+    res.setHeader('Set-Cookie', cookieDeSessao(sessao, this.opts.sessaoTtlHoras));
+    responde(res, 200, { usuario: 'ferramenta-interna' });
+  }
+
+  private logout(req: http.IncomingMessage, res: http.ServerResponse): void {
+    apagaSessaoDoPedido(this.sessoes, req);
+    res.setHeader('Set-Cookie', cookieDeSessao('', 0));
+    responde(res, 200, { ok: true });
   }
 
   // ------------------------------------------------------------------- rotas
@@ -845,6 +1001,38 @@ function responde(res: http.ServerResponse, status: number, corpo: unknown): voi
     'content-length': Buffer.byteLength(texto),
   });
   res.end(texto);
+}
+
+/** Compara dois segredos em tempo constante — `TOKEN_INTERNO` não é o tipo de
+ *  coisa que se compara com `===` e torce para ninguém medir microssegundos. */
+function tokensIguais(a: string, b: string): boolean {
+  const bufA = Buffer.from(a);
+  const bufB = Buffer.from(b);
+  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Lê o corpo de um pedido até `limiteBytes` (padrão 8 KB — um ID token do
+ * Google tem ~1-2 KB; a folga é generosa sem abrir a porta para um corpo
+ * gigante segurar memória). Único lugar da API que lê corpo — todo o resto é
+ * `GET`/`HEAD` sem corpo nenhum.
+ */
+function leCorpo(req: http.IncomingMessage, limiteBytes = 8192): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let total = 0;
+    const partes: Buffer[] = [];
+    req.on('data', (c: Buffer) => {
+      total += c.length;
+      if (total > limiteBytes) {
+        req.destroy();
+        reject(new Error('corpo do pedido excede o limite'));
+        return;
+      }
+      partes.push(c);
+    });
+    req.on('end', () => resolve(Buffer.concat(partes).toString('utf8')));
+    req.on('error', reject);
+  });
 }
 
 /**

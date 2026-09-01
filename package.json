@@ -52,6 +52,7 @@
     "web:build": "npm run build --workspace @analytics/web"
   },
   "dependencies": {
+    "google-auth-library": "^11.0.2",
     "ioredis": "^6.0.0",
     "kafkajs": "^2.2.4"
   },

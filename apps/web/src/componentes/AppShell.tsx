@@ -33,6 +33,7 @@ import {
   Sun,
   Moon,
   Eye,
+  LogOut,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -67,6 +68,9 @@ export function AppShell(props: {
   titulo: string;
   sub: string;
   acoes?: ReactNode;
+  /** Encerra a sessão de login. Sempre presente — a tela só chega a existir
+   *  depois que há sessão, então sempre há como sair dela. */
+  aoSair: () => void;
   children: ReactNode;
 }) {
   // A altura real da faixa entra em `--util`, e todo card depende dela. Ver
@@ -144,6 +148,10 @@ export function AppShell(props: {
           </button>
 
           {props.acoes}
+
+          <button className="btn-icone" onClick={props.aoSair} title="Sair">
+            <LogOut size={15} />
+          </button>
         </div>
       </header>
 

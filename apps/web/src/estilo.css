@@ -300,6 +300,19 @@ body {
 
 .casca { display: flex; flex-direction: column; min-height: 100vh; }
 
+.tela-login {
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100vh; background: var(--fundo);
+}
+.cartao-login {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  background: var(--superficie); border: 1px solid var(--borda); border-radius: 2px;
+  padding: 32px 36px; max-width: 320px; text-align: center;
+}
+.cartao-login h1 { font-size: 1.05rem; margin: 4px 0 0; color: var(--texto); }
+.cartao-login p { font-size: .8rem; color: var(--muted); margin: 0 0 8px; }
+.login-botao-google { min-height: 44px; display: flex; align-items: center; }
+
 .topo {
   height: var(--h-topbar); flex: none;
   background: var(--superficie); border-bottom: 1px solid var(--borda);

@@ -18,12 +18,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
+import { logaComoFerramenta } from './login-interno.ts';
 import { RESOLUCOES, type Resolucao } from './resolucoes.ts';
 import { PARES, avaliaContraste, type ParResolvido, type ProblemaDeContraste } from './contraste.ts';
 import { agrupaPorLinha, linhasComAlturaDivergente, type CaixaMedida } from './geometria.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+applyDotEnv(ROOT);
 
 const TEMAS = ['claro', 'escuro'] as const;
 type Tema = (typeof TEMAS)[number];
@@ -257,6 +260,8 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  const cookieDeSessao = await logaComoFerramenta(BASE);
+
   const todas = loadDashboards(path.join(ROOT, 'specs'));
   const alvo = args.paginas ? todas.filter((d) => args.paginas!.includes(d.id)) : todas;
   if (alvo.length === 0) {
@@ -277,6 +282,7 @@ async function main(): Promise<void> {
         const context = await browser.newContext({
           viewport: { width: resolucao.largura, height: resolucao.altura },
         });
+        await context.addCookies([{ ...cookieDeSessao, url: BASE }]);
         await context.addInitScript((temaAtual: Tema) => {
           localStorage.setItem('sebratel-tema-escuro', temaAtual === 'escuro' ? 'dark' : 'light');
           localStorage.setItem('modo-conferencia', '1');

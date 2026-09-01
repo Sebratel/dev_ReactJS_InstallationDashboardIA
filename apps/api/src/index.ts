@@ -93,6 +93,12 @@ const servidor = new Servidor({
   ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
     ? { tetoDeVisuaisMB }
     : {}),
+  ...(process.env.GOOGLE_CLIENT_ID ? { googleClientId: process.env.GOOGLE_CLIENT_ID } : {}),
+  ...(process.env.DOMINIO_CORPORATIVO ? { dominioCorporativo: process.env.DOMINIO_CORPORATIVO } : {}),
+  ...(process.env.SESSAO_TTL_HORAS
+    ? { sessaoTtlHoras: Number.parseFloat(process.env.SESSAO_TTL_HORAS) }
+    : {}),
+  ...(process.env.TOKEN_INTERNO ? { tokenInterno: process.env.TOKEN_INTERNO } : {}),
 });
 
 /**
@@ -125,8 +131,13 @@ http.listen(porta, () => {
   console.log(`\nAnalytics Platform — API de leitura`);
   console.log(`  tela  http://localhost:${porta}/`);
   console.log(`  saúde http://localhost:${porta}/api/saude`);
-  console.log(`\n  Somente GET. Nenhuma rota escreve em fonte nenhuma.`);
+  console.log(`\n  Somente GET (e POST /auth/*). Nenhuma rota escreve em fonte nenhuma.`);
   console.log(`  Os dados vêm do snapshot em disco, não das fontes.`);
+  console.log(
+    `  Login: ${process.env.GOOGLE_CLIENT_ID
+      ? `Google SSO, domínio ${process.env.DOMINIO_CORPORATIVO ?? 'sebratel.com.br'}`
+      : 'DESLIGADO — GOOGLE_CLIENT_ID ausente, /auth/google recusa todo token'}`,
+  );
   console.log(
     `  Cache da resposta: ${cache ? 'memória + Redis (REDIS_URL)' : 'memória'}`,
   );
@@ -141,6 +152,13 @@ http.listen(porta, () => {
     aquecedor = new Aquecedor({
       base: `http://127.0.0.1:${porta}`,
       carimbo: () => servidor.identidadeAtual(),
+      // O login gate (`/api/*` exige sessão) bloquearia o próprio Aquecedor,
+      // que bate nessas rotas por HTTP de propósito (ver comentário de
+      // `segredoAquecedor` em servidor.ts). Este cabeçalho é o reconhecimento
+      // — gerado uma vez por processo, nunca configurável, nunca visto fora
+      // deste ir-e-vir local.
+      buscar: (url, init) =>
+        fetch(url, { ...init, headers: { ...init?.headers, 'x-aquecedor-interno': servidor.segredoInterno() } }),
     });
     aquecedor.inicia();
   }

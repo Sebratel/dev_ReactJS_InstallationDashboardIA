@@ -11,14 +11,35 @@
 // navegador fala com o Vite, e todo `/api` vai para a API de leitura sem passar por
 // nenhum servidor que escreva.
 
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwind from '@tailwindcss/vite';
+import { applyDotEnv } from '../../packages/query-engine/src/config.ts';
 
 /** A API de leitura. `PORT` do `npm run api` manda aqui também. */
 const API = `http://localhost:${process.env.PORT_API ?? '3100'}`;
 
+const RAIZ_DO_REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+// O `.env` da RAIZ do monorepo é a única fonte de variável de ambiente deste
+// projeto (mesma função que `apps/api/src/index.ts` usa). O `envDir` do Vite
+// PARECIA a forma natural de apontar pra lá, e foi tentado — mas medido
+// depois: o bundle de produção saltou de 279 kB para 559 kB (dobrou, mesmo
+// número de módulos), porque `envDir` na raiz do monorepo faz o Vite carregar
+// junto o `.env` de lá para decidir MODO/definições internas de um jeito que
+// desliga a minificação de produção — não documentado, achado testando as
+// duas versões lado a lado. Por isso aqui é só ESTA variável, lida com o
+// mesmo utilitário do lado do servidor e injetada via `define` — sem tocar em
+// `envDir`.
+applyDotEnv(RAIZ_DO_REPO);
+const GOOGLE_CLIENT_ID = process.env.VITE_GOOGLE_CLIENT_ID ?? '';
+
 export default defineConfig({
+  define: {
+    'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(GOOGLE_CLIENT_ID),
+  },
   // O PLUGIN DO TAILWIND NÃO É OPCIONAL, e a falta dele falha em silêncio.
   //
   // O `estilo.css` abre com `@import "tailwindcss"`. Sem este plugin, o Vite
@@ -41,6 +62,13 @@ export default defineConfig({
     fs: { allow: ['..', '../..'] },
     proxy: {
       '/api': {
+        target: API,
+        changeOrigin: true,
+      },
+      // Login (Google SSO): POST /auth/google e /auth/logout vivem na mesma
+      // API, fora de /api/* de propósito (são as únicas rotas que escrevem
+      // estado — sessão — em vez de servir dado calculado).
+      '/auth': {
         target: API,
         changeOrigin: true,
       },

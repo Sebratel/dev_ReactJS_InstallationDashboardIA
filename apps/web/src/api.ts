@@ -207,10 +207,23 @@ export async function pega<T>(url: string, signal?: AbortSignal): Promise<T> {
       corpo && typeof corpo === 'object' && 'erro' in corpo
         ? String((corpo as { erro: unknown }).erro)
         : `HTTP ${resp.status} em ${url}`;
-    throw new Error(erro);
+    // `status` vai junto do erro — é como `App.tsx` distingue "sem sessão"
+    // (401, mostra a tela de login) de qualquer outra falha (mostra o erro).
+    throw Object.assign(new Error(erro), { status: resp.status });
   }
   return corpo as T;
 }
+
+/** `true` quando `err` veio de um pedido que a API recusou por falta de sessão
+ *  válida — o único caso em que a tela certa é o login, não uma mensagem de
+ *  erro. */
+export const ehErroDeSessao = (err: unknown): boolean =>
+  err instanceof Error && (err as { status?: number }).status === 401;
+
+/** Apaga a sessão do lado do servidor. O cookie sai na resposta; quem chama
+ *  ainda precisa tirar a tela do ar (ver `App.tsx`). */
+export const sai = (): Promise<void> =>
+  fetch('/auth/logout', { method: 'POST' }).then(() => undefined);
 
 export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[] }> =>
   pega('/api/dashboards');

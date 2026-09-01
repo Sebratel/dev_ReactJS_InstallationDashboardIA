@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ehAbortError,
+  ehErroDeSessao,
   listaDashboards,
   pegaLayout,
   pegaPagina,
+  sai,
   urlDaPagina,
   type DashboardDaLista,
   type FiltroDaTela,
@@ -32,6 +34,7 @@ import { AppShell } from './componentes/AppShell.tsx';
 import { Capa } from './componentes/Capa.tsx';
 import { Erro } from './componentes/Cartao.tsx';
 import { EsqueletoDaPagina } from './componentes/EsqueletoDaPagina.tsx';
+import { Login } from './componentes/Login.tsx';
 import { Segmentacao } from './componentes/Segmentacao.tsx';
 import { SegmentacaoDataHierarquia } from './componentes/SegmentacaoDataHierarquia.tsx';
 import { usaModo } from './modo.tsx';
@@ -80,6 +83,12 @@ export function App() {
   const [pagina, setPagina] = useState<PaginaCalculada | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Otimista: assume logado até o primeiro 401 de verdade. Vira `false` em
+  // QUALQUER chamada a `/api/*` que volte sem sessão — a tela de login
+  // substitui o dashboard inteiro enquanto isto for `false` (ver o `return`
+  // mais abaixo). Não existe estado "ainda não sei": antes do primeiro
+  // pedido responder, o esqueleto de carregamento de sempre cobre a espera.
+  const [logado, setLogado] = useState(true);
   // A FORMA da página (Fase L4): não depende de filtro nem de clique, só de qual
   // página está aberta — por isso vive num efeito à parte, e não no de `pegaPagina`
   // abaixo. Cache por página nesta sessão: o arquivo não muda em runtime, e refazer o
@@ -111,6 +120,10 @@ export function App() {
       })
       .catch((err: unknown) => {
         if (ehAbortError(err)) return;
+        if (ehErroDeSessao(err)) {
+          setLogado(false);
+          return;
+        }
         setErro(err instanceof Error ? err.message : String(err));
       });
     return () => aborta.abort();
@@ -129,7 +142,13 @@ export function App() {
           return escolhida;
         });
       })
-      .catch((err: unknown) => setErro(err instanceof Error ? err.message : String(err)));
+      .catch((err: unknown) => {
+        if (ehErroDeSessao(err)) {
+          setLogado(false);
+          return;
+        }
+        setErro(err instanceof Error ? err.message : String(err));
+      });
   }, []);
 
   // DE ONDE VEIO A MUDANÇA, para decidir o que fazer com o histórico.
@@ -222,6 +241,10 @@ export function App() {
         // piscar uma mensagem vermelha a cada clique em rajada.
         if (cancelado || ehAbortError(err)) return;
         setPagina(null);
+        if (ehErroDeSessao(err)) {
+          setLogado(false);
+          return;
+        }
         setErro(err instanceof Error ? err.message : String(err));
       })
       .finally(() => {
@@ -387,6 +410,14 @@ export function App() {
 
   const nome = paginas.find((p) => p.id === atual)?.nome ?? 'Instalação';
 
+  // Sem sessão válida, a tela inteira vira o login — nenhum outro estado
+  // (esqueleto, erro, dashboard) faz sentido enquanto isso for verdade, e o
+  // reload depois de logar é de propósito: mais simples e mais confiável do
+  // que tentar reencaixar cada efeito que já falhou.
+  if (!logado) {
+    return <Login aoLogar={() => window.location.reload()} />;
+  }
+
   return (
     <AppShell
       paginas={paginas}
@@ -394,6 +425,9 @@ export function App() {
       aoEscolher={escolhe}
       aoPassarMouse={prefetchaPagina}
       aoSairDoMouse={cancelaPrefetch}
+      aoSair={() => {
+        sai().finally(() => setLogado(false));
+      }}
       titulo={nome}
       sub={pagina ? `dado de ${dataHora(pagina.dadoDe)}` : ''}
       acoes={
