@@ -323,6 +323,46 @@ function decideFaceta(series: readonly SerieMontada[], empilha: boolean): string
   );
 }
 
+/**
+ * Luminância relativa (WCAG) de uma cor hex sólida — sRGB linearizado, os mesmos
+ * coeficientes 0,2126/0,7152/0,0722 que produzem os contrastes documentados no
+ * `CLAUDE.md` (bordô sobre branco: 9,87:1 — reproduzido por esta função, não copiado).
+ */
+function luminanciaRelativa(hex: string): number {
+  const canais = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const [r, g, b] = canais.map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+}
+
+function contraste(l1: number, l2: number): number {
+  const claro = Math.max(l1, l2);
+  const escuro = Math.min(l1, l2);
+  return (claro + 0.05) / (escuro + 0.05);
+}
+
+const LUMINANCIA_TINTA = luminanciaRelativa('#252423'); // --pbi-ink
+
+/**
+ * O texto de dentro da BARRA DE RANKING (Fase L6, §8: rótulo dentro da barra em vez de
+ * numa coluna à parte) — decide entre branco e tinta pela cor real do preenchimento,
+ * não por um par fixo tema-claro/tema-escuro.
+ *
+ * **Por que não fixar por tema.** `corNoTema` troca o bordô cheio (`#880F17`, claro)
+ * pelo bordô claro (`#E08B94`, escuro) no tema escuro — a MESMA barra muda de luminância
+ * entre temas. Um par fixo "branco no claro, tinta no escuro" teria acertado por
+ * coincidência aqui e errado na primeira cor de série que não seguisse esse padrão
+ * (`--pbi-gold`, por exemplo, é claro nos dois temas). Medir a cor que realmente vai
+ * para a tela é o que generaliza.
+ *
+ * Verificado à mão para os dois casos deste visual: `#880F17` dá 9,87:1 contra branco e
+ * 1,57:1 contra tinta (escolhe branco); `#E08B94` dá 2,53:1 contra branco e 6,12:1
+ * contra tinta (escolhe tinta) — os dois acima do piso WCAG AA de 4,5:1 para texto.
+ */
+export function corDoRotuloSobre(hexDeFundo: string): string {
+  const lFundo = luminanciaRelativa(hexDeFundo);
+  return contraste(lFundo, 1) >= contraste(lFundo, LUMINANCIA_TINTA) ? '#FFFFFF' : '#252423';
+}
+
 export function marcasDoEixo(teto: number, quantas = 4): number[] {
   if (!Number.isFinite(teto) || teto <= 0) return [0];
   const cru = teto / quantas;

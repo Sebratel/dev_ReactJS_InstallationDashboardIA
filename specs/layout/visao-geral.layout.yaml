@@ -29,7 +29,7 @@ faixas:
         render: clusteredBarChart
       - visual: b346badbabf75059fb86
         span: 4
-        render: barChart
+        render: ranking-barra
       - visual: d9713da4535926b79bd8
         span: 4
         render: columnChart
@@ -76,4 +76,13 @@ ocultos:
     porque: vira controle de filtro na barra (segmentação), não card da grade
   - visual: df93e688d86824150aee
     porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
-improvements: []
+improvements:
+  - visual: b346badbabf75059fb86
+    original: barChart
+    virou: ranking-barra
+    porque: >-
+      barra horizontal com rótulo (EQUIPE) dentro da própria barra em vez de numa
+      coluna de eixo à parte — elimina a coluna de rótulo que uma barra convencional
+      reserva à esquerda. Ordenação por valor é só desenho; a medida é a mesma
+      "Contagem de SOLICITACAO1" de sempre.
+    numero_muda: false

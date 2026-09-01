@@ -8,6 +8,7 @@ import { Card } from './Card.tsx';
 import { Cartao, Erro, alturaDoConteudo } from './Cartao.tsx';
 import { Grafico } from './Grafico.tsx';
 import { Matriz } from './Matriz.tsx';
+import { RankingBarra } from './RankingBarra.tsx';
 import { Rosca } from './Rosca.tsx';
 import { Tabela } from './Tabela.tsx';
 
@@ -43,6 +44,7 @@ export function VisualPronto({
     return <Matriz pagina={pagina} visual={visual} filtros={filtros} />;
   }
   if (visual.conteudo === 'grafico') {
+    if (render === 'ranking-barra') return <RankingBarra visual={visual} aoFiltrar={aoFiltrar} filtros={filtros} />;
     return <Grafico visual={visual} aoFiltrar={aoFiltrar} filtros={filtros} />;
   }
 

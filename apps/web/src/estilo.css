@@ -891,20 +891,22 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
 .rotulo-valor { fill: var(--texto); font-size: 10px; font-weight: 700; font-family: var(--font); }
 .aviso-grafico { font-size: .68rem; color: var(--muted); margin: 0; }
 
-/* Barras horizontais (listas curtas): mesma ordem de cor da série. */
-.barras { display: flex; flex-direction: column; gap: 4px; }
-.barra { display: grid; grid-template-columns: minmax(100px, 220px) 1fr auto; gap: 10px; align-items: center; }
-.barra.barra-clicavel { cursor: pointer; }
-.barra.barra-clicavel:hover { background: var(--pbi-primary-soft); }
-.barra .rot { font-size: .7rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pilha { display: flex; flex-direction: column; gap: 2px; }
-.trilho { background: var(--fundo); border-radius: 0 3px 3px 0; height: 12px; overflow: hidden; }
-.preenche { height: 100%; border-radius: 0 3px 3px 0; background: var(--pbi-gold); }
-.barra .n {
-  font-size: .7rem; font-variant-numeric: tabular-nums; min-width: 80px; text-align: right;
-  display: flex; flex-direction: column; gap: 2px; font-weight: 600; color: var(--texto);
-}
-.pct-badge { font-size: .6rem; font-weight: 700; color: var(--muted); }
+/* Barra de ranking (Fase L6, §8, 6/6): trilho da largura toda, preenchimento até o
+   valor, rótulo DENTRO — a coluna de rótulo que uma barra convencional reserva à
+   esquerda deixa de existir. Substituiu `.barras`/`.barra`/`.trilho`/`.preenche`, uma
+   lista em `div` com coluna de rótulo fixa (100–220px) — exatamente o padrão que este
+   visual veio eliminar; ver o comentário de topo do `Grafico.tsx` sobre essa versão
+   anterior, e `RankingBarra.tsx` para o desenho em SVG que a substitui de vez. */
+.ranking-trilho { fill: var(--fundo); }
+/* `.ranking-preenche` não fixa `fill`: a cor vem inline (`corNoTema(corDaSerie(...))`),
+   igual aos `<rect>` de série do `Grafico.tsx` — uma regra aqui competiria com o
+   atributo por especificidade CSS-sobre-atributo-de-apresentação e prenderia a cor. */
+.ranking-rotulo-dentro { font-size: 11px; font-weight: 700; font-family: var(--font); }
+/* Idem para o `fill` do rótulo dentro: vem inline de `corDoRotuloSobre`, que escolhe
+   branco ou tinta pela luminância REAL do preenchimento (ver `grafico-forma.ts`) — uma
+   cor fixa aqui reintroduziria o par claro/escuro que aquela função existe para evitar. */
+.ranking-rotulo-fora { fill: var(--texto); font-size: 11px; font-weight: 700; font-family: var(--font); }
+.ranking-valor { fill: var(--muted); font-size: .7rem; font-weight: 700; font-family: var(--font); font-variant-numeric: tabular-nums; }
 
 /* Legenda: presente sempre que houver 2+ séries. Gold e orange separam 17,7 em
    OKLab (piso 15) — a identidade não pode depender só da cor. */

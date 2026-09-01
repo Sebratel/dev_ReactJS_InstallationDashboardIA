@@ -83,7 +83,7 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         prender a página seguinte por vários segundos porque o
                         servidor é um processo só. Documentado, não corrigido nesta
                         fase. 1461/1461, build verde, tela 112/112.
-Fase L6 (§8)    [PARCIAL] 01/09/2026 — 5 de 6 visuais.
+Fase L6 (§8)    [DONE]  01/09/2026 — 6 de 6 visuais.
                         1) rosca com centro numérico (Rosca.tsx, novo). Mesmo
                         DadosDeTabela que Tabela.tsx já lia (zero requisição, zero
                         campo novo) — só troca o desenho: a coluna marcada `chave`
@@ -243,9 +243,89 @@ Fase L6 (§8)    [PARCIAL] 01/09/2026 — 5 de 6 visuais.
                         1461/1461, build verde, layout:valida 14/14 (nenhum
                         layout.yaml mudou). tela 112/112 (seis tentativas com
                         timeout de .selo isolado em páginas sem matriz nova, mesmo
-                        padrão das quatro fases anteriores). Falta 1 visual:
-                        ranking-barra com rótulo dentro — próprio commit, mesmo
-                        padrão.
+                        padrão das quatro fases anteriores).
+                        6) barra de ranking com rótulo dentro (RankingBarra.tsx,
+                        novo). Mesmo DadosDeGrafico que Grafico.tsx já lia (zero
+                        requisição, zero campo novo) — a ORDENAÇÃO é o ranking: o
+                        valor de cada categoria já vem calculado, então classificar
+                        do maior para o menor é um sort client-side, mais barato que
+                        pedir ao motor uma medida RANKX (o §8 cita RANKX só para
+                        dizer que o motor já sabe calcular posição, não que alguma
+                        medida existente precisasse dela). Achado ao investigar
+                        Grafico.tsx: o campo `forma` (`'colunas' | 'barras'`) que
+                        `grafico-forma.ts` calcula para todo `barChart`/
+                        `clusteredBarChart` nunca era LIDO em lugar nenhum — todo
+                        gráfico de barra do Power BI já saía como coluna vertical
+                        comum, sem rótulo dentro nem coluna de eixo à parte
+                        reservada. Ou seja, este visual não substitui um "gráfico de
+                        barra horizontal com rótulo ao lado" que já existisse — ele
+                        introduz a primeira renderização horizontal de verdade,
+                        desenhada para já nascer sem a coluna de rótulo que a versão
+                        convencional reservaria. Achado colateral: `estilo.css`
+                        tinha um bloco morto (`.barras`/`.barra`/`.trilho`/
+                        `.preenche`/`.pct-badge`, coluna de rótulo fixa de 100-220px)
+                        — sobra de uma lista em `div` anterior ao `Grafico.tsx` em
+                        SVG (o próprio cabeçalho do arquivo já registrava essa
+                        versão antiga), sem nenhuma referência em TSX. Removido
+                        nesta mesma fase por ser exatamente o padrão que este visual
+                        veio eliminar — deixá-lo ali confundiria o próximo consumidor
+                        de "barra horizontal" a reusar a versão errada.
+                        Extraído `grafico-clique.ts` (clique-para-filtrar sobre um
+                        eixo categórico: alvos, seleção, destaque) de dentro do
+                        Grafico.tsx — mesmo raciocínio de `magnitude.ts`/
+                        `usa-caixa.ts`, agora com dois consumidores (Grafico.tsx e
+                        RankingBarra.tsx) que precisam da MESMA regra sobre a MESMA
+                        forma de chave. Zero mudança de comportamento em
+                        Grafico.tsx, só remoção de duplicação.
+                        A cor do rótulo DENTRO da barra (branco ou tinta) não é um
+                        par fixo por tema: `corDoRotuloSobre` (grafico-forma.ts)
+                        mede a luminância REAL do preenchimento (que já muda de
+                        bordô cheio para bordô claro em tema escuro, via
+                        `corNoTema`) e escolhe o texto de maior contraste — a
+                        mesma disciplina "meça antes de mudar cor" do CLAUDE.md,
+                        aplicada por cor em vez de por tema para não fixar um par
+                        que erraria na primeira série que não seguisse o padrão do
+                        bordô. Verificado à mão (fórmula WCAG) e ao vivo: bordô
+                        cheio dá 9,87:1 contra branco (escolhe branco); bordô claro
+                        do tema escuro dá 6,12:1 contra tinta (escolhe tinta) — os
+                        dois medidos e confirmados no navegador via estilo
+                        computado, não só visual.
+                        A altura de linha é adaptável, não fixa: com poucas
+                        categorias (o caso real das duas telas piloto) as linhas
+                        ESTICAM até um teto de 40px para preencher o cartão, em vez
+                        de ficar em 22px com o resto do card vazio; passando da
+                        capacidade no mínimo, a lista pagina (mesma regra "gráfico
+                        não rola: pagina" do Grafico.tsx) — verificado por
+                        desk-check aritmético com valores hipotéticos, porque
+                        nenhum dos dois candidatos reais (EQUIPE: 5, TÉCNICO 1: 5
+                        categorias) tem cardinalidade suficiente para exercitar a
+                        paginação ao vivo.
+                        Piloto em visao-geral: gráfico de barra EQUIPE
+                        (b346badbabf75059fb86, "Contagem de SOLICITACAO1"), a única
+                        troca de `render:` desta página (`barChart` →
+                        `ranking-barra`, `improvements:` com `numero_muda: false`).
+                        TÉCNICO 1, o outro candidato "técnicos/equipes" do §8,
+                        continua no Grafico.tsx comum — trocar os dois de uma vez
+                        não é o padrão desta fase (um visual, um commit); ficou
+                        testado ao vivo (temporariamente, revertido antes do
+                        commit) só para validar o estado vazio ("Sem dados para os
+                        filtros atuais.", com título correto — achado e corrigido
+                        nesse teste: o título usava `gTudo.series[0]?.nome`, que
+                        fica vazio SEM categoria alguma, em vez de `d.series[0]?.nome`,
+                        a metadata declarada que Grafico.tsx já usa para isso).
+                        Verificado no navegador (Playwright), claro e escuro:
+                        preenchimento e cor do rótulo corretos nos dois temas,
+                        clique-para-filtrar aplica o filtro (URL ganha `filtro=`) e
+                        risca a linha não selecionada (`.apagada`), cross-filtro nos
+                        outros cards da página funciona.
+                        1461/1461, build verde, layout:valida 14/14, golden
+                        atualizado (só o campo `render` da coluna EQUIPE — diff de
+                        uma linha, sem regressão de geometria). tela 112/112 (cinco
+                        tentativas com timeout de .selo isolado em páginas sem a
+                        barra de ranking, mesmo padrão das cinco fases anteriores).
+                        Fase L6 fechada: as 6 formas do §8 estão implementadas, cada
+                        uma em commit próprio, todas com número idêntico ao
+                        original.
 Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
 ```
 

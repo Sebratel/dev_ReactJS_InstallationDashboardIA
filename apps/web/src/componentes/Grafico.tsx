@@ -12,10 +12,17 @@ import { useMemo, useState } from 'react';
 import type { DadosDeGrafico, FiltroDaTela, VisualCalculado } from '../api.ts';
 import { formata, inteiro } from '../formato.ts';
 import { corNoTema, maiorValorDe, marcasDoEixo, montaGrafico, tetoDasAreas } from '../grafico-forma.ts';
+import {
+  alvosDaCategoria,
+  chavesDeEixoDe,
+  estaSelecionadaCategoria,
+  selecaoDoEixoDe,
+  type ChaveDoGrafico,
+} from '../grafico-clique.ts';
 import { useThemeStore } from '../store/useThemeStore.ts';
 import { Cartao } from './Cartao.tsx';
 import { tituloDoVisual } from '../rotulos.ts';
-import { selecaoDe, type AoFiltrar } from '../rota.ts';
+import type { AoFiltrar } from '../rota.ts';
 import { usaModo } from '../modo.tsx';
 import { usaCaixa } from './usa-caixa.ts';
 
@@ -176,13 +183,7 @@ export function Grafico({
   const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda - 10));
   const larguraDaFatia = g.empilha ? larguraDaMarca : Math.max(3, (larguraDaMarca - VAO * (areas.length - 1)) / Math.max(areas.length, 1));
 
-  const chavesArray = (d.chaves ?? []) as {
-    papel?: string;
-    tabela?: string;
-    coluna?: string;
-    nivel?: string | null;
-    nome?: string;
-  }[];
+  const chavesArray = (d.chaves ?? []) as ChaveDoGrafico[];
 
   /**
    * O clique manda a CATEGORIA INTEIRA, um alvo por chave de eixo.
@@ -200,18 +201,8 @@ export function Grafico({
    * devolveria tela vazia. Se a categoria inteira for nula não sobra alvo e o clique
    * não faz nada — que é o certo para um rótulo-sentinela.
    */
-  const alvosDa = (i: number) => {
-    const chavesDeEixo = chavesArray.filter((c) => (c.papel ?? 'Category') === 'Category');
-    const valores = g.categorias[i]?.valores ?? [];
-    return chavesDeEixo
-      .map((c, k) => ({
-        tabela: c.tabela ?? '',
-        coluna: c.coluna ?? '',
-        ...(c.nivel ? { nivel: c.nivel } : {}),
-        valor: valores[k] ?? null,
-      }))
-      .filter((a) => a.tabela !== '' && a.coluna !== '' && a.valor !== null);
-  };
+  const chavesDeEixo = chavesDeEixoDe(chavesArray);
+  const alvosDa = (i: number) => alvosDaCategoria(chavesDeEixo, g.categorias[i]?.valores ?? []);
 
   /**
    * CURSOR DE MÃO SÓ ONDE O CLIQUE FILTRA — e ele não estava em lugar nenhum.
@@ -236,21 +227,10 @@ export function Grafico({
    * filtro em nenhum nível do eixo, `haSelecao` é falso e nada esmaece — tela sem
    * clique é tela normal.
    */
-  const selecaoDoEixo = chavesArray
-    .filter((c) => (c.papel ?? 'Category') === 'Category')
-    .map((c) => {
-      if (!filtros || !c.tabela || !c.coluna) return null;
-      const sel = selecaoDe(filtros, c.tabela, c.coluna, c.nivel ?? undefined);
-      return sel.length > 0 ? sel : null;
-    });
+  const selecaoDoEixo = selecaoDoEixoDe(chavesDeEixo, filtros);
   const haSelecao = selecaoDoEixo.some((s) => s !== null);
 
-  const estaSelecionada = (i: number) => {
-    const valores = g.categorias[i]?.valores ?? [];
-    return selecaoDoEixo.every(
-      (sel, k) => sel === null || sel.some((v) => Object.is(v, valores[k] ?? null)),
-    );
-  };
+  const estaSelecionada = (i: number) => estaSelecionadaCategoria(selecaoDoEixo, g.categorias[i]?.valores ?? []);
 
   const clica = (i: number) => {
     if (!aoFiltrar) return;
