@@ -5,6 +5,7 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
 import { decideDerrubada, portaOcupada } from './porta.ts';
@@ -13,6 +14,10 @@ import { decideDerrubada, portaOcupada } from './porta.ts';
 // mesmo aviso divergem no primeiro conserto, e foi assim que a instrução daqui ficou
 // oito dias mandando um comando que não roda.
 import { algumEhNosso, comoLiberar, derruba, quemOcupa } from '../../../apps/api/src/porta.ts';
+// Compartilhado com `tools/tela` (mesmo motivo: isto chama `/api/*` de fora do
+// navegador, sem conta do Google). Mora lá porque foi escrito primeiro para o
+// `varre.ts`/`perf.ts`, não porque é conceitualmente de "tela".
+import { logaComoFerramenta } from '../../tela/src/login-interno.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -91,11 +96,34 @@ async function esperaSaude(filho: ChildProcess, limiteMs = 90_000): Promise<bool
   return false;
 }
 
+/** `/api/dashboards` exige sessão desde o login (01/09/2026) — sem isto, a
+ *  primeira chamada de `aquece()` (`listaPaginas`) toma 401, joga uma exceção
+ *  não tratada e derruba `npm start` inteiro, API já respondendo junto.
+ *
+ *  `applyDotEnv` roda AQUI, e não no topo do arquivo, de propósito: o `.env`
+ *  real tem `NODE_ENV=development`, e carregá-lo antes do `spawnSync('npm run
+ *  web:build', …)` faz o build da tela herdar essa variável e sair sem
+ *  minificar — 281 kB viraram 563 kB, medido, o mesmo sintoma que `envDir` já
+ *  causou uma vez em `vite.config.ts`. Neste ponto o build e a subida do
+ *  processo filho da API já aconteceram; só falta autenticar. */
+async function buscaAutenticado(): Promise<typeof fetch> {
+  applyDotEnv(ROOT);
+  const cookie = await logaComoFerramenta(BASE);
+  const valorDoCookie = `${cookie.name}=${encodeURIComponent(cookie.value)}`;
+  return (input, init) => {
+    const cabecalhos = new Headers(init?.headers);
+    cabecalhos.set('cookie', valorDoCookie);
+    return fetch(input, { ...init, headers: cabecalhos });
+  };
+}
+
 async function aquecer(): Promise<ReturnType<typeof veredito>> {
   console.log(`\nAquecendo ${paginas.length ? paginas.join(', ') : 'todas as páginas'}…\n`);
   console.log(tabela([]).split('\n').slice(0, 2).join('\n'));
+  const buscar = await buscaAutenticado();
   const medidas = await aquece({
     base: BASE,
+    buscar,
     limiteMs,
     ...(paginas.length ? { paginas } : {}),
     aoMedir: (m) => console.log(linhaDaMedida(m)),
