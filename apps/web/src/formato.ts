@@ -111,6 +111,19 @@ export function dataHora(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? '—' : dfh.format(d);
 }
 
+/** A partir de quantos dias sem `npm run snapshot` o carimbo vira aviso.
+ *  Ver DECISAO-REALTIME.md: o dado não se atualiza sozinho, e escondê-lo
+ *  é a alternativa que a decisão explicitamente recusa. */
+export const LIMITE_DIAS_DADO_ATRASADO = 2;
+
+/** Dias desde um ISO até agora — null se a data faltar ou for inválida. */
+export function diasDesde(iso: string | null): number | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return (Date.now() - d.getTime()) / 86_400_000;
+}
+
 /**
  * Duração em ms, na unidade que cabe.
  *

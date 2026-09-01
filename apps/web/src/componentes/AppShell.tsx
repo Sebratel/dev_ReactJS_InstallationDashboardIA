@@ -67,6 +67,10 @@ export function AppShell(props: {
   aoSairDoMouse?: () => void;
   titulo: string;
   sub: string;
+  /** O dado por trás da tela passou do limite sem `npm run snapshot` — ver
+   *  `LIMITE_DIAS_DADO_ATRASADO` em `formato.ts`. Troca o carimbo discreto por
+   *  um aviso, em vez de deixar a idade do dado só no texto pequeno do canto. */
+  subAviso?: boolean;
   acoes?: ReactNode;
   /** Encerra a sessão de login. Sempre presente — a tela só chega a existir
    *  depois que há sessão, então sempre há como sair dela. */
@@ -116,7 +120,11 @@ export function AppShell(props: {
 
         <div className="titulo-tela">
           <h1 className="cabecalho-titulo">{props.titulo}</h1>
-          {props.sub ? <span className="cabecalho-sub">{props.sub}</span> : null}
+          {props.sub ? (
+            <span className={`cabecalho-sub${props.subAviso ? ' cabecalho-sub-aviso' : ''}`}>
+              {props.sub}
+            </span>
+          ) : null}
         </div>
 
         {/* OS DOIS INTERRUPTORES GLOBAIS MORAM AQUI, e não numa tela.

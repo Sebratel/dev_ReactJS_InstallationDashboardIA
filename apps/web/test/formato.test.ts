@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dataHora, duracao, formata, inteiro } from '../src/formato.ts';
+import { dataHora, diasDesde, duracao, formata, inteiro } from '../src/formato.ts';
 
 test('BLANK vira travessão e é marcado como vazio, não como zero', () => {
   // Um BLANK desenhado como "0" seria um número inventado. A tela precisa saber que
@@ -81,6 +81,14 @@ test('dataHora aceita nulo e ISO inválido sem quebrar', () => {
   assert.equal(dataHora(null), '—');
   assert.equal(dataHora('xx'), '—');
   assert.match(dataHora('2026-08-10T12:00:00.000Z'), /10\/08\/2026/);
+});
+
+test('diasDesde mede a idade do dado, e aceita nulo e ISO inválido', () => {
+  assert.equal(diasDesde(null), null);
+  assert.equal(diasDesde('xx'), null);
+  const tresDiasAtras = new Date(Date.now() - 3 * 86_400_000).toISOString();
+  const idade = diasDesde(tresDiasAtras);
+  assert.ok(idade !== null && idade > 2.9 && idade < 3.1, `esperava ~3 dias, veio ${idade}`);
 });
 
 /**

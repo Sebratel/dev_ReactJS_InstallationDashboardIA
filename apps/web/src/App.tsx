@@ -15,7 +15,7 @@ import {
   type PaginaCalculada,
   type Valor,
 } from './api.ts';
-import { dataHora, duracao, inteiro } from './formato.ts';
+import { LIMITE_DIAS_DADO_ATRASADO, dataHora, diasDesde, duracao, inteiro } from './formato.ts';
 import { usaAlturaMedida, usaEspacoSemVisual } from './altura-medida.ts';
 import { guardaPaginaVista } from './cache-pagina.ts';
 import { idsIniciais } from './carga-progressiva.ts';
@@ -410,6 +410,11 @@ export function App() {
 
   const nome = paginas.find((p) => p.id === atual)?.nome ?? 'Instalação';
 
+  // O dado não se atualiza sozinho (DECISAO-REALTIME.md) — sem este aviso, a
+  // única pista da idade era um texto pequeno e sem cor no canto do cabeçalho.
+  const idadeDoDadoEmDias = pagina ? diasDesde(pagina.dadoDe) : null;
+  const dadoAtrasado = idadeDoDadoEmDias !== null && idadeDoDadoEmDias > LIMITE_DIAS_DADO_ATRASADO;
+
   // Sem sessão válida, a tela inteira vira o login — nenhum outro estado
   // (esqueleto, erro, dashboard) faz sentido enquanto isso for verdade, e o
   // reload depois de logar é de propósito: mais simples e mais confiável do
@@ -429,7 +434,14 @@ export function App() {
         sai().finally(() => setLogado(false));
       }}
       titulo={nome}
-      sub={pagina ? `dado de ${dataHora(pagina.dadoDe)}` : ''}
+      sub={
+        pagina
+          ? dadoAtrasado
+            ? `dado desatualizado — ${dataHora(pagina.dadoDe)}`
+            : `dado de ${dataHora(pagina.dadoDe)}`
+          : ''
+      }
+      subAviso={dadoAtrasado}
       acoes={
         <button
           className="primario"
