@@ -5816,6 +5816,58 @@ os 22,9% restantes é decisão, não conserto.
 
 ---
 
+## #77 — `npm run paridade` estava travando por uma chave YAML duplicada, calada desde 11/08
+
+**01/09/2026.** Ao fechar a Fase L7 de `PLANO-LAYOUT-V1.md` (decisão do chart SDK),
+rodei `npm run paridade` só para conferir o placar antes de responder "falta algo?" — e
+o programa **morria** com `YAMLParseError: Map keys must be unique`, sem chegar a
+comparar um card sequer.
+
+A causa: `specs/paridade/relatorio-do-mes.yaml` tinha dois blocos de `observacao:`
+colados **byte a byte iguais**, um em cima do outro, dentro do mesmo card (`20d23554...`,
+"DIAS TRABALHADOS NO MÊS") — na verdade **três** cópias, não duas; a primeira tentativa
+de conserto colapsou só um par e deixou duas. Um segundo card (`bbc6684...`, "DIAS
+ÚTEIS RESTANTES NO MÊS") tinha o mesmo acidente, **triplicado**. `yaml` (a lib) recusa
+mapa com chave repetida — corretíssimo, YAML não define qual das duas vale — e o
+programa não tinha `try/catch` nenhum em volta do `parseYaml` em `leGabaritos()`
+(`tools/paridade/src/index.ts`): a exceção subia crua e derrubava o processo antes de
+imprimir uma linha.
+
+**Por que ficou calado desde 11/08/2026** (a data de `conferido_em` no cabeçalho do
+arquivo): não há teste que rode `npm run paridade` — não está em `npm test`, é comando
+separado, de uso manual. Um YAML que carrega bem noutro contexto (`layout:valida`,
+por exemplo, não lê este diretório) não denuncia sozinho um vizinho quebrado.
+
+**Conserto:** as duas cópias extras removidas à mão (`git diff` confirma **30 linhas**
+a menos no arquivo — 10 do primeiro card, 20 do segundo —, texto idêntico preservado; a
+única cópia que sobrou de cada
+observação é literalmente igual às que foram removidas, então nenhuma decisão nova
+entrou, só a duplicação saiu). O programa não ganhou `try/catch` novo: a causa era o
+dado, não a ferramenta.
+
+### O que a ferramenta destravada mostrou — e não é o #77, é o §9.1 de novo
+
+Rodando limpo pela primeira vez desde a reconstrução de 27/08: **64 cards, 3 batem, 25
+diferem, 3 divergem como já decidido, 33 não calculam** (22 são carimbo de
+atualização — `ignorar:` no YAML, fora do jogo por convenção, não por código — e 11 são
+cards de negócio de verdade, concentrados em `relatorio-do-mes` e `manutencao-inicial`,
+provavelmente medidas de "mês atual"/"30 dias" caindo em divisão por janela vazia bem
+no primeiro dia de setembro — não investigado a fundo, é hipótese consistente com a
+data).
+
+As 25 diferenças batem no padrão que `CONTINUACAO.md` §9.1 já tinha nomeado em
+19/08/2026 (**4,2 dias de defasagem** entre snapshot e gabarito): `relatorio-do-mes.yaml`
+foi ditado em **11/08/2026**, e hoje são **três semanas depois** — `TOTAL INSTALADOS` de
+`manutencao-inicial` (PBI=19.581, calculado=28.060, **43%** de diferença) é exatamente
+o tamanho de diferença que três semanas de protocolo novo instalado explicariam, não um
+defeito de cálculo. **Não tentei rematerializar nem reler o Power BI** — os dois passos
+que fecham isso são os mesmos do item 1/§9.1, e o segundo exige alguém com a tela do
+Power BI aberta na frente, que não sou eu. Fica registrado que a ferramenta agora
+*roda*; ela não prova paridade nenhuma sozinha, porque o gabarito está mais velho do que
+estava em 19/08, não mais novo.
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória

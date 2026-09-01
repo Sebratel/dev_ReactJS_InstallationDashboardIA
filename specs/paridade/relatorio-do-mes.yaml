@@ -43,26 +43,6 @@ cards:
       diferente. Provado em packages/semantic-model/test/divergencias.test.ts
       ("PESO: janela com sábado ou domingo solto DISTINGUE as regras") e explicado em
       docs/ACHADOS.md #58. Verificado em 11/08/2026 — não reabrir sem ler isso.
-    observacao: >-
-      ATENÇÃO ao ler o veredito deste card: ele BATE com o Power BI (8 dos dois
-      lados) e o harness marca 'divergencia-nao-aplicada'. Isso NÃO quer dizer que a
-      decisão do PESO ficou no papel — a coluna traz sábado 0,5 e domingo 0,5, como
-      decidido. É aritmética: um fim de semana completo vale 1,0 nas duas regras
-      (0,5+0,5 contra 1+0), e a janela 01–10/08/2026 tem só fins de semana inteiros.
-      As duas regras só divergem quando a janela tem sábados e domingos em número
-      diferente. Provado em packages/semantic-model/test/divergencias.test.ts
-      ("PESO: janela com sábado ou domingo solto DISTINGUE as regras") e explicado em
-      docs/ACHADOS.md #58. Verificado em 11/08/2026 — não reabrir sem ler isso.
-    observacao: >-
-      ATENÇÃO ao ler o veredito deste card: ele BATE com o Power BI (8 dos dois
-      lados) e o harness marca 'divergencia-nao-aplicada'. Isso NÃO quer dizer que a
-      decisão do PESO ficou no papel — a coluna traz sábado 0,5 e domingo 0,5, como
-      decidido. É aritmética: um fim de semana completo vale 1,0 nas duas regras
-      (0,5+0,5 contra 1+0), e a janela 01–10/08/2026 tem só fins de semana inteiros.
-      As duas regras só divergem quando a janela tem sábados e domingos em número
-      diferente. Provado em packages/semantic-model/test/divergencias.test.ts
-      ("PESO: janela com sábado ou domingo solto DISTINGUE as regras") e explicado em
-      docs/ACHADOS.md #58. Verificado em 11/08/2026 — não reabrir sem ler isso.
   - visual: 28b2fed3696b956b1a98
     rotulo: "META DO MÊS"
     powerbi: 3000   # <-- o número que aparece na tela
@@ -95,16 +75,6 @@ cards:
     rotulo: "DIAS ÚTEIS RESTANTES NO MÊS"
     powerbi: 18   # <-- o número que aparece na tela
     divergente: peso-instalado-fim-de-semana
-    observacao: >-
-      Mesmo caso do card DIAS TRABALHADOS NO MÊS — leia a observação de lá antes de
-      investigar. A janela 11–31/08/2026 tem três fins de semana completos, e fim de
-      semana completo vale 1,0 nas duas regras. Bater aqui é esperado; não é sinal de
-      que a divergência do PESO não chegou ao resultado.
-    observacao: >-
-      Mesmo caso do card DIAS TRABALHADOS NO MÊS — leia a observação de lá antes de
-      investigar. A janela 11–31/08/2026 tem três fins de semana completos, e fim de
-      semana completo vale 1,0 nas duas regras. Bater aqui é esperado; não é sinal de
-      que a divergência do PESO não chegou ao resultado.
     observacao: >-
       Mesmo caso do card DIAS TRABALHADOS NO MÊS — leia a observação de lá antes de
       investigar. A janela 11–31/08/2026 tem três fins de semana completos, e fim de
