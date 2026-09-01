@@ -326,7 +326,31 @@ Fase L6 (§8)    [DONE]  01/09/2026 — 6 de 6 visuais.
                         Fase L6 fechada: as 6 formas do §8 estão implementadas, cada
                         uma em commit próprio, todas com número idêntico ao
                         original.
-Fase L7 (§9)    [TODO]  decisão do chart SDK (recomendação: sem biblioteca)
+Fase L7 (§9)    [DONE]  01/09/2026 — docs/DECISAO-CHART-SDK.md registrada:
+                        nenhuma biblioteca. Contagem exata: 16 gráficos
+                        (conteudo: grafico) nos 14 specs/golden/layout/*.json,
+                        cobertos por 7 componentes de desenho (Grafico.tsx +
+                        os 6 novos da Fase L6), todos SVG/HTML próprio. Bundle
+                        medido agora (npm run web:build): 89,32 kB gzip JS,
+                        7,68 kB gzip CSS — o app INTEIRO. Bundlephobia
+                        (medido 01/09/2026) das 5 bibliotecas prontas mais
+                        citadas: a mais leve pronta (Chart.js, 69,4 kB gzip
+                        com react-chartjs-2) já é 78% do app inteiro sozinha;
+                        Victory (107,8) e Nivo (~147) já ultrapassam o app
+                        inteiro; Recharts (147,5) e ApexCharts (260,5) custam
+                        1,65x/2,9x o app inteiro. A única mais leve que o app
+                        (visx, 28,2 kB para shape+scale) não é biblioteca de
+                        gráfico pronto — são primitivas (path/escala), o
+                        equivalente ao que grafico-forma.ts já calcula à mão;
+                        adotá-la trocaria código por código, sem reduzir o que
+                        já existe (clique-para-filtrar, cor por tema com WCAG,
+                        paginação em vez de rolagem, medição de contêiner sem
+                        ResizeObserver — nenhuma biblioteca genérica resolve
+                        essas quatro de fábrica). Critério de saída de
+                        CONTINUACAO.md §9.2 ("16 gráficos continuam passando a
+                        paridade depois da troca") satisfeito por não haver
+                        troca nenhuma. Zero código alterado nesta fase — só o
+                        documento de decisão.
 ```
 
 ---
