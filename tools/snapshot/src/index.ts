@@ -28,6 +28,7 @@
 //   npm run snapshot -- --query=protocolos-geral --refazer
 //   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
 //   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
+//   npm run snapshot -- --query=field-agenda --refazer --isolar-colunas  # ver Args.isolarColunas
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -59,6 +60,7 @@ import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
 import { queryDependencies, runQueries } from '../../../packages/transform-engine/src/runner.ts';
 import { toDatasetRows } from '../../../packages/transform-engine/src/value.ts';
 import { normalizeName, SemanticModel } from '../../../packages/semantic-model/src/model.ts';
+import type { ModelTable } from '../../../packages/semantic-model/src/types.ts';
 import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
@@ -77,7 +79,11 @@ import {
   leManifesto,
   type EntradaDeManifesto,
 } from '../../../packages/snapshot/src/manifesto.ts';
-import { materializaColunas } from '../../../packages/snapshot/src/colunas-calculadas.ts';
+import {
+  materializaColunas,
+  materializaveis as colunasMaterializaveis,
+} from '../../../packages/snapshot/src/colunas-calculadas.ts';
+import { shaDasChaves } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -117,6 +123,16 @@ interface Args {
   /** Não encadeia o congelamento das calculadas no fim. Ver o rodapé deste arquivo. */
   semCalculadas: boolean;
   /**
+   * Modo neto: calcula UMA coluna calculada de UMA tabela, isolada num processo
+   * próprio. Ver `materializaColunasDaTabela` e ACHADOS #82. As quatro só existem
+   * juntas — validado logo depois do parse.
+   */
+  colunaTabela: string | null;
+  colunaNome: string | null;
+  colunaEntrada: string | null;
+  colunaSaida: string | null;
+  colunaAgora: string | null;
+  /**
    * Busca só o que mudou, em quem tem política em `specs/_catalog/incremental.yaml`.
    *
    * Implica refazer **todas** as pedidas: quem tem política paga o delta, quem não
@@ -125,6 +141,18 @@ interface Args {
    * para rodar sempre.
    */
   incremental: boolean;
+  /**
+   * Isola cada coluna calculada de tabela grande num processo próprio (ACHADOS #82).
+   *
+   * Fica de fora por padrão, e é o oposto de `calculadas.ts` (que isola sozinho, sem
+   * pedir). Lá a medição confirmou processo compartilhado como causa (#66/#67, 36×);
+   * aqui a mesma técnica foi medida ao vivo em `field-agenda` e o total **piorou** 18%
+   * — o custo real é intrínseco a UMA coluna (`RankAtualProtocolo`, CALCULATE+FILTER+
+   * MAX auto-referente), não o processo compartilhado. Isolar por padrão regrediria o
+   * refresh normal. Existe como opção manual para o dia em que fizer sentido testar de
+   * novo — ex.: se `protocolos-geral` tiver o defeito de memória que #66/#67 tinham.
+   */
+  isolarColunas: boolean;
 }
 
 /**
@@ -154,6 +182,12 @@ function parseArgs(argv: string[]): Args {
     uma: null,
     semCalculadas: false,
     incremental: false,
+    isolarColunas: false,
+    colunaTabela: null,
+    colunaNome: null,
+    colunaEntrada: null,
+    colunaSaida: null,
+    colunaAgora: null,
   };
   const lista = (raw: string, pref: string): string[] =>
     raw.slice(pref.length).split(',').map((s) => s.trim()).filter(Boolean);
@@ -164,10 +198,16 @@ function parseArgs(argv: string[]): Args {
     else if (raw === '--refazer') a.refazer = true;
     else if (raw === '--sem-calculadas') a.semCalculadas = true;
     else if (raw === '--incremental') a.incremental = true;
+    else if (raw === '--isolar-colunas') a.isolarColunas = true;
     else if (raw.startsWith('--pagina=')) a.paginas.push(...lista(raw, '--pagina='));
     else if (raw.startsWith('--query=')) a.queries.push(...lista(raw, '--query='));
     else if (raw.startsWith('--saida=')) a.saida = path.resolve(ROOT, raw.slice('--saida='.length));
     else if (raw.startsWith('--uma=')) a.uma = raw.slice('--uma='.length);
+    else if (raw.startsWith('--coluna-tabela=')) a.colunaTabela = raw.slice('--coluna-tabela='.length);
+    else if (raw.startsWith('--coluna-nome=')) a.colunaNome = raw.slice('--coluna-nome='.length);
+    else if (raw.startsWith('--coluna-entrada=')) a.colunaEntrada = raw.slice('--coluna-entrada='.length);
+    else if (raw.startsWith('--coluna-saida=')) a.colunaSaida = raw.slice('--coluna-saida='.length);
+    else if (raw.startsWith('--coluna-agora=')) a.colunaAgora = raw.slice('--coluna-agora='.length);
     else if (raw.startsWith('--timeout=')) {
       const n = Number.parseInt(raw.slice('--timeout='.length), 10);
       if (!Number.isFinite(n) || n < 1) {
@@ -195,6 +235,54 @@ const args = parseArgs(process.argv.slice(2));
 // ------------------------------------------------------------------- catálogo
 const registry = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));
 const model = SemanticModel.fromSpecsDir(path.join(ROOT, 'specs'));
+
+// -------------------------------------------------------- modo neto (uma coluna)
+//
+// Calcula UMA coluna calculada de UMA tabela, isolada num processo próprio — sem
+// abrir conector nenhum, porque as linhas físicas já chegam prontas no arquivo de
+// entrada que o processo pai (`materializaColunasDaTabela`) escreveu. É a mesma
+// receita de `calculadas.ts` (ACHADOS #67), estendida ao caminho de query
+// (ACHADOS #82): uma coluna-irmã que a expressão cite não precisa estar aqui —
+// `Evaluator.columnValue` a resolve sozinho, na hora, contanto que o modelo e a
+// linha inteira estejam presentes, e estão.
+if (args.colunaTabela) {
+  if (!args.colunaNome || !args.colunaEntrada || !args.colunaSaida || !args.colunaAgora) {
+    console.error(
+      '--coluna-tabela= exige --coluna-nome=, --coluna-entrada=, --coluna-saida= e --coluna-agora=.',
+    );
+    process.exit(2);
+  }
+  const t = model.table(args.colunaTabela);
+  if (!t) {
+    console.error(`tabela não existe no modelo: ${args.colunaTabela}`);
+    process.exit(2);
+  }
+  const { cabecalho, linhas } = await le(args.colunaEntrada);
+  const m = materializaColunas(
+    t,
+    model,
+    linhas,
+    new Date(args.colunaAgora),
+    new Set([normalizeName(args.colunaNome)]),
+  );
+  if (m.colunas.length !== 1) {
+    console.error(
+      `coluna '${args.colunaNome}' de '${t.name}' não é materializável aqui — precisa ser ` +
+        'calculada e depender só da própria tabela.',
+    );
+    process.exit(2);
+  }
+  fs.mkdirSync(path.dirname(args.colunaSaida), { recursive: true });
+  await escreve(
+    args.colunaSaida,
+    { query: `_scratch.coluna.${normalizeName(t.name)}`, tabelas: [t.name], geradoEm: new Date().toISOString() },
+    [...cabecalho.colunas.map((c) => c.nome), args.colunaNome],
+    linhas,
+    m.daxSha,
+  );
+  process.exit(0);
+}
+
 const cfg = loadConfig();
 
 const culture = (
@@ -271,6 +359,118 @@ function fontesDe(id: string): Set<string> {
   const inicial = todasAsQueries.find((q) => q.id === id);
   if (inicial) anda(inicial);
   return fontes;
+}
+
+/**
+ * A partir de quantas linhas vale isolar cada coluna calculada num processo próprio,
+ * QUANDO `--isolar-colunas` pede. Mesmo número de `calculadas.ts` (ACHADOS #67), só
+ * como piso de bom senso — não é mais uma expectativa de ganho, ver o comentário de
+ * `isolarColunas` em `Args`.
+ */
+const MINIMO_PARA_ISOLAR_COLUNAS = 5_000;
+
+/**
+ * Materializa as colunas calculadas de UMA tabela — isolando cada uma num processo
+ * próprio só se `--isolar-colunas` foi pedido (ver `Args.isolarColunas`). Por padrão
+ * cai direto em `materializaColunas`, sem spawn nenhum.
+ *
+ * `colunasAtuais` vai inteiro para o arquivo de entrada de cada filho: é o conjunto de
+ * colunas que `rows` tem agora, físicas mais o que uma tabela anterior no mesmo laço
+ * já tiver acrescentado (nenhuma query faz isso hoje, mas nada impede). O filho grava
+ * de volta as MESMAS colunas mais a sua, e `shaDasChaves` confere que as linhas do
+ * filho descrevem a mesma tabela na mesma ordem antes de aceitar o valor — juntar por
+ * posição sem essa conferência poria o valor de uma linha em outra.
+ */
+async function materializaColunasDaTabela(
+  t: ModelTable,
+  rows: Record<string, Escalar>[],
+  colunasAtuais: readonly string[],
+  saida: string,
+  queryId: string,
+): Promise<{ colunas: string[]; daxSha: Map<string, string>; ms: number }> {
+  const alvo = colunasMaterializaveis(t, model);
+  if (!args.isolarColunas || alvo.length < 2 || rows.length < MINIMO_PARA_ISOLAR_COLUNAS) {
+    return materializaColunas(t, model, rows, AGORA);
+  }
+
+  const inicio = Date.now();
+  const slug = normalizeName(t.name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const dir = path.join(saida, '_parciais_colunas');
+  fs.mkdirSync(dir, { recursive: true });
+  const entrada = path.join(dir, `${queryId}.${slug}.entrada.jsonl`);
+  const parciais = alvo.map((c, k) => path.join(dir, `${slug}.${k}.jsonl`));
+  for (const p of [entrada, ...parciais]) fs.rmSync(p, { force: true });
+
+  console.error(
+    `    ${t.name}: ${alvo.length} coluna(s) calculada(s) em ${rows.length.toLocaleString('pt-BR')} ` +
+      `linha(s) — um processo por coluna (ACHADOS #82)`,
+  );
+
+  try {
+    await escreve(
+      entrada,
+      { query: `_scratch.colunas.${queryId}`, tabelas: [t.name], geradoEm: new Date().toISOString() },
+      colunasAtuais,
+      rows,
+    );
+
+    const daxSha = new Map<string, string>();
+    const baseSha = shaDasChaves(rows, colunasAtuais);
+    for (const [k, c] of alvo.entries()) {
+      const tc = Date.now();
+      const r = spawnSync(
+        process.execPath,
+        [
+          ...process.execArgv,
+          fileURLToPath(import.meta.url),
+          `--coluna-tabela=${t.name}`,
+          `--coluna-nome=${c.nome}`,
+          `--coluna-entrada=${entrada}`,
+          `--coluna-saida=${parciais[k]}`,
+          `--coluna-agora=${AGORA.toISOString()}`,
+        ],
+        { cwd: ROOT, stdio: ['ignore', 'ignore', 'inherit'] },
+      );
+      if (r.status !== 0) {
+        throw new Error(
+          `coluna calculada '${c.nome}' de '${t.name}': processo filho saiu com ${r.status ?? r.signal}. ` +
+            'Nada foi mesclado.',
+        );
+      }
+      console.error(`      [${c.nome}] ${(Date.now() - tc).toLocaleString('pt-BR')} ms`);
+
+      const { cabecalho, linhas } = await le(parciais[k]!);
+      const chave = normalizeName(c.nome);
+      const s = shaDasChaves(linhas, colunasAtuais);
+      if (linhas.length !== rows.length || s !== baseSha) {
+        throw new Error(
+          `coluna calculada '${c.nome}' de '${t.name}' descreve linhas diferentes das originais ` +
+            `(${linhas.length}/${s} contra ${rows.length}/${baseSha}). Juntar por posição poria o ` +
+            'valor de uma linha em outra. Nada foi mesclado.',
+        );
+      }
+      // Sob as DUAS chaves, exatamente como o caminho não isolado deixa (evaluator.ts
+      // memoiza a normalizada, e `materializaColunas` grava a de exibição por cima):
+      // `columns` mais adiante ganha `c.nome` (exibição), e é por ela que `escreve()`
+      // lê o valor. Gravar só a normalizada aqui reproduziria o defeito do #54 —
+      // coluna calculada saindo `null` no arquivo final, calada.
+      for (let i = 0; i < linhas.length; i++) {
+        const v = linhas[i]![chave]!;
+        rows[i]![c.nome] = v;
+        rows[i]![chave] = v;
+      }
+      const sha = cabecalho.colunas.find((x) => normalizeName(x.nome) === chave)?.daxSha;
+      if (sha) daxSha.set(c.nome, sha);
+    }
+    return { colunas: alvo.map((c) => c.nome), daxSha, ms: Date.now() - inicio };
+  } finally {
+    for (const p of [entrada, ...parciais]) fs.rmSync(p, { force: true });
+    try {
+      if (fs.readdirSync(dir).length === 0) fs.rmdirSync(dir);
+    } catch {
+      // Resto de outra execução em curso: apagar seria pior que deixar.
+    }
+  }
 }
 
 // ------------------------------------------------------------------ modo filho
@@ -380,7 +580,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     for (const nome of tabelasDaQuery(q.id)) {
       const t = model.table(nome);
       if (!t) continue;
-      const m = materializaColunas(t, model, rows, AGORA);
+      const m = await materializaColunasDaTabela(t, rows, columns, saida, q.id);
       for (const c of m.colunas) if (!columns.includes(c)) columns.push(c);
       for (const [k, v] of m.daxSha) daxSha.set(k, v);
       if (m.colunas.length) {
@@ -606,6 +806,7 @@ async function rodaEmSubprocesso(id: string): Promise<Resultado> {
     // Quem decide se a carga é incremental é o filho, olhando o cabeçalho do
     // arquivo — mas a intenção é do pai, e só chega lá por aqui.
     ...(args.incremental ? ['--incremental'] : []),
+    ...(args.isolarColunas ? ['--isolar-colunas'] : []),
   ];
   return new Promise((resolve) => {
     const filho = spawn(process.execPath, argv, { cwd: ROOT });

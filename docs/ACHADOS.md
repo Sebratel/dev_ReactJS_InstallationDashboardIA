@@ -6244,6 +6244,97 @@ explícita); cadência para as 7 fontes não medidas (dbMaria/gsheets/web,
 ACHADOS #80); e `field-agenda`/`protocolos-geral` continuam de fora até #82/#83
 serem resolvidos.
 
+## #85 — A hipótese do #82 (processo compartilhado) estava ERRADA para `field-agenda`: isolar por coluna piorou o total em 18%
+
+**02/09/2026, mesma sessão do #82/#83/#84.** O #82 apontava `materializaColunas`
+como "a mesma classe de defeito dos achados #66/#67" — o avaliador de DAX
+perdendo desempenho por compartilhar processo entre colunas — e propunha a
+mesma correção que resolveu aquele caso: um processo por coluna calculada
+(`congelaIsolada()`, já provado em `calculadas.ts`). Foi construído: `mysql2`
+fix e `protocolos-geral` deixados de lado (#83), e a extensão da isolação para
+o caminho de query (`materializaColunasDaTabela`, novo, em
+`tools/snapshot/src/index.ts`) — um modo neto (`--coluna-tabela=`) que
+calcula UMA coluna calculada isolada, lendo linhas físicas de um arquivo de
+entrada que o processo pai escreve antes de spawnar os filhos.
+
+**Validado como CORRETO antes de medir o ganho.** `FIELD AGENDA` tem colunas
+calculadas que citam colunas-irmãs da mesma tabela —
+`RankAtualProtocolo` lê `RankDataProtocolo`, `CategoriaProdutividade` lê
+`ClassificacaoRelato` — e isolar por processo só é seguro se isso continuar
+funcionando sem as duas estarem juntas. Confirmado em `evaluator.ts:275-329`:
+`columnValue` resolve dependência entre colunas calculadas da MESMA tabela
+**recursivamente e sob demanda**, memorizando por linha, com guarda de ciclo
+(`columnStack`) — não depende de ordem de cálculo nem de as duas estarem no
+mesmo processo. Dois testes novos em
+`packages/snapshot/test/colunas-calculadas.test.ts` cobrem isto, e um teste
+ao vivo contra o DAX real de `RankAtualProtocolo`/`RankDataProtocolo` (3
+linhas sintéticas) confirmou o valor certo vindo de um processo que nunca
+calculou a coluna-irmã explicitamente.
+
+**Um bug real pego a tempo pelo teste, antes de rodar ao vivo em escala.** A
+primeira versão do merge só escrevia a coluna calculada de volta em `rows` sob
+a chave NORMALIZADA (`row['turno']`). Mas `columns` — a lista que o
+`escreve()` final usa para gravar — recebe o NOME DE EXIBIÇÃO
+(`row['Turno']`), que é como o caminho não isolado sempre gravou. Sem a
+correção, toda coluna isolada sairia `null` no arquivo final — o defeito
+"plausível e errado" do #54, de novo. Pego por um smoke test de CLI com
+arquivo sintético antes de gastar 19 minutos contra o banco.
+
+**A medição ao vivo, com tudo correto, refutou a hipótese.** `field-agenda`
+hoje tem 643.797 linhas (não 1,46 milhão — o dado encolheu desde o #46
+original). Isolado (`--isolar-colunas`, todas as 7 colunas em processos
+próprios):
+
+```
+FIELD AGENDA: 7 coluna(s) calculada(s) em 643.797 linha(s) — um processo por coluna
+  [Data] 12.548 ms
+  [RankDataProtocolo] 105.201 ms
+  [RankAtualProtocolo] 863.634 ms      <- 76% do total, sozinha
+  [ClassificacaoRelato] 25.635 ms
+  [CategoriaProdutividade] 28.531 ms
+  [Turno] 11.860 ms
+  [Status SLA] 15.143 ms
+7 coluna(s) calculada(s) em 1.134.756 ms
+```
+
+Total isolado: **1.135 s.** Total compartilhado, documentado no #82 (linhagem
+comparável): **958 s.** Isolar piorou em **18%** — o oposto do #66/#67.
+
+**A causa real: uma coluna com custo intrínseco ao próprio DAX, não ao
+processo.** `RankAtualProtocolo` sozinha, num processo que não fez mais nada,
+custou 864s — mais que os 958s do caminho INTEIRO compartilhado. A expressão é
+`CALCULATE(MAX('FIELD AGENDA'[RankDataProtocolo]), FILTER('FIELD AGENDA',
+[protocolo] = ProtocoloAtual))`: por linha, filtra a tabela inteira pelo mesmo
+protocolo e agrega `MAX` sobre uma OUTRA coluna calculada (que por sua vez
+also faz `FILTER` da tabela inteira) para cada linha do subconjunto. O custo
+é de algoritmo — quadrático ou pior em cima de grupos —, não de quantas
+colunas dividem o processo. Isolar não tem como ajudar isto; só um DAX
+diferente (ou uma pré-agregação em JS fora do avaliador) resolveria.
+
+**Decisão: a isolação fica no código, mas OFF por padrão.** Ligar por padrão
+(como `calculadas.ts` faz) regrediria o refresh normal de `field-agenda` em
+18% sem ganho nenhum. Virou `--isolar-colunas` — opt-in explícito,
+`Args.isolarColunas` em `tools/snapshot/src/index.ts` — para o dia em que
+valer medir de novo contra outra tabela (candidata natural: `protocolos-geral`,
+13 colunas calculadas, que estoura heap em 8 GB — ACHADOS #83. Isolar É um
+mecanismo de MEMÓRIA além de tempo: cada filho nasce, calcula uma coluna e
+morre, o que limita o pico de heap a "uma tabela + um avaliador" em vez de
+"uma tabela + N avaliadores". Isto NÃO foi testado — `protocolos-geral` nem
+chega a terminar a busca para alcançar esta etapa).
+
+**Achado incidental, não corrigido: `daxSha` nunca chega ao arquivo final
+neste caminho.** `materializa()` acumula um `Map<coluna, sha>` ao longo do
+laço de tabelas, mas o `escreve()` do arquivo final não recebe esse mapa como
+5º argumento — só `columns` e `rows`. Conferido no `field-agenda.jsonl`
+gerado nesta sessão: as 7 colunas calculadas têm `nulos` plausíveis (não é o
+defeito do #54), mas nenhuma tem `daxSha` no cabeçalho. O guarda de DAX
+desatualizado (`carrega.ts`, o mesmo que os testes de `colunas-calculadas.ts`
+cobrem para tabela calculada) não está armado para coluna calculada de QUERY
+— mudar o DAX no Power BI e reextrair não seria detectado aqui. Pré-existente
+a esta sessão; fora de escopo, registrado para decisão própria.
+
+`npm test`: 1553/1553 (2 testes novos).
+
 ---
 
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto

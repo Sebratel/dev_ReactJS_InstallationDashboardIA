@@ -94,9 +94,18 @@ export function materializaColunas(
   model: SemanticModel,
   linhas: Record<string, Escalar>[],
   agora: Date,
+  /**
+   * Restringe a colunas destas chaves normalizadas — é o que permite a um processo
+   * isolado (ACHADOS #82, `tools/snapshot/src/index.ts`) calcular só a coluna que lhe
+   * coube. Uma coluna-irmã que a expressão cite (`RankAtualProtocolo` lê
+   * `RankDataProtocolo`) não precisa estar no filtro: `columnValue` a resolve sozinho,
+   * na hora, porque a linha e o modelo inteiros continuam presentes neste processo.
+   */
+  somenteColunas?: ReadonlySet<string>,
 ): Materializadas {
   const inicio = Date.now();
-  const alvo = materializaveis(t, model);
+  const todas = materializaveis(t, model);
+  const alvo = somenteColunas ? todas.filter((c) => somenteColunas.has(normalizeName(c.nome))) : todas;
   if (alvo.length === 0) return { colunas: [], daxSha: new Map(), ms: 0 };
 
   // Dataset próprio, com esta tabela só, **adotando** as linhas em vez de copiá-las.

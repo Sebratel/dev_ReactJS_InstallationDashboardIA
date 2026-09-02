@@ -70,6 +70,36 @@ test('materializaColunas escreve o valor nas linhas e devolve o sha do DAX', () 
   assert.equal(m.daxSha.get('DOBRO'), shaDeDax("'T'[valor] * 2"));
 });
 
+test('somenteColunas restringe o alvo, e --coluna-nome que não existe dá zero colunas', () => {
+  const model = monta();
+  const linhas = [{ valor: 3 }, { valor: 5 }];
+  const m = materializaColunas(model.table('T')!, model, linhas, AGORA, new Set(['dobro']));
+  assert.deepEqual(m.colunas, ['DOBRO']);
+  assert.equal(linhas[0]!.DOBRO, 6);
+
+  const nada = materializaColunas(model.table('T')!, model, [{ valor: 1 }], AGORA, new Set(['nao-existe']));
+  assert.deepEqual(nada.colunas, []);
+});
+
+test('coluna isolada que cita uma irmã calculada resolve a irmã sozinha (ACHADOS #82)', () => {
+  // O caso real é RankAtualProtocolo lendo RankDataProtocolo em FIELD AGENDA: pedir só
+  // a dependente, num processo que nunca calculou a outra, tem de bastar — é o que
+  // torna seguro isolar cada coluna calculada num filho próprio.
+  const model = new SemanticModel();
+  model.addTable({
+    id: 't', name: 'T', queryRef: 'q-t',
+    columns: [
+      col('valor'),
+      col('DOBRO', { calculated: true, dax: "'T'[valor] * 2" }),
+      col('DOBRO_MAIS_UM', { calculated: true, dax: "'T'[DOBRO] + 1" }),
+    ],
+  });
+  const linhas = [{ valor: 3 }];
+  const m = materializaColunas(model.table('T')!, model, linhas, AGORA, new Set(['dobro_mais_um']));
+  assert.deepEqual(m.colunas, ['DOBRO_MAIS_UM'], 'só a pedida entra no retorno');
+  assert.equal(linhas[0]!.DOBRO_MAIS_UM, 7, 'mas o valor está certo: a irmã foi resolvida por dentro');
+});
+
 test('o sha ignora reindentação, mas não mudança de conta', () => {
   // Reindentar no Power BI não muda o que a coluna calcula; invalidar 950 MB de
   // snapshot por um espaço seria um alarme que ensina a ignorar alarmes.
