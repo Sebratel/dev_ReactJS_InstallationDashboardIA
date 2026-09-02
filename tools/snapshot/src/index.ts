@@ -28,11 +28,6 @@
 //   npm run snapshot -- --query=protocolos-geral --refazer
 //   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
 //   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
-//   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
-//   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
-//   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
-//   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
-//   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -83,12 +78,24 @@ import {
   leManifesto,
   type EntradaDeManifesto,
 } from '../../../packages/snapshot/src/manifesto.ts';
+import { materializaColunas } from '../../../packages/snapshot/src/colunas-calculadas.ts';
+import { resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 applyDotEnv(ROOT);
 
 /** Prefixo da linha de resultado do filho. Só ela é dado; o resto é log. */
 const MARCA = '##SNAP##';
+
+/**
+ * Um só instante para a execução inteira — ver o comentário em `materializa()`
+ * sobre por que duas colunas com `NOW()` em arquivos diferentes seriam uma
+ * divergência inexplicável.
+ */
+const AGORA = new Date();
+
+/** As políticas de carga incremental declaradas em `specs/_catalog/incremental.yaml`. */
+const politicas = lePoliticas(path.join(ROOT, 'specs'));
 
 /**
  * Nenhuma query fica fora hoje. `clima-tempo` ficava, por causa do `Web.Contents`
@@ -157,16 +164,6 @@ function parseArgs(argv: string[]): Args {
     else if (raw === '--plano') a.plano = true;
     else if (raw === '--refazer') a.refazer = true;
     else if (raw === '--sem-calculadas') a.semCalculadas = true;
-    else if (raw === '--incremental') a.incremental = true;
-    else if (raw === '--sem-calculadas') a.semCalculadas = true;
-    else if (raw === '--incremental') a.incremental = true;
-    else if (raw === '--incremental') a.incremental = true;
-    else if (raw === '--sem-calculadas') a.semCalculadas = true;
-    else if (raw === '--incremental') a.incremental = true;
-    else if (raw === '--incremental') a.incremental = true;
-    else if (raw === '--sem-calculadas') a.semCalculadas = true;
-    else if (raw === '--incremental') a.incremental = true;
-    else if (raw === '--incremental') a.incremental = true;
     else if (raw === '--incremental') a.incremental = true;
     else if (raw.startsWith('--pagina=')) a.paginas.push(...lista(raw, '--pagina='));
     else if (raw.startsWith('--query=')) a.queries.push(...lista(raw, '--query='));
@@ -286,10 +283,15 @@ interface Resultado {
   bytes: number | null;
   ms: number;
   erro?: string;
+  /** Avisos que não impedem o resultado, mas quem lê precisa ver — ex.: junção morta. */
+  notas?: string[];
 }
 
 async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> {
   const inicio = Date.now();
+  // Populado pela carga incremental quando ela rodar (ver ACHADOS sobre a costura);
+  // hoje `materializa` sempre busca inteiro, então isto fica vazio na prática.
+  const avisos: string[] = [];
   const { connectors, fechar } = await montaConnectors(fontesDe(q.id));
   const engine = new QueryEngine({ registry, connectors, cache: new MemoryCache() });
   const fonte = fonteDoEngine(engine);
@@ -483,34 +485,6 @@ if (args.incremental) {
     );
   }
 }
-if (args.incremental) {
-  const comPolitica = aBuscar.filter((id) => politicas.has(id));
-  console.log(
-    `  --incremental: ${comPolitica.length} com política` +
-      (comPolitica.length ? ` (${comPolitica.join(', ')})` : '') +
-      `, ${aBuscar.length - comPolitica.length} buscada(s) inteira(s).`,
-  );
-  if (comPolitica.length === 0) {
-    console.log(
-      `  Nenhuma das pedidas é incremental — isto vai custar o mesmo que --refazer. ` +
-        `As políticas vivem em specs/_catalog/incremental.yaml.`,
-    );
-  }
-}
-if (args.incremental) {
-  const comPolitica = aBuscar.filter((id) => politicas.has(id));
-  console.log(
-    `  --incremental: ${comPolitica.length} com política` +
-      (comPolitica.length ? ` (${comPolitica.join(', ')})` : '') +
-      `, ${aBuscar.length - comPolitica.length} buscada(s) inteira(s).`,
-  );
-  if (comPolitica.length === 0) {
-    console.log(
-      `  Nenhuma das pedidas é incremental — isto vai custar o mesmo que --refazer. ` +
-        `As políticas vivem em specs/_catalog/incremental.yaml.`,
-    );
-  }
-}
 if (aBuscar.length) {
   const doEnv = Math.round(cfg.voalle.statementTimeoutMs / 1000);
   console.log(
@@ -588,10 +562,6 @@ for (const id of aBuscar) {
   process.stderr.write(`  ${id}… `);
   const r = await rodaEmSubprocesso(id);
   process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
-  // Logo abaixo da linha da query, e não num resumo no fim: quem materializa uma
-  // mesclagem morta precisa ver a nota ao lado do nome dela, não a três telas de
-  // distância. Junção que não casa nada é a diferença entre dado e BLANK (#64).
-  for (const n of r.notas ?? []) process.stderr.write(`      ${n}\n`);
   // Logo abaixo da linha da query, e não num resumo no fim: quem materializa uma
   // mesclagem morta precisa ver a nota ao lado do nome dela, não a três telas de
   // distância. Junção que não casa nada é a diferença entre dado e BLANK (#64).
