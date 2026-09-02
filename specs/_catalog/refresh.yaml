@@ -1,0 +1,75 @@
+# Cadência do refresh automático — MANTIDO POR HUMANOS, como incremental.yaml e
+# cache-policies.yaml: "de quanto em quanto tempo" é decisão, não extração, e
+# `npm run extract` nunca deveria sobrescrever isto.
+#
+# Cada grupo roda em SÉRIE dentro de um mesmo tick do Refresh Manager
+# (tools/refresh/src/index.ts) — nunca em paralelo com outro grupo do mesmo tick.
+# Ver o docstring de index.ts para o porquê (read-modify-write do manifesto).
+#
+# Query que não aparece em grupo nenhum aqui NÃO tem refresh automático — continua
+# só no passe manual (`npm run snapshot -- --todas`). Isso vale hoje para QUATRO
+# categorias, nenhuma por acidente — as duas últimas só apareceram ao rodar o
+# primeiro tick de verdade em 02/09/2026:
+#
+#   1. as 7 fontes nunca medidas isoladamente (dbMaria: backlog-instalacao,
+#      backlog-agendado-futuro, gestores-equipes; gsheets: apuracao-premiacao,
+#      capacidade-equipe, quadro-funcional; web: clima-tempo) — dar cadência
+#      automática a uma fonte sem custo medido é a mesma aposta sem evidência que
+#      incremental.yaml já cometeu uma vez com "67s, medido" antes de existir
+#      caminho de código que produzisse esse número (ACHADOS #80).
+#   2. `protocolos-produtividade` — NÃO MATERIALIZA EM NENHUM MODO hoje
+#      (ACHADOS #81: SQL e M calculam as mesmas 3 colunas, e o full-fetch passou
+#      do teto de 600s). `tools/refresh/src/grupos.ts` recusa a carregar este
+#      arquivo se ela aparecer em algum grupo — não é omissão por esquecimento,
+#      é trava.
+#   3. `protocolos-geral` — o M dela faz `Table.NestedJoin` com `GESTORES EQUIPES`
+#      (dbMaria), e o pacote `mysql2` não está instalado nem declarado em
+#      package.json. QUALQUER query que toque dbMaria — direto ou por join de M —
+#      crasha com `ERR_MODULE_NOT_FOUND: mysql2` (ACHADOS #83). Fora daqui até o
+#      pacote existir.
+#   4. `field-agenda` — o número de 22,0s em incremental.ts/no briefing da Frente 3
+#      é custo de SQL isolado (`npm run probe:custo-incremental`), não o
+#      materializador inteiro. Medido ao vivo em 02/09/2026: **21 minutos e 49
+#      segundos** ponta a ponta (busca + conversão de 642.365 linhas × 26 colunas
+#      + escrita). Nenhuma cadência de minutos é segura para esta query enquanto
+#      isso não for remedido e, se real, investigado (ACHADOS #82).
+
+formato: 1
+
+grupos:
+  # ~11s de busca serial medido ao vivo em 02/09/2026 (contratos 2,9s +
+  # protocolos-telefonia 7,4s + contratos-telefonia 0,9s + o resto <0,2s), mais o
+  # congelamento das calculadas. protocolos-telefonia tem a armadilha do TMA
+  # calculado com DateTime.LocalNow() (achado C do briefing da Frente 3) e por
+  # isso fica em full-fetch, não em cadência mais rápida sozinha — mas cabe aqui
+  # porque o full-fetch dela é barato.
+  quente:
+    queries:
+      - protocolos-telefonia
+      - contratos
+      - contratos-telefonia
+      - consolidado-clientes
+      - feriados
+      - hora-atualizado
+    intervalo_minutos: 15
+    incremental: false
+
+  # ~35s de busca serial medido em 25/08/2026. troca-endereco, tecnicos-auxiliares,
+  # retorno-prioritario, base-categorias-field são seguras para incremental "no
+  # papel" mas isso nunca foi ligado (ACHADOS #80 só ligou protocolos-produtividade,
+  # a única com política declarada) — ficam em full-fetch até ganharem política em
+  # incremental.yaml. alocacao-patrimonio é lado direito de mesclagem de várias
+  # queries do grupo quente e de protocolos-produtividade — cadência independente
+  # dela é um risco de granularidade já registrado no briefing da Frente 3, não
+  # resolvido aqui.
+  medio:
+    queries:
+      - troca-endereco
+      - instalacoes-reincidentes
+      - tecnicos-auxiliares
+      - retorno-prioritario
+      - alocacao-patrimonio
+      - base-categorias-field
+      - reincidencia
+    intervalo_minutos: 20
+    incremental: false

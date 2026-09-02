@@ -36,6 +36,8 @@
     "snapshot:calculadas": "node --max-old-space-size=8192 tools/snapshot/src/calculadas.ts",
     "snapshot:confere": "node tools/snapshot/src/confere.ts",
     "test:snapshot": "node --test packages/snapshot/test/*.test.ts",
+    "refresh": "node tools/refresh/src/index.ts",
+    "test:refresh": "node --test tools/refresh/test/*.test.ts",
     "start": "node tools/subir/src/index.ts",
     "api": "node --max-old-space-size=8192 apps/api/src/index.ts",
     "aquece": "node tools/subir/src/index.ts --so-aquece",

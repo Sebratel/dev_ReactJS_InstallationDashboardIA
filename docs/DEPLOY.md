@@ -22,7 +22,7 @@
 | Tela React | 14 páginas navegáveis, filtros na URL. **Sem SSE e sem store de filtros** — perdidos com a árvore de 21/08 (§4) | não |
 | **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.3) | **sim, para "substituir"** |
 | **Autenticação** | **não existe.** A API serve todo número a todo pedido | **sim, e é o primeiro** |
-| **Refresh do dado** | manual — alguém digita `npm run snapshot` | **sim** |
+| **Refresh do dado** | `tools/refresh/` existe e roda (§2.2), 02/09/2026 — falta só criar a tarefa no Agendador de Tarefas | **sim** |
 | Containerização | **não existe** nenhum `Dockerfile`. O `docker-compose.yml` sobe Redis e Kafka, não a aplicação | sim |
 | Proxy reverso + TLS | **não existe** nenhum arquivo de Nginx no repositório | sim |
 | Processo supervisionado | **não existe** — nem PM2, nem unit de systemd, nem healthcheck de container | sim |
@@ -105,9 +105,21 @@ tela não diz "isto é de terça".
   `ACHADOS.md` #78 e §4.2 abaixo. Uma tarefa agendada configurada antes do conserto
   teria rodado a etapa 1 e falhado
   calada na 2 — o `/api/saude` continuaria respondendo, com o congelado cada vez mais
-  velho. Consertado e verificado ao vivo; **ainda falta** o item em si (a tarefa
-  agendada não existe — este parágrafo documenta um risco que se materializaria nela,
-  não a tarefa).
+  velho. Consertado e verificado ao vivo.
+- **O Refresh Manager existe** (`ACHADOS.md` #84): `tools/refresh/` roda um tick —
+  o que está vencido em `specs/_catalog/refresh.yaml`, em série, grava
+  `snapshot/refresh-status.json` depois de cada grupo, e `GET /api/saude` expõe o
+  bloco `refresh`. `npm run refresh -- --plano` mostra o que rodaria sem tocar nada.
+  **O que ainda falta é só o gatilho externo**: a tarefa no Agendador de Tarefas do
+  Windows em si não foi criada nesta sessão (é mudança persistente no SO, fora do
+  que uma sessão de repositório deveria fazer sem confirmação explícita) —
+  `npm run refresh` a cada N minutos é o comando a agendar (N = o menor
+  `intervalo_minutos` entre os grupos declarados). **O primeiro tick real já valeu a
+  pena antes de ser agendado**: achou duas queries que não podiam estar num grupo de
+  15 minutos — `field-agenda` custa 21min49s de verdade, não os 22,0s documentados
+  (#82), e `protocolos-geral` crasha por uma dependência de npm que falta, `mysql2`
+  (#83). As duas saíram de `refresh.yaml` até serem resolvidas; os grupos que sobraram
+  (~11s e ~24s medidos ao vivo) são seguros para a cadência declarada.
 - **E a escrita em si não era segura rodar com a API no ar — também consertado.**
   `ACHADOS.md` #79 / §4.3: no Windows, renomear o arquivo novo por cima do antigo
   falhava **sempre** (medido: 100%) enquanto um pedido de página tinha aquele `.jsonl`

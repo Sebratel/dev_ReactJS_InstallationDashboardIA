@@ -70,6 +70,7 @@ import {
 } from './calcula.ts';
 import { carregaLayout } from '../../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
+import { leStatus } from '../../../tools/refresh/src/status.ts';
 
 /** Quantos valores de segmentação a resposta manda por padrão. */
 export const VALORES_PADRAO = 500;
@@ -442,7 +443,21 @@ export class Servidor {
       // sozinha — e adivinharia errado nas duas direções: esperando dez minutos por
       // um aquecedor desligado, ou disparando o seu por cima de um que está no meio.
       aquecimento: this.opts.aquecimento(),
+      // `leStatus` nunca lança (arquivo ausente ou corrompido viram `{}`) — mas
+      // `/api/saude` não pode cair por causa de um operador de refresh que nunca
+      // rodou nesta máquina, então o try/catch fica aqui também, defesa em
+      // profundidade. Rota de operador, não caminho quente: um `readFileSync` a
+      // mais aqui não paga o mesmo preço que pagaria em `carimboAtual()`.
+      refresh: this.statusDeRefresh(),
     });
+  }
+
+  private statusDeRefresh(): unknown {
+    try {
+      return leStatus(this.opts.snapshotDir);
+    } catch {
+      return {};
+    }
   }
 
   private lista(res: http.ServerResponse): void {

@@ -6064,6 +6064,108 @@ de quebrar outro passo que dependa da forma antiga), o segundo exige medição e
 decisão de infraestrutura que uma sessão somente-leitura não pode tomar sozinha.
 Ver `DEPLOY.md` §2.2 sobre o impacto disto na automação do refresh.
 
+## #82 — `field-agenda` custa 21 minutos e 49 segundos ponta a ponta, não os 22,0s documentados
+
+**02/09/2026**, achado ao rodar o primeiro tick real do Refresh Manager (#84
+abaixo). O grupo "quente" original incluía `field-agenda` com a expectativa de
+~22,0s — o número citado em `incremental.ts` e no briefing da Frente 3 de
+automação. A materialização real (`--query=..., field-agenda, ...` dentro do
+tick) levou **1.308.770 ms** — 21 min 49 s.
+
+**A causa: dois custos diferentes, com o mesmo rótulo.** Os 22,0s vêm de
+`npm run probe:custo-incremental`, que mede só o `SELECT` contra o `dbVoalle`,
+isolado — sem a camada M, sem `toDatasetRows`, sem escrever em disco (o próprio
+cabeçalho do arquivo diz que é essa a medição). A materialização de verdade
+(`tools/snapshot/src/index.ts --uma=field-agenda`) soma busca + M (o `LEFT JOIN`
+com `person_skills` que infla a tabela por skill, decisão vigente do achado #2)
++ conversão de 642.365 linhas × 26 colunas + colunas calculadas + `escreve()`.
+Nenhum documento existente media essa segunda parte para esta query.
+
+**Impacto imediato:** o grupo "quente" de `specs/_catalog/refresh.yaml` tinha
+`field-agenda` numa cadência de 15 minutos — logicamente impossível, a query
+sozinha já custa mais que o intervalo do grupo inteiro. Removida do arquivo até
+ser remedida.
+
+**Não investigado a fundo** — três hipóteses, nenhuma descartada: (a) os 22,0s
+nunca representaram a query inteira, só o SQL, e ninguém tinha percebido a
+lacuna; (b) a tabela cresceu desde a medição original; (c) algo na conversão
+M/`toDatasetRows` escala mal com 642 mil linhas × 26 colunas. Decidir entre elas
+exige perfilar a materialização por etapa (SQL vs M vs escrita), não feito aqui.
+
+## #83 — `mysql2` não está instalado nem declarado: toda query que toca dbMaria, direta ou por junção de M, crasha
+
+**02/09/2026**, mesmo tick. `protocolos-geral` (grupo "quente", `datasource:
+dbVoalle`) falhou com:
+
+> Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'mysql2' imported from
+> packages/query-engine/src/connectors-sql.ts
+
+**Causa.** O M de `protocolos-geral` faz `Table.NestedJoin` com
+`GESTORES EQUIPES` (`specs/_catalog/queries/protocolos-geral.spec.yaml:201`) —
+a query `gestores-equipes`, `datasource: dbMaria`. Buscar essa dependência aciona
+`createMariaPool()` (`packages/query-engine/src/connectors-sql.ts:387`), que faz
+`await import('mysql2/promise')` — e `mysql2` **não existe em `node_modules` nem
+em `package.json`** (`npm ls mysql2` devolve vazio; `pg`, o driver do Voalle,
+está presente normalmente). O import é dinâmico, não estático: por isso o
+módulo inteiro carrega sem erro (confirmado importando `connectors-sql.ts`
+isolado) e só quebra quando uma busca de verdade precisa da conexão MariaDB —
+o que explica por que só esta query, entre as nove do grupo, falhou.
+
+**Alcance confirmado por leitura, não suposição.** Além das 3 queries
+nativamente `dbMaria` (`gestores-equipes`, `backlog-instalacao`,
+`backlog-agendado-futuro` — já fora de `refresh.yaml`, ACHADOS #80),
+`grep -rl "GESTORES EQUIPES\|BACKLOG" specs/_catalog/queries/*.spec.yaml`
+mostra que só `protocolos-geral` cita uma dessas tabelas entre as outras 20
+queries — nem `protocolos-auxiliares` (a irmã quase-clone dela,
+[[proj-instalador-e-union-nao-coalesce]]) faz essa junção.
+
+**Não corrigido.** Adicionar `mysql2` é uma correção pequena — uma dependência
+de npm — mas fica fora do escopo desta sessão: é mudança de `package.json`/
+lockfile, e não há como saber, sem perguntar, se o suporte a dbMaria foi
+deixado incompleto de propósito ou por esquecimento. `protocolos-geral` fica
+fora de `refresh.yaml` até isso ser resolvido.
+
+## #84 — O Refresh Manager existe: tick, cadência por grupo, `refresh-status.json`, e um primeiro tick real que já pagou a própria auditoria
+
+**02/09/2026.** `tools/refresh/` (novo): `tools/refresh/src/index.ts` roda um
+**tick** — lê `specs/_catalog/refresh.yaml`, decide o que está vencido (idade
+desde o último **sucesso**, não da última tentativa — uma falha não espera o
+intervalo inteiro de novo, o próprio próximo tick já é o retry), roda os grupos
+vencidos **em série** (nunca em paralelo, mesmo dentro de um tick — dois grupos
+concorrentes fariam `leManifesto` → mescla → `escreveManifesto` como um
+read-modify-write clássico entre processos, e a escrita atômica do #79 não
+cobre esse caso) e grava `snapshot/refresh-status.json` depois de CADA grupo,
+não só no fim. Sem daemon 24/7: cada tick nasce, faz o que está vencido, morre —
+o gatilho fica por conta do Agendador de Tarefas do Windows (não configurado
+nesta sessão; ver `DEPLOY.md` §2.2).
+
+`GET /api/saude` ganhou o bloco `refresh` (lido de `refresh-status.json`, com
+`try/catch` — rota de operador, não é caminho quente, então um `readFileSync` a
+mais aqui não paga o preço que pagaria em `carimboAtual()`).
+
+A decisão (`estaVencido`/`proximoStatus`) e a orquestração
+(`executaTick`, com relógio e execução injetáveis) são funções puras — 11
+testes cobrem "só o vencido dispara", "série nunca sobreposta", "falha num
+grupo não trava os seguintes" e "persiste depois de cada grupo, não só no
+fim". `tools/refresh/src/grupos.ts` valida `refresh.yaml` contra o Query
+Registry real e recusa carregar se `protocolos-produtividade` (achado #81)
+aparecer em qualquer grupo — trava em código, não só em comentário.
+
+**O primeiro tick real (contra o Voalle ao vivo, grupos "quente" e "medio" do
+`refresh.yaml` original) encontrou os achados #82 e #83** — exatamente o
+trabalho que uma ferramenta de refresh automático deveria expor mais cedo ou
+mais tarde, só que mais cedo. `refresh.yaml` foi ajustado depois: `quente` sem
+`protocolos-geral` (#83) e sem `field-agenda` (#82), restando as 6 queries
+baratas medidas ao vivo (~11s somados); `medio` sem alteração (~24s ao vivo,
+perto dos ~35s do full-fetch por SQL isolado). `npm test`: 1549/1549.
+
+**Não feito nesta sessão:** a tarefa do Agendador de Tarefas do Windows em si
+(criar uma tarefa agendada é mudança persistente no sistema operacional, fora
+do escopo de uma sessão que só devia mexer no repositório sem confirmação
+explícita); cadência para as 7 fontes não medidas (dbMaria/gsheets/web,
+ACHADOS #80); e `field-agenda`/`protocolos-geral` continuam de fora até #82/#83
+serem resolvidos.
+
 ---
 
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto

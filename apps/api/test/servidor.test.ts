@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import type { TokenPayload } from 'google-auth-library';
 import { escreve } from '../../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
+import { escreveStatus } from '../../../tools/refresh/src/status.ts';
 import type { VerificadorDeToken } from '../src/auth-google.ts';
 import { Servidor } from '../src/servidor.ts';
 
@@ -169,6 +170,33 @@ test('a saúde expõe RSS e heap — o sinal que denuncia vazamento antes do OOM
     assert.ok(j.memoria.rssMB > 0);
     assert.ok(Number.isFinite(j.memoria.heapUsedMB));
     assert.ok(j.memoria.heapUsedMB > 0);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('a saúde inclui refresh vazio quando o Refresh Manager nunca rodou nesta máquina', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca('/api/saude');
+    const j = await r.json();
+    assert.deepEqual(j.refresh, {});
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('a saúde reflete refresh-status.json quando o Refresh Manager já rodou', async () => {
+  const dir = dirVazio();
+  await escreveStatus(dir, {
+    quente: { ultimaTentativa: '2026-09-02T12:00:00.000Z', ultimoSucesso: '2026-09-02T12:00:00.000Z', duracaoMs: 1234, ok: true, falhasConsecutivas: 0 },
+  });
+  const s = await servidor(dir);
+  try {
+    const r = await s.busca('/api/saude');
+    const j = await r.json();
+    assert.equal(j.refresh.quente.ok, true);
+    assert.equal(j.refresh.quente.duracaoMs, 1234);
   } finally {
     await s.fecha();
   }
