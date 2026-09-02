@@ -5866,6 +5866,48 @@ Power BI aberta na frente, que não sou eu. Fica registrado que a ferramenta ago
 *roda*; ela não prova paridade nenhuma sozinha, porque o gabarito está mais velho do que
 estava em 19/08, não mais novo.
 
+## #78 — `tools/snapshot/` corrigia sem que nada testasse: duas restaurações de `0aae15c` ficaram quebradas por 7 dias
+
+**02/09/2026.** Ao levantar o plano de deploy, pedi uma auditoria do que ainda faltava
+para publicar — ela voltou dizendo que `tools/snapshot/src/index.ts` e
+`tools/snapshot/src/calculadas.ts` **crashavam em qualquer execução real**. Verifiquei
+ao vivo antes de aceitar (rodando os dois de verdade, não só lendo o diff), e era
+verdade nos dois:
+
+- `index.ts`: `ReferenceError: avisos is not defined` no `catch` de `materializa()` —
+  `avisos`, `politicas`, `AGORA`, `materializaColunas` e `resumoDoErro` eram usados sem
+  nunca terem sido declarados ou importados.
+- `calculadas.ts`: `SyntaxError: Identifier 'pular' has already been declared` — o
+  arquivo não carregava, ponto.
+
+**Causa.** `0aae15c` ("restaurar 100% do estado... do dia 26", 26/08/2026) colou blocos
+de código por cima de si mesmos nos dois arquivos (alguns 2-3×) e, no meio da colagem,
+apagou trechos que já existiam: em `calculadas.ts`, `--todas`, `--parcial=` e as duas
+validações que os acompanhavam (`--isolar`+`--sem-isolar` mutuamente exclusivos;
+`--parcial= exige --coluna=`) sumiram da lista de argumentos conhecidos. Consequência
+prática: o encadeamento automático em `index.ts:709` (`calculadas.ts --todas`, disparado
+ao fim de todo `--refazer`) falhava sempre — silenciosamente, para quem só conferisse o
+snapshot das *queries* (que tinha rodado bem e escondia a etapa seguinte quebrada).
+
+**Por que ficou 7 dias sem ninguém notar.** `tools/snapshot/` nunca teve pasta `test/`.
+O glob de `npm test` (`tools/*/test/*.test.ts`) simplesmente não alcançava esta pasta —
+a suíte seguiu 100% verde o tempo todo, porque não havia teste nenhum que pudesse ficar
+vermelho. É a peça que materializa **todo** o dado servido pela API, e era uma das 4
+(de 15) sem cobertura nenhuma em `tools/` — as outras três (`auth`, `bench`, `paginas`,
+`probe`) continuam assim por decisão deliberada, por dependerem de banco/rede real.
+
+**Conserto.** `index.ts`: as declarações e os imports que faltavam, mais a limpeza dos
+blocos duplicados. `calculadas.ts`: restaurado por inteiro para `f3c4aa7` (18/08/2026,
+o último commit bom antes da corrupção) — diff linha a linha confirmou que **tudo** que
+mudou entre `f3c4aa7` e `0aae15c` era duplicação ou regressão, nada legítimo se perdia.
+Acrescentei `tools/snapshot/test/cli.test.ts` (8 testes herméticos — só exercitam
+`--plano` e validação de argumento, sem tocar `snapshot/` real nem o banco) para que
+essa classe de regressão — restauração que duplica **e** apaga, parecendo trabalho
+novo — pare de passar despercebida. `npm test`: 1502/1502. Verificado ao vivo contra o
+Voalle real: fetch de `capa --refazer` disparando o encadeamento das 7 tabelas
+calculadas, incluindo o modo isolado por coluna de `Status Protocolo Dia` (13.012
+linhas), ponta a ponta, exit 0. Commit `39e4ce6`, em `staging`. Ver `DEPLOY.md` §4.2.
+
 ---
 
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto

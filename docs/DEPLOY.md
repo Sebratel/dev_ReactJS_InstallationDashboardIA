@@ -99,6 +99,15 @@ tela não diz "isto é de terça".
   do `/api/saude` avançando sozinha entre elas.
 - **Armadilha registrada:** rematerializar troca o carimbo e derruba **todo** o cache
   de resposta. Não agende a janela sobre o horário de uma apresentação.
+- **Até 02/09/2026, esta sequência quebrava sempre na segunda metade.** `--todas
+  --refazer` (as *queries*) rodava, mas `npm run snapshot:calculadas` (o encadeamento
+  automático que o congela) tinha `SyntaxError` e `ReferenceError` desde 26/08 — ver
+  `ACHADOS.md` #78 e §4.2 abaixo. Uma tarefa agendada configurada antes do conserto
+  teria rodado a etapa 1 e falhado
+  calada na 2 — o `/api/saude` continuaria respondendo, com o congelado cada vez mais
+  velho. Consertado e verificado ao vivo; **ainda falta** o item em si (a tarefa
+  agendada não existe — este parágrafo documenta um risco que se materializaria nela,
+  não a tarefa).
 
 ### 2.3 A paridade não está fechada
 
@@ -240,6 +249,30 @@ A árvore pré-reset de 26/08 marcava **1438 testes com 4 falhando**; hoje são 
 0**. Os 87 arquivos `*.test.ts` existem e o glob do `npm test` alcança todos — então os
 ~81 de diferença foram acrescentados **dentro de arquivos existentes** e se perderam com
 a árvore. Enquanto não forem identificados, "suíte verde" mede menos do que media.
+
+### 4.2 Uma restauração pode corrigir com corrupção — e isso não aparece como perda
+
+O §4 documenta trabalho que **sumiu** (árvore apagada, nada commitado). Em 02/09/2026
+apareceu a variante mais perigosa do mesmo risco: um commit de restauração
+(`0aae15c`, 26/08) que ficou **presente e errado** — colou blocos de código por cima de
+si mesmos em `tools/snapshot/src/index.ts` e `calculadas.ts`, e no meio da colagem
+apagou funcionalidade que já existia (`--todas`, `--parcial=`, e as validações dos
+dois). O resultado crashava em qualquer execução real — mas passou **7 dias** sem
+ninguém notar, porque `tools/snapshot/` nunca teve pasta `test/`: nenhum teste da suíte
+verde tocava aquele código. Detalhe completo em `ACHADOS.md` #78; consertado e
+verificado ao vivo contra o Voalle real, commit `39e4ce6` em `staging`.
+
+A diferença para o §4 importa: lá, "suíte verde" continuava sendo prova válida — o que
+faltava era commitar. Aqui, a suíte estava verde **com o bug presente**, porque o glob
+de `npm test` não alcançava a pasta. **"N testes verdes" só prova o que os testes
+efetivamente exercitam** — não é uma garantia geral sobre o repositório inteiro, e um
+diretório sem pasta `test/` é um ponto cego, não uma ausência neutra.
+
+- **Critério de saída desta seção:** cada diretório de `tools/` que grava em disco ou é
+  encadeado por outro (como `calculadas.ts` é por `index.ts`) tem pelo menos um teste
+  que falha se o módulo não carregar — o nível mais barato de proteção, e o que faltava
+  aqui. Os quatro diretórios sem pasta `test/` (`auth`, `bench`, `paginas`, `probe`)
+  continuam sem, por dependerem de banco/rede real — não é a mesma lacuna.
 
 ## 5. O que **não** vai neste deploy, de propósito
 
