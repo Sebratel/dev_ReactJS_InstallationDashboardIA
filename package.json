@@ -62,7 +62,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@vitejs/plugin-react": "^5.2.0",
     "lucide-react": "^1.34.0",
-    "mariadb": "^3.5.3",
+    "mysql2": "^3.24.3",
     "pg": "^8.23.0",
     "playwright": "^1.62.1",
     "tailwindcss": "^4.3.3",

@@ -322,15 +322,32 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   // dependência (protocolos-produtividade cita alocacao-patrimonio), e um
   // params sem escopo vazaria :desde para elas — traduzParametros erraria "parâmetro
   // sem uso no SQL", corretamente, porque a dependência não foi costurada.
+  // Onde o tempo foi, por sub-busca (a própria query e qualquer dependência de M,
+  // como alocacao-patrimonio para protocolos-produtividade ou GESTORES EQUIPES para
+  // protocolos-geral) — sem isto, "a query demorou X" não diz se X é banco, rede
+  // ou a conversão de linha em JS. ACHADOS #82 (field-agenda: 22,0s documentados
+  // eram só SQL isolado, não os 21min49s reais) é exatamente o buraco que isto tapa.
   const fonte = fonteDoEngine(engine, {
     ...(Object.keys(plano.params).length ? { paramsPorQuery: { [q.id]: plano.params } } : {}),
+    onBusca: (e) => {
+      if (e.erro) return; // o erro real já sobe pela exceção; nada a medir aqui
+      console.error(
+        `    busca ${e.id}: ${e.linhas?.toLocaleString('pt-BR')} linha(s), ` +
+          `${e.msExecute} ms banco/rede + ${e.msConversao} ms conversão`,
+      );
+    },
   });
   // Allowlist só do que ESTA query declara em `endpoints` (gerado do PBIP).
   const web = q.endpoints?.length ? buscadorWeb({ permitidos: q.endpoints }) : undefined;
 
   try {
+    const tBusca = Date.now();
     const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
+    console.error(`    busca + avaliação de M: ${Date.now() - tBusca} ms`);
+
+    const tConverte = Date.now();
     const { columns, rows: buscadas } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
+    console.error(`    toDatasetRows: ${Date.now() - tConverte} ms`);
 
     // Modo incremental: o que a busca trouxe é só a janela reentregue — junta com
     // o que já estava no arquivo antes de seguir. `linhasAntigas` já tem qualquer
@@ -379,6 +396,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     // `escreve()` já grava em temporário e renomeia por dentro (packages/snapshot/src/
     // formato.ts) — inclusive com novas tentativas se o destino estiver aberto por um
     // leitor (Windows/NTFS, ver DEPLOY.md §4.2). Não duplicar o temp/rename aqui.
+    const tEscreve = Date.now();
     const cab = await escreve(
       arquivo,
       {
@@ -391,6 +409,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       columns,
       rows,
     );
+    console.error(`    escreve(): ${Date.now() - tEscreve} ms`);
 
     return {
       query: q.id,

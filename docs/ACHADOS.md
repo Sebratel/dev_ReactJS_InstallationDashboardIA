@@ -6086,11 +6086,70 @@ Nenhum documento existente media essa segunda parte para esta query.
 sozinha já custa mais que o intervalo do grupo inteiro. Removida do arquivo até
 ser remedida.
 
-**Não investigado a fundo** — três hipóteses, nenhuma descartada: (a) os 22,0s
-nunca representaram a query inteira, só o SQL, e ninguém tinha percebido a
-lacuna; (b) a tabela cresceu desde a medição original; (c) algo na conversão
-M/`toDatasetRows` escala mal com 642 mil linhas × 26 colunas. Decidir entre elas
-exige perfilar a materialização por etapa (SQL vs M vs escrita), não feito aqui.
+**Causa raiz, encontrada por instrumentação — não é a hipótese (a)/(b)/(c) que
+este achado levantava antes de medir por etapa.** `tools/snapshot/src/index.ts`
+(`materializa()`) ganhou timing por fase (busca, M, `toDatasetRows`, colunas
+calculadas, `escreve()`) para responder isto. Rodando `field-agenda` de novo,
+isolada (`node --uma=field-agenda`, para ver o próprio stderr — o modo pai
+absorve o stderr do filho e só mostra a linha final):
+
+```
+busca field-agenda: 643.353 linha(s), 18886 ms banco/rede + 6 ms conversão
+busca + avaliação de M: 20503 ms
+toDatasetRows: 615 ms
+7 coluna(s) calculada(s) em 958194 ms      <- aqui
+escreve(): 15709 ms
+```
+
+**Busca + M + conversão somam 21,1 s — batendo quase exato com os 22,0s
+documentados.** O número antigo não estava errado; media exatamente o que dizia
+medir. A hipótese (a) era a certa, mas incompleta: faltava a etapa que ninguém
+tinha cronometrado porque não existia quando a query era só SQL.
+
+**Os 958.194 ms (15 min 58 s) são `materializaColunas` — as 7 colunas
+calculadas de DAX de `FIELD AGENDA`.** É a mesma classe de defeito dos
+achados #66/#67: o avaliador de DAX perde desempenho compartilhando processo
+numa tabela grande (ali, 30.404 linhas de `Status Protocolo Dia` custavam 36×
+mais que isoladas; aqui são 643.353 linhas — 21× mais linhas que aquele caso).
+A correção que #67/#68 já validaram e comprovaram (**um processo por
+coluna calculada**, `tools/snapshot/src/calculadas.ts`, `congelaIsolada`) nunca
+foi estendida para este caminho: `calculadas.ts` isola colunas de TABELAS
+CALCULADAS que já estão em disco (cada filho `carrega()` o snapshot e computa
+uma coluna); `materializaColunas()` dentro de `materializa()`, em
+`index.ts`, calcula colunas de QUERY logo depois da busca, sobre linhas que
+só existem na memória do processo pai — nenhum filho tem de onde ler ainda.
+Estender a isolação para cá exigiria gravar as linhas cruas num arquivo
+temporário antes de spawnar os filhos (o que `calculadas.ts` não precisa
+fazer, porque a origem dele já está em disco).
+
+**A variância entre execuções também é real, e não só o total.** A mesma
+query, rodada de novo (isolada, para pegar o stderr): 995.074 ms — 16 min 35 s,
+5 minutos a menos que a primeira medição (21 min 49 s) dentro do tick. Ambas
+enormes frente aos 22,0s, mas a diferença ENTRE elas (~30%) sugere que o
+custo de `materializaColunas` aqui não é só função do tamanho da tabela — tem
+componente de carga da máquina (a mesma nesta sessão vinha de rodar
+`protocolos-geral` duas vezes seguidas, estourando heap nas duas). Não
+isolado desta investigação.
+
+**O alcance é maior que `field-agenda`.** `grep 'calculated: true'` nas 11
+tabelas de `specs/_catalog/tables/` com coluna calculada mostra 7 QUERIES
+(não tabelas calculadas independentes — essas já passam por `calculadas.ts`,
+que tem a isolação) cujas colunas calculadas rodam pelo caminho inline de
+`materializa()`: `apuracao-premiacao` (1), `clima-tempo` (1), `field-agenda`
+(7), `protocolos-geral` (**13** — mais que `field-agenda`), `protocolos-
+produtividade` (3), `reincidencia` (2), `retorno-prioritario` (1). As duas
+últimas têm poucas linhas (1.350 e 258, medido ao vivo) e não devem sofrer o
+mesmo custo; `protocolos-geral`, com 13 colunas e uma tabela grande, é
+candidata a que este MESMO mecanismo contribua para o estouro de heap do
+achado #83 — não confirmado, porque a query não termina de buscar para
+chegar lá.
+
+**Não corrigido nesta sessão** — é uma peça de engenharia do tamanho de
+`congelaIsolada()` (~150 linhas), tocando o caminho de materialização de toda
+query com coluna calculada. Registrado para decisão: vale estender a
+isolação para cá — o que talvez destrave `protocolos-geral` de graça —, ou o
+custo de ~16 min em `field-agenda` é aceitável para uma query que, mesmo sem
+cadência automática, ainda precisa rodar no passe diário (`--todas`)?
 
 ## #83 — `mysql2` não está instalado nem declarado: toda query que toca dbMaria, direta ou por junção de M, crasha
 
@@ -6119,11 +6178,30 @@ mostra que só `protocolos-geral` cita uma dessas tabelas entre as outras 20
 queries — nem `protocolos-auxiliares` (a irmã quase-clone dela,
 [[proj-instalador-e-union-nao-coalesce]]) faz essa junção.
 
-**Não corrigido.** Adicionar `mysql2` é uma correção pequena — uma dependência
-de npm — mas fica fora do escopo desta sessão: é mudança de `package.json`/
-lockfile, e não há como saber, sem perguntar, se o suporte a dbMaria foi
-deixado incompleto de propósito ou por esquecimento. `protocolos-geral` fica
-fora de `refresh.yaml` até isso ser resolvido.
+**Corrigido — e a causa era mais interessante que "faltou instalar".**
+`package.json` já tinha um driver de MariaDB: `mariadb@3.5.3`, em
+`devDependencies`. Só que `MysqlPoolLike` — a interface que `mariaRunner`
+implementa contra o pool (`query(sql): Promise<[Row[], unknown]>`,
+`execute(sql, values): Promise<[Row[], unknown]>`, o retorno em tupla) — é a
+API do `mysql2`, não a do pacote `mariadb` (formato de retorno diferente,
+sem `execute` com essa assinatura). `grep` confirma: `mariadb` nunca é
+importado em lugar nenhum do `.ts` do repositório. Alguém declarou o driver
+errado — ou trocou de driver no código sem atualizar `package.json` — e
+ninguém notou porque nenhuma query dbMaria tinha rodado desde então.
+Consertado: `npm uninstall mariadb && npm install mysql2 --save-dev`
+(mesma categoria de `pg`, o driver do Voalle). `npm test`: 1551/1551.
+
+**Mas `protocolos-geral` continua sem materializar — motivo novo.** Com o
+`mysql2` certo, o erro de módulo desaparece (confirmado: `import('mysql2/
+promise')` resolve), mas a busca completa **estoura o heap mesmo com 8192 MB**
+— metade da RAM desta máquina de 16 GB (medido: falha aos 129s numa tentativa,
+164s noutra, sem completar). O evaluador de M mantém todo passo vivo ao mesmo
+tempo (mesmo desenho documentado em `tools/snapshot/src/index.ts:9-15`), e o M
+de `protocolos-geral` tem dezenas de passos nomeados sobre uma tabela grande —
+dar mais heap não é solução viável aqui: 8 GB já é metade da máquina, e os
+16 GB inteiros não sobrariam nada para o SO. Isto não é o mesmo achado que o
+`mysql2` — é um bloqueio **arquitetural** separado, que só ficou visível depois
+de destravar o primeiro. `protocolos-geral` continua fora de `refresh.yaml`.
 
 ## #84 — O Refresh Manager existe: tick, cadência por grupo, `refresh-status.json`, e um primeiro tick real que já pagou a própria auditoria
 
