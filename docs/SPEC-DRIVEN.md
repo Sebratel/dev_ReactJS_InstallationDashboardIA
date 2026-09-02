@@ -83,6 +83,27 @@ maior, sem erro.
 também não é um script hoje — então o risco de sobrescrita não está armado. Quando
 qualquer um dos dois passar a existir, mova esta divergência para lá.
 
+### `field-agenda-slot` — arquivo NOVO, não existe no PBIP (02/09/2026)
+
+`specs/_catalog/queries/field-agenda-slot.spec.yaml` não é uma edição de arquivo
+gerado — é um arquivo que `tools/extractor` nunca produziu e nunca vai apagar,
+porque não corresponde a nenhuma query do PBIP. É a forma de GRÃO DE SLOT de
+`field-agenda`: mesma origem (`vsdspi`), sem os `LEFT JOIN` de
+`reports`/`people`/`skills` que multiplicam cada slot por (relato × skill) — ver
+`docs/DECISAO-GRAO-FIELD-AGENDA.md` e ACHADOS #82/#85/#86/#87.
+
+O SQL preserva a EXISTÊNCIA da linha com um `EXISTS` que repete os seis filtros de
+`r.title` do `LEFT JOIN` original — sem isso, o corte traria slot A MAIS do que a
+forma completa (o `LEFT JOIN` de `field-agenda` é, na prática, um `INNER JOIN`: o
+`WHERE` rejeita linha com `r.title` nulo). `specs/_catalog/projecao.yaml`, bloco
+`grao_reduzido`, declara qual tabela usa qual das duas por padrão e o que escala
+para a completa.
+
+**Risco igual ao do item anterior, ainda sem `sql-override.yaml`.** Se algum dia
+`npm run extract` passar a apagar arquivo de query que ele não reconhece (hoje não
+apaga — ele só sobrescreve o que já existia), este arquivo precisa da mesma
+proteção. Registrado aqui para não se perder no meio tempo.
+
 ## Estrutura de `specs/`
 
 ```

@@ -41,3 +41,34 @@
 # voltar a crescer uma ordem de grandeza, é aqui que a decisão se registra de novo —
 # com a medição junto, como esta.
 sob_demanda: []
+
+# Tabelas com GRÃO reduzido — não coluna, LINHA. `carrega()` usa `query_padrao` por
+# padrão e só escala para `query_completa` quando o pedido toca uma de
+# `colunas_gatilho`. Ver `packages/semantic-model/src/projecao.ts` (`GraoReduzido`).
+#
+# **O mesmo risco que o histórico de `sob_demanda` acima já documentou, e ainda não
+# medido para este caso.** A escalada aqui reconstrói a página INTEIRA sob outra
+# chave de cache (mesmo mecanismo de `sob_demanda`) — foi exatamente isso que tornou
+# o `sob_demanda` de `Relato` um MAU negócio em 24/08/2026 (17,9s divididos contra
+# 6,9s juntos, porque reconstruir a página de novo recarregava PROTOCOLOS GERAL e
+# companhia uma SEGUNDA vez). A diferença de escala aqui é maior — 645 mil linhas
+# contra ~30 mil, não uma coluna de texto — mas a medição ao vivo de
+# `docs/ACHADOS.md` #87 é o que decide se a escalada compensa, não este comentário.
+grao_reduzido:
+  - tabela: FIELD AGENDA
+    query_padrao: field-agenda-slot
+    query_completa: field-agenda
+    colunas_gatilho:
+      [ClassificacaoRelato, CategoriaProdutividade, "Descrição", Relato,
+       "Data Relato", Relator, Skill]
+    decidido: '2026-09-02'
+    por: Erick
+    porque: >
+      Joins de relato/skill multiplicam ~30 mil slots em 645.664 linhas
+      (docs/DECISAO-GRAO-FIELD-AGENDA.md, ACHADOS #82/#85/#86/#87). A maioria dos
+      visuais de field-agenda não toca nenhuma destas colunas — a query padrão
+      cobre eles sem os joins. Errar para MENOS aqui é caro mas silencioso (a
+      tabela cheia carrega sempre, só perde a otimização); a lista é literalmente
+      as únicas colunas que dependem de `reports` na SQL de `field-agenda`, então
+      errar para MAIS exigiria uma coluna nova em `reports`/`people`/`skills` que
+      ninguém adicionou a esta lista.

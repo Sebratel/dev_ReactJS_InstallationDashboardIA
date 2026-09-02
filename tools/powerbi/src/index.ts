@@ -34,7 +34,7 @@ import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { carrega } from '../../../packages/snapshot/src/carrega.ts';
+import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { pegaToken } from './auth.ts';
 import { PowerBI, daUrl } from './api.ts';
@@ -255,6 +255,7 @@ const carregado = await carrega({
   model,
   dashboards: [dash],
   now: new Date(),
+  precisaFormaCompleta: todaFormaCompleta(model),
 });
 const ev = carregado.ev;
 

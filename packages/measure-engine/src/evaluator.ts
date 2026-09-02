@@ -10,6 +10,7 @@
 
 import type { SemanticModel } from '../../semantic-model/src/model.ts';
 import { normalizeName } from '../../semantic-model/src/model.ts';
+import { graoReduzidoDe } from '../../semantic-model/src/projecao.ts';
 import type { DaxNode } from './ast.ts';
 import { aplicaTipo } from './calculated.ts';
 import type { Dataset, Row } from './dataset.ts';
@@ -290,6 +291,20 @@ export class Evaluator {
             `de propósito: a alternativa seria BLANK calado. Se a página precisa dela, ` +
             `o cálculo de 'packages/snapshot/src/colunas-usadas.ts' não a alcançou — ` +
             `veja por qual das cinco arestas ela deveria ter entrado.`,
+        );
+      }
+      // Tabela com grão reduzido (ACHADOS #87): a mensagem genérica de "dataset do
+      // teste incompleto" confundiria em produção — aqui é bem mais provável que a
+      // carga tenha usado a query PADRÃO (enxuta) e este pedido precisasse da
+      // COMPLETA. `col` já confirmou que a coluna existe no modelo; o que falta é
+      // dizer POR QUE ela não veio, quando há uma explicação melhor que "teste".
+      const grao = graoReduzidoDe(table, this.model.graoReduzido);
+      if (grao) {
+        throw new DaxEvalError(
+          `Coluna '${table}'[${column}] existe no modelo mas não veio nos dados. '${table}' ` +
+            `tem grão reduzido (specs/_catalog/projecao.yaml) — confira se '${column}' devia ` +
+            `estar em colunas_gatilho, ou se o pedido devia ter liberado a forma completa ` +
+            `('${grao.queryCompleta}').`,
         );
       }
       throw new DaxEvalError(

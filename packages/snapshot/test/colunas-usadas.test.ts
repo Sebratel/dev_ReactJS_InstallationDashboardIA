@@ -18,7 +18,7 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import type { DashboardSpec, VisualSpec } from '../../widget-engine/src/spec.ts';
 import { carrega } from '../src/carrega.ts';
-import { colunasUsadas, leSobDemanda, omissiveis, sobDemandaDe } from '../src/colunas-usadas.ts';
+import { colunasUsadas, graoReduzidoDe, leGraoReduzido, leSobDemanda, omissiveis, sobDemandaDe } from '../src/colunas-usadas.ts';
 import { escreve } from '../src/formato.ts';
 import { arquivoDaQuery } from '../src/manifesto.ts';
 
@@ -182,6 +182,44 @@ test('toda coluna sob demanda do projecao.yaml real diz por que está lá', asyn
   const real = SemanticModel.fromSpecsDir('specs');
   for (const s of real.sobDemanda) {
     assert.ok(s.porque.length > 60, `${s.tabela}[${s.coluna}]: 'porque' curto demais`);
+  }
+});
+
+test('leGraoReduzido exige query padrão, completa, gatilho, dono e motivo', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapgr-'));
+  fs.mkdirSync(path.join(dir, '_catalog'), { recursive: true });
+  const arq = path.join(dir, '_catalog', 'projecao.yaml');
+
+  fs.writeFileSync(arq, 'grao_reduzido:\n  - tabela: OS\n    query_padrao: os-slim\n', 'utf8');
+  assert.throws(() => leGraoReduzido(dir), /sem 'query_completa'/);
+
+  fs.writeFileSync(
+    arq,
+    'grao_reduzido:\n' +
+      '  - tabela: OS\n' +
+      '    query_padrao: os-slim\n' +
+      '    query_completa: os\n' +
+      '    colunas_gatilho: [SOBRA]\n' +
+      "    decidido: '2026-09-02'\n" +
+      '    por: Erick\n' +
+      '    porque: porque sim\n',
+    'utf8',
+  );
+  const lista = leGraoReduzido(dir);
+  const g = graoReduzidoDe('OS', lista);
+  assert.ok(g);
+  assert.equal(g!.queryPadrao, 'os-slim');
+  assert.equal(g!.queryCompleta, 'os');
+  assert.deepEqual(g!.colunasGatilho, ['SOBRA']);
+  assert.equal(graoReduzidoDe('OUTRA', lista), null);
+});
+
+test('toda tabela de grão reduzido do projecao.yaml real diz por que está lá', async () => {
+  const { SemanticModel } = await import('../../semantic-model/src/model.ts');
+  const real = SemanticModel.fromSpecsDir('specs');
+  for (const g of real.graoReduzido) {
+    assert.ok(g.porque.length > 60, `${g.tabela}: 'porque' curto demais`);
+    assert.ok(g.colunasGatilho.length > 0, `${g.tabela}: sem coluna-gatilho nenhuma`);
   }
 });
 

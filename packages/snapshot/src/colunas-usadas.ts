@@ -27,10 +27,13 @@ import { extractRefs } from '../../semantic-model/src/refs.ts';
 import { normalizeName as normaliza, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { DashboardSpec, CampoSpec, FiltroSpec } from '../../widget-engine/src/spec.ts';
 export {
+  graoReduzidoDe,
+  leGraoReduzido,
   leSobDemanda,
   rotuloDeColuna,
   sobDemandaDe,
   sobDemandaLiberada,
+  type GraoReduzido,
   type SobDemanda,
 } from '../../semantic-model/src/projecao.ts';
 

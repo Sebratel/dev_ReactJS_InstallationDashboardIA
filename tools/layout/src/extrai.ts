@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { stringify } from 'yaml';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { carrega } from '../../../packages/snapshot/src/carrega.ts';
+import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { calculaPagina, type VisualCalculado } from '../../../apps/api/src/calcula.ts';
 import { codificaFiltro, decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
@@ -187,7 +187,10 @@ function montaFaixas(c: Classificado): Faixa[] {
 }
 
 async function extrai(dash: DashboardSpec, model: SemanticModel): Promise<LayoutSpec> {
-  const { ev } = await carrega({ dir: path.join(ROOT, DIRETORIO_PADRAO), model, dashboards: [dash], now: AGORA });
+  const { ev } = await carrega({
+    dir: path.join(ROOT, DIRETORIO_PADRAO), model, dashboards: [dash], now: AGORA,
+    precisaFormaCompleta: todaFormaCompleta(model),
+  });
   // O mesmo caminho que a tela usa para transformar `FiltroDaTela[]` (estado do React)
   // no `FiltroSpec[]` que `calculaPagina` consome — ver `servidor.ts`. Reusar em vez de
   // montar o objeto à mão evita um segundo formato de filtro que pode desalinhar.

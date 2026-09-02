@@ -76,7 +76,9 @@ test('registry: validate aponta problemas reais', () => {
 
 test('registry: carrega as specs reais do PBIP', () => {
   const r = QueryRegistry.fromSpecsDir(SPECS_DIR);
-  assert.equal(r.queries.size, 24, '24 queries extraídas');
+  // 24 extraídas do PBIP + 1: `field-agenda-slot` (ACHADOS #87), SQL de mão que
+  // não vem do PBIP — o grão de slot de `field-agenda`.
+  assert.equal(r.queries.size, 25, '24 extraídas + field-agenda-slot');
   assert.ok(r.has('contratos'));
   assert.ok(r.has('protocolos-geral'));
   // as 3 fontes externas reais + os pseudo-datasources classificados

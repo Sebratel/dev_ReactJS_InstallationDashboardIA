@@ -20,7 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { carrega } from '../../../packages/snapshot/src/carrega.ts';
+import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { calculaPagina, type VisualCalculado } from '../../../apps/api/src/calcula.ts';
 import { codificaFiltro, decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
@@ -83,7 +83,10 @@ async function tresRecortes(
   dash: DashboardSpec,
   model: SemanticModel,
 ): Promise<{ nome: string; ids: Set<string> }[]> {
-  const { ev } = await carrega({ dir: path.join(ROOT, DIRETORIO_PADRAO), model, dashboards: [dash], now: AGORA });
+  const { ev } = await carrega({
+    dir: path.join(ROOT, DIRETORIO_PADRAO), model, dashboards: [dash], now: AGORA,
+    precisaFormaCompleta: todaFormaCompleta(model),
+  });
 
   const semFiltro = calculaPagina(dash, ev);
   const recortes = [{ nome: 'sem filtro', ids: idsDe(semFiltro.visuais) }];

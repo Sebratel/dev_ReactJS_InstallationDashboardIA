@@ -859,13 +859,23 @@ export class Servidor {
    * para todos os pedidos seguintes — exatamente o que a decisão evita.
    */
   private carrega(dash: DashboardSpec, visuaisPedidos: readonly string[] | null = null): Promise<Carregado> {
-    // A UNIÃO das colunas que os visuais pedidos amarram — pedir três visuais numa
-    // rolagem rápida não pode liberar três vezes o mesmo texto livre, nem esquecer a
-    // coluna de um deles porque outro já tinha liberado a sua.
-    const libera = visuaisPedidos === null
+    // A UNIÃO das colunas sob demanda E das tabelas de grão reduzido que os visuais
+    // pedidos amarram — pedir três visuais numa rolagem rápida não pode liberar três
+    // vezes o mesmo texto livre, nem esquecer a coluna/tabela de um deles porque
+    // outro já tinha liberado a sua. Ver `sobDemandaDoVisual` e ACHADOS #87.
+    const amarrado = visuaisPedidos === null
       ? []
-      : [...new Set(visuaisPedidos.flatMap((vid) => this.sobDemandaDoVisual(dash, vid)))];
-    const chave = libera.length === 0 ? dash.id : `${dash.id}\u0000${[...libera].sort().join(',')}`;
+      : visuaisPedidos.map((vid) => this.sobDemandaDoVisual(dash, vid));
+    const libera = [...new Set(amarrado.flatMap((a) => a.colunas))];
+    // Filtro de PÁGINA (não de visual) vale para todo pedido a esta página,
+    // liberado ou não — por isso entra incondicionalmente, e não só quando o
+    // visual dono aparece em `visuaisPedidos`.
+    const formaCompleta = [
+      ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
+    ];
+    const chave = libera.length === 0 && formaCompleta.length === 0
+      ? dash.id
+      : `${dash.id}\u0000${libera.sort().join(',')}\u0000${formaCompleta.sort().join(',')}`;
 
     // **O snapshot mudou embaixo? Então o avaliador guardado é lixo.** Este mapa só
     // era limpo em erro, e a promessa do comentário do topo ("quem refaz é `npm run
@@ -901,6 +911,7 @@ export class Servidor {
       dashboards: [dash],
       now: this.opts.agora(),
       liberaSobDemanda: libera,
+      precisaFormaCompleta: formaCompleta,
     })
       .then((c) => {
         // Recalcular uma tabela que estava congelada custa tempo e muda o número. Um
@@ -964,26 +975,76 @@ export class Servidor {
   }
 
   /**
-   * As colunas sob demanda que **este** visual amarra — e só elas.
+   * As colunas sob demanda e as tabelas de grão reduzido que **este** visual amarra
+   * — e só elas.
    *
-   * Pedir um visual não libera o texto livre da base inteira: libera as colunas que
-   * aquele visual mostra. É o que mantém o custo do pedido proporcional ao que ele
-   * entrega.
+   * Pedir um visual não libera o texto livre da base inteira, nem escala toda tabela
+   * de grão reduzido do modelo: libera só o que aquele visual de fato mostra ou
+   * filtra. É o que mantém o custo do pedido proporcional ao que ele entrega — o
+   * mesmo raciocínio para as duas listas, por isso uma função só produz as duas.
+   *
+   * **Varre `fields` E `filters`.** Só `fields` ficava de fora um caso real: um
+   * visual pode filtrar por uma coluna sem listá-la como campo (ex.: um card de
+   * `visao-geral` que filtra por `'FIELD AGENDA'[Data]` sem citar a tabela em
+   * `entities_used`). Sem isto, um filtro assim tocaria coluna/tabela sob demanda
+   * sem liberá-la — a carga erraria alto em vez de resolver sozinha.
    */
-  private sobDemandaDoVisual(dash: DashboardSpec, visualId: string): string[] {
+  private sobDemandaDoVisual(dash: DashboardSpec, visualId: string): { colunas: string[]; tabelasCompletas: string[] } {
     const v = (dash.visuals ?? []).find((x) => x.id === visualId);
-    if (!v) return [];
-    const declaradas = new Map(
+    if (!v) return { colunas: [], tabelasCompletas: [] };
+
+    const { colunas, tabelasCompletas } = this.amarraGraoReduzido();
+    const foraColunas = new Set<string>();
+    const foraTabelas = new Set<string>();
+    const olha = (entity: string | null, property: string | null): void => {
+      if (!entity || !property) return;
+      const rotulo = normalizeName(rotuloDeColuna(entity, property));
+      const r = colunas.get(rotulo);
+      if (r) foraColunas.add(r);
+      const t = tabelasCompletas.get(rotulo);
+      if (t) foraTabelas.add(t);
+    };
+    for (const c of v.fields ?? []) {
+      if (c.kind === 'measure') continue;
+      olha(c.entity, c.property);
+    }
+    for (const f of v.filters ?? []) olha(f.entity, f.property);
+
+    return { colunas: [...foraColunas], tabelasCompletas: [...foraTabelas] };
+  }
+
+  /** Mapas rótulo-normalizado → (nome declarado | tabela), montados uma vez por chamada. */
+  private amarraGraoReduzido(): { colunas: Map<string, string>; tabelasCompletas: Map<string, string> } {
+    const colunas = new Map(
       this.model.sobDemanda.map((s) => [
         normalizeName(rotuloDeColuna(s.tabela, s.coluna)),
         rotuloDeColuna(s.tabela, s.coluna),
       ]),
     );
+    const tabelasCompletas = new Map<string, string>();
+    for (const g of this.model.graoReduzido) {
+      for (const coluna of g.colunasGatilho) {
+        tabelasCompletas.set(normalizeName(rotuloDeColuna(g.tabela, coluna)), g.tabela);
+      }
+    }
+    return { colunas, tabelasCompletas };
+  }
+
+  /**
+   * As tabelas de grão reduzido que os FILTROS DE PÁGINA (não de visual) amarram.
+   *
+   * Filtro de página vale para todo pedido a esta página, liberado ou não — ao
+   * contrário do de visual, não faz sentido pedir para "não aplicar" um filtro de
+   * página. Por isso entra incondicionalmente na chave/carga, sem depender de
+   * `visuaisPedidos`.
+   */
+  private tabelasCompletasDaPagina(dash: DashboardSpec): string[] {
+    const { tabelasCompletas } = this.amarraGraoReduzido();
     const fora = new Set<string>();
-    for (const c of v.fields ?? []) {
-      if (c.kind === 'measure' || !c.entity || !c.property) continue;
-      const r = declaradas.get(normalizeName(rotuloDeColuna(c.entity, c.property)));
-      if (r) fora.add(r);
+    for (const f of dash.filters ?? []) {
+      if (!f.entity || !f.property) continue;
+      const t = tabelasCompletas.get(normalizeName(rotuloDeColuna(f.entity, f.property)));
+      if (t) fora.add(t);
     }
     return [...fora];
   }

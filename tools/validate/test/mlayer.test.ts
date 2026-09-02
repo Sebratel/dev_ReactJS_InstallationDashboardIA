@@ -177,9 +177,11 @@ test('scanM: transformação de valor e de tipo não conta como efeito nenhum', 
   assert.equal(rowCountComparable(scan), true);
 });
 
-// ── integração: as 24 queries reais ──────────────────────────────────────────
+// ── integração: as 25 queries reais ──────────────────────────────────────────
 
-test('as 24 queries reais: 23 são escaneáveis, e a exceção é a do let aninhado', () => {
+test('as 25 queries reais: 24 são escaneáveis, e a exceção é a do let aninhado', () => {
+  // 24 do PBIP + `field-agenda-slot` (ACHADOS #87) — SQL de mão, mesma forma de M
+  // de 3 passos de `field-agenda`, e escaneável como qualquer outra: 303 + 3 = 306.
   const registry = QueryRegistry.fromSpecsDir(SPECS);
   const falhas: string[] = [];
   let passos = 0;
@@ -193,7 +195,7 @@ test('as 24 queries reais: 23 são escaneáveis, e a exceção é a do let aninh
     }
   }
   assert.deepEqual(falhas, ['clima-tempo'], 'só a query do Open-Meteo usa função M');
-  assert.equal(passos, 303, 'passos M nas 23 escaneáveis');
+  assert.equal(passos, 306, 'passos M nas 24 escaneáveis');
 });
 
 /**

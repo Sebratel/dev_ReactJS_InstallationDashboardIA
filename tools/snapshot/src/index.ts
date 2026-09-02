@@ -330,9 +330,31 @@ const GRAO_REDUZIDO_DE = new Map<string, { chave: string[]; colunas: string[] }>
   ],
 ]);
 
+/**
+ * Queries que não são o `queryRef` de tabela nenhuma do modelo — hoje só
+ * `field-agenda-slot` (ACHADOS #87). Ela é uma fonte ALTERNATIVA de `FIELD AGENDA`
+ * (mesma tabela, escolhida em tempo de carga por `packages/snapshot/src/
+ * carrega.ts`, não uma tabela própria), então `tabelasDaQuery` nunca a alcança —
+ * mas ela ainda precisa das mesmas colunas calculadas de grão de slot que
+ * `GRAO_REDUZIDO_DE` já declara para `field-agenda`. Reaproveitada daqui, não
+ * duplicada: se a lista de colunas de grão de slot mudar um dia, muda num só lugar.
+ *
+ * Suas linhas já nascem no grão de slot — sem os `JOIN`s que duplicam, então sem
+ * duplicação nenhuma para desfazer. O cálculo é direto (`materializaColunas`, sem
+ * `materializaColunasPorGrao`), restrito a estas colunas: pedir
+ * `ClassificacaoRelato`/`CategoriaProdutividade` aqui erraria alto (o arquivo não
+ * tem `Relato`), e é isso mesmo que deve acontecer se algum dia alguém tentar.
+ */
+const TABELA_SEM_QUERY_REF = new Map<string, { tabela: string; colunas: string[] }>([
+  ['field-agenda-slot', { tabela: 'FIELD AGENDA', colunas: GRAO_REDUZIDO_DE.get('field-agenda')!.colunas }],
+]);
+
 /** As tabelas do modelo que carregam do arquivo desta query. */
 function tabelasDaQuery(id: string): string[] {
-  return [...model.tables.values()].filter((t) => t.queryRef === id).map((t) => t.name);
+  const proprias = [...model.tables.values()].filter((t) => t.queryRef === id).map((t) => t.name);
+  if (proprias.length) return proprias;
+  const semQueryRef = TABELA_SEM_QUERY_REF.get(id);
+  return semQueryRef ? [semQueryRef.tabela] : [];
 }
 
 // ------------------------------------------------------------------ connectors
@@ -618,6 +640,21 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       const t = model.table(nome);
       if (!t) continue;
 
+      const semQueryRef = TABELA_SEM_QUERY_REF.get(q.id);
+      if (semQueryRef) {
+        const tSemRef = Date.now();
+        const m = materializaColunas(t, model, rows, AGORA, new Set(semQueryRef.colunas.map(normalizeName)));
+        for (const c of m.colunas) if (!columns.includes(c)) columns.push(c);
+        for (const [k, v] of m.daxSha) daxSha.set(k, v);
+        if (m.colunas.length) {
+          console.error(
+            `    ${m.colunas.length} coluna(s) calculada(s) (grão de slot nativo) em ` +
+              `${Date.now() - tSemRef} ms (ACHADOS #87)`,
+          );
+        }
+        continue;
+      }
+
       const grao = GRAO_REDUZIDO_DE.get(q.id);
       if (grao) {
         const tGrao = Date.now();
@@ -734,7 +771,17 @@ if (paginasInvalidas.length) {
 }
 
 const plano = pedidas.length > 0 ? planeja(pedidas, model) : null;
-const alvo = [...new Set([...(plano?.queries ?? []), ...args.queries])].sort();
+let alvo = [...new Set([...(plano?.queries ?? []), ...args.queries])].sort();
+
+// Emparelhado, sempre: `field-agenda-slot` não é `queryRef` de tabela nenhuma
+// (ACHADOS #87), então `planeja()` nunca o alcança sozinho — e sem isto, o dia em
+// que alguém rematerializa `field-agenda` sem lembrar do par deixaria
+// `field-agenda-slot.jsonl` velho, servindo grão de slot desatualizado sem aviso
+// nenhum. É o mesmo erro do #53/#78 (query e calculada saindo de sincronia), um
+// nível acima: aqui são duas QUERIES da mesma tabela.
+if (alvo.includes('field-agenda') && !alvo.includes('field-agenda-slot')) {
+  alvo = [...alvo, 'field-agenda-slot'].sort();
+}
 
 const foraDoEscopo = alvo.filter((id) => FORA_DO_ESCOPO.has(id));
 const desconhecidas = alvo.filter(

@@ -538,3 +538,79 @@ test('manifesto de outro formato erra alto', async () => {
   fs.writeFileSync(p, JSON.stringify({ formato: 9, tabelas: [] }));
   assert.throws(() => leManifesto(dir), /manifesto de formato 9, esperado 1/);
 });
+
+// ---------------------------------------------------------------------------
+// Grão reduzido (ACHADOS #87) — a query de uma tabela pode trocar por baixo
+// ---------------------------------------------------------------------------
+
+/** `OS` com grão reduzido: `q-os-slim` não tem `RELATO`, `q-os` (completa) tem. */
+function modeloComGraoReduzido(): SemanticModel {
+  const m = new SemanticModel();
+  m.addTable({
+    id: 'os', name: 'OS', queryRef: 'q-os',
+    columns: [col('VALOR', { type: 'int64' }), col('CIDADE'), col('RELATO')],
+  });
+  m.addMeasure({ name: 'Total', table: 'OS', format: null, displayFolder: null, dax: "SUM('OS'[VALOR])" });
+  m.graoReduzido = [{
+    tabela: 'OS', queryPadrao: 'q-os-slim', queryCompleta: 'q-os',
+    colunasGatilho: ['RELATO'], decidido: '2026-09-02', por: 'teste', porque: 'teste',
+  }];
+  return m;
+}
+
+async function comGraoReduzido(): Promise<string> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapgrao-'));
+  await escreve(
+    arquivoDaQuery(dir, 'q-os-slim'),
+    { query: 'q-os-slim', tabelas: ['OS'], geradoEm: '2026-08-07T09:00:00.000Z' },
+    ['valor', 'cidade'],
+    [{ valor: 10, cidade: 'Bauru' }, { valor: 30, cidade: 'Jaú' }] as never,
+  );
+  await escreve(
+    arquivoDaQuery(dir, 'q-os'),
+    { query: 'q-os', tabelas: ['OS'], geradoEm: '2026-08-07T09:00:00.000Z' },
+    ['valor', 'cidade', 'relato'],
+    [{ valor: 10, cidade: 'Bauru', relato: 'ok' }] as never,
+  );
+  return dir;
+}
+
+test('sem precisaFormaCompleta, carrega() usa a query PADRÃO (grão reduzido)', async () => {
+  const dir = await comGraoReduzido();
+  const c = await carrega({ dir, model: modeloComGraoReduzido(), dashboards: [pagina([card('Total')])], now: AGORA });
+  // q-os-slim tem 2 linhas (10+30=40); q-os (completa) tem só 1 (10). Bater com 2
+  // linhas prova que a padrão foi a usada, sem depender de inspecionar arquivo.
+  assert.equal(c.linhasPorTabela.get('OS'), 2);
+});
+
+test('com precisaFormaCompleta, carrega() escala para a query COMPLETA', async () => {
+  const dir = await comGraoReduzido();
+  const c = await carrega({
+    dir, model: modeloComGraoReduzido(), dashboards: [pagina([card('Total')])], now: AGORA,
+    precisaFormaCompleta: ['OS'],
+  });
+  assert.equal(c.linhasPorTabela.get('OS'), 1);
+});
+
+test('coluna que só existe na forma completa ERRA ALTO se pedida com a padrão carregada — nunca BLANK calado', async () => {
+  const dir = await comGraoReduzido();
+  const c = await carrega({ dir, model: modeloComGraoReduzido(), dashboards: [pagina([card('Total')])], now: AGORA });
+  const linha = c.ev.dataset.rows('OS')[0]!;
+  assert.throws(
+    () => c.ev.columnValue('OS', 'RELATO', linha),
+    /não veio nos dados.*grão reduzido.*colunas_gatilho.*q-os/s,
+    'a forma padrão não tem RELATO — ler tem de estourar, não devolver BLANK, e a ' +
+      'mensagem tem de apontar para o mecanismo de grão reduzido',
+  );
+});
+
+test('tabela sem entrada em graoReduzido nunca olha para precisaFormaCompleta', async () => {
+  // Mesmo fixture de sempre (sem grão reduzido) — precisaFormaCompleta citando uma
+  // tabela qualquer não pode mudar nada nem quebrar nada.
+  const dir = await comSnapshot();
+  const c = await carrega({
+    dir, model: modelo(), dashboards: [pagina([card('Total')])], now: AGORA,
+    precisaFormaCompleta: ['OS'],
+  });
+  assert.equal(c.linhasPorTabela.get('OS'), 3);
+});

@@ -33,7 +33,7 @@ import { normalizeName as normaliza, type SemanticModel } from '../../semantic-m
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
-import { colunasUsadas, omissiveis, sobDemandaLiberada } from './colunas-usadas.ts';
+import { colunasUsadas, graoReduzidoDe, omissiveis, sobDemandaLiberada } from './colunas-usadas.ts';
 import {
   arquivoDaCalculada,
   dependeDoRelogio,
@@ -79,6 +79,16 @@ export interface CarregaOptions {
    * mostra, em vez de trazer todo o texto livre da base de volta por um clique.
    */
   liberaSobDemanda?: readonly string[];
+  /**
+   * Tabelas com GRÃO reduzido (`model.graoReduzido`) a carregar na forma COMPLETA
+   * nesta chamada, por nome — ausente de tabela com grão reduzido = usa a query
+   * PADRÃO (mais barata) dela. Tabela sem entrada em `model.graoReduzido` nunca olha
+   * para isto. Ver `specs/_catalog/projecao.yaml`, bloco `grao_reduzido`, e ACHADOS
+   * #87 — é o mesmo papel de `liberaSobDemanda`, um nível acima: lá libera-se
+   * COLUNA de uma tabela já carregada; aqui troca-se a LINHA (a query de origem)
+   * antes mesmo de abrir o arquivo.
+   */
+  precisaFormaCompleta?: readonly string[];
   /**
    * Ler tabela calculada de disco quando houver arquivo? Padrão `true`.
    *
@@ -151,6 +161,18 @@ export interface Carregado {
 export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const inicio = Date.now();
   const plano = planeja(opts.dashboards, opts.model);
+
+  // Grão reduzido: a QUERY de cada tabela pode trocar por baixo, por pedido — sem
+  // mudar o plano em si (`plano.tabelas` continua descrevendo a necessidade
+  // ESTÁTICA da página; só a fonte muda aqui, e só para quem tem entrada em
+  // `model.graoReduzido`). O resto desta função usa `tabelas`, não `plano.tabelas`.
+  const formaCompleta = new Set((opts.precisaFormaCompleta ?? []).map(normaliza));
+  const tabelas = plano.tabelas.map((t) => {
+    const g = graoReduzidoDe(t.nome, opts.model.graoReduzido);
+    if (!g) return t;
+    return { ...t, query: formaCompleta.has(normaliza(t.nome)) ? g.queryCompleta : g.queryPadrao };
+  });
+
   const dataset = new Dataset();
   const linhasPorTabela = new Map<string, number>();
   const datas: string[] = [];
@@ -158,7 +180,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   let maisNovoDeQuery: string | null = null;
 
   const faltando: { tabela: string; query: string }[] = [];
-  for (const t of plano.tabelas) {
+  for (const t of tabelas) {
     if (t.query === null) continue;
     if (!fs.existsSync(arquivoDaQuery(opts.dir, t.query))) {
       faltando.push({ tabela: t.nome, query: t.query });
@@ -180,9 +202,9 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const omitidas: string[] = [];
   const liberadas = new Set((opts.liberaSobDemanda ?? []).map((r) => normaliza(r)));
 
-  const juncao = preservaEspecieDeJuncao(opts.model, opts.dir, plano);
+  const juncao = preservaEspecieDeJuncao(opts.model, opts.dir, { ...plano, tabelas });
   const convertidas: string[] = [];
-  for (const t of plano.tabelas) {
+  for (const t of tabelas) {
     if (t.query === null) continue;
     const arquivo = arquivoDaQuery(opts.dir, t.query);
     const fora = usadas === null
@@ -441,6 +463,22 @@ function aplicaTiposDeclarados(
 /** O caminho padrão do snapshot, a partir da raiz do repositório. */
 export function diretorioPadrao(root: string): string {
   return path.join(root, 'snapshot');
+}
+
+/**
+ * Todas as tabelas de grão reduzido, na forma COMPLETA — para `precisaFormaCompleta`
+ * de quem carrega em LOTE (ferramenta de linha de comando), não pedido de tela.
+ *
+ * `apps/api/src/servidor.ts` calcula, por pedido, só o que aquele pedido de fato
+ * precisa — é ali que o grão reduzido paga o que promete. Toda outra ferramenta
+ * (congelar calculadas, extrair layout, medir paridade, bench, `powerbi`) não tem
+ * pedido nenhum para restringir a: ela quer o dado certo, não o rápido, e sem isto
+ * pediria a forma padrão por omissão e estouraria "não veio nos dados" na primeira
+ * coluna de grão fino que tocasse — regressão de ferramenta que funcionava, não
+ * bug de dado (ACHADOS #87).
+ */
+export function todaFormaCompleta(model: SemanticModel): string[] {
+  return model.graoReduzido.map((g) => g.tabela);
 }
 
 /**

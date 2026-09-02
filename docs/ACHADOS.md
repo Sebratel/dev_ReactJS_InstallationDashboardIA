@@ -6440,6 +6440,140 @@ antes de tentar isolar por processo de novo: se tiver, `GRAO_REDUZIDO_DE`
 
 ---
 
+## #87 — `FIELD AGENDA` deixou de carregar 645 mil linhas em TODA abertura de página: arquivo trocado por baixo conforme o pedido precisa ou não de coluna de relato
+
+**02/09/2026, continuação do #86.** O #86 corrigiu o pior sintoma (colunas
+calculadas recalculando por linha duplicada), mas não mexeu na causa: **toda
+carga de `agendamento-field` continuava lendo as 645 mil linhas inteiras**,
+mesmo quando o visual pedido só usava colunas de grão de slot
+(`Protocolo`, `Status Protocolo`, `Turno`, `Status SLA`...). `carrega()` não
+tinha nenhuma redução de LINHA — só a de coluna (`sob_demanda`, vazio desde
+24/08).
+
+**Por que não virou duas tabelas no modelo.** A primeira ideia — uma tabela
+`FIELD AGENDA SLOT` própria — foi desenhada e descartada depois de um Plan
+agent achar o custo real: ~20 medidas de `field-agenda.measures.yaml` citam
+`'FIELD AGENDA'` por nome dentro do DAX (nome de medida é global, teriam de
+duplicar), `specs/_catalog/relationships.yaml` é um arquivo só sem lugar para
+uma segunda aresta, e a página `visao-geral` filtra por
+`'FIELD AGENDA'[Data]` num card que nem lista a tabela em `entities_used`.
+Reapontar visual não seria trocar `entity`; seria auditar medidas,
+relacionamento e filtro de página em pelo menos 3 telas.
+
+**O desenho que ficou: UMA tabela, ARQUIVO trocado por baixo, por pedido.**
+Nenhuma spec de dashboard, medida ou relacionamento mudou. O que muda é qual
+arquivo de snapshot alimenta `FIELD AGENDA` numa carga específica:
+
+- **Nova query `field-agenda-slot`**
+  (`specs/_catalog/queries/field-agenda-slot.spec.yaml`, à mão — não existe
+  no PBIP, registrada em `docs/SPEC-DRIVEN.md`): mesmo SQL de `field-agenda`
+  em `v_service_desk_slots_productivity_informative`, mesma janela de 3
+  meses, mas troca o `LEFT JOIN reports/people/skills` por
+  `EXISTS (SELECT 1 FROM reports r WHERE r.assignment_id = ... AND r.title
+  NOT LIKE ...)` — preserva a EXISTÊNCIA da linha (o "LEFT JOIN que na
+  prática é INNER JOIN" que `docs/DECISAO-GRAO-FIELD-AGENDA.md` já
+  documentava) sem multiplicar por relato nem skill.
+- **`specs/_catalog/projecao.yaml` ganhou `grao_reduzido`** (mesmo arquivo
+  mantido à mão do `sob_demanda`, mesma validação "erra alto se faltar
+  campo"): declara, para `FIELD AGENDA`, `query_padrao: field-agenda-slot`,
+  `query_completa: field-agenda`, e as 7 `colunas_gatilho` que só existem no
+  lado com join (`ClassificacaoRelato`, `CategoriaProdutividade`,
+  `Descrição`, `Relato`, `Data Relato`, `Relator`, `Skill`).
+- **`carrega()`** (`packages/snapshot/src/carrega.ts`) resolve, por tabela
+  com entrada em `model.graoReduzido`, qual arquivo ler: `queryPadrao` por
+  padrão, `queryCompleta` só quando a tabela está no novo
+  `opts.precisaFormaCompleta`. `Dataset`/`Evaluator` não sabem que grão
+  existe — recebem uma tabela com menos linhas e menos colunas físicas,
+  exatamente como já tratam qualquer coluna omitida.
+- **`apps/api/src/servidor.ts`** decide por pedido: `sobDemandaDoVisual`
+  passou a varrer `v.fields` **e `v.filters`** (antes só fields — lacuna
+  real) contra `colunasGatilho`, e um novo `tabelasCompletasDaPagina` varre
+  filtro de PÁGINA. As tabelas que precisam da forma completa entram na
+  CHAVE DE CACHE junto com as colunas liberadas — sem isso, dois pedidos com
+  o mesmo `libera` mas grão diferente colidiriam no mesmo `Carregado` (bug
+  concreto, não hipotético, que a mudança fecha de graça).
+- **Erro alto preservado, mensagem melhor.** `Evaluator.columnValue`
+  (`packages/measure-engine/src/evaluator.ts`) já lançava `DaxEvalError`
+  para coluna do modelo ausente nos dados — confirmado por teste antes de
+  mexer em qualquer coisa. Só ganhou uma segunda frase citando
+  `grao_reduzido` quando a tabela tem entrada lá, para quem for debugar em
+  produção não precisar redescobrir o mecanismo.
+
+**Um gap real que só apareceu ao vivo.** `tools/snapshot/src/calculadas.ts`
+também chama `carrega()` — sem `precisaFormaCompleta`, passou a receber a
+forma enxuta por padrão e quebrou `Status Protocolo Dia`'s `Base Dia`
+(lê `'FIELD AGENDA'[Relato]`) com o `DaxEvalError` novo. O plano só previa
+`servidor.ts`; auditar os OUTROS chamadores de `carrega()` não estava na
+lista. Corrigido com um helper novo, `todaFormaCompleta(model)`
+(`carrega.ts`), aplicado a `calculadas.ts`, `layout/extrai.ts`,
+`layout/golden.ts`, `paridade/index.ts`, `paginas/index.ts` e
+`powerbi/index.ts` — todos ferramentas em lote sem contexto de pedido, que
+precisam de correção, não de velocidade. `tools/bench/src/carga.ts` foi
+deliberadamente deixado de fora (confirmado por grep: nunca avalia visual,
+só mede o tempo do próprio `carrega()` — é ele quem deve continuar medindo a
+forma rápida, que é a realidade nova).
+
+**Falso positivo pego por disciplina, não por sorte.** A primeira
+verificação `field-agenda-slot` vs. `field-agenda` (chave `Protocolo`+`Slot
+Agenda`) achou 77+24 chaves divergentes e 12 diferenças em
+`RankAtualProtocolo`. Em vez de concluir que o `EXISTS` estava errado,
+testei a hipótese de deriva de tempo — as duas materializações rodaram horas
+separadas contra um banco vivo, cada uma com sua própria janela deslizante
+de 3 meses. Rematerializando as duas de novo, ~65s uma da outra: **zero
+divergências** em tudo. O SQL nunca esteve errado; a comparação é que
+precisa ser feita perto no tempo.
+
+**Os números, medidos ao vivo (`agendamento-field`, banco real):**
+
+```
+carrega() forma padrão .... 484 ms  |   41.853 linhas
+carrega() forma completa .. 3.156 ms | 648.821 linhas
+```
+
+~6,5× mais rápido e ~15,5× menos linhas no caminho comum — mais linhas que
+os ~30 mil estimados no plano (a estimativa era um teto de slots distintos,
+não a contagem real pós-`EXISTS`; o número medido é este, não aquele).
+Através do HTTP de verdade (`servidor.ts`, sessão real via
+`POST /auth/interno`):
+
+```
+página inteira, sem ?visual= (fria após invalidar cache) ... 2,13 s
+mesmo pedido, quente ......................................... 45 ms
+visual 815c0959 (Protocolo, sem gatilho) ..................... 45 ms quente
+visual 084be384 (ClassificacaoRelato/Relato/Descrição) ....... 3,09 s fria, resolve certo, 42 ms quente
+```
+
+E o aquecedor de produção mediu `agendamento-field` em **0,70s a frio** no
+arranque — contra os "~2 min" que o próprio comentário de
+`apps/api/src/aquecedor.ts` registrava como o custo histórico da página sem
+reaquecimento.
+
+**Efeito colateral encontrado e corrigido, não regressão.** Rematerializar
+`field-agenda`/`field-agenda-slot` avançou o carimbo de "materialização mais
+recente das tabelas de origem" para o snapshot inteiro, e duas páginas sem
+relação nenhuma com `FIELD AGENDA` (`visao-geral`, `relatorio-do-mes`)
+passaram a responder 409 — `CALENDARIO CRIADO`/`CALENDARIO AGENDAMENTO`
+congeladas antes desse carimbo. É a guarda de idade (`confereIdadeDaCalculada`)
+funcionando exatamente como projetada: falha alta em vez de servir dado
+velho calado. Corrigido rodando
+`node tools/snapshot/src/calculadas.ts --todas`.
+
+**Verificação em navegador de verdade** (`npm run tela -- --pagina=agendamento-field`,
+Playwright + `/auth/interno`, o mesmo login sem Google que `tools/subir`
+usa): 8 combinações (2 temas × 4 resoluções), **0 problemas** — nenhum card
+mais alto que a tela, nenhuma rolagem horizontal, nenhum contraste abaixo de
+4,5:1.
+
+`npm test`: 1562/1562 (6 testes novos).
+
+**Fora de escopo, registrado para não esquecer:** `field-agenda`/
+`field-agenda-slot` em `specs/_catalog/refresh.yaml` (cadência automática);
+`PROTOCOLOS GERAL` como candidata ao mesmo padrão de grão reduzido (13
+colunas calculadas, achados #83/#85) — não investigado se tem o mesmo join
+multiplicador.
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória

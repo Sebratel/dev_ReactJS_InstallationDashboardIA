@@ -44,7 +44,7 @@ import { fileURLToPath } from 'node:url';
 import { SemanticModel, normalizeName } from '../../../packages/semantic-model/src/model.ts';
 import type { ModelTable } from '../../../packages/semantic-model/src/types.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { carrega } from '../../../packages/snapshot/src/carrega.ts';
+import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
@@ -353,6 +353,13 @@ if (emProcessoUnico.length > 0) {
     dashboards: alvo,
     now: new Date(),
     lerCalculadas: false,
+    // Sempre a forma COMPLETA de toda tabela com grão reduzido (ACHADOS #87) —
+    // este programa é o congelamento em lote, não um pedido de tela: não há
+    // latência a proteger, e uma coluna calculada (ex.: 'Status Protocolo
+    // Dia'[Base Dia], que lê 'FIELD AGENDA'[Relato]) pode legitimamente precisar
+    // do grão fino. Pedir a forma padrão aqui só trocaria "rápido e certo" por
+    // "rápido e errado alto no meio do congelamento".
+    precisaFormaCompleta: todaFormaCompleta(model),
   });
   console.error(`  carga: ${(Date.now() - tc).toLocaleString('pt-BR')} ms`);
 }

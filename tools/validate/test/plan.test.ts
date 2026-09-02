@@ -83,18 +83,21 @@ test('groupSkipped: agrupa por motivo', () => {
 
 // ------------------------------------------------------------ specs reais
 
-test('specs reais: o plano cobre as 18 queries SQL do PBIP', () => {
+test('specs reais: o plano cobre as 19 queries SQL do PBIP + grão reduzido', () => {
+  // 18 do PBIP + 1: `field-agenda-slot` (ACHADOS #87) não vem do PBIP — é a forma
+  // de grão de slot de `field-agenda`, SQL de mão registrada em
+  // docs/SPEC-DRIVEN.md. dbVoalle sobe de 15 para 16; dbMaria não muda.
   const registry = QueryRegistry.fromSpecsDir(SPECS);
   const plan = planValidation(registry.list(), { configured: [...EXECUTABLE_DATASOURCES] });
 
   assert.equal(plan.runnable.length + plan.skipped.length, registry.queries.size);
-  assert.equal(plan.runnable.length, 18, 'dbVoalle + dbMaria com SQL');
+  assert.equal(plan.runnable.length, 19, 'dbVoalle + dbMaria com SQL');
 
   const porFonte = new Map<string, number>();
   for (const item of plan.runnable) {
     porFonte.set(item.datasource, (porFonte.get(item.datasource) ?? 0) + 1);
   }
-  assert.equal(porFonte.get('dbVoalle'), 15);
+  assert.equal(porFonte.get('dbVoalle'), 16);
   assert.equal(porFonte.get('dbMaria'), 3);
 });
 

@@ -33,7 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { carrega } from '../../../packages/snapshot/src/carrega.ts';
+import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { calculaPagina } from '../../../apps/api/src/calcula.ts';
 
@@ -298,6 +298,7 @@ async function principal(): Promise<number> {
       model,
       dashboards: [dash],
       now: agora,
+      precisaFormaCompleta: todaFormaCompleta(model),
     });
     const pagina = calculaPagina(dash, ev, { de: 0, linhas: 1 });
     const porId = new Map(pagina.visuais.map((v) => [v.id, v]));

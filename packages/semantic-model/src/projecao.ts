@@ -82,3 +82,68 @@ export function sobDemandaLiberada(
   }
   return fora;
 }
+
+/**
+ * Uma tabela cujo GRÃO é reduzido por padrão — não coluna, LINHA.
+ *
+ * Mesmo espírito de `SobDemanda`, um nível acima: lá uma coluna fica fora da carga
+ * por decisão; aqui a tabela inteira carrega, por padrão, de uma query mais barata
+ * (menos linhas, sem os `JOIN`s que multiplicam) — e só escala para `queryCompleta`
+ * quando o pedido de fato toca uma das `colunasGatilho`. O caso que motivou isto é
+ * `FIELD AGENDA` (ACHADOS #82/#85/#86, `docs/DECISAO-GRAO-FIELD-AGENDA.md`): joins
+ * de relato/skill multiplicam ~30 mil slots em ~645 mil linhas, e a maioria dos
+ * visuais não precisa de nada além do slot.
+ */
+export interface GraoReduzido {
+  tabela: string;
+  queryPadrao: string;
+  queryCompleta: string;
+  colunasGatilho: string[];
+  decidido: string;
+  por: string;
+  porque: string;
+}
+
+/**
+ * Lê `specs/_catalog/projecao.yaml` — as tabelas com grão reduzido **por decisão**.
+ *
+ * Mesma validação loud de `leSobDemanda`: falta de qualquer campo é erro alto, não
+ * um `undefined` que vai aparecer como bug de desempenho três semanas depois.
+ */
+export function leGraoReduzido(specsDir: string): GraoReduzido[] {
+  const arq = path.join(specsDir, '_catalog', 'projecao.yaml');
+  if (!fs.existsSync(arq)) return [];
+  const spec = parseYaml(fs.readFileSync(arq, 'utf8')) as {
+    grao_reduzido?: Record<string, unknown>[];
+  };
+  const lista = spec.grao_reduzido ?? [];
+  const obrigatorios = ['tabela', 'query_padrao', 'query_completa', 'colunas_gatilho', 'decidido', 'por', 'porque'] as const;
+  for (const g of lista) {
+    for (const campo of obrigatorios) {
+      const v = g[campo];
+      if (v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0)) {
+        throw new Error(
+          `projecao.yaml: entrada de grao_reduzido sem '${campo}'. Toda tabela com grão ` +
+            `reduzido por decisão precisa da query padrão, da completa, do gatilho, de ` +
+            `quem decidiu, quando e por quê — senão vira mistério de desempenho na ` +
+            `próxima sessão.`,
+        );
+      }
+    }
+  }
+  return lista.map((g) => ({
+    tabela: g.tabela as string,
+    queryPadrao: g.query_padrao as string,
+    queryCompleta: g.query_completa as string,
+    colunasGatilho: g.colunas_gatilho as string[],
+    decidido: g.decidido as string,
+    por: g.por as string,
+    porque: g.porque as string,
+  }));
+}
+
+/** O grão reduzido de `tabela`, se houver — `null` significa "sempre completa". */
+export function graoReduzidoDe(tabela: string, lista: readonly GraoReduzido[]): GraoReduzido | null {
+  const alvo = normalizeName(tabela);
+  return lista.find((g) => normalizeName(g.tabela) === alvo) ?? null;
+}

@@ -25,7 +25,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { carrega } from '../../../packages/snapshot/src/carrega.ts';
+import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { calculaPagina, type VisualCalculado } from '../../../apps/api/src/calcula.ts';
 
@@ -98,6 +98,7 @@ for (const dash of alvo as DashboardSpec[]) {
       // Injetado e fixo dentro da execução: 25 das 121 expressões chamam `TODAY()`,
       // e um relatório que muda de resultado no meio da varredura não é conferível.
       now: AGORA,
+      precisaFormaCompleta: todaFormaCompleta(model),
     });
     const msCarga = Date.now() - t0;
     // Com `--visuais`, cada visual se anuncia ao terminar. Numa página de 40 minutos,

@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { aplicaDivergencias, leDivergencias, type Aplicada } from './divergencias.ts';
-import { leSobDemanda, type SobDemanda } from './projecao.ts';
+import { leGraoReduzido, leSobDemanda, type GraoReduzido, type SobDemanda } from './projecao.ts';
 import type { ModelColumn, ModelMeasure, ModelRelationship, ModelTable } from './types.ts';
 
 interface TableSpecFile {
@@ -89,6 +89,14 @@ export class SemanticModel {
    * esquecesse traria 350 MB de volta à memória sem ninguém notar.
    */
   sobDemanda: SobDemanda[] = [];
+  /**
+   * Tabelas cujo GRÃO (linha, não coluna) é reduzido por padrão.
+   *
+   * Vazio em modelo montado à mão. Ver `GraoReduzido` — o exemplo vivo é
+   * `FIELD AGENDA` (ACHADOS #82/#85/#86): a query padrão não tem os `JOIN`s que
+   * multiplicam relato/skill, e só escala para a completa quando o pedido precisa.
+   */
+  graoReduzido: GraoReduzido[] = [];
   /** Quantos relacionamentos de hierarquia automática de datas foram ignorados. */
   autoDateRelationshipsIgnored = 0;
 
@@ -166,6 +174,7 @@ export class SemanticModel {
     // alto aqui em vez de ser silenciosamente sobrescrita.
     model.divergencias = aplicaDivergencias(model, leDivergencias(specsDir));
     model.sobDemanda = leSobDemanda(specsDir);
+    model.graoReduzido = leGraoReduzido(specsDir);
 
     return model;
   }
