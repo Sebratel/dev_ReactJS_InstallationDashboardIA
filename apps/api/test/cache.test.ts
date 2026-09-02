@@ -371,7 +371,7 @@ async function escreveCapa(dir: string, geradoEm: string): Promise<void> {
     ['datahora', 'data', 'hora'],
     [linha],
   );
-  escreveManifesto(dir, [
+  await escreveManifesto(dir, [
     { query: 'hora-atualizado', tabelas: cab.tabelas, linhas: 1, colunas: 3, bytes: 200, geradoEm: cab.geradoEm },
   ]);
 }

@@ -33,6 +33,7 @@ import { pipeline } from 'node:stream/promises';
 // linha é exatamente o tipo de coisa que diverge sem ninguém notar. O que o
 // `Dataset` considera "normalizado" tem de ser o que esta leitura produz.
 import { normalizeName } from '../../semantic-model/src/model.ts';
+import { renomeiaComRetentativa } from './escrita-atomica.ts';
 
 /** Escalar que a camada M entrega (`toDatasetRows`) e o `Dataset` aceita. */
 export type Escalar = number | string | boolean | Date | null;
@@ -167,6 +168,16 @@ function decodifica(v: unknown, tipo: TipoDeColuna, onde: string): Escalar {
  * Grava a tabela. Streaming porque `field-agenda` tem 1,4 milhão de linhas:
  * montar o arquivo inteiro numa string antes de escrever dobra o pico de memória
  * justo na query que já é a mais pesada da base.
+ *
+ * **Atômica por dentro** (DEPLOY.md §4.2, ACHADOS #79): escreve em `${arquivo}.parcial`
+ * e só depois renomeia por cima do destino. Sem isto, `leCabecalho`/`le` que abrem
+ * `arquivo` durante a escrita viam o arquivo truncado no instante do `open` (flag
+ * `'w'` zera antes de escrever a primeira linha) — não uma janela de linha rasgada,
+ * o arquivo inteiro ausente pelo tempo todo da escrita. Toda chamada passa a ganhar
+ * isto de graça, inclusive as de `calculadas.ts` (`congelaIsolada` e o modo filho
+ * `--parcial=`), sem precisar de um segundo helper que alguém teria de lembrar de
+ * chamar — foi exatamente esquecer um passo separado que já quebrou este fluxo duas
+ * vezes (ACHADOS #53, #78).
  */
 export async function escreve(
   arquivo: string,
@@ -187,6 +198,7 @@ export async function escreve(
     colunas: apuradas,
   };
 
+  const temp = `${arquivo}.parcial`;
   await pipeline(
     (function* () {
       yield JSON.stringify(cabecalho) + '\n';
@@ -194,8 +206,9 @@ export async function escreve(
         yield JSON.stringify(apuradas.map((c) => codifica(linha[c.nome] ?? null, c.tipo))) + '\n';
       }
     })(),
-    fs.createWriteStream(arquivo, { encoding: 'utf8' }),
+    fs.createWriteStream(temp, { encoding: 'utf8' }),
   );
+  await renomeiaComRetentativa(temp, arquivo);
 
   return cabecalho;
 }

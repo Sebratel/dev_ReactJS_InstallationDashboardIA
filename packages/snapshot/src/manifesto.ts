@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { renomeiaComRetentativa } from './escrita-atomica.ts';
 
 /** Onde o snapshot mora por padrão, relativo à raiz do repositório. */
 export const DIRETORIO_PADRAO = 'snapshot';
@@ -54,10 +55,26 @@ export function leManifesto(dir: string): Manifesto | null {
 // medida de ~2,45 ms. Duas reescritas dentro dessa janela ficam indistinguíveis, e o
 // preço do erro é a API servir o número anterior ao refresh. Ver ACHADOS #69.
 
-export function escreveManifesto(dir: string, tabelas: EntradaDeManifesto[]): Manifesto {
+/**
+ * Atômica (DEPLOY.md §4.2, ACHADOS #79): grava em `manifesto.json.parcial`, `fsync`
+ * antes de fechar — o arquivo tem ~5 KB, o fsync custa ~1 ms, e é o que fecha a
+ * janela de queda de energia entre o rename e o dado estar de fato no disco — e só
+ * então renomeia por cima do destino, com novas tentativas se `leManifesto` de
+ * outro pedido tiver o arquivo aberto no instante exato (Windows/NTFS).
+ */
+export async function escreveManifesto(dir: string, tabelas: EntradaDeManifesto[]): Promise<Manifesto> {
   fs.mkdirSync(dir, { recursive: true });
   const m: Manifesto = { formato: 1, tabelas };
-  fs.writeFileSync(path.join(dir, MANIFESTO), JSON.stringify(m, null, 2) + '\n', 'utf8');
+  const destino = path.join(dir, MANIFESTO);
+  const temp = `${destino}.parcial`;
+  const fd = fs.openSync(temp, 'w');
+  try {
+    fs.writeSync(fd, JSON.stringify(m, null, 2) + '\n', null, 'utf8');
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
+  }
+  await renomeiaComRetentativa(temp, destino);
   return m;
 }
 

@@ -5908,6 +5908,53 @@ Voalle real: fetch de `capa --refazer` disparando o encadeamento das 7 tabelas
 calculadas, incluindo o modo isolado por coluna de `Status Protocolo Dia` (13.012
 linhas), ponta a ponta, exit 0. Commit `39e4ce6`, em `staging`. Ver `DEPLOY.md` §4.2.
 
+## #79 — No Windows, renomear por cima de um arquivo aberto para leitura falha sempre, não às vezes — e retentativa resolve
+
+**02/09/2026.** Seguindo o plano de atomicidade da escrita do snapshot (DEPLOY.md
+§2.2/§4.3), medi antes de decidir, em vez de supor: uma sonda local (`fs.openSync` e
+`fs.createReadStream` pausado, os dois jeitos como `formato.ts` lê, segurando um
+arquivo aberto enquanto outro processo tenta `fs.renameSync('<arquivo>.parcial',
+'<arquivo>')`) deu **100% de falha** (`EPERM`) em 600 tentativas (300 de cada
+variante). Não é caso raro do NTFS sob carga — é o comportamento normal. Com o mesmo
+handle fechado depois de um tempo realista de leitura (5–25 ms) e retentativa (3
+tentativas, 50 ms de espera), **100% de sucesso**, sempre na segunda tentativa.
+
+**Por que importava.** `packages/snapshot/src/formato.ts` gravava direto no arquivo
+final (`fs.createWriteStream(arquivo, {flags:'w'})`, que trunca no `open`) — quem lesse
+durante a escrita via arquivo ausente ou truncado, não uma linha rasgada: o arquivo
+inteiro, pelo tempo todo da escrita. E o único ponto que já fazia temp+rename
+(`tools/snapshot/src/index.ts`, a escrita das queries) fazia `fs.renameSync` sem
+nenhuma retentativa — exposto ao defeito medido acima sempre que um pedido de página
+estivesse lendo aquele `.jsonl` no instante exato de um refresh.
+
+**Conserto.** `packages/snapshot/src/escrita-atomica.ts` (novo):
+`renomeiaComRetentativa`, com 6 tentativas em backoff crescente (25 ms a 800 ms,
+~1,575 s de orçamento) só para `EPERM`/`EBUSY` — qualquer outro código de erro sobe na
+hora, sem esperar por algo que esperar não resolve. `escreve()` (`formato.ts`) passou a
+escrever em `.parcial` e renomear com retentativa **por dentro** — de graça para todo
+call-site, inclusive os dois de `calculadas.ts` que nunca tiveram proteção nenhuma
+contra isso. `escreveManifesto` (`manifesto.ts`) ganhou o mesmo tratamento, mais
+`fsync` antes do rename (o arquivo tem ~5 KB, o custo é ~1 ms, e fecha a janela de
+queda de energia entre o rename e o dado estar de fato no disco). `tools/snapshot/src/
+index.ts` perdeu o temp/rename manual que já tinha — vira só `escreve(arquivo, …)`.
+Testes novos em `packages/snapshot/test/escrita-atomica.test.ts` (lógica de
+retentativa, com a função de renomear injetada — sem depender de segurar um handle de
+verdade), `formato.test.ts` e `manifesto.test.ts` (handle real aberto, contra a função
+de produção — confirmados **vermelhos** antes do conserto, com o `.parcial` nunca
+aparecendo).
+
+**O que fica em aberto.** As esperas (25–800 ms) foram medidas contra leituras curtas
+(5–25 ms); não há dado real do tempo de leitura de um `.jsonl` de 60 MB sob carga, nem
+do comportamento do antivírus do servidor de deploy segurando um handle por mais tempo
+que isso — é exatamente a Sonda 2 do plano de atomicidade (30 min no servidor real,
+sob o Defender de verdade), que continua pendente por exigir a máquina de produção,
+não a de desenvolvimento. Sob carga alta e contínua também é teoricamente possível que
+um leitor novo sempre abra o arquivo antes do anterior fechar, esgotando as 6
+tentativas — não medido, e diferente do caso testado (um leitor por vez). Verificado
+ao vivo contra o Voalle real: `--pagina=capa --refazer`, exit 0, manifesto e as 7
+tabelas calculadas regravadas (incluindo o modo isolado por coluna de `Status
+Protocolo Dia`), zero `.parcial` órfão em `snapshot/`.
+
 ---
 
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto

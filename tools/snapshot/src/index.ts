@@ -321,17 +321,15 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
 
     const arquivo = arquivoDaQuery(saida, q.id);
     fs.mkdirSync(path.dirname(arquivo), { recursive: true });
-    // Grava num temporário e renomeia: um processo morto no meio da escrita deixa
-    // um arquivo com cabeçalho dizendo N linhas e menos que N gravadas. A leitura
-    // pega isso pela contagem, mas é melhor o arquivo ruim nunca tomar o nome bom.
-    const temp = `${arquivo}.parcial`;
+    // `escreve()` já grava em temporário e renomeia por dentro (packages/snapshot/src/
+    // formato.ts) — inclusive com novas tentativas se o destino estiver aberto por um
+    // leitor (Windows/NTFS, ver DEPLOY.md §4.2). Não duplicar o temp/rename aqui.
     const cab = await escreve(
-      temp,
+      arquivo,
       { query: q.id, tabelas: tabelasDaQuery(q.id), geradoEm: new Date().toISOString() },
       columns,
       rows,
     );
-    fs.renameSync(temp, arquivo);
 
     return {
       query: q.id,
@@ -581,7 +579,7 @@ for (const r of resultados) {
 const anterior = leManifesto(args.saida);
 const porQuery = new Map(anterior?.tabelas.map((e) => [e.query, e]) ?? []);
 for (const e of entradas) porQuery.set(e.query, e);
-const manifesto = escreveManifesto(args.saida, [...porQuery.values()].sort((a, b) => a.query.localeCompare(b.query)));
+const manifesto = await escreveManifesto(args.saida, [...porQuery.values()].sort((a, b) => a.query.localeCompare(b.query)));
 
 // ------------------------------------------------------------------ relatório
 const n = (v: number | null): string => (v === null ? '-' : v.toLocaleString('pt-BR'));

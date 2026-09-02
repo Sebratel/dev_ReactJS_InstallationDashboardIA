@@ -230,12 +230,12 @@ test('arquivo faltando erra alto nomeando a tabela, a query e o comando', async 
 // Manifesto
 // ---------------------------------------------------------------------------
 
-test('o manifesto diz a idade do dado mais antigo', () => {
+test('o manifesto diz a idade do dado mais antigo', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapman-'));
   const e = (query: string, geradoEm: string) => ({
     query, tabelas: [query], linhas: 1, colunas: 1, bytes: 10, geradoEm,
   });
-  const m = escreveManifesto(dir, [
+  const m = await escreveManifesto(dir, [
     e('b', '2026-08-07T10:00:00.000Z'),
     e('a', '2026-08-05T10:00:00.000Z'),
   ]);
@@ -263,18 +263,18 @@ test('o manifesto diz a idade do dado mais antigo', () => {
  * Quem confiasse nesse par serviria a resposta anterior ao refresh, sem nada na tela
  * dizendo que era a anterior.
  */
-test('o tamanho do manifesto não distingue dois refreshes', () => {
+test('o tamanho do manifesto não distingue dois refreshes', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapass-'));
   const e = (geradoEm: string) => ({
     query: 'a', tabelas: ['A'], linhas: 1, colunas: 1, bytes: 10, geradoEm,
   });
   const tamanho = (): number => fs.statSync(path.join(dir, 'manifesto.json')).size;
 
-  escreveManifesto(dir, [e('2026-08-07T11:00:00.000Z')]);
+  await escreveManifesto(dir, [e('2026-08-07T11:00:00.000Z')]);
   const antes = tamanho();
   const conteudoAntes = leManifesto(dir);
 
-  escreveManifesto(dir, [e('2026-08-07T18:00:00.000Z')]);
+  await escreveManifesto(dir, [e('2026-08-07T18:00:00.000Z')]);
 
   assert.notDeepEqual(leManifesto(dir), conteudoAntes, 'o conteúdo mudou de verdade');
   assert.equal(
@@ -531,9 +531,9 @@ test('dadoDe é a materialização mais ANTIGA entre as tabelas carregadas', asy
   assert.equal(dadoDe, '2026-08-05T09:00:00.000Z', 'q-pg é de 07/08 e q-ri de 05/08');
 });
 
-test('manifesto de outro formato erra alto', () => {
+test('manifesto de outro formato erra alto', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapman2-'));
-  escreveManifesto(dir, []);
+  await escreveManifesto(dir, []);
   const p = path.join(dir, 'manifesto.json');
   fs.writeFileSync(p, JSON.stringify({ formato: 9, tabelas: [] }));
   assert.throws(() => leManifesto(dir), /manifesto de formato 9, esperado 1/);

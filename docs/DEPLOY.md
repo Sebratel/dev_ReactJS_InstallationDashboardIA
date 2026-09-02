@@ -108,6 +108,13 @@ tela não diz "isto é de terça".
   velho. Consertado e verificado ao vivo; **ainda falta** o item em si (a tarefa
   agendada não existe — este parágrafo documenta um risco que se materializaria nela,
   não a tarefa).
+- **E a escrita em si não era segura rodar com a API no ar — também consertado.**
+  `ACHADOS.md` #79 / §4.3: no Windows, renomear o arquivo novo por cima do antigo
+  falhava **sempre** (medido: 100%) enquanto um pedido de página tinha aquele `.jsonl`
+  aberto para leitura. Com retentativa (`packages/snapshot/src/escrita-atomica.ts`),
+  100% de sucesso contra leituras de até 25 ms — mas **sem dado real** de quanto tempo
+  uma leitura leva sob carga real, nem do antivírus do servidor de deploy (Sonda 2 do
+  plano de atomicidade, ainda pendente por exigir a máquina de produção).
 
 ### 2.3 A paridade não está fechada
 
@@ -273,6 +280,42 @@ diretório sem pasta `test/` é um ponto cego, não uma ausência neutra.
   que falha se o módulo não carregar — o nível mais barato de proteção, e o que faltava
   aqui. Os quatro diretórios sem pasta `test/` (`auth`, `bench`, `paginas`, `probe`)
   continuam sem, por dependerem de banco/rede real — não é a mesma lacuna.
+
+### 4.3 A escrita do snapshot não era atômica — e no Windows a falha é de vez, não de vez em quando
+
+Achado separado do §4.2 (ali era corrupção por restauração ruim; aqui é uma corrida
+que sempre existiu na escrita), registrado em `ACHADOS.md` #79. Medido em 02/09/2026
+com uma sonda local: renomear `<arquivo>.parcial` por cima de `<arquivo>` no
+Windows/NTFS falha com `EPERM` **100% das vezes** enquanto outro processo tem
+`<arquivo>` aberto para leitura — não é o "caso raro" que o plano de atomicidade
+original supunha antes de medir. Com retentativa e espera crescente (25 ms a 800 ms),
+100% de sucesso contra leituras de 5–25 ms.
+
+`packages/snapshot/src/formato.ts` (`escreve()`) e `packages/snapshot/src/
+manifesto.ts` (`escreveManifesto`) ficaram atômicos por dentro — todo call-site ganha
+de graça, sem precisar de um segundo helper que alguém teria de lembrar de chamar. O
+manifesto também ganhou `fsync` antes do rename (arquivo pequeno, custo desprezível,
+fecha a janela de queda de energia). Verificado ao vivo: `--pagina=capa --refazer`
+contra o Voalle real, incluindo o modo isolado por coluna de `Status Protocolo Dia`.
+
+**Não fechado:**
+- **Sonda 2 do plano de atomicidade** — 30 min no servidor de deploy real, sob o
+  antivírus de verdade, não a máquina de desenvolvimento. As esperas acima (25–800 ms)
+  não têm dado real de leitura de um `.jsonl` de 60 MB sob carga nem de quanto tempo o
+  Defender pode segurar um handle.
+- **Sonda 4** — ACL entre a conta do Agendador de Tarefas (§2.2) e a conta da API,
+  também só verificável no host real.
+- Sob carga alta e contínua, é teoricamente possível que um leitor novo sempre abra o
+  arquivo antes do anterior fechar, esgotando as 6 tentativas (~1,575 s de orçamento) —
+  não medido; o caso medido foi um leitor por vez.
+- A "saída barata" do §2.2 (publicar queries e calculadas juntas, só depois do
+  congelamento) e a geração-com-ponteiro completa continuam não implementadas — isto
+  fecha a janela de **arquivo**, não a de **conjunto** (`confereIdadeDaCalculada`
+  ainda pode recusar página com 409 durante um refresh em andamento).
+
+- **Critério de saída desta seção:** Sonda 2 e Sonda 4 rodadas no servidor de deploy
+  real, sem falha de rename nem 5xx na API durante 30 min de refresh concorrente com
+  tráfego — hoje só a versão local (Sonda 1) foi medida.
 
 ## 5. O que **não** vai neste deploy, de propósito
 

@@ -166,3 +166,83 @@ test('leCabecalho não lê as linhas', async () => {
   assert.equal(cab.query, 'q');
   assert.deepEqual(cab.tabelas, ['T']);
 });
+
+// ---------------------------------------------------------------------------
+// Escrita atômica (DEPLOY.md §4.2, ACHADOS #79) — sonda local em 02/09/2026 mediu
+// 100% de falha (EPERM) ao renomear por cima de um arquivo aberto para leitura no
+// Windows/NTFS, sem retentativa. Estes dois testes usam o MESMO mecanismo da sonda
+// (handle aberto por `fs.openSync`, e por `fs.createReadStream` pausado) contra a
+// função de produção, não um script descartável.
+// ---------------------------------------------------------------------------
+
+/** Espera `.parcial` aparecer — prova que uma escrita nova já está em curso. */
+async function esperaParcial(arq: string, maxMs = 2000): Promise<void> {
+  const t0 = Date.now();
+  while (!fs.existsSync(`${arq}.parcial`)) {
+    if (Date.now() - t0 > maxMs) {
+      throw new Error(`${arq}.parcial nunca apareceu — escreve() atual não escreve num temporário.`);
+    }
+    await new Promise((r) => setImmediate(r));
+  }
+}
+
+test('escreve() não corrompe uma leitura já aberta (fs.openSync), e só publica depois dela', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl');
+  await escreve(arq, CAB, ['n'], [{ n: 1 }]);
+  const original = fs.readFileSync(arq, 'utf8');
+
+  const fd = fs.openSync(arq, 'r');
+  const escritaPromise = escreve(arq, CAB, ['n'], [{ n: 2 }]);
+  await esperaParcial(arq);
+
+  // Lê pelo handle ANTIGO enquanto a escrita nova está em curso. Tem de ver o
+  // conteúdo de antes, inteiro — nunca truncado nem misturado com o de agora.
+  const buf = Buffer.alloc(Buffer.byteLength(original));
+  const lidos = fs.readSync(fd, buf, 0, buf.length, 0);
+  assert.equal(buf.toString('utf8', 0, lidos), original);
+  fs.closeSync(fd);
+
+  await escritaPromise; // com o handle fechado, a retentativa consegue publicar
+  const depois = await le(arq);
+  assert.equal(depois.linhas[0]!.n, 2);
+});
+
+test('escreve() espera uma leitura em andamento terminar antes de publicar (createReadStream)', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl');
+  const muitas = Array.from({ length: 2000 }, (_, i) => ({ n: i }));
+  await escreve(arq, CAB, ['n'], muitas);
+  const original = fs.readFileSync(arq, 'utf8');
+
+  const chunks: Buffer[] = [];
+  let escritaPromise: Promise<unknown> | null = null;
+  await new Promise<void>((resolve, reject) => {
+    const s = fs.createReadStream(arq, { highWaterMark: 1024 });
+    let pausouUmaVez = false;
+    s.on('data', (chunk) => {
+      chunks.push(chunk as Buffer);
+      if (!pausouUmaVez) {
+        pausouUmaVez = true;
+        s.pause();
+        escritaPromise = escreve(arq, CAB, ['n'], [{ n: -1 }]);
+        esperaParcial(arq)
+          .then(() => setImmediate(() => s.resume()))
+          .catch(reject);
+      }
+    });
+    s.on('end', () => resolve());
+    s.on('error', reject);
+  });
+
+  const lidoAteAgora = Buffer.concat(chunks).toString('utf8');
+  assert.equal(
+    lidoAteAgora,
+    original,
+    'a leitura em andamento tem de terminar de ler o conteúdo de ANTES, inteiro — a escrita concorrente não pode atravessá-la',
+  );
+
+  await escritaPromise;
+  const depois = await le(arq);
+  assert.deepEqual(depois.linhas, [{ n: -1 }]);
+});
