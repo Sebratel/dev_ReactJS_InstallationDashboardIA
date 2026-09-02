@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { carrega } from '../src/carrega.ts';
-import { materializaColunas, materializaveis } from '../src/colunas-calculadas.ts';
+import { materializaColunas, materializaColunasPorGrao, materializaveis } from '../src/colunas-calculadas.ts';
 import { escreve, le, shaDeDax } from '../src/formato.ts';
 import { SemanticModel, type ModelColumn } from '../../semantic-model/src/model.ts';
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
@@ -98,6 +98,113 @@ test('coluna isolada que cita uma irmã calculada resolve a irmã sozinha (ACHAD
   const m = materializaColunas(model.table('T')!, model, linhas, AGORA, new Set(['dobro_mais_um']));
   assert.deepEqual(m.colunas, ['DOBRO_MAIS_UM'], 'só a pedida entra no retorno');
   assert.equal(linhas[0]!.DOBRO_MAIS_UM, 7, 'mas o valor está certo: a irmã foi resolvida por dentro');
+});
+
+// ─────────────────────────── grão reduzido (ACHADOS #86)
+
+test('materializaColunasPorGrao: calcula uma vez por grupo e copia para as duplicatas', () => {
+  const model = new SemanticModel();
+  model.addTable({
+    id: 't', name: 'T', queryRef: 'q-t',
+    columns: [
+      col('protocolo'), col('slot'), col('relato'),
+      col('DOBRO', { calculated: true, dax: "'T'[protocolo] * 2" }),
+    ],
+  });
+  // Duas "linhas de slot" (protocolo 10 e 20), cada uma multiplicada 3x por relato —
+  // exatamente a forma de field-agenda antes/depois dos joins de relato/skill.
+  const linhas: Record<string, unknown>[] = [];
+  for (const p of [10, 20]) for (const relato of ['r1', 'r2', 'r3']) linhas.push({ protocolo: p, slot: 1, relato });
+
+  const m = materializaColunasPorGrao(model.table('T')!, model, linhas as never, AGORA, ['protocolo', 'slot'], new Set(['dobro']));
+  assert.deepEqual(m.colunas, ['DOBRO']);
+  // Só a chave NORMALIZADA fica nas linhas aqui — de propósito (ver o comentário da
+  // função): a de exibição é reposta depois, por quem revisita a tabela inteira, pra
+  // não deixar `rows` com chave não normalizada bem no meio de duas adoções.
+  const dobro = (l: Record<string, unknown>) => l.dobro as number;
+  assert.ok(linhas.filter((l) => l.protocolo === 10).every((l) => dobro(l) === 20));
+  assert.ok(linhas.filter((l) => l.protocolo === 20).every((l) => dobro(l) === 40));
+  assert.equal(linhas[0]!.DOBRO, undefined, 'a de exibição NÃO fica — quebraria o adotaTabela seguinte');
+});
+
+test('materializaColunasPorGrao dá o MESMO resultado que materializaColunas no conjunto inteiro, com FILTER/RANKX (o caso real)', () => {
+  // Mesma forma de RankDataProtocolo/RankAtualProtocolo de FIELD AGENDA: um FILTER
+  // que a `Dataset` ADOTADA enxerga por inteiro. Isolar por grão só é seguro se o
+  // resultado bater com calcular sobre a tabela cheia, duplicada — é isto que este
+  // teste prova, não só o argumento de que "deveria bater".
+  const model = new SemanticModel();
+  model.addTable({
+    id: 't', name: 'T', queryRef: 'q-t',
+    columns: [
+      col('protocolo'), col('slot'), col('relato'),
+      col('RANK', {
+        calculated: true,
+        // O alias do SELECTCOLUMNS repete o nome de uma coluna que a tabela BASE já
+        // tem ("slot") de propósito: é exatamente o padrão do RankDataProtocolo real
+        // (alias "Data", que também é o nome de uma calculada de FIELD AGENDA) — com
+        // `valor` omitido, RANKX reavalia `expr` no escopo de FORA da tabela derivada
+        // para ranquear "o valor desta própria linha", e isso só resolve se existir
+        // uma coluna com esse nome na tabela de origem.
+        dax: `
+          VAR P = 'T'[protocolo]
+          VAR Slots = DISTINCT(SELECTCOLUMNS(FILTER('T', 'T'[protocolo] = P), "slot", 'T'[slot]))
+          RETURN RANKX(Slots, [slot], , ASC, DENSE)
+        `,
+      }),
+      col('RANK_MAX', { calculated: true, dax: "CALCULATE(MAX('T'[RANK]), FILTER('T', 'T'[protocolo] = 'T'[protocolo]))" }),
+    ],
+  });
+  const base: Record<string, unknown>[] = [];
+  for (const p of [1, 2]) {
+    for (const slot of [5, 3, 5, 3, 7]) {
+      for (const relato of ['a', 'b']) base.push({ protocolo: p, slot, relato });
+    }
+  }
+  const viaGrao = base.map((r) => ({ ...r }));
+  const viaCheio = base.map((r) => ({ ...r }));
+
+  const mGrao = materializaColunasPorGrao(model.table('T')!, model, viaGrao as never, AGORA, ['protocolo', 'slot'], new Set(['rank', 'rank_max']));
+  const mCheio = materializaColunas(model.table('T')!, model, viaCheio as never, AGORA, new Set(['rank', 'rank_max']));
+
+  assert.deepEqual(mGrao.colunas.sort(), mCheio.colunas.sort());
+  // Comparando pela chave NORMALIZADA nos dois lados: `viaGrao` só tem essa (a de
+  // exibição é reposta depois, pela passada seguinte que este teste não chama);
+  // `viaCheio` tem as duas, mas a normalizada é a que os dois têm em comum.
+  assert.deepEqual(
+    viaGrao.map((r) => (r as never as { rank: number }).rank),
+    viaCheio.map((r) => (r as never as { rank: number }).rank),
+  );
+  assert.deepEqual(
+    viaGrao.map((r) => (r as never as { rank_max: number }).rank_max),
+    viaCheio.map((r) => (r as never as { rank_max: number }).rank_max),
+  );
+});
+
+test('depois de materializaColunasPorGrao, uma segunda passada na tabela INTEIRA não quebra (adotaTabela exige chave normalizada)', () => {
+  // Reproduz o defeito real, achado ao vivo contra field-agenda: `Data`/
+  // `RankAtualProtocolo`/etc. (grão reduzido) e `ClassificacaoRelato`/
+  // `CategoriaProdutividade` (grão fino) são calculadas em DUAS chamadas
+  // separadas — a segunda (aqui, `materializaColunas` sem filtro, como
+  // `materializaColunasDaTabela` faz) chama `dataset.adotaTabela` de novo, e ele
+  // erra alto se QUALQUER linha tiver sobrado com chave de exibição.
+  const model = new SemanticModel();
+  model.addTable({
+    id: 't', name: 'T', queryRef: 'q-t',
+    columns: [
+      col('protocolo'), col('slot'), col('relato'),
+      col('DOBRO', { calculated: true, dax: "'T'[protocolo] * 2" }),
+      col('RELATO_MAIUSCULO', { calculated: true, dax: "'T'[relato] & \"!\"" }),
+    ],
+  });
+  const linhas: Record<string, unknown>[] = [];
+  for (const p of [10, 20]) for (const relato of ['r1', 'r2', 'r3']) linhas.push({ protocolo: p, slot: 1, relato });
+
+  materializaColunasPorGrao(model.table('T')!, model, linhas as never, AGORA, ['protocolo', 'slot'], new Set(['dobro']));
+  // Não pode lançar: se sobrou chave 'DOBRO' (exibição) em qualquer linha, quebra aqui.
+  const m2 = materializaColunas(model.table('T')!, model, linhas as never, AGORA);
+  assert.deepEqual(m2.colunas.sort(), ['DOBRO', 'RELATO_MAIUSCULO']);
+  assert.equal(linhas[0]!.DOBRO, 20, 'a de exibição é reposta por esta segunda passada');
+  assert.equal(linhas[0]!.RELATO_MAIUSCULO, 'r1!');
 });
 
 test('o sha ignora reindentação, mas não mudança de conta', () => {

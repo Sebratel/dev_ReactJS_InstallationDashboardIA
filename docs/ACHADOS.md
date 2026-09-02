@@ -6335,6 +6335,109 @@ a esta sessão; fora de escopo, registrado para decisão própria.
 
 `npm test`: 1553/1553 (2 testes novos).
 
+## #86 — `field-agenda` de 958s para 21s: a causa era o grão duplicado (relato × skill), não o processo. `RankDataProtocolo`/`RankAtualProtocolo` calculadas por grão reduzido
+
+**02/09/2026, resposta ao #85.** O #85 fechou dizendo que o custo de
+`RankAtualProtocolo` (864s sozinha) era "intrínseco ao próprio DAX" e que "só
+um DAX diferente... resolveria". Isso era verdade sobre o DAX rodando no
+CONJUNTO ERRADO de linhas — não sobre o DAX em si.
+
+**O que já estava escrito e não tinha sido lido até agora:**
+`docs/DECISAO-GRAO-FIELD-AGENDA.md` (12/08/2026) já tinha mapeado que os
+`LEFT JOIN`s de `reports`/`people`/`skills` multiplicam cada **slot** por
+(**relato** × **skill**) — é esse join, não o volume de histórico, que infla
+a tabela para 643-645 mil linhas. E o documento já provava, coluna por
+coluna, que `Turno`/`Status SLA` "saem de `vsdspi` (grão de slot)". Nunca foi
+aplicado às duas colunas mais caras porque o documento tratava de OUTRO
+problema (agregação para os VISUAIS, passo 4 da `DECISAO-DESEMPENHO`) — a
+pergunta desta sessão era sobre COLUNAS CALCULADAS, e ninguém tinha cruzado
+os dois antes de medir.
+
+**A prova, coluna por coluna.** Das 7 calculadas de `FIELD AGENDA`, 5 só
+citam campos de origem `vsdspi` (o lado SEM os joins): `Data`
+(`DATEVALUE([Slot Agenda])`), `RankDataProtocolo`/`RankAtualProtocolo`
+(`[Protocolo]`+`[Slot Agenda]`), `Turno` (`[Slot Agenda]`), `Status SLA`
+(`[Prazo SLA]`). Só `ClassificacaoRelato`/`CategoriaProdutividade` citam
+`[Relato]`, que vem de `reports` — essas continuam precisando do grão fino.
+
+**Por que calcular uma vez por slot e copiar é EXATO, não aproximado.**
+Duas linhas iguais em toda coluna de origem `vsdspi` são, por construção do
+`LEFT JOIN`, a MESMA linha de origem antes dos joins — qualquer DAX que só
+cite essas colunas dá o mesmo valor nas duas, sempre. E as duas colunas mais
+caras têm uma segunda garantia, agora comprovada por medição (não só
+argumento): `RankDataProtocolo` passa as linhas por `DISTINCT` antes do
+`RANKX` — duplicar uma linha do grupo filtrado não muda o `DISTINCT` — e
+`RankAtualProtocolo` agrega com `MAX`, que é idempotente sob duplicação.
+
+**Construído:** `materializaColunasPorGrao()`
+(`packages/snapshot/src/colunas-calculadas.ts`) — agrupa linhas por uma
+CHAVE de colunas físicas, chama `materializaColunas` só na primeira linha de
+cada grupo, copia o valor para as demais. `tools/snapshot/src/index.ts`
+ganhou `GRAO_REDUZIDO_DE`, um `Map` explícito (não inferido por AST — uma
+lista errada aqui produz número errado calado, e "confira à mão contra o
+SQL" é mais seguro que "confie na análise automática" quando o preço de
+errar é esse) declarando, para `field-agenda`, a chave (as 14 colunas de
+`vsdspi`) e as 5 colunas elegíveis. Roda ANTES do caminho normal
+(`materializaColunasDaTabela`), que continua computando o resto
+(`ClassificacaoRelato`/`CategoriaProdutividade`) sobre a tabela inteira —
+sem filtro nenhum passado a ele, porque `columnValue` já devolve as 5
+grão-reduzidas na hora (memoizadas), de graça.
+
+**Um bug pego pelo próprio teste antes da medição ao vivo.** `Dataset.
+adotaTabela()` erra alto se qualquer linha tiver chave não normalizada
+(`dataset.ts:78-97` — "sem isso o avaliador não acharia a coluna e
+devolveria BLANK, calado"). A primeira versão do broadcast escrevia a chave
+de EXIBIÇÃO (`row['Data']`) além da normalizada, e como as representantes
+SÃO as próprias linhas de `rows` (mesma referência, para não copiar 645 mil
+linhas), essa chave vazava para o array inteiro — e a chamada seguinte
+(`materializaColunasDaTabela`, que revisita a tabela inteira para as duas
+colunas de grão fino) quebrava o `adotaTabela` com "a chave 'Data' não está
+normalizada". Reproduzido ao vivo primeiro (a mensagem de erro é literal),
+corrigido apagando a chave de exibição das representantes logo após
+calculá-las — quem repõe, para TODAS as linhas de uma vez, é a passada
+seguinte, que sempre roda depois. Um teste novo reproduz exatamente esta
+sequência (`depois de materializaColunasPorGrao, uma segunda passada não
+quebra`) para não voltar.
+
+**Validado em duas camadas antes de confiar no número:**
+
+1. **Sintético, com o padrão real de DAX** — `FILTER`+`DISTINCT`+`RANKX` e
+   `CALCULATE`+`MAX`, a MESMA forma de `RankDataProtocolo`/
+   `RankAtualProtocolo` — comparando `materializaColunasPorGrao` contra
+   `materializaColunas` no conjunto INTEIRO duplicado. Resultado idêntico,
+   não só argumentado (`colunas-calculadas.test.ts`).
+2. **No dado real, pós-materialização** — amostra de 300 protocolos
+   (17.731 linhas) do `field-agenda.jsonl` recém-gravado, recalculando
+   `RankDataProtocolo`/`RankAtualProtocolo` por FORÇA BRUTA
+   (`materializaColunas` direto, sem grão) e comparando contra o valor que
+   o grão reduzido gravou. **Zero divergências.**
+
+**O número, medido ao vivo (não o mesmo dia do #85 — o dado mudou, 645.664
+linhas contra 643.797, mas a ordem de grandeza do ganho é o que importa):**
+
+```
+5 coluna(s) calculada(s) por grão reduzido em 4.621 ms
+7 coluna(s) calculada(s) em 16.539 ms          <- as 2 de grão fino + revisita grátis das 5
+```
+
+Total das colunas calculadas: **21.160 ms** — contra os **958.194 ms**
+(quase 16 min) do #82, e os **1.134.756 ms** (pior ainda) da isolação por
+processo do #85. **~45× mais rápido que o caminho original, sem nenhum
+processo a mais** — é ganho de algoritmo (varrer ~11 mil protocolos em vez
+de 645 mil linhas), não de paralelismo. `field-agenda` inteira (busca + M +
+colunas + escreve): **79.290 ms** — contra os ~22 minutos documentados no
+#82.
+
+**Isto não substitui o mecanismo do #85** (`--isolar-colunas`, agora
+provavelmente sem uso para `field-agenda` — o gargalo que ele mirava
+sumiu). Continua disponível para `protocolos-geral` ou outra tabela onde a
+causa seja de fato processo compartilhado, não grão duplicado — e vale
+checar SE `protocolos-geral` tem o mesmo padrão de joins multiplicadores
+antes de tentar isolar por processo de novo: se tiver, `GRAO_REDUZIDO_DE`
+é provavelmente o remédio certo lá também.
+
+`npm test`: 1556/1556 (4 testes novos).
+
 ---
 
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto

@@ -26,6 +26,7 @@ import { walk } from '../../measure-engine/src/ast.ts';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
 import { shaDeDax, type Escalar } from './formato.ts';
+import { digito } from './tabelas-calculadas.ts';
 
 /** Uma coluna calculada que dá para materializar aqui. */
 export interface ColunaMaterializavel {
@@ -133,4 +134,82 @@ export function materializaColunas(
     daxSha.set(c.nome, shaDeDax(c.dax));
   }
   return { colunas, daxSha, ms: Date.now() - inicio };
+}
+
+/** A identidade de uma linha pelas colunas dadas — mesmo convenção de `digito`. */
+function chaveDeLinha(linha: Record<string, Escalar>, colunasNormalizadas: readonly string[]): string {
+  const partes = new Array<string>(colunasNormalizadas.length);
+  for (let i = 0; i < colunasNormalizadas.length; i++) partes[i] = digito(linha[colunasNormalizadas[i]!] ?? null);
+  return partes.join('');
+}
+
+/**
+ * Calcula colunas calculadas sobre UMA linha por grupo de `chave`, e copia o valor
+ * para as demais do grupo — em vez de recalcular linha por linha.
+ *
+ * **Correção, não heurística — e quem chama garante a condição, não esta função.**
+ * Só é seguro pedir aqui uma coluna cujo DAX só cite (direta ou transitivamente, via
+ * outra calculada da mesma tabela) colunas que estão em `chave`: duas linhas iguais
+ * nelas produzem, por definição de DAX (mesmo contexto de linha), o mesmo resultado.
+ * O caso que motivou isto é `field-agenda` (ACHADOS #86,
+ * `docs/DECISAO-GRAO-FIELD-AGENDA.md`): os `LEFT JOIN`s de relato/skill multiplicam
+ * cada slot, e `RankDataProtocolo`/`RankAtualProtocolo` só citam colunas de antes
+ * desses joins — `DISTINCT` (dentro do RANKX) e `MAX` são idempotentes sob
+ * duplicação, então o valor por slot é idêntico ao valor por linha duplicada, só que
+ * ~20× mais barato de obter (a `FILTER` interna enxerga a tabela ADOTADA, que aqui é
+ * só as linhas representantes — sem os JOIN de relato/skill).
+ *
+ * Não há verificação automática de que a condição vale — isso exigiria a mesma
+ * análise de AST de `outrasTabelas`, agora sobre COLUNAS em vez de TABELAS, e uma
+ * lista errada aqui produz número errado calado. Quem declara `chave`/`colunas`
+ * confere à mão contra o SQL de origem (é o que `tools/snapshot/src/index.ts` faz).
+ */
+export function materializaColunasPorGrao(
+  t: ModelTable,
+  model: SemanticModel,
+  linhas: Record<string, Escalar>[],
+  agora: Date,
+  chave: readonly string[],
+  somenteColunas: ReadonlySet<string>,
+): Materializadas {
+  const inicio = Date.now();
+  if (linhas.length === 0) return { colunas: [], daxSha: new Map(), ms: 0 };
+
+  const chaveNorm = chave.map(normalizeName);
+  const grupos = new Map<string, number[]>();
+  for (let i = 0; i < linhas.length; i++) {
+    const k = chaveDeLinha(linhas[i]!, chaveNorm);
+    const idxs = grupos.get(k);
+    if (idxs) idxs.push(i);
+    else grupos.set(k, [i]);
+  }
+
+  // Uma linha por grupo — a PRÓPRIA linha, não cópia: `materializaColunas` memoiza
+  // nela, e é essa mesma linha (a primeira do grupo) que fica com o valor certo sem
+  // precisar de broadcast nenhum.
+  const representantes = [...grupos.values()].map((idxs) => linhas[idxs[0]!]!);
+  const m = materializaColunas(t, model, representantes, agora, somenteColunas);
+  if (m.colunas.length === 0) return { colunas: [], daxSha: new Map(), ms: Date.now() - inicio };
+
+  // `materializaColunas` grava sob o nome de EXIBIÇÃO além do normalizado (é o que
+  // permite a `escreve()` ler a coluna mais adiante) — mas isto é chamado antes de
+  // `materializaColunasDaTabela` revisitar a tabela inteira, e o `adotaTabela` DELA
+  // exige toda linha só com chave normalizada (`dataset.ts`, "a chave não está
+  // normalizada"). Como as representantes SÃO linhas de `linhas` (mesma referência),
+  // a chave de exibição vazaria para o array inteiro e quebraria essa adoção
+  // seguinte. Solução: tirar a de exibição daqui — quem a repõe, para TODAS as
+  // linhas de uma vez, é a passada seguinte (que sempre roda depois desta).
+  for (const repr of representantes) for (const nome of m.colunas) delete repr[nome];
+
+  const chavesCalc = m.colunas.map(normalizeName);
+  for (const idxs of grupos.values()) {
+    if (idxs.length < 2) continue; // a representante já é a única do grupo
+    const repr = linhas[idxs[0]!]!;
+    for (let k = 0; k < m.colunas.length; k++) {
+      const ck = chavesCalc[k]!;
+      const v = repr[ck] as Escalar;
+      for (let j = 1; j < idxs.length; j++) linhas[idxs[j]!]![ck] = v;
+    }
+  }
+  return { colunas: m.colunas, daxSha: m.daxSha, ms: Date.now() - inicio };
 }

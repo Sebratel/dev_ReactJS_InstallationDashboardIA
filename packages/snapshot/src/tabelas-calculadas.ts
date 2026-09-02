@@ -67,7 +67,8 @@ export function shaDasChaves(
   return h.digest('hex').slice(0, 16);
 }
 
-function digito(v: Escalar): string {
+/** Tipo entra no dígito para não confundir `1` (número) com `"1"` (texto). */
+export function digito(v: Escalar): string {
   if (v === null) return 'n:';
   if (v instanceof Date) return `d:${v.getTime()}`;
   if (typeof v === 'number') return `f:${v}`;
