@@ -115,6 +115,16 @@ tela não diz "isto é de terça".
   100% de sucesso contra leituras de até 25 ms — mas **sem dado real** de quanto tempo
   uma leitura leva sob carga real, nem do antivírus do servidor de deploy (Sonda 2 do
   plano de atomicidade, ainda pendente por exigir a máquina de produção).
+- **A carga incremental foi ligada ao materializador de verdade** (`ACHADOS.md` #80)
+  — `--incremental` decide, costura o SQL, busca só a janela e mescla com o que já
+  está em disco, em vez de só imprimir um relatório que nunca correspondia à busca
+  real. **Mas a única query com política (`protocolos-produtividade`) não materializa
+  em nenhum modo hoje** — `ACHADOS.md` #81: SQL e M calculam as mesmas três colunas
+  (colisão), e o full-fetch passou do teto de 600 s (era 190,3 s em 25/08/2026, 3,15×
+  mais caro agora). **A cadência rápida que a Frente de automação prometia para esta
+  query (grupo F: "hoje 1×/dia, depois medido de novo") continua bloqueada** — não
+  pela fiação da incremental, que já está pronta, mas por estes dois defeitos
+  anteriores e independentes dela.
 
 ### 2.3 A paridade não está fechada
 

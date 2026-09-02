@@ -96,6 +96,23 @@ export interface CabecalhoDeSnapshot {
    * tabela toda, porque mudar o corpo dela muda **quais linhas existem**.
    */
   tabelaSha?: string;
+  /**
+   * Marca d'água: o maior valor entre as colunas de `marca` da política incremental
+   * (`specs/_catalog/incremental.yaml`), como ISO UTC. Ausente em query sem política.
+   * É o que `decideIncremental` (ver `incremental.ts`) lê do arquivo anterior para
+   * decidir de onde uma próxima carga incremental recomeça.
+   */
+  marca?: string;
+  /** Como este arquivo foi produzido. Ausente em query sem política — não há o que dizer. */
+  modo?: 'completo' | 'incremental';
+  /**
+   * ISO UTC da última carga COMPLETA. Numa carga incremental, herda o valor do
+   * arquivo anterior — só uma completa nova o avança. É o relógio que
+   * `decideIncremental` mede contra `idade_maxima_dias`: uma corrente de
+   * incrementais mantém `geradoEm` sempre novo e ficaria cega para isso sem este
+   * campo separado.
+   */
+  completoEm?: string;
 }
 
 /** Etiquetas de valor em coluna `misto`. Uma letra para não engordar o arquivo. */

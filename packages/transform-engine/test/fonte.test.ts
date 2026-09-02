@@ -157,6 +157,43 @@ test('forceRefresh chega no Engine', async () => {
   assert.deepEqual(vistos, [{ id: 'q', options: { forceRefresh: true } }]);
 });
 
+test('paramsPorQuery chega no Engine para a query certa — é como a carga incremental injeta :desde', async () => {
+  const vistos: unknown[] = [];
+  const eng: ExecutorDeQuery = {
+    async execute(id, options) {
+      vistos.push({ id, options });
+      return { rows: [] };
+    },
+  };
+  await fonteDoEngine(eng, { paramsPorQuery: { q: { desde: '2026-08-18' } } })(spec());
+  assert.deepEqual(vistos, [
+    { id: 'q', options: { forceRefresh: undefined, params: { desde: '2026-08-18' } } },
+  ]);
+});
+
+test('paramsPorQuery NÃO vaza para uma query dependente que não está no mapa', async () => {
+  // O bug real: protocolos-produtividade cita alocacao-patrimonio como dependência
+  // no M, e as duas passam pela MESMA fonte. Um params global aplicaria :desde
+  // também na consulta de alocacao-patrimonio, que não foi costurada — e
+  // traduzParametros erraria "parâmetro sem uso no SQL", corretamente.
+  const vistos: unknown[] = [];
+  const eng: ExecutorDeQuery = {
+    async execute(id, options) {
+      vistos.push({ id, options });
+      return { rows: [] };
+    },
+  };
+  const fonte = fonteDoEngine(eng, {
+    paramsPorQuery: { 'protocolos-produtividade': { desde: '2026-08-18' } },
+  });
+  await fonte(spec({ id: 'protocolos-produtividade' }));
+  await fonte(spec({ id: 'alocacao-patrimonio' }));
+  assert.deepEqual(vistos, [
+    { id: 'protocolos-produtividade', options: { forceRefresh: undefined, params: { desde: '2026-08-18' } } },
+    { id: 'alocacao-patrimonio', options: { forceRefresh: undefined } },
+  ]);
+});
+
 // ───────────────────────────────────────────── ponta a ponta com o M real
 
 /** M da spec gerada, sem reescrever nada. */

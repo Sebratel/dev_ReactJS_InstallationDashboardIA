@@ -16,6 +16,8 @@ import {
   lePoliticas,
   marcaDe,
   mescla,
+  planejaBusca,
+  type CabecalhoAnterior,
   type PoliticaIncremental,
 } from '../src/incremental.ts';
 
@@ -351,4 +353,68 @@ test('o sql: de protocolos-produtividade é cópia FIEL do SQL de produção em 
   for (const marca of ['ramo_produtividade AS (', 'ramo_auxiliares AS (', 'UNION ALL', '"INSTALADOR"']) {
     assert.ok(sql.includes(marca), `o SQL perdeu \`${marca}\` — é o append dos dois ramos`);
   }
+});
+
+// ----------------------------------------------------------------- planejaBusca
+
+const SQL_ORIGINAL = 'SELECT * FROM x WITH bruto AS (SELECT 1)';
+const CAB_BOM: CabecalhoAnterior = {
+  marca: '2026-08-25T00:00:00.000Z',
+  completoEm: '2026-08-25T19:34:00.000Z',
+  geradoEm: '2026-08-25T19:34:00.000Z',
+};
+
+test('planejaBusca: sem política é sempre completo, mesmo pedindo incremental', () => {
+  const { plano, aviso } = planejaBusca(SQL_ORIGINAL, CAB_BOM, undefined, d('2026-09-01'), true);
+  assert.equal(plano.modo, 'completo');
+  assert.equal(plano.sql, SQL_ORIGINAL);
+  assert.deepEqual(plano.params, {});
+  assert.equal(plano.corte, null);
+  assert.equal(aviso, null);
+});
+
+test('planejaBusca: com política mas sem --incremental, continua completo — a intenção é do operador', () => {
+  const { plano, aviso } = planejaBusca(SQL_ORIGINAL, CAB_BOM, POLITICA, d('2026-09-01'), false);
+  assert.equal(plano.modo, 'completo');
+  assert.equal(plano.sql, SQL_ORIGINAL, 'não costura sem --incremental');
+  assert.equal(aviso, null);
+});
+
+test('planejaBusca: sem arquivo anterior é sempre completo, sem aviso — é a primeira carga', () => {
+  const { plano, aviso } = planejaBusca(SQL_ORIGINAL, null, POLITICA, d('2026-09-01'), true);
+  assert.equal(plano.modo, 'completo');
+  assert.equal(aviso, null, 'primeira carga não é uma recusa — é o estado esperado');
+});
+
+test('planejaBusca: política + --incremental + arquivo bom decide incremental de verdade', () => {
+  const { plano, aviso } = planejaBusca(SQL_ORIGINAL, CAB_BOM, POLITICA, d('2026-09-01'), true);
+  assert.equal(aviso, null);
+  assert.equal(plano.modo, 'incremental');
+  assert.ok(plano.sql.includes(':desde'), 'o SQL tem de estar costurado');
+  assert.notEqual(plano.sql, SQL_ORIGINAL);
+  // marca (25/08) - margemDias (2) = 23/08, e desdeDe já é testado à parte —
+  // aqui o que importa é que o valor CHEGA em params sob o nome certo.
+  assert.equal(plano.params.desde, '2026-08-23');
+  assert.ok(plano.corte instanceof Date);
+  assert.equal(plano.corte!.toISOString().slice(0, 10), '2026-08-23');
+  assert.equal(plano.completoEm, CAB_BOM.completoEm, 'herda a data da última completa, não avança');
+});
+
+test('planejaBusca: idade estourada recusa e volta pra completo, com o motivo no aviso', () => {
+  const cabVelho: CabecalhoAnterior = {
+    marca: '2026-08-01T00:00:00.000Z',
+    completoEm: '2026-08-01T00:00:00.000Z', // > 7 dias antes de 2026-09-01: teto de POLITICA
+    geradoEm: '2026-08-01T00:00:00.000Z',
+  };
+  const { plano, aviso } = planejaBusca(SQL_ORIGINAL, cabVelho, POLITICA, d('2026-09-01'), true);
+  assert.equal(plano.modo, 'completo');
+  assert.equal(plano.sql, SQL_ORIGINAL);
+  assert.match(aviso!, /incremental recusada/);
+  assert.match(aviso!, /teto/);
+});
+
+test('planejaBusca: carga completa (com política) grava completoEm = agora, não herda', () => {
+  const { plano } = planejaBusca(SQL_ORIGINAL, CAB_BOM, POLITICA, d('2026-09-01T12:00:00.000Z'), false);
+  assert.equal(plano.modo, 'completo');
+  assert.equal(plano.completoEm, '2026-09-01T12:00:00.000Z');
 });

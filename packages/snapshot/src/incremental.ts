@@ -359,3 +359,75 @@ export function mescla(opts: {
 
   return { linhas, substituidas, sumidas, mantidas, novas: opts.novas.length };
 }
+
+// ---------------------------------------------------------------------- plano
+
+/** O que buscar, e como gravar o cabeçalho depois — a fiação entre decisão e busca. */
+export interface PlanoDeBusca {
+  /** SQL a executar: costurado (incremental) ou o original, sem alteração (completo). */
+  sql: string;
+  /** Parâmetros nomeados do SQL (`:desde` etc.). Vazio em carga completa. */
+  params: Record<string, unknown>;
+  modo: 'completo' | 'incremental';
+  /** Início da janela reentregue — só em modo incremental. `mescla()` usa como `corte`. */
+  corte: Date | null;
+  /** Vai para `CabecalhoDeSnapshot.completoEm`. */
+  completoEm: string;
+}
+
+/**
+ * Decide COMO buscar — a costura de `materializa()` com o resto de `incremental.ts`.
+ *
+ * Função pura de propósito, pela mesma razão de `decideIncremental`: a decisão de
+ * qual SQL rodar não pode só ser exercitável rodando contra o `dbVoalle` de verdade.
+ *
+ * **Sem política, ou sem pedido de incremental, é sempre carga completa** — mesmo
+ * que o arquivo anterior exista e tenha marca. Isso é intencional: `--incremental`
+ * é a intenção do OPERADOR (ver o comentário em `tools/snapshot/src/index.ts` sobre
+ * `rodaEmSubprocesso`), não algo que a ferramenta decide sozinha por a política
+ * existir — um `npm run snapshot -- --query=x --refazer` sem `--incremental` deve
+ * continuar buscando tudo, do jeito que sempre buscou.
+ *
+ * **Sem arquivo anterior, é sempre carga completa** — não há de onde `decideIncremental`
+ * partir. É a primeira carga da query, e a primeira carga não tem o que ser incremental.
+ *
+ * Mesmo em carga completa, quando a query TEM política, o cabeçalho ainda precisa de
+ * `modo: 'completo'` e `completoEm: agora` — é o que dá a uma carga incremental FUTURA
+ * algo de onde partir. Sem isso, toda query com política ficaria presa em
+ * "sem arquivo anterior" para sempre.
+ */
+export function planejaBusca(
+  sqlOriginal: string,
+  cabAnterior: CabecalhoAnterior | null,
+  politica: PoliticaIncremental | undefined,
+  agora: Date,
+  tentarIncremental: boolean,
+): { plano: PlanoDeBusca; aviso: string | null } {
+  const completo = (aviso: string | null): { plano: PlanoDeBusca; aviso: string | null } => ({
+    plano: {
+      sql: sqlOriginal,
+      params: {},
+      modo: 'completo',
+      corte: null,
+      completoEm: agora.toISOString(),
+    },
+    aviso,
+  });
+
+  if (!politica || !tentarIncremental) return completo(null);
+  if (!cabAnterior) return completo(null);
+
+  const decisao = decideIncremental(cabAnterior, politica, agora);
+  if (!decisao.pode) return completo(`incremental recusada (${decisao.porque}). Carga completa.`);
+
+  return {
+    plano: {
+      sql: costura(sqlOriginal, politica),
+      params: { [politica.parametro]: decisao.desde },
+      modo: 'incremental',
+      corte: new Date(decisao.desde),
+      completoEm: decisao.completoEm,
+    },
+    aviso: null,
+  };
+}

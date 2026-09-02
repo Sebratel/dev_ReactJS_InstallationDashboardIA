@@ -19,13 +19,23 @@ import { MEvalError, MTable } from './value.ts';
 export interface ExecutorDeQuery {
   execute(
     queryId: string,
-    options?: { forceRefresh?: boolean },
+    options?: { forceRefresh?: boolean; params?: Record<string, unknown> },
   ): Promise<{ rows: readonly Record<string, unknown>[] }>;
 }
 
 export interface FonteDoEngineOptions {
   /** Ignora o cache de leitura. Usado pela validação de paridade. */
   readonly forceRefresh?: boolean;
+  /**
+   * Parâmetros nomeados por id de query (`:desde` etc.) — a carga incremental usa
+   * isto para injetar o corte de data depois de costurar o SQL (ver
+   * `packages/snapshot/src/incremental.ts`). **Por id, não um único objeto global**:
+   * o M de uma query pode citar OUTRAS como dependência (`protocolos-produtividade`
+   * cita `alocacao-patrimonio`), e essas chegam à mesma `fonte`. Um `params` único
+   * vazaria para elas e `traduzParametros` erraria alto — corretamente — com
+   * "parâmetro sem uso no SQL", porque a dependência não foi costurada.
+   */
+  readonly paramsPorQuery?: Readonly<Record<string, Record<string, unknown>>>;
   /**
    * Chamado depois de cada busca — gancho de log/progresso.
    *
@@ -61,7 +71,11 @@ export function fonteDoEngine(
   return async (spec: MQuerySpec) => {
     try {
       const t0 = Date.now();
-      const { rows } = await engine.execute(spec.id, { forceRefresh: opts.forceRefresh });
+      const params = opts.paramsPorQuery?.[spec.id];
+      const { rows } = await engine.execute(spec.id, {
+        forceRefresh: opts.forceRefresh,
+        ...(params ? { params } : {}),
+      });
       const t1 = Date.now();
       const convertidas = rows.map(comValoresAninhados);
       opts.onBusca?.({

@@ -5955,6 +5955,115 @@ ao vivo contra o Voalle real: `--pagina=capa --refazer`, exit 0, manifesto e as 
 tabelas calculadas regravadas (incluindo o modo isolado por coluna de `Status
 Protocolo Dia`), zero `.parcial` órfão em `snapshot/`.
 
+## #80 — A carga incremental foi ligada de verdade ao materializador, e um teste ao vivo pegou um vazamento de parâmetro entre queries
+
+**02/09/2026.** `packages/snapshot/src/incremental.ts` (costura, `decideIncremental`,
+`mescla`) sempre foi lógica pura, correta e testada — e **desconectada** do
+materializador de produção. `tools/snapshot/src/index.ts` importava `costura`,
+`decideIncremental` e `mescla`, mas `grep` confirma: nenhuma das três era **chamada**
+em lugar nenhum do arquivo. `--incremental` só pulava o cache de "já em disco"
+(`index.ts:458`, forçando rebusca completa de tudo) e imprimia um relatório que lia
+`marca`/`modo`/`completoEm` do manifesto — campos que `CabecalhoDeSnapshot` nem
+declarava, então eram sempre `undefined`. O comentário em `rodaEmSubprocesso`
+("quem decide se a carga é incremental é o filho... mas a intenção é do pai") já
+documentava a fiação pretendida; ela nunca foi terminada.
+
+**A fiação que faltava, e por que não era só "chamar as três funções".**
+`QueryEngine.execute(queryId)` resolve o SQL pelo **próprio registry**
+(`this.#registry.get(queryId).sql`), não pelo array `specs` que `runQueries`
+recebe — então o SQL costurado só chega ao banco se o registry em si for alterado
+para aquele id. Como `materializa()` roda em processo isolado por query
+(`--uma=<id>`, um processo por vez, ACHADOS #46), mutar
+`registry.queries.set(q.id, {...q, sql: costurado})` ali dentro é seguro: nada
+mais neste processo volta a ler o SQL original desta query depois. `packages/
+snapshot/src/incremental.ts` ganhou `planejaBusca` — função pura que decide COMO
+buscar (completo ou incremental, e com qual SQL/parâmetro), com 6 testes novos —
+para que essa decisão continuasse testável sem tocar o Voalle.
+
+**O bug real que só apareceu rodando contra o Voalle de verdade.**
+`packages/transform-engine/src/fonte.ts` não tinha como passar parâmetro de SQL
+adiante (`engine.execute(spec.id, {forceRefresh})`, sem `params`). A primeira
+versão acrescentou um `params` único para toda a `fonte` — e a primeira tentativa
+real de incremental em `protocolos-produtividade` falhou em 752 ms com "Falha ao
+ler a fonte da query 'alocacao-patrimonio': Parâmetro sem uso no SQL: desde". A
+causa: o M de `protocolos-produtividade` cita `alocacao-patrimonio` como
+dependência, e as duas passam pela **mesma** `fonte` dentro do mesmo `runQueries`.
+Um `params` sem escopo por id vazava `:desde` para a consulta da dependência, que
+não foi costurada — e `traduzParametros` recusou, corretamente ("erra alto nas
+duas pontas" é o comportamento documentado, não um defeito dela). Corrigido para
+`paramsPorQuery: Record<string, Record<string,unknown>>`, escopado por id — dois
+testes novos travam isto: um confirma que o parâmetro chega na query certa, outro
+que ele **não** vaza para a dependência que não está no mapa.
+
+**Verificado ao vivo, até onde os dois bloqueios do #81 permitem.** Um fetch
+incremental real de `protocolos-produtividade` (cabeçalho patcheado para simular
+"última completa há 3 dias", dentro do teto de 7) terminou a busca SQL — a
+costura estreitou o suficiente para isso — em 120,8 s, contra os 681,6 s (e
+cancelamento por timeout) da carga completa sem nenhum recorte. A comparação
+completa (incremental reconstrói o mesmo conjunto que uma carga completa do
+mesmo período) **não foi possível**: os dois modos topam com o mesmo bloqueio de
+M/SQL descrito no #81, que não tem relação nenhuma com a carga incremental em si
+— ele bloquearia igualmente uma carga completa comum. `npm test`: 1521/1521;
+as funções de decisão e mesclagem têm cobertura total, a integração está
+confirmada até o ponto em que a busca retorna dados.
+
+## #81 — `protocolos-produtividade` não materializa em NENHUM modo hoje: SQL e M calculam as mesmas três colunas, e o full-fetch passou do teto de 600s
+
+**02/09/2026**, achado ao tentar verificar o #80 ao vivo. Dois bloqueios
+independentes, nenhum relacionado à carga incremental — uma carga **completa**
+comum bateria nos dois do mesmo jeito.
+
+**Bloqueio 1 — colisão de coluna entre SQL e M.** O fetch incremental (que
+estreitou a consulta o bastante para terminar) chegou à avaliação de M e parou em:
+
+> Table.RenameColumns: o nome 'HORA CRIADO' ficaria duplicado.
+
+`docs/sql/datahub-protocolos-produtividade.sql` — a SQL de produção migrada em
+25/08/2026, idêntica ao `sql:` da spec (travado por
+`packages/snapshot/test/incremental.test.ts`) — já seleciona `"HORA CRIADO"`
+(linha 340), `"HORA AGENDA"` (linha 341) e `"INSTALADOR"` (linha 414)
+**diretamente**. O `m_expression` da mesma spec nunca foi atualizado para essa
+migração: ele ainda deriva as três por conta própria —
+`Table.AddColumn(..., "Hora", each DateTime.Time([DATA CRIADO]))` + rename para
+`"HORA CRIADO"` (linha 5 do M), o mesmo padrão para `"HORA AGENDA"` (linha 25), e
+`Table.RenameColumns(#"QUADRO FUNCIONAL Expandido", {{"TECNICO","INSTALADOR"}})`
+(linha 61) — sem nenhum `Table.RemoveColumns` antes que descarte as versões que
+já vêm do SQL. Confirmado por leitura de ponta a ponta do M: nenhum passo remove
+as três antes de tentar recriá-las. O avaliador para na primeira colisão que
+encontra no pipeline (`HORA CRIADO`); as outras duas (`HORA AGENDA`,
+`INSTALADOR`) ainda não foram alcançadas — resolver a primeira **não** garante
+que a query complete sem tocar as outras duas.
+
+Relacionado, não igual: [[proj-instalador-e-union-nao-coalesce]] (memória de
+25/08) descreve `INSTALADOR` nascendo de um `Table.Combine` entre
+`PROTOCOLOS PRODUTIVIDADE`/`PROTOCOLOS AUXILIARES`, um mecanismo diferente do
+`Table.RenameColumns` via join com `QUADRO FUNCIONAL` que este M usa — ambos
+terminam produzindo uma coluna `INSTALADOR` que a SQL migrada de 25/08 já
+calcula sozinha. As duas investigações apontam para a mesma correção: algo no M
+desta query ficou para trás quando a SQL foi migrada, e ninguém terminou de
+reconciliar os dois lados.
+
+**Bloqueio 2, independente — o full-fetch passou do teto.**
+`npm run snapshot -- --query=protocolos-produtividade --refazer` (sem
+`--incremental`, sem costura nenhuma) rodou **681,6 s** e foi cancelado pelo
+Postgres por `statement_timeout` — o teto desta execução era **600 s**, já
+**3,15× o valor medido em 25/08/2026** por `npm run probe:custo-incremental`
+(190,3 s). A query nunca chegou a devolver linha nenhuma, então nem topou com o
+Bloqueio 1. Ou o custo cresceu de verdade em oito dias de dado novo, ou o plano
+do Postgres mudou (estatísticas, índice, contenção) — não investigado a fundo:
+é território de banco/infra, e esta conexão é somente-leitura por desenho.
+
+**Estado real, hoje: `protocolos-produtividade` não materializa em nenhum modo.**
+O arquivo em disco (`snapshot/protocolos-produtividade.jsonl`, 70.991 linhas,
+`geradoEm`/`completoEm` de 25/08/2026) não pode ser atualizado até um dos dois
+bloqueios ser resolvido — e é a query mais pesada, mais otimizada e mais citada
+da plataforma (ACHADOS #66–#68, #72–#74, e a Frente de incremental do #80
+inteira foi desenhada em cima dela). Nenhum dos dois bloqueios foi corrigido
+nesta sessão: o primeiro exige reconciliar o M inteiro com a SQL migrada (risco
+de quebrar outro passo que dependa da forma antiga), o segundo exige medição e
+decisão de infraestrutura que uma sessão somente-leitura não pode tomar sozinha.
+Ver `DEPLOY.md` §2.2 sobre o impacto disto na automação do refresh.
+
 ---
 
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto

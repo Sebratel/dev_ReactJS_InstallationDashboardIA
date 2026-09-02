@@ -26,6 +26,10 @@ export interface EntradaDeManifesto {
   bytes: number;
   /** ISO UTC de quando a query foi materializada. */
   geradoEm: string;
+  /** Copiados do cabeçalho do arquivo — ver `CabecalhoDeSnapshot` em `formato.ts`. */
+  marca?: string;
+  modo?: 'completo' | 'incremental';
+  completoEm?: string;
 }
 
 export interface Manifesto {

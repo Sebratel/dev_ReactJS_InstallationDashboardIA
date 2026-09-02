@@ -64,12 +64,11 @@ import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
 import {
   comoDia,
-  costura,
-  decideIncremental,
   lePoliticas,
   marcaDe,
   mescla,
-  type PoliticaIncremental,
+  planejaBusca,
+  type CabecalhoAnterior,
 } from '../../../packages/snapshot/src/incremental.ts';
 import {
   DIRETORIO_PADRAO,
@@ -285,22 +284,75 @@ interface Resultado {
   erro?: string;
   /** Avisos que não impedem o resultado, mas quem lê precisa ver — ex.: junção morta. */
   notas?: string[];
+  /** Ausente para query sem política — não há o que dizer. */
+  modo?: 'completo' | 'incremental';
 }
 
 async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> {
   const inicio = Date.now();
-  // Populado pela carga incremental quando ela rodar (ver ACHADOS sobre a costura);
-  // hoje `materializa` sempre busca inteiro, então isto fica vazio na prática.
   const avisos: string[] = [];
+  const arquivo = arquivoDaQuery(saida, q.id);
+
+  // Decide COMO buscar antes de abrir conexão nenhuma: sem política, ou sem
+  // --incremental, ou sem arquivo anterior, `planejaBusca` já devolve o caminho de
+  // sempre (carga completa) — ver o docstring dela para o porquê de cada caso.
+  const politica = politicas.get(q.id);
+  let cabAnterior: CabecalhoAnterior | null = null;
+  if (politica && args.incremental) {
+    try {
+      cabAnterior = leCabecalho(arquivo);
+    } catch {
+      cabAnterior = null; // sem arquivo ainda, ou ilegível: trata como primeira carga
+    }
+  }
+  const { plano, aviso } = planejaBusca(q.sql ?? '', cabAnterior, politica, AGORA, args.incremental);
+  if (aviso) avisos.push(aviso);
+
   const { connectors, fechar } = await montaConnectors(fontesDe(q.id));
   const engine = new QueryEngine({ registry, connectors, cache: new MemoryCache() });
-  const fonte = fonteDoEngine(engine);
+  // O SQL costurado só chega ao connector desta forma: `QueryEngine` resolve o SQL
+  // pelo PRÓPRIO registry (`this.#registry.get(queryId)`), não pelo array `specs`
+  // que `runQueries` recebe — trocar `q.sql` sozinho não bastaria. É seguro mutar o
+  // registry aqui porque este processo materializa exatamente UMA query (`--uma=`)
+  // e termina: nada mais neste processo volta a ler o SQL original desta query.
+  if (plano.modo === 'incremental') {
+    registry.queries.set(q.id, { ...q, sql: plano.sql });
+  }
+  // Por id, não um objeto global: o M desta query pode citar OUTRAS como
+  // dependência (protocolos-produtividade cita alocacao-patrimonio), e um
+  // params sem escopo vazaria :desde para elas — traduzParametros erraria "parâmetro
+  // sem uso no SQL", corretamente, porque a dependência não foi costurada.
+  const fonte = fonteDoEngine(engine, {
+    ...(Object.keys(plano.params).length ? { paramsPorQuery: { [q.id]: plano.params } } : {}),
+  });
   // Allowlist só do que ESTA query declara em `endpoints` (gerado do PBIP).
   const web = q.endpoints?.length ? buscadorWeb({ permitidos: q.endpoints }) : undefined;
 
   try {
     const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
-    const { columns, rows } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
+    const { columns, rows: buscadas } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
+
+    // Modo incremental: o que a busca trouxe é só a janela reentregue — junta com
+    // o que já estava no arquivo antes de seguir. `linhasAntigas` já tem qualquer
+    // coluna calculada de execuções passadas; `materializaColunas` roda de novo
+    // sobre o conjunto inteiro logo abaixo, então elas saem recalculadas também —
+    // mesma garantia de sempre: todo o arquivo compartilha o mesmo `AGORA`.
+    let rows = buscadas;
+    if (plano.modo === 'incremental') {
+      const { linhas: antigas } = await le(arquivo);
+      const m = mescla({
+        antigas,
+        novas: buscadas,
+        chave: politica!.chave,
+        marca: politica!.marca,
+        corte: plano.corte!,
+      });
+      rows = m.linhas;
+      avisos.push(
+        `incremental: +${m.novas} nova(s), ${m.substituidas} substituída(s), ` +
+          `${m.sumidas} sumida(s), ${m.mantidas} mantida(s) de antes.`,
+      );
+    }
 
     // Colunas calculadas em DAX entram no arquivo, como o Power BI faz no refresh
     // (ACHADOS #47). Só as que dependem da própria tabela — o resto continua
@@ -319,14 +371,23 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       }
     }
 
-    const arquivo = arquivoDaQuery(saida, q.id);
+    // A marca d'água só existe para quem tem política — sem ela não há o que
+    // `decideIncremental` leia numa próxima carga.
+    const marca = politica ? marcaDe(rows, politica.marca) : null;
+
     fs.mkdirSync(path.dirname(arquivo), { recursive: true });
     // `escreve()` já grava em temporário e renomeia por dentro (packages/snapshot/src/
     // formato.ts) — inclusive com novas tentativas se o destino estiver aberto por um
     // leitor (Windows/NTFS, ver DEPLOY.md §4.2). Não duplicar o temp/rename aqui.
     const cab = await escreve(
       arquivo,
-      { query: q.id, tabelas: tabelasDaQuery(q.id), geradoEm: new Date().toISOString() },
+      {
+        query: q.id,
+        tabelas: tabelasDaQuery(q.id),
+        geradoEm: new Date().toISOString(),
+        ...(marca ? { marca: marca.toISOString() } : {}),
+        ...(politica ? { modo: plano.modo, completoEm: plano.completoEm } : {}),
+      },
       columns,
       rows,
     );
@@ -338,6 +399,8 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       colunas: cab.colunas.length,
       bytes: fs.statSync(arquivo).size,
       ms: Date.now() - inicio,
+      ...(politica ? { modo: plano.modo } : {}),
+      ...(avisos.length ? { notas: avisos } : {}),
     };
   } catch (err) {
     return {
