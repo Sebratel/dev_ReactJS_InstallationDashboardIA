@@ -13,16 +13,51 @@
 # docs/DECISAO-REALTIME.md e ACHADOS #89). O resultado fica em memória, no
 # processo da API, e é isso que `apps/api/src/poller-realtime.ts` administra.
 #
-# **Por que só `protocolos-auxiliares`.** É a única query com coluna de
-# modificação exposta no `sql:` (`assignments.modified`, aliada "DATA ENCERRADO")
-# que também materializa sem crash — `protocolos-geral` tem a mesma coluna mas o M
-# dela faz `Table.NestedJoin` com `GESTORES EQUIPES` (dbMaria), travada desde o
-# achado #83 (mysql2 ausente). `field-agenda`, `contratos`, `contratos-telefonia`
-# e `consolidado-clientes` não expõem coluna de modificação nenhuma no SQL.
+# **Cinco queries hoje (03/09/2026, ACHADOS #92) — cada uma tocando
+# `assignments.modified` (ou, em `protocolos-telefonia`, a coluna já existente
+# "DATA ENCERRRADO", com o mesmo typo de origem do PBIP) por um caminho já
+# validado com `costura()` ao vivo, não suposto.** Ver ACHADOS #92 para a
+# investigação completa das outras 19 queries do catálogo e por que cada uma
+# ficou de fora:
 #
-# **O mesmo buraco que `incremental.yaml` já documenta, e não um novo**: só
-# ~84,2% das mudanças relevantes tocam `assignments.modified` — o resto (alocação
-# de patrimônio, RAUX) mora em outra tabela do JOIN e este poller não vê.
+#   - `contratos`, `contratos-telefonia`, `alocacao-patrimonio`,
+#     `consolidado-clientes`: chave de linha fraca ou ausente — sem um id único
+#     na SELECT final, o merge por chave do poller (`identidade()` em
+#     `poller-realtime.ts`) pode colapsar linhas distintas em silêncio (ex.:
+#     `contratos-telefonia` com `TELEFONE CONTRATO` nulo). Não é o mesmo risco
+#     de "cobertura parcial" já aceito abaixo — é risco de **linha errada**.
+#   - `instalacoes-reincidentes`, `reincidencia`: uma extensão mecânica
+#     (copiar o padrão de `protocolos-auxiliares`) reescreveria dado
+#     **errado** em produção — `ROW_NUMBER()`/`PARTITION BY` recalculado sobre
+#     o subconjunto filtrado por `:desde` pode eleger a linha errada como
+#     "primeira", ou apagar reincidência real substituindo por `NULL`. Corrigir
+#     exigiria reestruturar a costura com um CTE tipo `alvos` (UNION de "ramo A
+#     mudou" e "ramo B mudou", igual `incremental.yaml` já faz para
+#     `protocolos-produtividade`) — reescrita de SQL, não config.
+#   - `protocolos-geral`, `protocolos-produtividade`: sem snapshot base nenhum
+#     (heap OOM / nunca materializa — achados #81/#83) — não há disco para o
+#     overlay sobrepor.
+#   - `field-agenda`, `field-agenda-slot`, `base-categorias-field`: verificado
+#     ao vivo contra `information_schema.columns` — a view/tabela que
+#     alimentam (`v_service_desk_slots_productivity_informative`,
+#     `assignment_incidents`) não tem NENHUMA coluna de modificação de linha,
+#     só timestamps de integração SAP (`sap_modified_integration`), que não é
+#     a mesma coisa.
+#   - `apuracao-premiacao`, `capacidade-equipe`, `quadro-funcional` (Google
+#     Sheets), `clima-tempo` (API), `feriados` (inline), `hora-atualizado`
+#     (computed): sem SQL nenhum para costurar — o mecanismo deste arquivo não
+#     se aplica.
+#   - `backlog-agendado-futuro`, `backlog-instalacao`, `gestores-equipes`
+#     (dbMaria): nunca tiveram custo de refresh medido (ACHADOS #80) — dar
+#     cadência de 12s antes de ter cadência de refresh nenhuma é a mesma
+#     aposta sem evidência já rejeitada uma vez.
+#
+# **O mesmo buraco que `incremental.yaml` já documenta, e não um novo**: cada
+# query aqui só vê o que passa por `assignments.modified` (ou equivalente) —
+# mudança que more só num JOIN lateral (alocação de patrimônio parece um caso
+# à parte, RAUX outro) não entra. Registrado por query nos comentários de
+# `costura` abaixo quando o caminho de dado é mais indireto que
+# `protocolos-auxiliares`.
 
 formato: 1
 
@@ -44,4 +79,88 @@ queries:
       para: |-
         WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
               AND a.created >= '2026-01-01'
+              AND a.modified >= :desde
+
+  # "DATA ENCERRRADO" com 3 R — mesmo typo do PBIP original em
+  # protocolos-telefonia.spec.yaml, preservado de propósito: `marca` precisa
+  # citar o nome EXATO da coluna, e "corrigir" o typo aqui quebraria o match.
+  protocolos-telefonia:
+    tabela: PROTOCOLOS TELEFONIA
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: [SOLICITACAO]
+    marca: [DATA CRIADO, DATA ENCERRRADO]
+    costura:
+      de: |-
+        where (it.id = '1011'or --- TEC - Instalação Telefonia
+        			   it.id = '275' OR
+        			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
+        		and a.created >= '2026-01-01')
+      para: |-
+        where (it.id = '1011'or --- TEC - Instalação Telefonia
+        			   it.id = '275' OR
+        			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
+        		and a.created >= '2026-01-01'
+        		and a.modified >= :desde)
+
+  # `assignments` aqui só é ponte de JOIN (nunca teve coluna própria
+  # selecionada) — "_MARCA_REALTIME" é 100% sintética, adicionada por hand-edit
+  # em troca-endereco.spec.yaml em 03/09/2026 (ACHADOS #92), não herdada do
+  # PBIP. Cobertura não comprovada: o filtro de negócio real é sobre
+  # `reports.final_date`, não sobre `assignments` — uma troca de endereço nova
+  # pode não tocar `assignments.modified`. Vigiar mesmo assim porque o pior
+  # caso é o mesmo de hoje (sem poller nenhum): a tela demora até o próximo
+  # refresh, nunca mostra dado errado.
+  troca-endereco:
+    tabela: "TROCA ENDEREÇO"
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: [PROTOCOLO]
+    marca: [_MARCA_REALTIME]
+    costura:
+      de: |2-
+                DATE(r.final_date) >= '2026-01-01'
+                AND it.id in ('15', '1256')
+      para: |2-
+                DATE(r.final_date) >= '2026-01-01'
+                AND it.id in ('15', '1256')
+                AND a.modified >= :desde
+
+  # Mesma ressalva de troca-endereco: "_MARCA_REALTIME" é sintética
+  # (hand-edit, ACHADOS #92), sem precedente no PBIP. `chave` tem `:` literal —
+  # tem que vir entre aspas em YAML.
+  tecnicos-auxiliares:
+    tabela: TECNICOS AUXILIARES
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: ["PROTOCOLO:"]
+    marca: [_MARCA_REALTIME]
+    costura:
+      de: |2-
+              and a.assignment_type = 'RAUX'
+              and a.final_date >= '2026-01-01'
+      para: |2-
+              and a.assignment_type = 'RAUX'
+              and a.final_date >= '2026-01-01'
+              and a.modified >= :desde
+
+  # Cobre só a CTE `retorno_prioritario` (a metade "quente" da query) — a
+  # outra metade, `primeira_instalacao`, não expõe nenhuma coluna de
+  # `assignments` e fica de fora (evento passado e estável, não o que dá nome
+  # à query). "_MARCA_REALTIME" é sintética (hand-edit, ACHADOS #92).
+  retorno-prioritario:
+    tabela: RETORNO PRIORITARIO
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: ["Protocolo Retorno Prioritário"]
+    marca: [_MARCA_REALTIME]
+    costura:
+      de: |-
+        WHERE ai.incident_type_id = '1160'
+              AND is2.title <> 'Cancelado'
+              AND a.created >= DATE '2026-01-01'
+      para: |-
+        WHERE ai.incident_type_id = '1160'
+              AND is2.title <> 'Cancelado'
+              AND a.created >= DATE '2026-01-01'
               AND a.modified >= :desde

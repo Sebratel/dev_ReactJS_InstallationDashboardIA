@@ -12,6 +12,7 @@ sql: |-
           ai.protocol AS "PROTOCOLO", 
           r.final_date AS "DATA DA TROCA", 
           c.contract_number AS "CONTRATO",
+          a.modified AS "_MARCA_REALTIME",
           ROW_NUMBER() OVER (
               PARTITION BY ai.protocol 
               ORDER BY r.final_date DESC

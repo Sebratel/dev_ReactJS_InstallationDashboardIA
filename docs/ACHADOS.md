@@ -6863,6 +6863,115 @@ src/index.ts --plano`, ao vivo, mostrando os 3 grupos corretos).
 
 ---
 
+## #92 — Poller estendido de 1 para 5 queries — e por que as outras 19 do catálogo ficaram de fora, com evidência, não suposição
+
+**03/09/2026.** Pedido do Erick: "extenda para todas" — o poller do achado #90
+cobria só `protocolos-auxiliares`. Antes de escrever uma linha, medido ao vivo
+contra `information_schema.columns` do Voalle real (schema `erp`, leitura
+pura) quais das 24 queries do catálogo têm, na tabela que realmente tocam, uma
+coluna de "isto mudou" — não suposto por nome de tabela. Resultado: quase toda
+tabela-núcleo do ERP (`assignments`, `contracts`, `people`, `reports`,
+`patrimonies`, `schedules`, `teams`, `incident_status`, `incident_types`...)
+tem `created`/`modified`/`modified_by`; a exceção notável é
+`assignment_incidents` (só tem `sap_modified_integration`, um timestamp de
+integração SAP, não de edição de linha) e a view
+`v_service_desk_slots_productivity_informative` (a base de `FIELD AGENDA` —
+zero colunas de modificação, confirmado, não é falta de SELECT).
+
+**Sete agentes em paralelo, um por query candidata, só leitura — nenhum editou
+nada.** Cada um leu o `sql:` inteiro (não o `m_expression`, que é camada
+posterior) de uma query que faz JOIN com `assignments`/`contracts`, e teve que
+responder, com evidência: qual o alias da tabela-fonte, que CTEs a coluna
+precisaria atravessar, o texto verbatim da âncora de `costura()`, se essa
+âncora é única no arquivo, e — o mais importante — se existe uma chave de
+linha de negócio de verdade. Dois agentes encontraram risco de **corrupção
+silenciosa de dado**, não só "cobertura incompleta":
+
+- **`instalacoes-reincidentes`**: `assignments` entra por dois `LEFT JOIN`
+  independentes (um em `instalacoes`, outro em `manutencoes`). Ancorar
+  `:desde` só no lado de `manutencoes` faria o poller **reescrever "SIM" por
+  "NÃO"** em reincidência real e antiga a cada volta — `mescla()` apaga a
+  linha antiga inteira quando a chave reaparece no lote novo, sem comparar
+  campo a campo.
+- **`reincidencia`**: duas CTEs particionam por `cst.id` (service tag), e cada
+  partição cruza **múltiplos** registros distintos de `assignments`, cada um
+  com seu próprio `modified`. Filtrar `:desde` ali faz o `ROW_NUMBER()`
+  recalcular sobre um subconjunto e eleger a linha "primeira" **errada** —
+  dado errado, não dado faltando.
+
+Ambas exigiriam a mesma técnica que `incremental.yaml` já usa para
+`protocolos-produtividade` (um CTE `alvos` com `UNION` de "ramo A mudou" e
+"ramo B mudou", reentregando o grupo inteiro) — reescrita de SQL, decisão
+separada, não coberta aqui.
+
+Outras três ficaram de fora por **chave fraca ou ausente**, mesma classe de
+risco (merge por chave errado), achada pelos agentes ao procurar um id único
+na SELECT final:
+
+- `contratos`: grão real é `authentication_contracts` (múltiplas linhas por
+  contrato via tag/usuário), mas só `NUMERO CONTRATO` está na SELECT — não é
+  único por linha.
+- `contratos-telefonia`: mesmo problema, mais um agravante —
+  `identidade()` (`poller-realtime.ts`) trata `null` como um único caractere;
+  com `TELEFONE CONTRATO` nulo (LEFT JOIN), duas linhas distintas colapsam na
+  mesma chave e uma desaparece em silêncio.
+- `alocacao-patrimonio`: chave só dá para aproximar por heurística
+  (`PATRIMONIO` + `DATA HORA SAIDA`) — a PK real (`patrimony_packing_list_items.id`)
+  nunca é selecionada.
+
+**As cinco que entraram — cada uma com o mesmo tratamento de
+`protocolos-auxiliares`: `_MARCA_REALTIME` (coluna nova, hand-edit, quando a
+query não expunha `modified` já) atravessando as CTEs certas, âncora
+verificada com a `costura()` real (não copiada por suposição — peguei texto
+de um `Read` humano uma vez e a âncora bateu 0 vezes por causa de indentação
+de bloco YAML de-indentada diferente do que a tela mostra; corrigido lendo o
+`spec.sql` já parseado, byte a byte) e execução ao vivo confirmada antes de
+mexer em `realtime-poll.yaml`:**
+
+| query | tabela | chave | marca | observação |
+|---|---|---|---|---|
+| `protocolos-telefonia` | PROTOCOLOS TELEFONIA | SOLICITACAO | DATA CRIADO, DATA ENCERRRADO (3 R, typo do PBIP preservado) | zero hand-edit — já selecionava `a.modified`, clone quase exato de `protocolos-auxiliares` |
+| `troca-endereco` | TROCA ENDEREÇO | PROTOCOLO | _MARCA_REALTIME | `assignments` só era ponte de JOIN; cobertura NÃO comprovada — o filtro de negócio real é `reports.final_date`, não `assignments` |
+| `tecnicos-auxiliares` | TECNICOS AUXILIARES | "PROTOCOLO:" | _MARCA_REALTIME | mais simples que os outros — 1 CTE + `SELECT *` |
+| `retorno-prioritario` | RETORNO PRIORITARIO | "Protocolo Retorno Prioritário" | _MARCA_REALTIME | cobre só a CTE `retorno_prioritario`; `primeira_instalacao` fica de fora (evento estável, não o que dá nome à query) |
+
+**Erro cometido e corrigido no caminho**: a primeira versão hand-editou
+`AND a.modified >= :desde` direto no `sql:` base das 3 queries novas — o que
+quebraria `npm run snapshot` (full-fetch não passa parâmetro `:desde`
+nenhum). Corrigido revertendo essa parte e movendo a transformação inteira
+para `costura.de`/`costura.para` em `realtime-poll.yaml`, aplicada só em
+memória pelo poller — exatamente como `protocolos-auxiliares` já fazia. Só a
+coluna `_MARCA_REALTIME` (sempre válida como SQL simples) ficou no `sql:`
+base.
+
+**Verificado ao vivo, com a classe real `PollerRealtime`** (não só a função
+`costura()` isolada): `tentaAgora()` para as 5 queries, contra o Voalle real,
+sem erro — `protocolos-telefonia` achou 624 linhas com `:desde` no passado
+(prova que a âncora e a coluna existem de verdade), as outras confirmaram
+`_MARCA_REALTIME` presente no resultado. Rodando com `:desde` = agora (o
+estado normal de regime), as 4 novas queries responderam em 112–200ms —
+o filtro `modified >= :desde` recente é seletivo o bastante para não pesar a
+cada volta de 12s.
+
+`npm test`: 1591/1591 (sem teste novo — mudança é dado de config +
+`spec.sql`, já coberta pelos testes existentes de `costura()`/`PollerRealtime`
+com fixtures).
+
+**Fora de escopo, registrado — não decisão de negligência:**
+`protocolos-geral`, `protocolos-produtividade` (sem snapshot base),
+`instalacoes-reincidentes`, `reincidencia` (risco de corrupção, precisam de
+reescrita tipo `alvos`), `contratos`, `contratos-telefonia`,
+`alocacao-patrimonio`, `consolidado-clientes` (chave fraca/ausente),
+`field-agenda`, `field-agenda-slot`, `base-categorias-field` (sem coluna de
+modificação, verificado no schema real), `apuracao-premiacao`,
+`capacidade-equipe`, `quadro-funcional`, `clima-tempo`, `feriados`,
+`hora-atualizado` (sem SQL para costurar), `backlog-agendado-futuro`,
+`backlog-instalacao`, `gestores-equipes` (dbMaria, nunca tiveram refresh
+medido — achado #80). Comentário completo em
+`specs/_catalog/realtime-poll.yaml`.
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória

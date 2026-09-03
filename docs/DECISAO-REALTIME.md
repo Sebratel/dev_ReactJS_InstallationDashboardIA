@@ -135,12 +135,18 @@ Voalle (SELECT a.modified >= :desde, a cada 12s — leitura, sem grant novo)
      de sempre — sem F5
 ```
 
-**Escopo de hoje: só `PROTOCOLOS AUXILIARES`.** É a única query com coluna de
-modificação exposta no SQL (`assignments.modified`) que também materializa sem
-crash — `PROTOCOLOS GERAL` tem a mesma coluna mas está travada pelo achado #83
-(mysql2 ausente). Mesmo buraco que `incremental.yaml` já documenta para
-`protocolos-produtividade`: ~84,2% de cobertura, não 100% — registrado, não
-escondido. Ver ACHADOS #90 para os números medidos ao vivo.
+**Escopo em 03/09/2026: 5 queries** (`protocolos-auxiliares`,
+`protocolos-telefonia`, `troca-endereco`, `tecnicos-auxiliares`,
+`retorno-prioritario`) — estendido do 1 original depois de medir, ao vivo
+contra o schema real do Voalle, quais das outras 19 queries do catálogo têm
+coluna de modificação de verdade e uma chave de linha segura para o merge do
+poller. Duas ficaram de fora por **risco de corrupção** (não só cobertura
+incompleta): `instalacoes-reincidentes` e `reincidencia` reescreveriam dado
+errado em produção se a costura fosse copiada mecanicamente — ver ACHADOS
+#92. Mesmo buraco que `incremental.yaml` já documenta para
+`protocolos-produtividade` continua valendo em cada uma das 5: cobertura
+parcial, não 100% — registrado, não escondido. Ver ACHADOS #90/#92 para os
+números medidos ao vivo.
 
 **Isto não reabre a Fase 4.** Nenhum Kafka, nenhum Debezium, nenhum grant novo
 — é leitura direta, do jeito que a plataforma já lê tudo. O gatilho de duas

@@ -13,6 +13,7 @@ sql: |-
           p2.name as "TECNICO",
           p.name as "AUXILIAR",
           a.final_date as "CONCLUIDO EM:",
+          a.modified as "_MARCA_REALTIME",
           row_number() over(partition by r.tags order by a.final_date desc) as PERSONA
       from reports r
       left join assignments a on a.id = r.assignment_id
