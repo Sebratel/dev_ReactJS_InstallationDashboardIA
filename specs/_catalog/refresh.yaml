@@ -33,6 +33,21 @@
 #      segundos** ponta a ponta (busca + conversão de 642.365 linhas × 26 colunas
 #      + escrita). Nenhuma cadência de minutos é segura para esta query enquanto
 #      isso não for remedido e, se real, investigado (ACHADOS #82).
+#
+#      `field-agenda-slot` (achado #87 — mesma origem, sem os `LEFT JOIN` de
+#      relato/skill) NÃO tem este problema — ver grupo `frio` abaixo, 03/09/2026.
+#      A forma COMPLETA (`field-agenda`) continua de fora de qualquer grupo.
+#
+# ATENÇÃO (03/09/2026, ACHADOS #89): qualquer query materializada com sucesso aqui
+# dispara `calculadas.ts --todas` em seguida (`tools/snapshot/src/index.ts`), que
+# RECOMPUTA AS 4 COLUNAS DE `Status Protocolo Dia` DO ZERO, sempre — não existe
+# checagem de idade nesse encadeamento. Medido ao vivo: ~50-65s por coluna × 4 =
+# **~4 minutos reais**, em cima do tempo de busca de QUALQUER grupo que rode com
+# sucesso, não só os que tocam `FIELD AGENDA`. Os "~11s"/"~35s" nos comentários de
+# `quente`/`medio` abaixo são só a busca — o custo real por tick bem-sucedido é
+# isso mais ~4 min. Não corrigido ainda (é ineficiência de recomputação
+# redundante, registrada, não bug de segurança) — ao dimensionar qualquer
+# intervalo novo, use o tempo de busca MAIS esses ~4 min, não só o primeiro.
 
 formato: 1
 
@@ -72,4 +87,23 @@ grupos:
       - base-categorias-field
       - reincidencia
     intervalo_minutos: 20
+    incremental: false
+
+  # `field-agenda-slot` (achado #87): mesma origem de `field-agenda`
+  # (v_service_desk_slots_productivity_informative), sem os LEFT JOIN de
+  # relato/skill — é o arquivo que atende a maioria das aberturas de
+  # `agendamento-field` (ACHADOS #87/#88). Medido ao vivo em 03/09/2026:
+  # 13,5s de busca+escrita (41.348 linhas) + os ~4 min de recomputação de
+  # `Status Protocolo Dia` que QUALQUER grupo bem-sucedido paga hoje (ver
+  # ATENÇÃO acima) = ~4min15s reais por tick. 30 min dá ~7× de margem sobre
+  # esse total — não sobre só a busca, que sozinha sugeriria um número
+  # perigosamente pequeno. Sozinha no grupo: perfil de fonte e custo
+  # diferentes de `quente`/`medio`, e um novo grupo aqui já significa mais
+  # uma queda do cache de resposta inteiro por ciclo (armadilha registrada em
+  # docs/DEPLOY.md) — não vale apertar o intervalo sem necessidade medida.
+  # `field-agenda` (forma completa) continua de fora — 21min49s (achado #82).
+  frio:
+    queries:
+      - field-agenda-slot
+    intervalo_minutos: 30
     incremental: false

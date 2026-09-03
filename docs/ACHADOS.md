@@ -6680,6 +6680,67 @@ tipo já cobertas por teste existente).
 
 ---
 
+## #89 — `field-agenda-slot` ganha cadência de verdade, e um "processo custando 4 minutos" que era erro de leitura, não de código
+
+**03/09/2026, continuação do #88.** Ao investigar se dava para dar cadência
+automática a `field-agenda-slot` (fora de escopo do #87), medi o custo real de
+`--refazer` e o número bateu **4 minutos** onde a query isolada custava 14s.
+A caça a essa diferença é o achado, e ela terminou em dois lugares — um erro
+meu, e uma ineficiência real do sistema.
+
+**O erro meu primeiro, porque quase virou um consertar-o-que-não-quebrou.**
+Suspeitei de antivírus segurando handle de arquivo (risco que `DEPLOY.md` já
+registra) e de overhead de `spawnSync` de processo Node. Medi os dois direto —
+`node.exe` puro (~65ms) e importar o módulo inteiro de `calculadas.ts` (~200ms)
+— e nenhum dos dois explicava nada. A causa: eu estava lendo `[Base Dia]
+55.695 ms` como 55,7 milissegundos, quando é **55.695 milissegundos** (a
+mesma formatação `.`-como-milhar que já tinha me confundido com "3.156 ms" no
+#87). Confirmado batendo a conta contra o próprio "ms/linha" e "projeção"
+que o programa já imprime — os dois só fecham se o primeiro número for
+milhares, não unidades.
+
+**A ineficiência real, depois de corrigir a leitura**: `calculadas.ts --todas`
+não verifica se algo mudou antes de recalcular — todo `Status Protocolo Dia`
+(4 colunas, ~50-65s de DAX real cada, achado #53/#67) é recomputado do zero
+**sempre**, e `tools/snapshot/src/index.ts` chama isso automaticamente depois
+de QUALQUER query que materialize com sucesso — não só as ligadas a
+`FIELD AGENDA`. Confirmado rodando `calculadas.ts --todas` duas vezes seguidas
+sem nada mudar de verdade: recalculou as 4 colunas as duas vezes. Consequência
+prática: o custo real de um tick bem-sucedido de QUALQUER grupo de
+`refresh.yaml` — inclusive `quente` e `medio`, que nunca rodaram de verdade
+agendados — é a busca da própria query **mais ~4 minutos**, não só a busca. Os
+"~11s"/"~35s" já documentados mediam certo, só que a coisa errada. Registrado
+em `specs/_catalog/refresh.yaml` (comentário `ATENÇÃO`), não corrigido agora —
+é ineficiência de recomputação redundante, não bug de segurança, e a decisão
+de consertar antes ou depois de agendar foi explicitamente adiada.
+
+**`field-agenda-slot` ganhou grupo próprio mesmo assim.** Medido ao vivo,
+isolado da cascata (`--sem-calculadas`): 13,5s de busca+escrita, 41.348 linhas
+— muito abaixo do teto de qualquer cadência razoável. Novo grupo `frio` em
+`refresh.yaml`, 30 min (≥4× o custo real de ~4min15s incluindo a cascata, não
+só a busca — aplicar a margem só sobre a busca teria sugerido um número
+perigosamente pequeno). `field-agenda` (forma completa, 21min49s) continua de
+fora, decisão inalterada. Verificado ao vivo: um tick real com os 3 grupos
+(todos vencidos, por ser a primeira vez que `frio` existe) — `quente` ok em
+323.209 ms (5min23s), `medio` ok em 268.723 ms (4min29s), `frio` ok em
+241.903 ms (4min02s), `refresh-status.json` com os três `ok: true`. Rodando
+`--plano` de novo logo em seguida, os três aparecem "não vencido" — confirma
+que `estaVencido` respeita o intervalo de cada grupo, inclusive o novo.
+
+**Kafka e Redis, investigados via Portainer a pedido do Erick** (achado
+completo em `docs/DECISAO-REALTIME.md`, seção "O que existe hoje na infra"):
+Redis já funciona (local, em uso real, `MemoryCache+RedisCache`). Kafka tem
+só o broker de pé, e mal configurado para uso de fora da rede Docker dele
+(`KAFKA_ADVERTISED_LISTENERS` aponta para `kafka:9092`, hostname que não
+resolve fora do compose) — confirmado tentando conectar de verdade. Nem o
+Kafka Connect com o conector Debezium, nem o slot de replicação no Voalle
+(`pg_replication_slots` vazio, mesmo estado de 11/08) existem. Conclusão
+igual à de `DECISAO-REALTIME.md`: infra existir não é o mesmo que o caminho
+crítico precisar dela, e nenhum dos quatro elos que faltam muda a resposta —
+CDC avisaria a tela mais rápido, não tornaria o snapshot mais fresco.
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória

@@ -84,6 +84,33 @@ Se as duas valerem, o item mais barato ainda não é Kafka: é **polling increme
 `updated_at`** alimentando o mesmo Query Invalidator. Kafka entra quando o polling
 também não couber — e aí ele resolve um problema que já foi medido duas vezes.
 
+### O que existe hoje na infra, medido ao vivo (03/09/2026)
+
+A pergunta "já não temos Kafka e Redis, isso não funciona?" apareceu de novo — vale
+registrar o estado real em vez de repetir a checagem. Nenhuma das duas checagens
+abaixo mudou nada; a do slot é uma consulta a catálogo (`npm run cdc:slot`, sem
+`--vigia`), e a do Kafka do Portainer foi feita por inspeção manual na UI (sem
+reiniciar, editar ou duplicar container nenhum).
+
+| elo da cadeia | status |
+|---|---|
+| 1. Postgres do Voalle com slot de replicação + `PUBLICATION` | ❌ **ausente** — `pg_replication_slots` vazio, mesmo estado de 11/08. Exige DDL de DBA em produção (`RUNBOOK-CDC.md` §1.2). |
+| 2. Kafka Connect com conector Debezium registrado | ❌ **não localizado** — só o broker Kafka foi achado no Portainer (endpoint 3); Connect é outra peça, ainda não mapeada. |
+| 3. Broker Kafka alcançável de fora da rede Docker dele | ❌ **confirmado quebrado** — `KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092` só resolve dentro da rede `kafka_default`. Testado ao vivo: conexão de fora (`kafkajs`) recebe o bootstrap e trava na fase seguinte — exatamente o aviso de `RUNBOOK-CDC.md` §1.1 sobre `KAFKA_ADVERTISED_LISTENERS`. Conserto é um listener `EXTERNAL://` a mais no compose do Kafka + reiniciar o container — infraestrutura de outra equipe, não deste repositório. |
+| 4. `tools/cdc` consumindo e medindo | ✔️ código existe (achado #84), só não tem o que consumir. |
+
+**Redis é outra história — já funciona.** `redis:alpine` no Portainer, autenticado
+(`--requirepass`), porta publicada 1:1. Localmente, o Redis de desenvolvimento já
+está conectado e servindo cache de resposta (`doctor`: PING/PONG, versão 7.4.10).
+Redis nunca teve relação com o item 1-4 acima — ele é cache de resposta por TTL
+(`cache-policies.yaml`), não transporte de CDC; ter Redis de pé não adianta os
+elos que faltam.
+
+**Conclusão igual à de 11/08, com evidência nova**: mesmo se o elo 3 fosse
+consertado hoje, os elos 1 e 2 continuam sem existir, e nenhum dos quatro muda a
+resposta central desta decisão — CDC avisaria a tela mais rápido, não tornaria o
+snapshot mais fresco. Ver ACHADOS #89.
+
 ## O que esta decisão NÃO autoriza
 
 - **Não autoriza remover** `realtime: true|false` de `cache-policies.yaml` nem
