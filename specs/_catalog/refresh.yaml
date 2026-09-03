@@ -11,12 +11,15 @@
 # categorias, nenhuma por acidente — as duas últimas só apareceram ao rodar o
 # primeiro tick de verdade em 02/09/2026:
 #
-#   1. as 7 fontes nunca medidas isoladamente (dbMaria: backlog-instalacao,
-#      backlog-agendado-futuro, gestores-equipes; gsheets: apuracao-premiacao,
-#      capacidade-equipe, quadro-funcional; web: clima-tempo) — dar cadência
-#      automática a uma fonte sem custo medido é a mesma aposta sem evidência que
+#   1. 5 das 7 fontes nunca medidas isoladamente continuam de fora
+#      (gestores-equipes, dbMaria; apuracao-premiacao, capacidade-equipe,
+#      quadro-funcional, gsheets; clima-tempo, web) — dar cadência automática a
+#      uma fonte sem custo medido é a mesma aposta sem evidência que
 #      incremental.yaml já cometeu uma vez com "67s, medido" antes de existir
 #      caminho de código que produzisse esse número (ACHADOS #80).
+#      `backlog-instalacao`/`backlog-agendado-futuro` (as outras 2 das 7) foram
+#      medidas ao vivo em 03/09/2026 (ACHADOS #93) — 58-60ms cada, entraram no
+#      grupo `quente` abaixo.
 #   2. `protocolos-produtividade` — NÃO MATERIALIZA EM NENHUM MODO hoje
 #      (ACHADOS #81: SQL e M calculam as mesmas 3 colunas, e o full-fetch passou
 #      do teto de 600s). `tools/refresh/src/grupos.ts` recusa a carregar este
@@ -58,6 +61,13 @@ grupos:
   # calculado com DateTime.LocalNow() (achado C do briefing da Frente 3) e por
   # isso fica em full-fetch, não em cadência mais rápida sozinha — mas cabe aqui
   # porque o full-fetch dela é barato.
+  #
+  # `backlog-instalacao`/`backlog-agendado-futuro` entraram em 03/09/2026
+  # (ACHADOS #93): dbMaria, medidas ao vivo pela primeira vez — 58ms e 60ms,
+  # 5.875 e 93.083 linhas, sem erro. Custo somado do grupo sobe de ~11s para
+  # ~11,1s — irrelevante. Nenhuma das duas tem coluna de modificação por linha
+  # (só carimbo de LOTE de carga), então não são candidatas a
+  # `realtime-poll.yaml` — só ganharam cadência de refresh normal.
   quente:
     queries:
       - protocolos-telefonia
@@ -66,6 +76,8 @@ grupos:
       - consolidado-clientes
       - feriados
       - hora-atualizado
+      - backlog-instalacao
+      - backlog-agendado-futuro
     intervalo_minutos: 15
     incremental: false
 

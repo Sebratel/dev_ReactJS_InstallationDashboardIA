@@ -6972,6 +6972,134 @@ medido — achado #80). Comentário completo em
 
 ---
 
+## #93 — Das 4 pendências do achado #92, 2 fechadas com reescrita segura, 1 medida e desviada pra refresh, 1 diagnosticada sem conserto rápido
+
+**03/09/2026, mesma sessão do #92.** Erick pediu para destravar as 4 frentes que
+o #92 tinha deixado em aberto: `protocolos-geral`/`field-agenda` (marcadas
+"operacional quente" em `cache-policies.yaml`, mas tecnicamente bloqueadas),
+as 2 queries dbMaria nunca medidas, e `instalacoes-reincidentes`/`reincidencia`
+(risco de corrupção, precisavam da reescrita `alvos`). Antes de tocar em SQL de
+produção, três investigações rodaram em paralelo (workflow, 3 agentes) — cada
+uma só leitura, nenhuma editou arquivo:
+
+**`backlog-instalacao`/`backlog-agendado-futuro` (dbMaria) — medidas, sem
+candidata a realtime.** Ao vivo: 58ms/5.875 linhas e 60ms/93.083 linhas, sem
+erro (confirma que o driver `mysql2` do achado #83 continua correto). Nenhuma
+tem coluna de modificação por linha — só carimbo de LOTE de carga (`DATA
+HOJE`/`data_carga`, poucos valores distintos para muitas linhas: 520 em 5.875
+e 325 em 93.083). Entraram no grupo `quente` de `refresh.yaml` (custo somado
+sobe de ~11s pra ~11,1s, irrelevante) — refresh normal, não poller.
+
+**`protocolos-geral` — causa raiz confirmada, sem conserto rápido.** Contagem
+manual do `m_expression`: 56 passos nomeados, 4 `Table.NestedJoin` + 4
+`Table.ExpandTableColumn`. Lendo `packages/transform-engine` (`evaluator.ts`,
+`value.ts`): o que fica retido na memória é **pior** do que "todo passo
+inteiro" — cada `MTable` guarda toda linha como um `Map` próprio, e toda
+função de transformação (`RenameColumns`, `AddColumn`, `NestedJoin`,
+`Sort`...) constrói uma tabela nova via `.rows.map(...)`, nunca reaproveitando
+o `Map` de uma linha entre passos. Resultado: memória viva ≈ 56 cópias
+inteiras da tabela, cada célula dentro de um `Map` (overhead bem maior que
+objeto plano) — custo multiplicativo (passos × linhas × colunas), não
+proporcional aos ~36 MB do arquivo final. Confirmado 13 colunas calculadas
+(`grep 'calculated: true'` em `specs/_catalog/tables/protocolos-geral.spec.yaml`),
+todas `IF`/`COALESCE`/`DATEDIFF` linha-a-linha — nada tipo `RankAtualProtocolo`
+do field-agenda. **Isolar por coluna calculada (o truque que resolveu FIELD
+AGENDA nos achados #85/#87) não serve aqui**: o estouro é no motor de M
+(busca+transformação), uma fase ANTES do DAX — confirmado ao vivo, `node
+tools/snapshot/src/index.ts --query=protocolos-geral --refazer --memoria=8192`
+falhou em 151.561ms sem eu precisar matar o processo (dentro do intervalo
+129s/164s já documentado no achado #83), morrendo em `runQueries()`, nunca
+chegando a calcular DAX. `snapshot/protocolos-geral.jsonl` (36 MB, 25/08) não
+foi tocado — a escrita atômica protegeu o dado existente. **Conserto real: ou
+(i) o motor de M para de reter todo passo — mudança em código compartilhado
+por 24 queries — ou (ii) empurrar 3 dos 4 `NestedJoin` (ALOCAÇÃO PATRIMONIO,
+TROCA ENDEREÇO, TECNICOS AUXILIARES — todas dbVoalle) para dentro do próprio
+SQL via `LEFT JOIN`, eliminando 6 dos 56 passos** (`GESTORES EQUIPES` é
+dbMaria, não dá pra inlinar, mas é tabela pequena). Não é tarde — é cirurgia
+no motor compartilhado ou reescrita de SQL + revalidação completa, mais perto
+de dias. Não implementado nesta sessão.
+
+**`field-agenda`/`field-agenda-slot` — caminho viável achado, não
+implementado.** `v_service_desk_slots_productivity_informative` expõe
+`assignment_id`, e `field-agenda` já usa esse campo pra `LEFT JOIN reports r
+ON vsdspi.assignment_id = r.assignment_id` — comprovadamente utilizável.
+Testado ao vivo: `LEFT JOIN assignments a ON a.id = vsdspi.assignment_id` roda
+sem erro, com `LIMIT 2000` e na janela completa de 3 meses (41.671 linhas), e
+o tempo não piora (5894ms→5122ms e 4681ms→4525ms — dentro do ruído de medição,
+esperado já que `assignments.id` é PK indexada). **Não implementado porque
+apareceram duas complicações novas, mais sérias que "achar a coluna":** (1)
+`field-agenda-slot.spec.yaml` declara `origin: table:FIELD AGENDA` — o
+overlay do poller mira a tabela pelo NOME, então ele sobreporia a MESMA
+"FIELD AGENDA" que carrega as colunas calculadas mais sensíveis do catálogo
+(`Rank*`/`Categoria*`, achados #85/#86/#87), não uma tabela isolada; (2) rank é
+relativo à PARTIÇÃO inteira — uma linha nova entrando via overlay não
+recalcula o rank das linhas vizinhas da mesma partição, diferente do gap
+"coluna calculada em branco" que se mostrou seguro para `TempoTotalDias`
+abaixo. Decisão separada, deliberadamente fora desta sessão.
+
+**`instalacoes-reincidentes`/`reincidencia` — fechadas com a reescrita
+`alvos`.** As CTEs internas (`instalacoes`/`manutencoes` numa,
+`primeira_instalacao`/`primeiro_suporte` na outra) ganharam uma coluna técnica
+nova por ramo (`_marca_instalacao`, `_marca_manutencao`, `_marca_suporte` —
+`assignments.modified`, threading igual ao achado #92) e passaram a rodar
+**sempre sem filtro de `:desde`** — nunca veem um subconjunto parcial, então
+`ROW_NUMBER()`/`PARTITION BY` sempre calcula sobre o grupo inteiro, igual
+`incremental.yaml` já garante para `protocolos-produtividade`. Uma CTE nova,
+`alvos` (UNION dos dois ramos), decide só QUAIS chaves saem no resultado final
+— a costura inteira mora em `realtime-poll.yaml` (`costura.de`/`para`), nunca
+no `sql:` base, mesma disciplina do achado #92.
+
+**Verificado ao vivo antes de confiar** (não só a função `costura()` isolada):
+rodei a query ORIGINAL sem costura nenhuma como baseline, depois a costurada
+com `:desde` no passado (1970) — teve que bater **exatamente** com o
+baseline — e com `:desde` = agora (deveria vir vazio). `instalacoes-reincidentes`:
+baseline 21.938 linhas, costurada-passado 21.938 (bate), costurada-agora 0.
+`reincidencia`: baseline 1.363, costurada-passado 1.363 (bate), costurada-agora
+0. Confirmei também que as chaves de linha (`protocolo_instalacao`,
+`service_tag`) não têm duplicata na amostra (`GROUP BY ... HAVING COUNT(*)>1`
+vazio nas duas).
+
+**Erro cometido e corrigido no processo**: a primeira tentativa de costura
+esqueceu de repor o `)` que fecha a CTE `reincidencias`/`primeiro_suporte`
+antes de inserir `alvos` — o texto substituído (`de`) incluía esse `)`, e o
+texto novo (`para`) não o recriava, quebrando a sintaxe (`syntax error at or
+near "("`). Corrigido fazendo `para` começar com `),` em vez de só `,`.
+
+**Custo por volta: ~2-4s, não os ~200ms das outras 5 queries do
+`realtime-poll.yaml`** — porque o filtro `alvos` só reduz a SAÍDA, nunca o
+CÁLCULO (as CTEs internas sempre rodam completas). Por isso as duas usam
+`intervalo_ms: 30000`, não 12000 — 30s ainda é ~40x mais rápido que os 20min
+do refresh em lote, sem martelar o Voalle a cada 12s com uma consulta que
+recomputa tudo de qualquer forma. Medido variável entre execuções (2,1s a
+12,0s numa amostra de 2 rodadas) — o guard `#ocupado` de `poller-realtime.ts`
+já impede sobreposição caso uma volta demore mais que o intervalo.
+
+**Achado colateral que quase virou bug em produção**: `RETORNO PRIORITARIO`
+(adicionada no #92) e `REINCIDÊNCIA` (adicionada agora) têm colunas
+CALCULADAS de verdade (`specs/_catalog/tables/`: `TempoTotalDias` nas duas,
+`TempoDifFormatado` só em REINCIDÊNCIA) — DAX simples de subtração de data,
+mas computadas na materialização completa, não presentes numa linha trazida
+pelo poller. Verificado antes de assumir que isso era seguro:
+`packages/measure-engine` (`evaluator.ts`, `indice.ts`, `filter.ts`) já lê
+valor de coluna com `row[coluna] ?? BLANK` / `key in row` em vários pontos —
+uma linha sem a chave vira `BLANK`, não exceção. Consequência real: as duas
+colunas calculadas ficam em branco nas linhas recém-trazidas pelo poller até
+o próximo refresh completo recalculá-las — gap aceito e documentado, mesma
+classe dos ~15,8%/84,2% já registrados, não erro.
+
+**Crontab do Refresh Manager (achado #91) — continua sem acesso.** Verificado
+nesta sessão: não há `~/.ssh/config`, e `~/.ssh/known_hosts` só tem
+`github.com` — nenhuma evidência de acesso SSH a um host de produção a partir
+desta máquina. Sem CI/CD (`.github/workflows/` vazio) nem outro mecanismo de
+deploy automatizado encontrado no repositório. A linha de crontab
+(`tools/refresh/cron.sh`, achado #91) continua pronta e não instalada —
+depende de alguém com acesso ao host real rodar o comando.
+
+`npm test`: 1591/1591 (sem teste novo — mudança é config + `spec.sql`, coberta
+pelos testes existentes de `costura()`).
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória

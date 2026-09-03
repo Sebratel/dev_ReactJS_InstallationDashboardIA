@@ -16,7 +16,8 @@ sql: |-
           p4.name AS cliente,
           plis.out_date AS data_instalacao,
           plis.created AS data_hora_saida,
-          p3.name AS tecnico_responsavel
+          p3.name AS tecnico_responsavel,
+          a.modified AS _marca_instalacao
       FROM patrimony_packing_list_items plis
       LEFT JOIN patrimony_packing_lists ppl 
           ON ppl.id = plis.patrimony_packing_list_id
@@ -51,7 +52,8 @@ sql: |-
           ssc4.title AS categoria_4,
           ssc5.title AS categoria_5,
           a.title AS descricao_manutencao,
-          a.created AS data_manutencao
+          a.created AS data_manutencao,
+          a.modified AS _marca_manutencao
       FROM assignment_incidents ai
       LEFT JOIN assignments a 
           ON a.id = ai.assignment_id
@@ -98,6 +100,7 @@ sql: |-
           m.categoria_5,
           m.descricao_manutencao,
           m.data_manutencao,
+          m._marca_manutencao,
           ROW_NUMBER() OVER (
               PARTITION BY i.protocolo_instalacao
               ORDER BY m.data_manutencao ASC
@@ -131,10 +134,12 @@ sql: |-
           WHEN protocolo_manutencao IS NOT NULL THEN 'SIM'
           ELSE 'NÃO'
       END AS reincidente_30d,
-      CASE 
+      CASE
           WHEN data_manutencao IS NOT NULL THEN
               FLOOR(EXTRACT(EPOCH FROM (data_manutencao - data_instalacao)) / 86400)
-      END AS dias_para_reincidencia
+      END AS dias_para_reincidencia,
+      _marca_instalacao,
+      _marca_manutencao
   FROM reincidencias
   WHERE rn = 1 OR rn IS NULL
   ORDER BY data_instalacao DESC;
