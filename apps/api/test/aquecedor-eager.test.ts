@@ -14,10 +14,12 @@ const LAYOUT_3_FAIXAS = {
   pagina: 'agendamento-field',
   base: 'x',
   kpis: [{ visual: 'k1', enfase: 'normal' }],
-  // Só as 2 primeiras entram no corte eager — m1 fica de fora.
+  // Só as 4 primeiras entram no corte eager — m1 fica de fora.
   faixas: [
     { altura: 'grafico', colunas: [{ visual: 'g1', span: 12, render: 'x' }] },
     { altura: 'tabela', colunas: [{ visual: 't1', span: 12, render: 'x' }] },
+    { altura: 'tabela', colunas: [{ visual: 't2', span: 12, render: 'x' }] },
+    { altura: 'grafico', colunas: [{ visual: 'g2', span: 12, render: 'x' }] },
     { altura: 'matriz', colunas: [{ visual: 'm1', span: 12, render: 'x' }] },
   ],
   ocultos: [],
@@ -30,7 +32,8 @@ function silencio(): (l: string) => void {
 
 test('com layout disponível, aquece com `?visual=` — a MESMA chave que o navegador pede', async () => {
   const chamadas: string[] = [];
-  const urlEsperada = 'http://x/api/dashboards/agendamento-field?visual=k1&visual=g1&visual=t1';
+  const urlEsperada =
+    'http://x/api/dashboards/agendamento-field?visual=k1&visual=g1&visual=t1&visual=t2&visual=g2';
   const buscar = (async (url: string | URL): Promise<Response> => {
     const u = String(url);
     chamadas.push(u);

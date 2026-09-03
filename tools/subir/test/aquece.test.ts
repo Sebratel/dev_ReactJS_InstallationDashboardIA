@@ -111,19 +111,21 @@ const layoutFalso = (
 
 test('com layout disponível, aquece com `?visual=` — a MESMA chave que o navegador pede', async () => {
   const idPagina = 'agendamento-field';
-  // 3 faixas: só as 2 primeiras (g1, t1) entram no corte eager — igual a `idsIniciais`.
+  // 5 faixas: só as 4 primeiras (g1, t1, t2, g2) entram no corte eager — igual a `idsIniciais`.
   const layout = layoutFalso(
     [
       { colunas: [{ visual: 'g1' }] },
       { colunas: [{ visual: 't1' }] },
+      { colunas: [{ visual: 't2' }] },
+      { colunas: [{ visual: 'g2' }] },
       { colunas: [{ visual: 'm1' }] },
     ],
     [{ visual: 'k1' }],
   );
-  const urlEsperada = `${pag(idPagina)}?visual=k1&visual=g1&visual=t1`;
+  const urlEsperada = `${pag(idPagina)}?visual=k1&visual=g1&visual=t1&visual=t2&visual=g2`;
   const { buscar, chamadas } = fetchFalso({
     [layoutUrl(idPagina)]: layout,
-    [urlEsperada]: (n: number) => ({ visuais: [{}, {}, {}], cache: n === 1 ? 'miss' : 'hit' }),
+    [urlEsperada]: (n: number) => ({ visuais: [{}, {}, {}, {}, {}], cache: n === 1 ? 'miss' : 'hit' }),
   });
 
   const m = await aquecePagina(idPagina, { base: BASE, buscar, agora: relogio([0, 100, 105]) });

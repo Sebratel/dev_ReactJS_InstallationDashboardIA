@@ -7100,6 +7100,63 @@ pelos testes existentes de `costura()`).
 
 ---
 
+## #94 — `N_FAIXAS_EAGER` de 2 para 4: o aquecedor não cobria o que a tela mostra de cara em página densa
+
+**03/09/2026.** Erick mandou um print de `AGENDAMENTO FIELD`: 8 cards presos em
+"carregando…" — `tableEx`/`pivotTable`, os IDs do print batendo exatamente com
+visuais reais da página. Investigado antes de mexer em qualquer coisa:
+
+1. `/api/dashboards/agendamento-field` (a página inteira) respondia rápido e sem
+   erro (1,7-2,3s frio, 5ms quente) — não é a rota que a Fase L5/R4 usa. O
+   navegador nunca pede a página inteira; pede `?visual=<id>` um a um, disparado
+   por `IntersectionObserver` (`VisualNaDobra.tsx`).
+2. Testados os 8 IDs do print, um de cada vez (sequencial): todos voltaram em
+   3-10ms, exceto um em 4,8s numa tentativa isolada — rápidos sozinhos.
+3. **A causa não é velocidade por visual — é concorrência fria.** `apps/api/src/
+   aquecedor.ts` só pré-calcula `idsIniciais(layout)`
+   (`tools/layout/src/corte-eager.ts`): todo KPI mais as colunas das
+   `N_FAIXAS_EAGER` primeiras faixas — **2**, até esta sessão. `agendamento-field`
+   tem 10 faixas em 3714px; num monitor comum (1080px + a margem de 200px do
+   observer) as faixas 3-6 já ficam "perto o bastante" **na própria abertura** —
+   o comentário de `VisualNaDobra.tsx` já registrava isso. O primeiro visitante
+   depois de um restart/refresh disparava 4+ tabelas/matrizes FRIAS ao mesmo
+   tempo, competindo pela mesma thread síncrona do Node (`calculaPagina` é um
+   `for` sem `await` — não há concorrência real, só fila).
+
+**Por que 4 e não outro número — matemática, não achismo.** `altura-medida.ts`
+(`calculaAlturasDeFaixa`/`PISO_TETO_FAIXA`) já mostra que faixas do MESMO tipo
+dividem um pool de `--util` entre si; numa página com 2 grafico + 5 tabela + 3
+matriz, dividir por 5 ou 3 empurra cada faixa para o PISO (grafico 273px,
+tabela 280px, matriz 360px — não a fração "cheia"). Somando pelo piso: faixas
+1-2 (grafico) = 546px, +2 tabelas = 1106px — dentro de 1080px+200px de margem
+— e a 5ª (a primeira matriz, 360px) já estoura esse orçamento. **4 é onde a
+conta de altura real para de caber na tela**, não um múltiplo arbitrário de 2.
+
+**Por que um número fixo global, e não a conta de altura por página.**
+`calculaAlturasDeFaixa` precisa de `utilPx` medido no DOM — não roda no
+aquecedor (Node, sem navegador) sem introduzir uma sonda ou estimativa
+duplicada. Registrado como refinamento futuro possível (corte por altura
+estimada em vez de contagem fixa), não implementado por falta de necessidade
+medida além do que os 4 resolvem hoje.
+
+**Testes afetados**: `corte-eager.test.ts` (dos dois lados — `tools/layout` e o
+reexport em `apps/web`), `aquece.test.ts`, `aquecedor-eager.test.ts` — todos
+tinham layouts de 3 faixas fixados para demonstrar o corte em 2; ganharam
+faixas extras para continuar demonstrando o corte, agora em 4, sem perder a
+cobertura de "o que fica de fora".
+
+**Verificado ao vivo antes de fechar**: reiniciei a API, aquecedor rodou
+**35,1s para as 14 páginas** (primeira medição de verdade — as "0,1s" de
+tentativas anteriores nesta sessão eram cache do Redis sobrevivendo aos
+restarts, não um aquecimento frio real; não há um "antes" limpo com N=2 para
+comparar por causa disso, registrado em vez de inventado). Depois do
+aquecimento, os mesmos 8 IDs do print voltaram em 2-6ms cada — confirma que o
+aquecedor agora cobre o que fica preso.
+
+`npm test`: 1591/1591.
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória
