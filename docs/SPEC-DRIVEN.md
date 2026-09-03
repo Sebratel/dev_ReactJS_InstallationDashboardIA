@@ -104,6 +104,47 @@ para a completa.
 apaga — ele só sobrescreve o que já existia), este arquivo precisa da mesma
 proteção. Registrado aqui para não se perder no meio tempo.
 
+### `clima-tempo` — guarda de nulo antes da classificação de chuva (03/09/2026)
+
+```
+-- era:  comClassificacao = Table.AddColumn(comTipo, "Classificacao_Chuva", each
+--       if [Precipitacao_mm] = 0 then "Sem chuva" ...
+-- é:    semNulos = Table.TransformColumns(comTipo, {{"Precipitacao_mm", each if _ = null then 0 else _, type number}}),
+--       comClassificacao = Table.AddColumn(semNulos, "Classificacao_Chuva", each
+--       if [Precipitacao_mm] = 0 then "Sem chuva" ...
+```
+
+**Conserto de defeito, não divergência de propósito.** A API `open-meteo` volta
+`precipitation_sum: null` para algum dia (histórico incompleto ou ponta da janela de
+previsão), e `if [Precipitacao_mm] = 0` com `[Precipitacao_mm]` nulo dá `null`, não
+`false` — nosso interpretador de M exige lógico e ERRA ALTO (`"A condição do if deu
+null, e M exige logical (true/false)"`), corretamente: é o mesmo comportamento que o
+Power BI real teria com essa expressão. O defeito é do M original, não da nossa
+leitura dele.
+
+**Como foi achado.** `clima-tempo` era a materialização mais antiga do snapshot
+inteiro (`2026-08-07T19:12:54.718Z`) — 27 dias parada — e era ela quem definia o
+"dado desatualizado" na tela de `agendamento-field`, que usa `Clima/ Tempo` entre
+suas `entities_used`. `clima-tempo` não está em `refresh.yaml` (é uma das "7 fontes
+nunca medidas isoladamente", risco já registrado lá), então a única forma de
+perceber a quebra era rodar `--refazer` à mão — o que aparentemente não acontecia
+há 27 dias. Reproduzido com `node tools/snapshot/src/index.ts --query=clima-tempo
+--refazer`, que falhou em 6,5s com o erro acima antes do conserto e teve sucesso
+(1.827 linhas, 6,46s) depois.
+
+**Cuidado operacional achado ao testar o conserto**: `--refazer` de uma query cuja
+materialização avança o carimbo "mais recente" do snapshot dispara, sozinho, o
+recongelamento automático das tabelas calculadas afetadas
+(`tools/snapshot/src/calculadas.ts --todas`) — e esse recongelamento usa nomes de
+arquivo fixos em `snapshot/_parciais/` (`status-protocolo-dia.0.jsonl` etc.), sem
+namespacing por processo. Rodar DOIS `--refazer` em paralelo (o que fiz, sem saber
+disso, testando `clima-tempo` e o grupo `quente` de `refresh.yaml` ao mesmo tempo)
+faz as duas recongelações colidirem no mesmo arquivo temporário e uma delas morre
+com `ENOENT`. **Não é bug de produção** — `tools/refresh/src/index.ts` já documenta
+que nenhum tick roda em paralelo com outro por design; o gatilho externo (Agendador
+de Tarefas) é quem garante isso. É risco só para quem, como eu, roda `--refazer` à
+mão em duas janelas ao mesmo tempo. Registrado para o próximo que fizer o mesmo.
+
 ## Estrutura de `specs/`
 
 ```

@@ -424,7 +424,7 @@ export function preservaEspecieDeJuncao(
  * varrido sobre a coluna inteira. Coluna que já chega no tipo certo não é tocada, e
  * é por isso que o custo disto é proporcional às 14, não às centenas.
  */
-function aplicaTiposDeclarados(
+export function aplicaTiposDeclarados(
   t: ModelTable,
   cabecalho: CabecalhoDeSnapshot,
   linhas: Record<string, Escalar>[],

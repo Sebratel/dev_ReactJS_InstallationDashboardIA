@@ -6574,6 +6574,112 @@ multiplicador.
 
 ---
 
+## #88 — O "dado desatualizado" de `agendamento-field` não era o #87: era `clima-tempo` travada há 27 dias, e o benchmark de carga estava quebrado
+
+**03/09/2026.** Pergunta direta: *"como está a velocidade de carregamento e por
+que estamos com essa mensagem [dado desatualizado — 07/08/2026]"*. As duas
+respostas vieram de lugares diferentes do que o #87 mexeu.
+
+**A mensagem não é sobre `FIELD AGENDA`.** `dadoDe` de uma página é a
+materialização **mais antiga** entre as tabelas que ela usa
+(`packages/snapshot/src/carrega.ts`, comentário próprio: *"a tela promete que
+nada ali é mais velho que a data mostrada"*). Lendo o manifesto de verdade
+(`leManifesto`, campos `query`/`geradoEm`, não os que eu tinha suposto de
+memória na primeira tentativa) para as 7 tabelas de `agendamento-field`:
+
+```
+clima-tempo         -> 2026-08-07T19:12:54.718Z   <- a mais antiga de TODO o snapshot
+capacidade-equipe   -> 2026-08-24T18:00:34.742Z
+protocolos-geral    -> 2026-08-25T20:30:11.053Z
+hora-atualizado     -> 2026-09-02T14:22:22.733Z
+field-agenda(-slot) -> 2026-09-02T21:00:30/53Z    <- rematerializada no #87, no dia anterior
+```
+
+`FIELD AGENDA` está fresca. Quem carimba a página é `Clima/ Tempo`.
+
+**Por que `clima-tempo` parou.** Não é falta de cadência (embora também não
+tenha — é uma das "7 fontes nunca medidas isoladamente" que `refresh.yaml`
+deixa de fora de propósito). É um bug de verdade: `--refazer` reproduziu em
+6,5s um erro do nosso interpretador de M, correto por sinal —
+`if [Precipitacao_mm] = 0` com `Precipitacao_mm` nulo (a API `open-meteo`
+devolve isso para algum dia) dá `null`, não `false`, e `if` exige lógico. É o
+mesmo erro que o Power BI real acusaria com essa expressão — o M original
+sempre teve esse risco, só não tinha sido pego porque nenhum dia tinha vindo
+nulo antes de 07/08. Consertado com uma guarda de nulo antes da classificação
+(`Table.TransformColumns`, nulo vira 0), registrado em `docs/SPEC-DRIVEN.md`.
+Depois do conserto: `clima-tempo` materializa em 6,46s, 1.827 linhas — é uma
+query "web" contra uma API pública, não tem nada a ver com o custo de
+`FIELD AGENDA`. `dadoDe` do snapshot inteiro saiu de `07/08` para `12/08`
+(a nova mais antiga é `apuracao-premiacao`, gsheets, mesma categoria "nunca
+medida isoladamente" — fora do escopo de hoje, mas fica registrado).
+
+**Achado colateral, meu, não de produção**: testei o conserto rodando dois
+`--refazer` em paralelo (`clima-tempo` numa janela, o grupo `quente` de
+`refresh.yaml` noutra) para economizar tempo. Os dois dispararam o
+recongelamento automático de `Status Protocolo Dia` ao mesmo tempo, e as duas
+instâncias de `calculadas.ts` colidiram no mesmo nome de arquivo temporário em
+`snapshot/_parciais/` — uma delas morreu com `ENOENT`. Resolvido rodando
+`calculadas.ts --todas` de novo, sozinho. `tools/refresh/src/index.ts` já
+documenta que ticks não rodam em paralelo por design (é o agendador externo
+quem garante isso); o risco só existe para quem roda `--refazer` à mão em duas
+janelas ao mesmo tempo, como eu fiz. Não é conserto de código — é aviso para o
+próximo.
+
+**O benchmark oficial do projeto (`npm run bench:carga --paginas`) estava
+quebrado**, e não por causa do #87. `tools/bench/src/carga.ts` importa
+`aplicaTiposDeclarados` de `carrega.ts` e `decodifica` de `formato.ts` — duas
+funções que existem e são usadas internamente há tempos, mas que em algum
+ponto perderam o `export` (confirmado por `git log`: não foi o commit do #87,
+que nem toca essas linhas). Ninguém tinha rodado a ferramenta desde então para
+notar. Devolvido o `export` nas duas — mudança mecânica, sem efeito em
+comportamento, `npm test` seguiu 1562/1562 depois.
+
+**Os números, medidos ao vivo agora, com a ferramenta consertada:**
+
+```
+npm run bench:carga -- --paginas --pagina=agendamento-field --repete=5
+  agendamento-field: 7 tabelas, 115.306 linhas, 463 ms (forma padrão / grão de slot)
+```
+
+Contra o HTTP de verdade (`servidor.ts`, sessão via `/auth/interno`), no mesmo
+processo que o #87 usou ontem:
+
+```
+página inteira, sem ?visual= — fria (cache invalidado pela rematerialização) .. 1,60 s
+mesma página, quente .......................................................... 45 ms / 19 ms
+visual 815c0959 (sem gatilho) — fria .......................................... 7,33 s*
+visual 815c0959, quente ....................................................... 16 ms
+visual 084be384 (gatilho de relato, escala p/ forma completa) — fria ......... 3,83 s
+visual 084be384, quente ....................................................... 3 ms
+```
+
+\* mais alto que o esperado para um visual sem gatilho — o aquecedor automático
+do processo de desenvolvimento estava reaquecendo outras páginas ao mesmo
+tempo (contenção real, não regressão do #87; a leitura fria de página inteira,
+sem essa contenção, ficou em linha com o padrão de ontem).
+
+**A leitura honesta para "melhorou pro realtime?"**: a CARGA ficou
+mensuravelmente melhor e continua estável um dia depois (463 ms hoje contra os
+484 ms do #87 ontem, mesma ordem de grandeza) — mas carga rápida não é a
+mesma coisa que dado fresco. `FIELD AGENDA` nunca teve, e continua sem ter,
+cadência automática (21min49s de materialização não cabe em nenhum intervalo
+de `refresh.yaml`, achado #82) — ela só atualiza em passe manual. E
+`tools/refresh/src/index.ts` é, por desenho, "um tick por disparo externo, sem
+daemon 24/7" — não há Agendador de Tarefas configurado batendo nele hoje
+(confirmado: nenhum processo `tools/refresh` rodando). Ou seja, o "realtime" de
+`agendamento-field` hoje depende de alguém rodar `npm run snapshot`/`npm run
+refresh` à mão; nada nas mudanças de código de hoje ou do #87 automatiza isso
+— o que os dois consertos garantem é que, quando o dado FOR atualizado, abrir
+a página custa milissegundos, não minutos, e que o snapshot não vai mentir
+sobre a própria idade.
+
+`npm test`: 1562/1562 (2 esperados atualizados: `cobertura.test.ts` — o corpus
+de M ganhou 1 passo com a guarda de nulo, 330→331 — nenhum novo teste
+precisou ser escrito, os dois consertos são de re-exportação e de guarda de
+tipo já cobertas por teste existente).
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória

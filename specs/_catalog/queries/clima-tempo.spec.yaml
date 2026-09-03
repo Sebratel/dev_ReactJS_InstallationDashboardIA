@@ -121,7 +121,11 @@ m_expression: |-
           {"Probabilidade_Chuva_%", type number}
       }),
 
-      comClassificacao = Table.AddColumn(comTipo, "Classificacao_Chuva", each
+      semNulos = Table.TransformColumns(comTipo, {
+          {"Precipitacao_mm", each if _ = null then 0 else _, type number}
+      }),
+
+      comClassificacao = Table.AddColumn(semNulos, "Classificacao_Chuva", each
           if [Precipitacao_mm] = 0 then "Sem chuva"
           else if [Precipitacao_mm] < 5 then "Chuva fraca"
           else if [Precipitacao_mm] < 20 then "Chuva moderada"

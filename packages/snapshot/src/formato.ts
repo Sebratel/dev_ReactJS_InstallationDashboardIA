@@ -162,7 +162,7 @@ function codifica(v: Escalar, tipo: TipoDeColuna): unknown {
   return v instanceof Date ? v.toISOString() : v;
 }
 
-function decodifica(v: unknown, tipo: TipoDeColuna, onde: string): Escalar {
+export function decodifica(v: unknown, tipo: TipoDeColuna, onde: string): Escalar {
   if (v === null || v === undefined) return null;
   if (tipo === 'misto') {
     if (!Array.isArray(v) || v.length !== 2) {
