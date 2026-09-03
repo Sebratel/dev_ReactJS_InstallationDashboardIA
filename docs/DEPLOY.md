@@ -22,7 +22,7 @@
 | Tela React | 14 páginas navegáveis, filtros na URL. **Sem SSE e sem store de filtros** — perdidos com a árvore de 21/08 (§4) | não |
 | **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.3) | **sim, para "substituir"** |
 | **Autenticação** | **não existe.** A API serve todo número a todo pedido | **sim, e é o primeiro** |
-| **Refresh do dado** | `tools/refresh/` existe e roda (§2.2), 02/09/2026 — falta só criar a tarefa no Agendador de Tarefas | **sim** |
+| **Refresh do dado** | `tools/refresh/` existe e roda (§2.2), 03/09/2026 — o script de cron (`tools/refresh/cron.sh`) está pronto, falta só colar a linha no crontab do host de produção | **sim** |
 | Containerização | **não existe** nenhum `Dockerfile`. O `docker-compose.yml` sobe Redis e Kafka, não a aplicação | sim |
 | Proxy reverso + TLS | **não existe** nenhum arquivo de Nginx no repositório | sim |
 | Processo supervisionado | **não existe** — nem PM2, nem unit de systemd, nem healthcheck de container | sim |
@@ -110,16 +110,29 @@ tela não diz "isto é de terça".
   o que está vencido em `specs/_catalog/refresh.yaml`, em série, grava
   `snapshot/refresh-status.json` depois de cada grupo, e `GET /api/saude` expõe o
   bloco `refresh`. `npm run refresh -- --plano` mostra o que rodaria sem tocar nada.
-  **O que ainda falta é só o gatilho externo**: a tarefa no Agendador de Tarefas do
-  Windows em si não foi criada nesta sessão (é mudança persistente no SO, fora do
-  que uma sessão de repositório deveria fazer sem confirmação explícita) —
-  `npm run refresh` a cada N minutos é o comando a agendar (N = o menor
-  `intervalo_minutos` entre os grupos declarados). **O primeiro tick real já valeu a
-  pena antes de ser agendado**: achou duas queries que não podiam estar num grupo de
-  15 minutos — `field-agenda` custa 21min49s de verdade, não os 22,0s documentados
-  (#82), e `protocolos-geral` crasha por uma dependência de npm que falta, `mysql2`
-  (#83). As duas saíram de `refresh.yaml` até serem resolvidas; os grupos que sobraram
-  (~11s e ~24s medidos ao vivo) são seguros para a cadência declarada.
+  **O gatilho externo é `cron` no host, não Agendador de Tarefas do Windows** —
+  produção é Linux/container (`docker-compose.prod.yml`), então a peça certa é a
+  que o próprio arquivo já citava ("`SNAPSHOT_DIR_HOST` é onde o refresh agendado
+  materializa no host"). `tools/refresh/cron.sh` (03/09/2026, ACHADOS #91) é essa
+  peça — `flock -n` contra sobreposição, log em `snapshot/refresh.log`, roda de um
+  checkout completo do repo (não da imagem Docker, que é deliberadamente enxuta e
+  não tem `tools/snapshot/` nem `pg`/`mariadb`). Instalar é uma linha de crontab:
+
+  ```
+  */15 * * * * /caminho/do/repo/tools/refresh/cron.sh
+  ```
+
+  **Continua sem ser instalado nesta sessão** — editar o crontab do host de
+  produção é mudança persistente no SO, fora do que uma sessão de repositório
+  deveria fazer sem confirmação explícita, mesma régua do item acima. O que muda
+  em relação à versão anterior deste parágrafo: o script e a linha de crontab já
+  existem prontos, só falta alguém com acesso ao host colar a linha. **O primeiro
+  tick real já valeu a pena antes de ser agendado**: achou duas queries que não
+  podiam estar num grupo de 15 minutos — `field-agenda` custa 21min49s de verdade,
+  não os 22,0s documentados (#82), e `protocolos-geral` crasha por uma dependência
+  de npm que falta, `mysql2` (#83). As duas saíram de `refresh.yaml` até serem
+  resolvidas; os grupos que sobraram (~11s e ~24s medidos ao vivo) são seguros
+  para a cadência declarada.
 - **E a escrita em si não era segura rodar com a API no ar — também consertado.**
   `ACHADOS.md` #79 / §4.3: no Windows, renomear o arquivo novo por cima do antigo
   falhava **sempre** (medido: 100%) enquanto um pedido de página tinha aquele `.jsonl`

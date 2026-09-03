@@ -6830,6 +6830,39 @@ overlay em `carrega.test.ts`, `limpaPagina`/`apagaPagina` em
 
 ---
 
+## #91 — O gatilho do Refresh Manager é `cron`, não Agendador de Tarefas — produção é Linux
+
+**03/09/2026.** `docs/DEPLOY.md` (achado #84 em diante) sempre citou "Agendador
+de Tarefas do Windows **ou** cron no host Linux" como as duas opções — mas
+nunca fixou qual. Confirmado: produção é container/Linux
+(`docker-compose.prod.yml` já existe, `Dockerfile` builda uma imagem `node:
+24-slim`), não Windows. Windows Task Scheduler nunca foi a peça certa para lá.
+
+Criado `tools/refresh/cron.sh` — o gatilho externo que `tools/refresh/src/
+index.ts` já pedia desde o #84, agora para o alvo certo: `flock -n` contra
+sobreposição (a mesma proteção que uma tarefa do Windows teria por
+configuração, aqui é uma linha), log em `snapshot/refresh.log`. Instalação:
+uma linha de crontab (`*/15 * * * * /caminho/do/repo/tools/refresh/cron.sh`).
+
+**Por que roda de um checkout, não da imagem Docker.** A imagem de produção
+(`Dockerfile`, stage `runtime`) é deliberadamente enxuta — só o que a API lê
+precisa, sem `tools/snapshot/` nem `pg`/`mariadb`/gsheets (comentário do
+próprio Dockerfile, item 3). Materializar exige o repo inteiro com `npm ci`
+completo. O script assume um checkout de verdade no host, escrevendo no mesmo
+`snapshot/` que `SNAPSHOT_DIR_HOST` aponta o container da API a ler — a mesma
+divisão que `docker-compose.prod.yml` já desenhava desde antes desta sessão,
+só faltava a peça que escreve.
+
+**Não instalado nesta sessão** — editar o crontab do host de produção é
+mudança persistente no SO, mesma régua já registrada para o Agendador de
+Tarefas: fora do que uma sessão de repositório faz sem confirmação explícita
+de quem tem acesso àquele host. Verificado o que dá para verificar sem esse
+acesso: sintaxe do script (`bash -n`), resolução de caminho (`AQUI`/`RAIZ`
+batem com o repo de verdade) e o comando que ele roda (`node tools/refresh/
+src/index.ts --plano`, ao vivo, mostrando os 3 grupos corretos).
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória
