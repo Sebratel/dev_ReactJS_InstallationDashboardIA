@@ -614,3 +614,51 @@ test('tabela sem entrada em graoReduzido nunca olha para precisaFormaCompleta', 
   });
   assert.equal(c.linhasPorTabela.get('OS'), 3);
 });
+
+// ---------------------------------------------------------------------------
+// overlay — o poller de quase-realtime (apps/api/src/poller-realtime.ts)
+// ---------------------------------------------------------------------------
+
+test('overlay: a função de mesclagem é chamada com as linhas do disco, e o resultado dela é que serve', async () => {
+  const dir = await comSnapshot();
+  let recebeu: readonly Record<string, unknown>[] | null = null;
+  const c = await carrega({
+    dir, model: modelo(), dashboards: [pagina([card('Total')])], now: AGORA,
+    overlay: new Map([
+      ['os', (doDisco) => {
+        recebeu = doDisco;
+        return [...doDisco, { valor: 999, cidade: 'Overlay', quando: new Date('2026-05-01T00:00:00.000Z') }];
+      }],
+    ]),
+  });
+  assert.equal(recebeu?.length, 3); // as 3 linhas do arquivo, sem tocar
+  assert.equal(c.linhasPorTabela.get('OS'), 4); // + a linha que o overlay acrescentou
+  const dash = pagina([card('Total')]);
+  const total = calculaCard(dash, dash.visuals[0]!, c.ev);
+  assert.equal((total as { valor: unknown }).valor, 10 + 30 + 60 + 999);
+});
+
+test('overlay: tabela sem mesclador configurado carrega só do arquivo, como sempre', async () => {
+  const dir = await comSnapshot();
+  const c = await carrega({
+    dir, model: modelo(), dashboards: [pagina([card('Total')])], now: AGORA,
+    overlay: new Map([['outra-tabela-qualquer', (d) => d as Record<string, unknown>[]]]),
+  });
+  assert.equal(c.linhasPorTabela.get('OS'), 3);
+});
+
+test('overlay: a linha que ele acrescenta ainda passa pela conversão de tipo declarada', async () => {
+  // QUANDO é dateTime no modelo. Uma linha de overlay com a data como TEXTO (o
+  // formato mais provável de vir de um SELECT bruto que ninguém tipou ainda)
+  // precisa sair de carrega() como Date de verdade — senão YEAR() erra alto.
+  const dir = await comSnapshot();
+  const c = await carrega({
+    dir, model: modelo(), dashboards: [pagina([card('Ano')])], now: AGORA,
+    overlay: new Map([
+      ['os', (doDisco) => [...doDisco, { valor: 1, cidade: 'X', quando: new Date('2027-01-01T00:00:00.000Z') }]],
+    ]),
+  });
+  const linhas = c.ev.dataset.rows('OS');
+  const nova = linhas.find((l) => l.cidade === 'X')!;
+  assert.ok(nova.quando instanceof Date, 'a coluna de data do overlay tem de continuar Date, não string');
+});

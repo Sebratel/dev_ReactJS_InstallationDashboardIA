@@ -111,6 +111,42 @@ consertado hoje, os elos 1 e 2 continuam sem existir, e nenhum dos quatro muda a
 resposta central desta decisão — CDC avisaria a tela mais rápido, não tornaria o
 snapshot mais fresco. Ver ACHADOS #89.
 
+### A peça que a decisão de 11/08 não tinha na mesa: poller próprio (03/09/2026)
+
+A rejeição de Debezium/Kafka acima continua de pé — não é isto que muda. O que
+mudou é uma pergunta diferente: existe um jeito de a tela se atualizar sozinha
+que **não** dependa de CDC nem de acesso além do que a plataforma já tem
+(leitura)?
+
+Existe, e foi construído: `apps/api/src/poller-realtime.ts`. A diferença para
+CDC é exatamente o ponto que travava a conta acima — **um evento de CDC só
+avisa; este poller busca**:
+
+```
+Voalle (SELECT a.modified >= :desde, a cada 12s — leitura, sem grant novo)
+   → mescla() com o que já está em memória (mesma função de incremental.ts)
+   → overlay por tabela, nunca escrito em disco (não mexe no carimbo global —
+     ver a armadilha de DEPLOY.md sobre rematerializar derrubar o cache inteiro,
+     que aqui rodaria a cada 12s em vez de ocasionalmente)
+   → invalidação CIRÚRGICA: só as páginas que usam a tabela (`queriesForTable`
+     + `planeja`), nas três camadas de cache — nunca o site inteiro
+   → GET /api/eventos (SSE) avisa só quem está com aquela página aberta
+   → apps/web/src/App.tsx apaga o cache local da página e refaz o mesmo fetch
+     de sempre — sem F5
+```
+
+**Escopo de hoje: só `PROTOCOLOS AUXILIARES`.** É a única query com coluna de
+modificação exposta no SQL (`assignments.modified`) que também materializa sem
+crash — `PROTOCOLOS GERAL` tem a mesma coluna mas está travada pelo achado #83
+(mysql2 ausente). Mesmo buraco que `incremental.yaml` já documenta para
+`protocolos-produtividade`: ~84,2% de cobertura, não 100% — registrado, não
+escondido. Ver ACHADOS #90 para os números medidos ao vivo.
+
+**Isto não reabre a Fase 4.** Nenhum Kafka, nenhum Debezium, nenhum grant novo
+— é leitura direta, do jeito que a plataforma já lê tudo. O gatilho de duas
+condições (acima) continua sendo o que autorizaria CDC de verdade, e continua
+sem estar satisfeito.
+
 ## O que esta decisão NÃO autoriza
 
 - **Não autoriza remover** `realtime: true|false` de `cache-policies.yaml` nem

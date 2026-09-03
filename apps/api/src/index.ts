@@ -7,13 +7,15 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
+import { applyDotEnv, loadConfig, missingFor } from '../../../packages/query-engine/src/config.ts';
 import { CacheEmCamadas } from '../../../packages/query-engine/src/cache-camadas.ts';
 import { MemoryCache } from '../../../packages/query-engine/src/cache-memory.ts';
 import { RedisCache } from '../../../packages/query-engine/src/cache-redis.ts';
+import { createVoallePool } from '../../../packages/query-engine/src/connectors-sql.ts';
 import type { Cache } from '../../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { Aquecedor } from './aquecedor.ts';
+import { PollerRealtime } from './poller-realtime.ts';
 import { comoLiberar } from './porta.ts';
 import { Servidor } from './servidor.ts';
 
@@ -84,11 +86,21 @@ const tetoDeVisuaisMB = process.env.CACHE_VISUAL_MB
  */
 let aquecedor: Aquecedor | null = null;
 
+/**
+ * O poller de quase-realtime (`poller-realtime.ts`, ACHADOS #89/#90) — igual ao
+ * aquecedor, referenciado por fora ANTES de existir: `Servidor` precisa de
+ * `overlayRealtime` no construtor, e o poller precisa do `servidor` (para
+ * `aoTabelaMudar`) depois de construído. O `let` mais o fechamento abaixo
+ * resolvem a mesma dependência circular que `aquecedor`/`carimbo` já resolvem.
+ */
+let poller: PollerRealtime | null = null;
+
 const servidor = new Servidor({
   root: ROOT,
   snapshotDir: path.join(ROOT, DIRETORIO_PADRAO),
   webDir: path.resolve(AQUI, '..', 'web'),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
+  overlayRealtime: () => poller?.mescladores() ?? new Map(),
   ...(cache ? { cache } : {}),
   ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
     ? { tetoDeVisuaisMB }
@@ -100,6 +112,21 @@ const servidor = new Servidor({
     : {}),
   ...(process.env.TOKEN_INTERNO ? { tokenInterno: process.env.TOKEN_INTERNO } : {}),
 });
+
+/**
+ * Sem credencial do Voalle, não há o que poll(e)ar — mesma degradação do Redis
+ * acima: a API sobe igual, só sem esta peça. `PollerRealtime.ativo` cobre o
+ * outro lado (nenhuma query em `realtime-poll.yaml`), então as duas faltas
+ * levam ao mesmo "não inicia", sem duplicar a checagem.
+ */
+const semPoller = process.argv.includes('--sem-poller') || process.env.SEM_POLLER === '1';
+if (!semPoller && missingFor('voalle').length === 0) {
+  poller = new PollerRealtime({
+    specsDir: path.join(ROOT, 'specs'),
+    pool: () => createVoallePool(loadConfig().voalle),
+    aoMudar: (tabela, queryId) => servidor.aoTabelaMudar(tabela, queryId),
+  });
+}
 
 /**
  * O aquecimento é ligado por padrão e sai com `--sem-aquecer`.
@@ -143,8 +170,13 @@ http.listen(porta, () => {
   );
   console.log(`  Reaquecimento: ${semAquecer ? 'desligado (--sem-aquecer)' : 'automático'}`);
   console.log(
-    `  Paginação: ${tetoDeVisuaisMB === 0 ? 'sem cache de visual (CACHE_VISUAL_MB=0) — cada janela recalcula' : 'janela sai do resultado já calculado'}\n`,
+    `  Paginação: ${tetoDeVisuaisMB === 0 ? 'sem cache de visual (CACHE_VISUAL_MB=0) — cada janela recalcula' : 'janela sai do resultado já calculado'}`,
   );
+  console.log(
+    `  Realtime: ${poller?.ativo ? 'poller ligado (specs/_catalog/realtime-poll.yaml)' : semPoller ? 'desligado (--sem-poller)' : 'desligado — sem credencial do Voalle ou nenhuma query configurada'}\n`,
+  );
+
+  if (poller?.ativo) poller.inicia();
 
   if (!semAquecer) {
     // `127.0.0.1` e não `localhost`: em máquina com IPv6 o `localhost` pode resolver

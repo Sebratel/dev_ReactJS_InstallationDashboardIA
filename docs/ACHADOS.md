@@ -6741,6 +6741,95 @@ CDC avisaria a tela mais rápido, não tornaria o snapshot mais fresco.
 
 ---
 
+## #90 — Realtime sem Kafka: poller de `assignments.modified` + SSE, invalidação cirúrgica de três camadas de cache
+
+**03/09/2026.** Pedido: "parecido com realtime", sem acesso de escrita/replicação
+no Voalle (achado #89 já tinha fechado a porta do CDC). Construído
+`apps/api/src/poller-realtime.ts`: um `SELECT ... WHERE a.modified >= :desde` a
+cada 12s, cujo resultado nunca toca disco — fica num delta em memória, mesclado
+com o snapshot só na hora de servir. A tela recebe um SSE (`GET /api/eventos`)
+e troca o número sozinha, sem F5.
+
+**Escopo de dado, restrito pelo que existe de verdade — não pelo que seria
+ideal.** A candidata óbvia seria `FIELD AGENDA` (o assunto do resto desta
+sessão), mas o `sql:` dela não seleciona nenhuma coluna de modificação —
+só datas de criação/relato. A única query com `assignments.modified` exposto
+E que materializa sem crash é `protocolos-auxiliares`
+(`specs/_catalog/realtime-poll.yaml`, nova). `protocolos-geral` tem a mesma
+coluna mas trava no achado #83 (M faz `Table.NestedJoin` com `GESTORES
+EQUIPES`, dbMaria, `mysql2` ausente) — não tem nem snapshot base para o
+poller sobrepor. `contratos`, `contratos-telefonia`, `consolidado-clientes`:
+sem coluna de modificação nenhuma. Registrado, não escondido: o poller herda
+o mesmo buraco que `incremental.yaml` já documenta para
+`protocolos-produtividade` — ~84,2% das mudanças relevantes tocam
+`assignments.modified`, o resto (alocação de patrimônio, RAUX) mora em outra
+tabela do JOIN.
+
+**Por que a marca é timestamp e não dia — e por que isto não é
+`incremental.yaml`.** `costura()`/`mescla()` (`packages/snapshot/src/
+incremental.ts`) são reaproveitadas tal como estão — são puras e já provadas.
+Mas `desdeDe()`/`comoDia()` truncam em `YYYY-MM-DD`, certo para um refresh
+por hora/dia, errado para um poller de 12 em 12 segundos (rebuscaria o dia
+inteiro a cada volta). Por isso a config nova mora em
+`specs/_catalog/realtime-poll.yaml`, não em `incremental.yaml`, com sua
+própria margem em SEGUNDOS. Verificado com `costura()` de verdade antes de
+confiar na âncora: bate exatamente 1 vez no SQL real (não suposto de
+memória).
+
+**O ponto mais perigoso do desenho, e por que o poller nunca escreve em
+disco.** A chave do cache de resposta (`chaveDaResposta`) inclui um `carimbo`
+que é hash sobre **todas** as tabelas do manifesto. Escrever no snapshot a
+cada 12s reescreveria esse carimbo a cada 12s — e derrubaria o cache de
+**todas** as páginas, não só a que mudou (a mesma armadilha que `DEPLOY.md`
+já registra para rematerializar, rodando 75× mais rápido). A resposta: o
+delta do poller fica só em memória do processo (`DeltaDeTabela`, chave de
+grupo → última versão da linha), e `carrega()` ganhou um `overlay` novo —
+uma função por tabela que mescla o disco com o delta, chamada só quando
+existe. `Dataset`/`Evaluator` nunca sabem que overlay existe, mesmo desenho
+do grão reduzido (achado #87).
+
+**Invalidação cirúrgica, três camadas, nenhuma pelo carimbo global:**
+`Servidor.aoTabelaMudar(tabela, queryId)` cruza `queriesForTable()`
+(`registry.ts` — o comentário dela já dizia "usado pelo realtime", escrito
+antes de existir usuário) com um mapa `dashboard → queries` pré-calculado na
+subida, e só então apaga: `carregadas` (o avaliador em memória, por prefixo
+de chave), `completos` (resultado inteiro de visual, `CacheDeVisual.
+limpaPagina`, novo) e `cache` (resposta pronta, `CacheDeResposta.
+apagaPagina`, novo — `SCAN` por `resp:v1:`, filtra pelo segmento da página,
+já que o usuário vem antes dela na chave e impede prefixo puro). **O teste
+que mais importa**: uma página que não usa a tabela mudada continua servindo
+do cache depois de `aoTabelaMudar` — é o ponto que, se quebrado, derruba o
+site inteiro a cada 12s em vez de só a página certa.
+
+**O front não tem TanStack Query** — achado que corrige uma suposição errada
+minha e desatualiza `CLAUDE.md`: o cache real de `apps/web/src/App.tsx` são
+dois `useRef<Map>` (`paginasVistas`/`layoutsVistos`) escritos à mão. O
+listener de SSE (`useEffect` em `App()`, uma conexão por sessão de login, lida
+com `atualRef` para não reconectar a cada troca de aba) apaga a entrada certa
+via `apagaPaginaDoCache` (novo, `cache-pagina.ts`) e dispara o MESMO efeito de
+busca que já existe, através de um contador (`revalidar`) — sem inventar um
+segundo caminho de fetch.
+
+**Verificado ao vivo, não só em teste:** `PollerRealtime` rodado ~26s contra
+o Voalle real via um script solto (sem crash, sem erro); `node
+apps/api/src/index.ts` sobe e imprime "Realtime: poller ligado" com a
+credencial real presente, e "desligado" sem ela ou com `--sem-poller`. A
+correção de `carrega.ts`/`aplicaTiposDeclarados` do achado #88 (exports que
+tinham perdido `export`) segue valendo — nada aqui precisou de novo hand-fix
+de exportação.
+
+**Fora de escopo, registrado:** `FIELD AGENDA` e as outras 3 queries sem
+coluna de modificação — precisariam de hand-edit de SQL (mesmo padrão de
+`field-agenda-slot`) pra ganhar isso, decisão separada. Os ~15,8% de mudança
+fora de `assignments.modified` — mesmo gap que já existia, não um novo.
+
+`npm test`: 1591/1591 (29 testes novos: `poller-realtime.test.ts` inteiro,
+overlay em `carrega.test.ts`, `limpaPagina`/`apagaPagina` em
+`cache-visual.test.ts`/`cache.test.ts`, `aoTabelaMudar`/SSE em
+`servidor.test.ts`, `apagaPaginaDoCache` em `cache-pagina.test.ts`).
+
+---
+
 # Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
 
 > **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória

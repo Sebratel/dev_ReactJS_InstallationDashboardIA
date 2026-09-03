@@ -285,6 +285,46 @@ test('CacheDeResposta: ttl 0 não grava', async () => {
   assert.equal(memoria.size, 0);
 });
 
+test('CacheDeResposta.apagaPagina: só as respostas da página caem, o resto do site fica quente', async () => {
+  const memoria = new MemoryCache();
+  const c = new CacheDeResposta({ cache: memoria });
+  // usuario vem ANTES da página na chave — por isso dois usuários diferentes na
+  // mesma página são o caso que prova que o filtro não pode ser um prefixo puro.
+  await c.guarda('resp:v1:local:agendamento-field:sha1:*:0:500:c1:d1', { x: 1 }, 60);
+  await c.guarda('resp:v1:outro:agendamento-field:sha2:*:0:500:c1:d1', { x: 2 }, 60);
+  await c.guarda('resp:v1:local:visao-geral:sha1:*:0:500:c1:d1', { x: 3 }, 60);
+
+  const n = await c.apagaPagina('agendamento-field');
+
+  assert.equal(n, 2);
+  assert.equal(await c.le('resp:v1:local:agendamento-field:sha1:*:0:500:c1:d1'), undefined);
+  assert.equal(await c.le('resp:v1:outro:agendamento-field:sha2:*:0:500:c1:d1'), undefined);
+  assert.deepEqual(
+    await c.le('resp:v1:local:visao-geral:sha1:*:0:500:c1:d1'),
+    { x: 3 },
+    'visao-geral não foi tocada — não podia sair do cache',
+  );
+});
+
+test('CacheDeResposta.apagaPagina: página sem nenhuma entrada não é erro', async () => {
+  const c = new CacheDeResposta({ cache: new MemoryCache() });
+  assert.equal(await c.apagaPagina('pagina-que-nunca-foi-pedida'), 0);
+});
+
+test('CacheDeResposta.apagaPagina: Redis fora do ar degrada para 0, nunca lança', async () => {
+  const falhas: string[] = [];
+  const quebrado: Cache = {
+    async get() { return undefined; },
+    async set() {},
+    async del() {},
+    async delMany() { return 0; },
+    async keys() { throw new Error('ECONNREFUSED 127.0.0.1:6379'); },
+  };
+  const c = new CacheDeResposta({ cache: quebrado, aoFalhar: (op) => falhas.push(op) });
+  assert.equal(await c.apagaPagina('agendamento-field'), 0);
+  assert.deepEqual(falhas, ['get']);
+});
+
 // ---------------------------------------------------------------------------
 // A chave do resultado inteiro
 // ---------------------------------------------------------------------------

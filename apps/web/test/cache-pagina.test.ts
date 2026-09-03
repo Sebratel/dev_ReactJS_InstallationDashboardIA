@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { guardaPaginaVista, TETO_PAGINAS_VISTAS } from '../src/cache-pagina.ts';
+import { apagaPaginaDoCache, guardaPaginaVista, TETO_PAGINAS_VISTAS } from '../src/cache-pagina.ts';
 import type { PaginaCalculada } from '../src/api.ts';
 
 function pagina(id: string): PaginaCalculada {
@@ -54,4 +54,31 @@ test('guardaPaginaVista: regravar uma chave existente a reinsere no fim — não
   assert.ok(!mapa.has('k2'));
   assert.ok(mapa.has('k1'), 'tocada por último entre as originais, não devia cair ainda');
   assert.equal(mapa.get('k1')!.nome, 'p1-revalidada');
+});
+
+test('apagaPaginaDoCache: apaga todas as combinações de filtro/clicado da página, mais nada', () => {
+  const mapa = new Map<string, PaginaCalculada>();
+  guardaPaginaVista(mapa, '/api/dashboards/agendamento-field', pagina('sem-filtro'));
+  guardaPaginaVista(mapa, '/api/dashboards/agendamento-field?filtro=x', pagina('com-filtro'));
+  guardaPaginaVista(mapa, '/api/dashboards/visao-geral', pagina('outra-pagina'));
+
+  const n = apagaPaginaDoCache(mapa, 'agendamento-field');
+
+  assert.equal(n, 2);
+  assert.equal(mapa.size, 1);
+  assert.ok(mapa.has('/api/dashboards/visao-geral'), 'página não tocada não podia sair');
+});
+
+test('apagaPaginaDoCache: id que é prefixo de outro não confunde (agenda vs agenda-2)', () => {
+  const mapa = new Map<string, PaginaCalculada>();
+  guardaPaginaVista(mapa, '/api/dashboards/agenda', pagina('a'));
+  guardaPaginaVista(mapa, '/api/dashboards/agenda-2', pagina('b'));
+  apagaPaginaDoCache(mapa, 'agenda');
+  assert.ok(!mapa.has('/api/dashboards/agenda'));
+  assert.ok(mapa.has('/api/dashboards/agenda-2'));
+});
+
+test('apagaPaginaDoCache: página sem nenhuma entrada não é erro', () => {
+  const mapa = new Map<string, PaginaCalculada>();
+  assert.equal(apagaPaginaDoCache(mapa, 'nunca-visitada'), 0);
 });

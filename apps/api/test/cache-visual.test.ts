@@ -95,6 +95,33 @@ test('limpa esvazia e zera a conta', () => {
   assert.equal(c.le('a'), undefined);
 });
 
+test('limpaPagina: só a página tocada some, o resto do cache fica quente', () => {
+  const c = new CacheDeVisual({ tetoBytes: 10_000 });
+  c.guarda('full:v1:local:agendamento-field:sha:v1:c1:d1', pesa(200));
+  c.guarda('full:v1:outro-usuario:agendamento-field:sha:v2:c1:d1', pesa(200));
+  c.guarda('full:v1:local:visao-geral:sha:v1:c1:d1', pesa(200));
+
+  const removidas = c.limpaPagina('agendamento-field');
+
+  assert.equal(removidas, 2, 'as duas entradas de agendamento-field (usuários diferentes)');
+  assert.equal(c.le('full:v1:local:agendamento-field:sha:v1:c1:d1'), undefined);
+  assert.equal(c.le('full:v1:outro-usuario:agendamento-field:sha:v2:c1:d1'), undefined);
+  assert.notEqual(
+    c.le('full:v1:local:visao-geral:sha:v1:c1:d1'),
+    undefined,
+    'visao-geral não usa a tabela que mudou — não podia sair do cache',
+  );
+});
+
+test('limpaPagina: nome de página que é prefixo de outra não confunde (agenda vs agenda-2)', () => {
+  const c = new CacheDeVisual({ tetoBytes: 10_000 });
+  c.guarda('full:v1:local:agenda:sha:v1:c1:d1', pesa(200));
+  c.guarda('full:v1:local:agenda-2:sha:v1:c1:d1', pesa(200));
+  c.limpaPagina('agenda');
+  assert.equal(c.le('full:v1:local:agenda:sha:v1:c1:d1'), undefined);
+  assert.notEqual(c.le('full:v1:local:agenda-2:sha:v1:c1:d1'), undefined);
+});
+
 /**
  * A estimativa não precisa ser exata — precisa **não subestimar**. Subestimar é o
  * único erro que importa aqui: ele deixa o orçamento estourar em silêncio, que é

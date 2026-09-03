@@ -28,6 +28,7 @@ import { rotuloDeColuna } from '../../../packages/semantic-model/src/projecao.ts
 import { loadDashboards, type DashboardSpec, type FiltroSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
+import type { Escalar } from '../../../packages/snapshot/src/formato.ts';
 import { leManifesto, maisAntigo } from '../../../packages/snapshot/src/manifesto.ts';
 import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
@@ -156,6 +157,17 @@ export interface ServidorOptions {
    * "próxima", que é o defeito que ele conserta.
    */
   tetoDeVisuaisMB?: number;
+  /**
+   * O poller de quase-realtime (`apps/api/src/poller-realtime.ts`), consultado a
+   * cada `carrega()` — nunca guardado por mais que um pedido, porque o overlay
+   * muda entre pedidos e `carregadas` (abaixo) não pode congelar uma versão
+   * velha dele. Padrão: nenhum overlay, comportamento idêntico a antes desta
+   * peça existir.
+   */
+  overlayRealtime?: () => ReadonlyMap<
+    string,
+    (doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[]
+  >;
 }
 
 export class Servidor {
@@ -204,6 +216,15 @@ export class Servidor {
    * adapter de `cache`: estas entradas têm dezenas de MB e nunca vão para o Redis.
    */
   private readonly completos: CacheDeVisual;
+  /**
+   * Dashboard → ids das queries de que ele depende (`planeja([dash], model).queries`),
+   * calculado uma vez na subida — não muda em runtime, e recalculá-lo por evento do
+   * poller pagaria o fechamento de dependências de novo a cada mudança no Voalle.
+   * É o mapa que `aoTabelaMudar` usa para saber quem precisa perder cache.
+   */
+  private readonly queriesPorDashboard = new Map<string, string[]>();
+  /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
+  private readonly assinantesSSE = new Set<http.ServerResponse>();
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, verificadorGoogle, ...resto } = opts;
@@ -217,6 +238,7 @@ export class Servidor {
       dominioCorporativo: 'sebratel.com.br',
       sessaoTtlHoras: 12,
       tokenInterno: '',
+      overlayRealtime: () => new Map(),
       ...resto,
     };
     this.completos = new CacheDeVisual({
@@ -245,6 +267,9 @@ export class Servidor {
       cache: adapter,
       ...(aoFalharCache ? { aoFalhar: aoFalharCache } : {}),
     });
+    for (const dash of this.dashboards) {
+      this.queriesPorDashboard.set(dash.id, planeja([dash], this.model).queries);
+    }
   }
 
   /** O segredo desta subida, para `index.ts` repassar ao `Aquecedor` — ver o
@@ -309,6 +334,7 @@ export class Servidor {
         return;
       }
       if (rota === '/api/dashboards') return this.lista(res);
+      if (rota === '/api/eventos') return this.eventos(req, res);
       if (rota.startsWith('/api/dashboards/')) {
         // `<id>` ou `<id>/valores`. O `id` é decodificado depois do corte: há página
         // com acento, e decodificar antes faria um `%2F` no nome virar separador.
@@ -473,6 +499,73 @@ export class Servidor {
         pronta: this.queriesDe(d).every((q) => emDisco.has(q)),
       })),
     });
+  }
+
+  /**
+   * `GET /api/eventos` — o SSE do poller de quase-realtime
+   * (`apps/api/src/poller-realtime.ts`). A conexão fica aberta; quem fecha é o
+   * navegador (recarregou, saiu da página) — `req.on('close')` é o único jeito
+   * confiável de saber disso num `node:http` cru.
+   *
+   * Sem corpo, sem filtro, sem paginação: um evento aqui só diz "esta página
+   * pode ter dado novo", nunca traz dado — o navegador continua buscando pela
+   * mesma rota de sempre (`GET /api/dashboards/:id`), só que sem esperar o
+   * usuário apertar F5.
+   */
+  private eventos(req: http.IncomingMessage, res: http.ServerResponse): void {
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+    // Comentário SSE (linha começando com `:`), não dado — só para o navegador
+    // considerar a conexão estabelecida na hora, em vez de esperar o 1º evento
+    // de verdade para sair do estado "conectando".
+    res.write(': conectado\n\n');
+    this.assinantesSSE.add(res);
+    req.on('close', () => {
+      this.assinantesSSE.delete(res);
+    });
+  }
+
+  /** Manda `dashboards` para toda conexão SSE aberta. Sem assinante, não faz nada. */
+  private emiteEvento(dashboards: readonly string[]): void {
+    if (dashboards.length === 0 || this.assinantesSSE.size === 0) return;
+    const linha = `data: ${JSON.stringify({ dashboards })}\n\n`;
+    for (const res of this.assinantesSSE) res.write(linha);
+  }
+
+  /**
+   * O poller de quase-realtime (`apps/api/src/poller-realtime.ts`) chama isto
+   * quando uma query muda de verdade. Invalida só quem depende dela, nas TRÊS
+   * camadas de cache — não o carimbo global, que derrubaria o site inteiro a
+   * cada poucos segundos (ver `CacheDeResposta.apagaPagina` e ACHADOS #89):
+   *
+   *   1. `carregadas` — o avaliador em memória; sem isto, `carrega()` devolveria
+   *      o mesmo `Carregado` de antes mesmo com o overlay atualizado.
+   *   2. `completos` — resultado inteiro de visual paginável.
+   *   3. `cache` (resposta pronta, memória/Redis).
+   *
+   * Depois avisa por SSE — nessa ordem: o navegador só deve pedir de novo
+   * DEPOIS que o cache já não tem a resposta velha para devolver.
+   */
+  aoTabelaMudar(tabela: string, queryId: string): void {
+    const afetados = [...this.queriesPorDashboard]
+      .filter(([, queries]) => queries.includes(queryId))
+      .map(([id]) => id);
+    if (afetados.length === 0) return;
+
+    for (const dashId of afetados) {
+      for (const chave of [...this.carregadas.keys()]) {
+        if (chave === dashId || chave.startsWith(`${dashId}\u0000`)) this.carregadas.delete(chave);
+      }
+      this.completos.limpaPagina(dashId);
+      // Efeito colateral, não parte de resposta nenhuma — não há pedido para
+      // atrasar esperando o Redis, e `apagaPagina` já nunca lança.
+      void this.cache.apagaPagina(dashId);
+    }
+    console.error(`[poller] ${tabela} mudou — invalidando ${afetados.join(', ')}`);
+    this.emiteEvento(afetados);
   }
 
   /**
@@ -912,6 +1005,7 @@ export class Servidor {
       now: this.opts.agora(),
       liberaSobDemanda: libera,
       precisaFormaCompleta: formaCompleta,
+      overlay: this.opts.overlayRealtime(),
     })
       .then((c) => {
         // Recalcular uma tabela que estava congelada custa tempo e muda o número. Um

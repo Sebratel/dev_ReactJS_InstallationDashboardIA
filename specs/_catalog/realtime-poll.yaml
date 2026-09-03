@@ -1,0 +1,47 @@
+# Cadência do poller de "quase-realtime" — SELECT direto no Voalle a cada poucos
+# segundos, para detectar mudança e servir dado mais fresco sem F5. MANTIDO POR
+# HUMANOS, como incremental.yaml e cache-policies.yaml.
+#
+# **Por que isto NÃO mora em incremental.yaml.** A marca de lá é truncada em dia
+# (`comoDia`/`desdeDe`, YYYY-MM-DD) — certo para um refresh que roda por hora ou
+# por dia, errado aqui: um poller a cada 12s que só sabe pedir "desde hoje"
+# rebuscaria o dia inteiro a cada volta, o oposto do que isto existe para fazer.
+# Aqui a marca é um TIMESTAMP de verdade, com margem em segundos, não em dias.
+#
+# **O que isto NÃO faz.** Não escreve no snapshot em disco (isso derrubaria o
+# carimbo global e, com ele, o cache de TODAS as páginas a cada poll — ver
+# docs/DECISAO-REALTIME.md e ACHADOS #89). O resultado fica em memória, no
+# processo da API, e é isso que `apps/api/src/poller-realtime.ts` administra.
+#
+# **Por que só `protocolos-auxiliares`.** É a única query com coluna de
+# modificação exposta no `sql:` (`assignments.modified`, aliada "DATA ENCERRADO")
+# que também materializa sem crash — `protocolos-geral` tem a mesma coluna mas o M
+# dela faz `Table.NestedJoin` com `GESTORES EQUIPES` (dbMaria), travada desde o
+# achado #83 (mysql2 ausente). `field-agenda`, `contratos`, `contratos-telefonia`
+# e `consolidado-clientes` não expõem coluna de modificação nenhuma no SQL.
+#
+# **O mesmo buraco que `incremental.yaml` já documenta, e não um novo**: só
+# ~84,2% das mudanças relevantes tocam `assignments.modified` — o resto (alocação
+# de patrimônio, RAUX) mora em outra tabela do JOIN e este poller não vê.
+
+formato: 1
+
+queries:
+  protocolos-auxiliares:
+    tabela: PROTOCOLOS AUXILIARES
+    intervalo_ms: 12000
+    # Folga contra relógio torto — mesmo papel de margem_dias em incremental.yaml,
+    # só que em segundos porque a marca aqui é timestamp, não dia.
+    margem_segundos: 30
+    # Grupo reentregue inteiro — mesma semântica de `mescla()` em incremental.ts.
+    chave: [SOLICITACAO]
+    # Máximo entre criação e modificação — mesma armadilha 1 de incremental.ts.
+    marca: [DATA CRIADO, DATA ENCERRADO]
+    costura:
+      de: |-
+        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+              AND a.created >= '2026-01-01'
+      para: |-
+        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+              AND a.created >= '2026-01-01'
+              AND a.modified >= :desde

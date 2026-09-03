@@ -28,3 +28,24 @@ export function guardaPaginaVista(
     if (maisVelha !== undefined) mapa.delete(maisVelha);
   }
 }
+
+/**
+ * Apaga toda entrada de UM dashboard — todas as combinações de filtro/clicado
+ * dele, não só uma. Usado pelo listener de `/api/eventos` (ACHADOS #89/#90):
+ * quando o servidor avisa que `dashboardId` mudou, nenhuma combinação velha
+ * dele pode continuar servindo o flash otimista de `App.tsx` (a leitura
+ * síncrona de `paginasVistas` antes do `fetch` revalidar).
+ *
+ * A chave é `urlDaPagina()` — `/api/dashboards/<id>` mais `?...`. Prefixo puro
+ * confundiria `capa` com `capa-2`; o corte por `?`/fim-de-string evita isso.
+ */
+export function apagaPaginaDoCache(mapa: Map<string, PaginaCalculada>, dashboardId: string): number {
+  const prefixo = `/api/dashboards/${encodeURIComponent(dashboardId)}`;
+  let removidas = 0;
+  for (const chave of [...mapa.keys()]) {
+    if (chave !== prefixo && !chave.startsWith(`${prefixo}?`)) continue;
+    mapa.delete(chave);
+    removidas++;
+  }
+  return removidas;
+}

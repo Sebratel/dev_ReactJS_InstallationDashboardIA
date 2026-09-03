@@ -93,6 +93,44 @@ async function servidorComLogin(
   };
 }
 
+/**
+ * Sobe o servidor com um `overlayRealtime` injetável e devolve o `Servidor`
+ * também — é o que os testes de `aoTabelaMudar` precisam para chamar o método
+ * direto, sem esperar o `PollerRealtime` de verdade (que fala com o Voalle).
+ */
+async function servidorComOverlay(
+  snapshotDir: string,
+  overlayRealtime: () => ReadonlyMap<string, (doDisco: readonly Record<string, unknown>[]) => Record<string, unknown>[]>,
+): Promise<{
+  servidor: Servidor;
+  busca: (rota: string, init?: RequestInit) => Promise<Response>;
+  fecha: () => Promise<void>;
+}> {
+  const servidor = new Servidor({
+    root: ROOT,
+    snapshotDir,
+    webDir: WEB,
+    agora: () => AGORA,
+    identifica: () => ({ usuario: 'teste', papeis: ['autenticado'] }),
+    overlayRealtime: overlayRealtime as never,
+  });
+  const http = servidor.criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  const { port } = http.address() as { port: number };
+  return {
+    servidor,
+    busca: (rota, init) => fetch(`http://127.0.0.1:${port}${rota}`, init),
+    // `closeAllConnections`: uma conexão SSE de `/api/eventos` fica aberta de
+    // propósito — `http.close()` sozinho esperaria por ela para sempre, porque
+    // ele só para de ACEITAR conexão nova, nunca derruba a que já existe.
+    fecha: () =>
+      new Promise<void>((ok) => {
+        http.close(() => ok());
+        http.closeAllConnections();
+      }),
+  };
+}
+
 function dirVazio(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'api-'));
 }
@@ -968,5 +1006,85 @@ test('o segredo do Aquecedor muda a cada instância — dois servidores, dois se
   } finally {
     await s1.fecha();
     await s2.fecha();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// aoTabelaMudar — o gatilho do poller de quase-realtime (ACHADOS #89/#90)
+// ---------------------------------------------------------------------------
+//
+// **O teste que mais importa aqui** é o segundo: uma página que não usa a
+// tabela que mudou tem de continuar servindo do cache. Não é o benefício da
+// dúvida — é o ponto inteiro de não usar o carimbo global (ver o comentário de
+// `aoTabelaMudar` em servidor.ts e ACHADOS #89): se esse teste falhasse, cada
+// mudança no Voalle derrubaria o cache do site inteiro, não só de quem usa a
+// tabela.
+
+test('aoTabelaMudar: invalida o cache de quem usa a query, e o próximo pedido recalcula', async () => {
+  const s = await servidorComOverlay(await dirComCapa(), () => new Map());
+  try {
+    const r1 = await s.busca('/api/dashboards/capa');
+    assert.equal((await r1.json()).cache, 'miss', 'primeiro pedido: nada em cache ainda');
+
+    const r2 = await s.busca('/api/dashboards/capa');
+    assert.equal((await r2.json()).cache, 'hit', 'segundo pedido idêntico: acerto de cache');
+
+    // `capa` usa a query `hora-atualizado` (é a única tabela que ela carrega).
+    s.servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
+
+    const r3 = await s.busca('/api/dashboards/capa');
+    assert.equal((await r3.json()).cache, 'miss', 'depois de mudar, o cache tem de ter sido apagado');
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('aoTabelaMudar: query que a página NÃO usa não mexe no cache dela', async () => {
+  const s = await servidorComOverlay(await dirComCapa(), () => new Map());
+  try {
+    await s.busca('/api/dashboards/capa');
+    const r2 = await s.busca('/api/dashboards/capa');
+    assert.equal((await r2.json()).cache, 'hit');
+
+    // `capa` não depende de `protocolos-auxiliares` — isto não pode apagar nada dela.
+    s.servidor.aoTabelaMudar('PROTOCOLOS AUXILIARES', 'protocolos-auxiliares');
+
+    const r3 = await s.busca('/api/dashboards/capa');
+    assert.equal(
+      (await r3.json()).cache,
+      'hit',
+      'página sem relação com a tabela mudada não podia perder o cache',
+    );
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('GET /api/eventos: content-type de SSE, e aoTabelaMudar manda o dashboard afetado', async () => {
+  const s = await servidorComOverlay(await dirComCapa(), () => new Map());
+  try {
+    const resp = await s.busca('/api/eventos');
+    assert.equal(resp.status, 200);
+    assert.match(resp.headers.get('content-type') ?? '', /text\/event-stream/);
+
+    const leitor = resp.body!.getReader();
+    // A linha de comentário SSE (`: conectado`) que confirma a conexão aberta.
+    const primeira = await leitor.read();
+    assert.match(Buffer.from(primeira.value!).toString(), /^: conectado/);
+
+    s.servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
+
+    const evento = await leitor.read();
+    const texto = Buffer.from(evento.value!).toString();
+    assert.match(texto, /^data: /);
+    // hora-atualizado alimenta várias páginas reais, não só capa — o evento
+    // lista todas as afetadas; o que este teste prova é que capa está entre
+    // elas, não que ela é a única.
+    const corpo = JSON.parse(texto.slice('data: '.length).trim()) as { dashboards: string[] };
+    assert.ok(corpo.dashboards.includes('capa'), `capa devia estar na lista: ${corpo.dashboards.join(', ')}`);
+
+    await leitor.cancel();
+  } finally {
+    await s.fecha();
   }
 });

@@ -116,6 +116,27 @@ export class CacheDeVisual {
     this.#bytes = 0;
   }
 
+  /**
+   * Some só com as entradas de uma página — usado pelo poller de quase-realtime
+   * (`apps/api/src/poller-realtime.ts`) quando uma tabela muda: só quem depende
+   * dela precisa recalcular, o resto do cache continua quente. Ver
+   * `chaveDoCompleto` (`cache-resposta.ts`) — a página é o 4º segmento, e como o
+   * usuário (3º) varia, não dá para cortar por prefixo puro.
+   *
+   * Devolve quantas saíram, para quem chama poder dizer o que de fato mudou.
+   */
+  limpaPagina(pagina: string): number {
+    const alvo = `:${pagina}:`;
+    let removidas = 0;
+    for (const [k, e] of this.#mapa) {
+      if (!k.includes(alvo)) continue;
+      this.#bytes -= e.bytes;
+      this.#mapa.delete(k);
+      removidas++;
+    }
+    return removidas;
+  }
+
   get bytes(): number {
     return this.#bytes;
   }

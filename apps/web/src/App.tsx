@@ -17,7 +17,7 @@ import {
 } from './api.ts';
 import { LIMITE_DIAS_DADO_ATRASADO, dataHora, diasDesde, duracao, inteiro } from './formato.ts';
 import { usaAlturaMedida, usaEspacoSemVisual } from './altura-medida.ts';
-import { guardaPaginaVista } from './cache-pagina.ts';
+import { apagaPaginaDoCache, guardaPaginaVista } from './cache-pagina.ts';
 import { idsIniciais } from './carga-progressiva.ts';
 import { dataDaPagina, filtrosPadrao } from './filtros-padrao.ts';
 import {
@@ -103,6 +103,15 @@ export function App() {
   // cruzada longa (`aoFiltrarAlvos` acima) acumula uma chave por combinação de
   // filtro+clique sem nunca podar.
   const paginasVistas = useRef<Map<string, PaginaCalculada>>(new Map());
+  // Sobe a cada evento de `/api/eventos` que atinge a página ABERTA — é o único
+  // jeito de reabrir o efeito de busca abaixo sem depender de `atual`/`filtros`/
+  // `clicados` terem mudado (ACHADOS #89/#90: a tela se atualiza sozinha).
+  const [revalidar, setRevalidar] = useState(0);
+  // O efeito do SSE roda uma vez por sessão de login — ler `atual` fresco de um
+  // ref evita reabrir a conexão a cada troca de aba (senão perderia evento no
+  // meio da troca, e reconectar sem necessidade é o oposto do que R6 já evita
+  // para o `fetch` normal).
+  const atualRef = useRef(atual);
 
   useEffect(() => {
     if (!atual) return;
@@ -128,6 +137,37 @@ export function App() {
       });
     return () => aborta.abort();
   }, [atual]);
+
+  useEffect(() => {
+    atualRef.current = atual;
+  }, [atual]);
+
+  // ACHADOS #89/#90 — poller de quase-realtime: o servidor empurra por SSE quando
+  // detecta mudança no Voalle. Nenhum dado chega pelo evento em si (só o id da
+  // página) — a tela reage apagando o cache daquela combinação e, se for a página
+  // ABERTA agora, disparando o mesmo `fetch` de sempre, sem F5.
+  useEffect(() => {
+    if (!logado) return;
+    const es = new EventSource('/api/eventos');
+    es.onmessage = (ev) => {
+      let corpo: { dashboards?: unknown };
+      try {
+        corpo = JSON.parse(ev.data as string);
+      } catch {
+        return; // linha de comentário SSE (`: conectado`) não chega aqui — só `data:`.
+      }
+      const afetados = Array.isArray(corpo.dashboards) ? (corpo.dashboards as string[]) : [];
+      if (afetados.length === 0) return;
+      for (const id of afetados) apagaPaginaDoCache(paginasVistas.current, id);
+      if (atualRef.current && afetados.includes(atualRef.current)) {
+        setRevalidar((n) => n + 1);
+      }
+    };
+    // Sem `es.onerror` custom: `EventSource` já reconecta sozinho (comportamento
+    // nativo do navegador) — um listener aqui só duplicaria isso ou esconderia a
+    // reconexão de verdade atrás de um estado próprio para manter em sincronia.
+    return () => es.close();
+  }, [logado]);
 
   useEffect(() => {
     listaDashboards()
@@ -255,7 +295,9 @@ export function App() {
       cancelado = true;
       aborta.abort();
     };
-  }, [atual, filtros, clicados, layout]);
+    // `revalidar`: o gatilho do SSE de quase-realtime, sem que a página em si
+    // tenha mudado — ver o efeito de `EventSource` acima.
+  }, [atual, filtros, clicados, layout, revalidar]);
 
   const escolhe = useCallback((id: string) => {
     setAtual(id);

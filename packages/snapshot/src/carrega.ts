@@ -98,6 +98,27 @@ export interface CarregaOptions {
    * `projetar`.
    */
   lerCalculadas?: boolean;
+  /**
+   * O poller de quase-realtime (`apps/api/src/poller-realtime.ts`), por nome de
+   * tabela: uma função que recebe as linhas lidas do arquivo e devolve a versão
+   * mesclada com o que o poller viu de mais recente no Voalle. Ausente ou sem
+   * entrada para uma tabela = ela carrega só do arquivo, como sempre carregou.
+   *
+   * **Por que uma função, e não os dados prontos.** Quem sabe mesclar é dono da
+   * política (`chave`/`marca` de `specs/_catalog/realtime-poll.yaml`) — este
+   * módulo não precisa importar `mescla()` nem conhecer a forma da configuração,
+   * só chamar de volta.
+   *
+   * **Por que aqui, e não um passo à parte.** `Dataset`/`Evaluator` não sabem que
+   * overlay existe — recebem uma tabela com as mesmas colunas físicas de sempre,
+   * só que algumas linhas são mais novas que o arquivo. É o mesmo desenho do grão
+   * reduzido (ACHADOS #87): a decisão fica aqui, embaixo, e o resto do avaliador
+   * nunca precisa saber.
+   */
+  overlay?: ReadonlyMap<
+    string,
+    (doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[]
+  >;
 }
 
 export interface Carregado {
@@ -218,8 +239,15 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
         );
     for (const c of fora) omitidas.push(`'${t.nome}'[${c}]`);
 
-    const { cabecalho, linhas } = await le(arquivo, new Set(fora));
+    const { cabecalho, linhas: doDisco } = await le(arquivo, new Set(fora));
     conferaColunasCalculadas(opts.model.table(t.nome)!, cabecalho, t.query, opts.dir);
+    // O poller de quase-realtime, se houver um para esta tabela. Aplicado ANTES da
+    // conversão de tipo abaixo: o overlay já entrega `Date` de verdade (o driver do
+    // Postgres devolve isso, não texto), então passa pelo mesmo caminho que uma
+    // linha do arquivo passaria se já estivesse no tipo certo — nenhuma linha do
+    // overlay é reconvertida à toa, e nenhuma fica sem a conversão que precisa.
+    const mesclador = opts.overlay?.get(normaliza(t.nome));
+    const linhas = mesclador ? mesclador(doDisco) : doDisco;
     // `fora` também aqui, e não é detalhe: sem ele a conversão de tipo escreveria
     // `linha[chave] = aplicaTipo(col, null)` na coluna omitida e a **traria de
     // volta**, agora valendo BLANK em todas as linhas. Seria a projeção produzindo
