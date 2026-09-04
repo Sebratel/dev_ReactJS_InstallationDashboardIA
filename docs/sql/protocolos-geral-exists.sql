@@ -36,10 +36,23 @@
 --
 -- COMO FOI DESTRAVADO (04/09/2026)
 --
--- Erick decidiu a regra: preferir `authentication_contracts.active = true`
--- (resolve 94,7% das partições múltiplas sozinho); para o resíduo de 5,3% com mais
--- de um contrato ativo ao mesmo tempo, o contrato ativo criado mais recentemente
--- vence (`ac.created DESC`), com `ac.id DESC` como piso de determinismo total.
+-- Erick decidiu a regra primária: preferir `authentication_contracts.active = true`.
+-- Medido na unidade da partição (protocolo, `a.title`): 44.746 dos 98.204 protocolos
+-- têm leque, e `active=true` deixa 4.407 ambíguos.
+--
+-- A regra SECUNDÁRIA foi delegada a mim em 04/09 ("decida por mim"), e a resposta
+-- estava no próprio SQL: `authentication_contracts` tem `contract_id`, e o bloco já
+-- junta `cst` pelo próprio incidente. Casar os dois
+-- (`(ac.contract_id = cst.contract_id) IS TRUE`) resolve 3.935 dos 4.407 — e nos
+-- 20.821 protocolos em que as duas regras decidem sozinhas elas discordam em ZERO,
+-- então acrescentá-la não muda nenhum valor que `ACTIVE TRUE` já resolvia.
+-- Não pode ser primária: em 44,5% dos protocolos com leque nenhum contrato de
+-- autenticação casa o contrato do protocolo.
+--
+-- `s.start_date DESC` (o critério do PBIP) e `ac.created DESC` seguem abaixo,
+-- decidindo agora 472 protocolos em vez de 4.407. `ac.id DESC` é o piso de
+-- determinismo. Detalhe e tabelas em docs/SPEC-DRIVEN.md.
+--
 -- Conferido com `npm run probe:determinismo-pg`: 0 solicitações divergentes
 -- (era 14.090), e o caso mais extremo do banco (4 contratos ativos ao mesmo tempo)
 -- escolhe o mesmo ponto de acesso em execuções repetidas.
@@ -80,7 +93,9 @@ WITH PERSONALIZADO AS (
         vu.name AS "CRIADO POR",
         ROW_NUMBER() OVER (
             PARTITION BY a.title
-            ORDER BY (ac.active IS TRUE) DESC, s.start_date DESC NULLS LAST,
+            ORDER BY (ac.active IS TRUE) DESC,
+                     ((ac.contract_id = cst.contract_id) IS TRUE) DESC,
+                     s.start_date DESC NULLS LAST,
                      ac.created DESC NULLS LAST, ac.id DESC NULLS LAST
         ) AS PERSONA1,
         CASE

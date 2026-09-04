@@ -49,7 +49,22 @@ RUN mkdir -p /repo/snapshot
 
 EXPOSE 3100
 
-# 10240, não os 8192 do script de dev (`npm run api`) — é o número que
-# docs/DEPLOY.md mede como necessário para não morrer de OOM SOB CARGA (a API
-# mantém tabelas inteiras carregadas em memória), não no arranque.
-CMD ["node", "--max-old-space-size=10240", "--expose-gc", "apps/api/src/index.ts"]
+# 3072, e o número é medido — era 10240, escolhido por estimativa.
+#
+# `npm run probe:memoria-api` sobe a API com um teto e pede as 10 páginas do
+# menu uma a uma. Medido em 04/09/2026, com a piscina em 2 workers × 768 MB:
+#
+#     pai 1024 MB .... estoura o heap na 1ª página (RSS pico 1198 MB)
+#     pai 1536 MB .... estoura o heap na 1ª página (RSS pico 1730 MB)
+#     pai 2048 MB .... estoura o heap na 1ª página (RSS pico 2270 MB)
+#     pai 3072 MB .... 10/10 páginas  (RSS pico 3137–3622 MB)
+#
+# Ou seja: o piso real está entre 2048 e 3072, e 3072 é o menor valor medido que
+# serve. Os 10240 anteriores autorizavam, junto com os 4 × 8192 MB da piscina de
+# então, até 42 GB de heap numa máquina de 16 GB — e o `mem_limit` do compose
+# tem de ser derivado desta linha, não adivinhado a partir dela.
+#
+# Heap autorizado hoje: 3072 (aqui) + 2 × 768 (piscina) = 4608 MB, dentro do
+# `mem_limit: 6g` do docker-compose.prod.yml. `apps/api/test/piscina-workers.test.ts`
+# falha se os três números saírem de sincronia.
+CMD ["node", "--max-old-space-size=3072", "--expose-gc", "apps/api/src/index.ts"]

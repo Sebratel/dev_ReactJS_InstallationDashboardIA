@@ -27,6 +27,7 @@
     "probe:tipos-data": "node tools/probe/src/tipos-data.ts",
     "probe:kafka": "node tools/probe/src/kafka-test.ts",
     "probe:determinismo-pg": "node tools/probe/src/determinismo-protocolos-geral.ts",
+    "probe:memoria-api": "node tools/probe/src/memoria-api.ts",
     "powerbi": "node --max-old-space-size=8192 tools/powerbi/src/index.ts",
     "test:powerbi": "node --test tools/powerbi/test/*.test.ts",
     "cdc:observa": "node tools/cdc/src/index.ts",

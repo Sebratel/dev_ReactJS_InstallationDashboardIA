@@ -42,8 +42,18 @@ sql: |-
           vu.name AS "CRIADO POR",
           ROW_NUMBER() OVER (
               PARTITION BY a.title
-              ORDER BY (ac.active IS TRUE) DESC, s.start_date DESC NULLS LAST,
-                       ac.created DESC NULLS LAST, ac.id DESC NULLS LAST
+              ORDER BY (ac.active IS TRUE) DESC,
+                       ((ac.contract_id = cst.contract_id) IS TRUE) DESC,
+                       s.start_date DESC NULLS LAST,
+                       ac.created DESC NULLS LAST, ac.id DESC NULLS LAST,
+                       -- Piso de determinismo. `ac.id` NÃO basta: `asp` multiplica
+                       -- a partição (um contrato de autenticação tem várias portas
+                       -- de splitter), `s` também (uma assignment tem vários
+                       -- schedules), e quando `ac` não casa, `pa` empata todos os
+                       -- endereços do cliente. Medido: sem estes três, 17.663
+                       -- protocolos empatam no topo. Com eles, 0.
+                       asp.id DESC NULLS LAST, s.id DESC NULLS LAST,
+                       pa.id DESC NULLS LAST
           ) AS PERSONA1,
           CASE
               WHEN EXISTS (

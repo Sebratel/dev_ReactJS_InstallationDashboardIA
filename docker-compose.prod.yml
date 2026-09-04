@@ -13,6 +13,27 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    # O CONTRATO DE MEMÓRIA, e os três números têm de andar juntos:
+    #
+    #   Dockerfile  --max-old-space-size=3072   heap do processo pai
+    #   API_WORKER_HEAP_MB=768 × API_WORKERS=2  heap da piscina de DAX
+    #   ------------------------------------------------------------
+    #   4608 MB autorizados de heap
+    #   mem_limit 6g -> 1536 MB de folga para o que NÃO é heap
+    #                   (buffers do .jsonl.gz, runtime do Node, V8, pilhas)
+    #
+    # Medido em 04/09/2026 (`npm run probe:memoria-api`): as 10 páginas do menu
+    # servem nesta faixa com RSS pico de 3137–3622 MB. O pai com 2048 MB estoura
+    # na PRIMEIRA página, então 3072 não é folga — é piso.
+    #
+    # `apps/api/test/piscina-workers.test.ts` falha se alguém mexer num dos três
+    # sem mexer nos outros. No Portainer, é `mem_limit` que aparece como o
+    # "Memory limit" da stack — pedir menos que 6g é pedir OOM kill sob página
+    # fria, e é falha que aparece como "às vezes a tela não abre".
+    mem_limit: 6g
+    environment:
+      API_WORKERS: '2'
+      API_WORKER_HEAP_MB: '768'
     volumes:
       # O snapshot é dado de cliente (CPF/RG/endereço, ~371 MB) — nunca entra
       # na imagem. Aponte SNAPSHOT_DIR_HOST para onde o refresh agendado

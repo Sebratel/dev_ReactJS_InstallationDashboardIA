@@ -155,7 +155,9 @@ mão em duas janelas ao mesmo tempo. Registrado para o próximo que fizer o mesm
 --
 -- é:    ROW_NUMBER() OVER (
 --           PARTITION BY a.title
---           ORDER BY (ac.active IS TRUE) DESC, s.start_date DESC NULLS LAST,
+--           ORDER BY (ac.active IS TRUE) DESC,
+--                    ((ac.contract_id = cst.contract_id) IS TRUE) DESC,
+--                    s.start_date DESC NULLS LAST,
 --                    ac.created DESC NULLS LAST, ac.id DESC NULLS LAST
 --       ) AS PERSONA1,
 --       CASE
@@ -187,17 +189,70 @@ visível, é a tabela da página VISÃO GERAL: `EQUIPAMENTO1` e `CONEXÃO` (USU�
 mudavam de valor ali entre refreshes. Ver `docs/ACHADOS.md` #97.
 
 **A regra, decidida por Erick em 04/09/2026 (`ACTIVE TRUE`):** preferir o registro
-de `authentication_contracts` com `active = true`. Medido em escala, antes de
-decidir a regra secundária: dentre as 247.668 solicitações com partição múltipla,
-**234.475 (94,7%) têm no máximo UM ponto de acesso ativo** — `active=true`
-resolve sozinho. As **13.193 (5,3%) restantes** têm mais de um contrato
-simultaneamente `active=true` (achado ao vivo: um cliente com 4 contratos
-`active=true` em 4 endereços diferentes, acumulados de 2024 a 2026 — dado do ERP,
-não erro da consulta). Para este resíduo, o desempate final é `ac.created DESC` —
-**o contrato ativo criado mais recentemente vence.** É a parte assumida, não
-confirmada por Erick explicitamente; fica registrado aqui para revisão se
-alguém discordar. `ac.id DESC` no fim é só para garantir determinismo total,
-mesmo num empate teórico de timestamp.
+de `authentication_contracts` com `active = true` (achado ao vivo: um cliente com
+4 contratos `active=true` em 4 endereços diferentes, acumulados de 2024 a 2026 —
+dado do ERP, não erro da consulta).
+
+#### O resíduo: `ac.contract_id`, não recência (medido em 04/09/2026)
+
+**Correção de unidade primeiro.** A versão anterior deste parágrafo dava "247.668
+solicitações com partição múltipla, 13.193 (5,3%) com mais de um ativo". Esses
+números foram medidos sobre o **leque de linhas**, não sobre a **partição do
+`ROW_NUMBER`**, que é `a.title`. Na unidade certa — protocolo, que é a que decide
+o valor na tela:
+
+| | protocolos |
+|---|---:|
+| no recorte (`it.id IN (...)`, `a.created >= '2025-01-01'`) | 98.204 |
+| com leque (mais de uma linha candidata) | 44.746 |
+| **ambíguos depois de `active=true`** | **4.407** (9,8% do leque) |
+
+**A regra secundária não precisava ser inventada — o SQL já sabia a resposta e não
+usava.** O leque nasce porque `people_addresses`/`authentication_contracts` entram
+pela **pessoa** (`pa.person_id = p.id`), o que traz todos os endereços do cliente.
+Mas o mesmo bloco já junta `cst`/`c` pelo **próprio incidente**
+(`cst.id = ai.contract_service_tag_id`), e `authentication_contracts` **tem coluna
+`contract_id`**. Casar os dois é perguntar "qual destes contratos de autenticação é
+do contrato DESTE protocolo?" — semântica, não recência.
+
+Medido sobre os 44.746 com leque:
+
+| regra | resolve sozinha | não casa nenhum | casa vários |
+|---|---:|---:|---:|
+| `ac.contract_id = cst.contract_id` | 24.756 (55,3%) | 19.924 (44,5%) | 66 (0,1%) |
+
+**Por isso ela é secundária e não primária:** em 44,5% dos protocolos com leque
+nenhum contrato de autenticação casa com o contrato do protocolo, e uma regra que
+não decide em quase metade dos casos não pode ser a primeira.
+
+Aplicada ao resíduo de 4.407 que `active=true` deixa ambíguo:
+
+| | protocolos |
+|---|---:|
+| resolvidos por casar contrato | **3.935** |
+| nenhum ativo casa o contrato | 413 |
+| continuam ambíguos (vários ativos casam) | 59 |
+
+**O número que autoriza a mudança, e é o que importa:** nos **20.821** protocolos
+em que as duas regras decidem sozinhas (exatamente 1 ativo *e* exatamente 1 que
+casa contrato), elas apontam para linhas diferentes em **0**. Zero. Acrescentar a
+regra do contrato **não pode mudar nenhum valor que `ACTIVE TRUE` já resolvia** —
+ela só corta o resíduo em 89% (4.407 → 472).
+
+`s.start_date DESC` (o critério do PBIP original) e `ac.created DESC` seguem
+abaixo dela, agora decidindo **472 protocolos em vez de 4.407**. `ac.id DESC` no
+fim é o piso de determinismo, para o empate teórico de timestamp.
+
+**Erick delegou esta escolha explicitamente** ("não sei, decida por mim",
+04/09/2026). O que fiz com a delegação: procurei no banco antes de assumir, e a
+recência caiu de regra principal do resíduo para último recurso de 0,5% dos
+protocolos com leque.
+
+**Medida e recusada, com o número:** `ac.service_tag_id = ai.contract_service_tag_id`
+é mais específica (tag de serviço é item dentro do contrato) mas resolve **menos**
+— 14.086 sozinha contra 24.756 — e só alcançaria os 66 casos de "casa vários".
+Não entrou: dois termos a mais no `ORDER BY` para 0,1% dos protocolos, sem medição
+de concordância com a regra do contrato. Fica registrado para quem quiser os 66.
 
 **Conferido:** `npm run probe:determinismo-pg` — mesmo SQL, mesma transação,
 duas execuções, **0 solicitações divergentes** (era 14.090). E o caso mais

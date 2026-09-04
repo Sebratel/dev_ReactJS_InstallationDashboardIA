@@ -7395,6 +7395,51 @@ vezes na MESMA transação `REPEATABLE READ READ ONLY`): **0 solicitações
 divergentes**, era 14.090. O caso mais extremo do banco (o cliente dos 4 contratos
 ativos) escolhe o mesmo ponto de acesso em execuções repetidas.
 
+### Correção em 04/09/2026 (mesmo dia, algumas horas depois): `ac.id DESC` NÃO era piso de determinismo, e os "0 divergentes" acima eram plano de consulta estável
+
+**O erro é meu, e vale mais registrado que corrigido em silêncio.** O parágrafo
+acima chama `ac.id DESC` de *"piso de determinismo total"*. Não é, e a prova
+apareceu ao acrescentar um termo NOVO ao `ORDER BY`: a mesma sonda passou a
+acusar **41 solicitações divergentes**, todas na coluna `CTO`.
+
+Acrescentar termo a um `ORDER BY` só pode refinar — nunca desempatar menos. Se
+divergência apareceu, ela **já estava lá**, escondida atrás de um plano de
+consulta que o PostgreSQL escolhia de forma estável enquanto a chave não mudava.
+Os "0 divergentes" mediram a estabilidade do plano, não a totalidade da ordem.
+
+**Por que `ac.id` não fecha a partição.** `CTO` é `as2.title`, e a cadeia é
+`ac → authentication_splitter_ports asp → authentication_splitters as2`: **um
+contrato de autenticação tem várias portas de splitter.** Duas linhas com o
+MESMO `ac.id` e `asp.id` diferente têm `CTO` diferente e chave de ordenação
+idêntica. Mesma coisa em `schedules` (uma assignment tem vários) e em
+`people_addresses` (quando `ac` não casa, todos os endereços do cliente empatam
+com chave nula).
+
+Medido, sobre os 98.205 protocolos do recorte:
+
+| | protocolos |
+|---|---:|
+| **empatavam no topo** da chave (a chave nunca foi ordem total) | **17.663** |
+| desses, com `CTO` diferente entre as linhas empatadas | **82** |
+| distinguidos por `pa.id` (endereço) | 15.510 |
+| distinguidos por `s.id` (schedule) | 2.408 |
+| distinguidos por `asp.id` (porta de splitter) | 135 |
+
+Os 15.510 de endereço não mudam nada visível (sem `ac`, o `CTO` é nulo em todas).
+Os 82 são o dano real, e é deles que os 41 observados são subconjunto — só
+divergem os que o plano efetivamente inverte entre duas execuções.
+
+**O conserto:** `asp.id DESC NULLS LAST, s.id DESC NULLS LAST, pa.id DESC NULLS
+LAST` no fim do `ORDER BY`. Medido: **0 empates no topo, 0 protocolos com `CTO`
+ambíguo.** E `probe:determinismo-pg` de novo, com a chave completa: **0
+solicitações divergentes** (98.205 linhas nas duas execuções).
+
+**A lição que fica, e não é sobre este SQL.** "Duas execuções deram igual" não
+prova ordem total — prova que o plano não mudou. O instrumento que prova é
+contar empates no topo da chave (`RANK() = 1` com mais de uma linha), que é
+independente de plano. A sonda de determinismo continua útil como alarme; ela
+não é prova.
+
 ```
 antes (LEFT JOIN, sorteando):        137,9 s
 depois (EXISTS + desempate, estável): 56,0 s / 31,6 s (2ª execução com buffer quente)
@@ -7669,7 +7714,15 @@ PostgreSQL, ele vive em outro banco.
 **Conclusão: incremental não é a alavanca desta query.** As duas alavancas que eram —
 desempatar o `ROW_NUMBER` e a reescrita com `EXISTS` — já entraram; ver #97.
 
-## A piscina de worker threads da API multiplica o snapshot em memória — 4 × 8 GB permitidos, 6,6 GB medidos
+## A piscina de worker threads da API multiplica o snapshot em memória — 4 × 8 GB permitidos, 6,6 GB medidos — RESOLVIDO em 04/09/2026, e a HIPÓTESE ESTAVA ERRADA
+
+> **Fechado no mesmo dia, e o diagnóstico abaixo está parcialmente errado — leia
+> a correção antes de agir por ele.** O texto original culpa o heap das workers
+> pelos 6,6 GB. Medindo com o teto delas apertado, o RSS quase não se move: quem
+> consome é o **processo pai**. Correção completa, com a bisseção, em
+> **#98**, no fim deste arquivo. O que continua verdadeiro aqui: o teto era
+> implícito, `--max-old-space-size` do pai não limita worker, e a decisão de
+> quantas workers é troca de RAM por latência de página fria.
 
 `apps/api/src/piscina-workers.ts` cria `min(4, os.cpus().length)` worker threads, cada
 uma com `resourceLimits: { maxOldGenerationSizeMb: 8192 }`. E
@@ -7733,3 +7786,91 @@ Strings com data textual (`DD/MM/YYYY`) continuam errando alto para evitar ambig
 **Medido após a correção:**
 14 de 14 páginas carregando com sucesso (`npm run bench:carga -- --paginas`), todas em ~0,7s a 1,7s.
 1.627 testes passando em verde (`npm test`).
+
+## #98 — Os "6,6 GB de heap de worker" eram do PROCESSO PAI: 42 GB autorizados viraram 4,6 GB, e o teto da worker quase não importa
+
+Fechado em 04/09/2026, porque o Erick decidiu o destino (**Portainer**) e pediu
+*"o mais aceitável para não sobrecarregar nada e nem limitar dado"* — e essa frase
+só tem resposta com número.
+
+**O que estava autorizado.** `apps/api/src/piscina-workers.ts` criava
+`min(4, cpus)` workers com `resourceLimits: { maxOldGenerationSizeMb: 8192 }`
+escrito como **literal dentro do laço**, sob um pai de `--max-old-space-size=10240`
+no `Dockerfile`. Numa máquina de 16 vCPU isso é **10240 + 4 × 8192 = 42.752 MB de
+heap autorizado, em 15,7 GB de RAM.** Worker thread não obedece ao
+`--max-old-space-size` do pai: ela carrega o `resourceLimits` dela.
+
+**Por que RSS era o instrumento errado.** O achado anterior mediu 6.625 MB de RSS
+depois das 14 páginas e concluiu *"os 6,6 GB são heap de worker"*. RSS é heap
+**crescido e não devolvido ao SO** — com teto de 8192 MB por worker, o V8 não tem
+motivo para coletar antes disso, então o RSS sobe até onde deixarem. Ele mede o
+teto **autorizado**, não o **necessário**. E numa máquina que já pagina (esta:
+1,7 GB livres de 15,7 GB) ele ainda mente para baixo, porque o SO tira páginas do
+processo.
+
+**O instrumento certo: apertar o teto e ver o que quebra.** `npm run
+probe:memoria-api` (novo, `tools/probe/src/memoria-api.ts`) sobe a API com um par
+(nº de workers, heap por worker), pede as 10 páginas do menu uma a uma e anota o
+que falha. `ERR_WORKER_OUT_OF_MEMORY` não é medida de desempenho — é fato, e
+sobrevive a paginação. O RSS pico sai de `GET /api/saude`, que a própria API já
+expõe (`servidor.ts:489`) e que cobre pai **e** piscina, porque worker thread é
+thread do mesmo processo.
+
+**Medição 1 — o teto da worker, com o pai em 3072 MB:**
+
+| config | páginas | RSS pico |
+|---|---|---|
+| 2w × **512 MB** | **10/10** | 3.528 MB |
+| 2w × 1024 MB | 10/10 | 3.622 MB |
+| 2w × 1536 MB | 10/10 | 3.467 MB |
+| 2w × 2048 MB | 10/10 | 3.137 MB |
+
+**Aqui a hipótese do achado anterior cai.** Com 512 MB por worker — **16× menos**
+que os 8192 de antes — as 10 páginas passam e o RSS **não se move**. Se o consumo
+fosse das workers, apertar 16× o teto delas teria derrubado o RSS. Não derrubou:
+quem consome é o pai.
+
+**Medição 2 — o teto do pai, com a piscina em 2 × 768 MB:**
+
+| config | páginas | RSS pico |
+|---|---|---|
+| pai 1024 | **0/10** — estoura o heap na 1ª página | 1.198 MB |
+| pai 1536 | **0/10** — estoura o heap na 1ª página | 1.730 MB |
+| pai 2048 | **0/10** — estoura o heap na 1ª página | 2.270 MB |
+| **pai 3072** | **10/10** | 2.938 MB |
+| pai 4096 | 10/10 | 3.767 MB |
+
+O RSS pico colado no teto em cada linha que falha é a assinatura: o pai enche o
+próprio heap e morre. **O piso real está entre 2048 e 3072**, e 3072 é o menor
+valor medido que serve. 4096 não compra nada — sobe o RSS para 3.767 MB e a
+latência não melhora.
+
+**A decisão, e a conta que o Portainer precisa:**
+
+```
+Dockerfile   --max-old-space-size=3072        3072 MB   (piso medido)
+piscina      API_WORKERS=2 × API_WORKER_HEAP_MB=768   1536 MB
+                                              -------
+heap autorizado                               4608 MB
+mem_limit: 6g                                 6144 MB
+folga para o que NÃO é heap                   1536 MB   (buffers do .jsonl.gz,
+                                                        runtime do Node, V8, pilhas)
+```
+
+RSS pico medido nessa configuração: **2.938 MB**. De 42.752 MB autorizados para
+4.608 — **9,3× menos** — sem perder uma página.
+
+**Por que 2 workers e não 4.** A piscina existe porque página fria custa 10–20 s e
+com uma thread só nada mais é servido nesse tempo. Duas já atendem duas páginas
+frias simultâneas, que é o caso real de dois usuários em telas diferentes. Quatro
+dobram o heap autorizado para atender um terceiro simultâneo que ninguém mediu
+existir. É troca de RAM por latência de página fria, e quem opera muda por
+`API_WORKERS` sem tocar código.
+
+**O defeito de forma que isto corrige, e que é o mais importante.** O número não
+era alto — era **implícito**. `mem_limit` do compose (o "Memory limit" da stack no
+Portainer) tem de ser **derivado** do teto do pai e do teto da piscina, e não se
+deriva de um literal escondido num laço. Agora os três vivem em lugares nomeados
+(`PADRAO_TAMANHO_POOL`, `PADRAO_HEAP_POR_WORKER_MB`, `CMD` do Dockerfile,
+`mem_limit` do compose) e `apps/api/test/piscina-workers.test.ts` **falha** se
+saírem de sincronia — inclusive se a folga para o não-heap cair abaixo de 1 GB.
