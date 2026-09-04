@@ -48,6 +48,7 @@ import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carre
 import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
+import { traducaoDe } from '../../../packages/snapshot/src/nativas.ts';
 import {
   arquivoDaCalculada,
   paraGravacao,
@@ -217,6 +218,21 @@ const paraIsolar = new Set<string>();
 if (!parcial && amostra === 0 && !semIsolar) {
   for (const t of escolhidas) {
     if (t.columns.filter((x) => x.calculated && x.dax).length < 2) continue;
+    // Tabela com tradução nativa não se isola: a tradução calcula TODAS as colunas
+    // numa passada de agregação, e não há trabalho por coluna para dividir. Isolar
+    // pagaria 4 cargas de snapshot (7,4 s cada) para rodar 4 vezes o avaliador que a
+    // tradução existe para não rodar — medido em 04/09/2026: 194 s isolada contra
+    // ~12 s nativa. `--isolar` não muda isto, porque isolar aqui não é uma
+    // preferência: é pedir o caminho lento. Para reconferir o DAX contra a tradução,
+    // o que existe é `npm run probe:status-dia`.
+    const nativa = traducaoDe(t);
+    if ('traducao' in nativa) {
+      console.error(`  ${t.name}: tradução nativa (nativas.ts) — num processo só, sem isolar.`);
+      continue;
+    }
+    if (nativa.porque !== 'sem tradução nativa') {
+      console.error(`  ${t.name}: ${nativa.porque}`);
+    }
     const n = linhasCongeladas(t);
     if (isolarPedido || (n !== null && n >= MINIMO_PARA_ISOLAR)) {
       paraIsolar.add(t.name);
@@ -402,26 +418,65 @@ for (const t of emProcessoUnico) {
     );
   }
 
-  for (const nome of calculadas) {
-    const tc = Date.now();
-    // A chave normalizada, que é como o `Dataset` guarda toda coluna de linha. Gravar
-    // sob o nome original criaria uma chave paralela que só este programa enxerga.
-    const chave = normalizeName(nome);
-    for (let i = de; i < ate; i++) {
-      const v = c!.ev.columnValue(t.name, nome, linhas[i] as never);
-      linhas[i]![chave] = (v ?? null) as never;
-    }
-    const ms = Date.now() - tc;
-    // Por linha, e não só o total: é o único jeito de comparar uma amostra com a
-    // execução inteira, e a razão entre colunas é o que este modo existe para medir.
-    const porLinha = naAmostra > 0 ? ms / naAmostra : 0;
-    process.stderr.write(
-      `\n  [${nome}] ${ms.toLocaleString('pt-BR')} ms` +
-        (amostra > 0
-          ? `  ·  ${porLinha.toFixed(1)} ms/linha  ·  projeção para ${linhas.length.toLocaleString('pt-BR')}: ` +
-            `${(porLinha * linhas.length / 1000).toFixed(0)} s`
-          : ''),
+  // ------------------------------------------------------- o desvio nativo
+  //
+  // Quando há tradução nativa VÁLIDA para esta tabela, ela produz a tabela inteira —
+  // corpo e colunas calculadas — numa passada de agregação, no lugar do laço de
+  // `columnValue`. Medido em 04/09/2026 em `Status Protocolo Dia`: 211 s -> ~13 s
+  // (8,7 s de carga + 4,4 s de cálculo), com 0 células divergentes contra o arquivo
+  // que o avaliador produziu (`npm run probe:status-dia`). O porquê da exceção e os
+  // três guardas que a seguram estão em `nativas.ts`.
+  //
+  // `--amostra=` não desvia: ela existe para medir ms/linha do AVALIADOR, e a
+  // tradução não tem "por linha" para medir — é uma passada só.
+  const nativa = amostra > 0 ? { porque: '--amostra mede o avaliador' } : traducaoDe(t);
+  if ('traducao' in nativa) {
+    const tn = Date.now();
+    const fontes = nativa.traducao.fontes.map(
+      (nome) => c!.ev.dataset.rows(nome) as unknown as Record<string, unknown>[],
     );
+    const vazias = nativa.traducao.fontes.filter((_n, k) => (fontes[k] ?? []).length === 0);
+    if (vazias.length > 0) {
+      // Fonte vazia sairia como tabela vazia, e o arquivo passaria pelo guarda de sha
+      // do #47 sem reclamar — o DAX não mudou. Plausível e errado.
+      console.error(
+        `\nERRO: ${t.name} (nativa): ${vazias.join(', ')} chegou(aram) sem linha nenhuma. ` +
+          'Gravar assim daria uma tabela vazia com cabeçalho honesto.',
+      );
+      process.exit(1);
+    }
+    // No lugar, e não num array novo: `paraGravacao` mais abaixo lê `linhas`.
+    linhas.length = 0;
+    for (const l of nativa.traducao.calcula(fontes as never)) linhas.push(l as never);
+    process.stderr.write(
+      `\n  [tradução nativa] ${(Date.now() - tn).toLocaleString('pt-BR')} ms para ` +
+        `${linhas.length.toLocaleString('pt-BR')} linha(s) — sem avaliar DAX (nativas.ts)`,
+    );
+  } else {
+    if (nativa.porque !== 'sem tradução nativa' && nativa.porque !== '--amostra mede o avaliador') {
+      process.stderr.write(`\n  ATENÇÃO: ${nativa.porque}`);
+    }
+    for (const nome of calculadas) {
+      const tc = Date.now();
+      // A chave normalizada, que é como o `Dataset` guarda toda coluna de linha. Gravar
+      // sob o nome original criaria uma chave paralela que só este programa enxerga.
+      const chave = normalizeName(nome);
+      for (let i = de; i < ate; i++) {
+        const v = c!.ev.columnValue(t.name, nome, linhas[i] as never);
+        linhas[i]![chave] = (v ?? null) as never;
+      }
+      const ms = Date.now() - tc;
+      // Por linha, e não só o total: é o único jeito de comparar uma amostra com a
+      // execução inteira, e a razão entre colunas é o que este modo existe para medir.
+      const porLinha = naAmostra > 0 ? ms / naAmostra : 0;
+      process.stderr.write(
+        `\n  [${nome}] ${ms.toLocaleString('pt-BR')} ms` +
+          (amostra > 0
+            ? `  ·  ${porLinha.toFixed(1)} ms/linha  ·  projeção para ${linhas.length.toLocaleString('pt-BR')}: ` +
+              `${(porLinha * linhas.length / 1000).toFixed(0)} s`
+            : ''),
+      );
+    }
   }
 
   // Amostra nunca grava. Gravar com N linhas de 30.404 produziria um arquivo com
