@@ -7348,8 +7348,21 @@ cliente tem mais de um, e não tinha critério de desempate. Rodando o SQL de
 produção duas vezes no MESMO snapshot de transação (`REPEATABLE READ READ ONLY`):
 **14.090 de 98.110 solicitações (14,4%) mudavam de valor** em USUÁRIO, CTO, PONTO
 DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA, LATITUDE, LONGITUDE.
-`l-mapa` plotava coordenada sorteada para ~12 mil protocolos — dois refreshes
-seguidos moviam o ponto sem ninguém ter mudado nada.
+
+**Correção a um achado anterior: `l-mapa` NÃO plota coordenada nenhuma.**
+`specs/dashboards/l-mapa.spec.yaml` é um `Tooltip` oculto com 5 colunas
+(INSTALADO POR, CONTRATO, PROTOCOLO, DATA, HR. ALOCAÇÃO) — nenhuma delas
+LATITUDE/LONGITUDE. Conferido em 04/09/2026: **nenhuma das 14 specs de
+dashboard referencia LATITUDE/LONGITUDE**, e o projeto não tem biblioteca de
+mapa nenhuma (`grep` por leaflet/mapbox/google.maps em `apps/web` não acha
+nada). O achado original (sessão anterior) errou ao supor, pelo nome da
+página, que ela desenhava um mapa. O impacto real e verificado — rodando a
+API com o snapshot de hoje e lendo `/api/dashboards/visao-geral` — é a tabela
+da página **VISÃO GERAL** (uma das 14 páginas normais, ícone no menu): as
+colunas `EQUIPAMENTO1` (de EQUIPAMENTO) e `CONEXÃO` (de USUÁRIO) aparecem lá,
+lado a lado com `STATUS FINANCEIRO` (a coluna do `EXISTS`). Antes da correção
+de hoje, essas três colunas mudavam de valor entre refreshes nessa tela real;
+LATITUDE/LONGITUDE mudavam no banco mas não apareciam em lugar nenhum da UI.
 
 **A pergunta que só o negócio respondia:** quando o cliente tem mais de um
 endereço/contrato de autenticação, qual deles é o do protocolo? Erick decidiu em
@@ -7393,20 +7406,29 @@ completo). `docs/sql/protocolos-geral-exists.sql` marcado como incorporado.
 `specs/golden/protocolos-geral.golden.json` regravado (`npm run validate:queries
 -- --only=protocolos-geral`: 98.170 linhas, 34 colunas, sem falha).
 
-**O snapshot em disco (`snapshot/protocolos-geral.jsonl.gz`) NÃO foi atualizado —
-achado à parte, pré-existente.** `npm run snapshot -- --query=protocolos-geral
+**O snapshot em disco precisou de mais memória que o padrão — achado à parte,
+pré-existente, e agora contornado.** `npm run snapshot -- --query=protocolos-geral
 --refazer --memoria=8192` estoura o heap (*"O avaliador de M guarda todos os
 passos vivos"*). **Não é o meu SQL**: revertido o `sql:` para o texto de ontem
 (via `git stash`) e rodado o mesmo comando, o mesmo estouro acontece — só que
-mais devagar (161 s até falhar, contra 80 s com o SQL novo). O `m_expression`
-desta tabela tem 59 linhas de M sobre 34 colunas × ~98 mil linhas; se cada passo
-fica vivo inteiro na memória, a conta bate. A máquina tinha 6,7 GB livres de 16 GB
-no momento do teste — não tentei `--memoria` maior por risco ao resto da sessão.
-**Consequência prática:** o snapshot que a API serve para `protocolos-geral`
-continua com os valores de antes desta mudança até alguém rodar `--refazer` numa
-janela com mais memória livre (ou o teto do M-layer for revisto à parte). Ver
-achado sobre a piscina de workers, que é o mesmo tipo de problema em outro
-processo.
+mais devagar (161 s até falhar, contra 80-99 s com o SQL novo, medido em três
+tentativas com RAM livre diferente). O `m_expression` desta tabela tem 59
+linhas de M sobre 34 colunas × ~98 mil linhas; se cada passo fica vivo inteiro
+na memória, a conta bate. **Com `--memoria=12288` (12 GB) funcionou**: 93.580
+linhas, 63 colunas (o M-layer soma colunas derivadas às 34 do SQL), 10 MB, 117 s
+— e o recongelamento automático das 7 tabelas calculadas dependentes rodou
+junto, sem erro (inclusive `Status Protocolo Dia` pela tradução nativa do #96,
+4 s).
+
+**Conferido na API de verdade, com o snapshot novo.** Subi a API local
+(`GOOGLE_CLIENT_ID=` vazio só para este teste, sem tocar `.env`) e li
+`/api/dashboards/visao-geral` duas vezes: mesma resposta byte a byte (só o
+metadado `cache` mudou, de `miss` para `hit`). Nessa tabela, 200 linhas:
+`EQUIPAMENTO1` 0 nulos, `CONEXÃO` (USUÁRIO) 59 nulos de 200 — esperado, é
+`LEFT JOIN` — e `STATUS FINANCEIRO` só com o valor `'Cobrado'` na amostra, sem
+`null`/erro. É a prova de que o snapshot regravado carrega e serve normal, além
+da prova de determinismo do SQL em si (`probe:determinismo-pg`, direto no
+banco).
 
 ## `INSTALADOR` tem 94 pessoas onde o Power BI tem 166
 

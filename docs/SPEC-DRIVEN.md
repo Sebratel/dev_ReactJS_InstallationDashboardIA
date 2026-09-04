@@ -180,9 +180,11 @@ autenticação, e o `ORDER BY s.start_date DESC` empata sempre que os candidatos
 o mesmo agendamento (ou nenhum). Rodando o SQL de produção duas vezes no MESMO
 snapshot de transação (`REPEATABLE READ READ ONLY`): **14.090 de 98.110
 solicitações (14,4%) mudavam de valor** em USUÁRIO, CTO, PONTO DE ACESSO, CODIGO,
-OLT, EQUIPAMENTO, SLOT, PORTA, LATITUDE, LONGITUDE — `l-mapa` plotava coordenada
-sorteada para ~12 mil protocolos, e dois refreshes moviam o ponto sem ninguém ter
-mexido em nada.
+OLT, EQUIPAMENTO, SLOT, PORTA, LATITUDE, LONGITUDE. `l-mapa` **não** plota nada
+disso — é um `Tooltip` oculto sem essas colunas, e nenhuma das 14 páginas usa
+LATITUDE/LONGITUDE (o projeto não tem biblioteca de mapa). O impacto real,
+visível, é a tabela da página VISÃO GERAL: `EQUIPAMENTO1` e `CONEXÃO` (USUÁRIO)
+mudavam de valor ali entre refreshes. Ver `docs/ACHADOS.md` #97.
 
 **A regra, decidida por Erick em 04/09/2026 (`ACTIVE TRUE`):** preferir o registro
 de `authentication_contracts` com `active = true`. Medido em escala, antes de
