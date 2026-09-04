@@ -27,13 +27,203 @@
 
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
+import zlib from 'node:zlib';
+
+import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 // Importado, não reescrito: `normalizeName` é uma linha, e duas cópias de uma
 // linha é exatamente o tipo de coisa que diverge sem ninguém notar. O que o
 // `Dataset` considera "normalizado" tem de ser o que esta leitura produz.
 import { normalizeName } from '../../semantic-model/src/model.ts';
 import { renomeiaComRetentativa } from './escrita-atomica.ts';
+
+// ── compressão: os dois sufixos do mesmo formato ─────────────────────────────
+//
+// **Por que comprimir.** O arquivo é JSONL colunar de valor repetido — nome de
+// cidade, título de status, nome de equipe — e o gzip o come vivo. Medido em
+// 04/09/2026 sobre `field-agenda.jsonl`, 448,2 MB:
+//
+// | nível | tamanho | menor | gravar | ler |
+// |---|---|---|---|---|
+// | 1 | 26,8 MB | 94,0% | 0,9 s | 0,7 s |
+// | **6 (padrão)** | **14,6 MB** | **96,7%** | **1,7 s** | **0,7 s** |
+// | sem gzip | 448,2 MB | — | — | 0,4 s |
+//
+// Nível 6 pelo dobro do tempo de gravação e metade do tamanho do nível 1; a
+// leitura custa os mesmos 0,3 s a mais nos dois. Não há nível a escolher aqui: o
+// padrão do zlib é o que o número acima mede.
+//
+// **Por que o sufixo, e não um campo no cabeçalho.** O cabeçalho está DENTRO do
+// arquivo: para lê-lo já é preciso saber se descomprimir. E há três varreduras que
+// listam o diretório sem abrir arquivo nenhum (`confere`, `bench` e o carimbo do
+// cache de resposta) — elas precisam reconhecer o arquivo pelo nome.
+
+/** Sufixo do arquivo comprimido e do cru, na ordem de preferência da leitura. */
+export const SUFIXO_COMPRIMIDO = '.jsonl.gz';
+export const SUFIXO_CRU = '.jsonl';
+
+/** Se o nome é de um arquivo de snapshot — os dois sufixos, e só eles. */
+export function ehArquivoDeSnapshot(nome: string): boolean {
+  return nome.endsWith(SUFIXO_COMPRIMIDO) || nome.endsWith(SUFIXO_CRU);
+}
+
+/** O nome sem sufixo — o id da query, ou `calc.<slug>` de tabela calculada. */
+export function semSufixo(nome: string): string {
+  return nome.endsWith(SUFIXO_COMPRIMIDO)
+    ? nome.slice(0, -SUFIXO_COMPRIMIDO.length)
+    : nome.endsWith(SUFIXO_CRU)
+      ? nome.slice(0, -SUFIXO_CRU.length)
+      : nome;
+}
+
+/** O caminho do gêmeo de outro sufixo, ou `null` se o nome não é de snapshot. */
+function gemeoDe(arquivo: string): string | null {
+  if (arquivo.endsWith(SUFIXO_COMPRIMIDO)) {
+    return arquivo.slice(0, -SUFIXO_COMPRIMIDO.length) + SUFIXO_CRU;
+  }
+  if (arquivo.endsWith(SUFIXO_CRU)) return arquivo + '.gz';
+  return null;
+}
+
+/**
+ * Qual dos dois gêmeos ler, dado o caminho do CRU. O comprimido tem precedência.
+ *
+ * **Erra alto quando os dois existem.** `escreve` apaga o gêmeo depois de gravar, e
+ * por isso esse estado não nasce de operação normal — nasce de cópia à mão ou de um
+ * `escreve` interrompido entre o rename e a limpeza. E ele é caro justamente porque
+ * não dá erro sozinho: a leitura pegaria o `.gz` e as varreduras por nome poderiam
+ * pegar o outro, que é de outra carga. Dois números, nenhum sintoma.
+ *
+ * Sem nenhum dos dois, devolve o caminho do CRU — é o que permite a quem chama
+ * testar `fs.existsSync` no resultado, como sempre fez.
+ */
+export function escolheGemeo(caminhoCru: string): string {
+  const comprimido = caminhoCru + '.gz';
+  const temGz = fs.existsSync(comprimido);
+  const temCru = fs.existsSync(caminhoCru);
+  if (temGz && temCru) {
+    throw new Error(
+      `${path.basename(comprimido)} e ${path.basename(caminhoCru)} existem os dois em ` +
+        `${path.dirname(caminhoCru)}. A leitura usaria o comprimido e as varreduras por nome ` +
+        `poderiam usar o outro — dois números, nenhum erro. Apague o que não for da carga atual.`,
+    );
+  }
+  return temGz ? comprimido : caminhoCru;
+}
+
+/** Os dois bytes que abrem todo membro gzip (RFC 1952 §2.3.1). */
+function comprimidoEmDisco(arquivo: string): boolean {
+  const fd = fs.openSync(arquivo, 'r');
+  try {
+    const buf = Buffer.alloc(2);
+    const lidos = fs.readSync(fd, buf, 0, 2, 0);
+    return lidos === 2 && buf[0] === 0x1f && buf[1] === 0x8b;
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * O arquivo como fluxo de texto, descomprimido quando for o caso.
+ *
+ * **Decide pelos BYTES, não pelo sufixo.** `escreve` mantém os dois de acordo, mas um
+ * arquivo renomeado à mão passaria a ser lido com o decodificador errado, e o sintoma
+ * apareceria em `JSON.parse` — três camadas abaixo de onde está a causa.
+ *
+ * O `on('error')` no meio não é zelo: `pipe` **não** propaga erro da origem para o
+ * destino. Sem ele, um disco que falha no meio da leitura deixaria o `gunzip` sem
+ * dado e sem erro, e o `for await` de `le()` terminaria como se o arquivo tivesse
+ * acabado — arquivo truncado servido como completo. Quem pega isso hoje é a
+ * conferência de contagem no fim de `le()`; este repasse a torna redundante em vez
+ * de única.
+ *
+ * **Exportada de propósito.** `tools/bench/src/carga.ts` replica o laço de `le()` de
+ * propósito, degrau por degrau, e o programa reclama quando a réplica divergir — mas
+ * ele só compara TEMPO, e uma divergência na abertura do arquivo não aparece como
+ * degrau fora de ordem: aparece como `JSON.parse` engasgando com byte de gzip. Foi
+ * exatamente o que aconteceu quando a compressão entrou, em 04/09/2026. A réplica
+ * chama esta função para essa divergência não ter como voltar.
+ */
+export function fluxoDeLeitura(arquivo: string): Readable {
+  if (!comprimidoEmDisco(arquivo)) return fs.createReadStream(arquivo, { encoding: 'utf8' });
+  const fonte = fs.createReadStream(arquivo);
+  const gunzip = zlib.createGunzip();
+  fonte.on('error', (e) => gunzip.destroy(e));
+  return fonte.pipe(gunzip);
+}
+
+/**
+ * A primeira linha de um arquivo comprimido, sem inflar o resto.
+ *
+ * `Z_SYNC_FLUSH` no fim é o que faz isto ser possível: sem ele, inflar um PEDAÇO de
+ * um gzip é "unexpected end of file" — o rodapé de CRC não chegou. Com ele, o zlib
+ * devolve o que já conseguiu inflar. A janela dobra até achar o `\n` porque o
+ * cabeçalho de `field-agenda` tem ~30 colunas e nada garante um teto; ela para no
+ * tamanho do arquivo, então o pior caso é ler o arquivo inteiro uma vez — que é o
+ * que a versão ingênua fazia SEMPRE.
+ */
+function primeiraLinhaComprimida(arquivo: string): string {
+  const total = fs.statSync(arquivo).size;
+  const fd = fs.openSync(arquivo, 'r');
+  try {
+    for (let janela = 128 * 1024; ; janela *= 8) {
+      const quanto = Math.min(janela, total);
+      const buf = Buffer.alloc(quanto);
+      const lidos = fs.readSync(fd, buf, 0, quanto, 0);
+      let texto: string;
+      try {
+        texto = zlib
+          .gunzipSync(buf.subarray(0, lidos), { finishFlush: zlib.constants.Z_SYNC_FLUSH })
+          .toString('utf8');
+      } catch (e) {
+        // Janela curta demais para o zlib emitir qualquer coisa: cresce. No arquivo
+        // inteiro, o erro é do arquivo e sobe.
+        if (quanto >= total) throw e;
+        continue;
+      }
+      // Só devolve depois de achar o `\n`: um corte no meio de um caractere UTF-8
+      // fica DEPOIS dele, e o pedaço que interessa sai inteiro.
+      const fim = texto.indexOf('\n');
+      if (fim >= 0) return texto.slice(0, fim);
+      if (quanto >= total) {
+        throw new Error(`${arquivo}: cabeçalho não termina na primeira linha.`);
+      }
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Quantos bytes o arquivo tem DESCOMPRIMIDO — a grandeza que prediz heap.
+ *
+ * **Por que isto existe.** Depois da compressão, o tamanho em disco parou de dizer
+ * quanta memória a leitura vai pedir: `field-agenda` são 14,6 MB de arquivo e as
+ * mesmas 1,46 milhão de linhas de sempre. Quem usa o tamanho como proxy de custo —
+ * hoje o teto de `npm run bench:carga`, que existe para não fazer a máquina de 16 GB
+ * do usuário parar sem ele pedir — passaria a deixar entrar justamente o arquivo de
+ * que se protegia, e o sintoma seria a máquina travando, não um erro.
+ *
+ * Sai do campo ISIZE do rodapé do gzip (RFC 1952 §2.3.1), que são 4 bytes no fim do
+ * arquivo. **É o tamanho módulo 2^32**: acima de 4 GB descomprimidos ele mente, e
+ * mente para BAIXO. Nenhuma tabela daqui chega perto (a maior descomprime 448 MB), e
+ * o dia em que chegar o teto erra para o lado de medir mais degraus — não para o de
+ * carregar um arquivo que não cabe.
+ */
+export function bytesDescomprimidos(arquivo: string): number {
+  const emDisco = fs.statSync(arquivo).size;
+  if (!comprimidoEmDisco(arquivo)) return emDisco;
+  const fd = fs.openSync(arquivo, 'r');
+  try {
+    const buf = Buffer.alloc(4);
+    fs.readSync(fd, buf, 0, 4, Math.max(0, emDisco - 4));
+    return buf.readUInt32LE(0);
+  } finally {
+    fs.closeSync(fd);
+  }
+}
 
 /** Escalar que a camada M entrega (`toDatasetRows`) e o `Dataset` aceita. */
 export type Escalar = number | string | boolean | Date | null;
@@ -216,22 +406,43 @@ export async function escreve(
   };
 
   const temp = `${arquivo}.parcial`;
-  await pipeline(
-    (function* () {
-      yield JSON.stringify(cabecalho) + '\n';
-      for (const linha of linhas) {
-        yield JSON.stringify(apuradas.map((c) => codifica(linha[c.nome] ?? null, c.tipo))) + '\n';
-      }
-    })(),
-    fs.createWriteStream(temp, { encoding: 'utf8' }),
-  );
+  fs.mkdirSync(path.dirname(temp), { recursive: true });
+  const comprime = arquivo.endsWith(SUFIXO_COMPRIMIDO);
+
+  function* texto() {
+    yield JSON.stringify(cabecalho) + '\n';
+    for (const linha of linhas) {
+      yield JSON.stringify(apuradas.map((c) => codifica(linha[c.nome] ?? null, c.tipo))) + '\n';
+    }
+  }
+
+  // O gerador é o mesmo nos dois caminhos — o gzip é um elo a mais no pipeline, e
+  // não um segundo caminho de escrita. Duas cópias do laço que serializa a linha é
+  // exatamente o que diverge sem ninguém notar: é o argumento do `normalizeName`
+  // importado no topo deste arquivo, valendo aqui dentro.
+  await (comprime
+    ? pipeline(texto(), zlib.createGzip(), fs.createWriteStream(temp))
+    : pipeline(texto(), fs.createWriteStream(temp, { encoding: 'utf8' })));
+
   await renomeiaComRetentativa(temp, arquivo);
+
+  // O gêmeo de outro sufixo tem de sair, e tem de sair AQUI. Deixá-lo é deixar duas
+  // cargas em disco sob o mesmo nome de query: a leitura pega o comprimido e as
+  // varreduras por nome podem pegar o cru. `escolheGemeo` erra alto nesse estado, mas
+  // errar alto no dia seguinte é pior do que não criar o estado — e um passo separado
+  // de limpeza é justamente o que já foi esquecido duas vezes neste fluxo (ACHADOS
+  // #53, #78), que é o motivo de o temp/rename também morar aqui dentro.
+  const gemeo = gemeoDe(arquivo);
+  if (gemeo !== null && fs.existsSync(gemeo)) fs.rmSync(gemeo);
 
   return cabecalho;
 }
 
 /** Só o cabeçalho, sem ler as linhas — para listar o que existe no snapshot. */
 export function leCabecalho(arquivo: string): CabecalhoDeSnapshot {
+  if (comprimidoEmDisco(arquivo)) {
+    return confereFormato(JSON.parse(primeiraLinhaComprimida(arquivo)) as CabecalhoDeSnapshot, arquivo);
+  }
   const fd = fs.openSync(arquivo, 'r');
   try {
     // O cabeçalho de `field-agenda` tem ~30 colunas; 64 KB sobra e evita ler o
@@ -307,7 +518,7 @@ export async function le(
   omitir?: ReadonlySet<string>,
 ): Promise<{ cabecalho: CabecalhoDeSnapshot; linhas: Record<string, Escalar>[] }> {
   const rl = readline.createInterface({
-    input: fs.createReadStream(arquivo, { encoding: 'utf8' }),
+    input: fluxoDeLeitura(arquivo),
     crlfDelay: Infinity,
   });
 

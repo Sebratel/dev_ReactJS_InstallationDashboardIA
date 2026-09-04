@@ -29,6 +29,7 @@
 //   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
 //   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
 //   npm run snapshot -- --query=field-agenda --refazer --isolar-colunas  # ver Args.isolarColunas
+//   npm run snapshot -- --todas --sem-comprimir              # grava .jsonl cru, não .jsonl.gz
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -75,6 +76,7 @@ import {
 import {
   DIRETORIO_PADRAO,
   arquivoDaQuery,
+  arquivoDeEscrita,
   escreveManifesto,
   leManifesto,
   type EntradaDeManifesto,
@@ -154,6 +156,18 @@ interface Args {
    * novo — ex.: se `protocolos-geral` tiver o defeito de memória que #66/#67 tinham.
    */
   isolarColunas: boolean;
+  /**
+   * Gravar `.jsonl.gz` em vez de `.jsonl`. LIGADO por padrão.
+   *
+   * Medido em 04/09/2026 sobre `field-agenda` (448,2 MB): o arquivo cai para 14,6 MB
+   * — 96,7% —, a gravação custa +1,7 s e a leitura +0,3 s. A tabela completa está no
+   * topo de `packages/snapshot/src/formato.ts`.
+   *
+   * `--sem-comprimir` existe para quem precisa abrir o arquivo com `head`/`grep` sem
+   * passar por `zcat`, e para medir o custo dos dois lados. Trocar de um para o outro
+   * não deixa resto: `escreve()` apaga o gêmeo do outro sufixo depois de gravar.
+   */
+  comprime: boolean;
 }
 
 /**
@@ -184,6 +198,7 @@ function parseArgs(argv: string[]): Args {
     semCalculadas: false,
     incremental: false,
     isolarColunas: false,
+    comprime: true,
     colunaTabela: null,
     colunaNome: null,
     colunaEntrada: null,
@@ -200,6 +215,7 @@ function parseArgs(argv: string[]): Args {
     else if (raw === '--sem-calculadas') a.semCalculadas = true;
     else if (raw === '--incremental') a.incremental = true;
     else if (raw === '--isolar-colunas') a.isolarColunas = true;
+    else if (raw === '--sem-comprimir') a.comprime = false;
     else if (raw.startsWith('--pagina=')) a.paginas.push(...lista(raw, '--pagina='));
     else if (raw.startsWith('--query=')) a.queries.push(...lista(raw, '--query='));
     else if (raw.startsWith('--saida=')) a.saida = path.resolve(ROOT, raw.slice('--saida='.length));
@@ -550,7 +566,14 @@ interface Resultado {
 async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> {
   const inicio = Date.now();
   const avisos: string[] = [];
-  const arquivo = arquivoDaQuery(saida, q.id);
+  // Dois caminhos, e a diferença importa. O ANTERIOR é o que está em disco — pode ser
+  // `.jsonl` de antes da compressão, e é dele que a incremental lê a marca e as linhas.
+  // O DESTINO é onde esta carga grava, e o sufixo dele vem de `--sem-comprimir`, não do
+  // disco: se viesse do disco, um `.jsonl` já existente prenderia a query no formato
+  // velho para sempre. `escreve()` apaga o gêmeo depois de gravar, então os dois nunca
+  // coexistem — é o que `escolheGemeo` cobra.
+  const arquivoAnterior = arquivoDaQuery(saida, q.id);
+  const arquivo = arquivoDeEscrita(saida, q.id, args.comprime);
 
   // Decide COMO buscar antes de abrir conexão nenhuma: sem política, ou sem
   // --incremental, ou sem arquivo anterior, `planejaBusca` já devolve o caminho de
@@ -559,7 +582,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   let cabAnterior: CabecalhoAnterior | null = null;
   if (politica && args.incremental) {
     try {
-      cabAnterior = leCabecalho(arquivo);
+      cabAnterior = leCabecalho(arquivoAnterior);
     } catch {
       cabAnterior = null; // sem arquivo ainda, ou ilegível: trata como primeira carga
     }
@@ -615,7 +638,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     // mesma garantia de sempre: todo o arquivo compartilha o mesmo `AGORA`.
     let rows = buscadas;
     if (plano.modo === 'incremental') {
-      const { linhas: antigas } = await le(arquivo);
+      const { linhas: antigas } = await le(arquivoAnterior);
       const m = mescla({
         antigas,
         novas: buscadas,

@@ -33,7 +33,13 @@ import { Evaluator } from '../../measure-engine/src/evaluator.ts';
 import { materializeCalculatedTable } from '../../measure-engine/src/calculated.ts';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
-import { shaDeDax, type Escalar } from './formato.ts';
+import {
+  ehArquivoDeSnapshot,
+  escolheGemeo,
+  shaDeDax,
+  SUFIXO_CRU,
+  type Escalar,
+} from './formato.ts';
 
 /**
  * A identidade da **ordem das linhas** de uma tabela, pelas colunas dadas.
@@ -76,10 +82,18 @@ export function digito(v: Escalar): string {
   return `s:${v}`;
 }
 
-/** O arquivo de uma tabela calculada. `calc.` no nome para não colidir com query. */
+/** O slug do arquivo de uma tabela calculada. `calc.` para não colidir com query. */
+function slugDaCalculada(tabela: string): string {
+  return `calc.${normalizeName(tabela).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+}
+
+/**
+ * O arquivo de uma tabela calculada que está EM DISCO — comprimido na frente do cru.
+ * Mesma regra e mesmo motivo de `arquivoDaQuery`; quem grava chama
+ * `arquivoDaCalculadaEscrita`.
+ */
 export function arquivoDaCalculada(dir: string, tabela: string): string {
-  const slug = normalizeName(tabela).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return path.join(dir, `calc.${slug}.jsonl`);
+  return escolheGemeo(path.join(dir, `${slugDaCalculada(tabela)}${SUFIXO_CRU}`));
 }
 
 /**
@@ -161,7 +175,7 @@ export function carimboDasCalculadas(dir: string): string {
   if (!fs.existsSync(dir)) return '';
   return fs
     .readdirSync(dir)
-    .filter((f) => f.startsWith('calc.') && f.endsWith('.jsonl'))
+    .filter((f) => f.startsWith('calc.') && ehArquivoDeSnapshot(f))
     .sort()
     .map((f) => {
       const s = fs.statSync(path.join(dir, f));

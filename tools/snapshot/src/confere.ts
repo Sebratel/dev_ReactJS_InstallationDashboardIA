@@ -28,7 +28,7 @@ import {
   contaPorGravidade,
   type ArquivoDeSnapshot,
 } from '../../../packages/snapshot/src/confere.ts';
-import { leCabecalho } from '../../../packages/snapshot/src/formato.ts';
+import { ehArquivoDeSnapshot, leCabecalho } from '../../../packages/snapshot/src/formato.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -50,7 +50,7 @@ if (!fs.existsSync(DIR)) {
 
 const arquivos: ArquivoDeSnapshot[] = fs
   .readdirSync(DIR)
-  .filter((f) => f.endsWith('.jsonl'))
+  .filter(ehArquivoDeSnapshot)
   .sort()
   .map((f) => ({
     arquivo: f,
@@ -59,7 +59,7 @@ const arquivos: ArquivoDeSnapshot[] = fs
   }));
 
 if (arquivos.length === 0) {
-  console.error(`Nenhum .jsonl em ${path.relative(ROOT, DIR)}. Rode: npm run snapshot -- --todas`);
+  console.error(`Nenhum .jsonl/.jsonl.gz em ${path.relative(ROOT, DIR)}. Rode: npm run snapshot -- --todas`);
   process.exit(1);
 }
 

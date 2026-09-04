@@ -173,14 +173,20 @@ test('carimboDoSnapshot: regenerar tabela calculada muda o carimbo', () => {
   assert.equal(carimboDoSnapshot(null), 'sem-snapshot');
 });
 
-test('carimboDasCalculadas: só os calc.*.jsonl, em ordem estável', () => {
+test('carimboDasCalculadas: só os calc.* (cru ou comprimido), em ordem estável', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'carimbo-'));
   fs.writeFileSync(path.join(dir, 'calc.b.jsonl'), 'b');
   fs.writeFileSync(path.join(dir, 'calc.a.jsonl'), 'a');
+  // Comprimida entra igual: se o carimbo a ignorasse, uma calculada regravada em
+  // .jsonl.gz deixaria o cache de resposta servindo o número de antes dela.
+  fs.writeFileSync(path.join(dir, 'calc.c.jsonl.gz'), 'c');
+  fs.writeFileSync(path.join(dir, 'calc.d.jsonl.parcial'), 'd'); // escrita em curso
   fs.writeFileSync(path.join(dir, 'protocolos-geral.jsonl'), 'x'); // query, não calculada
   fs.writeFileSync(path.join(dir, 'manifesto.json'), '{}');
   const c = carimboDasCalculadas(dir);
   assert.match(c, /^calc\.a\.jsonl@.*\|calc\.b\.jsonl@/, 'ordem alfabética, e só os calc.');
+  assert.ok(c.includes('calc.c.jsonl.gz@'), 'a calculada comprimida tem de entrar no carimbo');
+  assert.ok(!c.includes('.parcial'), 'temporário de escrita não entra');
   assert.ok(!c.includes('protocolos-geral'), 'query não entra aqui — ela já está no manifesto');
   assert.equal(carimboDasCalculadas(path.join(dir, 'nao-existe')), '');
 });
@@ -424,7 +430,7 @@ async function sobe(
   /** O relógio. Injetável para atravessar a meia-noite sem esperar por ela. */
   agora: () => Date = () => AGORA,
 ): Promise<{ busca: (rota: string) => Promise<Response>; fecha: () => Promise<void> }> {
-  const http = new Servidor({
+  const inst = new Servidor({
     root: ROOT,
     snapshotDir,
     webDir: WEB,
@@ -436,14 +442,20 @@ async function sobe(
     // `/api/dashboards/*` se caísse no padrão real (identidade.test.ts cobre
     // o portão de sessão em si).
     identifica: () => ({ usuario: usuario ?? 'teste', papeis: [usuario ?? 'teste'] }),
-  }).criaHttp();
+  });
+  const http = inst.criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
   const { port } = http.address() as { port: number };
   return {
     busca: (rota) => fetch(`http://127.0.0.1:${port}${rota}`),
-    fecha: () => new Promise<void>((ok) => http.close(() => ok())),
+    fecha: () =>
+      new Promise<void>((ok) => {
+        inst.destroi();
+        http.close(() => ok());
+      }),
   };
 }
+
 
 test('o segundo pedido idêntico é acerto — e num processo novo não carrega a página', async () => {
   const dir = await dirComCapa();
@@ -650,19 +662,21 @@ test('a saúde diz o estado do reaquecimento, e o padrão é desligado', async (
     await sem.fecha();
   }
 
-  const http = new Servidor({
+  const inst1 = new Servidor({
     root: ROOT,
     snapshotDir: dirVazio(),
     webDir: WEB,
     agora: () => AGORA,
     aquecimento: () => ({ ativo: true, pronto: true }),
-  }).criaHttp();
+  });
+  const http = inst1.criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
   try {
     const { port } = http.address() as { port: number };
     const j = await (await fetch(`http://127.0.0.1:${port}/api/saude`)).json();
     assert.deepEqual(j.aquecimento, { ativo: true, pronto: true });
   } finally {
+    inst1.destroi();
     await new Promise<void>((ok) => http.close(() => ok()));
   }
 });
@@ -688,19 +702,22 @@ test('a saúde diz quanto do orçamento de visual está em uso', async () => {
 });
 
 test('teto zero desliga o cache de visual, e a saúde mostra isso', async () => {
-  const http = new Servidor({
+  const inst2 = new Servidor({
     root: ROOT,
     snapshotDir: dirVazio(),
     webDir: WEB,
     agora: () => AGORA,
     tetoDeVisuaisMB: 0,
-  }).criaHttp();
+  });
+  const http = inst2.criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
   try {
     const { port } = http.address() as { port: number };
     const j = await (await fetch(`http://127.0.0.1:${port}/api/saude`)).json();
     assert.equal(j.cache.visuais.tetoMB, 0);
   } finally {
+    inst2.destroi();
     await new Promise<void>((ok) => http.close(() => ok()));
   }
 });
+

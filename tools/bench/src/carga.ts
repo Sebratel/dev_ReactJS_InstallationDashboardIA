@@ -57,8 +57,18 @@ import { Dataset } from '../../../packages/measure-engine/src/dataset.ts';
 import { SemanticModel, normalizeName } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { aplicaTiposDeclarados, carrega } from '../../../packages/snapshot/src/carrega.ts';
-import { decodifica, le, leCabecalho, type CabecalhoDeSnapshot, type Escalar } from '../../../packages/snapshot/src/formato.ts';
-import { DIRETORIO_PADRAO, leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
+import {
+  bytesDescomprimidos,
+  decodifica,
+  ehArquivoDeSnapshot,
+  fluxoDeLeitura,
+  le,
+  leCabecalho,
+  semSufixo,
+  type CabecalhoDeSnapshot,
+  type Escalar,
+} from '../../../packages/snapshot/src/formato.ts';
+import { arquivoDaQuery, DIRETORIO_PADRAO, leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DIR = path.join(ROOT, DIRETORIO_PADRAO);
@@ -66,9 +76,16 @@ const DIR = path.join(ROOT, DIRETORIO_PADRAO);
 /**
  * Acima disto o arquivo só entra com `--pesado`.
  *
- * Não é medo de demorar: `field-agenda` tem 1 GB e sete degraus dele são sete leituras.
- * Os degraus que retêm as linhas pedem ~8 GB de heap, e nesta máquina (16 GB) rodar isso
- * sem pedir é decidir pelo usuário que a máquina dele pode parar.
+ * Não é medo de demorar: `field-agenda` tem 448 MB descomprimidos e sete degraus dele
+ * são sete leituras. Os degraus que retêm as linhas pedem ~8 GB de heap, e nesta
+ * máquina (16 GB) rodar isso sem pedir é decidir pelo usuário que a máquina dele pode
+ * parar.
+ *
+ * **O teto é medido DESCOMPRIMIDO** (`bytesDescomprimidos`), e isso é o conserto de um
+ * defeito que a compressão criou: `field-agenda` passou a ocupar 14,6 MB em disco, e um
+ * teto sobre o tamanho do arquivo o deixaria entrar — o guarda continuaria lá, sem
+ * guardar nada. Medido em 04/09/2026: com o teto em bytes de disco, as três páginas que
+ * tocam `field-agenda` deixaram de ser barradas e a 2ª carga delas passou a rodar.
  */
 const TETO_PADRAO = 100 * 1024 * 1024;
 
@@ -136,11 +153,19 @@ function chaves(cab: CabecalhoDeSnapshot): string[] {
 
 // -------------------------------------------------------------- os degraus
 
-/** e1 — só os bytes: `createReadStream` com utf-8, somando o que chega. */
+/**
+ * e1 — só os bytes, pela MESMA abertura que `le()` usa (`fluxoDeLeitura`): utf-8
+ * direto no arquivo cru, `gunzip` no comprimido. Somando o que chega.
+ *
+ * A abertura tem de ser a mesma, e não parecida. Enquanto esta função abria o arquivo
+ * à mão, um snapshot comprimido caía aqui como bytes de gzip lidos como texto — os
+ * sete degraus erravam com `JSON.parse` reclamando de `\uFFFD`, e o `e5 < e4` que
+ * denuncia réplica divergente não pegava, porque nenhum degrau chegava a medir.
+ */
 async function e1io(arquivo: string): Promise<number> {
   let n = 0;
-  for await (const pedaco of fs.createReadStream(arquivo, { encoding: 'utf8' })) {
-    n += (pedaco as string).length;
+  for await (const pedaco of fluxoDeLeitura(arquivo)) {
+    n += typeof pedaco === 'string' ? pedaco.length : (pedaco as Buffer).length;
   }
   return n;
 }
@@ -148,7 +173,7 @@ async function e1io(arquivo: string): Promise<number> {
 /** e2 — + partir em linhas. Mesmo `readline` e mesmo `crlfDelay` de `le()`. */
 async function e2linhas(arquivo: string): Promise<number> {
   const rl = readline.createInterface({
-    input: fs.createReadStream(arquivo, { encoding: 'utf8' }),
+    input: fluxoDeLeitura(arquivo),
     crlfDelay: Infinity,
   });
   let n = 0;
@@ -159,7 +184,7 @@ async function e2linhas(arquivo: string): Promise<number> {
 /** e3 — + `JSON.parse`, descartando. O `void` existe para o V8 não apagar o trabalho. */
 async function e3parse(arquivo: string): Promise<number> {
   const rl = readline.createInterface({
-    input: fs.createReadStream(arquivo, { encoding: 'utf8' }),
+    input: fluxoDeLeitura(arquivo),
     crlfDelay: Infinity,
   });
   let n = 0;
@@ -175,7 +200,7 @@ async function e3parse(arquivo: string): Promise<number> {
 /** e4 — + montar o objeto da linha, descartando-o. É o laço de `le()` sem o `push`. */
 async function e4monta(arquivo: string): Promise<number> {
   const rl = readline.createInterface({
-    input: fs.createReadStream(arquivo, { encoding: 'utf8' }),
+    input: fluxoDeLeitura(arquivo),
     crlfDelay: Infinity,
   });
   let cab: CabecalhoDeSnapshot | null = null;
@@ -422,7 +447,14 @@ function ambiente(): Record<string, string | number> {
 
 const model = SemanticModel.fromSpecsDir(path.join(ROOT, 'specs'));
 const manifesto = leManifesto(DIR);
-const bytesPorQuery = new Map((manifesto?.tabelas ?? []).map((t) => [t.query, t.bytes]));
+// Do DISCO e descomprimido, não do `bytes` do manifesto: aquele campo é a pegada em
+// disco (é o que o operador quer ver), e o teto precisa da grandeza que prediz heap.
+const bytesPorQuery = new Map(
+  (manifesto?.tabelas ?? []).map((t) => {
+    const arq = arquivoDaQuery(DIR, t.query);
+    return [t.query, fs.existsSync(arq) ? bytesDescomprimidos(arq) : t.bytes] as const;
+  }),
+);
 
 if (modoPaginas) {
   const todas = loadDashboards(path.join(ROOT, 'specs')) as DashboardSpec[];
@@ -490,10 +522,10 @@ if (modoPaginas) {
 
 const todosArquivos = fs
   .readdirSync(DIR)
-  .filter((f) => f.endsWith('.jsonl'))
+  .filter(ehArquivoDeSnapshot)
   .sort();
 const invalidos = arquivosPedidos.filter(
-  (p) => !todosArquivos.includes(`${p}.jsonl`) && !todosArquivos.includes(p),
+  (p) => !todosArquivos.some((f) => f === p || semSufixo(f) === semSufixo(p)),
 );
 if (invalidos.length) {
   console.error(`arquivos que não existem no snapshot: ${invalidos.join(', ')}`);
@@ -502,22 +534,27 @@ if (invalidos.length) {
 
 const escolhidos = (
   arquivosPedidos.length
-    ? todosArquivos.filter((f) => arquivosPedidos.includes(f) || arquivosPedidos.includes(f.replace(/\.jsonl$/, '')))
+    ? todosArquivos.filter((f) => arquivosPedidos.some((p) => f === p || semSufixo(f) === semSufixo(p)))
     : todosArquivos
-).map((f) => ({ f, bytes: fs.statSync(path.join(DIR, f)).size }));
+).map((f) => ({
+  f,
+  bytes: fs.statSync(path.join(DIR, f)).size,
+  // O teto compara ESTE, não `bytes`: ver `TETO_PADRAO`.
+  crus: bytesDescomprimidos(path.join(DIR, f)),
+}));
 
 // Pedir o arquivo pelo nome é pedir para medi-lo: o teto só filtra a varredura.
 const pulados = arquivosPedidos.length
   ? []
-  : escolhidos.filter((x) => !pesado && x.bytes > TETO_PADRAO);
-const alvo = escolhidos.filter((x) => !pulados.includes(x)).sort((a, b) => b.bytes - a.bytes);
+  : escolhidos.filter((x) => !pesado && x.crus > TETO_PADRAO);
+const alvo = escolhidos.filter((x) => !pulados.includes(x)).sort((a, b) => b.crus - a.crus);
 
 const medidas: MedidaDeArquivo[] = [];
-for (const { f, bytes } of alvo) {
+for (const { f, bytes, crus } of alvo) {
   // Um arquivo de 1 GB × 5 degraus × `repete` leituras vira dezenas de minutos. Acima do
   // teto a repetição cai para 1, e a coluna `n` da saída diz que caiu.
-  const n = bytes > TETO_PADRAO ? 1 : repete;
-  process.stderr.write(`  ${f} (${num(mb(bytes), 1)} MB, n=${n})… `);
+  const n = crus > TETO_PADRAO ? 1 : repete;
+  process.stderr.write(`  ${f} (${num(mb(crus), 1)} MB crus, n=${n})… `);
   try {
     const m = await medeArquivo(path.join(DIR, f), model, n);
     medidas.push(m);
@@ -568,7 +605,7 @@ if (json) {
     const cel = (k: string): string =>
       (e.has(k) ? ms(e.get(k)!) : '—').padStart(9);
     console.log(
-      m.arquivo.replace(/\.jsonl$/, '').slice(0, 29).padEnd(30) +
+      semSufixo(m.arquivo).slice(0, 29).padEnd(30) +
         num(mb(m.bytes), 1).padStart(8) + num(m.linhas).padStart(11) +
         String(m.repeticoes).padStart(3) +
         cel('io') + cel('linhas') + cel('parse') + cel('monta') + cel('retem') +
@@ -623,9 +660,15 @@ if (json) {
   }
 
   if (pulados.length) {
-    console.log(`\n── Fora da medição (acima de ${num(mb(TETO_PADRAO))} MB; use --pesado ou --arquivo=) ──`);
-    for (const p of [...pulados].sort((x, y) => y.bytes - x.bytes)) {
-      console.log(`  ${p.f.replace(/\.jsonl$/, '').padEnd(30)}${num(mb(p.bytes), 1).padStart(9)} MB`);
+    console.log(
+      `\n── Fora da medição (acima de ${num(mb(TETO_PADRAO))} MB DESCOMPRIMIDOS; ` +
+        `use --pesado ou --arquivo=) ──`,
+    );
+    for (const p of [...pulados].sort((x, y) => y.crus - x.crus)) {
+      console.log(
+        `  ${semSufixo(p.f).padEnd(30)}${num(mb(p.crus), 1).padStart(9)} MB crus` +
+          `${p.crus === p.bytes ? '' : ` (${num(mb(p.bytes), 1)} MB em disco)`}`,
+      );
     }
   }
 

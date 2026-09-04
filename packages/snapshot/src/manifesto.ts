@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { renomeiaComRetentativa } from './escrita-atomica.ts';
+import { escolheGemeo, SUFIXO_COMPRIMIDO, SUFIXO_CRU } from './formato.ts';
 
 /** Onde o snapshot mora por padrão, relativo à raiz do repositório. */
 export const DIRETORIO_PADRAO = 'snapshot';
@@ -37,9 +38,27 @@ export interface Manifesto {
   tabelas: EntradaDeManifesto[];
 }
 
-/** O arquivo de uma query. O nome é o id — é o que foi materializado. */
+/**
+ * O arquivo de uma query que está EM DISCO. O nome é o id — é o que foi materializado.
+ *
+ * Comprimido tem precedência, e os dois juntos erram alto (ver `escolheGemeo` em
+ * `formato.ts`). Sem nenhum dos dois, devolve o caminho do cru: é o que permite a
+ * `carrega.ts` e ao `snapshot` testarem `fs.existsSync` no resultado.
+ *
+ * **Não use isto para escolher onde GRAVAR** — se o cru já existe, ele devolveria o
+ * cru e a carga seguinte nunca migraria para comprimido. Quem grava chama
+ * `arquivoDeEscrita`.
+ */
 export function arquivoDaQuery(dir: string, query: string): string {
-  return path.join(dir, `${query}.jsonl`);
+  return escolheGemeo(path.join(dir, `${query}${SUFIXO_CRU}`));
+}
+
+/**
+ * Onde GRAVAR o arquivo de uma query. Não olha o disco: o sufixo vem da decisão de
+ * quem chama, e é `escreve()` que apaga o gêmeo do outro sufixo depois de gravar.
+ */
+export function arquivoDeEscrita(dir: string, query: string, comprimido: boolean): string {
+  return path.join(dir, `${query}${comprimido ? SUFIXO_COMPRIMIDO : SUFIXO_CRU}`);
 }
 
 export function leManifesto(dir: string): Manifesto | null {

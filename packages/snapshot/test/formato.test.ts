@@ -11,7 +11,17 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { apuraColunas, escreve, le, leCabecalho } from '../src/formato.ts';
+import zlib from 'node:zlib';
+import {
+  apuraColunas,
+  bytesDescomprimidos,
+  ehArquivoDeSnapshot,
+  escolheGemeo,
+  escreve,
+  le,
+  leCabecalho,
+  semSufixo,
+} from '../src/formato.ts';
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'snap-'));
@@ -245,4 +255,176 @@ test('escreve() espera uma leitura em andamento terminar antes de publicar (crea
   await escritaPromise;
   const depois = await le(arq);
   assert.deepEqual(depois.linhas, [{ n: -1 }]);
+});
+
+// ---------------------------------------------------------------------------
+// Compressão — `.jsonl.gz`
+//
+// O ganho medido está no topo de `src/formato.ts`: 448,2 MB viram 14,6 MB. O que
+// estes testes guardam não é o ganho, é o que o ganho poderia estragar em silêncio:
+// tipo perdido na ida e volta, cabeçalho lido do arquivo inteiro, e — o pior — os
+// DOIS sufixos vivos ao mesmo tempo, com cargas diferentes dentro.
+// ---------------------------------------------------------------------------
+
+test('comprimido: escreve gzip de verdade e a ida e volta preserva os tipos', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl.gz');
+  const d = new Date('2026-03-15T08:30:00.000Z');
+  await escreve(arq, CAB, ['quando', 'n', 's', 'misto'], [
+    { quando: d, n: 1.5, s: 'Jaú', misto: 'texto' },
+    { quando: d, n: 2, s: null, misto: 7 },
+  ] as never);
+
+  const bruto = fs.readFileSync(arq);
+  assert.equal(bruto[0], 0x1f, 'não é gzip');
+  assert.equal(bruto[1], 0x8b, 'não é gzip');
+
+  const r = await le(arq);
+  assert.equal(r.linhas.length, 2);
+  assert.ok(r.linhas[0]!.quando instanceof Date);
+  assert.equal((r.linhas[0]!.quando as Date).getTime(), d.getTime());
+  assert.equal(r.linhas[0]!.s, 'Jaú');
+  assert.equal(r.linhas[1]!.s, null);
+  assert.equal(r.cabecalho.colunas[3]!.tipo, 'misto');
+  assert.equal(r.linhas[1]!.misto, 7);
+});
+
+test('comprimido: o arquivo fica menor que o cru — é o motivo de existir', async () => {
+  const dir = tmp();
+  // Valor repetido, que é a forma real do snapshot: cidade, status, equipe.
+  const linhas = Array.from({ length: 5000 }, (_, i) => ({ cidade: 'Novo Hamburgo', n: i % 7 }));
+  const cru = path.join(dir, 'cru.jsonl');
+  const gz = path.join(dir, 'gz.jsonl.gz');
+  await escreve(cru, CAB, ['cidade', 'n'], linhas);
+  await escreve(gz, CAB, ['cidade', 'n'], linhas);
+  assert.ok(
+    fs.statSync(gz).size * 5 < fs.statSync(cru).size,
+    `gz=${fs.statSync(gz).size} cru=${fs.statSync(cru).size}`,
+  );
+});
+
+test('leCabecalho: no comprimido não infla o arquivo inteiro', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl.gz');
+  const linhas = Array.from({ length: 60_000 }, (_, i) => ({ cidade: 'Sapucaia Do Sul', n: i }));
+  await escreve(arq, CAB, ['cidade', 'n'], linhas);
+  const cab = leCabecalho(arq);
+  assert.equal(cab.linhas, 60_000);
+  assert.equal(cab.query, 'q');
+  assert.deepEqual(cab.colunas.map((c) => c.nome), ['cidade', 'n']);
+});
+
+test('leCabecalho: cabeçalho maior que a primeira janela ainda sai (a janela dobra)', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl.gz');
+  // 4.000 colunas de nome longo: o cabeçalho passa de 128 KB inflados, que é a
+  // janela inicial de `primeiraLinhaComprimida`.
+  const colunas = Array.from({ length: 4000 }, (_, i) => `COLUNA MUITO COMPRIDA PARA VALER ${i}`);
+  const linha: Record<string, unknown> = {};
+  for (const c of colunas) linha[c] = 'x';
+  await escreve(arq, CAB, colunas, [linha] as never);
+  const cab = leCabecalho(arq);
+  assert.equal(cab.colunas.length, 4000);
+  assert.equal(cab.linhas, 1);
+});
+
+test('le/leCabecalho decidem pelos BYTES: gzip com nome .jsonl continua legível', async () => {
+  const dir = tmp();
+  const gz = path.join(dir, 'q.jsonl.gz');
+  await escreve(gz, CAB, ['n'], [{ n: 42 }]);
+  const disfarcado = path.join(dir, 'renomeado.jsonl');
+  fs.renameSync(gz, disfarcado);
+  assert.equal(leCabecalho(disfarcado).linhas, 1);
+  assert.equal((await le(disfarcado)).linhas[0]!.n, 42);
+});
+
+test('escreve() apaga o gêmeo do outro sufixo — nunca duas cargas com o mesmo nome', async () => {
+  const dir = tmp();
+  const cru = path.join(dir, 'q.jsonl');
+  const gz = path.join(dir, 'q.jsonl.gz');
+
+  await escreve(cru, CAB, ['n'], [{ n: 1 }]);
+  assert.ok(fs.existsSync(cru));
+
+  await escreve(gz, CAB, ['n'], [{ n: 2 }]);
+  assert.ok(fs.existsSync(gz), 'o comprimido não foi gravado');
+  assert.ok(!fs.existsSync(cru), 'o cru sobrou ao lado do comprimido');
+  assert.equal((await le(gz)).linhas[0]!.n, 2);
+
+  // E no sentido inverso, que é o `--sem-comprimir` depois de uma carga comprimida.
+  await escreve(cru, CAB, ['n'], [{ n: 3 }]);
+  assert.ok(!fs.existsSync(gz), 'o comprimido sobrou ao lado do cru');
+  assert.equal((await le(cru)).linhas[0]!.n, 3);
+});
+
+test('escolheGemeo: comprimido tem precedência; os dois juntos erram alto', async () => {
+  const dir = tmp();
+  const cru = path.join(dir, 'q.jsonl');
+  const gz = path.join(dir, 'q.jsonl.gz');
+
+  assert.equal(escolheGemeo(cru), cru, 'sem nenhum dos dois, devolve o cru');
+
+  await escreve(cru, CAB, ['n'], [{ n: 1 }]);
+  assert.equal(escolheGemeo(cru), cru);
+
+  await escreve(gz, CAB, ['n'], [{ n: 2 }]);
+  assert.equal(escolheGemeo(cru), gz, 'com o comprimido em disco, é ele');
+
+  // Estado que `escreve` não cria, mas que uma cópia à mão cria: os dois vivos.
+  fs.writeFileSync(cru, 'resto de outra carga');
+  assert.throws(() => escolheGemeo(cru), /existem os dois/);
+});
+
+test('comprimido truncado erra alto, não devolve linha a menos', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl.gz');
+  const linhas = Array.from({ length: 3000 }, (_, i) => ({ n: i }));
+  await escreve(arq, CAB, ['n'], linhas);
+
+  // Corta o fim do gzip: as primeiras linhas ainda inflam, o resto não existe.
+  const bruto = fs.readFileSync(arq);
+  fs.writeFileSync(arq, bruto.subarray(0, Math.floor(bruto.length / 2)));
+  // Ou o zlib reclama do fim inesperado, ou a contagem do cabeçalho não fecha. As
+  // duas são erro alto; o que não pode é resolver com menos linhas, calado.
+  await assert.rejects(() => le(arq), /unexpected end|truncado/i);
+});
+
+test('ehArquivoDeSnapshot e semSufixo cobrem os dois sufixos, e nada mais', () => {
+  assert.ok(ehArquivoDeSnapshot('protocolos-geral.jsonl'));
+  assert.ok(ehArquivoDeSnapshot('protocolos-geral.jsonl.gz'));
+  assert.ok(!ehArquivoDeSnapshot('protocolos-geral.jsonl.parcial'));
+  assert.ok(!ehArquivoDeSnapshot('manifesto.json'));
+  assert.equal(semSufixo('protocolos-geral.jsonl'), 'protocolos-geral');
+  assert.equal(semSufixo('protocolos-geral.jsonl.gz'), 'protocolos-geral');
+  assert.equal(semSufixo('calc.calendar.jsonl.gz'), 'calc.calendar');
+  assert.equal(semSufixo('manifesto.json'), 'manifesto.json');
+});
+
+test('gzip escrito por fora (zlib puro) é lido igual — o formato é o mesmo', async () => {
+  const dir = tmp();
+  const cru = path.join(dir, 'origem.jsonl');
+  await escreve(cru, CAB, ['n', 's'], [{ n: 1, s: 'a' }, { n: 2, s: 'b' }]);
+  const arq = path.join(dir, 'porfora.jsonl.gz');
+  fs.writeFileSync(arq, zlib.gzipSync(fs.readFileSync(cru)));
+  const r = await le(arq);
+  assert.equal(r.linhas.length, 2);
+  assert.equal(r.linhas[1]!.s, 'b');
+  assert.equal(leCabecalho(arq).linhas, 2);
+});
+
+test('bytesDescomprimidos: no cru é o tamanho; no comprimido é o de dentro', async () => {
+  const dir = tmp();
+  const cru = path.join(dir, 'cru.jsonl');
+  const gz = path.join(dir, 'gz.jsonl.gz');
+  const linhas = Array.from({ length: 20_000 }, (_, i) => ({ cidade: 'São Leopoldo', n: i }));
+  await escreve(cru, CAB, ['cidade', 'n'], linhas);
+  await escreve(gz, CAB, ['cidade', 'n'], linhas);
+
+  assert.equal(bytesDescomprimidos(cru), fs.statSync(cru).size, 'no cru é o próprio tamanho');
+
+  // É este o ponto: o arquivo em disco é uma fração, e a grandeza que prediz heap não é
+  // ela. O teto de `npm run bench:carga` compara contra ISTO — se comparasse contra o
+  // tamanho em disco, deixaria entrar o arquivo de que existe para se proteger.
+  assert.ok(fs.statSync(gz).size < fs.statSync(cru).size / 5, 'o gz não comprimiu?');
+  assert.equal(bytesDescomprimidos(gz), fs.statSync(cru).size);
 });
