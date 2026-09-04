@@ -144,6 +144,10 @@ async function rodaConfiguracao(workers: number, heapMB: number, paiMB: number, 
         // Só para esta sonda: sem isto todo pedido levaria 401 antes de tocar a
         // piscina, e a medição mediria o portão, não o cálculo. NÃO toca o .env.
         GOOGLE_CLIENT_ID: '',
+        // E desde 04/09/2026 a API RECUSA subir sem credencial a menos que a
+        // intenção seja declarada — ver `apps/api/src/index.ts`. Medir é a
+        // intenção legítima aqui.
+        SEM_LOGIN: '1',
         // Cache de resposta em memória: com Redis, a segunda página poderia vir
         // de fora do processo e o pico de heap não apareceria.
         REDIS_URL: '',

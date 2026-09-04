@@ -41,7 +41,7 @@
     "refresh": "node tools/refresh/src/index.ts",
     "test:refresh": "node --test tools/refresh/test/*.test.ts",
     "start": "node tools/subir/src/index.ts",
-    "api": "node --max-old-space-size=8192 apps/api/src/index.ts",
+    "api": "node --max-old-space-size=8192 apps/api/src/index.ts --sem-login",
     "aquece": "node tools/subir/src/index.ts --so-aquece",
     "test:subir": "node --test tools/subir/test/*.test.ts",
     "test:api": "node --test apps/api/test/*.test.ts",

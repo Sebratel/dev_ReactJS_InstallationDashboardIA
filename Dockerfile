@@ -13,10 +13,12 @@
 #    do da raiz). São TypeScript puro, importado por caminho relativo e
 #    resolvido contra o `node_modules` da raiz. Por isso um único `npm ci` na
 #    raiz basta; não há `package.json` por pacote para copiar seletivamente.
-#    `apps/api/src/servidor.ts` e `aquecedor.ts` importam de
-#    `tools/layout/src/*` em runtime (schema/validação/corte de layout) —
-#    confirmado por grep — por isso `tools/layout/` (só ele, não `tools/`
-#    inteiro) também vai para a imagem de runtime.
+#    `apps/api/src/*` importa de `tools/` em runtime — hoje `tools/layout/src/*`
+#    (schema/validação/corte de layout) e `tools/refresh/src/status.ts` (o bloco
+#    `refresh` de `/api/saude`). Por isso `tools/` INTEIRO vai para o runtime:
+#    a lista seletiva que existia aqui envelheceu e derrubou a imagem — ver o
+#    comentário longo na própria linha `COPY`, e o guarda em
+#    `apps/api/test/imagem-runtime.test.ts`.
 # 3. Este monorepo guarda `yaml` (usado em runtime pelo carregamento de
 #    specs/layout) dentro de `devDependencies`, junto com `pg`/`mariadb`
 #    (usados só pelas ferramentas de materialização, fora deste container).
@@ -41,7 +43,24 @@ COPY --from=build /repo/package.json ./package.json
 COPY --from=build /repo/packages ./packages
 COPY --from=build /repo/specs ./specs
 COPY --from=build /repo/apps/api ./apps/api
-COPY --from=build /repo/tools/layout ./tools/layout
+
+# `tools/` INTEIRO, e a mudança tem motivo medido.
+#
+# Aqui havia `COPY /repo/tools/layout ./tools/layout`, justificado como
+# "confirmado por grep: só tools/layout/ é importado em runtime". O grep estava
+# certo no dia em que foi escrito e envelheceu em silêncio: `servidor.ts` passou
+# a importar `tools/refresh/src/status.ts` (o Refresh Manager, ACHADOS #84) e a
+# imagem parou de subir com `ERR_MODULE_NOT_FOUND` — **descoberto em 04/09/2026,
+# na primeira vez que alguém rodou este container.** Ele foi escrito em
+# `7642fab` e nunca havia sido executado.
+#
+# `tools/` inteiro tem **1,2 MB** contra os 558 MB da imagem: a cópia seletiva
+# economizava 0,2% e custava uma quebra silenciosa por import novo. Lista mantida
+# à mão é dívida que vence sem aviso.
+#
+# `apps/api/test/imagem-runtime.test.ts` guarda isto: ele falha se a API passar a
+# importar de um diretório de topo que este Dockerfile não copia.
+COPY --from=build /repo/tools ./tools
 
 # O snapshot é volume — este mountpoint existe só para o container ter onde
 # montar; nada é copiado para dentro da imagem aqui.

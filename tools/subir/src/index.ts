@@ -225,7 +225,17 @@ if (soAquece) {
   console.log(`\nSubindo a API na porta ${porta}…`);
   const api: ChildProcess = spawn(
     process.execPath,
-    ['--max-old-space-size=8192', path.join(ROOT, 'apps', 'api', 'src', 'index.ts'), '--sem-aquecer'],
+    [
+      '--max-old-space-size=8192',
+      path.join(ROOT, 'apps', 'api', 'src', 'index.ts'),
+      '--sem-aquecer',
+      // `npm start` é o caminho de desenvolvimento, e desde 04/09/2026 subir
+      // sem `GOOGLE_CLIENT_ID` tem de ser DECLARADO — a API recusa subir sem
+      // isto quando a credencial falta. Ver o comentário longo em
+      // `apps/api/src/index.ts`: a stack de container servia
+      // `/api/dashboards/*` com 200 e sem sessão nenhuma.
+      '--sem-login',
+    ],
     { cwd: ROOT, stdio: 'inherit', env: { ...process.env, PORT: String(porta) } },
   );
 

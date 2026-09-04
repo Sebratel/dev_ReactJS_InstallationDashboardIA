@@ -34,13 +34,40 @@ services:
     environment:
       API_WORKERS: '2'
       API_WORKER_HEAP_MB: '768'
+      # PORT declarada AQUI, não deixada para o .env — `environment:` vence
+      # `env_file:`, e é isso que fecha a armadilha registrada em
+      # docs/DEPLOY.md §3.5: o `.env.example` traz `PORT=3000` e o código sem
+      # `PORT` usa 3100. Um `.env` de produção copiado do exemplo, com o
+      # mapeamento e o Nginx em 3100, dava "502 sem motivo". Agora a porta que o
+      # container escuta é a mesma que este arquivo mapeia, por construção — e
+      # não por alguém ter conferido os dois no mesmo minuto.
+      PORT: '3100'
+      # NODE_ENV também AQUI, e por um defeito medido: o `Dockerfile` declara
+      # `ENV NODE_ENV=production`, mas `env_file:` **sobrescreve o ENV da
+      # imagem**. Medido dentro do container em 04/09/2026, com este mesmo
+      # compose: `NODE_ENV=development`. A imagem se dizia produção e rodava em
+      # modo de desenvolvimento — e todo comportamento condicionado a
+      # `NODE_ENV === 'production'` ficava desligado, sem erro e sem log.
+      NODE_ENV: production
+      # Na rede interna do compose o serviço redis chama-se 'redis', não localhost:
+      REDIS_URL: redis://redis:6379/0
     volumes:
       # O snapshot é dado de cliente (CPF/RG/endereço, ~371 MB) — nunca entra
       # na imagem. Aponte SNAPSHOT_DIR_HOST para onde o refresh agendado
       # (docs/DEPLOY.md §2.2) materializa no host.
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
     ports:
-      - '3100:3100'
+      # A porta do HOST é variável porque 3100 pode já estar ocupada — foi o
+      # caso na primeira subida local (uma instância de `npm start` do próprio
+      # projeto escutando ali). `API_PORT_HOST=3101 docker compose up` sobe a
+      # stack sem matar nada. Dentro da rede do compose o Nginx continua
+      # falando com `api:3100`, então mudar isto não afeta o proxy.
+      #
+      # Em produção, considere NÃO publicar esta porta: com o Nginx na frente,
+      # publicá-la é uma entrada que não passa pelo proxy (nem pelo TLS, quando
+      # existir). Fica publicada hoje porque é o que permite diagnosticar a API
+      # sem o proxy no caminho.
+      - '${API_PORT_HOST:-3100}:3100'
     depends_on:
       - redis
     restart: unless-stopped

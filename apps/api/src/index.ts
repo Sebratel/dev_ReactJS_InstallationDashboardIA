@@ -71,6 +71,58 @@ const cache = await cacheDaEnv();
 const porta = Number.parseInt(process.env.PORT ?? '3100', 10);
 
 /**
+ * O portão de login FALHA FECHADO em produção. Não é paranoia: é o defeito que
+ * a primeira subida do container revelou, em 04/09/2026.
+ *
+ * O que aconteceu. `GOOGLE_CLIENT_ID` está VAZIA no `.env` (o normal para
+ * desenvolver), e o construtor do `Servidor` só recebe `googleClientId` quando a
+ * variável é preenchida (`index.ts`, logo abaixo). Sem ela, o `Servidor` usa a
+ * identidade `dev-local` e **serve tudo a todo pedido**. Rodando a stack de
+ * `docker-compose.prod.yml`:
+ *
+ *     GET /api/dashboards/visao-geral -> 200   (sem sessão nenhuma)
+ *
+ * Ou seja: CLIENTE, TELEFONE e endereço servidos a quem alcançasse a URL. O log
+ * dizia a verdade — *"Login: DESLIGADO — GOOGLE_CLIENT_ID ausente"* — e subia
+ * do mesmo jeito. **Uma trava que degrada em silêncio não é trava.**
+ *
+ * Por que o `NODE_ENV` não bastava sozinho: o `Dockerfile` declara
+ * `ENV NODE_ENV=production`, e o `env_file: .env` do compose **sobrescreve** —
+ * dentro do container medimos `NODE_ENV=development`. Por isso o compose passa
+ * `NODE_ENV` no bloco `environment:`, que vence `env_file`, e por isso a guarda
+ * aqui é dupla: o modo de produção exige a credencial, e desligar o login exige
+ * uma variável que ninguém copia por acidente.
+ *
+ * `SEM_LOGIN=1` continua permitindo o caminho de desenvolvimento (e é o que
+ * `npm run api` e as sondas usam), mas agora é DECLARADO.
+ */
+const semLogin = process.env.SEM_LOGIN === '1' || process.argv.includes('--sem-login');
+const temClientId = Boolean(process.env.GOOGLE_CLIENT_ID);
+
+if (!temClientId && !semLogin) {
+  console.error(
+    `\n[login] RECUSANDO SUBIR: GOOGLE_CLIENT_ID está ausente ou vazia.\n\n` +
+      `  Sem ela nenhum pedido é autenticado, e o que esta API serve inclui\n` +
+      `  nome, telefone e endereço de cliente. Antes desta guarda, o processo\n` +
+      `  subia e respondia 200 para /api/dashboards/* sem sessão nenhuma.\n\n` +
+      `  Para PRODUÇÃO: preencha GOOGLE_CLIENT_ID (e DOMINIO_CORPORATIVO).\n` +
+      `  Para DESENVOLVER sem login, declare a intenção:\n` +
+      `      SEM_LOGIN=1 npm run api        (ou: npm run api -- --sem-login)\n`,
+  );
+  process.exit(1);
+}
+
+if (semLogin && process.env.NODE_ENV === 'production') {
+  console.error(
+    `\n[login] RECUSANDO SUBIR: SEM_LOGIN=1 com NODE_ENV=production.\n\n` +
+      `  Desligar o login numa imagem de produção serviria dado pessoal sem\n` +
+      `  autenticação. Se a intenção é um piloto sem login, tire o\n` +
+      `  NODE_ENV=production — assim o modo fica visível em vez de implícito.\n`,
+  );
+  process.exit(1);
+}
+
+/**
  * Teto do cache de resultado inteiro por visual, em MB. `CACHE_VISUAL_MB=0` desliga.
  *
  * Existe como saída de emergência, não como afinação: numa máquina apertada é melhor
