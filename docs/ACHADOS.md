@@ -7157,14 +7157,173 @@ aquecedor agora cobre o que fica preso.
 
 ---
 
-# Achados abertos de 25–27/08/2026 — os que ainda não têm conserto
+## #95 — O snapshot em disco cai 93% com gzip, e o teto do `bench` deixou de guardar por causa disso
 
-> **Por que esta seção está separada e no fim.** Os achados #1 a #76 acima são a memória
-> numerada do projeto: o resto da documentação os referencia por número, e eles
-> descrevem **comportamento**, sob a decisão vigente de replicar fielmente. Os quatro
-> abaixo são de outra natureza — são **defeitos localizados e ainda não corrigidos**,
-> com a medição que os isolou e o que já foi descartado, e nasceram num arquivo que
-> tinha sido recriado do zero.
+`npm run snapshot` gravava `.jsonl` cru. O arquivo é JSONL **colunar de valor
+repetido** (cidade, status, equipe, tipo de protocolo), e o gzip o come vivo.
+
+Medido em 04/09/2026 sobre `snapshot/field-agenda.jsonl`, 448,2 MB:
+
+| nível | tamanho | menor | gravar | ler |
+|---|---|---|---|---|
+| 1 | 26,8 MB | 94,0% | 0,9 s | 0,7 s |
+| **6 (padrão do zlib)** | **14,6 MB** | **96,7%** | **1,7 s** | **0,7 s** |
+| sem gzip | 448,2 MB | — | — | 0,4 s |
+
+Nível 6 pelo dobro do tempo de gravação e metade do tamanho do nível 1; a leitura
+custa os mesmos 0,3 s a mais nos dois. Não há nível a escolher: o padrão do zlib é o
+que a tabela mede.
+
+**O diretório inteiro, migrado: 723,9 MB → 50,3 MB (93,0% menor), 30 arquivos, 4,6 s.**
+Os arquivos pequenos comprimem menos (`hora-atualizado` 37%, `calc.base-de-origem` 13%)
+porque o cabeçalho é o grosso deles; os grandes ficam entre 75% e 96,7%.
+
+Custo de leitura, `npm run bench:carga -- --paginas`, 1ª carga por página, antes e
+depois:
+
+| página | antes | depois |
+|---|---:|---:|
+| agendamento-field | 901 ms | 931 ms |
+| visao-geral | 1.235 ms | 1.422 ms |
+| relatorio-do-mes | 1.298 ms | 1.413 ms |
+| l-mapa | 894 ms | 890 ms |
+
+Entre +0% e +15%, **e na mesma ordem do ruído entre duas medições do MESMO arquivo
+cru**: `manutencao-inicial` deu 758 ms e depois 1.085 ms sem nada ter mudado, nos dois
+baselines. A API quente continua respondendo em 2 ms.
+
+### As cinco coisas que isto poderia estragar em silêncio
+
+1. **Os dois sufixos vivos ao mesmo tempo.** A leitura pegaria o `.gz` e as três
+   varreduras que listam o diretório **por nome** (`snapshot:confere`, `bench:carga`, o
+   carimbo do cache de resposta) poderiam pegar o outro, de outra carga: dois números,
+   nenhum erro. `escreve()` apaga o gêmeo do outro sufixo depois do rename — dentro
+   dele, não num passo separado, porque passo separado neste fluxo já foi esquecido
+   duas vezes (#53, #78). `escolheGemeo` erra alto se o estado aparecer por outro
+   caminho (cópia à mão).
+
+2. **`arquivoDaQuery` decidindo onde GRAVAR.** Ele devolve o que está em disco, então
+   um `.jsonl` já existente prenderia a query no formato velho para sempre. Quem grava
+   chama `arquivoDeEscrita`, que não olha o disco.
+
+3. **`leCabecalho` inflando o arquivo inteiro para ler a linha 1.** 448 MB inflados
+   para ler ~2 KB, no caminho de `--incremental` e do manifesto. Agora infla uma janela
+   de 128 KB com `Z_SYNC_FLUSH` (sem ele, inflar pedaço de gzip é *"unexpected end of
+   file"* — o rodapé de CRC não chegou) e dobra a janela se o `\n` não estiver lá.
+
+4. **O teto de `npm run bench:carga` deixou de guardar.** Ele barra arquivo acima de
+   100 MB porque os degraus que retêm linha pedem ~8 GB de heap nesta máquina de 16 GB.
+   Comprimido, `field-agenda` são 14,6 MB — e ele passou: as três páginas que o tocam
+   (`agendamento-field`, `relatorio-do-mes`, `visao-geral`) deixaram de ser barradas e a
+   2ª carga delas rodou. O guarda continuava lá, sem guardar nada. O teto agora compara
+   `bytesDescomprimidos()` (campo ISIZE do rodapé do gzip), que é a grandeza que prediz
+   heap. **É o defeito mais interessante desta mudança**: a otimização apagou a
+   informação em que uma proteção se baseava, três arquivos longe.
+
+5. **A escada do `bench` divergindo de `le()`.** Os degraus e1..e4 são réplica
+   deliberada do laço de `le()` e abriam o arquivo à mão. Com gzip, os sete degraus
+   erravam com `JSON.parse` engasgando em `�` — e o guarda `e5 < e4`, que existe
+   justamente para pegar réplica divergente, **não pegou**, porque nenhum degrau chegava
+   a medir. `fluxoDeLeitura` passou a ser exportada e a réplica a usa.
+
+Toda leitura decide pelos **BYTES** (magia `1f 8b`), não pelo sufixo: arquivo renomeado
+à mão continua legível em vez de falhar três camadas abaixo da causa.
+
+`npm test`: 1.602/1.602 (11 novos). `snapshot:confere` lê os 30 `.gz` e reporta os
+mesmos 3 erros de conteúdo de antes.
+
+---
+
+## #96 — `Status Protocolo Dia`: 211 s de 238 s do congelamento eram um `GROUP BY` escrito como DAX por linha
+
+`npm run snapshot:calculadas -- --todas` custava **238 s**, e **211 s** (89%) eram UMA
+tabela de **13.045 linhas**. Antes custava 26 min, e antes disso 14 h 28 min (#68) — o
+que já tinha sido consertado era o *processo* (#67, um por coluna), nunca a *forma*.
+
+A forma: as quatro colunas calculadas são todas
+
+```
+CALCULATE ( MAX ( 'FIELD AGENDA'[X] ),
+            FILTER ( 'FIELD AGENDA', protocolo = P && TRUNC ( Slot Agenda ) = D ) )
+```
+
+avaliadas **uma vez por linha**: 13.045 × 647.909 = **8,45 bilhões de visitas de
+linha**, por coluna, quatro vezes. A mesma resposta sai de UMA passada agrupando por
+`(protocolo, TRUNC(Slot Agenda))`.
+
+| | antes | depois |
+|---|---|---|
+| `Status Protocolo Dia` | 211.409 ms, 4 processos, 4 cargas de snapshot | **4.058 ms**, 1 processo, 1 carga |
+| `snapshot:calculadas -- --todas` | 238 s | **35,5 s** |
+
+### A fidelidade, que é o único ponto que importa
+
+Reimplementar DAX em JavaScript é exatamente como se produz número plausível e errado —
+é o argumento que fez as 78 medidas deste projeto **não** serem 78 funções TypeScript
+(`DECISAO-CAMADA-M.md`). Três coisas seguram esta exceção:
+
+1. **Conferido contra o dado real, célula a célula, por DUAS vias.**
+   `npm run probe:status-dia` compara o cálculo com o arquivo do DAX: 13.045 linhas, 5
+   colunas, **0 células divergentes**. E os dois **arquivos gravados** — o do avaliador
+   e o da tradução, cada um passando pelo mesmo `paraGravacao` e o mesmo `escreve` —
+   saem **idênticos célula a célula**, com o mesmo `tabelaSha` (`c9d50d2e4db53199`). A
+   segunda via pega erro de *costura* (chave errada, coluna trocada de lugar), que a
+   primeira não veria.
+
+2. **A sonda IMPORTA a implementação.** Enquanto ela tinha a própria cópia da
+   agregação, o "0 divergências" provava a **cópia** e não o código que roda no
+   refresh; as duas divergiriam sem ninguém notar. Mesmo argumento do `normalizeName`
+   importado em `formato.ts`.
+
+3. **`shaConferido` trava a tradução ao DAX.** Mudou o `table_dax` ou o DAX de qualquer
+   coluna ⇒ `shaDaCalculada` muda ⇒ o caminho nativo **se recusa**, cai no avaliador
+   (lento e certo) e imprime `ATENÇÃO: o DAX mudou desde a conferência` com o passo para
+   religar. É o guarda do #47 um nível acima: lá o hash pega coluna congelada obsoleta,
+   aqui pega **tradução** obsoleta. Tem teste, e o teste confere que ele recusa.
+
+### O que os 23 testes novos cobrem, e por quê
+
+A borda que o dado de um dia qualquer pode não ter — que é onde tradução de DAX erra
+calado: o desempate de `MAX` pelo collation pt-BR **devolvendo o valor original**, não o
+normalizado; `TRUNC(BLANK())` = 0 caindo em 30/12/1899 em vez de se juntar a um dia de
+2026; `skill` de texto **vazio** contando como preenchida (`ISBLANK` é só null); a
+**ordem** do `SWITCH` (Produtivo > Improdutivo > Inconclusivo > Sem Ação); e a armadilha
+central: os **dois eixos de data**. O corpo da tabela agrupa por `Slot Agenda` e os
+contadores de status filtram por `Data Relato`. Juntá-los num índice só daria
+"Improdutivo" num slot cujo relato improdutivo foi lançado noutro dia.
+
+### Onde o desvio foi ligado, e por que não onde parecia
+
+Primeira tentativa: `materializaCalculada` em `packages/snapshot/src/tabelas-calculadas.ts`.
+**Essa função não tem nenhum chamador no repositório** — o congelamento roda um laço
+inline em `tools/snapshot/src/calculadas.ts`. Ficou 10 minutos rodando o caminho lento
+antes de a medição mostrar isso. Fica registrado: `materializaCalculada` é código morto.
+
+E a tabela **sai da lista de `--isolar`**: a isolação por coluna existe porque avaliar
+DAX coluna a coluna é 5-36× mais barato em processo próprio (#67), e uma tradução que
+calcula todas as colunas numa passada não tem trabalho por coluna para dividir — isolar
+pagava 4 cargas de snapshot para rodar 4 vezes o avaliador que a tradução existe para
+não rodar. Medido: **194 s isolada contra 12,9 s nativa**. `--amostra=` não desvia, de
+propósito: ela existe para medir ms/linha do avaliador.
+
+Fonte vazia e coluna omitida pela projeção **erram alto**, em vez de gravar tabela vazia
+ou coluna nula: um arquivo assim passaria pelo guarda de sha (o DAX não mudou) e a
+página leria zero sem reclamar.
+
+`npm test`: 1.625/1.625.
+
+---
+
+# Achados abertos — os que ainda não têm conserto
+
+> **Por que esta seção está separada e no fim.** Os achados numerados acima são a
+> memória do projeto: o resto da documentação os referencia por número, e eles
+> descrevem **comportamento**, sob a decisão vigente de replicar fielmente. Os abaixo
+> são de outra natureza — são **defeitos localizados e ainda não corrigidos**, com a
+> medição que os isolou e o que já foi descartado. Os quatro primeiros são de
+> 25–27/08/2026 e nasceram num arquivo que tinha sido recriado do zero; os cinco
+> últimos são de 04/09/2026, e três deles **bloqueiam trabalho que já está pronto e
+> medido** — leia-os antes de mexer em `protocolos-geral` ou na memória da API.
 >
 > **O que aconteceu com este arquivo.** Entre 19 e 26/08/2026 nada foi commitado, a
 > árvore de trabalho foi apagada duas vezes por outro agente, e a reconstrução devolveu
@@ -7386,3 +7545,182 @@ incremental ~67 s. Só depois dessa medição o `pbi:`/`nos:` de
 a tabela tem 5 colunas (`protocolo_id`, `data_inicio_slot`, `data_carga`); `data_carga`
 sugere acumulado diário. Investigar a definição antes de declarar qualquer predicado de
 janela.
+
+## `PROTOCOLOS GERAL` é NÃO DETERMINÍSTICA em 10 colunas — 14.090 solicitações mudam de valor entre duas execuções idênticas
+
+**Medido em 04/09/2026, e este é o achado mais caro desta sessão.** O SQL de
+`protocolos-geral`, rodado **duas vezes sem mudar uma vírgula**, dentro do **MESMO
+snapshot de transação** (`BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`,
+para dado novo não poder ser confundido com instabilidade):
+
+```
+execução 1: 98.110 linhas
+execução 2: 98.110 linhas   (mesmo SQL, mesmo snapshot)
+só em 1: 0    só em 2: 0
+
+NÃO DETERMINÍSTICO: 14.090 solicitação(ões) mudaram de valor.
+```
+
+| coluna | solicitações que mudaram |
+|---|---:|
+| USUÁRIO | 14.060 |
+| CTO | 13.753 |
+| PONTO DE ACESSO | 13.170 |
+| CODIGO | 13.170 |
+| OLT | 13.112 |
+| EQUIPAMENTO | 12.636 |
+| SLOT | 12.628 |
+| PORTA | 12.617 |
+| LONGITUDE | 12.049 |
+| LATITUDE | 12.048 |
+
+São **14,4% das solicitações**. A contagem é estável; os **valores** não.
+
+**A causa.** `ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC)` não
+tem critério de desempate, e a partição tem mais de uma linha com o **mesmo**
+`s.start_date`: a cadeia `people_addresses → authentication_contracts →
+authentication_access_points / authentication_splitter_ports → authentication_splitters
+/ authentication_sites` multiplica a linha por endereço e por contrato de autenticação.
+`WHERE per.PERSONA1 = 1` então fica com **qualquer uma** — e com 3 workers paralelos, a
+"qualquer uma" muda de execução para execução.
+
+**Por que isso importa fora do banco.** `l-mapa` plota `LATITUDE`/`LONGITUDE`: hoje ele
+desenha coordenada arbitrária para ~12 mil protocolos, e dois refreshes seguidos movem o
+ponto sem ninguém ter mudado nada. `CTO`, `PONTO DE ACESSO`, `SLOT`, `PORTA` e `OLT` são
+a identificação física da instalação.
+
+**O conserto exige uma DECISÃO DE NEGÓCIO, não código:** quando um cliente tem mais de
+um endereço/contrato de autenticação, **qual deles é o do protocolo?** O mais recente? O
+do contrato citado em `ai.contract_service_tag_id`? Sem essa regra, qualquer desempate
+que eu escrevesse trocaria um valor arbitrário por outro valor arbitrário — só que
+estável, o que é pior: pareceria consertado.
+
+**O que NÃO explica isso, e já foi descartado:** não é a camada M (medido direto no
+banco, antes do M), não é dado se movendo (mesmo snapshot de transação), não é a janela
+de datas (mesmas 98.110 linhas nas duas).
+
+## O `LEFT JOIN financial_receivable_titles` de `protocolos-geral` custa 3,1x a consulta inteira, para um teste de existência
+
+`EXPLAIN (ANALYZE)` do SQL de `protocolos-geral` (04/09/2026, 74,7 s de plano):
+
+| nó | alvo | custo próprio | linhas | loops |
+|---|---|---:|---:|---:|
+| Seq Scan | **financial_receivable_titles** | **77,1 s** | 16.563.489 | 3 |
+| Sort | | 46,0 s | 13.719.336 | 3 |
+| WindowAgg | | 8,3 s | 13.719.336 | 1 |
+| Hash | | 5,3 s | 16.563.489 | 3 |
+| Hash Join | | 5,1 s | 13.719.336 | 3 |
+
+**A consulta monta um intermediário de 13.719.336 linhas para devolver 98.108** — joga
+fora 99,3%. O `LEFT JOIN` de 1:N em `financial_receivable_titles` existe para **uma**
+coluna, e ela é um teste de existência:
+
+```sql
+CASE WHEN frt.title IS NULL THEN 'Pendente' ELSE 'Cobrado' END AS "STATUS FINANCEIRO"
+```
+
+**O pressuposto que faltava, e foi medido:** `frt.title` é **NULL em 0 de 16.563.491
+linhas**, e **0 contratos** têm título nulo e não nulo ao mesmo tempo. Logo "não casou"
+e "casou com título nulo" não são estados distinguíveis nesta base, e `EXISTS` é
+semanticamente **exato** para essa coluna.
+
+Reescrito com `EXISTS`, sem o join:
+
+```
+SQL DE HOJE: 98.109 linhas em 137,9 s
+COM EXISTS:  98.110 linhas em  44,1 s   => 3,1x mais rápido
+```
+
+**Mas ele NÃO pode entrar antes do achado acima.** Tirar o join muda a multiplicidade da
+partição, o `ROW_NUMBER` sem desempate escolhe outra linha, e 10 colunas mudam de valor
+em ~14% das solicitações — **exatamente as mesmas 10 colunas** que já mudam entre duas
+execuções do SQL de hoje. Ou seja: a reescrita não introduz instabilidade, ela **herda**
+a que já existe. Entregar os 3,1x agora seria trocar um sorteio por outro sorteio.
+
+**A ordem certa é: desempatar o `ROW_NUMBER` (decisão de negócio) → conferir que duas
+execuções batem → aí a reescrita com `EXISTS` é uma otimização verificável.**
+
+O SQL reescrito está pronto em `protocolos-geral-exists.sql` (fora do repositório, no
+scratchpad da sessão de 04/09) e é uma substituição de duas partes: apagar a linha do
+`LEFT JOIN financial_receivable_titles` e trocar o `CASE` por um `EXISTS` correlacionado.
+
+## Carga incremental em `protocolos-geral` compra 1,7x, não os 6x que o nome sugere — e a camada M a bloqueia
+
+Medido em 04/09/2026, contra o dbVoalle:
+
+| | linhas | solicitações | tempo |
+|---|---:|---:|---:|
+| completo (piso 2025-01-01) | 98.108 | 98.108 | **92,2 s** |
+| janela de 7 dias | 1.546 | 1.546 | 54,3 s |
+| janela de 30 dias | 5.184 | 5.184 | 36,8 s |
+
+**1,6% das linhas custam 59% do tempo.** O motivo está no `EXPLAIN` do achado acima: a
+janela recorta o CTE `PERSONALIZADO`, e o tempo está no `Seq Scan` de
+`financial_receivable_titles`, que a janela não alcança. (`PLANOS_CONTRATO` sozinho:
+8,0 s de 92 — não é ele.)
+
+E há o bloqueio de forma, que `specs/_catalog/incremental.yaml` já declarava no próprio
+cabeçalho antes desta medição: *"a camada M dela precisa ser LINHA A LINHA.
+`protocolos-geral` não é (`Table.Distinct` e `Table.Sort` decidem sobre o conjunto
+inteiro), então ela não entra aqui mesmo sendo pesada"*. `DECISAO-CAMADA-M.md`, fato
+decisivo 3, é mais específico: o passo 53 (`Table.Distinct` por `SOLICITACAO`) escolhe a
+primeira linha da ordem que um `Table.Sort` por `INSTALADO POR:` deixou **três passos
+antes**, atravessando uma mescla com **`GESTORES EQUIPES`, que vem do dbMaria**. Mover
+essa dedup para o PostgreSQL é impossível: o critério de desempate não existe no
+PostgreSQL, ele vive em outro banco.
+
+**Conclusão: incremental não é a alavanca desta query.** As alavancas medidas, em ordem
+de retorno, são (1) desempatar o `ROW_NUMBER`, (2) a reescrita com `EXISTS` (3,1x).
+
+## A piscina de worker threads da API multiplica o snapshot em memória — 4 × 8 GB permitidos, 6,6 GB medidos
+
+`apps/api/src/piscina-workers.ts` cria `min(4, os.cpus().length)` worker threads, cada
+uma com `resourceLimits: { maxOldGenerationSizeMb: 8192 }`. E
+`apps/api/src/worker-calculador.ts` chama `carrega()` **por requisição**, cachando só o
+`SemanticModel` — não as linhas.
+
+Consequências medidas em 04/09/2026, API com `--max-old-space-size=4096`, depois de
+carregar as 14 páginas uma vez:
+
+```
+heapUsed do processo pai .... 33 MB
+RSS do processo ............ 6.625 MB
+páginas retidas ............ 0
+```
+
+O pai não retém nada (33 MB de heap); os 6,6 GB são heap de worker, crescido e não
+devolvido ao SO. **O `--max-old-space-size` do pai não limita as workers** — elas têm o
+limite próprio de 8192 MB cada, o que autoriza até 32 GB numa máquina de 16 GB.
+
+E o piso do processo, medido subindo a API com tetos diferentes e pedindo as 14 páginas:
+
+| teto | resultado |
+|---|---|
+| 2048 MB | **morre** — 13 páginas passam, `visao-geral` estoura (`FATAL ERROR: Reached heap limit`, exit 134) |
+| 4096 MB | as 14 páginas em HTTP 200 |
+
+Ler `field-agenda` inteira e retê-la, sozinha, pede **~2,1 GB** (647.909 linhas × 26
+colunas). O teto padrão do V8 nesta máquina é 4.288 MB, que é o que `npm run snapshot`
+usa hoje (o script não passa `--max-old-space-size`).
+
+**Isto é o que a proposta de "cair de 16 GB para menos de 1 GB" precisa endereçar, e
+não os scripts de snapshot** — não existe `--max-old-space-size=16384` em nenhum lugar
+do repositório. A decisão tem um trade-off real: a piscina existe porque calcular uma
+página fria custa 10-20 s, e com a API numa thread só nada mais é servido nesse tempo.
+Menos workers, ou um `maxOldGenerationSizeMb` que caiba no total, trocam latência de
+página fria por RAM. É decisão de quem opera o servidor.
+
+## Três páginas não carregam: `HORA CRIADO` é declarada `dateTime` e o DAX devolve texto
+
+`npm run bench:carga -- --paginas`, 04/09/2026, **antes** de qualquer mudança desta
+sessão (está nos dois baselines, com o snapshot cru e com o comprimido):
+
+```
+diario-instalacao:     'PROTOCOLOS PRODUTIVIDADE'[HORA CRIADO] é declarada dateTime
+premiacao-instalacao:   e o DAX devolveu o texto "20:23:18.533795".
+protocolos-detalhados:
+```
+
+As outras 11 páginas carregam. É pré-existente e não tem relação com compressão nem com
+a tradução nativa — fica registrado porque **três das quatorze páginas estão fora do ar
+agora**, e nenhum documento dizia isso.
