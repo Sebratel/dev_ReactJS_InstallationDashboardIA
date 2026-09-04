@@ -1,8 +1,14 @@
--- protocolos-geral, com STATUS FINANCEIRO por EXISTS.  *** NÃO ESTÁ EM PRODUÇÃO ***
+-- protocolos-geral, com STATUS FINANCEIRO por EXISTS.  *** INCORPORADO EM PRODUÇÃO ***
 --
--- Este arquivo é a reescrita medida em 04/09/2026, guardada aqui para não se perder.
--- O `sql:` de `specs/_catalog/queries/protocolos-geral.spec.yaml` continua sendo o de
--- hoje, com o `LEFT JOIN financial_receivable_titles`.
+-- INCORPORADO em 04/09/2026 a `specs/_catalog/queries/protocolos-geral.spec.yaml`,
+-- junto com o desempate do ROW_NUMBER que este arquivo dizia faltar (ver abaixo).
+-- Ver docs/SPEC-DRIVEN.md, seção "protocolos-geral — desempate do ROW_NUMBER + EXISTS",
+-- e docs/ACHADOS.md #97. Este arquivo fica só como registro histórico da medição
+-- original; o SQL de produção pode já ter avançado do texto abaixo.
+--
+-- ---------------------------------------------------------------------------
+-- Texto original desta nota, de quando a reescrita ainda NÃO podia entrar:
+-- ---------------------------------------------------------------------------
 --
 -- POR QUE ELA EXISTE
 --
@@ -13,29 +19,30 @@
 --
 -- Medido: 137,9 s -> 44,1 s (3,1x).
 --
--- POR QUE ELA AINDA NÃO ENTROU
+-- POR QUE ELA AINDA NÃO TINHA ENTRADO
 --
 -- `frt.title` é NULL em 0 de 16.563.491 linhas, e 0 contratos têm título nulo E não
 -- nulo — então `EXISTS` é semanticamente EXATO para `STATUS FINANCEIRO`. O problema não
--- é essa coluna: é que tirar o join muda a multiplicidade da partição, e o
--- `ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC)` **não tem
--- critério de desempate**. Outra linha vence, e 10 colunas (USUÁRIO, CTO, PONTO DE
--- ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA, LATITUDE, LONGITUDE) mudam de valor em
+-- era essa coluna: era que tirar o join muda a multiplicidade da partição, e o
+-- `ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC)` **não tinha
+-- critério de desempate**. Outra linha venceria, e 10 colunas (USUÁRIO, CTO, PONTO DE
+-- ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA, LATITUDE, LONGITUDE) mudavam de valor em
 -- ~14% das solicitações.
 --
--- E essas MESMAS 10 colunas já mudam entre duas execuções do SQL de HOJE, no mesmo
--- snapshot de transação: 14.090 solicitações. Ou seja, a reescrita não introduz a
--- instabilidade — ela a herda. Entregar os 3,1x agora seria trocar um sorteio por outro.
+-- E essas MESMAS 10 colunas já mudavam entre duas execuções do SQL de então, no mesmo
+-- snapshot de transação: 14.090 solicitações. Ou seja, a reescrita não introduzia a
+-- instabilidade — ela a herdava. Entregar os 3,1x antes de desempatar seria trocar um
+-- sorteio por outro.
 --
--- A ORDEM CERTA
+-- COMO FOI DESTRAVADO (04/09/2026)
 --
---   1. decidir o desempate do ROW_NUMBER (qual endereço/contrato de autenticação é o do
---      protocolo?) — é decisão de negócio, não de código;
---   2. conferir que duas execuções batem;
---   3. então isto entra, e passa a ser otimização verificável.
---
--- Ver docs/ACHADOS.md, seção de achados abertos: "`PROTOCOLOS GERAL` é NÃO
--- DETERMINÍSTICA em 10 colunas" e "O `LEFT JOIN financial_receivable_titles` ...".
+-- Erick decidiu a regra: preferir `authentication_contracts.active = true`
+-- (resolve 94,7% das partições múltiplas sozinho); para o resíduo de 5,3% com mais
+-- de um contrato ativo ao mesmo tempo, o contrato ativo criado mais recentemente
+-- vence (`ac.created DESC`), com `ac.id DESC` como piso de determinismo total.
+-- Conferido com `npm run probe:determinismo-pg`: 0 solicitações divergentes
+-- (era 14.090), e o caso mais extremo do banco (4 contratos ativos ao mesmo tempo)
+-- escolhe o mesmo ponto de acesso em execuções repetidas.
 
 WITH PERSONALIZADO AS (
     SELECT 
@@ -71,7 +78,11 @@ WITH PERSONALIZADO AS (
         m.title AS "EQUIPAMENTO",
         ac.user AS "USUÁRIO",
         vu.name AS "CRIADO POR",
-        ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,
+        ROW_NUMBER() OVER (
+            PARTITION BY a.title
+            ORDER BY (ac.active IS TRUE) DESC, s.start_date DESC NULLS LAST,
+                     ac.created DESC NULLS LAST, ac.id DESC NULLS LAST
+        ) AS PERSONA1,
         CASE
               WHEN EXISTS (
                   SELECT 1 FROM financial_receivable_titles frt

@@ -145,6 +145,79 @@ que nenhum tick roda em paralelo com outro por design; o gatilho externo (Agenda
 de Tarefas) é quem garante isso. É risco só para quem, como eu, roda `--refazer` à
 mão em duas janelas ao mesmo tempo. Registrado para o próximo que fizer o mesmo.
 
+### `protocolos-geral` — desempate do `ROW_NUMBER` + `EXISTS` no lugar do `LEFT JOIN` financeiro (04/09/2026)
+
+```sql
+-- era:  ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,
+--       CASE WHEN frt.title IS NULL THEN 'Pendente' ELSE 'Cobrado' END AS "STATUS FINANCEIRO"
+--       ...
+--       LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id
+--
+-- é:    ROW_NUMBER() OVER (
+--           PARTITION BY a.title
+--           ORDER BY (ac.active IS TRUE) DESC, s.start_date DESC NULLS LAST,
+--                    ac.created DESC NULLS LAST, ac.id DESC NULLS LAST
+--       ) AS PERSONA1,
+--       CASE
+--           WHEN EXISTS (
+--               SELECT 1 FROM financial_receivable_titles frt
+--               WHERE frt.contract_id = c.id AND frt.title IS NOT NULL
+--           ) THEN 'Cobrado'
+--           ELSE 'Pendente'
+--       END AS "STATUS FINANCEIRO"
+--       (LEFT JOIN financial_receivable_titles removido)
+```
+
+**Divergência de propósito, não conserto de extração** — o PBIP original não tem
+critério de desempate nenhum, e não há "comportamento original" para restaurar: o
+`ROW_NUMBER` já era arbitrário no relatório de origem, só que ninguém tinha
+percebido. É decisão de negócio nova.
+
+**O defeito, medido:** `a.title` (SOLICITACAO) tem mais de uma linha candidata
+sempre que a cadeia `people_addresses → authentication_contracts →
+authentication_access_points` multiplica o cliente por endereço/contrato de
+autenticação, e o `ORDER BY s.start_date DESC` empata sempre que os candidatos têm
+o mesmo agendamento (ou nenhum). Rodando o SQL de produção duas vezes no MESMO
+snapshot de transação (`REPEATABLE READ READ ONLY`): **14.090 de 98.110
+solicitações (14,4%) mudavam de valor** em USUÁRIO, CTO, PONTO DE ACESSO, CODIGO,
+OLT, EQUIPAMENTO, SLOT, PORTA, LATITUDE, LONGITUDE — `l-mapa` plotava coordenada
+sorteada para ~12 mil protocolos, e dois refreshes moviam o ponto sem ninguém ter
+mexido em nada.
+
+**A regra, decidida por Erick em 04/09/2026 (`ACTIVE TRUE`):** preferir o registro
+de `authentication_contracts` com `active = true`. Medido em escala, antes de
+decidir a regra secundária: dentre as 247.668 solicitações com partição múltipla,
+**234.475 (94,7%) têm no máximo UM ponto de acesso ativo** — `active=true`
+resolve sozinho. As **13.193 (5,3%) restantes** têm mais de um contrato
+simultaneamente `active=true` (achado ao vivo: um cliente com 4 contratos
+`active=true` em 4 endereços diferentes, acumulados de 2024 a 2026 — dado do ERP,
+não erro da consulta). Para este resíduo, o desempate final é `ac.created DESC` —
+**o contrato ativo criado mais recentemente vence.** É a parte assumida, não
+confirmada por Erick explicitamente; fica registrado aqui para revisão se
+alguém discordar. `ac.id DESC` no fim é só para garantir determinismo total,
+mesmo num empate teórico de timestamp.
+
+**Conferido:** `npm run probe:determinismo-pg` — mesmo SQL, mesma transação,
+duas execuções, **0 solicitações divergentes** (era 14.090). E o caso mais
+extremo do banco (solicitação com 4 contratos `active=true` simultâneos)
+escolhe o mesmo ponto de acesso em 3 execuções seguidas.
+
+**A reescrita do financeiro, junto porque tinha o MESMO bloqueio.** O `LEFT JOIN
+financial_receivable_titles` existia para um teste de existência
+(`frt.title IS NULL`), custava 3,1x a consulta inteira (77,1 s de Seq Scan,
+16,5 M linhas para checar 98 mil), e `frt.title` é **NULL em 0 de 16.563.491
+linhas** — "não casou" e "casou com título nulo" não são estados distinguíveis
+nesta base, então `EXISTS` é semanticamente exato. Não podia entrar antes de
+desempatar o `ROW_NUMBER` porque o `LEFT JOIN` também multiplicava a partição —
+tirá-lo mudava qual linha "ganhava" o sorteio, e a diferença medida era
+exatamente as mesmas 10 colunas. Substituição de `docs/sql/protocolos-geral-exists.sql`,
+que fica marcado como incorporado.
+
+**Medido, SQL completo (antes vs depois), sem cache do plano (duas execuções
+sucessivas, a segunda mais rápida por buffer quente):** 137,9 s (LEFT JOIN,
+sorteando) → 56,0 s / 31,6 s (EXISTS + desempate, determinístico). Ver
+`docs/ACHADOS.md` #97.
+
 ## Estrutura de `specs/`
 
 ```

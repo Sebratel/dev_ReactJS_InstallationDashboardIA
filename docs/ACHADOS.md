@@ -7335,6 +7335,79 @@ página leria zero sem reclamar.
 > Eles ainda não receberam número porque numerar exige saber que nenhum dos 76 acima já
 > os cobre — e essa conferência é trabalho, não carimbo.
 
+## #97 — `PROTOCOLOS GERAL` sorteava 10 colunas em 14,4% das solicitações; desempate decidido, e o `EXISTS` de 3,1x que ele travava entrou junto
+
+Dois achados abertos ("`PROTOCOLOS GERAL` é NÃO DETERMINÍSTICA..." e "O `LEFT JOIN
+financial_receivable_titles`...", registrados em 04/09/2026) descreviam o mesmo
+bloqueio por dois lados. Fechados juntos, mesmo dia, porque a resposta de um
+destrava o outro.
+
+**O defeito.** `ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC)`
+decide qual endereço/contrato de autenticação representa o protocolo quando o
+cliente tem mais de um, e não tinha critério de desempate. Rodando o SQL de
+produção duas vezes no MESMO snapshot de transação (`REPEATABLE READ READ ONLY`):
+**14.090 de 98.110 solicitações (14,4%) mudavam de valor** em USUÁRIO, CTO, PONTO
+DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA, LATITUDE, LONGITUDE.
+`l-mapa` plotava coordenada sorteada para ~12 mil protocolos — dois refreshes
+seguidos moviam o ponto sem ninguém ter mudado nada.
+
+**A pergunta que só o negócio respondia:** quando o cliente tem mais de um
+endereço/contrato de autenticação, qual deles é o do protocolo? Erick decidiu em
+04/09/2026: **`ACTIVE TRUE`** — preferir `authentication_contracts.active = true`.
+
+**Medido antes de fechar a regra secundária.** Das 247.668 solicitações com
+partição múltipla, **234.475 (94,7%) têm no máximo um ponto de acesso ativo** —
+`active=true` resolve sozinho. As **13.193 (5,3%) restantes** têm mais de um
+contrato simultaneamente ativo: achado ao vivo, um cliente com **4 contratos
+`active=true` em 4 endereços diferentes**, acumulados de 2024 a 2026 (dado real do
+ERP — o cliente mudou de endereço repetidas vezes e nenhum contrato antigo foi
+desativado). Para esse resíduo, o desempate final é **`ac.created DESC`** — o
+contrato ativo criado mais recentemente vence —, com `ac.id DESC` como piso de
+determinismo total. É a parte assumida por mim, não confirmada explicitamente por
+Erick; fica sinalizada em `docs/SPEC-DRIVEN.md` para revisão se alguém discordar.
+
+**Por que o `EXISTS` estava preso ao mesmo desempate.** `EXPLAIN (ANALYZE)` do SQL
+antigo: a consulta montava um intermediário de 13.719.336 linhas para devolver
+98.108 — 77,1 s de `Seq Scan` em `financial_receivable_titles` (16,5 M linhas) só
+para checar `frt.title IS NULL`. Medido: `frt.title` é **NULL em 0 de 16.563.491
+linhas**, e 0 contratos têm título nulo e não nulo ao mesmo tempo — "não casou" e
+"casou com nulo" não são estados distinguíveis nesta base, e `EXISTS` é
+semanticamente exato. Mas o `LEFT JOIN` também multiplicava a partição do
+`ROW_NUMBER`: tirá-lo, sem desempate, trocaria um sorteio por outro — motivo pelo
+qual os 3,1x medidos ficaram parados em `docs/sql/protocolos-geral-exists.sql` até
+hoje.
+
+**Conferido.** `npm run probe:determinismo-pg` (novo, roda o SQL de produção duas
+vezes na MESMA transação `REPEATABLE READ READ ONLY`): **0 solicitações
+divergentes**, era 14.090. O caso mais extremo do banco (o cliente dos 4 contratos
+ativos) escolhe o mesmo ponto de acesso em execuções repetidas.
+
+```
+antes (LEFT JOIN, sorteando):        137,9 s
+depois (EXISTS + desempate, estável): 56,0 s / 31,6 s (2ª execução com buffer quente)
+```
+
+**Onde ficou.** `sql:` de `specs/_catalog/queries/protocolos-geral.spec.yaml`,
+registrado em `docs/SPEC-DRIVEN.md` (edição à mão em spec gerada, com o diff
+completo). `docs/sql/protocolos-geral-exists.sql` marcado como incorporado.
+`specs/golden/protocolos-geral.golden.json` regravado (`npm run validate:queries
+-- --only=protocolos-geral`: 98.170 linhas, 34 colunas, sem falha).
+
+**O snapshot em disco (`snapshot/protocolos-geral.jsonl.gz`) NÃO foi atualizado —
+achado à parte, pré-existente.** `npm run snapshot -- --query=protocolos-geral
+--refazer --memoria=8192` estoura o heap (*"O avaliador de M guarda todos os
+passos vivos"*). **Não é o meu SQL**: revertido o `sql:` para o texto de ontem
+(via `git stash`) e rodado o mesmo comando, o mesmo estouro acontece — só que
+mais devagar (161 s até falhar, contra 80 s com o SQL novo). O `m_expression`
+desta tabela tem 59 linhas de M sobre 34 colunas × ~98 mil linhas; se cada passo
+fica vivo inteiro na memória, a conta bate. A máquina tinha 6,7 GB livres de 16 GB
+no momento do teste — não tentei `--memoria` maior por risco ao resto da sessão.
+**Consequência prática:** o snapshot que a API serve para `protocolos-geral`
+continua com os valores de antes desta mudança até alguém rodar `--refazer` numa
+janela com mais memória livre (ou o teto do M-layer for revisto à parte). Ver
+achado sobre a piscina de workers, que é o mesmo tipo de problema em outro
+processo.
+
 ## `INSTALADOR` tem 94 pessoas onde o Power BI tem 166
 
 **Sintoma.** A medida `Média Geral` dá 4,3657 aqui e 3,8998 no modelo publicado (11%).
@@ -7546,104 +7619,6 @@ a tabela tem 5 colunas (`protocolo_id`, `data_inicio_slot`, `data_carga`); `data
 sugere acumulado diário. Investigar a definição antes de declarar qualquer predicado de
 janela.
 
-## `PROTOCOLOS GERAL` é NÃO DETERMINÍSTICA em 10 colunas — 14.090 solicitações mudam de valor entre duas execuções idênticas
-
-**Medido em 04/09/2026, e este é o achado mais caro desta sessão.** O SQL de
-`protocolos-geral`, rodado **duas vezes sem mudar uma vírgula**, dentro do **MESMO
-snapshot de transação** (`BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`,
-para dado novo não poder ser confundido com instabilidade):
-
-```
-execução 1: 98.110 linhas
-execução 2: 98.110 linhas   (mesmo SQL, mesmo snapshot)
-só em 1: 0    só em 2: 0
-
-NÃO DETERMINÍSTICO: 14.090 solicitação(ões) mudaram de valor.
-```
-
-| coluna | solicitações que mudaram |
-|---|---:|
-| USUÁRIO | 14.060 |
-| CTO | 13.753 |
-| PONTO DE ACESSO | 13.170 |
-| CODIGO | 13.170 |
-| OLT | 13.112 |
-| EQUIPAMENTO | 12.636 |
-| SLOT | 12.628 |
-| PORTA | 12.617 |
-| LONGITUDE | 12.049 |
-| LATITUDE | 12.048 |
-
-São **14,4% das solicitações**. A contagem é estável; os **valores** não.
-
-**A causa.** `ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC)` não
-tem critério de desempate, e a partição tem mais de uma linha com o **mesmo**
-`s.start_date`: a cadeia `people_addresses → authentication_contracts →
-authentication_access_points / authentication_splitter_ports → authentication_splitters
-/ authentication_sites` multiplica a linha por endereço e por contrato de autenticação.
-`WHERE per.PERSONA1 = 1` então fica com **qualquer uma** — e com 3 workers paralelos, a
-"qualquer uma" muda de execução para execução.
-
-**Por que isso importa fora do banco.** `l-mapa` plota `LATITUDE`/`LONGITUDE`: hoje ele
-desenha coordenada arbitrária para ~12 mil protocolos, e dois refreshes seguidos movem o
-ponto sem ninguém ter mudado nada. `CTO`, `PONTO DE ACESSO`, `SLOT`, `PORTA` e `OLT` são
-a identificação física da instalação.
-
-**O conserto exige uma DECISÃO DE NEGÓCIO, não código:** quando um cliente tem mais de
-um endereço/contrato de autenticação, **qual deles é o do protocolo?** O mais recente? O
-do contrato citado em `ai.contract_service_tag_id`? Sem essa regra, qualquer desempate
-que eu escrevesse trocaria um valor arbitrário por outro valor arbitrário — só que
-estável, o que é pior: pareceria consertado.
-
-**O que NÃO explica isso, e já foi descartado:** não é a camada M (medido direto no
-banco, antes do M), não é dado se movendo (mesmo snapshot de transação), não é a janela
-de datas (mesmas 98.110 linhas nas duas).
-
-## O `LEFT JOIN financial_receivable_titles` de `protocolos-geral` custa 3,1x a consulta inteira, para um teste de existência
-
-`EXPLAIN (ANALYZE)` do SQL de `protocolos-geral` (04/09/2026, 74,7 s de plano):
-
-| nó | alvo | custo próprio | linhas | loops |
-|---|---|---:|---:|---:|
-| Seq Scan | **financial_receivable_titles** | **77,1 s** | 16.563.489 | 3 |
-| Sort | | 46,0 s | 13.719.336 | 3 |
-| WindowAgg | | 8,3 s | 13.719.336 | 1 |
-| Hash | | 5,3 s | 16.563.489 | 3 |
-| Hash Join | | 5,1 s | 13.719.336 | 3 |
-
-**A consulta monta um intermediário de 13.719.336 linhas para devolver 98.108** — joga
-fora 99,3%. O `LEFT JOIN` de 1:N em `financial_receivable_titles` existe para **uma**
-coluna, e ela é um teste de existência:
-
-```sql
-CASE WHEN frt.title IS NULL THEN 'Pendente' ELSE 'Cobrado' END AS "STATUS FINANCEIRO"
-```
-
-**O pressuposto que faltava, e foi medido:** `frt.title` é **NULL em 0 de 16.563.491
-linhas**, e **0 contratos** têm título nulo e não nulo ao mesmo tempo. Logo "não casou"
-e "casou com título nulo" não são estados distinguíveis nesta base, e `EXISTS` é
-semanticamente **exato** para essa coluna.
-
-Reescrito com `EXISTS`, sem o join:
-
-```
-SQL DE HOJE: 98.109 linhas em 137,9 s
-COM EXISTS:  98.110 linhas em  44,1 s   => 3,1x mais rápido
-```
-
-**Mas ele NÃO pode entrar antes do achado acima.** Tirar o join muda a multiplicidade da
-partição, o `ROW_NUMBER` sem desempate escolhe outra linha, e 10 colunas mudam de valor
-em ~14% das solicitações — **exatamente as mesmas 10 colunas** que já mudam entre duas
-execuções do SQL de hoje. Ou seja: a reescrita não introduz instabilidade, ela **herda**
-a que já existe. Entregar os 3,1x agora seria trocar um sorteio por outro sorteio.
-
-**A ordem certa é: desempatar o `ROW_NUMBER` (decisão de negócio) → conferir que duas
-execuções batem → aí a reescrita com `EXISTS` é uma otimização verificável.**
-
-O SQL reescrito está pronto em `protocolos-geral-exists.sql` (fora do repositório, no
-scratchpad da sessão de 04/09) e é uma substituição de duas partes: apagar a linha do
-`LEFT JOIN financial_receivable_titles` e trocar o `CASE` por um `EXISTS` correlacionado.
-
 ## Carga incremental em `protocolos-geral` compra 1,7x, não os 6x que o nome sugere — e a camada M a bloqueia
 
 Medido em 04/09/2026, contra o dbVoalle:
@@ -7669,8 +7644,8 @@ antes**, atravessando uma mescla com **`GESTORES EQUIPES`, que vem do dbMaria**.
 essa dedup para o PostgreSQL é impossível: o critério de desempate não existe no
 PostgreSQL, ele vive em outro banco.
 
-**Conclusão: incremental não é a alavanca desta query.** As alavancas medidas, em ordem
-de retorno, são (1) desempatar o `ROW_NUMBER`, (2) a reescrita com `EXISTS` (3,1x).
+**Conclusão: incremental não é a alavanca desta query.** As duas alavancas que eram —
+desempatar o `ROW_NUMBER` e a reescrita com `EXISTS` — já entraram; ver #97.
 
 ## A piscina de worker threads da API multiplica o snapshot em memória — 4 × 8 GB permitidos, 6,6 GB medidos
 

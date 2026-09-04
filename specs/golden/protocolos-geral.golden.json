@@ -2,7 +2,7 @@
   "queryId": "protocolos-geral",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 33750,
+  "rowCount": 98170,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -12,8 +12,8 @@
       "type": "string",
       "nulls": 0,
       "distinct": 5000,
-      "minLength": 73,
-      "maxLength": 155
+      "minLength": 64,
+      "maxLength": 145
     },
     {
       "name": "N°PROTOCOLO",
@@ -21,31 +21,31 @@
       "nulls": 0,
       "distinct": 5000,
       "numericString": true,
-      "sum": 7568234884
+      "sum": 5993998745
     },
     {
       "name": "DATA AGENDA",
       "type": "date",
-      "nulls": 4988,
-      "distinct": 12,
-      "min": "2025-01-10T16:00:00.000Z",
-      "max": "2026-02-04T11:00:00.000Z"
+      "nulls": 1414,
+      "distinct": 451,
+      "min": "2025-01-02T13:00:00.000Z",
+      "max": "2025-03-10T09:00:00.000Z"
     },
     {
       "name": "DATA CRIADO",
       "type": "date",
       "nulls": 0,
-      "distinct": 5000,
-      "min": "2026-01-01T12:27:36.878Z",
-      "max": "2026-01-30T20:58:49.849Z"
+      "distinct": 4998,
+      "min": "2025-01-01T11:27:01.514Z",
+      "max": "2025-02-03T13:49:52.759Z"
     },
     {
       "name": "DATA ENCERRADO",
       "type": "date",
       "nulls": 0,
-      "distinct": 5000,
-      "min": "2026-01-02T12:53:40.655Z",
-      "max": "2026-07-29T11:41:16.641Z"
+      "distinct": 4999,
+      "min": "2025-01-02T17:57:04.230Z",
+      "max": "2026-07-07T16:52:03.038Z"
     },
     {
       "name": "STATUS",
@@ -59,39 +59,39 @@
       "name": "CIDADE",
       "type": "string",
       "nulls": 0,
-      "distinct": 12,
+      "distinct": 10,
       "minLength": 6,
-      "maxLength": 21
+      "maxLength": 15
     },
     {
       "name": "BAIRRO",
       "type": "string",
       "nulls": 0,
-      "distinct": 130,
+      "distinct": 126,
       "minLength": 4,
-      "maxLength": 24
+      "maxLength": 36
     },
     {
       "name": "RUA",
       "type": "string",
       "nulls": 0,
-      "distinct": 2072,
-      "minLength": 5,
+      "distinct": 1954,
+      "minLength": 4,
       "maxLength": 47
     },
     {
       "name": "NUMERO PATRIMÔNIO",
       "type": "string",
       "nulls": 0,
-      "distinct": 1329,
+      "distinct": 1397,
       "minLength": 1,
-      "maxLength": 6
+      "maxLength": 9
     },
     {
       "name": "TELEFONE",
       "type": "string",
       "nulls": 0,
-      "distinct": 4346,
+      "distinct": 4430,
       "minLength": 0,
       "maxLength": 15
     },
@@ -99,87 +99,87 @@
       "name": "CLIENTE",
       "type": "string",
       "nulls": 0,
-      "distinct": 4404,
+      "distinct": 4469,
       "minLength": 9,
-      "maxLength": 58
+      "maxLength": 59
     },
     {
       "name": "EQUIPE",
       "type": "string",
       "nulls": 0,
-      "distinct": 14,
-      "minLength": 5,
-      "maxLength": 34
+      "distinct": 16,
+      "minLength": 10,
+      "maxLength": 49
     },
     {
       "name": "LATITUDE",
       "type": "string",
-      "nulls": 2595,
-      "distinct": 1947,
+      "nulls": 2676,
+      "distinct": 1873,
       "minLength": 0,
-      "maxLength": 22
+      "maxLength": 19
     },
     {
       "name": "LONGITUDE",
       "type": "string",
-      "nulls": 2595,
-      "distinct": 1937,
+      "nulls": 2676,
+      "distinct": 1866,
       "minLength": 0,
-      "maxLength": 22
+      "maxLength": 19
     },
     {
       "name": "RESPONSÁVEL",
       "type": "string",
-      "nulls": 67,
-      "distinct": 62,
-      "minLength": 9,
+      "nulls": 23,
+      "distinct": 38,
+      "minLength": 14,
       "maxLength": 46
     },
     {
       "name": "TIPO DE PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 7,
+      "distinct": 8,
       "minLength": 23,
       "maxLength": 39
     },
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
-      "nulls": 2469,
-      "distinct": 23,
+      "nulls": 2643,
+      "distinct": 24,
       "minLength": 14,
-      "maxLength": 14
+      "maxLength": 15
     },
     {
       "name": "CODIGO",
       "type": "string",
-      "nulls": 2469,
-      "distinct": 23,
+      "nulls": 2643,
+      "distinct": 24,
       "numericString": true,
-      "sum": 67641042
+      "sum": 63834558
     },
     {
       "name": "SLOT",
       "type": "string",
-      "nulls": 2469,
+      "nulls": 2643,
       "distinct": 2,
       "numericString": true,
-      "sum": 2530
+      "sum": 2355
     },
     {
       "name": "PORTA",
       "type": "string",
-      "nulls": 2469,
+      "nulls": 2643,
       "distinct": 1,
       "numericString": true,
-      "sum": 2531
+      "sum": 2357
     },
     {
       "name": "CTO",
       "type": "string",
-      "nulls": 2487,
-      "distinct": 2063,
+      "nulls": 2662,
+      "distinct": 1860,
       "minLength": 17,
       "maxLength": 65
     },
@@ -189,7 +189,7 @@
       "nulls": 0,
       "distinct": 5,
       "minLength": 6,
-      "maxLength": 23
+      "maxLength": 19
     },
     {
       "name": "ESTAGIO CONTRATO",
@@ -203,9 +203,9 @@
       "name": "NUMERO CONTRATO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4605,
+      "distinct": 4604,
       "numericString": true,
-      "sum": 1244456946
+      "sum": 1017673386
     },
     {
       "name": "ITEM",
@@ -216,23 +216,23 @@
     {
       "name": "CONTEXTO",
       "type": "string",
-      "nulls": 4874,
-      "distinct": 18,
-      "minLength": 5,
-      "maxLength": 53
+      "nulls": 4989,
+      "distinct": 5,
+      "minLength": 8,
+      "maxLength": 35
     },
     {
       "name": "PROBLEMA",
       "type": "string",
-      "nulls": 4964,
-      "distinct": 17,
-      "minLength": 5,
-      "maxLength": 50
+      "nulls": 4990,
+      "distinct": 4,
+      "minLength": 17,
+      "maxLength": 23
     },
     {
       "name": "OLT",
       "type": "string",
-      "nulls": 2469,
+      "nulls": 2643,
       "distinct": 17,
       "minLength": 5,
       "maxLength": 11
@@ -240,7 +240,7 @@
     {
       "name": "EQUIPAMENTO",
       "type": "string",
-      "nulls": 2469,
+      "nulls": 2643,
       "distinct": 2,
       "minLength": 3,
       "maxLength": 6
@@ -248,8 +248,8 @@
     {
       "name": "USUÁRIO",
       "type": "string",
-      "nulls": 2468,
-      "distinct": 2314,
+      "nulls": 2642,
+      "distinct": 2110,
       "minLength": 8,
       "maxLength": 26
     },
@@ -257,7 +257,7 @@
       "name": "CRIADO POR",
       "type": "string",
       "nulls": 0,
-      "distinct": 65,
+      "distinct": 51,
       "minLength": 13,
       "maxLength": 46
     },
@@ -272,13 +272,13 @@
     {
       "name": "PLANO",
       "type": "string",
-      "nulls": 0,
-      "distinct": 33,
+      "nulls": 1,
+      "distinct": 40,
       "minLength": 23,
-      "maxLength": 131
+      "maxLength": 176
     }
   ],
   "schemaFingerprint": "bd8c24bf2bd1a2ae",
-  "dataFingerprint": "b22452aee1d7564c",
-  "capturedAt": "2026-08-06T16:47:14.849Z"
+  "dataFingerprint": "d76b7d0fde6b4f33",
+  "capturedAt": "2026-09-04T17:04:35.612Z"
 }

@@ -40,10 +40,17 @@ sql: |-
           m.title AS "EQUIPAMENTO",
           ac.user AS "USUÁRIO",
           vu.name AS "CRIADO POR",
-          ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,
-          CASE 
-              WHEN frt.title IS NULL THEN 'Pendente' 
-              ELSE 'Cobrado' 
+          ROW_NUMBER() OVER (
+              PARTITION BY a.title
+              ORDER BY (ac.active IS TRUE) DESC, s.start_date DESC NULLS LAST,
+                       ac.created DESC NULLS LAST, ac.id DESC NULLS LAST
+          ) AS PERSONA1,
+          CASE
+              WHEN EXISTS (
+                  SELECT 1 FROM financial_receivable_titles frt
+                  WHERE frt.contract_id = c.id AND frt.title IS NOT NULL
+              ) THEN 'Cobrado'
+              ELSE 'Pendente'
           END AS "STATUS FINANCEIRO"
       FROM assignment_incidents ai
       LEFT JOIN assignments a ON a.id = ai.assignment_id
@@ -66,7 +73,6 @@ sql: |-
       LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id
       LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id
       LEFT JOIN v_users vu ON vu.id = a.created_by
-      LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id
       WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo
         AND a.created >= '2025-01-01'
   ),
