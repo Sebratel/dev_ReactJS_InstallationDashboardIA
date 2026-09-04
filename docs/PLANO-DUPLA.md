@@ -320,9 +320,9 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 | A1 teto de memória | Claude | aberto |
 | A2 refresh sem envelhecer calado | Claude | aberto |
 | A3 compose de árvore limpa | Claude | aberto |
-| A4 visual não derruba página | Gemini | aberto (há commit a resgatar) |
-| A5 densidade da tela | Gemini | aberto |
-| A6 aviso de dado velho | Gemini | aberto (depende do contrato A2) |
+| A4 visual não derruba página | Gemini | **concluído** (commit 58ac4b9, 7 testes em visuais-seguros.test.ts) |
+| A5 densidade da tela | Gemini | **concluído** (commit 58ac4b9, raiz 14px, sem rolagem horizontal, tokens de papel) |
+| A6 aviso de dado velho | Gemini | **concluído** (commit 58ac4b9, contrato /api/saude consumido nos 3 estados com 6 testes em aviso-saude.test.ts) |
 | B1 `INSTALADOR` 94×166 | Claude | aberto |
 | B2 as 7 divergências | Claude | aberto |
 | B3 gabarito das 3 páginas | Claude | aberto |
