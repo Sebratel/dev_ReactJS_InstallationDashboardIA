@@ -247,6 +247,36 @@ test('a saúde reflete refresh-status.json quando o Refresh Manager já rodou', 
     const j = await r.json();
     assert.equal(j.refresh.quente.ok, true);
     assert.equal(j.refresh.quente.duracaoMs, 1234);
+    assert.ok(Array.isArray(j.refresh.queries));
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2 <-> A6)', async () => {
+  const dir = dirVazio();
+  await escreveStatus(dir, {
+    quente: { ultimaTentativa: '2026-09-04T12:00:00.000Z', ultimoSucesso: '2026-09-04T12:00:00.000Z', duracaoMs: 1000, ok: true, falhasConsecutivas: 0 },
+    frio: { ultimaTentativa: '2026-09-04T11:00:00.000Z', ultimoSucesso: null, duracaoMs: 2000, ok: false, falhasConsecutivas: 1, erro: 'ECONNRESET' },
+  });
+  const s = await servidor(dir);
+  try {
+    const r = await s.busca('/api/saude');
+    assert.equal(r.status, 200);
+    const j = await r.json();
+    assert.ok(Array.isArray(j.refresh?.queries));
+    assert.ok(j.refresh.queries.length > 0);
+
+    // Grupo frio com falha marca a query do grupo como falhou com erro
+    const fieldSlot = j.refresh.queries.find((q: any) => q.id === 'field-agenda-slot');
+    assert.ok(fieldSlot);
+    assert.equal(fieldSlot.status, 'falhou');
+    assert.equal(fieldSlot.erro, 'ECONNRESET');
+
+    // Query sem carga recente marca vencida
+    const prod = j.refresh.queries.find((q: any) => q.id === 'protocolos-produtividade');
+    assert.ok(prod);
+    assert.equal(prod.status, 'vencida');
   } finally {
     await s.fecha();
   }

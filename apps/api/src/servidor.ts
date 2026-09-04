@@ -71,7 +71,7 @@ import {
 } from './calcula.ts';
 import { carregaLayout } from '../../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
-import { leStatus } from '../../../tools/refresh/src/status.ts';
+import { leStatus, montaStatusDeRefresh } from '../../../tools/refresh/src/status.ts';
 import { PiscinaWorkers } from './piscina-workers.ts';
 
 
@@ -504,7 +504,9 @@ export class Servidor {
 
   private statusDeRefresh(): unknown {
     try {
-      return leStatus(this.opts.snapshotDir);
+      const specsDir = path.join(this.opts.root, 'specs');
+      const agora = this.opts.agora ? this.opts.agora() : new Date();
+      return montaStatusDeRefresh(this.opts.snapshotDir, specsDir, agora);
     } catch {
       return {};
     }

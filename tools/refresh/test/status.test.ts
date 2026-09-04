@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { escreveStatus, leStatus, type StatusDeRefresh } from '../src/status.ts';
+import { escreveStatus, leStatus, montaStatusDeRefresh, type StatusDeRefresh } from '../src/status.ts';
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-status-'));
@@ -58,4 +58,50 @@ test('escreveStatus não corrompe uma leitura já aberta, e só publica depois d
 
   await escritaPromise;
   assert.deepEqual(Object.keys(leStatus(dir)), ['b']);
+});
+
+test('montaStatusDeRefresh expõe queries[] com status, idades e falhas (Contrato A2 <-> A6)', async () => {
+  const dir = tmp();
+  const agora = new Date('2026-09-04T12:00:00.000Z');
+
+  // Grupo quente falhou com ECONNRESET, grupo medio teve sucesso recente
+  await escreveStatus(dir, {
+    quente: {
+      ultimaTentativa: '2026-09-04T11:50:00.000Z',
+      ultimoSucesso: '2026-09-03T12:00:00.000Z',
+      duracaoMs: 5000,
+      ok: false,
+      falhasConsecutivas: 2,
+      erro: 'ECONNRESET',
+    },
+    medio: {
+      ultimaTentativa: '2026-09-04T11:40:00.000Z',
+      ultimoSucesso: '2026-09-04T11:40:00.000Z',
+      duracaoMs: 12000,
+      ok: true,
+      falhasConsecutivas: 0,
+    },
+  });
+
+  const specsDir = path.resolve('specs');
+  const res = montaStatusDeRefresh(dir, specsDir, agora);
+  assert.ok(Array.isArray(res.queries));
+  assert.ok(res.queries.length > 0);
+
+  // Queries do grupo quente (ex: contratos) devem herdar a falha do grupo
+  const contratos = res.queries.find((q) => q.id === 'contratos');
+  assert.ok(contratos);
+  assert.equal(contratos.status, 'falhou');
+  assert.equal(contratos.erro, 'ECONNRESET');
+
+  // Queries do grupo medio (ex: troca-endereco) devem estar ok com última carga recente
+  const trocaEndereco = res.queries.find((q) => q.id === 'troca-endereco');
+  assert.ok(trocaEndereco);
+  assert.equal(trocaEndereco.status, 'ok');
+  assert.equal(trocaEndereco.idadeDias, 0);
+
+  // protocolos-produtividade sem carga recente entra como vencida
+  const prod = res.queries.find((q) => q.id === 'protocolos-produtividade');
+  assert.ok(prod);
+  assert.equal(prod.status, 'vencida');
 });
