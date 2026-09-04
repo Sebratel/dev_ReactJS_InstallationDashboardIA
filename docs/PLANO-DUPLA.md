@@ -36,7 +36,7 @@ vem antes do plano.
 | **CPF/RG na tela** | **nenhuma** das 14 specs de dashboard usa `QUADRO FUNCIONAL` | `grep` em `specs/dashboards/` |
 | Filtro na URL | existe; **falta store** (só `useThemeStore`) | `apps/web/src/store/` |
 | Refresh | Manager + `cron.sh` prontos; **crontab não instalado**, e 3 queries com defeito de carga | `tools/refresh/`, §3 abaixo |
-| Memória | piscina autoriza **4 × 8 GB**; **6,6 GB medidos** | achado aberto em `ACHADOS.md` |
+| Memória | ~~piscina autoriza 4 × 8 GB~~ **RESOLVIDO** em 04/09: pai 3072 + 2 × 768 = **4.608 MB** autorizados, `mem_limit: 6g`, RSS pico medido **2.938 MB** | `npm run probe:memoria-api`, `ACHADOS.md` #98 |
 | Paridade | **7 divergências reais** + `INSTALADOR` (94 × 166) | `ACHADOS.md`, `CONTINUACAO.md` §9.1 |
 | Deploy | **nunca rodou em máquina que não é a do Erick** | — |
 | Branches | `staging` está **23 commits à frente** de `main`; `main` 3 à frente de `origin/main` | `git rev-list` |
@@ -84,6 +84,28 @@ trabalha na pasta principal** — ela fica para o Erick e para a integração.
 Se por qualquer motivo não houver worktree, a regra mínima é: **branch própria,
 `git fetch` antes de qualquer commit, e nunca dois agentes em `staging` ao mesmo
 tempo.**
+
+> **Isto falhou 40 minutos depois de eu escrever, e a falha ensina a regra que
+> faltava.** O Gemini criou `trabalho/tela` — nome certo, tudo certo — mas
+> **`git checkout` na pasta principal em vez de `git worktree add`**, e deixou o
+> `HEAD` ali. Meu commit seguinte, de `apps/api` e `specs/`, caiu em
+> `trabalho/tela`: a branch da tela recebeu trabalho de dado, e a `staging` que
+> eu acabara de empurrar não tinha nada meu. Não se perdeu nada — era
+> fast-forward, e consertei com `git branch -f staging <meu commit>`, que não
+> toca o diretório de trabalho de ninguém —, mas em qualquer commit menos
+> compatível teria sido merge à mão.
+>
+> **As duas regras que passam a valer:**
+>
+> 1. **`git worktree add`, nunca `git checkout`.** Branch própria não protege
+>    nada se o checkout é compartilhado: o `HEAD` é um só, e quem trocou por
+>    último decide onde o próximo commit do OUTRO agente vai cair.
+> 2. **`git status -sb` antes de `git add`, sempre.** Uma linha, e é a única
+>    coisa que revela que a branch mudou debaixo de você.
+>
+> E o corolário: **para consertar ref de branch que não está no seu `HEAD`, use
+> `git branch -f`, não `git checkout`.** Trocar de branch numa pasta que o outro
+> agente está usando é justamente o dano que se quer evitar.
 
 ### 2.2 Propriedade de arquivo — quem pode escrever onde
 
@@ -317,9 +339,9 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 
 | item | dono | estado |
 |---|---|---|
-| A1 teto de memória | Claude | aberto |
-| A2 refresh sem envelhecer calado | Claude | aberto |
-| A3 compose de árvore limpa | Claude | aberto |
+| A1 teto de memória | Claude | **concluído** (commit 30c9216, ACHADOS #98: 42.752 → 4.608 MB autorizados, `mem_limit: 6g`, 7 testes) |
+| A2 refresh sem envelhecer calado | Claude | aberto — **e a A6 já espera por ele** (o `refresh.queries[]` do contrato ainda não existe na API) |
+| A3 compose de árvore limpa | Claude | aberto — **bloqueado**: o engine Linux do Docker Desktop não está no ar nesta máquina |
 | A4 visual não derruba página | Gemini | **concluído** (commit 58ac4b9, 7 testes em visuais-seguros.test.ts) |
 | A5 densidade da tela | Gemini | **concluído** (commit 58ac4b9, raiz 14px, sem rolagem horizontal, tokens de papel) |
 | A6 aviso de dado velho | Gemini | **concluído** (commit 58ac4b9, contrato /api/saude consumido nos 3 estados com 6 testes em aviso-saude.test.ts) |
