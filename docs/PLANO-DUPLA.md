@@ -215,6 +215,40 @@ Armadilha já plantada e registrada: `.env.example` traz `PORT=3000`; o código 
 sobe; `snapshot/` entra como volume; as 10 páginas do menu abrem; `POST` leva 405;
 pedido sem sessão leva 401; `/api/saude` diz qual adapter de cache está ligado.
 
+### A7 · A assertividade na stack local — o que a A3 tinha marcado sem medir
+
+**Dono: Claude. Concluído em 04/09/2026** (commit `50eeb6c`, ACHADOS #99). Entrou na
+fila porque o Erick pediu — *"coloque tudo no docker local para testar a
+assertividade"* — e o pedido estava certo: **a A3 foi marcada concluída com um dos
+seus próprios critérios de saída falso.** "Pedido sem sessão leva 401" era **200**.
+
+Os seis critérios da A3, agora com o número que os fecha:
+
+| critério da A3 | medido |
+|---|---|
+| `docker compose -f docker-compose.prod.yml up` sobe | sim — e **recusa** subir sem `GOOGLE_CLIENT_ID`, o que é o certo (saída 1) |
+| `snapshot/` entra como volume | sim, `${SNAPSHOT_DIR_HOST:-./snapshot}` |
+| as 10 páginas do menu abrem | **10/10** pelo proxy na porta 80, em 3 formas de carga |
+| `POST` leva 405 | `POST /api/dashboards/capa` → **405**; `PUT /api/saude` → **405** |
+| pedido sem sessão leva 401 | **401** com o portão aceso (`GET /api/dashboards/capa` e `/visao-geral`); a tela (`GET /`) segue **200**, que é o necessário para o login aparecer |
+| `/api/saude` diz o adapter de cache | *"memória + Redis (REDIS_URL)"* — o redis interno do compose |
+
+E a carga, com cache frio a cada passe (`FLUSHALL` no Redis + reinício da API):
+
+```
+forma da carga            páginas   RSS pico   folga de 6144 MB   OOMKilled  restarts
+-------------------------------------------------------------------------------------
+sequencial, 10 frias        10/10     4356 MB           1788 MB      false        0
+concorrente, 10 frias       10/10     4321 MB           1823 MB      false        0
+quente, 3 chamadas/página   10/10     2188 MB           3956 MB      false        0
+```
+
+**Pendência que isto abriu, e é decisão do Erick:** `GET /api/saude` responde **200
+sem sessão**, com o portão aceso. Ele não traz linha de dado, mas traz nome de
+query, idade de cada carga e o RSS do processo. É o que o healthcheck do container e
+o aviso de dado velho da A6 consomem — fechá-lo mexe nos dois. Fica registrado como
+exposição conhecida, não como defeito silencioso.
+
 ### A4 · Nenhum visual derruba a página
 
 **Dono: Gemini.** Ponto de partida: a branch `claude/recuperacao-completa-dia-26`
@@ -287,6 +321,33 @@ sabidamente inválido. Exige o token e — **antes de tudo** — confirmar o alv
 é o **`INST - Relatório Instalação`**, NÃO o `... Gerencial`. Apontar para o errado
 não dá erro: dá número plausível que entra no gabarito como se fosse verdade.
 
+**Destravou em 04/09/2026, e o `CLAUDE.md` está velho neste ponto.** Ele afirma que
+`POWERBI_URL`, `POWERBI_REPORT_ID` e `POWERBI_TENANT_ID` "não estão no `.env`". Duas
+das três estão. Conferido pelo carregador (`applyDotEnv`), imprimindo só presença e
+tamanho — nunca valor:
+
+```
+POWERBI_URL           (ausente do .env)
+POWERBI_REPORT_ID     PREENCHIDA (36 chars)   <- formato de GUID
+POWERBI_TENANT_ID     PREENCHIDA (24 chars)
+```
+
+Consequência prática, lendo `tools/powerbi/src/index.ts:179-182`: o alvo sai de
+`args.url ?? POWERBI_URL`, e o `reportId`/`tenant` caem para as duas variáveis
+quando não vêm do link. Com as duas preenchidas, **`--url=` deixou de ser
+obrigatório** — e `npm run powerbi` imprime `nome`, `dataset` e `workspace` do
+relatório (`achaRelatorio`, logo abaixo). Ou seja: a pergunta "é o Gerencial ou
+não?", que o `CLAUDE.md` marca como a mais cara de errar neste repositório, agora
+se responde com **um comando**, e a resposta vem do próprio Power BI em vez de
+suposição.
+
+**Primeiro passo da B3, e nesta ordem:** rodar `npm run powerbi -- --ajuda` não
+serve (não toca a API); o que identifica o alvo é qualquer invocação real, porque o
+`nome` é impresso antes de qualquer DAX. Registrar o `nome` devolvido em
+`specs/_catalog/paridade-janela.yaml` — hoje nenhum número de `pbi:` diz de onde
+veio. **Não rodado ainda**: o token foi gravado em 25/08 e pode ter expirado, e
+`pegaToken` faz device code (exige o Erick logar). É pedido, não tarefa de agente.
+
 ### B4 · O que da B1–B3 cair em `measure-engine` / `widget-engine`
 
 **Dono: Gemini**, via handoff com alvo numérico. Regra: **nenhum conserto de motor
@@ -323,15 +384,20 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 3. **Usuário read-only do Voalle/MariaDB em produção, TLS e hostname.** Trabalho de
    DBA e de infraestrutura. É a camada 1 das quatro do somente-leitura, e a única
    que o repositório não garante sozinho.
-4. **O desempate secundário de `protocolos-geral`.** Você decidiu `ACTIVE TRUE`,
-   que resolve 94,7%. Para os **5,3%** com mais de um contrato ativo ao mesmo tempo
-   eu assumi `ac.created DESC` (o ativo mais recente vence). **É suposição minha**,
-   sinalizada em `SPEC-DRIVEN.md`. Se a regra do negócio for outra, é uma linha de
-   SQL.
-5. **Promover `staging` → `main`.** São **23 commits** e zero commits só em `main`
+4. ~~**O desempate secundário de `protocolos-geral`.**~~ **FECHADO em 04/09/2026** —
+   você delegou ("não sei, decida por mim") e a decisão saiu de medição, não de
+   suposição: o desempate é `ac.contract_id = cst.contract_id` (o contrato que a
+   própria solicitação aponta), que resolve 3.935 dos 4.407 empates e **discordou
+   de `ac.created DESC` em zero** dos 20.821 casos conferidos. Ver ACHADOS #97 e a
+   subseção "O resíduo" em `SPEC-DRIVEN.md`. Junto veio um conserto de erro meu:
+   `ac.id DESC` **não** era piso de determinismo — `asp`, `s` e `pa` multiplicam a
+   partição depois dele, e 17.663 protocolos empatavam no topo.
+5. **Promover `staging` → `main`.** São **32 commits** e zero commits só em `main`
    — fast-forward limpo, mas leva junto piscina de workers, poller de realtime,
    snapshot gzip, tradução nativa de DAX, login SSO e as correções de hoje. É
-   decisão sua, não minha, porque muda o que "main" promete.
+   decisão sua, não minha, porque muda o que "main" promete. Você pediu para deixar
+   isto para depois de ver tudo funcionando na sua máquina — **a stack local passou
+   em 04/09** (linha nova no placar), então o que falta é só a sua decisão.
 
 ---
 
@@ -345,6 +411,7 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 | A4 visual não derruba página | Gemini | **concluído** (commit 58ac4b9, 7 testes em visuais-seguros.test.ts) |
 | A5 densidade da tela | Gemini | **concluído** (commit 58ac4b9, raiz 14px, sem rolagem horizontal, tokens de papel) |
 | A6 aviso de dado velho | Gemini | **concluído** (commit 58ac4b9, contrato /api/saude consumido nos 3 estados com 6 testes em aviso-saude.test.ts) |
+| **A7 assertividade na stack local** | Claude | **concluído** (commit 50eeb6c, ACHADOS #99: 10/10 páginas pelo proxy:80 em 3 formas de carga, pico 4.356 MB de 6.144, `OOMKilled=false`, corpo byte-idêntico em 3 chamadas, batimento SSE a 42/25.039/50.038 ms) |
 | B1 `INSTALADOR` 94×166 | Claude | aberto |
 | B2 as 7 divergências | Claude | aberto |
 | B3 gabarito das 3 páginas | Claude | aberto |

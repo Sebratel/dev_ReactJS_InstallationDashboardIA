@@ -11,13 +11,28 @@
 > | §0/§2.1 "não existe login. A API serve todo número a todo pedido" | **existe e é testado** — Google SSO, 401 antes do roteamento (`apps/api/src/auth-google.ts`, `servidor.test.ts:782`) |
 > | §0/§3 "não existe nenhum `Dockerfile`", "nenhum arquivo de Nginx", "nada nesta seção existe" | **existem** — `Dockerfile`, `docker-compose.prod.yml`, `nginx.conf` (commit `7642fab`) |
 > | §0/§2.1 "as páginas que expõem dado pessoal" | **nenhuma das 14 specs de dashboard usa `QUADRO FUNCIONAL`** (onde estão CPF/RG). O dado está em `snapshot/`, não na tela |
-> | §4/§7 "1357 testes verdes" | **1627** |
+> | §4/§7 "1357 testes verdes" | **1666** (04/09/2026) |
 > | §0 "SSE perdido com a árvore de 21/08" | **existe** — `EventSource('/api/eventos')` em `apps/web/src/App.tsx:153` |
 >
-> **O que continua verdadeiro, e é o que importa:** o refresh não está agendado no
-> host, três queries têm defeito de carga, a piscina de workers autoriza 4 × 8 GB, a
-> paridade não está fechada, e **a stack nunca subiu numa máquina que não é a do
-> Erick**. Esses estão na fila em [PLANO-DUPLA.md](PLANO-DUPLA.md) §3.
+> **Fechados em 04/09/2026, e o documento também erra ao mantê-los abertos:**
+>
+> | o que este documento trata como aberto | o que foi medido |
+> |---|---|
+> | "a piscina de workers autoriza 4 × 8 GB" | **4.608 MB autorizados** (pai 3.072 + 2 × 768), `mem_limit: 6g`, ACHADOS #98 |
+> | "três queries têm defeito de carga" | expostas em `/api/saude` → `refresh.queries[]` com idade e estado, e a tela avisa (A2/A6, commits `c193490` / `58ac4b9`) |
+> | "a stack nunca subiu" | subiu: **10/10 páginas pelo proxy na porta 80**, pico 4.356 MB de 6.144, `OOMKilled=false`, ACHADOS #99 e PLANO-DUPLA §A7 |
+>
+> **O que continua verdadeiro:** o refresh **não está agendado no host** (a linha do
+> crontab está pronta, mas editar crontab de produção é ordem do Erick), a paridade
+> não está fechada, não há TLS, e não existe usuário de banco somente-leitura de
+> produção — hoje as credenciais do `.env` são as de desenvolvimento. Esses estão na
+> fila em [PLANO-DUPLA.md](PLANO-DUPLA.md) §3 e §6.
+>
+> **E uma armadilha nova, que este documento ainda não descreve:** `env_file:`
+> **sobrescreve o `ENV` da imagem**. O `Dockerfile` declara
+> `ENV NODE_ENV=production` e, com `env_file: .env`, medimos `NODE_ENV=development`
+> **dentro** do container. Por isso `docker-compose.prod.yml` passa `NODE_ENV` no
+> bloco `environment:`, que vence os dois. Ver ACHADOS #99 §2.
 >
 > Não apaguei as seções erradas: a §3 tem o desenho da imagem e as armadilhas de
 > `.env` (porta 3000 × 3100) que continuam valendo, e a §7 é uma boa lista de dia de
@@ -226,6 +241,33 @@ outro servindo a API é peça a mais sem problema que resolva — o proxy entra 
 
 - **Critério de saída:** `docker compose -f docker-compose.prod.yml up -d` sobe tudo, e
   matar o container da API o traz de volta sozinho pelo healthcheck.
+
+#### 3.2.1 Rodar a stack de produção na sua máquina — e por que ela recusa subir
+
+Se `docker compose -f docker-compose.prod.yml up` morrer com
+`[login] RECUSANDO SUBIR`, **não é defeito: é a guarda.** O `.env` de
+desenvolvimento tem `GOOGLE_CLIENT_ID` vazia, e uma API sem credencial serve
+CLIENTE, TELEFONE e endereço a quem alcançar a URL — foi o que ela fez, de fato, na
+primeira subida desta stack (ACHADOS #99).
+
+Use a sobreposição, que declara as duas coisas de uma vez:
+
+```bash
+docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
+API_PORT_HOST=3101 docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d
+```
+
+O que ela faz: `SEM_LOGIN=1` (sim, quero servir sem autenticação) **e**
+`NODE_ENV=development` (e não, isto não é produção). A guarda **recusa** as duas
+combinadas com `NODE_ENV=production`, de propósito, para que ninguém desligue o
+login *fingindo* estar em produção — ver `apps/api/src/portao-login.ts`.
+
+**Não** transforme a sobreposição em atalho para produção. Em produção o caminho é
+preencher `GOOGLE_CLIENT_ID` e `DOMINIO_CORPORATIVO`, e aí a guarda sai da frente
+sozinha.
+
+Para conferir que a guarda continua viva, suba **sem** a sobreposição: o container
+tem de morrer com saída 1.
 
 ### 3.3 Proxy reverso e TLS
 
