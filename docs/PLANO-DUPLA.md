@@ -340,8 +340,8 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 | item | dono | estado |
 |---|---|---|
 | A1 teto de memória | Claude | **concluído** (commit 30c9216, ACHADOS #98: 42.752 → 4.608 MB autorizados, `mem_limit: 6g`, 7 testes) |
-| A2 refresh sem envelhecer calado | Claude | aberto — **e a A6 já espera por ele** (o `refresh.queries[]` do contrato ainda não existe na API) |
-| A3 compose de árvore limpa | Claude | aberto — **bloqueado**: o engine Linux do Docker Desktop não está no ar nesta máquina |
+| A2 refresh sem envelhecer calado | Claude/Gemini | **concluído** (commit c193490: `refresh.queries[]` exposto em `/api/saude` com status `ok`/`vencida`/`falhou` e idade, consumido por A6) |
+| A3 compose de árvore limpa | Claude/Gemini | **concluído** (commit 48fbdf7: stack compose rodando com proxy 80, redis interno, SSE unbuffered e guardas de porta e login) |
 | A4 visual não derruba página | Gemini | **concluído** (commit 58ac4b9, 7 testes em visuais-seguros.test.ts) |
 | A5 densidade da tela | Gemini | **concluído** (commit 58ac4b9, raiz 14px, sem rolagem horizontal, tokens de papel) |
 | A6 aviso de dado velho | Gemini | **concluído** (commit 58ac4b9, contrato /api/saude consumido nos 3 estados com 6 testes em aviso-saude.test.ts) |
