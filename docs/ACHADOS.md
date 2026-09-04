@@ -7874,3 +7874,124 @@ deriva de um literal escondido num laço. Agora os três vivem em lugares nomead
 (`PADRAO_TAMANHO_POOL`, `PADRAO_HEAP_POR_WORKER_MB`, `CMD` do Dockerfile,
 `mem_limit` do compose) e `apps/api/test/piscina-workers.test.ts` **falha** se
 saírem de sincronia — inclusive se a folga para o não-heap cair abaixo de 1 GB.
+
+---
+
+## #99 — Três defeitos que só o container revela: o login falhava ABERTO, o `NODE_ENV` era rebaixado pelo `.env`, e o SSE ficava mudo atravessando o Nginx
+
+**Data:** 04/09/2026
+**Achado por:** subir `docker-compose.prod.yml` de verdade, pela primeira vez, e
+pedir as páginas de fora do container.
+
+O ponto de forma vem antes dos três defeitos: **nenhum deles aparece em `npm test`
+nem em `docker build`.** A suíte roda do checkout, não da imagem; o build só
+executa `COPY`. Os três só existem quando o processo sobe *dentro* do container,
+com o `.env` real e o proxy no caminho. É a mesma família do defeito da imagem que
+nunca havia iniciado em máquina nenhuma (registrado no commit `48fbdf7`): a
+verificação que faltava era **executar**, não testar mais.
+
+### 1. O login falhava ABERTO — e o log dizia isso, em português, e subia igual
+
+Medido na stack de produção, sem sessão nenhuma:
+
+```
+GET /api/dashboards/visao-geral        -> 200
+```
+
+Duzentos. Com CLIENTE, TELEFONE e endereço no corpo, para quem alcançasse a URL.
+
+A causa é uma corrente de decisões que cada uma parece razoável sozinha:
+
+| passo | o que fazia |
+|---|---|
+| `.env` desta máquina | `GOOGLE_CLIENT_ID=` (vazia — o normal para desenvolver) |
+| `index.ts` | só passava `googleClientId` ao `Servidor` se a variável fosse preenchida |
+| `Servidor` sem `googleClientId` | usava a identidade `dev-local` e servia todo pedido |
+| log de subida | *"Login: DESLIGADO — GOOGLE_CLIENT_ID ausente, /auth/google recusa todo token"* |
+
+A frase do log é **verdadeira e inútil**: `/auth/google` de fato recusava todo
+token, mas ninguém precisava de token. E ela sai uma vez, na subida, no meio de
+seis outras linhas — num Portainer que ninguém lê depois do primeiro dia.
+
+**Uma trava que degrada em silêncio não é trava.** O conserto é recusar a subir:
+`apps/api/src/portao-login.ts` devolve três estados e um deles mata o processo.
+Sem credencial e sem declaração explícita, `process.exit(1)`.
+
+Conferido no container:
+
+```
+$ docker compose -f docker-compose.prod.yml run --rm --no-deps api
+[login] RECUSANDO SUBIR: GOOGLE_CLIENT_ID está ausente ou vazia.
+  ...
+codigo de saida: 1
+```
+
+### 2. O `env_file:` SOBRESCREVE o `ENV` da imagem
+
+O `Dockerfile` declara `ENV NODE_ENV=production`. Dentro do container, medido:
+
+```
+NODE_ENV=development
+```
+
+Porque `env_file: .env` vence o `ENV` da imagem (e `environment:` vence os dois).
+A imagem se dizia produção e rodava em modo de desenvolvimento — **todo
+comportamento condicionado a `NODE_ENV === 'production'` ficava desligado, sem erro
+e sem log**. Inclusive `PiscinaWorkers`, que se desativa quando `NODE_ENV === 'test'`
+e cuja decisão passa por essa mesma variável.
+
+Conserto: `NODE_ENV: production` no bloco `environment:` do compose, onde vence.
+E é por isso que a guarda do login **não** podia depender só do `NODE_ENV` — a
+variável em que ela confiaria era exatamente a que estava errada.
+
+### 3. O SSE atravessava o proxy, mas ficava mudo — e o navegador esconde isso
+
+Duas metades, e cada uma era invisível sozinha.
+
+**A metade do Nginx** já estava consertada em `48fbdf7` (o bloco
+`location /api/eventos` com `proxy_buffering off`), e a medição agora prova que
+funciona: três pedaços de 13 B chegando a **42 ms, 25.039 ms e 50.038 ms** de
+conexão aberta. Com `proxy_buffering on`, os três chegariam juntos no fim.
+
+**A metade da API não estava.** `GET /api/eventos` escrevia `: conectado` e depois
+ficava mudo **até o poller achar mudança de verdade** — o que numa madrugada leva
+horas. Conexão silenciosa é indistinguível de conexão morta para qualquer
+intermediário: este repositório dá `proxy_read_timeout 1h`, mas o terminador de TLS
+e o balanceador da infraestrutura não foram configurados por nós, e 60 s de
+ociosidade é o padrão comum.
+
+E o sintoma é dos piores de diagnosticar: **o `EventSource` reconecta sozinho.**
+Nada aparece quebrado. O realtime só "às vezes não chega", e não há linha de log
+nenhuma.
+
+Conserto: batimento de 25 s (`Servidor.BATIMENTO_SSE_MS`) — comentário SSE (`:`),
+que o navegador descarta sem disparar handler. 15 bytes por assinante a cada 25 s.
+Liga no primeiro assinante, **desliga no último**: um `setInterval` vazado não muda
+resposta nenhuma, então só um teste o pega (`batimentoLigado`).
+
+### O que a assertividade local mediu depois dos três consertos
+
+Pelo proxy na porta 80, imagem reconstruída, cache frio (Redis `FLUSHALL` + reinício
+da API antes de cada passe):
+
+```
+forma da carga            páginas   RSS pico   folga de 6144 MB   OOMKilled
+------------------------------------------------------------------------------
+sequencial, 10 frias        10/10     4356 MB           1788 MB       false
+concorrente, 10 frias       10/10     4321 MB           1823 MB       false
+quente, 3 chamadas/página   10/10     2188 MB           3956 MB       false
+```
+
+`restarts=0` nas três. E as três chamadas por página quente devolveram **corpo
+idêntico byte a byte** nas 10 — depois de tirar da comparação o campo `cache`
+(`"miss"` na 1ª chamada, `"hit"` na 2ª), que é metadado da resposta. **Essa
+armadilha vale registrar:** a primeira comparação acusou 10/10 corpos instáveis, e o
+que estava instável era o cache, não o dado. Comparar o corpo cru de um endpoint que
+declara o próprio cache mede o cache.
+
+### O arquivo que existe para não mentir
+
+`docker-compose.local.yml` declara `SEM_LOGIN=1` **e** `NODE_ENV=development`
+juntos. A guarda recusa `SEM_LOGIN=1` com `NODE_ENV=production` de propósito — para
+que ninguém desligue o login *fingindo* estar em produção. O override obedece à
+regra em vez de furá-la: paga o preço de admitir que é desenvolvimento.

@@ -160,6 +160,15 @@ export interface ServidorOptions {
    */
   tetoDeVisuaisMB?: number;
   /**
+   * Intervalo do batimento do SSE, em ms. Padrão 25.000 — ver
+   * `Servidor.BATIMENTO_SSE_MS` para o porquê desse número.
+   *
+   * Existe como opção só para poder ser TESTADO: um teste que esperasse 25 s
+   * pelo segundo batimento não seria escrito, e um batimento que ninguém testa
+   * é um `setInterval` que se acredita estar ligado.
+   */
+  batimentoSseMs?: number;
+  /**
    * O poller de quase-realtime (`apps/api/src/poller-realtime.ts`), consultado a
    * cada `carrega()` — nunca guardado por mais que um pedido, porque o overlay
    * muda entre pedidos e `carregadas` (abaixo) não pode congelar uma versão
@@ -177,7 +186,12 @@ export interface ServidorOptions {
 export class Servidor {
   private readonly piscina: PiscinaWorkers;
 
-  private readonly opts: Required<Omit<ServidorOptions, 'cache' | 'aoFalharCache' | 'verificadorGoogle'>>;
+  // `piscinaWorkers` entra no Omit porque o construtor a desestrutura FORA de
+  // `resto` (vira `this.piscina`) — sem ela aqui, o tipo exige um padrão que
+  // nunca é escrito e o compilador acusa a linha errada.
+  private readonly opts: Required<
+    Omit<ServidorOptions, 'cache' | 'aoFalharCache' | 'verificadorGoogle' | 'piscinaWorkers'>
+  >;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
    *  "padrão" que faça sentido preencher, diferente dos outros campos. */
@@ -231,6 +245,30 @@ export class Servidor {
   private readonly queriesPorDashboard = new Map<string, string[]>();
   /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
   private readonly assinantesSSE = new Set<http.ServerResponse>();
+
+  /**
+   * Intervalo do batimento do SSE, em ms. 25 s por um motivo concreto: o valor
+   * tem de ficar ABAIXO do menor timeout de ociosidade no caminho, e 30 s ou
+   * 60 s é o que a maioria dos intermediários usa por padrão.
+   *
+   * POR QUE EXISTE. `GET /api/eventos` mandava `: conectado` e depois ficava
+   * MUDO até o poller achar mudança de verdade — o que pode levar horas numa
+   * madrugada. Uma conexão silenciosa é indistinguível de uma conexão morta
+   * para qualquer proxy no meio: o `nginx.conf` deste repositório dá
+   * `proxy_read_timeout 1h`, mas o que estiver na frente dele (terminador de
+   * TLS, balanceador da infraestrutura) não foi configurado por nós.
+   *
+   * O sintoma que isso evita é dos piores de diagnosticar: o `EventSource` do
+   * navegador reconecta sozinho, então nada aparece quebrado — o realtime só
+   * "às vezes não chega", e o log não registra nada.
+   *
+   * Comentário SSE (`:`), não `event:`: linha que o `EventSource` descarta sem
+   * disparar handler nenhum. Custa 15 bytes por assinante a cada 25 s.
+   */
+  private static readonly BATIMENTO_SSE_MS = 25_000;
+
+  /** `setInterval` do batimento. Só existe enquanto houver assinante. */
+  private batimentoSSE: NodeJS.Timeout | null = null;
   /** Cache do carimbo em memória para evitar fs.readFileSync por pedido HTTP no hot-path. */
   private carimboMemo: string | null = null;
   private watcherSnapshot: fs.FSWatcher | null = null;
@@ -249,6 +287,7 @@ export class Servidor {
       dominioCorporativo: 'sebratel.com.br',
       sessaoTtlHoras: 12,
       tokenInterno: '',
+      batimentoSseMs: Servidor.BATIMENTO_SSE_MS,
       overlayRealtime: () => new Map(),
       ...resto,
     };
@@ -303,6 +342,7 @@ export class Servidor {
       this.watcherSnapshot.close();
       this.watcherSnapshot = null;
     }
+    this.desligaBatimento();
     this.piscina.destroi();
   }
 
@@ -549,9 +589,52 @@ export class Servidor {
     // de verdade para sair do estado "conectando".
     res.write(': conectado\n\n');
     this.assinantesSSE.add(res);
+    this.ligaBatimento();
     req.on('close', () => {
       this.assinantesSSE.delete(res);
+      // Sem assinante o temporizador não tem o que fazer. Deixá-lo rodando
+      // acordaria o processo a cada 25 s para escrever em ninguém.
+      if (this.assinantesSSE.size === 0) this.desligaBatimento();
     });
+  }
+
+  /**
+   * Liga o batimento se ainda não estiver ligado. Idempotente de propósito:
+   * `eventos()` chama a cada conexão nova, e são N assinantes num temporizador,
+   * não um temporizador por assinante.
+   */
+  private ligaBatimento(): void {
+    if (this.batimentoSSE) return;
+    this.batimentoSSE = setInterval(() => {
+      for (const res of this.assinantesSSE) {
+        // `write` num socket já morto não lança — devolve `false` e emite
+        // 'error' no stream. Quem limpa o Set é o `req.on('close')`; aqui só
+        // não vale deixar a exceção subir e derrubar o temporizador dos outros.
+        try {
+          res.write(': batimento\n\n');
+        } catch {
+          /* conexão indo embora; o 'close' remove do Set */
+        }
+      }
+    }, this.opts.batimentoSseMs);
+    // Um temporizador de 25 s manteria o event loop vivo para sempre — e a
+    // suíte de testes penduraria em vez de terminar.
+    this.batimentoSSE.unref?.();
+  }
+
+  private desligaBatimento(): void {
+    if (!this.batimentoSSE) return;
+    clearInterval(this.batimentoSSE);
+    this.batimentoSSE = null;
+  }
+
+  /**
+   * O batimento está ligado? Existe para o teste poder afirmar que ele PARA
+   * quando o último assinante sai — um `setInterval` vazado não muda resposta
+   * nenhuma, então nada além disto o pegaria.
+   */
+  get batimentoLigado(): boolean {
+    return this.batimentoSSE !== null;
   }
 
   /** Manda `dashboards` para toda conexão SSE aberta. Sem assinante, não faz nada. */

@@ -1,0 +1,38 @@
+# SOBREPOSIÇÃO LOCAL — NÃO É PRODUÇÃO, E O ARQUIVO EXISTE PARA DIZER ISSO.
+#
+# Por que existe. Desde 04/09/2026 a API RECUSA subir sem `GOOGLE_CLIENT_ID`
+# (`apps/api/src/portao-login.ts`), e o `.env` desta máquina tem a variável
+# vazia. Então `docker-compose.prod.yml` sozinho **não sobe aqui — de
+# propósito**. Isso é a guarda funcionando, não um problema a contornar.
+#
+# O contorno honesto é declarar as duas coisas ao mesmo tempo:
+#   SEM_LOGIN=1        -> sim, eu quero servir sem autenticação
+#   NODE_ENV=development -> e não, isto não é uma imagem de produção
+#
+# A guarda recusa a combinação `SEM_LOGIN=1` + `NODE_ENV=production` exatamente
+# para que ninguém consiga desligar o login *fingindo* estar em produção. Este
+# arquivo obedece à regra em vez de furá-la: paga o preço de admitir que é
+# desenvolvimento.
+#
+# O QUE ESTA STACK SERVE SEM PEDIR NADA: CLIENTE, TELEFONE, endereço. Só use em
+# máquina sua, e não publique a porta para a rede.
+#
+# Uso (a ordem dos -f importa; o último vence por chave):
+#   docker compose -f docker-compose.prod.yml -f docker-compose.local.yml up -d --build
+#   docker compose -f docker-compose.prod.yml -f docker-compose.local.yml logs -f api
+#   docker compose -f docker-compose.prod.yml -f docker-compose.local.yml down
+#
+# Se 3100 estiver ocupada no host (foi o caso: um `npm start` do próprio
+# projeto), prefixe `API_PORT_HOST=3101`.
+#
+# CONFERIR QUE A GUARDA CONTINUA VIVA. Suba SEM este arquivo e o container tem
+# de morrer com "[login] RECUSANDO SUBIR" no log:
+#   docker compose -f docker-compose.prod.yml up api
+
+services:
+  api:
+    environment:
+      SEM_LOGIN: '1'
+      # Rebaixa o `production` declarado em docker-compose.prod.yml. Sem esta
+      # linha a própria guarda recusa a stack — e está certa.
+      NODE_ENV: development

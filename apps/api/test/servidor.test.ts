@@ -111,6 +111,9 @@ async function servidorComLogin(
 async function servidorComOverlay(
   snapshotDir: string,
   overlayRealtime: () => ReadonlyMap<string, (doDisco: readonly Record<string, unknown>[]) => Record<string, unknown>[]>,
+  // Opções extras deste servidor. Existe por causa do `batimentoSseMs`: o
+  // padrão é 25 s, e nenhum teste pode esperar isso.
+  extras: Record<string, unknown> = {},
 ): Promise<{
   servidor: Servidor;
   busca: (rota: string, init?: RequestInit) => Promise<Response>;
@@ -123,6 +126,7 @@ async function servidorComOverlay(
     agora: () => AGORA,
     identifica: () => ({ usuario: 'teste', papeis: ['autenticado'] }),
     overlayRealtime: overlayRealtime as never,
+    ...extras,
   });
   const http = servidor.criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
@@ -1126,6 +1130,68 @@ test('GET /api/eventos: content-type de SSE, e aoTabelaMudar manda o dashboard a
     assert.ok(corpo.dashboards.includes('capa'), `capa devia estar na lista: ${corpo.dashboards.join(', ')}`);
 
     await leitor.cancel();
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('GET /api/eventos: manda batimento sozinho, sem nenhuma mudança de tabela', async () => {
+  // O DEFEITO QUE ISTO GUARDA. Até 04/09/2026 a rota mandava `: conectado` e
+  // ficava MUDA até o poller achar mudança de verdade — o que numa madrugada
+  // leva horas. Conexão silenciosa é indistinguível de conexão morta para
+  // qualquer proxy no caminho, e o `EventSource` reconecta sozinho: o realtime
+  // só "às vezes não chega", sem erro em log nenhum.
+  //
+  // Note que NADA muda aqui — nenhum `aoTabelaMudar`. Se o batimento não
+  // existir, este teste espera para sempre e o `node --test` o mata por tempo.
+  const s = await servidorComOverlay(await dirComCapa(), () => new Map(), { batimentoSseMs: 20 });
+  try {
+    const resp = await s.busca('/api/eventos');
+    const leitor = resp.body!.getReader();
+
+    const primeira = await leitor.read();
+    assert.match(Buffer.from(primeira.value!).toString(), /^: conectado/);
+
+    // Dois, não um: um só provaria que algo chegou; dois provam que REPETE.
+    for (const enesimo of ['primeiro', 'segundo']) {
+      const b = await leitor.read();
+      assert.match(
+        Buffer.from(b.value!).toString(),
+        /^: batimento/,
+        `${enesimo} batimento não chegou`,
+      );
+    }
+
+    // Comentário SSE (`:`), não `event:`/`data:` — o navegador tem de DESCARTAR
+    // sem disparar handler. Um batimento que virasse evento faria a tela
+    // rebuscar todas as páginas a cada 25 s.
+    assert.ok(s.servidor.batimentoLigado, 'com assinante aberto, o temporizador tem de estar ligado');
+
+    await leitor.cancel();
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('GET /api/eventos: o batimento PARA quando o último assinante sai', async () => {
+  // Um `setInterval` vazado não muda resposta nenhuma — só acorda o processo a
+  // cada 25 s para escrever em ninguém, para sempre. Nada além deste teste o
+  // pegaria.
+  const s = await servidorComOverlay(await dirComCapa(), () => new Map(), { batimentoSseMs: 20 });
+  try {
+    assert.equal(s.servidor.batimentoLigado, false, 'sem assinante, nada a bater');
+
+    const resp = await s.busca('/api/eventos');
+    const leitor = resp.body!.getReader();
+    await leitor.read();
+    assert.equal(s.servidor.batimentoLigado, true);
+
+    await leitor.cancel();
+    // `close` do `req` é assíncrono; espera o servidor perceber a saída.
+    for (let i = 0; i < 100 && s.servidor.batimentoLigado; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    assert.equal(s.servidor.batimentoLigado, false, 'batimento continuou ligado sem assinante');
   } finally {
     await s.fecha();
   }
