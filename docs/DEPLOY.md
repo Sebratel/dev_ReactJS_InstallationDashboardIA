@@ -1,5 +1,28 @@
 # Deploy — plano de entrega para produção
 
+> ## ⚠️ ESTE DOCUMENTO ESTÁ DESATUALIZADO — leia [PLANO-DUPLA.md](PLANO-DUPLA.md) §0 primeiro
+>
+> **Conferido no código em 04/09/2026.** Ele erra na direção mais perigosa: lista
+> como *"não existe"* três coisas que **já estão commitadas**, e trabalhar por esta
+> tabela é gastar dias reabrindo bloqueio fechado.
+>
+> | o que este documento diz | o que o código diz |
+> |---|---|
+> | §0/§2.1 "não existe login. A API serve todo número a todo pedido" | **existe e é testado** — Google SSO, 401 antes do roteamento (`apps/api/src/auth-google.ts`, `servidor.test.ts:782`) |
+> | §0/§3 "não existe nenhum `Dockerfile`", "nenhum arquivo de Nginx", "nada nesta seção existe" | **existem** — `Dockerfile`, `docker-compose.prod.yml`, `nginx.conf` (commit `7642fab`) |
+> | §0/§2.1 "as páginas que expõem dado pessoal" | **nenhuma das 14 specs de dashboard usa `QUADRO FUNCIONAL`** (onde estão CPF/RG). O dado está em `snapshot/`, não na tela |
+> | §4/§7 "1357 testes verdes" | **1627** |
+> | §0 "SSE perdido com a árvore de 21/08" | **existe** — `EventSource('/api/eventos')` em `apps/web/src/App.tsx:153` |
+>
+> **O que continua verdadeiro, e é o que importa:** o refresh não está agendado no
+> host, três queries têm defeito de carga, a piscina de workers autoriza 4 × 8 GB, a
+> paridade não está fechada, e **a stack nunca subiu numa máquina que não é a do
+> Erick**. Esses estão na fila em [PLANO-DUPLA.md](PLANO-DUPLA.md) §3.
+>
+> Não apaguei as seções erradas: a §3 tem o desenho da imagem e as armadilhas de
+> `.env` (porta 3000 × 3100) que continuam valendo, e a §7 é uma boa lista de dia de
+> deploy. Leia-as como projeto, não como estado.
+
 > **Escrito em 21/08/2026, corrigido em 27/08/2026.** Este documento tem uma regra só: **separar o que está
 > pronto do que parece pronto.** Ele não repete o histórico (isso é o `README.md`) nem
 > o estado detalhado de cada camada (isso é o `CONTINUACAO.md`). Ele responde
