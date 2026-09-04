@@ -263,6 +263,16 @@ export function aplicaTipo(c: ModelColumn, v: DaxValue, tabela: string): DaxValu
   if (c.type === 'dateTime') {
     if (typeof v === 'number') return dateFromSerial(v);
     if (typeof v === 'string') {
+      const m = /^(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/.exec(v);
+      if (m) {
+        const h = Number(m[1]);
+        const min = Number(m[2]);
+        const s = Number(m[3]);
+        const ms = m[4] ? Number(m[4].slice(0, 3).padEnd(3, '0')) : 0;
+        if (h >= 0 && h < 24 && min >= 0 && min < 60 && s >= 0 && s < 60) {
+          return new Date(Date.UTC(1899, 11, 30, h, min, s, ms));
+        }
+      }
       throw new DaxEvalError(
         `'${tabela}'[${c.name}] é declarada dateTime e o DAX devolveu o texto ` +
           `${JSON.stringify(v)}. DAX não converte texto para data implicitamente — ` +

@@ -124,3 +124,24 @@ test('BLANK atravessa a conversão sem virar zero', () => {
   assert.equal(ev.evaluateExpression("COUNTA('OS'[C])"), BLANK);
   assert.equal(ev.evaluateExpression("SUM('OS'[C])"), BLANK);
 });
+
+test('coluna declarada dateTime com texto de hora vira Date sobre a época 1899-12-30', () => {
+  const ev = montar('dateTime', '"20:23:18.533795"');
+  const vals = ev.columnValues('OS', 'C') as Date[];
+  assert.equal(vals.length, 2);
+  assert.ok(vals[0] instanceof Date);
+  assert.equal(vals[0].toISOString(), '1899-12-30T20:23:18.533Z');
+
+  const evSimples = montar('dateTime', '"08:30:00"');
+  const valsSimples = evSimples.columnValues('OS', 'C') as Date[];
+  assert.equal(valsSimples[0].toISOString(), '1899-12-30T08:30:00.000Z');
+});
+
+test('coluna declarada dateTime com texto que não é hora válida erra alto', () => {
+  const ev = montar('dateTime', '"texto-invalido"');
+  assert.throws(() => ev.evaluateExpression("COUNTA('OS'[C])"), (e: unknown) => {
+    assert.ok(e instanceof DaxEvalError);
+    assert.match(e.message, /é declarada dateTime e o DAX devolveu o texto "texto-invalido"/);
+    return true;
+  });
+});

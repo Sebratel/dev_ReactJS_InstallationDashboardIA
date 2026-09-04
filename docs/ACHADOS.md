@@ -7685,10 +7685,9 @@ página fria custa 10-20 s, e com a API numa thread só nada mais é servido nes
 Menos workers, ou um `maxOldGenerationSizeMb` que caiba no total, trocam latência de
 página fria por RAM. É decisão de quem opera o servidor.
 
-## Três páginas não carregam: `HORA CRIADO` é declarada `dateTime` e o DAX devolve texto
+## Três páginas não carregavam: `HORA CRIADO` é declarada `dateTime` e o DAX devolvia texto — RESOLVIDO em 04/09/2026
 
-`npm run bench:carga -- --paginas`, 04/09/2026, **antes** de qualquer mudança desta
-sessão (está nos dois baselines, com o snapshot cru e com o comprimido):
+`npm run bench:carga -- --paginas`, 04/09/2026:
 
 ```
 diario-instalacao:     'PROTOCOLOS PRODUTIVIDADE'[HORA CRIADO] é declarada dateTime
@@ -7696,6 +7695,19 @@ premiacao-instalacao:   e o DAX devolveu o texto "20:23:18.533795".
 protocolos-detalhados:
 ```
 
-As outras 11 páginas carregam. É pré-existente e não tem relação com compressão nem com
-a tradução nativa — fica registrado porque **três das quatorze páginas estão fora do ar
-agora**, e nenhum documento dizia isso.
+As outras 11 páginas carregavam. O erro acontecia porque `protocolos-produtividade` vem
+do PostgreSQL via SQL de produção com `"DATA CRIADO"::time AS "HORA CRIADO"`. O driver `pg`
+entrega colunas `time` como string textual (`"20:23:18.533795"`). Ao rodar
+`aplicaTiposDeclarados`, a declaração `type: dateTime` da spec exigia conversão via
+`aplicaTipo`, que só aceitava números de série e lançava `DaxEvalError` para qualquer string.
+
+**Solução aplicada em `packages/measure-engine/src/calculated.ts`:**
+`aplicaTipo` agora reconhece formato de hora pura (`HH:mm:ss[.SSSSSS]`) e converte para
+`Date` sobre a época canônica OLE (1899-12-30 UTC) — idêntico ao que `toDatasetRows`
+(`transform-engine/value.ts`) faz para `MTime`, e ao que o formatador do front-end
+(`apps/web/src/formato.ts:65-67`) espera para campos de hora (`d.getUTCFullYear() <= 1900`).
+Strings com data textual (`DD/MM/YYYY`) continuam errando alto para evitar ambiguidade de mês/dia.
+
+**Medido após a correção:**
+14 de 14 páginas carregando com sucesso (`npm run bench:carga -- --paginas`), todas em ~0,7s a 1,7s.
+1.627 testes passando em verde (`npm test`).
