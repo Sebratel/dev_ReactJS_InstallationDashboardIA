@@ -12,11 +12,12 @@
 
 import { codificaFiltro } from '../../../packages/widget-engine/src/filtro-url.ts';
 import type { TipoDeValor } from './formato.ts';
+import type { RespostaSaude } from './aviso-saude.ts';
 // Tipo só — `tools/layout` é consumido aqui só pelo formato do contrato, sem custo de
 // bundle (é `import type`, o esbuild apaga por completo). Ver docs/PLANO-LAYOUT-V1.md §6.
 import type { ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec } from '../../../tools/layout/src/schema.ts';
 
-export type { TipoDeValor, ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec };
+export type { TipoDeValor, ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec, RespostaSaude };
 
 /** Um valor de célula já serializado — data vira ISO, BLANK vira `null`. */
 export type Valor = string | number | boolean | null;
@@ -260,3 +261,5 @@ export const pegaValores = (
   coluna: string,
   nivel?: string,
 ): Promise<ValoresDeColuna> => pega(urlDeValores(id, tabela, coluna, nivel));
+
+export const pegaSaude = (signal?: AbortSignal): Promise<RespostaSaude> => pega('/api/saude', signal);

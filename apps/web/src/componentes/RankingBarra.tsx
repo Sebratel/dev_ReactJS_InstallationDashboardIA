@@ -77,7 +77,14 @@ export function RankingBarra({
   const d = visual.dados as DadosDeGrafico | undefined;
   const gTudo = d && d.series && d.pontos ? montaGrafico(d) : null;
 
-  if (!d || !gTudo) return null;
+  if (!d || !gTudo) {
+    const titulo = tituloDoVisual(visual);
+    return (
+      <Cartao titulo={titulo} id={visual.id} altura="grafico">
+        <p className="sob-demanda">Sem dados disponíveis para o ranking.</p>
+      </Cartao>
+    );
+  }
 
   const serie = gTudo.series[0];
   const linhas: LinhaRanking[] = gTudo.categorias.map((c, i) => ({

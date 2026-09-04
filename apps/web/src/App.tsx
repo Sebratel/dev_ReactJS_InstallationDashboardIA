@@ -7,15 +7,18 @@ import {
   listaDashboards,
   pegaLayout,
   pegaPagina,
+  pegaSaude,
   sai,
   urlDaPagina,
   type DashboardDaLista,
   type FiltroDaTela,
   type LayoutSpec,
   type PaginaCalculada,
+  type RespostaSaude,
   type Valor,
 } from './api.ts';
-import { LIMITE_DIAS_DADO_ATRASADO, dataHora, diasDesde, duracao, inteiro } from './formato.ts';
+import { avaliaSaudeQueries } from './aviso-saude.ts';
+import { dataHora, duracao, inteiro } from './formato.ts';
 import { usaAlturaMedida, usaEspacoSemVisual } from './altura-medida.ts';
 import { apagaPaginaDoCache, guardaPaginaVista } from './cache-pagina.ts';
 import { idsIniciais } from './carga-progressiva.ts';
@@ -109,6 +112,23 @@ export function App() {
   // jeito de reabrir o efeito de busca abaixo sem depender de `atual`/`filtros`/
   // `clicados` terem mudado (ACHADOS #89/#90: a tela se atualiza sozinha).
   const [revalidar, setRevalidar] = useState(0);
+  // Saúde das queries do refresh (Marco A6) — monitora atrasos e falhas por query.
+  const [saude, setSaude] = useState<RespostaSaude | null>(null);
+
+  useEffect(() => {
+    let cancelado = false;
+    pegaSaude()
+      .then((s) => {
+        if (!cancelado) setSaude(s);
+      })
+      .catch(() => {
+        // Rota /api/saude responde silenciosamente se endpoint não responder ou em mock
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [revalidar]);
+
   // O efeito do SSE roda uma vez por sessão de login — ler `atual` fresco de um
   // ref evita reabrir a conexão a cada troca de aba (senão perderia evento no
   // meio da troca, e reconectar sem necessidade é o oposto do que R6 já evita
@@ -452,10 +472,9 @@ export function App() {
 
   const nome = paginas.find((p) => p.id === atual)?.nome ?? 'Instalação';
 
-  // O dado não se atualiza sozinho (DECISAO-REALTIME.md) — sem este aviso, a
-  // única pista da idade era um texto pequeno e sem cor no canto do cabeçalho.
-  const idadeDoDadoEmDias = pagina ? diasDesde(pagina.dadoDe) : null;
-  const dadoAtrasado = idadeDoDadoEmDias !== null && idadeDoDadoEmDias > LIMITE_DIAS_DADO_ATRASADO;
+  // O dado não se atualiza sozinho (DECISAO-REALTIME.md).
+  // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por query.
+  const avisoSaude = avaliaSaudeQueries(saude?.refresh?.queries, pagina?.dadoDe);
 
   // Sem sessão válida, a tela inteira vira o login — nenhum outro estado
   // (esqueleto, erro, dashboard) faz sentido enquanto isso for verdade, e o
@@ -477,13 +496,14 @@ export function App() {
       }}
       titulo={nome}
       sub={
-        pagina
-          ? dadoAtrasado
-            ? `dado desatualizado — ${dataHora(pagina.dadoDe)}`
-            : `dado de ${dataHora(pagina.dadoDe)}`
-          : ''
+        avisoSaude.temAviso
+          ? avisoSaude.mensagem
+          : pagina
+            ? `dado de ${dataHora(pagina.dadoDe)}`
+            : ''
       }
-      subAviso={dadoAtrasado}
+      subAviso={avisoSaude.temAviso}
+      avisoSaude={avisoSaude}
       acoes={
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button
@@ -604,7 +624,9 @@ export function App() {
             DOIS cartões de indicador num vazio. O componente que a substitui existia
             desde 26/08 e nunca foi importado; os dois KPIs continuam abaixo, porque
             são dado de verdade. */}
-        {atual === 'capa' ? <Capa dadoDe={pagina?.dadoDe ?? null} /> : null}
+        {atual === 'capa' ? (
+          <Capa dadoDe={pagina?.dadoDe ?? null} queriesSaude={saude?.refresh?.queries} />
+        ) : null}
 
         {/* Faixa de KPIs em Grid Responsivo */}
         <KpiGridSection layout={layout} visuais={visuais} />

@@ -20,6 +20,7 @@
 
 import { dataHora } from '../formato.ts';
 import { VERSOES } from '../capa-versoes.ts';
+import { formataDiasIdade, type QuerySaude } from '../aviso-saude.ts';
 
 const OBJETIVOS = [
   'Monitorar a capacidade total e a utilização das equipes técnicas;',
@@ -36,7 +37,8 @@ function Topo({ children }: { children: string }) {
   return <div className="capa-topo">{children}</div>;
 }
 
-export function Capa({ dadoDe }: { dadoDe?: string | null }) {
+export function Capa(props: { dadoDe?: string | null; queriesSaude?: readonly QuerySaude[] }) {
+  const dadoDe = props.dadoDe;
   return (
     <div className="capa">
       <div className="capa-cartao">
@@ -115,6 +117,31 @@ export function Capa({ dadoDe }: { dadoDe?: string | null }) {
                 agendado acima.
               </p>
             </div>
+            {props.queriesSaude && props.queriesSaude.length > 0 ? (
+              <div className="capa-nota">
+                <span className="rot">Saúde das Queries de Refresh</span>
+                <ul style={{ margin: '4px 0 0', paddingLeft: 18, listStyleType: 'disc', fontSize: '.75rem' }}>
+                  {props.queriesSaude.map((q) => {
+                    const cor =
+                      q.status === 'falhou'
+                        ? 'var(--pbi-critico-texto)'
+                        : q.status === 'vencida'
+                          ? 'var(--pbi-gold-600)'
+                          : 'var(--pbi-green-texto)';
+                    return (
+                      <li key={q.id} style={{ color: cor, fontWeight: q.status === 'ok' ? 400 : 600 }}>
+                        <strong>{q.id}</strong>:{' '}
+                        {q.status === 'falhou'
+                          ? `carga falhou${q.erro ? ` (${q.erro})` : ''}`
+                          : q.status === 'vencida'
+                            ? `vencida há ${formataDiasIdade(q.idadeDias)}`
+                            : `ok (${formataDiasIdade(q.idadeDias)})`}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
           </div>
         </section>
       </div>

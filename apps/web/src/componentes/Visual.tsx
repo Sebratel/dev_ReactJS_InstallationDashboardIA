@@ -4,6 +4,7 @@ import type { FiltroDaTela, VisualCalculado } from '../api.ts';
 import type { AoFiltrar } from '../rota.ts';
 import { SobDemanda } from './SobDemanda.tsx';
 import { VisualPronto } from './VisualPronto.tsx';
+import { VisualErrorBoundary } from './VisualErrorBoundary.tsx';
 
 export function Visual(props: {
   pagina: string;
@@ -13,18 +14,15 @@ export function Visual(props: {
   aoFiltrar?: AoFiltrar;
   render?: string;
 }) {
-  if (props.visual.sobDemanda) {
-    return (
-      <SobDemanda
-        pagina={props.pagina}
-        visual={props.visual}
-        filtros={props.filtros}
-        clicados={props.clicados}
-        render={props.render}
-      />
-    );
-  }
-  return (
+  const corpo = props.visual.sobDemanda ? (
+    <SobDemanda
+      pagina={props.pagina}
+      visual={props.visual}
+      filtros={props.filtros}
+      clicados={props.clicados}
+      render={props.render}
+    />
+  ) : (
     <VisualPronto
       pagina={props.pagina}
       visual={props.visual}
@@ -33,4 +31,6 @@ export function Visual(props: {
       render={props.render}
     />
   );
+
+  return <VisualErrorBoundary visual={props.visual}>{corpo}</VisualErrorBoundary>;
 }

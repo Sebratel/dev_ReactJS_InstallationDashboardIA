@@ -25,7 +25,14 @@ export function Tabela(props: {
   const janela = usaJanela(props.pagina, props.visual, props.filtros);
   const d = janela.visual.dados as DadosDeTabela | undefined;
 
-  if (!d || !d.colunas || !d.linhas) return null;
+  if (!d || !d.colunas || !d.linhas) {
+    const titulo = tituloDeTabela(props.visual, d?.colunas ?? []);
+    return (
+      <Cartao titulo={titulo} id={props.visual.id} altura="tabela">
+        <p className="sob-demanda">Sem dados disponíveis para a tabela.</p>
+      </Cartao>
+    );
+  }
 
   const [colOrdenada, setColOrdenada] = useState<number | null>(null);
   const [ordemDesc, setOrdemDesc] = useState<boolean>(false);

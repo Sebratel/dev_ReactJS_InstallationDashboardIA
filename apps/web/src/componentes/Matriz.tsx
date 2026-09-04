@@ -37,7 +37,14 @@ export function Matriz(props: {
   const visual = janela.visual;
   const d = visual.dados as DadosDeMatriz | undefined;
 
-  if (!d || !d.colunas || !d.linhas) return null;
+  if (!d || !d.colunas || !d.linhas) {
+    const titulo = tituloDeMatriz(visual, d);
+    return (
+      <Cartao titulo={titulo} id={visual.id} altura="matriz">
+        <p className="sob-demanda">Sem dados disponíveis para a matriz.</p>
+      </Cartao>
+    );
+  }
 
   const semEixoDeColuna = d.colunas.length === 1 && d.colunas[0]?.length === 0;
   const tudoCarregado = d.linhas.length === d.linhasTotais;

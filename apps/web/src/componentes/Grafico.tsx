@@ -135,7 +135,14 @@ export function Grafico({
     };
   }, [gTudo, de, ate, nTotal, isDark]);
 
-  if (!d || !g || !gTudo) return null;
+  if (!d || !g || !gTudo) {
+    const titulo = tituloDoVisual(visual);
+    return (
+      <Cartao titulo={titulo} id={visual.id} altura="grafico">
+        <p className="sob-demanda">Sem dados disponíveis para o gráfico.</p>
+      </Cartao>
+    );
+  }
 
   const areas = g.series.filter((s) => s.desenho === 'area');
   const linhas = g.series.filter((s) => s.desenho === 'linha');

@@ -9,29 +9,30 @@ export function Card({ visual }: { visual: VisualCalculado }) {
   const d = visual.dados as DadosDeCard | undefined;
   if (!d) return null;
   const f = formata(d.valor, d.tipoDoValor);
+  const filtros = d.filtros ?? [];
 
   // A origem some da tela quando o card está certo e aparece quando alguém duvida
   // dele. É a diferença entre "466" e "466, que é DISTINCTCOUNT de CONTRATOS[CLIENTE]"
   // — e a pergunta #6 do PERGUNTAS-NEGOCIO nasceu exatamente dessa dúvida.
   const origem =
-    d.origem.kind === 'measure'
-      ? `medida [${d.origem.measure}]`
-      : `${(d.origem.aggregation ?? '?').toUpperCase()} de ${d.origem.table}[${d.origem.column}]`;
+    d.origem?.kind === 'measure'
+      ? `medida [${d.origem?.measure ?? '?'}]`
+      : `${(d.origem?.aggregation ?? '?').toUpperCase()} de ${d.origem?.table ?? '?'}[${d.origem?.column ?? '?'}]`;
 
   return (
     <section className="cartao">
       <h3 className="kpi-nome">{d.nome ?? '(sem rótulo)'}</h3>
       <div className={`kpi-valor${f.vazio ? ' vazio' : ''}`}>{f.texto}</div>
-      {d.filtros.length ? (
+      {filtros.length ? (
         <div className="kpi-filtros" title="Segmentações que afetam este número">
-          {d.filtros.length} filtro(s) aplicado(s)
+          {filtros.length} filtro(s) aplicado(s)
         </div>
       ) : null}
       {conferencia ? (
         <>
           <div className="kpi-origem">
             {origem}
-            {d.filtros.length ? ` · ${d.filtros.length} filtro(s)` : ''}
+            {filtros.length ? ` · ${filtros.length} filtro(s)` : ''}
           </div>
           <div className="kpi-origem">
             <span className="id-visual" title="id do visual — a chave de specs/paridade">

@@ -11,6 +11,7 @@ import { Matriz } from './Matriz.tsx';
 import { RankingBarra } from './RankingBarra.tsx';
 import { Rosca } from './Rosca.tsx';
 import { Tabela } from './Tabela.tsx';
+import { tituloDoVisual } from '../rotulos.ts';
 
 export function VisualPronto({
   pagina,
@@ -27,10 +28,21 @@ export function VisualPronto({
    *  (KPI, visual sob demanda antigo) usa sempre o desenho padrão do `conteudo`. */
   render?: string;
 }) {
+  const titulo = tituloDoVisual(visual);
+  const altura = alturaDoConteudo(visual.conteudo);
+
   if (visual.erro) {
     return (
-      <Cartao titulo={visual.tipo} sub="não calculou" id={visual.id} altura={alturaDoConteudo(visual.conteudo)}>
+      <Cartao titulo={titulo} sub="não calculou" id={visual.id} altura={altura}>
         <Erro>{visual.erro}</Erro>
+      </Cartao>
+    );
+  }
+
+  if (!visual.dados) {
+    return (
+      <Cartao titulo={titulo} sub="sem dados" id={visual.id} altura={altura}>
+        <p className="sob-demanda">Sem dados disponíveis para este visual.</p>
       </Cartao>
     );
   }
@@ -48,5 +60,9 @@ export function VisualPronto({
     return <Grafico visual={visual} aoFiltrar={aoFiltrar} filtros={filtros} />;
   }
 
-  return null;
+  return (
+    <Cartao titulo={titulo} sub="não suportado" id={visual.id} altura="auto">
+      <Erro>Tipo de visual não suportado: {visual.conteudo ?? visual.tipo}</Erro>
+    </Cartao>
+  );
 }

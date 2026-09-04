@@ -16,6 +16,7 @@
 
 import type { ReactNode } from 'react';
 import type { DashboardDaLista } from '../api.ts';
+import type { EstadoAvisoSaude } from '../aviso-saude.ts';
 import { usaAlturaMedida } from '../altura-medida.ts';
 import { useThemeStore } from '../store/useThemeStore.ts';
 import { usaModo } from '../modo.tsx';
@@ -34,6 +35,7 @@ import {
   Moon,
   Eye,
   LogOut,
+  AlertTriangle,
 } from 'lucide-react';
 import type { ComponentType } from 'react';
 
@@ -71,6 +73,8 @@ export function AppShell(props: {
    *  `LIMITE_DIAS_DADO_ATRASADO` em `formato.ts`. Troca o carimbo discreto por
    *  um aviso, em vez de deixar a idade do dado só no texto pequeno do canto. */
   subAviso?: boolean;
+  /** Aviso de saúde ou falha das queries do snapshot (Marco A6). */
+  avisoSaude?: EstadoAvisoSaude;
   acoes?: ReactNode;
   /** Encerra a sessão de login. Sempre presente — a tela só chega a existir
    *  depois que há sessão, então sempre há como sair dela. */
@@ -162,6 +166,17 @@ export function AppShell(props: {
           </button>
         </div>
       </header>
+
+      {props.avisoSaude?.temAviso ? (
+        <div
+          className={`banner-saude banner-saude-${props.avisoSaude.nivel}`}
+          role="alert"
+          title={props.avisoSaude.mensagem}
+        >
+          <AlertTriangle size={15} style={{ flex: 'none' }} />
+          <span>{props.avisoSaude.mensagem}</span>
+        </div>
+      ) : null}
 
       {/* `flex-wrap` e não rolagem horizontal: aba escondida atrás de um scroll é
           aba que ninguém acha, e a regra de layout desta casa proíbe a PÁGINA rolar

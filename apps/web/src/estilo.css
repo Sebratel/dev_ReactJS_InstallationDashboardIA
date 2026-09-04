@@ -333,6 +333,32 @@ body {
   display: flex; flex-direction: column; min-width: 0;
   padding-left: 16px; border-left: 1px solid var(--borda);
 }
+.cabecalho-titulo {
+  margin: 0; font-size: 1rem; font-weight: 700; color: var(--texto);
+  line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cabecalho-sub {
+  font-size: .68rem; color: var(--muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.cabecalho-sub-aviso {
+  color: var(--pbi-critico-texto); font-weight: 600;
+}
+
+/* Banner de saúde de dados no topo da casca: impossível de ignorar (Marco A6) */
+.banner-saude {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 16px; font-size: .72rem; font-weight: 600;
+  border-bottom: 1px solid transparent; flex: none;
+}
+.banner-saude-falhou {
+  background: var(--pbi-erro-bg); color: var(--pbi-critico-texto);
+  border-color: var(--pbi-critico-texto);
+}
+.banner-saude-vencida {
+  background: var(--pbi-aviso-bg); color: var(--pbi-gold-600);
+  border-color: var(--pbi-gold-600);
+}
 
 /* A FAIXA DE NAVEGAÇÃO.
 
@@ -630,6 +656,7 @@ body {
    utilidade.
    --------------------------------------------------------------------------- */
 @layer base {
+  html { font-size: 14px; }
   button, select, input {
     font-family: var(--font); font-size: .74rem; border-radius: 2px;
     border: 1px solid var(--grade); background: var(--superficie); color: var(--texto);
