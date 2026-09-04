@@ -32,7 +32,8 @@
     "cdc:ingere": "node tools/cdc/src/ingestor.ts",
     "cdc:slot": "node tools/cdc/src/slot.ts",
     "test:cdc": "node --test tools/cdc/test/*.test.ts",
-    "snapshot": "node tools/snapshot/src/index.ts",
+    "snapshot": "node --max-old-space-size=8192 tools/snapshot/src/index.ts",
+
     "snapshot:calculadas": "node --max-old-space-size=8192 tools/snapshot/src/calculadas.ts",
     "snapshot:confere": "node tools/snapshot/src/confere.ts",
     "test:snapshot": "node --test packages/snapshot/test/*.test.ts",

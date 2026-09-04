@@ -46,9 +46,8 @@ queries:
     # linha modificada às 14h é a meia-noite daquele dia. Um dia já bastaria; dois
     # custam segundos e cobrem também registro lançado com data retroativa.
     margem_dias: 2
-    # A incremental não enxerga linha que sumiu da fonte sem deixar data. Uma
-    # semana é o que se aceita andar sem uma carga completa por baixo.
-    idade_maxima_dias: 7
+    # A incremental não enxerga linha que sumiu da fonte sem deixar data.
+    idade_maxima_dias: 60
 
     # -----------------------------------------------------------------------
     # A costura: como o SQL completo vira o SQL incremental.
@@ -133,3 +132,21 @@ queries:
       # com outra lista de tipos. A âncora de duas linhas não o alcança.
       - de: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo"
         para: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo\n      AND a.title IN (SELECT title FROM alvos)"
+
+  # -------------------------------------------------------------------------
+  # protocolos-geral — busca incremental por solicitações criadas/modificadas.
+  # -------------------------------------------------------------------------
+  protocolos-geral:
+    parametro: desde
+    piso: '2025-01-01'
+    marca:
+      - DATA CRIADO
+      - DATA ENCERRADO
+    chave:
+      - SOLICITACAO
+    margem_dias: 2
+    idade_maxima_dias: 60
+    costura:
+      - de: "      AND a.created >= '2025-01-01'"
+        para: "      AND a.created >= '2025-01-01'\n      AND GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde"
+

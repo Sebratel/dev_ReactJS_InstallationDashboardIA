@@ -39,6 +39,8 @@ export interface Manifesto {
 
 /** O arquivo de uma query. O nome é o id — é o que foi materializado. */
 export function arquivoDaQuery(dir: string, query: string): string {
+  const gz = path.join(dir, `${query}.jsonl.gz`);
+  if (fs.existsSync(gz)) return gz;
   return path.join(dir, `${query}.jsonl`);
 }
 

@@ -27,7 +27,10 @@
 
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
+import path from 'node:path';
 import readline from 'node:readline';
+import zlib from 'node:zlib';
+
 import { pipeline } from 'node:stream/promises';
 // Importado, não reescrito: `normalizeName` é uma linha, e duas cópias de uma
 // linha é exatamente o tipo de coisa que diverge sem ninguém notar. O que o
@@ -216,15 +219,31 @@ export async function escreve(
   };
 
   const temp = `${arquivo}.parcial`;
-  await pipeline(
-    (function* () {
-      yield JSON.stringify(cabecalho) + '\n';
-      for (const linha of linhas) {
-        yield JSON.stringify(apuradas.map((c) => codifica(linha[c.nome] ?? null, c.tipo))) + '\n';
-      }
-    })(),
-    fs.createWriteStream(temp, { encoding: 'utf8' }),
-  );
+  fs.mkdirSync(path.dirname(temp), { recursive: true });
+  const isGz = arquivo.endsWith('.gz');
+  if (isGz) {
+    await pipeline(
+      (function* () {
+        yield JSON.stringify(cabecalho) + '\n';
+        for (const linha of linhas) {
+          yield JSON.stringify(apuradas.map((c) => codifica(linha[c.nome] ?? null, c.tipo))) + '\n';
+        }
+      })(),
+      zlib.createGzip(),
+      fs.createWriteStream(temp),
+    );
+  } else {
+    await pipeline(
+      (function* () {
+        yield JSON.stringify(cabecalho) + '\n';
+        for (const linha of linhas) {
+          yield JSON.stringify(apuradas.map((c) => codifica(linha[c.nome] ?? null, c.tipo))) + '\n';
+        }
+      })(),
+      fs.createWriteStream(temp, { encoding: 'utf8' }),
+    );
+  }
+
   await renomeiaComRetentativa(temp, arquivo);
 
   return cabecalho;
@@ -232,12 +251,24 @@ export async function escreve(
 
 /** Só o cabeçalho, sem ler as linhas — para listar o que existe no snapshot. */
 export function leCabecalho(arquivo: string): CabecalhoDeSnapshot {
+  const isGz = arquivo.endsWith('.gz');
+  if (isGz) {
+    const content = zlib.gunzipSync(fs.readFileSync(arquivo)).toString('utf8');
+    const fim = content.indexOf('\n');
+    if (fim < 0) throw new Error(`${arquivo}: cabeçalho não termina na primeira linha.`);
+    return confereFormato(JSON.parse(content.slice(0, fim)) as CabecalhoDeSnapshot, arquivo);
+  }
   const fd = fs.openSync(arquivo, 'r');
   try {
-    // O cabeçalho de `field-agenda` tem ~30 colunas; 64 KB sobra e evita ler o
-    // arquivo inteiro só para saber quantas linhas ele tem.
     const buf = Buffer.alloc(65536);
     const lidos = fs.readSync(fd, buf, 0, buf.length, 0);
+    if (lidos >= 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+      fs.closeSync(fd);
+      const content = zlib.gunzipSync(fs.readFileSync(arquivo)).toString('utf8');
+      const fim = content.indexOf('\n');
+      if (fim < 0) throw new Error(`${arquivo}: cabeçalho não termina na primeira linha.`);
+      return confereFormato(JSON.parse(content.slice(0, fim)) as CabecalhoDeSnapshot, arquivo);
+    }
     const texto = buf.subarray(0, lidos).toString('utf8');
     const fim = texto.indexOf('\n');
     if (fim < 0) {
@@ -245,7 +276,9 @@ export function leCabecalho(arquivo: string): CabecalhoDeSnapshot {
     }
     return confereFormato(JSON.parse(texto.slice(0, fim)) as CabecalhoDeSnapshot, arquivo);
   } finally {
-    fs.closeSync(fd);
+    try {
+      fs.closeSync(fd);
+    } catch {}
   }
 }
 
@@ -306,8 +339,25 @@ export async function le(
    */
   omitir?: ReadonlySet<string>,
 ): Promise<{ cabecalho: CabecalhoDeSnapshot; linhas: Record<string, Escalar>[] }> {
+  let isGz = arquivo.endsWith('.gz');
+  if (!isGz) {
+    try {
+      const fd = fs.openSync(arquivo, 'r');
+      const buf = Buffer.alloc(2);
+      const lidos = fs.readSync(fd, buf, 0, 2, 0);
+      fs.closeSync(fd);
+      if (lidos === 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+        isGz = true;
+      }
+    } catch {}
+  }
+
+  const inputStream = isGz
+    ? fs.createReadStream(arquivo).pipe(zlib.createGunzip())
+    : fs.createReadStream(arquivo, { encoding: 'utf8' });
+
   const rl = readline.createInterface({
-    input: fs.createReadStream(arquivo, { encoding: 'utf8' }),
+    input: inputStream,
     crlfDelay: Infinity,
   });
 

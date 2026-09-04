@@ -948,17 +948,45 @@ async function rodaEmSubprocesso(id: string): Promise<Resultado> {
   });
 }
 
-const resultados: Resultado[] = [];
-for (const id of aBuscar) {
-  process.stderr.write(`  ${id}… `);
-  const r = await rodaEmSubprocesso(id);
-  process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
-  // Logo abaixo da linha da query, e não num resumo no fim: quem materializa uma
-  // mesclagem morta precisa ver a nota ao lado do nome dela, não a três telas de
-  // distância. Junção que não casa nada é a diferença entre dado e BLANK (#64).
-  for (const n of r.notas ?? []) process.stderr.write(`      ${n}\n`);
-  resultados.push(r);
+const LIMITE_SIMULTANEO = 3;
+let emExecucao = 0;
+const filaConcorrencia: (() => void)[] = [];
+
+function liberaVaga() {
+  emExecucao--;
+  const px = filaConcorrencia.shift();
+  if (px) px();
 }
+
+function esperaVaga(): Promise<() => void> {
+  if (emExecucao < LIMITE_SIMULTANEO) {
+    emExecucao++;
+    return Promise.resolve(liberaVaga);
+  }
+  return new Promise((resolve) => {
+    filaConcorrencia.push(() => {
+      emExecucao++;
+      resolve(liberaVaga);
+    });
+  });
+}
+
+const resultados: Resultado[] = [];
+await Promise.all(
+  aBuscar.map(async (id) => {
+    const soltar = await esperaVaga();
+    try {
+      process.stderr.write(`  ${id}… `);
+      const r = await rodaEmSubprocesso(id);
+      process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
+      for (const n of r.notas ?? []) process.stderr.write(`      ${n}\n`);
+      resultados.push(r);
+    } finally {
+      soltar();
+    }
+  }),
+);
+
 
 // ------------------------------------------------------------------ manifesto
 const entradas: EntradaDeManifesto[] = [...jaTem.values()];

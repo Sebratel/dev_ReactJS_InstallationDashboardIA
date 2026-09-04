@@ -82,7 +82,9 @@ export function App() {
   const [clicados, setClicados] = useState<CampoClicado[]>(inicial.clicados);
   const [pagina, setPagina] = useState<PaginaCalculada | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [enquadrado, setEnquadrado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+
   // Otimista: assume logado até o primeiro 401 de verdade. Vira `false` em
   // QUALQUER chamada a `/api/*` que volte sem sessão — a tela de login
   // substitui o dashboard inteiro enquanto isto for `false` (ver o `return`
@@ -163,24 +165,43 @@ export function App() {
         setRevalidar((n) => n + 1);
       }
     };
-    // Sem `es.onerror` custom: `EventSource` já reconecta sozinho (comportamento
-    // nativo do navegador) — um listener aqui só duplicaria isso ou esconderia a
-    // reconexão de verdade atrás de um estado próprio para manter em sincronia.
     return () => es.close();
   }, [logado]);
 
   useEffect(() => {
+
     listaDashboards()
       .then((r) => {
         setPaginas(r.dashboards);
         setAtual((a) => {
           if (a) return a;
-          // A tela inicial só é conhecida agora: o padrão dela tem de ser semeado
-          // aqui, senão a primeira página que qualquer um abre é a única sem filtro.
           const escolhida = r.dashboards.find((d) => d.pronta)?.id ?? r.dashboards[0]?.id ?? null;
           setFiltros((f) => (f.length > 0 ? f : filtrosPadrao(escolhida)));
           return escolhida;
         });
+
+        // Pré-carregamento em segundo plano de todas as páginas prontas
+        for (const d of r.dashboards) {
+          if (!d.pronta) continue;
+          void (async () => {
+            try {
+              let l = layoutsVistos.current.get(d.id);
+              if (!l) {
+                l = await pegaLayout(d.id);
+                layoutsVistos.current.set(d.id, l);
+              }
+              const f = filtrosPadrao(d.id);
+              const opcoesEager = { visuais: idsIniciais(l) };
+              const chave = urlDaPagina(d.id, f, opcoesEager, []);
+              if (!paginasVistas.current.has(chave)) {
+                const p = await pegaPagina(d.id, f, opcoesEager, undefined, []);
+                guardaPaginaVista(paginasVistas.current, chave, p);
+              }
+            } catch {
+              // Pré-carregamento em background silencioso
+            }
+          })();
+        }
       })
       .catch((err: unknown) => {
         if (ehErroDeSessao(err)) {
@@ -220,15 +241,6 @@ export function App() {
   useEffect(() => {
     if (!atual) return;
 
-    // FASE L5, R4: a abertura só pede o que está acima da dobra, não a página
-    // inteira — e para saber o corte precisa da FORMA primeiro (`idsIniciais`, lida
-    // de `layout.yaml`). Lê do REF (`layoutsVistos`), não do estado `layout`: o ref
-    // já está correto no instante em que este efeito roda, mesmo antes de o estado
-    // (que só atualiza num próximo render) refletir a troca de página — ler o
-    // estado aqui arriscaria montar `idsIniciais` em cima do LAYOUT DA PÁGINA
-    // ANTERIOR, por uma corrida entre os dois efeitos desta troca de `atual`.
-    // `layout` continua na lista de dependências só para ESTE efeito rodar de novo
-    // quando o cache-miss for resolvido (o ref, sozinho, não dispara re-render).
     const layoutAtual = layoutsVistos.current.get(atual);
     if (!layoutAtual) {
       setCarregando(true);
@@ -236,28 +248,21 @@ export function App() {
       return;
     }
 
-    // FASE L5, R5 — a MESMA chamada que monta a URL de rede vira a chave do cache:
-    // arriscar uma chave separada é arriscar as duas divergirem no primeiro caso
-    // esquisito (ver `urlDaPagina`).
     const opcoesEager = { visuais: idsIniciais(layoutAtual) };
     const chave = urlDaPagina(atual, filtros, opcoesEager, clicados);
     const doCache = paginasVistas.current.get(chave);
-    // Mostra o velho JÁ, síncrono — antes até do `fetch` sair. Numa combinação
-    // repetida (voltar de aba, ou a mesma aba que R6 pré-buscou no hover) isso evita
-    // o esqueleto de R2 aparecer de novo; a rede roda de qualquer jeito, atrás, para
-    // revalidar — nunca serve só o cache sem checar se mudou.
-    if (doCache) setPagina(doCache);
+    if (doCache) {
+      setPagina(doCache);
+      setCarregando(false);
+    } else {
+      // Se já temos uma página renderizada, mantemos os dados visíveis enquanto o recálculo roda
+      setCarregando(pagina === null);
+    }
 
     let cancelado = false;
-    // Ver `pegaPagina`: sem cancelar, quatro cliques em rajada viram quatro cálculos
-    // completos, e a penúltima resposta pode chegar depois da última.
     const aborta = new AbortController();
 
-    setCarregando(true);
     setErro(null);
-    // Voltar/avançar JÁ mexeu no histórico. Escrever de novo aqui criaria uma entrada
-    // a cada clique no botão voltar, e a pessoa ficaria presa oscilando entre dois
-    // estados sem nunca sair do lugar.
     const origem = origemDaMudanca.current;
     origemDaMudanca.current = 'outro';
     if (origem !== 'historico') {
@@ -268,19 +273,14 @@ export function App() {
 
     pegaPagina(atual, filtros, opcoesEager, aborta.signal, clicados)
       .then((p) => {
-        // Grava mesmo se ESTE pedido foi cancelado: a chave é a combinação exata de
-        // página+filtros+visuais+clicados no momento do pedido, e essa combinação não
-        // muda só porque a pessoa já saiu dela — o próximo a passar por aqui de novo
-        // aproveita.
         guardaPaginaVista(paginasVistas.current, chave, p);
-        if (!cancelado) setPagina(p);
+        if (!cancelado) {
+          setPagina(p);
+          setCarregando(false);
+        }
       })
       .catch((err: unknown) => {
-        // Pedido cancelado não é falha: quem cancelou foi o clique seguinte, e a tela
-        // já está carregando o recorte novo. Pintar "erro" aqui faria a exploração
-        // piscar uma mensagem vermelha a cada clique em rajada.
         if (cancelado || ehAbortError(err)) return;
-        setPagina(null);
         if (ehErroDeSessao(err)) {
           setLogado(false);
           return;
@@ -295,25 +295,25 @@ export function App() {
       cancelado = true;
       aborta.abort();
     };
-    // `revalidar`: o gatilho do SSE de quase-realtime, sem que a página em si
-    // tenha mudado — ver o efeito de `EventSource` acima.
   }, [atual, filtros, clicados, layout, revalidar]);
 
   const escolhe = useCallback((id: string) => {
+    const layout = layoutsVistos.current.get(id) ?? null;
+    const padrao = filtrosPadrao(id);
+    const opcoesEager = layout ? { visuais: idsIniciais(layout) } : undefined;
+    const chave = layout ? urlDaPagina(id, padrao, opcoesEager, []) : null;
+    const cached = chave ? paginasVistas.current.get(chave) ?? null : null;
+
     setAtual(id);
-    setFiltros(filtrosPadrao(id));
+    setFiltros(padrao);
     setClicados([]);
-    // Sincroniza `layout` com a página nova NO MESMO lote que zera `pagina` — sem
-    // isto, o primeiro render pós-clique combina o `layout` (ainda da página
-    // ANTERIOR, só o efeito de `atual` troca) com `visuais = []` (já da nova). Toda
-    // coluna do layout velho fica sem par em `porId` e cai no caminho "sem shell" de
-    // `VisualNaDobra` — um flash de esqueleto rotulado com os ids da página errada, a
-    // cada troca de aba. Ler o mesmo `layoutsVistos` que R6 pré-aquece resolve os dois
-    // problemas juntos: página já vista mostra o layout CERTO desde o primeiro frame;
-    // página nova mostra `null`, que já cai no fallback existente de L2/R2.
-    setLayout(layoutsVistos.current.get(id) ?? null);
-    setPagina(null);
+    setLayout(layout);
+    if (cached) {
+      setPagina(cached);
+      setCarregando(false);
+    }
   }, []);
+
 
   // FASE L5, R6 — prefetch da aba sob o cursor. DEPENDE de R5 (`paginasVistas`) já
   // existir: sem cache de página, adiantar o fetch aqui só moveria a espera de "depois
@@ -485,14 +485,36 @@ export function App() {
       }
       subAviso={dadoAtrasado}
       acoes={
-        <button
-          className="primario"
-          onClick={() => setFiltros((f) => [...f])}
-          disabled={carregando || !atual}
-        >
-          {carregando ? 'calculando…' : 'Recalcular'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            className={`secundario ${enquadrado ? 'ativo' : ''}`}
+            onClick={() => setEnquadrado((e) => !e)}
+            title="Enquadrar conteúdo na tela para visualização em 16:9 sem rolagem"
+            style={{
+              padding: '6px 12px',
+              fontSize: '0.85rem',
+              backgroundColor: enquadrado ? '#880F17' : 'transparent',
+              color: enquadrado ? '#fff' : 'inherit',
+              border: '1px solid #880F17',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+            }}
+          >
+            {enquadrado ? '🗗 Tamanho normal' : '⛶ Enquadrar na tela'}
+          </button>
+          <button
+            className="primario"
+            onClick={() => setFiltros((f) => [...f])}
+            disabled={carregando || !atual}
+          >
+            {carregando ? 'calculando…' : 'Recalcular'}
+          </button>
+        </div>
       }
+
     >
       {inicial.invalidos.length > 0 ? (
         <div className="aviso">
@@ -576,30 +598,33 @@ export function App() {
         )
       ) : null}
 
-      {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas
-          que a spec traz para ela, 28 não têm número — a tela gerada renderizava
-          DOIS cartões de indicador num vazio. O componente que a substitui existia
-          desde 26/08 e nunca foi importado; os dois KPIs continuam abaixo, porque
-          são dado de verdade. */}
-      {atual === 'capa' ? <Capa dadoDe={pagina?.dadoDe ?? null} /> : null}
+      <div style={enquadrado ? { transform: 'scale(0.82)', transformOrigin: 'top center', transition: 'transform 0.2s ease-in-out' } : undefined}>
+        {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas
+            que a spec traz para ela, 28 não têm número — a tela gerada renderizava
+            DOIS cartões de indicador num vazio. O componente que a substitui existia
+            desde 26/08 e nunca foi importado; os dois KPIs continuam abaixo, porque
+            são dado de verdade. */}
+        {atual === 'capa' ? <Capa dadoDe={pagina?.dadoDe ?? null} /> : null}
 
-      {/* Faixa de KPIs em Grid Responsivo */}
-      <KpiGridSection layout={layout} visuais={visuais} />
+        {/* Faixa de KPIs em Grid Responsivo */}
+        <KpiGridSection layout={layout} visuais={visuais} />
 
-      {/* Seção de Gráficos, Matrizes e Análise Detalhada.
-          O `div` existe para medir: é dele que sai `--h-antes`, a distância do topo
-          do conteúdo até o primeiro card. Ele não tem estilo — a grade continua
-          sendo a do `VisualGridSection`. */}
-      <div ref={antesDosVisuaisRef}>
-        <VisualGridSection
-          pagina={atual!}
-          layout={layout}
-          visuais={visuais}
-          filtros={filtros}
-          clicados={clicados}
-          aoFiltrar={aoFiltrarAlvos}
-        />
+        {/* Seção de Gráficos, Matrizes e Análise Detalhada.
+            O `div` existe para medir: é dele que sai `--h-antes`, a distância do topo
+            do conteúdo até o primeiro card. Ele não tem estilo — a grade continua
+            sendo a do `VisualGridSection`. */}
+        <div ref={antesDosVisuaisRef}>
+          <VisualGridSection
+            pagina={atual!}
+            layout={layout}
+            visuais={visuais}
+            filtros={filtros}
+            clicados={clicados}
+            aoFiltrar={aoFiltrarAlvos}
+          />
+        </div>
       </div>
+
 
       {pagina && visuais.every((v) => v.conteudo === null) ? (
         <div className="vazio-pagina">Esta página não tem visual com número.</div>
