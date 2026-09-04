@@ -35,10 +35,14 @@ const RAIZ_DO_REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 // `envDir`.
 applyDotEnv(RAIZ_DO_REPO);
 const GOOGLE_CLIENT_ID = process.env.VITE_GOOGLE_CLIENT_ID ?? '';
+// Em dev sem Google Client ID, expõe o token interno para bypass de login.
+// Em produção GOOGLE_CLIENT_ID existe e isto fica vazio — nunca vaza.
+const TOKEN_INTERNO = GOOGLE_CLIENT_ID ? '' : (process.env.TOKEN_INTERNO ?? '');
 
 export default defineConfig({
   define: {
     'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(GOOGLE_CLIENT_ID),
+    'import.meta.env.VITE_TOKEN_INTERNO': JSON.stringify(TOKEN_INTERNO),
   },
   // O PLUGIN DO TAILWIND NÃO É OPCIONAL, e a falta dele falha em silêncio.
   //

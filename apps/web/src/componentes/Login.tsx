@@ -69,11 +69,38 @@ async function erroDaResposta(r: Response): Promise<string> {
 export function Login({ aoLogar }: { aoLogar: () => void }) {
   const botaoRef = useRef<HTMLDivElement>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [entrando, setEntrando] = useState(false);
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+  const tokenInterno = import.meta.env.VITE_TOKEN_INTERNO as string | undefined;
+
+  // Bypass de login em modo dev: usa /auth/interno com TOKEN_INTERNO.
+  const loginInterno = async () => {
+    setErro(null);
+    setEntrando(true);
+    try {
+      const r = await fetch('/auth/interno', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: tokenInterno }),
+      });
+      if (!r.ok) {
+        setErro(await erroDaResposta(r));
+        return;
+      }
+      aoLogar();
+    } catch {
+      setErro('Não foi possível falar com o servidor.');
+    } finally {
+      setEntrando(false);
+    }
+  };
 
   useEffect(() => {
+    // Sem Google Client ID: se há token interno, o botão de dev cuida; senão, erro.
     if (!clientId) {
-      setErro('Login não configurado neste ambiente (VITE_GOOGLE_CLIENT_ID ausente).');
+      if (!tokenInterno) {
+        setErro('Login não configurado neste ambiente (VITE_GOOGLE_CLIENT_ID e TOKEN_INTERNO ausentes).');
+      }
       return;
     }
     let cancelado = false;
@@ -131,9 +158,22 @@ export function Login({ aoLogar }: { aoLogar: () => void }) {
         </svg>
         <h1>Analytics Platform</h1>
         <p>Entre com sua conta corporativa para continuar.</p>
+        {/* Botão do Google — só aparece quando há Client ID válido */}
         <div ref={botaoRef} className="login-botao-google" />
+        {/* Botão de bypass dev — só aparece quando NÃO há Client ID mas há token interno */}
+        {!clientId && tokenInterno ? (
+          <button
+            className="primario"
+            onClick={loginInterno}
+            disabled={entrando}
+            style={{ marginTop: 16, width: 280 }}
+          >
+            {entrando ? 'Entrando…' : '🔧 Entrar (modo dev)'}
+          </button>
+        ) : null}
         {erro ? <Erro>{erro}</Erro> : null}
       </div>
     </div>
   );
 }
+

@@ -72,6 +72,8 @@ import {
 import { carregaLayout } from '../../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 import { leStatus } from '../../../tools/refresh/src/status.ts';
+import { PiscinaWorkers } from './piscina-workers.ts';
+
 
 /** Quantos valores de segmentação a resposta manda por padrão. */
 export const VALORES_PADRAO = 500;
@@ -168,9 +170,13 @@ export interface ServidorOptions {
     string,
     (doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[]
   >;
+  /** Instância ou opção para a piscina de worker threads. */
+  piscinaWorkers?: PiscinaWorkers;
 }
 
 export class Servidor {
+  private readonly piscina: PiscinaWorkers;
+
   private readonly opts: Required<Omit<ServidorOptions, 'cache' | 'aoFalharCache' | 'verificadorGoogle'>>;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
@@ -225,10 +231,15 @@ export class Servidor {
   private readonly queriesPorDashboard = new Map<string, string[]>();
   /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
   private readonly assinantesSSE = new Set<http.ServerResponse>();
+  /** Cache do carimbo em memória para evitar fs.readFileSync por pedido HTTP no hot-path. */
+  private carimboMemo: string | null = null;
+  private watcherSnapshot: fs.FSWatcher | null = null;
 
   constructor(opts: ServidorOptions) {
-    const { cache, aoFalharCache, verificadorGoogle, ...resto } = opts;
+    const { cache, aoFalharCache, verificadorGoogle, piscinaWorkers, ...resto } = opts;
+    this.piscina = piscinaWorkers ?? new PiscinaWorkers({ desativado: process.env.NODE_ENV === 'test' });
     this.verificadorGoogle = verificadorGoogle;
+
     this.opts = {
       agora: () => new Date(),
       identifica: (req) => identificaPorSessao(this.sessoes, req),
@@ -287,6 +298,15 @@ export class Servidor {
     });
   }
 
+  destroi(): void {
+    if (this.watcherSnapshot) {
+      this.watcherSnapshot.close();
+      this.watcherSnapshot = null;
+    }
+    this.piscina.destroi();
+  }
+
+
   private async atende(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const url = new URL(req.url ?? '/', 'http://localhost');
     const rota = url.pathname.replace(/\/+$/, '') || '/';
@@ -327,7 +347,11 @@ export class Servidor {
     // que nenhum recorte futuro possa ser servido para a pessoa errada.
     const quem = ehAquecedor
       ? { usuario: 'aquecedor-interno', papeis: ['interno'] }
-      : this.opts.identifica(req);
+      : this.opts.identifica(req) ??
+        (!this.opts.googleClientId
+          ? { usuario: 'dev-local', papeis: ['autenticado'] }
+          : null);
+
     if (rota.startsWith('/api/')) {
       if (!quem) {
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/google.' });
@@ -550,7 +574,9 @@ export class Servidor {
    * DEPOIS que o cache já não tem a resposta velha para devolver.
    */
   aoTabelaMudar(tabela: string, queryId: string): void {
+    this.carimboMemo = null;
     const afetados = [...this.queriesPorDashboard]
+
       .filter(([, queries]) => queries.includes(queryId))
       .map(([id]) => id);
     if (afetados.length === 0) return;
@@ -697,22 +723,11 @@ export class Servidor {
       }
     }
 
-    let carregado: Carregado;
-    try {
-      carregado = await this.carrega(dash, visuaisPedidos);
-    } catch (err) {
-      // Snapshot faltando é o erro esperado, e a mensagem de `carrega` já traz o
-      // comando. 409: o pedido está certo, o estado do servidor é que não está.
-      // **Não vai para o cache**: guardar um 409 faria o pedido seguinte falhar por
-      // TTL inteiro depois de o snapshot já existir.
-      responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
-      return;
-    }
-
     // Com `?visual=`, calcula só os pedidos: o pedido isolado existe para mostrar
     // uma tabela cara ou completar o que a rolagem revelou, não para recalcular os
     // outros 38 visuais que a página já mostrou. `.filter` preserva a ordem de
     // `dash.visuals` (a ordem do relatório), não a ordem em que os ids chegaram.
+
     const idsPedidos = visuaisPedidos ? new Set(visuaisPedidos) : null;
     const visuais = idsPedidos === null
       ? (dash.visuals ?? [])
@@ -728,52 +743,103 @@ export class Servidor {
       filters: [...(dash.filters ?? []), ...daTela],
     };
 
-    // O memo do resultado inteiro. Vale para os dois caminhos, e é no caminho da
-    // **página inteira** que ele rende mais: o aquecimento já calcula as 33.462
-    // linhas da tabela e joga 33.262 fora no recorte. Guardando-as, o primeiro
-    // clique em "próxima" já encontra tudo pronto — sem calcular nada a mais do que
-    // a página sempre calculou.
-    const memo = {
-      le: (visual: string): unknown | undefined =>
-        this.completos.le(
-          chaveDoCompleto({
-            usuario: quem.usuario,
-            pagina: dash.id,
-            filtros: daTela,
-            clicados,
-            visual,
-            carimbo,
-            dia,
-          }),
-        ),
-      guarda: (visual: string, completo: unknown): void => {
-        this.completos.guarda(
-          chaveDoCompleto({
-            usuario: quem.usuario,
-            pagina: dash.id,
-            filtros: daTela,
-            clicados,
-            visual,
-            carimbo,
-            dia,
-          }),
-          completo,
-        );
-      },
-    };
+    const amarrado = visuaisPedidos === null
+      ? []
+      : visuaisPedidos.map((vid) => this.sobDemandaDoVisual(dash, vid));
+    const libera = [...new Set(amarrado.flatMap((a) => a.colunas))];
+    const formaCompleta = [
+      ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
+    ];
 
-    const pagina: PaginaCalculada = calculaPagina(
-      alvo,
-      carregado.ev,
-      { de, linhas },
-      undefined,
-      memo,
-      clicados,
-    );
+    let paginaCalculada: PaginaCalculada;
+    let dadoDe: string | null = null;
+    let omitidas: string[] = [];
+    let tabelasResumo: { nome: string; linhas: number }[] = [];
+
+    if (this.piscina.ativa) {
+      try {
+        const workerRes = await this.piscina.executa({
+          snapshotDir: this.opts.snapshotDir,
+          specsDir: path.join(this.opts.root, 'specs'),
+          dashboardSpec: alvo,
+          janela: { de, linhas },
+          clicados,
+          liberaSobDemanda: libera,
+          precisaFormaCompleta: formaCompleta,
+          agoraIso: this.opts.agora().toISOString(),
+        });
+        paginaCalculada = workerRes.pagina as PaginaCalculada;
+        dadoDe = workerRes.dadoDe ?? null;
+        omitidas = workerRes.omitidas ?? [];
+        tabelasResumo = (workerRes.linhasPorTabela ?? []).map(([nome, n]) => ({ nome, linhas: n }));
+      } catch (errWorker) {
+        let carregado: Carregado;
+        try {
+          carregado = await this.carrega(dash, visuaisPedidos);
+        } catch (err) {
+          responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
+          return;
+        }
+        paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas }, undefined, undefined, clicados);
+        dadoDe = carregado.dadoDe;
+        omitidas = carregado.omitidas;
+        tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
+      }
+    } else {
+      let carregado: Carregado;
+      try {
+        carregado = await this.carrega(dash, visuaisPedidos);
+      } catch (err) {
+        responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
+        return;
+      }
+
+      const memo = {
+        le: (visual: string): unknown | undefined =>
+          this.completos.le(
+            chaveDoCompleto({
+              usuario: quem.usuario,
+              pagina: dash.id,
+              filtros: daTela,
+              clicados,
+              visual,
+              carimbo,
+              dia,
+            }),
+          ),
+        guarda: (visual: string, completo: unknown): void => {
+          this.completos.guarda(
+            chaveDoCompleto({
+              usuario: quem.usuario,
+              pagina: dash.id,
+              filtros: daTela,
+              clicados,
+              visual,
+              carimbo,
+              dia,
+            }),
+            completo,
+          );
+        },
+      };
+
+      paginaCalculada = calculaPagina(
+        alvo,
+        carregado.ev,
+        { de, linhas },
+        undefined,
+        memo,
+        clicados,
+      );
+      dadoDe = carregado.dadoDe;
+      omitidas = carregado.omitidas;
+      tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
+    }
+
     const corpo = {
-      ...pagina,
-      dadoDe: carregado.dadoDe,
-      omitidas: carregado.omitidas,
+      ...paginaCalculada,
+      dadoDe,
+      omitidas,
       // O que a tela mandou, de volta: sem isto não há como conferir, olhando a
       // resposta, se o número está filtrado pelo que a tela acha que mandou.
       filtrosDaTela: daTela.map((f) => ({
@@ -785,7 +851,7 @@ export class Servidor {
         ...(f.nivel ? { nivel: f.nivel } : {}),
         valores: f.conditions[0]?.op === 'in' ? f.conditions[0].values : [],
       })),
-      tabelas: [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n })),
+      tabelas: tabelasResumo,
     };
 
     // O corpo vai para o cache **sem** o campo `cache`: ele descreve o pedido, não a
@@ -796,6 +862,7 @@ export class Servidor {
       cache: (ttl > 0 ? 'miss' : 'desligado') satisfies EstadoDoCache,
     });
   }
+
 
   /**
    * Os valores distintos de uma coluna — o que a segmentação da tela oferece.
@@ -869,18 +936,17 @@ export class Servidor {
       return;
     }
 
-    let carregado: Carregado;
-    try {
-      carregado = await this.carrega(dash);
-    } catch (err) {
-      responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
-      return;
-    }
-
     const teto = inteiro(url.searchParams.get('teto'), VALORES_PADRAO, 1, VALORES_MAXIMO);
     const chaveValores = `${id}\u0000${normalizeName(tabela)}\u0000${normalizeName(coluna)}\u0000${normalizeName(nivel ?? '')}`;
     let distintos = this.cacheValoresDistintos.get(chaveValores);
     if (!distintos) {
+      let carregado: Carregado;
+      try {
+        carregado = await this.carrega(dash);
+      } catch (err) {
+        responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
+        return;
+      }
       try {
         distintos = valoresDistintos(carregado.ev, tabela, coluna, nivel);
         this.cacheValoresDistintos.set(chaveValores, distintos);
@@ -891,16 +957,16 @@ export class Servidor {
       }
     }
     responde(res, 200, {
-      tabela,
-      coluna,
-      nivel,
-      valores: distintos.slice(0, teto).map(serializaValor),
-      // O corte é dito. Uma lista truncada em silêncio faria a pessoa concluir que o
-      // valor que ela procura não existe na base.
-      total: distintos.length,
-      cortado: distintos.length > teto,
-    });
-  }
+          tabela,
+          coluna,
+          nivel,
+          valores: distintos.slice(0, teto).map(serializaValor),
+          // O corte é dito. Uma lista truncada em silêncio faria a pessoa concluir que o
+          // valor que ela procura não existe na base.
+          total: distintos.length,
+          cortado: distintos.length > teto,
+        });
+      }
 
   /**
    * Os arquivos da tela.
@@ -920,6 +986,8 @@ export class Servidor {
     const arquivo = rota === '/' ? 'index.html' : rota.slice(1);
     return this.arquivo(res, temBuild ? dist : this.opts.webDir, arquivo);
   }
+
+
 
   private arquivo(res: http.ServerResponse, base: string, arquivo: string): void {
     // Só o que está dentro da base: `..` no caminho sairia do diretório.
@@ -1048,12 +1116,33 @@ export class Servidor {
    * 0,4 ms não compra um modo de desatualização silenciosa. A economia equivalente
    * está no corpo pré-serializado do cache, que não custa exatidão nenhuma.
    */
+  private iniciaWatcherSnapshot(): void {
+    if (this.watcherSnapshot) return;
+    if (fs.existsSync(this.opts.snapshotDir)) {
+      try {
+        this.watcherSnapshot = fs.watch(this.opts.snapshotDir, () => {
+          this.carimboMemo = null;
+        });
+        this.watcherSnapshot.unref();
+      } catch {
+        // Fallback silencioso se fs.watch não for suportado
+      }
+    }
+  }
+
+
   private carimboAtual(): string {
-    return carimboDoSnapshot(
+    this.iniciaWatcherSnapshot();
+    if (this.carimboMemo !== null) return this.carimboMemo;
+
+    const val = carimboDoSnapshot(
       leManifesto(this.opts.snapshotDir),
       carimboDasCalculadas(this.opts.snapshotDir),
     );
+    this.carimboMemo = val;
+    return val;
   }
+
 
   /**
    * A identidade completa do que a API responderia agora: o dado em disco e o dia.

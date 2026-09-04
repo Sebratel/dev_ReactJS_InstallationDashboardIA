@@ -222,9 +222,40 @@ export class Aquecedor {
             idsEager.map((id) => `visual=${encodeURIComponent(id)}`).join('&')
           : `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}`;
       const r = await this.#buscar(url);
-      // O corpo precisa ser drenado: sem isto o socket fica com resposta pendurada e
-      // o `fetch` seguinte espera por ele.
-      await r.arrayBuffer();
+      if (r.status === 200) {
+        const body = (await r.json()) as {
+          visuais?: {
+            segmentacao?: {
+              tabela: string;
+              coluna: string;
+              nivel?: string;
+              naoFiltra?: string;
+              niveis?: string[];
+            };
+          }[];
+        };
+        const segmentacoes = (body.visuais ?? [])
+          .map((v) => v.segmentacao)
+          .filter((s): s is NonNullable<typeof s> => Boolean(s));
+
+        for (const s of segmentacoes) {
+          if (s.naoFiltra && !s.niveis) continue;
+          let params = `tabela=${encodeURIComponent(s.tabela)}&coluna=${encodeURIComponent(s.coluna)}`;
+          if (s.nivel && !s.niveis) {
+            params += `&nivel=${encodeURIComponent(s.nivel)}`;
+          }
+          try {
+            const rVal = await this.#buscar(
+              `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}/valores?${params}`,
+            );
+            await rVal.arrayBuffer();
+          } catch {
+            // Ignora falha de aquecimento em seletor individual
+          }
+        }
+      } else {
+        await r.arrayBuffer();
+      }
       const ms = this.#agora() - t0;
       if (r.status !== 200) {
         this.#anuncia(`[aquecedor]   ${pagina}: HTTP ${r.status} em ${(ms / 1000).toFixed(1)}s`);

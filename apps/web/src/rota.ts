@@ -12,6 +12,8 @@
 
 import { codificaFiltro, decodificaFiltro } from '../../../packages/widget-engine/src/filtro-url.ts';
 import type { FiltroDaTela, Valor } from './api.ts';
+import { filtrosPadrao } from './filtros-padrao.ts';
+
 
 /**
  * UM CAMPO QUE VEIO DE CLIQUE, e não de seletor.
@@ -57,15 +59,19 @@ export function chaveDeCampo(c: { tabela: string; coluna: string }): string {
   return JSON.stringify([c.tabela, c.coluna]);
 }
 
-export function leRota(search: string): Rota {
+export function leRota(
+  search: string,
+  pathname = typeof globalThis !== 'undefined' && typeof globalThis.window !== 'undefined'
+    ? globalThis.window.location.pathname
+    : '',
+): Rota {
+
   const p = new URLSearchParams(search);
   const filtros: FiltroDaTela[] = [];
   const invalidos: string[] = [];
 
   for (const bruto of p.getAll('filtro')) {
     try {
-      // A mesma validação da API, no mesmo módulo. Uma URL editada à mão que a API
-      // recusaria é recusada aqui também, antes de virar pedido.
       const spec = decodificaFiltro(bruto);
       const cond = spec.conditions[0];
       if (!cond || cond.op !== 'in') {
@@ -94,16 +100,16 @@ export function leRota(search: string): Rota {
       }
       clicados.push({ tabela: t, coluna: c });
     } catch (err) {
-      // Mesma regra do filtro: erra alto. Um `clicado` descartado em silêncio muda a
-      // leitura do gráfico (colapsa em vez de destacar) sem nada na tela dizer por quê.
       invalidos.push(err instanceof Error ? err.message : String(err));
     }
   }
 
-  return { pagina: p.get('pagina'), filtros, clicados, invalidos };
+  const slugDaPath = pathname.replace(/^\/+|\/+$/g, '');
+  const pagina = slugDaPath !== '' && !slugDaPath.includes('/') ? slugDaPath : p.get('pagina');
+
+  return { pagina, filtros, clicados, invalidos };
 }
 
-/** A query string que representa este estado. Sempre com `?`, ou vazia. */
 export function escreveRota(
   pagina: string,
   filtros: readonly FiltroDaTela[],
@@ -111,14 +117,29 @@ export function escreveRota(
 ): string {
   const p = new URLSearchParams();
   p.set('pagina', pagina);
-  for (const f of filtros) {
-    // Seleção vazia sai da URL: ela **é** a ausência de filtro. Mantê-la deixaria um
-    // parâmetro que a API recusa com 400 preso no link que a pessoa compartilha.
-    if (f.valores.length === 0) continue;
-    p.append('filtro', codificaFiltro(f));
+
+  const padrao = filtrosPadrao(pagina);
+  const saoPadrao =
+    filtros.length === padrao.length &&
+    filtros.every((f, i) => {
+      const p = padrao[i];
+      return (
+        p &&
+        f.tabela === p.tabela &&
+        f.coluna === p.coluna &&
+        (f.nivel ?? null) === (p.nivel ?? null) &&
+        f.valores.length === p.valores.length &&
+        f.valores.every((v, j) => v === p.valores[j])
+      );
+    });
+
+  if (!saoPadrao) {
+    for (const f of filtros) {
+      if (f.valores.length === 0) continue;
+      p.append('filtro', codificaFiltro(f));
+    }
   }
-  // Campo clicado que não tem mais filtro não vai para a URL: ele não excluiria nada,
-  // e sobraria no link como um estado que a tela não sabe mostrar.
+
   const comFiltro = new Set(filtros.filter((f) => f.valores.length > 0).map(chaveDeCampo));
   for (const c of clicados) {
     if (!comFiltro.has(chaveDeCampo(c))) continue;
@@ -126,6 +147,8 @@ export function escreveRota(
   }
   return `?${p.toString()}`;
 }
+
+
 
 /**
  * A identidade de um filtro: tabela, coluna **e nível**.

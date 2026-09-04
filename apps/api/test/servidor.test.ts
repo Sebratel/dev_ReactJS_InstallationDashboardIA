@@ -40,20 +40,26 @@ async function servidor(snapshotDir: string): Promise<{
   busca: (rota: string, init?: RequestInit) => Promise<Response>;
   fecha: () => Promise<void>;
 }> {
-  const http = new Servidor({
+  const inst = new Servidor({
     root: ROOT,
     snapshotDir,
     webDir: WEB,
     agora: () => AGORA,
     identifica: () => ({ usuario: 'teste', papeis: ['autenticado'] }),
-  }).criaHttp();
+  });
+  const http = inst.criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
   const { port } = http.address() as { port: number };
   return {
     busca: (rota, init) => fetch(`http://127.0.0.1:${port}${rota}`, init),
-    fecha: () => new Promise<void>((ok) => http.close(() => ok())),
+    fecha: () =>
+      new Promise<void>((ok) => {
+        inst.destroi();
+        http.close(() => ok());
+      }),
   };
 }
+
 
 /**
  * Sobe o servidor com o `identifica` REAL (sessão por cookie) — o oposto do
@@ -89,7 +95,11 @@ async function servidorComLogin(
   return {
     servidor,
     busca: (rota, init) => fetch(`http://127.0.0.1:${port}${rota}`, init),
-    fecha: () => new Promise<void>((ok) => http.close(() => ok())),
+    fecha: () =>
+      new Promise<void>((ok) => {
+        servidor.destroi();
+        http.close(() => ok());
+      }),
   };
 }
 
@@ -125,11 +135,13 @@ async function servidorComOverlay(
     // ele só para de ACEITAR conexão nova, nunca derruba a que já existe.
     fecha: () =>
       new Promise<void>((ok) => {
+        servidor.destroi();
         http.close(() => ok());
         http.closeAllConnections();
       }),
   };
 }
+
 
 function dirVazio(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'api-'));
