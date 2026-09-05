@@ -211,9 +211,13 @@ sql: |-
       SELECT u.*,
              NULLIF(regexp_replace(u."N°PROTOCOLO"::text, '\D', '', 'g'), '')::bigint AS _chave
       FROM (
-          SELECT * FROM ramo_produtividade
+          -- `_ramo` NAO e coluna de saida: o SELECT final enumera as 47 colunas e nao
+          -- inclui esta. Ela existe porque o `INSTALADOR` depende do RAMO -- ver o
+          -- comentario dele la embaixo. Sem ela, os dois ramos ficam com o MESMO
+          -- instalador e a coluna cai de 166 pessoas para 94 (ACHADOS #100).
+          SELECT *, 'P'::text AS _ramo FROM ramo_produtividade
           UNION ALL
-          SELECT * FROM ramo_auxiliares
+          SELECT *, 'A'::text AS _ramo FROM ramo_auxiliares
       ) u
   ),
 
@@ -414,11 +418,40 @@ sql: |-
       -- e o navegador do usuario travando para montar a tabela.
       _data_troca::date                                     AS "DATA DA TROCA",
 
-      -- vinda de TECNICOS AUXILIARES
-      _auxiliar                                             AS "TECNICOS AUXILIARES.AUXILIAR",
+      -- vinda de TECNICOS AUXILIARES -- e SO no ramo de produtividade.
+      -- No ramo acrescentado esta coluna deixou de existir (foi renomeada para
+      -- `TECNICO`, ver abaixo), e `Table.Combine` preenche com nulo o que falta de um
+      -- lado. Medido no modelo publicado em 25/08/2026: 5.395 de 5.395 linhas do ramo
+      -- acrescentado com esta coluna VAZIA (100%).
+      CASE WHEN _ramo = 'A' THEN NULL ELSE _auxiliar END    AS "TECNICOS AUXILIARES.AUXILIAR",
 
       -- as duas condicionais do M, na ordem em que ele as escreve
-      CASE WHEN "TIPO DE PROTOCOLO" = 'TEC - Troca de Endereço'
+      --
+      -- `INSTALADOR` DEPENDE DO RAMO. Nao e precedencia -- seis variantes de
+      -- COALESCE foram testadas contra a API viva e reprovadas (ACHADOS, tabela do
+      -- achado "94 x 166"), porque partiam da premissa errada: PREENCHER em vez de
+      -- ACRESCENTAR. Lendo os dois .m lado a lado, a unica diferenca de substancia
+      -- entre eles sao os dois ultimos passos:
+      --
+      --   produtividade: rename `INSTALADO POR:` -> TECNICO             (o instalador)
+      --   auxiliares:    RemoveColumns({..., "TECNICO"})                (DESCARTA ele)
+      --                  rename `TECNICOS AUXILIARES.AUXILIAR` -> TECNICO
+      --
+      -- e so depois do `Table.Combine` e que `TECNICO` vira `INSTALADOR`. Ou seja: no
+      -- ramo acrescentado o INSTALADOR e o AUXILIAR, e onde nao ha auxiliar ele fica
+      -- em branco (o join com TECNICOS AUXILIARES e LeftOuter).
+      --
+      -- Medido em 04/09/2026 por `npm run probe:instalador-ramo`, reconstruindo a
+      -- tabela em 25/08 (a data dos alvos) para o dado novo nao se confundir com a
+      -- regra -- controle fiel a menos de 1,1%:
+      --
+      --   metrica                 regra de hoje   esta regra   Power BI
+      --   grupos de INSTALADOR              95          166        166
+      --   linhas em branco              17.610       16.672     16.777
+      --   razao do grupo em branco      99,4176      63,4247    62,7891
+      --   Media Geral                    4,3943       4,1050     3,8998
+      CASE WHEN _ramo = 'A' THEN _auxiliar
+           WHEN "TIPO DE PROTOCOLO" = 'TEC - Troca de Endereço'
            THEN _tecnico_troca ELSE _alocado_por END        AS "INSTALADOR",
       CASE WHEN "TIPO DE PROTOCOLO" = 'TEC - Troca de Endereço'
            THEN _data_troca::date ELSE _data_saida::date END AS "DATA FINAL"

@@ -299,14 +299,30 @@ Gemini implementa quando o conserto é de motor.** É o padrão que funcionou ho
 
 ### B1 · `INSTALADOR`: 94 pessoas onde o Power BI tem 166
 
-**Dono: Claude.** Não tente empiricamente — **seis variantes de precedência já
-foram testadas e reprovadas**, com os números na tabela do achado. O caminho
-declarado para destravar é ler o **passo M do `INSTALADOR` no PBIP original**, em
-`../QUERIES-DASHBOARD-INSTALACAO/m/`.
+**Dono: Claude. A cardinalidade FECHOU em 04/09/2026** — 166 contra 166, erro zero
+(ACHADOS #100, `npm run probe:instalador-ramo`). O caminho declarado aqui era ler o
+passo M no PBIP original, e era o certo: **`INSTALADOR` depende do RAMO do append**,
+não de precedência. No ramo acrescentado o M *descarta* o instalador e promove o
+auxiliar — por isso as seis variantes de `COALESCE` erravam por 5× a 8×: todas
+*preenchiam* onde o original *acrescenta*.
 
-Alvos numéricos para testar candidata em segundos, já decompostos: `Média Geral`
-**3,8998** sobre **166** grupos; soma das razões **647,3748**; o grupo EM BRANCO
-contribui **62,7891** sozinho; os outros 165 somam 584,59 (média 3,5429).
+| métrica | regra antiga | agora | Power BI |
+|---|---|---|---|
+| grupos de `INSTALADOR` | 95 | **166** | **166** |
+| linhas em branco | 17.610 | **16.672** | 16.777 |
+| razão do grupo em branco | 99,4176 | **63,4247** | 62,7891 |
+| `Média Geral` | 4,3943 | **4,1050** | 3,8998 |
+
+**Fica aberto o resíduo da `Média Geral`: 4,1050 contra 3,8998 (+5,26%).** Duas partes
+separáveis, ambas nos grupos NOMEADOS (o em branco bate a 1%): 4 instaladores nossos
+têm protocolo e nenhuma `DATA INSTALAÇÃO`, então o `AVERAGEX` divide por 162 e não por
+166; e sobra ~2,7% na soma das razões. **Duas pistas já foram medidas e morreram** —
+`TECNICOS AUXILIARES` não multiplica (tem `PERSONA = 1` no original também), e o
+sorteio do `row_number` sem desempate atinge só 59 de 33.433 protocolos (0,18%).
+
+> **A regra que este item deixou:** não se ajusta candidata contra o número-alvo até
+> encaixar. Cardinalidade exata veio de **transcrever o M**; o resíduo também sai de
+> lá ou do modelo publicado, não de busca empírica. Vale para o B2 e para o B4.
 
 ### B2 · As 7 divergências reais
 
@@ -412,7 +428,7 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 | A5 densidade da tela | Gemini | **concluído** (commit 58ac4b9, raiz 14px, sem rolagem horizontal, tokens de papel) |
 | A6 aviso de dado velho | Gemini | **concluído** (commit 58ac4b9, contrato /api/saude consumido nos 3 estados com 6 testes em aviso-saude.test.ts) |
 | **A7 assertividade na stack local** | Claude | **concluído** (commit 50eeb6c, ACHADOS #99: 10/10 páginas pelo proxy:80 em 3 formas de carga, pico 4.356 MB de 6.144, `OOMKilled=false`, corpo byte-idêntico em 3 chamadas, batimento SSE a 42/25.039/50.038 ms) |
-| B1 `INSTALADOR` 94×166 | Claude | aberto |
+| B1 `INSTALADOR` 94×166 | Claude | **cardinalidade fechada** (ACHADOS #100: `INSTALADOR` depende do RAMO, 166×166 com erro zero; `probe:instalador-ramo` data a medição para separar regra de dado novo). Resíduo aberto: `Média Geral` 4,1050 × 3,8998 |
 | B2 as 7 divergências | Claude | aberto |
 | B3 gabarito das 3 páginas | Claude | aberto |
 | B4 conserto de motor da paridade | Gemini | aguarda handoff |

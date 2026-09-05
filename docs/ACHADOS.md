@@ -7477,6 +7477,12 @@ banco).
 
 ## `INSTALADOR` tem 94 pessoas onde o Power BI tem 166
 
+> **RESOLVIDO em 04/09/2026 — ver o achado #100, no fim deste arquivo.** A resposta
+> não estava em nenhuma das variantes de precedência abaixo: `INSTALADOR` depende do
+> **RAMO** do append. A cardinalidade fechou **exata** (166 × 166). Leia esta seção
+> pelo que ela documenta (o método, e as seis variantes que NÃO funcionam), não pela
+> conclusão — a instrução final dela, *"ler o passo M"*, foi cumprida e é o #100.
+
 **Sintoma.** A medida `Média Geral` dá 4,3657 aqui e 3,8998 no modelo publicado (11%).
 
 **Não é janela.** Com o recorte de `specs/_catalog/paridade-janela.yaml` aplicado, as
@@ -7995,3 +8001,135 @@ declara o próprio cache mede o cache.
 juntos. A guarda recusa `SEM_LOGIN=1` com `NODE_ENV=production` de propósito — para
 que ninguém desligue o login *fingindo* estar em produção. O override obedece à
 regra em vez de furá-la: paga o preço de admitir que é desenvolvimento.
+
+---
+
+## #100 — `INSTALADOR` não era precedência: era o RAMO. 94 → 166 pessoas, exato
+
+**Fechado em 04/09/2026** (`npm run probe:instalador-ramo`). Resolve o achado
+"`INSTALADOR` tem 94 pessoas onde o Power BI tem 166", aberto desde 25/08 com **seis
+variantes reprovadas** e a instrução de destravamento: *"ler o passo M do `INSTALADOR`
+no PBIP original"*.
+
+### O que o M diz, e que nenhuma variante podia adivinhar
+
+`protocolos-produtividade.m` e `protocolos-auxiliares.m` são quase-clones. Diferença
+de substância: **os dois últimos passos**, e o filtro de tipo.
+
+```
+produtividade:  rename "INSTALADO POR:" -> TECNICO            (o instalador)
+                Table.Combine({este ramo, PROTOCOLOS AUXILIARES})
+                join QUADRO FUNCIONAL; rename TECNICO -> INSTALADOR
+
+auxiliares:     RemoveColumns({"TECNICOS AUXILIARES.TECNICO", "TECNICO"})
+                                                              (DESCARTA o instalador)
+                rename "TECNICOS AUXILIARES.AUXILIAR" -> TECNICO
+```
+
+Ou seja: **no ramo acrescentado o INSTALADOR é o AUXILIAR.** Não há coalesce, não há
+precedência, não há preenchimento — há duas linhas para o mesmo protocolo, cada uma
+com uma pessoa. Era por isso que as seis variantes de `COALESCE` erravam por 5× a 8×:
+todas *preenchiam* onde o original *acrescenta*.
+
+Duas consequências que caem de graça da mesma leitura:
+
+- o join com `TECNICOS AUXILIARES` é **LeftOuter**, então protocolo sem auxiliar entra
+  no ramo acrescentado com `INSTALADOR` **em branco** — é daí que vem o grupo EM
+  BRANCO gigante, e não de dado faltando;
+- `TECNICOS AUXILIARES.AUXILIAR` deixa de existir no ramo acrescentado (foi renomeada),
+  e `Table.Combine` preenche com nulo — a assinatura medida no modelo publicado em
+  25/08: **5.395 de 5.395 linhas (100%)** com a coluna vazia. Nosso SQL preenchia as
+  duas, e agora zera no ramo `'A'`.
+
+### Onde o defeito estava no nosso SQL, e por que era invisível
+
+O `UNION ALL` de `unificado` **já reproduzia as linhas** dos dois ramos desde 25/08
+(por isso 70.991 linhas batiam). O que faltava é que o `INSTALADOR` era calculado
+**uma vez, depois da união**, igual para os dois ramos. A tabela tinha a forma certa e
+a coluna errada — e nenhum teste podia pegar, porque contagem de linha estava certa.
+
+O conserto é uma marca de ramo que **não é coluna de saída**: `'P'`/`'A'` no `UNION
+ALL`, carregada adiante pelos `SELECT u.*` e nunca listada no `SELECT` final.
+
+### O instrumento: datar a medição, porque o banco anda
+
+Os alvos do achado são de 25/08 e hoje é 04/09 — o banco ganhou 3.042 linhas no
+intervalo. Medir a regra nova sozinha não provaria nada: o número podia ter mudado
+por dado. `probe:instalador-ramo` calcula as **duas regras sobre as mesmas linhas**, em
+**duas épocas**, reconstruindo 25/08 a partir das colunas de saída (linha criada
+depois do corte não existia; alocação/troca posterior ao corte ainda não tinha
+acontecido, então nem a data nem o NOME de quem a fez eram conhecidos; e o `TODAY()`
+do DAX de `DATA INSTALAÇÃO` era o corte).
+
+**A regra antiga é o controle, e é ela que valida a máquina do tempo:**
+
+| métrica | achado (25/08) | reconstruído | erro |
+|---|---|---|---|
+| linhas | 70.879 | 71.146 | +0,38% |
+| grupos | 94 | 95 | +1,06% |
+| linhas em branco | 17.486 | 17.610 | +0,71% |
+| `Média Geral` | 4,3657 | 4,3943 | +0,66% |
+
+Fiel a menos de 1,1%. Só então o confronto vale:
+
+| métrica | regra antiga | **produção** | alvo Power BI | erro |
+|---|---|---|---|---|
+| grupos de `INSTALADOR` | 95 | **166** | **166** | **0,00%** |
+| linhas em branco | 17.610 | **16.672** | 16.777 | −0,63% |
+| razão do grupo em branco | 99,4176 | **63,4247** | 62,7891 | +1,01% |
+| soma das razões | 417,462 | 665,0139 | 647,3748 | +2,72% |
+| `Média Geral` | 4,3943 | **4,1050** | 3,8998 | +5,26% |
+
+Contra as seis reprovadas, que davam 20,04 / 25,34 / 25,67 / 31,61 na `Média Geral`.
+
+**Auto-conferência.** A sonda precisa *recalcular* a regra para poder datá-la, e
+recalcular é reimplementar. Ela conta as linhas em que o seu recálculo diverge do
+`INSTALADOR` que o SQL de produção devolve e **aborta** se não for zero — sem isso, as
+tabelas acima mediriam a sonda, não a produção. Medido: **0 linhas**.
+
+### O que NÃO fechou, e é a próxima pergunta
+
+`Média Geral` fica em 4,1050 contra 3,8998 (+5,26%). A diferença tem duas partes
+separáveis, e nenhuma delas é a regra do ramo:
+
+1. **4 grupos sem razão.** `DIVIDE` por zero devolve BLANK e `AVERAGEX` pula BLANK, então
+   o denominador é "grupos com ao menos uma `DATA INSTALAÇÃO`". Nós temos **162**; o
+   Power BI tem **166** — os 166 distintos dele *todos* contribuem. Quatro instaladores
+   nossos têm protocolo e nenhuma data de instalação.
+2. **~2,7% na soma.** Mesmo dividindo por 166, sai 4,0061 — ainda 2,7% acima. Decompondo
+   como o achado original fez: o grupo em branco bate (63,42 × 62,79), então o excesso
+   está nos **nomeados**: 601,59 em 161 grupos (média 3,7366) contra 584,59 em 165
+   (média 3,5429).
+
+Os nomeados serem **menos grupos** e **média maior** aponta para atribuição de linha
+por pessoa, não para pessoa faltando.
+
+**Duas pistas já foram medidas e não sobrevivem — não as persiga de novo:**
+
+1. **"O original expande vários auxiliares por protocolo."** Não expande.
+   `tecnicos-auxiliares.m` termina em `where PERSONA = 1`, com
+   `row_number() over (partition by r.tags order by a.final_date desc)` — **uma linha
+   por protocolo**, igual à nossa CTE `auxiliar`. O `Table.NestedJoin` +
+   `ExpandTableColumn` casa com uma linha só e não multiplica. Era a suspeita nomeada
+   no achado original; está descartada.
+2. **"Qual auxiliar vence é sorteio."** É, e o original também sorteia — aquele
+   `row_number` não tem desempate, exatamente como o de `PROTOCOLOS GERAL`. Mas o
+   sorteio é pequeno demais para explicar 2,7%: de **33.433** protocolos com auxiliar,
+   **143** empatam em `final_date` e só **59 (0,18%)** empatam entre *pessoas
+   diferentes* — empate com a mesma pessoa dá o mesmo `INSTALADOR`. Medido com
+   `RANK() = 1`, não `ROW_NUMBER()`: `ROW_NUMBER` numera 1,2,3 no empate e esconde
+   justamente o que se quer contar.
+
+**O que a mesma descoberta fechou de quebra.** O achado original terminava dizendo que
+*"a interseção mais estranha continua sem explicação — 10.550 linhas são do tipo troca
+sem alocador, mas só 4.376 acabam com o nome do técnico de troca"*, contra **8.740**
+do nosso lado. Aquele 8.740 somava os **dois ramos**: era a mesma cegueira, contada
+por outro ângulo. Com a marca de ramo, o número comparável (só o ramo de
+produtividade) é **4.880** contra os 4.376 deles — a diferença cai de 100% para 11,5%,
+e parte disso é o banco ter andado dez dias.
+
+> **Não repetir o erro que este achado corrigiu.** A tentação agora é testar variantes
+> contra os 3,8998 até encaixar. Cardinalidade **exata** em 166 não se alcança por
+> ajuste — ela veio de transcrever o M, e as seis variantes ajustadas erravam por 5× a
+> 8×. A resposta que falta também está lá, ou no modelo publicado; não em busca
+> empírica.
