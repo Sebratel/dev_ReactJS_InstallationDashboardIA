@@ -72,9 +72,9 @@ test('normalizaFiltros: o nível faz parte da identidade do filtro', () => {
   );
 });
 
-test('chaveDaResposta: usuário, página, visuais, janela, carimbo e dia mudam a chave', () => {
+test('chaveDaResposta: escopo, página, visuais, janela, carimbo e dia mudam a chave', () => {
   const base = {
-    usuario: 'local',
+    escopo: 'todos',
     pagina: 'capa',
     filtros: [],
     visuais: null,
@@ -84,9 +84,11 @@ test('chaveDaResposta: usuário, página, visuais, janela, carimbo e dia mudam a
     dia: '2026-08-07',
   };
   const k = chaveDaResposta(base);
-  // O usuário entra na chave **antes** de existir RLS. Depois dele, uma chave sem
-  // isto serviria a página do gestor A para o gestor B.
-  assert.notEqual(k, chaveDaResposta({ ...base, usuario: 'outro' }));
+  // O ESCOPO entra na chave antes de existir RLS. Depois dele, uma chave sem isto
+  // serviria a página do gestor A para o gestor B. Escopo, e não identidade: ver
+  // `escopo-cache.ts` e o ACHADOS #102 — guardar o e-mail aqui fatiava o cache por
+  // pessoa e o aquecedor enchia uma partição que ninguém lia.
+  assert.notEqual(k, chaveDaResposta({ ...base, escopo: 'outro' }));
   assert.notEqual(k, chaveDaResposta({ ...base, pagina: 'visao-geral' }));
   assert.notEqual(k, chaveDaResposta({ ...base, visuais: ['v1'] }));
   assert.notEqual(k, chaveDaResposta({ ...base, de: 200 }));
@@ -103,7 +105,7 @@ test('chaveDaResposta: a ORDEM da lista de visuais não muda a chave', () => {
   // A rolagem dispara `?visual=` na ordem em que a pessoa rola, não na ordem do
   // layout — dois pedidos com os MESMOS ids em ordem diferente são o MESMO pedido.
   const base = {
-    usuario: 'local', pagina: 'capa', filtros: [], visuais: ['v1', 'v2', 'v3'],
+    escopo: 'todos', pagina: 'capa', filtros: [], visuais: ['v1', 'v2', 'v3'],
     de: 0, linhas: 200, carimbo: 'c1', dia: '2026-08-07',
   };
   assert.equal(chaveDaResposta(base), chaveDaResposta({ ...base, visuais: ['v3', 'v1', 'v2'] }));
@@ -294,19 +296,19 @@ test('CacheDeResposta: ttl 0 não grava', async () => {
 test('CacheDeResposta.apagaPagina: só as respostas da página caem, o resto do site fica quente', async () => {
   const memoria = new MemoryCache();
   const c = new CacheDeResposta({ cache: memoria });
-  // usuario vem ANTES da página na chave — por isso dois usuários diferentes na
+  // o escopo vem ANTES da página na chave — por isso dois escopos diferentes na
   // mesma página são o caso que prova que o filtro não pode ser um prefixo puro.
-  await c.guarda('resp:v1:local:agendamento-field:sha1:*:0:500:c1:d1', { x: 1 }, 60);
+  await c.guarda('resp:v1:todos:agendamento-field:sha1:*:0:500:c1:d1', { x: 1 }, 60);
   await c.guarda('resp:v1:outro:agendamento-field:sha2:*:0:500:c1:d1', { x: 2 }, 60);
-  await c.guarda('resp:v1:local:visao-geral:sha1:*:0:500:c1:d1', { x: 3 }, 60);
+  await c.guarda('resp:v1:todos:visao-geral:sha1:*:0:500:c1:d1', { x: 3 }, 60);
 
   const n = await c.apagaPagina('agendamento-field');
 
   assert.equal(n, 2);
-  assert.equal(await c.le('resp:v1:local:agendamento-field:sha1:*:0:500:c1:d1'), undefined);
+  assert.equal(await c.le('resp:v1:todos:agendamento-field:sha1:*:0:500:c1:d1'), undefined);
   assert.equal(await c.le('resp:v1:outro:agendamento-field:sha2:*:0:500:c1:d1'), undefined);
   assert.deepEqual(
-    await c.le('resp:v1:local:visao-geral:sha1:*:0:500:c1:d1'),
+    await c.le('resp:v1:todos:visao-geral:sha1:*:0:500:c1:d1'),
     { x: 3 },
     'visao-geral não foi tocada — não podia sair do cache',
   );
@@ -344,7 +346,7 @@ test('CacheDeResposta.apagaPagina: Redis fora do ar degrada para 0, nunca lança
  */
 test('chaveDoCompleto: a janela NÃO entra na chave', () => {
   const base = {
-    usuario: 'local',
+    escopo: 'todos',
     pagina: 'protocolos-detalhados',
     filtros: [],
     visual: 'v1',
@@ -358,7 +360,7 @@ test('chaveDoCompleto: a janela NÃO entra na chave', () => {
 
 test('chaveDoCompleto: tudo que muda o RESULTADO entra', () => {
   const base = {
-    usuario: 'local',
+    escopo: 'todos',
     pagina: 'protocolos-detalhados',
     filtros: [],
     visual: 'v1',
@@ -366,7 +368,7 @@ test('chaveDoCompleto: tudo que muda o RESULTADO entra', () => {
     dia: '2026-08-07',
   };
   const k = chaveDoCompleto(base);
-  assert.notEqual(k, chaveDoCompleto({ ...base, usuario: 'outro' }));
+  assert.notEqual(k, chaveDoCompleto({ ...base, escopo: 'outro' }));
   assert.notEqual(k, chaveDoCompleto({ ...base, pagina: 'visao-geral' }));
   // Sem o visual, as duas tabelas da mesma página disputariam a mesma entrada — e a
   // segunda serviria as linhas da primeira.
@@ -380,10 +382,10 @@ test('chaveDoCompleto não colide com chaveDaResposta', () => {
   // Os dois vivem em caches diferentes hoje, mas prefixos distintos são o que
   // permite que um dia dividam um espaço de chaves sem uma servir pela outra.
   const k = chaveDoCompleto({
-    usuario: 'local', pagina: 'capa', filtros: [], visual: 'v1', carimbo: 'c1', dia: '2026-08-07',
+    escopo: 'todos', pagina: 'capa', filtros: [], visual: 'v1', carimbo: 'c1', dia: '2026-08-07',
   });
   const r = chaveDaResposta({
-    usuario: 'local', pagina: 'capa', filtros: [], visuais: ['v1'], de: 0, linhas: 200, carimbo: 'c1', dia: '2026-08-07',
+    escopo: 'todos', pagina: 'capa', filtros: [], visuais: ['v1'], de: 0, linhas: 200, carimbo: 'c1', dia: '2026-08-07',
   });
   assert.notEqual(k, r);
   assert.ok(k.startsWith('full:'));
@@ -600,14 +602,24 @@ test('página sem snapshot continua 409 e o 409 não entra no cache', async () =
 });
 
 /**
- * A prova de que o cache não vai virar vazamento quando a Fase 4 chegar.
+ * **Este teste foi invertido em 06/09/2026 (ACHADOS #102), e a inversão é a
+ * correção — vale explicar por quê.**
  *
- * Hoje os dois usuários veem a mesma coisa, então o acerto cruzado seria
- * *correto* — e é exatamente por isso que este teste precisa existir agora: ele
- * falha no dia em que alguém tirar o usuário da chave, e não no dia, muito depois,
- * em que um gestor vir a página do outro.
+ * Ele exigia que dois usuários NÃO compartilhassem resposta, como prova antecipada
+ * de que o cache não viraria vazamento quando o recorte por linha chegasse. A
+ * intenção estava certa; o instrumento, não. Enquanto todo mundo vê as mesmas
+ * linhas, particionar por pessoa não protege ninguém — e cobra: o aquecedor
+ * (`aquecedor-interno`) passou a encher uma partição que nenhuma pessoa lê, e cada
+ * pessoa pagou o recálculo inteiro na primeira abertura de cada página (6.134 ms
+ * medidos em `visao-geral`, no compose, com a saúde dizendo `aquecimento: pronto`).
+ *
+ * A proteção não sumiu: ela subiu para onde é verificável. A chave carrega o
+ * **escopo** (`escopo-cache.ts`), e `escopo-cache.test.ts` lê
+ * `specs/_catalog/permissoes.yaml` e reprova se alguém ligar recorte por página ou
+ * por linha sem antes fazer o escopo derivar dele. Isso pega o caso que a versão
+ * antiga deixaria passar: ligar RLS mantendo a chave como estava.
  */
-test('usuários diferentes não compartilham resposta, mesmo com o mesmo cache', async () => {
+test('dois usuários no mesmo escopo COMPARTILHAM a resposta — é o que faz o aquecimento servir', async () => {
   const dir = await dirComCapa();
   const memoria = new MemoryCache();
 
@@ -623,8 +635,8 @@ test('usuários diferentes não compartilham resposta, mesmo com o mesmo cache',
   try {
     assert.equal(
       (await (await b.busca('/api/dashboards/capa')).json()).cache,
-      'miss',
-      'a resposta de um usuário não pode ser servida para outro',
+      'hit',
+      'o segundo usuário tem de aproveitar o que o primeiro (ou o aquecedor) calculou',
     );
   } finally {
     await b.fecha();

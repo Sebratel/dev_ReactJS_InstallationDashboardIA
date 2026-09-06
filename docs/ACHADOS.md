@@ -8133,3 +8133,117 @@ e parte disso é o banco ter andado dez dias.
 > ajuste — ela veio de transcrever o M, e as seis variantes ajustadas erravam por 5× a
 > 8×. A resposta que falta também está lá, ou no modelo publicado; não em busca
 > empírica.
+
+---
+
+## #102 — O login desligou o aquecimento sem quebrar nada: 6.134 ms de cálculo com a saúde dizendo `aquecimento: pronto`
+
+**Data:** 06/09/2026
+**Achado por:** o Erick perguntar *"o nosso dash já está carregando rápido, pegando
+filtros rápidos e sendo instantâneo em tudo?"* — e a resposta honesta exigir conferir
+de onde vinham os números que diziam que sim.
+
+O documento que dizia que sim é `docs/PERF-CARGA.md`, gerado em **31/08**. O login
+entrou em **01/09**. Ninguém remediu depois, e a diferença entre as duas datas é este
+achado inteiro.
+
+### O mecanismo, em quatro linhas que sozinhas parecem certas
+
+| onde | o que faz |
+|---|---|
+| `cache-resposta.ts` | a chave da resposta carrega um campo de identidade — de propósito, contra vazamento no dia do recorte por linha |
+| `identidade.ts` (01/09) | esse campo deixou de ser sempre `local` e passou a carregar **o e-mail de verdade** |
+| `servidor.ts:389` | o aquecedor se identifica como `aquecedor-interno` |
+| `aquecedor.ts` | ele aquece fazendo o mesmo `GET` que o navegador faria — **como si mesmo** |
+
+Resultado: o aquecedor enche uma partição de cache que **nenhuma pessoa lê**. E o
+modo de falha é o mais caro de diagnosticar que existe — não há erro, não há log, o
+número está certo. Só está lento, para todo mundo, sempre.
+
+### Medido no compose, antes
+
+```
+chaves resp:* no Redis      35 aquecedor-interno · 6 dev-local · 3 ferramenta-interna
+                            (zero sob e-mail de gente)
+/api/saude                  aquecimento: { ativo: true, pronto: true }
+visao-geral, chave do aquecedor    MISS — 6.134 ms de cálculo, 7.694 ms de parede
+```
+
+A saúde dizia `pronto: true` e `paginasCarregadas: []` ao mesmo tempo. As duas coisas
+eram verdade e a contradição entre elas era o sintoma: aquecer por HTTP contra si
+mesmo enche o cache **sem** carregar avaliador nenhum quando acerta o próprio cache
+antigo. O laço se declarava pronto sem nada de útil ter sido feito.
+
+Custo por pessoa, e não por instalação: cada conta pagava a primeira abertura de cada
+página, por dia e por carimbo de snapshot. Com o `cache-visual` (512 MB, LRU) tendo o
+mesmo campo na chave, o orçamento de memória medido no #98 e no #99 — **com uma única
+identidade** — também não valia para duas pessoas ao mesmo tempo.
+
+### O conserto: o campo não é *quem pediu*, é *o que essa pessoa pode ver*
+
+Tirar a identidade da chave seria trocar um defeito de desempenho por um de
+vazamento. O campo fica; muda o valor. `apps/api/src/escopo-cache.ts`:
+
+```ts
+export function escopoDoCache(_identidade: Identidade): string {
+  return ESCOPO_TODOS;  // 'todos'
+}
+```
+
+A identidade entra e é ignorada, e **essa linha é uma afirmação sobre o modelo, não
+um atalho**: `specs/_catalog/permissoes.yaml` diz "ESTADO: DESENHO", com `paginas: {}`
+e `linhas: {}` vazios. Toda conta autenticada vê todas as linhas — exatamente como via
+antes de o login existir. Duas identidades que enxergam as mesmas linhas devem dividir
+a mesma entrada de cache.
+
+**A trava que substitui a proteção antiga.** `apps/api/test/escopo-cache.test.ts` lê o
+YAML e reprova se `paginas`, `linhas` ou a lista de papéis deixarem de estar vazios —
+obrigando o escopo a derivar da regra nova **antes** de a regra entrar. Isso é mais
+forte do que o que havia: o teste anterior pegava quem *tirasse* o campo da chave, e
+deixaria passar quem ligasse recorte por linha mantendo a chave como estava.
+
+### O teste que foi invertido, e por que a inversão é a correção
+
+`apps/api/test/cache.test.ts` exigia que **dois usuários não compartilhassem
+resposta**. A intenção estava certa e o instrumento, não: enquanto todo mundo vê as
+mesmas linhas, particionar por pessoa não protege ninguém e cobra o recálculo inteiro
+de cada um. O teste agora exige o oposto — dois usuários no mesmo escopo
+**compartilham** —, que é a condição de o aquecimento servir para alguém. A proteção
+subiu para `escopo-cache.test.ts`, onde é verificável contra o YAML em vez de contra a
+intenção de quem editou.
+
+### Medido no compose, depois
+
+Imagem reconstruída, aquecedor completo, pedido pelo proxy na porta 80:
+
+| página | filtros padrão | chave do aquecedor | 1ª do navegador | 2ª |
+|---|---:|---|---|---|
+| `visao-geral` | 2 | **hit, 5 ms** (era miss, 7.694 ms) | miss, 1.525 ms | hit, 4 ms |
+| `capa` | 0 | hit, 2 ms | hit, 2 ms | hit, 2 ms |
+| `relatorio-do-mes` | 0 | hit, 2 ms | **hit, 2 ms** | hit, 2 ms |
+
+E as partições no Redis passaram a incluir `todos`, que é a que o navegador lê.
+
+### O que este achado NÃO fechou, e é o próximo
+
+`visao-geral` continua fria na **primeira** abertura real, e a causa é outra, agora
+isolada: o aquecedor monta a URL com `?visual=` e **sem `?filtro=`**
+(`aquecedor.ts:219`), mas seis páginas abrem pré-filtradas
+(`apps/web/src/filtros-padrao.ts`: `visao-geral`, `agendamento-field`,
+`diario-instalacao`, `protocolos-detalhados`, `manutencao-inicial`,
+`instalacao-reincidente`). A chave que a tela pede na abertura carrega um ou dois
+filtros; a que o aquecedor enche, nenhum.
+
+O preço disso caiu muito com o #102 — 206 ms de cálculo em vez de 6.134 ms, porque o
+avaliador já está carregado quando o filtro chega —, mas a parede ainda foi de
+1.525 ms, e essa diferença entre cálculo e parede não está explicada. As duas coisas
+são trabalho separado: fazer o aquecedor abrir a página **como o navegador abre**
+(o que exige `filtrosPadrao` acessível aos dois lados, hoje só em `apps/web`), e medir
+o que acontece entre os 206 ms de cálculo e os 1.525 ms de parede.
+
+> **A lição de forma, que é a mesma do #99.** Nenhum teste pegaria isto: a suíte não
+> tem login, o cache acerta, e cada peça está correta isolada. O que revelou foi
+> contar chave no Redis por partição — um comando — depois de desconfiar de um
+> documento de desempenho por causa da **data** dele. Documento de medição sem data
+> visível ao lado do número é uma armadilha; o `PERF-CARGA.md` tem a data, e foi ela
+> que resolveu.

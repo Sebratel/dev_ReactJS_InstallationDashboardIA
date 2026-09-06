@@ -51,6 +51,7 @@ import {
   retencaoDaPagina,
   type EstadoDoCache,
 } from './cache-resposta.ts';
+import { escopoDoCache } from './escopo-cache.ts';
 import { CacheDeVisual, TETO_PADRAO_MB } from './cache-visual.ts';
 import {
   apagaSessaoDoPedido,
@@ -789,7 +790,7 @@ export class Servidor {
     const dia = diaDoCalculo(this.opts.agora());
     const recalcula = url.searchParams.get('recalcula') === '1';
     const chave = chaveDaResposta({
-      usuario: quem.usuario,
+      escopo: escopoDoCache(quem),
       pagina: dash.id,
       filtros: daTela,
       clicados,
@@ -883,7 +884,7 @@ export class Servidor {
         le: (visual: string): unknown | undefined =>
           this.completos.le(
             chaveDoCompleto({
-              usuario: quem.usuario,
+              escopo: escopoDoCache(quem),
               pagina: dash.id,
               filtros: daTela,
               clicados,
@@ -895,7 +896,7 @@ export class Servidor {
         guarda: (visual: string, completo: unknown): void => {
           this.completos.guarda(
             chaveDoCompleto({
-              usuario: quem.usuario,
+              escopo: escopoDoCache(quem),
               pagina: dash.id,
               filtros: daTela,
               clicados,
