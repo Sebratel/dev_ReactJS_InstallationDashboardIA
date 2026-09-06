@@ -75,6 +75,7 @@ function roda(grupo: GrupoDeRefresh): ResultadoDeExecucao {
   const argv = [
     `--max-old-space-size=${MEMORIA_MB}`,
     path.join(ROOT, 'tools', 'snapshot', 'src', 'index.ts'),
+    `--memoria=${MEMORIA_MB}`,
     `--query=${grupo.queries.join(',')}`,
     '--refazer',
     ...(grupo.incremental ? ['--incremental'] : []),

@@ -35,6 +35,7 @@ export function rodaGrupo(raiz: string, grupo: GrupoDeRefresh, memoriaMb = 8192)
   const argv = [
     `--max-old-space-size=${memoriaMb}`,
     path.join(raiz, 'tools', 'snapshot', 'src', 'index.ts'),
+    `--memoria=${memoriaMb}`,
     `--query=${grupo.queries.join(',')}`,
     '--refazer',
     ...(grupo.incremental ? ['--incremental'] : []),

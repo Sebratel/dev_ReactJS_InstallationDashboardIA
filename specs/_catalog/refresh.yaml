@@ -62,12 +62,10 @@ grupos:
   # isso fica em full-fetch, não em cadência mais rápida sozinha — mas cabe aqui
   # porque o full-fetch dela é barato.
   #
-  # `backlog-instalacao`/`backlog-agendado-futuro` entraram em 03/09/2026
-  # (ACHADOS #93): dbMaria, medidas ao vivo pela primeira vez — 58ms e 60ms,
-  # 5.875 e 93.083 linhas, sem erro. Custo somado do grupo sobe de ~11s para
-  # ~11,1s — irrelevante. Nenhuma das duas tem coluna de modificação por linha
-  # (só carimbo de LOTE de carga), então não são candidatas a
-  # `realtime-poll.yaml` — só ganharam cadência de refresh normal.
+  # `backlog-instalacao` entrou em 03/09/2026 (ACHADOS #93): dbMaria, 58ms medido
+  # ao vivo, 5.875 linhas sem erro. `backlog-agendado-futuro` (93.083 linhas) fica
+  # fora porque seu passo M faz Table.NestedJoin com PROTOCOLOS GERAL (que está fora
+  # de refresh até otimização SQL/M).
   quente:
     queries:
       - protocolos-telefonia
@@ -77,7 +75,6 @@ grupos:
       - feriados
       - hora-atualizado
       - backlog-instalacao
-      - backlog-agendado-futuro
     intervalo_minutos: 15
     incremental: false
 
