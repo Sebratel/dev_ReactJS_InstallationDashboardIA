@@ -332,6 +332,13 @@ export async function createVoallePool(cfg: PostgresConfig): Promise<PgPoolLike>
       (pg.types.getTypeParser as (o: number, f?: string) => unknown)(oid, formato),
     ),
   });
+
+  // Resiliência contra quedas de rede e conexões ociosas terminadas (ex: ECONNRESET).
+  // Sem este listener, o pg-pool emite 'error' e o Node.js encerra o processo como unhandled.
+  pool.on('error', (err: Error) => {
+    console.error(`[voalle-pool] Conexão ociosa encerrada (será recriada sob demanda): ${err.message}`);
+  });
+
   return pool as unknown as PgPoolLike;
 }
 

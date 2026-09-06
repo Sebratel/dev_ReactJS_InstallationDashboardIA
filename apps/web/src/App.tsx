@@ -114,6 +114,8 @@ export function App() {
   const [revalidar, setRevalidar] = useState(0);
   // Saúde das queries do refresh (Marco A6) — monitora atrasos e falhas por query.
   const [saude, setSaude] = useState<RespostaSaude | null>(null);
+  // Horário da última atualização automática recebida via SSE (Marco C2).
+  const [horaRealtime, setHoraRealtime] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelado = false;
@@ -182,6 +184,13 @@ export function App() {
       if (afetados.length === 0) return;
       for (const id of afetados) apagaPaginaDoCache(paginasVistas.current, id);
       if (atualRef.current && afetados.includes(atualRef.current)) {
+        const agora = new Date();
+        const horaFmt = agora.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+        setHoraRealtime(horaFmt);
         setRevalidar((n) => n + 1);
       }
     };
@@ -381,7 +390,7 @@ export function App() {
           // é ELE que mostra o erro.
         }
       })();
-    }, 180);
+    }, 60);
   }, [cancelaPrefetch]);
 
   const mudaFiltro = useCallback(
@@ -504,6 +513,7 @@ export function App() {
       }
       subAviso={avisoSaude.temAviso}
       avisoSaude={avisoSaude}
+      ultimaAtualizacaoRealtime={horaRealtime}
       acoes={
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <button

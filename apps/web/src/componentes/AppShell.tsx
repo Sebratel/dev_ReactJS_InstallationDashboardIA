@@ -36,8 +36,10 @@ import {
   Eye,
   LogOut,
   AlertTriangle,
+  Share2,
+  Check,
 } from 'lucide-react';
-import type { ComponentType } from 'react';
+import { useState, type ComponentType } from 'react';
 
 const ICONES_MENU: Record<string, ComponentType<{ size?: number }>> = {
   'visao-geral': LayoutDashboard,
@@ -75,6 +77,8 @@ export function AppShell(props: {
   subAviso?: boolean;
   /** Aviso de saúde ou falha das queries do snapshot (Marco A6). */
   avisoSaude?: EstadoAvisoSaude;
+  /** Horário da última atualização automática recebida via SSE (Marco C2). */
+  ultimaAtualizacaoRealtime?: string | null;
   acoes?: ReactNode;
   /** Encerra a sessão de login. Sempre presente — a tela só chega a existir
    *  depois que há sessão, então sempre há como sair dela. */
@@ -86,6 +90,16 @@ export function AppShell(props: {
   const navRef = usaAlturaMedida<HTMLElement>('--h-nav');
   const { isDark, toggleTheme } = useThemeStore();
   const { conferencia, alterna } = usaModo();
+  const [copiado, setCopiado] = useState(false);
+
+  const copiaLink = () => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(window.location.href).then(() => {
+        setCopiado(true);
+        setTimeout(() => setCopiado(false), 2000);
+      });
+    }
+  };
 
   return (
     <div className="casca">
@@ -129,6 +143,15 @@ export function AppShell(props: {
               {props.sub}
             </span>
           ) : null}
+          {props.ultimaAtualizacaoRealtime ? (
+            <span
+              className="badge-realtime"
+              title="Conectado ao Voalle via SSE — dados atualizam automaticamente sem F5"
+            >
+              <span className="ponto-vivo" aria-hidden="true" />
+              Ao vivo • {props.ultimaAtualizacaoRealtime}
+            </span>
+          ) : null}
         </div>
 
         {/* OS DOIS INTERRUPTORES GLOBAIS MORAM AQUI, e não numa tela.
@@ -137,6 +160,15 @@ export function AppShell(props: {
             `useThemeStore`, o modo no `usaModo`), ligados por código e desligáveis
             por ninguém. Quem caísse em conferência ou no escuro ficava lá. */}
         <div className="grupo-acoes-cabecalho">
+          <button
+            className={`btn-icone${copiado ? ' ativo' : ''}`}
+            onClick={copiaLink}
+            aria-label="Copiar link com filtros aplicados"
+            title={copiado ? 'Link copiado com sucesso!' : 'Copiar link com filtros aplicados'}
+          >
+            {copiado ? <Check size={15} /> : <Share2 size={15} />}
+          </button>
+
           <button
             className={`btn-icone${conferencia ? ' ativo' : ''}`}
             onClick={alterna}
