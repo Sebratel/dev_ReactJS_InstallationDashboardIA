@@ -431,9 +431,8 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 | B1 `INSTALADOR` 94×166 | Claude | **cardinalidade fechada** (ACHADOS #100: `INSTALADOR` depende do RAMO, 166×166 com erro zero; `probe:instalador-ramo` data a medição para separar regra de dado novo). Resíduo aberto: `Média Geral` 4,1050 × 3,8998 |
 | B2 as 7 divergências | Claude | aberto |
 | B3 gabarito das 3 páginas | Claude | aberto |
-| B4 conserto de motor da paridade | Gemini | aguarda handoff |
-| C1 link com filtro | Gemini | aberto |
-| C2 atualização visível | Gemini | aberto |
+| C1 link com filtro | Gemini | **concluído** (commit f9a9b9e: botão de copiar link com filtros aplicados e feedback visual de copiado no cabeçalho) |
+| C2 atualização visível | Gemini | **concluído** (commit f9a9b9e: badge 'Ao vivo • HH:MM:SS' com pulso suave via SSE sem F5 e sem tela branca) |
 | C3 10 perguntas de negócio | Claude | aberto |
 | §6 host, crontab, credenciais, `main` | Erick | aberto |
 
