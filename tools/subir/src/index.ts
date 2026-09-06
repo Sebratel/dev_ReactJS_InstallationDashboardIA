@@ -32,6 +32,8 @@ const mata = args.includes('--mata');
 /** Não derruba nada, nem a nossa. Para quando a API no ar é justamente a que se quer
  *  manter (uma comparação lado a lado, um aquecimento em curso). */
 const semMata = args.includes('--sem-mata');
+/** Sobe também o agendador automático de refresh (`daemon.ts`) em background. */
+const comRefresh = args.includes('--com-refresh');
 const porta = Number.parseInt(
   args.find((a) => a.startsWith('--porta='))?.slice('--porta='.length) ??
     process.env.PORT ??
@@ -48,14 +50,14 @@ const limiteMs = args.some((a) => a.startsWith('--limite='))
 
 for (const a of args) {
   const conhecido =
-    ['--sem-build', '--sem-aquecer', '--so-aquece', '--mata', '--sem-mata'].includes(a) ||
+    ['--sem-build', '--sem-aquecer', '--so-aquece', '--mata', '--sem-mata', '--com-refresh'].includes(a) ||
     a.startsWith('--porta=') ||
     a.startsWith('--pagina=') ||
     a.startsWith('--limite=');
   if (!conhecido) {
     console.error(`argumento desconhecido: ${a}`);
     console.error(
-      'use: --sem-build | --sem-aquecer | --so-aquece | --mata | --sem-mata | --porta=N | --pagina=id,id | --limite=segundos',
+      'use: --sem-build | --sem-aquecer | --so-aquece | --mata | --sem-mata | --com-refresh | --porta=N | --pagina=id,id | --limite=segundos',
     );
     process.exit(2);
   }
@@ -239,17 +241,20 @@ if (soAquece) {
     { cwd: ROOT, stdio: 'inherit', env: { ...process.env, PORT: String(porta) } },
   );
 
+  let refreshProcess: ChildProcess | null = null;
   let encerrando = false;
   const encerra = (codigo: number): void => {
     if (encerrando) return;
     encerrando = true;
     if (api.exitCode === null) api.kill();
+    if (refreshProcess && refreshProcess.exitCode === null) refreshProcess.kill();
     process.exit(codigo);
   };
   process.on('SIGINT', () => encerra(0));
   process.on('SIGTERM', () => encerra(0));
   api.on('exit', (codigo) => {
     if (!encerrando) {
+      if (refreshProcess && refreshProcess.exitCode === null) refreshProcess.kill();
       console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
       process.exit(codigo ?? 1);
     }
@@ -258,6 +263,20 @@ if (soAquece) {
   if (!(await esperaSaude(api))) {
     console.error(`\nA API não respondeu em ${BASE}/api/saude. Parando.`);
     encerra(1);
+  }
+
+  if (comRefresh || process.env.AUTO_REFRESH === 'true' || process.env.AUTO_REFRESH === '1') {
+    console.log('\nIniciando o Agendador Automático de Refresh (daemon 15m em background)…');
+    refreshProcess = spawn(
+      process.execPath,
+      ['--max-old-space-size=8192', path.join(ROOT, 'tools', 'refresh', 'src', 'daemon.ts')],
+      { cwd: ROOT, stdio: 'inherit', env: process.env },
+    );
+    refreshProcess.on('exit', (cod) => {
+      if (!encerrando) {
+        console.error(`[Refresh Daemon] Processo encerrou (código ${cod ?? '?'}).`);
+      }
+    });
   }
 
   console.log(`\n  tela   ${BASE}/`);

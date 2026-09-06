@@ -35,7 +35,7 @@ vem antes do plano.
 | **Export CSV** | **existe** em tabela e matriz | `Tabela.tsx:126`, `Matriz.tsx:99` |
 | **CPF/RG na tela** | **nenhuma** das 14 specs de dashboard usa `QUADRO FUNCIONAL` | `grep` em `specs/dashboards/` |
 | Filtro na URL | existe; **falta store** (só `useThemeStore`) | `apps/web/src/store/` |
-| Refresh | Manager + `cron.sh` prontos; **crontab não instalado**, e 3 queries com defeito de carga | `tools/refresh/`, §3 abaixo |
+| Refresh | Manager + daemon automático integrados no compose e CLI (06/09/2026), sem requerer crontab manual | `tools/refresh/`, §3 abaixo |
 | Memória | ~~piscina autoriza 4 × 8 GB~~ **RESOLVIDO** em 04/09: pai 3072 + 2 × 768 = **4.608 MB** autorizados, `mem_limit: 6g`, RSS pico medido **2.938 MB** | `npm run probe:memoria-api`, `ACHADOS.md` #98 |
 | Paridade | **7 divergências reais** + `INSTALADOR` (94 × 166) | `ACHADOS.md`, `CONTINUACAO.md` §9.1 |
 | Deploy | **nunca rodou em máquina que não é a do Erick** | — |
@@ -394,9 +394,9 @@ Nenhum destes é trabalho de agente. Os dois primeiros bloqueiam o marco A.
 
 1. **Onde vai rodar, e com quanta RAM.** Depende do número que a A1 produz. Sem
    host não há piloto.
-2. **A linha do crontab no host.** Pronta há um dia: `*/15 * * * *
-   /caminho/do/repo/tools/refresh/cron.sh`. Editar crontab de produção é mudança
-   persistente no SO — nenhuma sessão faz isso sem ordem explícita.
+2. ~~**A linha do crontab no host.**~~ **RESOLVIDO em 06/09/2026**: Agendador agora
+   roda como serviço automático `refresh` no próprio `docker-compose.prod.yml` (e via
+   `--com-refresh` no `npm start`), sem requerer edição manual de crontab no host.
 3. **Usuário read-only do Voalle/MariaDB em produção, TLS e hostname.** Trabalho de
    DBA e de infraestrutura. É a camada 1 das quatro do somente-leitura, e a única
    que o repositório não garante sozinho.

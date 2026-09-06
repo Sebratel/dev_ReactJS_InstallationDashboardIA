@@ -93,9 +93,30 @@ services:
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
     ports:
       - '80:80'
-      # TLS é decisão de infraestrutura, fora deste repositório
-      # (docs/DEPLOY.md §3.3) — descomente e monte o certificado quando existir.
-      # - '443:443'
+    # TLS é decisão de infraestrutura, fora deste repositório
+    # (docs/DEPLOY.md §3.3) — descomente e monte o certificado quando existir.
+    # - '443:443'
+    restart: unless-stopped
+
+  # Agendador Automático do Refresh Manager — materializa e atualiza o snapshot
+  # periodicamente de 15 em 15 minutos em background (specs/_catalog/refresh.yaml),
+  # alimentando o volume compartilhado que a API lê, sem requerer crontab manual no host.
+  refresh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    mem_limit: 8g
+    environment:
+      NODE_ENV: production
+      REFRESH_INTERVAL_MINUTOS: '15'
+    volumes:
+      - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
+    depends_on:
+      api:
+        condition: service_healthy
+    command: ["node", "--max-old-space-size=8192", "tools/refresh/src/daemon.ts"]
     restart: unless-stopped
 
 volumes:

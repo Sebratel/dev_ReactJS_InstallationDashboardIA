@@ -138,3 +138,12 @@ test('o healthcheck do compose bate na rota que a API realmente serve', () => {
       `O container ficaria "unhealthy" e o proxy nunca subiria.`,
   );
 });
+
+test('o compose declara o serviço refresh automático apontando para daemon.ts e compartilhando snapshot', () => {
+  const compose = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8');
+  assert.match(compose, /refresh:/, 'deve declarar o serviço refresh');
+  assert.match(compose, /tools\/refresh\/src\/daemon\.ts/, 'refresh deve rodar daemon.ts');
+  assert.match(compose, /:\/repo\/snapshot/, 'refresh deve montar o volume /repo/snapshot');
+  assert.match(compose, /mem_limit:\s*8g/, 'refresh deve ter limite de 8g para o V8 de snapshot');
+});
+

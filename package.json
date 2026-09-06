@@ -40,6 +40,7 @@
     "snapshot:confere": "node tools/snapshot/src/confere.ts",
     "test:snapshot": "node --test packages/snapshot/test/*.test.ts",
     "refresh": "node tools/refresh/src/index.ts",
+    "refresh:daemon": "node --max-old-space-size=8192 tools/refresh/src/daemon.ts",
     "test:refresh": "node --test tools/refresh/test/*.test.ts",
     "start": "node tools/subir/src/index.ts",
     "api": "node --max-old-space-size=8192 apps/api/src/index.ts --sem-login",
