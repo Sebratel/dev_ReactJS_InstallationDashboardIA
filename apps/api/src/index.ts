@@ -114,7 +114,11 @@ const servidor = new Servidor({
   snapshotDir: path.join(ROOT, DIRETORIO_PADRAO),
   webDir: path.resolve(AQUI, '..', 'web'),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
-  overlayRealtime: () => poller?.mescladores() ?? new Map(),
+  // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
+  // `postMessage` até a worker, que é o caminho de produção. Ver
+  // `apps/api/src/overlay-realtime.ts` — trocar de volta faz o near-realtime
+  // voltar a detectar, invalidar, avisar e servir o número velho.
+  overlayRealtime: () => poller?.overlays() ?? new Map(),
   ...(cache ? { cache } : {}),
   ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
     ? { tetoDeVisuaisMB }

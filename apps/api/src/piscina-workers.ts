@@ -178,6 +178,24 @@ export class PiscinaWorkers {
     return !this.desativado && this.workers.length > 0;
   }
 
+  /**
+   * Quanto trabalho está esperando e quanto está em curso.
+   *
+   * Existe para o F0 da evolução de near-realtime: sem este número não há como
+   * responder "o worker pool está saturado?" nem "o usuário está atrás de uma
+   * fila de warmup?" — e a fase seguinte (fila com prioridade) seria escolhida
+   * pelo palpite. `Servidor` amostra `fila` no instante em que ENFILEIRA, porque
+   * ler de fora, em `GET /api/saude`, quase sempre pegaria zero: a fila só existe
+   * enquanto há cálculo em curso, e ninguém está olhando naquele instante.
+   */
+  get estado(): { fila: number; ocupados: number; workers: number } {
+    return {
+      fila: this.tarefas.length,
+      ocupados: this.pendentesPorWorker.size,
+      workers: this.workers.length,
+    };
+  }
+
   executa(msg: Omit<MensagemCalculoWorker, 'idReq'>): Promise<RespostaCalculoWorker> {
     if (!this.ativa) {
       return Promise.reject(new Error('Piscina de workers desativada ou indisponível.'));

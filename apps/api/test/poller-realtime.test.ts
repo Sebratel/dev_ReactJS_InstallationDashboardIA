@@ -221,23 +221,30 @@ test('PollerRealtime: erro na busca não lança — anuncia e mantém o delta in
   assert.deepEqual(p.overlay('PROTOCOLOS AUXILIARES')?.linhas, []);
 });
 
-test('PollerRealtime.mescladores(): tabela sem mudança nenhuma ainda fica de fora do Map', async () => {
+test('PollerRealtime.overlays(): tabela sem mudança nenhuma ainda fica de fora do Map', async () => {
   const fake = poolDeMentira([]);
   const p = new PollerRealtime({ specsDir: 'specs', pool: fake.pool, agora: () => new Date('2026-09-03T10:00:00Z'), anuncia: () => {} });
   await p.tentaAgora('protocolos-auxiliares');
-  assert.equal(p.mescladores().size, 0, 'delta vazio não deveria entrar no Map de carrega()');
+  assert.equal(p.overlays().size, 0, 'delta vazio não deveria entrar no Map que vai para carrega()');
 });
 
-test('PollerRealtime.mescladores(): tabela com delta entra, chaveada pelo nome normalizado', async () => {
+// `overlays()` e não `mescladores()`: aquele método saiu na F1 (08/09/2026), e é
+// ESTA forma — dado, não função — que atravessa o `postMessage` até a worker. O
+// teste segue exercitando a mesclagem de verdade, montando o mesclador com a
+// mesma `mesclador()` que os dois lados da fronteira usam.
+test('PollerRealtime.overlays(): tabela com delta entra, chaveada pelo nome normalizado', async () => {
   const fake = poolDeMentira([
     { SOLICITACAO: 'A', 'DATA CRIADO': new Date('2026-09-03T09:00:00Z'), 'DATA ENCERRADO': new Date('2026-09-03T09:59:00Z') },
   ]);
   const p = new PollerRealtime({ specsDir: 'specs', pool: fake.pool, agora: () => new Date('2026-09-03T10:00:00Z'), anuncia: () => {} });
   await p.tentaAgora('protocolos-auxiliares');
-  const mesc = p.mescladores();
-  assert.equal(mesc.size, 1);
-  const f = mesc.get('protocolos auxiliares'); // normalizeName minúsculo, sem duplo espaço
-  assert.ok(f, `esperava a chave normalizada de 'PROTOCOLOS AUXILIARES', achei: ${[...mesc.keys()]}`);
-  const resultado = f!([]);
+  const ovs = p.overlays();
+  assert.equal(ovs.size, 1);
+  const ov = ovs.get('protocolos auxiliares'); // normalizeName minúsculo, sem duplo espaço
+  assert.ok(ov, `esperava a chave normalizada de 'PROTOCOLOS AUXILIARES', achei: ${[...ovs.keys()]}`);
+  // Clonável por estrutura: é isto que faz o overlay chegar do outro lado da
+  // worker. Um campo novo que não sobreviva a esta linha quebra a F1 em silêncio.
+  assert.doesNotThrow(() => structuredClone(ov!), 'o overlay tem de atravessar postMessage');
+  const resultado = mesclador(ov!)([]);
   assert.equal(resultado.length, 1);
 });

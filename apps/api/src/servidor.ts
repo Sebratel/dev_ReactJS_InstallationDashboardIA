@@ -28,7 +28,6 @@ import { rotuloDeColuna } from '../../../packages/semantic-model/src/projecao.ts
 import { loadDashboards, type DashboardSpec, type FiltroSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
-import type { Escalar } from '../../../packages/snapshot/src/formato.ts';
 import { leManifesto, maisAntigo } from '../../../packages/snapshot/src/manifesto.ts';
 import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
@@ -74,6 +73,8 @@ import { carregaLayout } from '../../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh } from '../../../tools/refresh/src/status.ts';
 import { PiscinaWorkers } from './piscina-workers.ts';
+import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
+import { Metricas, origemDoPedido, type OrigemDoPedido } from './metricas.ts';
 
 
 /** Quantos valores de segmentação a resposta manda por padrão. */
@@ -176,10 +177,14 @@ export interface ServidorOptions {
    * velha dele. Padrão: nenhum overlay, comportamento idêntico a antes desta
    * peça existir.
    */
-  overlayRealtime?: () => ReadonlyMap<
-    string,
-    (doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[]
-  >;
+  /**
+   * **Dado, não função** — mudou em 08/09/2026 (F1 do plano de near-realtime).
+   * Ver `overlay-realtime.ts` para o porquê inteiro; em resumo, o `Map` de
+   * mescladores não atravessa `postMessage`, e a piscina de workers é o caminho
+   * de produção. Quem calcula na própria thread converte com `mescladoresDe()`;
+   * a worker recebe estes objetos e reconstrói as funções do outro lado.
+   */
+  overlayRealtime?: () => ReadonlyMap<string, OverlayDeTabela>;
   /** Instância ou opção para a piscina de worker threads. */
   piscinaWorkers?: PiscinaWorkers;
 }
@@ -244,8 +249,38 @@ export class Servidor {
    * É o mapa que `aoTabelaMudar` usa para saber quem precisa perder cache.
    */
   private readonly queriesPorDashboard = new Map<string, string[]>();
+  /**
+   * Dashboard → nomes normalizados das tabelas que ele carrega. Calculado uma
+   * vez na subida, do MESMO `planeja([dash], model)` que produz
+   * `queriesPorDashboard` — duas travessias do plano para duas perguntas sobre
+   * o mesmo plano divergiriam na primeira que uma delas deixasse de refazer.
+   *
+   * Serve para recortar o overlay antes de ele atravessar a fronteira da
+   * worker: mandar as 7 tabelas vigiadas para uma página que usa uma só é
+   * serializar delta que o outro lado vai ignorar, a cada cálculo.
+   */
+  private readonly tabelasPorDashboard = new Map<string, Set<string>>();
   /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
   private readonly assinantesSSE = new Set<http.ServerResponse>();
+
+  /**
+   * Os contadores do F0 (ver `metricas.ts`). Somados no caminho quente, lidos em
+   * `GET /api/saude`. Público para o teste poder afirmar sobre eles sem passar
+   * por HTTP — um contador que ninguém confere é um número que se acredita.
+   */
+  readonly metricas = new Metricas();
+
+  /**
+   * Quantos pedidos com a MESMA chave de cache estão calculando agora.
+   *
+   * **Isto ainda não funde nada** — é a medição que justifica (ou não) o
+   * single-flight da fase seguinte. Hoje N pedidos iguais em MISS viram N
+   * cálculos, e o SSE torna essa rajada sincronizada por construção: um evento
+   * acorda todos os navegadores com aquela página aberta, e como o escopo do
+   * cache é o mesmo para todos (`escopo-cache.ts`), eles disputam a mesma
+   * chave. `concorrentes_mesma_chave` é a marca d'água disso.
+   */
+  private readonly emCalculo = new Map<string, number>();
 
   /**
    * Intervalo do batimento do SSE, em ms. 25 s por um motivo concreto: o valor
@@ -319,7 +354,9 @@ export class Servidor {
       ...(aoFalharCache ? { aoFalhar: aoFalharCache } : {}),
     });
     for (const dash of this.dashboards) {
-      this.queriesPorDashboard.set(dash.id, planeja([dash], this.model).queries);
+      const plano = planeja([dash], this.model);
+      this.queriesPorDashboard.set(dash.id, plano.queries);
+      this.tabelasPorDashboard.set(dash.id, new Set(plano.tabelas.map((t) => normalizeName(t.nome))));
     }
   }
 
@@ -329,10 +366,34 @@ export class Servidor {
     return this.segredoAquecedor;
   }
 
+  /**
+   * O cálculo está indo para a piscina de workers?
+   *
+   * Existe para o TESTE poder AFIRMAR em qual dos dois caminhos ele está. O
+   * defeito que a F1 consertou vivia exatamente na diferença entre eles, e um
+   * teste de overlay que rodasse sem querer no ramo de fallback passaria verde
+   * sem provar nada — foi assim que o buraco sobreviveu (ver
+   * `apps/api/test/overlay-worker.test.ts`).
+   */
+  get piscinaAtiva(): boolean {
+    return this.piscina.ativa;
+  }
+
   /** O `http.Server`, sem escutar porta nenhuma — quem escuta é o `index.ts`. */
   criaHttp(): http.Server {
     return http.createServer((req, res) => {
+      // A duração é medida AQUI, e não dentro de `pagina()`, porque aqui ela
+      // cobre toda saída: 200, 404 de página inexistente, 400 de filtro
+      // ilegível, 409 de snapshot faltando e a exceção que vira 500. Medir por
+      // dentro exigiria uma linha em cada `return`, e a primeira esquecida
+      // faria a média mentir para baixo — justamente nos casos que interessam.
+      const t0 = Date.now();
+      const rota = (req.url ?? '/').split('?')[0] ?? '/';
+      if (rota.startsWith('/api/dashboards/')) {
+        res.on('finish', () => this.metricas.observa('get_pagina_ms', Date.now() - t0));
+      }
       this.atende(req, res).catch((err: unknown) => {
+        this.metricas.conta('erros_500');
         responde(res, 500, { erro: err instanceof Error ? err.message : String(err) });
       });
     });
@@ -534,6 +595,17 @@ export class Servidor {
       // sozinha — e adivinharia errado nas duas direções: esperando dez minutos por
       // um aquecedor desligado, ou disparando o seu por cima de um que está no meio.
       aquecimento: this.opts.aquecimento(),
+      // O F0 do plano de near-realtime (docs/ANALISE-NEAR-REALTIME.md §7).
+      // Contadores acumulados desde a subida; ver `metricas.ts` para o que cada
+      // nome quer dizer e por que os picos são marca d'água, não valor
+      // instantâneo. `piscina` é lido na hora — é o único que faz sentido
+      // instantâneo, porque diz o que está acontecendo AGORA.
+      realtime: {
+        ...this.metricas.instantaneo(),
+        sseAbertas: this.assinantesSSE.size,
+        piscina: this.piscina.estado,
+        overlayTabelas: this.opts.overlayRealtime().size,
+      },
       // `leStatus` nunca lança (arquivo ausente ou corrompido viram `{}`) — mas
       // `/api/saude` não pode cair por causa de um operador de refresh que nunca
       // rodou nesta máquina, então o try/catch fica aqui também, defesa em
@@ -590,9 +662,15 @@ export class Servidor {
     // de verdade para sair do estado "conectando".
     res.write(': conectado\n\n');
     this.assinantesSSE.add(res);
+    // A marca d'água responde "quantos usuários ficam conectados ao mesmo
+    // tempo?" — a pergunta do requisito 19 que o valor instantâneo nunca
+    // responde, porque quem lê `/api/saude` lê num instante qualquer.
+    this.metricas.conta('sse_conexoes');
+    this.metricas.maximo('sse_conexoes_simultaneas_max', this.assinantesSSE.size);
     this.ligaBatimento();
     req.on('close', () => {
       this.assinantesSSE.delete(res);
+      this.metricas.conta('sse_desconexoes');
       // Sem assinante o temporizador não tem o que fazer. Deixá-lo rodando
       // acordaria o processo a cada 25 s para escrever em ninguém.
       if (this.assinantesSSE.size === 0) this.desligaBatimento();
@@ -640,7 +718,9 @@ export class Servidor {
 
   /** Manda `dashboards` para toda conexão SSE aberta. Sem assinante, não faz nada. */
   private emiteEvento(dashboards: readonly string[]): void {
+    this.metricas.conta('poller_invalidacoes');
     if (dashboards.length === 0 || this.assinantesSSE.size === 0) return;
+    this.metricas.conta('sse_eventos_emitidos', this.assinantesSSE.size);
     const linha = `data: ${JSON.stringify({ dashboards })}\n\n`;
     for (const res of this.assinantesSSE) res.write(linha);
   }
@@ -801,12 +881,23 @@ export class Servidor {
       dia,
     });
 
+    // De onde veio este pedido. Ainda NÃO muda prioridade nenhuma — a fila da
+    // piscina continua FIFO nesta fase. Serve para medir quanto do trabalho é de
+    // fundo antes de escolher a política que vai reordená-la (`metricas.ts`).
+    const origem: OrigemDoPedido = origemDoPedido(
+      quem.usuario === 'aquecedor-interno',
+      url.searchParams.get('origem'),
+    );
+    this.metricas.conta(`pedidos_${origem}`);
+
     if (ttl > 0 && !recalcula) {
       const guardado = await this.cache.le<object>(chave);
       if (guardado !== undefined) {
+        this.metricas.conta('cache_hits');
         responde(res, 200, { ...guardado, cache: 'hit' satisfies EstadoDoCache });
         return;
       }
+      this.metricas.conta('cache_misses');
     }
 
     // Com `?visual=`, calcula só os pedidos: o pedido isolado existe para mostrar
@@ -842,7 +933,33 @@ export class Servidor {
     let omitidas: string[] = [];
     let tabelasResumo: { nome: string; linhas: number }[] = [];
 
+    // **O overlay do poller, recortado para esta página.** Buscado UMA vez por
+    // pedido e usado nos dois ramos abaixo: buscá-lo duas vezes faria o ramo da
+    // worker calcular sobre um overlay e o de fallback sobre outro, colhido
+    // milissegundos depois — dois números diferentes para o mesmo pedido,
+    // conforme a worker tivesse falhado ou não.
+    const overlays = this.#overlayDe(dash);
+    this.metricas.maximo('overlay_linhas_max', linhasDoOverlay(overlays));
+    if (overlays.size > 0) this.metricas.conta('calculos_com_overlay');
+
+    // Quantos pedidos com esta MESMA chave estão em curso agora. **Só mede** —
+    // ver `emCalculo`. A baixa vai em `res.on('finish')` porque ela cobre TODA
+    // saída (200, os dois 409 abaixo, e a exceção que vira 500); um decremento
+    // escrito só no caminho feliz vazaria na primeira falta de snapshot, e o
+    // instrumento passaria a medir o próprio defeito.
+    const concorrentes = (this.emCalculo.get(chave) ?? 0) + 1;
+    this.emCalculo.set(chave, concorrentes);
+    this.metricas.maximo('concorrentes_mesma_chave_max', concorrentes);
+    if (concorrentes > 1) this.metricas.conta('calculos_duplicados');
+    res.on('finish', () => {
+      const restam = (this.emCalculo.get(chave) ?? 1) - 1;
+      if (restam <= 0) this.emCalculo.delete(chave);
+      else this.emCalculo.set(chave, restam);
+    });
+
     if (this.piscina.ativa) {
+      this.metricas.maximo('worker_fila_max', this.piscina.estado.fila);
+      const tWorker = Date.now();
       try {
         const workerRes = await this.piscina.executa({
           snapshotDir: this.opts.snapshotDir,
@@ -853,12 +970,24 @@ export class Servidor {
           liberaSobDemanda: libera,
           precisaFormaCompleta: formaCompleta,
           agoraIso: this.opts.agora().toISOString(),
+          // **A linha que destrava o near-realtime inteiro** (F1, 08/09/2026).
+          // Sem ela a worker chamava `carrega()` sem overlay e devolvia o número
+          // do disco: o poller detectava a mudança, o cache invalidava, o SSE
+          // avisava, o navegador refazia o GET — e recebia o mesmo de antes,
+          // depois de 10–20 s de recálculo. Nada falhava; o realtime só não
+          // entregava dado novo. Ver `worker-calculador.ts` e `overlay-realtime.ts`.
+          ...(overlays.size > 0 ? { overlays } : {}),
         });
+        this.metricas.observa('worker_ms', Date.now() - tWorker);
         paginaCalculada = workerRes.pagina as PaginaCalculada;
         dadoDe = workerRes.dadoDe ?? null;
         omitidas = workerRes.omitidas ?? [];
         tabelasResumo = (workerRes.linhasPorTabela ?? []).map(([nome, n]) => ({ nome, linhas: n }));
       } catch (errWorker) {
+        // A worker falhou: cai para o cálculo em linha. Contado porque um
+        // fallback frequente é um defeito escondido — ele responde certo e
+        // paga o dobro, então nada na tela denuncia que ele está acontecendo.
+        this.metricas.conta('worker_fallback');
         let carregado: Carregado;
         try {
           carregado = await this.carrega(dash, visuaisPedidos);
@@ -1105,6 +1234,32 @@ export class Servidor {
    * carregada, e a primeira pessoa a pedir os relatos deixaria os 350 MB residentes
    * para todos os pedidos seguintes — exatamente o que a decisão evita.
    */
+  /**
+   * O overlay do poller RECORTADO para as tabelas desta página.
+   *
+   * O poller vigia 7 tabelas (`specs/_catalog/realtime-poll.yaml`); uma página
+   * usa de uma a três. Sem o recorte, todo cálculo serializaria os 7 deltas para
+   * dentro da worker e o outro lado ignoraria a maioria — custo de
+   * `postMessage` proporcional ao que o poller viu, não ao que a página lê.
+   *
+   * O recorte é por NOME NORMALIZADO de tabela, a mesma chave que
+   * `PollerRealtime.overlays()` usa e que `carrega()` procura
+   * (`normaliza(t.nome)`). Três normalizações da mesma coisa é o tipo de
+   * coincidência que deixa de valer em silêncio no dia em que uma tabela ganhar
+   * acento — por isso `tabelasPorDashboard` sai do MESMO plano que `carrega()`
+   * vai percorrer, e não de uma lista à parte.
+   */
+  #overlayDe(dash: DashboardSpec): Map<string, OverlayDeTabela> {
+    const todos = this.opts.overlayRealtime();
+    const recorte = new Map<string, OverlayDeTabela>();
+    if (todos.size === 0) return recorte;
+    const daPagina = this.tabelasPorDashboard.get(dash.id);
+    for (const [tabela, ov] of todos) {
+      if (daPagina === undefined || daPagina.has(tabela)) recorte.set(tabela, ov);
+    }
+    return recorte;
+  }
+
   private carrega(dash: DashboardSpec, visuaisPedidos: readonly string[] | null = null): Promise<Carregado> {
     // A UNIÃO das colunas sob demanda E das tabelas de grão reduzido que os visuais
     // pedidos amarram — pedir três visuais numa rolagem rápida não pode liberar três
@@ -1159,7 +1314,11 @@ export class Servidor {
       now: this.opts.agora(),
       liberaSobDemanda: libera,
       precisaFormaCompleta: formaCompleta,
-      overlay: this.opts.overlayRealtime(),
+      // `mescladoresDe` porque a opção passou a entregar DADO (ver
+      // `overlay-realtime.ts`). Este é o caminho que calcula na própria thread —
+      // fallback de falha da worker, e a piscina desligada em teste —, e é o
+      // único lado da fronteira onde a função pode ser montada de véspera.
+      overlay: mescladoresDe(this.#overlayDe(dash)),
     })
       .then((c) => {
         // Recalcular uma tabela que estava congelada custa tempo e muda o número. Um

@@ -29,7 +29,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { normalizeName } from '../../../packages/semantic-model/src/model.ts';
-import { costura, marcaDe, mescla, type Costura } from '../../../packages/snapshot/src/incremental.ts';
+import { costura, marcaDe, type Costura } from '../../../packages/snapshot/src/incremental.ts';
+import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { PgPoolLike } from '../../../packages/query-engine/src/connectors-sql.ts';
 import { postgresRunner } from '../../../packages/query-engine/src/connectors-sql.ts';
 import type { Escalar } from '../../../packages/snapshot/src/formato.ts';
@@ -170,37 +171,21 @@ export function podaDelta(delta: DeltaDeTabela, marcaCols: readonly string[], ag
   return { ...delta, porChave };
 }
 
-/** O que `carrega()` precisa para mesclar este delta com o que leu do disco. */
-export interface OverlayDeTabela {
-  linhas: readonly Record<string, Escalar>[];
-  corte: Date;
-  /** Repassados de `ConfigDePoll` — `mescla()` precisa dos dois para reconciliar. */
-  chave: readonly string[];
-  marca: readonly string[];
-}
+/**
+ * `OverlayDeTabela` e `mesclador` moram em `overlay-realtime.ts` e são
+ * reexportados aqui — **uma definição só**. Eles saíram deste arquivo quando o
+ * overlay passou a atravessar a fronteira da worker: quem MESCLA não pode ser
+ * obrigado a importar quem BUSCA (este módulo carrega o driver do Postgres), e
+ * duas cópias da mesma mesclagem divergiriam no primeiro conserto. Ver o
+ * cabeçalho de `overlay-realtime.ts`.
+ */
+export { mesclador, type OverlayDeTabela } from './overlay-realtime.ts';
 
 export function overlayDoDelta(
   delta: DeltaDeTabela,
   cfg: Pick<ConfigDePoll, 'chave' | 'marca'>,
 ): OverlayDeTabela {
   return { linhas: [...delta.porChave.values()], corte: delta.inicioJanela, chave: cfg.chave, marca: cfg.marca };
-}
-
-/**
- * A função pronta para `CarregaOptions.overlay` — mescla as linhas do disco com
- * o delta deste poller, usando `mescla()` (a mesma de `incremental.ts`, mesma
- * semântica de "grupo reentregue inteiro").
- *
- * `undefined` quando esta tabela não tem overlay ainda (delta vazio ou poller
- * nunca rodou para ela) — `carrega()` trata a ausência de entrada no `Map` como
- * "carrega só do arquivo", então quem monta o `Map` para `carrega()` só inclui
- * entradas em que isto devolveu uma função de verdade.
- */
-export function mesclador(
-  ov: OverlayDeTabela,
-): (doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[] {
-  return (doDisco) =>
-    mescla({ antigas: doDisco, novas: ov.linhas, chave: ov.chave, marca: ov.marca, corte: ov.corte }).linhas;
 }
 
 // ------------------------------------------------------------------- I/O real
@@ -289,18 +274,29 @@ export class PollerRealtime {
   }
 
   /**
-   * O `Map` pronto para `CarregaOptions.overlay` — uma entrada por tabela com
-   * delta não-vazio. Tabela cujo delta ainda não viu nenhuma mudança fica de
-   * fora de propósito: mesclar um delta vazio contra o disco é trabalho para
-   * devolver exatamente o que já estava lá, e `carrega()` já pula direto para
-   * "sem overlay" quando a tabela não está no `Map`.
+   * Os overlays de todas as tabelas vigiadas, **em dado** — uma entrada por
+   * tabela com delta não-vazio, pronta para atravessar `postMessage`.
+   *
+   * Tabela cujo delta ainda não viu nenhuma mudança fica de fora de propósito:
+   * mesclar um delta vazio contra o disco é trabalho para devolver exatamente o
+   * que já estava lá, e `carrega()` já pula direto para "sem overlay" quando a
+   * tabela não está no `Map`. É também o que mantém pequeno o que viaja para a
+   * worker no caso comum (nenhuma tabela mudou desde o último refresh).
+   *
+   * **Esta é a única forma que este módulo produz.** Antes de a piscina de
+   * workers existir havia também um `mescladores()`, que montava aqui o `Map` de
+   * FUNÇÕES que `carrega()` quer. Ele saiu quando o overlay passou a atravessar
+   * a fronteira da worker: com produção consumindo só a forma em dado, o outro
+   * método virou código que só o teste chamava — e um teste que exercita um
+   * caminho que ninguém usa passa verde sem guardar nada. Quem precisa das
+   * funções converte na hora, com `mescladoresDe()` (`overlay-realtime.ts`).
    */
-  mescladores(): Map<string, (doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[]> {
-    const out = new Map<string, (doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[]>();
+  overlays(): Map<string, OverlayDeTabela> {
+    const out = new Map<string, OverlayDeTabela>();
     for (const cfg of this.#configs.values()) {
       const d = this.#deltas.get(cfg.query);
       if (!d || d.porChave.size === 0) continue;
-      out.set(normalizeName(cfg.tabela), mesclador(overlayDoDelta(d, cfg)));
+      out.set(normalizeName(cfg.tabela), overlayDoDelta(d, cfg));
     }
     return out;
   }
