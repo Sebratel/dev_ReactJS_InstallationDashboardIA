@@ -131,7 +131,7 @@ export interface FiltroDaTela {
   coluna: string;
   valores: Valor[];
   /** O nível, quando a segmentação é de hierarquia de datas. Vem da API intacto. */
-  nivel?: string;
+  nivel?: string | null;
 }
 
 /**

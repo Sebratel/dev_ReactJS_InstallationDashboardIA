@@ -34,8 +34,10 @@
 // pede. Qualquer falha ao buscar o layout cai de volta para a URL antiga: aquecer a
 // chave errada é melhor do que não aquecer nenhuma.
 
+import { codificaFiltro, filtrosPadrao } from '../../../packages/widget-engine/src/index.ts';
 import { idsIniciais } from '../../../tools/layout/src/corte-eager.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
+
 
 /** O intervalo padrão entre duas conferidas do carimbo. */
 export const INTERVALO_PADRAO_MS = 5_000;
@@ -256,7 +258,26 @@ export class Aquecedor {
       } else {
         await r.arrayBuffer();
       }
+
+      // Se a página tem layout eager e filtros padrão (mês fechado ou ano corrente),
+      // aquece também a chave com filtros, que é exatamente a que o navegador pede.
+      if (idsEager && idsEager.length > 0) {
+        const filtros = filtrosPadrao(pagina);
+        if (filtros.length > 0) {
+          const qFiltros = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
+          const urlFiltrada = url.includes('?') ? `${url}&${qFiltros}` : `${url}?${qFiltros}`;
+          try {
+            const rFiltrada = await this.#buscar(urlFiltrada);
+            await rFiltrada.arrayBuffer();
+          } catch {
+            // Ignora falha em filtro secundário
+          }
+        }
+      }
+
+
       const ms = this.#agora() - t0;
+
       if (r.status !== 200) {
         this.#anuncia(`[aquecedor]   ${pagina}: HTTP ${r.status} em ${(ms / 1000).toFixed(1)}s`);
       }

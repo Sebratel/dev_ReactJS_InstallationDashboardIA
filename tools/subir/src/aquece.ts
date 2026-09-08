@@ -24,8 +24,10 @@
 // aquecer nada. Qualquer falha ao buscar o layout (rede, formato inesperado) cai de
 // volta para a URL antiga: melhor aquecer a chave errada do que não aquecer nenhuma.
 
+import { codificaFiltro, filtrosPadrao } from '../../../packages/widget-engine/src/index.ts';
 import { idsIniciais } from '../../layout/src/corte-eager.ts';
 import type { LayoutSpec } from '../../layout/src/schema.ts';
+
 
 export interface Medida {
   pagina: string;
@@ -136,6 +138,22 @@ export async function aquecePagina(
     const t2 = agora();
 
     const visuais = corpo.visuais ?? [];
+
+    // Se a página abre com filtros pré-definidos (mês fechado ou ano corrente),
+    // aquece também a URL com os filtros padrão, para que a primeira visita no navegador
+    // bata direto no cache (<15ms) sem cache miss nem recálculo a frio.
+    const filtros = filtrosPadrao(pagina);
+    if (filtros.length > 0) {
+      const qFiltros = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
+      const urlFiltrada = url.includes('?') ? `${url}&${qFiltros}` : `${url}?${qFiltros}`;
+      try {
+        const rFiltrada = await buscar(urlFiltrada, sinal ? ({ signal: sinal } as RequestInit) : undefined);
+        await rFiltrada.arrayBuffer();
+      } catch {
+        // Ignora falha de aquecimento com filtros secundários
+      }
+    }
+
     return {
       pagina,
       frio: t1 - t0,

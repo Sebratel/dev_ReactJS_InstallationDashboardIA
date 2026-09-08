@@ -157,7 +157,7 @@ export function escreveRota(
  * níveis — `[DATA INSTALADO].[Ano]` e `[DATA INSTALADO].[Mês]` são dois controles
  * sobre a mesma coluna. Sem ele na chave, marcar um ano apagaria a escolha do mês.
  */
-function mesmaChave(f: FiltroDaTela, tabela: string, coluna: string, nivel?: string): boolean {
+function mesmaChave(f: FiltroDaTela, tabela: string, coluna: string, nivel?: string | null): boolean {
   return f.tabela === tabela && f.coluna === coluna && (f.nivel ?? null) === (nivel ?? null);
 }
 
@@ -173,7 +173,7 @@ export function aplicaSelecao(
   tabela: string,
   coluna: string,
   valores: FiltroDaTela['valores'],
-  nivel?: string,
+  nivel?: string | null,
 ): FiltroDaTela[] {
   const outros = filtros.filter((f) => !mesmaChave(f, tabela, coluna, nivel));
   return valores.length === 0
@@ -186,7 +186,7 @@ export function selecaoDe(
   filtros: readonly FiltroDaTela[],
   tabela: string,
   coluna: string,
-  nivel?: string,
+  nivel?: string | null,
 ): FiltroDaTela['valores'] {
   return filtros.find((f) => mesmaChave(f, tabela, coluna, nivel))?.valores ?? [];
 }
@@ -214,9 +214,10 @@ export function selecaoDe(
 export interface AlvoDeFiltro {
   tabela: string;
   coluna: string;
-  nivel?: string;
+  nivel?: string | null;
   valor: Valor;
 }
+
 
 /** O que um visual chama ao ser clicado. */
 export type AoFiltrar = (alvos: readonly AlvoDeFiltro[]) => void;

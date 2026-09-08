@@ -400,7 +400,7 @@ export function App() {
   }, [cancelaPrefetch]);
 
   const mudaFiltro = useCallback(
-    (tabela: string, coluna: string, valores: Valor[], nivel?: string) => {
+    (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) => {
       setFiltros((f) => aplicaSelecao(f, tabela, coluna, valores, nivel));
       // Mexer no seletor (ou apagar o chip) TIRA a marca de clique daquela coluna: a
       // escolha passou a ser do controle, e controle recorta tudo — inclusive o visual

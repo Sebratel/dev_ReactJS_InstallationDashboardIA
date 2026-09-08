@@ -52,6 +52,8 @@ export {
   type ValorDeTabela,
 } from './tabela.ts';
 export { ancora, deslocar, resolveBorda, resolveSpan, truncar } from './datas.ts';
+export { dataDaPagina, filtrosPadrao } from './filtros-padrao.ts';
+export { codificaFiltro, decodificaFiltro, decodificaFiltros, type FiltroDeTela } from './filtro-url.ts';
 export {
   loadDashboards,
   type BordaSpec,
@@ -63,3 +65,4 @@ export {
   type ValorLiteral,
   type VisualSpec,
 } from './spec.ts';
+
