@@ -58,7 +58,8 @@
     "web": "npm run dev --workspace @analytics/web",
     "web:build": "npm run build --workspace @analytics/web",
     "probe:reaquecimento": "node --max-old-space-size=3072 tools/probe/src/reaquecimento-pos-evento.ts",
-    "probe:watch-snapshot": "node tools/probe/src/watch-do-snapshot.ts"
+    "probe:watch-snapshot": "node tools/probe/src/watch-do-snapshot.ts",
+    "probe:staging": "node tools/probe/src/staging.ts"
   },
   "dependencies": {
     "google-auth-library": "^11.0.2",

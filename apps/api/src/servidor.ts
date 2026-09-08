@@ -895,12 +895,16 @@ export class Servidor {
    * Depois avisa por SSE — nessa ordem: o navegador só deve pedir de novo
    * DEPOIS que o cache já não tem a resposta velha para devolver.
    *
-   * **F4: entre invalidar e avisar, entra o reaquecimento.** Até aqui a cadeia
-   * era `invalida → SSE → GET → MISS → 10–20 s de cálculo`: a API avisava que
-   * existe dado novo ANTES de preparar o dado novo, e a conta caía em quem
-   * clicasse primeiro. Agora é `invalida → reaquece → SSE → GET → HIT`, e o
-   * evento passa a significar "há dado novo **pronto**" em vez de "descobri que
-   * alguma coisa mudou".
+   * **F4: entre invalidar e avisar, entra o reaquecimento — POR BAIXO.** Até
+   * aqui a cadeia era `invalida → SSE → GET → MISS → 10–20 s de cálculo`: a API
+   * avisava que existe dado novo ANTES de preparar o dado novo, e a conta caía
+   * em quem clicasse primeiro.
+   *
+   * A F4 nasceu para inverter isso (`invalida → reaquece → SSE`), e a medição
+   * REPROVOU a inversão: segurar o aviso piorou o usuário já conectado em ~5×.
+   * O que ficou é `invalida → SSE → reaquece em segundo plano`, e quem colhe o
+   * HIT é quem chega DEPOIS (3,3 s → 0,0 s). O porquê, com os números, está em
+   * `reaquecePorBaixo` — que é a única descrição correta desta ordem.
    *
    * Três coisas que ele NÃO faz, de propósito:
    *
