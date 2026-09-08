@@ -209,10 +209,14 @@ export function App() {
           return escolhida;
         });
 
-        // Pré-carregamento em segundo plano de todas as páginas prontas
-        for (const d of r.dashboards) {
-          if (!d.pronta) continue;
-          void (async () => {
+        // Pré-carregamento em segundo plano sequencial de outras páginas prontas,
+        // aguardando a página inicial abrir primeiro para não disputar recursos da API.
+        const paginaInicial = inicial.pagina ?? r.dashboards.find((d) => d.pronta)?.id ?? r.dashboards[0]?.id ?? null;
+        void (async () => {
+          // Pequena pausa para a página em exibição carregar com prioridade máxima
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          for (const d of r.dashboards) {
+            if (!d.pronta || d.id === paginaInicial) continue;
             try {
               let l = layoutsVistos.current.get(d.id);
               if (!l) {
@@ -226,11 +230,13 @@ export function App() {
                 const p = await pegaPagina(d.id, f, opcoesEager, undefined, []);
                 guardaPaginaVista(paginasVistas.current, chave, p);
               }
+              // Intervalo leve entre páginas de fundo para manter a API 100% responsiva
+              await new Promise((resolve) => setTimeout(resolve, 300));
             } catch {
               // Pré-carregamento em background silencioso
             }
-          })();
-        }
+          }
+        })();
       })
       .catch((err: unknown) => {
         if (ehErroDeSessao(err)) {
