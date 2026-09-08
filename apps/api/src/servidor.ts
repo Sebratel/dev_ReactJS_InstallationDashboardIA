@@ -76,6 +76,7 @@ import { PiscinaWorkers } from './piscina-workers.ts';
 import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 import { Metricas, origemDoPedido, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
+import { redisAusente, type EstadoDoRedis } from './saude-do-redis.ts';
 
 
 /** Quantos valores de segmentação a resposta manda por padrão. */
@@ -186,6 +187,18 @@ export interface ServidorOptions {
    * a worker recebe estes objetos e reconstrói as funções do outro lado.
    */
   overlayRealtime?: () => ReadonlyMap<string, OverlayDeTabela>;
+  /**
+   * O estado da camada durável do cache, para `GET /api/saude`. Padrão:
+   * `ausente` — que é a verdade de todo teste e de todo `npm run api` sem
+   * `REDIS_URL`.
+   *
+   * Entra por função pelo mesmo motivo de `aquecimento`: quem sabe se o Redis
+   * está de pé é o driver, que vive em `index.ts`, e o valor muda depois da
+   * construção do servidor. Ver `saude-do-redis.ts` para por que isto merece
+   * existir — em resumo, `adapter: "MemoryCache+RedisCache"` é o arranjo montado
+   * na subida, não o estado dele agora, e uma API degradada parecia saudável.
+   */
+  estadoDoRedis?: () => EstadoDoRedis;
   /** Instância ou opção para a piscina de worker threads. */
   piscinaWorkers?: PiscinaWorkers;
 }
@@ -335,6 +348,7 @@ export class Servidor {
       tokenInterno: '',
       batimentoSseMs: Servidor.BATIMENTO_SSE_MS,
       overlayRealtime: () => new Map(),
+      estadoDoRedis: redisAusente,
       ...resto,
     };
     this.completos = new CacheDeVisual({
@@ -585,6 +599,17 @@ export class Servidor {
       dashboards: this.dashboards.length,
       cache: {
         adapter: this.tipoDeCache,
+        // **`adapter` diz o que foi MONTADO; `redis` diz o que está de pé.** Os
+        // dois são necessários e nenhum substitui o outro: com o Redis fora do
+        // ar, `adapter` continua dizendo "MemoryCache+RedisCache" para sempre,
+        // porque é o nome do arranjo escolhido na subida. Era assim que uma API
+        // degradada parecia saudável — e a única pista era o tempo de resposta
+        // piorar depois de um restart. Ver `saude-do-redis.ts`.
+        //
+        // Isto NÃO muda o status HTTP: o healthcheck do container testa `r.ok`,
+        // e um 503 aqui faria o Docker reiniciar a API em laço por causa de um
+        // cache opcional — degradação prevista virando indisponibilidade real.
+        redis: this.opts.estadoDoRedis(),
         // Quanto do orçamento de resultado inteiro está em uso. É o número que diz,
         // olhando de fora, se a paginação vai ser um `slice` ou um recálculo — e o
         // primeiro a olhar quando alguém disser que "a próxima página demora".

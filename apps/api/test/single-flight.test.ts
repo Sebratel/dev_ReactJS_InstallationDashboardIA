@@ -29,11 +29,27 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { escreve } from '../../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
+import { PiscinaWorkers } from '../src/piscina-workers.ts';
 import { Servidor } from '../src/servidor.ts';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const AQUI = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(AQUI, '..', '..', '..');
 const WEB = path.join(ROOT, 'apps', 'api', 'web');
 const AGORA = new Date('2026-08-07T12:00:00.000Z');
+/** Ver `apps/api/test/fixtures/worker-que-morre.ts` e `piscina-ciclo-de-vida.test.ts`. */
+const WORKER_QUE_MORRE = path.join(AQUI, 'fixtures', 'worker-que-morre.ts');
+
+/** Falha com mensagem legível em vez de pendurar a suíte. */
+function comPrazo<T>(p: Promise<T>, ms: number, oQue: string): Promise<T> {
+  let t: NodeJS.Timeout;
+  const prazo = new Promise<never>((_, erro) => {
+    t = setTimeout(
+      () => erro(new Error(`${oQue}: nada aconteceu em ${ms} ms — os pedidos ficaram PENDENTES`)),
+      ms,
+    );
+  });
+  return Promise.race([p, prazo]).finally(() => clearTimeout(t));
+}
 
 async function dirComCapa(): Promise<string> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'single-flight-'));
@@ -61,7 +77,7 @@ async function dirComCapa(): Promise<string> {
   return dir;
 }
 
-async function sobe(snapshotDir: string): Promise<{
+async function sobe(snapshotDir: string, piscina?: PiscinaWorkers): Promise<{
   servidor: Servidor;
   busca: (rota: string, init?: RequestInit) => Promise<Response>;
   metricas: () => Promise<{
@@ -76,6 +92,7 @@ async function sobe(snapshotDir: string): Promise<{
     webDir: WEB,
     agora: () => AGORA,
     identifica: () => ({ usuario: 'teste', papeis: ['autenticado'] }),
+    ...(piscina ? { piscinaWorkers: piscina } : {}),
   });
   const http = servidor.criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
@@ -262,5 +279,46 @@ test('sem snapshot: os N que esperavam recebem 409, e o pedido seguinte tenta de
     assert.equal((await s.busca('/api/dashboards/capa')).status, 409);
   } finally {
     await s.fecha();
+  }
+});
+
+test('a worker MORRE no meio do voo: os N que esperavam são atendidos, e a chave fica livre', async () => {
+  // O cruzamento das duas fases, e o motivo de o conserto do ciclo de vida ter
+  // entrado junto com a F2. Antes dele, uma worker morta pendurava UM pedido;
+  // com o single-flight ela penduraria o VOO daquela chave, e todo pedido
+  // seguinte entraria nesse voo — a página inteira travada, para todo mundo,
+  // até o carimbo do snapshot mudar. A mecânica isolada está em
+  // `piscina-ciclo-de-vida.test.ts`; aqui o que se afirma é o efeito visível de
+  // fora.
+  const piscina = new PiscinaWorkers({ tamanhoPool: 1, scriptDaWorker: WORKER_QUE_MORRE });
+  const s = await sobe(await dirComCapa(), piscina);
+  try {
+    const respostas = await comPrazo(
+      Promise.all(Array.from({ length: 5 }, () => s.busca('/api/dashboards/capa'))),
+      15000,
+      'os 5 pedidos coalescidos no voo cuja worker morreu',
+    );
+    for (const r of respostas) assert.equal(r.status, 200, 'a morte da worker não pode virar erro na tela');
+
+    const corpos = await Promise.all(respostas.map((r) => r.json()));
+    // Um iniciou o voo, quatro pegaram carona — e a carona não virou espera
+    // eterna. Este é o assert que ficaria PENDENTE sem o handler de `exit`.
+    assert.deepEqual(
+      corpos.map((c) => c.cache).sort(),
+      ['coalescido', 'coalescido', 'coalescido', 'coalescido', 'miss'],
+    );
+
+    const m = await s.metricas();
+    // Zero `worker_ms`: a worker morreu sem responder, então nada foi observado.
+    assert.equal(calculos(m), 0);
+    // E UM fallback, não um por pedido — a degradação também foi deduplicada.
+    assert.equal(m.contadores.worker_fallback, 1);
+
+    // A chave nao ficou envenenada: o cache foi preenchido dentro do voo que
+    // caiu no cálculo em linha, e o pedido seguinte acerta.
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
+  } finally {
+    await s.fecha();
+    piscina.destroi();
   }
 });

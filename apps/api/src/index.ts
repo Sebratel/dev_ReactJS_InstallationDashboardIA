@@ -16,6 +16,7 @@ import type { Cache } from '../../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { Aquecedor } from './aquecedor.ts';
 import { PollerRealtime } from './poller-realtime.ts';
+import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
 import { comoLiberar } from './porta.ts';
 import { decideLogin } from './portao-login.ts';
 import { Servidor } from './servidor.ts';
@@ -41,7 +42,7 @@ applyDotEnv(ROOT);
  * O `import` é dinâmico porque `ioredis` abre conexão ao ser instanciado, e quem
  * roda sem `REDIS_URL` não deve pagar nem por carregar o driver.
  */
-async function cacheDaEnv(): Promise<Cache | undefined> {
+async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
   const url = process.env.REDIS_URL;
   if (!url) return undefined;
   try {
@@ -64,33 +65,55 @@ async function cacheDaEnv(): Promise<Cache | undefined> {
     //
     // Com single-flight (F2) o estrago de um crash cresce: o processo leva
     // consigo os N pedidos que dividiam cada voo, não um.
+    //
+    // O log sai só na TRANSIÇÃO. Um Redis inalcançável emite `'error'` a cada
+    // tentativa de reconexão do driver — em segundos isso vira centenas de
+    // linhas idênticas, e a linha que importava (a primeira) fica soterrada. A
+    // contagem inteira continua visível em `GET /api/saude`, que é onde ela
+    // responde algo que o log não responde: se está caído agora, ou piscando.
     cliente.on('error', (err: unknown) => {
-      console.error(
-        `[cache] Redis indisponível (a memória continua servindo): ` +
-          `${err instanceof Error ? err.message : String(err)}`,
-      );
+      if (saude.falhou('conexão', err)) {
+        console.error(
+          `[cache] Redis indisponível (a memória continua servindo): ` +
+            `${semSegredo(err instanceof Error ? err.message : String(err))}`,
+        );
+      }
+    });
+    cliente.on('ready', () => {
+      if (saude.conectou()) console.log('[cache] Redis conectado.');
     });
     const redis = new RedisCache(cliente);
     return new CacheEmCamadas({
       rapida: new MemoryCache(),
       duravel: redis,
+      // O outro caminho de falha, e ele não é redundante com o `'error'` acima:
+      // um Redis que ACEITA conexão e recusa comando (memória cheia, `AUTH`
+      // errado, timeout de comando) não emite `'error'` nenhum no cliente — e do
+      // ponto de vista de quem esperava cache é a mesma falha.
       aoFalhar: (op, err) => {
-        console.error(
-          `[cache] Redis falhou em ${op} (a memória continua servindo): ` +
-            `${err instanceof Error ? err.message : String(err)}`,
-        );
+        if (saude.falhou(op, err)) {
+          console.error(
+            `[cache] Redis falhou em ${op} (a memória continua servindo): ` +
+              `${semSegredo(err instanceof Error ? err.message : String(err))}`,
+          );
+        }
       },
     });
   } catch (err) {
+    // `REDIS_URL` posta e driver que não carrega é degradação também, e tem de
+    // aparecer na saúde — senão o operador vê `status: "ausente"` e conclui que
+    // esqueceram de configurar, quando na verdade a configuração está lá.
+    saude.falhou('driver', err);
     console.error(
       `[cache] REDIS_URL existe mas o driver não subiu (seguindo em memória): ` +
-        `${err instanceof Error ? err.message : String(err)}`,
+        `${semSegredo(err instanceof Error ? err.message : String(err))}`,
     );
     return undefined;
   }
 }
 
-const cache = await cacheDaEnv();
+const saudeRedis = new SaudeDoRedis();
+const cache = await cacheDaEnv(saudeRedis);
 const porta = Number.parseInt(process.env.PORT ?? '3100', 10);
 
 /**
@@ -142,6 +165,11 @@ const servidor = new Servidor({
   // voltar a detectar, invalidar, avisar e servir o número velho.
   overlayRealtime: () => poller?.overlays() ?? new Map(),
   ...(cache ? { cache } : {}),
+  // Ligado sempre que existe `REDIS_URL`, mesmo quando `cache` saiu `undefined`
+  // — é justamente esse o caso em que a saúde precisa dizer "configurado e
+  // quebrado" em vez de "ausente". Sem `REDIS_URL`, o padrão do `Servidor` já
+  // responde `ausente`, que é a verdade.
+  ...(process.env.REDIS_URL ? { estadoDoRedis: () => saudeRedis.estado() } : {}),
   ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
     ? { tetoDeVisuaisMB }
     : {}),

@@ -13,6 +13,19 @@ export interface OpcoesPiscina {
   heapPorWorkerMB?: number;
   /** Forçar desativação (fallback síncrono para testes unitários). */
   desativado?: boolean;
+  /**
+   * Qual script as workers rodam. Padrão: `worker-calculador.ts`, ao lado deste
+   * arquivo — produção nunca passa isto.
+   *
+   * **Existe porque o ciclo de vida não é testável sem ele.** O que precisa de
+   * guarda aqui é o que acontece quando uma worker MORRE com tarefa em curso
+   * (`exit`/`error`), e com o calculador de verdade isso só é reproduzível
+   * matando o processo no meio de um cálculo de 10–20 s sobre um snapshot real
+   * — que nenhum teste de unidade vai fazer. Com este ponto de entrada, o teste
+   * sobe uma worker de duas linhas que morre na primeira mensagem, e a
+   * afirmação passa a ser sobre a piscina, não sobre o cálculo.
+   */
+  scriptDaWorker?: string;
 }
 
 /**
@@ -113,10 +126,9 @@ export class PiscinaWorkers {
     const padrao = configuracaoDaPiscina();
     const numWorkers = opts.tamanhoPool ?? padrao.tamanhoPool;
     const heapPorWorkerMB = opts.heapPorWorkerMB ?? padrao.heapPorWorkerMB;
-    const workerScript = path.join(
-      path.dirname(fileURLToPath(import.meta.url)),
-      'worker-calculador.ts',
-    );
+    const workerScript =
+      opts.scriptDaWorker ??
+      path.join(path.dirname(fileURLToPath(import.meta.url)), 'worker-calculador.ts');
 
     const ALLOWED_FLAGS = [
       '--import',
@@ -153,8 +165,12 @@ export class PiscinaWorkers {
           }
         });
 
-        w.on('error', (err) => {
-          this.removeWorker(w, err);
+        // `err` chega como `unknown` — o `'error'` de um `EventEmitter` não é
+        // tipado como `Error`, e quem emite pode emitir qualquer coisa. Sem a
+        // normalização, `String(err)` viraria "[object Object]" na resposta ao
+        // pedido, e o motivo real da morte da worker se perderia.
+        w.on('error', (err: unknown) => {
+          this.removeWorker(w, err instanceof Error ? err : new Error(String(err)));
         });
 
         // **A morte de uma worker TEM de rejeitar a tarefa dela.** Até

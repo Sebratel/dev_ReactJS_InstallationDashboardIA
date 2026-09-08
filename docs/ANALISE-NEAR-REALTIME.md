@@ -401,8 +401,8 @@ em exceção não tratada e o processo morre. Todo o resto do caminho já degrad
 certo — `CacheEmCamadas.aoFalhar`, o `try/catch` de `CacheDeResposta`, a memória
 na frente do Redis — e `index.ts` gasta 25 linhas prometendo exatamente essa
 degradação. Quem derrubava era o evento solto do driver, antes de qualquer uma
-delas. Com o ouvinte, a mesma situação virou 15 linhas de log e
-`GET /api/saude` respondendo 200.
+delas. Com o ouvinte, a mesma situação virou log e `GET /api/saude` respondendo
+200 — ver §4-C para o que ainda faltava depois disso.
 
 ### Testes
 
@@ -415,6 +415,129 @@ delas. Com o ouvinte, a mesma situação virou 15 linhas de log e
 
 Os quatro testes de rajada ficam **vermelhos** com o single-flight desligado —
 verificado desligando-o. Suíte inteira: **1697/1697**.
+
+---
+
+## 4-C. F2.1 — os dois hardenings, FEITA em 08/09/2026
+
+Ordem revista com o Erick: antes de pôr mais pressão na fila (F3), fechar os dois
+pontos de falha que a F2 revelou. Os consertos em si já tinham entrado no commit
+da F2. O que faltava era o que os torna duráveis — **teste que fica vermelho
+quando o conserto some**, e **estado visível de fora**.
+
+### 1. Ciclo de vida da worker: agora com teste
+
+O conserto estava verificado por sonda manual, e sonda não fica vermelha quando
+alguém apaga o handler. O que faltava era exercitar a corrente inteira:
+
+```
+worker exit/error -> rejeita a tarefa -> o voo resolve pelo cálculo em linha
+                                      -> a chave sai do Map
+                                      -> o pedido seguinte é HIT
+```
+
+Uma nota sobre essa corrente, porque ela não é a que o desenho previa: o voo
+**não** rejeita quando a worker morre. `pagina()` pega a rejeição e cai no
+cálculo em linha, que é a degradação que já existia e já era testada — mais
+devagar, e respondendo. O voo só rejeita quando o próprio fallback falha (é o
+caso do 409 sem snapshot, já coberto na F2). Nos dois casos a chave é liberada,
+que é a garantia que importa.
+
+Testar isso exigiu um ponto de entrada novo, `OpcoesPiscina.scriptDaWorker`. A
+razão: em produção a worker morre por estouro do heap de 768 MB no meio de um
+cálculo de 10–20 s sobre um snapshot real, e nenhum teste de unidade vai
+reproduzir isso. Com o parâmetro, o teste sobe uma worker de duas linhas que
+morre na primeira mensagem, e a afirmação passa a ser sobre a piscina.
+
+* `apps/api/test/piscina-ciclo-de-vida.test.ts` — a tarefa da worker morta
+  rejeita; a **fila** também é drenada quando não sobra worker; a piscina se
+  declara inativa; e um controle com uma worker que responde, para que os três
+  primeiros não passem numa piscina que rejeita tudo.
+* `apps/api/test/single-flight.test.ts` — o mesmo visto de fora, com o
+  single-flight no meio: 5 pedidos coalescidos, a worker morre, os 5 recebem
+  200, houve **um** `worker_fallback` (não um por pedido) e o pedido seguinte é
+  `hit`.
+
+Os dois primeiros ficam **vermelhos** com o handler de `exit` de volta à forma
+antiga — verificado. E ficam vermelhos com **mensagem**, não com a suíte
+pendurada: todo `await` que depende do conserto está sob prazo.
+
+### 2. Redis: a saúde parou de mentir
+
+O ouvinte de `'error'` da F2 impedia a morte do processo. Faltava a metade
+silenciosa do mesmo problema: com o Redis no chão, `GET /api/saude` continuava
+respondendo `adapter: "MemoryCache+RedisCache"` — o nome do arranjo montado na
+subida, não o estado dele agora. Uma API degradada parecia saudável, e a única
+pista era o tempo de resposta piorar depois de um restart.
+
+`apps/api/src/saude-do-redis.ts` publica isso em `cache.redis`:
+
+```json
+{ "status": "degradado", "falhas": 57, "desde": "...",
+  "ultimoErro": "Reached the max retries per request limit (which is 1).",
+  "ultimaOperacao": "set" }
+```
+
+Três decisões que valem registro:
+
+* **`falhas` não zera quando o Redis volta.** É o número que distingue "caiu uma
+  vez às 3h" de "está piscando". Um `status: "ok"` com 4.000 falhas é uma conexão
+  instável, e o instantâneo sozinho nunca contaria isso.
+* **O log sai só na transição; a contagem fica na saúde.** Um Redis inalcançável
+  emite `'error'` a cada tentativa de reconexão — em segundos são centenas de
+  linhas idênticas, e a primeira (a que interessa) fica soterrada.
+* **Degradado continua respondendo 200.** O healthcheck do
+  `docker-compose.prod.yml` testa `r.ok`; um 503 aqui faria o Docker reiniciar a
+  API em laço por causa de um cache **opcional** — degradação prevista virando
+  indisponibilidade real. `saude-do-redis.test.ts` guarda isso.
+
+E a senha não vaza: `/api/saude` fica fora da guarda de sessão de propósito (é o
+healthcheck que bate nela), então `semSegredo()` corta qualquer
+`redis://usuario:senha@` antes de o texto sair. `ECONNREFUSED host:porta` passa
+inteiro — o operador precisa do host para diagnosticar.
+
+### O ciclo inteiro, medido contra um Redis de verdade
+
+Suíte verde não prova que o processo sobe. O `redis-1` do compose não publica a
+porta 6379 para o host, então a medição usou um container temporário com porta
+publicada, e uma API real (`snapshot/` real, `--sem-aquecer --sem-poller`):
+
+| momento | `cache.redis` | página |
+|---|---|---|
+| subida, antes de tocar o cache | `ocioso`, 0 falhas | — |
+| 1º GET, Redis fora do ar | `degradado`, 9 falhas, `ECONNREFUSED`, op `conexão` | 200 em 0,53 s |
+| Redis sobe no mesmo endereço | `ok`, **51 falhas preservadas** | — |
+| Redis é derrubado de novo | `degradado`, 57 falhas, op **`set`** | 200 em 4,6 s |
+
+Duas leituras que só apareceram por rodar:
+
+1. **A volta funciona sozinha.** O processo estava no ar havia uma hora contra
+   uma porta que recusava conexão; quando o Redis apareceu, o `'ready'` do driver
+   levou a saúde de volta para `ok`. Sem isso, o campo ficaria `degradado` para
+   sempre depois da primeira queda — o mesmo endpoint mentiroso, na direção
+   oposta.
+2. **As duas vias de detecção são necessárias.** A última linha da tabela chegou
+   pelo `aoFalhar` de `CacheEmCamadas` (op `set`), não pelo `'error'` do driver:
+   um Redis que aceita conexão e recusa comando não emite `'error'` nenhum, e do
+   ponto de vista de quem esperava cache é a mesma falha.
+
+O log inteiro dessa hora, para 57 falhas e uma recuperação, tem **três linhas**:
+
+```
+[cache] Redis indisponível (a memória continua servindo): connect ECONNREFUSED 127.0.0.1:6399
+[cache] Redis conectado.
+[cache] Redis indisponível (a memória continua servindo): connect ECONNREFUSED 127.0.0.1:6399
+```
+
+### Um defeito de tipo, achado de lambuja
+
+`w.on('error', (err) => this.removeWorker(w, err))` passava `unknown` onde se
+esperava `Error`. Nunca apareceu porque o Node **remove** os tipos sem
+verificá-los — não há build. Consequência prática: uma worker que morresse por
+algo que não fosse um `Error` produziria `[object Object]` como motivo, e o
+motivo real da morte se perderia.
+
+Suíte inteira: **1711/1711**.
 
 ---
 
@@ -431,6 +554,7 @@ verificado desligando-o. Suíte inteira: **1697/1697**.
 |---|---|---|---|
 | **F1** ✅ | **overlay atravessa a worker** (B1) + contadores do F0 | 1 commit | 4 testes que ficam vermelhos sem a linha da correção |
 | **F2** ✅ | single-flight (B3) | 1 commit | os 6 pedidos medidos viraram 1 cálculo; 25,7 s → 10,1 s |
+| **F2.1** ✅ | ciclo de vida da worker + saúde do Redis (§4-C) | 1 commit | 2 testes vermelhos sem o handler de `exit`; ciclo `ocioso→degradado→ok→degradado` medido contra Redis real |
 | **F3** | fila com prioridade (B4) | 1 commit; sem rótulo tudo vira `interactive` = FIFO de hoje | interactive na frente de warmup, com fila cheia |
 | **F4** | reaquecimento pós-evento do poller (B5) | 1 commit | primeiro GET depois do evento é HIT |
 | **F5** | `carimboMemo`/watchdog visível (B8) | 1 commit | `/api/saude` diz se o `fs.watch` pegou |
