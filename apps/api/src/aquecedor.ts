@@ -34,7 +34,7 @@
 // pede. Qualquer falha ao buscar o layout cai de volta para a URL antiga: aquecer a
 // chave errada é melhor do que não aquecer nenhuma.
 
-import { codificaFiltro, filtrosPadrao } from '../../../packages/widget-engine/src/index.ts';
+import { codificaFiltro, filtrosRecentes } from '../../../packages/widget-engine/src/index.ts';
 import { idsIniciais } from '../../../tools/layout/src/corte-eager.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 
@@ -303,16 +303,21 @@ export class Aquecedor {
 
       // Se a página tem layout eager e filtros padrão (mês fechado ou ano corrente),
       // aquece também a chave com filtros, que é exatamente a que o navegador pede.
+      // **O padrão E os períodos anteriores.** Antes daqui só o recorte de
+      // abertura era adiantado, e trocar de mês — a interação mais comum do
+      // relatório — caía sempre na primeira vez: ~1,6 s, contra 2–3 ms quando
+      // a mesma combinação já foi pedida. Ver `filtrosRecentes`.
       if (idsEager && idsEager.length > 0) {
-        const filtros = filtrosPadrao(pagina);
-        if (filtros.length > 0) {
+        for (const filtros of filtrosRecentes(pagina)) {
           const qFiltros = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
           const urlFiltrada = url.includes('?') ? `${url}&${qFiltros}` : `${url}?${qFiltros}`;
           try {
             const rFiltrada = await this.#buscar(urlFiltrada);
             await rFiltrada.arrayBuffer();
           } catch {
-            // Ignora falha em filtro secundário
+            // Ignora falha em filtro secundário: o recorte de abertura já foi
+            // aquecido acima, e um mês anterior que falhe custa a primeira
+            // visita, não a página.
           }
         }
       }
