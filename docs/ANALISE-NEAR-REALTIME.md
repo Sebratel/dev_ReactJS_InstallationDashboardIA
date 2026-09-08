@@ -918,6 +918,152 @@ memo e o `catch` do bind voltando a ser vazio). Suíte inteira: **1755/1755**.
 
 ---
 
+## 4-G. Validação em staging — F1 a F5 dentro do container, 08/09/2026
+
+**Por que esta seção existe.** Todas as medidas de F1 a F5 saíram de sonda em
+processo, na máquina de desenvolvimento. Elas provam decisão de desenho; não
+provam comportamento com Redis de verdade, snapshot bind-mountado e o refresh
+reescrevendo por baixo. O Erick parou a fila antes da F6 exatamente por isso:
+*"continuar empilhando F6 antes de validar esse conjunto aumenta o risco de você
+não saber qual mudança introduziu uma regressão."*
+
+**A sorte que tornou a comparação honesta.** O container no ar havia 43 h tinha
+sido construído de `0a2cc71` — o topo exato de `staging`, e portanto o F0 com
+F1–F5 ausentes (`GET /api/saude` sem `carimbo`, sem `realtime`). Deu para medir
+a linha de base **no ambiente de destino**, com a mesma sonda
+(`npm run probe:staging`), em vez de comparar dev com produção.
+
+### O placar
+
+| medida | F0 (container, `0a2cc71`) | staging (F1–F5) |
+|---|---|---|
+| rajada: 6 pedidos idênticos, `agendamento-field` fria | pior **85,0 s**, espalhamento 59,2 s, 6 × `miss` | pior **28,7 s**, espalhamento **0,0 s**, 1 × `miss` + 5 × `coalescido` |
+| rajada: 6 × `visao-geral` fria | pior 6,7 s, espalhamento 4,5 s | — (o sinal decisivo está na página cara) |
+| 1º GET depois de um evento do poller | **0/3** acertaram o cache, 3,1–4,4 s | não reproduzido: a fonte ficou quieta (ver abaixo) |
+| clique durante o aquecimento | 32,2 s | 31,8 s — **e a métrica mostra que a medida não testava a F3** |
+| API com Redis derrubado | 200, sem restart | 200, e a saúde passa a **dizer** que está degradada |
+
+**A rajada é o número da fase.** 85,0 s → 28,7 s de pior espera é o
+single-flight funcionando sob concorrência real, e o rótulo `coalescido` em 5
+dos 6 é evidência direta — não inferência a partir de tempo.
+
+### O que a medida do clique realmente disse
+
+`31,8 s` contra `32,2 s` parece a F3 não ter servido para nada. As métricas que
+a F3 mesma publicou desmentem a leitura:
+
+```
+fila_ms_interactive     n=1  maxMs=0
+calculo_ms_interactive  n=1  31821 ms
+```
+
+O clique **não esperou fila nenhuma**: os 32 s eram o cálculo da página. E o F0
+também não esperava — porque o `Aquecedor` é sequencial e ocupa **1** das 2
+workers, então sempre sobra uma para o clique. A F3 protege contra saturação da
+piscina, e o arranque do aquecimento não a satura.
+
+Ou seja: a medida estava certa e a conclusão que ela sugeria estava errada. Sem
+`fila_ms_interactive` publicado, o registro teria virado *"a F3 não apareceu em
+staging"* — que é falso.
+
+### O Redis: a linha de base estava errada, e o conserto é outro
+
+A previsão era `API com Redis indisponível: ❌ → 200`. Medido, o F0 **já**
+devolvia 200 com o Redis parado. O que ele fazia de errado era outra coisa:
+
+```
+GET /api/saude  ->  ok: true,  cache.adapter: "MemoryCache+RedisCache"
+log             ->  [ioredis] Unhandled error event: getaddrinfo ENOTFOUND redis   (repetido)
+```
+
+A API degradava certo e **mentia sobre isso**: dizia estar servindo com Redis
+enquanto o Redis não existia, e enchia o log com a mesma linha. É exatamente o
+que o commit da F2.1 diz no título — *"a worker que morre e o Redis que cai
+param de mentir"*. O ganho da F2.1 não é sobrevivência, é honestidade; a tabela
+de baseline dizia o contrário e foi corrigida aqui.
+
+Religado o Redis, a API reconecta sozinha, sem restart (0 falhas em 30 s).
+
+### O achado que travou a promoção: o poller anunciava a mesma linha para sempre
+
+Nenhum evento em 7 minutos, contra 3 em 4 minutos no F0. Investigado até o fim,
+porque "poller quieto" e "poller morto" tinham a mesma cara — e a resposta foi
+um defeito **anterior** a F1–F5, que a F4 transformaria de desperdício de cache
+em desperdício de CPU.
+
+A janela recua `margem_segundos: 30` a cada volta, de propósito (folga contra
+relógio torto). Mas `intervalo_ms: 12000` é **menor** que a margem, então a
+linha mais recente volta a casar com o filtro em toda volta. Medido de dentro do
+container, quatro voltas seguidas sem tempo entre elas:
+
+```
+volta 1  ->  9 linha(s) mudaram
+volta 2  ->  1 linha(s) mudaram
+volta 3  ->  1 linha(s) mudaram
+volta 4  ->  1 linha(s) mudaram     <- a mesma linha, três vezes
+```
+
+No container de 43 h o sintoma está no log a cada 12 s
+(`RETORNO PRIORITARIO: 1 linha(s) mudaram`), e o preço aparece na saúde:
+`paginasCarregadas: []` e `cache.visuais.itens: 0` **depois de dois dias
+servindo**. O cache das páginas dependentes nunca sobrevivia a 12 segundos.
+
+**Por que isso bloqueava a F4.** Até aqui o evento fantasma custava cache. Com o
+reaquecimento pós-evento ligado, ele passaria a custar um **recálculo a cada
+12 s** de páginas que ninguém abriu — o oposto exato da regra 1 da F4
+(*"não reaquecer páginas que nunca são utilizadas"*). A F4 não estava errada; ela
+tornava caro um defeito que antes era só desperdício.
+
+Rebuscar continua certo — é a folga que garante não pular mudança. Anunciar a
+rebusca é que não era: `aoMudar` só dispara quando uma chave entra no delta ou
+muda de conteúdo.
+
+### E o silêncio precisou virar estado — de novo
+
+O conserto cria o modo de falha que a F5 acabou de fechar no carimbo: um poller
+saudável agora fica **calado** quando a fonte está quieta, que é como um poller
+morto se parece no log. `GET /api/saude` passou a publicar:
+
+```json
+"poller": { "queries": 7, "voltas": 36, "mudancas": 0,
+            "rebuscasSemMudanca": 0, "erros": 0,
+            "ultimaVolta": "...", "ultimaMudanca": null, "ultimoErro": null }
+```
+
+`voltas` subindo com `mudancas` em zero é a fonte quieta — foi o que aconteceu
+nesta tarde, e agora dá para afirmar em vez de supor. `voltas` parado é o poller
+parado, e `ultimoErro` diz por quê.
+
+**Consequência para o placar acima:** a linha do 1º GET pós-evento ficou sem par
+em staging, e isso é um resultado incompleto, não um sucesso. A cadeia
+`evento → cache quente` continua provada só em `reaquecimento.test.ts` e na
+sonda em processo. Ela precisa de uma janela com a fonte ativa — horário
+comercial, com técnicos trabalhando.
+
+### O que a validação NÃO cobriu
+
+* **Morte de worker.** Não é injetável por HTTP: `worker_threads` não são
+  processos, então não há o que matar de fora do container. Continua coberto por
+  `piscina-ciclo-de-vida.test.ts` e pela fixture `worker-que-morre.ts` — e está
+  dito aqui para não parecer coberto.
+* **Prioridade sob piscina saturada.** O aquecimento sequencial não satura 2
+  workers; `fila_ms_interactive` ficou em 0. Medir a F3 em staging exige
+  concorrência de usuário, não de aquecimento.
+* **`fs.watch` atravessando a fronteira dos dois containers.** O carimbo reporta
+  `watch: ativo, divergencias: 0` no bind mount, o que é a primeira evidência em
+  Linux (a da F5 era do host Windows) — mas o refresh não reescreveu o snapshot
+  durante a janela medida, então o watch ainda não foi exercitado ali.
+
+### Duas correções de documento, feitas no caminho
+
+* O cabeçalho de `aoTabelaMudar` afirmava a cadeia `invalida → reaquece → SSE` —
+  exatamente a ordem que a medição da F4 **reprovou**. A correção existia 40
+  linhas abaixo, em `reaquecePorBaixo`; o topo dizia o contrário como fato.
+* A linha "Redis fora → ❌" da tabela de baseline não sobreviveu à medida (ver
+  acima).
+
+---
+
 ## 5. Plano — etapas pequenas e reversíveis
 
 | fase | entrega | reversão | como provo que funcionou |
@@ -935,6 +1081,7 @@ memo e o `catch` do bind voltando a ser vazio). Suíte inteira: **1755/1755**.
 | **F3** ✅ | fila com prioridade (B4) | 1 commit; sem rótulo tudo vira `interactive` = FIFO de hoje | pior clique 23,1 s -> 13,4 s; fila p95 22,1 s -> 7,5 s (§4-D) |
 | **F4** ✅ | reaquecimento pós-evento do poller (B5) | 1 commit | quem chega depois do evento acha a página pronta; segurar o SSE foi medido e descartado (§4-E) |
 | **F5** ✅ | procedência do carimbo (B8) | 1 commit | `/api/saude` diz se o `fs.watch` pegou, e a conferida periódica corrige quando ele não pega (§4-F) |
+| **staging** ✅ | F1–F5 validadas dentro do container, contra a linha de base medida no MESMO ambiente | — | rajada 85,0 s → 28,7 s de pior espera; e um defeito do poller que a F4 encareceria (§4-G) |
 | **F6** | versão no evento SSE (B6) + navegador (requisito 7) | 1 commit; navegador antigo ignora campo novo | evento antigo/duplicado ignorado; filtros preservados |
 | **F7** | navegador: matar os `setTimeout`, prefetch por intenção (B7); `completos` (B2) | 1 commit cada | abertura deixa de baixar 13 páginas |
 | **F8** | observabilidade completa (B9) + testes (requisito 21) | 1 commit | `/api/saude` responde as 9 perguntas do requisito 19 |
