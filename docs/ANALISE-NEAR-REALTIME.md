@@ -1054,6 +1054,44 @@ comercial, com técnicos trabalhando.
   Linux (a da F5 era do host Windows) — mas o refresh não reescreveu o snapshot
   durante a janela medida, então o watch ainda não foi exercitado ali.
 
+### A medida que falta, e o critério para promover
+
+**Decisão do Erick, 08/09/2026: não promover com esta linha em aberto.** A F4
+tem uma hipótese central ainda não exercitada no ambiente de destino —
+. O bloqueador do poller provou o cenário
+NEGATIVO (falso evento não reaquece mais); falta o positivo: quando existe
+mudança de verdade, o reaquecimento acerta só o que deve e melhora quem chega
+depois.
+
+
+
+com a stack de pé, em **horário comercial** — a fonte é o Voalle, e nesta tarde
+ela silenciou (o poller girou 227 voltas com 0 mudanças, o que agora dá para
+afirmar em vez de supor).
+
+A sonda dá  só se a cadeia acontecer **e** nenhum dos sete reprovar:
+
+| critério | como ela mede |
+|---|---|
+| cálculo duplicado | voos iniciados ≤  |
+| reaquecimento de página não afetada |  ≤ afetadas anunciadas no SSE |
+| falso evento |  ≥ eventos recebidos |
+| starvation do interactive |  p95 |
+| crescimento anormal de memória | RSS antes/depois |
+| erro de Redis | falhas novas e  |
+| inconsistência de carimbo |  novas |
+
+**Ausência de evento não é aprovação.** Sem evento na janela ela imprime
+ e diz quantas voltas o poller deu — para separar «fonte quieta»
+de «detector morto». E ela não fabrica evento: o valor desta medida é ser
+, e um evento artificial
+não exercita nenhum dos quatro.
+
+O  atravessando a fronteira dos containers **não** entra como
+condição de promoção: o poller é garantia independente de detecção, e a F5 já
+garante que uma falha do watch vira estado em vez de silêncio. Fica registrado
+como limitação de cobertura desta janela — não como motivo para mais alteração.
+
 ### Duas correções de documento, feitas no caminho
 
 * O cabeçalho de `aoTabelaMudar` afirmava a cadeia `invalida → reaquece → SSE` —
