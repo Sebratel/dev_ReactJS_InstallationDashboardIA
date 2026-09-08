@@ -50,6 +50,7 @@ import {
   retencaoDaPagina,
   type EstadoDoCache,
 } from './cache-resposta.ts';
+import { CarimboVigiado } from './carimbo-vigiado.ts';
 import { escopoDoCache } from './escopo-cache.ts';
 import { CacheDeVisual, TETO_PADRAO_MB } from './cache-visual.ts';
 import {
@@ -384,9 +385,14 @@ export class Servidor {
 
   /** `setInterval` do batimento. Só existe enquanto houver assinante. */
   private batimentoSSE: NodeJS.Timeout | null = null;
-  /** Cache do carimbo em memória para evitar fs.readFileSync por pedido HTTP no hot-path. */
-  private carimboMemo: string | null = null;
-  private watcherSnapshot: fs.FSWatcher | null = null;
+  /**
+   * O carimbo do snapshot, com a procedência dele — ver `carimbo-vigiado.ts`.
+   *
+   * Substituiu um `string | null` memoizado atrás de um `fs.watch` com
+   * `catch {}` vazio (B8). Construído no construtor porque `leDoDisco`
+   * fecha sobre `this.opts`, que só existe depois dele.
+   */
+  private carimbo!: CarimboVigiado;
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, verificadorGoogle, piscinaWorkers, ...resto } = opts;
@@ -454,6 +460,33 @@ export class Servidor {
       this.queriesPorDashboard.set(dash.id, plano.queries);
       this.tabelasPorDashboard.set(dash.id, new Set(plano.tabelas.map((t) => normalizeName(t.nome))));
     }
+
+    // O carimbo e a procedência dele (F5). Construído por último porque
+    // `leDoDisco` fecha sobre `this.opts`.
+    this.carimbo = new CarimboVigiado({
+      leDoDisco: () =>
+        carimboDoSnapshot(
+          leManifesto(this.opts.snapshotDir),
+          carimboDasCalculadas(this.opts.snapshotDir),
+        ),
+      // `null` (e não uma exceção) quando o diretório não existe: uma API sem
+      // snapshot ainda não é uma API com o observador quebrado, e tratar as
+      // duas do mesmo jeito faria a saúde acusar defeito onde só falta dado.
+      vigia: (aoMudar, aoMorrer) => {
+        if (!fs.existsSync(this.opts.snapshotDir)) return null;
+        const w = fs.watch(this.opts.snapshotDir, () => aoMudar());
+        // **Sem este ouvinte o processo MORRE** quando o watch quebra em tempo
+        // de execução: `fs.watch` devolve um `EventEmitter` com zero ouvintes
+        // de `error`, e um `error` sem ouvinte vira exceção não tratada. Mesmo
+        // defeito que o `ioredis` tinha antes da F2.1, em outro módulo.
+        w.on('error', (err: unknown) => {
+          w.close();
+          aoMorrer(err);
+        });
+        return w;
+      },
+      agora: () => this.opts.agora(),
+    });
   }
 
   /** O segredo desta subida, para `index.ts` repassar ao `Aquecedor` — ver o
@@ -496,10 +529,7 @@ export class Servidor {
   }
 
   destroi(): void {
-    if (this.watcherSnapshot) {
-      this.watcherSnapshot.close();
-      this.watcherSnapshot = null;
-    }
+    this.carimbo.para();
     this.desligaBatimento();
     this.piscina.destroi();
   }
@@ -655,6 +685,16 @@ export class Servidor {
   // ------------------------------------------------------------------- rotas
 
   private saude(res: http.ServerResponse): void {
+    // **A saúde CONFERE o carimbo, não só relata.** Esta rota é polida a cada
+    // 30 s pelo healthcheck do container (`docker-compose.prod.yml`), então ela
+    // já é um relógio existente — usá-la como segundo ponto de reconciliação
+    // não acrescenta detector nenhum, e cobre o caso de o aquecimento estar
+    // desligado (`--sem-aquecer`), em que a conferida do `Aquecedor` não roda.
+    //
+    // Custa uma leitura de manifesto numa rota de operador. O comentário do
+    // `statusDeRefresh` abaixo já diz por que isso é aceitável aqui e não no
+    // caminho quente.
+    this.confereCarimbo();
     const manifesto = leManifesto(this.opts.snapshotDir);
     responde(res, 200, {
       ok: manifesto !== null,
@@ -707,6 +747,15 @@ export class Servidor {
       // nome quer dizer e por que os picos são marca d'água, não valor
       // instantâneo. `piscina` é lido na hora — é o único que faz sentido
       // instantâneo, porque diz o que está acontecendo AGORA.
+      // **Por que a API acredita que está usando ESTE snapshot** (F5, B8).
+      // `snapshot` acima diz o que está em disco; isto diz em que a API
+      // acredita e de onde veio essa crença. Os dois são necessários: era
+      // justamente quando eles discordavam que não havia nada para olhar.
+      //
+      // `watch.status` diferente de `ativo` NÃO é indisponibilidade — a
+      // conferida periódica continua correta, só mais lenta para notar. Por
+      // isso isto não mexe no status HTTP, pela mesma razão do `redis` acima.
+      carimbo: this.carimbo.estado(),
       realtime: {
         ...this.metricas.instantaneo(),
         sseAbertas: this.assinantesSSE.size,
@@ -867,7 +916,7 @@ export class Servidor {
    *    mesma chave viram um cálculo só.
    */
   aoTabelaMudar(tabela: string, queryId: string): void {
-    this.carimboMemo = null;
+    this.carimbo.esquece();
     const afetados = [...this.queriesPorDashboard]
 
       .filter(([, queries]) => queries.includes(queryId))
@@ -1640,58 +1689,66 @@ export class Servidor {
     return promessa;
   }
 
+  // -------------------------------------------------------------- o carimbo
+  //
+  // A identidade do que está em disco AGORA: manifesto mais tabelas calculadas.
+  // Uma conta só, usada pelas duas camadas de cache — duas contas separadas para
+  // a "mesma" identidade divergiriam no primeiro arquivo que uma delas não
+  // olhasse, e foi exatamente assim que os `calc.*.jsonl` ficaram de fora dele.
+  //
+  // **A HISTÓRIA DESTE MEMO, porque ela quase se repetiu.** Ler o carimbo custa
+  // 0,57 ms — o maior custo fixo de um acerto de cache, mais que serializar uma
+  // página de 96 KB. Memoizá-lo é tentador e foi tentado em 17/08/2026, atrás de
+  // uma conferência barata: guardar o valor e só recalcular quando `mtime` e
+  // tamanho do manifesto mudassem. Não funciona, e o teste provou antes de o
+  // código sair daqui — reescrever o manifesto trocando só a hora de `geradoEm`
+  // não muda um byte do tamanho (a data tem largura fixa), e o `mtime` desta
+  // máquina tem granularidade medida de ~2,45 ms (4.000 escritas, 265 carimbos
+  // distintos). Duas reescritas dentro dessa janela são indistinguíveis. O
+  // comentário que sobrou daquele dia terminava assim: "0,4 ms não compra um
+  // modo de desatualização silenciosa".
+  //
+  // **E aí o memo voltou assim mesmo**, guardado por um `fs.watch` com
+  // `catch {}` vazio — comprando exatamente o modo de desatualização silenciosa
+  // que aquele parágrafo proibia, por um caminho diferente. A F5 (08/09/2026)
+  // não desfez o memo: ele é legítimo no caminho quente. O que ela fez foi
+  // limitar a defasagem e torná-la visível, separando a leitura barata
+  // (`carimboAtual`) da conferida de verdade (`confereCarimbo`), e publicando a
+  // procedência em `GET /api/saude`. Ver `carimbo-vigiado.ts`.
+
   /**
-   * A identidade do que está em disco **agora**: manifesto mais tabelas calculadas.
+   * O carimbo pelo caminho BARATO — memo quando há.
    *
-   * Uma função só, usada pelas duas camadas de cache. Duas contas separadas para a
-   * "mesma" identidade divergiriam no primeiro arquivo que uma delas não olhasse — e
-   * foi exatamente assim que os `calc.*.jsonl` ficaram de fora do carimbo.
+   * É este que o caminho quente do HTTP usa, e é por isso que ele é memoizado:
+   * 0,57 ms é o maior custo fixo de um acerto de cache, que inteiro tem de
+   * caber em menos de 10 ms.
    *
-   * **Isto custa 0,57 ms por pedido e fica assim.** É o maior custo fixo de um
-   * acerto de cache — mais que serializar uma página de 96 KB —, quase todo em
-   * `leManifesto` (ler o arquivo e fazer `JSON.parse`). A tentação de memoizá-lo
-   * atrás de uma conferência barata é óbvia, e foi tentada em 17/08/2026: guardar o
-   * carimbo e só recalculá-lo quando `mtime` e tamanho do manifesto mudassem.
-   *
-   * **Não funciona, e o teste provou antes de o código sair daqui.** Reescrever o
-   * manifesto trocando só a hora de `geradoEm` não muda um byte do tamanho — a data
-   * tem largura fixa —, então sobra o `mtime` para separar as duas versões. E o
-   * `mtime` desta máquina tem granularidade medida de **~2,45 ms** (4.000 escritas,
-   * 265 carimbos de tempo distintos): duas reescritas dentro dessa janela são
-   * indistinguíveis. O memo devolveria o carimbo velho, a chave da resposta apontaria
-   * para a resposta anterior ao refresh, e a tela mostraria o número de antes sem
-   * nada dizendo que era de antes.
-   *
-   * 0,4 ms não compra um modo de desatualização silenciosa. A economia equivalente
-   * está no corpo pré-serializado do cache, que não custa exatidão nenhuma.
+   * **A defasagem que isto admite agora é LIMITADA**, e antes não era. Ver
+   * `carimbo-vigiado.ts`: quando o `fs.watch` não entrega, quem reconcilia é
+   * `confereCarimbo()`, chamada a cada volta do `Aquecedor`. Antes da F5, um
+   * watch mudo deixava este memo velho por tempo indeterminado, sem log e sem
+   * sintoma.
    */
-  private iniciaWatcherSnapshot(): void {
-    if (this.watcherSnapshot) return;
-    if (fs.existsSync(this.opts.snapshotDir)) {
-      try {
-        this.watcherSnapshot = fs.watch(this.opts.snapshotDir, () => {
-          this.carimboMemo = null;
-        });
-        this.watcherSnapshot.unref();
-      } catch {
-        // Fallback silencioso se fs.watch não for suportado
-      }
-    }
-  }
-
-
   private carimboAtual(): string {
-    this.iniciaWatcherSnapshot();
-    if (this.carimboMemo !== null) return this.carimboMemo;
-
-    const val = carimboDoSnapshot(
-      leManifesto(this.opts.snapshotDir),
-      carimboDasCalculadas(this.opts.snapshotDir),
-    );
-    this.carimboMemo = val;
-    return val;
+    return this.carimbo.doMemo();
   }
 
+  /**
+   * O carimbo lido do DISCO, reconciliando o memo — a segunda garantia da F5.
+   *
+   * **Não é um detector novo.** É a mesma chamada que o `Aquecedor` já fazia a
+   * cada 5 s, que voltou a fazer o que o nome dela diz. O comentário de topo de
+   * `aquecedor.ts` sempre afirmou que ele funciona "conferindo o carimbo do
+   * snapshot de tempos em tempos"; com o memo no caminho, essa conferida tinha
+   * virado um `return` de variável, e o `Aquecedor` ficou tão cego quanto o
+   * cache quando o `fs.watch` calava.
+   *
+   * Custa 0,57 ms por volta de 5 s, e por cálculo de página (onde ele some ao
+   * lado de 10–20 s de conta). Não entra no caminho de um acerto de cache.
+   */
+  private confereCarimbo(): string {
+    return this.carimbo.confere();
+  }
 
   /**
    * A identidade completa do que a API responderia agora: o dado em disco e o dia.
@@ -1701,9 +1758,13 @@ export class Servidor {
    * na virada da meia-noite — que é justamente o instante em que o cache inteiro fica
    * inalcançável de uma vez, pelas 32 chamadas a `TODAY()`. A tela do primeiro
    * expediente é a que pagaria.
+   *
+   * **Lê o disco, não o memo** (F5). É o que faz dela a segunda garantia contra
+   * um `fs.watch` mudo — e o que devolve ao `Aquecedor` a capacidade de notar
+   * um snapshot novo por conta própria.
    */
   identidadeAtual(): string {
-    return identidadeDoCalculo(this.carimboAtual(), diaDoCalculo(this.opts.agora()));
+    return identidadeDoCalculo(this.confereCarimbo(), diaDoCalculo(this.opts.agora()));
   }
 
   /**

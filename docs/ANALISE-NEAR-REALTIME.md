@@ -189,6 +189,11 @@ explica em detalhe por que memoizar o carimbo é perigoso — e o código memoiz
 mesmo assim, atrás de um watch mais frágil que o `mtime` que aquele comentário
 rejeitou.
 
+> **Resolvido na F5** (08/09/2026) — ver §4-F. E o diagnóstico acima estava
+> INCOMPLETO: o `Aquecedor` também lê esse memo, então um watch mudo cegava o
+> reaquecimento junto com o cache. Não era o poller mascarando um problema; era
+> o poller sendo a única coisa entre a API e servir dado velho para sempre.
+
 ### B9 — observabilidade
 
 `/api/saude` já traz memória (RSS/heap), cache de visual, aquecimento e status
@@ -796,6 +801,123 @@ aviso não espera, e os dois de quem consome a marca do primeiro GET.
 
 ---
 
+## 4-F. F5 — a procedência do carimbo, FEITA em 08/09/2026
+
+**A pergunta que `GET /api/saude` passou a responder:** *por que a API acredita
+que está usando ESTE snapshot?*
+
+### O que o diagnóstico não tinha visto: o Aquecedor estava cego junto
+
+B8 descrevia o risco como "a API serve o snapshot antigo indefinidamente, sem
+log". Medido com `npm run probe:watch-snapshot`, com o observador morto e um
+snapshot novo em disco, são **três** consequências e nenhuma faz barulho:
+
+1. a chave da resposta aponta para a resposta do snapshot ANTIGO;
+2. `carregadas` não é limpo, e o avaliador segue com o dataset antigo;
+3. **o `Aquecedor` lê esse mesmo carimbo e conclui que não há o que aquecer.**
+
+A terceira é a que muda o desenho da correção. O comentário de topo de
+`aquecedor.ts` sempre afirmou que ele trabalha *"conferindo o carimbo do
+snapshot de tempos em tempos"* — e o memo tinha transformado essa conferida num
+`return` de variável. Dois mecanismos que pareciam independentes dependiam do
+mesmo evento de filesystem.
+
+### A correção não é um detector novo — é uma leitura que voltou a ser leitura
+
+Já existem três coisas olhando (o `fs.watch`, o `Aquecedor` a cada 5 s, o
+poller). A F5 não acrescenta um quarto relógio; ela separa duas leituras que
+estavam confundidas atrás do mesmo memo:
+
+| | quem chama | lê o disco? | custo |
+|---|---|---|---|
+| `carimboAtual()` | o caminho quente do HTTP | não (memo) | 0 |
+| `confereCarimbo()` | `identidadeAtual()` — o `Aquecedor`, a cada 5 s — e `GET /api/saude` | **sim** | 0,57 ms |
+
+O memo continua no caminho quente, e está certo que continue: 0,57 ms é o maior
+custo fixo de um acerto de cache, que inteiro tem de caber em menos de 10 ms. O
+que mudou é que **a defasagem virou limitada** — antes um watch mudo deixava o
+memo velho por tempo indeterminado; agora ele dura no máximo até a próxima volta
+do aquecedor (5 s) ou do healthcheck (30 s).
+
+E a divergência entre as duas leituras **é** o detector de watch morto. Ele não
+custa timer nenhum: sai de uma chamada que já acontecia.
+
+`GET /api/saude` confere em vez de só relatar pelo mesmo motivo: o healthcheck
+do container já bate nela a cada 30 s (`docker-compose.prod.yml`), e é ela que
+cobre o caso de o aquecimento estar desligado (`--sem-aquecer`).
+
+### Um `'error'` sem ouvinte, de novo
+
+`fs.watch` devolve um `EventEmitter` com **zero** ouvintes de `'error'`
+(conferido em 08/09/2026). Um watch que quebra em tempo de execução — diretório
+removido, limite de inotify, mount que sumiu — emite `'error'`, e um `'error'`
+sem ouvinte num `EventEmitter` derruba o processo.
+
+É o mesmo defeito que o `ioredis` tinha antes da F2.1, em outro módulo e com a
+mesma forma: todo o resto do caminho degradava certo, e quem derrubava era o
+evento solto. Agora ele vira `watch.status: "morreu"`, com motivo, e o memo cai
+junto — continuar servindo o valor que o observador deveria ter invalidado é a
+pior das duas opções.
+
+### O que a saúde publica
+
+```json
+"carimbo": {
+  "valor": "eff84557d05b1b00",
+  "fonte": "disco",
+  "watch": { "status": "ativo" },
+  "ultimaMudanca": "2026-09-08T18:12:58.788Z",
+  "ultimoCheck": "2026-09-08T18:12:58.788Z",
+  "checagens": 1, "mudancas": 1, "divergencias": 0
+}
+```
+
+`divergencias > 0` é a acusação: o carimbo mudou em disco e o `fs.watch` não
+avisou — a API esteve servindo o snapshot anterior até alguém conferir.
+`divergencias: 0` com `watch.status: "ativo"` e `mudancas > 0` é a prova de que
+o observador está entregando. `snapshot` (acima, no mesmo documento) diz o que
+está em DISCO; `carimbo` diz em que a API acredita e de onde veio a crença — era
+justamente quando os dois discordavam que não havia nada para olhar.
+
+`nao-tentado` é diferente de `falhou`: uma API que subiu antes do primeiro
+`npm run snapshot` não tem o que observar, e mostrá-la como defeituosa faria a
+saúde acusar problema onde só falta dado.
+
+### Medido na API real
+
+Com a API no ar e o manifesto reescrito por fora (o que um refresh faz), o
+carimbo mudou de `eff84557d05b1b00` para `ff14172a7da4f9d0` com
+`divergencias: 0` — o `fs.watch` desta máquina entregou.
+
+Vale registrar o que essa medida **não** prova: em produção o `snapshot/` é um
+bind mount escrito por OUTRO container (`docker-compose.prod.yml`), e esta
+medida é do host, no Windows. O ponto da F5 é justamente não precisar saber:
+entregando ou não, a conferida periódica corrige e o estado diz qual dos dois
+está acontecendo.
+
+A sonda `probe:watch-snapshot` também errou duas medidas antes de acertar —
+parava de coletar eventos no primeiro (e concluía que o watch "não via o
+manifesto final") e contava os eventos da própria troca de diretório como prova
+de que o watch tinha sobrevivido a ela. Mesma classe de defeito da sonda da F4, e
+o mesmo remédio: o instrumento precisa saber dizer quando está desajustado.
+
+### Testes
+
+* `carimbo-vigiado.test.ts` (10) — a política com o observador na mão: o watch
+  que não sobe, o que sobe e entrega, o que **cala** (pego pela conferida, vira
+  divergência) e o que **morre** (vira estado, não derruba o processo). Mais a
+  guarda contra retentar o bind a cada leitura, que é o defeito de log repetido
+  que a F2.1 consertou no Redis.
+* `carimbo-fim-a-fim.test.ts` (4) — a fiação, com disco e `fs.watch` de verdade:
+  a saúde publica a procedência, e `identidadeAtual()` lê o disco. O decisivo é
+  `o snapshot muda em disco e a CONFERIDA pega, mesmo sem o observador` — que
+  antes da F5 não passava.
+
+**5 dos 14 ficam vermelhos** com B8 restaurado (`identidadeAtual` voltando ao
+memo e o `catch` do bind voltando a ser vazio). Suíte inteira: **1755/1755**.
+
+---
+
 ## 5. Plano — etapas pequenas e reversíveis
 
 | fase | entrega | reversão | como provo que funcionou |
@@ -812,7 +934,7 @@ aviso não espera, e os dois de quem consome a marca do primeiro GET.
 | **F2.1** ✅ | ciclo de vida da worker + saúde do Redis (§4-C) | 1 commit | 2 testes vermelhos sem o handler de `exit`; ciclo `ocioso→degradado→ok→degradado` medido contra Redis real |
 | **F3** ✅ | fila com prioridade (B4) | 1 commit; sem rótulo tudo vira `interactive` = FIFO de hoje | pior clique 23,1 s -> 13,4 s; fila p95 22,1 s -> 7,5 s (§4-D) |
 | **F4** ✅ | reaquecimento pós-evento do poller (B5) | 1 commit | quem chega depois do evento acha a página pronta; segurar o SSE foi medido e descartado (§4-E) |
-| **F5** | `carimboMemo`/watchdog visível (B8) | 1 commit | `/api/saude` diz se o `fs.watch` pegou |
+| **F5** ✅ | procedência do carimbo (B8) | 1 commit | `/api/saude` diz se o `fs.watch` pegou, e a conferida periódica corrige quando ele não pega (§4-F) |
 | **F6** | versão no evento SSE (B6) + navegador (requisito 7) | 1 commit; navegador antigo ignora campo novo | evento antigo/duplicado ignorado; filtros preservados |
 | **F7** | navegador: matar os `setTimeout`, prefetch por intenção (B7); `completos` (B2) | 1 commit cada | abertura deixa de baixar 13 páginas |
 | **F8** | observabilidade completa (B9) + testes (requisito 21) | 1 commit | `/api/saude` responde as 9 perguntas do requisito 19 |
