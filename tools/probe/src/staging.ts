@@ -6,14 +6,21 @@
 // Redis de verdade, snapshot bind-mountado e o refresh reescrevendo por baixo.
 // Rodar em processo aqui seria medir o dev de novo e chamar de staging.
 //
-// E ela tem de rodar contra as DUAS versões. Por isso nada aqui depende de
-// `/api/metricas` nem de `saude.carimbo`: o F0 não tem nenhum dos dois, e uma
-// sonda que só roda depois da mudança não produz linha de base.
+// E ela tem de rodar contra as DUAS versões. Por isso a seção `rajada` não
+// depende de métrica nenhuma: o F0 não publica `realtime`, e uma sonda que só
+// roda depois da mudança não produz linha de base. A seção `evento` é a
+// exceção declarada — ela julga a F4, que só existe na versão nova.
 //
 // **O que ela NÃO mede, e o motivo.** A morte de worker não é injetável por
 // HTTP — `worker_threads` não são processos, então não há o que matar de fora
 // do container. Esse caso fica com `piscina-ciclo-de-vida.test.ts` e a fixture
 // `worker-que-morre.ts`, e está dito aqui para não parecer coberto.
+//
+// **A regra que manda na seção `evento`.** Ausência de evento NÃO é aprovação.
+// Se a fonte não mudar na janela, a sonda diz "evento não observado" e recusa
+// dar veredito — e nada aqui força um evento artificial, porque um evento
+// fabricado não exercita `fonte real → detector real → evento real → F4 real`,
+// que é a única coisa que esta medida existe para provar.
 //
 // REGRA DE SAÍDA: nunca imprime valor de linha. Só id de página, contagem,
 // status HTTP e tempo.
@@ -36,6 +43,8 @@ const BASE = arg('base', 'http://127.0.0.1:3100').replace(/\/$/, '');
 const SECOES = arg('so', 'identidade,rajada,evento').split(',').map((s) => s.trim());
 const ESPERA_MS = Number.parseInt(arg('espera', '300'), 10) * 1000;
 const RAJADA = Number.parseInt(arg('rajada', '6'), 10);
+/** Quanto esperar o reaquecimento assentar antes de conferir os contadores. */
+const ASSENTA_MS = Number.parseInt(arg('assenta', '45'), 10) * 1000;
 
 const seg = (ms: number): string => `${(ms / 1000).toFixed(1)}s`;
 
@@ -91,10 +100,28 @@ async function pede(url: string): Promise<Pedido> {
   }
 }
 
-async function saude(): Promise<Record<string, unknown>> {
-  const r = await fetch(`${BASE}/api/saude`);
-  return (await r.json()) as Record<string, unknown>;
+interface Saude {
+  memoria?: { rssMB?: number; heapUsedMB?: number };
+  carimbo?: { valor?: string; watch?: { status?: string }; divergencias?: number };
+  cache?: { redis?: { status?: string; falhas?: number } };
+  realtime?: {
+    contadores?: Record<string, number>;
+    duracoes?: Record<string, { n: number; maxMs: number; p95Ms: number }>;
+    poller?: { voltas?: number; mudancas?: number; rebuscasSemMudanca?: number; erros?: number };
+  };
+  snapshot?: { queries?: number; linhas?: number; dadoDe?: string };
+  aquecimento?: { ativo?: boolean; pronto?: boolean };
 }
+
+async function saude(): Promise<Saude> {
+  const r = await fetch(`${BASE}/api/saude`);
+  return (await r.json()) as Saude;
+}
+
+/** Um contador que ainda não foi incrementado não aparece na saúde — vale 0. */
+const cont = (s: Saude, nome: string): number => s.realtime?.contadores?.[nome] ?? 0;
+const dur = (s: Saude, nome: string): { n: number; maxMs: number; p95Ms: number } =>
+  s.realtime?.duracoes?.[nome] ?? { n: 0, maxMs: 0, p95Ms: 0 };
 
 // ---------------------------------------------------------------------------
 // identidade — qual das duas versões está atendendo?
@@ -102,27 +129,30 @@ async function saude(): Promise<Record<string, unknown>> {
 
 if (SECOES.includes('identidade')) {
   const s = await saude();
-  const temCarimbo = 'carimbo' in s;
+  const temCarimbo = s.carimbo !== undefined;
   console.log(`  base: ${BASE}`);
   console.log(
     `  versão: ${temCarimbo ? 'F5 (a saúde publica a procedência do carimbo)' : 'F0/anterior (sem bloco `carimbo`)'}`,
   );
-  console.log(`  bloco realtime na saúde: ${'realtime' in s ? 'sim' : 'não'}`);
-  const snap = s['snapshot'] as { queries?: number; linhas?: number; dadoDe?: string } | undefined;
-  if (snap) {
+  console.log(`  bloco realtime na saúde: ${s.realtime ? 'sim' : 'não'}`);
+  if (s.snapshot) {
     console.log(
-      `  snapshot: ${snap.queries} queries, ${snap.linhas?.toLocaleString('pt-BR')} linhas, mais antiga de ${snap.dadoDe}`,
+      `  snapshot: ${s.snapshot.queries} queries, ${s.snapshot.linhas?.toLocaleString('pt-BR')} linhas, mais antiga de ${s.snapshot.dadoDe}`,
     );
   }
-  const aq = s['aquecimento'] as { ativo?: boolean; pronto?: boolean } | undefined;
-  if (aq) console.log(`  aquecimento: ativo=${aq.ativo} pronto=${aq.pronto}`);
+  if (s.aquecimento) {
+    console.log(`  aquecimento: ativo=${s.aquecimento.ativo} pronto=${s.aquecimento.pronto}`);
+  }
   if (temCarimbo) {
-    const c = s['carimbo'] as {
-      valor?: string;
-      watch?: { status?: string };
-      divergencias?: number;
-    };
-    console.log(`  carimbo: ${c.valor} — watch ${c.watch?.status}, ${c.divergencias} divergência(s)`);
+    console.log(
+      `  carimbo: ${s.carimbo?.valor} — watch ${s.carimbo?.watch?.status}, ${s.carimbo?.divergencias} divergência(s)`,
+    );
+  }
+  const p = s.realtime?.poller;
+  if (p) {
+    console.log(
+      `  poller: ${p.voltas} voltas, ${p.mudancas} mudança(s), ${p.rebuscasSemMudanca} rebusca(s) sem mudança, ${p.erros} erro(s)`,
+    );
   }
 }
 
@@ -171,41 +201,67 @@ if (SECOES.includes('rajada')) {
 // prioridade — o clique durante o aquecimento (F3)
 // ---------------------------------------------------------------------------
 //
-// Só vale logo depois de subir a stack: a carga de `warmup` real é o próprio
-// Aquecedor no arranque (44 s medidos no container). Fora dessa janela não há
-// concorrência para medir, e a sonda diz isso em vez de inventar um número.
+// Só vale logo depois de subir a stack, e mesmo assim mede pouco: o Aquecedor é
+// SEQUENCIAL e ocupa 1 das 2 workers, então sobra sempre uma para o clique.
+// Medido em 08/09/2026: 32,2 s no F0 contra 31,8 s com a fila por prioridade —
+// e `fila_ms_interactive` em 0 nos dois, porque os 32 s eram o cálculo da
+// página, não espera. A F3 protege contra piscina SATURADA; aquecimento não
+// satura. Por isso esta seção imprime a fila junto do tempo: sem ela, o número
+// sugere uma conclusão falsa.
 
 if (SECOES.includes('prioridade')) {
   const s = await saude();
-  const aq = s['aquecimento'] as { ativo?: boolean; pronto?: boolean } | undefined;
   console.log('\n  PRIORIDADE — o clique enquanto o Aquecedor trabalha');
-  if (aq?.pronto === true) {
+  if (s.aquecimento?.pronto === true) {
     console.log('     (inconclusivo: o aquecimento já terminou — rode logo após `up -d`)');
   } else {
     const pagina = arg('pagina', 'visao-geral');
     const r = await pede(await urlDaTela(pagina));
+    const depois = await saude();
+    const fila = dur(depois, 'fila_ms_interactive');
     console.log(`     ${pagina}: HTTP ${r.status}, cache=${r.cache}, ${seg(r.ms)} com o aquecimento em curso`);
+    console.log(`     fila_ms_interactive: n=${fila.n} max=${fila.maxMs} ms`);
     console.log(
-      '     leitura: no F0 este pedido espera o lote de aquecimento; com a fila por prioridade ele passa na frente',
+      `     leitura: ${
+        fila.maxMs > 1000
+          ? 'o clique ESPEROU fila — é aqui que a prioridade aparece'
+          : 'o clique não esperou fila; os segundos acima são cálculo, não espera (a F3 não é o que está sendo medido)'
+      }`,
     );
   }
 }
 
 // ---------------------------------------------------------------------------
-// evento — o primeiro GET depois de um evento real do poller (F4)
+// evento — a cadeia da F4 sob um evento REAL do poller
 // ---------------------------------------------------------------------------
 //
-// Este é o teste que o Erick chamou de mais importante da F4, e aqui ele roda
-// contra o poller de VERDADE: nada é disparado pela sonda. Ela assina o SSE,
-// espera o Voalle mudar sozinho e cronometra quem chega depois do aviso.
+// A promessa da F4, inteira:
+//
+//   evento real -> invalidação -> SSE -> GET interactive -> warmup concorrente
+//               -> cache quente para quem chega DEPOIS
+//
+// Medir só "acertou o cache?" deixaria de fora os sete jeitos de isso dar certo
+// pelo motivo errado. Por isso esta seção tira um retrato dos contadores ANTES,
+// deixa o reaquecimento assentar, tira outro DEPOIS, e julga cada critério
+// separadamente. O veredito é `REPROVA` se qualquer um falhar, e
+// `SEM VEREDITO` se nenhum evento aparecer — nunca `APROVA` por ausência.
 
 if (SECOES.includes('evento')) {
   console.log(`\n  EVENTO — assinando ${BASE}/api/eventos e esperando o poller (até ${seg(ESPERA_MS)})`);
+  console.log('  (nada aqui dispara evento: a fonte é o Voalle, o detector é o poller)');
+
+  const antes = await saude();
   const freio = new AbortController();
   const timer = setTimeout(() => freio.abort(), ESPERA_MS);
   timer.unref?.();
 
-  const medidas: { pagina: string; ms: number; cache: string }[] = [];
+  /** Cada evento observado, com o que ele afetou e o que cada persona sentiu. */
+  const eventos: {
+    afetados: string[];
+    aberta: { pagina: string; cache: string; ms: number };
+    depois: { pagina: string; cache: string; ms: number } | null;
+  }[] = [];
+
   try {
     const r = await fetch(`${BASE}/api/eventos`, { signal: freio.signal });
     if (!r.ok || !r.body) throw new Error(`SSE devolveu ${r.status}`);
@@ -224,13 +280,32 @@ if (SECOES.includes('evento')) {
         const { dashboards } = JSON.parse(bruto.slice(6)) as { dashboards: string[] };
         const alvo = dashboards[0];
         if (!alvo) continue;
-        // O navegador reage ao evento pedindo a página de novo. É exatamente
-        // isso, e com a MESMA URL que a tela usa — pedir a chave crua mediria
-        // uma chave que ninguém aquece (o erro que a sonda da F4 cometeu).
-        const p = await pede(await urlDaTela(alvo));
-        medidas.push({ pagina: alvo, ms: p.ms, cache: p.cache });
-        console.log(`     evento -> ${alvo} (${dashboards.length} página(s)): ${p.cache} em ${seg(p.ms)}`);
-        if (medidas.length >= 3) break laco;
+
+        // Persona A — a tela ABERTA. Recebeu o SSE e refez o pedido, com a
+        // MESMA URL que a tela usa (pedir a chave crua mediria uma chave que
+        // ninguém aquece: foi o erro da sonda da F4).
+        const a = await pede(await urlDaTela(alvo));
+        console.log(`     evento -> ${dashboards.length} página(s) afetada(s); [A] tela aberta em ${alvo}: ${a.cache} em ${seg(a.ms)}`);
+
+        // Persona B — quem CHEGA DEPOIS, noutra página afetada. É ela que o
+        // reaquecimento existe para servir; se B abrir a mesma página de A,
+        // acerta o cache que A pagou e a medida não diz nada sobre a F4.
+        const outra = dashboards.find((p) => p !== alvo);
+        let b: typeof eventos[number]['depois'] = null;
+        if (outra) {
+          const rb = await pede(await urlDaTela(outra));
+          b = { pagina: outra, cache: rb.cache, ms: rb.ms };
+          console.log(`                [B] chega depois em ${outra}: ${rb.cache} em ${seg(rb.ms)}`);
+        } else {
+          console.log('                [B] este evento afetou 1 página só — sem página distinta para medir');
+        }
+
+        eventos.push({
+          afetados: dashboards,
+          aberta: { pagina: alvo, cache: a.cache, ms: a.ms },
+          depois: b,
+        });
+        if (eventos.length >= 3) break laco;
       }
     }
   } catch (err) {
@@ -242,21 +317,97 @@ if (SECOES.includes('evento')) {
     freio.abort();
   }
 
-  if (medidas.length === 0) {
-    console.log('     nenhum evento na janela — o poller não viu mudança, ou o SSE não entregou.');
-    console.log('     (confira no log do container: `[poller] ... mudou — invalidando ...`)');
-  } else {
-    const hits = medidas.filter((m) => m.cache === 'hit').length;
-    const pior = Math.max(...medidas.map((m) => m.ms));
-    console.log(`     ${hits}/${medidas.length} acertaram o cache; pior espera ${seg(pior)}`);
+  if (eventos.length === 0) {
+    const s = await saude();
+    const p = s.realtime?.poller;
+    console.log('\n     evento NÃO observado na janela.');
+    if (p) {
+      console.log(
+        `     o poller girou ${(p.voltas ?? 0) - (antes.realtime?.poller?.voltas ?? 0)} volta(s) nesta janela, ` +
+          `com ${p.erros} erro(s) — ${p.mudancas === antes.realtime?.poller?.mudancas ? 'a fonte ficou quieta' : 'houve mudança, e o SSE não entregou (INVESTIGAR)'}`,
+      );
+    }
+    console.log('     SEM VEREDITO — ausência de evento não é aprovação. Repita em horário comercial.');
+    process.exit(0);
+  }
+
+  // Deixa o reaquecimento assentar antes de ler os contadores: ele corre em
+  // segundo plano de propósito (F4), então medir na hora mediria o meio dele.
+  console.log(`\n     esperando ${seg(ASSENTA_MS)} para o reaquecimento assentar…`);
+  await new Promise((ok) => setTimeout(ok, ASSENTA_MS));
+  const depois = await saude();
+
+  const d = (nome: string): number => cont(depois, nome) - cont(antes, nome);
+  const afetadasNoTotal = eventos.reduce((n, e) => n + e.afetados.length, 0);
+  const reprovas: string[] = [];
+  const linha = (ok: boolean, texto: string): void => {
+    console.log(`     ${ok ? 'ok  ' : 'NÃO '} ${texto}`);
+    if (!ok) reprovas.push(texto);
+  };
+
+  console.log('\n     A CADEIA');
+  const hits = d('primeiro_get_pos_evento_hit');
+  const misses = d('primeiro_get_pos_evento_miss');
+  linha(hits + misses > 0, `alguém chegou depois do evento e foi contado (${hits} hit, ${misses} miss)`);
+  linha(d('rewarm_sucesso') > 0, `o reaquecimento rodou (${d('rewarm_sucesso')} sucesso, ${d('rewarm_falha')} falha)`);
+  linha(d('rewarm_falha') === 0, `nenhum reaquecimento falhou`);
+  console.log(`          rewarm_ms p95: ${dur(depois, 'rewarm_ms').p95Ms} ms; adiados: ${d('rewarm_adiado')}`);
+
+  console.log('\n     OS SETE QUE REPROVAM');
+  // 1. cálculo duplicado — mais voos que chaves distintas pedidas
+  const iniciados = d('singleflight_iniciados');
+  const coalescidos = d('singleflight_coalescidos');
+  linha(
+    coalescidos >= 0 && iniciados <= d('cache_misses'),
+    `sem cálculo duplicado (voos iniciados ${iniciados} <= misses ${d('cache_misses')}; coalescidos ${coalescidos})`,
+  );
+  // 2. reaquecimento de página não afetada
+  linha(
+    d('rewarm_paginas') <= afetadasNoTotal,
+    `reaqueceu só o afetado (${d('rewarm_paginas')} página(s) reaquecida(s) para ${afetadasNoTotal} afetada(s) anunciada(s))`,
+  );
+  // 3. falso evento — cada evento do SSE tem de ter uma mudança do poller atrás
+  const mudou = (depois.realtime?.poller?.mudancas ?? 0) - (antes.realtime?.poller?.mudancas ?? 0);
+  linha(mudou >= eventos.length, `sem falso evento (${mudou} mudança(s) no poller para ${eventos.length} evento(s))`);
+  // 4. starvation do interactive
+  const fila = dur(depois, 'fila_ms_interactive');
+  linha(fila.p95Ms < 5000, `interactive não passou fome (fila p95 ${fila.p95Ms} ms, max ${fila.maxMs} ms)`);
+  // 5. memória
+  const rssAntes = antes.memoria?.rssMB ?? 0;
+  const rssDepois = depois.memoria?.rssMB ?? 0;
+  linha(rssDepois < rssAntes * 2 + 512, `memória sem crescimento anormal (RSS ${rssAntes} -> ${rssDepois} MB)`);
+  // 6. Redis
+  const falhasRedis = (depois.cache?.redis?.falhas ?? 0) - (antes.cache?.redis?.falhas ?? 0);
+  linha(
+    falhasRedis === 0 && depois.cache?.redis?.status === 'ok',
+    `Redis sem falha (${falhasRedis} nova(s), status ${depois.cache?.redis?.status})`,
+  );
+  // 7. carimbo
+  const divergiu = (depois.carimbo?.divergencias ?? 0) - (antes.carimbo?.divergencias ?? 0);
+  linha(
+    divergiu === 0,
+    `carimbo consistente (${divergiu} divergência(s) nova(s); watch ${depois.carimbo?.watch?.status})`,
+  );
+
+  console.log('\n     AS DUAS PESSOAS');
+  for (const e of eventos) {
     console.log(
-      `     leitura: ${
-        hits === medidas.length
-          ? 'o evento chegou com a página JÁ pronta — é o que a F4 promete'
-          : 'quem chegou depois do evento pagou o recálculo — a forma do F0'
-      }`,
+      `       [A] ${e.aberta.pagina}: ${e.aberta.cache} em ${seg(e.aberta.ms)}` +
+        (e.depois ? `   [B] ${e.depois.pagina}: ${e.depois.cache} em ${seg(e.depois.ms)}` : '   [B] —'),
     );
   }
+  const bs = eventos.map((e) => e.depois).filter((x): x is NonNullable<typeof x> => x !== null);
+  if (bs.length > 0) {
+    const bHits = bs.filter((b) => b.cache === 'hit').length;
+    linha(bHits === bs.length, `quem chega depois encontra a página PRONTA (${bHits}/${bs.length} hit)`);
+  } else {
+    console.log('     (nenhum evento afetou 2+ páginas — a persona B não pôde ser medida)');
+  }
+
+  console.log(
+    `\n     VEREDITO: ${reprovas.length === 0 ? 'APROVA — a cadeia da F4 vale sob evento real' : `REPROVA em ${reprovas.length} critério(s)`}`,
+  );
+  for (const r of reprovas) console.log(`       - ${r}`);
 }
 
 process.exit(0);
