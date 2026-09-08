@@ -188,6 +188,54 @@ export function overlayDoDelta(
   return { linhas: [...delta.porChave.values()], corte: delta.inicioJanela, chave: cfg.chave, marca: cfg.marca };
 }
 
+/**
+ * Quantas chaves do delta MUDARAM de verdade entre duas voltas.
+ *
+ * **Por que isto precisa existir.** A janela de busca recua de
+ * `margem_segundos` a cada volta, de propósito: é a folga contra relógio torto
+ * que garante que nenhuma volta pule uma mudança (ver o cabeçalho). Só que a
+ * margem (30 s) é MAIOR que o intervalo (12 s), então a linha mais recente
+ * volta a casar com o filtro em toda volta, para sempre — e o poller anunciava
+ * cada rebusca como se fosse mudança nova.
+ *
+ * Medido contra o Voalle em 08/09/2026, quatro voltas seguidas sem tempo entre
+ * elas: `9 linha(s)`, depois `1`, `1`, `1` — a mesma linha, três vezes. No
+ * container que estava no ar havia 43 h isso aparece como
+ * `RETORNO PRIORITARIO: 1 linha(s) mudaram` repetido sem fim, e o efeito é o
+ * cache das páginas dependentes ser derrubado a cada 12 s indefinidamente:
+ * `paginasCarregadas: []` e `cache.visuais.itens: 0` depois de dois dias no ar.
+ *
+ * Rebuscar continua certo. Anunciar a rebusca é que não era.
+ */
+export function mudancasReais(antes: DeltaDeTabela, depois: DeltaDeTabela): number {
+  let n = 0;
+  for (const [chave, linha] of depois.porChave) {
+    const anterior = antes.porChave.get(chave);
+    // Comparação por conteúdo, não por identidade: a volta seguinte traz outro
+    // objeto com os mesmos campos, e comparar referência acusaria mudança em
+    // 100% das rebuscas — que é exatamente o defeito que esta função conserta.
+    if (anterior === undefined || !mesmaLinha(anterior, linha)) n += 1;
+  }
+  return n;
+}
+
+/** Igualdade rasa de linha. `Escalar` inclui `Date`, que `===` nunca casa. */
+function mesmaLinha(a: Record<string, Escalar>, b: Record<string, Escalar>): boolean {
+  const ca = Object.keys(a);
+  if (ca.length !== Object.keys(b).length) return false;
+  for (const k of ca) {
+    const va = a[k];
+    const vb = b[k];
+    if (va instanceof Date || vb instanceof Date) {
+      if (!(va instanceof Date) || !(vb instanceof Date)) return false;
+      if (va.getTime() !== vb.getTime()) return false;
+    } else if (va !== vb) {
+      return false;
+    }
+  }
+  return true;
+}
+
 // ------------------------------------------------------------------- I/O real
 
 export interface OpcoesDoPoller {
@@ -218,6 +266,13 @@ export class PollerRealtime {
   readonly #specsDir: string;
   #pool: PgPoolLike | null = null;
   #poolPromise: Promise<PgPoolLike> | null = null;
+  #voltas = 0;
+  #mudancas = 0;
+  #rebuscas = 0;
+  #erros = 0;
+  #ultimaVolta: Date | null = null;
+  #ultimaMudanca: Date | null = null;
+  #ultimoErro: string | null = null;
 
   constructor(opts: OpcoesDoPoller) {
     this.#specsDir = opts.specsDir;
@@ -301,6 +356,40 @@ export class PollerRealtime {
     return out;
   }
 
+  /**
+   * O que este poller está fazendo — para `GET /api/saude`.
+   *
+   * **Por que ele precisa se declarar.** Depois do conserto acima, um poller
+   * saudável fica CALADO quando a fonte está quieta — e calado é exatamente
+   * como um poller morto se parece no log. É o mesmo modo de falha que a F5
+   * fechou no carimbo: sem estado publicado, «nenhum evento» e «nada
+   * detectando» são indistinguíveis.
+   *
+   * `voltas` subindo com `mudancas` em zero é a fonte quieta. `voltas` parado
+   * é o poller parado, e aí `ultimoErro` diz por quê.
+   */
+  estado(): {
+    queries: number;
+    voltas: number;
+    mudancas: number;
+    rebuscasSemMudanca: number;
+    erros: number;
+    ultimaVolta: string | null;
+    ultimaMudanca: string | null;
+    ultimoErro: string | null;
+  } {
+    return {
+      queries: this.#configs.size,
+      voltas: this.#voltas,
+      mudancas: this.#mudancas,
+      rebuscasSemMudanca: this.#rebuscas,
+      erros: this.#erros,
+      ultimaVolta: this.#ultimaVolta?.toISOString() ?? null,
+      ultimaMudanca: this.#ultimaMudanca?.toISOString() ?? null,
+      ultimoErro: this.#ultimoErro,
+    };
+  }
+
   async #getPool(): Promise<PgPoolLike> {
     if (this.#pool) return this.#pool;
     this.#poolPromise ??= this.#opts.pool().then((p) => {
@@ -342,12 +431,25 @@ export class PollerRealtime {
       this.#deltas.set(cfg.query, atualizado);
 
       const ms = Date.now() - t0;
-      if (linhas.length > 0) {
-        this.#opts.anuncia(`[poller] ${cfg.tabela}: ${linhas.length} linha(s) mudaram (${ms} ms)`);
+      const mudaram = mudancasReais(delta, atualizado);
+      this.#voltas += 1;
+      this.#ultimaVolta = agora;
+      if (mudaram > 0) {
+        this.#mudancas += 1;
+        this.#ultimaMudanca = agora;
+        this.#opts.anuncia(`[poller] ${cfg.tabela}: ${mudaram} linha(s) mudaram (${ms} ms)`);
         this.#opts.aoMudar(cfg.tabela, cfg.query);
+      } else if (linhas.length > 0) {
+        // A busca trouxe linha, mas nenhuma mudou o delta: é a margem
+        // rebuscando a mesma janela, como ela deve. Não é evento, e anunciar
+        // seria invalidar cache (e, desde a F4, RECALCULAR página) a cada 12 s
+        // para produzir exatamente o número que já estava lá.
+        this.#rebuscas += 1;
       }
     } catch (err) {
       const ms = Date.now() - t0;
+      this.#erros += 1;
+      this.#ultimoErro = err instanceof Error ? err.message : String(err);
       this.#opts.anuncia(
         `[poller] ${cfg.tabela}: ${err instanceof Error ? err.message : String(err)} (${ms} ms) — tenta de novo na próxima volta`,
       );

@@ -189,6 +189,18 @@ export interface ServidorOptions {
    */
   overlayRealtime?: () => ReadonlyMap<string, OverlayDeTabela>;
   /**
+   * O estado do poller de realtime, para `GET /api/saude`. Padrão: nenhum —
+   * e aí a chave `poller` não aparece, que é a verdade de todo teste e de
+   * todo `npm run api` sem credencial do Voalle.
+   *
+   * **Por que passou a existir.** Desde 08/09/2026 o poller só anuncia linha
+   * que MUDOU o delta, e não toda linha que a margem rebuscou. O efeito
+   * colateral é que um poller saudável fica calado quando a fonte está quieta
+   * — indistinguível, no log, de um poller morto. Mesmo modo de falha que a
+   * F5 fechou no carimbo, e mesma resposta: publicar o estado.
+   */
+  estadoDoPoller?: () => unknown;
+  /**
    * O estado da camada durável do cache, para `GET /api/saude`. Padrão:
    * `ausente` — que é a verdade de todo teste e de todo `npm run api` sem
    * `REDIS_URL`.
@@ -761,6 +773,7 @@ export class Servidor {
         sseAbertas: this.assinantesSSE.size,
         piscina: this.piscina.estado,
         overlayTabelas: this.opts.overlayRealtime().size,
+        ...(this.opts.estadoDoPoller ? { poller: this.opts.estadoDoPoller() } : {}),
       },
       // `leStatus` nunca lança (arquivo ausente ou corrompido viram `{}`) — mas
       // `/api/saude` não pode cair por causa de um operador de refresh que nunca

@@ -178,6 +178,7 @@ const servidor = new Servidor({
   // quebrado" em vez de "ausente". Sem `REDIS_URL`, o padrão do `Servidor` já
   // responde `ausente`, que é a verdade.
   ...(process.env.REDIS_URL ? { estadoDoRedis: () => saudeRedis.estado() } : {}),
+  estadoDoPoller: () => poller?.estado() ?? null,
   // **O reaquecimento pós-evento (F4).** O `Servidor` invalida e sabe QUAIS
   // páginas caíram; o `Aquecedor` sabe COMO enchê-las de volta acertando a
   // mesma chave que o navegador pede. O fechamento resolve a mesma ordem

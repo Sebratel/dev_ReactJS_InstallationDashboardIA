@@ -12,6 +12,7 @@ import {
   aplicaBusca,
   leConfigDePoll,
   mesclador,
+  mudancasReais,
   novoDelta,
   overlayDoDelta,
   podaDelta,
@@ -247,4 +248,89 @@ test('PollerRealtime.overlays(): tabela com delta entra, chaveada pelo nome norm
   assert.doesNotThrow(() => structuredClone(ov!), 'o overlay tem de atravessar postMessage');
   const resultado = mesclador(ov!)([]);
   assert.equal(resultado.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// A rebusca que virava evento (medido em staging, 08/09/2026)
+// ---------------------------------------------------------------------------
+//
+// A janela recua `margem_segundos` (30 s) a cada volta, e o intervalo é de
+// 12 s — então a linha mais recente volta a casar com o filtro em TODA volta,
+// para sempre. O poller anunciava cada rebusca como mudança nova, e o efeito
+// no container era o cache das páginas dependentes cair a cada 12 s
+// indefinidamente. Desde a F4, seria também um RECÁLCULO a cada 12 s.
+
+test(`mudancasReais: a MESMA linha reentregue não é mudança`, () => {
+  const t = new Date(`2026-09-08T10:00:00Z`);
+  const linha = { solicitacao: `A`, marca: t };
+  const antes = { porChave: new Map([[`A`, linha]]), inicioJanela: t, desde: t };
+  // Outro OBJETO com os mesmos campos — é o que a volta seguinte traz do banco.
+  const depois = { porChave: new Map([[`A`, { solicitacao: `A`, marca: new Date(t) }]]), inicioJanela: t, desde: t };
+  assert.equal(mudancasReais(antes, depois), 0);
+});
+
+test(`mudancasReais: chave nova conta, e conteúdo diferente na mesma chave também`, () => {
+  const t = new Date(`2026-09-08T10:00:00Z`);
+  const vazio = { porChave: new Map(), inicioJanela: t, desde: t };
+  const uma = { porChave: new Map([[`A`, { solicitacao: `A`, marca: t }]]), inicioJanela: t, desde: t };
+  assert.equal(mudancasReais(vazio, uma), 1);
+  const outra = { porChave: new Map([[`A`, { solicitacao: `A`, marca: new Date(`2026-09-08T10:05:00Z`) }]]), inicioJanela: t, desde: t };
+  assert.equal(mudancasReais(uma, outra), 1, `marca diferente é mudança de verdade`);
+});
+
+test(`PollerRealtime: a mesma linha em duas voltas dispara aoMudar UMA vez`, async () => {
+  // O TESTE QUE GUARDA O DEFEITO. Antes deste conserto, o contador ia a 2 — e,
+  // em produção, subia sem parar a cada 12 s.
+  const fake = poolDeMentira([
+    { SOLICITACAO: `A`, [`DATA CRIADO`]: new Date(`2026-09-03T09:00:00Z`), [`DATA ENCERRADO`]: new Date(`2026-09-03T09:59:00Z`) },
+  ]);
+  let mudancas = 0;
+  const p = new PollerRealtime({
+    specsDir: `specs`,
+    pool: fake.pool,
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    anuncia: () => {},
+    aoMudar: () => { mudancas++; },
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  await p.tentaAgora(`protocolos-auxiliares`);
+  await p.tentaAgora(`protocolos-auxiliares`);
+  assert.equal(fake.chamadas.length, 3, `rebuscar continua certo — é a folga contra relógio torto`);
+  assert.equal(mudancas, 1, `anunciar a rebusca é que não era`);
+});
+
+test(`PollerRealtime.estado(): o poller calado prova que está vivo`, async () => {
+  // Depois do conserto, fonte quieta = log vazio. Sem estado publicado, isso é
+  // indistinguível de um poller morto — o mesmo modo de falha que a F5 fechou
+  // no carimbo.
+  const fake = poolDeMentira([
+    { SOLICITACAO: `A`, [`DATA CRIADO`]: new Date(`2026-09-03T09:00:00Z`), [`DATA ENCERRADO`]: new Date(`2026-09-03T09:59:00Z`) },
+  ]);
+  const p = new PollerRealtime({
+    specsDir: `specs`,
+    pool: fake.pool,
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    anuncia: () => {},
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const e = p.estado();
+  assert.equal(e.voltas, 2, `as duas voltas aconteceram`);
+  assert.equal(e.mudancas, 1);
+  assert.equal(e.rebuscasSemMudanca, 1, `e a segunda foi rebusca, não silêncio de poller morto`);
+  assert.equal(e.erros, 0);
+  assert.ok(e.ultimaVolta, `quando ele rodou pela última vez`);
+});
+
+test(`PollerRealtime.estado(): erro na busca vira contagem e motivo`, async () => {
+  const p = new PollerRealtime({
+    specsDir: `specs`,
+    pool: async () => ({ query: async () => { throw new Error(`ECONNRESET`); }, end: async () => {} }),
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    anuncia: () => {},
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const e = p.estado();
+  assert.equal(e.erros, 1);
+  assert.match(e.ultimoErro ?? ``, /ECONNRESET/);
 });
