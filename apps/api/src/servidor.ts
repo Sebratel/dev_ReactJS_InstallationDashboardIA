@@ -201,6 +201,17 @@ export interface ServidorOptions {
    */
   estadoDoPoller?: () => unknown;
   /**
+   * O estado do disjuntor da camada durável do cache.
+   *
+   * **Por que ele precisa aparecer.** Um Redis fora do ar já era visível em
+   * `redis.status`, mas o que ele custava não era: 10 s de espera por
+   * operação, em todo pedido, com a saúde dizendo `ok`. Com o disjuntor,
+   * `estado: "aberto"` é a frase que faltava — «o Redis está fora do
+   * caminho de propósito, e é por isso que as respostas estão vindo do
+   * cálculo».
+   */
+  estadoDoDisjuntor?: () => unknown;
+  /**
    * O estado da camada durável do cache, para `GET /api/saude`. Padrão:
    * `ausente` — que é a verdade de todo teste e de todo `npm run api` sem
    * `REDIS_URL`.
@@ -405,6 +416,8 @@ export class Servidor {
    * fecha sobre `this.opts`, que só existe depois dele.
    */
   private carimbo!: CarimboVigiado;
+  /** Motivos JÁ anunciados de queda para cálculo em linha — um log por motivo. */
+  private readonly motivosDeFallback = new Set<string>();
 
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, verificadorGoogle, piscinaWorkers, ...resto } = opts;
@@ -734,6 +747,7 @@ export class Servidor {
         // e um 503 aqui faria o Docker reiniciar a API em laço por causa de um
         // cache opcional — degradação prevista virando indisponibilidade real.
         redis: this.opts.estadoDoRedis(),
+        ...(this.opts.estadoDoDisjuntor ? { disjuntor: this.opts.estadoDoDisjuntor() } : {}),
         // Quanto do orçamento de resultado inteiro está em uso. É o número que diz,
         // olhando de fora, se a paginação vai ser um `slice` ou um recálculo — e o
         // primeiro a olhar quando alguém disser que "a próxima página demora".
@@ -1341,7 +1355,26 @@ export class Servidor {
             dadoDe = workerRes.dadoDe ?? null;
             omitidas = workerRes.omitidas ?? [];
             tabelasResumo = (workerRes.linhasPorTabela ?? []).map(([nome, n]) => ({ nome, linhas: n }));
-          } catch {
+          } catch (errWorker) {
+            // **O motivo, e não só a contagem.** Este catch era cego: nem
+            // capturava o erro. Medido em 08/09/2026 numa subida por
+            // `npm start`, 32 de 45 voos caíram aqui — 71% dos cálculos
+            // pagando o
+            // dobro — e não havia uma linha em lugar nenhum dizendo por quê.
+            // É o mesmo defeito que a F2.1 consertou no Redis: degradar certo
+            // e não contar a ninguém.
+            //
+            // Uma linha por MOTIVO distinto, não por ocorrência: 32 cópias da
+            // mesma mensagem soterram a primeira, que era a que importava.
+            const motivo = errWorker instanceof Error ? errWorker.message : String(errWorker);
+            if (!this.motivosDeFallback.has(motivo)) {
+              this.motivosDeFallback.add(motivo);
+              console.error(
+                `[worker] caiu para cálculo em linha: ${motivo}. ` +
+                  `A resposta sai certa e custa o dobro. Heap por worker: ` +
+                  `${process.env.API_WORKER_HEAP_MB ?? '768'} MB.`,
+              );
+            }
             // A worker falhou: cai para o cálculo em linha. Contado porque um
             // fallback frequente é um defeito escondido — ele responde certo e
             // paga o dobro, então nada na tela denuncia que está acontecendo.

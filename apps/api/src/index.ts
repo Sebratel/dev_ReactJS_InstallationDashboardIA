@@ -11,6 +11,7 @@ import { applyDotEnv, loadConfig, missingFor } from '../../../packages/query-eng
 import { CacheEmCamadas } from '../../../packages/query-engine/src/cache-camadas.ts';
 import { MemoryCache } from '../../../packages/query-engine/src/cache-memory.ts';
 import { RedisCache } from '../../../packages/query-engine/src/cache-redis.ts';
+import { CacheComDisjuntor } from '../../../packages/query-engine/src/cache-disjuntor.ts';
 import { createVoallePool } from '../../../packages/query-engine/src/connectors-sql.ts';
 import type { Cache } from '../../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
@@ -42,6 +43,12 @@ applyDotEnv(ROOT);
  * O `import` é dinâmico porque `ioredis` abre conexão ao ser instanciado, e quem
  * roda sem `REDIS_URL` não deve pagar nem por carregar o driver.
  */
+/**
+ * O disjuntor da camada durável, para `GET /api/saude` poder dizer que ele
+ * abriu. `null` sem `REDIS_URL` — que é a verdade de todo `npm run api` local.
+ */
+let disjuntorDoCache: CacheComDisjuntor | null = null;
+
 async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
   const url = process.env.REDIS_URL;
   if (!url) return undefined;
@@ -49,7 +56,27 @@ async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
     const { default: Redis } = await import('ioredis');
     // `lazyConnect`: a conexão sai na primeira operação, não no arranque. Um Redis
     // fora do ar vira miss em `CacheDeResposta`, e não uma exceção aqui.
-    const cliente = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 });
+    // **Os tempos, e por que eles são estes.** O padrão do ioredis para
+    // `connectTimeout` é 10 s. Com o Redis inalcançável, TODA operação de cache
+    // de TODO pedido pagava esse tempo antes de virar miss — medido em
+    // 08/09/2026 no caminho real, trocar um filtro passava de 1,6 s para
+    // 13–20 s, com /api/saude respondendo `ok` o tempo inteiro. A API degradava
+    // certo e degradava de um jeito que torna o produto inutilizável.
+    //
+    // Um cache de leitura que demora mais que o recálculo não é cache: 300 ms é
+    // mais do que qualquer acerto legítimo precisa (os medidos ficam abaixo de
+    // 10 ms) e menos do que qualquer usuário aceita esperar por nada.
+    //
+    // `enableOfflineQueue: false` fecha a última porta: sem ele o driver ENFILEIRA
+    // comandos enquanto está desconectado, e o pedido espera na fila em vez de
+    // falhar na hora.
+    const cliente = new Redis(url, {
+      lazyConnect: true,
+      maxRetriesPerRequest: 1,
+      connectTimeout: 500,
+      commandTimeout: 300,
+      enableOfflineQueue: false,
+    });
     // **E este ouvinte é o que faz a promessa acima ser verdade.** Sem ele, o
     // `ioredis` emite `'error'` num `EventEmitter` sem ouvinte, e o Node
     // transforma isso em exceção não tratada: o processo MORRE. Não é hipótese —
@@ -82,10 +109,16 @@ async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
     cliente.on('ready', () => {
       if (saude.conectou()) console.log('[cache] Redis conectado.');
     });
-    const redis = new RedisCache(cliente);
+    // **O disjuntor entre a camada durável e o driver.** Os tempos apertados
+    // acima reduzem o custo de UMA operação contra um Redis fora do ar; o
+    // disjuntor tira o custo REPETIDO. Depois de 3 falhas seguidas ele para de
+    // tocar no Redis por 10 s e devolve miss na hora, e então deixa uma sondar.
+    // Sem ele, 300 ms de espera vezes as operações de cada pedido continuariam
+    // aparecendo como lentidão sem causa visível.
+    disjuntorDoCache = new CacheComDisjuntor(new RedisCache(cliente));
     return new CacheEmCamadas({
       rapida: new MemoryCache(),
-      duravel: redis,
+      duravel: disjuntorDoCache,
       // O outro caminho de falha, e ele não é redundante com o `'error'` acima:
       // um Redis que ACEITA conexão e recusa comando (memória cheia, `AUTH`
       // errado, timeout de comando) não emite `'error'` nenhum no cliente — e do
@@ -179,6 +212,7 @@ const servidor = new Servidor({
   // responde `ausente`, que é a verdade.
   ...(process.env.REDIS_URL ? { estadoDoRedis: () => saudeRedis.estado() } : {}),
   estadoDoPoller: () => poller?.estado() ?? null,
+  estadoDoDisjuntor: () => disjuntorDoCache?.estado() ?? null,
   // **O reaquecimento pós-evento (F4).** O `Servidor` invalida e sabe QUAIS
   // páginas caíram; o `Aquecedor` sabe COMO enchê-las de volta acertando a
   // mesma chave que o navegador pede. O fechamento resolve a mesma ordem
