@@ -1058,39 +1058,52 @@ comercial, com técnicos trabalhando.
 
 **Decisão do Erick, 08/09/2026: não promover com esta linha em aberto.** A F4
 tem uma hipótese central ainda não exercitada no ambiente de destino —
-. O bloqueador do poller provou o cenário
+`evento real → invalidação → SSE → GET interactive → warmup concorrente → cache
+quente para quem chega depois`. O bloqueador do poller provou o cenário
 NEGATIVO (falso evento não reaquece mais); falta o positivo: quando existe
 mudança de verdade, o reaquecimento acerta só o que deve e melhora quem chega
 depois.
 
-
+```
+npm run probe:staging -- --so=evento --espera=600
+```
 
 com a stack de pé, em **horário comercial** — a fonte é o Voalle, e nesta tarde
 ela silenciou (o poller girou 227 voltas com 0 mudanças, o que agora dá para
 afirmar em vez de supor).
 
-A sonda dá  só se a cadeia acontecer **e** nenhum dos sete reprovar:
+A sonda dá `APROVA` só se a cadeia acontecer **e** nenhum dos sete reprovar:
 
 | critério | como ela mede |
 |---|---|
-| cálculo duplicado | voos iniciados ≤  |
-| reaquecimento de página não afetada |  ≤ afetadas anunciadas no SSE |
-| falso evento |  ≥ eventos recebidos |
-| starvation do interactive |  p95 |
+| cálculo duplicado | voos iniciados ≤ `cache_misses` |
+| reaquecimento de página não afetada | `rewarm_paginas` ≤ afetadas anunciadas no SSE |
+| falso evento | `poller.mudancas` ≥ eventos recebidos |
+| starvation do interactive | `fila_ms_interactive` p95 |
 | crescimento anormal de memória | RSS antes/depois |
-| erro de Redis | falhas novas e  |
-| inconsistência de carimbo |  novas |
+| erro de Redis | falhas novas e `status` |
+| inconsistência de carimbo | `divergencias` novas |
+
+Mais as duas personas: **[A]** a tela aberta, que recebeu o SSE e refez o
+pedido, e **[B]** quem chega depois — numa página afetada **diferente**, que é o
+único jeito de [B] medir o reaquecimento em vez do cache que [A] acabou de
+pagar.
 
 **Ausência de evento não é aprovação.** Sem evento na janela ela imprime
- e diz quantas voltas o poller deu — para separar «fonte quieta»
+`SEM VEREDITO` e diz quantas voltas o poller deu — para separar «fonte quieta»
 de «detector morto». E ela não fabrica evento: o valor desta medida é ser
-, e um evento artificial
-não exercita nenhum dos quatro.
+`fonte real → detector real → evento real → F4 real`, e um evento artificial não
+exercita nenhum dos quatro.
 
-O  atravessando a fronteira dos containers **não** entra como
-condição de promoção: o poller é garantia independente de detecção, e a F5 já
-garante que uma falha do watch vira estado em vez de silêncio. Fica registrado
-como limitação de cobertura desta janela — não como motivo para mais alteração.
+O caminho do veredito foi exercitado nos dois sentidos contra uma API de
+mentira antes de ser confiado — cenário bom devolve `APROVA`, cenário ruim faz
+os sete reprovarem separadamente. Instrumento não testado foi exatamente o que
+falhou nas sondas da F4 e da F5.
+
+O `fs.watch` atravessando a fronteira dos containers **não** entra como condição
+de promoção: o poller é garantia independente de detecção, e a F5 já garante que
+uma falha do watch vira estado em vez de silêncio. Fica registrado como
+limitação de cobertura desta janela — não como motivo para mais alteração.
 
 ### Duas correções de documento, feitas no caminho
 
