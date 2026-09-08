@@ -144,6 +144,48 @@ export class Aquecedor {
     return await this.passada(carimbo);
   }
 
+  /**
+   * Reaquece exatamente estas páginas — o reaquecimento pós-evento da F4.
+   *
+   * **Por que passa por aqui e não por um caminho novo.** O `Servidor` sabe
+   * QUAIS páginas perderam cache; só este módulo sabe COMO enchê-lo de novo
+   * acertando a mesma chave que o navegador pediria (corte eager do layout,
+   * filtros padrão, valores das segmentações). Um reaquecimento escrito do lado
+   * do servidor encheria chaves parecidas e o acerto nunca aconteceria — é o
+   * defeito que o comentário no topo deste arquivo descreve.
+   *
+   * **A diferença para `passada`:** esta não mexe em `#aquecido`. O carimbo do
+   * disco não mudou — o que mudou foi o overlay do poller —, então declarar um
+   * carimbo como aquecido aqui faria o laço de arranque pular o aquecimento que
+   * ele devia fazer.
+   *
+   * Se uma passada completa já estiver correndo, desiste: ela vai aquecer estas
+   * páginas de qualquer jeito, e insistir só dobraria o pico de memória.
+   *
+   * Não lança — falha vira linha, como todo o resto deste módulo.
+   */
+  async reaquece(paginas: readonly string[]): Promise<PaginaAquecida[]> {
+    if (this.#ocupado || paginas.length === 0) return [];
+    this.#ocupado = true;
+    const t0 = this.#agora();
+    const feitas: PaginaAquecida[] = [];
+    try {
+      for (const id of paginas) {
+        // Sequencial pelo mesmo motivo de `passada`: a API é um processo só.
+        feitas.push(await this.#aquece(id));
+      }
+      const ms = this.#agora() - t0;
+      const erros = feitas.filter((p) => p.status !== 200).length;
+      this.#anuncia(
+        `[reaquecedor] ${feitas.length} página(s) quentes em ${(ms / 1000).toFixed(1)}s` +
+          (erros > 0 ? `, ${erros} com erro` : ''),
+      );
+      return feitas;
+    } finally {
+      this.#ocupado = false;
+    }
+  }
+
   /** Aquece todas as páginas para este carimbo. Não lança: falha vira linha. */
   async passada(carimbo: string): Promise<Passada> {
     this.#ocupado = true;

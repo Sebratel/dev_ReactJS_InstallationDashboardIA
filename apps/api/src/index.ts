@@ -146,6 +146,14 @@ const tetoDeVisuaisMB = process.env.CACHE_VISUAL_MB
 let aquecedor: Aquecedor | null = null;
 
 /**
+ * Declarado aqui em cima, e não junto do `aquecedor.inicia()` lá embaixo,
+ * porque o `Servidor` precisa saber disto **no construtor**: com o aquecimento
+ * desligado não há quem reaqueça, e passar um `reaquece` que não reaquece só
+ * encheria a saúde de `rewarm_pedidos` que nunca viram página quente.
+ */
+const semAquecer = process.argv.includes('--sem-aquecer') || process.env.SEM_AQUECER === '1';
+
+/**
  * O poller de quase-realtime (`poller-realtime.ts`, ACHADOS #89/#90) — igual ao
  * aquecedor, referenciado por fora ANTES de existir: `Servidor` precisa de
  * `overlayRealtime` no construtor, e o poller precisa do `servidor` (para
@@ -170,6 +178,21 @@ const servidor = new Servidor({
   // quebrado" em vez de "ausente". Sem `REDIS_URL`, o padrão do `Servidor` já
   // responde `ausente`, que é a verdade.
   ...(process.env.REDIS_URL ? { estadoDoRedis: () => saudeRedis.estado() } : {}),
+  // **O reaquecimento pós-evento (F4).** O `Servidor` invalida e sabe QUAIS
+  // páginas caíram; o `Aquecedor` sabe COMO enchê-las de volta acertando a
+  // mesma chave que o navegador pede. O fechamento resolve a mesma ordem
+  // invertida de `overlayRealtime`: o aquecedor só existe depois do `listen`.
+  //
+  // Sem aquecimento não se passa a opção, e aí o `Servidor` volta ao
+  // comportamento de antes da F4 (invalida e avisa na hora) em vez de esperar
+  // por um reaquecimento que ninguém vai fazer.
+  ...(semAquecer
+    ? {}
+    : {
+        reaquece: async (paginas: readonly string[]): Promise<void> => {
+          await aquecedor?.reaquece(paginas);
+        },
+      }),
   ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
     ? { tetoDeVisuaisMB }
     : {}),
@@ -195,14 +218,6 @@ if (!semPoller && missingFor('voalle').length === 0) {
     aoMudar: (tabela, queryId) => servidor.aoTabelaMudar(tabela, queryId),
   });
 }
-
-/**
- * O aquecimento é ligado por padrão e sai com `--sem-aquecer`.
- *
- * Sair é útil para depurar uma página: com o aquecedor no ar, todo pedido é acerto
- * de cache, e medir o caminho frio fica impossível.
- */
-const semAquecer = process.argv.includes('--sem-aquecer') || process.env.SEM_AQUECER === '1';
 
 const http = servidor.criaHttp();
 

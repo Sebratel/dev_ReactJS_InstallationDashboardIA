@@ -159,6 +159,9 @@ o **carimbo** muda (aquecedor.ts:143) — e o poller, de propósito, não mexe n
 carimbo. Resultado: depois de cada evento do poller, o primeiro usuário paga o
 cálculo frio inteiro. Potencialmente a cada 12 s.
 
+> **Resolvido na F4** (08/09/2026) — ver §4-E, inclusive a ordem proposta
+> (`invalida → reaquece → SSE`) que foi implementada, medida e descartada.
+
 ### B6 — o evento SSE não carrega versão
 
 `emiteEvento` manda `data: {"dashboards":[...]}` e nada mais (servidor.ts:644).
@@ -652,6 +655,147 @@ classificação, e o contador de duplicação. Suíte inteira: **1732/1732**.
 
 ---
 
+## 4-E. F4 — reaquecimento pós-evento, FEITA em 08/09/2026
+
+**A fase mudou de forma no meio, por causa de uma medida.** A proposta era
+inverter a ordem para que o SSE só saísse com o dado já pronto:
+
+```
+antes:     invalida -> SSE -> GET -> MISS -> 10–20 s
+proposto:  invalida -> REWARM -> cache quente -> SSE -> GET -> HIT
+```
+
+Foi implementado assim, e medido. O número saiu invertido — ver
+"A ordem que não sobreviveu à medida", abaixo. A forma final é:
+
+```
+final:     invalida -> SSE -> GET (interactive, F3) -> paga a SUA página
+                    \
+                     `-> reaquecimento por baixo (warmup) -> quem chega depois: HIT
+```
+
+### O custo de um evento, medido
+
+`npm run probe:reaquecimento` primeiro lista quantas páginas cada query vigiada
+derruba — é a resposta a "reaqueça só as prioritárias":
+
+| query vigiada | páginas que ela invalida |
+|---|---|
+| `protocolos-auxiliares` | 0 |
+| `protocolos-telefonia` | **3** |
+| `troca-endereco` | 0 |
+| `tecnicos-auxiliares` | 0 |
+| `retorno-prioritario` | 1 |
+| `instalacoes-reincidentes` | 1 |
+| `reincidencia` | 1 |
+
+Nenhuma query vigiada derruba o site inteiro, e quatro das sete não derrubam
+página nenhuma. **O recorte já estava certo na invalidação** — não foi preciso
+inventar uma lista de "páginas prioritárias" para o reaquecimento: as páginas
+afetadas são, por construção, exatamente as que perderam cache.
+
+(As quatro com zero não são desperdício: elas alimentam tabelas que o overlay
+usa em páginas que dependem de OUTRA query. O poller continua fazendo sentido
+para elas; o reaquecimento é que não tem o que fazer.)
+
+### A ordem que não sobreviveu à medida
+
+Com o SSE segurado até o reaquecimento terminar, contra o snapshot real e um
+evento de `protocolos-telefonia`:
+
+| | sem reaquecimento | segurando o SSE |
+|---|---|---|
+| evento → SSE | 0,0 s | **9,7 s** |
+| SSE → resposta | 2,0 s (miss) | 0,0 s (**hit**) |
+| **evento → tela** | **2,0 s** | **9,7 s** |
+
+O acerto de cache é real e **não paga a espera**. Quem está com a página aberta
+acaba esperando as OUTRAS páginas do lote esquentarem antes de saber da dele.
+
+Avisar **por página**, à medida que cada uma esquenta, foi implementado e
+também não resolve: alguém é sempre o último do lote, e o último é exatamente
+quem mais sofre. Segurar o aviso nunca ganha e às vezes perde por 5×.
+
+**E não precisa segurar, porque a F2 e a F3 já cobrem esse caso.** Avisado na
+hora, o GET do usuário entra como `interactive` e passa na frente do
+aquecimento; o reaquecimento é sequencial (uma página por vez, por causa do pico
+de memória), então sempre sobra uma das duas workers para o clique. Ele paga o
+custo da SUA página — 2,0 s — e não o do lote. E quando o reaquecimento chegar
+naquela página, encontra o cache que o próprio usuário encheu: os dois
+mecanismos não duplicam cálculo, se completam.
+
+### Um defeito da sonda, e por que ele importa
+
+A primeira versão desta sonda pedia `/api/dashboards/:id` cru e media `miss`
+logo depois de aquecer — o que fazia a F4 parecer inútil por um motivo que não
+era o verdadeiro. O `Aquecedor` enche, de propósito, a chave com `?visual=` (o
+corte eager, que é o que o navegador pede desde R4); a chave sem parâmetro
+nenhum não é pedida por ninguém.
+
+É exatamente a armadilha que o comentário no topo de `aquecedor.ts` descreve, e
+custou uma rodada inteira de medida errada. A sonda agora imprime
+`confere: <página> está hit em N ms` antes de medir qualquer coisa, e avisa
+quando esse confere falha — um instrumento que não sabe dizer que está
+desajustado é pior do que nenhum.
+
+### As duas pessoas, e o ganho da fase
+
+O reaquecimento não existe para quem está com a tela aberta — existe para o
+visitante seguinte. A sonda mede as duas separadamente, porque misturá-las foi
+o que quase levou a fase para a forma errada.
+
+| | sem reaquecimento | com reaquecimento |
+|---|---|---|
+| **[A]** tela aberta: evento → tela | 2,0 s | 1,6 s |
+| **[B]** chega depois, abre outra página afetada | 3,3 s (miss) | **0,0 s (hit)** |
+| `primeiro_get_pos_evento` | 0 hit / 2 miss | 1 hit / 1 miss |
+| `rewarm_ms` (3 páginas) | — | 9,4 s |
+
+A pessoa A não muda (a diferença de 2,0 s para 1,6 s é ruído entre execuções —
+ela paga o cálculo da própria página nos dois casos). **A pessoa B é a fase
+inteira**: 3,3 s de cálculo frio viram um acerto de cache.
+
+E foi preciso uma segunda correção na sonda para enxergar isso: na primeira
+versão das duas pessoas, B pedia a MESMA página que A — e acertava o cache que
+a própria A tinha acabado de encher ao pagar o cálculo. HIT nas duas rodadas,
+medindo o usuário A e não o reaquecimento. B agora abre uma página afetada que
+ninguém pediu, que é a situação real de quem abre o dashboard mais tarde.
+
+`rewarm_ms` de 9,4 s para 3 páginas é o custo, e ele é pago por uma worker de
+fundo em classe `warmup` — atrás de qualquer clique.
+
+### O que mudou no código
+
+* `ServidorOptions.reaquece` — injetado, como `aquecimento` e `estadoDoRedis`,
+  porque quem sabe reaquecer é o `Aquecedor` (que só existe depois do `listen`)
+  e quem sabe o que caiu é o `Servidor`. Sem a opção, `aoTabelaMudar` é
+  byte-a-byte o de antes da F4.
+* `Aquecedor.reaquece(paginas)` — aquece uma lista específica sem mexer em
+  `#aquecido`: o carimbo do disco não mudou, e declará-lo aquecido faria o laço
+  de arranque pular o aquecimento que ele devia fazer.
+* `Servidor.reaquecePorBaixo` — um de cada vez (mesma razão do `#ocupado` do
+  `Aquecedor`), com as páginas de um evento que chega no meio guardadas para a
+  rodada seguinte em vez de descartadas.
+* `primeiro_get_pos_evento_hit` / `_miss` / `_ms` / `_atraso_ms` — a métrica que
+  julga a fase. Só `interactive` a consome: o GET do aquecedor é, por
+  construção, o MISS que a fase existe para pagar no lugar da pessoa, e
+  contá-lo faria o instrumento medir o próprio remédio.
+
+### Testes
+
+`reaquecimento.test.ts`, 9 testes. Os dois que mais importam afirmam coisas
+opostas:
+
+* `o aviso NÃO espera o reaquecimento` — a regressão que a sonda pegou. O
+  reaquecimento fica preso e nunca termina; o aviso tem de sair mesmo assim.
+* `quem chega DEPOIS do evento encontra a página pronta` — o ganho da fase.
+
+**5 dos 9 ficam vermelhos** sem a linha que dispara o reaquecimento. Os que
+continuam verdes são os certos: o controle sem `reaquece`, o teste de que o
+aviso não espera, e os dois de quem consome a marca do primeiro GET.
+
+---
+
 ## 5. Plano — etapas pequenas e reversíveis
 
 | fase | entrega | reversão | como provo que funcionou |
@@ -667,7 +811,7 @@ classificação, e o contador de duplicação. Suíte inteira: **1732/1732**.
 | **F2** ✅ | single-flight (B3) | 1 commit | os 6 pedidos medidos viraram 1 cálculo; 25,7 s → 10,1 s |
 | **F2.1** ✅ | ciclo de vida da worker + saúde do Redis (§4-C) | 1 commit | 2 testes vermelhos sem o handler de `exit`; ciclo `ocioso→degradado→ok→degradado` medido contra Redis real |
 | **F3** ✅ | fila com prioridade (B4) | 1 commit; sem rótulo tudo vira `interactive` = FIFO de hoje | pior clique 23,1 s -> 13,4 s; fila p95 22,1 s -> 7,5 s (§4-D) |
-| **F4** | reaquecimento pós-evento do poller (B5) | 1 commit | primeiro GET depois do evento é HIT |
+| **F4** ✅ | reaquecimento pós-evento do poller (B5) | 1 commit | quem chega depois do evento acha a página pronta; segurar o SSE foi medido e descartado (§4-E) |
 | **F5** | `carimboMemo`/watchdog visível (B8) | 1 commit | `/api/saude` diz se o `fs.watch` pegou |
 | **F6** | versão no evento SSE (B6) + navegador (requisito 7) | 1 commit; navegador antigo ignora campo novo | evento antigo/duplicado ignorado; filtros preservados |
 | **F7** | navegador: matar os `setTimeout`, prefetch por intenção (B7); `completos` (B2) | 1 commit cada | abertura deixa de baixar 13 páginas |

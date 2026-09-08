@@ -56,7 +56,8 @@
     "layout:golden": "node --max-old-space-size=8192 tools/layout/src/golden.ts",
     "tela": "node tools/tela/src/varre.ts",
     "web": "npm run dev --workspace @analytics/web",
-    "web:build": "npm run build --workspace @analytics/web"
+    "web:build": "npm run build --workspace @analytics/web",
+    "probe:reaquecimento": "node --max-old-space-size=3072 tools/probe/src/reaquecimento-pos-evento.ts"
   },
   "dependencies": {
     "google-auth-library": "^11.0.2",

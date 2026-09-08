@@ -199,9 +199,38 @@ export interface ServidorOptions {
    * na subida, não o estado dele agora, e uma API degradada parecia saudável.
    */
   estadoDoRedis?: () => EstadoDoRedis;
+  /**
+   * Reaquece as páginas que o evento do poller acabou de invalidar (F4).
+   *
+   * **Por que é injetado, e não escrito aqui.** Quem sabe reaquecer é o
+   * `Aquecedor`: ele acerta a MESMA chave de cache que o navegador pediria
+   * (corte eager do layout, filtros padrão, cabeçalho interno que classifica o
+   * pedido como `warmup`). Reescrever isso aqui encheria chaves *parecidas* — e
+   * o acerto nunca aconteceria, que é o defeito descrito no topo de
+   * `aquecedor.ts`. Mas o `Aquecedor` só existe depois do `listen`, então entra
+   * por fora, como `aquecimento` e `estadoDoRedis`.
+   *
+   * Padrão: não reaquece — e aí um evento do poller só invalida e avisa, que
+   * é exatamente o comportamento de antes da F4. É o que todo teste vê.
+   *
+   * **Não segura o SSE**, e a promessa devolvida não é esperada por pedido
+   * nenhum — ver `reaquecePorBaixo` para a medida que decidiu isso.
+   */
+  reaquece?: (paginas: readonly string[]) => Promise<void>;
   /** Instância ou opção para a piscina de worker threads. */
   piscinaWorkers?: PiscinaWorkers;
 }
+
+/**
+ * O padrão de `ServidorOptions.reaquece`: não reaquece nada.
+ *
+ * Constante nomeada, e não um `async () => {}` escrito no lugar, porque
+ * `aoTabelaMudar` compara por IDENTIDADE para decidir se emite o SSE na hora ou
+ * espera o reaquecimento. Um literal novo a cada construção faria a comparação
+ * ser sempre falsa, e todo teste passaria a esperar por um reaquecimento que
+ * não existe.
+ */
+const naoReaquece = (): Promise<void> => Promise.resolve();
 
 export class Servidor {
   private readonly piscina: PiscinaWorkers;
@@ -326,6 +355,33 @@ export class Servidor {
    */
   private static readonly BATIMENTO_SSE_MS = 25_000;
 
+
+  /**
+   * O reaquecimento em curso (F4), ou `null`. Um de cada vez, pelo mesmo motivo
+   * que o `Aquecedor` tem o seu `#ocupado`: duas passadas simultâneas dobram o
+   * pico de memória de uma máquina que já roda no limite, e a segunda só
+   * recalcularia o que a primeira está calculando.
+   */
+  private reaquecendo: Promise<void> | null = null;
+  /**
+   * Páginas que um evento pediu para reaquecer ENQUANTO outro reaquecimento
+   * corria. Sem isto, um evento que chega no meio seria perdido: o dado dele
+   * ficaria invalidado e frio, e o próximo visitante pagaria o cálculo — que é
+   * o defeito que a F4 existe para tirar.
+   */
+  private readonly reaquecerDepois = new Set<string>();
+
+  /**
+   * Página → instante do evento que a invalidou, enquanto ninguém pediu a
+   * página ainda. É como `primeiro_get_pos_evento_*` sabe qual GET é "o
+   * primeiro depois do evento" — a entrada é apagada no primeiro pedido de
+   * gente, e o reaquecimento (que é `warmup`) não a consome.
+   *
+   * Cresce no máximo até o número de páginas declaradas, então não tem teto
+   * artificial: um `Map` de 20 entradas de número não é vazamento.
+   */
+  private readonly eventoSemPedido = new Map<string, number>();
+
   /** `setInterval` do batimento. Só existe enquanto houver assinante. */
   private batimentoSSE: NodeJS.Timeout | null = null;
   /** Cache do carimbo em memória para evitar fs.readFileSync por pedido HTTP no hot-path. */
@@ -360,6 +416,11 @@ export class Servidor {
       batimentoSseMs: Servidor.BATIMENTO_SSE_MS,
       overlayRealtime: () => new Map(),
       estadoDoRedis: redisAusente,
+      // Sem reaquecimento ligado, `aoTabelaMudar` emite o SSE na mesma volta —
+      // o comportamento de antes da F4, e o de todo teste que não pede outra
+      // coisa. `naoReaquece` é uma constante e não `async () => {}` para que a
+      // comparação por identidade em `aoTabelaMudar` funcione.
+      reaquece: naoReaquece,
       ...resto,
     };
     this.completos = new CacheDeVisual({
@@ -784,6 +845,26 @@ export class Servidor {
    *
    * Depois avisa por SSE — nessa ordem: o navegador só deve pedir de novo
    * DEPOIS que o cache já não tem a resposta velha para devolver.
+   *
+   * **F4: entre invalidar e avisar, entra o reaquecimento.** Até aqui a cadeia
+   * era `invalida → SSE → GET → MISS → 10–20 s de cálculo`: a API avisava que
+   * existe dado novo ANTES de preparar o dado novo, e a conta caía em quem
+   * clicasse primeiro. Agora é `invalida → reaquece → SSE → GET → HIT`, e o
+   * evento passa a significar "há dado novo **pronto**" em vez de "descobri que
+   * alguma coisa mudou".
+   *
+   * Três coisas que ele NÃO faz, de propósito:
+   *
+   *  - **não reaquece o site inteiro.** Só `afetados` — as páginas que dependem
+   *    da query que mudou, que são exatamente as que acabaram de perder cache.
+   *    Reaquecer as outras seria recalcular o que continua válido.
+   *  - **não fura fila.** O reaquecimento entra como `warmup` (quem o executa é
+   *    o `Aquecedor`, com o cabeçalho interno), então qualquer clique passa na
+   *    frente dele — F3. E não tenta cancelar o que já está numa worker: a F3
+   *    mostrou que isso é outro problema.
+   *  - **não duplica cálculo.** Se um usuário chegar no meio do reaquecimento,
+   *    o single-flight funde os dois no mesmo voo — F2. `warmup` e `GET` da
+   *    mesma chave viram um cálculo só.
    */
   aoTabelaMudar(tabela: string, queryId: string): void {
     this.carimboMemo = null;
@@ -793,6 +874,8 @@ export class Servidor {
       .map(([id]) => id);
     if (afetados.length === 0) return;
 
+    const emEvento = Date.now();
+
     for (const dashId of afetados) {
       for (const chave of [...this.carregadas.keys()]) {
         if (chave === dashId || chave.startsWith(`${dashId}\u0000`)) this.carregadas.delete(chave);
@@ -801,9 +884,117 @@ export class Servidor {
       // Efeito colateral, não parte de resposta nenhuma — não há pedido para
       // atrasar esperando o Redis, e `apagaPagina` já nunca lança.
       void this.cache.apagaPagina(dashId);
+      // Só o PRIMEIRO evento ainda não atendido conta: se três eventos chegarem
+      // antes de alguém abrir a página, o atraso que interessa é o do mais
+      // antigo, não o do último.
+      if (!this.eventoSemPedido.has(dashId)) this.eventoSemPedido.set(dashId, emEvento);
     }
     console.error(`[poller] ${tabela} mudou — invalidando ${afetados.join(', ')}`);
+
+    // **O aviso sai AGORA, e o reaquecimento corre por baixo.** Ver
+    // `reaquecePorBaixo` para a medida que derrubou a ordem contrária.
     this.emiteEvento(afetados);
+    if (this.opts.reaquece !== naoReaquece) void this.reaquecePorBaixo(afetados);
+  }
+
+  /**
+   * Reaquece as páginas que o evento invalidou, em segundo plano.
+   *
+   * **Por que NÃO segura o SSE — medido, não suposto.** A F4 nasceu com a
+   * ordem `invalida → reaquece → avisa`, para que o evento significasse "há
+   * dado novo pronto" em vez de "descobri que algo mudou". Contra o snapshot
+   * de verdade (`npm run probe:reaquecimento`, 08/09/2026), um evento de
+   * `protocolos-telefonia` derruba 3 páginas e o resultado foi o inverso do
+   * esperado:
+   *
+   *     sem reaquecimento   evento -> SSE 0,0 s + resposta 2,0 s (miss) = 2,0 s
+   *     segurando o SSE     evento -> SSE 9,7 s + resposta 0,0 s (hit)  = 9,7 s
+   *
+   * O acerto de cache é real e não paga a espera: quem está com a página
+   * aberta acaba esperando as OUTRAS páginas do lote esquentarem antes de
+   * saber da dele. Avisar por página foi tentado e não resolve — alguém é
+   * sempre o último do lote.
+   *
+   * **E não precisa segurar, porque a F2 e a F3 já cobrem o caso.** Avisado na
+   * hora, o GET do usuário entra como `interactive` e o reaquecimento é
+   * sequencial (uma página por vez, por causa do pico de memória): sempre
+   * sobra uma das duas workers para ele. Ele paga o custo da SUA página, não
+   * o do lote. E quando o reaquecimento chegar naquela página, vai encontrar
+   * o cache que o próprio usuário encheu — os dois mecanismos não duplicam
+   * cálculo, se completam.
+   *
+   * O que o reaquecimento entrega, então, é o visitante SEGUINTE: quem abrir a
+   * página depois do evento a encontra pronta em vez de pagar 10–20 s.
+   * `primeiro_get_pos_evento_hit` contra `_miss` é o número que diz se está
+   * entregando.
+   *
+   * Um de cada vez, pelo mesmo motivo que o `Aquecedor` tem o seu `#ocupado`:
+   * duas passadas simultâneas dobram o pico de memória de uma máquina que já
+   * roda no limite, e a segunda só recalcularia o que a primeira calcula.
+   */
+  private reaquecePorBaixo(paginas: readonly string[]): void {
+    this.metricas.conta('rewarm_pedidos');
+
+    // Já tem um no ar: estas páginas entram na próxima rodada. Descartá-las
+    // deixaria o dado delas invalidado e frio, e o próximo visitante pagando
+    // o cálculo — que é justamente o que esta fase existe para tirar.
+    if (this.reaquecendo !== null) {
+      for (const p of paginas) this.reaquecerDepois.add(p);
+      this.metricas.conta('rewarm_adiado');
+      return;
+    }
+
+    const t0 = Date.now();
+    const trabalho = (async () => {
+      try {
+        await this.opts.reaquece(paginas);
+        this.metricas.conta('rewarm_sucesso');
+      } catch (err) {
+        // Falha aqui é degradação prevista, não incidente: sem reaquecimento,
+        // o pior caso é o comportamento de antes da F4. Uma linha, não um
+        // `throw` — e ninguém fica sem ser avisado, porque o aviso já saiu.
+        this.metricas.conta('rewarm_falha');
+        console.error(`[reaquecedor] falhou: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        this.metricas.observa('rewarm_ms', Date.now() - t0);
+        this.metricas.conta('rewarm_paginas', paginas.length);
+      }
+    })();
+    this.reaquecendo = trabalho;
+
+    void trabalho.finally(() => {
+      this.reaquecendo = null;
+      if (this.reaquecerDepois.size === 0) return;
+      const proximas = [...this.reaquecerDepois];
+      this.reaquecerDepois.clear();
+      this.reaquecePorBaixo(proximas);
+    });
+  }
+
+  /**
+   * O primeiro GET de GENTE depois de um evento acertou o cache?
+   *
+   * É a pergunta que julga a F4 — não "o reaquecimento rodou", mas "a página
+   * estava pronta quando alguém precisou dela". E `atraso_ms` diz se o
+   * reaquecimento sequer teve chance: se os usuários chegam 200 ms depois do
+   * evento, nenhum reaquecimento ganha essa corrida; se chegam 30 s depois,
+   * ganha sempre.
+   *
+   * **Só `interactive` consome a marca.** O pedido do aquecedor é, por
+   * construção, o MISS que a F4 existe para pagar no lugar do usuário: contá-lo
+   * faria a métrica medir o próprio remédio e responder "miss" para sempre. O
+   * `prefetch` fica de fora pelo motivo vizinho — quando a F7 puser o navegador
+   * a buscar por antecipação, seria ele, e não a pessoa, respondendo a esta
+   * pergunta.
+   */
+  private marcaPrimeiroGet(dashId: string, origem: OrigemDoPedido, acertou: boolean, desde: number): void {
+    if (origem !== 'interactive') return;
+    const emEvento = this.eventoSemPedido.get(dashId);
+    if (emEvento === undefined) return;
+    this.eventoSemPedido.delete(dashId);
+    this.metricas.conta(acertou ? 'primeiro_get_pos_evento_hit' : 'primeiro_get_pos_evento_miss');
+    this.metricas.observa('primeiro_get_pos_evento_ms', Date.now() - desde);
+    this.metricas.observa('primeiro_get_pos_evento_atraso_ms', desde - emEvento);
   }
 
   /**
@@ -835,6 +1026,10 @@ export class Servidor {
     url: URL,
     quem: Identidade,
   ): Promise<void> {
+    // O relógio do pedido inteiro — do começo à resposta, e não só do cálculo.
+    // É o que `primeiro_get_pos_evento_ms` precisa medir: a pergunta da F4 é o
+    // que a pessoa esperou, não o que a worker levou.
+    const tPedido = Date.now();
     const dash = this.dashboards.find((d) => d.id === id);
     if (!dash) {
       responde(res, 404, {
@@ -940,6 +1135,9 @@ export class Servidor {
       const guardado = await this.cache.le<object>(chave);
       if (guardado !== undefined) {
         this.metricas.conta('cache_hits');
+        // O acerto que a F4 persegue: um evento do poller invalidou esta página
+        // e, quando alguém finalmente a pediu, ela já estava pronta.
+        this.marcaPrimeiroGet(dash.id, origem, true, tPedido);
         responde(res, 200, { ...guardado, cache: 'hit' satisfies EstadoDoCache });
         return;
       }
@@ -1170,6 +1368,10 @@ export class Servidor {
     }
 
     this.metricas.conta(voo.iniciou ? 'singleflight_iniciados' : 'singleflight_coalescidos');
+    // Chegou aqui, não acertou o cache — o usuário pagou o cálculo (ou esperou
+    // por um em curso). É o caso que a F4 existe para tirar, e contá-lo é o que
+    // impede o reaquecimento de se declarar vitorioso sozinho.
+    this.marcaPrimeiroGet(dash.id, origem, false, tPedido);
     responde(res, 200, {
       ...voo.valor,
       // `coalescido` é um estado NOVO, e existe para o ganho ser visível de fora.
