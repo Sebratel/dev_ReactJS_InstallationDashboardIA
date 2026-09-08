@@ -354,12 +354,24 @@ if (SECOES.includes('evento')) {
   console.log(`          rewarm_ms p95: ${dur(depois, 'rewarm_ms').p95Ms} ms; adiados: ${d('rewarm_adiado')}`);
 
   console.log('\n     OS SETE QUE REPROVAM');
-  // 1. cálculo duplicado — mais voos que chaves distintas pedidas
+  // 1. cálculo duplicado.
+  //
+  // **É uma guarda, não uma prova.** "1 voo por chave" é garantido por
+  // construção em `VooUnico` (F2, com teste), e NÃO é diretamente observável
+  // nesta janela: `singleflight_*` só é contado depois que o voo resolve — um
+  // voo que erra retorna antes e não incrementa nenhum dos dois. Por isso
+  // `iniciados + coalescidos <= misses` sempre, e a diferença são voos que
+  // falharam (medido neste build: misses 7, iniciados 5, coalescidos 1). Exigir
+  // a identidade exata reprovaria sozinha.
+  //
+  // E exigir `coalescidos > 0` também seria falso: se o reaquecimento rodar
+  // DEPOIS do GET de [A], ele acha o cache que [A] encheu e não abre voo nenhum
+  // — que é o desenho funcionando, não duplicação evitada.
   const iniciados = d('singleflight_iniciados');
   const coalescidos = d('singleflight_coalescidos');
   linha(
-    coalescidos >= 0 && iniciados <= d('cache_misses'),
-    `sem cálculo duplicado (voos iniciados ${iniciados} <= misses ${d('cache_misses')}; coalescidos ${coalescidos})`,
+    iniciados <= d('cache_misses'),
+    `sem assinatura de cálculo duplicado (voos iniciados ${iniciados} <= misses ${d('cache_misses')}; coalescidos ${coalescidos})`,
   );
   // 2. reaquecimento de página não afetada
   linha(
@@ -382,12 +394,21 @@ if (SECOES.includes('evento')) {
     falhasRedis === 0 && depois.cache?.redis?.status === 'ok',
     `Redis sem falha (${falhasRedis} nova(s), status ${depois.cache?.redis?.status})`,
   );
-  // 7. carimbo
-  const divergiu = (depois.carimbo?.divergencias ?? 0) - (antes.carimbo?.divergencias ?? 0);
+  // 7. carimbo — o critério é divergência NOVA, e o absoluto vai junto.
+  //
+  // Reprovar pelo absoluto puniria o evento por uma divergência de horas antes,
+  // que não tem relação com ele. Mas o absoluto precisa aparecer: `0 novas` com
+  // `3 no total` é uma API que já esteve servindo carimbo velho hoje, e quem lê
+  // o veredito tem de ver isso sem ir procurar em `/api/saude`.
+  const divAbs = depois.carimbo?.divergencias ?? 0;
+  const divergiu = divAbs - (antes.carimbo?.divergencias ?? 0);
   linha(
     divergiu === 0,
-    `carimbo consistente (${divergiu} divergência(s) nova(s); watch ${depois.carimbo?.watch?.status})`,
+    `carimbo consistente (${divergiu} divergência(s) nova(s), ${divAbs} no total desde a subida; watch ${depois.carimbo?.watch?.status})`,
   );
+  if (divergiu === 0 && divAbs > 0) {
+    console.log('          atenção: houve divergência ANTES desta janela — ver §4-F antes de promover');
+  }
 
   console.log('\n     AS DUAS PESSOAS');
   for (const e of eventos) {
