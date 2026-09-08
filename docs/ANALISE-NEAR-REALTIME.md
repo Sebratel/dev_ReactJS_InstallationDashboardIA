@@ -337,6 +337,87 @@ medida própria, e fica na fase dela.
 
 ---
 
+## 4-B. F2 — FEITA em 08/09/2026
+
+Single-flight por chave de resposta: `apps/api/src/voo-unico.ts`, encaixado em
+`pagina()` exatamente no ponto MISS → cálculo. A chave é a MESMA do cache
+(`chaveDaResposta`), e é isso que dá de graça duas garantias que seriam
+trabalhosas de manter à mão: recortes diferentes nunca se fundem (filtros,
+visuais, janela e clicados já estão na chave) e um snapshot novo é uma chave
+nova, que não alcança o voo iniciado sobre o dado velho (requisito 18).
+
+A **gravação no cache entrou para dentro do voo**: ela é parte do cálculo, não
+da resposta. Fora dele, os N que pegaram carona gravariam a mesma entrada N
+vezes no Redis.
+
+### Antes e depois, medidos na API real
+
+Mesma máquina, mesmo `snapshot/`, mesma página (`diario-instalacao`), 2 workers,
+6 GET idênticos e simultâneos em MISS (`?recalcula=1`):
+
+| | antes (F1) | depois (F2) |
+|---|---|---|
+| cálculos para 6 pedidos | **6** | **1** |
+| pior espera | **25,7 s** | **10,1 s** |
+| espera dos 6 | 15,5 s / 15,5 s / 15,5 s / 15,5 s / 25,7 s / 25,7 s | os seis juntos, em 10,1 s |
+| `worker_ms` | média 10,3 s, pico 17,5 s | 1 execução por rodada |
+| estado na resposta | 6 × `miss` | 1 × `miss` + 5 × `coalescido` |
+
+Em duas rodadas seguidas: `singleflight_iniciados: 2`,
+`singleflight_coalescidos: 10`, e `concorrentes_mesma_chave_max: 6` — **a rajada
+continua existindo; ela parou de custar.** São números diferentes de propósito.
+
+> **Ressalva honesta sobre a comparação:** a medição "antes" rodou com o Redis
+> no ar e a "depois" com ele fora (ver abaixo). Como os dois lados usaram
+> `?recalcula=1`, que pula a leitura do cache, isso não muda a conta que
+> interessa — número de cálculos. O efeito colateral é que a coluna "depois"
+> ainda paga uma escrita de cache que falha, ou seja, ela está levemente
+> pessimista, não otimista.
+
+### Dois defeitos vizinhos, que o single-flight AGRAVARIA
+
+Os dois são anteriores a esta fase e foram corrigidos junto, porque em ambos o
+estrago cresce quando N pedidos passam a depender de um cálculo só.
+
+**1. Worker que morre deixava a promessa pendente para sempre.** Medido:
+`terminate()` numa worker com tarefa pendente e, 2 s depois, a promessa
+continuava `PENDENTE`. `w.on('exit')` só tirava a worker das listas, sem
+rejeitar. Antes, isso pendurava um pedido; sob single-flight, penduraria a
+**chave inteira** — todo pedido seguinte àquela chave entraria no voo que nunca
+resolve, até o carimbo mudar. Agora `exit` rejeita a tarefa (e, se não sobrou
+worker nenhuma, também as que estavam na fila), o que faz o pedido cair no
+cálculo em linha, que é a degradação que já existia e já era testada.
+
+**2. A API MORRIA quando o Redis ficava inalcançável.** Não é hipótese: durante
+esta sessão o Redis do compose continuou "Up" mas a porta parou de aceitar
+conexão, e a API caiu com
+
+```
+[ioredis] Unhandled error event: AggregateError [ECONNREFUSED]
+```
+
+O driver emite `'error'` num `EventEmitter`; sem ouvinte, o Node transforma isso
+em exceção não tratada e o processo morre. Todo o resto do caminho já degradava
+certo — `CacheEmCamadas.aoFalhar`, o `try/catch` de `CacheDeResposta`, a memória
+na frente do Redis — e `index.ts` gasta 25 linhas prometendo exatamente essa
+degradação. Quem derrubava era o evento solto do driver, antes de qualquer uma
+delas. Com o ouvinte, a mesma situação virou 15 linhas de log e
+`GET /api/saude` respondendo 200.
+
+### Testes
+
+* `apps/api/test/voo-unico.test.ts` — a mecânica: convergência, chaves distintas,
+  limpeza em sucesso, em rejeição e em `throw` síncrono, e a conferência de
+  identidade que impede um voo terminado de apagar o registro de um voo novo.
+* `apps/api/test/single-flight.test.ts` — ponta a ponta: 6 GET → 1 cálculo; 20
+  clientes acordados por `aoTabelaMudar` → 1 cálculo; recortes diferentes não se
+  fundem; carimbo novo não reaproveita voo; 409 chega a todos e libera a chave.
+
+Os quatro testes de rajada ficam **vermelhos** com o single-flight desligado —
+verificado desligando-o. Suíte inteira: **1697/1697**.
+
+---
+
 ## 5. Plano — etapas pequenas e reversíveis
 
 | fase | entrega | reversão | como provo que funcionou |
@@ -349,7 +430,7 @@ medida própria, e fica na fase dela.
 | fase | entrega | reversão | como provo que funcionou |
 |---|---|---|---|
 | **F1** ✅ | **overlay atravessa a worker** (B1) + contadores do F0 | 1 commit | 4 testes que ficam vermelhos sem a linha da correção |
-| **F2** | single-flight (B3) | 1 commit; flag `SEM_VOO_UNICO=1` | os 6 pedidos medidos acima viram 1 cálculo |
+| **F2** ✅ | single-flight (B3) | 1 commit | os 6 pedidos medidos viraram 1 cálculo; 25,7 s → 10,1 s |
 | **F3** | fila com prioridade (B4) | 1 commit; sem rótulo tudo vira `interactive` = FIFO de hoje | interactive na frente de warmup, com fila cheia |
 | **F4** | reaquecimento pós-evento do poller (B5) | 1 commit | primeiro GET depois do evento é HIT |
 | **F5** | `carimboMemo`/watchdog visível (B8) | 1 commit | `/api/saude` diz se o `fs.watch` pegou |

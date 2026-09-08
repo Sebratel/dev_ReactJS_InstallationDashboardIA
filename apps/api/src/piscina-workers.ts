@@ -154,16 +154,22 @@ export class PiscinaWorkers {
         });
 
         w.on('error', (err) => {
-          const tarefa = this.pendentesPorWorker.get(w);
-          if (tarefa) {
-            this.pendentesPorWorker.delete(w);
-            tarefa.reject(err);
-          }
-          this.removeWorker(w);
+          this.removeWorker(w, err);
         });
 
-        w.on('exit', () => {
-          this.removeWorker(w);
+        // **A morte de uma worker TEM de rejeitar a tarefa dela.** Até
+        // 08/09/2026 este handler só a tirava das listas: a promessa do pedido
+        // ficava PENDENTE para sempre (medido — 2 s depois de `terminate()`, a
+        // promessa continuava pendente). Antes disso o estrago era um pedido
+        // pendurado; com o single-flight (F2) passaria a ser a CHAVE inteira
+        // travada, porque todo pedido seguinte àquela chave entraria no voo que
+        // nunca resolve. Rejeitar faz o `catch` de `pagina()` cair no cálculo em
+        // linha, que é a degradação que já existe e já é testada.
+        w.on('exit', (codigo) => {
+          this.removeWorker(
+            w,
+            new Error(`worker de cálculo terminou com código ${codigo} antes de responder`),
+          );
         });
 
         this.workers.push(w);
@@ -222,14 +228,32 @@ export class PiscinaWorkers {
     }
   }
 
-  private removeWorker(w: Worker): void {
+  /**
+   * Tira a worker das listas e **rejeita o que ela estava fazendo**.
+   *
+   * `motivo` é o que vai para quem esperava. Sem ele (o caso de `destroi()`,
+   * onde o processo está indo embora de qualquer jeito) nada é rejeitado.
+   */
+  private removeWorker(w: Worker, motivo?: Error): void {
     const idx = this.workers.indexOf(w);
     if (idx !== -1) this.workers.splice(idx, 1);
 
     const idxLivre = this.livres.indexOf(w);
     if (idxLivre !== -1) this.livres.splice(idxLivre, 1);
 
+    const tarefa = this.pendentesPorWorker.get(w);
     this.pendentesPorWorker.delete(w);
+    if (tarefa && motivo) tarefa.reject(motivo);
+
+    // **Sem worker nenhuma, a fila também não pode ficar pendurada.** Ela só
+    // avança em `processaFila`, que é chamada quando uma worker termina — se
+    // todas morreram, ninguém mais a chama, e cada tarefa enfileirada seria uma
+    // promessa que nunca resolve. Rejeitar manda cada uma para o cálculo em
+    // linha, que continua respondendo (mais devagar) em vez de não responder.
+    if (motivo && this.workers.length === 0 && this.tarefas.length > 0) {
+      const presas = this.tarefas.splice(0, this.tarefas.length);
+      for (const t of presas) t.reject(motivo);
+    }
   }
 
   destroi(): void {

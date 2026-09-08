@@ -262,20 +262,20 @@ test('o Aquecedor é classificado como warmup, e o hover como prefetch', async (
   }
 });
 
-test('dois pedidos iguais em MISS ainda geram DOIS cálculos — e o contador diz isso', async () => {
-  // **Este teste afirma o defeito, não a correção.** O single-flight é a fase
-  // seguinte; o que existe hoje é a MEDIDA dele. Quando a fase entrar, é este
-  // teste que muda de sentido — e é melhor que ele exista agora, errado de
-  // propósito e dizendo por quê, do que a fase seguinte começar sem uma linha de
-  // base para comparar.
+test('dois pedidos iguais em MISS geram UM cálculo — e o contador diz isso', async () => {
+  // **Este teste já afirmou o DEFEITO.** Ele nasceu na F1 medindo a rajada que
+  // ainda custava caro (`calculos_duplicados`), e dizia, no comentário, que
+  // mudaria de sentido quando o single-flight entrasse. Entrou na F2, e é isto
+  // que ele afirma agora: a rajada continua acontecendo, e parou de custar.
   //
-  // `recalcula=1` pula a leitura do cache dos dois lados, que é exatamente o que
-  // uma rajada pós-SSE faz: todos chegam depois de a entrada ter sido apagada.
+  // O cenário completo (20 clientes acordados pelo SSE, erro liberando a chave,
+  // recortes que não podem se fundir) está em `single-flight.test.ts`; o que
+  // sobra aqui é a ponta que fecha o par com a medição da F1.
   const s = await sobe(await dirComCapa(), () => new Map());
   try {
     await Promise.all([
-      s.busca('/api/dashboards/capa?recalcula=1'),
-      s.busca('/api/dashboards/capa?recalcula=1'),
+      s.busca('/api/dashboards/capa'),
+      s.busca('/api/dashboards/capa'),
     ]);
     const rt = (await (await s.busca('/api/saude')).json()).realtime;
     assert.equal(
@@ -283,7 +283,8 @@ test('dois pedidos iguais em MISS ainda geram DOIS cálculos — e o contador di
       2,
       'os dois pedidos tinham de ter sido vistos como concorrentes na mesma chave',
     );
-    assert.equal(rt.contadores.calculos_duplicados, 1);
+    assert.equal(rt.duracoes.worker_ms.n, 1, 'dois pedidos iguais têm de virar UM cálculo');
+    assert.equal(rt.contadores.singleflight_coalescidos, 1);
   } finally {
     await s.fecha();
   }

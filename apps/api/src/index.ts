@@ -48,7 +48,29 @@ async function cacheDaEnv(): Promise<Cache | undefined> {
     const { default: Redis } = await import('ioredis');
     // `lazyConnect`: a conexão sai na primeira operação, não no arranque. Um Redis
     // fora do ar vira miss em `CacheDeResposta`, e não uma exceção aqui.
-    const redis = new RedisCache(new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 }));
+    const cliente = new Redis(url, { lazyConnect: true, maxRetriesPerRequest: 1 });
+    // **E este ouvinte é o que faz a promessa acima ser verdade.** Sem ele, o
+    // `ioredis` emite `'error'` num `EventEmitter` sem ouvinte, e o Node
+    // transforma isso em exceção não tratada: o processo MORRE. Não é hipótese —
+    // aconteceu nesta máquina em 08/09/2026, com o Redis do compose de pé mas
+    // com a porta inalcançável:
+    //
+    //     [ioredis] Unhandled error event: AggregateError [ECONNREFUSED]
+    //     (e a API, que tinha subido e respondido, parou de responder)
+    //
+    // Todo o resto do caminho já degrada certo — `CacheEmCamadas.aoFalhar`, o
+    // `try/catch` de `CacheDeResposta`, a memória na frente do Redis. Quem
+    // derrubava era o evento solto do driver, antes de qualquer um deles.
+    //
+    // Com single-flight (F2) o estrago de um crash cresce: o processo leva
+    // consigo os N pedidos que dividiam cada voo, não um.
+    cliente.on('error', (err: unknown) => {
+      console.error(
+        `[cache] Redis indisponível (a memória continua servindo): ` +
+          `${err instanceof Error ? err.message : String(err)}`,
+      );
+    });
+    const redis = new RedisCache(cliente);
     return new CacheEmCamadas({
       rapida: new MemoryCache(),
       duravel: redis,
