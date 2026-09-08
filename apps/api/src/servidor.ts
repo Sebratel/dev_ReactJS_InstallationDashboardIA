@@ -2025,15 +2025,35 @@ function valoresDistintos(
     if (!vistos.has(chave)) vistos.set(chave, v);
   }
 
-  return [...vistos.values()].sort((a, b) => {
-    // BLANK por último: é o valor menos informativo, e no topo empurraria a lista
-    // inteira para baixo em toda coluna que tenha um vazio.
-    if (isBlank(a)) return isBlank(b) ? 0 : 1;
-    if (isBlank(b)) return -1;
-    if (a instanceof Date && b instanceof Date) return a.getTime() - b.getTime();
-    if (typeof a === 'number' && typeof b === 'number') return a - b;
-    return String(a).localeCompare(String(b), 'pt-BR');
-  });
+  return [...vistos.values()].sort(comparaValorDeSegmentacao);
+}
+
+/**
+ * A ordem em que um seletor oferece seus valores.
+ *
+ * **Data e número saem do MAIOR para o menor, e isso é um recorte, não estética.**
+ * A lista é truncada em `teto` antes de chegar à tela; crescente, o corte jogava
+ * fora exatamente a metade que interessa. Medido em 08/09/2026:
+ * `CALENDARIO INSTALADO`[DATA INSTALADO] tem 713 datas distintas, a tela recebia
+ * 500 e a árvore de período terminava em JUNHO/2026 — enquanto a mesma página
+ * abre filtrada em AGOSTO. O mês que a tela pedia por padrão não existia na lista
+ * que ela oferecia, e por fora isso é «nenhum filtro funciona».
+ *
+ * Texto continua em A–Z: em nome de pessoa ou de equipe é alfabético que se
+ * procura, e não há «mais recente» que privilegiar.
+ *
+ * Função separada e exportada porque é uma DECISÃO, e decisão precisa de teste —
+ * quando ela morava dentro do `sort()`, a suíte inteira passava verde com a ordem
+ * trocada.
+ */
+export function comparaValorDeSegmentacao(a: DaxValue, b: DaxValue): number {
+  // BLANK por último: é o valor menos informativo, e no topo empurraria a lista
+  // inteira para baixo em toda coluna que tenha um vazio.
+  if (isBlank(a)) return isBlank(b) ? 0 : 1;
+  if (isBlank(b)) return -1;
+  if (a instanceof Date && b instanceof Date) return b.getTime() - a.getTime();
+  if (typeof a === 'number' && typeof b === 'number') return b - a;
+  return String(a).localeCompare(String(b), 'pt-BR');
 }
 
 /** Um valor de segmentação com o tipo junto — a tela formata pelo tipo, não pelo formato. */

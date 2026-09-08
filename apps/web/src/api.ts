@@ -174,6 +174,21 @@ export function urlDaPagina(
   return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
 }
 
+/**
+ * O teto de valores que a tela pede.
+ *
+ * **Ela não pedia nenhum, e o padrão da API é 500.** Para a árvore de período
+ * isso era fatal: ela monta Ano > Mês > Dia a partir das datas CRUAS (pedir
+ * nível por nível ofereceria mês que aquele ano não tem), e 500 de 713 datas
+ * faziam a árvore terminar em junho/2026 enquanto a página abre filtrada em
+ * agosto. Medido em 08/09/2026.
+ *
+ * 5000 é o máximo que a rota aceita (`VALORES_MAXIMO`). Não resolve coluna de
+ * cardinalidade alta — `CLIENTE` tem 72.521 valores distintos e `N°PROTOCOLO`
+ * 93.601 —, e essas precisam de busca no seletor, não de teto maior.
+ */
+export const TETO_DE_VALORES = 5000;
+
 export function urlDeValores(
   id: string,
   tabela: string,
@@ -182,6 +197,7 @@ export function urlDeValores(
 ): string {
   const p = new URLSearchParams({ tabela, coluna });
   if (nivel) p.set('nivel', nivel);
+  p.set('teto', String(TETO_DE_VALORES));
   return `/api/dashboards/${encodeURIComponent(id)}/valores?${p.toString()}`;
 }
 
