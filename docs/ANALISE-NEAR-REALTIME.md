@@ -541,6 +541,117 @@ Suíte inteira: **1711/1711**.
 
 ---
 
+## 4-D. F3 — fila com prioridade, FEITA em 08/09/2026
+
+**Prioridade pura: três classes, sem peso, sem envelhecimento, sem cota.**
+Decisão com o Erick — medir primeiro, e só discutir fairness se a telemetria
+pedir. Inanição de `warmup` é um risco real; a resposta a ele é um número, não um
+mecanismo escrito antes dele.
+
+```
+INTERACTIVE  →  PREFETCH  →  WARMUP        (menor passa na frente)
+```
+
+### O experimento: a mesma carga, duas vezes
+
+`npm run probe:prioridade-fila` sobe duas APIs limpas (cache frio, contadores
+zerados) e roda a MESMA carga em cada uma: 6 aquecimentos, 2 prefetch e 3
+cliques, com 2 workers e páginas reais. A segunda rodada declara **todo** pedido
+como `interactive` — com todos na mesma classe, a fila com prioridade *é* a fila
+FIFO de antes da F3. O antes/depois sai de um comando só, sem desligar código.
+
+Duas execuções, 08/09/2026:
+
+| | FIFO (antes) | prioridade | |
+|---|---|---|---|
+| **pior clique, ponta a ponta** | 22,7 s / 23,1 s | **12,8 s / 13,4 s** | −43% |
+| espera na fila, `interactive` p95 | 21,7 s / 22,1 s | **7,5 s / 7,5 s** | −66% |
+| espera na fila, `warmup` p95 | — | 22,0 s / 21,0 s | |
+| tempo de parede da carga inteira | 32,0 s / 32,3 s | 32,3 s / 33,2 s | igual |
+
+**O trabalho não encolheu — ele mudou de ordem.** O tempo de parede é o mesmo
+nas duas colunas, e tem de ser: a piscina continua com 2 workers e as 10 páginas
+continuam custando o que custavam. O que mudou foi quem espera.
+
+### Os 7,5 s que sobraram são despacho, não fila
+
+O clique não chega a zero, e não é defeito de política: **prioridade reordena a
+fila, não interrompe o que já está numa worker.** Com 2 workers e uma página fria
+de 10–20 s, um clique que chega no pior instante espera o cálculo em curso
+terminar. Reduzir isso é F4 (o clique vira HIT porque a página já foi reaquecida)
+ou mais workers — e mais workers é o que o contrato de memória proíbe.
+
+### Sobre fairness: a telemetria NÃO pediu
+
+O critério do Erick era: `warmup` p95 na casa dos minutos justifica discutir
+fairness; na casa dos segundos, não. Medido: **p95 de 21 s, e os seis
+aquecimentos terminaram dentro dos 33 s da carga.** Não há inanição a resolver —
+e a forma da produção reforça: o Aquecedor esvazia a sua lista na subida, ele não
+é uma torneira contínua. Fairness fica sem ser implementado, de propósito.
+
+### O buraco que a F2 e a F3 abrem juntas — contado, não suposto
+
+A prioridade da fila é a de quem **iniciou** o voo. Se um aquecimento já está
+calculando aquela chave, o clique que chega depois pega carona e herda a posição
+de fila dele, em vez de furar. Não custa um cálculo a mais (o single-flight
+continua funcionando); custa espera. Na sonda: `herdaram fila pior: 1` das duas
+rodadas — o clique em `visao-geral`, que estava na lista de aquecimento de
+propósito.
+
+Promover a tarefa em voo é possível e não foi escrito, pela mesma regra desta
+fase. `voo_herdou_prioridade_pior_<classe>` é o número que decidirá isso. A janela
+é estreita por construção: só vale enquanto a tarefa ainda está ENFILEIRADA.
+
+### Percentil sem amostra
+
+A F3 precisava de percentil, e `metricas.ts` argumentava contra ele — guardar a
+amostra num processo que já mede a memória em GB é o instrumento virando o
+problema. O argumento vale contra a AMOSTRA, não contra um **histograma de baldes
+fixos**: 18 inteiros por métrica, para sempre, e nenhuma alocação por observação.
+
+O percentil publicado é o **teto do balde, limitado pelo máximo real** — erra
+para cima, nunca para baixo, que é a direção certa para latência. A primeira
+medição saiu com `p95: 10000` e `max: 7467`, um percentil maior que o máximo;
+lia como instrumento quebrado e fazia desconfiar da tabela inteira.
+
+E a média sozinha não serviria: duas filas com média de 8 s podem ser "todo
+clique espera 8 s" ou "95% passam em 20 ms e um aquecimento espera 3 min". É a
+segunda que dá certo, e só o percentil separa as duas.
+
+### A segunda pergunta: quanto da fila era duplicação?
+
+`pedidos_<classe>` contra `fila_entradas_<classe>` responde. Na sonda, 11 pedidos
+viraram 10 tarefas; num teste com 6 GET idênticos, 6 pedidos viram **1** tarefa.
+É o que impede a comparação F2→F3 de se enganar: antes do single-flight a fila
+estava cheia de trabalho que não precisava existir, e reordená-la teria sido
+otimizar a duplicação.
+
+### Classificação: um pedido pode se REBAIXAR, nunca se promover
+
+`warmup` continua saindo do cabeçalho interno do Aquecedor. Fora dele, `?origem=`
+é aceito só para descer (`prefetch`, `warmup`). É seguro porque o pior que um
+cliente consegue com isso é atrasar a si mesmo — `interactive` já é o padrão de
+quem não declara nada, então não há o que ganhar mentindo. Foi o que permitiu a
+sonda gerar carga de fundo sem o segredo do processo.
+
+### Testes
+
+* `prioridade-fila.test.ts` — a estrutura sozinha (ordem entre classes, FIFO
+  dentro da classe, prioridade fora da faixa saturando na classe MENOS urgente) e
+  a piscina real (o clique que chega por último roda em segundo; `medeCom`
+  separando espera de execução; o controle FIFO).
+* `prioridade-http.test.ts` — pela URL e pela saúde: classificação, espera por
+  classe, `fila_entradas` × `pedidos`, a carona que herda fila pior, e
+  `piscina.porClasse`.
+* `metricas.test.ts` — os percentis, incluindo o guarda que impede alguém de
+  "melhorar" o percentil guardando a amostra.
+
+**8 testes ficam vermelhos** com `prioridadeDe()` devolvendo 0 para tudo — e os
+que continuam verdes são exatamente os que devem: o controle FIFO, a
+classificação, e o contador de duplicação. Suíte inteira: **1732/1732**.
+
+---
+
 ## 5. Plano — etapas pequenas e reversíveis
 
 | fase | entrega | reversão | como provo que funcionou |
@@ -555,7 +666,7 @@ Suíte inteira: **1711/1711**.
 | **F1** ✅ | **overlay atravessa a worker** (B1) + contadores do F0 | 1 commit | 4 testes que ficam vermelhos sem a linha da correção |
 | **F2** ✅ | single-flight (B3) | 1 commit | os 6 pedidos medidos viraram 1 cálculo; 25,7 s → 10,1 s |
 | **F2.1** ✅ | ciclo de vida da worker + saúde do Redis (§4-C) | 1 commit | 2 testes vermelhos sem o handler de `exit`; ciclo `ocioso→degradado→ok→degradado` medido contra Redis real |
-| **F3** | fila com prioridade (B4) | 1 commit; sem rótulo tudo vira `interactive` = FIFO de hoje | interactive na frente de warmup, com fila cheia |
+| **F3** ✅ | fila com prioridade (B4) | 1 commit; sem rótulo tudo vira `interactive` = FIFO de hoje | pior clique 23,1 s -> 13,4 s; fila p95 22,1 s -> 7,5 s (§4-D) |
 | **F4** | reaquecimento pós-evento do poller (B5) | 1 commit | primeiro GET depois do evento é HIT |
 | **F5** | `carimboMemo`/watchdog visível (B8) | 1 commit | `/api/saude` diz se o `fs.watch` pegou |
 | **F6** | versão no evento SSE (B6) + navegador (requisito 7) | 1 commit; navegador antigo ignora campo novo | evento antigo/duplicado ignorado; filtros preservados |

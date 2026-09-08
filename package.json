@@ -29,6 +29,7 @@
     "probe:determinismo-pg": "node tools/probe/src/determinismo-protocolos-geral.ts",
     "probe:instalador-ramo": "node tools/probe/src/instalador-ramo.ts",
     "probe:memoria-api": "node tools/probe/src/memoria-api.ts",
+    "probe:prioridade-fila": "node tools/probe/src/prioridade-fila.ts",
     "powerbi": "node --max-old-space-size=8192 tools/powerbi/src/index.ts",
     "test:powerbi": "node --test tools/powerbi/test/*.test.ts",
     "cdc:observa": "node tools/cdc/src/index.ts",

@@ -108,15 +108,87 @@ interface TarefaPendente {
   msg: MensagemCalculoWorker;
   resolve: (res: RespostaCalculoWorker) => void;
   reject: (erro: Error) => void;
+  /** Menor passa na frente. Ver `prioridadeDe` em `metricas.ts`. */
+  prioridade: number;
+  /** Quando entrou na fila — o começo de `esperaMs`. */
+  enfileiradaEm: number;
+  /** Quando foi despachada para a worker — o fim de `esperaMs`. */
+  despachadaEm: number;
+}
+
+/** O que `medeCom()` recebe quando uma tarefa termina (bem ou mal). */
+export interface MedidaDaTarefa {
+  prioridade: number;
+  /** Da entrada na fila ao `postMessage`. É o número que a F3 existe para baixar. */
+  esperaMs: number;
+  /** Do `postMessage` à resposta da worker. Não muda com prioridade nenhuma. */
+  execucaoMs: number;
+}
+
+/**
+ * Uma fila por classe de prioridade, FIFO dentro de cada uma.
+ *
+ * **Três arrays e não um array ordenado**, porque a ordenação por inserção num
+ * array único é O(n) por tarefa e — pior — é fácil de escrever de um jeito que
+ * perde o FIFO dentro da classe. Com uma fila por classe, o desempate por ordem
+ * de chegada é a própria estrutura, não uma comparação que alguém pode trocar.
+ *
+ * Ela é exportada para poder ser testada sem subir worker nenhuma: a política de
+ * ordenação é a coisa que a F3 entrega, e ela não pode depender de um teste que
+ * precisa de duas threads e um snapshot para rodar.
+ */
+/** `interactive`, `prefetch`, `warmup` — ver `ORIGENS` em `metricas.ts`. */
+export const CLASSES_DE_PRIORIDADE = 3;
+
+export class FilaDePrioridade<T extends { prioridade: number }> {
+  readonly #filas: T[][];
+
+  constructor(classes: number) {
+    this.#filas = Array.from({ length: classes }, () => []);
+  }
+
+  /** Fora da faixa cai na classe menos urgente — nunca na mais. */
+  entra(item: T): void {
+    const i = Math.min(Math.max(item.prioridade, 0), this.#filas.length - 1);
+    this.#filas[i]!.push(item);
+  }
+
+  /** O próximo a rodar: a classe mais urgente que tiver alguém, e o mais antigo dela. */
+  sai(): T | undefined {
+    for (const fila of this.#filas) {
+      if (fila.length > 0) return fila.shift();
+    }
+    return undefined;
+  }
+
+  get tamanho(): number {
+    let n = 0;
+    for (const fila of this.#filas) n += fila.length;
+    return n;
+  }
+
+  /** Quantos esperam em cada classe. Sai em `GET /api/saude`. */
+  porClasse(): number[] {
+    return this.#filas.map((f) => f.length);
+  }
+
+  /** Esvazia e devolve tudo, da classe mais urgente para a menos. */
+  drena(): T[] {
+    const todos: T[] = [];
+    for (const fila of this.#filas) todos.push(...fila.splice(0, fila.length));
+    return todos;
+  }
 }
 
 export class PiscinaWorkers {
   private readonly workers: Worker[] = [];
   private readonly livres: Worker[] = [];
-  private readonly tarefas: TarefaPendente[] = [];
+  private readonly tarefas = new FilaDePrioridade<TarefaPendente>(CLASSES_DE_PRIORIDADE);
   private readonly pendentesPorWorker = new Map<Worker, TarefaPendente>();
   private readonly desativado: boolean;
   private contadorReq = 0;
+  /** Ver `medeCom()`. Padrão: ninguém medindo, custo zero. */
+  private medidor: ((m: MedidaDaTarefa) => void) | null = null;
 
   constructor(opts: OpcoesPiscina = {}) {
     this.desativado = opts.desativado ?? false;
@@ -156,6 +228,7 @@ export class PiscinaWorkers {
           if (tarefa) {
             this.pendentesPorWorker.delete(w);
             this.livres.push(w);
+            this.mede(tarefa);
             if (res.ok) {
               tarefa.resolve(res);
             } else {
@@ -209,16 +282,44 @@ export class PiscinaWorkers {
    * pelo palpite. `Servidor` amostra `fila` no instante em que ENFILEIRA, porque
    * ler de fora, em `GET /api/saude`, quase sempre pegaria zero: a fila só existe
    * enquanto há cálculo em curso, e ninguém está olhando naquele instante.
+   *
+   * `porClasse` é o que a F3 acrescentou: uma fila de 6 diz muito pouco, e
+   * `[0, 1, 5]` diz que nenhum usuário está esperando.
    */
-  get estado(): { fila: number; ocupados: number; workers: number } {
+  get estado(): { fila: number; ocupados: number; workers: number; porClasse: number[] } {
     return {
-      fila: this.tarefas.length,
+      fila: this.tarefas.tamanho,
       ocupados: this.pendentesPorWorker.size,
       workers: this.workers.length,
+      porClasse: this.tarefas.porClasse(),
     };
   }
 
-  executa(msg: Omit<MensagemCalculoWorker, 'idReq'>): Promise<RespostaCalculoWorker> {
+  /**
+   * Quem recebe a espera e a execução de cada tarefa que termina.
+   *
+   * É um método e não uma opção de construtor porque `Servidor` também aceita
+   * uma piscina pronta por fora (`ServidorOptions.piscinaWorkers`, usada em
+   * teste e em sonda) — e uma piscina injetada tem de ser medida igual, senão os
+   * números que a F3 produz só existem no caminho que ninguém exercita.
+   *
+   * A piscina não conhece `Metricas` de propósito: ela devolve prioridade e
+   * milissegundos, e quem sabe que a prioridade 0 se chama `interactive` é o
+   * `Servidor`.
+   */
+  medeCom(f: (m: MedidaDaTarefa) => void): void {
+    this.medidor = f;
+  }
+
+  /**
+   * Enfileira um cálculo. `prioridade` menor passa na frente; sem ela, tudo entra
+   * como 0 (`interactive`) — que é exatamente o FIFO de antes da F3, e é por isso
+   * que nenhum chamador antigo precisou mudar.
+   */
+  executa(
+    msg: Omit<MensagemCalculoWorker, 'idReq'>,
+    prioridade = 0,
+  ): Promise<RespostaCalculoWorker> {
     if (!this.ativa) {
       return Promise.reject(new Error('Piscina de workers desativada ou indisponível.'));
     }
@@ -229,19 +330,43 @@ export class PiscinaWorkers {
         msg: { ...msg, idReq },
         resolve,
         reject,
+        prioridade,
+        enfileiradaEm: Date.now(),
+        despachadaEm: 0,
       };
-      this.tarefas.push(tarefa);
+      this.tarefas.entra(tarefa);
       this.processaFila();
     });
   }
 
   private processaFila(): void {
-    while (this.tarefas.length > 0 && this.livres.length > 0) {
-      const tarefa = this.tarefas.shift()!;
+    while (this.livres.length > 0) {
+      const tarefa = this.tarefas.sai();
+      if (tarefa === undefined) return;
       const worker = this.livres.shift()!;
+      tarefa.despachadaEm = Date.now();
       this.pendentesPorWorker.set(worker, tarefa);
       worker.postMessage(tarefa.msg);
     }
+  }
+
+  /**
+   * Fecha a medição de uma tarefa. Chamado tanto no sucesso quanto na morte da
+   * worker — uma tarefa que só é medida quando dá certo produz uma espera média
+   * que melhora justamente quando o sistema piora.
+   */
+  private mede(tarefa: TarefaPendente): void {
+    if (this.medidor === null) return;
+    const agora = Date.now();
+    // Tarefa morta na fila (a worker morreu antes de despachá-la) nunca chegou a
+    // executar: a espera é tudo, e a execução é zero. Fingir uma execução aqui
+    // inflaria `calculo_ms` com tempo que nenhuma worker gastou.
+    const despachadaEm = tarefa.despachadaEm === 0 ? agora : tarefa.despachadaEm;
+    this.medidor({
+      prioridade: tarefa.prioridade,
+      esperaMs: despachadaEm - tarefa.enfileiradaEm,
+      execucaoMs: agora - despachadaEm,
+    });
   }
 
   /**
@@ -259,16 +384,21 @@ export class PiscinaWorkers {
 
     const tarefa = this.pendentesPorWorker.get(w);
     this.pendentesPorWorker.delete(w);
-    if (tarefa && motivo) tarefa.reject(motivo);
+    if (tarefa && motivo) {
+      this.mede(tarefa);
+      tarefa.reject(motivo);
+    }
 
     // **Sem worker nenhuma, a fila também não pode ficar pendurada.** Ela só
     // avança em `processaFila`, que é chamada quando uma worker termina — se
     // todas morreram, ninguém mais a chama, e cada tarefa enfileirada seria uma
     // promessa que nunca resolve. Rejeitar manda cada uma para o cálculo em
     // linha, que continua respondendo (mais devagar) em vez de não responder.
-    if (motivo && this.workers.length === 0 && this.tarefas.length > 0) {
-      const presas = this.tarefas.splice(0, this.tarefas.length);
-      for (const t of presas) t.reject(motivo);
+    if (motivo && this.workers.length === 0 && this.tarefas.tamanho > 0) {
+      for (const t of this.tarefas.drena()) {
+        this.mede(t);
+        t.reject(motivo);
+      }
     }
   }
 
@@ -279,6 +409,6 @@ export class PiscinaWorkers {
     this.workers.length = 0;
     this.livres.length = 0;
     this.pendentesPorWorker.clear();
-    this.tarefas.length = 0;
+    this.tarefas.drena();
   }
 }

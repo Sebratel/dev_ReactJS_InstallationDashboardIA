@@ -74,7 +74,7 @@ import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh } from '../../../tools/refresh/src/status.ts';
 import { PiscinaWorkers } from './piscina-workers.ts';
 import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
-import { Metricas, origemDoPedido, type OrigemDoPedido } from './metricas.ts';
+import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente, type EstadoDoRedis } from './saude-do-redis.ts';
 
@@ -335,6 +335,17 @@ export class Servidor {
   constructor(opts: ServidorOptions) {
     const { cache, aoFalharCache, verificadorGoogle, piscinaWorkers, ...resto } = opts;
     this.piscina = piscinaWorkers ?? new PiscinaWorkers({ desativado: process.env.NODE_ENV === 'test' });
+    // **A conta que a F3 precisa separar.** `worker_ms` mede a soma (espera +
+    // cálculo) e não distingue "o cálculo é caro" de "o clique ficou atrás de
+    // três aquecimentos" — que são problemas diferentes, com consertos
+    // diferentes. Só a piscina sabe quando a tarefa saiu da fila, então a
+    // separação nasce lá e é rotulada aqui: a piscina devolve um número de
+    // prioridade, e quem sabe que 0 se chama `interactive` é este arquivo.
+    this.piscina.medeCom(({ prioridade, esperaMs, execucaoMs }) => {
+      const origem = ORIGENS[prioridade] ?? 'interactive';
+      this.metricas.observa(`fila_ms_${origem}`, esperaMs);
+      this.metricas.observa(`calculo_ms_${origem}`, execucaoMs);
+    });
     this.verificadorGoogle = verificadorGoogle;
 
     this.opts = {
@@ -916,13 +927,13 @@ export class Servidor {
       dia,
     });
 
-    // De onde veio este pedido. Ainda NÃO muda prioridade nenhuma — a fila da
-    // piscina continua FIFO nesta fase. Serve para medir quanto do trabalho é de
-    // fundo antes de escolher a política que vai reordená-la (`metricas.ts`).
+    // De onde veio este pedido. Desde a F3 isto DECIDE a ordem da fila da
+    // piscina, e não só mede — ver `prioridadeDe` em `metricas.ts`.
     const origem: OrigemDoPedido = origemDoPedido(
       quem.usuario === 'aquecedor-interno',
       url.searchParams.get('origem'),
     );
+    const prioridade = prioridadeDe(origem);
     this.metricas.conta(`pedidos_${origem}`);
 
     if (ttl > 0 && !recalcula) {
@@ -996,6 +1007,22 @@ export class Servidor {
     // cálculo, não da resposta. Fora do voo, os N que pegaram carona gravariam a
     // mesma entrada N vezes no Redis — o oposto do que esta peça existe para
     // fazer.
+    // **O buraco que a F2 e a F3 abrem juntas, medido em vez de suposto.** A
+    // prioridade da fila é a de quem INICIOU o voo. Se um aquecimento começou o
+    // cálculo desta chave e um clique chega em seguida, o clique pega carona — e
+    // herda a posição de fila do aquecimento, em vez de passar na frente. Não
+    // custa um cálculo a mais (o single-flight continua fazendo o seu trabalho),
+    // custa espera. A janela é estreita: só vale enquanto a tarefa ainda está
+    // ENFILEIRADA, porque depois de despachada não há fila para furar.
+    //
+    // Promover a tarefa em voo seria possível, e é justamente o tipo de
+    // mecanismo que a decisão desta fase manda NÃO escrever antes de haver
+    // número. Este contador é o número.
+    const emVoo = this.vooUnico.rotuloDe(chave);
+    if (typeof emVoo === 'number' && emVoo > prioridade) {
+      this.metricas.conta(`voo_herdou_prioridade_pior_${origem}`);
+    }
+
     let voo: Voo<CorpoDaPagina>;
     try {
       voo = await this.vooUnico.faz<CorpoDaPagina>(chave, async () => {
@@ -1015,6 +1042,12 @@ export class Servidor {
 
         if (this.piscina.ativa) {
           this.metricas.maximo('worker_fila_max', this.piscina.estado.fila);
+          // Quantas tarefas de cada classe REALMENTE chegaram à piscina. Comparado
+          // com `pedidos_<origem>`, é o que responde "quanto da fila que existia
+          // antes era só trabalho duplicado?": 6 pedidos iguais que viram 1
+          // entrada aqui são 5 cálculos que a F2 apagou, e que a F3 não teria de
+          // reordenar.
+          this.metricas.conta(`fila_entradas_${origem}`);
           const tWorker = Date.now();
           try {
             const workerRes = await this.piscina.executa({
@@ -1034,7 +1067,11 @@ export class Servidor {
               // falhava; o realtime só não entregava dado novo. Ver
               // `worker-calculador.ts` e `overlay-realtime.ts`.
               ...(overlays.size > 0 ? { overlays } : {}),
-            });
+            }, prioridade);
+            // `worker_ms` continua sendo a SOMA (espera + cálculo). Ele não foi
+            // substituído por `fila_ms_*`/`calculo_ms_*`: é o número que os
+            // testes e as medições das fases F1 e F2 usam, e trocar o significado
+            // dele tornaria aquelas comparações incomparáveis.
             this.metricas.observa('worker_ms', Date.now() - tWorker);
             paginaCalculada = workerRes.pagina as PaginaCalculada;
             dadoDe = workerRes.dadoDe ?? null;
@@ -1120,7 +1157,7 @@ export class Servidor {
         // anunciar como falha.
         await this.cache.guarda(chave, corpo, ttl);
         return corpo;
-      });
+      }, prioridade);
     } catch (err) {
       // O erro do voo chega IGUAL a todos os que esperavam por ele, inclusive a
       // quem não o disparou. É o que o requisito 9 pede ("erro libera o

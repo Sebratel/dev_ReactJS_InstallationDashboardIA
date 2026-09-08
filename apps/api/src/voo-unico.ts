@@ -49,10 +49,29 @@ export interface Voo<T> {
 
 export class VooUnico {
   readonly #emVoo = new Map<string, Promise<unknown>>();
+  /**
+   * Um dado opaco por voo em andamento, para quem chega poder saber ALGO sobre o
+   * voo em que vai entrar antes de entrar nele.
+   *
+   * Existe por um caso concreto (F3): a prioridade de fila é a de quem iniciou o
+   * voo, então um clique que pega carona num aquecimento herda a posição de fila
+   * dele. Saber disso exige comparar a prioridade do pedido com a do voo — e o
+   * único jeito de essa comparação não vazar é o rótulo viver e morrer junto com
+   * o voo, sob a mesma conferência de identidade. Um `Map` paralelo no `Servidor`
+   * ficaria com entradas para sempre no dia em que o cálculo lançasse.
+   *
+   * `VooUnico` não interpreta o valor: para ele é um `unknown` que entra e sai.
+   */
+  readonly #rotulos = new Map<string, unknown>();
 
   /** Quantos cálculos distintos estão em andamento agora. Sai em `/api/saude`. */
   get emAndamento(): number {
     return this.#emVoo.size;
+  }
+
+  /** O rótulo do voo desta chave, ou `undefined` se não há voo em andamento. */
+  rotuloDe(chave: string): unknown {
+    return this.#rotulos.get(chave);
   }
 
   /**
@@ -76,7 +95,7 @@ export class VooUnico {
    * que terminou apague o registro de um voo NOVO da mesma chave, iniciado no
    * intervalo — o que faria o terceiro pedido calcular de novo em vez de esperar.
    */
-  async faz<T>(chave: string, executar: () => Promise<T>): Promise<Voo<T>> {
+  async faz<T>(chave: string, executar: () => Promise<T>, rotulo?: unknown): Promise<Voo<T>> {
     const existente = this.#emVoo.get(chave) as Promise<T> | undefined;
     if (existente !== undefined) {
       return { valor: await existente, iniciou: false };
@@ -87,8 +106,18 @@ export class VooUnico {
     // depois em outros, e a limpeza teria de cobrir os dois.
     const promessa = (async () => await executar())();
     this.#emVoo.set(chave, promessa);
+    // O `else` importa: um voo novo sem rótulo tem de APAGAR o do anterior, senão
+    // a chave passaria a carregar o rótulo de um voo que já terminou.
+    if (rotulo !== undefined) this.#rotulos.set(chave, rotulo);
+    else this.#rotulos.delete(chave);
     const limpa = (): void => {
-      if (this.#emVoo.get(chave) === promessa) this.#emVoo.delete(chave);
+      // O rótulo sai sob a MESMA conferência de identidade da promessa: sem ela,
+      // o fim de um voo apagaria o rótulo do voo novo que ocupou a chave, e a
+      // comparação de prioridade passaria a mentir exatamente sob carga.
+      if (this.#emVoo.get(chave) === promessa) {
+        this.#emVoo.delete(chave);
+        this.#rotulos.delete(chave);
+      }
     };
     promessa.then(limpa, limpa);
 
