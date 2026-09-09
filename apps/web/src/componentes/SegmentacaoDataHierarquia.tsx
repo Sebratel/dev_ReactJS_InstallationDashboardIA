@@ -43,6 +43,10 @@ import {
  *      é explícito: gatilho dentro de contêiner com `overflow` pede diálogo com
  *      portal no `body`, senão a borda do contêiner recorta o painel. É o que o
  *      `Segmentacao.tsx` já faz, e agora este também.
+ *
+ * **Carrega ao montar, não ao clicar** — mesmo motivo e mesma mudança de
+ * `Segmentacao.tsx` (09/09/2026): é o primeiro filtro da barra, o mais provável de
+ * ser o primeiro clique de todos, e era exatamente aí que a pessoa esperava o fetch.
  */
 export function SegmentacaoDataHierarquia(props: {
   pagina: string;
@@ -54,37 +58,42 @@ export function SegmentacaoDataHierarquia(props: {
 }) {
   const [aberto, setAberto] = useState(false);
   const [arvore, setArvore] = useState<AnoDaArvore[] | null>(null);
-  const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [cortado, setCortado] = useState(false);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  const { pagina, tabela, coluna } = props;
 
   const sel = selecaoDeData(props.filtros, props.tabela, props.coluna);
   const marcado = sel.anos.length + sel.meses.length + sel.dias.length;
+  const carregando = arvore === null && erro === null;
 
-  async function abre(): Promise<void> {
-    const vai = !aberto;
-    setAberto(vai);
-    if (!vai || arvore !== null || carregando) return;
-    setCarregando(true);
+  useEffect(() => {
+    let cancelado = false;
+    setArvore(null);
     setErro(null);
-    try {
-      // Sem `nivel`: a árvore precisa das datas cruas para saber **quais** meses
-      // existem em cada ano. Pedir nível por nível traria três listas soltas, e o
-      // cruzamento delas ofereceria mês que aquele ano não tem.
-      const r = await pegaValores(props.pagina, props.tabela, props.coluna, undefined);
-      const montada = montaArvore(r.valores);
-      setArvore(montada);
-      setCortado(r.cortado);
-      // Um ano só: já aberto, senão o primeiro clique é sempre no mesmo lugar.
-      if (montada.length === 1) setExpandidos(new Set([`a${montada[0]!.ano}`]));
-      else setExpandidos(new Set(sel.anos.map((a) => `a${a}`)));
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCarregando(false);
-    }
-  }
+    // Sem `nivel`: a árvore precisa das datas cruas para saber **quais** meses
+    // existem em cada ano. Pedir nível por nível traria três listas soltas, e o
+    // cruzamento delas ofereceria mês que aquele ano não tem.
+    pegaValores(pagina, tabela, coluna, undefined)
+      .then((r) => {
+        if (cancelado) return;
+        const montada = montaArvore(r.valores);
+        setArvore(montada);
+        setCortado(r.cortado);
+        // Um ano só: já aberto, senão o primeiro clique é sempre no mesmo lugar.
+        if (montada.length === 1) setExpandidos(new Set([`a${montada[0]!.ano}`]));
+        else setExpandidos(new Set(sel.anos.map((a) => `a${a}`)));
+      })
+      .catch((err) => {
+        if (!cancelado) setErro(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sel` é só a expansão
+    // inicial (a seleção da URL no momento em que a árvore chega); não deve reabrir
+    // a árvore a cada mudança de filtro.
+  }, [pagina, tabela, coluna]);
 
   function aplica(mudancas: MudancaDeNivel[]): void {
     for (const m of mudancas) props.aoMudar(m.nivel, m.valores);
@@ -104,7 +113,7 @@ export function SegmentacaoDataHierarquia(props: {
       <span className="filtro-rotulo">{props.rotulo}</span>
       <button
         className={`filtro-botao${marcado ? ' marcado' : ''}`}
-        onClick={abre}
+        onClick={() => setAberto((a) => !a)}
         aria-haspopup="dialog"
         aria-expanded={aberto}
         title={marcado ? resumoDeData(sel) : `Escolher ${props.rotulo}`}

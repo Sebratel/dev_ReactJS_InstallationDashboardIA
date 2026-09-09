@@ -7,8 +7,19 @@
 // A regra do padrão: gatilho dentro de área com `overflow`, ou lista com mais de ~10
 // itens, pede diálogo centralizado com portal no `body`. Nada recorta, cabe grade de
 // 2 colunas, e há busca e rodapé de confirmação.
+//
+// **CARREGA AO MONTAR, NÃO AO CLICAR.** Carregar no clique (`abre()`) fazia a pessoa
+// pagar a espera do fetch bem no primeiro clique de cada filtro — e como cada
+// `Segmentacao` só monta uma vez por carregamento da página (a lista de segmentações
+// não muda de identidade quando o filtro muda, só quando a página troca), não há
+// vantagem em adiar: o clique só ficaria mais rápido, nunca instantâneo. A lista de
+// valores também não depende do filtro corrente (`valores()` em `servidor.ts` não lê
+// `filtros` — vem do dataset inteiro da página, cacheado por tabela+coluna+nível), então
+// buscar cedo nunca busca "errado". Pedido do usuário em 09/09/2026: os filtros
+// tinham de abrir instantâneos, sem esperar o primeiro clique. Mesmo padrão de
+// `SegmentacaoChips.tsx`.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   pegaValores,
@@ -27,31 +38,30 @@ export function Segmentacao(props: {
 }) {
   const [aberto, setAberto] = useState(false);
   const [opcoes, setOpcoes] = useState<{ valor: Valor; tipo: TipoDeValor }[] | null>(null);
-  const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [busca, setBusca] = useState('');
   const [cortado, setCortado] = useState(false);
+  const { pagina, spec } = props;
 
-  async function abre(): Promise<void> {
-    setAberto(true);
-    if (opcoes !== null || carregando) return;
-    setCarregando(true);
+  useEffect(() => {
+    let cancelado = false;
+    setOpcoes(null);
     setErro(null);
-    try {
-      const r = await pegaValores(
-        props.pagina,
-        props.spec.tabela,
-        props.spec.coluna,
-        props.spec.nivel,
-      );
-      setOpcoes(r.valores);
-      setCortado(r.cortado);
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : String(err));
-    } finally {
-      setCarregando(false);
-    }
-  }
+    pegaValores(pagina, spec.tabela, spec.coluna, spec.nivel)
+      .then((r) => {
+        if (cancelado) return;
+        setOpcoes(r.valores);
+        setCortado(r.cortado);
+      })
+      .catch((err) => {
+        if (!cancelado) setErro(err instanceof Error ? err.message : String(err));
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [pagina, spec.tabela, spec.coluna, spec.nivel]);
+
+  const carregando = opcoes === null && erro === null;
 
   function alterna(v: Valor): void {
     const marcado = props.selecao.some((x) => mesmoValor(x, v));
@@ -76,7 +86,7 @@ export function Segmentacao(props: {
       <span className="filtro-rotulo">{props.spec.rotulo}</span>
       <button
         className={`filtro-botao${props.selecao.length ? ' marcado' : ''}`}
-        onClick={abre}
+        onClick={() => setAberto(true)}
         aria-haspopup="dialog"
         aria-expanded={aberto}
         title={props.selecao.length ? resumo : `Escolher ${props.spec.rotulo}`}

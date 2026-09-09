@@ -179,7 +179,9 @@ test('a rajada que o SSE provoca: invalidou, todos acordam, UM cálculo', async 
     // Página quente, como estaria com gente olhando.
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'miss');
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
-    const antes = calculos(await s.metricas());
+    const metricasAntes = await s.metricas();
+    const antes = calculos(metricasAntes);
+    const hitsAntes = metricasAntes.contadores.cache_hits ?? 0;
 
     // O poller acha mudança na query que a `capa` usa.
     s.servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
@@ -196,7 +198,22 @@ test('a rajada que o SSE provoca: invalidou, todos acordam, UM cálculo', async 
       1,
       `20 clientes acordados pelo SSE geraram ${calculos(m) - antes} cálculos; esperava 1`,
     );
-    assert.equal(m.contadores.singleflight_coalescidos, 19);
+    // Não necessariamente 19 `coalescido` puros: com o cálculo carregando o
+    // dataset já quente na worker (09/09/2026, `cacheDeCarga` em
+    // `worker-calculador.ts`), o PRIMEIRO dos vinte pode terminar — e já ter
+    // gravado a resposta em `CacheDeResposta` — antes de o VIGÉSIMO sequer
+    // entrar no `vooUnico`. Esse chega como `hit` comum, não como carona no
+    // voo, mas prova exatamente a mesma coisa que `coalescido` prova: não
+    // disparou cálculo novo. A soma dos dois é que não pode variar — é ela,
+    // não o rótulo de qual dos dois, que fecha com `calculos(m) - antes === 1`.
+    const hitsNaRajada = (m.contadores.cache_hits ?? 0) - hitsAntes;
+    assert.equal(
+      (m.contadores.singleflight_coalescidos ?? 0) + hitsNaRajada,
+      19,
+      `19 dos 20 pedidos tinham de aproveitar o cálculo único, via voo ou via cache — ` +
+        `${m.contadores.singleflight_coalescidos ?? 0} coalescidos + ${hitsNaRajada} hits = ` +
+        `${(m.contadores.singleflight_coalescidos ?? 0) + hitsNaRajada}`,
+    );
   } finally {
     await s.fecha();
   }

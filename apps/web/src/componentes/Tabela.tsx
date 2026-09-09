@@ -6,7 +6,7 @@
 // um visual inteiro. A barra só aparece onde ela significa magnitude: ver `ehMagnitude`.
 
 import { useMemo, useState } from 'react';
-import type { DadosDeTabela, FiltroDaTela, VisualCalculado } from '../api.ts';
+import type { DadosDeTabela, FiltroDaTela, Valor, VisualCalculado } from '../api.ts';
 import { formata } from '../formato.ts';
 import { ehMagnitude, larguraDaBarra } from '../magnitude.ts';
 import { Cartao, Erro } from './Cartao.tsx';
@@ -16,11 +16,13 @@ import { usaJanela } from './usaJanela.ts';
 import { tituloDeTabela } from '../rotulos.ts';
 import { Download } from 'lucide-react';
 import { janelaDeServidorPara, LINHAS_VISIVEIS } from '../janela.ts';
+import { selecaoDe, type AoFiltrar } from '../rota.ts';
 
 export function Tabela(props: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
+  aoFiltrar?: AoFiltrar;
 }) {
   const janela = usaJanela(props.pagina, props.visual, props.filtros);
   const d = janela.visual.dados as DadosDeTabela | undefined;
@@ -34,9 +36,32 @@ export function Tabela(props: {
     );
   }
 
-  const [colOrdenada, setColOrdenada] = useState<number | null>(null);
-  const [ordemDesc, setOrdemDesc] = useState<boolean>(false);
+  /**
+   * O padrão de ordenação: a primeira coluna de DATA, da mais nova para a mais velha.
+   *
+   * O servidor (`ordenaPorDataPadrao` em `tabela.ts`) já entrega as linhas nesta ordem —
+   * isto só espelha o estado no cabeçalho, para a seta aparecer e o primeiro clique na
+   * própria coluna alternar para crescente em vez de saltar de "nada" para "crescente"
+   * (o que pareceria inverter o sentido depois de um clique só). Tabela sem coluna de
+   * data (ex.: um resumo por cidade) mantém o comportamento antigo — sem ordenação até
+   * o usuário pedir.
+   */
+  const colunaDataPadrao = useMemo(() => d.colunas.findIndex((c) => c.tipo === 'date'), [d.colunas]);
+  const temOrdenacaoPadrao = colunaDataPadrao >= 0;
+
+  const [colOrdenada, setColOrdenada] = useState<number | null>(temOrdenacaoPadrao ? colunaDataPadrao : null);
+  const [ordemDesc, setOrdemDesc] = useState<boolean>(temOrdenacaoPadrao);
   const [termoBusca, setTermoBusca] = useState<string>('');
+
+  /**
+   * Ainda no padrão (nenhum clique de cabeçalho mudou a ordenação)? Isto decide
+   * `filtrando` abaixo — sem esta distinção, abrir a tabela já ligaria o aviso "vale só
+   * sobre esta fatia" e trocaria a paginação para o universo local (200 linhas), porque
+   * `colOrdenada` nasce preenchido pelo padrão de data, não `null`.
+   */
+  const estaNoPadraoDeOrdenacao = temOrdenacaoPadrao
+    ? colOrdenada === colunaDataPadrao && ordemDesc
+    : colOrdenada === null;
 
   const alternarOrdem = (index: number) => {
     if (colOrdenada === index) {
@@ -179,8 +204,9 @@ export function Tabela(props: {
   }
 
   // Buscar/ordenar só alcança as 200 em memória — a tela diz isso em vez de
-  // prometer que filtrou as 32 mil.
-  const filtrando = termoBusca.trim() !== '' || colOrdenada !== null;
+  // prometer que filtrou as 32 mil. O padrão de data (acima) não conta como
+  // "ordenar": ele já veio do servidor, sobre a consulta inteira.
+  const filtrando = termoBusca.trim() !== '' || !estaNoPadraoDeOrdenacao;
 
   const totalLocal = linhasFiltradasEOrdenadas.length;
   const inicio = Math.min(inicioLocal, Math.max(0, totalLocal - 1));
@@ -209,6 +235,33 @@ export function Tabela(props: {
   };
 
   const semLinhas = linhasFiltradasEOrdenadas.length === 0;
+
+  /**
+   * O CLIQUE NUMA LINHA — mesma ideia do clique numa categoria do gráfico
+   * (`grafico-clique.ts`), só que a "categoria" aqui é a PRIMEIRA coluna da tabela em
+   * vez do eixo. No relatório de origem é ela que identifica o registro (PROTOCOLO na
+   * grade de Visão Geral, e o mesmo vale nas outras tabelas planas de `PROTOCOLOS
+   * GERAL` — todas têm o identificador como primeira coluna), então filtrar por ela
+   * já recorta a página inteira para ESTE registro, sem amarrar 23 filtros (um por
+   * coluna) que lotariam a barra de chips para dizer a mesma coisa.
+   *
+   * Sem `tabela`/`coluna` de origem (campo calculado, ou tabela sem coluna nenhuma) o
+   * clique não filtra nada — mesma regra de "categoria nula não filtra" do gráfico.
+   */
+  const colunaDoClique = d.colunas[0];
+  const podeClicarNaLinha =
+    props.aoFiltrar !== undefined && !!colunaDoClique?.tabela && !!colunaDoClique?.coluna;
+
+  const selecaoDaLinha = podeClicarNaLinha
+    ? selecaoDe(props.filtros, colunaDoClique!.tabela!, colunaDoClique!.coluna!)
+    : [];
+  const haSelecaoDeLinha = selecaoDaLinha.length > 0;
+  const linhaEstaSelecionada = (valor: Valor) => selecaoDaLinha.some((v) => Object.is(v, valor));
+
+  const clicaNaLinha = (valor: Valor) => {
+    if (!podeClicarNaLinha || valor === null || valor === undefined) return;
+    props.aoFiltrar!([{ tabela: colunaDoClique!.tabela!, coluna: colunaDoClique!.coluna!, valor }]);
+  };
 
   return (
     <Cartao
@@ -259,7 +312,19 @@ export function Tabela(props: {
             </thead>
             <tbody>
               {visiveis.map((linha, i) => (
-                <tr key={i}>
+                <tr
+                  key={i}
+                  className={
+                    (podeClicarNaLinha ? 'linha-clicavel' : '') +
+                    (haSelecaoDeLinha
+                      ? linhaEstaSelecionada(linha[0] as Valor)
+                        ? ' linha-selecionada'
+                        : ' linha-apagada'
+                      : '')
+                  }
+                  onClick={podeClicarNaLinha ? () => clicaNaLinha(linha[0] as Valor) : undefined}
+                  title={podeClicarNaLinha ? 'Clique para filtrar a página inteira a este registro' : undefined}
+                >
                   {linha.map((valor, j) => {
                     const f = formata(valor, d.colunas[j]?.tipo ?? null);
                     const escala = escalas.get(j);

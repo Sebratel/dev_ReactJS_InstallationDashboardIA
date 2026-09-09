@@ -27,7 +27,12 @@ const MESES_PT = [
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ] as const;
 
-type Escopo = 'mes' | 'mes-corrente' | 'ano';
+/**
+ * `'nenhum'` é uma coluna de data que a página oferece para NAVEGAR (a árvore
+ * Ano > Mês > Dia de `SegmentacaoDataHierarquia`), sem travar nenhum valor na
+ * abertura — ver o caso `visao-geral` em `POR_PAGINA`.
+ */
+type Escopo = 'mes' | 'mes-corrente' | 'ano' | 'nenhum';
 interface DataPadrao {
   tabela: string;
   coluna: string;
@@ -37,8 +42,19 @@ interface DataPadrao {
 // Coluna de data que cada página trava por padrão na origem (auditoria renderizada no
 // Power BI Service, 20/08). Páginas fora deste mapa (capa, visão anual, etc.) abrem sem
 // filtro, como já era.
+//
+// **`visao-geral` perdeu o VALOR padrão em 09/09, mas manteve a COLUNA.** A auditoria
+// de 20/08 travava a página em "último mês fechado" medindo contra uma captura que já
+// estava filtrada — não dava para saber se era o padrão do relatório ou escolha de
+// quem tirou o print. Erick conferiu ao vivo em 09/09: os sete seletores da página
+// abrem em "Todos", e o total bate com o nosso sem filtro nenhum (94.160 lá, 94.166
+// aqui — a mesma defasagem de snapshot de sempre). Trancar a página num mês produzia
+// justamente o "os números não batem" que este filtro deveria evitar: 3.485 (agosto)
+// contra 94.160 (tudo). A coluna fica (`escopo: 'nenhum'`) só para a árvore Ano > Mês >
+// Dia continuar substituindo o slicer de drill que não filtra sozinho — sem isso o
+// controle nativo daquele campo voltaria a aparecer desabilitado.
 const POR_PAGINA: Record<string, DataPadrao> = {
-  'visao-geral': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
+  'visao-geral': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'nenhum' },
   'agendamento-field': { tabela: 'calendar', coluna: 'Data', escopo: 'mes-corrente' },
   'diario-instalacao': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
   'protocolos-detalhados': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
@@ -118,7 +134,7 @@ function mesCorrente(hoje: Date): { ano: number; mes: string } {
 export function filtrosPadrao(pagina: string | null, hoje: Date = new Date()): FiltroDeTela[] {
   if (!pagina) return [];
   const cfg = POR_PAGINA[pagina];
-  if (!cfg) return [];
+  if (!cfg || cfg.escopo === 'nenhum') return [];
 
   if (cfg.escopo === 'ano') {
     return [{ tabela: cfg.tabela, coluna: cfg.coluna, nivel: 'Ano', valores: [hoje.getFullYear()] }];

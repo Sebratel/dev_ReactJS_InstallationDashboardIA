@@ -135,7 +135,14 @@ export interface MemoDeCompletos {
  */
 export interface TabelaCompleta {
   especie: 'tabela';
-  colunas: { nome: string | null; tipo: TipoDeValor; chave: boolean }[];
+  colunas: {
+    nome: string | null;
+    tipo: TipoDeValor;
+    chave: boolean;
+    /** A entidade e a propriedade de origem da coluna — o alvo de um clique na linha. */
+    tabela: string | null;
+    coluna: string | null;
+  }[];
   linhas: unknown[][];
   linhasTotais: number;
   filtros: string[];
@@ -464,6 +471,26 @@ function semDataDaTela(
   );
 }
 
+/**
+ * Os únicos papéis que "colapsam" quando filtrados sem exclusão: eixo/série de
+ * gráfico (`grafico.ts`: `PAPEIS_DE_CHAVE`) e linha/coluna de matriz (`matriz.ts`).
+ * `Values` fica de fora de propósito — é o papel de TODA coluna de uma tabela plana
+ * (`tableEx`), inclusive a chave (N°PROTOCOLO). Uma tabela não desenha "TÉCNICO 1"
+ * como dimensão que colapsaria a um grupo só: ela lista um registro por linha, e
+ * filtrar por TÉCNICO 1 é encolher a lista, não apagar uma comparação.
+ *
+ * **O defeito que isto corrige, medido em 09/09/2026 na VISÃO GERAL.** Clicar numa
+ * barra do ranking "TOTAL por INSTALADOR REFERÊNCIA" (campo TÉCNICO 1) filtrava os
+ * KPIs e os outros gráficos certo, mas a tabela "PROTOCOLO · DATA CRIADO · ..."
+ * continuava com as 94.166 linhas de sempre — porque TÉCNICO 1 também é um dos 23
+ * campos `Values` que a tabela lista, e o código anterior tratava "aparece nos
+ * campos do visual" como sinônimo de "é o eixo que este visual desenharia", quando o
+ * próprio comentário desta função já dizia a intenção certa ("eixo, série, linha ou
+ * coluna de matriz") — só o `kind !== 'measure'` da checagem não bastava para
+ * cumpri-la, porque toda coluna de tabela também tem `kind: 'column'`.
+ */
+const PAPEIS_DE_AGRUPAMENTO = new Set(['Category', 'Series', 'Rows', 'Columns']);
+
 function semAutoExcluidos(
   filtros: readonly FiltroSpec[],
   v: VisualSpec,
@@ -473,7 +500,7 @@ function semAutoExcluidos(
 
   const mostrados = new Set<string>();
   for (const c of v.fields ?? []) {
-    if (c.kind === 'measure' || !c.entity || !c.property) continue;
+    if (!PAPEIS_DE_AGRUPAMENTO.has(c.role) || !c.entity || !c.property) continue;
     mostrados.add(`${c.entity}
 ${c.property}`);
   }
@@ -594,6 +621,8 @@ function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Tabe
       nome,
       tipo: tipoDaColuna(r.linhas.map((l) => l[i]!.valor)),
       chave: r.linhas[0]?.[i]?.chave ?? true,
+      tabela: r.origemDasColunas[i]?.tabela ?? null,
+      coluna: r.origemDasColunas[i]?.coluna ?? null,
     })),
     linhas: r.linhas.map((l) => l.map((c) => serializa(c.valor))),
     linhasTotais: r.linhas.length,

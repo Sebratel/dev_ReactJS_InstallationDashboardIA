@@ -39,6 +39,7 @@ import { Erro } from './componentes/Cartao.tsx';
 import { EsqueletoDaPagina } from './componentes/EsqueletoDaPagina.tsx';
 import { Login } from './componentes/Login.tsx';
 import { Segmentacao } from './componentes/Segmentacao.tsx';
+import { SegmentacaoChips } from './componentes/SegmentacaoChips.tsx';
 import { SegmentacaoDataHierarquia } from './componentes/SegmentacaoDataHierarquia.tsx';
 import { usaModo } from './modo.tsx';
 import { ActiveFilterPill } from './atomic/molecules/ActiveFilterPill.tsx';
@@ -440,6 +441,64 @@ export function App() {
     [atual],
   );
 
+  // HOVER-PREFETCH DO CLIQUE CRUZADO — mesma ideia de `prefetchaPagina` (R6, hover de
+  // ABA), um nível mais fundo: aqui é o hover de uma BARRA/CATEGORIA clicável dentro de
+  // um gráfico já aberto, não o de uma aba da barra lateral.
+  //
+  // Pedido do usuário em 09/09/2026: clicar num técnico (94 categorias no ranking)
+  // media ~1,5 s de resposta — sempre, e só no PRIMEIRO clique naquele técnico. A causa
+  // não é o gráfico: é que `CacheDeResposta` (servidor) guarda por combinação EXATA de
+  // filtro+clicado, então toda combinação nova é sempre um miss que recalcula a página
+  // inteira. Não dá para aquecer as 94 de uma vez (94 recomputações completas só por
+  // abrir a tela — mais caro que o problema que resolve), mas o intervalo entre o mouse
+  // pousar numa barra e o clique de verdade é sobra suficiente para adiantar exatamente
+  // a combinação que a pessoa está mirando, e só essa.
+  const timeoutHoverBarra = useRef<number | null>(null);
+  const emVooHoverBarra = useRef<Set<string>>(new Set());
+
+  const aoPreverAlvos = useCallback(
+    (alvos: readonly AlvoDeFiltro[]) => {
+      // Mesma guarda de `prefetchaPagina`: em touch não existe "pairar antes de
+      // clicar", então isto dispararia um pedido a mais por toque, não um adiantado.
+      if (!window.matchMedia('(pointer: fine)').matches) return;
+      if (!atual) return;
+      const layoutAtual = layoutsVistos.current.get(atual);
+      if (!layoutAtual) return;
+      if (timeoutHoverBarra.current !== null) window.clearTimeout(timeoutHoverBarra.current);
+      // "Intenção de hover", igual a `prefetchaPagina`: só adianta se o mouse ficar
+      // parado ali um instante — uma passada rápida por várias barras do ranking (a
+      // caminho de outra coisa) não pode virar uma rajada, uma por barra.
+      timeoutHoverBarra.current = window.setTimeout(() => {
+        timeoutHoverBarra.current = null;
+        const padrao = filtrosPadrao(atual);
+        const filtrosPrevistos = alternaAlvos(filtros, alvos, padrao);
+        const aindaFiltradas = new Set(
+          filtrosPrevistos.filter((x) => x.valores.length > 0).map(chaveDeCampo),
+        );
+        const mapa = new Map(clicados.map((c) => [chaveDeCampo(c), c]));
+        for (const a of alvos) {
+          const k = chaveDeCampo(a);
+          if (aindaFiltradas.has(k)) mapa.set(k, { tabela: a.tabela, coluna: a.coluna });
+          else mapa.delete(k);
+        }
+        const clicadosPrevistos = [...mapa.values()];
+        const opcoesEager = { visuais: idsIniciais(layoutAtual) };
+        const chave = urlDaPagina(atual, filtrosPrevistos, opcoesEager, clicadosPrevistos);
+        // Já quente, ou já a caminho — nada a adiantar duas vezes.
+        if (paginasVistas.current.has(chave) || emVooHoverBarra.current.has(chave)) return;
+        emVooHoverBarra.current.add(chave);
+        void pegaPagina(atual, filtrosPrevistos, opcoesEager, undefined, clicadosPrevistos)
+          .then((p) => guardaPaginaVista(paginasVistas.current, chave, p))
+          .catch(() => {
+            // Prefetch é otimização: falhar aqui não pode aparecer em lugar nenhum
+            // visível. O clique real tenta de novo e, se falhar, é ELE que avisa.
+          })
+          .finally(() => emVooHoverBarra.current.delete(chave));
+      }, 150);
+    },
+    [atual, filtros, clicados],
+  );
+
   const dataDaTela = dataDaPagina(atual);
 
   // A segmentação de hierarquia da coluna de data sai da lista: a árvore ocupa o
@@ -456,6 +515,15 @@ export function App() {
         v.segmentacao.coluna === dataDaTela.coluna
       ),
   );
+
+  // TIPO DE PROTOCOLO vira fileira de chips, não dropdown — é o "TIPO DE
+  // SOLICITAÇÃO" do BY, poucos valores e sempre visíveis (ver
+  // SegmentacaoChips.tsx). Casado por tabela+coluna, não por página: é o mesmo
+  // padrão de `dataDaTela` acima, não uma config nova.
+  const ehChipDeSolicitacao = (s: { tabela: string; coluna: string }) =>
+    s.tabela === 'PROTOCOLOS GERAL' && s.coluna === 'TIPO DE PROTOCOLO';
+  const segmentacaoDeChips = segmentacoes.find((v) => ehChipDeSolicitacao(v.segmentacao!));
+  const segmentacoesDropdown = segmentacoes.filter((v) => !ehChipDeSolicitacao(v.segmentacao!));
 
   // FILTRO SEM SEGMENTAÇÃO NA TELA É RECORTE INVISÍVEL.
   //
@@ -585,7 +653,7 @@ export function App() {
               aoRemover={() => mudaFiltro(f.tabela, f.coluna, [], f.nivel)}
             />
           ))}
-          {segmentacoes.map((v) => {
+          {segmentacoesDropdown.map((v) => {
             const s = v.segmentacao!;
             return (
               <Segmentacao
@@ -598,6 +666,27 @@ export function App() {
             );
           })}
         </div>
+      ) : null}
+
+      {segmentacaoDeChips ? (
+        <SegmentacaoChips
+          pagina={atual!}
+          spec={segmentacaoDeChips.segmentacao!}
+          selecao={selecaoDe(
+            filtros,
+            segmentacaoDeChips.segmentacao!.tabela,
+            segmentacaoDeChips.segmentacao!.coluna,
+            segmentacaoDeChips.segmentacao!.nivel,
+          )}
+          aoMudar={(valores) =>
+            mudaFiltro(
+              segmentacaoDeChips.segmentacao!.tabela,
+              segmentacaoDeChips.segmentacao!.coluna,
+              valores,
+              segmentacaoDeChips.segmentacao!.nivel,
+            )
+          }
+        />
       ) : null}
 
       {conferencia && pagina ? (
@@ -659,6 +748,7 @@ export function App() {
             filtros={filtros}
             clicados={clicados}
             aoFiltrar={aoFiltrarAlvos}
+            aoPrever={aoPreverAlvos}
           />
         </div>
       </div>

@@ -12,6 +12,7 @@ export function Visual(props: {
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
+  aoPrever?: AoFiltrar;
   render?: string;
 }) {
   const corpo = props.visual.sobDemanda ? (
@@ -20,6 +21,8 @@ export function Visual(props: {
       visual={props.visual}
       filtros={props.filtros}
       clicados={props.clicados}
+      aoFiltrar={props.aoFiltrar}
+      aoPrever={props.aoPrever}
       render={props.render}
     />
   ) : (
@@ -28,6 +31,7 @@ export function Visual(props: {
       visual={props.visual}
       filtros={props.filtros}
       aoFiltrar={props.aoFiltrar}
+      aoPrever={props.aoPrever}
       render={props.render}
     />
   );

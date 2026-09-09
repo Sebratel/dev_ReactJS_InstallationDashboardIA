@@ -60,10 +60,13 @@ function truncado(texto: string, orcamentoPx: number): string {
 export function RankingBarra({
   visual,
   aoFiltrar,
+  aoPrever,
   filtros,
 }: {
   visual: VisualCalculado;
   aoFiltrar?: AoFiltrar;
+  /** Hover-prefetch do alvo de um clique cruzado — ver `App.tsx` (`aoPreverAlvos`). */
+  aoPrever?: AoFiltrar;
   filtros?: readonly FiltroDaTela[];
 }) {
   const { isDark } = useThemeStore();
@@ -223,7 +226,10 @@ export function RankingBarra({
                   (haSelecao && !estaSelecionada(l) ? ' apagada' : '')
                 }
                 onClick={() => clica(l)}
-                onMouseEnter={() => setSob(de + j)}
+                onMouseEnter={() => {
+                  setSob(de + j);
+                  if (podeClicar(l)) aoPrever?.(alvosDe(l));
+                }}
                 onMouseLeave={() => setSob(null)}
               >
                 <rect

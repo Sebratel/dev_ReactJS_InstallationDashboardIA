@@ -552,6 +552,30 @@ test('o gráfico clicado mantém todas as categorias; o card ao lado não', () =
   );
 });
 
+/**
+ * **A tabela plana NÃO se auto-exclui — ela filtra.** `chave('CIDADE')` é `role:
+ * 'Values'`, o mesmo papel de TODA coluna de `tableEx` (inclusive a chave): uma
+ * tabela não desenha CIDADE como eixo que colapsaria a um grupo só, ela lista um
+ * registro por linha. Clicar numa categoria de outro visual tem de ENCOLHER a
+ * lista, não excluí-la — senão a tabela nunca reage a clique nenhum, porque toda
+ * coluna que existe na base normalmente também é coluna da tabela.
+ *
+ * Medido em 09/09/2026 na VISÃO GERAL: clicar num técnico no ranking filtrava os
+ * KPIs e os outros gráficos, mas a tabela de detalhe continuava com as 94.166
+ * linhas de sempre — TÉCNICO 1 era uma das 23 colunas `Values` que ela lista.
+ */
+test('tabela (tableEx) que lista a coluna clicada FILTRA, não se auto-exclui', () => {
+  const ev = montar(20);
+  const filtros = [daTela('CIDADE', ['Cidade 0003'])];
+  const tabela = { ...visual([chave('CIDADE'), medida()], 'tableEx', 'tabela') };
+  const dash = { ...pagina([tabela]), filters: filtros };
+
+  const p = calculaPagina(dash, ev, undefined, undefined, undefined, clicouCidade);
+  const linhas = (p.visuais.find((v) => v.id === 'tabela')!.dados as { linhas: unknown[] }).linhas;
+
+  assert.equal(linhas.length, 1, 'clicar numa cidade tem de recortar a tabela para aquela cidade');
+});
+
 /** Sem clique, nada muda — e a função devolve os mesmos filtros, sem custo. */
 test('sem campo clicado o resultado é idêntico ao de antes', () => {
   const ev = montar(20);

@@ -5,6 +5,7 @@
 // o que desenhar em cada um dos três estados.
 
 import type { FiltroDaTela, VisualCalculado } from '../api.ts';
+import type { AoFiltrar } from '../rota.ts';
 import { Cartao, Erro, alturaDoConteudo } from './Cartao.tsx';
 import { VisualPronto } from './VisualPronto.tsx';
 import { tituloDoVisual } from '../rotulos.ts';
@@ -15,6 +16,8 @@ export function SobDemanda(props: {
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
+  aoFiltrar?: AoFiltrar;
+  aoPrever?: AoFiltrar;
   render?: string;
 }) {
   const { estado, pronto, erro, tentarDeNovo } = usaVisualSobDemanda(
@@ -26,7 +29,14 @@ export function SobDemanda(props: {
 
   if (pronto) {
     return (
-      <VisualPronto pagina={props.pagina} visual={pronto} filtros={props.filtros} render={props.render} />
+      <VisualPronto
+        pagina={props.pagina}
+        visual={pronto}
+        filtros={props.filtros}
+        aoFiltrar={props.aoFiltrar}
+        aoPrever={props.aoPrever}
+        render={props.render}
+      />
     );
   }
 

@@ -25,7 +25,7 @@ import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
 import { agrupar, campoAtivo, chaveDoCampo, type Chave } from './grupos.ts';
-import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
+import type { CampoSpec, DashboardSpec, FiltroSpec, VisualSpec } from './spec.ts';
 
 /** Papéis que agrupam. `Series` é a segunda dimensão (a legenda). */
 const PAPEIS_DE_CHAVE = ['Category', 'Series'] as const;
@@ -119,6 +119,61 @@ export function separaPapeis(
 }
 
 /**
+ * A identidade de um campo (entidade + propriedade), para casar filtro com field.
+ *
+ * `JSON.stringify` e não um separador cru pela mesma razão de `chaveDeCampo` em
+ * `apps/web/src/rota.ts`: nome de tabela e coluna desta base trazem espaço e
+ * acento (`PROTOCOLOS GERAL`, `TÉCNICO 2`), e um separador que apareça dentro do
+ * próprio valor quebraria a chave em silêncio.
+ */
+function chaveDeEntidadeEPropriedade(entity: string, property: string): string {
+  return JSON.stringify([entity, property]);
+}
+
+/**
+ * Os filtros do visual, sem os que travam um campo que a tela não mostra.
+ *
+ * **O caso que expôs isto (09/09/2026).** "Total por Instalador Referência"
+ * (`visao-geral/7db40203ca467b8165c6`) tem `TÉCNICO 1` ativo no eixo e `TÉCNICO 2`
+ * — um segundo instalador, presente em pouquíssimos protocolos — como `Category`
+ * **inativo** (`active: false`, ACHADOS.md #32: nível de hierarquia que a tela
+ * não mostra). O PBIP também traz um filtro `not_in [null]` para CADA um dos
+ * dois campos do poço, inclusive o inativo. Aplicando os dois sempre, todo
+ * protocolo com `TÉCNICO 2` em branco — quase todos — saía do cálculo, e o
+ * gráfico ficava vazio (`pontos: []`) mesmo com dado de sobra para `TÉCNICO 1`.
+ * Confirmado ao vivo contra o relatório original: ele mostra a lista cheia.
+ *
+ * `camposAtivos`/`ehChave` já resolvem o equivalente em `tabela.ts` para CHAVE de
+ * agrupamento — um campo inativo não vira coluna nem agrupa. Esta função é a
+ * mesma regra para FILTRO: um filtro cujo alvo só existe em campos inativos do
+ * visual não é a escolha de quem está olhando a tela agora, e aplicá-lo é a
+ * mesma classe de erro.
+ *
+ * **Só filtro de VISUAL passa por aqui.** Filtro de PÁGINA (`dash.filters`) não
+ * nasce de um campo deste visual — não tem "ativo" para checar, e continua
+ * intocado.
+ */
+export function semFiltroDeCampoInativo(
+  filtros: readonly FiltroSpec[],
+  visual: VisualSpec,
+): FiltroSpec[] {
+  const campos = visual.fields ?? [];
+  const comAtivo = new Set<string>();
+  const comInativo = new Set<string>();
+  for (const c of campos) {
+    if (!c.entity || !c.property) continue;
+    (campoAtivo(c) ? comAtivo : comInativo).add(chaveDeEntidadeEPropriedade(c.entity, c.property));
+  }
+  if (comInativo.size === 0) return [...filtros];
+
+  return filtros.filter((f) => {
+    if (!f.entity || !f.property) return true;
+    const chave = chaveDeEntidadeEPropriedade(f.entity, f.property);
+    return !comInativo.has(chave) || comAtivo.has(chave);
+  });
+}
+
+/**
  * Calcula um gráfico.
  *
  * A ordem dos filtros é a mesma da tabela e pelo mesmo motivo: o de linha decide o
@@ -150,7 +205,10 @@ export function calculaGrafico(
     );
   }
 
-  const { deLinha, deGrupo } = separaFiltros([...(dash.filters ?? []), ...(visual.filters ?? [])]);
+  const { deLinha, deGrupo } = separaFiltros([
+    ...(dash.filters ?? []),
+    ...semFiltroDeCampoInativo(visual.filters ?? [], visual),
+  ]);
   const filtros = traduzFiltros(deLinha, ev, onde);
   const base = escopoComFiltros(ev, filtros);
   const having = deGrupo.map((f) => predicadoDeGrupo(f, ev, onde));

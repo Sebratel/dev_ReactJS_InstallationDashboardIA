@@ -49,8 +49,10 @@ services:
       # modo de desenvolvimento — e todo comportamento condicionado a
       # `NODE_ENV === 'production'` ficava desligado, sem erro e sem log.
       NODE_ENV: production
-      # Na rede interna do compose o serviço redis chama-se 'redis', não localhost:
-      REDIS_URL: redis://redis:6379/0
+      # Na rede interna do compose o serviço redis chama-se 'redis', não localhost.
+      # A senha é a mesma REDIS_PASSWORD que autentica o container `redis` logo
+      # abaixo (--requirepass) — as duas variam juntas, nunca uma sem a outra.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}@redis:6379/0
     volumes:
       # O snapshot é dado de cliente (CPF/RG/endereço, ~371 MB) — nunca entra
       # na imagem. Aponte SNAPSHOT_DIR_HOST para onde o refresh agendado
@@ -81,6 +83,27 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # Sem teto o Redis cresce até o host faltar memória — `api` e `refresh` neste
+    # mesmo arquivo têm `mem_limit` explícito, e este serviço não tinha nenhum.
+    # 256mb é chute conservador, NÃO medição (não há `INFO memory` de produção
+    # ainda) — ajuste depois de observar o uso real. `allkeys-lru` porque toda
+    # chave que este projeto grava já sai com TTL (`Cache.set` recusa
+    # `ttlSeconds<=0`, ver packages/query-engine/src/cache-redis.ts): expulsar a
+    # menos usada antes do TTL vencer é a mesma degradação que o disjuntor já
+    # assume em outro lugar — cache que perde entrada não é cache que erra.
+    # `requirepass` é EXIGIDO (sem default): sem porta publicada o Redis já não
+    # é alcançável de fora, mas fica aberto para qualquer container que entrar
+    # nesta mesma rede depois — e o que se guarda aqui é resposta calculada
+    # sobre dado de cliente (CPF/RG/endereço, ver o comentário do volume do
+    # snapshot no serviço `api`). `up` falhando por falta de REDIS_PASSWORD é a
+    # mesma regra de `apps/api/src/portao-login.ts`: falha fechada, não em
+    # silêncio.
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    mem_limit: 512m
     volumes:
       - redis-dados:/data
 

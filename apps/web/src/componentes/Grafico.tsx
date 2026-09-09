@@ -86,10 +86,13 @@ const MINIMO_POR_PAGINA = 4;
 export function Grafico({
   visual,
   aoFiltrar,
+  aoPrever,
   filtros,
 }: {
   visual: VisualCalculado;
   aoFiltrar?: AoFiltrar;
+  /** Hover-prefetch do alvo de um clique cruzado — ver `App.tsx` (`aoPreverAlvos`). */
+  aoPrever?: AoFiltrar;
   filtros?: readonly FiltroDaTela[];
 }) {
   const { conferencia } = usaModo();
@@ -429,7 +432,10 @@ export function Grafico({
                   (haSelecao && !estaSelecionada(i) ? ' apagada' : '')
                 }
                 onClick={() => clica(i)}
-                onMouseEnter={() => setSob(i)}
+                onMouseEnter={() => {
+                  setSob(i);
+                  if (podeClicar(i)) aoPrever?.(alvosDa(i));
+                }}
                 onMouseLeave={() => setSob(null)}
               >
                 <rect

@@ -57,7 +57,14 @@ export interface DadosDeCard {
 }
 
 export interface DadosDeTabela {
-  colunas: { nome: string | null; tipo: TipoDeValor; chave: boolean }[];
+  colunas: {
+    nome: string | null;
+    tipo: TipoDeValor;
+    chave: boolean;
+    /** A entidade e a propriedade de origem da coluna — o alvo de um clique na linha. */
+    tabela: string | null;
+    coluna: string | null;
+  }[];
   linhas: Valor[][];
   linhasTotais: number;
   de: number;

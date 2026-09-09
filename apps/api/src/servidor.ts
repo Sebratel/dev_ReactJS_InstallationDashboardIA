@@ -960,6 +960,11 @@ export class Servidor {
       for (const chave of [...this.carregadas.keys()]) {
         if (chave === dashId || chave.startsWith(`${dashId}\u0000`)) this.carregadas.delete(chave);
       }
+      // A MESMA invalidação, do lado de cada worker: `cacheDeCarga`
+      // (`worker-calculador.ts`) guarda o dataset por thread própria, e sem
+      // isto uma worker que já tivesse esta página carregada continuaria
+      // servindo o overlay velho para sempre — o F1 de novo, um nível abaixo.
+      this.piscina.invalidaPagina(dashId);
       this.completos.limpaPagina(dashId);
       // Efeito colateral, não parte de resposta nenhuma — não há pedido para
       // atrasar esperando o Redis, e `apagaPagina` já nunca lança.
@@ -1345,6 +1350,12 @@ export class Servidor {
               // falhava; o realtime só não entregava dado novo. Ver
               // `worker-calculador.ts` e `overlay-realtime.ts`.
               ...(overlays.size > 0 ? { overlays } : {}),
+              // O que faz `cacheDeCarga` (worker-calculador.ts) saber que o disco
+              // mudou por baixo, do mesmo jeito que `identidadeAtual()` já faz
+              // para `this.carregadas` aqui na thread principal — DISCO, não o
+              // memo (`carimboAtual()`), pela mesma razão de F5: um `fs.watch`
+              // mudo não pode deixar a worker presa ao `Carregado` de ontem.
+              identidade: this.identidadeAtual(),
             }, prioridade);
             // `worker_ms` continua sendo a SOMA (espera + cálculo). Ele não foi
             // substituído por `fila_ms_*`/`calculo_ms_*`: é o número que os

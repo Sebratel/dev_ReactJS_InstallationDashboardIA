@@ -18,12 +18,15 @@ export function VisualPronto({
   visual,
   filtros,
   aoFiltrar,
+  aoPrever,
   render,
 }: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
   aoFiltrar?: AoFiltrar;
+  /** Hover-prefetch do alvo de um clique cruzado — ver `App.tsx` (`aoPreverAlvos`). */
+  aoPrever?: AoFiltrar;
   /** A forma declarada em `layout.yaml` para esta coluna — `undefined` fora de uma faixa
    *  (KPI, visual sob demanda antigo) usa sempre o desenho padrão do `conteudo`. */
   render?: string;
@@ -50,14 +53,16 @@ export function VisualPronto({
   if (visual.conteudo === 'card') return <Card visual={visual} />;
   if (visual.conteudo === 'tabela') {
     if (render === 'rosca') return <Rosca visual={visual} />;
-    return <Tabela pagina={pagina} visual={visual} filtros={filtros} />;
+    return <Tabela pagina={pagina} visual={visual} filtros={filtros} aoFiltrar={aoFiltrar} />;
   }
   if (visual.conteudo === 'matriz') {
     return <Matriz pagina={pagina} visual={visual} filtros={filtros} />;
   }
   if (visual.conteudo === 'grafico') {
-    if (render === 'ranking-barra') return <RankingBarra visual={visual} aoFiltrar={aoFiltrar} filtros={filtros} />;
-    return <Grafico visual={visual} aoFiltrar={aoFiltrar} filtros={filtros} />;
+    if (render === 'ranking-barra') {
+      return <RankingBarra visual={visual} aoFiltrar={aoFiltrar} aoPrever={aoPrever} filtros={filtros} />;
+    }
+    return <Grafico visual={visual} aoFiltrar={aoFiltrar} aoPrever={aoPrever} filtros={filtros} />;
   }
 
   return (

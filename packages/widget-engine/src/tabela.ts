@@ -14,7 +14,7 @@
 // hierarquia e 2 aritméticos.
 
 import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts';
-import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
+import { DaxEvalError, isBlank, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
 import { agrupar, campoAtivo, chaveDoCampo, type Chave } from './grupos.ts';
@@ -33,9 +33,52 @@ export interface ValorDeTabela {
   visual: string;
   /** Os nomes das colunas, na ordem em que a spec as traz. */
   colunas: (string | null)[];
+  /**
+   * A entidade e a propriedade de origem de cada coluna, na MESMA ordem de `colunas`.
+   *
+   * É o que falta para um clique numa LINHA da tabela virar filtro — o mesmo papel que
+   * `ChaveDoGrafico` (`grafico-clique.ts`) já cumpre para o eixo de um gráfico. Campo
+   * calculado (medida, `%`) não tem uma coluna de origem única e sai como `null` nos
+   * dois — clicar numa célula dele não filtra nada, e o alvo de clique já descarta
+   * entradas sem tabela/coluna.
+   */
+  origemDasColunas: { tabela: string | null; coluna: string | null }[];
   linhas: CelulaTabela[][];
   /** `origem` de cada `TableFilter` de página e de visual. */
   filtros: string[];
+}
+
+/** A primeira coluna (da esquerda) que tem pelo menos um valor de data. `-1` se nenhuma tiver. */
+function indiceDaPrimeiraColunaDeData(linhas: readonly CelulaTabela[][], nColunas: number): number {
+  for (let i = 0; i < nColunas; i += 1) {
+    if (linhas.some((l) => l[i]!.valor instanceof Date)) return i;
+  }
+  return -1;
+}
+
+/**
+ * Ordena pela primeira coluna de data, da mais NOVA para a mais VELHA — a ordem que faz
+ * sentido para quem abre uma lista de protocolos (ou qualquer outra tabela plana datada):
+ * o registro de hoje no topo, o mais antigo no fim.
+ *
+ * Sem isto a ordem é a que `agrupar` devolve (essencialmente a ordem de chegada no
+ * snapshot), que não é nem crescente nem decrescente de propósito — é só a ordem em que
+ * os grupos foram vistos. O clique no cabeçalho da coluna (`Tabela.tsx`) continua livre
+ * para trocar; isto é só o estado inicial, antes de qualquer clique.
+ *
+ * BLANK fica sempre no fim, nos dois lados da comparação — não tem "mais novo" nem "mais
+ * velho" que dizer sobre uma data ausente.
+ */
+function ordenaPorDataPadrao(linhas: CelulaTabela[][], nColunas: number): CelulaTabela[][] {
+  const i = indiceDaPrimeiraColunaDeData(linhas, nColunas);
+  if (i < 0) return linhas;
+  return [...linhas].sort((a, b) => {
+    const va = a[i]!.valor;
+    const vb = b[i]!.valor;
+    if (isBlank(va)) return isBlank(vb) ? 0 : 1;
+    if (isBlank(vb)) return -1;
+    return (vb as Date).getTime() - (va as Date).getTime();
+  });
 }
 
 /**
@@ -149,7 +192,8 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
     dashboard: dash.id,
     visual: visual.id,
     colunas: campos.map((c) => c.name ?? null),
-    linhas,
+    origemDasColunas: campos.map((c) => ({ tabela: c.entity, coluna: c.property })),
+    linhas: ordenaPorDataPadrao(linhas, campos.length),
     filtros: [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
   };
 }

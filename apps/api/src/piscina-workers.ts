@@ -339,11 +339,31 @@ export class PiscinaWorkers {
     });
   }
 
+  /**
+   * `.pop()`, não `.shift()` — a MESMA lista de livres, na ordem inversa, e a troca
+   * é o que faz `cacheDeCarga` (`worker-calculador.ts`) valer alguma coisa na
+   * prática.
+   *
+   * Cada worker guarda o dataset carregado NA SUA PRÓPRIA memória — pedidos
+   * seguidos só reaproveitam se caírem NA MESMA worker. Com `.shift()` (FIFO) a
+   * lista de livres é um rodízio: a worker que acabou de atender vai para o FIM
+   * da fila e só volta a ser escolhida depois de todas as outras — com 2
+   * workers, isso é ALTERNAR a cada pedido, e uma sessão clicando em técnicos
+   * diferentes nunca acerta a mesma worker duas vezes seguidas.
+   *
+   * Com `.pop()` (LIFO), a worker que acabou de atender é a PRIMEIRA candidata
+   * ao próximo pedido — e como um pedido só demora enquanto ela está ocupada, é
+   * exatamente enquanto ela está ocupada que um pedido CONCORRENTE (outro
+   * usuário) forçosamente cai na outra: a distribuição entre usuários
+   * simultâneos continua correta, só que agora por NECESSIDADE (só há uma
+   * livre) em vez de por rodízio. Uma sessão sozinha, clicando em sequência
+   * (o caso comum), acerta a mesma worker sempre.
+   */
   private processaFila(): void {
     while (this.livres.length > 0) {
       const tarefa = this.tarefas.sai();
       if (tarefa === undefined) return;
-      const worker = this.livres.shift()!;
+      const worker = this.livres.pop()!;
       tarefa.despachadaEm = Date.now();
       this.pendentesPorWorker.set(worker, tarefa);
       worker.postMessage(tarefa.msg);
@@ -400,6 +420,20 @@ export class PiscinaWorkers {
         t.reject(motivo);
       }
     }
+  }
+
+  /**
+   * Manda TODAS as workers (ocupadas ou livres) esquecer o dataset que guardam
+   * de uma página — a metade "por poller" da invalidação de `cacheDeCarga`
+   * (`worker-calculador.ts`); ver `Servidor.aoTabelaMudar`, que chama isto no
+   * mesmo instante em que já derruba `this.carregadas` para a mesma página.
+   *
+   * Mensagem solta (`postMessage` direto, fora de `executa()`/da fila de
+   * tarefas): não é um cálculo, ninguém espera `idReq` nem resposta nenhuma —
+   * é o mesmo motivo de `MensagemDeInvalidacao` não ter `idReq`.
+   */
+  invalidaPagina(dashboardId: string): void {
+    for (const w of this.workers) w.postMessage({ tipo: 'invalida', dashboardId });
   }
 
   destroi(): void {

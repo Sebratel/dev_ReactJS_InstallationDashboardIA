@@ -33,6 +33,7 @@ export function VisualGridSection({
   filtros,
   clicados,
   aoFiltrar,
+  aoPrever,
 }: {
   pagina: string;
   layout: LayoutSpec | null;
@@ -40,6 +41,9 @@ export function VisualGridSection({
   filtros: FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar: AoFiltrar;
+  /** Hover-prefetch do alvo de um clique cruzado — ver `App.tsx` (`aoPreverAlvos`).
+   *  Opcional: sem ele, o clique continua funcionando, só sem o adiantamento. */
+  aoPrever?: AoFiltrar;
 }) {
   const porId = useMemo(() => new Map(visuais.map((v) => [v.id, v])), [visuais]);
   const contagem = layout ? contaFaixasLargasPorAltura(layout.faixas) : { grafico: 0, tabela: 0, matriz: 0 };
@@ -71,6 +75,7 @@ export function VisualGridSection({
                         filtros={filtros}
                         clicados={clicados}
                         aoFiltrar={aoFiltrar}
+                        aoPrever={aoPrever}
                         render={col.render}
                       />
                     ) : (
@@ -81,6 +86,7 @@ export function VisualGridSection({
                         filtros={filtros}
                         clicados={clicados}
                         aoFiltrar={aoFiltrar}
+                        aoPrever={aoPrever}
                         render={col.render}
                       />
                     )}

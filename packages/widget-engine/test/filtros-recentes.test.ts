@@ -26,12 +26,12 @@ const resumo = (fs: { nivel?: string; valores: unknown[] }[]): string =>
 test('o PRIMEIRO recorte é exatamente o de abertura — o aquecimento não pode trocar o padrão', () => {
   // Se esta ordem inverter, a página passa a abrir num mês que o aquecimento
   // preparou em segundo lugar, e a primeira visita volta a pagar o cálculo.
-  const r = filtrosRecentes('visao-geral', EM);
-  assert.deepEqual(r[0], filtrosPadrao('visao-geral', EM));
+  const r = filtrosRecentes('diario-instalacao', EM);
+  assert.deepEqual(r[0], filtrosPadrao('diario-instalacao', EM));
 });
 
 test('página de mês adianta o mês padrão e os anteriores', () => {
-  const r = filtrosRecentes('visao-geral', EM);
+  const r = filtrosRecentes('diario-instalacao', EM);
   assert.deepEqual(r.map(resumo), [
     'Ano=2026+Mês=agosto',
     'Ano=2026+Mês=julho',
@@ -47,7 +47,15 @@ test('`agendamento-field` abre no mês CORRENTE, não no último fechado', () =>
   // QUALQUER mês, não só neste. Se esta linha voltar para `'mes'`, o visual volta
   // a nascer vazio e o defeito não dá erro nenhum para avisar.
   assert.equal(resumo(filtrosPadrao('agendamento-field', EM)), 'Ano=2026+Mês=setembro');
-  assert.equal(resumo(filtrosPadrao('visao-geral', EM)), 'Ano=2026+Mês=agosto');
+  assert.equal(resumo(filtrosPadrao('diario-instalacao', EM)), 'Ano=2026+Mês=agosto');
+});
+
+test('`visao-geral` abre em "Todos" — não tem filtro padrão (Erick, 09/09)', () => {
+  // Ver o comentário de `POR_PAGINA` em `filtros-padrao.ts`: a auditoria de 20/08 que
+  // travava esta página num mês media contra um estado que não dava para confirmar
+  // como padrão. Conferido ao vivo em 09/09: os sete seletores abrem em "Todos".
+  assert.deepEqual(filtrosPadrao('visao-geral', EM), []);
+  assert.deepEqual(filtrosRecentes('visao-geral', EM), []);
 });
 
 test('o aquecimento de `agendamento-field` começa no mês corrente e anda para trás', () => {
@@ -72,7 +80,7 @@ test('mês corrente também vira o ano para trás sem inventar mês 13', () => {
 });
 
 test('a virada de ano anda para trás sem inventar mês 13', () => {
-  const r = filtrosRecentes('visao-geral', new Date('2026-02-10T12:00:00Z'));
+  const r = filtrosRecentes('diario-instalacao', new Date('2026-02-10T12:00:00Z'));
   assert.deepEqual(r.map(resumo), [
     'Ano=2026+Mês=janeiro',
     'Ano=2025+Mês=dezembro',

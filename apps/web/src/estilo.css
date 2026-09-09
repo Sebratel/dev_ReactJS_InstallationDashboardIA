@@ -729,10 +729,16 @@ button:disabled { opacity: .55; cursor: default; }
 .filtros {
   min-height: var(--h-filtros);
   background: var(--superficie); border-bottom: 1px solid var(--borda);
-  padding: 0 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  padding: 8px 16px; display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end;
   position: sticky; top: calc(var(--h-topbar) + var(--h-nav)); z-index: 15;
 }
-.filtro { position: relative; min-width: 150px; display: flex; align-items: center; gap: 6px; }
+/* Rótulo EM CIMA, controle EMBAIXO — a forma medida no BY (09/09/2026): cada
+   filtro é uma caixa com o nome da coluna no topo e o "Todos"/valor por baixo,
+   não os dois lado a lado numa linha só. `flex-direction: column` é a única
+   mudança real; `.filtro-botao` já era uma caixa com borda própria (herda de
+   `button` em `@layer base`), então vira exatamente a caixa de baixo do BY sem
+   precisar duplicar borda/fundo aqui. */
+.filtro { position: relative; min-width: 130px; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
 .filtro-rotulo {
   font-size: .6rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
   color: var(--muted); white-space: nowrap;
@@ -776,6 +782,40 @@ button:disabled { opacity: .55; cursor: default; }
   flex: 0 0 auto; border-top: 1px solid var(--borda); padding: 8px 10px;
   display: flex; align-items: center; gap: 8px;
 }
+/* A fileira de chips do TIPO DE PROTOCOLO — ver SegmentacaoChips.tsx.
+ *
+ * A primeira versão pintava a barra inteira na primária (a mesma forma do BY) —
+ * medido em 09/09/2026 pelo usuário como "muito feio": bloco maroon maciço,
+ * chip escuro sobre chip escuro, sem contraste para separar um do outro. Trocado
+ * pela MESMA gramática visual da `.filtros` logo acima (rótulo pequeno em
+ * maiúsculas, superfície clara, borda fina) — o grupo de chips vira só mais um
+ * controle da barra de filtros, não um cartaz colado embaixo dela. A primária
+ * volta a ser exclusiva do chip MARCADO, que é o único lugar em que precisa
+ * puxar o olho.
+ */
+.chips-barra {
+  background: var(--superficie); border-bottom: 1px solid var(--borda);
+  padding: 8px 16px; display: flex; flex-direction: column; gap: 6px;
+}
+.chips-rotulo {
+  font-size: .6rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--muted); white-space: nowrap;
+}
+.chips-lista { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.chip {
+  border: 1px solid var(--borda); border-radius: 999px;
+  background: var(--superficie); color: var(--texto);
+  padding: 5px 14px; font-size: .72rem; font-weight: 600; white-space: nowrap;
+}
+.chip:hover:not(:disabled) {
+  border-color: var(--pbi-primary-texto); color: var(--pbi-primary-texto);
+  background: var(--pbi-primary-soft);
+}
+.chip.marcado { background: var(--pbi-primary); color: var(--pbi-sobre-primary); border-color: var(--pbi-primary); }
+.chip.marcado:hover { background: var(--pbi-primary-dark); border-color: var(--pbi-primary-dark); color: var(--pbi-sobre-primary); }
+.chip-limpar { background: transparent; border-style: dashed; color: var(--muted); }
+.chip-limpar:hover { border-color: var(--pbi-primary-texto); color: var(--pbi-primary-texto); background: var(--pbi-primary-soft); }
+
 .filtro-busca { width: 100%; }
 .filtro-lista { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 2px; }
 .filtro-opcao {
@@ -822,6 +862,13 @@ table.dados td {
   color: var(--texto); overflow: hidden; text-overflow: ellipsis;
 }
 table.dados tbody tr:hover td { background: var(--fundo); }
+/* Clique na linha filtra a página inteira a este registro — mesma ideia do clique numa
+   barra do gráfico (`.col-grupo.clicavel`/`.apagada` em Grafico.tsx), só que o alvo é a
+   primeira coluna da linha em vez de uma categoria de eixo. Ver `Tabela.tsx`. */
+table.dados tbody tr.linha-clicavel { cursor: pointer; }
+table.dados tbody tr.linha-apagada td { opacity: .32; }
+table.dados tbody tr.linha-selecionada td,
+table.dados tbody tr.linha-selecionada:hover td { background: var(--pbi-primary-soft); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.sem { color: var(--sem-dado); }
 

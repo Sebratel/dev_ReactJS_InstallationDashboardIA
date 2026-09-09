@@ -29,6 +29,7 @@ import {
   normalizaFiltros,
   RETENCAO_PADRAO,
   retencaoDaPagina,
+  VERSAO,
 } from '../src/cache-resposta.ts';
 import { Servidor } from '../src/servidor.ts';
 
@@ -298,17 +299,22 @@ test('CacheDeResposta.apagaPagina: só as respostas da página caem, o resto do 
   const c = new CacheDeResposta({ cache: memoria });
   // o escopo vem ANTES da página na chave — por isso dois escopos diferentes na
   // mesma página são o caso que prova que o filtro não pode ser um prefixo puro.
-  await c.guarda('resp:v1:todos:agendamento-field:sha1:*:0:500:c1:d1', { x: 1 }, 60);
-  await c.guarda('resp:v1:outro:agendamento-field:sha2:*:0:500:c1:d1', { x: 2 }, 60);
-  await c.guarda('resp:v1:todos:visao-geral:sha1:*:0:500:c1:d1', { x: 3 }, 60);
+  //
+  // A chave usa `VERSAO` (não um `'v1'` chumbado): foi exatamente um prefixo
+  // literal separado da constante, dentro de `apagaPagina`, que ficou apontando
+  // para a versão errada quando `VERSAO` subiu — apagando zero chaves em vez das
+  // duas de baixo. Ver o comentário de `apagaPagina` em `cache-resposta.ts`.
+  await c.guarda(`resp:${VERSAO}:todos:agendamento-field:sha1:*:0:500:c1:d1`, { x: 1 }, 60);
+  await c.guarda(`resp:${VERSAO}:outro:agendamento-field:sha2:*:0:500:c1:d1`, { x: 2 }, 60);
+  await c.guarda(`resp:${VERSAO}:todos:visao-geral:sha1:*:0:500:c1:d1`, { x: 3 }, 60);
 
   const n = await c.apagaPagina('agendamento-field');
 
   assert.equal(n, 2);
-  assert.equal(await c.le('resp:v1:todos:agendamento-field:sha1:*:0:500:c1:d1'), undefined);
-  assert.equal(await c.le('resp:v1:outro:agendamento-field:sha2:*:0:500:c1:d1'), undefined);
+  assert.equal(await c.le(`resp:${VERSAO}:todos:agendamento-field:sha1:*:0:500:c1:d1`), undefined);
+  assert.equal(await c.le(`resp:${VERSAO}:outro:agendamento-field:sha2:*:0:500:c1:d1`), undefined);
   assert.deepEqual(
-    await c.le('resp:v1:todos:visao-geral:sha1:*:0:500:c1:d1'),
+    await c.le(`resp:${VERSAO}:todos:visao-geral:sha1:*:0:500:c1:d1`),
     { x: 3 },
     'visao-geral não foi tocada — não podia sair do cache',
   );
