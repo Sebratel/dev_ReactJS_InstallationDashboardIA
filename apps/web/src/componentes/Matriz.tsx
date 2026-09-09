@@ -101,6 +101,10 @@ export function Matriz(props: {
   if (d.descartadas.linhas || d.descartadas.colunas) {
     partes.push(`${d.descartadas.linhas + d.descartadas.colunas} posição(ões) vazia(s) podada(s)`);
   }
+  // A ressalva vem da API (`nota` em VisualCalculado) e não é cosmética: este visual
+  // ignora o mês do seletor de propósito, e sem dizer isso ele pareceria discordar
+  // dos vizinhos sem motivo. Ver `semDataDaTela` em apps/api/src/calcula.ts.
+  if (visual.nota) partes.push(visual.nota);
   if (transposto) partes.push('transposta');
 
   const exportarCSV = () => {

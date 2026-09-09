@@ -11,15 +11,20 @@
 # categorias, nenhuma por acidente — as duas últimas só apareceram ao rodar o
 # primeiro tick de verdade em 02/09/2026:
 #
-#   1. 5 das 7 fontes nunca medidas isoladamente continuam de fora
+#   1. 4 das 7 fontes nunca medidas isoladamente continuam de fora
 #      (gestores-equipes, dbMaria; apuracao-premiacao, capacidade-equipe,
-#      quadro-funcional, gsheets; clima-tempo, web) — dar cadência automática a
+#      quadro-funcional, gsheets) — dar cadência automática a
 #      uma fonte sem custo medido é a mesma aposta sem evidência que
 #      incremental.yaml já cometeu uma vez com "67s, medido" antes de existir
 #      caminho de código que produzisse esse número (ACHADOS #80).
-#      `backlog-instalacao`/`backlog-agendado-futuro` (as outras 2 das 7) foram
+#      `backlog-instalacao`/`backlog-agendado-futuro` (2 das 7) foram
 #      medidas ao vivo em 03/09/2026 (ACHADOS #93) — 58-60ms cada, entraram no
-#      grupo `quente` abaixo.
+#      grupo `quente` abaixo. `clima-tempo` (a 7ª, fonte web) foi medida ao vivo
+#      em 09/09/2026: **7.267 ms**, 1.869 linhas, 14 chamadas à Open-Meteo — e
+#      entrou no grupo `frio` (ACHADOS #104). Ela é a ÚNICA query cujo conteúdo
+#      caduca sozinha: a previsão é uma janela de ~16 dias que anda todo dia, e
+#      sem cadência ela envelhece até o visual de previsão esvaziar. Estava 6
+#      dias parada quando isso foi descoberto.
 #   2. `protocolos-produtividade` — NÃO MATERIALIZA EM NENHUM MODO hoje
 #      (ACHADOS #81: SQL e M calculam as mesmas 3 colunas, e o full-fetch passou
 #      do teto de 600s). `tools/refresh/src/grupos.ts` recusa a carregar este
@@ -111,8 +116,26 @@ grupos:
   # uma queda do cache de resposta inteiro por ciclo (armadilha registrada em
   # docs/DEPLOY.md) — não vale apertar o intervalo sem necessidade medida.
   # `field-agenda` (forma completa) continua de fora — 21min49s (achado #82).
+  #
+  # `clima-tempo` entrou em 09/09/2026 (ACHADOS #104): fonte web (Open-Meteo),
+  # 7.267 ms medidos ao vivo, 1.869 linhas, 14 chamadas HTTP. Entrou AQUI e não
+  # num grupo próprio porque grupo novo custa mais uma queda do cache de resposta
+  # inteiro por ciclo (docs/DEPLOY.md), e 7,3s dentro de um tick que já leva
+  # ~4min15s não muda a margem do intervalo de 30 min.
+  #
+  # **Por que ela precisa de cadência, ao contrário de toda outra query.** As
+  # demais ficam desatualizadas; esta fica VAZIA. A tabela tem previsão só de hoje
+  # até ~16 dias à frente, e o visual de chuva de `agendamento-field` filtra
+  # `Tipo = "Previsão"` — parada 17 dias, ela não tem uma linha de previsão e a
+  # matriz esvazia sem erro. Foi o que estava acontecendo: o arquivo tinha 6 dias.
+  #
+  # O preço: 48 ticks/dia × 14 chamadas = ~672 pedidos/dia à Open-Meteo, para um
+  # dado que muda poucas vezes ao dia. Cabe folgado no limite do serviço, mas se
+  # um dia isso incomodar, o conserto é um grupo próprio de cadência horária — não
+  # tirar daqui.
   frio:
     queries:
       - field-agenda-slot
+      - clima-tempo
     intervalo_minutos: 30
     incremental: false

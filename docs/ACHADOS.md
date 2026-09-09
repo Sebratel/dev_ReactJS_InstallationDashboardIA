@@ -8330,3 +8330,98 @@ vazio, não havia coluna para sair fora de ordem.
 > delas. O que apontou o dedo foi o `descartadas` que a `ValorDeMatriz` carrega de
 > propósito. Sem esse número no resultado, "0 × 0" seria indistinguível de "não veio
 > dado", e a caça teria começado no lugar errado — no dado, que estava bom.
+
+---
+
+## #104 — Mês é a caixa errada para previsão: o conserto do #103 só adiava o defeito por um mês
+
+O #103 tirou a matriz de chuva do vazio trocando o filtro padrão de
+`agendamento-field` do último mês fechado para o mês corrente. Erick apontou o furo
+no mesmo dia, e ele é real: **mês corrente continua sendo uma caixa de mês.**
+
+A previsão da Open-Meteo é uma janela de ~16 dias que anda **todo dia**. Em 28/09 a
+previsão de 01/10 a 13/10 já existe no snapshot, e um filtro de "setembro" a joga
+fora — a matriz encolhe dia a dia até a virada e depois abre quase vazia. O defeito
+do #103 não era QUAL mês; era o mês.
+
+Medido no mesmo dia, com a janela andando de verdade: o snapshot de 03/09 trazia
+previsão de 03/09 a 18/09; depois do refresh de 09/09, de **09/09 a 24/09**. A caixa
+é fixa e o conteúdo anda — foi essa a leitura que faltava no #103.
+
+### O conserto: o visual sai do recorte de mês, e diz que saiu
+
+`HORIZONTE_DE_PREVISAO` em `packages/widget-engine/src/filtros-padrao.ts` declara,
+por página, quais visuais ignoram o filtro de data **da tela**;
+`semDataDaTela` em `apps/api/src/calcula.ts` o aplica. Lista fechada, não heurística:
+adivinhar "visual que filtra previsão" pela spec faria um visual novo passar a
+ignorar o seletor sem ninguém decidir isso.
+
+Três limites, todos com teste:
+
+- **Só o filtro de DATA da página sai** (`dataDaPagina`), e **só se veio da tela**
+  (`TIPO_DE_TELA`). Filtro da spec do relatório continua valendo — é desenho do
+  relatório, não escolha de quem explora.
+- **Só o visual declarado.** A matriz de clima vizinha (`1a99bc9b`, a dos emojis de
+  classificação) mostra histórico e continua obedecendo o mês.
+- **A isenção é por página + visual.** O mesmo id em `relatorio-do-mes` não herda
+  nada.
+
+E o visual **avisa**: a API devolve `nota` em `VisualCalculado` e `Matriz.tsx`
+escreve `horizonte de previsão · ignora o mês do seletor` no cabeçalho, ao lado do
+`7 × 7`. Um visual que desobedece o seletor em silêncio é pior que um visual vazio —
+quem olha compara com os vizinhos e conclui que o número está errado.
+
+Medido ponta a ponta contra o snapshot real, variando só o seletor:
+
+| seletor da tela | matriz de PREVISÃO | matriz de CLASSIFICAÇÃO (vizinha) |
+|---|---|---|
+| julho/2026 | 7 × 7, datas de 09/09 a 19/09 | 7 × 27, datas de julho |
+| agosto/2026 | 7 × 7, **as mesmas** | 7 × 26, datas de agosto |
+| setembro/2026 | 7 × 7, **as mesmas** | 7 × 13, datas de setembro |
+
+A previsão não muda com o seletor — é a propriedade que se queria. E a vizinha muda,
+que é a prova de que a isenção não vazou.
+
+### A outra metade: o dado também tem de rolar, e não estava rolando
+
+Filtro certo com dado parado dá o mesmo vazio. `clima-tempo` **não tinha refresh
+automático**: estava fora de todos os grupos de `specs/_catalog/refresh.yaml`, pela
+regra da casa de não dar cadência a fonte sem custo medido. O arquivo em disco tinha
+**6 dias** quando isto foi descoberto.
+
+Ela é a única query da base cujo conteúdo **caduca sozinha**. As outras ficam
+desatualizadas; esta fica vazia: parada 17 dias, não tem uma linha de `Tipo =
+"Previsão"` e a matriz esvazia sem erro.
+
+Medida ao vivo em 09/09/2026, que era o que faltava para ela poder entrar:
+**7.267 ms**, 1.869 linhas, 14 chamadas HTTP à Open-Meteo. Entrou no grupo `frio`
+(30 min), junto de `field-agenda-slot` — e não num grupo próprio, porque grupo novo
+custa mais uma queda do cache de resposta inteiro por ciclo (docs/DEPLOY.md) e 7,3 s
+dentro de um tick que já leva ~4min15s não muda a margem.
+
+O preço, dito no yaml: ~672 pedidos/dia à Open-Meteo para um dado que muda poucas
+vezes ao dia. Cabe folgado no limite do serviço; se um dia incomodar, o conserto é um
+grupo de cadência horária, não tirar daqui.
+
+### Um guarda que funcionou, e vale registrar
+
+Rodei o refresh manual com `--sem-calculadas` e a abertura seguinte **recusou
+carregar**: `calc.calendar` havia sido congelada 3 minutos ANTES da nova
+materialização, e o guarda de idade (`confereIdadeDaCalculada`) disse exatamente
+isso, com o comando do conserto. Sem ele, a página teria aberto com a tabela
+calculada do dado antigo — "e o DAX igual não denuncia isso", como o próprio erro diz.
+
+Isso também é o argumento a favor de a query estar num grupo: o encadeamento do
+grupo já refaz as calculadas depois de cada materialização bem-sucedida. Foi o passe
+manual que criou a inconsistência, não o automático.
+
+### O que continua aberto
+
+O eixo de colunas de data sai **fora de ordem cronológica** (11/09, 09/09, 14/09,
+10/09, 15/09, 19/09, 12/09). Num visual que agora existe para mostrar "os próximos
+dias", isso é grave — mas o conserto **não é aqui**: `grupos.ts` documenta que a
+ordem é a de primeira aparição de propósito, porque a ordenação de um visual é
+propriedade dele (`Table.Sort` do PBIP) e **ainda não foi extraída**. Inventar uma
+ordem no motor esconderia essa lacuna. O caminho é extrair a ordenação do PBIP; se
+Erick preferir, ordenar eixo de data cronologicamente é um desvio pequeno e
+defensável, mas é desvio e precisa ser decidido, não presumido.

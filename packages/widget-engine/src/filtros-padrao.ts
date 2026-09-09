@@ -55,6 +55,47 @@ export function dataDaPagina(pagina: string | null): { tabela: string; coluna: s
   return cfg ? { tabela: cfg.tabela, coluna: cfg.coluna } : null;
 }
 
+/**
+ * Visuais que mostram PREVISÃO, e por isso não vivem dentro de um mês.
+ *
+ * **O caso que criou isto.** A matriz de probabilidade de chuva de
+ * `agendamento-field` cruza cidade × data de agenda e só tem linha de
+ * `Clima/ Tempo[Tipo] = "Previsão"` — ou seja, de hoje até o fim do horizonte da
+ * Open-Meteo (~16 dias). Qualquer recorte de MÊS corta esse horizonte no dia 30 ou
+ * 31: em 28/09 a previsão de 01/10 a 13/10 já existe, e um filtro de "setembro" a
+ * joga fora. Trocar o mês fechado pelo corrente adiou o problema por um mês; não é
+ * conserto, porque o defeito não é QUAL mês — é o mês ser a caixa errada para uma
+ * janela que anda todo dia.
+ *
+ * **Por que só o filtro de DATA sai, e só o que veio da tela.** O visual continua
+ * obedecendo qualquer outro recorte (cidade, equipe) e continua obedecendo os
+ * filtros da spec do relatório — o que ele ignora é a escolha de mês do seletor,
+ * porque previsão e mês são grandezas incompatíveis. E ele **diz** que ignora: a
+ * tela recebe uma nota e escreve no cabeçalho. Divergir do seletor em silêncio
+ * seria trocar um visual vazio por um visual que mente.
+ *
+ * Chave é a página; valor, os ids de visual daquela página.
+ */
+const HORIZONTE_DE_PREVISAO: Record<string, readonly string[]> = {
+  // A matriz "Último Probabilidade_Chuva_Formatada por Cidade · Data".
+  'agendamento-field': ['56d3352b476659cd7972'],
+};
+
+/**
+ * Este visual ignora o filtro de data da tela por mostrar horizonte de previsão?
+ *
+ * Ver `HORIZONTE_DE_PREVISAO`. Falso para todo o resto — é lista fechada, não
+ * heurística: adivinhar "visual que filtra previsão" pelo conteúdo da spec faria
+ * um visual novo passar a ignorar o seletor sem ninguém decidir isso.
+ */
+export function ignoraDataDaTela(pagina: string | null, visual: string): boolean {
+  if (!pagina) return false;
+  return (HORIZONTE_DE_PREVISAO[pagina] ?? []).includes(visual);
+}
+
+/** O texto que a tela mostra quando um visual ignora o mês do seletor. */
+export const NOTA_HORIZONTE = 'horizonte de previsão · ignora o mês do seletor';
+
 /** Último mês fechado (o anterior ao corrente) e o ano a que ele pertence. */
 function ultimoMesFechado(hoje: Date): { ano: number; mes: string } {
   let ano = hoje.getFullYear();

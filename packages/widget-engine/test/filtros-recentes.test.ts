@@ -12,7 +12,12 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { filtrosPadrao, filtrosRecentes } from '../src/filtros-padrao.ts';
+import {
+  filtrosPadrao,
+  filtrosRecentes,
+  ignoraDataDaTela,
+  NOTA_HORIZONTE,
+} from '../src/filtros-padrao.ts';
 
 const EM = new Date('2026-09-08T12:00:00Z');
 const resumo = (fs: { nivel?: string; valores: unknown[] }[]): string =>
@@ -94,4 +99,33 @@ test('recortes repetidos não viram aquecimento duplicado', () => {
   // vezes e o aquecedor pagaria o mesmo cálculo de novo.
   const r = filtrosRecentes('manutencao-inicial', EM, 9);
   assert.equal(new Set(r.map(resumo)).size, r.length);
+});
+
+// ---------------------------------------------------------------------------
+// Horizonte de previsão — a lista fechada
+// ---------------------------------------------------------------------------
+
+/**
+ * A isenção é **lista fechada**, e o teste existe para dois riscos concretos.
+ *
+ * O primeiro é o id mudar: se `agendamento-field` for reextraído e o visual ganhar
+ * outro id, a isenção deixa de casar e a matriz volta a nascer vazia na virada do
+ * mês — sem erro nenhum para avisar. O segundo é a isenção vazar: se ela passar a
+ * valer por página ou por tipo, todo número dessa página passa a ignorar o seletor.
+ */
+test('só a matriz de previsão de agendamento-field ignora a data da tela', () => {
+  assert.equal(ignoraDataDaTela('agendamento-field', '56d3352b476659cd7972'), true);
+  // A matriz de clima VIZINHA na mesma página mostra histórico e obedece o mês.
+  assert.equal(ignoraDataDaTela('agendamento-field', '1a99bc9b51e27c00d2ba'), false);
+  // O mesmo id noutra página não herda isenção.
+  assert.equal(ignoraDataDaTela('relatorio-do-mes', '56d3352b476659cd7972'), false);
+  assert.equal(ignoraDataDaTela(null, '56d3352b476659cd7972'), false);
+  assert.equal(ignoraDataDaTela('capa', 'qualquer'), false);
+});
+
+test('a nota do horizonte diz o que o visual ignora', () => {
+  // Ela vai para o cabeçalho da matriz. Um visual que desobedece o seletor em
+  // silêncio faz quem olha concluir que o número está errado.
+  assert.match(NOTA_HORIZONTE, /previsão/);
+  assert.match(NOTA_HORIZONTE, /seletor/);
 });

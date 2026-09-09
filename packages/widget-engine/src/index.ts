@@ -52,7 +52,14 @@ export {
   type ValorDeTabela,
 } from './tabela.ts';
 export { ancora, deslocar, resolveBorda, resolveSpan, truncar } from './datas.ts';
-export { dataDaPagina, filtrosPadrao, filtrosRecentes, RECENTES_PADRAO } from './filtros-padrao.ts';
+export {
+  dataDaPagina,
+  filtrosPadrao,
+  filtrosRecentes,
+  ignoraDataDaTela,
+  NOTA_HORIZONTE,
+  RECENTES_PADRAO,
+} from './filtros-padrao.ts';
 export { codificaFiltro, decodificaFiltro, decodificaFiltros, type FiltroDeTela } from './filtro-url.ts';
 export {
   loadDashboards,

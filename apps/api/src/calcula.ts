@@ -22,6 +22,9 @@ import {
   calculaGrafico,
   calculaMatriz,
   calculaTabela,
+  dataDaPagina,
+  ignoraDataDaTela,
+  NOTA_HORIZONTE,
   TIPOS_DE_GRAFICO,
 } from '../../../packages/widget-engine/src/index.ts';
 import type { DashboardSpec, FiltroSpec, VisualSpec } from '../../../packages/widget-engine/src/spec.ts';
@@ -173,6 +176,13 @@ export interface VisualCalculado {
   sobDemanda?: string[];
   /** Presente só nas segmentações. Ver `Segmentacao`. */
   segmentacao?: Segmentacao;
+  /**
+   * Uma ressalva de leitura, para a tela escrever no cabeçalho do visual.
+   *
+   * Hoje só o horizonte de previsão a usa (`NOTA_HORIZONTE`): aquele visual ignora
+   * o mês do seletor, e quem olha precisa saber disso ao comparar com os vizinhos.
+   */
+  nota?: string;
   erro?: string;
   dados?: unknown;
   /**
@@ -361,9 +371,12 @@ export function calculaPagina(
     try {
       // Cada visual vê os filtros da página MENOS os campos que ele próprio desenha e
       // que vieram de clique — ver `filtrosDoVisual`. Sem clique, é o mesmo `dash`.
-      const filtrosAqui = filtrosDoVisual(dash.filters ?? [], v, clicados);
+      const filtrosAqui = filtrosDoVisual(dash.filters ?? [], v, clicados, dash.id);
       const dashAqui =
         filtrosAqui === dash.filters ? dash : { ...dash, filters: [...filtrosAqui] };
+      // A tela escreve isto no cabeçalho: um visual que desobedece o seletor em
+      // silêncio é pior que um visual vazio. Ver `semDataDaTela`.
+      if (ignoraDataDaTela(dash.id, v.id)) base.nota = NOTA_HORIZONTE;
       base.dados = dadosDo(conteudo, dashAqui, v, ev, janela, memo);
       calculados++;
     } catch (err) {
@@ -414,6 +427,44 @@ export function calculaPagina(
  * filtros que entrou, e nenhum visual paga nada.
  */
 function filtrosDoVisual(
+  filtros: readonly FiltroSpec[],
+  v: VisualSpec,
+  clicados: readonly { tabela: string; coluna: string }[],
+  pagina: string,
+): readonly FiltroSpec[] {
+  return semAutoExcluidos(semDataDaTela(filtros, v, pagina), v, clicados);
+}
+
+/**
+ * HORIZONTE DE PREVISÃO: o visual que mostra previsão sai do recorte de MÊS da tela.
+ *
+ * **Por que isto não é a auto-exclusão de novo.** A auto-exclusão é sobre o campo que
+ * o visual DESENHA, e vale só para clique. Aqui é sobre a grandeza: previsão é uma
+ * janela que anda todo dia, e mês é uma caixa com borda no dia 30 ou 31. Em 28/09 a
+ * previsão de 01/10 a 13/10 já existe; qualquer filtro de "setembro" a joga fora, e
+ * a matriz encolhe até esvaziar na virada — exatamente o defeito do ACHADOS #103,
+ * que trocar o mês fechado pelo corrente apenas adiou por um mês.
+ *
+ * **Só a coluna de data que a PÁGINA trava sai, e só se veio da tela.** O visual
+ * continua obedecendo os filtros da spec do relatório (é desenho do relatório, não
+ * escolha de quem explora) e qualquer outro recorte da tela. Ver
+ * `HORIZONTE_DE_PREVISAO` em `filtros-padrao.ts` para a lista, que é fechada de
+ * propósito.
+ */
+function semDataDaTela(
+  filtros: readonly FiltroSpec[],
+  v: VisualSpec,
+  pagina: string,
+): readonly FiltroSpec[] {
+  if (!ignoraDataDaTela(pagina, v.id)) return filtros;
+  const data = dataDaPagina(pagina);
+  if (!data) return filtros;
+  return filtros.filter(
+    (f) => f.type !== TIPO_DE_TELA || f.entity !== data.tabela || f.property !== data.coluna,
+  );
+}
+
+function semAutoExcluidos(
   filtros: readonly FiltroSpec[],
   v: VisualSpec,
   clicados: readonly { tabela: string; coluna: string }[],

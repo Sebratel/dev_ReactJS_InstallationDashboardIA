@@ -99,6 +99,8 @@ export interface VisualCalculado {
   sobDemanda?: string[];
   segmentacao?: Segmentacao;
   erro?: string;
+  /** Ressalva de leitura vinda da API — hoje, só o horizonte de previsão. */
+  nota?: string;
   dados?: unknown;
   ms: number;
 }

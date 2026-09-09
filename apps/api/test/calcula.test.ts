@@ -586,3 +586,115 @@ test('filtro da spec sobre a coluna clicada NÃO é auto-excluído', () => {
     'as 3 do filtro de página: o clique soltou o filtro DA TELA e manteve o da spec',
   );
 });
+
+// ---------------------------------------------------------------------------
+// HORIZONTE DE PREVISÃO — o visual que sai da caixa de mês
+// ---------------------------------------------------------------------------
+
+/**
+ * Um modelo com a tabela que `agendamento-field` trava por padrão (`calendar[Data]`).
+ *
+ * Três dias, um valor por dia, para o recorte ter efeito visível: filtrar um dia
+ * dá 10, e ignorar o filtro dá a soma dos três.
+ */
+function montarCalendario(): Evaluator {
+  const model = new SemanticModel();
+  model.addTable({
+    id: 'calendar', name: 'calendar', queryRef: null,
+    columns: [col('Data', { type: 'dateTime' }), col('VALOR')],
+  });
+  model.addMeasure({ name: 'Total', table: 'calendar', format: null, displayFolder: null, dax: "SUM('calendar'[VALOR])" });
+  const dataset = new Dataset();
+  dataset.addTable('calendar', [
+    { Data: makeDate(2026, 8, 30), VALOR: 10 },
+    { Data: makeDate(2026, 9, 1), VALOR: 20 },
+    { Data: makeDate(2026, 9, 2), VALOR: 30 },
+  ] as Row[]);
+  return new Evaluator({ model, dataset, now: AGORA });
+}
+
+/** O id real da matriz de chuva, o mesmo que `HORIZONTE_DE_PREVISAO` declara. */
+const ID_PREVISAO = '56d3352b476659cd7972';
+
+function paginaDeAgendamento(): DashboardSpec {
+  const cartao = (id: string): VisualSpec => ({
+    id, type: 'card',
+    position: { x: 0, y: 0, width: 10, height: 10 },
+    entities_used: ['calendar'],
+    fields: [{ role: 'Values', kind: 'measure', entity: 'calendar', property: 'Total', name: 'Total' }],
+    filters: [], filters_vazios: 0,
+  });
+  return {
+    spec: 'v1',
+    // O id da PÁGINA é parte da regra: a isenção é declarada por página + visual.
+    id: 'agendamento-field',
+    page_id: 'p', name: 'AGENDAMENTO FIELD', type: 'page', visibility: null,
+    size: { width: 2800, height: 2400 }, visual_count: 2,
+    filters: [
+      {
+        name: "segmentação da tela: 'calendar'[Data]",
+        type: TIPO_DE_TELA,
+        entity: 'calendar',
+        property: 'Data',
+        // `Date`, não epoch nem ISO: o guarda de espécie (`confereEspecie` em
+        // filtro.ts) exige a mesma espécie nas duas pontas e recusa **alto** —
+        // texto ou número contra data nunca casaria, e o card sairia vazio com
+        // cara de filtro apenas apertado.
+        conditions: [{ op: 'in' as const, values: [makeDate(2026, 8, 30)] }],
+      },
+    ],
+    filters_vazios: 0,
+    visuals: [cartao(ID_PREVISAO), cartao('vizinho')],
+  };
+}
+
+/** O valor do card, com o erro do visual à mostra — senão a falha vem como `undefined`. */
+const valorDe = (p: ReturnType<typeof calculaPagina>, id: string) => {
+  const v = p.visuais.find((x) => x.id === id)!;
+  assert.equal(v.erro, undefined, `visual ${id} falhou: ${v.erro}`);
+  return (v.dados as { valor: unknown }).valor;
+};
+
+/**
+ * **Previsão não cabe num mês, e é por isso que este visual ignora o seletor.**
+ *
+ * A matriz de chuva só tem linha de `Tipo = "Previsão"` — de hoje até ~16 dias à
+ * frente. Qualquer recorte de mês corta esse horizonte no dia 30 ou 31: em 28/09 a
+ * previsão de 01/10 a 13/10 já existe e um filtro de "setembro" a joga fora. Trocar
+ * o mês fechado pelo corrente (ACHADOS #103) só adiou o defeito por um mês.
+ *
+ * O vizinho no mesmo teste é o que prova que a isenção é cirúrgica: se ela vazasse
+ * para a página, todo número de `agendamento-field` passaria a ignorar o seletor.
+ */
+test('o visual de horizonte ignora o filtro de data da tela; o vizinho não', () => {
+  const p = calculaPagina(paginaDeAgendamento(), montarCalendario());
+  assert.equal(valorDe(p, 'vizinho'), 10, 'o vizinho obedece o seletor: só o dia 30/08');
+  assert.equal(valorDe(p, ID_PREVISAO), 60, 'o de horizonte soma os três dias — saiu da caixa de mês');
+});
+
+/**
+ * E ele **diz** que ignora.
+ *
+ * Um visual que desobedece o seletor em silêncio é pior que um visual vazio: quem
+ * olha compara com os vizinhos e conclui que o número está errado. A nota vai no
+ * cabeçalho (ver `Matriz.tsx`).
+ */
+test('o visual de horizonte carrega a nota; o vizinho não', () => {
+  const p = calculaPagina(paginaDeAgendamento(), montarCalendario());
+  assert.match(p.visuais.find((v) => v.id === ID_PREVISAO)!.nota!, /horizonte de previsão/);
+  assert.equal(p.visuais.find((v) => v.id === 'vizinho')!.nota, undefined);
+});
+
+/**
+ * A isenção é por PÁGINA, não por id de visual solto.
+ *
+ * O mesmo id noutra página não ganha isenção nenhuma — se ganhasse, a cópia da
+ * matriz em `relatorio-do-mes` passaria a ignorar um filtro que lá é da spec do
+ * relatório, e um visual mostraria universo maior que a própria página.
+ */
+test('o mesmo id de visual em outra página continua obedecendo o seletor', () => {
+  const outra = { ...paginaDeAgendamento(), id: 'relatorio-do-mes' } as DashboardSpec;
+  const p = calculaPagina(outra, montarCalendario());
+  assert.equal(valorDe(p, ID_PREVISAO), 10, 'sem isenção declarada para esta página');
+  assert.equal(p.visuais.find((v) => v.id === ID_PREVISAO)!.nota, undefined);
+});
