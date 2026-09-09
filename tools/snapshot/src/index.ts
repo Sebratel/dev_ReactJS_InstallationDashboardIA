@@ -624,7 +624,17 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
 
   try {
     const tBusca = Date.now();
-    const feitas = await runQueries({ specs: todasAsQueries, apenas: [q.id], culture, fonte, web });
+    // `guardaPassos: false` — este caminho nunca leu `passos`, e guarda-los mantinha
+    // as 56 tabelas intermediarias de `protocolos-geral` vivas ao mesmo tempo: 9,8 GB
+    // de pico, contra o teto de 8 GB do daemon de refresh. Ver `avaliaQuery`.
+    const feitas = await runQueries({
+      specs: todasAsQueries,
+      apenas: [q.id],
+      culture,
+      fonte,
+      web,
+      guardaPassos: false,
+    });
     console.error(`    busca + avaliação de M: ${Date.now() - tBusca} ms`);
 
     const tConverte = Date.now();

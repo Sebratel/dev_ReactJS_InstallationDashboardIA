@@ -160,12 +160,106 @@ export interface MEvaluatorOptions {
   readonly reconcilia?: (esq: readonly string[], dir: readonly string[]) => boolean;
 }
 
+/**
+ * Quantas vezes cada passo do `let` é citado, e quais nunca podem ser liberados.
+ *
+ * **O defeito que isto ataca, medido em 09/09/2026.** `Escopo.resolve()` memoriza
+ * o valor de cada passo e nunca solta. Num `let` de ~50 passos sobre 93.601 linhas
+ * × 63 colunas, isso mantém ~50 tabelas inteiras vivas ao mesmo tempo — e
+ * `protocolos-geral` estourava 8 GB de heap por causa disso, ficando de fora da
+ * cadência automática de refresh (`specs/_catalog/refresh.yaml`) e congelando 12
+ * das 14 páginas em dado de dias atrás.
+ *
+ * A hipótese ANTERIOR era grão multiplicado pelos quatro `Table.NestedJoin` — o
+ * padrão que resolveu `field-agenda`. **Foi medida e descartada**: o fan-out médio
+ * das três tabelas da direita é 1,04x (máximo 52x em 863 chaves de 23.176). Os
+ * joins acrescentam 4% de linha; o custo é retenção de passo, não grão.
+ *
+ * **A regra conservadora, e por que ela precisa existir.** Contagem estática de
+ * ocorrências só vale para posição de linha reta, onde cada citação resolve no
+ * máximo uma vez (passo memoriza; corpo avalia uma vez). Dentro de `each` ou de
+ * `Function` a MESMA citação reavalia uma vez por linha — 93 mil vezes. Por isso
+ * todo nome citado dentro de lambda entra em `presos` e nunca é liberado.
+ *
+ * Errar para MENOS (contar demais, como no ramo de `if` não tomado) apenas deixa
+ * de liberar: perde-se memória, nunca correção.
+ */
+function referenciasDoLet(
+  bindings: readonly MBinding[],
+  body: MNode,
+): { contagem: Map<string, number>; presos: Set<string> } {
+  const nomes = new Set(bindings.map((b) => b.name));
+  const contagem = new Map<string, number>();
+  const presos = new Set<string>();
+
+  const anda = (no: MNode | null, emLambda: boolean): void => {
+    if (!no) return;
+    switch (no.type) {
+      case 'Identifier':
+        if (nomes.has(no.name)) {
+          if (emLambda) presos.add(no.name);
+          else contagem.set(no.name, (contagem.get(no.name) ?? 0) + 1);
+        }
+        return;
+      case 'Each':
+      case 'Function':
+        anda(no.body, true);
+        return;
+      case 'Let':
+        // Passo de `let` aninhado também é linha reta; sombrear nome de fora é
+        // problema de resolução, não de contagem.
+        for (const b of no.bindings) anda(b.expr, emLambda);
+        anda(no.body, emLambda);
+        return;
+      case 'If':
+        anda(no.cond, emLambda);
+        anda(no.then, emLambda);
+        anda(no.otherwise, emLambda);
+        return;
+      case 'Binary':
+        anda(no.left, emLambda);
+        anda(no.right, emLambda);
+        return;
+      case 'Unary':
+        anda(no.operand, emLambda);
+        return;
+      case 'Call':
+        anda(no.callee, emLambda);
+        for (const a of no.args) anda(a, emLambda);
+        return;
+      case 'Field':
+        anda(no.target, emLambda);
+        return;
+      case 'Item':
+        anda(no.target, emLambda);
+        anda(no.selector, emLambda);
+        return;
+      case 'List':
+        for (const i of no.items) anda(i, emLambda);
+        return;
+      case 'Record':
+        for (const f of no.fields) anda(f.expr, emLambda);
+        return;
+      case 'Literal':
+      case 'Type':
+        return;
+    }
+  };
+
+  for (const b of bindings) anda(b.expr, false);
+  anda(body, false);
+  return { contagem, presos };
+}
 /** Ambiente de nomes: escopo aninhado com resolução preguiçosa. */
 class Escopo {
   private readonly pais: Escopo | null;
   private readonly valores = new Map<string, MValue>();
   private readonly pendentes = new Map<string, MNode>();
   private readonly emCurso = new Set<string>();
+  /** Citações de linha reta que ainda faltam resolver. Ver `referenciasDoLet`. */
+  private restantes: Map<string, number> | null = null;
+  /** Nomes citados dentro de lambda: reavaliam por linha, então nunca são soltos. */
+  private presos: ReadonlySet<string> | null = null;
   private readonly avalia: (no: MNode, escopo: Escopo) => MValue;
 
   constructor(
@@ -180,6 +274,15 @@ class Escopo {
     this.pendentes.set(nome, expr);
   }
 
+  /**
+   * Liga a liberação de passo morto. Sem isto o escopo se comporta como antes:
+   * memoriza tudo e não solta nada.
+   */
+  contabiliza(contagem: Map<string, number>, presos: ReadonlySet<string>): void {
+    this.restantes = contagem;
+    this.presos = presos;
+  }
+
   fixa(nome: string, valor: MValue): void {
     this.valores.set(nome, valor);
   }
@@ -189,7 +292,11 @@ class Escopo {
   }
 
   resolve(nome: string): MValue {
-    if (this.valores.has(nome)) return this.valores.get(nome)!;
+    if (this.valores.has(nome)) {
+      const v = this.valores.get(nome)!;
+      this.usa(nome);
+      return v;
+    }
     const expr = this.pendentes.get(nome);
     if (expr) {
       if (this.emCurso.has(nome)) {
@@ -202,7 +309,9 @@ class Escopo {
       try {
         const v = this.avalia(expr, this);
         this.valores.set(nome, v);
-        this.pendentes.delete(nome);
+        // `pendentes` FICA. Se a contagem errar para mais, o passo recalcula em vez
+        // de sumir — lento, e nunca «Nome não encontrado» no meio de um refresh.
+        this.usa(nome);
         return v;
       } finally {
         this.emCurso.delete(nome);
@@ -210,6 +319,25 @@ class Escopo {
     }
     if (this.pais) return this.pais.resolve(nome);
     throw new MEvalError(`Nome não encontrado em M: '${nome}'.`);
+  }
+
+  /**
+   * Baixa uma citação e solta a tabela quando a última é gasta.
+   *
+   * O valor já foi devolvido a quem pediu — soltar aqui é soltar a referência
+   * DESTE escopo, não o dado que o chamador está usando.
+   */
+  private usa(nome: string): void {
+    if (!this.restantes) return;
+    if (this.presos?.has(nome)) return;
+    const faltam = this.restantes.get(nome);
+    if (faltam === undefined) return;
+    if (faltam <= 1) {
+      this.restantes.delete(nome);
+      this.valores.delete(nome);
+      return;
+    }
+    this.restantes.set(nome, faltam - 1);
   }
 }
 
@@ -251,21 +379,43 @@ export class MEvaluator {
   }
 
   /**
-   * Avalia uma query e devolve a tabela final, junto com o valor de cada passo.
+   * Avalia uma query e devolve a tabela final — e, se pedido, o valor de cada passo.
    *
-   * Devolver os passos não é luxo: é o que permite comparar passo a passo com o
-   * Power Query quando um número divergir — que é o trabalho da fase 2b.9.
+   * **`guardaPassos` é a diferença entre 9,8 GB e caber em 8 GB, medida em
+   * 09/09/2026.** Devolver os passos permite comparar passo a passo com o Power
+   * Query quando um número divergir (fase 2b.9), e para isso a última linha
+   * resolvia TODOS os bindings de novo — mantendo as 56 tabelas intermediárias de
+   * `protocolos-geral` vivas ao mesmo tempo, 94.165 linhas × 63 colunas cada.
+   * Medido: heap subindo ~145 MB por passo até 9.778 MB.
+   *
+   * Isso custava a query inteira: com teto de 8 GB ela estourava, ficava fora de
+   * `specs/_catalog/refresh.yaml` e congelava 12 das 14 páginas em dado de dias.
+   * Quem materializa nunca leu `passos` — só `mrun --passos` e os testes leem.
+   *
+   * Guardar os passos e liberá-los são decisões OPOSTAS, e é por isso que uma
+   * chave só governa as duas: com `false`, `referenciasDoLet` solta cada tabela
+   * assim que a última citação dela é gasta.
    */
-  avaliaQuery(source: string): { valor: MValue; passos: Map<string, MValue> } {
+  avaliaQuery(
+    source: string,
+    opts: { readonly guardaPassos?: boolean } = {},
+  ): { valor: MValue; passos: Map<string, MValue> } {
+    const guarda = opts.guardaPassos ?? true;
     const no = parseM(source);
     const escopo = this.raiz();
     if (no.type !== 'Let') {
       return { valor: this.avalia(no, escopo), passos: new Map() };
     }
     for (const b of no.bindings) escopo.declara(b.name, b.expr);
+    if (!guarda) {
+      const { contagem, presos } = referenciasDoLet(no.bindings, no.body);
+      escopo.contabiliza(contagem, presos);
+    }
     const valor = this.avalia(no.body, escopo);
     const passos = new Map<string, MValue>();
-    for (const b of no.bindings) passos.set(b.name, escopo.resolve(b.name));
+    if (guarda) {
+      for (const b of no.bindings) passos.set(b.name, escopo.resolve(b.name));
+    }
     return { valor, passos };
   }
 
@@ -295,6 +445,10 @@ export class MEvaluator {
       case 'Let': {
         const dentro = new Escopo(escopo, (n, e) => this.avalia(n, e));
         for (const b of no.bindings) dentro.declara(b.name, b.expr);
+        // Sem isto, os ~50 passos de `protocolos-geral` ficam todos vivos até o
+        // fim do `let` — 12 GB de heap para produzir 93.601 linhas.
+        const { contagem, presos } = referenciasDoLet(no.bindings, no.body);
+        dentro.contabiliza(contagem, presos);
         return this.avalia(no.body, dentro);
       }
 

@@ -125,10 +125,11 @@ async function avaliaComWeb(
   respostas: Map<string, Uint8Array>,
   buscar: BuscadorWeb | undefined,
   id: string,
+  guardaPassos: boolean,
 ): Promise<{ valor: MValue; passos: Map<string, MValue> }> {
   for (let passada = 0; ; passada++) {
     try {
-      return ev.avaliaQuery(m);
+      return ev.avaliaQuery(m, { guardaPassos });
     } catch (err) {
       if (!(err instanceof PrecisaBuscarWeb)) throw err;
       if (!buscar) {
@@ -176,6 +177,16 @@ export interface RunnerOptions {
    * duas queries podem mesclar pelas mesmas chaves com só uma tendo decisão. Quem
    * monta isto é `reconciliadorDe` sobre `specs/_catalog/juncoes.yaml`.
    */
+  /**
+   * Guardar o valor de CADA passo do `let` para diagnostico (`mrun --passos`).
+   *
+   * Ausente = guarda, que e o comportamento historico. Quem materializa passa
+   * `false`: nunca leu `passos`, e guarda-los mantinha as 56 tabelas intermediarias
+   * de `protocolos-geral` vivas — 9,8 GB de pico contra um teto de 8 GB. Ver o
+   * docstring de `MEvaluator.avaliaQuery`.
+   */
+  readonly guardaPassos?: boolean;
+
   readonly reconcilia?: (queryId: string) => (
     esq: readonly string[],
     dir: readonly string[],
@@ -422,6 +433,7 @@ export async function runQueries(opts: RunnerOptions): Promise<Map<string, Query
       respostasWeb,
       opts.web,
       spec.id,
+      opts.guardaPassos ?? true,
     );
     if (!(valor instanceof MTable)) {
       throw new MEvalError(
