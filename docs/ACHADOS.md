@@ -8247,3 +8247,86 @@ o que acontece entre os 206 ms de cálculo e os 1.525 ms de parede.
 > documento de desempenho por causa da **data** dele. Documento de medição sem data
 > visível ao lado do número é uma armadilha; o `PERF-CARGA.md` tem a data, e foi ela
 > que resolveu.
+
+---
+
+## #103 — A matriz de chuva de `agendamento-field` não podia ter dado em NENHUM mês: o filtro padrão pedia passado e o visual só tem futuro
+
+Relatado da tela em 09/09/2026: a matriz **Último Probabilidade_Chuva_Formatada por
+Cidade · Data** aparecia como `0 × 0 · 26 posição(ões) vazia(s) podada(s)`. Cabeçalho
+`CIDADE` desenhado, corpo vazio, **nenhum erro** — nem na tela, nem na API, nem na
+suíte.
+
+### Não era o dado nem o motor
+
+As duas primeiras suspeitas caíram na medição, e vale registrar as duas porque as
+duas eram plausíveis:
+
+- **A coluna calculada estava lá.** `Probabilidade_Chuva_Formatada` é uma das seis
+  colunas que o extrator tinha perdido pelo `=` no fim da linha (ver o achado do
+  TMDL). Está materializada no snapshot, `tipo: string`, **0 nulos**.
+- **O motor calcula certo.** A **mesma** matriz na página `relatorio-do-mes` devolve
+  7 × 10 com valor (`96%`, `2%`, `100%`…). Mesmo visual, mesmo snapshot, mesmo
+  avaliador.
+
+### Era a colisão de dois filtros, e a poda escondeu a colisão
+
+| peça | o que ela diz |
+|---|---|
+| filtro do visual | `Clima/ Tempo[Tipo] = "Previsão"` (`agendamento-field.spec.yaml`) |
+| filtro padrão da página | `calendar[Data]` = **último mês fechado** = agosto/2026 |
+| o que existe de `Previsão` no snapshot | 112 linhas: 7 cidades × 16 datas, **todas de 02/09 a 18/09** |
+
+Previsão é futuro por definição; mês fechado é passado por definição. A interseção é
+vazia, toda célula sai BLANK, e aí `montaSemVazios` faz o que a matriz do Power BI
+faz — poda linha e coluna inteiramente vazias — e derruba os **dois** eixos. As 26
+podadas são as datas úteis da janela de agosto no `calendar` (domingo não entra:
+31 − 5 = 26).
+
+O que torna isto pior que um mês azarado: **nenhum mês fechado conterá previsão**. O
+visual nunca teve dado desde que a página passou a abrir pré-filtrada, e nunca teria.
+
+Medido, variando só o filtro de tela:
+
+| filtro de tela | resultado | podadas |
+|---|---|---|
+| agosto/2026 (o padrão de então) | **0 × 0** | **26** |
+| setembro/2026 | 7 × 10 com valor | 5 |
+| sem filtro | 7 × 10 com valor | 81 |
+
+A primeira linha reproduz a tela número por número, inclusive o 26.
+
+### Os dois controles que fecharam o diagnóstico
+
+- A matriz de clima **vizinha** na mesma página (`1a99bc9b`, a dos emojis de
+  classificação) preenche 7 × 26 sob agosto. Ela não filtra `Tipo` — vê o histórico.
+- A mesma matriz em `relatorio-do-mes` calcula: aquela página não trava data por
+  padrão, e o filtro do próprio visual é "mês atual".
+
+### Decisão do Erick (09/09/2026): `agendamento-field` abre no mês CORRENTE
+
+`escopo: 'mes-corrente'` em `packages/widget-engine/src/filtros-padrao.ts`, com teste
+que trava as duas coisas — que esta página abre em setembro e que `visao-geral`
+continua abrindo em agosto.
+
+**O preço, aceito junto com a decisão:** isto move o número de **todos** os visuais de
+`agendamento-field`, não só o da chuva. A alternativa avaliada era isentar o visual de
+previsão do filtro da página, que resolveria uma célula e espalharia um desvio do
+Power BI por dois lugares.
+
+Conferido de ponta a ponta contra o snapshot real depois da mudança: a matriz devolve
+7 linhas × 10 colunas, e a vizinha continua em 7 × 12.
+
+### O que este achado deixa aberto
+
+O eixo de colunas de data sai **fora de ordem cronológica** (04/09, 05/09, 03/09,
+08/09, 11/09, 09/09…). No Power BI um eixo de data ordena por data. É defeito
+separado, e só ficou visível quando o visual voltou a ter dado — enquanto estava
+vazio, não havia coluna para sair fora de ordem.
+
+> **A lição de forma.** Um visual pode estar *estruturalmente* correto — spec fiel,
+> coluna calculada presente, motor certo, suíte verde — e ainda assim ser impossível
+> de preencher, porque a contradição não está em nenhuma das peças: está entre duas
+> delas. O que apontou o dedo foi o `descartadas` que a `ValorDeMatriz` carrega de
+> propósito. Sem esse número no resultado, "0 × 0" seria indistinguível de "não veio
+> dado", e a caça teria começado no lugar errado — no dado, que estava bom.

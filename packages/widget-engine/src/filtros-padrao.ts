@@ -7,13 +7,27 @@ import type { FiltroDeTela } from './filtro-url.ts';
 //
 // Decisão do Erick (20/08): as páginas de mês abrem no **último mês fechado**
 // (dinâmico), não num mês fixo — assim acompanham o tempo em vez de apodrecer.
+//
+// EXCEÇÃO, decisão do Erick (09/09): `agendamento-field` abre no **mês corrente**.
+// Não é preferência — é que o último mês fechado torna uma parte da página
+// impossível de ler. A matriz `56d3352b476659cd7972` filtra
+// `Clima/ Tempo[Tipo] = "Previsão"`, e previsão só existe para hoje e os dias
+// seguintes (medido no snapshot de 09/09/2026: 7 cidades × 16 datas, todas de
+// 02/09 a 18/09). Mês fechado ∩ previsão = ∅, então TODA célula saía vazia e a
+// poda de linhas/colunas vazias derrubava os dois eixos: a tela mostrava
+// `0 × 0 · 26 posição(ões) vazia(s) podada(s)`. E não era um mês azarado —
+// nenhum mês fechado conterá previsão, então o visual nunca teria dado.
+//
+// O preço, aceito junto com a decisão: isto move o número de **todos** os visuais
+// de `agendamento-field`, não só o da chuva. A alternativa era isentar um visual
+// do filtro da página, que é desvio do Power BI espalhado por dois lugares.
 
 const MESES_PT = [
   'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
   'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
 ] as const;
 
-type Escopo = 'mes' | 'ano';
+type Escopo = 'mes' | 'mes-corrente' | 'ano';
 interface DataPadrao {
   tabela: string;
   coluna: string;
@@ -25,7 +39,7 @@ interface DataPadrao {
 // filtro, como já era.
 const POR_PAGINA: Record<string, DataPadrao> = {
   'visao-geral': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
-  'agendamento-field': { tabela: 'calendar', coluna: 'Data', escopo: 'mes' },
+  'agendamento-field': { tabela: 'calendar', coluna: 'Data', escopo: 'mes-corrente' },
   'diario-instalacao': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
   'protocolos-detalhados': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
   'manutencao-inicial': { tabela: 'REINCIDÊNCIA', coluna: 'data_suporte', escopo: 'ano' },
@@ -52,6 +66,11 @@ function ultimoMesFechado(hoje: Date): { ano: number; mes: string } {
   return { ano, mes: MESES_PT[mesIdx]! };
 }
 
+/** O mês corrente — o de `hoje`, sem andar para trás. */
+function mesCorrente(hoje: Date): { ano: number; mes: string } {
+  return { ano: hoje.getFullYear(), mes: MESES_PT[hoje.getMonth()]! };
+}
+
 /**
  * Os filtros com que uma página deve abrir, replicando o default do relatório.
  */
@@ -64,7 +83,7 @@ export function filtrosPadrao(pagina: string | null, hoje: Date = new Date()): F
     return [{ tabela: cfg.tabela, coluna: cfg.coluna, nivel: 'Ano', valores: [hoje.getFullYear()] }];
   }
 
-  const { ano, mes } = ultimoMesFechado(hoje);
+  const { ano, mes } = cfg.escopo === 'mes-corrente' ? mesCorrente(hoje) : ultimoMesFechado(hoje);
   return [
     { tabela: cfg.tabela, coluna: cfg.coluna, nivel: 'Ano', valores: [ano] },
     { tabela: cfg.tabela, coluna: cfg.coluna, nivel: 'Mês', valores: [mes] },

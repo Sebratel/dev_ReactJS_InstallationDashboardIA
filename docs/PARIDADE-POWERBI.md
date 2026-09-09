@@ -162,6 +162,14 @@ bruto acima:
    **último mês fechado** (dinâmico, decisão do Erick — acompanha o tempo em vez de fixar
    julho); as 2 de ano no **ano corrente**. Verificado: Visão Geral cai de 34.025 → 3.238
    protocolos ao abrir; as 6 páginas aceitam o filtro sem erro.
+   - **EXCEÇÃO (09/09/2026): `agendamento-field` abre no mês CORRENTE, não no fechado.**
+     Não é ajuste de gosto — sob mês fechado a matriz de probabilidade de chuva da página
+     era **impossível** de preencher, em qualquer mês: ela filtra
+     `Clima/ Tempo[Tipo] = "Previsão"` e previsão só existe de hoje para frente, então a
+     interseção com um mês fechado é sempre vazia e a tela mostrava
+     `0 × 0 · 26 posição(ões) vazia(s) podada(s)`. Decisão do Erick, com o preço aceito:
+     move o número de **todas** as demais visuais dessa página. Medição, controles e a
+     alternativa descartada em `ACHADOS.md` #103.
    - **Sobre o "STATUS INSTALAÇÃO = Instalado"** que o desktop viu travado: **não existe**
      valor "Instalado" na coluna STATUS (os valores são Encerrado, Agendado…). É efeito do
      relacionamento de `CALENDARIO INSTALADO` (só protocolo instalado tem data de

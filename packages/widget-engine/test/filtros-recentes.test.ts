@@ -34,6 +34,38 @@ test('página de mês adianta o mês padrão e os anteriores', () => {
   ]);
 });
 
+test('`agendamento-field` abre no mês CORRENTE, não no último fechado', () => {
+  // Decisão do Erick (09/09). Não é preferência de janela: a matriz de chuva da
+  // página filtra `Clima/ Tempo[Tipo] = "Previsão"`, e previsão só existe de hoje
+  // para frente. Sob mês fechado a interseção é vazia, toda célula sai vazia, a
+  // poda derruba os dois eixos e a tela mostra `0 × 0 · 26 podada(s)` — em
+  // QUALQUER mês, não só neste. Se esta linha voltar para `'mes'`, o visual volta
+  // a nascer vazio e o defeito não dá erro nenhum para avisar.
+  assert.equal(resumo(filtrosPadrao('agendamento-field', EM)), 'Ano=2026+Mês=setembro');
+  assert.equal(resumo(filtrosPadrao('visao-geral', EM)), 'Ano=2026+Mês=agosto');
+});
+
+test('o aquecimento de `agendamento-field` começa no mês corrente e anda para trás', () => {
+  // O primeiro recorte tem de ser o de abertura (mesma regra do teste acima), e
+  // agora a abertura é setembro — não agosto.
+  const r = filtrosRecentes('agendamento-field', EM);
+  assert.deepEqual(r[0], filtrosPadrao('agendamento-field', EM));
+  assert.deepEqual(r.map(resumo), [
+    'Ano=2026+Mês=setembro',
+    'Ano=2026+Mês=agosto',
+    'Ano=2026+Mês=julho',
+  ]);
+});
+
+test('mês corrente também vira o ano para trás sem inventar mês 13', () => {
+  const r = filtrosRecentes('agendamento-field', new Date('2026-01-10T12:00:00Z'));
+  assert.deepEqual(r.map(resumo), [
+    'Ano=2026+Mês=janeiro',
+    'Ano=2025+Mês=dezembro',
+    'Ano=2025+Mês=novembro',
+  ]);
+});
+
 test('a virada de ano anda para trás sem inventar mês 13', () => {
   const r = filtrosRecentes('visao-geral', new Date('2026-02-10T12:00:00Z'));
   assert.deepEqual(r.map(resumo), [
