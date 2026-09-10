@@ -28,7 +28,7 @@ import { rotuloDeColuna } from '../../../packages/semantic-model/src/projecao.ts
 import { loadDashboards, type DashboardSpec, type FiltroSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
-import { leManifesto, maisAntigo } from '../../../packages/snapshot/src/manifesto.ts';
+import { leManifesto, maisAntigo, type Manifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
@@ -416,6 +416,16 @@ export class Servidor {
    * fecha sobre `this.opts`, que só existe depois dele.
    */
   private carimbo!: CarimboVigiado;
+  /**
+   * O manifesto e as tabelas calculadas por trás do carimbo GLOBAL — a mesma
+   * leitura que `leDoDisco()` já faz, guardada para não reler o disco quando
+   * `carimboDaPagina` precisa recalcular um hash ESCOPADO. Atualizados juntos,
+   * exatamente quando `#memo` de `CarimboVigiado` é atualizado (a leitura de
+   * disco só acontece ali, nunca no caminho quente do HTTP) — os dois nunca
+   * divergem porque nascem da mesma chamada.
+   */
+  private manifestoMemo: Manifesto | null = null;
+  private calculadasMemo = '';
   /** Motivos JÁ anunciados de queda para cálculo em linha — um log por motivo. */
   private readonly motivosDeFallback = new Set<string>();
 
@@ -489,11 +499,15 @@ export class Servidor {
     // O carimbo e a procedência dele (F5). Construído por último porque
     // `leDoDisco` fecha sobre `this.opts`.
     this.carimbo = new CarimboVigiado({
-      leDoDisco: () =>
-        carimboDoSnapshot(
-          leManifesto(this.opts.snapshotDir),
-          carimboDasCalculadas(this.opts.snapshotDir),
-        ),
+      leDoDisco: () => {
+        // Guardado aqui, e não recalculado em `carimboDaPagina`: esta é a
+        // ÚNICA leitura de disco do carimbo (memoizada por `CarimboVigiado`
+        // até o próximo `esquece()`), e um hash escopado por página reusa
+        // exatamente este manifesto — nunca reabre o arquivo.
+        this.manifestoMemo = leManifesto(this.opts.snapshotDir);
+        this.calculadasMemo = carimboDasCalculadas(this.opts.snapshotDir);
+        return carimboDoSnapshot(this.manifestoMemo, this.calculadasMemo);
+      },
       // `null` (e não uma exceção) quando o diretório não existe: uma API sem
       // snapshot ainda não é uma API com o observador quebrado, e tratar as
       // duas do mesmo jeito faria a saúde acusar defeito onde só falta dado.
@@ -1192,7 +1206,10 @@ export class Servidor {
     // cabe nos 300 ms da regra 9 — recalcular e só economizar a serialização não
     // caberia.
     const ttl = retencaoDaPagina(this.queriesDe(dash), this.registry);
-    const carimbo = this.carimboAtual();
+    // Por página, não pelas 25 tabelas juntas — ver `carimboDaPagina`. Um
+    // refresh de uma tabela que esta página não lê deixa de invalidar o cache
+    // dela.
+    const carimbo = this.carimboDaPagina(dash);
     const dia = diaDoCalculo(this.opts.agora());
     const recalcula = url.searchParams.get('recalcula') === '1';
     const chave = chaveDaResposta({
@@ -1792,6 +1809,41 @@ export class Servidor {
    */
   private carimboAtual(): string {
     return this.carimbo.doMemo();
+  }
+
+  /**
+   * O carimbo de UMA página — só as tabelas que ela usa, não as 25 juntas.
+   *
+   * **Por que existe, com o número que mediu o problema.** `carimboAtual()` é
+   * um hash sobre TODAS as tabelas: refresh de qualquer uma delas — 63 vezes em
+   * 2h10 de processo, uma a cada ~2 min no grupo "quente" — muda o hash das 14
+   * páginas de uma vez, mesmo nas que não leem a tabela que mudou. Isso é
+   * exatamente o inverso do que o cache existe para fazer: cada virada joga
+   * fora respostas que continuam certas, e o reaquecimento (~2,5 min para
+   * requentar as 14) quase nunca termina uma passada antes da próxima virada
+   * apagar tudo de novo.
+   *
+   * **O que NÃO muda.** `identidadeAtual()` (usada pela worker para saber se o
+   * disco mudou por baixo) continua olhando o carimbo GLOBAL, e o `dia` UTC
+   * (`diaDoCalculo`, na chave ao lado deste carimbo) continua sendo o mesmo
+   * para as 14 páginas. `npm run snapshot`, a virada da meia-noite e o poller
+   * de tempo quase real (`aoTabelaMudar`/`limpaPagina`, um mecanismo
+   * inteiramente separado) continuam invalidando exatamente como sempre
+   * invalidaram — nenhuma das garantias que os testes travam depende do
+   * carimbo ser global.
+   *
+   * **Sempre a leitura barata.** `this.carimboAtual()` aquece (ou reaproveita)
+   * `manifestoMemo`/`calculadasMemo` sem reler disco — a mesma leitura que já
+   * acontecia, uma vez por mudança de verdade. Um `'(indeterminado)'` de
+   * `queriesDe` (página cuja dependência não dá para calcular) cai para o
+   * carimbo global: na dúvida, invalidar demais é seguro; invalidar de menos
+   * não é.
+   */
+  private carimboDaPagina(dash: DashboardSpec): string {
+    this.carimboAtual();
+    const queries = this.queriesDe(dash);
+    if (queries.includes('(indeterminado)')) return this.carimboAtual();
+    return carimboDoSnapshot(this.manifestoMemo, this.calculadasMemo, queries);
   }
 
   /**
