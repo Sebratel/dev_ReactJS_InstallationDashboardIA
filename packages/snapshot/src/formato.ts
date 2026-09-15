@@ -6,15 +6,33 @@
 // relatório passa a errar alto. Um formato que não sabe dizer "isto é data" não
 // serve para guardar a camada M.
 //
-// **A forma.** Linha 1 é o cabeçalho: nome da tabela, query de origem, contagem e
-// **o tipo de cada coluna**. As linhas seguintes são arrays na ordem das colunas.
-// Duas razões para ser colunar e não um objeto por linha:
+// **A forma.** Linha 1 é sempre o cabeçalho: nome da tabela, query de origem,
+// contagem, **o tipo de cada coluna** e o número do formato. O corpo depende do
+// formato, e há dois — **os dois se leem, só o 2 se escreve**:
+//
+// - **formato 1**, uma linha JSON por LINHA da tabela, cada uma um array na ordem
+//   das colunas. Foi o original e ainda carrega sem conversão;
+// - **formato 2** (15/09/2026), uma linha JSON por COLUNA, **já codificada por
+//   dicionário**. É o que se grava. O layout, a largura variável do id e a medição
+//   que motivou a troca estão no bloco de `FORMATO_ATUAL`, mais abaixo.
+//
+// O que não mudou entre os dois, e é metade da razão de existir um formato:
 //
 // - o nome da coluna não se repete por linha. Em `field-agenda`, com 1,4 milhão
-//   de linhas, repetir 30 nomes por linha é o grosso do arquivo;
+//   de linhas, repetir 30 nomes por linha seria o grosso do arquivo;
 // - o tipo mora no cabeçalho, então a leitura decodifica sem adivinhar. Ler
 //   `"2026-01-05"` e decidir na hora se é data ou texto é exatamente a
 //   adivinhação que este arquivo existe para evitar.
+//
+// ⚠ **Cuidado com a palavra "colunar".** O formato 1 já organizava a LINHA por
+// posição de coluna, e comentários antigos o chamam de colunar por isso. Ele não é:
+// a unidade dele é a linha. Quem é colunar de verdade é o formato 2 — e
+// `TabelaColunar`, que é a estrutura em memória, independente do formato em disco.
+//
+// **Converter é `npm run snapshot:converte`** — ele confere célula a célula pelos
+// dois leitores antes de trocar, e atualiza `manifesto.json`, que descreve os
+// arquivos. A primeira versão não atualizava, e a tela de saúde passou a anunciar
+// 53,6 MB de um snapshot com 37,6 MB (ACHADOS #107, adendo).
 //
 // **Coluna de tipo misto.** Nenhuma regra diz que a camada M devolve coluna
 // homogênea, então o tipo é apurado varrendo a coluna inteira. Se houver mais de
@@ -28,7 +46,6 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import readline from 'node:readline';
 import zlib from 'node:zlib';
 
 import type { Readable } from 'node:stream';
@@ -38,6 +55,11 @@ import { pipeline } from 'node:stream/promises';
 // `Dataset` considera "normalizado" tem de ser o que esta leitura produz.
 import { normalizeName } from '../../semantic-model/src/model.ts';
 import { renomeiaComRetentativa } from './escrita-atomica.ts';
+import {
+  ConstrutorDeTabela,
+  TabelaColunar,
+  type ColunaColunar,
+} from './tabela-colunar.ts';
 
 // ── compressão: os dois sufixos do mesmo formato ─────────────────────────────
 //
@@ -155,6 +177,82 @@ export function fluxoDeLeitura(arquivo: string): Readable {
 }
 
 /**
+ * Cada linha do arquivo, entregue a `aoReceber`. É o substituto de `readline`.
+ *
+ * **Por que não `readline`.** Medido em 14/09/2026 sobre `field-agenda.jsonl.gz`,
+ * 647.910 linhas, 4 rodadas com a ordem alternada a cada uma (para viés de
+ * aquecimento se cancelar) — e a versão à mão ganhou em TODAS as rodadas:
+ *
+ * ```
+ * readline .. 1558  1803  1915  1856    melhor 1558 ms
+ * à mão ..... 1119  1357  1420  1402    melhor 1119 ms     28,2% menos
+ * ```
+ *
+ * O custo do `readline` aqui não é partir a linha: é `for await` **por linha**. São
+ * 647 mil suspensões de iterador assíncrono num arquivo, e 1,4 milhão no maior. Por
+ * isso este entregador é de CALLBACK e não um gerador assíncrono: um `yield` por
+ * linha traria exatamente o custo que ele existe para tirar. O laço de linhas roda
+ * **síncrono** dentro do pedaço; só a chegada do pedaço é assíncrona.
+ *
+ * **Uma diferença de comportamento, e ela conserta um defeito.** `readline` também
+ * quebra linha em `\r` solto, `\u2028` e `\u2029`; este entrega só em `\n`
+ * (tirando o `\r` do CRLF). Para `\n` e `\r` dá no mesmo — `JSON.stringify` os
+ * escapa dentro de texto, então não chegam crus ao arquivo. Mas **`\u2028` e
+ * `\u2029` ele NÃO escapa**: um valor de cliente que os contenha ia cru para o
+ * disco, o `readline` partia a linha no meio e a leitura morria com "arquivo
+ * truncado" — apontando para o lugar errado. Aqui esse dado passa inteiro.
+ *
+ * O `setEncoding` é obrigatório e não é enfeite: sem ele o pedaço é `Buffer` e um
+ * caractere UTF-8 partido na borda viraria dois caracteres inválidos. Com ele, quem
+ * cuida da borda é o `StringDecoder` do próprio fluxo.
+ */
+export async function paraCadaLinha(
+  arquivo: string,
+  aoReceber: (texto: string) => void,
+): Promise<void> {
+  // **Os pedaços da linha corrente ficam numa lista, e a busca só olha o pedaço
+  // que acabou de chegar.** A versão anterior fazia `resto + pedaco` e procurava
+  // o `\n` no ACUMULADO: com linha curta isso não custa nada, mas o `+` do V8
+  // produz uma cons-string e o `indexOf` a achata, então cada pedaço novo
+  // recopiava a linha inteira — O(n²) no comprimento da linha.
+  //
+  // Ninguém notou enquanto o arquivo era uma linha por LINHA da tabela. O formato
+  // 2 (15/09/2026) é uma linha por COLUNA, e a de `field-agenda` tem megabytes:
+  // medido, `paraCadaLinha` passou a ser **90,4% da carga inteira** — 15.898 ms
+  // de 17.578 ms. Achatar por pedaço é O(n) e devolve exatamente o mesmo texto.
+  let partes: string[] = [];
+  for await (const pedaco of fluxoDeLeitura(arquivo).setEncoding('utf8')) {
+    const s = pedaco as string;
+    let ini = 0;
+    let i = s.indexOf('\n');
+    while (i >= 0) {
+      partes.push(s.slice(ini, i));
+      // CRLF: o `\r` fica FORA da linha. O `\r` que cai no fim de um pedaço e o
+      // `\n` que abre o seguinte se reencontram porque o `\r` viaja em `partes` —
+      // é por isso que ele sai DEPOIS de juntar, e não no fatiamento.
+      aoReceber(semCarriage(partes));
+      partes = [];
+      ini = i + 1;
+      i = s.indexOf('\n', ini);
+    }
+    if (ini < s.length) partes.push(s.slice(ini));
+  }
+  // Última linha sem `\n` no fim. `escreve` sempre termina com `\n`, então o
+  // normal é não sobrar nada aqui — mas arquivo editado à mão não tem essa
+  // obrigação.
+  if (partes.length > 0) {
+    const linha = semCarriage(partes);
+    if (linha.length > 0) aoReceber(linha);
+  }
+}
+
+/** Junta os pedaços de uma linha e tira o `\r` do fim, se houver. */
+function semCarriage(partes: readonly string[]): string {
+  const linha = partes.length === 1 ? partes[0]! : partes.join('');
+  return linha.charCodeAt(linha.length - 1) === 13 ? linha.slice(0, -1) : linha;
+}
+
+/**
  * A primeira linha de um arquivo comprimido, sem inflar o resto.
  *
  * `Z_SYNC_FLUSH` no fim é o que faz isto ser possível: sem ele, inflar um PEDAÇO de
@@ -262,8 +360,18 @@ export function shaDeDax(dax: string): string {
 }
 
 export interface CabecalhoDeSnapshot {
-  /** Versão do formato. Muda quando a decodificação muda, e a leitura confere. */
-  formato: 1;
+  /**
+   * Versão do formato. Muda quando a decodificação muda, e a leitura confere.
+   *
+   * - **1** — uma linha JSON por LINHA da tabela. O formato original.
+   * - **2** — uma linha JSON por COLUNA, já codificada por dicionário. Ver
+   *   `escreve` e `leColunas`.
+   *
+   * Os dois se leem; só o 2 se escreve. Um arquivo antigo continua carregando sem
+   * conversão nenhuma — é o que torna a troca reversível: basta voltar o
+   * `FORMATO_ATUAL` e materializar de novo.
+   */
+  formato: 1 | 2;
   /** Id da query da camada M que produziu o arquivo — e o nome dele. */
   query: string;
   /**
@@ -386,6 +494,146 @@ export function decodifica(v: unknown, tipo: TipoDeColuna, onde: string): Escala
  * chamar — foi exatamente esquecer um passo separado que já quebrou este fluxo duas
  * vezes (ACHADOS #53, #78).
  */
+/**
+ * O formato que se ESCREVE. Ler continua aceitando o 1.
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * POR QUE O ARQUIVO DEIXOU DE SER UMA LINHA POR LINHA
+ *
+ * **Medido, não suposto** (`npm run bench:carga -- --colunar`, 14/09/2026, os 22
+ * arquivos abaixo de 100 MB — 36,6 MB, 788.225 linhas, 4.517 ms):
+ *
+ * ```
+ * dicion   58,1%   montar o dicionário — um Map.get por CÉLULA
+ * io       15,2%   ler os bytes e decodificar utf-8
+ * decodif  14,3%   decodificar cada célula
+ * parse     7,0%   JSON.parse
+ * linhas    3,6%   partir em linhas
+ * resto     1,8%   tipo declarado, vista, adoção
+ * ```
+ *
+ * A API carrega em armazenamento colunar desde 13/09, e reconstruía o dicionário
+ * **a cada abertura** a partir de um arquivo orientado a linha. Gravá-lo já
+ * codificado troca as quatro primeiras etapas por uma cópia de bytes.
+ *
+ * ⚠ **O `JSON.parse` nunca foi o problema**, e o plano antigo rejeitou trocar o
+ * formato exatamente por isso — ele é 7%. O caro é montar a estrutura. Ver
+ * `docs/DECISAO-DESEMPENHO.md`, seção "O passo 5, medido".
+ *
+ * ─────────────────────────────────────────────────────────────────────────────
+ * O LAYOUT
+ *
+ * Linha 1: o cabeçalho, igual ao do formato 1, com `formato: 2`.
+ * Linhas 2..K+1: uma por COLUNA, **na ordem de `cabecalho.colunas`**:
+ *
+ * ```json
+ * {"c":"NOME","w":1,"d":[null,"a","b"],"b":"AAEC..."}
+ * ```
+ *
+ * - `c` o nome, repetido para a leitura poder CONFERIR a ordem em vez de confiar
+ *   nela — cabeçalho e corpo em arquivos que viajam juntos já saíram de sincronia
+ *   neste projeto;
+ * - `d` os valores distintos, codificados como uma célula do formato 1 era
+ *   (`codifica`), então data e coluna mista atravessam pelo mesmo caminho. A
+ *   posição 0 é **sempre** `null`, que é a invariante `ID_NULO` de `TabelaColunar`;
+ * - `w` a largura do id em bytes, 1, 2 ou 4 — a menor que couber em `d.length`;
+ * - `b` os ids, base64, little-endian.
+ *
+ * **A largura é onde a conta fecha.** Id de 4 bytes para uma coluna de 17 valores
+ * distintos é desperdício de 4x, e o dado real é assim: `item` de
+ * `protocolos-produtividade` tem 1 valor distinto em 76.398 linhas, `gestor` tem 4,
+ * `cidade` 17. Base64 infla 4/3, então sem a largura variável o arquivo cresceria.
+ */
+export const FORMATO_ATUAL = 2;
+
+/** A menor largura de id que representa `distintos` valores. */
+function larguraDeId(distintos: number): 1 | 2 | 4 {
+  if (distintos <= 0x100) return 1;
+  if (distintos <= 0x10000) return 2;
+  return 4;
+}
+
+/**
+ * Os ids em base64, little-endian.
+ *
+ * **LE explícito, e não a ordem da máquina.** Um `Buffer` sobre o `.buffer` de um
+ * `Int32Array` sai na ordem do processador, e o arquivo viaja: gravado num x86 e
+ * lido num ARM big-endian, cada id viraria outro id — valor errado, sem erro. As
+ * três larguras escrevem e leem LE, e a de 1 byte não tem ordem.
+ */
+function idsParaBase64(ids: Int32Array, largura: 1 | 2 | 4): string {
+  const buf = Buffer.allocUnsafe(ids.length * largura);
+  if (largura === 1) {
+    for (let i = 0; i < ids.length; i++) buf[i] = ids[i]!;
+  } else if (largura === 2) {
+    for (let i = 0; i < ids.length; i++) buf.writeUInt16LE(ids[i]!, i * 2);
+  } else {
+    for (let i = 0; i < ids.length; i++) buf.writeInt32LE(ids[i]!, i * 4);
+  }
+  return buf.toString('base64');
+}
+
+/** O caminho inverso, para `linhas` ids. Confere o tamanho antes de confiar nele. */
+function base64ParaIds(b64: string, largura: number, linhas: number, onde: string): Int32Array {
+  const buf = Buffer.from(b64, 'base64');
+  if (buf.length !== linhas * largura) {
+    throw new Error(
+      `${onde}: os ids têm ${buf.length} bytes para ${linhas} linhas de ${largura} ` +
+        `byte(s) — esperado ${linhas * largura}. Arquivo truncado ou corrompido.`,
+    );
+  }
+  const ids = new Int32Array(linhas);
+  if (largura === 1) {
+    for (let i = 0; i < linhas; i++) ids[i] = buf[i]!;
+  } else if (largura === 2) {
+    for (let i = 0; i < linhas; i++) ids[i] = buf.readUInt16LE(i * 2);
+  } else if (largura === 4) {
+    for (let i = 0; i < linhas; i++) ids[i] = buf.readInt32LE(i * 4);
+  } else {
+    throw new Error(`${onde}: largura de id ${largura} desconhecida (esperado 1, 2 ou 4).`);
+  }
+  return ids;
+}
+
+/** Uma coluna como ela sai do arquivo do formato 2. */
+interface ColunaEmDisco {
+  c: string;
+  w: number;
+  d: unknown[];
+  b: string;
+}
+
+/**
+ * O corpo do formato 2: uma linha por coluna, **na ordem do cabeçalho**.
+ *
+ * Está separado porque tem dois escritores — `escreve`, que materializa do banco,
+ * e `converteParaFormato2`, que migra um arquivo que já existe. Duas cópias deste
+ * laço seria a falha de sempre neste projeto: divergir não daria erro, daria valor
+ * trocado em um dos caminhos.
+ *
+ * `chave` existe porque os dois chegam aqui com a tabela nomeada de jeitos
+ * diferentes: `escreve` constrói a dele com o nome ORIGINAL da coluna e
+ * `leColunar` devolve a dele com o nome NORMALIZADO. O que vai para o disco é
+ * sempre `c.nome`, o original — é o cabeçalho que manda, não a tabela.
+ */
+function* corpoDoFormato2(
+  colunas: readonly ColunaDeSnapshot[],
+  tabela: TabelaColunar,
+  chave: (c: ColunaDeSnapshot) => string,
+): Generator<string> {
+  for (const c of colunas) {
+    const col = tabela.coluna(chave(c));
+    const largura = larguraDeId(col.valores.length);
+    const emDisco: ColunaEmDisco = {
+      c: c.nome,
+      w: largura,
+      d: col.valores.map((v) => codifica(v, c.tipo)),
+      b: idsParaBase64(col.ids, largura),
+    };
+    yield JSON.stringify(emDisco) + '\n';
+  }
+}
+
 export async function escreve(
   arquivo: string,
   cab: Omit<CabecalhoDeSnapshot, 'formato' | 'linhas' | 'colunas'>,
@@ -399,7 +647,7 @@ export async function escreve(
     return sha === undefined ? c : { ...c, daxSha: sha };
   });
   const cabecalho: CabecalhoDeSnapshot = {
-    formato: 1,
+    formato: FORMATO_ATUAL,
     ...cab,
     linhas: linhas.length,
     colunas: apuradas,
@@ -411,9 +659,24 @@ export async function escreve(
 
   function* texto() {
     yield JSON.stringify(cabecalho) + '\n';
+
+    // O dicionário é montado UMA VEZ, aqui, e vai para o disco pronto. É o trabalho
+    // que toda abertura do arquivo fazia de novo — 58,1% da carga. `ConstrutorDeTabela`
+    // é o mesmo que o carregamento usa, de propósito: se a codificação divergisse da
+    // decodificação, o erro seria valor trocado e não exceção.
+    const construtor = new ConstrutorDeTabela(
+      path.basename(arquivo),
+      apuradas.map((c) => c.nome),
+      linhas.length,
+    );
     for (const linha of linhas) {
-      yield JSON.stringify(apuradas.map((c) => codifica(linha[c.nome] ?? null, c.tipo))) + '\n';
+      construtor.poeLinha(apuradas.map((c) => linha[c.nome] ?? null));
     }
+    const tabela = construtor.fecha();
+
+    // Uma linha por coluna, na ORDEM do cabeçalho — a leitura confere as duas.
+    // `apuradas` nomeia a tabela aqui, porque foi com ela que o construtor subiu.
+    yield* corpoDoFormato2(apuradas, tabela, (c) => c.nome);
   }
 
   // O gerador é o mesmo nos dois caminhos — o gzip é um elo a mais no pipeline, e
@@ -461,9 +724,9 @@ export function leCabecalho(arquivo: string): CabecalhoDeSnapshot {
 }
 
 function confereFormato(cab: CabecalhoDeSnapshot, onde: string): CabecalhoDeSnapshot {
-  if (cab.formato !== 1) {
+  if (cab.formato !== 1 && cab.formato !== 2) {
     throw new Error(
-      `${onde}: formato de snapshot ${cab.formato}, esperado 1. ` +
+      `${onde}: formato de snapshot ${cab.formato}, esperado 1 ou 2. ` +
         `Rode 'npm run snapshot' de novo — ler com o decodificador errado dá valor errado, não erro.`,
     );
   }
@@ -506,6 +769,71 @@ function chavesNormalizadas(cab: CabecalhoDeSnapshot, onde: string): string[] {
  * invalidar arquivo já gravado, e é o que permite ao carregamento **adotar** as
  * linhas em vez de copiá-las — `adotaTabela` exige chave normalizada.
  */
+/**
+ * As colunas de um arquivo de **formato 2**, já decodificadas.
+ *
+ * É o leitor único dos dois caminhos: `le()` monta objetos a partir daqui e
+ * `leColunar()` monta a `TabelaColunar`. Um só corpo porque a alternativa — duas
+ * decodificações do mesmo arquivo — é a que diverge sem ninguém notar.
+ *
+ * **Omitir uma coluna aqui é de graça.** No formato 1 a projeção pulava o valor
+ * célula a célula, mas o `JSON.parse` da linha inteira já tinha acontecido; aqui a
+ * coluna omitida nem é decodificada.
+ */
+async function leColunas(
+  arquivo: string,
+  omitir?: ReadonlySet<string>,
+): Promise<{ cabecalho: CabecalhoDeSnapshot; colunas: ColunaColunar[] }> {
+  let cabecalho: CabecalhoDeSnapshot | null = null;
+  let chaves: string[] = [];
+  const colunas: ColunaColunar[] = [];
+  let k = 0;
+
+  await paraCadaLinha(arquivo, (texto) => {
+    if (texto === '') return;
+    if (cabecalho === null) {
+      cabecalho = confereFormato(JSON.parse(texto) as CabecalhoDeSnapshot, arquivo);
+      chaves = chavesNormalizadas(cabecalho, arquivo);
+      return;
+    }
+    const cab = cabecalho as CabecalhoDeSnapshot;
+    const declarada = cab.colunas[k];
+    const bruta = JSON.parse(texto) as ColunaEmDisco;
+    if (declarada === undefined) {
+      throw new Error(
+        `${arquivo}: veio a coluna '${bruta.c}' além das ${cab.colunas.length} do ` +
+          `cabeçalho. Arquivo inconsistente — apague e materialize de novo.`,
+      );
+    }
+    if (bruta.c !== declarada.nome) {
+      throw new Error(
+        `${arquivo}: a coluna ${k} do corpo é '${bruta.c}' e a do cabeçalho é ` +
+          `'${declarada.nome}'. Ler uma pela outra daria a coluna certa com o nome ` +
+          `errado — e nenhum erro depois disso.`,
+      );
+    }
+    const chave = chaves[k]!;
+    k++;
+    if (omitir?.has(chave)) return;
+    const onde = `${arquivo}[${bruta.c}]`;
+    colunas.push({
+      nome: chave,
+      valores: bruta.d.map((v) => decodifica(v, declarada.tipo, onde)),
+      ids: base64ParaIds(bruta.b, bruta.w, cab.linhas, onde),
+    });
+  });
+
+  if (cabecalho === null) throw new Error(`${arquivo}: arquivo vazio, sem cabeçalho.`);
+  const cab = cabecalho as CabecalhoDeSnapshot;
+  if (k !== cab.colunas.length) {
+    throw new Error(
+      `${arquivo}: cabeçalho diz ${cab.colunas.length} colunas e o corpo tem ${k}. ` +
+        `Arquivo truncado — apague e materialize de novo.`,
+    );
+  }
+  return { cabecalho: cab, colunas };
+}
+
 export async function le(
   arquivo: string,
   /**
@@ -517,10 +845,22 @@ export async function le(
    */
   omitir?: ReadonlySet<string>,
 ): Promise<{ cabecalho: CabecalhoDeSnapshot; linhas: Record<string, Escalar>[] }> {
-  const rl = readline.createInterface({
-    input: fluxoDeLeitura(arquivo),
-    crlfDelay: Infinity,
-  });
+  // O formato 2 guarda coluna, não linha: monta as linhas a partir dele. O `le()`
+  // continua devolvendo o mesmo objeto por linha, então nenhum chamador muda — é o
+  // que permite trocar o formato sem mexer em `carrega.ts` nem nas ferramentas.
+  if (leCabecalho(arquivo).formato === 2) {
+    const { cabecalho: cab, colunas } = await leColunas(arquivo, omitir);
+    const fora: Record<string, Escalar>[] = new Array(cab.linhas);
+    for (let i = 0; i < cab.linhas; i++) {
+      const linha: Record<string, Escalar> = {};
+      for (let j = 0; j < colunas.length; j++) {
+        const col = colunas[j]!;
+        linha[col.nome] = col.valores[col.ids[i]!]!;
+      }
+      fora[i] = linha;
+    }
+    return { cabecalho: cab, linhas: fora };
+  }
 
   let cabecalho: CabecalhoDeSnapshot | null = null;
   const linhas: Record<string, Escalar>[] = [];
@@ -530,22 +870,26 @@ export async function le(
   let entram: number[] = [];
   let n = 0;
 
-  for await (const texto of rl) {
-    if (texto === '') continue;
+  await paraCadaLinha(arquivo, (texto) => {
+    if (texto === '') return;
     if (cabecalho === null) {
       cabecalho = confereFormato(JSON.parse(texto) as CabecalhoDeSnapshot, arquivo);
       chaves = chavesNormalizadas(cabecalho, arquivo);
       entram = chaves.map((_, i) => i).filter((i) => !omitir?.has(chaves[i]!));
-      continue;
+      return;
     }
+    // `cabecalho` é `let` capturada por este fecho, então o estreitamento acima não
+    // sobrevive ao TypeScript aqui dentro. A afirmação é segura: a primeira linha é
+    // sempre o cabeçalho, e sem ele o `return` acima já teria saído.
+    const cab = cabecalho as CabecalhoDeSnapshot;
     n++;
     const valores = JSON.parse(texto) as unknown[];
     const linha: Record<string, Escalar> = {};
     for (const i of entram) {
-      linha[chaves[i]!] = decodifica(valores[i], cabecalho.colunas[i]!.tipo, `${arquivo}:${n}`);
+      linha[chaves[i]!] = decodifica(valores[i], cab.colunas[i]!.tipo, `${arquivo}:${n}`);
     }
     linhas.push(linha);
-  }
+  });
 
   if (cabecalho === null) throw new Error(`${arquivo}: arquivo vazio, sem cabeçalho.`);
   // A contagem é a única conferência barata de arquivo truncado — e truncado é o
@@ -558,4 +902,128 @@ export async function le(
     );
   }
   return { cabecalho, linhas };
+}
+
+/**
+ * O MESMO arquivo, lido para `TabelaColunar` em vez de um objeto por linha.
+ *
+ * **Existe ao lado de `le()`, não no lugar dela.** Enquanto as duas coexistem, dá
+ * para carregar o mesmo arquivo pelos dois caminhos e conferir célula a célula — é
+ * o que o teste diferencial faz, e é a única forma honesta de trocar a
+ * representação embaixo de um avaliador sem apostar. O mesmo papel que o
+ * interruptor `projetar: false` cumpre em `carrega.ts`.
+ *
+ * Tudo o que decide VALOR é compartilhado de propósito: `confereFormato`,
+ * `chavesNormalizadas`, `decodifica` e a conferência de truncamento são as mesmas
+ * chamadas. Se esta função tivesse a própria cópia de qualquer uma delas, as duas
+ * poderiam divergir sem ninguém notar — que é exatamente o que o diferencial
+ * deveria pegar, e não pegaria.
+ *
+ * O ganho medido por `npm run bench:colunar` sobre os arquivos reais: 3.378 MB de
+ * heap para as 23 tabelas como objeto, contra 324 MB como coluna (10,4x). A LEITURA
+ * é mais LENTA — 4.593 ms contra 2.802 ms em `field-agenda` —, porque montar o
+ * dicionário custa um `Map.get` por célula. Troca-se tempo de carga por memória e
+ * por varredura; a varredura é que paga, e ela vem depois.
+ */
+export async function leColunar(
+  arquivo: string,
+  /** Idem `le()`: colunas a não carregar, em nome normalizado. */
+  omitir?: ReadonlySet<string>,
+): Promise<{ cabecalho: CabecalhoDeSnapshot; tabela: TabelaColunar }> {
+  // **O caminho para o qual o formato 2 existe**: o dicionário já está no arquivo,
+  // então não há o que montar — as colunas entram na tabela como vieram.
+  if (leCabecalho(arquivo).formato === 2) {
+    const { cabecalho: cab, colunas } = await leColunas(arquivo, omitir);
+    const t = new TabelaColunar(cab.tabelas?.[0] ?? cab.query ?? arquivo, cab.linhas);
+    for (const col of colunas) t.poe(col);
+    return { cabecalho: cab, tabela: t };
+  }
+
+  let cabecalho: CabecalhoDeSnapshot | null = null;
+  let construtor: ConstrutorDeTabela | null = null;
+  let entram: number[] = [];
+  let n = 0;
+
+  await paraCadaLinha(arquivo, (texto) => {
+    if (texto === '') return;
+    if (cabecalho === null) {
+      cabecalho = confereFormato(JSON.parse(texto) as CabecalhoDeSnapshot, arquivo);
+      const chaves = chavesNormalizadas(cabecalho, arquivo);
+      entram = chaves.map((_, i) => i).filter((i) => !omitir?.has(chaves[i]!));
+      construtor = new ConstrutorDeTabela(
+        cabecalho.tabelas?.[0] ?? cabecalho.query ?? arquivo,
+        entram.map((i) => chaves[i]!),
+        cabecalho.linhas,
+      );
+      return;
+    }
+    // Idem `le()`: o fecho perde o estreitamento de `cabecalho`.
+    const cab = cabecalho as CabecalhoDeSnapshot;
+    n++;
+    const valores = JSON.parse(texto) as unknown[];
+    const vs: Escalar[] = new Array(entram.length);
+    for (let k = 0; k < entram.length; k++) {
+      const i = entram[k]!;
+      vs[k] = decodifica(valores[i], cab.colunas[i]!.tipo, `${arquivo}:${n}`);
+    }
+    construtor!.poeLinha(vs);
+  });
+
+  if (cabecalho === null) throw new Error(`${arquivo}: arquivo vazio, sem cabeçalho.`);
+  if (n !== cabecalho.linhas) {
+    throw new Error(
+      `${arquivo}: cabeçalho diz ${cabecalho.linhas} linhas e o arquivo tem ${n}. ` +
+        `Arquivo truncado — apague e materialize de novo.`,
+    );
+  }
+  return { cabecalho, tabela: construtor!.fecha() };
+}
+
+/**
+ * Converte um arquivo de **formato 1** para **formato 2**, sem tocar no original.
+ *
+ * **O cabeçalho atravessa inteiro; só `formato` muda.** É o ponto todo, e não um
+ * detalhe de implementação: a alternativa óbvia — `le()` e depois `escreve()` —
+ * NÃO é uma conversão. Ela reapura `tipo` e `nulos` a partir do dado (o tipo
+ * declarado é justamente o que este formato existe para não adivinhar de novo), e
+ * perde a grafia original de cada coluna, porque `le()` devolve chave normalizada
+ * e `DATA INSTALAÇÃO` voltaria ao disco como `data instalação`. Converter tem de
+ * mudar a REPRESENTAÇÃO e mais nada — inclusive `geradoEm`, que é a data do dado
+ * na tela, e `marca`, de onde a carga incremental recomeça.
+ *
+ * Escreve em `destino` e devolve o cabeçalho novo. Quem chama é que decide trocar
+ * um pelo outro, e só depois de conferir célula a célula — ver
+ * `tools/snapshot/src/converte.ts`.
+ */
+export async function converteParaFormato2(
+  origem: string,
+  destino: string,
+): Promise<CabecalhoDeSnapshot> {
+  const { cabecalho, tabela } = await leColunar(origem);
+  if (cabecalho.formato !== 1) {
+    throw new Error(
+      `${origem}: está no formato ${cabecalho.formato}, e esta conversão é de 1 para 2.`,
+    );
+  }
+  const novo: CabecalhoDeSnapshot = { ...cabecalho, formato: 2 };
+
+  const temp = `${destino}.parcial`;
+  fs.mkdirSync(path.dirname(temp), { recursive: true });
+  const comprime = destino.endsWith(SUFIXO_COMPRIMIDO);
+
+  function* texto() {
+    yield JSON.stringify(novo) + '\n';
+    // Normalizado: é assim que `leColunar` nomeia as colunas que devolve.
+    yield* corpoDoFormato2(novo.colunas, tabela, (c) => normalizeName(c.nome));
+  }
+
+  await (comprime
+    ? pipeline(texto(), zlib.createGzip(), fs.createWriteStream(temp))
+    : pipeline(texto(), fs.createWriteStream(temp, { encoding: 'utf8' })));
+
+  // Temp e rename como em `escreve`, pelo mesmo motivo: um destino meio escrito é
+  // um arquivo que carrega. O gêmeo de outro sufixo NÃO se apaga aqui — o destino
+  // é um encenado, e apagar o gêmeo dele apagaria o arquivo que ainda está servindo.
+  await renomeiaComRetentativa(temp, destino);
+  return novo;
 }

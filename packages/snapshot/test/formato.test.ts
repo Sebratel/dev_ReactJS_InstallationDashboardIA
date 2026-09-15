@@ -20,6 +20,7 @@ import {
   escreve,
   le,
   leCabecalho,
+  paraCadaLinha,
   semSufixo,
 } from '../src/formato.ts';
 
@@ -120,13 +121,35 @@ test('valor que não é escalar erra alto em vez de virar objeto no arquivo', ()
  * risco real de materializar 1,4 milhão de linhas. Sem esta conferência, a tabela
  * carregaria com menos linhas e todo total sairia menor, sem nada avisar.
  */
-test('arquivo truncado erra alto dizendo quantas linhas faltam', async () => {
+/**
+ * **No formato 2 o arquivo trunca por COLUNA, não por linha** — e são dois cortes
+ * diferentes, com dois guardas diferentes. O primeiro é o que o formato 1 também
+ * tinha: falta corpo. O segundo não existia e passou a existir: o corpo está lá e
+ * é CURTO, o que num arquivo de ids é a diferença entre erro e linha deslocada.
+ */
+test('coluna faltando erra alto dizendo quantas faltam', async () => {
+  const dir = tmp();
+  const arq = path.join(dir, 'q.jsonl');
+  await escreve(arq, CAB, ['n', 'c'], [{ n: 1, c: 'a' }, { n: 2, c: 'b' }]);
+  const linhas = fs.readFileSync(arq, 'utf8').split('\n');
+  // Cabeçalho + a primeira coluna; a segunda some.
+  fs.writeFileSync(arq, linhas.slice(0, 2).join('\n') + '\n');
+  await assert.rejects(() => le(arq), /diz 2 colunas e o corpo tem 1.*truncado/s);
+});
+
+test('bloco de ids curto erra alto — id faltando deslocaria a coluna inteira', async () => {
   const dir = tmp();
   const arq = path.join(dir, 'q.jsonl');
   await escreve(arq, CAB, ['n'], [{ n: 1 }, { n: 2 }, { n: 3 }]);
   const linhas = fs.readFileSync(arq, 'utf8').split('\n');
-  fs.writeFileSync(arq, linhas.slice(0, 3).join('\n') + '\n');
-  await assert.rejects(() => le(arq), /diz 3 linhas e o arquivo tem 2.*truncado/s);
+  const col = JSON.parse(linhas[1]!) as { b: string; w: number };
+  // Tira UM id do fim. Sem o guarda de tamanho, a coluna leria um id a menos e
+  // toda linha a partir dali receberia o valor da linha seguinte — sem erro nenhum.
+  const bytes = Buffer.from(col.b, 'base64');
+  col.b = bytes.subarray(0, bytes.length - col.w).toString('base64');
+  linhas[1] = JSON.stringify(col);
+  fs.writeFileSync(arq, linhas.join('\n'));
+  await assert.rejects(() => le(arq), /ids têm \d+ bytes para 3 linhas.*truncado ou corrompido/s);
 });
 
 test('formato de versão desconhecida erra alto e manda regerar', async () => {
@@ -134,10 +157,13 @@ test('formato de versão desconhecida erra alto e manda regerar', async () => {
   const arq = path.join(dir, 'q.jsonl');
   await escreve(arq, CAB, ['n'], [{ n: 1 }]);
   const linhas = fs.readFileSync(arq, 'utf8').split('\n');
-  linhas[0] = JSON.stringify({ ...JSON.parse(linhas[0]!), formato: 2 });
+  // 99, e não 2: o 2 passou a ser um formato VÁLIDO em 15/09/2026 (uma linha por
+  // coluna, já codificada por dicionário). O que este teste fixa é o guarda, não o
+  // número — ler com o decodificador errado dá valor errado, não erro.
+  linhas[0] = JSON.stringify({ ...JSON.parse(linhas[0]!), formato: 99 });
   fs.writeFileSync(arq, linhas.join('\n'));
-  assert.throws(() => leCabecalho(arq), /formato de snapshot 2, esperado 1.*npm run snapshot/s);
-  await assert.rejects(() => le(arq), /formato de snapshot 2/);
+  assert.throws(() => leCabecalho(arq), /formato de snapshot 99, esperado 1 ou 2.*npm run snapshot/s);
+  await assert.rejects(() => le(arq), /formato de snapshot 99/);
 });
 
 // ---------------------------------------------------------------------------
@@ -425,6 +451,82 @@ test('bytesDescomprimidos: no cru é o tamanho; no comprimido é o de dentro', a
   // É este o ponto: o arquivo em disco é uma fração, e a grandeza que prediz heap não é
   // ela. O teto de `npm run bench:carga` compara contra ISTO — se comparasse contra o
   // tamanho em disco, deixaria entrar o arquivo de que existe para se proteger.
-  assert.ok(fs.statSync(gz).size < fs.statSync(cru).size / 5, 'o gz não comprimiu?');
+  //
+  // **A folga era /5 e virou /1,5, porque o formato 2 já sai denso.** No formato 1
+  // as 20.000 linhas repetiam `"São Leopoldo"` 20.000 vezes e o gzip comia isso;
+  // aqui a cidade é UM valor no dicionário e o que sobra são ids em base64 e 20.000
+  // números distintos — pouco do que repetir. Medido: 189.173 → 84.709 bytes, 2,2x.
+  // A razão menor não é regressão: é o arquivo já ter feito parte do trabalho.
+  assert.ok(fs.statSync(gz).size < fs.statSync(cru).size / 1.5, 'o gz não comprimiu?');
   assert.equal(bytesDescomprimidos(gz), fs.statSync(cru).size);
+});
+
+// `paraCadaLinha` substituiu `readline` em 14/09/2026 (o `for await` por linha
+// custava 28% do tempo de entrega). Partir linha à mão tem três modos de errar em
+// silêncio, e são os três que estão fixados aqui.
+
+async function linhasDe(conteudo: string, comprimir = false): Promise<string[]> {
+  const dir = tmp();
+  const arq = path.join(dir, comprimir ? 'x.jsonl.gz' : 'x.jsonl');
+  fs.writeFileSync(arq, comprimir ? zlib.gzipSync(Buffer.from(conteudo, "utf8")) : Buffer.from(conteudo, "utf8"));
+  const out: string[] = [];
+  await paraCadaLinha(arq, (t) => out.push(t));
+  return out;
+}
+
+test('paraCadaLinha: LF, CRLF e ultima linha sem quebra no fim', async () => {
+  assert.deepEqual(await linhasDe('a' + '\n' + 'b' + '\n'), ['a', 'b']);
+
+  // CRLF: o `\r` fica FORA da linha. Deixá-lo passar faria todo `JSON.parse`
+  // receber um caractere a mais no fim — que ele tolera, e então ninguém notaria
+  // até uma comparação de texto falhar sozinha.
+  assert.deepEqual(await linhasDe('a' + '\r\n' + 'b' + '\r\n'), ['a', 'b']);
+
+  // Sem quebra no fim: a última linha não pode sumir. `escreve` sempre termina com
+  // quebra, mas arquivo editado à mão não tem essa obrigação.
+  assert.deepEqual(await linhasDe('a' + '\n' + 'b'), ['a', 'b']);
+
+  assert.deepEqual(await linhasDe(''), [], 'arquivo vazio nao entrega linha nenhuma');
+  assert.deepEqual(await linhasDe('\n'), [''], 'linha vazia existe, e quem pula e o chamador');
+});
+
+test('paraCadaLinha: CRLF partido na borda do pedaco se reencontra', async () => {
+  // O caso que só aparece em arquivo grande: o `\r` cai no fim de um pedaço e o
+  // `\n` abre o seguinte. Sem guardar o resto entre pedaços, a linha quebraria no
+  // lugar errado e o `\r` viraria conteúdo. 400 mil linhas passam de qualquer
+  // tamanho de pedaço que o Node use.
+  const n = 400_000;
+  const conteudo = Array.from({ length: n }, (_, i) => 'linha' + i).join('\r\n') + '\r\n';
+  const linhas = await linhasDe(conteudo);
+  assert.equal(linhas.length, n);
+  assert.equal(linhas[0], 'linha0');
+  assert.equal(linhas[n - 1], 'linha' + (n - 1));
+  assert.ok(!linhas.some((l) => l.includes('\r')), 'nenhum \\r sobreviveu');
+});
+
+test('paraCadaLinha: ' + '\\u2028' + ' no dado passa inteiro -- readline partia a linha', async () => {
+  // A diferença de comportamento documentada em `paraCadaLinha`, e ela CONSERTA um
+  // defeito. `JSON.stringify` escapa `\n` e `\r` dentro de texto, mas NÃO escapa
+  // `\u2028`/`\u2029`. Um valor de cliente que os contenha ia cru para o disco;
+  // `readline` quebrava a linha ali no meio e a leitura morria com "arquivo
+  // truncado", apontando para o lugar errado.
+  const valor = 'antes' + '\u2028' + 'depois';
+  const json = JSON.stringify([valor]);
+  assert.ok(json.includes('\u2028'), 'JSON.stringify nao escapa U+2028 -- se passar a escapar, este teste perde a razao');
+
+  const linhas = await linhasDe(json + '\n');
+  assert.equal(linhas.length, 1, 'a linha nao pode ter sido partida');
+  assert.deepEqual(JSON.parse(linhas[0]!), [valor]);
+});
+
+test('paraCadaLinha: o caminho comprimido entrega as mesmas linhas que o cru', async () => {
+  // `fluxoDeLeitura` decide pelos BYTES, e o `setEncoding` é quem cuida do
+  // caractere UTF-8 partido na borda do pedaço. Um acento cortado ao meio viraria
+  // U+FFFD — valor errado, sem erro.
+  const conteudo = Array.from({ length: 50_000 }, (_, i) => JSON.stringify(['Instalacao', 'Sao Leopoldo', 'acentuacao ' + i])).join('\n') + '\n';
+  const cru = await linhasDe(conteudo, false);
+  const gz = await linhasDe(conteudo, true);
+  assert.deepEqual(gz, cru);
+  assert.equal(cru.length, 50_000);
+  assert.ok(cru.every((l) => (JSON.parse(l) as string[])[1] === 'Sao Leopoldo'));
 });
