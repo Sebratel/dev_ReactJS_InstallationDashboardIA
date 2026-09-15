@@ -9038,8 +9038,27 @@ São **310 passos M em 25 queries** — e **8 delas não têm `sql:` nenhum**:
 | `apuracao-premiacao` | Google Sheets | 5 |
 | `feriados` | inline | 3 |
 | `hora-atualizado` | computed | 9 |
-| `gestores-equipes` | odbc, mas sem `sql:` | 9 |
-| `backlog-agendado-futuro` | odbc, mas sem `sql:` | 4 |
+| `gestores-equipes` | odbc, **tem `sql:`** — ver correção abaixo | 9 |
+| `backlog-agendado-futuro` | odbc, **tem `sql:`** — ver correção abaixo | 4 |
+
+> **Correção, 15/09/2026 — as duas últimas linhas estavam erradas.** As duas queries
+> **têm** `sql:`, as duas em `dbMaria`:
+>
+> ```
+> gestores-equipes.spec.yaml:7        SELECT it.* FROM DB_Applicattion.Installation_Teams AS it
+> backlog-agendado-futuro.spec.yaml:7 SELECT *FROM DB_Applicattion.Backlog_Schedules AS bs
+> ```
+>
+> O que elas não têm é **SQL com trabalho dentro**: as duas são `SELECT *` de uma
+> tabela só, então os 9 e os 4 passos de M não estão ali por falta de camada SQL —
+> estão porque ninguém empurrou nada para dentro dela. Isso as move da coluna "não dá
+> para empurrar" para a coluna "dá, e é barato": são duas tabelas pequenas (95.710 e
+> 34.294 linhas) cujo SQL é uma linha, e reescrever essa linha não precisa de golden
+> contra o banco real do jeito que `protocolos-geral` precisa.
+>
+> O total de 8 queries sem `sql:` cai para **6**, e todas as 6 são o que o parágrafo
+> seguinte diz: planilha, API HTTP, inline e computed — essas de fato não têm para
+> onde empurrar.
 
 Uma planilha e uma API HTTP **não têm camada SQL para onde empurrar trabalho**. Enquanto
 três planilhas e o `open-meteo` alimentarem o modelo, alguma coisa precisa fazer
@@ -9625,3 +9644,144 @@ pergunta que `npm run bench:colunar-paridade` responde, agora ao alcance de um `
 > em lote fica em objeto" parecia cobrir `tools/paginas`; o motivo escrito logo abaixo
 > ("é ela que GRAVA") só cobria o materializador. Duas frases, dois escopos diferentes,
 > e quem lê rápido junta os dois.
+
+---
+
+## #119 — O `gunzip` entregava o snapshot em 4.033 pedaços de 16 KB, e a régua que mediria isso tinha três defeitos
+
+**Data:** 15/09/2026
+
+`DECISAO-DESEMPENHO.md` apontava: *"a próxima medida honesta é sobre `io`, que virou a
+maior fatia (41,8%)"*. Fui medir, e a primeira coisa que a medição achou foi a régua.
+
+### Os três defeitos da escada
+
+**1. `e1io` media o `io` sem o utf-8.** Ele iterava `fluxoDeLeitura` sem `setEncoding`,
+e num arquivo comprimido o pedaço chega como `Buffer` — então o degrau media disco +
+gunzip, e a decodificação utf-8 inteira era cobrada do degrau seguinte, que se chama
+`linhas`. A legenda do `io` sempre disse *"e decodificar utf-8"*: ela descrevia o ramo
+do arquivo **cru**, que nenhum snapshot em disco usa desde que a compressão entrou.
+Medido em `field-agenda.jsonl.gz`: 225 ms como `Buffer` contra 338 ms como texto.
+
+**2. `decodif` era um degrau fantasma no formato 2.** `e4cDecodifica` só existia na
+forma do formato 1 — `JSON.parse(texto) as unknown[]` e `valores[i]` —, e a linha do
+formato 2 é um **objeto** `{c,w,d,b}`. Toda célula decodificava `undefined`. A coluna
+saía `decodif 0,00`, e o trabalho real caía no degrau de baixo.
+
+Isto refuta uma frase do plano: os **23,9% do `dicion` não eram o `ConstrutorDeTabela`
+do bench** — no formato 2, `leColunar` nem chega a instanciá-lo (faz `new TabelaColunar`
++ `poe`, O(1) por coluna). Consertado, os 23,9% se partem em `decodif` 15,3% e `dicion`
+14,0%, e os dois são custo de produção.
+
+**3. O modo `--paginas` chamava `carrega` sem `colunar`.** Era o #118 sobrevivendo
+dentro do mesmo arquivo: os degraus mediam colunar e a carga ponta a ponta, impressa na
+mesma saída, media objeto.
+
+### E a régua se acusou sozinha no meio do conserto
+
+Escrito o novo `e4c` com `new Array(n)` e escrita indexada, ele ficou **mais caro que o
+e5c** — que faz tudo o que ele faz e mais os ids — e as duas notas de *"a réplica
+divergiu de `leColunar()`"* apareceram na saída. `new Array(n)` nasce HOLEY no V8 e cada
+escrita paga a transição; `leColunas` usa `map`, cujo resultado sai empacotado. Trocado
+por `map`, as notas sumiram e o total da escada caiu de 1.591 para 1.288 ms.
+
+**A checagem `e5 < e4` funcionou exatamente como foi desenhada para funcionar**, e o que
+ela pegou não foi o código de produção: fui eu.
+
+### O alvo, depois de nomeado direito
+
+```
+io       43,3%   (dizia 41,8%, e faltava o utf-8)
+parse    17,8%
+decodif  15,3%   (dizia 0,00)
+dicion   14,0%   (dizia 23,9%)
+linhas    3,9%
+```
+
+Composição do `io` nesta máquina: **gunzip 75,4%, utf-8 20,7%, disco 3,9%.** Disco não é
+o problema, e nunca foi.
+
+### Os três consertos
+
+**a) A coluna omitida pagava o `JSON.parse` da linha inteira.** O comentário de
+`leColunas` promete que *"a coluna omitida nem é decodificada"*, e era verdade pela
+metade: o `d` e o `b` não viravam valor nem id, mas o parse já tinha acontecido — e no
+formato 2 a linha de uma coluna é o **dicionário inteiro dela**. Em produção `carrega`
+omite 45 das 107 colunas.
+
+A conferência de nome não podia cair junto, porque ler uma coluna pela outra dá a coluna
+certa com o nome errado e nenhum erro depois disso. Ela virou um teste de **prefixo**,
+exato porque `corpoDoFormato2` serializa `{c,w,d,b}` por literal de objeto, nessa ordem,
+e é o único escritor deste corpo.
+
+**b) O mesmo cabeçalho era inflacionado três vezes por tabela.**
+`preservaEspecieDeJuncao` já lê o cabeçalho de toda tabela do plano e guarda num `Map`;
+o laço relia cada um para `omissiveis`, e `leColunar` relia uma terceira vez só para
+escolher o caminho pelo `formato`. Cada leitura é um `gunzipSync` de 128 KB — 30,3 ms
+para uma passada nos 30 arquivos, e o relatório são 54 cargas de tabela.
+
+**c) O `chunkSize` do zlib.** `fluxoDeLeitura` abria os dois fluxos sem opção nenhuma, e
+os padrões do Node são 64 KB no `fs` e **16 KB no zlib**. Quem entrega o texto de um
+`.gz` é o `gunzip`, então o que mandava era o 16 KB:
+
+```
+64 KB fs / 16 KB zlib (padrão) .... 139 ms   4.033 pedaços
+1 MB fs  / 16 KB zlib ............. 134 ms   3.926 pedaços
+64 KB fs / 1 MB zlib ..............  96 ms     176 pedaços
+1 MB fs  / 1 MB zlib ..............  87 ms      69 pedaços   −37%
+4 MB fs  / 4 MB zlib ..............  80 ms      17 pedaços
+```
+
+Subir o `fs` sozinho não faz quase nada; subir o zlib faz quase tudo. O custo que some é
+o `for await` por pedaço — **o mesmo custo que tirou o `readline` de `paraCadaLinha`**,
+uma camada acima, no dia anterior. A mesma falha, duas camadas, dois dias.
+
+### A armadilha que quase deixou quatro testes verdes e vazios
+
+`test/para-cada-linha.test.ts` fixava `65536` à mão e construía os quatro casos de
+**borda** a partir dele — `\r` na borda, linha maior que o pedaço, multibyte partido,
+`.gz`. Subir o pedaço para 1 MB os deixaria passando e **sem tocar em borda nenhuma**:
+enchimento de 64 KB no meio de um pedaço de 1 MB não atravessa nada.
+
+Teste que passa por ter parado de testar é pior que teste que falha, porque ninguém
+volta a olhar. A constante virou `PEDACO_DE_LEITURA`, exportada de `formato.ts`, e o
+teste a importa.
+
+> Nota de quem escreveu: o `65536` estava comentado como *"o pedaço padrão de
+> `fs.createReadStream`"* — e nem isso era verdade para os arquivos que a suíte lê, que
+> são `.gz` e chegam pelo `gunzip`, cujo padrão é 16 KB. Um número mágico com um
+> comentário errado ao lado é mais perigoso que um número mágico sozinho.
+
+### O resultado, e onde isto para
+
+```
+npm run paginas, 14 páginas, colunar
+
+carga ..... 4.734 ms  ->  2.895 ms     -38,8%
+cálculo .. 14.808 ms  -> 13.595 ms
+```
+
+A/B do (c) sozinho: 8 pares com a ordem alternada, venceu em 7 — a única perda foi o
+par 1, com a máquina fria; dos pares 3 ao 8 são 6/6, mediana 3.744 → 2.820 ms, −24,7%.
+`npm test` 1924/1924 em cada passo, e os **306 SHAs das 14 páginas idênticos** aos de
+antes nos dois commits de produção.
+
+**Na escada, o `io` ainda é 37,1% — acima do portão de 25% que o plano tinha escrito. E
+o portão estava medindo a fatia errada.** A carga inteira é hoje **17,6% do relógio**,
+então 37,1% dela são 6,5% do total. O que sobrou do `io` também é trabalho intrínseco —
+descomprimir e decodificar —, não desperdício. `zstd` e um formato 3 ficam registrados
+como **não recomendados**: mudam o formato do arquivo para disputar 6,5%.
+
+### A lição
+
+> **Uma fatia percentual só significa alguma coisa junto com o denominador dela.** "O
+> `io` é 41,8%" foi verdadeiro e útil enquanto a carga era o número grande. Ficou
+> verdadeiro e **inútil** no instante em que a carga caiu para 17,6% do relógio — e
+> nada na frase avisa quando isso aconteceu. Um portão de decisão escrito em % de uma
+> fatia é um portão que se abre sozinho.
+
+> **Quando dois números discordam, o mais provável é que a régua esteja errada — e ela
+> tem três lugares para estar errada: o que mede, o que NÃO mede, e o que o rótulo diz
+> que ela mede.** Aqui foram os três de uma vez, e o mais caro foi o terceiro: o `io`
+> tinha a legenda certa sobre o laço errado, e o `decodif` tinha o laço certo para um
+> formato que não existe mais.
