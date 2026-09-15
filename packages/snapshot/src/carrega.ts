@@ -245,11 +245,17 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   for (const t of tabelas) {
     if (t.query === null) continue;
     const arquivo = arquivoDaQuery(opts.dir, t.query);
+    // `preservaEspecieDeJuncao` já leu este cabeçalho, logo acima, para toda tabela
+    // do plano. O `??` não é defesa contra o mapa estar errado — é contra ele estar
+    // INCOMPLETO, o que só aconteceria se as duas varreduras passassem a divergir no
+    // que pulam; nesse dia o custo volta a ser o de antes, e não o número muda.
+    const cabecalhoEmDisco =
+      juncao.cabecalhos.get(normaliza(t.nome)) ?? leCabecalho(arquivo);
     const fora = usadas === null
       ? []
       : omissiveis(
           t.nome,
-          leCabecalho(arquivo).colunas.map((c) => c.nome),
+          cabecalhoEmDisco.colunas.map((c) => c.nome),
           usadas,
           opts.model,
           sobDemandaLiberada(t.nome, opts.model.sobDemanda, liberadas),
@@ -268,7 +274,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     let linhas: Record<string, Escalar>[];
 
     if (opts.colunar) {
-      const lido = await leColunar(arquivo, semColuna);
+      const lido = await leColunar(arquivo, semColuna, cabecalhoEmDisco.formato);
       cabecalho = lido.cabecalho;
       conferaColunasCalculadas(modelo, cabecalho, t.query, opts.dir);
       // A conversão de tipo acontece AQUI, no dicionário, antes de existir linha
@@ -298,7 +304,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
         );
       }
     } else {
-      const lido = await le(arquivo, semColuna);
+      const lido = await le(arquivo, semColuna, cabecalhoEmDisco.formato);
       cabecalho = lido.cabecalho;
       conferaColunasCalculadas(modelo, cabecalho, t.query, opts.dir);
       // Aplicado ANTES da conversão: o overlay já entrega `Date` de verdade (o driver
@@ -404,6 +410,23 @@ export interface PreservacaoDeJuncao {
   suprimir: Set<string>;
   /** O que foi preservado, em texto — vai para `Carregado.juncoesPreservadas`. */
   notas: string[];
+  /**
+   * O cabeçalho de cada tabela do plano, por nome normalizado — **já lido**, e por
+   * isso devolvido.
+   *
+   * Esta função abre e inflaciona o cabeçalho de toda tabela do plano antes do laço
+   * de carga, e o laço lia cada um de novo: uma vez para `omissiveis` e outra dentro
+   * de `leColunar`, que precisa do `formato` para escolher o caminho. Eram **três
+   * leituras do mesmo cabeçalho por tabela**, e num arquivo comprimido cada uma
+   * custa um `gunzipSync` de 128 KB — 30,3 ms para uma passada nos 30 arquivos do
+   * snapshot, medido em 15/09/2026.
+   *
+   * Devolver o mapa não é cache: é parar de jogar fora o que já está na mão. Não há
+   * janela de invalidação a gerenciar, porque o mapa nasce e morre dentro de uma
+   * chamada de `carrega` — um arquivo trocado por baixo no meio dela (é o que o
+   * `grao_reduzido` faz entre chamadas) continua sendo visto pela leitura seguinte.
+   */
+  cabecalhos: Map<string, CabecalhoDeSnapshot>;
 }
 
 /**
@@ -474,7 +497,7 @@ export function preservaEspecieDeJuncao(
     }
   }
 
-  return { suprimir, notas };
+  return { suprimir, notas, cabecalhos };
 }
 
 /**

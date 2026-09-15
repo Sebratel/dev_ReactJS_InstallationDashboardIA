@@ -798,23 +798,47 @@ async function leColunas(
     }
     const cab = cabecalho as CabecalhoDeSnapshot;
     const declarada = cab.colunas[k];
-    const bruta = JSON.parse(texto) as ColunaEmDisco;
     if (declarada === undefined) {
+      const excedente = (JSON.parse(texto) as ColunaEmDisco).c;
       throw new Error(
-        `${arquivo}: veio a coluna '${bruta.c}' além das ${cab.colunas.length} do ` +
+        `${arquivo}: veio a coluna '${excedente}' além das ${cab.colunas.length} do ` +
           `cabeçalho. Arquivo inconsistente — apague e materialize de novo.`,
-      );
-    }
-    if (bruta.c !== declarada.nome) {
-      throw new Error(
-        `${arquivo}: a coluna ${k} do corpo é '${bruta.c}' e a do cabeçalho é ` +
-          `'${declarada.nome}'. Ler uma pela outra daria a coluna certa com o nome ` +
-          `errado — e nenhum erro depois disso.`,
       );
     }
     const chave = chaves[k]!;
     k++;
-    if (omitir?.has(chave)) return;
+    // **A coluna omitida não chega a ser parseada.** O comentário acima promete que
+    // "a coluna omitida nem é decodificada", e era verdade pela metade: o `d` e o
+    // `b` não viravam valor nem id, mas o `JSON.parse` da linha INTEIRA já tinha
+    // acontecido — e no formato 2 a linha de uma coluna é o dicionário inteiro dela,
+    // megabytes em `field-agenda`. Em produção `carrega` omite 45 das 107 colunas
+    // (`colunasUsadas`), então era quase metade do `JSON.parse` do snapshot gasto
+    // para montar um objeto e descartá-lo no `return` da linha seguinte.
+    //
+    // O que se perde ao não parsear é a conferência de nome, e ela NÃO pode cair:
+    // ler uma coluna pela outra daria a coluna certa com o nome errado, sem erro
+    // depois disso. Por isso a conferência vira um teste de PREFIXO, e ele é exato —
+    // `corpoDoFormato2` serializa `{c,w,d,b}` por literal de objeto, nessa ordem, e
+    // é o único escritor deste corpo. Se a ordem das chaves mudar lá, este prefixo
+    // para de bater e a leitura erra alto aqui, que é o lugar certo para errar.
+    if (omitir?.has(chave)) {
+      if (!texto.startsWith(`{"c":${JSON.stringify(declarada.nome)},"w":`)) {
+        throw new Error(
+          `${arquivo}: a coluna ${k - 1} do corpo não abre com o nome '${declarada.nome}' ` +
+            `que o cabeçalho declara. Ler uma pela outra daria a coluna certa com o ` +
+            `nome errado — e nenhum erro depois disso.`,
+        );
+      }
+      return;
+    }
+    const bruta = JSON.parse(texto) as ColunaEmDisco;
+    if (bruta.c !== declarada.nome) {
+      throw new Error(
+        `${arquivo}: a coluna ${k - 1} do corpo é '${bruta.c}' e a do cabeçalho é ` +
+          `'${declarada.nome}'. Ler uma pela outra daria a coluna certa com o nome ` +
+          `errado — e nenhum erro depois disso.`,
+      );
+    }
     const onde = `${arquivo}[${bruta.c}]`;
     colunas.push({
       nome: chave,
@@ -844,11 +868,13 @@ export async function le(
    * inteiro, para quem precisa saber o que ficou de fora.
    */
   omitir?: ReadonlySet<string>,
+  /** Idem `leColunar`: só o `formato`, para quem já leu o cabeçalho. */
+  formatoConhecido?: number,
 ): Promise<{ cabecalho: CabecalhoDeSnapshot; linhas: Record<string, Escalar>[] }> {
   // O formato 2 guarda coluna, não linha: monta as linhas a partir dele. O `le()`
   // continua devolvendo o mesmo objeto por linha, então nenhum chamador muda — é o
   // que permite trocar o formato sem mexer em `carrega.ts` nem nas ferramentas.
-  if (leCabecalho(arquivo).formato === 2) {
+  if ((formatoConhecido ?? leCabecalho(arquivo).formato) === 2) {
     const { cabecalho: cab, colunas } = await leColunas(arquivo, omitir);
     const fora: Record<string, Escalar>[] = new Array(cab.linhas);
     for (let i = 0; i < cab.linhas; i++) {
@@ -929,10 +955,22 @@ export async function leColunar(
   arquivo: string,
   /** Idem `le()`: colunas a não carregar, em nome normalizado. */
   omitir?: ReadonlySet<string>,
+  /**
+   * O `formato` do cabeçalho, quando quem chama **já o leu**.
+   *
+   * É só o número, e de propósito: o cabeçalho que vale continua sendo o que sai do
+   * fluxo, parseado por `leColunas`/`le` na primeira linha — passar o objeto inteiro
+   * convidaria alguém a usá-lo no lugar daquele, e um cabeçalho velho descrevendo um
+   * arquivo novo daria coluna certa com contagem errada. O que se evita aqui é
+   * apenas a escolha de caminho, que custa um `gunzipSync` de 128 KB no arquivo
+   * comprimido: `carrega` chega aqui com o cabeçalho na mão desde
+   * `preservaEspecieDeJuncao`, e sem isto o lia pela terceira vez.
+   */
+  formatoConhecido?: number,
 ): Promise<{ cabecalho: CabecalhoDeSnapshot; tabela: TabelaColunar }> {
   // **O caminho para o qual o formato 2 existe**: o dicionário já está no arquivo,
   // então não há o que montar — as colunas entram na tabela como vieram.
-  if (leCabecalho(arquivo).formato === 2) {
+  if ((formatoConhecido ?? leCabecalho(arquivo).formato) === 2) {
     const { cabecalho: cab, colunas } = await leColunas(arquivo, omitir);
     const t = new TabelaColunar(cab.tabelas?.[0] ?? cab.query ?? arquivo, cab.linhas);
     for (const col of colunas) t.poe(col);
