@@ -87,7 +87,6 @@ function parseArgs(argv: string[]): Args {
     else if (k === '--paridade') a.paridade = true;
     else if (k === '--grava') a.grava = true;
     else if (k === '--refaz') a.refaz = true;
-    else if (k === '--refaz') a.refaz = true;
     else if (k === '--lote') a.lote = Math.max(1, Number.parseInt(v, 10) || LOTE_PADRAO);
     else if (k === '--ajuda' || k === '-h') { console.log(AJUDA); process.exit(0); }
     else if (arg.startsWith('--')) { console.error(`Argumento desconhecido: ${arg}`); process.exit(2); }

@@ -61,7 +61,6 @@ import type { Connector, ResolvedQuery } from '../../../packages/query-engine/sr
 import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
 import { runQueries, usaFonteExterna } from '../../../packages/transform-engine/src/runner.ts';
 import { isTable } from '../../../packages/transform-engine/src/value.ts';
-import { isTable } from '../../../packages/transform-engine/src/value.ts';
 import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts';
 import { argvDoFilho, ErroDeArgumento, parseArgs, type Args } from './args.ts';
 
@@ -82,51 +81,27 @@ const MARCA = '##MRUN##';
 const FORA_DO_ESCOPO = new Set<string>();
 
 // ------------------------------------------------------------------ argumentos
-interface Args {
-  only: string[];
-  all: boolean;
-  colunas: boolean;
-  passos: boolean;
-  memoria: number | null;
-  emProcesso: boolean;
-  /** Modo filho: roda exatamente esta query e imprime uma linha de JSON. */
-  one: string | null;
+// **`Args` e `parseArgs` moram em `args.ts`, e aqui havia uma segunda cópia deles.**
+// Foi a restauração `0aae15c` que a trouxe de volta, e ela era a versão ANTERIOR à
+// extração — sem `segundos`, que é o `--timeout=`. O arquivo não carregava:
+// `SyntaxError: Identifier 'parseArgs' has already been declared`, porque a linha 65
+// importa o mesmo nome. E se tivesse carregado seria pior — o resto deste arquivo lê
+// `args.segundos` (linhas 211 e 422), que a cópia velha não define: o
+// `statement_timeout` viraria `NaN` em vez de errar.
+//
+// `npm run run:mlayer` ficou **onze dias sem arrancar** por causa disso, e a suíte não
+// pegou porque `test:mlayer` exercita `args.ts`, não este arquivo. Quem pega agora é
+// `tools/validate/test/linha-duplicada.test.ts`.
+let args: Args;
+try {
+  args = parseArgs(process.argv.slice(2));
+} catch (e) {
+  // `parseArgs` **lança** em vez de matar o processo, para poder ser testada. Quem
+  // encerra é aqui, que é o único lugar deste programa que sabe que é um CLI.
+  if (!(e instanceof ErroDeArgumento)) throw e;
+  console.error(e.message);
+  process.exit(2);
 }
-
-function parseArgs(argv: string[]): Args {
-  const args: Args = {
-    only: [],
-    all: false,
-    colunas: false,
-    passos: false,
-    memoria: null,
-    emProcesso: false,
-    one: null,
-  };
-  for (const raw of argv) {
-    if (raw === '--all') args.all = true;
-    else if (raw === '--colunas') args.colunas = true;
-    else if (raw === '--passos') args.passos = true;
-    else if (raw === '--em-processo') args.emProcesso = true;
-    else if (raw.startsWith('--only=')) {
-      args.only = raw.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean);
-    } else if (raw.startsWith('--one=')) args.one = raw.slice('--one='.length);
-    else if (raw.startsWith('--memoria=')) {
-      const n = Number.parseInt(raw.slice('--memoria='.length), 10);
-      if (!Number.isFinite(n) || n < 256) {
-        console.error('--memoria espera MB (mínimo 256)');
-        process.exit(2);
-      }
-      args.memoria = n;
-    } else {
-      console.error(`argumento desconhecido: ${raw}`);
-      process.exit(2);
-    }
-  }
-  return args;
-}
-
-const args = parseArgs(process.argv.slice(2));
 
 // ------------------------------------------------------------------ catálogo
 const registry = QueryRegistry.fromSpecsDir(path.join(ROOT, 'specs'));

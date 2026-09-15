@@ -17,8 +17,6 @@ import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
 import { applyDotEnv, loadConfig } from '../../../packages/query-engine/src/config.ts';
 import { explicaErroSheets } from '../../../packages/query-engine/src/connectors-gsheets.ts';
-import { explicaErroSheets } from '../../../packages/query-engine/src/connectors-gsheets.ts';
-import { explicaErroSheets } from '../../../packages/query-engine/src/connectors-gsheets.ts';
 import {
   SCOPE_DRIVE_METADATA_READONLY,
   SCOPE_SHEETS_READONLY,
