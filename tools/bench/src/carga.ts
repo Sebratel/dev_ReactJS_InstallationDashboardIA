@@ -43,7 +43,7 @@
 //   npm run bench:carga -- --arquivo=contratos   # só estes (aceita lista)
 //   npm run bench:carga -- --pesado              # inclui field-agenda (1 GB, ~8 GB de heap)
 //   npm run bench:carga -- --repete=5            # melhor de N por degrau (padrão 3)
-//   npm run bench:carga -- --colunar             # a escada do caminho que RODA
+//   npm run bench:carga -- --objeto              # a escada do caminho ANTIGO (a API usa colunar)
 //   npm run bench:carga -- --paginas             # carga ponta a ponta, por página
 //   npm run bench:carga -- --paginas --pagina=diario-instalacao
 //   npm run bench:carga -- --json                # a mesma medição, para guardar
@@ -103,16 +103,25 @@ const json = args.includes('--json');
 const pesado = args.includes('--pesado');
 const modoPaginas = args.includes('--paginas');
 /**
- * Medir o caminho COLUNAR, que é o que roda em produção.
+ * Medir o caminho COLUNAR, que é o que roda em produção. **É o padrão.**
  *
- * **A escada de objeto estava descrevendo um carregamento que a API não faz mais.**
+ * **A escada de objeto descreve um carregamento que a API não faz mais.**
  * `servidor.ts` e `worker-calculador.ts` carregam com `colunar: true` desde 13/09;
  * `le()` só sobrevive no caminho de objeto, que hoje existe para a paridade. Uma
  * decomposição do caminho errado não é um detalhe: em 14/09/2026 ela dizia
  * `monta 31,8%` e `parse 6,2%`, e foi com esses números que a decisão sobre trocar
  * o formato do arquivo quase foi tomada.
+ *
+ * ⚠ **Isto já estava escrito aqui, e o padrão continuava em objeto.** Era meia
+ * correção: o aviso ficava no arquivo e a resposta errada continuava sendo a que
+ * sai quando alguém roda o comando sem ler o arquivo — que é como um comando é
+ * rodado. Em 15/09/2026 o mesmo defeito reapareceu em `tools/paginas` (achado
+ * #118) e custou um perfil inteiro apontando para um gargalo que a API não tem.
+ *
+ * `--colunar` continua aceito e não faz nada, para não quebrar quem o escreveu;
+ * `--objeto` é a saída para quem quer o outro lado.
  */
-const modoColunar = args.includes('--colunar');
+const modoColunar = !args.includes('--objeto');
 const lista = (prefixo: string): string[] =>
   args
     .filter((a) => a.startsWith(prefixo))
@@ -123,7 +132,7 @@ const paginasPedidas = lista('--pagina=');
 const repete = Number(args.find((a) => a.startsWith('--repete='))?.slice('--repete='.length) ?? 3);
 
 for (const a of args) {
-  const ok = ['--json', '--pesado', '--paginas', '--colunar'].includes(a) ||
+  const ok = ['--json', '--pesado', '--paginas', '--colunar', '--objeto'].includes(a) ||
     ['--arquivo=', '--pagina=', '--repete='].some((p) => a.startsWith(p));
   if (!ok) {
     console.error(`argumento desconhecido: ${a}`);
