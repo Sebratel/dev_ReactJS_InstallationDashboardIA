@@ -82,7 +82,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Quatro coisas que este README chegou a descrever não existem no repositório**: SSE em `/api/events/stream`, `useFilterStore`, o ramo de data ISO no `filtro-url.ts` e o pré-aquecimento por Ano/Mês. Elas existiam numa árvore não commitada, e foram documentadas a partir dela — o que é o erro que este arquivo mais tenta evitar. **A linha só volta quando o código voltar** | ⚠️ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**1910 testes verdes** (medido em 15/09/2026). Nenhum deles precisa de credencial, e
+**1924 testes verdes** (medido em 15/09/2026). Nenhum deles precisa de credencial, e
 nenhum precisa de build. A auditoria de 27/08 apontava uma discrepância que continua
 aberta: a árvore pré-reset de 26/08 marcava **1438 com 4 falhando** contra 1357, e os
 ~81 de diferença foram acrescentados dentro de arquivos que existem — falta
@@ -631,7 +631,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (1910 testes, sem credencial)
+npm test                              # suíte completa (1924 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)

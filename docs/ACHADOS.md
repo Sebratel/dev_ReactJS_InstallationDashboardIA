@@ -9452,3 +9452,87 @@ Medidas isoladas, as três perdas viraram ganho ou empate — `protocolos-detalh
 > Aqui o vazamento foi por JIT e GC, e o sinal que ele produziu era forte e consistente —
 > 0/4 em duas páginas. A regra que sobra é simples: quando A e B trocam de estado por
 > algum canal, **cada medida no seu processo**, ou não é medida.
+
+---
+
+## #117 — Tirei três alocações por linha do laço mais quente da página mais cara e não ganhei nada
+
+**Data:** 15/09/2026
+
+Depois do #116, o perfil de `agendamento-field` mudou de dono: `enumeraCombinacoes`
+passou a liderar com **18,1% do tempo próprio**. Fui atrás.
+
+### O que parecia — e era mesmo — desperdício
+
+```ts
+for (const linha of base.filter.rowsOf(plano.ancora)) {
+  guarda(chaves.map((c, j) => projetaNivel(c, leitores[j]!(linha), onde)), linha);
+}
+```
+
+Por linha da âncora isto aloca **três objetos**: um fecho novo (a seta captura `linha`,
+então não dá para içá-la), o array que o `map` devolve, e — dentro de `chaveDeValores` —
+um segundo array, do `valores.map(identityKey)`. Três objetos para produzir uma string.
+E os grupos são muito menos que as linhas, então quase todos eram descartados sem
+ninguém ler. O ramo de tabela única **já evitava isso**, e o comentário dele diz por quê.
+
+Troquei por um `Array` reusado, com `slice()` só quando o grupo é novo, e a chave
+concatenada sem o array intermediário. Zero alocação por linha.
+
+### O resultado
+
+```
+agendamento-field, isolada, 4 pares com ordem alternada
+  sem   5064  5621  4890  5265     média 5.210 ms
+  com   4965  5292  5076  5560     média 5.223 ms
+  2 de 4 pares
+```
+
+**Nada.** Dentro do ruído, e do lado errado dele na média.
+
+### Por que isso não é surpresa, e por que eu tentei assim mesmo
+
+É a **terceira** confirmação nesta campanha da mesma lei: no V8, *alocação efêmera não é
+o custo; trabalho repetido é*. Objeto que morre jovem sai no primeiro *scavenge* e o
+coletor nem copia — é quase de graça, e o perfil que mostra 11,1% em `(garbage
+collector)` não está dizendo que esses três objetos custam caro.
+
+O contraste com o #116, no mesmo arquivo e no mesmo laço, é o que dá a regra:
+
+| | o que era | ganho |
+|---|---|---|
+| #116 | remontar a **chave de um memo** por linha — normalizar dois nomes e hashear uma string nova para achar algo pronto | **+29,3%, 4/4** |
+| #117 | alocar três objetos jovens por linha | **nada, 2/4** |
+
+Os dois são "por linha". Um é repetir uma **resposta que já se tinha**; o outro é gerar
+lixo. Só o primeiro paga.
+
+**E tentei assim mesmo de propósito:** o perfil apontava 18,1% ali, e "eu já sei que
+alocação não custa" é exatamente o tipo de convicção que precisa continuar sendo medida.
+O custo de descobrir foi uma tarde; o custo de *não* descobrir seria este parágrafo não
+existir, e alguém tentar de novo daqui a um mês.
+
+### O que ficou
+
+O laço voltou ao `map`, que é mais claro — e levou junto a nota do que foi medido e
+recusado, com o número, na própria linha onde a ideia ocorre. O que sobreviveu da
+empreitada é o que se sustenta sem ganho de tempo:
+
+- **`SEPARADOR_DE_CHAVE`**, uma constante. O formato da chave de combinação estava
+  escrito com o literal `' '` em três lugares, e três cópias de um literal é como uma
+  muda sozinha e dois grupos que deviam ser o mesmo viram dois — com um número menor em
+  cada, na tela, sem erro.
+- **`packages/widget-engine/test/grupos-chave.test.ts`** (14 testes): as duas formas de
+  montar a chave concordam, inclusive em zero valores, um valor, `BLANK` no meio, e os
+  dois casos que tornam o separador seguro — `['a b']` não pode colidir com `['a','b']`.
+- O comentário de `leitorDaChave` estava **órfão sobre a função errada**
+  (`leitorDeIdentidadeDaChave`), desde antes desta sessão. Num projeto em que comentário
+  é carga, isso não é cosmético.
+
+### A lição
+
+> **Um perfil diz onde o tempo está, não o que é removível.** `enumeraCombinacoes` com
+> 18,1% era verdade; a conclusão "logo, tirar as alocações dali ganha tempo" era palpite.
+> A pergunta que separa as duas é *qual pedaço daqueles 18% é trabalho que já foi feito
+> antes?* — e a resposta aqui era: nenhum. **Percentual alto é permissão para investigar,
+> nunca resposta sobre o que fazer.**

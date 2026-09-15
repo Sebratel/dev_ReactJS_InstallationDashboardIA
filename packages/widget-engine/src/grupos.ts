@@ -51,23 +51,6 @@ export function valorDaChave(chave: Chave, linha: Row, ev: Evaluator, onde: stri
 }
 
 /**
- * Um leitor de UMA chave, para quem vai aplicá-la a muitas linhas.
- *
- * `valorDaChave` normaliza o nome da tabela e o da coluna a cada célula, e os dois
- * laços que mais a chamam têm a chave FIXA: o `keep` de um filtro de grupo (uma
- * linha por vez, a tabela inteira) e a enumeração de combinações do eixo. Esta
- * fábrica tira a normalização de dentro deles; ver `Evaluator.leitorDeColuna`.
- *
- * Perfilado em 14/09/2026 na página `instalacao-reincidente` — a mais cara das 14,
- * e 74% dela num só visual de tabela que cruza três entidades: `normalizeName`
- * custava 483 ms, dos quais **423 ms vinham de `columnValue` por baixo daqui**.
- *
- * `valorDaChave` continua existindo e agora passa por aqui. Para uma leitura só o
- * fecho é desperdício, mas é desperdício de uma alocação — e ter dois corpos de
- * projeção de nível seria uma segunda resposta possível para `março`, que é
- * exatamente o que o comentário de `projetaNivel` existe para impedir.
- */
-/**
  * O mesmo que `leitorDaChave`, mas entregando a CHAVE DE IDENTIDADE.
  *
  * Para chave crua (o caso comum — sem nível) isto é `Evaluator.leitorDeIdentidade`
@@ -85,6 +68,23 @@ export function leitorDeIdentidadeDaChave(
   return (linha: Row): string => identityKey(ler(linha));
 }
 
+/**
+ * Um leitor de UMA chave, para quem vai aplicá-la a muitas linhas.
+ *
+ * `valorDaChave` normaliza o nome da tabela e o da coluna a cada célula, e os dois
+ * laços que mais a chamam têm a chave FIXA: o `keep` de um filtro de grupo (uma
+ * linha por vez, a tabela inteira) e a enumeração de combinações do eixo. Esta
+ * fábrica tira a normalização de dentro deles; ver `Evaluator.leitorDeColuna`.
+ *
+ * Perfilado em 14/09/2026 na página `instalacao-reincidente` — a mais cara das 14,
+ * e 74% dela num só visual de tabela que cruza três entidades: `normalizeName`
+ * custava 483 ms, dos quais **423 ms vinham de `columnValue` por baixo daqui**.
+ *
+ * `valorDaChave` continua existindo e agora passa por aqui. Para uma leitura só o
+ * fecho é desperdício, mas é desperdício de uma alocação — e ter dois corpos de
+ * projeção de nível seria uma segunda resposta possível para `março`, que é
+ * exatamente o que o comentário de `projetaNivel` existe para impedir.
+ */
 export function leitorDaChave(
   chave: Chave,
   ev: Evaluator,
@@ -282,7 +282,7 @@ export function prepara(
     const filtros = chaves.flatMap((c, i) =>
       filtrosDaChave(c, preparos[i]!, valores[i]!, alvos[i]!, i, plano, base, ev, onde),
     );
-    const combinacao = combinacoes.get(alvos.join(' '));
+    const combinacao = combinacoes.get(alvos.join(SEPARADOR_DE_CHAVE));
     if (!combinacao || filtros.length === 0) return filtros;
     combinacao.materializacao ??= {
       marca: {},
@@ -488,7 +488,9 @@ function enumeraCombinacoes(
         k = unica(linha);
       } else {
         k = identidades[0]!(linha);
-        for (let i = 1; i < identidades.length; i++) k += ` ${identidades[i]!(linha)}`;
+        for (let i = 1; i < identidades.length; i++) {
+          k += SEPARADOR_DE_CHAVE + identidades[i]!(linha);
+        }
       }
       const achada = combinacoes.get(k);
       if (achada) achada.linhas.push(linha);
@@ -516,6 +518,24 @@ function enumeraCombinacoes(
   const leitores = chaves.map((c, i) =>
     plano.navegador.leitorDeValor(plano.caminhos[i]!, c.tabela, c.coluna),
   );
+
+  // ⚠ **MEDIDO E RECUSADO (15/09/2026): trocar este `map` por um buffer reusado.**
+  //
+  // Este laço aloca, por linha da âncora, um FECHO novo (a seta captura `linha`, então
+  // não dá para içá-la), o array que o `map` devolve, e — dentro de `chaveDeValores` —
+  // um segundo array. Três objetos por linha para produzir uma string, quase todos
+  // descartados sem ninguém ler, num laço que o perfil apontava com 18,1% do tempo
+  // próprio da página mais cara. Parecia o alvo óbvio.
+  //
+  // A versão com um `Array` reusado e a chave concatenada sem intermediário deu
+  // **2 de 4 pares, 5.210 ms contra 5.223 ms** em `agendamento-field` — ou seja, nada.
+  // É a terceira confirmação nesta campanha da mesma lei: no V8 **alocação efêmera não
+  // é o custo; trabalho repetido é**. O que o `indice` por caminho preparado ganhou
+  // (+29,3%, 4/4) era repetição de verdade — remontar a chave de um memo por linha.
+  // Isto aqui é só lixo de geração jovem, e o coletor o trata como tal.
+  //
+  // Fica o `map`, que é mais claro. Se alguém voltar a esta linha com a mesma ideia:
+  // ela foi tentada, e o número está aqui.
   for (const linha of base.filter.rowsOf(plano.ancora)) {
     guarda(
       chaves.map((c, j) => projetaNivel(c, leitores[j]!(linha), onde)),
@@ -525,7 +545,27 @@ function enumeraCombinacoes(
   return combinacoes;
 }
 
-/** A chave de identidade de uma combinação de valores. */
-function chaveDeValores(valores: readonly DaxValue[]): string {
-  return valores.map(identityKey).join(' ');
+/**
+ * O que separa uma chave de identidade da seguinte dentro da chave de combinação.
+ *
+ * **Existe como constante porque a chave é montada em três lugares** — `filtrosDe`
+ * (que já tem as identidades calculadas), o laço de tabela única e o laço com âncora
+ * (os dois últimos concatenam sem array intermediário, por custo). Três cópias de um
+ * literal é como uma delas muda sozinha e dois grupos que deviam ser o mesmo passam a
+ * ser dois, sem erro nenhum — com um número menor em cada, na tela.
+ *
+ * Não é preciso ser um separador impossível nos valores: `identityKey` já distingue
+ * `"a b"` de `"a"` e `"b"` pelo tipo que carrega na chave.
+ */
+const SEPARADOR_DE_CHAVE = ' ';
+
+/**
+ * A chave de identidade de uma combinação de valores.
+ *
+ * É a definição de referência do formato. Os dois laços quentes montam a mesma string
+ * sem o array intermediário do `map`; `grupos-chave.test.ts` afirma que as três formas
+ * concordam.
+ */
+export function chaveDeValores(valores: readonly DaxValue[]): string {
+  return valores.map(identityKey).join(SEPARADOR_DE_CHAVE);
 }
