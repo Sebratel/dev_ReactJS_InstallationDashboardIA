@@ -35,9 +35,8 @@
 // chave errada é melhor do que não aquecer nenhuma.
 
 import { codificaFiltro, filtrosRecentes } from '../../../packages/widget-engine/src/index.ts';
-import { idsIniciais } from '../../../tools/layout/src/corte-eager.ts';
+import { idsIniciais, idsRestantes } from '../../../tools/layout/src/corte-eager.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
-
 
 /** O intervalo padrão entre duas conferidas do carimbo. */
 export const INTERVALO_PADRAO_MS = 5_000;
@@ -204,7 +203,7 @@ export class Aquecedor {
       }
 
       // **O carimbo pode ter mudado no meio.** Um refresh que termina durante o
-      // aquecimento deixaria tudo o que acabou de ser calculado inalcançável, e o
+      // aquecimento deixaria tudo o que acabou de ser calculated inalcançável, e o
       // aquecedor iria dormir achando que fez o serviço. Não marcar como aquecido é
       // o que faz a próxima conferida recomeçar.
       const agora = this.#carimbo();
@@ -239,18 +238,19 @@ export class Aquecedor {
   }
 
   /**
-   * Os ids que a abertura real vai pedir eager, ou `null` se não deu para saber. Nunca
-   * lança: uma falha aqui cai de volta para a URL sem `?visual=` em `#aquece`, não
-   * derruba o laço de aquecimento inteiro.
+   * Os ids de layout divididos em eager (abertura) e restantes (abaixo da dobra), ou `null`.
    */
-  async #idsEager(pagina: string): Promise<string[] | null> {
+  async #idsDoLayout(pagina: string): Promise<{ eager: string[]; restantes: string[] } | null> {
     try {
       const r = await this.#buscar(
         `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}/layout`,
       );
       if (!r.ok) return null;
       const layout = (await r.json()) as LayoutSpec;
-      return idsIniciais(layout);
+      return {
+        eager: idsIniciais(layout),
+        restantes: idsRestantes(layout),
+      };
     } catch {
       return null;
     }
@@ -259,7 +259,8 @@ export class Aquecedor {
   async #aquece(pagina: string): Promise<PaginaAquecida> {
     const t0 = this.#agora();
     try {
-      const idsEager = await this.#idsEager(pagina);
+      const layoutInfo = await this.#idsDoLayout(pagina);
+      const idsEager = layoutInfo?.eager;
       const url =
         idsEager && idsEager.length > 0
           ? `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}?` +
@@ -303,10 +304,6 @@ export class Aquecedor {
 
       // Se a página tem layout eager e filtros padrão (mês fechado ou ano corrente),
       // aquece também a chave com filtros, que é exatamente a que o navegador pede.
-      // **O padrão E os períodos anteriores.** Antes daqui só o recorte de
-      // abertura era adiantado, e trocar de mês — a interação mais comum do
-      // relatório — caía sempre na primeira vez: ~1,6 s, contra 2–3 ms quando
-      // a mesma combinação já foi pedida. Ver `filtrosRecentes`.
       if (idsEager && idsEager.length > 0) {
         for (const filtros of filtrosRecentes(pagina)) {
           const qFiltros = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
@@ -315,15 +312,29 @@ export class Aquecedor {
             const rFiltrada = await this.#buscar(urlFiltrada);
             await rFiltrada.arrayBuffer();
           } catch {
-            // Ignora falha em filtro secundário: o recorte de abertura já foi
-            // aquecido acima, e um mês anterior que falhe custa a primeira
-            // visita, não a página.
+            // Ignora falha em filtro secundário
           }
         }
       }
 
+      // Aquece também os visuais que ficam abaixo do corte eager (abaixo da dobra).
+      // Quando o usuário rolar a página até o fim, as chamadas a `?visual=:id` já encontram
+      // resposta pronta no cache (HIT em 2ms), zerando a espera.
+      if (layoutInfo?.restantes && layoutInfo.restantes.length > 0) {
+        for (const id of layoutInfo.restantes) {
+          try {
+            const rRestante = await this.#buscar(
+              `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}?visual=${encodeURIComponent(id)}`,
+            );
+            await rRestante.arrayBuffer();
+          } catch {
+            // Ignora falha de aquecimento individual de fundo
+          }
+        }
+      }
 
       const ms = this.#agora() - t0;
+
 
       if (r.status !== 200) {
         this.#anuncia(`[aquecedor]   ${pagina}: HTTP ${r.status} em ${(ms / 1000).toFixed(1)}s`);

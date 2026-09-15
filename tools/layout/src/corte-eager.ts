@@ -88,3 +88,17 @@ export function idsIniciais(layout: LayoutSpec): string[] {
     .flatMap((f) => f.colunas.map((c) => c.visual));
   return [...kpis, ...segmentacoes, ...faixas];
 }
+
+/**
+ * Os ids dos visuais que ficam abaixo do corte eager (abaixo da dobra).
+ * Permite ao aquecedor pré-carregar os visuais restantes em segundo plano,
+ * garantindo resposta instantânea ao rolar a página até o fim.
+ */
+export function idsRestantes(layout: LayoutSpec): string[] {
+  const eagerSet = new Set(idsIniciais(layout));
+  const kpis = layout.kpis.map((k) => k.visual);
+  const faixas = layout.faixas.flatMap((f) => f.colunas.map((c) => c.visual));
+  const todos = [...kpis, ...faixas];
+  return todos.filter((id) => !eagerSet.has(id));
+}
+
