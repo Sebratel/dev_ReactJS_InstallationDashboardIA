@@ -9459,6 +9459,12 @@ Medidas isoladas, as três perdas viraram ganho ou empate — `protocolos-detalh
 
 **Data:** 15/09/2026
 
+> **Refeito na régua certa (#118), e o resultado MUDOU de sinal.** A medição abaixo
+> está em armazenamento de objeto; a API usa colunar. Em colunar o buffer não empata —
+> ele **perde 8,4% em 4 de 4 pares** (`map` 4.767 ms contra `buffer` 5.168 ms). A
+> conclusão "não ganha" sobrevive e fica mais forte, mas o "2 de 4, dentro do ruído"
+> não vale: o número bom é o de colunar, e está no comentário de `grupos.ts`.
+
 Depois do #116, o perfil de `agendamento-field` mudou de dono: `enumeraCombinacoes`
 passou a liderar com **18,1% do tempo próprio**. Fui atrás.
 

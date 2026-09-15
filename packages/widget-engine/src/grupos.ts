@@ -527,15 +527,27 @@ function enumeraCombinacoes(
   // descartados sem ninguém ler, num laço que o perfil apontava com 18,1% do tempo
   // próprio da página mais cara. Parecia o alvo óbvio.
   //
-  // A versão com um `Array` reusado e a chave concatenada sem intermediário deu
-  // **2 de 4 pares, 5.210 ms contra 5.223 ms** em `agendamento-field` — ou seja, nada.
-  // É a terceira confirmação nesta campanha da mesma lei: no V8 **alocação efêmera não
-  // é o custo; trabalho repetido é**. O que o `indice` por caminho preparado ganhou
-  // (+29,3%, 4/4) era repetição de verdade — remontar a chave de um memo por linha.
-  // Isto aqui é só lixo de geração jovem, e o coletor o trata como tal.
+  // A versão com um `Array` reusado e a chave concatenada sem intermediário é **PIOR**,
+  // em `agendamento-field`, 4 pares com ordem alternada:
   //
-  // Fica o `map`, que é mais claro. Se alguém voltar a esta linha com a mesma ideia:
-  // ela foi tentada, e o número está aqui.
+  //     map     4774  4714  4821  4759     média 4.767 ms
+  //     buffer  5052  5180  5136  5305     média 5.168 ms      4/4 para o `map`
+  //
+  // Não é empate: o buffer perde 8,4%, nos quatro pares. A leitura mais provável é que
+  // o array do `map` nasce empacotado e morre jovem — o coletor o varre sem copiar —
+  // enquanto o buffer é um objeto VELHO reescrito a cada linha, e escrever ponteiro em
+  // objeto velho custa barreira de escrita e trabalho de geração antiga.
+  //
+  // Confirmação da mesma lei, pela terceira vez nesta campanha: no V8 **alocação
+  // efêmera não é o custo; trabalho repetido é**. O que o caminho preparado ganhou
+  // (+33,1%, 4/4) era repetição de verdade — remontar a chave de um memo por linha.
+  //
+  // ⚠ A primeira medição disto deu "2 de 4, empate" e estava no armazenamento ERRADO
+  // (objeto; a API usa colunar — achado #118). Refeita na régua certa, virou perda
+  // clara. **O número acima é o que vale.**
+  //
+  // Fica o `map`, que é mais claro E mais rápido. Se alguém voltar a esta linha com a
+  // mesma ideia: ela foi tentada duas vezes, e os números estão aqui.
   for (const linha of base.filter.rowsOf(plano.ancora)) {
     guarda(
       chaves.map((c, j) => projetaNivel(c, leitores[j]!(linha), onde)),
