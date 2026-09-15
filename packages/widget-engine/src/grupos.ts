@@ -278,6 +278,17 @@ export function prepara(
     // e era calculada uma vez para cada um. Medido em 14/09/2026 nas 14 páginas,
     // `identityKey` gastava 666 ms chamada de `filtrosDaChave` e mais 507 ms de
     // `chaveDeValores`, sobre exatamente os mesmos valores.
+    //
+    // ⚠ **Não tente memoizar este `map` pela identidade do array `valores`.**
+    // `Grupo.valores` É o mesmo objeto que `Combinacao.valores`, nunca copiado, então
+    // a identidade é de fato estável ao longo do laço da matriz — e é exatamente por
+    // isso que a ideia ocorre a quem passa por aqui. Ela já foi tentada em quatro
+    // variantes e medida em 15/09/2026: [ACHADOS](../../../docs/ACHADOS.md) **#109,
+    // RESULTADO NEGATIVO**. A melhor delas semeava o memo no nascimento da combinação
+    // e chegou a **100,0% de acerto** — e mesmo assim o A/B sobre 11 pares deu 6 a 5.
+    // Um cara ou coroa. O motivo: `identityKey` já é um `Map.get` no caso comum, e
+    // trocá-lo por um `WeakMap.get` mais duas leituras de propriedade é trocar hash
+    // por hash. O achado fecha com *"ninguém precisa tentar isto de novo"*.
     const alvos = valores.map(identityKey);
     const filtros = chaves.flatMap((c, i) =>
       filtrosDaChave(c, preparos[i]!, valores[i]!, alvos[i]!, i, plano, base, ev, onde),

@@ -9785,3 +9785,111 @@ como **não recomendados**: mudam o formato do arquivo para disputar 6,5%.
 > que ela mede.** Aqui foram os três de uma vez, e o mais caro foi o terceiro: o `io`
 > tinha a legenda certa sobre o laço errado, e o `decodif` tinha o laço certo para um
 > formato que não existe mais.
+
+---
+
+## #120 — O próximo alvo, dimensionado: 1,75 milhão de chaves de 163,6 caracteres montadas para descobrir, em 62% dos casos, que o grupo já existia
+
+**Data:** 15/09/2026
+
+Fechada a frente `io` (#119), a carga virou 17,6% do relógio e o cálculo, 82%. Este
+achado **não implanta nada** — ele mede o alvo seguinte e deixa o desenho decidido,
+porque a metade cara deste trabalho é a medição, e a outra metade mexe no **formato da
+chave de agrupamento**, que é onde errar não dá erro.
+
+### O perfil, em colunar (a régua certa — #118)
+
+`agendamento-field` sozinha, `--cpu-prof`. Cálculo 4.657 ms, dos quais 3 `tableEx`
+concentram 3.895 ms (84%).
+
+| self | % | função |
+|---:|---:|---|
+| 1.277 ms | 20,6% | `enumeraCombinacoes` @ `grupos.ts:456` |
+| 636 ms | 10,3% | `(garbage collector)` — não é função, e o #117 já registrou que % aqui não quer dizer que o lixo custe caro |
+| 394 ms | 6,4% | fecho de `leitorDeColuna` @ `evaluator.ts:354` |
+| 384 ms | 6,2% | `identityKey` @ `value.ts:291` |
+| 321 ms | 5,2% | `filtrosDe` @ `grupos.ts:275` |
+
+Inclusivo: `enumeraCombinacoes` **2.534 ms, 51,6% do cálculo da página**.
+
+**A régua estava certa desta vez:** o atalho do dicionário de
+`Evaluator.leitorDeIdentidade` dispara em **78,5%** das chamadas, contra os
+**0 de 47.767.560** que o #118 pegou em modo objeto. `identityKey` cai para 6,2% do
+perfil, contra os 14,3% do artefato.
+
+### O que já está fechado, e não deve ser proposto de novo
+
+| alvo | achado | veredito |
+|---|---|---|
+| laço da **âncora**, tirar as 3 alocações por linha | **#117** | NEGATIVO, e refeito em colunar: perde 8,4%, 4/4 |
+| remontar chave de memo por linha no `Navegador` | **#116** | positivo, **já implantado** (+33,1% nesta página) |
+| memoizar `valores.map(identityKey)` em `filtrosDe` | **#109** | NEGATIVO, 4 variantes, *"ninguém precisa tentar isto de novo"* |
+| fecho de `leitorDeColuna` | — | já está em **16,6 ns/chamada**, dos quais 7,1 ns são o acessor da vista colunar. Não há ordem de grandeza a ganhar |
+
+O #117 diz, com todas as letras, que *"o ramo de tabela única já evitava isso"* — ele
+nunca foi o sujeito de experimento nenhum. **É o que sobra aberto.**
+
+### O alvo, contado (não amostrado)
+
+Contador instrumentado no ramo de tabela única com **mais de uma** chave, 14 páginas:
+
+```
+chamadas ...................... 20
+linhas varridas ........ 1.753.980
+combinações distintas .... 663.019      (maior chamada: 147.566)
+taxa de acerto ............. 62,2%
+comprimento médio da chave . 163,6 caracteres
+chaves por chamada ......... [5,6,3,2,3,5,3,8,16,2,2,2,3,2,3,3,3,3,31,23]
+```
+
+São **1,75 milhão de strings de ~164 caracteres** montadas por concatenação, cada uma
+achatada e hasheada por um `Map.get`, para descobrir em **62% dos casos** que a
+combinação já existia.
+
+**E o custo é de trabalho repetido, não de alocação** — que é o teste que matou o #117.
+As parcelas saem do dicionário **internadas**, então já têm hash em cache no V8; a
+concatenação joga esse hash fora e produz uma string nova por linha, que o `Map.get`
+precisa achatar e rehashear. É a assinatura do #116 (remontar por linha a chave de um
+memo), não a do #117.
+
+### O desenho, e a alternativa que a medição REFUTOU
+
+A ideia óbvia — **`Map` aninhado**, uma camada por chave, descendo pelas strings
+internadas — ganha bonito num ensaio de 5 chaves (2,7x) e **está fora**. Duas das 20
+chamadas têm **31 e 23 chaves**, e 663.019 combinações distintas: seriam até 1,5 milhão
+de `Map` intermediários vivos. Memória é exatamente o que a mudança colunar comprou
+(3.378 → 324 MB); gastá-la de volta aqui é desfazer o trabalho.
+
+O que sobra é **encurtar a chave, não trocar a estrutura**: uma tabela de internamento
+por coluna, por chamada, dando um inteiro pequeno a cada identidade distinta, e a chave
+da combinação virando um caractere por parte (`String.fromCharCode`). Troca-se *montar,
+achatar e hashear 164 caracteres* por *K `Map.get` em strings com hash em cache, mais
+uma string de K caracteres*. Ensaiado sobre a forma real: **−35%** no laço, mesmo no
+pior caso, em que toda linha é uma combinação nova e a inserção domina.
+
+Estimativa sobre o relógio TOTAL (16.490 ms): **−3,0% a −4,2%**.
+
+### Por que isto não foi implantado hoje, e não é falta de tempo
+
+**O formato da chave é um contrato entre duas funções.** `enumeraCombinacoes` a
+escreve e `filtrosDe` a lê — `combinacoes.get(alvos.join(SEPARADOR_DE_CHAVE))` —, e as
+duas precisariam passar a codificar igual, compartilhando as tabelas de internamento. O
+ramo da âncora, que hoje entra pelo `chaveDeValores`, teria de vir junto: **duas
+codificações no mesmo `Map` seriam um defeito calado**.
+
+E calado é a palavra. Uma chave de agrupamento errada não levanta exceção: ela junta
+linhas que não deviam se juntar, ou separa as que deviam, e devolve **um número menor e
+plausível**. É a classe de falha que este repositório recusa por escrito. Implantar
+isso pede o protocolo inteiro a cada passo — `npm run paginas:shas` com os 306 SHAs
+conferidos por `diff`, A/B em processos separados com 4 pares de ordem alternada, em
+colunar — e não a cauda de uma sessão que já mexeu na carga.
+
+### A lição
+
+> **Dimensionar o alvo é metade do trabalho, e é a metade que não estraga nada se
+> estiver errada.** Foram dois ensaios sintéticos descartados antes de o terceiro
+> servir: o primeiro gerou 1.800 combinações onde o real tem 663.019, e o segundo fez
+> toda linha ser distinta. Os dois teriam autorizado o `Map` aninhado — que os números
+> reais (31 chaves, 663 mil combinações) refutam por memória. **A cardinalidade do
+> ensaio é parte do ensaio**, do mesmo jeito que o modo de armazenamento é parte da
+> régua (#118).
