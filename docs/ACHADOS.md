@@ -9893,3 +9893,166 @@ colunar — e não a cauda de uma sessão que já mexeu na carga.
 > reais (31 chaves, 663 mil combinações) refutam por memória. **A cardinalidade do
 > ensaio é parte do ensaio**, do mesmo jeito que o modo de armazenamento é parte da
 > régua (#118).
+
+---
+
+## #121 — Três ferramentas não rodavam há onze dias, e a suíte não tinha como saber
+
+**Data:** 15/09/2026
+
+Fui medir a camada M para começar a migração dos 158 passos de M para SQL (#112), e **a
+ferramenta que mede a camada M não arranca**. Não dá resultado errado: morre no
+carregamento do módulo, antes da primeira linha de código.
+
+### Uma causa, três programas, quatro formas
+
+O commit `0aae15c` — *"restaurar 100% do estado e desenvolvimento do dia 26"* — colou
+pedaços de duas versões diferentes por cima dos mesmos arquivos.
+
+| programa | o que a restauração fez | efeito |
+|---|---|---|
+| `run:mlayer` | `import { isTable }` duas vezes | SyntaxError |
+| `run:mlayer` | cópia **inline** de `Args`/`parseArgs`, a versão anterior à extração | SyntaxError |
+| `run:mlayer` | `queryDependencies` em uso, `import` sumiu | ReferenceError |
+| `run:mlayer` | bloco de 31 e de 17 linhas duplicado | saída repetida |
+| `probe:gsheets` | `import { explicaErroSheets }` três vezes | SyntaxError |
+| `probe:gsheets` | bloco de 74 linhas três vezes | 3 redeclarações |
+| `probe:gsheets` | bloco de credencial da versão **pré-OAuth** | ReferenceError |
+| `powerbi` | 3 funções chamadas e **nunca trazidas** | ReferenceError |
+| `powerbi` | `else if (k === '--refaz')` duas vezes | ramo morto |
+
+A cópia inline de `parseArgs` é a pior, e não pelo SyntaxError: era a versão **anterior
+à extração** para `args.ts`, sem o campo `segundos`. Se tivesse carregado, o resto do
+arquivo lê `args.segundos` e o `statement_timeout` viraria `NaN` — em silêncio. O
+`--timeout=` documentado no cabeçalho do próprio arquivo não existia no parser que ele
+usava.
+
+`planoDeAgregacao`, `agregacaoComJanela` e `refDeColuna` **não existem em commit
+nenhum**: a restauração trouxe as chamadas sem as definições. Reescritas em `janela.ts`,
+ao lado das irmãs de medida.
+
+### Por que nada disso apareceu por onze dias
+
+`npm test` não carregava nenhum desses arquivos. `test:mlayer` exercita
+`tools/mrun/src/args.ts` — o módulo extraído, testado, correto — e **não** o `index.ts`
+que morria. A suíte estava verde o tempo todo, e estava certa: ela nunca afirmou nada
+sobre aqueles arquivos.
+
+E havia sintoma visível que ninguém leu: a saída do `run:mlayer` imprimia *"── Onde o
+tempo vai ──"* **duas vezes**. Eu mesmo li essa saída nesta sessão, capturei o número
+que queria e segui adiante. Quem lê uma saída longa não conta seções.
+
+### A rede nova, e o que ela deliberadamente NÃO faz
+
+`tools/validate/test/codigo-carrega.test.ts` roda o `tsc` sobre os 371 arquivos e
+reprova **quatro** diagnósticos, todos da família *"este código não pode rodar"*:
+
+```
+TS2304  Cannot find name .......... nome usado, nunca importado nem declarado
+TS2300  Duplicate identifier ...... o mesmo nome declarado duas vezes
+TS2451  Cannot redeclare .......... idem, para const/let
+TS2305  No exported member ........ importa nome que o módulo não exporta
+```
+
+Erro de **tipo** não reprova nada. O repositório é strip-only de propósito e não tem
+`tsconfig.json`; o teste monta um em disco temporário, fora da árvore, e não cobra do
+projeto uma disciplina que ele não adotou. Cobra só que o arquivo consiga executar.
+Custa 420 ms.
+
+> **Por que um verificador de tipos e não um `import()` de fumaça:** carregar um CLI
+> executa o CLI — ele lê `process.argv`, abre pool de banco e escreve em disco. E dois
+> dos quatro defeitos nem são de carregamento: são `ReferenceError` dentro de funções
+> que só rodam contra o banco de verdade. Nenhum teste de fumaça razoável chegaria lá.
+
+### O TS2305 entrou por medição, e é a parte que vale guardar
+
+Ao conferir que o teste **reprova** o defeito original, a primeira tentativa reverteu só
+**metade** dele — o `import` novo com o módulo velho — e **o teste passou**. Meia
+reversão não dá *"cannot find name"*, dá *"no exported member"*, que o filtro não tinha.
+Depois de incluído, conferido contra as quatro formas do dano, uma a uma: reprova as
+quatro. E achou de quebra um import errado que ninguém via — `EngineEvent` pedido a
+`types.ts`, onde nunca esteve (mora em `engine.ts`); era `import type`, então o Node
+apagava a linha antes de ligar o módulo.
+
+### A lição
+
+> **Um teste que você não viu falhar não é um teste, é uma opinião.** A versão inicial
+> deste passava tanto no código consertado quanto no quebrado, e eu teria commitado as
+> duas coisas juntas — o conserto e a rede furada — com a consciência tranquila de quem
+> viu verde. Só reprovar o defeito ORIGINAL, inteiro, prova alguma coisa.
+
+> **Cobertura não se mede em número de testes, mas em arquivos que alguém carrega.**
+> 1.924 testes verdes conviveram onze dias com três programas que não arrancavam. O
+> ponto cego não era um ramo do código: era o arquivo inteiro, e ele estava do lado de
+> fora da suíte — do jeito mais invisível possível, porque o módulo VIZINHO tinha teste.
+
+---
+
+## #122 — Duas colunas de `visao-geral` estão 100% vazias porque a fonte parou de ser alimentada em julho de 2025
+
+**Data:** 15/09/2026
+**⚠️ ISTO É AUDITORIA DE DADO, E A DECISÃO É DO ERICK.**
+
+Com o `run:mlayer` de volta (#121), a primeira execução de `protocolos-geral` abriu com
+um aviso que ela imprime e que ninguém lia há onze dias:
+
+> `Table.NestedJoin 'INSTALADO POR:' + 'DATA FINAL' × 'TÉCNICO 1' + 'DATA': nenhuma das
+> 29694 linhas de chave completa casou (…) esquerda de 2026-01-02 a 2026-09-15, direita
+> de 2025-01-01 a 2025-07-16. Nenhuma reconciliação de tipo casaria: não existe par
+> possível.`
+
+### Medido, e é o caso extremo
+
+No snapshot em disco, `protocolos-geral`, 95.075 linhas:
+
+| coluna | valores distintos no dicionário | linhas com valor |
+|---|---:|---:|
+| `TÉCNICO 2` | **1** (o nulo) | **0** |
+| `GERENTE/SUPERVISOR` | **1** (o nulo) | **0** |
+| `TÉCNICO 1` | 96 | 28.560 |
+| `EQUIPE` | 33 | 95.075 |
+
+Na fonte, `DB_Applicattion.Installation_Teams` (dbMaria), consultada só por agregado:
+
+```
+linhas ............... 10.795
+DATA até ............. 2025-07-15
+por ano: 2024 → 5.153   2025 → 5.642   2026 → nenhuma
+```
+
+**A tabela parou de receber linha em julho de 2025** — há quatorze meses. O join é por
+`DATA`, e todo protocolo da janela atual é de 2026. Não casa nenhum, e não vai casar.
+
+### Onde isso chega na tela
+
+* `specs/dashboards/visao-geral.spec.yaml:371, 468, 491` — `TÉCNICO 2` é campo de
+  visual, e uma das três é uma **contagem** dele
+* `specs/_catalog/measures/protocolos-geral.measures.yaml:159, 163` — duas medidas DAX
+  filtram `GESTORES[GERENTE/SUPERVISOR]` por **dois nomes de pessoa específicos**
+
+Uma contagem de coluna 100% nula dá **zero**, e zero é um número plausível. As duas
+medidas dão zero pelo mesmo motivo. Nada erra alto em lugar nenhum.
+
+### O que isto NÃO é
+
+Não é defeito da plataforma, e não é defeito da camada M: o `Table.NestedJoin` fez o que
+lhe pediram e **avisou** que a faixa das duas pontas não se toca. O aviso existe desde
+que alguém o escreveu, e funcionou — ficou onze dias sem ser lido porque a ferramenta
+que o imprime não arrancava (#121).
+
+### O que precisa de decisão
+
+1. `Installation_Teams` deve voltar a ser alimentada? (é cadastro de escala de equipe;
+   se parou porque o processo mudou, o join é que está obsoleto)
+2. Se não voltar: os três campos de `visao-geral` e as duas medidas mostram zero de
+   propósito, ou saem da tela?
+
+Enquanto isso não se decide, **o relatório mostra zero onde deveria mostrar ou um
+número ou uma recusa**. A plataforma tem um jeito de recusar em vez de chutar — é o que
+`paridade-janela.yaml` faz com tabela sem equalização —, e este caso se parece com
+aquele.
+
+> **A lição:** um aviso que ninguém lê é igual a um aviso que não existe. Este estava
+> certo, específico, com os dois intervalos de data impressos lado a lado — e ficou
+> onze dias invisível porque a ferramenta que o imprime estava quebrada. Diagnóstico
+> bom morre junto com a ferramenta que o carrega.
