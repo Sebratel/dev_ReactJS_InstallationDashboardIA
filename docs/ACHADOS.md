@@ -9019,6 +9019,10 @@ relevante agora exige mudança algorítmica: reaproveitar agrupamento entre linh
 
 **Data:** 15/09/2026
 
+> **Corrigido pelo #114:** sao **cinco** blocos, nao quatro — o SQL de `protocolos-produtividade`
+> encadeia a sequencia duas vezes. E a duplicacao deixou de ser silenciosa: `siglas-cidade.yaml`
+> declara o mapa e um teste compara as cinco copias, nas duas linguagens.
+
 O plano de desempenho descreve a Fase 3 como "remove o `transform-engine`". Fui medir
 o que a camada M ainda faz, query por query, antes de começar.
 
@@ -9181,3 +9185,97 @@ produção e mudaria o dado que ainda vai ser conferido na tela.
 > traz o número medido, a data, quem decidiu e o que reconferir. Nada disso impediu a
 > ligação de sumir, porque nenhum teste afirmava que ela existia. Documento prova
 > intenção; teste prova comportamento.
+
+---
+
+## #114 — O mapa de cidades: quatro cópias viraram cinco quando eu contei direito, e agora elas são comparadas por teste
+
+**Data:** 15/09/2026
+
+Continuação direta do #112, que achou o mapa `CIDADE -> SIGLA` repetido e **parou aí**.
+Este fecha.
+
+### Primeiro, a contagem estava errada — para menos
+
+O #112 disse "quatro cópias". São **cinco blocos em quatro arquivos**: o SQL de
+`protocolos-produtividade` encadeia a mesma sequência de nove `replace()` **duas**
+vezes — uma para `SIGLA CIDADE` e outra dentro de `INDICE 2`, que é
+`BAIRRO & "/" & SIGLA CIDADE` e por isso precisa traduzir de novo.
+
+| onde | linguagem | blocos |
+|---|---|---:|
+| `queries/protocolos-geral.spec.yaml` | M (`Table.ReplaceValue`) | 1 |
+| `queries/protocolos-auxiliares.spec.yaml` | M | 1 |
+| `queries/protocolos-telefonia.spec.yaml` | M | 1 |
+| `queries/protocolos-produtividade.spec.yaml` | SQL (`replace()` encadeado) | **2** |
+
+### A ordem faz parte da definição, e quase passou batido
+
+`Replacer.ReplaceText` substitui **substring**, não valor inteiro, e as nove chamadas
+são encadeadas — cada uma recebe o resultado da anterior. Hoje nenhuma das nove cidades
+é substring de outra, então a ordem não muda nada. Mas isso é propriedade **do dado**,
+não do código: bastaria entrar uma cidade cujo nome contenha outra para a ordem passar a
+decidir o resultado, e aí M e SQL teriam de encadear igual.
+
+Quem escreveu o SQL sabia — o comentário lá diz *"A ordem é a do M"*. Por isso o teste
+compara **lista ordenada**, não conjunto. Comparar conjunto passaria verde numa
+divergência real.
+
+### O que entrou
+
+`specs/_catalog/siglas-cidade.yaml` — arquivo humano, na mesma prateleira do
+`juncoes.yaml`. **Nenhum motor o lê**, e isso é deliberado: as substituições continuam
+onde o Power Query as escreveu. O que ele é: a declaração de que as cinco cópias são a
+mesma coisa.
+
+`packages/semantic-model/test/siglas-cidade.test.ts` — 11 testes que extraem o mapa dos
+cinco blocos, nas duas linguagens, e comparam com a declaração. Mais três guardas de
+vizinhança:
+
+- as duas correções literais de `INDICE 2` (`'Centro - Assentamento /NSR'` e
+  `'Duque De Caxias /SLE'`, que existem porque o bairro de origem tem espaço sobrando)
+  andam junto com o mapa e são comparadas junto;
+- `protocolos-produtividade` **não pode voltar a ter `Table.ReplaceValue`** — ela migrou
+  para SQL em 10/09 e ter os dois seria ter duas respostas para a mesma pergunta;
+- toda sigla escrita à mão no DAX de `PROTOCOLOS GERAL` (`"BASE (NHO/SLE/SPS)"`,
+  `"Equipe de Reparo EIO/CAN"`) tem de existir no mapa, e toda cidade comparada em
+  `EQUIPES TEMPORARIAS` tem de ser cidade do mapa.
+
+### Verificado que falha
+
+Trocar `"Triunfo","TRF"` por `"TRI"` no M de `protocolos-telefonia` **e**
+`'Esteio','EIO'` por `'EST'` no SQL de `protocolos-produtividade`:
+
+```
+✖ protocolos-telefonia: a camada M traduz as cidades exatamente como o catálogo
+    no M:        ... Esteio->EIO, Triunfo->TRI, Porto Alegre->POA
+    no catálogo: ... Esteio->EIO, Triunfo->TRF, Porto Alegre->POA
+✖ protocolos-produtividade: os dois ramos do SQL encadeiam o mesmo mapa, na mesma ordem
+    o ramo "SIGLA CIDADE" do SQL divergiu do catálogo
+
+pass 9   fail 2
+```
+
+Pega nas duas linguagens e nomeia o par divergente. Um guarda que não se viu falhar não
+é guarda — foi exatamente essa a lição do #113.
+
+### O que NÃO foi resolvido
+
+A duplicação continua lá. O certo é as cinco lerem do catálogo, e isso é reescrever
+`m_expression` de três queries de produção com regravação de golden contra o banco real —
+a mesma sessão que o #112 já reservou para encolher os 158 passos. **O teste não
+substitui essa sessão; ele compra tempo para ela.**
+
+E há um sexto lugar que nenhum teste protege: em `GRUPO`, o `IF` compara com o **nome da
+equipe** (`"Equipe de Reparo EIO/CAN"`), que é string livre cadastrada no Voalle. Se lá
+alguém renomear a equipe, o `IF` para de casar e o protocolo cai em `"OUTROS"` — em
+silêncio, do lado de fora deste repositório. Está registrado no cabeçalho do YAML para
+não ser descoberto duas vezes.
+
+### A lição
+
+> **Quando não dá para remover a duplicação, dá para tirar o silêncio dela.** A escolha
+> não é entre "refatorar" e "deixar como está": entre as duas existe *declarar qual é a
+> verdade e afirmar por teste que as cópias concordam com ela*. Custa uma tarde, não
+> toca em query de produção, e converte um defeito que produz número plausível num
+> vermelho no `npm test`. A dívida continua — mas para de render juros em silêncio.
