@@ -191,8 +191,16 @@ function chaves(cab: CabecalhoDeSnapshot): string[] {
  */
 async function e1io(arquivo: string): Promise<number> {
   let n = 0;
-  for await (const pedaco of fluxoDeLeitura(arquivo)) {
-    n += typeof pedaco === 'string' ? pedaco.length : (pedaco as Buffer).length;
+  // **O `setEncoding` é parte da medida, não detalhe do laço.** `paraCadaLinha` abre
+  // o fluxo com `.setEncoding('utf8')`; sem ele aqui, o pedaço de um arquivo
+  // comprimido chegava como `Buffer` e este degrau media disco + gunzip e mais nada —
+  // a decodificação utf-8 inteira era cobrada do degrau SEGUINTE, que se chama
+  // `linhas`. Medido em 15/09/2026 sobre `field-agenda.jsonl.gz`: 225 ms como
+  // `Buffer` contra 338 ms como texto. A legenda do `io` sempre disse "e decodificar
+  // utf-8" — era o laço que não fazia, e ela descrevia o ramo do arquivo CRU, que
+  // nenhum snapshot em disco usa desde que a compressão entrou.
+  for await (const pedaco of fluxoDeLeitura(arquivo).setEncoding('utf8')) {
+    n += (pedaco as string).length;
   }
   return n;
 }
@@ -249,13 +257,30 @@ async function e4monta(arquivo: string): Promise<number> {
 }
 
 /**
- * e4c — + decodificar cada célula, descartando. É o laço de `leColunar` sem o
- * `poeLinha`, e a diferença para o e5c é **o dicionário**: o `Map.get` por célula
- * que transforma valor em id.
+ * e4c — + decodificar os valores, descartando. É o laço de `leColunar` sem montar a
+ * tabela, e **o corpo depende do formato**, porque os dois têm linha de forma
+ * diferente:
+ *
+ *   formato 1 — uma linha por LINHA, um vetor `[v0, v1, …]`: decodifica célula a
+ *               célula, e o que sobra para o e5c é o dicionário — um `Map.get` por
+ *               célula para o valor virar id.
+ *   formato 2 — uma linha por COLUNA, `{c,w,d,b}`: o dicionário já veio pronto do
+ *               disco, e o que este degrau mede é decodificar os valores DISTINTOS
+ *               (`d`). O que sobra para o e5c é `base64ParaIds` — os ids.
+ *
+ * **Era um degrau fantasma até 15/09/2026.** O corpo só existia na forma do formato
+ * 1: sobre um arquivo de formato 2 ele fazia `JSON.parse(texto) as unknown[]` e
+ * indexava `valores[i]` num OBJETO, então toda célula decodificava `undefined`. O
+ * degrau media `JSON.parse` e mais nada — a coluna saía `decodif 0,00` — e os 23,9%
+ * que apareciam no `dicion` não eram o dicionário: eram esta decodificação, cobrada
+ * do degrau de baixo porque o de cima não a fazia. `docs/DECISAO-DESEMPENHO.md`
+ * atribuía esses 23,9% ao `ConstrutorDeTabela` do bench, que no formato 2 `leColunar`
+ * nem chega a instanciar.
  */
 async function e4cDecodifica(arquivo: string): Promise<number> {
   let cab: CabecalhoDeSnapshot | null = null;
   let ks: string[] = [];
+  let k = 0;
   let n = 0;
   await paraCadaLinha(arquivo, (texto) => {
     if (texto === '') return;
@@ -265,6 +290,22 @@ async function e4cDecodifica(arquivo: string): Promise<number> {
       return;
     }
     const c = cab as CabecalhoDeSnapshot;
+    if (c.formato === 2) {
+      const bruta = JSON.parse(texto) as { c: string; d: unknown[] };
+      const tipo = c.colunas[k]!.tipo;
+      const onde = `${arquivo}[${bruta.c}]`;
+      k++;
+      n += bruta.d.length;
+      // **`map`, e não `new Array(n)` com escrita indexada.** `leColunas` usa `map`, e
+      // a diferença não é de estilo: `new Array(n)` nasce HOLEY no V8 e cada escrita
+      // paga a transição, enquanto o resultado de `map` sai empacotado. Escrito com
+      // `new Array`, este degrau ficou MAIS CARO que o e5c — que faz tudo o que ele
+      // faz e mais os ids — e as duas notas de "réplica divergiu" apareceram na
+      // saída. A escada só é honesta enquanto a réplica é a mesma linha de código.
+      const distintos: Escalar[] = bruta.d.map((v) => decodifica(v, tipo, onde));
+      if (distintos === undefined) throw new Error('inalcançável');
+      return;
+    }
     n++;
     const valores = JSON.parse(texto) as unknown[];
     const vs: Escalar[] = new Array(ks.length);
@@ -275,6 +316,14 @@ async function e4cDecodifica(arquivo: string): Promise<number> {
   });
   return n;
 }
+
+/**
+ * Se algum arquivo medido veio no formato 2. É só para a LEGENDA: os degraus `decodif`
+ * e `dicion` medem coisas diferentes nos dois formatos (ver `e4cDecodifica`), e
+ * imprimir a descrição de um sobre o número do outro foi exatamente o que fez
+ * `DECISAO-DESEMPENHO.md` culpar o `ConstrutorDeTabela` por 23,9% que ele não gasta.
+ */
+let viuFormato2 = false;
 
 interface Degrau {
   nome: string;
@@ -325,6 +374,7 @@ async function medeColunar(
   linhas: { ms: number; pior: number },
   parse: { ms: number; pior: number },
 ): Promise<MedidaDeArquivo> {
+  if (cab.formato === 2) viuFormato2 = true;
   const decodif = await melhorDe(n, () => e4cDecodifica(arquivo));
   const dicion = await melhorDe(n, () => leColunar(arquivo));
 
@@ -518,8 +568,13 @@ async function medePagina(
     pulou: null,
   };
   try {
+    // **`colunar` também aqui, e pelo mesmo motivo do resto do programa.** A escada
+    // passou a medir o caminho da API em 15/09/2026 (`--objeto` é a saída), mas o
+    // `--paginas` continuou chamando `carrega` sem a opção — e o padrão dela é
+    // falso. Era o defeito #118 sobrevivendo num modo do mesmo arquivo: os degraus
+    // mediam colunar e a carga ponta a ponta, logo abaixo, media objeto.
     const t0 = performance.now();
-    const c = await carrega({ dir: DIR, model, dashboards: [dash], now: agora });
+    const c = await carrega({ dir: DIR, model, dashboards: [dash], now: agora, colunar: modoColunar });
     const primeira = performance.now() - t0;
 
     // A escala do que esta página carrega só se conhece **depois** de carregá-la — o
@@ -532,11 +587,13 @@ async function medePagina(
     let semProjecao: number | null = null;
     if (!barra) {
       const t1 = performance.now();
-      await carrega({ dir: DIR, model, dashboards: [dash], now: agora });
+      await carrega({ dir: DIR, model, dashboards: [dash], now: agora, colunar: modoColunar });
       segunda = performance.now() - t1;
 
       const t2 = performance.now();
-      await carrega({ dir: DIR, model, dashboards: [dash], now: agora, projetar: false });
+      await carrega({
+        dir: DIR, model, dashboards: [dash], now: agora, colunar: modoColunar, projetar: false,
+      });
       semProjecao = performance.now() - t2;
     }
 
@@ -776,7 +833,7 @@ if (json) {
   console.log('\n── Onde o tempo vai ──');
   const ordenadas = [...soma.entries()].sort((x, y) => y[1] - x[1]);
   const legenda: Record<string, string> = {
-    io: 'ler os bytes do disco e decodificar utf-8',
+    io: 'ler os bytes do disco, descomprimir (gunzip) e decodificar utf-8',
     linhas: 'partir em linhas (paraCadaLinha)',
     parse: 'JSON.parse de cada linha',
     monta: 'montar o objeto da linha (decodifica)',
@@ -785,8 +842,12 @@ if (json) {
       ? 'aplicaTiposDeclaradosColunar — converte o valor DISTINTO, não a linha'
       : 'aplicaTiposDeclarados — a conversão do tipo declarado',
     adota: 'adotaTabela — conferir chave normalizada e adotar',
-    decodif: 'decodificar cada célula (data, coluna mista)',
-    dicion: 'o dicionário: um Map.get por célula para o valor virar id',
+    decodif: viuFormato2
+      ? 'decodifica os valores DISTINTOS do dicionário que veio do disco'
+      : 'decodificar cada célula (data, coluna mista)',
+    dicion: viuFormato2
+      ? 'base64ParaIds — o vetor de ids da coluna, e montar a TabelaColunar'
+      : 'o dicionário: um Map.get por célula para o valor virar id',
     vista: 'VistaDeLinhas.todas() — a casca de objeto por linha',
   };
   for (const [k, v] of ordenadas) {
