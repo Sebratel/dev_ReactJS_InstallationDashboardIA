@@ -133,7 +133,11 @@ test('calculada congelada antes da query mais nova é ERRO, e diz o comando', ()
   );
   assert.equal(p.length, 1);
   assert.equal(p[0]!.tipo, 'calculada-obsoleta');
-  assert.match(p[0]!.detalhe, /npm run snapshot:calculadas -- --tabela=MINHA CALC/);
+  // Com ASPAS: o nome tem espaço, e o comando existe para ser colado num terminal.
+  // Sem elas, `--tabela=MINHA CALC` vira `--tabela=MINHA` mais um argumento solto —
+  // um remédio impresso que não funciona justamente onde o nome é composto, que é o
+  // caso de duas das tabelas calculadas reais (`Status Protocolo Dia`).
+  assert.match(p[0]!.detalhe, /npm run snapshot:calculadas -- --tabela="MINHA CALC"/);
 });
 
 test('calculada mais nova que toda query está em dia', () => {

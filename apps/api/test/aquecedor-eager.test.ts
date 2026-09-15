@@ -6,6 +6,10 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {
+  codificaFiltro,
+  filtrosRecentes,
+} from '../../../packages/widget-engine/src/index.ts';
 import { Aquecedor } from '../src/aquecedor.ts';
 
 const PAGINAS = { dashboards: [{ id: 'agendamento-field' }] };
@@ -79,4 +83,104 @@ test('layout indisponível (404) cai de volta para a URL antiga, sem lançar', a
   assert.ok(p !== null);
   assert.equal(p.paginas[0]?.status, 200, 'o fallback ainda aquece a página');
   assert.ok(chamadas.includes(urlAntiga), 'caiu de volta para a URL sem `?visual=`');
+});
+
+// ── abaixo da dobra ───────────────────────────────────────────────────────────
+// `idsRestantes` é o resto do layout, e o aquecedor o adianta para que a rolagem
+// encontre resposta pronta. O que estes testes cobram é a MESMA regra do corte
+// eager, que é a razão de existir do arquivo inteiro: o aquecimento tem de pedir a
+// chave que o navegador pede, e `filtros` faz parte dela (`ChaveDeResposta`).
+
+test('abaixo da dobra: um GET por visual, com os MESMOS filtros da abertura', async () => {
+  const chamadas: string[] = [];
+  const buscar = (async (url: string | URL): Promise<Response> => {
+    const u = String(url);
+    chamadas.push(u);
+    if (u.endsWith('/api/dashboards')) {
+      return new Response(JSON.stringify(PAGINAS), { status: 200 });
+    }
+    if (u.endsWith('/layout')) {
+      return new Response(JSON.stringify(LAYOUT_3_FAIXAS), { status: 200 });
+    }
+    return new Response('{}', { status: 200 });
+  }) as unknown as typeof fetch;
+
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  await a.tenta();
+
+  const deM1 = chamadas.filter((u) => u.includes('visual=m1'));
+  assert.equal(deM1.length, 1, 'm1 — o único visual abaixo da dobra — foi aquecido uma vez só');
+
+  // `agendamento-field` abre travada no mês corrente, então a rolagem dela pede
+  // `?visual=m1&filtro=<mês>`. Aquecer `?visual=m1` puro enche uma partição que a
+  // tela nunca lê — era o que acontecia, e não aparecia como erro nem como teste
+  // vermelho: aparecia como aquecimento que não aquece nada (medido em 15/09/2026).
+  const abertura = filtrosRecentes('agendamento-field')[0] ?? [];
+  assert.ok(
+    abertura.length > 0,
+    'esta página precisa ter filtro padrão, senão o teste não prova nada',
+  );
+  for (const f of abertura) {
+    assert.ok(
+      deM1[0]!.includes(`filtro=${encodeURIComponent(codificaFiltro(f))}`),
+      'o aquecimento de m1 tem de carregar o filtro com que a página abre',
+    );
+  }
+  assert.ok(
+    !chamadas.includes('http://x/api/dashboards/agendamento-field?visual=m1'),
+    'a chave sem filtro — a que ninguém lê nesta página — não foi tocada',
+  );
+});
+
+test('abaixo da dobra: página sem filtro padrão aquece a chave limpa', async () => {
+  // `relatorio-do-mes` não trava data nenhuma (`POR_PAGINA` não a lista): aqui a
+  // chave que o navegador pede É a sem filtro, e pendurar um filtro nela erraria
+  // para o outro lado.
+  const chamadas: string[] = [];
+  const buscar = (async (url: string | URL): Promise<Response> => {
+    const u = String(url);
+    chamadas.push(u);
+    if (u.endsWith('/api/dashboards')) {
+      return new Response(JSON.stringify({ dashboards: [{ id: 'relatorio-do-mes' }] }), {
+        status: 200,
+      });
+    }
+    if (u.endsWith('/layout')) {
+      return new Response(JSON.stringify({ ...LAYOUT_3_FAIXAS, pagina: 'relatorio-do-mes' }), {
+        status: 200,
+      });
+    }
+    return new Response('{}', { status: 200 });
+  }) as unknown as typeof fetch;
+
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  await a.tenta();
+
+  assert.deepEqual(
+    chamadas.filter((u) => u.includes('visual=m1')),
+    ['http://x/api/dashboards/relatorio-do-mes?visual=m1'],
+    'sem filtro padrão, a chave limpa é a certa — e é pedida uma vez',
+  );
+});
+
+test('abaixo da dobra: layout indisponível não inventa aquecimento nenhum', async () => {
+  const chamadas: string[] = [];
+  const buscar = (async (url: string | URL): Promise<Response> => {
+    const u = String(url);
+    chamadas.push(u);
+    if (u.endsWith('/api/dashboards')) {
+      return new Response(JSON.stringify(PAGINAS), { status: 200 });
+    }
+    if (u.endsWith('/layout')) return new Response('não encontrado', { status: 404 });
+    return new Response('{}', { status: 200 });
+  }) as unknown as typeof fetch;
+
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  await a.tenta();
+
+  assert.deepEqual(
+    chamadas.filter((u) => u.includes('visual=')),
+    [],
+    'sem layout não há corte, e sem corte não há "resto" que se possa adivinhar',
+  );
 });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { idsIniciais, N_FAIXAS_EAGER } from '../src/corte-eager.ts';
+import { idsIniciais, idsRestantes, N_FAIXAS_EAGER } from '../src/corte-eager.ts';
 import type { LayoutSpec } from '../src/schema.ts';
 
 function layout(
@@ -76,4 +76,84 @@ test('idsIniciais: segmentação oculta da grade entra eager — é a barra de f
     ],
   );
   assert.deepEqual(idsIniciais(l), ['k1', 's1', 's2', 't1']);
+});
+
+// ── idsRestantes: o complemento ────────────────────────────────────────────────
+// A dupla `idsIniciais`/`idsRestantes` tem de PARTIR o layout: sem sobra (visual que
+// ninguém aquece nem pede) e sem repetição (visual calculado duas vezes por passada).
+// Os testes abaixo cobram a partição, não a implementação — é ela que continua valendo
+// no dia em que o corte eager mudar de forma pela terceira vez.
+
+test('idsRestantes: sobra a faixa que passou do corte — e só ela', () => {
+  const l = layout(
+    [
+      { altura: 'grafico', colunas: [{ visual: 'g1', span: 12, render: 'x' }] },
+      { altura: 'grafico', colunas: [{ visual: 'g2', span: 12, render: 'x' }] },
+      { altura: 'tabela', colunas: [{ visual: 't1', span: 12, render: 'x' }] },
+      { altura: 'tabela', colunas: [{ visual: 't2', span: 12, render: 'x' }] },
+      { altura: 'matriz', colunas: [{ visual: 'm1', span: 12, render: 'x' }] },
+    ],
+    [{ visual: 'k1', enfase: 'normal' }],
+  );
+  assert.deepEqual(idsRestantes(l), ['m1']);
+});
+
+test('idsRestantes: página inteira acima do corte não deixa sobra', () => {
+  const l = layout(
+    [{ altura: 'tabela', colunas: [{ visual: 't1', span: 12, render: 'x' }] }],
+    [{ visual: 'k1', enfase: 'normal' }],
+  );
+  assert.deepEqual(idsRestantes(l), []);
+});
+
+test('idsRestantes: KPI e segmentação nunca sobram — a abertura já pede os dois', () => {
+  // Se um dia sobrassem, o aquecedor de fundo os calcularia DE NOVO a cada passada,
+  // e a barra de filtros dependeria da rolagem para existir.
+  const l = layout(
+    [
+      { altura: 'grafico', colunas: [{ visual: 'g1', span: 12, render: 'x' }] },
+      { altura: 'grafico', colunas: [{ visual: 'g2', span: 12, render: 'x' }] },
+      { altura: 'tabela', colunas: [{ visual: 't1', span: 12, render: 'x' }] },
+      { altura: 'tabela', colunas: [{ visual: 't2', span: 12, render: 'x' }] },
+      { altura: 'matriz', colunas: [{ visual: 'm1', span: 12, render: 'x' }] },
+    ],
+    [{ visual: 'k1', enfase: 'normal' }],
+    [
+      { visual: 's1', porque: 'vira controle de filtro na barra (segmentação), não card da grade' },
+      { visual: 'img1', porque: "tipo 'image' não calcula e não vira segmentação — hoje invisível na tela" },
+    ],
+  );
+  assert.deepEqual(idsRestantes(l), ['m1']);
+});
+
+test('idsIniciais + idsRestantes partem o layout: sem sobra e sem repetição', () => {
+  const faixas = Array.from({ length: 9 }, (_, i) => ({
+    altura: 'tabela' as const,
+    colunas: [
+      { visual: `f${i}a`, span: 6, render: 'x' },
+      { visual: `f${i}b`, span: 6, render: 'x' },
+    ],
+  }));
+  const l = layout(
+    faixas,
+    [{ visual: 'k1', enfase: 'normal' }],
+    [{ visual: 's1', porque: 'vira controle de filtro na barra (segmentação), não card da grade' }],
+  );
+
+  const eager = idsIniciais(l);
+  const restantes = idsRestantes(l);
+  const todos = [
+    'k1',
+    's1',
+    ...faixas.flatMap((f) => f.colunas.map((c) => c.visual)),
+  ];
+
+  assert.deepEqual([...eager, ...restantes].sort(), [...todos].sort(), 'nenhum visual fica de fora');
+  assert.deepEqual(
+    eager.filter((id) => restantes.includes(id)),
+    [],
+    'nenhum visual é aquecido duas vezes',
+  );
+  // `img1` não existe aqui de propósito: o que não calcula não entra em nenhum dos dois.
+  assert.equal(restantes.length, (9 - N_FAIXAS_EAGER) * 2);
 });

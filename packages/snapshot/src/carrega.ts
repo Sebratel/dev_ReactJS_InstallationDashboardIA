@@ -695,7 +695,10 @@ function confereTabelaCalculada(
   cabecalho: CabecalhoDeSnapshot,
   dir: string,
 ): void {
-  const comando = `npm run snapshot:calculadas -- --tabela=${t.name}`;
+  // As aspas não são enfeite: duas das tabelas calculadas têm espaço no nome
+  // (`Status Protocolo Dia`, `Base de Origem`), e sem elas o comando que esta
+  // mensagem manda rodar quebra justamente na tabela que custa quatro minutos.
+  const comando = `npm run snapshot:calculadas -- --tabela="${t.name}"`;
   if (cabecalho.tabelaSha === undefined) {
     throw new Error(
       `${arquivoDaCalculada(dir, t.name)} não declara 'tabelaSha' — ele não foi gravado ` +
@@ -741,6 +744,6 @@ function confereIdadeDaCalculada(
     `Snapshot desatualizado: '${t.name}' foi congelada em ${cabecalho.geradoEm}, antes da ` +
       `materialização mais recente das tabelas de origem (${maisNovoDeQuery}). As linhas em ` +
       `${arquivoDaCalculada(dir, t.name)} são as do dado antigo, e o DAX igual não denuncia ` +
-      `isso. Rode: npm run snapshot:calculadas -- --tabela=${t.name}`,
+      `isso. Rode: npm run snapshot:calculadas -- --tabela="${t.name}"`,
   );
 }

@@ -203,7 +203,7 @@ export class Aquecedor {
       }
 
       // **O carimbo pode ter mudado no meio.** Um refresh que termina durante o
-      // aquecimento deixaria tudo o que acabou de ser calculated inalcançável, e o
+      // aquecimento deixaria tudo o que acabou de ser calculado inalcançável, e o
       // aquecedor iria dormir achando que fez o serviço. Não marcar como aquecido é
       // o que faz a próxima conferida recomeçar.
       const agora = this.#carimbo();
@@ -238,7 +238,11 @@ export class Aquecedor {
   }
 
   /**
-   * Os ids de layout divididos em eager (abertura) e restantes (abaixo da dobra), ou `null`.
+   * O layout partido em dois: os ids que a abertura real pede eager e os que só
+   * entram na rolagem (`idsRestantes`). `null` se não deu para saber.
+   *
+   * Nunca lança: uma falha aqui cai de volta para a URL sem `?visual=` em
+   * `#aquece`, não derruba o laço de aquecimento inteiro.
    */
   async #idsDoLayout(pagina: string): Promise<{ eager: string[]; restantes: string[] } | null> {
     try {
@@ -304,6 +308,10 @@ export class Aquecedor {
 
       // Se a página tem layout eager e filtros padrão (mês fechado ou ano corrente),
       // aquece também a chave com filtros, que é exatamente a que o navegador pede.
+      // **O padrão E os períodos anteriores.** Antes daqui só o recorte de
+      // abertura era adiantado, e trocar de mês — a interação mais comum do
+      // relatório — caía sempre na primeira vez: ~1,6 s, contra 2–3 ms quando
+      // a mesma combinação já foi pedida. Ver `filtrosRecentes`.
       if (idsEager && idsEager.length > 0) {
         for (const filtros of filtrosRecentes(pagina)) {
           const qFiltros = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
@@ -312,29 +320,54 @@ export class Aquecedor {
             const rFiltrada = await this.#buscar(urlFiltrada);
             await rFiltrada.arrayBuffer();
           } catch {
-            // Ignora falha em filtro secundário
+            // Ignora falha em filtro secundário: o recorte de abertura já foi
+            // aquecido acima, e um mês anterior que falhe custa a primeira
+            // visita, não a página.
           }
         }
       }
 
-      // Aquece também os visuais que ficam abaixo do corte eager (abaixo da dobra).
-      // Quando o usuário rolar a página até o fim, as chamadas a `?visual=:id` já encontram
-      // resposta pronta no cache (HIT em 2ms), zerando a espera.
-      if (layoutInfo?.restantes && layoutInfo.restantes.length > 0) {
-        for (const id of layoutInfo.restantes) {
+      // **Abaixo da dobra: o mesmo GET que a rolagem vai fazer, um por visual.**
+      // `VisualNaDobra.tsx` pede cada um SOZINHO quando ele chega perto da
+      // viewport, nunca em lote — então a chave a encher é a singular, e são
+      // tantas requisições quantos forem os visuais. Pedir os seis de uma vez
+      // encheria a chave `[a,b,c,d,e,f]` (`ChaveDeResposta.visuais`), que ninguém lê.
+      //
+      // **E com os filtros com que a página abre.** `filtros` também entra na
+      // chave. A primeira versão disto pedia `?visual=X` e mais nada: em
+      // `relatorio-do-mes` (2 visuais de sobra) e `premiacao-instalacao` (1)
+      // acertava, porque elas abrem sem filtro — e em `agendamento-field`, a única
+      // com peso aqui (6 de sobra, 10 faixas, a página que motivou o corte eager
+      // inteiro no ACHADOS #94), acertava ZERO: ela abre travada no mês corrente, e
+      // a rolagem pede `?filtro=<mês>&visual=X`. Medido em 15/09/2026.
+      //
+      // **Só o recorte de ABERTURA, e não os meses anteriores.** O eager adianta
+      // `filtrosRecentes` inteiro porque trocar de mês é a interação do dia a dia e
+      // o topo da página é barato. Aqui cada item é um visual pesado: cobrir os três
+      // meses de `agendamento-field` seriam 18 cálculos por passada, para atender
+      // quem troca de mês E rola até o fim. Quem esta linha existe para poupar é o
+      // primeiro visitante depois de um refresh.
+      const restantes = layoutInfo?.restantes ?? [];
+      if (restantes.length > 0) {
+        const abertura = filtrosRecentes(pagina)[0] ?? [];
+        const qFiltros = abertura
+          .map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`)
+          .join('&');
+        for (const id of restantes) {
+          const alvo =
+            `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}` +
+            `?visual=${encodeURIComponent(id)}${qFiltros ? `&${qFiltros}` : ''}`;
           try {
-            const rRestante = await this.#buscar(
-              `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}?visual=${encodeURIComponent(id)}`,
-            );
+            const rRestante = await this.#buscar(alvo);
             await rRestante.arrayBuffer();
           } catch {
-            // Ignora falha de aquecimento individual de fundo
+            // Mesma degradação do filtro secundário: um visual abaixo da dobra que
+            // falhe custa a primeira rolagem até ele, não a página.
           }
         }
       }
 
       const ms = this.#agora() - t0;
-
 
       if (r.status !== 200) {
         this.#anuncia(`[aquecedor]   ${pagina}: HTTP ${r.status} em ${(ms / 1000).toFixed(1)}s`);

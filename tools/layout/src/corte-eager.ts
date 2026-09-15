@@ -90,15 +90,34 @@ export function idsIniciais(layout: LayoutSpec): string[] {
 }
 
 /**
- * Os ids dos visuais que ficam abaixo do corte eager (abaixo da dobra).
- * Permite ao aquecedor pré-carregar os visuais restantes em segundo plano,
- * garantindo resposta instantânea ao rolar a página até o fim.
+ * O COMPLEMENTO de `idsIniciais`: os visuais que a abertura não pede e que só
+ * entram quando a pessoa rola até perto deles (`VisualNaDobra.tsx`). Hoje são as
+ * colunas das faixas depois da `N_FAIXAS_EAGER`-ésima; as duas funções juntas
+ * cobrem o layout inteiro, sem sobra e sem repetição.
+ *
+ * **Por que a diferença de conjuntos, e não `faixas.slice(N_FAIXAS_EAGER)`.** O
+ * corte eager já mudou de forma duas vezes — nasceu só com `kpis`/`faixas`, ganhou
+ * as segmentações em 09/09 — e a cada mudança um complemento escrito à parte
+ * passaria a mentir em silêncio: ou repetindo o que a abertura já pede (trabalho
+ * dobrado) ou esquecendo um visual que saiu do corte (o que esta função existe
+ * para cobrir). Subtrair de `idsIniciais` faz a dupla acompanhar qualquer mudança
+ * futura dela sem ninguém se lembrar de vir aqui.
+ *
+ * ⚠️ **Id não é chave de cache.** Quem aquecer isto tem de pedir cada visual com
+ * os MESMOS filtros que o navegador vai mandar — `filtros` entra em
+ * `ChaveDeResposta`, e a página que mais precisa disto (`agendamento-field`, 6
+ * visuais abaixo da dobra) abre travada no mês corrente. Aquecer `?visual=X` sem
+ * filtro enche uma partição que a tela nunca lê: é o mesmo erro que o comentário
+ * do topo deste arquivo descreve, e ele não aparece como lentidão nem como teste
+ * vermelho — aparece como aquecimento que não aquece nada.
  */
 export function idsRestantes(layout: LayoutSpec): string[] {
-  const eagerSet = new Set(idsIniciais(layout));
-  const kpis = layout.kpis.map((k) => k.visual);
-  const faixas = layout.faixas.flatMap((f) => f.colunas.map((c) => c.visual));
-  const todos = [...kpis, ...faixas];
-  return todos.filter((id) => !eagerSet.has(id));
+  const eager = new Set(idsIniciais(layout));
+  const todos = [
+    ...layout.kpis.map((k) => k.visual),
+    ...idsDeSegmentacao(layout),
+    ...layout.faixas.flatMap((f) => f.colunas.map((c) => c.visual)),
+  ];
+  return todos.filter((id) => !eager.has(id));
 }
 

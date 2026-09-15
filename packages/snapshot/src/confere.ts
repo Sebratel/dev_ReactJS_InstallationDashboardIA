@@ -90,7 +90,7 @@ export function confereSnapshot(
         detalhe:
           `congelada em ${cab.geradoEm}, antes da materialização de query mais recente ` +
           `(${maisNovoDeQuery}). As linhas são as do dado antigo, e o DAX igual não ` +
-          `denuncia isso. Rode: npm run snapshot:calculadas -- --tabela=${cab.tabelas[0] ?? '<tabela>'}`,
+          `denuncia isso. Rode: npm run snapshot:calculadas -- --tabela="${cab.tabelas[0] ?? '<tabela>'}"`,
       });
     }
 

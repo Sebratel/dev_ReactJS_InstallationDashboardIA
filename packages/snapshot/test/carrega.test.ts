@@ -341,7 +341,7 @@ test('tabela calculada congelada ANTES do snapshot de origem erra alto e diz o c
   await congelaCidades(dir, m, '2026-08-05T09:00:00.000Z', [{ CIDADE: 'Bauru' }]);
   await assert.rejects(
     () => carrega({ dir, model: m, dashboards: [paginaCalc()], now: AGORA }),
-    /'CIDADES' foi congelada em 2026-08-05.*antes da materialização mais recente.*npm run snapshot:calculadas -- --tabela=CIDADES/s,
+    /'CIDADES' foi congelada em 2026-08-05.*antes da materialização mais recente.*npm run snapshot:calculadas -- --tabela="CIDADES"/s,
   );
 });
 
