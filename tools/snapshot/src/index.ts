@@ -61,6 +61,7 @@ import { fonteDoEngine } from '../../../packages/transform-engine/src/fonte.ts';
 import { queryDependencies, runQueries } from '../../../packages/transform-engine/src/runner.ts';
 import { toDatasetRows } from '../../../packages/transform-engine/src/value.ts';
 import { normalizeName, SemanticModel } from '../../../packages/semantic-model/src/model.ts';
+import { leJuncoes, reconciliadorDe } from '../../../packages/semantic-model/src/juncoes.ts';
 import type { ModelTable } from '../../../packages/semantic-model/src/types.ts';
 import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
@@ -307,6 +308,26 @@ const culture = (
     culture?: string | null;
   }
 ).culture ?? null;
+
+/**
+ * Quais mesclagens mortas podem comparar a chave como inteiro.
+ *
+ * Decisão humana, em `specs/_catalog/juncoes.yaml`. Vazio = nenhuma, e a nota da
+ * materialização diz o número que justificaria cada uma.
+ *
+ * ⚠ **Isto já esteve aqui e sumiu, e ninguém percebeu por 20 dias.** Entrou em
+ * 14/08/2026 com o achado #64 e saiu em 26/08 no commit que se chamava "restaurar
+ * 100% do estado" — o mesmo episódio que a `docs/RECUPERACAO-27-08.md` registra.
+ * Sem esta linha, `BACKLOG AGENDADO FUTURO['PROTOCOLOS GERAL.TIPO DE PROTOCOLO']` e
+ * `PROTOCOLOS GERAL['TECNICOS AUXILIARES.AUXILIAR']` saem **inteiras nulas** de toda
+ * materialização, e as páginas que as leem mostram BLANK — número plausível, sem
+ * erro nenhum. `npm run snapshot:confere` acusa as duas; era o alarme tocando.
+ *
+ * O `tools/mrun` também a injeta (achado #73). **As duas ferramentas rodam a MESMA
+ * camada M**: se só uma reconciliar, o diagnóstico diverge da materialização, que é
+ * pior do que as duas estarem erradas juntas.
+ */
+const reconcilia = reconciliadorDe(leJuncoes(path.join(ROOT, 'specs')));
 
 const todasAsQueries = registry.list().filter((q) => q.m_expression && !FORA_DO_ESCOPO.has(q.id));
 
@@ -634,6 +655,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       fonte,
       web,
       guardaPassos: false,
+      reconcilia,
     });
     console.error(`    busca + avaliação de M: ${Date.now() - tBusca} ms`);
 

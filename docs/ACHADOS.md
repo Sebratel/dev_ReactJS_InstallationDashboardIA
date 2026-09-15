@@ -9087,3 +9087,97 @@ a frase do plano manda remover um componente que não pode sair.
 > plausível antes de três planilhas e uma API entrarem no corpus. **Antes de executar
 > uma fase de um plano, meça se a premissa dela ainda vale** — custou uma varredura de
 > 25 arquivos e evitou uma sessão inteira empurrando uma porta trancada.
+
+---
+
+## #113 — O commit "restaurar 100% do estado" apagou um conserto decidido, e duas colunas voltaram a sair inteiras nulas por 20 dias
+
+**Data:** 15/09/2026
+
+`npm run snapshot:confere` acusa **três** colunas inteiras nulas que alguma página lê.
+Eu li esse alarme três vezes hoje e o classifiquei como "problema de dado,
+pré-existente" sem conferir. Na quarta, conferi.
+
+### Duas das três têm conserto decidido, medido e registrado — que não estava rodando
+
+`specs/_catalog/juncoes.yaml` declara, desde 13/08/2026, que duas mesclagens mortas
+podem comparar a chave como inteiro. Cada entrada traz o número que a justificou:
+
+```
+backlog-agendado-futuro   0 de 88.143 casavam por especie; 60.425 (68,6%) como inteiro
+protocolos-geral          0 de 33.459 casavam por especie; 25.707 (76,8%) como inteiro
+```
+
+O arquivo diz, com essas palavras: *"A materialização imprime que aplicou."* Ela não
+aplicava.
+
+| programa | roda a camada M | passa `reconcilia` |
+|---|---|---|
+| `tools/mrun` (diagnóstico) | sim | **sim** |
+| `tools/snapshot` (**grava o que a API serve**) | sim | **não** |
+
+### Quando, e como se perdeu
+
+```
+d2293e9  14/08/2026  "A mesclagem que nao casa nada fala, e so decisao registrada a conserta"
+         + import { leJuncoes, reconciliadorDe }
+         + const reconcilia = reconciliadorDe(leJuncoes(...))
+         +       reconcilia,
+
+0aae15c  26/08/2026  "feat(projeto): restaurar 100% do estado e desenvolvimento do dia 26"
+         - import { leJuncoes, reconciliadorDe }
+         - const reconcilia = reconciliadorDe(leJuncoes(...))
+         -       reconcilia,
+```
+
+**O commit que prometia restaurar 100% do estado reverteu um conserto.** É o mesmo
+episódio de `docs/RECUPERACAO-27-08.md`, e o README já lista "quatro coisas que este
+README chegou a descrever e não existem no repositório". Esta é a quinta, e a única
+que produzia número errado em vez de recurso faltando.
+
+### O efeito, e por que ele não erra alto
+
+Toda materialização desde 26/08 grava:
+
+- `BACKLOG AGENDADO FUTURO['PROTOCOLOS GERAL.TIPO DE PROTOCOLO']` — 93.083 linhas,
+  **100% nulas**, e a coluna é ponta de um relacionamento (`relationships.yaml`);
+- `PROTOCOLOS GERAL['TECNICOS AUXILIARES.AUXILIAR']` — 94.166 linhas, **100% nulas**,
+  lida por dois campos de `protocolos-detalhados`.
+
+A tela mostra BLANK. Não há exceção, não há aviso: é um valor plausível para uma
+coluna que simplesmente não tem dado. Pelos números de agosto, deveriam ser ~60.425 e
+~25.707 linhas preenchidas.
+
+**A terceira coluna nula NÃO é isto.** `PROTOCOLOS GERAL['TÉCNICO 2']` vem de
+`GESTORES EQUIPES`, que lê uma tabela do dbMaria **que parou de ser alimentada em
+junho de 2025** (achado #73). Nenhuma reconciliação a conserta, e ela está
+corretamente fora do `juncoes.yaml`. Confundir as duas famílias seria trocar uma
+junção morta por uma viva e errada — o que o motor recusa fazer sozinho, de propósito.
+
+### O conserto, e o guarda que não existia
+
+As três linhas voltaram para `tools/snapshot/src/index.ts`. E entrou o teste que
+faltava (`packages/semantic-model/test/juncoes-ligadas.test.ts`): ele afirma que **as
+duas** ferramentas que rodam a camada M montam e PASSAM o reconciliador.
+
+Ele lê código-fonte, o que é grosseiro, e é escolha: os dois programas são CLIs que só
+rodam com banco e credencial. Verificado que ele falha de verdade — removidas as três
+linhas, o teste quebra (`1 de 2 ferramentas`). Se um dia a materialização puder rodar
+contra fonte falsa, trocar por um teste que materialize e confira a coluna.
+
+### ⚠ O dado em disco continua errado
+
+Consertar o código não reescreve o snapshot. As duas colunas só voltam a ter valor na
+**próxima materialização** dessas queries. Isso não foi feito aqui: exige o banco de
+produção e mudaria o dado que ainda vai ser conferido na tela.
+
+### As duas lições
+
+> **Um alarme que toca há semanas vira paisagem.** `snapshot:confere` fez o trabalho
+> dele todo dia; o defeito foi eu ler "3 erros" três vezes e classificar sem abrir. A
+> pergunta que faltava não era "o que é isso?" e sim "desde quando?".
+
+> **Decisão registrada sem teste é decisão que evapora.** O `juncoes.yaml` é exemplar —
+> traz o número medido, a data, quem decidiu e o que reconferir. Nada disso impediu a
+> ligação de sumir, porque nenhum teste afirmava que ela existia. Documento prova
+> intenção; teste prova comportamento.
