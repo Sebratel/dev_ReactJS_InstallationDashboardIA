@@ -413,6 +413,11 @@ function filtrosDaChave(
 ): TableFilter[] {
   if (p.remota && isBlank(valor)) {
     const caminho = plano!.caminhos[i]!;
+    // Preguiçoso pelo mesmo motivo do `chaveDe` logo abaixo, e com mais razão:
+    // preparar o caminho constrói os índices dos saltos, e cada índice varre uma
+    // tabela visível inteira. Este filtro é montado uma vez por COMBINAÇÃO, e o
+    // `keep` só roda quando a varredura acontece.
+    let anda: ((row: Row) => Row | null) | null = null;
     return [{
       table: normaliza(plano!.ancora),
       // Nenhuma coluna declarada: este filtro não é sobre uma coluna da âncora, é
@@ -420,7 +425,7 @@ function filtrosDaChave(
       // ela derrubar o grupo inteiro.
       columns: new Set<string>(),
       origem: p.origemEmBranco,
-      keep: (row: Row) => plano!.navegador.segue(caminho, row) === null,
+      keep: (row: Row) => (anda ??= plano!.navegador.preparaCaminho(caminho))(row) === null,
     }];
   }
 
@@ -498,11 +503,22 @@ function enumeraCombinacoes(
     return combinacoes;
   }
 
+  // Um leitor por chave, montados antes do laço — pelo mesmo motivo do ramo acima:
+  // são as MESMAS chaves em todas as linhas, e este laço percorre a âncora visível
+  // inteira. `plano.navegador.valor` refazia, POR LINHA, a resolução de nome que só
+  // depende da tabela: a chave do memo de `indice` (duas `normalizeName` e uma
+  // string nova a hashear), a normalização de `columnValue` em cada salto, e o
+  // `identityKey` que o leitor de identidade tira direto do dicionário.
+  //
+  // Ansioso aqui e preguiçoso em `filtrosDaChave`, e a diferença não é gosto: este
+  // laço percorre TODAS as linhas da âncora sempre que chega aqui, então o preparo
+  // se paga na primeira; lá o `keep` pode nunca rodar.
+  const leitores = chaves.map((c, i) =>
+    plano.navegador.leitorDeValor(plano.caminhos[i]!, c.tabela, c.coluna),
+  );
   for (const linha of base.filter.rowsOf(plano.ancora)) {
     guarda(
-      chaves.map((c, i) =>
-        projetaNivel(c, plano.navegador.valor(plano.caminhos[i]!, linha, c.tabela, c.coluna), onde),
-      ),
+      chaves.map((c, j) => projetaNivel(c, leitores[j]!(linha), onde)),
       linha,
     );
   }

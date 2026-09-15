@@ -51,6 +51,7 @@
     "test:subir": "node --test tools/subir/test/*.test.ts",
     "test:api": "node --test apps/api/test/*.test.ts",
     "paginas": "node --max-old-space-size=8192 tools/paginas/src/index.ts",
+    "paginas:shas": "node --max-old-space-size=8192 tools/paginas/src/shas.ts",
     "bench:carga": "node --max-old-space-size=8192 --expose-gc tools/bench/src/carga.ts",
     "bench:colunar": "node --max-old-space-size=8192 --expose-gc tools/bench/src/colunar.ts",
     "bench:colunar-paridade": "node --max-old-space-size=8192 tools/bench/src/colunar-paridade.ts",

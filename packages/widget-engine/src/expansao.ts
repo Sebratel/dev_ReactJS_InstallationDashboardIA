@@ -274,4 +274,86 @@ export class Navegador {
     const destino = this.segue(caminho, linha);
     return destino ? this.ev.columnValue(tabela, coluna, destino) : BLANK;
   }
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // CAMINHO PREPARADO — a mesma navegação, com o nome resolvido FORA do laço
+  //
+  // `segue` e `valor` recebem o caminho a cada linha, e por linha eles refazem
+  // trabalho que só depende das TABELAS:
+  //
+  //   1. `indice(t, c)` monta a chave do próprio memo — `` `${normaliza(t)}[${normaliza(c)}]` ``
+  //      — a cada chamada. São duas `normalizeName` e uma string NOVA, que o V8
+  //      precisa hashear do zero: o hash que ele guarda na string não serve, porque
+  //      a instância é outra em toda linha. Só então o `Map.get` acha o índice que
+  //      já estava pronto desde a primeira linha.
+  //   2. `columnValue(t, c, linha)` normaliza o nome da coluna por célula lida.
+  //   3. `identityKey(valor)` recalcula a chave a partir do valor, quando o leitor
+  //      de identidade a tira direto do dicionário da coluna.
+  //
+  // **Dimensionado antes de escrever** (perfil de `agendamento-field`, 15/09/2026,
+  // a página mais cara do relatório — 7,1 s de cálculo em 39 visuais):
+  //
+  //   indice          1.451 ms  16,6% do tempo amostrado — quase tudo montar a chave
+  //   normalizeName     618 ms   7,1%, e 94,5% dela vem de `indice` e `columnValue`
+  //   identityKey       697 ms   8,0%
+  //
+  // E o contador provou que não havia nada a ganhar baratendo a chamada:
+  // **35.398.107 chamadas de `normalizeName` para 446 nomes distintos, 100% de
+  // acerto no memo, teto de 4.096 nunca atingido.** O memo já estava perfeito. O
+  // desperdício era chamá-lo 35 milhões de vezes para perguntar 446 coisas.
+  //
+  // É o mesmo remédio de `Evaluator.leitorDeColuna` e `leitorDeIdentidade`, e a
+  // mesma forma: tabela e coluna fixas, laço sobre linhas, resolve uma vez.
+
+  /**
+   * Percorre um caminho JÁ RESOLVIDO a partir de uma linha da âncora.
+   *
+   * Use quando o caminho é fixo e o laço é sobre linhas — que é todo uso quente.
+   * Para uma chamada avulsa, `segue` continua sendo o certo: preparar custaria as
+   * mesmas normalizações e ainda alocaria.
+   *
+   * **Preparado na primeira linha, não aqui.** Montar os saltos constrói os índices,
+   * e cada índice varre a tabela visível inteira. Um caminho que nunca é percorrido
+   * — âncora sem linha visível, filtro que resolve por índice de igualdade — não
+   * pode pagar por isso. É a mesma preguiça que `filtrosDaChave` já pratica, e lá a
+   * versão ansiosa foi **medida e perdeu** (14/09/2026).
+   */
+  preparaCaminho(caminho: readonly Aresta[]): (linha: Row) => Row | null {
+    let saltos: { chave: (row: Row) => string; mapa: Map<string, Row> }[] | null = null;
+    return (linha: Row): Row | null => {
+      saltos ??= caminho.map((a) => ({
+        // A chave de identidade sai do dicionário da coluna quando há um, sem passar
+        // pelo valor. É a MESMA função com que `indice` monta o mapa — tem de ser,
+        // ou o `get` erraria em silêncio.
+        chave: this.ev.leitorDeIdentidade(a.deTabela, a.deColuna),
+        mapa: this.indice(a.paraTabela, a.paraColuna),
+      }));
+      let atual: Row | null = linha;
+      for (let i = 0; i < saltos.length; i++) {
+        if (atual === null) return null;
+        const s = saltos[i]!;
+        atual = s.mapa.get(s.chave(atual)) ?? null;
+      }
+      return atual;
+    };
+  }
+
+  /**
+   * Um leitor de `'tabela'[coluna]` visto da âncora, com o caminho já resolvido.
+   *
+   * Caminho vazio é o caso legítimo de a coluna ser da própria âncora: aí isto é
+   * exatamente `leitorDeColuna`, e continua valendo a pena pelo mesmo motivo.
+   */
+  leitorDeValor(
+    caminho: readonly Aresta[],
+    tabela: string,
+    coluna: string,
+  ): (linha: Row) => DaxValue {
+    const anda = this.preparaCaminho(caminho);
+    const lerDestino = this.ev.leitorDeColuna(tabela, coluna);
+    return (linha: Row): DaxValue => {
+      const destino = anda(linha);
+      return destino === null ? BLANK : lerDestino(destino);
+    };
+  }
 }

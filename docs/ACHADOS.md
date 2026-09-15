@@ -9279,3 +9279,176 @@ não ser descoberto duas vezes.
 > verdade e afirmar por teste que as cópias concordam com ela*. Custa uma tarde, não
 > toca em query de produção, e converte um defeito que produz número plausível num
 > vermelho no `npm test`. A dívida continua — mas para de render juros em silêncio.
+
+---
+
+## #115 — Metade do README era o mesmo texto repetido: 761 de 1.487 linhas
+
+**Data:** 15/09/2026
+
+Em 14/09 eu tirei do README **21 linhas de tabela** byte a byte idênticas, resíduo da
+recuperação de 26/08, e dei o assunto por encerrado. Hoje, indo atualizar a contagem de
+testes, medi o arquivo inteiro em vez de olhar a região que eu já conhecia.
+
+### O tamanho
+
+```
+linhas do README ................ 1.487
+linhas duplicadas ................. 761   (51%)
+blocos exatos de 10+ linhas ........ 12
+maior bloco ....................... 155 linhas
+### Widget Engine (Fase 3) ......... 3 vezes, o cabeçalho inteiro
+```
+
+Os quatro maiores são recortes sobrepostos do mesmo trecho da seção **Measure Engine
+(Fase 2b)** — 155, 130, 104 e 93 linhas —, o que tem a cara de uma colagem feita mais de
+uma vez com limites diferentes, não de um `cat` acidental.
+
+### Por que ninguém viu
+
+Um README de 1.487 linhas não é lido de ponta a ponta: é lido por busca. Quem procura
+"propagação por relacionamento" acha, lê, e vai embora — e não tem como perceber que o
+mesmo parágrafo está três telas abaixo. **A duplicação de documento é invisível por
+construção para quem consulta, e só aparece para quem mede.** Foi exatamente o que
+aconteceu comigo em 14/09: eu vi as 21 linhas porque estavam *consecutivas*, e por isso
+parei nelas.
+
+E há o dano ativo: um documento que se repete **envelhece em pedaços**. Corrigir um
+número numa das cópias deixa as outras duas dizendo o antigo, e aí o README passa a se
+contradizer sem que nenhuma edição tenha sido errada.
+
+### O conserto, e a trava que o tornou seguro
+
+Remoção do maior bloco exato repetido, mantendo sempre a **primeira** ocorrência, até
+não sobrar bloco de 10 linhas ou mais. O limite de 10 não é arbitrário: dez linhas
+consecutivas idênticas de prosa não são coincidência, e abaixo disso começa a haver
+repetição legítima (cabeçalho de tabela, cerca de código).
+
+**A verificação é que fez isto ser seguro**, e ela é de uma linha: o multiconjunto de
+linhas do resultado tem de conter toda linha não vazia do original. Se alguma sumisse
+por completo, o programa recusava gravar. Sumiram **zero**.
+
+```
+1.487 -> 728 linhas   |   759 removidas   |   0 linhas únicas perdidas
+cabeçalhos: 16 -> 13 (as três cópias de 'Widget Engine (Fase 3)' viraram uma)
+cercas de código: 10 (par)   tabelas: 15   linhas em branco triplas: 0
+```
+
+### A lição
+
+> **"Eu já olhei esse arquivo" não é o mesmo que "eu medi esse arquivo".** Ontem eu
+> removi 21 linhas duplicadas do README e registrei como resolvido. Estavam ali outras
+> 740, no mesmo arquivo, pelo mesmo motivo, e eu não as vi porque olhei onde o sintoma
+> aparecia em vez de perguntar o tamanho do problema. É o mesmo erro do #110 — contar a
+> ocorrência que saltou aos olhos e não dimensionar o conjunto — aplicado a documento em
+> vez de a desempenho. **Dimensionar antes de consertar vale para prosa também.**
+
+---
+
+## #116 — 35 milhões de chamadas para perguntar 446 coisas, e o grupo de controle que não era controle
+
+**Data:** 15/09/2026
+
+A página mais cara do relatório é `agendamento-field`: **7,1 s de cálculo**, 39% do
+custo das 14 juntas. O perfil de CPU apontou para `normalizeName`, com 618 ms (7,1%).
+
+### A hipótese escrita no código estava errada, e o contador disse isso
+
+`normalizeName` **já era memoizada**, com teto de 4.096 nomes, e o comentário dela
+dizia: *"atingi-lo já é sinal de que alguém está passando dado aqui"*. Ninguém tinha
+conferido. Instrumentei:
+
+```
+chamadas ...... 35.398.107
+acertos ....... 35.397.661   (100,00%)
+distintos ..............446
+sem cache ................0   (teto de 4.096 NUNCA atingido)
+```
+
+Não havia dado nenhum passando por ali — era tudo nome de catálogo. **O memo estava
+perfeito.** O desperdício era chamá-lo 35 milhões de vezes para perguntar 446 coisas, a
+17,5 ns cada.
+
+E isso fecha uma porta: baratear a chamada não tinha nada a ganhar. Vale a lição já
+medida nesta campanha — trocar um `Map.get` por um `WeakMap.get` não ganha nada; só um
+substituto de outra ordem de grandeza ganha. **Aqui o substituto era não chamar.**
+
+### Onde estavam as chamadas
+
+94,5% delas vinham de dois lugares, e o primeiro é o mesmo que liderava o tempo próprio:
+
+```
+indice        @ expansao.ts   1.451 ms  16,6%   (56,3% das normalizeName)
+columnValue   @ evaluator.ts    109 ms          (38,2% das normalizeName)
+```
+
+`Navegador.indice(tabela, coluna)` é um memo — e montava a **chave do próprio memo** a
+cada chamada:
+
+```ts
+const chave = `${normaliza(tabela)}[${normaliza(coluna)}]`;   // 2x normalizeName
+const pronto = this.indices.get(chave);                        // string NOVA a hashear
+```
+
+A string é instância nova em toda linha, então o hash que o V8 guarda dentro da string
+não serve: ele recalcula. Tudo isso para achar um índice que estava pronto desde a
+primeira linha. E `segue()` faz isso **por linha, por aresta do caminho**.
+
+### O conserto: o idioma que o próprio projeto já tinha
+
+`Evaluator.leitorDeColuna` e `leitorDeIdentidade` existem exatamente para isto — tabela
+e coluna fixas, laço sobre linhas, resolve o nome uma vez. `Navegador` era o único sítio
+quente que ficara de fora. Entraram `preparaCaminho` e `leitorDeValor`, e
+`enumeraCombinacoes` passou a montar os leitores **antes** do laço, como o ramo de tabela
+única já fazia.
+
+Ansioso ali e **preguiçoso** em `filtrosDaChave`, e a diferença não é gosto: aquele laço
+percorre todas as linhas da âncora sempre, então o preparo se paga na primeira; o `keep`
+do filtro pode nunca rodar — e a versão ansiosa lá já tinha sido **medida e perdido** em
+14/09.
+
+### O resultado, página por página, cada uma no seu processo
+
+| página (isolada) | sem | com | ganho | pares |
+|---|---:|---:|---:|---|
+| `agendamento-field` | 7.495 ms | 5.297 ms | **+29,3%** | 4/4 |
+| `relatorio-do-ano` | 125 ms | 96 ms | **+23,2%** | 4/4 |
+| `protocolos-detalhados` | 939 ms | 841 ms | **+10,4%** | 4/4 |
+| `l-inst` | 448 ms | 413 ms | +7,7% | 3/4 |
+| `premiacao-instalacao` | 1.005 ms | 997 ms | +0,8% | 2/4 — ruído |
+
+Relatório inteiro: **19.448 ms -> 17.749 ms (+8,7%)**.
+
+E o resultado não mudou: **306 de 306 SHAs de visual idênticos** nas 14 páginas, pelo
+`npm run paginas:shas` que entrou junto — ver a seção abaixo.
+
+### ⚠ O grupo de controle no MESMO processo não é grupo de controle
+
+A primeira leitura do A/B, medindo as 14 páginas numa execução só, dizia isto:
+
+```
+agendamento-field  +29,3%  4/4        <- o alvo
+l-inst             -20,2%  0/4        <- "controle" piorou, consistentemente
+premiacao          -13,6%  1/4
+protocolos-detal.   -6,5%  0/4
+```
+
+Quatro páginas piorando 0/4 e 1/4 é sinal, não ruído — e teria condenado a mudança. Mas
+as 14 rodam **no mesmo processo, em ordem alfabética**, e `agendamento-field` é a
+primeira. Na variante rápida ela gasta 2,2 s A MENOS aquecendo o JIT para todas as
+seguintes. O "controle" herda o estado do tratamento.
+
+Medidas isoladas, as três perdas viraram ganho ou empate — `protocolos-detalhados` foi de
+-6,5% para **+10,4%, 4/4**, uma inversão de 17 pontos.
+
+### As duas lições
+
+> **Um comentário que afirma um número é uma hipótese até alguém contá-la.** O teto de
+> 4.096 vinha com a explicação pronta do que significaria atingi-lo — e o teto nunca foi
+> atingido. A explicação apontava para o lugar errado ("tem dado passando aqui") e, se eu
+> tivesse acreditado nela, teria ido procurar vazamento de dado em vez de contar chamada.
+
+> **Grupo de controle que compartilha processo com o tratamento não é grupo de controle.**
+> Aqui o vazamento foi por JIT e GC, e o sinal que ele produziu era forte e consistente —
+> 0/4 em duas páginas. A regra que sobra é simples: quando A e B trocam de estado por
+> algum canal, **cada medida no seu processo**, ou não é medida.
