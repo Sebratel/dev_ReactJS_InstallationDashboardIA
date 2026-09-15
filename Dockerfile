@@ -87,3 +87,19 @@ EXPOSE 3100
 # `mem_limit: 6g` do docker-compose.prod.yml. `apps/api/test/piscina-workers.test.ts`
 # falha se os três números saírem de sincronia.
 CMD ["node", "--max-old-space-size=3072", "--expose-gc", "apps/api/src/index.ts"]
+
+# Estágio dedicado ao snapshot diário completo via cron (docker-compose.prod.yml,
+# serviço `snapshot-diario`) — parte de `runtime` acima em vez de repetir o stage
+# de build. `api`/`refresh` continuam usando só o stage `runtime`, sem o pacote
+# `cron` a mais.
+FROM runtime AS cron
+RUN apt-get update && apt-get install -y --no-install-recommends cron \
+    && rm -rf /var/lib/apt/lists/*
+COPY docker/cron/crontab-snapshot-diario /etc/cron.d/snapshot-diario
+COPY docker/cron/entrypoint.sh /usr/local/bin/entrypoint-cron.sh
+# `/etc/cron.d/*` já é lido direto pelo daemon `cron` (formato com coluna de
+# usuário) — NÃO rodar `crontab` sobre ele: esse comando instala num formato
+# diferente (crontab pessoal, sem coluna de usuário) e quebraria a linha.
+RUN chmod 0644 /etc/cron.d/snapshot-diario \
+    && chmod +x /usr/local/bin/entrypoint-cron.sh
+CMD ["/usr/local/bin/entrypoint-cron.sh"]

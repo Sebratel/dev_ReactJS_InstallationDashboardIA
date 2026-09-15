@@ -1,0 +1,34 @@
+# Snapshot completo, uma vez por dia às 3h (fuso do container) — corrige
+# qualquer alteração retroativa que a carga incremental/parcial dos grupos de
+# `refresh.yaml` (15/20/30 min) não vê, e materializa em disco o que hoje só
+# roda manual (`npm run snapshot -- --todas`).
+#
+# `. /repo/.env.cron`: cron não herda o ambiente do container — ver
+# `docker/cron/entrypoint.sh`, que grava esse arquivo na subida.
+#
+# `--memoria=12288`: `protocolos-geral` precisa de 12 GB de heap por processo
+# (docs/ACHADOS.md, "O snapshot em disco precisou de mais memória que o
+# padrão") — o padrão de 8192 do daemon de refresh (tools/refresh/src/daemon.ts)
+# não é suficiente para ela. Cada query roda no seu próprio subprocesso
+# (tools/snapshot/src/index.ts, rodaEmSubprocesso), então este teto vale só
+# para quem realmente precisa — as demais 23 usam bem menos.
+#
+# Lista explícita, não `--todas`: `protocolos-produtividade` fica de fora.
+#
+# ⚠ **O motivo original CAIU e a exclusão não foi revista.** Ela ficou de fora
+# porque não materializava em modo nenhum (ACHADOS #81) e a lista aqui espelhava
+# a trava de `tools/refresh/src/grupos.ts`. Em 13/09/2026 os dois deixaram de
+# valer: o SQL saiu de "não termina em 600 s" para 142,7 s, ela materializa ponta
+# a ponta em 162 s / 76.398 linhas, entrou no grupo `frio` de
+# `specs/_catalog/refresh.yaml`, e a trava virou `QUERIES_BLOQUEADAS` — um `Set`
+# VAZIO, de pé só para a próxima query que provar não materializar.
+#
+# Ou seja: hoje a ausência dela aqui é uma **decisão pendente**, não um
+# impedimento técnico. Acrescentá-la custa ~3 min a mais na madrugada. Quem
+# retomar, decida — e não leia esta lista como "ela não funciona".
+#
+# (`--query=` não tem opção de exclusão, por isso a lista é explícita.)
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+0 3 * * * root . /repo/.env.cron && cd /repo && node tools/snapshot/src/index.ts --query=alocacao-patrimonio,apuracao-premiacao,backlog-agendado-futuro,backlog-instalacao,base-categorias-field,capacidade-equipe,clima-tempo,consolidado-clientes,contratos,contratos-telefonia,feriados,field-agenda,field-agenda-slot,gestores-equipes,hora-atualizado,instalacoes-reincidentes,protocolos-auxiliares,protocolos-geral,protocolos-telefonia,quadro-funcional,reincidencia,retorno-prioritario,tecnicos-auxiliares,troca-endereco --refazer --memoria=12288 >> /proc/1/fd/1 2>&1

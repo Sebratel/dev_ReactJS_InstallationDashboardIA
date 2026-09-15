@@ -142,5 +142,33 @@ services:
     command: ["node", "--max-old-space-size=8192", "tools/refresh/src/daemon.ts"]
     restart: unless-stopped
 
+  # Snapshot diário COMPLETO — cron dentro do container, às 3h (docker/cron/
+  # crontab-snapshot-diario), separado da cadência de minutos do `refresh`
+  # acima. Corrige alteração retroativa que a carga incremental não vê, e
+  # materializa o catálogo inteiro (menos protocolos-produtividade, ver o
+  # comentário do crontab — ela não materializa em nenhum modo hoje).
+  #
+  # mem_limit 14g: protocolos-geral sozinha precisa de 12 GB de heap
+  # (docs/ACHADOS.md) — o teto dá ~2 GB de folga para o processo pai, buffers
+  # do .jsonl.gz e o resto que não é heap (mesma lógica do mem_limit do `api`
+  # acima). Cada query roda em subprocesso próprio e em série, então o pico é
+  # de UMA query por vez, nunca a soma de todas.
+  snapshot-diario:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cron
+    env_file:
+      - .env
+    mem_limit: 14g
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   redis-dados:
