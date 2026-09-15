@@ -277,10 +277,20 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     assert.equal(fieldSlot.status, 'falhou');
     assert.equal(fieldSlot.erro, 'ECONNRESET');
 
-    // Query sem carga recente marca vencida
+    // `protocolos-produtividade` está no grupo `frio` desde 13/09/2026, então segue o
+    // grupo como qualquer outra query dele. Era o exemplo de "query sem grupo" aqui, e
+    // deixou de servir: com o frio falhando, ela reporta `falhou`, não `vencida`.
     const prod = j.refresh.queries.find((q: any) => q.id === 'protocolos-produtividade');
     assert.ok(prod);
-    assert.equal(prod.status, 'vencida');
+    assert.equal(prod.status, 'falhou');
+    assert.equal(prod.erro, 'ECONNRESET');
+
+    // Query sem carga recente E sem grupo marca vencida. `field-agenda` continua fora
+    // de qualquer grupo (21min49s de materialização) e é forçada na avaliação por
+    // `montaStatusDeRefresh` — é o exemplo certo para este caso.
+    const semGrupo = j.refresh.queries.find((q: any) => q.id === 'field-agenda');
+    assert.ok(semGrupo);
+    assert.equal(semGrupo.status, 'vencida');
   } finally {
     await s.fecha();
   }

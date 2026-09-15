@@ -10,6 +10,119 @@ import { DaxEvalError, type DaxValue } from './value.ts';
 /** Uma linha. As chaves são nomes de coluna **normalizados** (ver `Dataset`). */
 export type Row = Record<string, DaxValue>;
 
+/**
+ * O protocolo que permite a uma linha **não ser um objeto simples**.
+ *
+ * Uma `Row` é lida de três formas, e só uma delas sobrevive a trocar o objeto por
+ * uma vista sobre armazenamento colunar:
+ *
+ * | forma | numa vista |
+ * |---|---|
+ * | `row[c]` e `c in row` | funcionam — acessor de protótipo responde aos dois |
+ * | `for (const c in row)` | funciona — acessor enumerável entra no `for...in` |
+ * | `Object.keys(row)` e `{...row}` | **não** — os dois só enxergam propriedade PRÓPRIA |
+ *
+ * As duas últimas devolveriam a linha VAZIA, sem erro nenhum: `transitionRowContext`
+ * deixaria de transicionar e `ADDCOLUMNS` perderia as colunas de origem. Número
+ * plausível e diferente — a classe de falha que este projeto não aceita.
+ *
+ * Então elas passam por `colunasDe` e `copiaLinha`, que perguntam à linha em vez de
+ * assumir. Objeto simples continua respondendo `Object.keys`; quem implementa o
+ * protocolo responde por si. O símbolo mora aqui, e não no pacote da vista, para a
+ * dependência apontar de `snapshot` para `measure-engine`, que é o sentido que já
+ * existe.
+ */
+export const COLUNAS_DA_LINHA = Symbol('colunasDaLinha');
+
+/** Uma linha que sabe dizer quais colunas tem. Implementar isto é opcional. */
+export interface LinhaQueSeDescreve {
+  [COLUNAS_DA_LINHA](): string[];
+}
+
+/**
+ * O segundo protocolo da vista: entregar o **dicionário** por trás de uma coluna
+ * física, e o índice desta linha dentro dele.
+ *
+ * `COLUNAS_DA_LINHA` existe para a vista não MENTIR sobre si. Este existe para ela
+ * poder ser mais rápida: quem vai aplicar a mesma coluna a muitas linhas pode
+ * calcular uma vez por VALOR DISTINTO em vez de uma vez por linha — e no dado real
+ * a diferença é de ordem de grandeza (`item` de `protocolos-produtividade` tem 1
+ * valor distinto em 76.398 linhas; `cidade`, 17).
+ *
+ * **Devolver `null` é sempre seguro**, e é o que um objeto simples faz por omissão:
+ * quem chama volta a ler valor por valor. Uma coluna calculada memoizada na linha
+ * também cai aqui, porque ela não está no armazenamento.
+ *
+ * Os dois símbolos moram neste arquivo pelo mesmo motivo que `COLUNAS_DA_LINHA`:
+ * a dependência aponta de `snapshot` para `measure-engine`, e não o contrário.
+ */
+export const DICIONARIO_DA_COLUNA = Symbol('dicionarioDaColuna');
+
+/** Onde uma linha que vem de armazenamento colunar expõe o seu índice. */
+export const INDICE_DA_LINHA = Symbol('indiceDaLinha');
+
+/** Os valores distintos de uma coluna e o id de cada linha. Ver o símbolo acima. */
+export interface DicionarioDeColuna {
+  /** Valores distintos, indexados por id. */
+  readonly valores: readonly DaxValue[];
+  /** Um id por linha da TABELA, na ordem de `INDICE_DA_LINHA`. */
+  readonly ids: Int32Array;
+}
+
+/** Uma linha que vem de armazenamento colunar. Implementar isto é opcional. */
+export interface LinhaColunar {
+  readonly [INDICE_DA_LINHA]: number;
+  [DICIONARIO_DA_COLUNA](chaveColuna: string): DicionarioDeColuna | null;
+}
+
+/**
+ * O dicionário da coluna por trás desta linha, ou `null` quando não há um.
+ *
+ * A chave tem de vir **normalizada** — é a mesma regra de
+ * `temColunaFisicaPorChave`, e pelo mesmo motivo: quem pergunta isto está no
+ * caminho quente e já normalizou.
+ */
+export function dicionarioDaColuna(row: Row, chaveColuna: string): DicionarioDeColuna | null {
+  const f = (row as Partial<LinhaColunar>)[DICIONARIO_DA_COLUNA];
+  return typeof f === 'function' ? f.call(row, chaveColuna) : null;
+}
+
+/**
+ * O índice desta linha no armazenamento, ou `-1` quando ela não vem de um.
+ *
+ * `-1` e não `null` de propósito: quem chama isto está dentro do laço, e comparar
+ * com um número evita o ramo de tipo. Um `-1` nunca indexa por acidente — arrays
+ * tipados devolvem `undefined` nele, e o chamador sempre confere antes.
+ */
+export function indiceDaLinha(row: Row): number {
+  const i = (row as Partial<LinhaColunar>)[INDICE_DA_LINHA];
+  return typeof i === 'number' ? i : -1;
+}
+
+/**
+ * As colunas presentes na linha — inclusive as calculadas já memoizadas nela.
+ *
+ * Substitui `Object.keys(row)`. Para um objeto simples é exatamente isso; para uma
+ * vista, é o que ela declara.
+ */
+export function colunasDe(row: Row): string[] {
+  const proprio = (row as Partial<LinhaQueSeDescreve>)[COLUNAS_DA_LINHA];
+  return typeof proprio === 'function' ? proprio.call(row) : Object.keys(row);
+}
+
+/**
+ * Uma cópia **independente e simples** da linha, para quem vai acrescentar colunas
+ * nela (`ADDCOLUMNS`, `SELECTCOLUMNS`).
+ *
+ * Substitui `{ ...row }`. O resultado é sempre objeto simples, de propósito: a linha
+ * nova pertence a uma tabela anônima, que não tem armazenamento colunar por trás.
+ */
+export function copiaLinha(row: Row): Row {
+  const out: Row = {};
+  for (const c of colunasDe(row)) out[c] = row[c] as DaxValue;
+  return out;
+}
+
 interface TableData {
   /** nome como foi registrado, para mensagem de erro */
   readonly name: string;
@@ -81,7 +194,24 @@ export class Dataset {
       throw new DaxEvalError(`Tabela já registrada no dataset: ${name}`);
     }
     const physical = new Set<string>();
+    // **O molde já conferido.** Numa vista as colunas moram no PROTÓTIPO — um por
+    // tabela — e a linha não tem propriedade própria enumerável (o índice é um
+    // `Symbol`). Protótipo repetido significa, por construção, exatamente as mesmas
+    // chaves; reconferir é enumerar 30 acessores por linha para chegar ao mesmo
+    // conjunto. Medido em 14/09/2026 nas 14 páginas, `adotaTabela` era 3,5% do
+    // perfil inteiro, quase todo aqui.
+    //
+    // O atalho é **só** para quem implementa `COLUNAS_DA_LINHA`: um objeto simples
+    // tem `Object.prototype` como todos os outros e as chaves dele variam de linha
+    // para linha (linha esparsa é o caso normal), então ali a conferência continua
+    // linha a linha, como sempre foi.
+    let moldeConferido: object | null = null;
     for (const r of rows) {
+      if (COLUNAS_DA_LINHA in r) {
+        const molde = Object.getPrototypeOf(r) as object;
+        if (molde === moldeConferido) continue;
+        moldeConferido = molde;
+      }
       for (const col in r) {
         if (physical.has(col)) continue;
         if (normalizeName(col) !== col) {
@@ -126,7 +256,27 @@ export class Dataset {
 
   /** A coluna veio nos dados? (`false` para coluna calculada e para inexistente.) */
   hasPhysicalColumn(table: string, column: string): boolean {
-    return this.tables.get(normalizeName(table))?.physical.has(normalizeName(column)) ?? false;
+    return this.temColunaFisicaPorChave(normalizeName(table), normalizeName(column));
+  }
+
+  /**
+   * O mesmo que `hasPhysicalColumn`, para quem **já** normalizou as duas chaves.
+   *
+   * Existe por medição, não por gosto. `columnValue` é o laço mais quente do
+   * avaliador, e até 13/09/2026 ele normalizava o nome da coluna uma vez para si e
+   * outra dentro de `hasPhysicalColumn`, mais o da tabela — **três normalizações**
+   * por célula lida. No perfil de `instalacao-reincidente` isso somava 3,8 s dos
+   * 10,2 s da página, depois de `normalizeName` já estar memoizada.
+   *
+   * **A chave tem de vir normalizada, e isto não confere.** Conferir custaria
+   * exatamente a normalização que o método existe para evitar. Passar uma chave
+   * crua aqui não dá erro: dá `false`, e `columnValue` trataria a coluna física
+   * como calculada — ou erraria dizendo que ela não existe no modelo. Por isso o
+   * método é o caminho da exceção e `hasPhysicalColumn` continua sendo a porta
+   * normal, com os nomes como vierem.
+   */
+  temColunaFisicaPorChave(chaveTabela: string, chaveColuna: string): boolean {
+    return this.tables.get(chaveTabela)?.physical.has(chaveColuna) ?? false;
   }
 
   get tableNames(): string[] {

@@ -80,3 +80,35 @@ test('adotar duas vezes a mesma tabela erra, como addTable', () => {
   d.adotaTabela('T', [{ valor: 1 }] as never);
   assert.throws(() => d.adotaTabela('T', [{ valor: 2 }] as never), /já registrada/);
 });
+
+// `temColunaFisicaPorChave` é o atalho de `columnValue` para não normalizar três
+// vezes por célula lida. Ele CONFIA que as chaves já vêm normalizadas — e confiar
+// sem conferir só é aceitável se a armadilha estiver fixada por teste.
+
+test('temColunaFisicaPorChave concorda com hasPhysicalColumn quando a chave é normalizada', () => {
+  const d = new Dataset();
+  d.addTable('Protocolos Geral', [{ 'N°Protocolo': 1, Cidade: 'Canoas' }] as never);
+
+  assert.ok(d.hasPhysicalColumn('PROTOCOLOS GERAL', 'CIDADE'));
+  assert.ok(d.temColunaFisicaPorChave('protocolos geral', 'cidade'));
+  assert.ok(d.temColunaFisicaPorChave('protocolos geral', 'n°protocolo'));
+
+  assert.ok(!d.hasPhysicalColumn('PROTOCOLOS GERAL', 'INEXISTENTE'));
+  assert.ok(!d.temColunaFisicaPorChave('protocolos geral', 'inexistente'));
+  assert.ok(!d.temColunaFisicaPorChave('tabela que não existe', 'cidade'));
+});
+
+test('chave CRUA no atalho devolve false — é a armadilha que o nome do método avisa', () => {
+  const d = new Dataset();
+  d.addTable('Protocolos Geral', [{ Cidade: 'Canoas' }] as never);
+
+  // Não erra: devolve `false`, e `columnValue` trataria uma coluna física como se
+  // fosse calculada. Fixar aqui é o que impede alguém de "simplificar" trocando
+  // `hasPhysicalColumn` por este atalho num sítio que não normalizou antes.
+  assert.ok(!d.temColunaFisicaPorChave('PROTOCOLOS GERAL', 'CIDADE'));
+  assert.ok(!d.temColunaFisicaPorChave('protocolos geral', 'Cidade'));
+  assert.ok(!d.temColunaFisicaPorChave(' protocolos geral ', 'cidade'));
+
+  // E a porta normal continua aceitando o nome como ele vier.
+  assert.ok(d.hasPhysicalColumn(' Protocolos Geral ', ' Cidade '));
+});

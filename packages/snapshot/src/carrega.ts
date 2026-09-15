@@ -43,11 +43,14 @@ import {
 import {
   le,
   leCabecalho,
+  leColunar,
   shaDeDax,
   type CabecalhoDeSnapshot,
   type Escalar,
   type TipoDeColuna,
 } from './formato.ts';
+import { VistaDeLinhas, indiceDaVista } from './linha-vista.ts';
+import type { TabelaColunar } from './tabela-colunar.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
 
@@ -70,6 +73,20 @@ export interface CarregaOptions {
    * diferencial precisa — o mesmo papel que `MINIMO_PARA_INDEXAR` faz no índice.
    */
   projetar?: boolean;
+  /**
+   * Guardar as tabelas em armazenamento COLUNAR (`TabelaColunar` + `VistaDeLinhas`)
+   * em vez de um objeto por linha? Padrão `false`.
+   *
+   * O mesmo interruptor honesto de `projetar` e `lerCalculadas`, e pela mesma razão:
+   * enquanto as duas representações existirem, tem de ser possível rodar o MESMO
+   * cálculo nas duas e comparar. É o que o teste diferencial faz.
+   *
+   * Medido em 13/09/2026 sobre as 23 tabelas de `snapshot/`: 3.378 MB como objetos
+   * contra 378 MB colunar+vista (8,9x), com 0 células divergentes em 34.456.293.
+   * O avaliador não sabe da diferença — a vista responde a `row[c]`, `c in row` e
+   * `for...in` como o objeto respondia.
+   */
+  colunar?: boolean;
   /**
    * Colunas sob demanda a **liberar** nesta carga, como `'TABELA'[coluna]`.
    *
@@ -239,28 +256,60 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
         );
     for (const c of fora) omitidas.push(`'${t.nome}'[${c}]`);
 
-    const { cabecalho, linhas: doDisco } = await le(arquivo, new Set(fora));
-    conferaColunasCalculadas(opts.model.table(t.nome)!, cabecalho, t.query, opts.dir);
-    // O poller de quase-realtime, se houver um para esta tabela. Aplicado ANTES da
-    // conversão de tipo abaixo: o overlay já entrega `Date` de verdade (o driver do
-    // Postgres devolve isso, não texto), então passa pelo mesmo caminho que uma
-    // linha do arquivo passaria se já estivesse no tipo certo — nenhuma linha do
-    // overlay é reconvertida à toa, e nenhuma fica sem a conversão que precisa.
+    const modelo = opts.model.table(t.nome)!;
+    const semColuna = new Set(fora);
+    // O poller de quase-realtime, se houver um para esta tabela.
     const mesclador = opts.overlay?.get(normaliza(t.nome));
-    const linhas = mesclador ? mesclador(doDisco) : doDisco;
-    // `fora` também aqui, e não é detalhe: sem ele a conversão de tipo escreveria
-    // `linha[chave] = aplicaTipo(col, null)` na coluna omitida e a **traria de
+    // `semColuna` vai para a conversão de tipo também, e não é detalhe: sem ele a
+    // conversão escreveria `aplicaTipo(col, null)` na coluna omitida e a **traria de
     // volta**, agora valendo BLANK em todas as linhas. Seria a projeção produzindo
-    // exatamente o número errado silencioso que ela promete não produzir.
-    convertidas.push(
-      ...aplicaTiposDeclarados(
-        opts.model.table(t.nome)!,
-        cabecalho,
-        linhas,
-        new Set(fora),
-        juncao.suprimir,
-      ),
-    );
+    // exatamente o número errado e silencioso que ela promete não produzir.
+    let cabecalho: CabecalhoDeSnapshot;
+    let linhas: Record<string, Escalar>[];
+
+    if (opts.colunar) {
+      const lido = await leColunar(arquivo, semColuna);
+      cabecalho = lido.cabecalho;
+      conferaColunasCalculadas(modelo, cabecalho, t.query, opts.dir);
+      // A conversão de tipo acontece AQUI, no dicionário, antes de existir linha
+      // nenhuma — e essa ordem é obrigatória, não preferida: a vista recusa escrita
+      // em coluna física, então converter depois seria impossível. Em troca, custa o
+      // número de valores DISTINTOS em vez do número de linhas.
+      convertidas.push(
+        ...aplicaTiposDeclaradosColunar(modelo, cabecalho, lido.tabela, semColuna, juncao.suprimir),
+      );
+      const doDisco = new VistaDeLinhas(lido.tabela).todas() as unknown as Record<
+        string,
+        Escalar
+      >[];
+      linhas = mesclador ? mesclador(doDisco) : doDisco;
+      if (mesclador) {
+        // As linhas que o overlay trouxe são objetos simples, e não passaram pelo
+        // dicionário — então ainda precisam da conversão linha a linha, exatamente
+        // como no caminho de objeto. São elas e só elas: `indiceDaVista` distingue o
+        // que veio do arquivo do que veio do poller, sem precisar saber qual tabela
+        // é vigiada. Os rótulos já foram registrados acima; são as mesmas colunas.
+        aplicaTiposDeclarados(
+          modelo,
+          cabecalho,
+          linhas.filter((l) => indiceDaVista(l as never) === null),
+          semColuna,
+          juncao.suprimir,
+        );
+      }
+    } else {
+      const lido = await le(arquivo, semColuna);
+      cabecalho = lido.cabecalho;
+      conferaColunasCalculadas(modelo, cabecalho, t.query, opts.dir);
+      // Aplicado ANTES da conversão: o overlay já entrega `Date` de verdade (o driver
+      // do Postgres devolve isso, não texto), então passa pelo mesmo caminho que uma
+      // linha do arquivo passaria se já estivesse no tipo certo — nenhuma linha do
+      // overlay é reconvertida à toa, e nenhuma fica sem a conversão que precisa.
+      linhas = mesclador ? mesclador(lido.linhas) : lido.linhas;
+      convertidas.push(
+        ...aplicaTiposDeclarados(modelo, cabecalho, linhas, semColuna, juncao.suprimir),
+      );
+    }
     // **Adotar, não copiar.** `addTable` remonta objeto por objeto para normalizar o
     // nome das colunas — trabalho que em `field-agenda` são 1,46 milhão de linhas
     // reconstruídas campo a campo, e um segundo exemplar delas vivo até o GC passar,
@@ -452,18 +501,22 @@ export function preservaEspecieDeJuncao(
  * varrido sobre a coluna inteira. Coluna que já chega no tipo certo não é tocada, e
  * é por isso que o custo disto é proporcional às 14, não às centenas.
  */
-export function aplicaTiposDeclarados(
+/**
+ * As colunas a converter, e o rótulo de cada uma. Sai de `aplicaTiposDeclarados`
+ * para ser compartilhada com o caminho colunar — a ESCOLHA é a mesma nos dois; o
+ * que muda é onde a conversão é aplicada (linha a linha, ou no dicionário).
+ *
+ * Duplicar esta escolha seria a falha cara: os dois caminhos convergiriam em teste
+ * sintético e divergiriam na primeira coluna que um convertesse e o outro não.
+ */
+function colunasAConverter(
   t: ModelTable,
   cabecalho: CabecalhoDeSnapshot,
-  linhas: Record<string, Escalar>[],
-  /** Colunas que não foram carregadas. Converter uma delas a ressuscitaria como BLANK. */
-  omitidas: ReadonlySet<string> = new Set(),
-  /** Colunas de junção cuja conversão quebraria o relacionamento. Ver `preservaEspecieDeJuncao`. */
-  suprimir: ReadonlySet<string> = new Set(),
-): string[] {
+  omitidas: ReadonlySet<string>,
+  suprimir: ReadonlySet<string>,
+): { chave: string; col: (typeof t.columns)[number]; rotulo: string }[] {
   const doDisco = new Map(cabecalho.colunas.map((c) => [normaliza(c.nome), c]));
-  const converter: { chave: string; col: (typeof t.columns)[number] }[] = [];
-  const nomes: string[] = [];
+  const out: { chave: string; col: (typeof t.columns)[number]; rotulo: string }[] = [];
 
   for (const col of t.columns) {
     if (col.calculated || !col.type || !ESPERADO[col.type]) continue;
@@ -476,16 +529,62 @@ export function aplicaTiposDeclarados(
     const emDisco = doDisco.get(chave)!;
     // `vazia` é coluna só de nulos: não há o que converter.
     if (emDisco.tipo === 'vazia' || emDisco.tipo === ESPERADO[col.type]) continue;
-    converter.push({ chave, col });
-    nomes.push(`'${t.name}'[${col.name}] ${emDisco.tipo} -> ${col.type}`);
+    out.push({ chave, col, rotulo: `'${t.name}'[${col.name}] ${emDisco.tipo} -> ${col.type}` });
   }
+  return out;
+}
 
+export function aplicaTiposDeclarados(
+  t: ModelTable,
+  cabecalho: CabecalhoDeSnapshot,
+  linhas: Record<string, Escalar>[],
+  /** Colunas que não foram carregadas. Converter uma delas a ressuscitaria como BLANK. */
+  omitidas: ReadonlySet<string> = new Set(),
+  /** Colunas de junção cuja conversão quebraria o relacionamento. Ver `preservaEspecieDeJuncao`. */
+  suprimir: ReadonlySet<string> = new Set(),
+): string[] {
+  const converter = colunasAConverter(t, cabecalho, omitidas, suprimir);
   for (const linha of linhas) {
     for (const { chave, col } of converter) {
       linha[chave] = aplicaTipo(col, linha[chave] ?? null, t.name) as Escalar;
     }
   }
-  return nomes;
+  return converter.map((c) => c.rotulo);
+}
+
+/**
+ * O mesmo que `aplicaTiposDeclarados`, sobre armazenamento colunar: converte o
+ * **dicionário** de cada coluna, e não cada linha.
+ *
+ * É exatamente equivalente porque `aplicaTipo` é função pura do valor — aplicá-la a
+ * cada linha ou a cada valor DISTINTO dá o mesmo resultado. E é muito mais barato: a
+ * conversão passa a custar o número de valores distintos, não o de linhas.
+ *
+ * **É também o que destrava a vista.** `aplicaTiposDeclarados` escreve em coluna
+ * FÍSICA, e `VistaDeLinhas` recusa isso de propósito: numa vista, o valor convertido
+ * tem de ir para a COLUNA, não para a linha. É aqui que ele vai.
+ *
+ * O erro alto de `aplicaTipo` continua alto — texto que não é literal numérico em
+ * coluna declarada numérica estoura aqui como estouraria lá. O que muda é que estoura
+ * uma vez por valor distinto em vez de uma por linha, e a mensagem nunca citou linha,
+ * então ela sai idêntica.
+ */
+export function aplicaTiposDeclaradosColunar(
+  t: ModelTable,
+  cabecalho: CabecalhoDeSnapshot,
+  tabela: TabelaColunar,
+  omitidas: ReadonlySet<string> = new Set(),
+  suprimir: ReadonlySet<string> = new Set(),
+): string[] {
+  const converter = colunasAConverter(t, cabecalho, omitidas, suprimir);
+  for (const { chave, col } of converter) {
+    // A coluna pode ter ficado fora da carga pela projeção: `omitidas` já cuida
+    // disso, e este guarda cobre o caso de o cabeçalho citar coluna que a leitura
+    // não trouxe — criar a coluna aqui seria ressuscitá-la valendo BLANK.
+    if (!tabela.tem(chave)) continue;
+    tabela.mapeia(chave, (v) => aplicaTipo(col, v, t.name) as Escalar);
+  }
+  return converter.map((c) => c.rotulo);
 }
 
 /** O caminho padrão do snapshot, a partir da raiz do repositório. */

@@ -227,6 +227,20 @@ if (parentPort) {
           now: agora,
           liberaSobDemanda,
           precisaFormaCompleta,
+          // **Armazenamento colunar.** Medido em 13/09/2026 nesta API, com `--sem-aquecer`,
+          // depois de servir as 14 páginas uma vez: **RSS 5.360 MB → 3.097 MB**. Por página,
+          // em processo isolado, `agendamento-field` sai de 567 para 246 MB e
+          // `relatorio-do-mes` de 594 para 314. **O tempo empata** — as 14 páginas custam
+          // 46,1 s em objeto e 46,4 s em colunar.
+          //
+          // Ferramenta em lote continua em objeto, de propósito: ela roda com
+          // `--max-old-space-size`, não tem orçamento de RAM, e é ela que materializa e
+          // GRAVA — escrever coluna física numa vista erra alto, e deve errar.
+          //
+          // A troca é provada, não estimada: `npm run bench:colunar-paridade` carrega e
+          // calcula as 14 páginas nos dois caminhos e compara os 306 visuais. Zero
+          // divergências. Voltar atrás é trocar este `true` por `false`.
+          colunar: true,
           ...(overlays && overlays.size > 0 ? { overlay: mescladoresDe(overlays) } : {}),
         });
         guardaNoCache(chave, promessa);
