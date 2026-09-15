@@ -27,7 +27,7 @@
     "probe:redis": "node tools/probe/src/redis.ts",
     "probe:tipos-data": "node tools/probe/src/tipos-data.ts",
     "probe:kafka": "node tools/probe/src/kafka-test.ts",
-    "probe:determinismo-pg": "node tools/probe/src/determinismo-protocolos-geral.ts",
+    "probe:determinismo-pg": "node --max-old-space-size=8192 tools/probe/src/determinismo.ts",
     "probe:instalador-ramo": "node tools/probe/src/instalador-ramo.ts",
     "probe:memoria-api": "node tools/probe/src/memoria-api.ts",
     "probe:prioridade-fila": "node tools/probe/src/prioridade-fila.ts",
@@ -67,7 +67,8 @@
     "web:build": "npm run build --workspace @analytics/web",
     "probe:reaquecimento": "node --max-old-space-size=3072 tools/probe/src/reaquecimento-pos-evento.ts",
     "probe:watch-snapshot": "node tools/probe/src/watch-do-snapshot.ts",
-    "probe:staging": "node tools/probe/src/staging.ts"
+    "probe:staging": "node tools/probe/src/staging.ts",
+    "probe:compara-materializacao": "node --max-old-space-size=8192 tools/probe/src/compara-materializacao.ts"
   },
   "dependencies": {
     "google-auth-library": "^11.0.2",

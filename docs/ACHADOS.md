@@ -10196,3 +10196,110 @@ dentro de um `catch` genérico é um teste desligado.
 > virou letra morta porque o código novo passou a engolir tudo o que o `fetch` falso
 > levantasse. Quem escreve um `catch {}` de fundo está, sem querer, escolhendo também o
 > que os testes daquele caminho ainda conseguem ver.
+
+---
+
+## #125 — `PROTOCOLOS TELEFONIA` e `PROTOCOLOS AUXILIARES` devolviam valor diferente a cada materialização, e ninguém tinha olhado: o conserto de 04/09 foi aplicado só à irmã do meio
+
+**Data:** 15/09/2026
+**⚠️ ISTO MUDA NÚMERO NA TELA. A conferência é do Erick.**
+
+Achado **por acidente**, e é essa a parte que vale guardar. Fui construir o instrumento
+de verificação da migração de M para SQL (#123) — um comparador que põe duas
+materializações da mesma query lado a lado, coluna por coluna. Para provar que o
+comparador funcionava, rodei-o com dois arquivos que **tinham** de ser idênticos: duas
+materializações de `protocolos-telefonia` com o mesmo código, com um minuto de
+diferença.
+
+Onze das 42 colunas divergiram.
+
+### Medido na fonte, com o banco congelado
+
+O comparador podia estar acusando a vida do banco. Não estava. `npm run
+probe:determinismo-pg` roda o mesmo SQL **duas vezes dentro de uma transação
+`REPEATABLE READ READ ONLY`** — nenhuma linha nova pode entrar entre as duas:
+
+```
+protocolos-telefonia ..... 372 de 655 chaves (56,8%) mudaram de valor
+  TÍTULO RECEBÍVEL .......... 312 de 655  47,6%
+  USUÁRIO ................... 121 de 655  18,5%
+  CTO ....................... 109 de 655  16,6%
+  PONTO DE ACESSO / CODIGO .. 108 de 655  16,5%
+  OLT ....................... 107 de 655  16,3%
+  EQUIPAMENTO/SLOT/PORTA .... ~95 de 655  14,6%
+  LATITUDE / LONGITUDE ....... 87 de 655  13,3%
+
+protocolos-auxiliares .... 7.125 de 38.254 chaves (18,6%) mudaram de valor
+  as mesmas 10 colunas, de USUÁRIO (18,6%) a LONGITUDE (13,8%)
+
+troca-endereco ........... ✅ determinística
+tecnicos-auxiliares ...... ✅ determinística
+```
+
+### A causa, e por que é a MESMA de onze dias atrás
+
+```sql
+ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC)
+```
+
+Os `LEFT JOIN` de `authentication_*` multiplicam a partição — um contrato de
+autenticação tem várias portas de splitter, uma assignment tem vários schedules, um
+cliente tem vários endereços, um contrato tem 78,57 títulos recebíveis. Com o critério
+de ordem empatado, o PostgreSQL escolhe **uma linha qualquer**, e outra na execução
+seguinte. O `WHERE PERSONA1 = 1` guarda essa, e LATITUDE, CTO, OLT e PONTO DE ACESSO
+mudam sozinhos.
+
+**Isto já tinha sido achado, medido e decidido — em `protocolos-geral`.** 14.090 de
+98.110 solicitações (14,4%), Erick decidiu o desempate em 04/09/2026, e ele foi
+invertido em 13/09 quando se mediu que o casamento de contrato decide 4.013 casos
+contra 5 do `active`. O `sql:` dela carrega o desempate e um comentário de 25 linhas
+explicando cada termo.
+
+**As duas irmãs ficaram para trás.** Mesma estrutura de `FROM`, mesmos aliases, mesmas
+colunas, mesmo defeito — e nenhuma linha de conserto. Não por decisão: por ninguém ter
+perguntado se o problema era só de uma.
+
+### O conserto
+
+O **mesmo** bloco de `ORDER BY` de `protocolos-geral`, literal, nas duas — mais
+`frt.id`, que geral não precisa (ela tirou `financial_receivable_titles` do `FROM` e o
+consulta por `EXISTS`).
+
+Provado nos dois sentidos:
+
+```
+probe:determinismo-pg, depois do conserto
+  protocolos-telefonia ..... ✅ 32 colunas, 0 divergência
+  protocolos-auxiliares .... ✅ 32 colunas, 0 divergência
+
+duas materializações seguidas de protocolos-telefonia (o caminho de produção inteiro)
+  antes do conserto ........ ❌ 11 de 42 colunas divergiam
+  depois do conserto ....... ✅ as 42 batem em todas as 640 chaves
+```
+
+### O que muda na tela, e por que "mudou muito" não é má notícia
+
+Comparando a materialização anterior com a nova, **11 colunas mudam em 14% a 52% das
+640 linhas de telefonia**. Parece enorme, e é — mas o valor anterior não tinha direito
+nenhum a estar certo: era um sorteio, refeito a cada refresh. A comparação honesta não
+é "o conserto mudou 331 linhas", é "o conserto escolheu uma linha diferente daquele
+sorteio específico, em 331 casos".
+
+O que Erick precisa conferir é se a linha escolhida agora é a certa — e o critério é o
+que ele já decidiu para `protocolos-geral`: o contrato **daquele protocolo**.
+
+### As duas lições
+
+> **O instrumento de medir achou o defeito antes de medir qualquer coisa.** O
+> comparador foi escrito para validar uma migração que ainda não começou; o primeiro
+> uso dele foi um teste de sanidade — dois arquivos que tinham de ser iguais — e foi aí
+> que o defeito apareceu. Vale gastar a primeira execução de um instrumento novo num
+> caso onde a resposta é conhecida: é a única vez em que uma surpresa é informação
+> pura.
+
+> **Conserto aplicado a uma query não é conserto aplicado à família.** Em 04/09
+> alguém achou, mediu e consertou a não-determinismo de `PROTOCOLOS GERAL`, e a
+> pergunta "as outras duas têm o mesmo `ROW_NUMBER()`?" custava um `grep`. Ficou onze
+> dias sem ser feita. Quando um defeito nasce de um padrão copiado — e aqui as três
+> queries são cópias uma da outra —, o achado tem de terminar com a varredura das
+> irmãs, não com o conserto da que doeu.

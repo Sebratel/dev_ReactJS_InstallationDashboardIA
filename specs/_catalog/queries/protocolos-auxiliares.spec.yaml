@@ -40,7 +40,32 @@ sql: |-
           m.title AS "EQUIPAMENTO",
           ac.user AS "USUÁRIO",
           vu.name AS "CRIADO POR",
-          ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,
+          ROW_NUMBER() OVER (
+                      PARTITION BY a.title
+                      -- MESMO desempate de `protocolos-geral` (decidido por Erick em 04/09/2026,
+                      -- invertido em 13/09). As tres queries calculam as MESMAS colunas a partir
+                      -- dos MESMOS joins; discordarem sobre qual linha e a certa seria um defeito
+                      -- esperando para ser achado.
+                      --
+                      -- PRIMARIA e o contrato DAQUELE protocolo, nao `active`: LATITUDE, LONGITUDE,
+                      -- CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA e USUARIO saem
+                      -- todas de `ac`, e quando o cliente tem varios enderecos a resposta por
+                      -- definicao e o contrato que casa; `active` e heuristica.
+                      ORDER BY ((ac.contract_id = cst.contract_id) IS TRUE) DESC,
+                               (ac.active IS TRUE) DESC,
+                               s.start_date DESC NULLS LAST,
+                               ac.created DESC NULLS LAST, ac.id DESC NULLS LAST,
+                               -- Piso de determinismo. Sem ele esta consulta devolvia valor
+                               -- DIFERENTE a cada execucao: medido em 15/09/2026 dentro de uma
+                               -- transacao REPEATABLE READ (banco congelado), 7.125 de 38.254 (18,6%) das chaves
+                               -- mudavam sozinhas. Cada alias aqui multiplica a particao e nao
+                               -- era ordenado por nada: `asp` (um contrato de autenticacao tem
+                               -- varias portas de splitter), `s` (uma assignment tem varios
+                               -- schedules), `pa` (quando `ac` nao casa, todos os enderecos do
+                               -- cliente empatam) e `frt` (78,57 titulos por contrato; aqui so alimenta um CASE de nulo, mas multiplica igual).
+                               asp.id DESC NULLS LAST, s.id DESC NULLS LAST,
+                               pa.id DESC NULLS LAST, frt.id DESC NULLS LAST
+                  ) AS PERSONA1,
           CASE 
               WHEN frt.title IS NULL THEN 'Pendente' 
               ELSE 'Cobrado' 
