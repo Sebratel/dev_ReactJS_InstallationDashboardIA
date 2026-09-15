@@ -9012,3 +9012,78 @@ trabalho de avaliação de verdade, não andaime em volta dele.** Memoizar chave
 id em vez de string, reaproveitar árvore — os três atacam a moldura. Ganho adicional
 relevante agora exige mudança algorítmica: reaproveitar agrupamento entre linhas, que
 é a família do #38 e do #43, e não micro-alvo.
+
+---
+
+## #112 — A Fase 3 não é "remover o `transform-engine`": ele não sai. E o mapa de cidades está escrito quatro vezes
+
+**Data:** 15/09/2026
+
+O plano de desempenho descreve a Fase 3 como "remove o `transform-engine`". Fui medir
+o que a camada M ainda faz, query por query, antes de começar.
+
+### Ele não sai, e o motivo é de natureza, não de esforço
+
+São **310 passos M em 25 queries** — e **8 delas não têm `sql:` nenhum**:
+
+| query | fonte | passos |
+|---|---|---:|
+| `clima-tempo` | web (JSON) | **61** |
+| `quadro-funcional` | Google Sheets | 7 |
+| `capacidade-equipe` | Google Sheets | 6 |
+| `apuracao-premiacao` | Google Sheets | 5 |
+| `feriados` | inline | 3 |
+| `hora-atualizado` | computed | 9 |
+| `gestores-equipes` | odbc, mas sem `sql:` | 9 |
+| `backlog-agendado-futuro` | odbc, mas sem `sql:` | 4 |
+
+Uma planilha e uma API HTTP **não têm camada SQL para onde empurrar trabalho**. Enquanto
+três planilhas e o `open-meteo` alimentarem o modelo, alguma coisa precisa fazer
+`PromoteHeaders`, `Skip` e `Combine` — e é isso que o `transform-engine` é.
+
+**O que a Fase 3 pode ser, de verdade:** encolher. A distribuição é muito torta — quatro
+queries concentram **219 dos 310 passos**, e três delas são ODBC com `sql:` disponível:
+`protocolos-geral` (56), `protocolos-auxiliares` (56), `protocolos-telefonia` (46). O
+caminho já está provado: `protocolos-produtividade` saiu de ~60 passos para 3 em 10/09,
+e o corpus caiu de 331 para 274.
+
+### E o que a medição achou de quebra: o mesmo mapa, quatro vezes
+
+As três grandes de ODBC têm **exatamente 16 `Table.ReplaceValue` cada**. Não é
+coincidência de contagem — comparadas como conjunto, são **as mesmas 16, idênticas**:
+
+```
+'Canoas'          -> 'CAN'
+'São Leopoldo'    -> 'SLE'
+'Novo Hamburgo'   -> 'NHO'
+'Sapucaia Do Sul' -> 'SPS'   ... e mais 12
+```
+
+E a quarta cópia está no **SQL** de `protocolos-produtividade` (duas vezes dentro do
+arquivo, uma por ramo) — que é justamente a que migrou e hoje tem **zero**
+`Table.ReplaceValue` no M.
+
+**Consequência prática:** uma cidade nova, ou uma sigla corrigida, precisa ser editada
+em quatro lugares, em duas linguagens. Esquecer um não dá erro — dá dois relatórios
+discordando sobre a mesma cidade, com número plausível dos dois lados.
+
+**Um quinto lugar, de outra natureza, que agrava:** as siglas também estão escritas à
+mão no **DAX** de colunas calculadas de `PROTOCOLOS GERAL` — `"BASE (NHO/SLE/SPS)"`,
+`"Equipe de Reparo NHO/SLE/SPS"`. Não é o mesmo mapa (ali a sigla é rótulo de
+agrupamento, não tradução de cidade), mas **depende dele**: mudar a sigla de uma cidade
+sem mexer nesses `IF` deixa o rótulo apontando para uma sigla que não existe mais.
+
+### O que NÃO foi feito, e por quê
+
+Nada. Mover 158 passos de três queries de produção para SQL exige regravar golden contra
+o banco real e provar linha a linha — é sessão própria, e o risco de fazê-la pela metade
+é alto. O valor deste achado é **impedir que alguém comece a Fase 3 pelo lado errado**:
+a frase do plano manda remover um componente que não pode sair.
+
+### A lição
+
+> Um plano envelhece como uma ferramenta de medição envelhece (#106): continua
+> respondendo, com a resposta de quando foi escrito. "Remover o `transform-engine`" era
+> plausível antes de três planilhas e uma API entrarem no corpus. **Antes de executar
+> uma fase de um plano, meça se a premissa dela ainda vale** — custou uma varredura de
+> 25 arquivos e evitou uma sessão inteira empurrando uma porta trancada.
