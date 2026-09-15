@@ -15,7 +15,7 @@
 // relógio não são de graça.
 //
 //   e1 io      ler os bytes do disco e decodificar utf-8
-//   e2 linhas  + partir em linhas (readline)
+//   e2 linhas  + partir em linhas (paraCadaLinha)
 //   e3 parse   + JSON.parse de cada linha, descartando o resultado
 //   e4 monta   + montar o objeto da linha (decodifica: data, coluna mista)
 //   e5 retem   = `le()` de verdade — igual ao e4, mas guardando as linhas
@@ -43,6 +43,7 @@
 //   npm run bench:carga -- --arquivo=contratos   # só estes (aceita lista)
 //   npm run bench:carga -- --pesado              # inclui field-agenda (1 GB, ~8 GB de heap)
 //   npm run bench:carga -- --repete=5            # melhor de N por degrau (padrão 3)
+//   npm run bench:carga -- --colunar             # a escada do caminho que RODA
 //   npm run bench:carga -- --paginas             # carga ponta a ponta, por página
 //   npm run bench:carga -- --paginas --pagina=diario-instalacao
 //   npm run bench:carga -- --json                # a mesma medição, para guardar
@@ -50,19 +51,25 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
 import { getHeapStatistics } from 'node:v8';
 import { Dataset } from '../../../packages/measure-engine/src/dataset.ts';
 import { SemanticModel, normalizeName } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
-import { aplicaTiposDeclarados, carrega } from '../../../packages/snapshot/src/carrega.ts';
+import {
+  aplicaTiposDeclarados,
+  aplicaTiposDeclaradosColunar,
+  carrega,
+} from '../../../packages/snapshot/src/carrega.ts';
+import { VistaDeLinhas } from '../../../packages/snapshot/src/linha-vista.ts';
 import {
   bytesDescomprimidos,
   decodifica,
   ehArquivoDeSnapshot,
   fluxoDeLeitura,
   le,
+  leColunar,
+  paraCadaLinha,
   leCabecalho,
   semSufixo,
   type CabecalhoDeSnapshot,
@@ -95,6 +102,17 @@ const args = process.argv.slice(2);
 const json = args.includes('--json');
 const pesado = args.includes('--pesado');
 const modoPaginas = args.includes('--paginas');
+/**
+ * Medir o caminho COLUNAR, que é o que roda em produção.
+ *
+ * **A escada de objeto estava descrevendo um carregamento que a API não faz mais.**
+ * `servidor.ts` e `worker-calculador.ts` carregam com `colunar: true` desde 13/09;
+ * `le()` só sobrevive no caminho de objeto, que hoje existe para a paridade. Uma
+ * decomposição do caminho errado não é um detalhe: em 14/09/2026 ela dizia
+ * `monta 31,8%` e `parse 6,2%`, e foi com esses números que a decisão sobre trocar
+ * o formato do arquivo quase foi tomada.
+ */
+const modoColunar = args.includes('--colunar');
 const lista = (prefixo: string): string[] =>
   args
     .filter((a) => a.startsWith(prefixo))
@@ -105,7 +123,7 @@ const paginasPedidas = lista('--pagina=');
 const repete = Number(args.find((a) => a.startsWith('--repete='))?.slice('--repete='.length) ?? 3);
 
 for (const a of args) {
-  const ok = ['--json', '--pesado', '--paginas'].includes(a) ||
+  const ok = ['--json', '--pesado', '--paginas', '--colunar'].includes(a) ||
     ['--arquivo=', '--pagina=', '--repete='].some((p) => a.startsWith(p));
   if (!ok) {
     console.error(`argumento desconhecido: ${a}`);
@@ -170,57 +188,82 @@ async function e1io(arquivo: string): Promise<number> {
   return n;
 }
 
-/** e2 — + partir em linhas. Mesmo `readline` e mesmo `crlfDelay` de `le()`. */
+/**
+ * e2 — + partir em linhas, pelo MESMO `paraCadaLinha` que `le()` usa.
+ *
+ * Era `readline` até 14/09/2026, quando `formato.ts` deixou de usá-lo (o `for await`
+ * por linha custava 28% do tempo de entrega). A réplica tem de acompanhar: medindo
+ * `readline` aqui, a escada atribuiria a este degrau um custo que o carregamento não
+ * paga mais, e `e5 < e4` — a checagem que denuncia réplica divergente — não pegaria,
+ * porque o degrau ficaria mais CARO, não mais barato.
+ */
 async function e2linhas(arquivo: string): Promise<number> {
-  const rl = readline.createInterface({
-    input: fluxoDeLeitura(arquivo),
-    crlfDelay: Infinity,
-  });
   let n = 0;
-  for await (const texto of rl) if (texto !== '') n++;
+  await paraCadaLinha(arquivo, (texto) => { if (texto !== '') n++; });
   return n;
 }
 
-/** e3 — + `JSON.parse`, descartando. O `void` existe para o V8 não apagar o trabalho. */
+/** e3 — + `JSON.parse`, descartando. O `throw` existe para o V8 não apagar o trabalho. */
 async function e3parse(arquivo: string): Promise<number> {
-  const rl = readline.createInterface({
-    input: fluxoDeLeitura(arquivo),
-    crlfDelay: Infinity,
-  });
   let n = 0;
-  for await (const texto of rl) {
-    if (texto === '') continue;
+  await paraCadaLinha(arquivo, (texto) => {
+    if (texto === '') return;
     const v = JSON.parse(texto) as unknown;
     if (v === undefined) throw new Error('inalcançável');
     n++;
-  }
+  });
   return n;
 }
 
 /** e4 — + montar o objeto da linha, descartando-o. É o laço de `le()` sem o `push`. */
 async function e4monta(arquivo: string): Promise<number> {
-  const rl = readline.createInterface({
-    input: fluxoDeLeitura(arquivo),
-    crlfDelay: Infinity,
-  });
   let cab: CabecalhoDeSnapshot | null = null;
   let ks: string[] = [];
   let n = 0;
-  for await (const texto of rl) {
-    if (texto === '') continue;
+  await paraCadaLinha(arquivo, (texto) => {
+    if (texto === '') return;
     if (cab === null) {
       cab = JSON.parse(texto) as CabecalhoDeSnapshot;
       ks = chaves(cab);
-      continue;
+      return;
     }
+    const c = cab as CabecalhoDeSnapshot;
     n++;
     const valores = JSON.parse(texto) as unknown[];
     const linha: Record<string, Escalar> = {};
     for (let i = 0; i < ks.length; i++) {
-      linha[ks[i]!] = decodifica(valores[i], cab.colunas[i]!.tipo, `${arquivo}:${n}`);
+      linha[ks[i]!] = decodifica(valores[i], c.colunas[i]!.tipo, `${arquivo}:${n}`);
     }
     if (linha === undefined) throw new Error('inalcançável');
-  }
+  });
+  return n;
+}
+
+/**
+ * e4c — + decodificar cada célula, descartando. É o laço de `leColunar` sem o
+ * `poeLinha`, e a diferença para o e5c é **o dicionário**: o `Map.get` por célula
+ * que transforma valor em id.
+ */
+async function e4cDecodifica(arquivo: string): Promise<number> {
+  let cab: CabecalhoDeSnapshot | null = null;
+  let ks: string[] = [];
+  let n = 0;
+  await paraCadaLinha(arquivo, (texto) => {
+    if (texto === '') return;
+    if (cab === null) {
+      cab = JSON.parse(texto) as CabecalhoDeSnapshot;
+      ks = chaves(cab);
+      return;
+    }
+    const c = cab as CabecalhoDeSnapshot;
+    n++;
+    const valores = JSON.parse(texto) as unknown[];
+    const vs: Escalar[] = new Array(ks.length);
+    for (let i = 0; i < ks.length; i++) {
+      vs[i] = decodifica(valores[i], c.colunas[i]!.tipo, `${arquivo}:${n}`);
+    }
+    if (vs === undefined) throw new Error('inalcançável');
+  });
   return n;
 }
 
@@ -246,6 +289,96 @@ interface MedidaDeArquivo {
   nota: string | null;
 }
 
+/**
+ * A escada do caminho COLUNAR — o que a API faz desde 13/09/2026.
+ *
+ * Compartilha e1..e3 com a de objeto (são os mesmos bytes e o mesmo `JSON.parse`),
+ * e troca o que vem depois:
+ *
+ *   e4c decodif   + decodificar cada célula, descartando
+ *   e5c dicion    = `leColunar()` de verdade — a diferença para o e4c é o
+ *                   dicionário: um `Map.get` por célula para virar id
+ *   e6c tipos     + `aplicaTiposDeclaradosColunar` (converte o DISTINTO, não a linha)
+ *   e7c vista     + `VistaDeLinhas(...).todas()` — a casca de objeto por linha
+ *   e8c adota     + `dataset.adotaTabela`
+ *
+ * O e5c é código de produção, e é ele que segura a escada honesta: como e5c ⊃ e4c,
+ * um `e5c < e4c` só pode significar que a réplica do e4c divergiu de `leColunar`.
+ */
+async function medeColunar(
+  arquivo: string,
+  tabela: ReturnType<SemanticModel['table']>,
+  nomeTabela: string | null,
+  cab: CabecalhoDeSnapshot,
+  bytes: number,
+  n: number,
+  io: { ms: number; pior: number },
+  linhas: { ms: number; pior: number },
+  parse: { ms: number; pior: number },
+): Promise<MedidaDeArquivo> {
+  const decodif = await melhorDe(n, () => e4cDecodifica(arquivo));
+  const dicion = await melhorDe(n, () => leColunar(arquivo));
+
+  const degraus: Degrau[] = [
+    { nome: 'io', ms: io.ms, pior: io.pior },
+    { nome: 'linhas', ms: linhas.ms, pior: linhas.pior },
+    { nome: 'parse', ms: parse.ms, pior: parse.pior },
+    { nome: 'decodif', ms: decodif.ms, pior: decodif.pior },
+    { nome: 'dicion', ms: dicion.ms, pior: dicion.pior },
+  ];
+
+  // Como na escada de objeto: os degraus finais consomem o resultado do último
+  // `leColunar`, e cada repetição o gastaria — `mapeia` escreve no dicionário.
+  const antes = process.memoryUsage().heapUsed;
+  let convertidas = 0;
+  if (tabela) {
+    const t0 = performance.now();
+    convertidas = aplicaTiposDeclaradosColunar(tabela, dicion.valor.cabecalho, dicion.valor.tabela).length;
+    degraus.push({ nome: 'tipos', ms: dicion.ms + (performance.now() - t0), pior: 0 });
+
+    const t1 = performance.now();
+    const vistas = new VistaDeLinhas(dicion.valor.tabela).todas();
+    degraus.push({
+      nome: 'vista',
+      ms: degraus[degraus.length - 1]!.ms + (performance.now() - t1),
+      pior: 0,
+    });
+
+    const t2 = performance.now();
+    new Dataset().adotaTabela(tabela.name, vistas as never);
+    degraus.push({
+      nome: 'adota',
+      ms: degraus[degraus.length - 1]!.ms + (performance.now() - t2),
+      pior: 0,
+    });
+  }
+  const heap = Math.max(0, process.memoryUsage().heapUsed - antes);
+
+  const notas: string[] = [];
+  if (decodif.ms > dicion.ms * 1.02 && decodif.ms - dicion.ms > 1) {
+    notas.push(
+      `e4c (${decodif.ms.toFixed(0)} ms) ficou acima do e5c (${dicion.ms.toFixed(0)} ms), e ` +
+        `e5c faz tudo o que e4c faz mais o dicionário: a réplica divergiu de leColunar() ` +
+        `— a decomposição abaixo não descreve mais o carregamento`,
+    );
+  }
+  if (!tabela && nomeTabela) notas.push(`'${nomeTabela}' não existe no modelo — sem e6c/e7c/e8c`);
+  if (cab.linhas === 0) notas.push('arquivo sem linhas: os degraus medem só o cabeçalho');
+
+  return {
+    arquivo: path.basename(arquivo),
+    tabela: nomeTabela,
+    bytes,
+    linhas: cab.linhas,
+    colunas: cab.colunas.length,
+    degraus,
+    convertidas,
+    heap,
+    repeticoes: n,
+    nota: notas.length ? notas.join('; ') : null,
+  };
+}
+
 async function medeArquivo(
   arquivo: string,
   model: SemanticModel,
@@ -261,6 +394,11 @@ async function medeArquivo(
   const io = await melhorDe(n, () => e1io(arquivo));
   const linhas = await melhorDe(n, () => e2linhas(arquivo));
   const parse = await melhorDe(n, () => e3parse(arquivo));
+
+  if (modoColunar) {
+    return medeColunar(arquivo, tabela, nomeTabela, cab, bytes, n, io, linhas, parse);
+  }
+
   const monta = await melhorDe(n, () => e4monta(arquivo));
   const retem = await melhorDe(n, () => le(arquivo));
 
@@ -576,12 +714,17 @@ if (json) {
 
   // A tabela mostra a **etapa**, não o degrau: a diferença entre dois degraus é o que
   // alguém pode ir otimizar. O cumulativo fica no `--json`, para conferência.
+  // As etapas do MODO, e não uma lista fixa: a escada de objeto e a colunar têm
+  // degraus diferentes depois do `parse`, e imprimir os nomes de uma na outra
+  // produziria uma tabela de traços sem dizer por quê.
+  const ETAPAS = modoColunar
+    ? ['io', 'linhas', 'parse', 'decodif', 'dicion', 'tipos', 'vista', 'adota']
+    : ['io', 'linhas', 'parse', 'monta', 'retem', 'tipos', 'adota'];
   console.log(
     'arquivo'.padEnd(30) + 'MB'.padStart(8) + 'linhas'.padStart(11) + 'n'.padStart(3) +
-      'io'.padStart(9) + 'linhas'.padStart(9) + 'parse'.padStart(9) + 'monta'.padStart(9) +
-      'retem'.padStart(9) + 'tipos'.padStart(9) + 'adota'.padStart(9) + 'total'.padStart(10),
+      ETAPAS.map((k) => k.padStart(9)).join('') + 'total'.padStart(10),
   );
-  console.log('-'.repeat(134));
+  console.log('-'.repeat(52 + ETAPAS.length * 9 + 10));
 
   const etapasDe = (m: MedidaDeArquivo): Map<string, number> => {
     const fora = new Map<string, number>();
@@ -608,18 +751,16 @@ if (json) {
       semSufixo(m.arquivo).slice(0, 29).padEnd(30) +
         num(mb(m.bytes), 1).padStart(8) + num(m.linhas).padStart(11) +
         String(m.repeticoes).padStart(3) +
-        cel('io') + cel('linhas') + cel('parse') + cel('monta') + cel('retem') +
-        cel('tipos') + cel('adota') + (ms(total) + ' ms').padStart(11),
+        ETAPAS.map(cel).join('') + (ms(total) + ' ms').padStart(11),
     );
   }
 
-  console.log('-'.repeat(134));
+  console.log('-'.repeat(52 + ETAPAS.length * 9 + 10));
   const totalGeral = [...soma.values()].reduce((x, y) => x + y, 0);
   console.log(
     'TOTAL'.padEnd(30) + num(mb(bytesTotal), 1).padStart(8) + num(linhasTotal).padStart(11) +
       ''.padStart(3) +
-      ['io', 'linhas', 'parse', 'monta', 'retem', 'tipos', 'adota']
-        .map((k) => ms(soma.get(k) ?? 0).padStart(9)).join('') +
+      ETAPAS.map((k) => ms(soma.get(k) ?? 0).padStart(9)).join('') +
       (ms(totalGeral) + ' ms').padStart(11),
   );
 
@@ -627,12 +768,17 @@ if (json) {
   const ordenadas = [...soma.entries()].sort((x, y) => y[1] - x[1]);
   const legenda: Record<string, string> = {
     io: 'ler os bytes do disco e decodificar utf-8',
-    linhas: 'partir em linhas (readline)',
+    linhas: 'partir em linhas (paraCadaLinha)',
     parse: 'JSON.parse de cada linha',
     monta: 'montar o objeto da linha (decodifica)',
     retem: 'guardar as linhas no array (alocação e GC)',
-    tipos: 'aplicaTiposDeclarados — a conversão do tipo declarado',
+    tipos: modoColunar
+      ? 'aplicaTiposDeclaradosColunar — converte o valor DISTINTO, não a linha'
+      : 'aplicaTiposDeclarados — a conversão do tipo declarado',
     adota: 'adotaTabela — conferir chave normalizada e adotar',
+    decodif: 'decodificar cada célula (data, coluna mista)',
+    dicion: 'o dicionário: um Map.get por célula para o valor virar id',
+    vista: 'VistaDeLinhas.todas() — a casca de objeto por linha',
   };
   for (const [k, v] of ordenadas) {
     const pct = totalGeral ? (v / totalGeral) * 100 : 0;
