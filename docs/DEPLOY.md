@@ -11,7 +11,7 @@
 > | §0/§2.1 "não existe login. A API serve todo número a todo pedido" | **existe e é testado** — Google SSO, 401 antes do roteamento (`apps/api/src/auth-google.ts`, `servidor.test.ts:782`) |
 > | §0/§3 "não existe nenhum `Dockerfile`", "nenhum arquivo de Nginx", "nada nesta seção existe" | **existem** — `Dockerfile`, `docker-compose.prod.yml`, `nginx.conf` (commit `7642fab`) |
 > | §0/§2.1 "as páginas que expõem dado pessoal" | **nenhuma das 14 specs de dashboard usa `QUADRO FUNCIONAL`** (onde estão CPF/RG). O dado está em `snapshot/`, não na tela |
-> | §4/§7 "1357 testes verdes" | **1666** (04/09/2026) |
+> | §4/§7 "1357 testes verdes" | **1895** (15/09/2026; eram 1666 em 04/09) |
 > | §0 "SSE perdido com a árvore de 21/08" | **existe** — `EventSource('/api/eventos')` em `apps/web/src/App.tsx:153` |
 >
 > **Fechados em 04/09/2026, e o documento também erra ao mantê-los abertos:**
@@ -61,6 +61,7 @@
 | **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.3) | **sim, para "substituir"** |
 | **Autenticação** | **não existe.** A API serve todo número a todo pedido | **sim, e é o primeiro** |
 | **Refresh do dado** | `tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
+| **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando o catálogo inteiro menos `protocolos-produtividade` (não materializa em nenhum modo hoje, #81) — ver §2.2 abaixo | **pronto** |
 | Containerização | **não existe** nenhum `Dockerfile`. O `docker-compose.yml` sobe Redis e Kafka, não a aplicação | sim |
 | Proxy reverso + TLS | **não existe** nenhum arquivo de Nginx no repositório | sim |
 | Processo supervisionado | **não existe** — nem PM2, nem unit de systemd, nem healthcheck de container | sim |
@@ -165,6 +166,47 @@ tela não diz "isto é de terça".
   de npm que falta, `mysql2` (#83). As duas saíram de `refresh.yaml` até serem
   resolvidas; os grupos que sobraram (~11s e ~24s medidos ao vivo) são seguros
   para a cadência declarada.
+- **Snapshot diário COMPLETO, separado da cadência de minutos (10/09/2026).** O
+  `refresh.yaml` acima só cobre uma fatia (`quente`/`medio`/`frio`); o resto do
+  catálogo (o que hoje só roda manual com `npm run snapshot -- --todas`) ficava
+  sem cadência nenhuma, e a carga incremental dos grupos rápidos não corrige
+  alteração retroativa. Serviço novo `snapshot-diario` no
+  `docker-compose.prod.yml`: cron **dentro do container**
+  (`docker/cron/crontab-snapshot-diario`, estágio `cron` do `Dockerfile`, `FROM
+  runtime` — não duplica o build), às 3h, `--query=` com a lista explícita do
+  catálogo **menos** `protocolos-produtividade` (mesma trava de
+  `tools/refresh/src/grupos.ts`/`QUERY_BLOQUEADA`, replicada aqui porque
+  `--query=` não tem exclusão embutida).
+  - **`protocolos-geral` NÃO está mais bloqueada — a nota do #83 acima (linha
+    165) está desatualizada.** `mysql2` já está instalado (`package.json` e
+    `node_modules`); o achado mais recente em `ACHADOS.md` ("O snapshot em
+    disco precisou de mais memória que o padrão") mostra a query rodando com
+    sucesso — 93.580 linhas, 63 colunas — desde que o processo tenha
+    `--memoria=12288` (12 GB; o padrão de 8192 do daemon de refresh estoura o
+    heap). O job diário usa 12288 só para ela; as outras ~23 precisam de bem
+    menos, e cada query roda no seu próprio subprocesso
+    (`tools/snapshot/src/index.ts`, `rodaEmSubprocesso`) — uma falha não
+    derruba as demais.
+  - **Cron não herda o ambiente do container.** `env_file:` só define
+    `DB_VOALLE_*`/`DB_MARIA_*` para o processo principal; um job de
+    `/etc/cron.d/` roda como filho do daemon `cron`, com ambiente próprio e
+    vazio. `docker/cron/entrypoint.sh` grava o ambiente do container em
+    `/repo/.env.cron` na subida (aspas simples, escapando `'` interno — testado
+    com senha contendo `#`, `$` e `'` de verdade) e o job faz `. /repo/.env.cron`
+    antes de rodar.
+  - **`mem_limit: 14g`** — 12 GB de heap para `protocolos-geral` mais ~2 GB de
+    folga (processo pai, buffers do `.jsonl.gz`, o que não é heap). Presume
+    servidor com RAM de sobra além do que `api`/`redis`/`refresh` já reservam
+    (14,5 GB); **não é a mesma máquina de ~15,7 GB** citada em
+    `docs/CONTRATO-DATAHUB-PRODUTIVIDADE.md` e `docs/DECISOES-DAS-SESSOES.md`
+    §3.5 — confirme antes de subir se o host do Portainer mudar.
+  - **A cadência de segundos ("near-realtime") já existe e não precisou de
+    nada novo:** `specs/_catalog/realtime-poll.yaml` +
+    `apps/api/src/poller-realtime.ts`, ligado sozinho quando a API sobe,
+    fazendo `SELECT` direto no Voalle a cada 12-30s para 7 queries, só em
+    memória (nunca grava no snapshot em disco, nunca paga o recongelamento das
+    calculadas). O snapshot diário e o refresh de minutos cobrem o resto do
+    catálogo; o poller já cobre o que precisa de segundos.
 - **E a escrita em si não era segura rodar com a API no ar — também consertado.**
   `ACHADOS.md` #79 / §4.3: no Windows, renomear o arquivo novo por cima do antigo
   falhava **sempre** (medido: 100%) enquanto um pedido de página tinha aquele `.jsonl`

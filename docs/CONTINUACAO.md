@@ -55,12 +55,12 @@ valor daqui estiver velho, o comando mostra em segundos: **não confie na tabela
 confira.** Foi exatamente assim que se descobriu, em 19/08, que o item 1 da fila
 estava descrito errado havia oito dias.
 
-| o quê | em 27/08/2026 | como conferir |
+| o quê | em 15/09/2026 | como conferir |
 |---|---|---|
-| **Testes** | **1357** verdes, 0 falhando. Nenhum precisa de credencial nem de build | `npm test` |
-| **Achados** | **75** entradas numeradas até **#76** (o #5 nunca existiu) + **4 abertos** de 25–27/08 ainda sem número | `grep -coE '^## #?[0-9]+' docs/ACHADOS.md` |
-| **Commits** | **134**, e o repositório **está publicado** — §5.1 fechou | `git rev-list --count HEAD` · `git rev-parse origin/main` |
-| **Árvore** | tem de estar **limpa** ao fim de cada etapa. Foi trabalho solto que se perdeu duas vezes | `git status --short` |
+| **Testes** | **1895** verdes, 0 falhando. Nenhum precisa de credencial nem de build | `npm test` |
+| **Achados** | **109** entradas numeradas até **#111** (o #5 nunca existiu; a numeração pula) | `grep -coE '^## #?[0-9]+' docs/ACHADOS.md` |
+| **Commits** | **229**, e o repositório **está publicado** (`origin/staging`) — §5.1 fechou | `git rev-list --count HEAD` · `git rev-parse --abbrev-ref @{u}` |
+| **Árvore** | tem de estar **limpa** ao fim de cada etapa. Foi trabalho solto que se perdeu duas vezes. **Hoje ela NÃO está: 62 arquivos da campanha de desempenho de 12–15/09 seguem sem commit** | `git status --short` |
 | **Páginas** | **14 de 14** calculam, **117 de 117** visuais | `npm run paginas -- --pagina=<uma>` |
 | **Paridade** | 64 cards: 22 são carimbo (fora do jogo), **42 em jogo e 42 já ditados — 0 faltam**. Mas 17 estão sob ressalva e todos carregam 4,2 dias de defasagem — §9.1 | `npm run paridade` |
 | **Perguntas de negócio** | 12 numeradas, **10 abertas** (só a #1 e a #3 estão fechadas) | `docs/PERGUNTAS-NEGOCIO.md` |
@@ -114,7 +114,7 @@ existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1357 testes, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 1895 testes, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -166,7 +166,8 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1357 testes verdes.** Nenhum precisa de credencial, e nenhum precisa de build.
+**1895 testes verdes** (15/09/2026). Nenhum precisa de credencial, e nenhum precisa
+de build.
 
 | camada | estado |
 |---|---|

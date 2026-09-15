@@ -8,8 +8,9 @@
 > **Restaurado em 27/08/2026.** Entre 19 e 26/08 nada foi commitado e a árvore foi
 > apagada duas vezes: a reconstrução devolveu este arquivo com **143 linhas onde tinha
 > 659**, e a versão devolvida era de 04/08 — dizia "71 testes verdes" e a Fase 2 como
-> "próximo". Hoje são **1357 testes** e o projeto está na Fase 3 com as 14 páginas
-> calculando. Ver [RECUPERACAO-27-08.md](./RECUPERACAO-27-08.md).
+> "próximo". Naquele dia eram **1357 testes** e o projeto estava na Fase 3 com as 14
+> páginas calculando (em 15/09/2026 são **1895**). Ver
+> [RECUPERACAO-27-08.md](./RECUPERACAO-27-08.md).
 >
 > **Três coisas de 27/08 que valem mais que o resto deste arquivo:**
 > 1. **Não existe `.pbip` nem `.pbix` no disco.** O que existe é a extração, em

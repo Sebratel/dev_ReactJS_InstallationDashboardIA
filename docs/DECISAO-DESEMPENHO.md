@@ -135,6 +135,131 @@ carga não era `JSON.parse` nenhum — era a cópia. Otimizar o formato do arqui
 atacado a metade menor. Falta agora quebrar o que sobrou dos 25,6 s entre `JSON.parse`
 e conversão de tipo; é essa medida que decide se o passo 5 vale alguma coisa.
 
+> **A medida que faltava saiu em 14/09/2026 — ver [O passo 5, medido](#o-passo-5-medido).**
+> A resposta é sim, e por um motivo diferente do que este parágrafo supunha.
+
+## O passo 5, medido — 14/09/2026
+
+> Esta seção responde a pergunta que o plano acima deixou em aberto: *"falta quebrar
+> o que sobrou entre `JSON.parse` e conversão de tipo; é essa medida que decide se o
+> passo 5 vale alguma coisa"*.
+
+**Primeiro, uma distinção que o plano não fazia e que passou a importar.** "Formato
+colunar" virou duas coisas diferentes:
+
+- **o armazenamento colunar em MEMÓRIA** — feito, e ligado em produção desde 13/09
+  (`colunar: true` em `servidor.ts` e `worker-calculador.ts`). Entregou
+  **3.378 MB → 378 MB** de heap;
+- **o formato colunar em DISCO** — o passo 5 de verdade, ainda não feito. O arquivo
+  continua sendo JSONL: texto, uma linha por linha de tabela.
+
+### A medida estava olhando para o caminho errado
+
+`npm run bench:carga` decompunha `le()`, o caminho de **objeto**. Como produção
+carrega colunar desde 13/09, a decomposição publicada descrevia um carregamento que
+a API não faz mais. `npm run bench:carga -- --colunar` foi acrescentado em 14/09 e
+mede a escada do caminho que roda. Nos 22 arquivos abaixo de 100 MB (36,6 MB,
+788.225 linhas, 4.517 ms):
+
+| etapa | caminho que RODA (colunar) | o que se media (objeto) |
+|---|---:|---:|
+| montar o dicionário (`Map.get` por célula) | **58,1%** | — |
+| montar o objeto da linha | — | 31,8% |
+| guardar as linhas no array | — | 21,3% |
+| ler os bytes e decodificar utf-8 | 15,2% | 17,6% |
+| decodificar cada célula | 14,3% | (dentro de "montar") |
+| `adotaTabela` | 0,5% | 13,7% |
+| `JSON.parse` | 7,0% | 6,2% |
+| partir em linhas | 3,6% | 4,9% |
+| conversão de tipo declarado | 1,0% | 4,5% |
+| `VistaDeLinhas.todas()` | 0,3% | — |
+
+### A conclusão, e por que a antiga estava certa pelo motivo errado
+
+**O passo 5 vale, e vale muito mais do que este documento supunha** — mas não pelo
+`JSON.parse`. Ele continua sendo ~7% da carga, exatamente como o parágrafo acima
+dizia. O caro é **reconstruir o dicionário a cada abertura**: 58,1%, sozinho mais
+que todo o resto junto.
+
+Um arquivo gravado **já codificado por dicionário** (os valores distintos, mais um
+bloco binário de ids) dispensa montar o dicionário, decodificar célula, `JSON.parse`
+e partir em linhas — **83% da carga** —, sobrando essencialmente ler os bytes.
+
+**E a ordem do plano continua certa.** Fazer o passo 5 antes do 3 teria atacado 7%
+achando que atacava tudo; e o dicionário só virou o item dominante DEPOIS de o
+armazenamento em memória existir — antes dele não havia dicionário nenhum para
+montar. O plano acertou a ordem por um motivo e colheu outro.
+
+### O que isso NÃO autoriza
+
+Trocar o formato muda o artefato em disco, o escritor, o leitor e o caminho
+incremental (`specs/_catalog/incremental.yaml`, a costura de
+`packages/snapshot/src/incremental.ts`). É trabalho de dias e **é decisão do Erick**,
+não consequência automática desta medida. O que a medida faz é tirar o palpite da
+conversa.
+
+## O passo 5, feito — 15/09/2026
+
+O snapshot em disco é **`formato: 2`**: uma linha por COLUNA, já codificada por
+dicionário. Só o 2 se escreve; os dois se leem, então arquivo antigo carrega sem
+conversão e voltar o `FORMATO_ATUAL` desfaz a decisão.
+
+### O que foi feito
+
+- `packages/snapshot/src/formato.ts` — o layout (`{c,w,d,b}` por coluna, id de 1, 2
+  ou 4 bytes em base64 little-endian), os dois leitores e `converteParaFormato2`,
+  que carrega o cabeçalho INTEIRO e muda só `formato`;
+- `npm run snapshot:converte` — confere célula a célula contra os arquivos reais e
+  só troca com `--grava`, guardando os originais em `snapshot/.formato-1/`;
+- `paraCadaLinha` deixou de ser quadrático no comprimento da linha (ver #107).
+
+### O resultado, em pares alternados
+
+| | formato 1 | formato 2 |
+|---|---:|---:|
+| carga das 14 páginas | 11,7 s | **3,6 s** |
+| cálculo (grupo de controle) | 12,2 s | 12,2 s |
+| snapshot em disco | 51,2 MB | **37,7 MB** |
+
+4 pares de 4, ordem alternada, cálculo estável. **3,2x na carga.**
+
+### As três provas, e o que cada uma alcança
+
+| prova | o que cobre | resultado |
+|---|---|---|
+| célula a célula, `leColunar()` | o leitor que as páginas usam (`carrega.ts:271`) | 30 arquivos, 0 divergência |
+| célula a célula, `le()` | o leitor da costura incremental (`index.ts:651`) | 34.587.131 células, 0 divergência |
+| sha256 por visual | o avaliador inteiro, das células até a tela | 306 visuais, mesmo sha, 0 erro |
+
+A terceira existe porque **célula igual não é número igual**: entre a célula e a
+tela há o avaliador. E a segunda existe porque a terceira só exercita um dos dois
+leitores — um defeito em `le()` não apareceria na tela, apareceria no próximo
+`--incremental`, como dado sumindo do snapshot sem erro nenhum.
+
+### Por que os originais foram apagados
+
+Eles ficaram em `snapshot/.formato-1/` durante a conferência e foram apagados
+depois dela, em 15/09/2026. A regra que eu tinha escrito — "guardar até alguém
+conferir `visao-geral` e `relatorio-do-mes` na tela" — **não podia ser**
+**satisfeita**: as três provas acima dizem que os dois formatos produzem os mesmos
+números, então voltar ao formato 1 restaura a mesma tela. Se ela estiver errada,
+estava errada antes da conversão, e o rollback não alcança isso.
+
+O que a cópia protegia era só a janela entre gravar e conferir. Passada a
+conferência, ela deixou de ser rede e virou passivo: 52 MB de CLIENTE, TELEFONE,
+endereço e CPF numa pasta oculta que nenhuma ferramenta varre.
+
+### O que NADA disto autoriza
+
+Continua verdadeiro que nenhuma comparação entre os dois formatos diz se o número
+está certo — eles podem estar igualmente errados desde antes. O que mudou é que
+guardar o formato 1 nunca foi o caminho para descobrir isso. Paridade contra o
+Power BI é, e é outro trabalho (ver `docs/PERGUNTAS-NEGOCIO.md`).
+
+E não autoriza o passo seguinte: o `dicionário` ainda é 23,9% da carga porque o
+`ConstrutorDeTabela` do bench o remonta; na leitura de verdade ele vem pronto. A
+próxima medida honesta é sobre `io`, que virou a maior fatia (41,8%).
+
 ## O caso `Relato` — revertido em 24/08/2026
 
 > **A decisão de 10/08 (logo abaixo) não vale mais, e o motivo é que a medição que a

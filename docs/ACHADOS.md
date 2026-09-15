@@ -8425,3 +8425,590 @@ propriedade dele (`Table.Sort` do PBIP) e **ainda não foi extraída**. Inventar
 ordem no motor esconderia essa lacuna. O caminho é extrair a ordenação do PBIP; se
 Erick preferir, ordenar eixo de data cronologicamente é um desvio pequeno e
 defensável, mas é desvio e precisa ser decidido, não presumido.
+
+## #105 — `protocolos-produtividade` Bloqueio 1 (#81) consertado: M reduzido ao join de GESTOR; expõe golden desatualizado desde a migração de 25/08
+
+**10/09/2026.** O achado #81 documentava dois bloqueios independentes para
+`protocolos-produtividade` nunca materializar. Este achado resolve o primeiro —
+o segundo (full-fetch estoura `statement_timeout` de 600s, medido em 681,6s)
+continua aberto, é território de infra/banco e não foi tocado aqui.
+
+**O conserto.** O `sql:` migrado em 25/08/2026 já entrega as 47 colunas prontas,
+mas o `m_expression` nunca foi podado depois disso — ainda tentava recriar
+`HORA CRIADO`/`HORA AGENDA`/`INSTALADOR` (entre outras) do zero, sem remover as
+versões vindas do SQL primeiro. O avaliador parava sempre na primeira colisão.
+`GESTOR` (Google Sheets, via `QUADRO FUNCIONAL`) é a ÚNICA coisa que o SQL não
+traz — o resto dos ~60 passos morreu. Registrado em `docs/SPEC-DRIVEN.md` (edição
+à mão em spec gerada).
+
+**Verificado sem tocar o Voalle nem o Google Sheets**: `runQueries` real, M lido
+do spec editado, `Fonte`/`QUADRO FUNCIONAL` substituídos por dado sintético.
+Resultado: sem colisão, `GESTOR` casa por `INSTALADOR`/`upper_name` como antes
+(`JOAO SILVA` → `Fulano de Tal`), e `LeftOuter` deixa `GESTOR` nulo em vez de
+derrubar a query quando não casa (`MARIA SOUZA`, sem entrada correspondente).
+
+**Efeito colateral bom:** a query deixa de depender de
+`alocacao-patrimonio`/`troca-endereco`/`tecnicos-auxiliares`/`protocolos-auxiliares`
+no M — cada uma era buscada de novo só para um join que o SQL já fazia sozinho.
+Só `QUADRO FUNCIONAL` continua como dependência.
+
+**Contagens de passos M do corpus, atualizadas onde eram só contagem mecânica**
+(`packages/transform-engine/test/cobertura.test.ts`, `parser.test.ts`,
+`tools/validate/test/mlayer.test.ts`): 331→274 passos totais, 303→246 e 306→249
+nos dois pisos históricos — `protocolos-produtividade` caiu de ~60 passos para 3.
+Sem relação com golden, e por isso corrigido nesta sessão.
+
+**O que o conserto EXPÕE, e não corrigiu: o golden está preso a uma forma anterior
+à migração de 25/08.** `specs/golden/protocolos-produtividade.golden.json` tem
+33.750 linhas e ~33 colunas — a forma do SELECT **base** (`bruto`), sem
+`DATA ALOCAÇÃO`, `TÉCNICO TROCA`, `DATA DA TROCA` nem `INSTALADOR`, que hoje saem
+direto do `sql:` de 47 colunas. Provável explicação: a query está quebrada desde
+antes disso (bloqueios #81/#83 anteriores), então `npm run validate:profile`
+nunca rodou com sucesso depois que essas colunas passaram a existir no SQL.
+
+Três testes dependem deste golden e ficam vermelhos até ele ser regravado:
+
+- `tools/validate/test/mlayer.test.ts`: `nenhuma coluna citada pelo DAX fica sem
+  explicação` — `DATA ALOCAÇÃO`, `TÉCNICO TROCA`, `DATA DA TROCA` e `INSTALADOR`
+  caem em `sem-explicacao` (o golden não tem os nomes, `verificarTabela` não sabe
+  que vêm do SQL). Consequência do MESMO fato, não um bug novo: essas colunas
+  SEMPRE estiveram fora do golden — só ficou visível agora que o M parou de
+  "explicá-las" por conta própria (ele as recriava, então `procedencia` batia em
+  `m` antes de bater na colisão).
+- `tools/validate/test/mlayer.test.ts`: `colunas nascidas em M` (56→41) — mesma
+  causa, é a contagem que a lista acima afeta.
+- `packages/transform-engine/test/runner.test.ts`: `as 24 queries do escopo
+  executam os passos` — o fixture sintético desta query vem do MESMO golden
+  (`colunasDoGolden`/`linhasDoGolden`), então `Table.NestedJoin` não acha
+  `INSTALADOR` na tabela da esquerda.
+
+**Por que não regravei o golden para fechar os três.** `wrapCount`/`wrapSample`
+(`tools/validate/src/profile.ts`) rodam a query **inteira** por trás do
+`count(*)`/`limit` — é o mesmo custo do Bloqueio 2 (681,6s medido, teto de 600s).
+Regravar agora ou falha do mesmo jeito, ou exige subir o timeout do cliente sem
+medir se o custo real parou de crescer — decisão de produção que não é read-only,
+e que caiu para o mesmo lugar do Bloqueio 2: aguardando decisão de infra/banco.
+Inventar as colunas que faltam no golden à mão (nome certo, estatística chutada)
+resolveria os três testes e mentiria em `min`/`max`/`distinct` — pior que deixá-los
+vermelhos com a causa nomeada.
+
+**Não registrado em `ACHADO_CONHECIDO`** (`runner.test.ts`): faria o teste passar
+ali, mas moveria a mesma falha para o piso `ok.length >= 24` do mesmo teste — não
+é exceção de tipo de fixture, é o golden faltando 4 colunas de verdade.
+
+### Tentativa de captura ao vivo: o Bloqueio 2 piorou, não é só "precisa de mais tempo"
+
+**10/09/2026, mesma sessão.** Com autorização, tentei regravar o golden contra o
+Voalle real (`createVoallePool` com `statementTimeoutMs` elevado só para esta
+chamada — nenhum `.env` nem config commitada foi tocado). Não achei CLI pronto
+para isso: `tools/validate/src/profile.ts`/`run.ts` viraram bibliotecas puras
+(certo para testar sem banco), mas `package.json`'s `validate:profile` só faz
+`node tools/validate/src/profile.ts` — sem argumento, sem I/O, sem golden
+escrito. **`docs/SPEC-DRIVEN.md`'s `npm run validate:queries`/`validate:model`
+não existem mais como scripts** (renomeados para `validate`/`validate:plan`/
+`validate:profile` em algum refactor, docs não acompanharam). Script descartável
+escrito na hora, reaproveitando `runQuery`/`buildGolden`/`createVoallePool` já
+testados — apagado depois.
+
+**900.000 ms (15 min) não foi suficiente — para NENHUMA das duas estratégias.**
+`runQuery` tenta `wrapCount` (o `count(*)` por trás de subquery) e, se falhar,
+cai para `direct` (SQL cru). As DUAS bateram no teto de 900s, uma depois da
+outra: **1.800,6 s no total**, terminando em
+`canceling statement due to statement timeout` nas duas tentativas.
+
+Isto é pior do que o #81 registrou (681,6s, já 3,15× o baseline de 190,3s de
+25/08) — agora nem 900s bastam, mais que o DOBRO do que já era 3× o esperado.
+**Parei aqui de propósito, sem tentar de novo com um teto maior.** Continuar
+escalando o timeout (30 min? 60 min?) sem entender POR QUE o custo está
+crescendo é o mesmo tipo de aposta sem medição que o #80 já cometeu uma vez
+com incremental.yaml — e prende uma conexão de produção por dezenas de minutos
+a cada tentativa, para um resultado incerto. O padrão (custo subindo a cada
+medição, não estabilizando) sugere algo além de "banco ocupado" — plano
+mudando, estatística desatualizada, ou a tabela crescendo mais rápido que o
+esperado — e isso pede `EXPLAIN ANALYZE` e decisão de DBA, não outro chute de
+timeout maior.
+
+**Golden continua o mesmo (não regravado).** Os 3 testes seguem vermelhos pela
+razão já documentada acima. Decisão de como seguir — investigar o plano de
+execução, aceitar um teto bem maior de propósito, ou deixar como está até o
+Bloqueio 2 ser resolvido de outra forma — fica para quem decide infra/banco.
+
+## #106 — A escada que mede a carga decompunha o caminho que a API NÃO usa; o caro é montar o dicionário, 58,1%
+
+**14/09/2026.** `npm run bench:carga` existe para dizer onde o tempo de carregar um
+snapshot vai, degrau por degrau — e é dele que sai a conta que decide se vale trocar
+o formato do arquivo. Ele decompunha `le()`, o caminho de **objeto**. A API carrega
+com `colunar: true` desde 13/09 (`servidor.ts`, `worker-calculador.ts`), então a
+decomposição publicada descrevia um carregamento que ninguém faz mais.
+
+**Não é purismo.** Os dois caminhos dão respostas diferentes sobre onde está o custo:
+
+| etapa | caminho que RODA (colunar) | o que se media (objeto) |
+|---|---:|---:|
+| montar o dicionário (`Map.get` por célula) | **58,1%** | — |
+| montar o objeto da linha | — | 31,8% |
+| guardar as linhas no array | — | 21,3% |
+| ler os bytes e decodificar utf-8 | 15,2% | 17,6% |
+| decodificar cada célula | 14,3% | (dentro de "montar") |
+| `adotaTabela` | 0,5% | 13,7% |
+| `JSON.parse` | 7,0% | 6,2% |
+| partir em linhas | 3,6% | 4,9% |
+| conversão de tipo declarado | 1,0% | 4,5% |
+| `VistaDeLinhas.todas()` | 0,3% | — |
+
+22 arquivos abaixo de 100 MB: 36,6 MB, 788.225 linhas, 4.517 ms.
+
+**O conserto:** `npm run bench:carga -- --colunar`. Compartilha e1..e3 com a escada
+de objeto (mesmos bytes, mesmo `JSON.parse`) e troca o resto — `e4c decodif`,
+`e5c dicion` (= `leColunar()` de verdade), `e6c tipos`, `e7c vista`, `e8c adota`. O
+e5c é código de produção, e é ele que segura a escada honesta: como e5c ⊃ e4c, um
+`e5c < e4c` só pode ser réplica divergente — e o programa reclama.
+
+**O que a medida muda.** `docs/DECISAO-DESEMPENHO.md` fechava com uma pergunta em
+aberto ("é essa medida que decide se o passo 5 vale alguma coisa"). A resposta é
+**sim, e por um motivo diferente do que aquele documento supunha**: `JSON.parse`
+continua sendo ~7% da carga, como ele dizia; o caro é reconstruir o dicionário a
+cada abertura. Um arquivo gravado já codificado por dicionário dispensaria 83% da
+carga. Registrado lá, na seção "O passo 5, medido".
+
+**Armadilha registrada:** em arquivo de poucos milissegundos o guarda `e4c > e5c`
+dispara por granularidade do relógio, não por divergência — com `--repete=9` ele
+silencia. O aviso está certo em desconfiar: a decomposição daquele arquivo não vale.
+
+**A lição geral, que não é sobre este arquivo:** uma ferramenta de medição envelhece
+junto com o código que ela mede, e o sintoma é ela continuar respondendo — com o
+número de ontem. Quando o caminho de produção troca, a instrumentação troca junto,
+ou ela passa a ser uma fonte de conclusões erradas com cara de dado.
+
+---
+
+## #107 — O formato 2 nasceu 3x mais LENTO: o divisor de linhas era quadrático no comprimento da linha, e ninguém podia ter notado antes
+
+**Data:** 15/09/2026
+
+O snapshot em disco passou a ser uma linha por COLUNA, já codificada por
+dicionário (`formato: 2`), pelo motivo medido no #106: reconstruir o dicionário a
+cada abertura era 58,1% da carga. A conversão foi conferida célula a célula contra
+os 30 arquivos reais, sem divergência, e o arquivo encolheu 26,4% — 51,2 MB para
+37,7 MB.
+
+E a primeira medição ponta a ponta deu **três vezes mais lento**, 4 pares de 4:
+
+| par | formato 1 | formato 2 |
+|---|---:|---:|
+| 1 | 9.907 ms | 29.703 ms |
+| 2 | 12.028 ms | 32.204 ms |
+| 3 | 10.534 ms | 30.541 ms |
+| 4 | 10.800 ms | 30.046 ms |
+
+O cálculo, que o formato não toca, ficou parado nos 10–12 s nas oito execuções — o
+grupo de controle disse que a máquina não estava derivando. A regressão era real.
+
+**Onde estava.** `bench:carga -- --colunar` respondeu numa execução: `partir em
+linhas (paraCadaLinha)` **90,4%**, 15.898 ms de 17.578 ms. A etapa que o #106 media
+em 3,6%.
+
+O divisor acumulava `resto + pedaco` e procurava o `\n` no ACUMULADO:
+
+```ts
+const s = resto + (pedaco as string);   // cons-string do V8: O(1)
+let i = s.indexOf('\n', ini);           // ACHATA a cons-string: O(n)
+```
+
+O `+` do V8 não copia — devolve uma cons-string. Mas o `indexOf` a achata, e ele
+roda a cada pedaço de 64 KB. Numa linha de 7 MB isso são ~110 achatamentos de 3,5
+MB em média: **O(n²) no comprimento da linha**.
+
+**Por que ninguém podia ter notado.** Enquanto o arquivo foi uma linha por LINHA da
+tabela, nenhuma linha passou de alguns kB, e o laço interno nunca rodou duas vezes
+sobre a mesma linha. O custo quadrático estava escrito ali desde sempre e valia
+zero. O formato 2 tem 30 linhas de megabytes — a mesma função, o mesmo dado, três
+vezes o tempo.
+
+**O conserto** é guardar os pedaços numa lista e procurar o `\n` só no pedaço que
+acabou de chegar; junta-se uma vez, quando a linha fecha. O `\r` do CRLF passa a
+sair DEPOIS de juntar, porque um `\r` no fim de um pedaço com o `\n` abrindo o
+seguinte é o caso que as duas versões tratam por caminhos diferentes — tem teste
+agora (`packages/snapshot/test/para-cada-linha.test.ts`), inclusive com multibyte
+partido na borda.
+
+Medido depois, com a mesma escada: **17.578 ms → 1.111 ms**, e a decomposição
+finalmente parecida com a que o #106 previa (io 41,8%, dicionário 23,9%,
+`JSON.parse` 18,1%, linhas 9,7%).
+
+E o A/B refeito, 4 pares de 4, com o cálculo de novo estável:
+
+| par | formato 1 | formato 2 | razão |
+|---|---:|---:|---:|
+| 1 | 12.024 ms | 3.918 ms | 3,07x |
+| 2 | 10.752 ms | 3.368 ms | 3,19x |
+| 3 | 12.082 ms | 3.376 ms | 3,58x |
+| 4 | 11.992 ms | 3.629 ms | 3,30x |
+
+Carga das 14 páginas: **11,7 s → 3,6 s, 3,2x**.
+
+**A lição, que não é sobre este divisor.** Uma complexidade assintótica ruim que
+não custa nada hoje não é um problema resolvido: é um problema **agendado para
+quando a forma do dado mudar**. O código não mudou; a distribuição de entrada
+mudou, e a mesma função virou o gargalo inteiro. E o que separou o diagnóstico de
+um dia de palpite foi a escada de etapas do #106 responder na primeira execução —
+a instrumentação se pagou na primeira vez em que a conclusão era contraintuitiva.
+
+**O corolário de método:** eu ia relatar o formato 2 como ganho porque a aritmética
+dizia "remove 83% da carga". A aritmética estava certa sobre o que ele remove, e
+errada sobre o total, porque ele também MUDA A FORMA da entrada de outra etapa.
+Trocar a representação de um dado não é uma mudança local, ainda que o código que
+lê continue compilando.
+
+---
+
+### Adendo (mesma data): a conversão deixou o MANIFESTO descrevendo os arquivos velhos
+
+Subi a API para conferir o que nenhum teste tinha conferido — o servidor HTTP servindo
+um snapshot em formato 2, com cache de resposta e aquecimento no caminho. Ela subiu, as
+14 páginas aqueceram em 31,6 s, e `/api/saude` anunciou:
+
+```
+snapshot: 23 queries, 1.408.223 linhas, 53,6 MB      <- o disco tinha 37,6 MB
+```
+
+`snapshot/manifesto.json` guarda `bytes` por query, e `escreve()` o atualiza quando
+materializa. **Minha ferramenta de conversão não o atualizava** — trocava os 30
+arquivos e deixava as 23 entradas descrevendo os antigos. Nenhum erro: um número
+plausível, 42% maior, na tela de saúde.
+
+É exatamente a classe de defeito que este arquivo inteiro persegue, cometida por mim,
+e nenhuma das três provas do formato 2 a pegaria: elas comparam o CONTEÚDO dos
+arquivos, e o que estava errado era o que os **descreve**.
+
+**O conserto reconcilia todas as entradas contra o disco**, e não só as que a execução
+converteu — senão a ferramenta não alcançaria o estrago que ela mesma já tinha feito.
+`linhas`, `colunas` e `geradoEm` não se tocam: converter muda a representação, não o
+dado nem a data dele.
+
+Depois do conserto, e com a API reiniciada:
+
+```
+snapshot: 23 queries, 1.408.223 linhas, 37,6 MB
+página                   HTTP  1a resposta   visuais  erros   repetida  quente
+visao-geral               200      2,37 s        28      0     idêntica  2,5 ms
+relatorio-do-mes          200      1,18 s        36      0     idêntica  1,8 ms
+diario-instalacao         200      0,90 s        22      0     idêntica  4,4 ms
+instalacao-reincidente    200      2,12 s        29      0
+protocolos-detalhados     200      1,89 s        19      0
+```
+
+A promessa de sub-10 ms a quente continua de pé, e a resposta é byte a byte a mesma
+entre pedidos repetidos.
+
+**A lição:** quando um formato muda, o que descreve o arquivo muda junto — manifesto,
+cabeçalho de cache, contagem exibida. Provar que o conteúdo sobreviveu não prova que
+os metadados sobreviveram, e é o metadado que aparece na tela.
+
+**A lição de método:** eu tinha dado o formato 2 por fechado com três provas e a suíte
+verde. Este defeito só apareceu quando **subi o servidor de verdade** — biblioteca
+chamada direto não é o sistema. Vale subir o processo real antes de dizer "feito".
+
+---
+
+## #108 — A chave de identidade já existia por VALOR DISTINTO; recalculá-la por linha era 15% do cálculo
+
+**Data:** 15/09/2026
+
+Reperfilei o cálculo depois do formato 2 e `identityKey` era o item número 1 do
+perfil — **14,9%**, quase três vezes o segundo. E espalhado: nenhum chamador passava
+de um quarto dele.
+
+```
+identityKey ....... 2.117 ms  14,9%      por chamador:
+                                           524 ms  rowKey
+                                           451 ms  filtrosDe
+                                           434 ms  IndiceDeIgualdade
+                                           311 ms  DISTINCTCOUNT
+```
+
+**O que estava acontecendo.** Desde 13/09 as linhas são vistas sobre o armazenamento
+colunar: a linha é um índice inteiro e a coluna é `(valores[], ids[])`. A chave de
+identidade de uma célula depende só do VALOR — então ela tem tantos valores distintos
+quanto o dicionário, e não tantos quantos linhas. `chavesDoDicionario` já memoizava
+esse array por dicionário desde a sessão anterior, mas **só `leitorDeIdentidade` o
+usava**. Os outros caminhos continuavam lendo a célula pelo acessor de protótipo e
+chamando `identityKey`, que por dentro é um `Map` de string.
+
+Trocar isso é trocar, por célula, um acessor mais um `Map.get` por **duas indexações
+de array** — e a string devolvida é bit a bit a mesma, porque `chavesDoDicionario` é
+`identityKey` aplicado aos mesmos valores.
+
+### Os dois lugares, medidos em pares alternados
+
+`IndiceDeIgualdade` (baldes de uma coluna) e `leitorDeChaveDeLinha` (chave de N
+colunas, novo, no lugar de `rowKey` dentro de `filterFromTable`):
+
+| par | índice: sem | com | | chave de linha: sem | com |
+|---|---:|---:|---|---:|---:|
+| 1 | 11.915 | 11.307 | +5,1% | 11.085 | 10.549 | +4,8% |
+| 2 | 10.245 |  9.960 | +2,8% | 10.881 |  9.654 | +11,3% |
+| 3 | 10.188 |  9.673 | +5,1% | 13.313 | 12.017 | +9,7% |
+| 4 | 10.200 |  9.702 | +4,9% | 14.067 | 13.181 | +6,3% |
+
+**4 de 4 em cada um**, com a carga como grupo de controle. A segunda bateria pegou a
+máquina derivando para cima (10 s → 14 s no controle); a comparação é por par
+adjacente justamente por isso, e os quatro pares concordam.
+
+O perfil depois confirma que a mudança fez o que dizia: `rowKey` e `IndiceDeIgualdade`
+**sumiram da lista de chamadores** de `identityKey`.
+
+### O risco que bloqueava isto, e por que ele já não existe
+
+Em 14/09 eu localizei este mesmo alvo e **não mexi**, registrando três consertos
+possíveis e recusando os três: todos trocavam risco de número errado silencioso por
+~2%. O que mudou não foi o apetite — foi o terreno:
+
+1. **memoizar a chave na linha** congelaria o valor de uma coluna calculada antes de
+   ela materializar (achado #50). Aqui não há memoização na linha: a chave vem do
+   dicionário, que é do armazenamento;
+2. **usar `tv.rows` como ponto de partida** mudaria o resultado com linha duplicada.
+   Aqui o conjunto de linhas não muda — só o caminho até a chave de cada uma;
+3. **identidade de objeto** pioraria o caso comum, que é o teste que falha. Aqui o
+   caminho é o mesmo para quem passa e para quem não passa.
+
+**A premissa que torna tudo isso seguro está escrita no `set` da vista**
+(`packages/snapshot/src/linha-vista.ts`): escrever numa coluna FÍSICA de uma vista
+**estoura**. Logo nenhuma propriedade própria — coluna calculada memoizada, por
+exemplo — consegue sombrear o acessor de uma coluna que tem dicionário. Sem esse
+`throw`, a vista e o armazenamento poderiam discordar e a chave sairia do lado velho,
+calada. Há teste fixando isso em `packages/snapshot/test/chave-de-linha.test.ts`,
+porque é premissa de dois caminhos quentes e não uma escolha local.
+
+O outro guarda é o **molde**: uma linha de OUTRA vista também responde a
+`indiceDaLinha` e indexaria o dicionário errado na posição dela — valor de outra
+tabela, sem erro nenhum. Os dois testes novos montam duas tabelas com os mesmos
+valores em posições TROCADAS, para que confundi-las mude a resposta.
+
+### A lição
+
+Um valor derivado que depende só do conteúdo da célula tem a cardinalidade do
+**dicionário**, não a da tabela. Depois de trocar a representação para colunar, todo
+cálculo por linha merece a pergunta "isto depende da linha ou do valor?" — e o
+corolário incômodo: eu tinha montado a memoização certa (`chavesDoDicionario`) uma
+sessão antes e a deixei servindo **um** consumidor. A peça existia; o que faltou foi
+procurar quem mais precisava dela.
+
+### O próximo alvo, localizado e NÃO mexido
+
+Com os dois maiores fora, o topo de `identityKey` virou `filtrosDe` (590 ms) e
+`DISTINCTCOUNT` (430 ms).
+
+`filtrosDe` recalcula uma chave que `enumeraCombinacoes` **já tinha**: o `Map` de
+combinações é indexado exatamente por `alvos.join(' ')`. Carregá-la em vez de refazer
+exige guardar `alvos` na `Combinacao` e expô-la no `Grupo` — **mudança de interface
+pública do `widget-engine`**, não um conserto local. A alternativa barata, memoizar
+por identidade do array `valores`, é segura só enquanto ninguém mutar esse array, e
+ele é exposto ao chamador. Fica para uma sessão que possa medir a decisão inteira.
+
+---
+
+## #109 — RESULTADO NEGATIVO: eliminei 7 milhões de `identityKey` com 100% de acerto e o tempo não mudou
+
+**Data:** 15/09/2026
+
+Depois do #108, o topo de `identityKey` era `filtrosDe` (`widget-engine/src/grupos.ts`)
+com 590 ms. O raciocínio parecia fechado: `filtrosDe` roda uma vez por combinação de
+eixo — numa matriz, por célula — e recalcula `valores.map(identityKey)` toda vez,
+sobre um array que `enumeraCombinacoes` já tinha usado para indexar o mapa de
+combinações. Chave pronta, jogada fora, refeita.
+
+**Não valeu. Foi revertido.** Vale registrar porque a demonstração é forte: a
+otimização funcionou exatamente como projetada e mesmo assim não apareceu no relógio.
+
+### As quatro variantes, na ordem em que foram medidas
+
+**B — memoizar por array + `Object.freeze` nos arrays de valores.** O `freeze` era
+para tornar verificável a premissa que a memoização passava a carregar (mutar um
+valor devolveria a chave velha). Resultado: **pior em 4 de 4 pares**.
+
+**C — o mesmo, sem o `freeze`.** Contra B: **melhor em 4 de 4, de 2,7% a 9,0%**. Ou
+seja, `Object.freeze` num array que o V8 vinha tratando como rápido custa isso — ele
+perde a categoria de elementos, e `valores[i]` é lido por chave em cada célula. **Uma
+salvaguarda barata de escrever pode ser cara de rodar**, e aqui ela sozinha comia mais
+do que a otimização toda rendia.
+
+Contra o original, porém, C ficou **misto: 1 de 5**. Instrumentei em vez de repetir o
+A/B:
+
+```
+chamadas 986.369   acertos 77.720 (7,9%)   erros 908.649
+```
+
+**7,9%.** Eu tinha suposto que o caso dominante era a matriz reusando o mesmo array
+célula a célula; o caso dominante é a **primeira** chamada de cada grupo, que erra
+sempre. O memo pagava um `WeakMap` em 92% das chamadas para economizar em 8%.
+
+**D — semear o memo no NASCIMENTO da combinação.** É onde as chaves individuais já
+existem: `enumeraCombinacoes` acabou de produzi-las para montar o índice do mapa.
+
+```
+chamadas 986.369   acertos 986.369 (100,0%)   erros 0
+```
+
+Com ~7,08 valores por combinação, isso são **~7 milhões de `identityKey` e ~986 mil
+`join(' ')` que deixaram de acontecer**. E o A/B, em **11 pares**: D ganhou 6, perdeu
+5. Moeda.
+
+### Por que não apareceu
+
+`identityKey` já memoiza por valor num `Map` (`CHAVE_TEXTO`, `CHAVE_DATA`,
+`CHAVE_NUMERO`). A chamada que o perfil contabiliza é, no caso comum, **um**
+`Map.get`. Trocá-la por um `WeakMap.get` mais duas leituras de propriedade é trocar
+uma busca em tabela de hash por outra. O perfil somava 590 ms de tempo próprio ali,
+e o substituto custa a mesma ordem — sobra ~0.
+
+**A lição, que é diferente das três anteriores desta campanha.** As outras três
+reversões morreram da hipótese "isto aloca demais". Esta morreu de outra coisa:
+
+> "O perfil diz que X ms são gastos aqui" **não é** "remover estas chamadas economiza
+> X ms". Só é, quando o que entra no lugar é de outra ordem de grandeza. Tempo próprio
+> num perfil é onde o tempo ESTÁ, não quanto se ganha tirando de lá.
+
+O #108, na mesma sessão e no mesmo `identityKey`, ganhou 4/4 duas vezes — porque lá o
+substituto era **indexação de array**, e não outra busca em hash. A diferença entre os
+dois não é o alvo: é a ordem de grandeza do que ocupa o lugar.
+
+**E a regra de método que salvou a conclusão:** quando o micro e o ponta a ponta
+discordam, instrumentar em vez de repetir o A/B. Foi a contagem de 7,9% que explicou o
+resultado misto de C — e foi ela que impediu de eu tratar o misto como ruído e
+"arredondar para ganho". A mesma conta, depois, provou que D fazia o que prometia,
+o que é o que torna este resultado negativo **definitivo**: não foi uma implementação
+ruim que falhou, foi a ideia.
+
+Ninguém precisa tentar isto de novo.
+
+---
+
+## #110 — Dimensionar antes de implementar: `DISTINCTCOUNT` custou 5,9 milhões de valores, mas em 438 mil chamadas de 13
+
+**Data:** 15/09/2026
+
+Depois do #108 e do #109, o que sobrava no topo de `identityKey` era `DISTINCTCOUNT`
+(430 ms). O conserto parecia claro e do formato que o #108 provou ganhar: contar ids
+de dicionário em vez de chaves de string — `Set<number>` no lugar de `Set<string>`,
+que é mudança de ordem de grandeza e não troca de hash por hash.
+
+**Antes de escrever uma linha, contei.** O A/B nesta máquina já estava custando 11
+pares para não decidir nada (#109), e contador não depende de cronômetro:
+
+```
+DISTINCTCOUNT: 438.457 chamadas, 5.874.279 valores — 13 valores por chamada
+```
+
+**Treze.** Isso inverte o diagnóstico:
+
+- **por valor** há 5,9 milhões de unidades, mas cada chamada pagaria o preparo do
+  caminho colunar (achar o dicionário, conferir o molde) para amortizá-lo em 13
+  valores — o preparo come o prêmio;
+- **por chamada** há 438 mil de `valuesOfColumnRef` + dois `map` + um `Set`, e atacar
+  isso é a hipótese "isto aloca demais" — **a mesma que já falhou três vezes nesta
+  campanha**, em três lugares diferentes.
+
+Ou seja: o alvo não tem a forma que o #108 ganhou nem a que sobrou é promissora.
+**Não foi implementado**, e o custo da decisão foi uma execução instrumentada em vez
+de meia sessão de A/B inconclusivo.
+
+### O que ficou sem resposta, e é a pergunta melhor
+
+**Por que `DISTINCTCOUNT` é chamado 438 mil vezes?** Treze linhas por chamada é uma
+medida sendo avaliada dentro de um contexto que se repete — a família do #38 e do #43.
+Tentei atribuir as chamadas à origem e o rótulo disponível é só o nome da função, sem
+o visual nem a medida; ficaria no palpite. A pergunta certa não é "como deixar
+`DISTINCTCOUNT` mais rápido" e sim "por que ele roda 438 mil vezes" — e respondê-la
+exige carimbar a origem na avaliação, que é trabalho próprio.
+
+### A lição
+
+> **Dimensione o alvo antes de projetar o conserto.** Um perfil diz quanto tempo uma
+> função consome; não diz se são poucas chamadas grandes ou muitas pequenas — e o
+> conserto certo é diferente nos dois casos. Aqui a mesma soma de 5,9 milhões de
+> valores aceitaria a solução do #108 se viesse em mil chamadas de seis mil, e a
+> recusa se vier em 438 mil de treze.
+
+Vale junto com o #109: os dois são decisões de **não** implementar, tomadas por
+instrumentação, num dia em que a mesma decisão por cronômetro teria custado horas e
+provavelmente saído errada.
+
+---
+
+## #111 — De onde vêm as 438 mil chamadas, e o erro que cometi na linha seguinte
+
+**Data:** 15/09/2026
+
+O #110 fechou dizendo que a pergunta certa não era "como acelerar `DISTINCTCOUNT`" e
+sim **"por que ele roda 438 mil vezes"**, e que responder exigia carimbar a origem.
+Carimbei.
+
+### A resposta
+
+O avaliador já tinha um `measureStack` privado. Exposto para diagnóstico, ele disse
+que **99,5% das chamadas não têm medida nenhuma na pilha** — o que não significa "não
+é medida", significa que aquele caminho não mantém a pilha. Uma amostra de pilha de
+chamadas real fechou a questão, e as três amostras são idênticas:
+
+```
+DISTINCTCOUNT            functions.ts
+Evaluator.evaluate       measure-engine/src/evaluator.ts:781
+valorDoCampo             widget-engine/src/card.ts:161
+(anônima)                widget-engine/src/tabela.ts:186   <- map por LINHA
+calculaTabela            widget-engine/src/tabela.ts:178
+tabelaCompleta           apps/api/src/calcula.ts:617
+dadosDo                  apps/api/src/calcula.ts:574
+```
+
+Uma tabela visual avalia o campo de agregação **para cada linha do resultado**:
+
+| página | chamadas | de onde |
+|---|---:|---|
+| `agendamento-field` | 292.967 | |
+| `protocolos-detalhados` | 94.166 | = as linhas de `PROTOCOLOS GERAL`, uma por linha |
+| `diario-instalacao` | 26.777 | |
+| `instalacao-reincidente` | 22.401 | |
+
+**E isso não é defeito, é projeto.** `tabelaCompleta` calcula a tabela inteira uma vez
+e a memoiza; toda janela seguinte sai de um `slice`, e o comentário dela já explicava
+que a varredura completa sempre esteve ali (o `tipoDaColuna` de cada coluna a exigia).
+Em produção isso é pago no aquecimento — medido no mesmo dia: 14 páginas quentes em
+31,6 s, e depois respostas de 1,8 a 4,4 ms.
+
+**O que a descoberta muda na leitura do bench:** `bench:pagina-fases` mede o custo
+FRIO, sem o memo. É um custo real (é o que o aquecimento paga, e o que um refresh
+volta a cobrar), mas não é o que o usuário espera na tela.
+
+### O erro, na linha seguinte
+
+Em `card.ts` a agregação remontava o AST **a cada chamada** — `partesDaAgregacao`, um
+`ColumnRefNode` e um `CallNode` — sempre igual, dependendo só do campo. 438 mil
+reconstruções da mesma árvore. Forma clássica de "trabalho repetido", que é a
+hipótese que GANHOU todas as vezes nesta campanha.
+
+Memoizei por campo num `WeakMap`. Suíte verde. A/B: **2 pares de 5. Revertido.**
+
+E o motivo estava escrito por mim no achado anterior, uma hora antes:
+
+```
+438.457 reconstruções x  50 ns =  22 ms = 0,24% do cálculo
+438.457 reconstruções x 100 ns =  44 ms = 0,49%
+438.457 reconstruções x 200 ns =  88 ms = 0,97%
+```
+
+**Contei as chamadas e não multipliquei pelo custo de cada uma.** O #110 diz, com
+todas as letras, "dimensione o alvo antes de projetar o conserto" — e eu o apliquei a
+`DISTINCTCOUNT` e não à linha de baixo. Uma contagem grande não é um alvo grande:
+**438 mil é o número de vezes, não o tamanho**. Montar dois objetos custa nanossegundos
+e avaliar a agregação custa microssegundos; o andaime era menos de 1% do que ele
+embrulha.
+
+### O que os três negativos seguidos dizem juntos
+
+#109, a decisão do #110 e este apontam para o mesmo lugar: **o que sobra do cálculo é
+trabalho de avaliação de verdade, não andaime em volta dele.** Memoizar chave, contar
+id em vez de string, reaproveitar árvore — os três atacam a moldura. Ganho adicional
+relevante agora exige mudança algorítmica: reaproveitar agrupamento entre linhas, que
+é a família do #38 e do #43, e não micro-alvo.

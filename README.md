@@ -35,14 +35,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | 3 | Widget/Dashboard Engine + Chart SDK | 🚧 **em curso** |
 | — | Filtros de página e visual passaram a ser extraídos: **102 de visual + 6 de página** restringem de fato, 176 são cartão sem seleção, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #27). Sem isso um card seria computado sem o filtro dele, em silêncio | ✅ |
 | — | Campos de visual passaram a dizer **como** agregam: 84 `Aggregation` com a função, 69 `HierarchyLevel` com coluna e nível (antes nulos), 2 `Arithmetic` descritos, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #28) | ✅ |
-| — | Campos de visual passaram a dizer **como** agregam: 84 `Aggregation` com a função, 69 `HierarchyLevel` com coluna e nível (antes nulos), 2 `Arithmetic` descritos, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #28) | ✅ |
 | — | Data relativa: a âncora de `DateSpan` passou a ser **lida** em vez de presumida `Now()`. Duas páginas inteiras eram filtradas a partir de *hoje* onde o filtro diz data fixa; `TimeUnit` ganhou nome apurado do próprio relatório (`day` 20, `month` 14, `second` 2, `year` 1) ([ACHADOS](docs/ACHADOS.md) #29) | ✅ |
-| — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
-| — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
-| — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
-| — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
-| — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
-| — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
 | — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
 | — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
 | — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
@@ -80,26 +73,20 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **Índice de igualdade por coluna** (`measure-engine/src/indice.ts`): as três formas caras são `'T'[c] = <valor de fora>`, e inverter a coluna uma vez troca 1,46 M linhas por um balde de ~55. Medido na reprodução sintética: `CALCULATE(MAX(…), FILTER(…))` de **7.626 ms para 12 ms**, **635×** ([ACHADOS](docs/ACHADOS.md) #44) | ✅ |
 | — | E a medição desmentiu o #43: o gargalo maior **não** é `Status Protocolo Dia`, e sim as 7 colunas calculadas da própria `FIELD AGENDA` — duas varrem `FIELD AGENDA` por linha de `FIELD AGENDA`, **2,1 × 10¹²** visitas, sete vezes mais, e num lugar que o achado não olhou. Outras páginas não pagavam porque nenhum visual delas toca essas colunas | ⚠️ |
 | — | Nada disso decide resultado: o predicado inteiro roda por cima dos candidatos, e os testes diferenciais afirmam o mesmo valor — e o mesmo **erro** — com e sem índice. `=` do DAX não é identidade (`BLANK = 0` é verdadeiro, texto contra número **lança**), e cada guarda existe por causa disso. 6 de 7 mutações derrubam teste; a 7ª não é regra, e está anotada como tal | ✅ |
-| — | **Índice de igualdade por coluna** (`measure-engine/src/indice.ts`): as três formas caras são `'T'[c] = <valor de fora>`, e inverter a coluna uma vez troca 1,46 M linhas por um balde de ~55. Medido na reprodução sintética: `CALCULATE(MAX(…), FILTER(…))` de **7.626 ms para 12 ms**, **635×** ([ACHADOS](docs/ACHADOS.md) #44) | ✅ |
-| — | E a medição desmentiu o #43: o gargalo maior **não** é `Status Protocolo Dia`, e sim as 7 colunas calculadas da própria `FIELD AGENDA` — duas varrem `FIELD AGENDA` por linha de `FIELD AGENDA`, **2,1 × 10¹²** visitas, sete vezes mais, e num lugar que o achado não olhou. Outras páginas não pagavam porque nenhum visual delas toca essas colunas | ⚠️ |
-| — | Nada disso decide resultado: o predicado inteiro roda por cima dos candidatos, e os testes diferenciais afirmam o mesmo valor — e o mesmo **erro** — com e sem índice. `=` do DAX não é identidade (`BLANK = 0` é verdadeiro, texto contra número **lança**), e cada guarda existe por causa disso. 6 de 7 mutações derrubam teste; a 7ª não é regra, e está anotada como tal | ✅ |
 | — | **Gráficos: 13 dos 16 calculam.** Um ponto de gráfico é uma linha de tabela desenhada — mesmo agrupamento, mesmo contexto de filtro. O que é só do gráfico é o eixo de datas: `'T'[Data].[Mês]` não é coluna, é projeção, e ignorar o `active` daria **455 pontos onde a tela tem 99**. As 3 recusas são a mesma família dos `tableEx`: chaves de mais de uma tabela ([ACHADOS](docs/ACHADOS.md) #33) | ✅ |
 | 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
 | — | Risco de recompute nas 4 queries pesadas (`protocolos-geral`, `protocolos-produtividade`, `protocolos-auxiliares`, `field-agenda`) mapeado — TTL não limita recompute sob `realtime: true`. Decisão entre debounce, materialização (Fase 3) ou TTL-only adiada até medir frequência real de CDC ([DECISAO-REALTIME](docs/DECISAO-REALTIME.md)) | ⚠️ decisão pendente |
-| — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45) | ⚠️ |
+| — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45)<br>*Resolvido pela campanha de 12–15/09/2026: as 14 páginas juntas custam hoje ~4 s de carga e ~9 s de cálculo a frio ([ACHADOS](docs/ACHADOS.md) #106 a #111).* | ✅ |
 | — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
-| — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45) | ⚠️ |
-| — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
-| — | Risco de recompute nas 4 queries pesadas (`protocolos-geral`, `protocolos-produtividade`, `protocolos-auxiliares`, `field-agenda`) mapeado — TTL não limita recompute sob `realtime: true`. Decisão entre debounce, materialização (Fase 3) ou TTL-only adiada até medir frequência real de CDC ([DECISAO-REALTIME](docs/DECISAO-REALTIME.md)) | ⚠️ decisão pendente |
 | — | **26 e 27/08: a árvore de trabalho foi apagada duas vezes, e o que não estava commitado sumiu.** Não foi um comando deste repositório — outro agente/IDE desfez trabalho solto ([RECUPERACAO-27-08](docs/RECUPERACAO-27-08.md)). **Tudo que estava commitado sobreviveu, sem exceção**; o que se perdeu foi a passada de densidade do front e ~5.600 linhas de documentação de decisões | ⚠️ |
 | — | **Quatro coisas que este README chegou a descrever não existem no repositório**: SSE em `/api/events/stream`, `useFilterStore`, o ramo de data ISO no `filtro-url.ts` e o pré-aquecimento por Ano/Mês. Elas existiam numa árvore não commitada, e foram documentadas a partir dela — o que é o erro que este arquivo mais tenta evitar. **A linha só volta quando o código voltar** | ⚠️ |
 | 5 | Permission Engine, IA, Export | ⏳ |
 
-**1357 testes verdes** (medido em 27/08/2026). Nenhum deles precisa de credencial, e
-nenhum precisa de build. A auditoria aponta uma discrepância aberta: a árvore
-pré-reset de 26/08 marcava **1438 com 4 falhando**, e os ~81 de diferença foram
-acrescentados dentro de arquivos que existem — falta identificar quais
-([RECUPERACAO-27-08](docs/RECUPERACAO-27-08.md) §3.4).
+**1895 testes verdes** (medido em 15/09/2026). Nenhum deles precisa de credencial, e
+nenhum precisa de build. A auditoria de 27/08 apontava uma discrepância que continua
+aberta: a árvore pré-reset de 26/08 marcava **1438 com 4 falhando** contra 1357, e os
+~81 de diferença foram acrescentados dentro de arquivos que existem — falta
+identificar quais ([RECUPERACAO-27-08](docs/RECUPERACAO-27-08.md) §3.4).
 
 ### Extraído do Power BI
 
@@ -108,14 +95,6 @@ acrescentados dentro de arquivos que existem — falta identificar quais
 | Tabelas | 25 |
 | Medidas (DAX) | 78 — 5 não são usadas por nada ([ACHADOS](docs/ACHADOS.md) #6 e #10) |
 | Colunas calculadas (DAX) | 49 — 6 recuperadas em 04/08 ([ACHADOS](docs/ACHADOS.md) #8) |
-| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
-| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
-| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
-| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
-| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
-| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
-| **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
-| Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
 | **Tabelas calculadas (DAX)** | **7** — recuperadas em 05/08 ([ACHADOS](docs/ACHADOS.md) #14). São tabelas cujas *linhas* vêm de DAX |
 | Passos M (Power Query) | 303 nas 23 queries legíveis — criam 56 colunas e mexem em linha ([ACHADOS](docs/ACHADOS.md) #15) |
 | Relacionamentos | 22 (+44 de hierarquia automática de datas, ignorados) |
@@ -233,8 +212,16 @@ páginas. As 14 juntas fecham em 23 tabelas e 16 queries; uma página típica pe
 
 **O formato guarda o tipo.** `JSON.stringify` de uma data devolve texto, e texto onde
 o modelo espera data faz `YEAR()` errar alto — todas as datas de uma vez, longe da
-causa. O arquivo é colunar com o tipo de cada coluna no cabeçalho, apurado varrendo a
-coluna inteira.
+causa. O tipo de cada coluna mora no cabeçalho, apurado varrendo a coluna inteira, e
+a leitura decodifica sem adivinhar.
+
+**O corpo é uma linha por COLUNA, já codificada por dicionário** (`formato: 2`, desde
+15/09/2026). A API carrega em armazenamento colunar, e o formato anterior — uma linha
+por linha da tabela — obrigava a remontar o dicionário a cada abertura: **58,1% da
+carga**, medido. Gravado pronto, a carga das 14 páginas caiu 3,2x e o snapshot 26%.
+Os dois formatos se leem e só o 2 se escreve, então arquivo antigo carrega sem
+conversão; `npm run snapshot:converte` migra, conferindo célula a célula pelos dois
+leitores antes de trocar.
 
 > **`snapshot/` contém dado de cliente** — endereço em `field-agenda`, CPF e RG em
 > `QUADRO FUNCIONAL`. Está no `.gitignore`, e nem a ferramenta nem os testes imprimem
@@ -1402,7 +1389,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (1357 testes, sem credencial)
+npm test                              # suíte completa (1895 testes, sem credencial)
 npm run extract                       # regenera as specs a partir do PBIP
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
