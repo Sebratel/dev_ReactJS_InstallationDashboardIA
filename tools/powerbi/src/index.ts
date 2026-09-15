@@ -38,11 +38,15 @@ import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carre
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { pegaToken } from './auth.ts';
 import { PowerBI, daUrl } from './api.ts';
+import { FUNCAO_DA_AGREGACAO } from '../../../packages/widget-engine/src/agregacao.ts';
 import {
+  agregacaoComJanela,
   carregaJanelas,
-  planoDeJanela,
   comJanela,
   dependeDoRelogio,
+  planoDeAgregacao,
+  planoDeJanela,
+  refDeColuna,
   type PlanoDeJanela,
 } from './janela.ts';
 

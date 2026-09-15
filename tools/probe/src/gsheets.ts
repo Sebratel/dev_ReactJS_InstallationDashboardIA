@@ -35,26 +35,37 @@ const cfg = loadConfig();
 const chave = (s: string): string =>
   s.trim().toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '').replace(/[\s_-]+/g, '');
 
-// ------------------------------------------------------------------- token
+// -------------------------------------------------------------- credencial
+//
+// **Este bloco estava na versão ANTERIOR ao OAuth**, com `readServiceAccount` e
+// `accessToken` que este arquivo nem importa mais — restos que a restauração
+// `0aae15c` colou por cima de um corpo já reescrito. O resultado era um programa
+// que não rodava de jeito nenhum: `identidade` e `emailDaConta`, que o corpo usa em
+// doze lugares, não existiam, e `urlDaPlanilha` aparecia três vezes seguidas.
+// Reconstruído para o que o resto do arquivo já espera — `identidadeGoogle`, que é
+// quem decide entre conta de serviço e OAuth de usuário.
+let identidade: IdentidadeGoogle;
 let token: string;
 try {
-  const sa = readServiceAccount(cfg.gsheets.credentialsPath);
-  console.log(`service account: ${sa.client_email}`);
-  console.log(`projeto:         ${sa.project_id ?? '(não declarado)'}`);
-  token = await accessToken(sa, [SCOPE_SHEETS_READONLY]);
+  identidade = identidadeGoogle(cfg.gsheets, [SCOPE_SHEETS_READONLY]);
+  console.log(`identidade:      ${identidade.rotulo}`);
+  console.log(`tipo:            ${identidade.tipo}`);
+  const porQue = porQueNaoAOutra(cfg.gsheets, identidade.tipo);
+  if (porQue) console.log(`a outra:         ${porQue}`);
+  token = await identidade.token();
   console.log('token:           obtido (escopo spreadsheets.readonly)\n');
 } catch (err) {
   console.error(`FALHA na credencial: ${err instanceof Error ? err.message : err}`);
   process.exit(1);
 }
 
+/**
+ * O e-mail com que o acesso é pedido — é ele que precisa estar no compartilhamento
+ * da planilha, e por isso aparece em toda instrução de 403.
+ */
+const emailDaConta = identidade.contaDeServico?.client_email ?? identidade.rotulo;
+
 const auth = { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } };
-
-/** URL do documento que o `.env` está apontando — o que abre no navegador. */
-const urlDaPlanilha = (id: string): string => `https://docs.google.com/spreadsheets/d/${id}/edit`;
-
-/** URL do documento que o `.env` está apontando — o que abre no navegador. */
-const urlDaPlanilha = (id: string): string => `https://docs.google.com/spreadsheets/d/${id}/edit`;
 
 /** URL do documento que o `.env` está apontando — o que abre no navegador. */
 const urlDaPlanilha = (id: string): string => `https://docs.google.com/spreadsheets/d/${id}/edit`;
@@ -70,28 +81,6 @@ function explica(status: number, corpo: string, id: string, email: string): stri
   if (status === 403 && /Google Sheets API has not been used|SERVICE_DISABLED|disabled/i.test(msg)) {
     return `a Google Sheets API não está ativada no projeto. Ative em\n` +
       `  console.cloud.google.com → APIs e serviços → Biblioteca → Google Sheets API`;
-  }
-  if (status === 403 && identidade.tipo === 'oauth') {
-    // Com OAuth a instrução é outra: não há nada a compartilhar com robô nenhum.
-    // Ou a conta que autorizou não enxerga a planilha, ou autorizou-se a conta
-    // errada — e é o mesmo 403 do outro caso, com solução oposta.
-    return 'a planilha existe, mas a CONTA QUE AUTORIZOU não tem acesso a ela.\n' +
-      `  Autorizada: ${email}\n` +
-      `  Documento:  ${urlDaPlanilha(id)}\n\n` +
-      '  Abra o documento logado nessa conta: se também der "sem acesso" no navegador,\n' +
-      '  o problema não é a plataforma. Se abrir no navegador e não aqui, foi outra\n' +
-      '  conta que consentiu — rode `npm run auth:google` e escolha a certa.';
-  }
-  if (status === 403 && identidade.tipo === 'oauth') {
-    // Com OAuth a instrução é outra: não há nada a compartilhar com robô nenhum.
-    // Ou a conta que autorizou não enxerga a planilha, ou autorizou-se a conta
-    // errada — e é o mesmo 403 do outro caso, com solução oposta.
-    return 'a planilha existe, mas a CONTA QUE AUTORIZOU não tem acesso a ela.\n' +
-      `  Autorizada: ${email}\n` +
-      `  Documento:  ${urlDaPlanilha(id)}\n\n` +
-      '  Abra o documento logado nessa conta: se também der "sem acesso" no navegador,\n' +
-      '  o problema não é a plataforma. Se abrir no navegador e não aqui, foi outra\n' +
-      '  conta que consentiu — rode `npm run auth:google` e escolha a certa.';
   }
   if (status === 403 && identidade.tipo === 'oauth') {
     // Com OAuth a instrução é outra: não há nada a compartilhar com robô nenhum.
@@ -169,154 +158,6 @@ for (const p of planilhas) {
   const abas = (meta.sheets ?? []).map((s) => s.properties?.title ?? '?');
   abasPor.set(p.rotulo, abas);
   console.log(`  ${p.rotulo}: OK — "${meta.properties?.title}", ${abas.length} aba(s): ${abas.join(', ')}`);
-}
-
-// ------------------------------------------- o que esta conta alcança, afinal
-// Roda só quando alguma planilha falhou, e responde a pergunta que o 403 deixa
-// aberta: "compartilhei — o problema é o documento errado ou a conta errada?".
-// O Drive lista o que a identidade autenticada alcança, incluindo o que foi
-// compartilhado com ela. Lista VAZIA prova que nenhum compartilhamento chegou
-// nesta conta, e isso encerra a discussão sem ninguém abrir tela nenhuma.
-//
-// Requer a Google Drive API ativada no projeto (a Sheets API não basta). Se
-// estiver desligada, o próprio erro do Google traz o link para ativar.
-//
-// **Só para service account.** Conta de robô não tem arquivo próprio: tudo que
-// ela vê foi compartilhado com ela, e é isso que dá sentido à contagem. Listar o
-// Drive de uma PESSOA não diagnostica nada e imprimiria nome de arquivo pessoal
-// num relatório que existe para ser colado em ticket.
-const algumaFalhou = PLANILHAS.some((p) => p.id && !abasPor.has(p.rotulo));
-if (algumaFalhou && identidade.tipo === 'oauth') {
-  console.log(
-    '\n  (a listagem do Drive é diagnóstico de conta de serviço; com OAuth, quem\n' +
-      '   decide o acesso é a conta que autorizou — veja a instrução do 403 acima)',
-  );
-}
-if (algumaFalhou && identidade.tipo === 'service_account') {
-  console.log(`\n── O que ${emailDaConta} alcança ───`);
-  try {
-    // Identidade separada porque o escopo é outro.
-    const tokenDrive = await identidadeGoogle(cfg.gsheets, [
-      SCOPE_DRIVE_METADATA_READONLY,
-    ]).token();
-    const res = await fetch(
-      'https://www.googleapis.com/drive/v3/files?pageSize=50' +
-        '&fields=files(id,name,owners(emailAddress))' +
-        '&supportsAllDrives=true&includeItemsFromAllDrives=true',
-      { headers: { authorization: `Bearer ${tokenDrive}`, accept: 'application/json' } },
-    );
-    const corpo = await res.text();
-    if (!res.ok) {
-      const msg =
-        (JSON.parse(corpo || '{}') as { error?: { message?: string } }).error?.message ?? corpo;
-      console.log(`  não deu para medir: HTTP ${res.status} — ${msg.slice(0, 240)}`);
-    } else {
-      const arquivos = (JSON.parse(corpo).files ?? []) as Array<{
-        id: string;
-        name: string;
-        owners?: { emailAddress: string }[];
-      }>;
-      console.log(`  arquivos visíveis para ${emailDaConta}: ${arquivos.length}`);
-      for (const a of arquivos.slice(0, 20)) {
-        const daBase = PLANILHAS.find((p) => p.id === a.id);
-        console.log(
-          `    ${a.id}  ${a.name}${daBase ? `  ← ${daBase.rotulo}` : ''}` +
-            `  (dono: ${a.owners?.[0]?.emailAddress ?? '?'})`,
-        );
-      }
-      if (arquivos.length === 0) {
-        console.log(
-          '\n  ZERO arquivos. Isto é conclusivo: nenhum compartilhamento chegou a esta\n' +
-            '  conta. Não é id errado nem cópia do documento — a permissão não existe.\n' +
-            '  Quem for compartilhar precisa ser dono ou editor da planilha; quem só tem\n' +
-            '  acesso de Leitor não consegue conceder acesso a terceiros.',
-        );
-      } else {
-        const faltam = PLANILHAS.filter((p) => p.id && !arquivos.some((a) => a.id === p.id));
-        console.log(
-          faltam.length
-            ? `\n  Alcança ${arquivos.length}, mas AINDA falta(m): ${faltam.map((f) => f.rotulo).join(', ')}`
-            : '\n  Alcança as 3 da base — se ainda houve 403 acima, o problema não é permissão.',
-        );
-      }
-    }
-  } catch (err) {
-    console.log(`  não deu para medir: ${err instanceof Error ? err.message : err}`);
-  }
-}
-
-// ------------------------------------------- o que esta conta alcança, afinal
-// Roda só quando alguma planilha falhou, e responde a pergunta que o 403 deixa
-// aberta: "compartilhei — o problema é o documento errado ou a conta errada?".
-// O Drive lista o que a identidade autenticada alcança, incluindo o que foi
-// compartilhado com ela. Lista VAZIA prova que nenhum compartilhamento chegou
-// nesta conta, e isso encerra a discussão sem ninguém abrir tela nenhuma.
-//
-// Requer a Google Drive API ativada no projeto (a Sheets API não basta). Se
-// estiver desligada, o próprio erro do Google traz o link para ativar.
-//
-// **Só para service account.** Conta de robô não tem arquivo próprio: tudo que
-// ela vê foi compartilhado com ela, e é isso que dá sentido à contagem. Listar o
-// Drive de uma PESSOA não diagnostica nada e imprimiria nome de arquivo pessoal
-// num relatório que existe para ser colado em ticket.
-const algumaFalhou = PLANILHAS.some((p) => p.id && !abasPor.has(p.rotulo));
-if (algumaFalhou && identidade.tipo === 'oauth') {
-  console.log(
-    '\n  (a listagem do Drive é diagnóstico de conta de serviço; com OAuth, quem\n' +
-      '   decide o acesso é a conta que autorizou — veja a instrução do 403 acima)',
-  );
-}
-if (algumaFalhou && identidade.tipo === 'service_account') {
-  console.log(`\n── O que ${emailDaConta} alcança ───`);
-  try {
-    // Identidade separada porque o escopo é outro.
-    const tokenDrive = await identidadeGoogle(cfg.gsheets, [
-      SCOPE_DRIVE_METADATA_READONLY,
-    ]).token();
-    const res = await fetch(
-      'https://www.googleapis.com/drive/v3/files?pageSize=50' +
-        '&fields=files(id,name,owners(emailAddress))' +
-        '&supportsAllDrives=true&includeItemsFromAllDrives=true',
-      { headers: { authorization: `Bearer ${tokenDrive}`, accept: 'application/json' } },
-    );
-    const corpo = await res.text();
-    if (!res.ok) {
-      const msg =
-        (JSON.parse(corpo || '{}') as { error?: { message?: string } }).error?.message ?? corpo;
-      console.log(`  não deu para medir: HTTP ${res.status} — ${msg.slice(0, 240)}`);
-    } else {
-      const arquivos = (JSON.parse(corpo).files ?? []) as Array<{
-        id: string;
-        name: string;
-        owners?: { emailAddress: string }[];
-      }>;
-      console.log(`  arquivos visíveis para ${emailDaConta}: ${arquivos.length}`);
-      for (const a of arquivos.slice(0, 20)) {
-        const daBase = PLANILHAS.find((p) => p.id === a.id);
-        console.log(
-          `    ${a.id}  ${a.name}${daBase ? `  ← ${daBase.rotulo}` : ''}` +
-            `  (dono: ${a.owners?.[0]?.emailAddress ?? '?'})`,
-        );
-      }
-      if (arquivos.length === 0) {
-        console.log(
-          '\n  ZERO arquivos. Isto é conclusivo: nenhum compartilhamento chegou a esta\n' +
-            '  conta. Não é id errado nem cópia do documento — a permissão não existe.\n' +
-            '  Quem for compartilhar precisa ser dono ou editor da planilha; quem só tem\n' +
-            '  acesso de Leitor não consegue conceder acesso a terceiros.',
-        );
-      } else {
-        const faltam = PLANILHAS.filter((p) => p.id && !arquivos.some((a) => a.id === p.id));
-        console.log(
-          faltam.length
-            ? `\n  Alcança ${arquivos.length}, mas AINDA falta(m): ${faltam.map((f) => f.rotulo).join(', ')}`
-            : '\n  Alcança as 3 da base — se ainda houve 403 acima, o problema não é permissão.',
-        );
-      }
-    }
-  } catch (err) {
-    console.log(`  não deu para medir: ${err instanceof Error ? err.message : err}`);
-  }
 }
 
 // ------------------------------------------- o que esta conta alcança, afinal

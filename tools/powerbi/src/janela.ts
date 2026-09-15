@@ -236,3 +236,72 @@ export function comJanela(nome: string, predicados: readonly string[]): string {
   const ref = `[${nome.replace(/]/g, ']]')}]`;
   return predicados.length === 0 ? ref : `CALCULATE(${ref}, ${predicados.join(', ')})`;
 }
+
+// ------------------------------------- o mesmo trio, para AGREGAÇÃO DE COLUNA
+//
+// Um card pode ser uma medida (`[Total]`) ou uma agregação crua de coluna
+// (`SUM('T'[C])`), e a paridade precisa perguntar as duas ao Power BI sob a MESMA
+// janela de dados — senão a diferença medida é a janela, não a plataforma.
+//
+// **Estas três existiam e sumiram.** `tools/powerbi/src/index.ts` as chamava em cinco
+// lugares e a restauração `0aae15c` trouxe as chamadas sem as definições: o programa
+// morria com `ReferenceError` na primeira agregação de qualquer dashboard, e `npm run
+// powerbi` não roda desde então. Reescritas aqui, ao lado das irmãs de medida, porque
+// o defeito de sempre neste projeto é a segunda cópia divergir — e `comJanela` e
+// `agregacaoComJanela` têm de aplicar os mesmos predicados do mesmo jeito.
+
+/**
+ * Uma referência de coluna em DAX: `'Tabela'[Coluna]`.
+ *
+ * Os dois escapes são os do DAX, e não são simetria decorativa: o nome de tabela vai
+ * entre aspas simples e dobra `'`, o de coluna vai entre colchetes e dobra `]`. Uma
+ * tabela chamada `O'Brien` sem o escape fecharia a literal no meio e a consulta
+ * viraria outra consulta — que o Power BI aceitaria ou recusaria, e nos dois casos o
+ * número sairia do lugar errado.
+ */
+export function refDeColuna(tabela: string, coluna: string): string {
+  return `'${tabela.replace(/'/g, "''")}'[${coluna.replace(/]/g, ']]')}]`;
+}
+
+/**
+ * O plano de janela de uma AGREGAÇÃO, que alcança **uma** tabela.
+ *
+ * É a diferença para `planoDeJanela`: uma medida pode citar outras medidas e chegar a
+ * várias tabelas, então lá o alcance é calculado por travessia (`alcance`). Uma
+ * agregação é `SUM('T'[C])` — toca `T` e mais nada, e o alcance é a própria tabela.
+ * Por isso este plano não recebe o nome de uma medida: recebe a entidade.
+ *
+ * O `_model` fica na assinatura, sem uso, para as duas funções serem chamadas do mesmo
+ * jeito no laço de comparação — e para que o dia em que uma agregação precisar do
+ * modelo (uma coluna calculada que cite outra tabela) não mude a forma da chamada em
+ * cinco lugares. Não inventa travessia que a agregação não faz.
+ */
+export function planoDeAgregacao(
+  entidade: string,
+  _model: ModeloDeMedidas,
+  janelas: Janelas,
+): PlanoDeJanela {
+  const tabelas = [entidade];
+  const motivo = janelas.bloqueadas.get(entidade);
+  if (motivo !== undefined) {
+    return { predicados: [], bloqueio: { tabela: entidade, motivo }, tabelas };
+  }
+  const dax = janelas.tabelas.get(entidade)?.dax;
+  return { predicados: typeof dax === 'string' ? [dax] : [], bloqueio: null, tabelas };
+}
+
+/**
+ * `SUM('T'[C])` ou `CALCULATE(SUM('T'[C]), pred, ...)`, pronto para entrar numa `ROW`.
+ *
+ * O par de `comJanela`, e a forma é a mesma de propósito: o que muda entre uma medida
+ * e uma agregação é só o que vai dentro do `CALCULATE`.
+ */
+export function agregacaoComJanela(
+  funcao: string,
+  tabela: string,
+  coluna: string,
+  predicados: readonly string[],
+): string {
+  const expr = `${funcao}(${refDeColuna(tabela, coluna)})`;
+  return predicados.length === 0 ? expr : `CALCULATE(${expr}, ${predicados.join(', ')})`;
+}

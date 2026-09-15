@@ -1,23 +1,22 @@
-// Linha duplicada por restauração ruim — a classe de defeito que deixa uma
-// ferramenta MORTA sem ninguém notar.
+// Sentença repetida colada na de cima — o dano que fica MORTO em silêncio.
 //
-// **Por que isto existe.** O commit `0aae15c` ("restaurar 100% do estado do dia 26")
-// duplicou linhas adjacentes em quatro arquivos. Em dois deles era um `import`, e um
-// `import` repetido do mesmo identificador é **SyntaxError**: `npm run run:mlayer` e
-// `tools/probe/src/gsheets.ts` não arrancavam desde então — morriam no carregamento do
-// módulo, antes da primeira linha de código rodar. Nos outros dois era um `else if`
-// idêntico ao anterior, que nunca é alcançado.
+// Companheiro de `codigo-carrega.test.ts`, e a divisão entre os dois é exata: lá o
+// `tsc` pega tudo que impede o arquivo de existir (nome indefinido, redeclarado,
+// importado de um módulo que não o exporta). Aqui fica o que é **TypeScript válido** e
+// mesmo assim é defeito:
 //
-// Passou despercebido por **onze dias** porque a suíte não toca nesses arquivos:
-// `test:mlayer` exercita `tools/mrun/src/args.ts`, não o `index.ts` que morre. Um CLI
-// sem teste que o carregue pode estar quebrado indefinidamente, e o sintoma só aparece
-// quando alguém precisa dele — que foi o que aconteceu ao ir medir a camada M.
+//     else if (k === '--refaz') a.refaz = true;
+//     else if (k === '--refaz') a.refaz = true;      <- nunca alcançada
 //
-// Este teste não é um lint de estilo. Ele cobre exatamente as duas formas do dano:
-// identificador importado duas vezes (o que quebra de verdade) e sentença repetida
-// colada na anterior (o que fica morto em silêncio). Repetição legítima — fechar
-// bloco, comentário, dois elementos iguais numa lista, duas chamadas iguais num teste
-// — não entra, e é por isso que a segunda regra só olha `import`, `export` e `else if`.
+// Nenhum verificador de tipos reclama disso, e nada em tempo de execução também não:
+// o programa roda, a segunda linha só não faz nada. Foi assim que `tools/powerbi` e
+// `tools/mrun` carregaram um ramo morto cada, do mesmo commit `0aae15c` que quebrou
+// de vez outros três arquivos.
+//
+// **Só `import`, `export` e `else if`.** Repetir linha é legítimo em quase todo lugar
+// — dois elementos iguais numa lista, duas chamadas iguais num teste, dois `break`. A
+// regra fica estreita de propósito: nestas três formas, a repetição imediata não tem
+// leitura inocente.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -44,76 +43,7 @@ function fontes(): string[] {
   return fora;
 }
 
-/** O caminho a partir da raiz, com `/`, para a mensagem de erro ser clicável. */
-function relativo(p: string): string {
-  return path.relative(RAIZ, p).split(path.sep).join('/');
-}
-
-/** Os nomes que uma linha `import { … } from` traz, já sem `as` e sem `type`. */
-function nomesImportados(linha: string): string[] {
-  const m = /^import\s+(?:type\s+)?\{([^}]*)\}\s+from\s/.exec(linha.trim());
-  if (!m) return [];
-  return m[1]!
-    .split(',')
-    .map((b) => b.trim().replace(/^type\s+/, '').split(/\s+as\s+/).pop()?.trim() ?? '')
-    .filter(Boolean);
-}
-
-test('nenhum arquivo importa o mesmo identificador duas vezes', () => {
-  // É a forma que QUEBRA: o módulo nem carrega, e o erro é
-  // `SyntaxError: Identifier 'x' has already been declared`.
-  const erros: string[] = [];
-  for (const arq of fontes()) {
-    const linhas = fs.readFileSync(arq, 'utf8').split(/\r?\n/);
-    const vistos = new Map<string, number>();
-    for (let i = 0; i < linhas.length; i++) {
-      for (const nome of nomesImportados(linhas[i]!)) {
-        const antes = vistos.get(nome);
-        if (antes !== undefined) {
-          erros.push(`${relativo(arq)}:${i + 1} — '${nome}' já foi importado na linha ${antes}`);
-        } else {
-          vistos.set(nome, i + 1);
-        }
-      }
-    }
-  }
-  assert.deepEqual(erros, [], `import duplicado é SyntaxError — o arquivo não carrega:\n${erros.join('\n')}`);
-});
-
-test('nenhum arquivo declara um nome que ele também importa', () => {
-  // A SEGUNDA forma do mesmo dano, e a que custou mais caro: `tools/mrun/src/index.ts`
-  // importava `parseArgs` de `./args.ts` e trazia uma cópia INLINE dela — a versão
-  // anterior à extração, sem o campo `segundos`. Não carregava; e se carregasse, o
-  // `statement_timeout` do programa viraria `NaN` em silêncio.
-  const erros: string[] = [];
-  const DECLARA = /^(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:function|class|interface|type|const|let|var|enum)\s+([A-Za-z_$][\w$]*)/;
-  for (const arq of fontes()) {
-    const linhas = fs.readFileSync(arq, 'utf8').split(/\r?\n/);
-    const importados = new Map<string, number>();
-    for (let i = 0; i < linhas.length; i++) {
-      const linha = linhas[i]!;
-      const nomes = nomesImportados(linha);
-      if (nomes.length > 0) {
-        for (const n of nomes) if (!importados.has(n)) importados.set(n, i + 1);
-        continue;
-      }
-      // Só declaração no nível do módulo: indentada é escopo interno, e aí sombrear
-      // um import é legítimo (e a linguagem permite).
-      if (/^\s/.test(linha)) continue;
-      const d = DECLARA.exec(linha.trim());
-      if (!d) continue;
-      const onde = importados.get(d[1]!);
-      if (onde !== undefined) {
-        erros.push(`${relativo(arq)}:${i + 1} — '${d[1]}' é declarado aqui e importado na linha ${onde}`);
-      }
-    }
-  }
-  assert.deepEqual(erros, [], `nome importado e redeclarado é SyntaxError:\n${erros.join('\n')}`);
-});
-
 test('nenhuma sentença de `import`, `export` ou `else if` repete a linha de cima', () => {
-  // É a forma que fica MORTA em silêncio: um `else if` idêntico ao anterior nunca é
-  // alcançado, e nada reclama.
   const erros: string[] = [];
   for (const arq of fontes()) {
     const linhas = fs.readFileSync(arq, 'utf8').split(/\r?\n/);
@@ -121,8 +51,42 @@ test('nenhuma sentença de `import`, `export` ou `else if` repete a linha de cim
       const a = linhas[i - 1]!.trim();
       if (a.length < 12 || a !== linhas[i]!.trim()) continue;
       if (!/^(import |export |else if )/.test(a)) continue;
-      erros.push(`${relativo(arq)}:${i + 1} — repete a linha ${i}: ${a.slice(0, 80)}`);
+      const onde = path.relative(RAIZ, arq).split(path.sep).join('/');
+      erros.push(`${onde}:${i + 1} — repete a linha ${i}: ${a.slice(0, 80)}`);
     }
   }
   assert.deepEqual(erros, [], `linha duplicada por restauração:\n${erros.join('\n')}`);
+});
+
+test('nenhum bloco de 8 linhas ou mais aparece duas vezes seguidas', () => {
+  // A forma em ESCALA do mesmo dano: `tools/probe/src/gsheets.ts` tinha um bloco de 74
+  // linhas **três vezes**, e `tools/mrun/src/index.ts` imprimia "Onde o tempo vai"
+  // duas vezes na saída — dava para ver rodando a ferramenta, e ninguém viu, porque
+  // quem lê uma saída longa não conta seções.
+  //
+  // Oito linhas é o piso: abaixo disso aparecem repetições legítimas (dois `catch`
+  // iguais, duas entradas de tabela de teste), e o teste viraria ruído.
+  const MIN = 8;
+  const erros: string[] = [];
+  for (const arq of fontes()) {
+    const L = fs.readFileSync(arq, 'utf8').split(/\r?\n/);
+    for (let i = 0; i < L.length; i++) {
+      // Do maior período para o menor: interessa o bloco inteiro, não o pedaço dele.
+      for (let P = Math.floor((L.length - i) / 2); P >= MIN; P--) {
+        let igual = true;
+        for (let k = 0; k < P; k++) {
+          if (L[i + k] !== L[i + P + k]) { igual = false; break; }
+        }
+        if (!igual) continue;
+        // Exige conteúdo de verdade: um bloco de linhas em branco e `}` repete à toa.
+        if (L.slice(i, i + P).filter((s) => s.trim().length > 0).length < MIN) continue;
+        const onde = path.relative(RAIZ, arq).split(path.sep).join('/');
+        const amostra = L.slice(i, i + P).find((s) => s.trim().length > 0) ?? '';
+        erros.push(`${onde}:${i + 1} — bloco de ${P} linhas repetido logo em seguida: ${amostra.trim().slice(0, 70)}`);
+        i += P * 2 - 1;
+        break;
+      }
+    }
+  }
+  assert.deepEqual(erros, [], `bloco duplicado por restauração:\n${erros.join('\n')}`);
 });

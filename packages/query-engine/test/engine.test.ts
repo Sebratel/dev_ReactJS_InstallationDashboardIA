@@ -6,7 +6,11 @@ import { QueryRegistry } from '../src/registry.ts';
 import { MemoryCache } from '../src/cache-memory.ts';
 import { FakeConnector, SqlConnector } from '../src/connectors.ts';
 import { QueryEngine, cacheKeyFor } from '../src/engine.ts';
-import type { CachePolicy, Clock, Connector, EngineEvent, QuerySpec } from '../src/types.ts';
+// `EngineEvent` era pedido a `types.ts`, e ele mora em `engine.ts` — o módulo logo
+// acima, de onde este arquivo já importa `QueryEngine`. Como era `import type`, o Node
+// apagava a linha antes de ligar o módulo: o teste rodava e nada denunciava o engano.
+import type { CachePolicy, Clock, Connector, QuerySpec } from '../src/types.ts';
+import type { EngineEvent } from '../src/engine.ts';
 
 const SPECS_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'specs',
