@@ -135,6 +135,39 @@ export function escolheGemeo(caminhoCru: string): string {
   return temGz ? comprimido : caminhoCru;
 }
 
+/**
+ * O pedaço com que o snapshot é lido — do disco e da saída do `gunzip`.
+ *
+ * **O que manda aqui é o `chunkSize` do zlib, não o do disco.** Os padrões do Node
+ * são 64 KB no `fs` e **16 KB** no zlib, e é o segundo que decide quantos pedaços
+ * `paraCadaLinha` vê, porque quem entrega o texto é o `gunzip`. Medido em
+ * 15/09/2026 sobre `field-agenda.jsonl.gz` (7,2 MB em disco, 61,2 MB inflado),
+ * melhor de 4:
+ *
+ * ```
+ * 64 KB fs / 16 KB zlib (padrão) .... 139 ms   4.033 pedaços
+ * 1 MB fs  / 16 KB zlib .............. 134 ms   3.926 pedaços
+ * 64 KB fs / 1 MB zlib ............... 96 ms      176 pedaços
+ * 1 MB fs  / 1 MB zlib ............... 87 ms       69 pedaços   −37%
+ * 4 MB fs  / 4 MB zlib ............... 80 ms       17 pedaços
+ * ```
+ *
+ * Subir o `fs` sozinho não faz quase nada; subir o zlib faz quase tudo. O custo que
+ * some é o `for await` por pedaço — o mesmo custo que tirou o `readline` daqui, uma
+ * camada acima.
+ *
+ * **Parou em 1 MB de propósito.** 4 MB ganha mais 6 ms e quadruplica o buffer vivo
+ * de cada fluxo aberto; a carga é serial, então são 2 MB transitórios contra 8 MB,
+ * por 7% de um degrau. Não vale numa máquina de 16 GB que já usa `--max-old-space`.
+ *
+ * **Exportado porque `test/para-cada-linha.test.ts` constrói os casos de BORDA a
+ * partir dele.** Aquele arquivo fixava `65536` à mão, e é a pior espécie de teste:
+ * mudar este número deixaria as quatro travessias de borda verdes e vazias —
+ * passando por não testar mais nada, em vez de falhando. Importando daqui, os casos
+ * acompanham.
+ */
+export const PEDACO_DE_LEITURA = 1024 * 1024;
+
 /** Os dois bytes que abrem todo membro gzip (RFC 1952 §2.3.1). */
 function comprimidoEmDisco(arquivo: string): boolean {
   const fd = fs.openSync(arquivo, 'r');
@@ -169,9 +202,11 @@ function comprimidoEmDisco(arquivo: string): boolean {
  * chama esta função para essa divergência não ter como voltar.
  */
 export function fluxoDeLeitura(arquivo: string): Readable {
-  if (!comprimidoEmDisco(arquivo)) return fs.createReadStream(arquivo, { encoding: 'utf8' });
-  const fonte = fs.createReadStream(arquivo);
-  const gunzip = zlib.createGunzip();
+  if (!comprimidoEmDisco(arquivo)) {
+    return fs.createReadStream(arquivo, { encoding: 'utf8', highWaterMark: PEDACO_DE_LEITURA });
+  }
+  const fonte = fs.createReadStream(arquivo, { highWaterMark: PEDACO_DE_LEITURA });
+  const gunzip = zlib.createGunzip({ chunkSize: PEDACO_DE_LEITURA });
   fonte.on('error', (e) => gunzip.destroy(e));
   return fonte.pipe(gunzip);
 }

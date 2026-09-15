@@ -17,10 +17,20 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { paraCadaLinha } from '../src/formato.ts';
+import { paraCadaLinha, PEDACO_DE_LEITURA } from '../src/formato.ts';
 
-/** O pedaço padrão de `fs.createReadStream`. É onde as bordas caem. */
-const PEDACO = 65536;
+/**
+ * O pedaço com que o snapshot é lido. É onde as bordas caem — e vem **importado**,
+ * não escrito aqui.
+ *
+ * Estava fixo em `65536` (o padrão do `fs`, que nem era o que mandava: quem entrega
+ * o texto de um `.gz` é o `gunzip`, e o padrão dele é 16 KB). Ao subir o pedaço para
+ * 1 MB em 15/09/2026, os quatro testes de borda abaixo continuariam **verdes** e
+ * teriam parado de tocar em borda nenhuma: enchimento de 64 KB no meio de um pedaço
+ * de 1 MB não atravessa nada. Teste que passa por não testar mais é pior que teste
+ * que falha, porque ninguém vai olhar.
+ */
+const PEDACO = PEDACO_DE_LEITURA;
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'linhas-'));
