@@ -182,6 +182,11 @@ test('scanM: transformação de valor e de tipo não conta como efeito nenhum', 
 test('as 25 queries reais: 24 são escaneáveis, e a exceção é a do let aninhado', () => {
   // 24 do PBIP + `field-agenda-slot` (ACHADOS #87) — SQL de mão, mesma forma de M
   // de 3 passos de `field-agenda`, e escaneável como qualquer outra: 303 + 3 = 306.
+  //
+  // -57 (10/09/2026, ACHADOS #81 Bloqueio 1): `protocolos-produtividade` (uma das
+  // 24 escaneáveis) teve o M reduzido de ~60 passos para 3 — o resto já vinha do
+  // `sql:` desde 25/08 e colidia tentando recriar as mesmas colunas, o que fazia a
+  // query nunca materializar. 306 - 57 = 249.
   const registry = QueryRegistry.fromSpecsDir(SPECS);
   const falhas: string[] = [];
   let passos = 0;
@@ -195,7 +200,7 @@ test('as 25 queries reais: 24 são escaneáveis, e a exceção é a do let aninh
     }
   }
   assert.deepEqual(falhas, ['clima-tempo'], 'só a query do Open-Meteo usa função M');
-  assert.equal(passos, 306, 'passos M nas 24 escaneáveis');
+  assert.equal(passos, 249, 'passos M nas 24 escaneáveis');
 });
 
 /**
@@ -226,19 +231,35 @@ test('em 11 tabelas o rowCount do golden não é comparável com o Power BI', ()
 });
 
 /**
- * 11 colunas que o DAX usa **não saem do SELECT**: nascem em passo M.
+ * 7 colunas que o DAX usa **não saem do SELECT**: nascem em passo M.
  *
  * É a lacuna que separa "o avaliador roda" de "o avaliador pode rodar contra dado
- * real". Sem a camada M, essas 11 chegam vazias — e vazio não dá erro: dá zero,
+ * real". Sem a camada M, essas 7 chegam vazias — e vazio não dá erro: dá zero,
  * BLANK ou junção que não casa nada.
+ *
+ * Eram 11 até 12/09/2026. As 4 que saíram são de `PROTOCOLOS PRODUTIVIDADE`
+ * (DATA ALOCAÇÃO, TÉCNICO TROCA, DATA DA TROCA, INSTALADOR) e agora vêm do `sql:`.
+ * As 7 que restam são TODAS de `PROTOCOLOS GERAL`, que ainda as cria em M — é a
+ * próxima tabela a receber o mesmo tratamento.
  */
-test('11 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
+test('7 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   const tabelas = verificarModelo(SPECS, GOLDEN);
   const emM = tabelas.flatMap((t) => t.colunas.filter((c) => c.procedencia === 'm'));
   const citadas = emM.filter((c) => c.noDax);
 
-  assert.equal(emM.length, 56, 'colunas nascidas em M');
-  assert.equal(citadas.length, 11, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
+  // 56 -> 41 (12/09/2026): as 15 colunas que o M de `protocolos-produtividade`
+  // criava passaram a sair do `sql:` na migração de 25/08 (ACHADOS #81/#105), e o
+  // golden só foi regravado agora — era ele, parado em 06/08 com 33 colunas, que
+  // fazia quatro delas (DATA ALOCAÇÃO, TÉCNICO TROCA, DATA DA TROCA, INSTALADOR)
+  // caírem em `sem-explicacao`. O golden novo tem 47 colunas, e as 15 são
+  // exatamente: HORA CRIADO, HORA AGENDA, SIGLA CIDADE, INDICE 2, POP, VLAN,
+  // DATA ALOCAÇÃO, HR. ALOCAÇÃO, POSIÇÃO, TÉCNICO INSTALAÇÃO, TÉCNICO TROCA,
+  // DATA DA TROCA, TECNICOS AUXILIARES.AUXILIAR, INSTALADOR e DATA FINAL.
+  //
+  // Este número CAI quando trabalho sai do M e vai para o SQL — que é a direção
+  // desejada. Se ele SUBIR, alguém devolveu transformação para a camada M.
+  assert.equal(emM.length, 41, 'colunas nascidas em M');
+  assert.equal(citadas.length, 7, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
   for (const c of citadas) assert.ok(c.step, `${c.table}[${c.column}] sem passo`);
 
   // A coluna de junção da fase 2b.5 está entre elas — e é o caso mais concreto:

@@ -78,8 +78,10 @@
 -- O `ROW_NUMBER` NAO pode vir aqui: no M original ele e calculado DEPOIS do
 -- WHERE de cada query, sobre o conjunto ja filtrado. Calcular uma vez sobre o
 -- conjunto largo daria PERSONA1 diferente e mudaria quais linhas sobrevivem.
--- Por isso ele fica em cada ramo, particionando por "SOLICITACAO" -- e a unica
--- coluna de apoio que precisa viajar ate la e `_tipo`.
+-- Por isso ele fica em cada ramo, particionando por "SOLICITACAO". As colunas de
+-- apoio que precisam viajar ate la sao `_tipo` (o recorte de cada ramo) e as sete
+-- do DESEMPATE do ROW_NUMBER -- ver o bloco no fim deste SELECT. Nenhuma delas
+-- entra no DISTINCT: ele enumera as 33 colunas de saida explicitamente.
 -- -----------------------------------------------------------------------------
 WITH bruto AS (
     SELECT
@@ -115,12 +117,50 @@ WITH bruto AS (
         m.title                          AS "EQUIPAMENTO",
         ac.user                          AS "USUÁRIO",
         vu.name                          AS "CRIADO POR",
-        CASE WHEN frt.title IS NULL THEN 'Pendente' ELSE 'Cobrado' END
+        -- EXISTS, nao LEFT JOIN (12/09/2026). Medido: `financial_receivable_titles`
+        -- tem 78,57 titulos por contrato em media (maximo 654). Como esta coluna e
+        -- o UNICO uso de `frt` -- e um teste de nulo, nao um valor -- o LEFT JOIN
+        -- multiplicava cada linha por ~78 e o `SELECT DISTINCT` la embaixo jogava as
+        -- 78 fora. O EXISTS devolve o MESMO conjunto sem produzir uma linha a mais.
+        --
+        -- ATENCAO -- isto sozinho NAO resolveu o timeout, e foi medido: com o
+        -- EXISTS aplicado a query ainda estourou 600 s. O custo dominante esta no
+        -- join por `regexp_replace` do CTE `mesclado`, nao aqui. Este corte
+        -- continua certo (78x de linha intermediaria a menos), mas nao e a causa.
+        CASE WHEN EXISTS (
+                 SELECT 1 FROM financial_receivable_titles frt
+                 WHERE frt.contract_id = c.id AND frt.title IS NOT NULL
+             ) THEN 'Cobrado' ELSE 'Pendente' END
                                          AS "STATUS FINANCEIRO",
-        -- Unica coluna de apoio: o tipo, para cada ramo se recortar. `a.created` e
-        -- `a.title` NAO precisam viajar em separado -- ja saem acima como
-        -- "DATA CRIADO" e "SOLICITACAO", e duplica-las inflaria o DISTINCT.
-        it.id                            AS _tipo
+        -- Colunas de apoio. `a.created` e `a.title` NAO precisam viajar em separado
+        -- -- ja saem acima como "DATA CRIADO" e "SOLICITACAO", e duplica-las
+        -- inflaria o DISTINCT. Nenhuma destas entra no DISTINCT: ele enumera as 33
+        -- colunas de saida explicitamente, la embaixo.
+        it.id                            AS _tipo,
+        -- ---------------------------------------------------------------------
+        -- DESEMPATE DO ROW_NUMBER -- a MESMA regra ja decidida para
+        -- `protocolos-geral` em 04/09/2026 (docs/sql/protocolos-geral-exists.sql,
+        -- ACHADOS #97). Nao e decisao nova: e a irma desta query, com a MESMA
+        -- cadeia de joins (`ac`, `cst`, `s`, `asp`, `pa`).
+        --
+        -- POR QUE PRECISA VIR JUNTO COM O `EXISTS` DO `frt`, e nao depois: tirar
+        -- aquele LEFT JOIN muda a MULTIPLICIDADE da particao do ROW_NUMBER. Com o
+        -- join, cada linha-base aparecia ~78 vezes; sem ele, uma. Quando ha empate
+        -- em "DATA AGENDA", QUAL linha fica em _persona=1 muda -- e com ela mudam
+        -- LATITUDE, LONGITUDE, CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO,
+        -- SLOT, PORTA e USUARIO. Em `protocolos-geral` isso mexia em ~14% das
+        -- solicitacoes, e foi por isso que a reescrita de la ficou parada ate a
+        -- regra existir: entregar o ganho antes de desempatar seria trocar um
+        -- sorteio por outro.
+        -- ---------------------------------------------------------------------
+        ac.active                        AS _ac_ativo,
+        (ac.contract_id = cst.contract_id) AS _ac_casa_contrato,
+        ac.created                       AS _ac_criado,
+        ac.id                            AS _ac_id,
+        asp.id                           AS _asp_id,
+        s.id                             AS _s_id,
+        pa.id                            AS _pa_id,
+        pa.created                       AS _pa_criado
     FROM assignment_incidents ai
     LEFT JOIN assignments                    a    ON a.id   = ai.assignment_id
     LEFT JOIN schedules                      s    ON s.assignment_id = a.id
@@ -142,7 +182,6 @@ WITH bruto AS (
     LEFT JOIN solicitation_classifications   sc   ON sc.id  = ai.solicitation_classification_id
     LEFT JOIN authentication_splitters       as2  ON as2.id = asp.authentication_splitter_id
     LEFT JOIN v_users                        vu   ON vu.id  = a.created_by
-    LEFT JOIN financial_receivable_titles    frt  ON c.id   = frt.contract_id
     WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
       AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo
 ),
@@ -175,7 +214,86 @@ ramo_produtividade AS (
         "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
         "CRIADO POR","STATUS FINANCEIRO"
     FROM (
-        SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b."SOLICITACAO" ORDER BY b."DATA AGENDA" DESC) AS _persona
+        SELECT b.*, ROW_NUMBER() OVER (
+            PARTITION BY b."SOLICITACAO"
+            -- PRIMARIA: o contrato DAQUELE protocolo (`ac.contract_id = cst.contract_id`).
+            -- Nao e heuristica -- e a resposta por definicao.
+            --
+            -- A ordem era a inversa ate 13/09/2026, herdada de `protocolos-geral`
+            -- (ACHADOS #97). Medido nos dois escopos, sobre CONTRATOS DE AUTENTICACAO
+            -- DISTINTOS por solicitacao -- que e a dimensao de que dependem LATITUDE,
+            -- LONGITUDE, CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA
+            -- e USUARIO:
+            --
+            --                        com leque   ativo decide   casa decide   discordam
+            --   produtividade (2026)     2.039              1         1.885           0
+            --   geral (2025+)            4.507              5         4.013           0
+            --
+            -- `ac.active` decidia 0,1% dos casos: neste escopo quase todo contrato
+            -- candidato ja esta ativo, entao ele nao discrimina. A inversao nao muda
+            -- NENHUMA linha hoje (discordancia = 0, medida); muda no dia em que um
+            -- contrato casado estiver inativo -- e ai muda para o certo.
+            --
+            -- O DESEMPATE NAO E SO DETERMINISMO: ELE RECUPERA DADO EM BRANCO.
+            -- Medido sobre a POPULACAO (39.267 vencedores, 13/09/2026), contando
+            -- quantos vencedores tinham contrato de autenticacao NULO:
+            --
+            --                                    ac nulo   lat nulo   slot nulo
+            --   sem desempate (so DATA AGENDA)    17.858     20.195      17.892
+            --   com desempate (B ou C)            10.015     14.222      10.061
+            --
+            -- Sao 7.843 solicitacoes -- 20% do total -- que apareciam em branco por
+            -- sorteio. O mecanismo: `(... IS TRUE) DESC` joga false/NULL para o fim,
+            -- e `ac_id DESC NULLS LAST` idem, entao qualquer linha COM contrato vence
+            -- uma em que o LEFT JOIN nao casou. O ganho vem de EXISTIR desempate, nao
+            -- de qual regra e primaria -- as ordens B e C dao numeros identicos.
+            -- Os 10.015 que restam sao honestos: nenhuma linha daquela solicitacao
+            -- tem contrato de autenticacao.
+            --
+            -- Os tres ultimos sao o piso de determinismo: sem eles, `asp`, `s` e `pa`
+            -- multiplicam a particao e o topo empata (17.663 protocolos, medido em geral).
+            ORDER BY (b._ac_casa_contrato IS TRUE) DESC,
+                     (b._ac_ativo IS TRUE) DESC,
+                     b."DATA AGENDA" DESC NULLS LAST,
+                     b._ac_criado DESC NULLS LAST, b._ac_id DESC NULLS LAST,
+                     b._asp_id DESC NULLS LAST, b._s_id DESC NULLS LAST,
+            -- O ENDERECO DUPLICADO: O MAIS RECENTE, DENTRO DO CONTRATO.
+            --
+            -- Criterio do Erick, 14/09/2026: "dependendo do contrato e o mais
+            -- recente -- se um contrato teve 2 enderecos, filtre pela data do mais
+            -- recente". O contrato ja decide primeiro (`_ac_casa_contrato`, la em
+            -- cima); esta linha resolve o que sobra DENTRO dele.
+            --
+            -- **NAO MUDA NUMERO NENHUM HOJE, E O MOTIVO IMPORTA.** `pa` aparece
+            -- QUATRO vezes no arquivo inteiro: as duas colunas de apoio acima e os
+            -- dois ON do join. Ela nao alimenta nenhuma das 33 colunas de saida --
+            -- CIDADE, BAIRRO, RUA e NUMERO vem de `people` (`p.`), e LATITUDE, CTO,
+            -- SLOT, PORTA e USUARIO vem de `ac`/`aap`/`asp`. O endereco e so o salto
+            -- de pessoa para contrato de autenticacao.
+            --
+            -- Medido no banco em 14/09/2026, comparando o vencedor de cada
+            -- solicitacao com e sem esta linha:
+            --
+            --                   solicitacoes   vencedor muda de `pa`   muda `ac`/`asp`/`s`
+            --   produtividade         39.455                       2                     0
+            --   auxiliares            38.030                       2                     0
+            --
+            -- Nos quatro casos o `pa` novo tem data POSTERIOR e id MENOR -- e o `ac`
+            -- que pendura nele e O MESMO. Como so `pa` muda e `pa` nao sai, as 33
+            -- colunas sao identicas: o `DISTINCT` la embaixo nem enxerga a diferenca.
+            --
+            -- **Entao por que escrever a linha.** Porque o criterio passa a estar
+            -- DITO. Hoje quem decide e `pa.id DESC`, que so coincide com "o mais
+            -- recente" porque a sequencia cresce; no dia em que alguem trouxer uma
+            -- coluna de `people_addresses` para a saida -- ou em que um endereco
+            -- chegar por importacao com id maior e data anterior -- a regra de
+            -- negocio ja esta aqui, em vez de depender do acaso da sequencia.
+            --
+            -- Contexto do leque: 26.174 contratos no escopo, 1.725 deles (6,6%) com
+            -- mais de um endereco, o maior com 52. Nenhum endereco com data nula nem
+            -- marcado como apagado.
+                     b._pa_criado DESC NULLS LAST, b._pa_id DESC NULLS LAST
+        ) AS _persona
         FROM bruto b
         WHERE b._tipo IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
           AND b."DATA CRIADO" >= '2026-01-01'
@@ -190,13 +308,92 @@ ramo_auxiliares AS (
         "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
         "CRIADO POR","STATUS FINANCEIRO"
     FROM (
-        SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b."SOLICITACAO" ORDER BY b."DATA AGENDA" DESC) AS _persona
+        SELECT b.*, ROW_NUMBER() OVER (
+            PARTITION BY b."SOLICITACAO"
+            -- PRIMARIA: o contrato DAQUELE protocolo (`ac.contract_id = cst.contract_id`).
+            -- Nao e heuristica -- e a resposta por definicao.
+            --
+            -- A ordem era a inversa ate 13/09/2026, herdada de `protocolos-geral`
+            -- (ACHADOS #97). Medido nos dois escopos, sobre CONTRATOS DE AUTENTICACAO
+            -- DISTINTOS por solicitacao -- que e a dimensao de que dependem LATITUDE,
+            -- LONGITUDE, CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA
+            -- e USUARIO:
+            --
+            --                        com leque   ativo decide   casa decide   discordam
+            --   produtividade (2026)     2.039              1         1.885           0
+            --   geral (2025+)            4.507              5         4.013           0
+            --
+            -- `ac.active` decidia 0,1% dos casos: neste escopo quase todo contrato
+            -- candidato ja esta ativo, entao ele nao discrimina. A inversao nao muda
+            -- NENHUMA linha hoje (discordancia = 0, medida); muda no dia em que um
+            -- contrato casado estiver inativo -- e ai muda para o certo.
+            --
+            -- O DESEMPATE NAO E SO DETERMINISMO: ELE RECUPERA DADO EM BRANCO.
+            -- Medido sobre a POPULACAO (39.267 vencedores, 13/09/2026), contando
+            -- quantos vencedores tinham contrato de autenticacao NULO:
+            --
+            --                                    ac nulo   lat nulo   slot nulo
+            --   sem desempate (so DATA AGENDA)    17.858     20.195      17.892
+            --   com desempate (B ou C)            10.015     14.222      10.061
+            --
+            -- Sao 7.843 solicitacoes -- 20% do total -- que apareciam em branco por
+            -- sorteio. O mecanismo: `(... IS TRUE) DESC` joga false/NULL para o fim,
+            -- e `ac_id DESC NULLS LAST` idem, entao qualquer linha COM contrato vence
+            -- uma em que o LEFT JOIN nao casou. O ganho vem de EXISTIR desempate, nao
+            -- de qual regra e primaria -- as ordens B e C dao numeros identicos.
+            -- Os 10.015 que restam sao honestos: nenhuma linha daquela solicitacao
+            -- tem contrato de autenticacao.
+            --
+            -- Os tres ultimos sao o piso de determinismo: sem eles, `asp`, `s` e `pa`
+            -- multiplicam a particao e o topo empata (17.663 protocolos, medido em geral).
+            ORDER BY (b._ac_casa_contrato IS TRUE) DESC,
+                     (b._ac_ativo IS TRUE) DESC,
+                     b."DATA AGENDA" DESC NULLS LAST,
+                     b._ac_criado DESC NULLS LAST, b._ac_id DESC NULLS LAST,
+                     b._asp_id DESC NULLS LAST, b._s_id DESC NULLS LAST,
+            -- O ENDERECO DUPLICADO: O MAIS RECENTE, DENTRO DO CONTRATO.
+            --
+            -- Criterio do Erick, 14/09/2026: "dependendo do contrato e o mais
+            -- recente -- se um contrato teve 2 enderecos, filtre pela data do mais
+            -- recente". O contrato ja decide primeiro (`_ac_casa_contrato`, la em
+            -- cima); esta linha resolve o que sobra DENTRO dele.
+            --
+            -- **NAO MUDA NUMERO NENHUM HOJE, E O MOTIVO IMPORTA.** `pa` aparece
+            -- QUATRO vezes no arquivo inteiro: as duas colunas de apoio acima e os
+            -- dois ON do join. Ela nao alimenta nenhuma das 33 colunas de saida --
+            -- CIDADE, BAIRRO, RUA e NUMERO vem de `people` (`p.`), e LATITUDE, CTO,
+            -- SLOT, PORTA e USUARIO vem de `ac`/`aap`/`asp`. O endereco e so o salto
+            -- de pessoa para contrato de autenticacao.
+            --
+            -- Medido no banco em 14/09/2026, comparando o vencedor de cada
+            -- solicitacao com e sem esta linha:
+            --
+            --                   solicitacoes   vencedor muda de `pa`   muda `ac`/`asp`/`s`
+            --   produtividade         39.455                       2                     0
+            --   auxiliares            38.030                       2                     0
+            --
+            -- Nos quatro casos o `pa` novo tem data POSTERIOR e id MENOR -- e o `ac`
+            -- que pendura nele e O MESMO. Como so `pa` muda e `pa` nao sai, as 33
+            -- colunas sao identicas: o `DISTINCT` la embaixo nem enxerga a diferenca.
+            --
+            -- **Entao por que escrever a linha.** Porque o criterio passa a estar
+            -- DITO. Hoje quem decide e `pa.id DESC`, que so coincide com "o mais
+            -- recente" porque a sequencia cresce; no dia em que alguem trouxer uma
+            -- coluna de `people_addresses` para a saida -- ou em que um endereco
+            -- chegar por importacao com id maior e data anterior -- a regra de
+            -- negocio ja esta aqui, em vez de depender do acaso da sequencia.
+            --
+            -- Contexto do leque: 26.174 contratos no escopo, 1.725 deles (6,6%) com
+            -- mais de um endereco, o maior com 52. Nenhum endereco com data nula nem
+            -- marcado como apagado.
+                     b._pa_criado DESC NULLS LAST, b._pa_id DESC NULLS LAST
+        ) AS _persona
         FROM bruto b
         WHERE b._tipo IN ('12','1014','1254','1255','1136','249','268','1160','1015','15')
           AND b."DATA CRIADO" >= '2026-01-01'
     ) x WHERE x._persona = 1
 ),
-unificado AS (
+unificado AS MATERIALIZED (
     -- A chave de juncao com TECNICOS AUXILIARES ja sai calculada aqui, uma vez por
     -- linha. Dentro do `ON` ela seria reavaliada por par candidato e impediria
     -- hash join -- foi o que fez a consulta estourar 600 s na primeira medicao.
@@ -261,8 +458,25 @@ troca AS (
 ),
 
 -- TECNICOS AUXILIARES: uma linha por protocolo (PERSONA = 1 no original).
-auxiliar AS (
-    SELECT * FROM (
+-- MATERIALIZED: sem isto o PostgreSQL 12+ inlina a CTE referenciada uma so vez, a
+-- expressao de `_chave` volta para dentro do `ON` do `mesclado`, e o plano regride
+-- para o Nested Loop com `regexp_replace` por par de linhas. Medido em 12/09/2026:
+-- calcular a chave numa subconsulta SEM a cerca nao mudou o plano em NADA -- o
+-- `EXPLAIN` saiu identico, byte a byte. A cerca e o que faz a diferenca.
+--
+-- O ganho, medido em 12/09/2026 (`count(*)` sobre a query inteira):
+--
+--   antes ....... nao terminava em 600 s (statement timeout)
+--   depois ...... 76.393 linhas em 151,3 s
+--
+-- Ainda acima do `VOALLE_STATEMENT_TIMEOUT_MS` (30 s), entao capturar o golden
+-- exige teto maior na chamada. Derrubar os 151 s e o proximo passo, e ele passa
+-- pela estimativa: `bruto` estima 11.423 linhas onde ha dezenas de milhares, e e
+-- dai que vem o `rows=1` que ainda faz o planejador escolher Nested Loop.
+auxiliar AS MATERIALIZED (
+    SELECT *,
+           NULLIF(regexp_replace("PROTOCOLO:"::text, '\D', '', 'g'), '')::bigint AS _chave
+    FROM (
         SELECT
             r.tags        AS "PROTOCOLO:",
             p.name        AS "AUXILIAR",
@@ -298,17 +512,28 @@ mesclado AS (
         tr."TÉCNICO"           AS _tecnico_troca,
         tr."DATA DA TROCA"     AS _data_troca,
         ax."AUXILIAR"          AS _auxiliar
+    -- O `ON` usa as chaves JA CALCULADAS (`_chave`), nunca o `regexp_replace` cru.
+    --
+    -- `unificado._chave` existe desde antes de 12/09/2026 -- com um comentario que
+    -- explica exatamente este risco -- mas o join aqui embaixo continuava
+    -- recalculando a expressao nos dois lados, e portanto nao a usava para nada.
+    --
+    -- O que o `EXPLAIN` mostrou em 12/09/2026, com a expressao dentro do `ON`: o
+    -- planejador nao tem estatistica sobre expressao, estimou `rows=2` (o real passa
+    -- de 70 mil) e escolheu **Nested Loop Left Join com Join Filter** -- dois
+    -- `regexp_replace` por PAR de linhas, nao por linha. Nem `count(*)` terminava
+    -- em 600 s.
+    --
+    -- `::text` antes do regexp porque os dois lados NAO tem a mesma especie no
+    -- banco: `ai.protocol` e numerico e `r.tags` e texto. Foi exatamente essa
+    -- diferenca que fez o join casar ZERO por especie e 77,4% como inteiro.
     FROM unificado u
     LEFT JOIN alocacao al
            ON al."SOLICITACAO" = u."SOLICITACAO"
     LEFT JOIN troca tr
            ON tr."PROTOCOLO" = u."N°PROTOCOLO"
-    -- `::text` antes do regexp porque os dois lados NAO tem a mesma especie no
-    -- banco: `ai.protocol` e numerico e `r.tags` e texto. Foi exatamente essa
-    -- diferenca que fez o join casar ZERO por especie e 77,4% como inteiro.
     LEFT JOIN auxiliar ax
-           ON NULLIF(regexp_replace(ax."PROTOCOLO:"::text, '\D', '', 'g'), '')::bigint
-            = NULLIF(regexp_replace(u."N°PROTOCOLO"::text, '\D', '', 'g'), '')::bigint
+           ON ax._chave = u._chave
     WHERE u."STATUS" IS DISTINCT FROM 'Cancelado'
 )
 

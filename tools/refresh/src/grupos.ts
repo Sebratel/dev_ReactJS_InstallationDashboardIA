@@ -25,13 +25,31 @@ interface ArquivoDeRefresh {
 }
 
 /**
- * A query que não materializa em nenhum modo hoje (ACHADOS #81: SQL e M calculam
- * as mesmas 3 colunas, e o full-fetch passou do teto de 600s). Agendar refresh
- * automático dela é agendar uma falha certa a cada tick — trava aqui, não só em
- * comentário, porque comentário não impede alguém de reintroduzi-la achando que
- * "só falta dar cadência".
+ * Queries que **não materializam em modo nenhum**. Agendar refresh automático de uma
+ * delas é agendar uma falha certa a cada tick — trava aqui, e não só em comentário,
+ * porque comentário não impede alguém de reintroduzi-la achando que "só falta dar
+ * cadência".
+ *
+ * ---------------------------------------------------------------------------
+ * **VAZIO DESDE 13/09/2026.** `protocolos-produtividade` esteve aqui por ACHADOS #81
+ * — "SQL e M calculam as mesmas 3 colunas, e o full-fetch passou do teto de 600 s".
+ * As DUAS causas foram removidas e medidas:
+ *
+ *   - o M caiu para o join de GESTOR (a colisão de colunas sumiu);
+ *   - o SQL saiu de "não termina em 600 s" para **142,7 s**. O custo dominante não
+ *     era o fanout de `financial_receivable_titles`: era o `regexp_replace` escrito
+ *     dentro do `ON` do CTE `mesclado`, que sem estatística fazia o planejador
+ *     estimar `rows=2` (o real passa de 70 mil) e escolher Nested Loop — dois regexps
+ *     por PAR de linhas. `AS MATERIALIZED` nas CTEs `unificado`/`auxiliar` resolveu;
+ *     calcular a chave numa subconsulta SEM a cerca não mudou o plano em nada.
+ *
+ * Materialização ponta a ponta medida em 13/09/2026: **162 s, 76.398 linhas**, dentro
+ * do teto de 600 s de `tools/snapshot/src/index.ts`.
+ *
+ * O mecanismo fica de pé: a próxima query que PROVAR não materializar entra aqui.
+ * ---------------------------------------------------------------------------
  */
-export const QUERY_BLOQUEADA = 'protocolos-produtividade';
+export const QUERIES_BLOQUEADAS: ReadonlySet<string> = new Set<string>();
 
 export function leGrupos(specsDir: string): Map<string, GrupoDeRefresh> {
   const p = path.join(specsDir, ARQUIVO);
@@ -66,6 +84,8 @@ export function leGrupos(specsDir: string): Map<string, GrupoDeRefresh> {
 export function validaGrupos(
   grupos: ReadonlyMap<string, GrupoDeRefresh>,
   idsConhecidos: ReadonlySet<string>,
+  /** Injetável só para o teste provar que o mecanismo continua de pé com a lista vazia. */
+  bloqueadas: ReadonlySet<string> = QUERIES_BLOQUEADAS,
 ): string[] {
   const problemas: string[] = [];
   const donoDe = new Map<string, string>();
@@ -76,10 +96,10 @@ export function validaGrupos(
         problemas.push(`grupo '${g.id}': query '${q}' não existe no Query Registry.`);
         continue;
       }
-      if (q === QUERY_BLOQUEADA) {
+      if (bloqueadas.has(q)) {
         problemas.push(
-          `grupo '${g.id}': '${QUERY_BLOQUEADA}' não materializa em nenhum modo hoje ` +
-            `(ACHADOS #81) — remova de refresh.yaml até o achado ser resolvido.`,
+          `grupo '${g.id}': '${q}' não materializa em nenhum modo hoje — ` +
+            `remova de refresh.yaml até isso ser resolvido.`,
         );
       }
       const donoAnterior = donoDe.get(q);

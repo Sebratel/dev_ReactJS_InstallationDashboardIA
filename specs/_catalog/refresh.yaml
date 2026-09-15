@@ -25,11 +25,18 @@
 #      caduca sozinha: a previsão é uma janela de ~16 dias que anda todo dia, e
 #      sem cadência ela envelhece até o visual de previsão esvaziar. Estava 6
 #      dias parada quando isso foi descoberto.
-#   2. `protocolos-produtividade` — NÃO MATERIALIZA EM NENHUM MODO hoje
-#      (ACHADOS #81: SQL e M calculam as mesmas 3 colunas, e o full-fetch passou
-#      do teto de 600s). `tools/refresh/src/grupos.ts` recusa a carregar este
-#      arquivo se ela aparecer em algum grupo — não é omissão por esquecimento,
-#      é trava.
+#   2. `protocolos-produtividade` — **RESOLVIDO em 13/09/2026, entrou no grupo
+#      `frio` abaixo.** Estava fora por ACHADOS #81 ("SQL e M calculam as mesmas 3
+#      colunas, e o full-fetch passou do teto de 600s"), e `grupos.ts` tinha uma
+#      trava recusando o arquivo inteiro se ela aparecesse. As duas causas caíram:
+#      o M ficou só com o join de GESTOR, e o SQL saiu de "não termina em 600s"
+#      para 142,7s. O que custava não era o fanout de `financial_receivable_titles`
+#      (78,57 títulos por contrato, medido) e sim o `regexp_replace` dentro do `ON`
+#      do CTE `mesclado`: sem estatística sobre a expressão o planejador estimava
+#      `rows=2` contra 70 mil reais e escolhia Nested Loop — dois regexps por PAR
+#      de linhas. `AS MATERIALIZED` nas CTEs `unificado`/`auxiliar` resolveu.
+#      Materialização ponta a ponta medida: **162s, 76.398 linhas**.
+#      A trava em `grupos.ts` continua existindo, com a lista vazia.
 #   3. `protocolos-geral` — o M dela faz `Table.NestedJoin` com `GESTORES EQUIPES`
 #      (dbMaria), e o pacote `mysql2` não está instalado nem declarado em
 #      package.json. QUALQUER query que toque dbMaria — direto ou por join de M —
@@ -133,9 +140,23 @@ grupos:
   # dado que muda poucas vezes ao dia. Cabe folgado no limite do serviço, mas se
   # um dia isso incomodar, o conserto é um grupo próprio de cadência horária — não
   # tirar daqui.
+  # `protocolos-produtividade` entrou em 13/09/2026. Escolhido o `frio` e não outro
+  # grupo por ser a query mais cara de todas: 162s de materialização ponta a ponta
+  # (76.398 linhas), mais as calculadas. Num intervalo de 30 min isso é ~11% de ciclo
+  # de trabalho; no `quente` (15 min) seria ~21%. Frescor de 30 min é folgado aqui --
+  # é produtividade diária de instalação, não operação minuto a minuto.
+  #
+  # Não ganhou grupo próprio de propósito: grupo novo custa mais uma queda do cache de
+  # resposta inteiro por ciclo (docs/DEPLOY.md).
+  #
+  # `incremental: false` por ora, apesar de ela ser a ÚNICA query com política em
+  # `incremental.yaml`. A carga completa agora cabe no orçamento, e ligar a costura
+  # incremental logo depois da reescrita do SQL empilharia risco sem necessidade -- a
+  # costura ancora em duas linhas exatas daquele arquivo. Ligar depois é barato.
   frio:
     queries:
       - field-agenda-slot
       - clima-tempo
+      - protocolos-produtividade
     intervalo_minutos: 30
     incremental: false

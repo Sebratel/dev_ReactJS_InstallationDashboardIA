@@ -206,24 +206,30 @@ test('erro de avaliação é MEvalError, não exceção genérica', () => {
   assert.throws(() => ev.avaliaQuery('let a = Table.Pivot(1) in a'), MEvalError);
 });
 
-test('o corpus continua com 25 queries e 331 passos', () => {
+test('o corpus continua com 25 queries e 274 passos', () => {
   // 24 queries / 327 passos + `field-agenda-slot` (ACHADOS #87): 1 query, 3 passos
   // (mesma forma de `field-agenda` — Fonte, Linhas Filtradas1, Tipo Alterado). Não
   // vem do PBIP, mas é uma query de verdade e entra no corpus como qualquer outra.
   // +1 passo (03/09/2026, conserto do bug de nulo em `clima-tempo` — ver
   // docs/SPEC-DRIVEN.md): `semNulos = Table.TransformColumns(...)` entra entre
   // `comTipo` e `comClassificacao` para blindar `if [Precipitacao_mm] = 0` contra
-  // o `null` que a API `open-meteo` às vezes devolve.
+  // o `null` que a API `open-meteo` às vezes devolve. Total: 331.
+  //
+  // -57 (10/09/2026, ACHADOS #81 Bloqueio 1 + docs/SPEC-DRIVEN.md): o M de
+  // `protocolos-produtividade` caiu de ~60 passos para 3 (Fonte + só o join de
+  // GESTOR) — o resto já vem pronto do `sql:` desde a migração de 25/08, e os
+  // passos removidos tentavam recriar as MESMAS colunas, causando a colisão que
+  // fazia a query nunca materializar. 331 - 57 = 274.
   const qs = corpus();
   assert.equal(qs.length, 25);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    331,
+    274,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
   // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    331,
+    274,
   );
 });

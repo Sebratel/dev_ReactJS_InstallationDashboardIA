@@ -312,6 +312,10 @@ test('o parser lê mais passos que o scanner estático, e clima-tempo é a difer
   // 2b.6 mediu 303 passos em 23 queries porque o scanner recusa `clima-tempo`
   // (função M com `let` aninhado). O parser não precisa recusar — e é isso que
   // torna possível executar a query um dia. O número aqui é do parser.
+  //
+  // -57 (10/09/2026, ACHADOS #81 Bloqueio 1): `protocolos-produtividade` (uma das
+  // 23) teve o M reduzido de ~60 passos para 3 — o resto já vinha do `sql:` desde
+  // 25/08 e colidia tentando recriar as mesmas colunas. 303 - 57 = 246.
   const total = corpus().reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0);
   const clima = corpus().find((q) => q.id === 'clima-tempo');
   assert.ok(clima, 'clima-tempo saiu do corpus');
@@ -319,5 +323,5 @@ test('o parser lê mais passos que o scanner estático, e clima-tempo é a difer
     (parseMLet(clima!.m_expression!)?.length ?? 0) > 0,
     'clima-tempo deveria ter passos legíveis pelo parser',
   );
-  assert.ok(total >= 303, `esperado ao menos os 303 passos de 2b.6, veio ${total}`);
+  assert.ok(total >= 246, `esperado ao menos os 246 passos (303 - 57 de #81), veio ${total}`);
 });

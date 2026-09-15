@@ -86,8 +86,10 @@ sql: |-
   -- O `ROW_NUMBER` NAO pode vir aqui: no M original ele e calculado DEPOIS do
   -- WHERE de cada query, sobre o conjunto ja filtrado. Calcular uma vez sobre o
   -- conjunto largo daria PERSONA1 diferente e mudaria quais linhas sobrevivem.
-  -- Por isso ele fica em cada ramo, particionando por "SOLICITACAO" -- e a unica
-  -- coluna de apoio que precisa viajar ate la e `_tipo`.
+  -- Por isso ele fica em cada ramo, particionando por "SOLICITACAO". As colunas de
+  -- apoio que precisam viajar ate la sao `_tipo` (o recorte de cada ramo) e as sete
+  -- do DESEMPATE do ROW_NUMBER -- ver o bloco no fim deste SELECT. Nenhuma delas
+  -- entra no DISTINCT: ele enumera as 33 colunas de saida explicitamente.
   -- -----------------------------------------------------------------------------
   WITH bruto AS (
       SELECT
@@ -123,12 +125,50 @@ sql: |-
           m.title                          AS "EQUIPAMENTO",
           ac.user                          AS "USUÁRIO",
           vu.name                          AS "CRIADO POR",
-          CASE WHEN frt.title IS NULL THEN 'Pendente' ELSE 'Cobrado' END
+          -- EXISTS, nao LEFT JOIN (12/09/2026). Medido: `financial_receivable_titles`
+          -- tem 78,57 titulos por contrato em media (maximo 654). Como esta coluna e
+          -- o UNICO uso de `frt` -- e um teste de nulo, nao um valor -- o LEFT JOIN
+          -- multiplicava cada linha por ~78 e o `SELECT DISTINCT` la embaixo jogava as
+          -- 78 fora. O EXISTS devolve o MESMO conjunto sem produzir uma linha a mais.
+          --
+          -- ATENCAO -- isto sozinho NAO resolveu o timeout, e foi medido: com o
+          -- EXISTS aplicado a query ainda estourou 600 s. O custo dominante esta no
+          -- join por `regexp_replace` do CTE `mesclado`, nao aqui. Este corte
+          -- continua certo (78x de linha intermediaria a menos), mas nao e a causa.
+          CASE WHEN EXISTS (
+                   SELECT 1 FROM financial_receivable_titles frt
+                   WHERE frt.contract_id = c.id AND frt.title IS NOT NULL
+               ) THEN 'Cobrado' ELSE 'Pendente' END
                                            AS "STATUS FINANCEIRO",
-          -- Unica coluna de apoio: o tipo, para cada ramo se recortar. `a.created` e
-          -- `a.title` NAO precisam viajar em separado -- ja saem acima como
-          -- "DATA CRIADO" e "SOLICITACAO", e duplica-las inflaria o DISTINCT.
-          it.id                            AS _tipo
+          -- Colunas de apoio. `a.created` e `a.title` NAO precisam viajar em separado
+          -- -- ja saem acima como "DATA CRIADO" e "SOLICITACAO", e duplica-las
+          -- inflaria o DISTINCT. Nenhuma destas entra no DISTINCT: ele enumera as 33
+          -- colunas de saida explicitamente, la embaixo.
+          it.id                            AS _tipo,
+          -- ---------------------------------------------------------------------
+          -- DESEMPATE DO ROW_NUMBER -- a MESMA regra ja decidida para
+          -- `protocolos-geral` em 04/09/2026 (docs/sql/protocolos-geral-exists.sql,
+          -- ACHADOS #97). Nao e decisao nova: e a irma desta query, com a MESMA
+          -- cadeia de joins (`ac`, `cst`, `s`, `asp`, `pa`).
+          --
+          -- POR QUE PRECISA VIR JUNTO COM O `EXISTS` DO `frt`, e nao depois: tirar
+          -- aquele LEFT JOIN muda a MULTIPLICIDADE da particao do ROW_NUMBER. Com o
+          -- join, cada linha-base aparecia ~78 vezes; sem ele, uma. Quando ha empate
+          -- em "DATA AGENDA", QUAL linha fica em _persona=1 muda -- e com ela mudam
+          -- LATITUDE, LONGITUDE, CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO,
+          -- SLOT, PORTA e USUARIO. Em `protocolos-geral` isso mexia em ~14% das
+          -- solicitacoes, e foi por isso que a reescrita de la ficou parada ate a
+          -- regra existir: entregar o ganho antes de desempatar seria trocar um
+          -- sorteio por outro.
+          -- ---------------------------------------------------------------------
+          ac.active                        AS _ac_ativo,
+          (ac.contract_id = cst.contract_id) AS _ac_casa_contrato,
+          ac.created                       AS _ac_criado,
+          ac.id                            AS _ac_id,
+          asp.id                           AS _asp_id,
+          s.id                             AS _s_id,
+          pa.id                            AS _pa_id,
+          pa.created                       AS _pa_criado
       FROM assignment_incidents ai
       LEFT JOIN assignments                    a    ON a.id   = ai.assignment_id
       LEFT JOIN schedules                      s    ON s.assignment_id = a.id
@@ -150,7 +190,6 @@ sql: |-
       LEFT JOIN solicitation_classifications   sc   ON sc.id  = ai.solicitation_classification_id
       LEFT JOIN authentication_splitters       as2  ON as2.id = asp.authentication_splitter_id
       LEFT JOIN v_users                        vu   ON vu.id  = a.created_by
-      LEFT JOIN financial_receivable_titles    frt  ON c.id   = frt.contract_id
       WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
         AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo
   ),
@@ -183,7 +222,86 @@ sql: |-
           "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
           "CRIADO POR","STATUS FINANCEIRO"
       FROM (
-          SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b."SOLICITACAO" ORDER BY b."DATA AGENDA" DESC) AS _persona
+          SELECT b.*, ROW_NUMBER() OVER (
+              PARTITION BY b."SOLICITACAO"
+              -- PRIMARIA: o contrato DAQUELE protocolo (`ac.contract_id = cst.contract_id`).
+              -- Nao e heuristica -- e a resposta por definicao.
+              --
+              -- A ordem era a inversa ate 13/09/2026, herdada de `protocolos-geral`
+              -- (ACHADOS #97). Medido nos dois escopos, sobre CONTRATOS DE AUTENTICACAO
+              -- DISTINTOS por solicitacao -- que e a dimensao de que dependem LATITUDE,
+              -- LONGITUDE, CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA
+              -- e USUARIO:
+              --
+              --                        com leque   ativo decide   casa decide   discordam
+              --   produtividade (2026)     2.039              1         1.885           0
+              --   geral (2025+)            4.507              5         4.013           0
+              --
+              -- `ac.active` decidia 0,1% dos casos: neste escopo quase todo contrato
+              -- candidato ja esta ativo, entao ele nao discrimina. A inversao nao muda
+              -- NENHUMA linha hoje (discordancia = 0, medida); muda no dia em que um
+              -- contrato casado estiver inativo -- e ai muda para o certo.
+              --
+              -- O DESEMPATE NAO E SO DETERMINISMO: ELE RECUPERA DADO EM BRANCO.
+              -- Medido sobre a POPULACAO (39.267 vencedores, 13/09/2026), contando
+              -- quantos vencedores tinham contrato de autenticacao NULO:
+              --
+              --                                    ac nulo   lat nulo   slot nulo
+              --   sem desempate (so DATA AGENDA)    17.858     20.195      17.892
+              --   com desempate (B ou C)            10.015     14.222      10.061
+              --
+              -- Sao 7.843 solicitacoes -- 20% do total -- que apareciam em branco por
+              -- sorteio. O mecanismo: `(... IS TRUE) DESC` joga false/NULL para o fim,
+              -- e `ac_id DESC NULLS LAST` idem, entao qualquer linha COM contrato vence
+              -- uma em que o LEFT JOIN nao casou. O ganho vem de EXISTIR desempate, nao
+              -- de qual regra e primaria -- as ordens B e C dao numeros identicos.
+              -- Os 10.015 que restam sao honestos: nenhuma linha daquela solicitacao
+              -- tem contrato de autenticacao.
+              --
+              -- Os tres ultimos sao o piso de determinismo: sem eles, `asp`, `s` e `pa`
+              -- multiplicam a particao e o topo empata (17.663 protocolos, medido em geral).
+              ORDER BY (b._ac_casa_contrato IS TRUE) DESC,
+                       (b._ac_ativo IS TRUE) DESC,
+                       b."DATA AGENDA" DESC NULLS LAST,
+                       b._ac_criado DESC NULLS LAST, b._ac_id DESC NULLS LAST,
+                       b._asp_id DESC NULLS LAST, b._s_id DESC NULLS LAST,
+              -- O ENDERECO DUPLICADO: O MAIS RECENTE, DENTRO DO CONTRATO.
+              --
+              -- Criterio do Erick, 14/09/2026: "dependendo do contrato e o mais
+              -- recente -- se um contrato teve 2 enderecos, filtre pela data do mais
+              -- recente". O contrato ja decide primeiro (`_ac_casa_contrato`, la em
+              -- cima); esta linha resolve o que sobra DENTRO dele.
+              --
+              -- **NAO MUDA NUMERO NENHUM HOJE, E O MOTIVO IMPORTA.** `pa` aparece
+              -- QUATRO vezes no arquivo inteiro: as duas colunas de apoio acima e os
+              -- dois ON do join. Ela nao alimenta nenhuma das 33 colunas de saida --
+              -- CIDADE, BAIRRO, RUA e NUMERO vem de `people` (`p.`), e LATITUDE, CTO,
+              -- SLOT, PORTA e USUARIO vem de `ac`/`aap`/`asp`. O endereco e so o salto
+              -- de pessoa para contrato de autenticacao.
+              --
+              -- Medido no banco em 14/09/2026, comparando o vencedor de cada
+              -- solicitacao com e sem esta linha:
+              --
+              --                   solicitacoes   vencedor muda de `pa`   muda `ac`/`asp`/`s`
+              --   produtividade         39.455                       2                     0
+              --   auxiliares            38.030                       2                     0
+              --
+              -- Nos quatro casos o `pa` novo tem data POSTERIOR e id MENOR -- e o `ac`
+              -- que pendura nele e O MESMO. Como so `pa` muda e `pa` nao sai, as 33
+              -- colunas sao identicas: o `DISTINCT` la embaixo nem enxerga a diferenca.
+              --
+              -- **Entao por que escrever a linha.** Porque o criterio passa a estar
+              -- DITO. Hoje quem decide e `pa.id DESC`, que so coincide com "o mais
+              -- recente" porque a sequencia cresce; no dia em que alguem trouxer uma
+              -- coluna de `people_addresses` para a saida -- ou em que um endereco
+              -- chegar por importacao com id maior e data anterior -- a regra de
+              -- negocio ja esta aqui, em vez de depender do acaso da sequencia.
+              --
+              -- Contexto do leque: 26.174 contratos no escopo, 1.725 deles (6,6%) com
+              -- mais de um endereco, o maior com 52. Nenhum endereco com data nula nem
+              -- marcado como apagado.
+                       b._pa_criado DESC NULLS LAST, b._pa_id DESC NULLS LAST
+          ) AS _persona
           FROM bruto b
           WHERE b._tipo IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
             AND b."DATA CRIADO" >= '2026-01-01'
@@ -198,13 +316,92 @@ sql: |-
           "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
           "CRIADO POR","STATUS FINANCEIRO"
       FROM (
-          SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b."SOLICITACAO" ORDER BY b."DATA AGENDA" DESC) AS _persona
+          SELECT b.*, ROW_NUMBER() OVER (
+              PARTITION BY b."SOLICITACAO"
+              -- PRIMARIA: o contrato DAQUELE protocolo (`ac.contract_id = cst.contract_id`).
+              -- Nao e heuristica -- e a resposta por definicao.
+              --
+              -- A ordem era a inversa ate 13/09/2026, herdada de `protocolos-geral`
+              -- (ACHADOS #97). Medido nos dois escopos, sobre CONTRATOS DE AUTENTICACAO
+              -- DISTINTOS por solicitacao -- que e a dimensao de que dependem LATITUDE,
+              -- LONGITUDE, CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA
+              -- e USUARIO:
+              --
+              --                        com leque   ativo decide   casa decide   discordam
+              --   produtividade (2026)     2.039              1         1.885           0
+              --   geral (2025+)            4.507              5         4.013           0
+              --
+              -- `ac.active` decidia 0,1% dos casos: neste escopo quase todo contrato
+              -- candidato ja esta ativo, entao ele nao discrimina. A inversao nao muda
+              -- NENHUMA linha hoje (discordancia = 0, medida); muda no dia em que um
+              -- contrato casado estiver inativo -- e ai muda para o certo.
+              --
+              -- O DESEMPATE NAO E SO DETERMINISMO: ELE RECUPERA DADO EM BRANCO.
+              -- Medido sobre a POPULACAO (39.267 vencedores, 13/09/2026), contando
+              -- quantos vencedores tinham contrato de autenticacao NULO:
+              --
+              --                                    ac nulo   lat nulo   slot nulo
+              --   sem desempate (so DATA AGENDA)    17.858     20.195      17.892
+              --   com desempate (B ou C)            10.015     14.222      10.061
+              --
+              -- Sao 7.843 solicitacoes -- 20% do total -- que apareciam em branco por
+              -- sorteio. O mecanismo: `(... IS TRUE) DESC` joga false/NULL para o fim,
+              -- e `ac_id DESC NULLS LAST` idem, entao qualquer linha COM contrato vence
+              -- uma em que o LEFT JOIN nao casou. O ganho vem de EXISTIR desempate, nao
+              -- de qual regra e primaria -- as ordens B e C dao numeros identicos.
+              -- Os 10.015 que restam sao honestos: nenhuma linha daquela solicitacao
+              -- tem contrato de autenticacao.
+              --
+              -- Os tres ultimos sao o piso de determinismo: sem eles, `asp`, `s` e `pa`
+              -- multiplicam a particao e o topo empata (17.663 protocolos, medido em geral).
+              ORDER BY (b._ac_casa_contrato IS TRUE) DESC,
+                       (b._ac_ativo IS TRUE) DESC,
+                       b."DATA AGENDA" DESC NULLS LAST,
+                       b._ac_criado DESC NULLS LAST, b._ac_id DESC NULLS LAST,
+                       b._asp_id DESC NULLS LAST, b._s_id DESC NULLS LAST,
+              -- O ENDERECO DUPLICADO: O MAIS RECENTE, DENTRO DO CONTRATO.
+              --
+              -- Criterio do Erick, 14/09/2026: "dependendo do contrato e o mais
+              -- recente -- se um contrato teve 2 enderecos, filtre pela data do mais
+              -- recente". O contrato ja decide primeiro (`_ac_casa_contrato`, la em
+              -- cima); esta linha resolve o que sobra DENTRO dele.
+              --
+              -- **NAO MUDA NUMERO NENHUM HOJE, E O MOTIVO IMPORTA.** `pa` aparece
+              -- QUATRO vezes no arquivo inteiro: as duas colunas de apoio acima e os
+              -- dois ON do join. Ela nao alimenta nenhuma das 33 colunas de saida --
+              -- CIDADE, BAIRRO, RUA e NUMERO vem de `people` (`p.`), e LATITUDE, CTO,
+              -- SLOT, PORTA e USUARIO vem de `ac`/`aap`/`asp`. O endereco e so o salto
+              -- de pessoa para contrato de autenticacao.
+              --
+              -- Medido no banco em 14/09/2026, comparando o vencedor de cada
+              -- solicitacao com e sem esta linha:
+              --
+              --                   solicitacoes   vencedor muda de `pa`   muda `ac`/`asp`/`s`
+              --   produtividade         39.455                       2                     0
+              --   auxiliares            38.030                       2                     0
+              --
+              -- Nos quatro casos o `pa` novo tem data POSTERIOR e id MENOR -- e o `ac`
+              -- que pendura nele e O MESMO. Como so `pa` muda e `pa` nao sai, as 33
+              -- colunas sao identicas: o `DISTINCT` la embaixo nem enxerga a diferenca.
+              --
+              -- **Entao por que escrever a linha.** Porque o criterio passa a estar
+              -- DITO. Hoje quem decide e `pa.id DESC`, que so coincide com "o mais
+              -- recente" porque a sequencia cresce; no dia em que alguem trouxer uma
+              -- coluna de `people_addresses` para a saida -- ou em que um endereco
+              -- chegar por importacao com id maior e data anterior -- a regra de
+              -- negocio ja esta aqui, em vez de depender do acaso da sequencia.
+              --
+              -- Contexto do leque: 26.174 contratos no escopo, 1.725 deles (6,6%) com
+              -- mais de um endereco, o maior com 52. Nenhum endereco com data nula nem
+              -- marcado como apagado.
+                       b._pa_criado DESC NULLS LAST, b._pa_id DESC NULLS LAST
+          ) AS _persona
           FROM bruto b
           WHERE b._tipo IN ('12','1014','1254','1255','1136','249','268','1160','1015','15')
             AND b."DATA CRIADO" >= '2026-01-01'
       ) x WHERE x._persona = 1
   ),
-  unificado AS (
+  unificado AS MATERIALIZED (
       -- A chave de juncao com TECNICOS AUXILIARES ja sai calculada aqui, uma vez por
       -- linha. Dentro do `ON` ela seria reavaliada por par candidato e impediria
       -- hash join -- foi o que fez a consulta estourar 600 s na primeira medicao.
@@ -269,8 +466,25 @@ sql: |-
   ),
 
   -- TECNICOS AUXILIARES: uma linha por protocolo (PERSONA = 1 no original).
-  auxiliar AS (
-      SELECT * FROM (
+  -- MATERIALIZED: sem isto o PostgreSQL 12+ inlina a CTE referenciada uma so vez, a
+  -- expressao de `_chave` volta para dentro do `ON` do `mesclado`, e o plano regride
+  -- para o Nested Loop com `regexp_replace` por par de linhas. Medido em 12/09/2026:
+  -- calcular a chave numa subconsulta SEM a cerca nao mudou o plano em NADA -- o
+  -- `EXPLAIN` saiu identico, byte a byte. A cerca e o que faz a diferenca.
+  --
+  -- O ganho, medido em 12/09/2026 (`count(*)` sobre a query inteira):
+  --
+  --   antes ....... nao terminava em 600 s (statement timeout)
+  --   depois ...... 76.393 linhas em 151,3 s
+  --
+  -- Ainda acima do `VOALLE_STATEMENT_TIMEOUT_MS` (30 s), entao capturar o golden
+  -- exige teto maior na chamada. Derrubar os 151 s e o proximo passo, e ele passa
+  -- pela estimativa: `bruto` estima 11.423 linhas onde ha dezenas de milhares, e e
+  -- dai que vem o `rows=1` que ainda faz o planejador escolher Nested Loop.
+  auxiliar AS MATERIALIZED (
+      SELECT *,
+             NULLIF(regexp_replace("PROTOCOLO:"::text, '\D', '', 'g'), '')::bigint AS _chave
+      FROM (
           SELECT
               r.tags        AS "PROTOCOLO:",
               p.name        AS "AUXILIAR",
@@ -306,17 +520,28 @@ sql: |-
           tr."TÉCNICO"           AS _tecnico_troca,
           tr."DATA DA TROCA"     AS _data_troca,
           ax."AUXILIAR"          AS _auxiliar
+      -- O `ON` usa as chaves JA CALCULADAS (`_chave`), nunca o `regexp_replace` cru.
+      --
+      -- `unificado._chave` existe desde antes de 12/09/2026 -- com um comentario que
+      -- explica exatamente este risco -- mas o join aqui embaixo continuava
+      -- recalculando a expressao nos dois lados, e portanto nao a usava para nada.
+      --
+      -- O que o `EXPLAIN` mostrou em 12/09/2026, com a expressao dentro do `ON`: o
+      -- planejador nao tem estatistica sobre expressao, estimou `rows=2` (o real passa
+      -- de 70 mil) e escolheu **Nested Loop Left Join com Join Filter** -- dois
+      -- `regexp_replace` por PAR de linhas, nao por linha. Nem `count(*)` terminava
+      -- em 600 s.
+      --
+      -- `::text` antes do regexp porque os dois lados NAO tem a mesma especie no
+      -- banco: `ai.protocol` e numerico e `r.tags` e texto. Foi exatamente essa
+      -- diferenca que fez o join casar ZERO por especie e 77,4% como inteiro.
       FROM unificado u
       LEFT JOIN alocacao al
              ON al."SOLICITACAO" = u."SOLICITACAO"
       LEFT JOIN troca tr
              ON tr."PROTOCOLO" = u."N°PROTOCOLO"
-      -- `::text` antes do regexp porque os dois lados NAO tem a mesma especie no
-      -- banco: `ai.protocol` e numerico e `r.tags` e texto. Foi exatamente essa
-      -- diferenca que fez o join casar ZERO por especie e 77,4% como inteiro.
       LEFT JOIN auxiliar ax
-             ON NULLIF(regexp_replace(ax."PROTOCOLO:"::text, '\D', '', 'g'), '')::bigint
-              = NULLIF(regexp_replace(u."N°PROTOCOLO"::text, '\D', '', 'g'), '')::bigint
+             ON ax._chave = u._chave
       WHERE u."STATUS" IS DISTINCT FROM 'Cancelado'
   )
 
@@ -489,64 +714,16 @@ source_tables:
 m_expression: |-
   let
       Fonte = Odbc.Query("dsn=dbVoalle", " WITH PERSONALIZADO AS (#(lf)    SELECT #(lf)        a.title AS ""SOLICITACAO"",#(lf)        ai.protocol AS ""N°PROTOCOLO"",#(lf)        s.start_date AS ""DATA AGENDA"",#(lf)        a.modified AS ""DATA ENCERRADO"",#(lf)        a.created AS ""DATA CRIADO"",#(lf)        is2.title AS ""STATUS"",#(lf)        p.city AS ""CIDADE"",#(lf)        p.neighborhood AS ""BAIRRO"",#(lf)        p.street AS ""RUA"",#(lf)        p.number AS ""NUMERO PATRIMÔNIO"",#(lf)        p.name AS ""CLIENTE"",#(lf)        p.phone AS ""TELEFONE"",#(lf)        t.title AS ""EQUIPE"",#(lf)        ac.lat AS ""LATITUDE"",#(lf)        ac.lng AS ""LONGITUDE"",#(lf)        p2.name AS ""RESPONSÁVEL"",#(lf)        it.title AS ""TIPO DE PROTOCOLO"",#(lf)        aap.title AS ""PONTO DE ACESSO"",#(lf)        aap.code AS ""CODIGO"",#(lf)        aap.slots_first_number AS ""SLOT"",#(lf)        aap.ports_first_number AS ""PORTA"",  #(lf)        as2.title AS ""CTO"",#(lf)        c.v_status AS ""STATUS CONTRATO"",#(lf)        c.v_stage AS ""ESTAGIO CONTRATO"",#(lf)        c.contract_number AS ""NUMERO CONTRATO"",#(lf)        csi.title AS ""ITEM"",#(lf)        sc.title AS ""CONTEXTO"",#(lf)        sp.title AS ""PROBLEMA"",#(lf)        as3.title AS ""OLT"",#(lf)        m.title AS ""EQUIPAMENTO"",#(lf)        ac.user AS ""USUÁRIO"",#(lf)        vu.name AS ""CRIADO POR"",#(lf)        ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,#(lf)        CASE #(lf)            WHEN frt.title IS NULL THEN 'Pendente' #(lf)            ELSE 'Cobrado' #(lf)        END AS ""STATUS FINANCEIRO""#(lf)    FROM assignment_incidents ai#(lf)    LEFT JOIN assignments a ON a.id = ai.assignment_id#(lf)    LEFT JOIN schedules s ON s.assignment_id = a.id#(lf)    LEFT JOIN incident_types it ON it.id = ai.incident_type_id#(lf)    LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id#(lf)    LEFT JOIN people p ON p.id = a.requestor_id#(lf)    LEFT JOIN teams t ON t.id = ai.team_id#(lf)    LEFT JOIN people_addresses pa ON pa.person_id = p.id#(lf)    LEFT JOIN authentication_contracts ac ON ac.people_address_id = pa.id#(lf)    LEFT JOIN people p2 ON p2.id = a.responsible_id#(lf)    LEFT JOIN authentication_access_points aap ON aap.id = ac.authentication_access_point_id#(lf)    LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN contracts c ON cst.contract_id = c.id#(lf)    LEFT JOIN catalog_services_items csi ON csi.id = ai.catalog_service_item_id#(lf)    LEFT JOIN authentication_splitter_ports asp ON asp.authentication_contract_id = ac.id#(lf)    LEFT JOIN authentication_sites as3 ON as3.id = aap.authentication_site_id#(lf)    LEFT JOIN manufacturers m ON m.id = aap.manufacturer_id#(lf)    LEFT JOIN solicitation_problems sp ON sp.id = ai.solicitation_problem_id#(lf)    LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id#(lf)    LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id#(lf)    LEFT JOIN v_users vu ON vu.id = a.created_by#(lf)    LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id#(lf)    WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo#(lf)      AND a.created >= '2026-01-01'#(lf))#(lf)SELECT DISTINCT #(lf)    ""SOLICITACAO"", #(lf)    ""N°PROTOCOLO"", #(lf)    ""DATA AGENDA"", #(lf)    ""DATA CRIADO"", #(lf)    ""DATA ENCERRADO"", #(lf)    ""STATUS"", #(lf)    ""CIDADE"", #(lf)    ""BAIRRO"",#(lf)    ""RUA"", #(lf)    ""NUMERO PATRIMÔNIO"",#(lf)    ""TELEFONE"", #(lf)    ""CLIENTE"", #(lf)    ""EQUIPE"", #(lf)    ""LATITUDE"", #(lf)    ""LONGITUDE"", #(lf)    ""RESPONSÁVEL"",#(lf)    ""TIPO DE PROTOCOLO"",#(lf)    ""PONTO DE ACESSO"",#(lf)    ""CODIGO"",#(lf)    ""SLOT"",#(lf)    ""PORTA"",#(lf)    ""CTO"",#(lf)    ""STATUS CONTRATO"",#(lf)    ""ESTAGIO CONTRATO"",#(lf)    ""NUMERO CONTRATO"",#(lf)    ""ITEM"",#(lf)    ""CONTEXTO"",#(lf)    ""PROBLEMA"",#(lf)    ""OLT"",#(lf)    ""EQUIPAMENTO"",#(lf)    ""USUÁRIO"",#(lf)    ""CRIADO POR"",#(lf)    ""STATUS FINANCEIRO""#(lf)FROM PERSONALIZADO#(lf)WHERE PERSONA1 = 1;"),
-      #"Linhas Filtradas" = Table.SelectRows(Fonte, each true),
-      #"Hora Inserida1" = Table.AddColumn(#"Linhas Filtradas", "Hora", each DateTime.Time([DATA CRIADO]), type time),
-      #"Colunas Renomeadas3" = Table.RenameColumns(#"Hora Inserida1",{{"Hora", "HORA CRIADO"}}),
-      #"Colocar Cada Palavra Em Maiúscula" = Table.TransformColumns(#"Colunas Renomeadas3",{{"CIDADE", Text.Proper, type text}, {"BAIRRO", Text.Proper, type text}}),
-      #"Coluna Duplicada" = Table.DuplicateColumn(#"Colocar Cada Palavra Em Maiúscula", "CIDADE", "CIDADE - Copiar"),
-      #"Valor Substituído" = Table.ReplaceValue(#"Coluna Duplicada","Canoas","CAN",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído1" = Table.ReplaceValue(#"Valor Substituído","São Leopoldo","SLE",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído2" = Table.ReplaceValue(#"Valor Substituído1","Novo Hamburgo","NHO",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído3" = Table.ReplaceValue(#"Valor Substituído2","Sapucaia Do Sul","SPS",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído4" = Table.ReplaceValue(#"Valor Substituído3","Nova Santa Rita","NSR",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído5" = Table.ReplaceValue(#"Valor Substituído4","Brochier","BROCHIER",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído6" = Table.ReplaceValue(#"Valor Substituído5","Esteio","EIO",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído7" = Table.ReplaceValue(#"Valor Substituído6","Triunfo","TRF",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Colunas Renomeadas" = Table.RenameColumns(#"Valor Substituído7",{{"CIDADE - Copiar", "SIGLA CIDADE"}}),
-      #"Valor Substituído8" = Table.ReplaceValue(#"Colunas Renomeadas","Porto Alegre","POA",Replacer.ReplaceText,{"SIGLA CIDADE"}),
-      #"Coluna Mesclada Inserida" = Table.AddColumn(#"Valor Substituído8", "INDICE 2", each Text.Combine({[BAIRRO], [SIGLA CIDADE]}, "/"), type text),
-      #"Valor Substituído9" = Table.ReplaceValue(#"Coluna Mesclada Inserida","Centro - Assentamento /NSR","Centro - Assentamento/NSR",Replacer.ReplaceText,{"INDICE 2"}),
-      #"Valor Substituído10" = Table.ReplaceValue(#"Valor Substituído9","Duque De Caxias /SLE","Duque De Caxias/SLE",Replacer.ReplaceText,{"INDICE 2"}),
-      #"Texto em Maiúscula" = Table.TransformColumns(#"Valor Substituído10",{{"RESPONSÁVEL", Text.Upper, type text}}),
-      #"Valor Substituído11" = Table.ReplaceValue(#"Texto em Maiúscula",null,"SEM INFORMAÇÃO",Replacer.ReplaceValue,{"RESPONSÁVEL"}),
-      #"Hora Inserida" = Table.AddColumn(#"Valor Substituído11", "Hora", each DateTime.Time([DATA AGENDA]), type time),
-      #"Tipo Alterado" = Table.TransformColumnTypes(#"Hora Inserida",{{"DATA AGENDA", type date}}),
-      #"Colunas Renomeadas1" = Table.RenameColumns(#"Tipo Alterado",{{"Hora", "HORA AGENDA"}}),
-      #"Valor Substituído12" = Table.ReplaceValue(#"Colunas Renomeadas1",null,"Sem Informação",Replacer.ReplaceValue,{"PONTO DE ACESSO"}),
-      #"Valor Substituído13" = Table.ReplaceValue(#"Valor Substituído12",null,"Sem Informação",Replacer.ReplaceValue,{"ITEM"}),
-      #"Dividir Coluna por Delimitador" = Table.SplitColumn(#"Valor Substituído13", "CODIGO", Splitter.SplitTextByDelimiter("-", QuoteStyle.Csv), {"CODIGO.1", "CODIGO.2"}),
-      #"Tipo Alterado2" = Table.TransformColumnTypes(#"Dividir Coluna por Delimitador",{{"CODIGO.1", type text}, {"CODIGO.2", Int64.Type}}),
-      #"Colunas Renomeadas2" = Table.RenameColumns(#"Tipo Alterado2",{{"CODIGO.2", "VLAN"}, {"CODIGO.1", "POP"}}),
-      #"Prefixo Adicionado" = Table.TransformColumns(#"Colunas Renomeadas2", {{"VLAN", each "VLAN " & Text.From(_, "pt-BR"), type text}}),
-      #"subt. nulos" = Table.ReplaceValue(#"Prefixo Adicionado",null,"Sem Informação",Replacer.ReplaceValue,{"POP", "VLAN"}),
-      #"Valor Substituído15" = Table.ReplaceValue(#"subt. nulos",null,"Sem Informação",Replacer.ReplaceValue,{"CONTEXTO", "PROBLEMA", "OLT", "EQUIPAMENTO"}),
-      #"Texto Extraído Após o Delimitador" = Table.TransformColumns(#"Valor Substituído15", {{"CTO", each Text.AfterDelimiter(_, "-", 1), type text}}),
-      #"Texto Extraído Antes do Delimitador" = Table.TransformColumns(#"Texto Extraído Após o Delimitador", {{"CTO", each Text.BeforeDelimiter(_, "-"), type text}}),
-      #"Consultas Mescladas1" = Table.NestedJoin(#"Texto Extraído Antes do Delimitador", {"SOLICITACAO"}, #"ALOCAÇÃO PATRIMONIO", {"SOLICITACAO"}, "ALOCAÇÃO_PATRIMONIO", JoinKind.LeftOuter),
-      #"ALOCAÇÃO_PATRIMONIO Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas1", "ALOCAÇÃO_PATRIMONIO", {"DATA SAIDA", "DATA HORA SAIDA", "ALOCADO POR:", "POSIÇÃO"}, {"ALOCAÇÃO_PATRIMONIO.DATA SAIDA", "ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA", "ALOCAÇÃO_PATRIMONIO.ALOCADO POR:", "ALOCAÇÃO_PATRIMONIO.POSIÇÃO"}),
-      #"Colunas Renomeadas5" = Table.RenameColumns(#"ALOCAÇÃO_PATRIMONIO Expandido",{{"ALOCAÇÃO_PATRIMONIO.DATA SAIDA", "DT.INSTA"}}),
-      #"Linhas Filtradas1" = Table.SelectRows(#"Colunas Renomeadas5", each ([STATUS] <> "Cancelado")),
-      #"Colunas Renomeadas4" = Table.RenameColumns(#"Linhas Filtradas1",{{"DT.INSTA", "DT.ALOCAÇÃO"}}),
-      #"Hora Inserida2" = Table.AddColumn(#"Colunas Renomeadas4", "Hora", each DateTime.Time([ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA]), type time),
-      #"Colunas Renomeadas7" = Table.RenameColumns(#"Hora Inserida2",{{"Hora", "HR. ALOCAÇÃO"}}),
-      #"Colunas Removidas" = Table.RemoveColumns(#"Colunas Renomeadas7",{"ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA"}),
-      #"Colunas Renomeadas6" = Table.RenameColumns(#"Colunas Removidas",{{"ALOCAÇÃO_PATRIMONIO.ALOCADO POR:", "INSTALADO POR:"}, {"ALOCAÇÃO_PATRIMONIO.POSIÇÃO", "POSIÇÃO"}}),
-      #"Tipo Alterado1" = Table.TransformColumnTypes(#"Colunas Renomeadas6",{{"DATA CRIADO", type date}, {"DATA ENCERRADO", type date}}),
-      #"Consultas Mescladas2" = Table.NestedJoin(#"Tipo Alterado1", {"N°PROTOCOLO"}, #"TROCA ENDEREÇO", {"PROTOCOLO"}, "TROCA ENDEREÇO", JoinKind.LeftOuter),
-      #"TROCA ENDEREÇO Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas2", "TROCA ENDEREÇO", {"TÉCNICO", "DATA DA TROCA"}, {"TÉCNICO", "DATA DA TROCA"}),
-      #"Colunas Renomeadas9" = Table.RenameColumns(#"TROCA ENDEREÇO Expandido",{{"TÉCNICO", "TÉCNICO TROCA"}, {"INSTALADO POR:", "TÉCNICO INSTALAÇÃO"}}),
-      #"Personalização Adicionada" = Table.AddColumn(#"Colunas Renomeadas9", "INSTALADO POR:", each if [TIPO DE PROTOCOLO] = "TEC - Troca de Endereço" then [TÉCNICO TROCA] else [TÉCNICO INSTALAÇÃO]),
-      #"Linhas Classificadas" = Table.Sort(#"Personalização Adicionada",{{"INSTALADO POR:", Order.Descending}}),
-      #"Colunas Renomeadas8" = Table.RenameColumns(#"Linhas Classificadas",{{"DT.ALOCAÇÃO", "DATA ALOCAÇÃO"}}),
-      #"Personalização Adicionada1" = Table.AddColumn(#"Colunas Renomeadas8", "DATA FINAL", each if [TIPO DE PROTOCOLO] = "TEC - Troca de Endereço" then [DATA DA TROCA] else [DATA ALOCAÇÃO]),
-      #"Consultas Mescladas" = Table.NestedJoin(#"Personalização Adicionada1", {"N°PROTOCOLO"}, #"TECNICOS AUXILIARES", {"PROTOCOLO:"}, "TECNICOS AUXILIARES", JoinKind.LeftOuter),
-      #"TECNICOS AUXILIARES Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas", "TECNICOS AUXILIARES", {"TECNICO", "AUXILIAR"}, {"TECNICOS AUXILIARES.TECNICO", "TECNICOS AUXILIARES.AUXILIAR"}),
-      #"Linhas Classificadas1" = Table.Sort(#"TECNICOS AUXILIARES Expandido",{{"N°PROTOCOLO", Order.Descending}}),
-      #"Colunas Renomeadas10" = Table.RenameColumns(#"Linhas Classificadas1",{{"INSTALADO POR:", "TECNICO"}}),
-      #"Colunas Removidas1" = Table.RemoveColumns(#"Colunas Renomeadas10",{"TECNICOS AUXILIARES.TECNICO"}),
-      #"Consulta Acrescentada" = Table.Combine({#"Colunas Removidas1", #"PROTOCOLOS AUXILIARES"}),
-      #"Consultas Mescladas3" = Table.NestedJoin(#"Consulta Acrescentada", {"TECNICO"}, #"QUADRO FUNCIONAL", {"upper_name"}, "QUADRO FUNCIONAL", JoinKind.LeftOuter),
-      #"QUADRO FUNCIONAL Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas3", "QUADRO FUNCIONAL", {"GESTOR"}, {"GESTOR"}),
-      #"Colunas Renomeadas11" = Table.RenameColumns(#"QUADRO FUNCIONAL Expandido",{{"TECNICO", "INSTALADOR"}})
+      // ACHADOS #81, Bloqueio 1 (docs/ACHADOS.md) + docs/SPEC-DRIVEN.md, entrada de
+      // 10/09/2026: a partir daqui o M só faz o que o `sql:` acima NÃO faz. O SQL de
+      // produção (migrado 25/08/2026) já entrega as 47 colunas prontas -- inclusive
+      // "HORA CRIADO"/"HORA AGENDA"/"INSTALADOR" -- e os ~45 passos que existiam aqui
+      // antes tentavam recriar essas MESMAS colunas do zero, sem remover as versões
+      // do SQL primeiro. O avaliador parava sempre na primeira colisão
+      // ("Table.RenameColumns: o nome 'HORA CRIADO' ficaria duplicado"), e por isso a
+      // query nunca materializava em nenhum modo. GESTOR é a única coisa que o SQL
+      // não traz (Google Sheets, fica em QUADRO FUNCIONAL) -- o resto do M morreu aqui.
+      #"Consultas Mescladas3" = Table.NestedJoin(Fonte, {"INSTALADOR"}, #"QUADRO FUNCIONAL", {"upper_name"}, "QUADRO FUNCIONAL", JoinKind.LeftOuter),
+      #"QUADRO FUNCIONAL Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas3", "QUADRO FUNCIONAL", {"GESTOR"}, {"GESTOR"})
   in
-      #"Colunas Renomeadas11"
+      #"QUADRO FUNCIONAL Expandido"

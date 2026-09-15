@@ -1,5 +1,41 @@
 -- protocolos-geral, com STATUS FINANCEIRO por EXISTS.  *** INCORPORADO EM PRODUÇÃO ***
 --
+-- ===========================================================================
+-- A ORDEM DAS DUAS PRIMEIRAS REGRAS FOI INVERTIDA EM 13/09/2026
+-- ===========================================================================
+-- O texto abaixo descreve `ac.active` como regra PRIMÁRIA e o casamento de
+-- contrato como secundária. **Em produção é o contrário desde 13/09/2026**, nas
+-- duas queries (`protocolos-geral` e `protocolos-produtividade`).
+--
+-- Por quê, medido nos dois escopos sobre CONTRATOS DE AUTENTICAÇÃO DISTINTOS por
+-- solicitação — que é a dimensão de que dependem LATITUDE, LONGITUDE, CTO, PONTO
+-- DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA e USUÁRIO:
+--
+--                          com leque   `active` decide   casamento decide   discordam
+--   produtividade (2026)       2.039                 1              1.885           0
+--   geral (2025+)              4.507                 5              4.013           0
+--
+-- `ac.active` decidia 0,1% dos casos: neste escopo quase todo contrato candidato
+-- já está ativo, então ele não discrimina. A inversão **não muda nenhuma linha
+-- hoje** (discordância medida = 0); muda no dia em que um contrato casado estiver
+-- inativo — e aí muda para o certo, porque `ac.contract_id = cst.contract_id` é o
+-- contrato DAQUELE protocolo, resposta por definição, e `active` é heurística.
+--
+-- A justificativa registrada abaixo para NÃO promover o casamento ("não pode ser
+-- primária: em 44,5% dos protocolos com leque nenhum contrato de autenticação casa
+-- o contrato do protocolo") **não se sustenta**: em SQL, um critério que nenhuma
+-- linha satisfaz simplesmente não discrimina e cai para o próximo. Inconclusividade
+-- não desqualifica uma primária; só discordância desqualificaria, e ela é zero.
+--
+-- Os números de 44.746/98.204 abaixo contam multiplicidade de LINHAS
+-- (`asp` × `pa` × `s` × `ac`), não contratos distintos — por isso parecem dizer que
+-- `active` fazia muito trabalho. Reduzir linhas não é o mesmo que escolher qual
+-- contrato vence. O "4.407 ambíguos" do texto bate com o que se mede hoje (4.500).
+--
+-- O piso de determinismo (`ac.created`, `ac.id`, `asp.id`, `s.id`, `pa.id`) NÃO
+-- mudou e continua necessário.
+-- ===========================================================================
+--
 -- INCORPORADO em 04/09/2026 a `specs/_catalog/queries/protocolos-geral.spec.yaml`,
 -- junto com o desempate do ROW_NUMBER que este arquivo dizia faltar (ver abaixo).
 -- Ver docs/SPEC-DRIVEN.md, seção "protocolos-geral — desempate do ROW_NUMBER + EXISTS",

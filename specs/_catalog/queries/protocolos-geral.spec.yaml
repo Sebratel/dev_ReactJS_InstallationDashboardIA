@@ -42,8 +42,21 @@ sql: |-
           vu.name AS "CRIADO POR",
           ROW_NUMBER() OVER (
               PARTITION BY a.title
-              ORDER BY (ac.active IS TRUE) DESC,
-                       ((ac.contract_id = cst.contract_id) IS TRUE) DESC,
+              -- PRIMARIA e o contrato DAQUELE protocolo, nao `active` (invertido em
+              -- 13/09/2026). Medido sobre contratos de autenticacao DISTINTOS por
+              -- solicitacao -- a dimensao de que dependem LATITUDE, LONGITUDE, CTO,
+              -- PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA e USUARIO:
+              -- dos 4.507 protocolos com leque, `active` decide 5 e o casamento de
+              -- contrato decide 4.013. As duas DISCORDAM em 0 casos, entao a inversao
+              -- nao muda nenhuma linha hoje -- muda no dia em que um contrato casado
+              -- estiver inativo, e ai muda para o certo: `active` e heuristica, o
+              -- casamento e a resposta por definicao.
+              --
+              -- A justificativa antiga para NAO promove-lo ("em 44,5% nenhum contrato
+              -- casa") nao se sustenta: criterio inconclusivo cai para o proximo. So
+              -- discordancia desqualificaria uma primaria, e ela e zero.
+              ORDER BY ((ac.contract_id = cst.contract_id) IS TRUE) DESC,
+                       (ac.active IS TRUE) DESC,
                        s.start_date DESC NULLS LAST,
                        ac.created DESC NULLS LAST, ac.id DESC NULLS LAST,
                        -- Piso de determinismo. `ac.id` NÃO basta: `asp` multiplica

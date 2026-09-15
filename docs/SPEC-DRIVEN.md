@@ -275,6 +275,39 @@ sucessivas, a segunda mais rápida por buffer quente):** 137,9 s (LEFT JOIN,
 sorteando) → 56,0 s / 31,6 s (EXISTS + desempate, determinístico). Ver
 `docs/ACHADOS.md` #97.
 
+### `protocolos-produtividade` — M reduzido ao join de `GESTOR`; o resto já vem do `sql:` (10/09/2026)
+
+```diff
+- Fonte = Odbc.Query(...)
+- #"Linhas Filtradas" = Table.SelectRows(Fonte, each true),
+- #"Hora Inserida1" = Table.AddColumn(..., each DateTime.Time([DATA CRIADO]), type time),
+- #"Colunas Renomeadas3" = Table.RenameColumns(..., {{"Hora", "HORA CRIADO"}}),
+- ... (~57 passos: proper-case de cidade/bairro, sigla, split de CODIGO/CTO, e as
+-       mesclagens com ALOCAÇÃO PATRIMONIO / TROCA ENDEREÇO / TECNICOS AUXILIARES,
+-       o Table.Combine com PROTOCOLOS AUXILIARES) ...
+- #"Consultas Mescladas3" = Table.NestedJoin(..., {"TECNICO"}, #"QUADRO FUNCIONAL", {"upper_name"}, ...),
+- #"QUADRO FUNCIONAL Expandido" = Table.ExpandTableColumn(...),
+- #"Colunas Renomeadas11" = Table.RenameColumns(..., {{"TECNICO", "INSTALADOR"}})
++ Fonte = Odbc.Query(...)
++ #"Consultas Mescladas3" = Table.NestedJoin(Fonte, {"INSTALADOR"}, #"QUADRO FUNCIONAL", {"upper_name"}, "QUADRO FUNCIONAL", JoinKind.LeftOuter),
++ #"QUADRO FUNCIONAL Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas3", "QUADRO FUNCIONAL", {"GESTOR"}, {"GESTOR"})
+```
+
+Corrige o Bloqueio 1 do achado #81 (`docs/ACHADOS.md`): o `sql:` migrado em
+25/08/2026 já entrega as 47 colunas prontas — inclusive `HORA CRIADO`,
+`HORA AGENDA` e `INSTALADOR` —, e o M **também** tentava derivar as mesmas
+colunas do zero, sem remover as versões vindas do SQL antes. O avaliador parava
+na primeira colisão (`Table.RenameColumns: o nome 'HORA CRIADO' ficaria
+duplicado`) e nunca chegava nem perto da segunda ou da terceira.
+
+`GESTOR` é a única coisa que o `sql:` não entrega (Google Sheets, via
+`QUADRO FUNCIONAL`, comentário no fim do próprio `SELECT`) — é o único passo
+que sobrou. Verificado rodando o `m_expression` de verdade (`runQueries`) com
+dado sintético no lugar do `Fonte`/`QUADRO FUNCIONAL`: sem colisão, `GESTOR`
+casa como antes, `LeftOuter` não derruba a query quando não casa. Detalhe
+completo, incluindo o que o conserto EXPÕE (golden desatualizado desde a
+migração, três testes vermelhos até ele ser regravado) em `docs/ACHADOS.md` #105.
+
 ## Estrutura de `specs/`
 
 ```

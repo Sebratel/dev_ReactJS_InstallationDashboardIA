@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
-import { leGrupos, QUERY_BLOQUEADA, validaGrupos, type GrupoDeRefresh } from '../src/grupos.ts';
+import { leGrupos, QUERIES_BLOQUEADAS, validaGrupos, type GrupoDeRefresh } from '../src/grupos.ts';
 
 function tmpSpecsDir(yaml: string): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-yaml-'));
@@ -53,7 +53,7 @@ test('grupo sem intervalo_minutos, ou com zero/negativo, derruba', () => {
 
 // ------------------------------------------------------------- validaGrupos
 
-const IDS = new Set(['a', 'b', 'c', QUERY_BLOQUEADA]);
+const IDS = new Set(['a', 'b', 'c', 'bloqueada-de-teste']);
 
 function g(over: Partial<GrupoDeRefresh>): GrupoDeRefresh {
   return { id: 'g', queries: [], intervaloMinutos: 15, incremental: false, ...over };
@@ -84,9 +84,19 @@ test('validaGrupos: a mesma query em dois grupos é reportada', () => {
   assert.match(problemas[0]!, /'a' aparece em dois grupos: 'x' e 'y'/);
 });
 
-test('validaGrupos: a query bloqueada (ACHADOS #81) é sempre reportada, mesmo sozinha num grupo', () => {
-  const grupos = new Map([['x', g({ id: 'x', queries: [QUERY_BLOQUEADA] })]]);
-  const problemas = validaGrupos(grupos, IDS);
+// A lista está VAZIA desde 13/09/2026 (ver o docstring de QUERIES_BLOQUEADAS): a única
+// query que estava nela, `protocolos-produtividade`, passou a materializar em 162 s.
+// Estes dois testes separam as duas afirmações — qual é a lista HOJE, e se o mecanismo
+// ainda funciona. Sem o segundo, esvaziar a lista teria desligado o guarda em silêncio.
+test('validaGrupos: nenhuma query está bloqueada hoje', () => {
+  assert.deepEqual([...QUERIES_BLOQUEADAS], []);
+  const grupos = new Map([['x', g({ id: 'x', queries: ['a'] })]]);
+  assert.deepEqual(validaGrupos(grupos, IDS), []);
+});
+
+test('validaGrupos: o mecanismo de bloqueio continua de pé e reporta mesmo query sozinha', () => {
+  const grupos = new Map([['x', g({ id: 'x', queries: ['bloqueada-de-teste'] })]]);
+  const problemas = validaGrupos(grupos, IDS, new Set(['bloqueada-de-teste']));
   assert.equal(problemas.length, 1);
   assert.match(problemas[0]!, /não materializa em nenhum modo/);
 });
