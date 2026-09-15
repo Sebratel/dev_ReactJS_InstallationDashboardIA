@@ -107,7 +107,6 @@ function parseArgs(argv: string[]): Args {
     if (raw === '--all') args.all = true;
     else if (raw === '--colunas') args.colunas = true;
     else if (raw === '--passos') args.passos = true;
-    else if (raw === '--passos') args.passos = true;
     else if (raw === '--em-processo') args.emProcesso = true;
     else if (raw.startsWith('--only=')) {
       args.only = raw.slice('--only='.length).split(',').map((s) => s.trim()).filter(Boolean);

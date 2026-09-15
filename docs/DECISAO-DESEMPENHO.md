@@ -125,8 +125,26 @@ Nenhuma das três era desperdício. A conta fecha em grão: 26.554 protocolos ×
    Medido em `contratos.jsonl`: a cópia custava **337 ms contra 332 ms de ler o arquivo
    inteiro** — dobrava a carga — e segurava 128 MB de heap. Em `field-agenda` isso
    projeta ~6 s dos 25,6 s e ~2,4 GB.
-4. **Agregação ao grão `(protocolo, slot agenda)` no refresh** — 48x menos linha. A
-   grande e a delicada: exige saber, visual por visual, qual mede slot e qual mede relato.
+4. **Agregação ao grão `(protocolo, slot agenda)` no refresh** — ✅ **feito em
+   02/09/2026**, pelo commit `7521cc3` e [ACHADOS](./ACHADOS.md) #87, **com o grão
+   trocado**: não é `(protocolo, slot agenda)`, é o do *assignment*.
+   [DECISAO-GRAO-FIELD-AGENDA](./DECISAO-GRAO-FIELD-AGENDA.md) refutou este item
+   como estava escrito — agregar ao par serviria o `tableEx` de 24,5 s e **apagaria**
+   os dois visuais que fazem `count(Protocolo)`, que é contagem de LINHA.
+
+   O que foi entregue no lugar: `FIELD AGENDA` é uma tabela com **dois arquivos**
+   trocados por baixo (`field-agenda-slot` por padrão, `field-agenda` quando um
+   visual toca uma das 7 colunas-gatilho), declarado em
+   `specs/_catalog/projecao.yaml`, bloco `grao_reduzido`.
+
+   **Auditado em 15/09/2026, contra o disco.** O fator 48x não expirou — hoje é
+   **48,30x** (639.427 linhas, 13.238 pares distintos), contra 48,2x da medição de
+   10/08. Mas ele já foi colhido quase todo: `639.427 → 41.505` é **15,4x**, e os
+   **3,14x** que sobram são impossíveis sem mudar número — `Instalador` (1,875x),
+   `Reagenda` (1,985x) e `Base` (1,064x) variam DENTRO do par, e `Base` é campo do
+   próprio `tableEx` que o passo existia para salvar. O resíduo real é limpeza, não
+   otimização: `Inicio relato` e `Fim relato` não são lidos por visual nem por medida
+   nenhuma, e tirá-los vale 1,07x — cerca de 350 KB.
 5. **Formato colunar** — por último, de propósito. Otimizar o `parse` de dado que não
    deveria estar sendo carregado é a ordem errada.
 
@@ -260,11 +278,67 @@ E não autoriza o passo seguinte: o `dicionário` ainda é 23,9% da carga porque
 `ConstrutorDeTabela` do bench o remonta; na leitura de verdade ele vem pronto. A
 próxima medida honesta é sobre `io`, que virou a maior fatia (41,8%).
 
+> ### ⚠️ Os dois números deste parágrafo estavam errados — 15/09/2026
+>
+> **A frase sobre o `dicionário` está errada no motivo.** No formato 2, `leColunar`
+> **não instancia** `ConstrutorDeTabela` — ele faz `new TabelaColunar` + `poe`, que é
+> O(1) por coluna. Os 23,9% eram artefato da RÉGUA, mas de outro jeito:
+> `e4cDecodifica`, o degrau logo acima, só existia na forma do formato 1 e indexava
+> `valores[i]` num objeto `{c,w,d,b}` — toda célula decodificava `undefined`, a
+> coluna saía `decodif 0,00`, e o trabalho real caía no degrau de baixo. Consertado,
+> os 23,9% se partem em `decodif` 15,3% (decodificar valor distinto, que é custo de
+> verdade) e `dicion` 14,0% (`base64ParaIds` e montar a tabela).
+>
+> **E o `io` não era 41,8%: ele era MAIOR, e a régua não o media inteiro.** `e1io`
+> iterava o fluxo sem `setEncoding`, então num arquivo comprimido media disco +
+> gunzip e a decodificação utf-8 inteira era cobrada do degrau `linhas`. Medido
+> direito: **43,3%**.
+>
+> **A frente foi executada, e está fechada.** Ver a seção seguinte.
+
+## A frente `io`, medida e fechada — 15/09/2026
+
+O `io` era de fato a maior fatia da carga, e a maior parte dele não era disco nem
+descompressão. Composição medida nesta máquina: **gunzip 75,4%, utf-8 20,7%, disco
+3,9%** — disco não é o problema, e nunca foi.
+
+Dois consertos, os dois de trabalho já feito ou nunca necessário:
+
+| | o que era | ganho |
+|---|---|---|
+| coluna omitida | pagava o `JSON.parse` da linha inteira antes de ser descartada, e no formato 2 a linha de uma coluna é o dicionário INTEIRO dela. Em produção são 45 de 107 colunas omitidas | par do commit `d48e52e` |
+| cabeçalho | era inflacionado **três vezes por tabela** — `preservaEspecieDeJuncao` já o guarda num `Map`, e o laço o relia para `omissiveis` e `leColunar` o relia para escolher o caminho | **−10,6%**, 4/4 pares |
+| pedaço do `gunzip` | `fluxoDeLeitura` abria os fluxos sem opção, e o padrão do zlib é **16 KB** — `field-agenda` chegava em **4.033 pedaços**, cada um um `for await`. Com 1 MB são 69 | **−24,7%**, 7/8 pares |
+
+Resultado, `npm run paginas`, 14 páginas, colunar:
+
+```
+carga ..... 4.734 ms  ->  2.895 ms     -38,8%
+cálculo .. 14.808 ms  -> 13.595 ms
+```
+
+### Onde isto para, e por quê
+
+Na escada, o `io` ainda é 37,1% — acima do portão de 25% que este plano tinha
+escrito. **O portão estava medindo a fatia errada.** A carga inteira é hoje
+**17,6% do relógio** do relatório, então 37,1% dela são **6,5% do total**: um
+segundo conserto perfeito do `io` compraria menos de 3% da tela. O que sobrou dele
+também é trabalho intrínseco — descomprimir e decodificar utf-8 —, não desperdício.
+
+O número grande passou a ser o **cálculo: 13.595 ms, 82% do relógio**, e dentro
+dele `agendamento-field` sozinha é 4.657 ms. É para lá que a próxima medida vai.
+`zstd` no lugar do `gzip` e um formato 3 ficam registrados como **não feitos e não
+recomendados hoje**: mudam o formato do arquivo para disputar 6,5%.
+
 ## O caso `Relato` — revertido em 24/08/2026
 
 > **A decisão de 10/08 (logo abaixo) não vale mais, e o motivo é que a medição que a
 > embasou deixou de valer.** Ela foi feita sobre um `field-agenda.jsonl` de
 > **1.458.244 linhas e 950 MB**. O snapshot de hoje tem **103.913 linhas e 120 MB**.
+> *(Estes dois últimos números são de 24/08/2026 e também já envelheceram: medido no
+> disco em 15/09/2026, `field-agenda` tem **639.427 linhas**, 7,2 MB comprimidos e
+> 61,2 MB inflados — e `field-agenda-slot`, que é o que a página abre por padrão
+> desde 02/09, tem **41.505**. O argumento não muda; só o tamanho da coisa.)*
 > `'FIELD AGENDA'[Relato]` voltou para a carga normal, e
 > `specs/_catalog/projecao.yaml` está vazio.
 

@@ -1,5 +1,36 @@
 # Agregar `FIELD AGENDA`: o que a medição refutou, e o que sobra
 
+> ## ✅ DECIDIDO E ENTREGUE — 02/09/2026
+>
+> **Este documento termina em "a escolha é do Erick", e a escolha já foi feita há
+> muito.** Ficou assim por treze dias, e quem o abrisse em 15/09/2026 leria uma
+> decisão aberta que não existe mais — por isso este cabeçalho.
+>
+> **Escolhida a saída A**, numa forma melhor do que a descrita lá embaixo: não são
+> cinco visuais sob demanda, é **uma tabela do modelo com dois arquivos de snapshot
+> trocados por baixo**, com escalada automática por coluna-gatilho. `FIELD AGENDA`
+> abre em `field-agenda-slot` e passa para `field-agenda` quando um visual toca uma
+> das 7 colunas-gatilho.
+>
+> * commit `7521cc3`, [ACHADOS](./ACHADOS.md) #87
+> * `specs/_catalog/queries/field-agenda-slot.spec.yaml` — a query nova, com o
+>   `EXISTS` exatamente como este documento exigiu (ver *o `LEFT JOIN` que é `INNER`*)
+> * `specs/_catalog/projecao.yaml`, bloco `grao_reduzido` — `decidido: '2026-09-02'`
+> * fiação: `packages/semantic-model/src/projecao.ts`, `packages/snapshot/src/carrega.ts`,
+>   `apps/api/src/servidor.ts` (`amarraGraoReduzido`)
+>
+> **O `specs/_catalog/sql-override.yaml` que este documento mandava criar não
+> existe, e não deve existir** — a solução foi uma spec de query própria, que é
+> melhor: o SQL fica onde toda query mora, e não num arquivo de exceção.
+>
+> **Auditado contra o disco em 15/09/2026.** O fator não expirou: hoje são **48,30x**
+> (639.427 linhas, 13.238 pares `(protocolo, slot agenda)` distintos). Colhidos
+> **15,4x** (639.427 → 41.505). Os **3,14x** restantes são inalcançáveis sem mudar
+> número, e a razão é exatamente a que este documento previu: `Instalador` (1,875x),
+> `Reagenda` (1,985x) e `Base` (1,064x) variam DENTRO do par. O único resíduo é
+> limpeza — `Inicio relato` e `Fim relato` não são lidos por visual nem medida
+> nenhuma, e valem 1,07x.
+
 > **12/08/2026.** O passo 4 da `DECISAO-DESEMPENHO` diz: agregar `FIELD AGENDA` ao
 > grão `(protocolo, slot)` no SQL, 1.458.244 linhas → 30.252. Este documento existe
 > porque a análise de quem consome a tabela **refuta essa versão do passo**, e o
