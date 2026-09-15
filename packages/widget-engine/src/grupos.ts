@@ -47,7 +47,54 @@ export interface Chave {
  * linha sem data não pertence a janeiro.
  */
 export function valorDaChave(chave: Chave, linha: Row, ev: Evaluator, onde: string): DaxValue {
-  return projetaNivel(chave, ev.columnValue(chave.tabela, chave.coluna, linha), onde);
+  return leitorDaChave(chave, ev, onde)(linha);
+}
+
+/**
+ * Um leitor de UMA chave, para quem vai aplicá-la a muitas linhas.
+ *
+ * `valorDaChave` normaliza o nome da tabela e o da coluna a cada célula, e os dois
+ * laços que mais a chamam têm a chave FIXA: o `keep` de um filtro de grupo (uma
+ * linha por vez, a tabela inteira) e a enumeração de combinações do eixo. Esta
+ * fábrica tira a normalização de dentro deles; ver `Evaluator.leitorDeColuna`.
+ *
+ * Perfilado em 14/09/2026 na página `instalacao-reincidente` — a mais cara das 14,
+ * e 74% dela num só visual de tabela que cruza três entidades: `normalizeName`
+ * custava 483 ms, dos quais **423 ms vinham de `columnValue` por baixo daqui**.
+ *
+ * `valorDaChave` continua existindo e agora passa por aqui. Para uma leitura só o
+ * fecho é desperdício, mas é desperdício de uma alocação — e ter dois corpos de
+ * projeção de nível seria uma segunda resposta possível para `março`, que é
+ * exatamente o que o comentário de `projetaNivel` existe para impedir.
+ */
+/**
+ * O mesmo que `leitorDaChave`, mas entregando a CHAVE DE IDENTIDADE.
+ *
+ * Para chave crua (o caso comum — sem nível) isto é `Evaluator.leitorDeIdentidade`
+ * direto, e aí a chave sai do dicionário da coluna sem tocar no valor. Com nível há
+ * projeção pelo meio, que é função do VALOR e não do id, então o caminho é o de
+ * sempre.
+ */
+export function leitorDeIdentidadeDaChave(
+  chave: Chave,
+  ev: Evaluator,
+  onde: string,
+): (linha: Row) => string {
+  if (!chave.nivel) return ev.leitorDeIdentidade(chave.tabela, chave.coluna);
+  const ler = leitorDaChave(chave, ev, onde);
+  return (linha: Row): string => identityKey(ler(linha));
+}
+
+export function leitorDaChave(
+  chave: Chave,
+  ev: Evaluator,
+  onde: string,
+): (linha: Row) => DaxValue {
+  const ler = ev.leitorDeColuna(chave.tabela, chave.coluna);
+  // Coluna crua é o caso comum: sem nível, não há projeção a aplicar, e o leitor
+  // da coluna já é a resposta inteira.
+  if (!chave.nivel) return ler;
+  return (linha: Row): DaxValue => projetaNivel(chave, ler(linha), onde);
 }
 
 /**
@@ -218,11 +265,24 @@ export function prepara(
   // contexto de filtro de revarrer a tabela a cada grupo (ACHADOS #38). O carimbo é
   // do grupo inteiro, não de um filtro: se `ALL()` derrubar qualquer um deles, as
   // linhas deixam de valer e o contexto volta ao predicado exato.
+  // Uma vez por CHAVE, fora do laço das combinações: `filtrosDe` roda uma vez por
+  // combinação do eixo (numa matriz, uma por célula) e as chaves são as mesmas em
+  // todas elas. Ver `preparaChave`.
+  const preparos = chaves.map((c) =>
+    preparaChave(c, plano ? normaliza(plano.ancora) : null, onde),
+  );
+
   const filtrosDe = (valores: readonly DaxValue[]): TableFilter[] => {
+    // A chave de identidade de cada valor tem DOIS consumidores aqui — o filtro de
+    // cada chave, que compara com ela, e a busca da combinação, que as concatena —
+    // e era calculada uma vez para cada um. Medido em 14/09/2026 nas 14 páginas,
+    // `identityKey` gastava 666 ms chamada de `filtrosDaChave` e mais 507 ms de
+    // `chaveDeValores`, sobre exatamente os mesmos valores.
+    const alvos = valores.map(identityKey);
     const filtros = chaves.flatMap((c, i) =>
-      filtrosDaChave(c, valores[i]!, i, plano, base, ev, onde),
+      filtrosDaChave(c, preparos[i]!, valores[i]!, alvos[i]!, i, plano, base, ev, onde),
     );
-    const combinacao = combinacoes.get(chaveDeValores(valores));
+    const combinacao = combinacoes.get(alvos.join(' '));
     if (!combinacao || filtros.length === 0) return filtros;
     combinacao.materializacao ??= {
       marca: {},
@@ -302,38 +362,81 @@ function planeja(
  * de uma medida deve sobrepor. Fosse a chave do nível, o filtro do eixo sobreviveria
  * ao CALCULATE e o número sairia menor sem dizer por quê.
  */
+/**
+ * O que de um filtro de grupo **não depende do valor** — montado uma vez por chave.
+ *
+ * `filtrosDaChave` roda uma vez por combinação do eixo, e numa matriz uma vez por
+ * célula. Tudo aqui era refeito a cada uma: quatro normalizações de nome, dois
+ * literais de gabarito e um `Set` de um elemento. Medido em 14/09/2026 nas 14
+ * páginas, `normalizeName` gastava 668 ms chamada daqui.
+ *
+ * **O `Set` sai compartilhado entre os filtros**, o que é seguro porque ninguém
+ * escreve em `TableFilter.columns` — ele é lido para decidir o que `ALL()` derruba.
+ * Se um dia alguém precisar mexer nele, tem de copiar antes; está escrito aqui
+ * porque o erro seria silencioso e longe da causa.
+ */
+interface PreparoDaChave {
+  readonly tabela: string;
+  readonly coluna: string;
+  readonly colunas: Set<string>;
+  readonly origem: string;
+  readonly origemEmBranco: string;
+  /** A chave é de outra tabela que não a âncora do plano? */
+  readonly remota: boolean;
+}
+
+function preparaChave(c: Chave, ancora: string | null, onde: string): PreparoDaChave {
+  const coluna = normaliza(c.coluna);
+  const tabela = normaliza(c.tabela);
+  const rotulo = `'${c.tabela}'[${c.coluna}]${c.nivel ? `.[${c.nivel}]` : ''}`;
+  return {
+    tabela,
+    coluna,
+    colunas: new Set([coluna]),
+    origem: `${onde}: grupo ${rotulo}`,
+    origemEmBranco: `${onde}: grupo ${rotulo} em branco (linha sem correspondência)`,
+    remota: ancora !== null && tabela !== ancora,
+  };
+}
+
 function filtrosDaChave(
   c: Chave,
+  p: PreparoDaChave,
   valor: DaxValue,
+  /** `identityKey(valor)`, já calculada por quem chama. Ver `filtrosDe`. */
+  alvo: string,
   i: number,
   plano: Plano | null,
   base: EvalScope,
   ev: Evaluator,
   onde: string,
 ): TableFilter[] {
-  const alvo = identityKey(valor);
-  const rotulo = `'${c.tabela}'[${c.coluna}]${c.nivel ? `.[${c.nivel}]` : ''}`;
-
-  const remota = plano !== null && normaliza(c.tabela) !== normaliza(plano.ancora);
-  if (remota && isBlank(valor)) {
-    const caminho = plano.caminhos[i]!;
+  if (p.remota && isBlank(valor)) {
+    const caminho = plano!.caminhos[i]!;
     return [{
-      table: normaliza(plano.ancora),
+      table: normaliza(plano!.ancora),
       // Nenhuma coluna declarada: este filtro não é sobre uma coluna da âncora, é
       // sobre *para onde a linha aponta*. Declarar coluna faria um CALCULATE sobre
       // ela derrubar o grupo inteiro.
       columns: new Set<string>(),
-      origem: `${onde}: grupo ${rotulo} em branco (linha sem correspondência)`,
-      keep: (row: Row) => plano.navegador.segue(caminho, row) === null,
+      origem: p.origemEmBranco,
+      keep: (row: Row) => plano!.navegador.segue(caminho, row) === null,
     }];
   }
 
+  // **Preguiçoso, e isso foi medido.** Este filtro é montado uma vez por COMBINAÇÃO
+  // do eixo, e o `keep` só roda quando a varredura acontece — quando o índice de
+  // igualdade resolve o grupo, ele não vê linha nenhuma. Montar o leitor aqui fora
+  // custava duas normalizações por combinação para nada, e nas 14 páginas isso era
+  // MAIOR que o ganho: A/B intercalado de 14/09/2026, a versão ansiosa ganhou 1 de 4
+  // pares e ficou 1,4% pior no total, mesmo sendo 14% melhor na página que eu mirei.
+  let chaveDe: ((row: Row) => string) | null = null;
   return [{
-    table: normaliza(c.tabela),
-    columns: new Set([normaliza(c.coluna)]),
-    origem: `${onde}: grupo ${rotulo}`,
-    igualdade: !c.nivel && !isBlank(valor) ? { coluna: normaliza(c.coluna), valor } : undefined,
-    keep: (row: Row) => identityKey(valorDaChave(c, row, ev, onde)) === alvo,
+    table: p.tabela,
+    columns: p.colunas,
+    origem: p.origem,
+    igualdade: !c.nivel && !isBlank(valor) ? { coluna: p.coluna, valor } : undefined,
+    keep: (row: Row) => (chaveDe ??= leitorDeIdentidadeDaChave(c, ev, onde))(row) === alvo,
   }];
 }
 
@@ -361,8 +464,36 @@ function enumeraCombinacoes(
   };
 
   if (plano === null) {
+    // Um leitor por chave, montados antes do laço — são as MESMAS chaves em todas
+    // as linhas, e este laço percorre a tabela visível inteira.
+    //
+    // **A chave vem direto, e o VALOR só quando o grupo é novo.** Este laço roda uma
+    // vez por linha visível e os grupos são muito menos que as linhas: montar o
+    // array de valores em todas elas era descartá-lo em quase todas. E a chave sai
+    // do dicionário da coluna quando há um (`leitorDeIdentidadeDaChave`), sem passar
+    // pelo valor — que é justamente o caso desta varredura, sobre tabela física.
+    const leitores = chaves.map((c) => leitorDaChave(c, ev, onde));
+    const identidades = chaves.map((c) => leitorDeIdentidadeDaChave(c, ev, onde));
+    // Uma chave é o caso comum, e aí a chave da combinação É a chave de identidade
+    // do valor — `[x].join(' ')` é `x`.
+    const unica = identidades.length === 1 ? identidades[0]! : null;
     for (const linha of base.filter.rowsOf(chaves[0]!.tabela)) {
-      guarda(chaves.map((c) => valorDaChave(c, linha, ev, onde)), linha);
+      let k: string;
+      if (unica !== null) {
+        k = unica(linha);
+      } else {
+        k = identidades[0]!(linha);
+        for (let i = 1; i < identidades.length; i++) k += ` ${identidades[i]!(linha)}`;
+      }
+      const achada = combinacoes.get(k);
+      if (achada) achada.linhas.push(linha);
+      else {
+        combinacoes.set(k, {
+          valores: leitores.map((ler) => ler(linha)),
+          linhas: [linha],
+          materializacao: null,
+        });
+      }
     }
     return combinacoes;
   }

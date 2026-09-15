@@ -245,8 +245,11 @@ export class Navegador {
     if (pronto) return pronto;
 
     const mapa = new Map<string, Row>();
+    // A chave de identidade direto do dicionário: este laço percorre a tabela
+    // visível inteira por UMA coluna. Ver `Evaluator.leitorDeIdentidade`.
+    const chaveDe = this.ev.leitorDeIdentidade(tabela, coluna);
     for (const linha of this.base.filter.rowsOf(tabela)) {
-      const k = identityKey(this.ev.columnValue(tabela, coluna, linha));
+      const k = chaveDe(linha);
       // Primeira ocorrência ganha: do lado "um" a coluna é chave, então duplicata
       // aqui é dado inconsistente e não uma escolha a fazer.
       if (!mapa.has(k)) mapa.set(k, linha);

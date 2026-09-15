@@ -15,10 +15,17 @@
 // modelos coincidem; se algum dia divergirem, é aqui que se olha.
 
 import { normalizeName } from '../../semantic-model/src/model.ts';
-import type { Dataset, Row } from './dataset.ts';
+import { dicionarioDaColuna, indiceDaLinha, type Dataset, type Row } from './dataset.ts';
 import { indiceDe } from './indice.ts';
 import { type Propagation, type PropagationEdge, describeEdge } from './propagation.ts';
-import { BLANK, DaxEvalError, type DaxValue, identityKey, isBlank } from './value.ts';
+import {
+  BLANK,
+  chavesDoDicionario,
+  DaxEvalError,
+  type DaxValue,
+  identityKey,
+  isBlank,
+} from './value.ts';
 
 /**
  * Resultado de expressão de tabela, no subconjunto que a base usa.
@@ -74,6 +81,83 @@ export function rowKey(row: Row, columns: Iterable<string>): string {
   return partes.join('\u0000');
 }
 
+/** Uma coluna resolvida pelo dicionário, ou `null` quando ela não tem um. */
+type PorDicionario = { readonly ids: Int32Array; readonly chaves: readonly string[] } | null;
+
+/**
+ * `rowKey` preparado para uma lista de colunas que não muda.
+ *
+ * **Por que existe.** `filterFromTable` monta a chave de TODA linha de `tv.rows` e
+ * de novo em cada `keep`. Medido nas 14 páginas em 14/09/2026: um só filtro expunha
+ * 64 colunas e respondia 375.110 testes — **24 milhões de `identityKey`** para dizer
+ * sim a 6,7% deles.
+ *
+ * Quando a linha é vista sobre o armazenamento colunar, a chave de cada coluna já
+ * existe **por valor distinto** (`chavesDoDicionario`, memoizado por dicionário) e o
+ * id da linha a endereça. Cada célula deixa de custar um acessor de protótipo mais
+ * um `identityKey` (que por dentro é um `Map` de string) e passa a custar duas
+ * indexações de array.
+ *
+ * **A chave é exatamente a mesma string**: `chavesDoDicionario` é `identityKey`
+ * aplicado aos mesmos valores, uma vez por distinto em vez de uma por linha. O
+ * separador e a ordem das colunas não mudam.
+ *
+ * **Coluna a coluna, e não tudo ou nada.** Numa tabela com 64 colunas físicas e uma
+ * calculada, exigir dicionário para todas jogaria fora o ganho inteiro por causa de
+ * uma. A calculada cai no caminho antigo, com `row[c] ?? null` — o mesmo que `rowKey`
+ * faz, inclusive quando ela ainda não está memoizada e a propriedade não existe.
+ *
+ * **O molde não é zelo.** Uma linha de OUTRA vista também responde a `indiceDaLinha`
+ * e indexaria estes dicionários na posição dela: valor de outra tabela, chave errada,
+ * nenhum erro. Fora do molde, a chave sai pelo caminho antigo.
+ */
+export function leitorDeChaveDeLinha(columns: Iterable<string>): (row: Row) => string {
+  const cols = [...columns];
+  const partes: string[] = new Array<string>(cols.length);
+  let porColuna: PorDicionario[] | null = null;
+  let molde: object | null = null;
+  let decidiu = false;
+
+  return (row: Row): string => {
+    if (!decidiu) {
+      decidiu = true;
+      const achados: PorDicionario[] = [];
+      let algum = false;
+      for (const c of cols) {
+        const d = dicionarioDaColuna(row, c);
+        if (d === null) {
+          achados.push(null);
+        } else {
+          achados.push({ ids: d.ids, chaves: chavesDoDicionario(d.valores) });
+          algum = true;
+        }
+      }
+      // Sem nenhuma coluna no dicionário o caminho rápido faria o trabalho do lento
+      // mais uma comparação de protótipo por linha.
+      if (algum) {
+        porColuna = achados;
+        molde = Object.getPrototypeOf(row) as object;
+      }
+    }
+
+    if (porColuna !== null && Object.getPrototypeOf(row) === molde) {
+      const i = indiceDaLinha(row);
+      for (let k = 0; k < cols.length; k++) {
+        const d = porColuna[k];
+        partes[k] = d === null
+          ? identityKey(row[cols[k]!] ?? (null as DaxValue))
+          : d.chaves[d.ids[i]!]!;
+      }
+      return partes.join('\u0000');
+    }
+
+    for (let k = 0; k < cols.length; k++) {
+      partes[k] = identityKey(row[cols[k]!] ?? (null as DaxValue));
+    }
+    return partes.join('\u0000');
+  };
+}
+
 /**
  * Converte uma tabela em filtro: a linha passa se seus valores nas colunas
  * expostas aparecem em alguma linha da tabela.
@@ -91,15 +175,21 @@ export function filterFromTable(tv: TableValue, origem: string): TableFilter {
         `Use TREATAS para apontá-la para uma coluna de destino.`,
     );
   }
+  // Dois leitores e não um: `tv.rows` e as linhas que o `keep` testa vêm de vistas
+  // DIFERENTES — a tabela-filtro de um lado, a tabela filtrada do outro. Um leitor só
+  // decidiria o molde pelo primeiro que visse e mandaria o outro para o caminho lento
+  // em todas as linhas.
+  const chaveDaOrigem = leitorDeChaveDeLinha(tv.columns);
   const permitidas = new Set<string>();
-  for (const row of tv.rows) permitidas.add(rowKey(row, tv.columns));
+  for (const row of tv.rows) permitidas.add(chaveDaOrigem(row));
   const tabela = tv.table;
+  const chaveDoAlvo = leitorDeChaveDeLinha(tv.columns);
   return {
     table: tabela,
     columns: new Set(tv.columns),
     origem,
     igualdade: igualdadeConstante(tv),
-    keep: (row) => permitidas.has(rowKey(row, tv.columns)),
+    keep: (row) => permitidas.has(chaveDoAlvo(row)),
   };
 }
 
@@ -450,8 +540,9 @@ export class FilteredContext implements FilterContext {
     const permitidosKeys = new Set<string>();
     const permitidosValores: DaxValue[] = [];
     let amostraFonte: DaxValue = BLANK;
+    const lerFonte = this.propagation.joinReader(aresta.sourceTable, aresta.sourceColumn);
     for (const row of fonte) {
-      const v = this.propagation.joinValue(aresta.sourceTable, aresta.sourceColumn, row);
+      const v = lerFonte(row);
       if (isBlank(amostraFonte)) amostraFonte = v;
       const k = identityKey(v);
       if (!permitidosKeys.has(k)) {
@@ -491,8 +582,9 @@ export class FilteredContext implements FilterContext {
 
     if (!usaIndice) {
       const acumulado: Row[] = [];
+      const lerAlvo = this.propagation.joinReader(aresta.targetTable, aresta.targetColumn);
       for (const row of alvo) {
-        const v = this.propagation.joinValue(aresta.targetTable, aresta.targetColumn, row);
+        const v = lerAlvo(row);
         if (isBlank(amostraAlvo)) amostraAlvo = v;
         if (permitidosKeys.has(identityKey(v))) acumulado.push(row);
       }

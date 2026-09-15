@@ -18,7 +18,7 @@ import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import { Dataset, type Row } from '../../measure-engine/src/dataset.ts';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
 import { BLANK, DaxEvalError, makeDate } from '../../measure-engine/src/value.ts';
-import { agrupar, valorDaChave, type Chave } from '../src/grupos.ts';
+import { agrupar, leitorDaChave, valorDaChave, type Chave } from '../src/grupos.ts';
 
 const AGORA = makeDate(2026, 8, 7);
 
@@ -199,4 +199,50 @@ test('a origem do filtro de grupo diz o nível, não só a coluna', () => {
     origens.some((o) => o.includes("'OS'[DATA].[Mês]")),
     `nenhuma origem cita o nível: ${JSON.stringify(origens)}`,
   );
+});
+
+// ---------------------------------------------------------------------------
+// O leitor içado
+// ---------------------------------------------------------------------------
+//
+// `leitorDaChave` existe para tirar a normalização do nome de dentro dos laços,
+// e `valorDaChave` passou a ser um atalho para ele. O risco não é ficar lento: é
+// os dois caminhos divergirem num nível pouco usado e o eixo do gráfico agrupar
+// errado — sem erro nenhum, porque "Trim 1" e "Trim 2" são ambos plausíveis.
+
+test('leitorDaChave concorda com valorDaChave em todos os níveis', () => {
+  const ev = montar();
+  const todas = linhas(ev);
+  for (const n of [null, 'Ano', 'Mês', 'Dia', 'Trimestre']) {
+    const c = nivel('DATA', n);
+    const ler = leitorDaChave(c, ev, 't');
+    assert.deepEqual(
+      todas.map((l) => ler(l)),
+      todas.map((l) => valorDaChave(c, l, ev, 't')),
+      `nível ${n ?? '(cru)'}`,
+    );
+  }
+});
+
+test('o mesmo leitor serve linhas diferentes, e BLANK continua BLANK', () => {
+  // Se o fecho capturasse o VALOR em vez do nome, a coluna inteira sairia com o
+  // valor da primeira linha — um eixo constante, que ninguém lê como defeito.
+  const ev = montar();
+  const ler = leitorDaChave(nivel('DATA', 'Mês'), ev, 't');
+  const todas = linhas(ev);
+  assert.equal(ler(todas[0]!), 'janeiro');
+  assert.equal(ler(todas[2]!), 'março');
+  assert.equal(ler(todas[3]!), 'janeiro', 'ano diferente, mesmo mês');
+  assert.equal(ler(todas[4]!), BLANK, 'linha sem data não pertence a mês nenhum');
+  assert.equal(ler(todas[0]!), 'janeiro', 'e reler a primeira dá o mesmo');
+});
+
+test('o erro do nível sobre não-data sai na LEITURA, não ao pedir o leitor', () => {
+  // O `keep` do filtro de grupo monta o leitor preguiçosamente, na primeira linha.
+  // Se pedir o leitor já errasse, um grupo que o índice de igualdade resolve — e
+  // que portanto não varre linha nenhuma — passaria a falhar onde hoje não falha.
+  const ev = montar();
+  assert.doesNotThrow(() => leitorDaChave(nivel('VALOR', 'Mês'), ev, 't'));
+  const ler = leitorDaChave(nivel('VALOR', 'Mês'), ev, 't');
+  assert.throws(() => ler(linhas(ev)[0]!), DaxEvalError);
 });

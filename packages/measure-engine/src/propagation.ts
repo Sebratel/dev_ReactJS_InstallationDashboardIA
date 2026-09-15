@@ -62,6 +62,14 @@ export interface Propagation {
   /** Arestas que chegam na tabela dada. */
   incoming(target: string): readonly PropagationEdge[];
   joinValue(table: string, column: string, row: Row): DaxValue;
+  /**
+   * Um leitor da coluna de junção, com os nomes já normalizados.
+   *
+   * `joinValue` continua aqui para a leitura avulsa (a amostra de espécie). Quem
+   * VARRE — e restringir uma tabela pela outra varre as duas pontas inteiras —
+   * pede o leitor uma vez e o aplica no laço. Ver `Evaluator.leitorDeColuna`.
+   */
+  joinReader(table: string, column: string): (row: Row) => DaxValue;
 }
 
 /** Como a aresta aparece numa mensagem de erro. */
@@ -71,7 +79,7 @@ export function describeEdge(e: PropagationEdge): string {
 
 export function buildPropagation(
   model: SemanticModel,
-  joinValue: (table: string, column: string, row: Row) => DaxValue,
+  joinReader: (table: string, column: string) => (row: Row) => DaxValue,
 ): Propagation {
   const porDestino = new Map<string, PropagationEdge[]>();
 
@@ -107,7 +115,10 @@ export function buildPropagation(
 
   return {
     incoming: (target) => porDestino.get(normalizeName(target)) ?? [],
-    joinValue,
+    // Derivado do leitor para não haver dois caminhos de leitura que possam
+    // divergir. Custa um fecho por chamada, e só a leitura avulsa passa aqui.
+    joinValue: (table, column, row) => joinReader(table, column)(row),
+    joinReader,
   };
 }
 
@@ -117,4 +128,11 @@ export const NO_PROPAGATION: Propagation = {
   joinValue: (table, column) => {
     throw new Error(`NO_PROPAGATION não resolve '${table}'[${column}] — não deveria ser chamado.`);
   },
+  // Erra ao LER, não ao pedir o leitor: assim a mensagem sai no mesmo ponto do
+  // laço em que `joinValue` erraria, e o teste que fixa esse erro não muda de lugar.
+  joinReader:
+    (table, column) =>
+    (): DaxValue => {
+      throw new Error(`NO_PROPAGATION não resolve '${table}'[${column}] — não deveria ser chamado.`);
+    },
 };

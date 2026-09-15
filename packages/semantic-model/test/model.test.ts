@@ -47,6 +47,43 @@ test('normalizeName: identificador DAX não distingue caixa', () => {
   assert.equal(normalizeName('  Protocolo '), 'protocolo');
 });
 
+// `normalizeName` é memoizada desde 13/09/2026 — era 42,9% do tempo de CPU da
+// página mais cara. Um cache é correto até deixar de ser, e os três testes abaixo
+// fixam exatamente onde ele poderia mentir sem dar sintoma.
+
+test('normalizeName: o cache devolve o MESMO resultado na segunda chamada', () => {
+  // Trivial de ler e o ponto inteiro do cache: se a memoização guardasse a chave
+  // crua como valor (ou o valor como chave), só a PRIMEIRA chamada estaria certa.
+  for (const bruto of ['  Data Instalação ', 'N°PROTOCOLO', 'TÉCNICO', 'ok', '', '   ']) {
+    const um = normalizeName(bruto);
+    assert.equal(normalizeName(bruto), um);
+    assert.equal(um, bruto.trim().toLowerCase(), `${JSON.stringify(bruto)} tem de bater com a definição`);
+  }
+});
+
+test('normalizeName: chaves cruas diferentes que normalizam igual não se atropelam', () => {
+  // O cache é chaveado pela string CRUA. Se fosse pela normalizada, a segunda
+  // entrada devolveria a primeira — igual por acaso aqui, e errado no dia em que
+  // a normalização deixar de ser idempotente.
+  assert.equal(normalizeName(' Contrato'), 'contrato');
+  assert.equal(normalizeName('CONTRATO  '), 'contrato');
+  assert.equal(normalizeName('contrato'), 'contrato');
+});
+
+test('normalizeName: passado o teto do cache, continua CORRETO — só para de cachear', () => {
+  // O teto existe para um cache sem limite não virar vazamento silencioso. O que
+  // ele NÃO pode fazer é mudar a resposta: acima do teto a função tem de voltar a
+  // ser `trim().toLowerCase()` e nada mais. 5.000 nomes distintos passam de 4.096
+  // com folga, mesmo com o que os outros testes já puseram no cache.
+  for (let i = 0; i < 5000; i++) {
+    const bruto = `  Coluna Sintética ${i} `;
+    assert.equal(normalizeName(bruto), `coluna sintética ${i}`);
+  }
+  // E o nome real, depois de o teto ter estourado, continua certo.
+  assert.equal(normalizeName('  Protocolo '), 'protocolo');
+  assert.equal(normalizeName('FIELD AGENDA'), normalizeName('Field Agenda'));
+});
+
 test('resolve tabela, coluna e medida sem depender da caixa', () => {
   const m = modeloMinimo();
   // Não é conveniência: no modelo real a mesma tabela aparece como

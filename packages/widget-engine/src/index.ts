@@ -13,6 +13,8 @@ export {
   chaveDoCampo,
   prepara,
   projetaNivel,
+  leitorDaChave,
+  leitorDeIdentidadeDaChave,
   valorDaChave,
   type Agrupamento,
   type Chave,

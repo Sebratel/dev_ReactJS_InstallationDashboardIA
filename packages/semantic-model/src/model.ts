@@ -60,9 +60,42 @@ interface RelationshipsSpecFile {
   }[];
 }
 
-/** Chave de comparação de identificador DAX. */
+/**
+ * Chave de comparação de identificador DAX — memoizada.
+ *
+ * **Por que um cache numa função de duas operações.** Medido em 13/09/2026 com
+ * `--cpu-prof` sobre `instalacao-reincidente`, a página mais cara da plataforma:
+ * esta função era **42,9% de todo o tempo de CPU** (9.464 ms de 22.064 ms). Não
+ * porque seja lenta — porque `columnValue` a chama **três vezes por célula lida**
+ * (uma direta, duas dentro de `hasPhysicalColumn`), e `trim()` e `toLowerCase()`
+ * varrem e alocam uma string nova a cada chamada. Numa tabela de detalhe de 19
+ * colunas sobre ~94 mil linhas isso são dezenas de milhões de strings temporárias.
+ *
+ * **Por que memoizar é correto aqui, e não um risco de vazamento.** Todo argumento
+ * desta função é um IDENTIFICADOR — nome de tabela, de coluna, de medida ou de
+ * variável DAX —, nunca um valor de linha. Foram conferidos os ~60 sítios de
+ * chamada em 13/09/2026: o domínio é o do catálogo em `specs/` mais os nomes que
+ * aparecem no DAX, que é da ordem de centenas de strings e não cresce com o dado.
+ *
+ * **O teto existe mesmo assim.** Um cache sem teto é um vazamento que não dá
+ * sintoma até a máquina parar, e a premissa acima é sobre quem chama HOJE. Passando
+ * do teto a função continua **correta** — só deixa de cachear, e volta a ser a
+ * versão de antes. O teto é folgado de propósito: 4.096 é dez vezes o que o modelo
+ * inteiro usa, então atingi-lo já é sinal de que alguém está passando dado aqui.
+ *
+ * O acerto custa um `Map.get`; o V8 guarda o hash na própria string depois da
+ * primeira vez, e as strings que chegam aqui são as mesmas instâncias vindas do
+ * catálogo, então o acerto é mais barato que as duas varreduras que ele evita.
+ */
+const NOMES_NORMALIZADOS = new Map<string, string>();
+const TETO_DE_NOMES = 4096;
+
 export function normalizeName(name: string): string {
-  return name.trim().toLowerCase();
+  const memo = NOMES_NORMALIZADOS.get(name);
+  if (memo !== undefined) return memo;
+  const out = name.trim().toLowerCase();
+  if (NOMES_NORMALIZADOS.size < TETO_DE_NOMES) NOMES_NORMALIZADOS.set(name, out);
+  return out;
 }
 
 function readYaml<T>(file: string): T {

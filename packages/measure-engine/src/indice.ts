@@ -49,9 +49,15 @@
 // booleano, que é o que `toNumber` faz.
 
 import type { DaxNode } from './ast.ts';
-import type { Row } from './dataset.ts';
+import { dicionarioDaColuna, indiceDaLinha, type Row } from './dataset.ts';
 import { normalizeName } from '../../semantic-model/src/model.ts';
-import { identityKey, isBlank, isDate, type DaxValue } from './value.ts';
+import {
+  chavesDoDicionario,
+  identityKey,
+  isBlank,
+  isDate,
+  type DaxValue,
+} from './value.ts';
 
 /**
  * A classe de comparação de um valor: é ela, não o tipo de JS, que decide se dois
@@ -69,13 +75,33 @@ export function classeDe(v: DaxValue): ClasseDeValor {
 }
 
 /**
- * Abaixo disto, varrer é mais barato que inverter.
+ * Acima disto, indexa já na primeira consulta.
  *
- * Inverter custa uma varredura inteira mais a memória dos baldes. Só se paga se a
- * coluna for consultada muitas vezes — que é o caso do #43 (29.846 consultas) e
- * não é o de uma tabela de dimensão consultada uma vez.
+ * Inverter custa uma varredura inteira mais a memória dos baldes. Numa tabela
+ * grande a primeira consulta já é cara o bastante para o índice se pagar nela
+ * mesma — não há motivo para varrer uma vez antes de decidir.
  */
 export const MINIMO_PARA_INDEXAR = 1_000;
+
+/**
+ * Abaixo de `MINIMO_PARA_INDEXAR`, quantas consultas antes de indexar.
+ *
+ * **O guarda antigo media a coisa errada, e custava 16 milhões de leituras numa
+ * tabela de 713 linhas.** Ele perguntava *a tabela é grande?* quando a pergunta é
+ * *ela vai ser consultada muitas vezes?* — e as duas só coincidem por acaso.
+ * Medido em 14/09/2026 na página `instalacao-reincidente`: `CALENDARIO INSTALADO`
+ * tem 713 linhas, ficava 287 linhas abaixo do mínimo, e o eixo de data a varria
+ * **22.603 vezes** — uma por combinação do eixo. 16.115.993 leituras de
+ * `[DATA_VIGENTE_INSTALADO]` e 13.446.034 de `[DATA INSTALADO]`, todas para
+ * responder o que um índice de 713 entradas responde por busca.
+ *
+ * **Dois é o ponto de equilíbrio, e não um número escolhido a gosto.** Construir
+ * custa uma varredura; varrer custa uma varredura por consulta. Na SEGUNDA
+ * consulta o índice já empatou, e da terceira em diante é lucro. Quem consulta uma
+ * vez só — a tabela de dimensão que o comentário antigo protegia — continua sem
+ * pagar nada, porque a contagem é por (linhas, coluna) e ela nunca chega a dois.
+ */
+export const CONSULTAS_PARA_INDEXAR = 2;
 
 export class IndiceDeIgualdade {
   private readonly baldes: Map<string, Row[]>;
@@ -91,16 +117,50 @@ export class IndiceDeIgualdade {
     this.baldes = new Map();
     this.classes = new Set();
     let completo = true;
+
+    // ── caminho colunar ──────────────────────────────────────────────────────
+    //
+    // Quando as linhas são vistas sobre o armazenamento colunar, a chave de
+    // identidade já existe **por valor distinto** — `chavesDoDicionario` memoiza
+    // o array por dicionário — e o id da linha a endereça. Isso troca, por linha,
+    // um acessor de protótipo mais um `identityKey` (que por dentro é um `Map` de
+    // string) por **duas indexações de array**.
+    //
+    // **Não muda a chave**: `chavesDoDicionario` é `identityKey` aplicado aos
+    // mesmos valores, uma vez por distinto em vez de uma por linha. E não pode ler
+    // valor velho: escrever numa coluna FÍSICA de uma vista **estoura** (ver o
+    // `set` em `packages/snapshot/src/linha-vista.ts`), então nenhuma propriedade
+    // própria — coluna calculada memoizada, por exemplo — consegue sombrear o
+    // acessor de uma coluna que tem dicionário. Coluna calculada não tem, e cai no
+    // caminho de baixo.
+    const primeira = rows.length > 0 ? rows[0]! : null;
+    const dic = primeira === null ? null : dicionarioDaColuna(primeira, coluna);
+    // O molde é obrigatório, não zelo: uma linha de OUTRA vista também responde a
+    // `indiceDaLinha`, e indexaria ESTE dicionário na posição dela — valor de outra
+    // tabela, sem erro nenhum.
+    const molde = dic === null ? null : (Object.getPrototypeOf(primeira!) as object);
+    const chaves = dic === null ? null : chavesDoDicionario(dic.valores);
+
     for (const row of rows) {
-      // `in`, e não `?? null`: coluna calculada ainda não memoizada e coluna que
-      // ficou fora da carga são **ausentes**, não brancas. Ver o guarda (4).
-      if (!(coluna in row)) {
-        completo = false;
-        break;
+      let v: DaxValue;
+      let k: string;
+      if (chaves !== null && Object.getPrototypeOf(row) === molde) {
+        // A coluna tem dicionário nesta vista, então ela ESTÁ presente: o guarda
+        // (4) abaixo não se aplica a ela.
+        const id = dic!.ids[indiceDaLinha(row)]!;
+        v = dic!.valores[id] as DaxValue;
+        k = chaves[id]!;
+      } else {
+        // `in`, e não `?? null`: coluna calculada ainda não memoizada e coluna que
+        // ficou fora da carga são **ausentes**, não brancas. Ver o guarda (4).
+        if (!(coluna in row)) {
+          completo = false;
+          break;
+        }
+        v = row[coluna] ?? null;
+        k = identityKey(v);
       }
-      const v = row[coluna] ?? null;
       this.classes.add(classeDe(v));
-      const k = identityKey(v);
       const balde = this.baldes.get(k);
       if (balde) balde.push(row);
       else this.baldes.set(k, [row]);
@@ -159,23 +219,38 @@ export class IndiceDeIgualdade {
  */
 const cache = new WeakMap<readonly Row[], Map<string, IndiceDeIgualdade>>();
 
+/** Quantas vezes cada (linhas, coluna) já foi pedida, enquanto não há índice. */
+const consultas = new WeakMap<readonly Row[], Map<string, number>>();
+
 /**
  * O índice de `coluna` sobre `rows`, construído na primeira vez e reaproveitado.
  *
  * `null` quando não vale a pena indexar. Quem chama varre.
  */
 export function indiceDe(rows: readonly Row[], coluna: string): IndiceDeIgualdade | null {
-  if (rows.length < MINIMO_PARA_INDEXAR) return null;
   let porColuna = cache.get(rows);
+  const pronto = porColuna?.get(coluna);
+  if (pronto) return pronto;
+
+  // Tabela pequena: conta antes de construir. A contagem é por (linhas, coluna) e
+  // mora num `WeakMap` pelo mesmo motivo do índice — ela morre com as linhas.
+  if (rows.length < MINIMO_PARA_INDEXAR) {
+    let contas = consultas.get(rows);
+    if (!contas) {
+      contas = new Map();
+      consultas.set(rows, contas);
+    }
+    const n = (contas.get(coluna) ?? 0) + 1;
+    contas.set(coluna, n);
+    if (n < CONSULTAS_PARA_INDEXAR) return null;
+  }
+
   if (!porColuna) {
     porColuna = new Map();
     cache.set(rows, porColuna);
   }
-  let ind = porColuna.get(coluna);
-  if (!ind) {
-    ind = new IndiceDeIgualdade(rows, coluna);
-    porColuna.set(coluna, ind);
-  }
+  const ind = new IndiceDeIgualdade(rows, coluna);
+  porColuna.set(coluna, ind);
   return ind;
 }
 

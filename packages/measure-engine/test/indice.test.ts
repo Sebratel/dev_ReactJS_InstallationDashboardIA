@@ -16,6 +16,7 @@ import {
   classeDe,
   igualdadeIndexavel,
   IndiceDeIgualdade,
+  CONSULTAS_PARA_INDEXAR,
   indiceDe,
   MINIMO_PARA_INDEXAR,
 } from '../src/indice.ts';
@@ -90,9 +91,33 @@ test('valor ausente devolve lista vazia, não null', () => {
   assert.deepEqual(ind.candidatos('NAO EXISTE'), []);
 });
 
-test('tabela pequena não é indexada — varrer custa menos', () => {
+test('tabela pequena não é indexada na PRIMEIRA consulta — varrer custa menos', () => {
   assert.equal(indiceDe(tabela(MINIMO_PARA_INDEXAR - 1, 5), 'protocolo'), null);
   assert.ok(indiceDe(tabela(MINIMO_PARA_INDEXAR, 5), 'protocolo') !== null);
+});
+
+test('tabela pequena É indexada quando a MESMA lista é consultada de novo', () => {
+  // O guarda antigo media o tamanho da tabela; este mede quantas vezes ela é
+  // consultada, que é o que decide se inverter se paga. `CALENDARIO INSTALADO` tem
+  // 713 linhas e o eixo de data a varria 22.603 vezes — 287 linhas abaixo do
+  // mínimo antigo, e 16 milhões de leituras por causa disso.
+  const linhas = tabela(MINIMO_PARA_INDEXAR - 1, 5);
+  assert.equal(indiceDe(linhas, 'protocolo'), null, 'a primeira ainda varre');
+  const ind = indiceDe(linhas, 'protocolo');
+  assert.ok(ind !== null, `a de número ${CONSULTAS_PARA_INDEXAR} indexa`);
+  assert.equal(indiceDe(linhas, 'protocolo'), ind, 'e daí em diante é o mesmo');
+  assert.deepEqual(ind.candidatos('P3')?.length, linhas.filter((l) => l['protocolo'] === 'P3').length);
+});
+
+test('a contagem é por (lista, coluna) — lista nova recomeça do zero', () => {
+  // É o que protege a tabela de dimensão consultada uma vez: cada recorte novo é
+  // uma lista nova, então nenhum deles chega à segunda consulta e nenhum paga o
+  // índice. Sem isto, indexar por contagem viraria indexar sempre.
+  const linhas = tabela(MINIMO_PARA_INDEXAR - 1, 5);
+  assert.equal(indiceDe(linhas, 'protocolo'), null);
+  assert.equal(indiceDe([...linhas], 'protocolo'), null, 'outra lista, outra contagem');
+  assert.equal(indiceDe(linhas, 'valor'), null, 'outra coluna, outra contagem');
+  assert.ok(indiceDe(linhas, 'protocolo') !== null, 'a segunda DESTE par indexa');
 });
 
 test('o índice é reaproveitado entre chamadas sobre o mesmo array', () => {
@@ -153,8 +178,11 @@ function monta(linhas: Row[]) {
 /**
  * O mesmo cálculo, com e sem índice.
  *
- * "Sem" é obtido encolhendo a tabela para baixo de `MINIMO_PARA_INDEXAR`, que é o
- * único interruptor honesto que existe: o caminho exato é o mesmo código.
+ * "Sem" é obtido encolhendo a tabela para baixo de `MINIMO_PARA_INDEXAR`: abaixo
+ * dele o índice só nasce na segunda consulta à MESMA lista, e `addTable` copia as
+ * linhas, então cada `monta` entrega uma lista nova que nunca chega lá. É o
+ * interruptor mais honesto que existe aqui — o caminho exato é o mesmo código —,
+ * mas ele depende dessa cópia, e é por isso que está escrito.
  */
 function comESem(dax: string, linhas: Row[]): { com: unknown; sem: unknown } {
   const pequena = linhas.slice(0, MINIMO_PARA_INDEXAR - 1);

@@ -237,7 +237,10 @@ function extraiIgualdade(f: FiltroSpec): { coluna: string; valor: DaxValue } | u
 function leitorDeValor(f: FiltroSpec, ev: Evaluator, onde: string): (row: Row) => DaxValue {
   const tabela = f.entity!;
   const coluna = f.property!;
-  if (!f.nivel) return (row: Row) => ev.columnValue(tabela, coluna, row);
+  // O leitor sai do laço: este fecho é aplicado uma vez por linha visível, e a
+  // tabela e a coluna são as mesmas em todas. Ver `Evaluator.leitorDeColuna`.
+  const ler = ev.leitorDeColuna(tabela, coluna);
+  if (!f.nivel) return ler;
 
   const projeta = projecaoDeHierarquia(f.nivel);
   if (!projeta) {
@@ -248,7 +251,7 @@ function leitorDeValor(f: FiltroSpec, ev: Evaluator, onde: string): (row: Row) =
   }
 
   return (row: Row): DaxValue => {
-    const cru = ev.columnValue(tabela, coluna, row);
+    const cru = ler(row);
     // BLANK continua BLANK: projetar o vazio o transformaria no ano de 1970, e uma
     // linha sem data passaria a casar com um ano de verdade.
     if (isBlank(cru)) return cru;
@@ -311,13 +314,17 @@ function predicado(
       const permitidos = new Set((c.values ?? []).map(identityKey));
       const dentro = c.op === 'in';
       let conferiuEspecie = false;
+      // Sem nível, a chave sai do dicionário da coluna e o valor nunca é tocado —
+      // este predicado roda uma vez por linha visível. Ver
+      // `Evaluator.leitorDeIdentidade`. A conferência de espécie continua vendo o
+      // VALOR, e por isso paga uma leitura a mais: uma, na primeira linha.
+      const chaveDe = f.nivel ? null : ev.leitorDeIdentidade(tabela, coluna);
       return (row) => {
-        const v = valor(row);
         if (!conferiuEspecie) {
           conferiuEspecie = true;
-          confereEspecie(v, c.values ?? [], onde);
+          confereEspecie(valor(row), c.values ?? [], onde);
         }
-        return permitidos.has(identityKey(v)) === dentro;
+        return permitidos.has(chaveDe !== null ? chaveDe(row) : identityKey(valor(row))) === dentro;
       };
     }
 

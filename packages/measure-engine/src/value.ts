@@ -193,16 +193,126 @@ export function valuesEqual(a: DaxValue, b: DaxValue, strict: boolean, onde: str
 }
 
 /**
- * Chave de identidade para DISTINCTCOUNT / DISTINCT.
+ * Chave de identidade para DISTINCTCOUNT / DISTINCT — memoizada por tipo.
  *
  * Usa as mesmas regras de equivalência da comparação — texto sem caixa, data
  * pela série — para que contar distintos e comparar concordem. Se divergissem,
  * `DISTINCTCOUNT` contaria "ABC" e "abc" como dois onde o `=` diz que são um.
+ *
+ * ───────────────────────────────────────────────────────────────────────────
+ * POR QUE HÁ UM CACHE AQUI, E POR QUE ELE É POR TIPO
+ *
+ * Medido em 13/09/2026, instrumentando esta função nas 14 páginas reais:
+ *
+ * ```
+ * chamadas .............. 118.941.152     texto 58,7%, data 20,9%, branco 19,5%
+ * valores DISTINTOS .....     644.219
+ * acerto de um cache ....      99,46%
+ * ```
+ *
+ * Cada chamada alocava uma string nova — 118 milhões delas —, e no texto ainda
+ * passava por `toLocaleLowerCase`, que é sensível a locale e bem mais caro que um
+ * `toLowerCase`. Era 4,8% do tempo de CPU da plataforma, mais a parte do coletor de
+ * lixo que esse lixo todo paga.
+ *
+ * **Um `Map` só, chaveado pelo valor, estaria ERRADO para data.** Chave de `Map` é
+ * SameValueZero, que para objeto é identidade de REFERÊNCIA: duas `Date` do mesmo
+ * instante são chaves diferentes. No caminho colunar isso quase funcionaria por
+ * acidente — o dicionário guarda uma instância por valor distinto —, mas no caminho
+ * de objetos cada linha tem a sua, e o cache cresceria uma entrada por LINHA sem
+ * nunca acertar. Um cache que vira vazamento só no caminho que não estou medindo é
+ * exatamente o tipo de defeito que este projeto recusa. Por isso a data entra
+ * chaveada por `getTime()`, que é número.
+ *
+ * **E por que há um teto.** Diferente de `normalizeName`, o argumento aqui é VALOR
+ * DE LINHA — o domínio cresce com o dado, não com o catálogo. O teto é o que separa
+ * "cache" de "vazamento": passando dele a função continua **correta**, só volta a
+ * calcular.
+ *
+ * **O custo de memória, MEDIDO e não estimado** (13/09/2026, as 14 páginas num
+ * processo, heap com os caches menos heap depois de esvaziá-los):
+ *
+ * ```
+ * 644.219 entradas .......... 77,2 MB
+ *   as strings guardadas .... 29,9 MB
+ *   escrituração do Map ..... 47,3 MB   <- é aqui que a memória vai
+ * ```
+ *
+ * O peso está no `Map`, não no tamanho das strings — por isso NÃO adianta cachear só
+ * valor curto: cortar tudo acima de 64 caracteres pouparia 17 MB dos 77 e perderia
+ * 94 mil entradas. O custo escala com a CARDINALIDADE, e é ela que o teto limita.
+ *
+ * 1.000.000 é ~1,5x os 644 mil distintos observados; no teto a conta acima dá ~120
+ * MB. É uma fração dos 2,2 GB que o armazenamento colunar liberou, e é uma troca
+ * escolhida de olho aberto — não um efeito colateral.
+ *
+ * **Booleano e nulo não entram** — `b:`, `n:0` e `n:1` são três literais que o V8
+ * já internou. Cachear custaria mais que devolver.
+ * ───────────────────────────────────────────────────────────────────────────
  */
+const CHAVE_TEXTO = new Map<string, string>();
+const CHAVE_NUMERO = new Map<number, string>();
+/** Chaveado por `getTime()`, não pela `Date` — ver a nota acima. */
+const CHAVE_DATA = new Map<number, string>();
+const TETO_DE_CHAVES = 1_000_000;
+
+/**
+ * As chaves de identidade de um dicionário de coluna, calculadas UMA VEZ por
+ * coluna e compartilhadas por todos os leitores dela.
+ *
+ * **Sem o compartilhamento o ganho vira estouro de memória, e foi o que
+ * aconteceu.** A primeira versão guardava o array dentro do fecho do leitor, e
+ * `filtrosDaChave` monta um filtro por COMBINAÇÃO do eixo: numa coluna de alta
+ * cardinalidade isso são `combinações x distintos` strings vivas ao mesmo tempo. A
+ * paridade das 14 páginas morreu com `heap out of memory` em 8 GB na quarta página
+ * (14/09/2026) — e o pior é que acima do TETO_DE_CHAVES cada leitor alocava strings
+ * NOVAS, então nem a memoização acima segurava.
+ *
+ * A chave do `WeakMap` é o array de valores distintos, que é estável enquanto a
+ * coluna existir e é trocado por `TabelaColunar.mapeia` — quem converte o tipo da
+ * coluna ganha um array novo e, com ele, chaves novas. Fraco para a tabela poder
+ * ser descarregada.
+ *
+ * **Isto NÃO tem teto**, ao contrário do cache acima, e de propósito: o domínio
+ * aqui é o dos valores distintos de UMA coluna, que já está materializada em
+ * memória. Guardar a chave de cada um custa menos que o dicionário que os guarda.
+ */
+const CHAVES_DO_DICIONARIO = new WeakMap<readonly DaxValue[], string[]>();
+
+export function chavesDoDicionario(valores: readonly DaxValue[]): string[] {
+  const pronto = CHAVES_DO_DICIONARIO.get(valores);
+  if (pronto) return pronto;
+  const out = new Array<string>(valores.length);
+  for (let i = 0; i < valores.length; i++) out[i] = identityKey(valores[i] as DaxValue);
+  CHAVES_DO_DICIONARIO.set(valores, out);
+  return out;
+}
+
 export function identityKey(v: DaxValue): string {
   if (isBlank(v)) return 'b:';
-  if (typeof v === 'string') return `s:${v.toLocaleLowerCase('pt-BR')}`;
-  if (typeof v === 'boolean') return `n:${v ? 1 : 0}`;
-  if (isDate(v)) return `n:${serialFromDate(v)}`;
-  return `n:${v}`;
+
+  if (typeof v === 'string') {
+    const memo = CHAVE_TEXTO.get(v);
+    if (memo !== undefined) return memo;
+    const out = `s:${v.toLocaleLowerCase('pt-BR')}`;
+    if (CHAVE_TEXTO.size < TETO_DE_CHAVES) CHAVE_TEXTO.set(v, out);
+    return out;
+  }
+
+  if (typeof v === 'boolean') return v ? 'n:1' : 'n:0';
+
+  if (isDate(v)) {
+    const t = v.getTime();
+    const memo = CHAVE_DATA.get(t);
+    if (memo !== undefined) return memo;
+    const out = `n:${serialFromDate(v)}`;
+    if (CHAVE_DATA.size < TETO_DE_CHAVES) CHAVE_DATA.set(t, out);
+    return out;
+  }
+
+  const memo = CHAVE_NUMERO.get(v);
+  if (memo !== undefined) return memo;
+  const out = `n:${v}`;
+  if (CHAVE_NUMERO.size < TETO_DE_CHAVES) CHAVE_NUMERO.set(v, out);
+  return out;
 }

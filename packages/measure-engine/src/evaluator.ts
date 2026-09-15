@@ -13,7 +13,7 @@ import { normalizeName } from '../../semantic-model/src/model.ts';
 import { graoReduzidoDe } from '../../semantic-model/src/projecao.ts';
 import type { DaxNode } from './ast.ts';
 import { aplicaTipo } from './calculated.ts';
-import type { Dataset, Row } from './dataset.ts';
+import { colunasDe, dicionarioDaColuna, indiceDaLinha, type Dataset, type Row } from './dataset.ts';
 import {
   FilteredContext,
   type TableValue,
@@ -33,6 +33,7 @@ import {
   toNumber,
   toText,
   compareValues,
+  chavesDoDicionario,
   identityKey,
 } from './value.ts';
 
@@ -112,6 +113,9 @@ export function projecaoDeHierarquia(parte: string): ((d: Date) => DaxValue) | u
 /** Os níveis que `projecaoDeHierarquia` conhece — para mensagem de erro. */
 export const NIVEIS_DE_HIERARQUIA: readonly string[] = Object.keys(HIERARQUIA);
 
+/** O conjunto de chaves de agrupamento, por declaração. Ver `scopeWithGrouping`. */
+const CHAVES_DE_AGRUPAMENTO = new WeakMap<object, Set<string>>();
+
 export class Evaluator {
   readonly model: SemanticModel;
   readonly dataset: Dataset;
@@ -134,9 +138,12 @@ export class Evaluator {
     this.now = opts.now;
     // O contexto de filtro precisa ler coluna de junção, e cinco delas são
     // calculadas. Só o avaliador sabe calcular DAX, então ele passa a função.
+    //
+    // Passa a FÁBRICA de leitores, não o leitor: `filter.ts` varre milhões de linhas
+    // por uma coluna de junção fixa, e é lá que a normalização içada se paga.
     this.propagation =
       opts.propagation ??
-      buildPropagation(this.model, (t, c, row) => this.columnValue(t, c, row));
+      buildPropagation(this.model, (t, c) => this.leitorDeColuna(t, c));
   }
 
   // -------------------------------------------------------------------------
@@ -173,9 +180,7 @@ export class Evaluator {
 
   /** Todos os valores de uma coluna no contexto de filtro corrente. */
   columnValues(table: string, column: string): DaxValue[] {
-    return this.filterRows(this.rootScope(), table).map((r) =>
-      this.columnValue(table, column, r),
-    );
+    return this.filterRows(this.rootScope(), table).map(this.leitorDeColuna(table, column));
   }
 
   rootScope(): EvalScope {
@@ -232,6 +237,23 @@ export class Evaluator {
     base: EvalScope,
     colunas: Iterable<readonly [string, string] | readonly [string, string, string | null]>,
   ): EvalScope {
+    // **Memoizado pela DECLARAÇÃO, e é ela que se repete.** Um visual declara as
+    // mesmas chaves de eixo para todos os seus grupos, e uma matriz para todas as
+    // suas células — `widget-engine` monta o array uma vez e o passa aqui milhares
+    // de vezes. Recalcular normalizava dois ou três nomes por chave a cada chamada:
+    // medido em 14/09/2026 nas 14 páginas, 997 ms aqui dentro mais 511 ms em
+    // `normalizeName`, todos para reconstruir o MESMO conjunto.
+    //
+    // O conjunto sai compartilhado entre escopos, e isso é seguro porque
+    // `agrupamento` é `ReadonlySet` e só responde `has` — quem quiser outro
+    // agrupamento chama de novo com outra declaração.
+    const memoizavel = typeof colunas === 'object' && colunas !== null;
+    if (memoizavel) {
+      const pronto = CHAVES_DE_AGRUPAMENTO.get(colunas as object);
+      if (pronto !== undefined) {
+        return { filter: base.filter, rows: base.rows, vars: base.vars, agrupamento: pronto };
+      }
+    }
     const chaves = new Set<string>();
     for (const [tabela, coluna, nivel] of colunas) {
       // Um nível de hierarquia entra sob chave própria (`t[c].[mês]`), e não sob a
@@ -242,6 +264,7 @@ export class Evaluator {
       const daColuna = `${normalizeName(tabela)}[${normalizeName(coluna)}]`;
       chaves.add(nivel ? `${daColuna}.[${normalizeName(nivel)}]` : daColuna);
     }
+    if (memoizavel) CHAVES_DE_AGRUPAMENTO.set(colunas as object, chaves);
     return { filter: base.filter, rows: base.rows, vars: base.vars, agrupamento: chaves };
   }
 
@@ -274,11 +297,138 @@ export class Evaluator {
    * regra de dias úteis uma vez por linha, por medida.
    */
   columnValue(table: string, column: string, row: Row): DaxValue {
+    // **A ordem destas duas linhas é a otimização, e ela é sutil.** Este método roda
+    // uma vez por CÉLULA lida — é o laço mais quente do avaliador. A versão de antes
+    // normalizava o nome da coluna E o da tabela e ia ao `Dataset` perguntar se a
+    // coluna é física, tudo isso ANTES de olhar a linha. Mas o caso esmagadoramente
+    // comum é a coluna estar na linha, e aí nada disso era preciso.
+    //
+    // `ck in row` primeiro resolve o caso comum com **uma** normalização e nenhuma
+    // ida ao `Dataset`. Medido em 13/09/2026 nas 14 páginas, `normalizeName` era
+    // 13,6% do tempo total mesmo já memoizada, e 5,8 s dos 6,9 s vinham daqui.
+    //
+    // **Por que continua equivalente.** A condição de antes era `fisica || naLinha`,
+    // devolvendo `row[ck] ?? BLANK` nos dois casos. Quando `naLinha` é falso,
+    // `row[ck]` é `undefined` por definição (`in` percorre o protótipo, então uma
+    // vista colunar responde `true` pelas colunas físicas dela) e `?? BLANK` devolve
+    // BLANK. Então o ramo "física mas ausente NESTA linha" — que existe de verdade:
+    // `adotaTabela` monta `physical` como a UNIÃO das chaves de todas as linhas, e
+    // uma linha esparsa pode não ter a coluna — devolve BLANK aqui e devolvia BLANK
+    // antes. O que não se pode fazer é DERRUBAR o teste de coluna física: sem ele a
+    // linha esparsa cairia no caminho de coluna calculada e erraria alto.
     const ck = normalizeName(column);
-    if (this.dataset.hasPhysicalColumn(table, column) || ck in row) {
-      return row[ck] ?? BLANK;
-    }
+    if (ck in row) return row[ck] ?? BLANK;
+    if (this.dataset.temColunaFisicaPorChave(normalizeName(table), ck)) return BLANK;
+    return this.valorFrio(table, column, ck, row);
+  }
 
+  /**
+   * Um leitor de UMA coluna, com os nomes já normalizados.
+   *
+   * Existe porque todo sítio quente tem a mesma forma — tabela e coluna fixas, laço
+   * sobre linhas — e `columnValue` normaliza os dois nomes **uma vez por célula**.
+   * Içar as duas normalizações para fora do laço é o que este fecho faz, e nada mais:
+   * o corpo abaixo é o caminho quente de `columnValue` palavra por palavra.
+   *
+   * **Medido antes de existir** (`node tools/bench/src/leitor-coluna.ts`, 14/09/2026),
+   * 300 mil linhas x 30 colunas, 5 repetições, 4 rodadas com a ordem alternada:
+   *
+   *   vista colunar     A 29 30 29 27 ms      B 21 22 21 21 ms     B ganhou 12/12
+   *   objeto por linha  A 49 / 74 / 39 ms entre execuções — sem sinal nenhum
+   *
+   * Os dois números são o resultado, e o segundo importa tanto quanto o primeiro.
+   * Na vista o ganho é de 22% a 34% e apareceu em TODOS os 12 pares de três
+   * execuções; no objeto por linha a própria variante A variou 90% entre execuções
+   * e os pares foram de -42% a +42%. Ali não há ganho **nem perda** — o custo é a
+   * busca por hash num objeto de 30 chaves, que as duas variantes pagam igual.
+   * Produção carrega colunar (`servidor.ts`, `worker-calculador.ts`: `colunar: true`),
+   * então o caso medido com sinal é o caso que roda.
+   *
+   * **Só use isto quando a coluna for fixa no laço.** Para nome variável a cada
+   * chamada, `columnValue` é o certo: o fecho pagaria a normalização do mesmo jeito
+   * e ainda alocaria.
+   */
+  leitorDeColuna(table: string, column: string): (row: Row) => DaxValue {
+    const ck = normalizeName(column);
+    const tk = normalizeName(table);
+    return (row: Row): DaxValue => {
+      if (ck in row) return row[ck] ?? BLANK;
+      if (this.dataset.temColunaFisicaPorChave(tk, ck)) return BLANK;
+      return this.valorFrio(table, column, ck, row);
+    };
+  }
+
+  /**
+   * Um leitor da CHAVE DE IDENTIDADE de uma coluna — `identityKey` do valor, sem
+   * passar pelo valor quando dá.
+   *
+   * `identityKey` já é memoizada e acerta 99,46% das vezes, então o que ela custa
+   * não é o cálculo: é `isBlank`, a cadeia de `typeof` e uma busca por hash, uma vez
+   * por célula. No armazenamento colunar a coluna é um dicionário com POUCOS
+   * distintos, e a chave pode ser calculada **uma vez por distinto** e depois lida
+   * por índice de array.
+   *
+   * **Medido antes de existir** (`node tools/bench/src/identidade-por-id.ts`,
+   * 14/09/2026), 300 mil linhas x 30 colunas, 5 repetições, 4 rodadas alternadas,
+   * com o preparo DENTRO do cronômetro:
+   *
+   *      17 distintos ...  A 10 ms   B  2 ms    B ganhou 4/4   (+72% a +80%)
+   *     997 distintos ...  A 18 ms   B  4 ms    B ganhou 4/4   (+72% a +79%)
+   *  300.000 distintos ...  A 70 ms   B 67 ms    B ganhou 3/4   (-4% a +12%)
+   *
+   * A terceira linha é a que importa para o risco: com um distinto por linha o
+   * preparo é uma varredura inteira e o ganho some — mas **não vira perda**. Não há
+   * cardinalidade em que isto custe caro.
+   *
+   * **O preparo é preguiçoso, e isso foi aprendido errando** (14/09, `leitorDaChave`
+   * ansioso): um filtro montado por combinação de eixo pode nunca ver linha nenhuma,
+   * porque o índice de igualdade resolve o grupo antes. Preparar na PRIMEIRA linha
+   * cobra o preparo só de quem varre.
+   *
+   * O caminho lento fica para quem não vem do armazenamento (coluna calculada,
+   * tabela anônima de `ADDCOLUMNS`, linha copiada) e é o mesmo de sempre — as duas
+   * respostas são `identityKey` do mesmo valor, por construção.
+   */
+  leitorDeIdentidade(table: string, column: string): (row: Row) => string {
+    const ck = normalizeName(column);
+    const ler = this.leitorDeColuna(table, column);
+    let chaves: string[] | null = null;
+    let ids: Int32Array | null = null;
+    let molde: object | null = null;
+    let decidiu = false;
+    return (row: Row): string => {
+      if (!decidiu) {
+        decidiu = true;
+        const d = dicionarioDaColuna(row, ck);
+        if (d !== null) {
+          ids = d.ids;
+          chaves = chavesDoDicionario(d.valores);
+          molde = Object.getPrototypeOf(row) as object;
+        }
+      }
+      // **O guarda é o PROTÓTIPO, e não `tem índice`.** `VistaDeLinhas` monta um
+      // protótipo por tabela, então protótipo igual é a mesma vista — a mesma
+      // tabela, o mesmo array de ids. Só conferir que a linha TEM índice deixaria
+      // uma linha de OUTRA tabela indexar este dicionário na posição dela: chave de
+      // outra linha, agrupamento errado, e nenhum erro. É uma comparação de
+      // ponteiro, e é o que separa uma otimização de uma aposta.
+      if (chaves !== null && Object.getPrototypeOf(row) === molde) {
+        return chaves[ids![indiceDaLinha(row)]!]!;
+      }
+      return identityKey(ler(row));
+    };
+  }
+
+  /**
+   * O que sobra de `columnValue` depois do caminho quente: coluna calculada, e os
+   * quatro erros altos que distinguem "não existe no modelo" de "existe e não veio".
+   *
+   * Separado para ter **um** corpo só, e não dois. Este ramo é o que carrega as
+   * mensagens de diagnóstico caras de reconstruir (projeção de colunas, grão
+   * reduzido, ciclo entre calculadas); duas cópias divergiriam em silêncio, e a
+   * cópia errada seria a que alguém lê às duas da manhã.
+   */
+  private valorFrio(table: string, column: string, ck: string, row: Row): DaxValue {
     const col = this.model.column(table, column);
     if (!col) {
       throw new DaxEvalError(`Coluna não existe no modelo: '${table}'[${column}]`);
@@ -313,6 +463,8 @@ export class Evaluator {
       );
     }
 
+    // Caminho FRIO — só coluna calculada chega aqui. Normalizar de novo custa um
+    // `Map.get` e evita segurar a chave viva pelo caminho quente acima.
     const key = `${normalizeName(table)}[${ck}]`;
     if (this.columnStack.includes(key)) {
       throw new DaxEvalError(
@@ -352,8 +504,8 @@ export class Evaluator {
    */
   valuesOfColumnRef(node: DaxNode, scope: EvalScope, onde: string): DaxValue[] {
     if (node.type === 'ColumnRef') {
-      return this.filterRows(scope, node.table).map((r) =>
-        this.columnValue(node.table, node.column, r),
+      return this.filterRows(scope, node.table).map(
+        this.leitorDeColuna(node.table, node.column),
       );
     }
 
@@ -369,8 +521,9 @@ export class Evaluator {
         );
       }
       const base = node.base;
+      const ler = this.leitorDeColuna(base.table, base.column);
       return this.filterRows(scope, base.table).map((r) => {
-        const v = this.columnValue(base.table, base.column, r);
+        const v = ler(r);
         if (isBlank(v)) return BLANK;
         if (!(v instanceof Date)) {
           throw new DaxEvalError(
@@ -539,7 +692,11 @@ export class Evaluator {
   transitionRowContext(scope: EvalScope): FilteredContext {
     let ctx = scope.filter;
     for (const [tabela, row] of scope.rows) {
-      const columns = new Set(Object.keys(row));
+      // `colunasDe`, e não `Object.keys`: a linha pode ser uma vista colunar, e aí
+      // as colunas estão no protótipo. `Object.keys` devolveria vazio, o `continue`
+      // abaixo pularia a tabela, e a transição de contexto simplesmente não
+      // aconteceria — sem erro. Ver `COLUNAS_DA_LINHA` em `dataset.ts`.
+      const columns = new Set(colunasDe(row));
       if (columns.size === 0) continue;
       const alvo = rowKey(row, columns);
       ctx = ctx.with([

@@ -11,7 +11,7 @@
 
 import { normalizeName } from '../../semantic-model/src/model.ts';
 import { walk, type DaxNode } from './ast.ts';
-import type { Row } from './dataset.ts';
+import { copiaLinha, type Row } from './dataset.ts';
 import type { EvalScope, Evaluator } from './evaluator.ts';
 import { igualdadeIndexavel, indiceDe, MINIMO_PARA_INDEXAR } from './indice.ts';
 import {
@@ -910,7 +910,10 @@ def('LOOKUPVALUE', (args, scope, ev, nome) => {
     throw new DaxEvalError(`${nome}: o primeiro argumento tem de ser coluna; veio ${resultado.type}.`);
   }
 
-  const pares: { coluna: string; valor: DaxValue }[] = [];
+  // O leitor entra no par, e não o nome: o laço abaixo varre a tabela INTEIRA por
+  // um conjunto de colunas fixo, então normalizar por célula era pagar o mesmo
+  // nome uma vez por linha. Ver `Evaluator.leitorDeColuna`.
+  const pares: { ler: (row: Row) => DaxValue; valor: DaxValue }[] = [];
   for (let i = 1; i < args.length; i += 2) {
     const col = args[i]!;
     if (col.type !== 'ColumnRef') {
@@ -922,20 +925,24 @@ def('LOOKUPVALUE', (args, scope, ev, nome) => {
           `'${resultado.table}'. LOOKUPVALUE procura numa tabela só.`,
       );
     }
-    pares.push({ coluna: col.column, valor: valor(args, i + 1, scope, ev, nome) });
+    pares.push({
+      ler: ev.leitorDeColuna(resultado.table, col.column),
+      valor: valor(args, i + 1, scope, ev, nome),
+    });
   }
 
   const encontrados = new Map<string, DaxValue>();
+  const lerResultado = ev.leitorDeColuna(resultado.table, resultado.column);
   for (const row of ev.dataset.rows(resultado.table)) {
     let casa = true;
     for (const p of pares) {
-      if (compareValues(ev.columnValue(resultado.table, p.coluna, row), p.valor, false, nome) !== 0) {
+      if (compareValues(p.ler(row), p.valor, false, nome) !== 0) {
         casa = false;
         break;
       }
     }
     if (!casa) continue;
-    const v = ev.columnValue(resultado.table, resultado.column, row);
+    const v = lerResultado(row);
     encontrados.set(identityKey(v), v);
   }
 
@@ -1156,7 +1163,15 @@ defTable('ADDCOLUMNS', (args, scope, ev, nome) => {
 
   const rows = origem.rows.map((row) => {
     const escopo = ev.scopeWithTableRow(scope, origem, row);
-    const nova: Row = { ...row };
+    // `copiaLinha`, e não `{ ...row }`: espalhar só copia propriedade PRÓPRIA, e
+    // numa vista colunar as colunas moram no protótipo — a linha nova sairia com as
+    // colunas acrescentadas e NENHUMA da origem.
+    //
+    // Hoje isto é defensivo, e vale dizer: a guarda de linhagem acima recusa origem
+    // NOMEADA, então `origem.rows` é sempre de tabela anônima — objeto simples. A
+    // vista só chegaria aqui se um dia a guarda caísse, e é exatamente o dia em que
+    // um `{ ...row }` falharia calado.
+    const nova: Row = copiaLinha(row);
     for (let i = 1, k = 0; i < args.length; i += 2, k++) {
       nova[nomes[k]!] = ev.evaluate(args[i + 1]!, escopo);
     }
