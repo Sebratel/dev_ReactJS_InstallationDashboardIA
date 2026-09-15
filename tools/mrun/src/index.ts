@@ -65,6 +65,7 @@ import {
   usaFonteExterna,
 } from '../../../packages/transform-engine/src/runner.ts';
 import { isTable } from '../../../packages/transform-engine/src/value.ts';
+import type { MScan } from '../../../tools/validate/src/mlayer.ts';
 import { rowCountComparable, scanM } from '../../../tools/validate/src/mlayer.ts';
 import { argvDoFilho, ErroDeArgumento, parseArgs, type Args } from './args.ts';
 
@@ -293,6 +294,18 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
     },
   });
 
+  // Quantos passos a query TEM é propriedade do texto, não do que o avaliador
+  // reteve. Vem antes da execução de propósito: em modo de produção `r.passos`
+  // volta VAZIO — de propósito, "vazio em vez de mentir" — e contar por ele diria
+  // zero passo justamente nas queries grandes.
+  let scan: MScan | null = null;
+  try {
+    scan = scanM(q.m_expression!);
+  } catch {
+    // Query que o scanner estático não lê (função dentro de `let`). Não é falha
+    // desta execução.
+  }
+
   try {
     const feitas = await runQueries({
       specs: todas,
@@ -300,6 +313,19 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
       culture,
       fonte,
       web,
+      // A RÉGUA TEM DE ESTAR NO MODO DE PRODUÇÃO — e esta não estava.
+      //
+      // `tools/snapshot`, que é quem materializa de verdade, passa
+      // `guardaPassos: false` desde 09/09/2026. Esta ferramenta omitia a chave, e
+      // a omissão vale `true`: ela media um avaliador que mantém as 56 tabelas
+      // intermediárias de `protocolos-geral` vivas ao mesmo tempo (9,8 GB de pico)
+      // contra uma materialização que as libera assim que a última citação é gasta.
+      //
+      // O estrago não é o tempo, é o diagnóstico: "a camada M precisa de 13 GB"
+      // entrou na linha de base da migração de M para SQL como se fosse fato da
+      // plataforma, e era fato da ferramenta de medir. Só `--passos` lê os valores,
+      // e agora só ele paga por eles.
+      guardaPassos: args.passos,
       reconcilia,
     });
     const r = feitas.get(q.id)!;
@@ -308,14 +334,8 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
     // Paridade barata: quando nenhum passo M mexe em linha, a contagem final tem
     // que ser exatamente a da fonte. Divergência aí é bug do engine, não do M.
     let alerta: string | undefined;
-    try {
-      const scan = scanM(q.m_expression!);
-      if (rowCountComparable(scan) && daFonte !== null && daFonte !== r.tabela.rowCount) {
-        alerta = `nenhum passo M mexe em linha, mas ${daFonte} da fonte viraram ${r.tabela.rowCount}`;
-      }
-    } catch {
-      // Query que o scanner estático não lê (função dentro de `let`). Não é falha
-      // desta execução.
+    if (scan && rowCountComparable(scan) && daFonte !== null && daFonte !== r.tabela.rowCount) {
+      alerta = `nenhum passo M mexe em linha, mas ${daFonte} da fonte viraram ${r.tabela.rowCount}`;
     }
 
     return {
@@ -324,7 +344,7 @@ async function rodaUma(q: ResolvedQuery): Promise<Resultado> {
       linhasDaFonte: daFonte,
       linhasFinais: r.tabela.rowCount,
       colunas: [...r.tabela.columns],
-      passos: r.passos.size,
+      passos: scan?.steps.length ?? r.passos.size,
       ms: Date.now() - inicio,
       msExecute,
       msConversao,
