@@ -173,6 +173,7 @@ npm run paginas                              # as 14 páginas
 npm run paginas -- --pagina=visao-geral
 npm run paginas -- --erros                   # só as mensagens, inteiras
 npm run paginas:shas                         # um SHA por visual: o número mudou?
+npm run paginas -- --objeto                  # o armazenamento antigo (a API usa colunar)
 ```
 
 Calcula todos os visuais de todas as páginas sobre o snapshot e conta o que fecha.

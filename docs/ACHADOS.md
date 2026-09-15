@@ -9536,3 +9536,86 @@ empreitada é o que se sustenta sem ganho de tempo:
 > A pergunta que separa as duas é *qual pedaço daqueles 18% é trabalho que já foi feito
 > antes?* — e a resposta aqui era: nenhum. **Percentual alto é permissão para investigar,
 > nunca resposta sobre o que fazer.**
+
+---
+
+## #118 — A régua da campanha media o armazenamento que a API não usa, e um atalho inteiro estava morto: 0 de 47.767.560
+
+**Data:** 15/09/2026
+
+Terminado o #117, fui perfilar o relatório inteiro para achar o próximo alvo.
+`identityKey` liderava com **3.802 ms, 14,3%** — e 34,1% dessas chamadas vinham de
+dentro de `Evaluator.leitorDeIdentidade`, que existe **justamente para não chamar**
+`identityKey`. O atalho estava sendo usado ao contrário.
+
+### O contador
+
+```
+chamadas ............... 47.767.560
+caminho rápido (dic) ... 0          (0,0%)
+sem dicionário ......... 47.767.560 (100,0%)
+  ...travou à toa ...... 0          (a linha TINHA dicionário)
+molde diferente ........ 0          (0,0%)
+```
+
+**Zero.** Não uma fração pequena — zero. E `travou à toa` em 0 elimina a explicação
+mais provável (a decisão do leitor é tomada na primeira linha e fica travada): o
+dicionário não existia em linha nenhuma.
+
+### A causa, e é a mesma família de erro que este repositório já registrou uma vez
+
+`Evaluator.leitorDeIdentidade` tira a chave direto do dicionário da coluna, e
+**dicionário só existe no armazenamento colunar**. A API carrega colunar
+(`servidor.ts` e `worker-calculador.ts`, `colunar: true`). `tools/paginas` — a régua
+com que esta campanha inteira mediu — carregava em **modo objeto**, por omissão.
+
+Era a repetição do commit `468c39f`, *"a escada media o caminho que a API NÃO usa"*,
+noutra ferramenta e um dia depois.
+
+**A nota que autorizava isso existia, e eu a li errado.** `servidor.ts` diz que
+"ferramenta em lote continua em objeto, de propósito" — e o motivo declarado ali é o
+**materializador**: ele grava, e escrever coluna física numa vista tem de errar alto.
+`tools/paginas` não grava nada; ela lê e calcula, exatamente como a API. A nota
+cobria uma ferramenta e eu a apliquei a duas.
+
+### O que isso custou, e o que não custou
+
+O que **não** custou: nada do que foi commitado está errado. Refeito o A/B no
+armazenamento certo, o ganho do #116 é **maior**, não menor:
+
+| página, colunar, 4 pares alternados | sem | com | ganho | |
+|---|---:|---:|---:|---|
+| `agendamento-field` | 7.322 ms | 4.896 ms | **+33,1%** | 4/4 |
+| `relatorio-do-ano` | 123 ms | 84 ms | **+31,9%** | 4/4 |
+| `protocolos-detalhados` | 845 ms | 781 ms | **+7,5%** | 4/4 |
+
+Em objeto eram +29,3%, +23,2% e +10,4%. Faz sentido que cresça: `preparaCaminho` usa
+`leitorDeIdentidade`, e é em colunar que o atalho dele existe de verdade.
+
+O que **custou**: o alvo seguinte. `identityKey` com 14,3% era o gargalo do caminho
+que a API não executa. Eu estava a um passo de otimizar um problema que produção não
+tem — e o perfil, sozinho, jamais diria isso.
+
+### O conserto
+
+`npm run paginas` e `npm run paginas:shas` passaram a carregar **colunar por padrão**,
+com `--objeto` para o outro lado. Em colunar o relatório inteiro sai de **7.817 para
+4.586 ms de carga** e de 15.676 para 14.297 ms de cálculo.
+
+A troca é conferida, não suposta: os **306 SHAs das 14 páginas são idênticos nos dois
+armazenamentos** — só a linha de banner do npm difere entre as duas saídas. É a mesma
+pergunta que `npm run bench:colunar-paridade` responde, agora ao alcance de um `diff`.
+
+### A lição
+
+> **Uma ferramenta de medição tem uma configuração, e a configuração é parte da
+> medida.** Eu conferi o relógio (#106), a metodologia (par a par, ordem alternada), o
+> grupo de controle (#116) e a equivalência do resultado (306 SHAs) — e não conferi se
+> a ferramenta estava ligada no mesmo modo que produção. O sintoma disso não é um
+> número errado: é um número **certo sobre a coisa errada**, que é bem mais difícil de
+> desconfiar.
+
+> **Uma nota que autoriza uma exceção precisa dizer a QUEM ela se aplica.** "Ferramenta
+> em lote fica em objeto" parecia cobrir `tools/paginas`; o motivo escrito logo abaixo
+> ("é ela que GRAVA") só cobria o materializador. Duas frases, dois escopos diferentes,
+> e quem lê rápido junta os dois.

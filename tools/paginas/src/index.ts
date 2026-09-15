@@ -20,6 +20,7 @@
 //   npm run paginas -- --pagina=diario-instalacao
 //   npm run paginas -- --erros          # só as mensagens, inteiras
 //   npm run paginas -- --visuais        # quanto cada visual custou, do maior ao menor
+//   npm run paginas -- --objeto         # o armazenamento antigo (a API usa colunar)
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,8 +39,14 @@ const pedidas = args
   .filter((a) => a.startsWith('--pagina='))
   .flatMap((a) => a.slice('--pagina='.length).split(',').map((s) => s.trim()))
   .filter(Boolean);
+/**
+ * Medir em armazenamento colunar é o padrão porque é o que a API faz.
+ * `--objeto` roda o outro caminho — os dois têm de dar o mesmo número, e é o que
+ * `npm run bench:colunar-paridade` confere visual a visual.
+ */
+const colunar = !args.includes('--objeto');
 for (const a of args) {
-  if (a !== '--erros' && a !== '--visuais' && !a.startsWith('--pagina=')) {
+  if (a !== '--erros' && a !== '--visuais' && a !== '--objeto' && !a.startsWith('--pagina=')) {
     console.error(`argumento desconhecido: ${a}`);
     process.exit(2);
   }
@@ -99,6 +106,26 @@ for (const dash of alvo as DashboardSpec[]) {
       // e um relatório que muda de resultado no meio da varredura não é conferível.
       now: AGORA,
       precisaFormaCompleta: todaFormaCompleta(model),
+      // **Armazenamento colunar — o mesmo que a API usa.** `servidor.ts` e
+      // `worker-calculador.ts` passam `colunar: true`; esta ferramenta passava
+      // `false` por omissão, e por isso media um caminho que produção não executa.
+      //
+      // **O que isso escondia, medido em 15/09/2026:** `Evaluator.leitorDeIdentidade`
+      // tira a chave de identidade direto do dicionário da coluna, e o dicionário só
+      // existe no armazenamento colunar. Em modo objeto o atalho **nunca dispara** —
+      // 0 de 47.767.560 chamadas nas 14 páginas —, e `identityKey` liderava o perfil
+      // com 14,3%. Perfilar aqui apontava para um gargalo que a API não tem.
+      //
+      // A nota em `servidor.ts` diz que ferramenta em lote fica em objeto de
+      // propósito, e o motivo dela é o materializador: ele **grava**, e escrever
+      // coluna física numa vista tem de errar alto. Esta ferramenta não grava nada —
+      // ela lê e calcula, exatamente como a API. Por isso o padrão aqui é o de
+      // produção, e `--objeto` existe para quem quiser o outro lado.
+      //
+      // As duas representações dão o MESMO número: `npm run bench:colunar-paridade`
+      // compara os 306 visuais das 14 páginas nos dois caminhos, com zero
+      // divergências. É esse programa que autoriza confiar nesta troca.
+      colunar,
     });
     const msCarga = Date.now() - t0;
     // Com `--visuais`, cada visual se anuncia ao terminar. Numa página de 40 minutos,
