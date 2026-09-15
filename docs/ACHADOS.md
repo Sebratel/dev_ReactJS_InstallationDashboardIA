@@ -10056,3 +10056,143 @@ aquele.
 > certo, específico, com os dois intervalos de data impressos lado a lado — e ficou
 > onze dias invisível porque a ferramenta que o imprime estava quebrada. Diagnóstico
 > bom morre junto com a ferramenta que o carrega.
+
+---
+
+## #123 — A régua da camada M estava fora do modo de produção, e os dois números que justificavam a migração de M para SQL eram dela, não da plataforma
+
+**Data:** 15/09/2026
+
+A migração dos 158 passos de M para SQL (#112) começa medindo a camada M. Antes de
+escrever a primeira linha de SQL, fui conferir **o que ela compra** — e a régua estava
+medindo outro programa.
+
+### A omissão
+
+`packages/transform-engine/src/runner.ts` recebe `guardaPassos`, e a omissão vale
+`true`. `tools/snapshot` — quem materializa de verdade — passa **`false`** desde
+09/09/2026, com o motivo escrito no próprio `avaliaQuery`:
+
+> **`guardaPassos` é a diferença entre 9,8 GB e caber em 8 GB, medida em 09/09/2026.**
+> […] mantendo as 56 tabelas intermediárias de `protocolos-geral` vivas ao mesmo
+> tempo, 94.165 linhas × 63 colunas cada.
+
+`tools/mrun` — a ferramenta de MEDIR a camada M — omitia a chave. Media um avaliador
+que retém as 56 tabelas contra uma materialização que as libera assim que a última
+citação é gasta.
+
+### O que isso fez com os números
+
+Mesma query, mesmas flags, só a chave:
+
+```
+protocolos-geral --colunas --timeout=1800
+
+                         régua velha        régua em produção
+heap ................... estourou em 8 GB   roda em 8 GB
+total .................. 155.594 ms          67.131 ms
+  banco ................ 128.731 (83%)       56.114 (84%)
+  avaliação de M ....... 26.860 (17%)        11.013 (16%)
+```
+
+**Os dois números que eu tinha registrado como linha de base eram os dois falsos.**
+
+1. *"`--memoria=8192` ESTOURA; é preciso 13.312 MB numa máquina de 16 GB. Esse estouro
+   é, por si, metade do argumento da migração."* — **Não existe esse requisito.** Era da
+   ferramenta. A materialização de produção roda em 8 GB e sempre rodou, desde 09/09.
+2. *"avaliação de M: 26.860 ms"* — são **11.013 ms**. A régua inflava o alvo em **2,4×**.
+
+(Parte da queda do total é o banco quente, não a mudança. O número que a mudança move
+é o de M, e ele é 2,4× menor porque o avaliador passou a fazer estritamente menos
+trabalho.)
+
+### O que sobra da justificativa
+
+A migração continua valendo — por outro motivo:
+
+| argumento | estado |
+|---|---|
+| "a camada M precisa de 13 GB" | **caiu**, era da régua |
+| "M é 17% da materialização" | é **16%**, de 11 s — e empurrar passo para o SQL move trabalho para dentro dos 84% que já são banco |
+| "destrava `protocolos-geral` no refresh.yaml" | **não destrava**: ela está fora por `mysql2`, e o join de `GESTORES EQUIPES` fica em M de qualquer jeito |
+| colapsar as 5 cópias do mapa CIDADE→SIGLA (#114) | **de pé** |
+| 158 passos → ~6 | **de pé** |
+
+**É uma migração de manutenção e de fonte única da verdade, não de desempenho.** E não
+toca no relatório em momento nenhum: a tela lê o snapshot, nunca a camada M.
+
+### A lição
+
+> **A régua tem de estar no modo de produção — e "produção" inclui as chaves que a
+> ferramenta de produção passa, não só o armazenamento que ela usa.** Esta é a segunda
+> vez nesta campanha: em #118 a régua media objeto onde a API usa colunar, e agora ela
+> media `guardaPassos: true` onde o materializador passa `false`. As duas vezes o
+> sintoma foi o mesmo — um alvo maior do que é, e uma justificativa construída em cima
+> dele.
+
+> **O diagnóstico errado é mais caro que a ausência dele.** Sem medição nenhuma eu teria
+> ido medir. Com a medição errada eu tinha uma linha de base, um arquivo de memória e um
+> plano — e ia gastar uma sessão inteira migrando 158 passos para ganhar um número que
+> não existia.
+
+---
+
+## #124 — O aquecimento de fundo enchia a chave errada, e errava 100% justamente na página que ele existia para consertar
+
+**Data:** 15/09/2026
+
+O pré-carregamento dos visuais abaixo da dobra (commit `15c0da6`) pedia `?visual=X` e
+mais nada. Mas `filtros` faz parte de `ChaveDeResposta`, e a rolagem manda os filtros
+com que a página abriu.
+
+### Medido contra os 14 layouts reais
+
+| página | visuais abaixo da dobra | filtro padrão | acertava? |
+|---|---:|---|---|
+| `agendamento-field` | **6** | SIM (mês corrente) | **NÃO** |
+| `relatorio-do-mes` | 2 | não | sim |
+| `premiacao-instalacao` | 1 | não | sim |
+| as outras 11 | 0 | — | — |
+
+Funcionava nas duas páginas com **3 visuais somados**, e errava 100% na única com peso:
+`agendamento-field`, 10 faixas, a página que motivou o corte eager inteiro (#94) e que
+leva ~2 min a frio. Ela abre travada no mês corrente, a rolagem pede
+`?filtro=<mês>&visual=X`, e o aquecedor enchia `?visual=X`.
+
+### Por que nada acusou
+
+O topo de `corte-eager.ts` já avisava, em 2026, com o incidente que o gerou:
+
+> Aquecer a chave errada não é lentidão, é aquecimento que **não aquece nada**; foi
+> assim que um clique em rajada bateu 17s numa página que o próprio `npm start` tinha
+> acabado de reportar "quente".
+
+E o topo de `aquecedor.ts` promete que isso é impossível: *"Fazendo o mesmo GET que o
+navegador faz, é impossível encher a chave errada."* A promessa é do arquivo; o código
+novo saiu dela.
+
+A suíte ficou verde: 1927/1927. E não por falta de teste — `aquecedor-eager.test.ts`
+tem um `throw new Error('URL não esperada')` no `fetch` falso, exatamente para policiar
+isto. O `catch {}` novo, de fundo, **engolia o throw**. Um teste que erra alto para
+dentro de um `catch` genérico é um teste desligado.
+
+### O conserto
+
+* `#aquece` pede cada visual de fundo com os filtros da ABERTURA
+  (`filtrosRecentes(pagina)[0]`), um GET por visual — `VisualNaDobra.tsx` pede um por
+  vez, e pedir os seis juntos encheria a chave `[a..f]`, que ninguém lê. Só o recorte
+  de abertura, e não os meses anteriores: cada item aqui é um visual pesado.
+* `idsRestantes` virou a **diferença de conjuntos** contra `idsIniciais` nas três
+  fontes (kpis, segmentações, faixas). A versão anterior omitia as segmentações de
+  `todos`: correto hoje, e silenciosamente errado no dia em que o corte eager mudar de
+  forma pela terceira vez — ele já mudou duas.
+* Seis testes novos. O dos filtros foi conferido contra a versão anterior: reprova, e
+  só ele.
+
+### A lição
+
+> **Um `catch` genérico dentro de um teste não é tolerância a falha: é uma tesoura no
+> fio do alarme.** O `throw` que policiava as URLs do aquecedor estava lá, certo, e
+> virou letra morta porque o código novo passou a engolir tudo o que o `fetch` falso
+> levantasse. Quem escreve um `catch {}` de fundo está, sem querer, escolhendo também o
+> que os testes daquele caminho ainda conseguem ver.
