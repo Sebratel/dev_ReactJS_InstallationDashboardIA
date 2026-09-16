@@ -62,7 +62,7 @@
 | **Autenticação** | **não existe.** A API serve todo número a todo pedido | **sim, e é o primeiro** |
 | **Refresh do dado** | `tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
 | **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando o catálogo inteiro menos `protocolos-produtividade` (não materializa em nenhum modo hoje, #81) — ver §2.2 abaixo | **pronto** |
-| Containerização | **não existe** nenhum `Dockerfile`. O `docker-compose.yml` sobe Redis e Kafka, não a aplicação | sim |
+| Containerização | **existe** (16/09/2026): `Dockerfile` na raiz, `docker-compose.prod.yml` com `api`/`redis`/`proxy` e `docker-compose.local.yml` como sobreposição de desenvolvimento | **pronto** |
 | Proxy reverso + TLS | **não existe** nenhum arquivo de Nginx no repositório | sim |
 | Processo supervisionado | **não existe** — nem PM2, nem unit de systemd, nem healthcheck de container | sim |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
@@ -276,10 +276,23 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
 
 ### 3.2 `docker-compose` de produção
 
-O `docker-compose.yml` da raiz sobe **Redis e Kafka**, e o cabeçalho dele explica por
-extenso por que não sobe mais que isso. Produção precisa de um arquivo **separado**
-(`docker-compose.prod.yml`), não de uma edição neste — o de hoje é a infra local do
-desenvolvimento e continua valendo para isso.
+⚠ **Não existe mais `docker-compose.yml` na raiz.** Até 16/09/2026 este parágrafo
+dizia que ele subia *Redis e Kafka* e servia de infra local — e o arquivo não está no
+repositório; nenhum compose declara Kafka. A descrição sobreviveu ao arquivo, e o
+estrago é concreto: é ela que faz alguém apontar `REDIS_URL` para
+`redis://localhost:6379` num `.env` de desenvolvimento, onde nada escuta. O sintoma
+é o log `[cache] Redis desligado do caminho por 10s após 3 falhas seguidas` a cada
+pedido, com a memória servindo por baixo.
+
+**Onde o Redis existe hoje:** só em `docker-compose.prod.yml`, como serviço `redis`,
+alcançável pelo nome `redis` dentro da rede do compose (`REDIS_URL` é montada lá, com
+`REDIS_PASSWORD`). Rodando **fora** do compose (`npm run api`, `npm start`) não há
+Redis nenhum: deixe `REDIS_URL` comentada e o cache é o de memória, que é o padrão
+documentado no §3.5.
+
+Para desenvolvimento há `docker-compose.local.yml`, que é **sobreposição** e não
+stack própria — ele só rebaixa `NODE_ENV` e liga `SEM_LOGIN`, e se usa com os dois
+`-f` (o cabeçalho do arquivo traz os comandos).
 
 O de produção tem três serviços: `api`, `redis` e `proxy`. **A tela não é um serviço:**
 a API já serve o build estático na raiz. Um container de Nginx servindo o React *e*
