@@ -10574,3 +10574,83 @@ Verificado que `packages/widget-engine/src/grupos.ts` é **byte a byte igual** e
 > Fica registrado, como o #109 e o #117: **ninguém precisa tentar isto de novo** sem
 > antes recontar a taxa de acerto. Se ela voltar aos 62%, o desenho volta à mesa — e
 > com duas unidades de código por parte, não uma.
+
+## #128 — A instrução de dimensionar o refresh mandava reservar ~4 min de recomputação que tinham virado 9,8 s doze dias antes, no commit do dia seguinte
+
+**Data:** 16/09/2026
+**Não é bug: é premissa vencida.** Nenhum número ficou errado na tela, nenhum intervalo
+ficou curto demais. O que ficou errado foi a **regra de dimensionamento** que governa
+todo intervalo novo de `specs/_catalog/refresh.yaml` — e ela errava por 24×, sempre a
+favor da segurança, que é exatamente o tipo de erro que ninguém vai atrás.
+
+### O que o arquivo mandava
+
+O bloco `ATENÇÃO (03/09/2026, ACHADOS #89)` media que `calculadas.ts --todas` — que
+qualquer grupo bem-sucedido dispara em seguida — recomputava as quatro colunas de
+`Status Protocolo Dia` do zero a ~50-65 s cada, e fechava com a instrução:
+
+> *"ao dimensionar qualquer intervalo novo, use o tempo de busca MAIS esses ~4 min, não
+> só o primeiro."*
+
+Os comentários de `frio` obedeciam: `field-agenda-slot` estava contabilizada como
+"13,5s de busca + os ~4 min = **~4min15s reais por tick**", e a folga do intervalo de
+30 min era justificada contra esse total.
+
+### O que ele custa hoje
+
+`npm run snapshot:calculadas -- --todas`, contra o snapshot em disco, processo inteiro
+cronometrado de fora em **10.309 ms** (relatório interno: 9.852 ms):
+
+| tabela calculada | tempo | linhas |
+|---|---:|---:|
+| BASE DE ORIGEM | 6 ms | 3 |
+| calendar | 12 ms | 13.099 |
+| **CALENDARIO AGENDAMENTO** | **3.787 ms** | 730 |
+| CALENDARIO CRIADO | 6 ms | 365 |
+| CALENDARIO INSTALADO | 12 ms | 713 |
+| PROTOCOLOS | 2 ms | 10 |
+| **Status Protocolo Dia** | **2.934 ms** | 13.099 |
+
+`Status Protocolo Dia` sai por `[tradução nativa]` e **não avalia uma linha de DAX**. A
+maior fatia do encadeamento deixou de ser ela: passou a ser `[DATA VIGENTE?]` de
+`CALENDARIO AGENDAMENTO`, 3.671 ms para 730 linhas.
+
+### A causa, e por que é o tipo de defeito mais fácil de deixar passar
+
+O conserto existe desde **04/09/2026** — commit `9083221`,
+`packages/snapshot/src/nativas.ts`, cujo próprio docstring de abertura diz o número:
+*"Congelar `Status Protocolo Dia` custa 211 s dos 238 s de `npm run
+snapshot:calculadas -- --todas`"* e a agregação levou aquilo *"para 4,6 s, 57× mais
+rápido"*.
+
+Ou seja: a medição correta foi feita, escrita e commitada **um dia depois** do bloco
+que ela invalidava. Ela só foi escrita **no arquivo que mudou**, e o arquivo que
+carregava a *instrução* baseada nela ficou intocado por doze dias. Nada os liga: o
+`nativas.ts` não cita `refresh.yaml`, e o `refresh.yaml` não citava `nativas.ts`.
+
+O efeito prático não é teórico. O `frio` foi dimensionado sob a conta antiga, e o
+comentário dele explicitamente rejeitava a conta certa — *"30 min dá ~7× de margem
+sobre esse total — não sobre só a busca, que sozinha sugeriria um número
+perigosamente pequeno"*. O total real de um tick de `frio` medido hoje é **190 s**, e a
+quase totalidade é a busca de `protocolos-produtividade` (~162 s), justamente o item
+que aquela frase mandava não usar como referência.
+
+### O conserto
+
+`specs/_catalog/refresh.yaml`, três blocos: o `ATENÇÃO` passa a carregar a tabela acima,
+a data em que o número caiu e a nova regra — **some ~10 s, não ~4 min** — e os dois
+comentários de `frio` que citavam "~4min15s" passam a citar os 190 s medidos.
+
+### A lição
+
+> **Uma otimização conserta o custo no arquivo dela; não conserta a instrução que
+> alguém escreveu em cima do custo antigo.** O `nativas.ts` fez tudo certo — mediu,
+> provou fidelidade célula a célula, travou a tradução por sha. O que faltou foi um
+> `grep` pelo número que ele acabava de derrubar.
+>
+> Aqui errou-se para o lado seguro, então o preço foi só orçamento parado. O mesmo
+> descolamento para o outro lado é um intervalo dimensionado contra um custo que
+> cresceu — e aí o tick seguinte começa antes do anterior terminar.
+>
+> **Ao derrubar um número que está escrito em algum lugar, procure onde ele está
+> escrito.** `grep -ran "4 min\|211 s\|238 s" specs docs` custa segundos.

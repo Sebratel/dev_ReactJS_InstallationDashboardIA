@@ -53,16 +53,38 @@
 #      relato/skill) NÃO tem este problema — ver grupo `frio` abaixo, 03/09/2026.
 #      A forma COMPLETA (`field-agenda`) continua de fora de qualquer grupo.
 #
-# ATENÇÃO (03/09/2026, ACHADOS #89): qualquer query materializada com sucesso aqui
+# ATENÇÃO (03/09/2026, ACHADOS #89) — O CUSTO CAIU 24×, CORRIGIDO EM 16/09/2026.
+# O encadeamento continua igual: qualquer query materializada com sucesso aqui
 # dispara `calculadas.ts --todas` em seguida (`tools/snapshot/src/index.ts`), que
-# RECOMPUTA AS 4 COLUNAS DE `Status Protocolo Dia` DO ZERO, sempre — não existe
-# checagem de idade nesse encadeamento. Medido ao vivo: ~50-65s por coluna × 4 =
-# **~4 minutos reais**, em cima do tempo de busca de QUALQUER grupo que rode com
-# sucesso, não só os que tocam `FIELD AGENDA`. Os "~11s"/"~35s" nos comentários de
-# `quente`/`medio` abaixo são só a busca — o custo real por tick bem-sucedido é
-# isso mais ~4 min. Não corrigido ainda (é ineficiência de recomputação
-# redundante, registrada, não bug de segurança) — ao dimensionar qualquer
-# intervalo novo, use o tempo de busca MAIS esses ~4 min, não só o primeiro.
+# recongela as SETE tabelas calculadas do zero, sempre, sem checagem de idade. O que
+# mudou foi o preço. Em 03/09 eram ~50-65s por coluna de `Status Protocolo Dia` × 4 =
+# ~4 minutos em cima de QUALQUER grupo bem-sucedido, e este bloco mandava dimensionar
+# todo intervalo novo como "tempo de busca MAIS ~4 min". No dia seguinte, 04/09, o
+# commit 9083221 (`packages/snapshot/src/nativas.ts`) trocou o DAX avaliado por linha
+# por uma agregação e levou aquela tabela de 211s para 4,6s. O bloco não foi
+# atualizado junto: a instrução de dimensionamento ficou doze dias mandando reservar
+# um orçamento que já não existia.
+#
+# Medido ao vivo em 16/09/2026 — `npm run snapshot:calculadas -- --todas` contra o
+# snapshot em disco, processo inteiro cronometrado de fora em 10.309 ms:
+#
+#   BASE DE ORIGEM ..............      6 ms     3 linhas
+#   calendar ....................     12 ms     13.099 linhas
+#   CALENDARIO AGENDAMENTO ......  3.787 ms     730 linhas   <- a maior fatia hoje
+#   CALENDARIO CRIADO ...........      6 ms     365 linhas
+#   CALENDARIO INSTALADO ........     12 ms     713 linhas
+#   PROTOCOLOS ..................      2 ms     10 linhas
+#   Status Protocolo Dia ........  2.934 ms     13.099 linhas
+#                                  --------
+#   total do processo ...........  9.852 ms
+#
+# `Status Protocolo Dia` sai por `[tradução nativa]` e não avalia uma linha de DAX.
+# A maior fatia passou a ser `[DATA VIGENTE?]` de `CALENDARIO AGENDAMENTO` (3.671 ms
+# das 730 linhas dela) — nenhuma das duas justifica reserva de minutos.
+#
+# **Ao dimensionar um intervalo novo: some ~10s, não ~4 min.** E o item dominante de
+# um tick deixou de ser este encadeamento: em 16/09 o `frio` levou 190s, dos quais a
+# busca de `protocolos-produtividade` (~162s) é a quase totalidade.
 
 formato: 1
 
@@ -114,11 +136,12 @@ grupos:
   # (v_service_desk_slots_productivity_informative), sem os LEFT JOIN de
   # relato/skill — é o arquivo que atende a maioria das aberturas de
   # `agendamento-field` (ACHADOS #87/#88). Medido ao vivo em 03/09/2026:
-  # 13,5s de busca+escrita (41.348 linhas) + os ~4 min de recomputação de
-  # `Status Protocolo Dia` que QUALQUER grupo bem-sucedido paga hoje (ver
-  # ATENÇÃO acima) = ~4min15s reais por tick. 30 min dá ~7× de margem sobre
-  # esse total — não sobre só a busca, que sozinha sugeriria um número
-  # perigosamente pequeno. Sozinha no grupo: perfil de fonte e custo
+  # 13,5s de busca+escrita (41.348 linhas) + ~10s de recongelamento das calculadas
+  # que QUALQUER grupo bem-sucedido paga (ver ATENÇÃO acima — eram ~4 min até
+  # 04/09/2026, hoje são 9,8s medidos). Sozinha, ela fecharia um tick em ~24s. O que
+  # dimensiona este grupo hoje é `protocolos-produtividade`, mais abaixo: o tick
+  # inteiro medido em 16/09/2026 foi de 190s, ~10,6% do intervalo de 30 min.
+  # Sozinha no grupo: perfil de fonte e custo
   # diferentes de `quente`/`medio`, e um novo grupo aqui já significa mais
   # uma queda do cache de resposta inteiro por ciclo (armadilha registrada em
   # docs/DEPLOY.md) — não vale apertar o intervalo sem necessidade medida.
@@ -127,8 +150,8 @@ grupos:
   # `clima-tempo` entrou em 09/09/2026 (ACHADOS #104): fonte web (Open-Meteo),
   # 7.267 ms medidos ao vivo, 1.869 linhas, 14 chamadas HTTP. Entrou AQUI e não
   # num grupo próprio porque grupo novo custa mais uma queda do cache de resposta
-  # inteiro por ciclo (docs/DEPLOY.md), e 7,3s dentro de um tick que já leva
-  # ~4min15s não muda a margem do intervalo de 30 min.
+  # inteiro por ciclo (docs/DEPLOY.md), e 7,3s dentro de um tick de 190s medidos não
+  # muda a margem do intervalo de 30 min.
   #
   # **Por que ela precisa de cadência, ao contrário de toda outra query.** As
   # demais ficam desatualizadas; esta fica VAZIA. A tabela tem previsão só de hoje
