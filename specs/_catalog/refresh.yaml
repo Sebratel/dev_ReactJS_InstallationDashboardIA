@@ -37,11 +37,30 @@
 #      de linhas. `AS MATERIALIZED` nas CTEs `unificado`/`auxiliar` resolveu.
 #      Materialização ponta a ponta medida: **162s, 76.398 linhas**.
 #      A trava em `grupos.ts` continua existindo, com a lista vazia.
-#   3. `protocolos-geral` — o M dela faz `Table.NestedJoin` com `GESTORES EQUIPES`
-#      (dbMaria), e o pacote `mysql2` não está instalado nem declarado em
-#      package.json. QUALQUER query que toque dbMaria — direto ou por join de M —
-#      crasha com `ERR_MODULE_NOT_FOUND: mysql2` (ACHADOS #83). Fora daqui até o
-#      pacote existir.
+#   3. `protocolos-geral` — **RESOLVIDO em 16/09/2026, entrou no grupo `medio`
+#      abaixo, junto de `backlog-agendado-futuro`.** Esta entrada dizia que o M dela
+#      faz `Table.NestedJoin` com `GESTORES EQUIPES` (dbMaria) e que o pacote
+#      `mysql2` não estava instalado nem declarado, então qualquer query que
+#      tocasse dbMaria crashava com `ERR_MODULE_NOT_FOUND` (ACHADOS #83) — "fora
+#      daqui até o pacote existir".
+#
+#      **O pacote existe desde 02/09/2026**, commit 6391988, do MESMO DIA em que o
+#      achado foi registrado. O bloqueio que o sucedeu — estourar o heap com 8192 MB
+#      — caiu em 09/09, commit af82774, cujo título é literalmente "protocolos-geral
+#      volta a caber em 8 GB" (`guardaPassos: false`: o motor de M parou de manter
+#      uma cópia inteira da tabela por passo do `let`). A condição de saída escrita
+#      aqui foi cumprida duas vezes, com catorze e sete dias de antecedência, e
+#      ninguém voltou para apagar a frase.
+#
+#      O preço de não voltar: `PROTOCOLOS GERAL` alimenta **12 das 14 telas** e não
+#      tem poll de quase-realtime (ver `realtime-poll.yaml`, que a exclui pela mesma
+#      premissa morta). Ela ficou sem cadência nenhuma — o arquivo em disco só mudava
+#      quando alguém digitava o comando, e em 16/09 estava com 20 h.
+#
+#      Medido ao vivo em 16/09/2026, `--refazer --sem-calculadas`:
+#        protocolos-geral .......... 79.966 ms   95.278 linhas × 63 colunas
+#        backlog-agendado-futuro ... 32.524 ms   95.949 linhas ×  4 colunas
+#        protocolos-auxiliares ..... 60.127 ms   38.087 linhas × 46 colunas
 #   4. `field-agenda` — o número de 22,0s em incremental.ts/no briefing da Frente 3
 #      é custo de SQL isolado (`npm run probe:custo-incremental`), não o
 #      materializador inteiro. Medido ao vivo em 02/09/2026: **21 minutos e 49
@@ -98,9 +117,12 @@ grupos:
   # porque o full-fetch dela é barato.
   #
   # `backlog-instalacao` entrou em 03/09/2026 (ACHADOS #93): dbMaria, 58ms medido
-  # ao vivo, 5.875 linhas sem erro. `backlog-agendado-futuro` (93.083 linhas) fica
-  # fora porque seu passo M faz Table.NestedJoin com PROTOCOLOS GERAL (que está fora
-  # de refresh até otimização SQL/M).
+  # ao vivo, 5.875 linhas sem erro. `backlog-agendado-futuro` ficava fora porque seu
+  # passo M faz Table.NestedJoin com PROTOCOLOS GERAL, que estava fora de refresh —
+  # uma exclusão que só existia por causa de outra. Caíram as duas em 16/09/2026: as
+  # DUAS estão no grupo `medio` abaixo, e não aqui, porque 33s + 80s dentro de um
+  # ciclo de 15 min apertariam este grupo sem necessidade medida (ver o comentário
+  # do `medio`).
   quente:
     queries:
       - protocolos-telefonia
@@ -121,6 +143,40 @@ grupos:
   # queries do grupo quente e de protocolos-produtividade — cadência independente
   # dela é um risco de granularidade já registrado no briefing da Frente 3, não
   # resolvido aqui.
+  #
+  # `protocolos-geral` e `backlog-agendado-futuro` entraram em 16/09/2026 (ver a
+  # entrada 3 acima, e ACHADOS #130).
+  #
+  # **O grupo inteiro foi medido DEPOIS de entrarem, e não estimado somando.** Rodada
+  # ao vivo em 16/09, exatamente como `rodaGrupo` dispara (um processo, `--refazer`):
+  #
+  #   protocolos-geral .......... 25.485 ms      reincidencia .........  7.699 ms
+  #   backlog-agendado-futuro ... 23.094 ms      retorno-prioritario ..  5.925 ms
+  #   alocacao-patrimonio .......  2.246 ms      troca-endereco .......  1.265 ms
+  #   instalacoes-reincidentes ...  2.096 ms     tecnicos-auxiliares ..    848 ms
+  #   base-categorias-field ......  1.736 ms     calculadas ...........  8.237 ms
+  #                                              ---------------------------------
+  #                                              TOTAL do grupo ....... 81 s
+  #
+  # **81 s em 1.200 s de ciclo: 6,8%.** A soma dos custos isolados dava ~162 s, e
+  # superestimava por um fator de 2: um grupo é UM processo, e `protocolos-geral` e
+  # `backlog-agendado-futuro` fazem `NestedJoin` com a MESMA `GESTORES EQUIPES`, que é
+  # buscada uma vez. Sozinha, `protocolos-geral` custa 79.966 ms; aqui dentro, 25.485.
+  # **Ao dimensionar um grupo, meça o grupo** — somar medições isoladas erra, e neste
+  # caso errou para o lado caro.
+  #
+  # **Por que aqui e não no `quente`.** Com a conta antiga (~162 s) a escolha já era
+  # esta; com 81 s a margem só melhorou. O `quente` existe para ser barato o bastante
+  # para rodar de 15 em 15 min, e o que se compraria apertando são cinco minutos de
+  # frescor numa tabela de protocolo de instalação — que não é operação minuto a
+  # minuto. Se a operação disser que 20 min é demais, mover a linha de grupo é a
+  # mudança inteira; mas meça o `quente` com ela dentro antes de confiar num número,
+  # porque o efeito de compartilhamento acima depende de quem está junto.
+  #
+  # `backlog-agendado-futuro` vem junto de propósito: o M dela faz
+  # `Table.NestedJoin` com PROTOCOLOS GERAL, e as duas no mesmo grupo é o que mantém
+  # as duas com a mesma idade. Grupos diferentes dariam a ela um lado direito mais
+  # velho ou mais novo que o próprio arquivo, a depender da ordem dos ticks.
   medio:
     queries:
       - troca-endereco
@@ -130,6 +186,8 @@ grupos:
       - alocacao-patrimonio
       - base-categorias-field
       - reincidencia
+      - protocolos-geral
+      - backlog-agendado-futuro
     intervalo_minutos: 20
     incremental: false
 

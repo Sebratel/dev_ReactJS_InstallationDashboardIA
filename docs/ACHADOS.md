@@ -10811,3 +10811,145 @@ dizia logo acima.
 > E quando o próprio repositório escreve a objeção — *"viraria um processo que ninguém
 > reinicia sozinho"* — contornar o desenho sem resolver a objeção não a apaga. Ela fica
 > esperando, em geral até a primeira noite em que ninguém está olhando.
+
+## #130 — A tabela que alimenta 12 das 14 telas não tinha refresh nem poll, por um bloqueio que morreu em 09/09 — e o commit que o matou tem o nome dela no título
+
+**Data:** 16/09/2026
+**É o #128 outra vez, e caro.** Lá, uma instrução de dimensionamento ficou doze dias
+apontando para um custo que já não existia; o preço foi orçamento parado. Aqui, a mesma
+mecânica — a correção escrita só no arquivo que mudou — deixou `PROTOCOLOS GERAL` **sem
+cadência nenhuma**.
+
+### O que foi encontrado
+
+Seis queries materializadas não pertencem a grupo nenhum de `specs/_catalog/refresh.yaml`.
+Quatro por razões vivas. Duas não:
+
+```
+materializadas, sem grupo de refresh, em 16/09/2026 às 14:2x
+  protocolos-geral .......... 95.278 linhas    12 de 14 telas   SEM poll
+  backlog-agendado-futuro ... 95.949 linhas     1 de 14 telas   SEM poll
+  protocolos-auxiliares ..... 38.087 linhas     0 de 14 telas   poll de 12 s
+  field-agenda .............. 643.176 linhas    3 de 14 telas   (achado #82, legítimo)
+  capacidade-equipe ......... 10.835 linhas     2 de 14 telas   (nunca medida, #80)
+  apuracao-premiacao ........ 73 linhas         0 de 14 telas   (nunca medida, #80)
+```
+
+`protocolos-geral` é a linha que importa. Ela não tem refresh automático **e** está
+excluída do poll de quase-realtime: o arquivo em disco só mudava quando alguém digitava
+o comando. Em 16/09 estava com 20 horas.
+
+### A premissa, e as duas vezes que ela morreu
+
+`refresh.yaml` dizia, na entrada 3 das exclusões:
+
+> *"`protocolos-geral` — o M dela faz `Table.NestedJoin` com `GESTORES EQUIPES`
+> (dbMaria), e o pacote `mysql2` não está instalado nem declarado em package.json …
+> **Fora daqui até o pacote existir**."*
+
+```
+02/09  6391988  "troca mariadb (nunca importado) por mysql2 (o que o código usa)"
+                -> bloqueio 1 morre no MESMO DIA em que o achado #83 o registrou
+02/09           o #83 registra um bloqueio NOVO: estoura o heap com 8192 MB
+09/09  af82774  "perf(m): guardar todos os passos do let custava 9,8 GB --
+                 protocolos-geral volta a caber em 8 GB"
+                -> bloqueio 2 morre, e o título do commit NOMEIA a query
+15/09           materializada em disco: 95.157 linhas, 63 colunas
+16/09           refresh.yaml ainda diz "Fora daqui até o pacote existir"
+```
+
+A condição de saída escrita no arquivo — *"até o pacote existir"* — foi cumprida com
+**catorze dias** de antecedência. A do bloqueio que a sucedeu, com **sete**. Nenhuma das
+duas correções voltou ao arquivo que as esperava.
+
+### A exclusão que só existia por causa de outra
+
+O comentário do grupo `quente` dizia que `backlog-agendado-futuro` ficava fora *"porque
+seu passo M faz Table.NestedJoin com PROTOCOLOS GERAL (que está fora de refresh até
+otimização SQL/M)"*. Uma exclusão derivada: ela não tinha problema próprio nenhum.
+Quando a premissa da primeira caiu, esta caiu junto, e ninguém percebeu porque ninguém
+estava olhando para a primeira.
+
+### O terceiro arquivo com a mesma premissa
+
+`specs/_catalog/realtime-poll.yaml` exclui `protocolos-geral` e
+`protocolos-produtividade` com *"sem snapshot base nenhum (heap OOM / nunca
+materializa)"*. As duas têm snapshot base em disco hoje, e `protocolos-produtividade`
+está no grupo `frio` do `refresh.yaml` **desde 13/09**, materializando em 162 s — o
+arquivo ao lado já contradizia este há três dias.
+
+É por isso que `protocolos-geral` não tinha nem uma coisa nem outra: **a mesma frase
+morta estava escrita em dois lugares**, e cada um deles parecia ter a cobertura do
+outro.
+
+### Medido ao vivo, 16/09/2026
+
+`--refazer --sem-calculadas`, uma query por processo, cronometrado de fora:
+
+| query | tempo | linhas × colunas |
+|---|---:|---:|
+| `protocolos-geral` | **79.966 ms** | 95.278 × 63 |
+| `protocolos-auxiliares` | **60.127 ms** | 38.087 × 46 |
+| `backlog-agendado-futuro` | **32.524 ms** | 95.949 × 4 |
+
+Nenhuma estourou heap. Nenhuma saiu com código diferente de 0. `protocolos-geral`
+devolveu **121 linhas a mais** que o arquivo de 15/09 — a prova de que o dado estava
+velho, e não de que ninguém precisava dele.
+
+### O conserto
+
+`protocolos-geral` e `backlog-agendado-futuro` entraram no grupo **`medio`** (20 min).
+
+**E aí a medição pegou o próprio autor deste achado estimando.** A escolha foi feita
+somando os custos isolados: 48,6 s do grupo + 80 s + 33 s = ~162 s, 13,5% do ciclo de
+1.200 s. O grupo foi então rodado de verdade, como `rodaGrupo` o dispara — um processo,
+`--refazer` — e deu **81 s**:
+
+| query | isolada | dentro do grupo |
+|---|---:|---:|
+| `protocolos-geral` | 79.966 ms | **25.485 ms** |
+| `backlog-agendado-futuro` | 32.524 ms | **23.094 ms** |
+| as outras sete + calculadas | — | 32 s |
+| **total do grupo** | soma: ~162 s | **81 s — 6,8% do ciclo** |
+
+A soma superestimava por um fator de 2. **Um grupo é UM processo**, e as duas queries
+novas fazem `NestedJoin` com a MESMA `GESTORES EQUIPES`, buscada uma vez só; some-se o
+pool de conexão reusado e o processo que não nasce três vezes. `protocolos-geral`
+sozinha custa 80 s; dentro do grupo, 25,5 s.
+
+**Ao dimensionar um grupo, meça o grupo.** Somar medições isoladas erra, e aqui errou
+para o lado caro — o que é sorte, não método: a mesma aritmética aplicada a queries que
+não compartilham dependência erraria para o lado barato, e aí o tick seguinte começa
+antes de o anterior terminar.
+
+A decisão não mudou com o número certo, só ganhou margem. `quente` existe para ser
+barato o bastante para rodar de 15 em 15 min; o que se compraria apertando são cinco
+minutos de frescor numa tabela de protocolo de instalação, que não é operação minuto a
+minuto. Quem quiser contestar: meça o `quente` **com ela dentro**, porque o efeito de
+compartilhamento acima depende de quem está junto. `backlog-agendado-futuro` vai junto **de propósito**:
+o M dela faz `NestedJoin` com PROTOCOLOS GERAL, e grupos diferentes dariam a ela um lado
+direito sistematicamente mais velho ou mais novo que o próprio arquivo, conforme a ordem
+dos ticks.
+
+**O poll NÃO foi mexido, e isso é decisão.** Um bloco novo em `realtime-poll.yaml` exige
+escolher `chave` e `marca` — e a primeira entrada de exclusão daquele mesmo arquivo é
+sobre o que acontece quando se erra a chave: `identidade()` colapsa linhas distintas **em
+silêncio**. `protocolos-geral` alimenta 12 das 14 telas; é a pior tabela do catálogo para
+descobrir uma chave errada em produção. O comentário foi corrigido para dizer que o
+caminho está aberto; a implantação fica para quem provar a chave contra o arquivo real
+primeiro. A urgência caiu junto: ela já não está sem cadência nenhuma.
+
+### A lição
+
+> **Uma condição de saída escrita num arquivo não se cumpre sozinha.** "Fora daqui até o
+> pacote existir" é uma frase que parece um plano e funciona como um esquecimento: o
+> pacote passou a existir no mesmo dia, e a frase continuou governando por catorze.
+>
+> O agravante é que o commit que matou o segundo bloqueio **tem o nome da query no
+> título** — *"protocolos-geral volta a caber em 8 GB"*. Não faltou registro, faltou o
+> caminho de volta. É a mesma lição do #128, e ela agora tem preço medido: lá foi
+> orçamento parado, aqui foi a tabela de 12 telas servindo dado de ontem.
+>
+> O hábito que resolve os dois é um só, e é barato: **ao derrubar um bloqueio, procure
+> quem estava esperando por ele.** `grep -ran "<nome-da-query>" specs docs` responde em
+> segundos, e teria achado três arquivos desta vez.

@@ -23,13 +23,30 @@
 #     `poller-realtime.ts`) pode colapsar linhas distintas em silêncio (ex.:
 #     `contratos-telefonia` com `TELEFONE CONTRATO` nulo). Não é o mesmo risco
 #     de "cobertura parcial" já aceito abaixo — é risco de **linha errada**.
-#   - `protocolos-geral`, `protocolos-produtividade`: sem snapshot base nenhum
-#     (heap OOM / nunca materializa — achados #81/#83). Diagnosticado a fundo
-#     em ACHADOS #93: o estouro é no motor de M (56 passos, cada um uma cópia
-#     inteira da tabela em `Map`-por-linha, não só as colunas calculadas) —
-#     isolar por coluna calculada (o truque que resolveu FIELD AGENDA) não
-#     ataca a causa aqui. Sem snapshot base, não há disco para o overlay
-#     sobrepor.
+#   - `protocolos-geral`, `protocolos-produtividade`: **a premissa desta entrada
+#     morreu, e o caminho está aberto desde 09/09/2026 — ver ACHADOS #130.** O que
+#     estava escrito aqui: "sem snapshot base nenhum (heap OOM / nunca materializa
+#     — achados #81/#83)... Sem snapshot base, não há disco para o overlay
+#     sobrepor". O diagnóstico do ACHADOS #93 estava certo sobre a causa — o
+#     estouro era o motor de M mantendo uma cópia inteira da tabela por passo do
+#     `let` — e foi exatamente essa causa que o commit af82774 atacou em 09/09
+#     (`guardaPassos: false`), com o título "protocolos-geral volta a caber em
+#     8 GB".
+#
+#     Medido em 16/09/2026: `protocolos-geral` materializa em **79.966 ms**
+#     (95.278 linhas × 63 colunas) e `protocolos-produtividade` está no grupo
+#     `frio` de `refresh.yaml` desde 13/09, com 162 s de materialização. **As duas
+#     têm snapshot base em disco.** A premissa que as excluía daqui não existe
+#     mais.
+#
+#     **Não entraram ainda, e isso é deliberado.** Um bloco novo aqui exige
+#     escolher `chave` e `marca`, e a primeira entrada desta lista é sobre
+#     exatamente o que acontece quando se erra a chave: `identidade()` colapsa
+#     linhas distintas **em silêncio**. `protocolos-geral` alimenta 12 das 14 telas
+#     — é a pior tabela do catálogo para descobrir uma chave errada em produção.
+#     A urgência também caiu: ela entrou no grupo `medio` do `refresh.yaml` em
+#     16/09 e já não está sem cadência nenhuma. Quem for implantar: comece pela
+#     chave, prove-a contra o arquivo real, e só então escreva o bloco.
 #   - `field-agenda`, `field-agenda-slot`: têm um caminho viável NÃO
 #     implementado ainda — ACHADOS #93 confirmou ao vivo que `LEFT JOIN
 #     assignments a ON a.id = vsdspi.assignment_id` funciona, é barato (sem
