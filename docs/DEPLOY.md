@@ -58,13 +58,13 @@
 | Testes | **1357 verdes**, 0 falhando, nenhum precisa de credencial nem de build — mas ver §4.1 | não |
 | Cache + pré-aquecimento | resposta a quente medida em **2,9–6,2 ms**; `npm start` aquece as 14 páginas sem filtro (o pré-aquecimento por Ano/Mês foi perdido, §4) | não |
 | Tela React | 14 páginas navegáveis, filtros na URL. **Sem SSE e sem store de filtros** — perdidos com a árvore de 21/08 (§4) | não |
-| **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.3) | **sim, para "substituir"** |
+| **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.4) | **sim, para "substituir"** |
 | **Autenticação** | **não existe.** A API serve todo número a todo pedido | **sim, e é o primeiro** |
 | **Refresh do dado** | `tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
 | **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando o catálogo inteiro menos `protocolos-produtividade` (não materializa em nenhum modo hoje, #81) — ver §2.2 abaixo | **pronto** |
 | Containerização | **existe** (16/09/2026): `Dockerfile` na raiz, `docker-compose.prod.yml` com `api`/`redis`/`proxy` e `docker-compose.local.yml` como sobreposição de desenvolvimento | **pronto** |
 | Proxy reverso + TLS | **não existe** nenhum arquivo de Nginx no repositório | sim |
-| Processo supervisionado | **meio caminho** (16/09/2026): o `npm start` agora ressuscita o daemon de refresh se ele morrer (5s→15s→45s→2min→5min, depois desiste alto — `tools/subir/src/supervisao.ts`), e cada arranque fica em `snapshot/refresh-historico.log`. Continua **não existindo** supervisor do `npm start` em si: nem PM2, nem unit de systemd, nem healthcheck de container, nem entrada no Agendador de Tarefas para subir no boot | sim |
+| Processo supervisionado | **meio caminho** (16/09/2026): o `npm start` ressuscita o daemon de refresh se ele morrer (5s→15s→45s→2min→5min, depois desiste alto — `tools/subir/src/supervisao.ts`), e cada arranque fica em `snapshot/refresh-historico.log`. O `npm start` em si continua sem supervisor: `tools/subir/agenda-no-windows.ps1` registra a tarefa que o sobe no logon, **mas ela ainda não foi registrada nesta máquina** — é um comando, com Administrador, e está em §2.3 | sim, e o comando está escrito |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
 
 **Em uma frase:** faltam **três decisões** (identidade, janela de refresh, o que fazer
@@ -266,7 +266,49 @@ tela não diz "isto é de terça".
   pela fiação da incremental, que já está pronta, mas por estes dois defeitos
   anteriores e independentes dela.
 
-### 2.3 A paridade não está fechada
+### 2.3 Nada sobe a plataforma depois de um reboot — e isso já derrubou tudo
+
+Em 16/09/2026, às 14:04, **não havia processo nenhum da plataforma na máquina**. O
+último tick era das 10:25: três horas e quarenta e três minutos de dado parado. Nada
+avisou, e `refresh-status.json` marcava `falhasConsecutivas: 0` nos três grupos — ele não
+distingue "não falhou" de "não rodou". Ver `ACHADOS.md` #129.
+
+A supervisão de `tools/subir/src/supervisao.ts` (§2.2 acima) fecha a queda do daemon,
+não esta: quem ressuscita o daemon é o próprio `npm start`, e o que faltava era alguém
+acima dele.
+
+- **O que já existe:** `tools/subir/agenda-no-windows.ps1`, o análogo Windows de
+  `tools/refresh/cron.sh` um nível acima — lá se agenda um *tick*, aqui a *stack*.
+
+  ```powershell
+  # o que ele faria, sem privilégio nenhum e sem tocar no Agendador
+  powershell -ExecutionPolicy Bypass -File tools/subir/agenda-no-windows.ps1 -Simular
+
+  # registrar (PowerShell como Administrador)
+  powershell -ExecutionPolicy Bypass -File tools/subir/agenda-no-windows.ps1
+
+  # desfazer
+  powershell -ExecutionPolicy Bypass -File tools/subir/agenda-no-windows.ps1 -Remover
+  ```
+
+- **O gatilho padrão é "ao fazer logon", não "ao iniciar o sistema"**, e é decisão, não
+  descuido: `npm start` precisa do `.env` do repositório e de
+  `~/.secrets/powerbi-token.json`, que são do perfil do usuário — uma tarefa como SYSTEM
+  não os enxerga; e "ao iniciar o sistema" com a identidade do usuário exige senha
+  guardada no Agendador ou `-LogonType S4U`, que roda sem console na sessão 0. Para uma
+  máquina que fica ligada sem ninguém logado, `-AoIniciarOSistema` registra a variante
+  S4U — e aí o `snapshot/npm-start.log` passa a ser a única janela para o que aconteceu.
+- **Subir duas vezes não é risco:** `tools/subir/src/porta.ts` já decide entre derrubar
+  quem ocupa a porta e parar, e a tarefa é registrada com `MultipleInstances IgnoreNew`
+  como segunda camada.
+- **Critério de saída:** a máquina reinicia, ninguém digita nada, e a idade em
+  `GET /api/saude` volta a cair sozinha.
+- **Em produção de verdade isto não se usa:** `docker-compose.prod.yml` já traz `api`,
+  `refresh` e `snapshot-diario` como serviços, e política de reinício de container
+  resolve boot e queda sem Agendador nenhum. O script é para a estação de trabalho onde
+  a plataforma roda hoje.
+
+### 2.4 A paridade não está fechada
 
 Dos 64 cards com gabarito, 22 são carimbo de refresh (fora do jogo) e **42 estão em
 jogo**: 18 batem, 18 diferem, 6 divergem por decisão registrada. Dos 18 que diferem,
@@ -600,7 +642,7 @@ Três ondas. A ordem não é preferência: cada onda remove um bloqueio da segui
 
 ### Onda 3 — o que transforma piloto em substituição
 
-8. Fechar a paridade (§2.3): as 3 páginas relidas no Power BI **sem limpar filtro**, e
+8. Fechar a paridade (§2.4): as 3 páginas relidas no Power BI **sem limpar filtro**, e
    `npm run paridade` sem diferença não declarada.
 9. Decidir as 10 perguntas de negócio abertas — cada uma virando código, entrada em
    `divergencias.yaml`, ou "o visual sai".

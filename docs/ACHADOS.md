@@ -10775,8 +10775,29 @@ respawn é invisível e o sintoma dos dois casos é idêntico.
 ### O que continua faltando, e é preciso dizer
 
 O que ressuscita o daemon é o próprio `npm start`. **Se ELE morrer, ou se a máquina
-reiniciar, não há nada** — e foi exatamente isso que aconteceu hoje. Falta a linha de
-cima: uma entrada no Agendador de Tarefas do Windows com gatilho "ao iniciar o sistema".
+reiniciar, não há nada** — e foi exatamente isso que aconteceu hoje.
+
+A linha de cima virou `tools/subir/agenda-no-windows.ps1`, o análogo Windows de
+`tools/refresh/cron.sh` um nível acima (lá se agenda um *tick*, aqui a *stack*). Ele
+registra, remove, e tem `-Simular` que imprime o que faria sem tocar no Agendador. **A
+tarefa NÃO foi registrada** — registrar exige Administrador e é uma mudança na máquina,
+não no repositório; o comando está em `docs/DEPLOY.md` §2.3.
+
+Duas decisões dele que não são detalhe:
+
+- **O gatilho padrão é "ao fazer logon", não "ao iniciar o sistema".** `npm start`
+  precisa do `.env` do repositório e de `~/.secrets/powerbi-token.json`, que são do
+  perfil do usuário — uma tarefa como SYSTEM não os enxerga. E "ao iniciar o sistema"
+  com a identidade do usuário exige senha guardada no Agendador, ou `-LogonType S4U`,
+  que roda sem console na sessão 0. Numa estação de trabalho onde alguém faz logon todo
+  dia, nenhum dos dois paga o que custa. `-AoIniciarOSistema` registra a variante S4U
+  para o caso de máquina ligada sem ninguém logado.
+- **O arquivo precisa de BOM.** O Windows PowerShell 5.1 lê `.ps1` sem BOM como ANSI da
+  página de código do sistema: as mensagens saíram com "só" virando "sÃ³" na primeira
+  execução. A regra 5 do `CLAUDE.md` — toda mensagem em português — não sobrevive a um
+  editor que "limpe" o BOM, e não dá erro nenhum ao quebrar. Está escrito no topo do
+  script.
+
 A tabela de prontidão de `docs/DEPLOY.md` foi corrigida para dizer "meio caminho" em vez
 de "não existe", que era o que ela dizia, e "pronto", que é o que a linha do refresh
 dizia logo acima.
