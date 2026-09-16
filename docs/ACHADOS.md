@@ -10379,3 +10379,177 @@ Onze asserções novas em `avaliador.test.ts`, incluindo o encadeamento do passo
 > para o resultado certo e concluído que a MIGRAÇÃO estava errada, porque a régua era
 > a saída atual. Foi perguntar ao avaliador, antes de escrever SQL, que separou as
 > duas coisas.
+
+---
+
+## #127 — O internamento da chave (#120) foi implantado, provado inócuo e REVERTIDO: a premissa tinha virado em um dia, e 80% das linhas não repetem nada
+
+**Data:** 16/09/2026
+**RESULTADO NEGATIVO.** O código foi revertido; fica a medição — e ela desautoriza o
+desenho do #120 sobre o corpus de hoje.
+
+O #120 deixou o alvo dimensionado e o desenho decidido, de propósito: *"a metade cara
+deste trabalho é a medição, e a outra metade mexe no formato da chave de agrupamento,
+que é onde errar não dá erro"*. Implantei o desenho, cumpri o protocolo que ele pedia,
+e o resultado foi negativo — **não por defeito da implementação, mas porque os números
+que autorizavam o desenho deixaram de valer entre 15 e 16/09.**
+
+### O que foi implantado
+
+Um codificador **por chamada de `prepara`**, com uma tabela de internamento por
+POSIÇÃO da chave, dando um inteiro pequeno a cada identidade distinta. A chave da
+combinação deixa de ser as identidades concatenadas e passa a ser um número fixo de
+unidades de código por parte.
+
+A parte que o #120 avisou ser perigosa — *"o formato da chave é um contrato entre duas
+funções"* — foi resolvida com **uma instância só**, criada em `prepara` e compartilhada
+por quem escreve (`enumeraCombinacoes`) e por quem lê (`filtrosDe`). Duas instâncias
+dariam códigos diferentes para a mesma identidade e o `combinacoes.get` erraria em
+silêncio. `filtrosDe` recebeu um `busca` que **não interna**: identidade que a
+varredura não viu não tem grupo a encontrar, e internar ali encheria a tabela a cada
+célula de matriz.
+
+### O protocolo foi cumprido, e a inocuidade está provada
+
+| conferência | resultado |
+|---|---|
+| `npm run paginas:shas`, colunar, mesmo snapshot | **306 de 306 SHAs idênticos** |
+| `npm test` | **1.932 verdes, 0 falhando** |
+| testes novos sobre o codificador | 11, incluindo a equivalência contra `chaveDeValores` |
+
+A troca é **inócua no resultado**: nenhum dos 306 visuais mudou um byte. O que ela não
+é, é mais rápida.
+
+### O desvio do desenho do #120 — e por que não é ele o culpado
+
+O #120 desenhou **uma** unidade de código por parte (`String.fromCharCode` do código).
+Implantei **duas**, e isso não é preciosismo: uma unidade tem teto de 65.536 identidades
+distintas por coluna, e acima dele `fromCharCode` trunca em módulo — dois valores
+diferentes com o mesmo caractere, **dois grupos fundidos num, sem erro nenhum**. Não é
+hipotético: quatro chamadas deste corpus têm **95.157 identidades distintas numa única
+coluna**. O teste `mais de 65.536 identidades distintas numa coluna não colidem` (70.000
+valores, 0 colisões) é o que separa os dois desenhos.
+
+**E o desvio não explica o resultado.** O custo que domina é o `Map.get` + `Map.set` por
+parte e por linha, idêntico nos dois desenhos; o que muda entre eles é o comprimento de
+uma string de 6 contra 3 caracteres.
+
+### A premissa virou — o mesmo contador do #120, um dia depois
+
+Mesmo instrumento, mesmas 14 páginas, mesmo ramo (tabela única, mais de uma chave):
+
+| | #120 (15/09) | hoje (16/09) |
+|---|---:|---:|
+| chamadas | 20 | **20** |
+| chaves por chamada | `[5,6,3,2,3,5,3,8,16,2,2,2,3,2,3,3,3,3,31,23]` | **idêntico** |
+| linhas varridas | 1.753.980 | **476.494** (−73%) |
+| combinações distintas | 663.019 | 383.409 |
+| **taxa de acerto** | **62,2%** | **19,5%** |
+
+As chamadas são **as mesmas** — mesma quantidade, mesma forma, mesmas chaves por
+chamada. O que mudou foi o dado por baixo delas. E a taxa de acerto é exatamente a
+grandeza de que o desenho vivia: o ganho prometido era *descobrir barato que a
+combinação já existia*.
+
+### Onde as linhas estão hoje, e por que o internamento não tinha como ganhar
+
+| página | chamadas | linhas | distintas | acerto | chave (car.) |
+|---|---:|---:|---:|---:|---:|
+| agendamento-field | 3 | 13.101 | 90 | 99,3% | 19,5 |
+| instalacao-reincidente | 1 | 259 | 9 | 96,5% | 14,9 |
+| **l-inst** | 1 | **95.157** | **95.157** | **0,0%** | 45,4 |
+| **l-mapa** | 1 | **95.157** | **95.157** | **0,0%** | 40,0 |
+| **l-tec** | 1 | **95.157** | **95.157** | **0,0%** | 28,0 |
+| manutencao-inicial | 4 | 2.349 | 1.716 | 26,9% | 215,7 |
+| premiacao-instalacao | 3 | 77.324 | 238 | 99,7% | 26,0 |
+| relatorio-do-mes | 4 | 2.193 | 88 | 96,0% | 21,5 |
+| telefonia-ouvidoria | 1 | 640 | 640 | 0,0% | 442,7 |
+| **visao-geral** | 1 | **95.157** | **95.157** | **0,0%** | 348,6 |
+
+**Quatro chamadas com taxa de acerto 0,0% concentram 380.628 das 476.494 linhas — 80%.**
+Ali cada linha é um grupo novo: o `Map` não funde nada, ele só insere.
+
+E é aí que o internamento é **prejuízo puro**. A 0% de acerto, toda identidade é
+inédita, então cada parte paga um `Map.get` que falha MAIS um `Map.set` que hasheia a
+string e aloca entrada — K inserções por linha —, e no fim ainda se monta a chave e se
+paga o `get`/`set` da combinação. O código antigo pagava **uma** concatenação e **um**
+par `get`/`set`. Troquei 1 hash por K+1 hashes para não reaproveitar nada.
+
+O corpus é bimodal, e as duas pontas são hostis ao desenho: onde há repetição
+(99,3%, 99,7%, 96,0%) as chaves são **curtas** (19 a 26 caracteres) e as linhas poucas —
+há pouca concatenação a poupar; onde há linha em volume, **não há repetição nenhuma**.
+
+### O A/B, e o que ele diz
+
+Processos separados, ordem alternada a cada par, colunar — o protocolo do #120.
+
+```
+corpus inteiro (14 páginas), 4 pares
+  velho  9155  8598  8757  10434   média 9236 ms
+  novo   8617  8761  9957  10505   média 9460 ms
+  o novo ganhou 1 de 4 pares            média +2,4% (mais lento)
+
+as quatro chamadas de acerto 0,0% (l-inst, l-mapa, l-tec, visao-geral), 6 pares
+  velho  3286  2539  2638  3033  3115  3588   média 3033
+  novo   3445  3008  3045  3419  3146  3141   média 3201
+  o novo ganhou 1 de 6 pares            média +5,5% (mais lento)
+```
+
+**2 de 10 pares.** O desenho é uma perda.
+
+### A assinatura que confirma o mecanismo, e não depende do relógio
+
+O A/B do corpus, por página, ordena a perda quase exatamente pelo **inverso do
+comprimento da chave antiga** — que é o que a teoria manda, já que a economia da
+concatenação cresce com o comprimento e o custo do internamento é constante por parte:
+
+| página | chave antiga | efeito |
+|---|---:|---:|
+| l-tec | 28,0 car. | **+16,5%** |
+| l-mapa | 40,0 car. | +7,8% |
+| l-inst | 45,4 car. | +9,2% |
+| visao-geral | 348,6 car. | +2,5% |
+
+Quanto mais curta a chave que se deixou de montar, pior o negócio. É o mecanismo
+falando, não a variância — ainda que `l-mapa` e `l-inst` estejam trocados dentro do
+ruído.
+
+### ⚠ A régua estava suja, e registrar isso faz parte do achado
+
+**Outro agente trabalhava na MESMA árvore durante toda esta medição.** Descoberto ao
+conferir `git status` antes de reverter: `specs/_catalog/queries/protocolos-telefonia.spec.yaml`,
+`tools/refresh/test/daemon.test.ts` e uma dúzia de arquivos em `scratch/` mudaram sem
+que eu os tocasse, e um diretório foi criado **cinco segundos** antes de eu olhar. No
+meio da sessão o HEAD andou (`a4bf894`), e com ele um teste novo.
+
+Duas consequências, e as duas importam:
+
+1. **Um número meu ficou explicado, e a minha primeira explicação estava errada.** A
+   suíte saiu de 1.934 para 1.932 e eu atribuí a diferença a contenção de CPU no
+   baseline. Não era: o meu arquivo de teste caiu de 14 para 11 casos (−3) e o outro
+   agente acrescentou 1 (`1934 − 3 + 1 = 1932`). Contenção não cria nem destrói teste;
+   foi preguiça de diagnóstico, e o `git log` respondia em um comando.
+2. **O ruído do A/B é grande e a máquina derivou** (8.598 a 10.434 ms no MESMO código
+   velho — 21%). A ordem alternada existe para espalhar deriva nos dois lados, e a
+   conclusão não se apoia só no relógio: ela se apoia na **contagem** (0,0% de acerto
+   em 80% das linhas), que independe de quem mais está na máquina.
+
+Verificado que `packages/widget-engine/src/grupos.ts` é **byte a byte igual** em
+`16b7e62` e no HEAD de agora, então o lado "velho" do A/B foi o mesmo o tempo todo.
+
+### A lição
+
+> **Alvo dimensionado tem prazo de validade, e o prazo pode ser de um dia.** O #120 fez
+> tudo certo — contou em vez de amostrar, descartou dois ensaios sintéticos, refutou o
+> `Map` aninhado por memória — e mesmo assim autorizou um desenho que, 24 horas depois,
+> só podia perder. Não porque a medição estivesse errada: porque **a taxa de acerto não
+> é propriedade do código, é propriedade do dado**, e o dado tinha mudado.
+>
+> O que deveria ter vindo antes de escrever a primeira linha era **repetir o contador**,
+> que custa um `--pagina=` por página e responde em dois minutos. Repetir a medição que
+> autoriza o trabalho é mais barato que o trabalho — e aqui teria poupado a implantação
+> inteira.
+>
+> Fica registrado, como o #109 e o #117: **ninguém precisa tentar isto de novo** sem
+> antes recontar a taxa de acerto. Se ela voltar aos 62%, o desenho volta à mesa — e
+> com duas unidades de código por parte, não uma.
