@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
+import { decideRessurreicao, ESPERAS_MS } from './supervisao.ts';
 import { decideDerrubada, portaOcupada } from './porta.ts';
 // A mensagem e a descoberta do PID moram junto da API, que é quem liga na porta — e é
 // o `index.ts` dela que precisa do mesmo texto no `error` do servidor. Duas cópias do
@@ -263,9 +264,12 @@ if (soAquece) {
 
   let refreshProcess: ChildProcess | null = null;
   let encerrando = false;
+  let mortesSeguidas = 0;
+  let timerDeRessurreicao: NodeJS.Timeout | null = null;
   const encerra = (codigo: number): void => {
     if (encerrando) return;
     encerrando = true;
+    if (timerDeRessurreicao) clearTimeout(timerDeRessurreicao);
     if (api.exitCode === null) api.kill();
     if (refreshProcess && refreshProcess.exitCode === null) refreshProcess.kill();
     process.exit(codigo);
@@ -275,10 +279,68 @@ if (soAquece) {
   api.on('exit', (codigo) => {
     if (!encerrando) {
       if (refreshProcess && refreshProcess.exitCode === null) refreshProcess.kill();
+      if (timerDeRessurreicao) clearTimeout(timerDeRessurreicao);
       console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
       process.exit(codigo ?? 1);
     }
   });
+
+  /**
+   * Sobe o daemon de refresh e o **ressuscita** se ele morrer sozinho.
+   *
+   * A regra — espera crescente, teto de tentativas, vida mínima que zera a conta — e o
+   * caso real que a motivou (a stack 3h43 fora do ar sem nada avisar, 16/09/2026) estão
+   * em `supervisao.ts`, num lugar só. Aqui fica apenas o encanamento: `spawn`,
+   * `setTimeout` e as mensagens.
+   *
+   * O que vale repetir é a assimetria que isto fecha: API morta já derrubava o daemon
+   * (o `api.on('exit')` acima), e daemon morto não derrubava nem avisava nada — a API
+   * seguia servindo um snapshot que ninguém mais atualizava.
+   *
+   * Cada arranque, inclusive os de ressurreição, fica em
+   * `snapshot/refresh-historico.log` com o PID: é assim que "caiu uma vez às 03:00" se
+   * distingue de "esteve ressuscitando a noite toda".
+   */
+  function sobeRefresh(): void {
+    const nasceuEm = Date.now();
+    refreshProcess = spawn(
+      process.execPath,
+      ['--max-old-space-size=8192', path.join(ROOT, 'tools', 'refresh', 'src', 'daemon.ts')],
+      { cwd: ROOT, stdio: 'inherit', env: process.env },
+    );
+    refreshProcess.on('exit', (cod) => {
+      if (encerrando) return;
+      const viveuMs = Date.now() - nasceuEm;
+      console.error('');
+      console.error(
+        `[Refresh Daemon] Processo encerrou (código ${cod ?? '?'}) depois de ` +
+          `${Math.round(viveuMs / 1000)}s no ar.`,
+      );
+      const decisao = decideRessurreicao(viveuMs, mortesSeguidas);
+      mortesSeguidas = decisao.mortesSeguidas;
+
+      if (!decisao.ressuscita) {
+        console.error(
+          `[Refresh Daemon] Morreu ${mortesSeguidas} vezes seguidas sem se sustentar. ` +
+            'Desisto de ressuscitar — isto não é queda transitória.',
+        );
+        console.error('[Refresh Daemon] A API CONTINUA NO AR, servindo o snapshot que já está em disco —');
+        console.error('[Refresh Daemon] que daqui em diante envelhece sem ninguém atualizar. Diagnostique com:');
+        console.error('[Refresh Daemon]   node tools/refresh/src/daemon.ts --so-plano --so-uma-vez');
+        console.error('[Refresh Daemon]   node tools/refresh/src/daemon.ts --historico');
+        return;
+      }
+
+      console.error(
+        `[Refresh Daemon] Ressuscitando em ${Math.round(decisao.esperaMs / 1000)}s ` +
+          `(tentativa ${mortesSeguidas} de ${ESPERAS_MS.length}).`,
+      );
+      timerDeRessurreicao = setTimeout(() => {
+        timerDeRessurreicao = null;
+        if (!encerrando) sobeRefresh();
+      }, decisao.esperaMs);
+    });
+  }
 
   if (!(await esperaSaude(api))) {
     console.error(`\nA API não respondeu em ${BASE}/api/saude. Parando.`);
@@ -287,16 +349,7 @@ if (soAquece) {
 
   if (!semRefresh) {
     console.log('\nIniciando o Agendador Automático de Refresh (daemon 15m em background)…');
-    refreshProcess = spawn(
-      process.execPath,
-      ['--max-old-space-size=8192', path.join(ROOT, 'tools', 'refresh', 'src', 'daemon.ts')],
-      { cwd: ROOT, stdio: 'inherit', env: process.env },
-    );
-    refreshProcess.on('exit', (cod) => {
-      if (!encerrando) {
-        console.error(`[Refresh Daemon] Processo encerrou (código ${cod ?? '?'}).`);
-      }
-    });
+    sobeRefresh();
   }
 
   console.log(`\n  tela   ${BASE}/`);

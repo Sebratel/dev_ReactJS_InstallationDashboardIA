@@ -64,7 +64,7 @@
 | **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando o catálogo inteiro menos `protocolos-produtividade` (não materializa em nenhum modo hoje, #81) — ver §2.2 abaixo | **pronto** |
 | Containerização | **existe** (16/09/2026): `Dockerfile` na raiz, `docker-compose.prod.yml` com `api`/`redis`/`proxy` e `docker-compose.local.yml` como sobreposição de desenvolvimento | **pronto** |
 | Proxy reverso + TLS | **não existe** nenhum arquivo de Nginx no repositório | sim |
-| Processo supervisionado | **não existe** — nem PM2, nem unit de systemd, nem healthcheck de container | sim |
+| Processo supervisionado | **meio caminho** (16/09/2026): o `npm start` agora ressuscita o daemon de refresh se ele morrer (5s→15s→45s→2min→5min, depois desiste alto — `tools/subir/src/supervisao.ts`), e cada arranque fica em `snapshot/refresh-historico.log`. Continua **não existindo** supervisor do `npm start` em si: nem PM2, nem unit de systemd, nem healthcheck de container, nem entrada no Agendador de Tarefas para subir no boot | sim |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
 
 **Em uma frase:** faltam **três decisões** (identidade, janela de refresh, o que fazer
@@ -158,6 +158,36 @@ tela não diz "isto é de terça".
     API — **sem flag nenhuma, desde 16/09/2026**. Para rodar isolado:
     `npm run refresh:daemon`. Para NÃO subir: `npm start -- --sem-refresh`, ou
     `AUTO_REFRESH=false`/`0` no ambiente.
+
+    **E se o daemon morrer, o `npm start` o ressuscita** (16/09/2026). Antes, a morte
+    dele rendia uma linha de `console.error` e mais nada: a API seguia servindo, a tela
+    seguia abrindo, e o dado parava no tempo sem nada mudar de cor. Foi observado ao
+    vivo em 16/09 — a stack fora do ar, último tick às 10:25, três horas e quarenta e
+    três minutos depois os três grupos apareciam vencidos sem que nada tivesse avisado
+    ninguém. A regra está em `tools/subir/src/supervisao.ts`: espera crescente
+    (5s→15s→45s→2min→5min), só conta como tentativa a morte que acontece com menos de
+    um minuto de vida, e no teto ele **desiste em voz alta** com o comando de
+    diagnóstico — respawn sem limite esconderia um `.env` quebrado para sempre.
+
+    **Isto não substitui um supervisor de verdade.** O que ressuscita o daemon é o
+    próprio `npm start`; se ELE morrer, ou se a máquina reiniciar, não há nada. O
+    docstring de `tools/refresh/src/index.ts` já previa exatamente isso ao recusar o
+    modelo de daemon 24/7 — *"o Windows não tem PM2/systemd hoje; viraria um processo
+    que ninguém reinicia sozinho"*. Falta a linha de cima: uma entrada no Agendador de
+    Tarefas do Windows com gatilho "ao iniciar o sistema".
+
+    **O que ficou escrito, e onde.** `snapshot/refresh-status.json` guarda só a ÚLTIMA
+    tentativa por grupo — uma falha às 03:00 que o tick das 03:15 consertou zera
+    `falhasConsecutivas`, apaga o `erro` e não deixa rastro nenhum. Desde 16/09 há
+    também `snapshot/refresh-historico.log`, uma linha por evento (`arranque`,
+    `grupo`, `erro-de-ciclo`), aparado por tamanho e nunca capaz de derrubar um tick.
+    Leia com:
+
+    ```bash
+    node tools/refresh/src/daemon.ts --historico
+    ```
+
+    Ele é seguro de rodar com o daemon vivo — lê e sai, sem subir agendador nenhum.
 
     Até 16/09/2026 isto exigia `--com-refresh`, e essa exigência é que quebrou na
     prática o "100% automático de fábrica" acima: o `npm start` no ar naquele dia

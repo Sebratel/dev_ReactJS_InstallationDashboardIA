@@ -10654,3 +10654,139 @@ comentários de `frio` que citavam "~4min15s" passam a citar os 190 s medidos.
 >
 > **Ao derrubar um número que está escrito em algum lugar, procure onde ele está
 > escrito.** `grep -ran "4 min\|211 s\|238 s" specs docs` custa segundos.
+
+## #129 — A stack ficou 3h43 fora do ar sem nada avisar, e o `refresh-status.json` teria apagado o rastro de qualquer jeito: o daemon ganhou quem o ressuscite e onde deixar história
+
+**Data:** 16/09/2026
+**Observado ao vivo, não deduzido.** Às 14:04 não havia processo `node` nenhum da
+plataforma na máquina — nem `npm start`, nem a API, nem o daemon. O último tick tinha
+sido às 10:25. Três horas e quarenta e três minutos de dado parado, e nada em lugar
+nenhum tinha mudado de cor.
+
+```
+processos node da plataforma às 14:04 .... nenhum
+último sucesso por grupo (refresh-status.json)
+  quente  2026-09-16T13:21:01Z   idade  223,1 min   (intervalo declarado: 15 min)
+  medio   2026-09-16T13:22:20Z   idade  221,8 min   (intervalo declarado: 20 min)
+  frio    2026-09-16T13:25:30Z   idade  218,6 min   (intervalo declarado: 30 min)
+daemon --so-plano --so-uma-vez ........... quente/medio/frio: os três vencidos
+falhasConsecutivas ....................... 0, 0, 0
+```
+
+A última linha é a que importa: **o arquivo de status dizia que estava tudo bem.** Ele
+não tem como dizer outra coisa — `falhasConsecutivas` só sobe quando um tick roda e
+falha, e aqui não havia tick nenhum rodando. Ausência não é falha, e a única estrutura
+de observabilidade do refresh não distingue as duas.
+
+### O repositório já tinha previsto, por escrito
+
+O docstring de `tools/refresh/src/index.ts`, ao justificar o modelo de *tick* curto
+contra o de daemon 24/7:
+
+> *"Um daemon 24/7 fora da API funcionaria, mas o Windows não tem PM2/systemd hoje
+> (docs/DEPLOY.md, tabela de prontidão) — **viraria um processo que ninguém reinicia
+> sozinho se cair no meio de um ciclo**. O modelo 'tick' tem raio de explosão
+> estritamente menor."*
+
+O daemon veio assim mesmo, e em 16/09 virou o padrão do `npm start` — pela razão certa
+(o gatilho externo que o modelo de tick pressupõe nunca foi criado nesta máquina), mas
+sem o "alguém que reinicia" que o próprio arquivo dizia faltar. A previsão estava no
+repositório o tempo todo; o que faltava era alguém reler a própria objeção depois de
+contorná-la.
+
+### O segundo defeito, que só aparece quando o primeiro é consertado
+
+Suponha o daemon supervisionado e de pé. Uma falha às 03:00 seguida de um sucesso às
+03:15 deixa `refresh-status.json` assim:
+
+```
+falhasConsecutivas: 0        (zerada pelo sucesso)
+erro:                        (sobrescrito, some)
+ultimaTentativa: 03:15       (a das 03:00 não existe mais)
+```
+
+**Zero rastro.** O arquivo guarda UM registro por grupo e cada tick o sobrescreve. E o
+daemon não escrevia em lugar nenhum: `npm start` o sobe com `stdio: 'inherit'`, então as
+linhas dele viviam no terminal de quem digitou o comando e morriam junto com ele.
+Fechado o terminal, o que o agendador fez de madrugada era irrecuperável por construção.
+
+A prova por acidente está no próprio diretório: `snapshot/protocolos-geral.erro.log`,
+de 02/09, é o **único** erro que sobreviveu em disco em catorze dias — e sobreviveu por
+um caminho de código diferente (`guardaErro`, em `tools/snapshot/src/index.ts`), não
+pelo refresh.
+
+### O conserto
+
+**1. Supervisão com teto** — `tools/subir/src/supervisao.ts`, novo. `decideRessurreicao`
+é pura: recebe quanto o processo viveu e quantas mortes rápidas houve antes, devolve se
+ressuscita e quanto esperar. Espera crescente `5s → 15s → 45s → 2min → 5min`; no teto,
+desiste em voz alta imprimindo o comando de diagnóstico.
+
+Duas decisões que não são detalhe:
+
+- **O teto existe para não esconder defeito determinístico.** `.env` quebrado ou
+  `refresh.yaml` inválido matam o daemon igual nas próximas mil vezes; respawn sem
+  limite transformaria uma falha legível num terminal rolando para sempre, e o operador
+  perderia justamente a mensagem que diz o que consertar.
+- **A vida mínima (60 s) mede falha em *se sustentar*, não falha alguma vez.** Sem ela,
+  cinco quedas isoladas em semanas diferentes esgotariam o orçamento de um daemon que
+  nunca deu problema.
+
+**2. Histórico** — `tools/refresh/src/historico.ts`, novo, escrevendo
+`snapshot/refresh-historico.log`. Uma linha por evento (`arranque`, `grupo`,
+`erro-de-ciclo`), lida com `node tools/refresh/src/daemon.ts --historico`.
+
+Três decisões:
+
+- **`.jsonl`, não outro `.json`.** Acrescentar é `appendFileSync` — sem ler, sem
+  mesclar, sem read-modify-write. É a mesma razão pela qual os grupos rodam em série
+  (ver `tick.ts`): dois escritores num JSON que precisa ser lido antes de ser escrito se
+  apagam em silêncio. Aqui não há o que mesclar.
+- **A gravação é por GRUPO, não por tick.** `executaTick` já persiste o status depois de
+  cada grupo para que um tick morto no meio não perca o que terminou; o histórico segue
+  a mesma regra, embrulhando `roda` em vez de varrer `resultados` no fim.
+- **Nunca derruba o daemon.** Toda operação é `try/catch` mudo, e `leHistorico` pula
+  linha ilegível em vez de lançar. Um histórico que impede o refresh de rodar seria pior
+  que nenhum: o trabalho é o refresh, a observabilidade é o acessório.
+
+**2b. O sufixo `.log`, e não `.jsonl` — um defeito achado antes de existir.** O arquivo
+mora dentro de `snapshot/`, e `.jsonl` é o sufixo de TABELA de snapshot (`SUFIXO_CRU`,
+em `packages/snapshot/src/formato.ts`). Três varreduras reconhecem tabela pelo nome sem
+abrir arquivo nenhum — `tools/snapshot/src/confere.ts`, `tools/snapshot/src/converte.ts`
+e `tools/bench/src/carga.ts`. Medido, não suposto:
+
+```
+ehArquivoDeSnapshot('refresh-historico.jsonl') .... true   <- entraria como query
+ehArquivoDeSnapshot('refresh-historico.log') ..... false
+ehArquivoDeSnapshot('protocolos-geral.erro.log') . false
+ehArquivoDeSnapshot('refresh-status.json') ....... false
+```
+
+É o mesmo cuidado que `guardaErro` já registra em `tools/snapshot/src/index.ts` — *"o
+nome termina em `.erro.log` para não ser confundido com tabela por `leManifesto`"*. O
+aviso estava escrito a três arquivos de distância, e foi preciso ir procurá-lo: o teste
+`o nome do arquivo NÃO pode ser confundido com tabela de snapshot` é o que impede a
+próxima pessoa de reintroduzir isso por achar `.jsonl` mais descritivo.
+
+**3. O arranque entra no histórico com o PID.** É o que separa *"o daemon está parado
+desde as 03:00"* de *"o daemon esteve ressuscitando a noite toda"* — sem essa linha, o
+respawn é invisível e o sintoma dos dois casos é idêntico.
+
+### O que continua faltando, e é preciso dizer
+
+O que ressuscita o daemon é o próprio `npm start`. **Se ELE morrer, ou se a máquina
+reiniciar, não há nada** — e foi exatamente isso que aconteceu hoje. Falta a linha de
+cima: uma entrada no Agendador de Tarefas do Windows com gatilho "ao iniciar o sistema".
+A tabela de prontidão de `docs/DEPLOY.md` foi corrigida para dizer "meio caminho" em vez
+de "não existe", que era o que ela dizia, e "pronto", que é o que a linha do refresh
+dizia logo acima.
+
+### A lição
+
+> **Um sistema que não sabe distinguir "não falhou" de "não rodou" reporta saúde
+> perfeita justamente quando está morto.** `falhasConsecutivas: 0` em três grupos era
+> verdade literal e informação inútil: ninguém tinha tentado nada.
+>
+> E quando o próprio repositório escreve a objeção — *"viraria um processo que ninguém
+> reinicia sozinho"* — contornar o desenho sem resolver a objeção não a apaga. Ela fica
+> esperando, em geral até a primeira noite em que ninguém está olhando.

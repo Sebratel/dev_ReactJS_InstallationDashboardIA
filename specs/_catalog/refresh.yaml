@@ -83,8 +83,9 @@
 # das 730 linhas dela) — nenhuma das duas justifica reserva de minutos.
 #
 # **Ao dimensionar um intervalo novo: some ~10s, não ~4 min.** E o item dominante de
-# um tick deixou de ser este encadeamento: em 16/09 o `frio` levou 190s, dos quais a
-# busca de `protocolos-produtividade` (~162s) é a quase totalidade.
+# um tick deixou de ser este encadeamento: em 16/09 o `frio` levou 190s e 209s em dois
+# ticks medidos, dos quais a busca de `protocolos-produtividade` (~162s) é a quase
+# totalidade. As calculadas são ~5% desse tempo.
 
 formato: 1
 
@@ -140,7 +141,8 @@ grupos:
   # que QUALQUER grupo bem-sucedido paga (ver ATENÇÃO acima — eram ~4 min até
   # 04/09/2026, hoje são 9,8s medidos). Sozinha, ela fecharia um tick em ~24s. O que
   # dimensiona este grupo hoje é `protocolos-produtividade`, mais abaixo: o tick
-  # inteiro medido em 16/09/2026 foi de 190s, ~10,6% do intervalo de 30 min.
+  # inteiro medido em 16/09/2026 deu 190s e 209s em duas passadas, ~11% do intervalo
+  # de 30 min.
   # Sozinha no grupo: perfil de fonte e custo
   # diferentes de `quente`/`medio`, e um novo grupo aqui já significa mais
   # uma queda do cache de resposta inteiro por ciclo (armadilha registrada em

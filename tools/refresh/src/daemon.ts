@@ -13,6 +13,11 @@
 //    `semRefresh` em `tools/subir/src/index.ts` para o defeito que inverteu isso).
 //
 // Sem depender de crontab externo no host: o agendador já nasce integrado na stack.
+//
+// **O que ele deixa escrito.** `snapshot/refresh-status.json` guarda a ÚLTIMA
+// tentativa de cada grupo e nada mais; `snapshot/refresh-historico.log` guarda
+// todas, e é o único lugar onde uma falha de madrugada que o tick seguinte
+// consertou continua existindo de manhã. Leia com `--historico` (ver `historico.ts`).
 
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
@@ -21,6 +26,7 @@ import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
+import { leHistorico, registra, resumePorGrupo } from './historico.ts';
 import { leStatus, escreveStatus } from './status.ts';
 import { estaVencido, executaTick, type ResultadoDeExecucao, type ResultadoDoGrupoNoTick } from './tick.ts';
 
@@ -85,7 +91,25 @@ export async function executaCiclo(opts: {
   }
 
   const t0 = Date.now();
-  const roda = opts.roda ?? ((g) => rodaGrupo(raiz, g, memoriaMb));
+  const rodaBase = opts.roda ?? ((g: GrupoDeRefresh) => rodaGrupo(raiz, g, memoriaMb));
+  // **O histórico é escrito por GRUPO, não por tick.** `executaTick` já persiste o
+  // status depois de cada grupo justamente para que um tick morto no meio não perca os
+  // que terminaram (ver o docstring dele); o histórico segue a mesma regra. Embrulhar
+  // `roda` — em vez de varrer `resultados` no fim — é o que garante isso sem mexer na
+  // assinatura de `executaTick`.
+  const roda = (g: GrupoDeRefresh): ResultadoDeExecucao => {
+    const inicio = Date.now();
+    const r = rodaBase(g);
+    registra(snapshotDir, {
+      evento: 'grupo',
+      quando: new Date().toISOString(),
+      grupo: g.id,
+      ok: r.ok,
+      duracaoMs: Date.now() - inicio,
+      ...(r.erro ? { erro: r.erro } : {}),
+    });
+    return r;
+  };
   const { resultados } = await executaTick(grupos, statusAnterior, {
     agora: () => new Date(),
     roda,
@@ -125,6 +149,17 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
 
   console.log(`[Refresh Daemon] Agendador automático iniciado.`);
   console.log(`[Refresh Daemon] Intervalo base: a cada ${intervaloMinutos} minuto(s).`);
+  // Um arranque no histórico é o que separa "o daemon está parado desde as 03:00" de
+  // "o daemon reiniciou às 03:00 e às 03:05 e às 03:11" — a supervisão de
+  // `tools/subir/src/index.ts` respawna, e sem esta linha o respawn é invisível.
+  if (!soPlano) {
+    registra(opts.snapshotDir ?? path.join(raiz, DIRETORIO_PADRAO), {
+      evento: 'arranque',
+      quando: new Date().toISOString(),
+      intervaloMinutos,
+      pid: process.pid,
+    });
+  }
   if (soPlano) console.log(`[Refresh Daemon] Modo: --so-plano (dry-run, nenhum dado será modificado).`);
 
   let emExecucao = false;
@@ -165,6 +200,11 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
       return res;
     } catch (err) {
       console.error(`[Refresh Daemon] [${carimbo}] Erro durante ciclo de refresh:`, err);
+      registra(opts.snapshotDir ?? path.join(raiz, DIRETORIO_PADRAO), {
+        evento: 'erro-de-ciclo',
+        quando: new Date().toISOString(),
+        erro: err instanceof Error ? err.message : String(err),
+      });
       return null;
     } finally {
       emExecucao = false;
@@ -200,6 +240,40 @@ const ehScriptPrincipal =
 
 if (ehScriptPrincipal) {
   const args = process.argv.slice(2);
+
+  // `--historico` é LEITURA: imprime e sai, sem subir agendador nenhum. É seguro rodar
+  // com o daemon vivo, ao contrário de tudo o mais neste arquivo.
+  if (args.includes('--historico')) {
+    const dir = path.join(ROOT, DIRETORIO_PADRAO);
+    const eventos = leHistorico(dir, 500);
+    if (eventos.length === 0) {
+      console.log('Sem histórico ainda — nenhum tick escreveu em snapshot/refresh-historico.log.');
+      process.exit(0);
+    }
+    const primeiro = eventos[0]!.quando;
+    const ultimo = eventos[eventos.length - 1]!.quando;
+    console.log(`${eventos.length} evento(s), de ${primeiro} a ${ultimo}.
+`);
+    console.log('grupo     tentativas  falhas  duração média  última falha');
+    for (const r of resumePorGrupo(eventos)) {
+      const media = `${(r.duracaoMediaMs / 1000).toFixed(1)}s`;
+      console.log(
+        `${r.grupo.padEnd(10)}${String(r.tentativas).padStart(8)}` +
+          `${String(r.falhas).padStart(8)}${media.padStart(15)}  ${r.ultimaFalha ?? '—'}` +
+          `${r.ultimoErro ? ` (${r.ultimoErro})` : ''}`,
+      );
+    }
+    const arranques = eventos.filter((e) => e.evento === 'arranque').length;
+    const errosDeCiclo = eventos.filter((e) => e.evento === 'erro-de-ciclo');
+    console.log(`
+arranques do daemon na janela: ${arranques}`);
+    if (errosDeCiclo.length > 0) {
+      console.log(`erros de ciclo: ${errosDeCiclo.length}`);
+      for (const e of errosDeCiclo.slice(-5)) console.log(`  ${e.quando}  ${(e as { erro: string }).erro}`);
+    }
+    process.exit(0);
+  }
+
   const soPlano = args.includes('--so-plano');
   const semImediato = args.includes('--sem-imediato');
   const soUmaVez = args.includes('--so-uma-vez');
@@ -207,9 +281,9 @@ if (ehScriptPrincipal) {
   const intervaloMinutos = argIntervalo ? Number.parseInt(argIntervalo.slice('--intervalo='.length), 10) : undefined;
 
   for (const a of args) {
-    if (!['--so-plano', '--sem-imediato', '--so-uma-vez'].includes(a) && !a.startsWith('--intervalo=')) {
+    if (!['--so-plano', '--sem-imediato', '--so-uma-vez', '--historico'].includes(a) && !a.startsWith('--intervalo=')) {
       console.error(`argumento desconhecido: ${a}`);
-      console.error('use: --intervalo=N | --so-plano | --sem-imediato | --so-uma-vez');
+      console.error('use: --intervalo=N | --so-plano | --sem-imediato | --so-uma-vez | --historico');
       process.exit(2);
     }
   }
