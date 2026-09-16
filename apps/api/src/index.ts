@@ -109,6 +109,26 @@ async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
     cliente.on('ready', () => {
       if (saude.conectou()) console.log('[cache] Redis conectado.');
     });
+    // **Abre a conexão AGORA, e não na primeira operação.** Medido em 16/09/2026
+    // contra um Redis saudável (servidor RESP de mentira, as opções exatas daqui):
+    // com `lazyConnect` sozinho as TRÊS primeiras operações falham com
+    // *"Stream isn't writeable and enableOfflineQueue options is false"*, porque
+    // `lazyConnect` apenas INICIA a conexão na primeira operação e
+    // `enableOfflineQueue: false` recusa todo comando enquanto o status é
+    // `connecting`. Da quarta em diante funciona.
+    //
+    // Três é exatamente `LIMITE_PADRAO` do disjuntor. Ou seja, sem esta linha um
+    // Redis **em pleno funcionamento** abria o disjuntor por 10 s a cada arranque
+    // da API e imprimia "Redis desligado do caminho por 10s após 3 falhas
+    // seguidas" — acusando um serviço que estava bom, e deixando `/api/saude`
+    // relatar degradação que não existia. Um alarme que dispara sozinho todo boot
+    // é pior que nenhum: ensina a ignorá-lo.
+    //
+    // O `catch` vazio não engole diagnóstico: um Redis fora do ar emite `'error'`
+    // no ouvinte acima, que é quem loga e alimenta `/api/saude`. Aqui o `catch`
+    // existe só para a rejeição não virar exceção não tratada — e a promessa não
+    // é esperada de propósito: o arranque da API não deve depender do Redis.
+    void cliente.connect().catch(() => {});
     // **O disjuntor entre a camada durável e o driver.** Os tempos apertados
     // acima reduzem o custo de UMA operação contra um Redis fora do ar; o
     // disjuntor tira o custo REPETIDO. Depois de 3 falhas seguidas ele para de
