@@ -35,14 +35,41 @@ const RAIZ_DO_REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 
 // `envDir`.
 applyDotEnv(RAIZ_DO_REPO);
 const GOOGLE_CLIENT_ID = process.env.VITE_GOOGLE_CLIENT_ID ?? '';
+
+// Firebase Authentication — o caminho de login desde 16/09/2026. Nada aqui é
+// segredo: `apiKey` do Firebase é identificador de projeto, público em todo app
+// Firebase do mundo (ver o cabeçalho de `src/firebase.ts`). Quem barra acesso é
+// o domínio autorizado no console, mais `apps/api/src/auth-firebase.ts`.
+//
+// Lidas UMA a UMA, e não com um laço sobre `process.env`: `define` faz
+// substituição textual no código-fonte, e um laço sobre o ambiente jogaria
+// dentro do pacote qualquer variável com o prefixo — inclusive uma que alguém
+// acrescente amanhã sem saber que ela vira texto no navegador.
+const FIREBASE = {
+  apiKey: process.env.VITE_FIREBASE_API_KEY ?? '',
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN ?? '',
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID ?? '',
+  appId: process.env.VITE_FIREBASE_APP_ID ?? '',
+};
+const DOMINIO_CORPORATIVO = process.env.DOMINIO_CORPORATIVO ?? 'sebratel.com.br';
 // Em dev sem Google Client ID, expõe o token interno para bypass de login.
 // Em produção GOOGLE_CLIENT_ID existe e isto fica vazio — nunca vaza.
-const TOKEN_INTERNO = GOOGLE_CLIENT_ID ? '' : (process.env.TOKEN_INTERNO ?? '');
+// O token interno só é exposto quando NÃO há provedor nenhum — em produção há
+// Firebase (ou GIS), e isto fica vazio. Precisou passar a olhar os dois: com a
+// tela no Firebase e `VITE_GOOGLE_CLIENT_ID` vazia, a condição antiga mandaria o
+// segredo de bypass para dentro do pacote de produção.
+const TOKEN_INTERNO =
+  GOOGLE_CLIENT_ID || FIREBASE.projectId ? '' : (process.env.TOKEN_INTERNO ?? '');
 
 export default defineConfig({
   define: {
     'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(GOOGLE_CLIENT_ID),
     'import.meta.env.VITE_TOKEN_INTERNO': JSON.stringify(TOKEN_INTERNO),
+    'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(FIREBASE.apiKey),
+    'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(FIREBASE.authDomain),
+    'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(FIREBASE.projectId),
+    'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(FIREBASE.appId),
+    'import.meta.env.VITE_DOMINIO_CORPORATIVO': JSON.stringify(DOMINIO_CORPORATIVO),
   },
   // O PLUGIN DO TAILWIND NÃO É OPCIONAL, e a falta dele falha em silêncio.
   //
@@ -69,7 +96,7 @@ export default defineConfig({
         target: API,
         changeOrigin: true,
       },
-      // Login (Google SSO): POST /auth/google e /auth/logout vivem na mesma
+      // Login (Google SSO): POST /auth/firebase, /auth/google e /auth/logout vivem na mesma
       // API, fora de /api/* de propósito (são as únicas rotas que escrevem
       // estado — sessão — em vez de servir dado calculado).
       '/auth': {

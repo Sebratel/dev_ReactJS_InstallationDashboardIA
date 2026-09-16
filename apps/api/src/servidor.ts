@@ -62,6 +62,7 @@ import {
   type Sessoes,
 } from './identidade.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
+import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
 import {
   calculaPagina,
   segmentacaoDe,
@@ -143,6 +144,19 @@ export interface ServidorOptions {
   sessaoTtlHoras?: number;
   /** Substitui o cliente real do Google em teste — ver `auth-google.ts`. */
   verificadorGoogle?: VerificadorDeToken;
+  /**
+   * ID do projeto Firebase, para `POST /auth/firebase`. Vazio recusa todo
+   * token — falha fechada, igual ao `googleClientId`.
+   *
+   * Coexiste com `googleClientId` de propósito: os dois caminhos entregam a
+   * MESMA sessão (`criaSessao` com o e-mail), e quem escolhe é a configuração
+   * do ambiente. Ter os dois ligados ao mesmo tempo é legítimo — é o que
+   * permite migrar a tela para o Firebase sem derrubar o `tools/tela` nem
+   * quem já estiver logado pelo GIS.
+   */
+  firebaseProjectId?: string;
+  /** Substitui a busca de chaves públicas do Firebase em teste — ver `auth-firebase.ts`. */
+  certificadosFirebase?: BuscaCertificados;
   /**
    * Segredo compartilhado (`.env`, `TOKEN_INTERNO`) que libera `POST
    * /auth/interno` — a única forma de uma ferramenta de linha de comando
@@ -264,12 +278,17 @@ export class Servidor {
   // `resto` (vira `this.piscina`) — sem ela aqui, o tipo exige um padrão que
   // nunca é escrito e o compilador acusa a linha errada.
   private readonly opts: Required<
-    Omit<ServidorOptions, 'cache' | 'aoFalharCache' | 'verificadorGoogle' | 'piscinaWorkers'>
+    Omit<
+      ServidorOptions,
+      'cache' | 'aoFalharCache' | 'verificadorGoogle' | 'certificadosFirebase' | 'piscinaWorkers'
+    >
   >;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
    *  "padrão" que faça sentido preencher, diferente dos outros campos. */
   private readonly verificadorGoogle: VerificadorDeToken | undefined;
+
+  private readonly certificadosFirebase: BuscaCertificados | undefined;
   /** Sessões de login ativas, em memória — mesmo desenho de `carregadas`/
    *  `completos`: não sobrevive a um restart, e está certo (perder sessão pede
    *  login de novo, nunca serve dado de ninguém). */
@@ -431,7 +450,7 @@ export class Servidor {
   private readonly motivosDeFallback = new Set<string>();
 
   constructor(opts: ServidorOptions) {
-    const { cache, aoFalharCache, verificadorGoogle, piscinaWorkers, ...resto } = opts;
+    const { cache, aoFalharCache, verificadorGoogle, certificadosFirebase, piscinaWorkers, ...resto } = opts;
     this.piscina = piscinaWorkers ?? new PiscinaWorkers({ desativado: process.env.NODE_ENV === 'test' });
     // **A conta que a F3 precisa separar.** `worker_ms` mede a soma (espera +
     // cálculo) e não distingue "o cálculo é caro" de "o clique ficou atrás de
@@ -445,6 +464,7 @@ export class Servidor {
       this.metricas.observa(`calculo_ms_${origem}`, execucaoMs);
     });
     this.verificadorGoogle = verificadorGoogle;
+    this.certificadosFirebase = certificadosFirebase;
 
     this.opts = {
       agora: () => new Date(),
@@ -452,6 +472,7 @@ export class Servidor {
       aquecimento: () => ({ ativo: false, pronto: false }),
       tetoDeVisuaisMB: TETO_PADRAO_MB,
       googleClientId: '',
+      firebaseProjectId: '',
       dominioCorporativo: 'sebratel.com.br',
       sessaoTtlHoras: 12,
       tokenInterno: '',
@@ -584,6 +605,7 @@ export class Servidor {
     // qualquer outra guarda — pedir login não pode exigir já estar logado, e
     // a guarda de método abaixo é justamente o que barraria um POST.
     if (rota === '/auth/google' && req.method === 'POST') return this.autenticaGoogle(req, res);
+    if (rota === '/auth/firebase' && req.method === 'POST') return this.autenticaFirebase(req, res);
     if (rota === '/auth/interno' && req.method === 'POST') return this.autenticaInterno(req, res);
     if (rota === '/auth/logout' && req.method === 'POST') return this.logout(req, res);
 
@@ -591,7 +613,7 @@ export class Servidor {
       res.setHeader('Allow', 'GET, HEAD, POST');
       responde(res, 405, {
         erro: `Método ${req.method} não existe nesta rota. A API é somente leitura ` +
-          `— as únicas exceções são POST /auth/google, /auth/interno e /auth/logout.`,
+          `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno e /auth/logout.`,
       });
       return;
     }
@@ -616,13 +638,18 @@ export class Servidor {
     const quem = ehAquecedor
       ? { usuario: 'aquecedor-interno', papeis: ['interno'] }
       : this.opts.identifica(req) ??
-        (!this.opts.googleClientId
+        // O bypass `dev-local` só vale quando NENHUM provedor está configurado.
+        // Tem de citar os dois: com o Firebase ligado e o GIS desligado (que é o
+        // arranjo normal depois de 16/09/2026), olhar só o `googleClientId`
+        // voltaria a servir `/api/*` sem sessão — o defeito de 04/09 de novo,
+        // por outra porta. Ver `portao-login.ts`.
+        (!this.opts.googleClientId && !this.opts.firebaseProjectId
           ? { usuario: 'dev-local', papeis: ['autenticado'] }
           : null);
 
     if (rota.startsWith('/api/')) {
       if (!quem) {
-        responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/google.' });
+        responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
         return;
       }
       if (rota === '/api/dashboards') return this.lista(res);
@@ -678,6 +705,51 @@ export class Servidor {
       clientId: this.opts.googleClientId,
       dominioCorporativo: this.opts.dominioCorporativo,
       ...(this.verificadorGoogle ? { cliente: this.verificadorGoogle } : {}),
+    });
+    if (!identidade) {
+      responde(res, 401, {
+        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+      });
+      return;
+    }
+    const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
+    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras));
+    responde(res, 200, { usuario: identidade.email });
+  }
+
+  /**
+   * O mesmo login, pelo Firebase Authentication — a tela usa ESTE desde
+   * 16/09/2026 (decisão do Erick). O contrato de resposta é idêntico ao de
+   * `/auth/google`: mesmo cookie, mesma sessão, mesmo `{ usuario }`. É o que
+   * torna a troca invisível para `App.tsx` e para o cache de resposta.
+   *
+   * O que NÃO é idêntico é a checagem de domínio — o token do Firebase não tem
+   * o claim `hd`. Leia o cabeçalho de `auth-firebase.ts` antes de supor que as
+   * duas rotas oferecem a mesma garantia.
+   */
+  private async autenticaFirebase(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    let corpo: unknown;
+    try {
+      corpo = JSON.parse(await leCorpo(req));
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { idToken }.' });
+      return;
+    }
+    const idToken = (corpo as { idToken?: unknown } | null)?.idToken;
+    if (typeof idToken !== 'string' || idToken === '') {
+      responde(res, 400, { erro: 'Faltou "idToken" no corpo do pedido.' });
+      return;
+    }
+    if (!this.opts.firebaseProjectId) {
+      // Falha FECHADA, igual a `/auth/google`: sem projeto configurado, nenhum
+      // token — nem um emitido de verdade pelo Firebase — cria sessão.
+      responde(res, 401, { erro: 'Login não configurado neste ambiente (FIREBASE_PROJECT_ID ausente).' });
+      return;
+    }
+    const identidade = await verificaIdTokenFirebase(idToken, {
+      projectId: this.opts.firebaseProjectId,
+      dominioCorporativo: this.opts.dominioCorporativo,
+      ...(this.certificadosFirebase ? { certificados: this.certificadosFirebase } : {}),
     });
     if (!identidade) {
       responde(res, 401, {
@@ -1142,18 +1214,18 @@ export class Servidor {
     const de = inteiro(url.searchParams.get('de'), 0, 0, Number.MAX_SAFE_INTEGER);
     const linhas = inteiro(url.searchParams.get('linhas'), LINHAS_PADRAO, 1, LINHAS_MAXIMO);
 
-    // `?busca=` -- o campo "Filtrar..." da tabela. Normalizado AQUI, uma vez, e nao a
+    // `?busca=` — o campo "Filtrar…" da tabela. Normalizado AQUI, uma vez, e não a
     // cada linha comparada: `janelaDe` roda `casaComTermo` por linha do resultado
-    // inteiro, e baixar a caixa do termo la dentro seria a mesma alocacao por celula
+    // inteiro, e baixar a caixa do termo lá dentro seria a mesma alocação por célula
     // que `normalizeName` custou 42,9% do CPU antes de ser memoizada (ACHADOS #110).
     //
-    // A normalizacao tem de casar com a de `casaComTermo`, que compara em minusculas.
-    // Termo so de espacos vira `undefined` -- e o mesmo que nao buscar, e precisa cair
+    // A normalização tem de casar com a de `casaComTermo`, que compara em minúsculas.
+    // Termo só de espaços vira `undefined` — é o mesmo que não buscar, e precisa cair
     // na MESMA chave de cache da abertura sem busca.
     const buscaBruta = (url.searchParams.get('busca') ?? '').trim().toLowerCase();
     if (buscaBruta.length > TERMO_MAXIMO) {
       responde(res, 400, {
-        erro: `?busca= aceita no maximo ${TERMO_MAXIMO} caracteres (veio ${buscaBruta.length}).`,
+        erro: `?busca= aceita no máximo ${TERMO_MAXIMO} caracteres (veio ${buscaBruta.length}).`,
       });
       return;
     }

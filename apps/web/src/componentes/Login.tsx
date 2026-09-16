@@ -14,6 +14,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Erro } from './Cartao.tsx';
+import { entraComGoogle, mensagemDeErro, temFirebase } from '../firebase.ts';
 
 declare global {
   interface Window {
@@ -70,8 +71,42 @@ export function Login({ aoLogar }: { aoLogar: () => void }) {
   const botaoRef = useRef<HTMLDivElement>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [entrando, setEntrando] = useState(false);
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined;
+  // TRÊS caminhos, nesta ordem de precedência, e nunca dois na tela ao mesmo
+  // tempo: Firebase (o de produção desde 16/09/2026), Google Identity Services
+  // puro (o anterior, mantido para ambiente que ainda não migrou) e o botão de
+  // desenvolvimento por `TOKEN_INTERNO`. Os três terminam igual — cookie de
+  // sessão emitido pela nossa API — então `App.tsx` não sabe qual foi usado.
+  const firebase = temFirebase();
+  const clientId = firebase ? undefined : (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined);
   const tokenInterno = import.meta.env.VITE_TOKEN_INTERNO as string | undefined;
+  const dominio = (import.meta.env.VITE_DOMINIO_CORPORATIVO as string | undefined) || 'sebratel.com.br';
+
+  /** O login pelo Firebase: janela do Google, ID token, e a troca por sessão
+   *  nossa em `/auth/firebase`. O token do Firebase morre aqui — não é ele que
+   *  autentica `/api/*`, é o cookie que esta chamada devolve. */
+  const loginFirebase = async () => {
+    setErro(null);
+    setEntrando(true);
+    try {
+      const idToken = await entraComGoogle(dominio);
+      const r = await fetch('/auth/firebase', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!r.ok) {
+        setErro(await erroDaResposta(r));
+        return;
+      }
+      aoLogar();
+    } catch (err) {
+      // `null` é o caso de quem fechou a janela — desistir não é erro.
+      const mensagem = mensagemDeErro(err);
+      if (mensagem) setErro(mensagem);
+    } finally {
+      setEntrando(false);
+    }
+  };
 
   // Bypass de login em modo dev: usa /auth/interno com TOKEN_INTERNO.
   const loginInterno = async () => {
@@ -96,10 +131,16 @@ export function Login({ aoLogar }: { aoLogar: () => void }) {
   };
 
   useEffect(() => {
+    // Com Firebase configurado, este efeito não tem o que fazer: o botão é
+    // nosso, o script do Google vem do SDK, e nada precisa ser injetado no DOM.
+    if (firebase) return;
     // Sem Google Client ID: se há token interno, o botão de dev cuida; senão, erro.
     if (!clientId) {
       if (!tokenInterno) {
-        setErro('Login não configurado neste ambiente (VITE_GOOGLE_CLIENT_ID e TOKEN_INTERNO ausentes).');
+        setErro(
+          'Login não configurado neste ambiente ' +
+            '(VITE_FIREBASE_PROJECT_ID, VITE_GOOGLE_CLIENT_ID e TOKEN_INTERNO ausentes).',
+        );
       }
       return;
     }
@@ -135,7 +176,7 @@ export function Login({ aoLogar }: { aoLogar: () => void }) {
     return () => {
       cancelado = true;
     };
-  }, [clientId]);
+  }, [clientId, firebase]);
 
   return (
     <div className="tela-login">
@@ -158,10 +199,21 @@ export function Login({ aoLogar }: { aoLogar: () => void }) {
         </svg>
         <h1>Analytics Platform</h1>
         <p>Entre com sua conta corporativa para continuar.</p>
-        {/* Botão do Google — só aparece quando há Client ID válido */}
-        <div ref={botaoRef} className="login-botao-google" />
-        {/* Botão de bypass dev — só aparece quando NÃO há Client ID mas há token interno */}
-        {!clientId && tokenInterno ? (
+        {/* Firebase: botão nosso, porque o SDK não desenha nenhum */}
+        {firebase ? (
+          <button
+            className="primario"
+            onClick={loginFirebase}
+            disabled={entrando}
+            style={{ marginTop: 8, width: 280 }}
+          >
+            {entrando ? 'Entrando…' : 'Entrar com Google'}
+          </button>
+        ) : null}
+        {/* Botão do Google Identity Services — só quando NÃO há Firebase e há Client ID */}
+        {!firebase ? <div ref={botaoRef} className="login-botao-google" /> : null}
+        {/* Botão de bypass dev — só aparece quando não há provedor nenhum mas há token interno */}
+        {!firebase && !clientId && tokenInterno ? (
           <button
             className="primario"
             onClick={loginInterno}

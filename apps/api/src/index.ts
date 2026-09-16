@@ -252,6 +252,7 @@ const servidor = new Servidor({
     ? { tetoDeVisuaisMB }
     : {}),
   ...(process.env.GOOGLE_CLIENT_ID ? { googleClientId: process.env.GOOGLE_CLIENT_ID } : {}),
+  ...(process.env.FIREBASE_PROJECT_ID ? { firebaseProjectId: process.env.FIREBASE_PROJECT_ID } : {}),
   ...(process.env.DOMINIO_CORPORATIVO ? { dominioCorporativo: process.env.DOMINIO_CORPORATIVO } : {}),
   ...(process.env.SESSAO_TTL_HORAS
     ? { sessaoTtlHoras: Number.parseFloat(process.env.SESSAO_TTL_HORAS) }
@@ -303,7 +304,9 @@ http.listen(porta, () => {
   console.log(
     `  Login: ${semLogin
       ? 'DESLIGADO por SEM_LOGIN=1/--sem-login — TODO pedido é servido sem sessão'
-      : `Google SSO, domínio ${process.env.DOMINIO_CORPORATIVO ?? 'sebratel.com.br'}`}`,
+      : `${process.env.FIREBASE_PROJECT_ID
+          ? `Firebase (projeto ${process.env.FIREBASE_PROJECT_ID})`
+          : 'Google Identity Services'}, domínio ${process.env.DOMINIO_CORPORATIVO ?? 'sebratel.com.br'}`}`,
   );
   console.log(
     `  Cache da resposta: ${cache ? 'memória + Redis (REDIS_URL)' : 'memória'}`,

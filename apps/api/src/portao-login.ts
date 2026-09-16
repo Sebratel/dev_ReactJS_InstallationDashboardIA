@@ -44,7 +44,16 @@ export function decideLogin(
   const semLogin = env.SEM_LOGIN === '1' || argv.includes('--sem-login');
   // `Boolean` e não `!== undefined`: string vazia é o caso REAL do `.env` deste
   // projeto, e era exatamente ela que fazia o portão falhar aberto.
-  const temClientId = Boolean(env.GOOGLE_CLIENT_ID);
+  // Desde 16/09/2026 há DOIS provedores possíveis, e qualquer um deles conta
+  // como credencial: `GOOGLE_CLIENT_ID` (Google Identity Services puro) e
+  // `FIREBASE_PROJECT_ID` (Firebase Authentication). Basta um.
+  //
+  // Olhar só o `GOOGLE_CLIENT_ID` aqui teria um efeito perverso: com a tela já
+  // migrada para o Firebase, o `.env` de produção não preenche mais aquela
+  // variável — e esta guarda recusaria subir uma stack perfeitamente
+  // autenticada, o que empurra quem estiver de plantão para `SEM_LOGIN=1`.
+  // Trava que atrapalha o caso certo acaba desligada.
+  const temClientId = Boolean(env.GOOGLE_CLIENT_ID) || Boolean(env.FIREBASE_PROJECT_ID);
   const producao = env.NODE_ENV === 'production';
 
   if (semLogin && producao) {
@@ -64,11 +73,13 @@ export function decideLogin(
       tipo: 'recusa',
       motivo: 'sem-credencial',
       mensagem:
-        `\n[login] RECUSANDO SUBIR: GOOGLE_CLIENT_ID está ausente ou vazia.\n\n` +
-        `  Sem ela nenhum pedido é autenticado, e o que esta API serve inclui\n` +
+        `\n[login] RECUSANDO SUBIR: nenhum provedor de login configurado.\n\n` +
+        `  Nem FIREBASE_PROJECT_ID nem GOOGLE_CLIENT_ID estão preenchidas, e sem\n` +
+        `  uma delas nenhum pedido é autenticado — o que esta API serve inclui\n` +
         `  nome, telefone e endereço de cliente. Antes desta guarda, o processo\n` +
         `  subia e respondia 200 para /api/dashboards/* sem sessão nenhuma.\n\n` +
-        `  Para PRODUÇÃO: preencha GOOGLE_CLIENT_ID (e DOMINIO_CORPORATIVO).\n` +
+        `  Para PRODUÇÃO: preencha FIREBASE_PROJECT_ID (e DOMINIO_CORPORATIVO) —\n` +
+        `  ou GOOGLE_CLIENT_ID, se o ambiente ainda usar o Google Identity puro.\n` +
         `  Para DESENVOLVER sem login, declare a intenção:\n` +
         `      SEM_LOGIN=1 npm run api        (ou: npm run api -- --sem-login)\n`,
     };

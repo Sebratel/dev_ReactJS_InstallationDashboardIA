@@ -323,11 +323,53 @@ combinadas com `NODE_ENV=production`, de propósito, para que ninguém desligue 
 login *fingindo* estar em produção — ver `apps/api/src/portao-login.ts`.
 
 **Não** transforme a sobreposição em atalho para produção. Em produção o caminho é
-preencher `GOOGLE_CLIENT_ID` e `DOMINIO_CORPORATIVO`, e aí a guarda sai da frente
-sozinha.
+preencher `FIREBASE_PROJECT_ID` (ou `GOOGLE_CLIENT_ID`) e `DOMINIO_CORPORATIVO`, e aí
+a guarda sai da frente sozinha.
 
 Para conferir que a guarda continua viva, suba **sem** a sobreposição: o container
 tem de morrer com saída 1.
+
+> **Desde 16/09/2026 este `.env` TEM `FIREBASE_PROJECT_ID` preenchida**, e é isso que
+> torna o parágrafo acima menos frequente do que era: a stack de produção sobe nesta
+> máquina sem sobreposição nenhuma, porque agora existe credencial de verdade. O
+> teste que prova que a guarda continua fechando é
+> `apps/api/test/portao-login.test.ts`, "produção com as DUAS credenciais vazias".
+
+#### 3.2.2 O login, hoje: Firebase Authentication
+
+A tela entra por **Firebase Authentication**, provedor Google, restrito ao
+`DOMINIO_CORPORATIVO` (decisão do Erick, 16/09/2026). Antes era Google Identity
+Services puro; as duas rotas continuam de pé, e qual delas a tela usa é decisão de
+configuração, não de código:
+
+| rota | ligada por | quem usa |
+|---|---|---|
+| `POST /auth/firebase` | `FIREBASE_PROJECT_ID` + as quatro `VITE_FIREBASE_*` | a tela |
+| `POST /auth/google` | `GOOGLE_CLIENT_ID` + `VITE_GOOGLE_CLIENT_ID` | ambiente que não migrou |
+| `POST /auth/interno` | `TOKEN_INTERNO` | `npm run tela` (navegador de verdade, sem conta) |
+
+As três emitem a **mesma** sessão — cookie `HttpOnly`, TTL de `SESSAO_TTL_HORAS` — e
+`App.tsx` não sabe qual foi usada. Cada uma falha **fechada**: sem a variável que a
+liga, nenhum token cria sessão, nem um legítimo.
+
+**A diferença de garantia que o Firebase trouxe, e que precisa estar num documento e
+não só num comentário.** O token do Google Identity traz o claim `hd` (hosted domain),
+assinado pelo Google e impossível de forjar; **o token do Firebase não traz**. A
+checagem de domínio passou a ser feita sobre o e-mail, exigindo três coisas juntas
+(`sign_in_provider === 'google.com'`, `email_verified === true`, e o domínio depois do
+último `@` **igual**, não sufixo). O que fecha a diferença por completo é uma
+*blocking function* `beforeSignIn` no console do Firebase recusando `hd` diferente —
+exige plano Blaze, e **ainda não está ligada**. Ver o cabeçalho de
+`apps/api/src/auth-firebase.ts`.
+
+**Duas coisas a conferir no console do Firebase antes de publicar:**
+
+1. *Authentication → Sign-in method*: só **Google** habilitado. Deixar e-mail/senha
+   ligado não derruba a checagem acima (ela exige `google.com`), mas cria contas no
+   projeto que nunca vão logar — ruído que confunde quem for auditar.
+2. *Authentication → Settings → Authorized domains*: o domínio onde a tela é
+   publicada. Faltando ele, o login falha com `auth/unauthorized-domain` — a tela já
+   traduz esse código para uma frase que diz onde mexer.
 
 ### 3.3 Proxy reverso e TLS
 

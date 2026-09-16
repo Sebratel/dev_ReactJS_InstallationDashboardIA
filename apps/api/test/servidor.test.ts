@@ -10,6 +10,7 @@
 // paridade, e paridade continua dependendo de alguém abrir o Power BI.
 
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -72,6 +73,8 @@ async function servidorComLogin(
     googleClientId?: string;
     dominioCorporativo?: string;
     verificadorGoogle?: VerificadorDeToken;
+    firebaseProjectId?: string;
+    certificadosFirebase?: () => Promise<Record<string, string>>;
     tokenInterno?: string;
   } = {},
 ): Promise<{
@@ -87,6 +90,8 @@ async function servidorComLogin(
     googleClientId: opts.googleClientId ?? '123.apps.googleusercontent.com',
     dominioCorporativo: opts.dominioCorporativo ?? 'sebratel.com.br',
     ...(opts.verificadorGoogle ? { verificadorGoogle: opts.verificadorGoogle } : {}),
+    ...(opts.firebaseProjectId !== undefined ? { firebaseProjectId: opts.firebaseProjectId } : {}),
+    ...(opts.certificadosFirebase ? { certificadosFirebase: opts.certificadosFirebase } : {}),
     ...(opts.tokenInterno !== undefined ? { tokenInterno: opts.tokenInterno } : {}),
   });
   const http = servidor.criaHttp();
@@ -937,6 +942,139 @@ test('GOOGLE_CLIENT_ID ausente: login recusa mesmo token válido — falha fecha
     });
     assert.equal(r.status, 401);
     assert.match((await r.json()).erro, /não configurado/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+// ---------------------------------------------------------------- Firebase
+//
+// O mesmo fluxo de `/auth/google`, pela rota que a tela usa desde 16/09/2026.
+// O que estes testes provam que os de cima não provam: as duas rotas emitem a
+// MESMA sessão, e desligar uma não afrouxa a outra.
+//
+// A checagem fina do token vive em `auth-firebase.test.ts` — aqui é a costura.
+
+const PROJETO_FIREBASE = 'installation-dashboard-307fd';
+const PAR_FIREBASE = crypto.generateKeyPairSync('rsa', { modulusLength: 2048 });
+const KID_FIREBASE = 'kid-de-teste';
+const certificadosFirebase = async () => ({
+  [KID_FIREBASE]: PAR_FIREBASE.publicKey.export({ type: 'spki', format: 'pem' }) as string,
+});
+
+/** Um ID token do Firebase assinado de verdade, para o e-mail pedido. */
+function tokenFirebase(email: string): string {
+  const agoraS = Math.floor(Date.now() / 1000);
+  const b64 = (v: unknown) => Buffer.from(JSON.stringify(v), 'utf8').toString('base64url');
+  const assinavel =
+    `${b64({ alg: 'RS256', kid: KID_FIREBASE, typ: 'JWT' })}.` +
+    `${b64({
+      iss: `https://securetoken.google.com/${PROJETO_FIREBASE}`,
+      aud: PROJETO_FIREBASE,
+      sub: 'uid-de-teste',
+      iat: agoraS - 60,
+      exp: agoraS + 3600,
+      email,
+      email_verified: true,
+      firebase: { sign_in_provider: 'google.com' },
+    })}`;
+  const assinatura = crypto
+    .sign('RSA-SHA256', Buffer.from(assinavel, 'utf8'), PAR_FIREBASE.privateKey)
+    .toString('base64url');
+  return `${assinavel}.${assinatura}`;
+}
+
+const postaFirebase = (
+  s: { busca: (rota: string, init?: RequestInit) => Promise<Response> },
+  idToken: unknown,
+) =>
+  s.busca('/auth/firebase', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ idToken }),
+  });
+
+test('login pelo Firebase: token válido cria sessão, e o cookie libera /api/*', async () => {
+  const s = await servidorComLogin(dirVazio(), {
+    googleClientId: '',
+    firebaseProjectId: PROJETO_FIREBASE,
+    certificadosFirebase,
+  });
+  try {
+    assert.equal((await s.busca('/api/dashboards')).status, 401);
+
+    const login = await postaFirebase(s, tokenFirebase('fulano@sebratel.com.br'));
+    assert.equal(login.status, 200);
+    assert.deepEqual(await login.json(), { usuario: 'fulano@sebratel.com.br' });
+
+    const cookie = cookieDe(login);
+    assert.match(cookie, /^sessao=/);
+    assert.equal((await s.busca('/api/dashboards', { headers: { cookie } })).status, 200);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('Firebase com GOOGLE_CLIENT_ID vazia NÃO libera /api/* sem sessão', async () => {
+  // O defeito de 04/09/2026, por outra porta. O bypass `dev-local` olhava só o
+  // `googleClientId`; com a tela migrada para o Firebase essa variável fica
+  // vazia em produção, e a guarda antiga serviria dado de cliente a quem
+  // alcançasse a URL. O teste acima já cobre o 401 inicial — este existe para
+  // dizer POR QUE ele importa, e falha se alguém simplificar a condição.
+  const s = await servidorComLogin(dirVazio(), {
+    googleClientId: '',
+    firebaseProjectId: PROJETO_FIREBASE,
+    certificadosFirebase,
+  });
+  try {
+    const r = await s.busca('/api/dashboards');
+    assert.equal(r.status, 401, 'servindo /api/* sem sessão com o Firebase ligado');
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('login pelo Firebase com domínio de fora: 401, sem cookie nenhum', async () => {
+  const s = await servidorComLogin(dirVazio(), {
+    googleClientId: '',
+    firebaseProjectId: PROJETO_FIREBASE,
+    certificadosFirebase,
+  });
+  try {
+    const r = await postaFirebase(s, tokenFirebase('fulano@gmail.com'));
+    assert.equal(r.status, 401);
+    assert.equal(r.headers.get('set-cookie'), null);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('FIREBASE_PROJECT_ID ausente: /auth/firebase recusa token válido — falha fechada', async () => {
+  const s = await servidorComLogin(dirVazio(), { firebaseProjectId: '', certificadosFirebase });
+  try {
+    const r = await postaFirebase(s, tokenFirebase('fulano@sebratel.com.br'));
+    assert.equal(r.status, 401);
+    assert.match((await r.json()).erro, /não configurado/);
+    assert.equal(r.headers.get('set-cookie'), null);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('/auth/firebase sem idToken: 400; com corpo que não é JSON: 400, não 500', async () => {
+  const s = await servidorComLogin(dirVazio(), {
+    firebaseProjectId: PROJETO_FIREBASE,
+    certificadosFirebase,
+  });
+  try {
+    assert.equal((await postaFirebase(s, undefined)).status, 400);
+    assert.equal((await postaFirebase(s, '')).status, 400);
+    const cru = await s.busca('/auth/firebase', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: 'isto não é json',
+    });
+    assert.equal(cru.status, 400);
   } finally {
     await s.fecha();
   }

@@ -16,9 +16,28 @@ import test from 'node:test';
 const web = path.resolve(import.meta.dirname, '..');
 const le = (...p: string[]) => fs.readFileSync(path.join(web, ...p), 'utf8');
 
-/** Tira comentário de bloco e, no TSX, o de linha — sem comer `https://`. */
+/**
+ * Tira comentário de bloco e, no TSX, o de linha — sem comer `https://`.
+ *
+ * **A ORDEM DAS DUAS TROCAS NÃO É INDIFERENTE, e inverter foi um defeito real**
+ * (achado em 16/09/2026, ao ligar o login por Firebase). Tirar o bloco primeiro
+ * faz um `/*` que mora DENTRO de um comentário de linha abrir um bloco de
+ * mentira — e ele só fecha no próximo `*` seguido de `/` do arquivo, comendo
+ * tudo no meio.
+ *
+ * No `Login.tsx` isso acontecia assim: o cabeçalho tem a frase *"quando `App.tsx`
+ * detecta 401 em qualquer chamada a /api/(asterisco)"*. Aquele `/` + `*` abria o
+ * bloco falso; o `*` + `/` que o fechava era o fim do JSDoc de
+ * `carregaScriptGis`, trinta linhas abaixo — e no meio iam embora TODOS OS
+ * IMPORTS do arquivo. Efeito prático: o teste de módulo órfão aqui embaixo não
+ * enxergava mais nada que o `Login.tsx` importasse, e acusava de órfão um
+ * módulo perfeitamente ligado.
+ *
+ * Tirando o comentário de LINHA primeiro, o `/api/*` some junto com a linha que
+ * o contém, e o que sobra para o segundo passo é só bloco de verdade.
+ */
 function semComentario(fonte: string): string {
-  return fonte.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
+  return fonte.replace(/(^|[^:])\/\/.*$/gm, '$1').replace(/\/\*[\s\S]*?\*\//g, ' ');
 }
 
 const css = semComentario(le('src', 'estilo.css'));

@@ -5,6 +5,12 @@
 # vazia. Então `docker-compose.prod.yml` sozinho **não sobe aqui — de
 # propósito**. Isso é a guarda funcionando, não um problema a contornar.
 #
+# ATUALIZAÇÃO, 16/09/2026: o `.env` desta máquina passou a ter
+# `FIREBASE_PROJECT_ID` preenchida, e a guarda aceita qualquer um dos dois
+# provedores. Ou seja, `docker-compose.prod.yml` SOZINHO agora sobe aqui, com
+# login de verdade — e é assim que deve ser testado. Esta sobreposição continua
+# valendo para o caso que a criou: rodar a stack de propósito SEM login.
+#
 # O contorno honesto é declarar as duas coisas ao mesmo tempo:
 #   SEM_LOGIN=1        -> sim, eu quero servir sem autenticação
 #   NODE_ENV=development -> e não, isto não é uma imagem de produção

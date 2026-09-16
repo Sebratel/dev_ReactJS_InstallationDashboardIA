@@ -24,6 +24,15 @@ describe('portão de login: falha fechado', () => {
     assert.equal(d.tipo === 'recusa' && d.motivo, 'sem-credencial');
   });
 
+  it('produção com as DUAS credenciais vazias RECUSA subir', () => {
+    // Desde 16/09/2026 há dois provedores. Um ambiente com as duas variáveis
+    // presentes-porém-vazias é o `.env` deste projeto antes de configurar
+    // qualquer coisa — o caso mais provável de todos.
+    const d = decideLogin({ NODE_ENV: 'production', GOOGLE_CLIENT_ID: '', FIREBASE_PROJECT_ID: '' });
+    assert.equal(d.tipo, 'recusa');
+    assert.equal(d.tipo === 'recusa' && d.motivo, 'sem-credencial');
+  });
+
   it('SEM_LOGIN=1 junto com NODE_ENV=production RECUSA subir', () => {
     // Desligar o login numa imagem que se diz produção é o pior dos dois
     // mundos: parece endurecida e serve tudo. Recusa, e a mensagem manda tirar
@@ -60,6 +69,20 @@ describe('portão de login: os dois caminhos que PODEM subir', () => {
     const d = decideLogin({ NODE_ENV: 'production', GOOGLE_CLIENT_ID: '123.apps.googleusercontent.com' });
     assert.equal(d.tipo, 'exige-credencial');
     assert.equal(d.tipo === 'exige-credencial' && d.semLogin, false);
+  });
+
+  it('só FIREBASE_PROJECT_ID já é credencial: o portão liga', () => {
+    // A tela migrou para o Firebase, então o `.env` de produção não preenche
+    // mais GOOGLE_CLIENT_ID. Se este teste virar 'recusa', a guarda passou a
+    // barrar a stack autenticada — e quem estiver de plantão vai desligá-la.
+    const d = decideLogin({ NODE_ENV: 'production', FIREBASE_PROJECT_ID: 'installation-dashboard-307fd' });
+    assert.equal(d.tipo, 'exige-credencial');
+    assert.equal(d.tipo === 'exige-credencial' && d.semLogin, false);
+  });
+
+  it('SEM_LOGIN=1 junto com FIREBASE_PROJECT_ID em produção continua RECUSANDO', () => {
+    const d = decideLogin({ NODE_ENV: 'production', SEM_LOGIN: '1', FIREBASE_PROJECT_ID: 'x' });
+    assert.equal(d.tipo === 'recusa' && d.motivo, 'sem-login-em-producao');
   });
 
   it('SEM_LOGIN=1 fora de produção sobe com o login desligado', () => {
