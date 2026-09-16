@@ -102,6 +102,44 @@ test('chaveDaResposta: escopo, página, visuais, janela, carimbo e dia mudam a c
   assert.equal(k, chaveDaResposta({ ...base }), 'o mesmo pedido dá a mesma chave');
 });
 
+// A BUSCA DE TABELA (`?busca=`, 16/09/2026). As duas chaves mudam em direções
+// OPOSTAS, e é a assimetria que faz a busca custar milissegundos em vez de 2,9 s:
+// a resposta muda com o termo, o resultado inteiro que ela recorta não.
+test('chaveDaResposta: o termo de busca muda a chave — buscas diferentes não podem dividir resposta', () => {
+  const base = {
+    escopo: 'todos', pagina: 'protocolos-detalhados', filtros: [], visuais: null,
+    de: 0, linhas: 200, carimbo: 'c1', dia: '2026-09-16',
+  };
+  const semBusca = chaveDaResposta(base);
+  const com = chaveDaResposta({ ...base, termo: '1784218' });
+
+  assert.notEqual(semBusca, com, 'buscar não pode cair na chave de quem não buscou');
+  assert.notEqual(com, chaveDaResposta({ ...base, termo: '178421' }));
+  assert.equal(com, chaveDaResposta({ ...base, termo: '1784218' }), 'o mesmo termo dá a mesma chave');
+
+  // Vazio, só-espaços e ausente são o MESMO pedido. `servidor.ts` normaliza para
+  // `undefined` antes de chegar aqui; esta asserção guarda o outro lado, para uma URL
+  // montada à mão com `?busca=` não fatiar o cache que o aquecedor acabou de encher.
+  assert.equal(semBusca, chaveDaResposta({ ...base, termo: undefined }));
+  assert.equal(semBusca, chaveDaResposta({ ...base, termo: '' }));
+});
+
+test('chaveDoCompleto: o termo NÃO participa — é o que impede uma tecla de recalcular a tabela', () => {
+  // `janelaDe` filtra o resultado já pronto. Se o termo entrasse aqui, cada tecla de
+  // `1784218` seria um recálculo das 33.462 linhas (2,9 s medidos) e mais uma cópia
+  // delas nos 512 MB do CacheDeVisual.
+  const base = {
+    escopo: 'todos', pagina: 'protocolos-detalhados', filtros: [],
+    visual: 'v1', carimbo: 'c1', dia: '2026-09-16',
+  };
+  const k = chaveDoCompleto(base);
+  assert.equal(k, chaveDoCompleto({ ...base, ...{ termo: '1784218' } } as typeof base));
+  // E o que muda o resultado continua mudando a chave — a trava contra alguém
+  // "simplificar" a de cima tirando campos a mais junto.
+  assert.notEqual(k, chaveDoCompleto({ ...base, visual: 'v2' }));
+  assert.notEqual(k, chaveDoCompleto({ ...base, carimbo: 'c2' }));
+});
+
 test('chaveDaResposta: a ORDEM da lista de visuais não muda a chave', () => {
   // A rolagem dispara `?visual=` na ordem em que a pessoa rola, não na ordem do
   // layout — dois pedidos com os MESMOS ids em ordem diferente são o MESMO pedido.

@@ -103,9 +103,51 @@ function serializa(v: DaxValue): unknown {
   return v instanceof Date ? v.toISOString() : v;
 }
 
+/** Teto do termo de busca. Acima disto é colagem acidental, não pesquisa. */
+export const TERMO_MAXIMO = 100;
+
 export interface Janela {
   de: number;
   linhas: number;
+  /**
+   * O termo do campo "Filtrar…" da tabela, já em minúsculas e sem espaço nas pontas.
+   *
+   * **Por que ele viaja até aqui, e não fica na tela.** Ele ficava: `Tabela.tsx`
+   * peneirava `d.linhas`, que são as 200 linhas da janela JÁ baixada. Numa tabela de
+   * 95.157 linhas isso são 476 janelas, e achar um protocolo exigia clicar até a
+   * janela onde ele estava para só então o filtro servir — o que não é buscar, é
+   * adivinhar a página. Com o termo aqui, o recorte acontece sobre o resultado
+   * inteiro.
+   *
+   * **E o custo é quase nada porque ele entra DEPOIS do cálculo.** `dadosDo` calcula
+   * o `Completo` uma vez e o memoiza; o termo só muda o `slice` em `janelaDe`. É a
+   * mesma razão pela qual `chaveDoCompleto` (`cache-resposta.ts`) NÃO o inclui e
+   * `chaveDaResposta` inclui: se ele entrasse na chave do completo, cada tecla
+   * digitada recalcularia as 33.462 linhas — os 2,9 s por clique que o
+   * `CacheDeVisual` existe para não pagar.
+   */
+  termo?: string;
+}
+
+/**
+ * Uma linha casa com o termo se QUALQUER célula dela o contiver.
+ *
+ * **Esta função veio da tela, palavra por palavra** (`Tabela.tsx`,
+ * `linhasFiltradasEOrdenadas`), e veio inteira de propósito: escrever uma segunda
+ * regra de casamento aqui faria a busca mudar de resultado ao mudar de lado, e o
+ * sintoma seria "sumiu uma linha que eu tinha visto", sem erro nenhum.
+ *
+ * Opera sobre a linha **já serializada** — data virou ISO em `serializa`, e é essa a
+ * forma que a tela comparava. Casar contra o `Date` cru daria outro resultado.
+ *
+ * `null`/`undefined` nunca casam: BLANK não é texto vazio que contém tudo.
+ */
+export function casaComTermo(linha: readonly unknown[], termo: string): boolean {
+  for (const v of linha) {
+    if (v === null || v === undefined) continue;
+    if (String(v).toLowerCase().includes(termo)) return true;
+  }
+  return false;
 }
 
 /**
@@ -655,17 +697,41 @@ function matrizCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Matr
 }
 
 /**
- * A janela recortada de um resultado inteiro.
+ * A janela recortada de um resultado inteiro — com a busca aplicada ANTES do recorte.
  *
  * `especie` fica de fora do que sai daqui: ela é de dentro do cache, e a tela nunca a
  * viu. Os demais campos saem idênticos ao que a resposta sempre teve — este recorte
  * não é um formato novo, é o mesmo `slice` que estava embutido no cálculo.
+ *
+ * **A ordem importa e é o ponto inteiro da busca no servidor:** filtrar e DEPOIS
+ * cortar é procurar na tabela; cortar e depois filtrar é o que a tela fazia sozinha, e
+ * é procurar na página. Com 200 linhas por janela e 95.157 linhas em `PROTOCOLOS
+ * GERAL`, a segunda ordem obriga a acertar a janela antes de poder buscar.
+ *
+ * **`linhasTotais` passa a contar o resultado da busca**, porque é dele que o
+ * paginador tira quantas janelas existem — se continuasse sendo o total bruto, uma
+ * busca de 3 linhas anunciaria 476 páginas vazias. O total bruto continua disponível
+ * em `totalSemBusca`, que é o que deixa a tela dizer "3 de 95.157".
+ *
+ * **A MATRIZ IGNORA O TERMO, de propósito.** Ela não tem campo de busca na tela, e as
+ * `celulas` são indexadas pela posição da linha: filtrar `linhas` sem reindexar
+ * `celulas` desalinharia as duas e cada número apareceria na linha errada — a classe
+ * de erro que este projeto não pode cometer. Se um dia a matriz ganhar busca, os dois
+ * arrays têm de ser recortados pelos MESMOS índices, num passo só.
  */
 export function janelaDe(completo: Completo, janela: Janela): unknown {
   const ate = janela.de + janela.linhas;
   if (completo.especie === 'tabela') {
     const { especie: _, linhas, ...resto } = completo;
-    return { ...resto, linhas: linhas.slice(janela.de, ate), de: janela.de };
+    const termo = janela.termo;
+    const achadas = termo ? linhas.filter((l) => casaComTermo(l, termo)) : linhas;
+    return {
+      ...resto,
+      linhas: achadas.slice(janela.de, ate),
+      linhasTotais: achadas.length,
+      ...(termo ? { totalSemBusca: completo.linhasTotais } : {}),
+      de: janela.de,
+    };
   }
   const { especie: _, linhas, celulas, ...resto } = completo;
   return {

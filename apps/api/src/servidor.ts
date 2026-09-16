@@ -68,6 +68,7 @@ import {
   tipoDe,
   LINHAS_MAXIMO,
   LINHAS_PADRAO,
+  TERMO_MAXIMO,
   type PaginaCalculada,
 } from './calcula.ts';
 import { carregaLayout } from '../../../tools/layout/src/valida.ts';
@@ -1141,6 +1142,23 @@ export class Servidor {
     const de = inteiro(url.searchParams.get('de'), 0, 0, Number.MAX_SAFE_INTEGER);
     const linhas = inteiro(url.searchParams.get('linhas'), LINHAS_PADRAO, 1, LINHAS_MAXIMO);
 
+    // `?busca=` -- o campo "Filtrar..." da tabela. Normalizado AQUI, uma vez, e nao a
+    // cada linha comparada: `janelaDe` roda `casaComTermo` por linha do resultado
+    // inteiro, e baixar a caixa do termo la dentro seria a mesma alocacao por celula
+    // que `normalizeName` custou 42,9% do CPU antes de ser memoizada (ACHADOS #110).
+    //
+    // A normalizacao tem de casar com a de `casaComTermo`, que compara em minusculas.
+    // Termo so de espacos vira `undefined` -- e o mesmo que nao buscar, e precisa cair
+    // na MESMA chave de cache da abertura sem busca.
+    const buscaBruta = (url.searchParams.get('busca') ?? '').trim().toLowerCase();
+    if (buscaBruta.length > TERMO_MAXIMO) {
+      responde(res, 400, {
+        erro: `?busca= aceita no maximo ${TERMO_MAXIMO} caracteres (veio ${buscaBruta.length}).`,
+      });
+      return;
+    }
+    const termo = buscaBruta === '' ? undefined : buscaBruta;
+
     // `?filtro=` — a escolha das segmentações da tela, uma por coluna. Filtro que não
     // dá para entender **derruba o pedido** com 400: aplicar os que deram certo e
     // calar os outros mostraria um número filtrado pela metade dizendo-se filtrado.
@@ -1220,6 +1238,7 @@ export class Servidor {
       visuais: visuaisPedidos,
       de,
       linhas,
+      termo,
       carimbo,
       dia,
     });
@@ -1354,7 +1373,7 @@ export class Servidor {
               snapshotDir: this.opts.snapshotDir,
               specsDir: path.join(this.opts.root, 'specs'),
               dashboardSpec: alvo,
-              janela: { de, linhas },
+              janela: { de, linhas, termo },
               clicados,
               liberaSobDemanda: libera,
               precisaFormaCompleta: formaCompleta,
@@ -1414,7 +1433,7 @@ export class Servidor {
             const carregado = await this.carrega(dash, visuaisPedidos).catch((err: unknown) => {
               throw comStatus(err, 409);
             });
-            paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas }, undefined, undefined, clicados);
+            paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
             dadoDe = carregado.dadoDe;
             omitidas = carregado.omitidas;
             tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
@@ -1453,7 +1472,7 @@ export class Servidor {
             },
           };
 
-          paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas }, undefined, memo, clicados);
+          paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, memo, clicados);
           dadoDe = carregado.dadoDe;
           omitidas = carregado.omitidas;
           tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));

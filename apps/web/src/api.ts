@@ -66,7 +66,16 @@ export interface DadosDeTabela {
     coluna: string | null;
   }[];
   linhas: Valor[][];
+  /** Quantas linhas a consulta tem — **já com a busca aplicada**, quando há uma. */
   linhasTotais: number;
+  /**
+   * Quantas linhas havia antes da busca. Só vem quando `?busca=` foi mandado.
+   *
+   * Existe para a tela poder dizer "3 de 95.157" em vez de só "3 linhas": sem o
+   * denominador, uma busca que não casa com quase nada parece uma tabela que
+   * encolheu, e não há como distinguir "achei pouco" de "o filtro da página cortou".
+   */
+  totalSemBusca?: number;
   de: number;
   filtros: string[];
 }
@@ -144,6 +153,30 @@ export interface FiltroDaTela {
 }
 
 /**
+ * O que se pode pedir de uma página além dos filtros.
+ *
+ * **Um tipo só, usado por `urlDaPagina` E por `pegaPagina`.** Eram dois objetos
+ * literais escritos à mão, e campo novo num deles não erra no outro — só é descartado
+ * em silêncio a caminho da URL. Foi exatamente o que aconteceu ao acrescentar `busca`:
+ * a tela mandaria o termo, `pegaPagina` o recusaria por tipo, e se não recusasse, a
+ * busca simplesmente não filtraria nada.
+ */
+export interface OpcoesDePagina {
+  /** `visual` (um) é o pedido sob demanda de sempre. */
+  visual?: string;
+  /**
+   * `visuais` (vários — Fase L5, R4) é a abertura pedindo só o que está acima da
+   * dobra. Os dois viram o MESMO `?visual=` repetido na URL; a API não distingue de
+   * onde veio.
+   */
+  visuais?: readonly string[];
+  de?: number;
+  linhas?: number;
+  /** O campo "Filtrar…" da tabela. Ver `?busca=` em `apps/api/src/servidor.ts`. */
+  busca?: string;
+}
+
+/**
  * A URL de uma página, com filtros e visual opcionais.
  *
  * Separada do `fetch` para ser testável: é aqui que mora a regra de que **filtro sem
@@ -153,10 +186,7 @@ export interface FiltroDaTela {
 export function urlDaPagina(
   id: string,
   filtros: readonly FiltroDaTela[] = [],
-  // `visual` (um) é o pedido sob demanda de sempre; `visuais` (vários — Fase L5, R4)
-  // é a abertura pedindo só o que está acima da dobra. Os dois viram o MESMO `?visual=`
-  // repetido na URL; a API não distingue de onde veio.
-  opcoes: { visual?: string; visuais?: readonly string[]; linhas?: number; de?: number } = {},
+  opcoes: OpcoesDePagina = {},
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): string {
   const p = new URLSearchParams();
@@ -179,6 +209,11 @@ export function urlDaPagina(
   // `de=0` é o padrão da API e não precisa viajar; mandá-lo sujaria toda URL de
   // primeira janela. Só a partir da segunda o parâmetro diz alguma coisa.
   if (opcoes.de) p.set('de', String(opcoes.de));
+  // Busca vazia também não viaja, e pela mesma razão mais uma: esta URL É a chave do
+  // cache da tela (`paginasVistas`) e entra na chave do servidor. `?busca=` vazio
+  // daria uma segunda chave para o mesmo pedido, e a abertura sem busca deixaria de
+  // reaproveitar o que o aquecedor já calculou.
+  if (opcoes.busca) p.set('busca', opcoes.busca);
   const q = p.toString();
   return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
 }
@@ -270,7 +305,7 @@ export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[] }> =
 export const pegaPagina = (
   id: string,
   filtros: readonly FiltroDaTela[],
-  opcoes?: { visual?: string; visuais?: readonly string[]; de?: number; linhas?: number },
+  opcoes?: OpcoesDePagina,
   signal?: AbortSignal,
   clicados?: readonly { tabela: string; coluna: string }[],
 ): Promise<PaginaCalculada> => pega(urlDaPagina(id, filtros, opcoes, clicados), signal);

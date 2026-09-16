@@ -5,7 +5,7 @@
 // dentro da célula** em vez de um gráfico ao lado — é o que o Power BI faz, e economiza
 // um visual inteiro. A barra só aparece onde ela significa magnitude: ver `ehMagnitude`.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DadosDeTabela, FiltroDaTela, Valor, VisualCalculado } from '../api.ts';
 import { formata } from '../formato.ts';
 import { ehMagnitude, larguraDaBarra } from '../magnitude.ts';
@@ -18,13 +18,36 @@ import { Download } from 'lucide-react';
 import { janelaDeServidorPara, LINHAS_VISIVEIS } from '../janela.ts';
 import { selecaoDe, type AoFiltrar } from '../rota.ts';
 
+/**
+ * Quanto o pedido de busca espera depois da última tecla.
+ *
+ * Sem isto, `1784218` são sete requisições — e as seis primeiras são perguntas que
+ * ninguém fez. Mesma ordem de grandeza do debounce de prefetch de aba em `App.tsx`.
+ */
+const ESPERA_DA_BUSCA_MS = 250;
+
 export function Tabela(props: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
   aoFiltrar?: AoFiltrar;
 }) {
-  const janela = usaJanela(props.pagina, props.visual, props.filtros);
+  // **Duas velocidades, e por isso dois estados.** `termoBusca` é o que está escrito no
+  // campo e acompanha a tecla; `termoAplicado` é o que já virou pedido. Um só faria
+  // escolher entre um campo que trava ou um pedido por tecla.
+  //
+  // A normalização (minúsculas, sem espaço nas pontas) acontece aqui e de novo no
+  // servidor. Repetida de propósito: aqui ela evita que trocar `1784218 ` por `1784218`
+  // conte como termo novo e gaste um pedido; lá ela é a garantia, porque a URL pode
+  // chegar de qualquer lugar.
+  const [termoBusca, setTermoBusca] = useState<string>('');
+  const [termoAplicado, setTermoAplicado] = useState<string>('');
+  useEffect(() => {
+    const t = setTimeout(() => setTermoAplicado(termoBusca.trim().toLowerCase()), ESPERA_DA_BUSCA_MS);
+    return () => clearTimeout(t);
+  }, [termoBusca]);
+
+  const janela = usaJanela(props.pagina, props.visual, props.filtros, termoAplicado);
   const d = janela.visual.dados as DadosDeTabela | undefined;
 
   if (!d || !d.colunas || !d.linhas) {
@@ -51,7 +74,6 @@ export function Tabela(props: {
 
   const [colOrdenada, setColOrdenada] = useState<number | null>(temOrdenacaoPadrao ? colunaDataPadrao : null);
   const [ordemDesc, setOrdemDesc] = useState<boolean>(temOrdenacaoPadrao);
-  const [termoBusca, setTermoBusca] = useState<string>('');
 
   /**
    * Ainda no padrão (nenhum clique de cabeçalho mudou a ordenação)? Isto decide
@@ -77,16 +99,14 @@ export function Tabela(props: {
     }
   };
 
+  // **Só ordena.** A busca saiu daqui em 16/09/2026 e foi para o servidor
+  // (`janelaDe`/`casaComTermo` em `apps/api/src/calcula.ts`): ela peneirava `d.linhas`,
+  // que são as 200 linhas da janela já baixada, então em `PROTOCOLOS GERAL` — 95.157
+  // linhas, 476 janelas — era preciso clicar até a janela certa para o campo servir.
+  // Buscar a página em que o dado está não é buscar.
   const linhasFiltradasEOrdenadas = useMemo(() => {
     if (!d.linhas) return [];
-    let resultado = [...d.linhas];
-
-    if (termoBusca.trim() !== '') {
-      const termo = termoBusca.toLowerCase().trim();
-      resultado = resultado.filter((linha) =>
-        linha.some((val) => val !== null && val !== undefined && String(val).toLowerCase().includes(termo)),
-      );
-    }
+    const resultado = [...d.linhas];
 
     if (colOrdenada !== null) {
       resultado.sort((a, b) => {
@@ -111,7 +131,7 @@ export function Tabela(props: {
     }
 
     return resultado;
-  }, [d.linhas, termoBusca, colOrdenada, ordemDesc]);
+  }, [d.linhas, colOrdenada, ordemDesc]);
 
   // O maior valor de cada coluna de magnitude — a escala da barra de dados. Uma escala
   // por coluna é o certo aqui: colunas diferentes medem coisas diferentes.
@@ -196,17 +216,22 @@ export function Tabela(props: {
   // Guardar a "âncora" e comparar é o jeito de reagir a isso durante a
   // renderização, sem `useEffect` (que só corrigiria no quadro seguinte, depois
   // de um quadro em branco).
-  const ancora = `${d.de}|${termoBusca}|${String(colOrdenada)}|${String(ordemDesc)}`;
+  const ancora = `${d.de}|${termoAplicado}|${String(colOrdenada)}|${String(ordemDesc)}`;
   const [ancoraAnterior, setAncoraAnterior] = useState(ancora);
   if (ancoraAnterior !== ancora) {
     setAncoraAnterior(ancora);
     setInicioLocal(0);
   }
 
-  // Buscar/ordenar só alcança as 200 em memória — a tela diz isso em vez de
-  // prometer que filtrou as 32 mil. O padrão de data (acima) não conta como
+  // **Só ORDENAR alcança apenas as 200 em memória** — a tela diz isso em vez de
+  // prometer que ordenou as 32 mil. O padrão de data (acima) não conta como
   // "ordenar": ele já veio do servidor, sobre a consulta inteira.
-  const filtrando = termoBusca.trim() !== '' || !estaNoPadraoDeOrdenacao;
+  //
+  // Buscar saiu desta conta em 16/09/2026: o termo agora recorta a consulta inteira
+  // no servidor, e `d.linhasTotais` já é o total do que casou. Mantê-lo aqui
+  // paginaria a busca pelo universo local de 200 e esconderia o resto do resultado —
+  // o mesmo defeito, um nível acima.
+  const filtrando = !estaNoPadraoDeOrdenacao;
 
   const totalLocal = linhasFiltradasEOrdenadas.length;
   const inicio = Math.min(inicioLocal, Math.max(0, totalLocal - 1));
@@ -216,7 +241,12 @@ export function Tabela(props: {
   // ela é sobre a consulta inteira — e aí `de` é o índice GLOBAL da primeira linha.
   const estado = filtrando
     ? { de: inicio, mostradas: visiveis.length, total: totalLocal }
-    : { de: d.de + inicio, mostradas: visiveis.length, total: d.linhasTotais };
+    : {
+        de: d.de + inicio,
+        mostradas: visiveis.length,
+        total: d.linhasTotais,
+        totalSemBusca: d.totalSemBusca,
+      };
 
   /** Recebe um índice GLOBAL e decide se anda em memória ou busca outra fatia. */
   const vaiParaLinha = (linhaGlobal: number) => {

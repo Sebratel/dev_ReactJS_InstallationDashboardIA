@@ -50,6 +50,14 @@ export interface Janela {
   mostradas: number;
   /** Quantas linhas a consulta tem no total, antes do corte. */
   total: number;
+  /**
+   * Quantas linhas havia antes da busca, quando há busca. Ver `rotuloDaJanela`.
+   *
+   * Só muda o RÓTULO — `podeAvancar`, `proximoDe` e `anteriorDe` continuam contando
+   * por `total`, que é o universo navegável. Deixá-lo entrar na aritmética ofereceria
+   * uma "próxima" que devolve zero linhas.
+   */
+  totalSemBusca?: number;
 }
 
 export function podeVoltar(j: Janela): boolean {
@@ -87,11 +95,22 @@ export function anteriorDe(j: Janela, passo: number = LINHAS_POR_JANELA): number
  *
  * Tabela que cabe inteira não ganha intervalo: "43 linhas" é mais claro que
  * "1–43 de 43".
+ *
+ * **Com busca, o universo de origem entra no rótulo** ("3 de 95.157 linhas"). Sem
+ * ele, uma busca que acha pouco é indistinguível de uma tabela que veio pequena, e as
+ * duas pedem reações opostas: uma é refinar o termo, a outra é conferir o filtro da
+ * página.
  */
 export function rotuloDaJanela(j: Janela, formataInteiro: (n: number) => string): string {
-  if (j.total === 0) return 'nenhuma linha';
-  if (j.mostradas >= j.total) return `${formataInteiro(j.total)} linhas`;
+  const deQuantas =
+    j.totalSemBusca !== undefined && j.totalSemBusca !== j.total
+      ? ` de ${formataInteiro(j.totalSemBusca)}`
+      : '';
+  if (j.total === 0) {
+    return j.totalSemBusca !== undefined ? `nenhuma das ${formataInteiro(j.totalSemBusca)} linhas` : 'nenhuma linha';
+  }
+  if (j.mostradas >= j.total) return `${formataInteiro(j.total)}${deQuantas} linhas`;
   const primeira = j.de + 1;
   const ultima = j.de + j.mostradas;
-  return `${formataInteiro(primeira)}–${formataInteiro(ultima)} de ${formataInteiro(j.total)} linhas`;
+  return `${formataInteiro(primeira)}–${formataInteiro(ultima)} de ${formataInteiro(j.total)}${deQuantas} linhas`;
 }

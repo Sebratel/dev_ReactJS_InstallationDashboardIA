@@ -16,7 +16,7 @@
 import { parentPort } from 'node:worker_threads';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
-import { calculaPagina } from './calcula.ts';
+import { calculaPagina, type Janela } from './calcula.ts';
 import { mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 import type { DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 
@@ -26,7 +26,15 @@ export interface MensagemCalculoWorker {
   snapshotDir: string;
   specsDir: string;
   dashboardSpec: DashboardSpec;
-  janela: { de: number; linhas: number };
+  /**
+   * O tipo vem de `calcula.ts` em vez de repetido aqui de propósito: ele era
+   * `{ de, linhas }` escrito à mão, e uma cópia estrutural não erra quando o
+   * original ganha campo — apenas o descarta em silêncio na travessia do
+   * `postMessage`. Foi o que quase aconteceu com `termo` (a busca da tabela):
+   * o campo teria viajado pelo `structuredClone` e sido ignorado pelo tipo, e a
+   * busca simplesmente não filtraria nada, sem erro.
+   */
+  janela: Janela;
   clicados: { tabela: string; coluna: string }[];
   liberaSobDemanda?: string[];
   precisaFormaCompleta?: string[];
