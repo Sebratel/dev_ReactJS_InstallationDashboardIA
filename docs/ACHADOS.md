@@ -10380,6 +10380,27 @@ Onze asserções novas em `avaliador.test.ts`, incluindo o encadeamento do passo
 > a saída atual. Foi perguntar ao avaliador, antes de escrever SQL, que separou as
 > duas coisas.
 
+### O alcance na tela, medido
+
+`npm run paginas:shas` antes e depois de rematerializar `protocolos-telefonia` com o
+avaliador corrigido — o resto do snapshot intocado:
+
+```
+14 páginas, 306 visuais, 117 com conteúdo hasheado
+mudou: 1 visual
+  telefonia-ouvidoria  e5ffac48  tableEx  1 linha(s)
+```
+
+E o alcance total é esse mesmo, porque `CTO` é citado em **um** dashboard
+(`telefonia-ouvidoria`) e em **nenhuma** medida ou coluna calculada — procurar por
+`[CTO]` em `specs/_catalog/tables/` e `measures/` não devolve nada. As colunas `CTO`
+de `PROTOCOLOS GERAL` e `PROTOCOLOS AUXILIARES` também mudam de valor quando forem
+rematerializadas, mas não aparecem em tela nenhuma.
+
+**É uma tabela, de uma página.** Erick confere um protocolo de telefonia cuja CTO ele
+saiba de cabeça: até 15/09 a tela mostrava o segundo campo do nome do splitter, e
+agora mostra o terceiro — o mesmo que `PROTOCOLOS PRODUTIVIDADE` já mostrava.
+
 ---
 
 ## #127 — O internamento da chave (#120) foi implantado, provado inócuo e REVERTIDO: a premissa tinha virado em um dia, e 80% das linhas não repetem nada
