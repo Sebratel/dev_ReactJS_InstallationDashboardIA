@@ -154,9 +154,20 @@ tela não diz "isto é de terça".
     o serviço `refresh` embutido executando `tools/refresh/src/daemon.ts` a cada
     15 minutos com `mem_limit: 8g` e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
     compartilhado com a API. Subir a stack já sobe o agendador ativo.
-  - No desenvolvimento: `npm start -- --com-refresh` (ou variável `AUTO_REFRESH=true`)
-    inicia o daemon em background lado a lado com a API. Para rodar isolado:
-    `npm run refresh:daemon`.
+  - No desenvolvimento: `npm start` já sobe o daemon em background lado a lado com a
+    API — **sem flag nenhuma, desde 16/09/2026**. Para rodar isolado:
+    `npm run refresh:daemon`. Para NÃO subir: `npm start -- --sem-refresh`, ou
+    `AUTO_REFRESH=false`/`0` no ambiente.
+
+    Até 16/09/2026 isto exigia `--com-refresh`, e essa exigência é que quebrou na
+    prática o "100% automático de fábrica" acima: o `npm start` no ar naquele dia
+    tinha sido lançado sem a flag, nada materializava desde as 02:57, e o card
+    "HORA MAIS RECENTE" marcava 5h36 de idade num grupo declarado de 15 min. Não
+    havia nada no Agendador de Tarefas do Windows para suprir a falta — o gatilho
+    externo que `tools/refresh/src/index.ts` pressupõe nunca foi criado na máquina
+    do Erick. O padrão inverteu por isso: cadência que depende de alguém lembrar de
+    uma flag não é cadência. `--com-refresh` continua aceito e virou no-op, para
+    não quebrar quem seguiu a instrução antiga.
   - O script externo de cron (`tools/refresh/cron.sh`, ACHADOS #91) continua disponível
     como opção caso um ambiente sem container necessite de crontab no host Linux, mas
     NÃO é mais requisito para rodar a stack de produção. **O primeiro

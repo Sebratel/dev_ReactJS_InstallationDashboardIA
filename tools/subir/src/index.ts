@@ -32,8 +32,28 @@ const mata = args.includes('--mata');
 /** Não derruba nada, nem a nossa. Para quando a API no ar é justamente a que se quer
  *  manter (uma comparação lado a lado, um aquecimento em curso). */
 const semMata = args.includes('--sem-mata');
-/** Sobe também o agendador automático de refresh (`daemon.ts`) em background. */
-const comRefresh = args.includes('--com-refresh');
+/**
+ * NÃO sobe o agendador automático de refresh (`daemon.ts`). O padrão é subir.
+ *
+ * **Por que o padrão inverteu (16/09/2026).** Era preciso `--com-refresh` para o
+ * daemon nascer, e o `npm start` que estava no ar tinha sido lançado sem ele: nada
+ * materializava desde as 02:57, o card "HORA MAIS RECENTE" marcava 5h36 de idade
+ * num grupo declarado de 15 min, e não havia nada no Agendador de Tarefas do
+ * Windows para suprir a falta — o gatilho externo que `tools/refresh/src/index.ts`
+ * pressupõe nunca foi criado nesta máquina. Um refresh que só existe quando alguém
+ * lembra da flag não é cadência, é acaso. Subir por padrão custa um subprocesso de
+ * leitura; não subir custa dado velho servido como se fosse novo.
+ *
+ * Fica de fora com `--sem-refresh`, ou com `AUTO_REFRESH=false`/`0` no ambiente —
+ * para a comparação lado a lado, ou para quando a materialização já está em curso
+ * em outro terminal. `--com-refresh` continua aceito e não faz nada: era o que
+ * `docs/DEPLOY.md` mandava digitar, e recusar o argumento agora só quebraria quem
+ * seguiu a instrução.
+ */
+const semRefresh =
+  args.includes('--sem-refresh') ||
+  process.env.AUTO_REFRESH === 'false' ||
+  process.env.AUTO_REFRESH === '0';
 const porta = Number.parseInt(
   args.find((a) => a.startsWith('--porta='))?.slice('--porta='.length) ??
     process.env.PORT ??
@@ -50,14 +70,14 @@ const limiteMs = args.some((a) => a.startsWith('--limite='))
 
 for (const a of args) {
   const conhecido =
-    ['--sem-build', '--sem-aquecer', '--so-aquece', '--mata', '--sem-mata', '--com-refresh'].includes(a) ||
+    ['--sem-build', '--sem-aquecer', '--so-aquece', '--mata', '--sem-mata', '--com-refresh', '--sem-refresh'].includes(a) ||
     a.startsWith('--porta=') ||
     a.startsWith('--pagina=') ||
     a.startsWith('--limite=');
   if (!conhecido) {
     console.error(`argumento desconhecido: ${a}`);
     console.error(
-      'use: --sem-build | --sem-aquecer | --so-aquece | --mata | --sem-mata | --com-refresh | --porta=N | --pagina=id,id | --limite=segundos',
+      'use: --sem-build | --sem-aquecer | --so-aquece | --mata | --sem-mata | --sem-refresh | --porta=N | --pagina=id,id | --limite=segundos',
     );
     process.exit(2);
   }
@@ -265,7 +285,7 @@ if (soAquece) {
     encerra(1);
   }
 
-  if (comRefresh || process.env.AUTO_REFRESH === 'true' || process.env.AUTO_REFRESH === '1') {
+  if (!semRefresh) {
     console.log('\nIniciando o Agendador Automático de Refresh (daemon 15m em background)…');
     refreshProcess = spawn(
       process.execPath,

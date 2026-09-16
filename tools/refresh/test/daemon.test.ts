@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -27,10 +29,20 @@ test('daemon.ts: executaCiclo em modo --so-plano identifica grupos sem executar 
   assert.ok(quente, 'grupo quente deve estar presente');
 });
 
+// `snapshotDir` EXPLÍCITO, e temporário. Sem ele, `executaCiclo` cai no padrão
+// `path.join(raiz, 'snapshot')` — o snapshot REAL — e `persiste` sobrescreve o
+// `refresh-status.json` de produção com três "sucessos" de 0 ms que não
+// materializaram nada. Foi o que aconteceu em 16/09/2026: `npm test` às 08:13
+// carimbou quente/medio/frio como recém-bem-sucedidos enquanto o dado em disco era
+// das 02:57, `GET /api/saude` passou a mentir que o refresh estava saudável, e o
+// próximo tick de verdade ainda esperaria o intervalo inteiro antes de rodar
+// (`estaVencido` mede a idade do último SUCESSO). O `roda` mockado é o que torna
+// isso invisível: ele devolve `ok` sem tocar em banco nenhum.
 test('daemon.ts: executaCiclo com mock de roda executa grupos vencidos', async () => {
   const rodados: string[] = [];
   const res = await executaCiclo({
     raiz: ROOT,
+    snapshotDir: fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-daemon-')),
     roda: (g: GrupoDeRefresh) => {
       rodados.push(g.id);
       return { ok: true };

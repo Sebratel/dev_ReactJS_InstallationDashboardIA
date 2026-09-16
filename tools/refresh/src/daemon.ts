@@ -8,7 +8,9 @@
 // Projetado para:
 // 1. Rodar como serviço dedicado em container Docker (`docker-compose.prod.yml`);
 // 2. Rodar em background localmente durante desenvolvimento via `npm run refresh:daemon`
-//    ou em conjunto com a API via `npm start -- --com-refresh`.
+//    ou em conjunto com a API: `npm start` já o sobe por padrão desde 16/09/2026
+//    (`--sem-refresh` ou `AUTO_REFRESH=false` desliga — ver o comentário de
+//    `semRefresh` em `tools/subir/src/index.ts` para o defeito que inverteu isso).
 //
 // Sem depender de crontab externo no host: o agendador já nasce integrado na stack.
 
