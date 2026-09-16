@@ -200,24 +200,32 @@ test('as 25 queries reais: 24 são escaneáveis, e a exceção é a do let aninh
     }
   }
   assert.deepEqual(falhas, ['clima-tempo'], 'só a query do Open-Meteo usa função M');
-  assert.equal(passos, 249, 'passos M nas 24 escaneáveis');
+  // 249 → 208 (16/09/2026): `protocolos-telefonia` migrou de 46 passos de M para 5,
+  // e os 41 restantes viraram o `sql:` dela (ACHADOS #112).
+  assert.equal(passos, 208, 'passos M nas 24 escaneáveis');
 });
 
 /**
  * O número que muda o que "conferir os `rowCount`" significa.
  *
- * O golden guarda `count(*)` do **SQL**. Em 11 das 17 tabelas alimentadas por
+ * O golden guarda `count(*)` do **SQL**. Em 10 das 17 tabelas alimentadas por
  * query escaneável o M ainda filtra, deduplica ou expande linha **depois** disso
  * — então o `rowCount` do golden não é a contagem da tabela no Power BI, e
  * divergência ali não indica extração errada.
+ *
+ * Eram 11 até 16/09/2026. `PROTOCOLOS TELEFONIA` saiu da lista ao migrar para SQL:
+ * o `Table.SelectRows(each [STATUS] <> "Cancelado")` que a tornava incomparável
+ * agora é o `WHERE` da consulta, e o `count(*)` do golden voltou a ser a contagem
+ * da tabela. **Este é um ganho de fato da migração, e não estava previsto** — cada
+ * query que migra devolve o `rowCount` dela à comparação com o Power BI.
  */
-test('em 11 tabelas o rowCount do golden não é comparável com o Power BI', () => {
+test('em 10 tabelas o rowCount do golden não é comparável com o Power BI', () => {
   const tabelas = verificarModelo(SPECS, GOLDEN);
   const naoComparaveis = tabelas.filter((t) => t.rowCountComparavel === false);
   const comparaveis = tabelas.filter((t) => t.rowCountComparavel === true);
 
-  assert.equal(naoComparaveis.length, 11, naoComparaveis.map((t) => t.table).join(', '));
-  assert.equal(comparaveis.length, 6);
+  assert.equal(naoComparaveis.length, 10, naoComparaveis.map((t) => t.table).join(', '));
+  assert.equal(comparaveis.length, 7);
 
   // Toda tabela "não comparável" tem de dizer qual passo faz a diferença.
   for (const t of naoComparaveis) assert.ok(t.efeitosDeLinha.length > 0, t.table);
@@ -256,9 +264,15 @@ test('7 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   // DATA ALOCAÇÃO, HR. ALOCAÇÃO, POSIÇÃO, TÉCNICO INSTALAÇÃO, TÉCNICO TROCA,
   // DATA DA TROCA, TECNICOS AUXILIARES.AUXILIAR, INSTALADOR e DATA FINAL.
   //
+  // 41 -> 33 (16/09/2026): `protocolos-telefonia` migrou, e as 8 colunas que o M
+  // dela criava passaram a sair do `sql:` — HORA CRIADO, HORA AGENDA, DATA
+  // MODIFICADO, POP, VLAN, SIGLA CIDADE, INDICE 2 e SITUAÇÃO. As três que ficaram
+  // em M (DATA HOJE, TMA, DATA ENCERRADO) dependem do relógio injetado, direta ou
+  // indiretamente, e continuam contando como nascidas em M — corretamente.
+  //
   // Este número CAI quando trabalho sai do M e vai para o SQL — que é a direção
   // desejada. Se ele SUBIR, alguém devolveu transformação para a camada M.
-  assert.equal(emM.length, 41, 'colunas nascidas em M');
+  assert.equal(emM.length, 33, 'colunas nascidas em M');
   assert.equal(citadas.length, 7, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
   for (const c of citadas) assert.ok(c.step, `${c.table}[${c.column}] sem passo`);
 

@@ -92,22 +92,29 @@ sql: |-
   		where (it.id = '1011'or --- TEC - Instalação Telefonia
   			   it.id = '275' OR
   			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-  		and a.created >= '2026-01-01')
-      SELECT distinct "SOLICITACAO", 
-      				"N°PROTOCOLO", 
-      				"DATA AGENDA", 
-      				"DATA CRIADO", 
-      				"DATA ENCERRRADO", 
-      				"STATUS", 
-      				"CIDADE", 
+  	and a.created >= '2026-01-01'),
+  	-- `base` e EXATAMENTE o SELECT DISTINCT que existia aqui antes da migracao de
+  	-- 16/09/2026: as MESMAS 33 colunas da fonte, com o MESMO DISTINCT. Nao e zelo, e
+  	-- o que mantem a contagem de linhas. O DISTINCT tem de rodar sobre as colunas da
+  	-- FONTE: se as derivadas entrassem neste nivel, duas linhas que hoje diferem so
+  	-- em CODIGO virariam uma so depois de CODIGO colapsar em POP/VLAN. Derivar vem
+  	-- DEPOIS, no SELECT de fora.
+  	base AS (
+      SELECT distinct "SOLICITACAO",
+      				"N°PROTOCOLO",
+      				"DATA AGENDA",
+      				"DATA CRIADO",
+      				"DATA ENCERRRADO",
+      				"STATUS",
+      				"CIDADE",
       				"BAIRRO" ,
-      				"RUA", 
+      				"RUA",
       				"NUMERO",
-      				"TELEFONE", 
-      				"CLIENTE", 
-      				"EQUIPE", 
-      				"LATITUDE", 
-      				"LONGITUDE", 
+      				"TELEFONE",
+      				"CLIENTE",
+      				"EQUIPE",
+      				"LATITUDE",
+      				"LONGITUDE",
       				"RESPONSÁVEL",
       				"TIPO DE PROTOCOLO",
       				"PONTO DE ACESSO",
@@ -126,8 +133,179 @@ sql: |-
       				"CRIADO POR:",
       				"POSIÇÃO",
       				"TÍTULO RECEBÍVEL"
-  FROM PERSONALIZADO
-  WHERE PERSONA1= 1
+  	FROM PERSONALIZADO
+  	WHERE PERSONA1= 1
+  	),
+  	-- O mapa CIDADE -> SIGLA (ACHADO #114) aparece UMA VEZ nesta query, aqui.
+  	--
+  	-- No M tambem era uma so: a cadeia produzia "SIGLA CIDADE" e `INDICE 2` LIA essa
+  	-- coluna (`Text.Combine({[BAIRRO], [SIGLA CIDADE]}, "/")`). Este CTE existe para
+  	-- que a migracao PRESERVE isso. A traducao direta, coluna a coluna, punha a cadeia
+  	-- inteira dentro de `INDICE 2` tambem -- foi o que este arquivo fez no primeiro
+  	-- rascunho, e e o que `protocolos-produtividade` tem hoje (duas copias, uma por
+  	-- ramo). Sair de uma copia para duas seria a migracao PIORANDO justamente o
+  	-- problema que ela existe para resolver.
+  	--
+  	-- `Replacer.ReplaceText` substitui SUBSTRING, e as nove chamadas sao encadeadas:
+  	-- a ORDEM decide o resultado se um dia uma cidade for substring de outra. Ela e a
+  	-- ordem do catalogo, e `siglas-cidade.test.ts` compara as duas.
+  	derivado AS (
+  	    SELECT base.*,
+  	        replace(replace(replace(replace(replace(replace(replace(replace(replace(
+  	            initcap("CIDADE"),
+  	            'Canoas','CAN'), 'São Leopoldo','SLE'), 'Novo Hamburgo','NHO'),
+  	            'Sapucaia Do Sul','SPS'), 'Nova Santa Rita','NSR'), 'Brochier','BROCHIER'),
+  	            'Esteio','EIO'), 'Triunfo','TRF'), 'Porto Alegre','POA')
+  	                                                      AS "SIGLA CIDADE"
+  	    FROM base
+  	)
+  -- ─────────────────────────────────────────────────────────────────────────────
+  -- Os 46 passos de M viraram este SELECT (migracao de 16/09/2026, ACHADOS #112).
+  --
+  -- A ORDEM DAS COLUNAS ABAIXO E A ORDEM QUE O M PRODUZIA -- a do passo
+  -- `Colunas Reordenadas1`, com SITUACAO no fim. Ela e observavel no snapshot, e
+  -- reproduzi-la aqui e o que permite provar a migracao coluna a coluna com
+  -- `npm run probe:compara-materializacao`.
+  --
+  -- FICARAM EM M, e so elas: DATA HOJE, TMA e DATA ENCERRADO. `DATA HOJE` e
+  -- `DateTime.LocalNow()`, que nesta plataforma devolve o relogio INJETADO
+  -- (`ctx.agora`) -- traze-lo para ca entregaria o relogio ao PostgreSQL, e
+  -- `diaDoCalculo` esta na chave de cache. TMA depende de DATA HOJE. DATA ENCERRADO
+  -- so fica junto porque sem ela a ordem das tres ultimas colunas mudaria.
+  --
+  -- CADA EXPRESSAO ABAIXO FOI CONFERIDA CONTRA O AVALIADOR, nao contra o Power
+  -- Query: sao programas diferentes, e num ponto eles discordavam (ACHADOS #126).
+  SELECT
+      "SOLICITACAO",
+      "N°PROTOCOLO",
+      -- `type date` no M CORTA A HORA, e a hora vira coluna propria (DateTime.Time).
+      -- A extracao da hora acontece ANTES do corte nos dois casos -- por isso as duas
+      -- saem da MESMA coluna da fonte, que ainda e timestamp aqui.
+      --
+      -- `timestamp without time zone` chega ao M lido como UTC literal
+      -- (`parseSemFuso`), e `DateTime.Time`/`type date` usam getters UTC. Logo
+      -- `::time` e `::date` batem digito a digito. Se algum dia a coluna virar
+      -- `timestamptz`, esta equivalencia cai.
+      --
+      -- O `DATE '1899-12-30' +` DAS HORAS NAO E ENFEITE, e foi o comparador que o
+      -- exigiu: `DateTime.Time` devolve um `MTime`, e `toDatasetRows` o converte
+      -- para **`Date` sobre 1899-12-30** -- a convencao do Power BI, em que hora e
+      -- fracao de dia sobre a mesma epoca do numero de serie de data (value.ts,
+      -- `EPOCH_MS`). Um `::time` puro chega como STRING, e a coluna trocava de tipo
+      -- no snapshot: `date` virava `string` em 640 de 640 linhas. Contagem igual,
+      -- valor com a mesma cara, tipo diferente -- exatamente a familia de defeito
+      -- que esta migracao podia introduzir sem nenhum sintoma.
+      "DATA AGENDA"::date                                   AS "DATA AGENDA",
+      DATE '1899-12-30' + "DATA AGENDA"::time               AS "HORA AGENDA",
+      "DATA CRIADO"::date                                   AS "DATA CRIADO",
+      DATE '1899-12-30' + "DATA CRIADO"::time               AS "HORA CRIADO",
+      -- o M renomeia DATA ENCERRRADO (com os tres R da fonte) para DATA MODIFICADO
+      "DATA ENCERRRADO"::date                               AS "DATA MODIFICADO",
+      "STATUS",
+
+      -- Text.Proper: "PORTO ALEGRE" -> "Porto Alegre".
+      --
+      -- `initcap` NAO e Text.Proper: o Postgres abre palavra em QUALQUER caractere
+      -- nao-alfanumerico, e o nosso Text.Proper abre so em espaco, "-" e "/". Onde
+      -- eles discordam: `D'AVILA` vira "D'Avila" no initcap e "D'avila" no M, e
+      -- `(SEDE)` vira "(Sede)" contra "(sede)".
+      --
+      -- Medido na fonte viva em 16/09/2026: 8 CIDADEs distintas e 110 BAIRROs, e
+      -- **zero** divergencia entre os dois. initcap fica, por ser uma expressao em vez
+      -- de uma varredura caractere a caractere -- mas com a condicao escrita: no dia
+      -- em que entrar um bairro com apostrofo ou parentese, esta linha passa a mentir.
+      initcap("CIDADE")                                     AS "CIDADE",
+      initcap("BAIRRO")                                     AS "BAIRRO",
+      "RUA",
+      "NUMERO",
+      "TELEFONE",
+      "CLIENTE",
+      "EQUIPE",
+      "LATITUDE",
+      "LONGITUDE",
+      -- Text.Upper e depois nulo -> "SEM INFORMAÇÃO" (26 linhas em 16/09). Em CAIXA
+      -- ALTA, ao contrario das seis de baixo -- e do M, nao e deslize a copiar.
+      COALESCE(upper("RESPONSÁVEL"), 'SEM INFORMAÇÃO')      AS "RESPONSÁVEL",
+      COALESCE("PONTO DE ACESSO", 'Sem Informação')         AS "PONTO DE ACESSO",
+
+      -- CODIGO dividia-se por "-" em POP e VLAN (Table.SplitColumn).
+      -- Medido em 16/09: das 563 linhas com CODIGO nao-nulo, **nenhuma** tem hifen.
+      -- Entao POP e o codigo inteiro, e VLAN e 'Sem Informação' nas 655. As duas
+      -- expressoes cobrem o caso com hifen mesmo assim: a fonte pode mudar, e um NULL
+      -- calado aqui vira "Sem Informação" na tela sem ninguem ver.
+      --
+      -- NAO e `NULLIF(split_part(...), '')`: no M, CODIGO = '' (vazio, nao nulo) da
+      -- POP = '' e nao 'Sem Informação'. So o NULO e substituido.
+      CASE WHEN "CODIGO" IS NULL THEN 'Sem Informação'
+           ELSE split_part("CODIGO", '-', 1) END            AS "POP",
+      -- VLAN: no M a 2a parte vira Int64 e depois "VLAN " & Text.From(_). Sem 2a
+      -- parte ela e nula, e `"VLAN " & null` e null em M -- dai o 'Sem Informação'.
+      CASE WHEN "CODIGO" IS NULL OR strpos("CODIGO", '-') = 0 THEN 'Sem Informação'
+           ELSE 'VLAN ' || split_part("CODIGO", '-', 2) END AS "VLAN",
+      "SLOT",
+      "PORTA",
+
+      -- CTO = Text.BeforeDelimiter(Text.AfterDelimiter(_, "-", 1), "-"), ou seja o
+      -- TERCEIRO campo da divisao por hifen.
+      --
+      -- O `>= 3` nao e paranoia: `Text.BeforeDelimiter` devolve VAZIO, nao o texto
+      -- inteiro, quando o delimitador nao aparece. Com exatamente 2 hifens o M da ''
+      -- e `split_part(...,3)` daria o ultimo campo. Medido em 16/09: 0 linhas nessa
+      -- faixa -- mas `protocolos-produtividade` escreve a forma simples, e e essa
+      -- diferenca que um dia separa as duas.
+      --
+      -- Ate 16/09/2026 esta coluna saia do SEGUNDO campo, porque o avaliador aceitava
+      -- o "1" e o jogava fora (ACHADOS #126). 550 de 550 linhas mudaram de valor.
+      CASE WHEN "CTO" IS NULL THEN NULL
+           WHEN length("CTO") - length(replace("CTO", '-', '')) >= 3
+                THEN split_part("CTO", '-', 3)
+           ELSE '' END                                      AS "CTO",
+      "STATUS CONTRATO",
+      "NUMERO CONTRATO",
+      COALESCE("ITEM",        'Sem Informação')             AS "ITEM",
+      COALESCE("CONTEXTO",    'Sem Informação')             AS "CONTEXTO",
+      COALESCE("PROBLEMA",    'Sem Informação')             AS "PROBLEMA",
+      COALESCE("OLT",         'Sem Informação')             AS "OLT",
+      COALESCE("EQUIPAMENTO", 'Sem Informação')             AS "EQUIPAMENTO",
+      "USUÁRIO",
+      "TIPO DE PROTOCOLO",
+
+      -- calculada uma vez no CTE `derivado`, la em cima
+      "SIGLA CIDADE",
+
+      -- INDICE 2 = Text.Combine({BAIRRO, SIGLA CIDADE}, "/"), com as duas correcoes
+      -- literais que o M aplica depois. LE "SIGLA CIDADE" em vez de refazer o mapa.
+      --
+      -- Os COALESCE existem porque `Text.Combine` TRATA NULO COMO VAZIO: com BAIRRO
+      -- nulo o M devolve "/POA", e `NULL || '/' || 'POA'` devolveria NULL -- a coluna
+      -- inteira sumiria em vez de ficar meia. Sao 0 linhas hoje, e e justamente por
+      -- isso que no dia em que deixarem de ser ninguem estaria olhando.
+      replace(replace(
+          COALESCE(initcap("BAIRRO"), '') || '/' || COALESCE("SIGLA CIDADE", ''),
+          'Centro - Assentamento /NSR','Centro - Assentamento/NSR'),
+          'Duque De Caxias /SLE','Duque De Caxias/SLE')     AS "INDICE 2",
+      "CRIADO POR:",
+      "POSIÇÃO",
+      "TÍTULO RECEBÍVEL",
+
+      -- SITUAÇÃO, com as tres saidas do M na mesma ordem.
+      --
+      -- `IS DISTINCT FROM` e nao `<>`: em M, `null <> "Cancelado"` e **true**, e em
+      -- SQL `NULL <> 'Cancelado'` e NULL -- que nao e verdadeiro, e a linha cairia no
+      -- ELSE. Sao 0 linhas com STATUS CONTRATO nulo hoje.
+      CASE WHEN "STATUS" = 'Encerrado'
+                AND "STATUS CONTRATO" IS DISTINCT FROM 'Cancelado'
+                AND "TÍTULO RECEBÍVEL" IS NOT NULL THEN 'Finalizado'
+           WHEN "STATUS" = 'Encerrado'
+                AND "STATUS CONTRATO" IS DISTINCT FROM 'Cancelado'
+                AND "TÍTULO RECEBÍVEL" IS NULL THEN 'Finalizado Pendência Financeira'
+           ELSE 'Pendente' END                              AS "SITUAÇÃO"
+
+  FROM derivado
+  -- `Table.SelectRows(each [STATUS] <> "Cancelado")`. De novo `IS DISTINCT FROM`: com
+  -- `<>` puro, uma linha de STATUS nulo seria DESCARTADA aqui, e no M ela FICA. Hoje
+  -- sao 15 canceladas e 0 nulas -- 655 linhas viram 640.
+  WHERE "STATUS" IS DISTINCT FROM 'Cancelado'
 url: null
 sheet: null
 endpoints: null
@@ -155,67 +333,46 @@ source_tables:
 - v_users
 m_expression: |-
   let
-      Fonte = Odbc.Query("dsn=dbVoalle", "WITH PERSONALIZADO AS (#(lf)#(tab)select #(lf)#(tab)#(tab)a.title ""SOLICITACAO"",#(lf)#(tab)#(tab)ai.protocol ""N°PROTOCOLO"",#(lf)#(tab)#(tab)s.start_date ""DATA AGENDA"",#(lf)#(tab)#(tab)a.modified ""DATA ENCERRRADO"",#(lf)#(tab)#(tab)a.created ""DATA CRIADO"",#(lf)#(tab)#(tab)is2.title ""STATUS"",#(lf)#(tab)#(tab)p.city ""CIDADE"",#(lf)#(tab)#(tab)p.neighborhood ""BAIRRO"",#(lf)#(tab)#(tab)p.street ""RUA"",#(lf)#(tab)#(tab)p.number ""NUMERO"",#(lf)#(tab)#(tab)p.name ""CLIENTE"",#(lf)#(tab)#(tab)p.phone ""TELEFONE"",#(lf)#(tab)#(tab)t.title ""EQUIPE"",#(lf)#(tab)#(tab)ac.lat ""LATITUDE"",#(lf)#(tab)#(tab)ac.lng ""LONGITUDE"",#(lf)#(tab)#(tab)p2.name ""RESPONSÁVEL"",#(lf)#(tab)#(tab)it.title ""TIPO DE PROTOCOLO"",#(lf)#(tab)#(tab)aap.title ""PONTO DE ACESSO"",#(lf)#(tab)#(tab)aap.code ""CODIGO"",#(lf)#(tab)#(tab)aap.slots_first_number ""SLOT"",#(lf)#(tab)#(tab)aap.ports_first_number ""PORTA"",  #(lf)#(tab)#(tab)as2.title ""CTO"",#(lf)#(tab)#(tab)c.v_status ""STATUS CONTRATO"",#(lf)#(tab)#(tab)c.contract_number ""NUMERO CONTRATO"",#(lf)#(tab)#(tab)csi.title ""ITEM"",#(lf)#(tab)#(tab)sc.title ""CONTEXTO"",#(lf)#(tab)#(tab)sp.title ""PROBLEMA"",#(lf)#(tab)#(tab)as3.title ""OLT"",#(lf)#(tab)#(tab)m.title ""EQUIPAMENTO"",#(lf)#(tab)#(tab)ac.user ""USUÁRIO"",#(lf)#(tab)#(tab)vu.name ""CRIADO POR:"",#(lf)#(tab)#(tab)frt.title ""TÍTULO RECEBÍVEL"",#(lf)#(tab)#(tab)case when p2.outsourced is true then 'TERCEIRO' else 'EFETIVO' end ""POSIÇÃO"",#(lf)#(tab)#(tab)ROW_NUMBER() OVER (PARTITION by a.title ORDER by s.start_date desc) AS PERSONA1#(lf)#(tab)#(tab)from assignment_incidents ai#(lf)#(tab)#(tab)left join assignments a on a.id = ai.assignment_id#(lf)#(tab)#(tab)left join schedules s on s.assignment_id = a.id#(lf)#(tab)#(tab)left join incident_types it on it.id = ai.incident_type_id#(lf)#(tab)#(tab)left join incident_status is2 on is2.id = ai.incident_status_id#(lf)#(tab)#(tab)left join people p on p.id = a.requestor_id#(lf)#(tab)#(tab)left join teams t on t.id = ai.team_id#(lf)#(tab)#(tab)left join people_addresses pa on pa.person_id = p.id#(lf)#(tab)#(tab)left join authentication_contracts ac on ac.people_address_id = pa.id#(lf)#(tab)#(tab)left join people p2 on p2.id = a.responsible_id#(lf)#(tab)#(tab)left join authentication_access_points aap on aap.id = ac.authentication_access_point_id#(lf)#(tab)    LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id#(lf)#(tab)    LEFT JOIN contracts c ON cst.contract_id = c.id#(lf)#(tab)#(tab)left join catalog_services_items csi on csi.id = ai.catalog_service_item_id#(lf)#(tab)#(tab)left join authentication_splitter_ports asp on asp.authentication_contract_id = ac.id#(lf)#(tab)#(tab)left join authentication_sites as3 on as3.id = aap.authentication_site_id#(lf)#(tab)#(tab)left join manufacturers m on m.id = aap.manufacturer_id#(lf)#(tab)#(tab)left join solicitation_problems sp on sp.id = ai.solicitation_problem_id#(lf)#(tab)#(tab)left join solicitation_classifications sc on sc.id = ai.solicitation_classification_id#(lf)#(tab)#(tab)left join authentication_splitters as2 on as2.id = asp.authentication_splitter_id #(lf)#(tab)#(tab)left join v_users vu on vu.id = a.created_by#(lf)#(tab)#(tab)left join financial_receivable_titles frt on c.id = frt.contract_id#(lf)#(tab)#(tab)where (it.id = '1011'or --- TEC - Instalação Telefonia#(lf)#(tab)#(tab)#(tab)   it.id = '275' OR#(lf)#(tab)#(tab)#(tab)   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia#(lf)#(tab)#(tab)and a.created >= '2026-01-01')#(lf)    SELECT distinct ""SOLICITACAO"", #(lf)    #(tab)#(tab)#(tab)#(tab)""N°PROTOCOLO"", #(lf)    #(tab)#(tab)#(tab)#(tab)""DATA AGENDA"", #(lf)    #(tab)#(tab)#(tab)#(tab)""DATA CRIADO"", #(lf)    #(tab)#(tab)#(tab)#(tab)""DATA ENCERRRADO"", #(lf)    #(tab)#(tab)#(tab)#(tab)""STATUS"", #(lf)    #(tab)#(tab)#(tab)#(tab)""CIDADE"", #(lf)    #(tab)#(tab)#(tab)#(tab)""BAIRRO"" ,#(lf)    #(tab)#(tab)#(tab)#(tab)""RUA"", #(lf)    #(tab)#(tab)#(tab)#(tab)""NUMERO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""TELEFONE"", #(lf)    #(tab)#(tab)#(tab)#(tab)""CLIENTE"", #(lf)    #(tab)#(tab)#(tab)#(tab)""EQUIPE"", #(lf)    #(tab)#(tab)#(tab)#(tab)""LATITUDE"", #(lf)    #(tab)#(tab)#(tab)#(tab)""LONGITUDE"", #(lf)    #(tab)#(tab)#(tab)#(tab)""RESPONSÁVEL"",#(lf)    #(tab)#(tab)#(tab)#(tab)""TIPO DE PROTOCOLO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""PONTO DE ACESSO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""CODIGO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""SLOT"",#(lf)    #(tab)#(tab)#(tab)#(tab)""PORTA"",#(lf)    #(tab)#(tab)#(tab)#(tab)""CTO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""STATUS CONTRATO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""NUMERO CONTRATO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""ITEM"",#(lf)    #(tab)#(tab)#(tab)#(tab)""CONTEXTO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""PROBLEMA"",#(lf)    #(tab)#(tab)#(tab)#(tab)""OLT"",#(lf)    #(tab)#(tab)#(tab)#(tab)""EQUIPAMENTO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""USUÁRIO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""CRIADO POR:"",#(lf)    #(tab)#(tab)#(tab)#(tab)""POSIÇÃO"",#(lf)    #(tab)#(tab)#(tab)#(tab)""TÍTULO RECEBÍVEL""#(lf)FROM PERSONALIZADO#(lf)WHERE PERSONA1= 1"),
-      #"Hora Inserida1" = Table.AddColumn(Fonte, "Hora", each DateTime.Time([DATA CRIADO]), type time),
-      #"Colunas Renomeadas3" = Table.RenameColumns(#"Hora Inserida1",{{"Hora", "HORA CRIADO"}}),
-      #"Colocar Cada Palavra Em Maiúscula" = Table.TransformColumns(#"Colunas Renomeadas3",{{"CIDADE", Text.Proper, type text}, {"BAIRRO", Text.Proper, type text}}),
-      #"Coluna Duplicada" = Table.DuplicateColumn(#"Colocar Cada Palavra Em Maiúscula", "CIDADE", "CIDADE - Copiar"),
-      #"Valor Substituído" = Table.ReplaceValue(#"Coluna Duplicada","Canoas","CAN",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído1" = Table.ReplaceValue(#"Valor Substituído","São Leopoldo","SLE",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído2" = Table.ReplaceValue(#"Valor Substituído1","Novo Hamburgo","NHO",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído3" = Table.ReplaceValue(#"Valor Substituído2","Sapucaia Do Sul","SPS",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído4" = Table.ReplaceValue(#"Valor Substituído3","Nova Santa Rita","NSR",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído5" = Table.ReplaceValue(#"Valor Substituído4","Brochier","BROCHIER",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído6" = Table.ReplaceValue(#"Valor Substituído5","Esteio","EIO",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Valor Substituído7" = Table.ReplaceValue(#"Valor Substituído6","Triunfo","TRF",Replacer.ReplaceText,{"CIDADE - Copiar"}),
-      #"Colunas Renomeadas" = Table.RenameColumns(#"Valor Substituído7",{{"CIDADE - Copiar", "SIGLA CIDADE"}}),
-      #"Valor Substituído8" = Table.ReplaceValue(#"Colunas Renomeadas","Porto Alegre","POA",Replacer.ReplaceText,{"SIGLA CIDADE"}),
-      #"Coluna Mesclada Inserida" = Table.AddColumn(#"Valor Substituído8", "INDICE 2", each Text.Combine({[BAIRRO], [SIGLA CIDADE]}, "/"), type text),
-      #"Valor Substituído9" = Table.ReplaceValue(#"Coluna Mesclada Inserida","Centro - Assentamento /NSR","Centro - Assentamento/NSR",Replacer.ReplaceText,{"INDICE 2"}),
-      #"Valor Substituído10" = Table.ReplaceValue(#"Valor Substituído9","Duque De Caxias /SLE","Duque De Caxias/SLE",Replacer.ReplaceText,{"INDICE 2"}),
-      #"Texto em Maiúscula" = Table.TransformColumns(#"Valor Substituído10",{{"RESPONSÁVEL", Text.Upper, type text}}),
-      #"Valor Substituído11" = Table.ReplaceValue(#"Texto em Maiúscula",null,"SEM INFORMAÇÃO",Replacer.ReplaceValue,{"RESPONSÁVEL"}),
-      #"Hora Inserida" = Table.AddColumn(#"Valor Substituído11", "Hora", each DateTime.Time([DATA AGENDA]), type time),
-      #"Colunas Reordenadas" = Table.ReorderColumns(#"Hora Inserida",{"SOLICITACAO", "N°PROTOCOLO", "DATA AGENDA", "Hora", "DATA CRIADO", "DATA ENCERRRADO", "STATUS", "CIDADE", "BAIRRO", "RUA", "NUMERO", "TELEFONE", "CLIENTE", "EQUIPE", "LATITUDE", "LONGITUDE", "RESPONSÁVEL", "TIPO DE PROTOCOLO", "SIGLA CIDADE", "INDICE 2"}),
-      #"Tipo Alterado" = Table.TransformColumnTypes(#"Colunas Reordenadas",{{"DATA AGENDA", type date}}),
-      #"Colunas Renomeadas1" = Table.RenameColumns(#"Tipo Alterado",{{"Hora", "HORA AGENDA"}}),
-      #"Tipo Alterado1" = Table.TransformColumnTypes(#"Colunas Renomeadas1",{{"DATA CRIADO", type date}, {"DATA ENCERRRADO", type date}}),
-      #"Valor Substituído12" = Table.ReplaceValue(#"Tipo Alterado1",null,"Sem Informação",Replacer.ReplaceValue,{"PONTO DE ACESSO"}),
-      #"Valor Substituído13" = Table.ReplaceValue(#"Valor Substituído12",null,"Sem Informação",Replacer.ReplaceValue,{"ITEM"}),
-      #"Dividir Coluna por Delimitador" = Table.SplitColumn(#"Valor Substituído13", "CODIGO", Splitter.SplitTextByDelimiter("-", QuoteStyle.Csv), {"CODIGO.1", "CODIGO.2"}),
-      #"Tipo Alterado2" = Table.TransformColumnTypes(#"Dividir Coluna por Delimitador",{{"CODIGO.1", type text}, {"CODIGO.2", Int64.Type}}),
-      #"Colunas Renomeadas2" = Table.RenameColumns(#"Tipo Alterado2",{{"CODIGO.2", "VLAN"}, {"CODIGO.1", "POP"}}),
-      #"Prefixo Adicionado" = Table.TransformColumns(#"Colunas Renomeadas2", {{"VLAN", each "VLAN " & Text.From(_, "pt-BR"), type text}}),
-      #"Valor Substituído14" = Table.ReplaceValue(#"Prefixo Adicionado",null,"Sem Informação",Replacer.ReplaceValue,{"POP", "VLAN"}),
-      #"Valor Substituído15" = Table.ReplaceValue(#"Valor Substituído14",null,"Sem Informação",Replacer.ReplaceValue,{"CONTEXTO", "PROBLEMA", "OLT", "EQUIPAMENTO"}),
-      #"Texto Extraído Após o Delimitador" = Table.TransformColumns(#"Valor Substituído15", {{"CTO", each Text.AfterDelimiter(_, "-", 1), type text}}),
-      #"Texto Extraído Antes do Delimitador" = Table.TransformColumns(#"Texto Extraído Após o Delimitador", {{"CTO", each Text.BeforeDelimiter(_, "-"), type text}}),
-      #"Colunas Reordenadas1" = Table.ReorderColumns(#"Texto Extraído Antes do Delimitador",{"SOLICITACAO", "N°PROTOCOLO", "DATA AGENDA", "HORA AGENDA", "DATA CRIADO", "HORA CRIADO", "DATA ENCERRRADO", "STATUS", "CIDADE", "BAIRRO", "RUA", "NUMERO", "TELEFONE", "CLIENTE", "EQUIPE", "LATITUDE", "LONGITUDE", "RESPONSÁVEL", "PONTO DE ACESSO", "POP", "VLAN", "SLOT", "PORTA", "CTO", "STATUS CONTRATO", "NUMERO CONTRATO", "ITEM", "CONTEXTO", "PROBLEMA", "OLT", "EQUIPAMENTO", "USUÁRIO", "TIPO DE PROTOCOLO", "SIGLA CIDADE", "INDICE 2"}),
-      #"Linhas Filtradas1" = Table.SelectRows(#"Colunas Reordenadas1", each ([STATUS] <> "Cancelado")),
-      #"Personalização Adicionada" = Table.AddColumn(#"Linhas Filtradas1", "SITUAÇÃO", each if [STATUS] = "Encerrado" and [STATUS CONTRATO] <> "Cancelado" and [TÍTULO RECEBÍVEL] <> null
-  then "Finalizado" 
-  else if [STATUS] = "Encerrado" and [STATUS CONTRATO] <> "Cancelado" and [TÍTULO RECEBÍVEL] = null then "Finalizado Pendência Financeira" else "Pendente")
+      // MIGRACAO DE 16/09/2026 (ACHADOS #112). Os 46 passos que moravam aqui viraram o
+      // `sql:` desta spec. A partir desta linha o M so faz o que o SQL NAO PODE fazer.
+      //
+      // `Odbc.Query` IGNORA os dois argumentos: `runQueries` busca `spec.sql` pelo Query
+      // Engine antes de avaliar e injeta o resultado como `Fonte` (runner.ts, "as funcoes
+      // de fonte devolvem a tabela ja buscada"). O que estava escrito aqui era uma COPIA
+      // do SQL -- e ela ja tinha ficado para tras do original. Duas fontes da verdade
+      // para a mesma consulta, sendo que uma nunca roda: ficou so o ponteiro.
+      Fonte = Odbc.Query("dsn=dbVoalle", "o SQL desta query e o campo `sql:` desta spec"),
 
-  //if [STATUS] = "Encerrado" and [TÍTULO RECEBÍVEL] <> null then "FINALIZADO" else "PENDENTE")
-  ,
-      #"Colunas Renomeadas4" = Table.RenameColumns(#"Personalização Adicionada",{{"DATA ENCERRRADO", "DATA MODIFICADO"}}),
-      #"Personalização Adicionada3" = Table.AddColumn(#"Colunas Renomeadas4", "DATA HOJE", each DateTime.LocalNow()),
-      #"Tipo Alterado3" = Table.TransformColumnTypes(#"Personalização Adicionada3",{{"DATA HOJE", type date}}),
-      // CORRIGIDO EM 25/08/2026 -- os dois `if` abaixo comparavam com "FINALIZADO",
-      // em caixa alta, e o passo acima produz "Finalizado". Comparacao de texto em M
-      // e SENSIVEL A CAIXA, entao a condicao era SEMPRE falsa:
-      //   - DATA ENCERRADO saia nula nas 1.995 linhas, inclusive nas 1.004 encerradas;
-      //   - TMA contava HOJE - DATA CRIADO tambem para as encerradas, e a mediana
-      //     chegou a 366 dias.
-      // "FINALIZADO" era o vocabulario da versao comentada logo acima, que dizia
-      // `then "FINALIZADO" else "PENDENTE"`. Quando SITUACAO passou a ter tres valores,
-      // as duas comparacoes ficaram para tras. O equivalente exato de "FINALIZADO" no
-      // vocabulario novo e "Finalizado" -- as 38 linhas de "Finalizado Pendencia
-      // Financeira" seguem contando como pendentes, como contavam antes.
-      #"Personalização Adicionada1" = Table.AddColumn(#"Tipo Alterado3", "PERSONALIZAÇÃO", each if [SITUAÇÃO] = "Finalizado" then [DATA MODIFICADO]-[DATA CRIADO] else [DATA HOJE] - [DATA CRIADO]),
-      #"Dias Inseridos" = Table.AddColumn(#"Personalização Adicionada1", "Dias", each Duration.Days([PERSONALIZAÇÃO]), Int64.Type),
-      #"Colunas Renomeadas5" = Table.RenameColumns(#"Dias Inseridos",{{"Dias", "TMA"}}),
-      #"Personalização Adicionada2" = Table.AddColumn(#"Colunas Renomeadas5", "DATA ENCERRADO", each if [SITUAÇÃO] = "Finalizado" then [DATA MODIFICADO] else null),
-      #"Colunas Removidas" = Table.RemoveColumns(#"Personalização Adicionada2",{"PERSONALIZAÇÃO"})
+      // O UNICO passo que NAO PODE ir para o SQL, e o motivo esta em functions.ts:
+      // `DateTime.LocalNow()` devolve `ctx.agora`, o relogio INJETADO pela plataforma --
+      // nao o do processo, nao o do banco. Mandar isto para o PostgreSQL entregaria o
+      // relogio a ele, e `diaDoCalculo` faz parte da chave de cache: a mesma pergunta
+      // deixaria de ter a mesma resposta, e nada acusaria.
+      #"DATA HOJE" = Table.AddColumn(Fonte, "DATA HOJE", each DateTime.LocalNow()),
+      // `type date` corta a hora. Sem isto TMA contaria fracao de dia contra datas que
+      // ja vem cortadas do SQL, e o erro apareceria como um dia a mais ou a menos.
+      #"DATA HOJE em data" = Table.TransformColumnTypes(#"DATA HOJE",{{"DATA HOJE", type date}}),
+
+      // TMA depende de DATA HOJE, entao fica aqui junto.
+      //
+      // No M eram tres passos -- a duracao numa coluna `PERSONALIZAÇÃO`, `Duration.Days`
+      // dela, e o `Table.RemoveColumns` que apagava a coluna intermediaria. A coluna
+      // intermediaria nunca foi resultado: era so onde a conta descansava.
+      //
+      // A comparacao com "Finalizado" e SENSIVEL A CAIXA, e ja custou caro uma vez: ate
+      // 25/08/2026 este `if` comparava com "FINALIZADO", nunca casava, e TMA contava
+      // HOJE - DATA CRIADO tambem para as encerradas (mediana de 366 dias). As 38 linhas
+      // de "Finalizado Pendência Financeira" seguem contando como pendentes, de proposito.
+      #"TMA" = Table.AddColumn(#"DATA HOJE em data", "TMA",
+          each Duration.Days(
+              if [SITUAÇÃO] = "Finalizado" then [DATA MODIFICADO] - [DATA CRIADO]
+              else [DATA HOJE] - [DATA CRIADO]), Int64.Type),
+
+      // DATA ENCERRADO nao depende do relogio e caberia no SQL. Fica aqui por UM motivo,
+      // e vale escreve-lo: a ordem das colunas e observavel no snapshot, e no M ela e a
+      // ULTIMA. Se saisse do SQL viria antes de DATA HOJE e de TMA, e a migracao teria
+      // mudado a forma da tabela alem do conteudo -- justamente o que ela promete nao fazer.
+      #"DATA ENCERRADO" = Table.AddColumn(#"TMA", "DATA ENCERRADO",
+          each if [SITUAÇÃO] = "Finalizado" then [DATA MODIFICADO] else null)
   in
-      #"Colunas Removidas"
+      #"DATA ENCERRADO"

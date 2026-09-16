@@ -5,9 +5,15 @@
 // POR QUE ELE EXISTE
 //
 // Achado #112: as três queries grandes de ODBC (`protocolos-geral`,
-// `protocolos-auxiliares`, `protocolos-telefonia`) têm cada uma as MESMAS nove
+// `protocolos-auxiliares`, `protocolos-telefonia`) tinham cada uma as MESMAS nove
 // `Table.ReplaceValue` de cidade, e a quarta cópia está no SQL de
 // `protocolos-produtividade` — duas vezes dentro do mesmo arquivo, uma por ramo.
+//
+// Em 16/09/2026 `protocolos-telefonia` migrou para SQL. São as mesmas cinco cópias:
+// duas em M (`geral`, `auxiliares`), duas no SQL de `produtividade` e uma no de
+// `telefonia`. **A migração não reduziu o número — ela só mudou a linguagem de uma
+// delas**, e o teste vale exatamente pelo mesmo motivo de antes. O que ela evitou foi
+// virar seis: traduzir `INDICE 2` ao pé da letra repete a cadeia inteira dentro dele.
 //
 // Acrescentar uma cidade, ou corrigir uma sigla, exige editar cinco blocos em duas
 // linguagens. Esquecer um **não dá erro**: dá dois relatórios discordando sobre a
@@ -58,8 +64,14 @@ const declarado = parseYaml(le('siglas-cidade.yaml')) as {
 const MAPA = declarado.cidade_para_sigla;
 const CORRECOES = declarado.correcoes_indice_2;
 
-/** As três queries cuja camada M ainda carrega o mapa inteiro. */
-const EM_M = ['protocolos-geral', 'protocolos-auxiliares', 'protocolos-telefonia'] as const;
+/**
+ * As queries cuja camada M ainda carrega o mapa inteiro.
+ *
+ * Eram três. `protocolos-telefonia` saiu em 16/09/2026, quando migrou para SQL — o
+ * teste dela está lá embaixo, junto com o de `protocolos-produtividade`. As duas que
+ * restam são o trabalho que falta.
+ */
+const EM_M = ['protocolos-geral', 'protocolos-auxiliares'] as const;
 
 // ── Extração da camada M ─────────────────────────────────────────────────────
 
@@ -157,6 +169,47 @@ test('protocolos-produtividade: os dois ramos do SQL encadeiam o mesmo mapa, na 
     cadeias[1],
     [...MAPA, ...CORRECOES],
     'o ramo "INDICE 2" do SQL divergiu do catálogo',
+  );
+});
+
+test('protocolos-telefonia: o SQL encadeia o mapa UMA vez, e INDICE 2 lê o resultado', () => {
+  const fonte = le(path.join('queries', 'protocolos-telefonia.spec.yaml'));
+  const cadeias = cadeiasDoSql(fonte);
+
+  // UMA, não duas. `protocolos-produtividade` tem duas porque a tradução direta de
+  // `INDICE 2` repete a cadeia inteira dentro dela; o M de telefonia NÃO repetia — a
+  // cadeia produzia "SIGLA CIDADE" e `Text.Combine` lia essa coluna. A migração de
+  // 16/09/2026 preservou isso com um CTE, e é este número que guarda a decisão: se
+  // alguém "simplificar" o CTE inline, aparecem duas cópias e este teste reprova.
+  assert.equal(
+    cadeias.length,
+    1,
+    `esperava UMA cadeia de replace() sobre initcap("CIDADE") em protocolos-telefonia ` +
+      `— a do CTE \`derivado\` — e achei ${cadeias.length}. Duas significa que ` +
+      `"INDICE 2" voltou a recalcular o mapa em vez de ler "SIGLA CIDADE", e o mapa ` +
+      `passou de cinco cópias para seis.`,
+  );
+  assert.deepEqual(cadeias[0], MAPA, 'o mapa no SQL de protocolos-telefonia divergiu do catálogo');
+
+  // As duas correções literais de INDICE 2 continuam, agora sobre a coluna já pronta.
+  const corrigidas = [...fonte.matchAll(/'([^']*)','([^']*)'\)\s*AS "INDICE 2"/g)];
+  assert.equal(corrigidas.length, 1, 'não achei o fecho de "INDICE 2" no SQL');
+  for (const c of CORRECOES) {
+    assert.ok(
+      fonte.includes(`'${c.de}','${c.para}'`),
+      `a correção de INDICE 2 '${c.de}' -> '${c.para}' sumiu do SQL de protocolos-telefonia`,
+    );
+  }
+});
+
+test('protocolos-telefonia não voltou a ter o mapa em M', () => {
+  const fonte = le(path.join('queries', 'protocolos-telefonia.spec.yaml'));
+  const emM = mapaDoM(fonte, ['CIDADE - Copiar', 'SIGLA CIDADE', 'INDICE 2']);
+  assert.equal(
+    emM.length,
+    0,
+    'protocolos-telefonia voltou a traduzir cidade na camada M — o mapa já está no ' +
+      'SQL dela desde 16/09/2026, e ter os dois é ter duas respostas para a mesma pergunta.',
   );
 });
 

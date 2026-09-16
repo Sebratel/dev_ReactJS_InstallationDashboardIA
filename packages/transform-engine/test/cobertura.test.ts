@@ -109,16 +109,21 @@ function chamadasDoEscopo(): Set<string> {
  */
 const FONTES = ['GoogleSheets.Contents', 'Odbc.Query'];
 
-test('as funções que a base chama: 49 distintas, 47 implementadas', () => {
+test('as funções que a base chama: 48 distintas, 46 implementadas', () => {
   // 39 → 49 quando `clima-tempo` entrou no escopo (achado #42). As 10 novas são
   // dela, e 5 precisaram ser escritas: Date.ToText, Table.FromColumns,
   // Table.ToRecords, List.Repeat e Web.Contents.
+  //
+  // 49 → 48 (16/09/2026): `protocolos-telefonia` migrou para SQL e levou consigo a
+  // ÚLTIMA chamada de `Table.ReorderColumns` do corpus inteiro. A função continua
+  // implementada — o que caiu foi a demanda, não a cobertura. Este número descendo
+  // por migração é o resultado desejado; subindo, alguém devolveu trabalho ao M.
   const usadas = chamadasDoEscopo();
-  assert.equal(usadas.size, 49);
+  assert.equal(usadas.size, 48);
 
   const conhecidas = new Set([...implementedMFunctions(), ...standardConstants().keys()]);
   const falta = [...usadas].filter((f) => !conhecidas.has(f)).sort();
-  assert.equal(usadas.size - falta.length, 47);
+  assert.equal(usadas.size - falta.length, 46);
   assert.deepEqual(falta, FONTES, 'o que falta tem que ser só fonte, não transformação');
 });
 
@@ -206,7 +211,7 @@ test('erro de avaliação é MEvalError, não exceção genérica', () => {
   assert.throws(() => ev.avaliaQuery('let a = Table.Pivot(1) in a'), MEvalError);
 });
 
-test('o corpus continua com 25 queries e 274 passos', () => {
+test('o corpus continua com 25 queries e 233 passos', () => {
   // 24 queries / 327 passos + `field-agenda-slot` (ACHADOS #87): 1 query, 3 passos
   // (mesma forma de `field-agenda` — Fonte, Linhas Filtradas1, Tipo Alterado). Não
   // vem do PBIP, mas é uma query de verdade e entra no corpus como qualquer outra.
@@ -220,16 +225,23 @@ test('o corpus continua com 25 queries e 274 passos', () => {
   // GESTOR) — o resto já vem pronto do `sql:` desde a migração de 25/08, e os
   // passos removidos tentavam recriar as MESMAS colunas, causando a colisão que
   // fazia a query nunca materializar. 331 - 57 = 274.
+  //
+  // -41 (16/09/2026, ACHADOS #112): `protocolos-telefonia` migrou de 46 passos para
+  // 5 (Fonte + DATA HOJE + o `type date` dela + TMA + DATA ENCERRADO). Os 41 que
+  // saíram viraram o `sql:` da spec, e o resultado foi provado idêntico coluna a
+  // coluna com `npm run probe:compara-materializacao` — 42 de 42 colunas, 640 de 640
+  // chaves. Restam `protocolos-geral` (56) e `protocolos-auxiliares` (56).
+  // 274 - 41 = 233.
   const qs = corpus();
   assert.equal(qs.length, 25);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    274,
+    233,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
   // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    274,
+    233,
   );
 });

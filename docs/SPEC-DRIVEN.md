@@ -308,6 +308,67 @@ casa como antes, `LeftOuter` não derruba a query quando não casa. Detalhe
 completo, incluindo o que o conserto EXPÕE (golden desatualizado desde a
 migração, três testes vermelhos até ele ser regravado) em `docs/ACHADOS.md` #105.
 
+### `protocolos-telefonia` — 46 passos de M viraram o `sql:`; sobraram 5 (16/09/2026)
+
+```diff
+- Fonte = Odbc.Query("dsn=dbVoalle", "<cópia de 5.169 caracteres do sql:>"),
+- #"Hora Inserida1" ... #"Colunas Renomeadas3"        (HORA CRIADO)
+- #"Colocar Cada Palavra Em Maiúscula"                (Text.Proper de CIDADE/BAIRRO)
+- #"Coluna Duplicada" ... #"Valor Substituído8"       (as nove trocas de SIGLA CIDADE)
+- #"Coluna Mesclada Inserida" ... #"Valor Substituído10"  (INDICE 2 e as duas correções)
+- #"Texto em Maiúscula" ... #"Valor Substituído11"    (RESPONSÁVEL)
+- #"Hora Inserida" ... #"Colunas Renomeadas1"         (HORA AGENDA)
+- #"Tipo Alterado" / #"Tipo Alterado1"                (type date nas três datas)
+- #"Dividir Coluna por Delimitador" ... #"Prefixo Adicionado"   (POP e VLAN)
+- #"Valor Substituído12..15"                          (nulo -> "Sem Informação")
+- #"Texto Extraído Após/Antes o Delimitador"          (CTO)
+- #"Colunas Reordenadas" / #"Colunas Reordenadas1"    (a ordem final das colunas)
+- #"Linhas Filtradas1"                                (STATUS <> "Cancelado")
+- #"Personalização Adicionada"                        (SITUAÇÃO)
+- #"Colunas Renomeadas4"                              (DATA ENCERRRADO -> DATA MODIFICADO)
++ Fonte = Odbc.Query("dsn=dbVoalle", "o SQL desta query é o campo `sql:` desta spec"),
+  #"DATA HOJE"        = Table.AddColumn(Fonte, "DATA HOJE", each DateTime.LocalNow()),
+  #"DATA HOJE em data" = Table.TransformColumnTypes(..., {{"DATA HOJE", type date}}),
+  #"TMA"              = Table.AddColumn(..., "TMA", each Duration.Days(...), Int64.Type),
+  #"DATA ENCERRADO"   = Table.AddColumn(..., "DATA ENCERRADO", each if [SITUAÇÃO] = "Finalizado" ...)
+```
+
+**O que sobrou, e por quê.** `DATA HOJE` é `DateTime.LocalNow()`, que nesta
+plataforma devolve o relógio **injetado** (`ctx.agora`, `functions.ts`). Mandá-lo
+para o PostgreSQL entregaria o relógio ao banco, e `diaDoCalculo` faz parte da
+chave de cache — a mesma pergunta deixaria de ter a mesma resposta. `TMA` depende
+dele. `DATA ENCERRADO` não depende, e caberia no SQL: fica em M só porque a ordem
+das colunas é observável no snapshot e no M ela é a última.
+
+**A prova.** `npm run probe:compara-materializacao` entre a materialização com a
+spec anterior e com esta, as duas com o avaliador já corrigido (#126):
+
+```
+antes ..... 640 linhas, 42 colunas       depois .... 640 linhas, 42 colunas
+colunas ... as 42 são as mesmas, e na mesma ordem: sim
+chaves .... 640 em comum, 0 só de um lado
+valor ..... ✅ as 42 colunas batem em TODAS as chaves
+```
+
+**Três coisas que a tradução ao pé da letra teria errado**, e que só apareceram por
+conferir cada passo contra o avaliador antes de escrever SQL:
+
+| passo | a armadilha |
+|---|---|
+| `DateTime.Time` | devolve `MTime`, e `toDatasetRows` o converte para `Date` sobre **1899-12-30**. Um `::time` puro chega como string: a coluna troca de `date` para `string` em 640 de 640 linhas, com o mesmo texto na tela. Daí o `DATE '1899-12-30' +`. |
+| `Text.Combine` | trata **nulo como vazio** (`{null,"POA"}` → `"/POA"`), e `NULL \|\| '/' \|\| 'POA'` é `NULL`. Daí os `COALESCE` de `INDICE 2`. |
+| `[STATUS] <> "Cancelado"` | em M, `null <> "x"` é **true**; em SQL é `NULL`, e a linha sairia. Daí `IS DISTINCT FROM`. |
+
+**O mapa CIDADE→SIGLA não virou duas cópias.** No M ele era uma só (a cadeia
+produzia `SIGLA CIDADE` e `INDICE 2` lia a coluna). A tradução direta repete a
+cadeia inteira dentro de `INDICE 2` — foi o que o primeiro rascunho fez, e é o que
+`protocolos-produtividade` tem hoje. O CTE `derivado` preserva a cópia única;
+`siglas-cidade.test.ts` trava isso em `1`.
+
+**Ganho não previsto:** `PROTOCOLOS TELEFONIA` saiu da lista de tabelas cujo
+`rowCount` do golden não é comparável com o Power BI (11 → 10). O filtro que a
+tornava incomparável agora é o `WHERE` da consulta.
+
 ## Estrutura de `specs/`
 
 ```

@@ -316,6 +316,14 @@ test('o parser lê mais passos que o scanner estático, e clima-tempo é a difer
   // -57 (10/09/2026, ACHADOS #81 Bloqueio 1): `protocolos-produtividade` (uma das
   // 23) teve o M reduzido de ~60 passos para 3 — o resto já vinha do `sql:` desde
   // 25/08 e colidia tentando recriar as mesmas colunas. 303 - 57 = 246.
+  //
+  // -41 (16/09/2026, ACHADOS #112): `protocolos-telefonia` migrou de 46 para 5.
+  // 246 - 41 = 205.
+  //
+  // O piso é `>=` de propósito, e é por isso que ele desce em vez de travar num
+  // valor: o que este teste guarda é que o parser LÊ o corpus inteiro, não que o
+  // corpus tenha um tamanho. Quem trava o tamanho é `cobertura.test.ts`, com um
+  // `assert.equal` — e é lá que uma migração tem de ser declarada.
   const total = corpus().reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0);
   const clima = corpus().find((q) => q.id === 'clima-tempo');
   assert.ok(clima, 'clima-tempo saiu do corpus');
@@ -323,5 +331,5 @@ test('o parser lê mais passos que o scanner estático, e clima-tempo é a difer
     (parseMLet(clima!.m_expression!)?.length ?? 0) > 0,
     'clima-tempo deveria ter passos legíveis pelo parser',
   );
-  assert.ok(total >= 246, `esperado ao menos os 246 passos (303 - 57 de #81), veio ${total}`);
+  assert.ok(total >= 205, `esperado ao menos os 205 passos (303 - 57 de #81 - 41 de #112), veio ${total}`);
 });
