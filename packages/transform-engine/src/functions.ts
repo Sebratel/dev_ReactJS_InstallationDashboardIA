@@ -393,6 +393,43 @@ function horaDe(d: Date): MTime {
   );
 }
 
+/**
+ * Posição da ocorrência `idx` (base zero) de `d` em `s`, ou -1 se não existir.
+ *
+ * O terceiro argumento de `Text.BeforeDelimiter`/`Text.AfterDelimiter` é o número
+ * da ocorrência: `0` (ou omitido) é a primeira, `1` é a segunda. **Ele era aceito e
+ * jogado fora** — as duas funções declaravam `maxArgs: 3` e desestruturavam só
+ * `([v, delim])`, então `Text.AfterDelimiter(x, "-", 1)` devolvia o trecho depois do
+ * PRIMEIRO hífen, calado.
+ *
+ * O estrago, medido em 16/09/2026 na fonte viva: o passo `CTO` de
+ * `protocolos-telefonia`, `protocolos-geral` e `protocolos-auxiliares` é
+ * `Text.BeforeDelimiter(Text.AfterDelimiter(_, "-", 1), "-")` — o TERCEIRO campo da
+ * divisão por hífen. Com o argumento ignorado saía o SEGUNDO, em **550 de 550**
+ * linhas não-nulas de telefonia. E `protocolos-produtividade`, migrada para SQL em
+ * 10/09, calcula `split_part("CTO", '-', 3)` — o campo certo. Ou seja: duas tabelas
+ * da plataforma devolviam CTO diferente para o mesmo protocolo, e nenhuma das duas
+ * acusava nada.
+ *
+ * Argumento ignorado em silêncio é pior que argumento recusado: quem escreveu o
+ * passo tinha razão, e a plataforma discordou sem dizer.
+ */
+function ocorrenciaDe(s: string, d: string, idx: MValue, fn: string): number {
+  if (idx === undefined || idx === null) return s.indexOf(d);
+  if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0) {
+    // `{n, RelativePosition.FromEnd}` é a outra forma que M aceita aqui. Nenhuma
+    // spec a usa, e adivinhá-la seria repetir o erro que este parágrafo conserta.
+    throw new MEvalError(
+      `${fn}: o terceiro argumento é o número da ocorrência (inteiro ≥ 0), veio ${tipoDe(idx)}.`,
+    );
+  }
+  // Delimitador vazio não avança: `indexOf('')` é sempre 0, e o laço não terminaria.
+  if (d === '') return 0;
+  let i = s.indexOf(d);
+  for (let n = 0; n < idx && i >= 0; n++) i = s.indexOf(d, i + d.length);
+  return i;
+}
+
 // ── funções de tabela ─────────────────────────────────────────────────────────
 
 const TABELA: MFunctionImpl[] = [
@@ -1235,11 +1272,11 @@ const VALOR: MFunctionImpl[] = [
     name: 'Text.BeforeDelimiter',
     minArgs: 2,
     maxArgs: 3,
-    call: ([v, delim]) => {
+    call: ([v, delim, idx]) => {
       if (v === null) return null;
       const s = exigeTexto(v, 'Text.BeforeDelimiter', 'o texto');
       const d = exigeTexto(delim, 'Text.BeforeDelimiter', 'o delimitador');
-      const i = s.indexOf(d);
+      const i = ocorrenciaDe(s, d, idx, 'Text.BeforeDelimiter');
       // Sem o delimitador, M devolve texto vazio — não o texto inteiro.
       return i < 0 ? '' : s.slice(0, i);
     },
@@ -1248,11 +1285,11 @@ const VALOR: MFunctionImpl[] = [
     name: 'Text.AfterDelimiter',
     minArgs: 2,
     maxArgs: 3,
-    call: ([v, delim]) => {
+    call: ([v, delim, idx]) => {
       if (v === null) return null;
       const s = exigeTexto(v, 'Text.AfterDelimiter', 'o texto');
       const d = exigeTexto(delim, 'Text.AfterDelimiter', 'o delimitador');
-      const i = s.indexOf(d);
+      const i = ocorrenciaDe(s, d, idx, 'Text.AfterDelimiter');
       return i < 0 ? '' : s.slice(i + d.length);
     },
   },

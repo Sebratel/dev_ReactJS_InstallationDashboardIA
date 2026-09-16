@@ -441,6 +441,39 @@ test('Text.Proper, Upper e os delimitadores', () => {
   assert.equal(e.avaliaQuery('let a = Text.BeforeDelimiter("abc", "-") in a').valor, '');
 });
 
+test('o terceiro argumento dos delimitadores é a OCORRÊNCIA, e ele era ignorado', () => {
+  const e = ev();
+  // `1` é a SEGUNDA ocorrência. Este era o defeito: as duas funções declaravam
+  // `maxArgs: 3` e desestruturavam só `([v, delim])`, então devolviam o trecho da
+  // PRIMEIRA — calado. O passo `CTO` das três queries de protocolo pede exatamente
+  // esta forma, e saía o segundo campo em vez do terceiro em 550 de 550 linhas.
+  assert.equal(e.avaliaQuery('let a = Text.AfterDelimiter("a-b-c-d", "-", 1) in a').valor, 'c-d');
+  assert.equal(e.avaliaQuery('let a = Text.BeforeDelimiter("a-b-c-d", "-", 1) in a').valor, 'a-b');
+  // `0` é a primeira, e tem de valer o mesmo que omitir.
+  assert.equal(e.avaliaQuery('let a = Text.AfterDelimiter("a-b-c", "-", 0) in a').valor, 'b-c');
+  assert.equal(
+    e.avaliaQuery('let a = Text.AfterDelimiter("a-b-c", "-") in a').valor,
+    e.avaliaQuery('let a = Text.AfterDelimiter("a-b-c", "-", 0) in a').valor,
+  );
+  // É este o encadeamento do passo CTO: o TERCEIRO campo da divisão por hífen.
+  assert.equal(
+    e.avaliaQuery('let a = Text.BeforeDelimiter(Text.AfterDelimiter("CTO-01-ABC-99", "-", 1), "-") in a').valor,
+    'ABC',
+  );
+  // Ocorrência que não existe cai na mesma convenção de "sem delimitador": vazio.
+  assert.equal(e.avaliaQuery('let a = Text.AfterDelimiter("a-b", "-", 5) in a').valor, '');
+  assert.equal(e.avaliaQuery('let a = Text.BeforeDelimiter("a-b", "-", 5) in a').valor, '');
+  // Delimitador de mais de um caractere não pode contar ocorrências sobrepostas.
+  assert.equal(e.avaliaQuery('let a = Text.AfterDelimiter("x::y::z", "::", 1) in a').valor, 'z');
+  // Nulo continua nulo antes de qualquer conta.
+  assert.equal(e.avaliaQuery('let a = Text.AfterDelimiter(null, "-", 1) in a').valor, null);
+  // A forma `{n, RelativePosition.FromEnd}` não é adivinhada: recusar é o conserto.
+  assert.throws(
+    () => e.avaliaQuery('let a = Text.AfterDelimiter("a-b", "-", {1, 1}) in a'),
+    /ocorrência/,
+  );
+});
+
 test('Text.Combine trata null como vazio', () => {
   assert.equal(ev().avaliaQuery('let a = Text.Combine({"a", null, "b"}, "-") in a').valor, 'a--b');
 });

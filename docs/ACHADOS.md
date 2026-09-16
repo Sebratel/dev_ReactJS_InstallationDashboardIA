@@ -10303,3 +10303,79 @@ que ele já decidiu para `protocolos-geral`: o contrato **daquele protocolo**.
 > dias sem ser feita. Quando um defeito nasce de um padrão copiado — e aqui as três
 > queries são cópias uma da outra —, o achado tem de terminar com a varredura das
 > irmãs, não com o conserto da que doeu.
+
+---
+
+## #126 — `Text.AfterDelimiter(_, "-", 1)` aceitava o terceiro argumento e o jogava fora: CTO saía do campo errado em 99,1% da população, e as duas metades da plataforma discordavam entre si
+
+**Data:** 16/09/2026
+**⚠️ ISTO MUDA NÚMERO NA TELA. A conferência é do Erick.**
+
+Achado ao migrar `protocolos-telefonia` de M para SQL. Antes de escrever a primeira
+linha de SQL fui conferir o que cada passo de M faz **no nosso avaliador** — não no
+Power Query, que é outro programa. O passo `CTO` é este:
+
+```m
+Text.BeforeDelimiter(Text.AfterDelimiter(_, "-", 1), "-")
+```
+
+Lido em voz alta: *depois da SEGUNDA ocorrência do hífen, até a próxima* — o terceiro
+campo. Perguntado ao avaliador:
+
+```
+Text.AfterDelimiter("A-B-C-D", "-", 1)                            => "B-C-D"   (esperado "C-D")
+Text.BeforeDelimiter(Text.AfterDelimiter("A-B-C-D", "-", 1), "-") => "B"       (esperado "C")
+```
+
+### A causa, em uma linha
+
+As duas funções declaravam `maxArgs: 3` e desestruturavam `([v, delim])`. O terceiro
+argumento passava pela conferência de aridade — e evaporava. Sem erro, sem aviso.
+
+### O tamanho
+
+```
+authentication_splitters (a fonte de CTO nas quatro queries de protocolo)
+  linhas ....................................... 26.534
+  em que o 2º campo difere do 3º ............... 26.283   (99,1%)
+
+protocolos-telefonia, medido na fonte viva em 16/09
+  linhas com CTO não-nulo ...................... 550 de 655
+  em que o valor MUDA com o conserto ........... 550       (100%)
+```
+
+### E a plataforma discordava de si mesma
+
+`protocolos-produtividade` migrou para SQL em 10/09 e escreve
+`NULLIF(split_part("CTO", '-', 3), '')` — o campo **certo**, porque quem migrou leu o
+passo de M e o traduziu pelo que ele diz, não pelo que o avaliador fazia. As outras
+três (`geral`, `telefonia`, `auxiliares`) continuaram em M, com o campo errado.
+
+Resultado: para o mesmo protocolo, `PROTOCOLOS PRODUTIVIDADE`.CTO e
+`PROTOCOLOS GERAL`.CTO devolviam coisas diferentes. Nenhuma das duas acusava nada —
+as duas são texto plausível, com a cara de um nome de CTO.
+
+### O conserto
+
+`ocorrenciaDe(s, d, idx, fn)` em `packages/transform-engine/src/functions.ts`, usada
+pelas duas funções. `0` (ou omitido) é a primeira ocorrência, `1` a segunda; ocorrência
+que não existe cai na convenção que já existia para delimitador ausente — texto vazio,
+não o texto inteiro. A forma `{n, RelativePosition.FromEnd}` **não** é adivinhada: erra
+alto, porque adivinhá-la seria repetir exatamente o defeito que este parágrafo conserta.
+
+Onze asserções novas em `avaliador.test.ts`, incluindo o encadeamento do passo `CTO`.
+
+### A lição
+
+> **Argumento aceito e ignorado é pior que argumento recusado.** A aridade foi
+> conferida — `minArgs: 2, maxArgs: 3` — e essa conferência é justamente o que deu
+> confiança de que o argumento fora recebido. Quem escreveu o passo estava certo; a
+> plataforma discordou em silêncio e por quinze dias ninguém teve como saber. Se uma
+> função aceita um parâmetro que não implementa, o caminho honesto é recusá-lo.
+
+> **Ler o passo de M não é ler o que o M faz.** A migração ia traduzir
+> `Text.AfterDelimiter(_, "-", 1)` para `split_part(..., 3)` — a leitura correta do
+> passo — e o comparador teria acusado 550 de 550 linhas divergindo. Eu teria olhado
+> para o resultado certo e concluído que a MIGRAÇÃO estava errada, porque a régua era
+> a saída atual. Foi perguntar ao avaliador, antes de escrever SQL, que separou as
+> duas coisas.
