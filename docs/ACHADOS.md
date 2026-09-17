@@ -11081,3 +11081,115 @@ completa. Aquele arquivo nunca esteve quebrado.
 >
 > E o corolário do #129: **uma guarda que erra alto num lugar que ninguém lê é uma guarda
 > que não existe.** Esta agora erra na suíte, que é onde alguém olha.
+
+## #132 — A prova de que o gabarito de paridade é possível valia para uma query que foi reescrita três vezes desde então; agora o sha da query trava a prova
+
+**Data:** 17/09/2026
+**O arquivo que existe para impedir palpite estava sustentando dois.** E ele não é
+comentário: `tools/powerbi/src/index.ts:359` chama `carregaJanelas`, e o que sai dali
+decide qual medida do Power BI vira gabarito em `specs/paridade/*.yaml`.
+
+### O que `paridade-janela.yaml` promete
+
+Está escrito no topo dele, e a frase é boa:
+
+> *"REGRA DO CAMPO `verificado`: só entra aqui predicado que, aplicado no Power BI,
+> devolve a contagem de linhas que temos em disco."*
+
+> *"Um gabarito impossível não detecta regressão — ele ensina a ignorar o alarme."*
+
+Duas tabelas tinham predicado com `verificado`, ambos provados em **25/08/2026**.
+
+### O que a prova não cobre, e ninguém tinha percebido
+
+Uma prova é sobre **um predicado aplicado a um conjunto de linhas**. O predicado é
+estável — está escrito ali. O conjunto de linhas não: ele é o que a query produz, e a
+query é outro arquivo, que muda por motivos que nada têm a ver com paridade.
+
+```
+                          prova (25/08)   disco (17/09)    razão
+PROTOCOLOS GERAL              34.978         95.442        2,73x
+PROTOCOLOS PRODUTIVIDADE      70.868         77.452        1,09x
+```
+
+`PROTOCOLOS PRODUTIVIDADE` a 1,09× em 23 dias é acúmulo. `PROTOCOLOS GERAL` a **2,73×**
+não é — e a causa tem nome: `8b1fd19` (04/09) reescreveu o desempate do `ROW_NUMBER` e
+destravou um `EXISTS`; o título do commit diz *"3,1x"*. A lista `it.id IN (...)` do SQL
+nunca mudou, então o predicado de corte por data continua plausível. **O que ninguém
+sabe é se o lado do Power BI ganhou as mesmas linhas.** Enquanto não se souber, todo
+gabarito dali sairia medido sobre ~35 mil linhas e comparado com 95 mil.
+
+### Por que contar linhas não é o guarda certo
+
+Foi a primeira ideia, e está errada: **as duas pontas acumulam.** Divergir com o tempo é
+o comportamento normal de um predicado que funciona. Qualquer limiar ou envelhece (em um
+ano, 1,09× vira 2×) ou não pega nada. Um guarda que precisa de limiar aqui é um guarda
+que vai ser desligado.
+
+### O guarda que serve já existia neste repositório
+
+`packages/snapshot/src/nativas.ts` resolveu o mesmo problema com `shaConferido`:
+
+> *"Se alguém mudar o `table_dax` ou o DAX de qualquer coluna, `shaDaCalculada` muda, o
+> sha deixa de casar e o caminho nativo **se recusa** — cai no avaliador, lento e certo,
+> com uma nota dizendo por quê."*
+
+O mesmo desenho, um andar acima: `verificado` passa a declarar o `shaDaQuery` da spec no
+dia da prova — `sha256` do `sql:` mais o `m_expression:`. `carregaJanelas` recalcula e,
+quando falta ou não bate, **manda a tabela para `bloqueadas`** em vez de erguer exceção.
+Isso é deliberado: `bloqueadas` já significa exatamente "card que dependa disto não
+recebe número automático", então o resto do catálogo segue funcionando e só o que perdeu
+a prova para de produzir gabarito.
+
+**O sha ignora espaço em branco**, por `shaDeDax`. Reindentar o SQL não invalida uma
+prova — e se invalidasse, a manutenção normal do arquivo treinaria quem cuida dele a
+recarimbar o sha sem medir nada, que é o pior desfecho possível para um guarda assim.
+(Ironia registrada: é exatamente o oposto do #131, onde reindentar **era** o defeito. Lá
+a âncora é recorte literal e o espaço importa; aqui a prova é sobre semântica e não.)
+
+### O que isto custa hoje, dito sem enfeite
+
+**As duas tabelas ficaram bloqueadas.** Nenhuma das duas provas declara sha, e nenhuma
+pode ser demonstrada como feita sobre a definição de hoje:
+
+- `PROTOCOLOS GERAL` — bloqueio **com evidência** de que o conjunto mudou.
+- `PROTOCOLOS PRODUTIVIDADE` — bloqueio **por falta de prova**, não por defeito
+  conhecido. A query foi migrada de M para SQL em 10/09 e ganhou o desempate de endereço
+  em 14/09; a prova é de 25/08 e nada registra que alguém remediu. É o caso em que
+  desbloquear provavelmente só confirma o que já estava lá.
+
+Carimbar o sha de hoje nas duas para manter tudo verde era a saída fácil e seria
+mentira: o campo diz "alguém provou sobre esta definição", e eu não provei. Limpar cada
+bloqueio custa **uma consulta DAX** contra o Power BI, e a receita está no próprio
+arquivo.
+
+Aproveitado no caminho: o bloqueio de `FIELD AGENDA` mandava *"resolver a carga antes de
+tentar equalizar"*, citando `snapshot/field-agenda.erro.log` (ECONNRESET, 19/08). Aquele
+arquivo não existe, e o manifesto traz 643.176 linhas de 15/09 — a instrução mandava
+refazer trabalho já feito. O bloqueio continua (o fator de 15 foi raciocinado sobre 41
+mil linhas e hoje há 643 mil, ou seja, a divergência não foi remediada, foi remexida),
+mas agora pelo motivo certo.
+
+### O teste que eu tive de trocar, e por que não é trapaça
+
+`tools/powerbi/test/janela.test.ts` afirmava `j.tabelas.has('PROTOCOLOS PRODUTIVIDADE')`
+e `has('PROTOCOLOS GERAL')` — ou seja, fixava a **configuração** de um dia. Com o guarda,
+reprovou.
+
+Reescrever um teste para ele voltar ao verde é precisamente o defeito que
+`packages/snapshot/test/incremental.test.ts` documenta em outro contexto: *"alguém
+reancorou a costura para casar com ela, e a suíte continuou verde"*. Então ele não foi
+reescrito para a lista nova — foi trocado pelo **invariante**, que não depende de qual
+tabela está de que lado: *toda tabela declarada sai como janela provada OU como bloqueio
+com motivo; nunca some no meio do caminho.* Mais seis testes cobrem o guarda, incluindo o
+de que reindentar não invalida e o de que tabela sem spec de query não é travada.
+
+### A lição
+
+> **Uma prova é sobre um objeto, e o objeto tem de estar identificado na prova.**
+> "Conferido em 25/08" responde *quando*, e é a pergunta fácil. A que decide é *sobre o
+> quê* — e sem ela a prova sobrevive intacta à reescrita daquilo que ela provava.
+>
+> O corolário prático, que vale além deste arquivo: **onde houver um número conferido à
+> mão, guarde junto a identidade daquilo que foi conferido.** Um sha custa uma linha e
+> transforma "envelheceu em silêncio" em "recusa e diz o que fazer".

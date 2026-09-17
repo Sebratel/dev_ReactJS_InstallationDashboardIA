@@ -14,39 +14,67 @@
 # devolve a contagem de linhas que temos em disco. O número fica registrado para
 # que a próxima pessoa possa refazer a conta em vez de acreditar.
 #
+# REGRA DO CAMPO `sha` (17/09/2026): a prova vale para UMA definição de query.
+# Reescreva o SQL e o conjunto de linhas muda embaixo do predicado, sem que uma
+# letra dele mude — e a prova continua ali, com cara de conferida. Por isso todo
+# `verificado` declara o `shaDaQuery` da spec no dia da prova, e `carregaJanelas`
+# **recusa** a janela (manda a tabela para `bloqueadas`) quando o sha falta ou não
+# bate. Mesmo desenho do `shaConferido` de `packages/snapshot/src/nativas.ts` e do
+# guarda de coluna materializada (ACHADOS #47): o hash não conserta nada, ele
+# obriga alguém a refazer a conta.
+#
+# Comparar CONTAGEM não serviria: as duas pontas acumulam, então divergir com o
+# tempo é o normal, e qualquer limiar ou envelhece ou não pega nada. O sha é
+# exato. E ele ignora espaço em branco de propósito — reindentar o SQL não
+# invalida uma prova, e invalidar por isso treinaria quem mantém este arquivo a
+# recarimbar o sha sem medir, que é o pior desfecho possível para um guarda assim.
+#
 # COMO CONFERIR DE NOVO:
 #   EVALUATE ROW("n", CALCULATE(COUNTROWS('TABELA'), <o dax abaixo>))
-# e compare com a entrada da tabela em snapshot/manifesto.json.
+# compare com a entrada da tabela em snapshot/manifesto.json, e grave junto o sha
+# que `shaDaQuery('specs', '<TABELA>')` devolve (`tools/powerbi/src/janela.ts`).
 
-tabelas:
-  # SQL: `WHERE ... AND a.created >= '2026-01-01'`
-  # (specs/_catalog/queries/protocolos-produtividade.spec.yaml, e o mesmo piso
-  # está em incremental.yaml como `piso: '2026-01-01'`).
-  #
-  # CUIDADO, e é a armadilha desta tabela: o corte é por DATA CRIADO, mas quase
-  # toda medida agrega por DATA INSTALAÇÃO. Protocolo criado em 2025 e instalado
-  # em 2026 existe lá e não existe aqui — 328 casos em 2026, concentrados na
-  # primeira semana de janeiro. Por isso o predicado é na coluna do CORTE, não na
-  # da agregação: é ele que reproduz o conjunto de linhas que temos.
-  PROTOCOLOS PRODUTIVIDADE:
-    dax: "'PROTOCOLOS PRODUTIVIDADE'[DATA CRIADO] >= DATE(2026,1,1)"
-    verificado:
-      pbi: 70879
-      nos: 70868
-      em: '2026-08-25'
-
-  # SQL: `WHERE it.id IN (...) AND a.created >= '2026-01-01'`
-  # (specs/_catalog/queries/protocolos-geral.spec.yaml, linha ~71).
-  PROTOCOLOS GERAL:
-    dax: "'PROTOCOLOS GERAL'[DATA CRIADO] >= DATE(2026,1,1)"
-    verificado:
-      pbi: 35095
-      nos: 34978
-      em: '2026-08-25'
+tabelas: {}
 
 # Tabelas em que NENHUM predicado equaliza, porque os dois lados não são a mesma
 # coisa. Card cujo alcance toca uma destas não recebe número automático.
+# AS DUAS PRIMEIRAS ESTÃO AQUI DESDE 17/09/2026, E ANTES ERAM JANELAS VÁLIDAS.
+# Não porque o predicado tenha sido refutado, mas porque a PROVA dele venceu e
+# ninguém pode mais dizer sobre qual definição de query ela foi feita. Preferir o
+# bloqueio é a regra do topo deste arquivo aplicada a ele mesmo: o arquivo que
+# prova que o número está certo é o último lugar onde cabe um palpite. Limpar cada
+# um custa UMA consulta DAX — a receita está em "COMO CONFERIR DE NOVO".
 bloqueadas:
+  PROTOCOLOS GERAL: >-
+    A PROVA VENCEU, E ESTA TEM EVIDÊNCIA DE QUE O CONJUNTO MUDOU (17/09/2026). O
+    predicado era `'PROTOCOLOS GERAL'[DATA CRIADO] >= DATE(2026,1,1)`, provado em
+    25/08/2026 com pbi=35095 contra nos=34978. Em 17/09 o disco traz 95.442
+    linhas — 2,73x — e isso não é acúmulo de 23 dias: o commit 8b1fd19 (04/09)
+    reescreveu o desempate do ROW_NUMBER e destravou um EXISTS, e o título dele
+    diz "3,1x". A lista `it.id IN (...)` do SQL nunca mudou, então o corte por
+    data continua sendo o predicado plausível; o que não se sabe é se o lado do
+    Power BI ganhou as mesmas linhas. Enquanto não se souber, todo gabarito daqui
+    sairia medido sobre ~35 mil linhas e comparado com 95 mil. Para desbloquear:
+    rode a consulta de "COMO CONFERIR DE NOVO" e devolva a entrada a `tabelas`
+    com o `sha` novo.
+
+  PROTOCOLOS PRODUTIVIDADE: >-
+    A PROVA VENCEU, SEM EVIDÊNCIA DE QUE O PREDICADO TENHA DEIXADO DE VALER
+    (17/09/2026). O predicado era `'PROTOCOLOS PRODUTIVIDADE'[DATA CRIADO] >=
+    DATE(2026,1,1)`, provado em 25/08/2026 com pbi=70879 contra nos=70868. O disco
+    hoje traz 77.452 linhas: +9,3% em 23 dias, compatível com acúmulo normal. O
+    que impede de mantê-la é que a query foi REESCRITA desde a prova — migrada de
+    M para SQL em 10/09, e o desempate de endereço em 14/09 — então a prova não é
+    sobre a definição de hoje, e nenhum registro diz que alguém remediu depois. É
+    bloqueio por falta de prova, não por defeito conhecido: é o caso em que
+    desbloquear provavelmente só confirma o que já estava lá.
+    ARMADILHA, que sobrevive ao desbloqueio e por isso fica registrada aqui: o
+    corte é por DATA CRIADO, mas quase toda medida agrega por DATA INSTALAÇÃO.
+    Protocolo criado em 2025 e instalado em 2026 existe lá e não existe aqui — 328
+    casos em 2026, concentrados na primeira semana de janeiro. O predicado tem de
+    ser na coluna do CORTE, não na da agregação: é ele que reproduz o conjunto de
+    linhas que temos.
+
   FIELD AGENDA: >-
     As duas tabelas têm definições diferentes, não janelas diferentes. O nosso SQL
     filtra região (`region_title LIKE '%Base Canoas (Ativação)%' OR '%Base São
@@ -60,9 +88,16 @@ bloqueadas:
     RELATÓRIO os números de `pbi:` foram medidos. Erick, 27/08: o alvo é o
     `INST - Relatório Instalação`, NÃO o `... Gerencial`. "Definições diferentes"
     é exatamente a cara de ter consultado o relatório errado.
-    Some-se que a última carga desta query MORREU (`snapshot/field-agenda.erro.log`,
-    ECONNRESET em 19/08 após 38 min de colunas calculadas), então o arquivo em
-    disco também está incompleto. Resolver a carga antes de tentar equalizar.
+    CORREÇÃO (17/09/2026): este parágrafo dizia "a última carga desta query MORREU
+    (`snapshot/field-agenda.erro.log`, ECONNRESET em 19/08 após 38 min de colunas
+    calculadas), então o arquivo em disco também está incompleto. Resolver a carga
+    antes de tentar equalizar." Aquele arquivo de erro NÃO EXISTE mais, e o
+    manifesto traz 643.176 linhas x 26 colunas geradas em 15/09/2026 — a carga foi
+    resolvida e a instrução mandava refazer trabalho já feito. O que NÃO muda é o
+    bloqueio: o fator de 15 acima foi raciocinado sobre um disco de 41 mil linhas e
+    hoje há 643 mil, então nem a divergência de forma foi remedida — ela foi
+    remexida. Reequalizar exige medir de novo os dois lados, contra o relatório
+    certo.
 
   # Este bloqueio não é de janela — é de CONFIANÇA na fonte, e o motivo importa
   # porque aqui quem regrediu foi o Power BI, não a plataforma.

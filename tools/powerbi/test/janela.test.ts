@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import YAML from 'yaml';
 import {
   carregaJanelas,
   tabelasCitadas,
@@ -13,6 +14,7 @@ import {
   comJanela,
   dependeDoRelogio,
   ARQUIVO_JANELA,
+  shaDaQuery,
   type ModeloDeMedidas,
 } from '../src/janela.ts';
 
@@ -201,11 +203,52 @@ describe('comJanela', () => {
 describe('o arquivo real do catálogo', () => {
   const specs = path.resolve(import.meta.dirname, '..', '..', '..', 'specs');
 
-  test('carrega e declara os dois lados', () => {
+  /** Um catálogo mínimo em disco: uma spec de query e uma janela para a tabela dela. */
+  function umCatalogoDeMentira(linhaDoVerificado: string): string {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'janela-sha-'));
+    fs.mkdirSync(path.join(dir, '_catalog', 'queries'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, '_catalog', 'queries', 'x.spec.yaml'),
+      'id: x\nname: TABELA X\nsql: |-\n  SELECT 1\n  FROM t\n',
+      'utf8',
+    );
+    fs.writeFileSync(
+      path.join(dir, ARQUIVO_JANELA),
+      'tabelas:\n  TABELA X:\n    dax: "\'TABELA X\'[D] >= DATE(2026,1,1)"\n' +
+        `    ${linhaDoVerificado}\n`,
+      'utf8',
+    );
+    return dir;
+  }
+
+  // **Este teste mudou em 17/09/2026, e o motivo importa.** Ele afirmava que
+  // `PROTOCOLOS PRODUTIVIDADE` e `PROTOCOLOS GERAL` estão em `tabelas` — ou seja,
+  // fixava a CONFIGURAÇÃO de um dia. Quando o guarda de sha entrou e bloqueou as duas
+  // (nenhuma das provas, de 25/08, declara sobre qual definição de query foi feita), o
+  // teste reprovou. Reescrevê-lo para voltar ao verde afirmando a lista nova seria
+  // repetir o defeito que `packages/snapshot/test/incremental.test.ts` documenta:
+  // *"alguém reancorou a costura para casar com ela, e a suíte continuou verde"*.
+  //
+  // Então ele passou a afirmar o INVARIANTE, que não depende de qual tabela está de
+  // que lado hoje: toda tabela declarada ou sai como janela provada, ou sai como
+  // bloqueio com motivo. Nunca some no meio do caminho.
+  test('toda tabela declarada sai como janela provada OU como bloqueio com motivo', () => {
     const j = carregaJanelas(specs);
-    assert.ok(j.tabelas.has('PROTOCOLOS PRODUTIVIDADE'));
-    assert.ok(j.tabelas.has('PROTOCOLOS GERAL'));
-    assert.ok(j.bloqueadas.has('FIELD AGENDA'));
+    const doc = YAML.parse(fs.readFileSync(path.join(specs, ARQUIVO_JANELA), 'utf8')) as {
+      tabelas?: Record<string, unknown>;
+      bloqueadas?: Record<string, unknown>;
+    };
+    const declaradas = [
+      ...Object.keys(doc.tabelas ?? {}),
+      ...Object.keys(doc.bloqueadas ?? {}),
+    ].map((n) => n.trim().toUpperCase());
+    assert.ok(declaradas.length > 0, 'o arquivo real do catálogo não declara tabela nenhuma');
+    for (const nome of declaradas) {
+      assert.ok(
+        j.tabelas.has(nome) || j.bloqueadas.has(nome),
+        `${nome} sumiu na carga — nem janela, nem bloqueio`,
+      );
+    }
   });
 
   test('toda janela declarada traz a prova de que reproduz a nossa fatia', () => {
@@ -218,6 +261,76 @@ describe('o arquivo real do catálogo', () => {
       const erro = Math.abs(pbi - nos) / Math.max(pbi, nos, 1);
       assert.ok(erro <= 0.02, `${nome}: o predicado erra ${(erro * 100).toFixed(2)}% da nossa contagem`);
     }
+  });
+
+  // A presença do `sha` é exigida AQUI, e não na carga, de propósito: a carga já
+  // recusa a janela sem sha (vira bloqueio), e este teste é o que impede alguém de
+  // acrescentar uma tabela nova sem ele e só descobrir quando o gabarito sair errado.
+  test('toda prova do arquivo real declara o sha da query sobre a qual foi feita', () => {
+    const doc = YAML.parse(fs.readFileSync(path.join(specs, ARQUIVO_JANELA), 'utf8')) as {
+      tabelas?: Record<string, { verificado?: { sha?: string; em?: string } }>;
+    };
+    for (const [nome, janela] of Object.entries(doc.tabelas ?? {})) {
+      if (!janela?.verificado) continue;
+      assert.ok(
+        janela.verificado.sha,
+        `${nome}: a prova de ${janela.verificado.em ?? '?'} não diz sobre qual definição ` +
+          `de query foi feita — rode shaDaQuery e grave o resultado junto dela`,
+      );
+    }
+  });
+
+  test('prova sem sha não vira janela: vira bloqueio, e o motivo diz qual sha gravar', () => {
+    const dir = umCatalogoDeMentira("verificado: { pbi: 10, nos: 10, em: '2026-01-01' }");
+    const j = carregaJanelas(dir);
+    assert.equal(j.tabelas.has('TABELA X'), false, 'não pode valer como janela provada');
+    const motivo = j.bloqueadas.get('TABELA X');
+    assert.ok(motivo, 'tinha de virar bloqueio');
+    assert.ok(motivo!.includes(shaDaQuery(dir, 'TABELA X')!), 'o motivo tem de dizer QUAL sha gravar');
+  });
+
+  test('sha que não bate vira bloqueio, e o motivo mostra os dois', () => {
+    const dir = umCatalogoDeMentira(
+      "verificado: { pbi: 10, nos: 10, em: '2026-01-01', sha: 'deadbeefdeadbeef' }",
+    );
+    const j = carregaJanelas(dir);
+    assert.equal(j.tabelas.has('TABELA X'), false);
+    const motivo = j.bloqueadas.get('TABELA X')!;
+    assert.ok(motivo.includes('deadbeefdeadbeef'), 'tem de citar o sha da prova');
+    assert.ok(motivo.includes(shaDaQuery(dir, 'TABELA X')!), 'e o de hoje');
+  });
+
+  test('sha que bate deixa a janela passar', () => {
+    const base = umCatalogoDeMentira("verificado: { pbi: 10, nos: 10, em: '2026-01-01' }");
+    const certo = shaDaQuery(base, 'TABELA X')!;
+    const dir = umCatalogoDeMentira(
+      `verificado: { pbi: 10, nos: 10, em: '2026-01-01', sha: '${certo}' }`,
+    );
+    assert.ok(carregaJanelas(dir).tabelas.has('TABELA X'));
+  });
+
+  // Reindentar o SQL não invalida uma prova. Se invalidasse, a manutenção normal do
+  // arquivo treinaria quem cuida dele a recarimbar o sha sem medir nada — que é o pior
+  // desfecho possível para um guarda como este.
+  test('o sha ignora espaço em branco: reindentar o SQL não invalida a prova', () => {
+    const dir = umCatalogoDeMentira("verificado: { pbi: 10, nos: 10, em: '2026-01-01' }");
+    const specQ = path.join(dir, '_catalog', 'queries', 'x.spec.yaml');
+    const antes = shaDaQuery(dir, 'TABELA X');
+    fs.writeFileSync(specQ, 'id: x\nname: TABELA X\nsql: |-\n      SELECT 1\n          FROM t\n', 'utf8');
+    assert.equal(shaDaQuery(dir, 'TABELA X'), antes);
+  });
+
+  test('tabela sem spec de query não é travada pelo sha', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'janela-sha-'));
+    fs.mkdirSync(path.join(dir, '_catalog'), { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, ARQUIVO_JANELA),
+      'tabelas:\n  SO NO MODELO:\n    dax: "\'SO NO MODELO\'[D] >= DATE(2026,1,1)"\n' +
+        "    verificado: { pbi: 10, nos: 10, em: '2026-01-01' }\n",
+      'utf8',
+    );
+    assert.equal(shaDaQuery(dir, 'SO NO MODELO'), null, 'nenhuma spec declara esta tabela');
+    assert.ok(carregaJanelas(dir).tabelas.has('SO NO MODELO'), 'sem query, não há o que travar');
   });
 
   test('toda tabela bloqueada explica o porquê', () => {
