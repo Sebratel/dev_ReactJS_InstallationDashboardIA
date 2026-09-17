@@ -38,7 +38,9 @@ commitado sobreviveu a ambos os episódios, sem exceção.
 
 - Árvore limpa em `561e2ec`. `main` == `staging` == `origin/main` == `origin/staging`
   — **está tudo publicado**, não há mais nada em risco.
-- `npm test`: **1357 testes, 1357 verdes, 0 falhas**.
+- `npm test`: **1357 testes, 1357 verdes, 0 falhas** (número de 27/08/2026; este
+  documento é uma auditoria daquela data e os números dele não são atualizados —
+  em 17/09/2026 a suíte marcava 2020).
 - `npm run web:build` (`tsc --noEmit && vite build`): verde, 1843 módulos.
 - Das **278 arquivos do repositório** que as sessões escreveram, só 2 não existem:
   - `apps/web/src/atomic/atoms/Button.tsx` — nunca foi importado por ninguém e nunca
@@ -140,7 +142,14 @@ sobrescrever: `README.md`, `DESIGN-SYSTEM.md`, `ARCHITECTURE.md` e
 A camada de *decisão* do que se perdeu está resgatada em
 [DECISOES-DAS-SESSOES.md](DECISOES-DAS-SESSOES.md).
 
-### 3.4 Uma discrepância aberta
+### 3.4 Uma discrepância aberta — **ENCERRADA em 17/09/2026**
+
+> **Resolvida sozinha, e não por investigação.** Medido com `npm test` em 17/09/2026:
+> **2020 testes, 2020 verdes, 0 falhando**, em **153** arquivos `*.test.ts` — contra os
+> 87 de 27/08. A suíte passou os 1438 pré-reset entre 27/08 e 04/09 (1666 em 04/09,
+> 1895 em 15/09). Os "~81 testes" não são mais isoláveis por contagem de totais, e
+> nenhuma conclusão da recuperação dependia deles. **Não reabra este item**; o detalhe
+> está em `DEPLOY.md` §4.1. O texto abaixo fica como estava em 27/08/2026.
 
 O suíte marcava **1438 testes (4 falhando)** na árvore pré-reset de 26/08 e marca
 **1357 (0 falhando)** hoje. Os 87 arquivos `*.test.ts` existem e o glob do `npm test`

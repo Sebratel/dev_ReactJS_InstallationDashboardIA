@@ -11,7 +11,7 @@
 > | §0/§2.1 "não existe login. A API serve todo número a todo pedido" | **existe e é testado** — Google SSO, 401 antes do roteamento (`apps/api/src/auth-google.ts`, `servidor.test.ts:782`) |
 > | §0/§3 "não existe nenhum `Dockerfile`", "nenhum arquivo de Nginx", "nada nesta seção existe" | **existem** — `Dockerfile`, `docker-compose.prod.yml`, `nginx.conf` (commit `7642fab`) |
 > | §0/§2.1 "as páginas que expõem dado pessoal" | **nenhuma das 14 specs de dashboard usa `QUADRO FUNCIONAL`** (onde estão CPF/RG). O dado está em `snapshot/`, não na tela |
-> | §4/§7 "1357 testes verdes" | **1895** (15/09/2026; eram 1666 em 04/09) |
+> | §4/§7 "1357 testes verdes" | **2020** (17/09/2026; 1895 em 15/09, 1666 em 04/09) — o corpo foi corrigido em 17/09 |
 > | §0 "SSE perdido com a árvore de 21/08" | **existe** — `EventSource('/api/eventos')` em `apps/web/src/App.tsx:153` |
 >
 > **Fechados em 04/09/2026, e o documento também erra ao mantê-los abertos:**
@@ -52,24 +52,37 @@
 
 ## 0. Painel de prontidão
 
-| frente | estado em 27/08/2026 | bloqueia deploy? |
+> **Leia a data de cada linha, não o cabeçalho.** Esta tabela nasceu em 27/08/2026 e
+> foi sendo corrigida linha a linha desde então — a data está dentro da célula. Em
+> 17/09/2026 caíram as duas últimas que ainda diziam "não existe" sobre coisa
+> commitada: **autenticação** e **proxy reverso**.
+
+| frente | estado (a data está em cada linha) | bloqueia deploy? |
 |---|---|---|
 | Motor DAX + Widget Engine | 14 páginas, **117 de 117 visuais calculam**, 0 erros | não |
-| Testes | **1357 verdes**, 0 falhando, nenhum precisa de credencial nem de build — mas ver §4.1 | não |
+| Testes | **2020 verdes**, 0 falhando, nenhum precisa de credencial nem de build — medido em 17/09/2026 (eram 1357 em 27/08, 1666 em 04/09, 1895 em 15/09) | não |
 | Cache + pré-aquecimento | resposta a quente medida em **2,9–6,2 ms**; `npm start` aquece as 14 páginas sem filtro (o pré-aquecimento por Ano/Mês foi perdido, §4) | não |
 | Tela React | 14 páginas navegáveis, filtros na URL. **Sem SSE e sem store de filtros** — perdidos com a árvore de 21/08 (§4) | não |
 | **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.4) | **sim, para "substituir"** |
-| **Autenticação** | **não existe.** A API serve todo número a todo pedido | **sim, e é o primeiro** |
+| **Autenticação** | **existe** desde o commit `eb69069`: Google SSO restrito a `sebratel.com.br` (`apps/api/src/auth-google.ts`), com portão de 401 antes do roteamento — o teste *"sem cookie de sessão, `/api/*` leva 401 antes de qualquer rota"*, em `apps/api/test/servidor.test.ts`, é o que o prova. Esta linha dizia "não existe" até 17/09/2026, contradizendo o próprio aviso no topo deste arquivo. **O que continua aberto é a §2.1: origem da identidade e o dado pessoal que a API serve** | não — mas ver §2.1 |
 | **Refresh do dado** | `tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
-| **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando o catálogo inteiro menos `protocolos-produtividade` (não materializa em nenhum modo hoje, #81) — ver §2.2 abaixo | **pronto** |
+| **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando **24 das 25 queries** do catálogo. A de fora é `protocolos-produtividade`, e **o motivo original caiu**: até 17/09/2026 esta linha dizia "não materializa em nenhum modo hoje, #81", o que deixou de valer em **13/09/2026** — ela materializa ponta a ponta (**162 s**; o `manifesto.json` a traz com **77.452 linhas × 51 colunas**, carga de 16/09) e entrou no grupo `frio` de `specs/_catalog/refresh.yaml`. A ausência dela na lista do cron é hoje uma **decisão pendente, não um impedimento técnico** (~3 min a mais na madrugada) — `docker/cron/crontab-snapshot-diario` já traz esse aviso no comentário, e era este documento que não tinha sido alinhado. Ver §2.2 abaixo | **pronto — com uma decisão em aberto** |
 | Containerização | **existe** (16/09/2026): `Dockerfile` na raiz, `docker-compose.prod.yml` com `api`/`redis`/`proxy` e `docker-compose.local.yml` como sobreposição de desenvolvimento | **pronto** |
-| Proxy reverso + TLS | **não existe** nenhum arquivo de Nginx no repositório | sim |
+| Proxy reverso | **existe** desde o commit `7642fab`: `nginx.conf` na raiz, montado como `/etc/nginx/conf.d/default.conf` no serviço `proxy` do `docker-compose.prod.yml` (`nginx:1.27-alpine`, porta 80). Traz `/`, `/api/` com `proxy_read_timeout 90s` (o padrão de 60 s cortava `agendamento-field` a frio), `/api/eventos` com as quatro linhas de SSE e `/auth/`. Até 17/09/2026 esta linha dizia "não existe" — errado desde então | **pronto** |
+| TLS | **não existe** — o `nginx.conf` só tem `listen 80`, e a publicação da porta 443 está comentada no compose. O que falta é o **certificado**, decisão de infraestrutura e não do repositório (§3.3) | sim |
 | Processo supervisionado | **meio caminho** (16/09/2026): o `npm start` ressuscita o daemon de refresh se ele morrer (5s→15s→45s→2min→5min, depois desiste alto — `tools/subir/src/supervisao.ts`), e cada arranque fica em `snapshot/refresh-historico.log`. O `npm start` em si continua sem supervisor: `tools/subir/agenda-no-windows.ps1` registra a tarefa que o sobe no logon, **mas ela ainda não foi registrada nesta máquina** — é um comando, com Administrador, e está em §2.3 | sim, e o comando está escrito |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
 
-**Em uma frase:** faltam **três decisões** (identidade, janela de refresh, o que fazer
-com dado pessoal na tela) e **quatro artefatos de infraestrutura** que ainda não têm
-uma linha escrita. Nada do que falta é cálculo.
+**Em uma frase, e ela mudou em 17/09/2026:** os artefatos de infraestrutura **estão
+escritos** — imagem, compose, proxy e agendamento existem em commit. O que falta são
+**decisões e um certificado**: a origem da identidade e o que fazer com dado pessoal na
+tela (§2.1), o TLS (§3.3), registrar a tarefa do Agendador nesta máquina (§2.3) e
+decidir se `protocolos-produtividade` entra no cron diário (§2.2). Nada do que falta é
+cálculo — e, dos cinco, só o primeiro não é um comando de alguém.
+
+> A frase anterior dizia *"faltam três decisões e quatro artefatos de infraestrutura
+> que ainda não têm uma linha escrita"*. Os quatro artefatos foram escritos entre
+> 04/09 e 16/09; esta linha só não tinha sido refeita.
 
 ---
 
@@ -79,7 +92,7 @@ Cada linha aqui tem um comando que reproduz a afirmação. Linha sem comando nã
 
 | afirmação | como conferir |
 |---|---|
-| 1357 testes verdes, sem credencial e sem build | `npm test` |
+| 2020 testes verdes, sem credencial e sem build (17/09/2026) | `npm test` |
 | as 14 páginas calculam, 117 visuais, 0 erros | `npm run paginas -- --pagina=<uma>` |
 | a API responde a quente em milissegundos, e diz qual adapter de cache está ligado | `curl localhost:3100/api/saude` |
 | a tela sobe compilada, aquecida, e reprova se algum visual falhar | `npm start` |
@@ -97,34 +110,91 @@ nenhum e não deve aparecer em nota de release.
 Estes três vêm antes de qualquer Dockerfile, porque nenhum deles se resolve com
 configuração. Comprar servidor não os move.
 
-### 2.1 Não existe login, e o dado é pessoal
+### 2.1 O login existe; o que não está decidido é a origem da identidade
 
-A API não autentica ninguém. Há **costura** (`apps/api/src/identidade.ts`, e a chave do
+> **Esta seção se chamava "Não existe login, e o dado é pessoal" e abria dizendo que a
+> API não autentica ninguém. Isso caiu no commit `eb69069` e só foi corrigido aqui em
+> 17/09/2026.** O critério de saída que ela mesma define — *"um pedido sem sessão válida
+> recebe 401 antes do roteamento, com teste que falha se a trava for removida"* — **está
+> cumprido**: o teste é *"sem cookie de sessão, /api/\* leva 401 antes de qualquer
+> rota"*, em `apps/api/test/servidor.test.ts`. O que segue continua verdadeiro, e é o
+> motivo de esta seção não ser fechada: a **origem** da identidade ainda é decisão de
+> produto, e o dado que a API serve continua sendo pessoal.
+
+Hoje a entrada é Google SSO restrito ao domínio `sebratel.com.br`
+(`apps/api/src/auth-google.ts`), com sessão em cookie e portão de 401 antes do
+roteamento. A costura de autorização existe (`apps/api/src/identidade.ts`, e a chave do
 cache já carrega o usuário para que nenhum recorte futuro seja servido para a pessoa
-errada) e há **formato de decisão** (`specs/_catalog/permissoes.yaml`) — falta o leitor
-e falta a tela de entrada.
+errada) e há **formato de decisão** (`specs/_catalog/permissoes.yaml`) — o que falta é a
+decisão de **quem** é a fonte da identidade (SSO do HUBBI ou usuário local) e, com ela,
+o leitor de permissões.
 
-Isso é tolerável numa máquina de desenvolvimento e **não é** tolerável em rede da
-empresa, porque o que a API serve inclui:
+**Autenticar não é autorizar, e é por isso que a seção fica aberta.** Hoje qualquer
+pessoa com e-mail `@sebratel.com.br` que entre vê **tudo**, porque não há leitor de
+permissões — e o que a API serve inclui:
 
 - endereço de cliente, em `field-agenda`;
 - **CPF e RG**, em `QUADRO FUNCIONAL`;
-- 371 MB de dado operacional consolidado, em `snapshot/`.
+- **39 MB** de dado operacional consolidado, em `snapshot/` — 1.418.935 linhas nas 23
+  tabelas do `manifesto.json`, gravadas em 30 arquivos `.jsonl.gz` (as 23 mais 7
+  calculadas, com prefixo `calc.`). (Este documento dizia **371 MB**, de 26/08/2026, até
+  17/09/2026; a medição e a causa estão na §3.1.)
 
 - **Quem destrava:** decisão de produto sobre a origem da identidade — SSO do HUBBI ou
-  usuário local. Enquanto ela não vier, não há o que implementar sem chutar.
-- **Critério de saída:** um pedido sem sessão válida recebe **401** antes do
-  roteamento, com teste que falha se a trava for removida — a mesma disciplina dos 405.
+  usuário local. Enquanto ela não vier, não há o que implementar sem chutar. **Este é o
+  único item desta seção que ainda depende de decisão humana.**
+- ~~**Critério de saída:** um pedido sem sessão válida recebe **401** antes do
+  roteamento, com teste que falha se a trava for removida — a mesma disciplina dos
+  405.~~ **CUMPRIDO** em `eb69069`; o teste que falha se a trava sair está em
+  `apps/api/test/servidor.test.ts`.
+- **Critério de saída que resta:** nenhum usuário autenticado alcança página com dado
+  pessoal que o papel dele não autorize — e isso exige o leitor de
+  `specs/_catalog/permissoes.yaml`, hoje em `ESTADO: DESENHO` (há teste que reprova se
+  o estado mudar sem `apps/api/src/escopo-cache.ts` mudar junto).
 - **Mitigação aceitável para um piloto interno** (não é o deploy final): publicar
   **apenas na rede interna**, atrás do SSO que já existe no HUBBI, com a URL não
   divulgada e as páginas que expõem dado pessoal fora do menu. Isso é um piloto de
   alcance reduzido, e precisa ser dito com essas palavras a quem aprovar.
 
-### 2.2 O dado não se atualiza sem alguém lembrar
+### 2.2 O refresh é automático — o que falta é quem o levante depois de um reboot
 
-Hoje o refresh é uma pessoa digitando `npm run snapshot`. Um painel cujo dado depende
-de memória humana vira painel velho em duas semanas — e velho aqui é silencioso: a
-tela não diz "isto é de terça".
+> **Esta seção abria com *"hoje o refresh é uma pessoa digitando `npm run snapshot`"* até
+> 17/09/2026**, e o próprio corpo dela desmentia isso em três lugares. A abertura é de
+> 21/08; o daemon é de 06/09. Quem lesse só o primeiro parágrafo reabria um item
+> fechado.
+
+**O que existe hoje, e roda sem ninguém digitar nada:**
+
+- **O daemon de refresh** (`tools/refresh/`) executa o que venceu em
+  `specs/_catalog/refresh.yaml`, em série, e grava `snapshot/refresh-status.json` depois
+  de cada grupo. Em produção ele é um serviço do `docker-compose.prod.yml`, de 15 em 15
+  minutos; em desenvolvimento, `npm start` o sobe em background junto com a API, **sem
+  flag nenhuma** desde 16/09/2026. Os três grupos declarados hoje são `quente`,
+  `medio` e `frio`.
+- **Ele tem histórico** (`tools/refresh/src/historico.ts`, 16/09/2026):
+  `snapshot/refresh-historico.log`, uma linha por evento (`arranque`, `grupo`,
+  `erro-de-ciclo`), lida com `node tools/refresh/src/daemon.ts --historico`. Existe
+  porque o `refresh-status.json` guarda **só a última tentativa por grupo** — uma falha
+  às 03:00 que o tick das 03:15 conserta não deixava rastro nenhum.
+- **Ele ressuscita se morrer** (`tools/subir/src/supervisao.ts`): espera crescente
+  5s→15s→45s→2min→5min, só conta como tentativa a morte com menos de um minuto de vida,
+  e **no teto desiste em voz alta** com o comando de diagnóstico — respawn sem limite
+  esconderia um `.env` quebrado para sempre.
+- **O catálogo inteiro é rematerializado às 3h** pelo serviço `snapshot-diario`, com
+  cron dentro do container (`docker/cron/`) — é ele que corrige alteração retroativa que
+  a cadência de minutos não vê.
+
+**O que ainda falta, e é honestamente o buraco desta seção:** quem ressuscita o daemon é
+o próprio `npm start`; se **ELE** morrer, ou se a máquina reiniciar, não há nada.
+`tools/subir/agenda-no-windows.ps1` registra a plataforma no Agendador de Tarefas do
+Windows (tarefa `Analytics Sebratel - plataforma`, gatilho "ao fazer logon" por padrão),
+mas **ela não está registrada nesta máquina** — conferido em 17/09/2026 com
+`Get-ScheduledTask`, que não a encontra. Registrar exige PowerShell como Administrador,
+e por isso é **pendência do Erick**, não de um agente. É essa falta que produziu o
+incidente da §2.3.
+
+O restante desta seção é o histórico de como se chegou aqui, e cada armadilha continua
+valendo para quem for mexer na cadência.
 
 - **O que já existe:** `GET /api/saude` responde de quando é o que está em disco, e o
   carimbo do snapshot entra na chave do cache — rematerializar invalida sozinho.
@@ -258,13 +328,21 @@ tela não diz "isto é de terça".
 - **A carga incremental foi ligada ao materializador de verdade** (`ACHADOS.md` #80)
   — `--incremental` decide, costura o SQL, busca só a janela e mescla com o que já
   está em disco, em vez de só imprimir um relatório que nunca correspondia à busca
-  real. **Mas a única query com política (`protocolos-produtividade`) não materializa
-  em nenhum modo hoje** — `ACHADOS.md` #81: SQL e M calculam as mesmas três colunas
-  (colisão), e o full-fetch passou do teto de 600 s (era 190,3 s em 25/08/2026, 3,15×
-  mais caro agora). **A cadência rápida que a Frente de automação prometia para esta
-  query (grupo F: "hoje 1×/dia, depois medido de novo") continua bloqueada** — não
-  pela fiação da incremental, que já está pronta, mas por estes dois defeitos
-  anteriores e independentes dela.
+  real.
+  - **A única query com política (`protocolos-produtividade`) NÃO está mais bloqueada
+    — corrigido aqui em 17/09/2026.** Este parágrafo dizia *"não materializa em nenhum
+    modo hoje"* (`ACHADOS.md` #81: SQL e M calculando as mesmas três colunas, e o
+    full-fetch passando do teto de 600 s), e isso deixou de valer em **13/09/2026**:
+    ela materializa ponta a ponta em **162 s** e entrou no grupo `frio` de
+    `specs/_catalog/refresh.yaml`, com cadência de 30 min. O `manifesto.json` a traz
+    com **77.452 linhas × 51 colunas**. A trava de `tools/refresh/src/grupos.ts` virou
+    `QUERIES_BLOQUEADAS`, um `Set` **vazio**, de pé só para a próxima query que provar
+    não materializar.
+  - O que continua verdadeiro é bem menor: ela segue **fora da lista do cron diário**
+    (`docker/cron/crontab-snapshot-diario`, 24 das 25 queries do catálogo), e isso é
+    hoje **decisão pendente, não impedimento técnico** — acrescentá-la custa ~3 min a
+    mais na madrugada. O comentário daquele crontab já avisa; era este documento que
+    não tinha sido alinhado.
 
 ### 2.3 Nada sobe a plataforma depois de um reboot — e isso já derrubou tudo
 
@@ -339,9 +417,30 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
   memória. Uma imagem sem esse flag, ou um container com limite de memória menor que
   isso, morre com OOM **sob carga** — não no arranque, que é o pior momento para
   descobrir.
-- **O `snapshot/` não vai dentro da imagem.** São 371 MB de dado de cliente, e ele muda
-  a cada refresh: é **volume**, e um volume que precisa de backup e de política de
-  retenção como qualquer base com dado pessoal.
+- **O `snapshot/` não vai dentro da imagem.** São **39 MB** de dado de cliente, e ele
+  muda a cada refresh: é **volume**, e um volume que precisa de backup e de política de
+  retenção como qualquer base com dado pessoal. **O que obriga a tratá-lo assim é o dado
+  pessoal, não o tamanho** — por isso a conclusão desta linha não muda com o número.
+
+  > **De onde vinha o "371 MB", corrigido em 17/09/2026.** O número entrou com a
+  > primeira versão deste arquivo (`0aae15c`, 26/08/2026) e nunca foi revisto. Medido
+  > agora: `du -sb snapshot/` = **40.342.840 bytes (39 MB)**, e a soma dos `bytes` do
+  > `manifesto.json` dá 38,3 MB — erro de ~9,5×.
+  >
+  > **O que o derrubou:** `0296cae` (04/09/2026), *"grava .jsonl.gz — 723,9 MB de
+  > snapshot viram 50,3 MB"*. O snapshot passou a ser gravado comprimido. Descomprimido,
+  > o catálogo de hoje ainda soma **172 MB** (`gzip -l` somado), contra 39 MB em disco.
+  > Depois vieram `1f55b22` (formato 2 em disco, uma linha por coluna) e `949591d`,
+  > ambos de 15/09, que mexem na forma e na leitura.
+  >
+  > **O que NÃO se sabe:** de onde saiu exatamente o 371. Não bate com os 723,9 MB
+  > pré-gzip do `0296cae` nem com os 172 MB descomprimidos de hoje, e o commit que o
+  > introduziu não traz medição nenhuma. Pode ter sido uma materialização parcial do
+  > catálogo (era 26/08, antes de várias queries entrarem) ou pode nunca ter sido
+  > medido. **Fica registrado como não achado, em vez de receber causa inventada.**
+  >
+  > **Ao dimensionar volume de produção:** 39 MB é o dado de UM dia. Quem guardar
+  > histórico multiplica por retenção — e o que se paga em disco é o comprimido.
 
 - **Critério de saída:** `docker run` da imagem responde `/api/saude` com o mesmo JSON
   que a execução local, apontando para um volume de snapshot montado de fora.
@@ -445,20 +544,35 @@ exige plano Blaze, e **ainda não está ligada**. Ver o cabeçalho de
 
 ### 3.3 Proxy reverso e TLS
 
-Não existe arquivo de Nginx no repositório. O que precisa estar nele:
+> **Esta seção abria com "não existe arquivo de Nginx no repositório" até 17/09/2026.**
+> Existe desde o commit `7642fab`, e a §0 chegou a listar as duas coisas ao mesmo tempo.
+> O texto abaixo descreve o que está commitado; **só o TLS continua faltando.**
 
-- proxy de `/` e de `/api/` para a porta da API — a API serve a tela e o JSON;
-- `proxy_read_timeout` que caiba o pedido a frio: `agendamento-field` chega a ~1 min na
-  primeira abertura, e o padrão de 60 s do Nginx corta exatamente aí, devolvendo 504 na
-  página mais lenta do relatório;
-- certificado: Let's Encrypt só se o host for alcançável de fora; para rede interna, o
-  certificado da Sebratel. Isto é decisão de infraestrutura, não do repositório.
+`nginx.conf` está na raiz e entra no container pelo serviço `proxy` do
+`docker-compose.prod.yml` (`nginx:1.27-alpine`, montado somente-leitura como
+`/etc/nginx/conf.d/default.conf`, publicando a porta 80 e subindo depois do
+`healthcheck` da API). O que ele já resolve, cada item pela razão que o pôs lá:
 
-> **Se um dia o SSE voltar, o Nginx precisa de mais quatro linhas** —
-> `proxy_buffering off`, `proxy_http_version 1.1`, `proxy_set_header Connection ''` e
-> `chunked_transfer_encoding off`. Sem elas o proxy segura o `text/event-stream` no
-> buffer e não chega evento nenhum, sem erro e sem log. Fica registrado aqui porque é o
-> tipo de coisa que só se descobre em produção.
+- **`/` e `/api/` vão para `http://api:3100`** — a API serve a tela (build estático) e o
+  JSON na mesma porta; não há container de tela separado (§3.2).
+- **`proxy_read_timeout 90s` em `/api/`** — o padrão de 60 s do Nginx cortava
+  `agendamento-field` na abertura fria (~1 min de cálculo) e devolvia 504 exatamente na
+  página mais lenta do relatório. Medido, não estimado.
+- **`/api/eventos` tem bloco próprio, com as quatro linhas de SSE** —
+  `proxy_http_version 1.1`, `proxy_set_header Connection ''`, `proxy_buffering off` e
+  `chunked_transfer_encoding off`, mais `proxy_read_timeout 1h` para o teto de 90 s não
+  matar o stream a cada 90 s e pôr o navegador em laço de reconexão. Sem elas, o proxy
+  segura o `text/event-stream` no buffer e **nenhum evento chega, sem erro e sem log**.
+  Aqui isto não é hipótese: o SSE existe dos dois lados (`GET /api/eventos` em
+  `apps/api/src/servidor.ts`, `new EventSource('/api/eventos')` em
+  `apps/web/src/App.tsx:153`).
+- **`/auth/` tem bloco próprio** — as duas únicas rotas que escrevem estado (sessão) em
+  vez de servir dado calculado, de propósito fora de `/api/`.
+
+**O que falta é só o certificado.** O arquivo serve HTTP puro; o `listen 443 ssl` entra
+quando existir certificado — Let's Encrypt se o host for alcançável de fora, o da
+Sebratel para rede interna. A publicação da porta 443 já está no compose, comentada.
+Isto é decisão de infraestrutura, não do repositório.
 
 - **Critério de saída:** as 14 páginas abrem pelo endereço real com TLS, incluindo a
   mais lenta a frio, e nenhum pedido volta 504.
@@ -517,19 +631,37 @@ Duas consequências para o deploy, e a segunda é a que importa:
    um artefato que ninguém consegue reproduzir — e, aqui, já foi a forma de perder o
    trabalho duas vezes.
 
-**Estado hoje (27/08/2026):** árvore limpa, `main` == `staging` == `origin/main` ==
+**Estado em 27/08/2026, quando esta seção foi escrita:** árvore limpa, `main` == `staging` == `origin/main` ==
 `origin/staging`, **1357 testes verdes**. Não há mais nada em risco fora do git.
 
 - **Critério de saída desta seção:** nenhum documento afirma comportamento que não
   esteja num commit, e cada fase de trabalho termina com commit em `staging` antes de ir
   para `main`.
 
-### 4.1 A discrepância de testes que ainda está aberta
+### 4.1 A discrepância de testes — **ENCERRADA em 17/09/2026**, e não por investigação
 
-A árvore pré-reset de 26/08 marcava **1438 testes com 4 falhando**; hoje são **1357 com
-0**. Os 87 arquivos `*.test.ts` existem e o glob do `npm test` alcança todos — então os
-~81 de diferença foram acrescentados **dentro de arquivos existentes** e se perderam com
-a árvore. Enquanto não forem identificados, "suíte verde" mede menos do que media.
+Esta seção ficou listada como discrepância aberta por vinte dias. **Não a investigue:
+ela não tem mais objeto.** A redação original era esta, e a aritmética dela não vale
+mais em nenhum termo:
+
+> A árvore pré-reset de 26/08 marcava **1438 testes com 4 falhando**; hoje são **1357 com
+> 0**. Os 87 arquivos `*.test.ts` existem e o glob do `npm test` alcança todos — então os
+> ~81 de diferença foram acrescentados **dentro de arquivos existentes** e se perderam com
+> a árvore. Enquanto não forem identificados, "suíte verde" mede menos do que media.
+
+**O que a derrubou:** a suíte não parou nos 1357 de 27/08/2026. Medido com `npm test` em
+17/09/2026: **2020 testes, 2020 verdes, 0 falhando**, em **153** arquivos `*.test.ts` —
+contra os 87 de então. Ela passou os **1438** pré-reset em algum ponto entre 27/08 e
+04/09 (naquele dia eram **1627** de manhã, no levantamento do `PLANO-DUPLA.md` §0, e
+**1666** à noite, em `4a41a47`; 1895 em 15/09) e hoje é **40% maior que a árvore que se
+temia ter perdido**.
+
+Os "~81 testes perdidos" deixaram, portanto, de ser buraco a tapar: qualquer cobertura
+que tenha ido embora com a árvore de 26/08 foi reescrita com folga por trabalho
+posterior, e contar totais já não a isola. A lição útil migrou inteira para o §4.2
+abaixo: **o que protege de perda não é o total da suíte — é haver teste tocando aquele
+código.** Foi exatamente por isso que `tools/snapshot/` pôde ficar 7 dias quebrado
+debaixo de uma suíte verde.
 
 ### 4.2 Uma restauração pode corrigir com corrupção — e isso não aparece como perda
 
@@ -657,7 +789,8 @@ Três ondas. A ordem não é preferência: cada onda remove um bloqueio da segui
 
 Antes:
 
-- [ ] `npm test` verde na máquina que vai empacotar (1357)
+- [ ] `npm test` verde na máquina que vai empacotar (**2020** em 17/09/2026 — confira o
+      número do dia, não este: o que reprova é falha, não total diferente)
 - [ ] árvore limpa (`git status` sem modificação) e commit empurrado
 - [ ] `npm run paginas -- --pagina=<três páginas diferentes>` sem erro
 - [ ] `snapshot/` do dia, e `npm run snapshot:confere` sem divergência de tipo

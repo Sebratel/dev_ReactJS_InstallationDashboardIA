@@ -9,7 +9,7 @@
 > apagada duas vezes: a reconstrução devolveu este arquivo com **143 linhas onde tinha
 > 659**, e a versão devolvida era de 04/08 — dizia "71 testes verdes" e a Fase 2 como
 > "próximo". Naquele dia eram **1357 testes** e o projeto estava na Fase 3 com as 14
-> páginas calculando (em 15/09/2026 são **1895**). Ver
+> páginas calculando (em 17/09/2026 são **2020**; eram 1895 em 15/09). Ver
 > [RECUPERACAO-27-08.md](./RECUPERACAO-27-08.md).
 >
 > **Três coisas de 27/08 que valem mais que o resto deste arquivo:**
@@ -109,8 +109,10 @@ o resto do projeto.
 > como registro do que se sabia então. Hoje (07/08/2026) o projeto está na **Fase 3**,
 > Widget Engine **fechado no cálculo**: os 117 visuais com número calculam — cards 64/64, tabelas 29/29, gráficos 16/16, matrizes 8/8. O que **não** existe ainda é API HTTP e UI. Leia o README primeiro.
 
-~~**832 testes verdes.**~~ **São 1357 em 27/08/2026** — rode `npm test` para confirmar
-antes de mexer em qualquer coisa. Nenhum teste precisa de credencial ou banco.
+~~**832 testes verdes.**~~ ~~**São 1357 em 27/08/2026**~~ — **2020 em 17/09/2026**.
+Rode `npm test` para confirmar antes de mexer em qualquer coisa: como esta linha já
+envelheceu duas vezes, o que vale é a saída do comando, não o número escrito aqui.
+Nenhum teste precisa de credencial ou banco.
 
 | Fase | Escopo | Status |
 |---|---|---|

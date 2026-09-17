@@ -71,11 +71,24 @@ medição, não de memória:
    snapshot não tem flag de data (`--todas`, `--plano`, `--refazer`,
    `--sem-calculadas`, `--incremental`).
 
-**O que isto evitava.** Sem a janela, a próxima carga completa de `field-agenda`
-buscaria ~8 meses em vez de 3 — numa query cujo grão é (slot, relato) e cuja última
-carga **morreu** com `ECONNRESET` após 38 min de colunas calculadas
-(`snapshot/field-agenda.erro.log`, 19/08). A regressão seria silenciosa: número
-maior, sem erro.
+**O que isto evita.** Sem a janela, a próxima carga completa de `field-agenda`
+buscaria ~8 meses em vez de 3 — numa query cujo grão é (slot, relato) e que já é a
+mais cara do catálogo **com** o corte de 3 meses: **21 min 49 s** ponta a ponta
+(ACHADOS #82, medido ao vivo em 02/09/2026, 642.365 linhas × 26 colunas), e é por
+isso que ela continua fora de todo grupo de `specs/_catalog/refresh.yaml`. Triplicar
+a janela numa query desse custo é a regressão silenciosa: número maior, sem erro.
+
+> **A prova que acompanhava este parágrafo caiu; o argumento não.** Até 17/09/2026
+> lia-se aqui que a última carga *"morreu com `ECONNRESET` após 38 min de colunas
+> calculadas (`snapshot/field-agenda.erro.log`, 19/08)"*. **Esse arquivo não existe** —
+> e o único outro `.erro.log` que a pasta ainda tinha, `protocolos-geral.erro.log` de
+> 02/09, era resíduo morto do tempo em que faltava `mysql2` e **foi apagado em
+> 17/09/2026**: aquela carga é das mais recentes do catálogo (95.442 linhas no
+> `manifesto.json`). Hoje **não há `.erro.log` nenhum em `snapshot/`**, e isso é o
+> estado normal — o arquivo só nasce quando `guardaErro` grava uma falha de
+> materialização. E a carga de `field-agenda` não está mais morta: o `manifesto.json` a dá
+> com **643.176 linhas × 26 colunas, geradoEm 2026-09-15**. A citação foi trocada pela
+> medição do #82, que sustenta a mesma conclusão sem depender de um arquivo que sumiu.
 
 **Ainda em aberto:** o lugar definitivo desta decisão é um
 `specs/_catalog/sql-override.yaml` com `original_sha` da expressão M
@@ -125,10 +138,21 @@ leitura dele.
 **Como foi achado.** `clima-tempo` era a materialização mais antiga do snapshot
 inteiro (`2026-08-07T19:12:54.718Z`) — 27 dias parada — e era ela quem definia o
 "dado desatualizado" na tela de `agendamento-field`, que usa `Clima/ Tempo` entre
-suas `entities_used`. `clima-tempo` não está em `refresh.yaml` (é uma das "7 fontes
-nunca medidas isoladamente", risco já registrado lá), então a única forma de
+suas `entities_used`. `clima-tempo` **não estava** em `refresh.yaml` (era uma das "7
+fontes nunca medidas isoladamente", risco já registrado lá), então a única forma de
 perceber a quebra era rodar `--refazer` à mão — o que aparentemente não acontecia
-há 27 dias. Reproduzido com `node tools/snapshot/src/index.ts --query=clima-tempo
+há 27 dias.
+
+> **Essa última frase caiu em 09/09/2026** (`957e2e4`, ACHADOS #104), e este parágrafo
+> só foi alinhado em 17/09. `clima-tempo` entrou no grupo `frio` de
+> `specs/_catalog/refresh.yaml` — **7.267 ms** medidos ao vivo, 1.869 linhas, 14
+> chamadas à Open-Meteo — e hoje roda a cada 30 min. Entrou primeiro entre as 7 fontes
+> justamente porque é a **única** query do catálogo cujo conteúdo caduca sozinha: a
+> previsão é uma janela de ~16 dias que anda todo dia, e sem cadência ela envelhece até
+> o visual de previsão esvaziar (estava 6 dias parada quando isso foi descoberto).
+> O diagnóstico acima continua valendo para explicar **por que ninguém percebeu os 27
+> dias**; o que não vale mais é a conclusão operacional — não depende mais de alguém
+> lembrar de rodar `--refazer` à mão. Reproduzido com `node tools/snapshot/src/index.ts --query=clima-tempo
 --refazer`, que falhou em 6,5s com o erro acima antes do conserto e teve sucesso
 (1.827 linhas, 6,46s) depois.
 

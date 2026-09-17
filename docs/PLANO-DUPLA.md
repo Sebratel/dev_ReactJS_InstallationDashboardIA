@@ -20,13 +20,16 @@
 
 `DEPLOY.md` §2.1 e §3 afirmam que **não existem** login, Dockerfile, compose e
 Nginx. **Existem todos.** `DEPLOY.md` §4 dá a suíte em 1357 testes; são 1627.
+*(Os dois números são de 04/09/2026 e ficam como registro do levantamento daquele dia.
+O `DEPLOY.md` foi corrigido em 17/09/2026 e já não diz 1357; a suíte marcava **2020**
+naquela data — rode `npm test` para o número de hoje.)*
 Trabalhar pela tabela de prontidão daquele documento é gastar dias reabrindo
 bloqueio já fechado — foi o que este levantamento evitou, e é por isso que ele
 vem antes do plano.
 
 | frente | estado REAL (conferido hoje) | onde conferi |
 |---|---|---|
-| Motor DAX + Widget Engine | 14 páginas calculam, **1627 testes verdes** | `npm test` |
+| Motor DAX + Widget Engine | 14 páginas calculam, **1627 testes verdes** (em 04/09/2026; eram 2020 em 17/09) | `npm test` |
 | Páginas carregando | **14 de 14** (eram 11 até hoje) | `bench:carga --paginas`, achado do `HORA CRIADO` |
 | **Login** | **existe e é testado** — Google SSO, domínio `sebratel.com.br`, 401 antes do roteamento | `apps/api/src/auth-google.ts`, `identidade.ts`, `servidor.test.ts:782` |
 | **Dockerfile / compose / Nginx** | **existem** (commit `7642fab`) | `Dockerfile`, `docker-compose.prod.yml`, `nginx.conf` |

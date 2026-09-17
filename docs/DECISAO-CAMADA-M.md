@@ -371,7 +371,9 @@ O Erick escolheu manter `QUADRO FUNCIONAL` no Google Sheets. Consequências, tod
   `manager_name` vier preenchido, o caminho está medido.
 - **O connector de Google Sheets voltou a ser caminho crítico** — e com ele a condição 2 da
   recomendação, que havia sido marcada como superada em 05/08/2026. Ver Anexo B: a
-  autenticação já está escrita e testada; falta o compartilhamento.
+  autenticação já está escrita e testada, e o compartilhamento — o que faltava quando esta
+  linha foi escrita — saiu em 06/08/2026 (`3d059d1`, `13ffd12`), com uma conta de serviço
+  NOVA. As 3 queries de planilha rodam ponta a ponta desde então.
 
 ### Um achado de segurança já incorporado
 
@@ -434,14 +436,16 @@ somente leitura, o que casa com a regra 3 do projeto.
 |---|---|
 | 1 projeto | ✅ `erick-project-501315` |
 | 2 Sheets API ativada | ✅ — se não estivesse, o erro seria `SERVICE_DISABLED`, e não é |
-| 3–4 conta de serviço + chave JSON | ✅ `shets-consult-api@erick-project-501315.iam.gserviceaccount.com` |
+| 3–4 conta de serviço + chave JSON | ✅ `shets-consult-api@erick-project-501315.iam.gserviceaccount.com` — **conta ANTIGA**, abandonada em 06/08/2026; ver o fim deste anexo |
 | 5 chave fora do repositório | ✅ `C:/Users/erick.azambuja/.secrets/`, e o `Desktop` é um repo git com remote real — nunca deixar chave lá |
 | **6 compartilhar cada planilha** | ✅ **resolvido em 06/08/2026** — mas com **outra** conta de serviço; ver o fim deste anexo |
 | código: autenticação | ✅ `google-auth.ts`, fluxo JWT bearer com `node:crypto`, 11 testes sem rede |
 | código: connector | ✅ `connectors-gsheets.ts`; as 3 queries rodam ponta a ponta |
 
-O passo 6 é o único que não é código, e é o que falta — **e não é o Erick que consegue
-fazê-lo.** Descoberto em 05/08/2026, ao tentar: no diálogo de Compartilhar aparece
+O passo 6 é o único que não é código, e **era** o que faltava em 05/08/2026 — **e não era o
+Erick que conseguia fazê-lo.** (Resolvido em 06/08/2026, por outro caminho: ver "Como o
+passo 6 foi resolvido". O relato abaixo fica porque é a sequência de tentativas que ensina.)
+Descoberto em 05/08/2026, ao tentar: no diálogo de Compartilhar aparece
 "Pedir ao proprietário para compartilhar" e "Seu papel é de leitor, por isso não é
 possível gerenciar o acesso". O Erick é Leitor nessas planilhas; quem concede é a
 proprietária (**Julya De Souza Rocha**, ao menos na que abriu, cujo arquivo se chama
@@ -456,8 +460,20 @@ regra 3 do projeto e o escopo `spreadsheets.readonly` que o código pede. Vale i
 principais distintos; o Google responde `PERMISSION_DENIED` para o segundo mesmo com o
 primeiro dentro da planilha. Em cada uma das 3 planilhas:
 
-> Compartilhar → colar `shets-consult-api@erick-project-501315.iam.gserviceaccount.com`
+> Compartilhar → colar `leitura-sheets-instalacao@n8n-workflow-staging.iam.gserviceaccount.com`
 > → papel **Leitor** → enviar (pode desmarcar "notificar", é uma conta de robô)
+
+**Esta é a conta que autentica hoje**, conferida em 17/09/2026 no `client_email` da chave
+apontada por `GOOGLE_APPLICATION_CREDENTIALS` no `.env` (projeto `n8n-workflow-staging`).
+
+> ⚠️ **NÃO compartilhe com `shets-consult-api@erick-project-501315…`.** Era esse o e-mail
+> escrito aqui até 17/09/2026, e é a conta **antiga** — trocada em 06/08/2026 (`3d059d1`,
+> `13ffd12`) e sem chave em uso desde então. Compartilhar com ela entrega planilha de RH
+> (`QUADRO FUNCIONAL` tem CPF e RG) a uma identidade que o código nem usa, **e o
+> `PERMISSION_DENIED` continua igual** — então quem seguir a instrução velha vaza dado
+> pessoal e tenta de novo. Foi exatamente essa troca de identidade que "fez a confusão
+> durar três tentativas" (ver o fim deste anexo). Na dúvida, `npm run probe:gsheets`
+> imprime qual identidade está em uso antes de qualquer leitura.
 
 Leitor, não Editor: a regra 3 do projeto é read-only, e o escopo OAuth pedido no código já é
 `spreadsheets.readonly` — Editor daria permissão que o código nem sabe usar.

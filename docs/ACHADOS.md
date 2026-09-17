@@ -10710,10 +10710,16 @@ daemon não escrevia em lugar nenhum: `npm start` o sobe com `stdio: 'inherit'`,
 linhas dele viviam no terminal de quem digitou o comando e morriam junto com ele.
 Fechado o terminal, o que o agendador fez de madrugada era irrecuperável por construção.
 
-A prova por acidente está no próprio diretório: `snapshot/protocolos-geral.erro.log`,
-de 02/09, é o **único** erro que sobreviveu em disco em catorze dias — e sobreviveu por
+A prova por acidente estava no próprio diretório: `snapshot/protocolos-geral.erro.log`,
+de 02/09, era o **único** erro que sobreviveu em disco em catorze dias — e sobreviveu por
 um caminho de código diferente (`guardaErro`, em `tools/snapshot/src/index.ts`), não
 pelo refresh.
+
+> **Esse arquivo foi apagado em 17/09/2026**, depois de confirmado que a carga que ele
+> registrava já tinha sido resolvida (falta de `mysql2`; o `manifesto.json` traz
+> `protocolos-geral` com 95.442 linhas, materializada no mesmo dia). Ele era resíduo,
+> não estado — mas o achado acima continua valendo inteiro, e é por isso que o
+> histórico do refresh existe: sem ele, o rastro de uma falha some no próximo tick.
 
 ### O conserto
 
