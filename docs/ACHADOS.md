@@ -10953,3 +10953,95 @@ primeiro. A urgência caiu junto: ela já não está sem cadência nenhuma.
 > O hábito que resolve os dois é um só, e é barato: **ao derrubar um bloqueio, procure
 > quem estava esperando por ele.** `grep -ran "<nome-da-query>" specs docs` responde em
 > segundos, e teria achado três arquivos desta vez.
+
+## #131 — A migração de ontem reindentou uma linha e matou o poller de quase-realtime de PROTOCOLOS TELEFONIA; a guarda gritou a cada 12 s para um terminal vazio
+
+**Data:** 17/09/2026
+**Encontrado por subir o programa e olhar.** Não por teste, não por revisão de diff: a
+suíte inteira passava verde, os 2.014 testes, enquanto o poller falhava em toda volta.
+
+### O que aconteceu
+
+O commit `ec53ca3` (16/09) migrou `protocolos-telefonia` de 46 passos de M para 5. O
+`where` da fonte virou o fecho de uma CTE, e com isso a última linha mudou de
+
+```
+\t\tand a.created >= '2026-01-01')
+```
+
+para
+
+```
+\tand a.created >= '2026-01-01'),
+```
+
+Um tab a menos e uma vírgula a mais. **Nenhuma letra do que a consulta faz mudou.**
+
+`specs/_catalog/realtime-poll.yaml` declara, para cada query polada, uma `costura.de` —
+um recorte **literal** do SQL, que `costura()` troca por uma versão com `and a.modified
+>= :desde`. A âncora continuou pedindo dois tabs. Diferença medida: o SQL casa os
+primeiros **161 de 192** caracteres da âncora, e para exatamente ali.
+
+### A guarda funcionou. O que faltou foi alguém lendo
+
+`packages/snapshot/src/incremental.ts` documenta a regra — *"uma âncora tem de casar
+exatamente uma vez"* — e `apps/api/src/poller-realtime.ts:422` a invoca de propósito:
+
+> *"`costura()` já valida a âncora — erra alto se o SQL da spec mudou embaixo desta
+> config, em vez de poluir silenciosamente com a query inteira."*
+
+Ela errou alto, como prometido:
+
+```
+[poller] PROTOCOLOS TELEFONIA: a âncora da costura incremental aparece 0 vez(es)
+no SQL, esperado exatamente 1. (…) — tenta de novo na próxima volta
+```
+
+A cada 12 segundos. Para o terminal de um processo que não estava no ar — e que, quando
+estava, ninguém olhava. **É o #129 em miniatura**: um sinal correto, no lugar errado.
+Lá era o daemon morrendo sem quem avisasse; aqui é uma guarda acertando sem quem leia.
+
+### Alcance: uma, e foi verificado, não suposto
+
+As sete queries de `realtime-poll.yaml` foram validadas contra o `sql:` real de cada
+spec, pelo caminho de produção (`leConfigDePoll` + `costura`):
+
+```
+protocolos-auxiliares ...... OK       retorno-prioritario ....... OK
+protocolos-telefonia ....... QUEBRADA instalacoes-reincidentes .. OK
+troca-endereco ............. OK       reincidencia .............. OK
+tecnicos-auxiliares ........ OK
+```
+
+### O conserto, e por que a âncora foi RECORTADA e não redigitada
+
+`apps/api/test/ancora-do-poll.test.ts` (novo): um teste por query, chamando
+`leConfigDePoll` e `costura()` — as **mesmas** funções que o poller chama, nunca uma
+cópia. A partir de agora, migrar um `sql:` sem acertar a âncora reprova na suíte em vez
+de gritar num terminal.
+
+A âncora de `protocolos-telefonia` foi reconstruída por recorte programático do SQL da
+spec, não digitada à mão. Redigitar é como ela quebrou.
+
+### O teste que eu quase deixei no arquivo, e estava errado
+
+Escrevi junto uma asserção proibindo espaço no fim de linha dentro das âncoras, achando
+que fosse higiene. Ela reprovou `instalacoes-reincidentes`, cuja âncora tem `    CASE `
+com espaço final — **porque o SQL da spec tem**.
+
+> Âncora não é texto bem-formatado, é **recorte literal**: tudo o que está no SQL tem de
+> estar nela, espaço invisível incluído. O teste teria reprovado configuração correta e
+> empurrado a próxima pessoa a "limpar" a âncora até ela parar de casar — ou seja, teria
+> fabricado exatamente o defeito que existia para impedir.
+
+Foi removido, e a razão ficou escrita no lugar dele.
+
+### A lição
+
+> **Duas metades de um contrato em arquivos diferentes, e nada ligando as duas, é uma
+> quebra esperando o próximo commit.** O `sql:` da spec muda por migração; a âncora muda
+> por decisão de quase-realtime. Nada no editor liga uma à outra, e o custo de esquecer
+> é um poller morto que a suíte declara saudável.
+>
+> E o corolário do #129: **uma guarda que erra alto num lugar que ninguém lê é uma guarda
+> que não existe.** Esta agora erra na suíte, que é onde alguém olha.

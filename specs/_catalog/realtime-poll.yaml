@@ -144,13 +144,13 @@ queries:
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        		and a.created >= '2026-01-01')
+        	and a.created >= '2026-01-01')
       para: |-
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        		and a.created >= '2026-01-01'
-        		and a.modified >= :desde)
+        	and a.created >= '2026-01-01'
+        	and a.modified >= :desde)
 
   # `assignments` aqui só é ponte de JOIN (nunca teve coluna própria
   # selecionada) — "_MARCA_REALTIME" é 100% sintética, adicionada por hand-edit
