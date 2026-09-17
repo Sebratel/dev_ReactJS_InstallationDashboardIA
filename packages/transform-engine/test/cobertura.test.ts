@@ -232,16 +232,23 @@ test('o corpus continua com 25 queries e 233 passos', () => {
   // coluna com `npm run probe:compara-materializacao` — 42 de 42 colunas, 640 de 640
   // chaves. Restam `protocolos-geral` (56) e `protocolos-auxiliares` (56).
   // 274 - 41 = 233.
+  //
+  // -55 (17/09/2026, ACHADOS #133): `protocolos-auxiliares` migrou de 56 passos para
+  // **1** — só o `Fonte`, e é a primeira query do corpus que não faz mais nada em M.
+  // As três mesclagens saíram junto: `ALOCAÇÃO PATRIMONIO` e `TROCA ENDEREÇO` viraram
+  // CTE, e a de `TECNICOS AUXILIARES` virou `NULL::text` porque em M ela nunca casou
+  // uma linha (texto contra número na chave, sem decisão em `juncoes.yaml`).
+  // 233 - 55 = 178. Resta `protocolos-geral` (56).
   const qs = corpus();
   assert.equal(qs.length, 25);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    233,
+    178,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
   // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    233,
+    178,
   );
 });

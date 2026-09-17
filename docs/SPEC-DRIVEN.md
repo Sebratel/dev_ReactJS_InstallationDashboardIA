@@ -393,6 +393,96 @@ cadeia inteira dentro de `INDICE 2` — foi o que o primeiro rascunho fez, e é 
 `rowCount` do golden não é comparável com o Power BI (11 → 10). O filtro que a
 tornava incomparável agora é o `WHERE` da consulta.
 
+### `protocolos-auxiliares` — 56 passos de M viraram o `sql:`; sobrou 1 (17/09/2026)
+
+```diff
+- Fonte = Odbc.Query("dsn=dbVoalle", "<cópia de ~5.000 caracteres do sql:, já desatualizada>"),
+- #"Hora Inserida1" ... #"Colunas Renomeadas3"        (HORA CRIADO)
+- #"Colocar Cada Palavra Em Maiúscula"                (Text.Proper de CIDADE/BAIRRO)
+- #"Coluna Duplicada" ... #"Valor Substituído8"       (as nove trocas de SIGLA CIDADE)
+- #"Coluna Mesclada Inserida" ... #"Valor Substituído10"  (INDICE 2 e as duas correções)
+- #"Texto em Maiúscula" ... #"Valor Substituído11"    (RESPONSÁVEL)
+- #"Hora Inserida" ... #"Colunas Renomeadas1"         (HORA AGENDA, type date de DATA AGENDA)
+- #"Valor Substituído12..15"                          (nulo -> "Sem Informação")
+- #"Dividir Coluna por Delimitador" ... #"Prefixo Adicionado"   (POP e VLAN)
+- #"Texto Extraído Após/Antes o Delimitador"          (CTO)
+- #"Consultas Mescladas1" / #"ALOCAÇÃO_PATRIMONIO Expandido"    (-> CTE `alocacao`)
+- #"Linhas Filtradas1"                                (STATUS <> "Cancelado")
+- #"Hora Inserida2" ... #"Colunas Removidas"          (HR. ALOCAÇÃO)
+- #"Tipo Alterado1"                                   (type date de DATA CRIADO/ENCERRADO)
+- #"Consultas Mescladas2" / #"TROCA ENDEREÇO Expandido"         (-> CTE `troca`)
+- #"Personalização Adicionada" / #"...Adicionada1"    (INSTALADO POR: e DATA FINAL)
+- #"Linhas Classificadas" / #"Linhas Classificadas1"  (os dois Table.Sort -> ORDER BY)
+- #"Consultas Mescladas" / #"TECNICOS AUXILIARES Expandido"     (-> NULL::text, ver abaixo)
++ Fonte = Odbc.Query("dsn=dbVoalle", "o SQL desta query é o campo `sql:` desta spec")
+```
+
+**Não sobrou nenhum passo além do `Fonte`** — é a primeira query do corpus a chegar no
+mínimo possível. `protocolos-telefonia` ficou com quatro porque `DateTime.LocalNow()`
+devolve o relógio injetado; aqui nada depende do relógio.
+
+**A razão real da migração não é desempenho.** A cópia do SQL que morava dentro do
+`Odbc.Query` **já estava desatualizada**: o desempate do `ROW_NUMBER` decidido em 15/09
+(ACHADOS #125) está no `sql:` e nunca chegou nela. Duas fontes da verdade para a mesma
+consulta, sendo que uma nunca roda — `runQueries` busca `spec.sql` pelo Query Engine e
+injeta o resultado como `Fonte`. Medido nesta sessão: M 58,1 s contra SQL 55,4 s, 5% e
+dentro do ruído (o custo dominante é a consulta de base, igual nos dois caminhos).
+
+**A prova, e por que ela precisou de três execuções.** Com 38.269 linhas de uma tabela
+operacional, a deriva de `dbVoalle` entre duas materializações é maior que o efeito que
+se quer medir. Comparar só antes×depois acusou 17 colunas divergentes — todas ruído. O
+veredito veio do grupo de controle (ACHADOS #133):
+
+```
+M(t) × SQL(t+1)  linguagens diferentes, adjacentes ... 38.268 de 38.269 idênticas (99,997%), 1 coluna
+SQL × SQL        mesmo código, ~5 min ................ 38.256 (99,966%), 9 colunas
+M   × M          mesmo código, ~5 min ................ 38.241 (99,929%), 20 colunas
+```
+
+O par que troca a linguagem inteira é o mais limpo dos três. Chave composta
+(`SOLICITACAO` + `DATA ALOCAÇÃO` + `HR. ALOCAÇÃO` + `TÉCNICO INSTALAÇÃO` + `POSIÇÃO`),
+0 repetições dos dois lados; 46 colunas, mesmas e na mesma ordem.
+
+**As armadilhas de tradução, todas conferidas contra o avaliador antes de virar SQL:**
+
+| passo | a armadilha |
+|---|---|
+| `DateTime.Time` | devolve `MTime`, que `toDatasetRows` converte para `Date` sobre **1899-12-30**. Um `::time` puro chega como string e a coluna troca de `date` para `string`. Daí `DATE '1899-12-30' +` nas três horas. |
+| `Text.Combine` | trata **nulo como vazio**, e `NULL \|\| '/' \|\| x` é `NULL`. Daí os `COALESCE` de `INDICE 2`. |
+| `[STATUS] <> "Cancelado"` | em M, `null <> "x"` é **true**; em SQL é `NULL` e a linha sairia. Daí `IS DISTINCT FROM`. |
+| `Text.AfterDelimiter(_, "-", 1)` | o `1` é o índice da **ocorrência** (ACHADOS #126): é o terceiro campo, não o segundo. E `Text.BeforeDelimiter` devolve **vazio**, não o texto inteiro, quando não há delimitador — daí o `>= 3` antes do `split_part(...,3)`. |
+| `Table.SplitColumn` + `Int64.Type` | a 2ª parte de `CODIGO` vira inteiro **antes** do prefixo: `POP01-0012` dá `VLAN 12`, não `VLAN 0012`. Daí `::bigint::text`. |
+| `Table.ExpandTableColumn` de `ALOCAÇÃO PATRIMONIO` | **multiplica** a linha por item de patrimônio — é dela que saem 38.269 linhas de 38.030 solicitações. O `LEFT JOIN` reproduz, e é desejado. |
+| os dois `Table.Sort` encadeados | são **estáveis**: o segundo manda e o primeiro só desempata, então no `ORDER BY` eles aparecem na ordem **inversa** da que o M os escreve. |
+| `type date` em `troca-endereco` | corta a hora, e sem o corte `DATA FINAL` passaria a ter um valor por instante em vez de um por dia. Daí o `::date`. |
+
+**O mapa CIDADE→SIGLA não virou duas cópias.** No M dele era uma só (a cadeia produzia
+`SIGLA CIDADE` e `INDICE 2` lia a coluna). O CTE `derivado` preserva isso;
+`siglas-cidade.test.ts` trava em `1`. O placar de cópias segue **cinco**: uma em M
+(`protocolos-geral`), duas no SQL de `protocolos-produtividade`, uma em `telefonia` e uma
+aqui.
+
+**A coluna `TECNICO` sai `NULL::text` de propósito.** Era o terceiro `Table.NestedJoin`,
+`{"N°PROTOCOLO"}` × `{"PROTOCOLO:"}` de `tecnicos-auxiliares`, e ele **não casava
+nenhuma linha**: texto contra número, e o motor não reconcilia sozinho. A coluna está
+inteira nula no snapshot de produção (38.087 de 38.087, tipo `vazia`).
+`specs/_catalog/juncoes.yaml` já tem a decisão para `backlog-agendado-futuro` e para
+`protocolos-geral` — esta última contra a **mesma** ponta direita — e não tem para
+`protocolos-auxiliares`. Medido em 17/09: **28.833 de 37.248 (77,4%)** casariam como
+inteiro. Ligar a junção é decisão humana e não cabe dentro de uma migração cuja promessa
+é que o valor não muda; o lugar dela é `juncoes.yaml`.
+
+**`source_tables` ganhou três** (`patrimony_packing_lists`, `patrimony_packing_list_items`,
+`reports`): as duas mesclagens que viraram CTE trouxeram tabelas novas para dentro da
+consulta, e é esse campo que alimenta a invalidação por CDC.
+
+**Golden regravado**: 33 → 46 colunas, `rowCount` 32.574 → 38.271. Estava parado em
+06/08/2026, quando o `sql:` ainda não produzia as colunas derivadas.
+
+**Contadores do corpus atualizados**: 233 → 178 passos de M (`cobertura.test.ts`), piso do
+parser 205 → 150, escaneáveis 208 → 153 (`mlayer.test.ts`). Detalhe completo em
+`docs/ACHADOS.md` #133.
+
 ## Estrutura de `specs/`
 
 ```

@@ -202,7 +202,12 @@ test('as 25 queries reais: 24 são escaneáveis, e a exceção é a do let aninh
   assert.deepEqual(falhas, ['clima-tempo'], 'só a query do Open-Meteo usa função M');
   // 249 → 208 (16/09/2026): `protocolos-telefonia` migrou de 46 passos de M para 5,
   // e os 41 restantes viraram o `sql:` dela (ACHADOS #112).
-  assert.equal(passos, 208, 'passos M nas 24 escaneáveis');
+  //
+  // 208 → 153 (17/09/2026): `protocolos-auxiliares` migrou de 56 para 1 (ACHADOS
+  // #133). É a primeira das escaneáveis a chegar no mínimo possível — um passo, o
+  // `Fonte`, que é o ponteiro para o `sql:`. Zero não dá: sem `Fonte` a query não
+  // tem de onde ler.
+  assert.equal(passos, 153, 'passos M nas 24 escaneáveis');
 });
 
 /**

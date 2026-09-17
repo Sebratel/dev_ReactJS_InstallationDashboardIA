@@ -11199,3 +11199,139 @@ de que reindentar não invalida e o de que tabela sem spec de query não é trav
 > O corolário prático, que vale além deste arquivo: **onde houver um número conferido à
 > mão, guarde junto a identidade daquilo que foi conferido.** Um sha custa uma linha e
 > transforma "envelheceu em silêncio" em "recusa e diz o que fazer".
+
+## #133 — Rodar o MESMO código duas vezes divergiu mais do que rodar códigos diferentes: sem grupo de controle, a migração de `protocolos-auxiliares` teria sido reprovada por 17 colunas que estavam certas
+
+**Data:** 17/09/2026
+
+`protocolos-auxiliares` era a terceira das quatro queries grandes ainda presas à camada
+M (#112). Os 56 passos viraram o `sql:` da spec e sobrou **1** — o `Fonte`, que é só o
+ponteiro. É a primeira query do corpus a chegar no mínimo possível.
+
+O que vale registrar não é o SQL. É que a **prova** quase deu o veredito errado, e o
+motivo tem nome.
+
+### A primeira medição disse que 17 colunas divergiam
+
+A receita de `protocolos-telefonia` (#112) é materializar com a spec anterior, depois
+com a nova, e comparar coluna a coluna sobre as chaves em comum. Lá deu `640 de 640`
+limpo. Aqui, com uma chave composta que identifica linha (0 repetições dos dois lados),
+saiu isto:
+
+```
+em comum ......... 38.264 chaves
+❌ responsável        7 de 38.264      ❌ pop, slot, porta, cto        2 cada
+❌ estagio contrato   5 de 38.264      ❌ olt, equipamento, usuário    2 cada
+❌ equipe, status, telefone, latitude, longitude, ponto de acesso,
+   status contrato                     2 cada
+❌ numero patrimônio  1 de 38.264
+```
+
+Dezessete colunas. Nenhuma delas com um padrão que se pareça com erro de tradução — um
+`initcap` errado erra em milhares de linhas, não em duas — mas "0,02%" também não é
+zero, e a regra desta migração é *o valor não muda*. A tentação, no ponto em que a coisa
+já está a horas de trabalho, é aceitar 99,98% e escrever "dentro da tolerância".
+
+Não existe tolerância. Existe **grupo de controle**.
+
+### O controle: materializar o mesmo código duas vezes
+
+Quatro materializações intercaladas, alternando as duas specs, com cerca de um minuto
+entre cada uma. Se a divergência for da tradução, ela aparece só nos pares que trocam de
+linguagem. Se for da base viva, aparece em todos.
+
+| par | janela | linhas idênticas (46 colunas) | colunas que divergem | pior coluna |
+|---|---|---|---|---|
+| **M(t) × SQL(t+1)** — linguagens diferentes, adjacentes | ~1 min | 38.268 de 38.269 — **99,997%** | **1** | `telefone`, 1 de 38.269 |
+| SQL × SQL — **mesmo código** | ~5 min | 38.256 — 99,966% | 9 | `responsável`, 4 |
+| M × M — **mesmo código** | ~5 min | 38.241 — 99,929% | 20 | `responsável`, 9 |
+
+O par que troca a linguagem inteira da query é **o mais limpo dos três**. As duas
+execuções do mesmo código, do mesmo lado, divergem em 9 e em 20 colunas — inclusive nas
+mesmas `responsável`, `estagio contrato`, `latitude`, `longitude`, `pop`, `cto` que a
+primeira medição tinha listado como suspeitas da tradução.
+
+As 17 colunas eram `dbVoalle` vivendo: um responsável é reatribuído, um contrato muda de
+estágio, um protocolo novo entra. A divergência é **proporcional à janela de tempo**, e
+não à mudança de código. O número que prova a migração não é "17 colunas divergiram", é
+**o par que troca de linguagem divergir menos do que o par que não troca nada**.
+
+### O que isso significa para a receita de migração
+
+A prova de `protocolos-telefonia` foi honesta e deu `640 de 640` — mas ela tem 640
+linhas e uma fonte que quase não se move. Com 38.269 linhas de uma tabela operacional a
+deriva da fonte é maior que o efeito que se quer medir, e **comparar duas materializações
+sem um terceiro ponto não distingue as duas coisas**. A ferramenta já separa chave nova
+de chave divergente (`compara-materializacao` chama isso de "deriva, não divergência"),
+mas ela não tem como enxergar a linha que existe dos dois lados e mudou de valor entre
+uma execução e outra. Essa só o controle pega.
+
+Fica a regra: **em query grande a prova é de três execuções, não de duas** — e o critério
+não é "zero divergência", é "a divergência entre linguagens ≤ a divergência entre duas
+execuções da mesma linguagem".
+
+### O segundo achado, que estava escondido na coluna 46
+
+A coluna `TECNICO` de `PROTOCOLOS AUXILIARES` está **inteira nula**, e está assim no
+snapshot de produção de hoje:
+
+```
+producao: linhas=38.087   colunas=46   TECNICO nulos=38.087   tipo declarado=vazia
+```
+
+Ela é `TECNICOS AUXILIARES.AUXILIAR`, vinda de um `Table.NestedJoin` entre
+`{"N°PROTOCOLO"}` e `{"PROTOCOLO:"}`. O join não casa nada porque `ai.protocol` é
+`bigint` e o driver o entrega como **texto**, enquanto `tecnicos-auxiliares` termina em
+`Table.TransformColumnTypes(Fonte,{{"PROTOCOLO:", Int64.Type}})` e entrega **número**.
+`chaveDe` (functions.ts) põe a espécie na chave de igualdade de propósito, e o motor se
+recusa a reconciliar sozinho — reconciliar é decisão humana, registrada em
+`specs/_catalog/juncoes.yaml`.
+
+**O arquivo já tem duas entradas para exatamente este defeito**: `backlog-agendado-futuro`
+(0 de 88.143 casavam; 68,6% casam como inteiro, decidido em 13/08) e `protocolos-geral`
+(0 de 33.459; 76,8%, mesmo dia, **com a mesma ponta direita** — `tecnicos-auxiliares`,
+`PROTOCOLO:`). `protocolos-auxiliares` tem o mesmo defeito, contra a mesma tabela, com a
+mesma chave, e **não tem entrada**. Medido hoje, seriam **28.833 de 37.248 (77,4%)** — o
+mesmo patamar da irmã que foi decidida no mesmo dia.
+
+Não liguei a junção nesta sessão, e a razão é a promessa desta migração: *o valor não
+muda*. Encher uma coluna que está vazia há meses, no meio de uma troca de linguagem,
+misturaria duas mudanças numa medição só — e ainda divergiria do relatório publicado
+(regra 9) sem decisão registrada. O SQL escreve `NULL::text` e diz por quê em onze linhas
+de comentário. O lugar de mudar isso é `juncoes.yaml`, com o 77,4% ao lado, e aí passa a
+valer para o M e para o SQL ao mesmo tempo.
+
+### O que NÃO melhorou, dito sem enfeite
+
+**Desempenho não é o ganho.** As quatro materializações desta sessão:
+
+```
+M   ..... 88.123 ms (fria)   58.145 ms
+SQL ..... 53.647 ms          55.366 ms
+```
+
+Tirando a execução fria, são ~58 s contra ~55 s: 5%, dentro do ruído. O custo dominante é
+a consulta de base, que é a mesma nos dois caminhos — só o `count(*)` embrulhado sobre ela
+leva 34 s. É o mesmo aviso de #123: a régua que dizia que migrar M para SQL era ganho de
+desempenho estava fora do modo de produção. Migrar vale por outra coisa — uma fonte da
+verdade em vez de duas, e o `rowCount` do golden voltando a significar a contagem da
+tabela (golden regravado: 33 → 46 colunas, `rowCount` 32.574 → 38.271, parado desde
+06/08/2026).
+
+E o `m_expression` que saiu **já estava desatualizado**: o desempate do `ROW_NUMBER`
+decidido em 15/09 (#125) está no `sql:` e nunca chegou à cópia de ~5.000 caracteres que
+morava dentro do `Odbc.Query`. Duas fontes da verdade para a mesma consulta, sendo que
+uma nunca rodava. Essa é a razão real da migração.
+
+### A lição
+
+> **Uma prova contra fonte viva mede duas coisas somadas, e só o grupo de controle as
+> separa.** A pergunta "o código novo dá o mesmo resultado?" não tem resposta observável
+> sozinha: o que se observa é "o código novo dá o mesmo resultado, a menos do que a fonte
+> mudou no meio". Rodar o código ANTIGO duas vezes custa uma execução e dá o piso de
+> ruído — e sem esse piso não dá para dizer se 0,02% é defeito ou é terça-feira.
+>
+> O corolário incômodo: **se você não mediu o piso, "quase idêntico" é um palpite com
+> cara de número.** Foi por pouco que este aqui não virou "17 colunas divergem, a tradução
+> está errada" — e a conclusão oposta, "99,98% é bom o bastante", teria sido igualmente
+> indefensável.

@@ -320,6 +320,9 @@ test('o parser lê mais passos que o scanner estático, e clima-tempo é a difer
   // -41 (16/09/2026, ACHADOS #112): `protocolos-telefonia` migrou de 46 para 5.
   // 246 - 41 = 205.
   //
+  // -55 (17/09/2026, ACHADOS #133): `protocolos-auxiliares` migrou de 56 para 1.
+  // 205 - 55 = 150.
+  //
   // O piso é `>=` de propósito, e é por isso que ele desce em vez de travar num
   // valor: o que este teste guarda é que o parser LÊ o corpus inteiro, não que o
   // corpus tenha um tamanho. Quem trava o tamanho é `cobertura.test.ts`, com um
@@ -331,5 +334,8 @@ test('o parser lê mais passos que o scanner estático, e clima-tempo é a difer
     (parseMLet(clima!.m_expression!)?.length ?? 0) > 0,
     'clima-tempo deveria ter passos legíveis pelo parser',
   );
-  assert.ok(total >= 205, `esperado ao menos os 205 passos (303 - 57 de #81 - 41 de #112), veio ${total}`);
+  assert.ok(
+    total >= 150,
+    `esperado ao menos os 150 passos (303 - 57 de #81 - 41 de #112 - 55 de #133), veio ${total}`,
+  );
 });
