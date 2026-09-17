@@ -57,7 +57,21 @@ const GUARDA_APOS_APARAR = 0.5;
 export type EventoDeRefresh =
   | { evento: 'arranque'; quando: string; intervaloMinutos: number; pid: number }
   | { evento: 'grupo'; quando: string; grupo: string; ok: boolean; duracaoMs: number; erro?: string }
-  | { evento: 'erro-de-ciclo'; quando: string; erro: string };
+  | { evento: 'erro-de-ciclo'; quando: string; erro: string }
+  /**
+   * O disparo caiu em cima de um ciclo que ainda rodava, e o daemon o pulou
+   * (`emExecucao` em `daemon.ts`). **Entrou em 17/09/2026, quando deixou de ser
+   * hipotético:** um tick que roda os três grupos mede hoje ~664 s dentro de uma
+   * janela de 900 s, e os grupos rodam em série. Uma hora ruim de link e os
+   * disparos começam a ser pulados.
+   *
+   * O que torna isso pior que uma falha: pular NÃO é erro. `estaVencido` mede a
+   * idade do último SUCESSO, então o grupo simplesmente roda no ciclo seguinte e
+   * o `refresh-status.json` fica verde o tempo todo. A cadência real teria caído
+   * pela metade sem uma única linha vermelha em lugar nenhum — que é exatamente o
+   * buraco do #129, em outro disfarce.
+   */
+  | { evento: 'ciclo-pulado'; quando: string; cicloEmCursoHaMs: number };
 
 /**
  * Uma linha por evento, no fim do arquivo. Silenciosa em qualquer falha — ver o
@@ -152,4 +166,32 @@ export function resumePorGrupo(eventos: EventoDeRefresh[]): ResumoDeGrupo[] {
     ...r,
     duracaoMediaMs: r.tentativas > 0 ? Math.round(somaMs / r.tentativas) : 0,
   }));
+}
+
+export interface ResumoDePulos {
+  /** Quantos disparos caíram em cima de um ciclo ainda em curso. */
+  pulos: number;
+  /** O último deles, para saber se é história velha ou está acontecendo agora. */
+  ultimo?: string;
+  /** O ciclo mais longo que atropelou um disparo — o pior caso observado. */
+  maiorAtropeloMs: number;
+}
+
+/**
+ * Quantas vezes a cadência foi perdida sem que nada ficasse vermelho.
+ *
+ * Fica separado de `resumePorGrupo` porque a pergunta é de outra natureza: aquele
+ * responde "este grupo está falhando?", e este responde "o relógio está sendo
+ * cumprido?". Um refresh pode responder SIM ao primeiro e NÃO ao segundo a tarde
+ * inteira — e é esse o caso que nenhum dos dois arquivos de estado enxergava.
+ */
+export function resumeDePulos(eventos: readonly EventoDeRefresh[]): ResumoDePulos {
+  const r: ResumoDePulos = { pulos: 0, maiorAtropeloMs: 0 };
+  for (const e of eventos) {
+    if (e.evento !== 'ciclo-pulado') continue;
+    r.pulos += 1;
+    r.ultimo = e.quando;
+    if (e.cicloEmCursoHaMs > r.maiorAtropeloMs) r.maiorAtropeloMs = e.cicloEmCursoHaMs;
+  }
+  return r;
 }

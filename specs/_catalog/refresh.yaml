@@ -105,12 +105,90 @@
 # um tick deixou de ser este encadeamento: em 16/09 o `frio` levou 190s e 209s em dois
 # ticks medidos, dos quais a busca de `protocolos-produtividade` (~162s) é a quase
 # totalidade. As calculadas são ~5% desse tempo.
+#
+# ═══════════════════════════════════════════════════════════════════════════════
+# ATENÇÃO (17/09/2026, ACHADOS #134) — TODO NÚMERO DE GRUPO DESTE ARQUIVO É UMA
+# DIVISÃO POR UMA BANDA QUE VARIA 5×, E NENHUM DELES DIZ ISSO.
+#
+# Em 16/09 o `quente` levou 28,6 s. Em 17/09, com as MESMAS sete queries, a mesma
+# spec de cada uma e a mesma ordem, levou 94,1 s, 105,7 s e 81,0 s em três passadas.
+# Nada no repositório mudou entre as duas medições. O `medio` foi de 81 s para 361 s
+# e 430 s pelo mesmo motivo.
+#
+# ONDE O TEMPO ESTÁ, medido em `contratos` (a maior fatia do `quente`) com
+# `npm run probe:custo-contratos`:
+#
+#   plano do servidor ........    232 ms   <- o banco faz o join inteiro nisto
+#   transporte das linhas ... 16.621 ms
+#   ordenação ............... 10.628 ms   <- `order by p.name asc`, do topo do SQL
+#
+# O banco NÃO está lento. `select 1` tem mediana de 12 ms de ida e volta (pior caso
+# 98 ms), e 10 MB gerados no servidor e NÃO entregues levam 72 ms — 139 MB/s. Os
+# mesmos 10 MB ENTREGUES, numa única linha de uma única coluna (portanto sem nenhum
+# trabalho por linha no driver), levam 6.926 ms: **1,44 MB/s.** Em outra passada,
+# 50 MB a 1,16 MB/s; noutra, 2,24 MB/s. É o fio, e ele varia.
+#
+# E `contratos` não cresceu: 86.395 linhas em 02/09 contra 87.907 hoje, +1,7%. A
+# spec dela está intocada desde o primeiro commit.
+#
+# **A REGRA QUE SUBSTITUI TODAS AS ESTIMATIVAS DESTE ARQUIVO:**
+#
+#     custo de um grupo ≈ bytes que ele traz ÷ banda do momento (~1 a 2 MB/s)
+#
+# Por isso as queries pequenas quase não mudaram entre 16/09 e 17/09
+# (`troca-endereco` 1.265 → 1.541 ms) e as grandes explodiram
+# (`base-categorias-field`, 226.688 linhas, 1.736 → 58.670 ms). Não é degradação
+# uniforme: é o termo proporcional a bytes multiplicando, e o termo fixo parado. É
+# essa assinatura que identifica o problema como link, e não como query.
+#
+# **O QUE FAZER COM ISSO, em ordem de proveito:**
+#   1. Trazer menos bytes. É o único eixo que a plataforma controla. Coluna que
+#      ninguém lê custa a cada tick — `CONTRATOS[CIDADE2]` é literalmente
+#      `ac.city` pedido duas vezes no mesmo SELECT (ACHADOS #47).
+#   2. Política em `incremental.yaml`. Só `protocolos-produtividade` tem uma; as
+#      outras 21 buscam inteiro toda vez, e é inteiro que sai caro a 1,5 MB/s.
+#   3. Afrouxar cadência. É o último recurso, não o primeiro: paga-se em frescor.
+#
+# **O QUE NÃO ADIANTA:** reescrever SQL (o plano é 232 ms), trocar driver (o custo
+# aparece igual com UMA linha), aumentar memória, mexer em índice.
+#
+# **E ANTES DE CONFIAR EM QUALQUER NÚMERO ABAIXO:** rode
+# `npm run probe:custo-contratos -- --banda`. Se der ~1 MB/s, os números deste
+# arquivo estão otimistas por um fator de 2 a 5. Medir o grupo uma vez não basta
+# quando o termo dominante é um recurso que não é nosso — foi exatamente esse o
+# erro cometido aqui em 16/09, e ele durou um dia.
+# ═══════════════════════════════════════════════════════════════════════════════
 
 formato: 1
 
 grupos:
-  # ~11s de busca serial medido ao vivo em 02/09/2026 (contratos 2,9s +
-  # protocolos-telefonia 7,4s + contratos-telefonia 0,9s + o resto <0,2s), mais o
+  # VENCIDO E CORRIGIDO EM 17/09/2026. Este comentário dizia "~11s de busca serial
+  # medido ao vivo em 02/09/2026 (contratos 2,9s + protocolos-telefonia 7,4s +
+  # contratos-telefonia 0,9s + o resto <0,2s)". Aquele número entrou com o primeiro
+  # commit do Refresh Manager (77529a8, 02/09) e nunca mais foi refeito. Medido de
+  # novo em 17/09, um processo, `--refazer`, exatamente como `rodaGrupo` dispara:
+  #
+  #   contratos ............ 58.224 ms   <- 72% do grupo, e 2,9s no texto antigo
+  #   protocolos-telefonia .  9.136 ms
+  #   contratos-telefonia ..  1.414 ms
+  #   backlog-instalacao ...    710 ms
+  #   consolidado-clientes .    315 ms
+  #   feriados .............     23 ms
+  #   hora-atualizado ......     23 ms
+  #   carga ................  3.019 ms
+  #   calculadas ...........  8.993 ms
+  #                          ---------
+  #   TOTAL do grupo ....... 81 s        (o daemon registrou 94,1 s no mesmo dia)
+  #
+  # **Em 16/09 este mesmo grupo levou 28,6 s.** Nada mudou nas sete queries entre as
+  # duas datas — mudou a banda. Ver o bloco ATENÇÃO de 17/09 acima antes de tratar
+  # qualquer um destes números como propriedade do grupo: eles são bytes ÷ banda.
+  #
+  # `contratos` é a fatia inteira e vale saber por quê: 87.907 linhas × 23 colunas de
+  # nome, endereço, e-mail e CPF, sem corte de data nenhum, e um `order by p.name asc`
+  # de apresentação que sozinho custa 10,6 s por tick. O plano do servidor é 232 ms.
+  #
+  # O texto antigo seguia assim, e continua valendo: mais o
   # congelamento das calculadas. protocolos-telefonia tem a armadilha do TMA
   # calculado com DateTime.LocalNow() (achado C do briefing da Frente 3) e por
   # isso fica em full-fetch, não em cadência mais rápida sozinha — mas cabe aqui
@@ -158,15 +236,46 @@ grupos:
   #                                              ---------------------------------
   #                                              TOTAL do grupo ....... 81 s
   #
-  # **81 s em 1.200 s de ciclo: 6,8%.** A soma dos custos isolados dava ~162 s, e
-  # superestimava por um fator de 2: um grupo é UM processo, e `protocolos-geral` e
-  # `backlog-agendado-futuro` fazem `NestedJoin` com a MESMA `GESTORES EQUIPES`, que é
-  # buscada uma vez. Sozinha, `protocolos-geral` custa 79.966 ms; aqui dentro, 25.485.
-  # **Ao dimensionar um grupo, meça o grupo** — somar medições isoladas erra, e neste
-  # caso errou para o lado caro.
+  # A soma dos custos isolados dava ~162 s e superestimava por um fator de 2: um grupo
+  # é UM processo, e `protocolos-geral` e `backlog-agendado-futuro` fazem `NestedJoin`
+  # com a MESMA `GESTORES EQUIPES`, buscada uma vez só. Isso continua verdade.
+  #
+  # **MAS OS 81 s DURARAM UM DIA. Medido de novo em 17/09, mesmas nove queries:**
+  #
+  #   protocolos-geral ......... 158.516 ms   (6,2× o de ontem)
+  #   backlog-agendado-futuro ...  86.735 ms   (3,8×)
+  #   base-categorias-field .....  58.670 ms   (33,8× — 226.688 linhas, o maior do grupo)
+  #   reincidencia ..............  13.076 ms   (1,7×)
+  #   retorno-prioritario .......   9.647 ms   (1,6×)
+  #   instalacoes-reincidentes ..   8.938 ms   (4,3×)
+  #   alocacao-patrimonio .......   5.238 ms   (2,3×)
+  #   tecnicos-auxiliares .......   2.884 ms   (3,4×)
+  #   troca-endereco ............   1.541 ms   (1,2× — quase parado)
+  #   carga .....................   3.389 ms
+  #   calculadas ................  10.876 ms
+  #                               ----------
+  #   TOTAL do grupo ............ 361 s        (o daemon registrou 430 s no mesmo dia)
+  #
+  # **361 s em 1.200 s de ciclo: 30%.** Com os 430 s do daemon, 36%. Repare na coluna
+  # de razões: quem quase não mudou é pequeno, quem explodiu é grande. É a assinatura
+  # de banda, não de regressão — ver o bloco ATENÇÃO de 17/09 no topo do arquivo.
+  #
+  # **A lição de 16/09 ("ao dimensionar um grupo, meça o grupo") estava certa e era
+  # insuficiente.** Medir o grupo elimina o erro de somar partes; não elimina o de
+  # medir uma vez. Quando o termo dominante é um recurso que não é nosso, uma medição
+  # é uma fotografia — e esta envelheceu em vinte e quatro horas.
+  #
+  # **CONSEQUÊNCIA PARA A CADÊNCIA, e é a parte com dente:** um tick que vence os três
+  # grupos custa hoje 94 + 361 + 209 = ~664 s, e os grupos rodam em SÉRIE (`tick.ts`)
+  # dentro de uma janela de 900 s. Com os números do daemon (94 + 430 + 209 = 733 s),
+  # 81% da janela. Estourando, o daemon PULA o disparo seguinte (`emExecucao` em
+  # `daemon.ts`) — e pular não é falha: `estaVencido` mede idade do último SUCESSO, o
+  # `refresh-status.json` continua verde, e a cadência real cai pela metade sem nada
+  # acender. Desde 17/09 isso vira um evento `ciclo-pulado` no
+  # `snapshot/refresh-historico.log`; leia com `npm run refresh:daemon -- --historico`.
   #
   # **Por que aqui e não no `quente`.** Com a conta antiga (~162 s) a escolha já era
-  # esta; com 81 s a margem só melhorou. O `quente` existe para ser barato o bastante
+  # esta; com 81 s a margem melhorou; com 361 s ela é o argumento principal. O `quente` existe para ser barato o bastante
   # para rodar de 15 em 15 min, e o que se compraria apertando são cinco minutos de
   # frescor numa tabela de protocolo de instalação — que não é operação minuto a
   # minuto. Se a operação disser que 20 min é demais, mover a linha de grupo é a

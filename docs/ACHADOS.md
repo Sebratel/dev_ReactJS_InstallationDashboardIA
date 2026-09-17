@@ -11335,3 +11335,163 @@ uma nunca rodava. Essa é a razão real da migração.
 > cara de número.** Foi por pouco que este aqui não virou "17 colunas divergem, a tradução
 > está errada" — e a conclusão oposta, "99,98% é bom o bastante", teria sido igualmente
 > indefensável.
+
+## #134 — O orçamento de refresh que eu medi ontem estava 4,5× errado hoje, e o defeito não era a medição: era medir uma vez uma coisa que não é nossa
+
+**Data:** 17/09/2026
+
+Ontem escrevi no `specs/_catalog/refresh.yaml`, com tabela e tudo: *"**Ao dimensionar
+um grupo, meça o grupo** — somar medições isoladas erra"*. O grupo `medio` tinha sido
+medido em 81 s, contra ~162 s que a soma das partes dava, e a lição parecia fechada.
+
+Hoje o mesmo grupo, com as mesmas nove queries, levou **361 s** na minha passada e
+**430 s** na do daemon. A lição estava certa e era insuficiente.
+
+### O sinal que não depende de nenhuma escolha minha
+
+`medio` mudou de composição ontem (entraram `protocolos-geral` e
+`backlog-agendado-futuro`), então ele sozinho não prova nada — eu mexi nele. O `quente`
+não. Mesma lista de sete queries desde 06/09, conferida commit a commit:
+
+```
+16/09 17:18 .....  28.611 ms   (refresh-historico.log)
+17/09 16:45 .....  94.082 ms   (refresh-historico.log)
+17/09 17:27 ..... 105.697 ms   (cronometrado de fora)
+17/09 17:29 .....  81.000 ms   (cronometrado de fora)
+```
+
+3,3× em vinte e três horas, sem um caractere de diferença em nenhuma das sete specs.
+Isso não é um erro de medição: é o sistema medindo outra coisa a cada vez.
+
+### Onde o tempo está — e é aqui que a explicação óbvia morre
+
+`contratos` sozinha respondeu por 58.224 ms dos 81 s. O comentário do grupo dizia
+"2,9s", número que entrou com o primeiro commit do Refresh Manager (`77529a8`, 02/09) e
+nunca mais foi refeito. A explicação natural — *a query cresceu*, ou *o plano degradou* —
+é falsa nas duas metades, e dá para provar as duas.
+
+Escrevi `tools/probe/src/custo-contratos.ts`, que roda quatro formas do MESMO SQL para
+separar plano, transporte e ordenação:
+
+```
+plano do servidor ........    232 ms
+transporte das linhas ... 16.621 ms
+ordenação ............... 10.628 ms
+```
+
+**O banco faz o join inteiro em 232 ms.** Não há plano degradado: há 87.907 linhas
+pesadas atravessando alguma coisa devagar. E a query não cresceu — contando o próprio
+resultado por `CRIADO`, ela tinha **86.395 linhas em 02/09 contra 87.907 hoje: +1,7%**.
+A spec está intocada desde o primeiro commit do repositório.
+
+### A medição que fecha o caso
+
+Se é transporte, quanto o link entrega? Medido com payload sintético, sem tocar em
+tabela de negócio:
+
+```
+ida e volta (select 1) ................ mediana 12 ms, pior 98 ms
+10 MB gerados e NÃO entregues .........     72 ms  =  139 MB/s
+10 MB entregues, numa linha só ........  6.926 ms  =  1,44 MB/s
+50 MB entregues, 50 mil linhas ........ 43.278 ms  =  1,16 MB/s
+```
+
+A terceira linha é a que decide. **Dez megabytes numa ÚNICA linha de uma única coluna**
+— o driver não monta objeto por linha, não converte campo, não faz nada além de receber
+bytes. Ainda assim: 1,44 MB/s. Não é o `pg`, não é o nosso código, não é o plano. É o
+fio. E 12 ms de ida e volta dizem que esse fio não é uma rede local.
+
+Ele também varia: a mesma sonda deu 2,24 MB/s uma hora antes e 0,62 MB/s no meio de
+uma carga. **Um fator de 3,6 entre duas medições do mesmo dia** — que é, dentro da
+margem, exatamente o fator que apareceu no `quente`.
+
+### A assinatura que identifica o problema sem adivinhar
+
+O `medio` de hoje contra o de ontem, query a query:
+
+```
+base-categorias-field ....   1.736 ->  58.670 ms    33,8x     226.688 linhas
+protocolos-geral .........  25.485 -> 158.516 ms     6,2x      95.442 linhas
+instalacoes-reincidentes .   2.096 ->   8.938 ms     4,3x      23.056 linhas
+backlog-agendado-futuro ..  23.094 ->  86.735 ms     3,8x      96.168 linhas
+tecnicos-auxiliares ......     848 ->   2.884 ms     3,4x      35.119 linhas
+alocacao-patrimonio ......   2.246 ->   5.238 ms     2,3x      25.089 linhas
+reincidencia .............   7.699 ->  13.076 ms     1,7x       1.454 linhas
+retorno-prioritario ......   5.925 ->   9.647 ms     1,6x         271 linhas
+troca-endereco ...........   1.265 ->   1.541 ms     1,2x       5.410 linhas
+```
+
+**Não é degradação uniforme.** Quem quase não mudou é pequeno; quem explodiu é grande.
+É o termo proporcional a bytes multiplicando enquanto o termo fixo fica parado — e essa
+forma é o que separa "o link caiu" de "alguém quebrou uma query". Uma regressão de
+código não escolhe as vítimas por tamanho de resultado.
+
+(As exceções aparentes confirmam: `reincidencia` tem 1.454 linhas de SAÍDA mas busca
+muito mais para produzi-las, e `backlog-agendado-futuro` faz `NestedJoin` com
+`PROTOCOLOS GERAL` — o que atravessa o fio não é o que sobra no disco.)
+
+### A regra que substitui todas as estimativas daquele arquivo
+
+```
+custo de um grupo  ≈  bytes que ele traz  ÷  banda do momento (~1 a 2 MB/s)
+```
+
+Disso decorre o que adianta e o que não adianta, e a segunda lista é a que economiza
+tempo: **não adianta** reescrever SQL (o plano é 232 ms), trocar driver (o custo aparece
+igual com uma linha só), aumentar memória, criar índice. **Adianta** trazer menos bytes
+— e só isso. Nesta ordem: coluna que ninguém lê (`CONTRATOS[CIDADE2]` é `ac.city` pedido
+duas vezes no mesmo SELECT, registrado no #47 e ainda pago a cada 15 min), política em
+`incremental.yaml` (existe uma, para 22 queries), e afrouxar cadência por último,
+porque se paga em frescor.
+
+### O que isso faz com a cadência, que é a parte com dente
+
+Um tick que vence os três grupos custa hoje **94 + 361 + 209 = 664 s**, e os grupos
+rodam em série (`tick.ts`, e por um motivo: dois processos fariam read-modify-write no
+manifesto). A janela é de 900 s. Com os números que o próprio daemon registrou
+(94 + 430 + 209), **733 s — 81% da janela.**
+
+Quando estoura, o daemon pula o disparo seguinte. E aqui está o buraco:
+
+> **Pular não é falhar.** `estaVencido` mede a idade do último SUCESSO, então o grupo
+> roda no ciclo seguinte e nada fica vermelho. `refresh-status.json` continua com
+> `falhasConsecutivas: 0`. A cadência real cai pela metade e **não há uma única linha
+> de alarme em lugar nenhum** — o único registro era um `console.log` num terminal que
+> ninguém lê.
+
+É literalmente o #129 outra vez, em outro disfarce: lá a stack estava morta com o status
+verde; aqui ela está viva, verde, e entregando metade da cadência prometida. Por isso o
+histórico ganhou hoje o evento `ciclo-pulado`, com há quanto tempo o ciclo atropelado já
+rodava, e `--historico` passou a imprimir a contagem com a explicação do que fazer.
+
+### O que eu não fiz, e por quê
+
+**Não tirei o `order by p.name asc` de `contratos`**, que sozinho custa 10,6 s por tick
+— 96 ticks por dia, ~17 min diários de servidor para uma ordenação que o snapshot
+colunar não preserva nem promete. Parece dinheiro no chão, e provavelmente é. Mas ordem
+de linha neste repositório já foi semântica escondida mais de uma vez (o desempate
+"contrato antes de active" das queries de protocolo é um achado inteiro), e um
+`NestedJoin` que resolva por primeira ocorrência mudaria de resultado em silêncio.
+Remover custa cinco minutos; **provar que ninguém depende dela é o trabalho**, e é ele
+que falta.
+
+**Não sei o que mudou no fio entre 02/09 e hoje**, e não vou inventar. Pode ser rota,
+VPN, saturação, horário. O que ficou medido é o que a plataforma consegue medir sozinha,
+e a sonda está commitada para que a próxima pessoa não precise redescobrir nada:
+`npm run probe:custo-contratos -- --banda`.
+
+### A lição
+
+> **"Meça o grupo" resolveu somar partes erradas. Não resolve medir uma vez.**
+>
+> Quando o termo dominante de um custo é um recurso que não é seu — um link, um disco
+> compartilhado, uma API de terceiro — uma medição não é uma constante: é uma
+> fotografia, e ela envelhece na velocidade daquele recurso, não na do seu código. A
+> minha envelheceu em vinte e quatro horas, dentro de um arquivo cujo bloco anterior
+> (#128) existia precisamente para contar que um número ali tinha ficado doze dias
+> errado.
+>
+> O que sobrevive não é o número: é **a razão dele**. `81 s` não se defende sozinho;
+> `bytes ÷ banda` se defende, diz por que envelheceu, e diz onde medir de novo. Por
+> isso o que entrou no arquivo foi a divisão, com a sonda que a refaz — e não uma
+> tabela mais nova, que daria o mesmo problema amanhã.

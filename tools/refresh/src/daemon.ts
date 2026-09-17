@@ -26,7 +26,7 @@ import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
-import { leHistorico, registra, resumePorGrupo } from './historico.ts';
+import { leHistorico, registra, resumeDePulos, resumePorGrupo } from './historico.ts';
 import { leStatus, escreveStatus } from './status.ts';
 import { estaVencido, executaTick, type ResultadoDeExecucao, type ResultadoDoGrupoNoTick } from './tick.ts';
 
@@ -163,14 +163,29 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
   if (soPlano) console.log(`[Refresh Daemon] Modo: --so-plano (dry-run, nenhum dado será modificado).`);
 
   let emExecucao = false;
+  /** Quando o ciclo em curso começou — só serve para medir quem atropelou o disparo. */
+  let comecouEm = 0;
   let encerrando = false;
 
   const tick = async (): Promise<CicloRefreshResult | null> => {
     if (emExecucao) {
-      console.log(`[Refresh Daemon] [${new Date().toLocaleTimeString('pt-BR')}] Ciclo anterior ainda em execução. Pulando disparo.`);
+      const ha = Date.now() - comecouEm;
+      console.log(
+        `[Refresh Daemon] [${new Date().toLocaleTimeString('pt-BR')}] Ciclo anterior ainda em ` +
+          `execução há ${Math.round(ha / 1000)}s. Pulando disparo.`,
+      );
+      // Este console.log some com o terminal, e era só ele que existia (#129). O
+      // evento no histórico é o que sobrevive: pular não é falha, então nada em
+      // `refresh-status.json` muda — a cadência cai e o painel continua verde.
+      registra(opts.snapshotDir ?? path.join(raiz, DIRETORIO_PADRAO), {
+        evento: 'ciclo-pulado',
+        quando: new Date().toISOString(),
+        cicloEmCursoHaMs: ha,
+      });
       return null;
     }
     emExecucao = true;
+    comecouEm = Date.now();
     const carimbo = new Date().toLocaleTimeString('pt-BR');
     try {
       console.log(`\n[Refresh Daemon] [${carimbo}] Iniciando verificação de cadência…`);
@@ -270,6 +285,26 @@ arranques do daemon na janela: ${arranques}`);
     if (errosDeCiclo.length > 0) {
       console.log(`erros de ciclo: ${errosDeCiclo.length}`);
       for (const e of errosDeCiclo.slice(-5)) console.log(`  ${e.quando}  ${(e as { erro: string }).erro}`);
+    }
+
+    // A linha mais importante deste relatório quando tudo está "verde": um ciclo
+    // que estoura o intervalo faz o disparo seguinte ser pulado, e pular não é
+    // falha — não conta em `falhas` acima, não mexe em `refresh-status.json`, não
+    // acende nada. A cadência real cai pela metade em silêncio.
+    const pulos = resumeDePulos(eventos);
+    if (pulos.pulos > 0) {
+      console.log(`
+CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
+      console.log(
+        `  O pior atropelou um ciclo que já rodava há ${(pulos.maiorAtropeloMs / 1000).toFixed(0)}s.`,
+      );
+      console.log(
+        '  Isto NÃO aparece como falha em lugar nenhum. Se está acontecendo, o tick não',
+      );
+      console.log(
+        '  cabe mais no intervalo — ou o link ficou lento (o custo da busca é bytes ÷ banda:',
+      );
+      console.log('  `npm run probe:custo-contratos -- --banda`), ou o grupo cresceu.');
     }
     process.exit(0);
   }

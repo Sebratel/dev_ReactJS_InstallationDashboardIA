@@ -13,6 +13,7 @@ import {
   TAMANHO_MAXIMO_BYTES,
   leHistorico,
   registra,
+  resumeDePulos,
   resumePorGrupo,
   type EventoDeRefresh,
 } from '../src/historico.ts';
@@ -194,4 +195,46 @@ test('historico: resumePorGrupo ignora eventos que não são de grupo', () => {
     { evento: 'erro-de-ciclo', quando: 'b', erro: 'refresh.yaml com problemas' },
   ];
   assert.deepEqual(resumePorGrupo(eventos), []);
+});
+
+// A CADÊNCIA PERDIDA NÃO É UMA FALHA, e é por isso que ela precisa de evento
+// próprio. Um ciclo que estoura o intervalo faz o disparo seguinte ser pulado:
+// `falhas` continua zero, `refresh-status.json` continua verde, e a única pista
+// era um `console.log` num terminal que ninguém lê — o buraco do #129, de novo.
+test('historico: resumeDePulos conta a cadência perdida, que não aparece como falha', () => {
+  const eventos: EventoDeRefresh[] = [
+    { evento: 'grupo', quando: 'a', grupo: 'medio', ok: true, duracaoMs: 430_000 },
+    { evento: 'ciclo-pulado', quando: '2026-09-17T18:00:00.000Z', cicloEmCursoHaMs: 940_000 },
+    { evento: 'grupo', quando: 'c', grupo: 'medio', ok: true, duracaoMs: 361_000 },
+    { evento: 'ciclo-pulado', quando: '2026-09-17T18:15:00.000Z', cicloEmCursoHaMs: 1_200_000 },
+  ];
+  const r = resumeDePulos(eventos);
+  assert.equal(r.pulos, 2);
+  assert.equal(r.ultimo, '2026-09-17T18:15:00.000Z');
+  assert.equal(r.maiorAtropeloMs, 1_200_000);
+
+  // E o ponto todo: nenhum desses dois pulos aparece na contagem de falhas.
+  const porGrupo = resumePorGrupo(eventos);
+  assert.equal(porGrupo.length, 1);
+  assert.equal(porGrupo[0]!.falhas, 0, 'pular não é falhar — é essa a armadilha');
+});
+
+test('historico: sem pulo nenhum, o resumo é zerado e não inventa último', () => {
+  const r = resumeDePulos([
+    { evento: 'grupo', quando: 'a', grupo: 'quente', ok: false, duracaoMs: 1, erro: 'x' },
+  ]);
+  assert.deepEqual(r, { pulos: 0, maiorAtropeloMs: 0 });
+});
+
+test('historico: ciclo-pulado sobrevive à ida e volta pelo arquivo', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-pulo-'));
+  registra(dir, { evento: 'ciclo-pulado', quando: '2026-09-17T19:00:00.000Z', cicloEmCursoHaMs: 907_000 });
+  const lidos = leHistorico(dir);
+  assert.equal(lidos.length, 1);
+  assert.deepEqual(lidos[0], {
+    evento: 'ciclo-pulado',
+    quando: '2026-09-17T19:00:00.000Z',
+    cicloEmCursoHaMs: 907_000,
+  });
+  assert.equal(resumeDePulos(lidos).pulos, 1);
 });
