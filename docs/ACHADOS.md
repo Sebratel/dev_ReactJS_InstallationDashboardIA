@@ -11036,12 +11036,48 @@ com espaço final — **porque o SQL da spec tem**.
 
 Foi removido, e a razão ficou escrita no lugar dele.
 
+### A guarda já existia — para o OUTRO arquivo
+
+Depois de escrever o teste, fui ver se `specs/_catalog/incremental.yaml` — que usa o
+**mesmo** mecanismo de âncora, importando a **mesma** `costura()` — tinha o mesmo
+problema. Não tinha, e o motivo é o que transforma este achado de "faltava um teste" em
+algo mais útil:
+
+```
+26/08/2026  0aae15c  packages/snapshot/test/incremental.test.ts ganha
+                     "a política de verdade do catálogo carrega e costura o SQL
+                      de produção" — valida TODA âncora de incremental.yaml
+                      contra o `sql:` real da spec
+
+03/09/2026  6b8c97e  nasce specs/_catalog/realtime-poll.yaml — segundo consumidor
+                     do MESMO mecanismo, importando a MESMA costura()
+                     ... e sem herdar a guarda
+
+16/09/2026  ec3853c  a migração de protocolos-telefonia reindenta a linha
+17/09/2026           o poller está morto ha um dia; a suite, verde
+```
+
+O comentário daquele teste de 26/08 até descreve o medo exato que se realizou aqui:
+*"alguém edita o SQL da spec, a âncora some, e ninguém descobre até a próxima carga
+incremental rodar em produção"*. A frase estava certa e o teste funcionava — só que
+guardando metade da superfície.
+
+Verificado hoje: as duas âncoras de `incremental.yaml` casam 1× cada e `costura()`
+completa. Aquele arquivo nunca esteve quebrado.
+
 ### A lição
 
 > **Duas metades de um contrato em arquivos diferentes, e nada ligando as duas, é uma
 > quebra esperando o próximo commit.** O `sql:` da spec muda por migração; a âncora muda
 > por decisão de quase-realtime. Nada no editor liga uma à outra, e o custo de esquecer
 > é um poller morto que a suíte declara saudável.
+>
+> Mas a lição que paga mais é a de cima: **quando um mecanismo frágil ganha um segundo
+> consumidor, a proteção do primeiro não vem junto.** Ela não é herdada por importar a
+> função — é escrita à mão, uma vez por consumidor, e o segundo quase sempre é escrito
+> por quem está pensando no recurso novo, não na armadilha velha. Ao adicionar um
+> consumidor a qualquer coisa que já tenha um teste de invariante, a pergunta é: *esse
+> teste enxerga o meu caso?*
 >
 > E o corolário do #129: **uma guarda que erra alto num lugar que ninguém lê é uma guarda
 > que não existe.** Esta agora erra na suíte, que é onde alguém olha.
