@@ -11935,6 +11935,24 @@ principal ...... erick.azambuja  logon=Interactive  nivel=Limited
 gatilho ........ ao fazer logon, com 60 s de atraso
 ```
 
+**E foi provada ponta a ponta, sem reiniciar a máquina** — `Start-ScheduledTask` é o
+mesmo caminho que o logon dispara. A tarefa compilou a tela, achou a porta 3100 ocupada
+pela stack que estava no ar, derrubou o ocupante e subiu a sua:
+
+```
+10:04:43  a tarefa dispara
+10:04:47  subir           (PID 6616)
+10:05:07  API             (PID 32748)   Login: Firebase (projeto …), domínio sebratel.com.br
+10:05:13  daemon refresh  (PID 30416)   arranque no refresh-historico.log
+          /api/saude -> ok, 23 queries, 1.421.105 linhas
+```
+
+Registrar sem provar seria repetir o #136 num nível acima: uma tarefa que existe, aparece
+como `Ready` e falha no logon é pior que nenhuma, porque a pendência sai da lista sem o
+trabalho sair do lugar. O que continua sendo do Erick é só o critério final de
+`docs/DEPLOY.md` §2.2 — a máquina reinicia de verdade, ninguém digita nada, e a idade em
+`/api/saude` volta a cair sozinha.
+
 ### A lição
 
 > **Guarda por suposição é trabalho que não acontece, e trabalho que não acontece não
