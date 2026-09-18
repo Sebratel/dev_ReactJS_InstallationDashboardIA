@@ -157,6 +157,26 @@
 # arquivo estão otimistas por um fator de 2 a 5. Medir o grupo uma vez não basta
 # quando o termo dominante é um recurso que não é nosso — foi exatamente esse o
 # erro cometido aqui em 16/09, e ele durou um dia.
+#
+# SEGUNDA AMOSTRA, 18/09/2026 — e ela é a confirmação, não a repetição:
+#
+#                              17/09 (carga)   17/09 (livre)   18/09 (sob carga)
+#   1 MB ...................      1,09 MB/s       2,76 MB/s        3,52 MB/s
+#   10 MB ..................      0,76 MB/s       1,82 MB/s        3,21 MB/s
+#   50 MB ..................      0,62 MB/s       1,16 MB/s        2,78 MB/s
+#   10 MB numa linha só ....           —          1,44 MB/s        3,07 MB/s
+#   ida e volta (mediana) ..             12 ms         12 ms           10 ms
+#
+# **2,4× mais rápido hoje, e a medição de hoje foi feita COM o grupo `medio`
+# rodando** — ou seja, contra contenção, e ainda assim melhor. A latência não mudou
+# (10-12 ms), o servidor não mudou (105-139 MB/s gerando sem entregar). Só a banda.
+# Spread total observado até aqui: **5,7× entre a pior e a melhor amostra.**
+#
+# Consequência prática, medida no mesmo dia: `protocolos-geral` 158.516 → 107.402 ms,
+# `base-categorias-field` 58.670 → 14.468 ms, `backlog-agendado-futuro` 86.735 →
+# 64.014 ms. E `troca-endereco` foi na direção contrária, 1.541 → 33.194 ms, numa
+# query de 5.410 linhas — prova de que a banda não é a única fonte de variância e de
+# que UMA amostra não descreve nada aqui.
 # ═══════════════════════════════════════════════════════════════════════════════
 
 formato: 1
@@ -265,14 +285,30 @@ grupos:
   # medir uma vez. Quando o termo dominante é um recurso que não é nosso, uma medição
   # é uma fotografia — e esta envelheceu em vinte e quatro horas.
   #
-  # **CONSEQUÊNCIA PARA A CADÊNCIA, e é a parte com dente:** um tick que vence os três
-  # grupos custa hoje 94 + 361 + 209 = ~664 s, e os grupos rodam em SÉRIE (`tick.ts`)
-  # dentro de uma janela de 900 s. Com os números do daemon (94 + 430 + 209 = 733 s),
-  # 81% da janela. Estourando, o daemon PULA o disparo seguinte (`emExecucao` em
-  # `daemon.ts`) — e pular não é falha: `estaVencido` mede idade do último SUCESSO, o
+  # **CONSEQUÊNCIA PARA A CADÊNCIA, e é a parte com dente.** Os grupos rodam em SÉRIE
+  # (`tick.ts`) dentro de uma janela de 900 s. Em 17/09 eu escrevi aqui que um tick
+  # cheio custava "~664 s, ou 733 s com os números do daemon" — **e isso foi somar
+  # amostras, exatamente o erro que o parágrafo acima condena.** O
+  # `refresh-historico.log` tem os ticks REAIS, e eles são menores:
+  #
+  #   tick 1 (16/09)  quente  29s + medio  49s + frio 209s = 286 s   32% da janela
+  #   tick 2 (17/09)  quente  94s + medio 430s .......... = 524 s   58%
+  #   tick 3 (17/09)  quente 102s + medio 309s + frio 189s = 601 s   67%  <- o pior
+  #   tick 4 (17/09)  quente  88s ....................... =  88 s   10%
+  #   tick 5 (17/09)  medio  284s + frio 205s + quente 59s = 547 s   61%
+  #   tick 6 (17/09)  medio  306s ....................... = 306 s   34%
+  #
+  # **O pior tick observado é 601 s: 67% da janela, não 81%.** A folga é menor do que
+  # parece pela média (média de grupo em `--historico`: quente 74,5 s, medio 275,6 s,
+  # frio 201,2 s) e maior do que a minha soma de piores casos. Nem um nem outro: leia
+  # o histórico.
+  #
+  # Estourando, o daemon PULA o disparo seguinte (`emExecucao` em `daemon.ts`) — e
+  # pular não é falha: `estaVencido` mede idade do último SUCESSO, o
   # `refresh-status.json` continua verde, e a cadência real cai pela metade sem nada
   # acender. Desde 17/09 isso vira um evento `ciclo-pulado` no
   # `snapshot/refresh-historico.log`; leia com `npm run refresh:daemon -- --historico`.
+  # Nenhum foi registrado ainda — o evento nasceu depois dos seis ticks acima.
   #
   # **Por que aqui e não no `quente`.** Com a conta antiga (~162 s) a escolha já era
   # esta; com 81 s a margem melhorou; com 361 s ela é o argumento principal. O `quente` existe para ser barato o bastante
@@ -286,6 +322,31 @@ grupos:
   # `Table.NestedJoin` com PROTOCOLOS GERAL, e as duas no mesmo grupo é o que mantém
   # as duas com a mesma idade. Grupos diferentes dariam a ela um lado direito mais
   # velho ou mais novo que o próprio arquivo, a depender da ordem dos ticks.
+  #
+  # `capacidade-equipe` e `apuracao-premiacao` ENTRARAM EM 18/09/2026, e o motivo é o
+  # mesmo do #130: elas não estavam em grupo nenhum, e não por decisão — por omissão.
+  # O snapshot das duas era de **15/09**, três dias parado, e entre elas alimentam
+  # três das quatorze telas (`capacidade-equipe` → `agendamento-field` e
+  # `relatorio-do-mes`; `apuracao-premiacao` → `premiacao-instalacao`).
+  #
+  # Medido em 18/09 com o grupo inteiro, um processo, `--refazer` — as duas juntas
+  # custam **5,4 s**, e o grupo com ONZE queries ficou MENOR do que com nove ontem,
+  # porque a banda melhorou (ver o bloco ATENÇÃO no topo):
+  #
+  #   protocolos-geral ......... 107.402 ms      alocacao-patrimonio ..  4.827 ms
+  #   backlog-agendado-futuro ..  64.014 ms      capacidade-equipe ....  3.754 ms  <- nova
+  #   troca-endereco ...........  33.194 ms      apuracao-premiacao ...  1.607 ms  <- nova
+  #   tecnicos-auxiliares ......  15.442 ms      carga ................  3.128 ms
+  #   base-categorias-field ....  14.468 ms      calculadas ........... 11.172 ms
+  #   reincidencia .............   9.699 ms      -----------------------------------
+  #   retorno-prioritario ......   8.396 ms      TOTAL do grupo ....... 286 s
+  #   instalacoes-reincidentes .   5.477 ms                            (24% de 1.200 s)
+  #
+  # NÃO entraram, e a decisão é deliberada: `quadro-funcional` e `gestores-equipes`
+  # não alimentam tela nenhuma e já são rebuscadas a cada tick como dependência de M
+  # de quem as usa — um grupo as buscaria DE NOVO. E `quadro-funcional` traz CPF e RG
+  # (ver a regra 6 do CLAUDE.md): materializar sem necessidade é aumentar exposição
+  # de dado pessoal em troca de nada.
   medio:
     queries:
       - troca-endereco
@@ -297,6 +358,8 @@ grupos:
       - reincidencia
       - protocolos-geral
       - backlog-agendado-futuro
+      - capacidade-equipe
+      - apuracao-premiacao
     intervalo_minutos: 20
     incremental: false
 

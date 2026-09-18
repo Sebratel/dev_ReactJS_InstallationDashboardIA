@@ -11451,6 +11451,31 @@ rodam em série (`tick.ts`, e por um motivo: dois processos fariam read-modify-w
 manifesto). A janela é de 900 s. Com os números que o próprio daemon registrou
 (94 + 430 + 209), **733 s — 81% da janela.**
 
+> **CORREÇÃO (18/09/2026), e ela é do mesmo defeito que este achado descreve.** Os dois
+> números acima — 664 s e 733 s — eu obtive **somando amostras**, que é exatamente o que
+> o parágrafo de abertura condena. O `refresh-historico.log` tem os ticks reais, porque
+> o daemon voltou a rodar às 19:27 de 17/09 e deixou seis deles gravados:
+>
+> ```
+> tick 1 (16/09)  quente  29s + medio  49s + frio 209s = 286 s   32% da janela
+> tick 2 (17/09)  quente  94s + medio 430s .......... = 524 s   58%
+> tick 3 (17/09)  quente 102s + medio 309s + frio 189s = 601 s   67%   <- o pior
+> tick 4 (17/09)  quente  88s ....................... =  88 s   10%
+> tick 5 (17/09)  medio  284s + frio 205s + quente 59s = 547 s   61%
+> tick 6 (17/09)  medio  306s ....................... = 306 s   34%
+> ```
+>
+> **O pior tick observado é 601 s: 67%, não 81%.** Eu exagerei em 14 pontos, e da
+> maneira mais previsível possível — somando o pior caso de cada grupo como se eles
+> acontecessem juntos. A folga real é menor do que a média sugere e maior do que a minha
+> soma sugeria; nenhuma das duas descreve o sistema, e o histórico descreve.
+>
+> Registro isto aqui em vez de editar o número acima porque o erro é mais útil que a
+> correção: eu escrevi o parágrafo certo sobre somar amostras e, seis linhas depois,
+> somei amostras. **A regra que se sabe não é a regra que se aplica** — o que aplica é
+> o instrumento. O histórico existe desde ontem (#129) e responde a pergunta em um
+> comando: `npm run refresh:daemon -- --historico`.
+
 Quando estoura, o daemon pula o disparo seguinte. E aqui está o buraco:
 
 > **Pular não é falhar.** `estaVencido` mede a idade do último SUCESSO, então o grupo
