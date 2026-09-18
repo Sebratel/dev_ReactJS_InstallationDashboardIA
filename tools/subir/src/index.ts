@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
+import { precisaDeclararSemLoginNaRaiz } from './portao.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
 import { decideRessurreicao, ESPERAS_MS } from './supervisao.ts';
@@ -253,11 +254,16 @@ if (soAquece) {
       path.join(ROOT, 'apps', 'api', 'src', 'index.ts'),
       '--sem-aquecer',
       // `npm start` é o caminho de desenvolvimento, e desde 04/09/2026 subir
-      // sem `GOOGLE_CLIENT_ID` tem de ser DECLARADO — a API recusa subir sem
+      // sem provedor de login tem de ser DECLARADO — a API recusa subir sem
       // isto quando a credencial falta. Ver o comentário longo em
       // `apps/api/src/index.ts`: a stack de container servia
       // `/api/dashboards/*` com 200 e sem sessão nenhuma.
-      '--sem-login',
+      //
+      // **Mas SÓ quando falta** (18/09/2026, ACHADOS #136). Isto era
+      // incondicional, e depois que `FIREBASE_PROJECT_ID` foi preenchida passou a
+      // fazer a API anunciar na subida que servia "TODO pedido sem sessão" —
+      // falso, e falso sobre segurança. Ver `portao.ts`.
+      ...(precisaDeclararSemLoginNaRaiz(ROOT) ? ['--sem-login'] : []),
     ],
     { cwd: ROOT, stdio: 'inherit', env: { ...process.env, PORT: String(porta) } },
   );

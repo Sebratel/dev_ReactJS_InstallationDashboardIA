@@ -11656,3 +11656,116 @@ Com grupo em todas as seis, a fresta máxima passa a ser o intervalo do grupo ma
 > linhas erradas. Quando um mecanismo novo parece deixar o antigo desnecessário,
 > pergunte de que instante até que instante cada um vale — a resposta costuma não ser
 > "do começo".
+
+## #136 — Toda subida da plataforma anunciava "TODO pedido é servido sem sessão", e era mentira: o comportamento estava certo, o relato é que tinha vencido
+
+**Data:** 18/09/2026
+
+Subi a stack para conferir que ela voltava ao ar depois de um dia fora, e pedi seis
+páginas à API. Seis 401. Fui ver por quê, e o banner da subida dizia o contrário:
+
+```
+  Login: DESLIGADO por SEM_LOGIN=1/--sem-login — TODO pedido é servido sem sessão
+```
+
+**A frase é falsa, e é falsa sobre segurança.** As duas coisas ao mesmo tempo — "servido
+sem sessão" no log e `401` em toda rota `/api/*` — não podem ser verdade, e a que estava
+errada era a impressa.
+
+### O comportamento estava certo. Isto é importante antes de qualquer coisa.
+
+`apps/api/src/portao-login.ts` é um módulo inteiro sobre falhar fechado, e ele existe
+porque a coisa já falhou aberta: em 04/09/2026 a stack de container serviu
+`GET /api/dashboards/visao-geral → 200` **sem sessão nenhuma** — CLIENTE, TELEFONE e
+endereço a quem alcançasse a URL. A lição que ficou escrita lá é a melhor frase do
+arquivo:
+
+> *"Uma trava que degrada em silêncio não é trava."*
+
+Depois disso o portão do `Servidor` passou a só cair para a identidade `dev-local`
+quando **nenhum** provedor está configurado. Com `FIREBASE_PROJECT_ID` preenchida — o
+arranjo normal desde 16/09 — ele exige sessão. É o que ele fez comigo: 401, seis vezes,
+corretamente.
+
+### Então o que estava quebrado
+
+Duas peças que combinavam em 04/09 e deixaram de combinar em 16/09:
+
+1. **`tools/subir/src/index.ts` passava `--sem-login` INCONDICIONALMENTE**, com um
+   comentário explicando por quê: naquela época nenhum provedor estava configurado,
+   `decideLogin` recusava subir sem a declaração, e sem a bandeira `npm start` não
+   funcionava. Verdade em 04/09.
+
+2. **`decideLogin` devolve `sem-login-declarado` sempre que a bandeira aparece**, sem
+   olhar se há provedor. Ele não precisa olhar: a função decide se o PROCESSO PODE
+   SUBIR, não se os pedidos são autenticados. Para o que ela responde, está certa.
+
+Quando o Firebase foi configurado, a bandeira virou desnecessária — mas continuou sendo
+passada, e `apps/api/src/index.ts` continuou imprimindo a linha que ela implica. Ninguém
+mentiu; duas afirmações verdadeiras em contextos diferentes se encontraram e produziram
+uma falsa.
+
+### Por que um log errado aqui é caro, e não cosmético
+
+Um banner que diz "aberto" quando está fechado custa em dois sentidos opostos, e os dois
+são ruins:
+
+- **Quem vai auditar** lê aquilo, acredita, e vai procurar um buraco que não existe — ou
+  abre um chamado de incidente. Tempo gasto contra um fantasma.
+- **Quem vai operar** lê aquilo e conclui que a API está exposta. No dia em que ela
+  estiver de verdade, a linha vai estar lá igual, e ninguém vai reagir. **Um alarme que
+  toca sempre é um alarme desligado** — é o mesmo mecanismo do #131, onde a guarda
+  gritava a cada 12 s para um terminal que ninguém lia.
+
+O #129 e o #131 foram sobre alarme que ninguém vê. Este é o grau seguinte: alarme que
+todo mundo vê e que está errado.
+
+### O conserto, e o erro que ele me custou no meio do caminho
+
+A correção é não passar a bandeira quando ela não é necessária —
+`tools/subir/src/portao.ts`, com a MESMA condição que `decideLogin` usa (`Boolean` e não
+`!== undefined`, porque string vazia é o caso real deste `.env` e foi exatamente ela que
+falhou aberta em 04/09).
+
+**A primeira versão não mudou nada, e o motivo é bonito.** Ela consultava
+`process.env.FIREBASE_PROJECT_ID`, que naquele ponto é `undefined` — porque `subir` chama
+`applyDotEnv` deliberadamente TARDE, dentro de `buscaAutenticado()`, muito depois do
+spawn da API. O comentário lá explica, e é uma boa razão:
+
+> *carregar o `.env` antes do `spawnSync('npm run web:build')` faz o Vite herdar
+> `NODE_ENV=development` e sair sem minificar — 281 kB viraram 563 kB, medido*
+
+Ou seja: o processo FILHO enxerga a variável (ele chama `applyDotEnv` por conta própria),
+o PAI não. A correção certa lê o arquivo sem aplicá-lo (`loadDotEnv`), com a mesma
+precedência de `applyDotEnv` — ambiente vence arquivo. Se as duas precedências
+divergirem, elas voltam a discordar, só que em outro ponto.
+
+Rodei, e o banner passou a dizer o que acontece:
+
+```
+  Login: Firebase (projeto installation-dashboard-307fd), domínio sebratel.com.br
+```
+
+### O teste que amarra os dois arquivos
+
+`tools/subir/test/portao.test.ts` não testa `precisaDeclararSemLogin` sozinha — ela é
+trivial demais para errar isolada. Testa **as duas decisões sobre os mesmos sete
+ambientes**, exigindo que concordem: onde declaramos a bandeira, `decideLogin` sem ela
+tem de `recusa`r; onde não declaramos, tem de `exige-credencial`. Foi a divergência entre
+duas condições parecidas em dois arquivos que produziu isto, então o que o teste guarda é
+a concordância, não cada lado.
+
+Mais um teste afirma a coisa concreta: **o `.env` real deste repositório tem provedor,
+logo `npm start` não declara** — se alguém esvaziar a variável, ele pega.
+
+### A lição
+
+> **Uma bandeira é uma afirmação sobre o ambiente, e ambiente muda.** `--sem-login`
+> nasceu verdadeira, foi escrita como constante, e ficou. O código que a passa e o código
+> que a interpreta estavam ambos certos, cada um sobre o seu pedaço — e é por isso que
+> nenhuma revisão de arquivo único acharia isto.
+>
+> O corolário operacional: **o que a subida IMPRIME é parte do produto.** Não é depuração
+> — é o único relato que alguém lê sobre o estado de segurança de um processo que ninguém
+> vai inspecionar. Ele merece o mesmo teste que o comportamento, e neste repositório
+> agora tem.
