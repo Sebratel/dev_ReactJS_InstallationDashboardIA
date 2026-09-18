@@ -71,7 +71,24 @@ export type EventoDeRefresh =
    * pela metade sem uma única linha vermelha em lugar nenhum — que é exatamente o
    * buraco do #129, em outro disfarce.
    */
-  | { evento: 'ciclo-pulado'; quando: string; cicloEmCursoHaMs: number };
+  | { evento: 'ciclo-pulado'; quando: string; cicloEmCursoHaMs: number }
+  /**
+   * A API morreu e levou a stack junto (`api.on('exit')` em
+   * `tools/subir/src/index.ts`). **Entrou em 18/09/2026, e por uma razão
+   * embaraçosa: a API caiu e não houve como descobrir por quê.**
+   *
+   * O daemon deixa `arranque` no histórico desde 17/09 (#129), então "o
+   * agendador reiniciou às 03:00" é recuperável. Da API não havia nada: ela
+   * imprimia `A API saiu (código 1).` no terminal de quem digitou `npm start`, e
+   * esse terminal é exatamente o que não existe mais quando alguém pergunta.
+   *
+   * Isto NÃO é ressurreição, e a diferença importa. `subir` ressuscita o daemon
+   * e **não** a API, de propósito: a morte mais comum da API é outra instância
+   * tomando a porta 3100 (`subir` tem esse caminho e ele derruba o ocupante).
+   * Ressuscitar aí poria duas instâncias brigando pela porta para sempre. O que
+   * faltava não era reerguer — era saber.
+   */
+  | { evento: 'api-morreu'; quando: string; codigo: number | null; viveuMs: number };
 
 /**
  * Uma linha por evento, no fim do arquivo. Silenciosa em qualquer falha — ver o
@@ -194,4 +211,31 @@ export function resumeDePulos(eventos: readonly EventoDeRefresh[]): ResumoDePulo
     if (e.cicloEmCursoHaMs > r.maiorAtropeloMs) r.maiorAtropeloMs = e.cicloEmCursoHaMs;
   }
   return r;
+}
+
+/**
+ * As linhas que `--historico` imprime sobre mortes da API. Lista vazia quando não
+ * houve nenhuma.
+ *
+ * Mora aqui, e não dentro do `console.log` do relatório, para poder ser testada: a
+ * informação que decide o diagnóstico é **quanto tempo ela viveu** — segundos
+ * apontam configuração, horas apontam causa externa —, e essa conversão é a única
+ * parte com chance de sair errada.
+ */
+export function descreveMortesDaApi(eventos: readonly EventoDeRefresh[], ultimas = 5): string[] {
+  const mortes = eventos.filter((e) => e.evento === 'api-morreu');
+  if (mortes.length === 0) return [];
+  const linhas = [`MORTES DA API: ${mortes.length}`];
+  for (const m of mortes.slice(-ultimas)) {
+    const e = m as Extract<EventoDeRefresh, { evento: 'api-morreu' }>;
+    const viveu =
+      e.viveuMs >= 3_600_000
+        ? `${(e.viveuMs / 3_600_000).toFixed(1)} h`
+        : `${Math.round(e.viveuMs / 1000)} s`;
+    linhas.push(`  ${e.quando}  código ${e.codigo ?? '?'}  depois de ${viveu} no ar`);
+  }
+  linhas.push('  A stack cai junto: `subir` NÃO ressuscita a API, de propósito —');
+  linhas.push('  a morte mais comum dela é outra instância tomando a porta 3100.');
+  linhas.push('  Vida curta (segundos) aponta configuração; vida longa, causa externa.');
+  return linhas;
 }

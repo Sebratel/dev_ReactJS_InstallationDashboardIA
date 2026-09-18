@@ -11769,3 +11769,94 @@ logo `npm start` não declara** — se alguém esvaziar a variável, ele pega.
 > — é o único relato que alguém lê sobre o estado de segurança de um processo que ninguém
 > vai inspecionar. Ele merece o mesmo teste que o comportamento, e neste repositório
 > agora tem.
+
+## #137 — A API caiu e eu não consegui descobrir por quê: o instrumento que eu construí ontem registra tudo do daemon e nada da metade que derruba a stack
+
+**Data:** 18/09/2026
+
+Ontem, no #129, a queixa era que a stack tinha ficado 3h43 fora do ar sem deixar rastro,
+e o conserto foi um histórico durável: `snapshot/refresh-historico.log`, com arranque,
+grupo, duração e falha. Hoje a stack caiu de novo — às 12:32:21 — e eu abri aquele
+arquivo esperando a resposta.
+
+O arquivo estava certo e não tinha a resposta. **Ele registra o daemon. Quem morreu foi a
+API.**
+
+O que existia sobre a morte dela era uma linha:
+
+```ts
+console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
+process.exit(codigo ?? 1);
+```
+
+E ela vive no terminal de quem digitou `npm start` — que é exatamente o que não existe
+mais quando alguém pergunta por que a plataforma caiu. **É o #129 inteiro, palavra por
+palavra, na metade que eu não olhei.**
+
+### O que eu consegui reconstruir, e onde parei
+
+Juntando o relógio dos processos com o histórico do daemon:
+
+```
+12:08:10   subir sobe API + daemon
+12:08:10   medio  ......................... 176 s
+12:11:06   frio   ......................... 203 s
+12:14:30   frio termina
+12:29:30   quente .........................  72 s
+12:32:21   a API sai com código 1  <-- e aqui a trilha acaba
+12:32:47   um subir NOVO aparece
+```
+
+Os dois caminhos que a API tem para sair com 1 são o `decideLogin` recusando (só na
+subida, e ela tinha subido) e `EADDRINUSE` (idem). Nenhum dos dois explica uma morte às
+12:32 numa API viva desde 12:08. Não houve exceção no log. **Não sei o que aconteceu, e
+não vou inventar** — a máquina tem outro agente operando a mesma stack, e "outro `npm
+start` tomou a porta" é tão plausível quanto qualquer coisa. Que eu não consiga decidir
+entre duas hipóteses banais com todos os logs na mão **é o achado**.
+
+### O que entrou, e o que deliberadamente NÃO entrou
+
+Entrou um evento `api-morreu` no histórico, com o código de saída e **quanto tempo ela
+viveu** — que é o campo que decide o diagnóstico:
+
+> **Vida curta (segundos) aponta configuração. Vida longa aponta causa externa.**
+
+Uma API que morre 8 s depois de subir morreu de si mesma; uma que morre depois de 8 h
+morreu de alguma coisa que passou. Sem esse campo, os dois casos são a mesma linha.
+
+**NÃO entrou ressurreição, e a diferença importa.** Seria a simetria óbvia — o daemon
+ganhou `supervisao.ts` ontem, com espera crescente e teto; por que não a API? Porque a
+morte mais provável dela é **outra instância tomando a porta 3100**, e `subir` tem esse
+caminho e derruba o ocupante. Ressuscitar ali poria duas instâncias brigando pela porta
+para sempre, cada uma matando a outra, num laço que só termina quando alguém percebe.
+
+> O que faltava não era **reerguer**. Era **saber**.
+
+Registrar é barato e não tem modo de falha; ressuscitar é caro e tem um modo de falha
+pior que o problema. Elas parecem a mesma decisão e não são.
+
+### A parte que me deixa menos confortável
+
+Eu escrevi o `historico.ts` ontem, com um docstring longo sobre como o
+`refresh-status.json` esquecia quase tudo e como um terminal fechado torna a madrugada
+irrecuperável. Escrevi o argumento certo, implementei metade dele, e não notei a outra
+metade até ela me custar exatamente o que o argumento previa — **em menos de vinte e
+quatro horas.**
+
+O motivo é que eu estava consertando *o refresh*, e o arquivo se chama
+`refresh-historico.log`. O nome do arquivo delimitou o meu pensamento. A pergunta que
+teria pego isto não é sobre refresh:
+
+> *Quais processos compõem esta stack, e qual deles pode morrer sem deixar rastro?*
+
+São três — API, daemon e supervisor. Eu instrumentei um.
+
+### A lição
+
+> **Instrumentar "o que eu estou consertando" deixa de fora o que compartilha o
+> destino.** O daemon ganhou histórico porque o defeito de ontem era dele. A API derruba
+> a stack inteira quando cai — ela tem MAIS consequência, e tinha MENOS instrumento.
+>
+> O teste barato, e que não depende de lembrar desta história: **liste os processos, não
+> os defeitos.** Para cada um, pergunte o que sobra dele depois que o terminal fecha. Se
+> a resposta for "um `console.error`", não sobra nada.

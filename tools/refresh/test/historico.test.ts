@@ -13,6 +13,7 @@ import {
   TAMANHO_MAXIMO_BYTES,
   leHistorico,
   registra,
+  descreveMortesDaApi,
   resumeDePulos,
   resumePorGrupo,
   type EventoDeRefresh,
@@ -238,3 +239,83 @@ test('historico: ciclo-pulado sobrevive à ida e volta pelo arquivo', () => {
   });
   assert.equal(resumeDePulos(lidos).pulos, 1);
 });
+
+// ---------------------------------------------------------------------------
+// A MORTE DA API NÃO APARECIA EM LUGAR NENHUM (18/09/2026, ACHADOS #137).
+//
+// `subir` imprimia `A API saiu (código 1).` e morria junto. Essa linha vive no
+// terminal de quem digitou `npm start` — exatamente o que não existe mais quando
+// alguém pergunta por que a stack caiu. Aconteceu de verdade neste dia: a API
+// saiu com código 1 e não houve como recuperar o motivo nem a hora.
+//
+// O daemon já deixava `arranque` (#129). A API não deixava nada, e é a morte dela
+// que derruba a stack inteira.
+test('historico: api-morreu sobrevive à ida e volta pelo arquivo', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-api-'));
+  registra(dir, {
+    evento: 'api-morreu',
+    quando: '2026-09-18T12:32:21.000Z',
+    codigo: 1,
+    viveuMs: 1_451_000,
+  });
+  const lidos = leHistorico(dir);
+  assert.deepEqual(lidos, [
+    { evento: 'api-morreu', quando: '2026-09-18T12:32:21.000Z', codigo: 1, viveuMs: 1_451_000 },
+  ]);
+});
+
+test('historico: a morte da API não conta como falha de grupo nenhum', () => {
+  // Ela não é grupo, e confundir as duas contagens inventaria uma falha de
+  // refresh que nunca houve.
+  const eventos: EventoDeRefresh[] = [
+    { evento: 'grupo', quando: 'a', grupo: 'quente', ok: true, duracaoMs: 72_000 },
+    { evento: 'api-morreu', quando: 'b', codigo: 1, viveuMs: 1_000 },
+  ];
+  const r = resumePorGrupo(eventos);
+  assert.equal(r.length, 1);
+  assert.equal(r[0]!.falhas, 0);
+  assert.equal(resumeDePulos(eventos).pulos, 0);
+});
+
+test('descreveMortesDaApi: silencia quando nao houve morte nenhuma', () => {
+  assert.deepEqual(
+    descreveMortesDaApi([{ evento: 'arranque', quando: 'a', intervaloMinutos: 15, pid: 1 }]),
+    [],
+  );
+});
+
+// O que decide o diagnostico e QUANTO TEMPO ela viveu: segundos apontam
+// configuracao (subiu e caiu), horas apontam causa externa. Por isso a conversao
+// e o unico pedaco desta formatacao com chance de sair errada, e e o que se testa.
+test('descreveMortesDaApi: vida curta em segundos, vida longa em horas', () => {
+  const linhas = descreveMortesDaApi([
+    { evento: 'api-morreu', quando: '2026-09-18T12:00:08.000Z', codigo: 1, viveuMs: 8_000 },
+    { evento: 'api-morreu', quando: '2026-09-18T20:00:00.000Z', codigo: 1, viveuMs: 28_800_000 },
+  ]);
+  assert.match(linhas[0]!, /MORTES DA API: 2/);
+  assert.match(linhas[1]!, /depois de 8 s no ar/);
+  assert.match(linhas[2]!, /depois de 8\.0 h no ar/);
+  assert.ok(linhas.some((l) => l.includes('porta 3100')), 'tem de dizer a causa mais comum');
+});
+
+test('descreveMortesDaApi: mostra as ultimas, nao todas, e diz o total', () => {
+  const muitas = Array.from({ length: 9 }, (_, i) => ({
+    evento: 'api-morreu' as const,
+    quando: `2026-09-18T12:00:0${i}.000Z`,
+    codigo: 1,
+    viveuMs: 1_000 * (i + 1),
+  }));
+  const linhas = descreveMortesDaApi(muitas, 3);
+  assert.match(linhas[0]!, /MORTES DA API: 9/, 'o total e das nove');
+  assert.match(linhas[1]!, /depois de 7 s no ar/, 'mas so as tres ultimas aparecem');
+  assert.match(linhas[3]!, /depois de 9 s no ar/);
+});
+
+test('descreveMortesDaApi: codigo nulo nao vira "null" na tela', () => {
+  const linhas = descreveMortesDaApi([
+    { evento: 'api-morreu', quando: 'x', codigo: null, viveuMs: 5_000 },
+  ]);
+  assert.match(linhas[1]!, /código \?/, 'código nulo tem de sair como "?", não como "null"');
+  assert.ok(!linhas[1]!.includes('null'), 'a palavra "null" não pertence a um relatório humano');
+});
+

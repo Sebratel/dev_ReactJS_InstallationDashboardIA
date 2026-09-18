@@ -6,6 +6,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
+import { DIRETORIO_PADRAO as DIRETORIO_SNAPSHOT } from '../../../packages/snapshot/src/manifesto.ts';
+import { registra } from '../../refresh/src/historico.ts';
 import { precisaDeclararSemLoginNaRaiz } from './portao.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
@@ -268,6 +270,9 @@ if (soAquece) {
     { cwd: ROOT, stdio: 'inherit', env: { ...process.env, PORT: String(porta) } },
   );
 
+  /** Para dizer no histórico quanto ela viveu — 8 s e 8 h são diagnósticos opostos. */
+  const apiSubiuEm = Date.now();
+
   let refreshProcess: ChildProcess | null = null;
   let encerrando = false;
   let mortesSeguidas = 0;
@@ -286,7 +291,25 @@ if (soAquece) {
     if (!encerrando) {
       if (refreshProcess && refreshProcess.exitCode === null) refreshProcess.kill();
       if (timerDeRessurreicao) clearTimeout(timerDeRessurreicao);
+      // **A linha abaixo era TUDO o que sobrava da morte da API** — e ela vive no
+      // terminal de quem digitou `npm start`, que é exatamente o que não existe
+      // mais quando alguém pergunta por que a stack caiu. Aconteceu em
+      // 18/09/2026: a API saiu com código 1 e não houve como descobrir o motivo
+      // nem a hora. O daemon deixa `arranque` no histórico desde 17/09 (#129); a
+      // API não deixava nada.
+      //
+      // NÃO ressuscita, e é deliberado: a morte mais comum da API é outra
+      // instância tomando a porta 3100 (ver `derrubaOcupante`). Reerguer ali
+      // poria duas brigando pela porta para sempre. O que faltava era saber.
+      registra(path.join(ROOT, DIRETORIO_SNAPSHOT), {
+        evento: 'api-morreu',
+        quando: new Date().toISOString(),
+        codigo: codigo ?? null,
+        viveuMs: Date.now() - apiSubiuEm,
+      });
       console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
+      console.error('Registrado em snapshot/refresh-historico.log — veja com:');
+      console.error('  npm run refresh:daemon -- --historico');
       process.exit(codigo ?? 1);
     }
   });

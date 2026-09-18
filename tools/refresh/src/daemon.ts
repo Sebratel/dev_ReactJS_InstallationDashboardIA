@@ -26,7 +26,13 @@ import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
-import { leHistorico, registra, resumeDePulos, resumePorGrupo } from './historico.ts';
+import {
+  descreveMortesDaApi,
+  leHistorico,
+  registra,
+  resumeDePulos,
+  resumePorGrupo,
+} from './historico.ts';
 import { leStatus, escreveStatus } from './status.ts';
 import { estaVencido, executaTick, type ResultadoDeExecucao, type ResultadoDoGrupoNoTick } from './tick.ts';
 
@@ -291,6 +297,16 @@ arranques do daemon na janela: ${arranques}`);
     // que estoura o intervalo faz o disparo seguinte ser pulado, e pular não é
     // falha — não conta em `falhas` acima, não mexe em `refresh-status.json`, não
     // acende nada. A cadência real cai pela metade em silêncio.
+    // A API não aparece em `resumePorGrupo` — ela não é grupo. E é justamente a
+    // morte dela que derruba a stack inteira (`api.on('exit')` em `subir`), então
+    // ela tem de aparecer AQUI, que é onde alguém vai procurar depois do fato.
+    // A formatação mora em `historico.ts` para poder ser testada.
+    const mortes = descreveMortesDaApi(eventos);
+    if (mortes.length > 0) {
+      console.log('');
+      for (const linha of mortes) console.log(linha);
+    }
+
     const pulos = resumeDePulos(eventos);
     if (pulos.pulos > 0) {
       console.log(`
