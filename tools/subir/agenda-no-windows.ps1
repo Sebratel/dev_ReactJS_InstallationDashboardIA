@@ -79,10 +79,9 @@ function Ehadministrador {
 }
 
 if ($Remover) {
-  if (-not (Ehadministrador)) {
-    Write-Host 'Remover a tarefa exige PowerShell como Administrador.'
-    exit 1
-  }
+  # Sem guarda de privilégio: quem registrou pode remover. Se a tarefa tiver sido
+  # registrada como S4U (por um administrador), o próprio `Unregister-ScheduledTask`
+  # recusa com a mensagem do Windows, que é mais precisa que um palpite meu.
   $existente = Get-ScheduledTask -TaskName $NOME -ErrorAction SilentlyContinue
   if ($null -eq $existente) {
     Write-Host "Não havia tarefa chamada '$NOME'. Nada a remover."
@@ -115,12 +114,27 @@ if ($Simular) {
   exit 0
 }
 
-if (-not (Ehadministrador)) {
+# EXIGIR ADMINISTRADOR AQUI ERA ERRADO, E CUSTOU UM DIA (18/09/2026, ACHADOS #138).
+# Este bloco recusava TODA subida agendada sem privilégio, e o resultado prático foi
+# que a tarefa não foi registrada: a plataforma ficou dependendo de alguém digitar
+# `npm start`, que é exatamente o problema que este arquivo existe para resolver.
+#
+# Medido em vez de suposto: `Register-ScheduledTask` com `-LogonType Interactive`,
+# `-RunLevel Limited` e `-User <o próprio usuário>` registrou SEM privilégio nenhum,
+# estado `Ready`. O Windows só exige elevar para tarefa que roda como OUTRO
+# principal ou fora da sessão do usuário -- que é o caso do `-AoIniciarOSistema`
+# (S4U/AtStartup), e só dele.
+#
+# A lição é a do próprio repositório, virada contra mim: guarda por suposição é
+# guarda que impede o caso certo, e guarda que impede o caso certo acaba
+# contornada -- ou, pior, obedecida.
+if ($AoIniciarOSistema -and -not (Ehadministrador)) {
   Write-Host ''
-  Write-Host 'Registrar a tarefa exige PowerShell como Administrador.'
+  Write-Host 'O gatilho -AoIniciarOSistema exige PowerShell como Administrador.'
   Write-Host ''
-  Write-Host 'Abra o PowerShell com "Executar como administrador" e rode de novo. Para só'
-  Write-Host 'ver o que seria feito, sem privilégio nenhum, use -Simular.'
+  Write-Host 'Ele registra a tarefa como S4U, fora da sessão do usuário, e só isso precisa'
+  Write-Host 'de privilégio. SEM ele o gatilho é "ao fazer logon" e registra com o seu'
+  Write-Host 'usuário comum -- basta rodar este script sem nenhum argumento.'
   exit 1
 }
 

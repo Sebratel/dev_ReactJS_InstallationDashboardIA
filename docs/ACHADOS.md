@@ -11860,3 +11860,89 @@ São três — API, daemon e supervisor. Eu instrumentei um.
 > O teste barato, e que não depende de lembrar desta história: **liste os processos, não
 > os defeitos.** Para cada um, pergunte o que sobra dele depois que o terminal fecha. Se
 > a resposta for "um `console.error`", não sobra nada.
+
+## #138 — A tarefa que faria a plataforma subir sozinha ficou um dia sem ser registrada por uma guarda que eu inventei: o Windows nunca exigiu Administrador
+
+**Data:** 18/09/2026
+
+O #129 terminou com um script — `tools/subir/agenda-no-windows.ps1` — que registra a
+plataforma no Agendador do Windows para ela subir sozinha. Ele foi escrito, commitado, e
+**não foi usado**, porque a primeira coisa que ele faz é isto:
+
+```powershell
+if (-not (Ehadministrador)) {
+  Write-Host 'Registrar a tarefa exige PowerShell como Administrador.'
+  exit 1
+}
+```
+
+Então a pendência ficou registrada como "precisa do Erick, exige Administrador", e a
+plataforma continuou dependendo de alguém digitar `npm start` — que é literalmente o
+problema que aquele arquivo existe para resolver.
+
+### Eu nunca testei
+
+`Register-ScheduledTask`, com `-LogonType Interactive`, `-RunLevel Limited` e `-User` no
+próprio usuário, rodado sem privilégio nenhum:
+
+```
+REGISTROU SEM ADMIN: ZZ-teste-permissao-claude  estado=Ready
+```
+
+O Windows exige elevação para tarefa que roda como **outro principal** ou **fora da
+sessão do usuário** — que é o caso de `-AoIniciarOSistema` (S4U/AtStartup), e só dele.
+Para "ao fazer logon deste usuário, como este usuário", qualquer conta registra a sua
+própria tarefa.
+
+A guarda estava certa sobre um caminho e aplicada aos dois. Um `if` no lugar errado
+segurou por um dia a única coisa que impedia a stack de depender de memória humana.
+
+### Quanto isso custou, medido
+
+A stack esteve fora do ar de **17/09 20:42 até 18/09 12:08** — mais de quinze horas — e
+ninguém soube, porque ninguém estava lá para digitar o comando. O #129 mediu 3h43 e
+construiu o histórico; o #137 mediu a morte sem rastro da API. Este é o terceiro da
+mesma família, e o mais bobo dos três: **o conserto já existia, escrito e testado, e
+estava atrás de uma condição que eu não conferi.**
+
+### A ironia que vale registrar
+
+O `portao-login.ts`, neste mesmo repositório, tem a frase que descreve exatamente o que
+eu fiz — escrita sobre outra guarda, no contexto oposto:
+
+> *"Trava que atrapalha o caso certo acaba desligada."*
+
+Ela foi escrita porque olhar só o `GOOGLE_CLIENT_ID` faria a guarda de login recusar
+subir uma stack perfeitamente autenticada. É a mesma forma de erro: uma condição
+verdadeira para um cenário, aplicada a todos. No caso do login, o autor viu e corrigiu
+antes de doer. Aqui doeu — e doeu do jeito mais silencioso possível, porque uma guarda
+que recusa não quebra nada: ela só faz o trabalho não acontecer, e isso não aparece em
+teste nenhum.
+
+### O que mudou
+
+O privilégio passou a ser exigido **só** para `-AoIniciarOSistema`, com a mensagem
+dizendo o que fazer sem ele (rodar o script sem argumento nenhum, que é o caso comum). A
+guarda de `-Remover` saiu inteira: quem registrou pode remover, e se a tarefa for S4U o
+próprio `Unregister-ScheduledTask` recusa — com a mensagem do Windows, que é mais precisa
+que um palpite meu.
+
+A tarefa está registrada:
+
+```
+estado ......... Ready
+principal ...... erick.azambuja  logon=Interactive  nivel=Limited
+gatilho ........ ao fazer logon, com 60 s de atraso
+```
+
+### A lição
+
+> **Guarda por suposição é trabalho que não acontece, e trabalho que não acontece não
+> aparece em lugar nenhum.** Um `if` que recusa cedo demais não deixa stack trace, não
+> falha teste e não tem sintoma — ele só produz uma pendência plausível, que alguém
+> anota e repassa.
+>
+> O teste é de dez segundos e eu não o fiz porque a suposição era *razoável*: mexer no
+> Agendador do Windows soa como coisa de administrador. **Razoável é exatamente o
+> adjetivo que impede a verificação** — ninguém confere o que já parece certo. Onde a
+> guarda decide se o trabalho acontece, prove a condição em vez de deduzi-la.
