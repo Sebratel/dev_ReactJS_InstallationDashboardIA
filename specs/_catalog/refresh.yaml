@@ -345,10 +345,36 @@ grupos:
   # `incremental.yaml`. A carga completa agora cabe no orçamento, e ligar a costura
   # incremental logo depois da reescrita do SQL empilharia risco sem necessidade -- a
   # costura ancora em duas linhas exatas daquele arquivo. Ligar depois é barato.
+  #
+  # `protocolos-auxiliares` ENTROU EM 18/09/2026 (ACHADOS #135), E NAO FOI POR CUSTO.
+  # Ela era a UNICA query com poll de quase-realtime (`realtime-poll.yaml`, 12 s) e
+  # nenhum grupo de refresh atras. Parecia coberta -- e o poll de fato da frescor --
+  # mas ele produz um OVERLAY por cima do snapshot, e a janela dele comeca no
+  # ARRANQUE DA API (`novoDelta(agora)` em `poller-realtime.ts`), nao na marca do
+  # snapshot. Linha cujo carimbo caia entre as duas nao esta em lugar nenhum.
+  #
+  # Para as outras cinco queries polidas, essa fresta se fecha sozinha em 15 a 30 min
+  # -- o grupo refaz o arquivo e a marca alcanca o arranque. Sem grupo, ela so cresce.
+  # Medido em 18/09: snapshot de 16/09 14:32, API subida em 17/09 13:49, **495 linhas
+  # na fresta** (263 delas linhas novas que simplesmente faltavam no arquivo).
+  #
+  # Ela veio para o `frio` e nao para o `quente` de proposito: quem da frescor e o
+  # poll; o grupo so precisa fazer a marca alcancar o arranque, e 30 min basta para
+  # isso. Medido em 18/09, o grupo inteiro com ela dentro (um processo, `--refazer`):
+  #
+  #   protocolos-produtividade .. 143.711 ms      carga ...........  4.070 ms
+  #   protocolos-auxiliares .....  33.913 ms      calculadas ...... 11.970 ms
+  #   field-agenda-slot .........  13.532 ms      ------------------------------
+  #   clima-tempo ...............   6.860 ms      TOTAL do grupo .. 213 s
+  #
+  # 213 s em 1.800 s: 11,8%. Sem ela o grupo media 209 s -- a margem deste grupo era
+  # a maior dos tres, e continua sendo. `apps/api/test/ancora-do-poll.test.ts` passou
+  # a reprovar se alguem puser uma query em poll sem grupo de novo.
   frio:
     queries:
       - field-agenda-slot
       - clima-tempo
       - protocolos-produtividade
+      - protocolos-auxiliares
     intervalo_minutos: 30
     incremental: false

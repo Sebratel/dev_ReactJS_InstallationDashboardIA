@@ -11495,3 +11495,139 @@ e a sonda está commitada para que a próxima pessoa não precise redescobrir na
 > `bytes ÷ banda` se defende, diz por que envelheceu, e diz onde medir de novo. Por
 > isso o que entrou no arquivo foi a divisão, com a sonda que a refaz — e não uma
 > tabela mais nova, que daria o mesmo problema amanhã.
+
+## #135 — A tabela com o poll mais rápido da plataforma era a única sem refresh nenhum, e o poll não cobre o que falta: 495 linhas existiam no banco e em lugar nenhum aqui
+
+**Data:** 18/09/2026
+
+`protocolos-auxiliares` tem poll de quase-realtime a cada **12 segundos** — a cadência
+mais apertada do repositório. E até hoje ela era a única das seis queries polidas que
+**não estava em nenhum grupo de refresh**. O snapshot dela em disco era de 16/09 14:32
+e não tinha quem o avançasse.
+
+Isso parece cobertura de sobra, e é a armadilha: **o poll não substitui o refresh, e a
+razão está na primeira linha de `inicia()`.**
+
+### O mecanismo, em uma linha de código
+
+```ts
+this.#deltas.set(cfg.query, novoDelta(agora));   // poller-realtime.ts
+```
+
+O poller produz um **overlay** por cima do snapshot, e a janela dele começa **no
+arranque da API** — não na marca do arquivo que ele está cobrindo. Então há uma faixa
+de tempo que não pertence a ninguém:
+
+```
+   snapshot gravado            API sobe                     agora
+   16/09 14:32 ────────────────► 17/09 13:49 ───────────────►
+                    ▲                          ▲
+             ninguém olha aqui          overlay do poll
+        (nem o arquivo, nem o overlay)
+```
+
+Uma linha criada ou alterada dentro daquela faixa, e não tocada depois, não está no
+arquivo (é posterior a ele) nem no overlay (é anterior à janela). Ela existe no banco e
+em lugar nenhum aqui.
+
+O docstring do poller diz que *"o delta é a verdade completa (nenhuma volta é pulada sem
+repetir a mesma janela)"*, e isso é verdade — **dentro da vida do poller**. A frase é
+sobre a costura entre voltas consecutivas. A costura que faltava é outra: a da entrega
+entre o snapshot e a primeira volta.
+
+### Por que só esta tabela sofria
+
+Para as outras cinco queries polidas a fresta existe igual, e **se fecha sozinha**: o
+grupo de refresh refaz o arquivo em 15 a 30 minutos e a marca alcança o arranque. A
+fresta é real, dura minutos e some.
+
+Sem grupo, ela não se fecha nunca. Ela cresce um dia por dia.
+
+### O tamanho dela, contado e não estimado
+
+Contando o próprio resultado da spec pelo mesmo par de colunas que o poll usa como marca
+(`DATA CRIADO`, `DATA ENCERRADO`), com os dois instantes reais de hoje:
+
+```
+total no banco .......................... 38.350
+na fresta (16/09 14:32 → 17/09 13:49) ....   495
+depois do arranque (coberto pelo poll) ...    71
+no arquivo em disco ..................... 38.087
+```
+
+**495 linhas.** Delas, 263 são o que o arquivo simplesmente não tem (38.350 − 38.087):
+linhas novas, ausentes. As outras ~232 são linhas que o arquivo tem com o valor velho —
+foram alteradas na fresta e a alteração não chegou. As duas metades são o mesmo defeito
+dito de duas formas: **sobre 495 linhas, o arquivo está errado, e nada no sistema sabe
+disso.**
+
+E o número é de uma janela de vinte horas. A spec foi materializada pela última vez em
+16/09; sem a mudança de hoje, amanhã seriam mais.
+
+### O conserto, e por que `frio` e não `quente`
+
+`protocolos-auxiliares` entrou no grupo **`frio`** (30 min). A escolha não é sobre custo,
+é sobre quem faz o quê:
+
+> **Quem dá frescor é o poll. O grupo só precisa fazer a marca alcançar o arranque.**
+
+Para isso 30 minutos bastam de sobra, e é o grupo com mais folga dos três. Medido em
+18/09, o grupo inteiro com ela dentro, um processo, `--refazer`:
+
+```
+protocolos-produtividade .. 143.711 ms      carga ...........  4.070 ms
+protocolos-auxiliares .....  33.913 ms      calculadas ...... 11.970 ms
+field-agenda-slot .........  13.532 ms      ------------------------------
+clima-tempo ...............   6.860 ms      TOTAL do grupo .. 213 s
+```
+
+213 s em 1.800 s: **11,8%**. Sem ela o grupo media 209 s. Pôr no `quente` teria custado
+34 s a cada 15 min para comprar um frescor que o poll de 12 s já entrega.
+
+### A guarda, que é a parte que sobrevive a mim
+
+Um grupo a mais numa lista YAML não impede a próxima pessoa de declarar um poll novo e
+esquecer o refresh — que foi exatamente o que aconteceu aqui. Então
+`apps/api/test/ancora-do-poll.test.ts` ganhou o invariante:
+
+> *toda query com poll de quase-realtime tem um grupo de refresh atrás dela*
+
+Ele reprovou de primeira, nomeando `protocolos-auxiliares`, e a mensagem de falha
+explica o mecanismo e sugere o `frio` — porque uma guarda que só diz "falhou" manda a
+próxima pessoa redescobrir tudo isto.
+
+É a mesma família do #131, um andar acima. Lá, o `sql:` da spec e a âncora de costura
+moravam em arquivos diferentes e nada os conferia junto; o teste que faltava ligava as
+duas pontas. Aqui as duas pontas são `realtime-poll.yaml` e `refresh.yaml` — dois
+arquivos que se editam por motivos completamente diferentes, mantidos por decisões
+diferentes, e cuja combinação errada não produz erro nenhum: produz um arquivo
+silenciosamente incompleto.
+
+### O que ficou em aberto, dito com todas as letras
+
+**A fresta não foi consertada — foi tapada.** O conserto estrutural seria o poller abrir
+a janela na MARCA DO SNAPSHOT em vez de em `agora`, e aí ela não existiria para query
+nenhuma, nem nos minutos entre um refresh e outro. Não fiz, por duas razões:
+
+1. Muda o comportamento de todas as seis queries polidas de uma vez, e a primeira volta
+   depois de um arranque passaria a buscar tudo desde a marca — que numa stack parada
+   desde ontem é uma consulta bem maior que as de 12 s.
+2. `podaDelta` apara o overlay em **48 horas**. Um snapshot mais velho que isso não
+   seria coberto nem com a mudança — então ela reduz a fresta, não a elimina, e o grupo
+   de refresh continua sendo obrigatório de qualquer jeito.
+
+Com grupo em todas as seis, a fresta máxima passa a ser o intervalo do grupo mais lento:
+30 minutos. Dá para viver com isso, e agora está escrito quanto é.
+
+### A lição
+
+> **Duas coberturas parciais somadas não fazem uma cobertura, e a soma é onde ninguém
+> olha.** O snapshot cobre até a marca dele; o poll cobre a partir do arranque. Cada um
+> tem docstring, teste e dono. O vão entre eles não tinha nada — porque um vão não é
+> um componente, e a revisão de código lê componentes.
+>
+> O sintoma disso é sempre o mesmo e é sempre reconfortante: *"essa tabela tem poll de
+> 12 segundos, é a mais fresca que temos"*. Era a mais fresca **e** a única com 495
+> linhas erradas. Quando um mecanismo novo parece deixar o antigo desnecessário,
+> pergunte de que instante até que instante cada um vale — a resposta costuma não ser
+> "do começo".

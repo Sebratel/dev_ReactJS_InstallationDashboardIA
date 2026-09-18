@@ -87,3 +87,46 @@ for (const [queryId, cfg] of configs) {
 // recorte literal: tudo o que estiver no SQL tem de estar nela, espaço final incluído.
 // Proibir isso reprovaria configuração correta e empurraria alguém a "limpar" a âncora
 // até ela parar de casar. O invariante verdadeiro é o de cima, e é só ele.
+
+// ---------------------------------------------------------------------------
+// A SEGUNDA PONTA SOLTA DO MESMO PAR DE ARQUIVOS (18/09/2026, ACHADOS #135).
+//
+// O poll de 12 s NÃO substitui o refresh: ele produz um OVERLAY por cima do
+// snapshot, e a janela dele começa no ARRANQUE DA API (`novoDelta(agora)` em
+// `poller-realtime.ts`), não na marca do snapshot. Toda linha cuja marca caia
+// entre as duas — snapshot velho aqui, API subida depois — não está em lugar
+// nenhum: nem no arquivo, nem no overlay.
+//
+// Para as queries COM grupo, essa fresta se fecha sozinha em 15 a 30 minutos: o
+// grupo refaz o snapshot e a marca alcança o arranque. Para uma query SEM grupo,
+// ela não se fecha nunca — só cresce.
+//
+// Medido em 18/09/2026, quando `protocolos-auxiliares` era a única query polida
+// fora de todo grupo: snapshot de 16/09 14:32, API subida em 17/09 13:49,
+// **495 linhas na fresta**. Não é hipótese, é contagem.
+//
+// Este teste liga as duas pontas, que é o que faltava no #131: lá o `sql:` e a
+// âncora moravam em arquivos diferentes e nada os conferia junto; aqui são o
+// `realtime-poll.yaml` e o `refresh.yaml`.
+test('toda query com poll de quase-realtime tem um grupo de refresh atrás dela', () => {
+  const polls = [...leConfigDePoll(SPECS).keys()];
+  assert.ok(polls.length > 0, 'realtime-poll.yaml não declara query nenhuma');
+
+  const grupos = parseYaml(
+    fs.readFileSync(path.join(SPECS, '_catalog', 'refresh.yaml'), 'utf8'),
+  ) as { grupos?: Record<string, { queries?: string[] }> };
+  const comGrupo = new Set(
+    Object.values(grupos.grupos ?? {}).flatMap((g) => g.queries ?? []),
+  );
+
+  const orfas = polls.filter((q) => !comGrupo.has(q));
+  assert.deepEqual(
+    orfas,
+    [],
+    `estas queries têm poll de 12 s e NENHUM grupo de refresh: ${orfas.join(', ')}. ` +
+      'O poll não cobre a fresta entre a marca do snapshot e o arranque da API — ' +
+      'sem grupo, essa fresta nunca fecha. Ponha cada uma num grupo de ' +
+      'specs/_catalog/refresh.yaml (o `frio` costuma bastar: quem dá frescor é o poll, ' +
+      'o grupo só precisa fazer a marca alcançar o arranque).',
+  );
+});
