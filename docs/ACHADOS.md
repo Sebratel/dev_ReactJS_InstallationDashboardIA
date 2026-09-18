@@ -11946,3 +11946,102 @@ gatilho ........ ao fazer logon, com 60 s de atraso
 > Agendador do Windows soa como coisa de administrador. **Razoável é exatamente o
 > adjetivo que impede a verificação** — ninguém confere o que já parece certo. Onde a
 > guarda decide se o trabalho acontece, prove a condição em vez de deduzi-la.
+
+## #139 — Uma página recusa 24% do ciclo, e não é defeito: é o preço que o guarda de idade avisou que cobraria, medido pela primeira vez
+
+**Data:** 18/09/2026
+
+Subi a stack e aquecí as páginas. Oito das quatorze responderam **409**. Fui atrás, e a
+mensagem já explicava tudo:
+
+```
+Snapshot desatualizado: 'calendar' foi congelada em 2026-09-18T12:10:56Z, antes da
+materialização mais recente das tabelas de origem (2026-09-18T12:11:28Z). As linhas
+em calc.calendar.jsonl.gz são as do dado antigo, e o DAX igual não denuncia isso.
+Rode: npm run snapshot:calculadas -- --tabela="calendar"
+```
+
+É `confereIdadeDaCalculada`, em `packages/snapshot/src/carrega.ts`, e ele está **certo**.
+O docstring dele diz por que existe (*"a página serve o número de anteontem com cara de
+hoje"*) e, o que importa aqui, **já avisa o que vai custar**:
+
+> *"O critério é conservador de propósito. Compara com a materialização de query mais
+> recente do plano, não com as dependências apuradas do DAX. (…) **O preço é um falso
+> positivo quando se rematerializa uma query que a tabela não usa.**"*
+
+Ninguém tinha medido o preço.
+
+### A medição, e ela corrigiu o que eu tinha concluído antes
+
+A primeira leitura foi durante um tick, com a sessão morrendo no meio, e me levou a
+escrever que "a tela recusa durante o refresh" — como se fosse geral. **Está errado.**
+Medindo um ciclo inteiro, 124 amostras de 8 em 8 segundos, relogando em 401:
+
+```
+visao-geral ............ 409 em   0/124    0%
+diario-instalacao ...... 409 em   1/124    1%
+relatorio-do-mes ....... 409 em   1/124    1%
+agendamento-field ...... 409 em  30/124   24%
+```
+
+Não é a plataforma. É **uma página**, e as 30 amostras (~240 s) coincidem com a duração
+do grupo `frio` naquele ciclo (12:52:26 → 12:56:41, 255 s).
+
+### Por que só ela — a cadeia inteira
+
+`agendamento-field` é a única das quatorze telas que usa a entidade **`Clima/ Tempo`**. E
+a query `clima-tempo` está no grupo **`frio`**, que é o mais longo dos três.
+
+O plano dessa página junta, então:
+
+| o que ela usa | onde mora |
+|---|---|
+| `Clima/ Tempo` | query `clima-tempo`, grupo **`frio`** |
+| `calendar`, `Status Protocolo Dia` | tabelas **calculadas** (`calc.*`) |
+| `PROTOCOLOS GERAL`, `CAPACIDADE EQUIPE` | grupo `medio` |
+| `FIELD AGENDA` | fora de todo grupo (21min49s, #82) |
+
+Durante o `frio`, `clima-tempo` é rematerializada nos primeiros 7 segundos. A partir daí
+o `geradoEm` dela é mais novo que o congelamento de `calendar`, que aconteceu no fim do
+grupo anterior. O guarda dispara — e continua disparando até o `frio` terminar e
+recongelar as calculadas, **255 segundos depois.**
+
+`visao-geral` não usa nada do `frio`, e por isso ficou em 0%.
+
+### O número é um PISO, não um teto
+
+A janela que observei não incluiu nenhum `medio`. Como `PROTOCOLOS GERAL` e
+`CAPACIDADE EQUIPE` também estão no plano dessa página, ela dispara no `medio` também —
+que mede 190 a 286 s, a cada 20 min. **24% é o que eu medi, não o que acontece.** Dizer
+o total exigiria uma janela que cobrisse os três grupos, e eu não a tenho.
+
+### Por que eu NÃO mexi no guarda
+
+A saída óbvia é comparar a idade da calculada só com as queries de que ela realmente
+depende, em vez de com a mais recente do plano. O docstring recusa isso explicitamente, e
+a razão é boa:
+
+> *"Apurar dependência erraria para o lado permissivo se a leitura do DAX falhasse — e o
+> lado permissivo aqui é servir número velho calado."*
+
+Trocar um 409 honesto por um número plausível e errado é o negócio ruim que este
+repositório inteiro existe para não fazer. **Um guarda que erra para o lado de recusar é
+caro; um que erra para o lado de servir é indetectável.** Afrouxá-lo por causa de uma
+página seria decidir sozinho uma troca que não é minha, e por isso ela fica escrita aqui
+em vez de implementada.
+
+Mover `clima-tempo` de grupo também não resolve, e vale dizer por quê antes que alguém
+tente: a página dispararia no grupo de destino em vez do `frio`, e continuaria
+disparando no `medio` de qualquer jeito. **O gatilho não é qual grupo — é ter qualquer
+query do seu plano em qualquer grupo**, que é o caso de toda página viva.
+
+### A lição
+
+> **Trade-off documentado não é trade-off medido.** O docstring dizia "o preço é um falso
+> positivo", e a frase estava certa e era inútil para decidir qualquer coisa: "às vezes
+> recusa" e "recusa um quarto do tempo" pedem respostas diferentes, e só a segunda é um
+> fato.
+>
+> Vale para o que eu mesmo escrevo: quando um comentário admite um custo sem quantificá-lo,
+> ele não está documentando a decisão — está adiando a conta. **A frase que descreve o
+> preço é o lugar onde o número deveria estar.**
