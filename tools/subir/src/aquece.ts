@@ -76,12 +76,27 @@ interface RespostaDePagina {
   cache?: string;
 }
 
-/** As páginas que a API declara, na ordem em que ela as devolve. */
+/**
+ * As páginas que a API declara, na ordem em que ela as devolve — **sem as de dica**.
+ *
+ * `l-inst`, `l-mapa` e `l-tec` são `type: Tooltip` no relatório original: 550x400, um
+ * visual, exibidas ao pairar sobre outro visual e nunca abertas por navegação. Elas
+ * ocupavam três das catorze linhas desta tabela e ~2,4 s de cada subida para encher
+ * um cache que ninguém consultava. Continuam calculáveis por `/api/dashboards/l-inst`.
+ *
+ * **São DOIS aquecedores, e os dois precisam do filtro.** Este é o do `npm start`,
+ * que imprime a tabela; o outro é `apps/api/src/aquecedor.ts`, o de dentro da API,
+ * que reage a carimbo novo. Consertar só um deixa as três voltando pela outra porta —
+ * foi o que aconteceu na primeira tentativa, em 18/09/2026.
+ *
+ * O `!== true` é de propósito: uma API anterior a esta data não manda o campo, e ali
+ * o certo é aquecer.
+ */
 export async function listaPaginas(base: string, buscar: typeof fetch = fetch): Promise<string[]> {
   const r = await buscar(`${base}/api/dashboards`);
   if (!r.ok) throw new Error(`GET ${base}/api/dashboards devolveu ${r.status}`);
-  const corpo = (await r.json()) as { dashboards?: { id: string }[] };
-  const lista = corpo.dashboards ?? [];
+  const corpo = (await r.json()) as { dashboards?: { id: string; tooltip?: boolean }[] };
+  const lista = (corpo.dashboards ?? []).filter((d) => d.tooltip !== true);
   if (lista.length === 0) {
     throw new Error(`${base}/api/dashboards não listou página nenhuma. A API subiu com specs?`);
   }

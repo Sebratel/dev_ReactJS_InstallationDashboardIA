@@ -11,7 +11,6 @@ import { registra } from '../../refresh/src/historico.ts';
 import { precisaDeclararSemLoginNaRaiz } from './portao.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
-import { decideRessurreicao, ESPERAS_MS } from './supervisao.ts';
 import { decideDerrubada, portaOcupada } from './porta.ts';
 // A mensagem e a descoberta do PID moram junto da API, que é quem liga na porta — e é
 // o `index.ts` dela que precisa do mesmo texto no `error` do servidor. Duas cópias do
@@ -37,7 +36,18 @@ const mata = args.includes('--mata');
  *  manter (uma comparação lado a lado, um aquecimento em curso). */
 const semMata = args.includes('--sem-mata');
 /**
- * NÃO sobe o agendador automático de refresh (`daemon.ts`). O padrão é subir.
+ * NÃO dá cadência automática ao refresh. O padrão é dar.
+ *
+ * **O QUE MUDOU EM 19/09/2026.** Até aqui esta bandeira decidia se `npm start`
+ * criava um SEGUNDO processo (`tools/refresh/src/daemon.ts`) ao lado da API. Agora
+ * quem agenda é a própria API, no processo dela (`apps/api/src/agendador.ts`), e
+ * esta bandeira só é repassada para lá. O daemon continua existindo e continua
+ * correto — ele é o que o `docker-compose.prod.yml` usa como serviço próprio, onde
+ * o isolamento de memória importa —, mas `npm start` não o sobe mais.
+ *
+ * A razão de tirar o processo do meio: a cadência dependia de uma corrente de três
+ * elos (tarefa do Windows -> `npm start` -> daemon), e cada elo caía sozinho sem
+ * acender nada. Ver o cabeçalho de `apps/api/src/agendador.ts`.
  *
  * **Por que o padrão inverteu (16/09/2026).** Era preciso `--com-refresh` para o
  * daemon nascer, e o `npm start` que estava no ar tinha sido lançado sem ele: nada
@@ -50,9 +60,11 @@ const semMata = args.includes('--sem-mata');
  *
  * Fica de fora com `--sem-refresh`, ou com `AUTO_REFRESH=false`/`0` no ambiente —
  * para a comparação lado a lado, ou para quando a materialização já está em curso
- * em outro terminal. `--com-refresh` continua aceito e não faz nada: era o que
- * `docs/DEPLOY.md` mandava digitar, e recusar o argumento agora só quebraria quem
- * seguiu a instrução.
+ * em outro terminal. Os dois nomes são os mesmos de antes de propósito: quem já
+ * tinha `AUTO_REFRESH=false` no ambiente continua sem cadência automática sem
+ * precisar descobrir uma variável nova. `--com-refresh` continua aceito e não faz
+ * nada: era o que `docs/DEPLOY.md` mandava digitar, e recusar o argumento agora só
+ * quebraria quem seguiu a instrução.
  */
 const semRefresh =
   args.includes('--sem-refresh') ||
@@ -266,6 +278,9 @@ if (soAquece) {
       // fazer a API anunciar na subida que servia "TODO pedido sem sessão" —
       // falso, e falso sobre segurança. Ver `portao.ts`.
       ...(precisaDeclararSemLoginNaRaiz(ROOT) ? ['--sem-login'] : []),
+      // Repassado, e não relido lá dentro a partir do ambiente: `--sem-refresh`
+      // digitado aqui tem de valer para quem agenda, e quem agenda agora é o filho.
+      ...(semRefresh ? ['--sem-refresh'] : []),
     ],
     { cwd: ROOT, stdio: 'inherit', env: { ...process.env, PORT: String(porta) } },
   );
@@ -273,24 +288,17 @@ if (soAquece) {
   /** Para dizer no histórico quanto ela viveu — 8 s e 8 h são diagnósticos opostos. */
   const apiSubiuEm = Date.now();
 
-  let refreshProcess: ChildProcess | null = null;
   let encerrando = false;
-  let mortesSeguidas = 0;
-  let timerDeRessurreicao: NodeJS.Timeout | null = null;
   const encerra = (codigo: number): void => {
     if (encerrando) return;
     encerrando = true;
-    if (timerDeRessurreicao) clearTimeout(timerDeRessurreicao);
     if (api.exitCode === null) api.kill();
-    if (refreshProcess && refreshProcess.exitCode === null) refreshProcess.kill();
     process.exit(codigo);
   };
   process.on('SIGINT', () => encerra(0));
   process.on('SIGTERM', () => encerra(0));
   api.on('exit', (codigo) => {
     if (!encerrando) {
-      if (refreshProcess && refreshProcess.exitCode === null) refreshProcess.kill();
-      if (timerDeRessurreicao) clearTimeout(timerDeRessurreicao);
       // **A linha abaixo era TUDO o que sobrava da morte da API** — e ela vive no
       // terminal de quem digitou `npm start`, que é exatamente o que não existe
       // mais quando alguém pergunta por que a stack caiu. Aconteceu em
@@ -314,72 +322,20 @@ if (soAquece) {
     }
   });
 
-  /**
-   * Sobe o daemon de refresh e o **ressuscita** se ele morrer sozinho.
-   *
-   * A regra — espera crescente, teto de tentativas, vida mínima que zera a conta — e o
-   * caso real que a motivou (a stack 3h43 fora do ar sem nada avisar, 16/09/2026) estão
-   * em `supervisao.ts`, num lugar só. Aqui fica apenas o encanamento: `spawn`,
-   * `setTimeout` e as mensagens.
-   *
-   * O que vale repetir é a assimetria que isto fecha: API morta já derrubava o daemon
-   * (o `api.on('exit')` acima), e daemon morto não derrubava nem avisava nada — a API
-   * seguia servindo um snapshot que ninguém mais atualizava.
-   *
-   * Cada arranque, inclusive os de ressurreição, fica em
-   * `snapshot/refresh-historico.log` com o PID: é assim que "caiu uma vez às 03:00" se
-   * distingue de "esteve ressuscitando a noite toda".
-   */
-  function sobeRefresh(): void {
-    const nasceuEm = Date.now();
-    refreshProcess = spawn(
-      process.execPath,
-      ['--max-old-space-size=8192', path.join(ROOT, 'tools', 'refresh', 'src', 'daemon.ts')],
-      { cwd: ROOT, stdio: 'inherit', env: process.env },
-    );
-    refreshProcess.on('exit', (cod) => {
-      if (encerrando) return;
-      const viveuMs = Date.now() - nasceuEm;
-      console.error('');
-      console.error(
-        `[Refresh Daemon] Processo encerrou (código ${cod ?? '?'}) depois de ` +
-          `${Math.round(viveuMs / 1000)}s no ar.`,
-      );
-      const decisao = decideRessurreicao(viveuMs, mortesSeguidas);
-      mortesSeguidas = decisao.mortesSeguidas;
-
-      if (!decisao.ressuscita) {
-        console.error(
-          `[Refresh Daemon] Morreu ${mortesSeguidas} vezes seguidas sem se sustentar. ` +
-            'Desisto de ressuscitar — isto não é queda transitória.',
-        );
-        console.error('[Refresh Daemon] A API CONTINUA NO AR, servindo o snapshot que já está em disco —');
-        console.error('[Refresh Daemon] que daqui em diante envelhece sem ninguém atualizar. Diagnostique com:');
-        console.error('[Refresh Daemon]   node tools/refresh/src/daemon.ts --so-plano --so-uma-vez');
-        console.error('[Refresh Daemon]   node tools/refresh/src/daemon.ts --historico');
-        return;
-      }
-
-      console.error(
-        `[Refresh Daemon] Ressuscitando em ${Math.round(decisao.esperaMs / 1000)}s ` +
-          `(tentativa ${mortesSeguidas} de ${ESPERAS_MS.length}).`,
-      );
-      timerDeRessurreicao = setTimeout(() => {
-        timerDeRessurreicao = null;
-        if (!encerrando) sobeRefresh();
-      }, decisao.esperaMs);
-    });
-  }
-
   if (!(await esperaSaude(api))) {
     console.error(`\nA API não respondeu em ${BASE}/api/saude. Parando.`);
     encerra(1);
   }
 
-  if (!semRefresh) {
-    console.log('\nIniciando o Agendador Automático de Refresh (daemon 15m em background)…');
-    sobeRefresh();
-  }
+  // A cadência do refresh NÃO sobe aqui desde 19/09/2026 — ela mora dentro da API,
+  // que já está no ar a esta altura (`apps/api/src/agendador.ts`). O que este processo
+  // faz a respeito é uma coisa só: repassar `--sem-refresh` no `spawn` acima.
+  //
+  // O que se ganhou tirando o processo daqui: um elo a menos numa corrente em que cada
+  // elo caía sozinho e em silêncio. O que se perdeu: nada — a supervisão que existia
+  // (`supervisao.ts`) ressuscitava o daemon, e sem daemon não há o que ressuscitar.
+  // Quem agenda agora morre junto com a API, que é o desfecho honesto: ninguém fica
+  // servindo dado velho acreditando que há alguém atualizando.
 
   console.log(`\n  tela   ${BASE}/`);
   console.log(`  saúde  ${BASE}/api/saude`);

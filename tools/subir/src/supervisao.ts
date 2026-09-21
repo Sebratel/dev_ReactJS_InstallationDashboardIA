@@ -1,3 +1,18 @@
+// ┌───────────────────────────────────────────────────────────────────────────┐
+// │ SEM CHAMADOR DESDE 19/09/2026 — leia antes de confiar que isto está vivo. │
+// └───────────────────────────────────────────────────────────────────────────┘
+//
+// `tools/subir/src/index.ts` era o único chamador, e ele não sobe mais o daemon: a
+// cadência passou a ser um relógio por grupo dentro da API (`apps/api/src/agendador.ts`),
+// e sem daemon não há o que ressuscitar. O módulo e os testes dele ficam de pé porque a
+// REGRA continua certa e é cara de redescobrir — espera crescente, vida mínima que zera
+// a conta, e desistir em voz alta em vez de respawnar para sempre escondendo um `.env`
+// quebrado. Se um dia algo voltar a precisar ser supervisionado por processo pai, é daqui
+// que se parte.
+//
+// O que NÃO fazer: ler o que vem abaixo como descrição do que a plataforma faz hoje. Hoje
+// quem supervisiona é o `restart: unless-stopped` do Docker.
+//
 // Quando ressuscitar o daemon de refresh, e quando parar de tentar.
 //
 // **Por que isto existe (16/09/2026).** Até aqui, a morte do daemon de refresh rendia

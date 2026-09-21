@@ -165,6 +165,42 @@ test('lista as páginas que a API declara', async () => {
   assert.deepEqual(await listaPaginas(BASE, buscar), ['a', 'b']);
 });
 
+/**
+ * As três páginas de DICA do relatório original não entram no ciclo de subida.
+ *
+ * São `type: Tooltip`: 550x400, um visual, exibidas ao pairar sobre outro visual.
+ * Ocupavam três das catorze linhas da tabela do `npm start` e ~2,4 s de cada subida.
+ *
+ * Este teste existe em DOIS lugares de propósito — o irmão é
+ * `apps/api/test/aquecedor.test.ts`. São dois aquecedores diferentes, e em 18/09/2026
+ * consertar só o de dentro da API deixou as três voltando pela porta do `npm start`.
+ */
+test('a lista do arranque pula as páginas de dica, e só elas', async () => {
+  const { buscar } = fetchFalso({
+    [`${BASE}/api/dashboards`]: {
+      dashboards: [
+        { id: 'capa', tooltip: false },
+        { id: 'l-inst', tooltip: true },
+        // Sem o campo: API velha, e aí o certo é aquecer.
+        { id: 'visao-geral' },
+        { id: 'l-tec', tooltip: true },
+      ],
+    },
+  });
+  assert.deepEqual(await listaPaginas(BASE, buscar), ['capa', 'visao-geral']);
+});
+
+/**
+ * O contrapeso: uma lista SÓ de dicas continua sendo "não listou página nenhuma".
+ * Aquecer zero páginas em silêncio é exatamente o que o teste abaixo proíbe.
+ */
+test('lista só com páginas de dica erra alto, não aquece zero em silêncio', async () => {
+  const { buscar } = fetchFalso({
+    [`${BASE}/api/dashboards`]: { dashboards: [{ id: 'l-inst', tooltip: true }] },
+  });
+  await assert.rejects(() => listaPaginas(BASE, buscar), /não listou página nenhuma/);
+});
+
 test('API que não lista página nenhuma erra alto — não "aquece zero páginas com sucesso"', async () => {
   const { buscar } = fetchFalso({ [`${BASE}/api/dashboards`]: { dashboards: [] } });
   await assert.rejects(() => listaPaginas(BASE, buscar), /não listou página nenhuma/);
