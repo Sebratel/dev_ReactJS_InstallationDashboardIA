@@ -224,13 +224,21 @@ export class Aquecedor {
     }
   }
 
-  /** As páginas que a API declara. Vazio se ela não responder — a próxima volta tenta. */
+  /**
+   * As páginas que a API declara. Vazio se ela não responder — a próxima volta tenta.
+   *
+   * **Sem as de dica.** `l-inst`, `l-mapa` e `l-tec` são `type: Tooltip` no relatório
+   * original: 550x400, um visual, exibidas ao pairar sobre outro visual e nunca
+   * abertas por navegação. Aquecê-las gastava três das catorze entradas do ciclo
+   * para encher um cache que ninguém consultava. Continuam calculáveis por
+   * `/api/dashboards/l-inst` — o que muda é só quem o ciclo visita sozinho.
+   */
   async #lista(): Promise<string[]> {
     try {
       const r = await this.#buscar(`${this.#base}/api/dashboards`);
       if (!r.ok) return [];
-      const j = (await r.json()) as { dashboards?: { id: string }[] };
-      return (j.dashboards ?? []).map((d) => d.id);
+      const j = (await r.json()) as { dashboards?: { id: string; tooltip?: boolean }[] };
+      return (j.dashboards ?? []).filter((d) => d.tooltip !== true).map((d) => d.id);
     } catch (err) {
       this.#anuncia(`[aquecedor] não consegui listar as páginas: ${mensagem(err)}`);
       return [];

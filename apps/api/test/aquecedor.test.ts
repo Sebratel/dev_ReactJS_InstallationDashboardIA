@@ -53,6 +53,43 @@ function silencio(): (l: string) => void {
   return () => {};
 }
 
+/**
+ * As páginas de DICA do relatório original (`type: Tooltip`) não entram no ciclo.
+ *
+ * São `l-inst`, `l-mapa` e `l-tec`: 550x400, um visual, exibidas ao pairar sobre
+ * outro visual e nunca abertas por navegação. Até 18/09/2026 elas ocupavam três das
+ * catorze entradas de cada aquecimento para encher um cache que ninguém consultava.
+ *
+ * O `tooltip` vem da lista da API (`servidor.ts`), e o filtro é `!== true` de
+ * propósito: uma API anterior a esta data não manda o campo, e ali o certo é aquecer.
+ */
+test('o ciclo pula as páginas de dica, e só elas', async () => {
+  const pedidos: string[] = [];
+  const lista = {
+    dashboards: [
+      { id: 'capa', tooltip: false },
+      { id: 'l-inst', tooltip: true },
+      { id: 'visao-geral' },
+      { id: 'l-tec', tooltip: true },
+    ],
+  };
+  const buscar = (async (url: string | URL): Promise<Response> => {
+    const u = String(url);
+    if (u.endsWith('/api/dashboards')) return new Response(JSON.stringify(lista), { status: 200 });
+    if (u.endsWith('/layout')) return new Response('não encontrado', { status: 404 });
+    pedidos.push(decodeURIComponent(u.split('/').pop() ?? ''));
+    return new Response('{}', { status: 200 });
+  }) as unknown as typeof fetch;
+
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  const p = await a.tenta();
+
+  assert.ok(p !== null);
+  // `visao-geral` não declara `tooltip`: campo ausente aquece, não pula.
+  assert.deepEqual(pedidos, ['capa', 'visao-geral']);
+  assert.equal(p.paginas.length, 2);
+});
+
 test('aquece no arranque: o restart não devolve a tela branca de dois minutos', async () => {
   const { buscar, pedidos } = apiFalsa();
   const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });

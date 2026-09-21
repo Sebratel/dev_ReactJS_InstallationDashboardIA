@@ -15,6 +15,8 @@ import { CacheComDisjuntor } from '../../../packages/query-engine/src/cache-disj
 import { createVoallePool } from '../../../packages/query-engine/src/connectors-sql.ts';
 import type { Cache } from '../../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
+import { Agendador, agendaNesteProcesso } from './agendador.ts';
+import { instalaGuardaDeProcesso } from './guarda-de-processo.ts';
 import { Aquecedor } from './aquecedor.ts';
 import { PollerRealtime } from './poller-realtime.ts';
 import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
@@ -207,6 +209,43 @@ let aquecedor: Aquecedor | null = null;
 const semAquecer = process.argv.includes('--sem-aquecer') || process.env.SEM_AQUECER === '1';
 
 /**
+ * Quem dá cadência ao snapshot a partir de 19/09/2026: **esta API, no próprio
+ * processo** (`agendador.ts`).
+ *
+ * Antes eram três camadas empilhadas — tarefa do Agendador de Tarefas do Windows ->
+ * `npm start` -> daemon num processo à parte — e a primeira é configuração de
+ * MÁQUINA, não do repositório: enquanto ela não estivesse registrada naquele Windows,
+ * um reboot deixava tudo parado sem nada acender (ACHADOS #129).
+ *
+ * `AUTO_REFRESH=false` / `--sem-refresh` desliga, e é o que o `docker-compose.prod.yml`
+ * usa no serviço `api`: lá quem materializa é o container `refresh`, com `mem_limit`
+ * próprio, porque um pico de 8 GB de materialização dentro do teto de 6 GB da API
+ * seria OOM kill da tela. Dois agendadores ao mesmo tempo NÃO podem existir: os dois
+ * escreveriam o mesmo `manifesto.json`.
+ */
+/**
+ * A rede de segurança do processo, instalada ANTES de qualquer coisa que possa
+ * lançar — inclusive antes do `listen`.
+ *
+ * **Ela fecha um buraco medido.** O `snapshot/refresh-historico.log` registrou em
+ * 18/09/2026 `api-morreu, codigo: 1, depois de 1125 s no ar`: código 1 em Node é
+ * exceção não tratada, e era tudo que ficava — nem a mensagem, nem a pilha. A
+ * operação ficou sem painel e não houve como dizer por quê.
+ *
+ * Desde que a cadência do refresh passou a viver DENTRO deste processo
+ * (`agendador.ts`), o custo de uma exceção solta subiu: antes ela derrubava um daemon
+ * separado, hoje derruba a tela. Ver o cabeçalho de `guarda-de-processo.ts` para por
+ * que esta API sobrevive a um erro solto em vez de sair, e por que ela AINDA sai numa
+ * rajada.
+ */
+const estadoDaGuarda = instalaGuardaDeProcesso({ snapshotDir: path.join(ROOT, DIRETORIO_PADRAO) });
+
+const decisaoDoRefresh = agendaNesteProcesso(process.env, process.argv);
+
+/** Igual ao `aquecedor`: só nasce depois do `listen`, e a saúde diz a verdade até lá. */
+let agendador: Agendador | null = null;
+
+/**
  * O poller de quase-realtime (`poller-realtime.ts`, ACHADOS #89/#90) — igual ao
  * aquecedor, referenciado por fora ANTES de existir: `Servidor` precisa de
  * `overlayRealtime` no construtor, e o poller precisa do `servidor` (para
@@ -232,7 +271,17 @@ const servidor = new Servidor({
   // responde `ausente`, que é a verdade.
   ...(process.env.REDIS_URL ? { estadoDoRedis: () => saudeRedis.estado() } : {}),
   estadoDoPoller: () => poller?.estado() ?? null,
+  // Sempre passado, mesmo desligado — "não há agendador neste processo, e o motivo é
+  // este" é justamente a frase que faltava em 16/09/2026.
+  estadoDoAgendador: () =>
+    agendador?.estado() ?? {
+      ativo: false,
+      motivo: decisaoDoRefresh.agenda ? 'ainda não iniciou (a API não terminou de subir)' : decisaoDoRefresh.motivo,
+    },
   estadoDoDisjuntor: () => disjuntorDoCache?.estado() ?? null,
+  // "De pé" e "de pé tendo engolido 7 erros não tratados" são estados diferentes, e o
+  // segundo precisa aparecer ANTES de virar o terceiro.
+  estadoDaGuarda,
   // **O reaquecimento pós-evento (F4).** O `Servidor` invalida e sabe QUAIS
   // páginas caíram; o `Aquecedor` sabe COMO enchê-las de volta acertando a
   // mesma chave que o navegador pede. O fechamento resolve a mesma ordem
@@ -258,6 +307,16 @@ const servidor = new Servidor({
     ? { sessaoTtlHoras: Number.parseFloat(process.env.SESSAO_TTL_HORAS) }
     : {}),
   ...(process.env.TOKEN_INTERNO ? { tokenInterno: process.env.TOKEN_INTERNO } : {}),
+  ...(process.env.NODE_ENV === 'production' ? { producao: true } : {}),
+  // Preparado, não ativado: liga o cookie `Secure` e o header HSTS só quando
+  // COOKIE_SECURE=1 estiver no ambiente — que só deve acontecer junto com o
+  // bloco `listen 443 ssl` do nginx.conf existindo de verdade. Ver
+  // `identidade.ts` e `headers-seguranca.ts`.
+  ...(process.env.COOKIE_SECURE === '1' ? { cookieSecure: true } : {}),
+  // Confia no `X-Real-IP` (chave do rate limit) só quando há proxy reverso na
+  // frente reescrevendo o header — senão ele é forjável e o limite é
+  // contornável. Liga junto com o Nginx; ver `limitador-taxa.ts`.
+  ...(process.env.CONFIA_PROXY === '1' ? { confiaNoProxy: true } : {}),
 });
 
 /**
@@ -336,5 +395,15 @@ http.listen(porta, () => {
         fetch(url, { ...init, headers: { ...init?.headers, 'x-aquecedor-interno': servidor.segredoInterno() } }),
     });
     aquecedor.inicia();
+  }
+
+  // Por último de propósito: o agendador pode enfileirar um grupo vencido na hora, e
+  // um grupo é um subprocesso de materialização. Subir o aquecedor antes garante que a
+  // tela já esteja quente quando isso começar a disputar CPU e banda.
+  if (decisaoDoRefresh.agenda) {
+    agendador = new Agendador({ raiz: ROOT });
+    agendador.inicia();
+  } else {
+    console.log(`  Refresh: ${decisaoDoRefresh.motivo} — o snapshot em disco envelhece sem ninguém atualizar.`);
   }
 });

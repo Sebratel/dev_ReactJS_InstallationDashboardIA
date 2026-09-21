@@ -77,3 +77,11 @@ test('cookieDeSessao: HttpOnly, SameSite=Lax, e Max-Age em segundos', () => {
 test('cookieDeSessao com ttl 0 (logout): Max-Age=0, apaga o cookie do navegador', () => {
   assert.match(cookieDeSessao('', 0), /Max-Age=0/);
 });
+
+test('cookieDeSessao: sem Secure por padrão (sem TLS, seria cookie que o navegador nunca envia)', () => {
+  assert.doesNotMatch(cookieDeSessao('abc', 12), /Secure/);
+});
+
+test('cookieDeSessao: Secure aparece só quando pedido explicitamente (COOKIE_SECURE=1)', () => {
+  assert.match(cookieDeSessao('abc', 12, true), /; Secure$/);
+});

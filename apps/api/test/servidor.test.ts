@@ -331,6 +331,37 @@ test('a lista marca quais páginas têm snapshot', async () => {
   }
 });
 
+/**
+ * As três páginas de DICA do relatório original vinham na navegação como se fossem
+ * tela. São `type: Tooltip`: 550x400, um visual, exibidas ao pairar sobre outro
+ * visual — e nenhuma delas tem gabarito em `specs/paridade/`, que tem exatamente 11
+ * arquivos, um por página real.
+ *
+ * **O teste trava `type` como discriminador, não `visibility`.** Medido em
+ * 18/09/2026: 10 das 11 páginas reais também são `HiddenInViewMode` — só a `capa`
+ * é `AlwaysVisible`, porque o relatório original navega por botão a partir dela.
+ * Filtrar por `visibility` teria escondido a aplicação inteira menos a capa, e é
+ * exatamente o conserto plausível que alguém tentaria de novo sem esta asserção.
+ */
+test('a lista marca as três páginas de dica, e nenhuma página real', async () => {
+  const s = await servidor(await dirComCapa());
+  try {
+    const j = await (await s.busca('/api/dashboards')).json();
+    const dicas = j.dashboards
+      .filter((d: { tooltip: boolean }) => d.tooltip)
+      .map((d: { id: string }) => d.id)
+      .sort();
+    assert.deepEqual(dicas, ['l-inst', 'l-mapa', 'l-tec']);
+    assert.equal(j.dashboards.length - dicas.length, 11, 'sobram as 11 páginas navegáveis');
+    // A capa é `AlwaysVisible`; as outras 10 reais são `HiddenInViewMode` e
+    // continuam navegáveis. É esta linha que impede o conserto por `visibility`.
+    assert.equal(j.dashboards.find((d: { id: string }) => d.id === 'visao-geral').tooltip, false);
+    assert.equal(j.dashboards.find((d: { id: string }) => d.id === 'capa').tooltip, false);
+  } finally {
+    await s.fecha();
+  }
+});
+
 // ---------------------------------------------------------------------------
 // O caminho feliz
 // ---------------------------------------------------------------------------

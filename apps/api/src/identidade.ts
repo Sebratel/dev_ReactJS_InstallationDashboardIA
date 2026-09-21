@@ -84,16 +84,19 @@ export function apagaSessaoDoPedido(sessoes: Sessoes, req: http.IncomingMessage)
 /**
  * O cabeçalho `Set-Cookie` que grava (ou, com `ttlHoras: 0`, apaga) a sessão.
  *
- * **Sem `Secure`, de propósito, por enquanto.** `docs/DEPLOY.md` §3.3 deixa
- * TLS como decisão de infraestrutura ainda pendente — todo o stack de hoje
- * (dev e o `nginx.conf` da Onda 1) fala HTTP puro. Um cookie `Secure` sobre
- * HTTP simplesmente NUNCA seria enviado pelo navegador, e login pareceria
- * quebrado sem erro nenhum. Quando o TLS existir, `Secure` entra aqui junto —
- * registrado para não ficar esquecido, não escondido.
+ * **`secure` é `false` por padrão, e continua sendo por bom motivo.**
+ * `docs/DEPLOY.md` §3.3 deixa TLS como decisão de infraestrutura ainda
+ * pendente — todo o stack de hoje (dev e o `nginx.conf` da Onda 1) fala HTTP
+ * puro. Um cookie `Secure` sobre HTTP simplesmente NUNCA seria enviado pelo
+ * navegador, e login pareceria quebrado sem erro nenhum — por isso quem chama
+ * isto (`servidor.ts`, via `ServidorOptions.cookieSecure`) só passa `true`
+ * quando `COOKIE_SECURE=1` estiver no ambiente, e isso só deve acontecer
+ * junto com o bloco `listen 443 ssl` do `nginx.conf` existindo de verdade.
  */
-export function cookieDeSessao(token: string, ttlHoras: number): string {
+export function cookieDeSessao(token: string, ttlHoras: number, secure = false): string {
   const maxAge = Math.max(0, Math.round(ttlHoras * 3600));
-  return `${NOME_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+  const base = `${NOME_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}`;
+  return secure ? `${base}; Secure` : base;
 }
 
 /**

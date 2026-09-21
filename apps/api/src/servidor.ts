@@ -80,6 +80,8 @@ import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente, type EstadoDoRedis } from './saude-do-redis.ts';
+import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
+import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
 
 
 /** Quantos valores de segmentação a resposta manda por padrão. */
@@ -92,6 +94,20 @@ export const VALORES_PADRAO = 500;
  * O teto corta, e a resposta **diz** que cortou.
  */
 export const VALORES_MAXIMO = 5000;
+
+/**
+ * O teto de tentativas em `/auth/*` (as quatro rotas de POST), por IP, na
+ * janela abaixo. É a rota que importa de verdade: `/auth/interno` compara
+ * `TOKEN_INTERNO` em tempo constante (`tokensIguais`), mas nada limitava a
+ * FREQUÊNCIA de tentativa antes desta peça.
+ */
+const LIMITE_AUTH_TENTATIVAS = 10;
+/** A janela do limite acima, em ms. */
+const JANELA_AUTH_MS = 5 * 60_000;
+/** O teto frouxo de `/api/*`, só contra abuso grosseiro — não deve incomodar
+ *  uso normal nem paginação rápida numa tabela grande. */
+const LIMITE_API_POR_MINUTO = 300;
+const JANELA_API_MS = 60_000;
 
 /**
  * Carrega `specs/layout/*.layout.yaml` uma vez, na subida. Diretório ausente vira mapa
@@ -166,6 +182,34 @@ export interface ServidorOptions {
    */
   tokenInterno?: string;
   /**
+   * Liga `Secure` no cookie de sessão e `Strict-Transport-Security` nos
+   * headers de resposta (`headers-seguranca.ts`). Padrão: `false` — hoje não
+   * há TLS na frente (`nginx.conf` só tem `listen 80`), e um cookie `Secure`
+   * sobre HTTP puro nunca seria enviado pelo navegador, quebrando login sem
+   * erro nenhum. Ligar isto sem TLS de verdade na frente troca "sem cookie
+   * Secure" por "login que nunca funciona".
+   */
+  cookieSecure?: boolean;
+  /**
+   * Há um proxy reverso na frente que reescreve `X-Real-IP`? Só então esse
+   * header é confiável como chave do rate limit — ver `ipDoPedido` em
+   * `limitador-taxa.ts`. Padrão: `false`. Ligar sem proxy de verdade na frente
+   * ABRE um bypass do rate limit (o cliente escolhe a chave forjando o
+   * header); ligar atrás do `nginx.conf`, que faz `proxy_set_header X-Real-IP
+   * $remote_addr`, é o certo. Mesmo par "preparado/ativado" do `cookieSecure`
+   * com o TLS: ligam juntos com a infraestrutura, via `CONFIA_PROXY=1`.
+   */
+  confiaNoProxy?: boolean;
+  /**
+   * Verdadeiro em produção — hoje só diferencia o que um erro 500 expõe
+   * (`atende()`): a mensagem completa vai sempre para o log, mas só sai na
+   * resposta HTTP fora de produção. Entra por opção, e não lendo
+   * `process.env.NODE_ENV` direto neste arquivo, pelo mesmo motivo de
+   * `googleClientId`/`sessaoTtlHoras`: quem lê env é `index.ts`, e um teste
+   * precisa poder afirmar os dois comportamentos sem mexer no processo.
+   */
+  producao?: boolean;
+  /**
    * O estado do reaquecimento automático, para `GET /api/saude`.
    *
    * Entra por função, e não por valor, porque o `Aquecedor` só pode ser construído
@@ -215,6 +259,27 @@ export interface ServidorOptions {
    * F5 fechou no carimbo, e mesma resposta: publicar o estado.
    */
   estadoDoPoller?: () => unknown;
+  /**
+   * O estado do agendador de refresh que roda DENTRO deste processo
+   * (`apps/api/src/agendador.ts`). Ausente quando quem agenda é outro — o daemon
+   * dedicado do `docker-compose.prod.yml`, ou ninguém.
+   *
+   * **É a resposta direta ao #129.** `refresh` (abaixo) conta o que ACONTECEU:
+   * idade por query, último sucesso por grupo. Ele não sabe dizer se existe alguém
+   * encarregado de acontecer de novo — foi exatamente essa a pergunta que ficou sem
+   * resposta em 16/09/2026, com os três grupos marcando `falhasConsecutivas: 0` e
+   * nenhum processo vivo na máquina. `agendador.ativo` é o campo que separa "não
+   * falhou" de "não roda ninguém".
+   */
+  estadoDoAgendador?: () => unknown;
+  /**
+   * Erros não tratados que a guarda de processo engoliu para manter a tela no ar.
+   *
+   * Sem isto, uma API que sobrevive a um erro é indistinguível de uma que nunca teve
+   * nenhum — e a diferença entre as duas é exatamente o aviso que se queria ter antes
+   * da próxima queda.
+   */
+  estadoDaGuarda?: () => unknown;
   /**
    * O estado do disjuntor da camada durável do cache.
    *
@@ -378,6 +443,13 @@ export class Servidor {
    */
   private readonly vooUnico = new VooUnico();
 
+  /** Rate limiting de `/auth/*` e de `/api/*` — ver `limitador-taxa.ts`. Usam
+   *  `this.opts.agora` (e não `Date.now()` direto) pelo mesmo motivo de todo
+   *  outro relógio deste arquivo: um teste precisa poder avançar o tempo sem
+   *  esperar de verdade. */
+  private readonly limitadorAuth: LimitadorDeTaxa;
+  private readonly limitadorApi: LimitadorDeTaxa;
+
   /**
    * Intervalo do batimento do SSE, em ms. 25 s por um motivo concreto: o valor
    * tem de ficar ABAIXO do menor timeout de ociosidade no caminho, e 30 s ou
@@ -476,6 +548,8 @@ export class Servidor {
       dominioCorporativo: 'sebratel.com.br',
       sessaoTtlHoras: 12,
       tokenInterno: '',
+      cookieSecure: false,
+      producao: false,
       batimentoSseMs: Servidor.BATIMENTO_SSE_MS,
       overlayRealtime: () => new Map(),
       estadoDoRedis: redisAusente,
@@ -486,6 +560,8 @@ export class Servidor {
       reaquece: naoReaquece,
       ...resto,
     };
+    this.limitadorAuth = new LimitadorDeTaxa(LIMITE_AUTH_TENTATIVAS, JANELA_AUTH_MS, () => this.opts.agora());
+    this.limitadorApi = new LimitadorDeTaxa(LIMITE_API_POR_MINUTO, JANELA_API_MS, () => this.opts.agora());
     this.completos = new CacheDeVisual({
       tetoBytes: this.opts.tetoDeVisuaisMB * 1024 * 1024,
       aoRecusar: (chave, bytes, teto) => {
@@ -569,9 +645,13 @@ export class Servidor {
     return this.piscina.ativa;
   }
 
-  /** O `http.Server`, sem escutar porta nenhuma — quem escuta é o `index.ts`. */
+  /** O `http.Server`, sem escutar porta nenhuma — quem escuta é o `index.ts`.
+   *
+   *  `maxHeaderSize` explícito (e não o padrão implícito do Node) para que um
+   *  teste possa afirmar o número, em vez de confiar num padrão que muda
+   *  entre versões do runtime. */
   criaHttp(): http.Server {
-    return http.createServer((req, res) => {
+    return http.createServer({ maxHeaderSize: 16_384 }, (req, res) => {
       // A duração é medida AQUI, e não dentro de `pagina()`, porque aqui ela
       // cobre toda saída: 200, 404 de página inexistente, 400 de filtro
       // ilegível, 409 de snapshot faltando e a exceção que vira 500. Medir por
@@ -584,7 +664,22 @@ export class Servidor {
       }
       this.atende(req, res).catch((err: unknown) => {
         this.metricas.conta('erros_500');
-        responde(res, 500, { erro: err instanceof Error ? err.message : String(err) });
+        // O detalhe completo (mensagem + stack) vai SEMPRE para o log, com um
+        // id — é o que permite investigar de verdade. O que sai na resposta
+        // HTTP é que muda: fora de produção, `err.message` ajuda a depurar
+        // local (é o que todo teste hoje espera); em produção, uma exceção
+        // interna pode citar caminho de arquivo, nome de coluna, ou detalhe de
+        // driver — nada disso é para quem só pediu um dashboard.
+        const id = crypto.randomUUID();
+        const detalhe = err instanceof Error ? (err.stack ?? err.message) : String(err);
+        console.error(`[erro-500] ${id}: ${detalhe}`);
+        responde(
+          res,
+          500,
+          this.opts.producao
+            ? { erro: 'Erro interno.', id }
+            : { erro: err instanceof Error ? err.message : String(err), id },
+        );
       });
     });
   }
@@ -596,7 +691,34 @@ export class Servidor {
   }
 
 
+  /**
+   * Uma linha de log por negativa de segurança — 401, 403, 429. Até
+   * 17/09/2026 (teste de intrusão ASVS V7.2) nenhuma delas registrava nada:
+   * brute force de `TOKEN_INTERNO`, enumeração de sessão, varredura de CSRF e
+   * saturação do rate limit passavam invisíveis, sem trilha para detecção nem
+   * forense — o gap A09 do OWASP. O próprio `limitador-taxa.ts` existe para
+   * conter brute force, mas o bloqueio não gerava evento.
+   *
+   * Imprime SÓ metadado — `status`, `ip` (a mesma chave que o limitador conta,
+   * via `ipDoPedido`), `rota` e um `motivo` curto. **Nunca** corpo, token, valor
+   * de header ou dado de cliente (regra do `snapshot/` em CLAUDE.md). Vai por
+   * `console.warn`, canal separado do `[erro-500]` (que é `console.error`), no
+   * mesmo estilo de prefixo entre colchetes do resto do arquivo.
+   */
+  private registraEventoSeg(req: http.IncomingMessage, status: number, motivo: string): void {
+    const ip = ipDoPedido(req, this.opts.confiaNoProxy ?? false);
+    const rota = (req.url ?? '/').split('?')[0] ?? '/';
+    console.warn(`[seg] status=${status} ip=${ip} metodo=${req.method ?? '?'} rota=${rota} motivo=${motivo}`);
+  }
+
   private async atende(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    // Chamado antes de qualquer roteamento — cobre 200, 401, 404, 405 e 500
+    // por igual, mesmo espírito da medição de duração em `criaHttp()`.
+    aplicaHeadersDeSeguranca(res, {
+      cookieSecure: this.opts.cookieSecure,
+      firebaseProjectId: this.opts.firebaseProjectId,
+    });
+
     const url = new URL(req.url ?? '/', 'http://localhost');
     const rota = url.pathname.replace(/\/+$/, '') || '/';
 
@@ -604,6 +726,27 @@ export class Servidor {
     // apagam estado (sessão) em vez de servir dado calculado. Ficam ANTES de
     // qualquer outra guarda — pedir login não pode exigir já estar logado, e
     // a guarda de método abaixo é justamente o que barraria um POST.
+    if (rota.startsWith('/auth/') && req.method === 'POST') {
+      // CSRF: defesa em profundidade sobre o que `SameSite=Lax`
+      // (`identidade.ts`) já impede na prática. Só recusa quando `Origin` (ou,
+      // na ausência dele, `Referer`) vier presente E discordar do `Host` do
+      // pedido — sem nenhum dos dois (chamada servidor-a-servidor, ex.
+      // `tools/tela` batendo direto na API), passa: não há navegador aqui para
+      // o SameSite proteger, e o segredo (senha do Google/Firebase, ou
+      // TOKEN_INTERNO) é quem faz a guarda real.
+      if (!this.origemPermitida(req)) {
+        this.registraEventoSeg(req, 403, 'csrf-origem-divergente');
+        responde(res, 403, { erro: 'Origem do pedido não corresponde ao host — recusado (proteção CSRF).' });
+        return;
+      }
+      const decisaoDeTaxa = this.limitadorAuth.registra(ipDoPedido(req, this.opts.confiaNoProxy ?? false));
+      if (!decisaoDeTaxa.permite) {
+        this.registraEventoSeg(req, 429, 'rate-limit-auth');
+        res.setHeader('Retry-After', String(decisaoDeTaxa.retryAposSegundos));
+        responde(res, 429, { erro: 'Muitas tentativas de login. Tente novamente mais tarde.' });
+        return;
+      }
+    }
     if (rota === '/auth/google' && req.method === 'POST') return this.autenticaGoogle(req, res);
     if (rota === '/auth/firebase' && req.method === 'POST') return this.autenticaFirebase(req, res);
     if (rota === '/auth/interno' && req.method === 'POST') return this.autenticaInterno(req, res);
@@ -648,7 +791,20 @@ export class Servidor {
           : null);
 
     if (rota.startsWith('/api/')) {
+      // O Aquecedor fica isento — ele bate nestas rotas em rajada de
+      // propósito (reaquecimento pós-evento, F4), e é reconhecimento pelo
+      // mesmo segredo por processo que já o isenta do 401 logo abaixo.
+      if (!ehAquecedor) {
+        const decisaoDeTaxa = this.limitadorApi.registra(ipDoPedido(req, this.opts.confiaNoProxy ?? false));
+        if (!decisaoDeTaxa.permite) {
+          this.registraEventoSeg(req, 429, 'rate-limit-api');
+          res.setHeader('Retry-After', String(decisaoDeTaxa.retryAposSegundos));
+          responde(res, 429, { erro: 'Muitas requisições. Tente novamente mais tarde.' });
+          return;
+        }
+      }
       if (!quem) {
+        this.registraEventoSeg(req, 401, 'sessao-ausente-ou-invalida');
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
         return;
       }
@@ -659,7 +815,20 @@ export class Servidor {
         // com acento, e decodificar antes faria um `%2F` no nome virar separador.
         const resto = rota.slice('/api/dashboards/'.length);
         const barra = resto.indexOf('/');
-        const id = decodeURIComponent(barra === -1 ? resto : resto.slice(0, barra));
+        // `decodeURIComponent` LANÇA (`URIError`) em `%` sem dois hexadecimais
+        // atrás (`%ZZ`, `%`, `%c0%ae`). Sem esta guarda a exceção subia até o
+        // catch de topo de `criaHttp()` e virava 500 — sujando o contador
+        // `erros_500` que `/api/saude` vigia, por uma entrada que é só malformada.
+        // Entrada malformada é 400 do cliente, não erro do servidor. Medido em
+        // 17/09/2026 (teste de intrusão ASVS V5.1.4). É o único `decodeURIComponent`
+        // no caminho do pedido — a querystring usa `URLSearchParams`, que degrada.
+        let id: string;
+        try {
+          id = decodeURIComponent(barra === -1 ? resto : resto.slice(0, barra));
+        } catch {
+          responde(res, 400, { erro: 'Identificador de página com percent-encoding inválido.' });
+          return;
+        }
         const sub = barra === -1 ? '' : resto.slice(barra + 1);
 
         if (sub === '') return this.pagina(res, id, url, quem);
@@ -682,10 +851,31 @@ export class Servidor {
 
   // -------------------------------------------------------------- login
 
+  /**
+   * A guarda de CSRF das rotas `/auth/*` (ver `atende()`). `true` quando não
+   * há `Origin` nem `Referer` (chamada sem navegador) OU quando o que veio
+   * bate com o `Host` do próprio pedido — comparando só host:porta, nunca o
+   * esquema: comparar `https://` também travaria o dia em que um
+   * terminador de TLS na frente falar `https` com o navegador e `http` com
+   * este processo (`X-Forwarded-Proto`, já citado em `nginx.conf`).
+   */
+  private origemPermitida(req: http.IncomingMessage): boolean {
+    const origem = req.headers.origin;
+    const referer = req.headers.referer;
+    const bruta = typeof origem === 'string' ? origem : typeof referer === 'string' ? referer : null;
+    if (bruta === null) return true;
+    try {
+      return new URL(bruta).host === req.headers.host;
+    } catch {
+      // Origin/Referer ilegível não é um host que bate — fecha, não abre.
+      return false;
+    }
+  }
+
   private async autenticaGoogle(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     let corpo: unknown;
     try {
-      corpo = JSON.parse(await leCorpo(req));
+      corpo = parseJsonSeguro(await leCorpo(req));
     } catch {
       responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { idToken }.' });
       return;
@@ -713,7 +903,7 @@ export class Servidor {
       return;
     }
     const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
-    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras));
+    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
 
@@ -730,7 +920,7 @@ export class Servidor {
   private async autenticaFirebase(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     let corpo: unknown;
     try {
-      corpo = JSON.parse(await leCorpo(req));
+      corpo = parseJsonSeguro(await leCorpo(req));
     } catch {
       responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { idToken }.' });
       return;
@@ -758,7 +948,7 @@ export class Servidor {
       return;
     }
     const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
-    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras));
+    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
 
@@ -773,24 +963,28 @@ export class Servidor {
   private async autenticaInterno(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     let corpo: unknown;
     try {
-      corpo = JSON.parse(await leCorpo(req));
+      corpo = parseJsonSeguro(await leCorpo(req));
     } catch {
       responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { token }.' });
       return;
     }
     const token = (corpo as { token?: unknown } | null)?.token;
     if (!this.opts.tokenInterno || typeof token !== 'string' || !tokensIguais(token, this.opts.tokenInterno)) {
+      // A tentativa de brute force do TOKEN_INTERNO — logar o evento (nunca o
+      // valor tentado). O rate limit de `/auth/*` já contém a frequência; o log
+      // é o que a torna visível.
+      this.registraEventoSeg(req, 401, 'token-interno-invalido');
       responde(res, 401, { erro: 'Token interno inválido, ou TOKEN_INTERNO não configurado neste ambiente.' });
       return;
     }
     const sessao = criaSessao(this.sessoes, 'ferramenta-interna', this.opts.sessaoTtlHoras);
-    res.setHeader('Set-Cookie', cookieDeSessao(sessao, this.opts.sessaoTtlHoras));
+    res.setHeader('Set-Cookie', cookieDeSessao(sessao, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: 'ferramenta-interna' });
   }
 
   private logout(req: http.IncomingMessage, res: http.ServerResponse): void {
     apagaSessaoDoPedido(this.sessoes, req);
-    res.setHeader('Set-Cookie', cookieDeSessao('', 0));
+    res.setHeader('Set-Cookie', cookieDeSessao('', 0, this.opts.cookieSecure));
     responde(res, 200, { ok: true });
   }
 
@@ -882,6 +1076,11 @@ export class Servidor {
       // profundidade. Rota de operador, não caminho quente: um `readFileSync` a
       // mais aqui não paga o mesmo preço que pagaria em `carimboAtual()`.
       refresh: this.statusDeRefresh(),
+      // Separado de `refresh` de propósito: aquele descreve o dado (idade, último
+      // sucesso), este descreve o RELÓGIO. Um pode estar verde com o outro morto, e
+      // foi essa combinação que passou despercebida por 3h43 em 16/09/2026.
+      ...(this.opts.estadoDoAgendador ? { agendador: this.opts.estadoDoAgendador() } : {}),
+      ...(this.opts.estadoDaGuarda ? { guarda: this.opts.estadoDaGuarda() } : {}),
     });
   }
 
@@ -906,6 +1105,18 @@ export class Servidor {
         // Uma página que não tem snapshot não vai carregar; dizer isso na lista
         // poupa um erro por clique.
         pronta: this.queriesDe(d).every((q) => emDisco.has(q)),
+        // Página de DICA do relatório original (`type: Tooltip`), não página
+        // navegável: 550x400, um visual, e no Power BI ela só aparece ao pairar
+        // sobre outro visual. São três — `l-inst`, `l-mapa`, `l-tec` — e até
+        // 18/09/2026 elas vinham na navegação como se fossem tela, e o aquecedor
+        // gastava três entradas do ciclo com elas.
+        //
+        // **O discriminador é `type`, e NÃO `visibility`.** Medido em 18/09/2026:
+        // 10 das 11 páginas REAIS também são `HiddenInViewMode` — só a `capa` é
+        // `AlwaysVisible`, porque o relatório original navega por botão a partir
+        // da capa. Filtrar por `visibility` teria escondido a aplicação inteira
+        // menos a capa.
+        tooltip: d.type === 'Tooltip',
       })),
     });
   }
@@ -1464,6 +1675,16 @@ export class Servidor {
               // memo (`carimboAtual()`), pela mesma razão de F5: um `fs.watch`
               // mudo não pode deixar a worker presa ao `Carregado` de ontem.
               identidade: this.identidadeAtual(),
+              // O ESCOPO de quem pediu, pelo mesmo motivo que ele entra em
+              // `chaveDoCompleto` aqui na thread principal: a worker agora
+              // guarda o resultado inteiro de visual paginável (ver
+              // `MemoDeCompletos` em `worker-calculador.ts`), e um memo sem
+              // escopo devolveria o recorte de um no lugar do do outro no dia
+              // em que existir Permission Engine. Hoje `escopoDoCache` é
+              // constante para todo mundo — e é exatamente por isso que o campo
+              // precisa viajar: quando deixar de ser, ninguém vai lembrar de
+              // vir até aqui procurar.
+              escopo: escopoDoCache(quem),
             }, prioridade);
             // `worker_ms` continua sendo a SOMA (espera + cálculo). Ele não foi
             // substituído por `fila_ms_*`/`calculo_ms_*`: é o número que os
@@ -2132,6 +2353,25 @@ function tokensIguais(a: string, b: string): boolean {
 }
 
 /**
+ * `JSON.parse` que descarta `__proto__`, `constructor` e `prototype` de
+ * QUALQUER nível do objeto, via `reviver`.
+ *
+ * `JSON.parse` puro já não seta o protótipo de verdade a partir de
+ * `{"__proto__": ...}` no texto — a especificação usa `CreateDataProperty`, não
+ * o setter mágico de atribuição normal — então o resultado de hoje (só
+ * `corpo.idToken`/`corpo.token` são lidos, nunca espalhados/mesclados em outro
+ * objeto) já não é explorável. Esta função é a trava para o dia em que algum
+ * código futuro fizer `Object.assign(alvo, corpo)` ou equivalente e essa
+ * garantia deixar de valer sem ninguém perceber.
+ */
+function parseJsonSeguro(texto: string): unknown {
+  return JSON.parse(texto, (chave, valor) => {
+    if (chave === '__proto__' || chave === 'constructor' || chave === 'prototype') return undefined;
+    return valor;
+  });
+}
+
+/**
  * Lê o corpo de um pedido até `limiteBytes` (padrão 8 KB — um ID token do
  * Google tem ~1-2 KB; a folga é generosa sem abrir a porta para um corpo
  * gigante segurar memória). Único lugar da API que lê corpo — todo o resto é
@@ -2140,17 +2380,28 @@ function tokensIguais(a: string, b: string): boolean {
 function leCorpo(req: http.IncomingMessage, limiteBytes = 8192): Promise<string> {
   return new Promise((resolve, reject) => {
     let total = 0;
+    let excedeu = false;
     const partes: Buffer[] = [];
+    // **`req.destroy()` aqui era o bug**: destruir o `IncomingMessage` destrói
+    // o SOCKET (é a mesma conexão TCP), e a resposta 400 que `autenticaGoogle`
+    // (e as outras duas) tentam mandar em seguida nunca sai — o cliente vê
+    // `ECONNRESET`, não 400. A correção é rejeitar sem destruir e DRENAR o
+    // resto do corpo (ignorado, nunca empilhado em `partes`, então sem custo
+    // de memória) — quando `end` chegar, o socket segue saudável para a
+    // resposta e, em keep-alive, para o próximo pedido também.
     req.on('data', (c: Buffer) => {
+      if (excedeu) return;
       total += c.length;
       if (total > limiteBytes) {
-        req.destroy();
+        excedeu = true;
         reject(new Error('corpo do pedido excede o limite'));
         return;
       }
       partes.push(c);
     });
-    req.on('end', () => resolve(Buffer.concat(partes).toString('utf8')));
+    req.on('end', () => {
+      if (!excedeu) resolve(Buffer.concat(partes).toString('utf8'));
+    });
     req.on('error', reject);
   });
 }
