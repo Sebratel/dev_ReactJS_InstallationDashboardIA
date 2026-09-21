@@ -11,6 +11,7 @@ export {
 export {
   calculatedTableDependencies,
   calculatedTableOrder,
+  calculatedTableSourceTables,
   materializeCalculatedTable,
   materializeCalculatedTables,
   type MaterializedTable,

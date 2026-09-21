@@ -70,7 +70,9 @@ export interface PoliticaIncremental {
   query: string;
   /** O `:nome` que o SQL costurado cita. */
   parametro: string;
-  /** Valor de `:parametro` numa carga COMPLETA — o piso histórico do recorte. */
+  /** Valor de `:parametro` numa carga COMPLETA — o piso histórico do recorte.
+   * Aceita `'ano-corrente'` para resolver automaticamente para `YYYY-01-01` do ano atual.
+   */
   piso: string;
   /**
    * Colunas do RESULTADO cujo **máximo** é a marca d'água da linha.
@@ -104,6 +106,14 @@ interface ArquivoIncremental {
   >;
 }
 
+/** Resolve o token `'ano-corrente'` para `YYYY-01-01` do ano atual (UTC). */
+function resolverPiso(piso: string): string {
+  if (piso === 'ano-corrente') {
+    return `${new Date().getUTCFullYear()}-01-01`;
+  }
+  return piso;
+}
+
 /**
  * Lê `specs/_catalog/incremental.yaml`. Sem o arquivo, ninguém é incremental —
  * que é o estado de hoje de 21 das 22 queries e não é erro.
@@ -126,7 +136,7 @@ export function lePoliticas(specsDir: string): Map<string, PoliticaIncremental> 
     fora.set(query, {
       query,
       parametro: bruto.parametro!,
-      piso: bruto.piso!,
+      piso: resolverPiso(bruto.piso!),
       marca: bruto.marca,
       chave: bruto.chave,
       margemDias: bruto.margem_dias ?? 2,

@@ -345,6 +345,69 @@ test('tabela calculada congelada ANTES do snapshot de origem erra alto e diz o c
   );
 });
 
+/**
+ * **O falso positivo que custava 34,3% do relógio.** Medido em 18/09/2026: o refresh
+ * automático roda em três grupos e só recongela as calculadas no FIM de cada um, então
+ * durante o grupo o disco tem query nova e calculada velha. Até aquele dia a régua era
+ * "a query mais recente DO PLANO", e o grupo `frio` — que não alimenta calculada
+ * nenhuma — derrubava as 7 mesmo assim, HTTP 409 por ~204 s a cada meia hora.
+ *
+ * Aqui `ALMOXARIFADO` faz o papel do grupo `frio`: está no plano, foi materializada
+ * agora, e `CIDADES` não nasce dela. Nada a invalida.
+ */
+test('query que a calculada NÃO usa, rematerializada agora, não invalida nada', async () => {
+  const dir = await comSnapshot(undefined, '2026-08-05T09:00:00.000Z');
+  const m = modeloCalc();
+  m.addTable({
+    id: 'alm', name: 'ALMOXARIFADO', queryRef: 'q-alm',
+    columns: [col('ITEM'), col('SALDO', { type: 'int64' })],
+  });
+  // Bem mais nova que `CIDADES` — e irrelevante para ela.
+  await escreve(
+    arquivoDaQuery(dir, 'q-alm'),
+    { query: 'q-alm', tabelas: ['ALMOXARIFADO'], geradoEm: '2026-08-09T09:00:00.000Z' },
+    ['item', 'saldo'],
+    [{ item: 'ONU', saldo: 3 }] as never,
+  );
+  await congelaCidades(dir, m, '2026-08-06T09:00:00.000Z', [{ CIDADE: 'Bauru' }]);
+
+  const page = pagina([
+    { ...card('Total'), entities_used: ['OS', 'CIDADES', 'ALMOXARIFADO'] },
+  ]);
+  const r = await carrega({ dir, model: m, dashboards: [page], now: AGORA });
+  assert.equal(r.linhasPorTabela.get('ALMOXARIFADO'), 1, 'a query alheia entrou no plano');
+  assert.equal(r.linhasPorTabela.get('CIDADES'), 1, 'e a calculada foi servida do arquivo');
+});
+
+/**
+ * O contrapeso do teste acima: afrouxar a régua para a origem CERTA continua sendo
+ * proibido. Se isto passar a devolver linhas em vez de erro, a guarda morreu.
+ */
+test('a origem de verdade, rematerializada agora, continua invalidando', async () => {
+  const dir = await comSnapshot(undefined, '2026-08-07T09:00:00.000Z');
+  const m = modeloCalc();
+  m.addTable({
+    id: 'alm', name: 'ALMOXARIFADO', queryRef: 'q-alm',
+    columns: [col('ITEM')],
+  });
+  await escreve(
+    arquivoDaQuery(dir, 'q-alm'),
+    { query: 'q-alm', tabelas: ['ALMOXARIFADO'], geradoEm: '2026-08-01T09:00:00.000Z' },
+    ['item'],
+    [{ item: 'ONU' }] as never,
+  );
+  await congelaCidades(dir, m, '2026-08-05T09:00:00.000Z', [{ CIDADE: 'Bauru' }]);
+
+  const page = pagina([
+    { ...card('Total'), entities_used: ['OS', 'CIDADES', 'ALMOXARIFADO'] },
+  ]);
+  await assert.rejects(
+    () => carrega({ dir, model: m, dashboards: [page], now: AGORA }),
+    // Nomeia a culpada: é 'OS' que a invalidou, e não "alguma coisa do plano".
+    /'CIDADES' foi congelada em 2026-08-05.*antes da materialização mais recente de 'OS'/s,
+  );
+});
+
 /** O contraste: mais nova que a origem, ela é lida — e é o arquivo que manda. */
 test('tabela calculada congelada DEPOIS do snapshot de origem é usada como está', async () => {
   const dir = await comSnapshot(undefined, '2026-08-05T09:00:00.000Z');

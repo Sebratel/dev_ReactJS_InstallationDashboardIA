@@ -29,7 +29,7 @@ queries:
     parametro: desde
     # O piso do recorte de negócio: "só 2026". É o valor de `:desde` na carga
     # completa, e o chão de que a incremental nunca desce.
-    piso: '2026-01-01'
+    piso: 'ano-corrente'
     # A marca é o MÁXIMO das duas. `DATA ENCERRADO` é `a.modified` e é NULA em
     # solicitação que nunca mudou — sozinha, ela perderia toda linha nova.
     marca:
@@ -76,7 +76,7 @@ queries:
               -- 1. a solicitação nasceu ou mudou.
               SELECT DISTINCT a.title
               FROM assignments a
-              WHERE a.created >= '2026-01-01'
+              WHERE a.created >= DATE_TRUNC('year', CURRENT_DATE)
                 AND GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde
 
               UNION
@@ -86,7 +86,7 @@ queries:
               FROM patrimony_packing_list_items plis
               JOIN patrimony_packing_lists ppl ON ppl.id = plis.patrimony_packing_list_id
               JOIN assignments a ON a.id = ppl.assignment_id
-              WHERE a.created >= '2026-01-01'
+              WHERE a.created >= DATE_TRUNC('year', CURRENT_DATE)
                 AND GREATEST(plis.created, COALESCE(plis.modified, plis.created)) >= :desde
 
               UNION
@@ -101,8 +101,8 @@ queries:
               JOIN assignments a ON a.id = ai.assignment_id
               WHERE raux.assignment_type = 'RAUX'
                 AND raux.corresponding_parent_id IS NOT NULL
-                AND raux.final_date >= '2026-01-01'
-                AND a.created >= '2026-01-01'
+                AND raux.final_date >= DATE_TRUNC('year', CURRENT_DATE)
+                AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
                 AND GREATEST(raux.created, COALESCE(raux.modified, raux.created)) >= :desde
           ),
           bruto AS (
@@ -131,5 +131,5 @@ queries:
       #
       # Há ainda um terceiro `it.id IN (...)` no CTE `alocacao` (linha ~232 do SQL),
       # com outra lista de tipos. A âncora de duas linhas não o alcança.
-      - de: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo"
-        para: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo\n      AND a.title IN (SELECT title FROM alvos)"
+      - de: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo"
+        para: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo\n      AND a.title IN (SELECT title FROM alvos)"

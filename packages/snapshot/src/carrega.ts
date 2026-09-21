@@ -27,6 +27,7 @@ import { Dataset } from '../../measure-engine/src/dataset.ts';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
 import {
   calculatedTableOrder,
+  calculatedTableSourceTables,
   materializeCalculatedTable,
 } from '../../measure-engine/src/calculated.ts';
 import { normalizeName as normaliza, type SemanticModel } from '../../semantic-model/src/model.ts';
@@ -216,6 +217,13 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const datas: string[] = [];
   /** A materialização de query mais recente entre as carregadas. Ver `confereIdadeDaCalculada`. */
   let maisNovoDeQuery: string | null = null;
+  /**
+   * `geradoEm` de CADA tabela de query carregada, por nome normalizado.
+   *
+   * É o que permite a `confereIdadeDaCalculada` perguntar "a MINHA origem mudou?"
+   * em vez de "alguma coisa do plano mudou?". Ver o docstring de lá.
+   */
+  const geradoEmPorTabela = new Map<string, string>();
 
   const faltando: { tabela: string; query: string }[] = [];
   for (const t of tabelas) {
@@ -325,6 +333,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     dataset.adotaTabela(t.nome, linhas as never, fora);
     linhasPorTabela.set(t.nome, linhas.length);
     datas.push(cabecalho.geradoEm);
+    geradoEmPorTabela.set(normaliza(t.nome), cabecalho.geradoEm);
     if (maisNovoDeQuery === null || cabecalho.geradoEm > maisNovoDeQuery) {
       maisNovoDeQuery = cabecalho.geradoEm;
     }
@@ -348,7 +357,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     if (opts.lerCalculadas !== false && fs.existsSync(arq)) {
       const cab = leCabecalho(arq);
       confereTabelaCalculada(t, cab, opts.dir);
-      confereIdadeDaCalculada(t, cab, maisNovoDeQuery, opts.dir);
+      confereIdadeDaCalculada(t, cab, maisNovoDeQuery, opts.dir, opts.model, geradoEmPorTabela);
 
       // O relógio andou: o valor congelado é o de outro dia. Recalcular aqui é
       // barato **porque a regra não é transitiva** — as duas tabelas desta base que
@@ -726,23 +735,70 @@ function confereTabelaCalculada(
  * serve o número de anteontem **com cara de hoje**. É exatamente o "número plausível
  * e errado" que a regra 9 proíbe, e ele não deixava nenhum rastro.
  *
- * **O critério é conservador de propósito.** Compara com a materialização de query
- * mais recente **do plano**, não com as dependências apuradas do DAX. Apurar
- * dependência erraria para o lado permissivo se a leitura do DAX falhasse — e o lado
- * permissivo aqui é servir número velho calado. O preço é um falso positivo quando se
- * rematerializa uma query que a tabela não usa; o remédio é o comando que a mensagem
- * já traz, e que depois de um refresh se ia rodar de qualquer jeito.
+ * **O critério compara com a ORIGEM desta tabela** (`calculatedTableSourceTables`),
+ * e cai para "a query mais recente do plano" quando não dá para apurar a origem.
+ *
+ * Até 18/09/2026 era só a régua conservadora, e o docstring aqui assumia o preço:
+ * *"um falso positivo quando se rematerializa uma query que a tabela não usa"*.
+ * Medido naquele dia, o preço era o defeito principal. O refresh automático roda em
+ * três grupos e recongela as calculadas só no FIM de cada um, então o disco fica
+ * inconsistente durante o grupo inteiro — **34,3% do relógio** (699,5 s de
+ * materialização em 2.038 s, `snapshot/refresh-historico.log` de 18/09). Nessa
+ * janela, todo pedido FRIO de página que tocasse calculada respondia HTTP 409.
+ *
+ * E a maior parte disso era falso positivo: as 7 calculadas desta base nascem de
+ * apenas TRÊS queries — `PROTOCOLOS GERAL` (grupo `medio`), `FIELD AGENDA` (sem
+ * cadência automática) e `PROTOCOLOS TELEFONIA` (grupo `quente`). O grupo `frio`
+ * (`field-agenda-slot`, `clima-tempo`, `protocolos-produtividade`,
+ * `protocolos-auxiliares`) não toca nenhuma delas, e mesmo assim invalidava as 7
+ * durante os ~204 s que leva.
+ *
+ * **O lado permissivo continua sendo o perigoso**, e é por isso que a apuração
+ * devolve `null` em vez de chutar: DAX que não faz parse, calculada sem `table_dax`
+ * na recursão, ou varredura que não resolve tabela nenhuma voltam à régua antiga.
+ * Permissivo só onde se sabe, nunca por omissão.
  */
 function confereIdadeDaCalculada(
   t: ModelTable,
   cabecalho: CabecalhoDeSnapshot,
   maisNovoDeQuery: string | null,
   dir: string,
+  model: SemanticModel,
+  geradoEmPorTabela: ReadonlyMap<string, string>,
 ): void {
-  if (maisNovoDeQuery === null || cabecalho.geradoEm >= maisNovoDeQuery) return;
+  if (maisNovoDeQuery === null) return;
+
+  // A origem DESTA tabela, e não o plano inteiro. `null` = não deu para afirmar, e
+  // aí volta a valer a régua conservadora — ver o docstring acima.
+  const origens = calculatedTableSourceTables(model, t);
+  let limite = maisNovoDeQuery;
+  // As duas frases COMEÇAM igual de propósito: "materialização mais recente". É o
+  // que quem lê log e quem escreveu teste já procuram, e o que muda depois dela é
+  // ganho de informação, não outra mensagem.
+  let comoFoiMedido = 'materialização mais recente das tabelas de origem';
+  if (origens !== null) {
+    let maior: string | null = null;
+    const culpadas: string[] = [];
+    for (const nome of origens) {
+      const quando = geradoEmPorTabela.get(nome);
+      // Origem fora do plano não foi carregada agora, então não há carimbo novo
+      // para comparar — e ela não pode ter mudado nesta carga.
+      if (quando === undefined) continue;
+      culpadas.push(model.table(nome)?.name ?? nome);
+      if (maior === null || quando > maior) maior = quando;
+    }
+    // Nenhuma origem desta tabela entrou no plano: nada que ela usa foi recarregado.
+    if (maior === null) return;
+    limite = maior;
+    comoFoiMedido =
+      `materialização mais recente de ${culpadas.map((x) => `'${x}'`).join(', ')}, ` +
+      `de que ela nasce`;
+  }
+
+  if (cabecalho.geradoEm >= limite) return;
   throw new Error(
     `Snapshot desatualizado: '${t.name}' foi congelada em ${cabecalho.geradoEm}, antes da ` +
-      `materialização mais recente das tabelas de origem (${maisNovoDeQuery}). As linhas em ` +
+      `${comoFoiMedido} (${limite}). As linhas em ` +
       `${arquivoDaCalculada(dir, t.name)} são as do dado antigo, e o DAX igual não denuncia ` +
       `isso. Rode: npm run snapshot:calculadas -- --tabela="${t.name}"`,
   );

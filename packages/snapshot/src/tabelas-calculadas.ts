@@ -30,7 +30,10 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
-import { materializeCalculatedTable } from '../../measure-engine/src/calculated.ts';
+import {
+  calculatedTableSourceTables,
+  materializeCalculatedTable,
+} from '../../measure-engine/src/calculated.ts';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
 import {
@@ -40,6 +43,51 @@ import {
   SUFIXO_CRU,
   type Escalar,
 } from './formato.ts';
+
+/**
+ * As queries que alimentam alguma tabela calculada — e se dá para AFIRMAR isso.
+ *
+ * **Para que serve.** `tools/snapshot/src/index.ts` congelava as calculadas só no FIM
+ * da execução. Medido em 18/09/2026 no grupo `frio`: `field-agenda-slot` gravou às
+ * 13:46:02 e o congelamento rodou às 13:49:05, porque esperava
+ * `protocolos-produtividade` (2 min sozinha) e `protocolos-auxiliares` — duas queries
+ * que não alimentam calculada nenhuma. Foram **192 s** de `agendamento-field`
+ * recusando pedido frio com HTTP 409 por causa de dado que ela não usa. Com este
+ * conjunto, o congelamento roda logo depois da ÚLTIMA query que de fato as alimenta.
+ *
+ * **`seguro: false` quando não dá para afirmar.** Se `calculatedTableSourceTables`
+ * devolver `null` para qualquer calculada, o conjunto não é confiável e quem chama tem
+ * de manter o congelamento no fim — porque aí vale a régua conservadora de
+ * `confereIdadeDaCalculada`, e QUALQUER query posterior envelheceria a calculada.
+ *
+ * **Olha `graoReduzido`, não só `queryRef`.** `FIELD AGENDA` é alimentada por
+ * `field-agenda-slot` (padrão) OU `field-agenda` (completa), conforme o pedido toque
+ * coluna-gatilho (`specs/_catalog/projecao.yaml`). Mapear só por `queryRef` foi o erro
+ * que a previsão do ACHADOS #140 cometeu — ela concluiu que o grupo `frio` não
+ * alimentava calculada nenhuma, quando `field-agenda-slot` está justamente nele. As
+ * DUAS queries entram no conjunto.
+ */
+export function queriesQueAlimentamCalculada(
+  m: SemanticModel,
+): { queries: Set<string>; seguro: boolean } {
+  const queries = new Set<string>();
+  const porTabela = new Map<string, string[]>();
+  for (const t of m.tables.values()) {
+    if (t.queryRef) porTabela.set(normalizeName(t.name), [t.queryRef]);
+  }
+  for (const g of m.graoReduzido) {
+    const k = normalizeName(g.tabela);
+    porTabela.set(k, [...(porTabela.get(k) ?? []), g.queryPadrao, g.queryCompleta]);
+  }
+  for (const t of m.calculatedTables) {
+    const origens = calculatedTableSourceTables(m, t);
+    if (origens === null) return { queries, seguro: false };
+    for (const o of origens) {
+      for (const q of porTabela.get(normalizeName(o)) ?? []) queries.add(q);
+    }
+  }
+  return { queries, seguro: true };
+}
 
 /**
  * A identidade da **ordem das linhas** de uma tabela, pelas colunas dadas.

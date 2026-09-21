@@ -301,6 +301,20 @@ test('política sem chave derruba na leitura, não na hora de mesclar', () => {
   assert.throws(() => lePoliticas(dir), /não declara 'chave'/);
 });
 
+test("token 'ano-corrente' resolve para YYYY-01-01 do ano atual, nunca hardcoded", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'incr-'));
+  fs.mkdirSync(path.join(dir, '_catalog'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, '_catalog', 'incremental.yaml'),
+    'formato: 1\nqueries:\n  q:\n    parametro: desde\n    piso: ano-corrente\n    marca: [X]\n    chave: [Y]\n    costura:\n      - de: WITH bruto AS (\n        para: WITH alvos AS (SELECT 1 WHERE x >= :desde), bruto AS (\n',
+    'utf8',
+  );
+  const pols = lePoliticas(dir);
+  const p = pols.get('q')!;
+  const anoEsperado = new Date().getUTCFullYear();
+  assert.equal(p.piso, `${anoEsperado}-01-01`, 'deve ser o primeiro dia do ano atual, não 2026');
+});
+
 test('a política de verdade do catálogo carrega e costura o SQL de produção', () => {
   // Guarda contra o caso que mais assusta: alguém edita o SQL da spec, a âncora
   // some, e ninguém descobre até a próxima carga incremental rodar em produção.

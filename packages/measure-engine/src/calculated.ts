@@ -87,6 +87,92 @@ export function calculatedTableDependencies(model: SemanticModel, t: ModelTable)
   return [...tabelas].filter((x) => calculadas.has(x)).sort();
 }
 
+/**
+ * As tabelas **de query** de que esta tabela calculada depende, transitivamente.
+ *
+ * É a irmã permissiva de `calculatedTableDependencies`: aquela devolve as
+ * calculadas (para ordenar a materialização), esta devolve as que vêm de query
+ * (para responder *"o dado de origem mudou?"*).
+ *
+ * **Para que serve, e por que o cuidado.** `confereIdadeDaCalculada`, em
+ * `packages/snapshot/src/carrega.ts`, recusa servir tabela calculada mais velha que
+ * o dado dela. Até 18/09/2026 a comparação era contra a query mais recente **do
+ * plano da página**, e o docstring de lá assumia o preço: *"um falso positivo quando
+ * se rematerializa uma query que a tabela não usa"*. Medido em 18/09/2026, esse
+ * preço era o defeito principal, não um detalhe — as 7 calculadas desta base
+ * dependem de apenas TRÊS queries (`PROTOCOLOS GERAL`, `FIELD AGENDA`,
+ * `PROTOCOLOS TELEFONIA`), e o grupo `frio` do refresh automático não toca nenhuma
+ * delas. Ainda assim ele invalidava as 7, e as páginas respondiam HTTP 409 durante
+ * os ~204 s que ele leva.
+ *
+ * **Devolve `null` quando não dá para afirmar**, e aí quem chama tem de continuar
+ * conservador. É o ponto que decide se este atalho é seguro: errar para o lado
+ * permissivo aqui é servir número velho calado, que é o que a guarda existe para
+ * impedir. `null` sai quando o DAX não faz parse, quando a recursão encontra uma
+ * calculada sem `table_dax`, ou quando a varredura não resolve nenhuma tabela —
+ * DAX que não referencia tabela nenhuma é DAX que esta função não entendeu.
+ *
+ * Segue coluna calculada adentro e tabela calculada adentro, pelo mesmo motivo que
+ * a irmã: o DAX de `CALENDARIO INSTALADO` referencia `[DATA INSTALAÇÃO]`, que é ela
+ * própria calculada, e parar nas referências diretas veria menos do que existe.
+ */
+export function calculatedTableSourceTables(model: SemanticModel, t: ModelTable): string[] | null {
+  if (!t.tableDax) return null;
+  const calculadas = new Set(model.calculatedTables.map((x) => normalizeName(x.name)));
+  const tabelas = new Set<string>();
+  const colunasVistas = new Set<string>();
+  const daxVistos = new Set<string>();
+
+  const visitar = (dax: string): boolean => {
+    if (daxVistos.has(dax)) return true;
+    daxVistos.add(dax);
+    let ast: DaxNode;
+    try {
+      ast = parseCached(dax);
+    } catch {
+      return false;
+    }
+    const pendentes: ModelColumn[] = [];
+    walk(ast, (n) => {
+      if (n.type === 'TableRef') tabelas.add(normalizeName(n.name));
+      if (n.type === 'Identifier' && model.table(n.name)) tabelas.add(normalizeName(n.name));
+      if (n.type !== 'ColumnRef') return;
+      tabelas.add(normalizeName(n.table));
+      const chave = `${normalizeName(n.table)}[${normalizeName(n.column)}]`;
+      if (colunasVistas.has(chave)) return;
+      colunasVistas.add(chave);
+      const col = model.column(n.table, n.column);
+      if (col?.calculated && col.dax) pendentes.push(col);
+    });
+    for (const col of pendentes) {
+      if (!visitar(col.dax!)) return false;
+    }
+    return true;
+  };
+
+  if (!visitar(t.tableDax)) return null;
+
+  // Tabela calculada referenciada não é origem: a origem dela é que é. Descer é o
+  // que mantém a resposta correta se o grafo deixar de ser plano — hoje ele é
+  // (ver `calculatedTableOrder`), e este laço simplesmente não roda.
+  const fila = [...tabelas].filter((x) => calculadas.has(x) && x !== normalizeName(t.name));
+  while (fila.length > 0) {
+    const nome = fila.pop()!;
+    const alvo = model.table(nome);
+    if (!alvo?.tableDax) return null;
+    const antes = new Set(tabelas);
+    if (!visitar(alvo.tableDax)) return null;
+    for (const novo of tabelas) {
+      if (!antes.has(novo) && calculadas.has(novo) && novo !== normalizeName(t.name)) fila.push(novo);
+    }
+  }
+
+  const origens = [...tabelas].filter((x) => !calculadas.has(x)).sort();
+  // Nenhuma origem é resposta suspeita, não resposta vazia: toda calculada desta
+  // base nasce de alguma tabela de query. Quem chama continua conservador.
+  return origens.length > 0 ? origens : null;
+}
+
 /** Cache de AST local: a ordenação relê o mesmo DAX de coluna várias vezes. */
 const astCache = new Map<string, DaxNode>();
 function parseCached(dax: string): DaxNode {

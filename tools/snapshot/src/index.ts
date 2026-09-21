@@ -87,7 +87,10 @@ import {
   materializaColunasPorGrao,
   materializaveis as colunasMaterializaveis,
 } from '../../../packages/snapshot/src/colunas-calculadas.ts';
-import { shaDasChaves } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
+import {
+  queriesQueAlimentamCalculada,
+  shaDasChaves,
+} from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -1003,8 +1006,46 @@ async function rodaEmSubprocesso(id: string): Promise<Resultado> {
   });
 }
 
+const alimentam = queriesQueAlimentamCalculada(model);
+
+/**
+ * O índice da ÚLTIMA query desta execução que alimenta calculada.
+ *
+ * Congelar logo depois dela — em vez de no fim de tudo — é o que fecha a janela em que
+ * o disco tem query nova e calculada velha. Medido em 18/09/2026 no grupo `frio`:
+ * `field-agenda-slot` gravou às 13:46:02 e o congelamento só rodou às 13:49:05, porque
+ * esperava `protocolos-produtividade` (2 min sozinha) e `protocolos-auxiliares` — duas
+ * queries que não alimentam calculada nenhuma. Foram **192 s** de `agendamento-field`
+ * recusando pedido frio por causa de dado que ela não usa.
+ *
+ * É a ÚLTIMA, e não a primeira: congelar depois de `field-agenda-slot` mas antes de
+ * `protocolos-geral` deixaria as calculadas velhas outra vez, agora sem ninguém para
+ * corrigi-las até o fim da execução.
+ */
+const ultimaQueAlimenta = alimentam.seguro
+  ? aBuscar.reduce((ultimo, id, i) => (alimentam.queries.has(id) ? i : ultimo), -1)
+  : -1;
+
+/** Congela as calculadas num subprocesso. `true` se deu certo. */
+function congelaCalculadas(): boolean {
+  console.log('\n── Congelando as tabelas calculadas (a outra metade do refresh) ──');
+  const calc = spawnSync(
+    process.execPath,
+    [
+      ...(args.memoria ? [`--max-old-space-size=${args.memoria}`] : []),
+      path.join(ROOT, 'tools', 'snapshot', 'src', 'calculadas.ts'),
+      '--todas',
+    ],
+    { cwd: ROOT, stdio: 'inherit' },
+  );
+  return calc.status === 0;
+}
+
 const resultados: Resultado[] = [];
-for (const id of aBuscar) {
+/** Congelou no meio do laço? Então o bloco do fim não repete o trabalho. */
+let congelouCedo = false;
+let congelouCedoOk = true;
+for (const [i, id] of aBuscar.entries()) {
   process.stderr.write(`  ${id}… `);
   const r = await rodaEmSubprocesso(id);
   process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
@@ -1013,6 +1054,20 @@ for (const id of aBuscar) {
   // distância. Junção que não casa nada é a diferença entre dado e BLANK (#64).
   for (const n of r.notas ?? []) process.stderr.write(`      ${n}\n`);
   resultados.push(r);
+
+  // A última que alimenta calculada acabou de gravar: congela AGORA. O que vem depois
+  // não é origem de calculada nenhuma, então não as envelhece — é a mesma apuração de
+  // dependência que `confereIdadeDaCalculada` usa para decidir se recusa (ver o
+  // docstring dela em `packages/snapshot/src/carrega.ts`).
+  if (!args.semCalculadas && i === ultimaQueAlimenta && resultados.some((x) => x.ok)) {
+    const faltam = aBuscar.length - 1 - i;
+    console.log(
+      `\n  Congelando as calculadas AGORA: '${id}' era a última desta execução que as` +
+        ` alimenta.${faltam > 0 ? ` As ${faltam} restante(s) não são origem de nenhuma.` : ''}`,
+    );
+    congelouCedo = true;
+    congelouCedoOk = congelaCalculadas();
+  }
 }
 
 // ------------------------------------------------------------------ manifesto
@@ -1116,18 +1171,19 @@ console.log('\n  Contém dado de cliente. O diretório está no .gitignore.');
 //
 // Encadear é a correção. `--sem-calculadas` sai fora para quem está depurando uma
 // query só e não quer pagar o congelamento a cada tentativa.
-if (!args.semCalculadas && resultados.some((r) => r.ok)) {
-  console.log('\n── Congelando as tabelas calculadas (a outra metade do refresh) ──');
-  const calc = spawnSync(
-    process.execPath,
-    [
-      ...(args.memoria ? [`--max-old-space-size=${args.memoria}`] : []),
-      path.join(ROOT, 'tools', 'snapshot', 'src', 'calculadas.ts'),
-      '--todas',
-    ],
-    { cwd: ROOT, stdio: 'inherit' },
-  );
-  if (calc.status !== 0) {
+//
+// **Desde 18/09/2026 este bloco costuma NÃO rodar**, e isso é a correção, não uma
+// regressão: quando a origem de toda calculada é apurável, o congelamento já
+// aconteceu lá em cima, logo depois da última query que as alimenta. Aqui ele só
+// pega dois casos, e os dois de propósito:
+//
+//   1. `ultimaQueAlimenta === -1` — ou nenhuma query desta execução alimenta
+//      calculada (e aí congelar é barato e protege contra a apuração estar
+//      incompleta), ou a apuração recusou (`seguro: false`) e vale a régua antiga;
+//   2. o congelamento antecipado FALHOU — a mensagem abaixo é a que importa.
+if (!args.semCalculadas && resultados.some((r) => r.ok) && !(congelouCedo && congelouCedoOk)) {
+  const ok = congelouCedo ? false : congelaCalculadas();
+  if (!ok) {
     console.error(
       '\nAs queries foram materializadas, mas o congelamento das calculadas FALHOU.\n' +
         'O snapshot está inconsistente e as páginas vão responder 409 até isto rodar:\n' +
