@@ -70,7 +70,7 @@
 | Containerização | **existe** (16/09/2026): `Dockerfile` na raiz, `docker-compose.prod.yml` com `api`/`redis`/`proxy` e `docker-compose.local.yml` como sobreposição de desenvolvimento | **pronto** |
 | Proxy reverso | **existe** desde o commit `7642fab`: `nginx.conf` na raiz, montado como `/etc/nginx/conf.d/default.conf` no serviço `proxy` do `docker-compose.prod.yml` (`nginx:1.27-alpine`, porta 80). Traz `/`, `/api/` com `proxy_read_timeout 90s` (o padrão de 60 s cortava `agendamento-field` a frio), `/api/eventos` com as quatro linhas de SSE e `/auth/`. Até 17/09/2026 esta linha dizia "não existe" — errado desde então | **pronto** |
 | TLS | **não existe** — o `nginx.conf` só tem `listen 80`, e a publicação da porta 443 está comentada no compose. O que falta é o **certificado**, decisão de infraestrutura e não do repositório (§3.3) | sim |
-| Processo supervisionado | **meio caminho** (16/09/2026): o `npm start` ressuscita o daemon de refresh se ele morrer (5s→15s→45s→2min→5min, depois desiste alto — `tools/subir/src/supervisao.ts`), e cada arranque fica em `snapshot/refresh-historico.log`. O `npm start` em si continua sem supervisor: `tools/subir/agenda-no-windows.ps1` registra a tarefa que o sobe no logon, **mas ela ainda não foi registrada nesta máquina** — é um comando, com Administrador, e está em §2.3 | sim, e o comando está escrito |
+| Processo supervisionado | **mudou em 19/09/2026, e o bloqueio caiu pela metade.** A cadência do refresh deixou de depender do Agendador de Tarefas do Windows: ela é um relógio por grupo dentro do processo da API (`apps/api/src/agendador.ts`), e em produção quem supervisiona é o `restart: unless-stopped` do `docker-compose.prod.yml`, que já existe. **O que sobra:** no host, fora do Docker, nada reergue a API se o processo morrer — `npm start` não a ressuscita, de propósito (a morte mais comum dela é outra instância tomando a porta 3100). A resposta para isso é subir pelo compose, não registrar tarefa de host. Ver §2.2 | **não, se subir por Docker**; sim, se rodar `npm start` a seco |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
 
 **Em uma frase, e ela mudou em 17/09/2026:** os artefatos de infraestrutura **estão
@@ -156,7 +156,54 @@ permissões — e o que a API serve inclui:
   divulgada e as páginas que expõem dado pessoal fora do menu. Isso é um piloto de
   alcance reduzido, e precisa ser dito com essas palavras a quem aprovar.
 
-### 2.2 O refresh é automático — o que falta é quem o levante depois de um reboot
+### 2.2 O refresh é automático, e desde 19/09/2026 ele mora dentro da API
+
+> **MUDANÇA DE ESTRATÉGIA — 19/09/2026. Leia isto antes do resto da seção, porque
+> o resto foi escrito para a arquitetura anterior.**
+>
+> A cadência dependia de uma corrente de três elos, e cada um caía sozinho e em
+> silêncio:
+>
+> ```
+> Agendador de Tarefas do Windows  ->  npm start  ->  daemon (processo à parte)
+> ```
+>
+> O primeiro elo é configuração de MÁQUINA, não do repositório. Enquanto ele não
+> estivesse registrado naquele Windows, um reboot deixava tudo parado — e foi
+> exatamente isso em 16/09/2026 (§2.3).
+>
+> **Os três elos viraram um.** O agendador agora é um relógio por grupo dentro do
+> processo da API (`apps/api/src/agendador.ts`), e quem supervisiona é o
+> `restart: unless-stopped` do Docker. É o desenho do dashboard comercial
+> `COM · Gestão Comercial`, adaptado ao nosso volume de dado — o cabeçalho daquele
+> arquivo lista item a item o que foi copiado e o que não foi, com o motivo medido.
+>
+> O que mudou na prática:
+>
+> | antes | agora |
+> |---|---|
+> | `npm start` subia um segundo processo (`daemon.ts`) | `npm start` sobe só a API; ela mesma agenda |
+> | um tick global de 15 min varria os três grupos | um relógio POR GRUPO, na cadência declarada de cada um |
+> | grupo lento fazia os outros PERDEREM a vez (`ciclo-pulado`), sem nada ficar vermelho | grupo atrasado ESPERA a fila; só o disparo do grupo contra ele mesmo é descartado, e vira `disparo-coalescido` no histórico |
+> | `refresh-status.json` não distinguia "não falhou" de "não rodou" | `GET /api/saude` traz o bloco `agendador`, com `ativo` e o motivo de estar desligado |
+> | a tarefa do Windows era pré-requisito para a cadência existir | a tarefa do Windows **não é mais necessária para o refresh** |
+>
+> **Produção continua com o container `refresh` separado, e isso é deliberado.** O
+> serviço `api` do `docker-compose.prod.yml` ganhou `AUTO_REFRESH: false`, porque o
+> `mem_limit` dele é 6g (dimensionado com `npm run probe:memoria-api`, RSS de pico
+> 3137–3622 MB) e uma materialização dispara um filho com
+> `--max-old-space-size=8192` — `protocolos-geral` já precisou de 12 GB. Esse filho
+> nasceria dentro do cgroup da API e o OOM killer levaria a tela junto com a carga.
+>
+> **Dois agendadores NÃO podem coexistir**: os dois fariam read-modify-write no
+> mesmo `manifesto.json` e um apagaria as tabelas que o outro acabou de registrar,
+> sem erro nenhum. Se um dia a API passar a agendar em produção, o serviço
+> `refresh` tem de sair do compose na mesma alteração.
+>
+> O daemon (`tools/refresh/src/daemon.ts`) **continua existindo e continua**
+> **correto** — é ele que o container de produção roda, e `--historico` continua
+> sendo o relatório de operador dos dois agendadores.
+
 
 > **Esta seção abria com *"hoje o refresh é uma pessoa digitando `npm run snapshot`"* até
 > 17/09/2026**, e o próprio corpo dela desmentia isso em três lugares. A abertura é de
@@ -388,15 +435,34 @@ acima dele.
 
 ### 2.4 A paridade não está fechada
 
-Dos 64 cards com gabarito, 22 são carimbo de refresh (fora do jogo) e **42 estão em
-jogo**: 18 batem, 18 diferem, 6 divergem por decisão registrada. Dos 18 que diferem,
-11 estão em 3 páginas cujo gabarito é sabidamente inválido — a fila real são **7
-divergências**, a primeira sendo `TOTAL INSTALADOS` de `manutencao-inicial`, 34% maior
-do nosso lado.
+**REFEITO EM 18/09/2026, contra o relatório confirmado.** Este parágrafo dizia: *"42
+em jogo: 18 batem, 18 diferem (…) a fila real são 7 divergências, a primeira sendo
+`TOTAL INSTALADOS` de `manutencao-inicial`, 34% maior do nosso lado"*. Aquele card
+**bate hoje** (95.679 contra 95.686): os 34% eram a janela bloqueada de
+`PROTOCOLOS GERAL`, não defeito. Varrendo as 11 páginas pelo HTTP de verdade:
 
-Isto **não impede** um piloto lado a lado com o Power BI. Impede a frase "substitui o
-Power BI". O caminho e os critérios estão em `CONTINUACAO.md` §9.1 — não os duplico
-aqui de propósito, para não haver duas versões da mesma fila.
+```
+49 batem · 18 diferem · 0 ausentes · 0 erros
+```
+
+E as 18 que diferem têm todas causa escrita — **nenhuma sem explicação**:
+
+| quantas | o que é |
+|---|---|
+| 11 | `Hora mais recente` — carimbo de refresh de cada lado, instantes diferentes |
+| 4 | `FIELD AGENDA`, bloqueada: 1.739.231 linhas lá contra 41.584 aqui |
+| 2 | `Primeiro Classificacao` — previsão do tempo, atualiza sozinha |
+| 1 | `# MEDIA INSTALADO BACKLOG` — `MIN([DATA INSTALAÇÃO])` difere em 16 dias |
+
+O que destravou isso foi **confirmar contra qual relatório se estava medindo** (ver
+ACHADOS #141): seis tabelas ganharam janela provada, onde antes havia zero. Dois
+defeitos nossos apareceram no caminho e foram corrigidos — um espaço no fim de
+`TIPO DE PROTOCOLO` e o comparador de datas que comparava texto com objeto.
+
+Isto **continua não bastando** para a frase "substitui o Power BI": três tabelas
+seguem bloqueadas (`FIELD AGENDA`, `REINCIDÊNCIA`, `INSTALAÇÕES REINCIDENTES`) e 20
+cards ficam sem gabarito automático por dependerem delas. O caminho e os critérios
+estão em `CONTINUACAO.md` §9.1 — não os duplico aqui de propósito.
 
 ---
 

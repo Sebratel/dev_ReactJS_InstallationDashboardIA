@@ -49,6 +49,24 @@ services:
       # modo de desenvolvimento — e todo comportamento condicionado a
       # `NODE_ENV === 'production'` ficava desligado, sem erro e sem log.
       NODE_ENV: production
+      # DESLIGA o agendador que a API passou a ter dentro do processo em 19/09/2026
+      # (apps/api/src/agendador.ts). AQUI, e só aqui — no host, `npm start` usa o
+      # padrão, que é ligado, e é isso que tirou a tarefa do Agendador de Tarefas do
+      # Windows do caminho.
+      #
+      # **Por que produção continua com o container `refresh` separado.** Não é
+      # conservadorismo: é o `mem_limit` deste mesmo serviço. A API tem teto de 6g,
+      # dimensionado com medição (`npm run probe:memoria-api`, RSS de pico 3137-3622 MB
+      # nas 10 páginas do menu). Uma materialização dispara um filho com
+      # `--max-old-space-size=8192`, e `protocolos-geral` já precisou de 12 GB. Esse
+      # filho nasceria DENTRO do cgroup do container `api`, e o OOM killer levaria a
+      # tela junto com a carga — trocar refresh atrasado por tela fora do ar.
+      #
+      # **E dois agendadores não podem coexistir**, que é a razão de isto ser
+      # obrigatório e não uma preferência: os dois fariam read-modify-write no mesmo
+      # `manifesto.json`, e um apagaria as tabelas que o outro acabou de registrar,
+      # sem erro nenhum (ver o topo de tools/refresh/src/tick.ts).
+      AUTO_REFRESH: 'false'
       # Na rede interna do compose o serviço redis chama-se 'redis', não localhost.
       # A senha é a mesma REDIS_PASSWORD que autentica o container `redis` logo
       # abaixo (--requirepass) — as duas variam juntas, nunca uma sem a outra.
