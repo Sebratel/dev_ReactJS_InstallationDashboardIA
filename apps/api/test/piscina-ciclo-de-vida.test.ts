@@ -27,6 +27,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { PiscinaWorkers } from '../src/piscina-workers.ts';
+import { ESCOPO_TODOS } from '../src/escopo-cache.ts';
 import type { MensagemCalculoWorker } from '../src/worker-calculador.ts';
 import type { DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 
@@ -42,6 +43,8 @@ const TAREFA: Omit<MensagemCalculoWorker, 'idReq'> = {
   janela: { de: 0, linhas: 10 },
   clicados: [],
   agoraIso: '2026-09-08T12:00:00.000Z',
+  identidade: 'fixture@2026-09-08',
+  escopo: ESCOPO_TODOS,
 };
 
 /**

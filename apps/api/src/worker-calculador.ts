@@ -13,10 +13,12 @@
 // reconstruir o mesclador deste lado com a MESMA `mesclador()` que o processo
 // principal usa. Ver `overlay-realtime.ts`.
 
-import { parentPort } from 'node:worker_threads';
+import { parentPort, workerData } from 'node:worker_threads';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.ts';
-import { calculaPagina, type Janela } from './calcula.ts';
+import { calculaPagina, type Janela, type MemoDeCompletos } from './calcula.ts';
+import { chaveDoCompleto, diaDoCalculo } from './cache-resposta.ts';
+import { CacheDeVisual } from './cache-visual.ts';
 import { mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 import type { DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 
@@ -59,6 +61,18 @@ export interface MensagemCalculoWorker {
    * para avisar que o disco mudou.
    */
   identidade: string;
+  /**
+   * O ESCOPO de quem pediu (`escopoDoCache`, `escopo-cache.ts`) — não a
+   * identidade da pessoa. Entra aqui pelo mesmo motivo que entra em
+   * `chaveDoCompleto` na thread principal: é ele que separa o resultado inteiro
+   * guardado em `completos` (abaixo) do resultado de quem alcança outras linhas.
+   *
+   * Hoje `escopoDoCache` devolve a MESMA constante para todo mundo, então o
+   * campo não muda chave nenhuma — e é exatamente por isso que ele precisa
+   * existir agora: no dia do Permission Engine, um memo sem escopo devolve o
+   * recorte do gestor A para o gestor B, sem erro e sem sintoma.
+   */
+  escopo: string;
 }
 
 /**
@@ -169,6 +183,48 @@ const cacheDeCarga = new Map<string, Promise<Carregado>>();
  *  mesmo jeito que `Servidor.carrega()` faz com `carimboDasCarregadas`. */
 let identidadeCache: string | null = null;
 
+/**
+ * O resultado **inteiro** de um visual paginável, guardado entre um pedido e
+ * outro — a MESMA peça que `Servidor.completos` é na thread principal, pela
+ * mesma razão pela qual `cacheDeCarga` acima existe: worker thread tem memória
+ * própria, e o que a thread principal guarda não alcança daqui.
+ *
+ * **Por que ela faltava, e o que isso custava.** `calculaPagina` recebe um
+ * `memo` opcional (`MemoDeCompletos`, `calcula.ts`); a thread principal monta o
+ * dela em `servidor.ts`, mas aquele ramo só roda quando a piscina está inativa
+ * ou a worker falhou. No caminho de produção — piscina ativa — a chamada daqui
+ * passava `undefined`, e o `CacheDeVisual` de 512 MB do processo ficava com
+ * ZERO itens enquanto os cliques pagavam o preço que ele existe para não pagar.
+ * Medido em 21/09/2026, `visao-geral`, banco de prova com snapshot congelado:
+ * paginar e buscar custavam 1.436–2.091 ms cada, `cacheVisuais.itens = 0` ao
+ * fim de dez pedidos.
+ *
+ * **O orçamento é repartido, não replicado.** O teto vem da piscina por
+ * `workerData` já dividido pelo nº de workers (ver `configuracaoDaPiscina`):
+ * o total gasto pela API continua sendo `CACHE_VISUAL_MB`, onde quer que o
+ * cálculo aconteça. Sem `workerData` — quem subir esta worker à mão — o teto é
+ * zero, que é o desligado honesto: `CacheDeVisual` com teto 0 não guarda nada e
+ * o comportamento volta a ser exatamente o de antes desta linha.
+ *
+ * **E ele mora DENTRO do heap da worker** (`maxOldGenerationSizeMb`,
+ * `piscina-workers.ts`), porque um `Completo` é objeto de JS comum — ao
+ * contrário das colunas do snapshot, que são `TypedArray` e vivem fora dele.
+ * É por isso que o teto é uma fração do heap por worker, e não o total.
+ */
+const completos = new CacheDeVisual({
+  tetoBytes: Math.max(0, Number((workerData as { tetoDeVisuaisMB?: number } | null)?.tetoDeVisuaisMB ?? 0)) * 1024 * 1024,
+  aoRecusar: (chave, bytes, teto) => {
+    // Mesmo canal e mesmo argumento do `aoRecusar` da thread principal: recusa
+    // é orçamento, não falha — mas calá-la faria a lentidão daquele visual
+    // parecer inexplicável.
+    console.error(
+      `[cache-visual/worker] ${chave} não coube: ${(bytes / 1048576).toFixed(1)} MB ` +
+        `contra um teto de ${(teto / 1048576).toFixed(0)} MB. ` +
+        `A janela deste visual vai recalcular a cada clique.`,
+    );
+  },
+});
+
 function guardaNoCache(chave: string, promessa: Promise<Carregado>): void {
   cacheDeCarga.delete(chave);
   cacheDeCarga.set(chave, promessa);
@@ -188,6 +244,12 @@ if (parentPort) {
       for (const chave of [...cacheDeCarga.keys()]) {
         if (chave.startsWith(prefixo)) cacheDeCarga.delete(chave);
       }
+      // O resultado inteiro desta página também: ele foi calculado sobre o
+      // dataset que acabou de ser descartado. `limpaPagina` e não `limpa` pelo
+      // mesmo motivo de `Servidor.aoTabelaMudar` (`servidor.ts`) — só quem
+      // depende da tabela que mudou precisa recalcular; o resto continua
+      // quente.
+      completos.limpaPagina(msg.dashboardId);
       return; // sem resposta: ver o comentário de `MensagemDeInvalidacao`.
     }
 
@@ -203,6 +265,7 @@ if (parentPort) {
       agoraIso,
       overlays,
       identidade,
+      escopo,
     } = msg;
 
     try {
@@ -213,6 +276,12 @@ if (parentPort) {
 
       if (identidadeCache !== identidade) {
         cacheDeCarga.clear();
+        // Os resultados inteiros junto. A chave deles já carrega a identidade,
+        // então nunca seriam SERVIDOS errados — mas ficariam ocupando o
+        // orçamento até o LRU chegar neles, e o orçamento é justamente o que
+        // decide o que fica. Mesmo argumento, palavra por palavra, do
+        // `this.completos.limpa()` em `Servidor.carrega()`.
+        completos.limpa();
         identidadeCache = identidade;
       }
 
@@ -256,12 +325,49 @@ if (parentPort) {
 
       const carregado = await promessa;
 
+      // A chave do resultado inteiro, montada com a MESMA função da thread
+      // principal (`chaveDoCompleto`) de propósito: duas montagens de chave
+      // para o mesmo cache são dois lugares por onde a invalidação pode
+      // divergir, e `CacheDeVisual.limpaPagina` depende da FORMA dessa chave
+      // (a página é um segmento entre dois-pontos) para achar o que apagar.
+      //
+      // `filtros` sai de `dashboardSpec.filters` — que é
+      // `[...dash.filters, ...daTela]`, montado em `servidor.ts` como `alvo`.
+      // É um SUPERCONJUNTO do que a thread principal usa (só `daTela`), e não
+      // um conjunto diferente: `dash.filters` é constante por página, e a
+      // página já é outro segmento da chave. Discrimina o mesmo, nunca menos.
+      //
+      // `carimbo` recebe a `identidade` inteira (carimbo do snapshot @ dia, ver
+      // `identidadeDoCalculo`) porque é ela que esta worker tem em mãos, e é
+      // ela que dispara a limpeza acima. O `dia` continua entrando por fora,
+      // vindo do MESMO `agoraIso` com que o dataset foi carregado.
+      // Uma função e não a chave montada duas vezes: `le` e `guarda` TÊM de
+      // produzir exatamente a mesma chave, e duas cópias do mesmo literal são
+      // duas coisas para alguém editar pela metade — o sintoma seria um cache
+      // que guarda e nunca acerta, indistinguível de um cache desligado.
+      const dia = diaDoCalculo(new Date(agoraIso));
+      const chaveDo = (visual: string): string =>
+        chaveDoCompleto({
+          escopo,
+          pagina: dashboardSpec.id,
+          filtros: dashboardSpec.filters ?? [],
+          clicados,
+          visual,
+          carimbo: identidade,
+          dia,
+        });
+
+      const memo: MemoDeCompletos = {
+        le: (visual) => completos.le(chaveDo(visual)),
+        guarda: (visual, completo) => completos.guarda(chaveDo(visual), completo),
+      };
+
       const pagina = calculaPagina(
         dashboardSpec,
         carregado.ev,
         janela,
         undefined,
-        undefined,
+        memo,
         clicados,
       );
 

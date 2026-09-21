@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from './worker-calculador.ts';
+import { TETO_PADRAO_MB } from './cache-visual.ts';
 
 export interface OpcoesPiscina {
   /** Quantas workers manter na piscina. Padrão: `configuracaoDaPiscina`. */
@@ -88,19 +89,44 @@ export const PADRAO_TAMANHO_POOL = 2;
 export function configuracaoDaPiscina(
   env: Record<string, string | undefined> = process.env,
   cpus: number = os.cpus().length,
-): { tamanhoPool: number; heapPorWorkerMB: number } {
+): { tamanhoPool: number; heapPorWorkerMB: number; tetoDeVisuaisPorWorkerMB: number } {
   const inteiroPositivo = (bruto: string | undefined): number | undefined => {
     if (bruto === undefined || bruto.trim() === '') return undefined;
     const n = Number.parseInt(bruto, 10);
     return Number.isFinite(n) && n > 0 ? n : undefined;
   };
 
+  const tamanhoPool = Math.max(
+    1,
+    Math.min(inteiroPositivo(env.API_WORKERS) ?? PADRAO_TAMANHO_POOL, cpus),
+  );
+
+  // **O orçamento de `CacheDeVisual` é UM só, repartido entre as workers — não
+  // um por worker.** `CACHE_VISUAL_MB` sempre significou "quanto esta API pode
+  // gastar guardando resultado inteiro de visual paginável"; o cálculo mudou de
+  // thread, o orçamento não. Dividir mantém o teto total em `CACHE_VISUAL_MB`
+  // (512 MB no padrão) com qualquer `API_WORKERS`, em vez de multiplicá-lo pelo
+  // nº de workers — que é como um ajuste de concorrência viraria, calado, um
+  // ajuste de memória.
+  //
+  // **`0` continua sendo o desligado do operador** (`CACHE_VISUAL_MB=0`, ver
+  // `index.ts`), e por isso a leitura NÃO passa por `inteiroPositivo`: lá o zero
+  // cai no padrão, que é o certo para "quantas workers", e o oposto do certo
+  // para "quanto posso guardar".
+  //
+  // O `bruto ? … : NaN` é a mesma forma de `index.ts` de propósito — dois jeitos
+  // de ler a MESMA variável de ambiente é um lugar a mais por onde a thread
+  // principal e as workers podem discordar sobre o orçamento. A única diferença
+  // é o piso em zero: um teto negativo não é orçamento nenhum, e faria
+  // `CacheDeVisual` recusar toda entrada gritando no log a cada visual.
+  const bruto = env.CACHE_VISUAL_MB;
+  const pedidoMB = bruto ? Number.parseInt(bruto, 10) : Number.NaN;
+  const tetoTotalMB = Number.isFinite(pedidoMB) ? Math.max(0, pedidoMB) : TETO_PADRAO_MB;
+
   return {
-    tamanhoPool: Math.max(
-      1,
-      Math.min(inteiroPositivo(env.API_WORKERS) ?? PADRAO_TAMANHO_POOL, cpus),
-    ),
+    tamanhoPool,
     heapPorWorkerMB: inteiroPositivo(env.API_WORKER_HEAP_MB) ?? PADRAO_HEAP_POR_WORKER_MB,
+    tetoDeVisuaisPorWorkerMB: Math.floor(tetoTotalMB / tamanhoPool),
   };
 }
 
@@ -198,6 +224,12 @@ export class PiscinaWorkers {
     const padrao = configuracaoDaPiscina();
     const numWorkers = opts.tamanhoPool ?? padrao.tamanhoPool;
     const heapPorWorkerMB = opts.heapPorWorkerMB ?? padrao.heapPorWorkerMB;
+    // Refeito sobre o pool de VERDADE: `opts.tamanhoPool` (que só teste passa)
+    // mudaria o nº de workers sem mudar o divisor, e o orçamento total deixaria
+    // de ser o que `configuracaoDaPiscina` promete.
+    const tetoDeVisuaisPorWorkerMB = Math.floor(
+      (padrao.tetoDeVisuaisPorWorkerMB * padrao.tamanhoPool) / numWorkers,
+    );
     const workerScript =
       opts.scriptDaWorker ??
       path.join(path.dirname(fileURLToPath(import.meta.url)), 'worker-calculador.ts');
@@ -219,6 +251,13 @@ export class PiscinaWorkers {
         const w = new Worker(workerScript, {
           execArgv: execArgvValidos,
           resourceLimits: { maxOldGenerationSizeMb: heapPorWorkerMB },
+          // O orçamento do `CacheDeVisual` desta worker. Vai por `workerData` e
+          // não por `process.env` porque quem reparte é a piscina, que é a
+          // única que sabe quantas workers existem: lendo `CACHE_VISUAL_MB`
+          // cada worker sozinha, todas pegariam o total e o teto viraria
+          // `CACHE_VISUAL_MB × nº de workers` — o mesmo erro de multiplicar
+          // orçamento que `PADRAO_HEAP_POR_WORKER_MB` documenta acima.
+          workerData: { tetoDeVisuaisMB: tetoDeVisuaisPorWorkerMB },
         });
 
 
