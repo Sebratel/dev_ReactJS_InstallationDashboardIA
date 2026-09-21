@@ -119,8 +119,15 @@ measures:
   # A API não entrega o `Expression` desta medida, então o valor foi obtido
   # avaliando-a, não lendo a fórmula.
   # Se a meta mudar de novo, ela muda AQUI — e convém confirmar com quem a define.
+  #
+  # E ELA MUDOU (18/09/2026): o relatório vivo passou a devolver **2865**. Sondado
+  # sob os mesmos três contextos do protocolo acima — sem filtro, só 2026, só
+  # janeiro — e deu 2865 nos três, então continua sendo constante e não medida
+  # disfarçada. O valor anterior (2928) foi medido em 25/08 e ficou 24 dias correto.
+  # **CONFIRMAR COM QUEM DEFINE A META**: este arquivo segue o relatório, e o
+  # relatório segue uma decisão de negócio que ninguém aqui tomou.
   display_folder: null
-  dax: "2928"
+  dax: "2865"
 - name: "# TOTAL MÊS ATIVO"
   format: "0"
   display_folder: null

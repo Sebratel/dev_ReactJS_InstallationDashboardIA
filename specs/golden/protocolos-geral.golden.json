@@ -2,7 +2,7 @@
   "queryId": "protocolos-geral",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 98207,
+  "rowCount": 100110,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -75,7 +75,7 @@
       "name": "RUA",
       "type": "string",
       "nulls": 0,
-      "distinct": 1954,
+      "distinct": 1953,
       "minLength": 4,
       "maxLength": 47
     },
@@ -91,7 +91,7 @@
       "name": "TELEFONE",
       "type": "string",
       "nulls": 0,
-      "distinct": 4430,
+      "distinct": 4432,
       "minLength": 0,
       "maxLength": 15
     },
@@ -114,7 +114,7 @@
     {
       "name": "LATITUDE",
       "type": "string",
-      "nulls": 2674,
+      "nulls": 2675,
       "distinct": 1886,
       "minLength": 0,
       "maxLength": 19
@@ -122,7 +122,7 @@
     {
       "name": "LONGITUDE",
       "type": "string",
-      "nulls": 2674,
+      "nulls": 2675,
       "distinct": 1877,
       "minLength": 0,
       "maxLength": 19
@@ -157,7 +157,7 @@
       "nulls": 2642,
       "distinct": 24,
       "numericString": true,
-      "sum": 63843101
+      "sum": 63818976
     },
     {
       "name": "SLOT",
@@ -279,6 +279,6 @@
     }
   ],
   "schemaFingerprint": "bd8c24bf2bd1a2ae",
-  "dataFingerprint": "7075df285b5d5bbe",
-  "capturedAt": "2026-09-04T18:34:04.033Z"
+  "dataFingerprint": "4df79a8fa9b5287e",
+  "capturedAt": "2026-09-17T20:15:03.892Z"
 }

@@ -93,7 +93,7 @@ sql: |-
       LEFT JOIN v_users vu ON vu.id = a.created_by
       LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id
       WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
-        AND a.created >= '2026-01-01'
+        AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
   ),
   -- `base` e EXATAMENTE o SELECT DISTINCT que existia aqui antes da migracao de
   -- 17/09/2026: as MESMAS 33 colunas da fonte, na MESMA ordem, com o MESMO DISTINCT.
@@ -201,7 +201,7 @@ sql: |-
         -- `AND plis.out_date > '01/01/2026'` no original. `01/01` e o mesmo dia em MDY e
         -- em DMY, entao a data nao depende do `DateStyle` da sessao -- escrita em ISO
         -- aqui para que ela tambem nao PARECA depender.
-        AND plis.out_date > '2026-01-01'
+        AND plis.out_date > DATE_TRUNC('year', CURRENT_DATE)
   ),
 
   -- TROCA ENDERECO: uma linha por protocolo (PERSONA1 = 1 no original).
@@ -237,7 +237,7 @@ sql: |-
           LEFT JOIN reports              r  ON r.assignment_id  = a.id
           LEFT JOIN people               p  ON p.id = r.person_id
           LEFT JOIN incident_types       it ON it.id = ai.incident_type_id
-          WHERE DATE(r.final_date) >= '2026-01-01'
+          WHERE DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
             AND it.id IN ('15','1256')
             AND (r.description LIKE '%O condomínio é adequado?%'
               OR r.description LIKE '%Foi feita a instalação?%')

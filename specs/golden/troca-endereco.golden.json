@@ -1,17 +1,17 @@
 {
   "queryId": "troca-endereco",
   "datasource": "dbVoalle",
-  "strategy": "wrapped",
-  "rowCount": 4450,
+  "strategy": "direct",
+  "rowCount": 5421,
   "truncated": false,
-  "profiledRows": 4450,
-  "columnsFromSample": false,
+  "profiledRows": 5000,
+  "columnsFromSample": true,
   "columns": [
     {
       "name": "TÉCNICO",
       "type": "string",
       "nulls": 0,
-      "distinct": 70,
+      "distinct": 73,
       "minLength": 12,
       "maxLength": 38
     },
@@ -19,25 +19,33 @@
       "name": "PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4450,
+      "distinct": 5000,
       "numericString": true,
-      "sum": 7220494509
+      "sum": 8197942544
     },
     {
       "name": "DATA DA TROCA",
       "type": "date",
       "nulls": 0,
-      "distinct": 4450,
-      "min": "2026-01-02T13:23:05.000Z",
-      "max": "2026-08-06T15:56:40.000Z"
+      "distinct": 4999,
+      "min": "2026-01-02T10:23:05.000Z",
+      "max": "2026-09-12T09:17:48.000Z"
     },
     {
       "name": "CONTRATO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4201,
+      "distinct": 4683,
       "numericString": true,
-      "sum": 905570719
+      "sum": 1024885848
+    },
+    {
+      "name": "_MARCA_REALTIME",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 5000,
+      "min": "2026-01-03T09:17:53.983Z",
+      "max": "2026-09-15T11:32:42.106Z"
     },
     {
       "name": "persona1",
@@ -45,10 +53,10 @@
       "nulls": 0,
       "distinct": 1,
       "numericString": true,
-      "sum": 4450
+      "sum": 5000
     }
   ],
-  "schemaFingerprint": "d12881360245455a",
-  "dataFingerprint": "bd15bbdc21db9e04",
-  "capturedAt": "2026-08-06T16:48:05.600Z"
+  "schemaFingerprint": "ab7ba9069600cdd6",
+  "dataFingerprint": "12a7538ddaa79d12",
+  "capturedAt": "2026-09-17T20:18:10.956Z"
 }

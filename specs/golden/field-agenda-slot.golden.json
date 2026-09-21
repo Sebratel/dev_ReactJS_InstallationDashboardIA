@@ -1,0 +1,125 @@
+{
+  "queryId": "field-agenda-slot",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 41644,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columnsFromSample": true,
+  "columns": [
+    {
+      "name": "Protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1533,
+      "numericString": true,
+      "sum": 9051924656
+    },
+    {
+      "name": "Tipo de Protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 9,
+      "minLength": 23,
+      "maxLength": 39
+    },
+    {
+      "name": "Status Protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 12,
+      "minLength": 7,
+      "maxLength": 25
+    },
+    {
+      "name": "Base",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 23,
+      "maxLength": 29
+    },
+    {
+      "name": "Instalador",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 38,
+      "minLength": 13,
+      "maxLength": 37
+    },
+    {
+      "name": "Data Criado",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 1532,
+      "min": "2026-09-03T16:12:12.699Z",
+      "max": "2026-09-17T17:04:06.494Z"
+    },
+    {
+      "name": "Reagenda",
+      "type": "number",
+      "nulls": 2635,
+      "distinct": 2,
+      "sum": 6795
+    },
+    {
+      "name": "Data finalizado atendimento app",
+      "type": "date",
+      "nulls": 210,
+      "distinct": 1503,
+      "min": "2026-09-04T10:17:36.000Z",
+      "max": "2026-09-17T17:12:38.000Z"
+    },
+    {
+      "name": "Data primeiro Play app",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 1703,
+      "min": "2026-09-03T16:35:10.555Z",
+      "max": "2026-09-17T17:07:17.524Z"
+    },
+    {
+      "name": "Data ultimo play app",
+      "type": "date",
+      "nulls": 1423,
+      "distinct": 1618,
+      "min": "2026-09-04T09:00:51.637Z",
+      "max": "2026-09-17T17:09:10.964Z"
+    },
+    {
+      "name": "Prazo SLA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 1054,
+      "min": "2026-09-05T11:15:00.000Z",
+      "max": "2026-10-10T12:00:00.000Z"
+    },
+    {
+      "name": "Inicio relato",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 4994,
+      "min": "2026-09-03T16:35:10.555Z",
+      "max": "2026-09-17T17:12:38.000Z"
+    },
+    {
+      "name": "Fim relato",
+      "type": "date",
+      "nulls": 1423,
+      "distinct": 3262,
+      "min": "2026-09-03T17:01:31.834Z",
+      "max": "2026-09-17T17:09:10.964Z"
+    },
+    {
+      "name": "Slot Agenda",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 164,
+      "min": "2026-09-04T10:00:00.000Z",
+      "max": "2026-10-10T09:30:00.000Z"
+    }
+  ],
+  "schemaFingerprint": "e268f6a9e8ce0d22",
+  "dataFingerprint": "4b7315726cf96bb7",
+  "capturedAt": "2026-09-17T20:13:19.792Z"
+}

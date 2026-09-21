@@ -31,7 +31,7 @@ sql: |-
       LEFT JOIN incident_types it 
           ON it.id = ai.incident_type_id
       WHERE 
-          DATE(r.final_date) >= '2026-01-01'
+          DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
           AND it.id in ('15', '1256')
           AND (
               r.description LIKE '%O condomínio é adequado?%'

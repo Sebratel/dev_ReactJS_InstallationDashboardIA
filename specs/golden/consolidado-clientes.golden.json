@@ -2,29 +2,29 @@
   "queryId": "consolidado-clientes",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 20,
+  "rowCount": 21,
   "truncated": false,
-  "profiledRows": 20,
+  "profiledRows": 21,
   "columnsFromSample": false,
   "columns": [
     {
       "name": "authentication_totalizer",
       "type": "string",
       "nulls": 0,
-      "distinct": 20,
+      "distinct": 21,
       "numericString": true,
-      "sum": 1519687
+      "sum": 1606091
     },
     {
       "name": "created",
       "type": "date",
       "nulls": 0,
-      "distinct": 20,
-      "min": "2025-01-01T04:00:12.000Z",
-      "max": "2026-08-01T04:00:16.000Z"
+      "distinct": 21,
+      "min": "2025-01-01T01:00:12.000Z",
+      "max": "2026-09-01T01:00:16.000Z"
     }
   ],
   "schemaFingerprint": "b8c264cef527a622",
-  "dataFingerprint": "beb511c8209805cb",
-  "capturedAt": "2026-08-06T16:45:57.399Z"
+  "dataFingerprint": "eedfac099898a058",
+  "capturedAt": "2026-09-17T20:12:37.630Z"
 }

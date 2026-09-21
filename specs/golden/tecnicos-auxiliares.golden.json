@@ -2,7 +2,7 @@
   "queryId": "tecnicos-auxiliares",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 28984,
+  "rowCount": 35217,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -35,7 +35,7 @@
       "name": "AUXILIAR",
       "type": "string",
       "nulls": 0,
-      "distinct": 76,
+      "distinct": 77,
       "minLength": 12,
       "maxLength": 37
     },
@@ -44,8 +44,14 @@
       "type": "date",
       "nulls": 0,
       "distinct": 4986,
-      "min": "2026-01-02T12:36:10.000Z",
-      "max": "2026-06-05T19:19:04.000Z"
+      "min": "2026-01-02T09:36:10.000Z",
+      "max": "2026-06-05T16:19:04.000Z"
+    },
+    {
+      "name": "_MARCA_REALTIME",
+      "type": "null",
+      "nulls": 5000,
+      "distinct": 0
     },
     {
       "name": "persona",
@@ -56,7 +62,7 @@
       "sum": 5000
     }
   ],
-  "schemaFingerprint": "c3e04157e510946b",
-  "dataFingerprint": "75c79b3a8767b071",
-  "capturedAt": "2026-08-06T16:48:04.349Z"
+  "schemaFingerprint": "446f9ccc96294b6c",
+  "dataFingerprint": "9867b71d8c0a61fb",
+  "capturedAt": "2026-09-17T20:17:31.171Z"
 }
