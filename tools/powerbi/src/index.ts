@@ -32,6 +32,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
+import { compara, comoInstante, TOLERANCIA, type Comparacao, type Veredito } from './compara.ts';
 import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
@@ -54,7 +55,6 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 applyDotEnv(ROOT);
 
 /** Tolerância relativa da comparação. Igual à de `tools/paridade/src/regras.ts`. */
-const TOLERANCIA = 0.005;
 
 /** Quantas medidas cabem numa `ROW` só. A API aceita 1 consulta por requisição. */
 const LOTE_PADRAO = 20;
@@ -115,47 +115,6 @@ npm run powerbi -- [opções]
 
 // --------------------------------------------------------------- comparação
 
-// 'janela' é diferente de 'ausente': a medida existe nos dois lados, mas as duas
-// tabelas não são a mesma fatia de realidade e nenhum predicado as reconcilia.
-// Confundir as duas coisas faria a saída dizer "a plataforma não tem esta medida"
-// sobre uma medida que a plataforma tem e calcula.
-// 'movel' é a medida cuja janela termina no relógio (`TODAY()`/`NOW()`). Ela não
-// é comparável a um número fixo: o dia de hoje está pela metade dos dois lados e
-// cada um o congelou num instante diferente. Ver `dependeDoRelogio` em janela.ts.
-type Veredito = 'bate' | 'difere' | 'ausente' | 'erro' | 'janela' | 'movel';
-
-interface Comparacao {
-  nome: string;
-  powerbi: DaxValue | undefined;
-  nosso: DaxValue | undefined;
-  veredito: Veredito;
-  detalhe?: string;
-}
-
-/** Números batem dentro da tolerância; o resto compara por igualdade estrita. */
-export function compara(nome: string, pbi: unknown, nosso: DaxValue | undefined): Comparacao {
-  if (pbi === undefined) return { nome, powerbi: undefined, nosso, veredito: 'ausente',
-    detalhe: 'o Power BI não devolveu esta medida' };
-  if (nosso === undefined) return { nome, powerbi: pbi as DaxValue, nosso: undefined, veredito: 'ausente',
-    detalhe: 'a plataforma não tem esta medida carregada' };
-
-  const p = pbi as DaxValue;
-  if (isBlank(p) && isBlank(nosso)) return { nome, powerbi: p, nosso, veredito: 'bate' };
-  if (isBlank(p) !== isBlank(nosso)) {
-    return { nome, powerbi: p, nosso, veredito: 'difere', detalhe: 'um lado é BLANK e o outro não' };
-  }
-
-  if (typeof p === 'number' && typeof nosso === 'number') {
-    const escala = Math.max(Math.abs(p), Math.abs(nosso), 1);
-    const dif = Math.abs(p - nosso);
-    return dif / escala <= TOLERANCIA
-      ? { nome, powerbi: p, nosso, veredito: 'bate' }
-      : { nome, powerbi: p, nosso, veredito: 'difere', detalhe: `diferença de ${dif.toPrecision(4)}` };
-  }
-  return String(p) === String(nosso)
-    ? { nome, powerbi: p, nosso, veredito: 'bate' }
-    : { nome, powerbi: p, nosso, veredito: 'difere' };
-}
 
 /** `[Nome da Medida]` como chave de `ROW`, sem aspas que quebrem o DAX. */
 function apelido(i: number): string {

@@ -142,6 +142,59 @@ describe('carregaJanelas', () => {
     );
   });
 
+  /**
+   * **"Medi e não precisa" tem de ser dizível.** O erro acima existe porque janela
+   * sem predicado não filtra nada e o gabarito sairia sem recorte — e a razão
+   * continua valendo para OMISSÃO. O que ela não previa é o recorte deixar de
+   * existir: medido em 18/09/2026, `BACKLOG AGENDADO FUTURO` dá 96.384 dos dois
+   * lados sem filtro, e em `PROTOCOLOS GERAL` o predicado antigo derruba o Power BI
+   * de 95.611 para 38.652 contra os nossos 95.680 — ali ele não é conservador, é
+   * errado.
+   */
+  test('sem_recorte: true dispensa o dax — é afirmação, não omissão', () => {
+    const j = comArquivo(
+      `tabelas:
+  T:
+    sem_recorte: true
+    verificado: { pbi: 9, nos: 9, em: 'x' }
+`,
+      carregaJanelas,
+    );
+    assert.equal(j.tabelas.get('T')?.sem_recorte, true);
+    assert.equal(j.tabelas.get('T')?.dax, undefined, 'não inventa predicado nenhum');
+    assert.equal(j.bloqueadas.size, 0);
+  });
+
+  /**
+   * As duas juntas são afirmações opostas sobre a mesma tabela — "recorta assim" e
+   * "não recorta". Escolher uma seria adivinhar qual foi medida, e o preço de
+   * adivinhar aqui é um gabarito plausível e errado.
+   */
+  test('dax E sem_recorte juntos é erro alto, não precedência silenciosa', () => {
+    assert.throws(
+      () => comArquivo(
+        `tabelas:
+  T:
+    dax: "1=1"
+    sem_recorte: true
+`,
+        carregaJanelas,
+      ),
+      /afirmações opostas/,
+    );
+  });
+
+  /** A mensagem do erro tem de ENSINAR a saída, senão ela empurra para o palpite. */
+  test('o erro de dax ausente aponta sem_recorte como a saída legítima', () => {
+    assert.throws(
+      () => comArquivo(`tabelas:
+  T:
+    verificado: { pbi: 1, nos: 1, em: 'x' }
+`, carregaJanelas),
+      /sem_recorte: true/,
+    );
+  });
+
   test('nome da tabela casa sem depender de caixa', () => {
     const j = comArquivo(`tabelas:\n  "protocolos geral":\n    dax: "1=1"\n`, carregaJanelas);
     assert.equal(j.tabelas.get('PROTOCOLOS GERAL')?.dax, '1=1');
