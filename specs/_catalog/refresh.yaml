@@ -179,6 +179,28 @@
 # que UMA amostra não descreve nada aqui.
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# ANTES DE TRATAR UM NÚMERO DO HISTÓRICO COMO CUSTO DE GRUPO: A MÁQUINA DORMIU?
+# (21/09/2026, ACHADOS #143)
+#
+# Nenhum número abaixo explica um `duracaoMs` de 8.272.913 ms. Esse é o `medio` de
+# 19/09 — 2h17min num grupo de 286 s medidos —, e ele não mediu custo nenhum: mediu o
+# tempo em que o processo filho ficou CONGELADO pela Espera S0 do Windows, que
+# suspende processo Win32 e mantém a rede de pé. Ao acordar, o socket com o banco
+# estava morto e o filho saiu com código 1. O banner leu isso como
+# "cargas falharam" e citou as onze queries deste grupo, nenhuma com defeito.
+#
+# Entre 18 e 21/09/2026 foram 25 falhas: 5 atravessaram um sono (até 10h46min de
+# "duração"), ~8 nasceram de 1 s a 110 s depois de a máquina acordar, e ~5 continuam
+# sem causa conhecida. A plataforma agora detecta suspensão, mata o filho congelado,
+# classifica como `carga-interrompida` em vez de falha e espera 60 s depois de acordar
+# antes de começar qualquer coisa. Ver `apps/api/src/agendador.ts`.
+#
+# PARA MEDIR CUSTO DE GRUPO: descarte qualquer amostra cujo evento `maquina-suspensa`
+# caia dentro da janela dela. `npm run refresh:daemon -- --historico` imprime as
+# suspensões numa seção própria.
+# ═══════════════════════════════════════════════════════════════════════════════
+
 formato: 1
 
 grupos:

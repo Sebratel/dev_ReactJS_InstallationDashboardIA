@@ -124,10 +124,10 @@ queries:
     costura:
       de: |-
         WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
-              AND a.created >= '2026-01-01'
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
       para: |-
         WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
-              AND a.created >= '2026-01-01'
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
               AND a.modified >= :desde
 
   # "DATA ENCERRRADO" com 3 R — mesmo typo do PBIP original em
@@ -144,12 +144,12 @@ queries:
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= '2026-01-01')
+        	and a.created >= DATE_TRUNC('year', CURRENT_DATE))
       para: |-
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= '2026-01-01'
+        	and a.created >= DATE_TRUNC('year', CURRENT_DATE)
         	and a.modified >= :desde)
 
   # `assignments` aqui só é ponte de JOIN (nunca teve coluna própria
@@ -168,10 +168,10 @@ queries:
     marca: [_MARCA_REALTIME]
     costura:
       de: |2-
-                DATE(r.final_date) >= '2026-01-01'
+                DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
                 AND it.id in ('15', '1256')
       para: |2-
-                DATE(r.final_date) >= '2026-01-01'
+                DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
                 AND it.id in ('15', '1256')
                 AND a.modified >= :desde
 
@@ -187,10 +187,10 @@ queries:
     costura:
       de: |2-
               and a.assignment_type = 'RAUX'
-              and a.final_date >= '2026-01-01'
+              and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)
       para: |2-
               and a.assignment_type = 'RAUX'
-              and a.final_date >= '2026-01-01'
+              and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)
               and a.modified >= :desde
 
   # Cobre só a CTE `retorno_prioritario` (a metade "quente" da query) — a
@@ -207,11 +207,11 @@ queries:
       de: |-
         WHERE ai.incident_type_id = '1160'
               AND is2.title <> 'Cancelado'
-              AND a.created >= DATE '2026-01-01'
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
       para: |-
         WHERE ai.incident_type_id = '1160'
               AND is2.title <> 'Cancelado'
-              AND a.created >= DATE '2026-01-01'
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
               AND a.modified >= :desde
 
   # `alvos` reescrito (ACHADOS #93) — NÃO copiar o padrão de `protocolos-auxiliares`

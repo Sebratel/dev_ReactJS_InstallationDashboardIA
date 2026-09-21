@@ -14,7 +14,9 @@ import {
   leHistorico,
   registra,
   descreveMortesDaApi,
+  resumeDeCoalescidos,
   resumeDePulos,
+  resumeDeSuspensoes,
   resumePorGrupo,
   type EventoDeRefresh,
 } from '../src/historico.ts';
@@ -319,3 +321,151 @@ test('descreveMortesDaApi: codigo nulo nao vira "null" na tela', () => {
   assert.ok(!linhas[1]!.includes('null'), 'a palavra "null" não pertence a um relatório humano');
 });
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `disparo-coalescido` — o sucessor de `ciclo-pulado`, para quando quem agenda é a
+// API (`apps/api/src/agendador.ts`). A diferença entre os dois é o tamanho do que se
+// perde: `ciclo-pulado` custava o TICK inteiro (um grupo lento fazia todos os outros
+// perderem a vez); este custa só a segunda cópia do próprio grupo, que materializaria
+// exatamente o que já está sendo materializado.
+
+test('resumeDeCoalescidos: sem eventos, lista vazia', () => {
+  assert.deepEqual(resumeDeCoalescidos([]), []);
+  assert.deepEqual(
+    resumeDeCoalescidos([{ evento: 'grupo', quando: 'x', grupo: 'quente', ok: true, duracaoMs: 1 }]),
+    [],
+  );
+});
+
+test('resumeDeCoalescidos: conta por grupo e guarda o PIOR caso, não o último', () => {
+  const eventos: EventoDeRefresh[] = [
+    { evento: 'disparo-coalescido', quando: '2026-09-19T10:00:00Z', grupo: 'medio', emCursoHaMs: 900_000 },
+    { evento: 'disparo-coalescido', quando: '2026-09-19T10:20:00Z', grupo: 'medio', emCursoHaMs: 120_000 },
+    { evento: 'disparo-coalescido', quando: '2026-09-19T10:30:00Z', grupo: 'frio', emCursoHaMs: 60_000 },
+  ];
+  const r = resumeDeCoalescidos(eventos);
+
+  // Ordenado pelo que dói mais: quem descarta com mais frequência vem primeiro.
+  assert.equal(r[0]!.grupo, 'medio');
+  assert.equal(r[0]!.descartados, 2);
+  // O pior caso é o que dimensiona a cadência — uma média esconderia os 900 s.
+  assert.equal(r[0]!.maiorEmCursoMs, 900_000);
+  assert.equal(r[0]!.ultimo, '2026-09-19T10:20:00Z');
+  assert.equal(r[1]!.grupo, 'frio');
+  assert.equal(r[1]!.descartados, 1);
+});
+
+test('resumeDeCoalescidos: lê o que `registra` escreveu de verdade', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coalescido-'));
+  registra(dir, {
+    evento: 'disparo-coalescido',
+    quando: '2026-09-19T11:00:00Z',
+    grupo: 'quente',
+    emCursoHaMs: 94_100,
+  });
+  const r = resumeDeCoalescidos(leHistorico(dir, 50));
+  assert.equal(r.length, 1);
+  assert.equal(r[0]!.grupo, 'quente');
+  assert.equal(r[0]!.maiorEmCursoMs, 94_100);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('agendador-arranque: o histórico distingue QUEM estava no comando', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arranque-'));
+  // O daemon dedicado registra UM intervalo — ele varre todos os grupos e decide ali.
+  registra(dir, { evento: 'arranque', quando: '2026-09-19T09:00:00Z', intervaloMinutos: 15, pid: 1 });
+  // A API tem relógio POR GRUPO, então o que importa registrar é a lista inteira.
+  registra(dir, {
+    evento: 'agendador-arranque',
+    quando: '2026-09-19T09:05:00Z',
+    pid: 2,
+    grupos: [
+      { id: 'quente', intervaloMinutos: 15 },
+      { id: 'frio', intervaloMinutos: 30 },
+    ],
+  });
+
+  const eventos = leHistorico(dir, 50);
+  const doProcesso = eventos.find((e) => e.evento === 'agendador-arranque');
+  assert.ok(doProcesso, 'lendo o histórico depois do fato, é esta linha que diz quem agendava');
+  assert.equal((doProcesso as { grupos: unknown[] }).grupos.length, 2);
+  // Os dois convivem no arquivo: em produção o daemon continua sendo serviço próprio,
+  // e no host quem agenda é a API. Confundir um com o outro é ler a cadência errada.
+  assert.ok(eventos.some((e) => e.evento === 'arranque'));
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// ---------------------------------------------------------------------------
+// SUSPENSÃO DA MÁQUINA — 19/09/2026
+// ---------------------------------------------------------------------------
+
+test('resumeDeSuspensoes: sem suspensão nenhuma devolve null, e não um resumo zerado', () => {
+  // `null` e não `{vezes: 0}`: quem imprime o relatório decide se a seção existe, e
+  // uma seção "A MÁQUINA DORMIU: 0x" é ruído que ensina a pular o bloco.
+  assert.equal(resumeDeSuspensoes([]), null);
+  assert.equal(
+    resumeDeSuspensoes([
+      { evento: 'grupo', quando: 'a', grupo: 'quente', ok: true, duracaoMs: 1 },
+    ] as EventoDeRefresh[]),
+    null,
+  );
+});
+
+test('resumeDeSuspensoes: soma o tempo parado e conta as cargas perdidas', () => {
+  const eventos = [
+    { evento: 'maquina-suspensa', quando: 'a', paradaMs: 8_040_000, grupoEmVoo: 'medio' },
+    { evento: 'carga-interrompida', quando: 'b', grupo: 'medio', duracaoMs: 8_272_913, motivo: 'máquina suspensa' },
+    { evento: 'maquina-suspensa', quando: 'c', paradaMs: 600_000, grupoEmVoo: null },
+  ] as EventoDeRefresh[];
+  const r = resumeDeSuspensoes(eventos);
+  assert.ok(r);
+  assert.equal(r.vezes, 2);
+  assert.equal(r.totalParadoMs, 8_640_000);
+  // O MAIOR, não o último: é o congelamento longo que explica um grupo vencido, e o
+  // último pode perfeitamente ter sido o curto.
+  assert.equal(r.maiorParadaMs, 8_040_000);
+  assert.equal(r.ultimo, 'c');
+  assert.equal(r.cargasPerdidas, 1);
+});
+
+test('resumeDeCoalescidos: separa quem estava RODANDO de quem só esperava na fila', () => {
+  // Os dois casos têm conselhos opostos. Em 19/09/2026 o relatório imprimiu
+  // `quente 1x, já rodava há 0s` e mandou afrouxar a cadência do `quente` — mas o
+  // `quente` não estava rodando: estava atrás do `medio`, que a suspensão da máquina
+  // tinha congelado havia 2h15min. Afrouxar o `quente` não teria mudado nada.
+  const eventos = [
+    { evento: 'disparo-coalescido', quando: 'a', grupo: 'medio', emCursoHaMs: 8_105_361 },
+    { evento: 'disparo-coalescido', quando: 'b', grupo: 'quente', emCursoHaMs: 0 },
+    { evento: 'disparo-coalescido', quando: 'c', grupo: 'quente', emCursoHaMs: 0 },
+  ] as EventoDeRefresh[];
+  const [quente, medio] = resumeDeCoalescidos(eventos);
+  assert.equal(quente?.grupo, 'quente');
+  assert.equal(quente?.descartados, 2);
+  assert.equal(quente?.esperandoNaFila, 2);
+  assert.equal(quente?.maiorEmCursoMs, 0, 'nunca rodou quando foi descartado');
+  assert.equal(medio?.grupo, 'medio');
+  assert.equal(medio?.esperandoNaFila, 0, 'esse sim estava materializando');
+});
+
+test('registra: os eventos de suspensão sobrevivem à ida e volta do disco', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hist-sono-'));
+  registra(dir, {
+    evento: 'maquina-suspensa',
+    quando: '2026-09-19T18:51:48.519Z',
+    paradaMs: 8_040_000,
+    grupoEmVoo: 'medio',
+  });
+  registra(dir, {
+    evento: 'carga-interrompida',
+    quando: '2026-09-19T18:54:36.070Z',
+    grupo: 'medio',
+    duracaoMs: 8_272_913,
+    motivo: 'máquina suspensa',
+  });
+  const lidos = leHistorico(dir);
+  assert.equal(lidos.length, 2);
+  assert.equal(lidos[0]?.evento, 'maquina-suspensa');
+  assert.equal(lidos[1]?.evento, 'carga-interrompida');
+  const r = resumeDeSuspensoes(lidos);
+  assert.equal(r?.cargasPerdidas, 1);
+});

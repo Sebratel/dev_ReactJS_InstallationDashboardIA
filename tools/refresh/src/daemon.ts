@@ -26,10 +26,13 @@ import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
+import { argvDoGrupo, MEMORIA_PADRAO_MB } from './executa-grupo.ts';
 import {
   descreveMortesDaApi,
   leHistorico,
   registra,
+  resumeDeCoalescidos,
+  resumeDeSuspensoes,
   resumeDePulos,
   resumePorGrupo,
 } from './historico.ts';
@@ -45,16 +48,19 @@ export interface CicloRefreshResult {
   resultados: ResultadoDoGrupoNoTick[];
 }
 
-export function rodaGrupo(raiz: string, grupo: GrupoDeRefresh, memoriaMb = 8192): ResultadoDeExecucao {
-  const argv = [
-    `--max-old-space-size=${memoriaMb}`,
-    path.join(raiz, 'tools', 'snapshot', 'src', 'index.ts'),
-    `--memoria=${memoriaMb}`,
-    `--query=${grupo.queries.join(',')}`,
-    '--refazer',
-    ...(grupo.incremental ? ['--incremental'] : []),
-  ];
-  const r = spawnSync(process.execPath, argv, { cwd: raiz, stdio: 'inherit' });
+/**
+ * A forma BLOQUEANTE, para o processo dedicado. O gêmeo assíncrono mora em
+ * `executa-grupo.ts` e é o que a API usa — lá um `spawnSync` de 21 minutos pararia
+ * o laço de eventos que serve HTTP. O argv é o mesmo nos dois, de propósito: ele
+ * carrega o heap do filho, o `--refazer` e o `--incremental`, e duas copias disso
+ * divergiriam no primeiro conserto.
+ */
+export function rodaGrupo(
+  raiz: string,
+  grupo: GrupoDeRefresh,
+  memoriaMb = MEMORIA_PADRAO_MB,
+): ResultadoDeExecucao {
+  const r = spawnSync(process.execPath, argvDoGrupo(raiz, grupo, memoriaMb), { cwd: raiz, stdio: 'inherit' });
   if (r.status === 0) return { ok: true };
   return { ok: false, erro: `saiu com código ${r.status ?? r.signal}` };
 }
@@ -305,6 +311,58 @@ arranques do daemon na janela: ${arranques}`);
     if (mortes.length > 0) {
       console.log('');
       for (const linha of mortes) console.log(linha);
+    }
+
+    // O sucessor do `ciclo-pulado`, para quando quem agenda é a API
+    // (`apps/api/src/agendador.ts`). Ali um grupo atrasado ESPERA a fila em vez de
+    // perder a vez, então o que sobra de cadência perdida é só o grupo que atropelou
+    // a si mesmo — e esse aponta um intervalo menor que o custo medido do grupo, o
+    // que se conserta em `specs/_catalog/refresh.yaml`, não em código.
+    // Antes de qualquer coisa que pareça defeito: o host dormiu? Em 19/09/2026 uma
+    // suspensão de 2h14min apareceu no banner como "cargas falharam" com onze nomes de
+    // query, e a causa só saiu cruzando este arquivo com o log de energia do Windows.
+    const sono = resumeDeSuspensoes(eventos);
+    if (sono) {
+      console.log('');
+      console.log(`A MÁQUINA DORMIU: ${sono.vezes}x, ${(sono.totalParadoMs / 3_600_000).toFixed(1)}h paradas no total`);
+      console.log(
+        `  maior congelamento: ${(sono.maiorParadaMs / 60_000).toFixed(0)} min   último: ${sono.ultimo}`,
+      );
+      if (sono.cargasPerdidas > 0) {
+        console.log(
+          `  ${sono.cargasPerdidas} carga(s) morreram no meio e foram refeitas — NÃO são falha da plataforma:`,
+        );
+        console.log('  o filho dorme junto e acorda com as conexões do banco mortas.');
+      }
+      console.log('  Isto não se conserta em código. Ou o host não pode suspender');
+      console.log('  (Espera S0 congela processo Win32 e mantém a rede de pé), ou a cadência');
+      console.log('  tem de viver em outro lugar — é o que o contêiner de produção faz.');
+    }
+
+    const coalescidos = resumeDeCoalescidos(eventos);
+    if (coalescidos.length > 0) {
+      console.log('');
+      console.log('DISPAROS DESCARTADOS (o relógio bateu e o grupo já estava em voo):');
+      for (const c of coalescidos) {
+        const onde =
+          c.maiorEmCursoMs === 0
+            ? 'sempre só esperando na fila'
+            : `pior caso: já rodava há ${(c.maiorEmCursoMs / 1000).toFixed(0)}s` +
+              (c.esperandoNaFila > 0 ? `, ${c.esperandoNaFila} só na fila` : '');
+        console.log(
+          `  ${c.grupo.padEnd(10)}${String(c.descartados).padStart(4)}x   ${onde}   último: ${c.ultimo}`,
+        );
+      }
+      // Os dois casos têm conselhos OPOSTOS, e imprimir só um deles manda consertar o
+      // grupo errado — ver `esperandoNaFila` em `historico.ts`.
+      if (coalescidos.some((c) => c.maiorEmCursoMs > 0)) {
+        console.log('  Rodando: o intervalo do grupo é menor que o custo dele. Afrouxe a cadência');
+        console.log('  em specs/_catalog/refresh.yaml, ou traga menos bytes (o eixo que controlamos).');
+      }
+      if (coalescidos.some((c) => c.esperandoNaFila > 0)) {
+        console.log('  Na fila: quem segura é OUTRO grupo, e afrouxar ESTE não muda nada.');
+        console.log('  Veja quem estava em voo na hora — e se a máquina dormiu, acima.');
+      }
     }
 
     const pulos = resumeDePulos(eventos);

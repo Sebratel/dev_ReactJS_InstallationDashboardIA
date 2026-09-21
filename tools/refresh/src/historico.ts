@@ -88,7 +88,112 @@ export type EventoDeRefresh =
    * Ressuscitar aí poria duas instâncias brigando pela porta para sempre. O que
    * faltava não era reerguer — era saber.
    */
-  | { evento: 'api-morreu'; quando: string; codigo: number | null; viveuMs: number };
+  | { evento: 'api-morreu'; quando: string; codigo: number | null; viveuMs: number }
+  /**
+   * O agendador subiu DENTRO da API (`apps/api/src/agendador.ts`), em vez de num
+   * processo dedicado. **Entrou em 19/09/2026.**
+   *
+   * É o par do `arranque` acima, e existe separado de propósito: os dois descrevem
+   * cadências diferentes. O `arranque` do daemon registra UM intervalo — ele varre
+   * todos os grupos a cada 15 min e decide ali quem venceu. O agendador da API tem um
+   * relógio POR GRUPO, então o que importa registrar é a lista inteira. Lendo o
+   * histórico depois do fato, é esta linha que diz qual dos dois estava no comando.
+   */
+  | {
+      evento: 'agendador-arranque';
+      quando: string;
+      pid: number;
+      grupos: { id: string; intervaloMinutos: number }[];
+    }
+  /**
+   * O relógio de um grupo bateu enquanto esse MESMO grupo ainda rodava (ou já
+   * esperava na fila), e o disparo foi descartado por não ter o que acrescentar.
+   *
+   * **Não confundir com `ciclo-pulado`, que é o defeito que este substitui.** No
+   * daemon, um grupo demorado fazia o disparo seguinte pular os grupos TODOS — o
+   * `frio` perdia a vez porque o `medio` ainda rodava, e nada acendia. Aqui o grupo
+   * atrasado apenas espera a fila; quem é descartado é só a segunda cópia dele
+   * mesmo, que materializaria exatamente o que já está sendo materializado.
+   *
+   * Continua sendo cadência perdida, e continua não sendo falha: `estaVencido` mede
+   * idade do último SUCESSO, então o `refresh-status.json` fica verde. Se este evento
+   * aparece com frequência num grupo, o intervalo dele é menor que o custo dele — e
+   * essa é uma decisão de `specs/_catalog/refresh.yaml`, não um conserto de código.
+   */
+  | { evento: 'disparo-coalescido'; quando: string; grupo: string; emCursoHaMs: number }
+  /**
+   * A MÁQUINA DORMIU. Detectado por batimento: um temporizador de cadência fixa que
+   * demorou muito mais que a própria cadência para disparar só pode ter sido
+   * congelado junto com o processo.
+   *
+   * **Não é diagnóstico por adivinhação — é a assinatura, e ela foi medida.** Em
+   * 19/09/2026 os três grupos dispararam com 14 ms entre si (18:51:48.519 / .522 /
+   * .533 UTC) depois de 2h14min sem evento nenhum. Temporizadores de 15, 20 e 30 min
+   * não coincidem em 14 ms: é o Windows liberando de uma vez tudo que venceu
+   * enquanto dormia. O log de energia confirmou, ao segundo — `Espera S0 (Ocioso com
+   * Baixo Consumo), Conectado via Rede`, o modo que congela processo Win32 e mantém
+   * a rede de pé.
+   *
+   * `paradaMs` é o tamanho do congelamento, e `grupoEmVoo` é quem estava
+   * materializando na hora (ou `null`). Se havia um, os sockets dele com o banco
+   * morreram durante o sono e a carga está perdida — ver `carga-interrompida`.
+   */
+  | {
+      evento: 'maquina-suspensa';
+      quando: string;
+      paradaMs: number;
+      grupoEmVoo: string | null;
+    }
+  /**
+   * Uma carga que morreu porque a máquina suspendeu embaixo dela — e que POR ISSO
+   * não conta como falha.
+   *
+   * **A distinção não é cosmética.** Em 19/09/2026 o `medio` apareceu no banner como
+   * "cargas falharam: alocacao-patrimonio, apuracao-premiacao, ..." com onze nomes e
+   * `saiu com código 1`, e a leitura natural disso é que onze queries quebraram. Não
+   * quebrou nenhuma: o notebook entrou em espera 28 s depois da carga começar, ficou
+   * 2h14min congelado, e o exit 1 foi o driver do Postgres relatando que a conexão
+   * tinha morrido no sono. Contar isso como falha da plataforma manda procurar
+   * defeito onde não há, e acende um alarme que nenhum conserto de código apaga.
+   *
+   * Consequências de classificar aqui em vez de em `grupo`: `falhasConsecutivas` não
+   * sobe, o `refresh-status.json` não fica vermelho, e o grupo volta para a FRENTE da
+   * fila para ser refeito já — não no próximo intervalo.
+   *
+   * O que continua acendendo, e tem de continuar: `estaVencido` mede idade do último
+   * SUCESSO. Se a máquina dormir três dias, o grupo fica vencido e o banner diz isso,
+   * com razão. O que sumiu foi a palavra "falharam", não o alarme de dado velho.
+   */
+  /**
+   * A API teve um erro que ninguém pegou — `uncaughtException` ou
+   * `unhandledRejection` — e SOBREVIVEU a ele.
+   *
+   * **Existe porque o silêncio aqui custou a operação.** Sem guarda de processo, um
+   * erro não tratado mata o Node na hora e a tela sai do ar; o
+   * `refresh-historico.log` registrava só `api-morreu` com `codigo: 1`, que é o Node
+   * dizendo "exceção não tratada" sem dizer qual. Aconteceu em 18/09/2026, depois de
+   * 1.125 s no ar, e não houve como saber o motivo.
+   *
+   * `fatal: true` é o caso em que a guarda DESISTE de continuar: erro não tratado em
+   * rajada não é um pedido azarado, é um processo quebrado, e aí reiniciar limpo é
+   * melhor que servir de um estado que ninguém entende.
+   */
+  | {
+      evento: 'erro-nao-tratado';
+      quando: string;
+      origem: 'uncaughtException' | 'unhandledRejection';
+      erro: string;
+      /** Quantos erros não tratados este processo já teve, contando este. */
+      total: number;
+      fatal: boolean;
+    }
+  | {
+      evento: 'carga-interrompida';
+      quando: string;
+      grupo: string;
+      duracaoMs: number;
+      motivo: string;
+    };
 
 /**
  * Uma linha por evento, no fim do arquivo. Silenciosa em qualquer falha — ver o
@@ -213,6 +318,63 @@ export function resumeDePulos(eventos: readonly EventoDeRefresh[]): ResumoDePulo
   return r;
 }
 
+export interface ResumoDeCoalescidos {
+  grupo: string;
+  /** Quantas vezes o relógio deste grupo bateu em cima dele mesmo. */
+  descartados: number;
+  ultimo: string;
+  /** O mais longo que um deles já estava rodando — o pior caso observado. */
+  maiorEmCursoMs: number;
+  /**
+   * Destes, quantos o grupo estava apenas ESPERANDO na fila (`emCursoHaMs === 0`) em
+   * vez de materializando.
+   *
+   * **Os dois casos têm conselhos opostos e o relatório os confundia.** Descarte com
+   * o grupo rodando diz que o intervalo dele é menor que o custo dele — conserta-se
+   * afrouxando a cadência. Descarte com o grupo na fila diz que OUTRO grupo está
+   * segurando a fila, e afrouxar a cadência deste não muda nada. Em 19/09/2026 o
+   * relatório imprimiu `quente 1x, já rodava há 0s` e mandou afrouxar o `quente`,
+   * quando o que havia acontecido é que o `medio` estava congelado por uma suspensão
+   * da máquina havia 2h15min.
+   */
+  esperandoNaFila: number;
+}
+
+/**
+ * Quais grupos estão pedindo cadência que não cabe no próprio custo.
+ *
+ * Fica separado de `resumeDePulos` porque responde outra pergunta, embora o sintoma
+ * seja parecido. Aquele contava ticks do daemon perdidos INTEIROS — um grupo lento
+ * fazia todos os outros perderem a vez. Este conta só o grupo que atropelou a si
+ * mesmo, que é a única perda de cadência que sobra quando cada grupo tem relógio
+ * próprio e fila (`apps/api/src/agendador.ts`).
+ *
+ * Um número alto aqui NÃO é defeito de código: é `intervalo_minutos` menor que o
+ * custo medido do grupo. O conserto mora em `specs/_catalog/refresh.yaml`.
+ */
+export function resumeDeCoalescidos(eventos: readonly EventoDeRefresh[]): ResumoDeCoalescidos[] {
+  const porGrupo = new Map<string, ResumoDeCoalescidos>();
+  for (const e of eventos) {
+    if (e.evento !== 'disparo-coalescido') continue;
+    const r = porGrupo.get(e.grupo);
+    if (!r) {
+      porGrupo.set(e.grupo, {
+        grupo: e.grupo,
+        descartados: 1,
+        ultimo: e.quando,
+        maiorEmCursoMs: e.emCursoHaMs,
+        esperandoNaFila: e.emCursoHaMs === 0 ? 1 : 0,
+      });
+      continue;
+    }
+    r.descartados += 1;
+    r.ultimo = e.quando;
+    if (e.emCursoHaMs === 0) r.esperandoNaFila += 1;
+    if (e.emCursoHaMs > r.maiorEmCursoMs) r.maiorEmCursoMs = e.emCursoHaMs;
+  }
+  return [...porGrupo.values()].sort((a, b) => b.descartados - a.descartados);
+}
+
 /**
  * As linhas que `--historico` imprime sobre mortes da API. Lista vazia quando não
  * houve nenhuma.
@@ -222,6 +384,39 @@ export function resumeDePulos(eventos: readonly EventoDeRefresh[]): ResumoDePulo
  * apontam configuração, horas apontam causa externa —, e essa conversão é a única
  * parte com chance de sair errada.
  */
+export interface ResumoDeSuspensoes {
+  vezes: number;
+  /** Soma do tempo congelado — é isto que explica um "vencida há N horas" sem falha. */
+  totalParadoMs: number;
+  maiorParadaMs: number;
+  ultimo: string;
+  /** Quantas cargas a suspensão matou no meio. */
+  cargasPerdidas: number;
+}
+
+/**
+ * As suspensões da máquina no período do histórico.
+ *
+ * **Serve para separar duas coisas que se parecem no banner e não têm o mesmo
+ * conserto**: dado velho porque a plataforma falhou, e dado velho porque o host
+ * dormiu. A segunda não tem conserto em código — tem em política de energia, ou em
+ * mudar de host. Um número que sobe aqui todo dia é a resposta.
+ */
+export function resumeDeSuspensoes(eventos: readonly EventoDeRefresh[]): ResumoDeSuspensoes | null {
+  const suspensoes = eventos.filter((e) => e.evento === 'maquina-suspensa') as Extract<
+    EventoDeRefresh,
+    { evento: 'maquina-suspensa' }
+  >[];
+  if (suspensoes.length === 0) return null;
+  return {
+    vezes: suspensoes.length,
+    totalParadoMs: suspensoes.reduce((t, e) => t + e.paradaMs, 0),
+    maiorParadaMs: Math.max(...suspensoes.map((e) => e.paradaMs)),
+    ultimo: suspensoes[suspensoes.length - 1]!.quando,
+    cargasPerdidas: eventos.filter((e) => e.evento === 'carga-interrompida').length,
+  };
+}
+
 export function descreveMortesDaApi(eventos: readonly EventoDeRefresh[], ultimas = 5): string[] {
   const mortes = eventos.filter((e) => e.evento === 'api-morreu');
   if (mortes.length === 0) return [];
