@@ -183,7 +183,7 @@ WITH bruto AS (
     LEFT JOIN authentication_splitters       as2  ON as2.id = asp.authentication_splitter_id
     LEFT JOIN v_users                        vu   ON vu.id  = a.created_by
     WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
-      AND a.created >= '2026-01-01'   -- o mais largo dos dois ramos; cada um se recorta abaixo
+      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo
 ),
 
 -- -----------------------------------------------------------------------------
@@ -296,7 +296,7 @@ ramo_produtividade AS (
         ) AS _persona
         FROM bruto b
         WHERE b._tipo IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
-          AND b."DATA CRIADO" >= '2026-01-01'
+          AND b."DATA CRIADO" >= DATE_TRUNC('year', CURRENT_DATE)
     ) x WHERE x._persona = 1
 ),
 ramo_auxiliares AS (
@@ -390,7 +390,7 @@ ramo_auxiliares AS (
         ) AS _persona
         FROM bruto b
         WHERE b._tipo IN ('12','1014','1254','1255','1136','249','268','1160','1015','15')
-          AND b."DATA CRIADO" >= '2026-01-01'
+          AND b."DATA CRIADO" >= DATE_TRUNC('year', CURRENT_DATE)
     ) x WHERE x._persona = 1
 ),
 unificado AS MATERIALIZED (
@@ -434,7 +434,7 @@ alocacao AS (
       -- 2026 como os protocolos: esta CTE so existe para casar com `unificado`, que
       -- agora comeca em 2026-01-01. Linha mais velha que isso nao encontra par -- ela
       -- so custaria varredura e memoria no hash join.
-      AND plis.out_date > '2026-01-01'
+      AND plis.out_date > DATE_TRUNC('year', CURRENT_DATE)
 ),
 
 -- TROCA ENDERECO: uma linha por protocolo (PERSONA1 = 1 no original).
@@ -450,7 +450,7 @@ troca AS (
         LEFT JOIN reports              r  ON r.assignment_id  = a.id
         LEFT JOIN people               p  ON p.id = r.person_id
         LEFT JOIN incident_types       it ON it.id = ai.incident_type_id
-        WHERE DATE(r.final_date) >= '2026-01-01'   -- idem alocacao: so casa com 2026
+        WHERE DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)   -- idem alocacao: so casa com 2026
           AND it.id IN ('15','1256')
           AND (r.description LIKE '%O condomínio é adequado?%'
             OR r.description LIKE '%Foi feita a instalação?%')
@@ -487,7 +487,7 @@ auxiliar AS MATERIALIZED (
         LEFT JOIN people               p  ON p.id  = r.person_id
         WHERE a.corresponding_parent_id IS NOT NULL
           AND a.assignment_type = 'RAUX'
-          AND a.final_date >= '2026-01-01'   -- idem alocacao: so casa com 2026
+          AND a.final_date >= DATE_TRUNC('year', CURRENT_DATE)   -- idem alocacao: so casa com 2026
     ) x WHERE x._persona = 1
 ),
 

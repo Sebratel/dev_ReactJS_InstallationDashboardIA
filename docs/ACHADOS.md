@@ -12063,3 +12063,628 @@ query do seu plano em qualquer grupo**, que é o caso de toda página viva.
 > Vale para o que eu mesmo escrevo: quando um comentário admite um custo sem quantificá-lo,
 > ele não está documentando a decisão — está adiando a conta. **A frase que descreve o
 > preço é o lugar onde o número deveria estar.**
+
+---
+
+## #140 — O preço que o #139 mediu e não pagou: a dependência apurada tira o grupo `frio` de TODAS as páginas, e o guarda continua fechado onde importa
+
+**Data:** 18/09/2026
+
+O #139, de hoje mais cedo, mediu o custo de `confereIdadeDaCalculada` pela primeira vez
+(`agendamento-field` em 409 durante 24% do ciclo) e terminou escrevendo por que **não**
+mexeu no guarda:
+
+> *"Afrouxá-lo por causa de uma página seria decidir sozinho uma troca que não é minha,
+> e por isso ela fica escrita aqui em vez de implementada."*
+
+A decisão foi tomada: Erick aprovou, em 18/09/2026, o plano de 4 dias cuja primeira
+frente é fechar a janela de refresh. Este achado é a execução dela — e registra o que
+foi medido antes e depois, porque a troca só é defensável com número dos dois lados.
+
+### O que mudou, em uma linha
+
+`confereIdadeDaCalculada` comparava a idade da calculada com **a query mais recente do
+plano da página**. Agora compara com **as queries de que aquela tabela nasce**
+(`calculatedTableSourceTables`, em `packages/measure-engine/src/calculated.ts`).
+
+### Por que isto não é o "lado permissivo" que o docstring temia
+
+O docstring recusava a apuração de dependência com uma razão boa:
+
+> *"Apurar dependência erraria para o lado permissivo se a leitura do DAX falhasse — e o
+> lado permissivo aqui é servir número velho calado."*
+
+A objeção é sobre **falha de leitura**, e é ela que a implementação trata: a apuração
+devolve `null` — e quem chama volta à régua antiga, inteira — em três casos, todos de
+ignorância e nenhum de conveniência:
+
+1. o DAX não faz parse;
+2. a recursão encontra uma calculada sem `table_dax`;
+3. a varredura não resolve tabela nenhuma (DAX que não referencia tabela é DAX que esta
+   função não entendeu, não DAX sem dependência).
+
+**Permissivo só onde se sabe, nunca por omissão.** A varredura é sobre a AST
+(`walk` + `parseDax`), não sobre texto, e segue coluna calculada adentro **e** tabela
+calculada adentro — o DAX de `CALENDARIO INSTALADO` referencia `[DATA INSTALAÇÃO]`, que
+é ela própria calculada, e parar nas referências diretas veria menos do que existe.
+
+### A medição — as 7 calculadas nascem de TRÊS queries
+
+Apurado contra o modelo real (`specs/`), não suposto:
+
+| tabela calculada | origens |
+|---|---|
+| `BASE DE ORIGEM` | `PROTOCOLOS GERAL` |
+| `calendar` | `FIELD AGENDA` |
+| `CALENDARIO AGENDAMENTO` | `PROTOCOLOS GERAL` |
+| `CALENDARIO CRIADO` | `PROTOCOLOS GERAL`, `PROTOCOLOS TELEFONIA` |
+| `CALENDARIO INSTALADO` | `PROTOCOLOS GERAL` |
+| `PROTOCOLOS` | `PROTOCOLOS GERAL` |
+| `Status Protocolo Dia` | `FIELD AGENDA`, `PROTOCOLOS GERAL` |
+
+Dessas três queries, `protocolos-geral` está no grupo `medio`, `protocolos-telefonia` no
+`quente`, e `field-agenda` **não está em grupo nenhum**. O grupo `frio`
+(`field-agenda-slot`, `clima-tempo`, `protocolos-produtividade`,
+`protocolos-auxiliares`) não alimenta calculada nenhuma — e invalidava as 7.
+
+### O efeito, página a página, pelo plano real
+
+Antes, toda página com calculada era invalidada pelos **três** grupos: a régua olhava o
+plano inteiro, e o plano de toda página viva tem query de mais de um grupo (é a própria
+conclusão do #139: *"o gatilho não é qual grupo — é ter qualquer query do seu plano em
+qualquer grupo"*). Depois:
+
+```
+agendamento-field ........ medio
+capa ..................... NENHUM
+diario-instalacao ........ medio
+instalacao-reincidente ... medio
+manutencao-inicial ....... medio
+premiacao-instalacao ..... medio
+protocolos-detalhados .... medio
+relatorio-do-ano ......... medio
+relatorio-do-mes ......... medio, quente
+telefonia-ouvidoria ...... quente, medio
+visao-geral .............. quente, medio
+```
+
+**`frio` some de DEZ das onze** — e a exceção é `agendamento-field`, pelo motivo que a
+tabela acima não enxergava. Ver a correção logo abaixo, medida ao vivo no mesmo dia.
+
+### CORREÇÃO, medida ao vivo às 13:41-13:49 — a tabela acima erra em uma linha
+
+A tabela foi montada mapeando tabela→query por `t.queryRef`, e isso **ignora o grão
+reduzido**. `specs/_catalog/projecao.yaml` declara que `FIELD AGENDA` tem duas queries:
+`query_padrao: field-agenda-slot` e `query_completa: field-agenda`, e a padrão é a que
+`carrega()` usa quando o pedido não toca coluna-gatilho. **`field-agenda-slot` está no
+grupo `frio`.** Então `calendar` e `Status Protocolo Dia` *são* invalidadas pelo `frio`,
+de verdade — e `agendamento-field` é a única página que as usa.
+
+Não é defeito do conserto: `confereIdadeDaCalculada` compara com o `geradoEm` da tabela
+que foi **de fato carregada**, seja qual for a query que a alimentou. O que estava errado
+era a minha previsão estática, não o comportamento.
+
+**A medição.** Ciclo completo, 290 amostras nas 11 páginas de 15 em 15 s, com os três
+grupos em sequência (condição de arranque, o pior caso):
+
+```
+grupos: quente 13:41:33->13:42:25 (52s)  medio 13:42:25->13:45:37 (192s)  frio 13:45:37->13:49:15 (217s)
+
+capa ..................... 0/27    0.0%   | quente 0/2  medio 0/11  frio 0/13
+9 paginas ................ 1/26    3.8%   | quente 0/2  medio 1/11  frio 0/13
+agendamento-field ........ 2/27    7.4%   | quente 0/2  medio 1/11  frio 1/13
+```
+
+Os onze 409 do ciclo inteiro caem em **dois instantes**, não espalhados:
+`13:45:28-33` (dez páginas, fim do `medio`) e `13:49:02` (`agendamento-field`, fim do
+`frio`). O cache serve o resto — é a mesma observação do #139.
+
+**A janela real, pelos carimbos dos arquivos** (medida melhor que a amostra):
+
+| | antes | depois |
+|---|---|---|
+| `medio`, calculadas de `PROTOCOLOS GERAL` | 13:42:32 → 13:45:37 = **185 s** | 13:44:57 → 13:45:37 = **40 s** |
+| `frio`, as 10 páginas sem `FIELD AGENDA` | 217 s | **0 s** |
+| `frio`, `agendamento-field` | 192 s | **192 s** (dependência real, não falso positivo) |
+
+No `medio` a régua antiga disparava já em `apuracao-premiacao` (13:42:32, a primeira do
+grupo); a nova só dispara em `protocolos-geral` (13:44:57). **185 s → 40 s, e os 40 s que
+sobram são verdadeiros.**
+
+### A frente seguinte ficou mais barata do que eu tinha escrito
+
+Com este dado, a publicação por geração deixa de ser o próximo passo óbvio. Os 192 s de
+`agendamento-field` no `frio` existem porque `field-agenda-slot` é materializada às
+13:46:02 e o recongelamento das calculadas só roda no fim do grupo, às 13:49:05 —
+esperando `protocolos-produtividade`, que sozinha leva 2 min. **Recongelar logo após a
+última query que alimenta calculada**, em vez de no fim do grupo, cortaria esses 192 s
+sem tocar em nada da publicação. É ordem de execução, não arquitetura.
+
+### Feito e medido no mesmo dia, 17:06-17:19
+
+`tools/snapshot/src/index.ts` passou a congelar as calculadas **logo após a ÚLTIMA query
+daquela execução que as alimenta**, em vez de no fim de tudo. Quem responde "quais são
+essas queries" é `queriesQueAlimentamCalculada`, em
+`packages/snapshot/src/tabelas-calculadas.ts` — e ela **olha `graoReduzido`**, que é o
+erro corrigido acima. Se a origem de qualquer calculada não for apurável
+(`seguro: false`), o congelamento volta a ser no fim: o atalho fica amarrado à mesma
+condição de solidez da régua.
+
+O log do daemon, nos dois grupos que importam:
+
+```
+'protocolos-geral'   era a última desta execução que as alimenta. As 4 restante(s) não são origem de nenhuma.
+'field-agenda-slot'  era a última desta execução que as alimenta. As 2 restante(s) não são origem de nenhuma.
+```
+
+O congelamento em si, cronometrado pelo próprio processo: **12.985 ms** no `medio`,
+**13.197 ms** no `frio`. Nos dois casos as queries restantes só começaram depois dele.
+
+| janela | antes | com dependência apurada | + congelamento antecipado |
+|---|---|---|---|
+| `medio`, as 10 páginas com calculada | 185 s | 40 s | **13 s** |
+| `frio`, `agendamento-field` | **350 s** | 350 s | **13 s** |
+| `frio`, as outras 10 páginas | 217 s | **0 s** | 0 s |
+
+Os 192 s que eu tinha estimado para o `frio` eram **350 s** na medição: `field-agenda-slot`
+gravou às 17:11:25 e `protocolos-produtividade` só terminou às 17:17:02. Errei a
+estimativa para menos — mais uma razão para não publicar previsão como se fosse medida.
+
+### O que esta sessão quebrou, e vale mais que o conserto
+
+Editei `tools/snapshot/src/index.ts` em dois passos — o uso primeiro, o `import` depois —
+com o daemon no ar. O tick das **14:04:15** pegou o arquivo no meio e matou o grupo
+`quente` com `ReferenceError: calculatedTableSourceTables is not defined`, código 1 em
+319 ms. Entrou como `ok:false` em `snapshot/refresh-historico.log`.
+
+> **Com o daemon no ar, cada GRAVAÇÃO tem de deixar a árvore válida — não cada edição.**
+> O daemon relê `tools/snapshot/src/index.ts` do disco a cada 15 min, num processo novo.
+> `import` antes do uso, declaração antes da chamada, ou o arquivo inteiro numa gravação
+> só. A janela de inconsistência que eu passei o dia fechando no snapshot eu abri no
+> código-fonte, pelo mesmo motivo: publicar em dois tempos o que é lido de uma vez.
+
+### O portão de 24 h não é alcançável nesta máquina
+
+Entre 14:04 e 16:59 a máquina suspendeu por ~2h30. Um `quente` ficou pendurado
+8.653.240 ms e morreu; na volta, três grupos falharam com
+`EHOSTUNREACH 186.219.128.248:5432` — rede ainda fora. Nenhum deles tem a ver com a
+plataforma, e os quatro grupos seguintes rodaram `ok:true`.
+
+O portão proposto para o deploy — *24 h de histórico sem um `ok:false`* — mede o sono do
+notebook, não a estabilidade do refresh. Ou ele roda no servidor (`docker-compose.prod.yml`
+já existe), ou o critério precisa excluir falha de rede logo após arranque. **Um portão
+de estabilidade medido numa máquina que dorme não prova o que promete.**
+
+### O que NÃO foi resolvido, e é o maior pedaço
+
+O grupo `medio` continua invalidando as dez páginas que têm calculada, porque
+`PROTOCOLOS GERAL` é origem de 6 das 7 e mora nele. São ~284 s medianos, 2x por hora.
+
+Isso não se conserta apurando dependência melhor — a dependência é real. Conserta-se
+**publicando o conjunto de uma vez**: materializar em área de espera e virar um ponteiro
+de geração, com query e calculada trocando juntas. Metade já existe
+(`packages/snapshot/src/escrita-atomica.ts` resolve o arquivo); falta o nível do
+conjunto. Fica registrado aqui como a frente seguinte, não como pendência esquecida.
+
+### Uma correção ao que eu mesmo disse hoje
+
+Antes de achar o #139 eu havia relatado a janela como *"~34% do relógio em que um pedido
+frio a qualquer página que toque calculada responde 409"*. Os 34,3% (699,5 s de
+materialização em 2.038 s, `refresh-historico.log`) medem a **largura da janela de
+inconsistência**, e não a taxa de recusa: o #139 amostrou o ciclo de verdade e achou
+`visao-geral` 0%, `diario-instalacao` 1%, `agendamento-field` 24%. O cache serve a
+maioria dos pedidos, e só o **frio** cai no guarda. Largura de janela e taxa de recusa
+são números diferentes, e eu usei um no lugar do outro.
+
+### A lição
+
+> **A objeção registrada tem um alvo, e vale conferir se o conserto acerta o alvo ou
+> passa longe dele.** O docstring recusava apurar dependência *"se a leitura do DAX
+> falhasse"* — uma objeção sobre **falha**, não sobre a ideia. Lida como veto à ideia,
+> ela congelaria o defeito para sempre; lida como requisito, ela vira o `null` que
+> devolve a régua antiga e torna a troca segura.
+>
+> O #139 fez a parte difícil: mediu, e escreveu a objeção em vez de contorná-la calado.
+> Sem aquele texto eu teria implementado isto sem saber que havia um motivo para não o
+> fazer — e sem saber, portanto, o que precisava provar.
+
+---
+
+## #141 — A paridade não estava quebrada: estava sem endereço. Confirmar o relatório derrubou 5 dos 6 bloqueios, e a única divergência que sobrou sem causa era um espaço no fim de um texto
+
+**Data:** 18/09/2026
+
+O `CLAUDE.md` avisava havia semanas que ninguém registrava contra qual relatório os
+números de `pbi:` tinham sido medidos, e que as tabelas em `bloqueadas` falhavam todas
+com a mesma cara — *"definições diferentes"*, *"formas incompatíveis"* — que é
+exatamente o sintoma de consultar o relatório errado.
+
+Custou **um comando** descobrir: `npm run powerbi -- --tabelas`. O token renovou-se
+sozinho pelo `refresh_token` (ninguém precisava de navegador) e a ferramenta imprimiu
+o alvo antes de qualquer consulta:
+
+```
+nome       INST - Relatório Instalação      <- o CERTO, não o "Gerencial"
+relatório  f12d1205-62d7-4bc3-b300-ea7268076dd4
+dataset    39382a2c-a349-4cce-8c4a-9703c9fa4364
+```
+
+A hipótese que travava tudo estava **errada**, e bastava perguntar. A procedência foi
+para o cabeçalho de `specs/_catalog/paridade-janela.yaml`, com o comando que a
+reconfere.
+
+### O que caiu quando o endereço ficou conhecido
+
+| tabela | pbi | nós | como |
+|---|---|---|---|
+| `BACKLOG AGENDADO FUTURO` | 96.384 | 96.384 | sem recorte |
+| `PROTOCOLOS GERAL` | 95.679 | 95.686 | sem recorte |
+| `RETORNO PRIORITARIO` | 273 | 273 | `data_instalacao >= 2026` |
+| `Base Categorias Field` | 228.568 | 228.570 | `beginning_service_date >= 2026` |
+| `PROTOCOLOS TELEFONIA` | 650 | 650 | `DATA CRIADO >= 2026` |
+| `PROTOCOLOS PRODUTIVIDADE` | 78.144 | 78.284 | `DATA CRIADO >= 2026` |
+
+E as outras nove tabelas do modelo batem exato **sem predicado nenhum**.
+
+**Em `PROTOCOLOS GERAL` o predicado antigo não estava vencido: estava ERRADO.** Ele
+era `[DATA CRIADO] >= DATE(2026,1,1)` e derruba o lado do Power BI para 38.652 contra
+os nossos 95.686 — 60% a menos. Os dois lados convergiram quando o commit 8b1fd19
+destravou um `EXISTS`, e ninguém voltou para apagar o filtro. Aplicá-lo hoje produziria
+exatamente o gabarito impossível que o arquivo existe para impedir.
+
+Isso exigiu uma mudança de esquema: `carregaJanelas` recusava entrada sem `dax`, com
+uma razão boa — *"janela sem predicado não filtra nada"*. Mas a recusa tornava
+**"medi e não precisa" indistinguível de "esqueci de preencher"**. Entrou
+`sem_recorte: true`: uma afirmação, com prova obrigatória, e erro alto se vier junto
+com `dax` (são afirmações opostas, e escolher uma seria adivinhar qual foi medida).
+
+### O comparador produzia dez falsos positivos por varredura
+
+`Data mais recente` aparecia como divergência em **todas** as páginas que a têm,
+mostrando `2026-09-18T00:00:00` de um lado e `2026-09-18` do outro — o mesmo instante.
+A causa, em `compara()`:
+
+```js
+return String(p) === String(nosso)
+```
+
+O Power BI devolve data como **texto** no JSON da API; nós devolvemos **`Date`**.
+`String(new Date(...))` dá `"Thu Sep 18 2026 …"`, então **nunca** casava.
+
+Agora compara como instante, lido componente a componente com `Date.UTC` — e não com
+`new Date(texto)`, que aplicaria o fuso do runtime e faria a paridade depender de onde
+o processo roda. `Hora mais recente` **continua** divergindo, e deve: são instantes
+diferentes de verdade, o carimbo de refresh de cada lado.
+
+`compara` estava sem teste nenhum porque mora num script que faz `await pegaToken()` na
+carga — importá-lo num teste tentaria autenticar. Saiu para `tools/powerbi/src/compara.ts`
+com 6 testes. O cabeçalho de `test/api.test.ts` anunciava cobrir *"a fronteira de saída
+e a comparação"* e cobria só a primeira.
+
+### A última divergência sem causa era um espaço
+
+Sobraram 4 cards em `relatorio-do-mes`, todos ~2,4% acima do nosso lado. O método que
+resolveu: **rodar a NOSSA fórmula no dado DELES.** Deu 79.285 — idêntico à medida
+publicada. Fórmula igual ⇒ a diferença está no dado.
+
+Comparando os valores distintos de `TIPO DE PROTOCOLO`, um único diferia:
+
+```
+Power BI:  "TEC - Instalação de Roteador Adicional"
+Nós:       "TEC - Instalação de Roteador Adicional "
+```
+
+O `NOT(TIPO IN {...})` da medida não excluía aquelas linhas. `TRIM(it.title)` no SQL,
+rematerialização, e `# TOTAL MÊS ATIVO` foi de 81.204 para 79.290 contra 79.285.
+
+Mexer no SQL mudou o sha e **derrubou sozinha a prova de janela gravada três horas
+antes** — o guarda de `provaVencida` funcionando exatamente como projetado, contra quem
+o escreveu no mesmo dia.
+
+`# META` era outra coisa: constante de negócio digitada à mão. Nossa spec tinha 2928,
+medido em 25/08; o relatório vivo passou a devolver **2865**. O comentário de lá já
+antecipava — *"se a meta mudar de novo, ela muda AQUI"* — e agora diz para confirmar
+com quem define a meta, porque isto é decisão de negócio e não medição.
+
+### O que fica, e por quê
+
+| card | causa |
+|---|---|
+| `Hora mais recente` (×11) | carimbo de refresh de cada lado, instantes diferentes |
+| `Primeiro Classificacao` (×2) | previsão do tempo, atualiza sozinha |
+| 4 de `FIELD AGENDA` | bloqueada: 1.739.231 contra 41.584, definição diferente |
+| `# MEDIA INSTALADO BACKLOG` | `MIN([DATA INSTALAÇÃO])` é 2025-01-02 lá e 2025-01-18 aqui; o calendário fica 16 dias menor e o divisor encolhe |
+
+**Nenhuma divergência sem causa escrita.** Eram 7 em `DEPLOY.md §2.4`.
+
+### Dois bloqueios que mudaram de natureza
+
+`REINCIDÊNCIA` saiu de "prova vencida" para algo que o arquivo não previa: **a coluna
+do corte não existe do outro lado.** Nosso SQL corta por `created`; a tabela publicada
+só tem `data_instalacao`, `data_suporte` e `Data`. Filtrar por `data_instalacao` dá
+1.410 dos dois lados — bate bonito — mas o nosso conjunto tem 1.461.
+
+`INSTALAÇÕES REINCIDENTES` foi reconferida e o bloqueio ficou **mais forte**: 24 dias
+depois, `reincidente_30d = "SIM"` continua em exatamente **444**, com data máxima
+**2026-04-13**. E a armadilha que isso revela vale mais que o caso: **a contagem da
+tabela bate EXATO** (23.255 dos dois lados), porque as linhas "NÃO" seguem entrando.
+Uma conferência que olhasse só `COUNTROWS` declararia a tabela equalizada e
+preencheria o gabarito com o número regredido.
+
+### A lição
+
+> **Antes de explicar uma divergência, confirme que os dois lados são os dois lados.**
+> Cinco bloqueios sobreviveram semanas com explicações plausíveis — "formas
+> incompatíveis", "a base congelou", "definições diferentes" — e o que faltava era um
+> comando de dez segundos dizendo contra o que estávamos medindo. Explicação plausível
+> é o disfarce mais confortável de uma pergunta que ninguém fez.
+>
+> E o corolário, que resolveu o último card: **quando a fórmula é a mesma, rode a sua
+> no dado do outro.** Se o número dele sair, a fórmula está inocente e sobra o dado —
+> que foi onde estava o espaço.
+
+
+## #142 — a divergência de 2 linhas era um protocolo reclassificado no meio do caminho
+
+**Quando:** 19/09/2026, varredura de paridade das 11 páginas contra o alvo confirmado.
+
+**O placar:** 46 batem, 21 diferem, 0 ausentes, 0 erros. Ontem era 49/18. As três que
+mudaram de lado: duas de previsão do tempo (API externa, muda de hora em hora) e
+`PROTOCOLOS RETORNOS` de `manutencao-inicial` — 275 lá contra 273 aqui, depois de
+bater exato (273/273) no dia anterior.
+
+**Por que valia investigar:** a direção estava errada. O nosso lado é o MAIS NOVO —
+`Hora mais recente` marca 11:57 aqui contra 10:09 lá, 6.466 s de diferença — e mesmo
+assim o lado velho tinha MAIS linhas. Atraso de carga explica o contrário disso, nunca
+isso. Um lado velho com mais linhas significa que alguma coisa SAIU do nosso conjunto.
+
+**O caminho, e as duas hipóteses que caíram antes da certa:**
+
+1. *A fresta entre as datas.* A janela de `RETORNO PRIORITARIO` corta por
+   `data_instalacao`, mas o nosso SQL corta por `a.created` (`data_abertura`) — é a
+   armadilha que o `CLAUDE.md` registra. Medido: `data_instalacao >= 2026` dá 275,
+   `data_abertura >= 2026` dá 275, as duas juntas dão 275, a fresta dá 0. **Caiu.**
+2. *Dois cancelamentos recentes.* O SQL exclui `is2.title <> 'Cancelado'`, e há 37
+   linhas em `Cancelado` hoje. Se duas tivessem sido canceladas entre 10:09 e 12:01, o
+   Power BI ainda as teria. **Não deu para provar nem negar:** `assignment_incidents`
+   não tem coluna de atualização (só `sap_*_modified_integration` e
+   `feedback_last_email_sent`, todas zeradas no conjunto).
+3. *Contar protocolos em vez de linhas.* Aqui abriu. 273 linhas nossas são **250
+   protocolos distintos** — a expansão de `ALOCAÇÃO PATRIMONIO` no passo de M duplica
+   23. Do outro lado: 275 linhas, **251 protocolos**. A diferença não era "2 linhas",
+   era **1 protocolo** que a expansão conta duas vezes.
+
+**O culpado:** protocolo `1821701`, presente lá e ausente aqui — e no resto somos
+superconjunto exato (`só aqui: []`). No banco ele é `incident_type_id = 1268`
+(`TEC-ACESSO-CLI-RETORNO-PRIORITARIO`), e o nosso SQL filtra `= 1160`
+(`TEC - Suporte de Retorno Prioritário`).
+
+**A tentação, e por que ela estava errada.** O tipo 1268 nasceu em 23/04/2026 e já tem
+16 protocolos, o último hoje: parece exatamente um tipo novo que o nosso SQL não
+acompanhou, e o conserto óbvio seria trocar `= '1160'` por `IN ('1160','1268')`. Duas
+medidas impediram o erro:
+
+- a extração original em `../QUERIES-DASHBOARD-INSTALACAO/m/retorno-prioritario.m` diz
+  `incident_type_id = '1160'` — o nosso SQL é fiel;
+- e perguntando ao próprio modelo publicado quais tipos a tabela dele contém:
+  `SUMMARIZECOLUMNS('RETORNO PRIORITARIO'[protocol_type], ...)` devolve **uma linha
+  só**, `TEC - Suporte de Retorno Prioritário`, 405 linhas. **O Power BI também não
+  conhece o 1268.**
+
+**Então o que aconteceu:** o protocolo foi aberto HOJE (`a.created` = 19/09) como 1160,
+o modelo publicado o capturou às 10:09, e alguém o **reclassificou para 1268** antes da
+nossa carga das 12:01. O Power BI carrega um retrato de um protocolo que já não é
+aquilo. **O número certo é o nosso.**
+
+**O que isto ensina, e é o que vale guardar:**
+
+> Antes de mudar uma definição para "acompanhar" o outro lado, **pergunte ao outro lado
+> o que ele contém.** Uma linha a mais lá parece regra nova; era estado velho de uma
+> linha. O teste custa uma consulta `SUMMARIZECOLUMNS` e teria evitado alargar o nosso
+> filtro para um tipo que o gabarito também rejeita — divergência que só apareceria
+> depois, invertida, e sem esta pista.
+
+E o corolário operacional: **contar linha não é contar entidade.** Em toda tabela que
+passa por `Table.ExpandTableColumn`, a primeira pergunta diante de uma diferença
+pequena é quantas ENTIDADES distintas ela representa. Aqui, 2 linhas eram 1 protocolo,
+e procurar "as duas linhas que faltam" nunca teria achado nada.
+
+**As 21 de hoje, todas com causa:** 11 `Hora mais recente` (carimbo de carga; somos os
+mais novos), 4 de `FIELD AGENDA` (bloqueada, definição diferente), 4 de previsão do
+tempo (API externa), 1 `PROTOCOLOS RETORNOS` (este achado), 1
+`# MEDIA INSTALADO BACKLOG` (`CALENDARIO INSTALADO` 729 contra 713, já em #141).
+**Zero sem explicação.**
+
+
+---
+
+## #143 — "cargas falharam" em onze queries, e nenhuma delas tinha defeito: o notebook dormiu 2h14min no meio da carga
+
+**Quando:** 21/09/2026, a partir de um banner de 19/09 que dizia
+`cargas falharam: alocacao-patrimonio, apuracao-premiacao, backlog-agendado-futuro,
+base-categorias-field, capacidade-equipe, instalacoes-reincidentes, protocolos-geral,
+reincidencia, retorno-prioritario, tecnicos-auxiliares, troca-endereco (saiu com
+código 1)`.
+
+**Os onze nomes são o grupo `medio` inteiro**, e a leitura natural do banner é que
+onze queries quebraram ao mesmo tempo. Nenhuma quebrou.
+
+**A assinatura que denuncia, e ela está no próprio histórico:**
+
+```
+{"evento":"disparo-coalescido","quando":"2026-09-19T18:51:48.519Z","grupo":"medio","emCursoHaMs":8105361}
+{"evento":"disparo-coalescido","quando":"2026-09-19T18:51:48.522Z","grupo":"quente","emCursoHaMs":0}
+{"evento":"disparo-coalescido","quando":"2026-09-19T18:51:48.533Z","grupo":"frio","emCursoHaMs":0}
+{"evento":"grupo","quando":"2026-09-19T18:54:36.070Z","grupo":"medio","ok":false,"duracaoMs":8272913,"erro":"saiu com código 1"}
+```
+
+Três relógios de **15, 20 e 30 minutos** disparando com **14 ms** entre si. Isso não
+acontece por coincidência: é o Windows liberando de uma vez tudo que venceu enquanto o
+processo estava congelado. E `duracaoMs: 8272913` são 2h17min num grupo cujo custo
+medido é 286 s (`specs/_catalog/refresh.yaml`).
+
+**A confirmação, ao segundo,** cruzando o histórico (UTC) com o log de energia do
+Windows (local, UTC−3):
+
+| UTC | local | evento |
+|---|---|---|
+| 16:36:43 | 13:36:43 | `medio` começa |
+| 16:37:11 | 13:37:11 | **Windows entra em espera — 28 s depois** |
+| 18:51:48 | 15:51:48 | os três relógios disparam juntos |
+| 18:51:50 | 15:51:50 | evento de retomada do kernel |
+| 18:54:36 | 15:54:36 | `medio` morre com código 1 |
+
+`powercfg /a` diz qual é o modo: **`Espera (S0 Ocioso com Baixo Consumo) Conectado via
+Rede`**. Ele congela o processo Win32 e **mantém a rede de pé** — então o filho dormiu
+com os sockets do Postgres abertos e, ao acordar, o exit 1 foi o driver relatando que
+a conexão tinha morrido no sono. `STANDBYIDLE` está em `0x0` nos dois modos: não foi
+tempo de tela, foi tampa fechada ou suspensão manual.
+
+**E o caso isolado não era isolado.** Varrendo as 25 falhas registradas entre 18 e
+21/09/2026 contra os eventos 506/507 do kernel, elas se separam em **três** populações:
+
+| população | quantas | evidência |
+|---|---|---|
+| atravessaram o sono | 5 | duração de 2h17min, 2h24min, 3h05min, 6h16min, **10h46min** |
+| nasceram na retomada | ~8 | terminaram de **1 s a 110 s** depois de um `ACORDOU` |
+| máquina acordada | ~5 | 20/09, 12:49–13:15 local — **sem causa conhecida** |
+
+Exemplos da segunda coluna, e é ela que muda o conserto: `frio` falhou **1 s** depois
+de acordar (20/09 03:08:22 contra `ACORDOU` 03:08:21); `medio` falhou **no mesmo
+segundo** (09:27:30); `frio` **2 s** (12:32:25 contra 12:32:27); `quente` **10 s**
+(14:31:59 contra 14:31:49). Essas têm duração NORMAL — não dormiram: nasceram cedo
+demais, com a pilha de rede ainda subindo.
+
+**Taxa de falha acumulada do agendador quando isto foi medido: 16 em 56 — 28,6%.**
+
+**O que foi feito:**
+
+1. **Detector de suspensão por batimento** (`apps/api/src/agendador.ts`). Um
+   temporizador de 60 s que não faz trabalho nenhum: só confere se o relógio de parede
+   andou mais do que ele deveria ter deixado andar. Passou de 3× a cadência, a máquina
+   congelou. *A tentação era comparar um relógio monotônico com o de parede — na
+   Espera S0 o contador de ticks continua andando e a comparação não acusaria nada. O
+   sintoma direto, e o único que não depende de detalhe de plataforma, é o
+   temporizador não ter disparado.*
+2. **A carga congelada é morta, não esperada.** O filho não percebe o sono: fica
+   bloqueado num socket morto. `rodaGrupoAssincrono` passou a aceitar `AbortSignal` e
+   mata com `SIGKILL`. Sem isso, `quente` e `frio` esperaram 2h17min atrás de um
+   processo que já estava morto por dentro.
+3. **Suspensão não é falha.** Vira evento próprio (`carga-interrompida`),
+   `falhasConsecutivas` não sobe, o `refresh-status.json` não fica vermelho, e o grupo
+   volta para a **frente** da fila — ele perdeu a vez inteira, os outros só esperaram.
+   *O alarme que importa continua de pé: `estaVencido` mede idade do último SUCESSO,
+   então dormir três dias continua acendendo "vencida", com razão. O que sumiu foi a
+   palavra "falharam".*
+4. **Carência de 60 s depois de acordar**, para a segunda população. Ao retomar, os
+   relógios de TODOS os grupos batem de uma vez — sem carência, o primeiro trabalho do
+   agendador ao voltar é disparar tudo no pior momento possível. O preço é um atraso de
+   60 s uma vez por retomada.
+5. **O `stderr` do filho passou a ser guardado** (`tools/refresh/src/executa-grupo.ts`).
+   `stdout` continua herdado; `stderr` é canalizado, reescrito no nosso `stderr` e as
+   5 últimas linhas entram no resumo da falha.
+
+**O item 5 é o que mais dói, e é o mais barato.** Com `stdio: 'inherit'` nos dois, tudo
+que sobrava de uma falha era `saiu com código 1`. Descobrir a causa exigiu cruzar o
+histórico com o log de energia do Windows. A cauda do `stderr` teria dito
+`Connection terminated unexpectedly` na primeira linha. **E é por isso que a terceira
+população continua sem causa:** para aquelas cinco falhas de 20/09 não existe log
+nenhum a recuperar — o instrumento não estava lá.
+
+**O relatório também estava dando o conselho errado.** `npm run refresh:daemon --
+--historico` imprimia `quente 1x, já rodava há 0s` e mandava afrouxar a cadência do
+`quente`. O `quente` não estava rodando: estava **na fila**, atrás do `medio`
+congelado. Descarte com o grupo rodando e descarte com o grupo na fila têm conselhos
+opostos, e o relatório os confundia — `esperandoNaFila` agora separa os dois.
+
+**O que isto NÃO conserta, e é a parte importante.** Nada aqui impede a máquina de
+dormir. Em produção a cadência vive no contêiner e o problema não existe; nesta
+máquina, um número que sobe em `suspensoes` no `/api/saude` é a resposta de que o
+problema não tem conserto em código — tem em política de energia, ou em mudar de host.
+O que mudou foi que a plataforma passou a **dizer isso**, em vez de acusar onze queries
+inocentes.
+
+**Testes:** 12 novos (4 em `tools/refresh/test/executa-grupo.test.ts`, 4 em
+`apps/api/test/agendador.test.ts`, 4 em `tools/refresh/test/historico.test.ts`).
+Suíte: 2.105 passando.
+
+
+---
+
+## #144 — A API não tinha guarda de processo, e já tinha morrido por isso: `codigo: 1` era tudo que sobrava
+
+**Quando:** 21/09/2026, ao revisar o risco que o #143 introduziu.
+
+**O que mudou o risco.** Desde 19/09 a cadência do refresh vive DENTRO do processo da
+API (`apps/api/src/agendador.ts`), e não mais num daemon separado. Isso trocou o preço
+de uma exceção solta: antes ela derrubava um daemon e o refresh parava; hoje ela
+derruba **a tela**, e a operação fica sem trabalhar.
+
+**Procurei a rede embaixo disso e ela não existia.** `grep -rn "uncaughtException|
+unhandledRejection" apps/api/src/` devolvia **zero**. Os únicos `process.on` do
+repositório são os `SIGINT`/`SIGTERM` de `tools/subir/src/index.ts`.
+
+**E não é hipotético — está no log.** `npm run refresh:daemon -- --historico`:
+
+```
+MORTES DA API: 3
+  2026-09-18T13:21:24.544Z  código 3221226505  depois de 85 s no ar
+  2026-09-18T13:41:31.988Z  código 1  depois de 1125 s no ar      <- exceção não tratada
+  2026-09-19T00:28:35.795Z  código 3221226505  depois de 7.1 h no ar
+```
+
+Código 1 em Node é exceção não tratada. A API morreu depois de 18 minutos no ar e
+**não há como saber por quê**: nem mensagem, nem pilha, nem qual pedido a provocou. É
+o mesmo defeito de forma do #143 — o instrumento não estava lá quando foi preciso.
+
+*(Os outros dois, `3221226505` = `0xC0000409`, são `abort()` do próprio Node — outra
+causa, fora do alcance desta guarda.)*
+
+**A decisão difícil, e por que ela é esta.** O conselho de manual depois de um
+`uncaughtException` é sair, porque o estado pode estar corrompido. Ele vale para um
+servidor que ESCREVE. Esta API é estritamente somente-leitura (regra 2 do CLAUDE.md):
+lê snapshot de disco e devolve JSON. O "estado" que poderia corromper é cache —
+descartável por construção. Entre servir dado de um minuto atrás e **não servir nada**,
+a tela é o produto. É o mesmo raciocínio que `#recusa` no agendador já aplicava:
+*"derrubar a API por causa disso trocaria dado velho por tela nenhuma"*.
+
+**Mas não a qualquer preço.** Erro não tratado em RAJADA não é um pedido azarado: é um
+processo quebrado, e insistir nele serve respostas que ninguém entende. Dez em sessenta
+segundos e a guarda desiste com código diferente de zero — que é o que faz um
+supervisor subir instância limpa. A janela é **deslizante por reinício, não cumulativa**:
+um erro a cada dez minutos nunca chega ao teto, e esse é justamente o caso que a guarda
+existe para NÃO derrubar.
+
+**O que passou a aparecer no `/api/saude`:**
+
+```json
+"guarda": { "total": 0, "naJanela": 0, "ultimo": null }
+```
+
+Sem isso, "a API está de pé" e "a API está de pé e já engoliu 7 erros" são
+indistinguíveis de fora — e a segunda precisa aparecer antes de virar a terceira.
+
+**Os temporizadores do agendador também foram blindados.** Um `throw` dentro de
+`setInterval` não tem quem o pegue: não há pilha de chamador, então vira
+`uncaughtException` direto. Os três relógios (cadência de grupo, batimento, fim da
+carência) passam por `#semDerrubar`, que registra qual relógio produziu o erro e segue.
+A guarda de processo é a rede embaixo desta; esta é para o erro nunca chegar lá.
+
+**O teste que faltava, e é o que a operação de fato precisa.** Nada guardava a
+propriedade que justifica o desenho inteiro: *a API continua atendendo enquanto um
+refresh roda*. `apps/api/test/api-sob-refresh.test.ts` sobe a API de verdade com o
+agendador de verdade e mede:
+
+- 20 pedidos a `/api/saude` com um grupo preso em voo — todos 200, pior caso < 1 s;
+- três grupos falhando seguidos (um deles LANÇANDO, não devolvendo erro) não derrubam
+  a tela nem param a cadência;
+- **com o executor REAL e um filho REAL**, o laço de eventos continua girando.
+
+O último é deliberadamente o único que não injeta `roda`: os outros provam a
+integração, mas uma promessa já resolvida passaria por todos eles — eles **não**
+pegariam alguém trocando `spawn` por `spawnSync`, que é exatamente o conserto distraído
+que transformaria "o refresh travou" em "a tela saiu do ar". Ele usa uma query
+inexistente de propósito: o materializador recusa no Query Registry e sai em ~0,4 s,
+sem tocar banco, sem tocar o manifesto e sem imprimir dado de cliente.
+
+**Suíte: 2.116 passando** (2.105 → 2.116; 7 da guarda, 4 da API sob refresh).

@@ -180,19 +180,40 @@ device code — o login é do Erick, e o acesso é exatamente o dele.
 gera número plausível e diferente, que entra em `paridade-janela.yaml` como se fosse
 gabarito.
 
-**E o repositório não registra para onde ele aponta.** `POWERBI_URL`,
-`POWERBI_REPORT_ID` e `POWERBI_TENANT_ID` são lidos do `.env`
-(`tools/powerbi/src/index.ts:180-183`) e **não estão no `.env`** — só no
-`.env.example`, vazios, desde 27/08. Enquanto ficarem vazios:
+**CONFIRMADO E REGISTRADO EM 18/09/2026.** Este bloco dizia que o repositório não
+registrava para onde o token aponta, e que `POWERBI_REPORT_ID`/`POWERBI_TENANT_ID`
+estavam vazios no `.env`. Os dois estão preenchidos e funcionam, e o alvo foi
+verificado ao vivo:
 
-* `npm run powerbi` exige `--url=` a cada chamada;
-* nenhum número de `pbi:` em `specs/_catalog/paridade-janela.yaml` diz de onde veio.
+```
+nome       INST - Relatório Instalação      <- o CERTO, não o "Gerencial"
+relatório  f12d1205-62d7-4bc3-b300-ea7268076dd4
+dataset    39382a2c-a349-4cce-8c4a-9703c9fa4364
+workspace  My Workspace
+tenant     Sebratel.onmicrosoft.com
+```
 
-**Por que isso é suspeito e não burocracia.** As três tabelas em `bloqueadas` daquele
-arquivo falham todas com a mesma cara — *"as duas tabelas têm definições diferentes"*,
-*"formas incompatíveis"*, *"a base congelou"*. Consultar um relatório diferente do
-nosso produz exatamente esse sintoma. Confirme o alvo antes de tratar qualquer uma
-delas como defeito da plataforma.
+A procedência está no cabeçalho de `specs/_catalog/paridade-janela.yaml`, junto do
+comando que reconfere. `POWERBI_URL` segue vazio e **não faz falta** — os dois ids
+bastam.
+
+**O token se renova sozinho.** `npm run powerbi` usa o `refresh_token` sem pedir nada;
+o device code no navegador só aparece quando esse também vence (~90 dias deslizantes).
+Não há passo manual em condição normal.
+
+**A hipótese do relatório errado CAIU, e com ela metade dos bloqueios.** Aquelas três
+tabelas falhavam com a mesma cara — *"definições diferentes"*, *"formas
+incompatíveis"* — e isso é a cara de consultar o relatório errado. Não era: medidas
+contra o alvo confirmado, `PROTOCOLOS GERAL` (95.611 vs 95.680),
+`BACKLOG AGENDADO FUTURO` (96.384 vs 96.384) e `PROTOCOLOS PRODUTIVIDADE` (78.144 vs
+78.284) equalizam. `FIELD AGENDA` não equaliza, e agora sabe-se que é definição de
+verdade, não endereço.
+
+**Descoberta que muda como ler divergência:** em `PROTOCOLOS GERAL` o predicado
+antigo (`[DATA CRIADO] >= DATE(2026,1,1)`) não estava vencido — estava **errado**:
+ele derruba o lado do Power BI para 38.652 contra os nossos 95.680. Os dois lados
+convergiram e ninguém tinha voltado para apagar o filtro. Ver `sem_recorte` em
+`tools/powerbi/src/janela.ts`.
 
 A garantia de somente-leitura **não** está no escopo do token (ele pede `.default`,
 que devolve escrita também): está em `assertSomenteEvaluate` em
