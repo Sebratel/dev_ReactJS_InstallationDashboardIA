@@ -28,6 +28,12 @@ export interface DashboardDaLista {
   visuais: number;
   /** Falso quando falta snapshot: a página não vai abrir, e a lista diz antes do clique. */
   pronta: boolean;
+  /**
+   * Página de DICA do relatório original (`type: Tooltip`), não página navegável.
+   * São três — `l-inst`, `l-mapa`, `l-tec` — e a navegação as descarta.
+   * Opcional porque uma API anterior a 18/09/2026 não manda o campo.
+   */
+  tooltip?: boolean;
 }
 
 export interface Segmentacao {
@@ -174,6 +180,8 @@ export interface OpcoesDePagina {
   linhas?: number;
   /** O campo "Filtrar…" da tabela. Ver `?busca=` em `apps/api/src/servidor.ts`. */
   busca?: string;
+  /** Força recálculo no servidor ignorando o cache de resposta (Fase 4, ?recalcula=1). */
+  recalcula?: boolean;
 }
 
 /**
@@ -214,6 +222,7 @@ export function urlDaPagina(
   // daria uma segunda chave para o mesmo pedido, e a abertura sem busca deixaria de
   // reaproveitar o que o aquecedor já calculou.
   if (opcoes.busca) p.set('busca', opcoes.busca);
+  if (opcoes.recalcula) p.set('recalcula', '1');
   const q = p.toString();
   return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
 }

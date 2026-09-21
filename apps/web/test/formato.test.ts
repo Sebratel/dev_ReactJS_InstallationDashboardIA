@@ -29,9 +29,9 @@ test('o tipo decide, não o formato do texto', () => {
   assert.equal(formata(iso, 'string').texto, iso);
 });
 
-test('data com hora mostra a hora; meia-noite exata mostra só a data', () => {
+test('data com hora mostra a hora no fuso local; meia-noite exata mostra só a data', () => {
   assert.equal(formata('2026-08-10T00:00:00.000Z', 'date').texto, '10/08/2026');
-  assert.match(formata('2026-08-10T09:08:59.000Z', 'date').texto, /10\/08\/2026.*09:08/);
+  assert.match(formata('2026-08-10T09:08:59.000Z', 'date').texto, /10\/08\/2026.*06:08/);
 });
 
 test('campo só-de-hora (época 1899) mostra só a hora, não a data da época', () => {

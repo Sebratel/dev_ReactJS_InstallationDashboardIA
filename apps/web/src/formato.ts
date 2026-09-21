@@ -24,13 +24,15 @@ export interface Formatado {
 
 const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const nfInt = new Intl.NumberFormat('pt-BR');
-// UTC em todos: o snapshot grava instante, e formatar no fuso local faria a mesma
-// data virar o dia anterior para quem estivesse a oeste de Greenwich.
+// UTC para data pura: o snapshot grava instante em meia-noite, e formatar no fuso local
+// faria a mesma data virar o dia anterior para quem estivesse a oeste de Greenwich.
 const df = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' });
+// Fuso do Brasil (America/Sao_Paulo) para data com hora (ex: carimbo dadoDe do snapshot):
+const fusoLocal = 'America/Sao_Paulo';
 const dfh = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',
   timeStyle: 'short',
-  timeZone: 'UTC',
+  timeZone: fusoLocal,
 });
 const dfHora = new Intl.DateTimeFormat('pt-BR', { timeStyle: 'short', timeZone: 'UTC' });
 

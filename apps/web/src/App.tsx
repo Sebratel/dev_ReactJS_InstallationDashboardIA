@@ -45,6 +45,7 @@ import { usaModo } from './modo.tsx';
 import { ActiveFilterPill } from './atomic/molecules/ActiveFilterPill.tsx';
 import { KpiGridSection } from './atomic/organisms/KpiGridSection.tsx';
 import { VisualGridSection } from './atomic/organisms/VisualGridSection.tsx';
+import { RefreshCw } from 'lucide-react';
 
 export function App() {
   const { conferencia } = usaModo();
@@ -109,6 +110,8 @@ export function App() {
   // cruzada longa (`aoFiltrarAlvos` acima) acumula uma chave por combinação de
   // filtro+clique sem nunca podar.
   const paginasVistas = useRef<Map<string, PaginaCalculada>>(new Map());
+  // Ref para forçar recálculo ignorando o cache do servidor (?recalcula=1).
+  const forcarRecalculoRef = useRef(false);
   // Sobe a cada evento de `/api/eventos` que atinge a página ABERTA — é o único
   // jeito de reabrir o efeito de busca abaixo sem depender de `atual`/`filtros`/
   // `clicados` terem mudado (ACHADOS #89/#90: a tela se atualiza sozinha).
@@ -117,6 +120,8 @@ export function App() {
   const [saude, setSaude] = useState<RespostaSaude | null>(null);
   // Horário da última atualização automática recebida via SSE (Marco C2).
   const [horaRealtime, setHoraRealtime] = useState<string | null>(null);
+  // Intervalo em segundos para auto-refresh silencioso do dashboard em segundo plano (default 60s).
+  const [intervaloAutoRefresh, setIntervaloAutoRefresh] = useState<number>(60);
 
   useEffect(() => {
     let cancelado = false;
@@ -131,6 +136,27 @@ export function App() {
       cancelado = true;
     };
   }, [revalidar]);
+
+  // AUTO-REFRESH PERIÓDICO EM SEGUNDO PLANO
+  // Rebusca os dados no intervalo configurado (default: 60s), invalidando o cache local
+  // para que a tela e o carimbo de horário (`dadoDe`) se atualizem sozinhos sem F5.
+  useEffect(() => {
+    if (!logado || !atual || intervaloAutoRefresh <= 0) return;
+    const interval = setInterval(() => {
+      if (atualRef.current) {
+        apagaPaginaDoCache(paginasVistas.current, atualRef.current);
+        const agora = new Date();
+        const horaFmt = agora.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+        setHoraRealtime(horaFmt);
+        setRevalidar((n) => n + 1);
+      }
+    }, intervaloAutoRefresh * 1000);
+    return () => clearInterval(interval);
+  }, [logado, atual, intervaloAutoRefresh]);
 
   // O efeito do SSE roda uma vez por sessão de login — ler `atual` fresco de um
   // ref evita reabrir a conexão a cada troca de aba (senão perderia evento no
@@ -202,21 +228,27 @@ export function App() {
 
     listaDashboards()
       .then((r) => {
-        setPaginas(r.dashboards);
+        // As páginas de DICA do relatório original (`type: Tooltip`) saem aqui, no
+        // ponto em que a lista entra na tela — e por isso somem da navegação, da
+        // escolha da página inicial e do pré-carregamento de uma vez só.
+        // São `l-inst`, `l-mapa` e `l-tec`: 550x400, um visual, e no Power BI elas
+        // só aparecem ao pairar sobre outro visual. Vinham como aba desde sempre.
+        const navegaveis = r.dashboards.filter((d) => d.tooltip !== true);
+        setPaginas(navegaveis);
         setAtual((a) => {
           if (a) return a;
-          const escolhida = r.dashboards.find((d) => d.pronta)?.id ?? r.dashboards[0]?.id ?? null;
+          const escolhida = navegaveis.find((d) => d.pronta)?.id ?? navegaveis[0]?.id ?? null;
           setFiltros((f) => (f.length > 0 ? f : filtrosPadrao(escolhida)));
           return escolhida;
         });
 
         // Pré-carregamento em segundo plano sequencial de outras páginas prontas,
         // aguardando a página inicial abrir primeiro para não disputar recursos da API.
-        const paginaInicial = inicial.pagina ?? r.dashboards.find((d) => d.pronta)?.id ?? r.dashboards[0]?.id ?? null;
+        const paginaInicial = inicial.pagina ?? navegaveis.find((d) => d.pronta)?.id ?? navegaveis[0]?.id ?? null;
         void (async () => {
           // Pequena pausa para a página em exibição carregar com prioridade máxima
           await new Promise((resolve) => setTimeout(resolve, 800));
-          for (const d of r.dashboards) {
+          for (const d of navegaveis) {
             if (!d.pronta || d.id === paginaInicial) continue;
             try {
               let l = layoutsVistos.current.get(d.id);
@@ -284,9 +316,16 @@ export function App() {
       return;
     }
 
-    const opcoesEager = { visuais: idsIniciais(layoutAtual) };
-    const chave = urlDaPagina(atual, filtros, opcoesEager, clicados);
-    const doCache = paginasVistas.current.get(chave);
+    const devedorRecalcular = forcarRecalculoRef.current;
+    if (devedorRecalcular) {
+      forcarRecalculoRef.current = false;
+    }
+    const opcoesEager = {
+      visuais: idsIniciais(layoutAtual),
+      ...(devedorRecalcular ? { recalcula: true } : {}),
+    };
+    const chave = urlDaPagina(atual, filtros, { visuais: idsIniciais(layoutAtual) }, clicados);
+    const doCache = devedorRecalcular ? undefined : paginasVistas.current.get(chave);
     if (doCache) {
       setPagina(doCache);
       setCarregando(false);
@@ -344,8 +383,8 @@ export function App() {
     setFiltros(padrao);
     setClicados([]);
     setLayout(layout);
+    setPagina(cached);
     if (cached) {
-      setPagina(cached);
       setCarregando(false);
     }
   }, []);
@@ -499,6 +538,8 @@ export function App() {
     [atual, filtros, clicados],
   );
 
+  const paginaValida = pagina && pagina.id === atual ? pagina : null;
+
   const dataDaTela = dataDaPagina(atual);
 
   // A segmentação de hierarquia da coluna de data sai da lista: a árvore ocupa o
@@ -506,7 +547,7 @@ export function App() {
   // escolha ali é um caminho, não um conjunto de valores de um nível"), então ela
   // desenhava um botão que dizia "todos" com a página filtrada em julho. Deixar os
   // dois seria oferecer dois controles para a mesma coluna, um deles morto.
-  const segmentacoes = (pagina?.visuais ?? []).filter(
+  const segmentacoes = (paginaValida?.visuais ?? []).filter(
     (v) =>
       v.segmentacao &&
       !(
@@ -551,13 +592,13 @@ export function App() {
   );
   // A Fase L4 leu `.conteudo` aqui até virar `layout.kpis`/`layout.faixas` (lidos
   // dentro de `KpiGridSection`/`VisualGridSection`) — ver docs/PLANO-LAYOUT-V1.md §6.
-  const visuais = pagina?.visuais ?? [];
+  const visuais = paginaValida?.visuais ?? [];
 
   const nome = paginas.find((p) => p.id === atual)?.nome ?? 'Instalação';
 
   // O dado não se atualiza sozinho (DECISAO-REALTIME.md).
   // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por query.
-  const avisoSaude = avaliaSaudeQueries(saude?.refresh?.queries, pagina?.dadoDe);
+  const avisoSaude = avaliaSaudeQueries(saude?.refresh?.queries, paginaValida?.dadoDe);
 
   // Sem sessão válida, a tela inteira vira o login — nenhum outro estado
   // (esqueleto, erro, dashboard) faz sentido enquanto isso for verdade, e o
@@ -581,8 +622,8 @@ export function App() {
       sub={
         avisoSaude.temAviso
           ? avisoSaude.mensagem
-          : pagina
-            ? `dado de ${dataHora(pagina.dadoDe)}`
+          : paginaValida
+            ? `dado de ${dataHora(paginaValida.dadoDe)}`
             : ''
       }
       subAviso={avisoSaude.temAviso}
@@ -590,6 +631,50 @@ export function App() {
       ultimaAtualizacaoRealtime={horaRealtime}
       acoes={
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <div
+            title="Atualização automática em segundo plano sem recarregar a tela"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontSize: '0.82rem',
+              color: 'var(--pbi-texto-suave, #666)',
+              backgroundColor: 'var(--pbi-card-bg, #fff)',
+              border: '1px solid var(--pbi-borda, #ccc)',
+              borderRadius: '4px',
+              padding: '3px 8px',
+            }}
+          >
+            <RefreshCw
+              size={13}
+              style={{
+                color: intervaloAutoRefresh > 0 ? '#880F17' : 'inherit',
+              }}
+            />
+            <label htmlFor="select-auto-refresh" style={{ cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}>
+              Auto:
+            </label>
+            <select
+              id="select-auto-refresh"
+              value={intervaloAutoRefresh}
+              onChange={(e) => setIntervaloAutoRefresh(Number(e.target.value))}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: 'inherit',
+                fontSize: '0.8rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                outline: 'none',
+              }}
+            >
+              <option value={30}>30s</option>
+              <option value={60}>60s (Padrão)</option>
+              <option value={120}>2 min</option>
+              <option value={300}>5 min</option>
+              <option value={0}>Desativado</option>
+            </select>
+          </div>
           <button
             className={`secundario ${enquadrado ? 'ativo' : ''}`}
             onClick={() => setEnquadrado((e) => !e)}
@@ -611,7 +696,19 @@ export function App() {
           </button>
           <button
             className="primario"
-            onClick={() => setFiltros((f) => [...f])}
+            onClick={() => {
+              if (!atual) return;
+              apagaPaginaDoCache(paginasVistas.current, atual);
+              forcarRecalculoRef.current = true;
+              const agora = new Date();
+              const horaFmt = agora.toLocaleTimeString('pt-BR', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+              });
+              setHoraRealtime(horaFmt);
+              setRevalidar((n) => n + 1);
+            }}
             disabled={carregando || !atual}
           >
             {carregando ? 'calculando…' : 'Recalcular'}
@@ -689,13 +786,13 @@ export function App() {
         />
       ) : null}
 
-      {conferencia && pagina ? (
+      {conferencia && paginaValida ? (
         <div className="faixa">
-          <span className="selo">{pagina.resumo.calculados} calculados</span>
-          {pagina.resumo.falharam ? (
-            <span className="selo ruim">{pagina.resumo.falharam} com erro</span>
+          <span className="selo">{paginaValida.resumo.calculados} calculados</span>
+          {paginaValida.resumo.falharam ? (
+            <span className="selo ruim">{paginaValida.resumo.falharam} com erro</span>
           ) : null}
-          <span className="selo neutro">{pagina.resumo.semCalculo} sem número</span>
+          <span className="selo neutro">{paginaValida.resumo.semCalculo} sem número</span>
           {filtros.length ? (
             <span className="selo neutro">
               {filtros.length} segmentação(ões) aplicada(s)
@@ -703,12 +800,12 @@ export function App() {
           ) : (
             <span className="selo apagado">sem filtro da tela</span>
           )}
-          <span>{duracao(pagina.ms)} de cálculo</span>
-          <span>{pagina.tabelas.map((t) => `${t.nome}: ${inteiro(t.linhas)}`).join(' · ')}</span>
+          <span>{duracao(paginaValida.ms)} de cálculo</span>
+          <span>{paginaValida.tabelas.map((t) => `${t.nome}: ${inteiro(t.linhas)}`).join(' · ')}</span>
         </div>
       ) : null}
 
-      {carregando && !pagina ? (
+      {carregando && !paginaValida ? (
         layout ? (
           <EsqueletoDaPagina layout={layout} />
         ) : (
@@ -730,7 +827,7 @@ export function App() {
             desde 26/08 e nunca foi importado; os dois KPIs continuam abaixo, porque
             são dado de verdade. */}
         {atual === 'capa' ? (
-          <Capa dadoDe={pagina?.dadoDe ?? null} queriesSaude={saude?.refresh?.queries} />
+          <Capa dadoDe={paginaValida?.dadoDe ?? null} queriesSaude={saude?.refresh?.queries} />
         ) : null}
 
         {/* Faixa de KPIs em Grid Responsivo */}
@@ -754,7 +851,7 @@ export function App() {
       </div>
 
 
-      {pagina && visuais.every((v) => v.conteudo === null) ? (
+      {paginaValida && visuais.every((v) => v.conteudo === null) ? (
         <div className="vazio-pagina">Esta página não tem visual com número.</div>
       ) : null}
     </AppShell>
