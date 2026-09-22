@@ -12761,6 +12761,21 @@ do intervalo. O remédio está desenhado e não foi implementado: incremental po
 `assignment_id` (**35 s medidos**, contra 227 s da completa), que exige antes o
 `piso_de_janela` em `mescla()` — ver #146.
 
+**Correção em 22/09/2026, no mesmo dia (#148).** O risco de banda deixou de ser
+hipótese na primeira execução real dentro do grupo. No tick das 16:49, com os três
+grupos vencidos, `field-agenda` foi cancelada pelo banco em **603.341 ms**: *"canceling
+statement due to statement timeout"* — o teto de 600 s da materialização. A CPU do
+processo somou 12 s em 10 min: era espera de rede, não cálculo, que é o que a
+repartição acima previa. O grupo `frio` durou 874 s e saiu `falhou`; as outras quatro
+queries dele passaram, e o arquivo de `field-agenda` ficou o anterior (intacto — a
+falha é na busca, antes de qualquer escrita).
+
+Consequência prática: nos dias de banda ruim, o grupo `frio` paga ~600 s de busca
+cancelada a cada 30 min e acende `falhou` na saúde, com o resto do grupo em dia. Não
+tirei `field-agenda` do grupo — é decisão com custo dos dois lados (20 dias de dado
+velho, que era o defeito deste achado, contra uma consulta pesada repetida no banco
+de produção). O remédio de verdade continua sendo o incremental por `assignment_id`.
+
 ---
 
 ## #146 — A carga incremental congela a coluna calculada da linha velha e **zera a da nova**, e nada erra alto
@@ -12878,3 +12893,74 @@ refresh de tabela que ela LÊ a derruba. O par só vale junto: sem o segundo, ap
 invalidação inteira passaria no primeiro.
 
 **Suíte: 2.126 passando** (2.116 → 2.126: estes 6 e os 4 do #146).
+
+---
+
+## #148 — Uma stack Docker de 09/09 religou sozinha no boot e passou o dia regravando o `snapshot/` com as specs de 09/09, por cima do host
+
+**22/09/2026.** A plataforma do host estava fora do ar (ver #149) e, mesmo assim,
+`/api/saude` na porta 80 respondia — com **16 das 23 queries em `falhou`** e as 14
+páginas em **409**. Quem respondia não era a plataforma do repositório: era a stack de
+`docker-compose.prod.yml` (+ `docker-compose.local.yml`), subida pelo Docker Desktop no
+boot, às 08:45, por causa do `restart: unless-stopped`.
+
+```
+imagem api ......... 10/09/2026 09:00      container criado 10/09
+imagem refresh ..... 09/09/2026 13:18      container criado 09/09
+último commit ...... 21/09/2026 11:05
+```
+
+O `snapshot/` do host entra nela como volume **com escrita**. O container `refresh`
+rodava a cada 15 min com o código e as **specs de 09/09**:
+
+1. materializava as queries do seu grupo e gravava o arquivo em **formato 1** — o
+   formato 2 entrou em 15/09 (`1f55b22`);
+2. no passo seguinte, congelar as calculadas, lia um arquivo que o host tinha escrito
+   em formato 2 e morria: *"formato de snapshot 2, esperado 1"*. **18 falhas seguidas.**
+
+A falha era no SEGUNDO passo, então o primeiro já tinha escrito. Quando parei a stack,
+**16 dos 30 arquivos** em disco estavam em formato 1, saídos de specs anteriores a
+consertos de 15–21/09 — telefonia do #125, os 46→5 e 56→1 passos de M, o TRIM de
+`f8f2230` em `alocacao-patrimonio`, `base-categorias-field` e
+`instalacoes-reincidentes`. Tinham idade zero e conteúdo de 13 dias antes.
+
+**Não foi só hoje.** O log do container, com data:
+
+```
+09/09  14 ciclos      15/09   9 ciclos, 13 grupos falhando
+10/09  26 ciclos      16/09  16 ciclos, 20 grupos falhando
+11/09  19 ciclos      22/09  18 ciclos, 53 grupos falhando
+```
+
+Nos dias em que o Docker Desktop subiu, a stack subiu junto. **Em 15, 16 e 22/09 ela já
+estava incompatível com o formato do host e escrevia junto com ele** — são dois
+agendadores no mesmo `manifesto.json`, que é exatamente o que `DEPLOY.md` §2.2 proíbe.
+Achado de 15 e 16/09 que dependa de ter lido o `snapshot/` naqueles dias pode ter lido
+arquivo escrito pela imagem velha. **Não reavaliei cada um**; fica registrado para quem
+voltar a eles.
+
+A exposição, além do dado: a API do container rodava com `SEM_LOGIN=1`, escutando em
+`0.0.0.0:80`.
+
+### O que foi feito
+
+* Os quatro containers foram parados com `docker stop`. Com `unless-stopped`, container
+  parado à mão **não** volta no boot seguinte.
+* O `snapshot/` foi refeito pelo caminho da própria plataforma — um tick de
+  `npm run refresh` com os três grupos vencidos (1.260 s). **22 das 23 queries**
+  rematerializadas com o código de hoje e as calculadas recongeladas; conferido
+  depois: **30 de 30 arquivos em formato 2**. A que falhou foi `field-agenda`, por
+  `statement_timeout` (ver a correção no #145) — o arquivo dela continuou sendo o das
+  13:26, que o host gravou com as specs de hoje; a imagem velha nunca escreveu nessa
+  query.
+* `docker-compose.prod.yml` ganhou `pull_policy: build` em `api`, `refresh` e
+  `snapshot-diario`: `up` sem `--build` passa a reconstruir, em vez de reaproveitar a
+  imagem que houver.
+
+**O que o `pull_policy` não cobre**, e está escrito no cabeçalho do compose: o boot não
+passa por `up`. Numa estação de trabalho, quem sobe a stack de container para testar
+tem de derrubá-la (`down`) antes de voltar ao `npm start`. A defesa de código que
+faltou — um materializador recusar escrever num `snapshot/` com formato mais novo que o
+dele — só protegeria a PRÓXIMA troca de formato (a imagem de 09/09 não a teria), e não
+foi feita.
+

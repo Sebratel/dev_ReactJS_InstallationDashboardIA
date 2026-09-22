@@ -200,6 +200,13 @@ permissões — e o que a API serve inclui:
 > sem erro nenhum. Se um dia a API passar a agendar em produção, o serviço
 > `refresh` tem de sair do compose na mesma alteração.
 >
+> **E isto aconteceu na estação de trabalho, não em produção (ACHADOS #148).** A
+> stack de compose, subida para teste em 09/09, voltava sozinha a cada boot do Docker
+> Desktop (`restart: unless-stopped`) com a imagem de 09/09, e escreveu no mesmo
+> `snapshot/` do `npm start` em 15, 16 e 22/09 — com specs velhas e formato 1. Quem
+> sobe a stack de container nesta máquina tem de derrubá-la (`docker compose -f
+> docker-compose.prod.yml down`) antes de voltar ao `npm start`.
+>
 > O daemon (`tools/refresh/src/daemon.ts`) **continua existindo e continua**
 > **correto** — é ele que o container de produção roda, e `--historico` continua
 > sendo o relatório de operador dos dois agendadores.
@@ -239,6 +246,12 @@ mas **ela não está registrada nesta máquina** — conferido em 17/09/2026 com
 `Get-ScheduledTask`, que não a encontra. Registrar exige PowerShell como Administrador,
 e por isso é **pendência do Erick**, não de um agente. É essa falta que produziu o
 incidente da §2.3.
+
+> **Correção em 22/09/2026:** a tarefa **está registrada** (`Get-ScheduledTask` a
+> mostra, estado `Ready`; foi provada ponta a ponta no #138, que também derrubou a
+> exigência de Administrador). O buraco que sobra é outro: o gatilho é "ao fazer
+> logon", então uma API que morre com a sessão aberta não volta até o próximo logon —
+> foram seis horas em 22/09 (ACHADOS #149).
 
 O restante desta seção é o histórico de como se chegou aqui, e cada armadilha continua
 valendo para quem for mexer na cadência.

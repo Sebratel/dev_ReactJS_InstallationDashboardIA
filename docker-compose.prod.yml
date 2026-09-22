@@ -5,12 +5,25 @@
 # Uso:
 #   docker compose -f docker-compose.prod.yml up -d --build
 #   docker compose -f docker-compose.prod.yml logs -f api
+#
+# **`pull_policy: build` nos três serviços que saem do Dockerfile (22/09/2026,
+# ACHADOS #148).** Sem ele, `up` sem `--build` reaproveita a imagem que houver —
+# e a que havia era de 09/09. Ela rodou em 15, 16 e 22/09 regravando o snapshot
+# com as specs de 09/09, em formato 1, por cima do formato 2 do host. Com isto o
+# `up` sempre reconstrói (o cache de camada torna isso barato quando nada mudou).
+#
+# **O que isto NÃO cobre:** `restart: unless-stopped` religa o container com a
+# imagem que ele já tem quando o Docker sobe no boot — não passa por `up`. Quem
+# sobe esta stack numa estação de trabalho tem de derrubá-la (`down`) ao voltar
+# a rodar a plataforma pelo `npm start`, senão são dois agendadores no mesmo
+# `snapshot/` (DEPLOY.md §2.2).
 
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
+    pull_policy: build
     env_file:
       - .env
     # O CONTRATO DE MEMÓRIA, e os três números têm de andar juntos:
@@ -146,6 +159,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    pull_policy: build
     env_file:
       - .env
     mem_limit: 8g
@@ -176,6 +190,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: cron
+    pull_policy: build
     env_file:
       - .env
     mem_limit: 14g
