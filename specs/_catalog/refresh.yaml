@@ -61,16 +61,35 @@
 #        protocolos-geral .......... 79.966 ms   95.278 linhas × 63 colunas
 #        backlog-agendado-futuro ... 32.524 ms   95.949 linhas ×  4 colunas
 #        protocolos-auxiliares ..... 60.127 ms   38.087 linhas × 46 colunas
-#   4. `field-agenda` — o número de 22,0s em incremental.ts/no briefing da Frente 3
-#      é custo de SQL isolado (`npm run probe:custo-incremental`), não o
-#      materializador inteiro. Medido ao vivo em 02/09/2026: **21 minutos e 49
-#      segundos** ponta a ponta (busca + conversão de 642.365 linhas × 26 colunas
-#      + escrita). Nenhuma cadência de minutos é segura para esta query enquanto
-#      isso não for remedido e, se real, investigado (ACHADOS #82).
+#   4. `field-agenda` — **SAIU DA LISTA DE EXCLUSÃO EM 22/09/2026.** Está no grupo
+#      `frio`; ver o comentário lá embaixo, com a medição de hoje.
+#
+#      **Esta entrada ficou 20 dias mandando excluir por um número morto**, e o
+#      registro fica aqui porque o erro é de forma, não de conta. Ela dizia: *"21
+#      minutos e 49 segundos ponta a ponta (ACHADOS #82) — nenhuma cadência de
+#      minutos é segura enquanto isso não for remedido"*. Foi remediado **no mesmo
+#      dia**, pelo #86, três achados abaixo do #82 no mesmo arquivo: as colunas
+#      `RankDataProtocolo`/`RankAtualProtocolo` passaram a ser calculadas por grão
+#      reduzido, e os 958.194 ms viraram 26.001 ms. A condição de saída estava
+#      cumprida desde 02/09 e ninguém voltou para apagar a frase — exatamente o que
+#      a entrada de `protocolos-geral` logo acima já denuncia de si mesma.
+#
+#      Medido em 22/09/2026, ponta a ponta: **261.454 ms (4 min 21 s)** para
+#      634.351 linhas × 26 colunas. E o perfil INVERTEU: a busca no banco é 86,8%
+#      do relógio, e as 7 colunas calculadas são 9,9%.
+#
+#      Duas coisas que a narrativa deste repositório ainda erra sobre esta query, e
+#      que foram medidas em 22/09 (ver ACHADOS):
+#        - o `LEFT JOIN person_skills` **não multiplica nada**: `skill` tem 2
+#          valores distintos e 422.177 nulos em 634.351 linhas, e todo relator tem
+#          exatamente 1 skill. Quem multiplica é `reports` (relato). O #2, o #86 e
+#          `DECISAO-GRAO-FIELD-AGENDA.md` atribuem a inflação a skill;
+#        - a coluna cara hoje é `ClassificacaoRelato` (17,3 s, os 45
+#          `CONTAINSSTRING`), não os dois `Rank` — que juntos são 4,3 s, 7%.
 #
 #      `field-agenda-slot` (achado #87 — mesma origem, sem os `LEFT JOIN` de
-#      relato/skill) NÃO tem este problema — ver grupo `frio` abaixo, 03/09/2026.
-#      A forma COMPLETA (`field-agenda`) continua de fora de qualquer grupo.
+#      relato/skill) continua no mesmo grupo, emparelhada por
+#      `tools/snapshot/src/index.ts`.
 #
 # ATENÇÃO (03/09/2026, ACHADOS #89) — O CUSTO CAIU 24×, CORRIGIDO EM 16/09/2026.
 # O encadeamento continua igual: qualquer query materializada com sucesso aqui
@@ -455,9 +474,35 @@ grupos:
   # 213 s em 1.800 s: 11,8%. Sem ela o grupo media 209 s -- a margem deste grupo era
   # a maior dos tres, e continua sendo. `apps/api/test/ancora-do-poll.test.ts` passou
   # a reprovar se alguem puser uma query em poll sem grupo de novo.
+  # `field-agenda` (a forma COMPLETA) entrou em 22/09/2026 — ver a entrada 4 do
+  # bloco de exclusões acima, que foi reescrita no mesmo dia. Resumo: ela estava
+  # fora por causa dos 21min49s do #82, e esse número morreu no #86 (mesmo dia,
+  # três achados abaixo). Medida hoje, ponta a ponta:
+  #
+  #   busca no banco ......... 226.954 ms   86,8%   <- o gargalo agora é este
+  #   avaliação de M ..........  2.768 ms    1,1%
+  #   toDatasetRows ...........    674 ms    0,3%
+  #   7 colunas calculadas ....  26.001 ms    9,9%   (eram 958.194 ms)
+  #   escreve() ...............   4.574 ms    1,7%
+  #                            ----------
+  #   TOTAL .................. 261.454 ms   4 min 21 s
+  #
+  # 213 s (o grupo hoje) + 261 s = 474 s em 1.800 s: **26%**. A margem continua
+  # sendo a maior dos três grupos, que é por que ela veio para cá e não para o
+  # `medio`.
+  #
+  # **A banda de rede é o risco, não o cálculo.** A busca sozinha variou 18% entre
+  # duas medidas do MESMO dia (226.954 ms dentro do materializador, 192.467 ms
+  # isolada, ~360 MB nas duas). Com o espectro que este arquivo já registra (0,62 a
+  # 3,52 MB/s, spread de 5,7×), a carga desta query é uma BANDA de ~130 s a ~900 s.
+  # No pior caso ela sozinha come metade do intervalo. Se o grupo começar a estourar,
+  # o remédio já está desenhado: incremental por `assignment_id` (35 s medidos), que
+  # exige antes o `piso_de_janela` em `mescla()` — esta é a primeira query do corpus
+  # com recorte DESLIZANTE na fonte, e sem essa regra o arquivo cresce para sempre.
   frio:
     queries:
       - field-agenda-slot
+      - field-agenda
       - clima-tempo
       - protocolos-produtividade
       - protocolos-auxiliares

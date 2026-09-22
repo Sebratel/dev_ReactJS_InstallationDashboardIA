@@ -12688,3 +12688,76 @@ inexistente de propósito: o materializador recusa no Query Registry e sai em ~0
 sem tocar banco, sem tocar o manifesto e sem imprimir dado de cliente.
 
 **Suíte: 2.116 passando** (2.105 → 2.116; 7 da guarda, 4 da API sob refresh).
+
+---
+
+## #145 — `field-agenda` ficou 20 dias fora de cadência por um número que o achado seguinte já tinha matado
+
+**22/09/2026.** A página `agendamento-field` mostrava dado de **6,8 dias** em 6 dos
+seus 40 visuais. Fui atrás do custo que justificava a exclusão e ele não existe mais.
+
+**A entrada 4 do bloco de exclusões de `refresh.yaml` mandava manter `field-agenda`
+fora de qualquer grupo, citando os 21 min 49 s do #82.** O #86 — **do mesmo dia**,
+três achados abaixo, no mesmo arquivo — derrubou esse número para 79 s calculando
+`RankDataProtocolo`/`RankAtualProtocolo` por grão reduzido. A condição de saída
+estava cumprida desde 02/09 e ninguém voltou para apagar a frase. É exatamente o que
+a entrada de `protocolos-geral`, dez linhas acima na mesma lista, já denuncia de si
+mesma: *"a condição de saída foi cumprida duas vezes e ninguém voltou"*.
+
+### O custo de hoje, medido ponta a ponta
+
+```
+busca no banco          226.954 ms   86,8%     <- o gargalo agora é este
+avaliação de M            2.768 ms    1,1%
+toDatasetRows               674 ms    0,3%
+7 colunas calculadas     26.001 ms    9,9%     (eram 958.194 ms)
+escreve()                 4.574 ms    1,7%
+                        ----------
+TOTAL                   261.454 ms   4 min 21 s      634.351 linhas × 26 colunas
+```
+
+**O perfil inverteu.** Quando o #82 mediu, o cálculo era 73% e o banco 1,4%. Hoje o
+banco é 86,8% e o cálculo 9,9%. Qualquer plano montado sobre a repartição antiga
+ataca o lado errado.
+
+### Duas coisas que a narrativa deste repositório erra sobre esta query
+
+**1. O `LEFT JOIN person_skills` não multiplica nada.** O #2, o #86 e
+`DECISAO-GRAO-FIELD-AGENDA.md` atribuem a inflação da tabela ao produto
+relato × skill. Medido no arquivo em disco: `skill` tem **2 valores distintos e
+422.177 nulos** em 634.351 linhas, e **todo relator tem exatamente 1 skill**
+(182 relatores, max = mediana = min = 1). Tirar o join economizaria zero. Quem
+multiplica é `reports` — o relato —, que é o que os 6 visuais querem ver. O grão real
+é produto cruzado por `assignment_id`: 41.284 linhas da view × ~13,4 relatos.
+
+**2. A coluna cara não são os `Rank`.** Eles eram 85% do custo no regime antigo e
+hoje somam 4,3 s (**7%**). A cara é `ClassificacaoRelato` — 17,3 s, os 45
+`CONTAINSSTRING` sobre 634 mil textos, 77% do orçamento de coluna calculada. Se um
+dia valer otimizar, `Relato` tem 54.578 valores distintos em 634.351 linhas (11,6× de
+repetição) e a coluna é função pura do texto: memoizar por valor distinto colapsaria
+17,3 s em ~1,5 s. Não feito — o cálculo inteiro é 9,9% do relógio.
+
+**E a hipótese de O(n²) caiu.** A forma do DAX (`FILTER` na tabela inteira por linha)
+sugere quadrático, mas a curva medida em n = 5k/10k/20k/40k dá expoente **~1,0–1,2**:
+o índice de igualdade (#44/#50/#59) resolve o `FILTER` em O(partição). O custo é
+`Σ|partição|²` com constante alta, e as partições são gordas (média 58,5 linhas por
+protocolo, p99 319, máx 1.113).
+
+### O que foi feito
+
+* `field-agenda` entrou no grupo `frio`. 213 s (o grupo) + 261 s = **474 s em
+  1.800 s: 26%** — a margem deste grupo continua sendo a maior dos três.
+* A materialização de hoje foi promovida para `snapshot/`, com o manifesto acertado
+  junto, e `calculadas.ts --todas` recongelou as sete tabelas calculadas em 12,6 s
+  (`Status Protocolo Dia` lê `'FIELD AGENDA'[Relato]` — trocar o arquivo sem
+  recongelar deixaria a calculada derivada de dado velho).
+* A entrada 4 de `refresh.yaml` foi reescrita com a medição e com o registro do erro.
+
+**O risco que fica é a banda de rede, não o cálculo.** A busca variou 18% entre duas
+medidas do mesmo dia (226.954 ms dentro do materializador, 192.467 ms isolada, ~360 MB
+nas duas). Com o espectro que `refresh.yaml` já registra (0,62 a 3,52 MB/s), a carga
+desta query é uma **banda de ~130 s a ~900 s**. No pior caso ela sozinha come metade
+do intervalo. O remédio está desenhado e não foi implementado: incremental por
+`assignment_id` (**35 s medidos**, contra 227 s da completa), que exige antes o
+`piso_de_janela` em `mescla()` — ver #146.
+
