@@ -12761,3 +12761,65 @@ do intervalo. O remédio está desenhado e não foi implementado: incremental po
 `assignment_id` (**35 s medidos**, contra 227 s da completa), que exige antes o
 `piso_de_janela` em `mescla()` — ver #146.
 
+---
+
+## #146 — A carga incremental congela a coluna calculada da linha velha e **zera a da nova**, e nada erra alto
+
+**22/09/2026**, achado ao desenhar o incremental de `field-agenda`.
+
+O comentário do ramo incremental de `materializa()`
+(`tools/snapshot/src/index.ts`) afirmava:
+
+> *"`linhasAntigas` já tem qualquer coluna calculada de execuções passadas;
+> `materializaColunas` roda de novo sobre o conjunto inteiro logo abaixo, então elas
+> saem recalculadas também — mesma garantia de sempre: todo o arquivo compartilha o
+> mesmo `AGORA`."*
+
+**Isso é falso, e o estrago é duplo.** `mescla()` devolve um conjunto MISTO: as linhas
+antigas vêm de `le()`, que as entrega com a calculada preenchida sob a chave
+normalizada; as novas vêm da busca, sem nenhuma. Medido com uma antiga e uma nova:
+
+```
+sem apagar   valor=3 DOBRO=999 (o valor VELHO)   |   valor=5 DOBRO=null
+apagando     valor=3 DOBRO=6                     |   valor=5 DOBRO=10
+```
+
+1. **A linha antiga mantém o valor de antes** — `columnValue` devolve o que já está na
+   linha sem reavaliar (`evaluator.ts`: `if (ck in row) return row[ck]`). Fatal para
+   `Status SLA`, que é função de `NOW()`: "Dentro do Prazo" congelaria para sempre.
+   É a única coluna de `FIELD AGENDA` que toca relógio (1 ocorrência de `NOW()` na
+   spec, conferida).
+2. **A linha NOVA sai `null`**, e este é o pior. `Dataset.adotaTabela` monta as
+   colunas físicas como a **união** das chaves de todas as linhas: basta UMA linha
+   antiga trazer `dobro` para a coluna virar física, e aí o avaliador devolve BLANK
+   para toda linha que não a tenha.
+
+**Por que ninguém viu.** O guarda de `adotaTabela` (*"a chave 'DOBRO' não está
+normalizada"*) parece cobrir isto e não cobre: ele pega a chave de EXIBIÇÃO, e `le()`
+devolve a NORMALIZADA. Com a chave certa, o defeito passa calado.
+
+**Não produziu número errado em produção** porque nenhuma query roda com
+`incremental: true` — os três grupos de `refresh.yaml` trazem `incremental: false`.
+Era defeito **latente** na única política que existe (`protocolos-produtividade`, 3
+colunas calculadas, uma delas citando `NOW()`/`TODAY()`), e `incremental.yaml`
+descreve ligá-la como *"barato"*. **Não é: ligar hoje acende isto.**
+
+### O conserto
+
+`esqueceCalculadas()` (`packages/snapshot/src/colunas-calculadas.ts`) apaga, de
+**todas** as linhas, o valor gravado de toda coluna materializável — nas duas formas
+de chave, porque `materializaColunas` grava as duas e apagar só uma deixaria a outra
+reabastecendo a primeira. Chamado no ramo incremental de `materializa()`, logo depois
+de `mescla`.
+
+**Apagar de TODAS, não só das antigas** — deixar a coluna em qualquer linha basta para
+zerar as outras.
+
+Recalcular tudo é mais caro que reaproveitar, e é deliberado: **correto primeiro**.
+Reter o que não mudou continua possível e agora tem base segura, mas exige distinguir,
+coluna a coluna, o que é função do relógio (`Status SLA`) e o que é por partição
+(`RankDataProtocolo`/`RankAtualProtocolo`, por `protocolo` — meia partição dá Rank
+errado e calado). Reter sem essa distinção é o congelamento que este conserto desfaz.
+
+**4 testes novos** em `packages/snapshot/test/colunas-calculadas.test.ts`, um deles
+documentando o comportamento errado para que o conserto tenha contra o que ser medido.

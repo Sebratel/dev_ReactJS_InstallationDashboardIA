@@ -11,8 +11,13 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { carrega } from '../src/carrega.ts';
-import { materializaColunas, materializaColunasPorGrao, materializaveis } from '../src/colunas-calculadas.ts';
-import { escreve, le, shaDeDax } from '../src/formato.ts';
+import {
+  esqueceCalculadas,
+  materializaColunas,
+  materializaColunasPorGrao,
+  materializaveis,
+} from '../src/colunas-calculadas.ts';
+import { escreve, le, shaDeDax, type Escalar } from '../src/formato.ts';
 import { SemanticModel, type ModelColumn } from '../../semantic-model/src/model.ts';
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 
@@ -278,4 +283,67 @@ test('sha que confere carrega sem erro', async () => {
   const dir = await gravaSnapshot(model, new Map([['DOBRO', shaDeDax("'T'[valor] * 2")]]));
   const c = await carrega({ dir, model, dashboards: DASH, now: AGORA });
   assert.equal(c.linhasPorTabela.get('T'), 2);
+});
+
+// --------------------------------------------------------------------------
+// O CONJUNTO MISTO DA CARGA INCREMENTAL (22/09/2026)
+//
+// `mescla()` devolve linhas antigas (de `le()`, JÁ com a calculada preenchida sob
+// a chave normalizada) misturadas com linhas novas (da busca, sem nenhuma).
+// `columnValue` não reavalia o que já está na linha, e `adotaTabela` monta as
+// colunas físicas como a UNIÃO das chaves — as duas coisas juntas produzem dois
+// estragos calados, e nenhum guarda existente os pega.
+//
+// A chave AQUI é a normalizada de propósito: é a que `le()` devolve. Com a de
+// exibição, `adotaTabela` erra alto ("a chave 'DOBRO' não está normalizada") e o
+// defeito nunca chega a acontecer — foi o que escondeu isto até agora.
+
+test('conjunto misto SEM apagar: a antiga congela e a NOVA sai null', () => {
+  const model = monta();
+  const linhas: Record<string, Escalar>[] = [
+    { valor: 3, dobro: 999 }, // veio de `le()`: já traz o valor de uma carga anterior
+    { valor: 5 }, // veio da busca de agora
+  ];
+  materializaColunas(model.table('T')!, model, linhas, AGORA);
+
+  // Este teste DOCUMENTA o comportamento errado, para que o conserto abaixo tenha
+  // contra o que ser medido. Se algum dia ele começar a reprovar porque os dois
+  // valores saíram certos, o conserto virou desnecessário — e aí é este teste que
+  // sai, não o de baixo.
+  //
+  // Confere a chave de EXIBIÇÃO porque é ela que vai para o arquivo (`escreve` a
+  // procura por `c.nome`): é o valor que a tela leria amanhã.
+  assert.equal(linhas[0]!.DOBRO, 999, 'a linha antiga foi reavaliada — columnValue mudou de comportamento');
+  assert.equal(linhas[1]!.DOBRO, null, 'a linha nova saiu com valor — adotaTabela mudou de comportamento');
+});
+
+test('esqueceCalculadas: o conjunto misto volta a sair inteiro e certo', () => {
+  const model = monta();
+  const linhas: Record<string, Escalar>[] = [{ valor: 3, dobro: 999 }, { valor: 5 }];
+
+  const tocadas = esqueceCalculadas(model.table('T')!, model, linhas);
+  assert.equal(tocadas, 1, 'só a linha antiga tinha o que apagar');
+
+  materializaColunas(model.table('T')!, model, linhas, AGORA);
+  assert.equal(linhas[0]!.DOBRO, 6, 'o valor velho sobreviveu — é o congelamento de Status SLA');
+  assert.equal(linhas[1]!.DOBRO, 10, 'a linha nova saiu null — é a união de chaves de adotaTabela');
+});
+
+test('esqueceCalculadas apaga as DUAS formas da chave', () => {
+  const model = monta();
+  // `materializaColunas` grava as duas: a normalizada (memoização de `columnValue`)
+  // e a de exibição (é ela que vai no cabeçalho do arquivo). Apagar só uma deixaria
+  // a outra reabastecendo a primeira na volta seguinte.
+  const linhas: Record<string, Escalar>[] = [{ valor: 3, dobro: 999, DOBRO: 999 }];
+  esqueceCalculadas(model.table('T')!, model, linhas);
+  assert.ok(!('dobro' in linhas[0]!), 'sobrou a chave normalizada');
+  assert.ok(!('DOBRO' in linhas[0]!), 'sobrou a chave de exibição');
+  assert.equal(linhas[0]!.valor, 3, 'apagou coluna que não é calculada');
+});
+
+test('esqueceCalculadas não mexe em linha que não tem calculada — a carga completa', () => {
+  const model = monta();
+  const linhas: Record<string, Escalar>[] = [{ valor: 3 }, { valor: 5 }];
+  assert.equal(esqueceCalculadas(model.table('T')!, model, linhas), 0);
+  assert.deepEqual(linhas, [{ valor: 3 }, { valor: 5 }]);
 });

@@ -83,6 +83,7 @@ import {
   type EntradaDeManifesto,
 } from '../../../packages/snapshot/src/manifesto.ts';
 import {
+  esqueceCalculadas,
   materializaColunas,
   materializaColunasPorGrao,
   materializaveis as colunasMaterializaveis,
@@ -667,10 +668,23 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     console.error(`    toDatasetRows: ${Date.now() - tConverte} ms`);
 
     // Modo incremental: o que a busca trouxe é só a janela reentregue — junta com
-    // o que já estava no arquivo antes de seguir. `linhasAntigas` já tem qualquer
-    // coluna calculada de execuções passadas; `materializaColunas` roda de novo
-    // sobre o conjunto inteiro logo abaixo, então elas saem recalculadas também —
-    // mesma garantia de sempre: todo o arquivo compartilha o mesmo `AGORA`.
+    // o que já estava no arquivo antes de seguir.
+    //
+    // **Este comentário afirmava uma garantia que o código NÃO dava, e a correção
+    // é a chamada a `esqueceCalculadas` logo abaixo (22/09/2026).** Ele dizia:
+    // *"`linhasAntigas` já tem qualquer coluna calculada de execuções passadas;
+    // `materializaColunas` roda de novo sobre o conjunto inteiro logo abaixo, então
+    // elas saem recalculadas também"*. Elas não saíam: `columnValue` devolve o valor
+    // já gravado na linha sem reavaliar, então as antigas mantinham o valor de antes
+    // — e, pior, as linhas NOVAS saíam `null`, porque uma única linha antiga com a
+    // chave presente faz `adotaTabela` promover a coluna a física e o avaliador
+    // devolver BLANK para quem não a tem. Medido; ver `esqueceCalculadas`.
+    //
+    // Isso nunca produziu número errado em produção porque nenhuma query roda hoje
+    // com `incremental: true` (`refresh.yaml` traz `incremental: false` nos três
+    // grupos). Era defeito LATENTE na única política que existe
+    // (`protocolos-produtividade`, 3 colunas calculadas, uma delas citando
+    // `NOW()`/`TODAY()`) — e `incremental.yaml` chamava ligá-la de "barato".
     let rows = buscadas;
     if (plano.modo === 'incremental') {
       const { linhas: antigas } = await le(arquivoAnterior);
@@ -686,6 +700,27 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
         `incremental: +${m.novas} nova(s), ${m.substituidas} substituída(s), ` +
           `${m.sumidas} sumida(s), ${m.mantidas} mantida(s) de antes.`,
       );
+
+      // **Agora a garantia é real: o arquivo inteiro compartilha o mesmo `AGORA`.**
+      // Apagar de TODAS as linhas (não só das antigas) é o que importa — deixar a
+      // coluna em qualquer uma delas basta para zerar as outras. Recalcular tudo é
+      // mais caro que reaproveitar, e é deliberado: correto primeiro. Reter o que
+      // não mudou é otimização possível, mas exige saber, coluna a coluna, quais
+      // são função do relógio (`Status SLA` é) e quais são por partição
+      // (`RankDataProtocolo`/`RankAtualProtocolo` são, por `protocolo`) — e
+      // reter sem essa distinção é exatamente o congelamento que esta linha
+      // conserta.
+      let tocadas = 0;
+      for (const nome of tabelasDaQuery(q.id)) {
+        const t = model.table(nome);
+        if (t) tocadas = Math.max(tocadas, esqueceCalculadas(t, model, rows));
+      }
+      if (tocadas > 0) {
+        console.error(
+          `    ${tocadas.toLocaleString('pt-BR')} linha(s) com coluna calculada de antes — ` +
+            `apagadas para recalcular sobre o mesmo AGORA`,
+        );
+      }
     }
 
     // Colunas calculadas em DAX entram no arquivo, como o Power BI faz no refresh

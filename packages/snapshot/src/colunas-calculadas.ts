@@ -136,6 +136,70 @@ export function materializaColunas(
   return { colunas, daxSha, ms: Date.now() - inicio };
 }
 
+/**
+ * Apaga das linhas o valor JÁ GRAVADO de toda coluna materializável desta tabela —
+ * nas DUAS formas de chave.
+ *
+ * **O defeito que isto conserta, medido em 22/09/2026.** `columnValue` memoiza na
+ * própria linha e, se a chave já existe, devolve o valor guardado **sem reavaliar**
+ * (`evaluator.ts`: `if (ck in row) return row[ck]`). Numa carga completa isso não
+ * aparece: nenhuma linha chega com a coluna. Numa carga INCREMENTAL, `mescla()`
+ * devolve um conjunto misto — as linhas antigas vêm de `le()`, que as entrega com a
+ * calculada preenchida sob a chave normalizada (`status sla`, `turno`), e as novas
+ * vêm da busca, sem nenhuma. O resultado medido, com uma antiga e uma nova:
+ *
+ * ```
+ * sem apagar   valor=3 dobro=999 (o valor VELHO)  |  valor=5 dobro=null
+ * apagando     valor=3 dobro=6                    |  valor=5 dobro=10
+ * ```
+ *
+ * **São dois estragos, e o segundo é o pior.** O primeiro é a linha antiga manter o
+ * valor de antes — fatal para `Status SLA`, que é função de `NOW()`: "Dentro do
+ * Prazo" congelaria para sempre. O segundo é a linha NOVA sair `null`, e ele não é
+ * óbvio: `Dataset.adotaTabela` monta as colunas físicas como a UNIÃO das chaves de
+ * todas as linhas, então basta UMA linha antiga trazer `dobro` para a coluna virar
+ * física — e aí `columnValue` devolve BLANK para toda linha que não a tenha.
+ *
+ * Nada erra alto em nenhum dos dois. O guarda de chave não-normalizada de
+ * `adotaTabela` não pega isto, porque `le()` já devolve normalizado.
+ *
+ * Devolve quantas linhas foram tocadas — é o número que o chamador imprime.
+ */
+export function esqueceCalculadas(
+  t: ModelTable,
+  model: SemanticModel,
+  linhas: Record<string, Escalar>[],
+  somenteColunas?: ReadonlySet<string>,
+): number {
+  const todas = materializaveis(t, model);
+  const alvo = somenteColunas ? todas.filter((c) => somenteColunas.has(normalizeName(c.nome))) : todas;
+  if (alvo.length === 0) return 0;
+
+  // As duas formas, porque `materializaColunas` grava as duas: `columnValue`
+  // memoiza sob a normalizada e a escrita explícita usa a de exibição (é ela que
+  // vai no cabeçalho do arquivo). Apagar só uma deixaria a outra reabastecendo a
+  // primeira na volta seguinte.
+  const chaves: string[] = [];
+  for (const c of alvo) {
+    chaves.push(c.nome);
+    const n = normalizeName(c.nome);
+    if (n !== c.nome) chaves.push(n);
+  }
+
+  let tocadas = 0;
+  for (const linha of linhas) {
+    let mexeu = false;
+    for (const k of chaves) {
+      if (k in linha) {
+        delete linha[k];
+        mexeu = true;
+      }
+    }
+    if (mexeu) tocadas += 1;
+  }
+  return tocadas;
+}
+
 /** A identidade de uma linha pelas colunas dadas — mesmo convenção de `digito`. */
 function chaveDeLinha(linha: Record<string, Escalar>, colunasNormalizadas: readonly string[]): string {
   const partes = new Array<string>(colunasNormalizadas.length);
