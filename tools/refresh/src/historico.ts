@@ -88,7 +88,25 @@ export type EventoDeRefresh =
    * Ressuscitar aí poria duas instâncias brigando pela porta para sempre. O que
    * faltava não era reerguer — era saber.
    */
-  | { evento: 'api-morreu'; quando: string; codigo: number | null; viveuMs: number }
+  | {
+      evento: 'api-morreu';
+      quando: string;
+      codigo: number | null;
+      viveuMs: number;
+      /**
+       * **Os três campos abaixo entraram em 22/09/2026**, depois de quatro mortes com
+       * `0xC0000409` sem motivo nenhum registrado. Opcionais porque as linhas
+       * antigas do log não os têm. Ver `tools/subir/src/diagnostico.ts`.
+       *
+       * `motivo`: o `header.event` do relatório de erro fatal, ou a última linha do
+       * stderr com cara de erro.
+       */
+      motivo?: string;
+      /** Nome do relatório de erro fatal em `snapshot/diagnostico/`, se houve. */
+      relatorio?: string;
+      /** Nome do arquivo com a cauda do stderr em `snapshot/diagnostico/`. */
+      stderr?: string;
+    }
   /**
    * O agendador subiu DENTRO da API (`apps/api/src/agendador.ts`), em vez de num
    * processo dedicado. **Entrou em 19/09/2026.**
@@ -428,6 +446,9 @@ export function descreveMortesDaApi(eventos: readonly EventoDeRefresh[], ultimas
         ? `${(e.viveuMs / 3_600_000).toFixed(1)} h`
         : `${Math.round(e.viveuMs / 1000)} s`;
     linhas.push(`  ${e.quando}  código ${e.codigo ?? '?'}  depois de ${viveu} no ar`);
+    if (e.motivo) linhas.push(`      motivo: ${e.motivo}`);
+    const arquivos = [e.relatorio, e.stderr].filter(Boolean);
+    if (arquivos.length > 0) linhas.push(`      em snapshot/diagnostico/: ${arquivos.join(', ')}`);
   }
   linhas.push('  A stack cai junto: `subir` NÃO ressuscita a API, de propósito —');
   linhas.push('  a morte mais comum dela é outra instância tomando a porta 3100.');

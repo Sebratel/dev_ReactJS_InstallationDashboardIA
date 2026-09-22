@@ -321,6 +321,35 @@ test('descreveMortesDaApi: codigo nulo nao vira "null" na tela', () => {
   assert.ok(!linhas[1]!.includes('null'), 'a palavra "null" não pertence a um relatório humano');
 });
 
+// 22/09/2026: quatro mortes com 0xC0000409 e nenhum motivo registrado. O evento
+// passou a levar o motivo e os arquivos de diagnostico (tools/subir/src/diagnostico.ts)
+// -- e o relatorio de operador e o lugar onde isso tem de aparecer, senao o campo
+// existe no log e ninguem o le.
+test('descreveMortesDaApi: mostra o motivo e onde estao os arquivos de diagnostico', () => {
+  const linhas = descreveMortesDaApi([
+    {
+      evento: 'api-morreu',
+      quando: '2026-09-23T10:00:00.000Z',
+      codigo: 3221226505,
+      viveuMs: 7_200_000,
+      motivo: 'Assertion failed: handle->flags & UV_HANDLE_CLOSING',
+      stderr: 'api-stderr.2026-09-23T10-00-00-000Z.log',
+    },
+  ]);
+  assert.match(linhas[1]!, /código 3221226505/);
+  assert.match(linhas[2]!, /motivo: Assertion failed/);
+  assert.match(linhas[3]!, /snapshot\/diagnostico\/: api-stderr\.2026-09-23T10-00-00-000Z\.log/);
+});
+
+test('descreveMortesDaApi: linha antiga, sem os campos novos, sai igual a antes', () => {
+  const linhas = descreveMortesDaApi([
+    { evento: 'api-morreu', quando: 'x', codigo: 1, viveuMs: 5_000 },
+    { evento: 'api-morreu', quando: 'y', codigo: 1, viveuMs: 6_000 },
+  ]);
+  assert.match(linhas[1]!, /depois de 5 s no ar/);
+  assert.match(linhas[2]!, /depois de 6 s no ar/, 'nenhuma linha de motivo pode aparecer entre as duas');
+});
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // `disparo-coalescido` — o sucessor de `ciclo-pulado`, para quando quem agenda é a

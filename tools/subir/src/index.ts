@@ -12,6 +12,14 @@ import { precisaDeclararSemLoginNaRaiz } from './portao.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
 import { decideDerrubada, portaOcupada } from './porta.ts';
+import {
+  CaudaDeTexto,
+  DIRETORIO_DIAGNOSTICO,
+  flagsDeDiagnostico,
+  guardaCauda,
+  linhaDaCausa,
+  relatorioDaMorte,
+} from './diagnostico.ts';
 // A mensagem e a descoberta do PID moram junto da API, que é quem liga na porta — e é
 // o `index.ts` dela que precisa do mesmo texto no `error` do servidor. Duas cópias do
 // mesmo aviso divergem no primeiro conserto, e foi assim que a instrução daqui ficou
@@ -261,10 +269,15 @@ if (soAquece) {
   }
 
   console.log(`\nSubindo a API na porta ${porta}…`);
+  // Onde a morte da API deixa o motivo — ver `diagnostico.ts`, que tem a medição de
+  // por que o código de saída sozinho não bastou nas quatro mortes de 18–22/09.
+  const dirDiagnostico = path.join(ROOT, DIRETORIO_SNAPSHOT, DIRETORIO_DIAGNOSTICO);
+  fs.mkdirSync(dirDiagnostico, { recursive: true });
   const api: ChildProcess = spawn(
     process.execPath,
     [
       '--max-old-space-size=8192',
+      ...flagsDeDiagnostico(dirDiagnostico),
       path.join(ROOT, 'apps', 'api', 'src', 'index.ts'),
       '--sem-aquecer',
       // `npm start` é o caminho de desenvolvimento, e desde 04/09/2026 subir
@@ -282,15 +295,35 @@ if (soAquece) {
       // digitado aqui tem de valer para quem agenda, e quem agenda agora é o filho.
       ...(semRefresh ? ['--sem-refresh'] : []),
     ],
-    { cwd: ROOT, stdio: 'inherit', env: { ...process.env, PORT: String(porta) } },
+    // **O stderr passa por aqui, e não herdado (22/09/2026).** Continua indo para o
+    // terminal igual a antes — a linha abaixo o repassa —, mas os últimos 64 KiB
+    // ficam em memória para serem gravados se a API morrer. Um abort nativo imprime
+    // o motivo no stderr e mata o processo em seguida; com `inherit` essa linha só
+    // existia no terminal de quem subiu.
+    //
+    // Efeito colateral aceito: se ESTE processo morrer, a API perde o leitor do
+    // stderr e cai no próximo erro de escrita, em vez de ficar órfã segurando a
+    // porta 3100 sem ninguém que a supervisione — que era o desfecho de antes.
+    { cwd: ROOT, stdio: ['inherit', 'inherit', 'pipe'], env: { ...process.env, PORT: String(porta) } },
   );
+  const caudaDoStderr = new CaudaDeTexto();
+  api.stderr?.on('data', (pedaco: Buffer) => {
+    process.stderr.write(pedaco);
+    caudaDoStderr.acrescenta(pedaco);
+  });
 
   /** Para dizer no histórico quanto ela viveu — 8 s e 8 h são diagnósticos opostos. */
   const apiSubiuEm = Date.now();
 
   let encerrando = false;
+  // Ligado quando a API morreu por conta própria e o registro da morte está em
+  // curso. O registro agora espera o stderr escoar (até 1,5 s), e nesse intervalo
+  // `esperaSaude` percebe o filho morto e chamaria `encerra(1)` — um
+  // `process.exit` que cortaria o registro no meio, justamente na morte durante a
+  // subida, que é a de diagnóstico mais fácil.
+  let registrandoMorte = false;
   const encerra = (codigo: number): void => {
-    if (encerrando) return;
+    if (encerrando || registrandoMorte) return;
     encerrando = true;
     if (api.exitCode === null) api.kill();
     process.exit(codigo);
@@ -309,20 +342,48 @@ if (soAquece) {
       // NÃO ressuscita, e é deliberado: a morte mais comum da API é outra
       // instância tomando a porta 3100 (ver `derrubaOcupante`). Reerguer ali
       // poria duas brigando pela porta para sempre. O que faltava era saber.
-      registra(path.join(ROOT, DIRETORIO_SNAPSHOT), {
-        evento: 'api-morreu',
-        quando: new Date().toISOString(),
-        codigo: codigo ?? null,
-        viveuMs: Date.now() - apiSubiuEm,
+      registrandoMorte = true;
+      const morreuEm = new Date();
+      const viveuMs = morreuEm.getTime() - apiSubiuEm;
+      // `exit` pode chegar antes de o stderr terminar de escoar, e a linha que
+      // explica um abort é justamente a ÚLTIMA. Espera o fim do fluxo, com teto:
+      // um filho da API (uma materialização) pode ter herdado o mesmo pipe e
+      // segurá-lo aberto por minutos.
+      const fimDoStderr = new Promise<void>((pronto) => {
+        const s = api.stderr;
+        if (!s || s.readableEnded || s.destroyed) return pronto();
+        s.once('end', () => pronto());
+        s.once('close', () => pronto());
       });
-      console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
-      console.error('Registrado em snapshot/refresh-historico.log — veja com:');
-      console.error('  npm run refresh:daemon -- --historico');
-      process.exit(codigo ?? 1);
+      void Promise.race([fimDoStderr, new Promise((r) => setTimeout(r, 1500))]).then(() => {
+        const relatorio = relatorioDaMorte(dirDiagnostico, apiSubiuEm);
+        const texto = caudaDoStderr.texto();
+        const stderr = codigo === 0 ? null : guardaCauda(dirDiagnostico, morreuEm, texto);
+        const motivo = relatorio?.evento ?? linhaDaCausa(texto);
+        registra(path.join(ROOT, DIRETORIO_SNAPSHOT), {
+          evento: 'api-morreu',
+          quando: morreuEm.toISOString(),
+          codigo: codigo ?? null,
+          viveuMs,
+          ...(motivo ? { motivo } : {}),
+          ...(relatorio ? { relatorio: relatorio.arquivo } : {}),
+          ...(stderr ? { stderr } : {}),
+        });
+        console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
+        if (motivo) console.error(`  motivo: ${motivo}`);
+        if (relatorio) console.error(`  relatório: snapshot/${DIRETORIO_DIAGNOSTICO}/${relatorio.arquivo}`);
+        if (stderr) console.error(`  stderr:    snapshot/${DIRETORIO_DIAGNOSTICO}/${stderr}`);
+        console.error('Registrado em snapshot/refresh-historico.log — veja com:');
+        console.error('  npm run refresh:daemon -- --historico');
+        process.exit(codigo ?? 1);
+      });
     }
   });
 
   if (!(await esperaSaude(api))) {
+    // A API morreu na subida: o `exit` dela já está registrando a morte, e é ele
+    // que sai. Seguir daqui aqueceria um servidor que não existe.
+    if (registrandoMorte) await new Promise<never>(() => {});
     console.error(`\nA API não respondeu em ${BASE}/api/saude. Parando.`);
     encerra(1);
   }

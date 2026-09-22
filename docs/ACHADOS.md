@@ -12964,3 +12964,72 @@ faltou — um materializador recusar escrever num `snapshot/` com formato mais n
 dele — só protegeria a PRÓXIMA troca de formato (a imagem de 09/09 não a teria), e não
 foi feita.
 
+---
+
+## #149 — `0xC0000409` não é estouro de heap nem `abort()` do Node, e a morte da API passou a deixar o motivo
+
+**22/09/2026.** A API do host morreu às 10:35, depois de 21,9 h no ar, e ninguém a
+reergueu: seis horas de plataforma parada. É a quarta morte com o mesmo código:
+
+```
+18/09 13:21  3221226505  depois de 85 s
+19/09 00:28  3221226505  depois de 7,1 h
+21/09 13:50  3221226505  depois de 1,4 h
+22/09 13:35  3221226505  depois de 21,9 h
+```
+
+O #144 anotou esse código como *"`abort()` do próprio Node"*. **Medido, não é.** Neste
+Node (v24.15, Windows), lançando o filho por `spawn` como o `npm start` faz:
+
+```
+estouro de heap (--max-old-space-size=24) ....... código 134
+process.abort() ................................. código 134
+exceção não tratada ............................. código 1
+worker estourando resourceLimits ................ o processo SEGUE (ERR_WORKER_OUT_OF_MEMORY)
+```
+
+Nenhum caminho do Node dá `0xC0000409`. O código é `__fastfail` do Windows — um
+`abort()` NATIVO (asserção de C/C++, CRT) que passa por fora do tratamento do Node. A
+hipótese mais óbvia para uma morte depois de 21,9 h, "o heap encheu", **cai**: estouro
+de heap sairia 134. O Log de Eventos do Windows não ajudou — nenhum evento 1000/1001 de
+`node.exe` desde 17/09.
+
+**E não havia como saber mais**, porque o motivo de um abort nativo vai para o stderr
+(`Assertion failed: …, file …, line …`), e o stderr da API era herdado: existia só no
+terminal de quem subiu. O `npm-start.log` da tarefa agendada parou em 21/09 10:50 — as
+subidas seguintes vieram de outro lugar.
+
+### O que mudou
+
+`tools/subir/src/diagnostico.ts`, ligado em `tools/subir/src/index.ts`:
+
+* **A API sobe com `--report-on-fatalerror`**, relatório em `snapshot/diagnostico/`.
+  Pega o estouro de heap — medido: `trigger: "OOMError"`, pilha JS e estatística de
+  heap. Não pega `__fastfail`, que mata o processo antes do Node.
+* **O stderr passa pelo `npm start` em vez de ser herdado.** Continua saindo no
+  terminal igual; os últimos 64 KiB ficam em memória e, se a API morrer com código
+  diferente de zero, vão para `snapshot/diagnostico/api-stderr.<quando>.log`. É isto que
+  pega o abort nativo.
+* **`api-morreu` ganhou `motivo`, `relatorio` e `stderr`**, e
+  `npm run refresh:daemon -- --historico` os mostra.
+
+**O cuidado que não pode sair:** o relatório vai com `--report-exclude-env`. O processo
+da API carrega o `.env`, e sem a flag a seção `environmentVariables` grava a senha do
+banco em texto puro. O teste que prova isto sobe um Node de verdade, planta um valor no
+ambiente, estoura o heap e confere que o valor não está no arquivo.
+
+**Dois efeitos colaterais, aceitos de propósito:**
+
+1. `exit` pode chegar antes de o stderr escoar, e a linha que explica um abort é a
+   última. O registro espera o fim do fluxo, com teto de 1,5 s (um filho da API pode
+   segurar o mesmo pipe por minutos). Nesse intervalo `esperaSaude` chamaria
+   `encerra(1)` e cortaria o registro — `registrandoMorte` impede.
+2. Se o próprio `npm start` morrer, a API perde o leitor do stderr e cai no erro de
+   escrita seguinte, em vez de ficar órfã segurando a porta 3100 sem supervisão.
+
+**O que continua aberto:** a causa. A próxima morte deixa o motivo; esta não deixou.
+E nada reergue a API no host — a tarefa do Windows dispara ao fazer logon, e `npm start`
+não ressuscita a API, de propósito (#137).
+
+**10 testes novos** (8 em `tools/subir/test/diagnostico.test.ts`, 2 em
+`tools/refresh/test/historico.test.ts`). **Suíte: 2.136 passando.**
