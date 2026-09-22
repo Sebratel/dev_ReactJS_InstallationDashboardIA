@@ -53,12 +53,18 @@ export interface MensagemCalculoWorker {
    */
   overlays?: ReadonlyMap<string, OverlayDeTabela>;
   /**
-   * `identidadeAtual()` do processo pai (carimbo do snapshot + dia UTC) — a MESMA
-   * identidade que `Servidor.carrega()` usa para saber se `this.carregadas` ainda
-   * vale. Ver `cacheDeCarga` abaixo: sem isto, um snapshot novo (`npm run
-   * snapshot`) ou a virada do dia (`TODAY()`) deixariam esta worker servindo o
-   * `Carregado` de ontem para sempre, porque nada mais aqui chega a cada mensagem
-   * para avisar que o disco mudou.
+   * `identidadeDaPagina()` do processo pai — o carimbo **das tabelas que ESTA
+   * página lê**, mais o dia UTC. A MESMA identidade que `Servidor.carrega()`
+   * usa para saber se o dataset dela ainda vale, e a mesma conta que
+   * `carimboDaPagina` faz para a chave do cache de resposta.
+   *
+   * Ver `cacheDeCarga` abaixo: sem isto, um snapshot novo (`npm run snapshot`)
+   * ou a virada do dia (`TODAY()`) deixariam esta worker servindo o `Carregado`
+   * de ontem para sempre, porque nada mais aqui chega a cada mensagem para
+   * avisar que o disco mudou.
+   *
+   * **Era `identidadeAtual()` — global — e trocar isso é a correção de
+   * 21/09/2026.** Ver `identidadePorPagina` para os números.
    */
   identidade: string;
   /**
@@ -164,11 +170,13 @@ export const TETO_CACHE_POR_WORKER = 6;
  * **Por que cachear com o overlay de tempo real JÁ mesclado dentro, apesar do
  * alerta que existia aqui contra isso.** O alerta (ver `MensagemDeInvalidacao`)
  * era contra um mesclador parado por TEMPO indefinido; esta entrada morre por
- * INVALIDAÇÃO — `identidade` muda (snapshot novo ou virada de dia: derruba
- * tudo) ou uma mensagem `invalida` chega (o poller viu ESTA página mudar:
- * derruba só a dela). Entre uma invalidação e a próxima o overlay realmente NÃO
- * mudou — é a própria definição do evento que dispara a invalidação —, então
- * servir do cache é o mesmo dado que uma carga nova traria, só sem o disco.
+ * INVALIDAÇÃO — a `identidade` DESTA página muda (uma tabela que ela lê foi
+ * rematerializada, ou o dia virou) ou uma mensagem `invalida` chega (o poller
+ * viu ESTA página mudar). Os dois caminhos derrubam a mesma coisa, pela mesma
+ * função (`esqueceAPagina`). Entre uma invalidação e a próxima o overlay
+ * realmente NÃO mudou — é a própria definição do evento que dispara a
+ * invalidação —, então servir do cache é o mesmo dado que uma carga nova
+ * traria, só sem o disco.
  *
  * **O teto (`TETO_CACHE_POR_WORKER`).** Uma worker atende TODAS as páginas do
  * menu, não só uma — sem teto, uma sessão que passeia pelas 14 acumularia 14
@@ -179,9 +187,65 @@ export const TETO_CACHE_POR_WORKER = 6;
  * antiga sai, a mais recentemente usada nunca é a próxima a cair.
  */
 const cacheDeCarga = new Map<string, Promise<Carregado>>();
-/** A `identidade` mais recente já vista — uma mudança aqui invalida TUDO, do
- *  mesmo jeito que `Servidor.carrega()` faz com `carimboDasCarregadas`. */
-let identidadeCache: string | null = null;
+
+/**
+ * A última `identidade` vista **POR PÁGINA** — e a razão de não ser uma só.
+ *
+ * **O defeito que isto conserta, medido em 21/09/2026.** Este era um
+ * `let identidadeCache: string | null`, global, e uma mudança nele fazia
+ * `cacheDeCarga.clear()`: TODAS as páginas, de TODAS as threads, a cada
+ * rematerialização de QUALQUER tabela. Amostrado na API no ar, sem ninguém na
+ * tela: **4 mudanças de carimbo em 6 minutos — uma a cada 1,5 min**. A cada
+ * uma, toda worker esvaziava tudo.
+ *
+ * O preço disso não é o recálculo, é a **releitura do disco**. Medido na mesma
+ * API, forçando `?recalcula=1` com as tabelas já em memória contra o mesmo
+ * pedido depois de um descarte:
+ *
+ * ```
+ * visao-geral              servida do cache     2 ms
+ *                          recalculada em RAM 219 ms   <- o cálculo
+ *                          + relendo o disco 2250 ms   <- o que o descarte cobrava
+ * ```
+ *
+ * ~90% do custo era releitura que a invalidação não precisava causar: a chave
+ * do cache de RESPOSTA já era escopada por página desde 09/09
+ * (`carimboDaPagina`, `servidor.ts`), e o dado carregado não tinha acompanhado.
+ * Agora as duas camadas medem a identidade do mesmo jeito.
+ *
+ * **Por que um `Map` aqui não cresce sem fim**, que é o que o `clear()` global
+ * também fazia de graça: `cacheDeCarga` continua limitado por
+ * `TETO_CACHE_POR_WORKER`, e este mapa guarda uma string por página do menu (14
+ * hoje) — não por combinação de pedido.
+ *
+ * **O dia continua derrubando tudo**, e é de propósito: `identidade` é
+ * `carimbo@dia` (`identidadeDoCalculo`), então a virada da meia-noite muda a
+ * identidade de todas as páginas de uma vez, e cada uma cai na sua próxima
+ * mensagem. É o que as 32 chamadas a `TODAY()` exigem.
+ */
+const identidadePorPagina = new Map<string, string>();
+
+/**
+ * Esquece o que esta worker guarda de UMA página — o dataset e os resultados
+ * inteiros dos visuais dela.
+ *
+ * Um lugar só porque os dois caminhos que invalidam têm de invalidar
+ * exatamente a mesma coisa: a mensagem `invalida` (o poller viu a tabela
+ * mudar) e a identidade desta página ter avançado (o refresh rematerializou
+ * uma tabela que ela lê). Dois trechos separados divergiriam no primeiro dia
+ * em que um deles ganhasse mais uma estrutura para limpar.
+ */
+function esqueceAPagina(dashboardId: string): void {
+  const prefixo = `${dashboardId} `;
+  for (const chave of [...cacheDeCarga.keys()]) {
+    if (chave.startsWith(prefixo)) cacheDeCarga.delete(chave);
+  }
+  // O resultado inteiro desta página também: ele foi calculado sobre o dataset
+  // que acabou de ser descartado. `limpaPagina` e não `limpa` pelo mesmo motivo
+  // de `Servidor.aoTabelaMudar` (`servidor.ts`) — só quem depende da tabela que
+  // mudou precisa recalcular; o resto continua quente.
+  completos.limpaPagina(dashboardId);
+}
 
 /**
  * O resultado **inteiro** de um visual paginável, guardado entre um pedido e
@@ -240,16 +304,13 @@ function guardaNoCache(chave: string, promessa: Promise<Carregado>): void {
 if (parentPort) {
   parentPort.on('message', async (msg: MensagemParaWorker) => {
     if (msg.tipo === 'invalida') {
-      const prefixo = `${msg.dashboardId} `;
-      for (const chave of [...cacheDeCarga.keys()]) {
-        if (chave.startsWith(prefixo)) cacheDeCarga.delete(chave);
-      }
-      // O resultado inteiro desta página também: ele foi calculado sobre o
-      // dataset que acabou de ser descartado. `limpaPagina` e não `limpa` pelo
-      // mesmo motivo de `Servidor.aoTabelaMudar` (`servidor.ts`) — só quem
-      // depende da tabela que mudou precisa recalcular; o resto continua
-      // quente.
-      completos.limpaPagina(msg.dashboardId);
+      esqueceAPagina(msg.dashboardId);
+      // **E a identidade guardada dela junto.** Sem esta linha o mapa ficaria
+      // afirmando que esta página está na identidade X com o dataset dela já
+      // descartado — verdade inútil hoje (a entrada sumiu, a próxima mensagem
+      // recarrega de qualquer jeito), e uma afirmação errada no dia em que
+      // alguém usar `identidadePorPagina` para decidir outra coisa.
+      identidadePorPagina.delete(msg.dashboardId);
       return; // sem resposta: ver o comentário de `MensagemDeInvalidacao`.
     }
 
@@ -274,15 +335,18 @@ if (parentPort) {
         lastSpecsDir = specsDir;
       }
 
-      if (identidadeCache !== identidade) {
-        cacheDeCarga.clear();
-        // Os resultados inteiros junto. A chave deles já carrega a identidade,
-        // então nunca seriam SERVIDOS errados — mas ficariam ocupando o
-        // orçamento até o LRU chegar neles, e o orçamento é justamente o que
-        // decide o que fica. Mesmo argumento, palavra por palavra, do
-        // `this.completos.limpa()` em `Servidor.carrega()`.
-        completos.limpa();
-        identidadeCache = identidade;
+      // **A identidade que chega é a DESTA página** (`identidadeDaPagina`,
+      // `servidor.ts`), não a do snapshot inteiro — então um refresh de tabela
+      // que esta página não lê não a alcança mais. Ver `identidadePorPagina`
+      // para o número que mediu o que a versão global custava.
+      //
+      // Os resultados inteiros caem junto, dentro de `esqueceAPagina`: a chave
+      // deles já carrega a identidade, então nunca seriam SERVIDOS errados —
+      // mas ficariam ocupando o orçamento até o LRU chegar neles, e o
+      // orçamento é justamente o que decide o que fica.
+      if (identidadePorPagina.get(dashboardSpec.id) !== identidade) {
+        esqueceAPagina(dashboardSpec.id);
+        identidadePorPagina.set(dashboardSpec.id, identidade);
       }
 
       const libera = liberaSobDemanda ?? [];

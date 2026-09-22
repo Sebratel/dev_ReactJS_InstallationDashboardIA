@@ -21,7 +21,7 @@ import { escreve } from '../../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { escreveStatus } from '../../../tools/refresh/src/status.ts';
 import type { VerificadorDeToken } from '../src/auth-google.ts';
-import { Servidor } from '../src/servidor.ts';
+import { Servidor, chaveDeValores } from '../src/servidor.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const WEB = path.join(ROOT, 'apps', 'api', 'web');
@@ -290,12 +290,20 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     assert.equal(prod.status, 'falhou');
     assert.equal(prod.erro, 'ECONNRESET');
 
-    // Query sem carga recente E sem grupo marca vencida. `field-agenda` continua fora
-    // de qualquer grupo (21min49s de materialização) e é forçada na avaliação por
-    // `montaStatusDeRefresh` — é o exemplo certo para este caso.
-    const semGrupo = j.refresh.queries.find((q: any) => q.id === 'field-agenda');
-    assert.ok(semGrupo);
-    assert.equal(semGrupo.status, 'vencida');
+    // **`field-agenda` entrou no grupo `frio` em 22/09/2026** (ACHADOS #145: os
+    // 21min49s que a mantinham fora morreram no #86, e o arquivo custa 4min21s).
+    // Ela era o exemplo de "query sem grupo" aqui e deixou de servir, pela mesma
+    // razão que `protocolos-produtividade` deixou em 13/09: com o frio falhando,
+    // ela reporta `falhou`, não `vencida`.
+    //
+    // **E o caso "sem grupo → vencida" não ficou sem guarda**: ele é de
+    // `montaStatusDeRefresh`, não da rota, e está em
+    // `tools/refresh/test/status.test.ts`. Testá-lo aqui amarrava o contrato da
+    // rota ao arranjo de grupos do dia — que é exatamente o que acabou de mudar.
+    const fieldAgenda = j.refresh.queries.find((q: any) => q.id === 'field-agenda');
+    assert.ok(fieldAgenda);
+    assert.equal(fieldAgenda.status, 'falhou');
+    assert.equal(fieldAgenda.erro, 'ECONNRESET');
   } finally {
     await s.fecha();
   }
@@ -1374,4 +1382,55 @@ test('GET /api/eventos: o batimento PARA quando o último assinante sai', async 
   } finally {
     await s.fecha();
   }
+});
+
+// --------------------------------------------------------------------------
+// A CHAVE DO CACHE DE VALORES DE SEGMENTAÇÃO (21/09/2026)
+//
+// `/valores` lê o cache ANTES de chamar `carrega()`, e `carrega()` é o único
+// lugar que percebe a identidade da página avançar. Um acerto nunca passa por
+// verificação de frescor — então o frescor tem de estar na CHAVE, ou a lista da
+// segmentação serve o recorte de antes do refresh para sempre.
+//
+// Isto ficava mascarado enquanto o descarte de `carrega()` era global (qualquer
+// outra página varria este mapa junto). Escopar o descarte por página tirou a
+// vassoura; estes testes são o que garante que o mascaramento não era a única
+// coisa segurando a corretude.
+
+test('a chave dos valores separa DOIS frescores da mesma coluna', () => {
+  const antes = chaveDeValores('visao-geral', 'hashA@2026-09-21', 'PROTOCOLOS GERAL', 'CIDADE', null);
+  const depois = chaveDeValores('visao-geral', 'hashB@2026-09-21', 'PROTOCOLOS GERAL', 'CIDADE', null);
+  assert.notEqual(
+    antes,
+    depois,
+    'refresh da tabela não tornou a lista velha inalcançável — cidade nova entra no dado ' +
+      'e o seletor continua mostrando a lista de antes',
+  );
+});
+
+test('a chave dos valores separa a virada do DIA, não só o carimbo', () => {
+  const ontem = chaveDeValores('visao-geral', 'mesmoHash@2026-09-20', 'PROTOCOLOS GERAL', 'CIDADE', null);
+  const hoje = chaveDeValores('visao-geral', 'mesmoHash@2026-09-21', 'PROTOCOLOS GERAL', 'CIDADE', null);
+  assert.notEqual(ontem, hoje, 'o dia faz parte do frescor pelas mesmas chamadas a TODAY() do resto');
+});
+
+test('a chave dos valores começa pelo id da página — é o que `esqueceAPagina` varre', () => {
+  // O prefixo `${id}<NUL>` de `esqueceAPagina` (`servidor.ts`) tem de alcançar a
+  // entrada de QUALQUER frescor desta página; se o id deixar de ser o primeiro
+  // segmento, a poda para de podar e o mapa cresce sem limite.
+  const chave = chaveDeValores('visao-geral', 'hash@2026-09-21', 'PROTOCOLOS GERAL', 'CIDADE', null);
+  assert.ok(
+    chave.startsWith(`visao-geral${String.fromCharCode(0)}`),
+    'o id saiu do começo da chave, e `esqueceAPagina` deixou de alcançar estas entradas',
+  );
+});
+
+test('a chave dos valores continua separando tabela, coluna e nível', () => {
+  const base = chaveDeValores('p', 'f', 'T', 'c', null);
+  assert.notEqual(base, chaveDeValores('p', 'f', 'OUTRA', 'c', null));
+  assert.notEqual(base, chaveDeValores('p', 'f', 'T', 'outra', null));
+  assert.notEqual(base, chaveDeValores('p', 'f', 'T', 'c', 'Dia'));
+  // E normaliza o nome do mesmo jeito que a trava de permissão da rota, senão
+  // `PROTOCOLOS GERAL` e `Protocolos Geral` virariam duas entradas do mesmo dado.
+  assert.equal(chaveDeValores('p', 'f', 'T', 'c', null), chaveDeValores('p', 'f', 't', 'C', null));
 });

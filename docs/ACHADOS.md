@@ -12823,3 +12823,58 @@ errado e calado). Reter sem essa distinção é o congelamento que este conserto
 
 **4 testes novos** em `packages/snapshot/test/colunas-calculadas.test.ts`, um deles
 documentando o comportamento errado para que o conserto tenha contra o que ser medido.
+
+---
+
+## #147 — Um refresh de QUALQUER tabela jogava fora o dataset de TODAS as páginas: a chave da resposta era por página desde 09/09, o dado carregado não
+
+**Trabalho de 21–22/09/2026, registrado em 22/09.** O código ficou pronto e testado na
+árvore, sem achado escrito — este é o registro. **Os números abaixo são os que a sessão
+de 21/09 mediu e deixou nos comentários** de `servidor.ts` e `worker-calculador.ts`; não
+foram remedidos hoje.
+
+**O defeito.** `carimboDaPagina` escopa a chave do cache de RESPOSTA por página desde
+09/09: um refresh de tabela que a página não lê não a invalida. As duas camadas de baixo
+não acompanharam. `Servidor.carrega()` comparava `identidadeAtual()` — global — e fazia
+`carregadas.clear()`; a worker recebia a mesma identidade global e fazia
+`cacheDeCarga.clear()`. Resultado: qualquer tabela rematerializada esvaziava o dataset
+de TODAS as páginas, em TODAS as threads.
+
+```
+mudanças de carimbo, API no ar sem ninguém na tela ..... 4 em 6 min (1 a cada 1,5 min)
+
+visao-geral   servida do cache ...................      2 ms
+              recalculada, tabelas em memória ....    219 ms   <- o cálculo
+              recalculada, relendo o disco .......  2.250 ms   <- o que o descarte cobrava
+```
+
+~90% do custo de uma página "fria" era releitura de disco que a invalidação não
+precisava causar, e quem pagava era a próxima pessoa a abrir qualquer página.
+
+**O conserto.** `identidadeDaPagina(dash)` — o carimbo das tabelas que AQUELA página lê,
+mais o dia — substitui a global nos dois lados: `identidadeDasCarregadas` (thread
+principal) e `identidadePorPagina` (worker) guardam uma identidade por página, e só a
+página cuja identidade avançou é descartada. **O dia continua global** de propósito: a
+meia-noite muda a identidade de todas, que é o que as 32 chamadas a `TODAY()` exigem.
+Página de dependência indeterminada cai na identidade global — na dúvida, invalidar
+demais é seguro.
+
+### Duas coisas que o descarte global escondia, e que escopar teria destampado
+
+1. **`aoTabelaMudar` não limpava `cacheValoresDistintos`.** Não aparecia porque a
+   vassoura global passava a cada 1,5 min. Sem ela, a lista de uma segmentação
+   envelheceria sem prazo: cidade nova entra no dado e nunca aparece no seletor. Os dois
+   caminhos de invalidação passaram a chamar a MESMA função (`esqueceAPagina`, uma em
+   cada lado), e a chave dos valores (`chaveDeValores`) passou a carregar o frescor da
+   página — a rota `/valores` lê o mapa ANTES de `carrega()`, então sem o frescor na
+   chave um acerto nunca passaria por verificação nenhuma.
+2. **O `clear()` global era também o único limite de memória de `carregadas`.** Escopar
+   tirava o limite junto. `guardaCarregada` poda por ordem de inserção com
+   `TETO_CARREGADAS = 6`, o mesmo número de `TETO_CACHE_POR_WORKER`.
+
+**6 testes novos**: 4 da chave de valores (`servidor.test.ts`) e o par em
+`cache-de-carga-worker.test.ts` — refresh de tabela que a página NÃO lê a deixa de pé, e
+refresh de tabela que ela LÊ a derruba. O par só vale junto: sem o segundo, apagar a
+invalidação inteira passaria no primeiro.
+
+**Suíte: 2.126 passando** (2.116 → 2.126: estes 6 e os 4 do #146).

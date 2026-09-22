@@ -96,6 +96,56 @@ export const VALORES_PADRAO = 500;
 export const VALORES_MAXIMO = 5000;
 
 /**
+ * Quantos datasets a thread principal guarda antes de podar o mais antigo.
+ *
+ * **6, o mesmo de `TETO_CACHE_POR_WORKER`**, e pelo mesmo argumento: uma thread
+ * atende TODAS as páginas do menu, não uma. O número é folgado de propósito —
+ * medido em 21/09/2026, depois de servir as 14 páginas uma vez, a thread
+ * principal tinha **2** datasets vivos (`paginasCarregadas` em `/api/saude`),
+ * porque no caminho de produção quem calcula é a piscina. Quem de fato enche
+ * este mapa aqui é `/api/dashboards/:id/valores` — a lista de uma segmentação,
+ * que é calculada nesta thread.
+ *
+ * Ver `guardaCarregada` para por que um teto passou a ser necessário.
+ */
+export const TETO_CARREGADAS = 6;
+
+/**
+ * A chave do cache de valores de uma segmentação — e por que o `frescor` entra.
+ *
+ * **Extraída para poder ser testada, e o motivo é um defeito de ordem.** A rota
+ * `/valores` lê este cache ANTES de chamar `carrega()`, e `carrega()` é o único
+ * lugar que percebe a identidade da página avançar. Um acerto aqui portanto nunca
+ * passa por verificação de frescor nenhuma: sem o `frescor` na chave, a lista de
+ * uma segmentação continua servindo o recorte de antes do refresh, e o sintoma é
+ * uma cidade nova que entra no dado e nunca aparece no seletor.
+ *
+ * Enquanto o descarte de `carrega()` era GLOBAL isso ficava mascarado: qualquer
+ * outra página que perdesse a entrada dela varria este mapa inteiro junto. Ao
+ * escopar o descarte por página (21/09/2026) a vassoura sai, e sem esta chave o
+ * mascaramento sairia com ela.
+ *
+ * Mesmo princípio de `chaveDaResposta` (`cache-resposta.ts`): o que faz o papel do
+ * frescor é a chave, não um prazo nem uma varredura. A entrada velha fica
+ * INALCANÇÁVEL no mesmo instante, e quem a poda é o `esqueceAPagina` que o miss
+ * seguinte dispara dentro de `carrega()`.
+ *
+ * O `id` vem PRIMEIRO de propósito: é o que faz o prefixo `${id}<NUL>` de
+ * `esqueceAPagina` alcançar todas as entradas desta página, de qualquer frescor.
+ */
+export function chaveDeValores(
+  id: string,
+  frescor: string,
+  tabela: string,
+  coluna: string,
+  nivel: string | null,
+): string {
+  return [id, frescor, normalizeName(tabela), normalizeName(coluna), normalizeName(nivel ?? '')].join(
+    '\u0000',
+  );
+}
+
+/**
  * O teto de tentativas em `/auth/*` (as quatro rotas de POST), por IP, na
  * janela abaixo. É a rota que importa de verdade: `/auth/interno` compara
  * `TOKEN_INTERNO` em tempo constante (`tokensIguais`), mas nada limitava a
@@ -386,8 +436,12 @@ export class Servidor {
   private readonly carregadas = new Map<string, Promise<Carregado>>();
   /** Cache dos valores distintos de segmentações (categorias) para eliminar buscas repetidas de disco/dataset. */
   private readonly cacheValoresDistintos = new Map<string, DaxValue[]>();
-  /** O carimbo do snapshot que `carregadas` reflete. Mudou? O mapa inteiro é lixo. */
-  private carimboDasCarregadas: string | null = null;
+  /**
+   * A identidade que o dataset de CADA página reflete. Avançou? Só o daquela
+   * página é lixo — ver `identidadeDaPagina` para o número que mediu por que
+   * isto deixou de ser uma string só.
+   */
+  private readonly identidadeDasCarregadas = new Map<string, string>();
   /**
    * O resultado inteiro de cada tabela e matriz já calculada, para que a janela
    * seguinte seja um `slice`. Ver `cache-visual.ts` — e note que ele **não** é o
@@ -1255,15 +1309,21 @@ export class Servidor {
     const emEvento = Date.now();
 
     for (const dashId of afetados) {
-      for (const chave of [...this.carregadas.keys()]) {
-        if (chave === dashId || chave.startsWith(`${dashId}\u0000`)) this.carregadas.delete(chave);
-      }
+      // O dataset, os valores das segmentações e os resultados inteiros — ver
+      // `esqueceAPagina`, que é a MESMA limpeza que o avanço de identidade em
+      // `carrega()` faz. Eram dois trechos, e já divergiam num item:
+      // `cacheValoresDistintos` não caía aqui.
+      this.esqueceAPagina(dashId);
+      // E a identidade guardada junto: o dataset que ela descrevia acabou de
+      // sair. Deixá-la para trás faria a próxima carga desta página gravar uma
+      // entrada nova sob uma identidade que já estava no mapa — e o descarte
+      // seguinte, por refresh, não aconteceria.
+      this.identidadeDasCarregadas.delete(dashId);
       // A MESMA invalidação, do lado de cada worker: `cacheDeCarga`
       // (`worker-calculador.ts`) guarda o dataset por thread própria, e sem
       // isto uma worker que já tivesse esta página carregada continuaria
       // servindo o overlay velho para sempre — o F1 de novo, um nível abaixo.
       this.piscina.invalidaPagina(dashId);
-      this.completos.limpaPagina(dashId);
       // Efeito colateral, não parte de resposta nenhuma — não há pedido para
       // atrasar esperando o Redis, e `apagaPagina` já nunca lança.
       void this.cache.apagaPagina(dashId);
@@ -1670,11 +1730,21 @@ export class Servidor {
               // `worker-calculador.ts` e `overlay-realtime.ts`.
               ...(overlays.size > 0 ? { overlays } : {}),
               // O que faz `cacheDeCarga` (worker-calculador.ts) saber que o disco
-              // mudou por baixo, do mesmo jeito que `identidadeAtual()` já faz
+              // mudou por baixo, do mesmo jeito que `identidadeDaPagina()` já faz
               // para `this.carregadas` aqui na thread principal — DISCO, não o
               // memo (`carimboAtual()`), pela mesma razão de F5: um `fs.watch`
               // mudo não pode deixar a worker presa ao `Carregado` de ontem.
-              identidade: this.identidadeAtual(),
+              //
+              // **Por página, e não `identidadeAtual()` (21/09/2026).** A global
+              // fazia a worker descartar o dataset de TODAS as páginas a cada
+              // rematerialização de QUALQUER tabela — uma a cada 1,5 min,
+              // medido, e ~2 s de releitura de disco por página alcançada. Aqui
+              // vai `dash` (a página inteira) e não `alvo` (recortado para os
+              // `?visual=` do pedido) de propósito: quem decide a identidade é
+              // de que tabelas a PÁGINA depende, que é a mesma conta que
+              // `carimboDaPagina` faz para a chave da resposta. Duas contas
+              // diferentes para a "mesma" identidade divergiriam.
+              identidade: this.identidadeDaPagina(dash),
               // O ESCOPO de quem pediu, pelo mesmo motivo que ele entra em
               // `chaveDoCompleto` aqui na thread principal: a worker agora
               // guarda o resultado inteiro de visual paginável (ver
@@ -1895,7 +1965,30 @@ export class Servidor {
     }
 
     const teto = inteiro(url.searchParams.get('teto'), VALORES_PADRAO, 1, VALORES_MAXIMO);
-    const chaveValores = `${id}\u0000${normalizeName(tabela)}\u0000${normalizeName(coluna)}\u0000${normalizeName(nivel ?? '')}`;
+    // **A identidade da página entra na CHAVE, e não numa limpeza.** Esta rota
+    // lê o mapa ANTES de chamar `carrega()` — e `carrega()` é o único lugar que
+    // percebe a identidade avançar. Um acerto aqui portanto NUNCA passava pela
+    // verificação de frescor: a lista de valores de uma segmentação ficava
+    // servindo o recorte de antes do refresh, e o sintoma seria uma cidade nova
+    // que entra no dado e nunca aparece no seletor.
+    //
+    // Isso não aparecia enquanto o descarte de `carrega()` era GLOBAL: qualquer
+    // outra página que perdesse a sua entrada varria este mapa inteiro junto, e
+    // o erro de ordem ficava mascarado por uma vassoura que passava a cada 1,5
+    // min. Escopar o descarte por página (21/09/2026) tirava a vassoura, e sem
+    // esta linha o mascaramento cairia junto.
+    //
+    // É o mesmo princípio de `chaveDaResposta`: o que faz o papel do frescor é
+    // a chave, não um prazo nem uma varredura. Entrada velha fica INALCANÇÁVEL
+    // no mesmo instante, e quem a poda é o `esqueceAPagina` que o miss seguinte
+    // dispara dentro de `carrega()`.
+    //
+    // `carimboDaPagina` (o memo) e não `identidadeDaPagina` (o disco): é a
+    // MESMA conta que a chave do cache de resposta faz, e esta rota responde em
+    // 1–7 ms quente — 0,57 ms de leitura de disco por seletor aberto seria
+    // pagar frescor que o memo já entrega.
+    const frescorDaPagina = `${this.carimboDaPagina(dash)}@${diaDoCalculo(this.opts.agora())}`;
+    const chaveValores = chaveDeValores(id, frescorDaPagina, tabela, coluna, nivel);
     let distintos = this.cacheValoresDistintos.get(chaveValores);
     if (!distintos) {
       let carregado: Carregado;
@@ -1992,6 +2085,63 @@ export class Servidor {
    * acento — por isso `tabelasPorDashboard` sai do MESMO plano que `carrega()`
    * vai percorrer, e não de uma lista à parte.
    */
+  /**
+   * Esquece o que ESTA thread guarda de UMA página: o dataset, os valores
+   * distintos das segmentações dela e os resultados inteiros dos visuais.
+   *
+   * **Um lugar só, e é por isso que ele nasceu.** Os dois caminhos que
+   * invalidam uma página tinham de derrubar exatamente a mesma coisa, e não
+   * derrubavam: `aoTabelaMudar` (o poller viu a tabela mudar) limpava
+   * `carregadas` e `completos` mas **não** `cacheValoresDistintos` — o que não
+   * aparecia enquanto o descarte global de `carrega()` varria o mapa inteiro a
+   * cada 1,5 min por tabela alheia. Escopar aquele descarte por página tirava
+   * essa vassoura de baixo, e a lista de valores de uma segmentação passaria a
+   * envelhecer sem prazo: cidade nova entra no dado, o seletor nunca a mostra.
+   * O par `esqueceAPagina` aqui e `esqueceAPagina` na worker existe para que a
+   * próxima estrutura a ser limpa tenha um lugar óbvio, e um só.
+   *
+   * Não mexe na piscina nem no cache de resposta de propósito: quem invalida
+   * ALÉM desta thread é `aoTabelaMudar`, que sabe que o evento veio de fora.
+   */
+  private esqueceAPagina(dashId: string): void {
+    for (const chave of [...this.carregadas.keys()]) {
+      if (chave === dashId || chave.startsWith(`${dashId}\u0000`)) this.carregadas.delete(chave);
+    }
+    // A chave é `${id}\u0000<tabela>\u0000<coluna>\u0000<nivel>` (ver `valores`).
+    for (const chave of [...this.cacheValoresDistintos.keys()]) {
+      if (chave.startsWith(`${dashId}\u0000`)) this.cacheValoresDistintos.delete(chave);
+    }
+    // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
+    // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
+    // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
+    this.completos.limpaPagina(dashId);
+  }
+
+  /**
+   * Grava um dataset em `carregadas`, podando o mais antigo quando estoura.
+   *
+   * **O teto nasceu junto com o descarte por página, e é a contrapartida
+   * dele.** Enquanto `carrega()` esvaziava o mapa INTEIRO a cada avanço do
+   * carimbo global — uma vez a cada 1,5 min, medido —, esse descarte era
+   * também o único limite de memória deste mapa: nada mais o podava. Escopar
+   * por página tira a latência de cima da próxima pessoa, mas tiraria junto o
+   * limite, e um mapa de `Carregado` que só cresce troca um problema de tempo
+   * por um de RAM — pior, porque aparece horas depois e longe daqui.
+   *
+   * Poda por ordem de inserção, a mesma de `guardaNoCache`
+   * (`worker-calculador.ts`) e de `TETO_PAGINAS_VISTAS`
+   * (`apps/web/src/cache-pagina.ts`): regravar reinsere no fim, então a entrada
+   * mais recentemente usada nunca é a próxima a cair.
+   */
+  private guardaCarregada(chave: string, promessa: Promise<Carregado>): void {
+    this.carregadas.delete(chave);
+    this.carregadas.set(chave, promessa);
+    if (this.carregadas.size > TETO_CARREGADAS) {
+      const maisAntiga = this.carregadas.keys().next().value;
+      if (maisAntiga !== undefined) this.carregadas.delete(maisAntiga);
+    }
+  }
+
   #overlayDe(dash: DashboardSpec): Map<string, OverlayDeTabela> {
     const todos = this.opts.overlayRealtime();
     const recorte = new Map<string, OverlayDeTabela>();
@@ -2037,15 +2187,17 @@ export class Servidor {
     // a chave nova daria miss, o recálculo pegaria este avaliador velho, e a
     // resposta de hoje seria gravada com o ontem dentro. As duas camadas medem a
     // mesma identidade ou nenhuma das duas mede.
-    const carimbo = this.identidadeAtual();
-    if (this.carimboDasCarregadas !== carimbo) {
-      this.carregadas.clear();
-      this.cacheValoresDistintos.clear();
-      // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
-      // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
-      // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
-      this.completos.limpa();
-      this.carimboDasCarregadas = carimbo;
+    // **Por página, não pelas 25 tabelas juntas** (21/09/2026). Era
+    // `identidadeAtual()` — global — e o `clear()` abaixo era de tudo: um
+    // refresh de tabela alheia esvaziava o dataset de toda página, e quem
+    // pagava a releitura do disco era a próxima pessoa a abrir qualquer uma
+    // delas. É o mesmo argumento (e a mesma conta) de `carimboDaPagina`, que a
+    // chave do cache de resposta já usava desde 09/09; o dado carregado é que
+    // não tinha acompanhado. Ver `identidadeDaPagina` para os números.
+    const identidade = this.identidadeDaPagina(dash);
+    if (this.identidadeDasCarregadas.get(dash.id) !== identidade) {
+      this.esqueceAPagina(dash.id);
+      this.identidadeDasCarregadas.set(dash.id, identidade);
     }
 
     const pronto = this.carregadas.get(chave);
@@ -2089,7 +2241,7 @@ export class Servidor {
         this.carregadas.delete(chave);
         throw err;
       });
-    this.carregadas.set(chave, promessa);
+    this.guardaCarregada(chave, promessa);
     return promessa;
   }
 
@@ -2170,6 +2322,45 @@ export class Servidor {
     const queries = this.queriesDe(dash);
     if (queries.includes('(indeterminado)')) return this.carimboAtual();
     return carimboDoSnapshot(this.manifestoMemo, this.calculadasMemo, queries);
+  }
+
+  /**
+   * A identidade de UMA página: o carimbo das tabelas que ela lê, mais o dia.
+   *
+   * **O que ela é para `identidadeAtual()`, `carimboDaPagina` é para
+   * `carimboAtual()`** — e existe pela mesma razão medida. `identidadeAtual()`
+   * é global: qualquer tabela rematerializada muda o valor dela, e quem
+   * escutava essa mudança (`Servidor.carrega()` aqui, `cacheDeCarga` dentro de
+   * cada worker) jogava fora o dataset de TODAS as páginas. Amostrado na API no
+   * ar em 21/09/2026, sem ninguém na tela: **4 mudanças de carimbo em 6
+   * minutos**, uma a cada 1,5 min.
+   *
+   * O custo disso não é recalcular, é **reler o disco**. Medido nas mesmas
+   * condições, `visao-geral`: 2 ms servida do cache, **219 ms** recalculada com
+   * as tabelas em memória, **2250 ms** recalculada tendo de relê-las. Os ~2 s
+   * de diferença eram o descarte, não o cálculo.
+   *
+   * **Lê o DISCO, não o memo** — é a mesma F5 de `identidadeAtual()`, e a razão
+   * de `confereCarimbo()` vir antes do hash escopado: é essa chamada que
+   * reabastece `manifestoMemo`/`calculadasMemo` (ver `leDoDisco` no construtor).
+   * Um `fs.watch` mudo não pode deixar a worker presa ao `Carregado` de ontem,
+   * e escopar por página não afrouxa isso: o que muda é QUAIS tabelas entram no
+   * hash, não de onde elas são lidas.
+   *
+   * **O dia continua global**, de propósito: `diaDoCalculo` não depende de
+   * página nenhuma, então a virada da meia-noite muda a identidade de todas de
+   * uma vez — que é exatamente o que as 32 chamadas a `TODAY()` exigem.
+   *
+   * Página de dependência indeterminada cai no carimbo global, pelo mesmo
+   * argumento de `carimboDaPagina`: na dúvida, invalidar demais é seguro.
+   */
+  private identidadeDaPagina(dash: DashboardSpec): string {
+    const global = this.confereCarimbo();
+    const queries = this.queriesDe(dash);
+    const carimbo = queries.includes('(indeterminado)')
+      ? global
+      : carimboDoSnapshot(this.manifestoMemo, this.calculadasMemo, queries);
+    return identidadeDoCalculo(carimbo, diaDoCalculo(this.opts.agora()));
   }
 
   /**

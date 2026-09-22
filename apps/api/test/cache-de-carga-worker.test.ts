@@ -32,7 +32,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { escreve } from '../../../packages/snapshot/src/formato.ts';
-import { arquivoDaQuery, escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
+import { arquivoDaQuery, escreveManifesto, leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { Servidor } from '../src/servidor.ts';
 import type { OverlayDeTabela } from '../src/overlay-realtime.ts';
 
@@ -198,6 +198,99 @@ test('sem aoTabelaMudar, um dataset já carregado continua servindo o mesmo over
       linhasDaTabela(b, 'HORA ATUALIZADO'),
       1,
       'a cache não estava realmente segurando o dataset — se o número mudou sem invalidação, o "cache" está sempre recarregando',
+    );
+  } finally {
+    await s.fecha();
+  }
+});
+
+// --------------------------------------------------------------------------
+// O ESCOPO DA INVALIDAÇÃO (21/09/2026)
+//
+// A chave do cache de RESPOSTA é escopada por página desde 09/09
+// (`carimboDaPagina`): um refresh de tabela que a página não lê não a invalida.
+// O DATASET não tinha acompanhado — `identidadeAtual()`, global, ia para a
+// worker, e lá `cacheDeCarga.clear()` derrubava TODAS as páginas de TODAS as
+// threads. Amostrado na API no ar, sem ninguém na tela: 4 mudanças de carimbo
+// em 6 minutos, uma a cada 1,5 min.
+//
+// O preço não era o recálculo, era a RELEITURA DO DISCO. Medido em
+// `visao-geral`: 2 ms do cache, 219 ms recalculada com as tabelas em memória,
+// 2250 ms recalculada tendo de relê-las.
+//
+// Os dois testes abaixo são um par, e só valem juntos: o primeiro prova que o
+// escopo existe, o segundo que ele não virou "nunca invalida". Sem o segundo,
+// apagar a invalidação inteira passaria no primeiro.
+
+/** Rematerializa `clima-tempo` — uma query que `capa` NÃO lê — mexendo só no
+ *  manifesto. É o que um `npm run refresh` de outro grupo faz ao carimbo. */
+async function rematerializaQueryAlheia(dir: string): Promise<void> {
+  const m = leManifesto(dir);
+  assert.ok(m, 'o manifesto tem de existir para este teste dizer alguma coisa');
+  await escreveManifesto(dir, [
+    ...m.tabelas,
+    {
+      query: 'clima-tempo',
+      tabelas: ['Clima/ Tempo'],
+      linhas: 3,
+      colunas: 2,
+      bytes: 100,
+      geradoEm: '2026-08-07T11:30:00.000Z',
+    },
+  ]);
+}
+
+test('refresh de tabela que a página NÃO lê deixa o dataset dela de pé', async () => {
+  const dir = await dirComCapa();
+  const s = await sobe(dir, () => new Map());
+  try {
+    assert.equal(s.servidor.piscinaAtiva, true, 'este teste só vale alguma coisa com a piscina ligada');
+
+    const a = await (await s.busca('/api/dashboards/capa?recalcula=1')).json();
+    assert.equal(linhasDaTabela(a, 'HORA ATUALIZADO'), 1);
+
+    // O carimbo GLOBAL muda aqui. O de `capa` — só `hora-atualizado` — não.
+    await rematerializaQueryAlheia(dir);
+
+    // Mesma prova dos testes acima: se a worker relesse o disco, cairia em 409.
+    fs.rmSync(arquivoDaQuery(dir, 'hora-atualizado'));
+
+    const b = await (await s.busca('/api/dashboards/capa?recalcula=1')).json();
+    assert.equal(
+      linhasDaTabela(b, 'HORA ATUALIZADO'),
+      1,
+      'o dataset de `capa` caiu por causa de um refresh de `clima-tempo`, que ela não lê — ' +
+        'é a invalidação global de volta, e com ela ~2 s de releitura de disco por página alcançada',
+    );
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('refresh de tabela que a página LÊ derruba o dataset dela — o escopo não é "nunca invalida"', async () => {
+  const dir = await dirComCapa();
+  const s = await sobe(dir, () => new Map());
+  try {
+    const a = await (await s.busca('/api/dashboards/capa?recalcula=1')).json();
+    assert.equal(linhasDaTabela(a, 'HORA ATUALIZADO'), 1);
+
+    // Agora a própria tabela de `capa` foi rematerializada — `geradoEm` novo é o
+    // que o carimbo mede, e é o que TEM de alcançá-la.
+    const m = leManifesto(dir);
+    assert.ok(m);
+    await escreveManifesto(
+      dir,
+      m.tabelas.map((t) => ({ ...t, geradoEm: '2026-08-07T11:59:00.000Z' })),
+    );
+
+    fs.rmSync(arquivoDaQuery(dir, 'hora-atualizado'));
+
+    const r = await s.busca('/api/dashboards/capa?recalcula=1');
+    assert.equal(
+      r.status,
+      409,
+      'o dataset sobreviveu a um refresh da tabela que a própria página lê — ' +
+        'o escopo por página virou "nunca invalida", e a tela serviria o número de antes do refresh',
     );
   } finally {
     await s.fecha();
