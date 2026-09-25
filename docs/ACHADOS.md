@@ -13048,7 +13048,7 @@ remedido em 18/09: 2,7x de linhas. É a mesma divergência vista de outra tabela
 
 1. Bloqueio não herdava. `carregaJanelas` passa a estender o bloqueio a toda tabela cujo
    `table_dax` cite uma bloqueada (transitivo; coluna calculada não conta; janela declarada
-   não salva). Nas specs de hoje, só `Status Protocolo Dia` herda.
+   não salva). Nas specs de hoje herdam `Status Protocolo Dia` e `calendar` (ver o fim desta entrada).
 2. `planoDeAgregacao` buscava a entidade sem normalizar, contra chaves em maiúsculas. Tabela
    de nome em caixa mista (`Status Protocolo Dia`, `Base Categorias Field`) nunca casava:
    agregação sobre ela saía sem janela e sem bloqueio. **Efeito:** agregações de
@@ -13060,3 +13060,8 @@ Dia` — o fator bate, mas a próxima rodada de `npm run powerbi -- --pagina=rel
 é que diz (tem de sair `JANELA`).
 
 **5 testes novos** em `tools/powerbi/test/janela.test.ts`. **Suíte: 2.141 passando.**
+
+**Confirmado no mesmo dia** (`npm run powerbi -- --pagina=relatorio-do-mes`): `Protocolo` saiu `JANELA`, mas
+via `calendar`, e não via `Status Protocolo Dia`. Apesar do nome, `calendar` é `DISTINCT` de (protocolo,
+data) sobre `FIELD AGENDA`, não um calendário. São duas tabelas herdando, e não uma. As medidas
+da página saíram com os mesmos 12 vereditos de antes: a herança não tirou nenhuma medida do jogo.
