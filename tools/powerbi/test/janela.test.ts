@@ -12,6 +12,7 @@ import {
   alcance,
   planoDeJanela,
   comJanela,
+  planoDeAgregacao,
   dependeDoRelogio,
   ARQUIVO_JANELA,
   shaDaQuery,
@@ -465,4 +466,71 @@ describe('dependeDoRelogio', () => {
   test('medida que não existe no modelo não é móvel', () => {
     assert.equal(dependeDoRelogio('Fantasma', modelo({})), false);
   });
+});
+
+/**
+ * **O bloqueio desce para a tabela calculada.** Medido em 25/09/2026: `FIELD AGENDA`
+ * bloqueada (definições diferentes), e `Qtd Protocolos Base` — `DISTINCTCOUNT` sobre
+ * `Status Protocolo Dia`, que é `DISTINCT` sobre `FIELD AGENDA` — saía `DIFERE`
+ * (32.170 x 10.953) como se fosse divergência nova.
+ */
+describe('carregaJanelas: herança de bloqueio', () => {
+  function comSpecs(tabelas: Record<string, string>, janela: string): ReturnType<typeof carregaJanelas> {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'janela-'));
+    try {
+      fs.mkdirSync(path.join(dir, '_catalog', 'tables'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '_catalog', 'paridade-janela.yaml'), janela, 'utf8');
+      for (const [arq, yaml] of Object.entries(tabelas)) {
+        fs.writeFileSync(path.join(dir, '_catalog', 'tables', arq), yaml, 'utf8');
+      }
+      return carregaJanelas(dir);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  test('calculada sobre bloqueada herda, e o motivo nomeia a origem', () => {
+    const j = comSpecs(
+      {
+        'fonte.spec.yaml': 'name: FONTE\n',
+        'derivada.spec.yaml': "name: Derivada\ntable_dax: DISTINCT(SELECTCOLUMNS('FONTE', \"p\", 'FONTE'[p]))\n",
+        'neta.spec.yaml': "name: Neta\ntable_dax: DISTINCT('Derivada')\n",
+      },
+      'bloqueadas:\n  FONTE: definições diferentes\n',
+    );
+    assert.match(j.bloqueadas.get('DERIVADA') ?? '', /a partir de 'FONTE'.*definições diferentes/);
+    assert.ok(j.bloqueadas.has('NETA'), 'calculada sobre calculada também herda');
+  });
+
+  test('só table_dax conta, e texto entre aspas não é citação', () => {
+    const j = comSpecs(
+      {
+        'livre.spec.yaml': "name: Livre\ntable_dax: ROW(\"x\", \"'FONTE'\")\n",
+        'coluna.spec.yaml': "name: Coluna\ncolumns:\n  - name: c\n    dax: \"COUNTROWS('FONTE')\"\n",
+      },
+      'bloqueadas:\n  FONTE: x\n',
+    );
+    assert.equal(j.bloqueadas.has('LIVRE'), false);
+    assert.equal(j.bloqueadas.has('COLUNA'), false);
+  });
+
+  test('janela declarada não salva calculada sobre fonte bloqueada', () => {
+    const j = comSpecs(
+      { 'derivada.spec.yaml': "name: Derivada\ntable_dax: DISTINCT('FONTE')\n" },
+      "tabelas:\n  Derivada:\n    dax: \"'Derivada'[d] >= DATE(2026,1,1)\"\nbloqueadas:\n  FONTE: x\n",
+    );
+    assert.ok(j.bloqueadas.has('DERIVADA'), 'a janela recorta a fatia, não conserta a definição');
+    assert.equal(j.tabelas.has('DERIVADA'), false);
+  });
+});
+
+test('specs reais: Status Protocolo Dia herda o bloqueio de FIELD AGENDA', () => {
+  const j = carregaJanelas(path.join(import.meta.dirname, '..', '..', '..', 'specs'));
+  assert.match(j.bloqueadas.get('STATUS PROTOCOLO DIA') ?? '', /a partir de 'FIELD AGENDA'/);
+});
+
+test('planoDeAgregacao casa entidade de caixa mista com a chave normalizada', () => {
+  const j = carregaJanelas(path.join(import.meta.dirname, '..', '..', '..', 'specs'));
+  const p = planoDeAgregacao('Status Protocolo Dia', { medidas: new Map() } as never, j);
+  assert.ok(p.bloqueio, 'antes desta correção a busca era por "Status Protocolo Dia" cru e não achava');
 });

@@ -13033,3 +13033,30 @@ não ressuscita a API, de propósito (#137).
 
 **10 testes novos** (8 em `tools/subir/test/diagnostico.test.ts`, 2 em
 `tools/refresh/test/historico.test.ts`). **Suíte: 2.136 passando.**
+
+## #150 — `Qtd Protocolos Base` 32.170 x 10.953 não é divergência nova: o bloqueio de `FIELD AGENDA` não descia para `Status Protocolo Dia`
+
+**25/09/2026.** A paridade ao vivo (`npm run powerbi`) apontou `DIFERE` em `Qtd Protocolos Base`
+(agendamento-field: 32.170 no Power BI x 10.953 aqui) e em `Protocolo` (relatorio-do-mes: 36.513
+x 12.997) — fator de ~2,9x, com cara de achado novo. Não é. A medida é
+`DISTINCTCOUNT('Status Protocolo Dia'[protocolo])`, e `Status Protocolo Dia` é um `DISTINCT`
+sobre `FIELD AGENDA`, bloqueada em `paridade-janela.yaml` desde 25/08 porque as duas
+definições diferem (o nosso SQL filtra região e título de relato; o modelo publicado não) —
+remedido em 18/09: 2,7x de linhas. É a mesma divergência vista de outra tabela.
+
+**Dois defeitos em `tools/powerbi/src/janela.ts`:**
+
+1. Bloqueio não herdava. `carregaJanelas` passa a estender o bloqueio a toda tabela cujo
+   `table_dax` cite uma bloqueada (transitivo; coluna calculada não conta; janela declarada
+   não salva). Nas specs de hoje, só `Status Protocolo Dia` herda.
+2. `planoDeAgregacao` buscava a entidade sem normalizar, contra chaves em maiúsculas. Tabela
+   de nome em caixa mista (`Status Protocolo Dia`, `Base Categorias Field`) nunca casava:
+   agregação sobre ela saía sem janela e sem bloqueio. **Efeito:** agregações de
+   `Base Categorias Field` passam a ser perguntadas COM o recorte declarado — o número
+   do Power BI pode mudar na próxima rodada, e é o certo.
+
+**Não confirmado:** que o `Protocolo` de relatorio-do-mes é agregação sobre `Status Protocolo
+Dia` — o fator bate, mas a próxima rodada de `npm run powerbi -- --pagina=relatorio-do-mes`
+é que diz (tem de sair `JANELA`).
+
+**5 testes novos** em `tools/powerbi/test/janela.test.ts`. **Suíte: 2.141 passando.**
