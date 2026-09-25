@@ -1,0 +1,6 @@
+# Arquivo que roda dentro do container Linux sai sempre com LF. Com
+# core.autocrlf=true no Windows, `#!/bin/sh` virava `#!/bin/sh\r` na imagem e o
+# entrypoint do cron morria com "not found" (medido em 25/09/2026).
+*.sh text eol=lf
+docker/cron/* text eol=lf
+Dockerfile text eol=lf

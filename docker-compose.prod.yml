@@ -23,6 +23,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # O último estágio do Dockerfile é o `cron`: sem `target`, este serviço
+      # subia a imagem do cron e ficava reiniciando (medido em 25/09/2026).
+      target: runtime
     pull_policy: build
     env_file:
       - .env
@@ -159,6 +162,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # O último estágio do Dockerfile é o `cron`: sem `target`, este serviço
+      # subia a imagem do cron e ficava reiniciando (medido em 25/09/2026).
+      target: runtime
     pull_policy: build
     env_file:
       - .env
