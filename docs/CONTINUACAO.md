@@ -62,7 +62,7 @@ estava descrito errado havia oito dias.
 | **Commits** | **305** em `staging`; `main` é promovida pelo Erick | `git rev-list --count HEAD` |
 | **Árvore** | tem de estar **limpa** ao fim de cada etapa. Foi trabalho solto que se perdeu duas vezes | `git status --short` |
 | **Páginas** | **14 de 14** calculam | `npm run paginas -- --pagina=<uma>` |
-| **Paridade** | os números da §1 são de **13/08** e não foram remedidos aqui — rode antes de citar | `npm run paridade` |
+| **Paridade** | os números da §1 são de **13/08**. A conferência de verdade é **contra o próprio Power BI** (Execute Queries, só leitura, token renova sozinho); `npm run paridade` só compara com os gabaritos gravados em `specs/paridade/` (01/09) | `npm run powerbi -- --pagina=<uma>` |
 | **Perguntas de negócio** | ver o documento — a contagem daqui envelhecia | `docs/PERGUNTAS-NEGOCIO.md` |
 | **Deploy** | **existe artefato**: `Dockerfile`, `docker-compose.prod.yml` (api, redis, refresh, snapshot-diário), destino Portainer | `DEPLOY.md` |
 | **Login** | **existe**: Google SSO restrito ao domínio, portão 401 antes do roteamento (`apps/api/src/auth-google.ts`, `portao-login.ts`) | `DEPLOY.md` §2.1 |
