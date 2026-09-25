@@ -13092,3 +13092,32 @@ fiel à extração, e o modelo publicado tem hoje outro corte. Isso fecha a perg
 
 **Não corrigido de propósito:** alinhar é decisão de negócio e de custo de carga (#148, "corte
 escrito onze vezes" em PERGUNTAS-NEGOCIO #12). Pendente com o Erick.
+
+## #152 — alocação e troca alinhadas em 2025: PROTOCOLOS INSTALADOS vai de 30 mil para 68,7 mil (Power BI: 68,5 mil)
+
+**25/09/2026, decidido pelo Erick** depois do #151. `alocacao-patrimonio` e `troca-endereco`
+passam a cortar em `'2025-01-01'`, o mesmo literal de `protocolos-geral`, em vez de
+`DATE_TRUNC('year', CURRENT_DATE)`. A costura de `troca-endereco` em `realtime-poll.yaml` acompanha
+(o `de:` é texto literal do SQL; conferido que continua casando).
+
+**Medido no dbVoalle** (READ ONLY, a mesma união de três ramos do #151):
+
+```
+          linhas aloc   linhas troca   instalados   tempo
+  antes        25.910          5.558       30.021   14,0 s
+  depois       60.545         11.634       68.732   11,5 s    <- Power BI 68.533 (carga das 14:09)
+```
+
+Carga 2,3x maior em linhas nas duas tabelas, o que é pouco (são pequenas), sem custo de tempo.
+Também desarma a bomba de janeiro de 2027: com o corte no ano corrente, a alocação passaria a
+trazer só 2027 e os instalados de 2025–2026 sumiriam.
+
+**Armadilha evitada:** o comentário da mudança fica em linha PRÓPRIA. Posto no fim da última
+linha do `sql:` (a de alocação), ele comentava o `)` de quem embrulha a query como subconsulta —
+medido: erro de sintaxe na primeira sonda.
+
+**Fora do escopo, de propósito:** os outros cortes no ano corrente (`protocolos-produtividade`,
+`protocolos-auxiliares`, `instalacoes-reincidentes`, `reincidencia`, `retorno-prioritario`,
+`tecnicos-auxiliares`, `base-categorias-field`, `protocolos-telefonia`, `incremental.yaml`,
+`realtime-poll.yaml`) têm a mesma bomba de 2027, e fica com o Erick decidir (PERGUNTAS-NEGOCIO
+#12). A tela só muda depois da próxima carga das duas queries. **Suíte: 2.141 passando.**

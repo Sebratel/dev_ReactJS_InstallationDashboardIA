@@ -31,7 +31,8 @@ sql: |-
       LEFT JOIN incident_types it 
           ON it.id = ai.incident_type_id
       WHERE 
-          DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
+          -- 25/09/2026: desde 2025, como protocolos-geral; o corte no ano corrente deixava instalado de 2025 sem data (ACHADOS #152)
+          DATE(r.final_date) >= '2025-01-01'
           AND it.id in ('15', '1256')
           AND (
               r.description LIKE '%O condomínio é adequado?%'

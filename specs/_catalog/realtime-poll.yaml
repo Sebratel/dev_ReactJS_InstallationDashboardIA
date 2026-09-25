@@ -168,10 +168,10 @@ queries:
     marca: [_MARCA_REALTIME]
     costura:
       de: |2-
-                DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
+                DATE(r.final_date) >= '2025-01-01'
                 AND it.id in ('15', '1256')
       para: |2-
-                DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
+                DATE(r.final_date) >= '2025-01-01'
                 AND it.id in ('15', '1256')
                 AND a.modified >= :desde
 
