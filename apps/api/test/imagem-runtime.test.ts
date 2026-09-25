@@ -144,6 +144,35 @@ test('o compose declara o serviço refresh automático apontando para daemon.ts 
   assert.match(compose, /refresh:/, 'deve declarar o serviço refresh');
   assert.match(compose, /tools\/refresh\/src\/daemon\.ts/, 'refresh deve rodar daemon.ts');
   assert.match(compose, /:\/repo\/snapshot/, 'refresh deve montar o volume /repo/snapshot');
-  assert.match(compose, /mem_limit:\s*8g/, 'refresh deve ter limite de 8g para o V8 de snapshot');
+});
+
+test('refresh e snapshot-diario: heap autorizado + folga de não-heap cabem no mem_limit (ACHADOS #154)', () => {
+  const linhas = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8').split(/\r?\n/);
+  // O bloco de um serviço vai da linha `  nome:` até o próximo serviço (ou `volumes:`).
+  const bloco = (nome: string): string => {
+    const inicio = linhas.indexOf(`  ${nome}:`);
+    assert.ok(inicio >= 0, `serviço ${nome} não encontrado`);
+    const fim = linhas.findIndex((l, k) => k > inicio && /^(  [a-z-]+:|volumes:)$/.test(l));
+    return linhas.slice(inicio + 1, fim < 0 ? undefined : fim).join('\n');
+  };
+  const limiteMb = (b: string): number => {
+    const m = b.match(/mem_limit:\s*(\d+)g/);
+    assert.ok(m, 'mem_limit em g');
+    return Number(m[1]) * 1024;
+  };
+  // Folga mínima para o que não é heap (buffers do .jsonl.gz, runtime, pilhas). Com
+  // 8192 de heap num teto de 8g ela era zero, e quem matava era o cgroup, sem mensagem.
+  const FOLGA_MB = 1024;
+
+  const refresh = bloco('refresh');
+  const filho = Number(refresh.match(/REFRESH_MEMORIA_MB:\s*'(\d+)'/)?.[1]);
+  const pai = Number(refresh.match(/--max-old-space-size=(\d+)/)?.[1]);
+  assert.ok(filho > 0 && pai > 0, 'refresh declara REFRESH_MEMORIA_MB e o heap do pai');
+  assert.ok(filho + pai + FOLGA_MB <= limiteMb(refresh), `refresh: ${filho} + ${pai} + folga > mem_limit`);
+
+  const crontab = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'crontab-snapshot-diario'), 'utf8');
+  const cron = Number(crontab.match(/--memoria=(\d+)/)?.[1]);
+  assert.ok(cron > 0, 'crontab declara --memoria');
+  assert.ok(cron + FOLGA_MB <= limiteMb(bloco('snapshot-diario')), `snapshot-diario: ${cron} + folga > mem_limit`);
 });
 

@@ -155,6 +155,12 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
     : undefined;
   const intervaloMinutos = opts.intervaloMinutos ?? (Number.isFinite(envIntervalo) && envIntervalo! > 0 ? envIntervalo! : 15);
   const intervaloMs = intervaloMinutos * 60_000;
+  // Heap do filho de cada grupo. No contêiner vem de REFRESH_MEMORIA_MB, para caber no
+  // `mem_limit` do serviço (ACHADOS #154); sem ela, o padrão de `executa-grupo.ts`.
+  const envMemoria = process.env.REFRESH_MEMORIA_MB
+    ? Number.parseInt(process.env.REFRESH_MEMORIA_MB, 10)
+    : undefined;
+  const memoriaMb = opts.memoriaMb ?? (Number.isFinite(envMemoria) && envMemoria! > 0 ? envMemoria : undefined);
   const imediato = opts.imediato ?? true;
   const soUmaVez = opts.soUmaVez ?? false;
   const soPlano = opts.soPlano ?? false;
@@ -206,7 +212,7 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
         specsDir: opts.specsDir,
         snapshotDir: opts.snapshotDir,
         soPlano,
-        memoriaMb: opts.memoriaMb,
+        memoriaMb,
       });
 
       if (soPlano) {

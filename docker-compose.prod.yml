@@ -168,16 +168,22 @@ services:
     pull_policy: build
     env_file:
       - .env
-    mem_limit: 8g
+    # Medido em 25/09/2026 (ACHADOS #153/#154): o contêiner inteiro chegou a 3,87 GB no
+    # ciclo com as três cargas completas. O contrato é o mesmo da `api`: heap do filho
+    # (REFRESH_MEMORIA_MB) + heap do pai (--max-old-space-size do `command`) + folga
+    # de não-heap cabem no teto. Antes eram 8192 de heap num teto de 8g — zero folga,
+    # e quem matava era o cgroup, sem mensagem.
+    mem_limit: 6g
     environment:
       NODE_ENV: production
       REFRESH_INTERVAL_MINUTOS: '15'
+      REFRESH_MEMORIA_MB: '4096'
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
     depends_on:
       api:
         condition: service_healthy
-    command: ["node", "--max-old-space-size=8192", "tools/refresh/src/daemon.ts"]
+    command: ["node", "--max-old-space-size=1024", "tools/refresh/src/daemon.ts"]
     restart: unless-stopped
 
   # Snapshot diário COMPLETO — cron dentro do container, às 3h (docker/cron/
@@ -186,11 +192,10 @@ services:
   # materializa o catálogo inteiro (menos protocolos-produtividade, ver o
   # comentário do crontab — ela não materializa em nenhum modo hoje).
   #
-  # mem_limit 14g: protocolos-geral sozinha precisa de 12 GB de heap
-  # (docs/ACHADOS.md) — o teto dá ~2 GB de folga para o processo pai, buffers
-  # do .jsonl.gz e o resto que não é heap (mesma lógica do mem_limit do `api`
-  # acima). Cada query roda em subprocesso próprio e em série, então o pico é
-  # de UMA query por vez, nunca a soma de todas.
+  # mem_limit 6g com --memoria=4096 no crontab: a mesma carga do `refresh` acima,
+  # medida em 25/09/2026 (ACHADOS #154). Os 14g de antes vinham de "protocolos-geral
+  # precisa de 12 GB", que caiu em 09/09 (af82774). Cada query roda em subprocesso
+  # próprio e em série, então o pico é de UMA query por vez, nunca a soma de todas.
   snapshot-diario:
     build:
       context: .
@@ -199,7 +204,7 @@ services:
     pull_policy: build
     env_file:
       - .env
-    mem_limit: 14g
+    mem_limit: 6g
     environment:
       NODE_ENV: production
     volumes:
