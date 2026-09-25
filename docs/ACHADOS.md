@@ -13065,3 +13065,30 @@ Dia` — o fator bate, mas a próxima rodada de `npm run powerbi -- --pagina=rel
 via `calendar`, e não via `Status Protocolo Dia`. Apesar do nome, `calendar` é `DISTINCT` de (protocolo,
 data) sobre `FIELD AGENDA`, não um calendário. São duas tabelas herdando, e não uma. As medidas
 da página saíram com os mesmos 12 vereditos de antes: a herança não tirou nenhuma medida do jogo.
+
+## #151 — PROTOCOLOS INSTALADOS 68.533 x 29.962: a diferença inteira é 2025, que as nossas alocação e troca cortam
+
+**25/09/2026, medido ao vivo no modelo publicado** (Execute Queries, só agregados):
+
+```
+'PROTOCOLOS GERAL'          Power BI     nós
+  linhas                       96.589   96.631
+  DATA INSTALAÇÃO preenchida   68.533   29.962
+    com ano 2025               38.620        0
+    com ano 2026               29.913   29.962   <- bate (0,16%, horário de carga)
+  DATA ALOCAÇÃO mínima     2025-01-02
+```
+
+**Causa:** os cortes de data não são os mesmos entre as três queries daqui. `protocolos-geral`
+corta em `a.created >= '2025-01-01'`, mas `alocacao-patrimonio` (`plis.out_date >= DATE_TRUNC('year',
+CURRENT_DATE)`) e `troca-endereco` (`DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)`) só
+trazem 2026. Protocolo de 2025 fica sem DATA INSTALAÇÃO aqui. No modelo publicado, a alocação
+vai até 2025-01-02, então lá ele acha.
+
+**A extração também corta em 2026** (`plis.out_date > '01/01/2026'` em
+`QUERIES-DASHBOARD-INSTALACAO/sql/alocacao-patrimonio.sql`). Ou seja: a reimplementação é
+fiel à extração, e o modelo publicado tem hoje outro corte. Isso fecha a pergunta aberta de
+09/09 (28k x 66k): não era refresh antigo nem ramo desconhecido.
+
+**Não corrigido de propósito:** alinhar é decisão de negócio e de custo de carga (#148, "corte
+escrito onze vezes" em PERGUNTAS-NEGOCIO #12). Pendente com o Erick.
