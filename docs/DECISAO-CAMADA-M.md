@@ -76,8 +76,10 @@ duas mesclagens cruzadas são dbVoalle × dbMaria, e os dois connectors já func
 
 ## Fato decisivo 2 — SQL escrito à mão não tem onde morar
 
-Regra 2 do projeto: tudo em `specs/_catalog/queries/` é **sobrescrito** por
-`npm run extract`, e nenhuma decisão humana pode viver lá. Um SQL que substitua o M
+Regra 2 do projeto (na época): tudo em `specs/_catalog/queries/` era **sobrescrito** por
+`npm run extract`, e nenhuma decisão humana podia viver lá. *(25/09/2026: o PBIP e o
+script saíram em 27/08; o risco de sobrescrita não existe mais, e SQL escrito à mão hoje
+mora em spec de query própria — ver `DECISAO-GRAO-FIELD-AGENDA.md`.)* Um SQL que substitua o M
 seria exatamente isso: uma decisão humana num arquivo gerado.
 
 E o problema não é de arrumação. Quando alguém mexer no Power Query do relatório atual

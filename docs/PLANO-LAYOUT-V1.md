@@ -690,6 +690,9 @@ o **login** (§9.4) é o bloqueio nº 1 da publicação e é decisão de produto
 aqui o destrava, e nenhuma delas é publicável sem ele — o `snapshot/` tem CPF, RG e
 endereço de cliente.
 
+> **25/09/2026:** o login (Google SSO) e os 4 artefatos de infra já existem — ver
+> `DEPLOY.md`. O parágrafo acima é o estado de 01/09.
+
 ---
 
 ## 11. Como este plano evita a terceira perda

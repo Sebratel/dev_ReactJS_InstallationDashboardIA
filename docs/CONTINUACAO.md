@@ -55,27 +55,27 @@ valor daqui estiver velho, o comando mostra em segundos: **não confie na tabela
 confira.** Foi exatamente assim que se descobriu, em 19/08, que o item 1 da fila
 estava descrito errado havia oito dias.
 
-| o quê | em 15/09/2026 | como conferir |
+| o quê | em 25/09/2026 | como conferir |
 |---|---|---|
-| **Testes** | **1895** verdes, 0 falhando. Nenhum precisa de credencial nem de build | `npm test` |
-| **Achados** | **109** entradas numeradas até **#111** (o #5 nunca existiu; a numeração pula) | `grep -coE '^## #?[0-9]+' docs/ACHADOS.md` |
-| **Commits** | **229**, e o repositório **está publicado** (`origin/staging`) — §5.1 fechou | `git rev-list --count HEAD` · `git rev-parse --abbrev-ref @{u}` |
-| **Árvore** | tem de estar **limpa** ao fim de cada etapa. Foi trabalho solto que se perdeu duas vezes. **Hoje ela NÃO está: 62 arquivos da campanha de desempenho de 12–15/09 seguem sem commit** | `git status --short` |
-| **Páginas** | **14 de 14** calculam, **117 de 117** visuais | `npm run paginas -- --pagina=<uma>` |
-| **Paridade** | 64 cards: 22 são carimbo (fora do jogo), **42 em jogo e 42 já ditados — 0 faltam**. Mas 17 estão sob ressalva e todos carregam 4,2 dias de defasagem — §9.1 | `npm run paridade` |
-| **Perguntas de negócio** | 12 numeradas, **10 abertas** (só a #1 e a #3 estão fechadas) | `docs/PERGUNTAS-NEGOCIO.md` |
-| **Fases** | 0 a 2b.8 ✅ · 2b.9 🚧 · 3 🚧 · 4 tem código e não tem gatilho · 5 ⏳ | `README.md` e §9 |
-| **Deploy** | **não há artefato nenhum** — sem `Dockerfile`, sem compose de produção, sem Nginx, sem supervisão | `DEPLOY.md` §3 |
-| **Publicável?** | **não.** Não existe login, e o `snapshot/` tem CPF, RG e endereço de cliente | `DEPLOY.md` §2.1 |
+| **Testes** | **2136** verdes, 0 falhando. Nenhum precisa de credencial nem de build | `npm test` |
+| **Achados** | **147** entradas numeradas até **#149** (a numeração pula) | `grep -coE '^## #?[0-9]+' docs/ACHADOS.md` |
+| **Commits** | **305** em `staging`; `main` é promovida pelo Erick | `git rev-list --count HEAD` |
+| **Árvore** | tem de estar **limpa** ao fim de cada etapa. Foi trabalho solto que se perdeu duas vezes | `git status --short` |
+| **Páginas** | **14 de 14** calculam | `npm run paginas -- --pagina=<uma>` |
+| **Paridade** | os números da §1 são de **13/08** e não foram remedidos aqui — rode antes de citar | `npm run paridade` |
+| **Perguntas de negócio** | ver o documento — a contagem daqui envelhecia | `docs/PERGUNTAS-NEGOCIO.md` |
+| **Deploy** | **existe artefato**: `Dockerfile`, `docker-compose.prod.yml` (api, redis, refresh, snapshot-diário), destino Portainer | `DEPLOY.md` |
+| **Login** | **existe**: Google SSO restrito ao domínio, portão 401 antes do roteamento (`apps/api/src/auth-google.ts`, `portao-login.ts`) | `DEPLOY.md` §2.1 |
+| **Dado de cliente** | o `snapshot/` tem CPF, RG e endereço — nunca imprimir valor de linha | `CLAUDE.md` regra 2 |
 
-**O que está em risco, em uma frase:** nada mais está fora do git — e é a primeira vez
-que esta linha diz isso. O que substitui o risco antigo é uma disciplina: **commit ao
-fim de cada etapa**, porque as duas perdas de 26 e 27/08 foram de trabalho solto, não
-de trabalho publicado.
+> **Corrigido em 25/09/2026.** Este painel dizia, em 15/09, que não havia login, que não
+> havia artefato de deploy e que 62 arquivos estavam sem commit. As três coisas eram
+> falsas nessa data ou deixaram de ser verdade; as seções abaixo guardam a história e
+> podem citar números velhos — **o painel e o código valem mais que elas**.
 
-**A recuperação ainda tem duas frentes abertas** (`RECUPERACAO-27-08.md`): a passada de
-densidade do front-end, e os ~81 testes que existiam em 26/08 dentro de arquivos que
-continuam aqui.
+**O que está em risco, em uma frase:** trabalho solto na árvore. **Commit ao fim de
+cada etapa**, porque as duas perdas de 26 e 27/08 foram de trabalho solto, não de
+trabalho publicado.
 
 > Para **o que falta e como saber que acabou**, vá à §9. Para o estado detalhado de
 > cada camada, §3. Esta seção é só o placar.
@@ -114,7 +114,7 @@ existe na máquina do Erick e o git o ignora.
 ```bash
 cd "C:\Users\erick.azambuja\Desktop\DASHBOARD - Instalação\dev_ReactJS_InstallationDashboardIA"
 
-npm test          # 1895 testes, NENHUM precisa de credencial e NENHUM precisa de build
+npm test          # 2136 testes, NENHUM precisa de credencial e NENHUM precisa de build
 npm run doctor    # confere .env, conexões e o guard read-only (saída mascarada)
 ```
 
@@ -166,12 +166,12 @@ npm run paginas -- --erros # só as mensagens de erro, inteiras
 
 ## 3. Estado exato
 
-**1895 testes verdes** (15/09/2026). Nenhum precisa de credencial, e nenhum precisa
+**2136 testes verdes** (25/09/2026). Nenhum precisa de credencial, e nenhum precisa
 de build.
 
 | camada | estado |
 |---|---|
-| Extrator PBIP → specs | ✅ 14 páginas, 306 visuais, 78 medidas, 49 colunas calculadas, 7 tabelas calculadas, 24 queries |
+| Extrator PBIP → specs | ✅ (histórico: o PBIP saiu do disco em 27/08 e não há mais `npm run extract`; `specs/` é o original) 14 páginas, 306 visuais, 78 medidas, 49 colunas calculadas, 7 tabelas calculadas, 24 queries |
 | Query Engine + camada M | ✅ **as 24 de 24** queries rodam contra a fonte real |
 | Modelo semântico + avaliador DAX | ✅ as 56 funções que a base usa, 75 medidas |
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
@@ -183,7 +183,7 @@ de build.
 | **Paginação de tabela** (`apps/api/src/cache-visual.ts`) | ✅ o resultado inteiro do visual fica guardado e a janela é um `slice`. Antes, cada clique em "próxima" recalculava as 33.462 linhas para entregar 200 — **2,9 s a 8,0 s por clique**, medido (#70). Orçamento LRU de 512 MB, `CACHE_VISUAL_MB=0` desliga |
 | **Redis** | ⏳ **não configurado** — a `.env` tem `REDIS_KEY_PREFIX` mas **não** `REDIS_URL`, então o cache é só memória e morre no restart (o aquecimento de arranque cobre). Basta pôr `REDIS_URL=redis://host:6379/0` para ele entrar **atrás** da memória, não no lugar dela (#69) |
 | **CDC / Fase 4** (`tools/cdc`) | 🚧 **o código existe, o gatilho não foi atingido.** `cdc:observa` conta, `cdc:slot` vigia o slot, `cdc:ingere` rematerializa só as queries afetadas (debounce + guarda de concorrência). Validado contra `docker/cdc/`: 15 eventos → 1 rodada de 13 queries, 12 materializaram, 2.090.676 linhas (#72). Contra o **Voalle de produção não há slot, não há medição e não está ligado** — ver §6 |
-| **Autenticação** | ❌ **não existe** — costura pronta (`apps/api/src/identidade.ts`), formato da decisão em `specs/_catalog/permissoes.yaml`, sem leitor e sem login |
+| **Autenticação** | ✅ Google SSO restrito ao domínio (`apps/api/src/auth-google.ts`), portão 401 antes do roteamento (`portao-login.ts`); a origem da identidade para permissão fina segue em aberto — `DEPLOY.md` §2.1 |
 | **Tela** (`apps/web`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
 | **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam**. `agendamento-field` abre em **48,6 s a frio** pela API (medido em 13/08 no `npm start`) — os 104 min do #45 são de ANTES das otimizações #46-#52 e nunca foram remedidos no `npm run paginas` |
 | **Paridade** | 🚧 **medida, não fechada** — 18 batem, 18 diferem (11 delas com gabarito inválido), 6 divergem por decisão, **0 não calculam** |
@@ -205,7 +205,7 @@ aaae46f  As linhas do grupo ja estavam na mao: 246x, o mesmo sha256
 O caminho completo hoje:
 
 ```
-fontes → Query Engine → camada M → toDatasetRows → snapshot/*.jsonl
+fontes → Query Engine → camada M → toDatasetRows → snapshot/*.gz (colunar, formato 2)
                                                         │
                                         carrega() ──────┘
                                             │
@@ -230,7 +230,8 @@ plausível**, que é o único tipo de erro que este projeto não pode cometer.
    `... Gerencial` — **são dois relatórios** (Erick, 27/08/2026). Apontar a paridade
    para o errado não dá erro: dá número plausível e diferente.
 2. **Arquivo gerado vs. humano.** Tudo em `specs/_catalog/queries|tables|measures/` e
-   `specs/dashboards/` é **sobrescrito** por `npm run extract`. Nenhuma decisão humana
+   `specs/dashboards/` era **sobrescrito** por `npm run extract` (o script e o PBIP
+   saíram em 27/08; hoje `specs/` é o original). A convenção continua: nenhuma decisão humana
    mora lá — decisões vão em `specs/_catalog/cache-policies.yaml`, `divergencias.yaml`,
    `projecao.yaml` ou `juncoes.yaml`, conforme o tipo.
 3. **A plataforma nunca escreve no ERP.** Quatro camadas: usuário somente-leitura,
@@ -744,15 +745,14 @@ outras 8 páginas não têm filtro de página, e para os **25 cards** delas a le
 
 ### 9.4 Fase 5 — Permission Engine, IA, Export
 
-- **Critério de saída da parte que bloqueia o resto:** existir **login**. Hoje a
-  autenticação **não existe** — há costura (`apps/api/src/identidade.ts`) e formato de
-  decisão (`specs/_catalog/permissoes.yaml`), sem leitor e sem tela de entrada.
+- **Critério de saída da parte que bloqueia o resto:** existir **login**. **Fechado:**
+  Google SSO restrito ao domínio (`apps/api/src/auth-google.ts`), portão 401 antes do
+  roteamento (`portao-login.ts`). O que segue aberto é a permissão fina — o formato está
+  em `specs/_catalog/permissoes.yaml`, ainda sem leitor (`DEPLOY.md` §2.1).
 - **Quem destrava:** decisão de produto sobre de onde vem a identidade (SSO do HUBBI?
   usuário local?). Enquanto ela não vier, não há o que implementar sem chutar.
-- **Consequência hoje:** a plataforma serve **todo** número a **todo** pedido. Isso é
-  aceitável numa máquina de desenvolvimento e **não é** aceitável em rede da empresa —
-  o `snapshot/` tem endereço de cliente e CPF/RG (§2). É o item que separa "roda aqui"
-  de "pode ser publicada".
+- **Consequência hoje:** quem passa pelo login vê **todo** número — não há recorte por
+  perfil. O `snapshot/` tem endereço de cliente e CPF/RG (§2).
 - IA e Export não têm critério ainda, e não deveriam ter antes do login.
 
 ### 9.5 Dívida técnica com dono (itens 3 e 4 da §6)
@@ -799,8 +799,9 @@ O que **não** é condição: bater com o Power BI em todo card. A regra 9 já d
 
 As três condições da §9.7 dizem quando o projeto está **pronto**. Elas não dizem como
 ele **sobe**, e as duas listas se pareciam o suficiente para virarem uma só — o que
-esconderia o item mais caro: **não existe nenhum artefato de deploy no repositório.**
-Sem `Dockerfile`, sem compose de produção, sem Nginx, sem processo supervisionado.
+esconderia o item mais caro: o deploy. **Atualizado em 25/09/2026:** os artefatos
+existem — `Dockerfile` e `docker-compose.prod.yml` (api, redis, refresh, snapshot
+diário), com destino Portainer; o estado de cada onda está no próprio `DEPLOY.md`.
 
 O plano está em **[DEPLOY.md](DEPLOY.md)**, em três ondas com critério de saída. O que
 vale repetir aqui, porque muda a ordem do trabalho:
@@ -809,11 +810,8 @@ vale repetir aqui, porque muda a ordem do trabalho:
   escrever os quatro artefatos de infraestrutura, e commitar cada etapa.
 - **A onda 2 depende de decisão de outra pessoa** — de onde vem a identidade (§9.4), e
   qual é a janela de refresh.
-- **Publicar antes do login não é um deploy apertado; é um incidente de dado pessoal.**
-  A API serve **todo** número a **todo** pedido, e entre eles há CPF, RG e endereço de
-  cliente. Um piloto interno atrás do SSO do HUBBI é a única forma honesta de mostrar
-  isto na empresa antes de a §9.4 fechar — e precisa ser apresentado com essas palavras
-  a quem aprovar.
+- **Sem recorte por perfil, todo usuário logado vê CPF, RG e endereço de cliente.** Quem
+  aprovar a publicação precisa saber disso com essas palavras.
 
 ---
 

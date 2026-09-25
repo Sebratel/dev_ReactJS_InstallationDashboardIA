@@ -6,9 +6,8 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 > **Assumindo o projeto?** Comece por [docs/CONTINUACAO.md](docs/CONTINUACAO.md): como rodar, o estado exato, o que está bloqueado e o que fazer a seguir.
 >
 > **Vai publicar isto?** [docs/DEPLOY.md](docs/DEPLOY.md) é o plano de entrega — o que
-> está pronto com o número que prova, o que falta de infraestrutura, e os dois
-> bloqueios que **não** são de infraestrutura (não existe login, e o `snapshot/` tem
-> CPF, RG e endereço de cliente).
+> está pronto com o número que prova e o que falta. O login existe (Google SSO); o que
+> segue aberto é o recorte por perfil — e o `snapshot/` tem CPF, RG e endereço de cliente.
 
 ## Estado atual
 
@@ -632,8 +631,7 @@ Ver [specs/golden/README.md](specs/golden/README.md).
 ## Comandos
 
 ```bash
-npm test                              # suíte completa (1924 testes, sem credencial)
-npm run extract                       # regenera as specs a partir do PBIP
+npm test                              # suíte completa (2136 testes em 25/09, sem credencial)
 npm run validate:model                # o DAX referencia coisas que existem? (sem banco)
 npm run validate:tables               # as colunas do modelo existem na fonte? (sem banco)
 npm run doctor                        # valida configuração e conectividade

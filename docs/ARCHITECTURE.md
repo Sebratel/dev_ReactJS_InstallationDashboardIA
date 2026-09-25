@@ -245,10 +245,10 @@ ingestor de CDC, que rematerializa — e nada no caminho de leitura (§6.2). Os 
 serviço, Visualization, AI, Export, Notification, Audit, Observability — desta última
 existe só o que o `/api/saude` responde.
 
-Os dois que bloqueiam produção multiusuário são **Identity** e **Permission** — a API
-não autentica ninguém hoje. O ponto de costura está preparado em
-`apps/api/src/servidor.ts` (`identifica()`), e o formato da decisão humana está em
-`specs/_catalog/permissoes.yaml`; falta o leitor e o login.
+Os dois que bloqueiam produção multiusuário são **Identity** e **Permission**. O login
+existe (25/09/2026): Google SSO restrito ao domínio (`apps/api/src/auth-google.ts`),
+portão 401 antes do roteamento (`portao-login.ts`). Falta a **permissão**: o formato da
+decisão humana está em `specs/_catalog/permissoes.yaml`, ainda sem leitor.
 
 ## 9. Real-time (Debezium + Kafka + Redis)
 
@@ -322,7 +322,7 @@ O gatilho é um número medido, não a disponibilidade do Kafka no Portainer.
 
 O desenho prevê um PostgreSQL da plataforma guardando dashboards, widgets, queries e
 permissões. Hoje isso tudo são **arquivos versionados** em `specs/` — gerados pelo
-extrator, com as decisões humanas em arquivos separados que `npm run extract` não
-sobrescreve (`cache-policies.yaml`, `divergencias.yaml`, `permissoes.yaml`). Enquanto
-o relatório de origem for um PBIP e a edição for por commit, arquivo é a peça mais
-simples que resolve; o banco entra quando alguém editar dashboard pela tela.
+extrator enquanto o PBIP existia (saiu do disco em 27/08/2026; desde então `specs/` é
+o original e se edita por commit), com as decisões humanas em arquivos separados
+(`cache-policies.yaml`, `divergencias.yaml`, `permissoes.yaml`). Enquanto a edição for
+por commit, arquivo é a peça mais simples que resolve; o banco entra quando alguém editar dashboard pela tela.

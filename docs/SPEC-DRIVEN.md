@@ -90,11 +90,9 @@ a janela numa query desse custo é a regressão silenciosa: número maior, sem e
 > com **643.176 linhas × 26 colunas, geradoEm 2026-09-15**. A citação foi trocada pela
 > medição do #82, que sustenta a mesma conclusão sem depender de um arquivo que sumiu.
 
-**Ainda em aberto:** o lugar definitivo desta decisão é um
-`specs/_catalog/sql-override.yaml` com `original_sha` da expressão M
-(`docs/DECISAO-GRAO-FIELD-AGENDA.md`, seção 2). Ele não existe, e `npm run extract`
-também não é um script hoje — então o risco de sobrescrita não está armado. Quando
-qualquer um dos dois passar a existir, mova esta divergência para lá.
+**Fechado:** o `sql-override.yaml` que a `DECISAO-GRAO-FIELD-AGENDA.md` previa **não
+deve existir** — a solução foi spec de query própria (aviso do topo daquele documento).
+`npm run extract` também não é mais um script, então o risco de sobrescrita não existe.
 
 ### `field-agenda-slot` — arquivo NOVO, não existe no PBIP (02/09/2026)
 
@@ -112,10 +110,7 @@ forma completa (o `LEFT JOIN` de `field-agenda` é, na prática, um `INNER JOIN`
 `grao_reduzido`, declara qual tabela usa qual das duas por padrão e o que escala
 para a completa.
 
-**Risco igual ao do item anterior, ainda sem `sql-override.yaml`.** Se algum dia
-`npm run extract` passar a apagar arquivo de query que ele não reconhece (hoje não
-apaga — ele só sobrescreve o que já existia), este arquivo precisa da mesma
-proteção. Registrado aqui para não se perder no meio tempo.
+Sem risco de sobrescrita: o `npm run extract` não existe mais (27/08).
 
 ### `clima-tempo` — guarda de nulo antes da classificação de chuva (03/09/2026)
 
@@ -563,10 +558,12 @@ arquivos não guardam as linhas.
 
 ## Comandos
 
+> **25/09/2026:** `npm run extract` e `npm run test:extractor` não existem mais — o PBIP
+> saiu do disco em 27/08 e `specs/` virou o original (ver `CLAUDE.md`).
+> `tools/extractor/` ficou só como registro.
+
 ```bash
-npm run extract                       # gera/atualiza specs/ a partir do PBIP
-npm run test:extractor                # valida o extrator (contagens e parsing)
-npm run test:model                    # valida o modelo semântico e o scanner de refs
+npm run test:semantic-model          # valida o modelo semântico e o scanner de refs
 npm run validate:model                # confere as referências do DAX (sem banco)
 npm run validate:queries              # captura os goldens contra dados reais
 npm run validate:queries -- --check    # falha se o schema de alguma query mudou

@@ -220,8 +220,9 @@ falta é a query saber responder em dois grãos.
 
 ### 2. Onde o SQL escrito à mão vai morar
 
-`specs/_catalog/queries/*.spec.yaml` é **sobrescrito** por `npm run extract`
-(regra 2). A forma agregada é decisão humana e não pode morar lá. Vai em
+*(Plano original — não seguido; ver o aviso do topo.)*
+`specs/_catalog/queries/*.spec.yaml` era **sobrescrito** por `npm run extract`
+(regra 2; o script saiu em 27/08). A forma agregada é decisão humana e não pode morar lá. Vai em
 `specs/_catalog/sql-override.yaml`, no mesmo molde de `cache-policies.yaml` e
 `divergencias.yaml`, com `original_sha` da expressão M que ela substitui — sem isso,
 alguém mexe no Power Query, a extração traz a versão nova, e o override continua

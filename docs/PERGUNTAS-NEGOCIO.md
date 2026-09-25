@@ -540,7 +540,8 @@ do mesmo jeito, então o relatório mostra exatamente estes mesmos valores. A pl
 está reproduzindo o defeito com fidelidade.
 
 **Pergunta:** o conserto é trocar `"FINALIZADO"` por `"Finalizado"` nos dois lugares do
-PBIP — trinta segundos no Power BI, e `npm run extract` traz a correção para cá. Faz
+PBIP — trinta segundos no Power BI, e a mesma troca à mão na spec daqui (o
+`npm run extract` saiu em 27/08). Faz
 sentido? Ou o `TMA` "contra hoje" é intencional para algum uso que eu não conheço?
 
 > Por que não foi consertado aqui: o PBIP é read-only para esta plataforma (regra 1), e
