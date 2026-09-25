@@ -29,6 +29,12 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    A máquina tem 16 GB e os `mem_limit` somam 28,5 GB (api 6, refresh 8,
    snapshot-diario 14, redis 0,5) — teto não é reserva, mas às 3h daemon e
    `snapshot-diario` podem pesar juntos.
+   **Os tetos estão errados, não só altos:** `snapshot-diario` 14g se apoia em
+   "protocolos-geral precisa de 12 GB", que caiu em 09/09 (af82774, "volta a caber em
+   8 GB"); `refresh` tem `--max-old-space-size=8192` num `mem_limit: 8g` — zero folga
+   para o que não é heap, então quem mata é o cgroup, sem mensagem. Só a `api` (6g,
+   RSS pico 2,9–3,6 GB, 04/09) é medida. Medir o pico de cada container com
+   `docker stats` e ajustar teto = pico + folga.
    Testar: matar o processo da API → volta; reiniciar o Docker Desktop → volta com dado
    fresco; `/api/saude` pelo proxy na porta 80.
    *Não prova:* Swarm × standalone, `build:` no Portainer, rede do servidor até o
