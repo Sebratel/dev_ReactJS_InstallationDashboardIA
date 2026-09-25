@@ -369,7 +369,7 @@ valendo para quem for mexer na cadência.
     folga (processo pai, buffers do `.jsonl.gz`, o que não é heap). Presume
     servidor com RAM de sobra além do que `api`/`redis`/`refresh` já reservam
     (14,5 GB); **não é a mesma máquina de ~15,7 GB** citada em
-    `docs/CONTRATO-DATAHUB-PRODUTIVIDADE.md` e `docs/DECISOES-DAS-SESSOES.md`
+    `docs/DECISOES-DAS-SESSOES.md`
     §3.5 — confirme antes de subir se o host do Portainer mudar.
   - **A cadência de segundos ("near-realtime") já existe e não precisou de
     nada novo:** `specs/_catalog/realtime-poll.yaml` +
