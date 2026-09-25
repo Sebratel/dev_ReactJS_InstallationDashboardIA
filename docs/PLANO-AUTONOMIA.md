@@ -17,9 +17,25 @@ etapa: marque aqui ao fechar, com o número que prova.
 | `snapshot-diario` (cron 3h) × agendador da API | **os dois gravam no mesmo `snapshot/` sem trava** |
 | grupo do refresh falhando | tenta de novo a cada intervalo, sem espera crescente, sem aviso |
 
+**Atenção ao arquivo certo:** no compose a API sobe com `AUTO_REFRESH=false`; quem
+agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
+`apps/api/src/agendador.ts` só vale no `npm start`. As etapas 1 e 3 mexem no daemon.
+
 ## Etapas
 
-1. **Espera crescente entre tentativas** — `apps/api/src/agendador.ts`.
+0. **Subir a stack no Docker local primeiro** — é o que mostra o que falta de verdade.
+   Antes: Docker Desktop ligado; `npm start` PARADO (regra 5, ACHADOS #148) ou
+   `SNAPSHOT_DIR_HOST` apontando para uma cópia e `API_PORT_HOST` diferente de 3100.
+   A máquina tem 16 GB e os `mem_limit` somam 28,5 GB (api 6, refresh 8,
+   snapshot-diario 14, redis 0,5) — teto não é reserva, mas às 3h daemon e
+   `snapshot-diario` podem pesar juntos.
+   Testar: matar o processo da API → volta; reiniciar o Docker Desktop → volta com dado
+   fresco; `/api/saude` pelo proxy na porta 80.
+   *Não prova:* Swarm × standalone, `build:` no Portainer, rede do servidor até o
+   `dbVoalle`, memória do servidor.
+
+1. **Espera crescente entre tentativas** — `tools/refresh/src/daemon.ts`/`tick.ts`
+   (e `apps/api/src/agendador.ts`, para o `npm start` não divergir).
    Após n falhas seguidas de um grupo, a próxima tentativa espera `intervalo × 2ⁿ`,
    teto 4 h; zera no primeiro sucesso. Reaproveitar a regra de
    `tools/subir/src/supervisao.ts` (sem chamador desde 19/09). Registrar cada adiamento
