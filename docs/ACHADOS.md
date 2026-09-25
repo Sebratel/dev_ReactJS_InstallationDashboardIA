@@ -13156,3 +13156,27 @@ existe` — o `.env` traz o caminho do host e o arquivo não é montado no conta
 outras queries carregaram. Enquanto isso não for montado, o daemon roda os dois grupos
 inteiros de novo a cada 15 min (~9 min de carga por ciclo) para falhar igual — o caso
 exato da etapa 1 (espera crescente).
+
+## #154 — tetos de memória do compose trocados pelo medido: 28,5 GB → 18,5 GB, e o `refresh` ganhou folga
+
+Os `mem_limit` somavam 28,5 GB contra 4,94 GB de pico somado medido (#153). Dois estavam errados,
+não só altos: o `refresh` autorizava 8192 MB de heap num teto de 8g (zero folga de não-heap: quem
+matava era o cgroup, sem mensagem) e o `snapshot-diario` (14g, `--memoria=12288`) vinha de
+"protocolos-geral precisa de 12 GB", que caiu em 09/09 (af82774).
+
+| serviço | antes | depois |
+|---|---|---|
+| `api` | 6g | 6g — contrato medido de 04/09, travado em `piscina-workers.test.ts` |
+| `refresh` | 8g, pai 8192, filho 8192 | **6g**, pai 1024, filho 4096 (`REFRESH_MEMORIA_MB`, novo) |
+| `snapshot-diario` | 14g, `--memoria=12288` | **6g**, `--memoria=4096` |
+
+**Medido com os tetos novos (ciclo de 21:10, 507 s):** as 13 queries de `medio`/`frio` que não
+dependem da credencial Google carregaram, `protocolos-geral` e `field-agenda` inclusive; nenhum
+OOM, zero reinício; pico do `refresh` 3,57 GB, somado 4,85 GB. `protocolos-geral` levou 107 s
+contra 73 s no ciclo anterior com 8 GB — pode ser pressão de GC com heap menor ou variação do
+banco; uma amostra não separa as duas. Se repetir, subir o filho para 5120 cabe no teto.
+
+`apps/api/test/imagem-runtime.test.ts` trava agora o contrato (heap do filho + do pai + 1 GB de
+folga ≤ `mem_limit`, e o mesmo para o cron) no lugar da asserção literal `mem_limit: 8g`.
+Conferido que o teste falha com o filho de volta em 8192. O `npm start` não muda: sem
+`REFRESH_MEMORIA_MB`, o padrão de `executa-grupo.ts` (8192) segue valendo. Suíte: 2.142 passando.
