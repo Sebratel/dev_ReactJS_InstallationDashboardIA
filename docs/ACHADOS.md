@@ -13121,3 +13121,38 @@ medido: erro de sintaxe na primeira sonda.
 `tecnicos-auxiliares`, `base-categorias-field`, `protocolos-telefonia`, `incremental.yaml`,
 `realtime-poll.yaml`) têm a mesma bomba de 2027, e fica com o Erick decidir (PERGUNTAS-NEGOCIO
 #12). A tela só muda depois da próxima carga das duas queries. **Suíte: 2.141 passando.**
+
+## #153 — primeira subida da stack no Docker local (25/09): a API nunca tinha subido pelo compose, e a autonomia funciona
+
+Etapa 0 de `docs/PLANO-AUTONOMIA.md`, com o `npm start` parado (regra 5).
+
+**Dois defeitos impediam a stack de subir — os dois de empacotamento, nenhum de código:**
+
+1. `api` e `refresh` não tinham `target:` no compose, e o último estágio do `Dockerfile` é o
+   `cron` (desde cf39f4f, 10/09). As duas imagens subiam o entrypoint do cron: a API reiniciava
+   em laço com exit 127. No Portainer seria igual. Corrigido com `target: runtime` (3aa0b1e).
+2. Com `core.autocrlf=true`, `docker/cron/entrypoint.sh` e o crontab iam para a imagem com CRLF
+   (`#!/bin/sh\r` → "not found"). Num clone Linux não aparece; em build a partir do Windows,
+   sempre. Corrigido com `.gitattributes` (LF em `*.sh`, `docker/cron/*`, `Dockerfile`).
+
+**Medido depois do conserto:**
+
+| teste | resultado |
+|---|---|
+| API morta por SIGKILL vindo de fora do container | voltou `healthy` em ~8 s (`restart: unless-stopped`) |
+| `docker desktop restart` (≈ reboot do host) | os 5 containers de volta em 21 s, `/api/saude` 200 pelo proxy |
+| cron do `snapshot-diario` | `cron -f` de pé, `.env.cron` gerado |
+| 1º ciclo do daemon | 650 s; `quente` OK; `medio` e `frio` FALHOU |
+| memória (amostra a cada 15 s no ciclo) | pico `refresh` 3,87 GB, `api` 2,84 GB; **somado 4,94 GB** contra 28,5 GB de `mem_limit` |
+
+**Armadilhas do próprio teste:** `docker kill` conta como parada manual e o `unless-stopped`
+não religa — não serve para simular queda. E `SIGTERM` de dentro do container é ignorado: a
+API é PID 1 e não registra handler para ele, então `docker stop` espera os 10 s e mata. A
+queda de verdade foi simulada com `docker run --pid=host ... process.kill(<pid>, 'SIGKILL')`.
+
+**A falha de `medio`/`frio` tem uma causa só:** `apuracao-premiacao`, `capacidade-equipe` e
+`protocolos-produtividade` param em `GOOGLE_APPLICATION_CREDENTIALS aponta para ... que não
+existe` — o `.env` traz o caminho do host e o arquivo não é montado no container. Todas as
+outras queries carregaram. Enquanto isso não for montado, o daemon roda os dois grupos
+inteiros de novo a cada 15 min (~9 min de carga por ciclo) para falhar igual — o caso
+exato da etapa 1 (espera crescente).

@@ -40,6 +40,13 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    *Não prova:* Swarm × standalone, `build:` no Portainer, rede do servidor até o
    `dbVoalle`, memória do servidor.
 
+   **Feito em 25/09 (ACHADOS #153):** queda da API → volta em ~8 s; reinício do Docker →
+   stack de volta em 21 s; pico somado 4,94 GB. Achados que viram trabalho:
+   - montar a credencial do Google no container (`GOOGLE_APPLICATION_CREDENTIALS`) —
+     sem ela 3 queries falham e `medio`/`frio` nunca fecham;
+   - baixar os `mem_limit` para o medido + folga (e dar folga de não-heap ao `refresh`);
+   - a API não trata `SIGTERM` (é PID 1): `docker stop` sempre espera 10 s e mata.
+
 1. **Espera crescente entre tentativas** — `tools/refresh/src/daemon.ts`/`tick.ts`
    (e `apps/api/src/agendador.ts`, para o `npm start` não divergir).
    Após n falhas seguidas de um grupo, a próxima tentativa espera `intervalo × 2ⁿ`,
