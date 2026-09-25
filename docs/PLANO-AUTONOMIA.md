@@ -14,7 +14,7 @@ etapa: marque aqui ao fechar, com o número que prova.
 | API cai → religa | já existe (`restart: unless-stopped`) |
 | Reboot do host → volta | já existe |
 | API **travada** sem sair | **não religa** — em Docker standalone, `unhealthy` só marca; quem reinicia por healthcheck é o Swarm |
-| `snapshot-diario` (cron 3h) × agendador da API | **os dois gravam no mesmo `snapshot/` sem trava** |
+| `snapshot-diario` (cron 3h) × serviço `refresh` (daemon) | **os dois gravam no mesmo `snapshot/` sem trava** |
 | grupo do refresh falhando | tenta de novo a cada intervalo, sem espera crescente, sem aviso |
 
 **Atenção ao arquivo certo:** no compose a API sobe com `AUTO_REFRESH=false`; quem
