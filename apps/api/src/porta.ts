@@ -28,6 +28,7 @@
 // sem o PID. Um diagnóstico que quebra vira a doença.
 
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 
 /**
  * Os PIDs que escutam nesta porta, a partir da saída crua do `netstat -ano`.
@@ -118,6 +119,15 @@ export function linhaDeComando(pid: number): string | null {
       });
       const b64 = r.stdout?.trim();
       return b64 ? Buffer.from(b64, 'base64').toString('utf8') : null;
+    }
+    // No Linux, /proc é UTF-8 e não depende de locale; o `ps` de um contêiner sem
+    // locale troca cada byte acentuado por '?' e a comparação com a raiz falhava.
+    try {
+      const bruto = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8');
+      const linha = bruto.split('\u0000').filter(Boolean).join(' ').trim();
+      if (linha) return linha;
+    } catch {
+      // Sem /proc (macOS) ou processo já saiu: cai no `ps`.
     }
     const r = spawnSync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf8', timeout: 5000 });
     const linha = r.stdout?.trim();

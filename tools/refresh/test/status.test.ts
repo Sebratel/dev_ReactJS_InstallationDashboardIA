@@ -34,7 +34,10 @@ test('JSON corrompido no disco devolve vazio em vez de derrubar quem lê', () =>
   assert.deepEqual(leStatus(dir), {});
 });
 
-test('escreveStatus não corrompe uma leitura já aberta, e só publica depois dela', async () => {
+// Só no Windows — ver o mesmo teste em packages/snapshot/test/manifesto.test.ts.
+test('escreveStatus não corrompe uma leitura já aberta, e só publica depois dela', {
+  skip: process.platform !== 'win32' && 'semântica de rename do Windows',
+}, async () => {
   const dir = tmp();
   await escreveStatus(dir, { a: { ultimaTentativa: '1', ultimoSucesso: '1', duracaoMs: 1, ok: true, falhasConsecutivas: 0 } });
   const destino = path.join(dir, 'refresh-status.json');

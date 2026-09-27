@@ -1,0 +1,43 @@
+# Roda em todo push e pull request. Três coisas que nada conferia sozinho:
+#   1. tipos — o Node executa .ts só apagando as anotações (`npm run typecheck`);
+#   2. a suíte — até aqui dependia de alguém lembrar de rodar `npm test`;
+#   3. as imagens Docker — a `api` subiu a imagem do cron por duas semanas sem
+#      ninguém ver, porque nenhum passo construía a imagem (ACHADOS #153).
+# Não toca banco nem Power BI: sem `.env`, sem `snapshot/`, sem segredo nenhum.
+name: ci
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+jobs:
+  verifica:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  imagens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: imagem da api/refresh (estágio runtime)
+        run: docker build --target runtime -t analytics-runtime .
+      - name: imagem do snapshot-diario (estágio cron)
+        run: docker build --target cron -t analytics-cron .
+      - name: a imagem runtime sobe a API, não o cron
+        run: |
+          cmd=$(docker inspect analytics-runtime --format '{{json .Config.Cmd}}')
+          echo "$cmd"
+          echo "$cmd" | grep -q 'apps/api/src/index.ts'
+      - name: o entrypoint do cron é executável no Linux (sem CRLF)
+        run: docker run --rm --entrypoint sh analytics-cron -c '! grep -q "$(printf "\r")" /usr/local/bin/entrypoint-cron.sh /etc/cron.d/snapshot-diario'

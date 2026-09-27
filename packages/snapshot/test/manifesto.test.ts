@@ -41,7 +41,12 @@ test('escreveManifesto: não sobra manifesto.json.parcial depois de publicar', a
   assert.equal(fs.existsSync(path.join(dir, 'manifesto.json.parcial')), false);
 });
 
-test('escreveManifesto: não corrompe uma leitura já aberta, e só publica depois dela', async () => {
+// Só no Windows: lá um leitor aberto bloqueia o rename e o `.parcial` fica à vista. Em
+// POSIX o rename troca o nome com o arquivo aberto (o leitor segue no inode velho), então
+// o `.parcial` dura microssegundos e a espera por ele falha sem nada estar errado.
+test('escreveManifesto: não corrompe uma leitura já aberta, e só publica depois dela', {
+  skip: process.platform !== 'win32' && 'semântica de rename do Windows',
+}, async () => {
   const dir = tmp();
   await escreveManifesto(dir, [entrada('velho')]);
   const destino = path.join(dir, 'manifesto.json');

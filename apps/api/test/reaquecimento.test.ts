@@ -133,14 +133,24 @@ async function abreSse(b: Bancada): Promise<{
   const leitor = resp.body!.getReader();
   const primeira = await leitor.read();
   assert.match(Buffer.from(primeira.value!).toString(), /^: conectado/);
+  // Um `read()` não é um evento: dois eventos podem chegar no mesmo pedaço (no Linux,
+  // chegavam), e um evento pode vir partido. O que separa eventos no SSE é a linha em
+  // branco — então acumula e corta nela.
+  let pendente = '';
   const proximo = async (): Promise<string[]> => {
     for (;;) {
-      const { value } = await leitor.read();
-      const texto = Buffer.from(value!).toString();
+      const fim = pendente.indexOf('\n\n');
+      if (fim < 0) {
+        const { value } = await leitor.read();
+        pendente += Buffer.from(value!).toString();
+        continue;
+      }
+      const evento = pendente.slice(0, fim);
+      pendente = pendente.slice(fim + 2);
       // O batimento (`: `) não é evento — pular é o que impede este helper de
       // devolver "nada mudou" como se fosse mudança.
-      if (!texto.startsWith('data: ')) continue;
-      return (JSON.parse(texto.slice('data: '.length).trim()) as { dashboards: string[] }).dashboards;
+      if (!evento.startsWith('data: ')) continue;
+      return (JSON.parse(evento.slice('data: '.length).trim()) as { dashboards: string[] }).dashboards;
     }
   };
   return {
