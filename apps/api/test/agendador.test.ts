@@ -264,6 +264,49 @@ test('agendador: status recente em disco significa nada a fazer no arranque', as
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('agendador: grupo em espera por falhas não roda na cadência, deixa rastro, e pede() passa por cima', async (t) => {
+  // A cadência é um `setInterval` de 15–30 min (o `refresh.yaml` real): só o relógio
+  // falso chega lá sem esperar. O `setTimeout` fica de verdade — é o que `esperaAte` usa.
+  t.mock.timers.enable({ apis: ['setInterval'] });
+  const dir = tmp();
+  const agora = new Date();
+  const verde = { ultimaTentativa: agora.toISOString(), ultimoSucesso: agora.toISOString(), duracaoMs: 1, ok: true, falhasConsecutivas: 0 };
+  const caido = { ultimaTentativa: agora.toISOString(), ultimoSucesso: null, duracaoMs: 1, ok: false, falhasConsecutivas: 3 };
+  fs.writeFileSync(
+    path.join(dir, 'refresh-status.json'),
+    JSON.stringify({ quente: verde, medio: caido, frio: verde }),
+    'utf8',
+  );
+
+  const rodados: string[] = [];
+  const ag = new Agendador({
+    raiz: ROOT,
+    snapshotDir: dir,
+    anuncia: () => {},
+    agora: () => agora,
+    roda: async (g: GrupoDeRefresh) => {
+      rodados.push(g.id);
+      return { ok: true };
+    },
+  });
+  ag.inicia();
+  try {
+    const medio = ag.estado().grupos.find((g) => g.id === 'medio')!;
+    t.mock.timers.tick(medio.intervaloMinutos * 60_000);
+    await new Promise((r) => setTimeout(r, 30));
+
+    assert.ok(!rodados.includes('medio'), 'com 3 falhas seguidas agora há pouco, a cadência não podia rodar medio');
+    const adiados = leHistorico(dir).filter((e) => e.evento === 'grupo-adiado');
+    assert.ok(adiados.some((e) => e.evento === 'grupo-adiado' && e.grupo === 'medio' && e.falhasConsecutivas === 3));
+
+    assert.equal(ag.pede('medio'), true);
+    await esperaAte(() => rodados.includes('medio'), 'pede() rodar medio mesmo em espera');
+  } finally {
+    ag.para();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('agendador: catálogo ilegível desliga a cadência e DIZ, em vez de derrubar a API', () => {
   const dir = tmp();
   const specsRuim = tmp();

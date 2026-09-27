@@ -128,6 +128,16 @@ export async function executaCiclo(opts: {
     persiste: (status) => escreveStatus(snapshotDir, status),
   });
   const duracaoMs = Date.now() - t0;
+  for (const r of resultados) {
+    if (!r.adiadoAte) continue;
+    registra(snapshotDir, {
+      evento: 'grupo-adiado',
+      quando: new Date().toISOString(),
+      grupo: r.id,
+      falhasConsecutivas: r.falhasConsecutivas ?? 0,
+      ate: r.adiadoAte,
+    });
+  }
   const houveExecucao = resultados.some((r) => r.vencido);
   const houveFalha = resultados.some((r) => r.vencido && !r.ok);
 
@@ -227,6 +237,13 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
           if (!r.vencido) continue;
           console.log(`  - ${r.id}: ${r.ok ? 'OK' : 'FALHOU'}${r.erro ? ` (${r.erro})` : ''} [${r.duracaoMs ?? 0} ms]`);
         }
+      }
+      for (const r of res.resultados) {
+        if (!r.adiadoAte) continue;
+        console.log(
+          `  - ${r.id}: ADIADO até ${new Date(r.adiadoAte).toLocaleTimeString('pt-BR')} ` +
+            `(${r.falhasConsecutivas} falhas seguidas — espera crescente, teto 4 h)`,
+        );
       }
 
       opts.aoConcluirTick?.(res);
@@ -343,6 +360,22 @@ arranques do daemon na janela: ${arranques}`);
       console.log('  Isto não se conserta em código. Ou o host não pode suspender');
       console.log('  (Espera S0 congela processo Win32 e mantém a rede de pé), ou a cadência');
       console.log('  tem de viver em outro lugar — é o que o contêiner de produção faz.');
+    }
+
+    // Grupo que falha seguido e está sendo freado (espera crescente, `tick.ts`). Não é
+    // falha nova: é a mesma causa, e a última linha diz até quando ele espera.
+    const adiados = new Map<string, { vezes: number; falhas: number; ate: string }>();
+    for (const e of eventos) {
+      if (e.evento !== 'grupo-adiado') continue;
+      const a = adiados.get(e.grupo);
+      adiados.set(e.grupo, { vezes: (a?.vezes ?? 0) + 1, falhas: e.falhasConsecutivas, ate: e.ate });
+    }
+    if (adiados.size > 0) {
+      console.log('');
+      console.log('ADIADOS POR FALHAS SEGUIDAS (a causa é a da última falha do grupo, acima):');
+      for (const [grupo, a] of adiados) {
+        console.log(`  ${grupo.padEnd(10)}${String(a.vezes).padStart(4)}x   ${a.falhas} falhas seguidas   volta a tentar: ${a.ate}`);
+      }
     }
 
     const coalescidos = resumeDeCoalescidos(eventos);

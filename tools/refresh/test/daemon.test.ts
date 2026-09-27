@@ -7,6 +7,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { executaCiclo } from '../src/daemon.ts';
 import type { GrupoDeRefresh } from '../src/grupos.ts';
+import { leHistorico } from '../src/historico.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const DAEMON = path.join(ROOT, 'tools', 'refresh', 'src', 'daemon.ts');
@@ -51,6 +52,32 @@ test('daemon.ts: executaCiclo com mock de roda executa grupos vencidos', async (
 
   assert.ok(res.resultados.length >= 3);
   assert.equal(res.houveFalha, false);
+});
+
+test('daemon.ts: grupo em espera por falhas não roda e fica no histórico como grupo-adiado', async () => {
+  // O caminho do Docker (o serviço `refresh` roda este daemon). ACHADOS #153: sem a
+  // espera, `medio`/`frio` refaziam ~9 min de carga a cada 15 min para falhar igual.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-daemon-'));
+  const agora = new Date().toISOString();
+  const verde = { ultimaTentativa: agora, ultimoSucesso: agora, duracaoMs: 1, ok: true, falhasConsecutivas: 0 };
+  const caido = { ultimaTentativa: agora, ultimoSucesso: null, duracaoMs: 1, ok: false, falhasConsecutivas: 2 };
+  fs.writeFileSync(path.join(dir, 'refresh-status.json'), JSON.stringify({ quente: verde, medio: caido, frio: verde }));
+
+  const rodados: string[] = [];
+  const res = await executaCiclo({
+    raiz: ROOT,
+    snapshotDir: dir,
+    roda: (g: GrupoDeRefresh) => {
+      rodados.push(g.id);
+      return { ok: true };
+    },
+  });
+
+  assert.deepEqual(rodados, [], 'quente e frio estão frescos, medio está em espera');
+  assert.ok(res.resultados.find((r) => r.id === 'medio')?.adiadoAte);
+  const eventos = leHistorico(dir);
+  assert.ok(eventos.some((e) => e.evento === 'grupo-adiado' && e.grupo === 'medio' && e.falhasConsecutivas === 2));
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('daemon.ts CLI: --so-plano --so-uma-vez executa e sai com código 0', () => {

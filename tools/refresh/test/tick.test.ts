@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { GrupoDeRefresh } from '../src/grupos.ts';
-import type { StatusDeRefresh } from '../src/status.ts';
-import { estaVencido, executaTick, proximoStatus } from '../src/tick.ts';
+import type { StatusDeGrupo, StatusDeRefresh } from '../src/status.ts';
+import { TETO_ESPERA_APOS_FALHAS_MS, estaVencido, executaTick, proximaTentativa, proximoStatus } from '../src/tick.ts';
 
 const AGORA = new Date('2026-09-02T12:00:00.000Z');
 
@@ -16,11 +16,50 @@ test('estaVencido: nunca rodou (sem status anterior) está sempre vencido', () =
   assert.equal(estaVencido(undefined, 15, AGORA), true);
 });
 
-test('estaVencido: nunca teve sucesso está vencido mesmo com falhasConsecutivas', () => {
-  assert.equal(
-    estaVencido({ ultimaTentativa: AGORA.toISOString(), ultimoSucesso: null, duracaoMs: 1, ok: false, falhasConsecutivas: 3 }, 15, AGORA),
-    true,
-  );
+/** Status de um grupo que falhou `falhas` vezes seguidas, a última há `haMin` minutos. */
+function falhando(falhas: number, haMin: number): StatusDeGrupo {
+  const t = new Date(AGORA.getTime() - haMin * 60_000).toISOString();
+  return { ultimaTentativa: t, ultimoSucesso: null, duracaoMs: 1, ok: false, falhasConsecutivas: falhas };
+}
+
+test('estaVencido: UMA falha tenta de novo no próximo tick — um soluço não espera', () => {
+  assert.equal(estaVencido(falhando(1, 0), 15, AGORA), true);
+});
+
+test('estaVencido: da segunda falha seguida em diante, espera intervalo × 2^(falhas-1) desde a última tentativa', () => {
+  // Até 25/09 este teste dizia o contrário ("vencido mesmo com 3 falhas"): a falha era o
+  // próprio retry, a cada tick, para sempre. No Docker isso refez ~9 min de carga a cada
+  // 15 min por uma credencial ausente (ACHADOS #153).
+  assert.equal(estaVencido(falhando(2, 29), 15, AGORA), false, '2 falhas: 30 min');
+  assert.equal(estaVencido(falhando(2, 30), 15, AGORA), true);
+  assert.equal(estaVencido(falhando(3, 59), 15, AGORA), false, '3 falhas: 60 min');
+  assert.equal(estaVencido(falhando(3, 60), 15, AGORA), true);
+});
+
+test('proximaTentativa: teto de 4 h, e nada de espera sem falha seguida', () => {
+  const quatroHoras = TETO_ESPERA_APOS_FALHAS_MS;
+  const ate = proximaTentativa(falhando(20, 0), 30)!;
+  assert.equal(ate.getTime() - AGORA.getTime(), quatroHoras, '2^19 × 30 min não pode virar semanas');
+  assert.equal(proximaTentativa(falhando(1, 0), 15), null);
+  assert.equal(proximaTentativa(undefined, 15), null);
+  const verde = { ultimaTentativa: AGORA.toISOString(), ultimoSucesso: AGORA.toISOString(), duracaoMs: 1, ok: true, falhasConsecutivas: 0 };
+  assert.equal(proximaTentativa(verde, 15), null, 'o sucesso zera a conta (proximoStatus)');
+});
+
+test('executaTick: grupo em espera por falhas NÃO roda, e diz até quando', async () => {
+  const chamados: string[] = [];
+  const { resultados } = await executaTick(new Map([['g', grupo()]]), { g: falhando(3, 10) }, {
+    agora: () => AGORA,
+    roda: (g) => {
+      chamados.push(g.id);
+      return { ok: true };
+    },
+    persiste: async () => {},
+  });
+  assert.deepEqual(chamados, []);
+  assert.equal(resultados[0]!.vencido, false);
+  assert.equal(resultados[0]!.falhasConsecutivas, 3);
+  assert.equal(resultados[0]!.adiadoAte, new Date(AGORA.getTime() + 50 * 60_000).toISOString(), '60 min desde a tentativa de 10 min atrás');
 });
 
 test('estaVencido: sucesso dentro do intervalo não está vencido', () => {

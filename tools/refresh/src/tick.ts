@@ -23,19 +23,49 @@ export interface ResultadoDeExecucao {
   erro?: string;
 }
 
+/** Teto da espera entre tentativas de um grupo que falha seguido. */
+export const TETO_ESPERA_APOS_FALHAS_MS = 4 * 60 * 60_000;
+
 /**
- * Vencido: nunca teve sucesso, ou o último sucesso foi há mais que o intervalo.
+ * Quando um grupo que vem falhando pode tentar de novo — `null` se não está em espera.
+ *
+ * **Por que existe (25/09/2026, ACHADOS #153).** No Docker, três queries falhavam por
+ * credencial ausente, e o daemon refazia `medio` e `frio` inteiros a cada 15 min — ~9 min
+ * de carga na réplica por ciclo, para falhar do mesmo jeito. Falha determinística não
+ * melhora com insistência.
+ *
+ * Uma falha: tenta no próximo ciclo, como antes — um soluço de rede se resolve ali. Da
+ * segunda em diante já não é soluço: a espera, contada da última TENTATIVA, é
+ * `intervalo × 2^(falhas-1)`, com teto de 4 h. O primeiro sucesso zera a conta
+ * (`proximoStatus`), e um pedido manual passa por cima (quem pede sabe que consertou).
+ */
+export function proximaTentativa(anterior: StatusDeGrupo | undefined, intervaloMinutos: number): Date | null {
+  const falhas = anterior?.falhasConsecutivas ?? 0;
+  if (falhas < 2 || !anterior?.ultimaTentativa) return null;
+  const espera = Math.min(intervaloMinutos * 60_000 * 2 ** (falhas - 1), TETO_ESPERA_APOS_FALHAS_MS);
+  return new Date(new Date(anterior.ultimaTentativa).getTime() + espera);
+}
+
+/** Em espera por falhas seguidas neste instante? Ver `proximaTentativa`. */
+export function emEsperaPorFalhas(anterior: StatusDeGrupo | undefined, intervaloMinutos: number, agora: Date): boolean {
+  const proxima = proximaTentativa(anterior, intervaloMinutos);
+  return proxima !== null && agora.getTime() < proxima.getTime();
+}
+
+/**
+ * Vencido: nunca teve sucesso, ou o último sucesso foi há mais que o intervalo — e não
+ * está em espera por falhas seguidas (`proximaTentativa`).
  *
  * **A idade que conta é a do último SUCESSO, não da última tentativa.** Uma falha
- * não deve fazer o grupo esperar o intervalo inteiro de novo — ela já é o
- * "tentar de novo no próximo tick" que a Frente 3 pede, sem lógica de retry
- * especial: o PRÓPRIO tick seguinte é o retry.
+ * não faz o grupo esperar o intervalo inteiro de novo: o tick seguinte é o retry. Só
+ * a partir da segunda falha seguida a espera cresce.
  */
 export function estaVencido(
   anterior: StatusDeGrupo | undefined,
   intervaloMinutos: number,
   agora: Date,
 ): boolean {
+  if (emEsperaPorFalhas(anterior, intervaloMinutos, agora)) return false;
   if (!anterior?.ultimoSucesso) return true;
   const desde = agora.getTime() - new Date(anterior.ultimoSucesso).getTime();
   return desde >= intervaloMinutos * 60_000;
@@ -64,6 +94,9 @@ export interface ResultadoDoGrupoNoTick {
   ok?: boolean;
   duracaoMs?: number;
   erro?: string;
+  /** Não rodou por estar em espera após falhas seguidas: até quando (ISO). */
+  adiadoAte?: string;
+  falhasConsecutivas?: number;
 }
 
 export interface DependenciasDeTick {
@@ -94,7 +127,14 @@ export async function executaTick(
   for (const g of grupos.values()) {
     const anterior = status[g.id];
     if (!estaVencido(anterior, g.intervaloMinutos, deps.agora())) {
-      resultados.push({ id: g.id, vencido: false });
+      const proxima = emEsperaPorFalhas(anterior, g.intervaloMinutos, deps.agora())
+        ? proximaTentativa(anterior, g.intervaloMinutos)
+        : null;
+      resultados.push({
+        id: g.id,
+        vencido: false,
+        ...(proxima ? { adiadoAte: proxima.toISOString(), falhasConsecutivas: anterior?.falhasConsecutivas ?? 0 } : {}),
+      });
       continue;
     }
 

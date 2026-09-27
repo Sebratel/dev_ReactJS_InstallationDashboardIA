@@ -140,6 +140,12 @@ export type EventoDeRefresh =
    */
   | { evento: 'disparo-coalescido'; quando: string; grupo: string; emCursoHaMs: number }
   /**
+   * Um grupo que vem falhando seguido NÃO rodou: está em espera crescente
+   * (`proximaTentativa` em `tick.ts`). Não é falha nova — é o freio de uma que já
+   * aconteceu. `ate` é quando ele volta a tentar; um pedido manual passa por cima.
+   */
+  | { evento: 'grupo-adiado'; quando: string; grupo: string; falhasConsecutivas: number; ate: string }
+  /**
    * A MÁQUINA DORMIU. Detectado por batimento: um temporizador de cadência fixa que
    * demorou muito mais que a própria cadência para disparar só pode ter sido
    * congelado junto com o processo.

@@ -84,7 +84,7 @@ import {
   escreveStatus,
   type StatusDeRefresh,
 } from '../../../tools/refresh/src/status.ts';
-import { estaVencido, proximoStatus } from '../../../tools/refresh/src/tick.ts';
+import { emEsperaPorFalhas, estaVencido, proximaTentativa, proximoStatus } from '../../../tools/refresh/src/tick.ts';
 import {
   rodaGrupoAssincrono,
   type ResultadoDeExecucao,
@@ -349,7 +349,10 @@ export class Agendador {
 
     for (const grupo of this.#grupos.values()) {
       const t = setInterval(
-        () => this.#semDerrubar(`relógio de ${grupo.id}`, () => this.#enfileira(grupo.id, 'cadência')),
+        () =>
+          this.#semDerrubar(`relógio de ${grupo.id}`, () => {
+            if (!this.#adiadoPorFalhas(grupo.id, grupo.intervaloMinutos)) this.#enfileira(grupo.id, 'cadência');
+          }),
         grupo.intervaloMinutos * 60_000,
       );
       // Sem isto o agendador segura o processo vivo sozinho, e um `Ctrl+C` ou um
@@ -500,6 +503,31 @@ export class Agendador {
    * a segunda cópia materializaria exatamente o mesmo, e enfileirá-la só empurraria
    * os outros grupos para trás.
    */
+  /**
+   * Grupo que vem falhando seguido espera mais a cada falha (`proximaTentativa` em
+   * `tools/refresh/src/tick.ts`, a mesma regra do daemon). Só a cadência obedece: um
+   * `pede()` passa por cima, porque quem pede acabou de consertar alguma coisa.
+   */
+  #adiadoPorFalhas(id: string, intervaloMinutos: number): boolean {
+    const anterior = this.#status[id];
+    const agora = this.#agora();
+    if (!emEsperaPorFalhas(anterior, intervaloMinutos, agora)) return false;
+    const ate = proximaTentativa(anterior, intervaloMinutos)!;
+    const falhas = anterior?.falhasConsecutivas ?? 0;
+    this.#anuncia(
+      `[refresh] '${id}' adiado até ${ate.toLocaleTimeString('pt-BR')} ` +
+        `(${falhas} falhas seguidas — espera crescente, teto 4 h).`,
+    );
+    registra(this.#snapshotDir, {
+      evento: 'grupo-adiado',
+      quando: agora.toISOString(),
+      grupo: id,
+      falhasConsecutivas: falhas,
+      ate: ate.toISOString(),
+    });
+    return true;
+  }
+
   #enfileira(id: string, motivo: MotivoDeDisparo): void {
     if (!this.#ativo) return;
     if (this.#emExecucao === id || this.#fila.includes(id)) {
