@@ -819,7 +819,8 @@ async function leColunas(
   arquivo: string,
   omitir?: ReadonlySet<string>,
 ): Promise<{ cabecalho: CabecalhoDeSnapshot; colunas: ColunaColunar[] }> {
-  let cabecalho: CabecalhoDeSnapshot | null = null;
+  // `as`: é atribuído dentro do callback de leitura, e sem ele o TS estreita para `null`.
+  let cabecalho = null as CabecalhoDeSnapshot | null;
   let chaves: string[] = [];
   const colunas: ColunaColunar[] = [];
   let k = 0;
@@ -923,7 +924,8 @@ export async function le(
     return { cabecalho: cab, linhas: fora };
   }
 
-  let cabecalho: CabecalhoDeSnapshot | null = null;
+  // `as`: é atribuído dentro do callback de leitura, e sem ele o TS estreita para `null`.
+  let cabecalho = null as CabecalhoDeSnapshot | null;
   const linhas: Record<string, Escalar>[] = [];
   /** Chave normalizada de cada coluna, na ordem do cabeçalho. Calculada uma vez. */
   let chaves: string[] = [];
@@ -1012,7 +1014,8 @@ export async function leColunar(
     return { cabecalho: cab, tabela: t };
   }
 
-  let cabecalho: CabecalhoDeSnapshot | null = null;
+  // `as`: é atribuído dentro do callback de leitura, e sem ele o TS estreita para `null`.
+  let cabecalho = null as CabecalhoDeSnapshot | null;
   let construtor: ConstrutorDeTabela | null = null;
   let entram: number[] = [];
   let n = 0;

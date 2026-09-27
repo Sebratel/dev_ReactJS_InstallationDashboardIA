@@ -448,7 +448,7 @@ async function medeArquivo(
   // O cabeçalho lista as tabelas do modelo que carregam deste arquivo. Hoje é sempre
   // uma; se um dia forem duas, os degraus 6 e 7 medem a primeira e a nota diz qual.
   const nomeTabela = cab.tabelas[0] ?? null;
-  const tabela = nomeTabela ? model.table(nomeTabela) : undefined;
+  const tabela = nomeTabela ? model.table(nomeTabela) : null;
 
   const io = await melhorDe(n, () => e1io(arquivo));
   const linhas = await melhorDe(n, () => e2linhas(arquivo));

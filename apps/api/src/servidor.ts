@@ -392,12 +392,22 @@ export class Servidor {
   // `piscinaWorkers` entra no Omit porque o construtor a desestrutura FORA de
   // `resto` (vira `this.piscina`) — sem ela aqui, o tipo exige um padrão que
   // nunca é escrito e o compilador acusa a linha errada.
+  // Os `estadoDo*` ficam opcionais de verdade: sem eles o `/api/saude` só omite a seção.
   private readonly opts: Required<
     Omit<
       ServidorOptions,
-      'cache' | 'aoFalharCache' | 'verificadorGoogle' | 'certificadosFirebase' | 'piscinaWorkers'
+      | 'cache'
+      | 'aoFalharCache'
+      | 'verificadorGoogle'
+      | 'certificadosFirebase'
+      | 'piscinaWorkers'
+      | 'estadoDoPoller'
+      | 'estadoDoAgendador'
+      | 'estadoDaGuarda'
+      | 'estadoDoDisjuntor'
     >
-  >;
+  > &
+    Pick<ServidorOptions, 'estadoDoPoller' | 'estadoDoAgendador' | 'estadoDaGuarda' | 'estadoDoDisjuntor'>;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
    *  "padrão" que faça sentido preencher, diferente dos outros campos. */
@@ -604,6 +614,7 @@ export class Servidor {
       tokenInterno: '',
       cookieSecure: false,
       producao: false,
+      confiaNoProxy: false,
       batimentoSseMs: Servidor.BATIMENTO_SSE_MS,
       overlayRealtime: () => new Map(),
       estadoDoRedis: redisAusente,

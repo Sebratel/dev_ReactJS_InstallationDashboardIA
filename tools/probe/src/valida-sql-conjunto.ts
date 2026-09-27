@@ -53,7 +53,7 @@ try {
   const r = await cliente.query(`SELECT * FROM (${sql}) AS q`);
   const ms = Number(process.hrtime.bigint() - t0) / 1e6;
 
-  console.log(`── rodou: ${r.rowCount.toLocaleString('pt-BR')} linhas, ${r.fields.length} colunas, ${(ms / 1000).toFixed(1)} s ──\n`);
+  console.log(`── rodou: ${(r.rowCount ?? 0).toLocaleString('pt-BR')} linhas, ${r.fields.length} colunas, ${(ms / 1000).toFixed(1)} s ──\n`);
 
   console.log('colunas devolvidas:');
   console.log('  ' + r.fields.map((f) => f.name).join(' | '));

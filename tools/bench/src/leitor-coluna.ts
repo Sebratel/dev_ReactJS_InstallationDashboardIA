@@ -14,7 +14,8 @@
 import { Dataset, type Row } from '../../../packages/measure-engine/src/dataset.ts';
 import { Evaluator } from '../../../packages/measure-engine/src/evaluator.ts';
 import { BLANK, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
-import { SemanticModel, normalizeName, type ModelColumn } from '../../../packages/semantic-model/src/model.ts';
+import { SemanticModel, normalizeName } from '../../../packages/semantic-model/src/model.ts';
+import type { ModelColumn } from '../../../packages/semantic-model/src/types.ts';
 import { ConstrutorDeTabela } from '../../../packages/snapshot/src/tabela-colunar.ts';
 import { VistaDeLinhas } from '../../../packages/snapshot/src/linha-vista.ts';
 
@@ -50,7 +51,7 @@ function monta(vista: boolean): { ev: Evaluator; linhas: Row[] } {
   }
 
   const m = new SemanticModel();
-  m.addTable({ id: 't', name: 'T', queryRef: 'q-t', columns: NOMES.map(col) });
+  m.addTable({ id: 't', name: 'T', queryRef: 'q-t', tableDax: null, columns: NOMES.map(col) });
   dataset.adotaTabela('T', linhas as never);
   return { ev: new Evaluator({ model: m, dataset, now: new Date(Date.UTC(2026, 8, 14)) }), linhas };
 }

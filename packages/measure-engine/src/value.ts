@@ -18,7 +18,7 @@ export class DaxEvalError extends Error {
   }
 }
 
-export function isBlank(v: DaxValue): boolean {
+export function isBlank(v: DaxValue): v is null {
   return v === null || v === undefined;
 }
 

@@ -404,7 +404,7 @@ export class FilteredContext implements FilterContext {
       const porIndice = this.partidaIndexada(aplicaveis, todas);
       const base = porIndice ?? todas;
       visiveis = aplicaveis.length === 0
-        ? base
+        ? (base as Row[]) // a tabela inteira, compartilhada: quem recebe não muta
         : (base as Row[]).filter((row) => aplicaveis.every((f) => f.keep(row)));
     } else {
       // Os filtros do grupo escolhido já estão refletidos em `linhas` — pular o

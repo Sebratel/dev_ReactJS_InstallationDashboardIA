@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "test": "node --test packages/*/test/*.test.ts apps/*/test/*.test.ts tools/*/test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json && npm exec -w apps/web -- tsc --noEmit",
     "test:query-engine": "node --test packages/query-engine/test/*.test.ts",
     "test:semantic-model": "node --test packages/semantic-model/test/*.test.ts",
     "test:transform-engine": "node --test packages/transform-engine/test/*.test.ts",
@@ -79,6 +80,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
+    "@types/pg": "^8.23.1",
     "@vitejs/plugin-react": "^5.2.0",
     "lucide-react": "^1.34.0",
     "mysql2": "^3.24.3",

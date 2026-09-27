@@ -51,7 +51,7 @@ if (!definidaNoEnv) {
 }
 
 const chave = `${prefixo}probe:${process.pid}`;
-const { default: Redis } = await import('ioredis');
+const { Redis } = await import('ioredis');
 const redis = new Redis(url, {
   lazyConnect: true,
   maxRetriesPerRequest: 1,

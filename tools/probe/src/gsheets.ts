@@ -126,7 +126,7 @@ async function pega(url: string, id: string): Promise<unknown> {
   const res = await fetch(url, auth);
   const corpo = await res.text();
   if (!res.ok) {
-    console.error(`  HTTP ${res.status} — ${explica(res.status, corpo, id)}`);
+    console.error(`  HTTP ${res.status} — ${explica(res.status, corpo, id, emailDaConta)}`);
     return null;
   }
   return JSON.parse(corpo);
@@ -174,7 +174,7 @@ for (const p of planilhas) {
 // ela vê foi compartilhado com ela, e é isso que dá sentido à contagem. Listar o
 // Drive de uma PESSOA não diagnostica nada e imprimiria nome de arquivo pessoal
 // num relatório que existe para ser colado em ticket.
-const algumaFalhou = PLANILHAS.some((p) => p.id && !abasPor.has(p.rotulo));
+const algumaFalhou = planilhas.some((p) => p.id && !abasPor.has(p.rotulo));
 if (algumaFalhou && identidade.tipo === 'oauth') {
   console.log(
     '\n  (a listagem do Drive é diagnóstico de conta de serviço; com OAuth, quem\n' +
@@ -207,7 +207,7 @@ if (algumaFalhou && identidade.tipo === 'service_account') {
       }>;
       console.log(`  arquivos visíveis para ${emailDaConta}: ${arquivos.length}`);
       for (const a of arquivos.slice(0, 20)) {
-        const daBase = PLANILHAS.find((p) => p.id === a.id);
+        const daBase = planilhas.find((p) => p.id === a.id);
         console.log(
           `    ${a.id}  ${a.name}${daBase ? `  ← ${daBase.rotulo}` : ''}` +
             `  (dono: ${a.owners?.[0]?.emailAddress ?? '?'})`,
@@ -221,7 +221,7 @@ if (algumaFalhou && identidade.tipo === 'service_account') {
             '  acesso de Leitor não consegue conceder acesso a terceiros.',
         );
       } else {
-        const faltam = PLANILHAS.filter((p) => p.id && !arquivos.some((a) => a.id === p.id));
+        const faltam = planilhas.filter((p) => p.id && !arquivos.some((a) => a.id === p.id));
         console.log(
           faltam.length
             ? `\n  Alcança ${arquivos.length}, mas AINDA falta(m): ${faltam.map((f) => f.rotulo).join(', ')}`

@@ -55,7 +55,7 @@ async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
   const url = process.env.REDIS_URL;
   if (!url) return undefined;
   try {
-    const { default: Redis } = await import('ioredis');
+    const { Redis } = await import('ioredis');
     // `lazyConnect`: a conexão sai na primeira operação, não no arranque. Um Redis
     // fora do ar vira miss em `CacheDeResposta`, e não uma exceção aqui.
     // **Os tempos, e por que eles são estes.** O padrão do ioredis para

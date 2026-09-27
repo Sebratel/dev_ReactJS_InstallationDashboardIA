@@ -1,6 +1,6 @@
 // Adapter Redis do Cache. Redis roda no Portainer da Sebratel.
 // Configuração por env: REDIS_URL (ex: redis://host:6379/0).
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import type { Cache } from './types.ts';
 
 export interface RedisLike {

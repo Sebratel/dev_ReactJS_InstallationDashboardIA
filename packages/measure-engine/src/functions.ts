@@ -130,7 +130,7 @@ function def(nome: string, fn: DaxFunction): void {
 }
 
 def('SUM', (a, s, ev, n) =>
-  agregacao(a, s, ev, n, (vs, onde) => vs.reduce((acc, v) => acc + toNumber(v, onde), 0)),
+  agregacao(a, s, ev, n, (vs, onde) => vs.reduce<number>((acc, v) => acc + toNumber(v, onde), 0)),
 );
 
 def('COUNT', (a, s, ev, n) => agregacao(a, s, ev, n, (vs) => vs.length));
@@ -153,7 +153,7 @@ def('COUNTA', (a, s, ev, n) => agregacao(a, s, ev, n, (vs) => vs.length));
  * e é aí que ela difere de `SUM/COUNTROWS`.
  */
 def('AVERAGE', (a, s, ev, n) =>
-  agregacao(a, s, ev, n, (vs, onde) => vs.reduce((acc, v) => acc + toNumber(v, onde), 0) / vs.length),
+  agregacao(a, s, ev, n, (vs, onde) => vs.reduce<number>((acc, v) => acc + toNumber(v, onde), 0) / vs.length),
 );
 
 def('MIN', (a, s, ev, n) => minMax(a, s, ev, n, -1));

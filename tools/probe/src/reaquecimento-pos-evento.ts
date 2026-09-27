@@ -77,11 +77,8 @@ async function sobe(comReaquecimento: boolean): Promise<Bancada> {
     identifica: () => ({ usuario: 'sonda', papeis: ['autenticado'] }),
     ...(comReaquecimento
       ? {
-          reaquece: async (
-            paginas: readonly string[],
-            pronta: (pagina: string) => void,
-          ): Promise<void> => {
-            await eu.aquecedor.reaquece(paginas, pronta);
+          reaquece: async (paginas: readonly string[]): Promise<void> => {
+            await eu.aquecedor.reaquece(paginas);
           },
         }
       : {}),

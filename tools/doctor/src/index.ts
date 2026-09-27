@@ -75,10 +75,11 @@ async function checkVoalle() {
   const cfg = loadConfig().voalle;
   line(OK, 'configuração', `${maskHost(cfg.host)}:${cfg.port}/${cfg.database} schema=${cfg.schema} ssl=${cfg.ssl ? 'on' : 'off'}`);
 
-  let pool: { query: (c: { text: string }) => Promise<{ rows: Record<string, unknown>[] }>; end: () => Promise<void> } | null = null;
+  type PoolPg = { query: (c: { text: string }) => Promise<{ rows: Record<string, unknown>[] }>; end: () => Promise<void> };
+  let pool = null as PoolPg | null;
   try {
     const { createVoallePool } = await import('../../../packages/query-engine/src/connectors-sql.ts');
-    pool = await createVoallePool(cfg) as typeof pool;
+    pool = (await createVoallePool(cfg)) as unknown as PoolPg;
     const r = await withTimeout(pool!.query({ text: 'select version() as v, current_user as u' }), 15_000, 'dbVoalle');
     const version = String(r.rows[0]?.v ?? '').split(',')[0];
     line(OK, 'conexão', version);
@@ -125,10 +126,11 @@ async function checkMaria() {
   const cfg = loadConfig().maria;
   line(OK, 'configuração', `${maskHost(cfg.host)}:${cfg.port}/${cfg.database}`);
 
-  let pool: { query: (sql: string) => Promise<[Record<string, unknown>[], unknown]>; end: () => Promise<void> } | null = null;
+  type PoolMaria = { query: (sql: string) => Promise<[Record<string, unknown>[], unknown]>; end: () => Promise<void> };
+  let pool = null as PoolMaria | null;
   try {
     const { createMariaPool } = await import('../../../packages/query-engine/src/connectors-sql.ts');
-    pool = await createMariaPool(cfg) as typeof pool;
+    pool = (await createMariaPool(cfg)) as unknown as PoolMaria;
     const [rows] = await withTimeout(pool!.query('select version() as v'), 15_000, 'dbMaria');
     line(OK, 'conexão', String(rows[0]?.v ?? '?'));
 
@@ -164,9 +166,9 @@ async function checkRedis() {
   const cfg = loadConfig().redis;
   const safeUrl = cfg.url.replace(/\/\/[^@]*@/, '//***@');
   line(OK, 'configuração', `${safeUrl} prefix=${cfg.keyPrefix}`);
-  let redis: { ping: () => Promise<string>; info: (s: string) => Promise<string>; quit: () => Promise<unknown> } | null = null;
+  let redis = null as { ping: () => Promise<string>; info: (s: string) => Promise<string>; quit: () => Promise<unknown> } | null;
   try {
-    const { default: Redis } = await import('ioredis');
+    const { Redis } = await import('ioredis');
     redis = new Redis(cfg.url, {
       lazyConnect: true,
       connectTimeout: 8000,

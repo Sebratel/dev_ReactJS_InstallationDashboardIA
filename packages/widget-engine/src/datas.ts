@@ -83,7 +83,7 @@ export function deslocar(d: Date, amount: number, unidade: string, onde: string)
  * o literal em fuso local moveria a fronteira do filtro em três horas.
  */
 export function ancora(
-  s: Pick<SpanSpec, 'anchor_kind' | 'anchor'>,
+  s: Pick<SpanSpec, 'anchor_kind'> & { anchor?: SpanSpec['anchor'] },
   agora: Date,
   onde: string,
 ): Date {
