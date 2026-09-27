@@ -13208,3 +13208,27 @@ Depois: Linux 2.140 + 2 pulados, Windows 2.142, 0 falhas.
 --target runtime` na mão teria escondido o defeito do #153 (compose sem `target`). Provado:
 tirando o `target` da `api`, o script sai 1 com "a imagem não é a runtime". **Ainda não rodou
 no GitHub** — nada foi enviado.
+
+## #156 — o refresh para de insistir no que falha, e a tela aguenta a API sumir por segundos (27/09)
+
+Itens B e C da avaliação de 27/09.
+
+**B — espera crescente (`tools/refresh/src/tick.ts`, `proximaTentativa`).** Uma falha: tenta no
+próximo ciclo, como antes (soluço se resolve ali). Da segunda seguida em diante espera
+`intervalo × 2^(falhas-1)` desde a última tentativa, teto 4 h; o primeiro sucesso zera. Vale
+no daemon (Docker, via `estaVencido`) e no agendador da API (`npm start`, no relógio de
+cadência); `POST /api/refresh` passa por cima. Cada adiamento é `grupo-adiado` no histórico
+e sai no `--historico`. Com a credencial Google ausente do #153, `medio` a 20 min passa de 3
+cargas por hora para 20 → 40 → 80 → 160 → 240 min entre tentativas. Um teste antigo travava a
+política velha ("vencido mesmo com 3 falhas") e foi reescrito, não apagado.
+
+**C — `pega()` da tela (`apps/web/src/api.ts`).** Teto de 90 s por GET (antes: nenhum — API
+travada = "carregando" eterno) e nova tentativa com espera de 1/3/6 s só para rede caída e
+502/503/504 do proxy (~10 s, cobre o reinício de ~8 s medido no #153). 500, 4xx, teto
+estourado e cancelamento não repetem. O teto vira erro comum, nunca `AbortError`, porque a
+tela engole cancelamento em silêncio. Conferido com `fetch` real contra servidor local:
+503, 503, 200 → dado em 3 pedidos; servidor que não responde → "não respondeu"; abort → `AbortError`.
+Requer `AbortSignal.any` (Chrome 116+, Firefox 124+, Safari 17.4+).
+
+Os testes novos (6 do refresh, 6 do `pega`) foram conferidos por mutação: com a regra
+desligada, falham. Suíte: 2.153 passando; typecheck 0 erros.

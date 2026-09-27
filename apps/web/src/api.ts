@@ -263,14 +263,89 @@ export const ehAbortError = (err: unknown): boolean =>
   err instanceof DOMException && err.name === 'AbortError';
 
 /**
- * `GET` que erra alto.
+ * Teto de um `GET`. Sem ele, uma API viva mas travada deixava a tela em "carregando"
+ * para sempre — e é justo o caso que o `restart` do Docker não cobre.
+ */
+export const TETO_PEDIDO_MS = 90_000;
+
+/**
+ * Esperas entre tentativas quando a API está fora do ar POR INSTANTES: rede caída, ou
+ * 502/503/504 do proxy enquanto ela reinicia. Somam ~10 s — o reinício medido em
+ * 25/09/2026 levou ~8 s (ACHADOS #153). Sem isto, um clique durante o reinício virava
+ * erro na tela e a pessoa tinha de clicar de novo.
+ */
+export const ESPERAS_DE_NOVA_TENTATIVA_MS: readonly number[] = [1_000, 3_000, 6_000];
+
+/** O que o proxy responde quando a API não está lá — o único HTTP que vale repetir. Um
+ *  500 é a API dizendo o que deu errado, e repetir só repetiria a mensagem. */
+const FORA_DO_AR = new Set([502, 503, 504]);
+
+/** Injetável no teste; em produção, o `fetch` e o relógio de verdade. */
+export interface DependenciasDePedido {
+  fetch?: typeof fetch;
+  dorme?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  tetoMs?: number;
+  esperasMs?: readonly number[];
+}
+
+function dormeAbortavel(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((ok, falha) => {
+    if (signal?.aborted) return falha(signal.reason);
+    const aoAbortar = (): void => {
+      clearTimeout(t);
+      falha(signal!.reason);
+    };
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', aoAbortar);
+      ok();
+    }, ms);
+    signal?.addEventListener('abort', aoAbortar, { once: true });
+  });
+}
+
+/**
+ * `GET` que erra alto — e que aguenta a API sumir por alguns segundos.
  *
  * A API põe a explicação inteira em `erro`, e as mensagens dela dizem o que fazer
  * (o comando do snapshot que falta, o formato do filtro que não decodificou). Trocar
  * isso por "HTTP 409" jogaria fora justamente a parte útil.
+ *
+ * **Cancelar não é errar.** Se quem chamou abortou, o `AbortError` sai intacto (é o que
+ * `ehAbortError` reconhece e a tela ignora). O teto de tempo, ao contrário, vira erro
+ * comum: sumir em silêncio seria pior que o "carregando" eterno que ele substitui.
  */
-export async function pega<T>(url: string, signal?: AbortSignal): Promise<T> {
-  const resp = await fetch(url, signal ? { signal } : undefined);
+export async function pega<T>(url: string, signal?: AbortSignal, deps: DependenciasDePedido = {}): Promise<T> {
+  const buscar = deps.fetch ?? fetch;
+  const dorme = deps.dorme ?? dormeAbortavel;
+  const esperas = deps.esperasMs ?? ESPERAS_DE_NOVA_TENTATIVA_MS;
+  const tetoMs = deps.tetoMs ?? TETO_PEDIDO_MS;
+
+  let resp: Response;
+  for (let tentativa = 0; ; tentativa++) {
+    const espera = esperas[tentativa];
+    const teto = AbortSignal.timeout(tetoMs);
+    const sinal = signal ? AbortSignal.any([signal, teto]) : teto;
+    try {
+      resp = await buscar(url, { signal: sinal });
+    } catch (err) {
+      if (signal?.aborted) throw err;
+      if (teto.aborted) {
+        throw new Error(`A API não respondeu em ${Math.round(tetoMs / 1000)} s (${url}).`, { cause: err });
+      }
+      if (espera !== undefined) {
+        await dorme(espera, signal);
+        continue;
+      }
+      throw new Error(`Sem conexão com a API (${url}) — ela pode estar reiniciando. Tente de novo em instantes.`, {
+        cause: err,
+      });
+    }
+    if (FORA_DO_AR.has(resp.status) && espera !== undefined) {
+      await dorme(espera, signal);
+      continue;
+    }
+    break;
+  }
   const corpo: unknown = await resp.json().catch(() => null);
   if (!resp.ok) {
     const erro =

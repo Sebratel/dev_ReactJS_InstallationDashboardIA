@@ -50,7 +50,7 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    **27/09 — verificação automática (item A da avaliação, ACHADOS #155):** `npm run typecheck`
    (back-end em strict, 0 erros), CI com testes + tipos + imagens pelo compose.
 
-1. **Espera crescente entre tentativas** — `tools/refresh/src/daemon.ts`/`tick.ts`
+1. ✅ **27/09, ACHADOS #156.** **Espera crescente entre tentativas** — `tools/refresh/src/daemon.ts`/`tick.ts`
    (e `apps/api/src/agendador.ts`, para o `npm start` não divergir).
    Após n falhas seguidas de um grupo, a próxima tentativa espera `intervalo × 2ⁿ`,
    teto 4 h; zera no primeiro sucesso. Reaproveitar a regra de
