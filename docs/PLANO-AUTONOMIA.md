@@ -47,6 +47,9 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    - baixar os `mem_limit` para o medido + folga (e dar folga de não-heap ao `refresh`);
    - a API não trata `SIGTERM` (é PID 1): `docker stop` sempre espera 10 s e mata.
 
+   **27/09 — verificação automática (item A da avaliação, ACHADOS #155):** `npm run typecheck`
+   (back-end em strict, 0 erros), CI com testes + tipos + imagens pelo compose.
+
 1. **Espera crescente entre tentativas** — `tools/refresh/src/daemon.ts`/`tick.ts`
    (e `apps/api/src/agendador.ts`, para o `npm start` não divergir).
    Após n falhas seguidas de um grupo, a próxima tentativa espera `intervalo × 2ⁿ`,

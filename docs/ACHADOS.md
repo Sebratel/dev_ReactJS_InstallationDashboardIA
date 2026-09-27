@@ -13180,3 +13180,31 @@ banco; uma amostra não separa as duas. Se repetir, subir o filho para 5120 cabe
 folga ≤ `mem_limit`, e o mesmo para o cron) no lugar da asserção literal `mem_limit: 8g`.
 Conferido que o teste falha com o filho de volta em 8192. O `npm start` não muda: sem
 `REFRESH_MEMORIA_MB`, o padrão de `executa-grupo.ts` (8192) segue valendo. Suíte: 2.142 passando.
+
+## #155 — tipos, CI e o que só quebrava no Linux (27/09)
+
+**Nada conferia tipo fora de `apps/web`**: o Node executa `.ts` apagando as anotações. Com um
+`tsconfig.json` strict na raiz, o back-end (~57 mil linhas) tinha 39 erros — pouco para quem
+nunca rodou o verificador, e três eram defeito de verdade em ferramenta: `tools/probe/src/gsheets.ts`
+usava `PLANILHAS` (inexistente, quebrava ao rodar) e chamava `explica()` sem o e-mail;
+`reaquecimento-pos-evento.ts` passava um argumento que `reaquece()` não tem mais. O resto era
+tipo que mentia (`Servidor.opts` como `Required<>` com quatro `estadoDo*` opcionais de fato,
+`isBlank` sem ser type guard, `ioredis` pelo default). Agora `npm run typecheck`: 0 erros.
+
+**O CI (`.github/workflows/ci.yml`) foi simulado antes de existir**, num `node:24` limpo a
+partir de `git archive` — sem `.env`, sem `snapshot/`. `npm ci` e tipos verdes; **4 testes
+vermelhos que o Windows nunca mostrou**:
+
+| teste | causa |
+|---|---|
+| `porta.test` linha de comando acentuada | o `ps` de contêiner sem locale troca acento por `?`; agora lê `/proc/<pid>/cmdline` |
+| `reaquecimento.test` dois eventos seguidos | o leitor de SSE do teste supunha um evento por `read()` |
+| `manifesto`/`status` "não corrompe leitura aberta" | provam a semântica de rename do Windows; `skip` fora do `win32` |
+
+Depois: Linux 2.140 + 2 pulados, Windows 2.142, 0 falhas.
+
+**O job de imagens constrói pelo compose** (`docker compose -p ci ... build`) e confere com
+`tools/ci/confere-imagens.sh` que cada serviço recebeu o estágio certo. Um `docker build
+--target runtime` na mão teria escondido o defeito do #153 (compose sem `target`). Provado:
+tirando o `target` da `api`, o script sai 1 com "a imagem não é a runtime". **Ainda não rodou
+no GitHub** — nada foi enviado.

@@ -27,17 +27,17 @@ jobs:
 
   imagens:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
-      - name: imagem da api/refresh (estágio runtime)
-        run: docker build --target runtime -t analytics-runtime .
-      - name: imagem do snapshot-diario (estágio cron)
-        run: docker build --target cron -t analytics-cron .
-      - name: a imagem runtime sobe a API, não o cron
-        run: |
-          cmd=$(docker inspect analytics-runtime --format '{{json .Config.Cmd}}')
-          echo "$cmd"
-          echo "$cmd" | grep -q 'apps/api/src/index.ts'
-      - name: o entrypoint do cron é executável no Linux (sem CRLF)
-        run: docker run --rm --entrypoint sh analytics-cron -c '! grep -q "$(printf "\r")" /usr/local/bin/entrypoint-cron.sh /etc/cron.d/snapshot-diario'
+      # O compose exige o arquivo do `env_file`; vazio basta para construir.
+      - run: touch .env
+      # Construir PELO COMPOSE, não com `--target` na mão: o defeito de 25/09 era o
+      # compose não declarar o `target`, e um build manual o esconderia.
+      - name: constrói as imagens como o compose constrói
+        # O compose exige REDIS_PASSWORD só para interpolar o arquivo; o build não usa.
+        env:
+          REDIS_PASSWORD: so-para-o-build
+        run: docker compose -p ci -f docker-compose.prod.yml build api refresh snapshot-diario
+      - name: cada serviço recebeu a imagem certa
+        run: sh tools/ci/confere-imagens.sh
