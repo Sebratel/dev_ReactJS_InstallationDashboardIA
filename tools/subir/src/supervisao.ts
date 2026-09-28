@@ -1,17 +1,8 @@
-// ┌───────────────────────────────────────────────────────────────────────────┐
-// │ SEM CHAMADOR DESDE 19/09/2026 — leia antes de confiar que isto está vivo. │
-// └───────────────────────────────────────────────────────────────────────────┘
-//
-// `tools/subir/src/index.ts` era o único chamador, e ele não sobe mais o daemon: a
-// cadência passou a ser um relógio por grupo dentro da API (`apps/api/src/agendador.ts`),
-// e sem daemon não há o que ressuscitar. O módulo e os testes dele ficam de pé porque a
-// REGRA continua certa e é cara de redescobrir — espera crescente, vida mínima que zera
-// a conta, e desistir em voz alta em vez de respawnar para sempre escondendo um `.env`
-// quebrado. Se um dia algo voltar a precisar ser supervisionado por processo pai, é daqui
-// que se parte.
-//
-// O que NÃO fazer: ler o que vem abaixo como descrição do que a plataforma faz hoje. Hoje
-// quem supervisiona é o `restart: unless-stopped` do Docker.
+// **Voltou a ter chamador em 28/09/2026 (ACHADOS #161):** o `tools/subir` religa a API
+// com esta regra quando ela morre por falha (`0xC0000409`, 8 vezes entre 18 e 28/09).
+// Entre 19 e 28/09 ficou sem chamador — o daemon que ela ressuscitava saiu do `npm start`.
+// O texto abaixo é de 16/09 e fala do daemon; a regra (espera crescente, vida mínima
+// que zera a conta, desistir em voz alta) é a mesma para a API.
 //
 // Quando ressuscitar o daemon de refresh, e quando parar de tentar.
 //

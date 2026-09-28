@@ -150,6 +150,8 @@ export type EventoDeRefresh =
    * principal ficou parado mais que `limiteMs`. Quem religa é o `restart` do contêiner.
    */
   | { evento: 'api-travou'; quando: string; paradoHaMs: number; limiteMs: number }
+  /** O `npm start` religou a API depois de uma morte por falha (`tools/subir`, #161). */
+  | { evento: 'api-religada'; quando: string; tentativa: number; esperaMs: number }
   /**
    * A MÁQUINA DORMIU. Detectado por batimento: um temporizador de cadência fixa que
    * demorou muito mais que a própria cadência para disparar só pode ter sido

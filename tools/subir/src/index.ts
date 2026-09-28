@@ -12,6 +12,7 @@ import { precisaDeclararSemLoginNaRaiz } from './portao.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { aquece, linhaDaMedida, tabela, veredito, LIMITE_PADRAO_MS } from './aquece.ts';
 import { decideDerrubada, portaOcupada } from './porta.ts';
+import { ESPERAS_MS, decideRessurreicao } from './supervisao.ts';
 import {
   CaudaDeTexto,
   DIRETORIO_DIAGNOSTICO,
@@ -273,53 +274,57 @@ if (soAquece) {
   // por que o código de saída sozinho não bastou nas quatro mortes de 18–22/09.
   const dirDiagnostico = path.join(ROOT, DIRETORIO_SNAPSHOT, DIRETORIO_DIAGNOSTICO);
   fs.mkdirSync(dirDiagnostico, { recursive: true });
-  const api: ChildProcess = spawn(
-    process.execPath,
-    [
-      '--max-old-space-size=8192',
-      ...flagsDeDiagnostico(dirDiagnostico),
-      path.join(ROOT, 'apps', 'api', 'src', 'index.ts'),
-      // A API se aquece sozinha — no arranque E depois de cada refresh (reaquecimento
-      // pós-evento). Até 28/09/2026 isto ia SEMPRE `--sem-aquecer`, sobra de 13/08,
-      // quando a API ainda não tinha aquecedor: sem ele, cada grupo que terminava
-      // deixava as páginas frias, e quem entrava depois esperava 10–21 s por página
-      // (9 vezes numa manhã, ACHADOS #161) — enquanto no Docker tudo abria na hora.
-      // A espera em `aquecimento.ts` já foi feita para este caso.
-      ...(semAquecer ? ['--sem-aquecer'] : []),
-      // `npm start` é o caminho de desenvolvimento, e desde 04/09/2026 subir
-      // sem provedor de login tem de ser DECLARADO — a API recusa subir sem
-      // isto quando a credencial falta. Ver o comentário longo em
-      // `apps/api/src/index.ts`: a stack de container servia
-      // `/api/dashboards/*` com 200 e sem sessão nenhuma.
+  /** Sobe a API. Chamada no arranque e, se ela morrer por falha, de novo (#161). */
+  const sobeApi = (): ChildProcess => {
+    const filho: ChildProcess = spawn(
+      process.execPath,
+      [
+        '--max-old-space-size=8192',
+        ...flagsDeDiagnostico(dirDiagnostico),
+        path.join(ROOT, 'apps', 'api', 'src', 'index.ts'),
+        // A API se aquece sozinha — no arranque E depois de cada refresh (reaquecimento
+        // pós-evento). Até 28/09/2026 isto ia SEMPRE `--sem-aquecer`, sobra de 13/08,
+        // quando a API ainda não tinha aquecedor: sem ele, cada grupo que terminava
+        // deixava as páginas frias, e quem entrava depois esperava 10–21 s por página
+        // (9 vezes numa manhã, ACHADOS #161) — enquanto no Docker tudo abria na hora.
+        // A espera em `aquecimento.ts` já foi feita para este caso.
+        ...(semAquecer ? ['--sem-aquecer'] : []),
+        // `npm start` é o caminho de desenvolvimento, e desde 04/09/2026 subir
+        // sem provedor de login tem de ser DECLARADO — a API recusa subir sem
+        // isto quando a credencial falta. Ver o comentário longo em
+        // `apps/api/src/index.ts`: a stack de container servia
+        // `/api/dashboards/*` com 200 e sem sessão nenhuma.
+        //
+        // **Mas SÓ quando falta** (18/09/2026, ACHADOS #136). Isto era
+        // incondicional, e depois que `FIREBASE_PROJECT_ID` foi preenchida passou a
+        // fazer a API anunciar na subida que servia "TODO pedido sem sessão" —
+        // falso, e falso sobre segurança. Ver `portao.ts`.
+        ...(precisaDeclararSemLoginNaRaiz(ROOT) ? ['--sem-login'] : []),
+        // Repassado, e não relido lá dentro a partir do ambiente: `--sem-refresh`
+        // digitado aqui tem de valer para quem agenda, e quem agenda agora é o filho.
+        ...(semRefresh ? ['--sem-refresh'] : []),
+      ],
+      // **O stderr passa por aqui, e não herdado (22/09/2026).** Continua indo para o
+      // terminal igual a antes — a linha abaixo o repassa —, mas os últimos 64 KiB
+      // ficam em memória para serem gravados se a API morrer. Um abort nativo imprime
+      // o motivo no stderr e mata o processo em seguida; com `inherit` essa linha só
+      // existia no terminal de quem subiu.
       //
-      // **Mas SÓ quando falta** (18/09/2026, ACHADOS #136). Isto era
-      // incondicional, e depois que `FIREBASE_PROJECT_ID` foi preenchida passou a
-      // fazer a API anunciar na subida que servia "TODO pedido sem sessão" —
-      // falso, e falso sobre segurança. Ver `portao.ts`.
-      ...(precisaDeclararSemLoginNaRaiz(ROOT) ? ['--sem-login'] : []),
-      // Repassado, e não relido lá dentro a partir do ambiente: `--sem-refresh`
-      // digitado aqui tem de valer para quem agenda, e quem agenda agora é o filho.
-      ...(semRefresh ? ['--sem-refresh'] : []),
-    ],
-    // **O stderr passa por aqui, e não herdado (22/09/2026).** Continua indo para o
-    // terminal igual a antes — a linha abaixo o repassa —, mas os últimos 64 KiB
-    // ficam em memória para serem gravados se a API morrer. Um abort nativo imprime
-    // o motivo no stderr e mata o processo em seguida; com `inherit` essa linha só
-    // existia no terminal de quem subiu.
-    //
-    // Efeito colateral aceito: se ESTE processo morrer, a API perde o leitor do
-    // stderr e cai no próximo erro de escrita, em vez de ficar órfã segurando a
-    // porta 3100 sem ninguém que a supervisione — que era o desfecho de antes.
-    { cwd: ROOT, stdio: ['inherit', 'inherit', 'pipe'], env: { ...process.env, PORT: String(porta) } },
-  );
-  const caudaDoStderr = new CaudaDeTexto();
-  api.stderr?.on('data', (pedaco: Buffer) => {
-    process.stderr.write(pedaco);
-    caudaDoStderr.acrescenta(pedaco);
-  });
-
-  /** Para dizer no histórico quanto ela viveu — 8 s e 8 h são diagnósticos opostos. */
-  const apiSubiuEm = Date.now();
+      // Efeito colateral aceito: se ESTE processo morrer, a API perde o leitor do
+      // stderr e cai no próximo erro de escrita, em vez de ficar órfã segurando a
+      // porta 3100 sem ninguém que a supervisione — que era o desfecho de antes.
+      { cwd: ROOT, stdio: ['inherit', 'inherit', 'pipe'], env: { ...process.env, PORT: String(porta) } },
+    );
+    const caudaDoStderr = new CaudaDeTexto();
+    filho.stderr?.on('data', (pedaco: Buffer) => {
+      process.stderr.write(pedaco);
+      caudaDoStderr.acrescenta(pedaco);
+    });
+    /** Para dizer no histórico quanto ela viveu — 8 s e 8 h são diagnósticos opostos. */
+    const subiuEm = Date.now();
+    filho.on('exit', (codigo) => aoMorrer(filho, caudaDoStderr, subiuEm, codigo));
+    return filho;
+  };
 
   let encerrando = false;
   // Ligado quando a API morreu por conta própria e o registro da morte está em
@@ -328,6 +333,8 @@ if (soAquece) {
   // `process.exit` que cortaria o registro no meio, justamente na morte durante a
   // subida, que é a de diagnóstico mais fácil.
   let registrandoMorte = false;
+  /** Mortes rápidas seguidas — a conta de `decideRessurreicao` (`supervisao.ts`). */
+  let mortesSeguidas = 0;
   const encerra = (codigo: number): void => {
     if (encerrando || registrandoMorte) return;
     encerrando = true;
@@ -336,55 +343,95 @@ if (soAquece) {
   };
   process.on('SIGINT', () => encerra(0));
   process.on('SIGTERM', () => encerra(0));
-  api.on('exit', (codigo) => {
-    if (!encerrando) {
-      // **A linha abaixo era TUDO o que sobrava da morte da API** — e ela vive no
-      // terminal de quem digitou `npm start`, que é exatamente o que não existe
-      // mais quando alguém pergunta por que a stack caiu. Aconteceu em
-      // 18/09/2026: a API saiu com código 1 e não houve como descobrir o motivo
-      // nem a hora. O daemon deixa `arranque` no histórico desde 17/09 (#129); a
-      // API não deixava nada.
-      //
-      // NÃO ressuscita, e é deliberado: a morte mais comum da API é outra
-      // instância tomando a porta 3100 (ver `derrubaOcupante`). Reerguer ali
-      // poria duas brigando pela porta para sempre. O que faltava era saber.
-      registrandoMorte = true;
-      const morreuEm = new Date();
-      const viveuMs = morreuEm.getTime() - apiSubiuEm;
-      // `exit` pode chegar antes de o stderr terminar de escoar, e a linha que
-      // explica um abort é justamente a ÚLTIMA. Espera o fim do fluxo, com teto:
-      // um filho da API (uma materialização) pode ter herdado o mesmo pipe e
-      // segurá-lo aberto por minutos.
-      const fimDoStderr = new Promise<void>((pronto) => {
-        const s = api.stderr;
-        if (!s || s.readableEnded || s.destroyed) return pronto();
-        s.once('end', () => pronto());
-        s.once('close', () => pronto());
+
+  function aoMorrer(filho: ChildProcess, cauda: CaudaDeTexto, subiuEm: number, codigo: number | null): void {
+    if (encerrando) return;
+    // **A linha abaixo era TUDO o que sobrava da morte da API** — e ela vive no
+    // terminal de quem digitou `npm start`, que é exatamente o que não existe
+    // mais quando alguém pergunta por que a stack caiu. Aconteceu em
+    // 18/09/2026: a API saiu com código 1 e não houve como descobrir o motivo
+    // nem a hora. O daemon deixa `arranque` no histórico desde 17/09 (#129); a
+    // API não deixava nada.
+    registrandoMorte = true;
+    const morreuEm = new Date();
+    const viveuMs = morreuEm.getTime() - subiuEm;
+    // `exit` pode chegar antes de o stderr terminar de escoar, e a linha que
+    // explica um abort é justamente a ÚLTIMA. Espera o fim do fluxo, com teto:
+    // um filho da API (uma materialização) pode ter herdado o mesmo pipe e
+    // segurá-lo aberto por minutos.
+    const fimDoStderr = new Promise<void>((pronto) => {
+      const s = filho.stderr;
+      if (!s || s.readableEnded || s.destroyed) return pronto();
+      s.once('end', () => pronto());
+      s.once('close', () => pronto());
+    });
+    void Promise.race([fimDoStderr, new Promise((r) => setTimeout(r, 1500))]).then(async () => {
+      const relatorio = relatorioDaMorte(dirDiagnostico, subiuEm);
+      const texto = cauda.texto();
+      const stderr = codigo === 0 ? null : guardaCauda(dirDiagnostico, morreuEm, texto);
+      const motivo = relatorio?.evento ?? linhaDaCausa(texto);
+      registra(path.join(ROOT, DIRETORIO_SNAPSHOT), {
+        evento: 'api-morreu',
+        quando: morreuEm.toISOString(),
+        codigo: codigo ?? null,
+        viveuMs,
+        ...(motivo ? { motivo } : {}),
+        ...(relatorio ? { relatorio: relatorio.arquivo } : {}),
+        ...(stderr ? { stderr } : {}),
       });
-      void Promise.race([fimDoStderr, new Promise((r) => setTimeout(r, 1500))]).then(() => {
-        const relatorio = relatorioDaMorte(dirDiagnostico, apiSubiuEm);
-        const texto = caudaDoStderr.texto();
-        const stderr = codigo === 0 ? null : guardaCauda(dirDiagnostico, morreuEm, texto);
-        const motivo = relatorio?.evento ?? linhaDaCausa(texto);
-        registra(path.join(ROOT, DIRETORIO_SNAPSHOT), {
-          evento: 'api-morreu',
-          quando: morreuEm.toISOString(),
-          codigo: codigo ?? null,
-          viveuMs,
-          ...(motivo ? { motivo } : {}),
-          ...(relatorio ? { relatorio: relatorio.arquivo } : {}),
-          ...(stderr ? { stderr } : {}),
-        });
-        console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
-        if (motivo) console.error(`  motivo: ${motivo}`);
-        if (relatorio) console.error(`  relatório: snapshot/${DIRETORIO_DIAGNOSTICO}/${relatorio.arquivo}`);
-        if (stderr) console.error(`  stderr:    snapshot/${DIRETORIO_DIAGNOSTICO}/${stderr}`);
-        console.error('Registrado em snapshot/refresh-historico.log — veja com:');
-        console.error('  npm run refresh:daemon -- --historico');
+      console.error(`\nA API saiu (código ${codigo ?? '?'}).`);
+      if (motivo) console.error(`  motivo: ${motivo}`);
+      if (relatorio) console.error(`  relatório: snapshot/${DIRETORIO_DIAGNOSTICO}/${relatorio.arquivo}`);
+      if (stderr) console.error(`  stderr:    snapshot/${DIRETORIO_DIAGNOSTICO}/${stderr}`);
+      console.error('Registrado em snapshot/refresh-historico.log — veja com:');
+      console.error('  npm run refresh:daemon -- --historico');
+
+      // **Religa, desde 28/09/2026 (ACHADOS #161).** Antes não religava, e o motivo era
+      // bom: a morte mais comum da API era outra instância tomando a porta 3100, e
+      // reerguer ali poria duas brigando pela porta para sempre. Mas a morte que se
+      // repete hoje é outra — `0xC0000409`, falha nativa do Windows, 8 vezes entre 18
+      // e 28/09 (#149) — e sem ninguém religando a plataforma ficava fora até alguém
+      // notar. O cuidado com a porta continua, só que conferido na hora: porta tomada
+      // por outro, não religa. Saída 0 (pedido) e 2 (uso errado) também não religam.
+      const d = decideRessurreicao(viveuMs, mortesSeguidas);
+      if (codigo === 0 || codigo === 2 || !d.ressuscita) {
+        if (!d.ressuscita) {
+          console.error(
+            `\nA API morreu ${d.mortesSeguidas} vezes seguidas sem se sustentar — desistindo. ` +
+              'Isto não é azar: veja o motivo acima antes de subir de novo.',
+          );
+        }
         process.exit(codigo ?? 1);
+      }
+      mortesSeguidas = d.mortesSeguidas;
+      console.error(
+        `\nReligando a API em ${d.esperaMs / 1000} s (tentativa ${d.mortesSeguidas} de ${ESPERAS_MS.length})…`,
+      );
+      await new Promise((r) => setTimeout(r, d.esperaMs));
+      if (await portaOcupada(porta)) {
+        console.error(`\nA porta ${porta} foi tomada por outro processo — não religo por cima dele.`);
+        console.error(comoLiberar(porta, quemOcupa(porta), 'subir'));
+        process.exit(1);
+      }
+      registra(path.join(ROOT, DIRETORIO_SNAPSHOT), {
+        evento: 'api-religada',
+        quando: new Date().toISOString(),
+        tentativa: d.mortesSeguidas,
+        esperaMs: d.esperaMs,
       });
-    }
-  });
+      registrandoMorte = false;
+      api = sobeApi();
+      if (!(await esperaSaude(api))) {
+        if (registrandoMorte) return; // morreu de novo: o `exit` dela decide outra vez
+        console.error(`\nA API religada não respondeu em ${BASE}/api/saude. Parando.`);
+        encerra(1);
+        return;
+      }
+      console.error(`A API voltou. Tela: ${BASE}/`);
+    });
+  }
+
+  let api: ChildProcess = sobeApi();
 
   if (!(await esperaSaude(api))) {
     // A API morreu na subida: o `exit` dela já está registrando a morte, e é ele
