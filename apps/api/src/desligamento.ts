@@ -60,6 +60,8 @@ export function instalaDesligamento(opts: OpcoesDeDesligamento): (sinal: string)
     teto.unref?.();
 
     for (const p of opts.passos) {
+      // Uma linha ANTES de cada passo: se o processo morrer no meio, a última linha diz onde.
+      anuncia(`[desligamento]   ${p.nome}…`);
       try {
         await p.fn();
       } catch (err) {
