@@ -18,6 +18,13 @@
 // custa ~1,8 s (98 mil linhas de disco mais a materialização de uma tabela
 // calculada). O cache é por página e não expira: o snapshot em disco não muda
 // sozinho — quem o refaz é `npm run snapshot`, e aí o processo é reiniciado.
+//
+// **O que saiu daqui (27/09/2026, ACHADOS #158)**, sem mudar comportamento — o arquivo
+// tinha 2.694 linhas: as opções em `opcoes-servidor.ts`, os utilitários de HTTP em
+// `http-util.ts`, a lista de valores de segmentação em `valores-segmentacao.ts` e os
+// arquivos da tela em `estatico.ts`. O que fica é o roteamento e o ciclo de vida de uma
+// página (carregar, calcular, invalidar). Próximos candidatos: as rotas de `/auth/*` e
+// o corpo de `/api/saude`.
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -31,12 +38,7 @@ import { carrega, type Carregado } from '../../../packages/snapshot/src/carrega.
 import { leManifesto, maisAntigo, type Manifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { carimboDasCalculadas } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
-import { isBlank, type DaxValue } from '../../../packages/measure-engine/src/value.ts';
-import {
-  NIVEIS_DE_HIERARQUIA,
-  projecaoDeHierarquia,
-  type Evaluator,
-} from '../../../packages/measure-engine/src/evaluator.ts';
+import { type DaxValue } from '../../../packages/measure-engine/src/value.ts';
 import { MemoryCache } from '../../../packages/query-engine/src/cache-memory.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import type { Cache } from '../../../packages/query-engine/src/types.ts';
@@ -63,15 +65,7 @@ import {
 } from './identidade.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
-import {
-  calculaPagina,
-  segmentacaoDe,
-  tipoDe,
-  LINHAS_MAXIMO,
-  LINHAS_PADRAO,
-  TERMO_MAXIMO,
-  type PaginaCalculada,
-} from './calcula.ts';
+import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
 import { carregaLayout } from '../../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh } from '../../../tools/refresh/src/status.ts';
@@ -79,21 +73,18 @@ import { PiscinaWorkers } from './piscina-workers.ts';
 import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
-import { redisAusente, type EstadoDoRedis } from './saude-do-redis.ts';
+import { redisAusente } from './saude-do-redis.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
+import { comStatus, inteiro, leCorpo, parseJsonSeguro, responde, tokensIguais } from './http-util.ts';
+import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
+import { serveEstatico } from './estatico.ts';
+import type { ServidorOptions } from './opcoes-servidor.ts';
 
+// Quem importava daqui continua importando daqui (testes, `index.ts`, sondas).
+export type { ServidorOptions } from './opcoes-servidor.ts';
+export { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, comparaValorDeSegmentacao } from './valores-segmentacao.ts';
 
-/** Quantos valores de segmentação a resposta manda por padrão. */
-export const VALORES_PADRAO = 500;
-/**
- * Teto duro da lista de segmentação.
- *
- * `'PROTOCOLOS GERAL'[N°PROTOCOLO]` é uma segmentação de `visao-geral` e tem 32.744
- * valores distintos — uma lista que ninguém rola e que sozinha pesa mais que a página.
- * O teto corta, e a resposta **diz** que cortou.
- */
-export const VALORES_MAXIMO = 5000;
 
 /**
  * Quantos datasets a thread principal guarda antes de podar o mais antigo.
@@ -109,41 +100,6 @@ export const VALORES_MAXIMO = 5000;
  * Ver `guardaCarregada` para por que um teto passou a ser necessário.
  */
 export const TETO_CARREGADAS = 6;
-
-/**
- * A chave do cache de valores de uma segmentação — e por que o `frescor` entra.
- *
- * **Extraída para poder ser testada, e o motivo é um defeito de ordem.** A rota
- * `/valores` lê este cache ANTES de chamar `carrega()`, e `carrega()` é o único
- * lugar que percebe a identidade da página avançar. Um acerto aqui portanto nunca
- * passa por verificação de frescor nenhuma: sem o `frescor` na chave, a lista de
- * uma segmentação continua servindo o recorte de antes do refresh, e o sintoma é
- * uma cidade nova que entra no dado e nunca aparece no seletor.
- *
- * Enquanto o descarte de `carrega()` era GLOBAL isso ficava mascarado: qualquer
- * outra página que perdesse a entrada dela varria este mapa inteiro junto. Ao
- * escopar o descarte por página (21/09/2026) a vassoura sai, e sem esta chave o
- * mascaramento sairia com ela.
- *
- * Mesmo princípio de `chaveDaResposta` (`cache-resposta.ts`): o que faz o papel do
- * frescor é a chave, não um prazo nem uma varredura. A entrada velha fica
- * INALCANÇÁVEL no mesmo instante, e quem a poda é o `esqueceAPagina` que o miss
- * seguinte dispara dentro de `carrega()`.
- *
- * O `id` vem PRIMEIRO de propósito: é o que faz o prefixo `${id}<NUL>` de
- * `esqueceAPagina` alcançar todas as entradas desta página, de qualquer frescor.
- */
-export function chaveDeValores(
-  id: string,
-  frescor: string,
-  tabela: string,
-  coluna: string,
-  nivel: string | null,
-): string {
-  return [id, frescor, normalizeName(tabela), normalizeName(coluna), normalizeName(nivel ?? '')].join(
-    '\u0000',
-  );
-}
 
 /**
  * O teto de tentativas em `/auth/*` (as quatro rotas de POST), por IP, na
@@ -176,204 +132,6 @@ function carregaLayouts(dirLayout: string): Map<string, LayoutSpec> {
   return mapa;
 }
 
-export interface ServidorOptions {
-  /** Raiz do repositório — de onde saem `specs/` e o `snapshot/`. */
-  root: string;
-  /** Diretório do snapshot. Separado do root para o teste apontar para um temporário. */
-  snapshotDir: string;
-  /** Diretório dos arquivos estáticos da tela. */
-  webDir: string;
-  /** O relógio do cálculo. Injetado: 25 das 121 expressões chamam `TODAY()`. */
-  agora?: () => Date;
-  /**
-   * Onde a resposta calculada é guardada. Padrão: `MemoryCache` — já serve o
-   * segundo pedido do mesmo processo. `npm run api` põe o Redis aqui quando
-   * `REDIS_URL` existe, e aí o cache sobrevive ao restart.
-   */
-  cache?: Cache;
-  /** Onde a falha do cache aparece. Ela nunca derruba o pedido. */
-  aoFalharCache?: (operacao: 'get' | 'set', erro: unknown) => void;
-  /**
-   * Quem está pedindo. Padrão: sessão real por cookie (`identidade.ts`) — sem
-   * sessão válida, `null`, e `/api/*` responde 401 antes do roteamento
-   * (`docs/DEPLOY.md` §2.1). Sobrescrever isto é o jeito de teste injetar uma
-   * identidade sem passar pelo login de verdade; é por aqui também que o
-   * Permission Engine (papéis/recorte por linha) entraria depois.
-   */
-  identifica?: (req: http.IncomingMessage) => Identidade | null;
-  /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
-   *  token — falha fechada, não aberta, enquanto não configurado. */
-  googleClientId?: string;
-  /** Domínio do Google Workspace que pode logar. */
-  dominioCorporativo?: string;
-  /** Por quanto tempo uma sessão criada em `/auth/google` vale. */
-  sessaoTtlHoras?: number;
-  /** Substitui o cliente real do Google em teste — ver `auth-google.ts`. */
-  verificadorGoogle?: VerificadorDeToken;
-  /**
-   * ID do projeto Firebase, para `POST /auth/firebase`. Vazio recusa todo
-   * token — falha fechada, igual ao `googleClientId`.
-   *
-   * Coexiste com `googleClientId` de propósito: os dois caminhos entregam a
-   * MESMA sessão (`criaSessao` com o e-mail), e quem escolhe é a configuração
-   * do ambiente. Ter os dois ligados ao mesmo tempo é legítimo — é o que
-   * permite migrar a tela para o Firebase sem derrubar o `tools/tela` nem
-   * quem já estiver logado pelo GIS.
-   */
-  firebaseProjectId?: string;
-  /** Substitui a busca de chaves públicas do Firebase em teste — ver `auth-firebase.ts`. */
-  certificadosFirebase?: BuscaCertificados;
-  /**
-   * Segredo compartilhado (`.env`, `TOKEN_INTERNO`) que libera `POST
-   * /auth/interno` — a única forma de uma ferramenta de linha de comando
-   * (hoje: `tools/tela`, que dirige um navegador de verdade) logar sem conta
-   * do Google. Vazio (padrão) desliga a rota inteira: nenhum token, nem o
-   * certo, autentica — falha fechada, igual ao `googleClientId` vazio.
-   */
-  tokenInterno?: string;
-  /**
-   * Liga `Secure` no cookie de sessão e `Strict-Transport-Security` nos
-   * headers de resposta (`headers-seguranca.ts`). Padrão: `false` — hoje não
-   * há TLS na frente (`nginx.conf` só tem `listen 80`), e um cookie `Secure`
-   * sobre HTTP puro nunca seria enviado pelo navegador, quebrando login sem
-   * erro nenhum. Ligar isto sem TLS de verdade na frente troca "sem cookie
-   * Secure" por "login que nunca funciona".
-   */
-  cookieSecure?: boolean;
-  /**
-   * Há um proxy reverso na frente que reescreve `X-Real-IP`? Só então esse
-   * header é confiável como chave do rate limit — ver `ipDoPedido` em
-   * `limitador-taxa.ts`. Padrão: `false`. Ligar sem proxy de verdade na frente
-   * ABRE um bypass do rate limit (o cliente escolhe a chave forjando o
-   * header); ligar atrás do `nginx.conf`, que faz `proxy_set_header X-Real-IP
-   * $remote_addr`, é o certo. Mesmo par "preparado/ativado" do `cookieSecure`
-   * com o TLS: ligam juntos com a infraestrutura, via `CONFIA_PROXY=1`.
-   */
-  confiaNoProxy?: boolean;
-  /**
-   * Verdadeiro em produção — hoje só diferencia o que um erro 500 expõe
-   * (`atende()`): a mensagem completa vai sempre para o log, mas só sai na
-   * resposta HTTP fora de produção. Entra por opção, e não lendo
-   * `process.env.NODE_ENV` direto neste arquivo, pelo mesmo motivo de
-   * `googleClientId`/`sessaoTtlHoras`: quem lê env é `index.ts`, e um teste
-   * precisa poder afirmar os dois comportamentos sem mexer no processo.
-   */
-  producao?: boolean;
-  /**
-   * O estado do reaquecimento automático, para `GET /api/saude`.
-   *
-   * Entra por função, e não por valor, porque o `Aquecedor` só pode ser construído
-   * **depois** do servidor — ele precisa da porta em que o servidor foi escutar.
-   * Padrão: desligado, que é o que `npm run api -- --sem-aquecer` e todo teste veem.
-   */
-  aquecimento?: () => { ativo: boolean; pronto: boolean };
-  /**
-   * Teto de memória, em MB, do cache de resultado inteiro por visual. Ver
-   * `cache-visual.ts`. Zero desliga — e desligar devolve o recálculo por clique de
-   * "próxima", que é o defeito que ele conserta.
-   */
-  tetoDeVisuaisMB?: number;
-  /**
-   * Intervalo do batimento do SSE, em ms. Padrão 25.000 — ver
-   * `Servidor.BATIMENTO_SSE_MS` para o porquê desse número.
-   *
-   * Existe como opção só para poder ser TESTADO: um teste que esperasse 25 s
-   * pelo segundo batimento não seria escrito, e um batimento que ninguém testa
-   * é um `setInterval` que se acredita estar ligado.
-   */
-  batimentoSseMs?: number;
-  /**
-   * O poller de quase-realtime (`apps/api/src/poller-realtime.ts`), consultado a
-   * cada `carrega()` — nunca guardado por mais que um pedido, porque o overlay
-   * muda entre pedidos e `carregadas` (abaixo) não pode congelar uma versão
-   * velha dele. Padrão: nenhum overlay, comportamento idêntico a antes desta
-   * peça existir.
-   */
-  /**
-   * **Dado, não função** — mudou em 08/09/2026 (F1 do plano de near-realtime).
-   * Ver `overlay-realtime.ts` para o porquê inteiro; em resumo, o `Map` de
-   * mescladores não atravessa `postMessage`, e a piscina de workers é o caminho
-   * de produção. Quem calcula na própria thread converte com `mescladoresDe()`;
-   * a worker recebe estes objetos e reconstrói as funções do outro lado.
-   */
-  overlayRealtime?: () => ReadonlyMap<string, OverlayDeTabela>;
-  /**
-   * O estado do poller de realtime, para `GET /api/saude`. Padrão: nenhum —
-   * e aí a chave `poller` não aparece, que é a verdade de todo teste e de
-   * todo `npm run api` sem credencial do Voalle.
-   *
-   * **Por que passou a existir.** Desde 08/09/2026 o poller só anuncia linha
-   * que MUDOU o delta, e não toda linha que a margem rebuscou. O efeito
-   * colateral é que um poller saudável fica calado quando a fonte está quieta
-   * — indistinguível, no log, de um poller morto. Mesmo modo de falha que a
-   * F5 fechou no carimbo, e mesma resposta: publicar o estado.
-   */
-  estadoDoPoller?: () => unknown;
-  /**
-   * O estado do agendador de refresh que roda DENTRO deste processo
-   * (`apps/api/src/agendador.ts`). Ausente quando quem agenda é outro — o daemon
-   * dedicado do `docker-compose.prod.yml`, ou ninguém.
-   *
-   * **É a resposta direta ao #129.** `refresh` (abaixo) conta o que ACONTECEU:
-   * idade por query, último sucesso por grupo. Ele não sabe dizer se existe alguém
-   * encarregado de acontecer de novo — foi exatamente essa a pergunta que ficou sem
-   * resposta em 16/09/2026, com os três grupos marcando `falhasConsecutivas: 0` e
-   * nenhum processo vivo na máquina. `agendador.ativo` é o campo que separa "não
-   * falhou" de "não roda ninguém".
-   */
-  estadoDoAgendador?: () => unknown;
-  /**
-   * Erros não tratados que a guarda de processo engoliu para manter a tela no ar.
-   *
-   * Sem isto, uma API que sobrevive a um erro é indistinguível de uma que nunca teve
-   * nenhum — e a diferença entre as duas é exatamente o aviso que se queria ter antes
-   * da próxima queda.
-   */
-  estadoDaGuarda?: () => unknown;
-  /**
-   * O estado do disjuntor da camada durável do cache.
-   *
-   * **Por que ele precisa aparecer.** Um Redis fora do ar já era visível em
-   * `redis.status`, mas o que ele custava não era: 10 s de espera por
-   * operação, em todo pedido, com a saúde dizendo `ok`. Com o disjuntor,
-   * `estado: "aberto"` é a frase que faltava — «o Redis está fora do
-   * caminho de propósito, e é por isso que as respostas estão vindo do
-   * cálculo».
-   */
-  estadoDoDisjuntor?: () => unknown;
-  /**
-   * O estado da camada durável do cache, para `GET /api/saude`. Padrão:
-   * `ausente` — que é a verdade de todo teste e de todo `npm run api` sem
-   * `REDIS_URL`.
-   *
-   * Entra por função pelo mesmo motivo de `aquecimento`: quem sabe se o Redis
-   * está de pé é o driver, que vive em `index.ts`, e o valor muda depois da
-   * construção do servidor. Ver `saude-do-redis.ts` para por que isto merece
-   * existir — em resumo, `adapter: "MemoryCache+RedisCache"` é o arranjo montado
-   * na subida, não o estado dele agora, e uma API degradada parecia saudável.
-   */
-  estadoDoRedis?: () => EstadoDoRedis;
-  /**
-   * Reaquece as páginas que o evento do poller acabou de invalidar (F4).
-   *
-   * **Por que é injetado, e não escrito aqui.** Quem sabe reaquecer é o
-   * `Aquecedor`: ele acerta a MESMA chave de cache que o navegador pediria
-   * (corte eager do layout, filtros padrão, cabeçalho interno que classifica o
-   * pedido como `warmup`). Reescrever isso aqui encheria chaves *parecidas* — e
-   * o acerto nunca aconteceria, que é o defeito descrito no topo de
-   * `aquecedor.ts`. Mas o `Aquecedor` só existe depois do `listen`, então entra
-   * por fora, como `aquecimento` e `estadoDoRedis`.
-   *
-   * Padrão: não reaquece — e aí um evento do poller só invalida e avisa, que
-   * é exatamente o comportamento de antes da F4. É o que todo teste vê.
-   *
-   * **Não segura o SSE**, e a promessa devolvida não é esperada por pedido
-   * nenhum — ver `reaquecePorBaixo` para a medida que decidiu isso.
-   */
-  reaquece?: (paginas: readonly string[]) => Promise<void>;
-  /** Instância ou opção para a piscina de worker threads. */
-  piscinaWorkers?: PiscinaWorkers;
-}
 
 /**
  * O padrão de `ServidorOptions.reaquece`: não reaquece nada.
@@ -911,7 +669,7 @@ export class Servidor {
     // A tela (estático) é servida SEM sessão de propósito — é ela que mostra
     // o botão de login. A própria aplicação React decide o que desenhar
     // conforme as chamadas a /api/* voltarem 200 ou 401.
-    this.estatico(res, rota);
+    serveEstatico(res, this.opts.webDir, rota);
   }
 
   // -------------------------------------------------------------- login
@@ -2030,45 +1788,6 @@ export class Servidor {
         });
       }
 
-  /**
-   * Os arquivos da tela.
-   *
-   * **Duas telas convivem, e a ordem entre elas é a decisão.** `dist/` é o build do
-   * `apps/web` (React); `index.html` na raiz é a tela de uma página só que existiu
-   * antes dele. Quando o build existe, ele é a tela — `npm run api` sozinho serve a
-   * aplicação, sem Vite e sem segunda porta. A antiga continua alcançável em
-   * `/legado`, porque apagá-la junto com a migração jogaria fora a única referência
-   * com que comparar a nova.
-   */
-  private estatico(res: http.ServerResponse, rota: string): void {
-    if (rota === '/legado') return this.arquivo(res, this.opts.webDir, 'index.html');
-
-    const dist = path.join(this.opts.webDir, 'dist');
-    const temBuild = fs.existsSync(path.join(dist, 'index.html'));
-    const arquivo = rota === '/' ? 'index.html' : rota.slice(1);
-    return this.arquivo(res, temBuild ? dist : this.opts.webDir, arquivo);
-  }
-
-
-
-  private arquivo(res: http.ServerResponse, base: string, arquivo: string): void {
-    // Só o que está dentro da base: `..` no caminho sairia do diretório.
-    const alvo = path.resolve(base, arquivo);
-    if (!alvo.startsWith(path.resolve(base))) {
-      responde(res, 403, { erro: 'caminho fora do diretório de arquivos estáticos' });
-      return;
-    }
-    if (!fs.existsSync(alvo) || !fs.statSync(alvo).isFile()) {
-      responde(res, 404, { erro: `arquivo '${arquivo}' não existe` });
-      return;
-    }
-    res.writeHead(200, {
-      'content-type': TIPOS[path.extname(alvo)] ?? 'application/octet-stream',
-      'cache-control': 'no-cache',
-    });
-    res.end(fs.readFileSync(alvo));
-  }
-
   // ------------------------------------------------------------------ apoio
 
   /**
@@ -2495,15 +2214,6 @@ export class Servidor {
   }
 }
 
-const TIPOS: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.svg': 'image/svg+xml',
-  '.png': 'image/png',
-  '.json': 'application/json; charset=utf-8',
-};
-
 /**
  * O corpo de `GET /api/dashboards/:id`, sem o campo `cache`.
  *
@@ -2520,175 +2230,3 @@ type CorpoDaPagina = PaginaCalculada & {
   tabelas: { nome: string; linhas: number }[];
 };
 
-/**
- * Marca um erro com o status HTTP que ele deve virar, preservando a mensagem.
- *
- * Nasceu com o single-flight: o cálculo saiu de dentro de `pagina()` e foi para
- * dentro de um voo compartilhado, e lá **não existe `res`** — responder 409 na
- * hora serviria um dos N pedidos e deixaria os outros pendurados. O erro tem de
- * voltar carregando o status, para que cada um responda o seu.
- *
- * As mensagens da API dizem o que fazer (o comando de snapshot que falta, o
- * formato do filtro que não decodificou); trocá-las por "HTTP 409" jogaria fora
- * justamente a parte útil, então a mensagem original é mantida intacta.
- */
-function comStatus(err: unknown, status: number): Error {
-  const e = err instanceof Error ? err : new Error(String(err));
-  return Object.assign(e, { status });
-}
-
-function responde(res: http.ServerResponse, status: number, corpo: unknown): void {
-  const texto = JSON.stringify(corpo);
-  res.writeHead(status, {
-    'content-type': 'application/json; charset=utf-8',
-    'content-length': Buffer.byteLength(texto),
-  });
-  res.end(texto);
-}
-
-/** Compara dois segredos em tempo constante — `TOKEN_INTERNO` não é o tipo de
- *  coisa que se compara com `===` e torce para ninguém medir microssegundos. */
-function tokensIguais(a: string, b: string): boolean {
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
-}
-
-/**
- * `JSON.parse` que descarta `__proto__`, `constructor` e `prototype` de
- * QUALQUER nível do objeto, via `reviver`.
- *
- * `JSON.parse` puro já não seta o protótipo de verdade a partir de
- * `{"__proto__": ...}` no texto — a especificação usa `CreateDataProperty`, não
- * o setter mágico de atribuição normal — então o resultado de hoje (só
- * `corpo.idToken`/`corpo.token` são lidos, nunca espalhados/mesclados em outro
- * objeto) já não é explorável. Esta função é a trava para o dia em que algum
- * código futuro fizer `Object.assign(alvo, corpo)` ou equivalente e essa
- * garantia deixar de valer sem ninguém perceber.
- */
-function parseJsonSeguro(texto: string): unknown {
-  return JSON.parse(texto, (chave, valor) => {
-    if (chave === '__proto__' || chave === 'constructor' || chave === 'prototype') return undefined;
-    return valor;
-  });
-}
-
-/**
- * Lê o corpo de um pedido até `limiteBytes` (padrão 8 KB — um ID token do
- * Google tem ~1-2 KB; a folga é generosa sem abrir a porta para um corpo
- * gigante segurar memória). Único lugar da API que lê corpo — todo o resto é
- * `GET`/`HEAD` sem corpo nenhum.
- */
-function leCorpo(req: http.IncomingMessage, limiteBytes = 8192): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let total = 0;
-    let excedeu = false;
-    const partes: Buffer[] = [];
-    // **`req.destroy()` aqui era o bug**: destruir o `IncomingMessage` destrói
-    // o SOCKET (é a mesma conexão TCP), e a resposta 400 que `autenticaGoogle`
-    // (e as outras duas) tentam mandar em seguida nunca sai — o cliente vê
-    // `ECONNRESET`, não 400. A correção é rejeitar sem destruir e DRENAR o
-    // resto do corpo (ignorado, nunca empilhado em `partes`, então sem custo
-    // de memória) — quando `end` chegar, o socket segue saudável para a
-    // resposta e, em keep-alive, para o próximo pedido também.
-    req.on('data', (c: Buffer) => {
-      if (excedeu) return;
-      total += c.length;
-      if (total > limiteBytes) {
-        excedeu = true;
-        reject(new Error('corpo do pedido excede o limite'));
-        return;
-      }
-      partes.push(c);
-    });
-    req.on('end', () => {
-      if (!excedeu) resolve(Buffer.concat(partes).toString('utf8'));
-    });
-    req.on('error', reject);
-  });
-}
-
-/**
- * Os valores distintos de uma coluna do dataset, ordenados.
- *
- * BLANK entra na lista como `null`, e de propósito: numa coluna com vazio, "vazio" é
- * um valor que o usuário precisa poder marcar. Omiti-lo faria a soma das partes não
- * fechar com o total, sem nada na tela explicando a diferença — a pergunta #6b do
- * `PERGUNTAS-NEGOCIO.md` é exatamente essa discussão no card `CLIENTES`.
- */
-function valoresDistintos(
-  ev: Evaluator,
-  tabela: string,
-  coluna: string,
-  nivel: string | null = null,
-): DaxValue[] {
-  // Com nível, a lista é a dos valores **do nível**: 3 anos em vez de 1.095 datas.
-  // A projeção é a mesma de `filtro.ts` e do eixo de gráfico — se esta lista e o
-  // predicado usassem tabelas de meses diferentes, o usuário marcaria "março" e o
-  // filtro não acharia nada.
-  const projeta = nivel ? projecaoDeHierarquia(nivel) : null;
-  if (nivel && !projeta) {
-    throw new Error(
-      `Nível de hierarquia não suportado: '${tabela}'[${coluna}].[${nivel}]. ` +
-        `Suportados: ${NIVEIS_DE_HIERARQUIA.join(', ')}.`,
-    );
-  }
-
-  const vistos = new Map<string, DaxValue>();
-  for (const row of ev.dataset.rows(tabela)) {
-    const cru = ev.columnValue(tabela, coluna, row);
-    // BLANK não é projetado: o vazio viraria o ano de 1970 e apareceria na lista
-    // como um ano de verdade.
-    const v = projeta && !isBlank(cru) && cru instanceof Date ? projeta(cru) : cru;
-    // Data como chave precisa ser o instante, não o objeto: dois `Date` do mesmo
-    // milissegundo são chaves diferentes num `Set`, e a lista viria com repetido.
-    const chave = isBlank(v) ? '\u0000blank' : v instanceof Date ? `d${v.getTime()}` : `${typeof v}:${String(v)}`;
-    if (!vistos.has(chave)) vistos.set(chave, v);
-  }
-
-  return [...vistos.values()].sort(comparaValorDeSegmentacao);
-}
-
-/**
- * A ordem em que um seletor oferece seus valores.
- *
- * **Data e número saem do MAIOR para o menor, e isso é um recorte, não estética.**
- * A lista é truncada em `teto` antes de chegar à tela; crescente, o corte jogava
- * fora exatamente a metade que interessa. Medido em 08/09/2026:
- * `CALENDARIO INSTALADO`[DATA INSTALADO] tem 713 datas distintas, a tela recebia
- * 500 e a árvore de período terminava em JUNHO/2026 — enquanto a mesma página
- * abre filtrada em AGOSTO. O mês que a tela pedia por padrão não existia na lista
- * que ela oferecia, e por fora isso é «nenhum filtro funciona».
- *
- * Texto continua em A–Z: em nome de pessoa ou de equipe é alfabético que se
- * procura, e não há «mais recente» que privilegiar.
- *
- * Função separada e exportada porque é uma DECISÃO, e decisão precisa de teste —
- * quando ela morava dentro do `sort()`, a suíte inteira passava verde com a ordem
- * trocada.
- */
-export function comparaValorDeSegmentacao(a: DaxValue, b: DaxValue): number {
-  // BLANK por último: é o valor menos informativo, e no topo empurraria a lista
-  // inteira para baixo em toda coluna que tenha um vazio.
-  if (isBlank(a)) return isBlank(b) ? 0 : 1;
-  if (isBlank(b)) return -1;
-  if (a instanceof Date && b instanceof Date) return b.getTime() - a.getTime();
-  if (typeof a === 'number' && typeof b === 'number') return b - a;
-  return String(a).localeCompare(String(b), 'pt-BR');
-}
-
-/** Um valor de segmentação com o tipo junto — a tela formata pelo tipo, não pelo formato. */
-function serializaValor(v: DaxValue): { valor: unknown; tipo: ReturnType<typeof tipoDe> } {
-  return {
-    valor: isBlank(v) ? null : v instanceof Date ? v.toISOString() : v,
-    tipo: tipoDe(v),
-  };
-}
-
-/** Inteiro de query string, com piso e teto. Valor inválido cai no padrão. */
-function inteiro(bruto: string | null, padrao: number, min: number, max: number): number {
-  if (bruto === null) return padrao;
-  const n = Number.parseInt(bruto, 10);
-  if (!Number.isFinite(n)) return padrao;
-  return Math.min(max, Math.max(min, n));
-}
