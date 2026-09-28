@@ -176,3 +176,23 @@ test('refresh e snapshot-diario: heap autorizado + folga de não-heap cabem no m
   assert.ok(cron + FOLGA_MB <= limiteMb(bloco('snapshot-diario')), `snapshot-diario: ${cron} + folga > mem_limit`);
 });
 
+
+test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google montada onde a variável aponta (ACHADOS #157)', () => {
+  const linhas = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8').split(/\r?\n/);
+  const bloco = (nome: string): string => {
+    const inicio = linhas.indexOf(`  ${nome}:`);
+    assert.ok(inicio >= 0, `serviço ${nome} não encontrado`);
+    const fim = linhas.findIndex((l, k) => k > inicio && /^(  [a-z-]+:|volumes:)$/.test(l));
+    return linhas.slice(inicio + 1, fim < 0 ? undefined : fim).join('\n');
+  };
+  for (const s of ['api', 'refresh', 'snapshot-diario']) {
+    assert.match(bloco(s), /^\s+init: true$/m, `${s} sem init: true — como PID 1 ele não recebe SIGTERM`);
+  }
+  assert.match(bloco('api'), /VIGIA_TRAVAMENTO_S: '\d+'/, 'a api do contêiner tem de ligar o vigia');
+  for (const s of ['refresh', 'snapshot-diario']) {
+    const b = bloco(s);
+    const alvo = b.match(/GOOGLE_APPLICATION_CREDENTIALS: (\S+)/)?.[1];
+    assert.ok(alvo, `${s} sem GOOGLE_APPLICATION_CREDENTIALS no environment`);
+    assert.ok(b.includes(`:${alvo}:ro`), `${s}: a credencial não está montada só-leitura em ${alvo}`);
+  }
+});

@@ -146,6 +146,11 @@ export type EventoDeRefresh =
    */
   | { evento: 'grupo-adiado'; quando: string; grupo: string; falhasConsecutivas: number; ate: string }
   /**
+   * O vigia de travamento (`apps/api/src/vigia-travamento.ts`) matou a API: o laço
+   * principal ficou parado mais que `limiteMs`. Quem religa é o `restart` do contêiner.
+   */
+  | { evento: 'api-travou'; quando: string; paradoHaMs: number; limiteMs: number }
+  /**
    * A MÁQUINA DORMIU. Detectado por batimento: um temporizador de cadência fixa que
    * demorou muito mais que a própria cadência para disparar só pode ter sido
    * congelado junto com o processo.

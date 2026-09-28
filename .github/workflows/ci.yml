@@ -35,9 +35,10 @@ jobs:
       # Construir PELO COMPOSE, não com `--target` na mão: o defeito de 25/09 era o
       # compose não declarar o `target`, e um build manual o esconderia.
       - name: constrói as imagens como o compose constrói
-        # O compose exige REDIS_PASSWORD só para interpolar o arquivo; o build não usa.
+        # O compose exige estas duas só para interpolar o arquivo; o build não usa nenhuma.
         env:
           REDIS_PASSWORD: so-para-o-build
+          GOOGLE_CREDENCIAL_HOST: /dev/null
         run: docker compose -p ci -f docker-compose.prod.yml build api refresh snapshot-diario
       - name: cada serviço recebeu a imagem certa
         run: sh tools/ci/confere-imagens.sh

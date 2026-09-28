@@ -16,7 +16,9 @@ import { createVoallePool } from '../../../packages/query-engine/src/connectors-
 import type { Cache } from '../../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { Agendador, agendaNesteProcesso } from './agendador.ts';
+import { fechaHttp, instalaDesligamento } from './desligamento.ts';
 import { instalaGuardaDeProcesso } from './guarda-de-processo.ts';
+import { iniciaVigiaDeTravamento, limiteDoAmbiente, type Vigia } from './vigia-travamento.ts';
 import { Aquecedor } from './aquecedor.ts';
 import { PollerRealtime } from './poller-realtime.ts';
 import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
@@ -352,7 +354,29 @@ http.on('error', (err: NodeJS.ErrnoException) => {
   process.exit(1);
 });
 
+/** Só no contêiner (`VIGIA_TRAVAMENTO_S` no compose) — ver `vigia-travamento.ts`. */
+const limiteDoVigiaMs = limiteDoAmbiente();
+let vigia: Vigia | null = null;
+
+// SIGTERM do `docker stop` / Ctrl+C: sai em ordem em vez de ser morta no meio. O vigia
+// para primeiro — um desligamento lento não é travamento.
+instalaDesligamento({
+  passos: [
+    { nome: 'vigia', fn: () => vigia?.para() },
+    { nome: 'agendador', fn: () => agendador?.para() },
+    { nome: 'poller', fn: () => poller?.para() },
+    { nome: 'aquecedor', fn: () => aquecedor?.para() },
+    { nome: 'http', fn: () => fechaHttp(http) },
+    { nome: 'servidor', fn: () => servidor.destroi() },
+  ],
+});
+
 http.listen(porta, () => {
+  // Depois do `listen`, não antes: a carga inicial do snapshot pode segurar o laço por
+  // bem mais que o limite, e isso é subir, não travar.
+  if (limiteDoVigiaMs !== null) {
+    vigia = iniciaVigiaDeTravamento({ limiteMs: limiteDoVigiaMs, snapshotDir: path.join(ROOT, DIRETORIO_PADRAO) });
+  }
   console.log(`\nAnalytics Platform — API de leitura`);
   console.log(`  tela  http://localhost:${porta}/`);
   console.log(`  saúde http://localhost:${porta}/api/saude`);
@@ -371,6 +395,9 @@ http.listen(porta, () => {
     `  Cache da resposta: ${cache ? 'memória + Redis (REDIS_URL)' : 'memória'}`,
   );
   console.log(`  Reaquecimento: ${semAquecer ? 'desligado (--sem-aquecer)' : 'automático'}`);
+  console.log(
+    `  Vigia de travamento: ${limiteDoVigiaMs === null ? 'desligado (sem VIGIA_TRAVAMENTO_S)' : `ligado, ${limiteDoVigiaMs / 1000} s`}`,
+  );
   console.log(
     `  Paginação: ${tetoDeVisuaisMB === 0 ? 'sem cache de visual (CACHE_VISUAL_MB=0) — cada janela recalcula' : 'janela sai do resultado já calculado'}`,
   );

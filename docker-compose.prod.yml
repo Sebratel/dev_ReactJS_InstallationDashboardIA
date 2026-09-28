@@ -65,6 +65,9 @@ services:
       # modo de desenvolvimento — e todo comportamento condicionado a
       # `NODE_ENV === 'production'` ficava desligado, sem erro e sem log.
       NODE_ENV: production
+      # Mata a API se o laço principal ficar parado 120 s, para o `restart` religar
+      # (ACHADOS #157). Só aqui: no `npm start` ninguém religaria.
+      VIGIA_TRAVAMENTO_S: '120'
       # DESLIGA o agendador que a API passou a ter dentro do processo em 19/09/2026
       # (apps/api/src/agendador.ts). AQUI, e só aqui — no host, `npm start` usa o
       # padrão, que é ligado, e é isso que tirou a tarefa do Agendador de Tarefas do
@@ -106,6 +109,9 @@ services:
       - '${API_PORT_HOST:-3100}:3100'
     depends_on:
       - redis
+    # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
+    # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
+    init: true
     restart: unless-stopped
     healthcheck:
       test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3100/api/saude').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -176,14 +182,21 @@ services:
     mem_limit: 6g
     environment:
       NODE_ENV: production
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-sa.json
       REFRESH_INTERVAL_MINUTOS: '15'
       REFRESH_MEMORIA_MB: '4096'
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
+      # Credencial Google só-leitura: o `.env` traz o caminho do HOST, que não existe no
+      # contêiner (ACHADOS #153). GOOGLE_CREDENCIAL_HOST = esse caminho, no servidor.
+      - ${GOOGLE_CREDENCIAL_HOST:?defina GOOGLE_CREDENCIAL_HOST no .env - caminho no host do JSON da service account Google}:/run/secrets/google-sa.json:ro
     depends_on:
       api:
         condition: service_healthy
     command: ["node", "--max-old-space-size=1024", "tools/refresh/src/daemon.ts"]
+    # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
+    # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
+    init: true
     restart: unless-stopped
 
   # Snapshot diário COMPLETO — cron dentro do container, às 3h (docker/cron/
@@ -207,11 +220,18 @@ services:
     mem_limit: 6g
     environment:
       NODE_ENV: production
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-sa.json
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
+      # Credencial Google só-leitura: o `.env` traz o caminho do HOST, que não existe no
+      # contêiner (ACHADOS #153). GOOGLE_CREDENCIAL_HOST = esse caminho, no servidor.
+      - ${GOOGLE_CREDENCIAL_HOST:?defina GOOGLE_CREDENCIAL_HOST no .env - caminho no host do JSON da service account Google}:/run/secrets/google-sa.json:ro
     depends_on:
       api:
         condition: service_healthy
+    # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
+    # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
+    init: true
     restart: unless-stopped
 
 volumes:
