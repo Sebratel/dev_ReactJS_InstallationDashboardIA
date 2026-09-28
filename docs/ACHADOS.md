@@ -13403,3 +13403,34 @@ em acerto de cache.
 segmentação (um filtro por vez, sem combinar) — cliente 74.734, protocolo 96.802, contrato, datas
 avulsas. Cada um é um cálculo de página de 1–5 s. O que cabe é a baixa cardinalidade (≤ ~40 valores
 por filtro: status, tipo, cidade, equipe, turno, categorias…): ~420 cálculos por passada.
+
+## #163 — filtros de poucos valores pré-calculados, e uma worker sempre livre para quem usa (28/09)
+
+Pedido do Erick: "sempre pré carregue todos os filtros, pode gastar o que for preciso". Dúvida
+dele antes de ligar: "esses filtros vão travar a operação… impossibilitando o usuário de usar?".
+
+**Não travar:** a fila da piscina já era por prioridade (interactive > prefetch > warmup), mas
+prioridade só ordena o que ESPERA — um cálculo de fundo já despachado não é interrompido, e com as
+duas workers ocupadas por aquecimento um clique esperava um cálculo inteiro (fila de 17,6 s, #161).
+Agora o fundo usa no máximo `workers − 1` (`processaFila` + `FilaDePrioridade.saiAte`); com uma
+worker só não há reserva. Teste com worker lenta: 4 aquecimentos de 400 ms na fila, um clique sai
+em < 250 ms; sem a reserva o teste falha ("o fundo só pode ocupar workers − 1").
+
+**Pré-calcular:** "todos" são 546.791 valores (#162) — não cabe. Cabem os de até 40 valores, sem
+data (período já é `filtrosRecentes`): depois do `pronto`, o aquecedor pede, para cada valor, a URL
+exata do clique — página inteira + filtro de abertura + aquele valor (`aplicaSelecao` troca só a
+coluna; `normalizaFiltros` ignora a ordem). Rodada nova (reaquecimento, snapshot novo, `para()`)
+encerra a anterior no próximo passo. `AQUECE_FILTROS_ATE` regula (0 desliga).
+
+**Medido no `npm start` real, 12 min depois do aquecimento:** 489 recortes na rodada; amostra de
+um valor por filtro em cada página — **41 de 41 do cache, 1–38 ms**.
+
+**O que as mesmas métricas mostram e não pode sumir:** desde o reinício das 13:35 UTC,
+`calculo_ms_interactive` máx **133,6 s** (p95 10 s) e `calculo_ms_warmup` máx **304,7 s** (p95 30 s).
+Os extremos são dos primeiros minutos, com tudo frio, a página inteira num pedido só (#162) e a
+estação com ~1 GB livre. Quente, é instantâneo; frio, nesta máquina, pode ser muito lento. O
+servidor do Portainer é o lugar disto.
+
+**E um incidente meu no caminho:** o reinício das 13:24 travou no `vite build` (processo vivo,
+2 s de CPU em 10 min, provável `esbuild` órfão do `taskkill /T` anterior) e a API não subiu —
+**plataforma fora de 13:24 a 13:35 UTC**. Matar a árvore e subir de novo resolveu em segundos.
