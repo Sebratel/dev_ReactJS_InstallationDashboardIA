@@ -279,7 +279,13 @@ if (soAquece) {
       '--max-old-space-size=8192',
       ...flagsDeDiagnostico(dirDiagnostico),
       path.join(ROOT, 'apps', 'api', 'src', 'index.ts'),
-      '--sem-aquecer',
+      // A API se aquece sozinha — no arranque E depois de cada refresh (reaquecimento
+      // pós-evento). Até 28/09/2026 isto ia SEMPRE `--sem-aquecer`, sobra de 13/08,
+      // quando a API ainda não tinha aquecedor: sem ele, cada grupo que terminava
+      // deixava as páginas frias, e quem entrava depois esperava 10–21 s por página
+      // (9 vezes numa manhã, ACHADOS #161) — enquanto no Docker tudo abria na hora.
+      // A espera em `aquecimento.ts` já foi feita para este caso.
+      ...(semAquecer ? ['--sem-aquecer'] : []),
       // `npm start` é o caminho de desenvolvimento, e desde 04/09/2026 subir
       // sem provedor de login tem de ser DECLARADO — a API recusa subir sem
       // isto quando a credencial falta. Ver o comentário longo em
