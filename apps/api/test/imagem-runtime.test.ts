@@ -187,6 +187,8 @@ test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google 
   };
   for (const s of ['api', 'refresh', 'snapshot-diario']) {
     assert.match(bloco(s), /^\s+init: true$/m, `${s} sem init: true — como PID 1 ele não recebe SIGTERM`);
+    const graca = Number(bloco(s).match(/stop_grace_period: (\d+)s/)?.[1]);
+    assert.ok(graca > 8, `${s}: stop_grace_period tem de passar do teto de 8 s do desligamento`);
   }
   assert.match(bloco('api'), /VIGIA_TRAVAMENTO_S: '\d+'/, 'a api do contêiner tem de ligar o vigia');
   for (const s of ['refresh', 'snapshot-diario']) {
