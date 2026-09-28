@@ -113,6 +113,8 @@ const JANELA_AUTH_MS = 5 * 60_000;
 /** O teto frouxo de `/api/*`, só contra abuso grosseiro — não deve incomodar
  *  uso normal nem paginação rápida numa tabela grande. */
 const LIMITE_API_POR_MINUTO = 300;
+/** Quanto a "última pronta" de uma pergunta vive sem ser recalculada (ACHADOS #164). */
+const TTL_ULTIMA_PRONTA_S = 7 * 24 * 3600;
 const JANELA_API_MS = 60_000;
 
 /**
@@ -1359,6 +1361,23 @@ export class Servidor {
       carimbo,
       dia,
     });
+    // **A última resposta pronta desta MESMA pergunta, de qualquer snapshot (ACHADOS #164).**
+    // Mesma chave sem `carimbo` e sem `dia`: quando um refresh troca a identidade da
+    // página, `chave` some da vista na hora — e até o reaquecimento terminar não havia o
+    // que servir. Com esta, o pedido sai na hora com a versão anterior (e o `dadoDe` dela,
+    // que a tela mostra) enquanto a nova é calculada em segundo plano.
+    const chaveAnterior = chaveDaResposta({
+      escopo: escopoDoCache(quem),
+      pagina: dash.id,
+      filtros: daTela,
+      clicados,
+      visuais: visuaisPedidos,
+      de,
+      linhas,
+      termo,
+      carimbo: '*',
+      dia: '*',
+    });
 
     // De onde veio este pedido. Desde a F3 isto DECIDE a ordem da fila da
     // piscina, e não só mede — ver `prioridadeDe` em `metricas.ts`.
@@ -1459,186 +1478,212 @@ export class Servidor {
       this.metricas.conta(`voo_herdou_prioridade_pior_${origem}`);
     }
 
+    /** O cálculo da página, com a prioridade de quem o dispara. Ver `vooUnico.faz` abaixo. */
+    const calcula = async (prio: number): Promise<CorpoDaPagina> => {
+    let paginaCalculada: PaginaCalculada;
+    let dadoDe: string | null = null;
+    let omitidas: string[] = [];
+    let tabelasResumo: { nome: string; linhas: number }[] = [];
+
+    // **O overlay do poller, recortado para esta página.** Buscado UMA vez
+    // por cálculo e usado nos dois ramos abaixo: buscá-lo duas vezes faria o
+    // ramo da worker calcular sobre um overlay e o de fallback sobre outro,
+    // colhido milissegundos depois — dois números diferentes para o mesmo
+    // pedido, conforme a worker tivesse falhado ou não.
+    const overlays = this.#overlayDe(dash);
+    this.metricas.maximo('overlay_linhas_max', linhasDoOverlay(overlays));
+    if (overlays.size > 0) this.metricas.conta('calculos_com_overlay');
+
+    if (this.piscina.ativa) {
+      this.metricas.maximo('worker_fila_max', this.piscina.estado.fila);
+      // Quantas tarefas de cada classe REALMENTE chegaram à piscina. Comparado
+      // com `pedidos_<origem>`, é o que responde "quanto da fila que existia
+      // antes era só trabalho duplicado?": 6 pedidos iguais que viram 1
+      // entrada aqui são 5 cálculos que a F2 apagou, e que a F3 não teria de
+      // reordenar.
+      this.metricas.conta(`fila_entradas_${origem}`);
+      const tWorker = Date.now();
+      try {
+        const workerRes = await this.piscina.executa({
+          snapshotDir: this.opts.snapshotDir,
+          specsDir: path.join(this.opts.root, 'specs'),
+          dashboardSpec: alvo,
+          janela: { de, linhas, termo },
+          clicados,
+          liberaSobDemanda: libera,
+          precisaFormaCompleta: formaCompleta,
+          agoraIso: this.opts.agora().toISOString(),
+          // **A linha que destrava o near-realtime inteiro** (F1,
+          // 08/09/2026). Sem ela a worker chamava `carrega()` sem overlay e
+          // devolvia o número do disco: o poller detectava a mudança, o
+          // cache invalidava, o SSE avisava, o navegador refazia o GET — e
+          // recebia o mesmo de antes, depois de 10–20 s de recálculo. Nada
+          // falhava; o realtime só não entregava dado novo. Ver
+          // `worker-calculador.ts` e `overlay-realtime.ts`.
+          ...(overlays.size > 0 ? { overlays } : {}),
+          // O que faz `cacheDeCarga` (worker-calculador.ts) saber que o disco
+          // mudou por baixo, do mesmo jeito que `identidadeDaPagina()` já faz
+          // para `this.carregadas` aqui na thread principal — DISCO, não o
+          // memo (`carimboAtual()`), pela mesma razão de F5: um `fs.watch`
+          // mudo não pode deixar a worker presa ao `Carregado` de ontem.
+          //
+          // **Por página, e não `identidadeAtual()` (21/09/2026).** A global
+          // fazia a worker descartar o dataset de TODAS as páginas a cada
+          // rematerialização de QUALQUER tabela — uma a cada 1,5 min,
+          // medido, e ~2 s de releitura de disco por página alcançada. Aqui
+          // vai `dash` (a página inteira) e não `alvo` (recortado para os
+          // `?visual=` do pedido) de propósito: quem decide a identidade é
+          // de que tabelas a PÁGINA depende, que é a mesma conta que
+          // `carimboDaPagina` faz para a chave da resposta. Duas contas
+          // diferentes para a "mesma" identidade divergiriam.
+          identidade: this.identidadeDaPagina(dash),
+          // O ESCOPO de quem pediu, pelo mesmo motivo que ele entra em
+          // `chaveDoCompleto` aqui na thread principal: a worker agora
+          // guarda o resultado inteiro de visual paginável (ver
+          // `MemoDeCompletos` em `worker-calculador.ts`), e um memo sem
+          // escopo devolveria o recorte de um no lugar do do outro no dia
+          // em que existir Permission Engine. Hoje `escopoDoCache` é
+          // constante para todo mundo — e é exatamente por isso que o campo
+          // precisa viajar: quando deixar de ser, ninguém vai lembrar de
+          // vir até aqui procurar.
+          escopo: escopoDoCache(quem),
+        }, prio);
+        // `worker_ms` continua sendo a SOMA (espera + cálculo). Ele não foi
+        // substituído por `fila_ms_*`/`calculo_ms_*`: é o número que os
+        // testes e as medições das fases F1 e F2 usam, e trocar o significado
+        // dele tornaria aquelas comparações incomparáveis.
+        this.metricas.observa('worker_ms', Date.now() - tWorker);
+        paginaCalculada = workerRes.pagina as PaginaCalculada;
+        dadoDe = workerRes.dadoDe ?? null;
+        omitidas = workerRes.omitidas ?? [];
+        tabelasResumo = (workerRes.linhasPorTabela ?? []).map(([nome, n]) => ({ nome, linhas: n }));
+      } catch (errWorker) {
+        // **O motivo, e não só a contagem.** Este catch era cego: nem
+        // capturava o erro. Medido em 08/09/2026 numa subida por
+        // `npm start`, 32 de 45 voos caíram aqui — 71% dos cálculos
+        // pagando o
+        // dobro — e não havia uma linha em lugar nenhum dizendo por quê.
+        // É o mesmo defeito que a F2.1 consertou no Redis: degradar certo
+        // e não contar a ninguém.
+        //
+        // Uma linha por MOTIVO distinto, não por ocorrência: 32 cópias da
+        // mesma mensagem soterram a primeira, que era a que importava.
+        const motivo = errWorker instanceof Error ? errWorker.message : String(errWorker);
+        if (!this.motivosDeFallback.has(motivo)) {
+          this.motivosDeFallback.add(motivo);
+          console.error(
+            `[worker] caiu para cálculo em linha: ${motivo}. ` +
+              `A resposta sai certa e custa o dobro. Heap por worker: ` +
+              `${process.env.API_WORKER_HEAP_MB ?? '768'} MB.`,
+          );
+        }
+        // A worker falhou: cai para o cálculo em linha. Contado porque um
+        // fallback frequente é um defeito escondido — ele responde certo e
+        // paga o dobro, então nada na tela denuncia que está acontecendo.
+        // Desde 08/09 uma worker que MORRE também chega aqui: antes ela
+        // deixava a promessa pendente para sempre, e sob single-flight isso
+        // travaria a CHAVE inteira, não só um pedido (ver o handler de
+        // `exit` em `piscina-workers.ts`).
+        this.metricas.conta('worker_fallback');
+        const carregado = await this.carrega(dash, visuaisPedidos).catch((err: unknown) => {
+          throw comStatus(err, 409);
+        });
+        paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
+        dadoDe = carregado.dadoDe;
+        omitidas = carregado.omitidas;
+        tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
+      }
+    } else {
+      const carregado = await this.carrega(dash, visuaisPedidos).catch((err: unknown) => {
+        throw comStatus(err, 409);
+      });
+
+      const memo = {
+        le: (visual: string): unknown | undefined =>
+          this.completos.le(
+            chaveDoCompleto({
+              escopo: escopoDoCache(quem),
+              pagina: dash.id,
+              filtros: daTela,
+              clicados,
+              visual,
+              carimbo,
+              dia,
+            }),
+          ),
+        guarda: (visual: string, completo: unknown): void => {
+          this.completos.guarda(
+            chaveDoCompleto({
+              escopo: escopoDoCache(quem),
+              pagina: dash.id,
+              filtros: daTela,
+              clicados,
+              visual,
+              carimbo,
+              dia,
+            }),
+            completo,
+          );
+        },
+      };
+
+      paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, memo, clicados);
+      dadoDe = carregado.dadoDe;
+      omitidas = carregado.omitidas;
+      tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
+    }
+
+    const corpo: CorpoDaPagina = {
+      ...paginaCalculada,
+      dadoDe,
+      omitidas,
+      // O que a tela mandou, de volta: sem isto não há como conferir, olhando
+      // a resposta, se o número está filtrado pelo que a tela acha que mandou.
+      filtrosDaTela: daTela.map((f) => ({
+        tabela: f.entity,
+        coluna: f.property,
+        // O nível vai junto: sem ele não dá para distinguir, olhando a
+        // resposta, um filtro pelo **ano** de uma data de um filtro pela data
+        // crua — e os dois produzem números diferentes sobre a mesma coluna.
+        ...(f.nivel ? { nivel: f.nivel } : {}),
+        valores: f.conditions[0]?.op === 'in' ? f.conditions[0].values : [],
+      })),
+      tabelas: tabelasResumo,
+    };
+
+    // O corpo vai para o cache **sem** o campo `cache`: ele descreve o
+    // pedido, não a resposta, e congelá-lo como `miss` faria todo acerto se
+    // anunciar como falha.
+    await this.cache.guarda(chave, corpo, ttl);
+    // A "última pronta" aponta para o mesmo objeto (o cache em memória guarda
+    // referência): a segunda chave não dobra a memória.
+    await this.cache.guarda(chaveAnterior, corpo, TTL_ULTIMA_PRONTA_S);
+    return corpo;
+    };
+
+    // **Nunca esperar cálculo numa pergunta já respondida antes (ACHADOS #164).** Faltou
+    // a versão deste snapshot, mas existe uma anterior: ela sai AGORA, e a atual é
+    // calculada em segundo plano com prioridade de aquecimento (a piscina deixa uma
+    // worker livre para quem usa). O aquecedor não entra aqui — é ele quem prepara a
+    // versão nova, e servir-lhe a velha o faria aquecer nada.
+    if (ttl > 0 && !recalcula && origem !== 'warmup') {
+      const anterior = await this.cache.le<object>(chaveAnterior);
+      if (anterior !== undefined) {
+        this.metricas.conta('servido_anterior');
+        this.marcaPrimeiroGet(dash.id, origem, true, tPedido);
+        responde(res, 200, { ...anterior, cache: 'anterior' satisfies EstadoDoCache });
+        const fundo = prioridadeDe('warmup');
+        void this.vooUnico.faz<CorpoDaPagina>(chave, () => calcula(fundo), fundo).catch(() => {
+          // Falhou o recálculo de fundo: o próximo pedido tenta de novo, e quem pediu
+          // já foi servido.
+        });
+        return;
+      }
+    }
+
     let voo: Voo<CorpoDaPagina>;
     try {
-      voo = await this.vooUnico.faz<CorpoDaPagina>(chave, async () => {
-        let paginaCalculada: PaginaCalculada;
-        let dadoDe: string | null = null;
-        let omitidas: string[] = [];
-        let tabelasResumo: { nome: string; linhas: number }[] = [];
-
-        // **O overlay do poller, recortado para esta página.** Buscado UMA vez
-        // por cálculo e usado nos dois ramos abaixo: buscá-lo duas vezes faria o
-        // ramo da worker calcular sobre um overlay e o de fallback sobre outro,
-        // colhido milissegundos depois — dois números diferentes para o mesmo
-        // pedido, conforme a worker tivesse falhado ou não.
-        const overlays = this.#overlayDe(dash);
-        this.metricas.maximo('overlay_linhas_max', linhasDoOverlay(overlays));
-        if (overlays.size > 0) this.metricas.conta('calculos_com_overlay');
-
-        if (this.piscina.ativa) {
-          this.metricas.maximo('worker_fila_max', this.piscina.estado.fila);
-          // Quantas tarefas de cada classe REALMENTE chegaram à piscina. Comparado
-          // com `pedidos_<origem>`, é o que responde "quanto da fila que existia
-          // antes era só trabalho duplicado?": 6 pedidos iguais que viram 1
-          // entrada aqui são 5 cálculos que a F2 apagou, e que a F3 não teria de
-          // reordenar.
-          this.metricas.conta(`fila_entradas_${origem}`);
-          const tWorker = Date.now();
-          try {
-            const workerRes = await this.piscina.executa({
-              snapshotDir: this.opts.snapshotDir,
-              specsDir: path.join(this.opts.root, 'specs'),
-              dashboardSpec: alvo,
-              janela: { de, linhas, termo },
-              clicados,
-              liberaSobDemanda: libera,
-              precisaFormaCompleta: formaCompleta,
-              agoraIso: this.opts.agora().toISOString(),
-              // **A linha que destrava o near-realtime inteiro** (F1,
-              // 08/09/2026). Sem ela a worker chamava `carrega()` sem overlay e
-              // devolvia o número do disco: o poller detectava a mudança, o
-              // cache invalidava, o SSE avisava, o navegador refazia o GET — e
-              // recebia o mesmo de antes, depois de 10–20 s de recálculo. Nada
-              // falhava; o realtime só não entregava dado novo. Ver
-              // `worker-calculador.ts` e `overlay-realtime.ts`.
-              ...(overlays.size > 0 ? { overlays } : {}),
-              // O que faz `cacheDeCarga` (worker-calculador.ts) saber que o disco
-              // mudou por baixo, do mesmo jeito que `identidadeDaPagina()` já faz
-              // para `this.carregadas` aqui na thread principal — DISCO, não o
-              // memo (`carimboAtual()`), pela mesma razão de F5: um `fs.watch`
-              // mudo não pode deixar a worker presa ao `Carregado` de ontem.
-              //
-              // **Por página, e não `identidadeAtual()` (21/09/2026).** A global
-              // fazia a worker descartar o dataset de TODAS as páginas a cada
-              // rematerialização de QUALQUER tabela — uma a cada 1,5 min,
-              // medido, e ~2 s de releitura de disco por página alcançada. Aqui
-              // vai `dash` (a página inteira) e não `alvo` (recortado para os
-              // `?visual=` do pedido) de propósito: quem decide a identidade é
-              // de que tabelas a PÁGINA depende, que é a mesma conta que
-              // `carimboDaPagina` faz para a chave da resposta. Duas contas
-              // diferentes para a "mesma" identidade divergiriam.
-              identidade: this.identidadeDaPagina(dash),
-              // O ESCOPO de quem pediu, pelo mesmo motivo que ele entra em
-              // `chaveDoCompleto` aqui na thread principal: a worker agora
-              // guarda o resultado inteiro de visual paginável (ver
-              // `MemoDeCompletos` em `worker-calculador.ts`), e um memo sem
-              // escopo devolveria o recorte de um no lugar do do outro no dia
-              // em que existir Permission Engine. Hoje `escopoDoCache` é
-              // constante para todo mundo — e é exatamente por isso que o campo
-              // precisa viajar: quando deixar de ser, ninguém vai lembrar de
-              // vir até aqui procurar.
-              escopo: escopoDoCache(quem),
-            }, prioridade);
-            // `worker_ms` continua sendo a SOMA (espera + cálculo). Ele não foi
-            // substituído por `fila_ms_*`/`calculo_ms_*`: é o número que os
-            // testes e as medições das fases F1 e F2 usam, e trocar o significado
-            // dele tornaria aquelas comparações incomparáveis.
-            this.metricas.observa('worker_ms', Date.now() - tWorker);
-            paginaCalculada = workerRes.pagina as PaginaCalculada;
-            dadoDe = workerRes.dadoDe ?? null;
-            omitidas = workerRes.omitidas ?? [];
-            tabelasResumo = (workerRes.linhasPorTabela ?? []).map(([nome, n]) => ({ nome, linhas: n }));
-          } catch (errWorker) {
-            // **O motivo, e não só a contagem.** Este catch era cego: nem
-            // capturava o erro. Medido em 08/09/2026 numa subida por
-            // `npm start`, 32 de 45 voos caíram aqui — 71% dos cálculos
-            // pagando o
-            // dobro — e não havia uma linha em lugar nenhum dizendo por quê.
-            // É o mesmo defeito que a F2.1 consertou no Redis: degradar certo
-            // e não contar a ninguém.
-            //
-            // Uma linha por MOTIVO distinto, não por ocorrência: 32 cópias da
-            // mesma mensagem soterram a primeira, que era a que importava.
-            const motivo = errWorker instanceof Error ? errWorker.message : String(errWorker);
-            if (!this.motivosDeFallback.has(motivo)) {
-              this.motivosDeFallback.add(motivo);
-              console.error(
-                `[worker] caiu para cálculo em linha: ${motivo}. ` +
-                  `A resposta sai certa e custa o dobro. Heap por worker: ` +
-                  `${process.env.API_WORKER_HEAP_MB ?? '768'} MB.`,
-              );
-            }
-            // A worker falhou: cai para o cálculo em linha. Contado porque um
-            // fallback frequente é um defeito escondido — ele responde certo e
-            // paga o dobro, então nada na tela denuncia que está acontecendo.
-            // Desde 08/09 uma worker que MORRE também chega aqui: antes ela
-            // deixava a promessa pendente para sempre, e sob single-flight isso
-            // travaria a CHAVE inteira, não só um pedido (ver o handler de
-            // `exit` em `piscina-workers.ts`).
-            this.metricas.conta('worker_fallback');
-            const carregado = await this.carrega(dash, visuaisPedidos).catch((err: unknown) => {
-              throw comStatus(err, 409);
-            });
-            paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
-            dadoDe = carregado.dadoDe;
-            omitidas = carregado.omitidas;
-            tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
-          }
-        } else {
-          const carregado = await this.carrega(dash, visuaisPedidos).catch((err: unknown) => {
-            throw comStatus(err, 409);
-          });
-
-          const memo = {
-            le: (visual: string): unknown | undefined =>
-              this.completos.le(
-                chaveDoCompleto({
-                  escopo: escopoDoCache(quem),
-                  pagina: dash.id,
-                  filtros: daTela,
-                  clicados,
-                  visual,
-                  carimbo,
-                  dia,
-                }),
-              ),
-            guarda: (visual: string, completo: unknown): void => {
-              this.completos.guarda(
-                chaveDoCompleto({
-                  escopo: escopoDoCache(quem),
-                  pagina: dash.id,
-                  filtros: daTela,
-                  clicados,
-                  visual,
-                  carimbo,
-                  dia,
-                }),
-                completo,
-              );
-            },
-          };
-
-          paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, memo, clicados);
-          dadoDe = carregado.dadoDe;
-          omitidas = carregado.omitidas;
-          tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
-        }
-
-        const corpo: CorpoDaPagina = {
-          ...paginaCalculada,
-          dadoDe,
-          omitidas,
-          // O que a tela mandou, de volta: sem isto não há como conferir, olhando
-          // a resposta, se o número está filtrado pelo que a tela acha que mandou.
-          filtrosDaTela: daTela.map((f) => ({
-            tabela: f.entity,
-            coluna: f.property,
-            // O nível vai junto: sem ele não dá para distinguir, olhando a
-            // resposta, um filtro pelo **ano** de uma data de um filtro pela data
-            // crua — e os dois produzem números diferentes sobre a mesma coluna.
-            ...(f.nivel ? { nivel: f.nivel } : {}),
-            valores: f.conditions[0]?.op === 'in' ? f.conditions[0].values : [],
-          })),
-          tabelas: tabelasResumo,
-        };
-
-        // O corpo vai para o cache **sem** o campo `cache`: ele descreve o
-        // pedido, não a resposta, e congelá-lo como `miss` faria todo acerto se
-        // anunciar como falha.
-        await this.cache.guarda(chave, corpo, ttl);
-        return corpo;
-      }, prioridade);
+      voo = await this.vooUnico.faz<CorpoDaPagina>(chave, () => calcula(prioridade), prioridade);
     } catch (err) {
       // O erro do voo chega IGUAL a todos os que esperavam por ele, inclusive a
       // quem não o disparou. É o que o requisito 9 pede ("erro libera o

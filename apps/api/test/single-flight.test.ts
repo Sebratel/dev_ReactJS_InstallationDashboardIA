@@ -237,8 +237,20 @@ test('o voo NÃO sobrevive à mudança do snapshot: carimbo novo é chave nova',
     manifesto.tabelas[0].geradoEm = '2026-08-07T11:30:00.000Z';
     fs.writeFileSync(path.join(dir, 'manifesto.json'), JSON.stringify(manifesto));
 
+    // Desde 28/09/2026 (ACHADOS #164) o primeiro pedido depois do refresh sai com a
+    // versão ANTERIOR, dita como tal — e o recálculo é um voo NOVO, na chave nova. Se a
+    // chave do voo não levasse o carimbo, ele entraria no voo velho e a resposta
+    // seguinte seria `anterior` para sempre.
+    const antes = calculos(await s.metricas());
     const depois = await (await s.busca('/api/dashboards/capa')).json();
-    assert.equal(depois.cache, 'miss', 'depois do refresh o pedido tem de recalcular, nunca reaproveitar');
+    assert.equal(depois.cache, 'anterior', 'a tela recebe a versão pronta, dita como anterior');
+    let seguinte = depois;
+    for (let i = 0; i < 500 && seguinte.cache === 'anterior'; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+      seguinte = await (await s.busca('/api/dashboards/capa')).json();
+    }
+    assert.equal(seguinte.cache, 'hit', 'o recálculo de fundo chegou, na chave do snapshot novo');
+    assert.equal(calculos(await s.metricas()) - antes, 1, 'um cálculo novo, e só um');
   } finally {
     await s.fecha();
   }

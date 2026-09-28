@@ -556,7 +556,17 @@ test('janela diferente é chave diferente: recalcula em vez de servir a página 
   }
 });
 
-test('snapshot refeito invalida: a tela não continua servindo o número velho', async () => {
+/** Pede até a resposta deixar de ser a `anterior` — o recálculo de fundo terminou (#164). */
+async function esperaFresco(s: { busca: (u: string) => Promise<Response> }, url: string): Promise<{ cache: string }> {
+  const ate = Date.now() + 10_000;
+  for (;;) {
+    const j = (await (await s.busca(url)).json()) as { cache: string };
+    if (j.cache !== 'anterior' || Date.now() > ate) return j;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+}
+
+test('snapshot refeito: sai NA HORA a versão anterior, e o número novo logo depois — nunca preso no velho', async () => {
   const dir = await dirComCapa('2026-08-07T11:00:00.000Z');
   const memoria = new MemoryCache();
   const s = await sobe(dir, memoria);
@@ -564,12 +574,19 @@ test('snapshot refeito invalida: a tela não continua servindo o número velho',
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'miss');
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
 
-    // `npm run snapshot` rodou de novo.
+    // `npm run snapshot` rodou de novo. Até 28/09/2026 o pedido seguinte era `miss`:
+    // recalculava na frente de quem pediu, e numa página pesada isso eram minutos de
+    // "carregando…" (ACHADOS #164). Agora a anterior sai na hora, dita como tal.
     await escreveCapa(dir, '2026-08-07T18:00:00.000Z');
     assert.equal(
       (await (await s.busca('/api/dashboards/capa')).json()).cache,
-      'miss',
-      'refresh que não invalida é um painel que não muda depois do refresh',
+      'anterior',
+      'depois do refresh a tela recebe a versão pronta, sem esperar cálculo',
+    );
+    assert.equal(
+      (await esperaFresco(s, '/api/dashboards/capa')).cache,
+      'hit',
+      'refresh que não chega é um painel que não muda depois do refresh',
     );
   } finally {
     await s.fecha();
@@ -600,12 +617,14 @@ test('a virada do dia invalida, mesmo com o snapshot intacto', async () => {
       'a hora não pode invalidar — só o dia',
     );
 
-    // Passou. O disco não mudou uma linha; `TODAY()` mudou.
+    // Passou. O disco não mudou uma linha; `TODAY()` mudou. A de ontem sai na hora,
+    // marcada `anterior`, e a de hoje é calculada em fundo (ACHADOS #164).
     relogio = new Date('2026-08-08T00:00:01.000Z');
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'anterior');
     assert.equal(
-      (await (await s.busca('/api/dashboards/capa')).json()).cache,
-      'miss',
-      'depois da virada, a resposta de ontem é o TODAY() errado com cara de certo',
+      (await esperaFresco(s, '/api/dashboards/capa')).cache,
+      'hit',
+      'depois da virada, a de ontem só pode ficar enquanto a de hoje calcula',
     );
   } finally {
     await s.fecha();
