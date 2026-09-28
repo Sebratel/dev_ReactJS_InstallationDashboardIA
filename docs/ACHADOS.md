@@ -13328,3 +13328,8 @@ esperando a vez", entrou 5 s depois, terminou 0 e apagou a trava. Suíte: 2.172 
 
 O `snapshot-diario` fica: não tinha como ser removido sem saber se a carga completa noturna
 ainda pega alteração retroativa que o incremental perde — mas agora não pisa no `refresh`.
+
+**#159, confirmação no `npm start` real (28/09):** o próximo grupo do agendador (`frio`) rodou
+já com o código novo — cada grupo é um processo novo, então não foi preciso reiniciar. Durante
+a carga, a trava estava lá com o materializador do grupo como dono; no fim foi apagada;
+execuções 8 → 11, falhas 0 → 0.
