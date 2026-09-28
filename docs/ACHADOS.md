@@ -13359,3 +13359,47 @@ recuperando. **A régua antiga dizia `ok` para as 23 queries**: 8 horas de dado 
 o #129 de novo. Testes novos conferidos por mutação (réguas antigas → 2 falham). Suíte 2.178 + 1.
 
 Aviso para fora (e-mail/Chat) segue esperando o destino.
+
+## #161 — no `npm start` as páginas esfriavam a cada refresh, e a API morta não voltava (28/09)
+
+Relato do Erick: "entrei na plataforma e tive que esperar vários minutos"; "no Docker tudo é
+instantâneo". Os números da própria API (`/api/saude` → `realtime.duracoes`, desde 01:50 UTC):
+`get_pagina_ms` p50 10 ms e máx **21,5 s**; fila de cálculo até **17,6 s**; e
+`primeiro_get_pos_evento_miss` = **9** — nove vezes o primeiro pedido depois de um refresh achou
+a página fria.
+
+**Causa:** o `tools/subir` passava SEMPRE `--sem-aquecer` à API. É sobra de 13/08 (`6ebab2b`),
+quando a API ainda não tinha aquecedor (veio em 17/08); o `aquecimento.ts` do próprio `subir` já
+tinha sido escrito para ESPERAR o aquecedor da API, e a flag o anulava. Sem aquecedor na API não
+há reaquecimento pós-evento: cada grupo (15–30 min) deixava as páginas frias. No Docker a API
+sobe sem a flag — daí a diferença. Agravantes da manhã: a máquina dormiu 5h50, acordou com 6
+grupos seguidos para recuperar, e tinha 1,1 GB livres de 15,7 GB (API 2,4 GB + materializador
+3,0 GB + Chrome/Claude/IDE). **Conserto** (`a48a1b4`): a flag só vai quando pedida. Medido: 11
+páginas em ≤ 0,01 s; depois do refresh de 12:36, `primeiro_get_pos_evento_miss` 0 → 0.
+
+**No caminho, a API caiu** às 12:11 UTC com `0xC0000409` — a 8ª vez desde 18/09 (#149), as
+anteriores com o aquecedor DESLIGADO; causa nativa ainda aberta (o Windows não registrou módulo no
+log de eventos). O que doía era outro: o `npm start` não religava, e a plataforma ficava fora até
+alguém notar. **Agora religa** (`82587d2`) com `decideRessurreicao` (`supervisao.ts`: 5 tentativas,
+5 s → 5 min, 1 min de vida zera). O motivo antigo de não religar — outra instância tomando a porta —
+é conferido na hora: porta tomada, não religa. Saída 0 e 2 não religam. `api-religada` no
+histórico. Provado derrubando a API à força: de volta em **7 s**.
+
+## #162 — a página abre inteira: sem "carregando…" de visual fora da dobra (28/09)
+
+Print do Erick: faixas de `agendamento-field` em "carregando…" ao rolar, com o id no título.
+"Preciso que tudo já esteja carregado"; "pode gastar o que for preciso". A abertura pedia só as 4
+primeiras faixas (`N_FAIXAS_EAGER`, ACHADOS #94); o resto vinha por `IntersectionObserver`
+(`VisualNaDobra`), e o aquecedor só o adiantava com o filtro de abertura — de propósito, para não
+fazer 18 cálculos por passada. Trocar de filtro e rolar caía em cálculo frio.
+
+**Agora `N_FAIXAS_EAGER` = todas** (`cbc5e93`): a abertura pede a página inteira, na chave que o
+aquecedor já enche para a abertura e os períodos recentes (`filtrosRecentes`). O corte segue
+parâmetro (`idsIniciais`/`idsRestantes(layout, n)`, `Aquecedor.nFaixasEager`) e os testes do
+mecanismo passam 4. Medido: `agendamento-field` 26 → **32** visuais na abertura, todas as páginas
+em acerto de cache.
+
+**"Todos os filtros" ao pé da letra não cabe:** contados na API local, são **546.791** valores de
+segmentação (um filtro por vez, sem combinar) — cliente 74.734, protocolo 96.802, contrato, datas
+avulsas. Cada um é um cálculo de página de 1–5 s. O que cabe é a baixa cardinalidade (≤ ~40 valores
+por filtro: status, tipo, cidade, equipe, turno, categorias…): ~420 cálculos por passada.
