@@ -181,7 +181,13 @@ export class FilaDePrioridade<T extends { prioridade: number }> {
 
   /** O próximo a rodar: a classe mais urgente que tiver alguém, e o mais antigo dela. */
   sai(): T | undefined {
-    for (const fila of this.#filas) {
+    return this.saiAte(this.#filas.length - 1);
+  }
+
+  /** Como `sai`, mas só de classes até `classeMax` — as de fundo ficam esperando. */
+  saiAte(classeMax: number): T | undefined {
+    for (let i = 0; i <= Math.min(classeMax, this.#filas.length - 1); i++) {
+      const fila = this.#filas[i]!;
       if (fila.length > 0) return fila.shift();
     }
     return undefined;
@@ -400,7 +406,15 @@ export class PiscinaWorkers {
    */
   private processaFila(): void {
     while (this.livres.length > 0) {
-      const tarefa = this.tarefas.sai();
+      // **Uma worker fica sempre para quem está usando (28/09/2026, ACHADOS #163).**
+      // A prioridade sozinha ordena só o que ESPERA: um cálculo de fundo já despachado
+      // não é interrompido, e com as duas workers ocupadas por aquecimento/pré-cálculo
+      // um clique esperava um cálculo inteiro (até 17,6 s medidos). Fundo (prefetch,
+      // warmup) usa no máximo `workers - 1`; a última livre só pega pedido interativo.
+      // Com uma worker só não há reserva — senão o fundo nunca rodaria.
+      const deFundo = [...this.pendentesPorWorker.values()].filter((t) => t.prioridade > 0).length;
+      const fundoPode = this.workers.length <= 1 || deFundo < this.workers.length - 1;
+      const tarefa = fundoPode ? this.tarefas.sai() : this.tarefas.saiAte(0);
       if (tarefa === undefined) return;
       const worker = this.livres.pop()!;
       tarefa.despachadaEm = Date.now();

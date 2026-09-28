@@ -219,3 +219,31 @@ test('a ordem das classes é a que a fila usa, e ORIGENS é a única tabela', ()
   assert.ok(prioridadeDe('prefetch') < prioridadeDe('warmup'));
   for (const o of ORIGENS) assert.equal(ORIGENS[prioridadeDe(o)], o);
 });
+
+test('reserva (ACHADOS #163): com fundo enchendo a piscina, um clique NÃO espera cálculo de fundo em curso', async () => {
+  // Duas workers, quatro aquecimentos de 400 ms na fila, e um clique 30 ms depois. Sem
+  // a reserva, as duas workers pegam aquecimento e o clique espera ~400 ms; com ela,
+  // uma worker fica livre e o clique sai na hora.
+  const p = new PiscinaWorkers({ tamanhoPool: 2, scriptDaWorker: LENTO });
+  try {
+    const fundo = [1, 2, 3, 4].map(() => p.executa(tarefa(400), WARMUP));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(p.estado.ocupados, 1, 'o fundo só pode ocupar workers - 1');
+    const t0 = Date.now();
+    await p.executa(tarefa(10), INTERACTIVE);
+    const clique = Date.now() - t0;
+    assert.ok(clique < 250, `o clique esperou ${clique} ms — ficou atrás de aquecimento em curso`);
+    await Promise.all(fundo); // e o fundo não passa fome: termina, só que um por vez
+  } finally {
+    p.destroi();
+  }
+});
+
+test('reserva: com UMA worker só não há reserva — o fundo ainda roda', async () => {
+  const p = new PiscinaWorkers({ tamanhoPool: 1, scriptDaWorker: LENTO });
+  try {
+    await p.executa(tarefa(20), WARMUP);
+  } finally {
+    p.destroi();
+  }
+});

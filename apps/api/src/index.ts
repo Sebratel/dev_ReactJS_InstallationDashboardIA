@@ -420,6 +420,10 @@ http.listen(porta, () => {
       // deste ir-e-vir local.
       buscar: (url, init) =>
         fetch(url, { ...init, headers: { ...init?.headers, 'x-aquecedor-interno': servidor.segredoInterno() } }),
+      // Filtros de poucos valores pré-calculados (ACHADOS #163): `AQUECE_FILTROS_ATE=0` desliga.
+      ...(process.env.AQUECE_FILTROS_ATE !== undefined && Number.isFinite(Number(process.env.AQUECE_FILTROS_ATE))
+        ? { filtrosAte: Number(process.env.AQUECE_FILTROS_ATE) }
+        : {}),
     });
     aquecedor.inicia();
   }

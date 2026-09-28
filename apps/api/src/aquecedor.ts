@@ -34,7 +34,7 @@
 // pede. Qualquer falha ao buscar o layout cai de volta para a URL antiga: aquecer a
 // chave errada é melhor do que não aquecer nenhuma.
 
-import { codificaFiltro, filtrosRecentes } from '../../../packages/widget-engine/src/index.ts';
+import { codificaFiltro, filtrosRecentes, type FiltroDeTela } from '../../../packages/widget-engine/src/index.ts';
 import { N_FAIXAS_EAGER, idsIniciais, idsRestantes } from '../../../tools/layout/src/corte-eager.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 
@@ -58,9 +58,17 @@ export interface Passada {
   obsoleta: boolean;
 }
 
+/** Até quantos valores um filtro tem para ser pré-calculado valor a valor (ACHADOS #163). */
+export const FILTROS_ATE_PADRAO = 40;
+
 export interface OpcoesDoAquecedor {
   /** O corte eager. Padrão: `N_FAIXAS_EAGER` (todas). Os testes do mecanismo passam 4. */
   nFaixasEager?: number;
+  /**
+   * Pré-calcula, depois do aquecimento, cada valor dos filtros com até este número de
+   * valores (ACHADOS #163). Padrão 40; 0 desliga. Na API vem de `AQUECE_FILTROS_ATE`.
+   */
+  filtrosAte?: number;
   /** Ex.: `http://127.0.0.1:3100`. Sem barra no fim. */
   base: string;
   /**
@@ -78,6 +86,12 @@ export interface OpcoesDoAquecedor {
 export class Aquecedor {
   readonly #base: string;
   readonly #nFaixasEager: number;
+  readonly #filtrosAte: number;
+  /** Por página: a URL de abertura, o filtro de abertura e os filtros pré-calculáveis. */
+  readonly #filtraveis = new Map<string, { url: string; abertura: FiltroDeTela[]; segs: { tabela: string; coluna: string; valores: FiltroDeTela['valores'] }[] }>();
+  /** Cada rodada de filtros nova (ou `para()`) invalida a anterior, que sai no próximo passo. */
+  #geracao = 0;
+  #filtrosEmCurso: Promise<void> = Promise.resolve();
   readonly #carimbo: () => string;
   readonly #buscar: typeof fetch;
   readonly #agora: () => number;
@@ -93,6 +107,7 @@ export class Aquecedor {
   constructor(opts: OpcoesDoAquecedor) {
     this.#base = opts.base.replace(/\/$/, '');
     this.#nFaixasEager = opts.nFaixasEager ?? N_FAIXAS_EAGER;
+    this.#filtrosAte = opts.filtrosAte ?? FILTROS_ATE_PADRAO;
     this.#carimbo = opts.carimbo;
     this.#buscar = opts.buscar ?? fetch;
     this.#agora = opts.agora ?? (() => Date.now());
@@ -114,6 +129,7 @@ export class Aquecedor {
   }
 
   para(): void {
+    this.#geracao += 1;
     if (this.#timer !== null) clearInterval(this.#timer);
     this.#timer = null;
   }
@@ -183,6 +199,7 @@ export class Aquecedor {
         `[reaquecedor] ${feitas.length} página(s) quentes em ${(ms / 1000).toFixed(1)}s` +
           (erros > 0 ? `, ${erros} com erro` : ''),
       );
+      this.#disparaFiltros(paginas);
       return feitas;
     } finally {
       this.#ocupado = false;
@@ -213,6 +230,7 @@ export class Aquecedor {
       const agora = this.#carimbo();
       const obsoleta = agora !== carimbo;
       this.#aquecido = obsoleta ? null : carimbo;
+      if (!obsoleta) this.#disparaFiltros(paginas.map((p) => p.pagina));
 
       const ms = this.#agora() - t0;
       const erros = paginas.filter((p) => p.status !== 200).length;
@@ -237,6 +255,54 @@ export class Aquecedor {
    * para encher um cache que ninguém consultava. Continuam calculáveis por
    * `/api/dashboards/l-inst` — o que muda é só quem o ciclo visita sozinho.
    */
+  /** A rodada de filtros em curso — para teste e para quem quiser esperar por ela. */
+  aguardaFiltros(): Promise<void> {
+    return this.#filtrosEmCurso;
+  }
+
+  #disparaFiltros(paginas: readonly string[]): void {
+    if (this.#filtrosAte <= 0 || paginas.length === 0) return;
+    const minha = ++this.#geracao;
+    this.#filtrosEmCurso = this.#preaqueceFiltros(paginas, minha);
+  }
+
+  /**
+   * **Cada valor dos filtros de poucos valores, com o filtro de abertura (ACHADOS #163).**
+   * É a URL exata do clique: `aplicaSelecao` (`apps/web/src/rota.ts`) troca a seleção
+   * daquela coluna e mantém os outros filtros, e `normalizaFiltros` ignora a ordem. Vai
+   * como `warmup` — a prioridade mais baixa, e a piscina deixa uma worker livre para quem
+   * está usando. Uma rodada nova (reaquecimento, snapshot novo, `para()`) encerra esta no
+   * próximo passo: pré-calcular o dado velho não serve a ninguém.
+   */
+  async #preaqueceFiltros(paginas: readonly string[], minha: number): Promise<void> {
+    const t0 = this.#agora();
+    let feitos = 0;
+    for (const pagina of paginas) {
+      const info = this.#filtraveis.get(pagina);
+      if (!info) continue;
+      for (const s of info.segs) {
+        for (const valor of s.valores) {
+          if (minha !== this.#geracao) return;
+          const filtros: FiltroDeTela[] = [
+            ...info.abertura.filter((f) => !(f.tabela === s.tabela && f.coluna === s.coluna && !f.nivel)),
+            { tabela: s.tabela, coluna: s.coluna, valores: [valor] },
+          ];
+          const q = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
+          try {
+            const r = await this.#buscar(`${info.url}${info.url.includes('?') ? '&' : '?'}${q}`);
+            await r.arrayBuffer();
+            feitos += 1;
+          } catch {
+            // Um recorte que falhe custa o primeiro clique nele, não a rodada.
+          }
+        }
+      }
+    }
+    if (minha === this.#geracao && feitos > 0) {
+      this.#anuncia(`[aquecedor] ${feitos} recorte(s) de filtro pré-calculados em ${((this.#agora() - t0) / 1000).toFixed(0)}s`);
+    }
+  }
+
   async #lista(): Promise<string[]> {
     try {
       const r = await this.#buscar(`${this.#base}/api/dashboards`);
@@ -295,6 +361,7 @@ export class Aquecedor {
             };
           }[];
         };
+        const segs: { tabela: string; coluna: string; valores: FiltroDeTela['valores'] }[] = [];
         const segmentacoes = (body.visuais ?? [])
           .map((v) => v.segmentacao)
           .filter((s): s is NonNullable<typeof s> => Boolean(s));
@@ -309,10 +376,22 @@ export class Aquecedor {
             const rVal = await this.#buscar(
               `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}/valores?${params}`,
             );
-            await rVal.arrayBuffer();
+            const lista = (await rVal.json().catch(() => null)) as {
+              valores?: { valor: unknown; tipo?: string }[];
+              total?: number;
+            } | null;
+            // Pré-calculável: coluna simples (sem nível de data), poucos valores, e não data —
+            // período já é coberto por `filtrosRecentes`.
+            if (!s.nivel && !s.niveis && lista?.valores && (lista.total ?? lista.valores.length) <= this.#filtrosAte) {
+              const valores = lista.valores.filter((v) => v.tipo !== 'date').map((v) => v.valor as FiltroDeTela['valores'][number]);
+              if (valores.length > 0) segs.push({ tabela: s.tabela, coluna: s.coluna, valores });
+            }
           } catch {
             // Ignora falha de aquecimento em seletor individual
           }
+        }
+        if (idsEager && idsEager.length > 0) {
+          this.#filtraveis.set(pagina, { url, abertura: filtrosRecentes(pagina)[0] ?? [], segs });
         }
       } else {
         await r.arrayBuffer();

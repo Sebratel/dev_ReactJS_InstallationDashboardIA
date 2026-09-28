@@ -200,3 +200,54 @@ test('padrão de produção (ACHADOS #162): a abertura aquecida é a página INT
   assert.ok(aberturas.length > 0 && aberturas.every((u) => u.includes('visual=m1')), 'm1 (5ª faixa) tem de vir na abertura');
   assert.equal(chamadas.filter((u) => /\?visual=m1(&|$)/.test(u)).length, 0, 'nada de GET singular para a rolagem');
 });
+
+// ── filtros pré-calculados (ACHADOS #163) ──────────────────────────────────
+
+function buscaComFiltros(chamadas: string[]): typeof fetch {
+  return (async (url: string | URL): Promise<Response> => {
+    const u = String(url);
+    chamadas.push(u);
+    if (u.endsWith('/api/dashboards')) return new Response(JSON.stringify(PAGINAS), { status: 200 });
+    if (u.endsWith('/layout')) return new Response(JSON.stringify(LAYOUT_3_FAIXAS), { status: 200 });
+    if (u.includes('/valores?') && u.includes('coluna=POUCOS')) {
+      return new Response(JSON.stringify({ valores: [{ valor: 'A', tipo: 'string' }, { valor: 'B', tipo: 'string' }], total: 2 }), { status: 200 });
+    }
+    if (u.includes('/valores?') && u.includes('coluna=MUITOS')) {
+      return new Response(JSON.stringify({ valores: [{ valor: 'x', tipo: 'string' }], total: 100, cortado: true }), { status: 200 });
+    }
+    if (u.includes('/api/dashboards/agendamento-field?')) {
+      return new Response(
+        JSON.stringify({ visuais: [{ segmentacao: { tabela: 'T', coluna: 'POUCOS' } }, { segmentacao: { tabela: 'T', coluna: 'MUITOS' } }] }),
+        { status: 200 },
+      );
+    }
+    return new Response('{}', { status: 200 });
+  }) as unknown as typeof fetch;
+}
+
+test('filtros: cada valor de filtro com poucos valores vira a URL do clique, com o filtro de abertura junto', async () => {
+  const chamadas: string[] = [];
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar: buscaComFiltros(chamadas), anuncia: silencio() });
+  await a.tenta();
+  assert.equal(a.pronto, true, 'o pronto não espera os filtros');
+  await a.aguardaFiltros();
+
+  const abertura = filtrosRecentes('agendamento-field')[0] ?? [];
+  const deValor = (v: string) =>
+    chamadas.filter((u) => u.includes(`filtro=${encodeURIComponent(codificaFiltro({ tabela: 'T', coluna: 'POUCOS', valores: [v] }))}`));
+  for (const v of ['A', 'B']) {
+    const us = deValor(v);
+    assert.equal(us.length, 1, `o valor ${v} foi pré-calculado uma vez`);
+    for (const f of abertura) assert.ok(us[0]!.includes(`filtro=${encodeURIComponent(codificaFiltro(f))}`), 'com o filtro de abertura');
+    assert.ok(us[0]!.includes('visual=m1'), 'com a página inteira — a chave que a tela pede');
+  }
+  assert.equal(chamadas.filter((u) => u.includes('MUITOS') && u.includes('filtro=')).length, 0, 'filtro de 100 valores não é pré-calculado');
+});
+
+test('filtros: `filtrosAte: 0` desliga o pré-cálculo', async () => {
+  const chamadas: string[] = [];
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar: buscaComFiltros(chamadas), anuncia: silencio(), filtrosAte: 0 });
+  await a.tenta();
+  await a.aguardaFiltros();
+  assert.equal(chamadas.filter((u) => u.includes('POUCOS') && u.includes('filtro=')).length, 0);
+});
