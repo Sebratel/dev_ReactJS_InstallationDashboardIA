@@ -36,7 +36,15 @@ import type { LayoutSpec } from './schema.ts';
  * refino futuro, não implementado por falta de necessidade medida além do que resolve
  * hoje.
  */
-export const N_FAIXAS_EAGER = 4;
+/**
+ * **Todas, desde 28/09/2026 (ACHADOS #162).** Era 4: o resto vinha por rolagem
+ * (`VisualNaDobra`), e o aquecedor só o adiantava com o filtro de abertura — trocar de
+ * filtro e rolar caía em "carregando…". O Erick pediu a tela inteira pronta ao entrar,
+ * com o custo que for; com o aquecedor e o reaquecimento pós-evento mantendo a página
+ * inteira quente, a abertura é um acerto de cache. O corte continua parâmetro de
+ * `idsIniciais`/`idsRestantes` (os testes do mecanismo passam 4).
+ */
+export const N_FAIXAS_EAGER = Number.POSITIVE_INFINITY;
 
 /**
  * O texto com que `tools/extractor` marca, em `ocultos[].porque`, um visual que
@@ -80,11 +88,11 @@ function idsDeSegmentacao(layout: LayoutSpec): string[] {
  * segmentação (a barra de filtros, ver `idsDeSegmentacao`) e as colunas das
  * `N_FAIXAS_EAGER` primeiras faixas.
  */
-export function idsIniciais(layout: LayoutSpec): string[] {
+export function idsIniciais(layout: LayoutSpec, nFaixas: number = N_FAIXAS_EAGER): string[] {
   const kpis = layout.kpis.map((k) => k.visual);
   const segmentacoes = idsDeSegmentacao(layout);
   const faixas = layout.faixas
-    .slice(0, N_FAIXAS_EAGER)
+    .slice(0, nFaixas)
     .flatMap((f) => f.colunas.map((c) => c.visual));
   return [...kpis, ...segmentacoes, ...faixas];
 }
@@ -111,8 +119,8 @@ export function idsIniciais(layout: LayoutSpec): string[] {
  * do topo deste arquivo descreve, e ele não aparece como lentidão nem como teste
  * vermelho — aparece como aquecimento que não aquece nada.
  */
-export function idsRestantes(layout: LayoutSpec): string[] {
-  const eager = new Set(idsIniciais(layout));
+export function idsRestantes(layout: LayoutSpec, nFaixas: number = N_FAIXAS_EAGER): string[] {
+  const eager = new Set(idsIniciais(layout, nFaixas));
   const todos = [
     ...layout.kpis.map((k) => k.visual),
     ...idsDeSegmentacao(layout),

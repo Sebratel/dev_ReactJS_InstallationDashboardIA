@@ -51,7 +51,7 @@ test('com layout disponível, aquece com `?visual=` — a MESMA chave que o nave
     throw new Error(`URL não esperada: ${u}`);
   }) as unknown as typeof fetch;
 
-  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio(), nFaixasEager: 4 });
   const p = await a.tenta();
 
   assert.ok(p !== null);
@@ -77,7 +77,7 @@ test('layout indisponível (404) cai de volta para a URL antiga, sem lançar', a
     throw new Error(`URL não esperada: ${u}`);
   }) as unknown as typeof fetch;
 
-  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio(), nFaixasEager: 4 });
   const p = await a.tenta();
 
   assert.ok(p !== null);
@@ -105,7 +105,7 @@ test('abaixo da dobra: um GET por visual, com os MESMOS filtros da abertura', as
     return new Response('{}', { status: 200 });
   }) as unknown as typeof fetch;
 
-  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio(), nFaixasEager: 4 });
   await a.tenta();
 
   const deM1 = chamadas.filter((u) => u.includes('visual=m1'));
@@ -153,7 +153,7 @@ test('abaixo da dobra: página sem filtro padrão aquece a chave limpa', async (
     return new Response('{}', { status: 200 });
   }) as unknown as typeof fetch;
 
-  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio(), nFaixasEager: 4 });
   await a.tenta();
 
   assert.deepEqual(
@@ -175,7 +175,7 @@ test('abaixo da dobra: layout indisponível não inventa aquecimento nenhum', as
     return new Response('{}', { status: 200 });
   }) as unknown as typeof fetch;
 
-  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio(), nFaixasEager: 4 });
   await a.tenta();
 
   assert.deepEqual(
@@ -183,4 +183,20 @@ test('abaixo da dobra: layout indisponível não inventa aquecimento nenhum', as
     [],
     'sem layout não há corte, e sem corte não há "resto" que se possa adivinhar',
   );
+});
+
+test('padrão de produção (ACHADOS #162): a abertura aquecida é a página INTEIRA, sem GET à parte da rolagem', async () => {
+  const chamadas: string[] = [];
+  const buscar = (async (url: string | URL): Promise<Response> => {
+    const u = String(url);
+    chamadas.push(u);
+    if (u.endsWith('/api/dashboards')) return new Response(JSON.stringify(PAGINAS), { status: 200 });
+    if (u.endsWith('/layout')) return new Response(JSON.stringify(LAYOUT_3_FAIXAS), { status: 200 });
+    return new Response('{}', { status: 200 });
+  }) as unknown as typeof fetch;
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  await a.tenta();
+  const aberturas = chamadas.filter((u) => u.includes('?visual=k1&'));
+  assert.ok(aberturas.length > 0 && aberturas.every((u) => u.includes('visual=m1')), 'm1 (5ª faixa) tem de vir na abertura');
+  assert.equal(chamadas.filter((u) => /\?visual=m1(&|$)/.test(u)).length, 0, 'nada de GET singular para a rolagem');
 });

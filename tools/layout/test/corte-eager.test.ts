@@ -11,15 +11,24 @@ function layout(
   return { pagina: 'x', base: 'x', kpis, faixas, ocultos, improvements: [] };
 }
 
-test('N_FAIXAS_EAGER é 4 — cobre o piso de altura de página densa (ACHADOS #94)', () => {
-  assert.equal(N_FAIXAS_EAGER, 4);
+// Até 28/09/2026 era 4 (ACHADOS #94); virou 'todas' porque a tela tem de abrir pronta
+// (ACHADOS #162). Os testes abaixo exercitam o MECANISMO do corte com 4, explícito.
+test('N_FAIXAS_EAGER cobre todas as faixas — a abertura pede a página inteira (ACHADOS #162)', () => {
+  assert.equal(N_FAIXAS_EAGER, Number.POSITIVE_INFINITY);
+});
+
+test('idsIniciais sem corte explícito: página de 9 faixas vem inteira, nada fica para a rolagem', () => {
+  const faixas = Array.from({ length: 9 }, (_, i) => ({ altura: 'tabela' as const, colunas: [{ visual: `f${i}`, span: 12, render: 'x' }] }));
+  const l = { pagina: 'x', base: 'x', kpis: [], faixas, ocultos: [], improvements: [] };
+  assert.equal(idsIniciais(l).length, 9);
+  assert.deepEqual(idsRestantes(l), []);
 });
 
 test('idsIniciais: página com menos faixas que o corte pede tudo, igual a hoje', () => {
   const l = layout([
     { altura: 'grafico', colunas: [{ visual: 'g1', span: 12, render: 'x' }] },
   ]);
-  assert.deepEqual(idsIniciais(l), ['g1']);
+  assert.deepEqual(idsIniciais(l, 4), ['g1']);
 });
 
 test('idsIniciais: kpis sempre entram, mesmo com faixas de sobra', () => {
@@ -34,7 +43,7 @@ test('idsIniciais: kpis sempre entram, mesmo com faixas de sobra', () => {
     [{ visual: 'k1', enfase: 'normal' }, { visual: 'k2', enfase: 'normal' }],
   );
   // agendamento-field-like: 5 faixas, só as 4 primeiras entram eager — m1 fica de fora.
-  assert.deepEqual(idsIniciais(l), ['k1', 'k2', 'g1', 'g2', 't1', 't2']);
+  assert.deepEqual(idsIniciais(l, 4), ['k1', 'k2', 'g1', 'g2', 't1', 't2']);
 });
 
 test('idsIniciais: faixa de várias colunas conta como UMA faixa, não uma por coluna', () => {
@@ -54,12 +63,12 @@ test('idsIniciais: faixa de várias colunas conta como UMA faixa, não uma por c
   ]);
   // visao-geral-like: 1 faixa de 3 compactos + 3 de largura cheia = 4 faixas, todas
   // eager (a de 3 colunas conta como 1, não 3) — m1 (a 5ª) fica de fora.
-  assert.deepEqual(idsIniciais(l), ['c1', 'c2', 'c3', 't1', 't2', 'g1']);
+  assert.deepEqual(idsIniciais(l, 4), ['c1', 'c2', 'c3', 't1', 't2', 'g1']);
 });
 
 test('idsIniciais: sem faixa nenhuma (capa) devolve só os kpis', () => {
   const l = layout([], [{ visual: 'k1', enfase: 'normal' }]);
-  assert.deepEqual(idsIniciais(l), ['k1']);
+  assert.deepEqual(idsIniciais(l, 4), ['k1']);
 });
 
 test('idsIniciais: segmentação oculta da grade entra eager — é a barra de filtros', () => {
@@ -75,7 +84,7 @@ test('idsIniciais: segmentação oculta da grade entra eager — é a barra de f
       { visual: 'img1', porque: "tipo 'image' não calcula e não vira segmentação — hoje invisível na tela" },
     ],
   );
-  assert.deepEqual(idsIniciais(l), ['k1', 's1', 's2', 't1']);
+  assert.deepEqual(idsIniciais(l, 4), ['k1', 's1', 's2', 't1']);
 });
 
 // ── idsRestantes: o complemento ────────────────────────────────────────────────
@@ -95,7 +104,7 @@ test('idsRestantes: sobra a faixa que passou do corte — e só ela', () => {
     ],
     [{ visual: 'k1', enfase: 'normal' }],
   );
-  assert.deepEqual(idsRestantes(l), ['m1']);
+  assert.deepEqual(idsRestantes(l, 4), ['m1']);
 });
 
 test('idsRestantes: página inteira acima do corte não deixa sobra', () => {
@@ -103,7 +112,7 @@ test('idsRestantes: página inteira acima do corte não deixa sobra', () => {
     [{ altura: 'tabela', colunas: [{ visual: 't1', span: 12, render: 'x' }] }],
     [{ visual: 'k1', enfase: 'normal' }],
   );
-  assert.deepEqual(idsRestantes(l), []);
+  assert.deepEqual(idsRestantes(l, 4), []);
 });
 
 test('idsRestantes: KPI e segmentação nunca sobram — a abertura já pede os dois', () => {
@@ -123,7 +132,7 @@ test('idsRestantes: KPI e segmentação nunca sobram — a abertura já pede os 
       { visual: 'img1', porque: "tipo 'image' não calcula e não vira segmentação — hoje invisível na tela" },
     ],
   );
-  assert.deepEqual(idsRestantes(l), ['m1']);
+  assert.deepEqual(idsRestantes(l, 4), ['m1']);
 });
 
 test('idsIniciais + idsRestantes partem o layout: sem sobra e sem repetição', () => {
@@ -140,8 +149,8 @@ test('idsIniciais + idsRestantes partem o layout: sem sobra e sem repetição', 
     [{ visual: 's1', porque: 'vira controle de filtro na barra (segmentação), não card da grade' }],
   );
 
-  const eager = idsIniciais(l);
-  const restantes = idsRestantes(l);
+  const eager = idsIniciais(l, 4);
+  const restantes = idsRestantes(l, 4);
   const todos = [
     'k1',
     's1',
@@ -155,5 +164,5 @@ test('idsIniciais + idsRestantes partem o layout: sem sobra e sem repetição', 
     'nenhum visual é aquecido duas vezes',
   );
   // `img1` não existe aqui de propósito: o que não calcula não entra em nenhum dos dois.
-  assert.equal(restantes.length, (9 - N_FAIXAS_EAGER) * 2);
+  assert.equal(restantes.length, (9 - 4) * 2);
 });

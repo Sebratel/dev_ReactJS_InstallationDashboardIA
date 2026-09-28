@@ -35,7 +35,7 @@
 // chave errada é melhor do que não aquecer nenhuma.
 
 import { codificaFiltro, filtrosRecentes } from '../../../packages/widget-engine/src/index.ts';
-import { idsIniciais, idsRestantes } from '../../../tools/layout/src/corte-eager.ts';
+import { N_FAIXAS_EAGER, idsIniciais, idsRestantes } from '../../../tools/layout/src/corte-eager.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
 
 /** O intervalo padrão entre duas conferidas do carimbo. */
@@ -59,6 +59,8 @@ export interface Passada {
 }
 
 export interface OpcoesDoAquecedor {
+  /** O corte eager. Padrão: `N_FAIXAS_EAGER` (todas). Os testes do mecanismo passam 4. */
+  nFaixasEager?: number;
   /** Ex.: `http://127.0.0.1:3100`. Sem barra no fim. */
   base: string;
   /**
@@ -75,6 +77,7 @@ export interface OpcoesDoAquecedor {
 
 export class Aquecedor {
   readonly #base: string;
+  readonly #nFaixasEager: number;
   readonly #carimbo: () => string;
   readonly #buscar: typeof fetch;
   readonly #agora: () => number;
@@ -89,6 +92,7 @@ export class Aquecedor {
 
   constructor(opts: OpcoesDoAquecedor) {
     this.#base = opts.base.replace(/\/$/, '');
+    this.#nFaixasEager = opts.nFaixasEager ?? N_FAIXAS_EAGER;
     this.#carimbo = opts.carimbo;
     this.#buscar = opts.buscar ?? fetch;
     this.#agora = opts.agora ?? (() => Date.now());
@@ -260,8 +264,8 @@ export class Aquecedor {
       if (!r.ok) return null;
       const layout = (await r.json()) as LayoutSpec;
       return {
-        eager: idsIniciais(layout),
-        restantes: idsRestantes(layout),
+        eager: idsIniciais(layout, this.#nFaixasEager),
+        restantes: idsRestantes(layout, this.#nFaixasEager),
       };
     } catch {
       return null;
