@@ -13296,3 +13296,7 @@ imports falsos foram removidos à mão, conferidos fora de comentário.
 **O que fica para a próxima etapa:** `pagina()` (437 linhas) e `carrega()` são o miolo do
 cálculo e merecem sessão própria; as rotas de `/auth/*` e o corpo de `/api/saude` são os
 próximos candidatos de baixo risco.
+
+**#157, confirmação (27/09):** com `stop_grace_period: 15s`, `docker stop` logo depois de um
+recarregamento de snapshot — o cenário que dava 137 — levou 3,6 s e saiu **0**: o passo `http`
+usou a folga inteira de 3 s com o reaquecimento em curso, e `docker events` mostrou só `kill 15`.
