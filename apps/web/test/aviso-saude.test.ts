@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { avaliaSaudeQueries, formataDiasIdade, type QuerySaude } from '../src/aviso-saude.ts';
+import { listaCurta, avaliaSaudeQueries, formataDiasIdade, type QuerySaude } from '../src/aviso-saude.ts';
 
 test('A6.1 - com todas queries ok, o aviso não aparece', () => {
   const queries: QuerySaude[] = [
@@ -79,4 +79,26 @@ test('A6.6 - formataDiasIdade formata inteiros e decimais corretamente', () => {
   assert.equal(formataDiasIdade(2), '2 dias');
   assert.equal(formataDiasIdade(9.9), '9.9 dias');
   assert.equal(formataDiasIdade(0.1), '0.1 dias');
+});
+
+test('#160 - parada com hora: a faixa diz desde quando, não "0,1 dia"', () => {
+  const r = avaliaSaudeQueries([
+    { id: 'contratos', idadeDias: 0.1, status: 'vencida', grupo: 'quente', paradaDesde: '2026-09-28T11:29:00.000Z' },
+    { id: 'backlog-instalacao', idadeDias: 0.1, status: 'vencida', grupo: 'quente', paradaDesde: '2026-09-28T11:29:00.000Z' },
+  ]);
+  assert.equal(r.nivel, 'vencida');
+  assert.match(r.mensagem, /^dados parados desde .+: contratos, backlog-instalacao$/);
+  assert.doesNotMatch(r.mensagem, /dia/);
+});
+
+test('#160 - grupo inteiro falhando com o mesmo erro: o erro aparece uma vez, a lista é curta', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e'];
+  const r = avaliaSaudeQueries(ids.map((id) => ({ id, idadeDias: 0, status: 'falhou' as const, erro: 'ECONNRESET', grupo: 'medio' })));
+  assert.equal(r.mensagem, 'cargas falharam (ECONNRESET): a, b, c e mais 2');
+});
+
+test('#160 - listaCurta', () => {
+  assert.equal(listaCurta(['a']), 'a');
+  assert.equal(listaCurta(['a', 'b', 'c']), 'a, b, c');
+  assert.equal(listaCurta(['a', 'b', 'c', 'd']), 'a, b, c e mais 1');
 });

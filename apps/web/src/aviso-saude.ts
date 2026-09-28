@@ -30,6 +30,15 @@ export interface QuerySaude {
   idadeDias: number;
   status: 'ok' | 'vencida' | 'falhou';
   erro?: string;
+  /** Grupo do refresh que carrega a query (API de 28/09/2026 em diante). */
+  grupo?: string;
+  /** Desde quando está parada — presente quando `vencida` e a API sabe (ACHADOS #160). */
+  paradaDesde?: string;
+}
+
+/** Até 3 nomes, depois "e mais N": um grupo parado são 7–11 queries, e a faixa é uma linha. */
+export function listaCurta(ids: readonly string[]): string {
+  return ids.length <= 3 ? ids.join(', ') : `${ids.slice(0, 3).join(', ')} e mais ${ids.length - 3}`;
 }
 
 export interface RespostaSaude {
@@ -72,6 +81,10 @@ export function avaliaSaudeQueries(
         const q = falhas[0]!;
         const detalheErro = q.erro ? ` (${q.erro})` : '';
         mensagem = `carga falhou em ${q.id}${detalheErro}`;
+      } else if (falhas.every((q) => q.erro === falhas[0]!.erro)) {
+        // Um grupo que falha dá o MESMO erro em todas as queries dele: dizer uma vez só.
+        const erro = falhas[0]!.erro;
+        mensagem = `cargas falharam${erro ? ` (${erro})` : ''}: ${listaCurta(falhas.map((q) => q.id))}`;
       } else {
         const nomes = falhas.map((q) => (q.erro ? `${q.id} (${q.erro})` : q.id)).join(', ');
         mensagem = `cargas falharam: ${nomes}`;
@@ -87,7 +100,12 @@ export function avaliaSaudeQueries(
     // 2. Query vencida: nomeia a query e a idade
     if (vencidas.length > 0) {
       let mensagem: string;
-      if (vencidas.length === 1) {
+      const desde = vencidas.map((q) => q.paradaDesde).filter((d): d is string => Boolean(d)).sort()[0];
+      if (desde) {
+        // A régua é o intervalo do grupo, não dias (ACHADOS #160): "parado há 0,1 dia"
+        // não diz nada; a hora da última carga boa, sim.
+        mensagem = `dados parados desde ${dataHora(desde)}: ${listaCurta(vencidas.map((q) => q.id))}`;
+      } else if (vencidas.length === 1) {
         const q = vencidas[0]!;
         mensagem = `${q.id} vencida há ${formataDiasIdade(q.idadeDias)}`;
       } else {

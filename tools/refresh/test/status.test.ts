@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { escreveStatus, leStatus, montaStatusDeRefresh, type StatusDeRefresh } from '../src/status.ts';
+import { escreveStatus, leStatus, montaStatusDeRefresh, resumeDegradacao, type StatusDeRefresh } from '../src/status.ts';
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-status-'));
@@ -107,4 +107,48 @@ test('montaStatusDeRefresh expõe queries[] com status, idades e falhas (Contrat
   const prod = res.queries.find((q) => q.id === 'protocolos-produtividade');
   assert.ok(prod);
   assert.equal(prod.status, 'vencida');
+});
+
+// ------------------------------------------------ "parado" e "falhando" (ACHADOS #160)
+
+const verde = (iso: string) => ({ ultimaTentativa: iso, ultimoSucesso: iso, duracaoMs: 1, ok: true, falhasConsecutivas: 0 });
+
+test('UMA falha com o último sucesso dentro da régua não acende — é soluço, o ciclo seguinte tenta', async () => {
+  const dir = tmp();
+  const agora = new Date('2026-09-28T12:00:00.000Z');
+  await escreveStatus(dir, {
+    quente: { ultimaTentativa: '2026-09-28T11:58:00.000Z', ultimoSucesso: '2026-09-28T11:45:00.000Z', duracaoMs: 1, ok: false, falhasConsecutivas: 1, erro: 'ECONNRESET' },
+  });
+  const q = montaStatusDeRefresh(dir, path.resolve('specs'), agora).queries!.find((x) => x.id === 'contratos')!;
+  assert.equal(q.status, 'ok', 'até 28/09 isto acendia "carga falhou" por uma falha só');
+});
+
+test('grupo PARADO além de 2× o intervalo vira vencida, com a hora do último sucesso — mesmo sem falha', async () => {
+  // O caso do #129: nada falhou, nada rodou. Com a régua de 2 DIAS, isto saía ok.
+  const dir = tmp();
+  const agora = new Date('2026-09-28T12:00:00.000Z');
+  await escreveStatus(dir, { quente: verde('2026-09-28T11:29:00.000Z'), medio: verde('2026-09-28T11:30:00.000Z') });
+  const qs = montaStatusDeRefresh(dir, path.resolve('specs'), agora).queries!;
+  const contratos = qs.find((x) => x.id === 'contratos')!; // quente, 15 min → régua 30 min
+  assert.equal(contratos.status, 'vencida');
+  assert.equal(contratos.paradaDesde, '2026-09-28T11:29:00.000Z');
+  assert.equal(contratos.grupo, 'quente');
+  const troca = qs.find((x) => x.id === 'troca-endereco')!; // medio, 20 min → régua 40 min
+  assert.equal(troca.status, 'ok');
+  assert.equal(troca.paradaDesde, undefined);
+});
+
+test('resumeDegradacao: um motivo por grupo, não um por query', () => {
+  const r = resumeDegradacao([
+    { id: 'a', idadeDias: 0, status: 'falhou', erro: 'X', grupo: 'medio' },
+    { id: 'b', idadeDias: 0, status: 'falhou', erro: 'X', grupo: 'medio' },
+    { id: 'c', idadeDias: 0, status: 'vencida', grupo: 'quente', paradaDesde: '2026-09-28T11:29:00.000Z' },
+    { id: 'd', idadeDias: 0, status: 'ok', grupo: 'frio' },
+  ]);
+  assert.equal(r.degradado, true);
+  assert.deepEqual(r.motivos, [
+    'grupo medio (2 queries): falhando seguido — X',
+    'grupo quente (1 queries): parado desde 2026-09-28T11:29:00.000Z',
+  ]);
+  assert.deepEqual(resumeDegradacao([{ id: 'd', idadeDias: 0, status: 'ok' }]), { degradado: false, motivos: [] });
 });

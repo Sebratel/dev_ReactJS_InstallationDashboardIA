@@ -68,7 +68,7 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    *Prova:* dois processos reais disputando; o segundo espera ou recusa, o
    `manifesto.json` fica íntegro.
 
-3. **"Degradado" e alerta** — `/api/saude` + tela.
+3. ✅ **28/09, ACHADOS #160** (aviso externo pendente de destino). **"Degradado" e alerta** — `/api/saude` + tela.
    Degradado quando um grupo tem ≥ 3 falhas seguidas **ou** o último sucesso é mais
    velho que 2× o intervalo (esse segundo critério separa "não falhou" de "não rodou",
    ACHADOS #129). Faixa na tela: "dados de X parados desde HH:MM". Aviso externo

@@ -266,7 +266,7 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
   const dir = dirVazio();
   await escreveStatus(dir, {
     quente: { ultimaTentativa: '2026-09-04T12:00:00.000Z', ultimoSucesso: '2026-09-04T12:00:00.000Z', duracaoMs: 1000, ok: true, falhasConsecutivas: 0 },
-    frio: { ultimaTentativa: '2026-09-04T11:00:00.000Z', ultimoSucesso: null, duracaoMs: 2000, ok: false, falhasConsecutivas: 1, erro: 'ECONNRESET' },
+    frio: { ultimaTentativa: '2026-09-04T11:00:00.000Z', ultimoSucesso: null, duracaoMs: 2000, ok: false, falhasConsecutivas: 2, erro: 'ECONNRESET' },
   });
   const s = await servidor(dir);
   try {
@@ -304,6 +304,10 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     assert.ok(fieldAgenda);
     assert.equal(fieldAgenda.status, 'falhou');
     assert.equal(fieldAgenda.erro, 'ECONNRESET');
+
+    // O resumo do topo (ACHADOS #160): 2 falhas seguidas no frio acendem, e continua 200.
+    assert.equal(j.degradacao.degradado, true);
+    assert.ok(j.degradacao.motivos.some((m: string) => /grupo frio .*falhando seguido — ECONNRESET/.test(m)));
   } finally {
     await s.fecha();
   }

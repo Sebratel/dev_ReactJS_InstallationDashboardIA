@@ -68,7 +68,7 @@ import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase
 import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
 import { carregaLayout } from '../../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../../tools/layout/src/schema.ts';
-import { leStatus, montaStatusDeRefresh } from '../../../tools/refresh/src/status.ts';
+import { leStatus, montaStatusDeRefresh, resumeDegradacao, type QuerySaude } from '../../../tools/refresh/src/status.ts';
 import { PiscinaWorkers } from './piscina-workers.ts';
 import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
@@ -825,7 +825,12 @@ export class Servidor {
     // caminho quente.
     this.confereCarimbo();
     const manifesto = leManifesto(this.opts.snapshotDir);
+    const refresh = this.statusDeRefresh() as { queries?: QuerySaude[] };
     responde(res, 200, {
+      // O resumo que um monitor externo lê sem entender o resto (ACHADOS #160). Continua
+      // 200 de propósito: dado parado não se conserta reiniciando a API, e um 503 aqui
+      // faria o healthcheck do contêiner derrubá-la à toa.
+      degradacao: resumeDegradacao(refresh.queries ?? []),
       ok: manifesto !== null,
       snapshot: manifesto === null
         ? { presente: false, dica: 'Rode: npm run snapshot -- --pagina=<id>' }
@@ -898,7 +903,7 @@ export class Servidor {
       // rodou nesta máquina, então o try/catch fica aqui também, defesa em
       // profundidade. Rota de operador, não caminho quente: um `readFileSync` a
       // mais aqui não paga o mesmo preço que pagaria em `carimboAtual()`.
-      refresh: this.statusDeRefresh(),
+      refresh,
       // Separado de `refresh` de propósito: aquele descreve o dado (idade, último
       // sucesso), este descreve o RELÓGIO. Um pode estar verde com o outro morto, e
       // foi essa combinação que passou despercebida por 3h43 em 16/09/2026.

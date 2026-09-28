@@ -125,15 +125,22 @@ export function App() {
 
   useEffect(() => {
     let cancelado = false;
-    pegaSaude()
-      .then((s) => {
-        if (!cancelado) setSaude(s);
-      })
-      .catch(() => {
-        // Rota /api/saude responde silenciosamente se endpoint não responder ou em mock
-      });
+    const busca = (): void => {
+      pegaSaude()
+        .then((s) => {
+          if (!cancelado) setSaude(s);
+        })
+        .catch(() => {
+          // Rota /api/saude responde silenciosamente se endpoint não responder ou em mock
+        });
+    };
+    busca();
+    // Independente do "Auto": com ele desligado, uma página aberta nunca veria o dado
+    // PARAR — parado é justamente não chegar evento nenhum (ACHADOS #160).
+    const relogio = setInterval(busca, 120_000);
     return () => {
       cancelado = true;
+      clearInterval(relogio);
     };
   }, [revalidar]);
 

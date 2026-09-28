@@ -13333,3 +13333,29 @@ ainda pega alteração retroativa que o incremental perde — mas agora não pis
 já com o código novo — cada grupo é um processo novo, então não foi preciso reiniciar. Durante
 a carga, a trava estava lá com o materializador do grupo como dono; no fim foi apagada;
 execuções 8 → 11, falhas 0 → 0.
+
+## #160 — "parado" passa a ser medido pelo intervalo do grupo, e o `/api/saude` diz se está degradado (28/09)
+
+Etapa 3 de `docs/PLANO-AUTONOMIA.md`. A faixa da tela já existia (Marco A6, `aviso-saude.ts`);
+as réguas que a alimentavam (`montaStatusDeRefresh`) é que não serviam:
+
+| | antes | depois |
+|---|---|---|
+| `falhou` | 1 falha do grupo | **2 falhas seguidas** — 1 é soluço, e é da 2ª que a espera crescente começa (#156) |
+| `vencida` (query em grupo) | idade > **2 dias** | último sucesso do grupo > **2× o intervalo** (quente 30 min, medio 40, frio 1 h) |
+| `vencida` (fora de grupo) | 2 dias | igual |
+
+A query ganhou `grupo` e `paradaDesde`; o `/api/saude` ganhou `degradacao: { degradado, motivos }`,
+um motivo por grupo — e **continua 200**: dado parado não se conserta reiniciando a API, e um 503
+faria o healthcheck derrubá-la. A faixa diz "dados parados desde dd/mm HH:MM: a, b, c e mais N"
+e, com um grupo falhando pelo mesmo erro, o erro uma vez só. A tela passou a buscar a saúde a cada
+2 min por conta própria: com o "Auto" desligado ela nunca rebuscava, e uma página aberta nunca
+veria o dado PARAR — parado é justamente não chegar evento.
+
+**Pego no dado real no mesmo dia.** Aplicada ao snapshot do `npm start` às 11:19 UTC, a régua nova
+disse: os três grupos parados desde ~03:05 UTC. Era verdade — o histórico tem `maquina-suspensa`
+de 5h50min (4 suspensões desde a subida); a máquina acordou às 11:17 e o agendador estava
+recuperando. **A régua antiga dizia `ok` para as 23 queries**: 8 horas de dado velho sem aviso,
+o #129 de novo. Testes novos conferidos por mutação (réguas antigas → 2 falham). Suíte 2.178 + 1.
+
+Aviso para fora (e-mail/Chat) segue esperando o destino.

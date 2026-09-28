@@ -41,6 +41,45 @@ export interface QuerySaude {
   idadeDias: number;
   status: 'ok' | 'vencida' | 'falhou';
   erro?: string;
+  /** O grupo do `refresh.yaml` que carrega esta query, quando há um. */
+  grupo?: string;
+  /** Desde quando está parada (ISO): o último sucesso que conta para `vencida`. */
+  paradaDesde?: string;
+}
+
+/**
+ * A partir de quantas falhas SEGUIDAS um grupo acende o aviso. Uma é soluço — o próximo
+ * ciclo tenta de novo, e é também da segunda em diante que a espera crescente começa
+ * (`proximaTentativa` em `tick.ts`). Até 28/09/2026 uma falha já acendia (ACHADOS #160).
+ */
+export const FALHAS_PARA_AVISO = 2;
+/**
+ * Um grupo está PARADO quando o último sucesso passou de `FATOR_PARADA × intervalo`. É o
+ * que separa "não falhou" de "não rodou" (ACHADOS #129): até 28/09 a régua era 2 DIAS
+ * para tudo, e um grupo de 15 min parado havia 5 h ainda saía `ok`.
+ */
+export const FATOR_PARADA = 2;
+/** A régua de quem não está em grupo nenhum (só no manifesto): idade em dias. */
+export const DIAS_FORA_DE_GRUPO = 2;
+
+/** Resumo para o topo de `GET /api/saude`: há o que avisar, e por quê (por grupo). */
+export function resumeDegradacao(queries: readonly QuerySaude[]): { degradado: boolean; motivos: string[] } {
+  const porChave = new Map<string, { status: QuerySaude['status']; erro?: string; desde?: string; ids: string[] }>();
+  for (const q of queries) {
+    if (q.status === 'ok') continue;
+    const chave = `${q.status}\u0000${q.grupo ?? q.id}`;
+    const m = porChave.get(chave) ?? { status: q.status, erro: q.erro, desde: q.paradaDesde ?? q.ultimaCarga, ids: [] };
+    m.ids.push(q.id);
+    porChave.set(chave, m);
+  }
+  const motivos = [...porChave.entries()].map(([chave, m]) => {
+    const quem = chave.split('\u0000')[1];
+    const onde = queries.some((q) => q.grupo === quem) ? `grupo ${quem} (${m.ids.length} queries)` : quem;
+    return m.status === 'falhou'
+      ? `${onde}: falhando seguido${m.erro ? ` — ${m.erro}` : ''}`
+      : `${onde}: parado desde ${m.desde ?? 'sempre'}`;
+  });
+  return { degradado: motivos.length > 0, motivos };
 }
 
 export interface StatusDeRefreshCompleto {
@@ -143,13 +182,19 @@ export function montaStatusDeRefresh(
 
     let status: 'ok' | 'vencida' | 'falhou' = 'ok';
     let erro: string | undefined;
+    // Para quem está em grupo, "parado" se mede pelo último SUCESSO do grupo — a pergunta
+    // é "rodou?", e o `geradoEm` de uma query pode não andar numa incremental sem novidade.
+    const paradaDesde = grupo ? (grupoStatus?.ultimoSucesso ?? ultimaCarga) : ultimaCarga;
 
-    if (grupoStatus && !grupoStatus.ok && grupoStatus.falhasConsecutivas > 0) {
+    if (grupoStatus && !grupoStatus.ok && grupoStatus.falhasConsecutivas >= FALHAS_PARA_AVISO) {
       status = 'falhou';
       erro = grupoStatus.erro ?? `Grupo '${grupo!.id}' falhou no refresh`;
+    } else if (grupo) {
+      const limiteMs = FATOR_PARADA * grupo.intervaloMinutos * 60_000;
+      if (!paradaDesde || agora.getTime() - new Date(paradaDesde).getTime() > limiteMs) status = 'vencida';
     } else if (id === 'protocolos-produtividade' && idadeDias > 7) {
       status = 'vencida';
-    } else if (idadeDias > 2) {
+    } else if (idadeDias > DIAS_FORA_DE_GRUPO) {
       status = 'vencida';
     }
 
@@ -159,6 +204,8 @@ export function montaStatusDeRefresh(
       idadeDias,
       status,
       ...(erro ? { erro } : {}),
+      ...(grupo ? { grupo: grupo.id } : {}),
+      ...(status === 'vencida' && paradaDesde ? { paradaDesde } : {}),
     });
   }
 
