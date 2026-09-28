@@ -208,8 +208,11 @@ test('quem chega DEPOIS do evento encontra a página pronta — e isso é contad
   const b = await sobe(reaquecendoDeVerdade);
   try {
     b.servidor.aoTabelaMudar(TABELA, QUERY);
-    // Espera o reaquecimento terminar pela própria saúde, sem cronometrar nada.
-    const limite = Date.now() + 10_000;
+    // Espera o reaquecimento terminar pela própria saúde, sem cronometrar nada. 30 s e
+    // não 10: desde a reserva de worker (ACHADOS #163) o fundo usa uma worker só, e na
+    // suíte inteira — arquivos em paralelo — os 10 s estouraram duas vezes seguidas.
+    // O que se afirma é que o reaquecimento ACONTECE e é contado, não quanto demora.
+    const limite = Date.now() + 30_000;
     while (!(await b.metricas()).rewarm_sucesso) {
       if (Date.now() > limite) throw new Error('o reaquecimento não terminou');
     }
