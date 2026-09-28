@@ -13268,3 +13268,31 @@ preso num `while` morre em ~2 s com o motivo gravado; laço saudável além do l
 compose recusa subir. Conferido no contêiner: legível, escrita recusada. **Ciclo completo às
 00:53: `quente`, `medio` e `frio` OK** — `apuracao-premiacao`, `capacidade-equipe` e
 `protocolos-produtividade`, que falhavam desde o #153, carregaram.
+
+## #158 — `servidor.ts` perde 462 linhas sem mudar comportamento (27/09)
+
+Item F da avaliação de 27/09, primeira etapa. O arquivo tinha 2.694 linhas: a classe
+`Servidor` (~2.100), a interface de opções (~200) e utilitários soltos. Saiu o que tinha
+pouco acoplamento, para módulos próprios em `apps/api/src/`:
+
+| módulo | o que é | linhas |
+|---|---|---:|
+| `opcoes-servidor.ts` | `ServidorOptions` (só tipos) | 206 |
+| `http-util.ts` | `responde`, `leCorpo`, `parseJsonSeguro`, `tokensIguais`, `comStatus`, `inteiro` | 102 |
+| `valores-segmentacao.ts` | chave do cache, valores distintos por nível, ordem do seletor | 128 |
+| `estatico.ts` | arquivos da tela e `/legado` | 53 |
+
+`servidor.ts` ficou com 2.232 e reexporta o que exportava — nenhum dos 15 importadores
+mudou. Conferido: typecheck 0 erros, suíte 2.163 + 1 pulado, e a API real no Docker servindo
+`/`, o JS do build, `/legado`, `/api/saude` (200) e o 401 do portão de login; caminho com `..`
+codificado dá 404 direto na API (400 já no nginx).
+
+**A armadilha da extração por script:** para podar imports sem uso, a primeira versão tirava
+comentários antes de contar — e um `//` com `specs/layout/*.layout.yaml` abria um "bloco"
+que engolia código até o próximo `*/`, apagando três imports ainda usados. O typecheck pegou
+na hora. A versão final conta sem tirar comentário (erra para o lado de sobrar import) e os
+imports falsos foram removidos à mão, conferidos fora de comentário.
+
+**O que fica para a próxima etapa:** `pagina()` (437 linhas) e `carrega()` são o miolo do
+cálculo e merecem sessão própria; as rotas de `/auth/*` e o corpo de `/api/saude` são os
+próximos candidatos de baixo risco.
