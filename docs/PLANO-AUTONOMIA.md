@@ -42,10 +42,10 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
 
    **Feito em 25/09 (ACHADOS #153):** queda da API → volta em ~8 s; reinício do Docker →
    stack de volta em 21 s; pico somado 4,94 GB. Achados que viram trabalho:
-   - montar a credencial do Google no container (`GOOGLE_APPLICATION_CREDENTIALS`) —
+   - ✅ (27/09, #157) montar a credencial do Google no container (`GOOGLE_APPLICATION_CREDENTIALS`) —
      sem ela 3 queries falham e `medio`/`frio` nunca fecham;
-   - baixar os `mem_limit` para o medido + folga (e dar folga de não-heap ao `refresh`);
-   - a API não trata `SIGTERM` (é PID 1): `docker stop` sempre espera 10 s e mata.
+   - ✅ (25/09, #154) baixar os `mem_limit` para o medido + folga (e dar folga de não-heap ao `refresh`);
+   - ✅ (27/09, #157) a API não trata `SIGTERM` (é PID 1): `docker stop` sempre espera 10 s e mata.
 
    **27/09 — verificação automática (item A da avaliação, ACHADOS #155):** `npm run typecheck`
    (back-end em strict, 0 erros), CI com testes + tipos + imagens pelo compose.
@@ -75,7 +75,7 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    (e-mail/Chat/Teams) só com destino dado pelo Erick.
    *Prova:* grupo forçado a falhar → `/api/saude` degradado e faixa visível.
 
-4. **API travada se derruba** — para o `restart: unless-stopped` religar.
+4. ✅ **27/09, ACHADOS #157.** **API travada se derruba** — para o `restart: unless-stopped` religar.
    Vigia de event loop (worker thread): laço principal parado > N s → sai com código
    próprio e deixa o motivo em `snapshot/diagnostico/`. Complementa
    `guarda-de-processo.ts`, que cobre rajada de erro, não travamento.

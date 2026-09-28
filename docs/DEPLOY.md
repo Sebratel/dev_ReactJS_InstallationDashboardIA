@@ -282,8 +282,14 @@ valendo para quem for mexer na cadência.
   **O agendamento é 100% automático de fábrica** (06/09/2026):
   - Em produção (Docker Compose / Portainer): o `docker-compose.prod.yml` já traz
     o serviço `refresh` embutido executando `tools/refresh/src/daemon.ts` a cada
-    15 minutos com `mem_limit: 8g` e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
+    15 minutos com `mem_limit: 6g` (medido, ACHADOS #154) e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
     compartilhado com a API. Subir a stack já sobe o agendador ativo.
+  - **Credencial Google (27/09/2026, ACHADOS #157):** `GOOGLE_CREDENCIAL_HOST` = caminho,
+    NO SERVIDOR, do JSON da service account. O compose o monta só-leitura em
+    `/run/secrets/google-sa.json` no `refresh` e no `snapshot-diario` e aponta
+    `GOOGLE_APPLICATION_CREDENTIALS` para lá. Sem a variável a stack não sobe (de
+    propósito: sem ela `apuracao-premiacao`, `capacidade-equipe` e
+    `protocolos-produtividade` falham a cada ciclo). No Portainer, é variável da stack.
   - No desenvolvimento: `npm start` já sobe o daemon em background lado a lado com a
     API — **sem flag nenhuma, desde 16/09/2026**. Para rodar isolado:
     `npm run refresh:daemon`. Para NÃO subir: `npm start -- --sem-refresh`, ou

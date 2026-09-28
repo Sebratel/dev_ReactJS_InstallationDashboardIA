@@ -13232,3 +13232,39 @@ Requer `AbortSignal.any` (Chrome 116+, Firefox 124+, Safari 17.4+).
 
 Os testes novos (6 do refresh, 6 do `pega`) foram conferidos por mutação: com a regra
 desligada, falham. Suíte: 2.153 passando; typecheck 0 erros.
+
+## #157 — a API desliga em ordem, se derruba quando trava, e a credencial Google chega ao contêiner (27/09)
+
+Itens D e E da avaliação de 27/09.
+
+**A API era o PID 1 do contêiner, e isso anulava duas coisas.** O Linux não entrega ao PID 1
+sinal sem tratador: sem tratar SIGTERM, `docker stop` esperava a cortesia e matava. E um
+vigia dentro do processo não conseguiria se matar. `init: true` no compose (`api`, `refresh`,
+`snapshot-diario`) põe o `tini` no PID 1 — conferido: `/proc/1/cmdline` = `docker-init`.
+
+**Desligamento** (`apps/api/src/desligamento.ts`): SIGTERM/SIGINT param vigia, agendador,
+poller, aquecedor, HTTP (3 s de folga para pedido em curso, depois corta — o SSE nunca fecha
+sozinho) e a piscina; teto 8 s; segundo sinal sai na hora; uma linha antes de cada passo.
+Medido: `docker stop` em 0,5–0,8 s com saída 0 (antes: SIGKILL).
+
+**A armadilha do teste: o Compose v5.1.3 desta estação criava TODOS os contêineres com
+`StopTimeout=1`.** Duas paradas logo depois de um recarregamento de snapshot saíram 137 com os
+passos já rodando. Não era o vigia (nenhum `api-travou`, nenhuma linha `[vigia]`), nem OOM
+(pico 2,8 de 6 GB) — `docker events` mostrou `kill 15` e, 1 s depois, `kill 9` do próprio
+Docker: com pedido do reaquecimento em curso, a folga de 3 s do HTTP passava do 1 s que o
+Docker dava. `stop_grace_period: 15s` agora é explícito nos três serviços, e o contrato do
+compose (`imagem-runtime.test.ts`) exige mais que os 8 s do teto. O `redis` segue com 1 s
+(cache; nada a perder que não se recalcule).
+
+**Vigia de travamento** (`apps/api/src/vigia-travamento.ts` + worker): o laço principal
+carimba um batimento por segundo em memória compartilhada; a worker confere e, parado além de
+`VIGIA_TRAVAMENTO_S` (compose: 120), grava `api-travou` no histórico e em `diagnostico/` e
+mata o processo — o `restart` religa. Se o próprio vigia atrasou, foi suspensão da máquina,
+não trava (19/09). Desligado no `npm start`. Provado com processo real (Windows e Linux): laço
+preso num `while` morre em ~2 s com o motivo gravado; laço saudável além do limite não morre.
+
+**Credencial Google (E):** montada só-leitura em `/run/secrets/google-sa.json` a partir de
+`GOOGLE_CREDENCIAL_HOST`; `GOOGLE_APPLICATION_CREDENTIALS` aponta para lá; sem a variável o
+compose recusa subir. Conferido no contêiner: legível, escrita recusada. **Ciclo completo às
+00:53: `quente`, `medio` e `frio` OK** — `apuracao-premiacao`, `capacidade-equipe` e
+`protocolos-produtividade`, que falhavam desde o #153, carregaram.
