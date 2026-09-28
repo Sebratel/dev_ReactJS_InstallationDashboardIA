@@ -93,6 +93,7 @@ import {
   shaDasChaves,
 } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
 import { resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
+import { adquireTrava, VAR_TRAVA_HERDADA } from '../../../packages/snapshot/src/trava.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 applyDotEnv(ROOT);
@@ -909,6 +910,13 @@ if (args.plano) {
   process.exit(0);
 }
 
+// Um materializador por vez neste snapshot (ACHADOS #159): sem isto, dois processos
+// terminando juntos regravam o manifesto um por cima do outro. Os filhos (`--uma=`, as
+// calculadas) herdam pela variável — ver `packages/snapshot/src/trava.ts`.
+const trava = await adquireTrava(args.saida, { comando: `snapshot ${process.argv.slice(2).join(' ')}` });
+process.env[VAR_TRAVA_HERDADA] = String(process.pid);
+process.on('exit', () => trava.solta());
+
 /**
  * A entrada de manifesto de um arquivo que já está em disco.
  *
@@ -1061,10 +1069,15 @@ const ultimaQueAlimenta = alimentam.seguro
   ? aBuscar.reduce((ultimo, id, i) => (alimentam.queries.has(id) ? i : ultimo), -1)
   : -1;
 
-/** Congela as calculadas num subprocesso. `true` se deu certo. */
-function congelaCalculadas(): boolean {
+/**
+ * Congela as calculadas num subprocesso. `true` se deu certo.
+ *
+ * `spawn` e não `spawnSync`: com o laço preso aqui, o batimento da trava parava durante o
+ * congelamento inteiro, e outro materializador podia achar a trava abandonada (#159).
+ */
+function congelaCalculadas(): Promise<boolean> {
   console.log('\n── Congelando as tabelas calculadas (a outra metade do refresh) ──');
-  const calc = spawnSync(
+  const calc = spawn(
     process.execPath,
     [
       ...(args.memoria ? [`--max-old-space-size=${args.memoria}`] : []),
@@ -1073,7 +1086,10 @@ function congelaCalculadas(): boolean {
     ],
     { cwd: ROOT, stdio: 'inherit' },
   );
-  return calc.status === 0;
+  return new Promise((pronto) => {
+    calc.once('error', () => pronto(false));
+    calc.once('exit', (codigo) => pronto(codigo === 0));
+  });
 }
 
 const resultados: Resultado[] = [];
@@ -1101,7 +1117,7 @@ for (const [i, id] of aBuscar.entries()) {
         ` alimenta.${faltam > 0 ? ` As ${faltam} restante(s) não são origem de nenhuma.` : ''}`,
     );
     congelouCedo = true;
-    congelouCedoOk = congelaCalculadas();
+    congelouCedoOk = await congelaCalculadas();
   }
 }
 
@@ -1217,7 +1233,7 @@ console.log('\n  Contém dado de cliente. O diretório está no .gitignore.');
 //      incompleta), ou a apuração recusou (`seguro: false`) e vale a régua antiga;
 //   2. o congelamento antecipado FALHOU — a mensagem abaixo é a que importa.
 if (!args.semCalculadas && resultados.some((r) => r.ok) && !(congelouCedo && congelouCedoOk)) {
-  const ok = congelouCedo ? false : congelaCalculadas();
+  const ok = congelouCedo ? false : await congelaCalculadas();
   if (!ok) {
     console.error(
       '\nAs queries foram materializadas, mas o congelamento das calculadas FALHOU.\n' +

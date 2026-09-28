@@ -13300,3 +13300,31 @@ próximos candidatos de baixo risco.
 **#157, confirmação (27/09):** com `stop_grace_period: 15s`, `docker stop` logo depois de um
 recarregamento de snapshot — o cenário que dava 137 — levou 3,6 s e saiu **0**: o passo `http`
 usou a folga inteira de 3 s com o reaquecimento em curso, e `docker events` mostrou só `kill 15`.
+
+## #159 — trava de escrita do snapshot: um materializador por vez (28/09)
+
+Etapa 2 de `docs/PLANO-AUTONOMIA.md`. Todo materializador termina em `leManifesto` → mescla →
+`escreveManifesto`. A escrita é atômica, mas dois processos juntos são read-modify-write: o
+segundo a terminar regrava o índice sem as tabelas do primeiro, sem erro. A fila do agendador
+evita isso dentro de um processo; entre processos não havia nada — `refresh`, `snapshot-diario`
+das 3h, `npm run snapshot` manual e, no pior caso, `npm start` e Docker no mesmo diretório (#148).
+
+**`packages/snapshot/src/trava.ts`:** `snapshot/.materializando.trava` criado com `wx`, com o
+dono (PID, host, desde, comando). O dono renova a hora de modificação a cada 30 s. Quem chega:
+PID morto no mesmo host → toma na hora; sem batimento há 10 min → toma (de outro contêiner só o
+relógio vale); viva → espera dizendo de quem, até 30 min, e desiste com o caminho do arquivo.
+Tomar é `rename` para nome único — de dois que chegam juntos, só um vence. Os filhos (`--uma=`,
+as calculadas) herdam por `SNAPSHOT_TRAVA_HERDADA`. Ligada em `tools/snapshot/src/index.ts`
+(depois do `--plano`) e em `tools/snapshot/src/calculadas.ts` quando roda sozinha.
+
+**O batimento exigiu tirar um `spawnSync`:** o congelamento das calculadas prendia o laço do pai
+pelo tempo todo, e sem laço não há batimento — outro processo poderia achar a trava abandonada
+no meio. `congelaCalculadas` virou `spawn` com `await`.
+
+**Medido:** dois processos fazendo 15× ler→somar→gravar cada: com a trava, 30; sem ela, **16**
+(14 atualizações perdidas). Ponta a ponta com o materializador real (`feriados`, inline, sem
+banco): com a trava segurada por outro processo, ele escreveu "snapshot em uso por PID … —
+esperando a vez", entrou 5 s depois, terminou 0 e apagou a trava. Suíte: 2.172 + 1 pulado.
+
+O `snapshot-diario` fica: não tinha como ser removido sem saber se a carga completa noturna
+ainda pega alteração retroativa que o incremental perde — mas agora não pisa no `refresh`.

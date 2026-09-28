@@ -58,7 +58,7 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    no histórico (`tools/refresh/src/historico.ts`).
    *Prova:* teste com relógio injetado; `--historico` mostra o adiamento.
 
-2. **Trava do snapshot** — no materializador (o ponto por onde toda gravação passa).
+2. ✅ **28/09, ACHADOS #159.** **Trava do snapshot** — no materializador (o ponto por onde toda gravação passa).
    Arquivo em `snapshot/` com pid, host e hora; trava abandonada reconhecida por idade
    ou pid morto. Cobre `snapshot-diario` × agendador, `npm run refresh` manual com a API
    no ar, e `npm start` × stack Docker (ACHADOS #148 vira impossível, não só regra).

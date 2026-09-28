@@ -30,6 +30,7 @@ node tools/refresh/src/daemon.ts --historico   # histórico de grupos e mortes d
 - `packages/snapshot/src/incremental.ts` tem um byte NUL — use `grep -a`.
 - Token Power BI: `~/.secrets/powerbi-token.json`, renova sozinho; somente-leitura garantido por `assertSomenteEvaluate`.
 - Morte da API: `snapshot/diagnostico/` (relatório fatal + cauda do stderr).
+- Um materializador por vez: `snapshot/.materializando.trava` (`packages/snapshot/src/trava.ts`). Travada à toa? O erro diz o dono e o caminho.
 
 ## Tela
 Fonte da verdade da paleta: `apps/web/src/estilo.css` (bordô `#880F17`). Cor cheia é FUNDO, cor

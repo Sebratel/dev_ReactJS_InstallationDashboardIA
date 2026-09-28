@@ -46,6 +46,7 @@ import type { ModelTable } from '../../../packages/semantic-model/src/types.ts';
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
+import { adquireTrava } from '../../../packages/snapshot/src/trava.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { traducaoDe } from '../../../packages/snapshot/src/nativas.ts';
@@ -189,6 +190,11 @@ for (const t of escolhidas) {
   console.error(`  ${t.name}  ->  ${path.relative(ROOT, arquivoDaCalculada(DIR, t.name))}`);
 }
 if (soPlano) process.exit(0);
+
+// Sozinha (`npm run snapshot:calculadas`) ela é um materializador como outro qualquer e
+// pede a vez; chamada pelo `index.ts`, herda a trava dele (ACHADOS #159).
+const trava = await adquireTrava(DIR, { comando: `calculadas ${args.join(' ')}` });
+process.on('exit', () => trava.solta());
 
 const t0 = Date.now();
 
