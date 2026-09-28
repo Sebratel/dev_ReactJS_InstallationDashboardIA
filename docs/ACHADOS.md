@@ -13434,3 +13434,38 @@ servidor do Portainer é o lugar disto.
 **E um incidente meu no caminho:** o reinício das 13:24 travou no `vite build` (processo vivo,
 2 s de CPU em 10 min, provável `esbuild` órfão do `taskkill /T` anterior) e a API não subiu —
 **plataforma fora de 13:24 a 13:35 UTC**. Matar a árvore e subir de novo resolveu em segundos.
+
+## #164 — nunca esperar cálculo numa pergunta já respondida: a última versão pronta sai na hora (28/09)
+
+Print do Erick às 10:59 local (13:59 UTC): `agendamento-field` inteira em esqueleto, "calculando…".
+"TUDO TEM QUE ESTAR PRÉ-CARREGADO AO ENTRAR". O histórico explica: o grupo `medio` terminou às
+**13:59:00**. A chave da resposta leva o carimbo da página (`carimboDaPagina`) e o dia; o refresh
+trocou o carimbo, a resposta pronta sumiu da vista NA HORA, e até o reaquecimento terminar não havia
+o que servir — o pedido dele calculou a página inteira a frio (`get_pagina_ms` máx **214 s** naquela
+hora). Aquecer mais não fecha isso: a cada refresh reabre uma janela sem nada pronto, e nesta
+máquina ela dura minutos.
+
+**O conserto (`b4569ff`):** toda resposta calculada também é guardada numa chave SEM carimbo e sem
+dia ("a última pronta desta pergunta", 7 dias; no cache em memória é a mesma referência, não dobra).
+Faltou a versão atual e existe a anterior: ela sai na hora (`cache: 'anterior'`, com o `dadoDe`
+DELA — a tela mostra a hora do dado que está servindo) e a atual é calculada em fundo, no mesmo
+`vooUnico` da chave nova. O aquecedor não recebe a anterior (é ele quem prepara a nova). O
+recálculo de fundo vai como `prefetch`: passa na frente do pré-cálculo de filtros que ninguém pediu
+e continua fora da worker reservada (#163).
+
+Três testes travavam a política velha ("depois do refresh é `miss`", "a virada do dia invalida",
+"o voo não sobrevive ao snapshot") e foram reescritos, não apagados: a anterior sai na hora e o
+número novo chega logo depois, num cálculo só — a garantia "não ficar preso no número velho"
+continua de pé. Mutação (sem o caminho novo): os três falham.
+
+**Medido no `npm start` real:** no segundo em que o refresh `quente` terminou (14:31:57 UTC), três
+páginas pedidas como usuário saíram em **17–34 ms** (`anterior`); 2 min depois, `agendamento-field`
+já era `hit` na versão nova. Com o recálculo como `warmup`, `visao-geral` e `diario-instalacao`
+ainda estavam na anterior — daí o `prefetch`.
+
+**O que ainda pode esperar:** a API recém-reiniciada (npm start sem Redis: nada em memória por ~1
+min; no Docker o Redis guarda, e o carimbo é o mesmo) e uma pergunta nunca feita antes (filtro de
+busca novo). **E uma falha intermitente:** numa rodada da suíte, o processo de
+`servidor.test.ts` morreu aos 3 s sem teste vermelho (faltaram 67); o arquivo não passa pelo caminho
+novo (não troca snapshot no meio), passou 3× sozinho e na suíte seguinte — mesma família da
+`0xC0000409` (#149, #161).

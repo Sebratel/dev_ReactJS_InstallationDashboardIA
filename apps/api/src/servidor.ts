@@ -1663,7 +1663,7 @@ export class Servidor {
 
     // **Nunca esperar cálculo numa pergunta já respondida antes (ACHADOS #164).** Faltou
     // a versão deste snapshot, mas existe uma anterior: ela sai AGORA, e a atual é
-    // calculada em segundo plano com prioridade de aquecimento (a piscina deixa uma
+    // calculada em segundo plano com prioridade de fundo (a piscina deixa uma
     // worker livre para quem usa). O aquecedor não entra aqui — é ele quem prepara a
     // versão nova, e servir-lhe a velha o faria aquecer nada.
     if (ttl > 0 && !recalcula && origem !== 'warmup') {
@@ -1672,7 +1672,10 @@ export class Servidor {
         this.metricas.conta('servido_anterior');
         this.marcaPrimeiroGet(dash.id, origem, true, tPedido);
         responde(res, 200, { ...anterior, cache: 'anterior' satisfies EstadoDoCache });
-        const fundo = prioridadeDe('warmup');
+        // `prefetch`, não `warmup`: alguém acabou de VER esta versão velha, e ela passa na
+        // frente do pré-cálculo de filtros que ninguém pediu. Continua fundo (> 0), então a
+        // worker reservada a quem usa segue livre.
+        const fundo = prioridadeDe('prefetch');
         void this.vooUnico.faz<CorpoDaPagina>(chave, () => calcula(fundo), fundo).catch(() => {
           // Falhou o recálculo de fundo: o próximo pedido tenta de novo, e quem pediu
           // já foi servido.
