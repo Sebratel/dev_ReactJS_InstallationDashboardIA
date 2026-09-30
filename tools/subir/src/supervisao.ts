@@ -1,5 +1,5 @@
 // **Voltou a ter chamador em 28/09/2026 (ACHADOS #161):** o `tools/subir` religa a API
-// com esta regra quando ela morre por falha (`0xC0000409`, 8 vezes entre 18 e 28/09).
+// com esta regra quando ela morre por falha (`0xC0000409`, 7 vezes entre 18 e 28/09).
 // Entre 19 e 28/09 ficou sem chamador — o daemon que ela ressuscitava saiu do `npm start`.
 // O texto abaixo é de 16/09 e fala do daemon; a regra (espera crescente, vida mínima
 // que zera a conta, desistir em voz alta) é a mesma para a API.

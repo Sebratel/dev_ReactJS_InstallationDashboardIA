@@ -13469,3 +13469,7 @@ busca novo). **E uma falha intermitente:** numa rodada da suíte, o processo de
 `servidor.test.ts` morreu aos 3 s sem teste vermelho (faltaram 67); o arquivo não passa pelo caminho
 novo (não troca snapshot no meio), passou 3× sozinho e na suíte seguinte — mesma família da
 `0xC0000409` (#149, #161).
+
+**Correção (30/09) ao #161:** as mortes `0xC0000409` entre 18 e 28/09 foram **7**, não 8 (18, 19,
+21, 22/09, duas em 25/09 e 28/09, contadas em `snapshot/refresh-historico.log`); as outras duas
+do período saíram com código 1. O texto do #161 e a mensagem do commit `82587d2` dizem 8.
