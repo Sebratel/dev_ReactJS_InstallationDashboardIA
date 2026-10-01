@@ -19,7 +19,7 @@
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
-import type { GrupoDeRefresh } from './grupos.ts';
+import { argIncremental, type GrupoDeRefresh } from './grupos.ts';
 // **Um tipo só, e ele mora em `tick.ts`.** Redeclarar `ResultadoDeExecucao` aqui daria
 // duas definições estruturalmente iguais que o compilador aceita e que divergem no dia
 // em que uma das duas ganhar um campo.
@@ -47,7 +47,7 @@ export function argvDoGrupo(
     `--memoria=${memoriaMb}`,
     `--query=${grupo.queries.join(',')}`,
     '--refazer',
-    ...(grupo.incremental ? ['--incremental'] : []),
+    ...argIncremental(grupo),
   ];
 }
 

@@ -28,6 +28,7 @@
 //   npm run snapshot -- --query=protocolos-geral --refazer
 //   npm run snapshot -- --query=x --refazer --sem-calculadas  # não congela o DAX no fim
 //   npm run snapshot -- --todas --incremental                 # só o que mudou desde a última
+//   npm run snapshot -- --query=a,b --refazer --incremental=a  # delta só em a; b inteira
 //   npm run snapshot -- --query=field-agenda --refazer --isolar-colunas  # ver Args.isolarColunas
 //   npm run snapshot -- --todas --sem-comprimir              # grava .jsonl cru, não .jsonl.gz
 
@@ -71,6 +72,7 @@ import {
   lePoliticas,
   marcaDe,
   mescla,
+  pisoDaJanela,
   planejaBusca,
   type CabecalhoAnterior,
 } from '../../../packages/snapshot/src/incremental.ts';
@@ -151,6 +153,16 @@ interface Args {
    */
   incremental: boolean;
   /**
+   * `--incremental=a,b`: só estas tentam a incremental; as outras com política vão
+   * inteiras. `null` (o `--incremental` puro) é toda query com política.
+   *
+   * Existe porque o grupo de refresh liga `--incremental` para TODAS as queries dele,
+   * e o `frio` tem duas com política: ligar `field-agenda` (ACHADOS #165) não pode
+   * ligar junto `protocolos-produtividade`, que `refresh.yaml` deixa desligada de
+   * propósito.
+   */
+  incrementalSo: string[] | null;
+  /**
    * Isola cada coluna calculada de tabela grande num processo próprio (ACHADOS #82).
    *
    * Fica de fora por padrão, e é o oposto de `calculadas.ts` (que isola sozinho, sem
@@ -203,6 +215,7 @@ function parseArgs(argv: string[]): Args {
     uma: null,
     semCalculadas: false,
     incremental: false,
+    incrementalSo: null,
     isolarColunas: false,
     comprime: true,
     colunaTabela: null,
@@ -220,6 +233,10 @@ function parseArgs(argv: string[]): Args {
     else if (raw === '--refazer') a.refazer = true;
     else if (raw === '--sem-calculadas') a.semCalculadas = true;
     else if (raw === '--incremental') a.incremental = true;
+    else if (raw.startsWith('--incremental=')) {
+      a.incremental = true;
+      a.incrementalSo = lista(raw, '--incremental=');
+    }
     else if (raw === '--isolar-colunas') a.isolarColunas = true;
     else if (raw === '--sem-comprimir') a.comprime = false;
     else if (raw.startsWith('--pagina=')) a.paginas.push(...lista(raw, '--pagina='));
@@ -605,15 +622,16 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   // --incremental, ou sem arquivo anterior, `planejaBusca` já devolve o caminho de
   // sempre (carga completa) — ver o docstring dela para o porquê de cada caso.
   const politica = politicas.get(q.id);
+  const tentaIncremental = args.incremental && (args.incrementalSo === null || args.incrementalSo.includes(q.id));
   let cabAnterior: CabecalhoAnterior | null = null;
-  if (politica && args.incremental) {
+  if (politica && tentaIncremental) {
     try {
       cabAnterior = leCabecalho(arquivoAnterior);
     } catch {
       cabAnterior = null; // sem arquivo ainda, ou ilegível: trata como primeira carga
     }
   }
-  const { plano, aviso } = planejaBusca(q.sql ?? '', cabAnterior, politica, AGORA, args.incremental);
+  const { plano, aviso } = planejaBusca(q.sql ?? '', cabAnterior, politica, AGORA, tentaIncremental);
   if (aviso) avisos.push(aviso);
 
   const { connectors, fechar } = await montaConnectors(fontesDe(q.id));
@@ -695,11 +713,19 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
         chave: politica!.chave,
         marca: politica!.marca,
         corte: plano.corte!,
+        ...(politica!.pisoDeJanela
+          ? {
+              pisoDeJanela: {
+                coluna: politica!.pisoDeJanela.coluna,
+                desde: pisoDaJanela(AGORA, politica!.pisoDeJanela.meses),
+              },
+            }
+          : {}),
       });
       rows = m.linhas;
       avisos.push(
         `incremental: +${m.novas} nova(s), ${m.substituidas} substituída(s), ` +
-          `${m.sumidas} sumida(s), ${m.mantidas} mantida(s) de antes.`,
+          `${m.sumidas} sumida(s), ${m.expiradas} expirada(s) da janela, ${m.mantidas} mantida(s) de antes.`,
       );
 
       // **Agora a garantia é real: o arquivo inteiro compartilha o mesmo `AGORA`.**
@@ -963,7 +989,18 @@ console.log(
     `${args.memoria ? `, heap de ${args.memoria} MB por processo` : ''}`,
 );
 if (args.incremental) {
-  const comPolitica = aBuscar.filter((id) => politicas.has(id));
+  // Um nome em `--incremental=` sem política é erro de digitação ou política
+  // apagada — e nos dois casos a query iria inteira, calada, sob um pedido de delta.
+  const semPolitica = (args.incrementalSo ?? []).filter((id) => !politicas.has(id));
+  if (semPolitica.length) {
+    console.error(
+      `--incremental=: ${semPolitica.join(', ')} sem política em specs/_catalog/incremental.yaml.`,
+    );
+    process.exit(2);
+  }
+  const comPolitica = aBuscar.filter(
+    (id) => politicas.has(id) && (args.incrementalSo === null || args.incrementalSo.includes(id)),
+  );
   console.log(
     `  --incremental: ${comPolitica.length} com política` +
       (comPolitica.length ? ` (${comPolitica.join(', ')})` : '') +
@@ -1016,7 +1053,9 @@ async function rodaEmSubprocesso(id: string): Promise<Resultado> {
     `--timeout=${args.segundos}`,
     // Quem decide se a carga é incremental é o filho, olhando o cabeçalho do
     // arquivo — mas a intenção é do pai, e só chega lá por aqui.
-    ...(args.incremental ? ['--incremental'] : []),
+    ...(args.incremental
+      ? [args.incrementalSo ? `--incremental=${args.incrementalSo.join(',')}` : '--incremental']
+      : []),
     ...(args.isolarColunas ? ['--isolar-colunas'] : []),
   ];
   return new Promise((resolve) => {

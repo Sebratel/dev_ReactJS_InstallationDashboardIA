@@ -13,15 +13,29 @@ export interface GrupoDeRefresh {
   id: string;
   queries: string[];
   intervaloMinutos: number;
-  incremental: boolean;
+  /**
+   * `true` liga a incremental em toda query do grupo que tem política; uma lista liga
+   * só nas citadas. A lista existe porque o `frio` tem duas com política e só uma
+   * delas foi ligada (`field-agenda`, ACHADOS #165).
+   */
+  incremental: boolean | string[];
 }
 
 interface ArquivoDeRefresh {
   formato?: number;
   grupos?: Record<
     string,
-    { queries?: string[]; intervalo_minutos?: number; incremental?: boolean }
+    { queries?: string[]; intervalo_minutos?: number; incremental?: boolean | string[] }
   >;
+}
+
+/** O `--incremental` que o grupo passa ao snapshot — vazio quando desligado. */
+export function argIncremental(grupo: GrupoDeRefresh): string[] {
+  if (grupo.incremental === true) return ['--incremental'];
+  if (Array.isArray(grupo.incremental) && grupo.incremental.length) {
+    return [`--incremental=${grupo.incremental.join(',')}`];
+  }
+  return [];
 }
 
 /**
@@ -64,6 +78,16 @@ export function leGrupos(specsDir: string): Map<string, GrupoDeRefresh> {
     if (!bruto.queries?.length) throw new Error(`${p}: grupo '${id}' não declara 'queries'.`);
     if (!bruto.intervalo_minutos || bruto.intervalo_minutos <= 0) {
       throw new Error(`${p}: grupo '${id}' precisa de 'intervalo_minutos' positivo.`);
+    }
+    if (Array.isArray(bruto.incremental)) {
+      const foraDoGrupo = bruto.incremental.filter((q) => !bruto.queries!.includes(q));
+      if (foraDoGrupo.length) {
+        throw new Error(
+          `${p}: grupo '${id}' liga a incremental em ${foraDoGrupo.join(', ')}, que não está nas queries dele.`,
+        );
+      }
+    } else if (bruto.incremental !== undefined && typeof bruto.incremental !== 'boolean') {
+      throw new Error(`${p}: grupo '${id}': 'incremental' é true/false ou uma lista de queries do grupo.`);
     }
     fora.set(id, {
       id,

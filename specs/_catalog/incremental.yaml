@@ -133,3 +133,98 @@ queries:
       # com outra lista de tipos. A âncora de duas linhas não o alcança.
       - de: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo"
         para: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo\n      AND a.title IN (SELECT title FROM alvos)"
+
+  # -------------------------------------------------------------------------
+  # field-agenda — a query mais pesada do corpus (226,9 s só de busca em 22/09,
+  # ACHADOS #145; banda de ~130 s a ~900 s, cancelada por timeout em 600 s no #148).
+  # O custo é REDE, não cálculo: ~360 MB, 630 mil linhas, 12 s de CPU em 10 min.
+  # Desenho e medição: ACHADOS #165 (01/10/2026).
+  # -------------------------------------------------------------------------
+  field-agenda:
+    parametro: desde
+    # A carga completa NÃO usa `:desde` (o recorte dela é a janela deslizante
+    # abaixo); o piso aqui só limita até onde `desdeDe` recua.
+    piso: '2026-01-01'
+    # Só colunas que NUNCA passam de agora — medido no arquivo de 01/10: zero
+    # valores futuros em cada uma. `Prazo SLA` (7.515 futuras) e `Slot Agenda`
+    # (1.940 futuras) ficam de fora: agenda é futuro por definição, e uma marca no
+    # futuro faz `decideIncremental` recusar ("a marca está no futuro").
+    marca:
+      - Data Criado
+      - Inicio relato
+      - Fim relato
+      - Data Relato
+    # Protocolo ↔ solicitação é 1:1 na janela (medido 01/10: 22.547 de cada, nenhum
+    # protocolo com duas). Recortar por solicitação entrega o protocolo INTEIRO —
+    # e tem de entregar: `RankDataProtocolo`/`RankAtualProtocolo` particionam por
+    # protocolo, e meia partição dá Rank errado e calado (ACHADOS #146).
+    chave:
+      - Protocolo
+    margem_dias: 2
+    idade_maxima_dias: 7
+    # A PRIMEIRA query com recorte DESLIZANTE na fonte. A completa traz só
+    # `Slot Agenda >= CURRENT_DATE - 3 meses`; a incremental não reentrega quem
+    # saiu da janela — sem este piso a linha velha ficaria no arquivo para sempre.
+    # A mesclagem descarta, das antigas, toda linha com `Slot Agenda` abaixo de
+    # (hoje em Brasília − meses), que é o que o `CURRENT_DATE` do banco faz (fuso
+    # do banco: localtime, -03, medido 01/10). `costura` erra alto se o SQL deixar
+    # de citar `INTERVAL '<meses> months'`.
+    piso_de_janela:
+      coluna: Slot Agenda
+      meses: 3
+    # `alvos`: as solicitações JÁ na janela (pelo histórico de atendimento, 240 MB
+    # — nunca varrer `assignments`/`reports`, 7 e 8,5 GB, sem índice em `modified`)
+    # que tiveram QUALQUER mudança desde `:desde`. Quatro ramos, um por fonte da
+    # view `v_service_desk_slots_productivity_informative` que tem data:
+    #
+    #   1. `assignments` — criação/modificação. É também o ÚNICO sinal de troca de
+    #      status: `assignment_incidents` (onde o status mora) não tem coluna de
+    #      data nenhuma. Quanto isso perde foi medido contra a carga completa (#165).
+    #   2. `fsm_attendance_history` — o histórico de atendimento NÃO tem
+    #      created/modified; as datas dele são de evento (início, fim, reserva).
+    #      Um play/fim novo cai aqui. Mudar UMA linha dele muda a solicitação
+    #      inteira: a view faz `lag`/`first_value`/`max` por solicitação.
+    #   3. `reports` — relato novo ou editado (o grão da tabela é slot × relato).
+    #   4. `service_desk_slots` — o `EXISTS` da view decide se o slot conta.
+    #
+    # `people`, `skills`, `regions`, `incident_types`, `incident_status` são
+    # cadastro; renomear um deles só aparece na carga completa (`idade_maxima_dias`).
+    costura:
+      - de: "AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')"
+        para: |-
+          AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
+            AND vsdspi.assignment_id IN (
+              WITH na_janela AS (
+                  SELECT DISTINCT fah.reserved_assignment_id AS id
+                  FROM fsm_attendance_history fah
+                  WHERE fah.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
+              )
+              -- 1. a solicitação nasceu ou mudou (inclui troca de status, ver acima).
+              SELECT j.id
+              FROM na_janela j
+              JOIN assignments a ON a.id = j.id
+              WHERE GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde
+              UNION
+              -- 2. evento novo no histórico de atendimento.
+              SELECT f.reserved_assignment_id
+              FROM fsm_attendance_history f
+              JOIN na_janela j ON j.id = f.reserved_assignment_id
+              WHERE GREATEST(f.begin_date, COALESCE(f.end_date, f.begin_date),
+                             COALESCE(f.reserved_date, f.begin_date)) >= :desde
+              UNION
+              -- 3. relato novo ou editado. `beginning_date` entra porque é a
+              --    `Data Relato` da marca: linha com marca na janela que não volta
+              --    é apagada como "sumida" (`mescla`), e sumir meia solicitação
+              --    quebraria o Rank por protocolo.
+              SELECT r2.assignment_id
+              FROM reports r2
+              JOIN na_janela j ON j.id = r2.assignment_id
+              WHERE GREATEST(r2.created, COALESCE(r2.modified, r2.created),
+                             COALESCE(r2.beginning_date, r2.created)) >= :desde
+              UNION
+              -- 4. slot criado ou mexido.
+              SELECT s.pre_reserved_assignment_id
+              FROM service_desk_slots s
+              JOIN na_janela j ON j.id = s.pre_reserved_assignment_id
+              WHERE GREATEST(s.created, COALESCE(s.modified, s.created)) >= :desde
+            )

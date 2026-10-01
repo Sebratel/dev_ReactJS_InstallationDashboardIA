@@ -62,6 +62,13 @@ test('argvDoGrupo: `--incremental` só aparece quando o grupo pede', () => {
   assert.ok(argvDoGrupo(RAIZ, { ...cheio, incremental: true }).includes('--incremental'));
 });
 
+test('argvDoGrupo: lista liga só as citadas (ACHADOS #165)', () => {
+  const argv = argvDoGrupo(RAIZ, { ...cheio, incremental: ['field-agenda'] });
+  assert.ok(argv.includes('--incremental=field-agenda'));
+  assert.ok(!argv.includes('--incremental'));
+  assert.ok(!argvDoGrupo(RAIZ, { ...cheio, incremental: [] }).some((a) => a.startsWith('--incremental')));
+});
+
 test('argvDoGrupo: memória explícita vence o padrão nos dois lugares', () => {
   const argv = argvDoGrupo(RAIZ, cheio, 12288);
   assert.equal(argv[0], '--max-old-space-size=12288');

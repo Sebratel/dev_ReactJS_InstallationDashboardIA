@@ -499,6 +499,14 @@ grupos:
   # o remédio já está desenhado: incremental por `assignment_id` (35 s medidos), que
   # exige antes o `piso_de_janela` em `mescla()` — esta é a primeira query do corpus
   # com recorte DESLIZANTE na fonte, e sem essa regra o arquivo cresce para sempre.
+  #
+  # **LIGADA EM 01/10/2026 (ACHADOS #165), e só ela.** O `piso_de_janela` foi feito
+  # (`incremental.ts`, `mescla`), a política está em `incremental.yaml`, e a carga
+  # completa do mesmo dia levou 375 s. A lista abaixo liga a incremental SÓ em
+  # `field-agenda`: `protocolos-produtividade` também tem política e continua inteira
+  # pelo motivo de sempre (ver acima). A cada 7 dias (`idade_maxima_dias`) a própria
+  # incremental recusa e faz a completa — é o que pega cadastro renomeado e linha
+  # apagada na fonte sem rastro de data.
   frio:
     queries:
       - field-agenda-slot
@@ -507,4 +515,4 @@ grupos:
       - protocolos-produtividade
       - protocolos-auxiliares
     intervalo_minutos: 30
-    incremental: false
+    incremental: [field-agenda]

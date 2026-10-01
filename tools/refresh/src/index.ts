@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
-import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
+import { argIncremental, leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
 import { leStatus, escreveStatus } from './status.ts';
 import { estaVencido, executaTick, type ResultadoDeExecucao } from './tick.ts';
 
@@ -78,7 +78,7 @@ function roda(grupo: GrupoDeRefresh): ResultadoDeExecucao {
     `--memoria=${MEMORIA_MB}`,
     `--query=${grupo.queries.join(',')}`,
     '--refazer',
-    ...(grupo.incremental ? ['--incremental'] : []),
+    ...argIncremental(grupo),
   ];
   const r = spawnSync(process.execPath, argv, { cwd: ROOT, stdio: 'inherit' });
   if (r.status === 0) return { ok: true };

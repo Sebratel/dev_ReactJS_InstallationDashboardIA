@@ -34,6 +34,33 @@ grupos:
   });
 });
 
+test('incremental como lista: só queries do próprio grupo (ACHADOS #165)', () => {
+  const ok = tmpSpecsDir(`formato: 1
+grupos:
+  frio:
+    queries: [a, b]
+    intervalo_minutos: 30
+    incremental: [a]
+`);
+  assert.deepEqual(leGrupos(ok).get('frio')!.incremental, ['a']);
+  const fora = tmpSpecsDir(`formato: 1
+grupos:
+  frio:
+    queries: [a, b]
+    intervalo_minutos: 30
+    incremental: [c]
+`);
+  assert.throws(() => leGrupos(fora), /liga a incremental em c/);
+  const torto = tmpSpecsDir(`formato: 1
+grupos:
+  frio:
+    queries: [a]
+    intervalo_minutos: 30
+    incremental: sim
+`);
+  assert.throws(() => leGrupos(torto), /true\/false ou uma lista/);
+});
+
 test('formato diferente de 1 derruba', () => {
   const dir = tmpSpecsDir('formato: 2\ngrupos: {}\n');
   assert.throws(() => leGrupos(dir), /formato 2, esperado 1/);

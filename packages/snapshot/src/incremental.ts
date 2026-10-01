@@ -88,6 +88,26 @@ export interface PoliticaIncremental {
   /** Depois disto sem carga completa, `--incremental` se recusa a rodar. */
   idadeMaximaDias: number;
   costura: Costura[];
+  /** Só para fonte com recorte DESLIZANTE. Ver `PisoDeJanela`. */
+  pisoDeJanela?: PisoDeJanela;
+}
+
+/**
+ * O recorte deslizante da fonte, repetido do lado de cá — `field-agenda` foi a
+ * primeira (ACHADOS #165).
+ *
+ * **Por que a mesclagem precisa saber dele.** A carga completa traz só
+ * `coluna >= CURRENT_DATE - meses`. A incremental reentrega só quem MUDOU, e uma
+ * linha que apenas envelheceu para fora da janela não muda — não volta, e a
+ * mesclagem a manteria para sempre. O arquivo cresceria um dia por dia, e a tela
+ * passaria a contar o que a fonte já não conta. Este piso descarta, das linhas
+ * antigas, o que a fonte já descartou.
+ */
+export interface PisoDeJanela {
+  /** Coluna do RESULTADO que o SQL recorta (`Slot Agenda`). */
+  coluna: string;
+  /** O `INTERVAL '<meses> months'` do SQL. `costura` confere que ele está lá. */
+  meses: number;
 }
 
 interface ArquivoIncremental {
@@ -102,6 +122,7 @@ interface ArquivoIncremental {
       margem_dias?: number;
       idade_maxima_dias?: number;
       costura?: Costura[];
+      piso_de_janela?: { coluna?: string; meses?: number };
     }
   >;
 }
@@ -133,6 +154,10 @@ export function lePoliticas(specsDir: string): Map<string, PoliticaIncremental> 
     if (!bruto.marca?.length) throw new Error(`${p}: ${query} não declara 'marca'.`);
     if (!bruto.chave?.length) throw new Error(`${p}: ${query} não declara 'chave'.`);
     if (!bruto.costura?.length) throw new Error(`${p}: ${query} não declara 'costura'.`);
+    const janela = bruto.piso_de_janela;
+    if (janela && (!janela.coluna || !Number.isInteger(janela.meses) || janela.meses! <= 0)) {
+      throw new Error(`${p}: ${query} declara 'piso_de_janela' sem 'coluna' ou com 'meses' não inteiro positivo.`);
+    }
     fora.set(query, {
       query,
       parametro: bruto.parametro!,
@@ -142,6 +167,7 @@ export function lePoliticas(specsDir: string): Map<string, PoliticaIncremental> 
       margemDias: bruto.margem_dias ?? 2,
       idadeMaximaDias: bruto.idade_maxima_dias ?? 7,
       costura: bruto.costura,
+      ...(janela ? { pisoDeJanela: { coluna: janela.coluna!, meses: janela.meses! } } : {}),
     });
   }
   return fora;
@@ -159,6 +185,16 @@ export function lePoliticas(specsDir: string): Map<string, PoliticaIncremental> 
  * `String.replace` trocar só a primeira, e o SQL sairia meio costurado.
  */
 export function costura(sql: string, p: PoliticaIncremental): string {
+  // O piso de janela repete, do lado de cá, um número que mora no SQL. Se o SQL
+  // passar a recortar outra janela, a mesclagem descartaria pelo número velho —
+  // linha que a fonte ainda traz sumiria do arquivo, ou a que ela já tirou ficaria.
+  if (p.pisoDeJanela && !sql.includes(`INTERVAL '${p.pisoDeJanela.meses} months'`)) {
+    throw new Error(
+      `${p.query}: 'piso_de_janela' diz ${p.pisoDeJanela.meses} mês(es), e o SQL não cita ` +
+        `INTERVAL '${p.pisoDeJanela.meses} months'. A janela da fonte mudou embaixo da política — ` +
+        `corrija specs/_catalog/incremental.yaml ou rode a carga completa (--refazer).`,
+    );
+  }
   let saida = sql;
   for (const c of p.costura) {
     const quantas = saida.split(c.de).length - 1;
@@ -231,6 +267,33 @@ export function desdeDe(marca: Date, p: PoliticaIncremental): string {
   const recuado = new Date(marca.getTime() - p.margemDias * 86_400_000);
   const dia = comoDia(recuado);
   return dia < p.piso ? p.piso : dia;
+}
+
+/**
+ * O fuso do `CURRENT_DATE` do dbVoalle: `localtime`, -03, medido em 01/10/2026
+ * (`current_setting('TimeZone')`). O dia que vale é o de Brasília, não o desta máquina
+ * nem o UTC — às 22h de Brasília o UTC já virou o dia.
+ */
+const FUSO_DO_BANCO = 'America/Sao_Paulo';
+
+/**
+ * O `CURRENT_DATE - INTERVAL '<meses> months'` do banco, como o conector o entrega:
+ * meia-noite daquele dia **lida como UTC** (`parseSemFuso` em `connectors-sql.ts` lê
+ * `timestamp without time zone` sem mover o relógio). Comparar com a coluna da
+ * linha, então, é comparar relógio de parede com relógio de parede.
+ *
+ * Mesma aritmética do Postgres para mês curto: o dia é limitado ao último do mês de
+ * destino (`2026-05-31 - 3 months` = `2026-02-28`), sem transbordar para março como
+ * `Date.setUTCMonth` faria.
+ */
+export function pisoDaJanela(agora: Date, meses: number): Date {
+  const hoje = new Intl.DateTimeFormat('en-CA', { timeZone: FUSO_DO_BANCO }).format(agora);
+  const [ano, mes, dia] = hoje.split('-').map(Number) as [number, number, number];
+  const alvo = ano * 12 + (mes - 1) - meses;
+  const anoAlvo = Math.floor(alvo / 12);
+  const mesAlvo = alvo - anoAlvo * 12;
+  const ultimoDia = new Date(Date.UTC(anoAlvo, mesAlvo + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(anoAlvo, mesAlvo, Math.min(dia, ultimoDia)));
 }
 
 // ---------------------------------------------------------------------- decisão
@@ -309,6 +372,8 @@ export interface Mesclagem {
   sumidas: number;
   /** Linhas antigas preservadas (fora da janela e sem grupo novo). */
   mantidas: number;
+  /** Linhas antigas que envelheceram para fora do recorte deslizante da fonte. */
+  expiradas: number;
   /** Linhas que a busca trouxe. */
   novas: number;
 }
@@ -331,6 +396,12 @@ export interface Mesclagem {
  * o append dos dois ramos entrega a mesma linha duas vezes de propósito, e um
  * `Map` por linha achataria isso. Apagar o grupo e inserir o que veio preserva a
  * contagem que a tela conta.
+ *
+ * **E uma terceira, só para fonte com recorte deslizante (`pisoDeJanela`).** Linha
+ * antiga com a coluna abaixo do piso — ou nula, que o `>=` do SQL também deixa de
+ * fora — sai, porque a carga completa de agora já não a traria. Vale só para as
+ * ANTIGAS: as novas vieram do SQL, que recortou pelo `CURRENT_DATE` do próprio
+ * banco, e recortá-las de novo por um relógio daqui só poderia discordar dele.
  */
 export function mescla(opts: {
   antigas: readonly Record<string, Escalar>[];
@@ -338,10 +409,18 @@ export function mescla(opts: {
   chave: readonly string[];
   marca: readonly string[];
   corte: Date;
+  pisoDeJanela?: { coluna: string; desde: Date };
 }): Mesclagem {
   const chaves = opts.chave.map(normalizeName);
   const marcas = opts.marca.map(normalizeName);
   const corte = opts.corte.getTime();
+  const colunaDoPiso = opts.pisoDeJanela ? normalizeName(opts.pisoDeJanela.coluna) : null;
+  const piso = opts.pisoDeJanela?.desde.getTime() ?? null;
+  const expirou = (l: Record<string, Escalar>): boolean => {
+    if (colunaDoPiso === null || piso === null) return false;
+    const v = l[colunaDoPiso];
+    return !(v instanceof Date) || Number.isNaN(v.getTime()) || v.getTime() < piso;
+  };
 
   const identidade = (l: Record<string, Escalar>): string =>
     chaves.map((k) => (l[k] === null || l[k] === undefined ? ' ' : String(l[k]))).join('');
@@ -352,9 +431,14 @@ export function mescla(opts: {
   const linhas: Record<string, Escalar>[] = [];
   let substituidas = 0;
   let sumidas = 0;
+  let expiradas = 0;
   for (const l of opts.antigas) {
     if (gruposNovos.has(identidade(l))) {
       substituidas++;
+      continue;
+    }
+    if (expirou(l)) {
+      expiradas++;
       continue;
     }
     const m = marcaDaLinha(l, marcas);
@@ -367,7 +451,7 @@ export function mescla(opts: {
   const mantidas = linhas.length;
   for (const l of opts.novas) linhas.push(l);
 
-  return { linhas, substituidas, sumidas, mantidas, novas: opts.novas.length };
+  return { linhas, substituidas, sumidas, mantidas, expiradas, novas: opts.novas.length };
 }
 
 // ---------------------------------------------------------------------- plano

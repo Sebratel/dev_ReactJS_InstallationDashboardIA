@@ -16,6 +16,7 @@ import {
   lePoliticas,
   marcaDe,
   mescla,
+  pisoDaJanela,
   planejaBusca,
   type CabecalhoAnterior,
   type PoliticaIncremental,
@@ -281,6 +282,120 @@ test('chave nula não colide com chave vazia', () => {
   });
   assert.equal(m.substituidas, 1, 'só o grupo de chave vazia deveria ter sido substituído');
   assert.equal(m.mantidas, 1);
+});
+
+// ------------------------------------------------------- piso de janela (#165)
+//
+// A fonte com recorte DESLIZANTE não reentrega quem só envelheceu para fora da
+// janela. Sem o piso, a linha velha ficaria no arquivo para sempre — e a tela
+// contaria o que a carga completa já não traz.
+
+test('pisoDaJanela: o dia é o de Brasília (fuso do CURRENT_DATE do banco), não o UTC', () => {
+  // 22h30 de 30/09 em Brasília já é 01/10 em UTC. O banco ainda está em 30/09.
+  assert.equal(pisoDaJanela(d('2026-10-01T01:30:00Z'), 3).toISOString(), '2026-06-30T00:00:00.000Z');
+  assert.equal(pisoDaJanela(d('2026-10-01T12:00:00Z'), 3).toISOString(), '2026-07-01T00:00:00.000Z');
+});
+
+test('pisoDaJanela: mês curto limita o dia, como o Postgres (31/05 - 3 meses = 28/02)', () => {
+  assert.equal(pisoDaJanela(d('2026-05-31T15:00:00Z'), 3).toISOString(), '2026-02-28T00:00:00.000Z');
+});
+
+test('pisoDaJanela: atravessa o ano', () => {
+  assert.equal(pisoDaJanela(d('2026-02-15T15:00:00Z'), 3).toISOString(), '2025-11-15T00:00:00.000Z');
+});
+
+function slot(sol: string, criado: string, slotAgenda: string | null) {
+  return { ...linha(sol, criado), 'slot agenda': slotAgenda === null ? null : d(slotAgenda) };
+}
+const PISO = { coluna: 'Slot Agenda', desde: d('2026-07-01T00:00:00Z') };
+
+test('piso: linha antiga que envelheceu para fora da janela sai, e é contada à parte', () => {
+  const m = mescla({
+    antigas: [slot('A', '2026-03-01T00:00:00Z', '2026-06-30T09:00:00Z'), slot('B', '2026-03-01T00:00:00Z', '2026-07-01T09:00:00Z')],
+    novas: [],
+    chave: POLITICA.chave,
+    marca: POLITICA.marca,
+    corte,
+    pisoDeJanela: PISO,
+  });
+  assert.equal(m.expiradas, 1);
+  assert.equal(m.mantidas, 1);
+  assert.equal(m.linhas[0]!.solicitacao, 'B');
+});
+
+test('piso: coluna nula também sai — o >= do SQL não a traria', () => {
+  const m = mescla({
+    antigas: [slot('A', '2026-03-01T00:00:00Z', null)],
+    novas: [],
+    chave: POLITICA.chave,
+    marca: POLITICA.marca,
+    corte,
+    pisoDeJanela: PISO,
+  });
+  assert.equal(m.expiradas, 1);
+  assert.equal(m.linhas.length, 0);
+});
+
+test('piso: só corta ANTIGAS — a linha nova veio recortada pelo relógio do banco', () => {
+  const m = mescla({
+    antigas: [],
+    novas: [slot('A', '2026-08-25T00:00:00Z', '2026-06-30T09:00:00Z')],
+    chave: POLITICA.chave,
+    marca: POLITICA.marca,
+    corte,
+    pisoDeJanela: PISO,
+  });
+  assert.equal(m.expiradas, 0);
+  assert.equal(m.linhas.length, 1);
+});
+
+test('piso: sem piso declarado, nada expira (protocolos-produtividade não muda)', () => {
+  const m = mescla({
+    antigas: [slot('A', '2026-03-01T00:00:00Z', '2020-01-01T00:00:00Z')],
+    novas: [],
+    chave: POLITICA.chave,
+    marca: POLITICA.marca,
+    corte,
+  });
+  assert.equal(m.expiradas, 0);
+  assert.equal(m.mantidas, 1);
+});
+
+test('piso: a costura derruba se o SQL deixou de citar a janela declarada', () => {
+  const p = { ...POLITICA, pisoDeJanela: { coluna: 'Slot Agenda', meses: 3 } };
+  assert.throws(
+    () => costura("WITH bruto AS (SELECT 1 WHERE s >= CURRENT_DATE - INTERVAL '6 months')", p),
+    /não cita INTERVAL '3 months'/,
+  );
+  assert.ok(costura("WITH bruto AS (SELECT 1 WHERE s >= CURRENT_DATE - INTERVAL '3 months')", p).includes(':desde'));
+});
+
+test("piso: 'piso_de_janela' com meses inválido derruba na leitura", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'incr-'));
+  fs.mkdirSync(path.join(dir, '_catalog'), { recursive: true });
+  fs.writeFileSync(
+    path.join(dir, '_catalog', 'incremental.yaml'),
+    `formato: 1
+queries:
+  q:
+    parametro: desde
+    piso: "2026-01-01"
+    marca: [X]
+    chave: [K]
+    costura: [{ de: a, para: ":desde" }]
+    piso_de_janela: { coluna: S, meses: 0 }
+`,
+    'utf8',
+  );
+  assert.throws(() => lePoliticas(dir), /piso_de_janela/);
+});
+
+test('a política de field-agenda declara o piso que o SQL dela recorta', () => {
+  const raiz = path.resolve(import.meta.dirname, '..', '..', '..');
+  const p = lePoliticas(path.join(raiz, 'specs')).get('field-agenda');
+  assert.ok(p, 'field-agenda deveria ter política');
+  assert.deepEqual(p.pisoDeJanela, { coluna: 'Slot Agenda', meses: 3 });
+  assert.ok(!p.marca.includes('Slot Agenda') && !p.marca.includes('Prazo SLA'), 'agenda é futuro: não serve de marca');
 });
 
 // ------------------------------------------------------------------- a política
