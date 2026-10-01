@@ -137,7 +137,7 @@ function resolverPiso(piso: string): string {
 
 /**
  * Lê `specs/_catalog/incremental.yaml`. Sem o arquivo, ninguém é incremental —
- * que é o estado de hoje de 21 das 22 queries e não é erro.
+ * que é o estado de 21 das 23 queries (01/10/2026) e não é erro.
  */
 export function lePoliticas(specsDir: string): Map<string, PoliticaIncremental> {
   const p = path.join(specsDir, ARQUIVO);

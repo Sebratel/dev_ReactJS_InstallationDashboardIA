@@ -445,7 +445,8 @@ grupos:
   # Não ganhou grupo próprio de propósito: grupo novo custa mais uma queda do cache de
   # resposta inteiro por ciclo (docs/DEPLOY.md).
   #
-  # `incremental: false` por ora, apesar de ela ser a ÚNICA query com política em
+  # `incremental` desligada para ela por ora (a lista do grupo abaixo só cita a
+  # `field-agenda`, desde 01/10), apesar de ela ter sido a primeira query com política em
   # `incremental.yaml`. A carga completa agora cabe no orçamento, e ligar a costura
   # incremental logo depois da reescrita do SQL empilharia risco sem necessidade -- a
   # costura ancora em duas linhas exatas daquele arquivo. Ligar depois é barato.

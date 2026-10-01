@@ -699,9 +699,10 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     // chave presente faz `adotaTabela` promover a coluna a física e o avaliador
     // devolver BLANK para quem não a tem. Medido; ver `esqueceCalculadas`.
     //
-    // Isso nunca produziu número errado em produção porque nenhuma query roda hoje
-    // com `incremental: true` (`refresh.yaml` traz `incremental: false` nos três
-    // grupos). Era defeito LATENTE na única política que existe
+    // Isso nunca produziu número errado em produção porque, em 22/09, nenhuma query
+    // rodava incremental (`refresh.yaml` trazia `incremental: false` nos três
+    // grupos; desde 01/10 a `field-agenda` roda, ACHADOS #165). Era defeito LATENTE
+    // na única política que existia então
     // (`protocolos-produtividade`, 3 colunas calculadas, uma delas citando
     // `NOW()`/`TODAY()`) — e `incremental.yaml` chamava ligá-la de "barato".
     let rows = buscadas;

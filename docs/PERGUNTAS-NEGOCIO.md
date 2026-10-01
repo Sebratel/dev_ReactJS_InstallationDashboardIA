@@ -456,6 +456,13 @@ disco, DAX sempre ao vivo) é para manter?
 
 ## 9. O `Qtd` de `FIELD AGENDA` deve contar relato, ou (relato × skill do relator)?
 
+> **Corrigido em 22/09/2026 (`ACHADOS.md` #145), aviso de 01/10:** medido no arquivo em
+> disco, **todo relator tem exatamente 1 skill** (182 relatores, mín = máx = 1) — o `LEFT JOIN
+> person_skills` não multiplica nada. Quem multiplica é `reports`: o grão real é
+> (slot, relato), ~13,4 relatos por solicitação.
+> Na prática relato e (relato × skill) dão o mesmo número hoje; a pergunta só volta se
+> alguém cadastrar uma segunda skill num relator.
+
 **Do Fabrício.** Levantada em 12/08/2026, ao decidir a agregação de `FIELD AGENDA` —
 não é pergunta de gosto, ela muda dois números na tela.
 

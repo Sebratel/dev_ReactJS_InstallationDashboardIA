@@ -3,13 +3,23 @@
 Plataforma corporativa de Analytics que substitui o Power BI da Sebratel.
 Orientada por **Engines** e **metadados** — dashboards são apenas uma das funcionalidades.
 
-> **Assumindo o projeto?** Comece por [docs/CONTINUACAO.md](docs/CONTINUACAO.md): como rodar, o estado exato, o que está bloqueado e o que fazer a seguir.
+> **Assumindo o projeto?** Comece por [CLAUDE.md](CLAUDE.md) (regras e comandos) e
+> [docs/PLANO-CARGA.md](docs/PLANO-CARGA.md) (o estado de agora, o que já foi feito e o
+> roteiro — atualizado a cada etapa). A operação sem supervisão está em
+> [docs/PLANO-AUTONOMIA.md](docs/PLANO-AUTONOMIA.md). O `docs/CONTINUACAO.md` **parou em
+> 27/08/2026** e é histórico.
 >
 > **Vai publicar isto?** [docs/DEPLOY.md](docs/DEPLOY.md) é o plano de entrega — o que
 > está pronto com o número que prova e o que falta. O login existe (Google SSO); o que
 > segue aberto é o recorte por perfil — e o `snapshot/` tem CPF, RG e endereço de cliente.
 
 ## Estado atual
+
+> **Esta tabela é o placar das fases de construção (agosto a setembro de 2026) e não é
+> mais mantida linha a linha** — números dela (contagens de linhas, de queries, de
+> testes) envelheceram. O estado operacional de agora — o que roda, onde, com que
+> contorno, e o que vem a seguir — está em [docs/PLANO-CARGA.md](docs/PLANO-CARGA.md);
+> o detalhe datado de cada mudança, em [docs/ACHADOS.md](docs/ACHADOS.md).
 
 | Fase | Escopo | Status |
 |---|---|---|
@@ -669,7 +679,9 @@ Node 24 roda TypeScript nativamente — não há build step.
 
 ```
 docs/
-  CONTINUACAO.md       # o estado de agora, o que está bloqueado e o roteiro até pronto
+  PLANO-CARGA.md       # O ESTADO DE AGORA: o que roda, contornos ativos, feito e roteiro
+  PLANO-AUTONOMIA.md   # a plataforma no ar sem ninguém olhando (Portainer)
+  CONTINUACAO.md       # histórico — parou em 27/08/2026
   DEPLOY.md            # plano de entrega: o que está pronto, o que falta, em que ordem
   ARCHITECTURE.md      # Engines, stack e arquitetura de real-time (Debezium/Kafka/Redis)
   SPEC-DRIVEN.md       # como as specs governam a implementação

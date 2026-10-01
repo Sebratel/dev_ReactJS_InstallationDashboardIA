@@ -1,5 +1,12 @@
 # Continuação — onde o trabalho parou
 
+> ⚠️ **HISTÓRICO — CONGELADO EM 27/08/2026 (aviso de 01/10/2026).** Este arquivo não é
+> mais o estado do projeto e não é mantido. Comandos, números, filas e "o que falta"
+> daqui envelheceram — muitos foram resolvidos depois (ver `ACHADOS.md` #80 em diante).
+> **O estado de agora está em [PLANO-CARGA.md](PLANO-CARGA.md)** (o que roda, contornos,
+> roteiro) e em [PLANO-AUTONOMIA.md](PLANO-AUTONOMIA.md) (operação sem supervisão). Use
+> este texto só para entender por que algo foi decidido em agosto.
+
 > **Atualizado em 27/08/2026, depois de uma perda e de uma recuperação.** Este arquivo
 > voltou de `5ce7c20`: entre 19 e 26/08 **nada foi commitado**, a árvore de trabalho foi
 > apagada duas vezes por outro agente/IDE, e a reconstrução devolveu este documento na

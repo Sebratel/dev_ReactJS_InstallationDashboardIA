@@ -103,6 +103,11 @@ porque não corresponde a nenhuma query do PBIP. É a forma de GRÃO DE SLOT de
 `reports`/`people`/`skills` que multiplicam cada slot por (relato × skill) — ver
 `docs/DECISAO-GRAO-FIELD-AGENDA.md` e ACHADOS #82/#85/#86/#87.
 
+> **Corrigido em 22/09/2026 (`ACHADOS.md` #145), aviso de 01/10:** medido no arquivo em
+> disco, **todo relator tem exatamente 1 skill** (182 relatores, mín = máx = 1) — o `LEFT JOIN
+> person_skills` não multiplica nada. Quem multiplica é `reports`: o grão real é
+> (slot, relato), ~13,4 relatos por solicitação.
+
 O SQL preserva a EXISTÊNCIA da linha com um `EXISTS` que repete os seis filtros de
 `r.title` do `LEFT JOIN` original — sem isso, o corte traria slot A MAIS do que a
 forma completa (o `LEFT JOIN` de `field-agenda` é, na prática, um `INNER JOIN`: o

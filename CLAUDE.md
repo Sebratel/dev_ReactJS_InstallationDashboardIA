@@ -4,6 +4,10 @@ Substitui o Power BI **`INST - Relatório Instalação`** (NÃO o "... Gerencial
 relatórios; o errado dá gabarito plausível e falso). React 19 + Vite (`apps/web`), API Node
 somente-leitura (`apps/api`, porta 3100), motores em `packages/`, metadados em `specs/`.
 
+**Recomeçando? Leia `docs/PLANO-CARGA.md` antes de qualquer coisa** — o que roda agora, os
+contornos ATIVOS na stack Docker que um `docker compose up` desfaz, o que foi feito e o
+roteiro. `docs/CONTINUACAO.md` é histórico (parou em 27/08).
+
 ## Comandos
 ```bash
 npm test                                   # tem de passar verde
@@ -27,6 +31,10 @@ node tools/refresh/src/daemon.ts --historico   # histórico de grupos e mortes d
   O piso corta por `DATA CRIADO`, as medidas agregam por `DATA INSTALAÇÃO` (efeito de borda em janeiro).
 - Extração do relatório original (M/SQL/DAX): `../QUERIES-DASHBOARD-INSTALACAO/`. Não existe `.pbip`.
 - Refresh: `specs/_catalog/refresh.yaml` (grupos quente/medio/frio); incremental: `specs/_catalog/incremental.yaml`.
+  Só a `field-agenda` roda incremental (`incremental: [lista]` no grupo, ACHADOS #165). Ligar outra
+  exige provar contra a carga completa na mesma hora: `npm run probe:compara-incremental`.
+- Docker local: o `.env` precisa de `GOOGLE_CREDENCIAL_HOST` (sem ela as 3 tabelas do Google param).
+  Hoje a imagem sai sem login na tela (`VITE_*` não entram no build) — ver `docs/PLANO-CARGA.md` §1.
 - `packages/snapshot/src/incremental.ts` tem um byte NUL — use `grep -a`.
 - Token Power BI: `~/.secrets/powerbi-token.json`, renova sozinho; somente-leitura garantido por `assertSomenteEvaluate`.
 - Morte da API: `snapshot/diagnostico/` (relatório fatal + cauda do stderr).

@@ -290,6 +290,10 @@ valendo para quem for mexer na cadência.
     `GOOGLE_APPLICATION_CREDENTIALS` para lá. Sem a variável a stack não sobe (de
     propósito: sem ela `apuracao-premiacao`, `capacidade-equipe` e
     `protocolos-produtividade` falham a cada ciclo). No Portainer, é variável da stack.
+    **Na máquina de desenvolvimento ela tem de estar no `.env`** (01/10/2026): em 27/09
+    foi passada só na linha de comando, e a subida seguinte deixou essas três tabelas
+    paradas por dois dias. O valor é o mesmo caminho de `GOOGLE_APPLICATION_CREDENTIALS`,
+    que é o que o `npm start` lê.
   - No desenvolvimento: `npm start` já sobe o daemon em background lado a lado com a
     API — **sem flag nenhuma, desde 16/09/2026**. Para rodar isolado:
     `npm run refresh:daemon`. Para NÃO subir: `npm start -- --sem-refresh`, ou
@@ -409,6 +413,11 @@ valendo para quem for mexer na cadência.
     hoje **decisão pendente, não impedimento técnico** — acrescentá-la custa ~3 min a
     mais na madrugada. O comentário daquele crontab já avisa; era este documento que
     não tinha sido alinhado.
+  - **Desde 01/10/2026 são duas políticas, e uma está LIGADA** (`ACHADOS.md` #165):
+    `field-agenda` roda incremental no `frio` (`incremental: [field-agenda]` em
+    `refresh.yaml`; 69,6 s contra 250 s da completa, provada contra a completa na mesma
+    hora). `protocolos-produtividade` tem política e segue inteira. Estado e próximos
+    passos em `docs/PLANO-CARGA.md`.
 
 ### 2.3 Nada sobe a plataforma depois de um reboot — e isso já derrubou tudo
 
@@ -603,6 +612,13 @@ configuração, não de código:
 | `POST /auth/firebase` | `FIREBASE_PROJECT_ID` + as quatro `VITE_FIREBASE_*` | a tela |
 | `POST /auth/google` | `GOOGLE_CLIENT_ID` + `VITE_GOOGLE_CLIENT_ID` | ambiente que não migrou |
 | `POST /auth/interno` | `TOKEN_INTERNO` | `npm run tela` (navegador de verdade, sem conta) |
+
+> **A IMAGEM DOCKER SAI SEM LOGIN NA TELA (achado em 30/09/2026).** As variáveis `VITE_*`
+> só entram no `vite build`, que roda dentro do `Dockerfile` — e lá não existe `.env`
+> (o `.dockerignore` o tira, de propósito) nem `ARG` que as receba. A tela compilada
+> mostra *"Login não configurado neste ambiente"*. A API, que lê o `.env` em runtime,
+> aceita o login normalmente. Contorno em uso e correção (etapa 3.1) em
+> `docs/PLANO-CARGA.md`.
 
 As três emitem a **mesma** sessão — cookie `HttpOnly`, TTL de `SESSAO_TTL_HORAS` — e
 `App.tsx` não sabe qual foi usada. Cada uma falha **fechada**: sem a variável que a

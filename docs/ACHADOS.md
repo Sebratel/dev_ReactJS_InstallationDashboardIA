@@ -13473,3 +13473,84 @@ novo (não troca snapshot no meio), passou 3× sozinho e na suíte seguinte — 
 **Correção (30/09) ao #161:** as mortes `0xC0000409` entre 18 e 28/09 foram **7**, não 8 (18, 19,
 21, 22/09, duas em 25/09 e 28/09, contadas em `snapshot/refresh-historico.log`); as outras duas
 do período saíram com código 1. O texto do #161 e a mensagem do commit `82587d2` dizem 8.
+
+## #165 — `field-agenda` incremental: o `piso_de_janela`, e a prova contra a carga completa na mesma hora (01/10)
+
+**01/10/2026.** O remédio desenhado no #145 (incremental por solicitação, "35 s
+medidos") e travado no #146 (faltava o `piso_de_janela`) foi feito, medido e ligado
+no Docker — só nela. Estado e roteiro em `docs/PLANO-CARGA.md`.
+
+**Por que agora.** A carga completa de hoje levou **375 s** às 12:41 UTC (282 s na
+madrugada, 250 s às 13:20). A banda de ~130–900 s do #145 continua valendo: o custo
+é rede (~360 MB), não cálculo.
+
+### O desenho, e o que o banco disse antes de escrever uma linha
+
+Lido de `pg_get_viewdef('v_service_desk_slots_productivity_informative')`: a linha
+muda por cinco caminhos — `assignments`, `assignment_incidents` (status),
+`fsm_attendance_history` (com `lag`/`first_value`/`max` **por solicitação**: um evento
+novo muda todas as linhas dela), `reports` e `service_desk_slots`.
+
+- **Duas fontes não têm data de modificação:** `assignment_incidents` (onde mora o
+  status) e `fsm_attendance_history` (só datas de evento). Troca de status só é vista se
+  `assignments.modified` acompanhar — era o risco a medir.
+- **`assignments` e `reports` têm 7 e 8,5 GB e nenhum índice em `modified`.** Por isso
+  `alvos` começa nas solicitações que JÁ estão na janela, pelo histórico de atendimento
+  (240 MB), e só então olha as datas de cada fonte pelo id (índices de `assignment_id`).
+- **Chave `Protocolo`:** 1:1 com a solicitação na janela (22.547 de cada, nenhum
+  protocolo com duas). Recortar por solicitação entrega a partição inteira do Rank.
+- **Marca:** `Data Criado`, `Inicio relato`, `Fim relato`, `Data Relato` — zero valores
+  futuros no arquivo de 01/10. `Prazo SLA` (7.515 futuros) e `Slot Agenda` (1.940)
+  fariam `decideIncremental` recusar ("marca no futuro").
+- **Cada coluna da marca tem de estar coberta por um ramo de `alvos`.** `mescla` apaga
+  como "sumida" a linha antiga com marca na janela que não voltou; se o ramo não a
+  trouxer, some meia solicitação. Foi o que pôs `r.beginning_date` (`Data Relato`) no
+  ramo 3, que no rascunho olhava só `created`/`modified`.
+
+### O `piso_de_janela`
+
+A completa recorta `begin_date_slot >= CURRENT_DATE - INTERVAL '3 months'`. A
+incremental não reentrega quem só envelheceu — sem o piso, a linha ficaria para sempre.
+`mescla` agora descarta das ANTIGAS a linha com `Slot Agenda` abaixo do piso ou nula
+(`expiradas`); as novas já vieram recortadas pelo relógio do banco. `pisoDaJanela`
+reproduz o `CURRENT_DATE` do dbVoalle (`TimeZone = localtime`, -03, medido) e a conta
+de mês curto do Postgres (31/05 − 3 meses = 28/02). `costura` erra alto se o SQL deixar
+de citar `INTERVAL '3 months'`.
+
+### Ligar só ela
+
+O `frio` tem duas queries com política; `protocolos-produtividade` segue desligada de
+propósito. `refresh.yaml` passou a aceitar `incremental: [lista]` (validada contra as
+queries do grupo) e o snapshot, `--incremental=a,b`; nome sem política derruba em vez
+de ir inteiro calado.
+
+### A prova
+
+Carga completa A às 12:41 num diretório isolado (cópia do `snapshot/`, nunca o da
+plataforma). Às 13:20, a partir de cópias de A, incremental e completa **ao mesmo
+tempo**, comparadas por protocolo com `npm run probe:compara-incremental` (nova):
+
+```
+custo da SQL costurada (sonda custo-incremental --costura):
+  janela de 2 dias   41.288 linhas   28,7 s
+  janela de 7 dias   75.890 linhas   36,7 s
+
+ponta a ponta: incremental 69,6 s  ×  completa 250,1 s
+mesclagem: +42.439 novas, 41.768 substituídas
+linhas: 631.803 × 631.803
+protocolos: 10.842 iguais de 10.848 — 0 só de um lado
+  5  data ultimo play app + fim relato
+  1  base + instalador + data ultimo play app + fim relato
+(colunas calculadas incluídas; só `Status SLA` fora, por ser função do relógio)
+```
+
+**Os 6 são atendimento em andamento entre as duas leituras, não perda:** a diferença é
+`Fim relato` nulo de um lado e preenchido do outro (a contagem de nulos dobra entre os
+dois arquivos naqueles protocolos), e a incremental seguinte os reentrega porque o
+histórico de atendimento deles mudou. **Nenhum status divergiu** — na janela medida,
+`assignments.modified` acompanhou toda troca de status. É uma janela; a hipótese
+continua sendo a coisa a vigiar (`PLANO-CARGA.md` §4).
+
+`npm test`: 2.197 + 1 pulado; `npm run typecheck` verde. Commit `6eab328`, na
+`staging`. No Docker, a primeira rodada (13:29 UTC) é completa — o arquivo era de antes
+da política, sem marca —; a incremental começa na seguinte.

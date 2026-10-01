@@ -7,15 +7,20 @@ supervisor nem tarefa agendada.
 Uma sessão curta por etapa, cada uma um commit na `staging` com teste. Estado de cada
 etapa: marque aqui ao fechar, com o número que prova.
 
+> **01/10/2026:** as etapas 1–4 fecharam (abaixo). O que resta — etapa 5 e os itens de
+> produção que apareceram desde então (login na imagem, OOM do pré-cálculo de filtros,
+> carga do banco) — está em **[PLANO-CARGA.md](PLANO-CARGA.md)**, que é o ponto de
+> recomeço. A tabela a seguir é a de 25/09, com a situação atualizada na coluna da direita.
+
 ## O que o Docker já dá, e o que não dá
 
-| | Situação no `docker-compose.prod.yml` |
-|---|---|
-| API cai → religa | já existe (`restart: unless-stopped`) |
-| Reboot do host → volta | já existe |
-| API **travada** sem sair | **não religa** — em Docker standalone, `unhealthy` só marca; quem reinicia por healthcheck é o Swarm |
-| `snapshot-diario` (cron 3h) × serviço `refresh` (daemon) | **os dois gravam no mesmo `snapshot/` sem trava** |
-| grupo do refresh falhando | tenta de novo a cada intervalo, sem espera crescente, sem aviso |
+| | 25/09 | hoje (01/10) |
+|---|---|---|
+| API cai → religa | já existia (`restart: unless-stopped`) | idem |
+| Reboot do host → volta | já existia | idem |
+| API **travada** sem sair | não religava | ✅ vigia de travamento derruba e o `restart` religa (#157) |
+| `snapshot-diario` (cron 3h) × serviço `refresh` (daemon) | gravavam no mesmo `snapshot/` sem trava | ✅ trava de escrita (#159) |
+| grupo do refresh falhando | tentava a cada intervalo, sem espera nem aviso | ✅ espera crescente (#156) e `degradado` na saúde (#160); aviso externo ainda sem destino |
 
 **Atenção ao arquivo certo:** no compose a API sobe com `AUTO_REFRESH=false`; quem
 agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O

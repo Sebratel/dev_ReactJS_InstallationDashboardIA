@@ -6,7 +6,9 @@
 # identifica a linha" são decisões, não extração.
 #
 # Query que não aparece aqui **não é incremental**, e isso não é falta: é o estado
-# de 21 das 22. `npm run snapshot -- --incremental` simplesmente as busca inteiras.
+# de 21 das 23 (01/10/2026: só `protocolos-produtividade` e `field-agenda` têm
+# política, e só a `field-agenda` está ligada no refresh — ver `refresh.yaml`).
+# `npm run snapshot -- --incremental` simplesmente busca inteiras as que não estão aqui.
 #
 # O motivo de cada campo está em `packages/snapshot/src/incremental.ts`. O que
 # importa saber antes de acrescentar uma query:

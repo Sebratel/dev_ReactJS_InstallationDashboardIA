@@ -34,6 +34,7 @@
     "probe:memoria-api": "node tools/probe/src/memoria-api.ts",
     "probe:prioridade-fila": "node tools/probe/src/prioridade-fila.ts",
     "probe:custo-contratos": "node tools/probe/src/custo-contratos.ts",
+    "probe:compara-incremental": "node --max-old-space-size=6144 tools/probe/src/compara-incremental.ts",
     "powerbi": "node --max-old-space-size=8192 tools/powerbi/src/index.ts",
     "test:powerbi": "node --test tools/powerbi/test/*.test.ts",
     "cdc:observa": "node tools/cdc/src/index.ts",

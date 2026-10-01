@@ -53,6 +53,11 @@ não (slot, relato) como uma primeira leitura deste documento dizia. Cada agenda
 tem vários relatos, e cada relator com 8 skills cadastradas multiplica **cada relato
 dele por 8**.
 
+> **Corrigido em 22/09/2026 (`ACHADOS.md` #145), aviso de 01/10:** medido no arquivo em
+> disco, **todo relator tem exatamente 1 skill** (182 relatores, mín = máx = 1) — o `LEFT JOIN
+> person_skills` não multiplica nada. Quem multiplica é `reports`: o grão real é
+> (slot, relato), ~13,4 relatos por solicitação.
+
 > **Isto não é achado novo: é o `ACHADOS.md` #2, de 04/08/2026**, que já mediu a
 > multiplicação e já tem decisão do Erick — **"replicar fielmente"** — mais a ressalva
 > textual de que *"continua valendo perguntar se a granularidade por skill é
