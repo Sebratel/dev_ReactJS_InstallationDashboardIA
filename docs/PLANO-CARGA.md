@@ -10,7 +10,7 @@
 
 ---
 
-## 1. Estado agora (01/10/2026, ~13:30 UTC)
+## 1. Estado agora (01/10/2026, ~18:00 UTC)
 
 **Runtime: a stack Docker, rodando da pasta principal (`staging`).** `api`, `redis`,
 `proxy` (porta 80) e `refresh`. O `snapshot-diario` **não** foi subido. Não há
@@ -61,14 +61,14 @@ GESTOR de `protocolos-produtividade`) param. Foi a causa dos dados parados de 30
 
 | query | política | ligada no refresh | validada |
 |---|---|---|---|
-| `field-agenda` | `incremental.yaml`, com `piso_de_janela` | **sim**, `frio: incremental: [field-agenda]` | ✅ 01/10 — ver §2 |
+| `field-agenda` | `incremental.yaml`, com `piso_de_janela` | **sim**, `frio: incremental: [field-agenda]` | ✅ 01/10 — ver §2; no Docker, 1.1b ✅ |
 | `protocolos-produtividade` | `incremental.yaml` | **não** (de propósito, `refresh.yaml`) | etapa 1.2 |
 | as outras 21 | nenhuma | — | — |
 
-A primeira rodada do Docker depois do deploy (13:29 UTC) é **completa**: o arquivo em
-disco foi gravado antes da política e não tem marca. A partir da seguinte (~30 min
-depois), o log mostra `incremental: +N nova(s), X substituída(s), Y sumida(s), Z
-expirada(s) da janela`.
+No Docker, a rodada das 13:34 UTC foi a completa (arquivo sem marca); de 14:09 a 18:00
+vieram 6 incrementais de 46–79 s. Cada uma deixa no log `incremental: +N nova(s), X
+substituída(s), Y sumida(s), Z expirada(s) da janela`. A primeira `expirada` deve
+aparecer quando o piso virar o dia — vale olhar em 02/10.
 
 ---
 
@@ -110,8 +110,9 @@ explícito.
 ### Fase 1 — maior ganho, menor risco
 
 - [x] **1.1** `field-agenda` incremental — 01/10, `6eab328`, ACHADOS #165.
-- [ ] **1.1b** Observar no Docker as duas primeiras rodadas incrementais: tempo da
-      `field-agenda` < 90 s e a contagem de linhas estável (~631 mil). Registrar no #165.
+- [x] **1.1b** Observar no Docker as primeiras rodadas incrementais — 01/10, ACHADOS #165
+      ("No Docker"): 6 rodadas de 46–79 s (completa: 282 s), linhas 632.763 → 635.634
+      subindo com o dia, e `linhas = mantidas + novas` exato em todas.
 - [ ] **1.2** Ligar `protocolos-produtividade` (política existe; 238 → 67 s medidos em
       25/08). Prova: incremental × completa na mesma hora, agrupado por `SOLICITACAO`,
       com `npm run probe:compara-incremental` (o passo a passo está no cabeçalho de

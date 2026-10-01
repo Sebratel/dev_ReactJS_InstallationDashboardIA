@@ -13554,3 +13554,31 @@ continua sendo a coisa a vigiar (`PLANO-CARGA.md` §4).
 `npm test`: 2.197 + 1 pulado; `npm run typecheck` verde. Commit `6eab328`, na
 `staging`. No Docker, a primeira rodada (13:29 UTC) é completa — o arquivo era de antes
 da política, sem marca —; a incremental começa na seguinte.
+
+### No Docker: as seis primeiras rodadas (etapa 1.1b, 01/10)
+
+Lidas às 18:01 UTC com
+`docker logs --timestamps --since 2026-10-01T13:00:00Z dev_reactjs_installationdashboardia-refresh-1 2>&1 | grep -E "field-agenda… ok|incremental: \+"`:
+
+```
+UTC    modo         tempo   novas   substituídas  sumidas  mantidas  linhas
+13:34  completa    281,8 s      —        —           —         —     632.040
+14:09  incremental  66,8 s  44.035   43.312          0    588.728    632.763
+14:59  incremental  46,4 s  45.532   44.817          3    587.943    633.475
+15:39  incremental  51,5 s  46.299   45.820          0    587.655    633.954
+16:31  incremental  78,5 s  46.906   46.419          0    587.535    634.441
+17:09  incremental  60,0 s  47.478   46.906          0    587.535    635.013
+18:00  incremental  57,5 s  48.126   47.505          0    587.508    635.634
+```
+
+**Critérios da 1.1b atendidos:** todas abaixo de 90 s (46–79 s, contra 282 s da
+completa) e linhas subindo ~500–700 por rodada, o crescimento do dia — nenhum salto.
+**A conta fecha exata em todas:** `linhas = mantidas + novas`, e as substituídas de uma
+rodada são as novas da anterior mais o que saiu das mantidas (17:09 → 18:00: 47.478 + 27
+= 47.505, e as mantidas caem 27). Nenhuma `expirada da janela` ainda: a primeira vem
+quando o piso virar o dia.
+
+O que a série mostra e não é defeito: as novas crescem ao longo do dia (44 → 48 mil),
+porque a marca é por dia (`marca até 2026-10-01`) e a janela reentrega tudo o que mudou
+desde o piso. O intervalo real entre rodadas foi 38–52 min, não os 30 do `frio`; a causa
+não foi investigada.
