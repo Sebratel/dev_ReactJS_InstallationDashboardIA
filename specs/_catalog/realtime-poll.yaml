@@ -396,7 +396,7 @@ queries:
   # view do Voalle calcula as janelas sobre todo o histórico de atendimento antes
   # de filtrar.
   #
-  #   1. `alvos` — quais solicitações da janela de 3 meses mudaram desde `:desde`.
+  #   1. `alvos` — quais solicitações com agenda recente (7 dias) mudaram desde `:desde`.
   #      Os mesmos quatro ramos da costura de incremental.yaml (solicitação,
   #      histórico de atendimento, relato, slot; o porquê de cada um está lá), com
   #      a janela num ARRAY materializado: cada ramo vira busca pelo índice da
@@ -409,6 +409,13 @@ queries:
   # `colunas_calculadas`: as 7 da FIELD AGENDA dependem só da linha ou do protocolo
   # (`RankDataProtocolo` filtra pelo mesmo protocolo), e a busca traz o protocolo
   # inteiro — calcular sobre as linhas buscadas dá o valor do snapshot.
+  #
+  # **A detecção vigia só agendas dos últimos 7 dias e futuras** (02/10/2026, ACHADOS
+  # #171): 2.220 solicitações em vez de 23.191, ~140 ms em vez de ~780 ms (com picos de
+  # 2–11 s). Medido: das 964 solicitações que mudaram desde a manhã de 01/10, 956 estavam
+  # na janela de 7 dias (99,2%); nas últimas 24 h, 815 de 817. As de fora não se perdem —
+  # chegam pelo refresh em lote (`frio`, 30 min), que cobre os 3 meses. A BUSCA continua
+  # com a janela de 3 meses do `sql:`: o protocolo vem inteiro, como no snapshot.
   #
   # 30 s, não 12: relato e baixa de equipamento mudam na escala de minutos, e a
   # volta custa ~1 s de banco — 30 s deixa o Voalle ocupado ~4% do tempo com isto.
@@ -425,7 +432,7 @@ queries:
       WITH j AS MATERIALIZED (
           SELECT array_agg(DISTINCT fah.reserved_assignment_id) AS ids
           FROM fsm_attendance_history fah
-          WHERE fah.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
+          WHERE fah.begin_date_slot >= (CURRENT_DATE - INTERVAL '7 days')
       )
       SELECT a.id FROM assignments a, j
       WHERE a.id = ANY(j.ids) AND GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde

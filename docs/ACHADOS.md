@@ -13764,3 +13764,21 @@ do overlay.
 
 **Fica para a etapa 2:** "Produtivo" (alocação de patrimônio no poller, #167) e o aviso
 "N visitas com relato produtivo aguardando baixa de equipamento" (opção (a) do Erick).
+
+## #171 — detecção da FIELD AGENDA só nas agendas recentes: ~780 ms → ~140 ms (02/10)
+
+Depois de subir o #170, a detecção (`alvos`) ficou em 1,2–2,1 s por volta na stack, com
+um pico de 11,3 s. Medido por ramo: o custo é o tamanho da lista — as 23.191 solicitações
+com agenda nos últimos 3 meses, conferidas nas quatro tabelas (relatos é o maior, ~340 ms).
+
+| detecção | solicitações | tempo |
+|---|---|---|
+| agendas de 3 meses | 23.191 | ~780 ms |
+| agendas de 7 dias + futuras | 2.220 | ~140 ms |
+| 7 dias, lista guardada entre voltas | 2.220 | ~100 ms |
+
+**O preço, medido:** nas últimas 24 h mudaram 817 solicitações, 815 dentro dos 7 dias;
+desde a manhã de 01/10, 964, 956 dentro (99,2%). As de fora chegam pelo refresh em lote
+(30 min, janela de 3 meses) — atraso, não perda. Aprovado pelo Erick. A lista guardada
+entre voltas ficou de fora: 40 ms a mais de ganho por uma decisão de renovação em que uma
+agenda nova poderia ficar invisível até renovar.
