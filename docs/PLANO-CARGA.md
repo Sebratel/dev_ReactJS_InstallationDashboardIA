@@ -12,6 +12,10 @@
 
 ## 1. Estado agora (01/10/2026, ~18:00 UTC)
 
+> **02/10/2026, à tarde: a stack NÃO está rodando.** O Docker Desktop estava parado e nada
+> respondia na 80, 3100 ou 3101. A 3100 do host ficou livre. Religar está na 0.4 do
+> `PLANO-MESTRE.md`. O texto abaixo descreve como a stack estava, e como religá-la.
+
 **Runtime: a stack Docker, rodando da pasta principal (`staging`).** `api`, `redis`,
 `proxy` (porta 80) e `refresh`. O `snapshot-diario` **não** foi subido. Não há
 `npm start` rodando (regra 5 do `CLAUDE.md`; ver a §4, incidente de 30/09).
