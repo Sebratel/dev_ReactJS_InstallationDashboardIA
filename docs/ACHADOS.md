@@ -13631,3 +13631,33 @@ busca volta 0 linhas sem erro. Passar hora local, sem sufixo.
 - **"Produtivo" vem de `PROTOCOLOS GERAL[DATA INSTALAÇÃO]`**, que não está no poller (grupo
   `medio`, 20 min). Sem ela, uma instalação concluída aparece como Inconclusivo até o
   refresh seguinte. Custo dela no poller: não medido.
+
+## #167 — "Produtivo" em tempo real: não é a `PROTOCOLOS GERAL`, é a alocação de patrimônio — e ela chega ~40 min depois do campo (02/10)
+
+Continuação do #166. O "Produtivo" da VISÃO PRODUTIVA é `PROTOCOLOS GERAL[DATA INSTALAÇÃO]`
+no dia (`nativas.ts`). Essa coluna é DAX sobre `DATA ALOCAÇÃO` (ou `DATA DA TROCA` na troca
+de endereço), e as duas entram pela camada M — mesclas com `ALOCAÇÃO PATRIMONIO` e
+`TROCA ENDEREÇO`, mais `Table.Distinct`/`Table.Sort` sobre o conjunto. **Pôr a
+`PROTOCOLOS GERAL` no poller não é o caminho:** a M dela não é linha a linha (o mesmo
+motivo de ela não ter política em `incremental.yaml`), e a única informação que a VISÃO
+PRODUTIVA tira dela é o par (protocolo, dia da instalação).
+
+**A fonte desse par é barata em tempo real.** `alocacao-patrimonio`, medida em produção:
+
+| corte | linhas | tempo |
+|---|---|---|
+| inteira (desde 2025) | 61.041 | 8,4 s |
+| `created >= :desde`, 1h30 | 6 | 147 ms |
+| `GREATEST(created, modified) >= :desde`, 1h30 | 9 | 236 ms |
+| `GREATEST(created, modified) >= :desde`, 1 dia | 230 | 239 ms |
+
+Sem índice em `created`/`modified` de `patrimony_packing_list_items`, mas a tabela é
+pequena: ~0,2 s por volta. `TROCA ENDEREÇO` já está no poller.
+
+**O achado que muda a conversa: o processo atrasa mais que a carga.** Em 01/10, para os
+141 protocolos que tiveram relato PRODUTIVA e alocação no mesmo dia, a alocação foi
+registrada **41 min depois do relato (mediana), 74 min (p90)**; só 2 antes. Então, mesmo
+com poller perfeito, uma instalação concluída aparece como **Inconclusivo** (tem relato
+técnico, não tem instalação) por ~40 min antes de virar Produtivo. Isso não é atraso da
+plataforma: é a definição de "Produtivo" do relatório (equipamento alocado) encontrando o
+tempo que o processo leva para dar baixa. O Power BI tem o mesmo comportamento.
