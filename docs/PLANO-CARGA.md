@@ -33,6 +33,7 @@ A API do Docker foi recriada com uma sobreposição que **não está versionada*
 |---|---|---|
 | `AQUECE_FILTROS_ATE=0` | com o pré-cálculo de filtros (#163) a API entrava num ciclo de OOM ~1 min depois de subir: a worker estoura 768 MB, o cálculo cai para a thread principal e ela morre em ~3 GB. **Sem ninguém na tela.** Um cálculo pede > 2,7 GB; subir heap não resolve | etapa 3.2 |
 | `./apps/api/web/dist` montado em `/repo/apps/api/web/dist:ro`, compilado no host (`npm run web:build`) | a imagem sai **sem login na tela**: as `VITE_FIREBASE_*` só entram no build, o `.dockerignore` tira o `.env` e o `Dockerfile` não tem `ARG` para elas | etapa 3.1 |
+| `API_PORT_HOST=3101` no `up` (02/10) | um `node` do host (`npm start`, iniciado 02/10 08:26) segura a 3100, e o `up` falha com "ports are not available" — **derrubando a API**. O proxy fala com `api:3100` por dentro, então a porta do host não muda nada para a tela | quando a 3100 do host estiver livre |
 
 Para recriar (arquivo em qualquer lugar fora do repo; os caminhos relativos resolvem
 pela pasta do `docker-compose.prod.yml`):
@@ -49,7 +50,7 @@ services:
 
 ```bash
 npm run web:build      # na pasta principal, ANTES — é o build com o .env
-docker compose -f docker-compose.prod.yml -f contorno.yml up -d api redis proxy refresh
+API_PORT_HOST=3101 docker compose -f docker-compose.prod.yml -f contorno.yml up -d api redis proxy refresh
 ```
 
 **`.env` desta máquina (não versionado):** ganhou `GOOGLE_CREDENCIAL_HOST` em 01/10, com
