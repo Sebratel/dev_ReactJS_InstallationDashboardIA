@@ -483,6 +483,20 @@ consulta, e é esse campo que alimenta a invalidação por CDC.
 parser 205 → 150, escaneáveis 208 → 153 (`mlayer.test.ts`). Detalhe completo em
 `docs/ACHADOS.md` #133.
 
+### `specs/dashboards/*.spec.yaml` — `title:` nos visuais (02/10/2026)
+
+**124 dos 306 visuais** ganharam `title:` (o nome que o visual mostra no Power BI:
+`VISÃO PRODUTIVA`, `PRAZO SLA`…), logo abaixo de `type:`. Os outros 182 não têm título
+no relatório. Fonte: `Desktop\projetos\files\visuais.csv` (colunas `id`/`titulo`, da
+extração do PBIP), casado por id — os 306 ids batem com as specs, nenhum sobra.
+
+**Por que à mão.** O extrator nunca emitiu título, e o PBIP não existe mais para
+reextrair. O título já tinha sido posto na spec em 20/08 (`DECISAO-UX-TELAS.md`), mas
+fora do git, e se perdeu na restauração de 26/08. Sem ele a tela derivava o cabeçalho
+dos campos (`Qtd Protocolos Base por Status · Data`), e a VISÃO PRODUTIVA ficou
+irreconhecível para quem a procura pelo nome — "o card nem aparece". `calcula.ts`
+repassa o campo como `VisualCalculado.titulo`, que `rotulos.ts` já preferia.
+
 ## Estrutura de `specs/`
 
 ```

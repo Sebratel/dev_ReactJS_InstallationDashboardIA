@@ -212,6 +212,8 @@ export interface VisualCalculado {
   id: string;
   tipo: string;
   posicao: VisualSpec['position'];
+  /** O título do relatório (`VisualSpec.title`), quando o visual tem um. */
+  titulo?: string;
   /** Um dos quatro tipos de conteúdo, ou `null` quando o visual não calcula. */
   conteudo: 'card' | 'tabela' | 'grafico' | 'matriz' | null;
   /** Por que não calcula, quando `conteudo` é `null`. */
@@ -382,7 +384,14 @@ export function calculaPagina(
   for (const v of dash.visuals ?? []) {
     const conteudo = conteudoDe(v.type);
     const tVisual = Date.now();
-    const base: VisualCalculado = { id: v.id, tipo: v.type, posicao: v.position, conteudo, ms: 0 };
+    const base: VisualCalculado = {
+      id: v.id,
+      tipo: v.type,
+      posicao: v.position,
+      ...(v.title ? { titulo: v.title } : {}),
+      conteudo,
+      ms: 0,
+    };
 
     if (conteudo === null) {
       semCalculo++;

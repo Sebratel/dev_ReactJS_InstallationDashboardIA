@@ -46,6 +46,7 @@ visuals:
   filters_vazios: 0
 - id: 39b19854921925b379c2
   type: slicer
+  title: "DATA ATIVAÇÃO"
   position:
     x: 24
     y: 112
@@ -90,6 +91,7 @@ visuals:
   filters_vazios: 0
 - id: 493e6d1252b54c3061b1
   type: pivotTable
+  title: "Relatório Detalhado Premiação"
   position:
     x: 25.037748798901852
     y: 1626.1358956760466
@@ -162,6 +164,7 @@ visuals:
   filters_vazios: 0
 - id: 50d44b50c8a7c764fda7
   type: tableEx
+  title: "Instalação Ponto Adicional"
   position:
     x: 23.71997254632807
     y: 3452.573781743308
@@ -223,6 +226,7 @@ visuals:
   filters_vazios: 5
 - id: 5b536b4ab2c996794f97
   type: tableEx
+  title: "Premiação Instalação - Resumo"
   position:
     x: 37.96610169491525
     y: 250.84745762711862
@@ -310,6 +314,7 @@ visuals:
   filters_vazios: 0
 - id: 77ebfd004e4106f33165
   type: tableEx
+  title: "Detalhamento instalação Ponto Adicional"
   position:
     x: 557.4193548387096
     y: 3452.573781743308
@@ -390,6 +395,7 @@ visuals:
   filters_vazios: 6
 - id: 7ff4688d7374741d0579
   type: slicer
+  title: "INSTALADOR"
   position:
     x: 343.90046996765625
     y: 112.84761731859452
@@ -461,6 +467,7 @@ visuals:
   filters_vazios: 0
 - id: ae1ed1f5bc1a84ada985
   type: slicer
+  title: "PROTOCOLO"
   position:
     x: 969.9004699676582
     y: 110.84761731859452
@@ -490,6 +497,7 @@ visuals:
   filters_vazios: 0
 - id: bb2892e77821cc094c8d
   type: tableEx
+  title: "Apuração de Maio 01/05/2026 a 10/05/2026"
   position:
     x: 947.7966101694915
     y: 250.84745762711862
@@ -570,6 +578,7 @@ visuals:
   filters_vazios: 0
 - id: ce49bdc2520bb66fe323
   type: slicer
+  title: "SUPERVISOR"
   position:
     x: 657.9004699676561
     y: 112.84761731859452
@@ -588,6 +597,7 @@ visuals:
   filters_vazios: 1
 - id: e42420359d507de64376
   type: tableEx
+  title: "Relatório Instalação 2º Ponto"
   position:
     x: 23.71997254632807
     y: 2759.423472889499

@@ -116,6 +116,8 @@ export interface VisualCalculado {
   id: string;
   tipo: string;
   posicao: { x: number; y: number; width: number; height: number };
+  /** O título do relatório (`VISÃO PRODUTIVA`); sem ele, `rotulos.ts` deriva um. */
+  titulo?: string;
   conteudo: 'card' | 'tabela' | 'grafico' | 'matriz' | null;
   semCalculo?: string;
   sobDemanda?: string[];

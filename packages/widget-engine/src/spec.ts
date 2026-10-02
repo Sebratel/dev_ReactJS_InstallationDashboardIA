@@ -104,6 +104,9 @@ export interface CampoSpec {
 export interface VisualSpec {
   id: string;
   type: string;
+  /** O título que o visual tem no relatório (`VISÃO PRODUTIVA`). Ausente quando o
+   *  Power BI não dá nome — a tela então deriva um dos campos (`rotulos.ts`). */
+  title?: string;
   position: { x: number; y: number; width: number; height: number };
   entities_used: string[];
   fields: CampoSpec[];

@@ -15,6 +15,7 @@ filters_vazios: 0
 visuals:
 - id: 103b7a8ac1768abbaa22
   type: slicer
+  title: "STATUS PROTOCOLO"
   position:
     x: 1020.4529855868218
     y: 144.13177762525737
@@ -33,6 +34,7 @@ visuals:
   filters_vazios: 0
 - id: 23c5a9bf78b33e02db74
   type: slicer
+  title: "DATA CRIADO PROTOCOLO"
   position:
     x: 44.200411805078964
     y: 142.21002059025395
@@ -120,6 +122,7 @@ visuals:
   filters_vazios: 0
 - id: 529693bd75399ddef31f
   type: advancedSlicerVisual
+  title: "TIPO DE SOLICITAÇÃO"
   position:
     x: 40.35689773507207
     y: 269.04598490048045
@@ -146,6 +149,7 @@ visuals:
   filters_vazios: 0
 - id: 562fcabd15abb1c7880a
   type: slicer
+  title: "ESTÁGIO CONTRATO"
   position:
     x: 2049.3025511482906
     y: 431.2631804973952
@@ -195,6 +199,7 @@ visuals:
   filters_vazios: 0
 - id: 6b2781fa1e3b89ed0626
   type: slicer
+  title: "RESPONSÁVEL"
   position:
     x: 1349.0734385724088
     y: 144.13177762525737
@@ -213,6 +218,7 @@ visuals:
   filters_vazios: 0
 - id: 6f6ee418b1b95a80e2a4
   type: slicer
+  title: "PROTOCOLO"
   position:
     x: 691.8325326012337
     y: 144.13177762525737
@@ -231,6 +237,7 @@ visuals:
   filters_vazios: 0
 - id: 704b7bcb68fd3e17cd30
   type: tableEx
+  title: "INFORMAÇÕES GERAIS DOS PROTOCOLOS"
   position:
     x: 41.29213483146067
     y: 576.123595505618
@@ -448,6 +455,7 @@ visuals:
   filters_vazios: 0
 - id: 7db40203ca467b8165c6
   type: clusteredBarChart
+  title: "TOTAL POR INSTALADOR REFERÊNCIA"
   position:
     x: 40.35689773507207
     y: 1495.1269732326698
@@ -496,6 +504,7 @@ visuals:
   filters_vazios: 2
 - id: 843bcbb16b315e6a1887
   type: slicer
+  title: "DATA INSTALADO"
   position:
     x: 367.0555936856556
     y: 144.13177762525737
@@ -554,6 +563,7 @@ visuals:
   filters_vazios: 0
 - id: b346badbabf75059fb86
   type: barChart
+  title: "QUANTIDADE POR EQUIPE"
   position:
     x: 1208.7851750171585
     y: 1495.1269732326698
@@ -601,6 +611,7 @@ visuals:
   filters_vazios: 0
 - id: c8c7d1ae3d7a5907544c
   type: slicer
+  title: "CLIENTE"
   position:
     x: 1996.7055593685652
     y: 144.13177762525737
@@ -639,6 +650,7 @@ visuals:
   filters_vazios: 0
 - id: ce537446fc06ac83afea
   type: slicer
+  title: "EQUIPE"
   position:
     x: 1673.8503774879894
     y: 144.13177762525737
@@ -668,6 +680,7 @@ visuals:
   filters_vazios: 0
 - id: d3f5075f753555c500ed
   type: advancedSlicerVisual
+  title: "STATUS INSTALAÇÃO"
   position:
     x: 2323.404255319149
     y: 144.13177762525737
@@ -694,6 +707,7 @@ visuals:
   filters_vazios: 0
 - id: d9713da4535926b79bd8
   type: columnChart
+  title: "QUANTIDADE POR CIDADE"
   position:
     x: 1994.783802333562
     y: 1495.1269732326698

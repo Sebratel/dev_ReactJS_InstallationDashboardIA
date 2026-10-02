@@ -199,60 +199,65 @@ export function Matriz(props: {
       id={visual.id}
       largo
       altura="matriz"
-    >
-      <div className="cartao-acoes" style={{ display: 'flex', gap: 6 }}>
-        {paginaColunas && (
-          <span className="paginador-grafico" title={`${totalColunas} colunas no total`}>
-            <button
-              type="button"
-              title="Primeiras colunas"
-              disabled={deColuna === 0}
-              onClick={() => setInicioColuna(0)}
-            >
-              «
-            </button>
-            <button
-              type="button"
-              title="Colunas anteriores"
-              disabled={deColuna === 0}
-              onClick={() => setInicioColuna(Math.max(0, deColuna - COLUNAS_POR_JANELA))}
-            >
-              ‹
-            </button>
-            <span className="paginador-rotulo">
-              {inteiro(deColuna + 1)}–{inteiro(ateColuna)}{' '}
-              <span className="de">de {inteiro(totalColunas)}</span>
+      // No cabeçalho, como em `Tabela.tsx`: `.cartao-acoes` tem letra `--pbi-sobre-primary`
+      // e só se lê sobre o bordô. Dentro do corpo, os botões saíam branco no branco —
+      // caixas vazias na VISÃO PRODUTIVA (medido em 02/10/2026).
+      acoes={
+        <>
+          {paginaColunas && (
+            <span className="paginador-grafico" title={`${totalColunas} colunas no total`}>
+              <button
+                type="button"
+                title="Primeiras colunas"
+                disabled={deColuna === 0}
+                onClick={() => setInicioColuna(0)}
+              >
+                «
+              </button>
+              <button
+                type="button"
+                title="Colunas anteriores"
+                disabled={deColuna === 0}
+                onClick={() => setInicioColuna(Math.max(0, deColuna - COLUNAS_POR_JANELA))}
+              >
+                ‹
+              </button>
+              <span className="paginador-rotulo">
+                {inteiro(deColuna + 1)}–{inteiro(ateColuna)}{' '}
+                <span className="de">de {inteiro(totalColunas)}</span>
+              </span>
+              <button
+                type="button"
+                title="Colunas seguintes"
+                disabled={deColuna >= maxInicioColuna}
+                onClick={() => setInicioColuna(Math.min(maxInicioColuna, deColuna + COLUNAS_POR_JANELA))}
+              >
+                ›
+              </button>
+              <button
+                type="button"
+                title="Últimas colunas (mais recentes)"
+                disabled={deColuna >= maxInicioColuna}
+                onClick={() => setInicioColuna(maxInicioColuna)}
+              >
+                »
+              </button>
             </span>
+          )}
+          {podeTranspor && (
             <button
-              type="button"
-              title="Colunas seguintes"
-              disabled={deColuna >= maxInicioColuna}
-              onClick={() => setInicioColuna(Math.min(maxInicioColuna, deColuna + COLUNAS_POR_JANELA))}
+              onClick={() => setTransposto((t) => !t)}
+              title="Alterna linhas e colunas — útil quando há muitas colunas"
             >
-              ›
+              <Transpor /> {transposto ? 'Desfazer transposição' : 'Transpor'}
             </button>
-            <button
-              type="button"
-              title="Últimas colunas (mais recentes)"
-              disabled={deColuna >= maxInicioColuna}
-              onClick={() => setInicioColuna(maxInicioColuna)}
-            >
-              »
-            </button>
-          </span>
-        )}
-        {podeTranspor && (
-          <button
-            onClick={() => setTransposto((t) => !t)}
-            title="Alterna linhas e colunas — útil quando há muitas colunas"
-          >
-            <Transpor /> {transposto ? 'Desfazer transposição' : 'Transpor'}
+          )}
+          <button onClick={exportarCSV} title="Exportar matriz em formato CSV">
+            <Download size={12} /> CSV
           </button>
-        )}
-        <button onClick={exportarCSV} title="Exportar matriz em formato CSV">
-          <Download size={12} /> CSV
-        </button>
-      </div>
+        </>
+      }
+    >
       {janela.erro ? <Erro>{janela.erro}</Erro> : null}
       <div className="rolagem">
         <table className="dados">

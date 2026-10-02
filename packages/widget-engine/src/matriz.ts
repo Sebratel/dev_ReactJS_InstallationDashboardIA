@@ -143,14 +143,51 @@ export function calculaMatriz(
     }),
   );
 
-  return montaSemVazios(
-    { dashboard: dash.id, visual: visual.id, chavesDeLinha, chavesDeColuna },
-    medidas.map((m) => m.name ?? null),
-    eixoLinha.grupos.map((g) => ({ valores: g.valores })),
-    eixoColuna.grupos.map((g) => ({ valores: g.valores })),
-    celulas,
-    [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
+  return ordenaEixosDeData(
+    montaSemVazios(
+      { dashboard: dash.id, visual: visual.id, chavesDeLinha, chavesDeColuna },
+      medidas.map((m) => m.name ?? null),
+      eixoLinha.grupos.map((g) => ({ valores: g.valores })),
+      eixoColuna.grupos.map((g) => ({ valores: g.valores })),
+      celulas,
+      [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
+    ),
   );
+}
+
+/**
+ * Põe em ordem crescente o eixo cuja primeira chave é data — como o cabeçalho de
+ * datas da matriz do Power BI.
+ *
+ * `agrupar` devolve a ordem de primeira aparição no snapshot. Enquanto a carga era
+ * inteira isso coincidia com a ordem do SQL; com a field-agenda incremental (ACHADOS
+ * #165) as linhas costuradas entram no fim, e a VISÃO PRODUTIVA passou a abrir com
+ * 03/10, 05/10, 07/10, 10/10, 21/10, 06/10, 02/10 (medido em 02/10/2026).
+ *
+ * Só eixo de DATA: a ordem de um eixo de texto (Sem Ação, Inconclusivo, Improdutivo,
+ * Produtivo) é a "classificar por coluna" do modelo, que não foi extraída — ordenar
+ * alfabeticamente seria inventar uma. Data tem uma ordem só. BLANK vai para o fim.
+ */
+function ordenaEixosDeData(m: ValorDeMatriz): ValorDeMatriz {
+  const ordemPorData = (eixo: readonly EixoDeMatriz[]): number[] | null => {
+    const datas = eixo.map((e) => e.valores[0]);
+    if (!datas.some((v) => v instanceof Date)) return null;
+    if (!datas.every((v) => v instanceof Date || isBlank(v))) return null;
+    const ms = (v: unknown) => (v instanceof Date ? v.getTime() : Number.POSITIVE_INFINITY);
+    return eixo.map((_, i) => i).sort((a, b) => ms(datas[a]) - ms(datas[b]) || a - b);
+  };
+
+  const oL = ordemPorData(m.linhas);
+  const oC = ordemPorData(m.colunas);
+  if (!oL && !oC) return m;
+  const linhas = oL ?? m.linhas.map((_, i) => i);
+  const colunas = oC ?? m.colunas.map((_, j) => j);
+  return {
+    ...m,
+    linhas: linhas.map((i) => m.linhas[i]!),
+    colunas: colunas.map((j) => m.colunas[j]!),
+    celulas: linhas.map((i) => colunas.map((j) => m.celulas[i]![j]!)),
+  };
 }
 
 /**

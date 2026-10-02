@@ -29,6 +29,7 @@ filters_vazios: 0
 visuals:
 - id: 04979b00e5329b67f349
   type: pivotTable
+  title: "VISÃO PRODUTIVA"
   position:
     x: 23.628691983122362
     y: 893.9521800281293
@@ -60,6 +61,7 @@ visuals:
   filters_vazios: 0
 - id: 05da970602ab7c4abced
   type: tableEx
+  title: "QTD DE VEZES AGENDADO"
   position:
     x: 1691.420534458509
     y: 1657.9465541490856
@@ -86,6 +88,7 @@ visuals:
   filters_vazios: 0
 - id: 084be384e4209a5a3674
   type: tableEx
+  title: "HISTÓRICO DE RELATOS"
   position:
     x: 20.273531777956556
     y: 3293.322606596943
@@ -136,6 +139,7 @@ visuals:
   filters_vazios: 0
 - id: 0c0223c665b34f95121e
   type: tableEx
+  title: "PRAZO SLA"
   position:
     x: 2362.869198312236
     y: 1657.9465541490856
@@ -200,6 +204,7 @@ visuals:
   filters_vazios: 0
 - id: 1a99bc9b51e27c00d2ba
   type: pivotTable
+  title: "HISTÓRICO E PREVISÃO DO TEMPO (TESTE)"
   position:
     x: 19.758064516129032
     y: 2046.3709677419356
@@ -233,6 +238,7 @@ visuals:
   filters_vazios: 1
 - id: 1dc987ba648f79f5596a
   type: slicer
+  title: "DATA AGENDADO"
   position:
     x: 23.047063555913113
     y: 141.66733708769107
@@ -351,6 +357,7 @@ visuals:
   filters_vazios: 0
 - id: 56d3352b476659cd7972
   type: pivotTable
+  title: "PROBABILIDADE DE CHUVA % (TESTE)"
   position:
     x: 1964.5161290322583
     y: 2046.3709677419356
@@ -392,6 +399,7 @@ visuals:
   filters_vazios: 1
 - id: 56e400ca747d091eb7ba
   type: tableEx
+  title: "PROTOCOLOS DISTINTOS"
   position:
     x: 22.52614641995173
     y: 1657.9243765084473
@@ -418,6 +426,7 @@ visuals:
   filters_vazios: 0
 - id: 5aa81d52fffb190a3b23
   type: slicer
+  title: "TURNO"
   position:
     x: 1904.0787623066103
     y: 141.77215189873417
@@ -436,6 +445,7 @@ visuals:
   filters_vazios: 0
 - id: 65f5a09384f836a7ab25
   type: slicer
+  title: "PROTOCOLO"
   position:
     x: 463.33333333333337
     y: 141.66666666666669
@@ -454,6 +464,7 @@ visuals:
   filters_vazios: 0
 - id: 670ac661701957510387
   type: slicer
+  title: "PRODUTIVO?"
   position:
     x: 1986.8061142397426
     y: 3142.3974255832663
@@ -472,6 +483,7 @@ visuals:
   filters_vazios: 0
 - id: 6ba6166050e14793b298
   type: tableEx
+  title: "PROTOCOLOS POR TIPO"
   position:
     x: 461.78600160901044
     y: 1657.9243765084473
@@ -498,6 +510,7 @@ visuals:
   filters_vazios: 0
 - id: 6ffe21030010501827da
   type: slicer
+  title: "MOTIVO"
   position:
     x: 1047.4658085277554
     y: 3142.3974255832663
@@ -516,6 +529,7 @@ visuals:
   filters_vazios: 0
 - id: 815c09598bc48c8da49a
   type: tableEx
+  title: "HISTÓRICO DE RELATOS COMPLETOS"
   position:
     x: 20.273531777956556
     y: 3836.2027353177796
@@ -572,6 +586,7 @@ visuals:
   filters_vazios: 0
 - id: 84a15198c1b2672c001b
   type: lineStackedColumnComboChart
+  title: "AGENDA + CAPACIDADE POR TURNO"
   position:
     x: 21.13932738503775
     y: 405.49073438572407
@@ -632,6 +647,7 @@ visuals:
   filters_vazios: 0
 - id: a7119bca6c0795bd7269
   type: tableEx
+  title: "PROTOCOLOS POR BASE"
   position:
     x: 1191.279887482419
     y: 1657.9465541490856
@@ -676,6 +692,7 @@ visuals:
   filters_vazios: 0
 - id: ab1e84e5031aa3306102
   type: slicer
+  title: "CLIENTE"
   position:
     x: 1492.5457102672292
     y: 141.77215189873417
@@ -694,6 +711,7 @@ visuals:
   filters_vazios: 0
 - id: ae5871aa76bb028341c9
   type: tableEx
+  title: "MOTIVO IMPRODUTIVO/ PRODUTIVO"
   position:
     x: 1982.300884955752
     y: 3293.322606596943
@@ -746,6 +764,7 @@ visuals:
   filters_vazios: 0
 - id: d2f9f6c8a06f4afb8104
   type: advancedSlicerVisual
+  title: "TIPO DE SOLICITAÇÃO"
   position:
     x: 21.629213483146067
     y: 263.48314606741576
@@ -775,6 +794,7 @@ visuals:
   filters_vazios: 0
 - id: dde5aa90e4940ba62c04
   type: slicer
+  title: "TIPO RELATO"
   position:
     x: 20.273531777956556
     y: 3142.3974255832663
@@ -793,6 +813,7 @@ visuals:
   filters_vazios: 0
 - id: e21a2a1ce6d1088b3b74
   type: slicer
+  title: "STATUS PRODUTIVIDADE"
   position:
     x: 1903.370786516854
     y: 263.48314606741576
@@ -811,6 +832,7 @@ visuals:
   filters_vazios: 0
 - id: e2d5549b8d6d57e1439e
   type: tableEx
+  title: "VISÃO GERAL"
   position:
     x: 20.273531777956556
     y: 2486.886564762671
@@ -897,6 +919,7 @@ visuals:
   filters_vazios: 0
 - id: e7998ec512080733935f
   type: slicer
+  title: "STATUS PROTOCOLO"
   position:
     x: 787.6230661040787
     y: 141.77215189873417
@@ -948,6 +971,7 @@ visuals:
   filters_vazios: 0
 - id: fa2b2e6a3c02f745e8ec
   type: hundredPercentStackedColumnChart
+  title: "TAXAS DE PRODUTIVIDADE E IMPRODUTIVIDADE"
   position:
     x: 20.96069868995633
     y: 1191.2663755458516
@@ -997,6 +1021,7 @@ visuals:
   filters_vazios: 0
 - id: fb8f008029070e2adcfe
   type: slicer
+  title: "CIDADE"
   position:
     x: 1165.6821378340364
     y: 141.77215189873417
@@ -1015,6 +1040,7 @@ visuals:
   filters_vazios: 0
 - id: ff38eddc2587e3beda21
   type: tableEx
+  title: "TURNO"
   position:
     x: 2059.634317862166
     y: 1657.9465541490856

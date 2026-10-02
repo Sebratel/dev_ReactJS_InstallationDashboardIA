@@ -75,6 +75,7 @@ visuals:
   filters_vazios: 0
 - id: 14726a22603595dfb844
   type: slicer
+  title: "CIDADE"
   position:
     x: 1697.5202780996524
     y: 120.13904982618772
@@ -104,6 +105,7 @@ visuals:
   filters_vazios: 0
 - id: 2c224be87531efbec489
   type: pivotTable
+  title: "Relatório Diário de INSTALAÇÕES"
   position:
     x: 25.551330798479086
     y: 236.04562737642584
@@ -146,6 +148,7 @@ visuals:
   filters_vazios: 6
 - id: 2dcb5aad7a0e75c647e7
   type: slicer
+  title: "DATA CRIAÇÃO"
   position:
     x: 313.69640787949015
     y: 120.13904982618772
@@ -164,6 +167,7 @@ visuals:
   filters_vazios: 0
 - id: 3044b4a5731a9776935e
   type: slicer
+  title: "GESTOR"
   position:
     x: 1239.2120509849362
     y: 120.13904982618772
@@ -255,6 +259,7 @@ visuals:
   filters_vazios: 0
 - id: 9bfe0de74eded6604c04
   type: pivotTable
+  title: "Relatório Diário de INSTALAÇÕES"
   position:
     x: 1348.860759493671
     y: 338.9029535864979
@@ -301,6 +306,7 @@ visuals:
   filters_vazios: 6
 - id: a6780196d498d8f9db9f
   type: slicer
+  title: "PROTOCOLO"
   position:
     x: 1468.3661645422944
     y: 120.13904982618772
@@ -319,6 +325,7 @@ visuals:
   filters_vazios: 0
 - id: c19dd58d398564256c1c
   type: slicer
+  title: "DATA ATIVAÇÃO"
   position:
     x: 25.585168018539978
     y: 120.13904982618772
@@ -363,6 +370,7 @@ visuals:
   filters_vazios: 0
 - id: d26bf2420a6d20dec8c6
   type: slicer
+  title: "TIPO DE PROTOCOLO"
   position:
     x: 578.4472769409039
     y: 120.13904982618772
@@ -381,6 +389,7 @@ visuals:
   filters_vazios: 0
 - id: e3446e1e9c13af37ca52
   type: slicer
+  title: "INSTALADOR"
   position:
     x: 960
     y: 119.02665121668598

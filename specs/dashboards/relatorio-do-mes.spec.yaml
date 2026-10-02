@@ -80,6 +80,7 @@ visuals:
   filters_vazios: 0
 - id: 1bb5d2e4002cb4703bde
   type: pivotTable
+  title: "HISTÓRICO E PREVISÃO DO TEMPO (TESTE)"
   position:
     x: 46.09053497942387
     y: 1927.1604938271605
@@ -242,6 +243,7 @@ visuals:
   filters_vazios: 0
 - id: 381f3e30e0700e006aad
   type: pivotTable
+  title: "PROBABILIDADE DE CHUVA % (TESTE)"
   position:
     x: 1980.048270313757
     y: 1928.238133547868
@@ -347,6 +349,7 @@ visuals:
   filters_vazios: 0
 - id: 6fefdcc266cd5e1b69e5
   type: advancedSlicerVisual
+  title: "TIPO DE SOLICITAÇÃO"
   position:
     x: 42.2786547700755
     y: 140.28826355525052
@@ -374,6 +377,7 @@ visuals:
   filters_vazios: 0
 - id: 74caae7037048fb1ad13
   type: lineChart
+  title: "PROTOCOLOS REALIZADOS"
   position:
     x: 44.20041180507893
     y: 334.38572409059714
@@ -615,6 +619,7 @@ visuals:
   filters_vazios: 0
 - id: b191d2c2621275eb43b3
   type: clusteredColumnChart
+  title: "BACKLOG"
   position:
     x: 1522.031571722718
     y: 885.9299931365821
@@ -745,6 +750,7 @@ visuals:
   filters_vazios: 0
 - id: d6780942e086341bde5a
   type: lineChart
+  title: "PROTOCOLOS GERADOS"
   position:
     x: 42.2786547700755
     y: 885.9299931365815
@@ -847,6 +853,7 @@ visuals:
   filters_vazios: 0
 - id: dbb2eba36037470ca925
   type: lineStackedColumnComboChart
+  title: "AGENDA + CAPACIDADE POR TURNO"
   position:
     x: 42.49578414839797
     y: 1378.7521079258008

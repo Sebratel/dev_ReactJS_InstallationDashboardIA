@@ -146,7 +146,8 @@ export function RankingBarra({
   const eixo = chavesArray.find((c) => (c.papel ?? 'Category') === 'Category');
   const nomeMedida = (d.series ?? [])[0]?.nome ?? null;
   const nomeEixo = (eixo as { nome?: string; coluna?: string } | undefined)?.nome ?? (eixo as { nome?: string; coluna?: string } | undefined)?.coluna;
-  const titulo = nomeMedida && nomeEixo ? `${nomeMedida} por ${nomeEixo}` : tituloDoVisual(visual);
+  const titulo =
+    visual.titulo?.trim() || (nomeMedida && nomeEixo ? `${nomeMedida} por ${nomeEixo}` : tituloDoVisual(visual));
 
   const corBarra = corNoTema(corDaSerie(nomeMedida ?? '', 0), isDark);
   const corDoRotuloDentro = corDoRotuloSobre(corBarra);

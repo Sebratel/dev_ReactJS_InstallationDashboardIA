@@ -76,6 +76,7 @@ visuals:
   filters_vazios: 0
 - id: 1a8f0f425eea4d91d7da
   type: tableEx
+  title: "REINCIDÊNCIA POR MÊS"
   position:
     x: 1315.526950925181
     y: 425.7441673370877
@@ -119,6 +120,7 @@ visuals:
   filters_vazios: 4
 - id: 1bfe03ac7181a3ce2ace
   type: tableEx
+  title: "MANUTENÇÃO INICIAL POR MÊS"
   position:
     x: 1741.2711182622686
     y: 425.7441673370877
@@ -184,6 +186,7 @@ visuals:
   filters_vazios: 0
 - id: 23e39b606638b87e8c8c
   type: slicer
+  title: "CLIENTE"
   position:
     x: 698.3105390185036
     y: 148.6725663716814
@@ -213,6 +216,7 @@ visuals:
   filters_vazios: 0
 - id: 2e20bb37d3e6d566f9d3
   type: slicer
+  title: "CATÁLOGO SUP"
   position:
     x: 427.99678197908287
     y: 299.597747385358
@@ -262,6 +266,7 @@ visuals:
   filters_vazios: 0
 - id: 62ff2e415274df7f7ad4
   type: slicer
+  title: "CATEGORIA 5"
   position:
     x: 2335.961383748994
     y: 299.597747385358
@@ -280,6 +285,7 @@ visuals:
   filters_vazios: 0
 - id: 6372fc0350f0434c7d93
   type: slicer
+  title: "CATEGORIA 2"
   position:
     x: 1178.1174577634754
     y: 299.597747385358
@@ -349,6 +355,7 @@ visuals:
   filters_vazios: 0
 - id: 95d7e33f240e61378a71
   type: slicer
+  title: "CATEGORIA 1"
   position:
     x: 801.9308125502815
     y: 299.597747385358
@@ -367,6 +374,7 @@ visuals:
   filters_vazios: 0
 - id: abd7e96af67e36e852c3
   type: slicer
+  title: "Reincidente 30d"
   position:
     x: 1718.744971842317
     y: 148.6725663716814
@@ -385,6 +393,7 @@ visuals:
   filters_vazios: 0
 - id: af1c3777d731245dd558
   type: lineStackedColumnComboChart
+  title: "VISÃO GERAL"
   position:
     x: 50.16797312430011
     y: 426.4277715565509
@@ -464,6 +473,7 @@ visuals:
   filters_vazios: 10
 - id: b21a5d8ada09beaa839b
   type: slicer
+  title: "CATEGORIA 4"
   position:
     x: 1950.7642799678197
     y: 299.597747385358
@@ -493,6 +503,7 @@ visuals:
   filters_vazios: 0
 - id: c8fbe163b6a8ae38cc23
   type: slicer
+  title: "DATA SUP/ MAN"
   position:
     x: 1076.7497988736927
     y: 148.6725663716814
@@ -540,6 +551,7 @@ visuals:
   filters_vazios: 0
 - id: d93e5f330d5c60355c53
   type: tableEx
+  title: "PROTOCOLOS ABERTOS NO PERIODO DE 30 DIAS APÓS INSTALAÇÃO"
   position:
     x: 49.557522123893804
     y: 1051.9710378117456
@@ -670,6 +682,7 @@ visuals:
   filters_vazios: 0
 - id: e59df688d24f98b74fcb
   type: slicer
+  title: "EQUIPE SUP/ MAN"
   position:
     x: 1401.1263073209975
     y: 148.6725663716814
@@ -708,6 +721,7 @@ visuals:
   filters_vazios: 0
 - id: ec213222764661ec1ea8
   type: slicer
+  title: "TIPO SUP/ MAN"
   position:
     x: 49.557522123893804
     y: 299.597747385358
@@ -726,6 +740,7 @@ visuals:
   filters_vazios: 0
 - id: f02ce57f966b7b0b41bc
   type: slicer
+  title: "CONTRATO"
   position:
     x: 373.9340305711987
     y: 148.6725663716814
@@ -744,6 +759,7 @@ visuals:
   filters_vazios: 0
 - id: f4ceefeee158fb0bacf9
   type: slicer
+  title: "DATA INSTALADO"
   position:
     x: 49.557522123893804
     y: 148.6725663716814
@@ -780,6 +796,7 @@ visuals:
   filters_vazios: 0
 - id: fb5df651172fb9ad83ef
   type: slicer
+  title: "CATEGORIA 3"
   position:
     x: 1561.0619469026549
     y: 299.597747385358

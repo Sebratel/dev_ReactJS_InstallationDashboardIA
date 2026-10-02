@@ -240,3 +240,35 @@ test('separaEixos respeita a ordem da spec e o campo inativo', () => {
   assert.deepEqual(c, []);
   assert.deepEqual(medidas.map((m) => m.name), ['Total', 'Itens']);
 });
+
+// ---------------------------------------------------------------------------
+// Ordem dos eixos
+// ---------------------------------------------------------------------------
+
+/**
+ * A VISÃO PRODUTIVA (Status × Data) abria com 03/10, 05/10, 07/10, 10/10, 21/10,
+ * 06/10, 02/10 — a ordem de chegada das linhas, embaralhada pela carga incremental.
+ * O eixo de data sai crescente; o de texto continua na ordem de primeira aparição,
+ * porque a ordem dele é a "classificar por coluna" do modelo, que não foi extraída.
+ */
+test('eixo de data sai em ordem crescente; eixo de texto fica na ordem de chegada', () => {
+  const model = new SemanticModel();
+  model.addTable({ id: 'os', name: 'OS', queryRef: null, columns: [col('DIA'), col('TIPO'), col('VALOR')] });
+  const dataset = new Dataset();
+  dataset.addTable('OS', [
+    { DIA: makeDate(2026, 10, 3), TIPO: 'Sem Ação', VALOR: 1 },
+    { DIA: makeDate(2026, 10, 21), TIPO: 'Produtivo', VALOR: 2 },
+    { DIA: makeDate(2026, 10, 2), TIPO: 'Sem Ação', VALOR: 3 },
+    { DIA: makeDate(2026, 10, 2), TIPO: 'Produtivo', VALOR: 4 },
+  ]);
+  const ev = new Evaluator({ model, dataset, now: AGORA });
+
+  const r = calcular(matriz([linha('TIPO'), coluna('DIA'), soma()]), undefined, ev);
+  assert.deepEqual(eixo(r.colunas), [[makeDate(2026, 10, 2)], [makeDate(2026, 10, 3)], [makeDate(2026, 10, 21)]]);
+  assert.deepEqual(eixo(r.linhas), [['Sem Ação'], ['Produtivo']]);
+  // As células acompanham a permutação das colunas.
+  assert.deepEqual(r.celulas, [
+    [[3], [1], [BLANK]],
+    [[4], [BLANK], [2]],
+  ]);
+});

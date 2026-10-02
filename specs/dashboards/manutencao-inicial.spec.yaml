@@ -29,6 +29,7 @@ filters_vazios: 0
 visuals:
 - id: 0147d7072c8525a2a802
   type: tableEx
+  title: "PROTOCOLOS DE RETORNOS PRIORITARIOS"
   position:
     x: 1000.1609010458568
     y: 2317.940466613033
@@ -134,6 +135,7 @@ visuals:
   filters_vazios: 0
 - id: 148f6ba115cb24e32280
   type: slicer
+  title: "TIPO. MANUTENÇÃO"
   position:
     x: 1838.133547868061
     y: 148.6725663716814
@@ -160,6 +162,7 @@ visuals:
   filters_vazios: 0
 - id: 18e2df7fcebe55422e22
   type: slicer
+  title: "SOLUÇÃO"
   position:
     x: 1948.5116653258244
     y: 2205.309734513274
@@ -223,6 +226,7 @@ visuals:
   filters_vazios: 0
 - id: 2b170b73919d66acd4f9
   type: tableEx
+  title: "TÉCNICOS OFENSORES"
   position:
     x: 49.557522123893804
     y: 1637.6508447304907
@@ -281,6 +285,7 @@ visuals:
   filters_vazios: 0
 - id: 2df4f6c42bfbfd487ab1
   type: tableEx
+  title: "PROTOCOLOS ABERTOS NO PERIODO DE 30 DIAS APÓS INSTALAÇÃO"
   position:
     x: 49.746192893401016
     y: 897.8003384094754
@@ -433,6 +438,7 @@ visuals:
   filters_vazios: 0
 - id: 455e4a8a0477ed34e806
   type: slicer
+  title: "CATEGORIAS 5"
   position:
     x: 1948.5116653258249
     y: 2079.1633145615483
@@ -459,6 +465,7 @@ visuals:
   filters_vazios: 0
 - id: 47c5da4202802d657d5b
   type: slicer
+  title: "CATEGORIAS 1"
   position:
     x: 1948.5116653258249
     y: 1642.156074014479
@@ -496,6 +503,7 @@ visuals:
   filters_vazios: 0
 - id: 6bbd3fd0d32b0b83181a
   type: slicer
+  title: "CATEGORIAS 4"
   position:
     x: 1948.5116653258249
     y: 1962.0273531777952
@@ -522,6 +530,7 @@ visuals:
   filters_vazios: 0
 - id: 6fd98c21010e7e22239b
   type: tableEx
+  title: "SOLUÇÕES"
   position:
     x: 808.688656476267
     y: 1637.6508447304907
@@ -580,6 +589,7 @@ visuals:
   filters_vazios: 0
 - id: 702852fc76c92c8c0cd9
   type: lineStackedColumnComboChart
+  title: "RETORNO PRIORITARIO POR MÊS"
   position:
     x: 49.557522123893804
     y: 2317.940466613033
@@ -632,6 +642,7 @@ visuals:
   filters_vazios: 5
 - id: 707565fef6b8f5cb35ee
   type: slicer
+  title: "CLIENTE"
   position:
     x: 689.3000804505228
     y: 148.6725663716814
@@ -658,6 +669,7 @@ visuals:
   filters_vazios: 0
 - id: 70a4682fdbd5f4414822
   type: slicer
+  title: "DATA INSTALADO"
   position:
     x: 49.557522123893804
     y: 148.6725663716814
@@ -787,6 +799,7 @@ visuals:
   filters_vazios: 0
 - id: 8eebca1b0652b988a8a8
   type: slicer
+  title: "TIPO. INSTALAÇÃO"
   position:
     x: 1448.4312148028962
     y: 148.6725663716814
@@ -813,6 +826,7 @@ visuals:
   filters_vazios: 0
 - id: 8f63123f92f546af4d24
   type: slicer
+  title: "DATA MANUTENÇÂO"
   position:
     x: 367.1761866452132
     y: 148.6725663716814
@@ -894,6 +908,7 @@ visuals:
   filters_vazios: 0
 - id: a8bb56155ea520769c12
   type: slicer
+  title: "TÉCNICO"
   position:
     x: 1079.0024135156877
     y: 148.6725663716814
@@ -1072,6 +1087,7 @@ visuals:
   filters_vazios: 0
 - id: d607ef36b82b1c37ab2c
   type: slicer
+  title: "CATEGORIAS 2"
   position:
     x: 1948.5116653258249
     y: 1745.7763475462568
@@ -1098,6 +1114,7 @@ visuals:
   filters_vazios: 0
 - id: d6966d4cb0e0556e0952
   type: slicer
+  title: "DATA CRIADO"
   position:
     x: 49.557522123893804
     y: 2360.7401448109413
@@ -1142,6 +1159,7 @@ visuals:
   filters_vazios: 0
 - id: d97fe489202052421052
   type: lineStackedColumnComboChart
+  title: "MANUTENÇÃO INICIAL POR MÊS"
   position:
     x: 49.557522123893804
     y: 290.58728881737727
@@ -1252,6 +1270,7 @@ visuals:
   filters_vazios: 0
 - id: fefc9130d39cbbb0604a
   type: slicer
+  title: "CATEGORIAS 3"
   position:
     x: 1948.5116653258249
     y: 1851.64923572003

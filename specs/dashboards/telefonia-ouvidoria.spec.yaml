@@ -15,6 +15,7 @@ filters_vazios: 0
 visuals:
 - id: 00be7542dc6adc442876
   type: slicer
+  title: "STATUS"
   position:
     x: 0
     y: 2.325365581819528
@@ -55,6 +56,7 @@ visuals:
   filters_vazios: 0
 - id: 180424e6485b88eae9f1
   type: slicer
+  title: "EQUIPE"
   position:
     x: 1565.2345220561535
     y: 2.907109318281409
@@ -73,6 +75,7 @@ visuals:
   filters_vazios: 0
 - id: 230e44503581313eabc2
   type: slicer
+  title: "DATA CRIADO"
   position:
     x: 1960.4556302756844
     y: 2.907109318281409
@@ -157,6 +160,7 @@ visuals:
   filters_vazios: 0
 - id: 4c6e6cd02d03488b4a37
   type: slicer
+  title: "RESPONSÁVEL"
   position:
     x: 389.57679507400496
     y: 2.907109318281409
@@ -235,6 +239,7 @@ visuals:
   filters_vazios: 0
 - id: 60f4e5e52c95bf8ddeb8
   type: slicer
+  title: "CLIENTE"
   position:
     x: 779.7951044553139
     y: 2.907109318281409
@@ -284,6 +289,7 @@ visuals:
   filters_vazios: 0
 - id: ab7101a5e56c701ac5f7
   type: columnChart
+  title: "QUANTIDADE POR CIDADE"
   position:
     x: 30.748112560054906
     y: 332.4639670555937
@@ -310,6 +316,7 @@ visuals:
   filters_vazios: 0
 - id: c6d331b4655d2552f84e
   type: slicer
+  title: "PROTOCOLO"
   position:
     x: 2364.4285580368646
     y: 0
@@ -354,6 +361,7 @@ visuals:
   filters_vazios: 0
 - id: e490ca88af05c71cb40c
   type: slicer
+  title: "TIPO PROTOCOLO"
   position:
     x: 1171.3133536922237
     y: 2.907109318281409
@@ -380,6 +388,7 @@ visuals:
   filters_vazios: 0
 - id: e5ffac48cee4968a3737
   type: tableEx
+  title: "VISÃO GERAL"
   position:
     x: 30.748112560054906
     y: 734.111187371311
@@ -578,6 +587,7 @@ visuals:
   filters_vazios: 0
 - id: ead55782fbeeb19a0921
   type: columnChart
+  title: "QUANTIDADE POR EQUIPE"
   position:
     x: 1948.6616334934797
     y: 332.4639670555937
