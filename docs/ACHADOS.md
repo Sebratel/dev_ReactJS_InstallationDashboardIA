@@ -13661,3 +13661,21 @@ com poller perfeito, uma instalação concluída aparece como **Inconclusivo** (
 técnico, não tem instalação) por ~40 min antes de virar Produtivo. Isso não é atraso da
 plataforma: é a definição de "Produtivo" do relatório (equipamento alocado) encontrando o
 tempo que o processo leva para dar baixa. O Power BI tem o mesmo comportamento.
+
+## #168 — o poller de tempo real ficava cego 3 h depois de cada subida da API (02/10)
+
+Medido em `/api/saude` 40 min depois de recriar a API, às 9h de um dia útil: **824
+voltas, 0 mudanças, 0 rebuscas** nas 7 queries vigiadas — nenhuma linha devolvida.
+
+**Causa:** a vigília partia de `agora()` (relógio do processo) e mandava `:desde` com
+`toISOString()`. As colunas vigiadas são `timestamp` **sem** fuso; ao converter o texto,
+o Postgres ignora o `Z`. No container (UTC), "12:45Z" virava 12:45 **locais**, três horas
+no futuro: a busca não achava nada até o relógio do banco alcançar esse ponto. Antes de
+02/10 isso não aparecia porque a API ficava de pé por dias — só as 3 primeiras horas de
+cada subida eram cegas. Em `npm start` no host (fuso −03) o desvio aparecia em toda volta
+que avançasse `desde` pela marca de uma linha.
+
+**Correção:** (1) a vigília parte de `LOCALTIMESTAMP`, perguntado ao banco na primeira
+volta de cada query; (2) `:desde` vai como hora de parede sem fuso (`paraParametroLocal`,
+getters locais) — o mesmo jeito que o driver entregou as datas das linhas, então a ida e
+a volta são exatas em qualquer fuso. Testes em fuso local e em `TZ=UTC`.

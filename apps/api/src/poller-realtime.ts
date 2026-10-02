@@ -249,6 +249,32 @@ export interface OpcoesDoPoller {
    * que fazer — invalidar cache, avisar por SSE. Este módulo só detecta.
    */
   aoMudar?: (tabela: string, queryId: string) => void;
+  /**
+   * O instante de onde a vigília parte, **no relógio do banco**. Sem ele, com `agora`
+   * injetado (testes), parte de `agora()`; em produção, de `LOCALTIMESTAMP`.
+   */
+  relogioDoBanco?: () => Promise<Date>;
+}
+
+/**
+ * `:desde` como o banco o lê: hora de parede, sem fuso.
+ *
+ * **O defeito que isto corrige, medido em 02/10/2026 (ACHADOS #168).** As colunas
+ * vigiadas são `timestamp` SEM fuso, e o driver as devolve como hora local do processo.
+ * `toISOString()` mandava a hora em UTC com `Z`, e o Postgres, convertendo para
+ * `timestamp`, **ignora** o `Z`: no container (UTC), a vigília partia de "12:45" quando
+ * no banco eram 09:45 — três horas no futuro. Resultado: 824 voltas, 0 linhas, por três
+ * horas depois de cada subida da API, sem erro nenhum.
+ *
+ * Os getters LOCAIS fazem a ida e a volta exatas em qualquer fuso: o driver leu
+ * `09:45` como 09:45 locais, e esta função devolve `09:45`.
+ */
+export function paraParametroLocal(d: Date): string {
+  const n = (v: number, t = 2) => String(v).padStart(t, '0');
+  return (
+    `${d.getFullYear()}-${n(d.getMonth() + 1)}-${n(d.getDate())} ` +
+    `${n(d.getHours())}:${n(d.getMinutes())}:${n(d.getSeconds())}.${n(d.getMilliseconds(), 3)}`
+  );
 }
 
 /**
@@ -259,8 +285,11 @@ export interface OpcoesDoPoller {
  */
 export class PollerRealtime {
   readonly #configs: Map<string, ConfigDePoll>;
-  readonly #opts: Required<Omit<OpcoesDoPoller, 'specsDir' | 'pool'>> & Pick<OpcoesDoPoller, 'pool'>;
+  readonly #opts: Required<Omit<OpcoesDoPoller, 'specsDir' | 'pool' | 'relogioDoBanco'>> &
+    Pick<OpcoesDoPoller, 'pool' | 'relogioDoBanco'>;
   readonly #deltas = new Map<string, DeltaDeTabela>();
+  /** Queries cuja vigília já partiu do relógio do banco — ver `#semeia`. */
+  readonly #semeadas = new Set<string>();
   readonly #timers = new Map<string, ReturnType<typeof setInterval>>();
   readonly #ocupado = new Set<string>();
   readonly #specsDir: string;
@@ -282,7 +311,24 @@ export class PollerRealtime {
       agora: opts.agora ?? (() => new Date()),
       anuncia: opts.anuncia ?? ((l) => console.error(l)),
       aoMudar: opts.aoMudar ?? ((): void => {}),
+      relogioDoBanco: opts.relogioDoBanco ?? (opts.agora ? async () => opts.agora!() : undefined),
     };
+  }
+
+  /**
+   * Na primeira volta de cada query, refaz o delta partindo do relógio do BANCO.
+   *
+   * `inicia()` semeia com `agora()`, o relógio deste processo — que, além do fuso
+   * (`paraParametroLocal`), pode estar adiantado em relação ao do banco. Partir do
+   * relógio do banco é o único ponto de partida que não pula nem inventa janela.
+   */
+  async #semeia(cfg: ConfigDePoll, run: ReturnType<typeof postgresRunner>): Promise<void> {
+    if (this.#semeadas.has(cfg.query)) return;
+    const agoraNoBanco = this.#opts.relogioDoBanco
+      ? await this.#opts.relogioDoBanco()
+      : ((await run('SELECT LOCALTIMESTAMP AS agora'))[0] as { agora: Date }).agora;
+    this.#deltas.set(cfg.query, novoDelta(agoraNoBanco));
+    this.#semeadas.add(cfg.query);
   }
 
   /** Nenhuma query configurada? Não há o que iniciar — chamador pode pular. */
@@ -404,11 +450,12 @@ export class PollerRealtime {
     this.#ocupado.add(cfg.query);
     const t0 = Date.now();
     try {
-      const delta = this.#deltas.get(cfg.query);
-      if (!delta) return; // não deveria acontecer — inicia() sempre semeia antes do 1º tenta()
+      if (!this.#deltas.has(cfg.query)) return; // não deveria acontecer — inicia() sempre semeia antes do 1º tenta()
 
       const pool = await this.#getPool();
       const run = postgresRunner(pool);
+      await this.#semeia(cfg, run);
+      const delta = this.#deltas.get(cfg.query)!;
       const politica = {
         query: cfg.query,
         parametro: 'desde',
@@ -423,7 +470,7 @@ export class PollerRealtime {
       // desta config, em vez de poluir silenciosamente com a query inteira.
       const sql = costura(this.#sqlDe(cfg), politica);
 
-      const linhasRaw = await run(sql, { desde: delta.desde.toISOString() });
+      const linhasRaw = await run(sql, { desde: paraParametroLocal(delta.desde) });
       const linhas = linhasRaw.map((l) => normalizaChaves(l as Record<string, Escalar>));
 
       const agora = this.#opts.agora();

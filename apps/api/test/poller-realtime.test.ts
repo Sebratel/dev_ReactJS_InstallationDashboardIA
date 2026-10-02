@@ -15,6 +15,7 @@ import {
   mudancasReais,
   novoDelta,
   overlayDoDelta,
+  paraParametroLocal,
   podaDelta,
 } from '../src/poller-realtime.ts';
 
@@ -172,7 +173,9 @@ test('PollerRealtime: tentaAgora costura o SQL, passa :desde como parâmetro, e 
   const p = new PollerRealtime({
     specsDir: 'specs',
     pool: fake.pool,
-    agora: () => new Date('2026-09-03T10:00:00Z'),
+    // Hora LOCAL: é assim que o driver entrega `timestamp` sem fuso, e é assim que
+    // `:desde` tem de voltar ao banco (ACHADOS #168).
+    agora: () => new Date(2026, 8, 3, 10, 0, 0),
     anuncia: () => {},
     aoMudar: () => {
       mudancas++;
@@ -181,7 +184,7 @@ test('PollerRealtime: tentaAgora costura o SQL, passa :desde como parâmetro, e 
   await p.tentaAgora('protocolos-auxiliares');
   assert.equal(fake.chamadas.length, 1);
   assert.match(fake.chamadas[0]!.text, /a\.modified >= \$1/);
-  assert.equal(fake.chamadas[0]!.values[0], '2026-09-03T10:00:00.000Z');
+  assert.equal(fake.chamadas[0]!.values[0], '2026-09-03 10:00:00.000');
   assert.equal(mudancas, 0);
 });
 
@@ -333,4 +336,36 @@ test(`PollerRealtime.estado(): erro na busca vira contagem e motivo`, async () =
   const e = p.estado();
   assert.equal(e.erros, 1);
   assert.match(e.ultimoErro ?? ``, /ECONNRESET/);
+});
+
+// ------------------------------------------------- fuso de :desde (ACHADOS #168)
+
+test('paraParametroLocal: hora de parede, sem fuso — a ida e volta do driver é exata', () => {
+  assert.equal(paraParametroLocal(new Date(2026, 9, 2, 9, 5, 7, 42)), '2026-10-02 09:05:07.042');
+});
+
+/**
+ * O defeito medido em 02/10/2026: sem `agora` injetado, a vigília partia do relógio
+ * do processo em UTC com `Z`, e o banco lia isso como hora local — três horas no
+ * futuro, 0 linhas por três horas. Em produção ela parte de `LOCALTIMESTAMP`.
+ */
+test('PollerRealtime: em produção a vigília parte do relógio do banco, não do processo', async () => {
+  const chamadas: { text: string; values: unknown[] }[] = [];
+  const noBanco = new Date(2026, 9, 2, 9, 45, 0);
+  const pool = async () => ({
+    query: async (cfg: { text: string; values?: unknown[] }) => {
+      chamadas.push({ text: cfg.text, values: cfg.values ?? [] });
+      if (/LOCALTIMESTAMP/.test(cfg.text)) return { rows: [[noBanco]], fields: [{ name: 'agora' }] };
+      return { rows: [], fields: [] };
+    },
+    end: async () => {},
+  });
+  const p = new PollerRealtime({ specsDir: 'specs', pool, anuncia: () => {} });
+  await p.tentaAgora('protocolos-auxiliares');
+  assert.equal(chamadas.length, 2);
+  assert.match(chamadas[0]!.text, /LOCALTIMESTAMP/);
+  assert.equal(chamadas[1]!.values[0], '2026-10-02 09:45:00.000');
+  // Só na primeira volta: a segunda já não pergunta o relógio.
+  await p.tentaAgora('protocolos-auxiliares');
+  assert.equal(chamadas.filter((c) => /LOCALTIMESTAMP/.test(c.text)).length, 1);
 });
