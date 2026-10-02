@@ -20,8 +20,8 @@ manutenção e pode correr depois do go-live.
 
 | fase | o quê | estado | plano detalhado |
 |---|---|---|---|
-| 0 | Arrumar a casa | 🟡 0.1, 0.3 e 0.4 ✅, 0.2 espera o Erick | este arquivo, §0 |
-| A | VISÃO PRODUTIVA em tempo real | 🟡 etapa 1 ✅, etapa 2 falta | `ACHADOS.md` #166–#171 |
+| 0 | Arrumar a casa | ✅ 02/10 | este arquivo, §0 |
+| A | VISÃO PRODUTIVA em tempo real | ⏳ **próxima**: etapa 1 ✅, etapa 2 falta | `ACHADOS.md` #166–#171 |
 | B | Carga leve no banco | 🟡 1.1 e 1.1b ✅, 8 itens faltam | `PLANO-CARGA.md` §3, fases 1 e 2 |
 | C | Produção no Portainer | 🔴 não começou (autonomia 1–4 ✅) | `PLANO-CARGA.md` §3 fase 3 + `PLANO-AUTONOMIA.md` etapa 5 |
 | D | Validação com o negócio | 🟡 trilha paralela, depende de pessoas | `PERGUNTAS-NEGOCIO.md` |
@@ -48,9 +48,11 @@ Branches com trabalho fora do `staging` e worktrees que já não servem.
       `web:build` verdes. **Falta ver na tela**: a plataforma estava fora do ar (§0.4). Integrar `feature/padroes-frontend` (`c85f4a6`) no `staging`. Conferir conflito
       com `git merge-tree` antes, porque outro agente comita em `apps/web`. `npm test` e
       `npm run typecheck` verdes.
-- [ ] **0.2** Duas branches fora do `staging`, ambas para o Erick decidir: `wip/rascunho-otimizacao-snapshot`
-      (2 commits, "WIP salvo antes da otimizacao de snapshot", 04/09) e `docs/projeto-governanca` tem 1 commit fora do `staging` (governança do Jira,
-      MBA-1293 a MBA-1305, 25/09). O Erick decide: integrar ou descartar.
+- [x] **0.2** ✅ 02/10, a pedido do Erick: as duas branches foram descartadas, com a ponta de
+      cada uma guardada numa tag local, para recuperar com `git branch <nome> <tag>`:
+      - `arquivo/wip-rascunho-otimizacao-snapshot`: WIP de 04/09, que conflitava em 7 arquivos;
+      - `arquivo/docs-projeto-governanca`: os documentos 08 a 13 do Jira (UAT, aceite, GMUD,
+        go-live, hypercare, encerramento; MBA-1293 a MBA-1305), sem conflito. **Ver a §E.**
 - [x] **0.3** ✅ 02/10: removidas, junto com as branches `trabalho/*` (já integradas). Remover as worktrees já integradas: `incremental-field-agenda` e
       `projeto-pausa-ajustes-2267e2` (`trabalho/limpeza-docs`). Ambas têm 0 commit fora do `staging`.
 
@@ -139,6 +141,9 @@ Não é código: é resposta de gente. Começa já, para não virar o gargalo do
 **Pronto quando:** o índice da `PERGUNTAS-NEGOCIO.md` não tem nenhum ⏳ que afete card da tela.
 
 ## §E — Go-live
+
+> A papelada de governança (UAT, aceite, GMUD, go-live, hypercare, encerramento) já foi
+> escrita em 25/09 e está na tag `arquivo/docs-projeto-governanca`. Recuperar antes da E.1.
 
 - [ ] **E.1** Rodada final de paridade com o `INST - Relatório Instalação`, página por página,
       usando a janela de `specs/_catalog/paridade-janela.yaml`.
