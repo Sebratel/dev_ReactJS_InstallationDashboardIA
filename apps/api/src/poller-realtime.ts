@@ -34,6 +34,11 @@ import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { PgPoolLike } from '../../../packages/query-engine/src/connectors-sql.ts';
 import { postgresRunner } from '../../../packages/query-engine/src/connectors-sql.ts';
 import type { Escalar } from '../../../packages/snapshot/src/formato.ts';
+import { SemanticModel } from '../../../packages/semantic-model/src/model.ts';
+import { materializaColunas, materializaColunasPorGrao } from '../../../packages/snapshot/src/colunas-calculadas.ts';
+import { GRAO_REDUZIDO_DE } from '../../../packages/snapshot/src/grao-reduzido.ts';
+import { DIRETORIO_PADRAO, leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
+import { montaBuscaPorIds } from './busca-por-ids.ts';
 
 const ARQUIVO = path.join('_catalog', 'realtime-poll.yaml');
 
@@ -44,7 +49,23 @@ export interface ConfigDePoll {
   margemSegundos: number;
   chave: string[];
   marca: string[];
-  costura: Costura;
+  /** Modo de um passo: o `sql:` da spec costurado com `:desde`. */
+  costura?: Costura;
+  /**
+   * Modo de dois passos (ACHADOS #166): `alvos` é uma SQL com `:desde` que devolve os
+   * `id` que mudaram — barata —, e `buscaPorIds` busca só esses, com a view recortada
+   * por dentro (`busca-por-ids.ts`). Existe porque a costura da FIELD AGENDA custa
+   * 11–12 s por volta qualquer que seja a janela.
+   */
+  alvos?: string;
+  buscaPorIds?: { view: string };
+  /**
+   * Calcula as colunas calculadas da tabela sobre as linhas buscadas, como o snapshot
+   * faz. Só vale quando toda coluna calculada depende da própria linha ou das linhas
+   * da mesma CHAVE — o poller traz a chave inteira, e um RANKX sobre a tabela toda
+   * daria outro número. Na FIELD AGENDA, o `RankDataProtocolo` filtra pelo protocolo.
+   */
+  colunasCalculadas?: boolean;
 }
 
 interface ArquivoRealtimePoll {
@@ -58,6 +79,9 @@ interface ArquivoRealtimePoll {
       chave?: string[];
       marca?: string[];
       costura?: Costura;
+      alvos?: string;
+      busca_por_ids?: { view?: string };
+      colunas_calculadas?: boolean;
     }
   >;
 }
@@ -76,8 +100,12 @@ export function leConfigDePoll(specsDir: string): Map<string, ConfigDePoll> {
     throw new Error(`${p}: formato ${doc.formato}, esperado 1.`);
   }
   for (const [query, bruto] of Object.entries(doc.queries ?? {})) {
-    const falta = (['tabela', 'costura'] as const).filter((k) => !bruto[k]);
-    if (falta.length) throw new Error(`${p}: ${query} não declara ${falta.join(', ')}.`);
+    if (!bruto.tabela) throw new Error(`${p}: ${query} não declara tabela.`);
+    const doisPassos = bruto.alvos !== undefined || bruto.busca_por_ids !== undefined;
+    if (doisPassos && !(bruto.alvos && bruto.busca_por_ids?.view)) {
+      throw new Error(`${p}: ${query} em dois passos precisa de 'alvos' E 'busca_por_ids.view'.`);
+    }
+    if (!doisPassos && !bruto.costura) throw new Error(`${p}: ${query} não declara costura.`);
     if (!bruto.marca?.length) throw new Error(`${p}: ${query} não declara 'marca'.`);
     if (!bruto.chave?.length) throw new Error(`${p}: ${query} não declara 'chave'.`);
     fora.set(query, {
@@ -87,7 +115,10 @@ export function leConfigDePoll(specsDir: string): Map<string, ConfigDePoll> {
       margemSegundos: bruto.margem_segundos ?? 30,
       chave: bruto.chave,
       marca: bruto.marca,
-      costura: bruto.costura!,
+      ...(doisPassos
+        ? { alvos: bruto.alvos!, buscaPorIds: { view: bruto.busca_por_ids!.view! } }
+        : { costura: bruto.costura! }),
+      ...(bruto.colunas_calculadas ? { colunasCalculadas: true } : {}),
     });
   }
   return fora;
@@ -109,8 +140,19 @@ function identidade(linha: Record<string, Escalar>, chaves: readonly string[]): 
  * é a casca fina que busca de verdade e chama estas funções.
  */
 export interface DeltaDeTabela {
-  /** Última versão de cada linha, por chave de grupo. */
-  porChave: Map<string, Record<string, Escalar>>;
+  /**
+   * A última versão de cada GRUPO de linhas, por chave. Um grupo, e não uma linha: na
+   * FIELD AGENDA a chave é o protocolo e o grão é slot × relato — dezenas de linhas
+   * por chave, que a fonte entrega juntas e `mescla()` substitui juntas. Para as
+   * tabelas de uma linha por chave, o grupo tem uma linha só e nada muda.
+   */
+  porChave: Map<string, Record<string, Escalar>[]>;
+  /**
+   * Quando cada grupo foi buscado, em ms. A poda usa isto quando existe: a marca da
+   * linha diz quando o DADO nasceu, não quando ele MUDOU — troca de status de um
+   * protocolo de três dias atrás não mexe em nenhuma coluna de data.
+   */
+  vistoEm?: Map<string, number>;
   /** Desde quando este delta é a verdade completa — vira `corte` em `mescla()`. */
   inicioJanela: Date;
   /** De onde a próxima busca parte. Só avança em busca bem-sucedida. */
@@ -119,13 +161,28 @@ export interface DeltaDeTabela {
 
 /** Cria um delta vazio, cuja janela começa agora (ou em `desde`, se dado). */
 export function novoDelta(agora: Date, desde: Date = agora): DeltaDeTabela {
-  return { porChave: new Map(), inicioJanela: desde, desde };
+  return { porChave: new Map(), vistoEm: new Map(), inicioJanela: desde, desde };
+}
+
+/** As linhas de uma busca, agrupadas pela chave — na ordem em que chegaram. */
+function agrupa(
+  novas: readonly Record<string, Escalar>[],
+  chave: readonly string[],
+): Map<string, Record<string, Escalar>[]> {
+  const grupos = new Map<string, Record<string, Escalar>[]>();
+  for (const l of novas) {
+    const k = identidade(l, chave);
+    const g = grupos.get(k);
+    if (g) g.push(l);
+    else grupos.set(k, [l]);
+  }
+  return grupos;
 }
 
 /**
- * Aplica uma busca ao delta: cada linha nova substitui a versão anterior da
- * mesma chave (a busca mais recente é sempre a verdade sobre aquela chave), e o
- * ponteiro de busca avança para a marca mais alta encontrada, menos a margem.
+ * Aplica uma busca ao delta: cada grupo novo substitui o grupo anterior da mesma
+ * chave (a busca mais recente é sempre a verdade sobre aquela chave), e o ponteiro de
+ * busca avança para a marca mais alta encontrada, menos a margem.
  *
  * **Nunca volta `desde` para trás.** Uma busca que não trouxe nada de novo (ou
  * cuja marca mais alta ficou abaixo da margem já aplicada) não pode atrasar a
@@ -139,7 +196,11 @@ export function aplicaBusca(
   agora: Date,
 ): DeltaDeTabela {
   const porChave = new Map(delta.porChave);
-  for (const l of novas) porChave.set(identidade(l, cfg.chave), l);
+  const vistoEm = new Map(delta.vistoEm ?? []);
+  for (const [k, g] of agrupa(novas, cfg.chave)) {
+    porChave.set(k, g);
+    vistoEm.set(k, agora.getTime());
+  }
 
   const marca = marcaDe(novas, cfg.marca);
   let desde = delta.desde;
@@ -148,7 +209,7 @@ export function aplicaBusca(
     if (candidato.getTime() > desde.getTime()) desde = candidato;
   }
 
-  return { porChave, inicioJanela: delta.inicioJanela, desde };
+  return { porChave, vistoEm, inicioJanela: delta.inicioJanela, desde };
 }
 
 /**
@@ -157,18 +218,33 @@ export function aplicaBusca(
  * viu, para sempre, num mapa que só cresce.
  *
  * `tetoHoras` é generoso de propósito: o pior caso de erro é o delta ficar um
- * pouco maior por mais tempo, nunca perder uma mudança recente. `chave.` do
- * corte já resolvido: entradas com marca abaixo do corte não descrevem mais
- * "o que mudou recentemente" — descrevem "o que este processo lembra".
+ * pouco maior por mais tempo, nunca perder uma mudança recente.
+ *
+ * `cobertoAte` (ms): o disco já contém toda mudança anterior a este instante — a
+ * carga em lote da tabela começou depois dela. Grupo VISTO antes disso está no
+ * arquivo e sai do delta; é o que impede o overlay da FIELD AGENDA de crescer o dia
+ * inteiro (cada grupo custa recálculo e cópia para a worker a cada página).
  */
-export function podaDelta(delta: DeltaDeTabela, marcaCols: readonly string[], agora: Date, tetoHoras = 48): DeltaDeTabela {
+export function podaDelta(
+  delta: DeltaDeTabela,
+  marcaCols: readonly string[],
+  agora: Date,
+  tetoHoras = 48,
+  cobertoAte: number | null = null,
+): DeltaDeTabela {
   const corte = agora.getTime() - tetoHoras * 3600_000;
-  const porChave = new Map<string, Record<string, Escalar>>();
-  for (const [k, l] of delta.porChave) {
-    const m = marcaDe([l], marcaCols);
-    if (m === null || m.getTime() >= corte) porChave.set(k, l);
+  const porChave = new Map<string, Record<string, Escalar>[]>();
+  const vistoEm = new Map<string, number>();
+  for (const [k, g] of delta.porChave) {
+    const visto = delta.vistoEm?.get(k);
+    if (visto !== undefined && cobertoAte !== null && visto < cobertoAte) continue;
+    const m = visto ?? marcaDe(g, marcaCols)?.getTime() ?? null;
+    if (m === null || m >= corte) {
+      porChave.set(k, g);
+      if (visto !== undefined) vistoEm.set(k, visto);
+    }
   }
-  return { ...delta, porChave };
+  return { ...delta, porChave, vistoEm };
 }
 
 /**
@@ -185,7 +261,7 @@ export function overlayDoDelta(
   delta: DeltaDeTabela,
   cfg: Pick<ConfigDePoll, 'chave' | 'marca'>,
 ): OverlayDeTabela {
-  return { linhas: [...delta.porChave.values()], corte: delta.inicioJanela, chave: cfg.chave, marca: cfg.marca };
+  return { linhas: [...delta.porChave.values()].flat(), corte: delta.inicioJanela, chave: cfg.chave, marca: cfg.marca };
 }
 
 /**
@@ -209,14 +285,30 @@ export function overlayDoDelta(
  */
 export function mudancasReais(antes: DeltaDeTabela, depois: DeltaDeTabela): number {
   let n = 0;
-  for (const [chave, linha] of depois.porChave) {
+  for (const [chave, grupo] of depois.porChave) {
     const anterior = antes.porChave.get(chave);
     // Comparação por conteúdo, não por identidade: a volta seguinte traz outro
     // objeto com os mesmos campos, e comparar referência acusaria mudança em
     // 100% das rebuscas — que é exatamente o defeito que esta função conserta.
-    if (anterior === undefined || !mesmaLinha(anterior, linha)) n += 1;
+    if (anterior === undefined || !mesmoGrupo(anterior, grupo)) n += 1;
   }
   return n;
+}
+
+/**
+ * Mesmo grupo = mesmas linhas, em qualquer ordem. A fonte não promete ordem entre
+ * duas buscas (a SQL da FIELD AGENDA ordena por data de criação, com empate dentro do
+ * protocolo), e acusar mudança por reordenação derrubaria o cache à toa.
+ */
+function mesmoGrupo(a: readonly Record<string, Escalar>[], b: readonly Record<string, Escalar>[]): boolean {
+  if (a.length !== b.length) return false;
+  const usadas = new Array<boolean>(a.length).fill(false);
+  for (const lb of b) {
+    const i = a.findIndex((la, j) => !usadas[j] && mesmaLinha(la, lb));
+    if (i === -1) return false;
+    usadas[i] = true;
+  }
+  return true;
 }
 
 /** Igualdade rasa de linha. `Escalar` inclui `Date`, que `===` nunca casa. */
@@ -259,22 +351,18 @@ export interface OpcoesDoPoller {
 /**
  * `:desde` como o banco o lê: hora de parede, sem fuso.
  *
- * **O defeito que isto corrige, medido em 02/10/2026 (ACHADOS #168).** As colunas
- * vigiadas são `timestamp` SEM fuso, e o driver as devolve como hora local do processo.
- * `toISOString()` mandava a hora em UTC com `Z`, e o Postgres, convertendo para
- * `timestamp`, **ignora** o `Z`: no container (UTC), a vigília partia de "12:45" quando
- * no banco eram 09:45 — três horas no futuro. Resultado: 824 voltas, 0 linhas, por três
- * horas depois de cada subida da API, sem erro nenhum.
+ * **A convenção é a de `parseSemFuso` (`connectors-sql.ts`):** o pool lê
+ * `timestamp` sem fuso com os dígitos em UTC — "09:45 no banco" vira `09:45Z`. A volta
+ * tem de ser a mesma: os dígitos UTC, SEM o `Z`. Com o `Z`, o Postgres ignoraria o
+ * fuso de qualquer jeito; tirá-lo só deixa explícito que é hora de parede.
  *
- * Os getters LOCAIS fazem a ida e a volta exatas em qualquer fuso: o driver leu
- * `09:45` como 09:45 locais, e esta função devolve `09:45`.
+ * **O defeito de 02/10/2026 (ACHADOS #168) não era este formato:** era o PONTO DE
+ * PARTIDA. A vigília partia de `agora()`, o instante real do processo — 12:45Z quando
+ * no banco eram 09:45 —, e nessa convenção isso é "12:45 de parede", três horas no
+ * futuro. Daí `#semeia` partir do relógio do banco.
  */
-export function paraParametroLocal(d: Date): string {
-  const n = (v: number, t = 2) => String(v).padStart(t, '0');
-  return (
-    `${d.getFullYear()}-${n(d.getMonth() + 1)}-${n(d.getDate())} ` +
-    `${n(d.getHours())}:${n(d.getMinutes())}:${n(d.getSeconds())}.${n(d.getMilliseconds(), 3)}`
-  );
+export function paraParametroSemFuso(d: Date): string {
+  return d.toISOString().slice(0, 23).replace('T', ' ');
 }
 
 /**
@@ -324,11 +412,96 @@ export class PollerRealtime {
    */
   async #semeia(cfg: ConfigDePoll, run: ReturnType<typeof postgresRunner>): Promise<void> {
     if (this.#semeadas.has(cfg.query)) return;
-    const agoraNoBanco = this.#opts.relogioDoBanco
-      ? await this.#opts.relogioDoBanco()
-      : ((await run('SELECT LOCALTIMESTAMP AS agora'))[0] as { agora: Date }).agora;
-    this.#deltas.set(cfg.query, novoDelta(agoraNoBanco));
+    this.#deltas.set(cfg.query, novoDelta(await this.#relogio(run)));
     this.#semeadas.add(cfg.query);
+  }
+
+  /** O relógio do banco, no mesmo jeito que o driver entrega `timestamp` sem fuso. */
+  async #relogio(run: ReturnType<typeof postgresRunner>): Promise<Date> {
+    return this.#opts.relogioDoBanco
+      ? this.#opts.relogioDoBanco()
+      : ((await run('SELECT LOCALTIMESTAMP AS agora'))[0] as { agora: Date }).agora;
+  }
+
+  #buscas = new Map<string, string>();
+  /** A SQL da busca por ids — a definição da view é lida do banco uma vez por processo. */
+  async #buscaDe(cfg: ConfigDePoll, run: ReturnType<typeof postgresRunner>): Promise<string> {
+    const pronta = this.#buscas.get(cfg.query);
+    if (pronta) return pronta;
+    const view = cfg.buscaPorIds!.view;
+    const r = await run('SELECT pg_get_viewdef(CAST(:view AS regclass), true) AS definicao', { view });
+    const def = (r[0] as { definicao?: string } | undefined)?.definicao;
+    if (!def) throw new Error(`a view '${view}' não existe no banco.`);
+    const sql = montaBuscaPorIds(this.#sqlDe(cfg), view, def);
+    this.#buscas.set(cfg.query, sql);
+    return sql;
+  }
+
+  #modelo: SemanticModel | null = null;
+  /** Colunas calculadas sobre as linhas buscadas — ver `ConfigDePoll.colunasCalculadas`. */
+  #calculaColunas(cfg: ConfigDePoll, linhas: Record<string, Escalar>[], agora: Date): Record<string, Escalar>[] {
+    if (linhas.length === 0) return linhas;
+    this.#modelo ??= SemanticModel.fromSpecsDir(this.#specsDir);
+    const t = this.#modelo.table(cfg.tabela);
+    if (!t) throw new Error(`a tabela '${cfg.tabela}' não está no modelo.`);
+    // A mesma sequência do snapshot (`tools/snapshot/src/index.ts`): primeiro as do
+    // grão reduzido, por representante — o RANKX por protocolo sobre cada linha
+    // duplicada pelos relatos custava 7,5 s para 2.283 linhas na thread principal da
+    // API (medido 02/10) —, depois o resto, que já encontra aquelas memoizadas.
+    const grao = GRAO_REDUZIDO_DE.get(cfg.query);
+    if (grao) {
+      materializaColunasPorGrao(t, this.#modelo, linhas, agora, grao.chave, new Set(grao.colunas.map(normalizeName)));
+    }
+    materializaColunas(t, this.#modelo, linhas, agora);
+    // `materializaColunas` grava também sob o nome de EXIBIÇÃO (é o que o arquivo usa);
+    // o `Dataset` só aceita chave normalizada (`adotaTabela` erra alto com outra).
+    return linhas.map(normalizaChaves);
+  }
+
+  /**
+   * Até quando o disco já contém toda mudança da tabela: o `geradoEm` da última carga
+   * dela no manifesto, menos 10 min (a carga completa leva ~5 min, e a mudança só está
+   * no arquivo se for anterior ao INÍCIO da consulta). `null` sem manifesto.
+   */
+  #cobertoAte(cfg: ConfigDePoll): number | null {
+    try {
+      const m = leManifesto(path.join(this.#specsDir, '..', DIRETORIO_PADRAO));
+      const e = m?.tabelas.find((x) => x.query === cfg.query);
+      return e ? Date.parse(e.geradoEm) - 10 * 60_000 : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Uma volta em dois passos: quem mudou (barato), e só esses, inteiros.
+   *
+   * `desde` avança pelo RELÓGIO DO BANCO lido antes de perguntar, e não pela marca das
+   * linhas: a marca não registra troca de status (ACHADOS #166), e uma solicitação que
+   * só mudou de status nunca empurraria `desde` para a frente.
+   */
+  async #buscaEmDoisPassos(
+    cfg: ConfigDePoll,
+    run: ReturnType<typeof postgresRunner>,
+    delta: DeltaDeTabela,
+  ): Promise<{ linhas: Record<string, Escalar>[]; desde: Date; passos: string }> {
+    const t0 = Date.now();
+    const relogio = await this.#relogio(run);
+    const alvos = await run(cfg.alvos!, { desde: paraParametroSemFuso(delta.desde) });
+    const msAlvos = Date.now() - t0;
+    const ids = [...new Set(alvos.map((r) => (r as { id?: unknown }).id).filter((v) => v !== null && v !== undefined))];
+    const linhas: Record<string, Escalar>[] = [];
+    if (ids.length > 0) {
+      const sql = await this.#buscaDe(cfg, run);
+      // Em lotes: depois de uma queda, a primeira volta pode trazer milhares de ids, e
+      // 400 já custam 2,6 s (medido 02/10).
+      for (let i = 0; i < ids.length; i += 500) {
+        const r = await run(sql, { ids: ids.slice(i, i + 500) });
+        for (const l of r) linhas.push(normalizaChaves(l as Record<string, Escalar>));
+      }
+    }
+    const passos = `alvos ${msAlvos} ms, ${ids.length} id(s); busca ${Date.now() - t0 - msAlvos} ms`;
+    return { linhas, desde: new Date(relogio.getTime() - cfg.margemSegundos * 1000), passos };
   }
 
   /** Nenhuma query configurada? Não há o que iniciar — chamador pode pular. */
@@ -456,6 +629,20 @@ export class PollerRealtime {
       const run = postgresRunner(pool);
       await this.#semeia(cfg, run);
       const delta = this.#deltas.get(cfg.query)!;
+
+      if (cfg.alvos) {
+        const busca = await this.#buscaEmDoisPassos(cfg, run, delta);
+        const agora = this.#opts.agora();
+        const tc = Date.now();
+        const linhas = cfg.colunasCalculadas ? this.#calculaColunas(cfg, busca.linhas, agora) : busca.linhas;
+        const passos = `${busca.passos}; colunas ${Date.now() - tc} ms`;
+        let atualizado = aplicaBusca(delta, linhas, cfg, agora);
+        if (busca.desde.getTime() > atualizado.desde.getTime()) atualizado = { ...atualizado, desde: busca.desde };
+        atualizado = podaDelta(atualizado, cfg.marca, agora, 48, this.#cobertoAte(cfg));
+        this.#concluiVolta(cfg, delta, atualizado, linhas.length, agora, t0, passos);
+        return;
+      }
+
       const politica = {
         query: cfg.query,
         parametro: 'desde',
@@ -464,35 +651,18 @@ export class PollerRealtime {
         chave: cfg.chave,
         margemDias: 0,
         idadeMaximaDias: Number.MAX_SAFE_INTEGER,
-        costura: [cfg.costura],
+        costura: [cfg.costura!],
       };
       // `costura()` já valida a âncora — erra alto se o SQL da spec mudou embaixo
       // desta config, em vez de poluir silenciosamente com a query inteira.
       const sql = costura(this.#sqlDe(cfg), politica);
 
-      const linhasRaw = await run(sql, { desde: paraParametroLocal(delta.desde) });
+      const linhasRaw = await run(sql, { desde: paraParametroSemFuso(delta.desde) });
       const linhas = linhasRaw.map((l) => normalizaChaves(l as Record<string, Escalar>));
 
       const agora = this.#opts.agora();
       const atualizado = podaDelta(aplicaBusca(delta, linhas, cfg, agora), cfg.marca, agora);
-      this.#deltas.set(cfg.query, atualizado);
-
-      const ms = Date.now() - t0;
-      const mudaram = mudancasReais(delta, atualizado);
-      this.#voltas += 1;
-      this.#ultimaVolta = agora;
-      if (mudaram > 0) {
-        this.#mudancas += 1;
-        this.#ultimaMudanca = agora;
-        this.#opts.anuncia(`[poller] ${cfg.tabela}: ${mudaram} linha(s) mudaram (${ms} ms)`);
-        this.#opts.aoMudar(cfg.tabela, cfg.query);
-      } else if (linhas.length > 0) {
-        // A busca trouxe linha, mas nenhuma mudou o delta: é a margem
-        // rebuscando a mesma janela, como ela deve. Não é evento, e anunciar
-        // seria invalidar cache (e, desde a F4, RECALCULAR página) a cada 12 s
-        // para produzir exatamente o número que já estava lá.
-        this.#rebuscas += 1;
-      }
+      this.#concluiVolta(cfg, delta, atualizado, linhas.length, agora, t0);
     } catch (err) {
       const ms = Date.now() - t0;
       this.#erros += 1;
@@ -502,6 +672,35 @@ export class PollerRealtime {
       );
     } finally {
       this.#ocupado.delete(cfg.query);
+    }
+  }
+
+  /** Grava o delta da volta e anuncia — só o que MUDOU de verdade (`mudancasReais`). */
+  #concluiVolta(
+    cfg: ConfigDePoll,
+    antes: DeltaDeTabela,
+    atualizado: DeltaDeTabela,
+    buscadas: number,
+    agora: Date,
+    t0: number,
+    passos?: string,
+  ): void {
+    this.#deltas.set(cfg.query, atualizado);
+    const ms = Date.now() - t0;
+    const mudaram = mudancasReais(antes, atualizado);
+    this.#voltas += 1;
+    this.#ultimaVolta = agora;
+    if (mudaram > 0) {
+      this.#mudancas += 1;
+      this.#ultimaMudanca = agora;
+      this.#opts.anuncia(`[poller] ${cfg.tabela}: ${mudaram} chave(s) mudaram (${ms} ms${passos ? `: ${passos}` : ''})`);
+      this.#opts.aoMudar(cfg.tabela, cfg.query);
+    } else if (buscadas > 0) {
+      // A busca trouxe linha, mas nenhuma mudou o delta: é a margem
+      // rebuscando a mesma janela, como ela deve. Não é evento, e anunciar
+      // seria invalidar cache (e, desde a F4, RECALCULAR página) a cada 12 s
+      // para produzir exatamente o número que já estava lá.
+      this.#rebuscas += 1;
     }
   }
 

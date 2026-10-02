@@ -389,3 +389,55 @@ queries:
           AND ps.data_suporte <= pi.data_instalacao + INTERVAL '30 days'
           AND pi.service_tag_id IN (SELECT service_tag_id FROM alvos)
         ORDER BY pi.data_instalacao DESC;
+
+  # FIELD AGENDA — a VISÃO PRODUTIVA em tempo real (pedido do Erick, 02/10/2026;
+  # ACHADOS #166 e #169). Primeira query em DOIS PASSOS: a costura de
+  # incremental.yaml custa 11–12 s por volta qualquer que seja a janela, porque a
+  # view do Voalle calcula as janelas sobre todo o histórico de atendimento antes
+  # de filtrar.
+  #
+  #   1. `alvos` — quais solicitações da janela de 3 meses mudaram desde `:desde`.
+  #      Os mesmos quatro ramos da costura de incremental.yaml (solicitação,
+  #      histórico de atendimento, relato, slot; o porquê de cada um está lá), com
+  #      a janela num ARRAY materializado: cada ramo vira busca pelo índice da
+  #      própria tabela. `assignments` não tem índice em created/modified, e o
+  #      `JOIN` da costura a varria inteira (830 ms). Medido: ~0,7 s a quente.
+  #   2. `busca_por_ids` — só essas solicitações, com a view RECORTADA por dentro
+  #      (`apps/api/src/busca-por-ids.ts`): 67 ms para 1 id, 2,6 s para 400;
+  #      paridade com a view, 0 divergências em 6.736 linhas.
+  #
+  # `colunas_calculadas`: as 7 da FIELD AGENDA dependem só da linha ou do protocolo
+  # (`RankDataProtocolo` filtra pelo mesmo protocolo), e a busca traz o protocolo
+  # inteiro — calcular sobre as linhas buscadas dá o valor do snapshot.
+  #
+  # 30 s, não 12: relato e baixa de equipamento mudam na escala de minutos, e a
+  # volta custa ~1 s de banco — 30 s deixa o Voalle ocupado ~4% do tempo com isto.
+  field-agenda:
+    tabela: FIELD AGENDA
+    intervalo_ms: 30000
+    margem_segundos: 60
+    chave: [Protocolo]
+    marca: [Data Criado, Inicio relato, Fim relato, Data Relato]
+    colunas_calculadas: true
+    busca_por_ids:
+      view: v_service_desk_slots_productivity_informative
+    alvos: |-
+      WITH j AS MATERIALIZED (
+          SELECT array_agg(DISTINCT fah.reserved_assignment_id) AS ids
+          FROM fsm_attendance_history fah
+          WHERE fah.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
+      )
+      SELECT a.id FROM assignments a, j
+      WHERE a.id = ANY(j.ids) AND GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde
+      UNION
+      SELECT f.reserved_assignment_id FROM fsm_attendance_history f, j
+      WHERE f.reserved_assignment_id = ANY(j.ids)
+        AND GREATEST(f.begin_date, COALESCE(f.end_date, f.begin_date), COALESCE(f.reserved_date, f.begin_date)) >= :desde
+      UNION
+      SELECT r2.assignment_id FROM reports r2, j
+      WHERE r2.assignment_id = ANY(j.ids)
+        AND GREATEST(r2.created, COALESCE(r2.modified, r2.created), COALESCE(r2.beginning_date, r2.created)) >= :desde
+      UNION
+      SELECT s.pre_reserved_assignment_id FROM service_desk_slots s, j
+      WHERE s.pre_reserved_assignment_id = ANY(j.ids)
+        AND GREATEST(s.created, COALESCE(s.modified, s.created)) >= :desde

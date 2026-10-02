@@ -53,6 +53,20 @@ test('realtime-poll.yaml: o arquivo real carrega e declara pelo menos uma query'
 // Um teste POR QUERY, e não um laço dentro de um teste, para que a saída diga QUAL
 // quebrou sem obrigar quem lê a abrir o stack trace.
 for (const [queryId, cfg] of configs) {
+  if (cfg.alvos) {
+    // Dois passos (ACHADOS #166): não há costura. As pontas que se ligam são o `sql:` da
+    // spec — que tem de ler a view uma vez só, para `montaBuscaPorIds` trocá-la — e os
+    // `alvos`, que têm de citar `:desde`. As âncoras DENTRO da view só existem no banco:
+    // quem as confere é o poller na primeira busca de cada subida, errando alto.
+    test(`realtime-poll.yaml: '${queryId}' em dois passos lê a view uma vez e os alvos citam :desde`, () => {
+      const sql = sqlDaSpec(cfg.query);
+      const view = cfg.buscaPorIds!.view;
+      const ocorrencias = sql.match(new RegExp(`FROM\\s+${view}\\s+\\w+`, 'g')) ?? [];
+      assert.equal(ocorrencias.length, 1, `o sql: de ${queryId} tem de ter exatamente um FROM ${view} <alias>`);
+      assert.ok(cfg.alvos!.includes(':desde'), 'os alvos têm de citar :desde, senão não recortam nada');
+    });
+    continue;
+  }
   test(`realtime-poll.yaml: a âncora de '${queryId}' casa exatamente 1x no SQL da spec`, () => {
     const sql = sqlDaSpec(cfg.query);
     const politica = {
@@ -63,7 +77,7 @@ for (const [queryId, cfg] of configs) {
       chave: cfg.chave,
       margemDias: 0,
       idadeMaximaDias: Number.MAX_SAFE_INTEGER,
-      costura: [cfg.costura],
+      costura: [cfg.costura!],
     };
     // `costura()` lança quando a âncora não casa, ou casa mais de uma vez. É a MESMA
     // chamada que `PollerRealtime` faz a cada 12 s — se ela passa aqui, o poller sobe.

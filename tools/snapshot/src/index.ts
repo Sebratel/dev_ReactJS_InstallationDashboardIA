@@ -90,6 +90,7 @@ import {
   materializaColunasPorGrao,
   materializaveis as colunasMaterializaveis,
 } from '../../../packages/snapshot/src/colunas-calculadas.ts';
+import { GRAO_REDUZIDO_DE } from '../../../packages/snapshot/src/grao-reduzido.ts';
 import {
   queriesQueAlimentamCalculada,
   shaDasChaves,
@@ -353,41 +354,6 @@ const reconcilia = reconciliadorDe(leJuncoes(path.join(ROOT, 'specs')));
 
 const todasAsQueries = registry.list().filter((q) => q.m_expression && !FORA_DO_ESCOPO.has(q.id));
 
-/**
- * Colunas calculadas que dão o MESMO valor em toda linha duplicada por um `LEFT
- * JOIN` multiplicador — e a chave física que prova isso (ACHADOS #86,
- * `docs/DECISAO-GRAO-FIELD-AGENDA.md`).
- *
- * Hoje só `field-agenda`: os joins com `reports`/`people`/`skills` multiplicam cada
- * slot por (relato × skill) — 643.797 linhas onde o `vsdspi` de origem tem uma ordem
- * de grandeza a menos. Cinco das sete colunas calculadas (`Data`, `RankDataProtocolo`,
- * `RankAtualProtocolo`, `Turno`, `Status SLA`) só citam colunas que vêm do lado SEM
- * join (`vsdspi`) — `ClassificacaoRelato`/`CategoriaProdutividade` citam `Relato`
- * (`reports`) e continuam de fora, calculadas do jeito de sempre.
- *
- * `chave` é TODA coluna de origem `vsdspi` na query, não só Protocolo+Slot: duas
- * linhas iguais nelas são, por construção do `LEFT JOIN`, a mesma linha de origem
- * antes dos joins — não é uma aposta de que essas duas bastam.
- *
- * Medido ao vivo (ACHADOS #85): sem isto, `RankAtualProtocolo` sozinha custava 864s
- * — 76% do tempo total de `materializaColunas` — porque seu `FILTER` varre a tabela
- * ADOTADA inteira por linha. Adotando só as ~30 mil representantes de slot, o mesmo
- * `FILTER` varre 20× menos.
- */
-const GRAO_REDUZIDO_DE = new Map<string, { chave: string[]; colunas: string[] }>([
-  [
-    'field-agenda',
-    {
-      chave: [
-        'Protocolo', 'Tipo de Protocolo', 'Status Protocolo', 'Base', 'Instalador',
-        'Data Criado', 'Reagenda', 'Data finalizado atendimento app',
-        'Data primeiro Play app', 'Data ultimo play app', 'Prazo SLA',
-        'Inicio relato', 'Fim relato', 'Slot Agenda',
-      ],
-      colunas: ['Data', 'RankDataProtocolo', 'RankAtualProtocolo', 'Turno', 'Status SLA'],
-    },
-  ],
-]);
 
 /**
  * Queries que não são o `queryRef` de tabela nenhuma do modelo — hoje só

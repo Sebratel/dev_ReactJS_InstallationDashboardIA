@@ -13667,18 +13667,23 @@ tempo que o processo leva para dar baixa. O Power BI tem o mesmo comportamento.
 Medido em `/api/saude` 40 min depois de recriar a API, às 9h de um dia útil: **824
 voltas, 0 mudanças, 0 rebuscas** nas 7 queries vigiadas — nenhuma linha devolvida.
 
-**Causa:** a vigília partia de `agora()` (relógio do processo) e mandava `:desde` com
-`toISOString()`. As colunas vigiadas são `timestamp` **sem** fuso; ao converter o texto,
-o Postgres ignora o `Z`. No container (UTC), "12:45Z" virava 12:45 **locais**, três horas
-no futuro: a busca não achava nada até o relógio do banco alcançar esse ponto. Antes de
-02/10 isso não aparecia porque a API ficava de pé por dias — só as 3 primeiras horas de
-cada subida eram cegas. Em `npm start` no host (fuso −03) o desvio aparecia em toda volta
-que avançasse `desde` pela marca de uma linha.
+**Causa:** a vigília partia de `agora()`, o instante REAL do processo. O pool lê
+`timestamp` sem fuso com os dígitos em UTC (`parseSemFuso`, `connectors-sql.ts`): "09:45 no
+banco" vira `09:45Z`. Nessa convenção, o instante real 12:45Z significa "12:45 de parede" —
+três horas no futuro —, e a busca não achava nada até o relógio do banco alcançar esse
+ponto. Antes de 02/10 isso não aparecia porque a API ficava de pé por dias: só as 3
+primeiras horas de cada subida eram cegas. Depois da primeira linha encontrada, `desde`
+avançava pela marca da linha (já na convenção certa) e o poller se acertava sozinho.
 
-**Correção:** (1) a vigília parte de `LOCALTIMESTAMP`, perguntado ao banco na primeira
-volta de cada query; (2) `:desde` vai como hora de parede sem fuso (`paraParametroLocal`,
-getters locais) — o mesmo jeito que o driver entregou as datas das linhas, então a ida e
-a volta são exatas em qualquer fuso. Testes em fuso local e em `TZ=UTC`.
+**Correção:** (1) a vigília parte de `LOCALTIMESTAMP`, perguntado ao banco na primeira volta
+de cada query (`#semeia`); (2) `:desde` vai como os dígitos UTC sem `Z`
+(`paraParametroSemFuso`) — a mesma convenção do `parseSemFuso`, nos dois sentidos. Testes
+em `TZ=UTC` e `TZ=America/Sao_Paulo`.
+
+*Errata do mesmo dia:* a primeira versão desta correção usava getters LOCAIS para o
+`:desde`, presumindo que o driver lia `timestamp` como hora local. Só acertava em processo
+UTC (o container); num `npm start` no host (−03) recuaria 3 h a cada volta. Corrigido antes
+de subir, ao ler o pool da API.
 
 ## #169 — tabela calculada com origem em tempo real: recálculo parcial por protocolo (02/10)
 
@@ -13712,3 +13717,50 @@ usava `Object.keys(linha)`, que devolve VAZIO para a linha colunar (as colunas f
 moram no protótipo, `linha-vista.ts`). Recusava toda linha colunar como "chegou sem
 protocolo, slot agenda, …". Nunca tinha aparecido porque `snapshot:calculadas` carrega em
 modo objeto. Trocado por `in`.
+
+## #170 — FIELD AGENDA no poller em dois passos: a VISÃO PRODUTIVA em tempo real (02/10)
+
+Fecha a etapa 1 do pedido do Erick ("visão produtiva tem que ser realtime"), com o desenho
+medido no #166 e o recálculo parcial do #169.
+
+**O que roda a cada 30 s** (`realtime-poll.yaml`, entrada `field-agenda`):
+
+1. relógio do banco (`LOCALTIMESTAMP`);
+2. `alvos` — as solicitações da janela que mudaram desde `:desde` (4 ramos, array
+   materializado, busca por índice);
+3. só se houver alvo: `busca_por_ids` — o `sql:` da spec com a view do Voalle trocada pela
+   definição dela recortada por solicitação (`busca-por-ids.ts`; a definição é lida do banco
+   uma vez por subida, e as âncoras erram alto se o Voalle mudar a view);
+4. as 7 colunas calculadas sobre as linhas buscadas, na MESMA sequência do snapshot — grão
+   reduzido primeiro (`GRAO_REDUZIDO_DE`, que saiu de `tools/snapshot` para
+   `packages/snapshot/src/grao-reduzido.ts` para as duas pontas usarem a mesma declaração),
+   depois o resto;
+5. o delta guarda GRUPOS por protocolo (o grão é slot × relato), e a carga da página recalcula
+   `Status Protocolo Dia` e `calendar` só nesses protocolos (#169).
+
+**Medido contra o banco de produção, pelo caminho de produção (02/10, ~10h):**
+
+| volta | alvos | busca | colunas | total |
+|---|---|---|---|---|
+| 1ª (15 min de atraso) | 957 ms, 49 ids | 718 ms | 146 ms | 1,9 s |
+| seguintes | 800–1.400 ms, 5–6 ids | 67–75 ms | 32–57 ms | 0,9–1,6 s |
+
+As colunas calculadas custavam **7,5 s** na thread principal da API antes do grão reduzido
+(RANKX por protocolo sobre cada linha duplicada pelos relatos). Carga da AGENDAMENTO FIELD
+com o overlay: 1,3–1,4 s, 21 de 21 visuais calculando. Efeito no dado, 15 min de manhã: 5
+(protocolo, dia) de hoje passaram de Sem Ação para Inconclusivo, todos dentro dos protocolos
+do overlay.
+
+**Mudanças de comportamento que valem para as 7 queries antigas do poller:**
+
+- o delta é por GRUPO de chave — para chave de uma linha, idêntico ao de antes;
+- a poda olha QUANDO o grupo foi buscado, não a marca da linha. Uma linha de data antiga que
+  a busca acabou de trazer acabou de mudar; podar pela marca a tirava do overlay na mesma
+  volta, e a tela voltava ao valor velho do disco. Sem registro de busca, a marca decide
+  como antes;
+- grupo visto antes do início da última carga em lote da tabela (`geradoEm` do manifesto
+  − 10 min) já está no disco e sai do delta — é o que impede o overlay da FIELD AGENDA de
+  crescer o dia inteiro.
+
+**Fica para a etapa 2:** "Produtivo" (alocação de patrimônio no poller, #167) e o aviso
+"N visitas com relato produtivo aguardando baixa de equipamento" (opção (a) do Erick).
