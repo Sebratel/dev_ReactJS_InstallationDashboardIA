@@ -13582,3 +13582,52 @@ O que a série mostra e não é defeito: as novas crescem ao longo do dia (44 �
 porque a marca é por dia (`marca até 2026-10-01`) e a janela reentrega tudo o que mudou
 desde o piso. O intervalo real entre rodadas foi 38–52 min, não os 30 do `frio`; a causa
 não foi investigada.
+
+## #166 — VISÃO PRODUTIVA em tempo real: onde está o custo da `field-agenda`, medido (02/10)
+
+**Pedido do Erick (02/10):** "visão produtiva tem que ser realtime", com escolha explícita
+pelo poller de segundos, não por encurtar o grupo do refresh. Medido no banco de produção,
+somente leitura, antes de escrever código.
+
+**A costura incremental atual não serve para poller.** Com `:desde` de 1 minuto a 10
+minutos, ela custa **11–12,7 s por volta, fixos**: 28 linhas (1 min), 2.556 (10 min),
+7.124 (1h20). O preço não está no volume. Ele vem de duas partes:
+
+| parte | custo | por quê |
+|---|---|---|
+| achar quem mudou (`alvos`, 4 ramos) | ~2 s | `assignments` sem índice em `created`/`modified`: seq scan de 830 ms |
+| buscar as linhas pela view | ~5 s, **igual para 1 id ou 400** | `v_service_desk_slots_productivity_informative` calcula as janelas sobre 459 mil linhas de `fsm_attendance_history` antes de qualquer filtro; `assignment_id = ANY(...)` não entra na view |
+
+**Os dois cortes que resolvem, medidos:**
+
+1. **Busca com a view reproduzida e o recorte antes das janelas.** Todas as partições da
+   view (`first_value`/`lag`/`min`/`max`), o `GROUP BY`, o `DISTINCT ON` e o `EXISTS`
+   são por `reserved_assignment_id`, então filtrar por solicitação nas duas leituras de
+   `fsm_attendance_history` dá o mesmo resultado. **Paridade: 6.736 × 6.736 linhas, 0
+   divergentes** contra a view, para 400 solicitações. Custo: 1 id 67 ms, 400 ids 2,6 s
+   (a view: 5 s e 7,8 s). O texto da view é lido do banco (`pg_get_viewdef`) e recortado
+   por âncora — se o Voalle mudar a view, a âncora some e erra alto.
+2. **Detecção pelo índice de `id`.** As solicitações da janela viram um array
+   (`MATERIALIZED`) e cada ramo usa `= ANY(ids)` no índice da própria tabela, no lugar do
+   `JOIN` que o planejador resolvia com seq scan: **~0,7 s** a quente (2 s antes).
+
+**Por volta:** ~0,7 s sempre + 0,1–0,5 s quando há mudança (28–36 solicitações por
+minuto às 9h). A cada 15 s, o banco fica ocupado ~5–8% do tempo com isto, contra ~75%
+se fosse a costura atual.
+
+**Cuidado de fuso, que custou uma medida:** `:desde` com `Z` contra `timestamp` sem fuso
+ignora o `Z` — `2026-10-02T12:20:00Z` vira 12:20 **local**, três horas no futuro, e a
+busca volta 0 linhas sem erro. Passar hora local, sem sufixo.
+
+**O que falta para a tela, e não está feito:**
+
+- o delta do poller guarda **uma linha por chave** (`porChave`); a FIELD AGENDA tem várias
+  por protocolo (slot × relato) — tem de virar grupo por chave, como a `mescla` já faz;
+- as 7 colunas calculadas da FIELD AGENDA vêm prontas do disco. Todas são da própria linha
+  ou do protocolo (`RankDataProtocolo` filtra pelo mesmo protocolo), e o poller traz o
+  protocolo inteiro — então `materializaColunas` sobre as linhas novas dá o mesmo valor;
+- `Status Protocolo Dia` é congelada em disco: com overlay na FIELD AGENDA, a carga tem de
+  recalculá-la pela tradução nativa (`nativas.ts`) em vez de ler o arquivo;
+- **"Produtivo" vem de `PROTOCOLOS GERAL[DATA INSTALAÇÃO]`**, que não está no poller (grupo
+  `medio`, 20 min). Sem ela, uma instalação concluída aparece como Inconclusivo até o
+  refresh seguinte. Custo dela no poller: não medido.
