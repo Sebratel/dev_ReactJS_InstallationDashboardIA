@@ -20,7 +20,7 @@ manutenção e pode correr depois do go-live.
 
 | fase | o quê | estado | plano detalhado |
 |---|---|---|---|
-| 0 | Arrumar a casa | 🟡 0.1 e 0.3 ✅, 0.2 espera o Erick | este arquivo, §0 |
+| 0 | Arrumar a casa | 🟡 0.1, 0.3 e 0.4 ✅, 0.2 espera o Erick | este arquivo, §0 |
 | A | VISÃO PRODUTIVA em tempo real | 🟡 etapa 1 ✅, etapa 2 falta | `ACHADOS.md` #166–#171 |
 | B | Carga leve no banco | 🟡 1.1 e 1.1b ✅, 8 itens faltam | `PLANO-CARGA.md` §3, fases 1 e 2 |
 | C | Produção no Portainer | 🔴 não começou (autonomia 1–4 ✅) | `PLANO-CARGA.md` §3 fase 3 + `PLANO-AUTONOMIA.md` etapa 5 |
@@ -54,10 +54,16 @@ Branches com trabalho fora do `staging` e worktrees que já não servem.
 - [x] **0.3** ✅ 02/10: removidas, junto com as branches `trabalho/*` (já integradas). Remover as worktrees já integradas: `incremental-field-agenda` e
       `projeto-pausa-ajustes-2267e2` (`trabalho/limpeza-docs`). Ambas têm 0 commit fora do `staging`.
 
-- [ ] **0.4** **Religar a plataforma.** Em 02/10, à tarde, o Docker Desktop estava parado:
-      nada respondia na 80, 3100 ou 3101, e não havia `npm start`. Religar com o roteiro da
-      `PLANO-CARGA.md` §1 (build da tela antes, `contorno.yml`) e conferir a fase 1 na tela,
-      nos temas claro e escuro.
+- [x] **0.4** ✅ 02/10, ~15:00. **Religar a plataforma.** O Docker Desktop estava travado
+      desde 13:44 num diálogo de "outra instância rodando", e o engine nunca subiu. Encerrar
+      todas as instâncias e abrir uma resolveu: a stack religou sozinha (`unless-stopped`) com os
+      contornos. Antes do build da tela foi preciso `npm install` na pasta principal, porque a
+      fase 1 trouxe `zustand`, `clsx` e `tailwind-merge`. A fase 1 foi vista na tela
+      (`agendamento-field`, 1366×768, nos temas claro e escuro): 21 cartões, sem erro no console.
+      - Com a API fria a página levou **40 s** (claro) e **21 s** (escuro). O `npm run tela`
+        desiste em 15 s no `.selo`, então ele só serve com a API aquecida.
+      - "TIPO DE PROTOCOLO: carregando…" no escuro: é o pré-cálculo de filtros desligado
+        (`AQUECE_FILTROS_ATE=0`). Sai com a C.2.
 
 **Pronto quando:** `git branch --no-merged staging` lista só o que está em andamento.
 
@@ -103,8 +109,9 @@ tiram os **contornos fora do repositório** da `PLANO-CARGA.md` §1. Enquanto ex
 - [ ] **C.1 (3.1)** `Dockerfile` com `ARG VITE_FIREBASE_*`. Tira o contorno do `dist`.
 - [ ] **C.2 (3.2)** Achar o cálculo de > 2,7 GB do pré-cálculo de filtros e religar
       `AQUECE_FILTROS_ATE`. É a mais incerta das entregas: pode levar mais de uma sessão.
-- [ ] **C.3** Liberar a 3100 do host (o `npm start` de 02/10) e tirar o `API_PORT_HOST=3101`.
-      Em 02/10, à tarde, a 3100 já estava livre: subir sem `API_PORT_HOST` na 0.4 e, se der certo, fechar aqui.
+- [x] **C.3** ✅ 02/10: a 3100 do host estava livre. A API foi recriada sem `API_PORT_HOST`
+      (`up -d --no-deps --no-build api`) e está `healthy` na 3100. Durante a recriação, o proxy
+      deu um 502, que sumiu em 15 s.
 - [ ] **C.4 (3.3)** `GOOGLE_CREDENCIAL_HOST` como variável da stack.
 - [ ] **C.5 (3.4)** `mem_limit` pelo medido **no servidor**, não no notebook.
 - [ ] **C.6 (3.5)** `protocolos-produtividade` no cron das 03:00 (depende da B.2).
