@@ -13582,3 +13582,203 @@ O que a série mostra e não é defeito: as novas crescem ao longo do dia (44 �
 porque a marca é por dia (`marca até 2026-10-01`) e a janela reentrega tudo o que mudou
 desde o piso. O intervalo real entre rodadas foi 38–52 min, não os 30 do `frio`; a causa
 não foi investigada.
+
+## #166 — VISÃO PRODUTIVA em tempo real: onde está o custo da `field-agenda`, medido (02/10)
+
+**Pedido do Erick (02/10):** "visão produtiva tem que ser realtime", com escolha explícita
+pelo poller de segundos, não por encurtar o grupo do refresh. Medido no banco de produção,
+somente leitura, antes de escrever código.
+
+**A costura incremental atual não serve para poller.** Com `:desde` de 1 minuto a 10
+minutos, ela custa **11–12,7 s por volta, fixos**: 28 linhas (1 min), 2.556 (10 min),
+7.124 (1h20). O preço não está no volume. Ele vem de duas partes:
+
+| parte | custo | por quê |
+|---|---|---|
+| achar quem mudou (`alvos`, 4 ramos) | ~2 s | `assignments` sem índice em `created`/`modified`: seq scan de 830 ms |
+| buscar as linhas pela view | ~5 s, **igual para 1 id ou 400** | `v_service_desk_slots_productivity_informative` calcula as janelas sobre 459 mil linhas de `fsm_attendance_history` antes de qualquer filtro; `assignment_id = ANY(...)` não entra na view |
+
+**Os dois cortes que resolvem, medidos:**
+
+1. **Busca com a view reproduzida e o recorte antes das janelas.** Todas as partições da
+   view (`first_value`/`lag`/`min`/`max`), o `GROUP BY`, o `DISTINCT ON` e o `EXISTS`
+   são por `reserved_assignment_id`, então filtrar por solicitação nas duas leituras de
+   `fsm_attendance_history` dá o mesmo resultado. **Paridade: 6.736 × 6.736 linhas, 0
+   divergentes** contra a view, para 400 solicitações. Custo: 1 id 67 ms, 400 ids 2,6 s
+   (a view: 5 s e 7,8 s). O texto da view é lido do banco (`pg_get_viewdef`) e recortado
+   por âncora — se o Voalle mudar a view, a âncora some e erra alto.
+2. **Detecção pelo índice de `id`.** As solicitações da janela viram um array
+   (`MATERIALIZED`) e cada ramo usa `= ANY(ids)` no índice da própria tabela, no lugar do
+   `JOIN` que o planejador resolvia com seq scan: **~0,7 s** a quente (2 s antes).
+
+**Por volta:** ~0,7 s sempre + 0,1–0,5 s quando há mudança (28–36 solicitações por
+minuto às 9h). A cada 15 s, o banco fica ocupado ~5–8% do tempo com isto, contra ~75%
+se fosse a costura atual.
+
+**Cuidado de fuso, que custou uma medida:** `:desde` com `Z` contra `timestamp` sem fuso
+ignora o `Z` — `2026-10-02T12:20:00Z` vira 12:20 **local**, três horas no futuro, e a
+busca volta 0 linhas sem erro. Passar hora local, sem sufixo.
+
+**O que falta para a tela, e não está feito:**
+
+- o delta do poller guarda **uma linha por chave** (`porChave`); a FIELD AGENDA tem várias
+  por protocolo (slot × relato) — tem de virar grupo por chave, como a `mescla` já faz;
+- as 7 colunas calculadas da FIELD AGENDA vêm prontas do disco. Todas são da própria linha
+  ou do protocolo (`RankDataProtocolo` filtra pelo mesmo protocolo), e o poller traz o
+  protocolo inteiro — então `materializaColunas` sobre as linhas novas dá o mesmo valor;
+- `Status Protocolo Dia` é congelada em disco: com overlay na FIELD AGENDA, a carga tem de
+  recalculá-la pela tradução nativa (`nativas.ts`) em vez de ler o arquivo;
+- **"Produtivo" vem de `PROTOCOLOS GERAL[DATA INSTALAÇÃO]`**, que não está no poller (grupo
+  `medio`, 20 min). Sem ela, uma instalação concluída aparece como Inconclusivo até o
+  refresh seguinte. Custo dela no poller: não medido.
+
+## #167 — "Produtivo" em tempo real: não é a `PROTOCOLOS GERAL`, é a alocação de patrimônio — e ela chega ~40 min depois do campo (02/10)
+
+Continuação do #166. O "Produtivo" da VISÃO PRODUTIVA é `PROTOCOLOS GERAL[DATA INSTALAÇÃO]`
+no dia (`nativas.ts`). Essa coluna é DAX sobre `DATA ALOCAÇÃO` (ou `DATA DA TROCA` na troca
+de endereço), e as duas entram pela camada M — mesclas com `ALOCAÇÃO PATRIMONIO` e
+`TROCA ENDEREÇO`, mais `Table.Distinct`/`Table.Sort` sobre o conjunto. **Pôr a
+`PROTOCOLOS GERAL` no poller não é o caminho:** a M dela não é linha a linha (o mesmo
+motivo de ela não ter política em `incremental.yaml`), e a única informação que a VISÃO
+PRODUTIVA tira dela é o par (protocolo, dia da instalação).
+
+**A fonte desse par é barata em tempo real.** `alocacao-patrimonio`, medida em produção:
+
+| corte | linhas | tempo |
+|---|---|---|
+| inteira (desde 2025) | 61.041 | 8,4 s |
+| `created >= :desde`, 1h30 | 6 | 147 ms |
+| `GREATEST(created, modified) >= :desde`, 1h30 | 9 | 236 ms |
+| `GREATEST(created, modified) >= :desde`, 1 dia | 230 | 239 ms |
+
+Sem índice em `created`/`modified` de `patrimony_packing_list_items`, mas a tabela é
+pequena: ~0,2 s por volta. `TROCA ENDEREÇO` já está no poller.
+
+**O achado que muda a conversa: o processo atrasa mais que a carga.** Em 01/10, para os
+141 protocolos que tiveram relato PRODUTIVA e alocação no mesmo dia, a alocação foi
+registrada **41 min depois do relato (mediana), 74 min (p90)**; só 2 antes. Então, mesmo
+com poller perfeito, uma instalação concluída aparece como **Inconclusivo** (tem relato
+técnico, não tem instalação) por ~40 min antes de virar Produtivo. Isso não é atraso da
+plataforma: é a definição de "Produtivo" do relatório (equipamento alocado) encontrando o
+tempo que o processo leva para dar baixa. O Power BI tem o mesmo comportamento.
+
+## #168 — o poller de tempo real ficava cego 3 h depois de cada subida da API (02/10)
+
+Medido em `/api/saude` 40 min depois de recriar a API, às 9h de um dia útil: **824
+voltas, 0 mudanças, 0 rebuscas** nas 7 queries vigiadas — nenhuma linha devolvida.
+
+**Causa:** a vigília partia de `agora()`, o instante REAL do processo. O pool lê
+`timestamp` sem fuso com os dígitos em UTC (`parseSemFuso`, `connectors-sql.ts`): "09:45 no
+banco" vira `09:45Z`. Nessa convenção, o instante real 12:45Z significa "12:45 de parede" —
+três horas no futuro —, e a busca não achava nada até o relógio do banco alcançar esse
+ponto. Antes de 02/10 isso não aparecia porque a API ficava de pé por dias: só as 3
+primeiras horas de cada subida eram cegas. Depois da primeira linha encontrada, `desde`
+avançava pela marca da linha (já na convenção certa) e o poller se acertava sozinho.
+
+**Correção:** (1) a vigília parte de `LOCALTIMESTAMP`, perguntado ao banco na primeira volta
+de cada query (`#semeia`); (2) `:desde` vai como os dígitos UTC sem `Z`
+(`paraParametroSemFuso`) — a mesma convenção do `parseSemFuso`, nos dois sentidos. Testes
+em `TZ=UTC` e `TZ=America/Sao_Paulo`.
+
+*Errata do mesmo dia:* a primeira versão desta correção usava getters LOCAIS para o
+`:desde`, presumindo que o driver lia `timestamp` como hora local. Só acertava em processo
+UTC (o container); num `npm start` no host (−03) recuaria 3 h a cada volta. Corrigido antes
+de subir, ao ler o pool da API.
+
+## #169 — tabela calculada com origem em tempo real: recálculo parcial por protocolo (02/10)
+
+O overlay do poller entra nas tabelas FÍSICAS; uma calculada lida de disco continuava com
+as linhas da última carga. Para a VISÃO PRODUTIVA isso são duas: `Status Protocolo Dia`
+e `calendar` — que neste modelo **não é calendário**, é `DISTINCT(Protocolo, Data)` da
+FIELD AGENDA, o eixo de colunas da matriz (congelada, agenda nova em dia novo não viraria
+coluna).
+
+**Recalcular inteira não cabe:** a tradução nativa de `Status Protocolo Dia` sobre as
+632 mil linhas custa 5,8–7,5 s na vista colunar. **Parcial cabe:** as duas traduções
+dependem só das linhas do mesmo protocolo (`particao` em `nativas.ts`), então `carrega`
+recalcula os protocolos do overlay e junta com o resto do arquivo. As linhas do overlay
+são as sem `indiceDaVista` — a distinção que a conversão de tipo já usava.
+
+Medido sobre o snapshot de 02/10, overlay de 132 protocolos (5.007 linhas):
+
+| carga | tempo | Status Protocolo Dia | calendar |
+|---|---|---|---|
+| congelada | 0,89 s | 12.987 | 12.987 |
+| parcial | 1,28 s | 0 divergências | 0 divergências |
+| inteira (nativa) | 6,3 s / 0,25 s | 0 divergências | 0 divergências |
+
+A comparação inteira × congelada do `calendar` é a conferência do `shaConferido` dele
+(`f0851493f7a3ef8b`). Arquivo velho em relação às origens, modo objeto ou fonte sem
+coluna de partição caem no recálculo inteiro — base velha misturada com dado novo seria
+o número plausível e errado.
+
+**Defeito que a prova pegou no caminho:** a conferência de colunas da tradução nativa
+usava `Object.keys(linha)`, que devolve VAZIO para a linha colunar (as colunas físicas
+moram no protótipo, `linha-vista.ts`). Recusava toda linha colunar como "chegou sem
+protocolo, slot agenda, …". Nunca tinha aparecido porque `snapshot:calculadas` carrega em
+modo objeto. Trocado por `in`.
+
+## #170 — FIELD AGENDA no poller em dois passos: a VISÃO PRODUTIVA em tempo real (02/10)
+
+Fecha a etapa 1 do pedido do Erick ("visão produtiva tem que ser realtime"), com o desenho
+medido no #166 e o recálculo parcial do #169.
+
+**O que roda a cada 30 s** (`realtime-poll.yaml`, entrada `field-agenda`):
+
+1. relógio do banco (`LOCALTIMESTAMP`);
+2. `alvos` — as solicitações da janela que mudaram desde `:desde` (4 ramos, array
+   materializado, busca por índice);
+3. só se houver alvo: `busca_por_ids` — o `sql:` da spec com a view do Voalle trocada pela
+   definição dela recortada por solicitação (`busca-por-ids.ts`; a definição é lida do banco
+   uma vez por subida, e as âncoras erram alto se o Voalle mudar a view);
+4. as 7 colunas calculadas sobre as linhas buscadas, na MESMA sequência do snapshot — grão
+   reduzido primeiro (`GRAO_REDUZIDO_DE`, que saiu de `tools/snapshot` para
+   `packages/snapshot/src/grao-reduzido.ts` para as duas pontas usarem a mesma declaração),
+   depois o resto;
+5. o delta guarda GRUPOS por protocolo (o grão é slot × relato), e a carga da página recalcula
+   `Status Protocolo Dia` e `calendar` só nesses protocolos (#169).
+
+**Medido contra o banco de produção, pelo caminho de produção (02/10, ~10h):**
+
+| volta | alvos | busca | colunas | total |
+|---|---|---|---|---|
+| 1ª (15 min de atraso) | 957 ms, 49 ids | 718 ms | 146 ms | 1,9 s |
+| seguintes | 800–1.400 ms, 5–6 ids | 67–75 ms | 32–57 ms | 0,9–1,6 s |
+
+As colunas calculadas custavam **7,5 s** na thread principal da API antes do grão reduzido
+(RANKX por protocolo sobre cada linha duplicada pelos relatos). Carga da AGENDAMENTO FIELD
+com o overlay: 1,3–1,4 s, 21 de 21 visuais calculando. Efeito no dado, 15 min de manhã: 5
+(protocolo, dia) de hoje passaram de Sem Ação para Inconclusivo, todos dentro dos protocolos
+do overlay.
+
+**Mudanças de comportamento que valem para as 7 queries antigas do poller:**
+
+- o delta é por GRUPO de chave — para chave de uma linha, idêntico ao de antes;
+- a poda olha QUANDO o grupo foi buscado, não a marca da linha. Uma linha de data antiga que
+  a busca acabou de trazer acabou de mudar; podar pela marca a tirava do overlay na mesma
+  volta, e a tela voltava ao valor velho do disco. Sem registro de busca, a marca decide
+  como antes;
+- grupo visto antes do início da última carga em lote da tabela (`geradoEm` do manifesto
+  − 10 min) já está no disco e sai do delta — é o que impede o overlay da FIELD AGENDA de
+  crescer o dia inteiro.
+
+**Fica para a etapa 2:** "Produtivo" (alocação de patrimônio no poller, #167) e o aviso
+"N visitas com relato produtivo aguardando baixa de equipamento" (opção (a) do Erick).
+
+## #171 — detecção da FIELD AGENDA só nas agendas recentes: ~780 ms → ~140 ms (02/10)
+
+Depois de subir o #170, a detecção (`alvos`) ficou em 1,2–2,1 s por volta na stack, com
+um pico de 11,3 s. Medido por ramo: o custo é o tamanho da lista — as 23.191 solicitações
+com agenda nos últimos 3 meses, conferidas nas quatro tabelas (relatos é o maior, ~340 ms).
+
+| detecção | solicitações | tempo |
+|---|---|---|
+| agendas de 3 meses | 23.191 | ~780 ms |
+| agendas de 7 dias + futuras | 2.220 | ~140 ms |
+| 7 dias, lista guardada entre voltas | 2.220 | ~100 ms |
+
+**O preço, medido:** nas últimas 24 h mudaram 817 solicitações, 815 dentro dos 7 dias;
+desde a manhã de 01/10, 964, 956 dentro (99,2%). As de fora chegam pelo refresh em lote
+(30 min, janela de 3 meses) — atraso, não perda. Aprovado pelo Erick. A lista guardada
+entre voltas ficou de fora: 40 ms a mais de ganho por uma decisão de renovação em que uma
+agenda nova poderia ficar invisível até renovar.

@@ -15,6 +15,7 @@ import {
   mudancasReais,
   novoDelta,
   overlayDoDelta,
+  paraParametroSemFuso,
   podaDelta,
 } from '../src/poller-realtime.ts';
 
@@ -96,22 +97,62 @@ test('podaDelta: dentro do teto não mexe em nada', () => {
   assert.equal(overlayDoDelta(podado, CFG).linhas.length, 1);
 });
 
-test('podaDelta: linha mais velha que o teto sai, mais nova fica', () => {
-  const t0 = new Date('2026-09-03T10:00:00Z');
-  let d = novoDelta(t0);
-  d = aplicaBusca(
-    d,
-    [
-      { solicitacao: 'velha', 'data encerrado': new Date('2026-09-01T00:00:00Z') },
-      { solicitacao: 'nova', 'data encerrado': new Date('2026-09-03T09:00:00Z') },
-    ],
-    CFG,
-    t0,
-  );
-  const depoisDeDoisDias = new Date('2026-09-03T10:00:00Z');
-  const podado = podaDelta(d, CFG.marca, depoisDeDoisDias, 48);
-  const solicitacoes = overlayDoDelta(podado, CFG).linhas.map((l) => l.solicitacao);
-  assert.deepEqual(solicitacoes, ['nova']);
+test('podaDelta: grupo BUSCADO há mais que o teto sai, o buscado há pouco fica', () => {
+  let d = novoDelta(new Date('2026-09-01T00:00:00Z'));
+  d = aplicaBusca(d, [{ solicitacao: 'velha', 'data encerrado': new Date('2026-09-01T00:00:00Z') }], CFG, new Date('2026-09-01T00:00:00Z'));
+  d = aplicaBusca(d, [{ solicitacao: 'nova', 'data encerrado': new Date('2026-09-03T09:00:00Z') }], CFG, new Date('2026-09-03T09:00:00Z'));
+  const podado = podaDelta(d, CFG.marca, new Date('2026-09-03T10:00:00Z'), 48);
+  assert.deepEqual(overlayDoDelta(podado, CFG).linhas.map((l) => l.solicitacao), ['nova']);
+});
+
+/**
+ * A marca diz quando o dado NASCEU, não quando MUDOU. Uma linha com data de
+ * encerramento de três dias atrás que a busca de agora trouxe acabou de mudar — podar
+ * pela marca a tirava do overlay na mesma volta, e a tela voltava ao valor velho do
+ * disco. Na FIELD AGENDA é o caso comum: troca de status não mexe em data nenhuma.
+ */
+test('podaDelta: linha de marca antiga que acabou de ser buscada fica', () => {
+  const agora = new Date('2026-09-03T10:00:00Z');
+  let d = novoDelta(agora);
+  d = aplicaBusca(d, [{ solicitacao: 'A', 'data encerrado': new Date('2026-08-30T00:00:00Z') }], CFG, agora);
+  assert.equal(overlayDoDelta(podaDelta(d, CFG.marca, agora, 48), CFG).linhas.length, 1);
+});
+
+test('podaDelta: sem registro de busca, a marca decide — como antes', () => {
+  const t = new Date('2026-09-03T10:00:00Z');
+  const d = {
+    porChave: new Map([
+      ['velha', [{ solicitacao: 'velha', 'data encerrado': new Date('2026-09-01T00:00:00Z') }]],
+      ['nova', [{ solicitacao: 'nova', 'data encerrado': new Date('2026-09-03T09:00:00Z') }]],
+    ]),
+    inicioJanela: t,
+    desde: t,
+  };
+  assert.deepEqual(overlayDoDelta(podaDelta(d, CFG.marca, t, 48), CFG).linhas.map((l) => l.solicitacao), ['nova']);
+});
+
+test('podaDelta: grupo visto antes da última carga em lote já está no disco e sai', () => {
+  let d = novoDelta(new Date('2026-09-03T08:00:00Z'));
+  d = aplicaBusca(d, [{ solicitacao: 'antes', 'data encerrado': new Date('2026-09-03T08:00:00Z') }], CFG, new Date('2026-09-03T08:10:00Z'));
+  d = aplicaBusca(d, [{ solicitacao: 'depois', 'data encerrado': new Date('2026-09-03T08:00:00Z') }], CFG, new Date('2026-09-03T08:40:00Z'));
+  const cargaComecou = new Date('2026-09-03T08:30:00Z').getTime();
+  const podado = podaDelta(d, CFG.marca, new Date('2026-09-03T09:00:00Z'), 48, cargaComecou);
+  assert.deepEqual(overlayDoDelta(podado, CFG).linhas.map((l) => l.solicitacao), ['depois']);
+});
+
+test('aplicaBusca: as linhas de uma chave viram UM grupo, e a busca seguinte troca o grupo inteiro', () => {
+  const t = new Date('2026-09-03T10:00:00Z');
+  const cfg = { chave: ['protocolo'], marca: ['data relato'], margemSegundos: 30 };
+  let d = novoDelta(t);
+  d = aplicaBusca(d, [
+    { protocolo: 'P1', relato: 'a', 'data relato': t },
+    { protocolo: 'P1', relato: 'b', 'data relato': t },
+    { protocolo: 'P2', relato: 'c', 'data relato': t },
+  ], cfg, t);
+  assert.equal(overlayDoDelta(d, cfg).linhas.length, 3);
+  // P1 voltou com um relato só (o outro foi apagado na fonte): o grupo encolhe.
+  d = aplicaBusca(d, [{ protocolo: 'P1', relato: 'b', 'data relato': t }], cfg, t);
+  assert.deepEqual(overlayDoDelta(d, cfg).linhas.map((l) => l.relato).sort(), ['b', 'c']);
 });
 
 test('mesclador: a linha do overlay substitui a versão em disco pela mais recente, mesma chave', () => {
@@ -172,6 +213,7 @@ test('PollerRealtime: tentaAgora costura o SQL, passa :desde como parâmetro, e 
   const p = new PollerRealtime({
     specsDir: 'specs',
     pool: fake.pool,
+    // Dígitos UTC, sem `Z`: a convenção de `parseSemFuso`, nos dois sentidos (ACHADOS #168).
     agora: () => new Date('2026-09-03T10:00:00Z'),
     anuncia: () => {},
     aoMudar: () => {
@@ -181,7 +223,7 @@ test('PollerRealtime: tentaAgora costura o SQL, passa :desde como parâmetro, e 
   await p.tentaAgora('protocolos-auxiliares');
   assert.equal(fake.chamadas.length, 1);
   assert.match(fake.chamadas[0]!.text, /a\.modified >= \$1/);
-  assert.equal(fake.chamadas[0]!.values[0], '2026-09-03T10:00:00.000Z');
+  assert.equal(fake.chamadas[0]!.values[0], '2026-09-03 10:00:00.000');
   assert.equal(mudancas, 0);
 });
 
@@ -263,18 +305,18 @@ test('PollerRealtime.overlays(): tabela com delta entra, chaveada pelo nome norm
 test(`mudancasReais: a MESMA linha reentregue não é mudança`, () => {
   const t = new Date(`2026-09-08T10:00:00Z`);
   const linha = { solicitacao: `A`, marca: t };
-  const antes = { porChave: new Map([[`A`, linha]]), inicioJanela: t, desde: t };
+  const antes = { porChave: new Map([[`A`, [linha]]]), inicioJanela: t, desde: t };
   // Outro OBJETO com os mesmos campos — é o que a volta seguinte traz do banco.
-  const depois = { porChave: new Map([[`A`, { solicitacao: `A`, marca: new Date(t) }]]), inicioJanela: t, desde: t };
+  const depois = { porChave: new Map([[`A`, [{ solicitacao: `A`, marca: new Date(t) }]]]), inicioJanela: t, desde: t };
   assert.equal(mudancasReais(antes, depois), 0);
 });
 
 test(`mudancasReais: chave nova conta, e conteúdo diferente na mesma chave também`, () => {
   const t = new Date(`2026-09-08T10:00:00Z`);
-  const vazio = { porChave: new Map(), inicioJanela: t, desde: t };
-  const uma = { porChave: new Map([[`A`, { solicitacao: `A`, marca: t }]]), inicioJanela: t, desde: t };
+  const vazio = { porChave: new Map<string, Record<string, Date | string>[]>(), inicioJanela: t, desde: t };
+  const uma = { porChave: new Map([[`A`, [{ solicitacao: `A`, marca: t }]]]), inicioJanela: t, desde: t };
   assert.equal(mudancasReais(vazio, uma), 1);
-  const outra = { porChave: new Map([[`A`, { solicitacao: `A`, marca: new Date(`2026-09-08T10:05:00Z`) }]]), inicioJanela: t, desde: t };
+  const outra = { porChave: new Map([[`A`, [{ solicitacao: `A`, marca: new Date(`2026-09-08T10:05:00Z`) }]]]), inicioJanela: t, desde: t };
   assert.equal(mudancasReais(uma, outra), 1, `marca diferente é mudança de verdade`);
 });
 
@@ -333,4 +375,47 @@ test(`PollerRealtime.estado(): erro na busca vira contagem e motivo`, async () =
   const e = p.estado();
   assert.equal(e.erros, 1);
   assert.match(e.ultimoErro ?? ``, /ECONNRESET/);
+});
+
+// ------------------------------------------------- fuso de :desde (ACHADOS #168)
+
+test('paraParametroSemFuso: os dígitos que parseSemFuso leu, sem Z — em qualquer fuso do processo', () => {
+  assert.equal(paraParametroSemFuso(new Date('2026-10-02T09:05:07.042Z')), '2026-10-02 09:05:07.042');
+});
+
+/**
+ * O defeito medido em 02/10/2026: sem `agora` injetado, a vigília partia do relógio
+ * do processo em UTC com `Z`, e o banco lia isso como hora local — três horas no
+ * futuro, 0 linhas por três horas. Em produção ela parte de `LOCALTIMESTAMP`.
+ */
+test('PollerRealtime: em produção a vigília parte do relógio do banco, não do processo', async () => {
+  const chamadas: { text: string; values: unknown[] }[] = [];
+  const noBanco = new Date('2026-10-02T09:45:00Z'); // 09:45 de parede, lido por parseSemFuso
+  const pool = async () => ({
+    query: async (cfg: { text: string; values?: unknown[] }) => {
+      chamadas.push({ text: cfg.text, values: cfg.values ?? [] });
+      if (/LOCALTIMESTAMP/.test(cfg.text)) return { rows: [[noBanco]], fields: [{ name: 'agora' }] };
+      return { rows: [], fields: [] };
+    },
+    end: async () => {},
+  });
+  const p = new PollerRealtime({ specsDir: 'specs', pool, anuncia: () => {} });
+  await p.tentaAgora('protocolos-auxiliares');
+  assert.equal(chamadas.length, 2);
+  assert.match(chamadas[0]!.text, /LOCALTIMESTAMP/);
+  assert.equal(chamadas[1]!.values[0], '2026-10-02 09:45:00.000');
+  // Só na primeira volta: a segunda já não pergunta o relógio.
+  await p.tentaAgora('protocolos-auxiliares');
+  assert.equal(chamadas.filter((c) => /LOCALTIMESTAMP/.test(c.text)).length, 1);
+});
+
+test('mudancasReais: o mesmo grupo em outra ordem não é mudança', () => {
+  const t = new Date('2026-09-08T10:00:00Z');
+  const a = { protocolo: 'P', relato: 'a' };
+  const b = { protocolo: 'P', relato: 'b' };
+  const antes = { porChave: new Map([['P', [a, b]]]), inicioJanela: t, desde: t };
+  const depois = { porChave: new Map([['P', [{ ...b }, { ...a }]]]), inicioJanela: t, desde: t };
+  assert.equal(mudancasReais(antes, depois), 0);
+  const menor = { porChave: new Map([['P', [{ ...a }]]]), inicioJanela: t, desde: t };
+  assert.equal(mudancasReais(antes, menor), 1);
 });
