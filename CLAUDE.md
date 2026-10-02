@@ -6,7 +6,8 @@ somente-leitura (`apps/api`, porta 3100), motores em `packages/`, metadados em `
 
 **Recomeçando? Leia `docs/PLANO-CARGA.md` antes de qualquer coisa** — o que roda agora, os
 contornos ATIVOS na stack Docker que um `docker compose up` desfaz, o que foi feito e o
-roteiro. `docs/CONTINUACAO.md` é histórico (parou em 27/08).
+roteiro. `docs/CONTINUACAO.md` é histórico (parou em 27/08). O mapa de todas as fases até o
+go-live, e o que cada decisão em aberto trava, está em `docs/PLANO-MESTRE.md`.
 
 ## Comandos
 ```bash
