@@ -8,7 +8,6 @@ import {
   pegaLayout,
   pegaPagina,
   pegaSaude,
-  sai,
   urlDaPagina,
   type DashboardDaLista,
   type FiltroDaTela,
@@ -16,13 +15,15 @@ import {
   type PaginaCalculada,
   type RespostaSaude,
   type Valor,
-} from './api.ts';
-import { avaliaSaudeQueries } from './aviso-saude.ts';
-import { dataHora, duracao, inteiro } from './formato.ts';
-import { usaAlturaMedida, usaEspacoSemVisual } from './altura-medida.ts';
-import { apagaPaginaDoCache, guardaPaginaVista } from './cache-pagina.ts';
-import { idsIniciais } from './carga-progressiva.ts';
-import { dataDaPagina, filtrosPadrao } from './filtros-padrao.ts';
+} from './services/dashboardService.ts';
+import { sai } from './services/authService.ts';
+import { assinaEventos } from './services/eventosService.ts';
+import { avaliaSaudeQueries } from './utils/avisoSaude.ts';
+import { dataHora, duracao, inteiro } from './utils/formato.ts';
+import { useAlturaMedida, useEspacoSemVisual } from './hooks/useAlturaMedida.ts';
+import { apagaPaginaDoCache, guardaPaginaVista } from './utils/cachePagina.ts';
+import { idsIniciais } from './utils/cargaProgressiva.ts';
+import { dataDaPagina, filtrosPadrao } from './utils/filtrosPadrao.ts';
 import {
   alternaAlvos,
   aplicaSelecao,
@@ -32,36 +33,36 @@ import {
   selecaoDe,
   type AlvoDeFiltro,
   type CampoClicado,
-} from './rota.ts';
-import { AppShell } from './componentes/AppShell.tsx';
-import { Capa } from './componentes/Capa.tsx';
-import { Erro } from './componentes/Cartao.tsx';
-import { EsqueletoDaPagina } from './componentes/EsqueletoDaPagina.tsx';
-import { Login } from './componentes/Login.tsx';
-import { Segmentacao } from './componentes/Segmentacao.tsx';
-import { SegmentacaoChips } from './componentes/SegmentacaoChips.tsx';
-import { SegmentacaoDataHierarquia } from './componentes/SegmentacaoDataHierarquia.tsx';
-import { usaModo } from './modo.tsx';
-import { ActiveFilterPill } from './atomic/molecules/ActiveFilterPill.tsx';
-import { KpiGridSection } from './atomic/organisms/KpiGridSection.tsx';
-import { VisualGridSection } from './atomic/organisms/VisualGridSection.tsx';
+} from './utils/rota.ts';
+import { AppShell } from './components/layout/AppShell.tsx';
+import { Capa } from './components/capa/Capa.tsx';
+import { Erro } from './components/ui/Cartao.tsx';
+import { EsqueletoDaPagina } from './components/layout/EsqueletoDaPagina.tsx';
+import { Login } from './components/auth/Login.tsx';
+import { Segmentacao } from './components/filtros/Segmentacao.tsx';
+import { SegmentacaoChips } from './components/filtros/SegmentacaoChips.tsx';
+import { SegmentacaoDataHierarquia } from './components/filtros/SegmentacaoDataHierarquia.tsx';
+import { useModo } from './context/ModoContext.tsx';
+import { ActiveFilterPill } from './components/filtros/ActiveFilterPill.tsx';
+import { KpiGridSection } from './components/visuais/KpiGridSection.tsx';
+import { VisualGridSection } from './components/visuais/VisualGridSection.tsx';
 import { RefreshCw } from 'lucide-react';
 
 export function App() {
-  const { conferencia } = usaModo();
+  const { conferencia } = useModo();
   // `--h-filtros` valia 50px fixos e a barra mede 71px na maioria das telas — 110px
   // na MANUTENÇÃO INICIAL em 1366x768, que tem 13 controles e quebra em três linhas.
   // A conta de `--util` errava por até 60px, e o efeito era card mais alto do que
   // cabe, em toda página, sem nada acusando. Quando a página não tem filtro nenhum
   // (a CAPA), o `ref` fica vazio e o hook publica `0px` — a faixa que não existe
   // devolve o espaço.
-  const barraFiltrosRef = usaAlturaMedida<HTMLDivElement>('--h-filtros');
+  const barraFiltrosRef = useAlturaMedida<HTMLDivElement>('--h-filtros');
   // E `--util` também precisa descontar o que a página gasta e NÃO é card: a faixa de
   // indicadores (56px, 121px ou 187px conforme a página), o título de seção antes da
   // primeira faixa (`--h-antes`) e o outro título, entre as duas faixas (`--h-entre`).
   // Sem esses dois termos a conta media uma tela que o card não tem pela frente — ver
-  // `usaEspacoSemVisual`.
-  const antesDosVisuaisRef = usaEspacoSemVisual<HTMLDivElement>('--h-antes', '--h-entre');
+  // `useEspacoSemVisual`.
+  const antesDosVisuaisRef = useEspacoSemVisual<HTMLDivElement>('--h-antes', '--h-entre');
   const inicial = useMemo(() => leRota(window.location.search), []);
   const [paginas, setPaginas] = useState<DashboardDaLista[]>([]);
   const [atual, setAtual] = useState<string | null>(inicial.pagina);
@@ -206,16 +207,7 @@ export function App() {
   // ABERTA agora, disparando o mesmo `fetch` de sempre, sem F5.
   useEffect(() => {
     if (!logado) return;
-    const es = new EventSource('/api/eventos');
-    es.onmessage = (ev) => {
-      let corpo: { dashboards?: unknown };
-      try {
-        corpo = JSON.parse(ev.data as string);
-      } catch {
-        return; // linha de comentário SSE (`: conectado`) não chega aqui — só `data:`.
-      }
-      const afetados = Array.isArray(corpo.dashboards) ? (corpo.dashboards as string[]) : [];
-      if (afetados.length === 0) return;
+    return assinaEventos((afetados) => {
       for (const id of afetados) apagaPaginaDoCache(paginasVistas.current, id);
       if (atualRef.current && afetados.includes(atualRef.current)) {
         const agora = new Date();
@@ -227,8 +219,7 @@ export function App() {
         setHoraRealtime(horaFmt);
         setRevalidar((n) => n + 1);
       }
-    };
-    return () => es.close();
+    });
   }, [logado]);
 
   useEffect(() => {
@@ -736,7 +727,7 @@ export function App() {
         <div className="filtros" ref={barraFiltrosRef}>
           {/* A ÁRVORE DE DATA VEM PRIMEIRO: é o recorte que a página já traz aplicado
               ao abrir, então é o primeiro que alguém vai querer mexer. Ela existia
-              desde 26/08 (com `hierarquia-data.ts` testado ao lado) e nunca foi
+              desde 26/08 (com `hierarquiaData.ts` testado ao lado) e nunca foi
               montada em lugar nenhum. */}
           {dataDaTela ? (
             <SegmentacaoDataHierarquia

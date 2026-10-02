@@ -7,7 +7,7 @@
 // depois de R4 — ele sempre lista um subconjunto explícito. Aquecer a chave errada não
 // é lentidão, é aquecimento que não aquece nada; foi assim que um clique em rajada (R6)
 // bateu 17s numa página que o próprio `npm start` tinha acabado de reportar "quente".
-// `apps/web/src/carga-progressiva.ts` reexporta daqui — é a MESMA função dos dois
+// `apps/web/src/utils/cargaProgressiva.ts` reexporta daqui — é a MESMA função dos dois
 // lados, não uma cópia, para as duas pontas nunca poderem discordar.
 
 import type { LayoutSpec } from './schema.ts';
@@ -15,7 +15,7 @@ import type { LayoutSpec } from './schema.ts';
 /**
  * **Por que 4, não 2.** O valor original vinha de "duas faixas = uma tela" — verdade
  * só quando cada faixa reivindica `--util` inteiro sozinha (`FRACAO_POOL`,
- * `altura-medida.ts`). Numa página densa como `agendamento-field` (10 faixas: 2
+ * `useAlturaMedida.ts`). Numa página densa como `agendamento-field` (10 faixas: 2
  * grafico + 5 tabela + 3 matriz), o POOL divide a fração de cada tipo pelo número de
  * faixas daquele tipo — `calculaAlturasDeFaixa` derruba cada uma para o PISO
  * (`PISO_TETO_FAIXA`: grafico 273px, tabela 280px, matriz 360px), porque dividir por

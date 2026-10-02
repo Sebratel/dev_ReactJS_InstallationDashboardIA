@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { ehAbortError, pega } from '../src/api.ts';
+import { ehAbortError, pega } from '../src/services/dashboardService.ts';
 
 test('ehAbortError: reconhece o DOMException que fetch() lança ao abortar', () => {
   assert.equal(ehAbortError(new DOMException('The user aborted a request.', 'AbortError')), true);

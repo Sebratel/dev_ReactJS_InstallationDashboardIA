@@ -37,7 +37,7 @@ export interface ValorDeTabela {
    * A entidade e a propriedade de origem de cada coluna, na MESMA ordem de `colunas`.
    *
    * É o que falta para um clique numa LINHA da tabela virar filtro — o mesmo papel que
-   * `ChaveDoGrafico` (`grafico-clique.ts`) já cumpre para o eixo de um gráfico. Campo
+   * `ChaveDoGrafico` (`graficoClique.ts`) já cumpre para o eixo de um gráfico. Campo
    * calculado (medida, `%`) não tem uma coluna de origem única e sai como `null` nos
    * dois — clicar numa célula dele não filtra nada, e o alvo de clique já descarta
    * entradas sem tabela/coluna.

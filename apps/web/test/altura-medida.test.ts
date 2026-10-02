@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { calculaAlturasDeFaixa, contaFaixasLargasPorAltura } from '../src/altura-medida.ts';
+import { calculaAlturasDeFaixa, contaFaixasLargasPorAltura } from '../src/hooks/useAlturaMedida.ts';
 
 test('sem faixa de largura cheia, não publica nada (null)', () => {
   assert.equal(calculaAlturasDeFaixa(0, 0, 0, 585), null);
@@ -18,7 +18,7 @@ test('uma faixa sozinha de cada tipo reproduz EXATAMENTE a fração fixa de hoje
   // É o caso que existia antes desta fase inteira, e não pode regredir: a primeira
   // versão desta conta (peso relativo entre tipos, dividindo --util inteiro) inflava
   // exatamente este caso — uma tabela larga sozinha passava de 54,5% para 100% de
-  // --util. Ver o comentário de `FRACAO_POOL` em altura-medida.ts.
+  // --util. Ver o comentário de `FRACAO_POOL` em useAlturaMedida.ts.
   const util = 600;
   assert.equal(calculaAlturasDeFaixa(1, 0, 0, util)!.grafico, Math.round(util * 0.455));
   assert.equal(calculaAlturasDeFaixa(0, 1, 0, util)!.tabela, Math.round(util * 0.545));
@@ -68,7 +68,7 @@ test('contaFaixasLargasPorAltura: sem faixa nenhuma dá zero em tudo', () => {
 
 test('contaFaixasLargasPorAltura: visao-geral de hoje (1 faixa de 3 gráficos, 1 faixa de 1 tabela)', () => {
   // Reproduz specs/layout/visao-geral.layout.yaml — prova que a Fase L4 não muda o
-  // número de entrada de `usaAlturaDasFaixasLargas` nesta página.
+  // número de entrada de `useAlturaDasFaixasLargas` nesta página.
   const faixas = [
     { altura: 'grafico', colunas: [1, 2, 3] },
     { altura: 'tabela', colunas: [1] },

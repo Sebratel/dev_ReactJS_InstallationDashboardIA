@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { apagaPaginaDoCache, guardaPaginaVista, TETO_PAGINAS_VISTAS } from '../src/cache-pagina.ts';
-import type { PaginaCalculada } from '../src/api.ts';
+import { apagaPaginaDoCache, guardaPaginaVista, TETO_PAGINAS_VISTAS } from '../src/utils/cachePagina.ts';
+import type { PaginaCalculada } from '../src/services/dashboardService.ts';
 
 function pagina(id: string): PaginaCalculada {
   return {

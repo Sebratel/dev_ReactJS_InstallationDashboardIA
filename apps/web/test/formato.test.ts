@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dataHora, diasDesde, duracao, formata, inteiro } from '../src/formato.ts';
+import { dataHora, diasDesde, duracao, formata, inteiro } from '../src/utils/formato.ts';
 
 test('BLANK vira travessão e é marcado como vazio, não como zero', () => {
   // Um BLANK desenhado como "0" seria um número inventado. A tela precisa saber que

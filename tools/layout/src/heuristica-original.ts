@@ -8,7 +8,7 @@
 // REGENERAR um `.layout.yaml` a partir da forma derivada, quando alguém quiser voltar a
 // ela (ver o cabeçalho do `.layout.yaml` gerado). Ver docs/PLANO-LAYOUT-V1.md §6.
 
-import type { VisualCalculado } from '../../../apps/web/src/api.ts';
+import type { VisualCalculado } from '../../../apps/web/src/services/dashboardService.ts';
 
 /** Muitas categorias pedem largura; poucas cabem lado a lado. O limiar é o ponto em que
  *  um gráfico deixa de ser "um punhado de barras" e vira uma série que precisa de espaço. */

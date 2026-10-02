@@ -2,7 +2,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { urlDaPagina, urlDeValores, type FiltroDaTela } from '../src/api.ts';
+import { urlDaPagina, urlDeValores, type FiltroDaTela } from '../src/services/dashboardService.ts';
 import {
   alternaAlvos,
   aplicaSelecao,
@@ -10,7 +10,7 @@ import {
   leRota,
   selecaoDe,
   type AlvoDeFiltro,
-} from '../src/rota.ts';
+} from '../src/utils/rota.ts';
 
 const equipe: FiltroDaTela = {
   tabela: 'PROTOCOLOS GERAL',

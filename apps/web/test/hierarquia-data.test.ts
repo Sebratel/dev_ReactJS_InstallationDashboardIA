@@ -9,7 +9,7 @@ import {
   resumoDeData,
   selecaoDeData,
   type SelecaoDeData,
-} from '../src/hierarquia-data.ts';
+} from '../src/utils/hierarquiaData.ts';
 
 const d = (iso: string) => ({ valor: iso });
 const vazia: SelecaoDeData = { anos: [], meses: [], dias: [] };

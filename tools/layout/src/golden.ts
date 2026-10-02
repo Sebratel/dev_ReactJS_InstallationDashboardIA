@@ -24,7 +24,7 @@ import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carre
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { calculaPagina, type VisualCalculado } from '../../../apps/api/src/calcula.ts';
 import { codificaFiltro, decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
-import { filtrosPadrao } from '../../../apps/web/src/filtros-padrao.ts';
+import { filtrosPadrao } from '../../../apps/web/src/utils/filtrosPadrao.ts';
 import { carregaLayout } from './valida.ts';
 import type { LayoutSpec } from './schema.ts';
 

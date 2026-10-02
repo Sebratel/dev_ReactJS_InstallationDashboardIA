@@ -12,8 +12,8 @@ import {
   proximoDe,
   rotuloDaJanela,
   type Janela,
-} from '../src/janela.ts';
-import { urlDaPagina } from '../src/api.ts';
+} from '../src/utils/janela.ts';
+import { urlDaPagina } from '../src/services/dashboardService.ts';
 
 const cru = (n: number) => String(n);
 

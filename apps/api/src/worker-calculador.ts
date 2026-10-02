@@ -183,7 +183,7 @@ export const TETO_CACHE_POR_WORKER = 6;
  * datasets vivos ao mesmo tempo, e o orçamento de heap por worker
  * (`API_WORKER_HEAP_MB`, ver `piscina-workers.ts`) foi bisseccionado supondo
  * dataset TRANSIENTE, não guardado. Poda por ordem de inserção (mesma ideia de
- * `TETO_PAGINAS_VISTAS` em `apps/web/src/cache-pagina.ts`): a entrada mais
+ * `TETO_PAGINAS_VISTAS` em `apps/web/src/utils/cachePagina.ts`): a entrada mais
  * antiga sai, a mais recentemente usada nunca é a próxima a cair.
  */
 const cacheDeCarga = new Map<string, Promise<Carregado>>();

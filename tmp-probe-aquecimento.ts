@@ -5,7 +5,7 @@
 //
 // Só GET. Não escreve nada. Mede `cache` e `ms` que a própria resposta declara.
 import { applyDotEnv } from './packages/query-engine/src/config.ts';
-import { filtrosPadrao } from './apps/web/src/filtros-padrao.ts';
+import { filtrosPadrao } from './apps/web/src/utils/filtrosPadrao.ts';
 import { codificaFiltro } from './packages/widget-engine/src/filtro-url.ts';
 import { idsIniciais } from './tools/layout/src/corte-eager.ts';
 

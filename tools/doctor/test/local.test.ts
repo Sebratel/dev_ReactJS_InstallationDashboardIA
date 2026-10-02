@@ -118,7 +118,7 @@ test('fonte mais novo que o build avisa — é a tela de ANTES no navegador', ()
   const root = temporario();
   try {
     const dist = path.join(root, 'apps', 'api', 'web', 'dist');
-    const src = path.join(root, 'apps', 'web', 'src', 'componentes');
+    const src = path.join(root, 'apps', 'web', 'src', 'components', 'visuais');
     fs.mkdirSync(dist, { recursive: true });
     fs.mkdirSync(src, { recursive: true });
 
@@ -128,7 +128,7 @@ test('fonte mais novo que o build avisa — é a tela de ANTES no navegador', ()
     fs.utimesSync(html, ontem, ontem);
 
     // Um arquivo FUNDO na árvore do fonte: a varredura tem de ser recursiva, senão
-    // mexer em `componentes/` passaria batido — que é onde a tela toda mora.
+    // mexer em `components/` passaria batido — que é onde a tela toda mora.
     fs.writeFileSync(path.join(src, 'Grafico.tsx'), 'export {}');
 
     const a = checaTelaCompilada(root);

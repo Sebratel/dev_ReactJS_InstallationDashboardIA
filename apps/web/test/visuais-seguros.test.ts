@@ -17,15 +17,15 @@ function semComentario(fonte: string): string {
   return fonte.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1');
 }
 
-const visualTsx = semComentario(le('src', 'componentes', 'Visual.tsx'));
-const visualProntoTsx = semComentario(le('src', 'componentes', 'VisualPronto.tsx'));
-const cardTsx = semComentario(le('src', 'componentes', 'Card.tsx'));
-const graficoTsx = semComentario(le('src', 'componentes', 'Grafico.tsx'));
-const tabelaTsx = semComentario(le('src', 'componentes', 'Tabela.tsx'));
-const matrizTsx = semComentario(le('src', 'componentes', 'Matriz.tsx'));
-const roscaTsx = semComentario(le('src', 'componentes', 'Rosca.tsx'));
-const rankingBarraTsx = semComentario(le('src', 'componentes', 'RankingBarra.tsx'));
-const errorBoundaryTsx = semComentario(le('src', 'componentes', 'VisualErrorBoundary.tsx'));
+const visualTsx = semComentario(le('src', 'components', 'visuais', 'Visual.tsx'));
+const visualProntoTsx = semComentario(le('src', 'components', 'visuais', 'VisualPronto.tsx'));
+const cardTsx = semComentario(le('src', 'components', 'visuais', 'Card.tsx'));
+const graficoTsx = semComentario(le('src', 'components', 'visuais', 'Grafico.tsx'));
+const tabelaTsx = semComentario(le('src', 'components', 'visuais', 'Tabela.tsx'));
+const matrizTsx = semComentario(le('src', 'components', 'visuais', 'Matriz.tsx'));
+const roscaTsx = semComentario(le('src', 'components', 'visuais', 'Rosca.tsx'));
+const rankingBarraTsx = semComentario(le('src', 'components', 'visuais', 'RankingBarra.tsx'));
+const errorBoundaryTsx = semComentario(le('src', 'components', 'visuais', 'VisualErrorBoundary.tsx'));
 
 test('A4.1 - Visual.tsx isola cada visual com VisualErrorBoundary', () => {
   assert.match(

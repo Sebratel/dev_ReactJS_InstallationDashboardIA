@@ -25,7 +25,7 @@ import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carre
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { calculaPagina, type VisualCalculado } from '../../../apps/api/src/calcula.ts';
 import { codificaFiltro, decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
-import { filtrosPadrao } from '../../../apps/web/src/filtros-padrao.ts';
+import { filtrosPadrao } from '../../../apps/web/src/utils/filtrosPadrao.ts';
 import {
   LIMIAR_LARGO,
   contaPontos,
@@ -50,7 +50,7 @@ const MAX_COMPACTOS_POR_FAIXA = 3;
 const MAX_ESTREITAS_POR_FAIXA = 4;
 
 /**
- * Espelha `alturaDoConteudo` de `apps/web/src/componentes/Cartao.tsx` — não importada de
+ * Espelha `alturaDoConteudo` de `apps/web/src/components/ui/Cartao.tsx` — não importada de
  * lá porque esse arquivo é `.tsx` (JSX) e o `node --experimental-strip-types` que roda
  * `tools/*` não sabe transformar JSX, só apagar tipos. É a mesma troca de 4 linhas; se a
  * de lá mudar, esta tem de acompanhar (não há como o TypeScript avisar sozinho aqui).

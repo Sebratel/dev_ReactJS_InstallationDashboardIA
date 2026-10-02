@@ -193,7 +193,7 @@
 
      Por isso o termo é UM só e é MEDIDO: `--h-antes` é a distância do topo do
      conteúdo da `.area` até o topo do primeiro visual, publicada pela tela
-     (`altura-medida.ts`). Ela já inclui a barra de filtros, o aviso de URL, a faixa
+     (`useAlturaMedida.ts`). Ela já inclui a barra de filtros, o aviso de URL, a faixa
      do modo conferência, os indicadores, o título de seção e todos os gaps entre
      eles — some qualquer um e o número cai sozinho, sem ninguém lembrar de mexer
      aqui. `--h-filtros` continua existindo para o `min-height` e o `top` da própria
@@ -538,11 +538,11 @@ body {
 /* Dentro de uma FAIXA DE 1 COLUNA SÓ (`.filas-largas`, marcada em
    `VisualGridSection.tsx` — Fase L4 — em cada `.faixa-grade` cujo `layout.yaml` só tem
    um `span: 12`), a altura vem de `usaAlturaDasFaixasLargas` (Fase L3,
-   `altura-medida.ts`) — que divide `--util` pelo NÚMERO de faixas de largura cheia da
+   `useAlturaMedida.ts`) — que divide `--util` pelo NÚMERO de faixas de largura cheia da
    página, em vez da fração fixa acima, que deixa cada cartão sozinho reivindicar
    `--util` inteiro sem saber quantos outros existem. Faixa de VÁRIAS colunas (os
    compactos/estreitas lado a lado) fica de fora de propósito — ver
-   `contaFaixasLargasPorAltura` em `altura-medida.ts`. O fallback dentro de cada
+   `contaFaixasLargasPorAltura` em `useAlturaMedida.ts`. O fallback dentro de cada
    `var()` é a fórmula de cima: se o JS ainda não publicou `--h-faixa-*` (primeiro
    quadro), o comportamento de sempre continua valendo. */
 .filas-largas .cartao.v-grafico { height: var(--h-faixa-grafico, clamp(273px, calc(var(--util) * 0.455), 430px)); }
@@ -1021,7 +1021,7 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
    atributo por especificidade CSS-sobre-atributo-de-apresentação e prenderia a cor. */
 .ranking-rotulo-dentro { font-size: 11px; font-weight: 700; font-family: var(--font); }
 /* Idem para o `fill` do rótulo dentro: vem inline de `corDoRotuloSobre`, que escolhe
-   branco ou tinta pela luminância REAL do preenchimento (ver `grafico-forma.ts`) — uma
+   branco ou tinta pela luminância REAL do preenchimento (ver `graficoForma.ts`) — uma
    cor fixa aqui reintroduziria o par claro/escuro que aquela função existe para evitar. */
 .ranking-rotulo-fora { fill: var(--texto); font-size: 11px; font-weight: 700; font-family: var(--font); }
 .ranking-valor { fill: var(--muted); font-size: .7rem; font-weight: 700; font-family: var(--font); font-variant-numeric: tabular-nums; }

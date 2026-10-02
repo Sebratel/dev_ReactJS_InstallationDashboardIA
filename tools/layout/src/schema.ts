@@ -1,6 +1,6 @@
 // O tipo do `layout.yaml` — espelha docs/PLANO-LAYOUT-V1.md §1, sem redesenhar nada.
 //
-// `altura` usa as MESMAS classes de `AlturaDeVisual` (apps/web/src/componentes/Cartao.tsx):
+// `altura` usa as MESMAS classes de `AlturaDeVisual` (apps/web/src/components/ui/Cartao.tsx):
 // são as únicas que `estilo.css` sabe desenhar. Duplicar a lista aqui (em vez de importar
 // o tipo de dentro de `apps/web`) é proposital — este pacote é consumido por `tools/`, que
 // não deveria depender do bundle do front para validar um YAML.

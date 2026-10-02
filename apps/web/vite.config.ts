@@ -38,7 +38,7 @@ const GOOGLE_CLIENT_ID = process.env.VITE_GOOGLE_CLIENT_ID ?? '';
 
 // Firebase Authentication — o caminho de login desde 16/09/2026. Nada aqui é
 // segredo: `apiKey` do Firebase é identificador de projeto, público em todo app
-// Firebase do mundo (ver o cabeçalho de `src/firebase.ts`). Quem barra acesso é
+// Firebase do mundo (ver o cabeçalho de `src/services/firebaseAuth.ts`). Quem barra acesso é
 // o domínio autorizado no console, mais `apps/api/src/auth-firebase.ts`.
 //
 // Lidas UMA a UMA, e não com um laço sobre `process.env`: `define` faz
@@ -87,9 +87,9 @@ export default defineConfig({
   plugins: [react(), tailwind()],
   server: {
     port: 5173,
-    // `api.ts` importa o codec de filtro de `packages/widget-engine`, que está fora
+    // `services/dashboardService.ts` importa o codec de filtro de `packages/widget-engine`, que está fora
     // da raiz deste app. Sem isto o dev server recusa servir o arquivo — e a
-    // alternativa, copiar o codec para cá, é a duplicação que `api.ts` explica evitar.
+    // alternativa, copiar o codec para cá, é a duplicação que `dashboardService.ts` explica evitar.
     fs: { allow: ['..', '../..'] },
     proxy: {
       '/api': {

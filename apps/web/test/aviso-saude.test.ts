@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { listaCurta, avaliaSaudeQueries, formataDiasIdade, type QuerySaude } from '../src/aviso-saude.ts';
+import { listaCurta, avaliaSaudeQueries, formataDiasIdade, type QuerySaude } from '../src/utils/avisoSaude.ts';
 
 test('A6.1 - com todas queries ok, o aviso não aparece', () => {
   const queries: QuerySaude[] = [

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { idsIniciais, N_FAIXAS_EAGER } from '../src/carga-progressiva.ts';
-import type { LayoutSpec } from '../src/api.ts';
+import { idsIniciais, N_FAIXAS_EAGER } from '../src/utils/cargaProgressiva.ts';
+import type { LayoutSpec } from '../src/services/dashboardService.ts';
 
 function layout(faixas: LayoutSpec['faixas'], kpis: LayoutSpec['kpis'] = []): LayoutSpec {
   return { pagina: 'x', base: 'x', kpis, faixas, ocultos: [], improvements: [] };

@@ -41,7 +41,7 @@ function semComentario(fonte: string): string {
 }
 
 const css = semComentario(le('src', 'estilo.css'));
-const appShell = semComentario(le('src', 'componentes', 'AppShell.tsx'));
+const appShell = semComentario(le('src', 'components', 'layout', 'AppShell.tsx'));
 
 /** Todos os tokens de pixel do CSS, já sem comentário. */
 const TOKENS = new Map(
@@ -56,11 +56,11 @@ function token(nome: string): number {
 /* ========================================================================== tema */
 
 test('a classe que o store escreve é a MESMA que o CSS estiliza', () => {
-  const store = semComentario(le('src', 'store', 'useThemeStore.ts'));
+  const store = semComentario(le('src', 'utils', 'theme.ts'));
 
   const classe = (/const CLASSE = '([^']+)'/.exec(store) ??
     /classList\.(?:toggle|add)\(\s*'([^']+)'/.exec(store))?.[1];
-  assert.ok(classe, 'o `useThemeStore` não nomeia classe nenhuma');
+  assert.ok(classe, 'o `utils/theme.ts` não nomeia classe nenhuma');
   assert.match(store, /classList\.(?:toggle|add)\(/, 'a classe existe mas ninguém a aplica');
 
   assert.ok(
@@ -82,8 +82,8 @@ test('todo estado que persiste tem botão que o desliga', () => {
   // Persistir no localStorage sem controle visível TRANCA o usuário: ele recarrega e
   // o estado continua lá. Os dois já estiveram órfãos ao mesmo tempo.
   const casos = [
-    { arquivo: ['store', 'useThemeStore.ts'], gatilho: 'toggleTheme' },
-    { arquivo: ['modo.tsx'], gatilho: 'alterna' },
+    { arquivo: ['utils', 'theme.ts'], gatilho: 'toggleTheme' },
+    { arquivo: ['context', 'ModoContext.tsx'], gatilho: 'alterna' },
   ];
   for (const { arquivo, gatilho } of casos) {
     const nome = arquivo.join('/');
@@ -118,7 +118,7 @@ function regra(qual: keyof typeof REGRA): string {
  * referência: topo 52 + nav 74 + filtros 71 + (rodapé 32 + padding da área 28) = 257.
  *
  * `--h-nav` e `--h-filtros` no `:root` são só o CHÃO — a tela mede as duas faixas e
- * reescreve os tokens (`altura-medida.ts`). Por isso a conta de referência usa as
+ * reescreve os tokens (`useAlturaMedida.ts`). Por isso a conta de referência usa as
  * medidas, e não o que está escrito no CSS: usar o CSS aqui foi o que fez a derivação
  * do piso sair errada duas vezes.
  */
@@ -195,8 +195,8 @@ test('nenhuma imagem aponta para arquivo que não é servido', () => {
   // `<img src="/assets/logo-sebratel-circular.png">` deu 404 em toda carga por dias:
   // não quebra build, não vira erro de JS, só um ícone quebrado ao lado da marca.
   const publico = path.join(web, 'public');
-  const dir = path.join(web, 'src', 'componentes');
-  for (const arq of fs.readdirSync(dir)) {
+  const dir = path.join(web, 'src', 'components');
+  for (const arq of fs.readdirSync(dir, { recursive: true }) as string[]) {
     if (!arq.endsWith('.tsx')) continue;
     const fonte = semComentario(fs.readFileSync(path.join(dir, arq), 'utf8'));
     for (const m of fonte.matchAll(/src="(\/[^"]+)"/g)) {
@@ -263,7 +263,7 @@ test('nenhum módulo de apps/web/src ficou sem importador', () => {
   const fontes = new Map(arquivos.map((f) => [f, semComentario(fs.readFileSync(f, 'utf8'))]));
   const orfaos = arquivos.filter((f) => {
     if (ENTRADAS.has(path.basename(f))) return false;
-    // O import cita o arquivo COM extensão (`./api.ts`, `../componentes/Capa.tsx`) —
+    // O import cita o arquivo COM extensão (`./dashboardService.ts`, `../capa/Capa.tsx`) —
     // é a convenção deste repositório, e o `tsc` a exige.
     const alvo = '/' + path.basename(f);
     for (const [outro, fonte] of fontes) {

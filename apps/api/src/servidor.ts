@@ -1913,7 +1913,7 @@ export class Servidor {
    *
    * Poda por ordem de inserção, a mesma de `guardaNoCache`
    * (`worker-calculador.ts`) e de `TETO_PAGINAS_VISTAS`
-   * (`apps/web/src/cache-pagina.ts`): regravar reinsere no fim, então a entrada
+   * (`apps/web/src/utils/cachePagina.ts`): regravar reinsere no fim, então a entrada
    * mais recentemente usada nunca é a próxima a cair.
    */
   private guardaCarregada(chave: string, promessa: Promise<Carregado>): void {

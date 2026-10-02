@@ -4,7 +4,7 @@
 // combinação de página × resolução × tema e reprova conforme os 5 critérios do plano.
 //
 // **Como identifica cada cartão.** Não precisou de nenhum atributo novo no DOM — o "modo
-// conferência" (`apps/web/src/modo.tsx`) já liga um `<span class="id-visual">` dentro de
+// conferência" (`apps/web/src/context/ModoContext.tsx`) já liga um `<span class="id-visual">` dentro de
 // cada `.cartao`/`.cartao-kpi` para bater a tela contra `specs/paridade/`. Ligar os dois
 // `localStorage` (tema e conferência) ANTES do primeiro script da página é o que exige
 // `context.addInitScript`, não `page.evaluate` depois do load — os dois stores só leem o
