@@ -13679,3 +13679,36 @@ que avançasse `desde` pela marca de uma linha.
 volta de cada query; (2) `:desde` vai como hora de parede sem fuso (`paraParametroLocal`,
 getters locais) — o mesmo jeito que o driver entregou as datas das linhas, então a ida e
 a volta são exatas em qualquer fuso. Testes em fuso local e em `TZ=UTC`.
+
+## #169 — tabela calculada com origem em tempo real: recálculo parcial por protocolo (02/10)
+
+O overlay do poller entra nas tabelas FÍSICAS; uma calculada lida de disco continuava com
+as linhas da última carga. Para a VISÃO PRODUTIVA isso são duas: `Status Protocolo Dia`
+e `calendar` — que neste modelo **não é calendário**, é `DISTINCT(Protocolo, Data)` da
+FIELD AGENDA, o eixo de colunas da matriz (congelada, agenda nova em dia novo não viraria
+coluna).
+
+**Recalcular inteira não cabe:** a tradução nativa de `Status Protocolo Dia` sobre as
+632 mil linhas custa 5,8–7,5 s na vista colunar. **Parcial cabe:** as duas traduções
+dependem só das linhas do mesmo protocolo (`particao` em `nativas.ts`), então `carrega`
+recalcula os protocolos do overlay e junta com o resto do arquivo. As linhas do overlay
+são as sem `indiceDaVista` — a distinção que a conversão de tipo já usava.
+
+Medido sobre o snapshot de 02/10, overlay de 132 protocolos (5.007 linhas):
+
+| carga | tempo | Status Protocolo Dia | calendar |
+|---|---|---|---|
+| congelada | 0,89 s | 12.987 | 12.987 |
+| parcial | 1,28 s | 0 divergências | 0 divergências |
+| inteira (nativa) | 6,3 s / 0,25 s | 0 divergências | 0 divergências |
+
+A comparação inteira × congelada do `calendar` é a conferência do `shaConferido` dele
+(`f0851493f7a3ef8b`). Arquivo velho em relação às origens, modo objeto ou fonte sem
+coluna de partição caem no recálculo inteiro — base velha misturada com dado novo seria
+o número plausível e errado.
+
+**Defeito que a prova pegou no caminho:** a conferência de colunas da tradução nativa
+usava `Object.keys(linha)`, que devolve VAZIO para a linha colunar (as colunas físicas
+moram no protótipo, `linha-vista.ts`). Recusava toda linha colunar como "chegou sem
+protocolo, slot agenda, …". Nunca tinha aparecido porque `snapshot:calculadas` carrega em
+modo objeto. Trocado por `in`.

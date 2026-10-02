@@ -54,6 +54,7 @@ import { VistaDeLinhas, indiceDaVista } from './linha-vista.ts';
 import type { TabelaColunar } from './tabela-colunar.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
+import { chaveDeParticao, traducaoDe, type TraducaoNativa } from './nativas.ts';
 
 export interface CarregaOptions {
   /** Diretório do snapshot. */
@@ -354,6 +355,46 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // `agendamento-field` (ACHADOS #53): quatro colunas calculadas desta tabela,
     // recalculadas a cada abertura de página. O Power BI as calcula no refresh.
     const arq = arquivoDaCalculada(opts.dir, t.name);
+
+    // **O tempo real mudou uma origem dela? Então o arquivo congelado está velho.**
+    // O overlay do poller entra nas tabelas físicas (acima), mas uma calculada lida de
+    // disco continuaria com as linhas de antes — a VISÃO PRODUTIVA mostraria o status
+    // da última carga com a FIELD AGENDA já atualizada embaixo (ACHADOS #169). Só a
+    // tradução nativa recalcula aqui: o DAX de `Status Protocolo Dia` leva horas, e
+    // pagar isso por volta do poller não é opção — sem tradução, fica o arquivo, e o
+    // motivo vai para `recalculadas`, que a página reporta.
+    const origens = calculatedTableSourceTables(opts.model, t);
+    const tocadas = (origens ?? []).filter((o) => opts.overlay?.has(normaliza(o)));
+    if (tocadas.length > 0) {
+      const nativa = traducaoDe(t);
+      if ('traducao' in nativa) {
+        const tr = nativa.traducao;
+        const fontes = tr.fontes.map((nome) => dataset.rows(nome) as unknown as Record<string, Escalar>[]);
+        const parcial = await recalculoParcial(t, tr, fontes, tocadas, arq, opts.dir, {
+          colunar: opts.colunar === true,
+          confere: (cab) => {
+            confereTabelaCalculada(t, cab, opts.dir);
+            confereIdadeDaCalculada(t, cab, maisNovoDeQuery, opts.dir, opts.model, geradoEmPorTabela);
+          },
+        });
+        const linhas = parcial?.linhas ?? tr.calcula(fontes);
+        dataset.adotaTabela(t.name, linhas as never);
+        linhasPorTabela.set(t.name, linhas.length);
+        recalculadas.push(
+          parcial
+            ? `${t.name}: ${parcial.chaves} chave(s) recalculada(s) pela tradução nativa, o resto do ` +
+                `arquivo — o tempo real mudou ${tocadas.map((x) => `'${x}'`).join(', ')}`
+            : `${t.name}: recalculada inteira pela tradução nativa — o tempo real mudou ` +
+                `${tocadas.map((x) => `'${x}'`).join(', ')}`,
+        );
+        continue;
+      }
+      recalculadas.push(
+        `${t.name}: o tempo real mudou ${tocadas.map((x) => `'${x}'`).join(', ')}, mas ela ` +
+          `não tem tradução nativa (${nativa.porque}) — segue o arquivo congelado, sem o tempo real`,
+      );
+    }
+
     if (opts.lerCalculadas !== false && fs.existsSync(arq)) {
       const cab = leCabecalho(arq);
       confereTabelaCalculada(t, cab, opts.dir);
@@ -802,4 +843,60 @@ function confereIdadeDaCalculada(
       `${arquivoDaCalculada(dir, t.name)} são as do dado antigo, e o DAX igual não denuncia ` +
       `isso. Rode: npm run snapshot:calculadas -- --tabela="${t.name}"`,
   );
+}
+
+/**
+ * Recalcula só as chaves que o tempo real trouxe e mantém o resto do arquivo congelado.
+ *
+ * **Por que existe.** A tradução nativa de `Status Protocolo Dia` sobre a FIELD AGENDA
+ * inteira (632 mil linhas) custa 5,8–7,5 s na vista colunar — medido em 02/10/2026. Com
+ * o poller mudando a tabela a cada 30 s, isso seria recalcular a página inteira o dia
+ * todo. As traduções que declaram `particao` dependem só das linhas da mesma chave, então
+ * recalcular as chaves do overlay e juntar com o resto do arquivo dá a MESMA tabela
+ * (`carrega-parcial.test.ts`; ACHADOS #169).
+ *
+ * **Quem são as chaves do overlay.** Na vista colunar, linha do arquivo tem índice
+ * (`indiceDaVista`) e linha do poller não — a mesma distinção que a conversão de tipo
+ * acima já usa. Em modo objeto não há como distinguir, e devolve `null` (inteira).
+ *
+ * `null` também quando não dá para afirmar que o arquivo vale como base: sem partição
+ * declarada, fonte tocada sem coluna de partição, sem arquivo, ou arquivo velho em
+ * relação às origens (`confere` erra) — recalcular por cima de base velha misturaria
+ * dado antigo com novo, o número plausível e errado.
+ */
+async function recalculoParcial(
+  t: ModelTable,
+  tr: TraducaoNativa,
+  fontes: readonly Record<string, Escalar>[][],
+  tocadas: readonly string[],
+  arq: string,
+  dir: string,
+  o: { colunar: boolean; confere: (cab: CabecalhoDeSnapshot) => void },
+): Promise<{ linhas: Record<string, Escalar>[]; chaves: number } | null> {
+  if (!tr.particao || !o.colunar || !fs.existsSync(arq)) return null;
+  const tocadasNorm = new Set(tocadas.map(normaliza));
+  const chaves = new Set<string>();
+  for (let i = 0; i < tr.fontes.length; i++) {
+    if (!tocadasNorm.has(normaliza(tr.fontes[i]!))) continue;
+    const coluna = tr.particao.porFonte[i];
+    if (!coluna) return null;
+    for (const l of fontes[i] ?? []) {
+      if (indiceDaVista(l as never) === null) chaves.add(chaveDeParticao(l[coluna] ?? null));
+    }
+  }
+  try {
+    o.confere(leCabecalho(arq));
+  } catch {
+    return null;
+  }
+  const { linhas: congeladas } = await le(arq);
+  const saida = tr.particao.saida;
+  const mantidas = (congeladas as Record<string, Escalar>[]).filter(
+    (l) => !chaves.has(chaveDeParticao(l[saida] ?? null)),
+  );
+  const recortes = tr.fontes.map((_, i) => {
+    const coluna = tr.particao!.porFonte[i]!;
+    return (fontes[i] ?? []).filter((l) => chaves.has(chaveDeParticao(l[coluna] ?? null)));
+  });
+  return { linhas: [...mantidas, ...tr.calcula(recortes)], chaves: chaves.size };
 }

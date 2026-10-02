@@ -118,8 +118,12 @@ function confereColunas(
   tabela: string,
 ): void {
   if (linhas.length === 0) return;
-  const tem = new Set(Object.keys(linhas[0]!));
-  const faltam = precisa.filter((c) => !tem.has(c));
+  // `in`, não `Object.keys`: a linha do armazenamento colunar (`linha-vista.ts`) tem as
+  // colunas físicas no PROTÓTIPO, e `Object.keys` devolve vazio para ela — a
+  // conferência recusava toda linha colunar como se lhe faltasse tudo. Só aparecia
+  // na API: `snapshot:calculadas` carrega em modo objeto (ACHADOS #169).
+  const primeira = linhas[0]!;
+  const faltam = precisa.filter((c) => !(c in primeira));
   if (faltam.length > 0) {
     throw new Error(
       `Status Protocolo Dia (nativa): '${tabela}' chegou sem ${faltam.join(', ')}. ` +
@@ -218,6 +222,47 @@ export function statusProtocoloDia(
   return saida;
 }
 
+// ------------------------------------------------------------------- calendar
+//
+// Neste modelo `calendar` NÃO é calendário: é
+//
+//     DISTINCT ( SELECTCOLUMNS ( 'FIELD AGENDA', "Protocolo", [Protocolo], "Data", [Data] ) )
+//
+// — os pares (protocolo, dia agendado). É o eixo de colunas da VISÃO PRODUTIVA, e por
+// isso entra no tempo real junto com `Status Protocolo Dia` (ACHADOS #169): congelada,
+// uma agenda nova num dia que ainda não existia não viraria coluna.
+
+/** `DISTINCT` de (Protocolo, Data). Texto pelo collation do motor, data pelo instante. */
+export function calendarDaAgenda(fieldAgenda: readonly Record<string, Escalar>[]): Record<string, Escalar>[] {
+  if (fieldAgenda.length > 0) {
+    const primeira = fieldAgenda[0]!;
+    const faltam = ['protocolo', 'data'].filter((c) => !(c in primeira));
+    if (faltam.length > 0) {
+      throw new Error(`calendar (nativa): 'FIELD AGENDA' chegou sem ${faltam.join(', ')}. Carregue a forma completa.`);
+    }
+  }
+  const vistos = new Set<string>();
+  const saida: Record<string, Escalar>[] = [];
+  for (const l of fieldAgenda) {
+    const p = l['protocolo'] ?? null;
+    const d = l['data'] ?? null;
+    const k = `${chaveTexto(p)} ${d instanceof Date ? d.getTime() : chaveTexto(d)}`;
+    if (vistos.has(k)) continue;
+    vistos.add(k);
+    saida.push({ protocolo: p, data: d });
+  }
+  return saida;
+}
+
+/**
+ * A chave de partição comparável — a mesma regra de texto com que as traduções agrupam.
+ * Exportada para quem recalcula em parte (`carrega.ts`) separar as linhas pela MESMA
+ * igualdade que o agrupamento usa: duas regras dariam linha recalculada duplicada.
+ */
+export function chaveDeParticao(v: Escalar): string {
+  return chaveTexto(v);
+}
+
 // ------------------------------------------------------------------ o registro
 
 export interface TraducaoNativa {
@@ -231,6 +276,14 @@ export interface TraducaoNativa {
   /** As tabelas do modelo que ela lê, na ordem em que `calcula` as recebe. */
   fontes: string[];
   calcula(fontes: readonly Record<string, Escalar>[][]): Record<string, Escalar>[];
+  /**
+   * Toda linha de saída depende só das linhas de entrada com a MESMA chave — então dá
+   * para recalcular só as chaves que mudaram e manter o resto (`carrega.ts`, tempo
+   * real). `saida` é a coluna da chave na tabela calculada; `porFonte`, a coluna na
+   * mesma ordem de `fontes`. Declarar isto é afirmar a propriedade: a prova é rodar
+   * parcial e inteiro sobre o mesmo dado e comparar (`carrega-parcial.test.ts`).
+   */
+  particao?: { saida: string; porFonte: string[] };
 }
 
 const TRADUCOES: TraducaoNativa[] = [
@@ -241,6 +294,16 @@ const TRADUCOES: TraducaoNativa[] = [
     shaConferido: 'c9d50d2e4db53199',
     fontes: ['FIELD AGENDA', 'PROTOCOLOS GERAL'],
     calcula: ([fa, pg]) => statusProtocoloDia(fa ?? [], pg ?? []),
+    // Os quatro mapas de `statusProtocoloDia` são chaveados por (protocolo, dia): uma
+    // linha de saída nunca lê linha de outro protocolo.
+    particao: { saida: 'protocolo', porFonte: ['protocolo', 'n°protocolo'] },
+  },
+  {
+    tabela: 'calendar',
+    shaConferido: 'f0851493f7a3ef8b',
+    fontes: ['FIELD AGENDA'],
+    calcula: ([fa]) => calendarDaAgenda(fa ?? []),
+    particao: { saida: 'protocolo', porFonte: ['protocolo'] },
   },
 ];
 
