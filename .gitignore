@@ -26,9 +26,3 @@ Thumbs.db
 
 # Perfis de CPU do `--cpu-prof`, gerados por sessão de medição.
 scratch-prof/
-
-# Clone de OUTRO projeto (dev_ReactJS_CommercialDashboards) largado dentro desta
-# arvore. Tem o proprio .git/, entao `git add` o transformaria num gitlink
-# apontando para um commit que nao existe neste remoto -- submodulo quebrado, nao
-# codigo. Ignorado ate alguem move-lo para fora.
-/dados_ReactJS_CommercialDashboards/
