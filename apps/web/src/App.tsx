@@ -822,14 +822,14 @@ export function App() {
         {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas
             que a spec traz para ela, 28 não têm número — a tela gerada renderizava
             DOIS cartões de indicador num vazio. O componente que a substitui existia
-            desde 26/08 e nunca foi importado; os dois KPIs continuam abaixo, porque
-            são dado de verdade. */}
+            desde 26/08 e nunca foi importado; os dois KPIs são dado de verdade e
+            continuam na tela, como selo da faixa da capa. */}
         {atual === 'capa' ? (
-          <Capa dadoDe={paginaValida?.dadoDe ?? null} queriesSaude={saude?.refresh?.queries} />
+          <Capa dadoDe={paginaValida?.dadoDe ?? null} saude={saude} telas={paginas.length} visuais={visuais} />
         ) : null}
 
-        {/* Faixa de KPIs em Grid Responsivo */}
-        <KpiGridSection layout={layout} visuais={visuais} />
+        {/* Faixa de KPIs em Grid Responsivo. Na CAPA os dois KPIs viram selo da faixa. */}
+        {atual === 'capa' ? null : <KpiGridSection layout={layout} visuais={visuais} />}
 
         {/* Seção de Gráficos, Matrizes e Análise Detalhada.
             O `div` existe para medir: é dele que sai `--h-antes`, a distância do topo
