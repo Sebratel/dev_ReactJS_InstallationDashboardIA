@@ -277,18 +277,17 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     assert.ok(j.refresh.queries.length > 0);
 
     // Grupo frio com falha marca a query do grupo como falhou com erro
-    const fieldSlot = j.refresh.queries.find((q: any) => q.id === 'field-agenda-slot');
-    assert.ok(fieldSlot);
-    assert.equal(fieldSlot.status, 'falhou');
-    assert.equal(fieldSlot.erro, 'ECONNRESET');
+    // Exemplos do `frio` desde a reorganização de 02/10/2026 (`refresh.yaml`): as 8 do
+    // poller. `field-agenda-slot` e `protocolos-produtividade` eram os exemplos e saíram dele.
+    const aux = j.refresh.queries.find((q: any) => q.id === 'protocolos-auxiliares');
+    assert.ok(aux);
+    assert.equal(aux.status, 'falhou');
+    assert.equal(aux.erro, 'ECONNRESET');
 
-    // `protocolos-produtividade` está no grupo `frio` desde 13/09/2026, então segue o
-    // grupo como qualquer outra query dele. Era o exemplo de "query sem grupo" aqui, e
-    // deixou de servir: com o frio falhando, ela reporta `falhou`, não `vencida`.
-    const prod = j.refresh.queries.find((q: any) => q.id === 'protocolos-produtividade');
-    assert.ok(prod);
-    assert.equal(prod.status, 'falhou');
-    assert.equal(prod.erro, 'ECONNRESET');
+    const reinc = j.refresh.queries.find((q: any) => q.id === 'reincidencia');
+    assert.ok(reinc);
+    assert.equal(reinc.status, 'falhou');
+    assert.equal(reinc.erro, 'ECONNRESET');
 
     // **`field-agenda` entrou no grupo `frio` em 22/09/2026** (ACHADOS #145: os
     // 21min49s que a mantinham fora morreram no #86, e o arquivo custa 4min21s).

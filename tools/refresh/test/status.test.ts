@@ -97,16 +97,16 @@ test('montaStatusDeRefresh expõe queries[] com status, idades e falhas (Contrat
   assert.equal(contratos.status, 'falhou');
   assert.equal(contratos.erro, 'ECONNRESET');
 
-  // Queries do grupo medio (ex: troca-endereco) devem estar ok com última carga recente
-  const trocaEndereco = res.queries.find((q) => q.id === 'troca-endereco');
-  assert.ok(trocaEndereco);
-  assert.equal(trocaEndereco.status, 'ok');
-  assert.equal(trocaEndereco.idadeDias, 0);
+  // Queries do grupo medio (ex: protocolos-geral) devem estar ok com última carga recente
+  const geral = res.queries.find((q) => q.id === 'protocolos-geral');
+  assert.ok(geral);
+  assert.equal(geral.status, 'ok');
+  assert.equal(geral.idadeDias, 0);
 
-  // protocolos-produtividade sem carga recente entra como vencida
-  const prod = res.queries.find((q) => q.id === 'protocolos-produtividade');
-  assert.ok(prod);
-  assert.equal(prod.status, 'vencida');
+  // Query de grupo sem carga registrada (ex: field-agenda, no frio) entra como vencida
+  const fa = res.queries.find((q) => q.id === 'field-agenda');
+  assert.ok(fa);
+  assert.equal(fa.status, 'vencida');
 });
 
 // ------------------------------------------------ "parado" e "falhando" (ACHADOS #160)
@@ -133,9 +133,9 @@ test('grupo PARADO além de 2× o intervalo vira vencida, com a hora do último 
   assert.equal(contratos.status, 'vencida');
   assert.equal(contratos.paradaDesde, '2026-09-28T11:29:00.000Z');
   assert.equal(contratos.grupo, 'quente');
-  const troca = qs.find((x) => x.id === 'troca-endereco')!; // medio, 20 min → régua 40 min
-  assert.equal(troca.status, 'ok');
-  assert.equal(troca.paradaDesde, undefined);
+  const geral = qs.find((x) => x.id === 'protocolos-geral')!; // medio, 30 min → régua 60 min
+  assert.equal(geral.status, 'ok');
+  assert.equal(geral.paradaDesde, undefined);
 });
 
 test('resumeDegradacao: um motivo por grupo, não um por query', () => {

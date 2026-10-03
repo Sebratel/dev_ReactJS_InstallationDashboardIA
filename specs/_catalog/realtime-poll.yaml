@@ -113,7 +113,10 @@ formato: 1
 queries:
   protocolos-auxiliares:
     tabela: PROTOCOLOS AUXILIARES
-    intervalo_ms: 12000
+    # 12 s → 30 s: Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
+    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
+    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    intervalo_ms: 30000
     # Folga contra relógio torto — mesmo papel de margem_dias em incremental.yaml,
     # só que em segundos porque a marca aqui é timestamp, não dia.
     margem_segundos: 30
@@ -222,7 +225,10 @@ queries:
   # idêntico à query original sem costura nenhuma.
   instalacoes-reincidentes:
     tabela: "INSTALAÇÕES REINCIDENTES"
-    intervalo_ms: 30000
+    # 30 s → 2 min: 3,2 s por volta. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
+    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
+    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    intervalo_ms: 120000
     margem_segundos: 30
     chave: [protocolo_instalacao]
     marca: [_marca_instalacao, _marca_manutencao]
@@ -318,7 +324,10 @@ queries:
   # query original.
   reincidencia:
     tabela: "REINCIDÊNCIA"
-    intervalo_ms: 30000
+    # 30 s → 2 min: 5,9 s por volta, 12 min/h sozinha. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
+    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
+    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    intervalo_ms: 120000
     margem_segundos: 30
     chave: [service_tag]
     marca: [_marca_instalacao, _marca_suporte]

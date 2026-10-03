@@ -220,6 +220,37 @@
 # suspensões numa seção própria.
 # ═══════════════════════════════════════════════════════════════════════════════
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# REORGANIZADO EM 02/10/2026 — SNAPSHOT DE MADRUGADA + POLLER + INCREMENTAL
+# (docs/PLANO-MESTRE.md; docs/PLANO-CARGA.md §3)
+#
+# O dia deixou de ser "tudo de 15 em 15 a 30 em 30 min". A carga de referência é o
+# snapshot completo das 03:00 de Brasília (`docker/cron/crontab-snapshot-diario`, com
+# as 23 queries). De dia, cada query fica onde o custo e o frescor pedem:
+#
+#   quente  15 min  as baratas que mudam de dia e não têm poll (< ~17 s cada)
+#   medio   30 min  as pesadas que alimentam o número principal, juntas porque o M
+#                   de `backlog-agendado-futuro` junta com PROTOCOLOS GERAL (mesma
+#                   idade, ver o comentário do `medio`), e `alocacao-patrimonio` vai
+#                   com elas pelo mesmo motivo
+#   frio    60 min  as 8 do poller (`realtime-poll.yaml`). Quem dá frescor a elas é o
+#                   poll; a hora é REDE DE SEGURANÇA até um dia útil provar o poller
+#                   contra a carga (PLANO-MESTRE, passo 5). Depois, saem daqui.
+#
+# Por que agora: o poller sozinho custava 38,6 min de banco por hora (medido em
+# 02/10, `/api/saude` porQuery) e o refresh ~21 — e desde 02/10 a primeira busca do
+# poller parte da carga em disco (`#partida` em `poller-realtime.ts`), então um
+# reinício da API não abre mais a fresta descrita no comentário do `frio` abaixo.
+#
+# Conta (médias das cargas de 02/10): quente ~32 s × 4 + medio ~320 s × 2 + frio
+# ~131 s × 1 ≈ 15 min/h de banco, contra ~21 antes. Pior tick (os três juntos)
+# ≈ 512 s em 900 s, abaixo dos 601 s já observados (ver o comentário do `medio`).
+#
+# **Os comentários de cada grupo abaixo são o histórico das medições da composição
+# ANTERIOR** (quem estava em qual grupo e por quê). As regras deles continuam valendo:
+# grupo novo derruba o cache inteiro por ciclo; custo é bytes ÷ banda; meça o grupo.
+# ═══════════════════════════════════════════════════════════════════════════════
+
 formato: 1
 
 grupos:
@@ -264,13 +295,15 @@ grupos:
   # do `medio`).
   quente:
     queries:
-      - protocolos-telefonia
       - contratos
       - contratos-telefonia
       - consolidado-clientes
       - feriados
       - hora-atualizado
       - backlog-instalacao
+      - field-agenda-slot
+      - capacidade-equipe
+      - apuracao-premiacao
     intervalo_minutos: 15
     incremental: false
 
@@ -390,18 +423,13 @@ grupos:
   # de dado pessoal em troca de nada.
   medio:
     queries:
-      - troca-endereco
-      - instalacoes-reincidentes
-      - tecnicos-auxiliares
-      - retorno-prioritario
       - alocacao-patrimonio
       - base-categorias-field
-      - reincidencia
       - protocolos-geral
       - backlog-agendado-futuro
-      - capacidade-equipe
-      - apuracao-premiacao
-    intervalo_minutos: 20
+      - protocolos-produtividade
+      - clima-tempo
+    intervalo_minutos: 30
     incremental: false
 
   # `field-agenda-slot` (achado #87): mesma origem de `field-agenda`
@@ -463,6 +491,9 @@ grupos:
   # Medido em 18/09: snapshot de 16/09 14:32, API subida em 17/09 13:49, **495 linhas
   # na fresta** (263 delas linhas novas que simplesmente faltavam no arquivo).
   #
+  # **FECHADA NA ORIGEM EM 02/10/2026:** a primeira busca do poller parte do `geradoEm` do
+  # manifesto (`#partida`), não do arranque. O grupo continua como rede de segurança.
+  #
   # Ela veio para o `frio` e nao para o `quente` de proposito: quem da frescor e o
   # poll; o grupo so precisa fazer a marca alcancar o arranque, e 30 min basta para
   # isso. Medido em 18/09, o grupo inteiro com ela dentro (um processo, `--refazer`):
@@ -510,10 +541,13 @@ grupos:
   # apagada na fonte sem rastro de data.
   frio:
     queries:
-      - field-agenda-slot
       - field-agenda
-      - clima-tempo
-      - protocolos-produtividade
       - protocolos-auxiliares
-    intervalo_minutos: 30
+      - protocolos-telefonia
+      - troca-endereco
+      - tecnicos-auxiliares
+      - retorno-prioritario
+      - instalacoes-reincidentes
+      - reincidencia
+    intervalo_minutos: 60
     incremental: [field-agenda]
