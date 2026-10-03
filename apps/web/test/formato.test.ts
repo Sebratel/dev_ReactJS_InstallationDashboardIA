@@ -5,7 +5,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { dataHora, diasDesde, duracao, formata, inteiro } from '../src/utils/formato.ts';
+import { dataHora, diasDesde, duracao, formata, haQuanto, inteiro } from '../src/utils/formato.ts';
 
 test('BLANK vira travessão e é marcado como vazio, não como zero', () => {
   // Um BLANK desenhado como "0" seria um número inventado. A tela precisa saber que
@@ -99,4 +99,14 @@ test('duração escolhe a unidade que cabe', () => {
   assert.equal(duracao(350), '350 ms');
   assert.equal(duracao(2358), '2.4 s');
   assert.equal(duracao(6_240_000), '104 min 00 s');
+});
+
+test('haQuanto dá a idade curta da capa, e travessão quando não há data', () => {
+  const agora = Date.parse('2026-10-02T12:00:00Z');
+  assert.equal(haQuanto(null, agora), '—');
+  assert.equal(haQuanto('xx', agora), '—');
+  assert.equal(haQuanto('2026-10-02T11:59:40Z', agora), 'agora');
+  assert.equal(haQuanto('2026-10-02T11:57:00Z', agora), 'há 3min');
+  assert.equal(haQuanto('2026-10-02T09:30:00Z', agora), 'há 2h');
+  assert.equal(haQuanto('2026-09-28T12:00:00Z', agora), 'há 4d');
 });

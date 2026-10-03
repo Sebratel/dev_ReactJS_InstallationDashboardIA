@@ -41,9 +41,19 @@ export function listaCurta(ids: readonly string[]): string {
   return ids.length <= 3 ? ids.join(', ') : `${ids.slice(0, 3).join(', ')} e mais ${ids.length - 3}`;
 }
 
+/** Um grupo do agendador de refresh, como `GET /api/saude` o publica em `agendador.grupos`. */
+export interface GrupoAgendado {
+  id: string;
+  intervaloMinutos: number;
+  ultimoSucesso: string | null;
+}
+
 export interface RespostaSaude {
   refresh?: {
     queries: QuerySaude[];
+  };
+  agendador?: {
+    grupos: GrupoAgendado[];
   };
 }
 

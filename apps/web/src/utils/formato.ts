@@ -126,6 +126,18 @@ export function diasDesde(iso: string | null): number | null {
   return (Date.now() - d.getTime()) / 86_400_000;
 }
 
+/** "há 3min", "há 2h", "há 4d" — idade curta de um ISO, para a capa. */
+export function haQuanto(iso: string | null | undefined, agora: number = Date.now()): string {
+  if (!iso) return '—';
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return '—';
+  const min = Math.max(0, Math.floor((agora - t) / 60_000));
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `há ${h}h` : `há ${Math.floor(h / 24)}d`;
+}
+
 /**
  * Duração em ms, na unidade que cabe.
  *
