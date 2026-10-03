@@ -11,7 +11,9 @@
 2. A carga no `dbVoalle` fica **abaixo de ~10 min/h** de consulta pesada, poller incluído e medido.
 3. Os números batem com o **`INST - Relatório Instalação`**, ou a divergência foi decidida e
    anotada. As perguntas que só a operação responde estão fechadas.
-4. O Erick promoveu `staging` → `main` e o Power BI pode ser desligado.
+4. **Rápido e ao vivo** (pedido do Erick, 02/10): entrar em qualquer página é instantâneo, sem
+   "carregando…", e os números mudam na tela sozinhos, sem atualizar. Ver a §R.
+5. O Erick promoveu `staging` → `main` e o Power BI pode ser desligado.
 
 A fase F (padrões de frontend, fases 2–6) **não bloqueia** o "terminado". Ela melhora a
 manutenção e pode correr depois do go-live.
@@ -23,18 +25,19 @@ manutenção e pode correr depois do go-live.
 | 0 | Arrumar a casa | ✅ 02/10 | este arquivo, §0 |
 | A | VISÃO PRODUTIVA em tempo real | ⏳ **próxima**: etapa 1 ✅, etapa 2 falta | `ACHADOS.md` #166–#171 |
 | B | Carga leve no banco | 🟡 **em andamento**: modelo madrugada + poller no ar desde 02/10, falta a prova de dia | `PLANO-CARGA.md` §3, fases 1 e 2 |
+| R | Rápido e ao vivo | 🔴 medido em 02/10, nada feito ainda | este arquivo, §R |
 | C | Produção no Portainer | 🔴 não começou (autonomia 1–4 ✅) | `PLANO-CARGA.md` §3 fase 3 + `PLANO-AUTONOMIA.md` etapa 5 |
 | D | Validação com o negócio | 🟡 trilha paralela, depende de pessoas | `PERGUNTAS-NEGOCIO.md` |
-| E | Go-live | 🔴 depende de A, B, C e D | este arquivo, §E |
+| E | Go-live | 🔴 depende de A, B, R, C e D | este arquivo, §E |
 | F | Padrões de frontend 2–6 | 🟡 fase 1 ✅ no staging | `PLANO-PADROES-FRONTEND.md` |
 
-Ordem: **0 → A → B → C → E**, com a **D correndo em paralelo desde já** (ela espera
+Ordem: **0 → A → B → R → C → E**, com a **D correndo em paralelo desde já** (ela espera
 resposta do Fabrício, não código). A F entra nas brechas ou depois do go-live.
 
 ```
-0 ──► A ──► B ──► C ──► E (go-live)
-                         ▲
-D (negócio) ─────────────┘
+0 ──► A ──► B ──► R ──► C ──► E (go-live)
+                               ▲
+D (negócio) ───────────────────┘
 F (frontend) ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ (não bloqueia)
 ```
 
@@ -122,6 +125,51 @@ foi desligado antes de o substituto provar.
 - [ ] **B.7 (2.3)** `protocolos-auxiliares`: reavaliar com o número da B.1.
 
 **Pronto quando:** < 10 min/h de consulta pesada no banco, **com o poller somado**.
+
+## §R — Rápido e ao vivo
+
+**O pedido (Erick, 02/10):** "após entrar carrega na hora, e sensação de realtime: os números
+mudam na tela sem atualizar". A regra de antes continua valendo: nada de "carregando…" ao
+entrar, com tudo pré-calculado, e o custo disso é aceito.
+
+**Medido em 02/10, ~23:00**, no navegador, com sessão nova em cada página e 1366×768:
+
+| situação | tempo até a página ficar pronta |
+|---|---|
+| cache quente (agora) | **0,8 a 2,3 s** nas 14 páginas; o HTML sozinho leva 350–700 ms |
+| durante um refresh | a `telefonia-ouvidoria` passou de **30 s só para entregar o HTML** |
+| logo depois de a API subir | 20–40 s (a `agendamento-field` às ~15:00) |
+
+E o que derruba o cache: **o carimbo do snapshot mudou 25 vezes em 18 min**. Cada tabela
+gravada pelo refresh derruba o cache de TODAS as páginas, e o aquecedor recomeça ("o snapshot
+mudou durante o aquecimento — refazendo"). Ele aquece 11 das 14 páginas.
+
+Ao vivo hoje: 8 tabelas no poller, com 12 s a 2 min de atraso. O número principal (instalados,
+da `PROTOCOLOS GERAL`) muda a cada 30 min.
+
+Em ordem de impacto no que se sente:
+
+- [ ] **R.1 Sem picos ao entrar.**
+      - O Nginx serve a tela (HTML, JS, CSS) direto do `dist`, sem passar pela API. Hoje a
+        mesma thread que calcula é a que entrega o HTML.
+      - O refresh grava as tabelas de um grupo e troca o carimbo UMA vez por grupo, não uma vez
+        por tabela.
+      - O cache só cai nas páginas que usam a tabela que mudou.
+      *Pronto quando:* com o refresh rodando, nenhuma página passa de ~2 s para ficar pronta.
+- [ ] **R.2 Filtros prontos ao entrar.** É a C.2: achar o cálculo de > 2,7 GB e religar
+      `AQUECE_FILTROS_ATE`. *Pronto quando:* nenhum "carregando…" ao entrar.
+- [ ] **R.3 As 14 páginas aquecidas, e o cache sobrevive a um reinício.** Hoje são 11, e a
+      API reiniciada volta fria. *Pronto quando:* reiniciar a API e a primeira abertura de
+      cada página continuar em ~1 s.
+- [ ] **R.4 Número principal ao vivo.**
+      - A sentinela (B.1b) deixa o poller barato o bastante para ~10–15 s em tudo.
+      - Entram no poller a `protocolos-geral` e a `alocacao-patrimonio` (fase A).
+      *Pronto quando:* um protocolo instalado aparece nos cartões em ≤ ~30 s, sem F5.
+- [ ] **R.5 O número troca suave na tela**, sem piscar nem recarregar o cartão.
+
+Estimativa: 6 a 9 sessões. A R.1 é a que mais muda a sensação e cabe em uma. Instrumento
+de medida: os scripts `mede-tela` (navegador, tempo até o `.selo`) e `mede-paginas` (API)
+usados em 02/10. Versioná-los em `tools/tela/` é o primeiro passo da R.1.
 
 ## §C — Produção no Portainer
 
