@@ -1,0 +1,57 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: capacidade-equipe
+name: CAPACIDADE EQUIPE
+query_ref: capacidade-equipe
+table_dax: null
+columns:
+- name: DATA
+  type: dateTime
+  format: Short Date
+  source_column: DATA
+  calculated: false
+  dax: null
+- name: "TÉCNICO 1"
+  type: string
+  format: null
+  source_column: "TÉCNICO 1"
+  calculated: false
+  dax: null
+- name: "TÉCNICO 2"
+  type: string
+  format: null
+  source_column: "TÉCNICO 2"
+  calculated: false
+  dax: null
+- name: EQUIPE
+  type: string
+  format: null
+  source_column: EQUIPE
+  calculated: false
+  dax: null
+- name: BASE DE ORIGEM
+  type: string
+  format: null
+  source_column: BASE DE ORIGEM
+  calculated: false
+  dax: null
+- name: GERENTE/SUPERVISOR
+  type: string
+  format: null
+  source_column: GERENTE/SUPERVISOR
+  calculated: false
+  dax: null
+- name: "CAPACIDADE MANHÃ"
+  type: int64
+  format: "0"
+  source_column: "CAPACIDADE MANHÃ"
+  calculated: false
+  dax: null
+- name: CAPACIDADE TARDE
+  type: int64
+  format: "0"
+  source_column: CAPACIDADE TARDE
+  calculated: false
+  dax: null
+measure_count: 0

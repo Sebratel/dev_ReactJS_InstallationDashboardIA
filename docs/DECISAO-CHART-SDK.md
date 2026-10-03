@@ -35,7 +35,7 @@ dependência nova?
 
 ## O que já existe hoje, em número
 
-Contagem exata dos 16 gráficos (`conteudo: grafico`) nos 14 `specs/golden/layout/*.json`,
+Contagem exata dos 16 gráficos (`conteudo: grafico`) nos 14 `backend/specs/golden/layout/*.json`,
 por tipo original do PBIP:
 
 | tipo (PBIP) | quantos |
@@ -161,7 +161,7 @@ peças por cima dela mesmo assim — o ganho nunca chegaria a "menos código", s
 
 Não há troca: os 16 gráficos e os 6 usos novos da Fase L6 continuam exatamente como
 estão, com os mesmos testes (1461/1461 na Fase L6) e o mesmo golden
-(`specs/golden/layout/`). O critério fecha por não ter o que quebrar.
+(`backend/specs/golden/layout/`). O critério fecha por não ter o que quebrar.
 
 ## Quando reabrir esta decisão
 

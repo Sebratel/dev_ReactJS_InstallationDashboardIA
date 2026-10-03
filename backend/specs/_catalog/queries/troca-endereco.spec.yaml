@@ -1,0 +1,62 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: troca-endereco
+name: "TROCA ENDEREÇO"
+origin: expression
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  WITH PERSONALIZADO AS (
+      SELECT 
+          p.name AS "TÉCNICO", 
+          ai.protocol AS "PROTOCOLO", 
+          r.final_date AS "DATA DA TROCA", 
+          c.contract_number AS "CONTRATO",
+          a.modified AS "_MARCA_REALTIME",
+          ROW_NUMBER() OVER (
+              PARTITION BY ai.protocol 
+              ORDER BY r.final_date DESC
+          ) AS PERSONA1
+      FROM assignments a
+      LEFT JOIN assignment_incidents ai 
+          ON ai.assignment_id = a.id
+      LEFT JOIN reports r 
+          ON r.assignment_id = a.id
+      LEFT JOIN people p 
+          ON p.id = r.person_id
+      LEFT JOIN contract_service_tags cst 
+          ON cst.id = ai.contract_service_tag_id
+      LEFT JOIN contracts c 
+          ON c.id = cst.contract_id
+      LEFT JOIN incident_types it 
+          ON it.id = ai.incident_type_id
+      WHERE 
+          -- 25/09/2026: desde 2025, como protocolos-geral; o corte no ano corrente deixava instalado de 2025 sem data (ACHADOS #152)
+          DATE(r.final_date) >= '2025-01-01'
+          AND it.id in ('15', '1256')
+          AND (
+              r.description LIKE '%O condomínio é adequado?%'
+              OR r.description LIKE '%Foi feita a instalação?%'
+          )
+  )  -- <<< fecha a CTE aqui
+  SELECT 
+      * 
+  FROM PERSONALIZADO
+  WHERE PERSONA1 = 1;
+url: null
+sheet: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- assignments
+- contract_service_tags
+- contracts
+- incident_types
+- people
+- reports
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "WITH PERSONALIZADO AS (#(lf)    SELECT #(lf)        p.name AS ""TÉCNICO"", #(lf)        ai.protocol AS ""PROTOCOLO"", #(lf)        r.final_date AS ""DATA DA TROCA"", #(lf)        c.contract_number AS ""CONTRATO"",#(lf)        ROW_NUMBER() OVER (#(lf)            PARTITION BY ai.protocol #(lf)            ORDER BY r.final_date DESC#(lf)        ) AS PERSONA1#(lf)    FROM assignments a#(lf)    LEFT JOIN assignment_incidents ai #(lf)        ON ai.assignment_id = a.id#(lf)    LEFT JOIN reports r #(lf)        ON r.assignment_id = a.id#(lf)    LEFT JOIN people p #(lf)        ON p.id = r.person_id#(lf)    LEFT JOIN contract_service_tags cst #(lf)        ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN contracts c #(lf)        ON c.id = cst.contract_id#(lf)    LEFT JOIN incident_types it #(lf)        ON it.id = ai.incident_type_id#(lf)    WHERE #(lf)        DATE(r.final_date) >= '2026-01-01'#(lf)        AND it.id in ('15', '1256')#(lf)        AND (#(lf)            r.description LIKE '%O condomínio é adequado?%'#(lf)            OR r.description LIKE '%Foi feita a instalação?%'#(lf)        )#(lf))  -- <<< fecha a CTE aqui#(lf)SELECT #(lf)    * #(lf)FROM PERSONALIZADO#(lf)WHERE PERSONA1 = 1;#(lf)"),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"DATA DA TROCA", type date}})
+  in
+      #"Tipo Alterado"

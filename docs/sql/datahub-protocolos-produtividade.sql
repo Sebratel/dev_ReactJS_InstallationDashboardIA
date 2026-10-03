@@ -25,7 +25,7 @@
 -- O Data Hub SAIU. `protocolos-produtividade` voltou a ser `datasource: dbVoalle`
 -- e o campo `sql:` da spec e uma copia deste arquivo. Quem executa e o campo
 -- `sql:` -- NAO o texto dentro do `Odbc.Query(...)` do `m_expression`, que so
--- nomeia o passo (ver packages/transform-engine/src/fonte.ts).
+-- nomeia o passo (ver backend/packages/transform-engine/src/fonte.ts).
 --
 -- **OS NUMEROS MUDARAM, E E ESPERADO.** O DataHub aplicava uma regra mais estreita
 -- e o snapshot dele estava parado em julho:
@@ -52,13 +52,13 @@
 -- -----------------------------------------------------------------------------
 -- CARGA INCREMENTAL -- NAO MEXA NESTAS DUAS LINHAS SEM LER
 -- -----------------------------------------------------------------------------
--- `specs/_catalog/incremental.yaml` costura este SQL para buscar so o que mudou:
+-- `backend/specs/_catalog/incremental.yaml` costura este SQL para buscar so o que mudou:
 -- 190,3 s inteiro contra 24,9 s com janela de 7 dias (medido 25/08/2026,
 -- `npm run probe:custo-incremental -- --costura`). A costura ancora em duas linhas
 -- EXATAS deste arquivo, e por isso elas NAO sao repetidas aqui: a costura exige que
 -- cada ancora apareca UMA vez, e um comentario que copiasse o texto dela ja seria a
 -- segunda ocorrencia. (Aconteceu em 25/08/2026 -- a trava pegou.) As duas ancoras
--- estao escritas em `specs/_catalog/incremental.yaml`, no campo `de:`; sao a linha
+-- estao escritas em `backend/specs/_catalog/incremental.yaml`, no campo `de:`; sao a linha
 -- que abre a CTE `bruto` e a linha do filtro `a.created` dentro dela.
 --
 -- Editar qualquer uma delas NAO quebra em silencio: a costura conta as ocorrencias

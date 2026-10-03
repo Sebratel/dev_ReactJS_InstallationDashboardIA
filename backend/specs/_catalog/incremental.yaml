@@ -1,0 +1,232 @@
+# Carga incremental — MANTIDO POR HUMANOS.
+#
+# Fica aqui, e não em `backend/specs/_catalog/queries/*.spec.yaml`, pelo mesmo motivo de
+# `cache-policies.yaml` e `juncoes.yaml`: aquelas specs são GERADAS e
+# `npm run extract` as sobrescreve. "Quanto de histórico rebuscar" e "o que
+# identifica a linha" são decisões, não extração.
+#
+# Query que não aparece aqui **não é incremental**, e isso não é falta: é o estado
+# de 21 das 23 (01/10/2026: só `protocolos-produtividade` e `field-agenda` têm
+# política, e só a `field-agenda` está ligada no refresh — ver `refresh.yaml`).
+# `npm run snapshot -- --incremental` simplesmente busca inteiras as que não estão aqui.
+#
+# O motivo de cada campo está em `backend/packages/snapshot/src/incremental.ts`. O que
+# importa saber antes de acrescentar uma query:
+#
+#   1. a camada M dela precisa ser LINHA A LINHA. `protocolos-geral` não é
+#      (`Table.Distinct` e `Table.Sort` decidem sobre o conjunto inteiro), então
+#      ela não entra aqui mesmo sendo pesada;
+#   2. a `marca` tem de captar MODIFICAÇÃO, não só criação;
+#   3. a `chave` nomeia o grupo que a fonte reentrega junto — e a costura do SQL
+#      tem de garantir que ele venha inteiro.
+
+formato: 1
+
+queries:
+  # -------------------------------------------------------------------------
+  # protocolos-produtividade — 190,3 s inteira, 1,2 s com janela de 7 dias.
+  # Medido em 25/08/2026 por `npm run probe:custo-incremental`.
+  # -------------------------------------------------------------------------
+  protocolos-produtividade:
+    parametro: desde
+    # O piso do recorte de negócio: "só 2026". É o valor de `:desde` na carga
+    # completa, e o chão de que a incremental nunca desce.
+    piso: 'ano-corrente'
+    # A marca é o MÁXIMO das duas. `DATA ENCERRADO` é `a.modified` e é NULA em
+    # solicitação que nunca mudou — sozinha, ela perderia toda linha nova.
+    marca:
+      - DATA CRIADO
+      - DATA ENCERRADO
+    # `SOLICITACAO` (= `a.title`) é o que `PARTITION BY` usa para escolher quem
+    # sobrevive. A mesclagem apaga a solicitação inteira antes de inserir a nova,
+    # porque o append dos dois ramos entrega a mesma linha duas vezes DE PROPÓSITO
+    # e a contagem depende disso.
+    chave:
+      - SOLICITACAO
+    # Dois dias de folga porque a marca tem granularidade de DIA: o SELECT final
+    # faz `"DATA CRIADO"::date` e `"DATA ENCERRADO"::date`, então a marca de uma
+    # linha modificada às 14h é a meia-noite daquele dia. Um dia já bastaria; dois
+    # custam segundos e cobrem também registro lançado com data retroativa.
+    margem_dias: 2
+    # A incremental não enxerga linha que sumiu da fonte sem deixar data. Uma
+    # semana é o que se aceita andar sem uma carga completa por baixo.
+    idade_maxima_dias: 7
+
+    # -----------------------------------------------------------------------
+    # A costura: como o SQL completo vira o SQL incremental.
+    #
+    # `alvos` responde "quais solicitações mudaram desde :desde". São três ramos
+    # porque três coisas diferentes mudam a linha, e medir mostrou que uma só não
+    # basta (25/08/2026):
+    #
+    #   1. a própria solicitação — cobre 100% dos relatos, medido: todo relato
+    #      novo marca a solicitação-pai como modificada;
+    #   2. alocação de patrimônio — cobre os 15,8% que o ramo 1 NÃO pega. Só
+    #      84,2% das alocações recentes tocam a solicitação-pai, e as outras
+    #      mudariam `INSTALADO POR:` de um protocolo velho sem aviso;
+    #   3. técnico auxiliar (RAUX) — o relato mora na solicitação FILHA e casa com
+    #      a mãe pelo número do protocolo, então o ramo 1 nunca a alcançaria.
+    #
+    # `a.title IN (SELECT ...)` e não um `WHERE` por linha: ver a armadilha 2 em
+    # `incremental.ts` — 9,57% dos títulos de 2026 se repetem, e meia partição
+    # daria um PERSONA1 diferente.
+    # -----------------------------------------------------------------------
+    costura:
+      - de: 'WITH bruto AS ('
+        para: |
+          WITH alvos AS (
+              -- 1. a solicitação nasceu ou mudou.
+              SELECT DISTINCT a.title
+              FROM assignments a
+              WHERE a.created >= DATE_TRUNC('year', CURRENT_DATE)
+                AND GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde
+
+              UNION
+
+              -- 2. alocação de patrimônio nova ou mexida.
+              SELECT DISTINCT a.title
+              FROM patrimony_packing_list_items plis
+              JOIN patrimony_packing_lists ppl ON ppl.id = plis.patrimony_packing_list_id
+              JOIN assignments a ON a.id = ppl.assignment_id
+              WHERE a.created >= DATE_TRUNC('year', CURRENT_DATE)
+                AND GREATEST(plis.created, COALESCE(plis.modified, plis.created)) >= :desde
+
+              UNION
+
+              -- 3. relato de técnico auxiliar (RAUX): mora na filha, casa pelo
+              --    número do protocolo com as solicitações de 2026 que o carregam.
+              SELECT DISTINCT a.title
+              FROM reports r
+              JOIN assignments raux ON raux.id = r.assignment_id
+              JOIN assignment_incidents ai
+                    ON NULLIF(regexp_replace(r.tags::text, '\D', '', 'g'), '')::bigint = ai.protocol
+              JOIN assignments a ON a.id = ai.assignment_id
+              WHERE raux.assignment_type = 'RAUX'
+                AND raux.corresponding_parent_id IS NOT NULL
+                AND raux.final_date >= DATE_TRUNC('year', CURRENT_DATE)
+                AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+                AND GREATEST(raux.created, COALESCE(raux.modified, raux.created)) >= :desde
+          ),
+          bruto AS (
+      # A ÂNCORA VOLTOU AO ORIGINAL EM 27/08/2026, junto com o SQL de dois ramos.
+      #
+      # Entre 26 e 27/08 ela estava REBAIXADA, e o comentário aqui registrava isso
+      # como perda: o `sql:` da spec tinha voltado a ser o extraído do PBIP (100
+      # linhas, um ramo só, 70.868 linhas de resultado), porque um `git reset --hard`
+      # de outro agente apagou a cópia que estava na árvore de trabalho.
+      #
+      # **O original nunca esteve perdido.** Ele mora em
+      # `docs/sql/datahub-protocolos-produtividade.sql` (422 linhas), que diz no
+      # próprio cabeçalho: *"ESTE SQL É O QUE RODA EM PRODUÇÃO DESDE 25/08/2026 ... o
+      # campo `sql:` da spec é uma cópia deste arquivo"*. O que se perdeu foi a
+      # CÓPIA. O teste `sql-de-producao.test.ts` agora trava as duas juntas — sem ele,
+      # a próxima cópia se perde do mesmo jeito e ninguém vê.
+      #
+      # DUAS LINHAS NA ÂNCORA, e o motivo é sutil.
+      #
+      # A segunda linha traz o comentário `-- o mais largo dos dois ramos; cada um se
+      # recorta abaixo`, e ele NÃO é decoração: é o DESAMBIGUADOR. A costura roda em
+      # sequência, e a primeira insere o CTE `alvos` — cujo ramo 3 contém, ele
+      # próprio, `AND a.created >= '2026-01-01'` com a mesma indentação. Sem o
+      # comentário, a segunda âncora casaria duas vezes e a costura erraria alto
+      # (corretamente — ela é feita para errar alto).
+      #
+      # Há ainda um terceiro `it.id IN (...)` no CTE `alocacao` (linha ~232 do SQL),
+      # com outra lista de tipos. A âncora de duas linhas não o alcança.
+      - de: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo"
+        para: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo\n      AND a.title IN (SELECT title FROM alvos)"
+
+  # -------------------------------------------------------------------------
+  # field-agenda — a query mais pesada do corpus (226,9 s só de busca em 22/09,
+  # ACHADOS #145; banda de ~130 s a ~900 s, cancelada por timeout em 600 s no #148).
+  # O custo é REDE, não cálculo: ~360 MB, 630 mil linhas, 12 s de CPU em 10 min.
+  # Desenho e medição: ACHADOS #165 (01/10/2026).
+  # -------------------------------------------------------------------------
+  field-agenda:
+    parametro: desde
+    # A carga completa NÃO usa `:desde` (o recorte dela é a janela deslizante
+    # abaixo); o piso aqui só limita até onde `desdeDe` recua.
+    piso: '2026-01-01'
+    # Só colunas que NUNCA passam de agora — medido no arquivo de 01/10: zero
+    # valores futuros em cada uma. `Prazo SLA` (7.515 futuras) e `Slot Agenda`
+    # (1.940 futuras) ficam de fora: agenda é futuro por definição, e uma marca no
+    # futuro faz `decideIncremental` recusar ("a marca está no futuro").
+    marca:
+      - Data Criado
+      - Inicio relato
+      - Fim relato
+      - Data Relato
+    # Protocolo ↔ solicitação é 1:1 na janela (medido 01/10: 22.547 de cada, nenhum
+    # protocolo com duas). Recortar por solicitação entrega o protocolo INTEIRO —
+    # e tem de entregar: `RankDataProtocolo`/`RankAtualProtocolo` particionam por
+    # protocolo, e meia partição dá Rank errado e calado (ACHADOS #146).
+    chave:
+      - Protocolo
+    margem_dias: 2
+    idade_maxima_dias: 7
+    # A PRIMEIRA query com recorte DESLIZANTE na fonte. A completa traz só
+    # `Slot Agenda >= CURRENT_DATE - 3 meses`; a incremental não reentrega quem
+    # saiu da janela — sem este piso a linha velha ficaria no arquivo para sempre.
+    # A mesclagem descarta, das antigas, toda linha com `Slot Agenda` abaixo de
+    # (hoje em Brasília − meses), que é o que o `CURRENT_DATE` do banco faz (fuso
+    # do banco: localtime, -03, medido 01/10). `costura` erra alto se o SQL deixar
+    # de citar `INTERVAL '<meses> months'`.
+    piso_de_janela:
+      coluna: Slot Agenda
+      meses: 3
+    # `alvos`: as solicitações JÁ na janela (pelo histórico de atendimento, 240 MB
+    # — nunca varrer `assignments`/`reports`, 7 e 8,5 GB, sem índice em `modified`)
+    # que tiveram QUALQUER mudança desde `:desde`. Quatro ramos, um por fonte da
+    # view `v_service_desk_slots_productivity_informative` que tem data:
+    #
+    #   1. `assignments` — criação/modificação. É também o ÚNICO sinal de troca de
+    #      status: `assignment_incidents` (onde o status mora) não tem coluna de
+    #      data nenhuma. Quanto isso perde foi medido contra a carga completa (#165).
+    #   2. `fsm_attendance_history` — o histórico de atendimento NÃO tem
+    #      created/modified; as datas dele são de evento (início, fim, reserva).
+    #      Um play/fim novo cai aqui. Mudar UMA linha dele muda a solicitação
+    #      inteira: a view faz `lag`/`first_value`/`max` por solicitação.
+    #   3. `reports` — relato novo ou editado (o grão da tabela é slot × relato).
+    #   4. `service_desk_slots` — o `EXISTS` da view decide se o slot conta.
+    #
+    # `people`, `skills`, `regions`, `incident_types`, `incident_status` são
+    # cadastro; renomear um deles só aparece na carga completa (`idade_maxima_dias`).
+    costura:
+      - de: "AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')"
+        para: |-
+          AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
+            AND vsdspi.assignment_id IN (
+              WITH na_janela AS (
+                  SELECT DISTINCT fah.reserved_assignment_id AS id
+                  FROM fsm_attendance_history fah
+                  WHERE fah.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
+              )
+              -- 1. a solicitação nasceu ou mudou (inclui troca de status, ver acima).
+              SELECT j.id
+              FROM na_janela j
+              JOIN assignments a ON a.id = j.id
+              WHERE GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde
+              UNION
+              -- 2. evento novo no histórico de atendimento.
+              SELECT f.reserved_assignment_id
+              FROM fsm_attendance_history f
+              JOIN na_janela j ON j.id = f.reserved_assignment_id
+              WHERE GREATEST(f.begin_date, COALESCE(f.end_date, f.begin_date),
+                             COALESCE(f.reserved_date, f.begin_date)) >= :desde
+              UNION
+              -- 3. relato novo ou editado. `beginning_date` entra porque é a
+              --    `Data Relato` da marca: linha com marca na janela que não volta
+              --    é apagada como "sumida" (`mescla`), e sumir meia solicitação
+              --    quebraria o Rank por protocolo.
+              SELECT r2.assignment_id
+              FROM reports r2
+              JOIN na_janela j ON j.id = r2.assignment_id
+              WHERE GREATEST(r2.created, COALESCE(r2.modified, r2.created),
+                             COALESCE(r2.beginning_date, r2.created)) >= :desde
+              UNION
+              -- 4. slot criado ou mexido.
+              SELECT s.pre_reserved_assignment_id
+              FROM service_desk_slots s
+              JOIN na_janela j ON j.id = s.pre_reserved_assignment_id
+              WHERE GREATEST(s.created, COALESCE(s.modified, s.created)) >= :desde
+            )

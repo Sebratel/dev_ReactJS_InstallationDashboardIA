@@ -1,0 +1,39 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: base-categorias-field
+name: Base Categorias Field
+origin: table:Base Categorias Field
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  select 
+  	ai.protocol, 
+  	ai.beginning_service_date,
+  	ssc1.title categoria1,
+  	ssc2.title categoria2,
+  	ssc3.title categoria3,
+  	ssc4.title categoria3,
+  	ssc4.title categoria5
+  	from assignment_incidents ai
+  left join solicitation_category_matrices scm on scm.id = ai.solicitation_category_matrix_id
+  left join solicitation_service_categories ssc1 on ssc1.id = scm.service_category_id_1
+  left join solicitation_service_categories ssc2 on ssc2.id = scm.service_category_id_2
+  left join solicitation_service_categories ssc3 on ssc3.id = scm.service_category_id_3
+  left join solicitation_service_categories ssc4 on ssc4.id = scm.service_category_id_4
+  left join solicitation_service_categories ssc5 on ssc5.id = scm.service_category_id_5
+  where ai.beginning_service_date >= DATE_TRUNC('year', CURRENT_DATE)
+url: null
+sheet: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- solicitation_category_matrices
+- solicitation_service_categories
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "select #(lf)#(tab)ai.protocol, #(lf)#(tab)ai.beginning_service_date,#(lf)#(tab)ssc1.title categoria1,#(lf)#(tab)ssc2.title categoria2,#(lf)#(tab)ssc3.title categoria3,#(lf)#(tab)ssc4.title categoria3,#(lf)#(tab)ssc4.title categoria5#(lf)#(tab)from assignment_incidents ai#(lf)left join solicitation_category_matrices scm on scm.id = ai.solicitation_category_matrix_id#(lf)left join solicitation_service_categories ssc1 on ssc1.id = scm.service_category_id_1#(lf)left join solicitation_service_categories ssc2 on ssc2.id = scm.service_category_id_2#(lf)left join solicitation_service_categories ssc3 on ssc3.id = scm.service_category_id_3#(lf)left join solicitation_service_categories ssc4 on ssc4.id = scm.service_category_id_4#(lf)left join solicitation_service_categories ssc5 on ssc5.id = scm.service_category_id_5#(lf)where ai.beginning_service_date >= DATE_TRUNC('year', CURRENT_DATE)"),
+      #"Linhas Classificadas" = Table.Sort(Fonte,{{"beginning_service_date", Order.Descending}}),
+      #"Linhas Filtradas" = Table.SelectRows(#"Linhas Classificadas", each ([categoria2] <> null)),
+      #"Colunas Renomeadas" = Table.RenameColumns(#"Linhas Filtradas",{{"categoria32", "categoria4"}})
+  in
+      #"Colunas Renomeadas"

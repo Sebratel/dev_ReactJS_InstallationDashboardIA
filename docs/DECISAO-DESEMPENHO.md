@@ -135,7 +135,7 @@ Nenhuma das três era desperdício. A conta fecha em grão: 26.554 protocolos ×
    O que foi entregue no lugar: `FIELD AGENDA` é uma tabela com **dois arquivos**
    trocados por baixo (`field-agenda-slot` por padrão, `field-agenda` quando um
    visual toca uma das 7 colunas-gatilho), declarado em
-   `specs/_catalog/projecao.yaml`, bloco `grao_reduzido`.
+   `backend/specs/_catalog/projecao.yaml`, bloco `grao_reduzido`.
 
    **Auditado em 15/09/2026, contra o disco.** O fator 48x não expirou — hoje é
    **48,30x** (639.427 linhas, 13.238 pares distintos), contra 48,2x da medição de
@@ -211,8 +211,8 @@ montar. O plano acertou a ordem por um motivo e colheu outro.
 ### O que isso NÃO autoriza
 
 Trocar o formato muda o artefato em disco, o escritor, o leitor e o caminho
-incremental (`specs/_catalog/incremental.yaml`, a costura de
-`packages/snapshot/src/incremental.ts`). É trabalho de dias e **é decisão do Erick**,
+incremental (`backend/specs/_catalog/incremental.yaml`, a costura de
+`backend/packages/snapshot/src/incremental.ts`). É trabalho de dias e **é decisão do Erick**,
 não consequência automática desta medida. O que a medida faz é tirar o palpite da
 conversa.
 
@@ -224,7 +224,7 @@ conversão e voltar o `FORMATO_ATUAL` desfaz a decisão.
 
 ### O que foi feito
 
-- `packages/snapshot/src/formato.ts` — o layout (`{c,w,d,b}` por coluna, id de 1, 2
+- `backend/packages/snapshot/src/formato.ts` — o layout (`{c,w,d,b}` por coluna, id de 1, 2
   ou 4 bytes em base64 little-endian), os dois leitores e `converteParaFormato2`,
   que carrega o cabeçalho INTEIRO e muda só `formato`;
 - `npm run snapshot:converte` — confere célula a célula contra os arquivos reais e
@@ -340,7 +340,7 @@ recomendados hoje**: mudam o formato do arquivo para disputar 6,5%.
 > 61,2 MB inflados — e `field-agenda-slot`, que é o que a página abre por padrão
 > desde 02/09, tem **41.505**. O argumento não muda; só o tamanho da coisa.)*
 > `'FIELD AGENDA'[Relato]` voltou para a carga normal, e
-> `specs/_catalog/projecao.yaml` está vazio.
+> `backend/specs/_catalog/projecao.yaml` está vazio.
 
 Medido em 24/08/2026, processo frio, `agendamento-field`:
 
@@ -371,7 +371,7 @@ grandeza, a decisão se registra de novo — com a medição junto, como esta. O
 volta é declarar sob demanda por estimativa: foi assim que uma medição de 950 MB
 sobreviveu duas semanas a um arquivo de 120 MB.
 
-**Também mudou no servidor, no mesmo dia** (ver `apps/api/src/servidor.ts`):
+**Também mudou no servidor, no mesmo dia** (ver `backend/api/src/servidor.ts`):
 
 - `emVoo` — dois pedidos com a mesma chave de cache esperam o mesmo cálculo em vez de
   o repetirem. Antes, o aquecimento de fundo e o pedido do navegador calculavam a
@@ -387,7 +387,7 @@ sobreviveu duas semanas a um arquivo de 120 MB.
 ## O caso `Relato` — decidido em 10/08/2026 (histórico)
 
 > **DECIDIDO pelo Erick: sob demanda.** A página abre sem a tabela de relatos; quem
-> quiser os relatos os pede. Declarado em `specs/_catalog/projecao.yaml`.
+> quiser os relatos os pede. Declarado em `backend/specs/_catalog/projecao.yaml`.
 >
 > **A primeira ideia não funcionava, e vale registrar por quê.** O plano era buscar o
 > texto por linha, depois de paginar. Não dá: no `tableEx` 815c0959 o `Relato` entra
@@ -421,7 +421,7 @@ uma otimização.
 
 ## O que muda no harness de paridade
 
-O harness (`specs/paridade/<pagina>.yaml` + `npm run paridade`) ainda não existe, e esta
+O harness (`backend/specs/paridade/<pagina>.yaml` + `npm run paridade`) ainda não existe, e esta
 decisão **aumenta** a necessidade dele. O trabalho dele muda de nome:
 
 - **Antes:** provar que o número é idêntico ao do Power BI.

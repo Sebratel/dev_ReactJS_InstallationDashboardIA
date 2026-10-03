@@ -1,7 +1,7 @@
 # SOBREPOSIÇÃO LOCAL — NÃO É PRODUÇÃO, E O ARQUIVO EXISTE PARA DIZER ISSO.
 #
 # Por que existe. Desde 04/09/2026 a API RECUSA subir sem `GOOGLE_CLIENT_ID`
-# (`apps/api/src/portao-login.ts`), e o `.env` desta máquina tem a variável
+# (`backend/api/src/portao-login.ts`), e o `.env` desta máquina tem a variável
 # vazia. Então `docker-compose.prod.yml` sozinho **não sobe aqui — de
 # propósito**. Isso é a guarda funcionando, não um problema a contornar.
 #

@@ -1,0 +1,267 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: measures
+table: FIELD AGENDA
+id: field-agenda
+measures:
+- name: "# MEDIA AGENDADO"
+  format: null
+  display_folder: null
+  dax: |-
+    -- Contabiliza
+    VAR Total_Encerrados = DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO])
+
+    VAR Dias_Uteis_Ajustados = SUM('CALENDARIO INSTALADO'[PESO])
+
+    RETURN
+        IF(
+            Dias_Uteis_Ajustados > 0,
+            ROUND(DIVIDE(Total_Encerrados, Dias_Uteis_Ajustados), 0),
+            BLANK()
+        )
+- name: QtdProtocolosPorRankAtual
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR RankSelecionado = SELECTEDVALUE('FIELD AGENDA'[RankDataProtocolo])
+    RETURN
+    CALCULATE(
+        DISTINCTCOUNT('FIELD AGENDA'[protocolo]),
+        FILTER(
+            'FIELD AGENDA',
+            'FIELD AGENDA'[RankAtualProtocolo] = RankSelecionado
+        )
+    )
+- name: Qtd Protocolos Distintos
+  format: "0"
+  display_folder: null
+  dax: "DISTINCTCOUNT('FIELD AGENDA'[Protocolo])"
+- name: "Média Mensal Protocolos"
+  format: "0"
+  display_folder: null
+  dax: |-
+    AVERAGEX(
+        VALUES( 'FIELD AGENDA'[Data] 
+        ),
+        CALCULATE( DISTINCTCOUNT('FIELD AGENDA'[Protocolo]) )
+    )
+- name: "Protocolos Restantes no Mês"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR DataHoje = TODAY()
+    VAR FimMes = EOMONTH(DataHoje, 0)
+    RETURN
+    CALCULATE(
+        DISTINCTCOUNT('FIELD AGENDA'[Protocolo]),
+        'FIELD AGENDA'[Data] >= DataHoje &&
+        'FIELD AGENDA'[Data] <= FimMes
+    )
+- name: "# PROTOCOLOS ATÉ HOJE"
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        DISTINCTCOUNT('FIELD AGENDA'[Protocolo]),
+        'FIELD AGENDA'[Data] <= TODAY()
+    )
+- name: "# PROJEÇÃO AGENDADA FUTUROS"
+  format: null
+  display_folder: null
+  dax: |-
+    [# MEDIA AGENDADO] *
+    CALCULATE(
+        SUM('CALENDARIO INSTALADO'[PESO]),
+        DATESBETWEEN(
+            'CALENDARIO INSTALADO'[DATA INSTALADO],
+            TODAY(),
+            ENDOFMONTH('CALENDARIO INSTALADO'[DATA INSTALADO])
+        )
+    )
+- name: "# PROJEÇÃO AGENDADA RESTANTE"
+  format: null
+  display_folder: null
+  dax: |-
+    VAR DataHoje = TODAY()
+    VAR FimMes = EOMONTH(DataHoje, 0)
+    VAR DiasRestantes =
+        CALCULATE(
+            SUM('CALENDARIO INSTALADO'[PESO]),
+            DATESBETWEEN(
+                'CALENDARIO INSTALADO'[DATA INSTALADO],
+                DataHoje,
+                FimMes
+            )
+        )
+    RETURN
+    [# MEDIA AGENDADO] * DiasRestantes
+- name: "# PROJEÇÃO AGENDADA TOTAL"
+  format: null
+  display_folder: null
+  dax: "[# PROTOCOLOS ATÉ HOJE] + [# PROJEÇÃO AGENDADA RESTANTE]"
+- name: "Média Mensal Protocolos2"
+  format: null
+  display_folder: null
+  dax: |-
+    VAR Hoje = TODAY()
+    VAR AnoAtual = YEAR(Hoje)
+    VAR MesAtual = MONTH(Hoje)
+    RETURN
+    AVERAGEX(
+        FILTER(
+            VALUES('FIELD AGENDA'[Data]),
+            YEAR('FIELD AGENDA'[Data]) = AnoAtual &&
+            MONTH('FIELD AGENDA'[Data]) = MesAtual &&
+            'FIELD AGENDA'[Data] <= Hoje
+        ),
+        CALCULATE(
+            DISTINCTCOUNT('FIELD AGENDA'[Protocolo])
+        )
+    )
+- name: "Protocolos Manhã"
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        DISTINCTCOUNT( 'FIELD AGENDA'[Protocolo] ),
+        'FIELD AGENDA'[Turno] = "Manhã"
+    )
+- name: Protocolos Tarde
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        DISTINCTCOUNT( 'FIELD AGENDA'[Protocolo] ),
+        'FIELD AGENDA'[Turno] = "Tarde"
+    )
+- name: "#Qtd Agendado"
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        DISTINCTCOUNT(calendar[Protocolo])
+    )
+- name: QtdProtocolo
+  format: "0"
+  display_folder: null
+  dax: "COUNTROWS('PROTOCOLOS GERAL')"
+- name: QtdProtocoloFieldAgenda
+  format: "0"
+  display_folder: null
+  dax: |-
+    CALCULATE(
+        [QtdProtocolo],
+        TREATAS(VALUES('Field Agenda'[Protocolo]), 'PROTOCOLOS GERAL'[N°PROTOCOLO])
+    )
+- name: QtdProtocolos_Interseccao
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR ProtCalendario =
+        DISTINCT(
+            SELECTCOLUMNS(
+                calendar,
+                "Prot", calendar[Protocolo]
+            )
+        )
+    VAR ProtField =
+        DISTINCT(
+            SELECTCOLUMNS(
+                'FIELD AGENDA',
+                "Prot", 'FIELD AGENDA'[Protocolo]
+            )
+        )
+    VAR ProtComum =
+        INTERSECT( ProtCalendario, ProtField )
+    RETURN
+    COUNTROWS( ProtComum )
+- name: "##Qtd Produtivo"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Dia = SELECTEDVALUE ( calendar[Data] )
+    RETURN
+    CALCULATE (
+        DISTINCTCOUNT ( 'PROTOCOLOS GERAL'[N°PROTOCOLO] ),
+
+        -- instalação no dia
+        TRUNC ( 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] ) = Dia,
+
+        -- estava agendado no dia
+        TREATAS (
+            VALUES ( 'FIELD AGENDA'[protocolo] ),
+            'PROTOCOLOS GERAL'[N°PROTOCOLO]
+        ),
+
+        TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = Dia
+    )
+- name: "##Qtd Improdutivo"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Dia = SELECTEDVALUE ( calendar[Data] )
+    RETURN
+    CALCULATE (
+        DISTINCTCOUNT ( 'PROTOCOLOS GERAL'[N°PROTOCOLO] ),
+
+        -- NÃO instalado no dia
+        ISBLANK ( 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] )
+            || TRUNC ( 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] ) <> Dia,
+
+        -- protocolo teve relato improdutivo no dia
+        TREATAS (
+            CALCULATETABLE (
+                VALUES ( 'FIELD AGENDA'[protocolo] ),
+                'FIELD AGENDA'[CategoriaProdutividade] = "Improdutiva",
+                TRUNC ( 'FIELD AGENDA'[Data Relato] ) = Dia,
+                TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = Dia
+            ),
+            'PROTOCOLOS GERAL'[N°PROTOCOLO]
+        )
+    )
+- name: "##Qtd Sem Ação"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Dia = SELECTEDVALUE ( calendar[Data] )
+    VAR Produtivos =
+        CALCULATETABLE (
+            VALUES ( 'PROTOCOLOS GERAL'[N°PROTOCOLO] ),
+            TRUNC ( 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO] ) = Dia
+        )
+    VAR Improdutivos =
+        CALCULATETABLE (
+            VALUES ( 'FIELD AGENDA'[protocolo] ),
+            'FIELD AGENDA'[CategoriaProdutividade] = "Improdutiva",
+            TRUNC ( 'FIELD AGENDA'[Data Relato] ) = Dia,
+            TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = Dia
+        )
+    VAR Agendados =
+        CALCULATETABLE (
+            VALUES ( 'FIELD AGENDA'[protocolo] ),
+            TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = Dia
+        )
+    RETURN
+    COUNTROWS (
+        EXCEPT (
+            Agendados,
+            UNION ( Produtivos, Improdutivos )
+        )
+    )
+- name: "##Qtd Agendado"
+  format: "0"
+  display_folder: null
+  dax: |-
+    VAR Dia = SELECTEDVALUE ( calendar[Data] )
+    RETURN
+    CALCULATE (
+        DISTINCTCOUNT ( 'PROTOCOLOS GERAL'[N°PROTOCOLO] ),
+
+        -- protocolos que EXISTEM na agenda do dia
+        TREATAS (
+            VALUES ( 'FIELD AGENDA'[protocolo] ),
+            'PROTOCOLOS GERAL'[N°PROTOCOLO]
+        ),
+
+        TRUNC ( 'FIELD AGENDA'[Slot Agenda] ) = Dia
+    )

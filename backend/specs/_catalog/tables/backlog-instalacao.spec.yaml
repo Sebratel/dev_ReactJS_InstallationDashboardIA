@@ -1,0 +1,45 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: backlog-instalacao
+name: "BACKLOG INSTALAÇÃO"
+query_ref: backlog-instalacao
+table_dax: null
+columns:
+- name: TOTAL
+  type: int64
+  format: "0"
+  source_column: TOTAL
+  calculated: false
+  dax: null
+- name: DATA CRIADO
+  type: dateTime
+  format: General Date
+  source_column: DATA CRIADO
+  calculated: false
+  dax: null
+- name: TIPO DE PROTOCOLO
+  type: string
+  format: null
+  source_column: TIPO DE PROTOCOLO
+  calculated: false
+  dax: null
+- name: EQUIPE
+  type: string
+  format: null
+  source_column: EQUIPE
+  calculated: false
+  dax: null
+- name: DATA/HORA HOJE
+  type: dateTime
+  format: General Date
+  source_column: DATA/HORA HOJE
+  calculated: false
+  dax: null
+- name: DATA HOJE
+  type: dateTime
+  format: Long Date
+  source_column: DATA HOJE
+  calculated: false
+  dax: null
+measure_count: 0

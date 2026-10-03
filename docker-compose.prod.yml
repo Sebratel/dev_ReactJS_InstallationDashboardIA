@@ -42,7 +42,7 @@ services:
     # servem nesta faixa com RSS pico de 3137–3622 MB. O pai com 2048 MB estoura
     # na PRIMEIRA página, então 3072 não é folga — é piso.
     #
-    # `apps/api/test/piscina-workers.test.ts` falha se alguém mexer num dos três
+    # `backend/api/test/piscina-workers.test.ts` falha se alguém mexer num dos três
     # sem mexer nos outros. No Portainer, é `mem_limit` que aparece como o
     # "Memory limit" da stack — pedir menos que 6g é pedir OOM kill sob página
     # fria, e é falha que aparece como "às vezes a tela não abre".
@@ -69,7 +69,7 @@ services:
       # (ACHADOS #157). Só aqui: no `npm start` ninguém religaria.
       VIGIA_TRAVAMENTO_S: '120'
       # DESLIGA o agendador que a API passou a ter dentro do processo em 19/09/2026
-      # (apps/api/src/agendador.ts). AQUI, e só aqui — no host, `npm start` usa o
+      # (backend/api/src/agendador.ts). AQUI, e só aqui — no host, `npm start` usa o
       # padrão, que é ligado, e é isso que tirou a tarefa do Agendador de Tarefas do
       # Windows do caminho.
       #
@@ -84,7 +84,7 @@ services:
       # **E dois agendadores não podem coexistir**, que é a razão de isto ser
       # obrigatório e não uma preferência: os dois fariam read-modify-write no mesmo
       # `manifesto.json`, e um apagaria as tabelas que o outro acabou de registrar,
-      # sem erro nenhum (ver o topo de tools/refresh/src/tick.ts).
+      # sem erro nenhum (ver o topo de backend/tools/refresh/src/tick.ts).
       AUTO_REFRESH: 'false'
       # Na rede interna do compose o serviço redis chama-se 'redis', não localhost.
       # A senha é a mesma REDIS_PASSWORD que autentica o container `redis` logo
@@ -114,7 +114,7 @@ services:
     init: true
     # Explícito: o Compose v5.1.3 desta estação criava os contêineres com StopTimeout=1,
     # e o `docker stop` matava com SIGKILL no meio do desligamento (ACHADOS #157). 15 s
-    # fica acima do teto de 8 s de `apps/api/src/desligamento.ts`.
+    # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
     stop_grace_period: 15s
     restart: unless-stopped
     healthcheck:
@@ -132,7 +132,7 @@ services:
     # 256mb é chute conservador, NÃO medição (não há `INFO memory` de produção
     # ainda) — ajuste depois de observar o uso real. `allkeys-lru` porque toda
     # chave que este projeto grava já sai com TTL (`Cache.set` recusa
-    # `ttlSeconds<=0`, ver packages/query-engine/src/cache-redis.ts): expulsar a
+    # `ttlSeconds<=0`, ver backend/packages/query-engine/src/cache-redis.ts): expulsar a
     # menos usada antes do TTL vencer é a mesma degradação que o disjuntor já
     # assume em outro lugar — cache que perde entrada não é cache que erra.
     # `requirepass` é EXIGIDO (sem default): sem porta publicada o Redis já não
@@ -140,7 +140,7 @@ services:
     # nesta mesma rede depois — e o que se guarda aqui é resposta calculada
     # sobre dado de cliente (CPF/RG/endereço, ver o comentário do volume do
     # snapshot no serviço `api`). `up` falhando por falta de REDIS_PASSWORD é a
-    # mesma regra de `apps/api/src/portao-login.ts`: falha fechada, não em
+    # mesma regra de `backend/api/src/portao-login.ts`: falha fechada, não em
     # silêncio.
     command: >
       redis-server
@@ -166,7 +166,7 @@ services:
     restart: unless-stopped
 
   # Agendador Automático do Refresh Manager — materializa e atualiza o snapshot
-  # periodicamente de 15 em 15 minutos em background (specs/_catalog/refresh.yaml),
+  # periodicamente de 15 em 15 minutos em background (backend/specs/_catalog/refresh.yaml),
   # alimentando o volume compartilhado que a API lê, sem requerer crontab manual no host.
   refresh:
     build:
@@ -197,13 +197,13 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    command: ["node", "--max-old-space-size=1024", "tools/refresh/src/daemon.ts"]
+    command: ["node", "--max-old-space-size=1024", "backend/tools/refresh/src/daemon.ts"]
     # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
     # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
     init: true
     # Explícito: o Compose v5.1.3 desta estação criava os contêineres com StopTimeout=1,
     # e o `docker stop` matava com SIGKILL no meio do desligamento (ACHADOS #157). 15 s
-    # fica acima do teto de 8 s de `apps/api/src/desligamento.ts`.
+    # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
     stop_grace_period: 15s
     restart: unless-stopped
 
@@ -242,7 +242,7 @@ services:
     init: true
     # Explícito: o Compose v5.1.3 desta estação criava os contêineres com StopTimeout=1,
     # e o `docker stop` matava com SIGKILL no meio do desligamento (ACHADOS #157). 15 s
-    # fica acima do teto de 8 s de `apps/api/src/desligamento.ts`.
+    # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
     stop_grace_period: 15s
     restart: unless-stopped
 

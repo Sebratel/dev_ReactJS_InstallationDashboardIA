@@ -1,0 +1,45 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: contratos-telefonia
+name: CONTRATOS TELEFONIA
+query_ref: contratos-telefonia
+table_dax: null
+columns:
+- name: CLIENTE
+  type: string
+  format: null
+  source_column: CLIENTE
+  calculated: false
+  dax: null
+- name: DESCRICAO
+  type: string
+  format: null
+  source_column: DESCRICAO
+  calculated: false
+  dax: null
+- name: NUMERO CONTRATO
+  type: int64
+  format: "0"
+  source_column: NUMERO CONTRATO
+  calculated: false
+  dax: null
+- name: TELEFONIA
+  type: string
+  format: null
+  source_column: TELEFONIA
+  calculated: false
+  dax: null
+- name: STATUS CONTRATO
+  type: string
+  format: null
+  source_column: STATUS CONTRATO
+  calculated: false
+  dax: null
+- name: TELEFONE CONTRATO
+  type: string
+  format: null
+  source_column: TELEFONE CONTRATO
+  calculated: false
+  dax: null
+measure_count: 0

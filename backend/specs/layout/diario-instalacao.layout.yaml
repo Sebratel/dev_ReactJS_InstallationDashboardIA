@@ -1,0 +1,69 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `diario-instalacao` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: diario-instalacao
+base: backend/specs/dashboards/diario-instalacao.spec.yaml
+kpis:
+  - visual: 05f793bc7a37cd6f4c05
+    enfase: normal
+  - visual: 0bb4d36b48b8c9a98010
+    enfase: normal
+  - visual: 46d8ac88ac0e09adaaa0
+    enfase: normal
+  - visual: e51b24381944279c8bbe
+    enfase: normal
+    calendario: 2c224be87531efbec489
+  - visual: ea5c7143230acf5f95e9
+    enfase: normal
+faixas:
+  - altura: matriz
+    colunas:
+      - visual: 2c224be87531efbec489
+        span: 12
+        render: pivotTable
+  - altura: matriz
+    colunas:
+      - visual: 9bfe0de74eded6604c04
+        span: 12
+        render: pivotTable
+ocultos:
+  - visual: 02784299e6697c7e331f
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 0dab338295de8c4edaa7
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 14726a22603595dfb844
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 1497604e33608cf36797
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 2dcb5aad7a0e75c647e7
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 3044b4a5731a9776935e
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 3556b2705b9e5d99e0b5
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 40cb141ef58c218aafaa
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 54649dd7f88306e975d7
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 63d0ee16573749b24a9e
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 7f769583b3a26b985b54
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: a6780196d498d8f9db9f
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: c19dd58d398564256c1c
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: d26bf2420a6d20dec8c6
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: e3446e1e9c13af37ca52
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+improvements:
+  - visual: e51b24381944279c8bbe
+    original: card
+    virou: card+calendario
+    porque: "grade de semana lida da matriz 2c224be87531efbec489 (DATA INSTALAÇÃO em coluna, TECNICO em linha, já na mesma página — só 2 faixas, ambas dentro do corte eager); soma as linhas por coluna de data, sem requisição nova; a matriz original permanece intacta na tela — isto é resumo adicional, não substituição — Fase L6, docs/PLANO-LAYOUT-V1.md §8"
+    numero_muda: false

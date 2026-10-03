@@ -1,6 +1,6 @@
 # Paridade — a primeira leitura, e por que ela é parcial
 
-> **11/08/2026.** Os 42 cards de `specs/paridade/*.yaml` deixaram de ser `null` pela
+> **11/08/2026.** Os 42 cards de `backend/specs/paridade/*.yaml` deixaram de ser `null` pela
 > primeira vez. **Não trate este gabarito como definitivo** — parte dele foi lida num
 > estado que não corresponde ao que a plataforma calcula, e este documento diz
 > exatamente qual parte.
@@ -37,7 +37,7 @@ problema não é a leitura — é o estado em que ela foi feita.
 ## A evidência de qual parte está contaminada
 
 Agrupando os 42 cards por uma característica que eles não sabiam que tinham — se a
-página deles declara filtro de página em `specs/dashboards/*.spec.yaml`:
+página deles declara filtro de página em `backend/specs/dashboards/*.spec.yaml`:
 
 | grupo | cards | mediana da diferença | dentro de 2% |
 |---|---|---|---|

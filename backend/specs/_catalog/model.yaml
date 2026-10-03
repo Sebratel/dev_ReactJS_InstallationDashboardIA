@@ -1,0 +1,6 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: model
+note: "Metadados do modelo. `culture` decide como texto vira data na camada M: em pt-BR, \"01/02/2026\" é 1º de fevereiro. O engine de M recusa essa conversão sem culture explícita, para não ler março onde era abril."
+culture: pt-BR
+source_query_culture: pt-BR

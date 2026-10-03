@@ -1,0 +1,658 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: premiacao-instalacao
+page_id: 20edd24b647346571c8c
+name: "PREMIAÇÃO INSTALAÇÃO"
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 1920
+  height: 4000
+visual_count: 21
+filters: []
+filters_vazios: 0
+visuals:
+- id: 1816f8391c128db5f970
+  type: unknown
+  position:
+    x: 1514.4691749566455
+    y: 10.59992591316295
+    width: 404.11741532584824
+    height: 65.5812266921998
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 2a9ac8db91770695881e
+  type: card
+  position:
+    x: 144.1154017889976
+    y: 5.961929699290896
+    width: 163.4298370803063
+    height: 52.16688486879531
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    aggregation: min
+    aggregation_code: 3
+    name: Data mais recente
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 39b19854921925b379c2
+  type: slicer
+  title: "DATA ATIVAÇÃO"
+  position:
+    x: 24
+    y: 112
+    width: 305
+    height: 102
+  entities_used:
+  - CALENDARIO INSTALADO
+  fields:
+  - role: Values
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
+    name: DATA INSTALADO Ano
+    active: true
+  - role: Values
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: "Mês"
+    name: "DATA INSTALADO Mês"
+    active: true
+  - role: Values
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Dia
+    name: DATA INSTALADO Dia
+    active: true
+  filters:
+  - name: d0105f0477c4120e2be2
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: "DATA ALOCAÇÃO"
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
+- id: 493e6d1252b54c3061b1
+  type: pivotTable
+  title: "Relatório Detalhado Premiação"
+  position:
+    x: 25.037748798901852
+    y: 1626.1358956760466
+    width: 1855.4289636238846
+    height: 1108.2498284145504
+  entities_used:
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Columns
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+    active: true
+  - role: Rows
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    name: INSTALADOR
+    active: true
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
+    name: QTD.
+    active: null
+  filters:
+  - name: 217e9d4b147a33ed3854
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    conditions:
+    - op: not_in
+      values:
+      - STEFANY RODRIGUES SOUZA
+      - "LUCIANDRO GONÇALVES JUNIOR"
+  - name: 2c1a58dd99b821410c9d
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: count
+      right: 0
+  - name: e1f39639037ca5e0cc5c
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano"
+      - "TEC - Migração com troca de Equipamento"
+      - "TEC - Suporte de Retorno Prioritário"
+  filters_vazios: 4
+- id: 50c45ae48beead71ecfd
+  type: textbox
+  position:
+    x: 270.40209407832504
+    y: 14.904824248227232
+    width: 47.54322533245274
+    height: 38.7525430453908
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 50d44b50c8a7c764fda7
+  type: tableEx
+  title: "Instalação Ponto Adicional"
+  position:
+    x: 23.71997254632807
+    y: 3452.573781743308
+    width: 511.2971859986273
+    height: 523.1571722717913
+  entities_used:
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
+    name: "."
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    name: INSTALADOR
+    active: null
+  filters:
+  - name: 217e9d4b147a33ed3854
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    conditions:
+    - op: not_in
+      values:
+      - "LUCIANDRO GONÇALVES JUNIOR"
+      - GABRIELLE GOULART GONCALVES
+  - name: 9b25f0d7700d0d007811
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - "983512"
+  - name: c9c8b6a43bad55c158f3
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: count
+      right: 0
+  - name: 5ca2a5cd7f1809e0096c
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "TEC - Instalação de Roteador Adicional"
+  filters_vazios: 5
+- id: 5b536b4ab2c996794f97
+  type: tableEx
+  title: "Premiação Instalação - Resumo"
+  position:
+    x: 37.96610169491525
+    y: 250.84745762711862
+    width: 886.7796610169491
+    height: 1365.4237288135591
+  entities_used:
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    name: INSTALADOR
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
+    name: QTD.
+    active: null
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: Faixas
+    name: FAIXAS
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: GESTOR
+    name: GESTOR
+    active: null
+  filters:
+  - name: 217e9d4b147a33ed3854
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    conditions:
+    - op: not_in
+      values:
+      - "LUCIANDRO GONÇALVES JUNIOR"
+      - GABRIELLE GOULART GONCALVES
+  - name: c9c8b6a43bad55c158f3
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: count
+      right: 0
+  - name: 5ca2a5cd7f1809e0096c
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano"
+  filters_vazios: 6
+- id: 5b733ba13223e369bf4a
+  type: textbox
+  position:
+    x: 0
+    y: 14.904824248227232
+    width: 236.23040087062458
+    height: 50.67640244397258
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 65077b0dda2882be5126
+  type: textbox
+  position:
+    x: 241.66666666666669
+    y: 0
+    width: 1456.6666666666667
+    height: 61.66666666666667
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 77ebfd004e4106f33165
+  type: tableEx
+  title: "Detalhamento instalação Ponto Adicional"
+  position:
+    x: 557.4193548387096
+    y: 3452.573781743308
+    width: 1323.0473575840767
+    height: 523.1571722717913
+  entities_used:
+  - CONTRATOS
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
+    name: "."
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    name: INSTALADOR
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    name: PROTOCOLO
+    active: null
+  - role: Values
+    kind: column
+    entity: CONTRATOS
+    property: PLANO
+    name: PLANO
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: "DATA ALOCAÇÃO"
+    name: "ALOCAÇÃO"
+    active: null
+  filters:
+  - name: 217e9d4b147a33ed3854
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    conditions:
+    - op: not_in
+      values:
+      - "LUCIANDRO GONÇALVES JUNIOR"
+      - GABRIELLE GOULART GONCALVES
+  - name: 9b25f0d7700d0d007811
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - "983512"
+  - name: c9c8b6a43bad55c158f3
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: count
+      right: 0
+  - name: 5ca2a5cd7f1809e0096c
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "TEC - Instalação de Roteador Adicional"
+  filters_vazios: 6
+- id: 7ff4688d7374741d0579
+  type: slicer
+  title: "INSTALADOR"
+  position:
+    x: 343.90046996765625
+    y: 112.84761731859452
+    width: 305
+    height: 102
+  entities_used:
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    name: TECNICO
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: 81053b5794ce66d1e2b7
+  type: pageNavigator
+  position:
+    x: 0
+    y: 65.64182194616976
+    width: 1920.0000000000002
+    height: 40
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 9ebc3034e108d1452ddb
+  type: card
+  position:
+    x: 295.6594325361905
+    y: 5.961929699290896
+    width: 108.4579827896578
+    height: 50.67640244397258
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    aggregation: min
+    aggregation_code: 3
+    name: Hora mais recente
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: a938a9db928c8d795d02
+  type: image
+  position:
+    x: 0
+    y: 10
+    width: 241.66666666666669
+    height: 59.16666666666667
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: ab5d23d05a03a44880a7
+  type: textbox
+  position:
+    x: 947.481125600549
+    y: 217.43308167467399
+    width: 902.6767330130405
+    height: 32.94440631434454
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: ae1ed1f5bc1a84ada985
+  type: slicer
+  title: "PROTOCOLO"
+  position:
+    x: 969.9004699676582
+    y: 110.84761731859452
+    width: 305
+    height: 102
+  entities_used:
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    name: N°PROTOCOLO
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: b1f10a8a169a9e6937c0
+  type: image
+  position:
+    x: 14.857257916391745
+    y: 0
+    width: 38.62887058261786
+    height: 53.65736729361802
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: bb2892e77821cc094c8d
+  type: tableEx
+  title: "Apuração de Maio 01/05/2026 a 10/05/2026"
+  position:
+    x: 947.7966101694915
+    y: 250.84745762711862
+    width: 932.8813559322033
+    height: 1365.4237288135591
+  entities_used:
+  - "#APURAÇÃO PREMIAÇÃO"
+  fields:
+  - role: Values
+    kind: column
+    entity: "#APURAÇÃO PREMIAÇÃO"
+    property: INSTALADOR
+    name: INSTALADOR
+    active: null
+  - role: Values
+    kind: column
+    entity: "#APURAÇÃO PREMIAÇÃO"
+    property: QTD.
+    name: QTD.
+    active: null
+  - role: Values
+    kind: column
+    entity: "#APURAÇÃO PREMIAÇÃO"
+    property: FAIXAS
+    name: FAIXAS
+    active: null
+  - role: Values
+    kind: measure
+    entity: "#APURAÇÃO PREMIAÇÃO"
+    property: "Diferença"
+    name: "Diferença"
+    active: null
+  - role: Values
+    kind: measure
+    entity: "#APURAÇÃO PREMIAÇÃO"
+    property: "% Diferença"
+    name: "%"
+    active: null
+  filters:
+  - name: 217e9d4b147a33ed3854
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    conditions:
+    - op: not_in
+      values:
+      - "LUCIANDRO GONÇALVES JUNIOR"
+      - GABRIELLE GOULART GONCALVES
+  - name: c9c8b6a43bad55c158f3
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: count
+      right: 0
+  - name: 5ca2a5cd7f1809e0096c
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano"
+  filters_vazios: 6
+- id: c69ce0ec0b39b9d8e4cb
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 1920
+    height: 65.38024971623156
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: ce49bdc2520bb66fe323
+  type: slicer
+  title: "SUPERVISOR"
+  position:
+    x: 657.9004699676561
+    y: 112.84761731859452
+    width: 305
+    height: 100
+  entities_used:
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: GESTOR
+    name: GESTOR
+    active: true
+  filters: []
+  filters_vazios: 1
+- id: e42420359d507de64376
+  type: tableEx
+  title: "Relatório Instalação 2º Ponto"
+  position:
+    x: 23.71997254632807
+    y: 2759.423472889499
+    width: 1856.7467398764584
+    height: 672.0658888126286
+  entities_used:
+  - PROTOCOLOS PRODUTIVIDADE
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    name: INSTALADOR
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    aggregation: count
+    aggregation_code: 2
+    name: QTD. PROTOCOLOS
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+    active: null
+  filters:
+  - name: 217e9d4b147a33ed3854
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: INSTALADOR
+    conditions:
+    - op: not_in
+      values:
+      - STEFANY RODRIGUES SOUZA
+      - "LUCIANDRO GONÇALVES JUNIOR"
+  - name: 831cce517ebea0120c98
+    type: Advanced
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: N°PROTOCOLO
+    conditions:
+    - op: comparison
+      kind: gt
+      left_property: N°PROTOCOLO
+      left_aggregation: count
+      right: 0
+  - name: 6ab4e4500c05592cd507
+    type: Categorical
+    entity: PROTOCOLOS PRODUTIVIDADE
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: in
+      values:
+      - "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano"
+      - "TEC - Instalação de Roteador Adicional"
+  filters_vazios: 4

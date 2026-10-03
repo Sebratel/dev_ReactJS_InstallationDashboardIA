@@ -1,0 +1,126 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `visao-geral` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: visao-geral
+base: backend/specs/dashboards/visao-geral.spec.yaml
+kpis:
+  # Ordem = a ordem da esquerda para a direita medida ao vivo no BY (09/09/2026):
+  # TOTAIS, AGENDADOS, INSTALADOS, CLIENTES DISTINTOS — os dois primeiros pares
+  # de x mais próximos na tela original. Não é a ordem em que o extractor listou.
+  - visual: cbc30d7bc7375a004eac
+    enfase: normal
+  - visual: 71e5cb0109f72b45b16f
+    enfase: normal
+  - visual: f489778f1a41f78ed708
+    enfase: normal
+  - visual: 5eac559add4291af6196
+    enfase: normal
+faixas:
+  # Ordem = a ordem vertical do BY: a tabela vem ANTES dos gráficos (medido ao
+  # vivo em 09/09/2026, screenshot do usuário). O `layout:extrai` original tinha
+  # invertido — herdava a ordem de z-index/id do PBIP, não a leitura de cima para
+  # baixo de quem olha a tela.
+  - titulo: Análise detalhada
+    altura: tabela
+    colunas:
+      - visual: 704b7bcb68fd3e17cd30
+        span: 12
+        render: tableEx
+  - titulo: Gráficos e tendências
+    # TENTEI `matriz` aqui (até 900px) para dar mais linhas ao ranking de TÉCNICO
+    # 1 (94 categorias) — não funciona: o teto real de 900px só vale para faixa
+    # de UMA coluna (`.filas-largas` em estilo.css, que só ganha a variável
+    # `--h-faixa-matriz`); numa faixa de 3 colunas como esta, `RankingBarra.tsx` e
+    # `Grafico.tsx` ignoram até o próprio `altura` daqui — os dois fixam
+    # `altura="grafico"` no `<Cartao>` por dentro, então o teto real é sempre o de
+    # `.v-grafico` (430px), ~15 linhas. Ver conversa de 09/09/2026: mostrar as 94
+    # de uma vez exige tirar TÉCNICO 1 desta faixa de 3 colunas (faixa própria,
+    # span 12) — decisão de layout que ainda não foi tomada, então o `altura`
+    # continua `grafico` e o valor real fica documentado aqui, não escondido.
+    altura: grafico
+    colunas:
+      - visual: 7db40203ca467b8165c6
+        span: 4
+        render: ranking-barra
+      - visual: b346badbabf75059fb86
+        span: 4
+        render: ranking-barra
+      - visual: d9713da4535926b79bd8
+        span: 4
+        render: columnChart
+ocultos:
+  - visual: 2ce6f3783f48638594d6
+    porque: >-
+      card "Hora mais recente" duplica a informação que o cabeçalho já mostra
+      ("dado de HH:MM:SS" / `sub` em App.tsx) — no BY é um texto pequeno de
+      rodapé ("Atualizado em: ..."), não um KPI de negócio ao lado de
+      PROTOCOLOS TOTAIS. Card ao vivo confirmava 6 KPIs onde o BY mostra 4
+      (09/09/2026) — esta é a causa.
+  - visual: 3b000fe189f5f6d62a62
+    porque: >-
+      card "Data mais recente" — mesmo motivo do "Hora mais recente" acima:
+      duplica o `sub` do cabeçalho, não é KPI de negócio.
+  - visual: 103b7a8ac1768abbaa22
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 23c5a9bf78b33e02db74
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 50ae0cd55f11c1931830
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 529693bd75399ddef31f
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 562fcabd15abb1c7880a
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 5a505e91ed658e6741da
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 6b2781fa1e3b89ed0626
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 6f6ee418b1b95a80e2a4
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 747e8b722a3f0684bfd4
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 775229fb200e883f93bc
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 843bcbb16b315e6a1887
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: a26c18ffd99c49e69b3b
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: b909e6c32f5fd8f54237
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: c8c7d1ae3d7a5907544c
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: ce537446fc06ac83afea
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: cfe4382c2543d1fca3e3
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: d3f5075f753555c500ed
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: df93e688d86824150aee
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+improvements:
+  - visual: b346badbabf75059fb86
+    original: barChart
+    virou: ranking-barra
+    porque: >-
+      barra horizontal com rótulo (EQUIPE) dentro da própria barra em vez de numa
+      coluna de eixo à parte — elimina a coluna de rótulo que uma barra convencional
+      reserva à esquerda. Ordenação por valor é só desenho; a medida é a mesma
+      "Contagem de SOLICITACAO1" de sempre.
+    numero_muda: false
+  - visual: 7db40203ca467b8165c6
+    original: clusteredBarChart
+    virou: ranking-barra
+    porque: >-
+      pedido do usuário em 09/09/2026 ("esse gráfico mostrando todos os
+      instaladores é obrigatório"): o clusteredBarChart paginava 10 categorias
+      de eixo por vez (rótulo girado 45°, cabe pouco); ranking-barra lista uma
+      linha por técnico, rótulo dentro da barra, ordenado do maior pro menor —
+      mesma forma do "TOTAL POR INSTALADOR REFERÊNCIA" do BY. Resolve a FORMA;
+      não resolve sozinho "ver as 94 categorias sem paginar" — o teto real de
+      uma faixa de 3 colunas é ~15 linhas (`.v-grafico`, 430px), ver o
+      comentário desta faixa acima. As demais continuam acessíveis pelo
+      paginador (RankingBarra.tsx: "gráfico não rola, pagina" é regra da casa).
+    numero_muda: false

@@ -1,0 +1,247 @@
+# Janela de dados: como perguntar ao Power BI a MESMA fatia que temos em disco.
+#
+# ARQUIVO HUMANO. Não é gerado por `npm run extract` — decisão nossa, como
+# `divergencias.yaml` e `juncoes.yaml`.
+#
+# ===========================================================================
+# DE ONDE VEM TODO NÚMERO `pbi:` DESTE ARQUIVO — confirmado em 18/09/2026
+# ===========================================================================
+#
+#   nome       INST - Relatório Instalação
+#   relatório  f12d1205-62d7-4bc3-b300-ea7268076dd4
+#   dataset    39382a2c-a349-4cce-8c4a-9703c9fa4364
+#   workspace  My Workspace
+#   tenant     Sebratel.onmicrosoft.com
+#
+# É o relatório CERTO: `INST - Relatório Instalação`, e **não** o
+# `INST - Relatório Instalação Gerencial`. São dois relatórios diferentes (Erick,
+# 27/08/2026), e apontar para o errado não gera erro — gera número plausível e
+# diferente, que entra aqui como se fosse gabarito.
+#
+# Até 18/09/2026 nada no repositório registrava isso, e três das tabelas em
+# `bloqueadas` abaixo falham todas com a mesma cara ("definições diferentes",
+# "formas incompatíveis"), que é exatamente o sintoma de ter consultado outro
+# relatório. Agora dá para separar as duas hipóteses: o alvo está confirmado, então
+# divergência que sobrar é da plataforma ou da janela, não do endereço.
+#
+# COMO RECONFERIR: `npm run powerbi -- --tabelas --pagina=visao-geral` imprime nome,
+# dataset e workspace antes de qualquer consulta. Os ids vêm de POWERBI_REPORT_ID e
+# POWERBI_TENANT_ID no `.env`; o token fica em ~/.secrets/powerbi-token.json e se
+# renova sozinho pelo refresh_token (device code só quando esse também vence).
+#
+# POR QUE EXISTE. O modelo publicado carrega mais história do que a plataforma
+# materializa. Medido em 25/08/2026, `PROTOCOLOS PRODUTIVIDADE` tinha 187.534
+# linhas no Power BI e 70.868 aqui, porque o SQL corta em `a.created >=
+# '2026-01-01'`. Gravar em `backend/specs/paridade/*.yaml` a medida SEM filtro poria no
+# gabarito um número que a plataforma nunca vai produzir. Um gabarito impossível
+# não detecta regressão — ele ensina a ignorar o alarme.
+#
+# REGRA DO CAMPO `verificado`: só entra aqui predicado que, aplicado no Power BI,
+# devolve a contagem de linhas que temos em disco. O número fica registrado para
+# que a próxima pessoa possa refazer a conta em vez de acreditar.
+#
+# REGRA DO CAMPO `sha` (17/09/2026): a prova vale para UMA definição de query.
+# Reescreva o SQL e o conjunto de linhas muda embaixo do predicado, sem que uma
+# letra dele mude — e a prova continua ali, com cara de conferida. Por isso todo
+# `verificado` declara o `shaDaQuery` da spec no dia da prova, e `carregaJanelas`
+# **recusa** a janela (manda a tabela para `bloqueadas`) quando o sha falta ou não
+# bate. Mesmo desenho do `shaConferido` de `backend/packages/snapshot/src/nativas.ts` e do
+# guarda de coluna materializada (ACHADOS #47): o hash não conserta nada, ele
+# obriga alguém a refazer a conta.
+#
+# Comparar CONTAGEM não serviria: as duas pontas acumulam, então divergir com o
+# tempo é o normal, e qualquer limiar ou envelhece ou não pega nada. O sha é
+# exato. E ele ignora espaço em branco de propósito — reindentar o SQL não
+# invalida uma prova, e invalidar por isso treinaria quem mantém este arquivo a
+# recarimbar o sha sem medir, que é o pior desfecho possível para um guarda assim.
+#
+# COMO CONFERIR DE NOVO:
+#   EVALUATE ROW("n", CALCULATE(COUNTROWS('TABELA'), <o dax abaixo>))
+# compare com a entrada da tabela em snapshot/manifesto.json, e grave junto o sha
+# que `shaDaQuery('specs', '<TABELA>')` devolve (`backend/tools/powerbi/src/janela.ts`).
+
+tabelas:
+  # Todas medidas em 18/09/2026 contra o relatório confirmado no topo deste arquivo.
+  # As três diferenças que sobram são de MESMO DIA: `MAX([DATA CRIADO])` é 2026-09-18
+  # nos dois lados, e o nosso snapshot foi materializado depois do último refresh do
+  # modelo publicado. Protocolo criado no intervalo existe aqui e ainda não lá.
+
+  BACKLOG AGENDADO FUTURO:
+    # Estava em `bloqueadas` como "formas incompatíveis": 91.335 lá contra 147.936
+    # aqui. Os dois números venceram. Hoje bate EXATO, sem filtro nenhum.
+    sem_recorte: true
+    verificado:
+      pbi: 96384
+      nos: 96384
+      em: '2026-09-18'
+      sha: 52304f41e01e41bb
+
+  PROTOCOLOS GERAL:
+    # **O predicado antigo não estava vencido: estava ERRADO.** Ele era
+    # `[DATA CRIADO] >= DATE(2026,1,1)`, e aplicá-lo hoje derruba o lado do Power BI
+    # para 38.652 contra os nossos 95.680 — 60% a menos. Sem filtro, os dois lados
+    # dão 95.611 e 95.680.
+    #
+    # A causa: o modelo publicado vai de 2025-01-01 a 2026-09-18 (medido:
+    # MIN/MAX de [DATA CRIADO], 0 linhas em branco, e 56.959 linhas ANTES de 2026).
+    # O nosso conjunto cresceu para a mesma fatia quando o commit 8b1fd19 (04/09)
+    # reescreveu o desempate do ROW_NUMBER e destravou um EXISTS. Os dois lados
+    # convergiram; o predicado é que ficou para trás.
+    #
+    # REPROVADA no mesmo dia, depois do `TRIM(it.title)` em `TIPO DE PROTOCOLO`
+    # (ver abaixo): mexer no SQL muda o sha e a prova anterior (pbi 95.611 /
+    # nos 95.680, sha 0de8490dfa420dbb) caiu sozinha — que é o guarda funcionando.
+    sem_recorte: true
+    verificado:
+      pbi: 95679
+      nos: 95686
+      em: '2026-09-18'
+      sha: 9d86b543d7b50b0a
+
+  RETORNO PRIORITARIO:
+    # Explicava sozinha a divergência `PROTOCOLOS RETORNOS` de `manutencao-inicial`
+    # (403 lá contra 273 aqui): a agregação é COUNTROWS desta tabela, e os 403 são a
+    # tabela inteira. Com o recorte, 273 dos dois lados — exato.
+    #
+    # O corte do nosso SQL é `a.created >= DATE_TRUNC('year', CURRENT_DATE)`, e a
+    # coluna que o representa do outro lado é `data_instalacao`. Aqui as duas
+    # coincidem: TODAS as nossas 273 linhas têm `data_instalacao >= 2026-01-01`.
+    # (Em `REINCIDÊNCIA` não coincidem — ver o bloqueio dela abaixo.)
+    dax: "'RETORNO PRIORITARIO'[data_instalacao] >= DATE(2026,1,1)"
+    #
+    # ⚠️ Esta janela oscila em ±1 PROTOCOLO por reclassificação ao vivo, e o ruído
+    # chega multiplicado: a expansão de `ALOCAÇÃO PATRIMONIO` no passo de M faz 250
+    # protocolos virarem 273 linhas. Em 19/09 deu 275 lá contra 273 aqui, e era UM
+    # protocolo (1821701) aberto naquele dia como tipo 1160, capturado pelo modelo
+    # publicado às 10:09 e reclassificado para 1268 antes da nossa carga das 12:01.
+    # O modelo publicado TAMBÉM só contém o 1160 — conferido com
+    # SUMMARIZECOLUMNS('RETORNO PRIORITARIO'[protocol_type], ...). Não alargue o
+    # filtro do SQL por causa disso: ver ACHADOS #142.
+    verificado:
+      pbi: 273
+      nos: 273
+      em: '2026-09-18'
+      sha: 82a2cb666a637500
+
+  Base Categorias Field:
+    # O predicado é o corte do nosso SQL traduzido sem nenhuma liberdade:
+    # `beginning_service_date >= DATE_TRUNC('year', CURRENT_DATE)`. Sem ele o modelo
+    # publicado traz 323.012 linhas desde 2025-05-01; com ele, 228.568 contra as
+    # nossas 228.570.
+    dax: "'Base Categorias Field'[beginning_service_date] >= DATE(2026,1,1)"
+    verificado:
+      pbi: 228568
+      nos: 228570
+      em: '2026-09-18'
+      sha: 5ed0b72ed545b590
+
+  PROTOCOLOS TELEFONIA:
+    # Explicava as duas divergências de `telefonia-ouvidoria`: `PROTOCOLOS`
+    # (2.063 lá contra 650 aqui) e `CLIENTES` (1.620 contra 546). Sem recorte o
+    # modelo publicado traz a história desde 2025-01-02; com ele, 650 dos dois
+    # lados — exato, delta 0.
+    dax: "'PROTOCOLOS TELEFONIA'[DATA CRIADO] >= DATE(2026,1,1)"
+    verificado:
+      pbi: 650
+      nos: 650
+      em: '2026-09-18'
+      sha: cd89905d105e2a42
+
+  PROTOCOLOS PRODUTIVIDADE:
+    # Aqui o predicado CONTINUA necessário e correto: sem ele o Power BI traz
+    # 194.801 linhas (a história inteira) contra os nossos 78.284.
+    #
+    # ARMADILHA, que sobrevive ao desbloqueio: o corte é por DATA CRIADO, mas quase
+    # toda medida agrega por DATA INSTALAÇÃO. Protocolo criado em 2025 e instalado em
+    # 2026 existe lá e não aqui. O predicado tem de ser na coluna do CORTE, não na da
+    # agregação — é ele que reproduz o conjunto de linhas que temos.
+    dax: "'PROTOCOLOS PRODUTIVIDADE'[DATA CRIADO] >= DATE(2026,1,1)"
+    verificado:
+      pbi: 78144
+      nos: 78284
+      em: '2026-09-18'
+      sha: 276a39550145c42a
+
+# Tabelas em que NENHUM predicado equaliza, porque os dois lados não são a mesma
+# coisa. Card cujo alcance toca uma destas não recebe número automático.
+# AS DUAS PRIMEIRAS ESTÃO AQUI DESDE 17/09/2026, E ANTES ERAM JANELAS VÁLIDAS.
+# Não porque o predicado tenha sido refutado, mas porque a PROVA dele venceu e
+# ninguém pode mais dizer sobre qual definição de query ela foi feita. Preferir o
+# bloqueio é a regra do topo deste arquivo aplicada a ele mesmo: o arquivo que
+# prova que o número está certo é o último lugar onde cabe um palpite. Limpar cada
+# um custa UMA consulta DAX — a receita está em "COMO CONFERIR DE NOVO".
+bloqueadas:
+  REINCIDÊNCIA: >-
+    A COLUNA DO CORTE NÃO EXISTE DO OUTRO LADO (18/09/2026). Não é prova vencida nem
+    definição diferente: é um predicado que não dá para escrever. Nosso SQL corta em
+    `a.created >= DATE_TRUNC('year', CURRENT_DATE)`, e a tabela do modelo publicado
+    não tem nenhuma coluna de criação — as datas dela são `data_instalacao`,
+    `data_suporte` e `Data`. Medido: sem filtro são 2.220 lá contra 1.461 aqui; com
+    `[data_instalacao] >= DATE(2026,1,1)` dá **1.410 dos DOIS lados**, e o número
+    bate bonito — mas o nosso conjunto tem 1.461. As 51 linhas de diferença são
+    nossas, têm `data_instalacao` ANTERIOR a 2026 e entraram porque o corte é por
+    `created`. Gravar 1.410 como gabarito poria no arquivo um número que a
+    plataforma nunca produz, que é exatamente o que a regra do topo proíbe.
+    É a armadilha do `CLAUDE.md` espelhada: lá, "criado em 2025 e instalado em 2026
+    existe no Power BI e não aqui"; aqui, criado em 2026 e instalado em 2025 existe
+    para nós e o predicado o descarta. **Para desbloquear:** expor a data de criação
+    no modelo publicado, ou mudar o corte do nosso SQL para a mesma coluna que dá
+    para filtrar dos dois lados — as duas são decisão, não medição.
+    CONSEQUÊNCIA CONHECIDA: `TOTAL DE OCORRÊNCIAS` (2.220 vs 1.461) e
+    `QTDE [ALOCAÇÃO PATRIMONIO.ALOCADO POR:]` (2.193 vs 1.410) em `manutencao-inicial`
+    são esta tabela, e ficam sem gabarito automático até isto se resolver.
+
+  FIELD AGENDA: >-
+    As duas tabelas têm definições diferentes, não janelas diferentes. O nosso SQL
+    filtra região (`region_title LIKE '%Base Canoas (Ativação)%' OR '%Base São
+    Leopoldo (Ativação)%'`) e exclui relatos por título (`Execução:%`,
+    `Manutenção de Solicitação%`, ...); o modelo publicado não faz nada disso.
+    Medido em 25/08/2026: 1.587.041 linhas lá contra 41.255 aqui, e o recorte de
+    3 meses do SQL sozinho explica só até 641.996 — sobra um fator de 15.
+    (Esse recorte de 3 meses saiu do `sql:` num reset em 26/08 e foi restaurado em
+    27/08 por medição — ver docs/ACHADOS.md. O snapshot de 25/08 tem 41.773 linhas.)
+    A HIPÓTESE DO RELATÓRIO ERRADO CAIU (18/09/2026). Este parágrafo dizia que
+    ninguém registrava contra qual relatório os `pbi:` foram medidos, e que
+    "definições diferentes" é a cara de ter consultado o relatório errado. O alvo
+    está confirmado e registrado no topo deste arquivo: `INST - Relatório
+    Instalação`. Remedido no mesmo dia contra ele: 1.739.231 linhas lá contra 41.584
+    aqui (grão reduzido, `field-agenda-slot`) ou 643.176 (forma completa,
+    `field-agenda`) — fator de 42x e 2,7x. A divergência é REAL e é de definição,
+    não de endereço. As outras três tabelas que dividiam este bloqueio
+    (`PROTOCOLOS GERAL`, `PROTOCOLOS PRODUTIVIDADE`, `BACKLOG AGENDADO FUTURO`)
+    saíram para `tabelas` na mesma medição, o que reforça que o problema aqui é
+    específico desta query e não do acesso.
+    CORREÇÃO (17/09/2026): este parágrafo dizia "a última carga desta query MORREU
+    (`snapshot/field-agenda.erro.log`, ECONNRESET em 19/08 após 38 min de colunas
+    calculadas), então o arquivo em disco também está incompleto. Resolver a carga
+    antes de tentar equalizar." Aquele arquivo de erro NÃO EXISTE mais, e o
+    manifesto traz 643.176 linhas x 26 colunas geradas em 15/09/2026 — a carga foi
+    resolvida e a instrução mandava refazer trabalho já feito. O que NÃO muda é o
+    bloqueio: o fator de 15 acima foi raciocinado sobre um disco de 41 mil linhas e
+    hoje há 643 mil, então nem a divergência de forma foi remedida — ela foi
+    remexida. Reequalizar exige medir de novo os dois lados, contra o relatório
+    certo.
+
+  # Este bloqueio não é de janela — é de CONFIANÇA na fonte, e o motivo importa
+  # porque aqui quem regrediu foi o Power BI, não a plataforma.
+  INSTALAÇÕES REINCIDENTES: >-
+    A base de reincidência do modelo publicado congelou. Medido em 25/08/2026: as
+    linhas marcadas `reincidente_30d = "SIM"` vão de 2026-01-02 até **2026-04-13**
+    e param, enquanto as marcadas "NÃO" seguem até 2026-08-25 — fonte que parou de
+    alimentar, não regra de negócio. Total lá: 444. Aqui: 1.372, distribuídos de
+    forma estável (212, 157, 176, 195, 193, 185, 165, 89 por mês).
+    A prova de que os 444 são o desvio, e não nós: o gabarito de
+    `backend/specs/paridade/instalacao-reincidente.yaml`, ditado DA TELA em 11/08/2026,
+    registra `Reincidentes: 1272` e `% Reincidencia: 0.0649` — e a nossa
+    `% Reincidencia` dá 0.064911, erro de 0,02%. O relatório mostrava o número
+    certo em agosto e passou a mostrar 444 depois. Preencher o gabarito pela API
+    aqui trocaria um número correto por um regredido. Reavaliar quando a fonte
+    de manutenções do Power BI voltar a alimentar.
+    RECONFERIDO EM 18/09/2026, E O BLOQUEIO FICA MAIS FORTE: 24 dias depois, o lado
+    do Power BI continua com **exatamente 444** linhas `reincidente_30d = "SIM"` e a
+    data máxima delas continua **2026-04-13**. Não é atraso de carga — é fonte
+    parada. E não dá para ver isso pela contagem da tabela: o total bate EXATO
+    (23.255 dos dois lados), porque as linhas "NÃO" seguem entrando normalmente. Uma
+    conferência que olhasse só COUNTROWS declararia esta tabela equalizada e
+    preencheria gabarito com o número regredido.
+

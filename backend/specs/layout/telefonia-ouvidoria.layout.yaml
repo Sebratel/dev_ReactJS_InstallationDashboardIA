@@ -1,0 +1,70 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `telefonia-ouvidoria` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: telefonia-ouvidoria
+base: backend/specs/dashboards/telefonia-ouvidoria.spec.yaml
+kpis:
+  - visual: 4580554505674d5d2c43
+    enfase: normal
+  - visual: 471e980bb59d8e69e613
+    enfase: normal
+  - visual: 5db1cd84f82c39a7cf67
+    enfase: normal
+  - visual: a12862a2c6692e472055
+    enfase: normal
+faixas:
+  - titulo: Gráficos e tendências
+    altura: grafico
+    colunas:
+      - visual: ab7101a5e56c701ac5f7
+        span: 6
+        render: columnChart
+      - visual: ead55782fbeeb19a0921
+        span: 6
+        render: columnChart
+  - titulo: Análise detalhada
+    altura: tabela
+    colunas:
+      - visual: e5ffac48cee4968a3737
+        span: 12
+        render: tableEx
+ocultos:
+  - visual: 00be7542dc6adc442876
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 07fe8193d8e499ceda06
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 08b9980a0b170af3b6d6
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 180424e6485b88eae9f1
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 230e44503581313eabc2
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 4c6e6cd02d03488b4a37
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 54114d94597293813209
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 5a1eaa2c036bc396f005
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 5f38a256874bf2affa50
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 60f4e5e52c95bf8ddeb8
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 7446052c5bf3d08506ef
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: c6d331b4655d2552f84e
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: e233496cb4a9c9d05787
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: e490ca88af05c71cb40c
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: eae1bc0c50c747f4112a
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: f1b558489967870ff389
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: fa94829fc16b87b2d477
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+improvements: []

@@ -7,7 +7,7 @@
 > decisão, mantido como está para o raciocínio ficar auditável.
 
 **Para o Erick decidir.** Fase 2b.8. Tudo abaixo foi medido no PBIP com
-`npm run validate:tables` e com o scanner de M (`tools/validate/src/mlayer.ts`), não
+`npm run validate:tables` e com o scanner de M (`backend/tools/validate/src/mlayer.ts`), não
 estimado. Recomendação no fim, com o custo de cada caminho.
 
 ## A pergunta
@@ -76,7 +76,7 @@ duas mesclagens cruzadas são dbVoalle × dbMaria, e os dois connectors já func
 
 ## Fato decisivo 2 — SQL escrito à mão não tem onde morar
 
-Regra 2 do projeto (na época): tudo em `specs/_catalog/queries/` era **sobrescrito** por
+Regra 2 do projeto (na época): tudo em `backend/specs/_catalog/queries/` era **sobrescrito** por
 `npm run extract`, e nenhuma decisão humana podia viver lá. *(25/09/2026: o PBIP e o
 script saíram em 27/08; o risco de sobrescrita não existe mais, e SQL escrito à mão hoje
 mora em spec de query própria — ver `DECISAO-GRAO-FIELD-AGENDA.md`.)* Um SQL que substitua o M
@@ -208,7 +208,7 @@ Três condições, e a primeira é sua:
    urgência". Das três planilhas, esta é a que 9 medidas alcançam.
 
    **O que já existia** (05/08/2026): a autenticação de service account escrita e
-   testada (`packages/query-engine/src/google-auth.ts`, 11 testes, sem rede), a Sheets API
+   testada (`backend/packages/query-engine/src/google-auth.ts`, 11 testes, sem rede), a Sheets API
    ativada no projeto e o JWT aceito pelo Google. **O que faltava** era um passo que não
    é código: compartilhar as 3 planilhas com o e-mail da conta de serviço como
    **Leitor** — e as três devolviam `PERMISSION_DENIED`.
@@ -253,7 +253,7 @@ precisa continuar igual é o **conteúdo**: mesmo colaborador, mesmo gestor, mes
 ### Verificação feita em 05/08/2026 — e o resultado bloqueia a substituição
 
 O token chegou e a API foi sondada de verdade (`npm run probe:datahub`,
-`tools/probe/src/datahub.ts`). O endpoint correto **não** é o do formato
+`backend/tools/probe/src/datahub.ts`). O endpoint correto **não** é o do formato
 `/datasets/{slug}/rows` que veio na mensagem original: aquele devolve `403` para este
 token. O que responde é
 
@@ -388,7 +388,7 @@ serviu para descobrir o endpoint; não é o que vai para o código.
 ### O connector é o mesmo tipo de trabalho que o de Google Sheets
 
 Uma classe nova implementando a porta `Connector` de
-`packages/query-engine/src/connectors.ts`, chamando REST com o header `X-Api-Token` —
+`backend/packages/query-engine/src/connectors.ts`, chamando REST com o header `X-Api-Token` —
 mais simples que o de Google Sheets porque não tem OAuth de service account, só token.
 Token vai em `DATAHUB_TOKEN` no `.env` (ver `.env.example`), nunca na URL commitada e
 nunca em query string.
@@ -410,7 +410,7 @@ Não é nada que se baixe ou compre. São duas coisas separadas, e só a segunda
 alguém de fora:
 
 1. **Código nosso**, ~100 linhas: uma classe que implementa a porta `Connector` que já
-   existe em `packages/query-engine/src/connectors.ts`, chamando a API REST do Google
+   existe em `backend/packages/query-engine/src/connectors.ts`, chamando a API REST do Google
    Sheets (`sheets.googleapis.com/v4/spreadsheets/{id}/values/{aba}`). Do mesmo jeito
    que `SqlConnector` recebe o driver injetado, o Engine não muda.
 2. **Uma credencial**, que é o que precisa ser providenciado.

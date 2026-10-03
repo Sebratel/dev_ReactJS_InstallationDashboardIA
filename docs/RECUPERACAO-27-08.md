@@ -43,9 +43,9 @@ commitado sobreviveu a ambos os episódios, sem exceção.
   em 17/09/2026 a suíte marcava 2020).
 - `npm run web:build` (`tsc --noEmit && vite build`): verde, 1843 módulos.
 - Das **278 arquivos do repositório** que as sessões escreveram, só 2 não existem:
-  - `apps/web/src/atomic/atoms/Button.tsx` — nunca foi importado por ninguém e nunca
+  - `frontend/src/atomic/atoms/Button.tsx` — nunca foi importado por ninguém e nunca
     entrou em commit nenhum. Foi tentativa descartada, não perda.
-  - `packages/query-engine/src/connectors-datahub.ts` — idem, e coerente com a decisão
+  - `backend/packages/query-engine/src/connectors-datahub.ts` — idem, e coerente com a decisão
     já tomada de tirar o DataHub do caminho dos protocolos.
 - Trabalho de 26/08 à tarde/noite: **presente**. `@layer base` (3x),
   `--pbi-primary-texto` (11x), os `clamp` das faixas (5x), `paginaColunas` na Matriz,

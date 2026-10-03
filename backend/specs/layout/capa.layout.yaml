@@ -1,0 +1,73 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `capa` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: capa
+base: backend/specs/dashboards/capa.spec.yaml
+kpis:
+  - visual: 1d10da9f7a3e9a66d8ab
+    enfase: normal
+  - visual: e3e8acb8ee46c4565d20
+    enfase: normal
+faixas: []
+ocultos:
+  - visual: 0ec0a341caa4470044b0
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 1b6ecf0d68ed732f11ad
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 213f32271435d9c7a8bf
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 2264683faa08377e2d82
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 26ccd065b6ef1ebaf9e6
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 2fc15c507805700deda4
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 5b4eabd010b92435cc00
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 6c58379e41629b210970
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 7a953fa8ca0a3994ea62
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 806662644304b90000e0
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 8b389034dbe6d80e0a62
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 91adfe90048c71d6a318
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: a1ae0b66c1042076e1b7
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: b4113bdfb7562a2d5b72
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: b4ada8894e1bb7d23d97
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: b53531a76328c4ab1115
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: b5d256c9d59a20801ee4
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: be9072803a0d3096ddc1
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: c382807ca51b80dbb03e
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: c7e16c010c864dd10d3c
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: d94188c8db3193af6a05
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: db5b88430de5c87924b5
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: dc9c6c4324ab75ad63a2
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: df831f764dba541d3927
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: e189e562049942381b7b
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: e86388cc1bb08a494dae
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: ea39e9773de40beb01e3
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: fe0edbd0a2d76e73d0b3
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+improvements: []

@@ -1,0 +1,10 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: measures
+table: BACKLOG AGENDADO FUTURO
+id: backlog-agendado-futuro
+measures:
+- name: Totalbacklogfuturo
+  format: "0"
+  display_folder: null
+  dax: "COUNT('BACKLOG AGENDADO FUTURO'[data_inicio_slot])"

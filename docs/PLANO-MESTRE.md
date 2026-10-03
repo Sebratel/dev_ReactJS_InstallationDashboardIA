@@ -46,7 +46,7 @@ Branches com trabalho fora do `staging` e worktrees que já não servem.
 
 - [x] **0.1** ✅ 02/10, `0aa63f8`: sem conflito; `npm test` 2.213 ok + 1 pulado, typecheck e
       `web:build` verdes. **Falta ver na tela**: a plataforma estava fora do ar (§0.4). Integrar `feature/padroes-frontend` (`c85f4a6`) no `staging`. Conferir conflito
-      com `git merge-tree` antes, porque outro agente comita em `apps/web`. `npm test` e
+      com `git merge-tree` antes, porque outro agente comita em `frontend`. `npm test` e
       `npm run typecheck` verdes.
 - [x] **0.2** ✅ 02/10, a pedido do Erick: as duas branches foram descartadas, com a ponta de
       cada uma guardada numa tag local, para recuperar com `git branch <nome> <tag>`:
@@ -167,7 +167,7 @@ Não é código: é resposta de gente. Começa já, para não virar o gargalo do
 > escrita em 25/09 e está na tag `arquivo/docs-projeto-governanca`. Recuperar antes da E.1.
 
 - [ ] **E.1** Rodada final de paridade com o `INST - Relatório Instalação`, página por página,
-      usando a janela de `specs/_catalog/paridade-janela.yaml`.
+      usando a janela de `backend/specs/_catalog/paridade-janela.yaml`.
 - [ ] **E.2** Período em paralelo com o Power BI: o Erick decide a duração.
 - [ ] **E.3** O Erick promove `staging` → `main`.
 - [ ] **E.4** Desligar o Power BI, ou deixá-lo só para consulta.

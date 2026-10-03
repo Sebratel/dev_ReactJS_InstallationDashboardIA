@@ -1,0 +1,27 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: hora-atualizado
+name: HORA ATUALIZADO
+query_ref: hora-atualizado
+table_dax: null
+columns:
+- name: DataHora
+  type: dateTime
+  format: General Date
+  source_column: DataHora
+  calculated: false
+  dax: null
+- name: Data
+  type: dateTime
+  format: Short Date
+  source_column: Data
+  calculated: false
+  dax: null
+- name: Hora
+  type: dateTime
+  format: Long Time
+  source_column: Hora
+  calculated: false
+  dax: null
+measure_count: 0

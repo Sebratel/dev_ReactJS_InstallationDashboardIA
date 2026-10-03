@@ -1,0 +1,28 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: calendar
+name: calendar
+query_ref: null
+table_dax: |-
+  DISTINCT(    
+      SELECTCOLUMNS(
+          'FIELD AGENDA',
+          "Protocolo", 'FIELD AGENDA'[Protocolo],
+          "Data", 'FIELD AGENDA'[Data]
+      )
+  )
+columns:
+- name: Protocolo
+  type: null
+  format: null
+  source_column: "[Protocolo]"
+  calculated: false
+  dax: null
+- name: Data
+  type: null
+  format: Short Date
+  source_column: "[Data]"
+  calculated: false
+  dax: null
+measure_count: 0

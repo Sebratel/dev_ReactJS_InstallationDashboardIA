@@ -15,10 +15,10 @@
 Item zero (§2)  [DONE]  28/08/2026 — 3 testes de cross-filter (fixture com role
                         errado) + doc/teste de cromo reconciliados (867px) +
                         _dbg.test.ts removido. 1403/1403, build verde.
-Fase L1 (§3)    [DONE]  28/08/2026 — tools/layout/ (extrai/valida/golden) +
-                        specs/layout/*.layout.yaml (14) + specs/golden/layout/
+Fase L1 (§3)    [DONE]  28/08/2026 — backend/tools/layout/ (extrai/valida/golden) +
+                        backend/specs/layout/*.layout.yaml (14) + backend/specs/golden/layout/
                         (14). 1410/1410, build verde, bundle idêntico.
-Fase L2 (§4)    [DONE]  28/08/2026 — tools/tela/ (Playwright) rodou 112 combinações
+Fase L2 (§4)    [DONE]  28/08/2026 — backend/tools/tela/ (Playwright) rodou 112 combinações
                         (14 páginas × 4 resoluções × 2 temas): zero cartão maior que
                         a viewport, zero rolagem horizontal, zero v-auto, zero linha
                         divergente. Achou 5 pares de contraste abaixo de 4,5:1 (1
@@ -39,7 +39,7 @@ Fase L4 (§6)    [DONE]  31/08/2026 — nova rota GET /api/dashboards/:id/layout
                         VisualGridSection e KpiGridSection passam a ler layout.kpis/
                         layout.faixas por id, nenhum lê mais v.dados para decidir
                         posição. heuristica-grade.ts saiu do bundle web e virou
-                        tools/layout/src/heuristica-original.ts (só layout:extrai usa).
+                        backend/tools/layout/src/heuristica-original.ts (só layout:extrai usa).
                         Faixa virou grid de 12 colunas com span declarado; a distinção
                         pool-vs-fração-fixa do L3 sobrevive, agora por contagem de
                         colunas da faixa (contaFaixasLargasPorAltura). tela 112/112
@@ -53,7 +53,7 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         idsIniciais corta kpis+2 faixas; VisualNaDobra dispara por
                         IntersectionObserver (200px, não 100% — a de 100% carregava
                         toda faixa "perto" de mais em página curta, medido em
-                        agendamento-field). tools/tela/src/perf.ts (novo) mede
+                        agendamento-field). backend/tools/tela/src/perf.ts (novo) mede
                         docs/PERF-CARGA.md. R5: paginasVistas (Map por urlDaPagina,
                         teto de 30 por ordem de inserção em cache-pagina.ts) mostra o
                         snapshot velho síncrono antes do fetch, que sempre revalida
@@ -66,13 +66,13 @@ Fase L5 (§7)    [DONE]  31/08/2026 — R3+R2: usaVisualSobDemanda (hook
                         do layout velho ficava sem par em porId e piscava esqueleto
                         rotulado com os ids da página ERRADA a cada troca de aba;
                         corrigido lendo layoutsVistos (ref) no mesmo lote que zera
-                        pagina. (2) o aquecimento (aquecedor.ts e tools/subir/
+                        pagina. (2) o aquecimento (aquecedor.ts e backend/tools/subir/
                         aquece.ts) sempre pediu /api/dashboards/:id SEM ?visual= —
                         que desde R4 enche a chave de cache '*', que o navegador
                         NUNCA pede mais (ele sempre lista idsIniciais). O servidor
                         anunciava "quente" sem aquecer a chave que a tela de fato
                         usa; ambos agora buscam /layout primeiro e aquecem com os
-                        MESMOS ?visual= do navegador (tools/layout/src/corte-eager.ts,
+                        MESMOS ?visual= do navegador (backend/tools/layout/src/corte-eager.ts,
                         fonte única, reexportada por carga-progressiva.ts), com
                         fallback para a URL antiga se o layout não responder.
                         Achado à parte, ainda fora de escopo: carrega() (servidor.ts)
@@ -233,7 +233,7 @@ Fase L6 (§8)    [DONE]  01/09/2026 — 6 de 6 visuais.
                         hexadecimal fixo. 40% no claro reproduz o `#f0e199`
                         original exato (confirmado bit a bit) — zero mudança
                         visual aí; 18% no escuro mede 9,6:1 contra `--texto`
-                        (calculado) e o tools/tela não acusou regressão de
+                        (calculado) e o backend/tools/tela não acusou regressão de
                         contraste no sweep. Tabela.tsx herda o mesmo conserto de
                         graça, por usar o mesmo token.
                         Verificado no navegador (Playwright), claro e escuro, com
@@ -328,7 +328,7 @@ Fase L6 (§8)    [DONE]  01/09/2026 — 6 de 6 visuais.
                         original.
 Fase L7 (§9)    [DONE]  01/09/2026 — docs/DECISAO-CHART-SDK.md registrada:
                         nenhuma biblioteca. Contagem exata: 16 gráficos
-                        (conteudo: grafico) nos 14 specs/golden/layout/*.json,
+                        (conteudo: grafico) nos 14 backend/specs/golden/layout/*.json,
                         cobertos por 7 componentes de desenho (Grafico.tsx +
                         os 6 novos da Fase L6), todos SVG/HTML próprio. Bundle
                         medido agora (npm run web:build): 89,32 kB gzip JS,
@@ -375,11 +375,11 @@ mexer em tudo sem quebrar — a mudança vira um diff revisável, não uma surpr
 
 | camada | quem escreve | pode editar à mão? |
 |---|---|---|
-| `specs/dashboards/*.spec.yaml` | `tools/extractor`, a partir do PBIP | **não** — é o registro do original |
-| `specs/_catalog/{measures,tables,queries}` | extractor + revisão humana | só com registro em `SPEC-DRIVEN.md` |
-| `specs/paridade/*.yaml` | humano | sim — é o gabarito |
-| **`specs/layout/*.layout.yaml`** | **humano — nasce neste plano** | **sim, é a fonte da verdade da tela** |
-| `specs/golden/layout/*.json` | gerado por `npm run layout:golden` | **não** — é a linha de base |
+| `backend/specs/dashboards/*.spec.yaml` | `backend/tools/extractor`, a partir do PBIP | **não** — é o registro do original |
+| `backend/specs/_catalog/{measures,tables,queries}` | extractor + revisão humana | só com registro em `SPEC-DRIVEN.md` |
+| `backend/specs/paridade/*.yaml` | humano | sim — é o gabarito |
+| **`backend/specs/layout/*.layout.yaml`** | **humano — nasce neste plano** | **sim, é a fonte da verdade da tela** |
+| `backend/specs/golden/layout/*.json` | gerado por `npm run layout:golden` | **não** — é a linha de base |
 
 A separação não é burocracia: o `spec.yaml` gerado tem `position: {x, y, width, height}`
 em coordenadas de Power BI (tela fixa de 2800×2130). Ele diz **onde estava**, e é insumo.
@@ -390,7 +390,7 @@ O `layout.yaml` diz **onde fica**, e é decisão.
 ```yaml
 # MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
 pagina: visao-geral
-base: specs/dashboards/visao-geral.spec.yaml   # todo id abaixo tem de existir aqui
+base: backend/specs/dashboards/visao-geral.spec.yaml   # todo id abaixo tem de existir aqui
 
 kpis:
   - visual: 2ce6f3783f48638594d6
@@ -430,13 +430,13 @@ que existe; todo visual da spec gerada aparece **exatamente uma vez** — numa f
 
 Nada deste plano começa com 18 arquivos soltos e 4 testes vermelhos.
 
-1. Fechar a auto-exclusão de cross-filter — os 3 testes de `apps/api/test/calcula.test.ts:513-565`
+1. Fechar a auto-exclusão de cross-filter — os 3 testes de `backend/api/test/calcula.test.ts:513-565`
    estouram em `dados.pontos` porque o visual clicado volta sem `dados`. É implementação
    incompleta, não teste errado.
 2. Reconciliar os **867px** medidos pelo cromo novo com o `DESIGN-SYSTEM.md` §3, que ainda
-   diz ~950 — `apps/web/test/casca.test.ts:156` reprova de propósito quando o documento
+   diz ~950 — `frontend/test/casca.test.ts:156` reprova de propósito quando o documento
    fica para trás. **Mover o documento é a correção**, não afrouxar o teste.
-3. Apagar `apps/api/test/_dbg.test.ts` (depuração).
+3. Apagar `backend/api/test/_dbg.test.ts` (depuração).
 4. Commit em `staging`, validar, `main`.
 
 - **Critério de saída:** `npm test` = 1373/1373 e `git status --short` vazio.
@@ -448,14 +448,14 @@ Nada deste plano começa com 18 arquivos soltos e 4 testes vermelhos.
 A fase mais importante e a menos visível: **gerar o `layout.yaml` de cada página a partir
 do que a tela faz hoje**, e provar que ela continua idêntica.
 
-1. `tools/layout/src/extrai.ts` — lê a spec gerada + as heurísticas atuais
+1. `backend/tools/layout/src/extrai.ts` — lê a spec gerada + as heurísticas atuais
    (`LIMIAR_LARGO=24`, `LIMIAR_ESTREITA=3`, `porPosicao`) e **escreve** os 14
-   `specs/layout/*.layout.yaml` com a forma de hoje. A heurística vira dado, uma vez, e
+   `backend/specs/layout/*.layout.yaml` com a forma de hoje. A heurística vira dado, uma vez, e
    morre em seguida.
-2. `tools/layout/src/valida.ts` — as regras do §1. Roda dentro do `npm test`, sem navegador.
+2. `backend/tools/layout/src/valida.ts` — as regras do §1. Roda dentro do `npm test`, sem navegador.
 3. `npm run layout:golden` — resolve cada página em **três recortes** (sem filtro, mês
    padrão, um clique de cross-filter) e grava faixa/span/altura/forma de cada visual em
-   `specs/golden/layout/`.
+   `backend/specs/golden/layout/`.
 
 - **Critério de saída:** os três recortes produzem **golden idêntico** — a prova de que a
   forma parou de depender do dado. Hoje eles divergem, e essa divergência é o defeito.
@@ -465,7 +465,7 @@ do que a tela faz hoje**, e provar que ela continua idêntica.
 
 ## 4. Fase L2 — o arnês de medição
 
-Invariante que não é comando é intenção. `tools/tela/` (playwright já é dependência):
+Invariante que não é comando é intenção. `backend/tools/tela/` (playwright já é dependência):
 
 ```bash
 npm run tela                      # 14 páginas × 4 resoluções × 2 temas = 112 combinações
@@ -474,8 +474,8 @@ npm run tela -- --pagina=visao-geral --largura=1366 --altura=768 --tema=claro
 
 > "9 páginas" era o número de 26-27/08 (`docs/RECUPERACAO-27-08.md`, "11 telas" /
 > "9 páginas × 4 resoluções"), antes de várias páginas existirem. Hoje há **14**
-> `specs/dashboards/*.spec.yaml` — o mesmo conjunto que a Fase L1 já extraiu — e o
-> `tools/tela/` roda contra as 14 por padrão.
+> `backend/specs/dashboards/*.spec.yaml` — o mesmo conjunto que a Fase L1 já extraiu — e o
+> `backend/tools/tela/` roda contra as 14 por padrão.
 
 Reprova quando: algum cartão for mais alto que a viewport; a **página** rolar na
 horizontal; sobrar `v-auto`; um par texto/fundo dos tokens ficar abaixo de 4,5:1; ou dois
@@ -499,7 +499,7 @@ com os números.
   midtom contra o qual nem branco puro alcançava o piso) e os três "-texto" ganharam
   override em `.dark` (`--pbi-gold-600` reaproveita `--pbi-gold`; `--pbi-green-texto`/
   `--pbi-critico-texto` ganharam tom novo). Reconfirmado com `npm run tela`: **112/112
-  sem problema**. Ver `apps/web/src/estilo.css` (comentários ao lado de cada valor) e
+  sem problema**. Ver `frontend/src/estilo.css` (comentários ao lado de cada valor) e
   `docs/DESIGN-SYSTEM.md` §1.1.1 para a derivação completa.
 
 ---
@@ -516,7 +516,7 @@ Agora com arnês, dá para refazer a passada de 26/08 **medindo**, e não reapli
    do que este item pedia (não é um número fixo recalibrado, é medido a cada render).
 3. ✅ Preservado `@layer base` e os tokens de papel — nenhuma mudança nesta fase tocou neles.
 
-**O que realmente faltava**, achado rodando `tools/tela` contra o app: `.v-grafico`/
+**O que realmente faltava**, achado rodando `backend/tools/tela` contra o app: `.v-grafico`/
 `.v-tabela`/`.v-matriz` reservavam uma fração fixa de `--util` **por cartão**, cega para
 quantos outros cartões de largura cheia existem na mesma página — `.v-matriz` em
 particular pedia `var(--util)` inteiro, certo para uma página com uma matriz só, absurdo
@@ -562,20 +562,20 @@ constantes `LIMIAR_LARGO` e `LIMIAR_ESTREITA` saem do código. A grade vira 12 c
 `span` declarado, e os pontos de quebra ficam num lugar só, global — não por página.
 
 - **Critério de saída:** o golden dos três recortes fica **igual entre si e igual ao de
-  L1**, `npm run tela` limpo, e nenhuma leitura de `v.dados` sobra em `apps/web/src/atomic/`.
+  L1**, `npm run tela` limpo, e nenhuma leitura de `v.dados` sobra em `frontend/src/atomic/`.
 
 ### O que mudou
 
-`GET /api/dashboards/:id/layout` é rota nova: `specs/layout/*.layout.yaml` carrega uma
-vez na subida (`carregaLayouts`, `apps/api/src/servidor.ts`) e serve o `LayoutSpec` cru,
-sem cálculo — por isso não depende do snapshot nem de filtro. `apps/web/src/App.tsx`
+`GET /api/dashboards/:id/layout` é rota nova: `backend/specs/layout/*.layout.yaml` carrega uma
+vez na subida (`carregaLayouts`, `backend/api/src/servidor.ts`) e serve o `LayoutSpec` cru,
+sem cálculo — por isso não depende do snapshot nem de filtro. `frontend/src/App.tsx`
 busca o layout da página num efeito próprio (chaveado só em `atual`, cache em memória
 por sessão) e entrega o array inteiro de `visuais` para `KpiGridSection`/
 `VisualGridSection`, que agora fazem sua própria busca por id em cima de `layout.kpis`/
 `layout.faixas` — nenhum dos dois lê `.dados` para decidir posição, só para desenhar.
 
-`heuristica-grade.ts` saiu de `apps/web/src/atomic/` (bundle de produção) e virou
-`tools/layout/src/heuristica-original.ts`: só `npm run layout:extrai` ainda a usa, para
+`heuristica-grade.ts` saiu de `frontend/src/atomic/` (bundle de produção) e virou
+`backend/tools/layout/src/heuristica-original.ts`: só `npm run layout:extrai` ainda a usa, para
 regenerar um `.layout.yaml` a partir da forma derivada quando alguém quiser. Rodar
 `layout:extrai` de novo depois da mudança provou diff vazio (só a data do cabeçalho),
 confirmando que a heurística não mudou de comportamento na mudança de endereço.
@@ -596,7 +596,7 @@ de reaquecer as páginas — o meio da sessão cruzou a virada do dia (30→31/0
 do cache de resposta inclui o dia UTC do cálculo (`diaDoCalculo`), então a primeira
 rodada pós-virada recalculou tudo do zero e estourou o timeout de 15s do arnês em
 páginas aleatórias — não é defeito desta fase, é o comportamento já documentado em
-`specs/_catalog/cache-policies.yaml`. `npm run aquece` resolveu.
+`backend/specs/_catalog/cache-policies.yaml`. `npm run aquece` resolveu.
 
 `docs/MEDIDAS-TELA.md` contra o commit da L3: nenhuma página mudou de "telas" de forma
 que importe — as diferenças são de poucos pixels (deriva do dado do dia, não do

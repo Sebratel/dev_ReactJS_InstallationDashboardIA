@@ -1,0 +1,53 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: l-tec
+page_id: 8c3cb47fad3d28088764
+name: L.TEC
+type: Tooltip
+visibility: HiddenInViewMode
+size:
+  width: 550
+  height: 400
+visual_count: 1
+filters: []
+filters_vazios: 0
+visuals:
+- id: 8ea73a36c7da00d0613e
+  type: tableEx
+  position:
+    x: 0
+    y: 0
+    width: 550
+    height: 400
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: CONTAGEM
+    aggregation: sum
+    aggregation_code: 0
+    name: TOTAL
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 1"
+    name: "INSTALADO POR:"
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: NUMERO CONTRATO
+    name: CONTRATO
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: N°PROTOCOLO
+    name: PROTOCOLO
+    active: null
+  filters: []
+  filters_vazios: 0

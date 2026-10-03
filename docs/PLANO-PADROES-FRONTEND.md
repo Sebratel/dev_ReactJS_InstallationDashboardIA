@@ -1,4 +1,4 @@
-# Adequação do `apps/web` aos padrões de frontend da Sebratel
+# Adequação do `frontend` aos padrões de frontend da Sebratel
 
 Referência: skill `padroes-frontend` (documento oficial "Padrões de Desenvolvimento
 Front-End", 2026). A paleta continua a bordô `#880F17` de `estilo.css`, e não a do
@@ -64,10 +64,10 @@ Medir antes e depois o número de pedidos e o tempo até a página ficar pronta.
 ## Fase 5 — qualidade
 
 - ESLint (com `react-hooks`), Prettier, Husky e lint-staged. A formatação do Prettier
-  entra num commit isolado, quando não houver outro trabalho aberto em `apps/web`.
+  entra num commit isolado, quando não houver outro trabalho aberto em `frontend`.
 - Vitest e Testing Library para os testes do web (hoje são 11 em `node:test`). O
   `npm test` da raiz continua chamando todos.
-- E2E com Playwright, aproveitando `tools/tela`.
+- E2E com Playwright, aproveitando `backend/tools/tela`.
 
 ## Fase 6 — design system
 
