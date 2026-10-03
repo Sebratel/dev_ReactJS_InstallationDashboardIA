@@ -22,7 +22,7 @@ manutenção e pode correr depois do go-live.
 |---|---|---|---|
 | 0 | Arrumar a casa | ✅ 02/10 | este arquivo, §0 |
 | A | VISÃO PRODUTIVA em tempo real | ⏳ **próxima**: etapa 1 ✅, etapa 2 falta | `ACHADOS.md` #166–#171 |
-| B | Carga leve no banco | 🟡 1.1 e 1.1b ✅, 8 itens faltam | `PLANO-CARGA.md` §3, fases 1 e 2 |
+| B | Carga leve no banco | 🟡 **em andamento**: modelo madrugada + poller no ar desde 02/10, falta a prova de dia | `PLANO-CARGA.md` §3, fases 1 e 2 |
 | C | Produção no Portainer | 🔴 não começou (autonomia 1–4 ✅) | `PLANO-CARGA.md` §3 fase 3 + `PLANO-AUTONOMIA.md` etapa 5 |
 | D | Validação com o negócio | 🟡 trilha paralela, depende de pessoas | `PERGUNTAS-NEGOCIO.md` |
 | E | Go-live | 🔴 depende de A, B, C e D | este arquivo, §E |
@@ -88,16 +88,37 @@ conta certo as visitas que ainda esperam a alocação.
 
 Detalhe e método de prova em `PLANO-CARGA.md` §3. Resumo:
 
-- [ ] **B.1 (1.3) Medir o poller, PRIMEIRO.** Desde 02/10 ele tem mais queries (field-agenda,
-      e alocação depois da A.1). Hoje a conta "por hora" dele é **"?"**. Sem esse número a meta
-      da fase não é verificável.
-- [ ] **B.2 (1.2)** `protocolos-produtividade` incremental (238 → 67 s medidos), provada com
-      `npm run probe:compara-incremental`.
+**Modelo decidido pelo Erick em 02/10:** snapshot completo às 03:00 + poller + incremental de
+dia (ACHADOS #172). Ligado na noite de 02/10, na versão conservadora: nada que já funcionava
+foi desligado antes de o substituto provar.
+
+- [x] **B.0** ✅ 02/10 — o que o modelo exigia antes de ligar:
+      - o poller parte da carga em disco, não da subida (`1dc5ee3`); reinício não apaga o dia;
+      - cron às 06:00 UTC = 03:00 de Brasília (era meia-noite) e com as 23 queries (`055d9c1`);
+      - `snapshot-diario` subido na stack;
+      - `refresh.yaml` em três caminhos (`2622764`): baratas 15 min, pesadas 30 min, as 8 do
+        poller a cada 1 h **como rede de segurança**;
+      - Nginx resolve a API a cada pedido (`a8b8178`): recriar a API não dá mais 502.
+- [x] **B.1 (1.3)** ✅ 02/10, `070b354`: **o poller custava 38,6 min/h de banco** com 0
+      mudanças, o dobro do refresh. Paliativo nos intervalos (~19,6 min/h estimados).
+- [ ] **B.1b** **Sentinela do poller:** uma consulta barata ("mudou algo desde X?") e as
+      pesadas só quando ela disser sim. É o maior ganho que sobra.
+- [ ] **B.1c** **Primeiro dia útil no modelo novo (03/10):**
+      - conferir o snapshot das 03:00 no log do `snapshot-diario`;
+      - medir o poller com movimento de dia (`/api/saude` → `porQuery`);
+      - comparar, para as 8 do poller, o que a tela mostrou com a carga do `frio`. Se
+        baterem, elas saem do refresh do dia.
+- [ ] **B.2 (1.2)** `protocolos-produtividade` incremental. Prova de 02/10 22:31: 40.758 de
+      40.762 iguais, 36,7 s × 192,3 s. Os 4 divergem em `STATUS CONTRATO` (nenhuma tela lê),
+      mas é buraco de verdade: o contrato mudou sem a solicitação mudar. **Repetir de dia**
+      e, se `DATA AGENDA`/`EQUIPE`/`GESTOR` também escaparem, pôr um ramo nos `alvos`.
 - [ ] **B.3 (1.4)** Saúde **por tabela** na tela.
 - [ ] **B.4 (1.5)** `application_name` próprio por processo (refresh, poller, API).
 - [ ] **B.5 (2.1)** `backlog-agendado-futuro`: 59 s para 0,3 MB. É o plano de execução, não o volume.
-- [ ] **B.6 (2.2)** `protocolos-geral`: deduplicação para o SQL, com desempate determinístico,
-      e depois a incremental.
+- [ ] **B.6 (2.2)** `protocolos-geral` incremental. O `Table.Distinct` é por `SOLICITACAO`, a
+      própria chave, e não bloqueia. O que bloqueia são as junções do M com `troca-endereco`,
+      `tecnicos-auxiliares` e `gestores-equipes`: os `alvos` têm de ver mudança nelas também
+      (o mesmo buraco da B.2).
 - [ ] **B.7 (2.3)** `protocolos-auxiliares`: reavaliar com o número da B.1.
 
 **Pronto quando:** < 10 min/h de consulta pesada no banco, **com o poller somado**.
@@ -116,7 +137,7 @@ tiram os **contornos fora do repositório** da `PLANO-CARGA.md` §1. Enquanto ex
       deu um 502, que sumiu em 15 s.
 - [ ] **C.4 (3.3)** `GOOGLE_CREDENCIAL_HOST` como variável da stack.
 - [ ] **C.5 (3.4)** `mem_limit` pelo medido **no servidor**, não no notebook.
-- [ ] **C.6 (3.5)** `protocolos-produtividade` no cron das 03:00 (depende da B.2).
+- [x] **C.6 (3.5)** ✅ 02/10, `055d9c1`: no cron, que agora dispara às 03:00 de Brasília.
 - [ ] **C.7 (3.6)** Aviso externo quando `/api/saude` degradar (o destino é decisão do Erick).
 - [ ] **C.8 (3.7)** Subir no Portainer e **reiniciar o host**.
 

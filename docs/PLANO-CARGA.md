@@ -12,8 +12,11 @@
 
 ## 1. Estado agora (01/10/2026, ~18:00 UTC)
 
-> **02/10/2026, ~15:00: stack religada** (`PLANO-MESTRE.md` 0.4), agora com a API na **3100**
-> do host. O contorno `API_PORT_HOST=3101` saiu (C.3). Os outros dois continuam.
+> **02/10/2026, ~22:45: modelo "madrugada + poller" no ar** (ACHADOS #172, `PLANO-MESTRE.md` §B).
+> A stack roda `api`, `redis`, `proxy`, `refresh` e, pela primeira vez, **`snapshot-diario`**
+> (cron às 06:00 UTC = 03:00 de Brasília). A API está na **3100** do host, e o contorno
+> `API_PORT_HOST=3101` saiu. Os outros dois contornos continuam. Os grupos do `refresh` mudaram:
+> ver o topo de `specs/_catalog/refresh.yaml`.
 
 **Runtime: a stack Docker, rodando da pasta principal (`staging`).** `api`, `redis`,
 `proxy` (porta 80) e `refresh`. O `snapshot-diario` **não** foi subido. Não há
@@ -117,12 +120,16 @@ explícito.
 - [x] **1.1b** Observar no Docker as primeiras rodadas incrementais — 01/10, ACHADOS #165
       ("No Docker"): 6 rodadas de 46–79 s (completa: 282 s), linhas 632.763 → 635.634
       subindo com o dia, e `linhas = mantidas + novas` exato em todas.
-- [ ] **1.2** Ligar `protocolos-produtividade` (política existe; 238 → 67 s medidos em
+- [ ] **1.2** Ligar `protocolos-produtividade` (política existe). **Provada em 02/10 22:31,
+      NÃO ligada** (ACHADOS #172 §4): 40.758 de 40.762 iguais e 36,7 s × 192,3 s, mas
+      `STATUS CONTRATO` escapa (contrato muda sem a solicitação mudar). Repetir de dia.
+      Antes: 238 → 67 s medidos em
       25/08). Prova: incremental × completa na mesma hora, agrupado por `SOLICITACAO`,
       com `npm run probe:compara-incremental` (o passo a passo está no cabeçalho de
       `tools/probe/src/compara-incremental.ts`). Depois:
       `frio: incremental: [field-agenda, protocolos-produtividade]`.
-- [ ] **1.3** **Medir o poller.** A costura dele filtra `a.modified >= :desde` em
+- [x] **1.3** ✅ 02/10, `070b354`: **38,6 min/h** com 0 mudanças (ACHADOS #172 §1); intervalos
+      afrouxados (`2622764`). **Falta a sentinela** abaixo. Texto original: **Medir o poller.** A costura dele filtra `a.modified >= :desde` em
       `assignments` (7 GB, **sem índice em `modified`**) a cada 12 s, em 5 queries.
       Pode ser a maior carga escondida. Registrar a duração de cada consulta; se passar
       de ~1 s, trocar as 7 por **uma** consulta-sentinela ("quais solicitações mudaram
@@ -138,7 +145,9 @@ Meta da fase: `frio` de ~9 para ~3 min por ciclo; banco de ~30 para ~12–15 min
 
 - [ ] **2.1** `backlog-agendado-futuro` — 59 s para **0,3 MB**: o custo é plano, não
       volume. `EXPLAIN ANALYZE` e reescrita; incremental não resolve.
-- [ ] **2.2** `protocolos-geral` (68 s) — incremental bloqueada: o M tem
+- [ ] **2.2** `protocolos-geral` (68 s). *Corrigido em 02/10:* o `Table.Distinct` é por
+      `SOLICITACAO`, a chave, e não bloqueia. O bloqueio são as junções do M com
+      `troca-endereco`, `tecnicos-auxiliares` e `gestores-equipes`. Texto original: incremental bloqueada: o M tem
       `Table.Distinct`/`Table.Sort` sobre o conjunto. Primeiro levar a deduplicação para
       o SQL (com desempate determinístico — o problema de 04/09), depois a política.
 - [ ] **2.3** `protocolos-auxiliares` (46 s) — reavaliar depois da 1.3; o poll já dá frescor.
@@ -154,7 +163,7 @@ Meta: < 10 min/h de consulta pesada no banco.
 - [ ] **3.3** `GOOGLE_CREDENCIAL_HOST` como variável da stack no Portainer.
 - [ ] **3.4** `mem_limit` pelo medido **no servidor** (hoje api 6g + refresh 6g num Docker
       de notebook com 7,6 GB).
-- [ ] **3.5** `protocolos-produtividade` no cron das 03:00 (está fora: 24 de 25). Com
+- [x] **3.5** ✅ 02/10, `055d9c1`: no cron, que disparava à MEIA-NOITE de Brasília (contêiner em UTC) e agora às 06:00 UTC. Era: `protocolos-produtividade` no cron das 03:00 (está fora: 24 de 25). Com
       ela incremental, é a madrugada que renova a `completoEm`.
 - [ ] **3.6** Aviso externo quando `/api/saude` ficar degradado (destino com o Erick).
 - [ ] **3.7** Etapa 5 do `PLANO-AUTONOMIA.md`: subir no Portainer e reiniciar o host —

@@ -13782,3 +13782,55 @@ desde a manhã de 01/10, 964, 956 dentro (99,2%). As de fora chegam pelo refresh
 (30 min, janela de 3 meses) — atraso, não perda. Aprovado pelo Erick. A lista guardada
 entre voltas ficou de fora: 40 ms a mais de ganho por uma decisão de renovação em que uma
 agenda nova poderia ficar invisível até renovar.
+
+## #172 — snapshot de madrugada + poller: o que a primeira noite mediu (02/10)
+
+O Erick pediu o modelo "um snapshot completo de madrugada e incremental/poller de dia".
+Antes de ligar, cada peça foi medida ou provada. Seis achados, em ordem:
+
+**1. O poller era a maior carga do banco** (commit `070b354`, `/api/saude` → `porQuery`).
+Quinze minutos às 22:12, sem nenhuma mudança na fonte:
+
+| query | intervalo | por volta | banco por hora |
+|---|---|---|---|
+| `reincidencia` | 30 s | 5,9 s | 12,0 min |
+| `protocolos-auxiliares` | 12 s | 1,5 s | 7,7 min |
+| `instalacoes-reincidentes` | 30 s | 3,2 s | 6,6 min |
+| as outras 5 | 12–30 s | 0,4–0,7 s | 12,3 min |
+| **total** | | | **38,6 min/h** |
+
+O refresh inteiro custa ~21 min/h. Nenhuma volta foi pulada: as 6.266 voltas em ~7 h
+(contra ~13.000 pelos intervalos) vieram da queda de rede da tarde, não de consulta
+lenta. Cada volta recalcula a query inteira para descobrir que nada mudou. Paliativo
+(`2622764`): `reincidencia` e `instalacoes-reincidentes` 30 s → 2 min, `protocolos-auxiliares`
+12 s → 30 s, ~19,6 min/h estimados. O conserto é a sentinela (PLANO-CARGA 1.3).
+
+**2. Reiniciar a API apagava o dia das tabelas do poller** (`1dc5ee3`). A vigília partia
+de `LOCALTIMESTAMP`; com o snapshot só de madrugada, uma API reiniciada às 14h mostraria
+as 8 tabelas como às 03h. A primeira busca agora parte do `geradoEm` do manifesto, no
+relógio do banco, com teto de 26 h. O `corte` de `mescla()` continua sendo a subida.
+Recuar o corte apagaria do disco a linha que mudou e não voltou na busca em dois passos,
+e há um teste guardando isso.
+
+**3. O "snapshot das 3h" rodava à meia-noite** (`055d9c1`). O contêiner é UTC
+(`/etc/localtime -> Etc/UTC`); `0 3 * * *` = 00:00 de Brasília. Agora `0 6`. E
+`protocolos-produtividade` entrou na lista: estava fora por um motivo que caiu em 13/09.
+Há um teste que exige que o crontab cubra toda query do `refresh.yaml`.
+
+**4. `protocolos-produtividade` incremental: bateu nas colunas usadas, mas tem buraco.**
+Prova de 22:31 (incremental × completa ao mesmo tempo, base das 22:01): 82.421 linhas nas
+duas, **40.758 de 40.762 protocolos iguais**, 36,7 s × 192,3 s. Os 4 diferem só em
+`STATUS CONTRATO`, e nos 4 a incremental ficou com o valor da BASE: o contrato mudou e a
+solicitação não, e os `alvos` (solicitação, alocação, RAUX) não veem. Nenhuma tela lê essa
+coluna da `PROTOCOLOS PRODUTIVIDADE`, mas `DATA AGENDA`, `EQUIPE`, `GESTOR` e `TÉCNICO TROCA`
+vêm de outras tabelas e a janela noturna não as exercitou. **Não ligada**: repetir de dia.
+
+**5. Recriar a API derrubava a tela pelo proxy** (`a8b8178`). O Nginx resolvia `api` uma vez
+na subida: API recriada de 172.18.0.4 para .3, 502 em toda página até `nginx -s reload`.
+Agora `resolver 127.0.0.11` + `proxy_pass $api`. Prova: API forçada para um IP novo (.7,
+com um contêiner descartável ocupando o antigo) e a porta 80 seguiu 200, sem reload.
+
+**6. Docker Desktop travado num diálogo** (tarde de 02/10): ver `PLANO-CARGA.md` §4.
+
+**Efeito colateral aceito:** o `frio` passou a 60 min, então as agendas de fora dos 7 dias
+da detecção da FIELD AGENDA (#171, ~0,8%) chegam em até 1 h, e não mais em 30 min.
