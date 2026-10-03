@@ -215,3 +215,15 @@ test('crontab: o snapshot da madrugada é às 03:00 de Brasília e cobre toda qu
   const faltam = doRefresh.filter((q) => !doCron.has(q));
   assert.deepEqual(faltam, [], 'queries do refresh fora do snapshot da madrugada');
 });
+
+test('nginx.conf: a API é resolvida a cada pedido, não na subida do proxy (02/10/2026)', () => {
+  // Com `proxy_pass http://api:3100` literal, o Nginx guardava o IP da subida, e recriar a
+  // API deixava a tela inteira em 502 até alguém reiniciar o proxy.
+  const conf = fs.readFileSync(path.join(RAIZ, 'nginx.conf'), 'utf8');
+  const ativo = conf.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.match(ativo, /^\s*resolver 127\.0\.0\.11 /m, 'sem `resolver` do Docker, a variável não re-resolve');
+  assert.match(ativo, /^\s*set \$api http:\/\/api:3100;/m);
+  const passes = [...ativo.matchAll(/proxy_pass\s+([^;]+);/g)].map((m) => m[1]);
+  assert.ok(passes.length >= 4, `li ${passes.length} proxy_pass`);
+  assert.deepEqual(passes.filter((p) => p !== '$api'), [], 'proxy_pass com host literal volta a fixar o IP');
+});
