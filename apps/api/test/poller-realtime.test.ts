@@ -377,6 +377,55 @@ test(`PollerRealtime.estado(): erro na busca vira contagem e motivo`, async () =
   assert.match(e.ultimoErro ?? ``, /ECONNRESET/);
 });
 
+// ------------------------------------------- custo por query (PLANO-CARGA B.1)
+
+test(`PollerRealtime.estado(): volta disparada com a anterior em voo conta como pulada`, async () => {
+  // O sintoma de 02/10: 6.266 voltas em ~7 h quando os intervalos dariam ~13.000. A
+  // volta pulada é a consulta mais longa que o intervalo — sem esta contagem, invisível.
+  let solta!: () => void;
+  const segura = new Promise<void>((r) => { solta = r; });
+  const p = new PollerRealtime({
+    specsDir: `specs`,
+    pool: async () => ({
+      query: async () => { await segura; return { rows: [], fields: [] }; },
+      end: async () => {},
+    }),
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    anuncia: () => {},
+  });
+  const primeira = p.tentaAgora(`protocolos-auxiliares`);
+  await p.tentaAgora(`protocolos-auxiliares`);
+  solta();
+  await primeira;
+  const q = p.estado().porQuery.find((x) => x.query === `protocolos-auxiliares`)!;
+  assert.equal(q.puladas, 1);
+  assert.equal(q.voltas, 1);
+});
+
+test(`PollerRealtime.estado(): tempo de banco por query e somado por hora`, async () => {
+  const p = new PollerRealtime({
+    specsDir: `specs`,
+    pool: async () => ({
+      query: async () => { await new Promise((r) => setTimeout(r, 25)); return { rows: [], fields: [] }; },
+      end: async () => {},
+    }),
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    anuncia: () => {},
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const e = p.estado();
+  const q = e.porQuery.find((x) => x.query === `protocolos-auxiliares`)!;
+  assert.equal(q.voltas, 2);
+  assert.ok(q.bancoMsMedio >= 20, `a consulta de 25 ms tem de aparecer: ${q.bancoMsMedio}`);
+  assert.ok(q.bancoMsMax >= q.bancoMsMedio);
+  // Relógio parado: a vigília vale o piso de 1 min, então por hora = 60× o somado.
+  assert.ok(q.bancoMsPorHora >= 2 * 20 * 60, `${q.bancoMsPorHora}`);
+  assert.ok(e.bancoMinPorHora > 0);
+  const quieta = e.porQuery.find((x) => x.query !== `protocolos-auxiliares`)!;
+  assert.equal(quieta.voltas, 0, `query que não rodou aparece zerada, não some`);
+});
+
 // ------------------------------------------------- fuso de :desde (ACHADOS #168)
 
 test('paraParametroSemFuso: os dígitos que parseSemFuso leu, sem Z — em qualquer fuso do processo', () => {

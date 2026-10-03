@@ -366,6 +366,38 @@ export function paraParametroSemFuso(d: Date): string {
 }
 
 /**
+ * Quanto uma query vigiada custa ao banco — para `GET /api/saude`.
+ *
+ * **Por que existe (PLANO-CARGA B.1, 02/10/2026).** Com o snapshot de madrugada, o
+ * poller vira a carga principal do dia, e ninguém sabia quanto ele pesa: 6.266 voltas
+ * em ~7 h, quando os intervalos dariam ~13.000. A diferença são voltas PULADAS — a
+ * anterior ainda rodando quando o temporizador disparou —, e uma volta mais longa que o
+ * intervalo é uma consulta que nunca sai do banco. `bancoMs` é só o tempo de consulta;
+ * as colunas calculadas da busca em dois passos rodam aqui, não lá.
+ */
+export interface MedidaDaQuery {
+  query: string;
+  intervaloMs: number;
+  voltas: number;
+  puladas: number;
+  erros: number;
+  bancoMsMedio: number;
+  bancoMsMax: number;
+  ultimoBancoMs: number | null;
+  /** Tempo de consulta somado, por hora de vigília — a unidade da meta da Fase B. */
+  bancoMsPorHora: number;
+}
+
+interface Acumulado {
+  voltas: number;
+  puladas: number;
+  erros: number;
+  bancoMs: number;
+  bancoMsMax: number;
+  ultimoBancoMs: number | null;
+}
+
+/**
  * Vigia todas as queries de `realtime-poll.yaml`, uma a uma, cada uma no seu
  * próprio intervalo — mesmo molde de `Aquecedor` (`setInterval` + `unref` +
  * guarda contra sobreposição), replicado por query porque cada uma tem sua
@@ -390,6 +422,9 @@ export class PollerRealtime {
   #ultimaVolta: Date | null = null;
   #ultimaMudanca: Date | null = null;
   #ultimoErro: string | null = null;
+  readonly #medidas = new Map<string, Acumulado>();
+  /** Desde quando há vigília — o denominador de `bancoMsPorHora`. */
+  #vigiaDesde: Date | null = null;
 
   constructor(opts: OpcoesDoPoller) {
     this.#specsDir = opts.specsDir;
@@ -596,8 +631,32 @@ export class PollerRealtime {
     ultimaVolta: string | null;
     ultimaMudanca: string | null;
     ultimoErro: string | null;
+    /** Minutos de consulta no banco por hora de vigília, somadas as queries. */
+    bancoMinPorHora: number;
+    porQuery: MedidaDaQuery[];
   } {
+    const horas = this.#vigiaDesde
+      ? Math.max((this.#opts.agora().getTime() - this.#vigiaDesde.getTime()) / 3_600_000, 1 / 60)
+      : null;
+    const porQuery: MedidaDaQuery[] = [...this.#configs.values()].map((cfg) => {
+      const m = this.#medidas.get(cfg.query);
+      const consultas = m ? m.voltas + m.erros : 0;
+      return {
+        query: cfg.query,
+        intervaloMs: cfg.intervaloMs,
+        voltas: m?.voltas ?? 0,
+        puladas: m?.puladas ?? 0,
+        erros: m?.erros ?? 0,
+        bancoMsMedio: m && consultas > 0 ? Math.round(m.bancoMs / consultas) : 0,
+        bancoMsMax: m?.bancoMsMax ?? 0,
+        ultimoBancoMs: m?.ultimoBancoMs ?? null,
+        bancoMsPorHora: m && horas ? Math.round(m.bancoMs / horas) : 0,
+      };
+    });
+    const totalPorHora = porQuery.reduce((s, q) => s + q.bancoMsPorHora, 0);
     return {
+      bancoMinPorHora: Math.round(totalPorHora / 6_000) / 10,
+      porQuery,
       queries: this.#configs.size,
       voltas: this.#voltas,
       mudancas: this.#mudancas,
@@ -618,10 +677,31 @@ export class PollerRealtime {
     return this.#poolPromise;
   }
 
+  #medida(query: string): Acumulado {
+    let m = this.#medidas.get(query);
+    if (!m) {
+      m = { voltas: 0, puladas: 0, erros: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null };
+      this.#medidas.set(query, m);
+    }
+    return m;
+  }
+
+  #registraBanco(query: string, ms: number): void {
+    const m = this.#medida(query);
+    m.bancoMs += ms;
+    m.bancoMsMax = Math.max(m.bancoMsMax, ms);
+    m.ultimoBancoMs = ms;
+  }
+
   async #tenta(cfg: ConfigDePoll): Promise<void> {
-    if (this.#ocupado.has(cfg.query)) return;
+    if (this.#ocupado.has(cfg.query)) {
+      this.#medida(cfg.query).puladas += 1;
+      return;
+    }
     this.#ocupado.add(cfg.query);
+    this.#vigiaDesde ??= this.#opts.agora();
     const t0 = Date.now();
+    let tb = 0;
     try {
       if (!this.#deltas.has(cfg.query)) return; // não deveria acontecer — inicia() sempre semeia antes do 1º tenta()
 
@@ -631,7 +711,10 @@ export class PollerRealtime {
       const delta = this.#deltas.get(cfg.query)!;
 
       if (cfg.alvos) {
+        tb = Date.now();
         const busca = await this.#buscaEmDoisPassos(cfg, run, delta);
+        this.#registraBanco(cfg.query, Date.now() - tb);
+        tb = 0;
         const agora = this.#opts.agora();
         const tc = Date.now();
         const linhas = cfg.colunasCalculadas ? this.#calculaColunas(cfg, busca.linhas, agora) : busca.linhas;
@@ -657,7 +740,10 @@ export class PollerRealtime {
       // desta config, em vez de poluir silenciosamente com a query inteira.
       const sql = costura(this.#sqlDe(cfg), politica);
 
+      tb = Date.now();
       const linhasRaw = await run(sql, { desde: paraParametroSemFuso(delta.desde) });
+      this.#registraBanco(cfg.query, Date.now() - tb);
+      tb = 0;
       const linhas = linhasRaw.map((l) => normalizaChaves(l as Record<string, Escalar>));
 
       const agora = this.#opts.agora();
@@ -665,6 +751,9 @@ export class PollerRealtime {
       this.#concluiVolta(cfg, delta, atualizado, linhas.length, agora, t0);
     } catch (err) {
       const ms = Date.now() - t0;
+      // A consulta que falhou também ocupou o banco até falhar.
+      if (tb) this.#registraBanco(cfg.query, Date.now() - tb);
+      this.#medida(cfg.query).erros += 1;
       this.#erros += 1;
       this.#ultimoErro = err instanceof Error ? err.message : String(err);
       this.#opts.anuncia(
@@ -689,6 +778,7 @@ export class PollerRealtime {
     const ms = Date.now() - t0;
     const mudaram = mudancasReais(antes, atualizado);
     this.#voltas += 1;
+    this.#medida(cfg.query).voltas += 1;
     this.#ultimaVolta = agora;
     if (mudaram > 0) {
       this.#mudancas += 1;
