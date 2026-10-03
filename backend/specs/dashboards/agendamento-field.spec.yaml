@@ -1,0 +1,1067 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: dashboard
+id: agendamento-field
+page_id: 10adf659697aff826ab1
+name: AGENDAMENTO FIELD
+type: Page
+visibility: HiddenInViewMode
+size:
+  width: 2800
+  height: 4400
+visual_count: 39
+filters:
+- name: 9119f22f030d3b89b9b6
+  type: Advanced
+  entity: FIELD AGENDA
+  property: Data
+  conditions:
+  - op: comparison
+    kind: gt
+    left_property: Data
+    left_aggregation: null
+    right:
+      anchor_kind: literal
+      anchor: 2025-08-31T01:00:00
+      time_unit: second
+      time_unit_code: 5
+filters_vazios: 0
+visuals:
+- id: 04979b00e5329b67f349
+  type: pivotTable
+  title: "VISÃO PRODUTIVA"
+  position:
+    x: 23.628691983122362
+    y: 893.9521800281293
+    width: 2738.9592123769335
+    height: 271.72995780590713
+  entities_used:
+  - Status Protocolo Dia
+  - calendar
+  fields:
+  - role: Columns
+    kind: column
+    entity: calendar
+    property: Data
+    name: Data
+    active: true
+  - role: Rows
+    kind: column
+    entity: Status Protocolo Dia
+    property: Status
+    name: Status
+    active: true
+  - role: Values
+    kind: measure
+    entity: Status Protocolo Dia
+    property: Qtd Protocolos Base
+    name: Qtd Protocolos Base
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 05da970602ab7c4abced
+  type: tableEx
+  title: "QTD DE VEZES AGENDADO"
+  position:
+    x: 1691.420534458509
+    y: 1657.9465541490856
+    width: 315.0492264416315
+    height: 360.337552742616
+  entities_used:
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: Rank Protocolo Dia
+    name: Vezes Agendado
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: Status Protocolo Dia
+    property: protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: Qtd
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 084be384e4209a5a3674
+  type: tableEx
+  title: "HISTÓRICO DE RELATOS"
+  position:
+    x: 20.273531777956556
+    y: 3293.322606596943
+    width: 1944.0064360418341
+    height: 520.3539823008849
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: FIELD AGENDA
+    property: Protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: "."
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Protocolo
+    name: Protocolo
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Data Relato
+    name: Data Relato
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: "Descrição"
+    name: Tipo Relato
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: CategoriaProdutividade
+    name: "Produtivo?"
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: ClassificacaoRelato
+    name: "Relato Padrão/ Motivo"
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 0c0223c665b34f95121e
+  type: tableEx
+  title: "PRAZO SLA"
+  position:
+    x: 2362.869198312236
+    y: 1657.9465541490856
+    width: 332.77074542897327
+    height: 360.337552742616
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Status SLA
+    name: Status SLA
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: FIELD AGENDA
+    property: Protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: Qtd
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 116ebf72cb2018a25249
+  type: card
+  position:
+    x: 2221.598954143202
+    y: 263.3085277554304
+    width: 268.06114239742556
+    height: 119.38857602574416
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: measure
+    entity: FIELD AGENDA
+    property: "Protocolos Manhã"
+    name: "Agendados Manhã"
+    active: null
+  filters: []
+  filters_vazios: 1
+- id: 1570022d6bc4ade1da91
+  type: card
+  position:
+    x: 186.96433211691232
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Data
+    aggregation: min
+    aggregation_code: 3
+    name: Data mais recente
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 1a99bc9b51e27c00d2ba
+  type: pivotTable
+  title: "HISTÓRICO E PREVISÃO DO TEMPO (TESTE)"
+  position:
+    x: 19.758064516129032
+    y: 2046.3709677419356
+    width: 1913.7096774193549
+    height: 417.741935483871
+  entities_used:
+  - Clima/ Tempo
+  - calendar
+  fields:
+  - role: Columns
+    kind: column
+    entity: calendar
+    property: Data
+    name: Data
+    active: true
+  - role: Rows
+    kind: column
+    entity: Clima/ Tempo
+    property: Cidade
+    name: Cidade
+    active: true
+  - role: Values
+    kind: aggregation
+    entity: Clima/ Tempo
+    property: Classificacao
+    aggregation: min
+    aggregation_code: 3
+    name: Primeiro Classificacao
+    active: null
+  filters: []
+  filters_vazios: 1
+- id: 1dc987ba648f79f5596a
+  type: slicer
+  title: "DATA AGENDADO"
+  position:
+    x: 23.047063555913113
+    y: 141.66733708769107
+    width: 423.4915526950925
+    height: 112.63073209975865
+  entities_used:
+  - calendar
+  fields:
+  - role: Values
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Ano
+    name: Data Ano
+    active: true
+  - role: Values
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: "Mês"
+    name: "Data Mês"
+    active: true
+  - role: Values
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Dia
+    name: Data Dia
+    active: false
+  filters: []
+  filters_vazios: 0
+- id: 2a473e574b84005f5e0f
+  type: shape
+  position:
+    x: 0
+    y: 0
+    width: 2800
+    height: 73.33333333333333
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 33b3e9120b7574d09aec
+  type: card
+  position:
+    x: 291.7924809991332
+    y: 0
+    width: 117.71192281185388
+    height: 50.172294968986904
+  entities_used:
+  - HORA ATUALIZADO
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: HORA ATUALIZADO
+    property: Hora
+    aggregation: min
+    aggregation_code: 3
+    name: Hora mais recente
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 45ddf57be8d24b6d5605
+  type: textbox
+  position:
+    x: 12
+    y: 2
+    width: 2788
+    height: 66
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 4745d75971884e728364
+  type: pageNavigator
+  position:
+    x: 0
+    y: 72.66666666666667
+    width: 2800
+    height: 50
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 4ed2f95067a113ca4998
+  type: card
+  position:
+    x: 2496.417940466613
+    y: 263.3085277554304
+    width: 265.8085277554304
+    height: 119.38857602574416
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: measure
+    entity: FIELD AGENDA
+    property: Protocolos Tarde
+    name: Agendados Tarde
+    active: null
+  filters: []
+  filters_vazios: 1
+- id: 52886158dad03a84332b
+  type: unknown
+  position:
+    x: 0
+    y: 0.2653342522398354
+    width: 304.6762549287662
+    height: 53.10523147244007
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: 56d3352b476659cd7972
+  type: pivotTable
+  title: "PROBABILIDADE DE CHUVA % (TESTE)"
+  position:
+    x: 1964.5161290322583
+    y: 2046.3709677419356
+    width: 795.9677419354839
+    height: 417.741935483871
+  entities_used:
+  - Clima/ Tempo
+  - calendar
+  fields:
+  - role: Columns
+    kind: column
+    entity: calendar
+    property: Data
+    name: Data
+    active: true
+  - role: Rows
+    kind: column
+    entity: Clima/ Tempo
+    property: Cidade
+    name: Cidade
+    active: true
+  - role: Values
+    kind: aggregation
+    entity: Clima/ Tempo
+    property: Probabilidade_Chuva_Formatada
+    aggregation: max
+    aggregation_code: 4
+    name: "Último Probabilidade_Chuva_Formatada"
+    active: null
+  filters:
+  - name: c8e0cec6e1b5029d6d09
+    type: Categorical
+    entity: Clima/ Tempo
+    property: Tipo
+    conditions:
+    - op: in
+      values:
+      - "Previsão"
+  filters_vazios: 1
+- id: 56e400ca747d091eb7ba
+  type: tableEx
+  title: "PROTOCOLOS DISTINTOS"
+  position:
+    x: 22.52614641995173
+    y: 1657.9243765084473
+    width: 373.9340305711987
+    height: 360.41834271922767
+  entities_used:
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: protocolo
+    name: Protocolo
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: Status Protocolo Dia
+    property: protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: Qtd
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 5aa81d52fffb190a3b23
+  type: slicer
+  title: "TURNO"
+  position:
+    x: 1904.0787623066103
+    y: 141.77215189873417
+    width: 309.1420534458509
+    height: 112.23628691983122
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TURNO
+    name: TURNO
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: 65f5a09384f836a7ab25
+  type: slicer
+  title: "PROTOCOLO"
+  position:
+    x: 463.33333333333337
+    y: 141.66666666666669
+    width: 308.33333333333337
+    height: 113.33333333333334
+  entities_used:
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: protocolo
+    name: protocolo
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: 670ac661701957510387
+  type: slicer
+  title: "PRODUTIVO?"
+  position:
+    x: 1986.8061142397426
+    y: 3142.3974255832663
+    width: 738.8576025744167
+    height: 110.37811745776347
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: CategoriaProdutividade
+    name: CategoriaProdutividade
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: 6ba6166050e14793b298
+  type: tableEx
+  title: "PROTOCOLOS POR TIPO"
+  position:
+    x: 461.78600160901044
+    y: 1657.9243765084473
+    width: 687.0474658085277
+    height: 360.41834271922767
+  entities_used:
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: Tipo Protocolo Dia
+    name: Tipo Protocolo
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: Status Protocolo Dia
+    property: protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: Qtd
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 6ffe21030010501827da
+  type: slicer
+  title: "MOTIVO"
+  position:
+    x: 1047.4658085277554
+    y: 3142.3974255832663
+    width: 736.6049879324215
+    height: 110.37811745776347
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: ClassificacaoRelato
+    name: ClassificacaoRelato
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: 815c09598bc48c8da49a
+  type: tableEx
+  title: "HISTÓRICO DE RELATOS COMPLETOS"
+  position:
+    x: 20.273531777956556
+    y: 3836.2027353177796
+    width: 2743.6846339501208
+    height: 563.1536604987932
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: aggregation
+    entity: FIELD AGENDA
+    property: Protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: "."
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Protocolo
+    name: Protocolo
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Data Relato
+    name: Data Relato
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: "Descrição"
+    name: Tipo Relato
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Relato
+    name: Relato
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: ClassificacaoRelato
+    name: ClassificacaoRelato
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: CategoriaProdutividade
+    name: "Produtivo?"
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: 84a15198c1b2672c001b
+  type: lineStackedColumnComboChart
+  title: "AGENDA + CAPACIDADE POR TURNO"
+  position:
+    x: 21.13932738503775
+    y: 405.49073438572407
+    width: 2740.425531914894
+    height: 472.7522306108442
+  entities_used:
+  - CAPACIDADE EQUIPE
+  - Status Protocolo Dia
+  - calendar
+  fields:
+  - role: Category
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Ano
+    name: Data Ano
+    active: true
+  - role: Category
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: "Mês"
+    name: "Data Mês"
+    active: true
+  - role: Category
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Dia
+    name: Data Dia
+    active: true
+  - role: Y
+    kind: aggregation
+    entity: CAPACIDADE EQUIPE
+    property: "CAPACIDADE MANHÃ"
+    aggregation: sum
+    aggregation_code: 0
+    name: "CAPACIDADE MANHÃ"
+    active: null
+  - role: Y
+    kind: aggregation
+    entity: CAPACIDADE EQUIPE
+    property: CAPACIDADE TARDE
+    aggregation: sum
+    aggregation_code: 0
+    name: CAPACIDADE TARDE
+    active: null
+  - role: Y2
+    kind: measure
+    entity: Status Protocolo Dia
+    property: Qtd Protocolos Base
+    name: Qtd Protocolos Base
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: a7119bca6c0795bd7269
+  type: tableEx
+  title: "PROTOCOLOS POR BASE"
+  position:
+    x: 1191.279887482419
+    y: 1657.9465541490856
+    width: 450.91420534458507
+    height: 360.337552742616
+  entities_used:
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: Base Dia
+    name: Base
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: Status Protocolo Dia
+    property: protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: Qtd
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: a88b32323b8c521eace1
+  type: card
+  position:
+    x: 2221.551132463967
+    y: 142.21002059025395
+    width: 267.124227865477
+    height: 117.22717913520934
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: measure
+    entity: FIELD AGENDA
+    property: "Protocolos Restantes no Mês"
+    name: Agendados Futuro
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: ab1e84e5031aa3306102
+  type: slicer
+  title: "CLIENTE"
+  position:
+    x: 1492.5457102672292
+    y: 141.77215189873417
+    width: 395.78059071729956
+    height: 112.23628691983122
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CLIENTE
+    name: CLIENTE
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: ae5871aa76bb028341c9
+  type: tableEx
+  title: "MOTIVO IMPRODUTIVO/ PRODUTIVO"
+  position:
+    x: 1982.300884955752
+    y: 3293.322606596943
+    width: 781.657280772325
+    height: 520.3539823008849
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Protocolo
+    name: Protocolo
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: FIELD AGENDA
+    property: ClassificacaoRelato
+    aggregation: max
+    aggregation_code: 4
+    name: Motivo
+    active: null
+  filters:
+  - name: 10967825240b49b3273c
+    type: Categorical
+    entity: FIELD AGENDA
+    property: ClassificacaoRelato
+    conditions:
+    - op: not_in
+      values:
+      - null
+  filters_vazios: 0
+- id: bc2c33d2228ed29f910b
+  type: card
+  position:
+    x: 2496.417940466613
+    y: 141.66733708769107
+    width: 268.06114239742556
+    height: 117.13596138374899
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: measure
+    entity: FIELD AGENDA
+    property: "Média Mensal Protocolos"
+    name: "Média Diária"
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: d2f9f6c8a06f4afb8104
+  type: advancedSlicerVisual
+  title: "TIPO DE SOLICITAÇÃO"
+  position:
+    x: 21.629213483146067
+    y: 263.48314606741576
+    width: 1866.0112359550562
+    height: 119.9438202247191
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    name: TIPO DE PROTOCOLO
+    active: null
+  filters:
+  - name: 477184bd60a030118dc9
+    type: Categorical
+    entity: PROTOCOLOS GERAL
+    property: TIPO DE PROTOCOLO
+    conditions:
+    - op: not_in
+      values:
+      - null
+      - "TEC - Instalação de Rádio"
+      - "TEC - Instalação de Radio – CORPORATIVO"
+      - "TEC - Migração com troca de Equipamento"
+  filters_vazios: 0
+- id: dde5aa90e4940ba62c04
+  type: slicer
+  title: "TIPO RELATO"
+  position:
+    x: 20.273531777956556
+    y: 3142.3974255832663
+    width: 738.8576025744167
+    height: 110.37811745776347
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: "Descrição"
+    name: Tipo Relato
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: e21a2a1ce6d1088b3b74
+  type: slicer
+  title: "STATUS PRODUTIVIDADE"
+  position:
+    x: 1903.370786516854
+    y: 263.48314606741576
+    width: 308.70786516853934
+    height: 119.9438202247191
+  entities_used:
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: Status
+    name: Status
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: e2d5549b8d6d57e1439e
+  type: tableEx
+  title: "VISÃO GERAL"
+  position:
+    x: 20.273531777956556
+    y: 2486.886564762671
+    width: 2741.4320193081253
+    height: 635.2373290426387
+  entities_used:
+  - FIELD AGENDA
+  - PROTOCOLOS GERAL
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: protocolo
+    name: protocolo
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Slot Agenda
+    name: Slot Agenda
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Turno
+    name: Turno
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Tipo de Protocolo
+    name: Tipo de Protocolo
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Base
+    name: Base
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: RankDataProtocolo
+    name: Rank Agenda
+    active: null
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Status Protocolo
+    name: Status Protocolo
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: "TÉCNICO 1"
+    name: Instalador
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CLIENTE
+    name: Cliente
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CIDADE
+    name: Cidade
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: BAIRRO
+    name: Bairro
+    active: null
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: RUA
+    name: Rua
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: e7998ec512080733935f
+  type: slicer
+  title: "STATUS PROTOCOLO"
+  position:
+    x: 787.6230661040787
+    y: 141.77215189873417
+    width: 360.337552742616
+    height: 112.23628691983122
+  entities_used:
+  - FIELD AGENDA
+  fields:
+  - role: Values
+    kind: column
+    entity: FIELD AGENDA
+    property: Status Protocolo
+    name: Status Protocolo
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: e935fbbda9bc2ee0a5c1
+  type: image
+  position:
+    x: 12.5
+    y: 0
+    width: 312.5
+    height: 75
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: ef774c82668251fc0b8e
+  type: textbox
+  position:
+    x: 0
+    y: 10.107573392814775
+    width: 219.76580796252927
+    height: 42.99765807962529
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: f069e3f55a25859d6447
+  type: unknown
+  position:
+    x: 2390
+    y: 32.5
+    width: 410
+    height: 52.5
+  entities_used: []
+  fields: []
+  filters: []
+  filters_vazios: 0
+- id: fa2b2e6a3c02f745e8ec
+  type: hundredPercentStackedColumnChart
+  title: "TAXAS DE PRODUTIVIDADE E IMPRODUTIVIDADE"
+  position:
+    x: 20.96069868995633
+    y: 1191.2663755458516
+    width: 2742.35807860262
+    height: 443.66812227074234
+  entities_used:
+  - Status Protocolo Dia
+  - calendar
+  fields:
+  - role: Category
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Ano
+    name: Data Ano
+    active: true
+  - role: Category
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: "Mês"
+    name: "Data Mês"
+    active: true
+  - role: Category
+    kind: hierarchy_level
+    entity: calendar
+    property: Data
+    hierarchy: Hierarquia de datas
+    level: Dia
+    name: Data Dia
+    active: true
+  - role: Series
+    kind: column
+    entity: Status Protocolo Dia
+    property: Status
+    name: Status
+    active: null
+  - role: Y
+    kind: measure
+    entity: Status Protocolo Dia
+    property: Qtd Protocolos Base
+    name: Qtd Protocolos Base
+    active: null
+  filters: []
+  filters_vazios: 0
+- id: fb8f008029070e2adcfe
+  type: slicer
+  title: "CIDADE"
+  position:
+    x: 1165.6821378340364
+    y: 141.77215189873417
+    width: 309.1420534458509
+    height: 112.23628691983122
+  entities_used:
+  - PROTOCOLOS GERAL
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CIDADE
+    name: CIDADE
+    active: true
+  filters: []
+  filters_vazios: 0
+- id: ff38eddc2587e3beda21
+  type: tableEx
+  title: "TURNO"
+  position:
+    x: 2059.634317862166
+    y: 1657.9465541490856
+    width: 248.1012658227848
+    height: 360.337552742616
+  entities_used:
+  - Status Protocolo Dia
+  fields:
+  - role: Values
+    kind: column
+    entity: Status Protocolo Dia
+    property: Turno Dia
+    name: Turno
+    active: null
+  - role: Values
+    kind: aggregation
+    entity: Status Protocolo Dia
+    property: protocolo
+    aggregation: count
+    aggregation_code: 2
+    name: Qtd
+    active: null
+  filters: []
+  filters_vazios: 0

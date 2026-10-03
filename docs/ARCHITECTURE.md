@@ -9,7 +9,7 @@
 > misturadas, e o resultado é que quem lia aqui concluía que a plataforma consumia
 > Kafka. Uma linha só muda de metade quando o código dela existe.
 >
-> Uma linha mudou no mesmo dia: `tools/cdc` **consome Kafka de verdade** — mas só
+> Uma linha mudou no mesmo dia: `backend/tools/cdc` **consome Kafka de verdade** — mas só
 > para medir. O pipeline que *age* sobre o evento continua na parte 2, e a distinção
 > entre "consome" e "reage" é justamente o que este documento existe para não deixar
 > borrar de novo.
@@ -30,7 +30,7 @@
 
 ## 1. Princípios
 
-1. **Spec-driven** — nada é reimplementado sem uma spec extraída da base atual (Power BI). As specs em `specs/` são o contrato; código novo é validado contra elas (paridade). Ver [SPEC-DRIVEN.md](./SPEC-DRIVEN.md).
+1. **Spec-driven** — nada é reimplementado sem uma spec extraída da base atual (Power BI). As specs em `backend/specs/` são o contrato; código novo é validado contra elas (paridade). Ver [SPEC-DRIVEN.md](./SPEC-DRIVEN.md).
 2. **Dashboard é metadado** — não contém lógica. Aponta para widgets.
 3. **Widget é a unidade** — consulta + datasource + cache + realtime + visualização + permissão.
 4. **Query Registry único** — cada SQL existe em um só lugar, com TTL/cache/dependências.
@@ -51,7 +51,7 @@ fontes → Query Engine → camada M → toDatasetRows → snapshot/*.jsonl
                                             │
                       Dataset + tabelas calculadas materializadas
                                             │
-                        Evaluator → Widget Engine → apps/api → apps/web
+                        Evaluator → Widget Engine → backend/api → frontend
                                                         │
                                              cache da resposta (Redis/memória)
 ```
@@ -66,25 +66,25 @@ processo que já se sabe que não cabe.
 
 | pacote | o que faz |
 |---|---|
-| `packages/query-engine` | connectors (Postgres, MariaDB, Sheets, Web), Query Registry, cache (memória e Redis), guarda de somente-leitura, parâmetros de SQL |
-| `packages/transform-engine` | o interpretador da camada M — 303 passos, 38 funções |
-| `packages/semantic-model` | modelo semântico, relacionamentos, projeção, divergências |
-| `packages/measure-engine` | o avaliador DAX — 56 funções, 75 medidas |
-| `packages/widget-engine` | as specs de dashboard e a decodificação do filtro da URL |
-| `packages/snapshot` | plano de materialização, formato em disco, manifesto, carga |
-| `apps/api` | a API de leitura (`node:http`), o cache da resposta, o aquecedor interno e os estáticos |
-| `apps/web` | a tela (React 19 + Vite), 14 páginas, segmentações filtrando, estado dos filtros na URL |
+| `backend/packages/query-engine` | connectors (Postgres, MariaDB, Sheets, Web), Query Registry, cache (memória e Redis), guarda de somente-leitura, parâmetros de SQL |
+| `backend/packages/transform-engine` | o interpretador da camada M — 303 passos, 38 funções |
+| `backend/packages/semantic-model` | modelo semântico, relacionamentos, projeção, divergências |
+| `backend/packages/measure-engine` | o avaliador DAX — 56 funções, 75 medidas |
+| `backend/packages/widget-engine` | as specs de dashboard e a decodificação do filtro da URL |
+| `backend/packages/snapshot` | plano de materialização, formato em disco, manifesto, carga |
+| `backend/api` | a API de leitura (`node:http`), o cache da resposta, o aquecedor interno e os estáticos |
+| `frontend` | a tela (React 19 + Vite), 14 páginas, segmentações filtrando, estado dos filtros na URL |
 
-**O que `apps/web/src/store/` tem é `useThemeStore`, e só.** Uma `useFilterStore`
+**O que `frontend/src/store/` tem é `useThemeStore`, e só.** Uma `useFilterStore`
 existiu na árvore perdida de 21/08 — junto com `hooks/useRealtimeStream.ts` e
 `services/analyticsService.ts` —, e nenhuma das três está no repositório. O defeito que
 a primeira resolvia continua de pé: o efeito relê o `?filtro=` da URL, o que
 **ressuscita** o filtro que o usuário acabou de remover.
 
-Ferramentas de linha de comando em `tools/`: `extractor`, `validate`, `doctor`,
+Ferramentas de linha de comando em `backend/tools/`: `extractor`, `validate`, `doctor`,
 `probe`, `auth`, `mrun`, `snapshot`, `paginas`, `paridade`, `cdc`.
 
-**`tools/cdc` tem duas metades agora, e a diferença importa.** `index.ts`
+**`backend/tools/cdc` tem duas metades agora, e a diferença importa.** `index.ts`
 (`npm run cdc:observa`) continua só observação: consome tópicos Debezium e
 **conta** — tabela → queries afetadas, taxa, intervalo típico —, sem invalidar
 cache nem rematerializar. Existe para produzir o número que o gatilho do
@@ -126,9 +126,9 @@ Regra inviolável 3 do [CONTINUACAO](CONTINUACAO.md). Nenhuma pode ser afrouxada
 | # | camada | onde |
 |---|---|---|
 | 1 | usuário do banco sem permissão de escrita | `.env` |
-| 2 | `default_transaction_read_only=on` na sessão | `packages/query-engine/src/connectors-sql.ts` (`createVoallePool`) |
+| 2 | `default_transaction_read_only=on` na sessão | `backend/packages/query-engine/src/connectors-sql.ts` (`createVoallePool`) |
 | 3 | `assertReadOnly()` antes de o SQL sair do processo | `connectors-sql.ts` |
-| 4 | a API só aceita `GET`/`HEAD`; qualquer outro método leva 405 | `apps/api/src/servidor.ts` |
+| 4 | a API só aceita `GET`/`HEAD`; qualquer outro método leva 405 | `backend/api/src/servidor.ts` |
 
 > **A camada 4 vale inteira, e uma tentativa de estreitá-la ficou pelo caminho.** Entre
 > 21 e 26/08 existiu (em árvore não commitada) um `GET /api/events/invalidate` que
@@ -145,13 +145,13 @@ o caminho existe para o dia em que uma segmentação da tela virar `WHERE`.
 
 ## 6. Cache
 
-**Do que já foi calculado, não da linha de fonte.** `apps/api` consulta o cache antes
+**Do que já foi calculado, não da linha de fonte.** `backend/api` consulta o cache antes
 de abrir o snapshot: num acerto o pedido não carrega tabela nem roda o avaliador. A
 chave carrega tudo que muda o número — página, filtros normalizados, visual, janela
 de paginação e o carimbo do snapshot —, e o carimbo é o que faz `npm run snapshot`
 invalidar sozinho.
 
-Os TTLs vivem em `specs/_catalog/cache-policies.yaml` (mantido por humanos); o de uma
+Os TTLs vivem em `backend/specs/_catalog/cache-policies.yaml` (mantido por humanos); o de uma
 página é o **menor** entre os das queries que ela usa. Sem `REDIS_URL` o adapter é o
 de memória; com ela, `RedisCache` (`ioredis`, `SCAN` e não `KEYS`). **Redis fora do ar
 é um miss**, nunca um erro de pedido — `GET /api/saude` diz qual adapter está ligado.
@@ -161,11 +161,11 @@ de memória; com ela, `RedisCache` (`ioredis`, `SCAN` e não `KEYS`). **Redis fo
 O cache resolve o segundo pedido; ele não resolve o primeiro. Duas peças pagam o
 primeiro, e elas não são a mesma:
 
-- **`apps/api/src/aquecedor.ts`** vive dentro da API. Confere o carimbo do snapshot de
+- **`backend/api/src/aquecedor.ts`** vive dentro da API. Confere o carimbo do snapshot de
   tempos em tempos e, quando ele muda, refaz os `GET` das páginas — **por HTTP contra si
   mesmo**, porque a chave do cache é a do pedido exato e reaquecer por um caminho
   paralelo encheria chaves *parecidas* com as que a tela pede.
-- **`tools/subir/src/aquece.ts`** roda no `npm start`, antes de dizer que está pronto, e
+- **`backend/tools/subir/src/aquece.ts`** roda no `npm start`, antes de dizer que está pronto, e
   aquece **a página sem filtro** — as 14, uma de cada vez, reprovando se algum visual
   falhar, se alguma página não responder ou se o cache não pegar.
 
@@ -213,12 +213,12 @@ faria a API **recalcular sobre o mesmo arquivo**. Quem deixa o dado fresco é
   `#880F17`, que **diverge do HUBBI de propósito**. (Esta linha dizia "tokens do
   HUBBI" e era falsa: nenhum token do HUBBI está no `estilo.css`.)
 
-As dependências do cliente são do `apps/web`, não da raiz: a conta de "poucas
+As dependências do cliente são do `frontend`, não da raiz: a conta de "poucas
 dependências, cada uma com motivo escrito" vale nos dois lugares, e são contas
 separadas porque a API não carrega nenhuma delas.
 
 **Sem Fastify, de propósito.** A divergência está registrada no cabeçalho de
-`apps/api/src/servidor.ts` e a condição de revisão é a do [ACHADOS](ACHADOS.md) #39:
+`backend/api/src/servidor.ts` e a condição de revisão é a do [ACHADOS](ACHADOS.md) #39:
 Permission Engine **+** corpo de requisição **+** WebSocket. Nenhuma das três chegou —
 e vale registrar que **SSE não atingiria a condição** de todo modo:
 `text/event-stream` é resposta `GET` que não fecha, e `res.write()` de `node:http` faz
@@ -246,14 +246,14 @@ serviço, Visualization, AI, Export, Notification, Audit, Observability — dest
 existe só o que o `/api/saude` responde.
 
 Os dois que bloqueiam produção multiusuário são **Identity** e **Permission**. O login
-existe (25/09/2026): Google SSO restrito ao domínio (`apps/api/src/auth-google.ts`),
+existe (25/09/2026): Google SSO restrito ao domínio (`backend/api/src/auth-google.ts`),
 portão 401 antes do roteamento (`portao-login.ts`). Falta a **permissão**: o formato da
-decisão humana está em `specs/_catalog/permissoes.yaml`, ainda sem leitor.
+decisão humana está em `backend/specs/_catalog/permissoes.yaml`, ainda sem leitor.
 
 ## 9. Real-time (Debezium + Kafka + Redis)
 
 A infra existe no Portainer da Sebratel. **Desde 18/08/2026 existe um Change
-Ingestor** (`tools/cdc/src/ingestor.ts`, `npm run cdc:ingere`) — mas ele é mais
+Ingestor** (`backend/tools/cdc/src/ingestor.ts`, `npm run cdc:ingere`) — mas ele é mais
 simples que o diagrama abaixo, de propósito: quando uma tabela suja, ele
 rematerializa (`npm run snapshot --query=`) só as queries afetadas, e para por aí. O
 manifesto novo em disco já invalida o cache da resposta sozinho (§6) — não existe
@@ -321,8 +321,8 @@ O gatilho é um número medido, não a disponibilidade do Kafka no Portainer.
 ## 10. Metadados em banco próprio
 
 O desenho prevê um PostgreSQL da plataforma guardando dashboards, widgets, queries e
-permissões. Hoje isso tudo são **arquivos versionados** em `specs/` — gerados pelo
-extrator enquanto o PBIP existia (saiu do disco em 27/08/2026; desde então `specs/` é
+permissões. Hoje isso tudo são **arquivos versionados** em `backend/specs/` — gerados pelo
+extrator enquanto o PBIP existia (saiu do disco em 27/08/2026; desde então `backend/specs/` é
 o original e se edita por commit), com as decisões humanas em arquivos separados
 (`cache-policies.yaml`, `divergencias.yaml`, `permissoes.yaml`). Enquanto a edição for
 por commit, arquivo é a peça mais simples que resolve; o banco entra quando alguém editar dashboard pela tela.

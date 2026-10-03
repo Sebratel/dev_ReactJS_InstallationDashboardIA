@@ -69,10 +69,10 @@ estava descrito errado havia oito dias.
 | **Commits** | **305** em `staging`; `main` é promovida pelo Erick | `git rev-list --count HEAD` |
 | **Árvore** | tem de estar **limpa** ao fim de cada etapa. Foi trabalho solto que se perdeu duas vezes | `git status --short` |
 | **Páginas** | **14 de 14** calculam | `npm run paginas -- --pagina=<uma>` |
-| **Paridade** | os números da §1 são de **13/08**. A conferência de verdade é **contra o próprio Power BI** (Execute Queries, só leitura, token renova sozinho); `npm run paridade` só compara com os gabaritos gravados em `specs/paridade/` (01/09) | `npm run powerbi -- --pagina=<uma>` |
+| **Paridade** | os números da §1 são de **13/08**. A conferência de verdade é **contra o próprio Power BI** (Execute Queries, só leitura, token renova sozinho); `npm run paridade` só compara com os gabaritos gravados em `backend/specs/paridade/` (01/09) | `npm run powerbi -- --pagina=<uma>` |
 | **Perguntas de negócio** | ver o documento — a contagem daqui envelhecia | `docs/PERGUNTAS-NEGOCIO.md` |
 | **Deploy** | **existe artefato**: `Dockerfile`, `docker-compose.prod.yml` (api, redis, refresh, snapshot-diário), destino Portainer | `DEPLOY.md` |
-| **Login** | **existe**: Google SSO restrito ao domínio, portão 401 antes do roteamento (`apps/api/src/auth-google.ts`, `portao-login.ts`) | `DEPLOY.md` §2.1 |
+| **Login** | **existe**: Google SSO restrito ao domínio, portão 401 antes do roteamento (`backend/api/src/auth-google.ts`, `portao-login.ts`) | `DEPLOY.md` §2.1 |
 | **Dado de cliente** | o `snapshot/` tem CPF, RG e endereço — nunca imprimir valor de linha | `CLAUDE.md` regra 2 |
 
 > **Corrigido em 25/09/2026.** Este painel dizia, em 15/09, que não havia login, que não
@@ -136,9 +136,9 @@ npm start          # http://localhost:3100
 ```
 
 > **13/08/2026: `npm start` substituiu a sequência decorada** de `web:build` + `api` +
-> `bash tools/aquece.sh`. Quem pulava o aquecimento abria a apresentação numa tela
+> `bash backend/tools/aquece.sh`. Quem pulava o aquecimento abria a apresentação numa tela
 > branca de ~1 min; quem pulava o build servia a tela de ontem. O `aquece.sh` era bash
-> numa máquina Windows — agora é `tools/subir/`, TypeScript e com teste.
+> numa máquina Windows — agora é `backend/tools/subir/`, TypeScript e com teste.
 
 Em desenvolvimento da tela, com recarga a quente, são dois processos:
 
@@ -178,23 +178,23 @@ de build.
 
 | camada | estado |
 |---|---|
-| Extrator PBIP → specs | ✅ (histórico: o PBIP saiu do disco em 27/08 e não há mais `npm run extract`; `specs/` é o original) 14 páginas, 306 visuais, 78 medidas, 49 colunas calculadas, 7 tabelas calculadas, 24 queries |
+| Extrator PBIP → specs | ✅ (histórico: o PBIP saiu do disco em 27/08 e não há mais `npm run extract`; `backend/specs/` é o original) 14 páginas, 306 visuais, 78 medidas, 49 colunas calculadas, 7 tabelas calculadas, 24 queries |
 | Query Engine + camada M | ✅ **as 24 de 24** queries rodam contra a fonte real |
 | Modelo semântico + avaliador DAX | ✅ as 56 funções que a base usa, 75 medidas |
 | Widget Engine | ✅ card, tabela, gráfico e matriz — 117 visuais sobre dado sintético |
-| **Snapshot** (`packages/snapshot`, `tools/snapshot`) | ✅ materializa a camada M em disco. Congelar as 7 calculadas leva **~26 min** — um processo por coluna, com guarda de ordem de linha (#68). Era 14 h 28 min |
-| **Camada M — mesclagens** | ✅ junção que não casa **nenhuma** linha emite nota com o número; faixa de data disjunta é nomeada como causa (#73); reconciliar exige decisão em `specs/_catalog/juncoes.yaml` (#64). 2 das 3 mortas resolvidas; a 3ª **não tem conserto em código** — a fonte parou em 16/07/2025 (#73, PERGUNTAS-NEGOCIO #11) |
-| **API** (`apps/api`) | ✅ somente leitura, uma página por pedido, `?filtro=` e rota de valores; cache da resposta desde 11/08 |
+| **Snapshot** (`backend/packages/snapshot`, `backend/tools/snapshot`) | ✅ materializa a camada M em disco. Congelar as 7 calculadas leva **~26 min** — um processo por coluna, com guarda de ordem de linha (#68). Era 14 h 28 min |
+| **Camada M — mesclagens** | ✅ junção que não casa **nenhuma** linha emite nota com o número; faixa de data disjunta é nomeada como causa (#73); reconciliar exige decisão em `backend/specs/_catalog/juncoes.yaml` (#64). 2 das 3 mortas resolvidas; a 3ª **não tem conserto em código** — a fonte parou em 16/07/2025 (#73, PERGUNTAS-NEGOCIO #11) |
+| **API** (`backend/api`) | ✅ somente leitura, uma página por pedido, `?filtro=` e rota de valores; cache da resposta desde 11/08 |
 | **Cache da resposta** | ✅ quem invalida é o **dado**, não o relógio: a chave carrega carimbo do snapshot **e** dia UTC (32 expressões chamam `TODAY()`). O TTL virou prazo de guarda. Medido: 2 a 7 ms por página, e **continua acerto depois de 95 s parado** — antes custava 8 a 36 s a cada minuto (#69) |
-| **Reaquecimento** (`apps/api/src/aquecedor.ts`) | ✅ a API se aquece no arranque e sempre que a identidade muda (snapshot refeito **ou** virada do dia). ~3 min para as 14 páginas. `npm start` espera por ele em vez de disputar |
-| **Paginação de tabela** (`apps/api/src/cache-visual.ts`) | ✅ o resultado inteiro do visual fica guardado e a janela é um `slice`. Antes, cada clique em "próxima" recalculava as 33.462 linhas para entregar 200 — **2,9 s a 8,0 s por clique**, medido (#70). Orçamento LRU de 512 MB, `CACHE_VISUAL_MB=0` desliga |
+| **Reaquecimento** (`backend/api/src/aquecedor.ts`) | ✅ a API se aquece no arranque e sempre que a identidade muda (snapshot refeito **ou** virada do dia). ~3 min para as 14 páginas. `npm start` espera por ele em vez de disputar |
+| **Paginação de tabela** (`backend/api/src/cache-visual.ts`) | ✅ o resultado inteiro do visual fica guardado e a janela é um `slice`. Antes, cada clique em "próxima" recalculava as 33.462 linhas para entregar 200 — **2,9 s a 8,0 s por clique**, medido (#70). Orçamento LRU de 512 MB, `CACHE_VISUAL_MB=0` desliga |
 | **Redis** | ⏳ **não configurado** — a `.env` tem `REDIS_KEY_PREFIX` mas **não** `REDIS_URL`, então o cache é só memória e morre no restart (o aquecimento de arranque cobre). Basta pôr `REDIS_URL=redis://host:6379/0` para ele entrar **atrás** da memória, não no lugar dela (#69) |
-| **CDC / Fase 4** (`tools/cdc`) | 🚧 **o código existe, o gatilho não foi atingido.** `cdc:observa` conta, `cdc:slot` vigia o slot, `cdc:ingere` rematerializa só as queries afetadas (debounce + guarda de concorrência). Validado contra `docker/cdc/`: 15 eventos → 1 rodada de 13 queries, 12 materializaram, 2.090.676 linhas (#72). Contra o **Voalle de produção não há slot, não há medição e não está ligado** — ver §6 |
-| **Autenticação** | ✅ Google SSO restrito ao domínio (`apps/api/src/auth-google.ts`), portão 401 antes do roteamento (`portao-login.ts`); a origem da identidade para permissão fina segue em aberto — `DEPLOY.md` §2.1 |
-| **Tela** (`apps/web`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
-| **Relatório inteiro** (`tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam**. `agendamento-field` abre em **48,6 s a frio** pela API (medido em 13/08 no `npm start`) — os 104 min do #45 são de ANTES das otimizações #46-#52 e nunca foram remedidos no `npm run paginas` |
+| **CDC / Fase 4** (`backend/tools/cdc`) | 🚧 **o código existe, o gatilho não foi atingido.** `cdc:observa` conta, `cdc:slot` vigia o slot, `cdc:ingere` rematerializa só as queries afetadas (debounce + guarda de concorrência). Validado contra `docker/cdc/`: 15 eventos → 1 rodada de 13 queries, 12 materializaram, 2.090.676 linhas (#72). Contra o **Voalle de produção não há slot, não há medição e não está ligado** — ver §6 |
+| **Autenticação** | ✅ Google SSO restrito ao domínio (`backend/api/src/auth-google.ts`), portão 401 antes do roteamento (`portao-login.ts`); a origem da identidade para permissão fina segue em aberto — `DEPLOY.md` §2.1 |
+| **Tela** (`frontend`) | ✅ React 19 + Vite, 14 páginas, **segmentações filtrando**, estado na URL |
+| **Relatório inteiro** (`backend/tools/paginas`) | ✅ **14/14 páginas, 117 de 117 visuais calculam**. `agendamento-field` abre em **48,6 s a frio** pela API (medido em 13/08 no `npm start`) — os 104 min do #45 são de ANTES das otimizações #46-#52 e nunca foram remedidos no `npm run paginas` |
 | **Paridade** | 🚧 **medida, não fechada** — 18 batem, 18 diferem (11 delas com gabarito inválido), 6 divergem por decisão, **0 não calculam** |
-| **Subida** (`tools/subir`) | ✅ `npm start` — build + API + aquecimento das 14 páginas, com teto por página e veredito |
+| **Subida** (`backend/tools/subir`) | ✅ `npm start` — build + API + aquecimento das 14 páginas, com teto por página e veredito |
 | **Conferência do snapshot** (`npm run snapshot:confere`) | ✅ acha coluna inteira nula e calculada obsoleta em milissegundos — hoje aponta **2 erros e 5 avisos** (eram 4; ver #64) |
 
 Os commits que são a fase 3 inteira:
@@ -218,7 +218,7 @@ fontes → Query Engine → camada M → toDatasetRows → snapshot/*.gz (coluna
                                             │
                       Dataset + tabelas calculadas materializadas
                                             │
-                        Evaluator → Widget Engine → apps/api → tela
+                        Evaluator → Widget Engine → backend/api → tela
 ```
 
 ---
@@ -236,10 +236,10 @@ plausível**, que é o único tipo de erro que este projeto não pode cometer.
    E cuidado com o nome: o alvo é o **`INST - Relatório Instalação`**, *não* o
    `... Gerencial` — **são dois relatórios** (Erick, 27/08/2026). Apontar a paridade
    para o errado não dá erro: dá número plausível e diferente.
-2. **Arquivo gerado vs. humano.** Tudo em `specs/_catalog/queries|tables|measures/` e
-   `specs/dashboards/` era **sobrescrito** por `npm run extract` (o script e o PBIP
-   saíram em 27/08; hoje `specs/` é o original). A convenção continua: nenhuma decisão humana
-   mora lá — decisões vão em `specs/_catalog/cache-policies.yaml`, `divergencias.yaml`,
+2. **Arquivo gerado vs. humano.** Tudo em `backend/specs/_catalog/queries|tables|measures/` e
+   `backend/specs/dashboards/` era **sobrescrito** por `npm run extract` (o script e o PBIP
+   saíram em 27/08; hoje `backend/specs/` é o original). A convenção continua: nenhuma decisão humana
+   mora lá — decisões vão em `backend/specs/_catalog/cache-policies.yaml`, `divergencias.yaml`,
    `projecao.yaml` ou `juncoes.yaml`, conforme o tipo.
 3. **A plataforma nunca escreve no ERP.** Quatro camadas: usuário somente-leitura,
    `default_transaction_read_only=on` na sessão, `assertReadOnly()` antes de a query
@@ -292,7 +292,7 @@ A conta `erickazambuja-Sebratel` passou a ter escrita, e **`origin/main` existe*
 27/08). O item que este arquivo chamou de "o único irreversível" fechou.
 
 > **Ele fechou tarde, e o preço apareceu duas vezes.** Em 18/08 descobriu-se que
-> `apps/web/` inteiro — 28 arquivos — existia só no disco. Em 26 e 27/08 a árvore de
+> `frontend/` inteiro — 28 arquivos — existia só no disco. Em 26 e 27/08 a árvore de
 > trabalho foi apagada por outro agente e **o que não estava commitado sumiu**: a passada
 > de densidade do front e ~5.600 linhas de documentação
 > ([RECUPERACAO-27-08](RECUPERACAO-27-08.md)). Publicar não é o que protege — **commitar
@@ -355,7 +355,7 @@ npm run paridade -- --pagina=visao-geral
 npm run paridade -- --esqueleto=<pagina>      # gera o gabarito em branco
 ```
 
-`specs/paridade/*.yaml` tem **11 páginas e 64 cards**, e **todos os 42 em jogo já estão
+`backend/specs/paridade/*.yaml` tem **11 páginas e 64 cards**, e **todos os 42 em jogo já estão
 ditados** — 22 são carimbo de refresh e ficam fora. O que falta não é ditar número, é
 reler **3 páginas sem limpar filtro**: ver **§9.1**, que tem os três passos e o critério
 de saída. Só card, de propósito: card é um número sem agrupamento nem paginação, então
@@ -379,7 +379,7 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 - **`# MEDIA CRIADOS`** — adiada pelo Erick em 10/08 ("como está no Power BI"). O
   denominador conta sábado como **1,5** e o numerador exclui domingo; mudar exige as
   duas pontas juntas. O mecanismo está pronto: é uma entrada em
-  `specs/_catalog/divergencias.yaml`.
+  `backend/specs/_catalog/divergencias.yaml`.
 - **#1** — ✅ respondida e **implementada**: sábado e domingo valem 0,5.
 
 ---
@@ -406,7 +406,7 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 
    **Os passos, o critério de saída e o que já foi resolvido estão na §9.1.** Abra
    `http://localhost:3100` ao lado do Power BI — o id do card aparece embaixo dele na
-   tela, de propósito, e é a linha `visual: <id>` em `specs/paridade/<pagina>.yaml`.
+   tela, de propósito, e é a linha `visual: <id>` em `backend/specs/paridade/<pagina>.yaml`.
 2. ✅ **A terceira mesclagem morta foi investigada em 18/08/2026 — e não tem conserto
    em código.** [ACHADOS](ACHADOS.md) #73. `DB_Applicattion.Installation_Teams` **parou
    de receber linha em 16/07/2025**: 0 registros de 2026. Como `PROTOCOLOS GERAL` só
@@ -426,7 +426,7 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
    **Depois do item 1**, e o motivo é a rede de segurança: sem gabarito de paridade
    verde, um `LEFT JOIN` que multiplica linha passa despercebido. As 3 mesclagens
    *cross-source* ficam na camada M — a `DECISAO-CAMADA-M` vale onde o argumento dela
-   vale. O SQL escrito à mão não pode morar em `specs/_catalog/queries/` (regra 2);
+   vale. O SQL escrito à mão não pode morar em `backend/specs/_catalog/queries/` (regra 2);
    o lugar é um `sql-override.yaml` no molde de `divergencias.yaml`, com
    `original_sha` da expressão M que ele substitui.
 
@@ -447,7 +447,7 @@ Perguntas abertas em `docs/PERGUNTAS-NEGOCIO.md` que precisam de gente:
 
 4. ✅ **`run:mlayer` já alcança a query mais pesada do corpus** — feito em 19/08/2026,
    [ACHADOS](ACHADOS.md) #76. Ele não tinha `--timeout=` e caía no padrão do `.env`
-   (`VOALLE_STATEMENT_TIMEOUT_MS = 30_000`), que o `tools/snapshot` documenta como
+   (`VOALLE_STATEMENT_TIMEOUT_MS = 30_000`), que o `backend/tools/snapshot` documenta como
    *"teto de pedido de tela, não de materialização"* — e o `snapshot` **tem** o flag.
    Agora o default é **600 s**, igual ao do `snapshot` e pela mesma razão, impresso na
    saída com o valor do `.env` ao lado quando difere.
@@ -563,7 +563,7 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
 - **`npm start` com a porta ocupada aquecia o servidor de OUTRA sessão** — e o
   relatório saía bonito. O filho morria com `EADDRINUSE`, o `esperaSaude` recebia 200
   do processo alheio, e o programa concluía "subiu". Consertado em 14/08: ele confere
-  a porta **antes** de subir (`tools/subir/src/porta.ts`, com teste) e diz o que fazer.
+  a porta **antes** de subir (`backend/tools/subir/src/porta.ts`, com teste) e diz o que fazer.
   Se você vir a mensagem, as saídas são `--porta=3101`, `npm run aquece`, ou matar o
   dono da porta.
 - **`npm start` reprova e mesmo assim deixa a API no ar.** Se ele disser "passou de
@@ -606,7 +606,7 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
   `docs/DOCUMENTACAO_ARQUITETURA.md`, `docs/diagrama_arquitetura.svg`,
   `docs/miro_diagrams/` — **não existem mais no disco**, e `docs/DECISAO-REALTIME.md`
   está commitado. A armadilha continua valendo como método; a lista, não.
-- **`git status` no começo da sessão, não no fim.** Foi assim que `apps/web/` passou
+- **`git status` no começo da sessão, não no fim.** Foi assim que `frontend/` passou
   dias inteiro fora do git — ver §5.1.
 - **`docker-compose.yml` da raiz é armadilha, e está fora do git de propósito.** É a
   variante incompleta descrita no [ACHADOS](ACHADOS.md) #71 — sem Postgres falso e sem
@@ -619,7 +619,7 @@ Cada uma destas apareceu de verdade nesta base. Ler aqui é mais barato que rede
 ## 8. Mapa do repositório
 
 ```
-packages/
+backend/packages/
   query-engine/     busca linhas da fonte, com cache, timeout e guard read-only
   transform-engine/ a camada M (Power Query) — 39 funções, 303 passos
   semantic-model/   tabelas, colunas, medidas e relacionamentos vindos do PBIP
@@ -631,13 +631,13 @@ apps/
   web/              a tela: React 19 + Vite. A lógica testável mora em `.ts` puro
                     (formato, rota, api, rotulos) e só o desenho em `.tsx` —
                     `node --test` roda TypeScript, mas não JSX.
-tools/
+backend/tools/
   extractor/ validate/ doctor/ auth/ probe/ mrun/ cdc/ powerbi/
   snapshot/         materializa a camada M em disco; `confere.ts` audita o que ficou lá
   subir/            `npm start`: build + API + aquecimento das 14 páginas, com teto
   paginas/          calcula o relatório inteiro e conta o que fecha
   paridade/         compara com o gabarito ditado do Power BI
-specs/              GERADO pelo extrator — o contrato. Não editar à mão.
+backend/specs/              GERADO pelo extrator — o contrato. Não editar à mão.
   _catalog/cache-policies.yaml  decisões humanas de cache
   _catalog/divergencias.yaml    onde o DAX diverge do PBI, com o sha do original
   _catalog/projecao.yaml        coluna usada que fica fora da carga (sob demanda)
@@ -713,7 +713,7 @@ outras 8 páginas não têm filtro de página, e para os **25 cards** delas a le
 11/08 continua valendo.
 
 - **Critério de saída:** `npm run paridade` sai **sem diferença não declarada** — toda
-  diferença restante é ou uma entrada em `specs/_catalog/divergencias.yaml`, ou um card
+  diferença restante é ou uma entrada em `backend/specs/_catalog/divergencias.yaml`, ou um card
   consertado. E os cards marcados `divergente:` **diferem**: bater ali é falha, de
   propósito, e é o que impede uma decisão de ficar só no papel.
 - **Armadilha:** **não rode o passo 1 antes de uma demo.** Rematerializar troca o
@@ -753,9 +753,9 @@ outras 8 páginas não têm filtro de página, e para os **25 cards** delas a le
 ### 9.4 Fase 5 — Permission Engine, IA, Export
 
 - **Critério de saída da parte que bloqueia o resto:** existir **login**. **Fechado:**
-  Google SSO restrito ao domínio (`apps/api/src/auth-google.ts`), portão 401 antes do
+  Google SSO restrito ao domínio (`backend/api/src/auth-google.ts`), portão 401 antes do
   roteamento (`portao-login.ts`). O que segue aberto é a permissão fina — o formato está
-  em `specs/_catalog/permissoes.yaml`, ainda sem leitor (`DEPLOY.md` §2.1).
+  em `backend/specs/_catalog/permissoes.yaml`, ainda sem leitor (`DEPLOY.md` §2.1).
 - **Quem destrava:** decisão de produto sobre de onde vem a identidade (SSO do HUBBI?
   usuário local?). Enquanto ela não vier, não há o que implementar sem chutar.
 - **Consequência hoje:** quem passa pelo login vê **todo** número — não há recorte por

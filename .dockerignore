@@ -9,8 +9,7 @@ node_modules/
 .git/
 .claude/
 docs/
-apps/web/node_modules/
-apps/web/dist/
-apps/api/web/dist/
+frontend/node_modules/
+frontend/dist/
 coverage/
 *.log

@@ -8,11 +8,11 @@
 >
 > | o que este documento diz | o que o código diz |
 > |---|---|
-> | §0/§2.1 "não existe login. A API serve todo número a todo pedido" | **existe e é testado** — Google SSO, 401 antes do roteamento (`apps/api/src/auth-google.ts`, `servidor.test.ts:782`) |
+> | §0/§2.1 "não existe login. A API serve todo número a todo pedido" | **existe e é testado** — Google SSO, 401 antes do roteamento (`backend/api/src/auth-google.ts`, `servidor.test.ts:782`) |
 > | §0/§3 "não existe nenhum `Dockerfile`", "nenhum arquivo de Nginx", "nada nesta seção existe" | **existem** — `Dockerfile`, `docker-compose.prod.yml`, `nginx.conf` (commit `7642fab`) |
 > | §0/§2.1 "as páginas que expõem dado pessoal" | **nenhuma das 14 specs de dashboard usa `QUADRO FUNCIONAL`** (onde estão CPF/RG). O dado está em `snapshot/`, não na tela |
 > | §4/§7 "1357 testes verdes" | **2020** (17/09/2026; 1895 em 15/09, 1666 em 04/09) — o corpo foi corrigido em 17/09 |
-> | §0 "SSE perdido com a árvore de 21/08" | **existe** — `EventSource('/api/eventos')` em `apps/web/src/App.tsx:153` |
+> | §0 "SSE perdido com a árvore de 21/08" | **existe** — `EventSource('/api/eventos')` em `frontend/src/App.tsx:153` |
 >
 > **Fechados em 04/09/2026, e o documento também erra ao mantê-los abertos:**
 >
@@ -64,13 +64,13 @@
 | Cache + pré-aquecimento | resposta a quente medida em **2,9–6,2 ms**; `npm start` aquece as 14 páginas sem filtro (o pré-aquecimento por Ano/Mês foi perdido, §4) | não |
 | Tela React | 14 páginas navegáveis, filtros na URL. **Sem SSE e sem store de filtros** — perdidos com a árvore de 21/08 (§4) | não |
 | **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.4) | **sim, para "substituir"** |
-| **Autenticação** | **existe** desde o commit `eb69069`: Google SSO restrito a `sebratel.com.br` (`apps/api/src/auth-google.ts`), com portão de 401 antes do roteamento — o teste *"sem cookie de sessão, `/api/*` leva 401 antes de qualquer rota"*, em `apps/api/test/servidor.test.ts`, é o que o prova. Esta linha dizia "não existe" até 17/09/2026, contradizendo o próprio aviso no topo deste arquivo. **O que continua aberto é a §2.1: origem da identidade e o dado pessoal que a API serve** | não — mas ver §2.1 |
-| **Refresh do dado** | `tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
-| **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando **24 das 25 queries** do catálogo. A de fora é `protocolos-produtividade`, e **o motivo original caiu**: até 17/09/2026 esta linha dizia "não materializa em nenhum modo hoje, #81", o que deixou de valer em **13/09/2026** — ela materializa ponta a ponta (**162 s**; o `manifesto.json` a traz com **77.452 linhas × 51 colunas**, carga de 16/09) e entrou no grupo `frio` de `specs/_catalog/refresh.yaml`. A ausência dela na lista do cron é hoje uma **decisão pendente, não um impedimento técnico** (~3 min a mais na madrugada) — `docker/cron/crontab-snapshot-diario` já traz esse aviso no comentário, e era este documento que não tinha sido alinhado. Ver §2.2 abaixo | **pronto — com uma decisão em aberto** |
+| **Autenticação** | **existe** desde o commit `eb69069`: Google SSO restrito a `sebratel.com.br` (`backend/api/src/auth-google.ts`), com portão de 401 antes do roteamento — o teste *"sem cookie de sessão, `/api/*` leva 401 antes de qualquer rota"*, em `backend/api/test/servidor.test.ts`, é o que o prova. Esta linha dizia "não existe" até 17/09/2026, contradizendo o próprio aviso no topo deste arquivo. **O que continua aberto é a §2.1: origem da identidade e o dado pessoal que a API serve** | não — mas ver §2.1 |
+| **Refresh do dado** | `backend/tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
+| **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando **24 das 25 queries** do catálogo. A de fora é `protocolos-produtividade`, e **o motivo original caiu**: até 17/09/2026 esta linha dizia "não materializa em nenhum modo hoje, #81", o que deixou de valer em **13/09/2026** — ela materializa ponta a ponta (**162 s**; o `manifesto.json` a traz com **77.452 linhas × 51 colunas**, carga de 16/09) e entrou no grupo `frio` de `backend/specs/_catalog/refresh.yaml`. A ausência dela na lista do cron é hoje uma **decisão pendente, não um impedimento técnico** (~3 min a mais na madrugada) — `docker/cron/crontab-snapshot-diario` já traz esse aviso no comentário, e era este documento que não tinha sido alinhado. Ver §2.2 abaixo | **pronto — com uma decisão em aberto** |
 | Containerização | **existe** (16/09/2026): `Dockerfile` na raiz, `docker-compose.prod.yml` com `api`/`redis`/`proxy` e `docker-compose.local.yml` como sobreposição de desenvolvimento | **pronto** |
 | Proxy reverso | **existe** desde o commit `7642fab`: `nginx.conf` na raiz, montado como `/etc/nginx/conf.d/default.conf` no serviço `proxy` do `docker-compose.prod.yml` (`nginx:1.27-alpine`, porta 80). Traz `/`, `/api/` com `proxy_read_timeout 90s` (o padrão de 60 s cortava `agendamento-field` a frio), `/api/eventos` com as quatro linhas de SSE e `/auth/`. Até 17/09/2026 esta linha dizia "não existe" — errado desde então | **pronto** |
 | TLS | **não existe** — o `nginx.conf` só tem `listen 80`, e a publicação da porta 443 está comentada no compose. O que falta é o **certificado**, decisão de infraestrutura e não do repositório (§3.3) | sim |
-| Processo supervisionado | **mudou em 19/09/2026, e o bloqueio caiu pela metade.** A cadência do refresh deixou de depender do Agendador de Tarefas do Windows: ela é um relógio por grupo dentro do processo da API (`apps/api/src/agendador.ts`), e em produção quem supervisiona é o `restart: unless-stopped` do `docker-compose.prod.yml`, que já existe. **O que sobra:** no host, fora do Docker, nada reergue a API se o processo morrer — `npm start` não a ressuscita, de propósito (a morte mais comum dela é outra instância tomando a porta 3100). A resposta para isso é subir pelo compose, não registrar tarefa de host. Ver §2.2 | **não, se subir por Docker**; sim, se rodar `npm start` a seco |
+| Processo supervisionado | **mudou em 19/09/2026, e o bloqueio caiu pela metade.** A cadência do refresh deixou de depender do Agendador de Tarefas do Windows: ela é um relógio por grupo dentro do processo da API (`backend/api/src/agendador.ts`), e em produção quem supervisiona é o `restart: unless-stopped` do `docker-compose.prod.yml`, que já existe. **O que sobra:** no host, fora do Docker, nada reergue a API se o processo morrer — `npm start` não a ressuscita, de propósito (a morte mais comum dela é outra instância tomando a porta 3100). A resposta para isso é subir pelo compose, não registrar tarefa de host. Ver §2.2 | **não, se subir por Docker**; sim, se rodar `npm start` a seco |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
 
 **Em uma frase, e ela mudou em 17/09/2026:** os artefatos de infraestrutura **estão
@@ -117,15 +117,15 @@ configuração. Comprar servidor não os move.
 > 17/09/2026.** O critério de saída que ela mesma define — *"um pedido sem sessão válida
 > recebe 401 antes do roteamento, com teste que falha se a trava for removida"* — **está
 > cumprido**: o teste é *"sem cookie de sessão, /api/\* leva 401 antes de qualquer
-> rota"*, em `apps/api/test/servidor.test.ts`. O que segue continua verdadeiro, e é o
+> rota"*, em `backend/api/test/servidor.test.ts`. O que segue continua verdadeiro, e é o
 > motivo de esta seção não ser fechada: a **origem** da identidade ainda é decisão de
 > produto, e o dado que a API serve continua sendo pessoal.
 
 Hoje a entrada é Google SSO restrito ao domínio `sebratel.com.br`
-(`apps/api/src/auth-google.ts`), com sessão em cookie e portão de 401 antes do
-roteamento. A costura de autorização existe (`apps/api/src/identidade.ts`, e a chave do
+(`backend/api/src/auth-google.ts`), com sessão em cookie e portão de 401 antes do
+roteamento. A costura de autorização existe (`backend/api/src/identidade.ts`, e a chave do
 cache já carrega o usuário para que nenhum recorte futuro seja servido para a pessoa
-errada) e há **formato de decisão** (`specs/_catalog/permissoes.yaml`) — o que falta é a
+errada) e há **formato de decisão** (`backend/specs/_catalog/permissoes.yaml`) — o que falta é a
 decisão de **quem** é a fonte da identidade (SSO do HUBBI ou usuário local) e, com ela,
 o leitor de permissões.
 
@@ -146,11 +146,11 @@ permissões — e o que a API serve inclui:
 - ~~**Critério de saída:** um pedido sem sessão válida recebe **401** antes do
   roteamento, com teste que falha se a trava for removida — a mesma disciplina dos
   405.~~ **CUMPRIDO** em `eb69069`; o teste que falha se a trava sair está em
-  `apps/api/test/servidor.test.ts`.
+  `backend/api/test/servidor.test.ts`.
 - **Critério de saída que resta:** nenhum usuário autenticado alcança página com dado
   pessoal que o papel dele não autorize — e isso exige o leitor de
-  `specs/_catalog/permissoes.yaml`, hoje em `ESTADO: DESENHO` (há teste que reprova se
-  o estado mudar sem `apps/api/src/escopo-cache.ts` mudar junto).
+  `backend/specs/_catalog/permissoes.yaml`, hoje em `ESTADO: DESENHO` (há teste que reprova se
+  o estado mudar sem `backend/api/src/escopo-cache.ts` mudar junto).
 - **Mitigação aceitável para um piloto interno** (não é o deploy final): publicar
   **apenas na rede interna**, atrás do SSO que já existe no HUBBI, com a URL não
   divulgada e as páginas que expõem dado pessoal fora do menu. Isso é um piloto de
@@ -173,7 +173,7 @@ permissões — e o que a API serve inclui:
 > exatamente isso em 16/09/2026 (§2.3).
 >
 > **Os três elos viraram um.** O agendador agora é um relógio por grupo dentro do
-> processo da API (`apps/api/src/agendador.ts`), e quem supervisiona é o
+> processo da API (`backend/api/src/agendador.ts`), e quem supervisiona é o
 > `restart: unless-stopped` do Docker. É o desenho do dashboard comercial
 > `COM · Gestão Comercial`, adaptado ao nosso volume de dado — o cabeçalho daquele
 > arquivo lista item a item o que foi copiado e o que não foi, com o motivo medido.
@@ -207,7 +207,7 @@ permissões — e o que a API serve inclui:
 > sobe a stack de container nesta máquina tem de derrubá-la (`docker compose -f
 > docker-compose.prod.yml down`) antes de voltar ao `npm start`.
 >
-> O daemon (`tools/refresh/src/daemon.ts`) **continua existindo e continua**
+> O daemon (`backend/tools/refresh/src/daemon.ts`) **continua existindo e continua**
 > **correto** — é ele que o container de produção roda, e `--historico` continua
 > sendo o relatório de operador dos dois agendadores.
 
@@ -219,18 +219,18 @@ permissões — e o que a API serve inclui:
 
 **O que existe hoje, e roda sem ninguém digitar nada:**
 
-- **O daemon de refresh** (`tools/refresh/`) executa o que venceu em
-  `specs/_catalog/refresh.yaml`, em série, e grava `snapshot/refresh-status.json` depois
+- **O daemon de refresh** (`backend/tools/refresh/`) executa o que venceu em
+  `backend/specs/_catalog/refresh.yaml`, em série, e grava `snapshot/refresh-status.json` depois
   de cada grupo. Em produção ele é um serviço do `docker-compose.prod.yml`, de 15 em 15
   minutos; em desenvolvimento, `npm start` o sobe em background junto com a API, **sem
   flag nenhuma** desde 16/09/2026. Os três grupos declarados hoje são `quente`,
   `medio` e `frio`.
-- **Ele tem histórico** (`tools/refresh/src/historico.ts`, 16/09/2026):
+- **Ele tem histórico** (`backend/tools/refresh/src/historico.ts`, 16/09/2026):
   `snapshot/refresh-historico.log`, uma linha por evento (`arranque`, `grupo`,
-  `erro-de-ciclo`), lida com `node tools/refresh/src/daemon.ts --historico`. Existe
+  `erro-de-ciclo`), lida com `node backend/tools/refresh/src/daemon.ts --historico`. Existe
   porque o `refresh-status.json` guarda **só a última tentativa por grupo** — uma falha
   às 03:00 que o tick das 03:15 conserta não deixava rastro nenhum.
-- **Ele ressuscita se morrer** (`tools/subir/src/supervisao.ts`): espera crescente
+- **Ele ressuscita se morrer** (`backend/tools/subir/src/supervisao.ts`): espera crescente
   5s→15s→45s→2min→5min, só conta como tentativa a morte com menos de um minuto de vida,
   e **no teto desiste em voz alta** com o comando de diagnóstico — respawn sem limite
   esconderia um `.env` quebrado para sempre.
@@ -240,7 +240,7 @@ permissões — e o que a API serve inclui:
 
 **O que ainda falta, e é honestamente o buraco desta seção:** quem ressuscita o daemon é
 o próprio `npm start`; se **ELE** morrer, ou se a máquina reiniciar, não há nada.
-`tools/subir/agenda-no-windows.ps1` registra a plataforma no Agendador de Tarefas do
+`backend/tools/subir/agenda-no-windows.ps1` registra a plataforma no Agendador de Tarefas do
 Windows (tarefa `Analytics Sebratel - plataforma`, gatilho "ao fazer logon" por padrão),
 mas **ela não está registrada nesta máquina** — conferido em 17/09/2026 com
 `Get-ScheduledTask`, que não a encontra. Registrar exige PowerShell como Administrador,
@@ -275,13 +275,13 @@ valendo para quem for mexer na cadência.
   teria rodado a etapa 1 e falhado
   calada na 2 — o `/api/saude` continuaria respondendo, com o congelado cada vez mais
   velho. Consertado e verificado ao vivo.
-- **O Refresh Manager existe** (`ACHADOS.md` #84): `tools/refresh/` roda um tick —
-  o que está vencido em `specs/_catalog/refresh.yaml`, em série, grava
+- **O Refresh Manager existe** (`ACHADOS.md` #84): `backend/tools/refresh/` roda um tick —
+  o que está vencido em `backend/specs/_catalog/refresh.yaml`, em série, grava
   `snapshot/refresh-status.json` depois de cada grupo, e `GET /api/saude` expõe o
   bloco `refresh`. `npm run refresh -- --plano` mostra o que rodaria sem tocar nada.
   **O agendamento é 100% automático de fábrica** (06/09/2026):
   - Em produção (Docker Compose / Portainer): o `docker-compose.prod.yml` já traz
-    o serviço `refresh` embutido executando `tools/refresh/src/daemon.ts` a cada
+    o serviço `refresh` embutido executando `backend/tools/refresh/src/daemon.ts` a cada
     15 minutos com `mem_limit: 6g` (medido, ACHADOS #154) e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
     compartilhado com a API. Subir a stack já sobe o agendador ativo.
   - **Credencial Google (27/09/2026, ACHADOS #157):** `GOOGLE_CREDENCIAL_HOST` = caminho,
@@ -304,14 +304,14 @@ valendo para quem for mexer na cadência.
     seguia abrindo, e o dado parava no tempo sem nada mudar de cor. Foi observado ao
     vivo em 16/09 — a stack fora do ar, último tick às 10:25, três horas e quarenta e
     três minutos depois os três grupos apareciam vencidos sem que nada tivesse avisado
-    ninguém. A regra está em `tools/subir/src/supervisao.ts`: espera crescente
+    ninguém. A regra está em `backend/tools/subir/src/supervisao.ts`: espera crescente
     (5s→15s→45s→2min→5min), só conta como tentativa a morte que acontece com menos de
     um minuto de vida, e no teto ele **desiste em voz alta** com o comando de
     diagnóstico — respawn sem limite esconderia um `.env` quebrado para sempre.
 
     **Isto não substitui um supervisor de verdade.** O que ressuscita o daemon é o
     próprio `npm start`; se ELE morrer, ou se a máquina reiniciar, não há nada. O
-    docstring de `tools/refresh/src/index.ts` já previa exatamente isso ao recusar o
+    docstring de `backend/tools/refresh/src/index.ts` já previa exatamente isso ao recusar o
     modelo de daemon 24/7 — *"o Windows não tem PM2/systemd hoje; viraria um processo
     que ninguém reinicia sozinho"*. Falta a linha de cima: uma entrada no Agendador de
     Tarefas do Windows com gatilho "ao iniciar o sistema".
@@ -324,7 +324,7 @@ valendo para quem for mexer na cadência.
     Leia com:
 
     ```bash
-    node tools/refresh/src/daemon.ts --historico
+    node backend/tools/refresh/src/daemon.ts --historico
     ```
 
     Ele é seguro de rodar com o daemon vivo — lê e sai, sem subir agendador nenhum.
@@ -334,11 +334,11 @@ valendo para quem for mexer na cadência.
     tinha sido lançado sem a flag, nada materializava desde as 02:57, e o card
     "HORA MAIS RECENTE" marcava 5h36 de idade num grupo declarado de 15 min. Não
     havia nada no Agendador de Tarefas do Windows para suprir a falta — o gatilho
-    externo que `tools/refresh/src/index.ts` pressupõe nunca foi criado na máquina
+    externo que `backend/tools/refresh/src/index.ts` pressupõe nunca foi criado na máquina
     do Erick. O padrão inverteu por isso: cadência que depende de alguém lembrar de
     uma flag não é cadência. `--com-refresh` continua aceito e virou no-op, para
     não quebrar quem seguiu a instrução antiga.
-  - O script externo de cron (`tools/refresh/cron.sh`, ACHADOS #91) continua disponível
+  - O script externo de cron (`backend/tools/refresh/cron.sh`, ACHADOS #91) continua disponível
     como opção caso um ambiente sem container necessite de crontab no host Linux, mas
     NÃO é mais requisito para rodar a stack de produção. **O primeiro
   tick real já valeu a pena antes de ser agendado**: achou duas queries que não
@@ -356,7 +356,7 @@ valendo para quem for mexer na cadência.
   (`docker/cron/crontab-snapshot-diario`, estágio `cron` do `Dockerfile`, `FROM
   runtime` — não duplica o build), às 3h, `--query=` com a lista explícita do
   catálogo **menos** `protocolos-produtividade` (mesma trava de
-  `tools/refresh/src/grupos.ts`/`QUERY_BLOQUEADA`, replicada aqui porque
+  `backend/tools/refresh/src/grupos.ts`/`QUERY_BLOQUEADA`, replicada aqui porque
   `--query=` não tem exclusão embutida).
   - **`protocolos-geral` NÃO está mais bloqueada — a nota do #83 acima (linha
     165) está desatualizada.** `mysql2` já está instalado (`package.json` e
@@ -366,7 +366,7 @@ valendo para quem for mexer na cadência.
     `--memoria=12288` (12 GB; o padrão de 8192 do daemon de refresh estoura o
     heap). O job diário usa 12288 só para ela; as outras ~23 precisam de bem
     menos, e cada query roda no seu próprio subprocesso
-    (`tools/snapshot/src/index.ts`, `rodaEmSubprocesso`) — uma falha não
+    (`backend/tools/snapshot/src/index.ts`, `rodaEmSubprocesso`) — uma falha não
     derruba as demais.
   - **Cron não herda o ambiente do container.** `env_file:` só define
     `DB_VOALLE_*`/`DB_MARIA_*` para o processo principal; um job de
@@ -382,8 +382,8 @@ valendo para quem for mexer na cadência.
     `docs/DECISOES-DAS-SESSOES.md`
     §3.5 — confirme antes de subir se o host do Portainer mudar.
   - **A cadência de segundos ("near-realtime") já existe e não precisou de
-    nada novo:** `specs/_catalog/realtime-poll.yaml` +
-    `apps/api/src/poller-realtime.ts`, ligado sozinho quando a API sobe,
+    nada novo:** `backend/specs/_catalog/realtime-poll.yaml` +
+    `backend/api/src/poller-realtime.ts`, ligado sozinho quando a API sobe,
     fazendo `SELECT` direto no Voalle a cada 12-30s para 7 queries, só em
     memória (nunca grava no snapshot em disco, nunca paga o recongelamento das
     calculadas). O snapshot diário e o refresh de minutos cobrem o resto do
@@ -391,7 +391,7 @@ valendo para quem for mexer na cadência.
 - **E a escrita em si não era segura rodar com a API no ar — também consertado.**
   `ACHADOS.md` #79 / §4.3: no Windows, renomear o arquivo novo por cima do antigo
   falhava **sempre** (medido: 100%) enquanto um pedido de página tinha aquele `.jsonl`
-  aberto para leitura. Com retentativa (`packages/snapshot/src/escrita-atomica.ts`),
+  aberto para leitura. Com retentativa (`backend/packages/snapshot/src/escrita-atomica.ts`),
   100% de sucesso contra leituras de até 25 ms — mas **sem dado real** de quanto tempo
   uma leitura leva sob carga real, nem do antivírus do servidor de deploy (Sonda 2 do
   plano de atomicidade, ainda pendente por exigir a máquina de produção).
@@ -404,8 +404,8 @@ valendo para quem for mexer na cadência.
     modo hoje"* (`ACHADOS.md` #81: SQL e M calculando as mesmas três colunas, e o
     full-fetch passando do teto de 600 s), e isso deixou de valer em **13/09/2026**:
     ela materializa ponta a ponta em **162 s** e entrou no grupo `frio` de
-    `specs/_catalog/refresh.yaml`, com cadência de 30 min. O `manifesto.json` a traz
-    com **77.452 linhas × 51 colunas**. A trava de `tools/refresh/src/grupos.ts` virou
+    `backend/specs/_catalog/refresh.yaml`, com cadência de 30 min. O `manifesto.json` a traz
+    com **77.452 linhas × 51 colunas**. A trava de `backend/tools/refresh/src/grupos.ts` virou
     `QUERIES_BLOQUEADAS`, um `Set` **vazio**, de pé só para a próxima query que provar
     não materializar.
   - O que continua verdadeiro é bem menor: ela segue **fora da lista do cron diário**
@@ -426,22 +426,22 @@ Em 16/09/2026, às 14:04, **não havia processo nenhum da plataforma na máquina
 avisou, e `refresh-status.json` marcava `falhasConsecutivas: 0` nos três grupos — ele não
 distingue "não falhou" de "não rodou". Ver `ACHADOS.md` #129.
 
-A supervisão de `tools/subir/src/supervisao.ts` (§2.2 acima) fecha a queda do daemon,
+A supervisão de `backend/tools/subir/src/supervisao.ts` (§2.2 acima) fecha a queda do daemon,
 não esta: quem ressuscita o daemon é o próprio `npm start`, e o que faltava era alguém
 acima dele.
 
-- **O que já existe:** `tools/subir/agenda-no-windows.ps1`, o análogo Windows de
-  `tools/refresh/cron.sh` um nível acima — lá se agenda um *tick*, aqui a *stack*.
+- **O que já existe:** `backend/tools/subir/agenda-no-windows.ps1`, o análogo Windows de
+  `backend/tools/refresh/cron.sh` um nível acima — lá se agenda um *tick*, aqui a *stack*.
 
   ```powershell
   # o que ele faria, sem privilégio nenhum e sem tocar no Agendador
-  powershell -ExecutionPolicy Bypass -File tools/subir/agenda-no-windows.ps1 -Simular
+  powershell -ExecutionPolicy Bypass -File backend/tools/subir/agenda-no-windows.ps1 -Simular
 
   # registrar (PowerShell como Administrador)
-  powershell -ExecutionPolicy Bypass -File tools/subir/agenda-no-windows.ps1
+  powershell -ExecutionPolicy Bypass -File backend/tools/subir/agenda-no-windows.ps1
 
   # desfazer
-  powershell -ExecutionPolicy Bypass -File tools/subir/agenda-no-windows.ps1 -Remover
+  powershell -ExecutionPolicy Bypass -File backend/tools/subir/agenda-no-windows.ps1 -Remover
   ```
 
 - **O gatilho padrão é "ao fazer logon", não "ao iniciar o sistema"**, e é decisão, não
@@ -451,7 +451,7 @@ acima dele.
   guardada no Agendador ou `-LogonType S4U`, que roda sem console na sessão 0. Para uma
   máquina que fica ligada sem ninguém logado, `-AoIniciarOSistema` registra a variante
   S4U — e aí o `snapshot/npm-start.log` passa a ser a única janela para o que aconteceu.
-- **Subir duas vezes não é risco:** `tools/subir/src/porta.ts` já decide entre derrubar
+- **Subir duas vezes não é risco:** `backend/tools/subir/src/porta.ts` já decide entre derrubar
   quem ocupa a porta e parar, e a tarefa é registrada com `MultipleInstances IgnoreNew`
   como segunda camada.
 - **Critério de saída:** a máquina reinicia, ninguém digita nada, e a idade em
@@ -585,7 +585,7 @@ API_PORT_HOST=3101 docker compose -f docker-compose.prod.yml -f docker-compose.l
 O que ela faz: `SEM_LOGIN=1` (sim, quero servir sem autenticação) **e**
 `NODE_ENV=development` (e não, isto não é produção). A guarda **recusa** as duas
 combinadas com `NODE_ENV=production`, de propósito, para que ninguém desligue o
-login *fingindo* estar em produção — ver `apps/api/src/portao-login.ts`.
+login *fingindo* estar em produção — ver `backend/api/src/portao-login.ts`.
 
 **Não** transforme a sobreposição em atalho para produção. Em produção o caminho é
 preencher `FIREBASE_PROJECT_ID` (ou `GOOGLE_CLIENT_ID`) e `DOMINIO_CORPORATIVO`, e aí
@@ -598,7 +598,7 @@ tem de morrer com saída 1.
 > torna o parágrafo acima menos frequente do que era: a stack de produção sobe nesta
 > máquina sem sobreposição nenhuma, porque agora existe credencial de verdade. O
 > teste que prova que a guarda continua fechando é
-> `apps/api/test/portao-login.test.ts`, "produção com as DUAS credenciais vazias".
+> `backend/api/test/portao-login.test.ts`, "produção com as DUAS credenciais vazias".
 
 #### 3.2.2 O login, hoje: Firebase Authentication
 
@@ -632,7 +632,7 @@ checagem de domínio passou a ser feita sobre o e-mail, exigindo três coisas ju
 último `@` **igual**, não sufixo). O que fecha a diferença por completo é uma
 *blocking function* `beforeSignIn` no console do Firebase recusando `hd` diferente —
 exige plano Blaze, e **ainda não está ligada**. Ver o cabeçalho de
-`apps/api/src/auth-firebase.ts`.
+`backend/api/src/auth-firebase.ts`.
 
 **Duas coisas a conferir no console do Firebase antes de publicar:**
 
@@ -665,8 +665,8 @@ exige plano Blaze, e **ainda não está ligada**. Ver o cabeçalho de
   matar o stream a cada 90 s e pôr o navegador em laço de reconexão. Sem elas, o proxy
   segura o `text/event-stream` no buffer e **nenhum evento chega, sem erro e sem log**.
   Aqui isto não é hipótese: o SSE existe dos dois lados (`GET /api/eventos` em
-  `apps/api/src/servidor.ts`, `new EventSource('/api/eventos')` em
-  `apps/web/src/App.tsx:153`).
+  `backend/api/src/servidor.ts`, `new EventSource('/api/eventos')` em
+  `frontend/src/App.tsx:153`).
 - **`/auth/` tem bloco próprio** — as duas únicas rotas que escrevem estado (sessão) em
   vez de servir dado calculado, de propósito fora de `/api/`.
 
@@ -761,7 +761,7 @@ Os "~81 testes perdidos" deixaram, portanto, de ser buraco a tapar: qualquer cob
 que tenha ido embora com a árvore de 26/08 foi reescrita com folga por trabalho
 posterior, e contar totais já não a isola. A lição útil migrou inteira para o §4.2
 abaixo: **o que protege de perda não é o total da suíte — é haver teste tocando aquele
-código.** Foi exatamente por isso que `tools/snapshot/` pôde ficar 7 dias quebrado
+código.** Foi exatamente por isso que `backend/tools/snapshot/` pôde ficar 7 dias quebrado
 debaixo de uma suíte verde.
 
 ### 4.2 Uma restauração pode corrigir com corrupção — e isso não aparece como perda
@@ -769,10 +769,10 @@ debaixo de uma suíte verde.
 O §4 documenta trabalho que **sumiu** (árvore apagada, nada commitado). Em 02/09/2026
 apareceu a variante mais perigosa do mesmo risco: um commit de restauração
 (`0aae15c`, 26/08) que ficou **presente e errado** — colou blocos de código por cima de
-si mesmos em `tools/snapshot/src/index.ts` e `calculadas.ts`, e no meio da colagem
+si mesmos em `backend/tools/snapshot/src/index.ts` e `calculadas.ts`, e no meio da colagem
 apagou funcionalidade que já existia (`--todas`, `--parcial=`, e as validações dos
 dois). O resultado crashava em qualquer execução real — mas passou **7 dias** sem
-ninguém notar, porque `tools/snapshot/` nunca teve pasta `test/`: nenhum teste da suíte
+ninguém notar, porque `backend/tools/snapshot/` nunca teve pasta `test/`: nenhum teste da suíte
 verde tocava aquele código. Detalhe completo em `ACHADOS.md` #78; consertado e
 verificado ao vivo contra o Voalle real, commit `39e4ce6` em `staging`.
 
@@ -782,7 +782,7 @@ de `npm test` não alcançava a pasta. **"N testes verdes" só prova o que os te
 efetivamente exercitam** — não é uma garantia geral sobre o repositório inteiro, e um
 diretório sem pasta `test/` é um ponto cego, não uma ausência neutra.
 
-- **Critério de saída desta seção:** cada diretório de `tools/` que grava em disco ou é
+- **Critério de saída desta seção:** cada diretório de `backend/tools/` que grava em disco ou é
   encadeado por outro (como `calculadas.ts` é por `index.ts`) tem pelo menos um teste
   que falha se o módulo não carregar — o nível mais barato de proteção, e o que faltava
   aqui. Os quatro diretórios sem pasta `test/` (`auth`, `bench`, `paginas`, `probe`)
@@ -798,7 +798,7 @@ Windows/NTFS falha com `EPERM` **100% das vezes** enquanto outro processo tem
 original supunha antes de medir. Com retentativa e espera crescente (25 ms a 800 ms),
 100% de sucesso contra leituras de 5–25 ms.
 
-`packages/snapshot/src/formato.ts` (`escreve()`) e `packages/snapshot/src/
+`backend/packages/snapshot/src/formato.ts` (`escreve()`) e `backend/packages/snapshot/src/
 manifesto.ts` (`escreveManifesto`) ficaram atômicos por dentro — todo call-site ganha
 de graça, sem precisar de um segundo helper que alguém teria de lembrar de chamar. O
 manifesto também ganhou `fsync` antes do rename (arquivo pequeno, custo desprezível,

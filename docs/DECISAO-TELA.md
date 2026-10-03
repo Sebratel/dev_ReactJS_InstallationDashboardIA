@@ -7,15 +7,15 @@
 > > FRONTEND E BACKEND."
 >
 > A frase estava **factualmente errada e substancialmente certa**, e as duas metades
-> importam. O backend existia (`apps/api`, `node:http`, 5 rotas `GET`) e o frontend
-> existia (`apps/api/web/index.html`, 461 linhas) — ambos no ar, servindo número real
+> importam. O backend existia (`backend/api`, `node:http`, 5 rotas `GET`) e o frontend
+> existia (`backend/api/web/index.html`, 461 linhas) — ambos no ar, servindo número real
 > do Voalle. O que **não** existia era uma aplicação: uma página por vez, filtros que
 > não filtravam, sem navegação, sem estado compartilhável. Para conferir 42 cards
 > contra o Power BI, isso não serve.
 
 ## O que foi decidido
 
-1. **`apps/web` passa a ser a tela**: React 19 + Vite 7 + TypeScript, workspace do
+1. **`frontend` passa a ser a tela**: React 19 + Vite 7 + TypeScript, workspace do
    monorepo. A tela antiga não foi apagada — vive em `/legado`, pelo motivo da §4.
 2. **As segmentações (`slicer`) passam a filtrar de verdade.** Elas existiam no
    relatório e eram desenhadas como caixa morta desde o começo.
@@ -57,7 +57,7 @@ O formato curto perde o tipo, e **aqui o tipo decide o número**: `[ANO]` guarda
 como número, e um filtro que mande a string `"2026"` não casa com linha nenhuma —
 devolvendo zero, calado e plausível. Também perderia valor que contém `|` ou `]`, e
 esta base tem nome de equipe com pontuação. O codec é **um só**, em
-`packages/widget-engine/src/filtro-url.ts`, importado pelas duas pontas: duas
+`backend/packages/widget-engine/src/filtro-url.ts`, importado pelas duas pontas: duas
 implementações do mesmo formato divergem no primeiro caso esquisito, e a divergência
 apareceria como número errado, não como erro de compilação.
 
@@ -132,7 +132,7 @@ aplicação — não são preferência por Vite.
 | o que o Next dá | vale aqui? |
 |---|---|
 | SSR / SSG / RSC, primeira pintura, SEO | **não** — ferramenta interna, e o dado não vem de banco rápido: vem de um processo com `--max-old-space-size=8192` segurando snapshot + avaliador DAX. SSR seria proxy para essa mesma API (salto a mais, ganho zero) ou mudar o avaliador para dentro do Next |
-| Route Handlers e Server Actions | **contra** — a quarta camada da regra de somente-leitura é *"a API só aceita `GET`/`HEAD`"*, uma linha em `apps/api/src/servidor.ts`. Server Action **é** um POST gerado no build; adotá-lo põe um servidor capaz de escrever entre o navegador e o dado, e troca uma garantia estrutural por uma convenção |
+| Route Handlers e Server Actions | **contra** — a quarta camada da regra de somente-leitura é *"a API só aceita `GET`/`HEAD`"*, uma linha em `backend/api/src/servidor.ts`. Server Action **é** um POST gerado no build; adotá-lo põe um servidor capaz de escrever entre o navegador e o dado, e troca uma garantia estrutural por uma convenção |
 | roteamento por arquivo | **não resolve** — não existem 14 arquivos de rota, existe **uma** página dinâmica alimentada pela listagem da API. A complexidade de estado é o `?filtro=` (parâmetro repetido, JSON), e `searchParams` do App Router é *mais* incômodo nisso: todo componente que lê `useSearchParams` volta a ser client component. Chegaríamos na arquitetura atual dentro de uma casca mais pesada |
 | streaming da parte lenta da página | **já existe, mais fino** — é por visual (`sobDemanda` na tabela de ~350 MB, e a janela de paginação). Streaming por rota é mais grosso do que o que está aqui |
 
@@ -141,8 +141,8 @@ Dois custos concretos, além disso:
 1. **Um processo, uma porta.** O build cai em `../api/web/dist` e o `npm run api`
    sozinho serve a tela. Next em produção é um segundo servidor Node — ou
    `output: 'export'`, que descarta justamente o que o Next tinha de bom.
-2. **O import que existe para não duplicar.** `apps/web/src/api.ts` importa
-   `filtro-url.ts` de `packages/widget-engine` como TS cru: o mesmo codec que a API
+2. **O import que existe para não duplicar.** `frontend/src/api.ts` importa
+   `filtro-url.ts` de `backend/packages/widget-engine` como TS cru: o mesmo codec que a API
    usa para decodificar. Vite resolve com `server.fs.allow`. Next exige
    `transpilePackages` e fronteira de pacote de verdade — possível, e o risco no
    caminho é alguém copiar o codec e as duas pontas divergirem no primeiro valor com
@@ -178,7 +178,7 @@ pesado que JSON com a janela de 200 linhas.
 
 **A condição para reabrir:** sessão de servidor com row-level security por usuário, ou
 o HUBBI padronizar Next para todos os apps sob um shell só. Aí é decisão de casca, não
-de dado. O `apps/web` são 19 arquivos e ~109 KB de fonte, então a migração não fica
+de dado. O `frontend` são 19 arquivos e ~109 KB de fonte, então a migração não fica
 mais caríssima por esperar.
 
 **Meio-caminho, se o roteamento doer antes disso:** entra uma lib de router
@@ -203,7 +203,7 @@ que `/legado` responde e que os tokens ali são os da v2.
 > agosto; a descrição válida está em `DESIGN-SYSTEM.md` § 5.
 
 `docs/DESIGN-SYSTEM.md` v2 era explícito: em produção esta página abriria **dentro do
-AppShell do HUBBI**, e a navegação principal seria de lá. `apps/web/src/componentes/AppShell.tsx`
+AppShell do HUBBI**, e a navegação principal seria de lá. `frontend/src/componentes/AppShell.tsx`
 era um **andaime local** — existia porque, sem ele, não haveria como navegar entre as
 14 páginas fora do HUBBI, e navegar entre elas é o que a conferência exige.
 

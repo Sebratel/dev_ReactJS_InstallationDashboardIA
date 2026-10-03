@@ -41,4 +41,4 @@ jobs:
           GOOGLE_CREDENCIAL_HOST: /dev/null
         run: docker compose -p ci -f docker-compose.prod.yml build api refresh snapshot-diario
       - name: cada serviço recebeu a imagem certa
-        run: sh tools/ci/confere-imagens.sh
+        run: sh backend/tools/ci/confere-imagens.sh

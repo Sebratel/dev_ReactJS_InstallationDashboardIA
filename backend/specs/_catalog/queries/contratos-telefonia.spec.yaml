@@ -1,0 +1,36 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: contratos-telefonia
+name: CONTRATOS TELEFONIA
+origin: table:CONTRATOS TELEFONIA
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  select distinct
+  	p.name "CLIENTE",
+  	c.description "DESCRICAO",
+  	c.contract_number "NUMERO CONTRATO",
+  	ci.description "TELEFONIA",
+  	c.v_status "STATUS CONTRATO",
+  	pn.phone "TELEFONE CONTRATO"
+  	from contract_phone_billings cpb
+  	left join contract_items ci on ci.id = cpb.contract_item_id
+  	left join contracts c on c.id = cpb.contract_id
+  	left join people p on p.id = c.client_id
+  	left join phone_numbers pn on pn.id = ci.phone_number_id
+  	where c.v_status not like 'Cancelado'
+url: null
+sheet: null
+endpoints: null
+source_tables:
+- contract_items
+- contract_phone_billings
+- contracts
+- people
+- phone_numbers
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "select distinct#(lf)#(tab)p.name ""CLIENTE"",#(lf)#(tab)c.description ""DESCRICAO"",#(lf)#(tab)c.contract_number ""NUMERO CONTRATO"",#(lf)#(tab)ci.description ""TELEFONIA"",#(lf)#(tab)c.v_status ""STATUS CONTRATO"",#(lf)#(tab)pn.phone ""TELEFONE CONTRATO""#(lf)#(tab)from contract_phone_billings cpb#(lf)#(tab)left join contract_items ci on ci.id = cpb.contract_item_id#(lf)#(tab)left join contracts c on c.id = cpb.contract_id#(lf)#(tab)left join people p on p.id = c.client_id#(lf)#(tab)left join phone_numbers pn on pn.id = ci.phone_number_id#(lf)#(tab)where c.v_status not like 'Cancelado'"),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"NUMERO CONTRATO", Int64.Type}})
+  in
+      #"Tipo Alterado"

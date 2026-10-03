@@ -10,8 +10,8 @@
 1. **Sua worktree.** `git worktree add ../wt-tela trabalho/tela`. Não trabalhe na
    pasta principal — hoje nós dois commitamos em `staging` sem nos ver, e só não
    colidiu porque os arquivos eram disjuntos.
-2. **Seus arquivos.** `apps/web/**`, `packages/widget-engine/**`,
-   `packages/measure-engine/**`, e os 4 docs de tela listados na §2.2 do plano.
+2. **Seus arquivos.** `frontend/**`, `backend/packages/widget-engine/**`,
+   `backend/packages/measure-engine/**`, e os 4 docs de tela listados na §2.2 do plano.
    **`package.json` não é seu** — precisa de script novo, me pede aqui.
 3. **`npm test` tem de ficar verde.** São **1627** hoje (os 2 do `HORA CRIADO` que
    você acrescentou já estão contados).
@@ -65,7 +65,7 @@ especificação sobreviveu**: [../RECUPERACAO-27-08.md](../RECUPERACAO-27-08.md)
 corpo do commit, sem `v-auto` e sem rolagem horizontal. A referência de 27/08:
 `agendamento-field` 5.564 → 5.133 px e `visao-geral` 1.727 → 1.343 px.
 
-**Onde eu já olhei:** `apps/web/src/altura-medida.ts` existe e tem a fórmula do pool
+**Onde eu já olhei:** `frontend/src/altura-medida.ts` existe e tem a fórmula do pool
 de altura documentada em comentário — leia antes, ela já resolve parte do problema.
 
 ---
@@ -110,7 +110,7 @@ não aparece. Teste nos três estados.
 
 `A1` (teto de memória da piscina de workers), `A2` (as três queries com defeito de
 carga) e `A3` (compose de árvore limpa) são meus — precisam de banco, de medição de
-minutos e de container. Se você tocar `apps/api/**` ou `docker-compose*.yml`, nós
+minutos e de container. Se você tocar `backend/api/**` ou `docker-compose*.yml`, nós
 colidimos.
 
 ## Quando terminar

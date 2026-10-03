@@ -36,7 +36,7 @@
 -- mudou e continua necessário.
 -- ===========================================================================
 --
--- INCORPORADO em 04/09/2026 a `specs/_catalog/queries/protocolos-geral.spec.yaml`,
+-- INCORPORADO em 04/09/2026 a `backend/specs/_catalog/queries/protocolos-geral.spec.yaml`,
 -- junto com o desempate do ROW_NUMBER que este arquivo dizia faltar (ver abaixo).
 -- Ver docs/SPEC-DRIVEN.md, seção "protocolos-geral — desempate do ROW_NUMBER + EXISTS",
 -- e docs/ACHADOS.md #97. Este arquivo fica só como registro histórico da medição

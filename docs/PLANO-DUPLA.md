@@ -31,14 +31,14 @@ vem antes do plano.
 |---|---|---|
 | Motor DAX + Widget Engine | 14 páginas calculam, **1627 testes verdes** (em 04/09/2026; eram 2020 em 17/09) | `npm test` |
 | Páginas carregando | **14 de 14** (eram 11 até hoje) | `bench:carga --paginas`, achado do `HORA CRIADO` |
-| **Login** | **existe e é testado** — Google SSO, domínio `sebratel.com.br`, 401 antes do roteamento | `apps/api/src/auth-google.ts`, `identidade.ts`, `servidor.test.ts:782` |
+| **Login** | **existe e é testado** — Google SSO, domínio `sebratel.com.br`, 401 antes do roteamento | `backend/api/src/auth-google.ts`, `identidade.ts`, `servidor.test.ts:782` |
 | **Dockerfile / compose / Nginx** | **existem** (commit `7642fab`) | `Dockerfile`, `docker-compose.prod.yml`, `nginx.conf` |
-| **SSE no front-end** | **existe** — `EventSource('/api/eventos')` | `apps/web/src/App.tsx:153` |
+| **SSE no front-end** | **existe** — `EventSource('/api/eventos')` | `frontend/src/App.tsx:153` |
 | **Carimbo de dado velho** | **existe** — "Dado mais recente" + aviso | `componentes/Capa.tsx:77`, `AppShell.tsx:71` |
 | **Export CSV** | **existe** em tabela e matriz | `Tabela.tsx:126`, `Matriz.tsx:99` |
-| **CPF/RG na tela** | **nenhuma** das 14 specs de dashboard usa `QUADRO FUNCIONAL` | `grep` em `specs/dashboards/` |
-| Filtro na URL | existe; **falta store** (só `useThemeStore`) | `apps/web/src/store/` |
-| Refresh | Manager + daemon automático integrados no compose e CLI (06/09/2026), sem requerer crontab manual | `tools/refresh/`, §3 abaixo |
+| **CPF/RG na tela** | **nenhuma** das 14 specs de dashboard usa `QUADRO FUNCIONAL` | `grep` em `backend/specs/dashboards/` |
+| Filtro na URL | existe; **falta store** (só `useThemeStore`) | `frontend/src/store/` |
+| Refresh | Manager + daemon automático integrados no compose e CLI (06/09/2026), sem requerer crontab manual | `backend/tools/refresh/`, §3 abaixo |
 | Memória | ~~piscina autoriza 4 × 8 GB~~ **RESOLVIDO** em 04/09: pai 3072 + 2 × 768 = **4.608 MB** autorizados, `mem_limit: 6g`, RSS pico medido **2.938 MB** | `npm run probe:memoria-api`, `ACHADOS.md` #98 |
 | Paridade | **7 divergências reais** + `INSTALADOR` (94 × 166) | `ACHADOS.md`, `CONTINUACAO.md` §9.1 |
 | Deploy | **nunca rodou em máquina que não é a do Erick** | — |
@@ -91,7 +91,7 @@ tempo.**
 > **Isto falhou 40 minutos depois de eu escrever, e a falha ensina a regra que
 > faltava.** O Gemini criou `trabalho/tela` — nome certo, tudo certo — mas
 > **`git checkout` na pasta principal em vez de `git worktree add`**, e deixou o
-> `HEAD` ali. Meu commit seguinte, de `apps/api` e `specs/`, caiu em
+> `HEAD` ali. Meu commit seguinte, de `backend/api` e `backend/specs/`, caiu em
 > `trabalho/tela`: a branch da tela recebeu trabalho de dado, e a `staging` que
 > eu acabara de empurrar não tinha nada meu. Não se perdeu nada — era
 > fast-forward, e consertei com `git branch -f staging <meu commit>`, que não
@@ -117,8 +117,8 @@ commit.
 
 | dono | caminhos |
 |---|---|
-| **Claude** (dado, medição, deploy) | `specs/**`, `packages/snapshot/**`, `packages/query-engine/**`, `packages/transform-engine/**`, `tools/**`, `apps/api/**`, `Dockerfile`, `docker-compose*.yml`, `nginx.conf`, `.env.example`, `docs/ACHADOS.md`, `docs/DEPLOY.md`, `docs/SPEC-DRIVEN.md`, `docs/PERF-CARGA.md` |
-| **Gemini** (tela, produto, motor puro) | `apps/web/**`, `packages/widget-engine/**`, `packages/measure-engine/**`, `docs/DESIGN-SYSTEM.md`, `docs/DECISAO-TELA.md`, `docs/DECISAO-UX-TELAS.md`, `docs/MEDIDAS-TELA.md` |
+| **Claude** (dado, medição, deploy) | `backend/specs/**`, `backend/packages/snapshot/**`, `backend/packages/query-engine/**`, `backend/packages/transform-engine/**`, `backend/tools/**`, `backend/api/**`, `Dockerfile`, `docker-compose*.yml`, `nginx.conf`, `.env.example`, `docs/ACHADOS.md`, `docs/DEPLOY.md`, `docs/SPEC-DRIVEN.md`, `docs/PERF-CARGA.md` |
+| **Gemini** (tela, produto, motor puro) | `frontend/**`, `backend/packages/widget-engine/**`, `backend/packages/measure-engine/**`, `docs/DESIGN-SYSTEM.md`, `docs/DECISAO-TELA.md`, `docs/DECISAO-UX-TELAS.md`, `docs/MEDIDAS-TELA.md` |
 | **ninguém sem avisar** | `package.json`, `package-lock.json`, `CLAUDE.md`, `docs/CONTINUACAO.md`, este arquivo |
 
 Por que este corte e não outro: o lado do Claude precisa de banco, token do Power
@@ -170,7 +170,7 @@ formalizado.
 
 **Dono: Claude.** Bloqueia dimensionar a máquina, então vem primeiro.
 
-`apps/api/src/piscina-workers.ts` cria `min(4, cpus)` workers, cada uma com
+`backend/api/src/piscina-workers.ts` cria `min(4, cpus)` workers, cada uma com
 `resourceLimits: { maxOldGenerationSizeMb: 8192 }` — **autoriza 32 GB numa máquina
 de 16.** Medido em 04/09: 6.625 MB de RSS depois de abrir as 14 páginas, com o pai
 retendo 33 MB (o heap é das workers, crescido e não devolvido ao SO). Com teto de
@@ -351,7 +351,7 @@ POWERBI_REPORT_ID     PREENCHIDA (36 chars)   <- formato de GUID
 POWERBI_TENANT_ID     PREENCHIDA (24 chars)
 ```
 
-Consequência prática, lendo `tools/powerbi/src/index.ts:179-182`: o alvo sai de
+Consequência prática, lendo `backend/tools/powerbi/src/index.ts:179-182`: o alvo sai de
 `args.url ?? POWERBI_URL`, e o `reportId`/`tenant` caem para as duas variáveis
 quando não vêm do link. Com as duas preenchidas, **`--url=` deixou de ser
 obrigatório** — e `npm run powerbi` imprime `nome`, `dataset` e `workspace` do
@@ -363,7 +363,7 @@ suposição.
 **Primeiro passo da B3, e nesta ordem:** rodar `npm run powerbi -- --ajuda` não
 serve (não toca a API); o que identifica o alvo é qualquer invocação real, porque o
 `nome` é impresso antes de qualquer DAX. Registrar o `nome` devolvido em
-`specs/_catalog/paridade-janela.yaml` — hoje nenhum número de `pbi:` diz de onde
+`backend/specs/_catalog/paridade-janela.yaml` — hoje nenhum número de `pbi:` diz de onde
 veio. **Não rodado ainda**: o token foi gravado em 25/08 e pode ter expirado, e
 `pegaToken` faz device code (exige o Erick logar). É pedido, não tarefa de agente.
 

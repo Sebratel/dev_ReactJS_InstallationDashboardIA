@@ -181,7 +181,7 @@ que o Power BI evita erro. O resultado prático: `categoria4` e `categoria5`, qu
 mostrar a 4ª e a 5ª categoria de serviço, mostram **a mesma coisa** (`ssc4.title` nos
 dois), e a 5ª categoria de serviço de verdade nunca aparece em lugar nenhum — mesmo
 juntada, ninguém lê. Essas duas colunas aparecem em `manutencao-inicial`
-(`specs/dashboards/manutencao-inicial.spec.yaml`).
+(`backend/specs/dashboards/manutencao-inicial.spec.yaml`).
 
 **A pergunta.**
 
@@ -412,7 +412,7 @@ de 2026").
 
 ## Pendência que é do Erick, não do Fabrício
 
-Conferir os `rowCount` de `specs/golden/` contra os números do Power BI. Não é
+Conferir os `rowCount` de `backend/specs/golden/` contra os números do Power BI. Não é
 decisão de negócio — é verificar se cada query foi extraída certa. Se um número
 divergir, toda medida construída sobre aquela query nasce errada.
 
@@ -485,7 +485,7 @@ LEFT JOIN skills s         ON s.id = ps.skill_id
 Um relator com 3 skills cadastradas faz **cada relato dele aparecer 3 vezes**.
 
 Duas colunas saem daí, `Relator` e `Skill`, e nenhuma das duas é usada por visual
-nenhum nem por medida nenhuma — varredura em `specs/dashboards/` e `specs/_catalog/`:
+nenhum nem por medida nenhuma — varredura em `backend/specs/dashboards/` e `backend/specs/_catalog/`:
 zero ocorrências. Elas só existem no `SELECT`.
 
 Mas as linhas que elas multiplicam **são contadas**:
@@ -501,7 +501,7 @@ contam protocolo distinto e passam ilesos.
 **O Power BI faz a mesma multiplicação**, porque roda este mesmo SQL. Então hoje os
 dois números batem com ele. Tirar os dois joins baixaria `Qtd` — e isso é
 **divergência deliberada**, não conserto, então precisa de dono e de entrada em
-`specs/_catalog/divergencias.yaml`.
+`backend/specs/_catalog/divergencias.yaml`.
 
 **Pergunta:** quando o painel diz `Qtd` numa linha de Status SLA, o número que se
 espera ali é *quantos relatos* (tira-se os joins de skill) ou é para manter idêntico ao

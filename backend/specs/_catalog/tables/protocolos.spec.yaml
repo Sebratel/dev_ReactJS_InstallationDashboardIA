@@ -1,0 +1,15 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: protocolos
+name: PROTOCOLOS
+query_ref: null
+table_dax: "DISTINCT('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO])"
+columns:
+- name: TIPO DE PROTOCOLO
+  type: null
+  format: null
+  source_column: "PROTOCOLOS GERAL[TIPO DE PROTOCOLO]"
+  calculated: false
+  dax: null
+measure_count: 0

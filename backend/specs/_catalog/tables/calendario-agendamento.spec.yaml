@@ -1,0 +1,104 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: calendario-agendamento
+name: CALENDARIO AGENDAMENTO
+query_ref: null
+table_dax: |-
+  CALENDAR(
+                      DATE(YEAR(MIN('PROTOCOLOS GERAL'[DATA AGENDA])), 1, 1),
+                      DATE(YEAR(MAX('PROTOCOLOS GERAL'[DATA AGENDA])), 12, 31))
+columns:
+- name: Data Agendado
+  type: null
+  format: Short Date
+  source_column: "[Date]"
+  calculated: false
+  dax: null
+- name: Ano
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+  dax: "'CALENDARIO AGENDAMENTO'[Data Agendado].[Ano]"
+- name: "Num Mês"
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+  dax: "'CALENDARIO AGENDAMENTO'[Data Agendado].[MonthNo]"
+- name: "Mês"
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+  dax: "'CALENDARIO AGENDAMENTO'[Data Agendado].[Mês]"
+- name: "Inicio do Mês"
+  type: null
+  format: "d \"de\" mmmm"
+  source_column: null
+  calculated: true
+  dax: "STARTOFMONTH('CALENDARIO AGENDAMENTO'[Data Agendado])"
+- name: Num Trimestre
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+  dax: "'CALENDARIO AGENDAMENTO'[Data Agendado].[QuarterNo]"
+- name: Trimestre
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+  dax: "'CALENDARIO AGENDAMENTO'[Data Agendado].[Trimestre]"
+- name: Num Semana
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+  dax: |-
+
+    VAR DataInicioMes = DATE(YEAR('CALENDARIO AGENDAMENTO'[Data Agendado]), MONTH('CALENDARIO AGENDAMENTO'[Data Agendado]), 1)
+    VAR DiaDaSemanaInicioMes = WEEKDAY(DataInicioMes, 2) // Começa a semana a partir de segunda-feira
+    VAR DiasTranscorridos = 'CALENDARIO AGENDAMENTO'[Data Agendado] - DataInicioMes + IF(DiaDaSemanaInicioMes = 1, 0, 5 - DiaDaSemanaInicioMes)
+    VAR SemanaDoMesNormal = QUOTIENT(DiasTranscorridos, 7) + 1
+    RETURN
+        IF(SemanaDoMesNormal > 5,
+           SemanaDoMesNormal - 5,
+           SemanaDoMesNormal)
+- name: Semana Do Mes Texto
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+  dax: |-
+    VAR SemanaDoMesNum = [Num Semana]
+    VAR Sufixo = IF(SemanaDoMesNum = 1, "ª Semana", "ª Semana")
+    RETURN
+        CONCATENATE(SemanaDoMesNum, Sufixo)
+- name: "DATA VIGENTE?"
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+  dax: "IF('CALENDARIO AGENDAMENTO'[Data Agendado] <=MAX('PROTOCOLOS GERAL'[DATA AGENDA]), \"Sim\", \"Não\")"
+- name: DentroDoIntervalo
+  type: null
+  format: "0"
+  source_column: null
+  calculated: true
+  dax: |-
+
+        IF(
+            'CALENDARIO AGENDAMENTO'[Data Agendado] >= today() &&
+            'CALENDARIO AGENDAMENTO'[Data Agendado] <= today() + 7,
+            1,
+            0
+        )
+- name: DiaDaSemana
+  type: null
+  format: null
+  source_column: null
+  calculated: true
+  dax: "FORMAT('CALENDARIO AGENDAMENTO'[Data Agendado], \"dddd\")"
+measure_count: 0

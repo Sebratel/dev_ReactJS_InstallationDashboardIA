@@ -23,8 +23,8 @@ Existem **dois** caminhos de frescor, independentes, com cadências diferentes.
 
 ```
 container `refresh` (docker-compose.prod.yml, REFRESH_INTERVAL_MINUTOS=15)
-   -> tools/refresh/src/daemon.ts -> npm run snapshot
-   -> escrita atômica (rename; packages/snapshot/src/escrita-atomica.ts)
+   -> backend/tools/refresh/src/daemon.ts -> npm run snapshot
+   -> escrita atômica (rename; backend/packages/snapshot/src/escrita-atomica.ts)
    -> snapshot/  (bind mount COMPARTILHADO com o container `api`)
         |
    API: fs.watch(snapshotDir)  ->  carimboMemo = null      servidor.ts:1208
@@ -130,7 +130,7 @@ mesma chave de cache esperam o mesmo cálculo"). Verificado:
 
 ```
 $ grep -rn "emVoo" --include=*.ts .                          -> nada
-$ git log --oneline -S"emVoo" -- apps/api/src/servidor.ts    -> nenhum commit
+$ git log --oneline -S"emVoo" -- backend/api/src/servidor.ts    -> nenhum commit
 ```
 
 Nunca existiu no código versionado. Hoje, N pedidos com a mesma chave em MISS =
@@ -256,24 +256,24 @@ outro lado com `mesclador(overlay)` — a mesma função pura que já existe
 
 | # | arquivo | o quê |
 |---|---|---|
-| B1 | `apps/api/src/poller-realtime.ts` | expor `overlays(): Map<string, OverlayDeTabela>` (dados) além de `mescladores()` (funções) |
-| B1 | `apps/api/src/servidor.ts` | `ServidorOptions.overlayRealtime` passa a dar dados; `pagina()` os manda na mensagem da worker |
-| B1 | `apps/api/src/worker-calculador.ts` | `MensagemCalculoWorker.overlays`; reconstruir `mesclador()` e passar a `carrega()` |
-| B1 | `apps/api/src/index.ts` | ligar `poller.overlays()` no lugar de `poller.mescladores()` |
-| B2 | `apps/api/src/worker-calculador.ts` + `servidor.ts` | memo de visual: chave calculada no pai, resultado devolvido pela worker |
-| B3 | `apps/api/src/servidor.ts` (novo `voo-unico.ts`) | mapa `chave -> Promise`, com limpeza em sucesso/erro/timeout |
-| B4 | `apps/api/src/piscina-workers.ts` | fila com prioridade; `executa(msg, {prioridade})` |
-| B4 | `apps/api/src/servidor.ts` | classificar origem: `x-aquecedor-interno` -> warmup; `?origem=prefetch` -> prefetch; resto -> interactive |
-| B4 | `apps/web/src/App.tsx` / `api.ts` | marcar o prefetch por hover como `prefetch` |
-| B5 | `apps/api/src/servidor.ts` | depois de `aoTabelaMudar`, agendar reaquecimento em prioridade `warmup` só das páginas afetadas |
-| B6 | `apps/api/src/servidor.ts` | `emiteEvento` passa a mandar `id:` + `{versao, dashboards, atualizadoEm}` |
-| B6 | `apps/web/src/App.tsx` | comparar versão, ignorar antiga/duplicada, preservar filtros |
-| B7 | `apps/web/src/App.tsx` | remover os dois `setTimeout`; `requestIdleCallback` + páginas mais acessadas |
-| B8 | `apps/api/src/servidor.ts` | o `catch {}` do watcher passa a ser estado visível em `/api/saude` |
-| B9 | `apps/api/src/servidor.ts` (novo `metricas.ts`) | contadores; expostos em `/api/saude` |
+| B1 | `backend/api/src/poller-realtime.ts` | expor `overlays(): Map<string, OverlayDeTabela>` (dados) além de `mescladores()` (funções) |
+| B1 | `backend/api/src/servidor.ts` | `ServidorOptions.overlayRealtime` passa a dar dados; `pagina()` os manda na mensagem da worker |
+| B1 | `backend/api/src/worker-calculador.ts` | `MensagemCalculoWorker.overlays`; reconstruir `mesclador()` e passar a `carrega()` |
+| B1 | `backend/api/src/index.ts` | ligar `poller.overlays()` no lugar de `poller.mescladores()` |
+| B2 | `backend/api/src/worker-calculador.ts` + `servidor.ts` | memo de visual: chave calculada no pai, resultado devolvido pela worker |
+| B3 | `backend/api/src/servidor.ts` (novo `voo-unico.ts`) | mapa `chave -> Promise`, com limpeza em sucesso/erro/timeout |
+| B4 | `backend/api/src/piscina-workers.ts` | fila com prioridade; `executa(msg, {prioridade})` |
+| B4 | `backend/api/src/servidor.ts` | classificar origem: `x-aquecedor-interno` -> warmup; `?origem=prefetch` -> prefetch; resto -> interactive |
+| B4 | `frontend/src/App.tsx` / `api.ts` | marcar o prefetch por hover como `prefetch` |
+| B5 | `backend/api/src/servidor.ts` | depois de `aoTabelaMudar`, agendar reaquecimento em prioridade `warmup` só das páginas afetadas |
+| B6 | `backend/api/src/servidor.ts` | `emiteEvento` passa a mandar `id:` + `{versao, dashboards, atualizadoEm}` |
+| B6 | `frontend/src/App.tsx` | comparar versão, ignorar antiga/duplicada, preservar filtros |
+| B7 | `frontend/src/App.tsx` | remover os dois `setTimeout`; `requestIdleCallback` + páginas mais acessadas |
+| B8 | `backend/api/src/servidor.ts` | o `catch {}` do watcher passa a ser estado visível em `/api/saude` |
+| B9 | `backend/api/src/servidor.ts` (novo `metricas.ts`) | contadores; expostos em `/api/saude` |
 
-**Não tocar:** `packages/query-engine`, `packages/measure-engine`,
-`packages/widget-engine`, `packages/snapshot` (exceto ler `carrega`),
+**Não tocar:** `backend/packages/query-engine`, `backend/packages/measure-engine`,
+`backend/packages/widget-engine`, `backend/packages/snapshot` (exceto ler `carrega`),
 `identidade.ts`, `auth-google.ts`, `portao-login.ts`, `cache-resposta.ts`
 (a chave está certa), `nginx.conf` (o SSE já está configurado).
 
@@ -286,10 +286,10 @@ overlay em **dado** (`OverlayDeTabela`: linhas, corte, chave, marca — tudo
 clonável por estrutura), `Servidor` o recorta para as tabelas da página e o
 manda no `postMessage`, e `worker-calculador.ts` reconstrói o mesclador do outro
 lado com a MESMA `mesclador()` que o processo principal usa
-(`apps/api/src/overlay-realtime.ts`).
+(`backend/api/src/overlay-realtime.ts`).
 
 **O F0 foi embutido nela**, como instrumentação, e não como fase que bloqueasse a
-correção: `apps/api/src/metricas.ts`, exposto em `GET /api/saude` sob `realtime`.
+correção: `backend/api/src/metricas.ts`, exposto em `GET /api/saude` sob `realtime`.
 
 ### O que mudou de verdade
 
@@ -299,7 +299,7 @@ correção: `apps/api/src/metricas.ts`, exposto em `GET /api/saude` sob `realtim
 | teste que empurra overlay não-vazio pelo HTTP | **nenhum** | 4 |
 | `PollerRealtime.mescladores()` | montava o `Map` de funções | removido — só o teste o chamava |
 
-Os três testes de overlay em `apps/api/test/overlay-worker.test.ts` ficam
+Os três testes de overlay em `backend/api/test/overlay-worker.test.ts` ficam
 **vermelhos** com a linha da correção retirada e verdes com ela — verificado
 retirando-a de propósito. Suíte inteira: **1682/1682**.
 
@@ -347,7 +347,7 @@ medida própria, e fica na fase dela.
 
 ## 4-B. F2 — FEITA em 08/09/2026
 
-Single-flight por chave de resposta: `apps/api/src/voo-unico.ts`, encaixado em
+Single-flight por chave de resposta: `backend/api/src/voo-unico.ts`, encaixado em
 `pagina()` exatamente no ponto MISS → cálculo. A chave é a MESMA do cache
 (`chaveDaResposta`), e é isso que dá de graça duas garantias que seriam
 trabalhosas de manter à mão: recortes diferentes nunca se fundem (filtros,
@@ -414,10 +414,10 @@ delas. Com o ouvinte, a mesma situação virou log e `GET /api/saude` respondend
 
 ### Testes
 
-* `apps/api/test/voo-unico.test.ts` — a mecânica: convergência, chaves distintas,
+* `backend/api/test/voo-unico.test.ts` — a mecânica: convergência, chaves distintas,
   limpeza em sucesso, em rejeição e em `throw` síncrono, e a conferência de
   identidade que impede um voo terminado de apagar o registro de um voo novo.
-* `apps/api/test/single-flight.test.ts` — ponta a ponta: 6 GET → 1 cálculo; 20
+* `backend/api/test/single-flight.test.ts` — ponta a ponta: 6 GET → 1 cálculo; 20
   clientes acordados por `aoTabelaMudar` → 1 cálculo; recortes diferentes não se
   fundem; carimbo novo não reaproveita voo; 409 chega a todos e libera a chave.
 
@@ -457,11 +457,11 @@ cálculo de 10–20 s sobre um snapshot real, e nenhum teste de unidade vai
 reproduzir isso. Com o parâmetro, o teste sobe uma worker de duas linhas que
 morre na primeira mensagem, e a afirmação passa a ser sobre a piscina.
 
-* `apps/api/test/piscina-ciclo-de-vida.test.ts` — a tarefa da worker morta
+* `backend/api/test/piscina-ciclo-de-vida.test.ts` — a tarefa da worker morta
   rejeita; a **fila** também é drenada quando não sobra worker; a piscina se
   declara inativa; e um controle com uma worker que responde, para que os três
   primeiros não passem numa piscina que rejeita tudo.
-* `apps/api/test/single-flight.test.ts` — o mesmo visto de fora, com o
+* `backend/api/test/single-flight.test.ts` — o mesmo visto de fora, com o
   single-flight no meio: 5 pedidos coalescidos, a worker morre, os 5 recebem
   200, houve **um** `worker_fallback` (não um por pedido) e o pedido seguinte é
   `hit`.
@@ -478,7 +478,7 @@ respondendo `adapter: "MemoryCache+RedisCache"` — o nome do arranjo montado na
 subida, não o estado dele agora. Uma API degradada parecia saudável, e a única
 pista era o tempo de resposta piorar depois de um restart.
 
-`apps/api/src/saude-do-redis.ts` publica isso em `cache.redis`:
+`backend/api/src/saude-do-redis.ts` publica isso em `cache.redis`:
 
 ```json
 { "status": "degradado", "falhas": 57, "desde": "...",

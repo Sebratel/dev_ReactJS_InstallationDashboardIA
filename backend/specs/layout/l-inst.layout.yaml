@@ -1,0 +1,18 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `l-inst` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: l-inst
+base: backend/specs/dashboards/l-inst.spec.yaml
+kpis: []
+faixas:
+  - altura: tabela
+    colunas:
+      - visual: b2d017e5ecdde2c923f9
+        span: 12
+        render: tableEx
+ocultos: []
+improvements: []

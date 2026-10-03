@@ -40,7 +40,7 @@ Não são preferências: cada uma nasceu de um erro concreto.
 | 2.5 | **FastAPI: não para esta plataforma** | 11/08 | Seria a escolha certa para um *serviço de previsão* separado, falando com esta por HTTP — não para o runtime que já tem motores DAX e M em TypeScript. |
 | 2.6 | **React 19 + Vite, estado na URL** | 11/08 | `?pagina=…&filtro=…` — recarregar não perde a escolha, e o link mostra ao outro exatamente o que você viu. |
 | 2.7 | **A sidebar não é desta página** | 07/08 | Vem do AppShell do HUBBI. O `AppShell.tsx` daqui é andaime marcado como tal: embutir em produção é **apagá-lo**, não redesenhar o resto. |
-| 2.8 | **Gráfico é desenho próprio, sem biblioteca** | 07/08 | Adiada de propósito: "escolher uma de passagem seria decidir por uma peça que tem dono". O id do visual aparece sob cada card **de propósito** — é a chave de `specs/paridade/*.yaml`. |
+| 2.8 | **Gráfico é desenho próprio, sem biblioteca** | 07/08 | Adiada de propósito: "escolher uma de passagem seria decidir por uma peça que tem dono". O id do visual aparece sob cada card **de propósito** — é a chave de `backend/specs/paridade/*.yaml`. |
 
 ---
 
@@ -48,7 +48,7 @@ Não são preferências: cada uma nasceu de um erro concreto.
 
 | # | decisão | quando | por quê |
 |---|---|---|---|
-| 3.1 | **Manter a camada M** (`DECISAO-CAMADA-M.md`) | 05/08 | Duas razões: 3 das 15 mesclagens **atravessam fonte** (Postgres×MariaDB, Postgres×Sheets) e nenhum `SELECT` junta duas fontes; e SQL escrito à mão **não tem onde morar** — `specs/_catalog/queries/` é regerado pelo extrator, então divergiria em silêncio. |
+| 3.1 | **Manter a camada M** (`DECISAO-CAMADA-M.md`) | 05/08 | Duas razões: 3 das 15 mesclagens **atravessam fonte** (Postgres×MariaDB, Postgres×Sheets) e nenhum `SELECT` junta duas fontes; e SQL escrito à mão **não tem onde morar** — `backend/specs/_catalog/queries/` é regerado pelo extrator, então divergiria em silêncio. |
 | 3.2 | **A camada M não atende request** (achado #20) | 06/08 | Uma query estoura 4 GB de heap e o CLI roda uma por processo. Ela existe para **validar paridade**; produção lê o snapshot materializado. Motivo técnico: em M qualquer passo pode citar qualquer anterior, então o avaliador não libera tabela intermediária — 56 passos = 56 tabelas vivas ao mesmo tempo. |
 | 3.3 | **Revisão sênior discordou** | 11/08 | Registrado como divergência explícita: ingerir MariaDB/Sheets para dentro do Postgres uma vez elimina a categoria inteira, e as 15 mesclagens viram SQL nativo. Não foi adotado, mas está no registro. |
 | 3.4 | **Reduzir o grão é trabalho de SQL, não da camada M** | 10/08 | Mudança de plano no meio: o Postgres agrupa 1,46 milhão de linhas em segundos, e assim não se trafega nem materializa 950 MB para jogar 97% fora. |

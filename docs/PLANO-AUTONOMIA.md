@@ -23,8 +23,8 @@ etapa: marque aqui ao fechar, com o número que prova.
 | grupo do refresh falhando | tentava a cada intervalo, sem espera nem aviso | ✅ espera crescente (#156) e `degradado` na saúde (#160); aviso externo ainda sem destino |
 
 **Atenção ao arquivo certo:** no compose a API sobe com `AUTO_REFRESH=false`; quem
-agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
-`apps/api/src/agendador.ts` só vale no `npm start`. As etapas 1 e 3 mexem no daemon.
+agenda é o serviço `refresh` (`backend/tools/refresh/src/daemon.ts`, modelo tick). O
+`backend/api/src/agendador.ts` só vale no `npm start`. As etapas 1 e 3 mexem no daemon.
 
 ## Etapas
 
@@ -55,12 +55,12 @@ agenda é o serviço `refresh` (`tools/refresh/src/daemon.ts`, modelo tick). O
    **27/09 — verificação automática (item A da avaliação, ACHADOS #155):** `npm run typecheck`
    (back-end em strict, 0 erros), CI com testes + tipos + imagens pelo compose.
 
-1. ✅ **27/09, ACHADOS #156.** **Espera crescente entre tentativas** — `tools/refresh/src/daemon.ts`/`tick.ts`
-   (e `apps/api/src/agendador.ts`, para o `npm start` não divergir).
+1. ✅ **27/09, ACHADOS #156.** **Espera crescente entre tentativas** — `backend/tools/refresh/src/daemon.ts`/`tick.ts`
+   (e `backend/api/src/agendador.ts`, para o `npm start` não divergir).
    Após n falhas seguidas de um grupo, a próxima tentativa espera `intervalo × 2ⁿ`,
    teto 4 h; zera no primeiro sucesso. Reaproveitar a regra de
-   `tools/subir/src/supervisao.ts` (sem chamador desde 19/09). Registrar cada adiamento
-   no histórico (`tools/refresh/src/historico.ts`).
+   `backend/tools/subir/src/supervisao.ts` (sem chamador desde 19/09). Registrar cada adiamento
+   no histórico (`backend/tools/refresh/src/historico.ts`).
    *Prova:* teste com relógio injetado; `--historico` mostra o adiamento.
 
 2. ✅ **28/09, ACHADOS #159.** **Trava do snapshot** — no materializador (o ponto por onde toda gravação passa).

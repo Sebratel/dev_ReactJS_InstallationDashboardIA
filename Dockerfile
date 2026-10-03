@@ -2,25 +2,24 @@
 #
 # Duas particularidades deste repositório mudam o desenho de uma imagem comum:
 #
-# 1. O backend NÃO tem passo de build — `apps/api/src/index.ts` roda TypeScript
+# 1. O backend NÃO tem passo de build — `backend/api/src/index.ts` roda TypeScript
 #    direto no Node 24 (suporte nativo, sem tsc/tsx). Só o FRONTEND precisa de
-#    build (`npm run web:build`), e o resultado cai dentro do próprio
-#    `apps/api/web/dist/` (`apps/web/vite.config.ts`, `outDir: '../api/web/dist'`)
-#    — por isso o stage de runtime só precisa copiar `apps/api/` inteiro depois
-#    do build, não fonte nenhuma de `apps/web/`.
-# 2. `packages/*` e `tools/*` NÃO são workspaces npm de verdade — não têm
-#    `package.json` próprio (confirmado: só `apps/web/package.json` existe além
+#    build (`npm run web:build`), e o resultado cai em `frontend/dist/`
+#    (`frontend/vite.config.ts`) — por isso o stage de runtime copia `backend/`
+#    inteiro e, de `frontend/`, só o `dist/`.
+# 2. `backend/packages/*` e `backend/tools/*` NÃO são workspaces npm de verdade — não têm
+#    `package.json` próprio (confirmado: só `frontend/package.json` existe além
 #    do da raiz). São TypeScript puro, importado por caminho relativo e
 #    resolvido contra o `node_modules` da raiz. Por isso um único `npm ci` na
 #    raiz basta; não há `package.json` por pacote para copiar seletivamente.
-#    `apps/api/src/*` importa de `tools/` em runtime — hoje `tools/layout/src/*`
-#    (schema/validação/corte de layout) e `tools/refresh/src/status.ts` (o bloco
-#    `refresh` de `/api/saude`). Por isso `tools/` INTEIRO vai para o runtime:
+#    `backend/api/src/*` importa de `backend/tools/` em runtime — hoje `backend/tools/layout/src/*`
+#    (schema/validação/corte de layout) e `backend/tools/refresh/src/status.ts` (o bloco
+#    `refresh` de `/api/saude`). Por isso `backend/` INTEIRO vai para o runtime:
 #    a lista seletiva que existia aqui envelheceu e derrubou a imagem — ver o
 #    comentário longo na própria linha `COPY`, e o guarda em
-#    `apps/api/test/imagem-runtime.test.ts`.
+#    `backend/api/test/imagem-runtime.test.ts`.
 # 3. Este monorepo guarda `yaml` (usado em runtime pelo carregamento de
-#    specs/layout) dentro de `devDependencies`, junto com `pg`/`mariadb`
+#    backend/specs/layout) dentro de `devDependencies`, junto com `pg`/`mariadb`
 #    (usados só pelas ferramentas de materialização, fora deste container).
 #    `npm ci --omit=dev` quebraria a API em runtime. Por isso aqui é `npm ci`
 #    completo — imagem um pouco maior, correção em vez de suposição.
@@ -40,11 +39,9 @@ ENV NODE_ENV=production
 
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/package.json ./package.json
-COPY --from=build /repo/packages ./packages
-COPY --from=build /repo/specs ./specs
-COPY --from=build /repo/apps/api ./apps/api
+COPY --from=build /repo/frontend/dist ./frontend/dist
 
-# `tools/` INTEIRO, e a mudança tem motivo medido.
+# `backend/` INTEIRO (api, packages, tools, specs), e a mudança tem motivo medido.
 #
 # Aqui havia `COPY /repo/tools/layout ./tools/layout`, justificado como
 # "confirmado por grep: só tools/layout/ é importado em runtime". O grep estava
@@ -54,13 +51,13 @@ COPY --from=build /repo/apps/api ./apps/api
 # na primeira vez que alguém rodou este container.** Ele foi escrito em
 # `7642fab` e nunca havia sido executado.
 #
-# `tools/` inteiro tem **1,2 MB** contra os 558 MB da imagem: a cópia seletiva
+# `backend/tools/` inteiro tem **1,2 MB** contra os 558 MB da imagem: a cópia seletiva
 # economizava 0,2% e custava uma quebra silenciosa por import novo. Lista mantida
 # à mão é dívida que vence sem aviso.
 #
-# `apps/api/test/imagem-runtime.test.ts` guarda isto: ele falha se a API passar a
-# importar de um diretório de topo que este Dockerfile não copia.
-COPY --from=build /repo/tools ./tools
+# `backend/api/test/imagem-runtime.test.ts` guarda isto: ele falha se a API passar a
+# importar de um diretório que este Dockerfile não copia.
+COPY --from=build /repo/backend ./backend
 
 # O snapshot é volume — este mountpoint existe só para o container ter onde
 # montar; nada é copiado para dentro da imagem aqui.
@@ -84,9 +81,9 @@ EXPOSE 3100
 # tem de ser derivado desta linha, não adivinhado a partir dela.
 #
 # Heap autorizado hoje: 3072 (aqui) + 2 × 768 (piscina) = 4608 MB, dentro do
-# `mem_limit: 6g` do docker-compose.prod.yml. `apps/api/test/piscina-workers.test.ts`
+# `mem_limit: 6g` do docker-compose.prod.yml. `backend/api/test/piscina-workers.test.ts`
 # falha se os três números saírem de sincronia.
-CMD ["node", "--max-old-space-size=3072", "--expose-gc", "apps/api/src/index.ts"]
+CMD ["node", "--max-old-space-size=3072", "--expose-gc", "backend/api/src/index.ts"]
 
 # Estágio dedicado ao snapshot diário completo via cron (docker-compose.prod.yml,
 # serviço `snapshot-diario`) — parte de `runtime` acima em vez de repetir o stage

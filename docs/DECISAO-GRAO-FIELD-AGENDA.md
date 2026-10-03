@@ -13,13 +13,13 @@
 > das 7 colunas-gatilho.
 >
 > * commit `7521cc3`, [ACHADOS](./ACHADOS.md) #87
-> * `specs/_catalog/queries/field-agenda-slot.spec.yaml` — a query nova, com o
+> * `backend/specs/_catalog/queries/field-agenda-slot.spec.yaml` — a query nova, com o
 >   `EXISTS` exatamente como este documento exigiu (ver *o `LEFT JOIN` que é `INNER`*)
-> * `specs/_catalog/projecao.yaml`, bloco `grao_reduzido` — `decidido: '2026-09-02'`
-> * fiação: `packages/semantic-model/src/projecao.ts`, `packages/snapshot/src/carrega.ts`,
->   `apps/api/src/servidor.ts` (`amarraGraoReduzido`)
+> * `backend/specs/_catalog/projecao.yaml`, bloco `grao_reduzido` — `decidido: '2026-09-02'`
+> * fiação: `backend/packages/semantic-model/src/projecao.ts`, `backend/packages/snapshot/src/carrega.ts`,
+>   `backend/api/src/servidor.ts` (`amarraGraoReduzido`)
 >
-> **O `specs/_catalog/sql-override.yaml` que este documento mandava criar não
+> **O `backend/specs/_catalog/sql-override.yaml` que este documento mandava criar não
 > existe, e não deve existir** — a solução foi uma spec de query própria, que é
 > melhor: o SQL fica onde toda query mora, e não num arquivo de exceção.
 >
@@ -66,7 +66,7 @@ dele por 8**.
 > descoberta.
 
 O que **é** novo aqui: **`Skill` e `Relator` não são usados por visual nenhum nem por
-DAX nenhum.** Varredura em `specs/dashboards/` e `specs/_catalog/`: zero ocorrências de
+DAX nenhum.** Varredura em `backend/specs/dashboards/` e `backend/specs/_catalog/`: zero ocorrências de
 `property: Skill`, `property: Relator`, `[Skill]`, `[Relator]`. As duas colunas que
 justificam a multiplicação só existem no `SELECT`.
 
@@ -181,7 +181,7 @@ e deixa `084be384`, `0c0223c6` e os três slicers pagando o grão fino, que é o
 de fato precisam.
 
 **Por onde os 24,5 s passam, lido no código e não suposto.** `calculaTabela`
-(`packages/widget-engine/src/tabela.ts:99`) chama `agrupar`, e `e2d5549b` **não tem
+(`backend/packages/widget-engine/src/tabela.ts:99`) chama `agrupar`, e `e2d5549b` **não tem
 campo agregado nenhum** — todos os 9 são chave. Então `valorDoCampo` nunca é chamado, e
 o custo inteiro é `enumeraCombinacoes` (`grupos.ts:207`): uma varredura das 1,46 milhão
 de linhas em que, para as chaves de `PROTOCOLOS GERAL` e `Status Protocolo Dia`, cada
@@ -226,9 +226,9 @@ falta é a query saber responder em dois grãos.
 ### 2. Onde o SQL escrito à mão vai morar
 
 *(Plano original — não seguido; ver o aviso do topo.)*
-`specs/_catalog/queries/*.spec.yaml` era **sobrescrito** por `npm run extract`
+`backend/specs/_catalog/queries/*.spec.yaml` era **sobrescrito** por `npm run extract`
 (regra 2; o script saiu em 27/08). A forma agregada é decisão humana e não pode morar lá. Vai em
-`specs/_catalog/sql-override.yaml`, no mesmo molde de `cache-policies.yaml` e
+`backend/specs/_catalog/sql-override.yaml`, no mesmo molde de `cache-policies.yaml` e
 `divergencias.yaml`, com `original_sha` da expressão M que ela substitui — sem isso,
 alguém mexe no Power Query, a extração traz a versão nova, e o override continua
 aplicando um SQL decidido contra outra consulta.

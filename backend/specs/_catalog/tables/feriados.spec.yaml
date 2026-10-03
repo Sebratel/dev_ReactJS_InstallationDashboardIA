@@ -1,0 +1,21 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: table
+id: feriados
+name: FERIADOS
+query_ref: feriados
+table_dax: null
+columns:
+- name: Data
+  type: dateTime
+  format: Short Date
+  source_column: Data
+  calculated: false
+  dax: null
+- name: Feriado
+  type: string
+  format: null
+  source_column: Feriado
+  calculated: false
+  dax: null
+measure_count: 0

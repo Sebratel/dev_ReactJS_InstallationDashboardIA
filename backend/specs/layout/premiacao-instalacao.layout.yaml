@@ -1,0 +1,71 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `premiacao-instalacao` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: premiacao-instalacao
+base: backend/specs/dashboards/premiacao-instalacao.spec.yaml
+kpis:
+  - visual: 2a9ac8db91770695881e
+    enfase: normal
+  - visual: 9ebc3034e108d1452ddb
+    enfase: normal
+faixas:
+  - altura: tabela
+    colunas:
+      - visual: e42420359d507de64376
+        span: 6
+        render: tableEx
+      - visual: 50d44b50c8a7c764fda7
+        span: 6
+        render: tableEx
+  - altura: tabela
+    colunas:
+      - visual: 5b536b4ab2c996794f97
+        span: 12
+        render: tableEx
+  - altura: tabela
+    colunas:
+      - visual: bb2892e77821cc094c8d
+        span: 12
+        render: tableEx
+  - altura: matriz
+    colunas:
+      - visual: 493e6d1252b54c3061b1
+        span: 12
+        render: pivotTable
+  - altura: tabela
+    colunas:
+      - visual: 77ebfd004e4106f33165
+        span: 12
+        render: tableEx
+ocultos:
+  - visual: 1816f8391c128db5f970
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 39b19854921925b379c2
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 50c45ae48beead71ecfd
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 5b733ba13223e369bf4a
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 65077b0dda2882be5126
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 7ff4688d7374741d0579
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 81053b5794ce66d1e2b7
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: a938a9db928c8d795d02
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: ab5d23d05a03a44880a7
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: ae1ed1f5bc1a84ada985
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: b1f10a8a169a9e6937c0
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: c69ce0ec0b39b9d8e4cb
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: ce49bdc2520bb66fe323
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+improvements: []

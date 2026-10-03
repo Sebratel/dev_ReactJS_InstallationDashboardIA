@@ -16,7 +16,7 @@
 > A stack roda `api`, `redis`, `proxy`, `refresh` e, pela primeira vez, **`snapshot-diario`**
 > (cron às 06:00 UTC = 03:00 de Brasília). A API está na **3100** do host, e o contorno
 > `API_PORT_HOST=3101` saiu. Os outros dois contornos continuam. Os grupos do `refresh` mudaram:
-> ver o topo de `specs/_catalog/refresh.yaml`.
+> ver o topo de `backend/specs/_catalog/refresh.yaml`.
 
 **Runtime: a stack Docker, rodando da pasta principal (`staging`).** `api`, `redis`,
 `proxy` (porta 80) e `refresh`. O `snapshot-diario` **não** foi subido. Não há
@@ -38,7 +38,7 @@ A API do Docker foi recriada com uma sobreposição que **não está versionada*
 | contorno | por quê | sai quando |
 |---|---|---|
 | `AQUECE_FILTROS_ATE=0` | com o pré-cálculo de filtros (#163) a API entrava num ciclo de OOM ~1 min depois de subir: a worker estoura 768 MB, o cálculo cai para a thread principal e ela morre em ~3 GB. **Sem ninguém na tela.** Um cálculo pede > 2,7 GB; subir heap não resolve | etapa 3.2 |
-| `./apps/api/web/dist` montado em `/repo/apps/api/web/dist:ro`, compilado no host (`npm run web:build`) | a imagem sai **sem login na tela**: as `VITE_FIREBASE_*` só entram no build, o `.dockerignore` tira o `.env` e o `Dockerfile` não tem `ARG` para elas | etapa 3.1 |
+| `./frontend/dist` montado em `/repo/frontend/dist:ro`, compilado no host (`npm run web:build`). **Até 02/10 o caminho era `./apps/api/web/dist` → `/repo/apps/api/web/dist`**: a stack que está no ar foi criada com ele e continua certa até ser recriada; ao recriar com a imagem nova (layout `frontend/` + `backend/`), use o caminho novo | a imagem sai **sem login na tela**: as `VITE_FIREBASE_*` só entram no build, o `.dockerignore` tira o `.env` e o `Dockerfile` não tem `ARG` para elas | etapa 3.1 |
 | ~~`API_PORT_HOST=3101` no `up`~~ — **saiu em 02/10** (a 3100 ficou livre) | um `node` do host (`npm start`, iniciado 02/10 08:26) segura a 3100, e o `up` falha com "ports are not available" — **derrubando a API**. O proxy fala com `api:3100` por dentro, então a porta do host não muda nada para a tela | quando a 3100 do host estiver livre |
 
 Para recriar (arquivo em qualquer lugar fora do repo; os caminhos relativos resolvem
@@ -51,7 +51,7 @@ services:
     environment:
       AQUECE_FILTROS_ATE: '0'
     volumes:
-      - ./apps/api/web/dist:/repo/apps/api/web/dist:ro
+      - ./frontend/dist:/repo/frontend/dist:ro
 ```
 
 ```bash
@@ -126,7 +126,7 @@ explícito.
       Antes: 238 → 67 s medidos em
       25/08). Prova: incremental × completa na mesma hora, agrupado por `SOLICITACAO`,
       com `npm run probe:compara-incremental` (o passo a passo está no cabeçalho de
-      `tools/probe/src/compara-incremental.ts`). Depois:
+      `backend/tools/probe/src/compara-incremental.ts`). Depois:
       `frio: incremental: [field-agenda, protocolos-produtividade]`.
 - [x] **1.3** ✅ 02/10, `070b354`: **38,6 min/h** com 0 mudanças (ACHADOS #172 §1); intervalos
       afrouxados (`2622764`). **Falta a sentinela** abaixo. Texto original: **Medir o poller.** A costura dele filtra `a.modified >= :desde` em
@@ -135,7 +135,7 @@ explícito.
       de ~1 s, trocar as 7 por **uma** consulta-sentinela ("quais solicitações mudaram
       desde X") e só buscar quando ela devolver algo.
 - [ ] **1.4** Saúde **por tabela** na tela. Hoje uma falha do Google pinta o grupo
-      inteiro de "carga falhou", inclusive as tabelas que gravaram (`tools/refresh/src/status.ts`).
+      inteiro de "carga falhou", inclusive as tabelas que gravaram (`backend/tools/refresh/src/status.ts`).
 - [ ] **1.5** `application_name` nas conexões (`createVoallePool`): refresh, poller e
       API distintos.
 
@@ -181,7 +181,7 @@ Meta: < 10 min/h de consulta pesada no banco.
   status — medido na janela de 01/10 sem perda, mas é a hipótese a vigiar.
 - **Marca d'água com coluna de agenda trava a incremental**: `Slot Agenda`/`Prazo SLA`
   têm data futura, e marca no futuro faz `decideIncremental` recusar.
-- **Teste de tempo sob carga:** `apps/api/test/prioridade-fila.test.ts` ("um clique NÃO
+- **Teste de tempo sob carga:** `backend/api/test/prioridade-fila.test.ts` ("um clique NÃO
   espera cálculo de fundo") falhou 1 vez em 01/10 com 1.049 ms, com o `refresh` do Docker
   rodando na mesma máquina; passou 3× isolado e na suíte seguinte. Antes de caçar defeito,
   rode de novo com a máquina parada.

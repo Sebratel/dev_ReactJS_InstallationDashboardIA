@@ -37,7 +37,7 @@ Redis rodam no Portainer da Sebratel desde antes deste projeto, e é fácil conf
 1. **Refresh agendado** (`npm run snapshot`) define a idade do dado. A tela mostra
    essa idade: `dadoDe` vem no corpo da resposta e `GET /api/saude` traz `dadoDe` do
    manifesto. Dado velho é visível, não silencioso.
-2. **TTL por query**, em `specs/_catalog/cache-policies.yaml` — já decidido: 60 s
+2. **TTL por query**, em `backend/specs/_catalog/cache-policies.yaml` — já decidido: 60 s
    para o operacional quente, 900 s para cadastro, 86400 s para feriado.
 3. **O cache da resposta invalida sozinho quando o snapshot muda**: o carimbo do
    manifesto entra na chave. Rodar `npm run snapshot` é o "evento" da plataforma.
@@ -63,7 +63,7 @@ valerem, e o registro delas vai para `docs/ACHADOS.md`:
 
 O gatilho deixou de depender de estimativa no mesmo dia em que foi escrito. O Erick
 decidiu ligar Debezium contra o Voalle **em modo só observar**, e daí saiu
-`tools/cdc`:
+`backend/tools/cdc`:
 
 ```bash
 npm run cdc:slot -- --vigia          # PRIMEIRO. Sem ele, não registre conector.
@@ -97,7 +97,7 @@ reiniciar, editar ou duplicar container nenhum).
 | 1. Postgres do Voalle com slot de replicação + `PUBLICATION` | ❌ **ausente** — `pg_replication_slots` vazio, mesmo estado de 11/08. Exige DDL de DBA em produção (`RUNBOOK-CDC.md` §1.2). |
 | 2. Kafka Connect com conector Debezium registrado | ❌ **não localizado** — só o broker Kafka foi achado no Portainer (endpoint 3); Connect é outra peça, ainda não mapeada. |
 | 3. Broker Kafka alcançável de fora da rede Docker dele | ❌ **confirmado quebrado** — `KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092` só resolve dentro da rede `kafka_default`. Testado ao vivo: conexão de fora (`kafkajs`) recebe o bootstrap e trava na fase seguinte — exatamente o aviso de `RUNBOOK-CDC.md` §1.1 sobre `KAFKA_ADVERTISED_LISTENERS`. Conserto é um listener `EXTERNAL://` a mais no compose do Kafka + reiniciar o container — infraestrutura de outra equipe, não deste repositório. |
-| 4. `tools/cdc` consumindo e medindo | ✔️ código existe (achado #84), só não tem o que consumir. |
+| 4. `backend/tools/cdc` consumindo e medindo | ✔️ código existe (achado #84), só não tem o que consumir. |
 
 **Redis é outra história — já funciona.** `redis:alpine` no Portainer, autenticado
 (`--requirepass`), porta publicada 1:1. Localmente, o Redis de desenvolvimento já
@@ -118,7 +118,7 @@ mudou é uma pergunta diferente: existe um jeito de a tela se atualizar sozinha
 que **não** dependa de CDC nem de acesso além do que a plataforma já tem
 (leitura)?
 
-Existe, e foi construído: `apps/api/src/poller-realtime.ts`. A diferença para
+Existe, e foi construído: `backend/api/src/poller-realtime.ts`. A diferença para
 CDC é exatamente o ponto que travava a conta acima — **um evento de CDC só
 avisa; este poller busca**:
 
@@ -131,7 +131,7 @@ Voalle (SELECT a.modified >= :desde, a cada 12s — leitura, sem grant novo)
    → invalidação CIRÚRGICA: só as páginas que usam a tabela (`queriesForTable`
      + `planeja`), nas três camadas de cache — nunca o site inteiro
    → GET /api/eventos (SSE) avisa só quem está com aquela página aberta
-   → apps/web/src/App.tsx apaga o cache local da página e refaz o mesmo fetch
+   → frontend/src/App.tsx apaga o cache local da página e refaz o mesmo fetch
      de sempre — sem F5
 ```
 

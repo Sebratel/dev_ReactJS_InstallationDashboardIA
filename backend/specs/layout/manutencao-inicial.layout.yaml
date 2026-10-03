@@ -1,0 +1,111 @@
+# MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
+#
+# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
+# forma que `manutencao-inicial` desenha hoje (filtro padrão de abertura, sem clique). Editar à
+# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
+# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
+# derivada da heurística antiga.
+pagina: manutencao-inicial
+base: backend/specs/dashboards/manutencao-inicial.spec.yaml
+kpis:
+  - visual: 0a9c8fb6aeb367c4a9d6
+    enfase: normal
+  - visual: 19f96719cb60517a5062
+    enfase: normal
+  - visual: 39b8523db9e4024f345d
+    enfase: normal
+  - visual: 79929c759b56d9c50002
+    enfase: normal
+  - visual: 7c4900b4ab95e8e421c8
+    enfase: normal
+  - visual: 9eed3abce470029b5891
+    enfase: normal
+  - visual: a8ffb16abb690cc6147d
+    enfase: normal
+  - visual: ac8ae9e34e50c01060d3
+    enfase: normal
+  - visual: b277cbb3c0345505ddf8
+    enfase: normal
+  - visual: bc889c6e5aab180b4e49
+    enfase: normal
+  - visual: cacbda0fe3a81ece18c5
+    enfase: normal
+  - visual: df74c4fb0e50148b9851
+    enfase: normal
+faixas:
+  - titulo: Gráficos e tendências
+    altura: grafico
+    colunas:
+      - visual: d97fe489202052421052
+        span: 6
+        render: lineStackedColumnComboChart
+      - visual: 702852fc76c92c8c0cd9
+        span: 6
+        render: lineStackedColumnComboChart
+  - titulo: Análise detalhada
+    altura: tabela
+    colunas:
+      - visual: 2b170b73919d66acd4f9
+        span: 6
+        render: tableEx
+      - visual: 6fd98c21010e7e22239b
+        span: 6
+        render: tableEx
+  - altura: tabela
+    colunas:
+      - visual: 2df4f6c42bfbfd487ab1
+        span: 12
+        render: tableEx
+  - altura: tabela
+    colunas:
+      - visual: 0147d7072c8525a2a802
+        span: 12
+        render: tableEx
+ocultos:
+  - visual: 01b1c7005b8de457349f
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 148f6ba115cb24e32280
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 18e2df7fcebe55422e22
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 2128ca2bc5fa3dab2b60
+    porque: tipo 'image' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 455e4a8a0477ed34e806
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 47c5da4202802d657d5b
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 48c389bfa9f9c43bfcff
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 6bbd3fd0d32b0b83181a
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 707565fef6b8f5cb35ee
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 70a4682fdbd5f4414822
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 77e715657d31d083dd84
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 812e60a64068500c1120
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 8a935f3996b42c20f865
+    porque: tipo 'pageNavigator' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: 8eebca1b0652b988a8a8
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 8f63123f92f546af4d24
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: 97806ae5a55362b8fe86
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: a8bb56155ea520769c12
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: b3d817c3c57545262796
+    porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: ce735a6358c0af249bc2
+    porque: tipo 'shape' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: d607ef36b82b1c37ab2c
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: d6966d4cb0e0556e0952
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+  - visual: fb9054faac5121289c51
+    porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
+  - visual: fefc9130d39cbbb0604a
+    porque: vira controle de filtro na barra (segmentação), não card da grade
+improvements: []

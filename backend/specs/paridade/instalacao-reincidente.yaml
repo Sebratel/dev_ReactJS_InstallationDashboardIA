@@ -1,0 +1,35 @@
+# MANTIDO POR HUMANOS — gabarito de paridade.
+#
+# Abra a página no Power BI e escreva em `powerbi:` o número que aparece em cada
+# card. `null` significa "ainda não conferido", e o programa diz isso em vez de
+# fingir que passou.
+#
+# Quando o número DEVE dar diferente porque a gente decidiu assim, ponha o id da
+# entrada de `backend/specs/_catalog/divergencias.yaml` em `divergente:`. Aí bater vira
+# falha — é o que impede uma divergência de ficar só no papel.
+
+pagina: instalacao-reincidente
+conferido_em: "2026-08-11T15:10:00-03:00"
+por: "Claude no navegador — LEIA A RESSALVA em docs/PARIDADE-11-08.md"
+tolerancia: 0.005
+
+cards:
+  - visual: 03b4bcd9157cec19d13e
+    rotulo: "Hora mais recente"
+    powerbi: null   # <-- o número que aparece na tela
+    ignorar: >-
+      carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade
+  - visual: 1c15b278e5ca17bec2e8
+    rotulo: "Reincidentes"
+    powerbi: 1272   # <-- o número que aparece na tela
+  - visual: 5e81bd24691c29217be8
+    rotulo: "Instalados"
+    powerbi: 19593   # <-- o número que aparece na tela
+  - visual: 6bed9d362974c6733761
+    rotulo: "% Reincidencia"
+    powerbi: 0.0649   # tela mostra 6.49% — nossa medida devolve razao   # <-- o número que aparece na tela
+  - visual: e9f72a9a044c3d178fa1
+    rotulo: "Data mais recente"
+    powerbi: null   # <-- o número que aparece na tela
+    ignorar: >-
+      carimbo de atualizacao do dado, nao numero de negocio — comparar com um Power BI aberto em outro momento mede o relogio, nao paridade

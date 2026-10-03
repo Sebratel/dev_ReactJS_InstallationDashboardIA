@@ -17,7 +17,7 @@ Thumbs.db
 # Snapshot da camada M — DADO DE CLIENTE (endereco em field-agenda, CPF/RG em
 # QUADRO FUNCIONAL). Gerado por `npm run snapshot`, nunca versionado.
 # Ancorado na raiz: sem a barra da frente, o padrao casaria tambem
-# packages/snapshot/ e tools/snapshot/ -- o codigo, que precisa ser versionado.
+# backend/packages/snapshot/ e backend/tools/snapshot/ -- o codigo, que precisa ser versionado.
 /snapshot/
 
 # Estado local do agente/IDE (launch.json, worktrees). É desta máquina, não do
@@ -26,9 +26,3 @@ Thumbs.db
 
 # Perfis de CPU do `--cpu-prof`, gerados por sessão de medição.
 scratch-prof/
-
-# Clone de OUTRO projeto (dev_ReactJS_CommercialDashboards) largado dentro desta
-# arvore. Tem o proprio .git/, entao `git add` o transformaria num gitlink
-# apontando para um commit que nao existe neste remoto -- submodulo quebrado, nao
-# codigo. Ignorado ate alguem move-lo para fora.
-/dados_ReactJS_CommercialDashboards/

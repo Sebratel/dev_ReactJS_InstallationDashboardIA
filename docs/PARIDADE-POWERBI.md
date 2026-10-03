@@ -65,8 +65,8 @@ reprocessar só essa tabela.
 ## 3. Medidas (DAX) — 78/78
 
 - **78 medidas** no modelo, com o **DAX íntegro** preservado em
-  `specs/_catalog/measures/*.measures.yaml`.
-- A API roda um **interpretador DAX próprio** (`packages/measure-engine/`:
+  `backend/specs/_catalog/measures/*.measures.yaml`.
+- A API roda um **interpretador DAX próprio** (`backend/packages/measure-engine/`:
   tokenizer → parser → evaluator) sobre o snapshot — não reimplementa por nome nem usa
   valor pré-calculado. O `calcula.ts` só formata.
 - Cobertura de linguagem: **todas as ~60 funções usadas implementadas** (CALCULATE,
@@ -79,11 +79,11 @@ reprocessar só essa tabela.
 (`CAPACIDADE INSTALAÇÃO`, `GESTORES`). No nosso lado dão erro; **conferir no Power BI se
 lá também aparecem vazias** (se sim, somos idênticos, inclusive no defeito).
 
-**Divergências de propósito** (`specs/_catalog/divergencias.yaml`): as colunas PESO de
+**Divergências de propósito** (`backend/specs/_catalog/divergencias.yaml`): as colunas PESO de
 dias úteis (sáb/dom = 0,5) foram alteradas de propósito — muda toda medida de dias
 úteis / projeção / média mensal. É governado, não bug.
 
-**Prova de valor** (`tools/paridade`): **53 cards** conferindo contra o Power BI, **22
+**Prova de valor** (`backend/tools/paridade`): **53 cards** conferindo contra o Power BI, **22
 ainda sem gabarito**, 18 marcados como divergência conhecida. O harness ainda só cobre
 cards — tabelas/matrizes não têm gabarito de valor.
 
@@ -158,7 +158,7 @@ bruto acima:
    O original abre
    **pré-filtrado**: `jul/2026` em Visão Geral, Agendamento, Diário e Protocolos; `2026`
    em Manutenção e Instalação/Reincidente. Nossa app abria **sem filtro**. **Implementado**
-   em `apps/web/src/filtros-padrao.ts` (+ `App.tsx`): as 4 páginas de mês abrem no
+   em `frontend/src/filtros-padrao.ts` (+ `App.tsx`): as 4 páginas de mês abrem no
    **último mês fechado** (dinâmico, decisão do Erick — acompanha o tempo em vez de fixar
    julho); as 2 de ano no **ano corrente**. Verificado: Visão Geral cai de 34.025 → 3.238
    protocolos ao abrir; as 6 páginas aceitam o filtro sem erro.
@@ -187,7 +187,7 @@ bruto acima:
      (fonte: `SemanticModel/definition/tables/PROTOCOLOS GERAL.tmdl`, partição M).
    - **CONCLUSÃO (20/08, após diagnóstico profundo): NÃO há escopo a recortar — a nossa
      query é IDÊNTICA à do modelo original.** Comparado byte-a-byte:
-     `specs/_catalog/queries/protocolos-geral.spec.yaml` (campo `sql`) × a partição M de
+     `backend/specs/_catalog/queries/protocolos-geral.spec.yaml` (campo `sql`) × a partição M de
      `SemanticModel/.../PROTOCOLOS GERAL.tmdl` → **3.656 caracteres iguais, idênticas**
      (mesmo `it.id IN (12 tipos)`, mesmo `created >= 2026-01-01`, mesmo dedup
      `ROW_NUMBER … PERSONA1 = 1` + `SELECT DISTINCT`). Os cards usam contagem crua igual à

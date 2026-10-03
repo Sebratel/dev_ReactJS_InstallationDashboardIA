@@ -1,0 +1,532 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+id: protocolos-auxiliares
+name: PROTOCOLOS AUXILIARES
+origin: expression
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  WITH PERSONALIZADO AS (
+      SELECT
+          a.title AS "SOLICITACAO",
+          ai.protocol AS "N°PROTOCOLO",
+          s.start_date AS "DATA AGENDA",
+          a.modified AS "DATA ENCERRADO",
+          a.created AS "DATA CRIADO",
+          is2.title AS "STATUS",
+          p.city AS "CIDADE",
+          p.neighborhood AS "BAIRRO",
+          p.street AS "RUA",
+          p.number AS "NUMERO PATRIMÔNIO",
+          p.name AS "CLIENTE",
+          p.phone AS "TELEFONE",
+          t.title AS "EQUIPE",
+          ac.lat AS "LATITUDE",
+          ac.lng AS "LONGITUDE",
+          p2.name AS "RESPONSÁVEL",
+          it.title AS "TIPO DE PROTOCOLO",
+          aap.title AS "PONTO DE ACESSO",
+          aap.code AS "CODIGO",
+          aap.slots_first_number AS "SLOT",
+          aap.ports_first_number AS "PORTA",
+          as2.title AS "CTO",
+          c.v_status AS "STATUS CONTRATO",
+          c.v_stage AS "ESTAGIO CONTRATO",
+          c.contract_number AS "NUMERO CONTRATO",
+          csi.title AS "ITEM",
+          sc.title AS "CONTEXTO",
+          sp.title AS "PROBLEMA",
+          as3.title AS "OLT",
+          m.title AS "EQUIPAMENTO",
+          ac.user AS "USUÁRIO",
+          vu.name AS "CRIADO POR",
+          ROW_NUMBER() OVER (
+                      PARTITION BY a.title
+                      -- MESMO desempate de `protocolos-geral` (decidido por Erick em 04/09/2026,
+                      -- invertido em 13/09). As tres queries calculam as MESMAS colunas a partir
+                      -- dos MESMOS joins; discordarem sobre qual linha e a certa seria um defeito
+                      -- esperando para ser achado.
+                      --
+                      -- PRIMARIA e o contrato DAQUELE protocolo, nao `active`: LATITUDE, LONGITUDE,
+                      -- CTO, PONTO DE ACESSO, CODIGO, OLT, EQUIPAMENTO, SLOT, PORTA e USUARIO saem
+                      -- todas de `ac`, e quando o cliente tem varios enderecos a resposta por
+                      -- definicao e o contrato que casa; `active` e heuristica.
+                      ORDER BY ((ac.contract_id = cst.contract_id) IS TRUE) DESC,
+                               (ac.active IS TRUE) DESC,
+                               s.start_date DESC NULLS LAST,
+                               ac.created DESC NULLS LAST, ac.id DESC NULLS LAST,
+                               -- Piso de determinismo. Sem ele esta consulta devolvia valor
+                               -- DIFERENTE a cada execucao: medido em 15/09/2026 dentro de uma
+                               -- transacao REPEATABLE READ (banco congelado), 7.125 de 38.254 (18,6%) das chaves
+                               -- mudavam sozinhas. Cada alias aqui multiplica a particao e nao
+                               -- era ordenado por nada: `asp` (um contrato de autenticacao tem
+                               -- varias portas de splitter), `s` (uma assignment tem varios
+                               -- schedules), `pa` (quando `ac` nao casa, todos os enderecos do
+                               -- cliente empatam) e `frt` (78,57 titulos por contrato; aqui so alimenta um CASE de nulo, mas multiplica igual).
+                               asp.id DESC NULLS LAST, s.id DESC NULLS LAST,
+                               pa.id DESC NULLS LAST, frt.id DESC NULLS LAST
+                  ) AS PERSONA1,
+          CASE
+              WHEN frt.title IS NULL THEN 'Pendente'
+              ELSE 'Cobrado'
+          END AS "STATUS FINANCEIRO"
+      FROM assignment_incidents ai
+      LEFT JOIN assignments a ON a.id = ai.assignment_id
+      LEFT JOIN schedules s ON s.assignment_id = a.id
+      LEFT JOIN incident_types it ON it.id = ai.incident_type_id
+      LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id
+      LEFT JOIN people p ON p.id = a.requestor_id
+      LEFT JOIN teams t ON t.id = ai.team_id
+      LEFT JOIN people_addresses pa ON pa.person_id = p.id
+      LEFT JOIN authentication_contracts ac ON ac.people_address_id = pa.id
+      LEFT JOIN people p2 ON p2.id = a.responsible_id
+      LEFT JOIN authentication_access_points aap ON aap.id = ac.authentication_access_point_id
+      LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id
+      LEFT JOIN contracts c ON cst.contract_id = c.id
+      LEFT JOIN catalog_services_items csi ON csi.id = ai.catalog_service_item_id
+      LEFT JOIN authentication_splitter_ports asp ON asp.authentication_contract_id = ac.id
+      LEFT JOIN authentication_sites as3 ON as3.id = aap.authentication_site_id
+      LEFT JOIN manufacturers m ON m.id = aap.manufacturer_id
+      LEFT JOIN solicitation_problems sp ON sp.id = ai.solicitation_problem_id
+      LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id
+      LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id
+      LEFT JOIN v_users vu ON vu.id = a.created_by
+      LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id
+      WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+        AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+  ),
+  -- `base` e EXATAMENTE o SELECT DISTINCT que existia aqui antes da migracao de
+  -- 17/09/2026: as MESMAS 33 colunas da fonte, na MESMA ordem, com o MESMO DISTINCT.
+  -- Nao e zelo, e o que mantem a contagem de linhas. O DISTINCT tem de rodar sobre as
+  -- colunas da FONTE: se as derivadas entrassem neste nivel, duas linhas que hoje
+  -- diferem so em CODIGO virariam uma so depois de CODIGO colapsar em POP/VLAN.
+  -- Derivar vem DEPOIS, no SELECT de fora. (Mesma licao de `protocolos-telefonia`.)
+  base AS (
+  SELECT DISTINCT
+      "SOLICITACAO",
+      "N°PROTOCOLO",
+      "DATA AGENDA",
+      "DATA CRIADO",
+      "DATA ENCERRADO",
+      "STATUS",
+      "CIDADE",
+      "BAIRRO",
+      "RUA",
+      "NUMERO PATRIMÔNIO",
+      "TELEFONE",
+      "CLIENTE",
+      "EQUIPE",
+      "LATITUDE",
+      "LONGITUDE",
+      "RESPONSÁVEL",
+      "TIPO DE PROTOCOLO",
+      "PONTO DE ACESSO",
+      "CODIGO",
+      "SLOT",
+      "PORTA",
+      "CTO",
+      "STATUS CONTRATO",
+      "ESTAGIO CONTRATO",
+      "NUMERO CONTRATO",
+      "ITEM",
+      "CONTEXTO",
+      "PROBLEMA",
+      "OLT",
+      "EQUIPAMENTO",
+      "USUÁRIO",
+      "CRIADO POR",
+      "STATUS FINANCEIRO"
+  FROM PERSONALIZADO
+  WHERE PERSONA1 = 1
+  ),
+
+  -- O mapa CIDADE -> SIGLA (ACHADO #114) aparece UMA VEZ nesta query, aqui.
+  --
+  -- No M tambem era uma so: a cadeia de nove `Table.ReplaceValue` produzia
+  -- "SIGLA CIDADE" e `INDICE 2` LIA essa coluna
+  -- (`Text.Combine({[BAIRRO], [SIGLA CIDADE]}, "/")`). Este CTE existe para que a
+  -- migracao PRESERVE isso. A traducao direta, coluna a coluna, punha a cadeia inteira
+  -- dentro de `INDICE 2` tambem -- e e o que `protocolos-produtividade` tem hoje (duas
+  -- copias, uma por ramo). Sair de uma copia para duas seria a migracao PIORANDO
+  -- justamente o problema que ela existe para resolver.
+  --
+  -- `Replacer.ReplaceText` substitui SUBSTRING, e as nove chamadas sao encadeadas: a
+  -- ORDEM decide o resultado se um dia uma cidade for substring de outra. Ela e a ordem
+  -- do catalogo, e `siglas-cidade.test.ts` compara as duas.
+  derivado AS (
+      SELECT base.*,
+          replace(replace(replace(replace(replace(replace(replace(replace(replace(
+              initcap("CIDADE"),
+              'Canoas','CAN'), 'São Leopoldo','SLE'), 'Novo Hamburgo','NHO'),
+              'Sapucaia Do Sul','SPS'), 'Nova Santa Rita','NSR'), 'Brochier','BROCHIER'),
+              'Esteio','EIO'), 'Triunfo','TRF'), 'Porto Alegre','POA')
+                                                        AS "SIGLA CIDADE"
+      FROM base
+  ),
+
+  -- ─────────────────────────────────────────────────────────────────────────────
+  -- AS DUAS QUERIES MESCLADAS QUE AINDA CASAM -- as duas dbVoalle.
+  --
+  -- Eram TRES `Table.NestedJoin` no M. A terceira (TECNICOS AUXILIARES) nao casa
+  -- nenhuma linha e nao esta aqui: o porque esta escrito na coluna "TECNICO", no fim.
+  -- ─────────────────────────────────────────────────────────────────────────────
+
+  -- ALOCACAO PATRIMONIO: NAO tem PERSONA. Uma solicitacao pode ter varios itens de
+  -- patrimonio, e o `Table.ExpandTableColumn` do M MULTIPLICA a linha por item. O LEFT
+  -- JOIN abaixo reproduz isso -- e a multiplicacao e desejada: e dela que saem as
+  -- 38.258 linhas de 38.030 solicitacoes (medido em 17/09/2026).
+  --
+  -- Os joins que o `alocacao-patrimonio.spec.yaml` tem e este recorte NAO tem
+  -- (`patrimonies`, `people p2/p4`, `authentication_sites`, `authentication_access_points`,
+  -- `solicitation_problems`) casam todos por CHAVE PRIMARIA: LEFT JOIN por id nao cria
+  -- nem descarta linha, so traz coluna -- e nenhuma das colunas deles e expandida pelo
+  -- M. `assignment_incidents` e `incident_types` FICAM: uma assignment pode ter varios
+  -- incidentes, e esses SIM multiplicam.
+  alocacao AS (
+      SELECT
+          a.title             AS "SOLICITACAO",
+          plis.out_date       AS "DATA SAIDA",
+          plis.created        AS "DATA HORA SAIDA",
+          p3.name             AS "ALOCADO POR:",
+          CASE WHEN p3.outsourced IS TRUE THEN 'TERCEIRO' ELSE 'EFETIVO' END AS "POSIÇÃO"
+      FROM patrimony_packing_list_items plis
+      LEFT JOIN patrimony_packing_lists ppl ON ppl.id = plis.patrimony_packing_list_id
+      LEFT JOIN assignments             a   ON a.id   = ppl.assignment_id
+      LEFT JOIN assignment_incidents    ai  ON ai.assignment_id = a.id
+      LEFT JOIN incident_types          it  ON it.id  = ai.incident_type_id
+      LEFT JOIN people                  p3  ON p3.id  = plis.person_allocator_id
+      -- Os NOVE tipos de `alocacao-patrimonio.spec.yaml`, na ordem em que ela os
+      -- escreve. Nao sao os dez desta query: '268' e '1160' nao estao la, e '279' esta.
+      WHERE it.id IN ('12','1254','1255','1014','1136','249','15','279','1015')
+        -- `AND plis.out_date > '01/01/2026'` no original. `01/01` e o mesmo dia em MDY e
+        -- em DMY, entao a data nao depende do `DateStyle` da sessao -- escrita em ISO
+        -- aqui para que ela tambem nao PARECA depender.
+        AND plis.out_date > DATE_TRUNC('year', CURRENT_DATE)
+  ),
+
+  -- TROCA ENDERECO: uma linha por protocolo (PERSONA1 = 1 no original).
+  --
+  -- O `ORDER BY r.final_date DESC` SOZINHO nao desempata, e isso e propriedade da query
+  -- de origem, nao desta -- nao se conserta aqui, porque `troca-endereco` alimenta
+  -- outras telas e as duas tem de concordar. Medido em 17/09/2026: dos 5.411 protocolos,
+  -- 14 tem empate no topo e em ZERO deles o empate muda o tecnico (e a data do topo e a
+  -- mesma por definicao). Entao hoje o sorteio nao decide nada.
+  --
+  -- `contract_service_tags` e `contracts` estao no SQL de origem e NAO estao aqui: elas
+  -- so alimentam a coluna "CONTRATO", que o M nunca expande. Tirar join muda a
+  -- MULTIPLICIDADE da particao do ROW_NUMBER, e com empate no topo isso mudaria o
+  -- vencedor -- por isso foi medido antes: 5.691 linhas com as duas e 5.691 sem
+  -- (17/09/2026). Elas nao multiplicavam nada.
+  troca AS (
+      SELECT "TÉCNICO", "PROTOCOLO",
+             -- `::date` NAO e enfeite. `troca-endereco` termina em
+             -- `Table.TransformColumnTypes(Fonte,{{"DATA DA TROCA", type date}})`, e
+             -- `type date` CORTA A HORA. Sem o corte, "DATA FINAL" (e a coluna DAX
+             -- DATA INSTALACAO, que cai nela nos tipos de Troca de Endereco) passaria a
+             -- ter um valor por INSTANTE em vez de um por dia -- foi assim que a matriz
+             -- de `diario-instalacao` ganhou 5.011 colunas em 25/08/2026.
+             "DATA DA TROCA"::date AS "DATA DA TROCA"
+      FROM (
+          SELECT
+              p.name        AS "TÉCNICO",
+              ai.protocol   AS "PROTOCOLO",
+              r.final_date  AS "DATA DA TROCA",
+              ROW_NUMBER() OVER (PARTITION BY ai.protocol ORDER BY r.final_date DESC) AS _persona
+          FROM assignments a
+          LEFT JOIN assignment_incidents ai ON ai.assignment_id = a.id
+          LEFT JOIN reports              r  ON r.assignment_id  = a.id
+          LEFT JOIN people               p  ON p.id = r.person_id
+          LEFT JOIN incident_types       it ON it.id = ai.incident_type_id
+          WHERE DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
+            AND it.id IN ('15','1256')
+            AND (r.description LIKE '%O condomínio é adequado?%'
+              OR r.description LIKE '%Foi feita a instalação?%')
+      ) x WHERE x._persona = 1
+  ),
+
+  -- MESCLAGEM + O FILTRO DE CANCELADO.
+  --
+  -- No M o filtro cai DEPOIS da mesclagem com patrimonio e ANTES da de troca. Da no
+  -- mesmo -- LEFT JOIN nao altera STATUS --, mas manter a ordem torna a conferencia
+  -- passo a passo possivel.
+  --
+  -- `IS DISTINCT FROM` e nao `<>`: em M, `null <> "Cancelado"` e **true**, e em SQL
+  -- `NULL <> 'Cancelado'` e NULL -- que nao e verdadeiro, e a linha DESAPARECERIA aqui
+  -- sendo que no M ela fica. Medido em 17/09/2026: 0 linhas com STATUS nulo e 1.283
+  -- canceladas no superconjunto.
+  mesclado AS (
+      SELECT
+          d.*,
+          al."DATA SAIDA"      AS _data_saida,
+          al."DATA HORA SAIDA" AS _data_hora_saida,
+          al."ALOCADO POR:"    AS _alocado_por,
+          al."POSIÇÃO"         AS _posicao,
+          tr."TÉCNICO"         AS _tecnico_troca,
+          tr."DATA DA TROCA"   AS _data_troca,
+          -- `INSTALADO POR:` do M. NAO e coluna de saida -- o M a cria, renomeia para
+          -- TECNICO e a REMOVE tres passos depois. Ela sobrevive aqui por um motivo so:
+          -- e a primeira chave de `Table.Sort`, e a ordem das linhas e o que este
+          -- `_` no nome existe para lembrar que nao se deve projetar.
+          CASE WHEN d."TIPO DE PROTOCOLO" = 'TEC - Troca de Endereço'
+               THEN tr."TÉCNICO" ELSE al."ALOCADO POR:" END AS _instalado_por
+      FROM derivado d
+      LEFT JOIN alocacao al ON al."SOLICITACAO" = d."SOLICITACAO"
+      LEFT JOIN troca    tr ON tr."PROTOCOLO"   = d."N°PROTOCOLO"
+      WHERE d."STATUS" IS DISTINCT FROM 'Cancelado'
+  )
+
+  -- ─────────────────────────────────────────────────────────────────────────────
+  -- RESULTADO -- 46 colunas, NA ORDEM QUE O M PRODUZIA.
+  --
+  -- A ordem e observavel no snapshot, e reproduzi-la e o que permite provar a migracao
+  -- coluna a coluna com `npm run probe:compara-materializacao`. Ela nao e "arrumada":
+  -- POP/VLAN ficam onde CODIGO estava (`Table.SplitColumn` poe as partes no lugar da
+  -- original), e HORA CRIADO / SIGLA CIDADE / INDICE 2 / HORA AGENDA vem depois das 33
+  -- da fonte porque `Table.AddColumn` acrescenta no fim.
+  --
+  -- CADA EXPRESSAO ABAIXO FOI CONFERIDA CONTRA O AVALIADOR (`MEvaluator.avaliaQuery`),
+  -- nao contra o Power Query: sao programas diferentes, e num ponto eles ja
+  -- discordaram (ACHADOS #126).
+  -- ─────────────────────────────────────────────────────────────────────────────
+  SELECT
+      "SOLICITACAO",
+      "N°PROTOCOLO",
+      -- `type date` no M CORTA A HORA, e a hora vira coluna propria (DateTime.Time).
+      -- A extracao da hora acontece ANTES do corte nos tres casos -- por isso as duas
+      -- saem da MESMA coluna da fonte, que ainda e timestamp aqui.
+      --
+      -- `timestamp without time zone` chega ao M lido como UTC literal (`parseSemFuso`,
+      -- connectors-sql.ts) e `DateTime.Time`/`type date` usam getters UTC. Logo `::time`
+      -- e `::date` batem digito a digito. Se a coluna virar `timestamptz`, cai.
+      "DATA AGENDA"::date                                   AS "DATA AGENDA",
+      "DATA CRIADO"::date                                   AS "DATA CRIADO",
+      "DATA ENCERRADO"::date                                AS "DATA ENCERRADO",
+      "STATUS",
+
+      -- Text.Proper: "PORTO ALEGRE" -> "Porto Alegre".
+      --
+      -- `initcap` NAO e Text.Proper: o Postgres abre palavra em QUALQUER caractere nao
+      -- alfanumerico, e o nosso Text.Proper (functions.ts) abre so em espaco, "-" e "/".
+      -- Onde eles discordam: `D'AVILA` vira "D'Avila" no initcap e "D'avila" no M;
+      -- `(SEDE)` vira "(Sede)" contra "(sede)" -- as duas conferidas no avaliador.
+      --
+      -- Medido na fonte viva em 17/09/2026, sobre o SUPERCONJUNTO dos candidatos (antes
+      -- do PERSONA1 = 1, entao vale para qualquer recorte): 18 CIDADEs distintas e 375
+      -- BAIRROs, nenhum nulo, nenhum vazio, e **zero** com caractere de separacao que
+      -- so o initcap enxerga. initcap fica, por ser uma expressao em vez de uma varredura
+      -- caractere a caractere -- mas com a condicao escrita: no dia em que entrar um
+      -- bairro com apostrofo ou parentese, esta linha passa a mentir.
+      initcap("CIDADE")                                     AS "CIDADE",
+      initcap("BAIRRO")                                     AS "BAIRRO",
+      "RUA",
+      "NUMERO PATRIMÔNIO",
+      "TELEFONE",
+      "CLIENTE",
+      "EQUIPE",
+      "LATITUDE",
+      "LONGITUDE",
+      -- Text.Upper e depois nulo -> "SEM INFORMAÇÃO" (510 linhas no superconjunto, medido
+      -- em 17/09). Em CAIXA ALTA, ao contrario das seis de baixo -- e do M, nao e deslize
+      -- a copiar.
+      COALESCE(upper("RESPONSÁVEL"), 'SEM INFORMAÇÃO')      AS "RESPONSÁVEL",
+      "TIPO DE PROTOCOLO",
+      COALESCE("PONTO DE ACESSO", 'Sem Informação')         AS "PONTO DE ACESSO",
+
+      -- CODIGO dividia-se por "-" em POP e VLAN (Table.SplitColumn com dois nomes:
+      -- ExtraValues.Ignore, entao uma terceira parte seria DESCARTADA).
+      --
+      -- Medido em 17/09: no superconjunto ha 12.160 CODIGOs distintos nao nulos e
+      -- **um** com hifen. Entao POP e quase sempre o codigo inteiro e VLAN e quase
+      -- sempre 'Sem Informação'. As duas expressoes cobrem o caso com hifen mesmo
+      -- assim: a fonte pode mudar, e um NULL calado aqui vira "Sem Informação" na tela
+      -- sem ninguem ver.
+      --
+      -- NAO e `NULLIF(split_part(...), '')`: no M, CODIGO = '' (vazio, nao nulo) da
+      -- POP = '' e nao 'Sem Informação'. So o NULO e substituido. Conferido no avaliador.
+      CASE WHEN "CODIGO" IS NULL THEN 'Sem Informação'
+           ELSE split_part("CODIGO", '-', 1) END            AS "POP",
+      -- VLAN: no M a 2a parte vira **Int64** e so depois `"VLAN " & Text.From(_)`.
+      -- O `::bigint` reproduz a conversao, e ela nao e cosmetica: conferido no
+      -- avaliador, CODIGO = 'POP01-0012' da `VLAN 12`, nao `VLAN 0012`. Sem 2a parte
+      -- ela e nula, e `"VLAN " & null` e null em M -- dai o 'Sem Informação'.
+      --
+      -- 2a parte VAZIA ('POP01-') ou nao numerica ('POP01-abc') ERRA aqui, e erra no M
+      -- tambem (`Int64.Type` produz celula de erro e `Text.From` a recusa, derrubando a
+      -- query inteira). Falhar do mesmo jeito e o comportamento certo: inventar
+      -- 'Sem Informação' para um codigo malformado esconderia a fonte quebrada. Medido:
+      -- 0 codigos assim em toda a `authentication_access_points` com hifen (3.185).
+      CASE WHEN "CODIGO" IS NULL OR strpos("CODIGO", '-') = 0 THEN 'Sem Informação'
+           ELSE 'VLAN ' || split_part("CODIGO", '-', 2)::bigint::text END AS "VLAN",
+      "SLOT",
+      "PORTA",
+
+      -- CTO = Text.BeforeDelimiter(Text.AfterDelimiter(_, "-", 1), "-").
+      --
+      -- O "1" e o indice da OCORRENCIA (ACHADO #126): o texto DEPOIS do SEGUNDO hifen,
+      -- e dele o pedaco ANTES do proximo. Ou seja o TERCEIRO campo da divisao.
+      --
+      -- O `>= 3` nao e paranoia, e o avaliador foi quem o exigiu: `Text.BeforeDelimiter`
+      -- devolve VAZIO, nao o texto inteiro, quando o delimitador nao aparece. Com
+      -- exatamente 2 hifens o M da '' e `split_part(...,3)` daria o ultimo campo --
+      -- conferido celula a celula ('A-B-C' -> '' no M, 'A-B-C-D' -> 'C').
+      -- Medido em 17/09: os 12.129 CTOs distintos do superconjunto tem TODOS 4 ou mais
+      -- hifens, entao o ELSE nao pega ninguem hoje. `protocolos-produtividade` escreve a
+      -- forma simples (`NULLIF(split_part(...,3),'')`), e e essa diferenca que um dia
+      -- separa as duas.
+      CASE WHEN "CTO" IS NULL THEN NULL
+           WHEN length("CTO") - length(replace("CTO", '-', '')) >= 3
+                THEN split_part("CTO", '-', 3)
+           ELSE '' END                                      AS "CTO",
+      "STATUS CONTRATO",
+      "ESTAGIO CONTRATO",
+      "NUMERO CONTRATO",
+      COALESCE("ITEM",        'Sem Informação')             AS "ITEM",
+      COALESCE("CONTEXTO",    'Sem Informação')             AS "CONTEXTO",
+      COALESCE("PROBLEMA",    'Sem Informação')             AS "PROBLEMA",
+      COALESCE("OLT",         'Sem Informação')             AS "OLT",
+      COALESCE("EQUIPAMENTO", 'Sem Informação')             AS "EQUIPAMENTO",
+      "USUÁRIO",
+      "CRIADO POR",
+      "STATUS FINANCEIRO",
+
+      -- O `DATE '1899-12-30' +` DAS TRES HORAS NAO E ENFEITE, e foi o comparador que o
+      -- exigiu em `protocolos-telefonia`: `DateTime.Time` devolve um `MTime`, e
+      -- `toDatasetRows` o converte para **`Date` sobre 1899-12-30** -- a convencao do
+      -- Power BI, em que hora e fracao de dia sobre a mesma epoca do numero de serie de
+      -- data (value.ts, `EPOCH_MS`). Um `::time` puro chega como STRING, e a coluna
+      -- trocaria de tipo no snapshot: `date` viraria `string` em todas as linhas.
+      -- Contagem igual, valor com a mesma cara, tipo diferente -- exatamente a familia
+      -- de defeito que esta migracao podia introduzir sem nenhum sintoma.
+      DATE '1899-12-30' + "DATA CRIADO"::time               AS "HORA CRIADO",
+
+      -- calculada uma vez no CTE `derivado`, la em cima
+      "SIGLA CIDADE",
+
+      -- INDICE 2 = Text.Combine({BAIRRO, SIGLA CIDADE}, "/"), com as duas correcoes
+      -- literais que o M aplica depois. LE "SIGLA CIDADE" em vez de refazer o mapa.
+      --
+      -- Os COALESCE existem porque `Text.Combine` TRATA NULO COMO VAZIO (conferido no
+      -- avaliador: `{null,"POA"}` com "/" da "/POA"), e `NULL || '/' || 'POA'` daria
+      -- NULL -- a coluna inteira sumiria em vez de ficar meia. Sao 0 linhas hoje, e e
+      -- justamente por isso que no dia em que deixarem de ser ninguem estaria olhando.
+      replace(replace(
+          COALESCE(initcap("BAIRRO"), '') || '/' || COALESCE("SIGLA CIDADE", ''),
+          'Centro - Assentamento /NSR','Centro - Assentamento/NSR'),
+          'Duque De Caxias /SLE','Duque De Caxias/SLE')     AS "INDICE 2",
+      DATE '1899-12-30' + "DATA AGENDA"::time               AS "HORA AGENDA",
+
+      -- vindas de ALOCACAO PATRIMONIO. `plis.out_date` ja e `date` no banco -- o M nao
+      -- a converte, e por isso nao ha `::date` aqui: acrescentar um seria mudar de
+      -- opiniao sobre um valor que ninguem pediu para mudar.
+      _data_saida                                           AS "DATA ALOCAÇÃO",
+      _alocado_por                                          AS "TÉCNICO INSTALAÇÃO",
+      _posicao                                              AS "POSIÇÃO",
+      DATE '1899-12-30' + _data_hora_saida::time            AS "HR. ALOCAÇÃO",
+
+      -- vindas de TROCA ENDERECO
+      _tecnico_troca                                        AS "TÉCNICO TROCA",
+      _data_troca                                           AS "DATA DA TROCA",
+
+      -- DATA FINAL: a segunda condicional do M, com a MESMA comparacao sensivel a caixa.
+      CASE WHEN "TIPO DE PROTOCOLO" = 'TEC - Troca de Endereço'
+           THEN _data_troca ELSE _data_saida END            AS "DATA FINAL",
+
+      -- ─────────────────────────────────────────────────────────────────────────
+      -- TECNICO -- E NULA DE PROPOSITO, E ISTO E O ACHADO DESTA MIGRACAO.
+      -- ─────────────────────────────────────────────────────────────────────────
+      -- No M esta coluna e `TECNICOS AUXILIARES.AUXILIAR`, vinda do terceiro
+      -- `Table.NestedJoin`: {"N°PROTOCOLO"} x {"PROTOCOLO:"}. Esse join **nao casa
+      -- nenhuma linha**, e a coluna sai INTEIRA NULA -- ela esta assim no snapshot de
+      -- producao de hoje (38.087 de 38.087 nulas, tipo `vazia`).
+      --
+      -- POR QUE: `ai.protocol` e `bigint` e o driver `pg` o entrega como TEXTO; o M de
+      -- `tecnicos-auxiliares` termina em
+      -- `Table.TransformColumnTypes(Fonte,{{"PROTOCOLO:", Int64.Type}})`, que entrega
+      -- NUMERO. `Table.NestedJoin` poe o tipo na chave de igualdade de proposito
+      -- (`chaveDe`, functions.ts), texto nunca casa com numero, e o motor **se recusa a
+      -- reconciliar sozinho** -- reconciliar e decisao humana, registrada em
+      -- `backend/specs/_catalog/juncoes.yaml`. `protocolos-geral` e `backlog-agendado-futuro`
+      -- tem entrada la; `protocolos-auxiliares` NAO tem.
+      --
+      -- Reproduzido no avaliador com duas linhas sinteticas: sem a decisao registrada,
+      -- 0 de 2 casam e a coluna sai nula; com ela, 2 de 2 casam. E o mesmo caminho de
+      -- codigo da materializacao.
+      --
+      -- POR QUE NAO "CONSERTAR" AQUI. Escrever o join com
+      -- `NULLIF(regexp_replace(...))::bigint` -- que e o que `protocolos-produtividade`
+      -- faz -- encheria a coluna e DIVERGIRIA do relatorio publicado sem decisao de
+      -- ninguem, no meio de uma migracao cuja promessa e "o valor nao muda". O lugar de
+      -- ligar esta junção e `juncoes.yaml`, com o numero medido ao lado, e ai ela passa
+      -- a valer para o M e para o SQL ao mesmo tempo.
+      NULL::text                                            AS "TECNICO"
+
+  FROM mesclado
+  -- A ORDEM DAS LINHAS, que no M eram dois `Table.Sort` encadeados e ESTAVEIS:
+  -- primeiro `INSTALADO POR:` descendente, depois `N°PROTOCOLO` descendente. Estavel
+  -- quer dizer que o segundo manda e o primeiro so desempata -- por isso eles aparecem
+  -- aqui na ordem INVERSA da que o M os escreve.
+  --
+  -- `NULLS LAST` porque `ordena` (functions.ts) poe nulo PRIMEIRO no ascendente, logo
+  -- por ultimo no descendente.
+  --
+  -- `N°PROTOCOLO` e bigint aqui e TEXTO no M (o driver entrega bigint como texto, e
+  -- `Table.Sort` compara texto por codigo de caractere). As duas ordens so coincidem
+  -- enquanto todos os protocolos tiverem o mesmo numero de digitos: medido em
+  -- 17/09/2026, os 38.520 do escopo tem 7 digitos, sem excecao.
+  --
+  -- O que NENHUMA das duas resolve: duas linhas do mesmo protocolo com o mesmo
+  -- instalador -- dois itens de patrimonio alocados pela mesma pessoa. Ali o M tambem
+  -- nao ordena nada (fica a ordem de emissao do join, que o PostgreSQL nao promete), e
+  -- fingir o contrario aqui seria escrever um criterio que o original nao tem.
+  ORDER BY "N°PROTOCOLO" DESC, _instalado_por DESC NULLS LAST;
+url: null
+sheet: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- assignments
+- authentication_access_points
+- authentication_contracts
+- authentication_sites
+- authentication_splitter_ports
+- authentication_splitters
+- catalog_services_items
+- contract_service_tags
+- contracts
+- financial_receivable_titles
+- incident_status
+- incident_types
+- manufacturers
+- patrimony_packing_list_items
+- patrimony_packing_lists
+- people
+- people_addresses
+- reports
+- schedules
+- solicitation_classifications
+- solicitation_problems
+- teams
+- v_users
+m_expression: |-
+  let
+      // MIGRACAO DE 17/09/2026 (ACHADOS #112, #133). Os 56 passos que moravam aqui
+      // viraram o `sql:` desta spec, e nao sobrou NENHUM: esta e a primeira query da
+      // migracao que fica com o `Fonte` sozinho.
+      //
+      // `Odbc.Query` IGNORA os dois argumentos: `runQueries` busca `spec.sql` pelo Query
+      // Engine antes de avaliar e injeta o resultado como `Fonte` (runner.ts, "as funcoes
+      // de fonte devolvem a tabela ja buscada"). O que estava escrito aqui era uma COPIA
+      // do SQL -- e ela ja tinha ficado para tras do original (o desempate do ROW_NUMBER
+      // de 15/09 esta no `sql:` e nunca chegou nesta copia). Duas fontes da verdade para
+      // a mesma consulta, sendo que uma nunca roda: ficou so o ponteiro.
+      //
+      // AS TRES MESCLAGENS TAMBEM SAIRAM, e duas viraram CTE (`alocacao`, `troca`). A
+      // terceira, com `TECNICOS AUXILIARES`, NAO virou: ela nao casava nenhuma linha em
+      // M -- `N°PROTOCOLO` chega TEXTO e `PROTOCOLO:` chega NUMERO, e `Table.NestedJoin`
+      // poe o tipo na chave de igualdade de proposito. A coluna "TECNICO" sai inteira
+      // nula, e o SQL escreve `NULL::text` para nao mudar valor no meio de uma migracao
+      // cuja promessa e que o valor nao muda. Ligar essa juncao e decisao humana, e o
+      // lugar dela e `backend/specs/_catalog/juncoes.yaml`.
+      Fonte = Odbc.Query("dsn=dbVoalle", "o SQL desta query e o campo `sql:` desta spec")
+  in
+      Fonte

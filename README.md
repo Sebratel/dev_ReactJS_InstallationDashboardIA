@@ -45,7 +45,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | Filtros de página e visual passaram a ser extraídos: **102 de visual + 6 de página** restringem de fato, 176 são cartão sem seleção, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #27). Sem isso um card seria computado sem o filtro dele, em silêncio | ✅ |
 | — | Campos de visual passaram a dizer **como** agregam: 84 `Aggregation` com a função, 69 `HierarchyLevel` com coluna e nível (antes nulos), 2 `Arithmetic` descritos, **0 sem tradução** ([ACHADOS](docs/ACHADOS.md) #28) | ✅ |
 | — | Data relativa: a âncora de `DateSpan` passou a ser **lida** em vez de presumida `Now()`. Duas páginas inteiras eram filtradas a partir de *hoje* onde o filtro diz data fixa; `TimeUnit` ganhou nome apurado do próprio relatório (`day` 20, `month` 14, `second` 2, `year` 1) ([ACHADOS](docs/ACHADOS.md) #29) | ✅ |
-| — | **Card: os 64 do relatório calculam de ponta a ponta.** `packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
+| — | **Card: os 64 do relatório calculam de ponta a ponta.** `backend/packages/widget-engine/` traduz filtro de spec para `TableFilter`, resolve data relativa na hora do cálculo e monta a agregação como nó de AST. Página e visual entram num `with()` **único** — em dois encadeados o de visual apagaria o de página e o número sairia maior, calado | ✅ |
 | — | 10 filtros são `COUNT(coluna) > 0` — um **HAVING** sobre os grupos do visual, não um predicado de linha. Aplicados ao valor cru viravam outro filtro, que num campo numérico aceita quase tudo. Recusados pelo nome até o agrupamento existir; nenhum está em card ([ACHADOS](docs/ACHADOS.md) #30) | ✅ |
 | — | Medido e preso em teste: **36 cards têm filtro e só 5 mudam de valor** sobre dado sintético. O caminho de filtro *executa* em 36 e está *exercitado* em 5 — mesma lição da 2b.5. **Nada disto é paridade** | ⚠️ |
 | — | **Agrupamento + tabela: os 29 `tableEx` calculam.** Uma tabela do Power BI mostra as *combinações distintas* das colunas que não agregam, não uma linha por registro. O teste de cobertura passou a exigir mapa de recusas **vazio** | ✅ |
@@ -62,10 +62,10 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | **A matriz custava 33.945 varreduras onde o Power BI faz uma — resolvido.** Cada célula refiltrava as 65.563 linhas: 2,2 bilhões de visitas contra 65.563 de uma varredura única. O conserto não foi um motor novo: a varredura que descobre as combinações **já separava as linhas de cada grupo** e as jogava fora. O perigo era a substituição do DAX — `ALL()` de uma das chaves derruba um filtro do grupo, e as linhas materializadas ficariam estreitas demais ([ACHADOS](docs/ACHADOS.md) #38) | ✅ |
 | — | Medido em dado real contra o mesmo cálculo sem o caminho rápido: `protocolos-detalhados` em **1.519 ms contra 374.260 ms**, com **`sha256` idêntico** sobre 23,8 MB de saída — **246×**, byte a byte o mesmo número. A matriz que não terminava em 400 s: **1.610 ms** | ✅ |
 | — | A conferência que torna isso seguro **não era coberta por teste nenhum**: removida, os 860 continuavam passando. Veio de mutação, e hoje 2 testes a pegam. A outra mutação — truncar as linhas materializadas — derruba 38 | ✅ |
-| — | **A tela existe: `apps/api` serve a API de leitura e o dashboard.** Uma página do relatório abre no navegador com número calculado a partir da fonte real. `diario-instalacao`: **7 visuais com número, 0 falharam**, 3,8 s por pedido; a tabela de 32.462 linhas sai em 48 KB em vez de 23,8 MB, dizendo o total ([ACHADOS](docs/ACHADOS.md) #39) | ✅ |
+| — | **A tela existe: `backend/api` serve a API de leitura e o dashboard.** Uma página do relatório abre no navegador com número calculado a partir da fonte real. `diario-instalacao`: **7 visuais com número, 0 falharam**, 3,8 s por pedido; a tabela de 32.462 linhas sai em 48 KB em vez de 23,8 MB, dizendo o total ([ACHADOS](docs/ACHADOS.md) #39) | ✅ |
 | — | **Somente leitura no protocolo**: só `GET`/`HEAD`, qualquer outro método leva 405 antes do roteamento. É a quarta camada — as outras três ficam no Query Engine, que a API nem chama: ela lê snapshot | ✅ |
 | — | Divergência registrada do `ARCHITECTURE.md`: **`node:http` em vez de Fastify**. Cinco rotas `GET` sem corpo, sem escrita e sem autenticação não pagam um framework. Continua valendo — a condição de revisão (Permission Engine, corpo, WebSocket) não foi atingida | ⚠️ |
-| — | **A tela virou aplicação: `apps/web` em React 19 + Vite.** 14 páginas navegáveis, estado na URL e as **segmentações filtrando de verdade** — a escolha vira um `FiltroSpec` sintético e entra na mesma lista dos filtros de página, sem tocar em engine. Medido em `visao-geral` com `[EQUIPE] = Equipe Field Service`: `CLIENTES DISTINTOS` **28.253 → 2.973** ([DECISAO-TELA](docs/DECISAO-TELA.md)) | ✅ |
+| — | **A tela virou aplicação: `frontend` em React 19 + Vite.** 14 páginas navegáveis, estado na URL e as **segmentações filtrando de verdade** — a escolha vira um `FiltroSpec` sintético e entra na mesma lista dos filtros de página, sem tocar em engine. Medido em `visao-geral` com `[EQUIPE] = Equipe Field Service`: `CLIENTES DISTINTOS` **28.253 → 2.973** ([DECISAO-TELA](docs/DECISAO-TELA.md)) | ✅ |
 | — | **Tabela calculada congelada gravava a coluna-chave inteira nula**, e o acidente que fazia as calculadas saírem certas escondeu isso por um commit. `calendar` inteira eram 30.009 linhas vazias. Achado por uma funcionalidade que **exibe dado cru**, não por teste ([ACHADOS](docs/ACHADOS.md) #54) | ✅ |
 | — | A regra 5 do `PROMPT-CONTINUACAO.md` mandava a paleta **v1** (`#F5F1E8`, DM Sans, 256px), que o próprio design system marca como substituída. Corrigida para a **v2** real do HUBBI (`#F4F4F5`, âmbar `#F59E0B`) | ✅ |
 | — | **O relatório inteiro contra dado real: `npm run paginas`.** 11 das 14 páginas carregam e **os 64 visuais com número nelas calculam** — 632.620 linhas, 11,9 s de carga e 17,5 s de cálculo. Outra pergunta que a cobertura da fase 3: lá era "o avaliador sabe fazer a conta" sobre tabelas de 5 linhas ([ACHADOS](docs/ACHADOS.md) #40) | ✅ |
@@ -83,7 +83,7 @@ Orientada por **Engines** e **metadados** — dashboards são apenas uma das fun
 | — | E a medição desmentiu o #43: o gargalo maior **não** é `Status Protocolo Dia`, e sim as 7 colunas calculadas da própria `FIELD AGENDA` — duas varrem `FIELD AGENDA` por linha de `FIELD AGENDA`, **2,1 × 10¹²** visitas, sete vezes mais, e num lugar que o achado não olhou. Outras páginas não pagavam porque nenhum visual delas toca essas colunas | ⚠️ |
 | — | Nada disso decide resultado: o predicado inteiro roda por cima dos candidatos, e os testes diferenciais afirmam o mesmo valor — e o mesmo **erro** — com e sem índice. `=` do DAX não é identidade (`BLANK = 0` é verdadeiro, texto contra número **lança**), e cada guarda existe por causa disso. 6 de 7 mutações derrubam teste; a 7ª não é regra, e está anotada como tal | ✅ |
 | — | **Gráficos: 13 dos 16 calculam.** Um ponto de gráfico é uma linha de tabela desenhada — mesmo agrupamento, mesmo contexto de filtro. O que é só do gráfico é o eixo de datas: `'T'[Data].[Mês]` não é coluna, é projeção, e ignorar o `active` daria **455 pontos onde a tela tem 99**. As 3 recusas são a mesma família dos `tableEx`: chaves de mais de uma tabela ([ACHADOS](docs/ACHADOS.md) #33) | ✅ |
-| 4 | Realtime Engine (Debezium/Kafka/Redis) | ⏳ |
+| 4 | Realtime Engine (poller próprio + Redis; o CDC/Kafka saiu do repositório em 02/10) | ⏳ |
 | — | Risco de recompute nas 4 queries pesadas (`protocolos-geral`, `protocolos-produtividade`, `protocolos-auxiliares`, `field-agenda`) mapeado — TTL não limita recompute sob `realtime: true`. Decisão entre debounce, materialização (Fase 3) ou TTL-only adiada até medir frequência real de CDC ([DECISAO-REALTIME](docs/DECISAO-REALTIME.md)) | ⚠️ decisão pendente |
 | — | **As 14 páginas calculam: `agendamento-field` termina, 21 de 21 visuais.** É a primeira vez. A carga dela caiu de "nunca vista terminar" para **25,6 s** — mas o **cálculo leva 104 minutos**, e enquanto for assim a página não entra em `npm run paginas` sem `--pagina=` ([ACHADOS](docs/ACHADOS.md) #45)<br>*Resolvido pela campanha de 12–15/09/2026: as 14 páginas juntas custam hoje ~4 s de carga e ~9 s de cálculo a frio ([ACHADOS](docs/ACHADOS.md) #106 a #111).* | ✅ |
 | — | Duas correções que a medição impôs: não era o carregamento (é, agora, o cálculo), e o ganho do índice é real sem entregar a página — as colunas calculadas de `FIELD AGENDA` materializam **sob demanda**, e quem as toca são os visuais. Terceira vez que o gargalo está onde o instrumento acaba, não onde ele aponta | ⚠️ |
@@ -122,7 +122,7 @@ npm start                                                       # http://localho
 está pronto — `agendamento-field` custa ~1 min na primeira abertura, e um minuto de
 tela branca é a diferença entre uma demo e um constrangimento. Ele reprova se algum
 visual falhar, se alguma página não responder ou se o cache não pegar, e mesmo
-reprovando deixa a API no ar para você olhar. Ver `tools/subir/`.
+reprovando deixa a API no ar para você olhar. Ver `backend/tools/subir/`.
 
 **Ele aquece a página sem filtro, e só isso.** O que fica de fora é o **segundo**
 spinner: o primeiro clique em `Data.Ano: 2026` é uma chave de cache nova e paga o
@@ -132,10 +132,10 @@ repositório** — reconstruí-lo é trabalho aberto, e o pé de ouvido que ele 
 registrado desde já: anos cravados no código ficam velhos em 01/01/2027, e `fetch` de
 aquecimento sem teto pendura a subida numa página lenta.
 
-`apps/api` é o fim do caminho: lê o snapshot em disco, calcula a página com as
+`backend/api` é o fim do caminho: lê o snapshot em disco, calcula a página com as
 engines e devolve JSON. Não toca fonte nenhuma — quem busca é `npm run snapshot`.
 
-`apps/web` é a tela: **React 19 + Vite**, navegando pelas 14 páginas, com as
+`frontend` é a tela: **React 19 + Vite**, navegando pelas 14 páginas, com as
 segmentações (`slicer`) filtrando de verdade e o estado na URL. A API serve o build na
 raiz; em desenvolvimento, `npm run web` sobe o Vite em 5173 com proxy para a API. A
 tela anterior — uma página só, sem filtro — continua em `/legado`, como referência de
@@ -195,7 +195,7 @@ carregamento que muda o dado, e conversão calada é o erro mais caro desta base
 
 ### Snapshot da camada M (Fase 3)
 
-`packages/snapshot/` e `npm run snapshot` são a costura entre as duas metades que
+`backend/packages/snapshot/` e `npm run snapshot` são a costura entre as duas metades que
 funcionavam sem se tocar: a camada M, que sabia buscar da fonte, e o avaliador, que
 calculava sobre `Dataset` montado à mão no teste.
 
@@ -240,7 +240,7 @@ leitores antes de trocar.
 
 ### Modelo semântico (Fase 2a)
 
-`packages/semantic-model/` carrega o catálogo num modelo consultável — tabelas,
+`backend/packages/semantic-model/` carrega o catálogo num modelo consultável — tabelas,
 colunas (incluindo as calculadas), medidas e relacionamentos — resolvendo nomes
 **sem distinguir caixa**, porque o modelo real escreve a mesma tabela como
 `'FIELD AGENDA'` e `'Field Agenda'`.
@@ -261,7 +261,7 @@ avaliador" (74) e "roda dentro de um visual" (75).
 ### Measure Engine (Fase 2b)
 
 As 78 medidas **não** são 78 funções escritas à mão: o DAX da spec é a
-implementação. `packages/measure-engine/` lê `measures/*.yaml` e avalia — assim
+implementação. `backend/packages/measure-engine/` lê `measures/*.yaml` e avalia — assim
 `npm run extract` não faz o código divergir em silêncio quando alguém mexe no
 Power BI.
 
@@ -418,7 +418,7 @@ diferença com o segundo: `validate:model` confere **modelo contra modelo**, ent
 não existe é a coluna no resultado do SELECT. Contra dado real ela chegaria vazia, e
 vazio não dá erro: dá zero, BLANK, ou junção que não casa nada.
 
-O scanner de M (`tools/validate/src/mlayer.ts`) é para a camada M o que o
+O scanner de M (`backend/tools/validate/src/mlayer.ts`) é para a camada M o que o
 `extractRefs` é para o DAX: **não é um avaliador**, não executa nada, e responde
 duas perguntas estáticas — que nome de coluna este passo produz, e ele pode mudar a
 contagem de linhas. Segue o mesmo princípio do avaliador: passo `Table.*` cuja
@@ -496,7 +496,7 @@ ordenação faz ao atravessar uma mesclagem. Isso exige medição contra dado re
 
 ### Widget Engine (Fase 3)
 
-`packages/widget-engine/` calcula o que um visual mostra. Começou pelo **card** porque
+`backend/packages/widget-engine/` calcula o que um visual mostra. Começou pelo **card** porque
 ele é o caso mais barato de conferir do relatório inteiro: um número, sem eixo, sem
 ordenação, sem *top N* — dá para olhar a tela e comparar. São **64**, e todos calculam.
 
@@ -612,7 +612,7 @@ prova paridade**.
 ### Query Engine (Fase 1)
 
 - **Query Registry** — carrega as specs geradas e aplica as políticas de cache
-  humanas (`specs/_catalog/cache-policies.yaml`), com `validate()` de integridade.
+  humanas (`backend/specs/_catalog/cache-policies.yaml`), com `validate()` de integridade.
 - **Cache** — porta única com adapters `MemoryCache` e `RedisCache` (SCAN, não KEYS),
   validados pela mesma bateria de testes de contrato.
 - **Single-flight** — 20 widgets pedindo a mesma query = 1 execução no banco.
@@ -624,7 +624,7 @@ prova paridade**.
 ### Validação contra dados reais
 
 `npm run validate:queries` executa as 18 queries SQL do registry nas fontes e
-grava em `specs/golden/` a **forma e os agregados** de cada resultado — nunca as
+grava em `backend/specs/golden/` a **forma e os agregados** de cada resultado — nunca as
 linhas, porque esses arquivos são commitados e as queries devolvem dado pessoal
 de cliente.
 
@@ -636,7 +636,7 @@ tabela está.
 
 Depois, `-- --check` reexecuta e separa mudança de **schema** (regressão: coluna
 sumiu ou trocou de tipo, quebra medidas) de mudança de **dados** (esperado).
-Ver [specs/golden/README.md](specs/golden/README.md).
+Ver [backend/specs/golden/README.md](backend/specs/golden/README.md).
 
 ## Comandos
 
@@ -677,37 +677,38 @@ Node 24 roda TypeScript nativamente — não há build step.
 
 ## Estrutura
 
+Duas pastas de código, e a fronteira entre elas é a rede: a tela só fala com a API
+por HTTP (`/api/*`, `/auth/*`). A única exceção é o codec de filtro da URL
+(`backend/packages/widget-engine/src/filtro-url.ts` e `filtros-padrao.ts`), que o
+front importa direto para que tela e API codifiquem o filtro do mesmo jeito.
+
 ```
-docs/
-  PLANO-CARGA.md       # O ESTADO DE AGORA: o que roda, contornos ativos, feito e roteiro
-  PLANO-AUTONOMIA.md   # a plataforma no ar sem ninguém olhando (Portainer)
-  CONTINUACAO.md       # histórico — parou em 27/08/2026
-  DEPLOY.md            # plano de entrega: o que está pronto, o que falta, em que ordem
-  ARCHITECTURE.md      # Engines, stack e arquitetura de real-time (Debezium/Kafka/Redis)
-  SPEC-DRIVEN.md       # como as specs governam a implementação
-specs/
-  _catalog/
-    cache-policies.yaml  # HUMANO — TTL e realtime por query (não é sobrescrito)
-    datasources.yaml     # GERADO
-    relationships.yaml   # GERADO — 22 relacionamentos entre tabelas
-    queries/             # GERADO — SQL + source_tables (alimenta o invalidador)
-    tables/              # GERADO — colunas (com o DAX das calculadas) + table_dax das 7 calculadas
-    measures/            # GERADO — as 78 medidas DAX
-  dashboards/            # GERADO — as 14 páginas com seus visuais
-  golden/                # GERADO por validate:queries — linha de base real
-  EXTRACTION-REPORT.md
-tools/extractor/          # extrator PBIP -> specs (sem dependências externas)
-tools/doctor/             # valida configuração e conectividade
-tools/validate/           # queries contra o ERP, verificação do modelo e scanner da camada M
-packages/query-engine/    # Query Registry, Cache, Connectors, Engine
-packages/semantic-model/  # tabelas, colunas, medidas, relacionamentos + refs do DAX
-packages/measure-engine/  # DAX: tokenizer, parser, AST, avaliador e contexto de filtro
-packages/transform-engine/# camada M: tokenizer, parser, avaliador, runner e connectors
-packages/widget-engine/   # o que um visual mostra: filtro, agrupamento, card, tabela e gráfico
-packages/snapshot/        # plano de materialização, formato em disco, manifesto e carga
-apps/api/                 # a API de leitura (node:http), cache da resposta, SSE e estáticos
-apps/web/                 # a tela: React 19 + Vite, 14 páginas, estado dos filtros na URL
-docker/                   # infra local; docker-compose.yml da raiz sobe Redis e Kafka
+frontend/                  # FRONT — a tela: React 19 + Vite, 14 páginas, filtros na URL
+  src/                     #   components/{ui,layout,visuais,filtros,auth,capa}, hooks/, services/ (rede), store/
+  test/
+  dist/                    #   build (`npm run web:build`) — a API serve daqui; ignorado no git
+
+backend/                   # BACK — tudo que roda no Node, sem build step
+  api/                     #   a API de leitura (node:http, porta 3100): cache, SSE, login, estáticos
+  packages/                #   os motores, importados pela API e pelas ferramentas
+    query-engine/          #     Query Registry, cache, connectors (dbVoalle, dbMaria, Google, web)
+    transform-engine/      #     camada M: tokenizer, parser, avaliador, runner
+    semantic-model/        #     tabelas, colunas, medidas, relacionamentos + refs do DAX
+    measure-engine/        #     DAX: parser, avaliador e contexto de filtro
+    widget-engine/         #     o que um visual mostra: filtro, agrupamento, card, tabela, gráfico
+    snapshot/              #     plano de materialização, formato em disco, manifesto e carga
+  tools/                   #   linha de comando: refresh, snapshot, subir (npm start), doctor,
+                           #   validate, powerbi, paridade, layout, probe/bench (medições)
+  specs/                   #   metadados YAML que governam tudo
+    _catalog/              #     queries (SQL/M), tabelas, medidas, cache, refresh, incremental
+    dashboards/            #     as 14 páginas com seus visuais
+    layout/                #     a forma declarada de cada página
+    golden/  paridade/     #     linhas de base e gabaritos do Power BI
+
+docs/                      # PLANO-CARGA.md é o estado de agora; ACHADOS.md é o diário
+docker/cron/               # crontab e entrypoint do serviço snapshot-diario
+snapshot/                  # DADO GERADO (CPF/RG) — nunca versionado
+Dockerfile, docker-compose.prod.yml, nginx.conf   # a stack de produção
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma

@@ -27,22 +27,22 @@ Vale a palavra do Erick para **o alvo**: é o de instalação. O que fica sem re
 se a extração de 11/08 saiu do PBIP certo — o nome do arquivo dela diz "Gerencial".
 
 **Por que isso não é briga de nomenclatura.** As três tabelas em `bloqueadas` de
-`specs/_catalog/paridade-janela.yaml` falham todas com a mesma cara — *"as duas
+`backend/specs/_catalog/paridade-janela.yaml` falham todas com a mesma cara — *"as duas
 tabelas têm definições diferentes"*, *"formas incompatíveis"*, *"a base congelou"* —
 e consultar um relatório diferente do nosso produz exatamente esse sintoma. Antes de
 tratar qualquer uma delas como defeito da plataforma, confirme contra QUAL relatório
 publicado o token mediu.
 
 **O repositório não registra isso hoje**: `POWERBI_URL`, `POWERBI_REPORT_ID` e
-`POWERBI_TENANT_ID` são lidos do `.env` (`tools/powerbi/src/index.ts:180-183`) e
+`POWERBI_TENANT_ID` são lidos do `.env` (`backend/tools/powerbi/src/index.ts:180-183`) e
 não estão nem no `.env` nem no `.env.example`. Os números de `pbi:` em
 `paridade-janela.yaml` não dizem de onde vieram.
-- **Specs geradas:** `specs/` — extraídas automaticamente pelo `tools/extractor` e
+- **Specs geradas:** `backend/specs/` — extraídas automaticamente pelo `backend/tools/extractor` e
   depois revisadas por humano. São versionadas no git.
 
 ## Edições à mão em spec gerada
 
-`specs/_catalog/queries/*.spec.yaml` é **gerado** pelo `tools/extractor`, e o
+`backend/specs/_catalog/queries/*.spec.yaml` é **gerado** pelo `backend/tools/extractor`, e o
 cabeçalho de cada arquivo pede que toda edição à mão seja registrada aqui. Esta é a
 lista.
 
@@ -60,14 +60,14 @@ corta em `2026-01-01` e continua intocado no arquivo — é o registro do origin
 outro agente em 26/08/2026 (o `sql:` voltou a ser o extraído) e foi refeita por
 medição, não de memória:
 
-1. `tools/probe/src/custo-incremental.ts:75-81` declara que `field-agenda` *"usa
+1. `backend/tools/probe/src/custo-incremental.ts:75-81` declara que `field-agenda` *"usa
    janela deslizante"* e casa o literal exato `(CURRENT_DATE - INTERVAL '3 months')`
    — a sonda ficou procurando um literal que ninguém mais escrevia;
 2. o snapshot em disco foi gerado em **25/08/2026** e o mínimo de `slot agenda` é
    **2026-05-25** — 25/08 menos 3 meses, ao dia. As outras colunas de data descem
    mais (`data criado` vai a 2025-10-24), então o corte é neste campo e em nenhum
    outro;
-3. nada em `tools/` ou `packages/` reescreve esse literal na carga, e o CLI do
+3. nada em `backend/tools/` ou `backend/packages/` reescreve esse literal na carga, e o CLI do
    snapshot não tem flag de data (`--todas`, `--plano`, `--refazer`,
    `--sem-calculadas`, `--incremental`).
 
@@ -75,7 +75,7 @@ medição, não de memória:
 buscaria ~8 meses em vez de 3 — numa query cujo grão é (slot, relato) e que já é a
 mais cara do catálogo **com** o corte de 3 meses: **21 min 49 s** ponta a ponta
 (ACHADOS #82, medido ao vivo em 02/09/2026, 642.365 linhas × 26 colunas), e é por
-isso que ela continua fora de todo grupo de `specs/_catalog/refresh.yaml`. Triplicar
+isso que ela continua fora de todo grupo de `backend/specs/_catalog/refresh.yaml`. Triplicar
 a janela numa query desse custo é a regressão silenciosa: número maior, sem erro.
 
 > **A prova que acompanhava este parágrafo caiu; o argumento não.** Até 17/09/2026
@@ -96,8 +96,8 @@ deve existir** — a solução foi spec de query própria (aviso do topo daquele
 
 ### `field-agenda-slot` — arquivo NOVO, não existe no PBIP (02/09/2026)
 
-`specs/_catalog/queries/field-agenda-slot.spec.yaml` não é uma edição de arquivo
-gerado — é um arquivo que `tools/extractor` nunca produziu e nunca vai apagar,
+`backend/specs/_catalog/queries/field-agenda-slot.spec.yaml` não é uma edição de arquivo
+gerado — é um arquivo que `backend/tools/extractor` nunca produziu e nunca vai apagar,
 porque não corresponde a nenhuma query do PBIP. É a forma de GRÃO DE SLOT de
 `field-agenda`: mesma origem (`vsdspi`), sem os `LEFT JOIN` de
 `reports`/`people`/`skills` que multiplicam cada slot por (relato × skill) — ver
@@ -111,7 +111,7 @@ porque não corresponde a nenhuma query do PBIP. É a forma de GRÃO DE SLOT de
 O SQL preserva a EXISTÊNCIA da linha com um `EXISTS` que repete os seis filtros de
 `r.title` do `LEFT JOIN` original — sem isso, o corte traria slot A MAIS do que a
 forma completa (o `LEFT JOIN` de `field-agenda` é, na prática, um `INNER JOIN`: o
-`WHERE` rejeita linha com `r.title` nulo). `specs/_catalog/projecao.yaml`, bloco
+`WHERE` rejeita linha com `r.title` nulo). `backend/specs/_catalog/projecao.yaml`, bloco
 `grao_reduzido`, declara qual tabela usa qual das duas por padrão e o que escala
 para a completa.
 
@@ -145,26 +145,26 @@ há 27 dias.
 
 > **Essa última frase caiu em 09/09/2026** (`957e2e4`, ACHADOS #104), e este parágrafo
 > só foi alinhado em 17/09. `clima-tempo` entrou no grupo `frio` de
-> `specs/_catalog/refresh.yaml` — **7.267 ms** medidos ao vivo, 1.869 linhas, 14
+> `backend/specs/_catalog/refresh.yaml` — **7.267 ms** medidos ao vivo, 1.869 linhas, 14
 > chamadas à Open-Meteo — e hoje roda a cada 30 min. Entrou primeiro entre as 7 fontes
 > justamente porque é a **única** query do catálogo cujo conteúdo caduca sozinha: a
 > previsão é uma janela de ~16 dias que anda todo dia, e sem cadência ela envelhece até
 > o visual de previsão esvaziar (estava 6 dias parada quando isso foi descoberto).
 > O diagnóstico acima continua valendo para explicar **por que ninguém percebeu os 27
 > dias**; o que não vale mais é a conclusão operacional — não depende mais de alguém
-> lembrar de rodar `--refazer` à mão. Reproduzido com `node tools/snapshot/src/index.ts --query=clima-tempo
+> lembrar de rodar `--refazer` à mão. Reproduzido com `node backend/tools/snapshot/src/index.ts --query=clima-tempo
 --refazer`, que falhou em 6,5s com o erro acima antes do conserto e teve sucesso
 (1.827 linhas, 6,46s) depois.
 
 **Cuidado operacional achado ao testar o conserto**: `--refazer` de uma query cuja
 materialização avança o carimbo "mais recente" do snapshot dispara, sozinho, o
 recongelamento automático das tabelas calculadas afetadas
-(`tools/snapshot/src/calculadas.ts --todas`) — e esse recongelamento usa nomes de
+(`backend/tools/snapshot/src/calculadas.ts --todas`) — e esse recongelamento usa nomes de
 arquivo fixos em `snapshot/_parciais/` (`status-protocolo-dia.0.jsonl` etc.), sem
 namespacing por processo. Rodar DOIS `--refazer` em paralelo (o que fiz, sem saber
 disso, testando `clima-tempo` e o grupo `quente` de `refresh.yaml` ao mesmo tempo)
 faz as duas recongelações colidirem no mesmo arquivo temporário e uma delas morre
-com `ENOENT`. **Não é bug de produção** — `tools/refresh/src/index.ts` já documenta
+com `ENOENT`. **Não é bug de produção** — `backend/tools/refresh/src/index.ts` já documenta
 que nenhum tick roda em paralelo com outro por design; o gatilho externo (Agendador
 de Tarefas) é quem garante isso. É risco só para quem, como eu, roda `--refazer` à
 mão em duas janelas ao mesmo tempo. Registrado para o próximo que fizer o mesmo.
@@ -466,7 +466,7 @@ aqui.
 `{"N°PROTOCOLO"}` × `{"PROTOCOLO:"}` de `tecnicos-auxiliares`, e ele **não casava
 nenhuma linha**: texto contra número, e o motor não reconcilia sozinho. A coluna está
 inteira nula no snapshot de produção (38.087 de 38.087, tipo `vazia`).
-`specs/_catalog/juncoes.yaml` já tem a decisão para `backlog-agendado-futuro` e para
+`backend/specs/_catalog/juncoes.yaml` já tem a decisão para `backlog-agendado-futuro` e para
 `protocolos-geral` — esta última contra a **mesma** ponta direita — e não tem para
 `protocolos-auxiliares`. Medido em 17/09: **28.833 de 37.248 (77,4%)** casariam como
 inteiro. Ligar a junção é decisão humana e não cabe dentro de uma migração cuja promessa
@@ -483,7 +483,7 @@ consulta, e é esse campo que alimenta a invalidação por CDC.
 parser 205 → 150, escaneáveis 208 → 153 (`mlayer.test.ts`). Detalhe completo em
 `docs/ACHADOS.md` #133.
 
-### `specs/dashboards/*.spec.yaml` — `title:` nos visuais (02/10/2026)
+### `backend/specs/dashboards/*.spec.yaml` — `title:` nos visuais (02/10/2026)
 
 **124 dos 306 visuais** ganharam `title:` (o nome que o visual mostra no Power BI:
 `VISÃO PRODUTIVA`, `PRAZO SLA`…), logo abaixo de `type:`. Os outros 182 não têm título
@@ -497,10 +497,10 @@ dos campos (`Qtd Protocolos Base por Status · Data`), e a VISÃO PRODUTIVA fico
 irreconhecível para quem a procura pelo nome — "o card nem aparece". `calcula.ts`
 repassa o campo como `VisualCalculado.titulo`, que `rotulos.ts` já preferia.
 
-## Estrutura de `specs/`
+## Estrutura de `backend/specs/`
 
 ```
-specs/
+backend/specs/
   _catalog/
     datasources.yaml          # dbVoalle, dbMaria, gsheets (SEM credenciais)
     relationships.yaml        # 22 relacionamentos + cardinalidade e direção do filtro
@@ -570,16 +570,16 @@ varredura custa segundos; descobrir no meio da Fase 2b custa depurar um
 avaliador procurando um bug que está no PBIP.
 
 O `validate:queries` fecha o vão entre "conecta" e "os números batem": grava em
-`specs/golden/` a forma e os agregados de cada resultado — e é o `rowCount` de lá
+`backend/specs/golden/` a forma e os agregados de cada resultado — e é o `rowCount` de lá
 que se compara com o Power BI. Ver
-[specs/golden/README.md](../specs/golden/README.md), inclusive por que esses
+[backend/specs/golden/README.md](../specs/golden/README.md), inclusive por que esses
 arquivos não guardam as linhas.
 
 ## Comandos
 
 > **25/09/2026:** `npm run extract` e `npm run test:extractor` não existem mais — o PBIP
-> saiu do disco em 27/08 e `specs/` virou o original (ver `CLAUDE.md`).
-> `tools/extractor/` ficou só como registro.
+> saiu do disco em 27/08 e `backend/specs/` virou o original (ver `CLAUDE.md`).
+> `backend/tools/extractor/` ficou só como registro.
 
 ```bash
 npm run test:semantic-model          # valida o modelo semântico e o scanner de refs

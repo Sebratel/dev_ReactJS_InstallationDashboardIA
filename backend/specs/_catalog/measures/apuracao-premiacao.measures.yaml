@@ -1,0 +1,22 @@
+# GERADO automaticamente por backend/tools/extractor a partir do PBIP.
+# NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+spec: measures
+table: "#APURAÇÃO PREMIAÇÃO"
+id: apuracao-premiacao
+measures:
+- name: "Instalações Apuradas"
+  format: "0"
+  display_folder: null
+  dax: "SUM('#APURAÇÃO PREMIAÇÃO'[QTD.])"
+- name: "Diferença"
+  format: "0"
+  display_folder: null
+  dax: "[Instalações Apuradas] - [Instalações Produtividade]"
+- name: "% Diferença"
+  format: "0.00%;-0.00%;0.00%"
+  display_folder: null
+  dax: |-
+    DIVIDE(
+        [Instalações Apuradas] - [Instalações Produtividade],
+        [Instalações Produtividade]
+    )

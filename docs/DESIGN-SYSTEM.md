@@ -1,7 +1,7 @@
 # Design System — Analytics Platform (bordô Sebratel)
 
 Referência da interface desta plataforma. O `CLAUDE.md` (regra 4) e o cabeçalho de
-`apps/web/src/estilo.css` apontam para cá.
+`frontend/src/estilo.css` apontam para cá.
 
 > **Este arquivo se chamava "HUBBI v2", e o nome era o começo do problema.** O HUBBI
 > é outro design system, real, com paleta própria (âmbar `#F59E0B`). Esta plataforma
@@ -19,7 +19,7 @@ Referência da interface desta plataforma. O `CLAUDE.md` (regra 4) e o cabeçalh
 o verde e o vermelho são do HUBBI. A história abaixo importa porque ela é o motivo da
 forma dos tokens.
 
-**Até 26/08/2026** o `apps/web` já estava em bordô — mas por engano. O cabeçalho do
+**Até 26/08/2026** o `frontend` já estava em bordô — mas por engano. O cabeçalho do
 `estilo.css` justificava a cor dizendo que era *"herdada do relatório que esta tela
 substitui"*, e não era: aquelas são as cores do dashboard **COM · Gestão Comercial**,
 que é o *exemplo* da skill `padrao-frontend-dashboards`, não a origem desta tela (o
@@ -47,7 +47,7 @@ visual é de quem é dono do relatório, e não precisa de justificativa técnic
 
 ## 1. Tokens
 
-Definidos **duas vezes de propósito** em `apps/web/src/estilo.css`:
+Definidos **duas vezes de propósito** em `frontend/src/estilo.css`:
 
 - em `@theme`, para virar utilitário do Tailwind (`bg-pbi-primary`, `text-pbi-muted`);
 - em `:root`, para o CSS puro do arquivo e para o `style` dos SVG.
@@ -126,12 +126,12 @@ Duas armadilhas que a medição pegou:
 - **`--pbi-gold-600` valia `#D49F00`**, herdado, e era descrito como "texto sobre fundo
   claro" — mas media **2,18:1** no fundo geral. Nunca serviu para o que dizia servir.
 
-### 1.1.1 A medição de 27/08 tinha um fundo que faltava — achado pelo `tools/tela` em 28/08
+### 1.1.1 A medição de 27/08 tinha um fundo que faltava — achado pelo `backend/tools/tela` em 28/08
 
 A tabela acima mede contra `--pbi-superficie`/`--fundo`. Nenhuma das duas é o fundo
 **de verdade** de um `.selo`/`.badge-status`: esses usam `--pbi-ok-bg`/`--pbi-erro-bg`/
 `--pbi-aviso-bg`, tons derivados por `color-mix()` — e a Fase L2 do
-`PLANO-LAYOUT-V1.md` (arnês de navegador, `tools/tela/`) mediu contra o fundo real pela
+`PLANO-LAYOUT-V1.md` (arnês de navegador, `backend/tools/tela/`) mediu contra o fundo real pela
 primeira vez. Achou dois defeitos:
 
 1. **`--pbi-gold-600` contra `--pbi-aviso-bg` claro: 4,36:1** — abaixo do piso, por
@@ -149,7 +149,7 @@ primeira vez. Achou dois defeitos:
    (8,61:1 no fundo escuro), `--pbi-green-texto` e `--pbi-critico-texto` precisaram de
    tom novo (`#10AE2B` a 4,64:1, `#E56B64` a 4,62:1, os dois contra o `-bg` escuro
    recalibrado). Ver `docs/MEDIDAS-TELA.md` para os 5 números originais e
-   `apps/web/src/estilo.css` para os comentários ao lado de cada valor.
+   `frontend/src/estilo.css` para os comentários ao lado de cada valor.
 
 **No tema escuro**, `--pbi-primary-texto` vira o dourado: o bordô como LETRA mede
 **1,57:1** sobre a superfície escura `#252423`, e o dourado no lugar dele mede
@@ -187,7 +187,7 @@ inativas. Conferido no CSS gerado — `.bg-pbi-primary` em `@layer utilities`,
 (`.primario`, `.cartao`) fica solta de propósito, para continuar vencendo utilidade.
 
 **Nenhum hexadecimal fora do `:root`.** Uma exceção, consciente e documentada:
-`apps/web/src/grafico-forma.ts`, porque cor de série vai para atributo SVG (`fill`,
+`frontend/src/grafico-forma.ts`, porque cor de série vai para atributo SVG (`fill`,
 `stroke`) e atributo não lê variável de CSS. Se mudar aqui, mude lá junto.
 
 > **Sobre os nomes dos tokens.** Com a volta ao bordô, `--pbi-gold` voltou a valer
@@ -316,7 +316,7 @@ Altura de card **nunca** é pixel chutado: é fração da área útil.
 > agora entra em `--h-antes` (ver abaixo), porque contá-la nos dois termos ao mesmo
 > tempo descontaria a mesma faixa duas vezes. A tabela e o parágrafo "Medido no
 > navegador em 27/08/2026" logo adiante ainda descrevem o cromo ANTERIOR a esta
-> mudança — remedir é a Fase L2 de `docs/PLANO-LAYOUT-V1.md` (o arnês `tools/tela/`),
+> mudança — remedir é a Fase L2 de `docs/PLANO-LAYOUT-V1.md` (o arnês `backend/tools/tela/`),
 > não um número para chutar aqui.
 
 ```css
@@ -372,7 +372,7 @@ Duas regras disputam a altura do gráfico, e é preciso saber qual está mandand
 - o **piso** (`273px`, atualizado em 28/08/2026 — era `309px`) diz onde o visual
   deixa de comunicar.
 
-Enquanto a fração ideal for maior que o piso, a igualdade vale. `apps/web/test/casca.test.ts`
+Enquanto a fração ideal for maior que o piso, a igualdade vale. `frontend/test/casca.test.ts`
 deriva o ponto de virada lendo `--h-topbar` do CSS e usando o cromo/gap como
 `H_NAV_MEDIDO=74`, `H_FILTROS_MEDIDO=71`, `gap=10`, `+60` de rodapé/padding —
 o mesmo cromo "antigo" da nota no topo desta seção, ainda não remedido para o
@@ -383,7 +383,7 @@ o mesmo cromo "antigo" da nota no topo desta seção, ainda não remedido para o
 ```
 
 **A igualdade vale de ~867px de altura de janela para cima** (era ~950px antes do piso
-cair de 309 para 273 em 28/08/2026 — `apps/web/test/casca.test.ts:156` é o teste que
+cair de 309 para 273 em 28/08/2026 — `frontend/test/casca.test.ts:156` é o teste que
 prende os dois números juntos). Abaixo disso o piso vence e a página rola — e isso é
 escolha, não descuido: abaixo do piso o visual fica ilegível, e o padrão manda preferir
 rolar a comprimir.
@@ -548,7 +548,7 @@ pill aparece, e o `x` limpa o filtro e o parâmetro da URL.
 
 O relatório original abre com um recorte de data aplicado — `jul/2026` na Visão Geral,
 Agendamento, Diário e Protocolos; `2026` em Manutenção e Instalação/Reincidente. Era o
-**gap nº 1** da auditoria de paridade, e `apps/web/src/filtros-padrao.ts` o resolve
+**gap nº 1** da auditoria de paridade, e `frontend/src/filtros-padrao.ts` o resolve
 desde 20/08… mas ficou **sem chamador**. Medido em 27/08/2026 na VISÃO GERAL: sem
 filtro a tela abre com **35.166** protocolos; com jul/2026, com **3.238**, que é o
 número do relatório. Onze vezes de diferença, e nada na tela dizendo por quê.
@@ -618,9 +618,9 @@ da entrega, não do polimento.
 ### A marca é desenhada, não baixada
 
 O topo tinha `<img src="/assets/logo-sebratel-circular.png">` e esse arquivo **nunca
-existiu no repositório** — não há `apps/web/public/`. Eram 404 em toda carga e o ícone
+existiu no repositório** — não há `frontend/public/`. Eram 404 em toda carga e o ícone
 quebrado do navegador ao lado do nome da empresa. Hoje é um `<svg>` inline, que não
-pede rede e acompanha a paleta. Se o arquivo oficial entrar em `apps/web/public/`,
+pede rede e acompanha a paleta. Se o arquivo oficial entrar em `frontend/public/`,
 troque só aquele bloco do `AppShell.tsx`.
 
 ---
@@ -634,7 +634,7 @@ troque só aquele bloco do `AppShell.tsx`.
 4. Provoque os três estados: carregando, vazio, erro.
 5. Console limpo, sem aviso de `key` nem de prop inválida.
 6. Clique **dentro** de cada aba e diálogo, não só na navegação.
-7. `grep -rn "#[0-9a-fA-F]\{6\}" apps/web/src --include=*.tsx` deve voltar vazio.
+7. `grep -rn "#[0-9a-fA-F]\{6\}" frontend/src --include=*.tsx` deve voltar vazio.
 8. **Zero 404 na aba de rede.** Imagem quebrada em cabeçalho de relatório é a primeira
    coisa que alguém vê e a última em que confia — e não aparece no console como erro
    de JS, só como recurso ausente.

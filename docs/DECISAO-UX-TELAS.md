@@ -73,7 +73,7 @@ guardou a geometria delas, não o conteúdo. Reconstruída no nosso layout
   painel antigo e abre a série 2.x da plataforma própria.
 
 **Como manter:** ao adicionar algo à plataforma, inclua uma entrada no topo de
-`apps/web/src/capa-versoes.ts` (mais recente primeiro). A capa se atualiza sozinha. É a
+`frontend/src/capa-versoes.ts` (mais recente primeiro). A capa se atualiza sozinha. É a
 página inicial (`App.tsx`).
 
 ## O que NÃO foi tocado, de propósito
@@ -125,6 +125,6 @@ dela não porta; valem os princípios. Situação:
 ## Verificação
 
 - `tsc --noEmit` limpo; `npm run web:build` OK.
-- 46 testes de `apps/web/test` + 144 de `apps/api`/`apps/web` passando.
+- 46 testes de `frontend/test` + 144 de `backend/api`/`frontend` passando.
 - Conferido no navegador (dev 5173 e produção 3100): Visão Geral, Relatório do Mês,
   Agendamento Field, Manutenção Inicial. Títulos e alinhamento confirmados via DOM.

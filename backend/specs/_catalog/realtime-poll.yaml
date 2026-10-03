@@ -1,0 +1,459 @@
+# Cadência do poller de "quase-realtime" — SELECT direto no Voalle a cada poucos
+# segundos, para detectar mudança e servir dado mais fresco sem F5. MANTIDO POR
+# HUMANOS, como incremental.yaml e cache-policies.yaml.
+#
+# **Por que isto NÃO mora em incremental.yaml.** A marca de lá é truncada em dia
+# (`comoDia`/`desdeDe`, YYYY-MM-DD) — certo para um refresh que roda por hora ou
+# por dia, errado aqui: um poller a cada 12s que só sabe pedir "desde hoje"
+# rebuscaria o dia inteiro a cada volta, o oposto do que isto existe para fazer.
+# Aqui a marca é um TIMESTAMP de verdade, com margem em segundos, não em dias.
+#
+# **O que isto NÃO faz.** Não escreve no snapshot em disco (isso derrubaria o
+# carimbo global e, com ele, o cache de TODAS as páginas a cada poll — ver
+# docs/DECISAO-REALTIME.md e ACHADOS #89). O resultado fica em memória, no
+# processo da API, e é isso que `backend/api/src/poller-realtime.ts` administra.
+#
+# **Sete queries hoje (03/09/2026, ACHADOS #92 e #93).** Ver ACHADOS #92/#93
+# para a investigação completa das outras 17 queries do catálogo e por que
+# cada uma ficou de fora:
+#
+#   - `contratos`, `contratos-telefonia`, `alocacao-patrimonio`,
+#     `consolidado-clientes`: chave de linha fraca ou ausente — sem um id único
+#     na SELECT final, o merge por chave do poller (`identidade()` em
+#     `poller-realtime.ts`) pode colapsar linhas distintas em silêncio (ex.:
+#     `contratos-telefonia` com `TELEFONE CONTRATO` nulo). Não é o mesmo risco
+#     de "cobertura parcial" já aceito abaixo — é risco de **linha errada**.
+#   - `protocolos-geral`, `protocolos-produtividade`: **a premissa desta entrada
+#     morreu, e o caminho está aberto desde 09/09/2026 — ver ACHADOS #130.** O que
+#     estava escrito aqui: "sem snapshot base nenhum (heap OOM / nunca materializa
+#     — achados #81/#83)... Sem snapshot base, não há disco para o overlay
+#     sobrepor". O diagnóstico do ACHADOS #93 estava certo sobre a causa — o
+#     estouro era o motor de M mantendo uma cópia inteira da tabela por passo do
+#     `let` — e foi exatamente essa causa que o commit af82774 atacou em 09/09
+#     (`guardaPassos: false`), com o título "protocolos-geral volta a caber em
+#     8 GB".
+#
+#     Medido em 16/09/2026: `protocolos-geral` materializa em **79.966 ms**
+#     (95.278 linhas × 63 colunas) e `protocolos-produtividade` está no grupo
+#     `frio` de `refresh.yaml` desde 13/09, com 162 s de materialização. **As duas
+#     têm snapshot base em disco.** A premissa que as excluía daqui não existe
+#     mais.
+#
+#     **Não entraram ainda, e isso é deliberado.** Um bloco novo aqui exige
+#     escolher `chave` e `marca`, e a primeira entrada desta lista é sobre
+#     exatamente o que acontece quando se erra a chave: `identidade()` colapsa
+#     linhas distintas **em silêncio**. `protocolos-geral` alimenta 12 das 14 telas
+#     — é a pior tabela do catálogo para descobrir uma chave errada em produção.
+#     A urgência também caiu: ela entrou no grupo `medio` do `refresh.yaml` em
+#     16/09 e já não está sem cadência nenhuma. Quem for implantar: comece pela
+#     chave, prove-a contra o arquivo real, e só então escreva o bloco.
+#   - `field-agenda`, `field-agenda-slot`: têm um caminho viável NÃO
+#     implementado ainda — ACHADOS #93 confirmou ao vivo que `LEFT JOIN
+#     assignments a ON a.id = vsdspi.assignment_id` funciona, é barato (sem
+#     diferença de tempo medível) e `a.modified` viria preenchido. Não
+#     implementado porque falta resolver duas coisas antes: (1) qual tabela do
+#     modelo a query realmente alimenta — `field-agenda-slot` declara
+#     `origin: table:FIELD AGENDA`, ou seja, o overlay teria que mirar
+#     "FIELD AGENDA", a MESMA tabela com as colunas calculadas mais sensíveis
+#     do catálogo (Rank*, Categoria*, achados #85/#86/#87); (2) rank é relativo
+#     à partição inteira — uma linha nova no overlay não recalcula o rank das
+#     outras da mesma partição, diferente do gap "coluna em branco" que
+#     `TempoTotalDias`/`_marca_manutencao` toleram bem hoje. Decisão separada.
+#   - `base-categorias-field`: verificado ao vivo contra
+#     `information_schema.columns` — `assignment_incidents` (a única tabela
+#     Voalle que ela toca) não tem NENHUMA coluna de modificação de linha, só
+#     timestamps de integração SAP (`sap_modified_integration`), que não é a
+#     mesma coisa.
+#   - `apuracao-premiacao`, `capacidade-equipe`, `quadro-funcional` (Google
+#     Sheets), `clima-tempo` (API), `feriados` (inline), `hora-atualizado`
+#     (computed): sem SQL nenhum para costurar — o mecanismo deste arquivo não
+#     se aplica.
+#   - `backlog-agendado-futuro`, `backlog-instalacao`: medidas ao vivo em
+#     ACHADOS #93 (58-60ms, 5.875 e 93.083 linhas) — rápidas, mas SEM nenhuma
+#     coluna de modificação por linha (só carimbo de LOTE de carga, poucos
+#     valores distintos para muitas linhas). Não são candidatas a poller;
+#     entraram no grupo `quente` de `refresh.yaml` em vez disso.
+#   - `gestores-equipes` (dbMaria): não medida nesta rodada, continua fora.
+#
+# **`instalacoes-reincidentes` e `reincidencia` — a extensão mecânica FOI
+# rejeitada, mas a reescrita correta existe.** Cada uma ganhou uma CTE `alvos`
+# (UNION de "ramo A mudou" / "ramo B mudou", igual `incremental.yaml` já faz
+# para `protocolos-produtividade`) que filtra só QUAIS chaves entram no
+# resultado — as CTEs internas (`instalacoes`/`manutencoes`,
+# `primeira_instalacao`/`primeiro_suporte`) continuam rodando SEM filtro de
+# `:desde`, sempre com o conjunto completo, então `ROW_NUMBER()`/`PARTITION BY`
+# nunca vê um subconjunto parcial — elimina o risco de linha errada.
+# Verificado ao vivo: com `:desde` no passado, o resultado costurado bate
+# byte-a-byte com a contagem da query original (21.938 e 1.363 linhas); com
+# `:desde` = agora, 0 linhas. Custo por volta (medido): ~2-4s cada, porque o
+# filtro só reduz a SAÍDA, não o CÁLCULO — por isso o `intervalo_ms` das duas
+# é 30000, não 12000: 30s ainda é ~40x mais rápido que o refresh de 20min, sem
+# martelar o Voalle a cada 12s com uma consulta que sempre recomputa tudo.
+#
+# **As duas ganharam colunas técnicas novas** (`_marca_instalacao`,
+# `_marca_manutencao`, `_marca_suporte`) — sintéticas, hand-edit, sem
+# precedente no PBIP. Elas aparecem na SELECT final só para o poller conseguir
+# avançar o relógio (`marcaDe()`) e podar o delta (`podaDelta()`); linhas
+# antigas do disco não as têm, e ficam BLANK nas colunas calculadas que
+# dependem de dados dessas linhas (`TempoTotalDias`/`TempoDifFormatado` em
+# `REINCIDÊNCIA`, `TempoTotalDias` em `RETORNO PRIORITARIO`) até o próximo
+# refresh completo recalculá-las — confirmado que isso é BLANK, não erro:
+# `backend/packages/measure-engine` já trata chave ausente de linha como `?? BLANK`
+# em vários pontos (`evaluator.ts`, `indice.ts`), nunca lança exceção.
+#
+# **O mesmo buraco que `incremental.yaml` já documenta, e não um novo**: cada
+# query aqui só vê o que passa por `assignments.modified` (ou equivalente) —
+# mudança que more só num JOIN lateral (alocação de patrimônio parece um caso
+# à parte, RAUX outro) não entra. Registrado por query nos comentários de
+# `costura` abaixo quando o caminho de dado é mais indireto que
+# `protocolos-auxiliares`.
+
+formato: 1
+
+queries:
+  protocolos-auxiliares:
+    tabela: PROTOCOLOS AUXILIARES
+    # 12 s → 30 s: Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
+    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
+    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    intervalo_ms: 30000
+    # Folga contra relógio torto — mesmo papel de margem_dias em incremental.yaml,
+    # só que em segundos porque a marca aqui é timestamp, não dia.
+    margem_segundos: 30
+    # Grupo reentregue inteiro — mesma semântica de `mescla()` em incremental.ts.
+    chave: [SOLICITACAO]
+    # Máximo entre criação e modificação — mesma armadilha 1 de incremental.ts.
+    marca: [DATA CRIADO, DATA ENCERRADO]
+    costura:
+      de: |-
+        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+      para: |-
+        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+              AND a.modified >= :desde
+
+  # "DATA ENCERRRADO" com 3 R — mesmo typo do PBIP original em
+  # protocolos-telefonia.spec.yaml, preservado de propósito: `marca` precisa
+  # citar o nome EXATO da coluna, e "corrigir" o typo aqui quebraria o match.
+  protocolos-telefonia:
+    tabela: PROTOCOLOS TELEFONIA
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: [SOLICITACAO]
+    marca: [DATA CRIADO, DATA ENCERRRADO]
+    costura:
+      de: |-
+        where (it.id = '1011'or --- TEC - Instalação Telefonia
+        			   it.id = '275' OR
+        			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
+        	and a.created >= DATE_TRUNC('year', CURRENT_DATE))
+      para: |-
+        where (it.id = '1011'or --- TEC - Instalação Telefonia
+        			   it.id = '275' OR
+        			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
+        	and a.created >= DATE_TRUNC('year', CURRENT_DATE)
+        	and a.modified >= :desde)
+
+  # `assignments` aqui só é ponte de JOIN (nunca teve coluna própria
+  # selecionada) — "_MARCA_REALTIME" é 100% sintética, adicionada por hand-edit
+  # em troca-endereco.spec.yaml em 03/09/2026 (ACHADOS #92), não herdada do
+  # PBIP. Cobertura não comprovada: o filtro de negócio real é sobre
+  # `reports.final_date`, não sobre `assignments` — uma troca de endereço nova
+  # pode não tocar `assignments.modified`. Vigiar mesmo assim porque o pior
+  # caso é o mesmo de hoje (sem poller nenhum): a tela demora até o próximo
+  # refresh, nunca mostra dado errado.
+  troca-endereco:
+    tabela: "TROCA ENDEREÇO"
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: [PROTOCOLO]
+    marca: [_MARCA_REALTIME]
+    costura:
+      de: |2-
+                DATE(r.final_date) >= '2025-01-01'
+                AND it.id in ('15', '1256')
+      para: |2-
+                DATE(r.final_date) >= '2025-01-01'
+                AND it.id in ('15', '1256')
+                AND a.modified >= :desde
+
+  # Mesma ressalva de troca-endereco: "_MARCA_REALTIME" é sintética
+  # (hand-edit, ACHADOS #92), sem precedente no PBIP. `chave` tem `:` literal —
+  # tem que vir entre aspas em YAML.
+  tecnicos-auxiliares:
+    tabela: TECNICOS AUXILIARES
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: ["PROTOCOLO:"]
+    marca: [_MARCA_REALTIME]
+    costura:
+      de: |2-
+              and a.assignment_type = 'RAUX'
+              and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)
+      para: |2-
+              and a.assignment_type = 'RAUX'
+              and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)
+              and a.modified >= :desde
+
+  # Cobre só a CTE `retorno_prioritario` (a metade "quente" da query) — a
+  # outra metade, `primeira_instalacao`, não expõe nenhuma coluna de
+  # `assignments` e fica de fora (evento passado e estável, não o que dá nome
+  # à query). "_MARCA_REALTIME" é sintética (hand-edit, ACHADOS #92).
+  retorno-prioritario:
+    tabela: RETORNO PRIORITARIO
+    intervalo_ms: 12000
+    margem_segundos: 30
+    chave: ["Protocolo Retorno Prioritário"]
+    marca: [_MARCA_REALTIME]
+    costura:
+      de: |-
+        WHERE ai.incident_type_id = '1160'
+              AND is2.title <> 'Cancelado'
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+      para: |-
+        WHERE ai.incident_type_id = '1160'
+              AND is2.title <> 'Cancelado'
+              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+              AND a.modified >= :desde
+
+  # `alvos` reescrito (ACHADOS #93) — NÃO copiar o padrão de `protocolos-auxiliares`
+  # aqui: `instalacoes`/`manutencoes` (as CTEs internas) nunca são filtradas por
+  # `:desde`, sempre rodam completas, e só a lista final de chaves é restrita. A
+  # versão ingênua (filtrar `manutencoes` direto) reescreveria "SIM" por "NÃO" em
+  # reincidência real — verificado ao vivo: com `:desde` no passado, 21.938 linhas,
+  # idêntico à query original sem costura nenhuma.
+  instalacoes-reincidentes:
+    tabela: "INSTALAÇÕES REINCIDENTES"
+    # 30 s → 2 min: 3,2 s por volta. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
+    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
+    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    intervalo_ms: 120000
+    margem_segundos: 30
+    chave: [protocolo_instalacao]
+    marca: [_marca_instalacao, _marca_manutencao]
+    costura:
+      de: |-
+        )
+        SELECT
+            protocolo_instalacao,
+            tipo_instalacao,
+            contrato,
+            cliente,
+            data_instalacao,
+            data_hora_saida,
+            tecnico_responsavel,
+            protocolo_manutencao,
+            tipo_manutencao,
+            catalogo,
+            equipe,
+            categoria_1,
+            categoria_2,
+            categoria_3,
+            categoria_4,
+            categoria_5,
+            descricao_manutencao,
+            data_manutencao,
+            CASE 
+                WHEN protocolo_manutencao IS NOT NULL THEN 'SIM'
+                ELSE 'NÃO'
+            END AS reincidente_30d,
+            CASE
+                WHEN data_manutencao IS NOT NULL THEN
+                    FLOOR(EXTRACT(EPOCH FROM (data_manutencao - data_instalacao)) / 86400)
+            END AS dias_para_reincidencia,
+            _marca_instalacao,
+            _marca_manutencao
+        FROM reincidencias
+        WHERE rn = 1 OR rn IS NULL
+        ORDER BY data_instalacao DESC;
+      para: |-
+        ),
+          alvos AS (
+            SELECT i.protocolo_instalacao
+            FROM instalacoes i
+            WHERE i._marca_instalacao >= :desde
+            UNION
+            SELECT i.protocolo_instalacao
+            FROM instalacoes i
+            JOIN manutencoes m
+              ON m.contract_id = i.contract_id
+             AND m.data_manutencao >= i.data_instalacao
+             AND m.data_manutencao <= i.data_instalacao + INTERVAL '30 days'
+            WHERE m._marca_manutencao >= :desde
+          )
+        SELECT
+            protocolo_instalacao,
+            tipo_instalacao,
+            contrato,
+            cliente,
+            data_instalacao,
+            data_hora_saida,
+            tecnico_responsavel,
+            protocolo_manutencao,
+            tipo_manutencao,
+            catalogo,
+            equipe,
+            categoria_1,
+            categoria_2,
+            categoria_3,
+            categoria_4,
+            categoria_5,
+            descricao_manutencao,
+            data_manutencao,
+            CASE 
+                WHEN protocolo_manutencao IS NOT NULL THEN 'SIM'
+                ELSE 'NÃO'
+            END AS reincidente_30d,
+            CASE
+                WHEN data_manutencao IS NOT NULL THEN
+                    FLOOR(EXTRACT(EPOCH FROM (data_manutencao - data_instalacao)) / 86400)
+            END AS dias_para_reincidencia,
+            _marca_instalacao,
+            _marca_manutencao
+        FROM reincidencias
+        WHERE (rn = 1 OR rn IS NULL)
+            AND protocolo_instalacao IN (SELECT protocolo_instalacao FROM alvos)
+        ORDER BY data_instalacao DESC;
+
+  # Mesmo `alvos` de instalacoes-reincidentes, aplicado a duas CTEs paralelas
+  # (`primeira_instalacao`/`primeiro_suporte`) que particionam por `cst.id` —
+  # aqui o risco era pior: cada partição cruza MÚLTIPLOS registros distintos de
+  # `assignments`, e filtrar direto faria o ROW_NUMBER() eleger a linha "primeira"
+  # ERRADA. Verificado ao vivo: com `:desde` no passado, 1.363 linhas, idêntico à
+  # query original.
+  reincidencia:
+    tabela: "REINCIDÊNCIA"
+    # 30 s → 2 min: 5,9 s por volta, 12 min/h sozinha. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
+    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
+    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    intervalo_ms: 120000
+    margem_segundos: 30
+    chave: [service_tag]
+    marca: [_marca_instalacao, _marca_suporte]
+    costura:
+      de: |-
+        )
+        SELECT
+            pi."Protocolo Instalação",
+            pi."Tipo",
+            pi.service_tag,
+            pi.cliente_nome,
+            pi.data_instalacao,
+            ps.data_suporte,
+            ps.protocol,
+            ps.protocol_type,
+            ps.titulo_protocolo,
+            ps.categoria1,
+            ps.categoria2,
+            ps.categoria3,
+            ps.categoria4,
+            ps.categoria5,
+            ps.solucao,
+            ps.data_suporte - pi.data_instalacao AS intervalo_suporte,
+            pi._marca_instalacao,
+            ps._marca_suporte
+        FROM primeira_instalacao pi
+        JOIN primeiro_suporte ps ON ps.service_tag_id = pi.service_tag_id
+        WHERE pi.rn = 1
+          AND ps.rn = 1
+          AND ps.data_suporte >= pi.data_instalacao
+          AND ps.data_suporte <= pi.data_instalacao + INTERVAL '30 days'
+        ORDER BY pi.data_instalacao DESC;
+      para: |-
+        ),
+          alvos AS (
+            SELECT pi.service_tag_id
+            FROM primeira_instalacao pi
+            WHERE pi._marca_instalacao >= :desde
+            UNION
+            SELECT ps.service_tag_id
+            FROM primeiro_suporte ps
+            WHERE ps._marca_suporte >= :desde
+          )
+        SELECT
+            pi."Protocolo Instalação",
+            pi."Tipo",
+            pi.service_tag,
+            pi.cliente_nome,
+            pi.data_instalacao,
+            ps.data_suporte,
+            ps.protocol,
+            ps.protocol_type,
+            ps.titulo_protocolo,
+            ps.categoria1,
+            ps.categoria2,
+            ps.categoria3,
+            ps.categoria4,
+            ps.categoria5,
+            ps.solucao,
+            ps.data_suporte - pi.data_instalacao AS intervalo_suporte,
+            pi._marca_instalacao,
+            ps._marca_suporte
+        FROM primeira_instalacao pi
+        JOIN primeiro_suporte ps ON ps.service_tag_id = pi.service_tag_id
+        WHERE pi.rn = 1
+          AND ps.rn = 1
+          AND ps.data_suporte >= pi.data_instalacao
+          AND ps.data_suporte <= pi.data_instalacao + INTERVAL '30 days'
+          AND pi.service_tag_id IN (SELECT service_tag_id FROM alvos)
+        ORDER BY pi.data_instalacao DESC;
+
+  # FIELD AGENDA — a VISÃO PRODUTIVA em tempo real (pedido do Erick, 02/10/2026;
+  # ACHADOS #166 e #169). Primeira query em DOIS PASSOS: a costura de
+  # incremental.yaml custa 11–12 s por volta qualquer que seja a janela, porque a
+  # view do Voalle calcula as janelas sobre todo o histórico de atendimento antes
+  # de filtrar.
+  #
+  #   1. `alvos` — quais solicitações com agenda recente (7 dias) mudaram desde `:desde`.
+  #      Os mesmos quatro ramos da costura de incremental.yaml (solicitação,
+  #      histórico de atendimento, relato, slot; o porquê de cada um está lá), com
+  #      a janela num ARRAY materializado: cada ramo vira busca pelo índice da
+  #      própria tabela. `assignments` não tem índice em created/modified, e o
+  #      `JOIN` da costura a varria inteira (830 ms). Medido: ~0,7 s a quente.
+  #   2. `busca_por_ids` — só essas solicitações, com a view RECORTADA por dentro
+  #      (`backend/api/src/busca-por-ids.ts`): 67 ms para 1 id, 2,6 s para 400;
+  #      paridade com a view, 0 divergências em 6.736 linhas.
+  #
+  # `colunas_calculadas`: as 7 da FIELD AGENDA dependem só da linha ou do protocolo
+  # (`RankDataProtocolo` filtra pelo mesmo protocolo), e a busca traz o protocolo
+  # inteiro — calcular sobre as linhas buscadas dá o valor do snapshot.
+  #
+  # **A detecção vigia só agendas dos últimos 7 dias e futuras** (02/10/2026, ACHADOS
+  # #171): 2.220 solicitações em vez de 23.191, ~140 ms em vez de ~780 ms (com picos de
+  # 2–11 s). Medido: das 964 solicitações que mudaram desde a manhã de 01/10, 956 estavam
+  # na janela de 7 dias (99,2%); nas últimas 24 h, 815 de 817. As de fora não se perdem —
+  # chegam pelo refresh em lote (`frio`, 30 min), que cobre os 3 meses. A BUSCA continua
+  # com a janela de 3 meses do `sql:`: o protocolo vem inteiro, como no snapshot.
+  #
+  # 30 s, não 12: relato e baixa de equipamento mudam na escala de minutos, e a
+  # volta custa ~1 s de banco — 30 s deixa o Voalle ocupado ~4% do tempo com isto.
+  field-agenda:
+    tabela: FIELD AGENDA
+    intervalo_ms: 30000
+    margem_segundos: 60
+    chave: [Protocolo]
+    marca: [Data Criado, Inicio relato, Fim relato, Data Relato]
+    colunas_calculadas: true
+    busca_por_ids:
+      view: v_service_desk_slots_productivity_informative
+    alvos: |-
+      WITH j AS MATERIALIZED (
+          SELECT array_agg(DISTINCT fah.reserved_assignment_id) AS ids
+          FROM fsm_attendance_history fah
+          WHERE fah.begin_date_slot >= (CURRENT_DATE - INTERVAL '7 days')
+      )
+      SELECT a.id FROM assignments a, j
+      WHERE a.id = ANY(j.ids) AND GREATEST(a.created, COALESCE(a.modified, a.created)) >= :desde
+      UNION
+      SELECT f.reserved_assignment_id FROM fsm_attendance_history f, j
+      WHERE f.reserved_assignment_id = ANY(j.ids)
+        AND GREATEST(f.begin_date, COALESCE(f.end_date, f.begin_date), COALESCE(f.reserved_date, f.begin_date)) >= :desde
+      UNION
+      SELECT r2.assignment_id FROM reports r2, j
+      WHERE r2.assignment_id = ANY(j.ids)
+        AND GREATEST(r2.created, COALESCE(r2.modified, r2.created), COALESCE(r2.beginning_date, r2.created)) >= :desde
+      UNION
+      SELECT s.pre_reserved_assignment_id FROM service_desk_slots s, j
+      WHERE s.pre_reserved_assignment_id = ANY(j.ids)
+        AND GREATEST(s.created, COALESCE(s.modified, s.created)) >= :desde

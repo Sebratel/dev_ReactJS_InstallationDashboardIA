@@ -1,7 +1,7 @@
 {
   // Verificação de tipos do back-end (API, packages, tools). O Node executa .ts só
-  // apagando as anotações — sem este arquivo nada confere tipo fora de apps/web.
-  // `npm run typecheck` roda este e o de apps/web. Não emite nada.
+  // apagando as anotações — sem este arquivo nada confere tipo fora de frontend.
+  // `npm run typecheck` roda este e o de frontend. Não emite nada.
   "compilerOptions": {
     "target": "ES2024",
     "module": "NodeNext",
@@ -13,5 +13,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["apps/api/src/**/*.ts", "packages/*/src/**/*.ts", "tools/*/src/**/*.ts"]
+  "include": ["backend/api/src/**/*.ts", "backend/packages/*/src/**/*.ts", "backend/tools/*/src/**/*.ts"]
 }
