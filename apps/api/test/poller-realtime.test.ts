@@ -17,6 +17,7 @@ import {
   overlayDoDelta,
   paraParametroSemFuso,
   podaDelta,
+  RECUO_MAXIMO_MS,
 } from '../src/poller-realtime.ts';
 
 const CFG = {
@@ -424,6 +425,69 @@ test(`PollerRealtime.estado(): tempo de banco por query e somado por hora`, asyn
   assert.ok(e.bancoMinPorHora > 0);
   const quieta = e.porQuery.find((x) => x.query !== `protocolos-auxiliares`)!;
   assert.equal(quieta.voltas, 0, `query que não rodou aparece zerada, não some`);
+});
+
+// ------------------------------- a primeira busca parte do disco (02/10/2026)
+//
+// Com o snapshot só de madrugada, partir da subida apagava o dia: uma API reiniciada às
+// 14h mostraria as tabelas do poller como às 03h, sem aviso.
+
+test(`PollerRealtime: a primeira busca parte da carga em disco, no relógio do banco`, async () => {
+  const fake = poolDeMentira([]);
+  const p = new PollerRealtime({
+    specsDir: `specs`,
+    pool: fake.pool,
+    agora: () => new Date(`2026-09-03T17:00:00Z`), // 14:00 em Brasília, instante real
+    relogioDoBanco: async () => new Date(`2026-09-03T14:00:00Z`), // 14:00 de parede, convenção parseSemFuso
+    cobertoAte: () => Date.parse(`2026-09-03T06:00:00Z`), // carga das 03:00 (real 06:00Z)
+    anuncia: () => {},
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  assert.equal(fake.chamadas[0]!.values[0], `2026-09-03 03:00:00.000`, `das 03:00 de parede, não das 06:00 nem das 14:00`);
+  await p.tentaAgora(`protocolos-auxiliares`);
+  assert.equal(fake.chamadas[1]!.values[0], `2026-09-03 03:00:00.000`, `sem linha nova, desde não anda — nem volta`);
+});
+
+test(`PollerRealtime: recuar não muda o corte — linha do disco na janela não vira "sumida"`, async () => {
+  const fake = poolDeMentira([
+    { SOLICITACAO: `A`, [`DATA CRIADO`]: new Date(`2026-09-03T09:00:00Z`), [`DATA ENCERRADO`]: new Date(`2026-09-03T09:59:00Z`) },
+  ]);
+  const p = new PollerRealtime({
+    specsDir: `specs`,
+    pool: fake.pool,
+    agora: () => new Date(`2026-09-03T14:00:00Z`),
+    cobertoAte: () => Date.parse(`2026-09-03T03:00:00Z`),
+    anuncia: () => {},
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const ov = p.overlay(`PROTOCOLOS AUXILIARES`)!;
+  assert.equal(ov.corte.toISOString(), `2026-09-03T14:00:00.000Z`, `o corte é a subida, não a carga`);
+  // B mudou às 10:00 no disco e não voltou na busca: com corte nas 03:00 seria apagada.
+  const b = { solicitacao: `B`, [`data criado`]: new Date(`2026-09-03T10:00:00Z`), [`data encerrado`]: null };
+  const resultado = mesclador(ov)([b]);
+  assert.equal(resultado.length, 2, `A entra, B fica`);
+});
+
+test(`PollerRealtime: disco velho demais recua só RECUO_MAXIMO_MS; sem manifesto, parte de agora`, async () => {
+  const velho = poolDeMentira([]);
+  await new PollerRealtime({
+    specsDir: `specs`,
+    pool: velho.pool,
+    agora: () => new Date(`2026-09-10T12:00:00Z`),
+    cobertoAte: () => Date.parse(`2026-09-01T00:00:00Z`),
+    anuncia: () => {},
+  }).tentaAgora(`protocolos-auxiliares`);
+  assert.equal(velho.chamadas[0]!.values[0], paraParametroSemFuso(new Date(Date.parse(`2026-09-10T12:00:00Z`) - RECUO_MAXIMO_MS)));
+
+  const sem = poolDeMentira([]);
+  await new PollerRealtime({
+    specsDir: `specs`,
+    pool: sem.pool,
+    agora: () => new Date(`2026-09-10T12:00:00Z`),
+    cobertoAte: () => null,
+    anuncia: () => {},
+  }).tentaAgora(`protocolos-auxiliares`);
+  assert.equal(sem.chamadas[0]!.values[0], `2026-09-10 12:00:00.000`);
 });
 
 // ------------------------------------------------- fuso de :desde (ACHADOS #168)

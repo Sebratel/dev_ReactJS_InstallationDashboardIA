@@ -346,7 +346,19 @@ export interface OpcoesDoPoller {
    * injetado (testes), parte de `agora()`; em produção, de `LOCALTIMESTAMP`.
    */
   relogioDoBanco?: () => Promise<Date>;
+  /**
+   * Até quando o disco já contém toda mudança da query (ms, instante real) — de onde a
+   * PRIMEIRA busca parte. Sem ele, lê o `geradoEm` do manifesto (`#cobertoAte`).
+   */
+  cobertoAte?: (query: string) => number | null;
 }
+
+/**
+ * Quanto a primeira busca recua, no máximo, atrás do disco. Cobre o snapshot da
+ * madrugada mais um dia inteiro; disco mais velho que isso é carga quebrada, e reler
+ * dias numa volta só pesaria mais que o buraco que fecharia.
+ */
+export const RECUO_MAXIMO_MS = 26 * 3600_000;
 
 /**
  * `:desde` como o banco o lê: hora de parede, sem fuso.
@@ -405,8 +417,8 @@ interface Acumulado {
  */
 export class PollerRealtime {
   readonly #configs: Map<string, ConfigDePoll>;
-  readonly #opts: Required<Omit<OpcoesDoPoller, 'specsDir' | 'pool' | 'relogioDoBanco'>> &
-    Pick<OpcoesDoPoller, 'pool' | 'relogioDoBanco'>;
+  readonly #opts: Required<Omit<OpcoesDoPoller, 'specsDir' | 'pool' | 'relogioDoBanco' | 'cobertoAte'>> &
+    Pick<OpcoesDoPoller, 'pool' | 'relogioDoBanco' | 'cobertoAte'>;
   readonly #deltas = new Map<string, DeltaDeTabela>();
   /** Queries cuja vigília já partiu do relógio do banco — ver `#semeia`. */
   readonly #semeadas = new Set<string>();
@@ -435,6 +447,7 @@ export class PollerRealtime {
       anuncia: opts.anuncia ?? ((l) => console.error(l)),
       aoMudar: opts.aoMudar ?? ((): void => {}),
       relogioDoBanco: opts.relogioDoBanco ?? (opts.agora ? async () => opts.agora!() : undefined),
+      cobertoAte: opts.cobertoAte,
     };
   }
 
@@ -444,11 +457,37 @@ export class PollerRealtime {
    * `inicia()` semeia com `agora()`, o relógio deste processo — que, além do fuso
    * (`paraParametroLocal`), pode estar adiantado em relação ao do banco. Partir do
    * relógio do banco é o único ponto de partida que não pula nem inventa janela.
+   *
+   * **A busca parte do DISCO, não da subida (02/10/2026).** Partindo de agora, toda
+   * mudança entre a última carga e a subida da API ficava de fora até a carga seguinte.
+   * Com o refresh de 15–30 min ninguém via; com o snapshot só de madrugada, uma API
+   * reiniciada às 14h mostraria as tabelas do poller como às 03h. Por isso `desde`
+   * recua até `cobertoAte` (no máximo `RECUO_MAXIMO_MS`) e a primeira volta traz tudo
+   * o que mudou desde a carga.
+   *
+   * **`inicioJanela` (o `corte` de `mescla()`) continua sendo agora.** `mescla()` apaga
+   * do disco a linha com marca ≥ `corte` que não veio no delta (as `sumidas`). Recuar o
+   * corte junto pediria que a busca devolvesse TODA linha com marca na janela, e a
+   * busca em dois passos só devolve quem mudou. Assim, o que mudou entra substituindo
+   * pela chave; o que sumiu antes da subida segue até a próxima carga, como antes.
    */
   async #semeia(cfg: ConfigDePoll, run: ReturnType<typeof postgresRunner>): Promise<void> {
     if (this.#semeadas.has(cfg.query)) return;
-    this.#deltas.set(cfg.query, novoDelta(await this.#relogio(run)));
+    const relogio = await this.#relogio(run);
+    this.#deltas.set(cfg.query, { ...novoDelta(relogio), desde: this.#partida(cfg, relogio) });
     this.#semeadas.add(cfg.query);
+  }
+
+  /** De onde a primeira busca parte, na convenção do banco (`parseSemFuso`). */
+  #partida(cfg: ConfigDePoll, relogio: Date): Date {
+    const coberto = this.#opts.cobertoAte ? this.#opts.cobertoAte(cfg.query) : this.#cobertoAte(cfg);
+    if (coberto === null) return relogio;
+    // `geradoEm` é instante real; o banco fala hora de parede com os dígitos em UTC. A
+    // diferença entre os dois relógios é o fuso do banco, arredondado a 15 min para
+    // não carregar a latência da pergunta.
+    const fuso = Math.round((relogio.getTime() - this.#opts.agora().getTime()) / 900_000) * 900_000;
+    const emParede = Math.max(coberto + fuso, relogio.getTime() - RECUO_MAXIMO_MS);
+    return emParede < relogio.getTime() ? new Date(emParede) : relogio;
   }
 
   /** O relógio do banco, no mesmo jeito que o driver entrega `timestamp` sem fuso. */
