@@ -207,11 +207,11 @@ services:
     stop_grace_period: 15s
     restart: unless-stopped
 
-  # Snapshot diário COMPLETO — cron dentro do container, às 3h (docker/cron/
+  # Snapshot diário COMPLETO — cron dentro do container, às 3h de Brasília (06:00 UTC; docker/cron/
   # crontab-snapshot-diario), separado da cadência de minutos do `refresh`
   # acima. Corrige alteração retroativa que a carga incremental não vê, e
-  # materializa o catálogo inteiro (menos protocolos-produtividade, ver o
-  # comentário do crontab — ela não materializa em nenhum modo hoje).
+  # materializa o catálogo inteiro (desde 02/10, com protocolos-produtividade; ver o
+  # comentário do crontab).
   #
   # mem_limit 6g com --memoria=4096 no crontab: a mesma carga do `refresh` acima,
   # medida em 25/09/2026 (ACHADOS #154). Os 14g de antes vinham de "protocolos-geral

@@ -198,3 +198,20 @@ test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google 
     assert.ok(b.includes(`:${alvo}:ro`), `${s}: a credencial não está montada só-leitura em ${alvo}`);
   }
 });
+
+test('crontab: o snapshot da madrugada é às 03:00 de Brasília e cobre toda query do refresh (02/10/2026)', () => {
+  // O contêiner roda em UTC: `0 3` disparava à meia-noite de Brasília. E com o dia
+  // servido por poller + incremental, esta carga é a referência — query do refresh que
+  // ficar de fora dela (como `protocolos-produtividade` ficou até 02/10) não tem quem a
+  // corrija nem quem renove o teto de 7 dias da incremental.
+  const crontab = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'crontab-snapshot-diario'), 'utf8');
+  const linha = crontab.split(/\r?\n/).find((l) => /^\d/.test(l));
+  assert.ok(linha, 'crontab sem linha de agendamento');
+  assert.match(linha, /^0 6 \* \* \* /, '06:00 UTC = 03:00 em Brasília');
+  const doCron = new Set(linha.match(/--query=(\S+)/)?.[1]?.split(',') ?? []);
+  const refresh = fs.readFileSync(path.join(RAIZ, 'specs', '_catalog', 'refresh.yaml'), 'utf8');
+  const doRefresh = [...refresh.matchAll(/^\s+- ([a-z0-9-]+)\s*$/gm)].map((m) => m[1]!);
+  assert.ok(doRefresh.length > 10, `li ${doRefresh.length} queries do refresh.yaml`);
+  const faltam = doRefresh.filter((q) => !doCron.has(q));
+  assert.deepEqual(faltam, [], 'queries do refresh fora do snapshot da madrugada');
+});
