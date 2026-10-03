@@ -73,14 +73,6 @@ export interface PlatformConfig {
   voalle: PostgresConfig;
   maria: MariaConfig;
   redis: { url: string; keyPrefix: string };
-  kafka: {
-    brokers: string[];
-    clientId: string;
-    groupId: string;
-    topicPrefix: string;
-    ssl: boolean;
-    sasl: { mechanism: string; username: string; password: string } | null;
-  };
   /**
    * Data Hub interno da Sebratel — fonte de `QUADRO FUNCIONAL` na plataforma nova,
    * em vez do Google Sheets do Power BI de hoje (divergência deliberada de fonte,
@@ -153,20 +145,6 @@ export function loadConfig(): PlatformConfig {
       url: env('REDIS_URL', 'redis://localhost:6379/0'),
       keyPrefix: env('REDIS_KEY_PREFIX', 'analytics:dev:'),
     },
-    kafka: {
-      brokers: env('KAFKA_BROKERS').split(',').map((b) => b.trim()).filter(Boolean),
-      clientId: env('KAFKA_CLIENT_ID', 'analytics-platform'),
-      groupId: env('KAFKA_GROUP_ID', 'analytics-realtime'),
-      topicPrefix: env('KAFKA_TOPIC_PREFIX', 'voalle'),
-      ssl: envBool('KAFKA_SSL'),
-      sasl: env('KAFKA_SASL_MECHANISM')
-        ? {
-            mechanism: env('KAFKA_SASL_MECHANISM'),
-            username: env('KAFKA_SASL_USERNAME'),
-            password: env('KAFKA_SASL_PASSWORD'),
-          }
-        : null,
-    },
     datahub: {
       token: env('DATAHUB_TOKEN'),
       baseUrl: env('DATAHUB_BASE_URL', 'https://data-hub.sebratel.net.br/api/public/v1'),
@@ -195,13 +173,12 @@ export function loadConfig(): PlatformConfig {
 
 /** Quais variáveis obrigatórias estão faltando para uma dada fonte. */
 export function missingFor(
-  target: 'voalle' | 'maria' | 'redis' | 'kafka' | 'datahub',
+  target: 'voalle' | 'maria' | 'redis' | 'datahub',
 ): string[] {
   const required: Record<string, string[]> = {
     voalle: ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD'],
     maria: ['MARIA_HOST', 'MARIA_DATABASE', 'MARIA_USER', 'MARIA_PASSWORD'],
     redis: ['REDIS_URL'],
-    kafka: ['KAFKA_BROKERS'],
     // baseUrl e dataset têm default no loadConfig; só o token não pode ter.
     datahub: ['DATAHUB_TOKEN'],
   };

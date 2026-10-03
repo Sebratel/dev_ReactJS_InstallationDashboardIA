@@ -167,7 +167,7 @@ console.log(`  plataforma: ${process.platform}  node: ${process.version}\n`);
   const servidor = new Servidor({
     root: RAIZ,
     snapshotDir: dir,
-    webDir: path.join(RAIZ, 'apps', 'api', 'web'),
+    webDir: path.join(RAIZ, 'apps', 'api', 'web', 'dist'),
     identifica: () => ({ usuario: 'sonda', papeis: ['autenticado'] }),
   });
 

@@ -24,7 +24,9 @@ import type { VerificadorDeToken } from '../src/auth-google.ts';
 import { Servidor, chaveDeValores } from '../src/servidor.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const WEB = path.join(ROOT, 'apps', 'api', 'web');
+// Um build mínimo da tela: o teste não depende de `npm run web:build` ter rodado.
+const WEB = fs.mkdtempSync(path.join(os.tmpdir(), 'web-'));
+fs.writeFileSync(path.join(WEB, 'index.html'), '<title>Analytics Platform</title><div id="raiz"></div>');
 const AGORA = new Date('2026-08-07T12:00:00.000Z');
 
 /**
@@ -493,33 +495,8 @@ test('a tela é servida na raiz', async () => {
     assert.match(r.headers.get('content-type') ?? '', /text\/html/);
     const html = await r.text();
     assert.match(html, /Analytics Platform/);
-    // A raiz entrega a aplicação React: ou o `index.html` do build (que carrega o
-    // módulo de `/assets/`), ou a tela antiga, que traz os tokens no próprio HTML.
-    // As duas são telas válidas; o que não pode é a raiz não servir tela nenhuma.
-    assert.match(html, /<div id="raiz">|--amber: #F59E0B/);
-  } finally {
-    await s.fecha();
-  }
-});
-
-/**
- * **A tela antiga continua alcançável, e isso não é nostalgia.**
- *
- * Ela é a única referência com que comparar a React durante a conferência: se um card
- * divergir, a primeira pergunta é se ele já divergia antes da migração. Apagá-la junto
- * com a migração tiraria a resposta.
- */
-test('/legado serve a tela de uma página só, com os tokens do design system v2', async () => {
-  const s = await servidor(dirVazio());
-  try {
-    const r = await s.busca('/legado');
-    assert.equal(r.status, 200);
-    const html = await r.text();
-    assert.match(html, /--amber: #F59E0B/);
-    assert.match(html, /--bg: #F4F4F5/);
-    // A v1 era aspiracional e está substituída: se estes valores voltarem, algum
-    // documento velho virou código.
-    assert.doesNotMatch(html, /#F5F1E8|DM Sans/);
+    // A raiz entrega o `index.html` do build da aplicação React.
+    assert.match(html, /<div id="raiz">/);
   } finally {
     await s.fecha();
   }

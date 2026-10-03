@@ -1,5 +1,5 @@
-// Os arquivos da tela (`apps/web` buildado, ou a tela antiga em `/legado`). Saiu de
-// `servidor.ts` em 27/09/2026 (ACHADOS #158).
+// Os arquivos da tela (`apps/web` buildado). Saiu de `servidor.ts` em 27/09/2026
+// (ACHADOS #158).
 
 import fs from 'node:fs';
 import type http from 'node:http';
@@ -16,22 +16,16 @@ const TIPOS: Record<string, string> = {
 };
 
 /**
- * Os arquivos da tela.
- *
- * **Duas telas convivem, e a ordem entre elas é a decisão.** `dist/` é o build do
- * `apps/web` (React); `index.html` na raiz é a tela de uma página só que existiu
- * antes dele. Quando o build existe, ele é a tela — `npm run api` sozinho serve a
- * aplicação, sem Vite e sem segunda porta. A antiga continua alcançável em
- * `/legado`, porque apagá-la junto com a migração jogaria fora a única referência
- * com que comparar a nova.
+ * Os arquivos da tela: `webDir` é o build do `apps/web` (React). Sem build, a raiz
+ * responde 404 dizendo como gerá-lo — `npm run api` sozinho só serve a aplicação
+ * depois de `npm run web:build`.
  */
 export function serveEstatico(res: http.ServerResponse, webDir: string, rota: string): void {
-  if (rota === '/legado') return serveArquivo(res, webDir, 'index.html');
-
-  const dist = path.join(webDir, 'dist');
-  const temBuild = fs.existsSync(path.join(dist, 'index.html'));
-  const arquivo = rota === '/' ? 'index.html' : rota.slice(1);
-  return serveArquivo(res, temBuild ? dist : webDir, arquivo);
+  if (!fs.existsSync(path.join(webDir, 'index.html'))) {
+    responde(res, 404, { erro: `tela não compilada em '${webDir}' — rode 'npm run web:build'` });
+    return;
+  }
+  return serveArquivo(res, webDir, rota === '/' ? 'index.html' : rota.slice(1));
 }
 
 function serveArquivo(res: http.ServerResponse, base: string, arquivo: string): void {

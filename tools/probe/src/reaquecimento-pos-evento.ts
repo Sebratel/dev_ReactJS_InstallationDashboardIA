@@ -73,7 +73,7 @@ async function sobe(comReaquecimento: boolean): Promise<Bancada> {
   const servidor = new Servidor({
     root: RAIZ,
     snapshotDir: SNAPSHOT,
-    webDir: path.join(RAIZ, 'apps', 'api', 'web'),
+    webDir: path.join(RAIZ, 'apps', 'api', 'web', 'dist'),
     identifica: () => ({ usuario: 'sonda', papeis: ['autenticado'] }),
     ...(comReaquecimento
       ? {
@@ -192,7 +192,7 @@ async function custoPorEvento(): Promise<Map<string, string[]>> {
   const espiao = new Servidor({
     root: RAIZ,
     snapshotDir: SNAPSHOT,
-    webDir: path.join(RAIZ, 'apps', 'api', 'web'),
+    webDir: path.join(RAIZ, 'apps', 'api', 'web', 'dist'),
     identifica: () => ({ usuario: 'sonda', papeis: ['autenticado'] }),
     reaquece: async (paginas) => {
       afetadas = [...paginas];

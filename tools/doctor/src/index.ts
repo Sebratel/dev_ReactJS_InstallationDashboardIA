@@ -191,19 +191,6 @@ async function checkRedis() {
   }
 }
 
-// ---------------------------------------------------------------- kafka
-async function checkKafka() {
-  console.log('\n── Kafka / Debezium (realtime — Fase 4) ───────────────');
-  const missing = missingFor('kafka');
-  if (missing.length) {
-    line(SKIP, 'configuração', `faltam: ${missing.join(', ')}`);
-    return;
-  }
-  const cfg = loadConfig().kafka;
-  line(OK, 'configuração', `${cfg.brokers.length} broker(s), topicPrefix=${cfg.topicPrefix}`);
-  line(SKIP, 'conexão', 'cliente Kafka entra na Fase 4');
-}
-
 /**
  * O estado local vem PRIMEIRO, e roda sem credencial nenhuma.
  *
@@ -247,7 +234,6 @@ async function main() {
   await checkVoalle();
   await checkMaria();
   await checkRedis();
-  await checkKafka();
 
   console.log('\n───────────────────────────────────────────────────────');
   if (failures === 0) {

@@ -259,7 +259,7 @@ let poller: PollerRealtime | null = null;
 const servidor = new Servidor({
   root: ROOT,
   snapshotDir: path.join(ROOT, DIRETORIO_PADRAO),
-  webDir: path.resolve(AQUI, '..', 'web'),
+  webDir: path.resolve(AQUI, '..', 'web', 'dist'),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver
