@@ -13834,3 +13834,31 @@ com um contêiner descartável ocupando o antigo) e a porta 80 seguiu 200, sem r
 
 **Efeito colateral aceito:** o `frio` passou a 60 min, então as agendas de fora dos 7 dias
 da detecção da FIELD AGENDA (#171, ~0,8%) chegam em até 1 h, e não mais em 30 min.
+
+## #173 — a primeira madrugada disparou na hora e falhou sem credencial; o tempo real chega, mas é quase todo ruído (04/10)
+
+**O notebook hibernou por bateria** de 02/10 23:18 a 04/10 01:03 ("Motivo da Suspensão:
+Battery"; os tempos de suspensão já eram "nunca"). Por ~26 h não houve refresh, poller nem o
+snapshot das 03:00 de 03/10. Ao acordar, tudo voltou sozinho: o `refresh` retomou ~12 min
+depois (o temporizador anda no relógio monotônico, que para na suspensão) e o poller teve 8
+erros de rede/VPN subindo, e se recuperou.
+
+**O cron de 04/10 disparou às 06:00:02 UTC (03:00 de Brasília, a correção do #172 valeu) e
+falhou nas 24 queries em 40 s:** "falta no .env VOALLE_HOST, VOALLE_DATABASE…". O
+`entrypoint.sh` grava `VAR='valor'` sem `export`; no `sh`, `. arquivo` não passa nada ao
+`node` filho. A execução manual por `docker exec` passava porque herda o ambiente do contêiner,
+e é por isso que ninguém tinha visto (o comentário do entrypoint previa exatamente esta falha).
+Simulado com `env -i`: sem `set -a`, SEM credencial; com `set -a`, OK. Corrigido em `529a4b0`.
+Prova no contêiner novo: a linha EXATA do cron, com `env -i` e só `--query=feriados`, carregou
+e gravou.
+
+**Duas execuções manuais completas** (04/10 01:07 e 15:45 de Brasília): 25 de 25 ok, ~11 min
+cada. A trava serializou o snapshot com o `refresh` nas duas (256 s e 437 s de espera).
+
+**O tempo real chega à tela, mas é quase todo ruído.** Ouvindo `/api/eventos` como o navegador,
+5 min num domingo às 15:46: **31 avisos, 28 deles `manutencao-inicial` a cada ~12 s e 3
+`instalacao-reincidente` a cada 2 min**. São as mudanças fantasma de `RETORNO PRIORITARIO` e
+`REINCIDÊNCIA` (PLANO-MESTRE R.0): uma chave "muda" em toda volta sem o dado mudar, e cada aviso
+recalcula a página. Nenhum aviso das páginas principais no período (pouca operação no domingo).
+A comparação ignora ordem e trata `Date`, e no snapshot os campos de intervalo chegam como
+número ou nulo. A coluna culpada ainda não foi achada.

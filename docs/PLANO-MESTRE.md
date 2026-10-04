@@ -106,7 +106,10 @@ foi desligado antes de o substituto provar.
       mudanças, o dobro do refresh. Paliativo nos intervalos (~19,6 min/h estimados).
 - [ ] **B.1b** **Sentinela do poller:** uma consulta barata ("mudou algo desde X?") e as
       pesadas só quando ela disser sim. É o maior ganho que sobra.
-- [ ] **B.1c** **Primeiro dia útil no modelo novo (03/10):**
+- [x] **B.1c-cron** ✅ 04/10, `529a4b0`: o cron disparou às 03:00 de Brasília, mas falhou
+      sem credencial (`.env.cron` carregado sem `set -a`). Corrigido e provado com a linha exata
+      do cron em `env -i` (ACHADOS #173). **Conferir no log a execução de 05/10.**
+- [ ] **B.1c** **Primeiro dia útil no modelo novo (segunda, 05/10; o "03/10" do plano era sábado):**
       - conferir o snapshot das 03:00 no log do `snapshot-diario`;
       - medir o poller com movimento de dia (`/api/saude` → `porQuery`);
       - comparar, para as 8 do poller, o que a tela mostrou com a carga do `frio`. Se
@@ -155,6 +158,8 @@ Em ordem de impacto no que se sente:
       cada 12 s. A comparação (`mudancasReais`) ignora ordem e trata `Date`, então algum valor
       muda de fato entre leituras. Não é `interval`: no snapshot o campo chega como número.
       Próximo passo: registrar QUAIS colunas diferem (só os nomes) e corrigir na origem.
+      Confirmado do lado da tela em 04/10 (ACHADOS #173): de 31 avisos do canal ao vivo em
+      5 min, 28 eram esta fantasma.
 - [ ] **R.1 Sem picos ao entrar.**
       - O Nginx serve a tela (HTML, JS, CSS) direto do `dist`, sem passar pela API. Hoje a
         mesma thread que calcula é a que entrega o HTML.
