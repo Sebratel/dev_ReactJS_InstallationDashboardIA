@@ -6,6 +6,12 @@
 # `. /repo/.env.cron`: cron não herda o ambiente do container — ver
 # `docker/cron/entrypoint.sh`, que grava esse arquivo na subida.
 #
+# **`set -a` é obrigatório (04/10/2026).** O arquivo traz `VAR='valor'` sem `export`, e no
+# `sh` o `.` só cria variável do shell, que o `node` filho não herda. A primeira madrugada
+# de verdade (04/10, 06:00 UTC) falhou nas 24 queries em 40 s com "falta no .env
+# VOALLE_HOST…", e a execução manual por `docker exec` passava porque herda o ambiente do
+# contêiner. Simulado com `env -i`: sem `set -a`, SEM credencial; com, OK.
+#
 # `--memoria=4096`: o heap do filho do `refresh` no contêiner (REFRESH_MEMORIA_MB),
 # medido em 25/09/2026 com o grupo inteiro em 3,87 GB de RSS (ACHADOS #154). Os
 # 12288 de antes vinham de `protocolos-geral` precisar de 12 GB, o que caiu em
@@ -27,4 +33,4 @@
 SHELL=/bin/sh
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 
-0 6 * * * root . /repo/.env.cron && cd /repo && node backend/tools/snapshot/src/index.ts --query=alocacao-patrimonio,apuracao-premiacao,backlog-agendado-futuro,backlog-instalacao,base-categorias-field,capacidade-equipe,clima-tempo,consolidado-clientes,contratos,contratos-telefonia,feriados,field-agenda,field-agenda-slot,gestores-equipes,hora-atualizado,instalacoes-reincidentes,protocolos-auxiliares,protocolos-geral,protocolos-produtividade,protocolos-telefonia,quadro-funcional,reincidencia,retorno-prioritario,tecnicos-auxiliares,troca-endereco --refazer --memoria=4096 >> /proc/1/fd/1 2>&1
+0 6 * * * root set -a && . /repo/.env.cron && set +a && cd /repo && node backend/tools/snapshot/src/index.ts --query=alocacao-patrimonio,apuracao-premiacao,backlog-agendado-futuro,backlog-instalacao,base-categorias-field,capacidade-equipe,clima-tempo,consolidado-clientes,contratos,contratos-telefonia,feriados,field-agenda,field-agenda-slot,gestores-equipes,hora-atualizado,instalacoes-reincidentes,protocolos-auxiliares,protocolos-geral,protocolos-produtividade,protocolos-telefonia,quadro-funcional,reincidencia,retorno-prioritario,tecnicos-auxiliares,troca-endereco --refazer --memoria=4096 >> /proc/1/fd/1 2>&1

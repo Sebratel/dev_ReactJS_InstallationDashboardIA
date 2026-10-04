@@ -227,3 +227,14 @@ test('nginx.conf: a API é resolvida a cada pedido, não na subida do proxy (02/
   assert.ok(passes.length >= 4, `li ${passes.length} proxy_pass`);
   assert.deepEqual(passes.filter((p) => p !== '$api'), [], 'proxy_pass com host literal volta a fixar o IP');
 });
+
+test('crontab: o job exporta o ambiente ao carregar o .env.cron (04/10/2026)', () => {
+  // `entrypoint.sh` grava `VAR='valor'` sem `export`; no `sh`, `. arquivo` sem `set -a` não
+  // passa nada ao `node` filho. A primeira madrugada falhou nas 24 queries com "falta no
+  // .env VOALLE_HOST…", e o `docker exec` manual passava porque herda o ambiente do contêiner.
+  const crontab = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'crontab-snapshot-diario'), 'utf8');
+  const linha = crontab.split(/\r?\n/).find((l) => /^\d/.test(l))!;
+  assert.match(linha, / root set -a && \. \/repo\/\.env\.cron && set \+a && /, 'carregar o .env.cron sem `set -a` deixa o job sem credencial');
+  const entrypoint = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'entrypoint.sh'), 'utf8');
+  assert.match(entrypoint, /> \/repo\/\.env\.cron/, 'o job depende do arquivo que o entrypoint grava');
+});
