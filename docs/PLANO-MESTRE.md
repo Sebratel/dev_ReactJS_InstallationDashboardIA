@@ -149,6 +149,12 @@ da `PROTOCOLOS GERAL`) muda a cada 30 min.
 
 Em ordem de impacto no que se sente:
 
+- [ ] **R.0 Mudança fantasma no poller (04/10, 01:20 de domingo, sem movimento).** O
+      `RETORNO PRIORITARIO` anunciou "1 chave mudou" em 74 de ~75 voltas e a `REINCIDÊNCIA`
+      em 8 de ~8. Cada anúncio derruba o cache da `manutencao-inicial` e recalcula a página a
+      cada 12 s. A comparação (`mudancasReais`) ignora ordem e trata `Date`, então algum valor
+      muda de fato entre leituras. Não é `interval`: no snapshot o campo chega como número.
+      Próximo passo: registrar QUAIS colunas diferem (só os nomes) e corrigir na origem.
 - [ ] **R.1 Sem picos ao entrar.**
       - O Nginx serve a tela (HTML, JS, CSS) direto do `dist`, sem passar pela API. Hoje a
         mesma thread que calcula é a que entrega o HTML.
@@ -156,6 +162,9 @@ Em ordem de impacto no que se sente:
         por tabela.
       - O cache só cai nas páginas que usam a tabela que mudou.
       *Pronto quando:* com o refresh rodando, nenhuma página passa de ~2 s para ficar pronta.
+- [ ] **R.1b O snapshot da madrugada não renova o status dos grupos.** Em 04/10 ele renovou as
+      25 tabelas, e a saúde seguiu "degradado: grupo X parado desde sexta" até cada grupo do
+      `refresh` rodar de novo. É alarme falso, mas o aviso externo (C.7) dispararia por ele.
 - [ ] **R.2 Filtros prontos ao entrar.** É a C.2: achar o cálculo de > 2,7 GB e religar
       `AQUECE_FILTROS_ATE`. *Pronto quando:* nenhum "carregando…" ao entrar.
 - [ ] **R.3 As 14 páginas aquecidas, e o cache sobrevive a um reinício.** Hoje são 11, e a
@@ -172,6 +181,11 @@ de medida: os scripts `mede-tela` (navegador, tempo até o `.selo`) e `mede-pagi
 usados em 02/10. Versioná-los em `tools/tela/` é o primeiro passo da R.1.
 
 ## §C — Produção no Portainer
+
+> **04/10/2026: o notebook não serve de servidor.** Na sexta às 23:18 a bateria acabou, o
+> Windows hibernou ("Motivo da Suspensão: Battery") e a plataforma ficou ~26 h parada: sem
+> refresh, sem poller e sem o snapshot das 03:00. Os tempos de suspensão já estavam em "nunca".
+> Até a C.8, o notebook tem de ficar na tomada. Sem servidor, a fase R não vale de verdade.
 
 Detalhe em `PLANO-CARGA.md` §3 fase 3 e `PLANO-AUTONOMIA.md` etapa 5. As três primeiras
 tiram os **contornos fora do repositório** da `PLANO-CARGA.md` §1. Enquanto existirem, um
