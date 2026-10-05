@@ -140,7 +140,8 @@ test('a imediata perde o cache na hora, mesmo com as demais esperando a rodada',
     await (await s.busca('/api/dashboards/capa')).arrayBuffer();
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
     s.servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
-    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'miss');
+    // Caiu: sai a "última pronta", e não o `hit` de antes do evento.
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'anterior');
   } finally {
     await s.fecha();
   }
@@ -154,7 +155,7 @@ test('página que não é imediata mantém o cache até a rodada', async () => {
     s.servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit', 'caiu antes da rodada');
     await new Promise((r) => setTimeout(r, 400));
-    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'miss', 'a rodada não a derrubou');
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'anterior', 'a rodada não a derrubou');
   } finally {
     await s.fecha();
   }
@@ -173,5 +174,24 @@ test('sem a opção, ou com intervalo 0, tudo segue avisado na hora (o comportam
     } finally {
       await s.fecha();
     }
+  }
+});
+
+test('quem recebeu a última pronta é avisado de novo quando a versão nova fica pronta', async () => {
+  // Sem o segundo aviso, a tela ficaria com o número de antes do evento até o
+  // PRÓXIMO evento: o tempo real atrasado um ciclo inteiro (ACHADOS #175).
+  const s = await sobe({});
+  try {
+    await (await s.busca('/api/dashboards/capa')).arrayBuffer();
+    const sse = await ouve(await s.busca('/api/eventos'));
+    s.servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
+    await ate(() => sse.eventos.length >= 1);
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'anterior');
+    await ate(() => sse.eventos.length >= 2, 10_000);
+    assert.deepEqual(sse.eventos[1]!.dashboards, ['capa'], 'o segundo aviso é só da página servida velha');
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit', 'depois do aviso, a nova está pronta');
+    await sse.para();
+  } finally {
+    await s.fecha();
   }
 });

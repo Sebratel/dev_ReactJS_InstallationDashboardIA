@@ -172,7 +172,7 @@ const reaquecendoDeVerdade = async (paginas: readonly string[], bancada: () => B
 // O CONTROLE: sem reaquecimento, nada mudou
 // ---------------------------------------------------------------------------
 
-test('sem `reaquece`, a cadeia continua a de antes: invalida, avisa, e o GET é MISS', async () => {
+test('sem `reaquece`, a cadeia continua: invalida, avisa, e o GET seguinte não é o HIT de antes', async () => {
   // Este teste é o que impede a F4 de "passar" por ter quebrado o caminho
   // padrão. Ele tem de ficar VERDE mesmo com toda a F4 arrancada.
   const b = await sobe();
@@ -184,10 +184,14 @@ test('sem `reaquece`, a cadeia continua a de antes: invalida, avisa, e o GET é 
     b.servidor.aoTabelaMudar(TABELA, QUERY);
     await sse.esperaPor('capa');
 
+    // Desde 05/10/2026 (ACHADOS #175) quem chega depois do evento recebe a "última
+    // pronta" NA HORA e a versão nova é calculada por baixo — não espera o cálculo.
+    // O que este teste guarda continua igual: a versão de antes do evento NÃO sai
+    // como `hit`, e nada tenta reaquecer.
     assert.equal(
       (await (await b.busca('/api/dashboards/capa')).json()).cache,
-      'miss',
-      'sem reaquecimento, quem chega depois do evento paga o cálculo',
+      'anterior',
+      'depois do evento sai a última pronta, e a versão atual tem de ter caído',
     );
     assert.equal((await b.metricas()).rewarm_pedidos, undefined, 'nem devia ter tentado reaquecer');
     await sse.fecha();

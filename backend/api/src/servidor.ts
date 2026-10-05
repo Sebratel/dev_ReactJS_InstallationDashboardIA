@@ -221,6 +221,8 @@ export class Servidor {
    * as mesmas: sem isto, cada pedido igual viraria uma tarefa a mais na piscina.
    */
   private readonly valoresEmCurso = new Map<string, Promise<DaxValue[] | { erroDoPedido: string }>>();
+  /** Páginas que receberam a "última pronta" e esperam o aviso da nova. Ver `pagina()`. */
+  private readonly paginasComAnterior = new Set<string>();
   /** Quantas vezes `esqueceAPagina` passou por cada página. Ver o uso em `valores`. */
   private readonly geracoes = new Map<string, number>();
   /** As páginas não imediatas que mudaram desde a última rodada. Ver `aoTabelaMudar`. */
@@ -1162,7 +1164,9 @@ export class Servidor {
       this.piscina.invalidaPagina(dashId);
       // Efeito colateral, não parte de resposta nenhuma — não há pedido para
       // atrasar esperando o Redis, e `apagaPagina` já nunca lança.
-      void this.cache.apagaPagina(dashId);
+      // A "última pronta" fica: é ela que sai na hora para quem chegar antes do
+      // reaquecimento terminar (ver o ramo `servido_anterior` em `pagina()`).
+      void this.cache.apagaPagina(dashId, { poupaUltimaPronta: true });
       // Só o PRIMEIRO evento ainda não atendido conta: se três eventos chegarem
       // antes de alguém abrir a página, o atraso que interessa é o do mais
       // antigo, não o do último.
@@ -1737,7 +1741,14 @@ export class Servidor {
         // frente do pré-cálculo de filtros que ninguém pediu. Continua fundo (> 0), então a
         // worker reservada a quem usa segue livre.
         const fundo = prioridadeDe('prefetch');
-        void this.vooUnico.faz<CorpoDaPagina>(chave, () => calcula(fundo), fundo).catch(() => {
+        // **E quem viu a velha fica sabendo quando a nova sai.** Sem este aviso a tela
+        // ficaria com o número de antes do evento até o PRÓXIMO evento — o tempo real
+        // atrasado um ciclo inteiro. Um aviso por página, não por chave: a tela refaz
+        // a página toda quando é avisada.
+        this.paginasComAnterior.add(dash.id);
+        void this.vooUnico.faz<CorpoDaPagina>(chave, () => calcula(fundo), fundo).then(() => {
+          if (this.paginasComAnterior.delete(dash.id)) this.emiteEvento([dash.id]);
+        }, () => {
           // Falhou o recálculo de fundo: o próximo pedido tenta de novo, e quem pediu
           // já foi servido.
         });

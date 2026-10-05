@@ -1245,8 +1245,10 @@ test('aoTabelaMudar: invalida o cache de quem usa a query, e o próximo pedido r
     // `capa` usa a query `hora-atualizado` (é a única tabela que ela carrega).
     s.servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
 
+    // A versão atual caiu; o que sai na hora é a "última pronta" (ACHADOS #164/#175),
+    // com a nova sendo calculada por baixo — nunca o `hit` de antes do evento.
     const r3 = await s.busca('/api/dashboards/capa');
-    assert.equal((await r3.json()).cache, 'miss', 'depois de mudar, o cache tem de ter sido apagado');
+    assert.equal((await r3.json()).cache, 'anterior', 'depois de mudar, o cache tem de ter sido apagado');
   } finally {
     await s.fecha();
   }

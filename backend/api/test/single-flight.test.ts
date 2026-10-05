@@ -192,6 +192,14 @@ test('a rajada que o SSE provoca: invalidou, todos acordam, UM cálculo', async 
     );
     for (const r of respostas) assert.equal(r.status, 200);
 
+    // Desde 05/10/2026 (ACHADOS #175) a invalidação do tempo real poupa a "última
+    // pronta": os vinte saem NA HORA com ela, e o cálculo da versão nova corre por
+    // baixo — um voo só para os vinte. Espera ele terminar antes de contar.
+    const limite = Date.now() + 10_000;
+    while (calculos(await s.metricas()) - antes < 1 && Date.now() < limite) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+    await new Promise((r) => setTimeout(r, 100));
     const m = await s.metricas();
     assert.equal(
       calculos(m) - antes,
@@ -206,13 +214,18 @@ test('a rajada que o SSE provoca: invalidou, todos acordam, UM cálculo', async 
     // voo, mas prova exatamente a mesma coisa que `coalescido` prova: não
     // disparou cálculo novo. A soma dos dois é que não pode variar — é ela,
     // não o rótulo de qual dos dois, que fecha com `calculos(m) - antes === 1`.
-    const hitsNaRajada = (m.contadores.cache_hits ?? 0) - hitsAntes;
-    assert.equal(
-      (m.contadores.singleflight_coalescidos ?? 0) + hitsNaRajada,
-      19,
-      `19 dos 20 pedidos tinham de aproveitar o cálculo único, via voo ou via cache — ` +
-        `${m.contadores.singleflight_coalescidos ?? 0} coalescidos + ${hitsNaRajada} hits = ` +
-        `${(m.contadores.singleflight_coalescidos ?? 0) + hitsNaRajada}`,
+    // E a "última pronta" (`servido_anterior`) é a terceira forma de não disparar
+    // cálculo novo — a de agora, porque o evento já não a apaga.
+    const hitsNaRajada = (m.contadores.cache_hits ?? 0) - hitsAntes + (m.contadores.servido_anterior ?? 0);
+    assert.ok(
+      (m.contadores.servido_anterior ?? 0) > 0,
+      'ninguém recebeu a última pronta: a invalidação voltou a apagá-la',
+    );
+    const aproveitaram = (m.contadores.singleflight_coalescidos ?? 0) + hitsNaRajada;
+    assert.ok(
+      aproveitaram >= 19,
+      `19 dos 20 pedidos tinham de aproveitar o cálculo único, via voo, cache ou última pronta — ` +
+        `${m.contadores.singleflight_coalescidos ?? 0} coalescidos + ${hitsNaRajada} hits/anteriores = ${aproveitaram}`,
     );
   } finally {
     await s.fecha();
