@@ -25,7 +25,7 @@ manutenção e pode correr depois do go-live.
 | 0 | Arrumar a casa | ✅ 02/10 | este arquivo, §0 |
 | A | VISÃO PRODUTIVA em tempo real | ⏳ **próxima**: etapa 1 ✅, etapa 2 falta | `ACHADOS.md` #166–#171 |
 | B | Carga leve no banco | 🟡 **em andamento**: modelo madrugada + poller no ar desde 02/10, falta a prova de dia | `PLANO-CARGA.md` §3, fases 1 e 2 |
-| R | Rápido e ao vivo | 🔴 medido em 02/10, nada feito ainda | este arquivo, §R |
+| R | Rápido e ao vivo | 🔴 medido em 02 e 05/10, plano pronto | `PLANO-CARREGAMENTO.md` |
 | C | Produção no Portainer | 🔴 não começou (autonomia 1–4 ✅) | `PLANO-CARGA.md` §3 fase 3 + `PLANO-AUTONOMIA.md` etapa 5 |
 | D | Validação com o negócio | 🟡 trilha paralela, depende de pessoas | `PERGUNTAS-NEGOCIO.md` |
 | E | Go-live | 🔴 depende de A, B, R, C e D | este arquivo, §E |
@@ -130,6 +130,10 @@ foi desligado antes de o substituto provar.
 **Pronto quando:** < 10 min/h de consulta pesada no banco, **com o poller somado**.
 
 ## §R — Rápido e ao vivo
+
+> **O plano detalhado está em [`PLANO-CARREGAMENTO.md`](PLANO-CARREGAMENTO.md) (05/10).** Lá estão o
+> critério medido (≤ 2 s em toda página, inclusive com carga rodando), as 9 etapas em ordem e o
+> pedido ao Misael, que é dono do nginx de produção. Os itens R.0–R.5 abaixo são o resumo.
 
 **O pedido (Erick, 02/10):** "após entrar carrega na hora, e sensação de realtime: os números
 mudam na tela sem atualizar". A regra de antes continua valendo: nada de "carregando…" ao

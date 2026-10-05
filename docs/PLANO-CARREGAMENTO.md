@@ -1,0 +1,138 @@
+# Plano — carregamento seguro e rápido (05/10/2026)
+
+> **O pedido (Erick):** "o usuário não pode ter sensação de perda de tempo". Entrar em
+> qualquer página é instantâneo, sem "carregando…", **inclusive enquanto uma carga roda**, e
+> os números mudam na tela sozinhos. Este plano detalha a fase R do `PLANO-MESTRE.md`.
+>
+> **Onde:** tudo é desenvolvido e provado no **ambiente Docker de teste do localhost**
+> (`docker-compose.prod.yml` + o contorno de `PLANO-CARGA.md` §1). Produção é outra conversa.
+>
+> **O nginx de produção é do Misael.** Da nossa parte: o código, os arquivos estáticos da tela
+> (`frontend/dist`) e o `nginx.conf` do **ambiente de teste**. O que a produção precisar entra
+> na §5 como pedido a ele, com a configuração pronta e provada aqui.
+
+---
+
+## 1. O critério, e como se mede
+
+**Pronto quando**, em toda página e nas duas situações (sem carga, e **com o refresh ou o
+snapshot gravando**):
+
+| medida | meta | hoje (05/10) |
+|---|---|---|
+| tempo até a página ficar pronta (`.selo`) | **≤ 2 s**, nenhuma exceção | sem carga 0,5–1,5 s; **com carga 10–27 s, e duas páginas sem HTML em 60 s** |
+| "carregando…" visível ao entrar | **nenhum** | `visao-geral`, `agendamento-field` e `protocolos-detalhados` |
+| HTML/JS da tela | **< 100 ms**, com a API ocupada ou não | 300–700 ms; > 60 s durante o snapshot |
+| aviso falso no canal ao vivo | **0** | 28 de 31 em 5 min (04/10) |
+
+**O instrumento é um só para todas as etapas:** o navegador entra em cada página com sessão
+nova, como o usuário, e mede o tempo até o `.selo`, uma vez sem carga e uma vez com uma carga
+completa rodando. Foram os scripts `mede-tela` e `ouve-sse` usados em 04 e 05/10. A etapa 0
+os versiona. **Nenhuma etapa fecha sem rodar o instrumento antes e depois.**
+
+---
+
+## 2. Por que trava hoje (medido em 04 e 05/10)
+
+1. **Um processo faz tudo.** A API calcula os números e também entrega o HTML e o JS. Ocupada,
+   ela atrasa até o HTML.
+2. **Um carimbo para tudo.** Cada tabela gravada troca o carimbo do snapshot e derruba o cache
+   das 14 páginas. Foram 25 trocas em 18 min. O aquecedor recomeça a cada troca, disputando
+   máquina com quem entra.
+3. **Cálculo na thread que atende.** A worker estoura memória e o cálculo cai na thread
+   principal (`worker_fallback` = 24 na saúde). É hipótese de causa dos 60 s; a etapa 1 mede.
+4. **Avisos fantasma.** `RETORNO PRIORITARIO` e `REINCIDÊNCIA` "mudam" a cada volta do poller e
+   recalculam duas páginas o tempo todo (R.0).
+
+---
+
+## 3. As etapas, em ordem
+
+Uma sessão por etapa. Cada uma: worktree própria → commit → `staging` → stack de teste
+recriada → instrumento antes/depois → registro em `ACHADOS.md`. O Erick promove a `main`.
+
+### Etapa 0 — o instrumento versionado (curta)
+- `mede-tela` e `ouve-sse` em `backend/tools/tela/`, com `npm run tela:entrada` e
+  `npm run tela:ao-vivo`.
+- Um modo "com carga": dispara uma carga completa numa cópia do snapshot (diretório separado,
+  sem tocar o `snapshot/` da plataforma) e mede durante ela.
+- *Pronto quando:* um comando reproduz a tabela da §1.
+
+### Etapa 1 — achar quem trava (diagnóstico, sem conserto)
+- Medir o atraso do laço de eventos da API, minuto a minuto, durante uma carga; o que roda
+  nela nesses picos (recarga do snapshot, mescla do overlay, cálculo de fallback); e quantas
+  vezes o cálculo caiu na thread principal, e por quê.
+- *Pronto quando:* os 3 maiores bloqueadores estão medidos em ms. As etapas 2–4 atacam pela
+  ordem desse número, e não pela ordem desta lista.
+
+### Etapa 2 — o carimbo troca uma vez por grupo
+- O refresh grava as tabelas do grupo e publica o carimbo UMA vez, no fim. Hoje são 9 trocas no
+  `quente`.
+- *Pronto quando:* um ciclo do `quente` gera 1 troca de carimbo, e nenhuma página mostra metade
+  das tabelas novas e metade velhas.
+
+### Etapa 3 — o cache cai só nas páginas afetadas
+- Mapa página → tabelas, tirado das specs (nunca escrito à mão). Trocou a tabela X, só cai o
+  cache das páginas que usam X, e só elas reaquecem.
+- **Risco:** um mapa errado deixa uma página com número velho, sem erro. Por isso há um teste
+  que, para cada página, prova que mudar cada tabela dela derruba o cache dela.
+- *Pronto quando:* gravar `contratos` não recalcula as páginas que não usam contratos.
+
+### Etapa 4 — cálculo nunca na thread que atende
+- Workers com memória para o pior cálculo medido. O que não couber espera na fila da worker,
+  sem ir para a thread principal. Liga com a C.2 (o pré-cálculo de filtros de > 2,7 GB).
+- *Pronto quando:* `worker_fallback` = 0 durante uma carga completa.
+
+### Etapa 5 — a tela servida fora da API (ambiente de teste)
+- No `nginx.conf` **de teste**: o nginx entrega `frontend/dist` direto do disco; só `/api/` e
+  `/auth/` vão à API.
+- *Pronto quando:* HTML < 100 ms com a API ocupada. A configuração provada vira o pedido da §5.
+
+### Etapa 6 — sem aviso fantasma (R.0)
+- Registrar QUAIS colunas diferem entre duas leituras (só os nomes) e corrigir na origem.
+- *Pronto quando:* 0 aviso falso em 30 min de `ouve-sse` num horário parado.
+
+### Etapa 7 — tudo pronto ao entrar (R.2 e R.3)
+- As 14 páginas aquecidas (hoje 11), os filtros pré-calculados (religar
+  `AQUECE_FILTROS_ATE` depois da etapa 4) e o cache que sobrevive a um reinício da API.
+- *Pronto quando:* reiniciar a API e a primeira abertura de cada página ficar ≤ 2 s, sem
+  "carregando…".
+
+### Etapa 8 — só então, a frequência nova
+O modelo pedido em 05/10: **ano inteiro às 03:00, os últimos 2 meses de tudo a cada 30 min e
+tempo real dos últimos 5 dias.** Ele entra por último de propósito, porque dobra a quantidade
+de cargas pesadas por hora. Com as etapas 2–5 feitas, isso não chega à tela. Sem elas, é o
+travamento de 05/10 duas vezes por hora.
+- Entrada: o custo de cada query com o recorte trocado (hoje × 60 dias × 5 dias), medido em
+  05/10 (ACHADOS #174): 2 meses a cada 30 min ≈ 8 min/h de banco, viável; 5 dias só com a janela dentro da SQL do poller e a sentinela.
+- *Pronto quando:* o instrumento "com carga" passa com o ciclo de 30 min rodando.
+
+---
+
+## 4. O que já está feito e não precisa ser refeito
+- Primeira busca do poller a partir da carga em disco; cron às 03:00 de Brasília e com
+  credencial; nginx de teste resolvendo a API a cada pedido; poller com custo por query na
+  saúde (ACHADOS #172 e #173).
+- O servidor já entrega a versão anterior de uma página enquanto recalcula (#164). O problema
+  não é falta disso: é a thread ocupada demais para entregar até a versão anterior.
+
+---
+
+## 5. Pedido ao Misael (nginx de produção)
+
+**Não é para já.** É o que a produção vai precisar quando sair do notebook (fase C). Cada
+item é provado antes no ambiente de teste, e a configuração vai pronta.
+
+1. **Upstream da API resolvido a cada pedido**, e não na subida do nginx. Sem isso, todo
+   deploy que recria o contêiner da API deixa a tela em 502 até alguém recarregar o nginx
+   (medido em 02/10). No teste: `resolver 127.0.0.11 valid=10s;` + `set $api http://api:3100;`
+   + `proxy_pass $api;`. Em produção, o resolver é o da rede dele.
+2. **A tela (`frontend/dist`) servida como estático pelo nginx**, com só `/api/` e `/auth/` indo
+   à API (etapa 5). É o que mantém a página abrindo com a API ocupada.
+3. **SSE sem buffer em `/api/eventos`**: `proxy_buffering off`, `proxy_http_version 1.1`,
+   `Connection ''` e `proxy_read_timeout 1h`. Sem isso os números não mudam sozinhos na tela,
+   sem erro nenhum.
+4. **`proxy_read_timeout 90s` em `/api/`**: a abertura fria mais lenta passa dos 60 s padrão.
+   Sai quando a etapa 7 fechar.
+
+Referência: o `nginx.conf` da raiz do repositório é o do ambiente de teste.

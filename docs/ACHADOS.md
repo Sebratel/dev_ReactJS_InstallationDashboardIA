@@ -13862,3 +13862,50 @@ cada. A trava serializou o snapshot com o `refresh` nas duas (256 s e 437 s de e
 recalcula a página. Nenhum aviso das páginas principais no período (pouca operação no domingo).
 A comparação ignora ordem e trata `Date`, e no snapshot os campos de intervalo chegam como
 número ou nulo. A coluna culpada ainda não foi achada.
+
+## #174 — o modelo "ano às 03h, 2 meses a cada 30 min, 5 dias em tempo real", medido (05/10)
+
+Pedido do Erick em 05/10. Medido na segunda de manhã (09:00–09:11 de Brasília), dia útil, um
+pedido por vez, só leitura (`default_transaction_read_only`), SQL pura sem o M. A SQL é a da
+spec, com o recorte de data trocado (`DATE_TRUNC('year', CURRENT_DATE)` e `'2025-01-01'` → hoje
+menos N dias; a janela de 3 meses da `field-agenda` → N dias).
+
+| query | hoje | 60 dias | 5 dias |
+|---|---|---|---|
+| `protocolos-produtividade` | 163,3 s · 114 MB | **12,1 s** · 24 MB | 1,8 s |
+| `field-agenda` | (o script estourou a memória dele, não o banco) | **106,6 s** · 372 MB | 14,6 s |
+| `protocolos-geral` | 43,3 s · 101 MB | **6,3 s** · 8,6 MB | 2,0 s |
+| `protocolos-auxiliares` | 30,2 s · 54 MB | 9,2 s · 11 MB | 1,6 s |
+| `base-categorias-field` | 12,8 s · 56 MB | 2,9 s | 0,3 s |
+| `alocacao-patrimonio` | 7,6 s · 37 MB | 1,6 s | 0,3 s |
+| `protocolos-telefonia` | 6,8 s | 2,3 s | 0,3 s |
+| `retorno-prioritario` | 4,4 s | 2,1 s | **9,9 s** (o plano piora com a janela curta) |
+| `reincidencia` | 4,1 s | 3,4 s | 1,8 s |
+| `instalacoes-reincidentes` | 3,8 s · 16 MB | 1,1 s | 0,2 s |
+| `tecnicos-auxiliares` | 2,6 s | 0,5 s | 0,1 s |
+| `troca-endereco` | 1,3 s | 0,8 s | 0,8 s |
+
+As 12 outras não têm recorte de data e custam igual em qualquer janela. Só uma pesa:
+`backlog-agendado-futuro`, 64–70 s (B.5). `contratos` custa 17–19 s.
+
+**O que os números dizem:**
+1. **Ano às 03:00: viável.** O snapshot completo levou ~15 min (25 de 25, 05/10 08:45–09:00).
+2. **2 meses a cada 30 min: viável, ~8 min/h de banco** (contra ~15 do `refresh.yaml` atual).
+   Exceção: a `field-agenda`, cuja janela de 60 dias custa MAIS que a incremental que já roda
+   (106 s × 43–66 s). Fica na incremental. A `backlog-agendado-futuro` continua inteira até a B.5.
+3. **5 dias em tempo real: viável por tabela, não para todas de uma vez.** Rebuscar os 5 dias de
+   todas custa ~34 s por rodada, ou seja, a 30 s o banco nunca descansaria. Mas para várias tabelas
+   a janela de 5 dias é MAIS BARATA que a volta atual do poller, que recalcula o ano inteiro e só
+   filtra a saída: `reincidencia` 5,9 s por volta → 1,8 s; `instalacoes-reincidentes` 3,2 s →
+   0,2 s. O desenho certo é: janela de 5 dias dentro da SQL do poller, mais a sentinela (B.1b)
+   para só buscar quando algo mudou.
+4. **Recorte por CRIAÇÃO não é recorte por ATIVIDADE.** Este teste cortou pela data em que a
+   query já corta (criação, na maioria). Um protocolo criado há 70 dias e instalado hoje fica fora
+   da janela de 60 dias e só atualiza às 03:00. Decisão do Erick: "2 meses" de quê?
+
+**Experiência do usuário durante a carga (mesma manhã, 6 rodadas no navegador enquanto o snapshot
+rodava):** `capa`, `diario-instalacao` e `telefonia-ouvidoria` sempre < 1,4 s. As piores são as
+duas que o aviso fantasma recalcula sem parar: `manutencao-inicial` até 54 s e
+`instalacao-reincidente` sem abrir em 60 s numa rodada. Depois vêm `visao-geral` (0,6–27 s),
+`agendamento-field` e `relatorio-do-mes` (até > 60 s). A frequência das cargas não resolve isso;
+o plano é `PLANO-CARREGAMENTO.md`, e a R.0 (fantasma) sobe de prioridade.
