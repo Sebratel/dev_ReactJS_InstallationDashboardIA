@@ -13,6 +13,7 @@
 import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
 import { type Segmentacao as SegmentacaoSpec, type Valor } from '../../services/dashboardService.ts';
 import { formata } from '../../utils/formato.ts';
+import { alternaValor } from '../../utils/vizinhanca.ts';
 
 export function SegmentacaoChips(props: {
   pagina: string;
@@ -25,11 +26,9 @@ export function SegmentacaoChips(props: {
   const { pagina, spec } = props;
   const { opcoes, erro } = useValoresDaSegmentacao(pagina, spec.tabela, spec.coluna, spec.nivel);
 
-  /** A seleção depois de clicar em `v` — a mesma conta para o clique e para a previsão. */
-  function proxima(v: Valor): Valor[] {
-    const marcado = props.selecao.some((x) => Object.is(x, v));
-    return marcado ? props.selecao.filter((x) => !Object.is(x, v)) : [...props.selecao, v];
-  }
+  /** A seleção depois de clicar em `v` — a mesma conta do clique, da previsão e da
+   *  vizinhança (`alternaValor`). */
+  const proxima = (v: Valor): Valor[] => alternaValor(props.selecao, v);
 
   function alterna(v: Valor): void {
     props.aoMudar(proxima(v));

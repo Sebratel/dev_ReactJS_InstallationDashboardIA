@@ -383,13 +383,24 @@ export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[] }> =
  * trabalho: a API seguia calculando a página inteira para uma resposta que ninguém
  * ia usar.
  */
+/**
+ * `origem: 'prefetch'` vai só no PEDIDO, nunca na URL que é chave (`urlDaPagina`): o
+ * servidor o usa para pôr o cálculo atrás dos cliques na fila (`prioridadeDe`) e fora
+ * da worker reservada, e a resposta cai na mesma chave do clique. Só a vizinhança usa
+ * (`useVizinhanca`); o mouse sobre um valor continua interativo, porque o clique que
+ * vem logo depois se junta a ele.
+ */
 export const pegaPagina = (
   id: string,
   filtros: readonly FiltroDaTela[],
   opcoes?: OpcoesDePagina,
   signal?: AbortSignal,
   clicados?: readonly { tabela: string; coluna: string }[],
-): Promise<PaginaCalculada> => pega(urlDaPagina(id, filtros, opcoes, clicados), signal);
+  origem?: 'prefetch',
+): Promise<PaginaCalculada> => {
+  const url = urlDaPagina(id, filtros, opcoes, clicados);
+  return pega(origem ? `${url}${url.includes('?') ? '&' : '?'}origem=${origem}` : url, signal);
+};
 
 /** A forma declarada da página (`backend/specs/layout/<id>.layout.yaml`) — não depende de
  *  filtro nem de clique, só de qual página está aberta. Ver Fase L4. */

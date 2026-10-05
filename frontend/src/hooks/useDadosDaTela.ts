@@ -52,11 +52,13 @@ export function consultaDaAbertura(
   layout: LayoutSpec,
   filtros: readonly FiltroDaTela[],
   clicados: Clicados,
+  /** Só a vizinhança passa: ver `pegaPagina`. A chave é a mesma com ou sem. */
+  origem?: 'prefetch',
 ) {
   const opcoes = { visuais: idsIniciais(layout) };
   return {
     queryKey: chavesDeConsulta.pagina(id, urlDaPagina(id, filtros, opcoes, clicados)),
-    queryFn: ({ signal }: { signal: AbortSignal }) => pegaPagina(id, filtros, opcoes, signal, clicados),
+    queryFn: ({ signal }: { signal: AbortSignal }) => pegaPagina(id, filtros, opcoes, signal, clicados, origem),
   };
 }
 

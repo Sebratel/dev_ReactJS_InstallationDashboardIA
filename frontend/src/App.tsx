@@ -18,6 +18,7 @@ import {
   useSaude,
 } from './hooks/useDadosDaTela.ts';
 import { useSessaoStore } from './store/sessaoStore.ts';
+import { useVizinhanca } from './hooks/useVizinhanca.ts';
 import { sai } from './services/authService.ts';
 import { assinaEventos } from './services/eventosService.ts';
 import { avaliaSaudeQueries } from './utils/avisoSaude.ts';
@@ -404,6 +405,17 @@ export function App() {
     s.tabela === 'PROTOCOLOS GERAL' && s.coluna === 'TIPO DE PROTOCOLO';
   const segmentacaoDeChips = segmentacoes.find((v) => ehChipDeSolicitacao(v.segmentacao!));
   const segmentacoesDropdown = segmentacoes.filter((v) => !ehChipDeSolicitacao(v.segmentacao!));
+
+  // Os estados a um clique de filtro deste, pré-carregados enquanto a pessoa lê — os
+  // chips primeiro, que são o clique mais provável (ACHADOS #179).
+  useVizinhanca(
+    atual,
+    layout,
+    filtros,
+    clicados,
+    [...(segmentacaoDeChips ? [segmentacaoDeChips] : []), ...segmentacoesDropdown].map((v) => v.segmentacao!),
+    paginaValida !== null && !paginaQ.isPlaceholderData && !paginaQ.isFetching,
+  );
 
   // FILTRO SEM SEGMENTAÇÃO NA TELA É RECORTE INVISÍVEL.
   //
