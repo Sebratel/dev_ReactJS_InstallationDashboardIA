@@ -113,6 +113,12 @@ recriada → instrumento antes/depois → registro em `ACHADOS.md`. O Erick prom
      numa rodada a cada 2 min (`avisoDasPaginas`; `API_REALTIME_DEMAIS_MS=0` desliga).
 - *Pronto quando:* CPU da API < 50% fora de carga, `primeiro_get_pos_evento_miss` ≈ 0 na
   `agendamento-field`, e a mudança aparece na tela em ≤ 30 s.
+- **Estado (05/10, ACHADOS #176):** no staging. Feito também: carga da worker pela página
+  inteira, a última pronta poupada na mudança do tempo real e os filtros pela forma completa.
+  Medido: 0 pedidos > 200 ms em 20 min, 18 de 18 primeiras visitas pós-evento prontas e a
+  `agendamento-field` em 294–1.003 ms. **Falta:** CPU (~100%; o reaquecimento de ~20 s
+  recomeça a cada mudança), a prova com a gravação da `field-agenda` dentro da janela, e o
+  Erick conferir as listas de `ClassificacaoRelato` / `Descrição` contra o Power BI.
 
 ### Etapa 2 — o carimbo troca uma vez por grupo
 - O refresh grava as tabelas do grupo e publica o carimbo UMA vez, no fim. Hoje são 9 trocas no

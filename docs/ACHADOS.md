@@ -13974,3 +13974,55 @@ erro de CSP e sem pedido a `fonts.googleapis.com`.
 **Resíduo visto pelo instrumento:** os chips de filtro (`SegmentacaoChips`) só pedem os valores
 depois que a página aparece, e mostram "carregando…" por ~16 ms. Entra na etapa 7 (filtros
 pré-carregados).
+
+---
+
+## #176 — etapa 1b: quem abre a VISÃO PRODUTIVA depois de uma mudança já não espera (05/10)
+
+Quatro commits no staging (`ec3e6c1`, `6a63a58`, `2276715`, `40de26d`; instrumento em `80bd472`),
+cada um subido na stack de teste e medido antes do seguinte. O plano escrito na etapa 1 (aplicar
+a mudança linha a linha no dataset) caiu com a primeira medição. Recarregar a página do zero com
+um overlay de 5 mil linhas custa ~0,5 s na `agendamento-field`, ~1,5–2,5 s na `relatorio-do-mes`
+e ~3,5–4,5 s na `visao-geral`. O peso estava em quatro outros lugares:
+
+1. **Valores de segmentação na thread que atende** (57 cargas em ~23 min, #175) → agora na
+   piscina, com voo único por chave e geração por página.
+2. **Cada mudança da `field-agenda` derrubava três páginas** → só a `agendamento-field` é
+   avisada na hora; as demais juntam as mudanças numa rodada a cada 2 min
+   (`avisoDasPaginas`, `API_REALTIME_DEMAIS_MS`).
+3. **A worker carregava o dataset por RECORTE** (a chave levava os ids dos visuais pedidos):
+   um reaquecimento eram várias cargas da mesma página, e com os valores na piscina a CPU foi a
+   ~400%. Agora a carga é a da página inteira, como a thread principal sempre fez. Medido com
+   `worker_cargas` (log `[worker N] … carregou do disco`): uma carga por evento.
+4. **A invalidação do tempo real apagava também a "última pronta" do #164**, então o
+   servir-o-anterior nunca valia no caso frequente → agora ela fica; o GET sai na hora com ela,
+   a nova é calculada por baixo e a página servida velha recebe um segundo aviso SSE quando a
+   nova sai.
+
+**De quebra, um defeito antigo dos filtros:** sem visual amarrado, a lista de valores caía no
+grão reduzido da `FIELD AGENDA` (`projecao.yaml`), onde as colunas-gatilho não estão
+inteiras. No snapshot real, `ClassificacaoRelato` listava 14 de 36 valores e `Descrição` 6 de 28,
+enquanto os visuais da mesma página usam a forma completa. Agora a lista usa a forma completa
+que os visuais da página pedem. **Falta o Erick conferir as duas listas contra o Power BI.**
+
+**Antes × depois** (stack de teste, horário de operação, 20 min cada):
+
+| medida | antes (10:05–10:29 RS) | depois (11:16–11:37 RS) |
+|---|---|---|
+| sonda do laço: pedidos > 200 ms | 49 de 2.368 (máx. 1.038 ms) | **0 de 2.368** |
+| cargas de dataset na thread principal | 48 em 20 min | **0** |
+| 1º GET depois de uma mudança | 9 prontos / 17 calculando, média 7,8 s, máx. 36 s | **18 prontos / 0**, média 2 ms |
+| `agendamento-field` pronta (`tela:entrada`, 1/min) | 482–1.245 ms quando acertava; 4,8–16 s depois de evento | **294–1.003 ms** em 18 de 18 |
+| `worker_fallback` / `valores_fallback` | 0 / — | 0 / 0 |
+| CPU da API | 73–174% | ~100% na maior parte; 250–495% nos picos |
+
+**O que ainda não fecha a etapa:**
+- **CPU < 50% não foi atingido.** O reaquecimento da `agendamento-field` ainda leva ~20 s
+  (abertura, 10 segmentações, períodos recentes e cada visual abaixo da dobra) e recomeça a
+  cada mudança (~35 s): uma worker fica ocupada o tempo todo. O usuário já não sente isso (a
+  worker de quem usa fica reservada, e a última pronta cobre o intervalo), mas é máquina gasta.
+- **O pior cenário não caiu na janela.** O grupo `quente` rodou às 11:23 (é a rodada de
+  1.003 ms, com a CPU em 494%), mas a gravação da `field-agenda` (grupo `frio`, a do pico de 1 s
+  no #175) não. Repetir a sonda numa janela com ela.
+- 5 das 18 rodadas tiveram "carregando…" por ~16 ms nos chips de filtro (o resíduo do #175,
+  etapa 7).
