@@ -318,15 +318,85 @@ export interface FilterContext {
   readonly filters: readonly TableFilter[];
 }
 
+const permitidosCache = new WeakMap<
+  readonly Row[],
+  Map<string, { permitidosKeys: Set<string>; permitidosValores: DaxValue[]; amostraFonte: DaxValue }>
+>();
 const restringeCache = new WeakMap<
   readonly Row[],
   WeakMap<readonly Row[], Map<string, Row[]>>
 >();
 
+/**
+ * Liga/desliga o reaproveitamento do contexto pai (ver `linhasVisiveis`). Existe para
+ * a prova de paridade (`npm run bench:filtro-pai-paridade`) calcular as páginas
+ * com e sem ele e comparar visual por visual. Em produção fica ligado.
+ */
+let reaproveitaDoPai = true;
+export function defineReaproveitamentoDoPai(ligado: boolean): void {
+  reaproveitaDoPai = ligado;
+}
+
+/**
+ * As tabelas que `linhasVisiveis(key, rels)` VISITARIA — a mesma travessia, a seco,
+ * sobre o grafo (que não muda). `null` quando a travessia esbarra num caminho
+ * ambíguo: aí ninguém reaproveita nada e o cálculo de verdade erra alto como sempre.
+ * Um superconjunto do que a resposta lê (os atalhos de `pronto` só pulam arestas),
+ * e é isso que torna o reaproveitamento seguro.
+ */
+const visitadasCache = new WeakMap<Propagation, Map<string, ReadonlySet<string> | null>>();
+function tabelasVisitadas(
+  propagation: Propagation,
+  dataset: Dataset,
+  key: string,
+  rels: ReadonlySet<string>,
+): ReadonlySet<string> | null {
+  const ck = rels.size === 0 ? key : `${key}|${[...rels].sort().join(',')}`;
+  let porGrafo = visitadasCache.get(propagation);
+  if (!porGrafo) {
+    porGrafo = new Map();
+    visitadasCache.set(propagation, porGrafo);
+  }
+  if (porGrafo.has(ck)) return porGrafo.get(ck)!;
+  const fora = new Set<string>();
+  const caminho: string[] = [];
+  const emUso = new Set(rels);
+  let ambiguo = false;
+  const visita = (t: string): void => {
+    if (ambiguo) return;
+    fora.add(t);
+    caminho.push(t);
+    for (const a of propagation.incoming(t)) {
+      if (emUso.has(a.relationship)) continue;
+      if (caminho.includes(a.source)) {
+        ambiguo = true;
+        break;
+      }
+      if (!dataset.hasTable(a.source)) continue;
+      emUso.add(a.relationship);
+      visita(a.source);
+      emUso.delete(a.relationship);
+    }
+    caminho.pop();
+  };
+  visita(key);
+  const res = ambiguo ? null : fora;
+  porGrafo.set(ck, res);
+  return res;
+}
+
 export class FilteredContext implements FilterContext {
   readonly filters: readonly TableFilter[];
   private readonly dataset: Dataset;
   private readonly propagation: Propagation;
+  /**
+   * O contexto de onde este nasceu (`with`/`without`) e as tabelas cujos filtros
+   * mudaram na passagem. Ver o reaproveitamento em `linhasVisiveis`.
+   */
+  private readonly pai: FilteredContext | null;
+  /** Array e não `Set`: são uma ou duas tabelas, e este objeto nasce uma vez por
+   *  linha agrupada — centenas de milhares numa abertura. */
+  private readonly mudadas: readonly string[];
   /**
    * Linhas visíveis, por tabela **e por conjunto de relacionamentos já
    * atravessados** — ver `linhasVisiveis`. Contexto é imutável, o cache não
@@ -338,10 +408,14 @@ export class FilteredContext implements FilterContext {
     dataset: Dataset,
     propagation: Propagation,
     filters: readonly TableFilter[] = [],
+    pai: FilteredContext | null = null,
+    mudadas: readonly string[] = [],
   ) {
     this.dataset = dataset;
     this.propagation = propagation;
     this.filters = filters;
+    this.pai = pai;
+    this.mudadas = mudadas;
   }
 
   static unfiltered(dataset: Dataset, propagation: Propagation): FilteredContext {
@@ -387,6 +461,26 @@ export class FilteredContext implements FilterContext {
       : `${key}|${[...relsNoCaminho].sort().join(',')}`;
     const cacheado = this.cache.get(ck);
     if (cacheado) return cacheado;
+
+    // **O que o filtro novo não alcança, o pai já sabe** (ACHADOS #177). Uma tabela
+    // agrupada por protocolo cria um contexto filho por linha ("protocolo = X"), e
+    // cada filho nascia de cache vazio: com `PROTOCOLOS GERAL[TURNO]` na tela, a
+    // propagação TURNO → FIELD AGENDA (620 mil linhas) era refeita ~10 mil vezes —
+    // mais de 220 s e 6 GB numa abertura da `agendamento-field`. Se a travessia que
+    // esta chamada faria não passa por nenhuma tabela cujos filtros mudaram, a
+    // resposta é a mesma do pai, e o MESMO array (o que também faz o cache de
+    // `restringe`, por identidade, acertar). Só predicado de filtro muda resposta; as
+    // materializações (`pronto`) são atalho e não entram na conta.
+    // A tabela que mudou é o caso mais comum (a própria tabela agrupada) e nunca
+    // reaproveita: sai antes de qualquer outra conta.
+    if (reaproveitaDoPai && this.pai !== null && !this.mudadas.includes(key)) {
+      const visitadas = tabelasVisitadas(this.propagation, this.dataset, key, relsNoCaminho);
+      if (visitadas !== null && !this.mudadas.some((t) => visitadas.has(t))) {
+        const doPai = this.pai.linhasVisiveis(key, caminho, relsNoCaminho);
+        this.cache.set(ck, doPai);
+        return doPai;
+      }
+    }
 
     const aplicaveis = this.filters.filter((f) => f.table === key);
     const todas = this.dataset.rows(key);
@@ -537,19 +631,7 @@ export class FilteredContext implements FilterContext {
       }
     }
 
-    const permitidosKeys = new Set<string>();
-    const permitidosValores: DaxValue[] = [];
-    let amostraFonte: DaxValue = BLANK;
-    const lerFonte = this.propagation.joinReader(aresta.sourceTable, aresta.sourceColumn);
-    for (const row of fonte) {
-      const v = lerFonte(row);
-      if (isBlank(amostraFonte)) amostraFonte = v;
-      const k = identityKey(v);
-      if (!permitidosKeys.has(k)) {
-        permitidosKeys.add(k);
-        permitidosValores.push(v);
-      }
-    }
+    const { permitidosKeys, permitidosValores, amostraFonte } = this.permitidos(fonte, aresta);
 
     let saida: Row[] = [];
     let amostraAlvo: DaxValue = BLANK;
@@ -621,6 +703,44 @@ export class FilteredContext implements FilterContext {
   }
 
   /**
+   * As chaves que a origem deixa passar por uma aresta. Dependem só da origem e da
+   * aresta — não do destino —, então ficam guardadas pelo array da origem: o contexto
+   * filho que reaproveita a origem do pai (ver `linhasVisiveis`) reaproveita também
+   * isto, em vez de reler ~50 mil linhas por linha agrupada.
+   */
+  private permitidos(
+    fonte: readonly Row[],
+    aresta: PropagationEdge,
+  ): { permitidosKeys: Set<string>; permitidosValores: DaxValue[]; amostraFonte: DaxValue } {
+    let porAresta = reaproveitaDoPai ? permitidosCache.get(fonte) : undefined;
+    const guardado = porAresta?.get(aresta.relationship);
+    if (guardado) return guardado;
+
+    const permitidosKeys = new Set<string>();
+    const permitidosValores: DaxValue[] = [];
+    let amostraFonte: DaxValue = BLANK;
+    const lerFonte = this.propagation.joinReader(aresta.sourceTable, aresta.sourceColumn);
+    for (const row of fonte) {
+      const v = lerFonte(row);
+      if (isBlank(amostraFonte)) amostraFonte = v;
+      const k = identityKey(v);
+      if (!permitidosKeys.has(k)) {
+        permitidosKeys.add(k);
+        permitidosValores.push(v);
+      }
+    }
+    const res = { permitidosKeys, permitidosValores, amostraFonte };
+    if (reaproveitaDoPai) {
+      if (!porAresta) {
+        porAresta = new Map();
+        permitidosCache.set(fonte, porAresta);
+      }
+      porAresta.set(aresta.relationship, res);
+    }
+    return res;
+  }
+
+  /**
    * Contexto novo com filtros adicionados, aplicando a substituição do DAX: filtro
    * novo derruba o antigo que toque qualquer coluna em comum.
    *
@@ -632,16 +752,22 @@ export class FilteredContext implements FilterContext {
     const sobreviventes = this.filters.filter(
       (antigo) => !novos.some((n) => conflita(antigo, n)),
     );
-    return new FilteredContext(this.dataset, this.propagation, [...sobreviventes, ...novos]);
+    // Mudou: a tabela de cada filtro novo e a de cada filtro que ele derrubou.
+    const mudadas: string[] = [];
+    for (const n of novos) if (!mudadas.includes(n.table)) mudadas.push(n.table);
+    if (sobreviventes.length !== this.filters.length) {
+      for (const antigo of this.filters) {
+        if (!sobreviventes.includes(antigo) && !mudadas.includes(antigo.table)) mudadas.push(antigo.table);
+      }
+    }
+    return new FilteredContext(this.dataset, this.propagation, [...sobreviventes, ...novos], this, mudadas);
   }
 
   /** Contexto novo sem os filtros que `ALL`/`ALLEXCEPT` remove. */
   without(predicado: (f: TableFilter) => boolean): FilteredContext {
-    return new FilteredContext(
-      this.dataset,
-      this.propagation,
-      this.filters.filter((f) => !predicado(f)),
-    );
+    const ficam = this.filters.filter((f) => !predicado(f));
+    const mudadas = [...new Set(this.filters.filter((f) => !ficam.includes(f)).map((f) => f.table))];
+    return new FilteredContext(this.dataset, this.propagation, ficam, this, mudadas);
   }
 }
 

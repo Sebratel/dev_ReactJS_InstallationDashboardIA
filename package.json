@@ -53,6 +53,7 @@
     "bench:carga": "node --max-old-space-size=8192 --expose-gc backend/tools/bench/src/carga.ts",
     "bench:colunar": "node --max-old-space-size=8192 --expose-gc backend/tools/bench/src/colunar.ts",
     "bench:colunar-paridade": "node --max-old-space-size=8192 backend/tools/bench/src/colunar-paridade.ts",
+    "bench:filtro-pai-paridade": "node --max-old-space-size=8192 backend/tools/bench/src/filtro-pai-paridade.ts",
     "bench:identidade-por-id": "node --max-old-space-size=8192 backend/tools/bench/src/identidade-por-id.ts",
     "bench:leitor-coluna": "node --max-old-space-size=8192 backend/tools/bench/src/leitor-coluna.ts",
     "paridade": "node backend/tools/paridade/src/index.ts",
