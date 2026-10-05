@@ -14026,3 +14026,63 @@ que os visuais da página pedem. **Falta o Erick conferir as duas listas contra 
   no #175) não. Repetir a sonda numa janela com ela.
 - 5 das 18 rodadas tiveram "carregando…" por ~16 ms nos chips de filtro (o resíduo do #175,
   etapa 7).
+
+---
+
+## #177 — o filtro TURNO travava a agendamento-field: um contexto por linha, cada um de cache vazio (05/10)
+
+**Sintoma.** Aplicar `PROTOCOLOS GERAL[TURNO]` na `agendamento-field` passava de 60 s pela tela
+(e derrubava o worker de 768 MB). No snapshot real, a abertura com esse filtro levou **257 s e
+6 GB**, quase tudo num visual só: a `tableEx` "PROTOCOLOS DISTINTOS"
+(`Status Protocolo Dia[protocolo]`, ~10 mil linhas).
+
+**Causa.** Uma tabela agrupada cria um contexto de filtro filho por linha ("protocolo = X"), e
+cada filho nascia de cache vazio. A propagação TURNO → `PROTOCOLOS GERAL` → `Status Protocolo
+Dia` era refeita por linha, e o conjunto de chaves permitidas (~50 mil linhas da origem) era
+remontado por linha também.
+
+**Correção (`44aaf97`, `measure-engine/src/filter.ts`).**
+- O filho reaproveita do pai o array de linhas visíveis de toda tabela cuja travessia de
+  relacionamentos (feita a seco sobre o grafo, que não muda) não passa por tabela nenhuma cujos
+  filtros mudaram. Só predicado muda resposta; as materializações são atalho.
+- As chaves permitidas ficam em cache por (array de origem, relacionamento).
+- Uma heurística de "varrer o destino quando ele é menor" foi tentada e **retirada**: deixava a
+  página sem filtro ~30% mais lenta (A/B alternado) e mudava ordem de linha, o que a prova de
+  paridade acusou (`04979b`, caso 2).
+
+**Medido.** TURNO na abertura: 257 s → ~10 s no snapshot; na API do Docker, 1º clique 8 s
+(antes > 60 s ou travava), 2º 9 ms. Os outros filtros: 0,2–1,7 s.
+
+**Paridade (`npm run bench:filtro-pai-paridade`).** Cada cálculo num processo próprio, hash por
+visual, as 14 páginas sem filtro e com os 2 primeiros valores das 2 primeiras segmentações:
+**49 casos iguais, 0 divergências**. No caso do TURNO o motor antigo não termina a página
+inteira; visual por visual, 38 iguais e 1 sem base (o próprio "PROTOCOLOS DISTINTOS", que o
+motor antigo não termina em 180 s).
+
+**O que sobrou nos ~8 s.** Três `tableEx` grandes da `agendamento-field` ("HISTÓRICO DE RELATOS
+COMPLETOS", "VISÃO GERAL", "HISTÓRICO DE RELATOS"), 1,5–3 s cada, com ou sem filtro: o perfil põe
+o custo em `enumeraCombinacoes` (620 mil linhas × 6–12 colunas, uma chave de texto por linha) e na
+coleta de lixo. É o próximo alvo para filtro em milissegundos.
+
+---
+
+## #178 — fase 2 do frontend: o estado do servidor no React Query (05/10)
+
+`ac55c74`. Os quatro caches feitos à mão do `App.tsx` viraram consultas
+(`hooks/useDadosDaTela.ts`, chaves em `chavesDeConsulta`): lista, forma, abertura, saúde,
+valores de segmentação e os visuais abaixo da dobra. O SSE, o relógio de 60 s e o "Atualizar"
+usam `invalidateQueries`; os três pré-carregamentos usam `prefetchQuery`. `staleTime: Infinity`
+— quem diz que mudou é o servidor.
+
+**Antes × depois** (stack de teste, `agendamento-field`, 3 rodadas, contexto novo cada):
+
+| medida | antes | depois |
+|---|---|---|
+| entrada até pronta | 518–547 ms | 326–528 ms |
+| pedidos na entrada | 31 | 25–31 |
+| troca de aba / volta | 110–352 / 97–178 ms | 89–153 / 73–107 ms |
+| pedidos na troca + volta | 26–29 | 14–24 |
+| "carregando" na volta | até 1 | 0 |
+
+Nenhum "carregando" novo; 0 erro no console (conferido no dev server com filtro, rolagem até
+os visuais abaixo da dobra e "Atualizar"). O bundle cresceu 30 kB (9 kB com gzip).
