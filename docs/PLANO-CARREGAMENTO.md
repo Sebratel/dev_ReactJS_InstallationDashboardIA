@@ -99,6 +99,21 @@ recriada → instrumento antes/depois → registro em `ACHADOS.md`. O Erick prom
   "carregando…".
 
 ### Etapa 8 — só então, a frequência nova
+
+**Modelo recomendado (05/10, a partir das medições do ACHADOS #174):**
+
+| camada | frequência | janela | custo de banco |
+|---|---|---|---|
+| referência | 03:00 | o ano inteiro (desde 2025 onde a query já corta assim) | ~15 min, de madrugada |
+| correção | 30 min | últimos **60 dias** pela criação; `field-agenda` na incremental; as pequenas inteiras | ~8 min/h |
+| ao vivo, números principais | **60 s** | últimos **15 dias** (`geral`, `alocacao`, `produtividade`) | ~6 min/h |
+| ao vivo, demais | 2 min (`field-agenda` 30 s, em dois passos) | últimos 15 dias | ~5 min/h |
+
+Total ~19 min/h, contra ~35 hoje. 15 dias, e não 5, porque 5 dias deixaria fora 11% das
+instalações e 43% dos encerramentos do dia. O que escapa dos 15 dias (0,3% e 2,6%) chega na
+correção de 30 min; o resto, às 03:00. **Depende da etapa 6:** com o aviso fantasma, o ao vivo
+recalcularia páginas a cada volta.
+
 O modelo pedido em 05/10: **ano inteiro às 03:00, os últimos 2 meses de tudo a cada 30 min e
 tempo real dos últimos 5 dias.** Ele entra por último de propósito, porque dobra a quantidade
 de cargas pesadas por hora. Com as etapas 2–5 feitas, isso não chega à tela. Sem elas, é o

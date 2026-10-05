@@ -13909,3 +13909,25 @@ duas que o aviso fantasma recalcula sem parar: `manutencao-inicial` até 54 s e
 `instalacao-reincidente` sem abrir em 60 s numa rodada. Depois vêm `visao-geral` (0,6–27 s),
 `agendamento-field` e `relatorio-do-mes` (até > 60 s). A frequência das cargas não resolve isso;
 o plano é `PLANO-CARREGAMENTO.md`, e a R.0 (fantasma) sobe de prioridade.
+
+**Adendo, mesma manhã: quanto tempo um protocolo leva da criação à instalação** (snapshot em disco,
+só contagens; o que instalou/encerrou nos últimos 30 dias):
+
+| desde a criação | instalações (`protocolos-geral`, 2.940) | encerramentos (`protocolos-produtividade`, 9.533) |
+|---|---|---|
+| ≤ 5 dias | 88,7% | 57,2% |
+| ≤ 15 dias | 99,7% | 97,4% |
+| ≤ 30 dias | 100% | 99,1% |
+| ≤ 60 dias | 100% | 99,9% |
+
+Por isso 5 dias é curto para o tempo real: deixaria fora 11% das instalações e 43% dos
+encerramentos do dia. E o custo da janela de **15 dias**, na mesma medição (12:15 UTC): `geral` 2,7 s,
+`produtividade` 3,0 s, `auxiliares` 2,5 s, `reincidencia` 1,9 s, `retorno-prioritario` 1,7 s (com
+5 dias eram 9,9 s), `alocacao` 0,5 s, o resto ≤ 0,7 s; `field-agenda` 32,3 s (fica nos dois passos
+que já roda, ~0,6 s por volta).
+
+**Modelo recomendado ao Erick a partir disto** (`PLANO-CARREGAMENTO.md`, etapa 8):
+03:00 o ano inteiro; a cada 30 min os últimos 60 dias pela criação (~8 min/h); ao vivo, os
+últimos 15 dias, a cada 60 s nas tabelas dos números principais (`geral`, `alocacao`,
+`produtividade`, ~6 min/h) e a cada 2 min nas demais (~5 min/h). Total ~19 min/h, contra ~35 hoje
+(refresh + poller), e o número principal ao vivo em ~1 min em vez de 30.
