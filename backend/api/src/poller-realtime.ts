@@ -296,6 +296,25 @@ export function mudancasReais(antes: DeltaDeTabela, depois: DeltaDeTabela): numb
 }
 
 /**
+ * A marca mais nova entre as chaves que MUDARAM nesta volta: a hora do fato mais recente
+ * que o poller acabou de perceber. Base de `atrasoDoFato`.
+ */
+export function marcaMaisNovaDasMudancas(
+  antes: DeltaDeTabela,
+  depois: DeltaDeTabela,
+  marcaCols: readonly string[],
+): Date | null {
+  let mais: Date | null = null;
+  for (const [chave, grupo] of depois.porChave) {
+    const anterior = antes.porChave.get(chave);
+    if (anterior !== undefined && mesmoGrupo(anterior, grupo)) continue;
+    const m = marcaDe(grupo, marcaCols);
+    if (m && (!mais || m.getTime() > mais.getTime())) mais = m;
+  }
+  return mais;
+}
+
+/**
  * Mesmo grupo = mesmas linhas, em qualquer ordem. A fonte não promete ordem entre
  * duas buscas (a SQL da FIELD AGENDA ordena por data de criação, com empate dentro do
  * protocolo), e acusar mudança por reordenação derrubaria o cache à toa.
@@ -398,6 +417,13 @@ export interface MedidaDaQuery {
   ultimoBancoMs: number | null;
   /** Tempo de consulta somado, por hora de vigília — a unidade da meta da Fase B. */
   bancoMsPorHora: number;
+  /**
+   * Do fato no Voalle até o poller perceber (ms): a marca mais nova das chaves que mudaram,
+   * contra o relógio do banco na volta. Só fatos da última hora: mudança de status não mexe
+   * em coluna de data (#166), e uma marca de dias atrás mediria a idade do protocolo, não o
+   * atraso. Meta da VISÃO PRODUTIVA: do fato à tela ≤ 30 s (`PLANO-CARREGAMENTO.md` §0).
+   */
+  atrasoDoFato: { n: number; medianoMs: number | null; maxMs: number | null };
 }
 
 interface Acumulado {
@@ -407,6 +433,10 @@ interface Acumulado {
   bancoMs: number;
   bancoMsMax: number;
   ultimoBancoMs: number | null;
+  /** Os últimos atrasos do fato (ms), para a mediana; janela curta de propósito. */
+  atrasos: number[];
+  atrasoMax: number;
+  atrasoN: number;
 }
 
 /**
@@ -437,6 +467,8 @@ export class PollerRealtime {
   readonly #medidas = new Map<string, Acumulado>();
   /** Desde quando há vigília — o denominador de `bancoMsPorHora`. */
   #vigiaDesde: Date | null = null;
+  /** Relógio do banco − relógio do processo, arredondado a 15 min (o fuso de `parseSemFuso`). */
+  #fusoMs = 0;
 
   constructor(opts: OpcoesDoPoller) {
     this.#specsDir = opts.specsDir;
@@ -474,6 +506,7 @@ export class PollerRealtime {
   async #semeia(cfg: ConfigDePoll, run: ReturnType<typeof postgresRunner>): Promise<void> {
     if (this.#semeadas.has(cfg.query)) return;
     const relogio = await this.#relogio(run);
+    this.#fusoMs = Math.round((relogio.getTime() - this.#opts.agora().getTime()) / 900_000) * 900_000;
     this.#deltas.set(cfg.query, { ...novoDelta(relogio), desde: this.#partida(cfg, relogio) });
     this.#semeadas.add(cfg.query);
   }
@@ -691,6 +724,11 @@ export class PollerRealtime {
         bancoMsMax: m?.bancoMsMax ?? 0,
         ultimoBancoMs: m?.ultimoBancoMs ?? null,
         bancoMsPorHora: m && horas ? Math.round(m.bancoMs / horas) : 0,
+        atrasoDoFato: {
+          n: m?.atrasoN ?? 0,
+          medianoMs: m && m.atrasos.length ? [...m.atrasos].sort((a, b) => a - b)[Math.floor(m.atrasos.length / 2)]! : null,
+          maxMs: m && m.atrasoN ? m.atrasoMax : null,
+        },
       };
     });
     const totalPorHora = porQuery.reduce((s, q) => s + q.bancoMsPorHora, 0);
@@ -720,7 +758,7 @@ export class PollerRealtime {
   #medida(query: string): Acumulado {
     let m = this.#medidas.get(query);
     if (!m) {
-      m = { voltas: 0, puladas: 0, erros: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null };
+      m = { voltas: 0, puladas: 0, erros: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null, atrasos: [], atrasoMax: 0, atrasoN: 0 };
       this.#medidas.set(query, m);
     }
     return m;
@@ -818,7 +856,18 @@ export class PollerRealtime {
     const ms = Date.now() - t0;
     const mudaram = mudancasReais(antes, atualizado);
     this.#voltas += 1;
-    this.#medida(cfg.query).voltas += 1;
+    const med = this.#medida(cfg.query);
+    med.voltas += 1;
+    if (mudaram > 0) {
+      const marca = marcaMaisNovaDasMudancas(antes, atualizado, cfg.marca);
+      const atraso = marca ? agora.getTime() + this.#fusoMs - marca.getTime() : null;
+      if (atraso !== null && atraso >= 0 && atraso <= 3_600_000) {
+        med.atrasos.push(atraso);
+        if (med.atrasos.length > 50) med.atrasos.shift();
+        med.atrasoMax = Math.max(med.atrasoMax, atraso);
+        med.atrasoN += 1;
+      }
+    }
     this.#ultimaVolta = agora;
     if (mudaram > 0) {
       this.#mudancas += 1;

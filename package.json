@@ -60,6 +60,8 @@
     "layout:valida": "node backend/tools/layout/src/valida-cli.ts",
     "layout:golden": "node --max-old-space-size=8192 backend/tools/layout/src/golden.ts",
     "tela": "node backend/tools/tela/src/varre.ts",
+    "tela:entrada": "node backend/tools/tela/src/entrada.ts",
+    "tela:ao-vivo": "node backend/tools/tela/src/ao-vivo.ts",
     "web": "npm run dev --workspace @analytics/web",
     "web:build": "npm run build --workspace @analytics/web",
     "probe:reaquecimento": "node --max-old-space-size=3072 backend/tools/probe/src/reaquecimento-pos-evento.ts",

@@ -490,6 +490,45 @@ test(`PollerRealtime: disco velho demais recua só RECUO_MAXIMO_MS; sem manifest
   assert.equal(sem.chamadas[0]!.values[0], `2026-09-10 12:00:00.000`);
 });
 
+// ------------------------------- do fato até o poller perceber (PLANO-CARREGAMENTO etapa 0)
+
+test(`PollerRealtime.estado(): atraso do fato no relógio do banco — 30 s, com o banco em −3 h`, async () => {
+  const fake = poolDeMentira([
+    // marca na convenção parseSemFuso: 09:59:30 "de parede", dígitos em UTC
+    { SOLICITACAO: `A`, [`DATA CRIADO`]: new Date(`2026-09-03T09:00:00Z`), [`DATA ENCERRADO`]: new Date(`2026-09-03T09:59:30Z`) },
+  ]);
+  const p = new PollerRealtime({
+    specsDir: `backend/specs`,
+    pool: fake.pool,
+    agora: () => new Date(`2026-09-03T13:00:00Z`), // 10:00 em Brasília, instante real
+    relogioDoBanco: async () => new Date(`2026-09-03T10:00:00Z`),
+    cobertoAte: () => null,
+    anuncia: () => {},
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const q = p.estado().porQuery.find((x) => x.query === `protocolos-auxiliares`)!;
+  assert.deepEqual(q.atrasoDoFato, { n: 1, medianoMs: 30_000, maxMs: 30_000 });
+});
+
+test(`PollerRealtime.estado(): mudança com marca de dias atrás não entra no atraso`, async () => {
+  // Troca de status num protocolo antigo: muda o grupo, não a data. Medir isso como atraso
+  // seria medir a idade do protocolo.
+  const fake = poolDeMentira([
+    { SOLICITACAO: `A`, [`DATA CRIADO`]: new Date(`2026-09-01T09:00:00Z`), [`DATA ENCERRADO`]: new Date(`2026-09-01T09:30:00Z`) },
+  ]);
+  const p = new PollerRealtime({
+    specsDir: `backend/specs`,
+    pool: fake.pool,
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    cobertoAte: () => null,
+    anuncia: () => {},
+  });
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const q = p.estado().porQuery.find((x) => x.query === `protocolos-auxiliares`)!;
+  assert.equal(p.estado().mudancas, 1, `a mudança foi anunciada`);
+  assert.deepEqual(q.atrasoDoFato, { n: 0, medianoMs: null, maxMs: null });
+});
+
 // ------------------------------------------------- fuso de :desde (ACHADOS #168)
 
 test('paraParametroSemFuso: os dígitos que parseSemFuso leu, sem Z — em qualquer fuso do processo', () => {
