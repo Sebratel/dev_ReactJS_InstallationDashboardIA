@@ -14157,3 +14157,34 @@ mesma combinação, fria, 1,1–3,7 s.
 frio, em fila); o terceiro filtro em diante (a vizinhança é de um passo); segmentações com mais
 de 40 valores; e o período (árvore de data), que tem o seu próprio pré-cálculo
 (`filtrosRecentes`).
+
+---
+
+## #180 — fase 3 do frontend: a URL é o estado, e o `App.tsx` dividido (05/10)
+
+**O que mudou.** Página, filtros e campos clicados passaram a SER a URL, lida pelo
+`react-router` (`hooks/useEstadoDaTela.ts`), em vez de três `useState` que a URL seguia por um
+efeito com `pushState`/`replaceState`, um ouvinte de `popstate` e um `useRef` de origem. O
+`App.tsx` (660 linhas) ficou com o portão de login e a rota; o resto foi para
+`pages/dashboard/DashboardPage.tsx`, três hooks (`useEstadoDaTela`, `useTempoReal`,
+`usePreCargas`) e `BarraDeFiltros`. Plano em `PLANO-PADROES-FRONTEND.md`, fase 3.
+
+**Um defeito que a mudança expôs, e o marcador que o fecha.** `escreveRota` omite o filtro
+quando ele é o padrão da página, então a URL sem `filtro` queria dizer duas coisas: "o padrão"
+e "a pessoa limpou tudo". Com o estado na memória isso passava quase despercebido — só o voltar
+do navegador lia a URL, e caía em "sem filtro" num estado que era o padrão. Com a URL como
+fonte, limpar o filtro devolveria o padrão na hora. Agora `escreveRota` grava `limpo=1` quando
+não há filtro numa página que tem padrão, e `filtrosDaRota` resolve: URL sem filtro e sem
+marcador é o padrão (todo link antigo continua valendo). `estado-da-tela.test.ts` cobre os
+casos; sem a linha do marcador, 1 teste falha.
+
+**Conferido no navegador** (dev server da worktree contra a API do Docker, modo conferência):
+abre no padrão com a URL limpa; chip entra na URL e substitui no histórico; limpar o chip volta
+à URL limpa; clique cruzado entra com `clicado` e empilha; voltar desfaz e a tela acompanha
+(2 filtros), avançar refaz; recarregar mantém (3 filtros); `limpo=1` abre sem filtro e continua
+dizendo limpo; aba troca a página e substitui; o link antigo `/diario-instalacao` abre a página
+e a aba seguinte volta para `/?pagina=…`; sem página na URL abre a primeira pronta; a
+vizinhança (#179) segue pré-carregando (13 de 14 vizinhos em 8 s); "Atualizar" busca a página e
+as 11 listas de filtro e marca a hora; 0 erro no console.
+
+**Custo:** o bundle cresceu 38 kB (12 kB com gzip), o `react-router`.

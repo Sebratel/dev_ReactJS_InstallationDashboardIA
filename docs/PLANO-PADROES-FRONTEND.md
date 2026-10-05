@@ -56,7 +56,24 @@ Substituir os caches manuais de `App.tsx` (`layoutsVistos`, `paginasVistas`,
 **Restrição:** nada de "carregando…" a mais ao entrar ([[feedback-tudo-pre-carregado]]).
 Medir antes e depois o número de pedidos e o tempo até a página ficar pronta.
 
-## Fase 3 — URL e divisão do `App.tsx` (866 linhas)
+## Fase 3 — URL e divisão do `App.tsx` (FEITA, `0ac2923`, 05/10/2026)
+
+**Como ficou** (ACHADOS #180):
+- O estado da tela (página, filtros, clicados) **é** a URL, lida pelo `react-router`
+  (`hooks/useEstadoDaTela.ts`). Saíram o `pushState`/`replaceState`, o ouvinte de `popstate` e
+  o `useRef` que dizia de onde vinha cada mudança. A regra continua: o clique cruzado empilha,
+  seletor e aba substituem. As ações leem a URL na hora, não o estado do último render.
+- Marcador novo **`limpo=1`**: URL sem `filtro` continua sendo o padrão da página (todo link
+  antigo), e quem limpa fica limpo. Antes, voltar no histórico para um estado padrão caía em
+  "sem filtro".
+- A sessão já estava numa store Zustand desde a fase 2 (`store/sessaoStore.ts`).
+- `App.tsx` (660 linhas) virou o portão de login e a rota (34). A página é
+  `pages/dashboard/DashboardPage.tsx` (183); a lógica, `useEstadoDaTela`, `useTempoReal` e
+  `usePreCargas`; a barra, `components/filtros/BarraDeFiltros.tsx`; o recorte das
+  segmentações, `utils/segmentacoesDaTela.ts` (a vizinhança usa o mesmo).
+- Custo: o bundle cresceu 38 kB (12 kB com gzip), o `react-router`.
+
+O plano original:
 
 - Filtros, clicados e página atual passam para `searchParams` do `react-router`, no
   lugar de `leRota`/`escreveRota`/`popstate` feitos à mão. A regra atual continua: o
