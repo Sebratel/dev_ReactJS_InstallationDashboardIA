@@ -125,6 +125,8 @@ export interface RespostaCalculoWorker {
    * recarregaria o dataset na thread principal só para errar igual.
    */
   erroDoPedido?: string;
+  /** Presente quando ESTE pedido carregou o dataset do disco (o `cacheDeCarga` errou). */
+  carga?: { ms: number; libera: string[]; formaCompleta: string[] };
   erro?: string;
 }
 
@@ -403,8 +405,13 @@ if (parentPort) {
       );
 
       let promessa = cacheDeCarga.get(chave);
+      // Este pedido pagou a carga do disco? Sai na resposta — é o número que diz se
+      // o `cacheDeCarga` está acertando (ACHADOS #175: 304 tarefas de fundo em ~6 min,
+      // ~0,9 s cada, quando a lista em si custa milissegundos).
+      let carga: RespostaCalculoWorker['carga'];
       if (!promessa) {
         const agora = new Date(agoraIso);
+        const t0 = Date.now();
         promessa = carrega({
           dir: snapshotDir,
           model: modelCached,
@@ -429,6 +436,8 @@ if (parentPort) {
           ...(overlays && overlays.size > 0 ? { overlay: mescladoresDe(overlays) } : {}),
         });
         guardaNoCache(chave, promessa);
+        await promessa.catch(() => undefined);
+        carga = { ms: Date.now() - t0, libera: [...libera].sort(), formaCompleta: [...formaCompleta].sort() };
       }
 
       const carregado = await promessa;
@@ -437,7 +446,7 @@ if (parentPort) {
         let resp: RespostaCalculoWorker;
         try {
           const lista = valoresDistintos(carregado.ev, valores.tabela, valores.coluna, valores.nivel);
-          resp = { idReq, ok: true, valores: lista, dadoDe: carregado.dadoDe };
+          resp = { idReq, ok: true, valores: lista, dadoDe: carregado.dadoDe, ...(carga ? { carga } : {}) };
         } catch (err) {
           resp = { idReq, ok: true, erroDoPedido: err instanceof Error ? err.message : String(err) };
         }
@@ -498,6 +507,7 @@ if (parentPort) {
         dadoDe: carregado.dadoDe,
         omitidas: carregado.omitidas,
         linhasPorTabela: [...carregado.linhasPorTabela.entries()],
+        ...(carga ? { carga } : {}),
       };
 
       parentPort?.postMessage(resp);

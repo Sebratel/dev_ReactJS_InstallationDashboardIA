@@ -1613,6 +1613,7 @@ export class Servidor {
         // testes e as medições das fases F1 e F2 usam, e trocar o significado
         // dele tornaria aquelas comparações incomparáveis.
         this.metricas.observa('worker_ms', Date.now() - tWorker);
+        this.registraCarga(dash.id, 'página', workerRes.carga);
         paginaCalculada = workerRes.pagina as PaginaCalculada;
         dadoDe = workerRes.dadoDe ?? null;
         omitidas = workerRes.omitidas ?? [];
@@ -2015,6 +2016,26 @@ export class Servidor {
     }
   }
 
+  /**
+   * Uma carga do disco dentro de uma worker — o `cacheDeCarga` errou. Contada e
+   * logada com a combinação que a causou: cada combinação diferente de liberação e
+   * forma completa é uma carga a mais da mesma página, e foi isso que fez o
+   * reaquecimento de UMA página levar 20–30 s (ACHADOS #175).
+   */
+  private registraCarga(
+    dashId: string,
+    tipo: 'página' | 'valores',
+    carga: { ms: number; libera: string[]; formaCompleta: string[] } | undefined,
+  ): void {
+    if (!carga) return;
+    this.metricas.conta('worker_cargas');
+    this.metricas.observa('worker_carga_ms', carga.ms);
+    console.error(
+      `[worker] ${dashId} carregou do disco em ${carga.ms} ms (${tipo}; liberadas: ` +
+        `${carga.libera.join(', ') || '—'}; forma completa: ${carga.formaCompleta.join(', ') || '—'})`,
+    );
+  }
+
   private geracaoDaPagina(dashId: string): number {
     return this.geracoes.get(dashId) ?? 0;
   }
@@ -2061,6 +2082,7 @@ export class Servidor {
           },
           prioridade,
         );
+        this.registraCarga(dash.id, 'valores', r.carga);
         if (r.erroDoPedido !== undefined) return { erroDoPedido: r.erroDoPedido };
         if (r.valores) return r.valores;
         throw new Error('a worker respondeu sem a lista de valores');
