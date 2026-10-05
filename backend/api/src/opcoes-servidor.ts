@@ -133,6 +133,13 @@ export interface ServidorOptions {
    */
   overlayRealtime?: () => ReadonlyMap<string, OverlayDeTabela>;
   /**
+   * Quais páginas o tempo real avisa NA HORA e de quanto em quanto as outras
+   * recebem as mudanças juntas (ACHADOS #175). Ausente, ou `demaisACadaMs` ≤ 0:
+   * toda página afetada é invalidada e avisada a cada mudança, o comportamento de
+   * antes de 05/10/2026. `npm run api` passa `PADRAO_AVISO_DAS_PAGINAS`.
+   */
+  avisoDasPaginas?: { imediatas: readonly string[]; demaisACadaMs: number };
+  /**
    * O estado do poller de realtime, para `GET /api/saude`. Padrão: nenhum —
    * e aí a chave `poller` não aparece, que é a verdade de todo teste e de
    * todo `npm run api` sem credencial do Voalle.

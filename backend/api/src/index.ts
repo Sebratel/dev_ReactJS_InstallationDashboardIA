@@ -24,7 +24,7 @@ import { PollerRealtime } from './poller-realtime.ts';
 import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
 import { comoLiberar } from './porta.ts';
 import { decideLogin } from './portao-login.ts';
-import { Servidor } from './servidor.ts';
+import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -266,6 +266,12 @@ const servidor = new Servidor({
   // `backend/api/src/overlay-realtime.ts` — trocar de volta faz o near-realtime
   // voltar a detectar, invalidar, avisar e servir o número velho.
   overlayRealtime: () => poller?.overlays() ?? new Map(),
+  // A VISÃO PRODUTIVA na hora; as demais páginas, juntas a cada 2 min. Ver
+  // `aoTabelaMudar` e ACHADOS #175.
+  avisoDasPaginas: {
+    imediatas: PADRAO_AVISO_DAS_PAGINAS.imediatas,
+    demaisACadaMs: Number(process.env.API_REALTIME_DEMAIS_MS ?? PADRAO_AVISO_DAS_PAGINAS.demaisACadaMs),
+  },
   ...(cache ? { cache } : {}),
   // Ligado sempre que existe `REDIS_URL`, mesmo quando `cache` saiu `undefined`
   // — é justamente esse o caso em que a saúde precisa dizer "configurado e

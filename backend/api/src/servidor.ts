@@ -93,13 +93,21 @@ export { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, comparaValorDeSegmentac
  * atende TODAS as páginas do menu, não uma. O número é folgado de propósito —
  * medido em 21/09/2026, depois de servir as 14 páginas uma vez, a thread
  * principal tinha **2** datasets vivos (`paginasCarregadas` em `/api/saude`),
- * porque no caminho de produção quem calcula é a piscina. Quem de fato enche
- * este mapa aqui é `/api/dashboards/:id/valores` — a lista de uma segmentação,
- * que é calculada nesta thread.
+ * porque no caminho de produção quem calcula é a piscina. Até 05/10/2026 quem
+ * de fato enchia este mapa era `/api/dashboards/:id/valores`, calculada nesta
+ * thread; desde então a lista também sai da piscina (`calculaValores`), e o mapa
+ * só se enche quando a worker falha ou a piscina está desligada.
  *
  * Ver `guardaCarregada` para por que um teto passou a ser necessário.
  */
 export const TETO_CARREGADAS = 6;
+
+/**
+ * O que `npm run api` passa em `avisoDasPaginas` (ACHADOS #175): a VISÃO PRODUTIVA
+ * (`agendamento-field`) na hora; as análises detalhadas, juntas, a cada 2 min.
+ * `API_REALTIME_DEMAIS_MS=0` volta tudo para "na hora".
+ */
+export const PADRAO_AVISO_DAS_PAGINAS = { imediatas: ['agendamento-field'], demaisACadaMs: 120_000 } as const;
 
 /**
  * O teto de tentativas em `/auth/*` (as quatro rotas de POST), por IP, na
@@ -165,9 +173,10 @@ export class Servidor {
       | 'estadoDoAgendador'
       | 'estadoDaGuarda'
       | 'estadoDoDisjuntor'
+      | 'avisoDasPaginas'
     >
   > &
-    Pick<ServidorOptions, 'estadoDoPoller' | 'estadoDoAgendador' | 'estadoDaGuarda' | 'estadoDoDisjuntor'>;
+    Pick<ServidorOptions, 'estadoDoPoller' | 'estadoDoAgendador' | 'estadoDaGuarda' | 'estadoDoDisjuntor' | 'avisoDasPaginas'>;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
    *  "padrão" que faça sentido preencher, diferente dos outros campos. */
@@ -206,6 +215,19 @@ export class Servidor {
   private readonly carregadas = new Map<string, Promise<Carregado>>();
   /** Cache dos valores distintos de segmentações (categorias) para eliminar buscas repetidas de disco/dataset. */
   private readonly cacheValoresDistintos = new Map<string, DaxValue[]>();
+  /**
+   * A lista em cálculo, por `chaveDeValores`. A tela abre uma página pedindo as
+   * segmentações todas de uma vez (10 na `agendamento-field`), e o reaquecimento pede
+   * as mesmas: sem isto, cada pedido igual viraria uma tarefa a mais na piscina.
+   */
+  private readonly valoresEmCurso = new Map<string, Promise<DaxValue[] | { erroDoPedido: string }>>();
+  /** Quantas vezes `esqueceAPagina` passou por cada página. Ver o uso em `valores`. */
+  private readonly geracoes = new Map<string, number>();
+  /** As páginas não imediatas que mudaram desde a última rodada. Ver `aoTabelaMudar`. */
+  private readonly paginasJuntadas = new Set<string>();
+  /** E as tabelas que as fizeram mudar — só para a linha de log da rodada. */
+  private readonly tabelasJuntadas = new Set<string>();
+  private timerDasJuntadas: ReturnType<typeof setTimeout> | null = null;
   /**
    * A identidade que o dataset de CADA página reflete. Avançou? Só o daquela
    * página é lixo — ver `identidadeDaPagina` para o número que mediu por que
@@ -510,6 +532,8 @@ export class Servidor {
   }
 
   destroi(): void {
+    if (this.timerDasJuntadas !== null) clearTimeout(this.timerDasJuntadas);
+    this.timerDasJuntadas = null;
     this.carimbo.para();
     this.desligaBatimento();
     this.piscina.destroi();
@@ -1082,6 +1106,42 @@ export class Servidor {
       .map(([id]) => id);
     if (afetados.length === 0) return;
 
+    // **Quem é avisado agora e quem espera a próxima rodada** (ACHADOS #175). A
+    // `field-agenda` muda a cada ~35 s em horário de operação, e cada mudança
+    // derrubava junto `relatorio-do-mes` (~1,5–2,5 s de cálculo) e `visao-geral`
+    // (~3,5–4,5 s): o reaquecimento nunca alcançava e a API passava o dia ocupada,
+    // com quem abria a VISÃO PRODUTIVA esperando na fila atrás delas. As imediatas
+    // continuam como sempre; as demais juntam as mudanças e caem de uma vez, no
+    // máximo a cada `demaisACadaMs` — o frescor delas troca ~35 s por ≤ 2 min, que
+    // é o que o Erick definiu para as análises detalhadas (complemento da VISÃO
+    // PRODUTIVA, rápidas, mas não ao segundo).
+    const junta = this.opts.avisoDasPaginas;
+    if (junta && junta.demaisACadaMs > 0) {
+      const depois = afetados.filter((id) => !junta.imediatas.includes(id));
+      for (const id of depois) this.paginasJuntadas.add(id);
+      if (depois.length > 0) this.tabelasJuntadas.add(tabela);
+      if (depois.length > 0 && this.timerDasJuntadas === null) {
+        this.timerDasJuntadas = setTimeout(() => this.soltaJuntadas(), junta.demaisACadaMs);
+        this.timerDasJuntadas.unref?.();
+      }
+      const agora = afetados.filter((id) => junta.imediatas.includes(id));
+      if (agora.length > 0) this.invalidaEAvisa(agora, tabela);
+      return;
+    }
+    this.invalidaEAvisa(afetados, tabela);
+  }
+
+  /** A rodada das páginas que esperaram: tudo o que mudou desde a última, de uma vez. */
+  private soltaJuntadas(): void {
+    this.timerDasJuntadas = null;
+    const paginas = [...this.paginasJuntadas];
+    const tabelas = [...this.tabelasJuntadas];
+    this.paginasJuntadas.clear();
+    this.tabelasJuntadas.clear();
+    if (paginas.length > 0) this.invalidaEAvisa(paginas, tabelas.join(', '));
+  }
+
+  private invalidaEAvisa(afetados: readonly string[], tabela: string): void {
     const emEvento = Date.now();
 
     for (const dashId of afetados) {
@@ -1726,10 +1786,11 @@ export class Servidor {
     res: http.ServerResponse,
     id: string,
     url: URL,
-    // Ainda não recorta nada — está aqui porque a lista de valores de uma
-    // segmentação é justamente o que um RLS teria de recortar primeiro: ela mostra
-    // *quais equipes existem* antes de mostrar qualquer número.
-    _quem: Identidade,
+    // Ainda não recorta nada (hoje decide só a prioridade na piscina, aquecedor
+    // ou pessoa) — está aqui porque a lista de valores de uma segmentação é
+    // justamente o que um RLS teria de recortar primeiro: ela mostra *quais
+    // equipes existem* antes de mostrar qualquer número.
+    quem: Identidade,
   ): Promise<void> {
     const dash = this.dashboards.find((d) => d.id === id);
     if (!dash) {
@@ -1813,21 +1874,44 @@ export class Servidor {
     const chaveValores = chaveDeValores(id, frescorDaPagina, tabela, coluna, nivel);
     let distintos = this.cacheValoresDistintos.get(chaveValores);
     if (!distintos) {
-      let carregado: Carregado;
+      let emCurso = this.valoresEmCurso.get(chaveValores);
+      if (!emCurso) {
+        const origem = origemDoPedido(quem.usuario === 'aquecedor-interno', url.searchParams.get('origem'));
+        // **A geração, porque a chave não basta.** A chave carrega o carimbo do DISCO,
+        // e uma mudança do tempo real não o troca: ela apaga as listas da página em
+        // `esqueceAPagina`. Uma lista que estava sendo calculada sobre o overlay de
+        // antes do evento voltaria depois dele e seria gravada sob a mesma chave —
+        // velha, até o próximo evento. Com a geração, ela só responde a quem pediu.
+        const geracao = this.geracaoDaPagina(dash.id);
+        const meu = this.calculaValores(dash, tabela, coluna, nivel, prioridadeDe(origem), quem);
+        emCurso = meu;
+        this.valoresEmCurso.set(chaveValores, meu);
+        void meu
+          .then(
+            (r) => {
+              if (Array.isArray(r) && this.geracaoDaPagina(dash.id) === geracao) {
+                this.cacheValoresDistintos.set(chaveValores, r);
+              }
+            },
+            () => undefined,
+          )
+          .finally(() => {
+            if (this.valoresEmCurso.get(chaveValores) === meu) this.valoresEmCurso.delete(chaveValores);
+          });
+      }
+      let r: DaxValue[] | { erroDoPedido: string };
       try {
-        carregado = await this.carrega(dash);
+        r = await emCurso;
       } catch (err) {
         responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
         return;
       }
-      try {
-        distintos = valoresDistintos(carregado.ev, tabela, coluna, nivel);
-        this.cacheValoresDistintos.set(chaveValores, distintos);
-      } catch (err) {
+      if (!Array.isArray(r)) {
         // Nível que a projeção não conhece. 400: o pedido está errado, não o estado.
-        responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
+        responde(res, 400, { erro: r.erroDoPedido });
         return;
       }
+      distintos = r;
     }
     responde(res, 200, {
           tabela,
@@ -1894,6 +1978,12 @@ export class Servidor {
     for (const chave of [...this.cacheValoresDistintos.keys()]) {
       if (chave.startsWith(`${dashId}\u0000`)) this.cacheValoresDistintos.delete(chave);
     }
+    // E as listas em cálculo: quem pedir depois daqui não pode pegar carona numa
+    // conta feita sobre o dado de antes. Ver o comentário da geração em `valores`.
+    for (const chave of [...this.valoresEmCurso.keys()]) {
+      if (chave.startsWith(`${dashId}\u0000`)) this.valoresEmCurso.delete(chave);
+    }
+    this.geracoes.set(dashId, this.geracaoDaPagina(dashId) + 1);
     // Os resultados inteiros também. A chave deles já carrega carimbo e dia, então
     // eles nunca seriam *servidos* errados — mas ficariam ocupando o orçamento até
     // o LRU chegar neles, e o orçamento é justamente o que decide o que fica.
@@ -1922,6 +2012,75 @@ export class Servidor {
     if (this.carregadas.size > TETO_CARREGADAS) {
       const maisAntiga = this.carregadas.keys().next().value;
       if (maisAntiga !== undefined) this.carregadas.delete(maisAntiga);
+    }
+  }
+
+  private geracaoDaPagina(dashId: string): number {
+    return this.geracoes.get(dashId) ?? 0;
+  }
+
+  /**
+   * Os valores de uma segmentação, calculados **numa worker** — e só na falta dela,
+   * aqui.
+   *
+   * Até 05/10/2026 eram sempre aqui: `carrega(dash)` na thread que atende, a cada
+   * mudança do tempo real (que derruba o dataset da página). Eram as 57 cargas em
+   * ~23 min do ACHADOS #175, cada uma segurando o laço por centenas de ms — tempo em
+   * que nem o HTML da tela saía. Na worker, a lista usa o MESMO dataset que o cálculo
+   * da página (mesma `chaveDeCarga`: a página inteira, nada liberado, a forma completa
+   * da página), então reaquecer a página já deixa a lista a um passo.
+   *
+   * O overlay e a identidade são colhidos aqui, uma vez, pelo mesmo motivo de
+   * `pagina()`: dois ramos não podem calcular sobre dois overlays diferentes.
+   */
+  private async calculaValores(
+    dash: DashboardSpec,
+    tabela: string,
+    coluna: string,
+    nivel: string | null,
+    prioridade: number,
+    quem: Identidade,
+  ): Promise<DaxValue[] | { erroDoPedido: string }> {
+    const overlays = this.#overlayDe(dash);
+    if (this.piscina.ativa) {
+      try {
+        const r = await this.piscina.executa(
+          {
+            snapshotDir: this.opts.snapshotDir,
+            specsDir: path.join(this.opts.root, 'backend', 'specs'),
+            dashboardSpec: dash,
+            janela: { de: 0, linhas: 0 },
+            clicados: [],
+            liberaSobDemanda: [],
+            precisaFormaCompleta: this.tabelasCompletasDaPagina(dash),
+            agoraIso: this.opts.agora().toISOString(),
+            ...(overlays.size > 0 ? { overlays } : {}),
+            identidade: this.identidadeDaPagina(dash),
+            escopo: escopoDoCache(quem),
+            valores: { tabela, coluna, nivel },
+          },
+          prioridade,
+        );
+        if (r.erroDoPedido !== undefined) return { erroDoPedido: r.erroDoPedido };
+        if (r.valores) return r.valores;
+        throw new Error('a worker respondeu sem a lista de valores');
+      } catch (err) {
+        // O mesmo contrato do cálculo da página: cair para cá responde certo e custa
+        // a thread que atende. Contado à parte, porque o número que a etapa 4 persegue
+        // (`worker_fallback` = 0) é o das páginas.
+        this.metricas.conta('valores_fallback');
+        const motivo = err instanceof Error ? err.message : String(err);
+        if (!this.motivosDeFallback.has(motivo)) {
+          this.motivosDeFallback.add(motivo);
+          console.error(`[worker] valores de segmentação caíram para a thread principal: ${motivo}`);
+        }
+      }
+    }
+    const carregado = await this.carrega(dash);
+    try {
+      return valoresDistintos(carregado.ev, tabela, coluna, nivel);
+    } catch (err) {
+      return { erroDoPedido: err instanceof Error ? err.message : String(err) };
     }
   }
 

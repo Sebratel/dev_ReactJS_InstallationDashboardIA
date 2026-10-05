@@ -20,6 +20,8 @@ import { calculaPagina, type Janela, type MemoDeCompletos } from './calcula.ts';
 import { chaveDoCompleto, diaDoCalculo } from './cache-resposta.ts';
 import { CacheDeVisual } from './cache-visual.ts';
 import { mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
+import { valoresDistintos } from './valores-segmentacao.ts';
+import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
 import type { DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
 
 export interface MensagemCalculoWorker {
@@ -79,6 +81,17 @@ export interface MensagemCalculoWorker {
    * recorte do gestor A para o gestor B, sem erro e sem sintoma.
    */
   escopo: string;
+  /**
+   * **Em vez da página, os valores de UMA segmentação** (`GET .../valores`).
+   *
+   * Era a última coisa que carregava dataset na thread que atende: a rota chamava
+   * `Servidor.carrega()` ali mesmo, e cada mudança do tempo real derrubava esse
+   * dataset. Medido em 05/10/2026 (ACHADOS #175): 57 cargas na thread principal em
+   * ~23 min, uma a cada ~25 s, e 9 dos 14 picos do laço fora do refresh a ≤ 3 s de
+   * uma delas. Aqui a lista sai do MESMO `cacheDeCarga` da página: o dataset que o
+   * reaquecimento carregou para calcular a página serve também às segmentações.
+   */
+  valores?: { tabela: string; coluna: string; nivel: string | null };
 }
 
 /**
@@ -104,6 +117,14 @@ export interface RespostaCalculoWorker {
   dadoDe?: string | null;
   omitidas?: string[];
   linhasPorTabela?: [string, number][];
+  /** A lista pedida em `MensagemCalculoWorker.valores`; `pagina` fica ausente. */
+  valores?: DaxValue[];
+  /**
+   * O pedido de `valores` estava errado (nível que a projeção não conhece): é 400,
+   * não falha da worker. Vem com `ok: true` para não cair no cálculo em linha, que
+   * recarregaria o dataset na thread principal só para errar igual.
+   */
+  erroDoPedido?: string;
   erro?: string;
 }
 
@@ -327,6 +348,7 @@ if (parentPort) {
       overlays,
       identidade,
       escopo,
+      valores,
     } = msg;
 
     try {
@@ -388,6 +410,18 @@ if (parentPort) {
       }
 
       const carregado = await promessa;
+
+      if (valores) {
+        let resp: RespostaCalculoWorker;
+        try {
+          const lista = valoresDistintos(carregado.ev, valores.tabela, valores.coluna, valores.nivel);
+          resp = { idReq, ok: true, valores: lista, dadoDe: carregado.dadoDe };
+        } catch (err) {
+          resp = { idReq, ok: true, erroDoPedido: err instanceof Error ? err.message : String(err) };
+        }
+        parentPort?.postMessage(resp);
+        return;
+      }
 
       // A chave do resultado inteiro, montada com a MESMA função da thread
       // principal (`chaveDoCompleto`) de propósito: duas montagens de chave
