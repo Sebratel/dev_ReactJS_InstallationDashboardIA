@@ -32,7 +32,16 @@ Uma fase por sessão, cada uma com commit próprio. Cada fase termina com `npm t
 - `utils/cn.ts` (clsx + tailwind-merge). Por enquanto só `Cartao` e `AppShell` usam.
 - Dependências novas: `zustand`, `clsx`, `tailwind-merge`.
 
-## Fase 2 — estado do servidor no React Query
+## Fase 2 — estado do servidor no React Query (FEITA, `ac55c74`, 05/10/2026)
+
+**Como ficou** (ACHADOS #178): as chaves são `['pagina', id, url]` e não `['pagina', url]`,
+para o aviso do servidor invalidar toda combinação da página de uma vez; os visuais abaixo da
+dobra e os valores de segmentação também entraram (`['valores', id, …]`), e o
+`VersaoDosDadosContext` e o `utils/cachePagina.ts` saíram. Medido: entrada 326–528 ms (antes
+518–547), troca/volta mais rápidas e 14–24 pedidos em vez de 26–29, sem "carregando" novo. **O
+zod não entrou** — fica para quando houver resposta de serviço a validar de verdade.
+
+O plano original:
 
 Substituir os caches manuais de `App.tsx` (`layoutsVistos`, `paginasVistas`,
 `emVooHoverBarra`, o `useState` da saúde):
