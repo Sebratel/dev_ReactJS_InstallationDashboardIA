@@ -22,7 +22,7 @@ import { CacheDeVisual } from './cache-visual.ts';
 import { mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 import { valoresDistintos } from './valores-segmentacao.ts';
 import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
-import type { DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
+import { loadDashboards, type DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
 
 export interface MensagemCalculoWorker {
   tipo?: 'calcula';
@@ -131,23 +131,34 @@ export interface RespostaCalculoWorker {
 // Cache do SemanticModel por worker thread para não reler specs a cada cálculo
 let modelCached: SemanticModel | null = null;
 let lastSpecsDir: string | null = null;
+// E as páginas inteiras, pelo mesmo motivo: ver `paginaInteiraDe`.
+let paginasCached: Map<string, DashboardSpec> | null = null;
+let paginasDoDir: string | null = null;
 
 /**
- * A chave de `cacheDeCarga`: mesma página, mesmo conjunto de visuais PEDIDOS
- * (não só o mesmo `dash.id`) e mesma liberação de colunas/tabelas sob demanda.
+ * A spec INTEIRA da página — todos os visuais, sem o recorte do pedido. É o que a
+ * carga do dataset usa (ver o comentário no ponto de uso). `null` quando a página não
+ * está nas specs (teste com spec feita à mão): aí a carga usa a que chegou.
+ */
+function paginaInteiraDe(specsDir: string, id: string): DashboardSpec | null {
+  if (paginasCached === null || paginasDoDir !== specsDir) {
+    paginasCached = new Map(loadDashboards(specsDir).map((d) => [d.id, d]));
+    paginasDoDir = specsDir;
+  }
+  return paginasCached.get(id) ?? null;
+}
+
+/**
+ * A chave de `cacheDeCarga`: mesma página, mesmo conjunto de visuais e mesma
+ * liberação de colunas/tabelas sob demanda.
  *
- * **Por que o conjunto de visuais entra, e `Servidor.carregadas` (thread
- * principal) não precisa disso.** Lá, `carrega()` sempre recebe o `dash` INTEIRO
- * (todos os visuais da página, filtro nenhum aplicado) — só `libera`/
- * `formaCompleta` variam com o pedido. Aqui, `dashboardSpec.visuals` já vem
- * RECORTADO para os `?visual=` do pedido (ver `servidor.ts`, `alvo.visuals`), e
- * `colunasUsadas()` (dentro de `carrega()`) decide o que omitir olhando esse
- * recorte. Cachear só por `dash.id` faria um pedido de UM visual sob rolagem
- * reaproveitar — ou ser reaproveitado por — o dataset da abertura eager, que
- * pode ter omitido uma coluna que só o visual de rolagem usa. Incluir os ids
- * pedidos custa uma chave a mais por formato de pedido (poucos por página,
- * nunca um por combinação de filtro — filtro não entra aqui de propósito, ver
- * o comentário de `cacheDeCarga`), nunca uma a mais por clique.
+ * **Desde 05/10/2026 os visuais são os da PÁGINA INTEIRA**, não os pedidos: a
+ * carga usa a página toda (como `Servidor.carregadas` na thread principal sempre
+ * fez), então o conjunto é constante por página e todo recorte dela — abertura,
+ * visual sob rolagem, valores de segmentação — cai na mesma entrada. Os ids
+ * continuam na chave porque um teste com spec feita à mão (fora de `specs/`) cai
+ * na spec que chegou, e dois recortes dela não podem dividir um dataset projetado
+ * para só um deles. Filtro não entra aqui de propósito, ver `cacheDeCarga`.
  */
 export function chaveDeCarga(
   dashId: string,
@@ -373,9 +384,20 @@ if (parentPort) {
 
       const libera = liberaSobDemanda ?? [];
       const formaCompleta = precisaFormaCompleta ?? [];
+      // **O dataset é o da PÁGINA INTEIRA, e o recorte só entra no cálculo** —
+      // igual a `Servidor.carrega()` na thread principal. Até 05/10/2026 a carga
+      // usava o recorte (`?visual=`) e a chave levava os ids pedidos: um
+      // reaquecimento da `agendamento-field` (abertura, cada segmentação, cada
+      // período, cada visual abaixo da dobra) eram até ~20 cargas do disco por
+      // worker, e medido em produção ele levou 20–47 s para UMA página com a CPU
+      // em ~400% (ACHADOS #175). A página inteira cobre as colunas de qualquer
+      // recorte dela, então nenhum pedido acha coluna omitida; o custo é a carga
+      // trazer as colunas da página toda, que é exatamente o que a thread
+      // principal sempre fez.
+      const paginaInteira = paginaInteiraDe(specsDir, dashboardSpec.id) ?? dashboardSpec;
       const chave = chaveDeCarga(
         dashboardSpec.id,
-        (dashboardSpec.visuals ?? []).map((v) => v.id),
+        (paginaInteira.visuals ?? []).map((v) => v.id),
         libera,
         formaCompleta,
       );
@@ -386,7 +408,7 @@ if (parentPort) {
         promessa = carrega({
           dir: snapshotDir,
           model: modelCached,
-          dashboards: [dashboardSpec],
+          dashboards: [paginaInteira],
           now: agora,
           liberaSobDemanda,
           precisaFormaCompleta,

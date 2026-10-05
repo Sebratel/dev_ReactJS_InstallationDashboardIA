@@ -152,6 +152,31 @@ test('a worker reaproveita o dataset — apagar o arquivo depois do 1º pedido n
   }
 });
 
+test('recortes diferentes da MESMA página dividem um dataset só na worker', async () => {
+  // A abertura pede uns visuais e a rolagem pede outros, um de cada vez; o
+  // reaquecimento pede todos eles e mais as segmentações. Com a chave pelo recorte,
+  // cada um desses pedidos relia o disco — 20–47 s para reaquecer UMA página, com a
+  // CPU em ~400% (ACHADOS #175). A carga agora é a da página inteira.
+  const dir = await dirComCapa();
+  const s = await sobe(dir, () => new Map());
+  try {
+    assert.equal(s.servidor.piscinaAtiva, true, 'este teste só vale alguma coisa com a piscina ligada');
+    // Dois cartões da `capa` que leem a `HORA ATUALIZADO`, pedidos cada um sozinho.
+    const a = await s.busca('/api/dashboards/capa?visual=1d10da9f7a3e9a66d8ab&recalcula=1');
+    assert.equal(a.status, 200);
+    await a.arrayBuffer();
+
+    // Se o segundo recorte for reler do disco, cai em 409 "Snapshot incompleto".
+    fs.rmSync(arquivoDaQuery(dir, 'hora-atualizado'));
+
+    const b = await s.busca('/api/dashboards/capa?visual=e3e8acb8ee46c4565d20&recalcula=1');
+    assert.equal(b.status, 200, 'o segundo recorte releu o disco em vez de usar o dataset da página');
+    assert.equal(linhasDaTabela(await b.json(), 'HORA ATUALIZADO'), 1);
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('aoTabelaMudar invalida o cache da worker — o próximo pedido enxerga o overlay novo', async () => {
   const dir = await dirComCapa();
   let overlayAtual: ReadonlyMap<string, OverlayDeTabela> = new Map();

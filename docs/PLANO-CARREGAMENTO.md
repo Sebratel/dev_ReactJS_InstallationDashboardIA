@@ -100,14 +100,17 @@ recriada → instrumento antes/depois → registro em `ACHADOS.md`. O Erick prom
   `worker_fallback` = 0. Na mesma etapa saiu o Google Fonts do caminho crítico (`868dcbc`), e a
   `agendamento-field` abre em 290–420 ms quando o cache acerta.
 
-### Etapa 1b — o tempo real aplica a mudança, não recarrega a página
-- Quando o poller traz 3 linhas novas da `field-agenda`, a página aplica essas 3 linhas ao
-  dataset que já está carregado (na worker e na thread principal), em vez de jogá-lo fora.
-  O recálculo de `calendar` / `Status Protocolo Dia` já é parcial por protocolo (#169).
-- Só a `agendamento-field` reaquece na hora. `relatorio-do-mes` e `visao-geral` reaquecem no
-  máximo a cada 2 min, juntando as mudanças.
-- **Risco:** número diferente do recálculo completo, sem erro. Por isso há um teste que compara,
-  para a mesma sequência de mudanças, o resultado aplicado com o recarregado do zero.
+### Etapa 1b — o tempo real para de ocupar a API (05/10, `ec3e6c1`)
+- **O plano mudou com a medição.** Antes de escrever, medi o que custa recarregar a página do
+  zero com um overlay de 5 mil linhas (o tamanho do de produção), no snapshot real:
+  `agendamento-field` ~0,5 s, `relatorio-do-mes` ~1,5–2,5 s, `visao-geral` ~3,5–4,5 s. Aplicar
+  a mudança linha a linha no dataset carregado não pagaria o risco: a página principal já é
+  barata. O peso estava em dois outros lugares, e foi neles que a etapa mexeu:
+  1. **Os valores das segmentações saíram da thread que atende.** `GET .../valores` carregava
+     o dataset ali, a cada mudança do tempo real (57 cargas em ~23 min). Agora sai da piscina,
+     do mesmo `cacheDeCarga` da página, com voo único por chave e uma geração por página.
+  2. **Só a `agendamento-field` é avisada na hora.** As demais páginas juntam as mudanças
+     numa rodada a cada 2 min (`avisoDasPaginas`; `API_REALTIME_DEMAIS_MS=0` desliga).
 - *Pronto quando:* CPU da API < 50% fora de carga, `primeiro_get_pos_evento_miss` ≈ 0 na
   `agendamento-field`, e a mudança aparece na tela em ≤ 30 s.
 
