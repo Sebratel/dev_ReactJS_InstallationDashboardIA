@@ -11,6 +11,28 @@
 > (`frontend/dist`) e o `nginx.conf` do **ambiente de teste**. O que a produção precisar entra
 > na §5 como pedido a ele, com a configuração pronta e provada aqui.
 
+## 0. A prioridade (Erick, 05/10)
+
+**`agendamento-field` é a página nº 1**, porque envolve a instalação do cliente e a cobrança da
+equipe. **A VISÃO PRODUTIVA, dentro dela, tem de ser tempo real.** As análises detalhadas (as
+outras 13 páginas) complementam e também têm de ser rápidas, mas aceitam frescor menor. Toda
+etapa abaixo é medida e entregue PRIMEIRO na `agendamento-field`.
+
+**CDC está fora (decisão do Erick, 05/10).** Exigiria DDL de DBA no Voalle de produção (slot de
+replicação + publicação; ver `DECISAO-REALTIME.md`). O caminho é o usual quando não se mexe na
+fonte: consultar mudanças em intervalo curto e empurrar para a tela pelo SSE.
+
+| | VISÃO PRODUTIVA (`agendamento-field`) | análises detalhadas |
+|---|---|---|
+| abrir a página | **≤ 1 s**, sempre | ≤ 2 s |
+| do fato no Voalle até a tela | **≤ 30 s** | até 30 min (ao vivo onde já houver) |
+
+A VISÃO PRODUTIVA lê `FIELD AGENDA`, `Status Protocolo Dia`, `calendar` e `PROTOCOLOS GERAL`
+(de onde vem o "Produtivo"). Hoje: `FIELD AGENDA` ao vivo a cada 30 s, e as duas calculadas
+recalculadas junto (#169–#171); **`PROTOCOLOS GERAL` só a cada 30 min.** Limite que nenhum
+sistema remove: a baixa de equipamento chega ~41 min depois do relato (#167, processo). Para ele
+existe o aviso "N visitas com relato produtivo aguardando baixa de equipamento" (fase A).
+
 ---
 
 ## 1. O critério, e como se mede
@@ -106,7 +128,8 @@ recriada → instrumento antes/depois → registro em `ACHADOS.md`. O Erick prom
 |---|---|---|---|
 | referência | 03:00 | o ano inteiro (desde 2025 onde a query já corta assim) | ~15 min, de madrugada |
 | correção | 30 min | últimos **60 dias** pela criação; `field-agenda` na incremental; as pequenas inteiras | ~8 min/h |
-| ao vivo, números principais | **60 s** | últimos **15 dias** (`geral`, `alocacao`, `produtividade`) | ~6 min/h |
+| **pista expressa da VISÃO PRODUTIVA** | **15 s** | `FIELD AGENDA` em dois passos (~0,1–0,6 s por volta) e `PROTOCOLOS GERAL` também em dois passos: detecta pela alocação dos últimos 15 dias (0,5 s) e busca só os protocolos que mudaram | ~4–6 min/h (a medir) |
+| ao vivo, números principais | **60 s** | últimos **15 dias** (`produtividade`) | ~3 min/h |
 | ao vivo, demais | 2 min (`field-agenda` 30 s, em dois passos) | últimos 15 dias | ~5 min/h |
 
 Total ~19 min/h, contra ~35 hoje. 15 dias, e não 5, porque 5 dias deixaria fora 11% das
