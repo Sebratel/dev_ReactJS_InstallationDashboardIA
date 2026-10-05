@@ -23,9 +23,10 @@ export function App() {
     return <Login aoLogar={() => window.location.reload()} />;
   }
 
-  // Uma rota só, e o `*` é de propósito: um link antigo com a página no caminho
-  // (`/visao-geral`) continua abrindo — `leRota` lê o caminho —, e a navegação seguinte
-  // volta para `/` com a página no parâmetro (`useEstadoDaTela`).
+  // Uma rota só, e o `*` é de propósito: onde o servidor entrega a tela num caminho
+  // (`/visao-geral` no Vite; o estático da API responde 404 nele, e sempre respondeu),
+  // `leRota` lê a página do caminho, e a navegação seguinte volta para `/` com a página
+  // no parâmetro (`useEstadoDaTela`).
   return (
     <Routes>
       <Route path="*" element={<DashboardPage />} />

@@ -14182,9 +14182,12 @@ casos; sem a linha do marcador, 1 teste falha.
 abre no padrão com a URL limpa; chip entra na URL e substitui no histórico; limpar o chip volta
 à URL limpa; clique cruzado entra com `clicado` e empilha; voltar desfaz e a tela acompanha
 (2 filtros), avançar refaz; recarregar mantém (3 filtros); `limpo=1` abre sem filtro e continua
-dizendo limpo; aba troca a página e substitui; o link antigo `/diario-instalacao` abre a página
-e a aba seguinte volta para `/?pagina=…`; sem página na URL abre a primeira pronta; a
+dizendo limpo; aba troca a página e substitui; o link pelo caminho `/diario-instalacao` abre a página no Vite
+e a aba seguinte volta para `/?pagina=…` (na stack ele dá 404 do estático da API, como sempre
+deu — o estático não tem fallback de SPA); sem página na URL abre a primeira pronta; a
 vizinhança (#179) segue pré-carregando (13 de 14 vizinhos em 8 s); "Atualizar" busca a página e
 as 11 listas de filtro e marca a hora; 0 erro no console.
+
+A mesma conferência na stack (porta 80, depois do build): os mesmos itens, menos o do caminho.
 
 **Custo:** o bundle cresceu 38 kB (12 kB com gzip), o `react-router`.
