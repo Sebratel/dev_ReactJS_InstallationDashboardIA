@@ -62,7 +62,11 @@ os versiona. **Nenhuma etapa fecha sem rodar o instrumento antes e depois.**
    das 14 páginas. Foram 25 trocas em 18 min. O aquecedor recomeça a cada troca, disputando
    máquina com quem entra.
 3. **Cálculo na thread que atende.** A worker estoura memória e o cálculo cai na thread
-   principal (`worker_fallback` = 24 na saúde). É hipótese de causa dos 60 s; a etapa 1 mede.
+   principal (`worker_fallback` = 24 na saúde). Era hipótese; a etapa 1 mediu 0 fallback em
+   20 min (ACHADOS #175). Fica como guarda da etapa 4.
+5. **O tempo real recalcula a página inteira** (o maior, medido na etapa 1). Cada mudança da
+   `field-agenda` (uma a cada ~35 s) descarta 3 páginas e as recarrega do zero, com ~620 mil
+   linhas e 5 s por página. O reaquecedor nunca alcança, e a API passa o dia ocupada.
 4. **Avisos fantasma.** `RETORNO PRIORITARIO` e `REINCIDÊNCIA` "mudam" a cada volta do poller e
    recalculam duas páginas o tempo todo (R.0).
 
@@ -86,6 +90,26 @@ recriada → instrumento antes/depois → registro em `ACHADOS.md`. O Erick prom
   vezes o cálculo caiu na thread principal, e por quê.
 - *Pronto quando:* os 3 maiores bloqueadores estão medidos em ms. As etapas 2–4 atacam pela
   ordem desse número, e não pela ordem desta lista.
+- ✅ **Feito em 05/10 (ACHADOS #175).** Os 3 maiores, em ordem:
+  1. o recálculo da página inteira a cada mudança do tempo real: ~5 s por página, 15–30 s por
+     lote, contínuo; quem entra depois do evento espera p50 ~5 s, até 19 s. **Vira a etapa 1b.**
+  2. o refresh gravando a `field-agenda` ao mesmo tempo: laço principal parado até ~1 s e o
+     Redis com timeout. Cai junto com a 1b, porque a API deixa de estar ocupada.
+  3. o HTML servido pela API: 60–270 ms parada, ~900 ms ocupada. É a etapa 5.
+
+  `worker_fallback` = 0. Na mesma etapa saiu o Google Fonts do caminho crítico (`868dcbc`), e a
+  `agendamento-field` abre em 290–420 ms quando o cache acerta.
+
+### Etapa 1b — o tempo real aplica a mudança, não recarrega a página
+- Quando o poller traz 3 linhas novas da `field-agenda`, a página aplica essas 3 linhas ao
+  dataset que já está carregado (na worker e na thread principal), em vez de jogá-lo fora.
+  O recálculo de `calendar` / `Status Protocolo Dia` já é parcial por protocolo (#169).
+- Só a `agendamento-field` reaquece na hora. `relatorio-do-mes` e `visao-geral` reaquecem no
+  máximo a cada 2 min, juntando as mudanças.
+- **Risco:** número diferente do recálculo completo, sem erro. Por isso há um teste que compara,
+  para a mesma sequência de mudanças, o resultado aplicado com o recarregado do zero.
+- *Pronto quando:* CPU da API < 50% fora de carga, `primeiro_get_pos_evento_miss` ≈ 0 na
+  `agendamento-field`, e a mudança aparece na tela em ≤ 30 s.
 
 ### Etapa 2 — o carimbo troca uma vez por grupo
 - O refresh grava as tabelas do grupo e publica o carimbo UMA vez, no fim. Hoje são 9 trocas no
