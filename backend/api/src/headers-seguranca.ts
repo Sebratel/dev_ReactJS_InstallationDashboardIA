@@ -16,7 +16,8 @@
 // - `<projeto>.firebaseapp.com` — o iframe `/__/auth/iframe` que o gapi cria.
 //   Cai no `default-src 'self'` se não estiver em `frame-src`.
 // - `identitytoolkit`/`securetoken` — a troca do token do popup pelo SDK.
-// - `fonts.googleapis.com`/`fonts.gstatic.com` — a fonte Inter de `estilo.css`.
+// - A fonte Inter vem da própria tela (`@fontsource/inter`, desde 05/10/2026), por isso
+//   `style-src`/`font-src` são só `'self'`: o Google Fonts saiu do caminho da entrada.
 //
 // Apertar além disso quebra login sem aviso nenhum no servidor — só no console
 // do navegador. Por isso a verificação no navegador é passo obrigatório do
@@ -48,8 +49,8 @@ export function montaCsp(firebaseProjectId?: string): string {
   const csp = [
     "default-src 'self'",
     "script-src 'self' https://accounts.google.com https://apis.google.com",
-    "style-src 'self' https://fonts.googleapis.com",
-    'font-src https://fonts.gstatic.com',
+    "style-src 'self'",
+    "font-src 'self'",
     "img-src 'self' data:",
     [
       "connect-src 'self'",
