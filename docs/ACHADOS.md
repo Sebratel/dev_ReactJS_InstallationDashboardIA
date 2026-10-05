@@ -13931,3 +13931,46 @@ que já roda, ~0,6 s por volta).
 últimos 15 dias, a cada 60 s nas tabelas dos números principais (`geral`, `alocacao`,
 `produtividade`, ~6 min/h) e a cada 2 min nas demais (~5 min/h). Total ~19 min/h, contra ~35 hoje
 (refresh + poller), e o número principal ao vivo em ~1 min em vez de 30.
+
+---
+
+## #175 — etapa 1 do PLANO-CARREGAMENTO: o que trava a API é o tempo real recalculando páginas inteiras (05/10)
+
+**Instrumento.** Uma sonda pediu `GET /` (estático servido pela API, resposta trivial) a cada
+500 ms por 20 min (12:43–13:03 UTC), cruzada com o log da API, o do refresh e `/api/saude`.
+Demora ali = laço principal da API ocupado.
+
+**Sonda:** 2.368 pedidos, 49 acima de 200 ms (48 até 1 s, 1 até 5 s, nenhum acima). O único
+trecho denso (12:45:53–12:46:15, até 1.038 ms) coincide com o refresh regravando a
+`field-agenda` (81 s, +19.853/−18.838 linhas incrementais) enquanto a API recalculava; o Redis
+deu `Command timed out` às 12:46:10 pelo mesmo motivo. Nenhum `[worker] caiu para cálculo em
+linha`: o cálculo não volta para a thread principal.
+
+**O peso de verdade aparece em `/api/saude` (desde o reinício das 12:31):**
+
+| medida | valor |
+|---|---|
+| CPU da API com o refresh parado (`docker stats`) | 136% |
+| `FIELD AGENDA mudou` | 31 em ~18 min (uma a cada ~35 s); cada uma invalida 3 páginas (`agendamento-field`, `relatorio-do-mes`, `visao-geral`) |
+| `worker_ms` / `calculo_ms_warmup` | p50 ~5 s, máx. 22 s por página |
+| `rewarm_ms` | p50 ~30 s, máx. 100 s; 142 pedidos, 74 adiados (o reaquecedor nunca alcança) |
+| `primeiro_get_pos_evento` | 24 miss × 12 hit; quem chega depois do evento espera p50 ~5 s, máx. 19 s |
+| `fila_ms_interactive` | máx. 10,6 s (o clique atrás do reaquecimento) |
+| `atrasoDoFato` da `field-agenda` | mediana 7,8 s (o tempo real em si chega rápido) |
+
+**Causa.** `aoTabelaMudar` (`servidor.ts`) descarta a página inteira (`esqueceAPagina` +
+`piscina.invalidaPagina`) a cada mudança: 3–5 linhas novas obrigam a recarregar as ~620 mil
+linhas da `field-agenda` e a refazer `calendar` / `Status Protocolo Dia` (~115 chaves, "tradução
+nativa") em cada worker, por página. Com mudança a cada ~35 s e recálculo de 15–30 s por lote, a
+API fica ocupada o tempo todo: é por isso que a `agendamento-field` às vezes abre em 4,8 s ou mais
+mesmo sem carga nenhuma. Os picos do laço principal são secundários.
+
+**Também nesta etapa: Google Fonts fora do caminho crítico** (`868dcbc`, no ar às 13:05). Antes:
+`html` 267–936 ms, `pronta` 482–1.245 ms. Depois (5 rodadas): `html` 57–97 ms, `pronta`
+293–420 ms quando o cache acerta; uma rodada de 4.777 ms foi miss pós-evento (a causa acima). As
+fontes vêm de `/assets/inter-latin-*.woff2` (só o subconjunto latino, pelo `unicode-range`), sem
+erro de CSP e sem pedido a `fonts.googleapis.com`.
+
+**Resíduo visto pelo instrumento:** os chips de filtro (`SegmentacaoChips`) só pedem os valores
+depois que a página aparece, e mostram "carregando…" por ~16 ms. Entra na etapa 7 (filtros
+pré-carregados).
