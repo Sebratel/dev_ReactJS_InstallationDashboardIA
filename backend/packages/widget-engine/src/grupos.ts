@@ -271,6 +271,11 @@ export function prepara(
   const preparos = chaves.map((c) =>
     preparaChave(c, plano ? normaliza(plano.ancora) : null, onde),
   );
+  // A busca por texto, montada só se alguém pedir uma combinação por um array que não
+  // é o dela.
+  let indicePorChave: Map<string, Combinacao> | null = null;
+  const porChave = (): Map<string, Combinacao> =>
+    (indicePorChave ??= new Map(combinacoes.lista.map((c) => [chaveDeValores(c.valores), c])));
 
   const filtrosDe = (valores: readonly DaxValue[]): TableFilter[] => {
     // A chave de identidade de cada valor tem DOIS consumidores aqui — o filtro de
@@ -293,7 +298,13 @@ export function prepara(
     const filtros = chaves.flatMap((c, i) =>
       filtrosDaChave(c, preparos[i]!, valores[i]!, alvos[i]!, i, plano, base, ev, onde),
     );
-    const combinacao = combinacoes.get(alvos.join(SEPARADOR_DE_CHAVE));
+    // **Pela identidade do array, e isso NÃO é o #109.** Lá a troca era `identityKey`
+    // (um `Map.get`) por um `WeakMap.get` — hash por hash. Aqui é a chave da combinação
+    // inteira: juntar as N identidades numa string nova e calcular o hash dela, que nas
+    // tabelas de relato tem o tamanho do texto do relato, por grupo (#179). Quem passa
+    // um array que não veio de `grupos` (nenhum chamador hoje) cai na busca por texto.
+    const combinacao =
+      combinacoes.porValores.get(valores) ?? porChave().get(alvos.join(SEPARADOR_DE_CHAVE));
     if (!combinacao || filtros.length === 0) return filtros;
     combinacao.materializacao ??= {
       marca: {},
@@ -309,7 +320,7 @@ export function prepara(
     return filtros.map((f) => ({ ...f, grupo }));
   };
 
-  const grupos = [...combinacoes.values()].map(({ valores }) => {
+  const grupos = combinacoes.lista.map(({ valores }) => {
     const comFiltro = ev.scopeWithFilter(base, base.filter.with(filtrosDe(valores)));
     return { valores, escopo: ev.scopeWithGrouping(comFiltro, declaracao) };
   });
@@ -323,6 +334,152 @@ interface Combinacao {
   linhas: Row[];
   /** Criada na primeira vez que os filtros do grupo são montados, e reusada. */
   materializacao: Materializacao | null;
+}
+
+/** As combinações de um agrupamento, e os dois jeitos de achar uma delas. */
+interface Combinacoes {
+  /** Na ordem de primeira aparição. O índice é o número dado por `NumeradorDeCombinacoes`. */
+  lista: Combinacao[];
+  /**
+   * A combinação pelo array `valores` dela. É o caminho de `filtrosDe`: quem a chama
+   * passa `Grupo.valores`, que É `Combinacao.valores`, nunca copiado.
+   */
+  porValores: Map<readonly DaxValue[], Combinacao>;
+}
+
+/**
+ * Dá a cada combinação de chaves um número **denso, na ordem de primeira aparição** —
+ * sem montar a chave de texto da combinação.
+ *
+ * **Por que existe (ACHADOS #179).** As tabelas de relato da `agendamento-field` agrupam
+ * a FIELD AGENDA inteira (~620 mil linhas) por 6 a 12 colunas, uma delas o texto livre
+ * do relato, e saem com 130 a 145 mil grupos. Concatenar as identidades criava, por
+ * linha, uma string nova do tamanho do relato, e o `Map` a achatava e calculava o hash
+ * dela inteira — metade do tempo da tabela.
+ *
+ * Aqui cada identidade vira um inteiro (`interna`, um mapa por chave; quem lê do
+ * dicionário colunar nem passa por ele mais de uma vez por código, ver
+ * `leitorDeNumeroDaChave`), e cada par (combinação até aqui, inteiro da chave seguinte)
+ * vira o número da combinação maior numa `TabelaDePares`.
+ *
+ * Duas linhas recebem o mesmo número **se e só se** as identidades são iguais chave a
+ * chave — a mesma regra de `chaveDeValores`, que `grupos-chave.test.ts` confere.
+ */
+export class NumeradorDeCombinacoes {
+  private readonly ids: Map<string, number>[];
+  private readonly pares: TabelaDePares[];
+
+  constructor(chaves: number) {
+    this.ids = Array.from({ length: chaves }, () => new Map<string, number>());
+    this.pares = Array.from({ length: chaves }, () => new TabelaDePares());
+  }
+
+  /** O inteiro de uma identidade na chave `j`: denso, na ordem de primeira aparição. */
+  interna(j: number, identidade: string): number {
+    const ids = this.ids[j]!;
+    let id = ids.get(identidade);
+    if (id === undefined) {
+      id = ids.size;
+      ids.set(identidade, id);
+    }
+    return id;
+  }
+
+  /**
+   * O número da combinação `g` estendida pelo inteiro `id` da chave `j` (j ≥ 1). Com uma
+   * chave só, o número da combinação é o próprio inteiro dela.
+   */
+  junta(g: number, j: number, id: number): number {
+    return this.pares[j]!.numero(g, id);
+  }
+}
+
+/**
+ * Um mapa (inteiro, inteiro) → número denso, em endereçamento aberto sobre `Int32Array`.
+ *
+ * Existe porque o `Map<number, number>` com a chave `g * 2^26 + id` foi medido e perdeu:
+ * a chave passa de 2^31, vira número alocado no heap, e `junta` ficou com 2 s de tempo
+ * próprio em três rodadas das tabelas de relato (#179). Aqui nada é alocado por linha.
+ */
+class TabelaDePares {
+  private a = new Int32Array(1024);
+  private b = new Int32Array(1024);
+  private v = new Int32Array(1024).fill(-1);
+  private n = 0;
+
+  numero(x: number, y: number): number {
+    const { a, b, v } = this;
+    const mascara = v.length - 1;
+    let i = espalha(x, y) & mascara;
+    for (;;) {
+      const achado = v[i]!;
+      if (achado < 0) break;
+      if (a[i] === x && b[i] === y) return achado;
+      i = (i + 1) & mascara;
+    }
+    const novo = this.n++;
+    a[i] = x;
+    b[i] = y;
+    v[i] = novo;
+    // Metade cheia: dobra. Acima disso a sondagem linear degrada depressa.
+    if (this.n * 2 > v.length) this.cresce();
+    return novo;
+  }
+
+  private cresce(): void {
+    const { a, b, v } = this;
+    const tamanho = v.length * 2;
+    const mascara = tamanho - 1;
+    this.a = new Int32Array(tamanho);
+    this.b = new Int32Array(tamanho);
+    this.v = new Int32Array(tamanho).fill(-1);
+    for (let k = 0; k < v.length; k++) {
+      if (v[k]! < 0) continue;
+      let i = espalha(a[k]!, b[k]!) & mascara;
+      while (this.v[i]! >= 0) i = (i + 1) & mascara;
+      this.a[i] = a[k]!;
+      this.b[i] = b[k]!;
+      this.v[i] = v[k]!;
+    }
+  }
+}
+
+/** Mistura dois inteiros num hash de 32 bits (o finalizador do murmur3). */
+function espalha(x: number, y: number): number {
+  let h = Math.imul(x, 0x9e3779b1) ^ y;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return h ^ (h >>> 16);
+}
+
+/**
+ * Um leitor do INTEIRO de uma chave numa linha, para o `NumeradorDeCombinacoes`.
+ *
+ * Coluna crua do armazenamento colunar: o código do dicionário é canonizado UMA vez por
+ * código (`Int32Array`, preguiçoso) — dois códigos com a mesma identidade, como
+ * `'Canoas'` e `'CANOAS'`, caem no mesmo inteiro porque passam por `interna` com a mesma
+ * chave. O resto (coluna calculada, nível de hierarquia, linha de fora do armazenamento)
+ * vai pela identidade, para o mesmo espaço de inteiros.
+ */
+function leitorDeNumeroDaChave(
+  c: Chave,
+  j: number,
+  numerador: NumeradorDeCombinacoes,
+  ev: Evaluator,
+  onde: string,
+): (linha: Row) => number {
+  const identidade = leitorDeIdentidadeDaChave(c, ev, onde);
+  if (c.nivel) return (linha) => numerador.interna(j, identidade(linha));
+  const codigo = ev.leitorDeCodigo(c.coluna);
+  let canonico = new Int32Array(0);
+  return (linha) => {
+    const k = codigo.ler(linha);
+    if (k < 0) return numerador.interna(j, identidade(linha));
+    if (canonico.length === 0) canonico = new Int32Array(codigo.tamanho()).fill(-1);
+    let n = canonico[k]!;
+    if (n < 0) n = canonico[k] = numerador.interna(j, codigo.chave(k));
+    return n;
+  };
 }
 
 /** Como as combinações vão ser enumeradas. `null` = todas as chaves numa tabela só. */
@@ -470,50 +627,42 @@ function enumeraCombinacoes(
   base: EvalScope,
   ev: Evaluator,
   onde: string,
-): Map<string, Combinacao> {
-  const combinacoes = new Map<string, Combinacao>();
-  const guarda = (valores: DaxValue[], linha: Row): void => {
-    const k = chaveDeValores(valores);
-    const achada = combinacoes.get(k);
-    if (achada) achada.linhas.push(linha);
-    else combinacoes.set(k, { valores, linhas: [linha], materializacao: null });
+): Combinacoes {
+  const lista: Combinacao[] = [];
+  const porValores = new Map<readonly DaxValue[], Combinacao>();
+  const numerador = new NumeradorDeCombinacoes(chaves.length);
+  const n = chaves.length;
+  // O número da combinação é denso e na ordem de primeira aparição: é o índice dela em
+  // `lista`, e um número novo é sempre `lista.length`.
+  const guarda = (g: number, linha: Row, valores: () => DaxValue[]): void => {
+    const achada = lista[g];
+    if (achada !== undefined) {
+      achada.linhas.push(linha);
+      return;
+    }
+    const nova: Combinacao = { valores: valores(), linhas: [linha], materializacao: null };
+    lista.push(nova);
+    porValores.set(nova.valores, nova);
   };
 
   if (plano === null) {
     // Um leitor por chave, montados antes do laço — são as MESMAS chaves em todas
     // as linhas, e este laço percorre a tabela visível inteira.
     //
-    // **A chave vem direto, e o VALOR só quando o grupo é novo.** Este laço roda uma
-    // vez por linha visível e os grupos são muito menos que as linhas: montar o
-    // array de valores em todas elas era descartá-lo em quase todas. E a chave sai
-    // do dicionário da coluna quando há um (`leitorDeIdentidadeDaChave`), sem passar
-    // pelo valor — que é justamente o caso desta varredura, sobre tabela física.
+    // **O número vem direto, e o VALOR só quando o grupo é novo.** Este laço roda uma
+    // vez por linha visível e os grupos costumam ser muito menos que as linhas: montar
+    // o array de valores em todas elas era descartá-lo em quase todas. E o número sai
+    // do código do dicionário da coluna quando há um (`leitorDeNumeroDaChave`), sem
+    // passar pelo valor nem pela identidade — que é justamente o caso desta varredura,
+    // sobre tabela física.
     const leitores = chaves.map((c) => leitorDaChave(c, ev, onde));
-    const identidades = chaves.map((c) => leitorDeIdentidadeDaChave(c, ev, onde));
-    // Uma chave é o caso comum, e aí a chave da combinação É a chave de identidade
-    // do valor — `[x].join(' ')` é `x`.
-    const unica = identidades.length === 1 ? identidades[0]! : null;
+    const numeros = chaves.map((c, j) => leitorDeNumeroDaChave(c, j, numerador, ev, onde));
     for (const linha of base.filter.rowsOf(chaves[0]!.tabela)) {
-      let k: string;
-      if (unica !== null) {
-        k = unica(linha);
-      } else {
-        k = identidades[0]!(linha);
-        for (let i = 1; i < identidades.length; i++) {
-          k += SEPARADOR_DE_CHAVE + identidades[i]!(linha);
-        }
-      }
-      const achada = combinacoes.get(k);
-      if (achada) achada.linhas.push(linha);
-      else {
-        combinacoes.set(k, {
-          valores: leitores.map((ler) => ler(linha)),
-          linhas: [linha],
-          materializacao: null,
-        });
-      }
+      let g = numeros[0]!(linha);
+      for (let j = 1; j < n; j++) g = numerador.junta(g, j, numeros[j]!(linha));
+      guarda(g, linha, () => leitores.map((ler) => ler(linha)));
     }
-    return combinacoes;
+    return { lista, porValores };
   }
 
   // Um leitor por chave, montados antes do laço — pelo mesmo motivo do ramo acima:
@@ -530,52 +679,35 @@ function enumeraCombinacoes(
     plano.navegador.leitorDeValor(plano.caminhos[i]!, c.tabela, c.coluna),
   );
 
-  // ⚠ **MEDIDO E RECUSADO (15/09/2026): trocar este `map` por um buffer reusado.**
+  // ⚠ **MEDIDO E RECUSADO (15/09/2026): trocar o `map` de valores por um buffer
+  // reusado.** A versão anterior deste laço montava, por linha, o array de valores
+  // (`chaves.map`) e a chave concatenada dele. Reusar um `Array` para os valores ficou
+  // 8,4% PIOR em `agendamento-field` (4/4 pares): o array do `map` nasce e morre jovem,
+  // e o buffer é um objeto velho reescrito a cada linha, com barreira de escrita. A lei
+  // que ficou da campanha: no V8 **alocação efêmera não é o custo; trabalho repetido
+  // é**.
   //
-  // Este laço aloca, por linha da âncora, um FECHO novo (a seta captura `linha`, então
-  // não dá para içá-la), o array que o `map` devolve, e — dentro de `chaveDeValores` —
-  // um segundo array. Três objetos por linha para produzir uma string, quase todos
-  // descartados sem ninguém ler, num laço que o perfil apontava com 18,1% do tempo
-  // próprio da página mais cara. Parecia o alvo óbvio.
-  //
-  // A versão com um `Array` reusado e a chave concatenada sem intermediário é **PIOR**,
-  // em `agendamento-field`, 4 pares com ordem alternada:
-  //
-  //     map     4774  4714  4821  4759     média 4.767 ms
-  //     buffer  5052  5180  5136  5305     média 5.168 ms      4/4 para o `map`
-  //
-  // Não é empate: o buffer perde 8,4%, nos quatro pares. A leitura mais provável é que
-  // o array do `map` nasce empacotado e morre jovem — o coletor o varre sem copiar —
-  // enquanto o buffer é um objeto VELHO reescrito a cada linha, e escrever ponteiro em
-  // objeto velho custa barreira de escrita e trabalho de geração antiga.
-  //
-  // Confirmação da mesma lei, pela terceira vez nesta campanha: no V8 **alocação
-  // efêmera não é o custo; trabalho repetido é**. O que o caminho preparado ganhou
-  // (+33,1%, 4/4) era repetição de verdade — remontar a chave de um memo por linha.
-  //
-  // ⚠ A primeira medição disto deu "2 de 4, empate" e estava no armazenamento ERRADO
-  // (objeto; a API usa colunar — achado #118). Refeita na régua certa, virou perda
-  // clara. **O número acima é o que vale.**
-  //
-  // Fica o `map`, que é mais claro E mais rápido. Se alguém voltar a esta linha com a
-  // mesma ideia: ela foi tentada duas vezes, e os números estão aqui.
+  // O que saiu em 05/10/2026 (#179) foi o trabalho repetido: a string da combinação,
+  // nova a cada linha e com o hash calculado sobre ela inteira. Agora cada valor passa
+  // pela identidade (memoizada em `identityKey`) e vira número. O `map` fica: é ele que
+  // a medição acima manteve, e ler os valores de novo só para o grupo novo dobraria a
+  // navegação justamente onde quase toda linha é um grupo.
   for (const linha of base.filter.rowsOf(plano.ancora)) {
-    guarda(
-      chaves.map((c, j) => projetaNivel(c, leitores[j]!(linha), onde)),
-      linha,
-    );
+    const valores = chaves.map((c, j) => projetaNivel(c, leitores[j]!(linha), onde));
+    let g = numerador.interna(0, identityKey(valores[0]!));
+    for (let j = 1; j < n; j++) g = numerador.junta(g, j, numerador.interna(j, identityKey(valores[j]!)));
+    guarda(g, linha, () => valores);
   }
-  return combinacoes;
+  return { lista, porValores };
 }
 
 /**
  * O que separa uma chave de identidade da seguinte dentro da chave de combinação.
  *
- * **Existe como constante porque a chave é montada em três lugares** — `filtrosDe`
- * (que já tem as identidades calculadas), o laço de tabela única e o laço com âncora
- * (os dois últimos concatenam sem array intermediário, por custo). Três cópias de um
- * literal é como uma delas muda sozinha e dois grupos que deviam ser o mesmo passam a
- * ser dois, sem erro nenhum — com um número menor em cada, na tela.
+ * **Existe como constante porque a chave é montada em dois lugares** — `filtrosDe`
+ * (que já tem as identidades calculadas) e `chaveDeValores`. Duas cópias de um literal
+ * é como uma delas muda sozinha e dois grupos que deviam ser o mesmo passam a ser dois,
+ * sem erro nenhum — com um número menor em cada, na tela.
  *
  * Não é preciso ser um separador impossível nos valores: `identityKey` já distingue
  * `"a b"` de `"a"` e `"b"` pelo tipo que carrega na chave.
@@ -585,9 +717,9 @@ const SEPARADOR_DE_CHAVE = ' ';
 /**
  * A chave de identidade de uma combinação de valores.
  *
- * É a definição de referência do formato. Os dois laços quentes montam a mesma string
- * sem o array intermediário do `map`; `grupos-chave.test.ts` afirma que as três formas
- * concordam.
+ * É a definição de referência do formato. Os laços de `enumeraCombinacoes` não a montam
+ * (numeram, ver `NumeradorDeCombinacoes`); `grupos-chave.test.ts` afirma que numerar e
+ * comparar por esta chave separam os grupos do mesmo jeito.
  */
 export function chaveDeValores(valores: readonly DaxValue[]): string {
   return valores.map(identityKey).join(SEPARADOR_DE_CHAVE);

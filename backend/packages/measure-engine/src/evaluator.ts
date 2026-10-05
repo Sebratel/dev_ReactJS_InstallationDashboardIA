@@ -39,6 +39,16 @@ import {
 
 export { FilteredContext, type FilterContext, type TableFilter, type TableValue } from './filter.ts';
 
+/** Ver `Evaluator.leitorDeCodigo`. */
+export interface LeitorDeCodigo {
+  /** O código da célula no dicionário, ou `-1`. */
+  ler(row: Row): number;
+  /** A chave de identidade do valor de um código — `identityKey` dele. */
+  chave(codigo: number): string;
+  /** Quantos códigos o dicionário tem; `0` antes da primeira linha lida. */
+  tamanho(): number;
+}
+
 /** O que um `VAR` pode guardar: escalar ou tabela (`VAR x = FILTER(...)`). */
 export type ScopeValue = DaxValue | TableValue;
 
@@ -389,6 +399,41 @@ export class Evaluator {
    * tabela anônima de `ADDCOLUMNS`, linha copiada) e é o mesmo de sempre — as duas
    * respostas são `identityKey` do mesmo valor, por construção.
    */
+  /**
+   * O CÓDIGO da célula no dicionário da coluna (o índice do valor distinto), ou `-1`
+   * quando a linha não vem do armazenamento colunar desta tabela — aí quem chama usa
+   * `leitorDeIdentidade`.
+   *
+   * Para quem numera valores aos milhões (`NumeradorDeCombinacoes`, ACHADOS #179): o
+   * código são dois acessos a array, contra a busca por hash da chave de identidade.
+   * **Dois códigos podem ter a MESMA identidade** (`'Canoas'` e `'CANOAS'`, ver
+   * `identityKey`): quem agrupa por código canoniza por `chave(codigo)`. O guarda de
+   * protótipo é o de `leitorDeIdentidade`, e pelo mesmo motivo.
+   */
+  leitorDeCodigo(column: string): LeitorDeCodigo {
+    const ck = normalizeName(column);
+    let chaves: string[] | null = null;
+    let ids: Int32Array | null = null;
+    let molde: object | null = null;
+    let decidiu = false;
+    return {
+      ler: (row: Row): number => {
+        if (!decidiu) {
+          decidiu = true;
+          const d = dicionarioDaColuna(row, ck);
+          if (d !== null) {
+            ids = d.ids;
+            chaves = chavesDoDicionario(d.valores);
+            molde = Object.getPrototypeOf(row) as object;
+          }
+        }
+        return chaves !== null && Object.getPrototypeOf(row) === molde ? ids![indiceDaLinha(row)]! : -1;
+      },
+      chave: (codigo: number): string => chaves![codigo]!,
+      tamanho: (): number => chaves?.length ?? 0,
+    };
+  }
+
   leitorDeIdentidade(table: string, column: string): (row: Row) => string {
     const ck = normalizeName(column);
     const ler = this.leitorDeColuna(table, column);
