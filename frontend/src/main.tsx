@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter } from 'react-router';
 import { queryClient } from './services/queryClient.ts';
 import { App } from './App.tsx';
 import { ProvedorModo } from './context/ModoContext.tsx';
@@ -28,9 +29,12 @@ if (!raiz) throw new Error("index.html precisa de um elemento com id='raiz'.");
 createRoot(raiz).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ProvedorModo>
-        <App />
-      </ProvedorModo>
+      {/* O estado da tela (página, filtros, clicados) é a URL — ver `useEstadoDaTela`. */}
+      <BrowserRouter>
+        <ProvedorModo>
+          <App />
+        </ProvedorModo>
+      </BrowserRouter>
     </QueryClientProvider>
   </StrictMode>,
 );

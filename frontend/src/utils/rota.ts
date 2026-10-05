@@ -41,6 +41,12 @@ export interface Rota {
   filtros: FiltroDaTela[];
   /** As colunas cujo filtro nasceu de um clique num visual. Ver `CampoClicado`. */
   clicados: CampoClicado[];
+  /**
+   * A pessoa TIROU todos os filtros (`limpo=1`). Sem isto, a URL sem `filtro` seria
+   * ambígua: `escreveRota` também omite o filtro quando ele é o padrão da página. Ver
+   * `filtrosDaRota`.
+   */
+  limpo: boolean;
   /** Filtros que não decodificaram, com o motivo. A tela avisa em vez de calar. */
   invalidos: string[];
 }
@@ -107,7 +113,22 @@ export function leRota(
   const slugDaPath = pathname.replace(/^\/+|\/+$/g, '');
   const pagina = slugDaPath !== '' && !slugDaPath.includes('/') ? slugDaPath : p.get('pagina');
 
-  return { pagina, filtros, clicados, invalidos };
+  return { pagina, filtros, clicados, invalidos, limpo: p.get('limpo') === '1' };
+}
+
+/**
+ * Os filtros que a tela aplica para uma rota.
+ *
+ * **URL sem `filtro` é o PADRÃO da página** (o mês corrente, como o relatório original
+ * abre) — é o que `escreveRota` escreve quando os filtros são o padrão, e o que todo
+ * link antigo quer dizer. **`limpo=1` é a pessoa que tirou tudo**: desde a fase 3
+ * (`docs/PLANO-PADROES-FRONTEND.md`) a tela LÊ o estado da URL a cada navegação, e sem
+ * o marcador limpar o filtro devolveria o padrão na hora — e voltar no histórico para
+ * um estado padrão caía em "sem filtro", como acontecia antes.
+ */
+export function filtrosDaRota(r: Pick<Rota, 'pagina' | 'filtros' | 'limpo'>): FiltroDaTela[] {
+  if (r.filtros.length > 0 || r.limpo) return r.filtros;
+  return filtrosPadrao(r.pagina);
 }
 
 export function escreveRota(
@@ -138,6 +159,8 @@ export function escreveRota(
       if (f.valores.length === 0) continue;
       p.append('filtro', codificaFiltro(f));
     }
+    // Sem filtro nenhum numa página que tem padrão: a pessoa limpou. Ver `filtrosDaRota`.
+    if (!p.has('filtro') && padrao.length > 0) p.set('limpo', '1');
   }
 
   const comFiltro = new Set(filtros.filter((f) => f.valores.length > 0).map(chaveDeCampo));
