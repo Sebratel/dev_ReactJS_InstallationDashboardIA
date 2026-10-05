@@ -35,6 +35,8 @@ export function Segmentacao(props: {
   spec: SegmentacaoSpec;
   selecao: readonly Valor[];
   aoMudar: (valores: Valor[]) => void;
+  /** O mouse parou numa opção: a seleção que o clique nela daria (pré-carregamento). */
+  aoPrever?: (valores: Valor[]) => void;
 }) {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
@@ -43,9 +45,14 @@ export function Segmentacao(props: {
 
   const carregando = opcoes === null && erro === null;
 
-  function alterna(v: Valor): void {
+  /** A seleção depois de clicar em `v` — a mesma conta para o clique e para a previsão. */
+  function proxima(v: Valor): Valor[] {
     const marcado = props.selecao.some((x) => mesmoValor(x, v));
-    props.aoMudar(marcado ? props.selecao.filter((x) => !mesmoValor(x, v)) : [...props.selecao, v]);
+    return marcado ? props.selecao.filter((x) => !mesmoValor(x, v)) : [...props.selecao, v];
+  }
+
+  function alterna(v: Valor): void {
+    props.aoMudar(proxima(v));
   }
 
   const visiveis = (opcoes ?? []).filter((o) =>
@@ -116,7 +123,7 @@ export function Segmentacao(props: {
                           const marcado = props.selecao.some((x) => mesmoValor(x, o.valor));
                           const f = formata(o.valor, o.tipo);
                           return (
-                            <label key={i} className="filtro-opcao">
+                            <label key={i} className="filtro-opcao" onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}>
                               <input type="checkbox" checked={marcado} onChange={() => alterna(o.valor)} />
                               <span className={o.valor === null ? 'vazio' : ''}>
                                 {o.valor === null ? '(vazio)' : f.texto}

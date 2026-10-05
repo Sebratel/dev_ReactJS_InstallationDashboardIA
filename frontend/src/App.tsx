@@ -321,10 +321,15 @@ export function App() {
   // pousar numa barra e o clique de verdade é sobra suficiente para adiantar exatamente
   // a combinação que a pessoa está mirando, e só essa. O React Query já junta o pedido
   // que está a caminho com o do clique (era o `emVooHoverBarra`).
+  //
+  // O mesmo vale para os FILTROS (05/10/2026, ACHADOS #179): o clique de um valor só já
+  // sai pronto do servidor (#163 pré-calcula as segmentações de até 40 valores), mas o
+  // segundo filtro em cima do primeiro é combinação nova, ~1 s a frio. O mouse sobre o
+  // chip ou sobre a opção do seletor adianta exatamente essa combinação.
   const timeoutHoverBarra = useRef<number | null>(null);
 
-  const aoPreverAlvos = useCallback(
-    (alvos: readonly AlvoDeFiltro[]) => {
+  const prefetchaPrevisao = useCallback(
+    (prever: () => { filtros: FiltroDaTela[]; clicados: { tabela: string; coluna: string }[] }) => {
       // Mesma guarda de `prefetchaPagina`: em touch não existe "pairar antes de
       // clicar", então isto dispararia um pedido a mais por toque, não um adiantado.
       if (!window.matchMedia('(pointer: fine)').matches) return;
@@ -335,8 +340,20 @@ export function App() {
       // caminho de outra coisa) não pode virar uma rajada, uma por barra.
       timeoutHoverBarra.current = window.setTimeout(() => {
         timeoutHoverBarra.current = null;
-        const padrao = filtrosPadrao(atual);
-        const filtrosPrevistos = alternaAlvos(filtros, alvos, padrao);
+        const p = prever();
+        void qc.prefetchQuery(consultaDaAbertura(atual, layout, p.filtros, p.clicados));
+      }, 150);
+    },
+    [atual, layout, qc],
+  );
+
+  // A previsão de cada um repete a conta do clique de verdade (`aoFiltrarAlvos`,
+  // `mudaFiltro`): uma conta diferente daria outra URL, e o pré-carregamento encheria
+  // uma chave que o clique nunca lê.
+  const aoPreverAlvos = useCallback(
+    (alvos: readonly AlvoDeFiltro[]) =>
+      prefetchaPrevisao(() => {
+        const filtrosPrevistos = alternaAlvos(filtros, alvos, filtrosPadrao(atual));
         const aindaFiltradas = new Set(
           filtrosPrevistos.filter((x) => x.valores.length > 0).map(chaveDeCampo),
         );
@@ -346,10 +363,18 @@ export function App() {
           if (aindaFiltradas.has(k)) mapa.set(k, { tabela: a.tabela, coluna: a.coluna });
           else mapa.delete(k);
         }
-        void qc.prefetchQuery(consultaDaAbertura(atual, layout, filtrosPrevistos, [...mapa.values()]));
-      }, 150);
-    },
-    [atual, layout, filtros, clicados, qc],
+        return { filtros: filtrosPrevistos, clicados: [...mapa.values()] };
+      }),
+    [prefetchaPrevisao, atual, filtros, clicados],
+  );
+
+  const aoPreverFiltro = useCallback(
+    (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) =>
+      prefetchaPrevisao(() => ({
+        filtros: aplicaSelecao(filtros, tabela, coluna, valores, nivel),
+        clicados: clicados.filter((c) => chaveDeCampo(c) !== chaveDeCampo({ tabela, coluna })),
+      })),
+    [prefetchaPrevisao, filtros, clicados],
   );
 
   const paginaValida = pagina && pagina.id === atual ? pagina : null;
@@ -513,6 +538,7 @@ export function App() {
                 spec={s}
                 selecao={selecaoDe(filtros, s.tabela, s.coluna, s.nivel)}
                 aoMudar={(valores) => mudaFiltro(s.tabela, s.coluna, valores, s.nivel)}
+                aoPrever={(valores) => aoPreverFiltro(s.tabela, s.coluna, valores, s.nivel)}
               />
             );
           })}
@@ -531,6 +557,14 @@ export function App() {
           )}
           aoMudar={(valores) =>
             mudaFiltro(
+              segmentacaoDeChips.segmentacao!.tabela,
+              segmentacaoDeChips.segmentacao!.coluna,
+              valores,
+              segmentacaoDeChips.segmentacao!.nivel,
+            )
+          }
+          aoPrever={(valores) =>
+            aoPreverFiltro(
               segmentacaoDeChips.segmentacao!.tabela,
               segmentacaoDeChips.segmentacao!.coluna,
               valores,

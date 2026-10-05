@@ -19,13 +19,20 @@ export function SegmentacaoChips(props: {
   spec: SegmentacaoSpec;
   selecao: readonly Valor[];
   aoMudar: (valores: Valor[]) => void;
+  /** O mouse parou num chip: a seleção que o clique nele daria (pré-carregamento). */
+  aoPrever?: (valores: Valor[]) => void;
 }) {
   const { pagina, spec } = props;
   const { opcoes, erro } = useValoresDaSegmentacao(pagina, spec.tabela, spec.coluna, spec.nivel);
 
-  function alterna(v: Valor): void {
+  /** A seleção depois de clicar em `v` — a mesma conta para o clique e para a previsão. */
+  function proxima(v: Valor): Valor[] {
     const marcado = props.selecao.some((x) => Object.is(x, v));
-    props.aoMudar(marcado ? props.selecao.filter((x) => !Object.is(x, v)) : [...props.selecao, v]);
+    return marcado ? props.selecao.filter((x) => !Object.is(x, v)) : [...props.selecao, v];
+  }
+
+  function alterna(v: Valor): void {
+    props.aoMudar(proxima(v));
   }
 
   return (
@@ -45,6 +52,7 @@ export function SegmentacaoChips(props: {
                 type="button"
                 className={`chip${marcado ? ' marcado' : ''}`}
                 onClick={() => alterna(o.valor)}
+                onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
                 title={o.valor === null ? '(vazio)' : formata(o.valor, o.tipo).texto}
               >
                 {o.valor === null ? '(vazio)' : formata(o.valor, o.tipo).texto}
