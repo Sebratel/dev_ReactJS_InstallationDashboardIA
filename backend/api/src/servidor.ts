@@ -2025,13 +2025,13 @@ export class Servidor {
   private registraCarga(
     dashId: string,
     tipo: 'página' | 'valores',
-    carga: { ms: number; libera: string[]; formaCompleta: string[] } | undefined,
+    carga: { ms: number; libera: string[]; formaCompleta: string[]; worker: number } | undefined,
   ): void {
     if (!carga) return;
     this.metricas.conta('worker_cargas');
     this.metricas.observa('worker_carga_ms', carga.ms);
     console.error(
-      `[worker] ${dashId} carregou do disco em ${carga.ms} ms (${tipo}; liberadas: ` +
+      `[worker ${carga.worker}] ${dashId} carregou do disco em ${carga.ms} ms (${tipo}; liberadas: ` +
         `${carga.libera.join(', ') || '—'}; forma completa: ${carga.formaCompleta.join(', ') || '—'})`,
     );
   }
@@ -2048,8 +2048,19 @@ export class Servidor {
    * mudança do tempo real (que derruba o dataset da página). Eram as 57 cargas em
    * ~23 min do ACHADOS #175, cada uma segurando o laço por centenas de ms — tempo em
    * que nem o HTML da tela saía. Na worker, a lista usa o MESMO dataset que o cálculo
-   * da página (mesma `chaveDeCarga`: a página inteira, nada liberado, a forma completa
-   * da página), então reaquecer a página já deixa a lista a um passo.
+   * da página (mesma `chaveDeCarga`), então reaquecer a página já deixa a lista a um
+   * passo.
+   *
+   * **A forma completa é a que os visuais DA PÁGINA pedem, não só os filtros dela.**
+   * O caminho antigo carregava sem nenhum visual amarrado e, na `agendamento-field`,
+   * caía no grão reduzido da `FIELD AGENDA` (`projecao.yaml`) — onde as
+   * colunas-gatilho (`ClassificacaoRelato`, `Descrição`…) não estão inteiras. Medido
+   * em 05/10/2026 no snapshot real: a lista de `ClassificacaoRelato` saía com 14 de 36
+   * valores e a de `Descrição` com 6 de 28, enquanto os visuais da mesma página
+   * calculavam sobre a forma completa. Com overlay do tempo real, a carga reduzida
+   * nem fechava (a tradução nativa de `Status Protocolo Dia` pede colunas que ela
+   * omite). A união dos visuais é também o que faz a chave coincidir com a da
+   * abertura da página.
    *
    * O overlay e a identidade são colhidos aqui, uma vez, pelo mesmo motivo de
    * `pagina()`: dois ramos não podem calcular sobre dois overlays diferentes.
@@ -2063,6 +2074,12 @@ export class Servidor {
     quem: Identidade,
   ): Promise<DaxValue[] | { erroDoPedido: string }> {
     const overlays = this.#overlayDe(dash);
+    const todos = (dash.visuals ?? []).map((v) => v.id);
+    const amarrado = todos.map((vid) => this.sobDemandaDoVisual(dash, vid));
+    const libera = [...new Set(amarrado.flatMap((a) => a.colunas))];
+    const formaCompleta = [
+      ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
+    ];
     if (this.piscina.ativa) {
       try {
         const r = await this.piscina.executa(
@@ -2072,8 +2089,8 @@ export class Servidor {
             dashboardSpec: dash,
             janela: { de: 0, linhas: 0 },
             clicados: [],
-            liberaSobDemanda: [],
-            precisaFormaCompleta: this.tabelasCompletasDaPagina(dash),
+            liberaSobDemanda: libera,
+            precisaFormaCompleta: formaCompleta,
             agoraIso: this.opts.agora().toISOString(),
             ...(overlays.size > 0 ? { overlays } : {}),
             identidade: this.identidadeDaPagina(dash),
@@ -2098,7 +2115,9 @@ export class Servidor {
         }
       }
     }
-    const carregado = await this.carrega(dash);
+    // Os mesmos visuais amarrados: `carrega` deriva deles a mesma liberação e a mesma
+    // forma completa mandadas à worker, e os dois ramos não podem listar valores diferentes.
+    const carregado = await this.carrega(dash, todos);
     try {
       return valoresDistintos(carregado.ev, tabela, coluna, nivel);
     } catch (err) {

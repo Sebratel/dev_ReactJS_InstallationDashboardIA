@@ -223,6 +223,26 @@ test('a rota de valores calcula na piscina, e pedidos iguais simultâneos viram 
   }
 });
 
+test('a lista de uma coluna-gatilho vem da forma completa, a mesma que os visuais da página usam', async () => {
+  // `ClassificacaoRelato` é coluna-gatilho do grão reduzido da FIELD AGENDA
+  // (`projecao.yaml`). Carregada sem nenhum visual amarrado, a lista caía no grão
+  // reduzido: medido em 05/10/2026, 14 de 36 valores (ACHADOS #175).
+  const f = piscinaFalsa();
+  const s = await sobe(f.piscina);
+  try {
+    const r = s.busca('/api/dashboards/agendamento-field/valores?tabela=FIELD AGENDA&coluna=ClassificacaoRelato');
+    await ate(() => f.pedidos.length === 1);
+    assert.ok(
+      (f.pedidos[0]!.precisaFormaCompleta ?? []).includes('FIELD AGENDA'),
+      `forma completa pedida: ${JSON.stringify(f.pedidos[0]!.precisaFormaCompleta)}`,
+    );
+    f.respondeTodos([]);
+    await (await r).arrayBuffer();
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('lista calculada sobre o dado de ANTES de um evento não fica gravada como a de depois', async () => {
   const f = piscinaFalsa();
   const s = await sobe(f.piscina);

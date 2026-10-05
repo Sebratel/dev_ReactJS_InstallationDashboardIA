@@ -13,7 +13,7 @@
 // reconstruir o mesclador deste lado com a MESMA `mesclador()` que o processo
 // principal usa. Ver `overlay-realtime.ts`.
 
-import { parentPort, workerData } from 'node:worker_threads';
+import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { SemanticModel } from '../../packages/semantic-model/src/model.ts';
 import { carrega, type Carregado } from '../../packages/snapshot/src/carrega.ts';
 import { calculaPagina, type Janela, type MemoDeCompletos } from './calcula.ts';
@@ -126,7 +126,7 @@ export interface RespostaCalculoWorker {
    */
   erroDoPedido?: string;
   /** Presente quando ESTE pedido carregou o dataset do disco (o `cacheDeCarga` errou). */
-  carga?: { ms: number; libera: string[]; formaCompleta: string[] };
+  carga?: { ms: number; libera: string[]; formaCompleta: string[]; worker: number };
   erro?: string;
 }
 
@@ -436,8 +436,10 @@ if (parentPort) {
           ...(overlays && overlays.size > 0 ? { overlay: mescladoresDe(overlays) } : {}),
         });
         guardaNoCache(chave, promessa);
-        await promessa.catch(() => undefined);
-        carga = { ms: Date.now() - t0, libera: [...libera].sort(), formaCompleta: [...formaCompleta].sort() };
+        // Medida só no sucesso: uma carga que falhou já vira a resposta de erro abaixo.
+        await promessa.then(() => {
+          carga = { ms: Date.now() - t0, libera: [...libera].sort(), formaCompleta: [...formaCompleta].sort(), worker: threadId };
+        }, () => undefined);
       }
 
       const carregado = await promessa;
