@@ -14086,3 +14086,74 @@ usam `invalidateQueries`; os três pré-carregamentos usam `prefetchQuery`. `sta
 
 Nenhum "carregando" novo; 0 erro no console (conferido no dev server com filtro, rolagem até
 os visuais abaixo da dobra e "Atualizar"). O bundle cresceu 30 kB (9 kB com gzip).
+
+---
+
+## #179 — filtro em milissegundos: o que já era, o que o motor ganhou e o que o mouse adianta (05/10)
+
+Pedido do Erick: "filtros em milissegundos". Medido antes de mexer, na API do Docker:
+
+| clique | tempo |
+|---|---|
+| um valor de uma segmentação de até 40 valores | **2–10 ms** (já pré-calculado, #163; `anterior` depois de um evento) |
+| dois filtros, combinação nunca pedida (`agendamento-field`) | **0,9–2,1 s** |
+| a mesma combinação de novo | 3–10 ms |
+
+Ou seja: o clique simples já era milissegundo. O que sobra é a **combinação nova**, e nela o
+tempo é difuso — 32 visuais da abertura, ~25 ms cada, nenhum acima de 500 ms; o perfil põe o
+grosso em `linhasVisiveis` dos cards (`FILTER` linha a linha) e na montagem de índice de
+igualdade a cada contexto novo. Não há um gargalo que leve 1 s a 10 ms.
+
+**1. O motor: agrupar por número, não por texto (`grupos.ts`).** As três `tableEx` de relato
+(`815c09`, `084be3`, `e2d554`) agrupam a FIELD AGENDA (~620 mil linhas) por 6 a 12 colunas, uma
+delas o texto do relato, e saem com 144 mil, 129 mil e 13,7 mil grupos. A chave de cada linha era
+a concatenação das identidades — uma string nova do tamanho do relato, por linha, achatada e
+"hasheada" inteira pelo `Map`. Agora `NumeradorDeCombinacoes` dá a cada identidade um inteiro
+(da coluna colunar, o código do dicionário canonizado uma vez por código, via o novo
+`Evaluator.leitorDeCodigo`) e combina os pares numa tabela de hash própria sobre `Int32Array`;
+`filtrosDe` acha a combinação pelo array `valores` (é o mesmo objeto) e só monta a chave de
+texto se alguém pedir por um array de fora.
+- Uma primeira versão com `Map<number, number>` e chave `g * 2^26 + id` **não ganhou**: a chave
+  passa de 2^31, vira número alocado no heap, e `junta` ficou com 2 s de tempo próprio.
+- Medido (mínimo de 5 rodadas por visual, 3 pares de processos alternados, a API do Docker a
+  100% de um núcleo ao lado): as três tabelas **3,5–3,9 s → antes 4,6–6,6 s**, 3/3 para a nova.
+- `grupos-chave.test.ts` trocou a forma "concatenação incremental" (que não existe mais) por:
+  o numerador separa 2 mil linhas sorteadas (caixa diferente, `'1'` vs `1`, BLANK, a mesma data
+  em dois objetos) exatamente como `chaveDeValores`, com número denso na ordem de aparição; e a
+  tabela de pares cresce sem perder número. Mutação (`junta` ignorando a combinação anterior):
+  2 testes falham.
+
+**Paridade** (o mesmo cálculo no motor anterior e no novo, cada um num processo, hash por
+visual, as 14 páginas sem filtro e com os primeiros valores das primeiras segmentações):
+**42 casos iguais, 0 divergências** (`paridade-grupos`, rascunho fora do repositório; o filho é o de `bench:filtro-pai-paridade`). Na própria
+`agendamento-field`, numa rodada só: sem filtro **18,9 s → 10,8 s**, com o 1º filtro 10,6 s → 7,0 s —
+é o cálculo que o tempo real refaz a cada evento. Nas páginas pequenas a diferença é ruído (a
+`visao-geral` com filtro, 4 pares alternados: antes 105–153 / 144–430 ms, depois 116–207 / 137–178).
+
+**2. A tela: o próximo clique já está pronto quando a pessoa clica.**
+- **O mouse sobre um filtro** (`App.tsx`, `Segmentacao*.tsx`): o mesmo pré-carregamento que já
+  existia para a aba e para a barra (R6, 150 ms de intenção), agora no chip e na opção do
+  seletor, pela conta do clique (`aplicaSelecao`). Medido: o pedido sai ~250 ms antes do clique
+  — pouco contra o 1–3,7 s da combinação fria logo depois de reiniciar a API.
+- **A vizinhança** (`hooks/useVizinhanca.ts`, `utils/vizinhanca.ts`): com a página parada 1 s, a
+  tela pede em sequência cada estado a UM clique de filtro deste — chips primeiro, depois os
+  seletores de até 40 valores, no máximo 40 estados —, com `origem=prefetch` (atrás dos cliques
+  na fila e fora da worker reservada, #163). Estado novo interrompe; vizinho que já está no
+  cache da tela, mesmo velho, não é pedido de novo (o aviso do servidor invalida a página
+  inteira, e senão cada evento custaria 40 pedidos por pessoa). Uma ideia anterior, a
+  vizinhança no servidor disparada pelo pedido do usuário, foi descartada: o mouse sobre um
+  chip também é pedido, e cada passada de mouse reiniciaria a vizinhança de um estado que a
+  pessoa nem escolheu.
+- O teste (`vizinhanca.test.ts`) compara a URL de cada vizinho com a do clique de verdade.
+
+**Medido na stack de teste (Playwright, `agendamento-field`):** chip 1 → 8 s lendo → chip 2.
+Em 10 rodadas, **6 a 11 dos 7 a 12 vizinhos ficaram prontos** durante a leitura (o que faltava
+era o frio, 1,1–6,3 s). No segundo clique a combinação **sai do cache da tela, sem esperar
+rede**; quando um aviso de tempo real a envelheceu nesses 8 s, ela aparece igual e se atualiza
+por baixo em 9–49 ms (a URL pedida era a do vizinho pré-carregado — a chave bate). Antes: a
+mesma combinação, fria, 1,1–3,7 s.
+
+**O que continua frio:** clicar antes de a vizinhança chegar ao valor (são ~1 s por vizinho
+frio, em fila); o terceiro filtro em diante (a vizinhança é de um passo); segmentações com mais
+de 40 valores; e o período (árvore de data), que tem o seu próprio pré-cálculo
+(`filtrosRecentes`).
