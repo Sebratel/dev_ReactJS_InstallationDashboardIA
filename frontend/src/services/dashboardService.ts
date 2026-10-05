@@ -182,8 +182,9 @@ export interface OpcoesDePagina {
   linhas?: number;
   /** O campo "Filtrar…" da tabela. Ver `?busca=` em `backend/api/src/servidor.ts`. */
   busca?: string;
-  /** Força recálculo no servidor ignorando o cache de resposta (Fase 4, ?recalcula=1). */
-  recalcula?: boolean;
+  // Sem `recalcula` desde 05/10/2026: a tela não força recálculo no servidor (ele
+  // regravava o cache de todo mundo por um clique). A API só o aceita de ferramenta
+  // interna — ver `servidor.ts`.
 }
 
 /**
@@ -224,7 +225,6 @@ export function urlDaPagina(
   // daria uma segunda chave para o mesmo pedido, e a abertura sem busca deixaria de
   // reaproveitar o que o aquecedor já calculou.
   if (opcoes.busca) p.set('busca', opcoes.busca);
-  if (opcoes.recalcula) p.set('recalcula', '1');
   const q = p.toString();
   return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
 }

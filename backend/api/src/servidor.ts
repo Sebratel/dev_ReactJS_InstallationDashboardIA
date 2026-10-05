@@ -1412,7 +1412,14 @@ export class Servidor {
     // dela.
     const carimbo = this.carimboDaPagina(dash);
     const dia = diaDoCalculo(this.opts.agora());
-    const recalcula = url.searchParams.get('recalcula') === '1';
+    // **`?recalcula=1` é de ferramenta, não de pessoa** (Erick, 05/10/2026). Ele refaz
+    // a conta e regrava a resposta que TODO MUNDO lê: um clique de um usuário custaria
+    // CPU de todos. A tela parou de mandá-lo; de quem não é ferramenta interna (login
+    // por `/auth/interno`) ou o próprio aquecedor, ele é ignorado — e o pedido segue
+    // como qualquer outro, servido do que já está pronto.
+    const pediuRecalculo = url.searchParams.get('recalcula') === '1';
+    const recalcula = pediuRecalculo && (quem.usuario === 'ferramenta-interna' || quem.papeis.includes('interno'));
+    if (pediuRecalculo && !recalcula) this.metricas.conta('recalcula_ignorado');
     const chave = chaveDaResposta({
       escopo: escopoDoCache(quem),
       pagina: dash.id,

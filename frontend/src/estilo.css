@@ -1263,3 +1263,9 @@ table.dados.matriz th:first-child, table.dados.matriz td:first-child { width: 29
      linhas. O nome completo continua no `title` de cada aba. */
   .aba-rotulo { display: none; }
 }
+
+/* O ícone do "Atualizar" gira enquanto a página busca de novo — o número atual
+   continua na tela; o giro é o único sinal de que algo está a caminho. */
+@keyframes girando { to { transform: rotate(360deg); } }
+.girando { animation: girando 0.9s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .girando { animation: none; } }

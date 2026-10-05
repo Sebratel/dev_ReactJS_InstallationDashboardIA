@@ -195,3 +195,24 @@ test('quem recebeu a última pronta é avisado de novo quando a versão nova fic
     await s.fecha();
   }
 });
+
+test('?recalcula=1 de um usuário comum é ignorado; o de ferramenta interna vale', async () => {
+  // Um clique de uma pessoa não pode refazer a conta e regravar a resposta que todo
+  // mundo lê (Erick, 05/10/2026). O pedido dela segue servido do que já está pronto.
+  const pessoa = await sobe({});
+  try {
+    await (await pessoa.busca('/api/dashboards/capa')).arrayBuffer();
+    const r = await (await pessoa.busca('/api/dashboards/capa?recalcula=1')).json();
+    assert.equal(r.cache, 'hit', 'o recalcula de um usuário comum forçou cálculo');
+  } finally {
+    await pessoa.fecha();
+  }
+  const ferramenta = await sobe({ identifica: () => ({ usuario: 'ferramenta-interna', papeis: ['autenticado'] }) });
+  try {
+    await (await ferramenta.busca('/api/dashboards/capa')).arrayBuffer();
+    const r = await (await ferramenta.busca('/api/dashboards/capa?recalcula=1')).json();
+    assert.notEqual(r.cache, 'hit', 'a ferramenta interna perdeu o recalcula');
+  } finally {
+    await ferramenta.fecha();
+  }
+});

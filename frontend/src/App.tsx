@@ -47,6 +47,12 @@ import { ActiveFilterPill } from './components/filtros/ActiveFilterPill.tsx';
 import { KpiGridSection } from './components/visuais/KpiGridSection.tsx';
 import { VisualGridSection } from './components/visuais/VisualGridSection.tsx';
 import { RefreshCw } from 'lucide-react';
+import { ContextoVersaoDosDados } from './context/VersaoDosDadosContext.tsx';
+
+/** De quanto em quanto a página aberta busca de novo sozinha, além do aviso do
+ *  servidor — a rede de segurança para um aviso perdido numa reconexão do SSE.
+ *  Fixo: era um seletor por pessoa ("Auto") até 05/10/2026. */
+const ATUALIZA_SOZINHA_S = 60;
 
 export function App() {
   const { conferencia } = useModo();
@@ -88,7 +94,6 @@ export function App() {
   const [clicados, setClicados] = useState<CampoClicado[]>(inicial.clicados);
   const [pagina, setPagina] = useState<PaginaCalculada | null>(null);
   const [carregando, setCarregando] = useState(false);
-  const [enquadrado, setEnquadrado] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   // Otimista: assume logado até o primeiro 401 de verdade. Vira `false` em
@@ -111,8 +116,6 @@ export function App() {
   // cruzada longa (`aoFiltrarAlvos` acima) acumula uma chave por combinação de
   // filtro+clique sem nunca podar.
   const paginasVistas = useRef<Map<string, PaginaCalculada>>(new Map());
-  // Ref para forçar recálculo ignorando o cache do servidor (?recalcula=1).
-  const forcarRecalculoRef = useRef(false);
   // Sobe a cada evento de `/api/eventos` que atinge a página ABERTA — é o único
   // jeito de reabrir o efeito de busca abaixo sem depender de `atual`/`filtros`/
   // `clicados` terem mudado (ACHADOS #89/#90: a tela se atualiza sozinha).
@@ -121,8 +124,10 @@ export function App() {
   const [saude, setSaude] = useState<RespostaSaude | null>(null);
   // Horário da última atualização automática recebida via SSE (Marco C2).
   const [horaRealtime, setHoraRealtime] = useState<string | null>(null);
-  // Intervalo em segundos para auto-refresh silencioso do dashboard em segundo plano (default 60s).
-  const [intervaloAutoRefresh, setIntervaloAutoRefresh] = useState<number>(60);
+  // Sobe só no botão "Atualizar": as listas das segmentações buscam de novo. Ver
+  // `VersaoDosDadosContext.tsx` para por que o aviso do servidor não a sobe.
+  const [versaoFiltros, setVersaoFiltros] = useState(0);
+  const versaoDosDados = useMemo(() => ({ dados: revalidar, filtros: versaoFiltros }), [revalidar, versaoFiltros]);
 
   useEffect(() => {
     let cancelado = false;
@@ -149,7 +154,7 @@ export function App() {
   // Rebusca os dados no intervalo configurado (default: 60s), invalidando o cache local
   // para que a tela e o carimbo de horário (`dadoDe`) se atualizem sozinhos sem F5.
   useEffect(() => {
-    if (!logado || !atual || intervaloAutoRefresh <= 0) return;
+    if (!logado || !atual) return;
     const interval = setInterval(() => {
       if (atualRef.current) {
         apagaPaginaDoCache(paginasVistas.current, atualRef.current);
@@ -162,9 +167,9 @@ export function App() {
         setHoraRealtime(horaFmt);
         setRevalidar((n) => n + 1);
       }
-    }, intervaloAutoRefresh * 1000);
+    }, ATUALIZA_SOZINHA_S * 1000);
     return () => clearInterval(interval);
-  }, [logado, atual, intervaloAutoRefresh]);
+  }, [logado, atual]);
 
   // O efeito do SSE roda uma vez por sessão de login — ler `atual` fresco de um
   // ref evita reabrir a conexão a cada troca de aba (senão perderia evento no
@@ -314,16 +319,9 @@ export function App() {
       return;
     }
 
-    const devedorRecalcular = forcarRecalculoRef.current;
-    if (devedorRecalcular) {
-      forcarRecalculoRef.current = false;
-    }
-    const opcoesEager = {
-      visuais: idsIniciais(layoutAtual),
-      ...(devedorRecalcular ? { recalcula: true } : {}),
-    };
-    const chave = urlDaPagina(atual, filtros, { visuais: idsIniciais(layoutAtual) }, clicados);
-    const doCache = devedorRecalcular ? undefined : paginasVistas.current.get(chave);
+    const opcoesEager = { visuais: idsIniciais(layoutAtual) };
+    const chave = urlDaPagina(atual, filtros, opcoesEager, clicados);
+    const doCache = paginasVistas.current.get(chave);
     if (doCache) {
       setPagina(doCache);
       setCarregando(false);
@@ -628,90 +626,28 @@ export function App() {
       avisoSaude={avisoSaude}
       ultimaAtualizacaoRealtime={horaRealtime}
       acoes={
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div
-            title="Atualização automática em segundo plano sem recarregar a tela"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              fontSize: '0.82rem',
-              color: 'var(--pbi-texto-suave, #666)',
-              backgroundColor: 'var(--pbi-card-bg, #fff)',
-              border: '1px solid var(--pbi-borda, #ccc)',
-              borderRadius: '4px',
-              padding: '3px 8px',
-            }}
-          >
-            <RefreshCw
-              size={13}
-              style={{
-                color: intervaloAutoRefresh > 0 ? '#880F17' : 'inherit',
-              }}
-            />
-            <label htmlFor="select-auto-refresh" style={{ cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}>
-              Auto:
-            </label>
-            <select
-              id="select-auto-refresh"
-              value={intervaloAutoRefresh}
-              onChange={(e) => setIntervaloAutoRefresh(Number(e.target.value))}
-              style={{
-                border: 'none',
-                background: 'transparent',
-                color: 'inherit',
-                fontSize: '0.8rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                outline: 'none',
-              }}
-            >
-              <option value={30}>30s</option>
-              <option value={60}>60s (Padrão)</option>
-              <option value={120}>2 min</option>
-              <option value={300}>5 min</option>
-              <option value={0}>Desativado</option>
-            </select>
-          </div>
-          <button
-            className={`secundario ${enquadrado ? 'ativo' : ''}`}
-            onClick={() => setEnquadrado((e) => !e)}
-            title="Enquadrar conteúdo na tela para visualização em 16:9 sem rolagem"
-            style={{
-              padding: '6px 12px',
-              fontSize: '0.85rem',
-              backgroundColor: enquadrado ? '#880F17' : 'transparent',
-              color: enquadrado ? '#fff' : 'inherit',
-              border: '1px solid #880F17',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-            }}
-          >
-            {enquadrado ? '🗗 Tamanho normal' : '⛶ Enquadrar na tela'}
-          </button>
-          <button
-            className="primario"
-            onClick={() => {
-              if (!atual) return;
-              apagaPaginaDoCache(paginasVistas.current, atual);
-              forcarRecalculoRef.current = true;
-              const agora = new Date();
-              const horaFmt = agora.toLocaleTimeString('pt-BR', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-              });
-              setHoraRealtime(horaFmt);
-              setRevalidar((n) => n + 1);
-            }}
-            disabled={carregando || !atual}
-          >
-            {carregando ? 'calculando…' : 'Recalcular'}
-          </button>
-        </div>
+        // **Um botão só, e ele não recalcula nada no servidor** (Erick, 05/10/2026).
+        // O intervalo do relógio e o enquadramento eram escolha de cada pessoa; agora
+        // são da plataforma. "Atualizar" busca de novo o que o servidor já tem pronto —
+        // a página, os visuais abaixo da dobra e as listas dos filtros —, mantendo o
+        // número atual na tela até o novo chegar. O antigo "Recalcular" mandava
+        // `?recalcula=1`: refazia a conta e regravava o cache de TODO MUNDO por um clique.
+        <button
+          className="secundario"
+          onClick={() => {
+            if (!atual) return;
+            apagaPaginaDoCache(paginasVistas.current, atual);
+            setHoraRealtime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+            setRevalidar((n) => n + 1);
+            setVersaoFiltros((n) => n + 1);
+          }}
+          disabled={!atual}
+          title="Buscar de novo os números desta página"
+          style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+        >
+          <RefreshCw size={14} className={carregando ? 'girando' : undefined} aria-hidden="true" />
+          Atualizar
+        </button>
       }
 
     >
@@ -818,7 +754,7 @@ export function App() {
         )
       ) : null}
 
-      <div style={enquadrado ? { transform: 'scale(0.82)', transformOrigin: 'top center', transition: 'transform 0.2s ease-in-out' } : undefined}>
+      <ContextoVersaoDosDados.Provider value={versaoDosDados}>
         {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas
             que a spec traz para ela, 28 não têm número — a tela gerada renderizava
             DOIS cartões de indicador num vazio. O componente que a substitui existia
@@ -846,8 +782,7 @@ export function App() {
             aoPrever={aoPreverAlvos}
           />
         </div>
-      </div>
-
+      </ContextoVersaoDosDados.Provider>
 
       {paginaValida && visuais.every((v) => v.conteudo === null) ? (
         <div className="vazio-pagina">Esta página não tem visual com número.</div>

@@ -20,6 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ehAbortError, pegaPagina, type FiltroDaTela, type VisualCalculado } from '../services/dashboardService.ts';
+import { useVersaoDosDados } from '../context/VersaoDosDadosContext.tsx';
 
 export type EstadoSobDemanda = 'carregando' | 'parado';
 
@@ -44,6 +45,10 @@ export function useVisualSobDemanda(
   // uma ref evita que isso reinicie o fetch a cada render sem mudança de conteúdo real.
   const clicadosRef = useRef(clicados);
   clicadosRef.current = clicados;
+  // Busca de novo quando o servidor avisa que a página mudou (ou no "Atualizar"), como
+  // a abertura da página já fazia. `pronto` não é zerado: quem desenha mostra o número
+  // atual até o novo chegar. Ver `VersaoDosDadosContext.tsx`.
+  const { dados: versao } = useVersaoDosDados();
 
   useEffect(() => {
     let atual = true;
@@ -76,7 +81,7 @@ export function useVisualSobDemanda(
     // `clicados` fica de fora de propósito: ele entra por `clicadosRef`, não por
     // dependência — os chamadores passam um array novo a cada render sem o
     // conteúdo ter mudado, e isso reiniciaria o fetch a cada render deles.
-  }, [pagina, visualId, filtros, tentativa]);
+  }, [pagina, visualId, filtros, tentativa, versao]);
 
   const tentarDeNovo = useCallback(() => setTentativa((t) => t + 1), []);
 

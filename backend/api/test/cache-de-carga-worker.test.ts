@@ -80,7 +80,9 @@ async function sobe(
     snapshotDir,
     webDir: WEB,
     agora: () => AGORA,
-    identifica: () => ({ usuario: 'teste', papeis: ['autenticado'] }),
+    // `ferramenta-interna`: estes testes usam `?recalcula=1`, que desde 05/10/2026 só
+    // vale para ferramenta (ver `servidor.ts`).
+    identifica: () => ({ usuario: 'ferramenta-interna', papeis: ['autenticado'] }),
     overlayRealtime,
   });
   const http = servidor.criaHttp();
