@@ -401,6 +401,28 @@ export const pegaValores = (
   tabela: string,
   coluna: string,
   nivel?: string,
-): Promise<ValoresDeColuna> => pega(urlDeValores(id, tabela, coluna, nivel));
+  signal?: AbortSignal,
+): Promise<ValoresDeColuna> => pega(urlDeValores(id, tabela, coluna, nivel), signal);
 
 export const pegaSaude = (signal?: AbortSignal): Promise<RespostaSaude> => pega('/api/saude', signal);
+
+/**
+ * As chaves do cache da tela (React Query), num lugar só — fase 2 de
+ * `docs/PLANO-PADROES-FRONTEND.md`.
+ *
+ * **A página vem antes da URL** (`['pagina', id, url]`, e não `['pagina', url]` como
+ * o plano dizia): o aviso do servidor chega POR PÁGINA (`/api/eventos`), e é o prefixo
+ * `['pagina', id]` que deixa `invalidateQueries` alcançar toda combinação de filtro,
+ * clique e visual daquela página de uma vez — inclusive os visuais abaixo da dobra.
+ * A URL continua sendo `urlDaPagina`, a mesma que vai para a rede.
+ */
+export const chavesDeConsulta = {
+  dashboards: ['dashboards'] as const,
+  layout: (id: string) => ['layout', id] as const,
+  /** Sem `url`: o prefixo de todas as combinações da página. */
+  pagina: (id: string, url?: string) => (url === undefined ? (['pagina', id] as const) : (['pagina', id, url] as const)),
+  /** Sem coluna: o prefixo de todas as segmentações da página. */
+  valores: (id: string, tabela?: string, coluna?: string, nivel?: string | null) =>
+    tabela === undefined ? (['valores', id] as const) : (['valores', id, tabela, coluna ?? '', nivel ?? ''] as const),
+  saude: ['saude'] as const,
+};

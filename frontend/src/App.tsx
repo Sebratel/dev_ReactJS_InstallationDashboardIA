@@ -1,28 +1,28 @@
 // A tela: escolhe a página, aplica as segmentações e desenha os visuais em formato Dashboard Sebratel.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
+  chavesDeConsulta,
   ehAbortError,
   ehErroDeSessao,
-  listaDashboards,
-  pegaLayout,
-  pegaPagina,
-  pegaSaude,
-  urlDaPagina,
-  type DashboardDaLista,
   type FiltroDaTela,
-  type LayoutSpec,
-  type PaginaCalculada,
-  type RespostaSaude,
   type Valor,
 } from './services/dashboardService.ts';
+import {
+  consultaDaAbertura,
+  preCarregaAbertura,
+  useDashboards,
+  useLayout,
+  usePaginaAberta,
+  useSaude,
+} from './hooks/useDadosDaTela.ts';
+import { useSessaoStore } from './store/sessaoStore.ts';
 import { sai } from './services/authService.ts';
 import { assinaEventos } from './services/eventosService.ts';
 import { avaliaSaudeQueries } from './utils/avisoSaude.ts';
 import { dataHora, duracao, inteiro } from './utils/formato.ts';
 import { useAlturaMedida, useEspacoSemVisual } from './hooks/useAlturaMedida.ts';
-import { apagaPaginaDoCache, guardaPaginaVista } from './utils/cachePagina.ts';
-import { idsIniciais } from './utils/cargaProgressiva.ts';
 import { dataDaPagina, filtrosPadrao } from './utils/filtrosPadrao.ts';
 import {
   alternaAlvos,
@@ -47,7 +47,6 @@ import { ActiveFilterPill } from './components/filtros/ActiveFilterPill.tsx';
 import { KpiGridSection } from './components/visuais/KpiGridSection.tsx';
 import { VisualGridSection } from './components/visuais/VisualGridSection.tsx';
 import { RefreshCw } from 'lucide-react';
-import { ContextoVersaoDosDados } from './context/VersaoDosDadosContext.tsx';
 
 /** De quanto em quanto a página aberta busca de novo sozinha, além do aviso do
  *  servidor — a rede de segurança para um aviso perdido numa reconexão do SSE.
@@ -56,6 +55,7 @@ const ATUALIZA_SOZINHA_S = 60;
 
 export function App() {
   const { conferencia } = useModo();
+  const qc = useQueryClient();
   // `--h-filtros` valia 50px fixos e a barra mede 71px na maioria das telas — 110px
   // na MANUTENÇÃO INICIAL em 1366x768, que tem 13 controles e quebra em três linhas.
   // A conta de `--util` errava por até 60px, e o efeito era card mais alto do que
@@ -70,7 +70,6 @@ export function App() {
   // `useEspacoSemVisual`.
   const antesDosVisuaisRef = useEspacoSemVisual<HTMLDivElement>('--h-antes', '--h-entre');
   const inicial = useMemo(() => leRota(window.location.search), []);
-  const [paginas, setPaginas] = useState<DashboardDaLista[]>([]);
   const [atual, setAtual] = useState<string | null>(inicial.pagina);
   // FILTRO PADRÃO: a página abre PRÉ-FILTRADA, como o relatório original.
   //
@@ -92,196 +91,108 @@ export function App() {
   // para o primeiro. Mora na URL junto com os filtros, senão recarregar (ou abrir o
   // link) transformaria um destaque em colapso sem ninguém tocar em nada.
   const [clicados, setClicados] = useState<CampoClicado[]>(inicial.clicados);
-  const [pagina, setPagina] = useState<PaginaCalculada | null>(null);
-  const [carregando, setCarregando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
-  // Otimista: assume logado até o primeiro 401 de verdade. Vira `false` em
-  // QUALQUER chamada a `/api/*` que volte sem sessão — a tela de login
-  // substitui o dashboard inteiro enquanto isto for `false` (ver o `return`
-  // mais abaixo). Não existe estado "ainda não sei": antes do primeiro
-  // pedido responder, o esqueleto de carregamento de sempre cobre a espera.
-  const [logado, setLogado] = useState(true);
-  // A FORMA da página (Fase L4): não depende de filtro nem de clique, só de qual
-  // página está aberta — por isso vive num efeito à parte, e não no de `pegaPagina`
-  // abaixo. Cache por página nesta sessão: o arquivo não muda em runtime, e refazer o
-  // pedido a cada volta a uma página já vista seria trabalho à toa.
-  const [layout, setLayout] = useState<LayoutSpec | null>(null);
-  const layoutsVistos = useRef<Map<string, LayoutSpec>>(new Map());
-  // FASE L5, R5 — stale-while-revalidate de `pagina`, por URL (a mesma chave que
-  // já vai para a rede: page+filtros+visuais+clicados). Diferente de `layoutsVistos`
-  // (que nunca revalida — layout não muda em runtime), aqui a rede SEMPRE roda atrás;
-  // o cache só evita mostrar o esqueleto de novo numa combinação já vista nesta
-  // sessão. Teto simples por ordem de inserção: sem ele, uma sessão de filtragem
-  // cruzada longa (`aoFiltrarAlvos` acima) acumula uma chave por combinação de
-  // filtro+clique sem nunca podar.
-  const paginasVistas = useRef<Map<string, PaginaCalculada>>(new Map());
-  // Sobe a cada evento de `/api/eventos` que atinge a página ABERTA — é o único
-  // jeito de reabrir o efeito de busca abaixo sem depender de `atual`/`filtros`/
-  // `clicados` terem mudado (ACHADOS #89/#90: a tela se atualiza sozinha).
-  const [revalidar, setRevalidar] = useState(0);
-  // Saúde das queries do refresh (Marco A6) — monitora atrasos e falhas por query.
-  const [saude, setSaude] = useState<RespostaSaude | null>(null);
-  // Horário da última atualização automática recebida via SSE (Marco C2).
+  // Otimista: assume logado até o primeiro 401 de verdade, em QUALQUER consulta — quem
+  // fica sabendo é o `QueryCache` (`services/queryClient.ts`). A tela de login
+  // substitui o dashboard inteiro enquanto isto for `false` (ver o `return` abaixo).
+  const logado = useSessaoStore((s) => s.logado);
+  const expirou = useSessaoStore((s) => s.expirou);
+  // Horário da última atualização (aviso do servidor, relógio ou "Atualizar").
   const [horaRealtime, setHoraRealtime] = useState<string | null>(null);
-  // Sobe só no botão "Atualizar": as listas das segmentações buscam de novo. Ver
-  // `VersaoDosDadosContext.tsx` para por que o aviso do servidor não a sobe.
-  const [versaoFiltros, setVersaoFiltros] = useState(0);
-  const versaoDosDados = useMemo(() => ({ dados: revalidar, filtros: versaoFiltros }), [revalidar, versaoFiltros]);
 
-  useEffect(() => {
-    let cancelado = false;
-    const busca = (): void => {
-      pegaSaude()
-        .then((s) => {
-          if (!cancelado) setSaude(s);
-        })
-        .catch(() => {
-          // Rota /api/saude responde silenciosamente se endpoint não responder ou em mock
-        });
-    };
-    busca();
-    // Independente do "Auto": com ele desligado, uma página aberta nunca veria o dado
-    // PARAR — parado é justamente não chegar evento nenhum (ACHADOS #160).
-    const relogio = setInterval(busca, 120_000);
-    return () => {
-      cancelado = true;
-      clearInterval(relogio);
-    };
-  }, [revalidar]);
+  // **O estado do servidor mora no React Query** (fase 2 de
+  // `docs/PLANO-PADROES-FRONTEND.md`): a lista de páginas, a forma de cada uma, a
+  // abertura e a saúde. Eram quatro caches feitos à mão aqui (`layoutsVistos`,
+  // `paginasVistas`, o conjunto de pedidos em voo do hover e o `useState` da saúde),
+  // cada um com a sua regra de validade. Ver `hooks/useDadosDaTela.ts`.
+  const dashboardsQ = useDashboards();
+  const paginas = useMemo(() => dashboardsQ.data ?? [], [dashboardsQ.data]);
+  const layoutQ = useLayout(atual);
+  const layout = layoutQ.data ?? null;
+  const paginaQ = usePaginaAberta(atual, layoutQ.data, filtros, clicados);
+  const pagina = paginaQ.data ?? null;
+  const saude = useSaude().data ?? null;
+  // Erro que a tela mostra: o de sessão vira login (no `QueryCache`), e pedido
+  // cancelado não é erro — é o pedido seguinte fazendo o trabalho certo.
+  const erroDeConsulta = [dashboardsQ.error, layoutQ.error, paginaQ.error].find(
+    (e) => e && !ehErroDeSessao(e) && !ehAbortError(e),
+  );
+  const erro = erroDeConsulta ? (erroDeConsulta instanceof Error ? erroDeConsulta.message : String(erroDeConsulta)) : null;
 
-  // AUTO-REFRESH PERIÓDICO EM SEGUNDO PLANO
-  // Rebusca os dados no intervalo configurado (default: 60s), invalidando o cache local
-  // para que a tela e o carimbo de horário (`dadoDe`) se atualizem sozinhos sem F5.
-  useEffect(() => {
-    if (!logado || !atual) return;
-    const interval = setInterval(() => {
-      if (atualRef.current) {
-        apagaPaginaDoCache(paginasVistas.current, atualRef.current);
-        const agora = new Date();
-        const horaFmt = agora.toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        });
-        setHoraRealtime(horaFmt);
-        setRevalidar((n) => n + 1);
-      }
-    }, ATUALIZA_SOZINHA_S * 1000);
-    return () => clearInterval(interval);
-  }, [logado, atual]);
+  const marcaHora = useCallback(() => {
+    setHoraRealtime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+  }, []);
 
   // O efeito do SSE roda uma vez por sessão de login — ler `atual` fresco de um
   // ref evita reabrir a conexão a cada troca de aba (senão perderia evento no
   // meio da troca, e reconectar sem necessidade é o oposto do que R6 já evita
   // para o `fetch` normal).
   const atualRef = useRef(atual);
-
-  useEffect(() => {
-    if (!atual) return;
-    const doCache = layoutsVistos.current.get(atual);
-    if (doCache) {
-      setLayout(doCache);
-      return;
-    }
-    setLayout(null);
-    const aborta = new AbortController();
-    pegaLayout(atual, aborta.signal)
-      .then((l) => {
-        layoutsVistos.current.set(atual, l);
-        setLayout(l);
-      })
-      .catch((err: unknown) => {
-        if (ehAbortError(err)) return;
-        if (ehErroDeSessao(err)) {
-          setLogado(false);
-          return;
-        }
-        setErro(err instanceof Error ? err.message : String(err));
-      });
-    return () => aborta.abort();
-  }, [atual]);
-
   useEffect(() => {
     atualRef.current = atual;
   }, [atual]);
 
+  // AUTO-REFRESH PERIÓDICO EM SEGUNDO PLANO: a rede de segurança para um aviso do
+  // servidor perdido numa reconexão do SSE. Invalidar a página aberta faz a abertura E
+  // os visuais abaixo da dobra buscarem de novo, mantendo o número atual na tela.
+  useEffect(() => {
+    if (!logado || !atual) return;
+    const interval = setInterval(() => {
+      if (!atualRef.current) return;
+      marcaHora();
+      void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atualRef.current) });
+      void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
+    }, ATUALIZA_SOZINHA_S * 1000);
+    return () => clearInterval(interval);
+  }, [logado, atual, qc, marcaHora]);
+
   // ACHADOS #89/#90 — poller de quase-realtime: o servidor empurra por SSE quando
   // detecta mudança no Voalle. Nenhum dado chega pelo evento em si (só o id da
-  // página) — a tela reage apagando o cache daquela combinação e, se for a página
-  // ABERTA agora, disparando o mesmo `fetch` de sempre, sem F5.
+  // página). Toda combinação daquela página fica velha; a que está na tela busca de
+  // novo na hora, e as outras quando voltarem a ser abertas.
   useEffect(() => {
     if (!logado) return;
     return assinaEventos((afetados) => {
-      for (const id of afetados) apagaPaginaDoCache(paginasVistas.current, id);
+      for (const id of afetados) void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(id) });
       if (atualRef.current && afetados.includes(atualRef.current)) {
-        const agora = new Date();
-        const horaFmt = agora.toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        });
-        setHoraRealtime(horaFmt);
-        setRevalidar((n) => n + 1);
+        marcaHora();
+        void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
       }
     });
-  }, [logado]);
+  }, [logado, qc, marcaHora]);
 
+  // A página inicial, quando a URL não trouxe uma: a primeira pronta da lista.
   useEffect(() => {
+    const lista = dashboardsQ.data;
+    if (!lista || atual) return;
+    const escolhida = lista.find((d) => d.pronta)?.id ?? lista[0]?.id ?? null;
+    setAtual(escolhida);
+    setFiltros((f) => (f.length > 0 ? f : filtrosPadrao(escolhida)));
+  }, [dashboardsQ.data, atual]);
 
-    listaDashboards()
-      .then((r) => {
-        // As páginas de DICA do relatório original (`type: Tooltip`) saem aqui, no
-        // ponto em que a lista entra na tela — e por isso somem da navegação, da
-        // escolha da página inicial e do pré-carregamento de uma vez só.
-        // São `l-inst`, `l-mapa` e `l-tec`: 550x400, um visual, e no Power BI elas
-        // só aparecem ao pairar sobre outro visual. Vinham como aba desde sempre.
-        const navegaveis = r.dashboards.filter((d) => d.tooltip !== true);
-        setPaginas(navegaveis);
-        setAtual((a) => {
-          if (a) return a;
-          const escolhida = navegaveis.find((d) => d.pronta)?.id ?? navegaveis[0]?.id ?? null;
-          setFiltros((f) => (f.length > 0 ? f : filtrosPadrao(escolhida)));
-          return escolhida;
-        });
-
-        // Pré-carregamento em segundo plano sequencial de outras páginas prontas,
-        // aguardando a página inicial abrir primeiro para não disputar recursos da API.
-        const paginaInicial = inicial.pagina ?? navegaveis.find((d) => d.pronta)?.id ?? navegaveis[0]?.id ?? null;
-        void (async () => {
-          // Pequena pausa para a página em exibição carregar com prioridade máxima
-          await new Promise((resolve) => setTimeout(resolve, 800));
-          for (const d of navegaveis) {
-            if (!d.pronta || d.id === paginaInicial) continue;
-            try {
-              let l = layoutsVistos.current.get(d.id);
-              if (!l) {
-                l = await pegaLayout(d.id);
-                layoutsVistos.current.set(d.id, l);
-              }
-              const f = filtrosPadrao(d.id);
-              const opcoesEager = { visuais: idsIniciais(l) };
-              const chave = urlDaPagina(d.id, f, opcoesEager, []);
-              if (!paginasVistas.current.has(chave)) {
-                const p = await pegaPagina(d.id, f, opcoesEager, undefined, []);
-                guardaPaginaVista(paginasVistas.current, chave, p);
-              }
-              // Intervalo leve entre páginas de fundo para manter a API 100% responsiva
-              await new Promise((resolve) => setTimeout(resolve, 300));
-            } catch {
-              // Pré-carregamento em background silencioso
-            }
-          }
-        })();
-      })
-      .catch((err: unknown) => {
-        if (ehErroDeSessao(err)) {
-          setLogado(false);
-          return;
+  // Pré-carregamento em segundo plano, sequencial, das outras páginas prontas —
+  // depois de a página inicial abrir, para não disputar a API com ela. Uma vez por
+  // carga da tela.
+  const fundoIniciado = useRef(false);
+  useEffect(() => {
+    const lista = dashboardsQ.data;
+    if (!lista || fundoIniciado.current) return;
+    fundoIniciado.current = true;
+    const paginaInicial = inicial.pagina ?? lista.find((d) => d.pronta)?.id ?? lista[0]?.id ?? null;
+    void (async () => {
+      // Pequena pausa para a página em exibição carregar com prioridade máxima
+      await new Promise((resolve) => setTimeout(resolve, 800));
+      for (const d of lista) {
+        if (!d.pronta || d.id === paginaInicial) continue;
+        try {
+          await preCarregaAbertura(qc, d.id, filtrosPadrao(d.id));
+          // Intervalo leve entre páginas de fundo para manter a API responsiva
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        } catch {
+          // Pré-carregamento em background silencioso
         }
-        setErro(err instanceof Error ? err.message : String(err));
-      });
-  }, []);
+      }
+    })();
+  }, [dashboardsQ.data, inicial.pagina, qc]);
 
   // DE ONDE VEIO A MUDANÇA, para decidir o que fazer com o histórico.
   //
@@ -309,88 +220,28 @@ export function App() {
     return () => window.removeEventListener('popstate', aoAndarNoHistorico);
   }, []);
 
+  // A URL acompanha a tela. Era um pedaço do efeito que buscava a página; a busca agora
+  // é do React Query, e o histórico ficou com o que é dele.
   useEffect(() => {
     if (!atual) return;
-
-    const layoutAtual = layoutsVistos.current.get(atual);
-    if (!layoutAtual) {
-      setCarregando(true);
-      setErro(null);
-      return;
-    }
-
-    const opcoesEager = { visuais: idsIniciais(layoutAtual) };
-    const chave = urlDaPagina(atual, filtros, opcoesEager, clicados);
-    const doCache = paginasVistas.current.get(chave);
-    if (doCache) {
-      setPagina(doCache);
-      setCarregando(false);
-    } else {
-      // Se já temos uma página renderizada, mantemos os dados visíveis enquanto o recálculo roda
-      setCarregando(pagina === null);
-    }
-
-    let cancelado = false;
-    const aborta = new AbortController();
-
-    setErro(null);
     const origem = origemDaMudanca.current;
     origemDaMudanca.current = 'outro';
-    if (origem !== 'historico') {
-      const rota = escreveRota(atual, filtros, clicados);
-      if (origem === 'clique') window.history.pushState(null, '', rota);
-      else window.history.replaceState(null, '', rota);
-    }
+    if (origem === 'historico') return;
+    const rota = escreveRota(atual, filtros, clicados);
+    if (origem === 'clique') window.history.pushState(null, '', rota);
+    else window.history.replaceState(null, '', rota);
+  }, [atual, filtros, clicados]);
 
-    pegaPagina(atual, filtros, opcoesEager, aborta.signal, clicados)
-      .then((p) => {
-        guardaPaginaVista(paginasVistas.current, chave, p);
-        if (!cancelado) {
-          setPagina(p);
-          setCarregando(false);
-        }
-      })
-      .catch((err: unknown) => {
-        if (cancelado || ehAbortError(err)) return;
-        if (ehErroDeSessao(err)) {
-          setLogado(false);
-          return;
-        }
-        setErro(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (!cancelado) setCarregando(false);
-      });
-
-    return () => {
-      cancelado = true;
-      aborta.abort();
-    };
-  }, [atual, filtros, clicados, layout, revalidar]);
-
+  // Trocar de aba: a forma e a abertura já pré-carregadas saem do cache na hora.
   const escolhe = useCallback((id: string) => {
-    const layout = layoutsVistos.current.get(id) ?? null;
-    const padrao = filtrosPadrao(id);
-    const opcoesEager = layout ? { visuais: idsIniciais(layout) } : undefined;
-    const chave = layout ? urlDaPagina(id, padrao, opcoesEager, []) : null;
-    const cached = chave ? paginasVistas.current.get(chave) ?? null : null;
-
     setAtual(id);
-    setFiltros(padrao);
+    setFiltros(filtrosPadrao(id));
     setClicados([]);
-    setLayout(layout);
-    setPagina(cached);
-    if (cached) {
-      setCarregando(false);
-    }
   }, []);
 
-
-  // FASE L5, R6 — prefetch da aba sob o cursor. DEPENDE de R5 (`paginasVistas`) já
-  // existir: sem cache de página, adiantar o fetch aqui só moveria a espera de "depois
-  // do clique" para "antes do clique", sem economizar nada quando o clique realmente
-  // vier. Nunca mexe em estado visível (`atual`/`pagina`/`filtros`) — só pré-aquece os
-  // dois Maps, para o efeito de cima (e o de `layout`) acharem tudo pronto.
+  // FASE L5, R6 — prefetch da aba sob o cursor. Nunca mexe em estado visível
+  // (`atual`/`filtros`): só deixa a forma e a abertura no cache, para o clique achá-las
+  // prontas.
   const timeoutHover = useRef<number | null>(null);
 
   const cancelaPrefetch = useCallback(() => {
@@ -410,30 +261,11 @@ export function App() {
     // lugar da tela) não pode disparar uma rajada de prefetch, um por aba.
     timeoutHover.current = window.setTimeout(() => {
       timeoutHover.current = null;
-      void (async () => {
-        let l = layoutsVistos.current.get(id);
-        if (!l) {
-          try {
-            l = await pegaLayout(id);
-            layoutsVistos.current.set(id, l);
-          } catch {
-            return; // prefetch é otimização: falhar aqui não pode aparecer em lugar nenhum visível.
-          }
-        }
-        const filtrosDoPrefetch = filtrosPadrao(id);
-        const opcoesEager = { visuais: idsIniciais(l) };
-        const chave = urlDaPagina(id, filtrosDoPrefetch, opcoesEager, []);
-        if (paginasVistas.current.has(chave)) return; // já quente — nada a adiantar.
-        try {
-          const p = await pegaPagina(id, filtrosDoPrefetch, opcoesEager, undefined, []);
-          guardaPaginaVista(paginasVistas.current, chave, p);
-        } catch {
-          // idem: sem sinal visível. O clique real vai tentar de novo e, se falhar,
-          // é ELE que mostra o erro.
-        }
-      })();
+      // Prefetch é otimização: falhar aqui não pode aparecer em lugar nenhum visível.
+      // O clique real tenta de novo e, se falhar, é ELE que mostra o erro.
+      preCarregaAbertura(qc, id, filtrosPadrao(id)).catch(() => undefined);
     }, 60);
-  }, [cancelaPrefetch]);
+  }, [cancelaPrefetch, qc]);
 
   const mudaFiltro = useCallback(
     (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) => {
@@ -487,18 +319,16 @@ export function App() {
   // inteira. Não dá para aquecer as 94 de uma vez (94 recomputações completas só por
   // abrir a tela — mais caro que o problema que resolve), mas o intervalo entre o mouse
   // pousar numa barra e o clique de verdade é sobra suficiente para adiantar exatamente
-  // a combinação que a pessoa está mirando, e só essa.
+  // a combinação que a pessoa está mirando, e só essa. O React Query já junta o pedido
+  // que está a caminho com o do clique (era o `emVooHoverBarra`).
   const timeoutHoverBarra = useRef<number | null>(null);
-  const emVooHoverBarra = useRef<Set<string>>(new Set());
 
   const aoPreverAlvos = useCallback(
     (alvos: readonly AlvoDeFiltro[]) => {
       // Mesma guarda de `prefetchaPagina`: em touch não existe "pairar antes de
       // clicar", então isto dispararia um pedido a mais por toque, não um adiantado.
       if (!window.matchMedia('(pointer: fine)').matches) return;
-      if (!atual) return;
-      const layoutAtual = layoutsVistos.current.get(atual);
-      if (!layoutAtual) return;
+      if (!atual || !layout) return;
       if (timeoutHoverBarra.current !== null) window.clearTimeout(timeoutHoverBarra.current);
       // "Intenção de hover", igual a `prefetchaPagina`: só adianta se o mouse ficar
       // parado ali um instante — uma passada rápida por várias barras do ranking (a
@@ -516,22 +346,10 @@ export function App() {
           if (aindaFiltradas.has(k)) mapa.set(k, { tabela: a.tabela, coluna: a.coluna });
           else mapa.delete(k);
         }
-        const clicadosPrevistos = [...mapa.values()];
-        const opcoesEager = { visuais: idsIniciais(layoutAtual) };
-        const chave = urlDaPagina(atual, filtrosPrevistos, opcoesEager, clicadosPrevistos);
-        // Já quente, ou já a caminho — nada a adiantar duas vezes.
-        if (paginasVistas.current.has(chave) || emVooHoverBarra.current.has(chave)) return;
-        emVooHoverBarra.current.add(chave);
-        void pegaPagina(atual, filtrosPrevistos, opcoesEager, undefined, clicadosPrevistos)
-          .then((p) => guardaPaginaVista(paginasVistas.current, chave, p))
-          .catch(() => {
-            // Prefetch é otimização: falhar aqui não pode aparecer em lugar nenhum
-            // visível. O clique real tenta de novo e, se falhar, é ELE que avisa.
-          })
-          .finally(() => emVooHoverBarra.current.delete(chave));
+        void qc.prefetchQuery(consultaDaAbertura(atual, layout, filtrosPrevistos, [...mapa.values()]));
       }, 150);
     },
-    [atual, filtros, clicados],
+    [atual, layout, filtros, clicados, qc],
   );
 
   const paginaValida = pagina && pagina.id === atual ? pagina : null;
@@ -612,7 +430,7 @@ export function App() {
       aoPassarMouse={prefetchaPagina}
       aoSairDoMouse={cancelaPrefetch}
       aoSair={() => {
-        sai().finally(() => setLogado(false));
+        sai().finally(() => expirou());
       }}
       titulo={nome}
       sub={
@@ -636,16 +454,18 @@ export function App() {
           className="secundario"
           onClick={() => {
             if (!atual) return;
-            apagaPaginaDoCache(paginasVistas.current, atual);
-            setHoraRealtime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-            setRevalidar((n) => n + 1);
-            setVersaoFiltros((n) => n + 1);
+            marcaHora();
+            // A página (abertura e visuais abaixo da dobra), as listas dos filtros e a
+            // saúde. Buscar de novo é pedir o que o servidor já tem pronto.
+            void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atual) });
+            void qc.invalidateQueries({ queryKey: chavesDeConsulta.valores(atual) });
+            void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
           }}
           disabled={!atual}
           title="Buscar de novo os números desta página"
           style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
         >
-          <RefreshCw size={14} className={carregando ? 'girando' : undefined} aria-hidden="true" />
+          <RefreshCw size={14} className={paginaQ.isFetching ? 'girando' : undefined} aria-hidden="true" />
           Atualizar
         </button>
       }
@@ -739,7 +559,7 @@ export function App() {
         </div>
       ) : null}
 
-      {carregando && !paginaValida ? (
+      {atual !== null && !paginaValida && !erro ? (
         layout ? (
           <EsqueletoDaPagina layout={layout} />
         ) : (
@@ -754,7 +574,7 @@ export function App() {
         )
       ) : null}
 
-      <ContextoVersaoDosDados.Provider value={versaoDosDados}>
+      <>
         {/* A CAPA é a única tela escrita à mão, e o motivo é medido: das 30 formas
             que a spec traz para ela, 28 não têm número — a tela gerada renderizava
             DOIS cartões de indicador num vazio. O componente que a substitui existia
@@ -782,7 +602,7 @@ export function App() {
             aoPrever={aoPreverAlvos}
           />
         </div>
-      </ContextoVersaoDosDados.Provider>
+      </>
 
       {paginaValida && visuais.every((v) => v.conteudo === null) ? (
         <div className="vazio-pagina">Esta página não tem visual com número.</div>

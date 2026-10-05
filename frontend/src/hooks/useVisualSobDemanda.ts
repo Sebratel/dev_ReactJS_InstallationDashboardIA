@@ -3,24 +3,27 @@
 // (visual fora da dobra, decidido pela rolagem — Fase L5, R4). Extraído de dentro de
 // `SobDemanda.tsx` para os dois nunca terem duas implementações do mesmo fetch.
 //
-// **R3 do contrato de carregamento: cancelável e single-flight.** A versão anterior
-// (só dentro de `SobDemanda.tsx`) tinha uma flag de closure (`atual`) que evitava
-// `setState` tardio, mas não cancelava o fetch em voo — o servidor seguia calculando
-// para uma resposta que ninguém ia usar (o mesmo defeito que o comentário de
-// `dashboardService.ts` descreve para o caso geral, já resolvido em `App.tsx` com
-// `AbortController`). Aqui é o mesmo padrão: cria o controller antes do fetch, aborta
-// no cleanup do efeito — que roda ANTES de o efeito seguinte criar o próximo, e é
-// isso que torna cada busca single-flight sem precisar de nenhum registro à parte.
+// **R3 do contrato de carregamento: cancelável e voo único.** A busca anterior tem de
+// morrer quando chega a seguinte — senão o servidor segue calculando uma resposta que
+// ninguém vai usar, e uma resposta tardia pinta o recorte errado. E "Tentar de novo"
+// tem de refazer o pedido de verdade (um bug antigo o deixava preso em "carregando").
 //
-// **Bug encontrado e corrigido de passagem**: o botão "Tentar de novo" de
-// `SobDemanda.tsx` fazia só `setEstado('carregando')`, e como `estado` nunca entrava
-// nas dependências do efeito, o retry nunca refazia o fetch — ficava preso em
-// "carregando" para sempre. `tentativa` existe só para isso: incrementar dispara o
-// efeito de novo.
+// **Desde a fase 2 (`docs/PLANO-PADROES-FRONTEND.md`), no React Query.** O cancelamento
+// (o `signal` do `queryFn`), o voo único por chave e a nova tentativa vêm dele. A chave é
+// a URL do visual sob o prefixo `['pagina', id]` (`chavesDeConsulta`): o aviso do servidor
+// que invalida a página alcança também este visual, e ele busca de novo MANTENDO o número
+// atual na tela (`placeholderData`) — antes ele buscava uma vez, ao aparecer, e parava.
+// `clicados` entra pela URL, que é texto: um array novo com o mesmo conteúdo não muda a
+// chave, que era o motivo de ele ficar fora das dependências do efeito antigo.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { ehAbortError, pegaPagina, type FiltroDaTela, type VisualCalculado } from '../services/dashboardService.ts';
-import { useVersaoDosDados } from '../context/VersaoDosDadosContext.tsx';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import {
+  chavesDeConsulta,
+  pegaPagina,
+  urlDaPagina,
+  type FiltroDaTela,
+  type VisualCalculado,
+} from '../services/dashboardService.ts';
 
 export type EstadoSobDemanda = 'carregando' | 'parado';
 
@@ -37,53 +40,22 @@ export function useVisualSobDemanda(
   filtros: readonly FiltroDaTela[],
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): VisualSobDemanda {
-  const [tentativa, setTentativa] = useState(0);
-  const [estado, setEstado] = useState<EstadoSobDemanda>('carregando');
-  const [pronto, setPronto] = useState<VisualCalculado | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  // `clicados` chega como array novo a cada render dos chamadores (não é useMemo lá) —
-  // uma ref evita que isso reinicie o fetch a cada render sem mudança de conteúdo real.
-  const clicadosRef = useRef(clicados);
-  clicadosRef.current = clicados;
-  // Busca de novo quando o servidor avisa que a página mudou (ou no "Atualizar"), como
-  // a abertura da página já fazia. `pronto` não é zerado: quem desenha mostra o número
-  // atual até o novo chegar. Ver `VersaoDosDadosContext.tsx`.
-  const { dados: versao } = useVersaoDosDados();
-
-  useEffect(() => {
-    let atual = true;
-    const aborta = new AbortController();
-    setEstado('carregando');
-    setErro(null);
-
-    pegaPagina(pagina, filtros, { visual: visualId }, aborta.signal, clicadosRef.current)
-      .then((p) => {
-        const achado = p.visuais.find((v) => v.id === visualId);
-        if (!achado) throw new Error('a resposta não trouxe este visual.');
-        if (achado.erro) throw new Error(achado.erro);
-        if (atual) setPronto(achado);
-      })
-      .catch((err: unknown) => {
-        // Ignora ABORT antes de checar `atual`, na mesma ordem de `App.tsx` — senão
-        // uma troca de filtro em rajada pintaria "não carregou" para um pedido que
-        // só foi cancelado pelo próprio próximo pedido.
-        if (ehAbortError(err)) return;
-        if (atual) setErro(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (atual) setEstado('parado');
-      });
-
-    return () => {
-      atual = false;
-      aborta.abort();
-    };
-    // `clicados` fica de fora de propósito: ele entra por `clicadosRef`, não por
-    // dependência — os chamadores passam um array novo a cada render sem o
-    // conteúdo ter mudado, e isso reiniciaria o fetch a cada render deles.
-  }, [pagina, visualId, filtros, tentativa, versao]);
-
-  const tentarDeNovo = useCallback(() => setTentativa((t) => t + 1), []);
-
-  return { estado, pronto, erro, tentarDeNovo };
+  const opcoes = { visual: visualId };
+  const q = useQuery({
+    queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes, clicados)),
+    queryFn: async ({ signal }) => {
+      const p = await pegaPagina(pagina, filtros, opcoes, signal, clicados);
+      const achado = p.visuais.find((v) => v.id === visualId);
+      if (!achado) throw new Error('a resposta não trouxe este visual.');
+      if (achado.erro) throw new Error(achado.erro);
+      return achado;
+    },
+    placeholderData: keepPreviousData,
+  });
+  return {
+    estado: q.isFetching ? 'carregando' : 'parado',
+    pronto: q.data ?? null,
+    erro: q.error ? (q.error instanceof Error ? q.error.message : String(q.error)) : null,
+    tentarDeNovo: () => void q.refetch(),
+  };
 }

@@ -1,5 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './services/queryClient.ts';
 import { App } from './App.tsx';
 import { ProvedorModo } from './context/ModoContext.tsx';
 import { applyInitialTheme } from './utils/theme.ts';
@@ -25,8 +27,10 @@ if (!raiz) throw new Error("index.html precisa de um elemento com id='raiz'.");
 
 createRoot(raiz).render(
   <StrictMode>
-    <ProvedorModo>
-      <App />
-    </ProvedorModo>
+    <QueryClientProvider client={queryClient}>
+      <ProvedorModo>
+        <App />
+      </ProvedorModo>
+    </QueryClientProvider>
   </StrictMode>,
 );
