@@ -8,7 +8,7 @@ const aspas = (texto: string): string => `"${texto.replace(/"/g, '""')}"`;
 /** O conteúdo do arquivo: BOM, cabeçalho e uma linha por registro, tudo entre aspas. */
 export function textoCsv(cabecalho: readonly string[], linhas: readonly (readonly string[])[]): string {
   const corpo = linhas.map((l) => l.map(aspas).join(';')).join('\n');
-  return `﻿${cabecalho.map(aspas).join(';')}\n${corpo}`;
+  return `\uFEFF${cabecalho.map(aspas).join(';')}\n${corpo}`;
 }
 
 /** Entrega o arquivo ao navegador, como um download. */

@@ -50,7 +50,9 @@ export function useVizinhanca(
   // A lista de segmentações é refeita a cada render no `App`; o efeito depende só da
   // assinatura dela, senão recomeçaria a cada render.
   const segsRef = useRef(segmentacoes);
-  segsRef.current = segmentacoes;
+  useEffect(() => {
+    segsRef.current = segmentacoes;
+  });
   const assinatura = segmentacoes.map((s) => `${s.tabela}|${s.coluna}|${s.nivel ?? ''}`).join('\n');
 
   useEffect(() => {

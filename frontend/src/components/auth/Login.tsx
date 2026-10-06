@@ -36,6 +36,19 @@ export function Login({ aoLogar }: LoginProps) {
   const clientId = firebase ? '' : GOOGLE_CLIENT_ID;
   const tokenInterno = TOKEN_INTERNO;
   const dominio = DOMINIO_CORPORATIVO;
+  // Sem nenhum caminho de login, é um erro de AMBIENTE — derivado aqui, e não gravado
+  // por um efeito (fase 5: `set-state-in-effect` acusa o render extra).
+  const erroDeConfiguracao =
+    !firebase && !clientId && !tokenInterno
+      ? 'Login não configurado neste ambiente ' +
+        '(VITE_FIREBASE_PROJECT_ID, VITE_GOOGLE_CLIENT_ID e TOKEN_INTERNO ausentes).'
+      : null;
+  // O callback do Google é registrado uma vez; ele chama o `aoLogar` mais recente por
+  // aqui, em vez de pôr `aoLogar` nas dependências e reinicializar o botão a cada render.
+  const aoLogarRef = useRef(aoLogar);
+  useEffect(() => {
+    aoLogarRef.current = aoLogar;
+  });
 
   /** O login pelo Firebase: janela do Google, ID token, e a troca por sessão
    *  nossa em `/auth/firebase`. O token do Firebase morre aqui — não é ele que
@@ -82,16 +95,9 @@ export function Login({ aoLogar }: LoginProps) {
     // Com Firebase configurado, este efeito não tem o que fazer: o botão é
     // nosso, o script do Google vem do SDK, e nada precisa ser injetado no DOM.
     if (firebase) return;
-    // Sem Google Client ID: se há token interno, o botão de dev cuida; senão, erro.
-    if (!clientId) {
-      if (!tokenInterno) {
-        setErro(
-          'Login não configurado neste ambiente ' +
-            '(VITE_FIREBASE_PROJECT_ID, VITE_GOOGLE_CLIENT_ID e TOKEN_INTERNO ausentes).',
-        );
-      }
-      return;
-    }
+    // Sem Google Client ID: se há token interno, o botão de dev cuida; senão, é o
+    // `erroDeConfiguracao`.
+    if (!clientId) return;
     let cancelado = false;
     carregaScriptGis()
       .then(() => {
@@ -105,7 +111,7 @@ export function Login({ aoLogar }: LoginProps) {
                   setErro(recusa);
                   return;
                 }
-                aoLogar();
+                aoLogarRef.current();
               })
               .catch(() => setErro('Não foi possível falar com o servidor.'));
           },
@@ -167,7 +173,7 @@ export function Login({ aoLogar }: LoginProps) {
             {entrando ? 'Entrando…' : '🔧 Entrar (modo dev)'}
           </button>
         ) : null}
-        {erro ? <Erro>{erro}</Erro> : null}
+        {erro ?? erroDeConfiguracao ? <Erro>{erro ?? erroDeConfiguracao}</Erro> : null}
       </div>
     </div>
   );

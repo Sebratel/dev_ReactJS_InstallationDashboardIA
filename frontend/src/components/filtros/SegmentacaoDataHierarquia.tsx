@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
 import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
@@ -61,20 +61,16 @@ export function SegmentacaoDataHierarquia(props: {
   const carregando = arvore === null && erro === null;
 
   // A expansão inicial, uma vez por ÁRVORE (página + coluna): o "Atualizar" traz a lista
-  // de novo sem fechar o que a pessoa abriu.
-  const arvoreExpandida = useRef('');
-  useEffect(() => {
-    if (arvore === null) return;
-    const chave = [pagina, tabela, coluna].join(' ');
-    if (arvoreExpandida.current === chave) return;
-    arvoreExpandida.current = chave;
+  // de novo sem fechar o que a pessoa abriu. Ajustada DURANTE o render, como a âncora da
+  // `Tabela` — num efeito era um render a mais (fase 5, `set-state-in-effect`). A seleção
+  // usada é a do momento em que a árvore chega; mudar o filtro depois não reabre nada.
+  const chaveDaArvore = [pagina, tabela, coluna].join(' ');
+  const [expandidaPara, setExpandidaPara] = useState('');
+  if (arvore !== null && expandidaPara !== chaveDaArvore) {
+    setExpandidaPara(chaveDaArvore);
     // Um ano só: já aberto, senão o primeiro clique é sempre no mesmo lugar.
-    if (arvore.length === 1) setExpandidos(new Set([`a${arvore[0]!.ano}`]));
-    else setExpandidos(new Set(sel.anos.map((a) => `a${a}`)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sel` é só a expansão
-    // inicial (a seleção da URL no momento em que a árvore chega); não deve reabrir
-    // a árvore a cada mudança de filtro.
-  }, [arvore, pagina, tabela, coluna]);
+    setExpandidos(arvore.length === 1 ? new Set([`a${arvore[0]!.ano}`]) : new Set(sel.anos.map((a) => `a${a}`)));
+  }
 
   function aplica(mudancas: MudancaDeNivel[]): void {
     for (const m of mudancas) props.aoMudar(m.nivel, m.valores);

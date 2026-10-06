@@ -38,9 +38,11 @@ export function useJanela(
    * De qual termo é o resultado que está na tela.
    *
    * Sem isto o efeito abaixo não sabe distinguir "o termo mudou" de "esta é mais uma
-   * renderização com o mesmo termo", e pediria a cada render.
+   * renderização com o mesmo termo", e pediria a cada render. É ESTADO, e não ref,
+   * porque o render o reajusta (a âncora, abaixo) — escrever em ref durante o render
+   * é o que `react-hooks/refs` acusa (fase 5).
    */
-  const termoNaTela = useRef('');
+  const [termoNaTela, setTermoNaTela] = useState('');
   /**
    * Qual pedido é o mais recente. Resposta atrasada de um pedido velho não pode
    * sobrescrever a de um novo — com debounce de busca isso deixa de ser hipótese:
@@ -62,7 +64,7 @@ export function useJanela(
     // tela agora é o resultado SEM busca. Dizer isso ao efeito é o que o faz refazer
     // a busca sobre o recorte novo, em vez de deixar o campo preenchido descrevendo
     // uma lista que não está mais filtrada.
-    termoNaTela.current = '';
+    setTermoNaTela('');
   }
 
   function pede(de: number, comTermo: string): void {
@@ -80,7 +82,7 @@ export function useJanela(
         if (!achado) throw new Error('a resposta não trouxe este visual.');
         if (achado.erro) throw new Error(achado.erro);
         if (meu !== sequencia.current) return;
-        termoNaTela.current = comTermo;
+        setTermoNaTela(comTermo);
         setVisual(achado);
       })
       .catch((err: unknown) => {
@@ -96,12 +98,16 @@ export function useJanela(
   // na janela 47 mostraria "nenhuma linha" para um termo que casou — o defeito parece
   // da busca e é da paginação.
   useEffect(() => {
-    if (termo === termoNaTela.current) return;
+    if (termo === termoNaTela) return;
+    // A busca É o efeito (o termo mudou, pede a janela nova), e o `carregando` liga junto
+    // com o pedido. A saída de verdade é este hook ir para o React Query, que cuida do
+    // carregando sozinho — pendência registrada no ACHADOS #182.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     pede(0, termo);
     // `pede` fecha sobre `pagina`/`filtros`/`inicial`, que só mudam junto com a
     // âncora — e a âncora já está nas dependências.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [termo, ancora]);
+  }, [termo, ancora, termoNaTela]);
 
   return { visual, carregando, erro, vaiPara: (de: number) => pede(de, termo) };
 }

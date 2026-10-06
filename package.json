@@ -9,6 +9,7 @@
   "scripts": {
     "test": "node --test backend/packages/*/test/*.test.ts backend/api/test/*.test.ts backend/tools/*/test/*.test.ts frontend/test/*.test.ts",
     "typecheck": "tsc -p tsconfig.json && npm exec -w frontend -- tsc --noEmit",
+    "lint": "npm exec -w frontend -- eslint .",
     "test:query-engine": "node --test backend/packages/query-engine/test/*.test.ts",
     "test:semantic-model": "node --test backend/packages/semantic-model/test/*.test.ts",
     "test:transform-engine": "node --test backend/packages/transform-engine/test/*.test.ts",
@@ -78,6 +79,8 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/pg": "^8.23.1",
     "@vitejs/plugin-react": "^5.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "lucide-react": "^1.34.0",
     "mysql2": "^3.24.3",
     "pg": "^8.23.0",
@@ -86,5 +89,10 @@
     "typescript": "^7.0.2",
     "vite": "^7.3.6",
     "yaml": "^2.5.0"
+  },
+  "overrides": {
+    "ts-api-utils": {
+      "typescript": "5.9.3"
+    }
   }
 }
