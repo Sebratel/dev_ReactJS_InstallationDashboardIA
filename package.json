@@ -18,6 +18,7 @@
     "test:measure-engine": "node --test backend/packages/measure-engine/test/*.test.ts",
     "test:widget-engine": "node --test backend/packages/widget-engine/test/*.test.ts",
     "test:web": "npm exec -w frontend -- vitest run",
+    "e2e": "node --test backend/tools/tela/e2e/*.e2e.ts",
     "validate": "node backend/tools/validate/src/index.ts",
     "validate:queries": "node backend/tools/validate/src/index.ts",
     "validate:model": "node backend/tools/validate/src/model.ts",
