@@ -82,7 +82,24 @@ O plano original:
 - `pages/dashboard/DashboardPage.tsx` fica fino. A barra de filtros, o cabeçalho e o
   corpo viram componentes; a lógica vira hooks.
 
-## Fase 4 — componentes acima de 200 linhas
+## Fase 4 — componentes acima de 200 linhas (FEITA, `edb8308`, 05/10/2026)
+
+**Como ficou** (ACHADOS #181): `Grafico` (627), `Tabela` (397), `Matriz` (298),
+`RankingBarra` (284), `SegmentacaoDataHierarquia` (264), `AppShell` (249) e `Capa` (243)
+divididos; o maior componente agora tem 197 linhas.
+- Peças únicas no lugar de cópias: `ui/PaginadorDeJanela` (gráfico, ranking e matriz),
+  `hooks/useCliqueNoEixo` (gráfico e ranking), `utils/csv` (tabela e matriz),
+  `ui/MarcaSebratel` (topo e capa).
+- Partes: `visuais/grafico/` (desenho, colunas, eixo X, linhas, faceta, legenda, zoom,
+  geometria), `visuais/ranking/LinhaDoRanking`, `visuais/tabela/CorpoDaTabela`,
+  `filtros/ArvoreDeDatas` e `NoDaArvore`, `layout/NavDeTelas` e `AcoesDoCabecalho`,
+  `capa/HistoricoDeVersoes`, `hooks/useOrdemDaTabela`.
+- Contas puras em `utils/` com teste: `graficoEixo`, `tabelaDados`, `matrizDados`,
+  `capaConteudo`.
+- Corrigido de passagem: `Tabela` e `Matriz` chamavam hooks depois do `return` de "sem dados".
+- Prova visual: a mesma tela pixel a pixel e HTML a HTML (ver o achado).
+
+O plano original:
 
 `Grafico` (627), `Tabela` (397), `Matriz` (298), `RankingBarra` (284),
 `SegmentacaoDataHierarquia` (274) e `AppShell` (248).

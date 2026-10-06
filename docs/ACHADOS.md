@@ -14191,3 +14191,44 @@ as 11 listas de filtro e marca a hora; 0 erro no console.
 A mesma conferência na stack (porta 80, depois do build): os mesmos itens, menos o do caminho.
 
 **Custo:** o bundle cresceu 38 kB (12 kB com gzip), o `react-router`.
+
+---
+
+## #181 — fase 4 do frontend: nenhum componente acima de 200 linhas, e a prova de que a tela não mudou (05/10)
+
+**O que mudou.** Os sete componentes acima de 200 linhas foram divididos (o maior agora tem
+197); o que se repetia virou peça única (paginador de janela em três visuais, clique no eixo em
+dois, CSV em dois, a marca em dois) e as contas puras foram para `utils/` com teste. Detalhe em
+`PLANO-PADROES-FRONTEND.md`, fase 4.
+
+**Um defeito corrigido de passagem.** `Tabela` e `Matriz` chamavam `useState`/`useMemo`
+DEPOIS do `return` de "sem dados". Se um visual recebesse dado num quadro e não no seguinte (ou
+o contrário), o React derrubaria a árvore com "Rendered more hooks than during the previous
+render". Agora todo hook vem antes. O teste `visuais-seguros.test.ts` fixa a forma literal da
+guarda (`if (!d || !d.colunas || !d.linhas)`), e ela foi mantida.
+
+**Como se prova que uma refatoração não mudou a tela, com dado em tempo real.** Comparar
+capturas da tela viva não serve: o número muda entre as duas. A régua (rascunho fora do
+repositório, apagada depois) fez assim:
+- gravou num HAR, uma vez, as respostas de `/api` de um roteiro fixo contra o build antigo;
+- reproduziu o roteiro, só do HAR, contra o build antigo duas vezes e contra o novo uma vez,
+  sempre na MESMA origem (o HAR casa host e porta — servir o build novo em outra porta abortou
+  todo pedido e deu 157 "diferenças" falsas);
+- relógio do navegador fixo, SSE cortado, relógio de 60 s desligado, sem cursor fino (desliga
+  hover-prefetch e vizinhança, que pedem fora de ordem);
+- roteiro: as 14 páginas nos dois temas, rolando até o fim e voltando, mais 10 interações no
+  claro (mouse sobre coluna, página anterior do gráfico, zoom, ordenar a tabela duas vezes,
+  página da tabela, transpor a matriz, histórico da capa, abrir a árvore de período e clicar
+  num dia de um mês não marcado).
+
+**Resultado: 78 capturas, HTML idêntico em todas.** Nas imagens, 8 PNGs das páginas `l-*`
+diferem em 7 a 15 pixels nos cantos arredondados dos cards (x 12 e 1353): o MESMO ruído de
+antialiasing que as duas reproduções do build antigo já tinham entre si, nos mesmos 8 arquivos.
+
+**E a fase 3 conferida no caminho.** O clique num dia de um mês não marcado gera duas mudanças
+de nível (Dia e Mês), chamadas em sequência; as duas chegaram à URL (`Dia [6]`,
+`Mês [julho, outubro]`). É a prova de que as ações de `useEstadoDaTela` leem a URL já escrita
+pela anterior, como o cabeçalho delas promete.
+
+**Fora da régua:** o paginador de colunas da matriz (nenhuma página abre com mais de 30
+colunas no estado padrão); ele é a mesma `PaginadorDeJanela` exercitada pelo gráfico.
