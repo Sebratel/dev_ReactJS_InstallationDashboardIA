@@ -10,7 +10,9 @@ import {
   selecaoDeData,
   type MudancaDeNivel,
 } from '../../utils/hierarquiaData.ts';
+import { Erro } from '../ui/Cartao.tsx';
 import { ArvoreDeDatas } from './ArvoreDeDatas.tsx';
+import { Botao } from '../ui/Botao.tsx';
 
 /**
  * O filtro de data em árvore — Ano > Mês > Dia — no lugar de dois seletores planos.
@@ -129,7 +131,7 @@ export function SegmentacaoDataHierarquia(props: {
                 {/* Os três estados, também aqui: uma árvore em branco sem explicação
                     parece "não há datas" quando a busca ainda nem voltou. */}
                 {carregando && <span className="filtro-nota">Carregando datas…</span>}
-                {erro && <div className="erro">{erro}</div>}
+                {erro && <Erro>{erro}</Erro>}
 
                 {arvore && arvore.length === 0 && (
                   <span className="filtro-nota">Nenhuma data nesta coluna.</span>
@@ -154,16 +156,16 @@ export function SegmentacaoDataHierarquia(props: {
                   {cortado ? ' · lista cortada no teto' : ''}
                 </span>
                 <div className="filtro-botoes-acao">
-                  <button
-                    className="secundario"
+                  <Botao
+                    variante="secundario"
                     onClick={() => aplica(limpaTudo())}
                     disabled={marcado === 0}
                   >
                     Limpar
-                  </button>
-                  <button className="primario" onClick={() => setAberto(false)}>
+                  </Botao>
+                  <Botao variante="primario" onClick={() => setAberto(false)}>
                     Aplicar
-                  </button>
+                  </Botao>
                 </div>
               </div>
             </div>

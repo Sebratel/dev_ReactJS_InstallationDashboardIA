@@ -133,7 +133,7 @@ Duas armadilhas que a medição pegou:
 ### 1.1.1 A medição de 27/08 tinha um fundo que faltava — achado pelo `backend/tools/tela` em 28/08
 
 A tabela acima mede contra `--pbi-superficie`/`--fundo`. Nenhuma das duas é o fundo
-**de verdade** de um `.selo`/`.badge-status`: esses usam `--pbi-ok-bg`/`--pbi-erro-bg`/
+**de verdade** de um selo ou badge de status (hoje `ui/Selo.tsx`): esses usam `--pbi-ok-bg`/`--pbi-erro-bg`/
 `--pbi-aviso-bg`, tons derivados por `color-mix()` — e a Fase L2 do
 `PLANO-LAYOUT-V1.md` (arnês de navegador, `backend/tools/tela/`) mediu contra o fundo real pela
 primeira vez. Achou dois defeitos:

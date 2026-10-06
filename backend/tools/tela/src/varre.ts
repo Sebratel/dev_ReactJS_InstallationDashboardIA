@@ -11,7 +11,7 @@
 // `localStorage` no `useState` inicial.
 //
 // **Como sabe que a página terminou de calcular.** O mesmo modo conferência renderiza
-// `.selo` só quando `pagina` já foi setado (`App.tsx`), então é o sinal de "pronto" mais
+// `[data-selo]` só quando `pagina` já foi setado (`App.tsx`), então é o sinal de "pronto" mais
 // barato que existe — sem `waitForTimeout`.
 
 import fs from 'node:fs';
@@ -292,7 +292,7 @@ async function main(): Promise<void> {
         for (const dash of alvo) {
           process.stderr.write(`  ${tema} ${resolucao.largura}x${resolucao.altura} ${dash.id}… `);
           await page.goto(`${BASE}/?pagina=${dash.id}`);
-          await page.waitForSelector('.selo', { timeout: 15000 });
+          await page.waitForSelector('[data-selo]', { timeout: 15000 });
           await page.waitForLoadState('networkidle');
 
           const { problemas, scrollHeight, innerHeight } = await medeGeometria(page);

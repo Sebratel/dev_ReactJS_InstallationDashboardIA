@@ -22,6 +22,7 @@ import {
 } from '../../services/authService.ts';
 import { entraComGoogle, mensagemDeErro, temFirebase } from '../../services/firebaseAuth.ts';
 import { carregaScriptGis } from '../../services/googleIdentity.ts';
+import { Botao } from '../ui/Botao.tsx';
 
 type LoginProps = {
   aoLogar: () => void;
@@ -155,27 +156,27 @@ export function Login({ aoLogar }: LoginProps) {
         <p>Entre com sua conta corporativa para continuar.</p>
         {/* Firebase: botão nosso, porque o SDK não desenha nenhum */}
         {firebase ? (
-          <button
-            className="primario"
+          <Botao
+            variante="primario"
             onClick={loginFirebase}
             disabled={entrando}
-            style={{ marginTop: 8, width: 280 }}
+            className="mt-[8px] w-[280px]"
           >
             {entrando ? 'Entrando…' : 'Entrar com Google'}
-          </button>
+          </Botao>
         ) : null}
         {/* Botão do Google Identity Services — só quando NÃO há Firebase e há Client ID */}
         {!firebase ? <div ref={botaoRef} className="login-botao-google" /> : null}
         {/* Botão de bypass dev — só aparece quando não há provedor nenhum mas há token interno */}
         {!firebase && !clientId && tokenInterno ? (
-          <button
-            className="primario"
+          <Botao
+            variante="primario"
             onClick={loginInterno}
             disabled={entrando}
-            style={{ marginTop: 16, width: 280 }}
+            className="mt-[16px] w-[280px]"
           >
             {entrando ? 'Entrando…' : '🔧 Entrar (modo dev)'}
-          </button>
+          </Botao>
         ) : null}
         {(erro ?? erroDeConfiguracao) ? <Erro>{erro ?? erroDeConfiguracao}</Erro> : null}
       </div>

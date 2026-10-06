@@ -63,6 +63,26 @@ export function Cartao(props: {
   );
 }
 
+/** Caixa de mensagem: fundo suave do tom, letra escurecida, borda (cor cheia é fundo). */
+const CAIXA = 'rounded-[2px] border px-[10px] py-[8px] text-[0.74rem] font-semibold';
+
 export function Erro({ children }: { children: ReactNode }) {
-  return <div className="erro">{children}</div>;
+  return (
+    <div
+      className={cn(
+        CAIXA,
+        'border-pbi-critico bg-pbi-erro-bg whitespace-pre-wrap text-pbi-critico-texto',
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+export function Aviso({ children }: { children: ReactNode }) {
+  return (
+    <div className={cn(CAIXA, 'border-pbi-gold-600 bg-pbi-aviso-bg text-pbi-gold-600')}>
+      {children}
+    </div>
+  );
 }

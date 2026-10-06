@@ -3,7 +3,7 @@
 // React roda e pede `/api/*` como qualquer visitante.
 //
 // Desde o login (01/09/2026), `/api/*` exige sessão — sem uma sessão de
-// verdade aqui, toda página cairia na tela de login e `.selo` nunca
+// verdade aqui, toda página cairia na tela de login e `[data-selo]` nunca
 // apareceria: dezenas de timeouts de 15s em vez de um erro claro de
 // configuração. `POST /auth/interno` (`TOKEN_INTERNO` do `.env`) é a única
 // forma de logar sem conta do Google — ver `backend/api/src/servidor.ts`.

@@ -15,6 +15,7 @@ import { Cartao, Erro, type AlturaDeVisual } from '../ui/Cartao.tsx';
 import { VisualPronto } from './VisualPronto.tsx';
 import { tituloDoVisual } from '../../utils/rotulos.ts';
 import { useVisualSobDemanda } from '../../hooks/useVisualSobDemanda.ts';
+import { Botao } from '../ui/Botao.tsx';
 
 /**
  * Dispara o fetch quando o cartão chega perto da viewport — perto o bastante para a
@@ -144,9 +145,9 @@ function VisualBuscado(props: {
     <Cartao titulo={titulo} sub="não carregou" id={props.id} altura={props.altura}>
       <div className="sob-demanda">
         {erro ? <Erro>{erro}</Erro> : null}
-        <button className="primario" onClick={tentarDeNovo}>
+        <Botao variante="primario" onClick={tentarDeNovo}>
           Tentar de novo
-        </button>
+        </Botao>
       </div>
     </Cartao>
   );

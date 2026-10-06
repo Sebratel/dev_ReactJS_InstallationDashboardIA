@@ -7,6 +7,7 @@ import { formata } from '../../../utils/formato.ts';
 import { larguraDaBarra } from '../../../utils/magnitude.ts';
 import { seloDeStatus } from '../../../utils/tabelaDados.ts';
 import { SetaDeOrdem } from '../../ui/icones.tsx';
+import { BadgeDeStatus } from '../../ui/Selo.tsx';
 
 function ConteudoDaCelula(props: {
   valor: unknown;
@@ -16,7 +17,7 @@ function ConteudoDaCelula(props: {
   if (f.vazio) return <span className="sem">{f.texto}</span>;
   const txt = f.texto.trim();
   const selo = seloDeStatus(txt);
-  return selo ? <span className={`badge-status ${selo}`}>{txt}</span> : <>{f.texto}</>;
+  return selo ? <BadgeDeStatus tom={selo}>{txt}</BadgeDeStatus> : <>{f.texto}</>;
 }
 
 export function CorpoDaTabela(props: {

@@ -65,12 +65,12 @@ export function escalasDaTabela(
   return mapa;
 }
 
-/** O selo de um texto de status (`badge-sim`, `badge-nao`, `badge-alerta`), ou `null`. */
-export function seloDeStatus(texto: string): 'badge-sim' | 'badge-nao' | 'badge-alerta' | null {
+/** O tom do selo de um texto de status (`BadgeDeStatus`), ou `null` quando não é status. */
+export function seloDeStatus(texto: string): 'sim' | 'nao' | 'alerta' | null {
   if (texto === 'SIM' || texto === 'OK' || texto === 'Concluído' || texto === 'Dentro do SLA')
-    return 'badge-sim';
-  if (texto === 'NÃO' || texto === 'Não') return 'badge-nao';
+    return 'sim';
+  if (texto === 'NÃO' || texto === 'Não') return 'nao';
   if (texto === 'Cancelado' || texto === 'Estourado' || texto.includes('Fora do SLA'))
-    return 'badge-alerta';
+    return 'alerta';
   return null;
 }

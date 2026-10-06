@@ -9,6 +9,7 @@ import {
   rotuloDaJanela,
   type Janela,
 } from '../../utils/janela.ts';
+import { Botao } from './Botao.tsx';
 
 export function Paginacao(props: {
   janela: Janela;
@@ -26,28 +27,28 @@ export function Paginacao(props: {
     <div className="paginacao">
       <span className="filtro-nota">{rotuloDaJanela(j, inteiro)}</span>
       <span className="espaco" />
-      <button
-        className="secundario"
+      <Botao
+        variante="secundario"
         onClick={() => props.vaiPara(0)}
         disabled={!podeVoltar(j) || props.carregando}
         title="primeira janela"
       >
         ⏮
-      </button>
-      <button
-        className="secundario"
+      </Botao>
+      <Botao
+        variante="secundario"
         onClick={() => props.vaiPara(anteriorDe(j, props.passo))}
         disabled={!podeVoltar(j) || props.carregando}
       >
         anterior
-      </button>
-      <button
-        className="secundario"
+      </Botao>
+      <Botao
+        variante="secundario"
         onClick={() => props.vaiPara(proximoDe(j))}
         disabled={!podeAvancar(j) || props.carregando}
       >
         {props.carregando ? 'carregando…' : 'próxima'}
-      </button>
+      </Botao>
     </div>
   );
 }

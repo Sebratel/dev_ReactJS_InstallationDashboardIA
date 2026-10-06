@@ -15,7 +15,7 @@ export interface Medida {
   pagina: string;
   /** Até o HTML da tela chegar (`domcontentloaded`); `null` = não chegou no teto. */
   htmlMs: number | null;
-  /** Até o `.selo` do modo conferência, que só aparece com a página calculada; `null` = não ficou pronta. */
+  /** Até o `[data-selo]` do modo conferência, que só aparece com a página calculada; `null` = não ficou pronta. */
   prontaMs: number | null;
   /** Quantas vezes "carregando" aparece no texto da página quando ela fica pronta. */
   carregando: number;

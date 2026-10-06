@@ -3,6 +3,7 @@
 
 import type { FiltroDaTela, PaginaCalculada } from '../../services/dashboardService.ts';
 import { duracao, inteiro } from '../../utils/formato.ts';
+import { Selo } from '../ui/Selo.tsx';
 
 export function FaixaDeConferencia(props: {
   pagina: PaginaCalculada;
@@ -10,16 +11,14 @@ export function FaixaDeConferencia(props: {
 }) {
   const { pagina, filtros } = props;
   return (
-    <div className="faixa">
-      <span className="selo">{pagina.resumo.calculados} calculados</span>
-      {pagina.resumo.falharam ? (
-        <span className="selo ruim">{pagina.resumo.falharam} com erro</span>
-      ) : null}
-      <span className="selo neutro">{pagina.resumo.semCalculo} sem número</span>
+    <div className="flex flex-wrap items-center gap-[8px] text-[0.7rem] text-pbi-muted">
+      <Selo>{pagina.resumo.calculados} calculados</Selo>
+      {pagina.resumo.falharam ? <Selo tom="ruim">{pagina.resumo.falharam} com erro</Selo> : null}
+      <Selo tom="neutro">{pagina.resumo.semCalculo} sem número</Selo>
       {filtros.length ? (
-        <span className="selo neutro">{filtros.length} segmentação(ões) aplicada(s)</span>
+        <Selo tom="neutro">{filtros.length} segmentação(ões) aplicada(s)</Selo>
       ) : (
-        <span className="selo apagado">sem filtro da tela</span>
+        <Selo tom="apagado">sem filtro da tela</Selo>
       )}
       <span>{duracao(pagina.ms)} de cálculo</span>
       <span>{pagina.tabelas.map((t) => `${t.nome}: ${inteiro(t.linhas)}`).join(' · ')}</span>

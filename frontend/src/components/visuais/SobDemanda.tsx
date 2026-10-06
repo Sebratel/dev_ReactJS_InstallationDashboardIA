@@ -10,6 +10,7 @@ import { Cartao, Erro, alturaDoConteudo } from '../ui/Cartao.tsx';
 import { VisualPronto } from './VisualPronto.tsx';
 import { tituloDoVisual } from '../../utils/rotulos.ts';
 import { useVisualSobDemanda } from '../../hooks/useVisualSobDemanda.ts';
+import { Botao } from '../ui/Botao.tsx';
 
 export function SobDemanda(props: {
   pagina: string;
@@ -65,9 +66,9 @@ export function SobDemanda(props: {
           Este visual usa {(props.visual.sobDemanda ?? []).join(', ')}, que fica fora da abertura da
           página por ser grande demais para carregar sempre.
         </p>
-        <button className="primario" onClick={tentarDeNovo}>
+        <Botao variante="primario" onClick={tentarDeNovo}>
           Tentar de novo
-        </button>
+        </Botao>
       </div>
     </Cartao>
   );

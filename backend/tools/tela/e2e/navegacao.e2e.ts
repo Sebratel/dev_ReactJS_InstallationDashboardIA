@@ -77,12 +77,12 @@ const busca = () => decodeURIComponent(new URL(page.url()).search.replaceAll('+'
 const historico = () => page.evaluate(() => history.length);
 /** Quantos filtros a tela aplicou — a faixa do modo conferência. */
 const filtrosNaTela = async () => {
-  const selos = await page.locator('.faixa .selo.neutro').allTextContents();
+  const selos = await page.locator('[data-selo="neutro"]').allTextContents();
   return Number(selos.find((t) => /segmenta/.test(t))?.match(/[0-9]+/)?.[0] ?? 0);
 };
 const abre = async (url: string) => {
   await page.goto(url, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.selo', { timeout: 90_000 });
+  await page.waitForSelector('[data-selo]', { timeout: 90_000 });
   await page.waitForTimeout(1200);
 };
 
@@ -122,7 +122,7 @@ test('clique cruzado: EMPILHA; voltar desfaz, avançar refaz, recarregar mantém
   const comClique = busca();
   assert.match(comClique, /clicado=/);
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('.selo', { timeout: 90_000 });
+  await page.waitForSelector('[data-selo]', { timeout: 90_000 });
   await page.waitForTimeout(1200);
   assert.equal(busca(), comClique);
   assert.equal(await filtrosNaTela(), padrao + 1);
@@ -138,7 +138,7 @@ test('trocar de aba SUBSTITUI; sem página na URL, abre uma', { skip: pula }, as
   await abre(`${BASE}/?pagina=${PAGINA}`);
   const antes = await historico();
   await page.locator('.nav-telas .aba').filter({ hasText: /vis[aã]o geral/i }).first().click();
-  await page.waitForSelector('.selo', { timeout: 90_000 });
+  await page.waitForSelector('[data-selo]', { timeout: 90_000 });
   assert.match(busca(), /pagina=visao-geral/);
   assert.equal(await historico(), antes);
   await abre(`${BASE}/`);
@@ -160,7 +160,7 @@ test('árvore de período: um dia de mês não marcado manda DIA e MÊS, e os do
   await page.waitForTimeout(800);
   assert.match(busca(), /"nivel":"Dia"/);
   assert.match(busca(), /"nivel":"Mês"/);
-  await page.locator('.dialogo .primario').click();
+  await page.locator('.dialogo').getByRole('button', { name: 'Aplicar' }).click();
 });
 
 test('a busca da tabela vira pedido, e limpar volta à janela sem busca', { skip: pula }, async () => {

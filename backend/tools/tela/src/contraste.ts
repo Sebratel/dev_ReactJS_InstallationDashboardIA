@@ -4,8 +4,8 @@
 //
 // A lista vem de grep em `estilo.css` cruzado com os papéis que o CLAUDE.md já
 // documenta com hex e razão medidos — cada linha abaixo corresponde a uma regra real do
-// CSS (`.cartao-topo`, `.selo`, `.selo.ruim`, `.selo.neutro`, `body`, `.marca-nome`,
-// `.btn-icone`, `.marca-sub` etc.), não a um par hipotético.
+// tela (`.cartao-topo`, os tons de `ui/Selo.tsx`, `body`, `.marca-nome`, `.btn-icone`,
+// `.marca-sub` etc.), não a um par hipotético.
 
 export const PISO_AA = 4.5;
 

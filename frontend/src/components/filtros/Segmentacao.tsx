@@ -29,6 +29,8 @@ import {
 } from '../../services/dashboardService.ts';
 import { formata, inteiro } from '../../utils/formato.ts';
 import { X, ChevronDown } from 'lucide-react';
+import { Erro } from '../ui/Cartao.tsx';
+import { Botao } from '../ui/Botao.tsx';
 
 export function Segmentacao(props: {
   pagina: string;
@@ -109,7 +111,7 @@ export function Segmentacao(props: {
                 {/* Os três estados, também aqui: uma lista em branco sem explicação
                     parece "não há valores" quando na verdade a busca ainda nem voltou. */}
                 {carregando && <span className="filtro-nota">Carregando valores…</span>}
-                {erro && <div className="erro">{erro}</div>}
+                {erro && <Erro>{erro}</Erro>}
 
                 {opcoes && (
                   <>
@@ -156,8 +158,8 @@ export function Segmentacao(props: {
                   {cortado ? ' · limite atingido' : ''}
                 </span>
                 <div className="filtro-botoes-acao">
-                  <button
-                    className="secundario"
+                  <Botao
+                    variante="secundario"
                     onClick={() =>
                       props.aoMudar([
                         ...new Set([...props.selecao, ...visiveis.map((o) => o.valor)]),
@@ -166,17 +168,17 @@ export function Segmentacao(props: {
                     disabled={visiveis.length === 0}
                   >
                     Todos
-                  </button>
-                  <button
-                    className="secundario"
+                  </Botao>
+                  <Botao
+                    variante="secundario"
                     onClick={() => props.aoMudar([])}
                     disabled={props.selecao.length === 0}
                   >
                     Limpar
-                  </button>
-                  <button className="primario" onClick={() => setAberto(false)}>
+                  </Botao>
+                  <Botao variante="primario" onClick={() => setAberto(false)}>
                     Aplicar
-                  </button>
+                  </Botao>
                 </div>
               </div>
             </div>

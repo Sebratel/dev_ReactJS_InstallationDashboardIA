@@ -92,7 +92,7 @@ async function mede(pagina: string): Promise<Medida> {
   try {
     await page.goto(`${args.base}/?pagina=${pagina}`, { waitUntil: 'domcontentloaded', timeout: TETO_MS });
     htmlMs = Date.now() - t0;
-    await page.waitForSelector('.selo', { timeout: TETO_MS });
+    await page.waitForSelector('[data-selo]', { timeout: TETO_MS });
     prontaMs = Date.now() - t0;
   } catch {
     // o teto passou — a medida diz em qual das duas etapas

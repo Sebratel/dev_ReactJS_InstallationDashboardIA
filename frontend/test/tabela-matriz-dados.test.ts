@@ -53,9 +53,9 @@ test('a barra de dados só existe em coluna de magnitude que VARIA', () => {
 });
 
 test('selo de status', () => {
-  assert.equal(seloDeStatus('SIM'), 'badge-sim');
-  assert.equal(seloDeStatus('Não'), 'badge-nao');
-  assert.equal(seloDeStatus('3 dias Fora do SLA'), 'badge-alerta');
+  assert.equal(seloDeStatus('SIM'), 'sim');
+  assert.equal(seloDeStatus('Não'), 'nao');
+  assert.equal(seloDeStatus('3 dias Fora do SLA'), 'alerta');
   assert.equal(seloDeStatus('Canoas'), null);
 });
 

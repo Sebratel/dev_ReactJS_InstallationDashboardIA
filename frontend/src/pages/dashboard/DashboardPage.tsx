@@ -28,7 +28,7 @@ import { EsqueletoDaPagina } from '../../components/layout/EsqueletoDaPagina.tsx
 import { FaixaDeConferencia } from '../../components/layout/FaixaDeConferencia.tsx';
 import { BarraDeFiltros } from '../../components/filtros/BarraDeFiltros.tsx';
 import { Capa } from '../../components/capa/Capa.tsx';
-import { Erro } from '../../components/ui/Cartao.tsx';
+import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
 import { KpiGridSection } from '../../components/visuais/KpiGridSection.tsx';
 import { VisualGridSection } from '../../components/visuais/VisualGridSection.tsx';
 
@@ -131,9 +131,9 @@ export function DashboardPage() {
       }
     >
       {invalidos.length > 0 ? (
-        <div className="aviso">
+        <Aviso>
           {invalidos.length} filtro(s) da URL foram ignorados: {invalidos.join(' | ')}
-        </div>
+        </Aviso>
       ) : null}
 
       {erro ? <Erro>{erro}</Erro> : null}

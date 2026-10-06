@@ -2,6 +2,7 @@
 // o botão, girando enquanto a página busca de novo.
 
 import { RefreshCw } from 'lucide-react';
+import { Botao } from '../ui/Botao.tsx';
 
 export function BotaoAtualizar(props: {
   aoClicar: () => void;
@@ -9,15 +10,15 @@ export function BotaoAtualizar(props: {
   buscando: boolean;
 }) {
   return (
-    <button
-      className="secundario"
+    <Botao
+      variante="secundario"
       onClick={props.aoClicar}
       disabled={props.desligado}
       title="Buscar de novo os números desta página"
-      style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+      className="flex items-center gap-[6px]"
     >
       <RefreshCw size={14} className={props.buscando ? 'girando' : undefined} aria-hidden="true" />
       Atualizar
-    </button>
+    </Botao>
   );
 }

@@ -61,7 +61,7 @@ async function medeUmaPassada(
     viewport: { width: RESOLUCAO_DE_REFERENCIA.largura, height: RESOLUCAO_DE_REFERENCIA.altura },
   });
   await context.addCookies([{ ...cookieDeSessao, url: base }]);
-  // `.selo` (o sinal de "pronto" que `waitForSelector` espera) só desenha em modo
+  // `[data-selo]` (o sinal de "pronto" que `waitForSelector` espera) só desenha em modo
   // conferência — mesma técnica de `varre.ts`. Tema não importa para perf.
   await context.addInitScript(() => localStorage.setItem('modo-conferencia', '1'));
   const page = await context.newPage();
@@ -96,7 +96,7 @@ async function medeUmaPassada(
 
   const t0 = Date.now();
   await page.goto(`${base}/?pagina=${pagina}`);
-  await page.waitForSelector('.selo', { timeout: 30000 });
+  await page.waitForSelector('[data-selo]', { timeout: 30000 });
   const tempoAteProntoMs = Date.now() - t0;
 
   const primeiroPixelMs = await page.evaluate(() => {
@@ -107,7 +107,7 @@ async function medeUmaPassada(
   // Deixa assentar o que já estava em voo (ex.: um card fora da dobra cujo
   // `IntersectionObserver` disparou por estar dentro da margem de pré-carga, mesmo
   // sem o usuário ter rolado) antes de fechar a contagem — sem isto, a requisição
-  // conta ou não conforme o acaso de já ter respondido no instante do `.selo`.
+  // conta ou não conforme o acaso de já ter respondido no instante do `[data-selo]`.
   //
   // **O prazo é generoso de propósito.** `context.close()` logo depois DERRUBA
   // qualquer requisição ainda em voo — e `carrega()` (`servidor.ts:683-741`) tem um
