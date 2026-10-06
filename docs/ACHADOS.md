@@ -14232,3 +14232,54 @@ pela anterior, como o cabeçalho delas promete.
 
 **Fora da régua:** o paginador de colunas da matriz (nenhuma página abre com mais de 30
 colunas no estado padrão); ele é a mesma `PaginadorDeJanela` exercitada pelo gráfico.
+
+## #182 — fase 5 do frontend: ESLint, Prettier, pre-commit, Vitest e E2E; e o rate limit que a vizinhança tinha estourado (06/10)
+
+**O que entrou.** Detalhe em `PLANO-PADROES-FRONTEND.md`, fase 5.
+- **ESLint** (`frontend/eslint.config.js`) com `react-hooks` recomendado. Prova de que serve:
+  sobre a `Tabela` de antes da fase 4 (`1410f67`), `rules-of-hooks` acusa 7 erros — o defeito
+  do #181. O código atual passa sem aviso, com uma exceção explícita (abaixo).
+- **Prettier** (100 colunas, aspas simples) num commit só de formatação (`6ae3a3a`, listado
+  em `.git-blame-ignore-revs`). O JavaScript gerado ficou idêntico byte a byte, salvo um
+  `{' '}` numa frase de JSX que dá o mesmo texto na tela.
+- **Pre-commit** (Husky + lint-staged): `*.{ts,tsx}` do frontend passa por Prettier e por
+  `eslint --max-warnings=0`; violação de hooks barra o commit. Fora do frontend, nada roda.
+- **Vitest** para os testes do frontend (os 15 arquivos de `node:test` migrados) e os
+  primeiros de componente (Testing Library, jsdom): a `Tabela` sobrevive a perder e recuperar
+  dados (com a `Tabela` antiga o teste cai em "Rendered fewer hooks"), duas `mudaFiltro`
+  seguidas ficam as duas, seletor substitui e clique empilha no histórico, chips e paginador.
+  `npm test` da raiz roda backend (`node:test`) e frontend (`vitest run`).
+- **E2E** (`npm run e2e`, `backend/tools/tela/e2e/`), fora do `npm test` porque depende da
+  stack no ar: 8 testes de navegação no Chromium.
+
+**O contorno dos dois TypeScripts.** A raiz usa o TypeScript 7 (nativo) e o frontend o 5.9.
+O `ts-api-utils` (dependência do `typescript-eslint`) fica içado na raiz e resolvia o 7, que
+quebra ("reading 'Intrinsic'"). `overrides` não resolve dependência *peer*; o
+`eslint.config.js` registra um gancho de resolução (`module.registerHooks`) que aponta o
+`typescript` pedido de dentro do `ts-api-utils` para o do frontend. Sai quando o
+`typescript-eslint` suportar o 7.
+
+**A exceção que ficou.** `useJanela` liga o `carregando` dentro do efeito que dispara a busca
+(`set-state-in-effect`). A busca É o efeito; a saída de verdade é levar o hook para o React
+Query, que cuida do carregando sozinho. Pendência, marcada no código com este número.
+
+**O defeito que o E2E achou: a vizinhança gastava a cota de quem clica.** A API limita
+`/api/*` a 300 pedidos/min por IP, num teto descrito como "só contra abuso grosseiro — não
+deve incomodar uso normal". Medido numa abertura da `agendamento-field`: ~40 pedidos com
+`origem=prefetch` (a vizinhança do #179), ~20 de pré-carga das outras 10 abas e ~15 da
+própria página. No balde único, cinco aberturas num minuto já negavam layout, valores e SSE:
+a aba não carregava. Corrigido em `fc42c96`: `origem=prefetch` conta num balde próprio
+(600/min). O especulativo negado não custa nada a quem clica, e o teto continua finito —
+declarar `prefetch` só rebaixa o pedido na fila. Teste em `seguranca.test.ts`, que falha sem
+o balde.
+
+**O que continua aberto (decisão do Erick).**
+- A pré-carga das outras abas sai como pedido INTERATIVO (sem `origem`), ~20 por abertura.
+  Marcá-la `prefetch` tira esses pedidos da cota de quem clica, mas também os põe atrás dos
+  cliques na fila — mexe na decisão de prioridade de 08/09.
+- **`CONFIA_PROXY` não está no `.env`.** Sem ele, a API conta pelo IP do socket; atrás de um
+  nginx, todo mundo é o IP do nginx e divide os mesmos 300/min — umas 8 aberturas de página
+  por minuto para a empresa inteira. Precisa estar ligado onde houver proxy reescrevendo
+  `X-Real-IP` (o nginx de produção é do Misael).
+- O próprio E2E gasta ~280 dos 300 interativos numa execução (janela fixa de um minuto, e
+  na stack local todo navegador é o mesmo IP): uma execução por minuto, sem outra aba aberta.

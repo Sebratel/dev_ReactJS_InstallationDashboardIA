@@ -104,7 +104,20 @@ O plano original:
 `Grafico` (627), `Tabela` (397), `Matriz` (298), `RankingBarra` (284),
 `SegmentacaoDataHierarquia` (274) e `AppShell` (248).
 
-## Fase 5 — qualidade
+## Fase 5 — qualidade (FEITA, `5daf037`…`fa6dbb5`, 06/10/2026)
+
+**Como ficou** (ACHADOS #182):
+- `npm run lint` (ESLint com `react-hooks`), `npm run format` (Prettier, commit isolado
+  `6ae3a3a` no `.git-blame-ignore-revs`), pre-commit com Husky e lint-staged no frontend.
+- `npm test` roda o backend em `node:test` e o frontend em Vitest (`npm run test:web` só o
+  frontend); os primeiros testes de componente com Testing Library.
+- `npm run e2e`: 8 testes de navegação com Playwright contra a stack no ar (uma execução por
+  minuto, pelo rate limit).
+- Contorno: o ESLint aponta o `ts-api-utils` para o TypeScript do frontend (a raiz está no 7).
+- Pendência: `useJanela` para o React Query (a única exceção do ESLint).
+- Achado de passagem: o prefetch ganhou balde próprio no rate limit de `/api` (`fc42c96`).
+
+O plano original:
 
 - ESLint (com `react-hooks`), Prettier, Husky e lint-staged. A formatação do Prettier
   entra num commit isolado, quando não houver outro trabalho aberto em `frontend`.
