@@ -10,10 +10,12 @@
 // tela e a URL do pedido diferem só no caminho. Isso é o que permite depurar copiando
 // um pedaço de uma para a outra.
 
-import { codificaFiltro, decodificaFiltro } from '../../../backend/packages/widget-engine/src/filtro-url.ts';
+import {
+  codificaFiltro,
+  decodificaFiltro,
+} from '../../../backend/packages/widget-engine/src/filtro-url.ts';
 import type { FiltroDaTela, Valor } from '../services/dashboardService.ts';
 import { filtrosPadrao } from './filtrosPadrao.ts';
-
 
 /**
  * UM CAMPO QUE VEIO DE CLIQUE, e não de seletor.
@@ -71,7 +73,6 @@ export function leRota(
     ? globalThis.window.location.pathname
     : '',
 ): Rota {
-
   const p = new URLSearchParams(search);
   const filtros: FiltroDaTela[] = [];
   const invalidos: string[] = [];
@@ -171,8 +172,6 @@ export function escreveRota(
   return `?${p.toString()}`;
 }
 
-
-
 /**
  * A identidade de um filtro: tabela, coluna **e nível**.
  *
@@ -180,7 +179,12 @@ export function escreveRota(
  * níveis — `[DATA INSTALADO].[Ano]` e `[DATA INSTALADO].[Mês]` são dois controles
  * sobre a mesma coluna. Sem ele na chave, marcar um ano apagaria a escolha do mês.
  */
-function mesmaChave(f: FiltroDaTela, tabela: string, coluna: string, nivel?: string | null): boolean {
+function mesmaChave(
+  f: FiltroDaTela,
+  tabela: string,
+  coluna: string,
+  nivel?: string | null,
+): boolean {
   return f.tabela === tabela && f.coluna === coluna && (f.nivel ?? null) === (nivel ?? null);
 }
 
@@ -241,7 +245,6 @@ export interface AlvoDeFiltro {
   valor: Valor;
 }
 
-
 /** O que um visual chama ao ser clicado. */
 export type AoFiltrar = (alvos: readonly AlvoDeFiltro[]) => void;
 
@@ -280,10 +283,9 @@ export function alternaAlvos(
   }
 
   const tocadas = new Set(alvos.map((a) => `${a.tabela}.${a.coluna}`));
-  const limpo = alvos.reduce(
-    (f, a) => aplicaSelecao(f, a.tabela, a.coluna, [], a.nivel),
-    [...filtros] as FiltroDaTela[],
-  );
+  const limpo = alvos.reduce((f, a) => aplicaSelecao(f, a.tabela, a.coluna, [], a.nivel), [
+    ...filtros,
+  ] as FiltroDaTela[]);
   return padrao
     .filter((p) => tocadas.has(`${p.tabela}.${p.coluna}`))
     .reduce((f, p) => aplicaSelecao(f, p.tabela, p.coluna, p.valores, p.nivel), limpo);

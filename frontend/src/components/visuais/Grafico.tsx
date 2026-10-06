@@ -18,7 +18,11 @@
 // positivo. `useCaixa.ts` remede no `resize` e quando a fonte carrega.
 
 import { useMemo, useState } from 'react';
-import type { DadosDeGrafico, FiltroDaTela, VisualCalculado } from '../../services/dashboardService.ts';
+import type {
+  DadosDeGrafico,
+  FiltroDaTela,
+  VisualCalculado,
+} from '../../services/dashboardService.ts';
 import { inteiro } from '../../utils/formato.ts';
 import { corNoTema, maiorValorDe, montaGrafico, tetoDasAreas } from '../../utils/graficoForma.ts';
 import { prefixoComum } from '../../utils/graficoEixo.ts';
@@ -70,7 +74,10 @@ export function Grafico({
   // ----------------------------------------------- quantas cabem, e qual janela
   const nTotal = gTudo?.categorias.length ?? 0;
   const larguraDoPlot = Math.max(120, caixa.w - MARGEM.esquerda - MARGEM.direita);
-  const cabem = Math.max(MINIMO_POR_PAGINA, Math.floor(larguraDoPlot / (BANDA_MINIMA[zoomIdx] ?? 40)));
+  const cabem = Math.max(
+    MINIMO_POR_PAGINA,
+    Math.floor(larguraDoPlot / (BANDA_MINIMA[zoomIdx] ?? 40)),
+  );
   const pagina = Math.min(cabem, Math.max(nTotal, 1));
   const precisaPaginar = nTotal > pagina;
   // Abre na ÚLTIMA página: categoria de gráfico operacional é quase sempre tempo
@@ -95,7 +102,13 @@ export function Grafico({
     };
   }, [gTudo, de, ate, nTotal, isDark]);
 
-  const clique = useCliqueNoEixo(d?.chaves ?? [], g?.categorias ?? [], filtros, aoFiltrar, aoPrever);
+  const clique = useCliqueNoEixo(
+    d?.chaves ?? [],
+    g?.categorias ?? [],
+    filtros,
+    aoFiltrar,
+    aoPrever,
+  );
 
   if (!d || !g || !gTudo) {
     return (
@@ -116,13 +129,19 @@ export function Grafico({
     larguraDoPlot,
     nCategorias: g.categorias.length,
     naFaceta,
-    teto: gTudo.percentual ? 100 : maiorValorDe(linhasDoTudo, tetoDasAreas(gTudo.series, gTudo.empilha)),
+    teto: gTudo.percentual
+      ? 100
+      : maiorValorDe(linhasDoTudo, tetoDasAreas(gTudo.series, gTudo.empilha)),
     empilha: g.empilha,
     nAreas: areas.length,
   });
 
   const sub = conferencia
-    ? [`${inteiro(d.pontos.length)} pontos`, `${g.series.length} série(s)`, ...(g.percentual ? ['100% empilhado'] : [])]
+    ? [
+        `${inteiro(d.pontos.length)} pontos`,
+        `${g.series.length} série(s)`,
+        ...(g.percentual ? ['100% empilhado'] : []),
+      ]
     : g.percentual
       ? ['100% empilhado']
       : [];
@@ -144,14 +163,21 @@ export function Grafico({
           passo={pagina}
           aoIr={setInicio}
           resumo={inteiro(nTotal) + ' categorias no total'}
-          titulos={{ primeira: 'Primeira', anterior: 'Página anterior', proxima: 'Próxima página', ultima: 'Última (mais recente)' }}
+          titulos={{
+            primeira: 'Primeira',
+            anterior: 'Página anterior',
+            proxima: 'Próxima página',
+            ultima: 'Última (mais recente)',
+          }}
         />
       ) : null}
       <ControlesDeZoom nivel={zoomIdx} niveis={BANDA_MINIMA.length} aoMudar={setZoomIdx} />
     </div>
   );
 
-  const semDados = g.categorias.length === 0 || g.series.every((s) => s.valores.every((v) => v === null || v === 0));
+  const semDados =
+    g.categorias.length === 0 ||
+    g.series.every((s) => s.valores.every((v) => v === null || v === 0));
   if (semDados) {
     return (
       // `altura="grafico"`: sem ela o Cartao cai em `auto` e cresce com o conteúdo.
@@ -162,7 +188,13 @@ export function Grafico({
   }
 
   return (
-    <Cartao titulo={titulo} sub={sub.join(' · ')} id={visual.id} altura="grafico" acoes={acoesGrafico}>
+    <Cartao
+      titulo={titulo}
+      sub={sub.join(' · ')}
+      id={visual.id}
+      altura="grafico"
+      acoes={acoesGrafico}
+    >
       {g.series.length > 1 ? <LegendaDoGrafico series={g.series} /> : null}
 
       {g.avisos.map((a) => (
@@ -177,7 +209,10 @@ export function Grafico({
         <DesenhoDoGrafico
           largura={caixa.w}
           altura={caixa.h}
-          ariaLabel={tituloDoVisual(visual) + (precisaPaginar ? ` — categorias ${de + 1} a ${ate} de ${nTotal}` : '')}
+          ariaLabel={
+            tituloDoVisual(visual) +
+            (precisaPaginar ? ` — categorias ${de + 1} a ${ate} de ${nTotal}` : '')
+          }
           categorias={g.categorias}
           partes={partesVisiveis}
           areas={areas}
@@ -194,4 +229,3 @@ export function Grafico({
     </Cartao>
   );
 }
-

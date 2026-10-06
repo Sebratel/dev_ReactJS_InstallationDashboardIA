@@ -7,7 +7,12 @@
 // As contas estão em `utils/tabelaDados.ts`; o `<table>`, em `tabela/CorpoDaTabela.tsx`.
 
 import { useEffect, useMemo, useState } from 'react';
-import type { DadosDeTabela, FiltroDaTela, Valor, VisualCalculado } from '../../services/dashboardService.ts';
+import type {
+  DadosDeTabela,
+  FiltroDaTela,
+  Valor,
+  VisualCalculado,
+} from '../../services/dashboardService.ts';
 import { formata } from '../../utils/formato.ts';
 import { baixaCsv, textoCsv } from '../../utils/csv.ts';
 import { escalasDaTabela, ordenaLinhas } from '../../utils/tabelaDados.ts';
@@ -40,7 +45,10 @@ export function Tabela(props: {
   const [termoBusca, setTermoBusca] = useState<string>('');
   const [termoAplicado, setTermoAplicado] = useState<string>('');
   useEffect(() => {
-    const t = setTimeout(() => setTermoAplicado(termoBusca.trim().toLowerCase()), ESPERA_DA_BUSCA_MS);
+    const t = setTimeout(
+      () => setTermoAplicado(termoBusca.trim().toLowerCase()),
+      ESPERA_DA_BUSCA_MS,
+    );
     return () => clearTimeout(t);
   }, [termoBusca]);
 
@@ -60,7 +68,10 @@ export function Tabela(props: {
 
   // **Só ordena.** A busca saiu daqui em 16/09/2026 e foi para o servidor (`janelaDe`/
   // `casaComTermo`): peneirar as 200 linhas da janela baixada não é buscar.
-  const ordenadas = useMemo(() => ordenaLinhas(linhas, colOrdenada, ordemDesc), [linhas, colOrdenada, ordemDesc]);
+  const ordenadas = useMemo(
+    () => ordenaLinhas(linhas, colOrdenada, ordemDesc),
+    [linhas, colOrdenada, ordemDesc],
+  );
   const escalas = useMemo(() => escalasDaTabela(colunas, linhas), [colunas, linhas]);
 
   /* A JANELA DE 20 LINHAS. `useJanela` traz 200 do servidor; a tela desenha 20 por vez.
@@ -79,7 +90,11 @@ export function Tabela(props: {
 
   if (!d || !d.colunas || !d.linhas) {
     return (
-      <Cartao titulo={tituloDeTabela(props.visual, d?.colunas ?? [])} id={props.visual.id} altura="tabela">
+      <Cartao
+        titulo={tituloDeTabela(props.visual, d?.colunas ?? [])}
+        id={props.visual.id}
+        altura="tabela"
+      >
         <p className="sob-demanda">Sem dados disponíveis para a tabela.</p>
       </Cartao>
     );
@@ -95,7 +110,12 @@ export function Tabela(props: {
   // inteira — e aí `de` é o índice GLOBAL da primeira linha.
   const estado = filtrando
     ? { de: inicio, mostradas: visiveis.length, total: totalLocal }
-    : { de: d.de + inicio, mostradas: visiveis.length, total: d.linhasTotais, totalSemBusca: d.totalSemBusca };
+    : {
+        de: d.de + inicio,
+        mostradas: visiveis.length,
+        total: d.linhasTotais,
+        totalSemBusca: d.totalSemBusca,
+      };
 
   /** Recebe um índice GLOBAL e decide se anda em memória ou busca outra fatia. */
   const vaiParaLinha = (linhaGlobal: number) => {
@@ -118,8 +138,11 @@ export function Tabela(props: {
    * sem amarrar um filtro por coluna. Sem tabela/coluna de origem, o clique não filtra.
    */
   const colunaDoClique = d.colunas[0];
-  const podeClicarNaLinha = props.aoFiltrar !== undefined && !!colunaDoClique?.tabela && !!colunaDoClique?.coluna;
-  const selecaoDaLinha = podeClicarNaLinha ? selecaoDe(props.filtros, colunaDoClique!.tabela!, colunaDoClique!.coluna!) : [];
+  const podeClicarNaLinha =
+    props.aoFiltrar !== undefined && !!colunaDoClique?.tabela && !!colunaDoClique?.coluna;
+  const selecaoDaLinha = podeClicarNaLinha
+    ? selecaoDe(props.filtros, colunaDoClique!.tabela!, colunaDoClique!.coluna!)
+    : [];
   const clicaNaLinha = (valor: Valor) => {
     if (valor === null || valor === undefined) return;
     props.aoFiltrar!([{ tabela: colunaDoClique!.tabela!, coluna: colunaDoClique!.coluna!, valor }]);
@@ -127,7 +150,9 @@ export function Tabela(props: {
 
   const exportarCSV = () => {
     const cabecalho = d.colunas.map((c) => c.nome ?? '');
-    const corpo = d.linhas.map((linha) => linha.map((v, j) => formata(v, d.colunas[j]?.tipo ?? null).texto));
+    const corpo = d.linhas.map((linha) =>
+      linha.map((v, j) => formata(v, d.colunas[j]?.tipo ?? null).texto),
+    );
     baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, corpo));
   };
 
@@ -154,7 +179,9 @@ export function Tabela(props: {
     >
       {janela.erro ? <Erro>{janela.erro}</Erro> : null}
       {totalLocal === 0 ? (
-        <p className="vazio-pagina">{termoBusca ? 'Nenhuma linha para esta busca.' : 'Nenhuma linha para os filtros atuais.'}</p>
+        <p className="vazio-pagina">
+          {termoBusca ? 'Nenhuma linha para esta busca.' : 'Nenhuma linha para os filtros atuais.'}
+        </p>
       ) : (
         <CorpoDaTabela
           colunas={d.colunas}
@@ -171,11 +198,16 @@ export function Tabela(props: {
       {filtrando && totalLocal > 0 && d.linhas.length < d.linhasTotais ? (
         // Dizer o recorte em vez de deixar o número parecer o total.
         <p className="filtro-nota">
-          Busca e ordenação valem sobre as {d.linhas.length} linhas desta fatia, não sobre as {d.linhasTotais} da
-          consulta.
+          Busca e ordenação valem sobre as {d.linhas.length} linhas desta fatia, não sobre as{' '}
+          {d.linhasTotais} da consulta.
         </p>
       ) : null}
-      <Paginacao janela={estado} carregando={janela.carregando} vaiPara={vaiParaLinha} passo={LINHAS_VISIVEIS} />
+      <Paginacao
+        janela={estado}
+        carregando={janela.carregando}
+        vaiPara={vaiParaLinha}
+        passo={LINHAS_VISIVEIS}
+      />
     </Cartao>
   );
 }

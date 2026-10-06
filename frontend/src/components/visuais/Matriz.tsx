@@ -10,10 +10,20 @@
 // em `utils/matrizDados.ts`.
 
 import { useMemo, useState } from 'react';
-import type { DadosDeMatriz, FiltroDaTela, VisualCalculado } from '../../services/dashboardService.ts';
+import type {
+  DadosDeMatriz,
+  FiltroDaTela,
+  VisualCalculado,
+} from '../../services/dashboardService.ts';
 import { inteiro } from '../../utils/formato.ts';
 import { baixaCsv, textoCsv } from '../../utils/csv.ts';
-import { cabecalhosDaDireita, corpoDaMatriz, csvDaMatriz, escalasPorMedida, semEixoDeColuna } from '../../utils/matrizDados.ts';
+import {
+  cabecalhosDaDireita,
+  corpoDaMatriz,
+  csvDaMatriz,
+  escalasPorMedida,
+  semEixoDeColuna,
+} from '../../utils/matrizDados.ts';
 import { Cartao, Erro } from '../ui/Cartao.tsx';
 import { Paginacao } from '../ui/Paginacao.tsx';
 import { PaginadorDeJanela } from '../ui/PaginadorDeJanela.tsx';
@@ -26,9 +36,19 @@ const COLUNAS_POR_JANELA = 30;
 
 /** Dá para transpor: tudo carregado, eixo de coluna de verdade, muitas colunas e poucas linhas. */
 const podeTransporA = (d: DadosDeMatriz | undefined): boolean =>
-  !!d && !!d.colunas && !!d.linhas && !semEixoDeColuna(d) && d.linhas.length === d.linhasTotais && d.colunas.length > 8 && d.linhas.length <= 60;
+  !!d &&
+  !!d.colunas &&
+  !!d.linhas &&
+  !semEixoDeColuna(d) &&
+  d.linhas.length === d.linhasTotais &&
+  d.colunas.length > 8 &&
+  d.linhas.length <= 60;
 
-export function Matriz(props: { pagina: string; visual: VisualCalculado; filtros: readonly FiltroDaTela[] }) {
+export function Matriz(props: {
+  pagina: string;
+  visual: VisualCalculado;
+  filtros: readonly FiltroDaTela[];
+}) {
   const janela = useJanela(props.pagina, props.visual, props.filtros);
   const visual = janela.visual;
   const d = visual.dados as DadosDeMatriz | undefined;
@@ -36,7 +56,9 @@ export function Matriz(props: { pagina: string; visual: VisualCalculado; filtros
 
   // TODOS os hooks antes do `return` de "sem dados" (fase 4): estavam depois dele.
   const podeTranspor = podeTransporA(d);
-  const [transposto, setTransposto] = useState(podeTranspor && d!.colunas.length > d!.linhas.length * 2);
+  const [transposto, setTransposto] = useState(
+    podeTranspor && d!.colunas.length > d!.linhas.length * 2,
+  );
   const escalas = useMemo(() => (temDados ? escalasPorMedida(d!) : []), [temDados, d]);
   // Com setter: sem ele a janela ficava presa na última página. `null` = ainda no padrão,
   // então ela acompanha o fim quando um filtro muda o tamanho da matriz.
@@ -57,7 +79,10 @@ export function Matriz(props: { pagina: string; visual: VisualCalculado; filtros
   const paginaColunas = totalColunas > COLUNAS_POR_JANELA;
 
   const partes = [`${inteiro(d.linhasTotais)} × ${inteiro(d.colunas.length)}`];
-  if (paginaColunas) partes.push(`colunas ${inteiro(deColuna + 1)}–${inteiro(ateColuna)} de ${inteiro(totalColunas)}`);
+  if (paginaColunas)
+    partes.push(
+      `colunas ${inteiro(deColuna + 1)}–${inteiro(ateColuna)} de ${inteiro(totalColunas)}`,
+    );
   if (d.descartadas.linhas || d.descartadas.colunas) {
     partes.push(`${d.descartadas.linhas + d.descartadas.colunas} posição(ões) vazia(s) podada(s)`);
   }
@@ -108,7 +133,10 @@ export function Matriz(props: { pagina: string; visual: VisualCalculado; filtros
             />
           )}
           {podeTranspor && (
-            <button onClick={() => setTransposto((t) => !t)} title="Alterna linhas e colunas — útil quando há muitas colunas">
+            <button
+              onClick={() => setTransposto((t) => !t)}
+              title="Alterna linhas e colunas — útil quando há muitas colunas"
+            >
               <Transpor /> {transposto ? 'Desfazer transposição' : 'Transpor'}
             </button>
           )}
@@ -136,8 +164,13 @@ export function Matriz(props: { pagina: string; visual: VisualCalculado; filtros
               <tr key={i}>
                 <td>{linha.rotulo}</td>
                 {linha.celulas.map((cel, j) => (
-                  <td key={j} className={`num${cel.vazio ? ' sem' : ''}${cel.largura !== undefined ? ' barra-dado' : ''}`}>
-                    {cel.largura !== undefined ? <i className="fundo-barra" style={{ width: `${cel.largura}%` }} /> : null}
+                  <td
+                    key={j}
+                    className={`num${cel.vazio ? ' sem' : ''}${cel.largura !== undefined ? ' barra-dado' : ''}`}
+                  >
+                    {cel.largura !== undefined ? (
+                      <i className="fundo-barra" style={{ width: `${cel.largura}%` }} />
+                    ) : null}
                     <span>{cel.texto}</span>
                   </td>
                 ))}

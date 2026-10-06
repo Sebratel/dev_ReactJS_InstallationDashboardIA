@@ -28,7 +28,15 @@
 import type { VisualCalculado } from '../../services/dashboardService.ts';
 import { dataHora, haQuanto } from '../../utils/formato.ts';
 import type { RespostaSaude } from '../../utils/avisoSaude.ts';
-import { CARD_DATA, CARD_HORA, FONTES, INDICADORES, OBJETIVOS, situacaoDaFonte, valorDoCard } from '../../utils/capaConteudo.ts';
+import {
+  CARD_DATA,
+  CARD_HORA,
+  FONTES,
+  INDICADORES,
+  OBJETIVOS,
+  situacaoDaFonte,
+  valorDoCard,
+} from '../../utils/capaConteudo.ts';
 import { MarcaSebratel } from '../ui/MarcaSebratel.tsx';
 import { HistoricoDeVersoes } from './HistoricoDeVersoes.tsx';
 
@@ -40,12 +48,17 @@ export function Capa(props: {
 }) {
   const saude = props.saude ?? null;
   const visuais = props.visuais ?? [];
-  const leitura = saude?.refresh?.queries.find((q) => q.id === 'hora-atualizado')?.ultimaCarga ?? props.dadoDe;
+  const leitura =
+    saude?.refresh?.queries.find((q) => q.id === 'hora-atualizado')?.ultimaCarga ?? props.dadoDe;
 
   return (
     <div className="capa">
       <section className="capa-faixa">
-        <MarcaSebratel className="capa-faixa-marca" fundo="var(--pbi-sobre-primary)" letra="var(--pbi-primary)" />
+        <MarcaSebratel
+          className="capa-faixa-marca"
+          fundo="var(--pbi-sobre-primary)"
+          letra="var(--pbi-primary)"
+        />
         <div className="capa-faixa-txt">
           {/* O relatório é o de INSTALAÇÃO, não o "Instalação Gerencial" — são dois. */}
           <h1>INST · RELATÓRIO INSTALAÇÃO</h1>
@@ -87,9 +100,9 @@ export function Capa(props: {
           <h2>Atualização dos dados</h2>
           <div className="capa-bloco-corpo">
             <p>
-              As consultas leem o <b>Voalle</b> (PostgreSQL), o <b>MariaDB</b> corporativo e as planilhas
-              Google, e cada grupo é relido na sua cadência. A idade do dado aparece também no cabeçalho de
-              toda tela — dado velho é visível, nunca silencioso.
+              As consultas leem o <b>Voalle</b> (PostgreSQL), o <b>MariaDB</b> corporativo e as
+              planilhas Google, e cada grupo é relido na sua cadência. A idade do dado aparece
+              também no cabeçalho de toda tela — dado velho é visível, nunca silencioso.
             </p>
             <table className="capa-fontes">
               <tbody>

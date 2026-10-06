@@ -44,10 +44,20 @@ export function PaginadorDeJanela(props: {
       <span className="paginador-rotulo">
         {inteiro(de + 1)}–{inteiro(ate)} <span className="de">de {inteiro(total)}</span>
       </span>
-      <button type="button" title={titulos.proxima} disabled={de >= maxInicio} onClick={() => anda(1)}>
+      <button
+        type="button"
+        title={titulos.proxima}
+        disabled={de >= maxInicio}
+        onClick={() => anda(1)}
+      >
         ›
       </button>
-      <button type="button" title={titulos.ultima} disabled={de >= maxInicio} onClick={() => aoIr(maxInicio)}>
+      <button
+        type="button"
+        title={titulos.ultima}
+        disabled={de >= maxInicio}
+        onClick={() => aoIr(maxInicio)}
+      >
         »
       </button>
     </Elemento>

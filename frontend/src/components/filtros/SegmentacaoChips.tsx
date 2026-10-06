@@ -11,7 +11,10 @@
 // inteira, ou não é chip nenhum.
 
 import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
-import { type Segmentacao as SegmentacaoSpec, type Valor } from '../../services/dashboardService.ts';
+import {
+  type Segmentacao as SegmentacaoSpec,
+  type Valor,
+} from '../../services/dashboardService.ts';
 import { formata } from '../../utils/formato.ts';
 import { alternaValor } from '../../utils/vizinhanca.ts';
 

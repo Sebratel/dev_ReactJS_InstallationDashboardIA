@@ -34,7 +34,11 @@ export function segmentacoesDaTela(
   const todas = visuais.filter(
     (v) =>
       v.segmentacao &&
-      !(dataDaTela !== null && v.segmentacao.tabela === dataDaTela.tabela && v.segmentacao.coluna === dataDaTela.coluna),
+      !(
+        dataDaTela !== null &&
+        v.segmentacao.tabela === dataDaTela.tabela &&
+        v.segmentacao.coluna === dataDaTela.coluna
+      ),
   );
   const chips = todas.find((v) => ehChipDeSolicitacao(v.segmentacao!))?.segmentacao ?? null;
   const dropdowns = todas
@@ -55,7 +59,9 @@ export function segmentacoesDaTela(
   // por coluna, não por nível, senão o mês padrão apareceria também como pill ao lado
   // do controle que já o mostra.
   const comSlicer = new Set(
-    todas.map((v) => `${v.segmentacao!.tabela}.${v.segmentacao!.coluna}.${v.segmentacao!.nivel ?? ''}`),
+    todas.map(
+      (v) => `${v.segmentacao!.tabela}.${v.segmentacao!.coluna}.${v.segmentacao!.nivel ?? ''}`,
+    ),
   );
   const ocultos = filtros.filter(
     (f) =>

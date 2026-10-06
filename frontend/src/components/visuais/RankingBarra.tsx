@@ -16,9 +16,19 @@
 // LINHA, não por categoria no eixo X, porque a lista cresce para baixo.
 
 import { useState } from 'react';
-import type { DadosDeGrafico, FiltroDaTela, VisualCalculado } from '../../services/dashboardService.ts';
+import type {
+  DadosDeGrafico,
+  FiltroDaTela,
+  VisualCalculado,
+} from '../../services/dashboardService.ts';
 import { inteiro } from '../../utils/formato.ts';
-import { corDaSerie, corDoRotuloSobre, corNoTema, maiorValorDe, montaGrafico } from '../../utils/graficoForma.ts';
+import {
+  corDaSerie,
+  corDoRotuloSobre,
+  corNoTema,
+  maiorValorDe,
+  montaGrafico,
+} from '../../utils/graficoForma.ts';
 import { useThemeStore } from '../../store/themeStore.ts';
 import { Cartao } from '../ui/Cartao.tsx';
 import { PaginadorDeJanela } from '../ui/PaginadorDeJanela.tsx';
@@ -72,14 +82,20 @@ export function RankingBarra({
   // as linhas ESTICAM até `ALTURA_LINHA_MAXIMA` para preencher o cartão; se não cabe, a
   // altura fica no mínimo e o resto pagina — decidido pelo total e não por um botão,
   // porque técnico/equipe não tem a leitura "role para ver o mais recente" de uma série.
-  const capacidadeNoMinimo = Math.max(1, Math.floor((alturaUtil + VAO) / (ALTURA_LINHA_MINIMA + VAO)));
+  const capacidadeNoMinimo = Math.max(
+    1,
+    Math.floor((alturaUtil + VAO) / (ALTURA_LINHA_MINIMA + VAO)),
+  );
   const precisaPaginar = totalLinhas > capacidadeNoMinimo;
   const linhasPorPagina = precisaPaginar ? capacidadeNoMinimo : totalLinhas;
   const alturaLinha = precisaPaginar
     ? ALTURA_LINHA_MINIMA
     : Math.min(
         ALTURA_LINHA_MAXIMA,
-        Math.max(ALTURA_LINHA_MINIMA, Math.floor((alturaUtil - VAO * (linhasPorPagina - 1)) / linhasPorPagina)),
+        Math.max(
+          ALTURA_LINHA_MINIMA,
+          Math.floor((alturaUtil - VAO * (linhasPorPagina - 1)) / linhasPorPagina),
+        ),
       );
   const maxInicio = Math.max(0, totalLinhas - linhasPorPagina);
   const de = Math.min(inicio, maxInicio);
@@ -99,13 +115,14 @@ export function RankingBarra({
   // O NOME VEM DE `d.series`, a metadata DECLARADA da medida — não de `gTudo.series` (o
   // RESULTADO calculado). Sem categoria alguma, `montaGrafico` devolve `series: []`, e o
   // card ficaria com o id cru no título bem no caso em que ele mais importa.
-  const eixo = (d.chaves ?? []).find((c) => ((c as { papel?: string }).papel ?? 'Category') === 'Category') as
-    | { nome?: string; coluna?: string }
-    | undefined;
+  const eixo = (d.chaves ?? []).find(
+    (c) => ((c as { papel?: string }).papel ?? 'Category') === 'Category',
+  ) as { nome?: string; coluna?: string } | undefined;
   const nomeMedida = (d.series ?? [])[0]?.nome ?? null;
   const nomeEixo = eixo?.nome ?? eixo?.coluna;
   const titulo =
-    visual.titulo?.trim() || (nomeMedida && nomeEixo ? `${nomeMedida} por ${nomeEixo}` : tituloDoVisual(visual));
+    visual.titulo?.trim() ||
+    (nomeMedida && nomeEixo ? `${nomeMedida} por ${nomeEixo}` : tituloDoVisual(visual));
 
   const corBarra = corNoTema(corDaSerie(nomeMedida ?? '', 0), isDark);
 
@@ -120,7 +137,10 @@ export function RankingBarra({
   const larguraTotal = Math.max(1, caixa.w - MARGEM.esquerda - MARGEM.direita);
   const alturaSvg = Math.max(
     1,
-    visiveis.length * alturaLinha + Math.max(0, visiveis.length - 1) * VAO + MARGEM.topo + MARGEM.base,
+    visiveis.length * alturaLinha +
+      Math.max(0, visiveis.length - 1) * VAO +
+      MARGEM.topo +
+      MARGEM.base,
   );
 
   const paginador = precisaPaginar ? (
@@ -132,7 +152,12 @@ export function RankingBarra({
       passo={linhasPorPagina}
       aoIr={setInicio}
       resumo={inteiro(totalLinhas) + ' categorias no total'}
-      titulos={{ primeira: 'Primeira (maior valor)', anterior: 'Página anterior', proxima: 'Próxima página', ultima: 'Última (menor valor)' }}
+      titulos={{
+        primeira: 'Primeira (maior valor)',
+        anterior: 'Página anterior',
+        proxima: 'Próxima página',
+        ultima: 'Última (menor valor)',
+      }}
     />
   ) : null;
 
@@ -152,7 +177,9 @@ export function RankingBarra({
           width={caixa.w}
           height={alturaSvg}
           role="img"
-          aria-label={titulo + (precisaPaginar ? ` — posições ${de + 1} a ${ate} de ${totalLinhas}` : '')}
+          aria-label={
+            titulo + (precisaPaginar ? ` — posições ${de + 1} a ${ate} de ${totalLinhas}` : '')
+          }
         >
           {visiveis.map((l, j) => (
             <LinhaDoRanking

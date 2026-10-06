@@ -1,4 +1,8 @@
-import type { DadosDeGrafico, DadosDeMatriz, VisualCalculado } from '../../services/dashboardService.ts';
+import type {
+  DadosDeGrafico,
+  DadosDeMatriz,
+  VisualCalculado,
+} from '../../services/dashboardService.ts';
 import { formata, percentualDeRazao } from '../../utils/formato.ts';
 import { useModo } from '../../context/ModoContext.tsx';
 import { Sparkline } from './Sparkline.tsx';
@@ -51,19 +55,29 @@ export function KpiCard({
   calendario?: VisualCalculado;
 }) {
   const { conferencia } = useModo();
-  const d = visual.dados as {
-    nome?: string;
-    valor?: unknown;
-    tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null;
-    origem?: { kind: string; measure?: string; table?: string; column?: string; aggregation?: string };
-    filtros?: string[];
-  } | undefined;
+  const d = visual.dados as
+    | {
+        nome?: string;
+        valor?: unknown;
+        tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null;
+        origem?: {
+          kind: string;
+          measure?: string;
+          table?: string;
+          column?: string;
+          aggregation?: string;
+        };
+        filtros?: string[];
+      }
+    | undefined;
 
   if (!d) return null;
 
   const f = formata(d.valor, d.tipoDoValor ?? null);
   const nomeKpi = (d.nome ?? '(sem rótulo)').toUpperCase();
-  const origem = d.origem?.measure ?? (d.origem?.column ? `${d.origem?.aggregation ?? ''} ${d.origem.column}`.trim() : null);
+  const origem =
+    d.origem?.measure ??
+    (d.origem?.column ? `${d.origem?.aggregation ?? ''} ${d.origem.column}`.trim() : null);
 
   // KPI de porcentagem: o nome traz "%" e a medida devolve razão (0,05). O Power BI
   // mostra "5%"; casamos com ele em vez de exibir "0,05", que ninguém lê como taxa.
@@ -77,11 +91,16 @@ export function KpiCard({
 
   const dadosDaMeta =
     meta && !meta.erro && meta.conteudo === 'card'
-      ? (meta.dados as { valor?: unknown; tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null } | undefined)
+      ? (meta.dados as
+          | { valor?: unknown; tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null }
+          | undefined)
       : undefined;
   const metaValor =
-    dadosDaMeta?.tipoDoValor === 'number' && typeof dadosDaMeta.valor === 'number' ? dadosDaMeta.valor : undefined;
-  const valorNumerico = d.tipoDoValor === 'number' && typeof d.valor === 'number' ? d.valor : undefined;
+    dadosDaMeta?.tipoDoValor === 'number' && typeof dadosDaMeta.valor === 'number'
+      ? dadosDaMeta.valor
+      : undefined;
+  const valorNumerico =
+    d.tipoDoValor === 'number' && typeof d.valor === 'number' ? d.valor : undefined;
 
   const dadosDoCalendario =
     calendario && !calendario.erro && calendario.conteudo === 'matriz'

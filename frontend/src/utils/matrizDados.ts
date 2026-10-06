@@ -16,18 +16,29 @@ export interface CelulaDaMatriz {
 
 export function rotuloDaLinha(d: DadosDeMatriz, linha: Chave): string {
   return linha
-    .map((x, j) => formata(x, d.tiposDeLinha[j] ?? null, { semAgrupamento: ehColunaDeAno(d.chavesDeLinha[j]?.nome) }).texto)
+    .map(
+      (x, j) =>
+        formata(x, d.tiposDeLinha[j] ?? null, {
+          semAgrupamento: ehColunaDeAno(d.chavesDeLinha[j]?.nome),
+        }).texto,
+    )
     .join(' / ');
 }
 
 export function rotuloDaColuna(d: DadosDeMatriz, coluna: Chave): string {
   return coluna
-    .map((x, i) => formata(x, d.tiposDeColuna[i] ?? null, { semAgrupamento: ehColunaDeAno(d.chavesDeColuna[i]?.nome) }).texto)
+    .map(
+      (x, i) =>
+        formata(x, d.tiposDeColuna[i] ?? null, {
+          semAgrupamento: ehColunaDeAno(d.chavesDeColuna[i]?.nome),
+        }).texto,
+    )
     .join(' / ');
 }
 
 /** A matriz não tem eixo de coluna (só medidas)? */
-export const semEixoDeColuna = (d: DadosDeMatriz): boolean => d.colunas.length === 1 && d.colunas[0]?.length === 0;
+export const semEixoDeColuna = (d: DadosDeMatriz): boolean =>
+  d.colunas.length === 1 && d.colunas[0]?.length === 0;
 
 /**
  * A escala da barra de cada MEDIDA, não de cada coluna: numa matriz a coluna nasce do
@@ -57,13 +68,24 @@ const comMedida = (d: DadosDeMatriz, rotulo: string, m: string | null): string =
   rotulo + (d.medidas.length > 1 ? ` · ${m ?? ''}` : '');
 
 /** Os cabeçalhos das colunas de valor, em ordem, com a medida quando há mais de uma. */
-export function cabecalhosDaDireita(d: DadosDeMatriz, transposto: boolean, de: number, ate: number): string[] {
+export function cabecalhosDaDireita(
+  d: DadosDeMatriz,
+  transposto: boolean,
+  de: number,
+  ate: number,
+): string[] {
   // `slice` ANTES do `flatMap`: é o `flatMap` que multiplica por medida.
   return transposto
-    ? d.linhas.slice(de, ate).flatMap((linha) => d.medidas.map((m) => comMedida(d, rotuloDaLinha(d, linha), m)))
+    ? d.linhas
+        .slice(de, ate)
+        .flatMap((linha) => d.medidas.map((m) => comMedida(d, rotuloDaLinha(d, linha), m)))
     : d.colunas
         .slice(de, ate)
-        .flatMap((c) => d.medidas.map((m) => (semEixoDeColuna(d) ? (m ?? '—') : comMedida(d, rotuloDaColuna(d, c), m))));
+        .flatMap((c) =>
+          d.medidas.map((m) =>
+            semEixoDeColuna(d) ? (m ?? '—') : comMedida(d, rotuloDaColuna(d, c), m),
+          ),
+        );
 }
 
 /**
@@ -80,7 +102,8 @@ export function corpoDaMatriz(
   const celula = (valor: unknown, mi: number): CelulaDaMatriz => {
     const f = formata(valor, d.tiposDeMedida[mi] ?? null);
     const escala = escalas[mi];
-    const largura = escala !== undefined && typeof valor === 'number' ? larguraDaBarra(valor, escala) : undefined;
+    const largura =
+      escala !== undefined && typeof valor === 'number' ? larguraDaBarra(valor, escala) : undefined;
     return { texto: f.texto, vazio: f.vazio, largura };
   };
   return transposto
@@ -106,7 +129,9 @@ export function csvDaMatriz(d: DadosDeMatriz): { cabecalho: string[]; linhas: st
     cabecalho: [nomeChavesLinha, ...cabecalhosColunas],
     linhas: d.linhas.map((linha, i) => [
       rotuloDaLinha(d, linha),
-      ...(d.celulas[i] ?? []).flatMap((cel) => cel.map((valor, mi) => formata(valor, d.tiposDeMedida[mi] ?? null).texto)),
+      ...(d.celulas[i] ?? []).flatMap((cel) =>
+        cel.map((valor, mi) => formata(valor, d.tiposDeMedida[mi] ?? null).texto),
+      ),
     ]),
   };
 }

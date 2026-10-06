@@ -62,9 +62,17 @@ export function useVizinhanca(
     const t = window.setTimeout(async () => {
       const comValores: SegmentacaoComValores[] = segsRef.current.flatMap((s) => {
         if (s.nivel || s.naoFiltra) return [];
-        const d = qc.getQueryData<ValoresDeColuna>(chavesDeConsulta.valores(pagina, s.tabela, s.coluna, s.nivel));
+        const d = qc.getQueryData<ValoresDeColuna>(
+          chavesDeConsulta.valores(pagina, s.tabela, s.coluna, s.nivel),
+        );
         if (!d || d.cortado || d.valores.length > LIMITE) return [];
-        return [{ tabela: s.tabela, coluna: s.coluna, valores: d.valores.filter((v) => v.tipo !== 'date').map((v) => v.valor) }];
+        return [
+          {
+            tabela: s.tabela,
+            coluna: s.coluna,
+            valores: d.valores.filter((v) => v.tipo !== 'date').map((v) => v.valor),
+          },
+        ];
       });
       for (const e of estadosVizinhos({ filtros, clicados }, comValores, TETO)) {
         if (parou) return;

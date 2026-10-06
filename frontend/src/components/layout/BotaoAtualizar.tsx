@@ -3,7 +3,11 @@
 
 import { RefreshCw } from 'lucide-react';
 
-export function BotaoAtualizar(props: { aoClicar: () => void; desligado: boolean; buscando: boolean }) {
+export function BotaoAtualizar(props: {
+  aoClicar: () => void;
+  desligado: boolean;
+  buscando: boolean;
+}) {
   return (
     <button
       className="secundario"

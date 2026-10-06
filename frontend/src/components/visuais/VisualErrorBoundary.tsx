@@ -28,7 +28,11 @@ export class VisualErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error(`[VisualErrorBoundary] Erro no visual ${this.props.visual.id}:`, error, errorInfo);
+    console.error(
+      `[VisualErrorBoundary] Erro no visual ${this.props.visual.id}:`,
+      error,
+      errorInfo,
+    );
   }
 
   render(): ReactNode {
@@ -36,7 +40,12 @@ export class VisualErrorBoundary extends Component<Props, State> {
       const titulo = tituloDoVisual(this.props.visual);
       const altura = alturaDoConteudo(this.props.visual.conteudo);
       return (
-        <Cartao titulo={titulo} sub="erro de renderização" id={this.props.visual.id} altura={altura}>
+        <Cartao
+          titulo={titulo}
+          sub="erro de renderização"
+          id={this.props.visual.id}
+          altura={altura}
+        >
           <Erro>{this.state.erro ?? 'Falha ao renderizar este visual.'}</Erro>
         </Cartao>
       );

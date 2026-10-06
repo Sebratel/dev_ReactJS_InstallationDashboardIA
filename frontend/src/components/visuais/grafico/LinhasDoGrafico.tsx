@@ -16,10 +16,21 @@ export function LinhasDoGrafico(props: {
     <>
       {linhas.map((s) => (
         <g key={s.chave}>
-          <path className="linha-serie" d={caminhoDaSerie(s.valores, geo.xMeio, geo.y)} stroke={s.cor} />
+          <path
+            className="linha-serie"
+            d={caminhoDaSerie(s.valores, geo.xMeio, geo.y)}
+            stroke={s.cor}
+          />
           {s.valores.map((v, i) =>
             v === null ? null : (
-              <circle key={i} className="ponto-serie" cx={geo.xMeio(i)} cy={geo.y(v)} r={4} fill={s.cor}>
+              <circle
+                key={i}
+                className="ponto-serie"
+                cx={geo.xMeio(i)}
+                cy={geo.y(v)}
+                r={4}
+                fill={s.cor}
+              >
                 <title>{`${categorias[i]?.rotulo ?? ''} · ${s.nome}: ${inteiro(v)}`}</title>
               </circle>
             ),
@@ -31,7 +42,13 @@ export function LinhasDoGrafico(props: {
         const iMax = maiorIndice(s.valores);
         if (iMax === null) return null;
         return (
-          <text key={s.chave} className="rotulo-valor" x={geo.xMeio(iMax)} y={geo.y(s.valores[iMax]!) - 9} textAnchor="middle">
+          <text
+            key={s.chave}
+            className="rotulo-valor"
+            x={geo.xMeio(iMax)}
+            y={geo.y(s.valores[iMax]!) - 9}
+            textAnchor="middle"
+          >
             {inteiro(s.valores[iMax]!)}
           </text>
         );

@@ -4,12 +4,17 @@
 import type { FiltroDaTela, PaginaCalculada } from '../../services/dashboardService.ts';
 import { duracao, inteiro } from '../../utils/formato.ts';
 
-export function FaixaDeConferencia(props: { pagina: PaginaCalculada; filtros: readonly FiltroDaTela[] }) {
+export function FaixaDeConferencia(props: {
+  pagina: PaginaCalculada;
+  filtros: readonly FiltroDaTela[];
+}) {
   const { pagina, filtros } = props;
   return (
     <div className="faixa">
       <span className="selo">{pagina.resumo.calculados} calculados</span>
-      {pagina.resumo.falharam ? <span className="selo ruim">{pagina.resumo.falharam} com erro</span> : null}
+      {pagina.resumo.falharam ? (
+        <span className="selo ruim">{pagina.resumo.falharam} com erro</span>
+      ) : null}
       <span className="selo neutro">{pagina.resumo.semCalculo} sem número</span>
       {filtros.length ? (
         <span className="selo neutro">{filtros.length} segmentação(ões) aplicada(s)</span>

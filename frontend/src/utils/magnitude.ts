@@ -10,7 +10,8 @@
 // precisa ser numérica, ter nome de contagem/valor e variar dentro de uma ordem de
 // grandeza razoável. Na dúvida, não desenha.
 
-const NOME_DE_MEDIDA = /(qtd|quantidade|total|soma|contagem|valor|m[ée]dia|percentual|%|dias|horas)/i;
+const NOME_DE_MEDIDA =
+  /(qtd|quantidade|total|soma|contagem|valor|m[ée]dia|percentual|%|dias|horas)/i;
 
 export function ehMagnitude(nome: string | null, tipo: unknown): boolean {
   return tipo === 'number' && !!nome && NOME_DE_MEDIDA.test(nome);

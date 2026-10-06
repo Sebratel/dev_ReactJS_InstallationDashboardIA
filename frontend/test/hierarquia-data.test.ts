@@ -15,9 +15,16 @@ const d = (iso: string) => ({ valor: iso });
 const vazia: SelecaoDeData = { anos: [], meses: [], dias: [] };
 
 test('a árvore só oferece mês e dia que existem na base', () => {
-  const a = montaArvore([d('2026-01-02T00:00:00.000Z'), d('2026-01-05T00:00:00.000Z'), d('2026-03-01T00:00:00.000Z')]);
+  const a = montaArvore([
+    d('2026-01-02T00:00:00.000Z'),
+    d('2026-01-05T00:00:00.000Z'),
+    d('2026-03-01T00:00:00.000Z'),
+  ]);
   const dois026 = a.find((x) => x.ano === 2026)!;
-  assert.deepEqual(dois026.meses.map((m) => m.nome), ['janeiro', 'março']);
+  assert.deepEqual(
+    dois026.meses.map((m) => m.nome),
+    ['janeiro', 'março'],
+  );
   assert.deepEqual(dois026.meses[0]!.dias, [2, 5]);
 });
 
@@ -26,7 +33,10 @@ test('2025 aparece mesmo sem dado, marcado como semDado', () => {
   // na menor data instalada: sem o piso, o seletor mostraria só 2026 e pareceria
   // defeito da tela. Com o piso, o ano é clicável e o motivo é dito.
   const a = montaArvore([d('2026-05-10T00:00:00.000Z')]);
-  assert.deepEqual(a.map((x) => x.ano), [2025, 2026]);
+  assert.deepEqual(
+    a.map((x) => x.ano),
+    [2025, 2026],
+  );
   assert.equal(a[0]!.semDado, true);
   assert.equal(a[1]!.semDado, false);
 });
@@ -39,8 +49,16 @@ test('data é lida em UTC — 01/01 não vira 31/12 do ano anterior', () => {
   // vazio. Quando o piso entrou, este teste caiu sem que a leitura em UTC tivesse
   // qualquer problema. Agora ele verifica só o que o nome dele promete.
   const comDado = a.filter((x) => !x.semDado);
-  assert.deepEqual(comDado.map((x) => x.ano), [2026], 'o ano com dado é 2026, não 2025');
-  assert.deepEqual(comDado[0]!.meses.map((m) => m.nome), ['janeiro'], 'janeiro, não dezembro');
+  assert.deepEqual(
+    comDado.map((x) => x.ano),
+    [2026],
+    'o ano com dado é 2026, não 2025',
+  );
+  assert.deepEqual(
+    comDado[0]!.meses.map((m) => m.nome),
+    ['janeiro'],
+    'janeiro, não dezembro',
+  );
   assert.deepEqual(comDado[0]!.meses[0]!.dias, [1], 'dia 1, não 31');
 });
 

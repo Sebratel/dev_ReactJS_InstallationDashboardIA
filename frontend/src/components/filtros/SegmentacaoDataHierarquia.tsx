@@ -3,7 +3,13 @@ import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
 import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import { type FiltroDaTela, type Valor } from '../../services/dashboardService.ts';
-import { limpaTudo, montaArvore, resumoDeData, selecaoDeData, type MudancaDeNivel } from '../../utils/hierarquiaData.ts';
+import {
+  limpaTudo,
+  montaArvore,
+  resumoDeData,
+  selecaoDeData,
+  type MudancaDeNivel,
+} from '../../utils/hierarquiaData.ts';
 import { ArvoreDeDatas } from './ArvoreDeDatas.tsx';
 
 /**
@@ -69,7 +75,9 @@ export function SegmentacaoDataHierarquia(props: {
   if (arvore !== null && expandidaPara !== chaveDaArvore) {
     setExpandidaPara(chaveDaArvore);
     // Um ano só: já aberto, senão o primeiro clique é sempre no mesmo lugar.
-    setExpandidos(arvore.length === 1 ? new Set([`a${arvore[0]!.ano}`]) : new Set(sel.anos.map((a) => `a${a}`)));
+    setExpandidos(
+      arvore.length === 1 ? new Set([`a${arvore[0]!.ano}`]) : new Set(sel.anos.map((a) => `a${a}`)),
+    );
   }
 
   function aplica(mudancas: MudancaDeNivel[]): void {
@@ -128,7 +136,13 @@ export function SegmentacaoDataHierarquia(props: {
                 )}
 
                 {arvore && arvore.length > 0 && (
-                  <ArvoreDeDatas arvore={arvore} sel={sel} expandidos={expandidos} aoAlternarNo={alternaNo} aoAplicar={aplica} />
+                  <ArvoreDeDatas
+                    arvore={arvore}
+                    sel={sel}
+                    expandidos={expandidos}
+                    aoAlternarNo={alternaNo}
+                    aoAplicar={aplica}
+                  />
                 )}
               </div>
 

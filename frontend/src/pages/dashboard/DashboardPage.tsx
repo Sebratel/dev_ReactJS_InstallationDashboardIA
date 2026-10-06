@@ -35,7 +35,8 @@ import { VisualGridSection } from '../../components/visuais/VisualGridSection.ts
 export function DashboardPage() {
   const { conferencia } = useModo();
   const expirou = useSessaoStore((s) => s.expirou);
-  const { atual, filtros, clicados, invalidos, escolhe, iniciaEm, mudaFiltro, aoFiltrarAlvos } = useEstadoDaTela();
+  const { atual, filtros, clicados, invalidos, escolhe, iniciaEm, mudaFiltro, aoFiltrarAlvos } =
+    useEstadoDaTela();
 
   // **O estado do servidor mora no React Query** (fase 2): a lista de páginas, a forma
   // de cada uma, a abertura e a saúde. Ver `hooks/useDadosDaTela.ts`.
@@ -50,7 +51,11 @@ export function DashboardPage() {
   const erroDeConsulta = [dashboardsQ.error, layoutQ.error, paginaQ.error].find(
     (e) => e && !ehErroDeSessao(e) && !ehAbortError(e),
   );
-  const erro = erroDeConsulta ? (erroDeConsulta instanceof Error ? erroDeConsulta.message : String(erroDeConsulta)) : null;
+  const erro = erroDeConsulta
+    ? erroDeConsulta instanceof Error
+      ? erroDeConsulta.message
+      : String(erroDeConsulta)
+    : null;
 
   const { horaRealtime, atualiza } = useTempoReal(atual);
   const { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro } = usePreCargas(
@@ -84,7 +89,10 @@ export function DashboardPage() {
     layout,
     filtros,
     clicados,
-    [...(segmentacoes.chips ? [segmentacoes.chips] : []), ...segmentacoes.dropdowns.map((d) => d.spec)],
+    [
+      ...(segmentacoes.chips ? [segmentacoes.chips] : []),
+      ...segmentacoes.dropdowns.map((d) => d.spec),
+    ],
     paginaValida !== null && !paginaQ.isPlaceholderData && !paginaQ.isFetching,
   );
 
@@ -108,11 +116,19 @@ export function DashboardPage() {
         sai().finally(() => expirou());
       }}
       titulo={nome}
-      sub={avisoSaude.temAviso ? avisoSaude.mensagem : paginaValida ? `dado de ${dataHora(paginaValida.dadoDe)}` : ''}
+      sub={
+        avisoSaude.temAviso
+          ? avisoSaude.mensagem
+          : paginaValida
+            ? `dado de ${dataHora(paginaValida.dadoDe)}`
+            : ''
+      }
       subAviso={avisoSaude.temAviso}
       avisoSaude={avisoSaude}
       ultimaAtualizacaoRealtime={horaRealtime}
-      acoes={<BotaoAtualizar aoClicar={atualiza} desligado={!atual} buscando={paginaQ.isFetching} />}
+      acoes={
+        <BotaoAtualizar aoClicar={atualiza} desligado={!atual} buscando={paginaQ.isFetching} />
+      }
     >
       {invalidos.length > 0 ? (
         <div className="aviso">
@@ -133,7 +149,9 @@ export function DashboardPage() {
         />
       ) : null}
 
-      {conferencia && paginaValida ? <FaixaDeConferencia pagina={paginaValida} filtros={filtros} /> : null}
+      {conferencia && paginaValida ? (
+        <FaixaDeConferencia pagina={paginaValida} filtros={filtros} />
+      ) : null}
 
       {atual !== null && !paginaValida && !erro ? (
         layout ? (
@@ -155,7 +173,12 @@ export function DashboardPage() {
           de indicador num vazio. Os dois KPIs são dado de verdade e continuam na tela,
           como selo da faixa da capa. */}
       {atual === 'capa' ? (
-        <Capa dadoDe={paginaValida?.dadoDe ?? null} saude={saude} telas={paginas.length} visuais={visuais} />
+        <Capa
+          dadoDe={paginaValida?.dadoDe ?? null}
+          saude={saude}
+          telas={paginas.length}
+          visuais={visuais}
+        />
       ) : (
         <KpiGridSection layout={layout} visuais={visuais} />
       )}

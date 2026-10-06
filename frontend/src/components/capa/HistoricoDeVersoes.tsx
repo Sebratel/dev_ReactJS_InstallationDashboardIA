@@ -15,7 +15,9 @@ export function HistoricoDeVersoes() {
             </div>
             <div className="conteudo">
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <span className={v.marco ? 'capa-selo-versao marco' : 'capa-selo-versao'}>v{v.versao}</span>
+                <span className={v.marco ? 'capa-selo-versao marco' : 'capa-selo-versao'}>
+                  v{v.versao}
+                </span>
                 <span className="data">{v.data}</span>
                 {v.marco && <span className="marco-rot">Marco</span>}
               </div>

@@ -53,10 +53,15 @@ export function AppShell(props: {
         <div className="titulo-tela">
           <h1 className="cabecalho-titulo">{props.titulo}</h1>
           {props.sub ? (
-            <span className={cn('cabecalho-sub', props.subAviso && 'cabecalho-sub-aviso')}>{props.sub}</span>
+            <span className={cn('cabecalho-sub', props.subAviso && 'cabecalho-sub-aviso')}>
+              {props.sub}
+            </span>
           ) : null}
           {props.ultimaAtualizacaoRealtime ? (
-            <span className="badge-realtime" title="Conectado ao Voalle via SSE — dados atualizam automaticamente sem F5">
+            <span
+              className="badge-realtime"
+              title="Conectado ao Voalle via SSE — dados atualizam automaticamente sem F5"
+            >
               <span className="ponto-vivo" aria-hidden="true" />
               Ao vivo • {props.ultimaAtualizacaoRealtime}
             </span>

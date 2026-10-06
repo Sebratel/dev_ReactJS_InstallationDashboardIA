@@ -41,7 +41,12 @@ export function Segmentacao(props: {
   const [aberto, setAberto] = useState(false);
   const [busca, setBusca] = useState('');
   const { pagina, spec } = props;
-  const { opcoes, cortado, erro } = useValoresDaSegmentacao(pagina, spec.tabela, spec.coluna, spec.nivel);
+  const { opcoes, cortado, erro } = useValoresDaSegmentacao(
+    pagina,
+    spec.tabela,
+    spec.coluna,
+    spec.nivel,
+  );
 
   const carregando = opcoes === null && erro === null;
 
@@ -123,8 +128,16 @@ export function Segmentacao(props: {
                           const marcado = props.selecao.some((x) => mesmoValor(x, o.valor));
                           const f = formata(o.valor, o.tipo);
                           return (
-                            <label key={i} className="filtro-opcao" onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}>
-                              <input type="checkbox" checked={marcado} onChange={() => alterna(o.valor)} />
+                            <label
+                              key={i}
+                              className="filtro-opcao"
+                              onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={marcado}
+                                onChange={() => alterna(o.valor)}
+                              />
                               <span className={o.valor === null ? 'vazio' : ''}>
                                 {o.valor === null ? '(vazio)' : f.texto}
                               </span>
@@ -145,12 +158,20 @@ export function Segmentacao(props: {
                 <div className="filtro-botoes-acao">
                   <button
                     className="secundario"
-                    onClick={() => props.aoMudar([...new Set([...props.selecao, ...visiveis.map((o) => o.valor)])])}
+                    onClick={() =>
+                      props.aoMudar([
+                        ...new Set([...props.selecao, ...visiveis.map((o) => o.valor)]),
+                      ])
+                    }
                     disabled={visiveis.length === 0}
                   >
                     Todos
                   </button>
-                  <button className="secundario" onClick={() => props.aoMudar([])} disabled={props.selecao.length === 0}>
+                  <button
+                    className="secundario"
+                    onClick={() => props.aoMudar([])}
+                    disabled={props.selecao.length === 0}
+                  >
                     Limpar
                   </button>
                   <button className="primario" onClick={() => setAberto(false)}>

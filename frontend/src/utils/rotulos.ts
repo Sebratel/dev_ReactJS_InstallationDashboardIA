@@ -8,7 +8,11 @@
 // pode mais abrir. Removida junto com `frontend/test/rotulos.test.ts`.
 
 /** Título humano para visuais calculados */
-export function tituloDoVisual(visual: { spec?: { name?: string; id?: string }; id?: string; titulo?: string }): string {
+export function tituloDoVisual(visual: {
+  spec?: { name?: string; id?: string };
+  id?: string;
+  titulo?: string;
+}): string {
   if (visual.titulo) return visual.titulo;
   if (visual.spec?.name) return visual.spec.name;
   if (visual.spec?.id) return visual.spec.id;

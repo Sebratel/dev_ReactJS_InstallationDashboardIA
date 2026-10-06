@@ -60,7 +60,9 @@ export function VisualPronto({
   }
   if (visual.conteudo === 'grafico') {
     if (render === 'ranking-barra') {
-      return <RankingBarra visual={visual} aoFiltrar={aoFiltrar} aoPrever={aoPrever} filtros={filtros} />;
+      return (
+        <RankingBarra visual={visual} aoFiltrar={aoFiltrar} aoPrever={aoPrever} filtros={filtros} />
+      );
     }
     return <Grafico visual={visual} aoFiltrar={aoFiltrar} aoPrever={aoPrever} filtros={filtros} />;
   }

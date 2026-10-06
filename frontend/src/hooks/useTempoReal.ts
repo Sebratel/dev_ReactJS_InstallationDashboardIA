@@ -32,7 +32,13 @@ export function useTempoReal(atual: string | null): TempoReal {
   const [horaRealtime, setHoraRealtime] = useState<string | null>(null);
 
   const marcaHora = useCallback(() => {
-    setHoraRealtime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    setHoraRealtime(
+      new Date().toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }),
+    );
   }, []);
 
   // O efeito do SSE roda uma vez por sessão de login — ler `atual` fresco de um ref
@@ -61,7 +67,8 @@ export function useTempoReal(atual: string | null): TempoReal {
   // novo na hora, e as outras quando voltarem a ser abertas.
   useEffect(() => {
     return assinaEventos((afetados) => {
-      for (const id of afetados) void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(id) });
+      for (const id of afetados)
+        void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(id) });
       if (atualRef.current && afetados.includes(atualRef.current)) {
         marcaHora();
         void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });

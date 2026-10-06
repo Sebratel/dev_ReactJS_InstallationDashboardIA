@@ -67,7 +67,9 @@ test('a classe que o store escreve é a MESMA que o CSS estiliza', () => {
 
   assert.ok(
     css.includes('.' + classe + ' {'),
-    'o CSS não tem bloco de tokens `.' + classe + '` — o store escreve uma classe que ' +
+    'o CSS não tem bloco de tokens `.' +
+      classe +
+      '` — o store escreve uma classe que ' +
       'nenhuma regra atende, e o tema fica ligado no JS e desligado na tela',
   );
 
@@ -75,7 +77,9 @@ test('a classe que o store escreve é a MESMA que o CSS estiliza', () => {
   assert.ok(variante, 'sumiu o `@custom-variant dark` do estilo.css');
   assert.ok(
     variante![1]!.includes('.' + classe),
-    'o `@custom-variant dark` não aponta para `.' + classe + '`: as utilidades `dark:` ' +
+    'o `@custom-variant dark` não aponta para `.' +
+      classe +
+      '`: as utilidades `dark:` ' +
       'do Tailwind não acompanhariam o bloco de tokens',
   );
 });
@@ -95,8 +99,12 @@ test('todo estado que persiste tem botão que o desliga', () => {
       nome + ' deveria persistir — se deixou de persistir, revise este teste',
     );
     assert.ok(
-      appShell.includes('<AcoesDoCabecalho') && acoesDoCabecalho.includes('onClick={' + gatilho + '}'),
-      'nenhum botão do topo (AppShell → AcoesDoCabecalho) chama `' + gatilho + '`: o estado de ' + nome +
+      appShell.includes('<AcoesDoCabecalho') &&
+        acoesDoCabecalho.includes('onClick={' + gatilho + '}'),
+      'nenhum botão do topo (AppShell → AcoesDoCabecalho) chama `' +
+        gatilho +
+        '`: o estado de ' +
+        nome +
         ' grava no localStorage e sobrevive ao F5, então sem botão não há como sair dele',
     );
   }
@@ -161,8 +169,11 @@ test('o piso do gráfico não vence a fração ideal em 1920x1080', () => {
 
   assert.ok(
     piso <= ideal,
-    'o piso do gráfico (' + piso + 'px) passou da fração ideal em 1920x1080 (' +
-      ideal.toFixed(1) + 'px): a tela que deveria caber volta a rolar',
+    'o piso do gráfico (' +
+      piso +
+      'px) passou da fração ideal em 1920x1080 (' +
+      ideal.toFixed(1) +
+      'px): a tela que deveria caber volta a rolar',
   );
 });
 
@@ -186,7 +197,9 @@ test('a fronteira em que o piso passa a vencer fica em ~867px de janela', () => 
 
   assert.ok(
     vh >= 820 && vh <= 920,
-    'a fronteira foi para ' + vh + 'px de altura de janela; o DESIGN-SYSTEM §3 diz ' +
+    'a fronteira foi para ' +
+      vh +
+      'px de altura de janela; o DESIGN-SYSTEM §3 diz ' +
       '~867. Mova o documento junto, ou o próximo a ler acredita no número velho',
   );
 });

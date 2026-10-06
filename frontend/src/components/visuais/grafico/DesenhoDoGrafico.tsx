@@ -29,10 +29,22 @@ export function DesenhoDoGrafico(props: {
 }) {
   const { largura, altura, categorias, geo, marcas } = props;
   return (
-    <svg className="grafico-svg" width={largura} height={altura} role="img" aria-label={props.ariaLabel}>
+    <svg
+      className="grafico-svg"
+      width={largura}
+      height={altura}
+      role="img"
+      aria-label={props.ariaLabel}
+    >
       {marcas.map((m) => (
         <g key={m}>
-          <line className="grade" x1={MARGEM.esquerda} x2={largura - MARGEM.direita} y1={geo.y(m)} y2={geo.y(m)} />
+          <line
+            className="grade"
+            x1={MARGEM.esquerda}
+            x2={largura - MARGEM.direita}
+            y1={geo.y(m)}
+            y2={geo.y(m)}
+          />
           <text className="tick" x={MARGEM.esquerda - 8} y={geo.y(m) + 3.5} textAnchor="end">
             {props.percentual ? `${m}%` : inteiro(m)}
           </text>
@@ -47,10 +59,26 @@ export function DesenhoDoGrafico(props: {
         geo={geo}
         interacao={props.interacao}
       />
-      <line className="eixo" x1={MARGEM.esquerda} x2={largura - MARGEM.direita} y1={geo.y(0)} y2={geo.y(0)} />
+      <line
+        className="eixo"
+        x1={MARGEM.esquerda}
+        x2={largura - MARGEM.direita}
+        y1={geo.y(0)}
+        y2={geo.y(0)}
+      />
       {/* Rótulo girado a 45° só cabe se a margem de baixo der ~34px. */}
-      <EixoXDoGrafico categorias={categorias} partes={props.partes} geo={geo} cabemRotulos={geo.base >= 34} sob={props.interacao.sob} />
-      <LinhasDoGrafico linhas={props.naFaceta ? [] : props.linhas} categorias={categorias} geo={geo} />
+      <EixoXDoGrafico
+        categorias={categorias}
+        partes={props.partes}
+        geo={geo}
+        cabemRotulos={geo.base >= 34}
+        sob={props.interacao.sob}
+      />
+      <LinhasDoGrafico
+        linhas={props.naFaceta ? [] : props.linhas}
+        categorias={categorias}
+        geo={geo}
+      />
       {props.naFaceta ? (
         <FacetaDeLinha
           series={props.linhas}

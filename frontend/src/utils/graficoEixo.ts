@@ -19,7 +19,8 @@ export function prefixoComum(partesPorCategoria: readonly (readonly string[])[])
   if (partesPorCategoria.length <= 1) return 0;
   const minPartes = Math.min(...partesPorCategoria.map((x) => x.length));
   let n = 0;
-  while (n < minPartes - 1 && partesPorCategoria.every((x) => x[n] === partesPorCategoria[0]![n])) n += 1;
+  while (n < minPartes - 1 && partesPorCategoria.every((x) => x[n] === partesPorCategoria[0]![n]))
+    n += 1;
   return n;
 }
 

@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { listaCurta, avaliaSaudeQueries, formataDiasIdade, type QuerySaude } from '../src/utils/avisoSaude.ts';
+import {
+  listaCurta,
+  avaliaSaudeQueries,
+  formataDiasIdade,
+  type QuerySaude,
+} from '../src/utils/avisoSaude.ts';
 
 test('A6.1 - com todas queries ok, o aviso não aparece', () => {
   const queries: QuerySaude[] = [
@@ -17,7 +22,12 @@ test('A6.1 - com todas queries ok, o aviso não aparece', () => {
 
 test('A6.2 - com uma query vencida, a tela nomeia a query e a idade', () => {
   const queries: QuerySaude[] = [
-    { id: 'protocolos-produtividade', ultimaCarga: '2026-09-03T00:00:00Z', idadeDias: 9.9, status: 'vencida' },
+    {
+      id: 'protocolos-produtividade',
+      ultimaCarga: '2026-09-03T00:00:00Z',
+      idadeDias: 9.9,
+      status: 'vencida',
+    },
     { id: 'protocolos-geral', ultimaCarga: '2026-09-04T00:00:00Z', idadeDias: 0.1, status: 'ok' },
   ];
 
@@ -32,8 +42,19 @@ test('A6.2 - com uma query vencida, a tela nomeia a query e a idade', () => {
 
 test('A6.3 - com uma query falhou, a tela diz que falhou e indica o erro', () => {
   const queries: QuerySaude[] = [
-    { id: 'field-agenda', ultimaCarga: '2026-08-19T00:00:00Z', idadeDias: 16, status: 'falhou', erro: 'ECONNRESET' },
-    { id: 'protocolos-produtividade', ultimaCarga: '2026-09-03T00:00:00Z', idadeDias: 9.9, status: 'vencida' },
+    {
+      id: 'field-agenda',
+      ultimaCarga: '2026-08-19T00:00:00Z',
+      idadeDias: 16,
+      status: 'falhou',
+      erro: 'ECONNRESET',
+    },
+    {
+      id: 'protocolos-produtividade',
+      ultimaCarga: '2026-09-03T00:00:00Z',
+      idadeDias: 9.9,
+      status: 'vencida',
+    },
     { id: 'protocolos-geral', ultimaCarga: '2026-09-04T00:00:00Z', idadeDias: 0.1, status: 'ok' },
   ];
 
@@ -83,8 +104,20 @@ test('A6.6 - formataDiasIdade formata inteiros e decimais corretamente', () => {
 
 test('#160 - parada com hora: a faixa diz desde quando, não "0,1 dia"', () => {
   const r = avaliaSaudeQueries([
-    { id: 'contratos', idadeDias: 0.1, status: 'vencida', grupo: 'quente', paradaDesde: '2026-09-28T11:29:00.000Z' },
-    { id: 'backlog-instalacao', idadeDias: 0.1, status: 'vencida', grupo: 'quente', paradaDesde: '2026-09-28T11:29:00.000Z' },
+    {
+      id: 'contratos',
+      idadeDias: 0.1,
+      status: 'vencida',
+      grupo: 'quente',
+      paradaDesde: '2026-09-28T11:29:00.000Z',
+    },
+    {
+      id: 'backlog-instalacao',
+      idadeDias: 0.1,
+      status: 'vencida',
+      grupo: 'quente',
+      paradaDesde: '2026-09-28T11:29:00.000Z',
+    },
   ]);
   assert.equal(r.nivel, 'vencida');
   assert.match(r.mensagem, /^dados parados desde .+: contratos, backlog-instalacao$/);
@@ -93,7 +126,15 @@ test('#160 - parada com hora: a faixa diz desde quando, não "0,1 dia"', () => {
 
 test('#160 - grupo inteiro falhando com o mesmo erro: o erro aparece uma vez, a lista é curta', () => {
   const ids = ['a', 'b', 'c', 'd', 'e'];
-  const r = avaliaSaudeQueries(ids.map((id) => ({ id, idadeDias: 0, status: 'falhou' as const, erro: 'ECONNRESET', grupo: 'medio' })));
+  const r = avaliaSaudeQueries(
+    ids.map((id) => ({
+      id,
+      idadeDias: 0,
+      status: 'falhou' as const,
+      erro: 'ECONNRESET',
+      grupo: 'medio',
+    })),
+  );
   assert.equal(r.mensagem, 'cargas falharam (ECONNRESET): a, b, c e mais 2');
 });
 

@@ -15,7 +15,12 @@ function cliente(): QueryClient {
   const qc = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } });
   const poe = (k: readonly unknown[]) => qc.setQueryData(k, { ok: true });
   poe(chavesDeConsulta.pagina('capa', urlDaPagina('capa')));
-  poe(chavesDeConsulta.pagina('capa', urlDaPagina('capa', [{ tabela: 'T', coluna: 'C', valores: ['x'] }])));
+  poe(
+    chavesDeConsulta.pagina(
+      'capa',
+      urlDaPagina('capa', [{ tabela: 'T', coluna: 'C', valores: ['x'] }]),
+    ),
+  );
   poe(chavesDeConsulta.pagina('capa', urlDaPagina('capa', [], { visual: 'v1' })));
   poe(chavesDeConsulta.pagina('capa-2', urlDaPagina('capa-2')));
   poe(chavesDeConsulta.valores('capa', 'T', 'C'));
@@ -24,7 +29,11 @@ function cliente(): QueryClient {
 }
 
 const invalidadas = (qc: QueryClient) =>
-  qc.getQueryCache().getAll().filter((q) => q.state.isInvalidated).map((q) => JSON.stringify(q.queryKey));
+  qc
+    .getQueryCache()
+    .getAll()
+    .filter((q) => q.state.isInvalidated)
+    .map((q) => JSON.stringify(q.queryKey));
 
 test('invalidar a página alcança toda combinação dela, inclusive o visual abaixo da dobra', async () => {
   const qc = cliente();

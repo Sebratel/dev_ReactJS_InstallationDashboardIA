@@ -28,7 +28,12 @@ export function SetaDeOrdem({ ativa, desc }: { ativa: boolean; desc: boolean }) 
 export function Transpor() {
   return (
     <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-      <path fill="none" stroke="currentColor" strokeWidth="1.4" d="M1 3.5h8M6.5 1 9.5 3.5 6.5 6M11 8.5H3M5.5 6 2.5 8.5 5.5 11" />
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        d="M1 3.5h8M6.5 1 9.5 3.5 6.5 6M11 8.5H3M5.5 6 2.5 8.5 5.5 11"
+      />
     </svg>
   );
 }

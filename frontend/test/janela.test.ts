@@ -131,9 +131,18 @@ test('a última página curta volta uma página inteira, não o tamanho dela', (
 
 /** O rótulo conta em base 1, que é como uma pessoa conta linha. */
 test('o rótulo mostra o intervalo em base 1', () => {
-  assert.equal(rotuloDaJanela({ de: 0, mostradas: 200, total: 32462 }, cru), '1–200 de 32462 linhas');
-  assert.equal(rotuloDaJanela({ de: 200, mostradas: 200, total: 32462 }, cru), '201–400 de 32462 linhas');
-  assert.equal(rotuloDaJanela({ de: 32400, mostradas: 62, total: 32462 }, cru), '32401–32462 de 32462 linhas');
+  assert.equal(
+    rotuloDaJanela({ de: 0, mostradas: 200, total: 32462 }, cru),
+    '1–200 de 32462 linhas',
+  );
+  assert.equal(
+    rotuloDaJanela({ de: 200, mostradas: 200, total: 32462 }, cru),
+    '201–400 de 32462 linhas',
+  );
+  assert.equal(
+    rotuloDaJanela({ de: 32400, mostradas: 62, total: 32462 }, cru),
+    '32401–32462 de 32462 linhas',
+  );
 });
 
 test('tabela inteira mostra só o total, sem intervalo', () => {

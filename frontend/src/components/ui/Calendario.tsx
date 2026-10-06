@@ -84,7 +84,11 @@ function constroiSemanas(d: DadosDeMatriz): Semanas | null {
   for (let dia = 1; dia <= ultimoDia; dia++) {
     const valor = porDia.get(dia) ?? 0;
     maior = Math.max(maior, valor);
-    celulas.push({ dia, valor, rotulo: df.format(new Date(Date.UTC(anoMes.ano, anoMes.mes, dia))) });
+    celulas.push({
+      dia,
+      valor,
+      rotulo: df.format(new Date(Date.UTC(anoMes.ano, anoMes.mes, dia))),
+    });
   }
   while (celulas.length % 7 !== 0) celulas.push(null);
 
@@ -97,7 +101,11 @@ export function Calendario({ dados }: { dados: DadosDeMatriz }) {
   if (!semanas || semanas.celulas.every((c) => c === null)) return null;
 
   return (
-    <div className="kpi-calendario" role="img" aria-label="Distribuição diária no mês, um quadrado por dia">
+    <div
+      className="kpi-calendario"
+      role="img"
+      aria-label="Distribuição diária no mês, um quadrado por dia"
+    >
       <div className="kpi-calendario-cabecalho">
         {DIAS_DA_SEMANA.map((letra, i) => (
           <span key={i}>{letra}</span>
@@ -111,7 +119,12 @@ export function Calendario({ dados }: { dados: DadosDeMatriz }) {
             <span
               key={i}
               className="kpi-calendario-dia"
-              style={{ opacity: semanas.maior > 0 ? OPACIDADE_MINIMA + (1 - OPACIDADE_MINIMA) * (c.valor / semanas.maior) : OPACIDADE_MINIMA }}
+              style={{
+                opacity:
+                  semanas.maior > 0
+                    ? OPACIDADE_MINIMA + (1 - OPACIDADE_MINIMA) * (c.valor / semanas.maior)
+                    : OPACIDADE_MINIMA,
+              }}
               title={`${c.rotulo}: ${inteiro(c.valor)}`}
             />
           ),

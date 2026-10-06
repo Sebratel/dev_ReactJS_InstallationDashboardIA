@@ -56,12 +56,15 @@ export function useCliqueNoEixo(
    */
   const selecaoDoEixo = selecaoDoEixoDe(chavesDeEixo, filtros);
   const haSelecao = selecaoDoEixo.some((s) => s !== null);
-  const estaSelecionada = (i: number) => estaSelecionadaCategoria(selecaoDoEixo, categorias[i]?.valores ?? []);
+  const estaSelecionada = (i: number) =>
+    estaSelecionadaCategoria(selecaoDoEixo, categorias[i]?.valores ?? []);
 
   return {
     sob,
     classeDa: (i) =>
-      'col-grupo' + (podeClicar(i) ? ' clicavel' : '') + (haSelecao && !estaSelecionada(i) ? ' apagada' : ''),
+      'col-grupo' +
+      (podeClicar(i) ? ' clicavel' : '') +
+      (haSelecao && !estaSelecionada(i) ? ' apagada' : ''),
     aoEntrar: (i) => {
       setSob(i);
       if (podeClicar(i)) aoPrever?.(alvosDa(i));

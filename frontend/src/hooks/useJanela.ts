@@ -6,7 +6,11 @@
 // que é a mesma rota do sob demanda, pelo mesmo motivo.
 
 import { useEffect, useRef, useState } from 'react';
-import { pegaPagina, type FiltroDaTela, type VisualCalculado } from '../services/dashboardService.ts';
+import {
+  pegaPagina,
+  type FiltroDaTela,
+  type VisualCalculado,
+} from '../services/dashboardService.ts';
 import { LINHAS_POR_JANELA } from '../utils/janela.ts';
 
 export interface EstadoDeJanela {

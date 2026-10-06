@@ -25,7 +25,9 @@ const tabelaTsx = semComentario(le('src', 'components', 'visuais', 'Tabela.tsx')
 const matrizTsx = semComentario(le('src', 'components', 'visuais', 'Matriz.tsx'));
 const roscaTsx = semComentario(le('src', 'components', 'visuais', 'Rosca.tsx'));
 const rankingBarraTsx = semComentario(le('src', 'components', 'visuais', 'RankingBarra.tsx'));
-const errorBoundaryTsx = semComentario(le('src', 'components', 'visuais', 'VisualErrorBoundary.tsx'));
+const errorBoundaryTsx = semComentario(
+  le('src', 'components', 'visuais', 'VisualErrorBoundary.tsx'),
+);
 
 test('A4.1 - Visual.tsx isola cada visual com VisualErrorBoundary', () => {
   assert.match(
@@ -67,11 +69,7 @@ test('A4.3 - Card: guarda contra dados nulos e propriedades aninhadas ausentes',
     /d\.origem\?\.kind/,
     'Card.tsx deve usar optional chaining ao acessar d.origem.kind',
   );
-  assert.match(
-    cardTsx,
-    /filtros\.length/,
-    'Card.tsx deve proteger acesso a d.filtros',
-  );
+  assert.match(cardTsx, /filtros\.length/, 'Card.tsx deve proteger acesso a d.filtros');
 });
 
 test('A4.4 - Grafico: guarda contra dados nulos, series e pontos ausentes', () => {
@@ -109,9 +107,5 @@ test('A4.7 - Formas alternativas (Rosca e RankingBarra) também têm guardas con
     /if \(!d \|\| !d\.colunas \|\| !d\.linhas\)/,
     'Rosca.tsx deve validar d.colunas e d.linhas',
   );
-  assert.match(
-    rankingBarraTsx,
-    /if \(!d \|\| !gTudo\)/,
-    'RankingBarra.tsx deve validar d e gTudo',
-  );
+  assert.match(rankingBarraTsx, /if \(!d \|\| !gTudo\)/, 'RankingBarra.tsx deve validar d e gTudo');
 });

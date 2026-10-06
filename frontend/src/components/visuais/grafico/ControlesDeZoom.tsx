@@ -2,7 +2,11 @@
 
 const ROTULOS = ['P', 'M', 'G'];
 
-export function ControlesDeZoom(props: { nivel: number; niveis: number; aoMudar: (nivel: number) => void }) {
+export function ControlesDeZoom(props: {
+  nivel: number;
+  niveis: number;
+  aoMudar: (nivel: number) => void;
+}) {
   const { nivel, niveis, aoMudar } = props;
   return (
     <div className="controles-zoom" title="Densidade: quantas categorias por página">

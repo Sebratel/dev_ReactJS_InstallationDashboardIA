@@ -22,7 +22,10 @@ test('ehAbortError: erro comum não é abort', () => {
 // isso". As esperas reais (1, 3 e 6 s) ficam fora — `dorme` só anota.
 
 function resposta(status: number, corpo: unknown = {}): Response {
-  return new Response(JSON.stringify(corpo), { status, headers: { 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(corpo), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 /** Um `fetch` que devolve, em ordem, o que a lista mandar (Response ou erro a lançar). */
@@ -50,18 +53,29 @@ test('pega: 503 do proxy durante o reinício é repetido, e a tela recebe o dado
 
 test('pega: rede caída (TypeError do fetch) também é repetida', async () => {
   const r = roteiro([new TypeError('Failed to fetch'), resposta(200, { ok: 2 })]);
-  assert.deepEqual(await pega('/api/x', undefined, { fetch: r.fetch, dorme: async () => {} }), { ok: 2 });
+  assert.deepEqual(await pega('/api/x', undefined, { fetch: r.fetch, dorme: async () => {} }), {
+    ok: 2,
+  });
 });
 
 test('pega: 500 NÃO é repetido — é a API dizendo o que deu errado, e a mensagem dela chega', async () => {
-  const r = roteiro([resposta(500, { erro: 'snapshot ausente: rode npm run snapshot' }), resposta(200)]);
-  await assert.rejects(pega('/api/x', undefined, { fetch: r.fetch, dorme: async () => {} }), /snapshot ausente/);
+  const r = roteiro([
+    resposta(500, { erro: 'snapshot ausente: rode npm run snapshot' }),
+    resposta(200),
+  ]);
+  await assert.rejects(
+    pega('/api/x', undefined, { fetch: r.fetch, dorme: async () => {} }),
+    /snapshot ausente/,
+  );
   assert.equal(r.chamadas(), 1);
 });
 
 test('pega: fora do ar além das tentativas vira erro, com o HTTP', async () => {
   const r = roteiro([resposta(502)]);
-  await assert.rejects(pega('/api/x', undefined, { fetch: r.fetch, dorme: async () => {} }), /HTTP 502/);
+  await assert.rejects(
+    pega('/api/x', undefined, { fetch: r.fetch, dorme: async () => {} }),
+    /HTTP 502/,
+  );
   assert.equal(r.chamadas(), 4, '1 + 3 novas tentativas');
 });
 
@@ -69,11 +83,21 @@ test('pega: API travada estoura o teto como ERRO, não como cancelamento, e não
   let chamadas = 0;
   const pendura = ((_url: string, init?: RequestInit) => {
     chamadas += 1;
-    return new Promise((_ok, falha) => init!.signal!.addEventListener('abort', () => falha(init!.signal!.reason)));
+    return new Promise((_ok, falha) =>
+      init!.signal!.addEventListener('abort', () => falha(init!.signal!.reason)),
+    );
   }) as unknown as typeof fetch;
-  const err = await pega('/api/x', undefined, { fetch: pendura, tetoMs: 20, dorme: async () => {} }).catch((e) => e);
+  const err = await pega('/api/x', undefined, {
+    fetch: pendura,
+    tetoMs: 20,
+    dorme: async () => {},
+  }).catch((e) => e);
   assert.match(String(err), /não respondeu em 0 s/);
-  assert.equal(ehAbortError(err), false, 'se parecesse cancelamento, a tela o engoliria em silêncio');
+  assert.equal(
+    ehAbortError(err),
+    false,
+    'se parecesse cancelamento, a tela o engoliria em silêncio',
+  );
   assert.equal(chamadas, 1);
 });
 

@@ -31,9 +31,24 @@ export const INDICADORES: readonly (readonly [string, string])[] = [
 export const FONTES: readonly (readonly [string, readonly string[]])[] = [
   ['Contratos e clientes', ['contratos', 'consolidado-clientes', 'backlog-instalacao']],
   ['Telefonia', ['contratos-telefonia', 'protocolos-telefonia']],
-  ['Protocolos e reincidência', ['protocolos-geral', 'reincidencia', 'instalacoes-reincidentes', 'retorno-prioritario', 'troca-endereco']],
-  ['Capacidade e premiação', ['capacidade-equipe', 'apuracao-premiacao', 'tecnicos-auxiliares', 'alocacao-patrimonio']],
-  ['Agenda de campo', ['field-agenda', 'field-agenda-slot', 'base-categorias-field', 'backlog-agendado-futuro']],
+  [
+    'Protocolos e reincidência',
+    [
+      'protocolos-geral',
+      'reincidencia',
+      'instalacoes-reincidentes',
+      'retorno-prioritario',
+      'troca-endereco',
+    ],
+  ],
+  [
+    'Capacidade e premiação',
+    ['capacidade-equipe', 'apuracao-premiacao', 'tecnicos-auxiliares', 'alocacao-patrimonio'],
+  ],
+  [
+    'Agenda de campo',
+    ['field-agenda', 'field-agenda-slot', 'base-categorias-field', 'backlog-agendado-futuro'],
+  ],
   ['Produtividade', ['protocolos-produtividade', 'protocolos-auxiliares']],
 ];
 
@@ -43,7 +58,8 @@ export const CARD_HORA = '1d10da9f7a3e9a66d8ab';
 
 export function valorDoCard(visuais: readonly VisualCalculado[], id: string): string {
   const v = visuais.find((x) => x.id === id);
-  const d = v && !v.erro && v.conteudo === 'card' ? (v.dados as DadosDeCard | undefined) : undefined;
+  const d =
+    v && !v.erro && v.conteudo === 'card' ? (v.dados as DadosDeCard | undefined) : undefined;
   return d ? formata(d.valor, d.tipoDoValor).texto : '—';
 }
 
@@ -52,7 +68,11 @@ export function situacaoDaFonte(ids: readonly string[], saude: RespostaSaude | n
   const qs = (saude?.refresh?.queries ?? []).filter((q) => ids.includes(q.id));
   if (qs.length === 0) return null;
   const maisVelha = qs.reduce<QuerySaude>((a, b) => (b.idadeDias > a.idadeDias ? b : a), qs[0]!);
-  const status = qs.some((q) => q.status === 'falhou') ? 'falhou' : qs.some((q) => q.status === 'vencida') ? 'vencida' : 'ok';
+  const status = qs.some((q) => q.status === 'falhou')
+    ? 'falhou'
+    : qs.some((q) => q.status === 'vencida')
+      ? 'vencida'
+      : 'ok';
   const intervalos = (saude?.agendador?.grupos ?? [])
     .filter((g) => qs.some((q) => q.grupo === g.id))
     .map((g) => g.intervaloMinutos);

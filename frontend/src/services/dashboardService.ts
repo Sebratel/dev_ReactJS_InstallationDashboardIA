@@ -15,7 +15,12 @@ import type { TipoDeValor } from '../utils/formato.ts';
 import type { RespostaSaude } from '../utils/avisoSaude.ts';
 // Tipo só — `backend/tools/layout` é consumido aqui só pelo formato do contrato, sem custo de
 // bundle (é `import type`, o esbuild apaga por completo). Ver docs/PLANO-LAYOUT-V1.md §6.
-import type { ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec } from '../../../backend/tools/layout/src/schema.ts';
+import type {
+  ColunaDeFaixa,
+  Faixa,
+  KpiEntry,
+  LayoutSpec,
+} from '../../../backend/tools/layout/src/schema.ts';
 
 export type { TipoDeValor, ColunaDeFaixa, Faixa, KpiEntry, LayoutSpec, RespostaSaude };
 
@@ -244,12 +249,7 @@ export function urlDaPagina(
  */
 export const TETO_DE_VALORES = 5000;
 
-export function urlDeValores(
-  id: string,
-  tabela: string,
-  coluna: string,
-  nivel?: string,
-): string {
+export function urlDeValores(id: string, tabela: string, coluna: string, nivel?: string): string {
   const p = new URLSearchParams({ tabela, coluna });
   if (nivel) p.set('nivel', nivel);
   p.set('teto', String(TETO_DE_VALORES));
@@ -316,7 +316,11 @@ function dormeAbortavel(ms: number, signal?: AbortSignal): Promise<void> {
  * `ehAbortError` reconhece e a tela ignora). O teto de tempo, ao contrário, vira erro
  * comum: sumir em silêncio seria pior que o "carregando" eterno que ele substitui.
  */
-export async function pega<T>(url: string, signal?: AbortSignal, deps: DependenciasDePedido = {}): Promise<T> {
+export async function pega<T>(
+  url: string,
+  signal?: AbortSignal,
+  deps: DependenciasDePedido = {},
+): Promise<T> {
   const buscar = deps.fetch ?? fetch;
   const dorme = deps.dorme ?? dormeAbortavel;
   const esperas = deps.esperasMs ?? ESPERAS_DE_NOVA_TENTATIVA_MS;
@@ -332,15 +336,20 @@ export async function pega<T>(url: string, signal?: AbortSignal, deps: Dependenc
     } catch (err) {
       if (signal?.aborted) throw err;
       if (teto.aborted) {
-        throw new Error(`A API não respondeu em ${Math.round(tetoMs / 1000)} s (${url}).`, { cause: err });
+        throw new Error(`A API não respondeu em ${Math.round(tetoMs / 1000)} s (${url}).`, {
+          cause: err,
+        });
       }
       if (espera !== undefined) {
         await dorme(espera, signal);
         continue;
       }
-      throw new Error(`Sem conexão com a API (${url}) — ela pode estar reiniciando. Tente de novo em instantes.`, {
-        cause: err,
-      });
+      throw new Error(
+        `Sem conexão com a API (${url}) — ela pode estar reiniciando. Tente de novo em instantes.`,
+        {
+          cause: err,
+        },
+      );
     }
     if (FORA_DO_AR.has(resp.status) && espera !== undefined) {
       await dorme(espera, signal);
@@ -415,7 +424,8 @@ export const pegaValores = (
   signal?: AbortSignal,
 ): Promise<ValoresDeColuna> => pega(urlDeValores(id, tabela, coluna, nivel), signal);
 
-export const pegaSaude = (signal?: AbortSignal): Promise<RespostaSaude> => pega('/api/saude', signal);
+export const pegaSaude = (signal?: AbortSignal): Promise<RespostaSaude> =>
+  pega('/api/saude', signal);
 
 /**
  * As chaves do cache da tela (React Query), num lugar só — fase 2 de
@@ -431,9 +441,12 @@ export const chavesDeConsulta = {
   dashboards: ['dashboards'] as const,
   layout: (id: string) => ['layout', id] as const,
   /** Sem `url`: o prefixo de todas as combinações da página. */
-  pagina: (id: string, url?: string) => (url === undefined ? (['pagina', id] as const) : (['pagina', id, url] as const)),
+  pagina: (id: string, url?: string) =>
+    url === undefined ? (['pagina', id] as const) : (['pagina', id, url] as const),
   /** Sem coluna: o prefixo de todas as segmentações da página. */
   valores: (id: string, tabela?: string, coluna?: string, nivel?: string | null) =>
-    tabela === undefined ? (['valores', id] as const) : (['valores', id, tabela, coluna ?? '', nivel ?? ''] as const),
+    tabela === undefined
+      ? (['valores', id] as const)
+      : (['valores', id, tabela, coluna ?? '', nivel ?? ''] as const),
   saude: ['saude'] as const,
 };

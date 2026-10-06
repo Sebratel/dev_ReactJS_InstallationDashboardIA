@@ -46,7 +46,11 @@ export function ehColunaDeAno(nomeDaColuna: string | null | undefined): boolean 
   return /\bano$/i.test((nomeDaColuna ?? '').trim());
 }
 
-export function formata(v: unknown, tipo: TipoDeValor, opts?: { semAgrupamento?: boolean }): Formatado {
+export function formata(
+  v: unknown,
+  tipo: TipoDeValor,
+  opts?: { semAgrupamento?: boolean },
+): Formatado {
   if (v === null || v === undefined) return { texto: '—', numerico: false, vazio: true };
 
   if (opts?.semAgrupamento && tipo === 'number' && Number.isInteger(v)) {

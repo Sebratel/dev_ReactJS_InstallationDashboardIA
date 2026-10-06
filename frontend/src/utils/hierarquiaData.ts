@@ -3,13 +3,33 @@
 import type { FiltroDaTela, Valor } from '../services/dashboardService.ts';
 
 export const MESES_PT = [
-  'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
-  'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro',
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
 ] as const;
 
 export const MESES_CURTOS = [
-  'jan', 'fev', 'mar', 'abr', 'mai', 'jun',
-  'jul', 'ago', 'set', 'out', 'nov', 'dez',
+  'jan',
+  'fev',
+  'mar',
+  'abr',
+  'mai',
+  'jun',
+  'jul',
+  'ago',
+  'set',
+  'out',
+  'nov',
+  'dez',
 ] as const;
 
 export const NIVEL_ANO = 'Ano';
@@ -92,9 +112,13 @@ export function selecaoDeData(
   const nivel = (n: string): Valor[] =>
     filtros.find((f) => f.tabela === tabela && f.coluna === coluna && f.nivel === n)?.valores ?? [];
   return {
-    anos: nivel(NIVEL_ANO).map(Number).filter((n) => Number.isFinite(n)),
+    anos: nivel(NIVEL_ANO)
+      .map(Number)
+      .filter((n) => Number.isFinite(n)),
     meses: nivel(NIVEL_MES).map(String),
-    dias: nivel(NIVEL_DIA).map(Number).filter((n) => Number.isFinite(n)),
+    dias: nivel(NIVEL_DIA)
+      .map(Number)
+      .filter((n) => Number.isFinite(n)),
   };
 }
 
@@ -113,9 +137,7 @@ export function clicaAno(sel: SelecaoDeData, ano: number): MudancaDeNivel[] {
 
 export function clicaMes(sel: SelecaoDeData, ano: number, mes: string): MudancaDeNivel[] {
   const meses = alterna(sel.meses, mes);
-  const mudancas: MudancaDeNivel[] = [
-    { nivel: NIVEL_MES, valores: ordenaMeses(meses) },
-  ];
+  const mudancas: MudancaDeNivel[] = [{ nivel: NIVEL_MES, valores: ordenaMeses(meses) }];
   if (meses.includes(mes) && !sel.anos.includes(ano)) {
     mudancas.push({ nivel: NIVEL_ANO, valores: [...sel.anos, ano].sort((a, b) => a - b) });
   }
@@ -129,9 +151,7 @@ export function clicaDia(
   dia: number,
 ): MudancaDeNivel[] {
   const dias = alterna(sel.dias, dia);
-  const mudancas: MudancaDeNivel[] = [
-    { nivel: NIVEL_DIA, valores: dias.sort((a, b) => a - b) },
-  ];
+  const mudancas: MudancaDeNivel[] = [{ nivel: NIVEL_DIA, valores: dias.sort((a, b) => a - b) }];
   if (!dias.includes(dia)) return mudancas;
   if (!sel.meses.includes(mes)) {
     mudancas.push({ nivel: NIVEL_MES, valores: ordenaMeses([...sel.meses, mes]) });
@@ -156,11 +176,28 @@ function ordenaMeses(meses: readonly string[]): string[] {
 
 export function resumoDeData(sel: SelecaoDeData): string {
   const partes: string[] = [];
-  if (sel.anos.length) partes.push(resume(sel.anos.map((a) => String(a % 100).padStart(2, '0')), 'anos'));
+  if (sel.anos.length)
+    partes.push(
+      resume(
+        sel.anos.map((a) => String(a % 100).padStart(2, '0')),
+        'anos',
+      ),
+    );
   if (sel.meses.length) {
-    partes.push(resume(sel.meses.map((m) => MESES_CURTOS[MESES_PT.indexOf(m as never)] ?? m), 'meses'));
+    partes.push(
+      resume(
+        sel.meses.map((m) => MESES_CURTOS[MESES_PT.indexOf(m as never)] ?? m),
+        'meses',
+      ),
+    );
   }
-  if (sel.dias.length) partes.push(resume(sel.dias.map((d) => String(d).padStart(2, '0')), 'dias'));
+  if (sel.dias.length)
+    partes.push(
+      resume(
+        sel.dias.map((d) => String(d).padStart(2, '0')),
+        'dias',
+      ),
+    );
   return partes.length === 0 ? 'todo o período' : partes.join(' · ');
 }
 

@@ -107,7 +107,9 @@ export function rotuloDaJanela(j: Janela, formataInteiro: (n: number) => string)
       ? ` de ${formataInteiro(j.totalSemBusca)}`
       : '';
   if (j.total === 0) {
-    return j.totalSemBusca !== undefined ? `nenhuma das ${formataInteiro(j.totalSemBusca)} linhas` : 'nenhuma linha';
+    return j.totalSemBusca !== undefined
+      ? `nenhuma das ${formataInteiro(j.totalSemBusca)} linhas`
+      : 'nenhuma linha';
   }
   if (j.mostradas >= j.total) return `${formataInteiro(j.total)}${deQuantas} linhas`;
   const primeira = j.de + 1;

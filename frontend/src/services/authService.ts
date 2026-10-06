@@ -8,7 +8,8 @@ type CaminhoDeSessao = '/auth/firebase' | '/auth/google' | '/auth/interno';
  *  reserva — mesmo formato que `pega()` já usa em `dashboardService.ts`. */
 async function erroDaResposta(r: Response): Promise<string> {
   const corpo: unknown = await r.json().catch(() => null);
-  if (corpo && typeof corpo === 'object' && 'erro' in corpo) return String((corpo as { erro: unknown }).erro);
+  if (corpo && typeof corpo === 'object' && 'erro' in corpo)
+    return String((corpo as { erro: unknown }).erro);
   return `Não foi possível entrar (HTTP ${r.status}).`;
 }
 
@@ -17,7 +18,10 @@ async function erroDaResposta(r: Response): Promise<string> {
  * mensagem legível quando a API recusou; falha de rede SOBE — cada caminho de login
  * mostra a sua (o Firebase distingue "fechou a janela" de erro de verdade).
  */
-async function abreSessao(caminho: CaminhoDeSessao, corpo: Record<string, string>): Promise<string | null> {
+async function abreSessao(
+  caminho: CaminhoDeSessao,
+  corpo: Record<string, string>,
+): Promise<string | null> {
   const r = await fetch(caminho, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -32,4 +36,5 @@ export const abreSessaoInterna = (token: string) => abreSessao('/auth/interno', 
 
 /** Apaga a sessão do lado do servidor. O cookie sai na resposta; quem chama
  *  ainda precisa tirar a tela do ar (ver `App.tsx`). */
-export const sai = (): Promise<void> => fetch('/auth/logout', { method: 'POST' }).then(() => undefined);
+export const sai = (): Promise<void> =>
+  fetch('/auth/logout', { method: 'POST' }).then(() => undefined);

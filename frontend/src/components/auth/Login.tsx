@@ -15,7 +15,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { Erro } from '../ui/Cartao.tsx';
 import { DOMINIO_CORPORATIVO, GOOGLE_CLIENT_ID, TOKEN_INTERNO } from '../../config.ts';
-import { abreSessaoFirebase, abreSessaoGoogle, abreSessaoInterna } from '../../services/authService.ts';
+import {
+  abreSessaoFirebase,
+  abreSessaoGoogle,
+  abreSessaoInterna,
+} from '../../services/authService.ts';
 import { entraComGoogle, mensagemDeErro, temFirebase } from '../../services/firebaseAuth.ts';
 import { carregaScriptGis } from '../../services/googleIdentity.ts';
 
@@ -173,9 +177,8 @@ export function Login({ aoLogar }: LoginProps) {
             {entrando ? 'Entrando…' : '🔧 Entrar (modo dev)'}
           </button>
         ) : null}
-        {erro ?? erroDeConfiguracao ? <Erro>{erro ?? erroDeConfiguracao}</Erro> : null}
+        {(erro ?? erroDeConfiguracao) ? <Erro>{erro ?? erroDeConfiguracao}</Erro> : null}
       </div>
     </div>
   );
 }
-

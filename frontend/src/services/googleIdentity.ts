@@ -30,7 +30,9 @@ export function carregaScriptGis(): Promise<void> {
   if (existente) {
     return new Promise((resolve, reject) => {
       existente.addEventListener('load', () => resolve());
-      existente.addEventListener('error', () => reject(new Error('Falha ao carregar o script do Google.')));
+      existente.addEventListener('error', () =>
+        reject(new Error('Falha ao carregar o script do Google.')),
+      );
     });
   }
   return new Promise((resolve, reject) => {

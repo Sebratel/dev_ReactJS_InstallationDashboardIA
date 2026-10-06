@@ -38,7 +38,9 @@ export interface QuerySaude {
 
 /** Até 3 nomes, depois "e mais N": um grupo parado são 7–11 queries, e a faixa é uma linha. */
 export function listaCurta(ids: readonly string[]): string {
-  return ids.length <= 3 ? ids.join(', ') : `${ids.slice(0, 3).join(', ')} e mais ${ids.length - 3}`;
+  return ids.length <= 3
+    ? ids.join(', ')
+    : `${ids.slice(0, 3).join(', ')} e mais ${ids.length - 3}`;
 }
 
 /** Um grupo do agendador de refresh, como `GET /api/saude` o publica em `agendador.grupos`. */
@@ -110,7 +112,10 @@ export function avaliaSaudeQueries(
     // 2. Query vencida: nomeia a query e a idade
     if (vencidas.length > 0) {
       let mensagem: string;
-      const desde = vencidas.map((q) => q.paradaDesde).filter((d): d is string => Boolean(d)).sort()[0];
+      const desde = vencidas
+        .map((q) => q.paradaDesde)
+        .filter((d): d is string => Boolean(d))
+        .sort()[0];
       if (desde) {
         // A régua é o intervalo do grupo, não dias (ACHADOS #160): "parado há 0,1 dia"
         // não diz nada; a hora da última carga boa, sim.

@@ -39,7 +39,9 @@ export function FacetaDeLinha({
         <g key={s.chave}>
           <path className="linha-serie" d={caminhoDaSerie(s.valores, xMeio, y)} stroke={s.cor} />
           {s.valores.map((v, i) =>
-            v === null ? null : <circle key={i} className="ponto-serie" cx={xMeio(i)} cy={y(v)} r={4} fill={s.cor} />,
+            v === null ? null : (
+              <circle key={i} className="ponto-serie" cx={xMeio(i)} cy={y(v)} r={4} fill={s.cor} />
+            ),
           )}
         </g>
       ))}

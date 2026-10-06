@@ -14,16 +14,16 @@ test('N_FAIXAS_EAGER cobre todas as faixas — a abertura pede a página inteira
 });
 
 test('idsIniciais sem corte explícito: página de 9 faixas vem inteira, nada fica para a rolagem', () => {
-  const faixas = Array.from({ length: 9 }, (_, i) => ({ altura: 'tabela' as const, colunas: [{ visual: `f${i}`, span: 12, render: 'x' }] }));
+  const faixas = Array.from({ length: 9 }, (_, i) => ({
+    altura: 'tabela' as const,
+    colunas: [{ visual: `f${i}`, span: 12, render: 'x' }],
+  }));
   const l = { pagina: 'x', base: 'x', kpis: [], faixas, ocultos: [], improvements: [] };
   assert.equal(idsIniciais(l).length, 9);
-  
 });
 
 test('idsIniciais: página com menos faixas que o corte pede tudo, igual a hoje', () => {
-  const l = layout([
-    { altura: 'grafico', colunas: [{ visual: 'g1', span: 12, render: 'x' }] },
-  ]);
+  const l = layout([{ altura: 'grafico', colunas: [{ visual: 'g1', span: 12, render: 'x' }] }]);
   assert.deepEqual(idsIniciais(l, 4), ['g1']);
 });
 
@@ -36,7 +36,10 @@ test('idsIniciais: kpis sempre entram, mesmo com faixas de sobra', () => {
       { altura: 'tabela', colunas: [{ visual: 't2', span: 12, render: 'x' }] },
       { altura: 'matriz', colunas: [{ visual: 'm1', span: 12, render: 'x' }] },
     ],
-    [{ visual: 'k1', enfase: 'normal' }, { visual: 'k2', enfase: 'normal' }],
+    [
+      { visual: 'k1', enfase: 'normal' },
+      { visual: 'k2', enfase: 'normal' },
+    ],
   );
   // agendamento-field-like: 5 faixas, só as 4 primeiras entram eager — m1 fica de fora.
   assert.deepEqual(idsIniciais(l, 4), ['k1', 'k2', 'g1', 'g2', 't1', 't2']);
@@ -66,4 +69,3 @@ test('idsIniciais: sem faixa nenhuma (capa) devolve só os kpis', () => {
   const l = layout([], [{ visual: 'k1', enfase: 'normal' }]);
   assert.deepEqual(idsIniciais(l, 4), ['k1']);
 });
-

@@ -19,7 +19,13 @@ test('o prefixo comum é o que se repete em TODAS as categorias, e sempre sobra 
     ['2026', 'agosto', '1'],
   ];
   assert.equal(prefixoComum(partes), 1);
-  assert.equal(prefixoComum([['2026', 'julho'], ['2026', 'julho']]), 1);
+  assert.equal(
+    prefixoComum([
+      ['2026', 'julho'],
+      ['2026', 'julho'],
+    ]),
+    1,
+  );
   assert.equal(prefixoComum([['Canoas']]), 0);
   assert.equal(prefixoComum([]), 0);
 });

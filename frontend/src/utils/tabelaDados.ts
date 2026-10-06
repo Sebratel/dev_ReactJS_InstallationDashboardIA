@@ -11,7 +11,11 @@ type Linha = readonly unknown[];
  * sentidos; número e data comparam como número e data, o resto como texto sem caixa.
  * Devolve um array novo (a ordem do servidor fica intacta).
  */
-export function ordenaLinhas<L extends Linha>(linhas: readonly L[], coluna: number | null, desc: boolean): L[] {
+export function ordenaLinhas<L extends Linha>(
+  linhas: readonly L[],
+  coluna: number | null,
+  desc: boolean,
+): L[] {
   const resultado = [...linhas];
   if (coluna === null) return resultado;
   resultado.sort((a, b) => {
@@ -63,8 +67,10 @@ export function escalasDaTabela(
 
 /** O selo de um texto de status (`badge-sim`, `badge-nao`, `badge-alerta`), ou `null`. */
 export function seloDeStatus(texto: string): 'badge-sim' | 'badge-nao' | 'badge-alerta' | null {
-  if (texto === 'SIM' || texto === 'OK' || texto === 'Concluído' || texto === 'Dentro do SLA') return 'badge-sim';
+  if (texto === 'SIM' || texto === 'OK' || texto === 'Concluído' || texto === 'Dentro do SLA')
+    return 'badge-sim';
   if (texto === 'NÃO' || texto === 'Não') return 'badge-nao';
-  if (texto === 'Cancelado' || texto === 'Estourado' || texto.includes('Fora do SLA')) return 'badge-alerta';
+  if (texto === 'Cancelado' || texto === 'Estourado' || texto.includes('Fora do SLA'))
+    return 'badge-alerta';
   return null;
 }

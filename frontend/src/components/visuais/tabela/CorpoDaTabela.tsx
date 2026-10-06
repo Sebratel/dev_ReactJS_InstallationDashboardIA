@@ -8,7 +8,10 @@ import { larguraDaBarra } from '../../../utils/magnitude.ts';
 import { seloDeStatus } from '../../../utils/tabelaDados.ts';
 import { SetaDeOrdem } from '../../ui/icones.tsx';
 
-function ConteudoDaCelula(props: { valor: unknown; tipo: DadosDeTabela['colunas'][number]['tipo'] | null }) {
+function ConteudoDaCelula(props: {
+  valor: unknown;
+  tipo: DadosDeTabela['colunas'][number]['tipo'] | null;
+}) {
   const f = formata(props.valor, props.tipo);
   if (f.vazio) return <span className="sem">{f.texto}</span>;
   const txt = f.texto.trim();
@@ -54,18 +57,33 @@ export function CorpoDaTabela(props: {
               key={i}
               className={
                 (aoClicarLinha ? 'linha-clicavel' : '') +
-                (props.haSelecao ? (props.estaSelecionada(linha[0] as Valor) ? ' linha-selecionada' : ' linha-apagada') : '')
+                (props.haSelecao
+                  ? props.estaSelecionada(linha[0] as Valor)
+                    ? ' linha-selecionada'
+                    : ' linha-apagada'
+                  : '')
               }
               onClick={aoClicarLinha ? () => aoClicarLinha(linha[0] as Valor) : undefined}
-              title={aoClicarLinha ? 'Clique para filtrar a página inteira a este registro' : undefined}
+              title={
+                aoClicarLinha ? 'Clique para filtrar a página inteira a este registro' : undefined
+              }
             >
               {linha.map((valor, j) => {
                 const f = formata(valor, colunas[j]?.tipo ?? null);
                 const escala = escalas.get(j);
                 const temBarra = escala !== undefined && typeof valor === 'number';
                 return (
-                  <td key={j} className={`${f.numerico ? 'num' : ''}${temBarra ? ' barra-dado' : ''}`} title={f.texto}>
-                    {temBarra ? <i className="fundo-barra" style={{ width: `${larguraDaBarra(valor as number, escala!)}%` }} /> : null}
+                  <td
+                    key={j}
+                    className={`${f.numerico ? 'num' : ''}${temBarra ? ' barra-dado' : ''}`}
+                    title={f.texto}
+                  >
+                    {temBarra ? (
+                      <i
+                        className="fundo-barra"
+                        style={{ width: `${larguraDaBarra(valor as number, escala!)}%` }}
+                      />
+                    ) : null}
                     <span>
                       <ConteudoDaCelula valor={valor} tipo={colunas[j]?.tipo ?? null} />
                     </span>

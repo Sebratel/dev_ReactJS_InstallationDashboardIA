@@ -58,7 +58,8 @@ export function consultaDaAbertura(
   const opcoes = { visuais: idsIniciais(layout) };
   return {
     queryKey: chavesDeConsulta.pagina(id, urlDaPagina(id, filtros, opcoes, clicados)),
-    queryFn: ({ signal }: { signal: AbortSignal }) => pegaPagina(id, filtros, opcoes, signal, clicados, origem),
+    queryFn: ({ signal }: { signal: AbortSignal }) =>
+      pegaPagina(id, filtros, opcoes, signal, clicados, origem),
   };
 }
 
@@ -116,7 +117,12 @@ export async function preCarregaAbertura(
  * aviso do servidor seria trabalho dele por nada. Enquanto busca de novo, a lista atual
  * fica na tela; só uma segmentação DIFERENTE começa vazia.
  */
-export function useValoresDaSegmentacao(pagina: string, tabela: string, coluna: string, nivel?: string | null) {
+export function useValoresDaSegmentacao(
+  pagina: string,
+  tabela: string,
+  coluna: string,
+  nivel?: string | null,
+) {
   const q = useQuery({
     queryKey: chavesDeConsulta.valores(pagina, tabela, coluna, nivel),
     queryFn: ({ signal }) => pegaValores(pagina, tabela, coluna, nivel ?? undefined, signal),

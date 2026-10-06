@@ -5,7 +5,12 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type { DashboardDaLista, FiltroDaTela, LayoutSpec, Valor } from '../services/dashboardService.ts';
+import type {
+  DashboardDaLista,
+  FiltroDaTela,
+  LayoutSpec,
+  Valor,
+} from '../services/dashboardService.ts';
 import { filtrosPadrao } from '../utils/filtrosPadrao.ts';
 import type { AlvoDeFiltro, CampoClicado } from '../utils/rota.ts';
 import { consultaDaAbertura, preCarregaAbertura } from './useDadosDaTela.ts';
@@ -42,7 +47,8 @@ export function usePreCargas(
   useEffect(() => {
     if (!paginas || fundoIniciado.current) return;
     fundoIniciado.current = true;
-    const inicial = paginaInicial.current ?? paginas.find((d) => d.pronta)?.id ?? paginas[0]?.id ?? null;
+    const inicial =
+      paginaInicial.current ?? paginas.find((d) => d.pronta)?.id ?? paginas[0]?.id ?? null;
     void (async () => {
       // Pequena pausa para a página em exibição carregar com prioridade máxima
       await new Promise((resolve) => setTimeout(resolve, 800));

@@ -24,4 +24,5 @@ export const GOOGLE_CLIENT_ID = texto(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 /** Botão de desenvolvimento. Vazio em todo ambiente com provedor de login. */
 export const TOKEN_INTERNO = texto(import.meta.env.VITE_TOKEN_INTERNO);
 
-export const DOMINIO_CORPORATIVO = texto(import.meta.env.VITE_DOMINIO_CORPORATIVO) || 'sebratel.com.br';
+export const DOMINIO_CORPORATIVO =
+  texto(import.meta.env.VITE_DOMINIO_CORPORATIVO) || 'sebratel.com.br';

@@ -29,7 +29,9 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
     // A soma de todas as séries por ponto: para um gráfico de série única (o caso de
     // hoje) é o mesmo valor da série; para um empilhado seria o total da pilha — o
     // mesmo raciocínio de "a fatia inteira" que a Rosca já usa.
-    const totais = g.categorias.map((_, i) => g.series.reduce((soma, s) => soma + (s.valores[i] ?? 0), 0));
+    const totais = g.categorias.map((_, i) =>
+      g.series.reduce((soma, s) => soma + (s.valores[i] ?? 0), 0),
+    );
     return totais.slice(-N_PONTOS);
   }, [dados]);
 
@@ -41,7 +43,9 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
   const x = (i: number) => (i / (janela.length - 1)) * LARGURA;
   const y = (v: number) => ALTURA - FOLGA - ((v - menor) / alcance) * (ALTURA - FOLGA * 2);
 
-  const caminho = janela.map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+  const caminho = janela
+    .map((v, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)
+    .join(' ');
   const ultimo = janela[janela.length - 1]!;
   const cor = corNoTema(corDaSerie('', 0), isDark);
 
@@ -54,7 +58,13 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
       aria-label={`Tendência dos últimos ${janela.length} pontos: de ${inteiro(menor)} a ${inteiro(maior)}`}
     >
       <path className="sparkline-linha" d={caminho} fill="none" stroke={cor} />
-      <circle className="sparkline-ponto" cx={x(janela.length - 1)} cy={y(ultimo)} r={2} fill={cor} />
+      <circle
+        className="sparkline-ponto"
+        cx={x(janela.length - 1)}
+        cy={y(ultimo)}
+        r={2}
+        fill={cor}
+      />
     </svg>
   );
 }

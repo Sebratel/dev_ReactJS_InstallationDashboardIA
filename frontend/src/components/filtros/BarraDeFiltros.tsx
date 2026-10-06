@@ -45,7 +45,9 @@ export function BarraDeFiltros(props: {
               coluna={dataDaTela.coluna}
               rotulo="Período"
               filtros={filtros}
-              aoMudar={(nivel, valores) => aoMudar(dataDaTela.tabela, dataDaTela.coluna, valores, nivel)}
+              aoMudar={(nivel, valores) =>
+                aoMudar(dataDaTela.tabela, dataDaTela.coluna, valores, nivel)
+              }
             />
           ) : null}
           {ocultos.map((f) => (

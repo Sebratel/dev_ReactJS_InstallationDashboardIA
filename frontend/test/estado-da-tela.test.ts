@@ -13,7 +13,8 @@ import { aplicaClique, aplicaSeletor } from '../src/hooks/useEstadoDaTela.ts';
 const COM_PADRAO = 'agendamento-field';
 const SEM_PADRAO = 'capa';
 const cidade: FiltroDaTela = { tabela: 'PROTOCOLOS GERAL', coluna: 'CIDADE', valores: ['Canoas'] };
-const ida = (pagina: string, filtros: FiltroDaTela[]) => filtrosDaRota(leRota(escreveRota(pagina, filtros), ''));
+const ida = (pagina: string, filtros: FiltroDaTela[]) =>
+  filtrosDaRota(leRota(escreveRota(pagina, filtros), ''));
 
 test('a premissa: uma página tem filtro padrão e a outra não', () => {
   assert.ok(filtrosPadrao(COM_PADRAO).length > 0);
@@ -50,7 +51,10 @@ test('filtro de verdade viaja e volta, sem marcador', () => {
 });
 
 test('o seletor tira a marca de clique da sua coluna, e só dela', () => {
-  const clicados = [{ tabela: cidade.tabela, coluna: cidade.coluna }, { tabela: 'EQUIPES', coluna: 'NOME' }];
+  const clicados = [
+    { tabela: cidade.tabela, coluna: cidade.coluna },
+    { tabela: 'EQUIPES', coluna: 'NOME' },
+  ];
   const d = aplicaSeletor([cidade], clicados, cidade.tabela, cidade.coluna, ['Esteio']);
   assert.deepEqual(d.filtros, [{ ...cidade, valores: ['Esteio'] }]);
   assert.deepEqual(d.clicados, [{ tabela: 'EQUIPES', coluna: 'NOME' }]);
@@ -59,7 +63,10 @@ test('o seletor tira a marca de clique da sua coluna, e só dela', () => {
 test('o clique marca a coluna como clicada, e o segundo clique desfaz as duas coisas', () => {
   const alvo = { tabela: cidade.tabela, coluna: cidade.coluna, valor: 'Canoas' };
   const um = aplicaClique([], [], [alvo], []);
-  assert.deepEqual(um.filtros.map((f) => f.valores), [['Canoas']]);
+  assert.deepEqual(
+    um.filtros.map((f) => f.valores),
+    [['Canoas']],
+  );
   assert.deepEqual(um.clicados, [{ tabela: cidade.tabela, coluna: cidade.coluna }]);
   const dois = aplicaClique(um.filtros, um.clicados, [alvo], []);
   assert.deepEqual(dois.filtros, []);

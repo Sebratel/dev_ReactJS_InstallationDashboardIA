@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
 import type { FiltroDaTela, LayoutSpec, VisualCalculado } from '../../services/dashboardService.ts';
-import { contaFaixasLargasPorAltura, useAlturaDasFaixasLargas } from '../../hooks/useAlturaMedida.ts';
+import {
+  contaFaixasLargasPorAltura,
+  useAlturaDasFaixasLargas,
+} from '../../hooks/useAlturaMedida.ts';
 import type { AoFiltrar } from '../../utils/rota.ts';
 import { Visual } from './Visual.tsx';
 import { VisualNaDobra } from './VisualNaDobra.tsx';
@@ -46,7 +49,9 @@ export function VisualGridSection({
   aoPrever?: AoFiltrar;
 }) {
   const porId = useMemo(() => new Map(visuais.map((v) => [v.id, v])), [visuais]);
-  const contagem = layout ? contaFaixasLargasPorAltura(layout.faixas) : { grafico: 0, tabela: 0, matriz: 0 };
+  const contagem = layout
+    ? contaFaixasLargasPorAltura(layout.faixas)
+    : { grafico: 0, tabela: 0, matriz: 0 };
   useAlturaDasFaixasLargas(contagem.grafico, contagem.tabela, contagem.matriz);
 
   // `App.tsx` só monta este bloco depois que `pagina` respondeu; `layout` chega antes

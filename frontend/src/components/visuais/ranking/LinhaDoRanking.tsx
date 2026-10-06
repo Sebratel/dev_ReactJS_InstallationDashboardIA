@@ -40,21 +40,62 @@ export function LinhaDoRanking(props: {
   const prefixo = `${posicao}º `;
   const orcamentoDentro = largBarra - FOLGA_ROTULO - prefixo.length * PX_POR_CARACTERE;
   const cabeDentro = orcamentoDentro >= PX_POR_CARACTERE * 2;
-  const rotuloDeFora = truncado(rotulo, larguraTotal - largBarra - 12 - prefixo.length * PX_POR_CARACTERE);
+  const rotuloDeFora = truncado(
+    rotulo,
+    larguraTotal - largBarra - 12 - prefixo.length * PX_POR_CARACTERE,
+  );
   return (
-    <g className={props.classe} onClick={props.aoClicar} onMouseEnter={props.aoEntrar} onMouseLeave={props.aoSair}>
-      <rect className={`banda${props.sob ? ' sob' : ''}`} x={0} y={y0} width={props.larguraDaCaixa} height={alturaLinha} rx={4} />
-      <rect className="ranking-trilho" x={esquerda} y={y0} width={larguraTotal} height={alturaLinha} rx={4} />
+    <g
+      className={props.classe}
+      onClick={props.aoClicar}
+      onMouseEnter={props.aoEntrar}
+      onMouseLeave={props.aoSair}
+    >
+      <rect
+        className={`banda${props.sob ? ' sob' : ''}`}
+        x={0}
+        y={y0}
+        width={props.larguraDaCaixa}
+        height={alturaLinha}
+        rx={4}
+      />
+      <rect
+        className="ranking-trilho"
+        x={esquerda}
+        y={y0}
+        width={larguraTotal}
+        height={alturaLinha}
+        rx={4}
+      />
       {largBarra > 0 ? (
-        <rect className="ranking-preenche" x={esquerda} y={y0} width={largBarra} height={alturaLinha} rx={4} fill={props.corBarra} />
+        <rect
+          className="ranking-preenche"
+          x={esquerda}
+          y={y0}
+          width={largBarra}
+          height={alturaLinha}
+          rx={4}
+          fill={props.corBarra}
+        />
       ) : null}
       {cabeDentro ? (
-        <text className="ranking-rotulo-dentro" x={esquerda + 8} y={meio} textAnchor="start" fill={props.corDoRotuloDentro}>
+        <text
+          className="ranking-rotulo-dentro"
+          x={esquerda + 8}
+          y={meio}
+          textAnchor="start"
+          fill={props.corDoRotuloDentro}
+        >
           {prefixo}
           {truncado(rotulo, orcamentoDentro)}
         </text>
       ) : (
-        <text className="ranking-rotulo-fora" x={esquerda + largBarra + 8} y={meio} textAnchor="start">
+        <text
+          className="ranking-rotulo-fora"
+          x={esquerda + largBarra + 8}
+          y={meio}
+          textAnchor="start"
+        >
           {prefixo}
           {rotuloDeFora}
         </text>

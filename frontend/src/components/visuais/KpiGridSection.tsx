@@ -29,7 +29,10 @@ export function KpiGridSection({
   const porId = new Map(visuais.map((v) => [v.id, v]));
   const cards = (layout?.kpis ?? [])
     .map((k) => ({ entrada: k, visual: porId.get(k.visual) }))
-    .filter((x): x is { entrada: KpiEntry; visual: VisualCalculado } => x.visual != null && !x.visual.erro);
+    .filter(
+      (x): x is { entrada: KpiEntry; visual: VisualCalculado } =>
+        x.visual != null && !x.visual.erro,
+    );
   const idsDestaque = new Set(
     (layout?.kpis ?? []).filter((k) => k.enfase === 'alta').map((k) => k.visual),
   );
@@ -37,7 +40,10 @@ export function KpiGridSection({
   if (cards.length === 0) return null;
 
   return (
-    <section aria-label="Indicadores" className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]">
+    <section
+      aria-label="Indicadores"
+      className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]"
+    >
       {cards.map(({ entrada, visual }) => (
         <KpiCard
           key={visual.id}

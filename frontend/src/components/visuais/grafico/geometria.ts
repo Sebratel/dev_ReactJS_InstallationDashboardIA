@@ -25,7 +25,6 @@ export interface Geometria {
   larguraDaFatia: number;
 }
 
-
 /**
  * A geometria do desenho para uma caixa medida.
  *

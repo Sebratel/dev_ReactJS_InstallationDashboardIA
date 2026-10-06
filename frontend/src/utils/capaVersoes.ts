@@ -108,7 +108,8 @@ export const VERSOES: readonly Versao[] = [
   {
     versao: '1.1',
     data: '20/02/2026',
-    alteracao: 'Incluído novo tipo de solicitação: #HR - TEC - Instalação de Fibra / Equipe Ativação.',
+    alteracao:
+      'Incluído novo tipo de solicitação: #HR - TEC - Instalação de Fibra / Equipe Ativação.',
   },
   {
     versao: '1.0',

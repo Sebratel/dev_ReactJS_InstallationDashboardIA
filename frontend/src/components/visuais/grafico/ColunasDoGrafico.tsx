@@ -57,7 +57,9 @@ export function ColunasDoGrafico(props: {
               if (v === null || v === 0) return null;
               const alturaCrua = (v / geo.topo) * geo.alturaDoPlot;
               const alto = Math.max(1, alturaCrua - (empilha ? VAO : 0));
-              const cima = empilha ? MARGEM.topo + geo.alturaDoPlot - acumulado.alto - alto : geo.y(v);
+              const cima = empilha
+                ? MARGEM.topo + geo.alturaDoPlot - acumulado.alto - alto
+                : geo.y(v);
               if (empilha) acumulado.alto += alturaCrua;
               const esquerda = empilha
                 ? geo.xMeio(i) - geo.larguraDaFatia / 2

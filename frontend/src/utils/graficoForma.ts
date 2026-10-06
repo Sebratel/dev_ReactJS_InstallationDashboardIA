@@ -89,11 +89,7 @@ const POR_SIGNIFICADO: ReadonlyMap<string, string> = new Map([
 ]);
 
 function chaveDeCor(nome: string): string {
-  return nome
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .trim()
-    .toLowerCase();
+  return nome.normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
 }
 
 function ordemNaPilha(nome: string): number {
@@ -196,12 +192,16 @@ export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
   const avisos: string[] = [];
 
   const chaves = (d.chaves as ChaveDoGrafico[]) ?? [];
-  const iEixo = chaves.map((_, i) => i).filter((i) => (chaves[i]!.papel ?? 'Category') === 'Category');
+  const iEixo = chaves
+    .map((_, i) => i)
+    .filter((i) => (chaves[i]!.papel ?? 'Category') === 'Category');
   const iLegenda = chaves.map((_, i) => i).filter((i) => chaves[i]!.papel === 'Series');
 
   const tipoDe = (i: number): TipoDeValor => d.tiposDeChave[i] ?? null;
   const rotuloDaParte = (v: Valor | undefined, i: number): string =>
-    chaves[i]?.nivel === 'Ano' && typeof v === 'number' ? String(v) : formata(v ?? null, tipoDe(i)).texto;
+    chaves[i]?.nivel === 'Ano' && typeof v === 'number'
+      ? String(v)
+      : formata(v ?? null, tipoDe(i)).texto;
   const rotulo = (vals: Valor[], idx: number[]): string =>
     idx.map((i) => rotuloDaParte(vals[i], i)).join(' / ') || '—';
 
@@ -211,7 +211,10 @@ export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
     const chave = JSON.stringify(iEixo.map((i) => p.categoria[i] ?? null));
     if (posDaCategoria.has(chave)) continue;
     posDaCategoria.set(chave, categorias.length);
-    categorias.push({ rotulo: rotulo(p.categoria, iEixo), valores: iEixo.map((i) => p.categoria[i] ?? null) });
+    categorias.push({
+      rotulo: rotulo(p.categoria, iEixo),
+      valores: iEixo.map((i) => p.categoria[i] ?? null),
+    });
   }
 
   const mapa = new Map<string, SerieMontada>();
@@ -223,7 +226,11 @@ export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
 
     d.series.forEach((s, k) => {
       const nomeDoValor = s.nome ?? '(sem rótulo)';
-      const nome = sufixo ? (d.series.length > 1 ? `${sufixo} · ${nomeDoValor}` : sufixo) : nomeDoValor;
+      const nome = sufixo
+        ? d.series.length > 1
+          ? `${sufixo} · ${nomeDoValor}`
+          : sufixo
+        : nomeDoValor;
       const chave = `${k} ${sufixo}`;
       let serie = mapa.get(chave);
       if (!serie) {
@@ -300,7 +307,11 @@ function tetoDasAreas(series: readonly SerieMontada[], empilha: boolean): number
   if (!empilha) return maiorValorDe(areas);
   const n = areas[0]!.valores.length;
   let teto = 0;
-  for (let i = 0; i < n; i++) teto = Math.max(teto, areas.reduce((a, s) => a + (s.valores[i] ?? 0), 0));
+  for (let i = 0; i < n; i++)
+    teto = Math.max(
+      teto,
+      areas.reduce((a, s) => a + (s.valores[i] ?? 0), 0),
+    );
   return teto;
 }
 

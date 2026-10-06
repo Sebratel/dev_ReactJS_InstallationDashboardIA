@@ -104,7 +104,9 @@ test('urlDeValores escapa tabela e coluna', () => {
  */
 test('o filtro da URL da tela é idêntico ao do pedido à API', () => {
   const daTela = new URLSearchParams(escreveRota('visao-geral', [equipe])).getAll('filtro');
-  const doPedido = new URLSearchParams(urlDaPagina('visao-geral', [equipe]).split('?')[1]).getAll('filtro');
+  const doPedido = new URLSearchParams(urlDaPagina('visao-geral', [equipe]).split('?')[1]).getAll(
+    'filtro',
+  );
   assert.deepEqual(daTela, doPedido);
 });
 
@@ -162,7 +164,11 @@ test('clicar de novo na mesma marca volta ao padrão da página', () => {
   const desfeito = alternaAlvos(filtrado, dia26, padrao);
 
   assert.deepEqual(selecaoDe(desfeito, 'calendar', 'Data', 'Dia'), [], 'o Dia saiu');
-  assert.deepEqual(selecaoDe(desfeito, 'calendar', 'Data', 'Mês'), ['julho'], 'o mês padrão voltou');
+  assert.deepEqual(
+    selecaoDe(desfeito, 'calendar', 'Data', 'Mês'),
+    ['julho'],
+    'o mês padrão voltou',
+  );
   assert.deepEqual(selecaoDe(desfeito, 'calendar', 'Data', 'Ano'), [2026]);
 });
 

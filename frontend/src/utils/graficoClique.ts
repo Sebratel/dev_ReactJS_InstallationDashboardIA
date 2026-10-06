@@ -57,5 +57,7 @@ export function estaSelecionadaCategoria(
   selecaoDoEixo: readonly (readonly Valor[] | null)[],
   valores: readonly Valor[],
 ): boolean {
-  return selecaoDoEixo.every((sel, k) => sel === null || sel.some((v) => Object.is(v, valores[k] ?? null)));
+  return selecaoDoEixo.every(
+    (sel, k) => sel === null || sel.some((v) => Object.is(v, valores[k] ?? null)),
+  );
 }

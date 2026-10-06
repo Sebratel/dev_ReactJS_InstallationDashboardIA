@@ -65,9 +65,7 @@ function remedeQuandoAFonteChegar(medir: () => void): void {
   void fontes.ready.then(() => medir());
 }
 
-export function useAlturaMedida<T extends HTMLElement>(
-  nome: string,
-): React.RefObject<T | null> {
+export function useAlturaMedida<T extends HTMLElement>(nome: string): React.RefObject<T | null> {
   const ref = useRef<T | null>(null);
   const ultima = useRef<number>(-1);
 
@@ -231,9 +229,12 @@ export function useAlturaDasFaixasLargas(nGrafico: number, nTabela: number, nMat
 
   const medir = useCallback(() => {
     const precisaDeUtil = nGrafico + nTabela + nMatriz > 0;
-    const alturas = precisaDeUtil ? calculaAlturasDeFaixa(nGrafico, nTabela, nMatriz, utilEmPx()) : null;
+    const alturas = precisaDeUtil
+      ? calculaAlturasDeFaixa(nGrafico, nTabela, nMatriz, utilEmPx())
+      : null;
 
-    const proximo = alturas === null ? '' : `${alturas.grafico}|${alturas.tabela}|${alturas.matriz}`;
+    const proximo =
+      alturas === null ? '' : `${alturas.grafico}|${alturas.tabela}|${alturas.matriz}`;
     if (proximo === ultimo.current) return;
     ultimo.current = proximo;
 
@@ -316,8 +317,12 @@ export function useEspacoSemVisual<T extends HTMLElement>(
       // O primeiro par EMPILHADO, e não o primeiro par: os compactos ficam lado a lado
       // e a distância entre dois deles é horizontal, não custa altura nenhuma.
       for (let i = 1; i < cartoes.length; i++) {
-        const a = cartoes[i - 1]!, b = cartoes[i]!;
-        if (b.top >= a.bottom - 1) { entre = Math.max(0, Math.round(b.top - a.bottom)); break; }
+        const a = cartoes[i - 1]!,
+          b = cartoes[i]!;
+        if (b.top >= a.bottom - 1) {
+          entre = Math.max(0, Math.round(b.top - a.bottom));
+          break;
+        }
       }
     }
     const agora = antes + '|' + entre;
