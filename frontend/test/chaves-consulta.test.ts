@@ -7,7 +7,7 @@
 // saiu junto com o cache feito à mão.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
 import { chavesDeConsulta, urlDaPagina } from '../src/services/dashboardService.ts';
 

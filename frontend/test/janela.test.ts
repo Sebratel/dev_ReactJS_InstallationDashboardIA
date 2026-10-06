@@ -1,7 +1,7 @@
 // A aritmética da janela de linhas.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import {
   anteriorDe,
   janelaDeServidorPara,

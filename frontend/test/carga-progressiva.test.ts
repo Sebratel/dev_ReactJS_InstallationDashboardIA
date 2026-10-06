@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { idsIniciais, N_FAIXAS_EAGER } from '../src/utils/cargaProgressiva.ts';
 import type { LayoutSpec } from '../src/services/dashboardService.ts';
 

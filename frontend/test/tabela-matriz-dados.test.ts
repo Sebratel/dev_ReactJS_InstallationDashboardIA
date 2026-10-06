@@ -2,7 +2,7 @@
 // escala da barra, selo de status, janela de colunas (normal e transposta) e o CSV.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import type { DadosDeMatriz } from '../src/services/dashboardService.ts';
 import { textoCsv } from '../src/utils/csv.ts';
 import { escalasDaTabela, ordenaLinhas, seloDeStatus } from '../src/utils/tabelaDados.ts';

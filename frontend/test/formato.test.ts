@@ -4,7 +4,7 @@
 // razão de ele ser um `.ts` separado dos componentes.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { dataHora, diasDesde, duracao, formata, haQuanto, inteiro } from '../src/utils/formato.ts';
 
 test('BLANK vira travessão e é marcado como vazio, não como zero', () => {

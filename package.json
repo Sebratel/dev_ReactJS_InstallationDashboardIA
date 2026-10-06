@@ -7,7 +7,7 @@
     "frontend"
   ],
   "scripts": {
-    "test": "node --test backend/packages/*/test/*.test.ts backend/api/test/*.test.ts backend/tools/*/test/*.test.ts frontend/test/*.test.ts",
+    "test": "node --test backend/packages/*/test/*.test.ts backend/api/test/*.test.ts backend/tools/*/test/*.test.ts && npm exec -w frontend -- vitest run",
     "typecheck": "tsc -p tsconfig.json && npm exec -w frontend -- tsc --noEmit",
     "lint": "npm exec -w frontend -- eslint .",
     "format": "npm exec -w frontend -- prettier --write .",
@@ -17,7 +17,7 @@
     "test:transform-engine": "node --test backend/packages/transform-engine/test/*.test.ts",
     "test:measure-engine": "node --test backend/packages/measure-engine/test/*.test.ts",
     "test:widget-engine": "node --test backend/packages/widget-engine/test/*.test.ts",
-    "test:web": "node --test frontend/test/*.test.ts",
+    "test:web": "npm exec -w frontend -- vitest run",
     "validate": "node backend/tools/validate/src/index.ts",
     "validate:queries": "node backend/tools/validate/src/index.ts",
     "validate:model": "node backend/tools/validate/src/model.ts",

@@ -5,7 +5,7 @@
 // (`aplicaSelecao` + a seleção alternada), e não com um valor escrito à mão.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { urlDaPagina, type FiltroDaTela } from '../src/services/dashboardService.ts';
 import { aplicaSelecao, selecaoDe } from '../src/utils/rota.ts';
 import { alternaValor, estadosVizinhos } from '../src/utils/vizinhanca.ts';

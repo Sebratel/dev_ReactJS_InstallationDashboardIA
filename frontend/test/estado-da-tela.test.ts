@@ -3,7 +3,7 @@
 // testes fixam é que nenhuma URL fica ambígua entre "padrão" e "a pessoa limpou".
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import type { FiltroDaTela } from '../src/services/dashboardService.ts';
 import { filtrosPadrao } from '../src/utils/filtrosPadrao.ts';
 import { escreveRota, filtrosDaRota, leRota } from '../src/utils/rota.ts';

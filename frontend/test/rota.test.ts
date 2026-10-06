@@ -1,7 +1,7 @@
 // O estado da tela na URL, e a URL do pedido à API.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { urlDaPagina, urlDeValores, type FiltroDaTela } from '../src/services/dashboardService.ts';
 import {
   alternaAlvos,

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import { calculaAlturasDeFaixa, contaFaixasLargasPorAltura } from '../src/hooks/useAlturaMedida.ts';
 
 test('sem faixa de largura cheia, não publica nada (null)', () => {

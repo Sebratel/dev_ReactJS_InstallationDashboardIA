@@ -2,7 +2,7 @@
 // eixo errado não quebra nada: só mostra vinte colunas com o mesmo texto.
 
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import { test } from 'vitest';
 import {
   caminhoDaSerie,
   maiorIndice,
