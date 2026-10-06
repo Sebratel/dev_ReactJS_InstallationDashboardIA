@@ -14283,3 +14283,51 @@ o balde.
   `X-Real-IP` (o nginx de produção é do Misael).
 - O próprio E2E gasta ~280 dos 300 interativos numa execução (janela fixa de um minuto, e
   na stack local todo navegador é o mesmo IP): uma execução por minuto, sem outra aba aberta.
+
+## #183 — fase 6 do frontend (6a e 6b): tokens com uma fonte só, as primeiras primitivas em utilitário, e a régua de estilo computado (06/10)
+
+**A decisão de escopo (Erick, 06/10): híbrido.** A raiz da tela é 14px (a régua da
+densidade, `estilo.css`), então a escala do Tailwind não bate com os valores medidos
+(`p-2` dá 7px, as fontes são 0,66rem, 0,7rem…). Converter tudo idêntico encheria as
+classes de valor arbitrário e tiraria do CSS os comentários de medição; normalizar na
+escala mudaria a tela inteira em 1–2px. Fica assim:
+- **viram utilitário com token e `cn`** as peças simples e repetidas (selos, badges,
+  botões, caixas de mensagem, cartão, estados, faixas);
+- **ficam em CSS, de propósito,** a conta de altura (`--util`, `--h-*`), a grade das
+  faixas, os gráficos SVG, as animações e as regras de layout medidas.
+
+**6a — o `@theme` era uma cópia que divergiu.** Os tokens estavam em dois lugares: em
+hexadecimal no `@theme` e nos papéis `--pbi-*` do `:root`/`.dark`. Nenhum componente usava
+os utilitários do `@theme`, e a cópia divergiu sem ninguém ver: `gold-600` era `#8a6600` lá
+e `#856200` no `:root` (o valor corrigido por contraste em 28/08); o escuro tinha nomes
+próprios (`escuro-*`) em vez de redefinir os papéis. Agora o `@theme inline` só dá nome a
+cada papel: `bg-pbi-primary` compila para `var(--pbi-primary)` e acompanha o `.dark` sem
+`dark:`. CSS compilado idêntico byte a byte; o `casca.test.ts` barra valor copiado no
+`@theme` e papel sem utilitário (as duas mutações falham).
+
+**6b — selos, botões e caixas de mensagem.** `ui/Selo.tsx` (selo da faixa de
+conferência e badge de status da tabela), `ui/Botao.tsx` (primário e secundário), `Erro` e
+`Aviso` no `Cartao.tsx`; 116 linhas saíram do `estilo.css`. As ferramentas deixaram de
+depender de classe de estilo: o sinal de "página pronta" de `entrada`, `perf`, `varre` e do
+E2E passou de `.selo` para `[data-selo]`.
+
+**A régua da fase 6.** Na fase 4 a prova era o HTML idêntico; aqui o HTML muda de propósito
+(as classes). A prova é o **estilo computado**: com as respostas da API gravadas num HAR
+(sem 429 — a gravação espaça as páginas por causa do limite do #182), cada elemento da
+tela, identificado pela posição na árvore e não pela classe, tem todas as propriedades
+computadas comparadas antes e depois, mais `::before`/`::after`, mais o `:hover` forçado
+(CDP) em todo elemento com cursor de mão. 14 páginas × claro/escuro × 1366, 1920, 1024 e
+390 de largura (as duas últimas exercitam os `@media` que as resoluções de referência não
+alcançam), o diálogo de filtro aberto, e a tela de login medida à parte.
+
+Resultado da 6b: **226.712 elementos, nenhuma diferença** além de duas já conhecidas:
+- `rounded-full` é raio "infinito"; o `999px` de antes dava a mesma pílula;
+- a altura medida do cartão de tabela das páginas `l-*` varia entre execuções — duas
+  medições do build ANTIGO já diferem entre si nos mesmos elementos (e nas mesmas capturas).
+
+Dois tropeços da própria régua, para não repetir: (1) o comparador casava o hover por
+caminho num `Map`, mas o hover registra a subárvore, e o mesmo caminho aparece várias vezes
+em estados diferentes — acusou 7 mil diferenças falsas; compara-se par a par, na ordem.
+(2) Parar o `vite preview` em segundo plano matou a shell e não o processo: o "depois" foi
+servido com o build antigo até se liberar a porta 4173 à mão — conferir o nome do pacote
+servido antes de medir.

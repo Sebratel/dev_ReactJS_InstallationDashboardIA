@@ -125,7 +125,18 @@ O plano original:
   `npm test` da raiz continua chamando todos.
 - E2E com Playwright, aproveitando `backend/tools/tela`.
 
-## Fase 6 — design system
+## Fase 6 — design system (EM ANDAMENTO: 6a e 6b feitas, 06/10/2026)
+
+**Escopo decidido com o Erick: híbrido** (ACHADOS #183). Peças simples e repetidas viram
+utilitário com token e `cn`; a conta de altura, a grade, os SVG, as animações e o layout
+medido ficam em CSS. Prova de cada passo: régua de estilo computado (HAR, 14 páginas,
+claro/escuro, 1366/1920/1024/390, `:hover` forçado), sem diferença além do ruído medido.
+- 6a (`c47ef83`): `@theme inline` sobre os papéis do `:root` — uma fonte só.
+- 6b (`dee94c9`): `ui/Selo`, `ui/Botao`, `Erro`/`Aviso`; ferramentas em `[data-selo]`.
+- Próximos: cartão e KPI; estados (vazio, esqueleto, sob demanda); casca (topo, abas,
+  botões de ícone); barra de filtros, chips e diálogo; capa.
+
+O plano original:
 
 Levar os ~1250 linhas de classes semânticas de `estilo.css` para tokens no `@theme` do
 Tailwind e utilitários com `cn`, mantendo os tokens de papel (cor cheia é fundo, cor
