@@ -84,6 +84,26 @@ test('a classe que o store escreve é a MESMA que o CSS estiliza', () => {
   );
 });
 
+test('o @theme dá nome aos papéis do :root, sem copiar valor', () => {
+  // Uma cópia em hexadecimal no `@theme` divergiu do `:root` sem ninguém ver (ACHADOS
+  // #183), e um utilitário com valor copiado não acompanharia o `.dark`.
+  const temas = [...css.matchAll(/@theme(?: inline)?\s*\{([^}]*)\}/g)].map((m) => m[1]!);
+  for (const corpo of temas) {
+    assert.doesNotMatch(corpo, /#[0-9a-f]{3,8}\b/i, 'hexadecimal no @theme: o valor mora no :root');
+  }
+  const inline = /@theme inline\s*\{([^}]*)\}/.exec(css)?.[1] ?? '';
+  const mapeados = new Map(
+    [...inline.matchAll(/--color-pbi-([\w-]+):\s*([^;]+);/g)].map((m) => [m[1]!, m[2]!.trim()]),
+  );
+  for (const [nome, valor] of mapeados) {
+    assert.equal(valor, `var(--pbi-${nome})`, `--color-pbi-${nome} tem de apontar para o papel`);
+  }
+  const raiz = /:root\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+  const papeis = [...raiz.matchAll(/^\s*--pbi-([\w-]+):/gm)].map((m) => m[1]!);
+  const semUtilitario = papeis.filter((p) => !mapeados.has(p));
+  assert.deepEqual(semUtilitario, [], 'papel do :root sem utilitário no @theme inline');
+});
+
 test('todo estado que persiste tem botão que o desliga', () => {
   // Persistir no localStorage sem controle visível TRANCA o usuário: ele recarrega e
   // o estado continua lá. Os dois já estiveram órfãos ao mesmo tempo.

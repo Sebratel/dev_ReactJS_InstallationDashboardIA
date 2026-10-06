@@ -20,48 +20,53 @@
    de uma vez quando a paleta trocou. Por isso existem os tokens `sobre-*` e
    `*-texto` abaixo, com o contraste medido ao lado de cada um.
 
-   Definida **duas vezes de propósito**:
-   - em `@theme`, para virar utilitário do Tailwind (`bg-pbi-primary`, `text-pbi-muted`);
-   - em `:root`, para o CSS puro deste arquivo e para o `style` dos SVG.
-   Manter os dois lados sincronizados é o preço de misturar utilitário e CSS.
+   UMA FONTE SÓ: os valores moram em `:root` (claro) e `.dark` (escuro), com a medição
+   de contraste ao lado. O `@theme inline` abaixo só dá NOME de utilitário a esses
+   papéis — `bg-pbi-primary` compila para `var(--pbi-primary)`, não para uma cópia do
+   hexadecimal. Por isso o utilitário acompanha o `.dark` sem variante `dark:`, igual ao
+   CSS deste arquivo e ao `style` dos SVG.
 
-   NENHUM HEXADECIMAL FORA DESTE BLOCO.
+   Até a fase 6 o `@theme` era uma SEGUNDA cópia, em hexadecimal, e divergiu sem ninguém
+   ver (nenhum componente a usava): `gold-600` era #8a6600 lá e #856200 aqui, o valor
+   corrigido por contraste; e o escuro tinha nomes próprios (`escuro-*`) em vez de
+   redefinir os mesmos papéis (ACHADOS #183).
+
+   NENHUM HEXADECIMAL FORA DE `:root` E `.dark`.
    =========================================================================== */
 
 @theme {
   --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
 
-  --color-pbi-primary: #880f17;
-  --color-pbi-primary-dark: #6b2328;
-  /* Foreground POR PAPEL — a medição fica em `:root`. */
-  --color-pbi-sobre-primary: #ffffff;
-  --color-pbi-sobre-primary-fraco: #f0e199;
-  --color-pbi-primary-texto: #880f17;
-  --color-pbi-green-texto: #0b7a1e;
-  --color-pbi-critico-texto: #b3261e;
-  --color-pbi-gold: #d9b300;
-  --color-pbi-gold-light: #f0e199;
-  --color-pbi-gold-200: #eed790;
-  --color-pbi-gold-600: #8a6600;
-  --color-pbi-gold-soft: #e0c233;
-  --color-pbi-orange: #e66c37;
-  --color-pbi-orange-soft: #eb895f;
-  --color-pbi-green: #0e9224;
-  --color-pbi-ink: #252423;
-  --color-pbi-muted: #605e5c;
-  --color-pbi-grid: #e1dfdd;
-  --color-pbi-borda: #e3e0dc;
-  --color-pbi-superficie: #ffffff;
-  --color-pbi-fundo: #f3f2f1;
-  --color-pbi-critico: #b3261e;
-  --color-pbi-neutro: #c8c6c4;
-
-  /* Escuro: os mesmos papéis, não outras cores. */
-  --color-pbi-escuro-fundo: #1b1a19;
-  --color-pbi-escuro-superficie: #252423;
-  --color-pbi-escuro-borda: #3b3a39;
-  --color-pbi-escuro-texto: #f3f2f1;
-  --color-pbi-escuro-muted: #a19f9d;
+@theme inline {
+  --color-pbi-primary: var(--pbi-primary);
+  --color-pbi-primary-dark: var(--pbi-primary-dark);
+  --color-pbi-primary-soft: var(--pbi-primary-soft);
+  --color-pbi-sobre-primary: var(--pbi-sobre-primary);
+  --color-pbi-sobre-primary-fraco: var(--pbi-sobre-primary-fraco);
+  --color-pbi-primary-texto: var(--pbi-primary-texto);
+  --color-pbi-gold: var(--pbi-gold);
+  --color-pbi-gold-light: var(--pbi-gold-light);
+  --color-pbi-gold-200: var(--pbi-gold-200);
+  --color-pbi-gold-600: var(--pbi-gold-600);
+  --color-pbi-gold-soft: var(--pbi-gold-soft);
+  --color-pbi-orange: var(--pbi-orange);
+  --color-pbi-orange-soft: var(--pbi-orange-soft);
+  --color-pbi-green: var(--pbi-green);
+  --color-pbi-green-texto: var(--pbi-green-texto);
+  --color-pbi-critico: var(--pbi-critico);
+  --color-pbi-critico-texto: var(--pbi-critico-texto);
+  --color-pbi-ink: var(--pbi-ink);
+  --color-pbi-muted: var(--pbi-muted);
+  --color-pbi-grid: var(--pbi-grid);
+  --color-pbi-borda: var(--pbi-borda);
+  --color-pbi-superficie: var(--pbi-superficie);
+  --color-pbi-fundo: var(--pbi-fundo);
+  --color-pbi-neutro: var(--pbi-neutro);
+  --color-pbi-ok-bg: var(--pbi-ok-bg);
+  --color-pbi-erro-bg: var(--pbi-erro-bg);
+  --color-pbi-aviso-bg: var(--pbi-aviso-bg);
+  --color-pbi-barra-fundo: var(--pbi-barra-fundo);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));

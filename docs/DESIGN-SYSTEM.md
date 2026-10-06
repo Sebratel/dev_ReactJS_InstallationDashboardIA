@@ -47,10 +47,14 @@ visual é de quem é dono do relatório, e não precisa de justificativa técnic
 
 ## 1. Tokens
 
-Definidos **duas vezes de propósito** em `frontend/src/estilo.css`:
+Definidos **uma vez**, em `frontend/src/estilo.css`: o valor claro no `:root`, o escuro
+no `.dark`, com a medição de contraste ao lado. O `@theme inline` só dá nome de
+utilitário a cada papel (`bg-pbi-primary`, `text-pbi-muted`) — compila para
+`var(--pbi-primary)`, então o utilitário acompanha o tema escuro sem `dark:`.
 
-- em `@theme`, para virar utilitário do Tailwind (`bg-pbi-primary`, `text-pbi-muted`);
-- em `:root`, para o CSS puro do arquivo e para o `style` dos SVG.
+Até a fase 6 (06/10/2026) o `@theme` era uma segunda cópia em hexadecimal, e divergiu
+sem ninguém ver (ACHADOS #183). O `casca.test.ts` agora barra valor copiado no `@theme`
+e papel do `:root` sem utilitário.
 
 Os valores abaixo foram **conferidos linha a linha contra o `estilo.css` em
 27/08/2026**. Todos os que estavam aqui antes eram do HUBBI e nenhum batia com a tela.
@@ -70,15 +74,15 @@ Os valores abaixo foram **conferidos linha a linha contra o `estilo.css` em
 | Superfície de card | `--pbi-superficie` | `#FFFFFF` |
 | Sem dado / "Outros" | `--pbi-neutro` | `#C8C6C4` |
 
-Escuro — os mesmos papéis, não outras cores:
+Escuro — os MESMOS tokens, redefinidos no `.dark` (não há nome `escuro-*`):
 
-| Papel | Token | Valor |
+| Papel | Token | Valor no `.dark` |
 |---|---|---|
-| Fundo geral | `--pbi-escuro-fundo` | `#1B1A19` |
-| Superfície de card | `--pbi-escuro-superficie` | `#252423` |
-| Borda / grade | `--pbi-escuro-borda` | `#3B3A39` |
-| Texto principal | `--pbi-escuro-texto` | `#F3F2F1` |
-| Texto secundário | `--pbi-escuro-muted` | `#A19F9D` |
+| Fundo geral | `--pbi-fundo` | `#1B1A19` |
+| Superfície de card | `--pbi-superficie` | `#252423` |
+| Borda / grade | `--pbi-borda` / `--pbi-grid` | `#3B3A39` |
+| Texto principal | `--pbi-ink` | `#F3F2F1` |
+| Texto secundário | `--pbi-muted` | `#A19F9D` |
 
 **Não existe token `--red`.** A linha que estava aqui mandava reservar `--red`
 (`#E30613`) para o texto da logo e citava a regra 4 do `CLAUDE.md` — mas esse token
