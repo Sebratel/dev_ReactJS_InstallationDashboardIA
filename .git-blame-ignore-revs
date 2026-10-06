@@ -1,0 +1,4 @@
+# Commits só de formatação — o blame pula estes (git config blame.ignoreRevsFile .git-blame-ignore-revs).
+
+# Prettier em todo o frontend (fase 5 de docs/PLANO-PADROES-FRONTEND.md)
+6ae3a3a6d0761324a2f0096e6ecfb9d0caafee48
