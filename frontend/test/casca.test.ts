@@ -42,6 +42,8 @@ function semComentario(fonte: string): string {
 
 const css = semComentario(le('src', 'estilo.css'));
 const appShell = semComentario(le('src', 'components', 'layout', 'AppShell.tsx'));
+// Os botões do topo moram aqui desde a fase 4; o `AppShell` monta este componente.
+const acoesDoCabecalho = semComentario(le('src', 'components', 'layout', 'AcoesDoCabecalho.tsx'));
 
 /** Todos os tokens de pixel do CSS, já sem comentário. */
 const TOKENS = new Map(
@@ -93,8 +95,8 @@ test('todo estado que persiste tem botão que o desliga', () => {
       nome + ' deveria persistir — se deixou de persistir, revise este teste',
     );
     assert.ok(
-      appShell.includes('onClick={' + gatilho + '}'),
-      'nenhum botão do AppShell chama `' + gatilho + '`: o estado de ' + nome +
+      appShell.includes('<AcoesDoCabecalho') && acoesDoCabecalho.includes('onClick={' + gatilho + '}'),
+      'nenhum botão do topo (AppShell → AcoesDoCabecalho) chama `' + gatilho + '`: o estado de ' + nome +
         ' grava no localStorage e sobrevive ao F5, então sem botão não há como sair dele',
     );
   }

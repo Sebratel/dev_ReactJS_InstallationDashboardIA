@@ -3,17 +3,8 @@ import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
 import { createPortal } from 'react-dom';
 import { ChevronDown, X } from 'lucide-react';
 import { type FiltroDaTela, type Valor } from '../../services/dashboardService.ts';
-import {
-  clicaAno,
-  clicaDia,
-  clicaMes,
-  limpaTudo,
-  montaArvore,
-  resumoDeData,
-  selecaoDeData,
-  MESES_CURTOS,
-  type MudancaDeNivel,
-} from '../../utils/hierarquiaData.ts';
+import { limpaTudo, montaArvore, resumoDeData, selecaoDeData, type MudancaDeNivel } from '../../utils/hierarquiaData.ts';
+import { ArvoreDeDatas } from './ArvoreDeDatas.tsx';
 
 /**
  * O filtro de data em árvore — Ano > Mês > Dia — no lugar de dois seletores planos.
@@ -141,62 +132,7 @@ export function SegmentacaoDataHierarquia(props: {
                 )}
 
                 {arvore && arvore.length > 0 && (
-                  <div className="arvore">
-                    {arvore.map((a) => {
-                      const anoAberto = expandidos.has(`a${a.ano}`);
-                      const mesesDoAno = a.meses.filter((m) => sel.meses.includes(m.nome));
-                      return (
-                        <div key={a.ano}>
-                          <No
-                            aberto={anoAberto}
-                            temFilhos
-                            aoExpandir={() => alternaNo(`a${a.ano}`)}
-                            marcado={sel.anos.includes(a.ano)}
-                            parcial={!sel.anos.includes(a.ano) && mesesDoAno.length > 0}
-                            aoMarcar={() => aplica(clicaAno(sel, a.ano))}
-                            rotulo={String(a.ano)}
-                            forte
-                          />
-                          {anoAberto &&
-                            a.meses.map((m) => {
-                              const mesAberto = expandidos.has(`m${a.ano}-${m.indice}`);
-                              const diasDoMes = m.dias.filter((d) => sel.dias.includes(d));
-                              return (
-                                <div key={m.indice} className="arvore-nivel">
-                                  <No
-                                    aberto={mesAberto}
-                                    temFilhos
-                                    aoExpandir={() => alternaNo(`m${a.ano}-${m.indice}`)}
-                                    marcado={sel.meses.includes(m.nome)}
-                                    parcial={!sel.meses.includes(m.nome) && diasDoMes.length > 0}
-                                    aoMarcar={() => aplica(clicaMes(sel, a.ano, m.nome))}
-                                    rotulo={MESES_CURTOS[m.indice]!}
-                                  />
-                                  {mesAberto && (
-                                    <div className="arvore-dias">
-                                      {m.dias.map((d) => (
-                                        <label
-                                          key={d}
-                                          title={`${String(d).padStart(2, '0')}/${String(m.indice + 1).padStart(2, '0')}/${a.ano}`}
-                                          className={`arvore-dia${sel.dias.includes(d) ? ' marcado' : ''}`}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={sel.dias.includes(d)}
-                                            onChange={() => aplica(clicaDia(sel, a.ano, m.nome, d))}
-                                          />
-                                          {d}
-                                        </label>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <ArvoreDeDatas arvore={arvore} sel={sel} expandidos={expandidos} aoAlternarNo={alternaNo} aoAplicar={aplica} />
                 )}
               </div>
 
@@ -224,41 +160,6 @@ export function SegmentacaoDataHierarquia(props: {
           </div>,
           document.body,
         )}
-    </div>
-  );
-}
-
-/** Uma linha da árvore: seta de expandir, caixa de marcar e rótulo. */
-function No(props: {
-  aberto: boolean;
-  temFilhos: boolean;
-  aoExpandir: () => void;
-  marcado: boolean;
-  /** Filho marcado sem o pai — a caixa fica no estado indeterminado do HTML. */
-  parcial: boolean;
-  aoMarcar: () => void;
-  rotulo: string;
-  forte?: boolean;
-}) {
-  const caixa = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (caixa.current) caixa.current.indeterminate = props.parcial && !props.marcado;
-  }, [props.parcial, props.marcado]);
-
-  return (
-    <div className="arvore-linha">
-      <button
-        className="arvore-seta"
-        onClick={props.aoExpandir}
-        aria-label={props.aberto ? 'Recolher' : 'Expandir'}
-        aria-expanded={props.aberto}
-      >
-        {props.temFilhos ? (props.aberto ? '▾' : '▸') : ''}
-      </button>
-      <label className={`arvore-rotulo${props.forte ? ' forte' : ''}`}>
-        <input ref={caixa} type="checkbox" checked={props.marcado} onChange={props.aoMarcar} />
-        <span>{props.rotulo}</span>
-      </label>
     </div>
   );
 }

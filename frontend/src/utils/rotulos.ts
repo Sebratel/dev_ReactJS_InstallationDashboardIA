@@ -120,3 +120,20 @@ export function tituloDeMatriz(
   );
   return derivado ?? tituloDoVisual(visual);
 }
+
+/**
+ * Título de gráfico: o do relatório; sem ele, "medidas por eixo" (até três medidas);
+ * sem os dois, o genérico de `tituloDoVisual`.
+ */
+export function tituloDeGrafico(
+  visual: { titulo?: string; id?: string },
+  dados: { chaves?: readonly unknown[]; series?: readonly { nome?: string | null }[] },
+): string {
+  const chaves = (dados.chaves ?? []) as { papel?: string; nome?: string; coluna?: string }[];
+  const eixo = chaves.find((c) => (c.papel ?? 'Category') === 'Category');
+  const nomesMedidas = (dados.series ?? []).map((s) => s.nome).filter((n): n is string => !!n);
+  const nomeEixo = eixo?.nome ?? eixo?.coluna;
+  return visual.titulo?.trim() || !(nomesMedidas.length && nomeEixo)
+    ? tituloDoVisual(visual)
+    : `${nomesMedidas.slice(0, 3).join(' · ')} por ${nomeEixo}`;
+}
