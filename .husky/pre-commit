@@ -1,0 +1,4 @@
+# Pre-commit (fase 5 de docs/PLANO-PADROES-FRONTEND.md): Prettier e ESLint so nos
+# arquivos do frontend que estao no commit. A configuracao e o "lint-staged" de
+# frontend/package.json; arquivo fora do frontend passa direto.
+npx lint-staged

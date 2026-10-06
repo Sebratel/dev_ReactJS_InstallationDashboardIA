@@ -11,6 +11,7 @@
     "typecheck": "tsc -p tsconfig.json && npm exec -w frontend -- tsc --noEmit",
     "lint": "npm exec -w frontend -- eslint .",
     "format": "npm exec -w frontend -- prettier --write .",
+    "prepare": "husky",
     "test:query-engine": "node --test backend/packages/query-engine/test/*.test.ts",
     "test:semantic-model": "node --test backend/packages/semantic-model/test/*.test.ts",
     "test:transform-engine": "node --test backend/packages/transform-engine/test/*.test.ts",
