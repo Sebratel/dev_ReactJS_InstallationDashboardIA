@@ -362,6 +362,29 @@ test('rate limiting: com proxy confiável, X-Real-IP volta a ser a chave (cada I
   }
 });
 
+test('rate limiting /api: o prefetch tem balde próprio e não gasta a cota de quem clica', async () => {
+  const s = await sobe();
+  // Conta quantos de `n` pedidos levaram 429 — o status dos outros não importa aqui
+  // (o snapshot é vazio), só se o limitador deixou passar.
+  const negados = async (n: number, rota: string) => {
+    let quantos = 0;
+    for (let i = 0; i < n; i++) if ((await s.busca(rota)).status === 429) quantos++;
+    return quantos;
+  };
+  try {
+    // 600 especulativos (LIMITE_PREFETCH_POR_MINUTO) passam, e o 601º não: o balde
+    // existe, não é uma porta aberta por declarar `origem=prefetch`.
+    assert.equal(await negados(600, '/api/dashboards?origem=prefetch'), 0);
+    assert.equal(await negados(1, '/api/dashboards?origem=prefetch'), 1);
+    // A cota interativa está intacta: 300 (LIMITE_API_POR_MINUTO) passam, o 301º não.
+    // Antes do balde próprio, os 600 de cima já teriam esgotado esta.
+    assert.equal(await negados(300, '/api/dashboards'), 0);
+    assert.equal(await negados(1, '/api/dashboards'), 1);
+  } finally {
+    await s.fecha();
+  }
+});
+
 // ------------------------------------------------------- prototype pollution
 
 test('__proto__ no corpo de /auth/google não contamina Object.prototype', async () => {

@@ -121,6 +121,13 @@ const JANELA_AUTH_MS = 5 * 60_000;
 /** O teto frouxo de `/api/*`, só contra abuso grosseiro — não deve incomodar
  *  uso normal nem paginação rápida numa tabela grande. */
 const LIMITE_API_POR_MINUTO = 300;
+/** O balde PRÓPRIO de `origem=prefetch`, por IP, na mesma janela (ACHADOS #182). O
+ *  prefetch da vizinhança (#179) manda ~40 pedidos por abertura de página: no balde de
+ *  cima, cinco aberturas num minuto negavam layout, valores e SSE — o "uso normal" que
+ *  o teto prometia não incomodar. Separado, o especulativo negado não custa nada a quem
+ *  clica, e o teto contra abuso continua finito (300 + 600). Declarar `prefetch` só
+ *  REBAIXA o pedido na fila (`origemDoPedido`), então não há o que ganhar mentindo. */
+const LIMITE_PREFETCH_POR_MINUTO = 600;
 /** Quanto a "última pronta" de uma pergunta vive sem ser recalculada (ACHADOS #164). */
 const TTL_ULTIMA_PRONTA_S = 7 * 24 * 3600;
 const JANELA_API_MS = 60_000;
@@ -297,6 +304,7 @@ export class Servidor {
    *  esperar de verdade. */
   private readonly limitadorAuth: LimitadorDeTaxa;
   private readonly limitadorApi: LimitadorDeTaxa;
+  private readonly limitadorPrefetch: LimitadorDeTaxa;
 
   /**
    * Intervalo do batimento do SSE, em ms. 25 s por um motivo concreto: o valor
@@ -411,6 +419,7 @@ export class Servidor {
     };
     this.limitadorAuth = new LimitadorDeTaxa(LIMITE_AUTH_TENTATIVAS, JANELA_AUTH_MS, () => this.opts.agora());
     this.limitadorApi = new LimitadorDeTaxa(LIMITE_API_POR_MINUTO, JANELA_API_MS, () => this.opts.agora());
+    this.limitadorPrefetch = new LimitadorDeTaxa(LIMITE_PREFETCH_POR_MINUTO, JANELA_API_MS, () => this.opts.agora());
     this.completos = new CacheDeVisual({
       tetoBytes: this.opts.tetoDeVisuaisMB * 1024 * 1024,
       aoRecusar: (chave, bytes, teto) => {
@@ -646,7 +655,9 @@ export class Servidor {
       // propósito (reaquecimento pós-evento, F4), e é reconhecimento pelo
       // mesmo segredo por processo que já o isenta do 401 logo abaixo.
       if (!ehAquecedor) {
-        const decisaoDeTaxa = this.limitadorApi.registra(ipDoPedido(req, this.opts.confiaNoProxy ?? false));
+        const limitador =
+          url.searchParams.get('origem') === 'prefetch' ? this.limitadorPrefetch : this.limitadorApi;
+        const decisaoDeTaxa = limitador.registra(ipDoPedido(req, this.opts.confiaNoProxy ?? false));
         if (!decisaoDeTaxa.permite) {
           this.registraEventoSeg(req, 429, 'rate-limit-api');
           res.setHeader('Retry-After', String(decisaoDeTaxa.retryAposSegundos));
