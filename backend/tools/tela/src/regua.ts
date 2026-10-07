@@ -11,9 +11,10 @@
 // claro/escuro × 1366/1920/1024/390 (as duas últimas exercitam os `@media` que as
 // resoluções de referência não alcançam): todas as propriedades computadas,
 // `::before`/`::after`, o `:hover` forçado (CDP) em todo elemento com cursor de mão a 1366,
-// os diálogos de filtro (período, período com a grade de dias, lista), os estados
-// forçados a 1366 (página abrindo, visual carregando e visual que falhou — a tela
-// carregada não os mostra) e a tela de login (todo `/api` respondendo 401).
+// os diálogos de filtro (período, período com a grade de dias, lista), a capa com o
+// histórico de versões aberto, os estados forçados a 1366 (página abrindo, visual
+// carregando e visual que falhou — a tela carregada não os mostra) e a tela de login
+// (todo `/api` respondendo 401).
 //
 // Receita: build A e build B, os dois servidos na MESMA origem (o HAR casa host e porta —
 // `vite preview --outDir <build> --port 4173`); `grava` uma vez contra A com a API no ar;
@@ -285,6 +286,20 @@ try {
           const hover = tamanho.width === 1366 ? await hovers(ctx, page) : [];
           escreve(nome, { linhas, hover });
           medicoes++;
+        }
+        if (id === 'capa' && modo === 'mede') {
+          // O histórico de versões abre recolhido: sem o clique, a linha do tempo fica
+          // fora da medição (`display: none` não tem estilo computado que importe).
+          try {
+            await page.getByText('Histórico de versões do painel').click();
+            await page.waitForTimeout(400);
+            const linhas = comHash(await page.evaluate(despeja, 'body'));
+            const hover = tamanho.width === 1366 ? await hovers(ctx, page) : [];
+            escreve(`${nome}-versoes`, { linhas, hover });
+            medicoes++;
+          } catch (e) {
+            erros.push(`${nome} versões: ${String(e).split('\n')[0]}`);
+          }
         }
         if (id === 'agendamento-field') {
           try {

@@ -14481,3 +14481,34 @@ o SSE cortado pela régua reconecta sozinho e marca a hora em tempo variável; a
 de diálogo, agora mais longas, o pegam mais. A pílula não aparece em nenhuma abertura de
 página (só depois de um clique cruzado): medida à parte, com o clique cruzado nos dois
 builds contra a API, nos dois temas e com o hover do remover — idêntica. E2E: 8 de 8.
+
+## #189 — fase 6g: a capa em utilitários; a régua passou a abrir o histórico de versões (07/10)
+
+**O que entrou.** A capa inteira — faixa com o gradiente e a marca, o selo de números
+(que abaixo de 700px vira grade 2×2), os três blocos, a tabela das fontes, o histórico
+de versões e o rodapé — saiu das 280 linhas `.capa*` do `estilo.css` para utilitário
+sobre os tokens. Nada da capa tem altura medida, então nada dela ficou no CSS. Peças
+internas do `Capa.tsx`: `NumeroDoSelo`, `Bloco` e `Lista`. O que o CSS fazia por cascata
+e o componente agora diz: a última linha da tabela e a última versão não levam a borda e
+o recuo de baixo (pelo índice, no lugar de `:last-child`); o `<b>` do corpo dos blocos sai
+na cor de letra da primária (`[&_b]:`); o fio só aparece quando há versão seguinte. O halo
+da versão-marco é `[box-shadow:…]` e não `shadow-[…]`: o utilitário de sombra do Tailwind
+empilha camadas vazias e o estilo computado mudaria sem a tela mudar.
+
+**A régua não via o histórico.** Ele abre recolhido, e o conteúdo de um `<details>`
+fechado não tem caixa: a linha do tempo inteira (pontos, fios, selos de versão) ficava
+fora de toda medição. A régua agora mede a capa também com o histórico aberto (`-versoes`),
+com o hover a 1366.
+
+**Prova.** Os dois CSS gerados, comparados regra a regra: saíram só regras `.capa*` e
+entraram só utilitários que nenhum outro arquivo usava (se usasse, já estariam no build
+anterior) — as outras páginas não mudam por construção, então a régua mediu só a capa
+(`REGUA_PAGINAS=capa`): 26 medições (4 larguras × 2 temas, como abre e com o histórico
+aberto, os estados forçados e o login), 8.618 elementos, todos idênticos; ruído da capa
+(antes × antes): zero. A régua não mede `::marker`: conferido à parte, o marcador das
+listas sai dourado e em disco nos dois temas, como antes.
+
+**De passagem.** Dois arquivos de teste do backend que sobem worker ou servidor
+(`overlay-worker`, `seguranca`) caíram inteiros numa rodada completa e passaram sozinhos
+e na rodada seguinte — a mesma família de teste sensível a carga de `porta`,
+`prioridade-http` e `reaquecimento`.
