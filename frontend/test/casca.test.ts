@@ -104,6 +104,47 @@ test('o @theme dá nome aos papéis do :root, sem copiar valor', () => {
   assert.deepEqual(semUtilitario, [], 'papel do :root sem utilitário no @theme inline');
 });
 
+test('nenhuma classe do CSS tem nome de utilitário do Tailwind', () => {
+  // Uma classe solta (fora de camada) chamada `.grid` vence o utilitário `grid` em todo
+  // elemento que o usa: o calendário do KPI saiu com 10px de gap em vez de 2px (ACHADOS
+  // #184), e a `.grid` nem tinha mais uso próprio.
+  const utilitarios = [
+    'grid',
+    'flex',
+    'block',
+    'inline',
+    'hidden',
+    'contents',
+    'table',
+    'relative',
+    'absolute',
+    'fixed',
+    'sticky',
+    'static',
+    'truncate',
+    'container',
+    'border',
+    'rounded',
+    'shadow',
+    'italic',
+    'underline',
+    'uppercase',
+    'lowercase',
+    'capitalize',
+    'visible',
+    'invisible',
+    'grow',
+    'shrink',
+    'transition',
+    'outline',
+    'ring',
+    'blur',
+    'sr-only',
+  ];
+  const achadas = utilitarios.filter((u) => new RegExp(`\\.${u}(?![\\w-])`).test(css));
+  assert.deepEqual(achadas, [], 'classe do estilo.css com nome de utilitário do Tailwind');
+});
+
 test('todo estado que persiste tem botão que o desliga', () => {
   // Persistir no localStorage sem controle visível TRANCA o usuário: ele recarrega e
   // o estado continua lá. Os dois já estiveram órfãos ao mesmo tempo.

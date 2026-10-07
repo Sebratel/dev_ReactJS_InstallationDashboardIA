@@ -188,7 +188,17 @@ inativas. Conferido no CSS gerado — `.bg-pbi-primary` em `@layer utilities`,
 `button,select,input` em profundidade 0.
 
 **Padrão:** reset de elemento em `@layer base`; classe de componente
-(`.primario`, `.cartao`) fica solta de propósito, para continuar vencendo utilidade.
+(`.cartao`, `.aba`) fica solta de propósito, para continuar vencendo utilidade.
+
+**O avesso da mesma regra: classe solta com nome de utilitário.** Uma `.grid` no
+`estilo.css`, sem uso próprio, vencia o utilitário `grid` em todo elemento que o usava
+— o calendário do KPI saiu com 10px de gap em vez de 2px (fase 6c, ACHADOS #184). O
+`casca.test.ts` agora barra classe do CSS com nome de utilitário do Tailwind.
+
+**Fase 6 (híbrido):** peças simples e repetidas viram utilitário sobre os tokens, com
+`cn` (`ui/Selo`, `ui/Botao`, `Erro`/`Aviso`, `ui/IdVisual`, o cabeçalho do `Cartao`,
+`visuais/kpi/partes`); a conta de altura, a grade, os SVG e as animações ficam aqui.
+Cada passo é provado por `npm run tela:regua` (estilo computado antes × depois).
 
 **Nenhum hexadecimal fora do `:root`.** Uma exceção, consciente e documentada:
 `frontend/src/grafico-forma.ts`, porque cor de série vai para atributo SVG (`fill`,

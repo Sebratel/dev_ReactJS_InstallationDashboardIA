@@ -14331,3 +14331,40 @@ em estados diferentes — acusou 7 mil diferenças falsas; compara-se par a par,
 (2) Parar o `vite preview` em segundo plano matou a shell e não o processo: o "depois" foi
 servido com o build antigo até se liberar a porta 4173 à mão — conferir o nome do pacote
 servido antes de medir.
+
+## #184 — fase 6c: a régua pegou uma classe do CSS sequestrando um utilitário, e virou ferramenta (06/10)
+
+**O que entrou.** O cabeçalho do `Cartao` (faixa, título, subtítulo, ações e os controles
+que cada visual põe nelas), `ui/IdVisual` e `visuais/kpi/partes` (moldura, nome, valor,
+linha de origem/filtros), com `Sparkline`, `Bullet` e `Calendario`; 237 linhas saíram do
+`estilo.css`. A moldura `.cartao`, as alturas `.v-*` e `.cartao-corpo` ficaram: são a
+conta de altura, e `useAlturaMedida` procura a classe. O `varre` passou a achar visuais
+por `[data-visual]`/`[data-id-visual]`.
+
+**O defeito que a régua achou.** O calendário do KPI (`diario-instalacao`) saiu com 10px
+entre os dias em vez de 2px, e os dias encolheram de 29,5 para 22,6px — o que mudava a
+altura da faixa de indicadores inteira. Causa: o `estilo.css` tinha uma classe `.grid`
+solta (`gap: var(--gap)`, e `.grid > * { min-width: 0 }`), com o mesmo nome do utilitário
+`grid` do Tailwind. Classe fora de camada vence utilitário (`DESIGN-SYSTEM.md` § 1.2): o
+`gap-[2px]` perdia. A `.grid` não tinha mais uso próprio — as `.linha-*` e a
+`.faixa-principal` que a usavam já tinham morrido —, então o bloco saiu, e o
+`KpiGridSection` e o esqueleto, que dependiam por acaso do `min-width: 0` dos filhos, o
+declaram (`*:min-w-0 *:min-h-0`). O `casca.test.ts` barra classe do CSS com nome de
+utilitário (a mutação falha).
+
+**Prova:** 122 medições (com a tela de login), 226.744 elementos idênticos à 6b, exceto
+o ruído medido — a altura do cartão de tabela das páginas `l-*` a 390px, que troca nos
+dois sentidos, e o selo "ao vivo" da capa, que uma segunda medição da 6b também não tem.
+
+**A régua virou ferramenta** (`npm run tela:regua`, `8044190`), com o que esta rodada
+ensinou:
+- **um contexto de navegador por largura sobrescrevia o HAR** (o Playwright escreve ao
+  fechar o contexto): sobrava só a última largura, 15 MB em vez de 63. A medição da 6b
+  (#183) usou esse HAR dos dois lados — a comparação foi justa, mas pedidos de outras
+  larguras podem ter sido abortados nos dois. Agora é um contexto só, e a medição conta
+  os pedidos fora do HAR;
+- **a API reiniciou no meio de uma gravação** (`docker restart` às 17:59, de fora desta
+  sessão; as sessões são em memória) e tudo depois virou 401, gravado em silêncio. A
+  gravação agora falha com qualquer 401 ou 429;
+- equivalências conhecidas, com teste: `rounded-full` × `999px`, e `background-position`
+  quando não há imagem de fundo.
