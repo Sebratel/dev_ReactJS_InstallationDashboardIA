@@ -3,9 +3,9 @@
 // checar, para não inventar hexadecimal solto (regra do CLAUDE.md, §Design System).
 //
 // A lista vem de grep em `estilo.css` cruzado com os papéis que o CLAUDE.md já
-// documenta com hex e razão medidos — cada linha abaixo corresponde a uma regra real do
-// tela (`.cartao-topo`, os tons de `ui/Selo.tsx`, `body`, `.marca-nome`, `.btn-icone`,
-// `.marca-sub` etc.), não a um par hipotético.
+// documenta com hex e razão medidos — cada linha abaixo corresponde a um par real da
+// tela (o cabeçalho do `Cartao`, os tons de `ui/Selo.tsx`, `body`, a marca do topo,
+// `ui/BotaoDeIcone` etc.), não a um par hipotético.
 
 export const PISO_AA = 4.5;
 

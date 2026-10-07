@@ -14400,3 +14400,36 @@ iguais) e o selo "ao vivo" num diálogo.
 `reaquecimento` enquanto um `vite build` rodava junto; sozinhos, os 31 testes passam.
 A API local estava degradada (os três grupos de atualização falhando seguido, servindo o
 snapshot) — ligada fora desta sessão; não mexi.
+
+## #186 — fase 6e: a casca em utilitários; a régua aprendeu que borda sem largura não desenha (07/10)
+
+**O que entrou.** O topo (marca, título da tela, subtítulo e o aviso de dado velho), as
+abas, o rodapé, o banner de saúde e a tela de login viraram utilitário em `AppShell`,
+`NavDeTelas` e `Login`; as ações do topo e o fechar do diálogo de filtro usam
+`ui/BotaoDeIcone` (`tom="primaria"` no diálogo: sem hover, como a regra
+`.dialogo-topo .btn-icone` fazia ao vencer `.btn-icone:hover` por vir depois no arquivo).
+As variantes de largura são `[@media(max-width:900px)]`, e não `max-[900px]`, que o
+Tailwind traduz por `width < 900px` e mudaria a tela em exatamente 900px. A aba ativa não
+leva o hover (antes `.aba.ativo` vencia `.aba:hover`). Ficaram no CSS a `.nav-telas` (a
+altura dela é medida em `--h-nav`), o selo "ao vivo" e o giro do "Atualizar" (animações).
+
+**CSS duplicado e morto.** `.cabecalho-titulo`, `.cabecalho-sub` e `.cabecalho-sub-aviso`
+estavam declarados DUAS vezes, com valores diferentes (o subtítulo era 0,68rem na casca
+e 0,72rem no bloco "cabeçalho", e o aviso vermelho num, dourado no outro); valia o que
+vinha depois, e é ele que o componente reproduz. Saíram sem uso: `.cabecalho`,
+`.carimbo-cabecalho` (e `.rot`/`.val`), `.selo-realtime`, `.ponto-pulso` e o `@keyframes
+pulso`.
+
+**Ferramentas.** A régua espera o login pelo texto, e o E2E acha as abas pelo papel
+(`navigation` "Telas do relatório" → `button`), não pela classe. Nova equivalência, com
+teste: cor e estilo de um lado de borda com largura zero dos dois lados não contam
+(`border: 0` deixa `none`, `border-0` deixa `solid`; e `border-b border-pbi-borda` pinta
+a cor nos quatro lados), inclusive pelos nomes lógicos (`border-block-start-*`).
+
+**Prova:** 234 medições, 269.064 elementos; idênticos exceto 60 — a altura do cartão de
+tabela das páginas `l-*` e o que a segue (área, rodapé), o ruído de #184/#185. As abas
+com `:hover` forçado, o diálogo e o login: idênticos.
+
+**Visto de passagem, sem mexer:** a 390px o selo "ao vivo" continua visível com o título
+escondido e fica por cima dos botões do topo. A regra de 640px só escondia título e
+subtítulo, nos dois builds — é anterior a esta fase.

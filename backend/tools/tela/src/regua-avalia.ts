@@ -46,6 +46,14 @@ function equivalente(prop: string, a: string | undefined, b: string | undefined)
   return /radius$/.test(prop) && a === '999px' && /e\+\d+px$/.test(b ?? '');
 }
 
+/** Os lados lógicos no modo de escrita da tela (horizontal, da esquerda para a direita). */
+const LADO_FISICO: Record<string, string> = {
+  'block-start': 'top',
+  'block-end': 'bottom',
+  'inline-start': 'left',
+  'inline-end': 'right',
+};
+
 /** As propriedades que diferem entre dois estilos; com `valores`, "prop: a → b". */
 export function difereEm(a: string, b: string, valores = false): string[] {
   if (a === b) return [];
@@ -60,6 +68,12 @@ export function difereEm(a: string, b: string, valores = false): string[] {
     const y = pb.get(k);
     if (x === y || equivalente(k, x, y)) continue;
     if (semImagem && k.startsWith('background-position')) continue;
+    // Lado de borda sem largura dos dois lados não desenha nada, seja qual for o estilo
+    // ou a cor: `border: 0` deixa o estilo `none` e `border-0` deixa `solid`; e
+    // `border-b border-pbi-borda` pinta a cor nos quatro lados, onde o CSS pintava um.
+    const lado = /^border-([a-z-]+)-(style|color)$/.exec(k)?.[1];
+    const largura = lado && `border-${LADO_FISICO[lado] ?? lado}-width`;
+    if (largura && pa.get(largura) === '0px' && pb.get(largura) === '0px') continue;
     out.push(valores ? `${k}: ${x} → ${y}` : k);
   }
   return out;

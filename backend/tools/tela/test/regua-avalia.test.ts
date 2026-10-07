@@ -38,6 +38,18 @@ test('posição de fundo só conta quando há imagem de fundo', () => {
   assert.deepEqual(difereEm(comImagem('0px 0px'), comImagem('0% 0%')), ['background-position']);
 });
 
+test('estilo e cor de borda sem largura não contam, com os nomes lógicos', () => {
+  const borda = (estilo: string, cor: string, largura: string) =>
+    `border-top-style:${estilo};border-block-start-style:${estilo};` +
+    `border-top-color:${cor};border-block-start-color:${cor};border-top-width:${largura}`;
+  assert.deepEqual(difereEm(borda('none', 'red', '0px'), borda('solid', 'blue', '0px')), []);
+  assert.deepEqual(difereEm(borda('none', 'red', '0px'), borda('solid', 'red', '1px')), [
+    'border-top-style',
+    'border-block-start-style',
+    'border-top-width',
+  ]);
+});
+
 test('a classe pode mudar; o elemento é o mesmo pela posição na árvore', () => {
   const a: Medicao = { linhas: [['body/span0', 'span.selo', 'base', '', '']], hover: [] };
   const b: Medicao = { linhas: [['body/span0', 'span.inline-flex', 'base', '', '']], hover: [] };

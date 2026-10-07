@@ -137,7 +137,11 @@ test('limpo=1 abre sem filtro nenhum e continua dizendo limpo', { skip: pula }, 
 test('trocar de aba SUBSTITUI; sem página na URL, abre uma', { skip: pula }, async () => {
   await abre(`${BASE}/?pagina=${PAGINA}`);
   const antes = await historico();
-  await page.locator('.nav-telas .aba').filter({ hasText: /vis[aã]o geral/i }).first().click();
+  await page
+    .getByRole('navigation', { name: 'Telas do relatório' })
+    .getByRole('button', { name: /vis[aã]o geral/i })
+    .first()
+    .click();
   await page.waitForSelector('[data-selo]', { timeout: 90_000 });
   assert.match(busca(), /pagina=visao-geral/);
   assert.equal(await historico(), antes);

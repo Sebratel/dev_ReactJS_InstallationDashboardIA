@@ -401,7 +401,8 @@ try {
       await page.addInitScript((t: string) => localStorage.setItem('sebratel-tema-escuro', t), tema);
       await page.goto(`${BASE}/`, { waitUntil: 'domcontentloaded' });
       await page
-        .waitForSelector('.tela-login', { timeout: 30000 })
+        .getByText('Entre com sua conta corporativa')
+        .waitFor({ timeout: 30000 })
         .catch(() => erros.push(`login ${tema}: não apareceu`));
       await page.waitForTimeout(800);
       escreve(`1366-${tema}-login`, { linhas: comHash(await page.evaluate(despeja, 'body')), hover: [] });

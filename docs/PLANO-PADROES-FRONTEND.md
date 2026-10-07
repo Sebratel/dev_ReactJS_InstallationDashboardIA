@@ -125,7 +125,7 @@ O plano original:
   `npm test` da raiz continua chamando todos.
 - E2E com Playwright, aproveitando `backend/tools/tela`.
 
-## Fase 6 — design system (EM ANDAMENTO: 6a a 6d feitas, 07/10/2026)
+## Fase 6 — design system (EM ANDAMENTO: 6a a 6e feitas, 07/10/2026)
 
 **Escopo decidido com o Erick: híbrido** (ACHADOS #183). Peças simples e repetidas viram
 utilitário com token e `cn`; a conta de altura, a grade, os SVG, as animações e o layout
@@ -140,8 +140,11 @@ claro/escuro, 1366/1920/1024/390, `:hover` forçado), sem diferença além do ru
 - 6d (07/10): `ui/Estado` (esqueleto, mensagem de vazio/"não carregou"); só o brilho
   animado ficou no CSS. A régua passou a forçar os estados que a tela carregada não
   mostra — página abrindo, visual carregando e visual que falhou (ACHADOS #185).
-- Próximos: casca (topo, abas, botões de ícone); barra de filtros, chips e diálogo;
-  capa.
+- 6e (07/10): a casca — topo, marca, título da tela, abas, rodapé, banner de saúde,
+  login — e `ui/BotaoDeIcone`; ficaram no CSS a `.nav-telas` (altura medida), o selo
+  "ao vivo" e o giro (animações). Saiu CSS morto: `.cabecalho`, `.carimbo-cabecalho`,
+  `.selo-realtime`, `.ponto-pulso` (ACHADOS #186).
+- Próximos: barra de filtros, chips e diálogo; capa.
 
 O plano original:
 

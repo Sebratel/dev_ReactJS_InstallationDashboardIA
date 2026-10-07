@@ -188,7 +188,7 @@ inativas. Conferido no CSS gerado — `.bg-pbi-primary` em `@layer utilities`,
 `button,select,input` em profundidade 0.
 
 **Padrão:** reset de elemento em `@layer base`; classe de componente
-(`.cartao`, `.aba`) fica solta de propósito, para continuar vencendo utilidade.
+(`.cartao`, `.nav-telas`) fica solta de propósito, para continuar vencendo utilidade.
 
 **O avesso da mesma regra: classe solta com nome de utilitário.** Uma `.grid` no
 `estilo.css`, sem uso próprio, vencia o utilitário `grid` em todo elemento que o usava
@@ -197,7 +197,7 @@ inativas. Conferido no CSS gerado — `.bg-pbi-primary` em `@layer utilities`,
 
 **Fase 6 (híbrido):** peças simples e repetidas viram utilitário sobre os tokens, com
 `cn` (`ui/Selo`, `ui/Botao`, `Erro`/`Aviso`, `ui/IdVisual`, o cabeçalho do `Cartao`,
-`visuais/kpi/partes`, os estados de `ui/Estado`); a conta de altura, a grade, os SVG e
+`visuais/kpi/partes`, os estados de `ui/Estado`, a casca e `ui/BotaoDeIcone`); a conta de altura, a grade, os SVG e
 as animações (o brilho do esqueleto, `.brilho`) ficam aqui.
 Cada passo é provado por `npm run tela:regua` (estilo computado antes × depois).
 
@@ -351,7 +351,7 @@ navegador em 27/08/2026, igual nas três resoluções de referência:
 
 | termo | vale | como se sabe |
 |---|---|---|
-| `--h-topbar` | 52px | altura fixa da `.topo`, declarada |
+| `--h-topbar` | 52px | altura fixa do topo (`header` do `AppShell`), declarada |
 | `--h-nav` | **74px** | MEDIDO: as 14 telas quebram em duas linhas |
 | `--h-filtros` | **71px** | MEDIDO: 110px na MANUTENÇÃO INICIAL a 1366×768, que tem 13 controles |
 | resto | **60px** | rodapé 32 + padding da `.area` 28 |
@@ -625,7 +625,7 @@ que os tinha (`HeaderSebratel.tsx`) nunca chegou a ser usado pelo `App.tsx`. Que
 caísse em conferência ou no escuro ficava lá, e no caso do tema o estado nem sequer
 pintava a página (§ 2).
 
-Hoje vivem no `grupo-acoes-cabecalho` do `AppShell`, com `aria-pressed` e `title` que
+Hoje vivem em `AcoesDoCabecalho`, no topo do `AppShell`, com `aria-pressed` e `title` que
 diz o estado atual **e** o que o clique faz. Regra que fica: **estado que persiste
 precisa de controle visível na mesma tela**; se você adicionar um, o botão faz parte
 da entrega, não do polimento.
@@ -661,7 +661,7 @@ troque só aquele bloco do `AppShell.tsx`.
     um clique — ver § 4.
 11b. **Abra a página e confira o recorte inicial.** Se ela abre pré-filtrada, tem de
     haver na barra um controle que MUDA aquele recorte, não só um que o apaga.
-12b. **Meça as faixas de cromo (`.topo`, `.nav-telas`, `.filtros`, `.rodape`) contra
+12b. **Meça as faixas de cromo (topo, `.nav-telas`, `.filtros`, rodapé) contra
     os tokens.** Faixa que quebra em duas linhas e token que não acompanha é o defeito
     mais caro deste arquivo, e já apareceu três vezes.
 12. **Meça a invariante das duas faixas** em 1440×900 e 1920×1080: `gráfico + tabela
