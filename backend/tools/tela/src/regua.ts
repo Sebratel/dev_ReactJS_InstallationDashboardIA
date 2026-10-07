@@ -11,9 +11,9 @@
 // claro/escuro × 1366/1920/1024/390 (as duas últimas exercitam os `@media` que as
 // resoluções de referência não alcançam): todas as propriedades computadas,
 // `::before`/`::after`, o `:hover` forçado (CDP) em todo elemento com cursor de mão a 1366,
-// o diálogo de filtro aberto, os estados forçados a 1366 (página abrindo, visual
-// carregando e visual que falhou — a tela carregada não os mostra) e a tela de login
-// (todo `/api` respondendo 401).
+// os diálogos de filtro (período, período com a grade de dias, lista), os estados
+// forçados a 1366 (página abrindo, visual carregando e visual que falhou — a tela
+// carregada não os mostra) e a tela de login (todo `/api` respondendo 401).
 //
 // Receita: build A e build B, os dois servidos na MESMA origem (o HAR casa host e porta —
 // `vite preview --outDir <build> --port 4173`); `grava` uma vez contra A com a API no ar;
@@ -288,13 +288,32 @@ try {
         }
         if (id === 'agendamento-field') {
           try {
-            await page.locator('.filtro-botao').first().click();
-            await page.waitForSelector('.dialogo', { timeout: 10000 });
-            await page.waitForTimeout(400);
-            if (modo === 'mede') {
-              escreve(`${nome}-dialogo`, { linhas: comHash(await page.evaluate(despeja, 'body')), hover: [] });
+            // Os diálogos de filtro, com o `:hover` forçado a 1366: o de período como
+            // abre, o mesmo com um mês aberto (a grade de dias) e o de lista (busca,
+            // opções, rodapé). Os ganchos são de acessibilidade, que os dois builds têm.
+            const dialogo = async (sufixo: string) => {
+              await page.waitForTimeout(400);
+              if (modo !== 'mede') return;
+              const linhas = comHash(await page.evaluate(despeja, 'body'));
+              const hover = tamanho.width === 1366 ? await hovers(ctx, page) : [];
+              escreve(`${nome}-${sufixo}`, { linhas, hover });
               medicoes++;
-            }
+            };
+            const gatilhos = page.locator('button[aria-haspopup="dialog"]');
+            await gatilhos.first().click();
+            await page.getByRole('dialog').waitFor({ timeout: 10000 });
+            await dialogo('dialogo');
+            await page.evaluate(() => {
+              const mes = [...document.querySelectorAll('[role="dialog"] label')].find((l) =>
+                /^(jan|fev|mar|abr|mai|jun|jul|ago|set|out|nov|dez)$/.test(l.textContent!.trim()),
+              );
+              (mes?.previousElementSibling as HTMLElement | null)?.click();
+            });
+            await dialogo('dialogo-dias');
+            await page.getByRole('dialog').getByTitle('Fechar').click();
+            await gatilhos.nth(1).click();
+            await page.locator('[role="dialog"] input[type="checkbox"]').first().waitFor({ timeout: 10000 });
+            await dialogo('dialogo-lista');
           } catch (e) {
             erros.push(`${nome} diálogo: ${String(e).split('\n')[0]}`);
           }

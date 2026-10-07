@@ -14453,3 +14453,31 @@ posições são as mesmas de antes.
 **Régua** (`visao-geral` e `l-inst`, as 4 larguras, os estados): só 390px tem estilo
 diferente (44 elementos, os da marca, do selo e do botão); 1024, 1366 e 1920 idênticos,
 com um elemento a mais em cada medição — o `span` do texto do "Atualizar".
+
+## #188 — fase 6f: os filtros em componentes; régua e E2E sem classe de estilo (07/10)
+
+**O que entrou.** `filtros/GatilhoDoFiltro` (o nome em cima e o botão com resumo e
+contador — `Segmentacao` e `SegmentacaoDataHierarquia` repetiam os dois),
+`ui/Dialogo` (fundo, faixa bordô com o fechar, corpo que rola, rodapé; também repetido
+nos dois), `ui/Nota` (a nota pequena dos filtros, da paginação e da tabela), os chips
+(agora `role="group"` com o nome do filtro e `aria-pressed` em cada chip), a pílula de
+filtro sem segmentação e a árvore de datas. Saíram 350 linhas do CSS; ficou a `.filtros`,
+que é sticky e tem a altura medida (`--h-filtros`). Detalhes que o CSS fazia por cascata e
+o componente diz: o chip marcado e o dia marcado não levam o hover (a regra deles vinha
+depois); o botão de remover da pílula tem `line-height: 0`; a caixa do dia some com `clip`
+e não com o `sr-only` do Tailwind, que usa `clip-path`.
+
+**Ganchos das ferramentas.** A régua e o E2E clicavam em `.filtro-botao`, `.dialogo`,
+`.chip`, `.arvore-*`. Agora: `button[aria-haspopup="dialog"]`, `role="dialog"`, o
+`group` do filtro de chips, `data-nivel="mes"`/`"dias"` na árvore e `aria-expanded` na
+seta. A régua passou a medir, com `:hover` forçado a 1366, três diálogos em vez de um: o
+de período como abre, o mesmo com um mês aberto (a grade de dias) e o de lista (busca,
+opções, rodapé). Antes só o primeiro era medido, e sem hover.
+
+**Prova:** 250 medições, 318.401 elementos; os filtros, chips, diálogos (com hover) e a
+árvore, idênticos. As 54 diferenças são ruído: a altura do cartão de tabela das `l-*`
+(#184) e o selo "ao vivo", que aparece num lado e não no outro nas medições de diálogo —
+o SSE cortado pela régua reconecta sozinho e marca a hora em tempo variável; as medições
+de diálogo, agora mais longas, o pegam mais. A pílula não aparece em nenhuma abertura de
+página (só depois de um clique cruzado): medida à parte, com o clique cruzado nos dois
+builds contra a API, nos dois temas e com o hover do remover — idêntica. E2E: 8 de 8.

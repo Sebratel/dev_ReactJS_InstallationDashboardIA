@@ -95,11 +95,12 @@ test('abre no filtro padrão, com a URL limpa', { skip: pula }, async () => {
 test('chip: entra na URL e SUBSTITUI no histórico; limpar volta à URL limpa', { skip: pula }, async () => {
   await abre(`${BASE}/?pagina=${PAGINA}`);
   const antes = await historico();
-  await page.locator('.chips-lista .chip:not(.chip-limpar)').first().click();
+  const chips = page.getByRole('group', { name: /tipo de protocolo/i });
+  await chips.getByRole('button').first().click();
   await page.waitForTimeout(1500);
   assert.match(busca(), /TIPO DE PROTOCOLO/);
   assert.equal(await historico(), antes);
-  await page.locator('.chip-limpar').click();
+  await chips.getByRole('button', { name: 'limpar' }).click();
   await page.waitForTimeout(1500);
   assert.equal(busca(), `?pagina=${PAGINA}`);
 });
@@ -151,20 +152,24 @@ test('trocar de aba SUBSTITUI; sem página na URL, abre uma', { skip: pula }, as
 
 test('árvore de período: um dia de mês não marcado manda DIA e MÊS, e os dois ficam', { skip: pula }, async () => {
   await abre(`${BASE}/?pagina=${PAGINA}`);
-  await page.locator('.filtro-botao').first().click();
-  await page.waitForSelector('.dialogo .arvore-nivel', { timeout: 30_000 });
+  await page.locator('button[aria-haspopup="dialog"]').first().click();
+  await page.waitForSelector('[role="dialog"] [data-nivel="mes"]', { timeout: 30_000 });
   // As setas medem 16×8 px e o Playwright as acha "invisíveis": o clique vai pelo DOM.
+  // Os ganchos são `data-nivel` e `aria-expanded`, não classe de estilo.
   await page.evaluate(() => {
-    const meses = [...document.querySelectorAll('.dialogo .arvore-nivel')];
-    const naoMarcado = meses.find((m) => !(m.querySelector('.arvore-rotulo input') as HTMLInputElement).checked);
-    (naoMarcado!.querySelector('.arvore-seta') as HTMLElement).click();
+    const meses = [...document.querySelectorAll('[role="dialog"] [data-nivel="mes"]')];
+    const caixa = (m: Element) => m.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    const naoMarcado = meses.find((m) => !caixa(m).checked);
+    (naoMarcado!.querySelector('button[aria-expanded]') as HTMLElement).click();
   });
   await page.waitForTimeout(300);
-  await page.evaluate(() => (document.querySelector('.dialogo .arvore-dias input') as HTMLElement).click());
+  await page.evaluate(() =>
+    (document.querySelector('[role="dialog"] [data-nivel="dias"] input') as HTMLElement).click(),
+  );
   await page.waitForTimeout(800);
   assert.match(busca(), /"nivel":"Dia"/);
   assert.match(busca(), /"nivel":"Mês"/);
-  await page.locator('.dialogo').getByRole('button', { name: 'Aplicar' }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Aplicar' }).click();
 });
 
 test('a busca da tabela vira pedido, e limpar volta à janela sem busca', { skip: pula }, async () => {
