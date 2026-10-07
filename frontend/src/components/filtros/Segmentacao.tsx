@@ -6,7 +6,7 @@
 // interna rolando dentro dele o usuário empilha três recortes para marcar um item.
 // A regra do padrão: gatilho dentro de área com `overflow`, ou lista com mais de ~10
 // itens, pede diálogo centralizado com portal no `body`. Nada recorta, cabe grade de
-// 2 colunas, e há busca e rodapé de confirmação.
+// 2 colunas, e há busca e rodapé de confirmação (`ui/Dialogo`).
 //
 // **CARREGA AO MONTAR, NÃO AO CLICAR.** Carregar no clique (`abre()`) fazia a pessoa
 // pagar a espera do fetch bem no primeiro clique de cada filtro — e como cada
@@ -21,17 +21,17 @@
 
 import { useState } from 'react';
 import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
-import { createPortal } from 'react-dom';
 import {
   type Segmentacao as SegmentacaoSpec,
   type TipoDeValor,
   type Valor,
 } from '../../services/dashboardService.ts';
 import { formata, inteiro } from '../../utils/formato.ts';
-import { X, ChevronDown } from 'lucide-react';
 import { Erro } from '../ui/Cartao.tsx';
 import { Botao } from '../ui/Botao.tsx';
-import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
+import { AcoesDoDialogo, Dialogo } from '../ui/Dialogo.tsx';
+import { Nota } from '../ui/Nota.tsx';
+import { GatilhoDoFiltro } from './GatilhoDoFiltro.tsx';
 
 export function Segmentacao(props: {
   pagina: string;
@@ -77,116 +77,96 @@ export function Segmentacao(props: {
         : `${props.selecao.length} selecionados`;
 
   return (
-    <div className="filtro">
-      <span className="filtro-rotulo">{props.spec.rotulo}</span>
-      <button
-        className={`filtro-botao${props.selecao.length ? ' marcado' : ''}`}
-        onClick={() => setAberto(true)}
-        aria-haspopup="dialog"
-        aria-expanded={aberto}
-        title={props.selecao.length ? resumo : `Escolher ${props.spec.rotulo}`}
-      >
-        <span className="filtro-resumo">{resumo}</span>
-        {props.selecao.length > 0 && <span className="filtro-conta">{props.selecao.length}</span>}
-        <ChevronDown size={12} />
-      </button>
+    <GatilhoDoFiltro
+      rotulo={props.spec.rotulo}
+      resumo={resumo}
+      marcados={props.selecao.length}
+      aberto={aberto}
+      aoClicar={() => setAberto(true)}
+      title={props.selecao.length ? resumo : `Escolher ${props.spec.rotulo}`}
+    >
+      {aberto && (
+        <Dialogo
+          titulo={props.spec.rotulo}
+          aoFechar={() => setAberto(false)}
+          rodape={
+            <>
+              <Nota>
+                {inteiro(visiveis.length)} de {inteiro(opcoes?.length ?? 0)}
+                {cortado ? ' · limite atingido' : ''}
+              </Nota>
+              <AcoesDoDialogo>
+                <Botao
+                  variante="secundario"
+                  onClick={() =>
+                    props.aoMudar([...new Set([...props.selecao, ...visiveis.map((o) => o.valor)])])
+                  }
+                  disabled={visiveis.length === 0}
+                >
+                  Todos
+                </Botao>
+                <Botao
+                  variante="secundario"
+                  onClick={() => props.aoMudar([])}
+                  disabled={props.selecao.length === 0}
+                >
+                  Limpar
+                </Botao>
+                <Botao variante="primario" onClick={() => setAberto(false)}>
+                  Aplicar
+                </Botao>
+              </AcoesDoDialogo>
+            </>
+          }
+        >
+          {/* Os três estados, também aqui: uma lista em branco sem explicação parece
+              "não há valores" quando na verdade a busca ainda nem voltou. */}
+          {carregando && <Nota>Carregando valores…</Nota>}
+          {erro && <Erro>{erro}</Erro>}
 
-      {aberto &&
-        createPortal(
-          <div
-            className="fundo-dialogo"
-            role="presentation"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setAberto(false);
-            }}
-          >
-            <div className="dialogo" role="dialog" aria-modal="true" aria-label={props.spec.rotulo}>
-              <div className="dialogo-topo">
-                <h3>{props.spec.rotulo}</h3>
-                <BotaoDeIcone tom="primaria" onClick={() => setAberto(false)} title="Fechar">
-                  <X size={13} />
-                </BotaoDeIcone>
-              </div>
-
-              <div className="dialogo-corpo">
-                {/* Os três estados, também aqui: uma lista em branco sem explicação
-                    parece "não há valores" quando na verdade a busca ainda nem voltou. */}
-                {carregando && <span className="filtro-nota">Carregando valores…</span>}
-                {erro && <Erro>{erro}</Erro>}
-
-                {opcoes && (
-                  <>
-                    <input
-                      className="filtro-busca"
-                      placeholder="Filtrar opções…"
-                      value={busca}
-                      onChange={(e) => setBusca(e.target.value)}
-                      autoFocus
-                    />
-                    {visiveis.length === 0 ? (
-                      <span className="filtro-nota">Nenhum resultado para esta busca.</span>
-                    ) : (
-                      <div className="filtro-lista">
-                        {visiveis.map((o, i) => {
-                          const marcado = props.selecao.some((x) => mesmoValor(x, o.valor));
-                          const f = formata(o.valor, o.tipo);
-                          return (
-                            <label
-                              key={i}
-                              className="filtro-opcao"
-                              onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={marcado}
-                                onChange={() => alterna(o.valor)}
-                              />
-                              <span className={o.valor === null ? 'vazio' : ''}>
-                                {o.valor === null ? '(vazio)' : f.texto}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="dialogo-rodape">
-                <span className="filtro-nota">
-                  {inteiro(visiveis.length)} de {inteiro(opcoes?.length ?? 0)}
-                  {cortado ? ' · limite atingido' : ''}
-                </span>
-                <div className="filtro-botoes-acao">
-                  <Botao
-                    variante="secundario"
-                    onClick={() =>
-                      props.aoMudar([
-                        ...new Set([...props.selecao, ...visiveis.map((o) => o.valor)]),
-                      ])
-                    }
-                    disabled={visiveis.length === 0}
-                  >
-                    Todos
-                  </Botao>
-                  <Botao
-                    variante="secundario"
-                    onClick={() => props.aoMudar([])}
-                    disabled={props.selecao.length === 0}
-                  >
-                    Limpar
-                  </Botao>
-                  <Botao variante="primario" onClick={() => setAberto(false)}>
-                    Aplicar
-                  </Botao>
+          {opcoes && (
+            <>
+              <input
+                className="w-full"
+                placeholder="Filtrar opções…"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                autoFocus
+              />
+              {visiveis.length === 0 ? (
+                <Nota>Nenhum resultado para esta busca.</Nota>
+              ) : (
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-[2px]">
+                  {visiveis.map((o, i) => {
+                    const marcado = props.selecao.some((x) => mesmoValor(x, o.valor));
+                    const f = formata(o.valor, o.tipo);
+                    return (
+                      <label
+                        key={i}
+                        className="flex cursor-pointer items-center gap-[8px] rounded-[2px] px-[8px] py-[5px] text-[0.74rem] hover:bg-pbi-primary-soft"
+                        onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
+                      >
+                        {/* `accent-color` pinta o PREENCHIMENTO da caixa: a primária é
+                            fundo, não letra — o navegador escolhe o visto com contraste. */}
+                        <input
+                          type="checkbox"
+                          className="w-auto p-0 accent-pbi-primary"
+                          checked={marcado}
+                          onChange={() => alterna(o.valor)}
+                        />
+                        <span className={o.valor === null ? 'text-pbi-neutro italic' : ''}>
+                          {o.valor === null ? '(vazio)' : f.texto}
+                        </span>
+                      </label>
+                    );
+                  })}
                 </div>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-    </div>
+              )}
+            </>
+          )}
+        </Dialogo>
+      )}
+    </GatilhoDoFiltro>
   );
 }
 

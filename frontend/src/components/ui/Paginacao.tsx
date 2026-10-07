@@ -10,6 +10,7 @@ import {
   type Janela,
 } from '../../utils/janela.ts';
 import { Botao } from './Botao.tsx';
+import { Nota } from './Nota.tsx';
 
 export function Paginacao(props: {
   janela: Janela;
@@ -25,7 +26,7 @@ export function Paginacao(props: {
 
   return (
     <div className="paginacao">
-      <span className="filtro-nota">{rotuloDaJanela(j, inteiro)}</span>
+      <Nota>{rotuloDaJanela(j, inteiro)}</Nota>
       <span className="espaco" />
       <Botao
         variante="secundario"

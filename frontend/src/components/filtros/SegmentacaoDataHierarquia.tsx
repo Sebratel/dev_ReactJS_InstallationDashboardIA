@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
 import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
-import { createPortal } from 'react-dom';
-import { ChevronDown, X } from 'lucide-react';
 import { type FiltroDaTela, type Valor } from '../../services/dashboardService.ts';
 import {
   limpaTudo,
@@ -13,7 +11,9 @@ import {
 import { Erro } from '../ui/Cartao.tsx';
 import { ArvoreDeDatas } from './ArvoreDeDatas.tsx';
 import { Botao } from '../ui/Botao.tsx';
-import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
+import { AcoesDoDialogo, Dialogo } from '../ui/Dialogo.tsx';
+import { Nota } from '../ui/Nota.tsx';
+import { GatilhoDoFiltro } from './GatilhoDoFiltro.tsx';
 
 /**
  * O filtro de data em árvore — Ano > Mês > Dia — no lugar de dois seletores planos.
@@ -97,82 +97,59 @@ export function SegmentacaoDataHierarquia(props: {
   }
 
   return (
-    <div className="filtro">
-      <span className="filtro-rotulo">{props.rotulo}</span>
-      <button
-        className={`filtro-botao${marcado ? ' marcado' : ''}`}
-        onClick={() => setAberto((a) => !a)}
-        aria-haspopup="dialog"
-        aria-expanded={aberto}
-        title={marcado ? resumoDeData(sel) : `Escolher ${props.rotulo}`}
-      >
-        <span className="filtro-resumo">{resumoDeData(sel)}</span>
-        {marcado > 0 && <span className="filtro-conta">{marcado}</span>}
-        <ChevronDown size={12} />
-      </button>
+    <GatilhoDoFiltro
+      rotulo={props.rotulo}
+      resumo={resumoDeData(sel)}
+      marcados={marcado}
+      aberto={aberto}
+      aoClicar={() => setAberto((a) => !a)}
+      title={marcado ? resumoDeData(sel) : `Escolher ${props.rotulo}`}
+    >
+      {aberto && (
+        <Dialogo
+          titulo={props.rotulo}
+          aoFechar={() => setAberto(false)}
+          rodape={
+            <>
+              <Nota>
+                {arvore?.length ?? 0} {(arvore?.length ?? 0) === 1 ? 'ano' : 'anos'}
+                {/* O corte é dito: uma árvore truncada em silêncio faria concluir que o
+                    mês que falta não existe na base. */}
+                {cortado ? ' · lista cortada no teto' : ''}
+              </Nota>
+              <AcoesDoDialogo>
+                <Botao
+                  variante="secundario"
+                  onClick={() => aplica(limpaTudo())}
+                  disabled={marcado === 0}
+                >
+                  Limpar
+                </Botao>
+                <Botao variante="primario" onClick={() => setAberto(false)}>
+                  Aplicar
+                </Botao>
+              </AcoesDoDialogo>
+            </>
+          }
+        >
+          {/* Os três estados, também aqui: uma árvore em branco sem explicação parece
+              "não há datas" quando a busca ainda nem voltou. */}
+          {carregando && <Nota>Carregando datas…</Nota>}
+          {erro && <Erro>{erro}</Erro>}
 
-      {aberto &&
-        createPortal(
-          <div
-            className="fundo-dialogo"
-            role="presentation"
-            onClick={(e) => {
-              if (e.target === e.currentTarget) setAberto(false);
-            }}
-          >
-            <div className="dialogo" role="dialog" aria-modal="true" aria-label={props.rotulo}>
-              <div className="dialogo-topo">
-                <h3>{props.rotulo}</h3>
-                <BotaoDeIcone tom="primaria" onClick={() => setAberto(false)} title="Fechar">
-                  <X size={13} />
-                </BotaoDeIcone>
-              </div>
+          {arvore && arvore.length === 0 && <Nota>Nenhuma data nesta coluna.</Nota>}
 
-              <div className="dialogo-corpo">
-                {/* Os três estados, também aqui: uma árvore em branco sem explicação
-                    parece "não há datas" quando a busca ainda nem voltou. */}
-                {carregando && <span className="filtro-nota">Carregando datas…</span>}
-                {erro && <Erro>{erro}</Erro>}
-
-                {arvore && arvore.length === 0 && (
-                  <span className="filtro-nota">Nenhuma data nesta coluna.</span>
-                )}
-
-                {arvore && arvore.length > 0 && (
-                  <ArvoreDeDatas
-                    arvore={arvore}
-                    sel={sel}
-                    expandidos={expandidos}
-                    aoAlternarNo={alternaNo}
-                    aoAplicar={aplica}
-                  />
-                )}
-              </div>
-
-              <div className="dialogo-rodape">
-                <span className="filtro-nota">
-                  {arvore?.length ?? 0} {(arvore?.length ?? 0) === 1 ? 'ano' : 'anos'}
-                  {/* O corte é dito: uma árvore truncada em silêncio faria concluir
-                      que o mês que falta não existe na base. */}
-                  {cortado ? ' · lista cortada no teto' : ''}
-                </span>
-                <div className="filtro-botoes-acao">
-                  <Botao
-                    variante="secundario"
-                    onClick={() => aplica(limpaTudo())}
-                    disabled={marcado === 0}
-                  >
-                    Limpar
-                  </Botao>
-                  <Botao variante="primario" onClick={() => setAberto(false)}>
-                    Aplicar
-                  </Botao>
-                </div>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-    </div>
+          {arvore && arvore.length > 0 && (
+            <ArvoreDeDatas
+              arvore={arvore}
+              sel={sel}
+              expandidos={expandidos}
+              aoAlternarNo={alternaNo}
+              aoAplicar={aplica}
+            />
+          )}
+        </Dialogo>
+      )}
+    </GatilhoDoFiltro>
   );
 }

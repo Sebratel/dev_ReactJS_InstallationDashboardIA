@@ -17,6 +17,20 @@ import {
 } from '../../services/dashboardService.ts';
 import { formata } from '../../utils/formato.ts';
 import { alternaValor } from '../../utils/vizinhanca.ts';
+import { cn } from '../../utils/cn.ts';
+import { Nota } from '../ui/Nota.tsx';
+import { RotuloDeFiltro } from './GatilhoDoFiltro.tsx';
+
+/**
+ * O chip: a MESMA gramática da barra de filtros acima (superfície clara, borda fina), e
+ * não a barra inteira na primária da primeira versão — medida pelo usuário em 09/09/2026
+ * como "muito feio", chip escuro sobre chip escuro. A primária fica só no chip MARCADO,
+ * o único lugar em que precisa puxar o olho.
+ */
+const CHIP =
+  'rounded-full border border-pbi-borda px-[14px] py-[5px] text-[0.72rem] font-semibold whitespace-nowrap';
+const HOVER =
+  'hover:border-pbi-primary-texto hover:bg-pbi-primary-soft hover:text-pbi-primary-texto';
 
 export function SegmentacaoChips(props: {
   pagina: string;
@@ -38,13 +52,13 @@ export function SegmentacaoChips(props: {
   }
 
   return (
-    <div className="chips-barra">
-      <span className="chips-rotulo">{spec.rotulo}</span>
-      <div className="chips-lista">
+    <div className="flex flex-col gap-[6px] border-b border-pbi-borda bg-pbi-superficie px-[16px] py-[8px]">
+      <RotuloDeFiltro>{spec.rotulo}</RotuloDeFiltro>
+      <div className="flex flex-wrap items-center gap-[8px]" role="group" aria-label={spec.rotulo}>
         {erro ? (
-          <span className="filtro-nota">não deu para carregar: {erro}</span>
+          <Nota>não deu para carregar: {erro}</Nota>
         ) : opcoes === null ? (
-          <span className="filtro-nota">carregando…</span>
+          <Nota>carregando…</Nota>
         ) : (
           opcoes.map((o, i) => {
             const marcado = props.selecao.some((x) => Object.is(x, o.valor));
@@ -52,7 +66,14 @@ export function SegmentacaoChips(props: {
               <button
                 key={i}
                 type="button"
-                className={`chip${marcado ? ' marcado' : ''}`}
+                className={cn(
+                  CHIP,
+                  marcado
+                    ? 'border-pbi-primary bg-pbi-primary text-pbi-sobre-primary hover:border-pbi-primary-dark hover:bg-pbi-primary-dark'
+                    : 'bg-pbi-superficie text-pbi-ink',
+                  !marcado && HOVER,
+                )}
+                aria-pressed={marcado}
                 onClick={() => alterna(o.valor)}
                 onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
                 title={o.valor === null ? '(vazio)' : formata(o.valor, o.tipo).texto}
@@ -63,7 +84,11 @@ export function SegmentacaoChips(props: {
           })
         )}
         {props.selecao.length > 0 ? (
-          <button type="button" className="chip chip-limpar" onClick={() => props.aoMudar([])}>
+          <button
+            type="button"
+            className={cn(CHIP, 'border-dashed bg-transparent text-pbi-muted', HOVER)}
+            onClick={() => props.aoMudar([])}
+          >
             limpar
           </button>
         ) : null}

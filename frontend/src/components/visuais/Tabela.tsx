@@ -26,6 +26,7 @@ import { selecaoDe, type AoFiltrar } from '../../utils/rota.ts';
 import { CorpoDaTabela } from './tabela/CorpoDaTabela.tsx';
 import { useOrdemDaTabela } from '../../hooks/useOrdemDaTabela.ts';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
+import { Nota } from '../ui/Nota.tsx';
 
 /**
  * Quanto o pedido de busca espera depois da última tecla. Sem isto, `1784218` são sete
@@ -198,10 +199,10 @@ export function Tabela(props: {
       )}
       {filtrando && totalLocal > 0 && d.linhas.length < d.linhasTotais ? (
         // Dizer o recorte em vez de deixar o número parecer o total.
-        <p className="filtro-nota">
+        <Nota como="p">
           Busca e ordenação valem sobre as {d.linhas.length} linhas desta fatia, não sobre as{' '}
           {d.linhasTotais} da consulta.
-        </p>
+        </Nota>
       ) : null}
       <Paginacao
         janela={estado}

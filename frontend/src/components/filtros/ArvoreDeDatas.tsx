@@ -11,6 +11,7 @@ import {
   type SelecaoDeData,
 } from '../../utils/hierarquiaData.ts';
 import { NoDaArvore } from './NoDaArvore.tsx';
+import { cn } from '../../utils/cn.ts';
 
 export function ArvoreDeDatas(props: {
   arvore: readonly AnoDaArvore[];
@@ -22,7 +23,7 @@ export function ArvoreDeDatas(props: {
 }) {
   const { arvore, sel, expandidos, aoAlternarNo, aoAplicar } = props;
   return (
-    <div className="arvore">
+    <div className="flex flex-col gap-[1px]">
       {arvore.map((a) => {
         const anoAberto = expandidos.has(`a${a.ano}`);
         const mesesDoAno = a.meses.filter((m) => sel.meses.includes(m.nome));
@@ -43,7 +44,7 @@ export function ArvoreDeDatas(props: {
                 const mesAberto = expandidos.has(`m${a.ano}-${m.indice}`);
                 const diasDoMes = m.dias.filter((d) => sel.dias.includes(d));
                 return (
-                  <div key={m.indice} className="arvore-nivel">
+                  <div key={m.indice} className="pl-[16px]" data-nivel="mes">
                     <NoDaArvore
                       aberto={mesAberto}
                       temFilhos
@@ -54,14 +55,27 @@ export function ArvoreDeDatas(props: {
                       rotulo={MESES_CURTOS[m.indice]!}
                     />
                     {mesAberto && (
-                      <div className="arvore-dias">
+                      <div
+                        className="grid grid-cols-[repeat(7,1fr)] gap-[2px] pt-[3px] pr-0 pb-[5px] pl-[20px]"
+                        data-nivel="dias"
+                      >
                         {m.dias.map((d) => (
                           <label
                             key={d}
                             title={`${String(d).padStart(2, '0')}/${String(m.indice + 1).padStart(2, '0')}/${a.ano}`}
-                            className={`arvore-dia${sel.dias.includes(d) ? ' marcado' : ''}`}
+                            className={cn(
+                              'flex cursor-pointer items-center justify-center rounded-[3px] py-[3px] text-[0.66rem] tabular-nums',
+                              // Cor CHEIA é fundo, e a letra vem do token do papel: 9,87:1.
+                              sel.dias.includes(d)
+                                ? 'bg-pbi-primary font-bold text-pbi-sobre-primary'
+                                : 'text-pbi-ink hover:bg-pbi-primary-soft',
+                            )}
                           >
+                            {/* A caixa some, mas continua sendo ela quem carrega o estado
+                                para o teclado e o leitor de tela — `display: none` tiraria
+                                o controle do foco. */}
                             <input
+                              className="absolute m-[-1px] size-px overflow-hidden border-0 p-0 whitespace-nowrap [clip:rect(0_0_0_0)]"
                               type="checkbox"
                               checked={sel.dias.includes(d)}
                               onChange={() => aoAplicar(clicaDia(sel, a.ano, m.nome, d))}
