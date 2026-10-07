@@ -31,6 +31,7 @@ import { formata, inteiro } from '../../utils/formato.ts';
 import { X, ChevronDown } from 'lucide-react';
 import { Erro } from '../ui/Cartao.tsx';
 import { Botao } from '../ui/Botao.tsx';
+import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 
 export function Segmentacao(props: {
   pagina: string;
@@ -102,9 +103,9 @@ export function Segmentacao(props: {
             <div className="dialogo" role="dialog" aria-modal="true" aria-label={props.spec.rotulo}>
               <div className="dialogo-topo">
                 <h3>{props.spec.rotulo}</h3>
-                <button className="btn-icone" onClick={() => setAberto(false)} title="Fechar">
+                <BotaoDeIcone tom="primaria" onClick={() => setAberto(false)} title="Fechar">
                   <X size={13} />
-                </button>
+                </BotaoDeIcone>
               </div>
 
               <div className="dialogo-corpo">

@@ -317,134 +317,9 @@ body {
    nav de topo cobra ~64px de ALTURA em troca, e a altura é dividida entre menos
    coisas. */
 
-.casca {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.tela-login {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  background: var(--fundo);
-}
-.cartao-login {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  background: var(--superficie);
-  border: 1px solid var(--borda);
-  border-radius: 2px;
-  padding: 32px 36px;
-  max-width: 320px;
-  text-align: center;
-}
-.cartao-login h1 {
-  font-size: 1.05rem;
-  margin: 4px 0 0;
-  color: var(--texto);
-}
-.cartao-login p {
-  font-size: 0.8rem;
-  color: var(--muted);
-  margin: 0 0 8px;
-}
-.login-botao-google {
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-}
-
-.topo {
-  height: var(--h-topbar);
-  flex: none;
-  background: var(--superficie);
-  border-bottom: 1px solid var(--borda);
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 16px;
-  position: sticky;
-  top: 0;
-  z-index: 30;
-}
-.marca {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-}
-.marca-textos {
-  display: flex;
-  flex-direction: column;
-}
-.marca-nome {
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  color: var(--pbi-primary-texto);
-  font-size: 0.82rem;
-  line-height: 1.1;
-}
-.marca-sub {
-  font-size: 0.62rem;
-  color: var(--muted);
-}
-
-/* A régua à esquerda separa o título da tela da marca — sem ela as duas colunas de
-   texto se leem como um bloco só. */
-.titulo-tela {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding-left: 16px;
-  border-left: 1px solid var(--borda);
-}
-.cabecalho-titulo {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--texto);
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cabecalho-sub {
-  font-size: 0.68rem;
-  color: var(--muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cabecalho-sub-aviso {
-  color: var(--pbi-critico-texto);
-  font-weight: 600;
-}
-
-/* Banner de saúde de dados no topo da casca: impossível de ignorar (Marco A6) */
-.banner-saude {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  border-bottom: 1px solid transparent;
-  flex: none;
-}
-.banner-saude-falhou {
-  background: var(--pbi-erro-bg);
-  color: var(--pbi-critico-texto);
-  border-color: var(--pbi-critico-texto);
-}
-.banner-saude-vencida {
-  background: var(--pbi-aviso-bg);
-  color: var(--pbi-gold-600);
-  border-color: var(--pbi-gold-600);
-}
+/* A casca (topo, marca, título da tela, ações, abas, rodapé, banner de saúde e login) é
+   utilitário em `AppShell`, `NavDeTelas`, `AcoesDoCabecalho`, `ui/BotaoDeIcone` e
+   `Login` (fase 6e). Fica aqui a faixa de navegação: a altura dela é medida. */
 
 /* A FAIXA DE NAVEGAÇÃO.
 
@@ -454,7 +329,7 @@ body {
    das telas atrás de um gesto que ninguém adivinha; quebrar em duas linhas mostra
    as 14 de uma vez.
 
-   A altura REAL é medida pelo `AppShell` e publicada em `--h-nav`, porque `--util`
+   A altura REAL é medida pelo `NavDeTelas` e publicada em `--h-nav`, porque `--util`
    a soma e todo card depende disso. Fixar o número mentiria em metade das
    resoluções. */
 .nav-telas {
@@ -469,93 +344,10 @@ body {
   top: var(--h-topbar);
   z-index: 25;
 }
-.aba {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 10px;
-  border-radius: 2px;
-  border: 0;
-  background: none;
-  border-bottom: 2px solid transparent;
-  font: inherit;
-  font-size: 0.74rem;
-  font-weight: 600;
-  color: var(--texto);
-  cursor: pointer;
-  white-space: nowrap;
-}
-.aba:hover {
-  background: var(--pbi-primary-soft);
-}
-/* Navegação ativa na primária — o mesmo papel que ela cumpre no cabeçalho do visual.
-   Cor CHEIA é fundo, e a letra vem do token do papel: 9,87:1. */
-.aba.ativo {
-  background: var(--pbi-primary);
-  color: var(--pbi-sobre-primary);
-  border-bottom-color: var(--pbi-gold);
-  font-weight: 700;
-}
-.aba:disabled {
-  color: var(--sem-dado);
-  cursor: default;
-}
-.aba:disabled:hover {
-  background: none;
-}
-.aba-rotulo {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 
-.rodape {
-  flex: none;
-  margin-top: auto;
-  padding: 8px 16px;
-  border-top: 1px solid var(--borda);
-  font-size: 0.62rem;
-  color: var(--muted);
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-}
+/* ============================================================ selo "ao vivo" */
+/* O selo do título da tela quando o SSE trouxe dado novo. É animação: fica aqui. */
 
-/* =================================================================== cabeçalho */
-
-.cabecalho {
-  height: var(--h-topbar);
-  background: var(--superficie);
-  border-bottom: 1px solid var(--borda);
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 0 16px;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  flex: none;
-}
-.cabecalho-titulo {
-  font-weight: 700;
-  font-size: 0.95rem;
-  white-space: nowrap;
-  color: var(--texto);
-}
-.cabecalho-sub {
-  color: var(--muted);
-  font-size: 0.72rem;
-  white-space: nowrap;
-}
-/* Mesmos tokens do `Aviso` e do selo `neutro` (`ui/`) — dado velho é o mesmo
-   estado de atenção em outro lugar da tela, não uma cor nova. */
-.cabecalho-sub-aviso {
-  color: var(--pbi-gold-600);
-  background: var(--pbi-aviso-bg);
-  border: 1px solid var(--pbi-gold-600);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-weight: 700;
-}
 .badge-realtime {
   display: inline-flex;
   align-items: center;
@@ -603,90 +395,6 @@ body {
   100% {
     transform: scale(1);
     opacity: 1;
-  }
-}
-.grupo-acoes-cabecalho {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-.carimbo-cabecalho {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 1.25;
-  padding: 0 10px;
-  border-left: 1px solid var(--borda);
-}
-.carimbo-cabecalho .rot {
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-.carimbo-cabecalho .val {
-  font-size: 0.72rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-}
-.btn-icone {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border-radius: 2px;
-  border: 1px solid var(--grade);
-  background: var(--superficie);
-  color: var(--muted);
-  cursor: pointer;
-}
-.btn-icone:hover {
-  border-color: var(--pbi-primary-texto);
-  color: var(--pbi-primary-texto);
-}
-.btn-icone.ativo {
-  border-color: var(--pbi-primary-texto);
-  color: var(--pbi-primary-texto);
-  background: var(--pbi-primary-soft);
-}
-
-.selo-realtime {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  background: var(--pbi-ok-bg);
-  border: 1px solid var(--pbi-green);
-  border-radius: 999px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--pbi-green-texto);
-}
-.ponto-pulso {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--pbi-green);
-  animation: pulso 2s infinite;
-}
-@keyframes pulso {
-  0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 60%, transparent);
-  }
-  70% {
-    box-shadow: 0 0 0 7px color-mix(in srgb, var(--pbi-green) 0%, transparent);
-  }
-  100% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 0%, transparent);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .ponto-pulso {
-    animation: none;
   }
 }
 
@@ -859,7 +567,7 @@ body {
    escuro, idêntica às inativas. Era esse o bug de "clico e não fica marcado".
 
    Padrão da casa: RESET de elemento vai em `@layer base`; classe de componente
-   (`.cartao`, `.aba`) fica solta de propósito, para continuar vencendo
+   (`.cartao`, `.nav-telas`) fica solta de propósito, para continuar vencendo
    utilidade.
    --------------------------------------------------------------------------- */
 @layer base {
@@ -1001,14 +709,6 @@ button:disabled {
   margin: 0;
   font-size: 0.76rem;
   font-weight: 700;
-}
-.dialogo-topo .btn-icone {
-  margin-left: auto;
-  background: transparent;
-  border-color: var(--pbi-sobre-primary-fraco);
-  color: var(--pbi-sobre-primary);
-  width: 24px;
-  height: 24px;
 }
 .dialogo-corpo {
   flex: 1 1 auto;
@@ -1971,36 +1671,7 @@ table.dados.matriz td:first-child {
   color: var(--pbi-primary-texto);
 }
 
-/* ================================================================ responsivo */
-
-/* A regra daqui escondia `.barra-lateral` abaixo de 900px. Essa barra não existe
-   mais — a navegação é a faixa de topo — e a classe não é escrita por nenhum
-   componente: CSS morto que descrevia um layout que ninguém pode abrir.
-
-   No lugar dela, o que a faixa de topo precisa em tela estreita: a aba encolhe e o
-   rótulo cede espaço ao ícone, em vez de a faixa virar quatro linhas e comer a
-   altura que os cards usam (`--h-nav` entra em `--chrome`). */
-@media (max-width: 900px) {
-  .aba {
-    padding: 5px 7px;
-    gap: 5px;
-    font-size: 0.7rem;
-  }
-  .aba-rotulo {
-    max-width: 11ch;
-  }
-}
-@media (max-width: 640px) {
-  .cabecalho-titulo,
-  .cabecalho-sub {
-    display: none;
-  }
-  /* Só o ícone: com o título da tela já escondido, a faixa inteira cabe em duas
-     linhas. O nome completo continua no `title` de cada aba. */
-  .aba-rotulo {
-    display: none;
-  }
-}
+/* ===================================================================== giro */
 
 /* O ícone do "Atualizar" gira enquanto a página busca de novo — o número atual
    continua na tela; o giro é o único sinal de que algo está a caminho. */

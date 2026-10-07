@@ -12,6 +12,18 @@ import { MarcaSebratel } from '../ui/MarcaSebratel.tsx';
 import { AcoesDoCabecalho } from './AcoesDoCabecalho.tsx';
 import { NavDeTelas } from './NavDeTelas.tsx';
 
+/** Título e subtítulo da tela numa linha só, cortados com reticências; somem abaixo de
+ *  640px, onde a faixa de abas precisa da largura. */
+const TEXTO_DO_TITULO =
+  'overflow-hidden text-ellipsis whitespace-nowrap [@media(max-width:640px)]:hidden';
+
+/** O banner de saúde do snapshot (Marco A6): impossível de ignorar. */
+const BANNER: Record<EstadoAvisoSaude['nivel'], string> = {
+  falhou: 'border-pbi-critico-texto bg-pbi-erro-bg text-pbi-critico-texto',
+  vencida: 'border-pbi-gold-600 bg-pbi-aviso-bg text-pbi-gold-600',
+  ok: '',
+};
+
 export function AppShell(props: {
   paginas: DashboardDaLista[];
   atual: string | null;
@@ -40,20 +52,37 @@ export function AppShell(props: {
   children: ReactNode;
 }) {
   return (
-    <div className="casca">
-      <header className="topo">
-        <div className="marca">
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-30 flex h-[var(--h-topbar)] flex-none items-center gap-[16px] border-b border-pbi-borda bg-pbi-superficie px-[16px]">
+        <div className="flex flex-none items-center gap-[10px]">
           <MarcaSebratel fundo="var(--pbi-primary)" letra="var(--pbi-sobre-primary)" tamanho={30} />
-          <div className="marca-textos">
-            <span className="marca-nome">SEBRATEL</span>
-            <span className="marca-sub">Relatório Instalação</span>
+          <div className="flex flex-col">
+            <span className="text-[0.82rem] leading-[1.1] font-extrabold tracking-[0.06em] text-pbi-primary-texto">
+              SEBRATEL
+            </span>
+            <span className="text-[0.62rem] text-pbi-muted">Relatório Instalação</span>
           </div>
         </div>
 
-        <div className="titulo-tela">
-          <h1 className="cabecalho-titulo">{props.titulo}</h1>
+        {/* A régua à esquerda separa o título da tela da marca — sem ela as duas colunas
+            de texto se leem como um bloco só. */}
+        <div className="flex min-w-0 flex-col border-l border-pbi-borda pl-[16px]">
+          <h1
+            className={cn(TEXTO_DO_TITULO, 'text-[0.95rem] leading-[1.2] font-bold text-pbi-ink')}
+          >
+            {props.titulo}
+          </h1>
           {props.sub ? (
-            <span className={cn('cabecalho-sub', props.subAviso && 'cabecalho-sub-aviso')}>
+            <span
+              className={cn(
+                TEXTO_DO_TITULO,
+                'text-[0.72rem] text-pbi-muted',
+                // Os tokens do `Aviso` e do selo `neutro`: dado velho é o mesmo estado de
+                // atenção em outro lugar da tela, não uma cor nova.
+                props.subAviso &&
+                  'rounded-[4px] border border-pbi-gold-600 bg-pbi-aviso-bg px-[6px] py-[1px] font-bold text-pbi-gold-600',
+              )}
+            >
               {props.sub}
             </span>
           ) : null}
@@ -73,7 +102,10 @@ export function AppShell(props: {
 
       {props.avisoSaude?.temAviso ? (
         <div
-          className={`banner-saude banner-saude-${props.avisoSaude.nivel}`}
+          className={cn(
+            'flex flex-none items-center gap-[8px] border-b border-transparent px-[16px] py-[6px] text-[0.72rem] font-semibold',
+            BANNER[props.avisoSaude.nivel],
+          )}
           role="alert"
           title={props.avisoSaude.mensagem}
         >
@@ -92,7 +124,7 @@ export function AppShell(props: {
 
       <main className="area">{props.children}</main>
 
-      <footer className="rodape">
+      <footer className="mt-auto flex flex-none flex-wrap gap-[16px] border-t border-pbi-borda px-[16px] py-[8px] text-[0.62rem] text-pbi-muted">
         <span>Fonte: dbVoalle · dbMaria · GSheets</span>
         <span>Somente leitura · snapshot agendado</span>
       </footer>

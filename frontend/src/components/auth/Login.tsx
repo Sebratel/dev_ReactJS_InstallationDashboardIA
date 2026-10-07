@@ -134,8 +134,8 @@ export function Login({ aoLogar }: LoginProps) {
   }, [clientId, firebase]);
 
   return (
-    <div className="tela-login">
-      <div className="cartao-login">
+    <div className="flex min-h-screen items-center justify-center bg-pbi-fundo">
+      <div className="flex max-w-[320px] flex-col items-center gap-[10px] rounded-[2px] border border-pbi-borda bg-pbi-superficie px-[36px] py-[32px] text-center">
         <svg width={44} height={44} viewBox="0 0 30 30" aria-hidden="true">
           <circle cx="15" cy="15" r="14" fill="var(--pbi-primary)" />
           <circle cx="15" cy="15" r="14" fill="none" stroke="var(--pbi-gold)" strokeWidth="1.5" />
@@ -152,8 +152,10 @@ export function Login({ aoLogar }: LoginProps) {
             S
           </text>
         </svg>
-        <h1>Analytics Platform</h1>
-        <p>Entre com sua conta corporativa para continuar.</p>
+        <h1 className="mt-[4px] mb-0 text-[1.05rem] text-pbi-ink">Analytics Platform</h1>
+        <p className="mt-0 mb-[8px] text-[0.8rem] text-pbi-muted">
+          Entre com sua conta corporativa para continuar.
+        </p>
         {/* Firebase: botão nosso, porque o SDK não desenha nenhum */}
         {firebase ? (
           <Botao
@@ -166,7 +168,7 @@ export function Login({ aoLogar }: LoginProps) {
           </Botao>
         ) : null}
         {/* Botão do Google Identity Services — só quando NÃO há Firebase e há Client ID */}
-        {!firebase ? <div ref={botaoRef} className="login-botao-google" /> : null}
+        {!firebase ? <div ref={botaoRef} className="flex min-h-[44px] items-center" /> : null}
         {/* Botão de bypass dev — só aparece quando não há provedor nenhum mas há token interno */}
         {!firebase && !clientId && tokenInterno ? (
           <Botao

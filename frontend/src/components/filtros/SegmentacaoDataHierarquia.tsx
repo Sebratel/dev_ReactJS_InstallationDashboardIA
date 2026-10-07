@@ -13,6 +13,7 @@ import {
 import { Erro } from '../ui/Cartao.tsx';
 import { ArvoreDeDatas } from './ArvoreDeDatas.tsx';
 import { Botao } from '../ui/Botao.tsx';
+import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 
 /**
  * O filtro de data em árvore — Ano > Mês > Dia — no lugar de dois seletores planos.
@@ -122,9 +123,9 @@ export function SegmentacaoDataHierarquia(props: {
             <div className="dialogo" role="dialog" aria-modal="true" aria-label={props.rotulo}>
               <div className="dialogo-topo">
                 <h3>{props.rotulo}</h3>
-                <button className="btn-icone" onClick={() => setAberto(false)} title="Fechar">
+                <BotaoDeIcone tom="primaria" onClick={() => setAberto(false)} title="Fechar">
                   <X size={13} />
-                </button>
+                </BotaoDeIcone>
               </div>
 
               <div className="dialogo-corpo">

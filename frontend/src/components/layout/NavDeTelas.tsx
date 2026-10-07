@@ -42,6 +42,18 @@ const ICONES_MENU: Record<string, ComponentType<{ size?: number }>> = {
   'instalacao-reincidente': RotateCcw,
 };
 
+/**
+ * A aba. Navegação ativa na primária — o mesmo papel que ela cumpre no cabeçalho do
+ * visual; cor CHEIA é fundo, e a letra vem do token do papel (9,87:1). Sem snapshot, a
+ * aba fica cinza e sem hover.
+ *
+ * Em tela estreita a aba encolhe e o rótulo cede espaço ao ícone, em vez de a faixa virar
+ * quatro linhas e comer a altura que os cards usam (`--h-nav` entra em `--chrome`);
+ * abaixo de 640px fica só o ícone, e o nome continua no `title`.
+ */
+const ABA =
+  'inline-flex cursor-pointer items-center gap-[7px] rounded-[2px] border-0 border-b-2 border-transparent bg-transparent px-[10px] py-[5px] text-[0.74rem] font-semibold whitespace-nowrap text-pbi-ink disabled:cursor-default disabled:text-pbi-neutro [@media(max-width:900px)]:gap-[5px] [@media(max-width:900px)]:px-[7px] [@media(max-width:900px)]:text-[0.7rem]';
+
 export function NavDeTelas(props: {
   paginas: DashboardDaLista[];
   atual: string | null;
@@ -59,7 +71,12 @@ export function NavDeTelas(props: {
         return (
           <button
             key={p.id}
-            className={cn('aba', ativo && 'ativo')}
+            className={cn(
+              ABA,
+              ativo
+                ? 'border-b-pbi-gold bg-pbi-primary font-bold text-pbi-sobre-primary'
+                : 'enabled:hover:bg-pbi-primary-soft',
+            )}
             onClick={() => props.aoEscolher(p.id)}
             // Nem a aba já ativa (nada para adiantar) nem uma sem snapshot (o clique nem
             // chega a `aoEscolher` — `disabled` abaixo já barra isso).
@@ -70,7 +87,9 @@ export function NavDeTelas(props: {
             title={p.pronta ? p.nome : `${p.nome} — sem snapshot`}
           >
             <Icone size={14} />
-            <span className="aba-rotulo">{p.nome}</span>
+            <span className="overflow-hidden text-ellipsis [@media(max-width:640px)]:hidden [@media(max-width:900px)]:max-w-[11ch]">
+              {p.nome}
+            </span>
           </button>
         );
       })}

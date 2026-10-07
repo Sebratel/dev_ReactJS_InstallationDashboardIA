@@ -10,7 +10,7 @@ import { useState, type ReactNode } from 'react';
 import { Check, Eye, LogOut, Moon, Share2, Sun, Wrench } from 'lucide-react';
 import { useThemeStore } from '../../store/themeStore.ts';
 import { useModo } from '../../context/ModoContext.tsx';
-import { cn } from '../../utils/cn.ts';
+import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 
 export function AcoesDoCabecalho(props: { acoes?: ReactNode; aoSair: () => void }) {
   const { isDark, toggleTheme } = useThemeStore();
@@ -27,18 +27,18 @@ export function AcoesDoCabecalho(props: { acoes?: ReactNode; aoSair: () => void 
   };
 
   return (
-    <div className="grupo-acoes-cabecalho">
-      <button
-        className={cn('btn-icone', copiado && 'ativo')}
+    <div className="ml-auto flex items-center gap-[8px]">
+      <BotaoDeIcone
+        ativo={copiado}
         onClick={copiaLink}
         aria-label="Copiar link com filtros aplicados"
         title={copiado ? 'Link copiado com sucesso!' : 'Copiar link com filtros aplicados'}
       >
         {copiado ? <Check size={15} /> : <Share2 size={15} />}
-      </button>
+      </BotaoDeIcone>
 
-      <button
-        className={cn('btn-icone', conferencia && 'ativo')}
+      <BotaoDeIcone
+        ativo={conferencia}
         onClick={alterna}
         aria-pressed={conferencia}
         title={
@@ -48,22 +48,21 @@ export function AcoesDoCabecalho(props: { acoes?: ReactNode; aoSair: () => void 
         }
       >
         {conferencia ? <Wrench size={15} /> : <Eye size={15} />}
-      </button>
+      </BotaoDeIcone>
 
-      <button
-        className="btn-icone"
+      <BotaoDeIcone
         onClick={toggleTheme}
         aria-pressed={isDark}
         title={isDark ? 'Tema escuro. Clique para o claro.' : 'Tema claro. Clique para o escuro.'}
       >
         {isDark ? <Sun size={15} /> : <Moon size={15} />}
-      </button>
+      </BotaoDeIcone>
 
       {props.acoes}
 
-      <button className="btn-icone" onClick={props.aoSair} title="Sair">
+      <BotaoDeIcone onClick={props.aoSair} title="Sair">
         <LogOut size={15} />
-      </button>
+      </BotaoDeIcone>
     </div>
   );
 }
