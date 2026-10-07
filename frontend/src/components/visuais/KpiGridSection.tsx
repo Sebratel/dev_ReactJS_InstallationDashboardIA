@@ -42,7 +42,7 @@ export function KpiGridSection({
   return (
     <section
       aria-label="Indicadores"
-      className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]"
+      className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))] *:min-h-0 *:min-w-0"
     >
       {cards.map(({ entrada, visual }) => (
         <KpiCard

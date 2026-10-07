@@ -19,6 +19,7 @@
 import type { LayoutSpec } from '../../services/dashboardService.ts';
 import { Cartao, type AlturaDeVisual } from '../ui/Cartao.tsx';
 import { tituloDoVisual } from '../../utils/rotulos.ts';
+import { MolduraDoKpi } from '../visuais/kpi/partes.tsx';
 
 function LinhasEsqueleto() {
   return (
@@ -40,9 +41,9 @@ function CartaoEsqueleto({ id, altura }: { id: string; altura: AlturaDeVisual })
 
 function KpiEsqueleto() {
   return (
-    <section className="cartao-kpi" aria-hidden="true">
+    <MolduraDoKpi esqueleto>
       <div className="esqueleto-linha kpi-esqueleto-linha" />
-    </section>
+    </MolduraDoKpi>
   );
 }
 
@@ -53,7 +54,7 @@ export function EsqueletoDaPagina({ layout }: { layout: LayoutSpec }) {
       {layout.kpis.length > 0 ? (
         <section
           aria-label="Indicadores"
-          className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))]"
+          className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))] *:min-h-0 *:min-w-0"
         >
           {layout.kpis.map((k) => (
             <KpiEsqueleto key={k.visual} />

@@ -13,6 +13,8 @@
 // papel FIXO (estado), já tratados por tema em estilo.css — ao contrário da cor de série
 // categórica de Rosca/Sparkline, que muda por índice e por isso precisa de hex + SVG.
 
+import { cn } from '../../utils/cn.ts';
+
 export function Bullet({ valor, meta }: { valor: number; meta: number }) {
   if (!Number.isFinite(valor) || !Number.isFinite(meta) || meta <= 0) return null;
 
@@ -25,17 +27,23 @@ export function Bullet({ valor, meta }: { valor: number; meta: number }) {
 
   return (
     <div
-      className="kpi-bullet"
+      className="mt-[6px] w-full"
       role="img"
       aria-label={`Realizado ${valor.toLocaleString('pt-BR')} de uma meta de ${meta.toLocaleString('pt-BR')}`}
       title={`realizado ${valor.toLocaleString('pt-BR')} · meta ${meta.toLocaleString('pt-BR')}`}
     >
-      <div className="kpi-bullet-trilha">
+      <div className="relative h-[7px] rounded-[4px] bg-pbi-grid">
         <div
-          className={`kpi-bullet-preenchido${atingiu ? ' atingiu' : ''}`}
+          className={cn(
+            'absolute inset-y-0 left-0 h-full rounded-[4px]',
+            atingiu ? 'bg-pbi-green' : 'bg-pbi-gold',
+          )}
           style={{ width: `${pctPreenchido}%` }}
         />
-        <div className="kpi-bullet-meta" style={{ left: `${pctMeta}%` }} />
+        <div
+          className="absolute -top-[2px] -bottom-[2px] w-[2px] bg-pbi-ink [transform:translateX(-1px)]"
+          style={{ left: `${pctMeta}%` }}
+        />
       </div>
     </div>
   );

@@ -700,41 +700,6 @@ body {
   min-width: 0;
 }
 
-.grid {
-  display: grid;
-  gap: var(--gap);
-}
-.linha-principal {
-  grid-template-columns: minmax(360px, 64fr) minmax(148px, 13fr) minmax(230px, 23fr);
-}
-.linha-33-67 {
-  grid-template-columns: minmax(250px, 33fr) minmax(400px, 67fr);
-}
-.linha-dupla {
-  grid-template-columns: minmax(340px, 52fr) minmax(320px, 48fr);
-}
-/* A faixa principal: conteúdo à esquerda, coluna estreita de indicadores à direita —
-   as proporções do relatório de origem (64fr de visual contra 23fr de KPI). */
-.faixa-principal {
-  grid-template-columns: minmax(360px, 1fr) minmax(190px, 230px);
-}
-@media (max-width: 1100px) {
-  .faixa-principal {
-    grid-template-columns: 1fr;
-  }
-}
-.grid > * {
-  min-height: 0;
-  min-width: 0;
-}
-@media (max-width: 1100px) {
-  .linha-principal,
-  .linha-33-67,
-  .linha-dupla {
-    grid-template-columns: 1fr;
-  }
-}
-
 /* A coluna de KPI: estreita, empilhada, com rolagem própria quando a página tem
    muitos indicadores — esticar a faixa devolveria a rolagem que a conta evita. */
 .kpis {
@@ -856,8 +821,9 @@ body {
 }
 
 /* ==================================================================== Visual */
-/* O card do padrão: cabeçalho colorido, subtítulo, slot de ações. Tudo que é
-   "desta visão" mora no cabeçalho, em vez de repetir markup em cada tela. */
+/* A MOLDURA do card: fica aqui porque é layout medido — as alturas `.v-*` acima a
+   dimensionam e `useAlturaMedida` a procura pela classe. O cabeçalho (faixa colorida,
+   subtítulo, ações) é utilitário no `ui/Cartao.tsx` (fase 6c). */
 
 .cartao {
   background: var(--superficie);
@@ -869,65 +835,6 @@ body {
   min-width: 0;
   height: 100%;
 }
-.cartao > .cartao-topo {
-  background: var(--pbi-primary);
-  color: var(--pbi-sobre-primary);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 5px 10px;
-  flex: 0 0 auto;
-}
-.cartao > .cartao-topo h2 {
-  margin: 0;
-  font-size: 0.74rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cartao > .cartao-topo .sub {
-  color: var(--pbi-sobre-primary-fraco);
-  font-size: 0.68rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cartao > .cartao-topo .id-visual {
-  color: var(--muted);
-}
-.cartao-acoes {
-  margin-left: auto;
-  display: flex;
-  gap: 6px;
-  flex: 0 0 auto;
-  align-items: center;
-}
-.cartao-acoes button,
-.cartao-acoes input {
-  background: transparent;
-  border-color: var(--pbi-sobre-primary-fraco);
-  color: var(--pbi-sobre-primary);
-  padding: 2px 8px;
-  font-size: 0.68rem;
-  border-radius: 2px;
-}
-/* O ícone é irmão do texto, e a linha de base não os alinha: um SVG inline assenta
-   sobre a base da letra e desce a caixa do botão. Como estes botões vivem no cabeçalho
-   colorido, cada pixel de altura extra empurra o corpo do card — que é justamente a
-   altura que `--util` já disputa. `inline-flex` centraliza os dois pelo meio. */
-.cartao-acoes button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-.cartao-acoes button:hover {
-  background: var(--pbi-primary-dark);
-}
-.cartao-acoes input::placeholder {
-  color: var(--pbi-sobre-primary-fraco);
-}
 .cartao-corpo {
   flex: 1 1 auto;
   min-height: 0;
@@ -936,142 +843,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.id-visual {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.62rem;
-  color: var(--muted);
-  user-select: all;
-}
-
-/* ======================================================================= KPI */
-
-.cartao-kpi {
-  background: var(--superficie);
-  border: 1px solid var(--borda);
-  border-left: 3px solid var(--pbi-gold);
-  border-radius: 2px;
-  padding: 8px 10px;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-}
-.kpi-nome {
-  margin: 0 0 3px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* O valor nunca vai na cor da série: a identidade fica no marcador, não no texto. */
-.kpi-valor {
-  font-size: 1.4rem;
-  font-weight: 700;
-  line-height: 1.1;
-  font-variant-numeric: tabular-nums;
-  color: var(--texto);
-  letter-spacing: -0.02em;
-}
-.cartao-kpi.destaque .kpi-valor {
-  font-size: 1.9rem;
-}
-.kpi-valor.vazio {
-  color: var(--sem-dado);
-  font-size: 1rem;
-  font-weight: 600;
-}
-/* A sparkline (Fase L6): sem eixo nem grade — o número grande já diz o valor, aqui só a
-   FORMA da tendência importa. `vector-effect: non-scaling-stroke` porque o viewBox é
-   esticado por CSS (sem medida em pixel, ao contrário de Grafico.tsx/Rosca.tsx): sem
-   isso o traço engrossaria ou afinaria com a largura real do card. */
-.kpi-sparkline {
-  width: 100%;
-  height: 28px;
-  display: block;
-  margin-top: 6px;
-  overflow: visible;
-}
-.sparkline-linha {
-  stroke-width: 1.6;
-  vector-effect: non-scaling-stroke;
-}
-/* O Bullet (Fase L6): verde/dourado são token de ESTADO (`estilo.css` já os troca por
-   tema), não cor de série — por isso `background: var(...)` chega, sem hex nem SVG. */
-.kpi-bullet {
-  width: 100%;
-  margin-top: 6px;
-}
-.kpi-bullet-trilha {
-  position: relative;
-  height: 7px;
-  border-radius: 4px;
-  background: var(--pbi-grid);
-}
-.kpi-bullet-preenchido {
-  position: absolute;
-  inset: 0 auto 0 0;
-  height: 100%;
-  border-radius: 4px;
-  background: var(--pbi-gold);
-}
-.kpi-bullet-preenchido.atingiu {
-  background: var(--pbi-green);
-}
-.kpi-bullet-meta {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: var(--pbi-ink);
-  transform: translateX(-1px);
-}
-/* O Calendário (Fase L6): magnitude por OPACIDADE de um só token (`--pbi-gold`), não
-   hex interpolado — o mesmo "claro → escuro, um só tom" que a paleta reserva para
-   magnitude. 7 colunas fixas (dias da semana); linhas nascem do conteúdo do mês. */
-.kpi-calendario {
-  width: 100%;
-  margin-top: 6px;
-}
-.kpi-calendario-cabecalho,
-.kpi-calendario-grade {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 2px;
-}
-.kpi-calendario-cabecalho {
-  margin-bottom: 2px;
-  font-size: 0.55rem;
-  font-weight: 700;
-  color: var(--muted);
-  text-align: center;
-}
-.kpi-calendario-dia {
-  aspect-ratio: 1;
-  border-radius: 2px;
-  background: var(--pbi-gold);
-}
-.kpi-calendario-dia.vazio {
-  background: none;
-}
-.kpi-origem {
-  margin-top: 4px;
-  font-size: 0.62rem;
-  color: var(--muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.kpi-filtros {
-  margin-top: 4px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  color: var(--pbi-gold-600);
 }
 
 /* ================================================================== controles */
@@ -1776,7 +1547,7 @@ table.dados.matriz td:first-child {
 }
 
 /* A rosca (Fase L6): o total no centro é o KPI da tela, então usa a mesma escala de
-   `.kpi-valor` — quem já leu um card de número reconhece o mesmo peso aqui. */
+   valor do KPI (`ValorDoKpi`) — quem já leu um card de número reconhece o mesmo peso aqui. */
 .rosca-total {
   fill: var(--texto);
   font-size: 1.4rem;

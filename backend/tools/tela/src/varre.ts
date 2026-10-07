@@ -147,10 +147,10 @@ async function medeGeometria(page: import('playwright').Page): Promise<MedidaGeo
     const vAuto = document.querySelectorAll('.v-auto').length;
 
     const cartaoAlto: string[] = [];
-    document.querySelectorAll('.cartao, .cartao-kpi').forEach((el) => {
+    document.querySelectorAll('[data-visual]').forEach((el) => {
       const r = el.getBoundingClientRect();
       if (r.height > innerHeight) {
-        const idEl = el.querySelector('.id-visual');
+        const idEl = el.querySelector('[data-id-visual]');
         cartaoAlto.push(
           `${idEl?.textContent ?? '(sem id — provavelmente KPI sem origem)'} mede ${Math.round(r.height)}px, viewport tem ${innerHeight}px`,
         );
@@ -161,9 +161,9 @@ async function medeGeometria(page: import('playwright').Page): Promise<MedidaGeo
     // onde o flexbox decide o wrap sozinho — fora deles, cada visual já é uma linha.
     const containers = Array.from(document.querySelectorAll('div.flex.flex-wrap'));
     const linhas = containers.map((container) =>
-      Array.from(container.querySelectorAll(':scope > div > .cartao')).map((el) => {
+      Array.from(container.querySelectorAll(':scope > div > [data-visual]')).map((el) => {
         const r = el.getBoundingClientRect();
-        const idEl = el.querySelector('.id-visual');
+        const idEl = el.querySelector('[data-id-visual]');
         return { id: idEl?.textContent ?? '(sem id)', top: r.top, height: r.height };
       }),
     );

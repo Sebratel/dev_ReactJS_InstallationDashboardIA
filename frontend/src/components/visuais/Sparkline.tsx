@@ -51,13 +51,21 @@ export function Sparkline({ dados }: { dados: DadosDeGrafico }) {
 
   return (
     <svg
-      className="kpi-sparkline"
+      className="mt-[6px] block h-[28px] w-full overflow-visible"
       viewBox={`0 0 ${LARGURA} ${ALTURA}`}
       preserveAspectRatio="none"
       role="img"
       aria-label={`Tendência dos últimos ${janela.length} pontos: de ${inteiro(menor)} a ${inteiro(maior)}`}
     >
-      <path className="sparkline-linha" d={caminho} fill="none" stroke={cor} />
+      {/* `non-scaling-stroke`: o viewBox é esticado por CSS (sem medida em pixel), e sem
+          isso o traço engrossaria ou afinaria com a largura real do card. */}
+      <path
+        d={caminho}
+        fill="none"
+        stroke={cor}
+        strokeWidth={1.6}
+        vectorEffect="non-scaling-stroke"
+      />
       <circle
         className="sparkline-ponto"
         cx={x(janela.length - 1)}

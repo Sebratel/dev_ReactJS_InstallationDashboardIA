@@ -8,6 +8,8 @@ import { useModo } from '../../context/ModoContext.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { Bullet } from './Bullet.tsx';
 import { Calendario } from '../ui/Calendario.tsx';
+import { IdVisual } from '../ui/IdVisual.tsx';
+import { LinhaDoKpi, MolduraDoKpi, NomeDoKpi, ValorDoKpi } from './kpi/partes.tsx';
 
 /**
  * O cartão de um indicador.
@@ -108,21 +110,21 @@ export function KpiCard({
       : undefined;
 
   return (
-    <section className={`cartao-kpi${destaque ? ' destaque' : ''}`}>
-      <h3 className="kpi-nome" title={nomeKpi}>
-        {nomeKpi}
-      </h3>
-      <div className={`kpi-valor${f.vazio ? ' vazio' : ''}`}>{valorTexto}</div>
+    <MolduraDoKpi>
+      <NomeDoKpi title={nomeKpi}>{nomeKpi}</NomeDoKpi>
+      <ValorDoKpi vazio={f.vazio} destaque={destaque}>
+        {valorTexto}
+      </ValorDoKpi>
       {dadosDaTendencia ? <Sparkline dados={dadosDaTendencia} /> : null}
       {metaValor !== undefined && valorNumerico !== undefined ? (
         <Bullet valor={valorNumerico} meta={metaValor} />
       ) : null}
       {dadosDoCalendario ? <Calendario dados={dadosDoCalendario} /> : null}
       {conferencia && origem ? (
-        <div className="kpi-origem" title={`${origem} · ${visual.id}`}>
-          {origem} · <span className="id-visual">{visual.id}</span>
-        </div>
+        <LinhaDoKpi title={`${origem} · ${visual.id}`}>
+          {origem} · <IdVisual id={visual.id} />
+        </LinhaDoKpi>
       ) : null}
-    </section>
+    </MolduraDoKpi>
   );
 }

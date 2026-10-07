@@ -30,11 +30,17 @@
 
 import { useMemo } from 'react';
 import type { DadosDeMatriz } from '../../services/dashboardService.ts';
+import { cn } from '../../utils/cn.ts';
 import { inteiro } from '../../utils/formato.ts';
 
 const DIAS_DA_SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
 /** Nunca some a zero: a célula do dia 1 do mês some visualmente contra o fundo. */
 const OPACIDADE_MINIMA = 0.12;
+
+/** 7 colunas fixas (dias da semana); as linhas nascem do conteúdo do mês. */
+const GRADE = 'grid grid-cols-[repeat(7,1fr)] gap-[2px]';
+/** Magnitude por OPACIDADE de um só token (`--pbi-gold`), não hex interpolado. */
+const DIA = 'aspect-square rounded-[2px]';
 
 interface CelulaDoDia {
   dia: number;
@@ -102,23 +108,23 @@ export function Calendario({ dados }: { dados: DadosDeMatriz }) {
 
   return (
     <div
-      className="kpi-calendario"
+      className="mt-[6px] w-full"
       role="img"
       aria-label="Distribuição diária no mês, um quadrado por dia"
     >
-      <div className="kpi-calendario-cabecalho">
+      <div className={cn(GRADE, 'mb-[2px] text-center text-[0.55rem] font-bold text-pbi-muted')}>
         {DIAS_DA_SEMANA.map((letra, i) => (
           <span key={i}>{letra}</span>
         ))}
       </div>
-      <div className="kpi-calendario-grade">
+      <div className={GRADE}>
         {semanas.celulas.map((c, i) =>
           c === null ? (
-            <span key={i} className="kpi-calendario-dia vazio" />
+            <span key={i} className={DIA} />
           ) : (
             <span
               key={i}
-              className="kpi-calendario-dia"
+              className={cn(DIA, 'bg-pbi-gold')}
               style={{
                 opacity:
                   semanas.maior > 0

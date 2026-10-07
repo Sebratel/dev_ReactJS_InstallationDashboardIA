@@ -3,6 +3,8 @@
 import type { DadosDeCard, VisualCalculado } from '../../services/dashboardService.ts';
 import { formata } from '../../utils/formato.ts';
 import { useModo } from '../../context/ModoContext.tsx';
+import { IdVisual } from '../ui/IdVisual.tsx';
+import { LinhaDoKpi, NomeDoKpi, ValorDoKpi } from './kpi/partes.tsx';
 
 export function Card({ visual }: { visual: VisualCalculado }) {
   const { conferencia } = useModo();
@@ -20,25 +22,23 @@ export function Card({ visual }: { visual: VisualCalculado }) {
       : `${(d.origem?.aggregation ?? '?').toUpperCase()} de ${d.origem?.table ?? '?'}[${d.origem?.column ?? '?'}]`;
 
   return (
-    <section className="cartao">
-      <h3 className="kpi-nome">{d.nome ?? '(sem rótulo)'}</h3>
-      <div className={`kpi-valor${f.vazio ? ' vazio' : ''}`}>{f.texto}</div>
+    <section className="cartao" data-visual>
+      <NomeDoKpi>{d.nome ?? '(sem rótulo)'}</NomeDoKpi>
+      <ValorDoKpi vazio={f.vazio}>{f.texto}</ValorDoKpi>
       {filtros.length ? (
-        <div className="kpi-filtros" title="Segmentações que afetam este número">
+        <LinhaDoKpi tom="filtros" title="Segmentações que afetam este número">
           {filtros.length} filtro(s) aplicado(s)
-        </div>
+        </LinhaDoKpi>
       ) : null}
       {conferencia ? (
         <>
-          <div className="kpi-origem">
+          <LinhaDoKpi>
             {origem}
             {filtros.length ? ` · ${filtros.length} filtro(s)` : ''}
-          </div>
-          <div className="kpi-origem">
-            <span className="id-visual" title="id do visual — a chave de backend/specs/paridade">
-              {visual.id}
-            </span>
-          </div>
+          </LinhaDoKpi>
+          <LinhaDoKpi>
+            <IdVisual id={visual.id} title="id do visual — a chave de backend/specs/paridade" />
+          </LinhaDoKpi>
         </>
       ) : null}
     </section>
