@@ -11,7 +11,9 @@
 // claro/escuro × 1366/1920/1024/390 (as duas últimas exercitam os `@media` que as
 // resoluções de referência não alcançam): todas as propriedades computadas,
 // `::before`/`::after`, o `:hover` forçado (CDP) em todo elemento com cursor de mão a 1366,
-// o diálogo de filtro aberto e a tela de login (todo `/api` respondendo 401).
+// o diálogo de filtro aberto, os estados forçados a 1366 (página abrindo, visual
+// carregando e visual que falhou — a tela carregada não os mostra) e a tela de login
+// (todo `/api` respondendo 401).
 //
 // Receita: build A e build B, os dois servidos na MESMA origem (o HAR casa host e porta —
 // `vite preview --outDir <build> --port 4173`); `grava` uma vez contra A com a API no ar;
@@ -30,7 +32,13 @@ import { chromium, type BrowserContext, type Page } from 'playwright';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
 import { logaComoFerramenta } from './login-interno.ts';
-import { comparaMedicao, novaComparacao, type Linha, type Medicao } from './regua-avalia.ts';
+import {
+  comparaMedicao,
+  novaComparacao,
+  recortaAbertura,
+  type Linha,
+  type Medicao,
+} from './regua-avalia.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const API = /\/api\/(?!eventos)/;
@@ -295,6 +303,90 @@ try {
         if (modo === 'grava') await new Promise((r) => setTimeout(r, PAUSA_GRAVANDO_MS));
       }
     }
+    await ctx.close();
+  }
+
+  // Os estados que a tela carregada não mostra, forçados a 1366 sobre o HAR (a rota da
+  // página vence a do contexto): `abrindo` segura o pedido da página (esqueleto da
+  // página inteira); `carregando` responde a abertura RECORTADA (`recortaAbertura`: a de
+  // hoje pede todos os visuais de uma vez, e sem o recorte nenhum se busca sozinho) e
+  // segura o resto (visual fora da dobra e sob demanda, antes e depois de rolar);
+  // `falhou` responde 500 ao resto ("não carregou", com o erro e o botão).
+  if (modo === 'mede') {
+    // As respostas de abertura e de layout gravadas, para recortar (`recortaAbertura`).
+    const gravado = new Map<string, string>();
+    for (const e of JSON.parse(fs.readFileSync(HAR, 'utf8')).log.entries as {
+      request: { url: string };
+      response: { content: { text?: string; encoding?: string } };
+    }[]) {
+      const { text, encoding } = e.response.content;
+      if (!/\/api\/dashboards\//.test(e.request.url) || text === undefined) continue;
+      gravado.set(e.request.url, encoding === 'base64' ? Buffer.from(text, 'base64').toString('utf8') : text);
+    }
+    const ctx = await browser.newContext({ viewport: TAMANHOS[0], reducedMotion: 'reduce' });
+    await ctx.route('**/api/eventos**', (r) => r.abort());
+    await ctx.routeFromHAR(HAR, { url: API, notFound: 'abort' });
+    for (const tema of ['light', 'dark'])
+      for (const estado of ['abrindo', 'carregando', 'falhou'] as const)
+        for (const id of PAGINAS) {
+          const nome = `1366-${tema}-${id}-${estado}`;
+          const page = await ctx.newPage();
+          await page.clock.setFixedTime(new Date('2026-10-06T15:00:00Z'));
+          await page.addInitScript((t: string) => {
+            localStorage.setItem('sebratel-tema-escuro', t);
+            localStorage.setItem('modo-conferencia', '1');
+          }, tema);
+          page.on('pageerror', (e) => erros.push(`${nome}: ${String(e).slice(0, 160)}`));
+          const daPagina = new RegExp(`/api/dashboards/${id}(\\?|$)`);
+          let abertura = estado !== 'abrindo';
+          await page.route(daPagina, (r) => {
+            if (abertura) {
+              abertura = false;
+              const pagina = gravado.get(r.request().url());
+              const layout = gravado.get(`${BASE}/api/dashboards/${id}/layout`);
+              if (!pagina || !layout) {
+                erros.push(`${nome}: abertura ou layout fora do HAR`);
+                return r.fallback();
+              }
+              return r.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify(recortaAbertura(JSON.parse(pagina), JSON.parse(layout))),
+              });
+            }
+            if (estado === 'falhou')
+              return r.fulfill({
+                status: 500,
+                contentType: 'application/json',
+                body: '{"erro":"falha forçada pela régua"}',
+              });
+            // Segura: o pedido fica em voo até a página fechar.
+          });
+          await page.goto(`${BASE}/?pagina=${id}`, { waitUntil: 'domcontentloaded' });
+          await page
+            .waitForSelector('.area', { timeout: 60000 })
+            .catch(() => erros.push(`${nome}: sem .area`));
+          await page.waitForTimeout(2500);
+          const mede = async (sufixo: string) => {
+            escreve(nome + sufixo, { linhas: comHash(await page.evaluate(despeja, 'body')), hover: [] });
+            medicoes++;
+          };
+          if (estado === 'carregando') await mede('-dobra');
+          if (estado !== 'abrindo') {
+            for (let i = 0; i < 30; i++) {
+              const fim = await page.evaluate(() => {
+                window.scrollBy(0, 600);
+                return window.scrollY + window.innerHeight >= document.body.scrollHeight - 2;
+              });
+              await page.waitForTimeout(300);
+              if (fim) break;
+            }
+            await page.evaluate(() => window.scrollTo(0, 0));
+            await page.waitForTimeout(1500);
+          }
+          await mede('');
+          await page.close();
+        }
     await ctx.close();
   }
 

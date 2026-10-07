@@ -197,7 +197,8 @@ inativas. Conferido no CSS gerado — `.bg-pbi-primary` em `@layer utilities`,
 
 **Fase 6 (híbrido):** peças simples e repetidas viram utilitário sobre os tokens, com
 `cn` (`ui/Selo`, `ui/Botao`, `Erro`/`Aviso`, `ui/IdVisual`, o cabeçalho do `Cartao`,
-`visuais/kpi/partes`); a conta de altura, a grade, os SVG e as animações ficam aqui.
+`visuais/kpi/partes`, os estados de `ui/Estado`); a conta de altura, a grade, os SVG e
+as animações (o brilho do esqueleto, `.brilho`) ficam aqui.
 Cada passo é provado por `npm run tela:regua` (estilo computado antes × depois).
 
 **Nenhum hexadecimal fora do `:root`.** Uma exceção, consciente e documentada:

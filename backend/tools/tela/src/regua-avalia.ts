@@ -129,3 +129,29 @@ export function comparaMedicao(
     if (props.length) anota(c, `:hover ${rotuloA.get(ca)} → ${rotulo.get(cb)}`, props, nome);
   }
 }
+
+interface PaginaGravada {
+  visuais: { id: string; sobDemanda?: string[] }[];
+}
+interface LayoutGravado {
+  faixas: { colunas: { visual: string }[] }[];
+}
+
+/**
+ * A resposta de abertura recortada para forçar os estados que a abertura de hoje não
+ * mostra (ela pede todos os visuais de uma vez): os visuais da segunda metade das faixas
+ * saem — viram `VisualNaDobra`, que se busca ao rolar — e o primeiro da primeira faixa
+ * vira sob demanda (`SobDemanda`, que se busca ao montar).
+ */
+export function recortaAbertura<P extends PaginaGravada>(pagina: P, layout: LayoutGravado): P {
+  const fora = new Set(
+    layout.faixas.slice(Math.ceil(layout.faixas.length / 2)).flatMap((f) => f.colunas.map((c) => c.visual)),
+  );
+  const sobDemanda = layout.faixas[0]?.colunas[0]?.visual;
+  return {
+    ...pagina,
+    visuais: pagina.visuais
+      .filter((v) => !fora.has(v.id))
+      .map((v) => (v.id === sobDemanda ? { ...v, sobDemanda: ['TABELA DA RÉGUA'] } : v)),
+  };
+}

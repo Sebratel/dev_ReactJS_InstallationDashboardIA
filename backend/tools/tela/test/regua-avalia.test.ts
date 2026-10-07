@@ -4,6 +4,7 @@ import {
   comparaMedicao,
   difereEm,
   novaComparacao,
+  recortaAbertura,
   type Medicao,
 } from '../src/regua-avalia.ts';
 
@@ -83,4 +84,24 @@ test('o hover é comparado par a par: o mesmo caminho aparece em estados diferen
   const trocado: Medicao['hover'] = [hover[0]!, hover[2]!, hover[1]!];
   comparaMedicao(errado, 'p', { linhas, hover }, { linhas, hover: trocado }, estilos, estilos);
   assert.equal(errado.diferencas.size, 1, 'um estado de hover trocado tem de aparecer');
+});
+
+test('o recorte tira a segunda metade das faixas e põe o primeiro visual sob demanda', () => {
+  const layout = {
+    faixas: [
+      { colunas: [{ visual: 'a' }, { visual: 'b' }] },
+      { colunas: [{ visual: 'c' }] },
+      { colunas: [{ visual: 'd' }] },
+    ],
+  };
+  const pagina = { dadoDe: 'x', visuais: ['k', 'a', 'b', 'c', 'd'].map((id) => ({ id })) };
+  const r = recortaAbertura(pagina, layout);
+  assert.deepEqual(
+    r.visuais.map((v) => v.id),
+    ['k', 'a', 'b', 'c'],
+  );
+  assert.ok(r.visuais.find((v) => v.id === 'a')!.sobDemanda);
+  assert.equal(r.visuais.find((v) => v.id === 'k')!.sobDemanda, undefined, 'KPI fica');
+  assert.equal(r.dadoDe, 'x');
+  assert.equal(pagina.visuais.length, 5, 'não muda a gravação');
 });

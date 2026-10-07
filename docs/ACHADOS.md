@@ -14368,3 +14368,35 @@ ensinou:
   gravação agora falha com qualquer 401 ou 429;
 - equivalências conhecidas, com teste: `rounded-full` × `999px`, e `background-position`
   quando não há imagem de fundo.
+
+## #185 — fase 6d: os estados viraram componente, e a régua passou a forçá-los (07/10)
+
+**O que entrou.** `ui/Estado.tsx`: `Esqueleto` (com `titulo` se anuncia — `aria-busy`,
+"Carregando X…"; sem, é `aria-hidden`), `EsqueletoLinha` e `MensagemDeEstado` (o "sem
+dados", o vazio da tabela e o "não carregou" com erro e botão; `como="div"` quando leva
+bloco dentro). Saíram `.vazio-pagina`, `.sob-demanda`, `.esqueleto`, `.esqueleto-linha` e
+`.kpi-esqueleto-linha`; ficou no CSS só o brilho que varre a barra (`.brilho::after`, com
+o corte de `prefers-reduced-motion`), porque é animação. Teste de componente para o que a
+régua não mede: quem se anuncia e com que tag sai a mensagem.
+
+**A régua não via os estados.** Ela mede a tela já carregada, e o esqueleto e o "não
+carregou" só existem antes dela ou quando algo falha. Pior: a abertura de hoje pede TODOS
+os visuais de uma vez (`N_FAIXAS_EAGER = Infinity`, decisão "tudo pré-carregado"), então
+`VisualNaDobra` não aparece nunca, e `SobDemanda` só quando o catálogo de projeção marca
+uma tabela — nenhuma página do snapshot atual. Agora `mede` força, a 1366 e nos dois
+temas, para as 14 páginas:
+- `abrindo`: o pedido da página fica em voo → o esqueleto da página inteira, KPIs inclusive;
+- `carregando`: a abertura responde RECORTADA (`recortaAbertura`, com teste: a segunda
+  metade das faixas sai e o primeiro visual vira sob demanda) e o resto fica em voo →
+  esqueleto do visual fora da dobra e do sob demanda, antes e depois de rolar;
+- `falhou`: o resto responde 500 → "não carregou" com o `Erro` e o botão.
+
+**Prova:** 234 medições, 269.022 elementos; todos os elementos de estado idênticos. As 51
+diferenças são o ruído já conhecido (#184): a altura do cartão de tabela das páginas `l-*`
+(280 ↔ 354px, nos dois sentidos — o MESMO build medido duas vezes dá 50 diferenças
+iguais) e o selo "ao vivo" num diálogo.
+
+**De passagem:** a suíte completa teve 4 falhas de tempo em `porta`, `prioridade-http` e
+`reaquecimento` enquanto um `vite build` rodava junto; sozinhos, os 31 testes passam.
+A API local estava degradada (os três grupos de atualização falhando seguido, servindo o
+snapshot) — ligada fora desta sessão; não mexi.
