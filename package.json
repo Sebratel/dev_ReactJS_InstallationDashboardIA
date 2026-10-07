@@ -67,6 +67,7 @@
     "tela": "node backend/tools/tela/src/varre.ts",
     "tela:entrada": "node backend/tools/tela/src/entrada.ts",
     "tela:ao-vivo": "node backend/tools/tela/src/ao-vivo.ts",
+    "tela:regua": "node backend/tools/tela/src/regua.ts",
     "web": "npm run dev --workspace @analytics/web",
     "web:build": "npm run build --workspace @analytics/web",
     "probe:reaquecimento": "node --max-old-space-size=3072 backend/tools/probe/src/reaquecimento-pos-evento.ts",
