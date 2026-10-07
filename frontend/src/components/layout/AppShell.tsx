@@ -8,6 +8,7 @@ import { AlertTriangle } from 'lucide-react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import type { EstadoAvisoSaude } from '../../utils/avisoSaude.ts';
 import { cn } from '../../utils/cn.ts';
+import { SO_ICONE } from './soIcone.ts';
 import { MarcaSebratel } from '../ui/MarcaSebratel.tsx';
 import { AcoesDoCabecalho } from './AcoesDoCabecalho.tsx';
 import { NavDeTelas } from './NavDeTelas.tsx';
@@ -56,7 +57,7 @@ export function AppShell(props: {
       <header className="sticky top-0 z-30 flex h-[var(--h-topbar)] flex-none items-center gap-[16px] border-b border-pbi-borda bg-pbi-superficie px-[16px]">
         <div className="flex flex-none items-center gap-[10px]">
           <MarcaSebratel fundo="var(--pbi-primary)" letra="var(--pbi-sobre-primary)" tamanho={30} />
-          <div className="flex flex-col">
+          <div className={cn('flex flex-col', SO_ICONE)}>
             <span className="text-[0.82rem] leading-[1.1] font-extrabold tracking-[0.06em] text-pbi-primary-texto">
               SEBRATEL
             </span>
@@ -92,7 +93,7 @@ export function AppShell(props: {
               title="Conectado ao Voalle via SSE — dados atualizam automaticamente sem F5"
             >
               <span className="ponto-vivo" aria-hidden="true" />
-              Ao vivo • {props.ultimaAtualizacaoRealtime}
+              <span className={SO_ICONE}>Ao vivo • {props.ultimaAtualizacaoRealtime}</span>
             </span>
           ) : null}
         </div>

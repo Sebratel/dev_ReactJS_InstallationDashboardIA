@@ -3,6 +3,7 @@
 
 import { RefreshCw } from 'lucide-react';
 import { Botao } from '../ui/Botao.tsx';
+import { SO_ICONE } from './soIcone.ts';
 
 export function BotaoAtualizar(props: {
   aoClicar: () => void;
@@ -18,7 +19,7 @@ export function BotaoAtualizar(props: {
       className="flex items-center gap-[6px]"
     >
       <RefreshCw size={14} className={props.buscando ? 'girando' : undefined} aria-hidden="true" />
-      Atualizar
+      <span className={SO_ICONE}>Atualizar</span>
     </Botao>
   );
 }

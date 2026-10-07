@@ -14433,3 +14433,23 @@ com `:hover` forçado, o diálogo e o login: idênticos.
 **Visto de passagem, sem mexer:** a 390px o selo "ao vivo" continua visível com o título
 escondido e fica por cima dos botões do topo. A regra de 640px só escondia título e
 subtítulo, nos dois builds — é anterior a esta fase.
+
+## #187 — abaixo de 640px o topo fica só em ícone: o selo "ao vivo" e a página vazavam (07/10)
+
+**O defeito, medido** (página `l-inst`, "Atualizar" clicado para o selo aparecer —
+`useTempoReal.atualiza` marca a hora): o texto do selo "Ao vivo • hh:mm:ss" não quebra
+linha, e a caixa dele encolhia com o título da tela; o texto passava por cima dos botões
+do topo de 360 a ~520px. E, mesmo SEM o selo, o topo não cabia: a página rolava 34px na
+horizontal a 390px e 64px a 360px (marca com texto + "Atualizar" com texto + cinco
+botões). Os dois vêm de antes da fase 6: a regra de 640px só escondia título e subtítulo.
+
+**A correção** segue o que as abas já faziam: abaixo de 640px a marca vira o círculo, o
+selo vira o ponto verde e o "Atualizar" o ícone (`SO_ICONE` em
+`components/layout/soIcone.ts`, `sr-only` por variante de mídia — o texto continua para
+o leitor de tela, e o botão continua se chamando "Atualizar"). Medido depois: nenhuma
+sobreposição e nenhuma rolagem horizontal de 360 a 1366px; de 641px para cima, as
+posições são as mesmas de antes.
+
+**Régua** (`visao-geral` e `l-inst`, as 4 larguras, os estados): só 390px tem estilo
+diferente (44 elementos, os da marca, do selo e do botão); 1024, 1366 e 1920 idênticos,
+com um elemento a mais em cada medição — o `span` do texto do "Atualizar".
