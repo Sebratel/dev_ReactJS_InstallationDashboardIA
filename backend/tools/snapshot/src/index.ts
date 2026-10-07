@@ -95,7 +95,7 @@ import {
   queriesQueAlimentamCalculada,
   shaDasChaves,
 } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
-import { resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
+import { CODIGO_FALHA_TRANSITORIA, ehFalhaTransitoria, resumoDoErro } from '../../../packages/snapshot/src/erro.ts';
 import { adquireTrava, VAR_TRAVA_HERDADA } from '../../../packages/snapshot/src/trava.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
@@ -103,6 +103,9 @@ applyDotEnv(ROOT);
 
 /** Prefixo da linha de resultado do filho. Só ela é dado; o resto é log. */
 const MARCA = '##SNAP##';
+
+/** Folga antes da segunda tentativa de uma query que falhou por rede. */
+const ESPERA_ANTES_DE_REPETIR_MS = 15_000;
 
 /**
  * Um só instante para a execução inteira — ver o comentário em `materializa()`
@@ -1104,7 +1107,14 @@ let congelouCedo = false;
 let congelouCedoOk = true;
 for (const [i, id] of aBuscar.entries()) {
   process.stderr.write(`  ${id}… `);
-  const r = await rodaEmSubprocesso(id);
+  let r = await rodaEmSubprocesso(id);
+  // Uma conexão cortada no meio de UMA query (06/10/2026, `contratos`) derrubava o grupo
+  // inteiro por 15 min. Segunda chance só para erro de rede: o resto se repete igual.
+  if (!r.ok && r.erro && ehFalhaTransitoria(r.erro)) {
+    process.stderr.write(`FALHOU (${r.ms} ms, rede) — de novo em ${ESPERA_ANTES_DE_REPETIR_MS / 1000}s… `);
+    await new Promise((pronto) => setTimeout(pronto, ESPERA_ANTES_DE_REPETIR_MS));
+    r = await rodaEmSubprocesso(id);
+  }
   process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
   // Logo abaixo da linha da query, e não num resumo no fim: quem materializa uma
   // mesclagem morta precisa ver a nota ao lado do nome dela, não a três telas de
@@ -1250,4 +1260,5 @@ if (!args.semCalculadas && resultados.some((r) => r.ok) && !(congelouCedo && con
   }
 }
 
-process.exit(falhas.length ? 1 : 0);
+const soDeRede = falhas.length > 0 && falhas.every((r) => r.erro !== undefined && ehFalhaTransitoria(r.erro));
+process.exit(falhas.length === 0 ? 0 : soDeRede ? CODIGO_FALHA_TRANSITORIA : 1);

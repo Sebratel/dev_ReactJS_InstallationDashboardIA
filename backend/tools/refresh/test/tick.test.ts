@@ -36,6 +36,23 @@ test('estaVencido: da segunda falha seguida em diante, espera intervalo × 2^(fa
   assert.equal(estaVencido(falhando(3, 60), 15, AGORA), true);
 });
 
+test('falha de rede NÃO freia: o grupo tenta todo ciclo até a rede voltar', () => {
+  // 06/10/2026: uma tarde sem caminho até o Voalle deixou o `quente` adiado em espera
+  // crescente — com teto de 4 h, isso seria dado parado DEPOIS da rede voltar.
+  const deRede = { ...falhando(5, 15), transitoria: true };
+  assert.equal(proximaTentativa(deRede, 15), null);
+  assert.equal(estaVencido(deRede, 15, AGORA), true);
+  assert.equal(estaVencido(falhando(5, 15), 15, AGORA), false, 'defeito determinístico continua freado');
+});
+
+test('proximoStatus: guarda `transitoria` só enquanto a falha for de rede', () => {
+  const deRede = proximoStatus(falhando(1, 15), AGORA, { ok: false, erro: 'x', transitoria: true }, 1);
+  assert.equal(deRede.transitoria, true);
+  const deDefeito = proximoStatus(deRede, AGORA, { ok: false, erro: 'x' }, 1);
+  assert.equal(deDefeito.transitoria, undefined, 'a falha seguinte não é de rede: volta a frear');
+  assert.equal(proximoStatus(deRede, AGORA, { ok: true }, 1).transitoria, undefined);
+});
+
 test('proximaTentativa: teto de 4 h, e nada de espera sem falha seguida', () => {
   const quatroHoras = TETO_ESPERA_APOS_FALHAS_MS;
   const ate = proximaTentativa(falhando(20, 0), 30)!;

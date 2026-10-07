@@ -14544,3 +14544,57 @@ pintar por cima, página recalculada e busca limpa voltando ao começo) e o test
 fronteira na `componentes-tabela`. Na tela, contra a API: 10× "próxima" → 201–220;
 "anterior" → 181–200; "próxima" de novo sem pedido; busca, busca sem acerto ("Nenhuma linha
 para esta busca."), busca limpa → 1–20; nenhum erro no console.
+
+## #191 — falha de rede virava dado parado; a stack ficou 24 h só com a `api` (07/10)
+
+**O que se viu.** VISÃO PRODUTIVA sem nada novo em 07/10, `medio` e `frio` "falhando seguido
+— saiu com código 1" em `/api/saude`, e 2.280 linhas `Redis desligado do caminho` no log da
+API. `docker ps`: só a `api` de pé; `refresh`, `redis`, `proxy` e `snapshot-diario` parados
+havia 24 h.
+
+**A cronologia (horário RS; o log do Docker Desktop é a prova das paradas).**
+- 06/10 16:32 e 17:08: `quente` falha — `contratos` com `Connection terminated unexpectedly`
+  no meio da query; depois `connect ETIMEDOUT` e `fetch failed` (Google) **no mesmo minuto**.
+  `medio` e `frio` passam entre as duas: era a rede da estação, não uma query.
+- 17:53–18:21: tudo falha com `ECONNREFUSED 186.219.128.248:5432` **em 21 s** — o SYN sem
+  resposta do Windows, não uma recusa do Postgres. A `api` falhou igual no poller. Com 2–3
+  falhas seguidas, a espera crescente adiou os grupos (teto 4 h).
+- 18:29: `ContainerStopComposeLinux` ×5 — um `docker compose stop` deliberado. **A queda do
+  banco não derrubou nada.**
+- 07/10 08:45: `ContainerStartOthersLinux` ×1 — só a `api` religada (botão Start do Docker
+  Desktop ou `docker start`). Esses caminhos ignoram `depends_on`: o `redis` ficou de fora.
+- 07/10 18:36: `docker compose start`; Voalle respondendo de dentro da rede do compose; o
+  `quente` passou na primeira volta.
+
+**Os defeitos de código, e o que mudou.**
+1. *Uma conexão cortada derrubava o grupo.* O materializador repete uma vez, depois de 15 s,
+   a query que falhou por rede (`ehFalhaTransitoria`, `backend/packages/snapshot/src/erro.ts`).
+2. *Falha de rede entrava na espera crescente.* Ela existe para defeito que se repete igual
+   (#153); para banco inalcançável, o teto de 4 h seria dado parado DEPOIS da rede voltar.
+   Quando TODA falha da execução é de rede, o materializador sai com **75** (`EX_TEMPFAIL`),
+   o resultado do grupo leva `transitoria`, e `proximaTentativa` não freia: tenta todo ciclo.
+   A decisão é pelo código de saída, não por texto do log.
+3. *O daemon de produção perdia a causa.* Tinha executor próprio (`spawnSync`, `stdio:
+   'inherit'`) e gravava só `saiu com código 1` — o defeito que a API consertou em #129. O
+   daemon e o `npm run refresh` agora usam `rodaGrupoAssincrono`, o mesmo da API.
+4. *"Falhando seguido" com o agendador morto.* Um grupo fora da espera crescente que não
+   tenta há mais de 2× o intervalo agora sai **parado desde** o último sucesso — que é a
+   pista certa: ninguém está rodando.
+5. *Uma linha por abertura do disjuntor.* Com o Redis parado, o circuito reabre a cada sonda
+   de 10 s. Agora é uma linha por queda e uma na volta; a contagem fica em `/api/saude`.
+
+**O que NÃO é código, e fica com quem opera.** Parar a stack e religar um contêiner só, pelo
+Docker Desktop ou pelo Portainer, pula `depends_on`. Religar é sempre `docker compose -f
+docker-compose.prod.yml start` (ou `up -d`), nunca o botão de um contêiner. O defeito 4 é o
+que faz isso aparecer em `/api/saude` em até 2× o intervalo, e não em `docker ps`.
+
+**Prova.** Testes novos em `erro.test.ts` (as quatro mensagens literais de 06/10 são de rede;
+statement timeout, heap, M e senha errada não são), `tick.test.ts`, `executa-grupo.test.ts`
+(75 → `transitoria`), `status.test.ts` (o `refresh-status.json` real de 07/10 sai "parado
+desde 19:43 UTC"; na espera crescente continua "falhou") e `cache-disjuntor.test.ts` (o teste
+antigo afirmava uma linha por abertura — o defeito). Materializador contra porta fechada:
+`FALHOU (1246 ms, rede) — de novo em 15s… FALHOU`, saída 75; com variável faltando no `.env`,
+saída 1 e sem repetir. Um ciclo real do daemon (`--so-uma-vez`, numa worktree sem `.env`, Voalle
+numa porta fechada): `frio`, só Voalle, saiu 75 e gravou `transitoria: true` com a causa no
+`refresh-status.json`; `quente` e `medio`, com falha de configuração do dbMaria e do Google
+misturada, saíram 1 e sem `transitoria` — falha mista continua freada.

@@ -19,6 +19,7 @@
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { CODIGO_FALHA_TRANSITORIA } from '../../../packages/snapshot/src/erro.ts';
 import { argIncremental, type GrupoDeRefresh } from './grupos.ts';
 // **Um tipo só, e ele mora em `tick.ts`.** Redeclarar `ResultadoDeExecucao` aqui daria
 // duas definições estruturalmente iguais que o compilador aceita e que divergem no dia
@@ -161,12 +162,17 @@ export function rodaGrupoAssincrono(
       responde({ ok: false, erro: err instanceof Error ? err.message : String(err) });
     });
     filho.on('exit', (codigo, sinal) => {
-      if (codigo === 0) return responde({ ok: true });
-      const cauda = caudaDeErro(erroDoFilho);
-      responde({
-        ok: false,
-        erro: `saiu com código ${codigo ?? sinal}${cauda ? ` — ${cauda}` : ''}`,
-      });
+      responde(resultadoDaSaida(codigo, sinal, caudaDeErro(erroDoFilho)));
     });
   });
+}
+
+/** 75 é o materializador dizendo "só rede" — ver `CODIGO_FALHA_TRANSITORIA`. */
+function resultadoDaSaida(codigo: number | null, sinal: string | null, cauda = ''): ResultadoDeExecucao {
+  if (codigo === 0) return { ok: true };
+  return {
+    ok: false,
+    erro: `saiu com código ${codigo ?? sinal}${cauda ? ` — ${cauda}` : ''}`,
+    ...(codigo === CODIGO_FALHA_TRANSITORIA ? { transitoria: true } : {}),
+  };
 }

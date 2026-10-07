@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { resumoDoErro } from '../src/erro.ts';
+import { ehFalhaTransitoria, resumoDoErro } from '../src/erro.ts';
 
 /** O despejo que chegou como `} | } | Node.js v24.15.0` em 12/08/2026. */
 const DESPEJO_PG = `
@@ -78,6 +78,30 @@ test('stderr vazio diz que está vazio, em vez de string vazia', () => {
 test('o resumo é limitado a 400 caracteres', () => {
   const r = resumoDoErro(`Error: ${'x'.repeat(900)}`);
   assert.equal(r.length, 400);
+});
+
+test('ehFalhaTransitoria: as falhas de rede de 06/10/2026, literais, são transitórias', () => {
+  for (const erro of [
+    "Falha ao ler a fonte da query 'contratos': Connection terminated unexpectedly",
+    "Falha ao ler a fonte da query 'backlog-instalacao': connect ETIMEDOUT",
+    "Falha ao ler a fonte da query 'apuracao-premiacao': fetch failed",
+    "Falha ao ler a fonte da query 'field-agenda': connect ECONNREFUSED 186.219.128.248:5432",
+  ]) {
+    assert.equal(ehFalhaTransitoria(erro), true, erro);
+  }
+});
+
+test('ehFalhaTransitoria: defeito que se repete igual NÃO é transitório', () => {
+  // Estes são o que a espera crescente existe para frear: insistir refaz a carga
+  // inteira para falhar do mesmo jeito.
+  for (const erro of [
+    resumoDoErro(DESPEJO_PG),
+    'estourou o heap (4096 MB). O avaliador de M guarda todos os passos vivos: tente --memoria=8192.',
+    'Expression.Error: A coluna X não existe',
+    'password authentication failed for user "cliente_s"',
+  ]) {
+    assert.equal(ehFalhaTransitoria(erro), false, erro);
+  }
 });
 
 test('a palavra "error" no meio da frase não vira começo de erro', () => {

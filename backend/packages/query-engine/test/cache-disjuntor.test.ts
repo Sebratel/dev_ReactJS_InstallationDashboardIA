@@ -119,11 +119,22 @@ test('a sonda que falha de novo REABRE, sem enxurrada de linha', async () => {
     await c.get('k').catch(() => {});
   }
   assert.ok(c.estado().aberturas >= 2, 'reabriu a cada janela');
-  assert.equal(
-    linhas.length,
-    c.estado().aberturas,
-    `${linhas.length} linhas para ${c.estado().aberturas} aberturas — uma por abertura`,
-  );
+  // Até 07/10/2026 era uma linha por ABERTURA — e um dia de Redis parado deu 2.280
+  // linhas iguais no log da API. A queda é UM evento; a contagem fica em `estado()`.
+  assert.equal(linhas.length, 1, `${linhas.length} linhas para ${c.estado().aberturas} aberturas — uma por queda`);
+
+  agora += 1000;
+  r.conserta();
+  await c.get('k');
+  assert.equal(linhas.length, 2);
+  assert.match(linhas[1]!, /voltou a responder/);
+
+  // Uma queda NOVA depois da volta é anunciada de novo.
+  r.quebra();
+  await c.get('k').catch(() => {});
+  await c.get('k').catch(() => {});
+  assert.equal(linhas.length, 3);
+  assert.match(linhas[2]!, /desligado do caminho/);
 });
 
 test('sucesso desde o começo não abre nada, e não custa nada', async () => {

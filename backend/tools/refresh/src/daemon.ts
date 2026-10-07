@@ -19,14 +19,13 @@
 // todas, e é o único lugar onde uma falha de madrugada que o tick seguinte
 // consertou continua existindo de manhã. Leia com `--historico` (ver `historico.ts`).
 
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
-import { argvDoGrupo, MEMORIA_PADRAO_MB } from './executa-grupo.ts';
+import { MEMORIA_PADRAO_MB, rodaGrupoAssincrono } from './executa-grupo.ts';
 import {
   descreveMortesDaApi,
   leHistorico,
@@ -49,20 +48,17 @@ export interface CicloRefreshResult {
 }
 
 /**
- * A forma BLOQUEANTE, para o processo dedicado. O gêmeo assíncrono mora em
- * `executa-grupo.ts` e é o que a API usa — lá um `spawnSync` de 21 minutos pararia
- * o laço de eventos que serve HTTP. O argv é o mesmo nos dois, de propósito: ele
- * carrega o heap do filho, o `--refazer` e o `--incremental`, e duas copias disso
- * divergiriam no primeiro conserto.
+ * O mesmo executor da API (`executa-grupo.ts`). Até 07/10/2026 o daemon tinha o seu,
+ * bloqueante e com `stdio: 'inherit'`, e o `refresh-status.json` de produção só dizia
+ * `saiu com código 1` — a causa que a API já guardava (#129) não chegava aqui, e nem
+ * o código de falha de rede que decide se o grupo é freado.
  */
 export function rodaGrupo(
   raiz: string,
   grupo: GrupoDeRefresh,
   memoriaMb = MEMORIA_PADRAO_MB,
-): ResultadoDeExecucao {
-  const r = spawnSync(process.execPath, argvDoGrupo(raiz, grupo, memoriaMb), { cwd: raiz, stdio: 'inherit' });
-  if (r.status === 0) return { ok: true };
-  return { ok: false, erro: `saiu com código ${r.status ?? r.signal}` };
+): Promise<ResultadoDeExecucao> {
+  return rodaGrupoAssincrono(raiz, grupo, { memoriaMb });
 }
 
 export async function executaCiclo(opts: {
@@ -71,7 +67,7 @@ export async function executaCiclo(opts: {
   snapshotDir?: string;
   soPlano?: boolean;
   memoriaMb?: number;
-  roda?: (grupo: GrupoDeRefresh) => ResultadoDeExecucao;
+  roda?: (grupo: GrupoDeRefresh) => ResultadoDeExecucao | Promise<ResultadoDeExecucao>;
 } = {}): Promise<CicloRefreshResult> {
   const raiz = opts.raiz ?? ROOT;
   const specsDir = opts.specsDir ?? path.join(raiz, 'backend', 'specs');
@@ -109,9 +105,9 @@ export async function executaCiclo(opts: {
   // que terminaram (ver o docstring dele); o histórico segue a mesma regra. Embrulhar
   // `roda` — em vez de varrer `resultados` no fim — é o que garante isso sem mexer na
   // assinatura de `executaTick`.
-  const roda = (g: GrupoDeRefresh): ResultadoDeExecucao => {
+  const roda = async (g: GrupoDeRefresh): Promise<ResultadoDeExecucao> => {
     const inicio = Date.now();
-    const r = rodaBase(g);
+    const r = await rodaBase(g);
     registra(snapshotDir, {
       evento: 'grupo',
       quando: new Date().toISOString(),
@@ -119,6 +115,7 @@ export async function executaCiclo(opts: {
       ok: r.ok,
       duracaoMs: Date.now() - inicio,
       ...(r.erro ? { erro: r.erro } : {}),
+      ...(r.transitoria ? { transitoria: true } : {}),
     });
     return r;
   };

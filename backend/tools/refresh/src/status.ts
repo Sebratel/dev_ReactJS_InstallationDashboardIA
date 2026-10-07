@@ -14,6 +14,7 @@ import path from 'node:path';
 import { renomeiaComRetentativa } from '../../../packages/snapshot/src/escrita-atomica.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, type GrupoDeRefresh } from './grupos.ts';
+import { emEsperaPorFalhas } from './tick.ts';
 
 const ARQUIVO = 'refresh-status.json';
 
@@ -28,6 +29,8 @@ export interface StatusDeGrupo {
   falhasConsecutivas: number;
   /** Só presente quando `ok: false`. Resumo — o log completo do filho vai pro stderr. */
   erro?: string;
+  /** Só presente quando a última falha foi toda de rede — ver `proximaTentativa`. */
+  transitoria?: boolean;
 }
 
 export type StatusDeRefresh = Record<string, StatusDeGrupo>;
@@ -186,7 +189,16 @@ export function montaStatusDeRefresh(
     // é "rodou?", e o `geradoEm` de uma query pode não andar numa incremental sem novidade.
     const paradaDesde = grupo ? (grupoStatus?.ultimoSucesso ?? ultimaCarga) : ultimaCarga;
 
-    if (grupoStatus && !grupoStatus.ok && grupoStatus.falhasConsecutivas >= FALHAS_PARA_AVISO) {
+    // "Falhando" pressupõe alguém tentando. Em 07/10/2026 o agendador ficou 24 h parado
+    // depois de duas falhas de rede, e este arquivo dizia "falhando seguido" o dia todo —
+    // a pista certa ("ninguém está rodando") só aparecia em `docker ps`.
+    const semTentar =
+      grupo !== undefined &&
+      grupoStatus !== undefined &&
+      !emEsperaPorFalhas(grupoStatus, grupo.intervaloMinutos, agora) &&
+      agora.getTime() - new Date(grupoStatus.ultimaTentativa).getTime() > FATOR_PARADA * grupo.intervaloMinutos * 60_000;
+
+    if (grupoStatus && !grupoStatus.ok && grupoStatus.falhasConsecutivas >= FALHAS_PARA_AVISO && !semTentar) {
       status = 'falhou';
       erro = grupoStatus.erro ?? `Grupo '${grupo!.id}' falhou no refresh`;
     } else if (grupo) {

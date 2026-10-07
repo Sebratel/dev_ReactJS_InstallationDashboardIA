@@ -113,6 +113,29 @@ test('montaStatusDeRefresh expõe queries[] com status, idades e falhas (Contrat
 
 const verde = (iso: string) => ({ ultimaTentativa: iso, ultimoSucesso: iso, duracaoMs: 1, ok: true, falhasConsecutivas: 0 });
 
+test('falhou e PAROU de tentar é "parado", não "falhando seguido" — o agendador morreu', async () => {
+  // O estado real de 07/10/2026: `medio` com 2 falhas às 21:18 UTC de 06/10 e nenhuma
+  // tentativa depois, porque o contêiner do refresh estava parado. A saúde dizia
+  // "falhando seguido — saiu com código 1" o dia inteiro.
+  const dir = tmp();
+  await escreveStatus(dir, {
+    medio: { ultimaTentativa: '2026-10-06T21:18:21.430Z', ultimoSucesso: '2026-10-06T19:43:38.688Z', duracaoMs: 1, ok: false, falhasConsecutivas: 2, erro: 'saiu com código 1' },
+  });
+  const res = montaStatusDeRefresh(dir, path.resolve('backend/specs'), new Date('2026-10-07T21:00:00.000Z'));
+  const geral = res.queries!.find((x) => x.id === 'protocolos-geral')!;
+  assert.equal(geral.status, 'vencida');
+  assert.equal(geral.paradaDesde, '2026-10-06T19:43:38.688Z');
+  assert.match(resumeDegradacao(res.queries!).motivos.join('\n'), /grupo medio .*parado desde 2026-10-06T19:43/);
+
+  // Na espera crescente, o silêncio é esperado: continua "falhando".
+  const dir2 = tmp();
+  await escreveStatus(dir2, {
+    medio: { ultimaTentativa: '2026-10-06T21:18:21.430Z', ultimoSucesso: '2026-10-06T19:43:38.688Z', duracaoMs: 1, ok: false, falhasConsecutivas: 4, erro: 'x' },
+  });
+  const freado = montaStatusDeRefresh(dir2, path.resolve('backend/specs'), new Date('2026-10-06T23:00:00.000Z'));
+  assert.equal(freado.queries!.find((x) => x.id === 'protocolos-geral')!.status, 'falhou');
+});
+
 test('UMA falha com o último sucesso dentro da régua não acende — é soluço, o ciclo seguinte tenta', async () => {
   const dir = tmp();
   const agora = new Date('2026-09-28T12:00:00.000Z');

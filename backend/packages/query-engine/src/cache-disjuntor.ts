@@ -107,10 +107,11 @@ export class CacheComDisjuntor implements Cache {
     if (this.#falhas >= this.#limite && this.#abertoAte === 0) {
       this.#abertoAte = this.#agora() + this.#janelaMs;
       this.#aberturas += 1;
-      // Uma linha por ABERTURA, não por falha: o Redis fora do ar produz uma
-      // falha por operação de cada pedido, e repetir soterraria a primeira —
-      // o defeito de log que a F2.1 consertou.
-      this.#anuncia(
+      // Uma linha por QUEDA, não por falha nem por abertura: o Redis fora do ar
+      // reabre o circuito a cada sonda, e com uma linha por abertura foram 2.280
+      // linhas iguais num dia de Redis parado (07/10/2026). A volta é anunciada em
+      // `#sucesso`, com a contagem; o que houve entre as duas está em `/api/saude`.
+      if (this.#falhas === this.#limite) this.#anuncia(
         `[cache] Redis desligado do caminho por ${(this.#janelaMs / 1000).toFixed(0)}s ` +
           `após ${this.#falhas} falhas seguidas (${this.#ultimoErro}). ` +
           `A memória continua servindo; o que se ganha é parar de pagar o tempo de espera por pedido.`,

@@ -44,3 +44,27 @@ export function resumoDoErro(erro: string): string {
   const i = linhas.findIndex((l) => COMECO_DE_ERRO.test(l));
   return (i >= 0 ? linhas.slice(i, i + 3) : linhas.slice(0, 3)).join(' | ').slice(0, 400);
 }
+
+/**
+ * Código de saída do materializador quando TODA falha da execução foi de rede — o
+ * `EX_TEMPFAIL` de `sysexits.h`. É por ele, e não por texto, que o agendador decide
+ * não frear o grupo (`proximaTentativa` em `backend/tools/refresh/src/tick.ts`).
+ */
+export const CODIGO_FALHA_TRANSITORIA = 75;
+
+/**
+ * Falha de caminho até a fonte, não da query: insistir resolve quando a rede volta.
+ *
+ * Os casos são os medidos em 06/10/2026, numa tarde de rede instável da estação:
+ * `Connection terminated unexpectedly` no meio de `contratos`, `connect ETIMEDOUT` e
+ * `fetch failed` (Google) no mesmo minuto, e depois `ECONNREFUSED` em 21 s — o SYN sem
+ * resposta do Windows, não uma recusa do Postgres. `statement timeout` e falta de heap
+ * ficam de FORA de propósito: esses se repetem iguais, e são o que a espera crescente
+ * existe para frear.
+ */
+const FALHA_TRANSITORIA =
+  /\b(?:ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|ENOTFOUND|EAI_AGAIN|EPIPE)\b|Connection terminated|fetch failed|socket hang up|timeout exceeded when trying to connect/i;
+
+export function ehFalhaTransitoria(erro: string): boolean {
+  return FALHA_TRANSITORIA.test(erro);
+}

@@ -91,6 +91,13 @@ test('rodaGrupoAssincrono: código diferente de 0 é falha COM resumo, e não ex
   assert.deepEqual(await p, { ok: false, erro: 'saiu com código 1' });
 });
 
+test('rodaGrupoAssincrono: código 75 (só falha de rede) marca `transitoria`, e só ele', async () => {
+  const { cria, filho } = spawnFalso();
+  const p = rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never });
+  filho.emit('exit', 75, null);
+  assert.deepEqual(await p, { ok: false, erro: 'saiu com código 75', transitoria: true });
+});
+
 test('rodaGrupoAssincrono: morte por sinal também vira resultado', async () => {
   const { cria, filho } = spawnFalso();
   const p = rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never });

@@ -21,6 +21,8 @@ export interface ResultadoDeExecucao {
   ok: boolean;
   /** Resumo — o log completo do filho já foi para stderr via `stdio: 'inherit'`. */
   erro?: string;
+  /** Toda falha foi de rede (`CODIGO_FALHA_TRANSITORIA`): não freia o grupo. */
+  transitoria?: boolean;
 }
 
 /** Teto da espera entre tentativas de um grupo que falha seguido. */
@@ -38,10 +40,15 @@ export const TETO_ESPERA_APOS_FALHAS_MS = 4 * 60 * 60_000;
  * segunda em diante já não é soluço: a espera, contada da última TENTATIVA, é
  * `intervalo × 2^(falhas-1)`, com teto de 4 h. O primeiro sucesso zera a conta
  * (`proximoStatus`), e um pedido manual passa por cima (quem pede sabe que consertou).
+ *
+ * **Falha de rede não freia (07/10/2026).** Em 06/10 a estação perdeu o caminho até o
+ * Voalle e o Google por uma tarde; a espera crescente tratou isso como defeito e adiou
+ * o `quente` — a rede voltando não encurtava a espera, e o teto de 4 h seria dado parado
+ * DEPOIS da volta. Banco inalcançável não sofre com insistência: tenta todo ciclo.
  */
 export function proximaTentativa(anterior: StatusDeGrupo | undefined, intervaloMinutos: number): Date | null {
   const falhas = anterior?.falhasConsecutivas ?? 0;
-  if (falhas < 2 || !anterior?.ultimaTentativa) return null;
+  if (falhas < 2 || !anterior?.ultimaTentativa || anterior.transitoria) return null;
   const espera = Math.min(intervaloMinutos * 60_000 * 2 ** (falhas - 1), TETO_ESPERA_APOS_FALHAS_MS);
   return new Date(new Date(anterior.ultimaTentativa).getTime() + espera);
 }
@@ -85,6 +92,7 @@ export function proximoStatus(
     ok: resultado.ok,
     falhasConsecutivas: resultado.ok ? 0 : (anterior?.falhasConsecutivas ?? 0) + 1,
     ...(resultado.erro ? { erro: resultado.erro } : {}),
+    ...(!resultado.ok && resultado.transitoria ? { transitoria: true } : {}),
   };
 }
 
@@ -101,8 +109,8 @@ export interface ResultadoDoGrupoNoTick {
 
 export interface DependenciasDeTick {
   agora: () => Date;
-  /** Roda UM grupo e só devolve quando termina — como `spawnSync`. Nunca em paralelo. */
-  roda: (grupo: GrupoDeRefresh) => ResultadoDeExecucao;
+  /** Roda UM grupo e só devolve quando termina. Nunca em paralelo: o tick espera. */
+  roda: (grupo: GrupoDeRefresh) => ResultadoDeExecucao | Promise<ResultadoDeExecucao>;
   /**
    * Chamado depois de CADA grupo vencido, com o status acumulado até ali — não só
    * no fim do tick. Um tick que morre no meio (o processo é derrubado, a máquina
@@ -139,7 +147,7 @@ export async function executaTick(
     }
 
     const inicio = deps.agora();
-    const resultado = deps.roda(g);
+    const resultado = await deps.roda(g);
     const fim = deps.agora();
     const duracaoMs = fim.getTime() - inicio.getTime();
 
