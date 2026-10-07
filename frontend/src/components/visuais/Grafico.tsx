@@ -38,6 +38,7 @@ import { MARGEM, geometriaDoGrafico } from './grafico/geometria.ts';
 import { ControlesDeZoom } from './grafico/ControlesDeZoom.tsx';
 import { DesenhoDoGrafico } from './grafico/DesenhoDoGrafico.tsx';
 import { LegendaDoGrafico } from './grafico/LegendaDoGrafico.tsx';
+import { MensagemDeEstado } from '../ui/Estado.tsx';
 
 /**
  * Largura mínima por categoria em cada densidade (P, M, G). Vem do rótulo, não do
@@ -113,7 +114,7 @@ export function Grafico({
   if (!d || !g || !gTudo) {
     return (
       <Cartao titulo={tituloDoVisual(visual)} id={visual.id} altura="grafico">
-        <p className="sob-demanda">Sem dados disponíveis para o gráfico.</p>
+        <MensagemDeEstado>Sem dados disponíveis para o gráfico.</MensagemDeEstado>
       </Cartao>
     );
   }
@@ -182,7 +183,7 @@ export function Grafico({
     return (
       // `altura="grafico"`: sem ela o Cartao cai em `auto` e cresce com o conteúdo.
       <Cartao titulo={titulo} sub={sub.join(' · ')} id={visual.id} altura="grafico">
-        <p className="sob-demanda">Sem dados para os filtros atuais.</p>
+        <MensagemDeEstado>Sem dados para os filtros atuais.</MensagemDeEstado>
       </Cartao>
     );
   }

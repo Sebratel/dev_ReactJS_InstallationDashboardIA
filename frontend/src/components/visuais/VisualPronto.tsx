@@ -12,6 +12,7 @@ import { RankingBarra } from './RankingBarra.tsx';
 import { Rosca } from './Rosca.tsx';
 import { Tabela } from './Tabela.tsx';
 import { tituloDoVisual } from '../../utils/rotulos.ts';
+import { MensagemDeEstado } from '../ui/Estado.tsx';
 
 export function VisualPronto({
   pagina,
@@ -45,7 +46,7 @@ export function VisualPronto({
   if (!visual.dados) {
     return (
       <Cartao titulo={titulo} sub="sem dados" id={visual.id} altura={altura}>
-        <p className="sob-demanda">Sem dados disponíveis para este visual.</p>
+        <MensagemDeEstado>Sem dados disponíveis para este visual.</MensagemDeEstado>
       </Cartao>
     );
   }

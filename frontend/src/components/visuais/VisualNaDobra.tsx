@@ -16,6 +16,7 @@ import { VisualPronto } from './VisualPronto.tsx';
 import { tituloDoVisual } from '../../utils/rotulos.ts';
 import { useVisualSobDemanda } from '../../hooks/useVisualSobDemanda.ts';
 import { Botao } from '../ui/Botao.tsx';
+import { Esqueleto, MensagemDeEstado } from '../ui/Estado.tsx';
 
 /**
  * Dispara o fetch quando o cartão chega perto da viewport — perto o bastante para a
@@ -83,12 +84,7 @@ export function VisualNaDobra(props: {
   return (
     <div ref={ref}>
       <Cartao titulo={titulo} sub="fora da tela" id={props.id} altura={props.altura}>
-        <div className="esqueleto" aria-busy="true" aria-live="polite">
-          <span className="sr-only">Carregando {titulo}…</span>
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-        </div>
+        <Esqueleto titulo={titulo} />
       </Cartao>
     </div>
   );
@@ -131,24 +127,19 @@ function VisualBuscado(props: {
   if (estado === 'carregando') {
     return (
       <Cartao titulo={titulo} sub="carregando…" id={props.id} altura={props.altura}>
-        <div className="esqueleto" aria-busy="true" aria-live="polite">
-          <span className="sr-only">Carregando {titulo}…</span>
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-        </div>
+        <Esqueleto titulo={titulo} />
       </Cartao>
     );
   }
 
   return (
     <Cartao titulo={titulo} sub="não carregou" id={props.id} altura={props.altura}>
-      <div className="sob-demanda">
+      <MensagemDeEstado como="div">
         {erro ? <Erro>{erro}</Erro> : null}
         <Botao variante="primario" onClick={tentarDeNovo}>
           Tentar de novo
         </Botao>
-      </div>
+      </MensagemDeEstado>
     </Cartao>
   );
 }

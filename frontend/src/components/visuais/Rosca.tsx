@@ -18,6 +18,7 @@ import { useThemeStore } from '../../store/themeStore.ts';
 import { tituloDeTabela } from '../../utils/rotulos.ts';
 import { Cartao } from '../ui/Cartao.tsx';
 import { useCaixa } from '../../hooks/useCaixa.ts';
+import { MensagemDeEstado } from '../ui/Estado.tsx';
 
 /** A faixa da rosca, fração do raio externo. 0 seria pizza cheia; perto de 1, ela some. */
 const ESPESSURA = 0.34;
@@ -66,7 +67,7 @@ export function Rosca({ visual }: { visual: VisualCalculado }) {
   if (fatias.length === 0 || total === 0) {
     return (
       <Cartao titulo={titulo} id={visual.id} altura="tabela">
-        <p className="sob-demanda">Sem dados para os filtros atuais.</p>
+        <MensagemDeEstado>Sem dados para os filtros atuais.</MensagemDeEstado>
       </Cartao>
     );
   }

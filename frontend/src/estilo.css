@@ -1565,43 +1565,10 @@ table.dados.matriz td:first-child {
 }
 
 /* ==================================================================== estados */
-/* Os três não são opcionais: tela de dashboard passa a vida carregando, filtrando
-   para vazio e tomando erro de rede. Sem os três o usuário vê card branco e
-   conclui que o número é zero. */
+/* Os estados (esqueleto, vazio, "não carregou") são componentes de `ui/Estado.tsx`.
+   Aqui fica só o brilho que varre a barra do esqueleto: é animação. */
 
-.vazio-pagina,
-.sob-demanda {
-  color: var(--muted);
-  padding: 24px 12px;
-  text-align: center;
-  font-size: 0.76rem;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  height: 100%;
-}
-.sob-demanda p {
-  margin: 0;
-  max-width: 60ch;
-}
-
-.esqueleto {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-}
-.esqueleto-linha {
-  height: 68px;
-  border-radius: 2px;
-  background: var(--superficie);
-  border: 1px solid var(--borda);
-  position: relative;
-  overflow: hidden;
-}
-.esqueleto-linha::after {
+.brilho::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -1617,14 +1584,9 @@ table.dados.matriz td:first-child {
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .esqueleto-linha::after {
+  .brilho::after {
     animation: none;
   }
-}
-/* O esqueleto de página inteira (Fase L5, R2) desenha um `.cartao-kpi` de verdade por
-   KPI — a linha padrão de 68px estoura a altura natural do card, que é conteúdo. */
-.kpi-esqueleto-linha {
-  height: 40px;
 }
 
 /* --------------------------------------------- a árvore de data (Ano > Mês > Dia)

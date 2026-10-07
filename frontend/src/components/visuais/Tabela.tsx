@@ -25,6 +25,7 @@ import { janelaDeServidorPara, LINHAS_VISIVEIS } from '../../utils/janela.ts';
 import { selecaoDe, type AoFiltrar } from '../../utils/rota.ts';
 import { CorpoDaTabela } from './tabela/CorpoDaTabela.tsx';
 import { useOrdemDaTabela } from '../../hooks/useOrdemDaTabela.ts';
+import { MensagemDeEstado } from '../ui/Estado.tsx';
 
 /**
  * Quanto o pedido de busca espera depois da última tecla. Sem isto, `1784218` são sete
@@ -95,7 +96,7 @@ export function Tabela(props: {
         id={props.visual.id}
         altura="tabela"
       >
-        <p className="sob-demanda">Sem dados disponíveis para a tabela.</p>
+        <MensagemDeEstado>Sem dados disponíveis para a tabela.</MensagemDeEstado>
       </Cartao>
     );
   }
@@ -179,9 +180,9 @@ export function Tabela(props: {
     >
       {janela.erro ? <Erro>{janela.erro}</Erro> : null}
       {totalLocal === 0 ? (
-        <p className="vazio-pagina">
+        <MensagemDeEstado>
           {termoBusca ? 'Nenhuma linha para esta busca.' : 'Nenhuma linha para os filtros atuais.'}
-        </p>
+        </MensagemDeEstado>
       ) : (
         <CorpoDaTabela
           colunas={d.colunas}

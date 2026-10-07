@@ -11,6 +11,7 @@ import { VisualPronto } from './VisualPronto.tsx';
 import { tituloDoVisual } from '../../utils/rotulos.ts';
 import { useVisualSobDemanda } from '../../hooks/useVisualSobDemanda.ts';
 import { Botao } from '../ui/Botao.tsx';
+import { Esqueleto, MensagemDeEstado } from '../ui/Estado.tsx';
 
 export function SobDemanda(props: {
   pagina: string;
@@ -48,28 +49,23 @@ export function SobDemanda(props: {
   if (estado === 'carregando') {
     return (
       <Cartao titulo={titulo} sub="carregando…" id={props.visual.id} altura={altura}>
-        <div className="esqueleto" aria-busy="true" aria-live="polite">
-          <span className="sr-only">Carregando {titulo}…</span>
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-          <div className="esqueleto-linha" />
-        </div>
+        <Esqueleto titulo={titulo} />
       </Cartao>
     );
   }
 
   return (
     <Cartao titulo={titulo} sub="não carregou" id={props.visual.id} altura={altura}>
-      <div className="sob-demanda">
+      <MensagemDeEstado como="div">
         {erro ? <Erro>{erro}</Erro> : null}
-        <p>
+        <p className="max-w-[60ch]">
           Este visual usa {(props.visual.sobDemanda ?? []).join(', ')}, que fica fora da abertura da
           página por ser grande demais para carregar sempre.
         </p>
         <Botao variante="primario" onClick={tentarDeNovo}>
           Tentar de novo
         </Botao>
-      </div>
+      </MensagemDeEstado>
     </Cartao>
   );
 }

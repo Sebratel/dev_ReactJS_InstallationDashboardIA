@@ -37,6 +37,7 @@ import type { AoFiltrar } from '../../utils/rota.ts';
 import { useCaixa } from '../../hooks/useCaixa.ts';
 import { useCliqueNoEixo } from '../../hooks/useCliqueNoEixo.ts';
 import { LinhaDoRanking } from './ranking/LinhaDoRanking.tsx';
+import { MensagemDeEstado } from '../ui/Estado.tsx';
 
 const MARGEM = { topo: 4, base: 4, esquerda: 4, direita: 52 };
 const VAO = 6;
@@ -107,7 +108,7 @@ export function RankingBarra({
   if (!d || !gTudo) {
     return (
       <Cartao titulo={tituloDoVisual(visual)} id={visual.id} altura="grafico">
-        <p className="sob-demanda">Sem dados disponíveis para o ranking.</p>
+        <MensagemDeEstado>Sem dados disponíveis para o ranking.</MensagemDeEstado>
       </Cartao>
     );
   }
@@ -129,7 +130,7 @@ export function RankingBarra({
   if (totalLinhas === 0 || ordenadas.every((l) => !l.valor)) {
     return (
       <Cartao titulo={titulo} id={visual.id} altura="grafico">
-        <p className="sob-demanda">Sem dados para os filtros atuais.</p>
+        <MensagemDeEstado>Sem dados para os filtros atuais.</MensagemDeEstado>
       </Cartao>
     );
   }

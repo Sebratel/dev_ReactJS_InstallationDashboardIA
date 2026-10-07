@@ -20,21 +20,12 @@ import type { LayoutSpec } from '../../services/dashboardService.ts';
 import { Cartao, type AlturaDeVisual } from '../ui/Cartao.tsx';
 import { tituloDoVisual } from '../../utils/rotulos.ts';
 import { MolduraDoKpi } from '../visuais/kpi/partes.tsx';
-
-function LinhasEsqueleto() {
-  return (
-    <div className="esqueleto" aria-hidden="true">
-      <div className="esqueleto-linha" />
-      <div className="esqueleto-linha" />
-      <div className="esqueleto-linha" />
-    </div>
-  );
-}
+import { Esqueleto, EsqueletoLinha } from '../ui/Estado.tsx';
 
 function CartaoEsqueleto({ id, altura }: { id: string; altura: AlturaDeVisual }) {
   return (
     <Cartao titulo={tituloDoVisual({ id })} altura={altura}>
-      <LinhasEsqueleto />
+      <Esqueleto />
     </Cartao>
   );
 }
@@ -42,7 +33,7 @@ function CartaoEsqueleto({ id, altura }: { id: string; altura: AlturaDeVisual })
 function KpiEsqueleto() {
   return (
     <MolduraDoKpi esqueleto>
-      <div className="esqueleto-linha kpi-esqueleto-linha" />
+      <EsqueletoLinha className="h-[40px]" />
     </MolduraDoKpi>
   );
 }

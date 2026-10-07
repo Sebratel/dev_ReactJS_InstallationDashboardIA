@@ -31,6 +31,7 @@ import { Capa } from '../../components/capa/Capa.tsx';
 import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
 import { KpiGridSection } from '../../components/visuais/KpiGridSection.tsx';
 import { VisualGridSection } from '../../components/visuais/VisualGridSection.tsx';
+import { Esqueleto, MensagemDeEstado } from '../../components/ui/Estado.tsx';
 
 export function DashboardPage() {
   const { conferencia } = useModo();
@@ -160,11 +161,7 @@ export function DashboardPage() {
           // Janela residual em que nem `layout` chegou ainda — tipicamente um
           // sub-frame (Fase L4: o endpoint é um mapa em memória). Sem a forma real
           // ainda para copiar, o bloco genérico de antes é o fallback.
-          <div className="esqueleto">
-            <div className="esqueleto-linha" />
-            <div className="esqueleto-linha" />
-            <div className="esqueleto-linha" />
-          </div>
+          <Esqueleto />
         )
       ) : null}
 
@@ -199,7 +196,7 @@ export function DashboardPage() {
       </div>
 
       {paginaValida && visuais.every((v) => v.conteudo === null) ? (
-        <div className="vazio-pagina">Esta página não tem visual com número.</div>
+        <MensagemDeEstado como="div">Esta página não tem visual com número.</MensagemDeEstado>
       ) : null}
     </AppShell>
   );

@@ -31,6 +31,7 @@ import { Transpor } from '../ui/icones.tsx';
 import { useJanela } from '../../hooks/useJanela.ts';
 import { tituloDeMatriz } from '../../utils/rotulos.ts';
 import { Download } from 'lucide-react';
+import { MensagemDeEstado } from '../ui/Estado.tsx';
 
 const COLUNAS_POR_JANELA = 30;
 
@@ -67,7 +68,7 @@ export function Matriz(props: {
   if (!d || !d.colunas || !d.linhas) {
     return (
       <Cartao titulo={tituloDeMatriz(visual, d)} id={visual.id} altura="matriz">
-        <p className="sob-demanda">Sem dados disponíveis para a matriz.</p>
+        <MensagemDeEstado>Sem dados disponíveis para a matriz.</MensagemDeEstado>
       </Cartao>
     );
   }
