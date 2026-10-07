@@ -29,7 +29,7 @@ manutenção e pode correr depois do go-live.
 | C | Produção no Portainer | 🔴 não começou (autonomia 1–4 ✅) | `PLANO-CARGA.md` §3 fase 3 + `PLANO-AUTONOMIA.md` etapa 5 |
 | D | Validação com o negócio | 🟡 trilha paralela, depende de pessoas | `PERGUNTAS-NEGOCIO.md` |
 | E | Go-live | 🔴 depende de A, B, R, C e D | este arquivo, §E |
-| F | Padrões de frontend 2–6 | 🟡 fase 1 ✅ no staging | `PLANO-PADROES-FRONTEND.md` |
+| F | Padrões de frontend 1–6 | ✅ 07/10, as 6 fases no staging | `PLANO-PADROES-FRONTEND.md` |
 
 Ordem: **0 → A → B → R → C → E**, com a **D correndo em paralelo desde já** (ela espera
 resposta do Fabrício, não código). A F entra nas brechas ou depois do go-live.
@@ -248,11 +248,13 @@ Não é código: é resposta de gente. Começa já, para não virar o gargalo do
 Detalhe em `PLANO-PADROES-FRONTEND.md`. Uma sessão por fase.
 
 - [x] **F.1** Fundação: pastas, `services/`, `config.ts` e tema. Feita em `c85f4a6`; integra na 0.1.
-- [ ] **F.2** React Query, sem nenhum "carregando…" novo.
-- [ ] **F.3** URL em `searchParams` e divisão do `App.tsx` (866 linhas).
-- [ ] **F.4** Componentes acima de 200 linhas.
-- [ ] **F.5** ESLint, Prettier, Vitest e Playwright.
-- [ ] **F.6** Design system com tokens no `@theme`.
+- [x] **F.2** ✅ 05/10, `ac55c74`: React Query, sem nenhum "carregando…" novo (#178).
+- [x] **F.3** ✅ 05/10, `0ac2923`: URL no `react-router` e `App.tsx` dividido (#180).
+- [x] **F.4** ✅ 05/10, `edb8308`: componentes acima de 200 linhas divididos (#181).
+- [x] **F.5** ✅ 06/10: ESLint, Prettier, Vitest e Playwright (#182); a última exceção do
+      ESLint saiu em 07/10 (`465a447`, #190).
+- [x] **F.6** ✅ 07/10, `98ee7fe`: design system híbrido, 6a a 6g, provado pela régua
+      de estilo computado (#183–#189).
 
 ---
 
