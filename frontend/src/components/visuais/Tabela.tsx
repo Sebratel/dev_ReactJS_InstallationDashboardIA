@@ -81,13 +81,21 @@ export function Tabela(props: {
      se busca a fatia seguinte. A ANÁLISE DETALHADA ficou 10x mais curta e com MENOS
      pedidos. */
   const [inicioLocal, setInicioLocal] = useState(0);
+  /**
+   * Onde cair quando a fatia pedida chegar. Sem isto, a fatia nova mudava a âncora e a
+   * tela voltava ao começo dela: "anterior" a partir da linha 201 mostrava 1–20, não
+   * 181–200 (07/10/2026). E enquanto a fatia não chega, as linhas atuais ficam — antes a
+   * tela já pulava para o começo da fatia velha.
+   */
+  const [alvo, setAlvo] = useState<{ fatia: number; inicio: number } | null>(null);
   // Buscar ou ordenar refaz o conjunto; continuar na página 7 mostraria o vazio. Comparar
   // a "âncora" durante a renderização volta ao início sem o quadro em branco de um efeito.
   const ancora = `${d?.de}|${termoAplicado}|${String(colOrdenada)}|${String(ordemDesc)}`;
   const [ancoraAnterior, setAncoraAnterior] = useState(ancora);
   if (ancoraAnterior !== ancora) {
     setAncoraAnterior(ancora);
-    setInicioLocal(0);
+    setInicioLocal(alvo && alvo.fatia === d?.de ? alvo.inicio : 0);
+    setAlvo(null);
   }
 
   if (!d || !d.colunas || !d.linhas) {
@@ -130,7 +138,7 @@ export function Tabela(props: {
       return;
     }
     const novaFatia = janelaDeServidorPara(linhaGlobal);
-    setInicioLocal(linhaGlobal - novaFatia);
+    setAlvo({ fatia: novaFatia, inicio: linhaGlobal - novaFatia });
     janela.vaiPara(novaFatia);
   };
 

@@ -7,12 +7,32 @@
 // árvore com "Rendered more hooks than during the previous render". O ESLint pega a
 // forma do defeito; este teste pega o efeito.
 
-import { afterEach, expect, test } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
+import {
+  cleanup,
+  fireEvent,
+  render as renderSemCache,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 import { Tabela } from '../src/components/visuais/Tabela.tsx';
 import type { DadosDeTabela, VisualCalculado } from '../src/services/dashboardService.ts';
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+// A `Tabela` pagina pelo React Query (`useJanela`); a primeira janela é a própria
+// resposta da página, então nenhum pedido sai daqui.
+const render = (ui: ReactElement) => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const envolve = (el: ReactElement) => <QueryClientProvider client={qc}>{el}</QueryClientProvider>;
+  const r = renderSemCache(envolve(ui));
+  return { ...r, rerender: (el: ReactElement) => r.rerender(envolve(el)) };
+};
 
 const dados: DadosDeTabela = {
   colunas: [
@@ -54,4 +74,30 @@ test('abre ordenada pela primeira coluna de data, da mais nova para a mais velha
   render(<Tabela pagina="p" visual={visual(dados)} filtros={[]} />);
   const celulas = screen.getAllByText(/^P\d$/).map((e) => e.textContent);
   expect(celulas).toEqual(['P2', 'P1']);
+});
+
+test('voltar uma página na fronteira de duas fatias mostra as linhas de antes, não o começo', async () => {
+  // 400 linhas: a abertura traz as 200 primeiras, o servidor manda as outras 200.
+  const fatia = (de: number): DadosDeTabela => ({
+    colunas: [{ nome: 'Protocolo', tipo: 'string', chave: true, tabela: null, coluna: null }],
+    linhas: Array.from({ length: 200 }, (_, i) => [`P${de + i}`]),
+    linhasTotais: 400,
+    de,
+    filtros: [],
+  });
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      const de = Number(new URL(url, 'http://x').searchParams.get('de') ?? 0);
+      return new Response(JSON.stringify({ visuais: [visual(fatia(de))] }));
+    }),
+  );
+  render(<Tabela pagina="p" visual={visual(fatia(0))} filtros={[]} />);
+  for (let i = 0; i < 10; i++) fireEvent.click(screen.getByText('próxima'));
+  await waitFor(() => expect(screen.getByText('201–220 de 400 linhas')).toBeTruthy());
+  expect(screen.getByText('P200')).toBeTruthy();
+
+  fireEvent.click(screen.getByText('anterior'));
+  await waitFor(() => expect(screen.getByText('181–200 de 400 linhas')).toBeTruthy());
+  expect(screen.getByText('P180')).toBeTruthy();
 });

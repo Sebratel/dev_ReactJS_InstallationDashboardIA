@@ -114,7 +114,8 @@ O plano original:
 - `npm run e2e`: 8 testes de navegação com Playwright contra a stack no ar (uma execução por
   minuto, pelo rate limit).
 - Contorno: o ESLint aponta o `ts-api-utils` para o TypeScript do frontend (a raiz está no 7).
-- Pendência: `useJanela` para o React Query (a única exceção do ESLint).
+- ~~Pendência: `useJanela` para o React Query (a única exceção do ESLint).~~ Feita em
+  07/10 (ACHADOS #190): o frontend não tem mais nenhum `eslint-disable`.
 - Achado de passagem: o prefetch ganhou balde próprio no rate limit de `/api` (`fc42c96`).
 
 O plano original:

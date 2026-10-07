@@ -14512,3 +14512,35 @@ listas sai dourado e em disco nos dois temas, como antes.
 (`overlay-worker`, `seguranca`) caíram inteiros numa rodada completa e passaram sozinhos
 e na rodada seguinte — a mesma família de teste sensível a carga de `porta`,
 `prioridade-http` e `reaquecimento`.
+
+## #190 — `useJanela` no React Query; a tabela voltava ao começo ao cruzar a fronteira da fatia (07/10)
+
+**A pendência da fase 5 (#182).** O hook da paginação de tabela e matriz guardava à mão um
+contador de sequência (resposta atrasada não pinta por cima da nova), "de qual termo é o
+que está na tela" e um efeito que pedia ao ver o termo mudar — com dois `eslint-disable`.
+Agora cada janela é uma chave sob `['pagina', id]`: a resposta fica na chave dela, o pedido
+de uma chave abandonada é cancelado pelo `signal` (digitar a busca cancela as buscas do
+meio), voltar a uma janela já vista não pede de novo, e o aviso do servidor invalida as
+janelas junto com a página. A primeira janela sem busca continua sendo a própria resposta
+da página — nenhum pedido. De passagem, um 401 numa janela agora leva ao login, como em
+todo o resto (antes virava mensagem de erro dentro da tabela). O frontend ficou sem
+nenhum `eslint-disable`.
+
+**O defeito antigo.** A `Tabela` desenha 20 de cada 200 linhas e voltava a página local
+ao começo sempre que a fatia de 200 mudava — inclusive quando quem pedira a fatia era ela.
+"anterior" a partir da linha 201 mostrava 1–20, e não 181–200; e, enquanto a fatia nova
+não chegava, a tela já pulava para o começo da fatia velha. Reproduzido com o hook antigo
+e com o novo antes de corrigir. Agora a tabela guarda onde quer cair e aplica quando a
+fatia chega; até lá, as linhas atuais ficam.
+
+**O que a tela pegou e o teste não.** Na primeira versão, o pedido que perdia a validade
+(o termo mudou) era só ignorado; quando o termo voltava ao de antes — limpar a busca —, ele
+ressuscitava e a tabela voltava à linha 201. Pego na tela, contra a API (`protocolos-
+detalhados`, 3.160 linhas); agora o pedido é descartado no render, e virou teste.
+
+**Prova.** `test/janela-consulta.test.tsx` (5 testes do hook com `fetch` falso: abertura
+sem pedido, janela seguinte mantendo a atual até chegar, busca abandonada cancelada e sem
+pintar por cima, página recalculada e busca limpa voltando ao começo) e o teste da
+fronteira na `componentes-tabela`. Na tela, contra a API: 10× "próxima" → 201–220;
+"anterior" → 181–200; "próxima" de novo sem pedido; busca, busca sem acerto ("Nenhuma linha
+para esta busca."), busca limpa → 1–20; nenhum erro no console.

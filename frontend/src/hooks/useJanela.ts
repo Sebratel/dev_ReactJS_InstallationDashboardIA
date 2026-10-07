@@ -4,10 +4,23 @@
 // inteira: usá-lo direto repaginaria **todas** as tabelas e matrizes juntas, e clicar
 // em "próxima" numa delas moveria as outras. Com `?visual=`, a API calcula só aquele —
 // que é a mesma rota do sob demanda, pelo mesmo motivo.
+//
+// **No React Query desde 07/10/2026** (pendência da fase 5, ACHADOS #182). Antes eram
+// um contador de sequência (resposta atrasada de um pedido velho não pode pintar por
+// cima da de um novo — com o debounce da busca, digitar `1784218` dispara pedidos sem
+// ordem garantida de volta), um estado "de qual termo é o que está na tela" e um
+// efeito que pedia ao ver o termo mudar. Agora cada janela é uma chave: a resposta
+// fica na chave dela e só aparece se for a da janela pedida; o pedido de uma chave
+// abandonada é cancelado (o `signal`); voltar a uma janela já vista não pede de novo; e
+// a chave mora sob `['pagina', id]`, então o aviso do servidor invalida as janelas junto
+// com a página.
 
-import { useEffect, useRef, useState } from 'react';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
 import {
+  chavesDeConsulta,
   pegaPagina,
+  urlDaPagina,
   type FiltroDaTela,
   type VisualCalculado,
 } from '../services/dashboardService.ts';
@@ -34,84 +47,51 @@ export function useJanela(
    */
   termo: string = '',
 ): EstadoDeJanela {
-  const [visual, setVisual] = useState(inicial);
-  const [carregando, setCarregando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
-
   /**
-   * De qual termo é o resultado que está na tela.
+   * Onde a janela está, e PARA QUAL resposta da página e qual termo.
    *
-   * Sem isto o efeito abaixo não sabe distinguir "o termo mudou" de "esta é mais uma
-   * renderização com o mesmo termo", e pediria a cada render. É ESTADO, e não ref,
-   * porque o render o reajusta (a âncora, abaixo) — escrever em ref durante o render
-   * é o que `react-hooks/refs` acusa (fase 5).
+   * A janela volta ao começo quando a página recalcula (`inicial` muda de identidade a
+   * cada resposta nova — manter a linha 4.000 de um resultado que acabou de ser
+   * filtrado mostraria uma janela que talvez nem exista mais) e quando o termo muda
+   * (uma busca que devolve 3 linhas abrindo na janela 47 mostraria "nenhuma linha"
+   * para um termo que casou — o defeito parece da busca e é da paginação).
+   *
+   * O pedido que perdeu a validade é DESCARTADO no render, e não só ignorado: só
+   * ignorá-lo o ressuscitava quando o termo voltava ao de antes — limpar a busca
+   * devolvia a tabela à linha 201 em vez do começo (pego na tela, 07/10/2026).
    */
-  const [termoNaTela, setTermoNaTela] = useState('');
-  /**
-   * Qual pedido é o mais recente. Resposta atrasada de um pedido velho não pode
-   * sobrescrever a de um novo — com debounce de busca isso deixa de ser hipótese:
-   * digitar `1784218` dispara pedidos cujos tempos de ida e volta não têm ordem
-   * garantida, e o resultado de `178` chegando depois do de `1784218` mostraria a
-   * lista errada para o texto que está no campo.
-   */
-  const sequencia = useRef(0);
+  const [pedido, setPedido] = useState({ de: 0, inicial, termo });
+  const valido = pedido.inicial === inicial && pedido.termo === termo;
+  if (!valido) setPedido({ de: 0, inicial, termo });
+  const de = valido ? pedido.de : 0;
 
-  // A janela volta ao começo quando a página recalcula: `inicial` muda de identidade a
-  // cada resposta nova, e manter a linha 4.000 de um resultado que acabou de ser
-  // filtrado mostraria uma janela que talvez nem exista mais.
-  const [ancora, setAncora] = useState(inicial);
-  if (ancora !== inicial) {
-    setAncora(inicial);
-    setVisual(inicial);
-    setErro(null);
-    // `inicial` vem da resposta da página, que nunca leva `?busca=`: o que está na
-    // tela agora é o resultado SEM busca. Dizer isso ao efeito é o que o faz refazer
-    // a busca sobre o recorte novo, em vez de deixar o campo preenchido descrevendo
-    // uma lista que não está mais filtrada.
-    setTermoNaTela('');
-  }
+  // A primeira janela sem busca É a resposta da página (`inicial`): não há o que pedir.
+  const precisa = de > 0 || termo !== '';
+  const opcoes = { visual: inicial.id, de, linhas: LINHAS_POR_JANELA, busca: termo || undefined };
+  const q = useQuery({
+    queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes)),
+    queryFn: async ({ signal }) => {
+      const p = await pegaPagina(pagina, filtros, opcoes, signal);
+      const achado = p.visuais.find((v) => v.id === inicial.id);
+      if (!achado) throw new Error('a resposta não trouxe este visual.');
+      if (achado.erro) throw new Error(achado.erro);
+      return achado;
+    },
+    enabled: precisa,
+    // Enquanto a janela nova chega, a anterior continua na tela.
+    placeholderData: keepPreviousData,
+  });
 
-  function pede(de: number, comTermo: string): void {
-    const meu = ++sequencia.current;
-    setCarregando(true);
-    setErro(null);
-    pegaPagina(pagina, filtros, {
-      visual: inicial.id,
-      de,
-      linhas: LINHAS_POR_JANELA,
-      busca: comTermo || undefined,
-    })
-      .then((p) => {
-        const achado = p.visuais.find((v) => v.id === inicial.id);
-        if (!achado) throw new Error('a resposta não trouxe este visual.');
-        if (achado.erro) throw new Error(achado.erro);
-        if (meu !== sequencia.current) return;
-        setTermoNaTela(comTermo);
-        setVisual(achado);
-      })
-      .catch((err: unknown) => {
-        if (meu !== sequencia.current) return;
-        setErro(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
-        if (meu === sequencia.current) setCarregando(false);
-      });
-  }
-
-  // Trocar o termo SEMPRE recomeça em `de: 0`. Uma busca que devolve 3 linhas abrindo
-  // na janela 47 mostraria "nenhuma linha" para um termo que casou — o defeito parece
-  // da busca e é da paginação.
-  useEffect(() => {
-    if (termo === termoNaTela) return;
-    // A busca É o efeito (o termo mudou, pede a janela nova), e o `carregando` liga junto
-    // com o pedido. A saída de verdade é este hook ir para o React Query, que cuida do
-    // carregando sozinho — pendência registrada no ACHADOS #182.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    pede(0, termo);
-    // `pede` fecha sobre `pagina`/`filtros`/`inicial`, que só mudam junto com a
-    // âncora — e a âncora já está nas dependências.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [termo, ancora, termoNaTela]);
-
-  return { visual, carregando, erro, vaiPara: (de: number) => pede(de, termo) };
+  return {
+    // Desligada, a consulta ainda traria o `placeholderData` da última janela pedida.
+    visual: precisa ? (q.data ?? inicial) : inicial,
+    carregando: precisa && q.isFetching,
+    erro:
+      precisa && q.error ? (q.error instanceof Error ? q.error.message : String(q.error)) : null,
+    vaiPara: (novo: number) => {
+      // Pedir de novo a janela que falhou é "tentar de novo": a chave não muda.
+      if (novo === de && q.isError) void q.refetch();
+      else setPedido({ de: novo, inicial, termo });
+    },
+  };
 }
