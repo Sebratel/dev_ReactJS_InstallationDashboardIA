@@ -14697,3 +14697,30 @@ que tinha o mesmo defeito latente. Fecha também o "de passagem" do #193.
 **59** contra 52 do arquivo das 14:39 (alocações que chegaram depois). `agendamento-field`: 39
 visuais, 0 com erro; `relatorio-do-mes`: 36, 0 com erro, carga fria de 3,0 s já na forma
 completa; 0 quedas para cálculo em linha; RSS 2.383 MB, `/api/saude` sem degradação.
+
+## #195 — §A.3 fechada: paridade exata do Produtivo ao vivo; a carga de 2 h foi bateria (09/10)
+
+**A paridade, protocolo por protocolo.** Depois da carga do `medio` das 16:56 UTC (PG nova), às
+17:18: VISÃO PRODUTIVA de 09/10 com **93** Produtivos na API e **86** no arquivo congelado. Das
+196 alocações do Voalle em 36 h, **7** não estavam na carga em disco, e são exatamente **7** os
+protocolos que elas tornam Produtivo hoje (slot hoje, sem instalação no arquivo). 93 − 86 = 7.
+Os 7 saíram de Sem Ação (−5) e Inconclusivo (−2). O dia fechado (08/10) bateu igual nas quatro
+linhas em todas as medidas do dia. Às 16:57, com a PG das 15:05, a API tinha 80 — e a carga
+seguinte, com PG nova, confirmou 86 ≥ 80.
+
+**O ciclo de 1 h 53 min (15:01–16:54 UTC).** Buraco de 92 min no log entre duas queries do
+`frio`, e a primeira tentativa da seguinte mediu 6 s: o processo parou, não a query. O log de
+energia do Windows: **12:21:45 RS, "Critical Mét. de Gatilho da Bateria"; 12:21:49, suspensão**;
+volta às 13:53 com a fonte ligada. No despertar, `protocolos-auxiliares` e `protocolos-telefonia`
+caíram por `ECONNREFUSED` (rede ainda fora), o grupo saiu 75 (#191) e **não** foi freado: o ciclo
+seguinte, às 16:55, passou nos três grupos. A mesma máquina entrou em espera moderna seis vezes
+no dia (9:20, 10:32, 11:23, 12:07, 12:13, 12:21 RS); cada uma derruba a rede de uma carga em
+curso. É a origem provável do "várias cargas falham toda hora" enquanto a stack roda num
+notebook — o que a §C (servidor no Portainer) resolve, e o #191 torna inofensivo até lá.
+
+**A cadência (#193) em produção:** `quente` às 16:55 e às 17:10, em ticks consecutivos.
+
+**A "última pronta" de 45 min (aberta no #194):** era o próprio #194. A chave da página inteira
+só tinha a versão das 14:00 porque todo recálculo dela falhava pelo grão reduzido; depois do
+deploy da correção ela respondeu `hit` às 14:57. Num reinício normal a última pronta tem a idade
+do último cálculo.

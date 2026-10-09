@@ -23,7 +23,7 @@ manutenção e pode correr depois do go-live.
 | fase | o quê | estado | plano detalhado |
 |---|---|---|---|
 | 0 | Arrumar a casa | ✅ 02/10 | este arquivo, §0 |
-| A | VISÃO PRODUTIVA em tempo real | ⏳ **próxima**: etapa 1 ✅, etapa 2 falta | `ACHADOS.md` #166–#171 |
+| A | VISÃO PRODUTIVA em tempo real | ⏳ **em andamento**: A.1 e A.3 ✅ (09/10), falta o aviso A.2 | `ACHADOS.md` #166–#171, #192–#195 |
 | B | Carga leve no banco | 🟡 **em andamento**: modelo madrugada + poller no ar desde 02/10, falta a prova de dia | `PLANO-CARGA.md` §3, fases 1 e 2 |
 | R | Rápido e ao vivo | 🔴 medido em 02 e 05/10, plano pronto | `PLANO-CARREGAMENTO.md` |
 | C | Produção no Portainer | 🔴 não começou (autonomia 1–4 ✅) | `PLANO-CARGA.md` §3 fase 3 + `PLANO-AUTONOMIA.md` etapa 5 |
@@ -77,13 +77,15 @@ Branches com trabalho fora do `staging` e worktrees que já não servem.
 A etapa 1 está no `staging` (field-agenda no poller a cada 30 s; #170, #171). Falta o
 "Produtivo", que vem de `PROTOCOLOS GERAL[DATA INSTALAÇÃO]` ← `alocacao-patrimonio`.
 
-- [ ] **A.1** 🟡 09/10, no `staging` (#192), falta a A.3: `alocacao-patrimonio` no poller
-      a cada 60 s (~1 s por volta, medido em 09/10) e o par (protocolo, dia instalado) só na
-      `Status Protocolo Dia`, somando onde a carga ainda não tem data.
+- [x] **A.1** ✅ 09/10, no `staging` e na stack (#192, #194): `alocacao-patrimonio` no poller
+      a cada 60 s (~1 s por volta) e o par (protocolo, dia instalado) só na `Status Protocolo
+      Dia`, somando onde a carga ainda não tem data.
 - [ ] **A.2** O aviso da opção (a): "N visitas com relato produtivo aguardando baixa de
       equipamento". A alocação chega ~41 min depois do relato: é atraso de processo e tem de
       ficar visível, não escondido.
-- [ ] **A.3** Validar na stack Docker local contra a carga completa na mesma hora.
+- [x] **A.3** ✅ 09/10 (#195): na stack, contra a carga com PG nova — API 93, arquivo 86, e
+      exatamente 7 alocações fora da carga tornando Produtivo 7 protocolos de hoje; o dia
+      fechado bate igual.
 
 **Pronto quando:** um relato produtivo aparece na tela em ≤ 1 ciclo do poller, e o aviso
 conta certo as visitas que ainda esperam a alocação.
