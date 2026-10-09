@@ -18,11 +18,23 @@
 # a rodar a plataforma pelo `npm start`, senão são dois agendadores no mesmo
 # `snapshot/` (DEPLOY.md §2.2).
 
+# O login da tela entra no BUILD (o Vite embute a config no bundle), não no runtime — ver o
+# `ARG` do estágio `build` no Dockerfile (PLANO-CARGA 3.1). Falha fechada como o
+# `REDIS_PASSWORD`: sem a variável no `.env`, o `up` erra alto em vez de gerar outra imagem
+# sem login, em silêncio. As três imagens recebem os mesmos valores para dividir o cache
+# do estágio `build`.
+x-args-da-tela: &args-da-tela
+  VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:?defina VITE_FIREBASE_API_KEY no .env - sem ela a tela sai sem login}
+  VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:?defina VITE_FIREBASE_AUTH_DOMAIN no .env}
+  VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:?defina VITE_FIREBASE_PROJECT_ID no .env}
+  VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:?defina VITE_FIREBASE_APP_ID no .env}
+
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
+      args: *args-da-tela
       # O último estágio do Dockerfile é o `cron`: sem `target`, este serviço
       # subia a imagem do cron e ficava reiniciando (medido em 25/09/2026).
       target: runtime
@@ -176,6 +188,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args: *args-da-tela
       # O último estágio do Dockerfile é o `cron`: sem `target`, este serviço
       # subia a imagem do cron e ficava reiniciando (medido em 25/09/2026).
       target: runtime
@@ -226,6 +239,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args: *args-da-tela
       target: cron
     pull_policy: build
     env_file:

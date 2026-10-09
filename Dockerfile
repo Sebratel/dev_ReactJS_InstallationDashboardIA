@@ -31,6 +31,15 @@ FROM node:24-slim AS build
 WORKDIR /repo
 COPY . .
 RUN npm ci
+# A configuração do login da tela só existe no build (o Vite a embute no bundle), e o
+# `.dockerignore` tira o `.env` da imagem: sem estes ARG a imagem saía SEM login, e a
+# stack dependia de um `frontend/dist` compilado no host e montado por cima (PLANO-CARGA
+# 3.1). Depois do `npm ci`, para trocar um valor não refazer a instalação. São a config
+# pública do Firebase web — `VITE_TOKEN_INTERNO` (botão de desenvolvimento) fica de FORA.
+ARG VITE_FIREBASE_API_KEY
+ARG VITE_FIREBASE_AUTH_DOMAIN
+ARG VITE_FIREBASE_PROJECT_ID
+ARG VITE_FIREBASE_APP_ID
 RUN npm run web:build
 
 FROM node:24-slim AS runtime

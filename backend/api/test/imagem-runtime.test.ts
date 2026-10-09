@@ -29,6 +29,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
+import { parse } from 'yaml';
 import { fileURLToPath } from 'node:url';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -237,4 +238,27 @@ test('crontab: o job exporta o ambiente ao carregar o .env.cron (04/10/2026)', (
   assert.match(linha, / root set -a && \. \/repo\/\.env\.cron && set \+a && /, 'carregar o .env.cron sem `set -a` deixa o job sem credencial');
   const entrypoint = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'entrypoint.sh'), 'utf8');
   assert.match(entrypoint, /> \/repo\/\.env\.cron/, 'o job depende do arquivo que o entrypoint grava');
+});
+
+test('o login da tela entra no build da imagem: toda VITE_FIREBASE_* lida pela tela é ARG, e o compose a passa', () => {
+  // PLANO-CARGA 3.1. Sem o ARG, a imagem saía sem login, e a stack dependia de um
+  // `frontend/dist` do host montado por cima — que cai em toda recriação sem o contorno
+  // (09/10/2026: ~4 h de tela sem login depois de um `up` só com este compose).
+  const config = fs.readFileSync(path.join(RAIZ, 'frontend', 'src', 'config.ts'), 'utf8');
+  const lidas = [...new Set([...config.matchAll(/VITE_FIREBASE_[A-Z_]+/g)].map((m) => m[0]))];
+  assert.ok(lidas.length >= 4, `a tela lê ${lidas.length} VITE_FIREBASE_* — esperava as quatro`);
+
+  const dockerfile = fs.readFileSync(path.join(RAIZ, 'Dockerfile'), 'utf8');
+  const build = dockerfile.slice(dockerfile.indexOf(' AS build'), dockerfile.indexOf(' AS runtime'));
+  const antesDoBuild = build.slice(0, build.indexOf('npm run web:build'));
+  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8'), { merge: true }) as {
+    services: Record<string, { build?: { args?: Record<string, string> } }>;
+  };
+  const args = compose.services['api']?.build?.args ?? {};
+  for (const v of lidas) {
+    assert.match(antesDoBuild, new RegExp(`^ARG ${v}$`, 'm'), `${v} não é ARG antes do web:build`);
+    assert.ok(v in args, `o compose não passa ${v} ao build da api`);
+  }
+  assert.doesNotMatch(dockerfile, /^\s*ARG\s+VITE_TOKEN_INTERNO/m, 'o botão de desenvolvimento não pode ir para a imagem');
+  assert.ok(!('VITE_TOKEN_INTERNO' in args));
 });
