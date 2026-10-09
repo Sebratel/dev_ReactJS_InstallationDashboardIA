@@ -160,6 +160,11 @@ export class MDuration {
   }
 }
 
+/** A duração como o snapshot a grava e o DAX a lê: dias, em número. Uma regra só, para o disco e o poller. */
+export function duracaoEmDias(d: MDuration): number {
+  return d.ms / 86_400_000;
+}
+
 export class MEvalError extends Error {
   constructor(message: string) {
     super(message);
@@ -407,7 +412,7 @@ function escalar(v: MValue, coluna: string, iLinha: number, onde: string): Scala
     );
   }
   if (v instanceof MTime) return new Date(EPOCH_MS + v.ms);
-  if (v instanceof MDuration) return v.ms / 86_400_000; // duração em dias, como o DAX
+  if (v instanceof MDuration) return duracaoEmDias(v);
   if (v instanceof Uint8Array) {
     throw new MEvalError(
       `${onde}: a coluna '${coluna}' tem binário na linha ${iLinha + 1}. Binário é passo ` +

@@ -533,7 +533,7 @@ const CAMPOS_DE_INTERVALO = [
  * alguém selecionar uma coluna `interval` de verdade — e aí a conversão precisa de
  * uma decisão, não de um palpite de 30 dias.
  */
-function comoDuracao(v: unknown): MDuration | null {
+export function comoDuracao(v: unknown): MDuration | null {
   if (typeof v !== 'object' || v === null) return null;
   const o = v as Record<string, unknown> & { toPostgres?: unknown };
   if (typeof o.toPostgres !== 'function') return null;

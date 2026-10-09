@@ -342,6 +342,38 @@ test(`PollerRealtime: a mesma linha em duas voltas dispara aoMudar UMA vez`, asy
   assert.equal(mudancas, 1, `anunciar a rebusca é que não era`);
 });
 
+test(`PollerRealtime: interval do Postgres não é mudança fantasma, e chega em dias como no disco`, async () => {
+  // PLANO-MESTRE R.0. O `pg` devolve `interval` como um objeto NOVO a cada leitura; a
+  // comparação via `!==` acusava mudança em toda volta de 12 s e derrubava o cache de
+  // quatro páginas. E o overlay mesclava objeto onde o disco grava número de dias.
+  class IntervaloDoPg {
+    days = 201;
+    hours = 3;
+    toPostgres(): string { return '201 days 03:00:00'; }
+  }
+  const nomes = ['Protocolo Retorno Prioritário', '_MARCA_REALTIME', 'intervalo_retorno'];
+  let mudancas = 0;
+  const p = new PollerRealtime({
+    specsDir: `backend/specs`,
+    pool: async () => ({
+      query: async () => ({
+        rows: [[`RP-1`, new Date(`2026-09-03T09:59:00Z`), new IntervaloDoPg()]],
+        fields: nomes.map((name) => ({ name })),
+      }),
+      end: async () => {},
+    }),
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    anuncia: () => {},
+    aoMudar: () => { mudancas++; },
+  });
+  await p.tentaAgora(`retorno-prioritario`);
+  await p.tentaAgora(`retorno-prioritario`);
+  await p.tentaAgora(`retorno-prioritario`);
+  assert.equal(mudancas, 1, 'três leituras do mesmo dado, objetos de interval diferentes: UMA mudança');
+  const linha = p.overlay(`RETORNO PRIORITARIO`)!.linhas[0]!;
+  assert.equal(linha['intervalo_retorno'], 201.125, '201 dias e 3 h, em dias — o número que o disco tem');
+});
+
 test(`PollerRealtime.estado(): o poller calado prova que está vivo`, async () => {
   // Depois do conserto, fonte quieta = log vazio. Sem estado publicado, isso é
   // indistinguível de um poller morto — o mesmo modo de falha que a F5 fechou

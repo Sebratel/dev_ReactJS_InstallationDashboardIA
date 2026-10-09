@@ -14757,3 +14757,20 @@ máquina dormindo — o "modelo madrugada" (#172) **não existe enquanto a stack
 notebook**. Repor a carga perdida de dia é carga completa em horário comercial: é a decisão
 "incremental recusada de dia" que o PLANO-MESTRE reserva ao Erick. No servidor (§C) a causa
 some; um reinício às 02:59 ainda perderia o dia.
+
+## #198 — a "mudança fantasma" era o `interval` do Postgres como objeto (09/10)
+
+PLANO-MESTRE R.0: `RETORNO PRIORITARIO` (e `REINCIDÊNCIA`) acusando "1 chave mudou" em toda
+volta, derrubando o cache de `manutencao-inicial`, `relatorio-do-mes`, `visao-geral` e
+`instalacao-reincidente`. O passo pedido no plano foi medido: a consulta costurada rodada duas
+vezes seguidas contra o Voalle, 3 s entre elas, **nenhuma coluna difere** — o dado é estável. As
+duas queries têm uma coluna `timestamp − timestamp` (`intervalo_retorno`, `intervalo_suporte`),
+e o `pg` a entrega como `PostgresInterval`: um objeto NOVO a cada leitura (`===` deu `false`
+para o mesmo valor). `mesmaLinha` compara com `!==`, então toda rebusca era "mudança".
+
+**E não era só a fantasma.** A carga em lote converte o `interval` em `duration` de M e grava
+**dias, em número** (`value.ts`); o poller mesclava o objeto cru — o overlay e o disco tinham
+tipos diferentes na mesma coluna. **Correção:** `normalizaChaves` (os dois modos do poller
+passam por ele) converte com o mesmo `comoDuracao` do runner de M e o mesmo `duracaoEmDias`
+que a gravação usa. Teste: três leituras com objetos de interval novos dão UMA mudança, e o
+overlay traz 201,125 (201 dias e 3 h).

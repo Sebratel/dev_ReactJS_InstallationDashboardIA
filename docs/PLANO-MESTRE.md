@@ -160,7 +160,7 @@ da `PROTOCOLOS GERAL`) muda a cada 30 min.
 
 Em ordem de impacto no que se sente:
 
-- [ ] **R.0 Mudança fantasma no poller (04/10, 01:20 de domingo, sem movimento).** O
+- [x] **R.0** ✅ 09/10 (#198): era o `interval` do Postgres como objeto novo a cada leitura. **Mudança fantasma no poller (04/10, 01:20 de domingo, sem movimento).** O
       `RETORNO PRIORITARIO` anunciou "1 chave mudou" em 74 de ~75 voltas e a `REINCIDÊNCIA`
       em 8 de ~8. Cada anúncio derruba o cache da `manutencao-inicial` e recalcula a página a
       cada 12 s. A comparação (`mudancasReais`) ignora ordem e trata `Date`, então algum valor

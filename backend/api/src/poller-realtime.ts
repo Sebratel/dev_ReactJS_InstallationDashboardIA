@@ -39,6 +39,8 @@ import { materializaColunas, materializaColunasPorGrao } from '../../packages/sn
 import { GRAO_REDUZIDO_DE } from '../../packages/snapshot/src/grao-reduzido.ts';
 import { DIRETORIO_PADRAO, leManifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { montaBuscaPorIds } from './busca-por-ids.ts';
+import { comoDuracao } from '../../packages/transform-engine/src/runner.ts';
+import { duracaoEmDias } from '../../packages/transform-engine/src/value.ts';
 
 const ARQUIVO = path.join('_catalog', 'realtime-poll.yaml');
 
@@ -912,8 +914,19 @@ export class PollerRealtime {
   }
 }
 
+/**
+ * Nomes normalizados e `interval` em dias — o mesmo valor que a carga em lote grava.
+ *
+ * O `pg` entrega `interval` como `PostgresInterval`, um objeto novo a cada leitura. Sem
+ * converter, `mesmaLinha` (`!==`) via toda rebusca de `retorno-prioritario` e
+ * `reincidencia` como mudança — a "fantasma" do PLANO-MESTRE R.0, que derrubava o cache de
+ * quatro páginas a cada 12 s — e o overlay mesclava objeto onde o disco tem número.
+ */
 function normalizaChaves(linha: Record<string, Escalar>): Record<string, Escalar> {
   const out: Record<string, Escalar> = {};
-  for (const [k, v] of Object.entries(linha)) out[normalizeName(k)] = v;
+  for (const [k, v] of Object.entries(linha)) {
+    const duracao = comoDuracao(v);
+    out[normalizeName(k)] = duracao ? duracaoEmDias(duracao) : v;
+  }
   return out;
 }
