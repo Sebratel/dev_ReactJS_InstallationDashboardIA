@@ -38,25 +38,24 @@ A API do Docker foi recriada com uma sobreposição que **não está versionada*
 | contorno | por quê | sai quando |
 |---|---|---|
 | `AQUECE_FILTROS_ATE=0` | com o pré-cálculo de filtros (#163) a API entrava num ciclo de OOM ~1 min depois de subir: a worker estoura 768 MB, o cálculo cai para a thread principal e ela morre em ~3 GB. **Sem ninguém na tela.** Um cálculo pede > 2,7 GB; subir heap não resolve | etapa 3.2 |
-| `./frontend/dist` montado em `/repo/frontend/dist:ro`, compilado no host (`npm run web:build`). **Até 02/10 o caminho era `./apps/api/web/dist` → `/repo/apps/api/web/dist`**: a stack que está no ar foi criada com ele e continua certa até ser recriada; ao recriar com a imagem nova (layout `frontend/` + `backend/`), use o caminho novo | a imagem sai **sem login na tela**: as `VITE_FIREBASE_*` só entram no build, o `.dockerignore` tira o `.env` e o `Dockerfile` não tem `ARG` para elas | etapa 3.1 |
+| ~~`./frontend/dist` montado do host~~ — **saiu em 09/10** (C.1, ACHADOS #199): o login entra no build da imagem | sem ele a imagem saía **sem login na tela**. Em 09/10 quatro recriações só com o compose o desfizeram e a tela ficou ~4 h sem login, com `AQUECE_FILTROS_ATE` no padrão | — |
 | ~~`API_PORT_HOST=3101` no `up`~~ — **saiu em 02/10** (a 3100 ficou livre) | um `node` do host (`npm start`, iniciado 02/10 08:26) segura a 3100, e o `up` falha com "ports are not available" — **derrubando a API**. O proxy fala com `api:3100` por dentro, então a porta do host não muda nada para a tela | quando a 3100 do host estiver livre |
 
-Para recriar (arquivo em qualquer lugar fora do repo; os caminhos relativos resolvem
-pela pasta do `docker-compose.prod.yml`):
+Para recriar a `api`: o arquivo fica em `Desktop/DASHBOARD - Instalação/contorno.yml` (fora do repo; os
+caminhos relativos resolvem pela pasta do `docker-compose.prod.yml`):
 
 ```yaml
-# contorno.yml
+# ../contorno.yml
 services:
   api:
     environment:
       AQUECE_FILTROS_ATE: '0'
-    volumes:
-      - ./frontend/dist:/repo/frontend/dist:ro
 ```
 
 ```bash
-npm run web:build      # na pasta principal, ANTES — é o build com o .env
-docker compose -f docker-compose.prod.yml -f contorno.yml up -d api redis proxy refresh
+docker compose -f docker-compose.prod.yml -f ../contorno.yml build api
+docker compose -f docker-compose.prod.yml -f ../contorno.yml up -d --no-deps --no-build api
+docker exec dev_reactjs_installationdashboardia-api-1 printenv AQUECE_FILTROS_ATE   # tem de dar 0
 ```
 
 **`.env` desta máquina (não versionado):** ganhou `GOOGLE_CREDENCIAL_HOST` em 01/10, com
@@ -156,8 +155,9 @@ Meta: < 10 min/h de consulta pesada no banco.
 
 ### Fase 3 — produção (Portainer)
 
-- [ ] **3.1** `Dockerfile` com `ARG` das quatro `VITE_FIREBASE_*` no estágio `build` e o
-      compose passando `build.args`. Tira o contorno de `dist` da §1.
+- [x] **3.1** ✅ 09/10 (`27c34e6`, ACHADOS #199): `Dockerfile` com `ARG` das quatro
+      `VITE_FIREBASE_*` no estágio `build` e o compose passando `build.args`, com falha fechada.
+      O contorno de `dist` da §1 saiu — a stack roda sem nenhuma montagem do host além do snapshot.
 - [ ] **3.2** Achar o cálculo de > 2,7 GB que o pré-cálculo de filtros dispara (qual
       página × filtro), corrigir e religar `AQUECE_FILTROS_ATE`.
 - [ ] **3.3** `GOOGLE_CREDENCIAL_HOST` como variável da stack no Portainer.

@@ -204,7 +204,7 @@ Detalhe em `PLANO-CARGA.md` §3 fase 3 e `PLANO-AUTONOMIA.md` etapa 5. As três 
 tiram os **contornos fora do repositório** da `PLANO-CARGA.md` §1. Enquanto existirem, um
 `docker compose up` "limpo" quebra a tela.
 
-- [ ] **C.1 (3.1)** `Dockerfile` com `ARG VITE_FIREBASE_*`. Tira o contorno do `dist`.
+- [x] **C.1 (3.1)** ✅ 09/10 (#199): `Dockerfile` com `ARG VITE_FIREBASE_*`; o contorno do `dist` saiu.
 - [ ] **C.2 (3.2)** Achar o cálculo de > 2,7 GB do pré-cálculo de filtros e religar
       `AQUECE_FILTROS_ATE`. É a mais incerta das entregas: pode levar mais de uma sessão.
 - [x] **C.3** ✅ 02/10: a 3100 do host estava livre. A API foi recriada sem `API_PORT_HOST`

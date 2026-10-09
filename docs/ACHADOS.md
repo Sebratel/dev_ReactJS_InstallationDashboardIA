@@ -14774,3 +14774,29 @@ tipos diferentes na mesma coluna. **Correção:** `normalizaChaves` (os dois mod
 passam por ele) converte com o mesmo `comoDuracao` do runner de M e o mesmo `duracaoEmDias`
 que a gravação usa. Teste: três leituras com objetos de interval novos dão UMA mudança, e o
 overlay traz 201,125 (201 dias e 3 h).
+
+**Na stack (#198), depois do deploy das 18:04 UTC:** nos 5,5 min seguintes, 0 anúncios
+fantasma do `RETORNO PRIORITARIO` (eram 25 em 5 min antes) e 1 da `REINCIDÊNCIA` (a volta da
+subida).
+
+## #199 — quatro deploys sem o contorno: ~4 h de tela sem login; o login passa a entrar no build (09/10)
+
+**O incidente, causado nesta sessão.** Os deploys da `api` de 09/10 (13:59, 14:55, 17:56 e 18:04
+UTC) usaram só `docker-compose.prod.yml`, sem o `contorno.yml` da §1 do PLANO-CARGA — que não
+foi lido antes. O primeiro desfez os dois contornos: das 13:59 às 18:12 UTC (10:59–15:12 RS) a
+tela serviu o `dist` da imagem, **sem a configuração do Firebase** (o bundle não tinha
+`firebaseapp.com`), e a API rodou com `AQUECE_FILTROS_ATE` no padrão 40 (o pré-cálculo do OOM
+do #163; não caiu). Os logs do período sumiram com as recriações: não dá para saber se alguém
+tentou entrar. Restaurado às 18:12 UTC pelo procedimento da §1.
+
+**A correção que tira a armadilha (C.1 / PLANO-CARGA 3.1).** As quatro `VITE_FIREBASE_*` viram
+`ARG` do estágio `build` (depois do `npm ci`, para não invalidar o cache da instalação) e o
+compose as passa a `api`, `refresh` e `snapshot-diario` por uma âncora — **falha fechada**: sem
+elas no `.env`, o `up` erra alto, como o `REDIS_PASSWORD`. `VITE_TOKEN_INTERNO` (o botão de
+desenvolvimento) fica de fora. Guarda em `imagem-runtime.test.ts`: toda `VITE_FIREBASE_*` que
+`frontend/src/config.ts` lê é `ARG` antes do `web:build` e vai no `build.args` da `api`; nenhum
+`ARG VITE_TOKEN_INTERNO`.
+
+**Prova na stack, 18:16 UTC.** Na imagem, sem montagem: 1 bundle com `firebaseapp.com`. A `api`
+recriada só com `/repo/snapshot` montado; o bundle servido traz a config; proxy 200;
+`AQUECE_FILTROS_ATE=0` pelo `../contorno.yml`, que agora só tem ele (sai com a C.2).

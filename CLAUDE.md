@@ -41,7 +41,9 @@ node backend/tools/refresh/src/daemon.ts --historico   # histórico de grupos e 
   Só a `field-agenda` roda incremental (`incremental: [lista]` no grupo, ACHADOS #165). Ligar outra
   exige provar contra a carga completa na mesma hora: `npm run probe:compara-incremental`.
 - Docker local: o `.env` precisa de `GOOGLE_CREDENCIAL_HOST` (sem ela as 3 tabelas do Google param).
-  Hoje a imagem sai sem login na tela (`VITE_*` não entram no build) — ver `docs/PLANO-CARGA.md` §1.
+  O `.env` também precisa das quatro `VITE_FIREBASE_*`: elas entram no BUILD da imagem (o `up`
+  erra sem elas). **Recriar a `api` sempre com `-f ../contorno.yml`** (`AQUECE_FILTROS_ATE=0`, até a
+  C.2) — ver `docs/PLANO-CARGA.md` §1. Sem ele, o pré-cálculo de filtros religa.
 - `backend/packages/snapshot/src/incremental.ts` tem um byte NUL — use `grep -a`.
 - Token Power BI: `~/.secrets/powerbi-token.json`, renova sozinho; somente-leitura garantido por `assertSomenteEvaluate`.
 - Morte da API: `snapshot/diagnostico/` (relatório fatal + cauda do stderr).
