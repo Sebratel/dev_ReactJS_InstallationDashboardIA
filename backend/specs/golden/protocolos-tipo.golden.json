@@ -1,0 +1,30 @@
+{
+  "queryId": "protocolos-tipo",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 98727,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columnsFromSample": true,
+  "columns": [
+    {
+      "name": "N°PROTOCOLO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 5000,
+      "numericString": true,
+      "sum": 5996495595
+    },
+    {
+      "name": "TIPO DE PROTOCOLO",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 8,
+      "minLength": 23,
+      "maxLength": 39
+    }
+  ],
+  "schemaFingerprint": "0361e0cb24f4cddf",
+  "dataFingerprint": "0c5e17aa8e179689",
+  "capturedAt": "2026-10-09T18:28:25.979Z"
+}

@@ -497,6 +497,22 @@ dos campos (`Qtd Protocolos Base por Status · Data`), e a VISÃO PRODUTIVA fico
 irreconhecível para quem a procura pelo nome — "o card nem aparece". `calcula.ts`
 repassa o campo como `VisualCalculado.titulo`, que `rotulos.ts` já preferia.
 
+### `protocolos-tipo` — arquivo NOVO; `backlog-agendado-futuro` mescla com ele (09/10/2026)
+
+O M de `backlog-agendado-futuro` faz `Table.NestedJoin` com `#"PROTOCOLOS GERAL"` só para
+trazer `TIPO DE PROTOCOLO`, e citar a PG fazia o runner avaliá-la INTEIRA a cada carga:
+SQL no Voalle + as quatro mesclagens dela. Medido em 09/10: 116,6 s (59 s noutra rodada),
+dos quais 0,9 s eram a própria backlog. `protocolos-tipo.spec.yaml` é SQL de mão com o par
+(`N°PROTOCOLO`, `TIPO DE PROTOCOLO`) no MESMO recorte da PG — os 12 tipos, `created >=
+'2025-01-01'` e o `STATUS <> "Cancelado"` do M, com `IS NULL OR` porque em M `null <>
+"Cancelado"` é verdadeiro. A única linha mudada em `backlog-agendado-futuro.spec.yaml` é a
+mescla: `#"PROTOCOLOS GERAL"` → `#"PROTOCOLOS TIPO"`; o nome da coluna aninhada e a
+expansão ficaram iguais, então a saída tem o mesmo esquema.
+
+**Prova:** as duas versões materializadas em seguida no contêiner do `refresh`: 101.563
+linhas cada, **0** só numa ou só noutra, mesmas colunas; 116,6 s → 4,9 s. Golden capturado
+por `npm run validate:queries -- --only=protocolos-tipo`. ACHADOS #200.
+
 ## Estrutura de `backend/specs/`
 
 ```

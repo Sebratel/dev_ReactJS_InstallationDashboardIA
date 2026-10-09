@@ -1,5 +1,6 @@
 # GERADO automaticamente por backend/tools/extractor a partir do PBIP.
 # NÃO editar à mão sem registrar em docs/SPEC-DRIVEN.md.
+# EDITADA À MÃO em 09/10/2026: a mescla lê #"PROTOCOLOS TIPO" em vez da PG inteira (ACHADOS #200).
 id: backlog-agendado-futuro
 name: BACKLOG AGENDADO FUTURO
 origin: table:BACKLOG AGENDADO FUTURO
@@ -15,7 +16,7 @@ m_expression: |-
   let
       Fonte = Odbc.Query("dsn=dbMaria", "SELECT *FROM DB_Applicattion.Backlog_Schedules AS bs#(lf)"),
       #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"data_inicio_slot", type date}, {"data_carga", type date}, {"protocolo_id", Int64.Type}}),
-      #"Consultas Mescladas" = Table.NestedJoin(#"Tipo Alterado", {"protocolo_id"}, #"PROTOCOLOS GERAL", {"N°PROTOCOLO"}, "PROTOCOLOS GERAL", JoinKind.LeftOuter),
+      #"Consultas Mescladas" = Table.NestedJoin(#"Tipo Alterado", {"protocolo_id"}, #"PROTOCOLOS TIPO", {"N°PROTOCOLO"}, "PROTOCOLOS GERAL", JoinKind.LeftOuter),
       #"PROTOCOLOS GERAL Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas", "PROTOCOLOS GERAL", {"TIPO DE PROTOCOLO"}, {"PROTOCOLOS GERAL.TIPO DE PROTOCOLO"})
   in
       #"PROTOCOLOS GERAL Expandido"

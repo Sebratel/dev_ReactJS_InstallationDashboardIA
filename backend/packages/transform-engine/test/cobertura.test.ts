@@ -211,7 +211,7 @@ test('erro de avaliação é MEvalError, não exceção genérica', () => {
   assert.throws(() => ev.avaliaQuery('let a = Table.Pivot(1) in a'), MEvalError);
 });
 
-test('o corpus continua com 25 queries e 233 passos', () => {
+test('o corpus continua com 26 queries e 179 passos', () => {
   // 24 queries / 327 passos + `field-agenda-slot` (ACHADOS #87): 1 query, 3 passos
   // (mesma forma de `field-agenda` — Fonte, Linhas Filtradas1, Tipo Alterado). Não
   // vem do PBIP, mas é uma query de verdade e entra no corpus como qualquer outra.
@@ -239,16 +239,20 @@ test('o corpus continua com 25 queries e 233 passos', () => {
   // CTE, e a de `TECNICOS AUXILIARES` virou `NULL::text` porque em M ela nunca casou
   // uma linha (texto contra número na chave, sem decisão em `juncoes.yaml`).
   // 233 - 55 = 178. Resta `protocolos-geral` (56).
+  //
+  // +1 query, +1 passo (09/10/2026, ACHADOS #200): `protocolos-tipo`, SQL de mão com só
+  // o `Fonte` — o par (protocolo, tipo) da PG para a mesclagem de
+  // `backlog-agendado-futuro`, que recalculava a PG inteira por uma coluna. 179.
   const qs = corpus();
-  assert.equal(qs.length, 25);
+  assert.equal(qs.length, 26);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    178,
+    179,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
   // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    178,
+    179,
   );
 });

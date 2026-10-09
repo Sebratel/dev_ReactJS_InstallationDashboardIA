@@ -124,7 +124,9 @@ foi desligado antes de o substituto provar.
 - [ ] **B.3 (1.4)** Saúde **por tabela** na tela.
 - [x] **B.4 (1.5)** ✅ 09/10 no `staging`: `application_name` por serviço — `analytics-api-poller`,
       `analytics-refresh`, `analytics-snapshot-diario` (`VOALLE_APPLICATION_NAME` no compose).
-- [ ] **B.5 (2.1)** `backlog-agendado-futuro`: 59 s para 0,3 MB. É o plano de execução, não o volume.
+- [x] **B.5 (2.1)** ✅ 09/10 (#200): `backlog-agendado-futuro` não era plano de execução — a fonte
+      responde em 0,7 s; o M recalculava a PG inteira por uma coluna. Agora mescla com
+      `protocolos-tipo`: 116,6 s → 4,9 s, saída idêntica.
 - [ ] **B.6 (2.2)** `protocolos-geral` incremental. O `Table.Distinct` é por `SOLICITACAO`, a
       própria chave, e não bloqueia. O que bloqueia são as junções do M com `troca-endereco`,
       `tecnicos-auxiliares` e `gestores-equipes`: os `alvos` têm de ver mudança nelas também

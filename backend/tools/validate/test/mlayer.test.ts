@@ -179,7 +179,7 @@ test('scanM: transformação de valor e de tipo não conta como efeito nenhum', 
 
 // ── integração: as 25 queries reais ──────────────────────────────────────────
 
-test('as 25 queries reais: 24 são escaneáveis, e a exceção é a do let aninhado', () => {
+test('as 26 queries reais: 25 são escaneáveis, e a exceção é a do let aninhado', () => {
   // 24 do PBIP + `field-agenda-slot` (ACHADOS #87) — SQL de mão, mesma forma de M
   // de 3 passos de `field-agenda`, e escaneável como qualquer outra: 303 + 3 = 306.
   //
@@ -207,7 +207,9 @@ test('as 25 queries reais: 24 são escaneáveis, e a exceção é a do let aninh
   // #133). É a primeira das escaneáveis a chegar no mínimo possível — um passo, o
   // `Fonte`, que é o ponteiro para o `sql:`. Zero não dá: sem `Fonte` a query não
   // tem de onde ler.
-  assert.equal(passos, 153, 'passos M nas 24 escaneáveis');
+  //
+  // 153 → 154 (09/10/2026): `protocolos-tipo` (ACHADOS #200), SQL de mão, um passo só.
+  assert.equal(passos, 154, 'passos M nas 25 escaneáveis');
 });
 
 /**

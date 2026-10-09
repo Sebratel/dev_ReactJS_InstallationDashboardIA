@@ -83,21 +83,22 @@ test('groupSkipped: agrupa por motivo', () => {
 
 // ------------------------------------------------------------ specs reais
 
-test('specs reais: o plano cobre as 19 queries SQL do PBIP + grão reduzido', () => {
-  // 18 do PBIP + 1: `field-agenda-slot` (ACHADOS #87) não vem do PBIP — é a forma
-  // de grão de slot de `field-agenda`, SQL de mão registrada em
-  // docs/SPEC-DRIVEN.md. dbVoalle sobe de 15 para 16; dbMaria não muda.
+test('specs reais: o plano cobre as 20 queries SQL (18 do PBIP + 2 de mão)', () => {
+  // 18 do PBIP + 2 de mão, registradas em docs/SPEC-DRIVEN.md: `field-agenda-slot`
+  // (ACHADOS #87, o grão de slot de `field-agenda`) e `protocolos-tipo` (ACHADOS #200, o
+  // par protocolo/tipo para a mesclagem de `backlog-agendado-futuro`). As duas no
+  // dbVoalle: 15 → 17; dbMaria não muda.
   const registry = QueryRegistry.fromSpecsDir(SPECS);
   const plan = planValidation(registry.list(), { configured: [...EXECUTABLE_DATASOURCES] });
 
   assert.equal(plan.runnable.length + plan.skipped.length, registry.queries.size);
-  assert.equal(plan.runnable.length, 19, 'dbVoalle + dbMaria com SQL');
+  assert.equal(plan.runnable.length, 20, 'dbVoalle + dbMaria com SQL');
 
   const porFonte = new Map<string, number>();
   for (const item of plan.runnable) {
     porFonte.set(item.datasource, (porFonte.get(item.datasource) ?? 0) + 1);
   }
-  assert.equal(porFonte.get('dbVoalle'), 16);
+  assert.equal(porFonte.get('dbVoalle'), 17);
   assert.equal(porFonte.get('dbMaria'), 3);
 });
 

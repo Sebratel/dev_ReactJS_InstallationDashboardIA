@@ -247,7 +247,7 @@ test('feriados roda inteira sem fonte externa: base64 + deflate + JSON', async (
   assert.ok(t.columns.length > 0);
 });
 
-test('as 24 queries do escopo executam os passos; o que falha é tipo do dado sintético', async () => {
+test('as 25 queries do escopo executam os passos; o que falha é tipo do dado sintético', async () => {
   // O que este teste PODE provar sem credencial: que nenhuma query para por função
   // faltando, semântica não implementada ou ordem errada entre queries.
   //
@@ -321,15 +321,16 @@ test('as 24 queries do escopo executam os passos; o que falha é tipo do dado si
     [],
     `falhas que NÃO são tipo do fixture (função faltando, semântica, ordem):\n  ${lista(problemas)}`,
   );
-  assert.equal(ok.length + tipoDoFixture.length, 24);
-  // Piso em 24 = **todas**. Era 23 antes de `field-agenda-slot` (ACHADOS #87) —
+  assert.equal(ok.length + tipoDoFixture.length, 25);
+  // Piso em 25 = **todas**. Era 24 antes de `protocolos-tipo` (ACHADOS #200), que tem
+  // golden e roda como as outras; 23 antes de `field-agenda-slot` (ACHADOS #87) —
   // SQL de mão, sem golden, cai para dado sintético como qualquer query nova; e
   // era 22 antes disso, enquanto `base-categorias-field` esbarrava em
   // `categoria32`. Se cair, alguma coisa regrediu — e a mensagem diz qual query e
   // por quê.
   assert.ok(
-    ok.length >= 24,
-    `só ${ok.length} de 24 executaram inteiras. Barradas por tipo do fixture:\n  ${lista(tipoDoFixture)}`,
+    ok.length >= 25,
+    `só ${ok.length} de 25 executaram inteiras. Barradas por tipo do fixture:\n  ${lista(tipoDoFixture)}`,
   );
 });
 

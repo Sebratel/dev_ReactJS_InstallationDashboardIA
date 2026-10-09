@@ -14800,3 +14800,25 @@ desenvolvimento) fica de fora. Guarda em `imagem-runtime.test.ts`: toda `VITE_FI
 **Prova na stack, 18:16 UTC.** Na imagem, sem montagem: 1 bundle com `firebaseapp.com`. A `api`
 recriada só com `/repo/snapshot` montado; o bundle servido traz a config; proxy 200;
 `AQUECE_FILTROS_ATE=0` pelo `../contorno.yml`, que agora só tem ele (sai com a C.2).
+
+## #200 — a backlog recalculava a PROTOCOLOS GERAL inteira por uma coluna (09/10)
+
+**PLANO-MESTRE B.5 dizia** "`backlog-agendado-futuro`: 59 s para 0,3 MB. É o plano de
+execução, não o volume". **Não era nem uma coisa nem outra.** A fonte é uma tabela comum do
+MariaDB (`DB_Applicattion.Backlog_Schedules`, InnoDB): direto nela, 101.563 linhas em 0,62–0,70 s.
+No `refresh`, a mesma query levou 67 s. Materializada sozinha, com o tempo por sub-busca:
+`alocacao-patrimonio` 6,6 s, `gestores-equipes` 0,4 s, `tecnicos-auxiliares` 4,6 s,
+`troca-endereco` 1,5 s, **`protocolos-geral` 28,9 s**, e a própria backlog **0,9 s** — total 59 s.
+O M dela faz `Table.NestedJoin` com `#"PROTOCOLOS GERAL"` só para trazer `TIPO DE PROTOCOLO`, e
+citar a PG faz o runner avaliá-la inteira. No `medio`, que já materializa a PG, isso era a PG
+duas vezes por ciclo — o SQL mais pesado do Voalle a cada 30 min a mais.
+
+**Correção** (registrada em `docs/SPEC-DRIVEN.md`): `protocolos-tipo`, SQL de mão com só o par
+(protocolo, tipo) no mesmo recorte da PG — os 12 tipos, `created >= 2025`, e o `STATUS <>
+"Cancelado"` do M com `IS NULL OR` (em M, `null <> "Cancelado"` é verdadeiro). A backlog
+mescla com ela; a coluna aninhada e a expansão não mudaram.
+
+**Prova:** as duas versões materializadas em seguida no contêiner do `refresh` — **101.563 linhas
+cada, 0 diferenças, mesmas colunas**; busca + M de **116,6 s → 4,9 s** (rodada com o banco mais
+ocupado; noutra, a velha deu 59 s). Os testes do corpus que prendem o número de queries contam a
+nova pelo nome, como contam `field-agenda-slot`; golden capturado por `validate:queries`.

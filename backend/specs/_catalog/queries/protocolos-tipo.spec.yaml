@@ -1,0 +1,42 @@
+# MANTIDO POR HUMANOS — este arquivo NÃO existe no PBIP (09/10/2026), registrado em docs/SPEC-DRIVEN.md.
+#
+# O par (N°PROTOCOLO, TIPO DE PROTOCOLO) da PROTOCOLOS GERAL, sem o resto dela. Existe para
+# `backlog-agendado-futuro`, cujo M só usa esta coluna da PG e, por citá-la, recalculava a PG
+# INTEIRA a cada carga: 59 s, dos quais 28,9 s de SQL no Voalle e 0,9 s da própria backlog
+# (medido em 09/10, ACHADOS #200).
+#
+# O recorte é o MESMO da PG, porque a mesclagem LeftOuter dá tipo vazio a protocolo fora dela:
+#   - os 12 `incident_type_id` e `a.created >= '2025-01-01'` do SQL da PG;
+#   - `STATUS <> "Cancelado"`, que na PG é passo de M. Em M, `null <> "Cancelado"` é
+#     verdadeiro, então status ausente FICA; em SQL o `<>` sozinho o tiraria.
+# `N°PROTOCOLO` é único na PG (0 repetidos em 98.491, medido em 08/10), e o tipo é do
+# próprio incidente: uma linha por protocolo, sem as junções que a PG precisa desempatar.
+id: protocolos-tipo
+name: "PROTOCOLOS TIPO"
+origin: expression
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  SELECT DISTINCT
+      ai.protocol AS "N°PROTOCOLO",
+      TRIM(it.title) AS "TIPO DE PROTOCOLO"
+  FROM assignment_incidents ai
+  JOIN assignments a ON a.id = ai.assignment_id
+  JOIN incident_types it ON it.id = ai.incident_type_id
+  LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id
+  WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15')
+    AND a.created >= '2025-01-01'
+    AND (is2.title IS NULL OR is2.title <> 'Cancelado')
+url: null
+sheet: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- assignments
+- incident_status
+- incident_types
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "SELECT DISTINCT#(lf)    ai.protocol AS ""N°PROTOCOLO"",#(lf)    TRIM(it.title) AS ""TIPO DE PROTOCOLO""#(lf)FROM assignment_incidents ai#(lf)JOIN assignments a ON a.id = ai.assignment_id#(lf)JOIN incident_types it ON it.id = ai.incident_type_id#(lf)LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id#(lf)WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15')#(lf)  AND a.created >= '2025-01-01'#(lf)  AND (is2.title IS NULL OR is2.title <> 'Cancelado')")
+  in
+      Fonte
