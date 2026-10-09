@@ -77,8 +77,9 @@ Branches com trabalho fora do `staging` e worktrees que já não servem.
 A etapa 1 está no `staging` (field-agenda no poller a cada 30 s; #170, #171). Falta o
 "Produtivo", que vem de `PROTOCOLOS GERAL[DATA INSTALAÇÃO]` ← `alocacao-patrimonio`.
 
-- [ ] **A.1** `alocacao-patrimonio` no poller (0,2 s incremental, medido no #167) e propagar
-      o par (protocolo, dia instalado) até a VISÃO PRODUTIVA.
+- [ ] **A.1** 🟡 09/10, no `staging` (#192), falta a A.3: `alocacao-patrimonio` no poller
+      a cada 60 s (~1 s por volta, medido em 09/10) e o par (protocolo, dia instalado) só na
+      `Status Protocolo Dia`, somando onde a carga ainda não tem data.
 - [ ] **A.2** O aviso da opção (a): "N visitas com relato produtivo aguardando baixa de
       equipamento". A alocação chega ~41 min depois do relato: é atraso de processo e tem de
       ficar visível, não escondido.

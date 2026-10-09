@@ -38,6 +38,7 @@ import { carrega, type Carregado } from '../../packages/snapshot/src/carrega.ts'
 import { leManifesto, maisAntigo, type Manifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { carimboDasCalculadas } from '../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../packages/snapshot/src/plano.ts';
+import { calculadasAlimentadasAoVivo } from '../../packages/snapshot/src/nativas.ts';
 import { type DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { MemoryCache } from '../../packages/query-engine/src/cache-memory.ts';
 import { QueryRegistry } from '../../packages/query-engine/src/registry.ts';
@@ -131,6 +132,8 @@ const LIMITE_PREFETCH_POR_MINUTO = 600;
 /** Quanto a "última pronta" de uma pergunta vive sem ser recalculada (ACHADOS #164). */
 const TTL_ULTIMA_PRONTA_S = 7 * 24 * 3600;
 const JANELA_API_MS = 60_000;
+/** Tabela só-do-poller → calculadas que ela alimenta (ver `nativas.ts`). */
+const ALIMENTADAS_AO_VIVO = calculadasAlimentadasAoVivo();
 
 /**
  * Carrega `backend/specs/layout/*.layout.yaml` uma vez, na subida. Diretório ausente vira mapa
@@ -267,6 +270,8 @@ export class Servidor {
    * serializar delta que o outro lado vai ignorar, a cada cálculo.
    */
   private readonly tabelasPorDashboard = new Map<string, Set<string>>();
+  /** Dashboard → calculadas que ele carrega (normalizadas), do mesmo `planeja`. */
+  private readonly calculadasPorDashboard = new Map<string, Set<string>>();
   /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
   private readonly assinantesSSE = new Set<http.ServerResponse>();
 
@@ -450,6 +455,7 @@ export class Servidor {
       const plano = planeja([dash], this.model);
       this.queriesPorDashboard.set(dash.id, plano.queries);
       this.tabelasPorDashboard.set(dash.id, new Set(plano.tabelas.map((t) => normalizeName(t.nome))));
+      this.calculadasPorDashboard.set(dash.id, new Set(plano.calculadas.map(normalizeName)));
     }
 
     // O carimbo e a procedência dele (F5). Construído por último porque
@@ -1113,10 +1119,15 @@ export class Servidor {
    */
   aoTabelaMudar(tabela: string, queryId: string): void {
     this.carimbo.esquece();
-    const afetados = [...this.queriesPorDashboard]
-
-      .filter(([, queries]) => queries.includes(queryId))
-      .map(([id]) => id);
+    // Tabela só-do-poller: invalida quem carrega a calculada que ela alimenta, e só.
+    // Pelo fechamento de queries ela não alcança página nenhuma (`alocacao-patrimonio`
+    // entra na PG pelo M, e `planeja` lista só a query que vira tabela).
+    const viva = normalizeName(tabela);
+    const afetados = ALIMENTADAS_AO_VIVO.has(viva)
+      ? [...this.calculadasPorDashboard.keys()].filter((id) => this.#alimentaDaPagina(viva, id))
+      : [...this.queriesPorDashboard]
+          .filter(([, queries]) => queries.includes(queryId))
+          .map(([id]) => id);
     if (afetados.length === 0) return;
 
     // **Quem é avisado agora e quem espera a próxima rodada** (ACHADOS #175). A
@@ -2160,9 +2171,17 @@ export class Servidor {
     if (todos.size === 0) return recorte;
     const daPagina = this.tabelasPorDashboard.get(dash.id);
     for (const [tabela, ov] of todos) {
-      if (daPagina === undefined || daPagina.has(tabela)) recorte.set(tabela, ov);
+      if (daPagina === undefined || daPagina.has(tabela) || this.#alimentaDaPagina(tabela, dash.id)) {
+        recorte.set(tabela, ov);
+      }
     }
     return recorte;
+  }
+
+  /** A tabela só-do-poller alimenta uma calculada que esta página carrega? */
+  #alimentaDaPagina(tabela: string, dashId: string): boolean {
+    const calculadas = this.calculadasPorDashboard.get(dashId);
+    return (ALIMENTADAS_AO_VIVO.get(tabela) ?? []).some((c) => calculadas?.has(normalizeName(c)) ?? false);
   }
 
   private carrega(dash: DashboardSpec, visuaisPedidos: readonly string[] | null = null): Promise<Carregado> {

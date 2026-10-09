@@ -54,7 +54,7 @@ import { VistaDeLinhas, indiceDaVista } from './linha-vista.ts';
 import type { TabelaColunar } from './tabela-colunar.ts';
 import { arquivoDaQuery, leManifesto } from './manifesto.ts';
 import { planeja, type PlanoDeSnapshot } from './plano.ts';
-import { chaveDeParticao, traducaoDe, type TraducaoNativa } from './nativas.ts';
+import { chaveDeParticao, traducaoAoVivoDe, traducaoDe, type TraducaoNativa } from './nativas.ts';
 
 export interface CarregaOptions {
   /** Diretório do snapshot. */
@@ -365,19 +365,27 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // motivo vai para `recalculadas`, que a página reporta.
     const origens = calculatedTableSourceTables(opts.model, t);
     const tocadas = (origens ?? []).filter((o) => opts.overlay?.has(normaliza(o)));
+    // A fonte só-do-poller (`aoVivo` em nativas.ts) não está no modelo: ninguém mescla o
+    // overlay dela em tabela nenhuma, e é chamando o mesclador com o disco vazio que
+    // saem as linhas ao vivo.
+    const vivaDeclarada = traducaoAoVivoDe(t);
+    const mescladorVivo = vivaDeclarada ? opts.overlay?.get(normaliza(vivaDeclarada.tabela)) : undefined;
+    if (vivaDeclarada && mescladorVivo) tocadas.push(vivaDeclarada.tabela);
     if (tocadas.length > 0) {
       const nativa = traducaoDe(t);
       if ('traducao' in nativa) {
         const tr = nativa.traducao;
         const fontes = tr.fontes.map((nome) => dataset.rows(nome) as unknown as Record<string, Escalar>[]);
+        const aoVivo = mescladorVivo ? mescladorVivo([]) : undefined;
         const parcial = await recalculoParcial(t, tr, fontes, tocadas, arq, opts.dir, {
           colunar: opts.colunar === true,
           confere: (cab) => {
             confereTabelaCalculada(t, cab, opts.dir);
             confereIdadeDaCalculada(t, cab, maisNovoDeQuery, opts.dir, opts.model, geradoEmPorTabela);
           },
+          aoVivo,
         });
-        const linhas = parcial?.linhas ?? tr.calcula(fontes);
+        const linhas = parcial?.linhas ?? tr.calcula(fontes, aoVivo);
         dataset.adotaTabela(t.name, linhas as never);
         linhasPorTabela.set(t.name, linhas.length);
         recalculadas.push(
@@ -871,7 +879,11 @@ async function recalculoParcial(
   tocadas: readonly string[],
   arq: string,
   dir: string,
-  o: { colunar: boolean; confere: (cab: CabecalhoDeSnapshot) => void },
+  o: {
+    colunar: boolean;
+    confere: (cab: CabecalhoDeSnapshot) => void;
+    aoVivo?: readonly Record<string, Escalar>[] | undefined;
+  },
 ): Promise<{ linhas: Record<string, Escalar>[]; chaves: number } | null> {
   if (!tr.particao || !o.colunar || !fs.existsSync(arq)) return null;
   const tocadasNorm = new Set(tocadas.map(normaliza));
@@ -884,6 +896,9 @@ async function recalculoParcial(
       if (indiceDaVista(l as never) === null) chaves.add(chaveDeParticao(l[coluna] ?? null));
     }
   }
+  // Toda linha da fonte ao vivo é mudança: ela só existe no overlay.
+  const colunaViva = tr.aoVivo?.coluna;
+  if (o.aoVivo && colunaViva) for (const l of o.aoVivo) chaves.add(chaveDeParticao(l[colunaViva] ?? null));
   try {
     o.confere(leCabecalho(arq));
   } catch {
@@ -898,5 +913,5 @@ async function recalculoParcial(
     const coluna = tr.particao!.porFonte[i]!;
     return (fontes[i] ?? []).filter((l) => chaves.has(chaveDeParticao(l[coluna] ?? null)));
   });
-  return { linhas: [...mantidas, ...tr.calcula(recortes)], chaves: chaves.size };
+  return { linhas: [...mantidas, ...tr.calcula(recortes, o.aoVivo)], chaves: chaves.size };
 }

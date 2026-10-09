@@ -457,3 +457,36 @@ queries:
       SELECT s.pre_reserved_assignment_id FROM service_desk_slots s, j
       WHERE s.pre_reserved_assignment_id = ANY(j.ids)
         AND GREATEST(s.created, COALESCE(s.modified, s.created)) >= :desde
+
+  # ALOCAÇÃO PATRIMONIO — o "Produtivo" da VISÃO PRODUTIVA em tempo real (PLANO-MESTRE
+  # §A.1, ACHADOS #167 e #192). Ela ficava de fora por chave fraca (o topo deste arquivo):
+  # uma solicitação tem vários itens, e a costura traz só o item que mudou. Aqui isso não
+  # erra linha nenhuma, porque esta tabela NÃO existe no modelo: o overlay dela não é
+  # mesclado em tabela física, só alimenta os pares (protocolo, dia instalado) da tradução
+  # nativa de `Status Protocolo Dia` (`aoVivo` em nativas.ts), e só para protocolo que a
+  # carga em lote conhece SEM data de instalação. Item antigo que o grupo perdeu já está
+  # na carga — e aí vale a data dela.
+  #
+  # O servidor entrega este overlay e invalida SÓ as páginas que carregam a calculada
+  # (`calculadasAlimentadasAoVivo`). Pelo fechamento de queries ela não chegaria a página
+  # nenhuma: entra na PG pelo M, e o planejador lista só a query que vira tabela.
+  #
+  # `it.id <> '15'`: na troca de endereço o "Produtivo" vem de DATA DA TROCA, não da
+  # alocação. `GREATEST(created, modified)`: correção de item também conta.
+  #
+  # 60 s, não 30: medido em 09/10/2026 ~1 s por volta (964–1195 ms), o MESMO com janela de
+  # 1 h ou 24 h — sem índice em created/modified, é varredura. O #167 tinha 0,2 s. A
+  # alocação já chega ~41 min depois do relato (processo), então 30 s a mais não aparecem
+  # na tela, e o banco ganha 1 min por hora.
+  alocacao-patrimonio:
+    tabela: "ALOCAÇÃO PATRIMONIO"
+    intervalo_ms: 60000
+    margem_segundos: 60
+    chave: [SOLICITACAO]
+    marca: [DATA HORA SAIDA]
+    costura:
+      de: "AND plis.out_date >= '2025-01-01'"
+      para: |-
+        AND plis.out_date >= '2025-01-01'
+          AND it.id <> '15'
+          AND GREATEST(plis.created, COALESCE(plis.modified, plis.created)) >= :desde

@@ -84,6 +84,28 @@ test('calendar: DISTINCT (Protocolo, Data) — e o recálculo parcial dá a tabe
   }
 });
 
+test('alocação ao vivo: recalcular só as chaves dela dá a tabela inteira com ela', () => {
+  // `carrega.ts` põe toda linha ao vivo nas chaves tocadas e repassa as linhas a
+  // `calcula` sem recorte — a PG dessas chaves vem no recorte, e é ela que diz quem
+  // está sem data de instalação.
+  const geral = [...GERAL, { 'n°protocolo': '200', 'data instalação': null }];
+  const vivos = [
+    { 'n°protocolo': '200', 'data saida': new Date(Date.UTC(2026, 9, 3)) },
+    { 'n°protocolo': '100', 'data saida': new Date(Date.UTC(2026, 9, 2)) },
+  ];
+  const antes = statusProtocoloDia(AGENDA, geral);
+  const inteira = statusProtocoloDia(AGENDA, geral, vivos);
+  const p = parcial(antes, vivos.map((v) => v['n°protocolo']), ([f, g]) => statusProtocoloDia(f!, g!, vivos), [
+    { linhas: AGENDA, coluna: 'protocolo' },
+    { linhas: geral, coluna: 'n°protocolo' },
+  ]);
+  assert.deepEqual(ordena(p), ordena(inteira));
+  const do200dia3 = p.find((l) => l['protocolo'] === '200' && (l['dia'] as Date).getUTCDate() === 3);
+  assert.equal(do200dia3?.['status'], 'Produtivo', 'a alocação ao vivo instalou o 200 no dia 3');
+  const do100dia2 = p.find((l) => l['protocolo'] === '100' && (l['dia'] as Date).getUTCDate() === 2);
+  assert.equal(do100dia2?.['status'], 'Improdutivo', 'a carga já instalou o 100 no dia 1: a alocação ao vivo não mexe');
+});
+
 test('a mudança de um protocolo aparece só nele', () => {
   const antes = statusProtocoloDia(AGENDA, GERAL);
   // O 200 instalou no dia 3: vira Produtivo nesse dia, e nada mais muda.

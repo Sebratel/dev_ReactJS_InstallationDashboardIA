@@ -143,6 +143,44 @@ test('Produtivo quando PROTOCOLOS GERAL tem instalação no dia', () => {
   assert.equal(l.status, 'Produtivo');
 });
 
+// ---------------------------------------------------------------------------
+// A alocação ao vivo (PLANO-MESTRE §A.1): só SOMA, e só onde a carga não sabe
+// ---------------------------------------------------------------------------
+
+const alocacao = (over: Partial<Record<string, Escalar>> = {}) => ({
+  'n°protocolo': '1001',
+  'data saida': em('2026-03-10', 0),
+  ...over,
+});
+const relatado = () => [linhaFA({ skill: 'FIBRA' })];
+const semData = () => [linhaPG({ 'data instalação': null })];
+
+test('alocação ao vivo vira Produtivo onde a carga ainda não tem data de instalação', () => {
+  assert.equal(uma(relatado(), semData()).status, 'Inconclusivo', 'sem o tempo real');
+  const [l] = statusProtocoloDia(relatado(), semData(), [alocacao()]);
+  assert.equal(l!.status, 'Produtivo');
+});
+
+test('alocação ao vivo NÃO mexe em protocolo que a carga já instalou — vale a carga', () => {
+  // A carga diz outro dia: o slot de 10/03 não pode virar Produtivo pelo tempo real.
+  const pg = [linhaPG({ 'data instalação': em('2026-03-12') })];
+  const [l] = statusProtocoloDia(relatado(), pg, [alocacao()]);
+  assert.equal(l!.status, 'Inconclusivo');
+});
+
+test('alocação ao vivo de protocolo fora da PG (cancelado) é ignorada', () => {
+  const [l] = statusProtocoloDia(relatado(), [], [alocacao()]);
+  assert.equal(l!.status, 'Inconclusivo');
+});
+
+test('vários itens: vale a PRIMEIRA saída; item sem data não cria par', () => {
+  const vivos = [alocacao({ 'data saida': em('2026-03-11', 0) }), alocacao(), alocacao({ 'data saida': null })];
+  const [l] = statusProtocoloDia(relatado(), semData(), vivos);
+  assert.equal(l!.status, 'Produtivo', 'a saída de 10/03 é a primeira, e é o dia do slot');
+  const [outro] = statusProtocoloDia(relatado(), semData(), [alocacao({ 'data saida': em('2026-03-11', 0) })]);
+  assert.equal(outro!.status, 'Inconclusivo', 'saída em outro dia não torna este slot Produtivo');
+});
+
 test('Produtivo ganha de Improdutivo — é a primeira cláusula do SWITCH', () => {
   const l = uma([linhaFA({ categoriaprodutividade: 'Improdutiva' })], [linhaPG()]);
   assert.equal(l.status, 'Produtivo');

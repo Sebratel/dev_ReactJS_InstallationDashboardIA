@@ -216,3 +216,21 @@ test('?recalcula=1 de um usuário comum é ignorado; o de ferramenta interna val
     await ferramenta.fecha();
   }
 });
+
+test('alocação ao vivo avisa SÓ quem carrega Status Protocolo Dia — não as páginas da PG', async () => {
+  // PLANO-MESTRE §A.1. Ela não está no fechamento de queries de página nenhuma: sem o
+  // roteamento por calculada, este aviso não saía, e a tela nunca via o tempo real.
+  const s = await sobe({});
+  try {
+    const sse = await ouve(await s.busca('/api/eventos'));
+    s.servidor.aoTabelaMudar('ALOCAÇÃO PATRIMONIO', 'alocacao-patrimonio');
+    s.servidor.aoTabelaMudar('PROTOCOLOS GERAL', 'protocolos-geral');
+    await ate(() => sse.eventos.length >= 2);
+    await sse.para();
+    const [viva, geral] = sse.eventos;
+    assert.deepEqual(viva!.dashboards, ['agendamento-field']);
+    assert.ok(geral!.dashboards.length > 5, `a PG alcança ${geral!.dashboards.length} página(s) — o contraste do teste`);
+  } finally {
+    await s.fecha();
+  }
+});

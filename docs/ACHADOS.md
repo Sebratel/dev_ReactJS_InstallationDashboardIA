@@ -14598,3 +14598,39 @@ saída 1 e sem repetir. Um ciclo real do daemon (`--so-uma-vez`, numa worktree s
 numa porta fechada): `frio`, só Voalle, saiu 75 e gravou `transitoria: true` com a causa no
 `refresh-status.json`; `quente` e `medio`, com falha de configuração do dbMaria e do Google
 misturada, saíram 1 e sem `transitoria` — falha mista continua freada.
+
+## #192 — o "Produtivo" ao vivo entra só na `Status Protocolo Dia`, e só soma (09/10)
+
+**PLANO-MESTRE §A.1.** O "Produtivo" é `PROTOCOLOS GERAL[DATA INSTALAÇÃO]`, DAX sobre
+`DATA ALOCAÇÃO` (#167). Pôr a PG no poller foi descartado de novo: SQL + quatro junções em M
+(uma no MariaDB) + `Table.Distinct`, 95 mil linhas, e ela alimenta 12 das 14 páginas.
+
+**O desenho.** `alocacao-patrimonio` entra no poller como tabela que **não existe no modelo**:
+nenhuma página a carrega, nenhum overlay físico a recebe. A tradução nativa de `Status
+Protocolo Dia` declara `aoVivo: ALOCAÇÃO PATRIMONIO` (`nativas.ts`) e o `carrega.ts` a lê
+chamando o mesclador com o disco vazio. O par ao vivo só **soma**: preenche protocolo que a
+carga conhece **sem** data de instalação; protocolo já instalado na carga, ou fora dela
+(cancelado), fica como a carga diz. A carga de 30 min continua sendo a verdade. Por isso a
+chave fraca da alocação (vários itens por solicitação, o motivo de ela ter ficado fora do
+poller) não erra linha: o overlay nunca é mesclado em tabela. Troca de endereço sai na
+costura (`it.id <> '15'`), porque nela vale `DATA DA TROCA`.
+
+**Roteamento.** `planeja` lista só a query que vira tabela, e `alocacao-patrimonio` entra na
+PG pelo M: medido, ela está no fechamento de **0 de 14** páginas. Sem roteamento próprio o
+aviso não chegaria a tela nenhuma. `calculadasAlimentadasAoVivo` liga a tabela à calculada,
+e o servidor entrega o overlay e invalida só quem carrega `Status Protocolo Dia`: hoje, a
+`agendamento-field`.
+
+**Custo, medido em 09/10 (só leitura).** A consulta costurada leva **~1 s** (964–1195 ms), o
+mesmo com janela de 1 h ou 24 h: sem índice em `created`/`modified`, é varredura — o #167
+tinha 0,2 s. Intervalo de **60 s**: o processo já atrasa a alocação ~41 min depois do relato
+(#167), então 30 s a mais não aparecem, e o banco ganha 1 min/h. Efeito no mesmo minuto: 13
+min depois da carga das 10:42 RS, 115 protocolos com alocação em 24 h, **4** ainda sem data
+na carga — esses ganham a instalação na hora (viram Produtivo no slot do mesmo dia).
+
+**Prova.** `nativas.test.ts` (soma onde a carga não sabe; não mexe no instalado nem no
+cancelado; vários itens vale a primeira saída; item sem data não cria par),
+`carrega-parcial.test.ts` (recalcular só as chaves ao vivo dá a tabela inteira com elas) e
+`aviso-das-paginas.test.ts` (a mudança da alocação avisa só `agendamento-field`; a da PG,
+mais de 5 páginas). Costura validada contra o SQL da spec (âncora única, cita `:desde`).
+**Falta a §A.3:** ligar na stack e conferir contra a carga completa da mesma hora.

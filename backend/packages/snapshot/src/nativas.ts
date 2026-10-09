@@ -111,6 +111,7 @@ const PRECISA_FIELD_AGENDA = [
   'skill',
 ] as const;
 const PRECISA_PROTOCOLOS_GERAL = ['n°protocolo', 'data instalação'] as const;
+const PRECISA_ALOCACAO = ['n°protocolo', 'data saida'] as const;
 
 function confereColunas(
   linhas: readonly Record<string, Escalar>[],
@@ -147,9 +148,11 @@ function confereColunas(
 export function statusProtocoloDia(
   fieldAgenda: readonly Record<string, Escalar>[],
   protocolosGeral: readonly Record<string, Escalar>[],
+  alocacoesAoVivo: readonly Record<string, Escalar>[] = [],
 ): Record<string, Escalar>[] {
   confereColunas(fieldAgenda, PRECISA_FIELD_AGENDA, 'FIELD AGENDA');
   confereColunas(protocolosGeral, PRECISA_PROTOCOLOS_GERAL, 'PROTOCOLOS GERAL');
+  confereColunas(alocacoesAoVivo, PRECISA_ALOCACAO, 'ALOCAÇÃO PATRIMONIO');
 
   const porSlot = new Map<string, Grupo>();
   const improdutivoPorRelato = new Map<string, number>();
@@ -191,8 +194,30 @@ export function statusProtocoloDia(
 
   /** `COUNTROWS('PROTOCOLOS GERAL')` por `(N°PROTOCOLO, TRUNC(DATA INSTALAÇÃO))`. */
   const instaladoPorDia = new Map<string, number>();
+  const semInstalacaoNaCarga = new Set<string>();
   for (const l of protocolosGeral) {
-    const chave = chaveDoGrupo(chaveTexto(l['n°protocolo'] ?? null), dia(l['data instalação'] ?? null));
+    const p = chaveTexto(l['n°protocolo'] ?? null);
+    const di = l['data instalação'] ?? null;
+    if (di === null) semInstalacaoNaCarga.add(p);
+    const chave = chaveDoGrupo(p, dia(di));
+    instaladoPorDia.set(chave, (instaladoPorDia.get(chave) ?? 0) + 1);
+  }
+
+  // A alocação de patrimônio do poller (ACHADOS #167): `DATA INSTALAÇÃO` é `DATA
+  // ALOCAÇÃO` fora da troca de endereço, e a troca já sai no SQL da costura. Só SOMA:
+  // preenche protocolo que a carga conhece SEM data. Protocolo fora da PG (cancelado)
+  // ou já instalado nela fica como a carga diz — ela é a verdade e chega em ≤ 30 min.
+  const primeiraSaida = new Map<string, number>();
+  for (const l of alocacoesAoVivo) {
+    const p = chaveTexto(l['n°protocolo'] ?? null);
+    if (!semInstalacaoNaCarga.has(p)) continue;
+    const d = dia(l['data saida'] ?? null);
+    if (d === 0) continue;
+    const antes = primeiraSaida.get(p);
+    if (antes === undefined || d < antes) primeiraSaida.set(p, d);
+  }
+  for (const [p, d] of primeiraSaida) {
+    const chave = chaveDoGrupo(p, d);
     instaladoPorDia.set(chave, (instaladoPorDia.get(chave) ?? 0) + 1);
   }
 
@@ -275,7 +300,16 @@ export interface TraducaoNativa {
   shaConferido: string;
   /** As tabelas do modelo que ela lê, na ordem em que `calcula` as recebe. */
   fontes: string[];
-  calcula(fontes: readonly Record<string, Escalar>[][]): Record<string, Escalar>[];
+  calcula(
+    fontes: readonly Record<string, Escalar>[][],
+    aoVivo?: readonly Record<string, Escalar>[],
+  ): Record<string, Escalar>[];
+  /**
+   * Uma tabela que só existe no poller, fora do modelo: nenhuma página a carrega e
+   * nenhuma tabela física a recebe. Chega a `calcula` pelo segundo argumento, e só
+   * quando o tempo real a trouxe. `coluna` é a de partição nela (ver `particao`).
+   */
+  aoVivo?: { tabela: string; coluna: string };
   /**
    * Toda linha de saída depende só das linhas de entrada com a MESMA chave — então dá
    * para recalcular só as chaves que mudaram e manter o resto (`carrega.ts`, tempo
@@ -293,7 +327,8 @@ const TRADUCOES: TraducaoNativa[] = [
     // divergentes contra o arquivo que o avaliador de DAX produziu.
     shaConferido: 'c9d50d2e4db53199',
     fontes: ['FIELD AGENDA', 'PROTOCOLOS GERAL'],
-    calcula: ([fa, pg]) => statusProtocoloDia(fa ?? [], pg ?? []),
+    calcula: ([fa, pg], aoVivo) => statusProtocoloDia(fa ?? [], pg ?? [], aoVivo ?? []),
+    aoVivo: { tabela: 'ALOCAÇÃO PATRIMONIO', coluna: 'n°protocolo' },
     // Os quatro mapas de `statusProtocoloDia` são chaveados por (protocolo, dia): uma
     // linha de saída nunca lê linha de outro protocolo.
     particao: { saida: 'protocolo', porFonte: ['protocolo', 'n°protocolo'] },
@@ -306,6 +341,28 @@ const TRADUCOES: TraducaoNativa[] = [
     particao: { saida: 'protocolo', porFonte: ['protocolo'] },
   },
 ];
+
+/** A fonte só-do-poller desta calculada, se ela declarar uma. */
+export function traducaoAoVivoDe(t: ModelTable): { tabela: string; coluna: string } | undefined {
+  const alvo = normalizeName(t.name);
+  return TRADUCOES.find((x) => normalizeName(x.tabela) === alvo)?.aoVivo;
+}
+
+/**
+ * Tabela só-do-poller (nome normalizado) → calculadas que ela alimenta. É por aqui que o
+ * servidor sabe a quem entregar o overlay dela e quem invalidar quando ela muda: ela não
+ * está no modelo nem no fechamento de queries de página nenhuma (medido em 09/10: 0 de
+ * 14), então sem isto a mudança não chegaria a tela alguma.
+ */
+export function calculadasAlimentadasAoVivo(): Map<string, string[]> {
+  const m = new Map<string, string[]>();
+  for (const t of TRADUCOES) {
+    if (!t.aoVivo) continue;
+    const k = normalizeName(t.aoVivo.tabela);
+    m.set(k, [...(m.get(k) ?? []), t.tabela]);
+  }
+  return m;
+}
 
 /**
  * A tradução nativa desta tabela, se houver uma **e** ela ainda valer para o DAX que
