@@ -264,3 +264,19 @@ test('lista calculada sobre o dado de ANTES de um evento não fica gravada como 
     await s.fecha();
   }
 });
+
+test('?visual= da VISÃO PRODUTIVA leva as fontes do recálculo ao vivo na forma completa', async () => {
+  // ACHADOS #194. O visual não lê a FIELD AGENDA direto: sem isto ela vinha no grão
+  // reduzido, a tradução nativa de Status Protocolo Dia recusava por falta de colunas, e
+  // o visual voltava como erro em 3–8 s, medido na stack em 09/10/2026.
+  const f = piscinaFalsa();
+  const s = await sobe(f.piscina);
+  try {
+    void s.busca('/api/dashboards/agendamento-field?visual=04979b00e5329b67f349').catch(() => undefined);
+    await ate(() => f.pedidos.length === 1);
+    const forma = f.pedidos[0]!.precisaFormaCompleta ?? [];
+    assert.ok(forma.includes('FIELD AGENDA') && forma.includes('PROTOCOLOS GERAL'), `forma completa: ${JSON.stringify(forma)}`);
+  } finally {
+    await s.fecha();
+  }
+});

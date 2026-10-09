@@ -342,6 +342,20 @@ const TRADUCOES: TraducaoNativa[] = [
   },
 ];
 
+/**
+ * Calculada (nome normalizado) → o que dispara o recálculo dela pelo tempo real: as
+ * fontes do modelo e a fonte só-do-poller. O servidor usa isto para carregar as fontes na
+ * forma COMPLETA quando o recálculo vai acontecer: no grão reduzido da FIELD AGENDA faltam
+ * colunas que a tradução lê, e ela recusa (ACHADOS #194).
+ */
+export function recalculosAoVivo(): Map<string, { fontes: string[]; aoVivo?: string }> {
+  const m = new Map<string, { fontes: string[]; aoVivo?: string }>();
+  for (const t of TRADUCOES) {
+    m.set(normalizeName(t.tabela), { fontes: t.fontes, ...(t.aoVivo ? { aoVivo: t.aoVivo.tabela } : {}) });
+  }
+  return m;
+}
+
 /** A fonte só-do-poller desta calculada, se ela declarar uma. */
 export function traducaoAoVivoDe(t: ModelTable): { tabela: string; coluna: string } | undefined {
   const alvo = normalizeName(t.name);

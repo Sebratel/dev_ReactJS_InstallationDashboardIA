@@ -38,7 +38,7 @@ import { carrega, type Carregado } from '../../packages/snapshot/src/carrega.ts'
 import { leManifesto, maisAntigo, type Manifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { carimboDasCalculadas } from '../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../packages/snapshot/src/plano.ts';
-import { calculadasAlimentadasAoVivo } from '../../packages/snapshot/src/nativas.ts';
+import { calculadasAlimentadasAoVivo, recalculosAoVivo } from '../../packages/snapshot/src/nativas.ts';
 import { type DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { MemoryCache } from '../../packages/query-engine/src/cache-memory.ts';
 import { QueryRegistry } from '../../packages/query-engine/src/registry.ts';
@@ -134,6 +134,8 @@ const TTL_ULTIMA_PRONTA_S = 7 * 24 * 3600;
 const JANELA_API_MS = 60_000;
 /** Tabela só-do-poller → calculadas que ela alimenta (ver `nativas.ts`). */
 const ALIMENTADAS_AO_VIVO = calculadasAlimentadasAoVivo();
+/** Calculada → fontes do recálculo pelo tempo real (ver `nativas.ts`). */
+const RECALCULOS_AO_VIVO = recalculosAoVivo();
 
 /**
  * Carrega `backend/specs/layout/*.layout.yaml` uma vez, na subida. Diretório ausente vira mapa
@@ -2178,6 +2180,24 @@ export class Servidor {
     return recorte;
   }
 
+  /**
+   * As fontes que precisam vir inteiras porque o tempo real vai recalcular uma calculada
+   * desta página. Sem isto, `?visual=` da VISÃO PRODUTIVA (que não lê a FIELD AGENDA
+   * direto) carregava o grão reduzido dela, a tradução nativa recusava por falta de
+   * colunas, e o visual voltava como ERRO em 3–8 s — medido em 09/10/2026 (ACHADOS #194).
+   *
+   * **Não depende de haver overlay agora.** A forma completa entra na chave do cache: se
+   * ela variasse com o overlay, a mesma página teria duas chaves conforme o poller
+   * tivesse ou não algo naquele instante, e a "última pronta" de uma não serviria a outra.
+   */
+  #formaCompletaDoTempoReal(dash: DashboardSpec): string[] {
+    const fora = new Set<string>();
+    for (const c of this.calculadasPorDashboard.get(dash.id) ?? []) {
+      for (const f of RECALCULOS_AO_VIVO.get(c)?.fontes ?? []) fora.add(f);
+    }
+    return [...fora];
+  }
+
   /** A tabela só-do-poller alimenta uma calculada que esta página carrega? */
   #alimentaDaPagina(tabela: string, dashId: string): boolean {
     const calculadas = this.calculadasPorDashboard.get(dashId);
@@ -2494,7 +2514,7 @@ export class Servidor {
    */
   private tabelasCompletasDaPagina(dash: DashboardSpec): string[] {
     const { tabelasCompletas } = this.amarraGraoReduzido();
-    const fora = new Set<string>();
+    const fora = new Set<string>(this.#formaCompletaDoTempoReal(dash));
     for (const f of dash.filters ?? []) {
       if (!f.entity || !f.property) continue;
       const t = tabelasCompletas.get(normalizeName(rotuloDeColuna(f.entity, f.property)));

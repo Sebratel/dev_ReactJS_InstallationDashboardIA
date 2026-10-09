@@ -14663,3 +14663,33 @@ mesmo defeito que `calculaValores` já fechou unindo os visuais da página (come
 `servidor.ts`); o caminho da página ainda não. Não é da §A.1 (a `FIELD AGENDA` ao vivo já
 disparava), e a correção muda a carga do aquecedor nas 14 páginas — precisa de medida de
 memória antes.
+
+## #194 — o visual da VISÃO PRODUTIVA voltava como erro: grão reduzido com recálculo ao vivo (09/10)
+
+**Medido na stack, 14:45 UTC.** `GET /api/dashboards/agendamento-field?visual=04979b00e5329b67f349`
+(só a VISÃO PRODUTIVA — é como a tela pede o que está abaixo da dobra) devolveu o visual com
+**erro**, três vezes seguidas, em 3–8 s: `Status Protocolo Dia (nativa): 'FIELD AGENDA' chegou sem
+data relato, categoriaprodutividade, skill`. A página inteira sem `?visual=` servia a "última
+pronta" de 14:00 (Produtivo 37) às 14:45, com o arquivo da carga das 14:39 já em 52 — o cálculo
+novo daquela chave falhava pelo mesmo motivo.
+
+**A causa.** A forma completa de um pedido é a que os visuais PEDIDOS amarram. A VISÃO PRODUTIVA
+não lê a `FIELD AGENDA` direto (lê `Status Protocolo Dia`), então ela vinha no grão reduzido
+(`projecao.yaml`), sem as colunas que a tradução nativa lê. Com o tempo real tocando uma fonte
+da calculada, a tradução recusa — corretamente — e o visual cai.
+
+**A §A.1 (#192) piorou.** Antes, só o overlay da `FIELD AGENDA` disparava o recálculo, e ele é
+podado a cada carga (`cobertoAte`): havia janelas sem overlay, em que a calculada vinha do
+arquivo. O overlay da alocação só é podado pelo teto de 48 h — o recálculo passou a disparar
+sempre, e a falha também.
+
+**Correção (`servidor.ts`).** Página que carrega calculada com recálculo ao vivo
+(`recalculosAoVivo`, de `nativas.ts`) leva as fontes dela na forma completa, em todo pedido.
+**Sem depender de haver overlay naquele instante:** a forma completa entra na chave do cache, e
+variar com o overlay daria duas chaves para a mesma página. Alcance medido: `agendamento-field`
+(`calendar` e `Status Protocolo Dia` → `FIELD AGENDA` e `PROTOCOLOS GERAL`; a maioria dos pedidos
+dela já carregava a `FIELD AGENDA` completa) e `relatorio-do-mes` (`calendar` → `FIELD AGENDA`),
+que tinha o mesmo defeito latente. Fecha também o "de passagem" do #193.
+
+**Prova.** `valores-na-worker.test.ts`: `?visual=` da VISÃO PRODUTIVA manda `FIELD AGENDA` e
+`PROTOCOLOS GERAL` na forma completa. Na stack: ver o deploy abaixo.
