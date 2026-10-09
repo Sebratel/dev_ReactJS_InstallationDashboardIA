@@ -14883,3 +14883,11 @@ diferenças**, 5,3 s → **1,85 s**; janela de 30 dias — 5.182 linhas, 0 difer
 ganho: 6,1 × 6,9 s, mas isso só acontece na primeira volta depois de queda longa). O SQL
 provado é exatamente o que o poller gera (comparado sem espaços). O poller passou a aceitar
 lista em `costura:`, como `incremental.yaml` já aceitava.
+
+**Em produção (09/10, 17:44–18:28 RS — 44 min acordado; o notebook dormiu de 18:28 às 20:12 e o
+poller voltou sozinho):** a volta da auxiliares caiu de **7,3 s para 1,5 s** de média (máx. 31 s
+→ 3,1 s), 72 voltas e 44 dispensadas, **0 puladas e nenhum *statement timeout*** (antes 17 e 12).
+Somando voltas × média de cada query pelos 44 min: poller **≈ 16,7 min/h** (31,3 antes da
+sentinela). Por parte, em min/h: sentinela 5,8; as duas de reincidência 4,9; auxiliares 2,5;
+alocação 1,4; field-agenda 1,2; retorno 0,7; telefonia + troca + técnicos 0,2. Ressalva: fim do expediente, com menos mudança que às 16h. O `/api/saude` dizia 5,1 min/h porque o
+denominador de `bancoMsPorHora` conta o tempo dormindo — só existe no notebook.
