@@ -159,14 +159,31 @@ queries:
     marca: [DATA CRIADO, DATA ENCERRADO]
     sentinela:
       tipos: ['12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15']
+    # Três costuras (B.1d, 09/10, ACHADOS #202). A primeira é o recorte. As outras duas
+    # restringem as CTEs `alocacao` e `troca`, que rodavam inteiras a cada volta para casar
+    # com meia dúzia de solicitações, às que a volta trouxe (`base`). Não muda resultado:
+    # `alocacao` não tem janela, e `troca` particiona por protocolo — filtrar protocolo
+    # inteiro não muda o vencedor de nenhuma partição. Provado no mesmo instantâneo
+    # (REPEATABLE READ): 72 h, 1.405 linhas, e 30 dias, 5.182 linhas — 0 diferenças;
+    # 5,97 s → 2,12 s na janela de 72 h.
     costura:
-      de: |-
-        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
-              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
-      para: |-
-        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
-              AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
-              AND a.modified >= :desde
+      - de: |-
+          WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+                AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+        para: |-
+          WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+                AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
+                AND a.modified >= :desde
+      - de: |-
+          AND plis.out_date > DATE_TRUNC('year', CURRENT_DATE)
+        para: |-
+          AND plis.out_date > DATE_TRUNC('year', CURRENT_DATE)
+                  AND a.title IN (SELECT "SOLICITACAO" FROM base)
+      - de: |-
+          OR r.description LIKE '%Foi feita a instalação?%')
+        para: |-
+          OR r.description LIKE '%Foi feita a instalação?%')
+                    AND ai.protocol IN (SELECT "N°PROTOCOLO" FROM base)
 
   # "DATA ENCERRRADO" com 3 R — mesmo typo do PBIP original em
   # protocolos-telefonia.spec.yaml, preservado de propósito: `marca` precisa

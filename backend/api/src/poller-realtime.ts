@@ -54,7 +54,7 @@ export interface ConfigDePoll {
   chave: string[];
   marca: string[];
   /** Modo de um passo: o `sql:` da spec costurado com `:desde`. */
-  costura?: Costura;
+  costura?: Costura[];
   /**
    * Modo de dois passos (ACHADOS #166): `alvos` é uma SQL com `:desde` que devolve os
    * `id` que mudaram — barata —, e `buscaPorIds` busca só esses, com a view recortada
@@ -111,7 +111,7 @@ interface ArquivoRealtimePoll {
       margem_segundos?: number;
       chave?: string[];
       marca?: string[];
-      costura?: Costura;
+      costura?: Costura | Costura[];
       alvos?: string;
       busca_por_ids?: { view?: string };
       colunas_calculadas?: boolean;
@@ -196,7 +196,7 @@ export function leConfigDePoll(specsDir: string): Map<string, ConfigDePoll> {
       marca: bruto.marca,
       ...(doisPassos
         ? { alvos: bruto.alvos!, buscaPorIds: { view: bruto.busca_por_ids!.view! } }
-        : { costura: bruto.costura! }),
+        : { costura: Array.isArray(bruto.costura) ? bruto.costura : [bruto.costura!] }),
       ...(bruto.colunas_calculadas ? { colunasCalculadas: true } : {}),
       ...(bruto.sentinela
         ? {
@@ -1049,7 +1049,7 @@ export class PollerRealtime {
         chave: cfg.chave,
         margemDias: 0,
         idadeMaximaDias: Number.MAX_SAFE_INTEGER,
-        costura: [cfg.costura!],
+        costura: cfg.costura!,
       };
       // `costura()` já valida a âncora — erra alto se o SQL da spec mudou embaixo
       // desta config, em vez de poluir silenciosamente com a query inteira.

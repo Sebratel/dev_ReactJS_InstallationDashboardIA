@@ -77,7 +77,7 @@ for (const [queryId, cfg] of configs) {
       chave: cfg.chave,
       margemDias: 0,
       idadeMaximaDias: Number.MAX_SAFE_INTEGER,
-      costura: [cfg.costura!],
+      costura: cfg.costura!,
     };
     // `costura()` lança quando a âncora não casa, ou casa mais de uma vez. É a MESMA
     // chamada que `PollerRealtime` faz a cada 12 s — se ela passa aqui, o poller sobe.

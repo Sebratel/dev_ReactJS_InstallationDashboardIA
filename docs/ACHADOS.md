@@ -14859,3 +14859,27 @@ Conta esperada: a sentinela custa ~6,6 min/h e dispensa ~13 min/h (≈ 95% das q
 ≈ 37% da auxiliares) — 31 → ~24 min/h. **Não é a meta (< 10 min/h com o poller).** O resto está
 na própria auxiliares quando roda (CTE `troca` inteira) e nas duas de reincidência (2 min,
 recomputam tudo), que a sentinela não alcança.
+
+**Em produção (09/10, 16:38–17:38 RS, 1 h com a sentinela):** poller em **29,8 min/h** (antes
+31,3). As quatro baratas caíram de ~9 para **1,2 min/h** juntas (cada uma ~294 voltas
+dispensadas e 13–52 rodadas); a sentinela custou **6,5 min/h** (1,3 s por volta). A
+`protocolos-auxiliares` ficou igual, **13,5 min/h**: tinha tarefa nova em quase toda janela e
+rodou 101 vezes (25 dispensadas), a 7,3 s de média, com 12 *statement timeouts*. A sentinela
+pagou a si mesma e pouco mais; o custo está na auxiliares quando roda — #202.
+
+## #202 — a volta da `protocolos-auxiliares` recalculava duas CTEs inteiras (09/10)
+
+A costura da auxiliares recorta só `PERSONALIZADO` (`a.modified >= :desde`). As CTEs `alocacao`
+(todos os itens de patrimônio do ano) e `troca` (relatos com `LIKE` em `reports.description`,
+`ROW_NUMBER` por protocolo) rodavam inteiras a cada volta para casar com as poucas
+solicitações que ela trouxe. Duas costuras a mais (`realtime-poll.yaml`) restringem as duas
+ao que está em `base`: `a.title IN (SELECT "SOLICITACAO" FROM base)` e `ai.protocol IN (SELECT
+"N°PROTOCOLO" FROM base)`. `alocacao` não tem janela; `troca` particiona por protocolo, e tirar
+protocolo inteiro não muda o vencedor de partição nenhuma — então o resultado é o mesmo.
+
+**Prova** (as duas SQL no mesmo instantâneo, `REPEATABLE READ READ ONLY`, comparando o
+multiconjunto de linhas por hash, sem imprimir valor): janela de 72 h — 1.403 linhas, **0
+diferenças**, 5,3 s → **1,85 s**; janela de 30 dias — 5.182 linhas, 0 diferenças (aí sem
+ganho: 6,1 × 6,9 s, mas isso só acontece na primeira volta depois de queda longa). O SQL
+provado é exatamente o que o poller gera (comparado sem espaços). O poller passou a aceitar
+lista em `costura:`, como `incremental.yaml` já aceitava.

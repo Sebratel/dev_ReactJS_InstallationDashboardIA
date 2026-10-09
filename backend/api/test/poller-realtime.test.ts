@@ -648,7 +648,7 @@ test('sentinela: toda query vigiada só tem `a.modified >= :desde`, e todo tipo 
     ['protocolos-auxiliares', 'protocolos-telefonia', 'retorno-prioritario', 'tecnicos-auxiliares', 'troca-endereco'],
   );
   for (const c of vigiadas) {
-    const para = c.costura!.para;
+    const para = c.costura!.map((x) => x.para).join('\n');
     // Um `:desde` só, e é o de `a.modified`: outra coluna vigiada (agenda, relato,
     // patrimônio) mudaria sem a sentinela ver, e a query ficaria até o teto sem rodar.
     assert.equal(para.match(/:desde/g)?.length, 1, `${c.query}: um :desde só`);
@@ -665,6 +665,16 @@ test('sentinela: toda query vigiada só tem `a.modified >= :desde`, e todo tipo 
     }
     assert.ok(tipos.size + c.sentinela!.tiposDeTarefa.length > 0, `${c.query}: a guarda achou o filtro`);
   }
+});
+
+test('protocolos-auxiliares: a volta restringe `alocacao` e `troca` às solicitações dela (B.1d, #202)', async () => {
+  const fake = poolDeMentira([]);
+  const p = new PollerRealtime({ specsDir: 'backend/specs', pool: fake.pool, agora: () => new Date('2026-10-09T17:00:00Z'), anuncia: () => {} });
+  await p.tentaAgora('protocolos-auxiliares');
+  const sql = fake.chamadas[0]!.text;
+  assert.match(sql, /a\.title IN \(SELECT "SOLICITACAO" FROM base\)/);
+  assert.match(sql, /ai\.protocol IN \(SELECT "N°PROTOCOLO" FROM base\)/);
+  assert.equal(sql.match(/\$1/g)?.length, 1, 'o recorte por :desde continua um só');
 });
 
 test('escopoCasa: por tipo de protocolo ou por tipo de tarefa', () => {

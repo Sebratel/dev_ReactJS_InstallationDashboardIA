@@ -112,7 +112,7 @@ foi desligado antes de o substituto provar.
       as cinco queries que só dependem de `a.modified` rodam quando há tarefa nova no escopo
       delas (teto de 5 min). Esperado 31 → ~24 min/h — **não fecha a meta sozinha**: falta a
       CTE `troca` da `protocolos-auxiliares` e as duas de reincidência (B.1d).
-- [ ] **B.1d** O que sobra do poller depois da sentinela: a `protocolos-auxiliares` recalcula
+- [ ] **B.1d** ◐ 09/10: a parte da auxiliares está no `staging` (#202, volta 5,3 → 1,85 s). Antes: a `protocolos-auxiliares` recalcula
       a CTE `troca` (1,2 s, `LIKE` em `reports`) e a `alocacao` inteiras a cada volta — dá para
       restringi-las às solicitações da volta; `reincidencia`/`instalacoes-reincidentes`
       (5,6 min/h) recomputam tudo por desenho (#93). Medir em produção antes.
