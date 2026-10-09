@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { escreveStatus, leStatus, montaStatusDeRefresh, resumeDegradacao, type StatusDeRefresh } from '../src/status.ts';
+import { escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 
 function tmp(): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-status-'));
@@ -144,6 +145,35 @@ test('UMA falha com o último sucesso dentro da régua não acende — é soluç
   });
   const q = montaStatusDeRefresh(dir, path.resolve('backend/specs'), agora).queries!.find((x) => x.id === 'contratos')!;
   assert.equal(q.status, 'ok', 'até 28/09 isto acendia "carga falhou" por uma falha só');
+});
+
+test('grupo falhou: a query que GRAVOU na tentativa fica ok, só a que não gravou acende (B.3)', async () => {
+  // O caso que motivou a B.3: o Google cai, `capacidade-equipe` falha, e as tabelas do
+  // Voalle do mesmo grupo — que gravaram — saíam "carga falhou" junto.
+  const dir = tmp();
+  const agora = new Date('2026-10-09T12:00:00.000Z');
+  await escreveStatus(dir, {
+    quente: { ultimaTentativa: '2026-10-09T11:50:00.000Z', ultimoSucesso: '2026-10-09T10:00:00.000Z', duracaoMs: 60_000, ok: false, falhasConsecutivas: 3, erro: 'capacidade-equipe: fetch failed' },
+  });
+  const entrada = (query: string, geradoEm: string) => ({ query, tabelas: [query], linhas: 1, colunas: 1, bytes: 1, geradoEm });
+  await escreveManifesto(dir, [
+    entrada('contratos', '2026-10-09T11:49:30.000Z'), // dentro da tentativa (11:49–11:50)
+    entrada('capacidade-equipe', '2026-10-09T10:00:10.000Z'), // da última que deu certo
+  ]);
+  const qs = montaStatusDeRefresh(dir, path.resolve('backend/specs'), agora).queries!;
+  const contratos = qs.find((x) => x.id === 'contratos')!;
+  assert.equal(contratos.status, 'ok');
+  assert.equal(contratos.erro, undefined);
+  const cap = qs.find((x) => x.id === 'capacidade-equipe')!;
+  assert.equal(cap.status, 'falhou');
+  assert.equal(cap.erro, 'capacidade-equipe: fetch failed');
+  assert.ok(!resumeDegradacao(qs).motivos.some((m) => /contratos\b/.test(m) && !/grupo/.test(m)));
+
+  // Gravou numa tentativa falha, mas há tempo demais: a régua parte do que ela gravou.
+  const tarde = montaStatusDeRefresh(dir, path.resolve('backend/specs'), new Date('2026-10-09T12:30:00.000Z')).queries!;
+  const c2 = tarde.find((x) => x.id === 'contratos')!;
+  assert.equal(c2.status, 'vencida');
+  assert.equal(c2.paradaDesde, '2026-10-09T11:49:30.000Z');
 });
 
 test('grupo PARADO além de 2× o intervalo vira vencida, com a hora do último sucesso — mesmo sem falha', async () => {

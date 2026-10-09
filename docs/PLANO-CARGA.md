@@ -133,7 +133,7 @@ explícito.
       Pode ser a maior carga escondida. Registrar a duração de cada consulta; se passar
       de ~1 s, trocar as 7 por **uma** consulta-sentinela ("quais solicitações mudaram
       desde X") e só buscar quando ela devolver algo.
-- [ ] **1.4** Saúde **por tabela** na tela. Hoje uma falha do Google pinta o grupo
+- [x] **1.4** ✅ 09/10 (ACHADOS #203). Saúde **por tabela** na tela. Uma falha do Google pintava o grupo
       inteiro de "carga falhou", inclusive as tabelas que gravaram (`backend/tools/refresh/src/status.ts`).
 - [x] **1.5** ✅ 09/10: `application_name` nas conexões (`createVoallePool`): refresh, poller e
       API distintos.

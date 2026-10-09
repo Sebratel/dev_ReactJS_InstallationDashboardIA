@@ -14891,3 +14891,17 @@ Somando voltas × média de cada query pelos 44 min: poller **≈ 16,7 min/h** (
 sentinela). Por parte, em min/h: sentinela 5,8; as duas de reincidência 4,9; auxiliares 2,5;
 alocação 1,4; field-agenda 1,2; retorno 0,7; telefonia + troca + técnicos 0,2. Ressalva: fim do expediente, com menos mudança que às 16h. O `/api/saude` dizia 5,1 min/h porque o
 denominador de `bancoMsPorHora` conta o tempo dormindo — só existe no notebook.
+
+## #203 — saúde por tabela: a query que gravou não "falha" junto com o grupo (09/10)
+
+`montaStatusDeRefresh` (`backend/tools/refresh/src/status.ts`) dava a TODA query de um grupo
+com ≥ 2 falhas seguidas o status `falhou` e o erro do grupo. Mas o snapshot põe no manifesto
+toda query que deu certo, mesmo quando outra da mesma execução falha. No `quente`, que mistura
+Voalle com Google Sheets (`capacidade-equipe`, `apuracao-premiacao`), uma queda do Google
+pintava de "carga falhou" as tabelas do Voalle que tinham acabado de gravar (PLANO-CARGA 1.4).
+
+Agora: query cujo `geradoEm` é posterior ao início da última tentativa (`ultimaTentativa −
+duracaoMs`) gravou nela, e não falhou; a régua de "parado" dela parte do que gravou. Só a que
+não gravou acende — e a faixa da tela, que já nomeia query a query (`avisoSaude.ts`), passa a
+nomear só ela. Incremental sem novidade que não reescreva o arquivo continua aparecendo como
+falha do grupo: erra para o lado de avisar.

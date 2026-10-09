@@ -185,9 +185,22 @@ export function montaStatusDeRefresh(
 
     let status: 'ok' | 'vencida' | 'falhou' = 'ok';
     let erro: string | undefined;
+    // Gravou na última tentativa do grupo, mesmo que o grupo tenha falhado? O snapshot põe
+    // no manifesto toda query que deu certo, falhe outra ou não; até 09/10/2026 uma falha do
+    // Google pintava de "carga falhou" as tabelas do Voalle do mesmo grupo (PLANO-MESTRE B.3).
+    const geradoEm = geradoEmPorQuery.get(id);
+    const inicioDaTentativa = grupoStatus
+      ? new Date(grupoStatus.ultimaTentativa).getTime() - grupoStatus.duracaoMs
+      : Number.POSITIVE_INFINITY;
+    const gravouNaTentativa = geradoEm !== undefined && new Date(geradoEm).getTime() >= inicioDaTentativa;
     // Para quem está em grupo, "parado" se mede pelo último SUCESSO do grupo — a pergunta
     // é "rodou?", e o `geradoEm` de uma query pode não andar numa incremental sem novidade.
-    const paradaDesde = grupo ? (grupoStatus?.ultimoSucesso ?? ultimaCarga) : ultimaCarga;
+    // Mas a query que gravou numa tentativa falha rodou, e a régua parte dali.
+    const paradaDesde = grupo
+      ? gravouNaTentativa
+        ? geradoEm
+        : (grupoStatus?.ultimoSucesso ?? ultimaCarga)
+      : ultimaCarga;
 
     // "Falhando" pressupõe alguém tentando. Em 07/10/2026 o agendador ficou 24 h parado
     // depois de duas falhas de rede, e este arquivo dizia "falhando seguido" o dia todo —
@@ -198,7 +211,13 @@ export function montaStatusDeRefresh(
       !emEsperaPorFalhas(grupoStatus, grupo.intervaloMinutos, agora) &&
       agora.getTime() - new Date(grupoStatus.ultimaTentativa).getTime() > FATOR_PARADA * grupo.intervaloMinutos * 60_000;
 
-    if (grupoStatus && !grupoStatus.ok && grupoStatus.falhasConsecutivas >= FALHAS_PARA_AVISO && !semTentar) {
+    if (
+      grupoStatus &&
+      !grupoStatus.ok &&
+      grupoStatus.falhasConsecutivas >= FALHAS_PARA_AVISO &&
+      !semTentar &&
+      !gravouNaTentativa
+    ) {
       status = 'falhou';
       erro = grupoStatus.erro ?? `Grupo '${grupo!.id}' falhou no refresh`;
     } else if (grupo) {

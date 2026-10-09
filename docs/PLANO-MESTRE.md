@@ -128,7 +128,8 @@ foi desligado antes de o substituto provar.
       40.762 iguais, 36,7 s × 192,3 s. Os 4 divergem em `STATUS CONTRATO` (nenhuma tela lê),
       mas é buraco de verdade: o contrato mudou sem a solicitação mudar. **Repetir de dia**
       e, se `DATA AGENDA`/`EQUIPE`/`GESTOR` também escaparem, pôr um ramo nos `alvos`.
-- [ ] **B.3 (1.4)** Saúde **por tabela** na tela.
+- [x] **B.3 (1.4)** ✅ 09/10 (#203): saúde **por tabela** — a query que gravou na tentativa
+      não sai "falhou" junto com o grupo; a faixa da tela nomeia só a que não gravou.
 - [x] **B.4 (1.5)** ✅ 09/10 no `staging`: `application_name` por serviço — `analytics-api-poller`,
       `analytics-refresh`, `analytics-snapshot-diario` (`VOALLE_APPLICATION_NAME` no compose).
 - [x] **B.5 (2.1)** ✅ 09/10 (#200): `backlog-agendado-futuro` não era plano de execução — a fonte
