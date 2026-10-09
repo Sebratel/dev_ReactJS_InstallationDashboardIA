@@ -136,7 +136,7 @@ explícito.
       desde X") e só buscar quando ela devolver algo.
 - [ ] **1.4** Saúde **por tabela** na tela. Hoje uma falha do Google pinta o grupo
       inteiro de "carga falhou", inclusive as tabelas que gravaram (`backend/tools/refresh/src/status.ts`).
-- [ ] **1.5** `application_name` nas conexões (`createVoallePool`): refresh, poller e
+- [x] **1.5** ✅ 09/10: `application_name` nas conexões (`createVoallePool`): refresh, poller e
       API distintos.
 
 Meta da fase: `frio` de ~9 para ~3 min por ciclo; banco de ~30 para ~12–15 min/h (sem o poller).

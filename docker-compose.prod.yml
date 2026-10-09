@@ -86,6 +86,10 @@ services:
       # `manifesto.json`, e um apagaria as tabelas que o outro acabou de registrar,
       # sem erro nenhum (ver o topo de backend/tools/refresh/src/tick.ts).
       AUTO_REFRESH: 'false'
+      # Quem é quem em `pg_stat_activity` no Voalle (PLANO-CARGA 1.5): sem isto as três
+      # pontas saíam como `analytics-platform`, e o custo de banco não tinha dono. Na API,
+      # quem conecta é o poller de quase-realtime.
+      VOALLE_APPLICATION_NAME: analytics-api-poller
       # Na rede interna do compose o serviço redis chama-se 'redis', não localhost.
       # A senha é a mesma REDIS_PASSWORD que autentica o container `redis` logo
       # abaixo (--requirepass) — as duas variam juntas, nunca uma sem a outra.
@@ -189,6 +193,7 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-sa.json
       REFRESH_INTERVAL_MINUTOS: '15'
       REFRESH_MEMORIA_MB: '4096'
+      VOALLE_APPLICATION_NAME: analytics-refresh
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
       # Credencial Google só-leitura: o `.env` traz o caminho do HOST, que não existe no
@@ -229,6 +234,8 @@ services:
     environment:
       NODE_ENV: production
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-sa.json
+      # Chega ao job pelo `/repo/.env.cron` que o entrypoint grava (docker/cron/entrypoint.sh).
+      VOALLE_APPLICATION_NAME: analytics-snapshot-diario
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
       # Credencial Google só-leitura: o `.env` traz o caminho do HOST, que não existe no

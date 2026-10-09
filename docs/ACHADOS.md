@@ -14724,3 +14724,12 @@ notebook — o que a §C (servidor no Portainer) resolve, e o #191 torna inofens
 só tinha a versão das 14:00 porque todo recálculo dela falhava pelo grão reduzido; depois do
 deploy da correção ela respondeu `hit` às 14:57. Num reinício normal a última pronta tem a idade
 do último cálculo.
+
+## #196 — cada serviço com seu `application_name` no Voalle (09/10)
+
+PLANO-CARGA 1.5 / PLANO-MESTRE B.4. Toda conexão saía como `analytics-platform`, e os ~30 min de
+banco por hora não tinham dono em `pg_stat_activity`. Agora `VOALLE_APPLICATION_NAME` (padrão:
+o nome antigo) vai para `createVoallePool`, e o compose dá um por serviço: `analytics-api-poller`,
+`analytics-refresh`, `analytics-snapshot-diario`. O do cron chega ao job pelo `/repo/.env.cron`
+que o entrypoint grava; `environment:` vence o `.env` (`applyDotEnv` não sobrescreve).
+Teste: `query-engine/test/config.test.ts`.

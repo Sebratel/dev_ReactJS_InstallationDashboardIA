@@ -322,7 +322,7 @@ export async function createVoallePool(cfg: PostgresConfig): Promise<PgPoolLike>
     ssl: cfg.ssl,
     max: cfg.poolMax,
     statement_timeout: cfg.statementTimeoutMs,
-    application_name: 'analytics-platform',
+    application_name: cfg.applicationName ?? 'analytics-platform',
     // segunda barreira: a sessão inteira é somente-leitura
     options: `-c default_transaction_read_only=on -c search_path=${cfg.schema},public`,
     // `timestamp`/`date` sem fuso são lidos como UTC, não como hora de Brasília.

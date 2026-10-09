@@ -122,7 +122,8 @@ foi desligado antes de o substituto provar.
       mas é buraco de verdade: o contrato mudou sem a solicitação mudar. **Repetir de dia**
       e, se `DATA AGENDA`/`EQUIPE`/`GESTOR` também escaparem, pôr um ramo nos `alvos`.
 - [ ] **B.3 (1.4)** Saúde **por tabela** na tela.
-- [ ] **B.4 (1.5)** `application_name` próprio por processo (refresh, poller, API).
+- [x] **B.4 (1.5)** ✅ 09/10 no `staging`: `application_name` por serviço — `analytics-api-poller`,
+      `analytics-refresh`, `analytics-snapshot-diario` (`VOALLE_APPLICATION_NAME` no compose).
 - [ ] **B.5 (2.1)** `backlog-agendado-futuro`: 59 s para 0,3 MB. É o plano de execução, não o volume.
 - [ ] **B.6 (2.2)** `protocolos-geral` incremental. O `Table.Distinct` é por `SOLICITACAO`, a
       própria chave, e não bloqueia. O que bloqueia são as junções do M com `troca-endereco`,

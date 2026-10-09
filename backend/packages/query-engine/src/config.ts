@@ -56,6 +56,11 @@ export interface PostgresConfig {
   ssl: false | { rejectUnauthorized: boolean };
   poolMax: number;
   statementTimeoutMs: number;
+  /**
+   * O `application_name` da sessão no Postgres — é por ele que `pg_stat_activity` separa
+   * quem está gastando o banco. Cada serviço do compose declara o seu (PLANO-CARGA 1.5).
+   */
+  applicationName?: string;
 }
 
 export interface MariaConfig {
@@ -130,6 +135,7 @@ export function loadConfig(): PlatformConfig {
         : false,
       poolMax: envInt('VOALLE_POOL_MAX', 10),
       statementTimeoutMs: envInt('VOALLE_STATEMENT_TIMEOUT_MS', 30_000),
+      applicationName: env('VOALLE_APPLICATION_NAME', 'analytics-platform'),
     },
     maria: {
       host: env('MARIA_HOST'),
