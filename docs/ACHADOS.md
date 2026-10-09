@@ -14822,3 +14822,7 @@ mescla com ela; a coluna aninhada e a expansão não mudaram.
 cada, 0 diferenças, mesmas colunas**; busca + M de **116,6 s → 4,9 s** (rodada com o banco mais
 ocupado; noutra, a velha deu 59 s). Os testes do corpus que prendem o número de queries contam a
 nova pelo nome, como contam `field-agenda-slot`; golden capturado por `validate:queries`.
+
+**Em produção (09/10, 18:50 RS):** `refresh` e `snapshot-diario` reconstruídos com o spec novo
+(trocados com o daemon ocioso, sem trava). Primeira rodada do `medio`: `backlog-agendado-futuro… ok
+(4976 ms)` — antes, 67 s no mesmo grupo.
