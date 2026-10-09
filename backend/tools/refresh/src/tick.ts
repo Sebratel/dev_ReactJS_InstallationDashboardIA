@@ -75,8 +75,14 @@ export function estaVencido(
   if (emEsperaPorFalhas(anterior, intervaloMinutos, agora)) return false;
   if (!anterior?.ultimoSucesso) return true;
   const desde = agora.getTime() - new Date(anterior.ultimoSucesso).getTime();
-  return desde >= intervaloMinutos * 60_000;
+  return desde >= intervaloMinutos * 60_000 - FOLGA_DE_VENCIMENTO_MS;
 }
+
+/**
+ * O tick do daemon dispara a cada intervalo contado do TICK, e o grupo começa alguns ms
+ * depois dele. Sem folga, no tick seguinte faltariam esses ms e o grupo seria pulado.
+ */
+export const FOLGA_DE_VENCIMENTO_MS = 60_000;
 
 /** O próximo `StatusDeGrupo`, depois de uma execução (sucesso ou falha). */
 export function proximoStatus(
@@ -85,9 +91,13 @@ export function proximoStatus(
   resultado: ResultadoDeExecucao,
   duracaoMs: number,
 ): StatusDeGrupo {
+  // O sucesso conta do INÍCIO: o dado é a fonte de quando a leitura começou, e contar do
+  // fim fazia cada execução empurrar a próxima para depois do tick seguinte (09/10/2026:
+  // `quente` terminou 53 s depois do tick, foi pulado no seguinte e rodou a cada 30 min).
+  const inicio = new Date(agora.getTime() - duracaoMs);
   return {
     ultimaTentativa: agora.toISOString(),
-    ultimoSucesso: resultado.ok ? agora.toISOString() : (anterior?.ultimoSucesso ?? null),
+    ultimoSucesso: resultado.ok ? inicio.toISOString() : (anterior?.ultimoSucesso ?? null),
     duracaoMs,
     ok: resultado.ok,
     falhasConsecutivas: resultado.ok ? 0 : (anterior?.falhasConsecutivas ?? 0) + 1,

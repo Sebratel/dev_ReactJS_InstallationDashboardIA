@@ -14634,3 +14634,32 @@ cancelado; vários itens vale a primeira saída; item sem data não cria par),
 `aviso-das-paginas.test.ts` (a mudança da alocação avisa só `agendamento-field`; a da PG,
 mais de 5 páginas). Costura validada contra o SQL da spec (âncora única, cita `:desde`).
 **Falta a §A.3:** ligar na stack e conferir contra a carga completa da mesma hora.
+
+## #193 — o grupo de 15 min rodava a cada 30: o sucesso contava do fim (09/10)
+
+**O que se viu.** `/api/saude` acusando "grupo quente parado desde 14:06" às 14:37 UTC, sem
+falha nenhuma. O log: `quente` terminou às 14:06:16, 52 s depois do tick das 14:05:23; no
+tick das 14:20:23 faltavam **53 s** para 15 min desde esse fim, e o grupo foi pulado — só
+rodou às 14:35. Cada execução empurrava a seguinte para depois do próximo tick: o `quente`
+(15 min) rodava a cada 30, e o `medio` (30 min, ~11 min de carga) a cada ~45. O alarme de
+"parado" (2× o intervalo) ficava piscando exatamente na borda.
+
+**Correção (`tick.ts`).** `ultimoSucesso` passa a ser o **início** da execução (fim menos
+duração): o dado é a fonte de quando a leitura começou. E `estaVencido` ganha uma folga de
+60 s (`FOLGA_DE_VENCIMENTO_MS`): o tick dispara a cada intervalo contado do tick e o grupo
+começa alguns ms depois dele, então no tick seguinte faltariam esses ms. `ultimaTentativa`
+continua no fim — a espera crescente segue contando da tentativa. O agendador da API usa o
+mesmo `proximoStatus` e herda a correção.
+
+**Prova.** `tick.test.ts`: o caso de 09/10 (grupo de 52 s começando 5 ms depois do tick)
+vence no tick seguinte, e 13 min depois continua não vencido.
+
+**De passagem, achado e NÃO corrigido aqui.** Com overlay do tempo real, o pedido da página
+inteira **sem** `?visual=` carrega o grão reduzido da `FIELD AGENDA` (`projecao.yaml`), a
+tradução nativa de `Status Protocolo Dia` recusa por falta de `data relato`,
+`categoriaprodutividade` e `skill`, e a worker cai para o cálculo em linha (thread
+principal): `[worker] caiu para cálculo em linha` às 14:37:40 UTC, uma vez em 40 min. É o
+mesmo defeito que `calculaValores` já fechou unindo os visuais da página (comentário em
+`servidor.ts`); o caminho da página ainda não. Não é da §A.1 (a `FIELD AGENDA` ao vivo já
+disparava), e a correção muda a carga do aquecedor nas 14 páginas — precisa de medida de
+memória antes.

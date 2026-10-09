@@ -97,13 +97,24 @@ test('estaVencido: sucesso exatamente no limite do intervalo está vencido (>=)'
 
 // -------------------------------------------------------------- proximoStatus
 
-test('proximoStatus: sucesso zera falhasConsecutivas e avança ultimoSucesso', () => {
+test('proximoStatus: sucesso zera falhasConsecutivas e avança ultimoSucesso até o INÍCIO da execução', () => {
   const anterior = { ultimaTentativa: 'x', ultimoSucesso: 'x', duracaoMs: 1, ok: false, falhasConsecutivas: 2 };
   const s = proximoStatus(anterior, AGORA, { ok: true }, 500);
   assert.equal(s.ok, true);
   assert.equal(s.falhasConsecutivas, 0);
-  assert.equal(s.ultimoSucesso, AGORA.toISOString());
+  assert.equal(s.ultimoSucesso, new Date(AGORA.getTime() - 500).toISOString());
+  assert.equal(s.ultimaTentativa, AGORA.toISOString(), 'a tentativa continua contando do fim');
   assert.equal(s.duracaoMs, 500);
+});
+
+test('cadência: grupo de 15 min que leva 53 s roda em TODO tick de 15 min, não a cada 30', () => {
+  // O caso medido em 09/10/2026. Tick às 14:05:23, grupo de 52 s; próximo tick às 14:20:23.
+  const tick1 = new Date('2026-10-09T14:05:23.480Z');
+  const fim = new Date(tick1.getTime() + 52_353);
+  const status = proximoStatus(undefined, fim, { ok: true }, fim.getTime() - tick1.getTime() - 5);
+  const tick2 = new Date(tick1.getTime() + 15 * 60_000);
+  assert.equal(estaVencido(status, 15, tick2), true);
+  assert.equal(estaVencido(status, 15, new Date(tick1.getTime() + 13 * 60_000)), false, 'cedo demais continua não vencido');
 });
 
 test('proximoStatus: falha soma falhasConsecutivas e NÃO mexe em ultimoSucesso — o dado bom fica', () => {
