@@ -14692,4 +14692,8 @@ dela já carregava a `FIELD AGENDA` completa) e `relatorio-do-mes` (`calendar` �
 que tinha o mesmo defeito latente. Fecha também o "de passagem" do #193.
 
 **Prova.** `valores-na-worker.test.ts`: `?visual=` da VISÃO PRODUTIVA manda `FIELD AGENDA` e
-`PROTOCOLOS GERAL` na forma completa. Na stack: ver o deploy abaixo.
+`PROTOCOLOS GERAL` na forma completa. Na stack, depois do deploy das 14:55 UTC: o mesmo
+`?visual=` saiu **sem erro** — 5,2 s frio, depois 10–63 ms em cache —, com Produtivo de 09/10 em
+**59** contra 52 do arquivo das 14:39 (alocações que chegaram depois). `agendamento-field`: 39
+visuais, 0 com erro; `relatorio-do-mes`: 36, 0 com erro, carga fria de 3,0 s já na forma
+completa; 0 quedas para cálculo em linha; RSS 2.383 MB, `/api/saude` sem degradação.
