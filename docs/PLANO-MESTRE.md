@@ -107,8 +107,15 @@ foi desligado antes de o substituto provar.
       - Nginx resolve a API a cada pedido (`a8b8178`): recriar a API não dá mais 502.
 - [x] **B.1 (1.3)** ✅ 02/10, `070b354`: **o poller custava 38,6 min/h de banco** com 0
       mudanças, o dobro do refresh. Paliativo nos intervalos (~19,6 min/h estimados).
-- [ ] **B.1b** **Sentinela do poller:** uma consulta barata ("mudou algo desde X?") e as
-      pesadas só quando ela disser sim. É o maior ganho que sobra.
+- [x] **B.1b** ✅ 09/10 no `staging` (#201): **sentinela do poller.** Uma varredura de
+      `assignments` a cada 12 s (sem índice em `modified`, ~1,3 s) no lugar da de cada costura;
+      as cinco queries que só dependem de `a.modified` rodam quando há tarefa nova no escopo
+      delas (teto de 5 min). Esperado 31 → ~24 min/h — **não fecha a meta sozinha**: falta a
+      CTE `troca` da `protocolos-auxiliares` e as duas de reincidência (B.1d).
+- [ ] **B.1d** O que sobra do poller depois da sentinela: a `protocolos-auxiliares` recalcula
+      a CTE `troca` (1,2 s, `LIKE` em `reports`) e a `alocacao` inteiras a cada volta — dá para
+      restringi-las às solicitações da volta; `reincidencia`/`instalacoes-reincidentes`
+      (5,6 min/h) recomputam tudo por desenho (#93). Medir em produção antes.
 - [x] **B.1c-cron** ✅ 04/10, `529a4b0`: o cron disparou às 03:00 de Brasília, mas falhou
       sem credencial (`.env.cron` carregado sem `set -a`). Corrigido e provado com a linha exata
       do cron em `env -i` (ACHADOS #173). **Conferir no log a execução de 05/10.**
@@ -186,7 +193,8 @@ Em ordem de impacto no que se sente:
       API reiniciada volta fria. *Pronto quando:* reiniciar a API e a primeira abertura de
       cada página continuar em ~1 s.
 - [ ] **R.4 Número principal ao vivo.**
-      - A sentinela (B.1b) deixa o poller barato o bastante para ~10–15 s em tudo.
+      - A sentinela (B.1b, feita) barateia só as queries que dependem de `a.modified`; as
+        pesadas (auxiliares, reincidência) seguem caras quando rodam (#201, B.1d).
       - Entram no poller a `protocolos-geral` e a `alocacao-patrimonio` (fase A).
       *Pronto quando:* um protocolo instalado aparece nos cartões em ≤ ~30 s, sem F5.
 - [ ] **R.5 O número troca suave na tela**, sem piscar nem recarregar o cartão.

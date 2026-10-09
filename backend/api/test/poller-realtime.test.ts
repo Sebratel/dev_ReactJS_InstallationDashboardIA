@@ -18,6 +18,9 @@ import {
   paraParametroSemFuso,
   podaDelta,
   RECUO_MAXIMO_MS,
+  SENTINELA,
+  escopoCasa,
+  leConfigDaSentinela,
 } from '../src/poller-realtime.ts';
 
 const CFG = {
@@ -633,4 +636,145 @@ test('mudancasReais: o mesmo grupo em outra ordem não é mudança', () => {
   assert.equal(mudancasReais(antes, depois), 0);
   const menor = { porChave: new Map([['P', [{ ...a }]]]), inicioJanela: t, desde: t };
   assert.equal(mudancasReais(antes, menor), 1);
+});
+
+// ── Sentinela (PLANO-MESTRE B.1b, ACHADOS #201) ────────────────────────────────
+
+test('sentinela: toda query vigiada só tem `a.modified >= :desde`, e todo tipo da costura está no escopo', () => {
+  assert.ok(leConfigDaSentinela('backend/specs'), 'realtime-poll.yaml declara sentinela:');
+  const vigiadas = [...leConfigDePoll('backend/specs').values()].filter((c) => c.sentinela);
+  assert.deepEqual(
+    vigiadas.map((c) => c.query).sort(),
+    ['protocolos-auxiliares', 'protocolos-telefonia', 'retorno-prioritario', 'tecnicos-auxiliares', 'troca-endereco'],
+  );
+  for (const c of vigiadas) {
+    const para = c.costura!.para;
+    // Um `:desde` só, e é o de `a.modified`: outra coluna vigiada (agenda, relato,
+    // patrimônio) mudaria sem a sentinela ver, e a query ficaria até o teto sem rodar.
+    assert.equal(para.match(/:desde/g)?.length, 1, `${c.query}: um :desde só`);
+    assert.match(para, /\ba\.modified >= :desde/, `${c.query}: o :desde é a.modified`);
+    // Os tipos citados no filtro (`it.id IN (...)`, `it.id = '...'`, `incident_type_id = '...'`).
+    const tipos = new Set<string>();
+    for (const m of para.matchAll(/(?:it\.id|incident_type_id)\s*(?:=\s*'(\d+)'|in\s*\(([^)]*)\))/gi)) {
+      if (m[1]) tipos.add(m[1]);
+      for (const t of (m[2] ?? '').matchAll(/'(\d+)'/g)) tipos.add(t[1]!);
+    }
+    for (const t of tipos) assert.ok(c.sentinela!.tipos.includes(t), `${c.query}: tipo ${t} da costura fora do escopo`);
+    for (const m of para.matchAll(/assignment_type\s*=\s*'([^']+)'/g)) {
+      assert.ok(c.sentinela!.tiposDeTarefa.includes(m[1]!), `${c.query}: ${m[1]} fora do escopo`);
+    }
+    assert.ok(tipos.size + c.sentinela!.tiposDeTarefa.length > 0, `${c.query}: a guarda achou o filtro`);
+  }
+});
+
+test('escopoCasa: por tipo de protocolo ou por tipo de tarefa', () => {
+  const e = { tipos: ['1011', '275'], tiposDeTarefa: ['RAUX'] };
+  assert.equal(escopoCasa(e, { tipos: ['12', '275'], tipoDeTarefa: 'REQ' }), true);
+  assert.equal(escopoCasa(e, { tipos: [], tipoDeTarefa: 'RAUX' }), true);
+  assert.equal(escopoCasa(e, { tipos: ['12'], tipoDeTarefa: null }), false);
+});
+
+/** Pool que responde a sentinela com `tarefas` e todo o resto com nada; anota o SQL. */
+function poolComSentinela() {
+  const estado = {
+    tarefas: [] as Record<string, unknown>[],
+    falhasDaTelefonia: 0,
+    chamadas: [] as string[],
+  };
+  const pool = async () => ({
+    query: async (cfg: { text: string; values?: unknown[] }) => {
+      estado.chamadas.push(cfg.text);
+      if (/array_agg/.test(cfg.text)) {
+        const nomes = ['id', 'modified', 'tipo_de_tarefa', 'tipos'];
+        return { rows: estado.tarefas.map((t) => nomes.map((n) => t[n])), fields: nomes.map((name) => ({ name })) };
+      }
+      if (/'1011'/.test(cfg.text) && estado.falhasDaTelefonia > 0) {
+        estado.falhasDaTelefonia -= 1;
+        throw new Error('ECONNRESET');
+      }
+      return { rows: [], fields: [] };
+    },
+    end: async () => {},
+  });
+  return { estado, pool };
+}
+
+const voltasDaTelefonia = (chamadas: string[]) =>
+  chamadas.filter((t) => /'1011'/.test(t) && !/array_agg/.test(t)).length;
+/** As voltas que a sentinela dispara por conta própria são `void` — deixa assentarem. */
+const assenta = () => new Promise((r) => setTimeout(r, 20));
+
+function pollerComSentinela() {
+  const fake = poolComSentinela();
+  const relogio = new Date('2026-10-09T16:00:00Z');
+  const p = new PollerRealtime({
+    specsDir: 'backend/specs',
+    pool: fake.pool,
+    agora: () => relogio,
+    relogioDoBanco: async () => relogio,
+    anuncia: () => {},
+  });
+  return { p, estado: fake.estado };
+}
+
+test('sentinela: sem tarefa nova no escopo a volta é dispensada; com tarefa nova, roda', async () => {
+  const { p, estado } = pollerComSentinela();
+
+  await p.tentaAgora('protocolos-telefonia'); // nunca rodou: roda
+  assert.equal(voltasDaTelefonia(estado.chamadas), 1);
+  await p.tentaSentinelaAgora(); // primeira resposta: toda vigiada roda uma vez a partir dela
+  await assenta();
+  await p.tentaAgora('protocolos-telefonia');
+  assert.equal(voltasDaTelefonia(estado.chamadas), 2);
+
+  await p.tentaSentinelaAgora(); // nada mudou
+  await p.tentaAgora('protocolos-telefonia');
+  assert.equal(voltasDaTelefonia(estado.chamadas), 2, 'dispensada: não foi ao banco');
+
+  estado.tarefas = [{ id: '7', modified: new Date('2026-10-09T15:59:50Z'), tipo_de_tarefa: 'REQ', tipos: ['12'] }];
+  await p.tentaSentinelaAgora(); // mudou, mas fora do escopo da telefonia
+  await assenta();
+  await p.tentaAgora('protocolos-telefonia');
+  assert.equal(voltasDaTelefonia(estado.chamadas), 2, 'tipo 12 não acorda a telefonia');
+
+  estado.tarefas = [{ id: '8', modified: new Date('2026-10-09T15:59:55Z'), tipo_de_tarefa: 'REQ', tipos: ['275'] }];
+  await p.tentaSentinelaAgora();
+  await assenta();
+  await p.tentaAgora('protocolos-telefonia');
+  assert.equal(voltasDaTelefonia(estado.chamadas), 3, 'tipo 275 acorda a telefonia');
+
+  await p.tentaSentinelaAgora(); // a MESMA versão da tarefa 8, de novo pela margem: não é nova
+  await assenta();
+  await p.tentaAgora('protocolos-telefonia');
+  assert.equal(voltasDaTelefonia(estado.chamadas), 3, 'a mesma versão não acorda duas vezes');
+
+  const tel = p.estado().porQuery.find((q) => q.query === 'protocolos-telefonia')!;
+  assert.ok(tel.dispensadas >= 3);
+  assert.equal(p.estado().porQuery.find((q) => q.query === SENTINELA)?.voltas, 5);
+});
+
+test('sentinela: volta que falhou roda de novo mesmo sem tarefa nova', async () => {
+  const { p, estado } = pollerComSentinela();
+  await p.tentaSentinelaAgora();
+  await assenta();
+  estado.falhasDaTelefonia = 1;
+  await p.tentaAgora('protocolos-telefonia'); // falha
+  await p.tentaSentinelaAgora(); // nada mudou
+  await p.tentaAgora('protocolos-telefonia'); // roda mesmo assim
+  assert.equal(voltasDaTelefonia(estado.chamadas), 2);
+  await p.tentaAgora('protocolos-telefonia'); // agora sim, dispensada
+  assert.equal(voltasDaTelefonia(estado.chamadas), 2);
+});
+
+test('sentinela: sem resposta dela, nada é dispensado', async () => {
+  const { p, estado } = pollerComSentinela();
+  for (let i = 0; i < 3; i++) await p.tentaAgora('protocolos-telefonia');
+  assert.equal(voltasDaTelefonia(estado.chamadas), 3);
+});
+
+test('sentinela: field-agenda, alocação e reincidência ficam fora dela', () => {
+  const cfgs = leConfigDePoll('backend/specs');
+  for (const q of ['field-agenda', 'alocacao-patrimonio', 'reincidencia', 'instalacoes-reincidentes']) {
+    assert.equal(cfgs.get(q)?.sentinela, undefined, q);
+  }
 });

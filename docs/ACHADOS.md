@@ -14823,6 +14823,39 @@ cada, 0 diferenças, mesmas colunas**; busca + M de **116,6 s → 4,9 s** (rodad
 ocupado; noutra, a velha deu 59 s). Os testes do corpus que prendem o número de queries contam a
 nova pelo nome, como contam `field-agenda-slot`; golden capturado por `validate:queries`.
 
-**Em produção (09/10, 18:50 RS):** `refresh` e `snapshot-diario` reconstruídos com o spec novo
+**Em produção (09/10, 15:50 RS):** `refresh` e `snapshot-diario` reconstruídos com o spec novo
 (trocados com o daemon ocioso, sem trava). Primeira rodada do `medio`: `backlog-agendado-futuro… ok
 (4976 ms)` — antes, 67 s no mesmo grupo.
+
+## #201 — sentinela do poller: uma varredura de `assignments` no lugar de cinco (09/10)
+
+**O que o poller custava (`/api/saude`, 09/10 ~16h RS, 1 h de vigília):** 31,3 min/h de banco.
+`protocolos-auxiliares` sozinha, 13,3 min/h (7,2 s por volta em média, máx. 31 s, 10
+*statement timeouts*); as outras oito, de 1,5 a 3,4 min/h cada. `EXPLAIN ANALYZE` da volta da
+auxiliares fora de pico: 2,2 s — 0,9 s numa `Parallel Seq Scan` de `assignments` (7,3 GB,
+2,27 M linhas, **sem índice em `modified`**: conferido em `pg_indexes`) e 1,2 s na CTE `troca`
+(`LIKE` em `reports.description`), que roda inteira a cada volta. A média de 7 s é o banco
+disputado com o refresh.
+
+**Quanto muda por escopo (1 h, contagem por janela, sem valor de linha):** de 120 janelas de
+30 s, auxiliares tinha tarefa mudada em 75; troca de endereço em 21; telefonia e retorno
+prioritário em 1; técnicos auxiliares (RAUX) em 0. Ou seja: quatro das cinco costuras por
+`a.modified` voltavam vazias quase sempre, e pagavam a consulta igual.
+
+**O que entrou** (`poller-realtime.ts`, bloco `sentinela:` em `realtime-poll.yaml`): uma consulta
+a cada 12 s devolve as tarefas com `modified >= :desde` (id, versão, tipo de tarefa, tipos de
+protocolo). As cinco queries cujo ÚNICO `:desde` é `a.modified` declaram o escopo
+(`tipos`/`tipos_de_tarefa`) e só vão ao banco quando aparece tarefa NOVA nele — a mesma versão
+reentregue pela margem não conta. Rodam sem perguntar quando: nunca rodaram, a última falhou,
+a sentinela falhou ou atrasou (3 intervalos), ou passaram 5 min (`teto_sem_rodar_ms`). Quem tem
+pendência e já cumpriu o próprio intervalo roda na hora, sem esperar o temporizador.
+`field-agenda`, `alocacao-patrimonio` e as duas de reincidência olham outras tabelas e ficaram
+fora. Um teste confere que cada vigiada tem um `:desde` só, em `a.modified`, e que todo tipo
+citado na costura está no escopo (mutação: tirar o `'15'` da troca faz o teste falhar).
+
+**Contra o banco real** (o poller novo, fora da API, ~75 s): sentinela 1,3 s por volta; as
+quatro baratas rodaram 2 vezes (a primeira e a de partida da sentinela) e foram dispensadas 5.
+Conta esperada: a sentinela custa ~6,6 min/h e dispensa ~13 min/h (≈ 95% das quatro baratas e
+≈ 37% da auxiliares) — 31 → ~24 min/h. **Não é a meta (< 10 min/h com o poller).** O resto está
+na própria auxiliares quando roda (CTE `troca` inteira) e nas duas de reincidência (2 min,
+recomputam tudo), que a sentinela não alcança.

@@ -110,12 +110,45 @@
 
 formato: 1
 
+# **Sentinela (PLANO-MESTRE B.1b, 09/10/2026, ACHADOS #201).** `assignments` tem 7,3 GB e
+# nenhum índice em `modified`: toda costura por `a.modified >= :desde` paga uma varredura
+# (~0,9 s medido), e as cinco que só dependem disso pagavam cada uma a sua, a cada volta,
+# mudasse algo ou não. A sentinela faz UMA varredura por volta e diz quais tarefas mudaram;
+# uma query com `sentinela:` só vai ao banco quando apareceu tarefa NOVA no escopo dela
+# (`poller-realtime.ts`, `#dispensa`). Medido às 16h de 09/10 (horário comercial), em 1 h:
+# auxiliares tinha mudança em 75 de 120 janelas de 30 s; troca em 21; telefonia e retorno
+# em 1; técnicos (RAUX) em 0.
+#
+# Na dúvida, roda: nunca rodou, a última falhou, a sentinela atrasou ou falhou, ou passou
+# `teto_sem_rodar_ms`. O teto cobre o que a sentinela não enxerga e a costura também não
+# enxergava direito: tarefa que mudou de tipo, commit mais lento que a margem.
+#
+# **Só entra aqui query cujo ÚNICO `:desde` é `a.modified`** — o teste
+# `poller-realtime.test.ts` confere isso e confere que todo tipo citado na costura está no
+# escopo. `field-agenda`, `alocacao-patrimonio` e as duas de reincidência olham outras
+# tabelas (agenda, patrimônio, relatos) e seguem no próprio intervalo.
+sentinela:
+  intervalo_ms: 12000
+  margem_segundos: 30
+  teto_sem_rodar_ms: 300000
+  sql: |-
+    SELECT a.id::text AS id,
+           a.modified,
+           a.assignment_type AS tipo_de_tarefa,
+           array_agg(DISTINCT ai.incident_type_id::text)
+             FILTER (WHERE ai.incident_type_id IS NOT NULL) AS tipos
+    FROM assignments a
+    LEFT JOIN assignment_incidents ai ON ai.assignment_id = a.id
+    WHERE a.modified >= :desde
+    GROUP BY a.id, a.modified, a.assignment_type
+
 queries:
   protocolos-auxiliares:
     tabela: PROTOCOLOS AUXILIARES
     # 12 s → 30 s: Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
     # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
-    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    # mudanças — o dobro do refresh. Com a sentinela, 30 s é o intervalo MÍNIMO entre
+    # voltas: ela só roda quando há tarefa nova dos dez tipos (2,2–7 s por volta, 09/10).
     intervalo_ms: 30000
     # Folga contra relógio torto — mesmo papel de margem_dias em incremental.yaml,
     # só que em segundos porque a marca aqui é timestamp, não dia.
@@ -124,6 +157,8 @@ queries:
     chave: [SOLICITACAO]
     # Máximo entre criação e modificação — mesma armadilha 1 de incremental.ts.
     marca: [DATA CRIADO, DATA ENCERRADO]
+    sentinela:
+      tipos: ['12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15']
     costura:
       de: |-
         WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
@@ -142,6 +177,8 @@ queries:
     margem_segundos: 30
     chave: [SOLICITACAO]
     marca: [DATA CRIADO, DATA ENCERRRADO]
+    sentinela:
+      tipos: ['1011', '275', '269']
     costura:
       de: |-
         where (it.id = '1011'or --- TEC - Instalação Telefonia
@@ -169,6 +206,8 @@ queries:
     margem_segundos: 30
     chave: [PROTOCOLO]
     marca: [_MARCA_REALTIME]
+    sentinela:
+      tipos: ['15', '1256']
     costura:
       de: |2-
                 DATE(r.final_date) >= '2025-01-01'
@@ -187,6 +226,8 @@ queries:
     margem_segundos: 30
     chave: ["PROTOCOLO:"]
     marca: [_MARCA_REALTIME]
+    sentinela:
+      tipos_de_tarefa: [RAUX]
     costura:
       de: |2-
               and a.assignment_type = 'RAUX'
@@ -206,6 +247,8 @@ queries:
     margem_segundos: 30
     chave: ["Protocolo Retorno Prioritário"]
     marca: [_MARCA_REALTIME]
+    sentinela:
+      tipos: ['1160']
     costura:
       de: |-
         WHERE ai.incident_type_id = '1160'
@@ -227,7 +270,8 @@ queries:
     tabela: "INSTALAÇÕES REINCIDENTES"
     # 30 s → 2 min: 3,2 s por volta. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
     # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
-    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    # mudanças — o dobro do refresh. A sentinela (09/10) não serve aqui: o `:desde` é das
+    # marcas de instalação/manutenção, não de `a.modified` (PLANO-MESTRE B.1d).
     intervalo_ms: 120000
     margem_segundos: 30
     chave: [protocolo_instalacao]
@@ -326,7 +370,8 @@ queries:
     tabela: "REINCIDÊNCIA"
     # 30 s → 2 min: 5,9 s por volta, 12 min/h sozinha. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
     # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
-    # mudanças — o dobro do refresh. Intervalo maior até a sentinela (PLANO-CARGA B.1).
+    # mudanças — o dobro do refresh. A sentinela (09/10) não serve aqui: o `:desde` é das
+    # marcas de instalação/manutenção, não de `a.modified` (PLANO-MESTRE B.1d).
     intervalo_ms: 120000
     margem_segundos: 30
     chave: [service_tag]

@@ -43,6 +43,8 @@ import { comoDuracao } from '../../packages/transform-engine/src/runner.ts';
 import { duracaoEmDias } from '../../packages/transform-engine/src/value.ts';
 
 const ARQUIVO = path.join('_catalog', 'realtime-poll.yaml');
+/** Nome da sentinela em `/api/saude` → `porQuery` (não é query do catálogo). */
+export const SENTINELA = 'sentinela';
 
 export interface ConfigDePoll {
   query: string;
@@ -68,10 +70,39 @@ export interface ConfigDePoll {
    * daria outro número. Na FIELD AGENDA, o `RankDataProtocolo` filtra pelo protocolo.
    */
   colunasCalculadas?: boolean;
+  /**
+   * A volta só roda quando a sentinela viu uma tarefa NOVA neste escopo (PLANO-MESTRE B.1b).
+   * Só para costura cujo único `:desde` é `a.modified` — aí "nenhuma tarefa do escopo com
+   * `modified` novo" quer dizer "a busca voltaria vazia ou repetida".
+   */
+  sentinela?: EscopoDaSentinela;
+}
+
+/** Quais tarefas mudadas acordam uma query: por tipo de protocolo OU por tipo de tarefa. */
+export interface EscopoDaSentinela {
+  /** `incident_types.id` do filtro da costura. */
+  tipos: string[];
+  /** `assignments.assignment_type` do filtro da costura (`RAUX`). */
+  tiposDeTarefa: string[];
+}
+
+/**
+ * A consulta-sentinela: uma varredura de `assignments` por volta, no lugar de uma por
+ * query vigiada. `assignments` (7,3 GB) não tem índice em `modified`, e cada costura por
+ * `a.modified` pagava essa varredura sozinha — a cada 12 s, mudasse algo ou não.
+ */
+export interface ConfigDaSentinela {
+  intervaloMs: number;
+  margemSegundos: number;
+  /** Uma query vigiada roda pelo menos a cada tanto, viu a sentinela algo ou não. */
+  tetoSemRodarMs: number;
+  /** Devolve `id`, `modified`, `tipo_de_tarefa` e `tipos` (array) com `:desde`. */
+  sql: string;
 }
 
 interface ArquivoRealtimePoll {
   formato?: number;
+  sentinela?: { intervalo_ms?: number; margem_segundos?: number; teto_sem_rodar_ms?: number; sql?: string };
   queries?: Record<
     string,
     {
@@ -84,8 +115,51 @@ interface ArquivoRealtimePoll {
       alvos?: string;
       busca_por_ids?: { view?: string };
       colunas_calculadas?: boolean;
+      sentinela?: { tipos?: string[]; tipos_de_tarefa?: string[] };
     }
   >;
+}
+
+function leArquivo(specsDir: string): { caminho: string; doc: ArquivoRealtimePoll } | null {
+  const caminho = path.join(specsDir, ARQUIVO);
+  if (!fs.existsSync(caminho)) return null;
+  const doc = (parseYaml(fs.readFileSync(caminho, 'utf8')) ?? {}) as ArquivoRealtimePoll;
+  if (doc.formato !== undefined && doc.formato !== 1) {
+    throw new Error(`${caminho}: formato ${doc.formato}, esperado 1.`);
+  }
+  return { caminho, doc };
+}
+
+/** O bloco `sentinela:` de `realtime-poll.yaml`, ou `null` sem ele. */
+export function leConfigDaSentinela(specsDir: string): ConfigDaSentinela | null {
+  const lido = leArquivo(specsDir);
+  const s = lido?.doc.sentinela;
+  if (!lido || !s) return null;
+  if (!s.sql?.includes(':desde')) throw new Error(`${lido.caminho}: a sentinela precisa de 'sql' com :desde.`);
+  return {
+    intervaloMs: s.intervalo_ms ?? 12_000,
+    margemSegundos: s.margem_segundos ?? 30,
+    tetoSemRodarMs: s.teto_sem_rodar_ms ?? 300_000,
+    sql: s.sql,
+  };
+}
+
+/** Uma linha da sentinela cai no escopo de uma query? */
+export function escopoCasa(
+  escopo: EscopoDaSentinela,
+  linha: { tipos: readonly string[]; tipoDeTarefa: string | null },
+): boolean {
+  return (
+    linha.tipos.some((t) => escopo.tipos.includes(t)) ||
+    (linha.tipoDeTarefa !== null && escopo.tiposDeTarefa.includes(linha.tipoDeTarefa))
+  );
+}
+
+/** `tipos` como o driver entrega um `text[]` — array, ou o literal `{a,b}` se vier cru. */
+function tiposDaLinha(v: unknown): string[] {
+  if (Array.isArray(v)) return v.filter((x) => x !== null && x !== undefined).map(String);
+  if (typeof v === 'string') return v.replace(/^\{|\}$/g, '').split(',').filter(Boolean);
+  return [];
 }
 
 /**
@@ -93,14 +167,10 @@ interface ArquivoRealtimePoll {
  * — que é o estado seguro por padrão, igual a `incremental.yaml`.
  */
 export function leConfigDePoll(specsDir: string): Map<string, ConfigDePoll> {
-  const p = path.join(specsDir, ARQUIVO);
   const fora = new Map<string, ConfigDePoll>();
-  if (!fs.existsSync(p)) return fora;
-
-  const doc = (parseYaml(fs.readFileSync(p, 'utf8')) ?? {}) as ArquivoRealtimePoll;
-  if (doc.formato !== undefined && doc.formato !== 1) {
-    throw new Error(`${p}: formato ${doc.formato}, esperado 1.`);
-  }
+  const lido = leArquivo(specsDir);
+  if (!lido) return fora;
+  const { caminho: p, doc } = lido;
   for (const [query, bruto] of Object.entries(doc.queries ?? {})) {
     if (!bruto.tabela) throw new Error(`${p}: ${query} não declara tabela.`);
     const doisPassos = bruto.alvos !== undefined || bruto.busca_por_ids !== undefined;
@@ -110,6 +180,13 @@ export function leConfigDePoll(specsDir: string): Map<string, ConfigDePoll> {
     if (!doisPassos && !bruto.costura) throw new Error(`${p}: ${query} não declara costura.`);
     if (!bruto.marca?.length) throw new Error(`${p}: ${query} não declara 'marca'.`);
     if (!bruto.chave?.length) throw new Error(`${p}: ${query} não declara 'chave'.`);
+    if (bruto.sentinela) {
+      if (doisPassos) throw new Error(`${p}: ${query} em dois passos não usa a sentinela.`);
+      if (!doc.sentinela) throw new Error(`${p}: ${query} usa a sentinela, mas o arquivo não declara 'sentinela:'.`);
+      if (!bruto.sentinela.tipos?.length && !bruto.sentinela.tipos_de_tarefa?.length) {
+        throw new Error(`${p}: ${query} declara sentinela sem 'tipos' nem 'tipos_de_tarefa'.`);
+      }
+    }
     fora.set(query, {
       query,
       tabela: bruto.tabela!,
@@ -121,6 +198,14 @@ export function leConfigDePoll(specsDir: string): Map<string, ConfigDePoll> {
         ? { alvos: bruto.alvos!, buscaPorIds: { view: bruto.busca_por_ids!.view! } }
         : { costura: bruto.costura! }),
       ...(bruto.colunas_calculadas ? { colunasCalculadas: true } : {}),
+      ...(bruto.sentinela
+        ? {
+            sentinela: {
+              tipos: (bruto.sentinela.tipos ?? []).map(String),
+              tiposDeTarefa: (bruto.sentinela.tipos_de_tarefa ?? []).map(String),
+            },
+          }
+        : {}),
     });
   }
   return fora;
@@ -421,6 +506,8 @@ export interface MedidaDaQuery {
   intervaloMs: number;
   voltas: number;
   puladas: number;
+  /** Voltas que nem foram ao banco: a sentinela não viu tarefa nova no escopo (B.1b). */
+  dispensadas: number;
   erros: number;
   bancoMsMedio: number;
   bancoMsMax: number;
@@ -441,6 +528,7 @@ export interface MedidaDaQuery {
 interface Acumulado {
   voltas: number;
   puladas: number;
+  dispensadas: number;
   erros: number;
   suspensas: number;
   bancoMs: number;
@@ -483,9 +571,28 @@ export class PollerRealtime {
   /** Relógio do banco − relógio do processo, arredondado a 15 min (o fuso de `parseSemFuso`). */
   #fusoMs = 0;
 
+  // ── Sentinela (B.1b) ──────────────────────────────────────────────────────────
+  // Regra: uma query com `sentinela:` roda quando (a) nunca rodou, (b) a última volta
+  // dela falhou, (c) a sentinela viu uma tarefa nova no escopo DEPOIS que a última volta
+  // dela começou, (d) passou o teto, ou (e) a sentinela não está em dia. Todo caso de
+  // dúvida roda — o pior caso é o custo de antes, nunca dado perdido.
+  readonly #sentinela: ConfigDaSentinela | null;
+  /** Queries que a sentinela mandou rodar (ou que nunca rodaram, ou falharam). */
+  readonly #pendentes = new Set<string>();
+  /** Quando a última volta de cada query começou (relógio do processo, ms). */
+  readonly #inicioDaVolta = new Map<string, number>();
+  /** A versão (`modified`) de cada tarefa já vista na janela — só tarefa NOVA acorda. */
+  readonly #vistas = new Map<string, number>();
+  #sentinelaDesde: Date | null = null;
+  /** Último sucesso da sentinela (relógio do processo, ms). */
+  #sentinelaOkEm: number | null = null;
+  #timerDaSentinela: ReturnType<typeof setInterval> | null = null;
+
   constructor(opts: OpcoesDoPoller) {
     this.#specsDir = opts.specsDir;
     this.#configs = leConfigDePoll(opts.specsDir);
+    this.#sentinela = leConfigDaSentinela(opts.specsDir);
+    for (const cfg of this.#configs.values()) if (cfg.sentinela) this.#pendentes.add(cfg.query);
     this.#opts = {
       pool: opts.pool,
       agora: opts.agora ?? (() => new Date()),
@@ -640,11 +747,112 @@ export class PollerRealtime {
       t.unref?.();
       this.#timers.set(cfg.query, t);
     }
+    if (this.#temSentinela && !this.#timerDaSentinela) {
+      void this.#tentaSentinela();
+      this.#timerDaSentinela = setInterval(() => void this.#tentaSentinela(), this.#sentinela!.intervaloMs);
+      this.#timerDaSentinela.unref?.();
+    }
   }
 
   para(): void {
     for (const t of this.#timers.values()) clearInterval(t);
     this.#timers.clear();
+    if (this.#timerDaSentinela) clearInterval(this.#timerDaSentinela);
+    this.#timerDaSentinela = null;
+  }
+
+  /** Há sentinela declarada E alguma query que a usa — senão ela seria varredura à toa. */
+  get #temSentinela(): boolean {
+    return this.#sentinela !== null && [...this.#configs.values()].some((c) => c.sentinela);
+  }
+
+  /** Uma volta da sentinela sem esperar o temporizador — para o teste. */
+  async tentaSentinelaAgora(): Promise<void> {
+    await this.#tentaSentinela();
+  }
+
+  /**
+   * A sentinela está em dia: teve sucesso há no máximo três intervalos. Fora disso as
+   * queries vigiadas voltam a rodar no próprio intervalo, como antes dela existir.
+   */
+  #sentinelaEmDia(): boolean {
+    return (
+      this.#sentinelaOkEm !== null && Date.now() - this.#sentinelaOkEm <= 3 * this.#sentinela!.intervaloMs
+    );
+  }
+
+  /** A volta desta query pode ser dispensada sem ir ao banco? */
+  #dispensa(cfg: ConfigDePoll): boolean {
+    if (!cfg.sentinela || !this.#temSentinela) return false;
+    if (this.#pendentes.has(cfg.query) || !this.#sentinelaEmDia()) return false;
+    const inicio = this.#inicioDaVolta.get(cfg.query);
+    return inicio !== undefined && Date.now() - inicio < this.#sentinela!.tetoSemRodarMs;
+  }
+
+  async #tentaSentinela(): Promise<void> {
+    const s = this.#sentinela!;
+    if (this.#ocupado.has(SENTINELA)) {
+      this.#medida(SENTINELA).puladas += 1;
+      return;
+    }
+    this.#ocupado.add(SENTINELA);
+    this.#vigiaDesde ??= this.#opts.agora();
+    let tb = 0;
+    try {
+      const run = postgresRunner(await this.#getPool());
+      this.#sentinelaDesde ??= new Date((await this.#relogio(run)).getTime() - s.margemSegundos * 1000);
+      tb = Date.now();
+      const linhas = await run(s.sql, { desde: paraParametroSemFuso(this.#sentinelaDesde) });
+      const fim = Date.now();
+      this.#registraBanco(SENTINELA, fim - tb);
+      tb = 0;
+
+      // Voltando de falha (ou na primeira vez): o que mudou ANTES desta janela ninguém viu.
+      // Toda vigiada roda uma vez a partir daqui, e daí em diante a sentinela responde.
+      const estavaEmDia = this.#sentinelaEmDia();
+      let marca = this.#sentinelaDesde.getTime() + s.margemSegundos * 1000;
+      const acordar = new Set<string>();
+      for (const l of linhas) {
+        const id = String(l.id);
+        const mod = l.modified instanceof Date ? l.modified.getTime() : Date.parse(String(l.modified));
+        if (!Number.isFinite(mod)) continue;
+        marca = Math.max(marca, mod);
+        if (this.#vistas.get(id) === mod) continue;
+        this.#vistas.set(id, mod);
+        const linha = { tipos: tiposDaLinha(l.tipos), tipoDeTarefa: l.tipo_de_tarefa == null ? null : String(l.tipo_de_tarefa) };
+        for (const cfg of this.#configs.values()) {
+          if (cfg.sentinela && escopoCasa(cfg.sentinela, linha)) acordar.add(cfg.query);
+        }
+      }
+      for (const cfg of this.#configs.values()) {
+        if (!cfg.sentinela) continue;
+        // Volta que começou antes desta resposta pode não ter visto a tarefa: roda de novo.
+        const inicio = this.#inicioDaVolta.get(cfg.query) ?? -Infinity;
+        if ((acordar.has(cfg.query) || !estavaEmDia) && inicio < fim) this.#pendentes.add(cfg.query);
+      }
+      this.#sentinelaDesde = new Date(marca - s.margemSegundos * 1000);
+      for (const [id, mod] of this.#vistas) if (mod < this.#sentinelaDesde.getTime()) this.#vistas.delete(id);
+      this.#sentinelaOkEm = Date.now();
+      const m = this.#medida(SENTINELA);
+      m.voltas += 1;
+
+      // Quem tem pendência e já cumpriu o próprio intervalo roda agora, sem esperar o
+      // temporizador: o atraso do fato fica no intervalo da sentinela, não na soma dos dois.
+      for (const cfg of this.#configs.values()) {
+        if (!this.#pendentes.has(cfg.query) || this.#ocupado.has(cfg.query)) continue;
+        const inicio = this.#inicioDaVolta.get(cfg.query);
+        if (inicio === undefined || Date.now() - inicio >= cfg.intervaloMs) void this.#tenta(cfg);
+      }
+    } catch (err) {
+      if (tb) this.#registraBanco(SENTINELA, Date.now() - tb);
+      this.#medida(SENTINELA).erros += 1;
+      this.#ultimoErro = err instanceof Error ? err.message : String(err);
+      this.#opts.anuncia(
+        `[poller] sentinela: ${err instanceof Error ? err.message : String(err)} — as vigiadas rodam no próprio intervalo até ela voltar`,
+      );
+    } finally {
+      this.#ocupado.delete(SENTINELA);
+    }
   }
 
   /**
@@ -724,7 +932,9 @@ export class PollerRealtime {
     const horas = this.#vigiaDesde
       ? Math.max((this.#opts.agora().getTime() - this.#vigiaDesde.getTime()) / 3_600_000, 1 / 60)
       : null;
-    const porQuery: MedidaDaQuery[] = [...this.#configs.values()].map((cfg) => {
+    const vigiadas = [...this.#configs.values()].map((c) => ({ query: c.query, intervaloMs: c.intervaloMs }));
+    if (this.#temSentinela) vigiadas.push({ query: SENTINELA, intervaloMs: this.#sentinela!.intervaloMs });
+    const porQuery: MedidaDaQuery[] = vigiadas.map((cfg) => {
       const m = this.#medidas.get(cfg.query);
       const consultas = m ? m.voltas + m.erros : 0;
       return {
@@ -732,6 +942,7 @@ export class PollerRealtime {
         intervaloMs: cfg.intervaloMs,
         voltas: m?.voltas ?? 0,
         puladas: m?.puladas ?? 0,
+        dispensadas: m?.dispensadas ?? 0,
         erros: m?.erros ?? 0,
         bancoMsMedio: m && consultas > 0 ? Math.round(m.bancoMs / consultas) : 0,
         bancoMsMax: m?.bancoMsMax ?? 0,
@@ -772,7 +983,7 @@ export class PollerRealtime {
   #medida(query: string): Acumulado {
     let m = this.#medidas.get(query);
     if (!m) {
-      m = { voltas: 0, puladas: 0, erros: 0, suspensas: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null, atrasos: [], atrasoMax: 0, atrasoN: 0 };
+      m = { voltas: 0, puladas: 0, dispensadas: 0, erros: 0, suspensas: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null, atrasos: [], atrasoMax: 0, atrasoN: 0 };
       this.#medidas.set(query, m);
     }
     return m;
@@ -794,6 +1005,10 @@ export class PollerRealtime {
       this.#medida(cfg.query).puladas += 1;
       return;
     }
+    if (this.#dispensa(cfg)) {
+      this.#medida(cfg.query).dispensadas += 1;
+      return;
+    }
     this.#ocupado.add(cfg.query);
     this.#vigiaDesde ??= this.#opts.agora();
     const t0 = Date.now();
@@ -805,6 +1020,10 @@ export class PollerRealtime {
       const run = postgresRunner(pool);
       await this.#semeia(cfg, run);
       const delta = this.#deltas.get(cfg.query)!;
+      // Marcado ANTES da consulta: tarefa que a sentinela vir depois disto pode não ter
+      // entrado nesta busca, e a sentinela a devolve para a fila (`#tentaSentinela`).
+      this.#inicioDaVolta.set(cfg.query, Date.now());
+      this.#pendentes.delete(cfg.query);
 
       if (cfg.alvos) {
         tb = Date.now();
@@ -849,6 +1068,8 @@ export class PollerRealtime {
       const ms = Date.now() - t0;
       // A consulta que falhou também ocupou o banco até falhar.
       if (tb) this.#registraBanco(cfg.query, Date.now() - tb);
+      // Volta que falhou não viu nada: a próxima roda, viu a sentinela algo ou não.
+      if (cfg.sentinela) this.#pendentes.add(cfg.query);
       this.#medida(cfg.query).erros += 1;
       this.#erros += 1;
       this.#ultimoErro = err instanceof Error ? err.message : String(err);

@@ -128,7 +128,7 @@ explícito.
       `backend/tools/probe/src/compara-incremental.ts`). Depois:
       `frio: incremental: [field-agenda, protocolos-produtividade]`.
 - [x] **1.3** ✅ 02/10, `070b354`: **38,6 min/h** com 0 mudanças (ACHADOS #172 §1); intervalos
-      afrouxados (`2622764`). **Falta a sentinela** abaixo. Texto original: **Medir o poller.** A costura dele filtra `a.modified >= :desde` em
+      afrouxados (`2622764`). **Sentinela feita em 09/10 (ACHADOS #201).** Texto original: **Medir o poller.** A costura dele filtra `a.modified >= :desde` em
       `assignments` (7 GB, **sem índice em `modified`**) a cada 12 s, em 5 queries.
       Pode ser a maior carga escondida. Registrar a duração de cada consulta; se passar
       de ~1 s, trocar as 7 por **uma** consulta-sentinela ("quais solicitações mudaram
@@ -142,8 +142,9 @@ Meta da fase: `frio` de ~9 para ~3 min por ciclo; banco de ~30 para ~12–15 min
 
 ### Fase 2 — SQL das que ainda pesam
 
-- [ ] **2.1** `backlog-agendado-futuro` — 59 s para **0,3 MB**: o custo é plano, não
-      volume. `EXPLAIN ANALYZE` e reescrita; incremental não resolve.
+- [x] **2.1** ✅ 09/10 (ACHADOS #200): `backlog-agendado-futuro` não era plano — o M
+      recalculava a PROTOCOLOS GERAL inteira por uma coluna. Mescla com `protocolos-tipo`:
+      67 s → 5,0 s no `medio`, saída idêntica.
 - [ ] **2.2** `protocolos-geral` (68 s). *Corrigido em 02/10:* o `Table.Distinct` é por
       `SOLICITACAO`, a chave, e não bloqueia. O bloqueio são as junções do M com
       `troca-endereco`, `tecnicos-auxiliares` e `gestores-equipes`. Texto original: incremental bloqueada: o M tem
