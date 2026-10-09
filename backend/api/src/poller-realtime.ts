@@ -380,6 +380,14 @@ export interface OpcoesDoPoller {
 export const RECUO_MAXIMO_MS = 26 * 3600_000;
 
 /**
+ * Nenhuma volta passa disto no banco: o pool do poller tem `statement_timeout` de 30 s, e uma
+ * volta são no máximo duas consultas mais a conexão. Acima, o processo parou — em 09/10/2026
+ * o notebook da stack suspendeu 92 min por bateria, e a volta em curso entrou como 5.503.926 ms
+ * de "banco" em cada query de 12 s: `/api/saude` dizia 140 min/h com o banco em ~30.
+ */
+export const TETO_DE_VOLTA_NO_BANCO_MS = 120_000;
+
+/**
  * `:desde` como o banco o lê: hora de parede, sem fuso.
  *
  * **A convenção é a de `parseSemFuso` (`connectors-sql.ts`):** o pool lê
@@ -417,6 +425,8 @@ export interface MedidaDaQuery {
   ultimoBancoMs: number | null;
   /** Tempo de consulta somado, por hora de vigília — a unidade da meta da Fase B. */
   bancoMsPorHora: number;
+  /** Voltas que passaram de `TETO_DE_VOLTA_NO_BANCO_MS`: o processo parou, não o banco. */
+  suspensas: number;
   /**
    * Do fato no Voalle até o poller perceber (ms): a marca mais nova das chaves que mudaram,
    * contra o relógio do banco na volta. Só fatos da última hora: mudança de status não mexe
@@ -430,6 +440,7 @@ interface Acumulado {
   voltas: number;
   puladas: number;
   erros: number;
+  suspensas: number;
   bancoMs: number;
   bancoMsMax: number;
   ultimoBancoMs: number | null;
@@ -724,6 +735,7 @@ export class PollerRealtime {
         bancoMsMax: m?.bancoMsMax ?? 0,
         ultimoBancoMs: m?.ultimoBancoMs ?? null,
         bancoMsPorHora: m && horas ? Math.round(m.bancoMs / horas) : 0,
+        suspensas: m?.suspensas ?? 0,
         atrasoDoFato: {
           n: m?.atrasoN ?? 0,
           medianoMs: m && m.atrasos.length ? [...m.atrasos].sort((a, b) => a - b)[Math.floor(m.atrasos.length / 2)]! : null,
@@ -758,7 +770,7 @@ export class PollerRealtime {
   #medida(query: string): Acumulado {
     let m = this.#medidas.get(query);
     if (!m) {
-      m = { voltas: 0, puladas: 0, erros: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null, atrasos: [], atrasoMax: 0, atrasoN: 0 };
+      m = { voltas: 0, puladas: 0, erros: 0, suspensas: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null, atrasos: [], atrasoMax: 0, atrasoN: 0 };
       this.#medidas.set(query, m);
     }
     return m;
@@ -766,6 +778,10 @@ export class PollerRealtime {
 
   #registraBanco(query: string, ms: number): void {
     const m = this.#medida(query);
+    if (ms > TETO_DE_VOLTA_NO_BANCO_MS) {
+      m.suspensas += 1;
+      return;
+    }
     m.bancoMs += ms;
     m.bancoMsMax = Math.max(m.bancoMsMax, ms);
     m.ultimoBancoMs = ms;

@@ -403,6 +403,37 @@ test(`PollerRealtime.estado(): volta disparada com a anterior em voo conta como 
   assert.equal(q.voltas, 1);
 });
 
+test(`PollerRealtime.estado(): volta que atravessa uma suspensão NÃO conta como banco`, async () => {
+  // 09/10/2026: o notebook suspendeu 92 min com uma volta em curso, e ela entrou como
+  // 5.503.926 ms de banco em cada query de 12 s — `/api/saude` chegou a 140 min/h.
+  const real = Date.now;
+  let salto = 0;
+  Date.now = () => real() + salto;
+  try {
+    let primeira = true;
+    const p = new PollerRealtime({
+      specsDir: `backend/specs`,
+      pool: async () => ({
+        query: async () => {
+          if (primeira) { primeira = false; salto += 92 * 60_000; }
+          return { rows: [], fields: [] };
+        },
+        end: async () => {},
+      }),
+      agora: () => new Date(`2026-09-03T10:00:00Z`),
+      anuncia: () => {},
+    });
+    await p.tentaAgora(`protocolos-auxiliares`);
+    await p.tentaAgora(`protocolos-auxiliares`);
+    const q = p.estado().porQuery.find((x) => x.query === `protocolos-auxiliares`)!;
+    assert.equal(q.suspensas, 1);
+    assert.equal(q.voltas, 2, 'a volta continua contada; só o tempo dela sai do banco');
+    assert.ok(q.bancoMsMax < 60_000, `bancoMsMax ${q.bancoMsMax}`);
+  } finally {
+    Date.now = real;
+  }
+});
+
 test(`PollerRealtime.estado(): tempo de banco por query e somado por hora`, async () => {
   const p = new PollerRealtime({
     specsDir: `backend/specs`,

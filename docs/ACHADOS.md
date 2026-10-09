@@ -14733,3 +14733,27 @@ o nome antigo) vai para `createVoallePool`, e o compose dá um por serviço: `an
 `analytics-refresh`, `analytics-snapshot-diario`. O do cron chega ao job pelo `/repo/.env.cron`
 que o entrypoint grava; `environment:` vence o `.env` (`applyDotEnv` não sobrescreve).
 Teste: `query-engine/test/config.test.ts`.
+
+## #197 — "140 min/h de banco" era a suspensão; e a carga das 03:00 não roda no notebook (09/10)
+
+**O número.** `/api/saude` às ~17:55 UTC: poller em **140,1 min/h** de banco (hoje cedo, 27,4).
+`protocolos-telefonia`, `troca-endereco`, `tecnicos-auxiliares` e `retorno-prioritario` com
+~1.900–2.170 s/h cada. Mas a mediana por volta era 2,1 s (p90 3,3 s) e o **máximo, 5.503.926 ms**:
+a volta em curso quando o notebook suspendeu às 12:21 RS (#195) entrou como 92 min de "banco"
+em cada query de 12 s. O banco não sofreu isso — o instrumento da §B é que mentia.
+**Correção:** volta acima de `TETO_DE_VOLTA_NO_BANCO_MS` (2 min; o pool do poller tem
+`statement_timeout` de 30 s) vai para `suspensas`, não para `bancoMs`. Teste em
+`poller-realtime.test.ts` com o relógio saltando 92 min dentro da consulta.
+
+**De passagem, real e já no plano (R.0):** `RETORNO PRIORITARIO: 1 chave(s) mudaram` em
+TODA volta de 12 s, horas a fio, derrubando o cache de `manutencao-inicial`,
+`relatorio-do-mes`, `visao-geral` e `instalacao-reincidente`.
+
+**A carga completa das 03:00 não rodou em 08 nem em 09/10.** `gestores-equipes` e
+`quadro-funcional` (só o `snapshot-diario` as traz) seguem na carga manual de 07/10 21:46 UTC.
+O log de energia do Windows: em 08/10 a máquina estava em espera moderna às 03:00 (entradas às
+03:15 e 03:30); em 09/10, suspensa desde 08/10 19:54 até 09:20. O cron não dispara com a
+máquina dormindo — o "modelo madrugada" (#172) **não existe enquanto a stack roda no
+notebook**. Repor a carga perdida de dia é carga completa em horário comercial: é a decisão
+"incremental recusada de dia" que o PLANO-MESTRE reserva ao Erick. No servidor (§C) a causa
+some; um reinício às 02:59 ainda perderia o dia.
