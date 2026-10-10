@@ -14914,4 +14914,6 @@ quando a régua estoura — contado da madrugada, e aí é verdadeiro.
 
 **Teste instável:** `prioridade-fila.test.ts` → "reserva (ACHADOS #163)…" falhou em 2 de 3
 rodadas da suíte inteira em 09/10 ("o clique esperou 406 ms"), e passa sozinho (11/11). Mede
-tempo de relógio com a máquina carregada; pode derrubar o CI. Não toca o que mudou aqui.
+tempo de relógio com a máquina carregada. **Causa e conserto (09/10):** as workers nascem no
+construtor mas carregam o script depois, e sob carga a reservada ainda subia quando o clique
+chegava. O teste agora aquece as duas antes de medir; suíte inteira 2 de 2 verde.

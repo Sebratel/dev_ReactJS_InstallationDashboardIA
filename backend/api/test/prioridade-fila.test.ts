@@ -226,6 +226,11 @@ test('reserva (ACHADOS #163): com fundo enchendo a piscina, um clique NÃO esper
   // uma worker fica livre e o clique sai na hora.
   const p = new PiscinaWorkers({ tamanhoPool: 2, scriptDaWorker: LENTO });
   try {
+    // As duas workers de pé ANTES de medir: elas nascem no construtor, mas carregam o script
+    // depois, e com a máquina ocupada (a suíte inteira em paralelo) a partida passava de
+    // 250 ms — o clique "esperava" a worker livre terminar de subir, não a fila (falhou em 2 de
+    // 3 rodadas da suíte em 09/10, ACHADOS #203). Dois cliques simultâneos ocupam as duas.
+    await Promise.all([p.executa(tarefa(1), INTERACTIVE), p.executa(tarefa(1), INTERACTIVE)]);
     const fundo = [1, 2, 3, 4].map(() => p.executa(tarefa(400), WARMUP));
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(p.estado.ocupados, 1, 'o fundo só pode ocupar workers - 1');
