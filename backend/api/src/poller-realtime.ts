@@ -475,6 +475,13 @@ export const RECUO_MAXIMO_MS = 26 * 3600_000;
 export const TETO_DE_VOLTA_NO_BANCO_MS = 120_000;
 
 /**
+ * O maior intervalo entre duas voltas que ainda conta como vigília. Acordado, alguma volta
+ * começa a cada ≤ 2 min (a sentinela e as queries de 12 s, ou as de reincidência sozinhas);
+ * um buraco maior é o processo parado — notebook dormindo —, e conta só isto.
+ */
+export const LACUNA_MAXIMA_DE_VIGILIA_MS = 180_000;
+
+/**
  * `:desde` como o banco o lê: hora de parede, sem fuso.
  *
  * **A convenção é a de `parseSemFuso` (`connectors-sql.ts`):** o pool lê
@@ -566,8 +573,14 @@ export class PollerRealtime {
   #ultimaMudanca: Date | null = null;
   #ultimoErro: string | null = null;
   readonly #medidas = new Map<string, Acumulado>();
-  /** Desde quando há vigília — o denominador de `bancoMsPorHora`. */
-  #vigiaDesde: Date | null = null;
+  /**
+   * Tempo de vigília ACORDADA (ms) — o denominador de `bancoMsPorHora`. Soma os intervalos
+   * entre voltas, cada um no máximo `LACUNA_MAXIMA_DE_VIGILIA_MS`: até 09/10/2026 era
+   * "agora − início", e com o notebook dormindo 1h44 a saúde dizia 5,1 min/h quando a conta
+   * das voltas dava ~16,7 (ACHADOS #202).
+   */
+  #vigiaMs = 0;
+  #ultimoPulso: number | null = null;
   /** Relógio do banco − relógio do processo, arredondado a 15 min (o fuso de `parseSemFuso`). */
   #fusoMs = 0;
 
@@ -796,7 +809,7 @@ export class PollerRealtime {
       return;
     }
     this.#ocupado.add(SENTINELA);
-    this.#vigiaDesde ??= this.#opts.agora();
+    this.#pulso();
     let tb = 0;
     try {
       const run = postgresRunner(await this.#getPool());
@@ -929,9 +942,10 @@ export class PollerRealtime {
     bancoMinPorHora: number;
     porQuery: MedidaDaQuery[];
   } {
-    const horas = this.#vigiaDesde
-      ? Math.max((this.#opts.agora().getTime() - this.#vigiaDesde.getTime()) / 3_600_000, 1 / 60)
-      : null;
+    const horas =
+      this.#ultimoPulso !== null
+        ? Math.max((this.#vigiaMs + this.#lacuna(this.#opts.agora().getTime())) / 3_600_000, 1 / 60)
+        : null;
     const vigiadas = [...this.#configs.values()].map((c) => ({ query: c.query, intervaloMs: c.intervaloMs }));
     if (this.#temSentinela) vigiadas.push({ query: SENTINELA, intervaloMs: this.#sentinela!.intervaloMs });
     const porQuery: MedidaDaQuery[] = vigiadas.map((cfg) => {
@@ -989,6 +1003,19 @@ export class PollerRealtime {
     return m;
   }
 
+  /** Quanto do intervalo desde o último pulso conta como vigília — no máximo a lacuna. */
+  #lacuna(agoraMs: number): number {
+    if (this.#ultimoPulso === null) return 0;
+    return Math.min(Math.max(agoraMs - this.#ultimoPulso, 0), LACUNA_MAXIMA_DE_VIGILIA_MS);
+  }
+
+  /** Uma volta começou: o tempo desde a anterior foi vigília (até a lacuna máxima). */
+  #pulso(): void {
+    const agora = this.#opts.agora().getTime();
+    this.#vigiaMs += this.#lacuna(agora);
+    this.#ultimoPulso = agora;
+  }
+
   #registraBanco(query: string, ms: number): void {
     const m = this.#medida(query);
     if (ms > TETO_DE_VOLTA_NO_BANCO_MS) {
@@ -1010,7 +1037,7 @@ export class PollerRealtime {
       return;
     }
     this.#ocupado.add(cfg.query);
-    this.#vigiaDesde ??= this.#opts.agora();
+    this.#pulso();
     const t0 = Date.now();
     let tb = 0;
     try {

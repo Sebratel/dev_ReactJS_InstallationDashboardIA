@@ -469,6 +469,27 @@ test(`PollerRealtime.estado(): volta que atravessa uma suspensão NÃO conta com
   }
 });
 
+test(`PollerRealtime.estado(): o tempo dormindo não entra no denominador do "por hora"`, async () => {
+  // 09/10/2026: o notebook dormiu 1h44 e a saúde disse 5,1 min/h; as voltas davam ~16,7.
+  let agora = new Date('2026-10-09T17:00:00Z').getTime();
+  const p = new PollerRealtime({
+    specsDir: `backend/specs`,
+    pool: async () => ({
+      query: async () => { await new Promise((r) => setTimeout(r, 25)); return { rows: [], fields: [] }; },
+      end: async () => {},
+    }),
+    agora: () => new Date(agora),
+    anuncia: () => {},
+  });
+  for (let i = 0; i < 6; i++) { await p.tentaAgora(`protocolos-auxiliares`); agora += 30_000; } // 3 min acordado
+  const acordado = p.estado().porQuery.find((x) => x.query === `protocolos-auxiliares`)!.bancoMsPorHora;
+  agora += 2 * 3600_000; // dorme 2 h
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const depois = p.estado().porQuery.find((x) => x.query === `protocolos-auxiliares`)!.bancoMsPorHora;
+  // Com "agora − início", 2 h a mais no denominador derrubariam o número a ~1/20.
+  assert.ok(depois > acordado / 3, `acordado ${acordado}, depois de dormir ${depois}`);
+});
+
 test(`PollerRealtime.estado(): tempo de banco por query e somado por hora`, async () => {
   const p = new PollerRealtime({
     specsDir: `backend/specs`,

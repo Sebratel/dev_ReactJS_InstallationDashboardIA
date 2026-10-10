@@ -14917,3 +14917,10 @@ rodadas da suíte inteira em 09/10 ("o clique esperou 406 ms"), e passa sozinho 
 tempo de relógio com a máquina carregada. **Causa e conserto (09/10):** as workers nascem no
 construtor mas carregam o script depois, e sob carga a reservada ainda subia quando o clique
 chegava. O teste agora aquece as duas antes de medir; suíte inteira 2 de 2 verde.
+
+**Denominador do "por hora" (09/10, mesma linha do #197):** `bancoMsPorHora` dividia por "agora
+− início da vigília", e o notebook dormindo 1h44 levou a saúde a dizer 5,1 min/h quando as
+voltas davam ~16,7. Agora soma só os intervalos entre voltas, cada um até 3 min
+(`LACUNA_MAXIMA_DE_VIGILIA_MS`): acordado, alguma volta começa a cada ≤ 2 min. Também visto
+hoje: depois do standby o `refresh` só volta no próximo tick (o temporizador conta tempo
+acordado — 20:33 → dormiu → 21:18); a saúde fica "parado" nesse meio, e é verdade.
