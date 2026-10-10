@@ -185,7 +185,8 @@ Em ordem de impacto no que se sente:
         por tabela.
       - O cache só cai nas páginas que usam a tabela que mudou.
       *Pronto quando:* com o refresh rodando, nenhuma página passa de ~2 s para ficar pronta.
-- [ ] **R.1b O snapshot da madrugada não renova o status dos grupos.** Em 04/10 ele renovou as
+- [x] **R.1b** ✅ 09/10 (#203): a régua de "parado" conta também o `geradoEm` da tabela.
+      **O snapshot da madrugada não renova o status dos grupos.** Em 04/10 ele renovou as
       25 tabelas, e a saúde seguiu "degradado: grupo X parado desde sexta" até cada grupo do
       `refresh` rodar de novo. É alarme falso, mas o aviso externo (C.7) dispararia por ele.
 - [ ] **R.2 Filtros prontos ao entrar.** É a C.2: achar o cálculo de > 2,7 GB e religar

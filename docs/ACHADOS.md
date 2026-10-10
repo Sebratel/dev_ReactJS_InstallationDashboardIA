@@ -14905,3 +14905,13 @@ duracaoMs`) gravou nela, e não falhou; a régua de "parado" dela parte do que g
 não gravou acende — e a faixa da tela, que já nomeia query a query (`avisoSaude.ts`), passa a
 nomear só ela. Incremental sem novidade que não reescreva o arquivo continua aparecendo como
 falha do grupo: erra para o lado de avisar.
+
+**R.1b, no mesmo lugar (09/10):** a régua de "parado" de uma query em grupo passa a partir do
+mais novo entre o último sucesso do grupo e o `geradoEm` dela. A carga da madrugada
+(`snapshot-diario`) renova o arquivo sem passar pelo grupo, e até aqui a saúde seguia "grupo
+medio parado desde sexta" depois dela (04/10). Se o refresh continuar sem rodar, o alarme volta
+quando a régua estoura — contado da madrugada, e aí é verdadeiro.
+
+**Teste instável:** `prioridade-fila.test.ts` → "reserva (ACHADOS #163)…" falhou em 2 de 3
+rodadas da suíte inteira em 09/10 ("o clique esperou 406 ms"), e passa sozinho (11/11). Mede
+tempo de relógio com a máquina carregada; pode derrubar o CI. Não toca o que mudou aqui.

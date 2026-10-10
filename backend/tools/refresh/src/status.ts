@@ -65,6 +65,13 @@ export const FATOR_PARADA = 2;
 /** A régua de quem não está em grupo nenhum (só no manifesto): idade em dias. */
 export const DIAS_FORA_DE_GRUPO = 2;
 
+/** O mais recente de dois instantes ISO, ignorando o ausente. */
+function maisNovo(a: string | null | undefined, b: string | null | undefined): string | undefined {
+  if (!a) return b ?? undefined;
+  if (!b) return a;
+  return new Date(b).getTime() > new Date(a).getTime() ? b : a;
+}
+
 /** Resumo para o topo de `GET /api/saude`: há o que avisar, e por quê (por grupo). */
 export function resumeDegradacao(queries: readonly QuerySaude[]): { degradado: boolean; motivos: string[] } {
   const porChave = new Map<string, { status: QuerySaude['status']; erro?: string; desde?: string; ids: string[] }>();
@@ -195,12 +202,10 @@ export function montaStatusDeRefresh(
     const gravouNaTentativa = geradoEm !== undefined && new Date(geradoEm).getTime() >= inicioDaTentativa;
     // Para quem está em grupo, "parado" se mede pelo último SUCESSO do grupo — a pergunta
     // é "rodou?", e o `geradoEm` de uma query pode não andar numa incremental sem novidade.
-    // Mas a query que gravou numa tentativa falha rodou, e a régua parte dali.
-    const paradaDesde = grupo
-      ? gravouNaTentativa
-        ? geradoEm
-        : (grupoStatus?.ultimoSucesso ?? ultimaCarga)
-      : ultimaCarga;
+    // Mas vale o mais novo dos dois: a query que gravou numa tentativa falha rodou, e a
+    // carga da madrugada (`snapshot-diario`) renova o arquivo sem passar pelo grupo — até
+    // 09/10/2026 a saúde seguia "parado desde sexta" depois dela (PLANO-MESTRE R.1b).
+    const paradaDesde = grupo ? (maisNovo(grupoStatus?.ultimoSucesso, geradoEm) ?? ultimaCarga) : ultimaCarga;
 
     // "Falhando" pressupõe alguém tentando. Em 07/10/2026 o agendador ficou 24 h parado
     // depois de duas falhas de rede, e este arquivo dizia "falhando seguido" o dia todo —

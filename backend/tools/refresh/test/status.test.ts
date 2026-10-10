@@ -176,6 +176,23 @@ test('grupo falhou: a query que GRAVOU na tentativa fica ok, só a que não grav
   assert.equal(c2.paradaDesde, '2026-10-09T11:49:30.000Z');
 });
 
+test('a carga da madrugada renova a tabela: não é "parado desde sexta" (R.1b)', async () => {
+  // 04/10/2026: o `snapshot-diario` renovou as 25 tabelas às 03:00 de Brasília, e a saúde
+  // seguiu "grupo medio parado desde sexta" até o grupo rodar de novo.
+  const dir = tmp();
+  await escreveStatus(dir, { medio: verde('2026-10-02T21:00:00.000Z') });
+  await escreveManifesto(dir, [
+    { query: 'protocolos-geral', tabelas: ['PROTOCOLOS GERAL'], linhas: 1, colunas: 1, bytes: 1, geradoEm: '2026-10-04T06:05:00.000Z' },
+  ]);
+  const cedo = montaStatusDeRefresh(dir, path.resolve('backend/specs'), new Date('2026-10-04T06:30:00.000Z')).queries!;
+  assert.equal(cedo.find((x) => x.id === 'protocolos-geral')!.status, 'ok');
+  // Se o refresh continuar sem rodar, o alarme volta — e aí é verdadeiro, contado da madrugada.
+  const tarde = montaStatusDeRefresh(dir, path.resolve('backend/specs'), new Date('2026-10-04T08:00:00.000Z')).queries!;
+  const geral = tarde.find((x) => x.id === 'protocolos-geral')!;
+  assert.equal(geral.status, 'vencida');
+  assert.equal(geral.paradaDesde, '2026-10-04T06:05:00.000Z');
+});
+
 test('grupo PARADO além de 2× o intervalo vira vencida, com a hora do último sucesso — mesmo sem falha', async () => {
   // O caso do #129: nada falhou, nada rodou. Com a régua de 2 DIAS, isto saía ok.
   const dir = tmp();
