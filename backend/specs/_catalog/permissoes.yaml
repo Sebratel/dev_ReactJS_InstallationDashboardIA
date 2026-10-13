@@ -1,72 +1,25 @@
 # MANTIDO POR HUMANOS — este arquivo NÃO é sobrescrito por `npm run extract`.
 #
-# Quem abre cada aba do dashboard. APLICADO desde 13/10/2026 por
-# `backend/api/src/permissoes.ts` — o mesmo modelo do dashboard comercial
-# (`dados_ReactJS_CommercialDashboards`), com a configuração aqui em vez de numa
-# tela de admin, porque a API é somente leitura.
+# QUEM ABRE CADA ABA NÃO MORA MAIS AQUI. Desde 13/10/2026 (ACHADOS #208) a regra fica no
+# banco da plataforma, `DB_InstalacaoDashboard` (tabelas `acesso_*`,
+# `backend/tools/banco/sql/acesso.sql`), e admin/dev a mudam pela tela "Acessos".
+# Quem lê é `backend/api/src/permissoes.ts`.
 #
-# COMO FUNCIONA
-#   - admin: abre TODAS as abas. Vem de `admins:` abaixo OU de `ADMIN_EMAILS` no .env
-#     (separado por vírgula). O que está no .env vale mesmo com este arquivo quebrado.
-#   - qualquer outra conta @sebratel logada: abre SÓ as abas que a liberam.
-#   - cada aba:  modo: lista  → só os e-mails de `emails:`  (o padrão)
-#                modo: todos  → toda conta logada do domínio
-#   - aba que não aparece aqui, ou com `emails: []`: só admin.
+# O que continua aqui é o DESENHO do recorte por linha (o gestor ver só a própria equipe),
+# que NÃO é aplicado. `linhas:` tem de ficar vazio: `backend/api/test/escopo-cache.test.ts`
+# reprova se for preenchido sem `backend/api/src/escopo-cache.ts` mudar ANTES — o cache é
+# compartilhado entre todos que abrem a mesma aba, e recorte por linha mudaria o conteúdo.
 #
-# FALHA FECHADA. Chave com erro de digitação, aba que não existe, e-mail sem `@` ou
-# YAML ilegível invalidam o arquivo INTEIRO: até a correção, só ADMIN_EMAILS entra, o
-# log da API diz a linha do problema (`[permissoes] INVÁLIDO ...`) e `/api/saude`
-# mostra `permissoes.ok: false`.
-#
-# MUDAR ACESSO: edite, commit, e a API relê sozinha em até 2 s (sem reiniciar). No
-# container o `backend/specs/` vai dentro da imagem — lá, ou se reconstrói a imagem
-# ou se monta um arquivo de fora com `PERMISSOES_ARQUIVO=/caminho/permissoes.yaml`.
-#
-# O QUE ISTO NÃO FAZ: recorte de linha dentro da aba (o gestor ver só a própria
-# equipe). `linhas:` tem de ficar vazio — preenchido, o arquivo é recusado, porque
-# declarar um recorte que nada aplica daria falsa segurança. Quando entrar,
-# `backend/api/src/escopo-cache.ts` muda ANTES (o cache é compartilhado entre quem
-# vê a mesma aba).
-
-admins:
-  - erick.azambuja@sebratel.com.br
-
-telas:
-  capa:
-    modo: lista
-    emails: []
-  visao-geral:
-    modo: lista
-    emails: []
-  agendamento-field:
-    modo: lista
-    emails: []
-  diario-instalacao:
-    modo: lista
-    emails: []
-  relatorio-do-mes:
-    modo: lista
-    emails: []
-  relatorio-do-ano:
-    modo: lista
-    emails: []
-  protocolos-detalhados:
-    modo: lista
-    emails: []
-  instalacao-reincidente:
-    modo: lista
-    emails: []
-  manutencao-inicial:
-    modo: lista
-    emails: []
-  telefonia-ouvidoria:
-    modo: lista
-    emails: []
-  premiacao-instalacao:
-    # valor de premiação por pessoa — dado sensível
-    modo: lista
-    emails: []
-  # l-inst, l-mapa e l-tec são páginas de DICA do relatório original (a tela não as
-  # navega): sem entrada, ficam só para admin.
+# Formato previsto, quando entrar:
+#   linhas:
+#     gestor:
+#       - tabela: PROTOCOLOS GERAL
+#         coluna: EQUIPE
+#         de: identidade.equipes
+#         porque: >
+#           Reproduz a segmentação por gestor do relatório de origem. Conferir com
+#           backend/specs/paridade ditado COM o filtro aplicado, não sem.
+# Papel com recorte declarado e valor ausente tem de ERRAR ALTO — cair para "sem filtro"
+# mostraria a base inteira a quem só podia ver a própria equipe.
 
 linhas: {}

@@ -130,8 +130,8 @@ decisão de **quem** é a fonte da identidade (SSO do HUBBI ou usuário local) e
 o leitor de permissões.
 
 **Autenticar não é autorizar.** Até 13/10/2026 qualquer pessoa com e-mail
-`@sebratel.com.br` que entrasse via **tudo**; desde então cada aba exige estar em
-`permissoes.yaml` (ou em `ADMIN_EMAILS`). Dentro de uma aba liberada, a pessoa ainda vê
+`@sebratel.com.br` que entrasse via **tudo**; desde então cada aba exige estar liberada
+no banco `DB_InstalacaoDashboard` (tela "Acessos") ou em `ADMIN_EMAILS`. Dentro de uma aba liberada, a pessoa ainda vê
 todas as linhas — e o que a API serve inclui:
 
 - endereço de cliente, em `field-agenda`;
@@ -150,8 +150,9 @@ todas as linhas — e o que a API serve inclui:
   `backend/api/test/servidor.test.ts`.
 - **Critério de saída que resta:** nenhum usuário autenticado alcança página com dado
   pessoal que o papel dele não autorize. **Por ABA, cumprido em 13/10/2026:**
-  `backend/api/src/permissoes.ts` lê `backend/specs/_catalog/permissoes.yaml` (modelo do
-  dashboard comercial — admin + lista de e-mails por aba), nega por padrão e responde
+  `backend/api/src/permissoes.ts` lê o banco `DB_InstalacaoDashboard` (modelo do dashboard
+  comercial — papéis viewer/dev/admin + lista de e-mails por aba, geridos na tela "Acessos"
+  por admin/dev; ACHADOS #208), nega por padrão e responde
   **403** em `/api/dashboards/:id`, `/valores` e `/layout` antes de qualquer leitura de
   cache; `backend/api/test/permissoes.test.ts` prova com o cache aquecido. **Por LINHA
   (o gestor ver só a própria equipe), em aberto:** `linhas:` tem de ficar vazio, e há

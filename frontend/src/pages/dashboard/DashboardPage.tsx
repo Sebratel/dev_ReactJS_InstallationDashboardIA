@@ -7,12 +7,19 @@
 // `usePreCargas` e `useVizinhanca` (o que adiantar) —, e os pedaços da tela são
 // componentes.
 
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { UserCog } from 'lucide-react';
 import { ehAbortError, ehErroDeAcesso, ehErroDeSessao } from '../../services/dashboardService.ts';
 import { sai } from '../../services/authService.ts';
 import { useSessaoStore } from '../../store/sessaoStore.ts';
 import { useModo } from '../../context/ModoContext.tsx';
-import { useDashboards, useEu, useLayout, usePaginaAberta, useSaude } from '../../hooks/useDadosDaTela.ts';
+import {
+  useDashboards,
+  useEu,
+  useLayout,
+  usePaginaAberta,
+  useSaude,
+} from '../../hooks/useDadosDaTela.ts';
 import { useEstadoDaTela } from '../../hooks/useEstadoDaTela.ts';
 import { useTempoReal } from '../../hooks/useTempoReal.ts';
 import { usePreCargas } from '../../hooks/usePreCargas.ts';
@@ -28,6 +35,8 @@ import { FaixaDeConferencia } from '../../components/layout/FaixaDeConferencia.t
 import { BarraDeFiltros } from '../../components/filtros/BarraDeFiltros.tsx';
 import { Capa } from '../../components/capa/Capa.tsx';
 import { SemAcesso } from '../../components/auth/SemAcesso.tsx';
+import { GestaoDeAcessos } from '../../components/acessos/GestaoDeAcessos.tsx';
+import { BotaoDeIcone } from '../../components/ui/BotaoDeIcone.tsx';
 import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
 import { KpiGridSection } from '../../components/visuais/KpiGridSection.tsx';
 import { VisualGridSection } from '../../components/visuais/VisualGridSection.tsx';
@@ -48,14 +57,16 @@ export function DashboardPage() {
   const paginaQ = usePaginaAberta(atual, layoutQ.data, filtros, clicados);
   const saude = useSaude().data ?? null;
   const eu = useEu().data ?? null;
-  // A lista já vem só com as abas desta conta (`permissoes.yaml`, filtrado no servidor).
+  const [gerindo, setGerindo] = useState(false);
+  // A lista já vem só com as abas desta conta (`permissoes.ts`, filtrado no servidor).
   // `null` enquanto ela não chegou: até lá, uma aba da URL pode ser uma que a conta não abre.
   const atualLiberada = dashboardsQ.data ? paginas.some((p) => p.id === atual) : null;
   // Erro que a tela mostra: o de sessão vira login (no `QueryCache`), e pedido
   // cancelado não é erro — é o pedido seguinte fazendo o trabalho certo. O 403 de uma
   // aba fora da lista também não: o efeito abaixo leva para uma aba liberada.
   const erroDeConsulta = [dashboardsQ.error, layoutQ.error, paginaQ.error].find(
-    (e) => e && !ehErroDeSessao(e) && !ehAbortError(e) && !(ehErroDeAcesso(e) && atualLiberada !== true),
+    (e) =>
+      e && !ehErroDeSessao(e) && !ehAbortError(e) && !(ehErroDeAcesso(e) && atualLiberada !== true),
   );
   const erro = erroDeConsulta
     ? erroDeConsulta instanceof Error
@@ -120,9 +131,11 @@ export function DashboardPage() {
   // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por query.
   const avisoSaude = avaliaSaudeQueries(saude?.refresh?.queries, paginaValida?.dadoDe);
 
-  // Logado, mas nenhuma aba liberada — `permissoes.yaml` nega por padrão.
+  // Logado, mas nenhuma aba liberada — o acesso nega por padrão (`permissoes.ts`).
   if (dashboardsQ.data && paginas.length === 0) {
-    return <SemAcesso usuario={eu?.usuario ?? null} aoSair={() => void sai().finally(() => expirou())} />;
+    return (
+      <SemAcesso usuario={eu?.usuario ?? null} aoSair={() => void sai().finally(() => expirou())} />
+    );
   }
 
   return (
@@ -152,9 +165,23 @@ export function DashboardPage() {
         ) : null
       }
       acoes={
-        <BotaoAtualizar aoClicar={atualiza} desligado={!atual} buscando={paginaQ.isFetching} />
+        <>
+          {/* Só admin/dev vê o botão; quem barra de verdade é o 403 de /api/admin/acessos. */}
+          {eu?.podeGerir ? (
+            <BotaoDeIcone
+              onClick={() => setGerindo(true)}
+              title="Acessos às abas"
+              aria-label="Acessos às abas"
+            >
+              <UserCog size={15} aria-hidden="true" />
+            </BotaoDeIcone>
+          ) : null}
+          <BotaoAtualizar aoClicar={atualiza} desligado={!atual} buscando={paginaQ.isFetching} />
+        </>
       }
     >
+      {gerindo ? <GestaoDeAcessos aoFechar={() => setGerindo(false)} /> : null}
+
       {invalidos.length > 0 ? (
         <Aviso>
           {invalidos.length} filtro(s) da URL foram ignorados: {invalidos.join(' | ')}

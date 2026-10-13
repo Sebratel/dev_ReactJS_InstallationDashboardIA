@@ -384,7 +384,9 @@ export const ehErroDeAcesso = (err: unknown): boolean =>
  *  manda o campo. */
 export interface Eu {
   usuario: string;
-  admin: boolean;
+  papel: 'viewer' | 'dev' | 'admin';
+  /** Admin ou dev: a tela mostra o botão de gestão de acessos. */
+  podeGerir: boolean;
 }
 
 /** A lista já vem SÓ com as abas que a conta pode abrir — o filtro é do servidor. */

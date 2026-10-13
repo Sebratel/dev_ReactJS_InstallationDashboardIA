@@ -15051,3 +15051,32 @@ já aquecido pelo admin. A opção `acesso` do `Servidor` é obrigatória e sem 
 
 **O que falta.** Preencher as listas — no commit, só o Erick é admin e toda aba está com
 `emails: []`: quem não é admin vê "Sem acesso ao dashboard". Recorte por linha segue em aberto.
+
+## #208 — acesso por aba no banco, com a tela "Acessos" do comercial (13/10)
+
+**O quê.** A regra de quem abre cada aba saiu do `permissoes.yaml` (#207) e foi para o
+banco da plataforma, `DB_InstalacaoDashboard`, no MariaDB 10.0.11.171 (o mesmo do
+`DB_ComercialDashboard`). Tabelas `acesso_papel`, `acesso_tela`, `acesso_tela_email` e
+`acesso_log` (`backend/tools/banco/sql/acesso.sql`, criadas por `npm run banco:cria`). Os
+papéis são os do comercial: viewer, dev (gerencia abas), admin (abre tudo e muda papel). A
+tela "Acessos" (botão no topo, só admin/dev) é a matriz pessoa × aba do comercial.
+
+**Decisão do Erick que abre exceção à regra nº 1.** A API agora ESCREVE — só em
+`/api/admin/acessos/*`, só para admin/dev, e só nas tabelas de acesso: o usuário
+`inst_acesso` não alcança mais nada, e no `acesso_log` só tem INSERT (o rastro não se apaga
+pela API). Toda mudança grava antes/depois no log na mesma transação. CSRF mais estrito
+que o de `/auth/*`: sem `Origin`/`Referer`, recusa. Qualquer outro POST em `/api` segue 405.
+
+**Falha fechada, de novo.** Aba sem linha no banco = só admin. Linha estranha no banco
+(papel fora do ENUM, aba que não existe) é descartada, nunca promovida. Banco fora depois
+de lido: vale a última leitura boa, e `/api/saude` diz `permissoes.ok: false`. Banco fora
+no boot, ou ACESSO_DB_* ausentes: só ADMIN_EMAILS/DEV_EMAILS entram. Dev não muda papel
+nem remove quem tem papel (senão se promoveria); o papel do .env a tela não muda.
+
+**Por que banco e não YAML.** Com tela de gestão, o arquivo dentro da imagem não serve
+(mudar pediria rebuild) e o volume da stack já apagou a configuração do comercial uma vez.
+O banco não pertence à stack. É também o lugar das três planilhas do Google, na fase 2
+(n8n copiando a cada 15 min — a aplicação deixa de falar com o Google).
+
+`permissoes.yaml` ficou só com o desenho do recorte por linha (`linhas: {}`), que a trava
+de `escopo-cache.test.ts` continua lendo.

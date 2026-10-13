@@ -24,7 +24,8 @@ import { PollerRealtime } from './poller-realtime.ts';
 import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
 import { comoLiberar } from './porta.ts';
 import { decideLogin } from './portao-login.ts';
-import { carregaAcesso } from './permissoes.ts';
+import { criaAcesso } from './permissoes.ts';
+import { configDoAmbiente, lojaMaria } from './loja-acesso-maria.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 
@@ -258,19 +259,25 @@ let agendador: Agendador | null = null;
  */
 let poller: PollerRealtime | null = null;
 
+// Quem abre cada aba: o `DB_InstalacaoDashboard` (ACHADOS #208), lido antes de abrir a porta e
+// relido a cada 30 s. Sem ACESSO_DB_* no ambiente, ou com o banco fora no boot, só
+// ADMIN_EMAILS/DEV_EMAILS entram — nunca "todo mundo vê".
+const configDoAcesso = configDoAmbiente(process.env);
+const acesso = criaAcesso({
+  loja: configDoAcesso ? lojaMaria(configDoAcesso) : null,
+  telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
+  adminsDoAmbiente: (process.env.ADMIN_EMAILS ?? '').split(','),
+  devsDoAmbiente: (process.env.DEV_EMAILS ?? '').split(','),
+  dominio: process.env.DOMINIO_CORPORATIVO || 'sebratel.com.br',
+});
+await acesso.recarrega();
+acesso.releA(30_000);
+
 const servidor = new Servidor({
   root: ROOT,
   snapshotDir: path.join(ROOT, DIRETORIO_PADRAO),
   webDir: path.join(ROOT, 'frontend', 'dist'),
-  // Quem abre cada aba. `PERMISSOES_ARQUIVO` existe para o container: lá o
-  // `backend/specs/` vai DENTRO da imagem, e sem um arquivo montado de fora mudar
-  // acesso pediria rebuild. O arquivo é relido sozinho quando muda.
-  acesso: carregaAcesso({
-    arquivo:
-      process.env.PERMISSOES_ARQUIVO || path.join(ROOT, 'backend', 'specs', '_catalog', 'permissoes.yaml'),
-    telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
-    adminsDoAmbiente: (process.env.ADMIN_EMAILS ?? '').split(','),
-  }),
+  acesso,
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver

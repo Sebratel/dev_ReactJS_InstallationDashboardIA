@@ -64,6 +64,7 @@ import {
   type Identidade,
   type Sessoes,
 } from './identidade.ts';
+import { ErroDeAcesso, type Mudanca } from './permissoes.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
 import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
@@ -631,11 +632,24 @@ export class Servidor {
     if (rota === '/auth/interno' && req.method === 'POST') return this.autenticaInterno(req, res);
     if (rota === '/auth/logout' && req.method === 'POST') return this.logout(req, res);
 
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
+    // A gestão de acessos é a ÚNICA escrita fora de `/auth/*` (ACHADOS #208): grava quem
+    // abre cada aba no `DB_InstalacaoDashboard`, só para admin/dev (`permissoes.ts`). O
+    // CSRF aqui é mais estrito que o de `/auth/*`: sem `Origin`/`Referer` também recusa —
+    // esta rota só tem um cliente legítimo, a tela, e a tela é um navegador.
+    const ehGestaoDeAcesso = rota === '/api/admin/acessos' || rota.startsWith('/api/admin/acessos/');
+    if (ehGestaoDeAcesso && req.method === 'POST') {
+      const temOrigem = typeof req.headers.origin === 'string' || typeof req.headers.referer === 'string';
+      if (!temOrigem || !this.origemPermitida(req)) {
+        this.registraEventoSeg(req, 403, 'csrf-gestao-de-acesso');
+        responde(res, 403, { erro: 'Origem do pedido ausente ou diferente do host — recusado (proteção CSRF).' });
+        return;
+      }
+    } else if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.setHeader('Allow', 'GET, HEAD, POST');
       responde(res, 405, {
         erro: `Método ${req.method} não existe nesta rota. A API é somente leitura ` +
-          `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno e /auth/logout.`,
+          `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno, /auth/logout ` +
+          `e /api/admin/acessos/* (gestão de acessos, só admin/dev).`,
       });
       return;
     }
@@ -700,6 +714,7 @@ export class Servidor {
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
         return;
       }
+      if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
       if (rota === '/api/eventos') return this.eventos(req, res);
       if (rota.startsWith('/api/dashboards/')) {
@@ -1010,13 +1025,100 @@ export class Servidor {
     }
   }
 
+  /**
+   * `/api/admin/acessos` — a gestão de quem abre cada aba (`permissoes.ts`):
+   *
+   *   GET                                → a matriz: abas (nome, modo) × pessoas (papel, abas)
+   *   POST /pessoa  { email, telas }     → as abas de uma pessoa (substitui a lista dela)
+   *   POST /papel   { email, papel }     → viewer | dev | admin — só admin
+   *   POST /tela    { tela, modo }       → lista | todos
+   *   POST /remove  { email }            → tira a pessoa de tudo
+   *
+   * Quem não é admin/dev leva 403 também no GET: a matriz lista e-mails de colegas.
+   * Os POST respondem com a matriz nova, já relida do banco.
+   */
+  private async gestaoDeAcesso(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rota: string,
+    quem: Identidade,
+  ): Promise<void> {
+    const acesso = this.opts.acesso;
+    if (!acesso.podeGerir(quem)) {
+      this.registraEventoSeg(req, 403, 'gestao-de-acesso-sem-papel');
+      responde(res, 403, { erro: 'Só administrador ou dev gerencia acessos.' });
+      return;
+    }
+    const sub = rota.slice('/api/admin/acessos'.length);
+    const navegaveis = this.dashboards.filter((d) => d.type !== 'Tooltip');
+    const nomes = new Map(navegaveis.map((d) => [d.id, d.name] as const));
+    const respondeMatriz = (): void => {
+      const m = acesso.matriz();
+      responde(res, 200, {
+        eu: { usuario: quem.usuario, papel: acesso.papelDe(quem) },
+        telas: m.telas.filter((t) => nomes.has(t.id)).map((t) => ({ ...t, nome: nomes.get(t.id) })),
+        pessoas: m.pessoas.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        banco: acesso.estado(),
+      });
+    };
+
+    if (req.method !== 'POST') {
+      if (sub !== '') {
+        responde(res, 404, { erro: `'${sub}' não existe em /api/admin/acessos.` });
+        return;
+      }
+      respondeMatriz();
+      return;
+    }
+
+    let corpo: Record<string, unknown>;
+    try {
+      const c = parseJsonSeguro(await leCorpo(req));
+      if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('corpo não é objeto');
+      corpo = c as Record<string, unknown>;
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido — esperado um objeto JSON.' });
+      return;
+    }
+    const texto = (v: unknown): string => (typeof v === 'string' ? v : '');
+    let mudanca: Mudanca;
+    if (sub === '/pessoa') {
+      const telas = Array.isArray(corpo.telas) ? corpo.telas.filter((t): t is string => typeof t === 'string') : [];
+      mudanca = { acao: 'telas-da-pessoa', email: texto(corpo.email), telas };
+    } else if (sub === '/papel') {
+      mudanca = { acao: 'papel', email: texto(corpo.email), papel: texto(corpo.papel) as 'viewer' };
+    } else if (sub === '/tela') {
+      mudanca = { acao: 'modo-da-tela', tela: texto(corpo.tela), modo: texto(corpo.modo) as 'lista' };
+    } else if (sub === '/remove') {
+      mudanca = { acao: 'remove-pessoa', email: texto(corpo.email) };
+    } else {
+      responde(res, 404, { erro: `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove.` });
+      return;
+    }
+    try {
+      await acesso.muda(quem, mudanca);
+    } catch (err) {
+      if (err instanceof ErroDeAcesso) {
+        if (err.status === 403) this.registraEventoSeg(req, 403, 'gestao-de-acesso-recusada');
+        responde(res, err.status, { erro: err.message });
+        return;
+      }
+      throw err;
+    }
+    respondeMatriz();
+  }
+
   private lista(res: http.ServerResponse, quem: Identidade): void {
     const manifesto = leManifesto(this.opts.snapshotDir);
     const emDisco = new Set(manifesto?.tabelas.map((t) => t.query) ?? []);
     responde(res, 200, {
       // A tela monta a navegação SÓ com o que vem aqui. Esconder a aba é conforto; quem
       // barra é o 403 de `atende()` — pedir a aba pela URL dá no mesmo lugar.
-      eu: { usuario: quem.usuario, admin: this.opts.acesso.ehAdmin(quem) },
+      eu: {
+        usuario: quem.usuario,
+        papel: this.opts.acesso.papelDe(quem),
+        podeGerir: this.opts.acesso.podeGerir(quem),
+      },
       dashboards: this.dashboards.filter((d) => this.opts.acesso.podeVer(quem, d.id)).map((d) => ({
         id: d.id,
         nome: d.name,

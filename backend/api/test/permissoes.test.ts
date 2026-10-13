@@ -1,7 +1,7 @@
-// O portão de abas (`permissoes.ts`) — quem abre o quê, e o que acontece quando o
-// `permissoes.yaml` está errado. Cada caso de "nega" aqui é um ponto em que o modelo
-// do dashboard comercial libera (aba sem configuração, aba desconhecida), e que este
-// projeto decidiu fechar.
+// O portão de abas e a gestão de acessos (`permissoes.ts`) — quem abre o quê, quem pode
+// mudar, e o que acontece com o banco fora do ar. Cada caso de "nega" aqui é um ponto em
+// que o modelo do dashboard comercial libera (aba sem configuração, aba desconhecida), e
+// que este projeto decidiu fechar.
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -9,13 +9,12 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import YAML from 'yaml';
 import { MemoryCache } from '../../packages/query-engine/src/cache-memory.ts';
 import { escreve } from '../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import type { Identidade } from '../src/identidade.ts';
-import { carregaAcesso, validaPermissoes } from '../src/permissoes.ts';
+import { criaAcesso, type LinhasDeAcesso, type LojaDeAcesso, type Mudanca } from '../src/permissoes.ts';
 import { Servidor } from '../src/servidor.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -24,132 +23,202 @@ const TELAS = ['capa', 'visao-geral', 'premiacao-instalacao'];
 
 const pessoa = (email: string): Identidade => ({ usuario: email, papeis: ['autenticado'] });
 
-function yamlTemporario(conteudo: string): string {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'permissoes-'));
-  const arquivo = path.join(dir, 'permissoes.yaml');
-  fs.writeFileSync(arquivo, conteudo);
-  return arquivo;
+/** A loja em memória: mesmas regras de gravação da do MariaDB, e um log que só cresce. */
+function lojaEmMemoria(inicial: Partial<LinhasDeAcesso> = {}) {
+  const linhas: LinhasDeAcesso = { papeis: [], telas: [], emails: [], ...inicial };
+  const log: { por: string; acao: string }[] = [];
+  let quebrada = false;
+  const loja: LojaDeAcesso = {
+    async le() {
+      if (quebrada) throw new Error('banco fora');
+      return structuredClone(linhas);
+    },
+    async aplica(m: Mudanca, por: string) {
+      if (quebrada) throw new Error('banco fora');
+      if (m.acao === 'telas-da-pessoa') {
+        linhas.emails = linhas.emails.filter((e) => e.email !== m.email);
+        for (const tela of m.telas) linhas.emails.push({ tela, email: m.email });
+      } else if (m.acao === 'papel') {
+        linhas.papeis = linhas.papeis.filter((p) => p.email !== m.email);
+        if (m.papel !== 'viewer') linhas.papeis.push({ email: m.email, papel: m.papel });
+      } else if (m.acao === 'modo-da-tela') {
+        linhas.telas = linhas.telas.filter((t) => t.tela !== m.tela);
+        linhas.telas.push({ tela: m.tela, modo: m.modo });
+      } else {
+        linhas.papeis = linhas.papeis.filter((p) => p.email !== m.email);
+        linhas.emails = linhas.emails.filter((e) => e.email !== m.email);
+      }
+      log.push({ por, acao: m.acao });
+    },
+  };
+  return { loja, linhas, log, quebra: (v = true) => (quebrada = v) };
 }
 
-function acessoDe(conteudo: string, extra: { adminsDoAmbiente?: string[] } = {}) {
+async function acessoCom(inicial: Partial<LinhasDeAcesso> = {}, extra: { admins?: string[]; devs?: string[] } = {}) {
+  const banco = lojaEmMemoria(inicial);
   const logs: string[] = [];
-  const acesso = carregaAcesso({
-    arquivo: yamlTemporario(conteudo),
+  const acesso = criaAcesso({
+    loja: banco.loja,
     telasConhecidas: TELAS,
+    adminsDoAmbiente: extra.admins ?? ['chefe@sebratel.com.br'],
+    devsDoAmbiente: extra.devs ?? [],
+    dominio: 'sebratel.com.br',
     log: (m) => logs.push(m),
-    ...extra,
   });
-  return { acesso, logs };
+  await acesso.recarrega();
+  return { acesso, banco, logs };
 }
 
-const BASE = `
-admins: [chefe@sebratel.com.br]
-telas:
-  capa:
-    modo: todos
-  visao-geral:
-    emails: [Fulano@Sebratel.com.br]
-linhas: {}
-`;
+const BASE: Partial<LinhasDeAcesso> = {
+  telas: [{ tela: 'capa', modo: 'todos' }],
+  emails: [{ tela: 'visao-geral', email: 'Fulano@Sebratel.com.br' }],
+};
 
-test('aba com lista: só quem está nela — e o e-mail não depende de maiúscula', () => {
-  const { acesso } = acessoDe(BASE);
+// ------------------------------------------------------------------- quem abre o quê
+
+test('aba com lista: só quem está nela — e o e-mail não depende de maiúscula', async () => {
+  const { acesso } = await acessoCom(BASE);
   assert.equal(acesso.podeVer(pessoa('fulano@sebratel.com.br'), 'visao-geral'), true);
   assert.equal(acesso.podeVer(pessoa('FULANO@sebratel.com.br'), 'visao-geral'), true);
   assert.equal(acesso.podeVer(pessoa('ciclano@sebratel.com.br'), 'visao-geral'), false);
 });
 
-test('aba em modo todos: toda conta logada', () => {
-  const { acesso } = acessoDe(BASE);
+test('aba em modo todos: toda conta logada', async () => {
+  const { acesso } = await acessoCom(BASE);
   assert.equal(acesso.podeVer(pessoa('qualquer@sebratel.com.br'), 'capa'), true);
 });
 
-test('aba fora do arquivo: só admin — no comercial ela nasceria aberta', () => {
-  const { acesso } = acessoDe(BASE);
+test('aba sem regra no banco: só admin — no comercial ela nasceria aberta', async () => {
+  const { acesso } = await acessoCom(BASE);
   assert.equal(acesso.podeVer(pessoa('fulano@sebratel.com.br'), 'premiacao-instalacao'), false);
   assert.equal(acesso.podeVer(pessoa('chefe@sebratel.com.br'), 'premiacao-instalacao'), true);
 });
 
-test('aba que não existe: ninguém — no comercial, "rota nova → liberada"', () => {
-  const { acesso } = acessoDe(BASE);
+test('aba que não existe: ninguém — no comercial, "rota nova → liberada"', async () => {
+  const { acesso } = await acessoCom(BASE);
   assert.equal(acesso.podeVer(pessoa('chefe@sebratel.com.br'), 'aba-inventada'), false);
 });
 
-test('conta nova, fora de tudo: não abre nada além do que é `todos`', () => {
-  const { acesso } = acessoDe(BASE);
-  const nova = pessoa('recem.chegado@sebratel.com.br');
-  assert.deepEqual(TELAS.filter((t) => acesso.podeVer(nova, t)), ['capa']);
-  assert.equal(acesso.ehAdmin(nova), false);
+test('dev não abre tudo: ele gerencia, mas vê só o que tem liberado', async () => {
+  const { acesso } = await acessoCom({ ...BASE, papeis: [{ email: 'dev@sebratel.com.br', papel: 'dev' }] });
+  const dev = pessoa('dev@sebratel.com.br');
+  assert.equal(acesso.podeGerir(dev), true);
+  assert.equal(acesso.podeVer(dev, 'premiacao-instalacao'), false);
 });
 
-test('identidade sem e-mail não é pessoa e não passa — só máquina declarada passa', () => {
-  const { acesso } = acessoDe(BASE);
+test('identidade sem e-mail não é pessoa e não passa — só máquina declarada passa, e não gerencia', async () => {
+  const { acesso } = await acessoCom(BASE);
   assert.equal(acesso.podeVer({ usuario: 'teste', papeis: ['autenticado'] }, 'capa'), false);
-  assert.equal(acesso.podeVer({ usuario: 'aquecedor-interno', papeis: ['interno'] }, 'premiacao-instalacao'), true);
+  const aquecedor = { usuario: 'aquecedor-interno', papeis: ['interno'] };
+  assert.equal(acesso.podeVer(aquecedor, 'premiacao-instalacao'), true);
+  assert.equal(acesso.podeGerir(aquecedor), false);
   assert.equal(acesso.podeVer({ usuario: 'dev-local', papeis: ['sem-login'] }, 'premiacao-instalacao'), true);
 });
 
-for (const [caso, conteudo] of [
-  ['chave com erro de digitação', `admins: []\ntela:\n  capa: {modo: todos}\n`],
-  ['aba que não existe', `telas:\n  visao-gerla: {emails: [a@sebratel.com.br]}\n`],
-  ['e-mail sem @', `telas:\n  capa: {emails: [fulano.sebratel.com.br]}\n`],
-  ['modo desconhecido', `telas:\n  capa: {modo: alguns}\n`],
-  ['todos com lista (contraditório)', `telas:\n  capa: {modo: todos, emails: [a@sebratel.com.br]}\n`],
-  ['recorte por linha declarado (nada o aplicaria)', `linhas:\n  gestor: [{tabela: X, coluna: Y}]\n`],
-  ['YAML ilegível', `telas: [capa: {\n`],
-] as const) {
-  test(`arquivo inválido (${caso}): nega tudo, menos ADMIN_EMAILS — e diz no log`, () => {
-    const { acesso, logs } = acessoDe(conteudo, {
-      adminsDoAmbiente: ['plantao@sebratel.com.br'],
-    });
-    assert.equal(acesso.podeVer(pessoa('qualquer@sebratel.com.br'), 'capa'), false);
-    assert.equal(acesso.podeVer(pessoa('plantao@sebratel.com.br'), 'premiacao-instalacao'), true);
-    assert.equal(acesso.estado().ok, false);
-    assert.ok(logs.some((l) => l.includes('INVÁLIDO')), logs.join('\n'));
+test('linha estranha no banco é descartada, nunca promovida', async () => {
+  const { acesso } = await acessoCom({
+    papeis: [{ email: 'x@sebratel.com.br', papel: 'superadmin' }],
+    telas: [{ tela: 'aba-velha', modo: 'todos' }],
+    emails: [{ tela: 'capa', email: 'sem-arroba' }],
   });
-}
+  assert.equal(acesso.papelDe(pessoa('x@sebratel.com.br')), 'viewer');
+  assert.equal(acesso.podeVer(pessoa('x@sebratel.com.br'), 'capa'), false);
+});
 
-test('arquivo ausente: nega tudo, menos ADMIN_EMAILS', () => {
-  const acesso = carregaAcesso({
-    arquivo: path.join(os.tmpdir(), 'nao-existe-permissoes.yaml'),
-    telasConhecidas: TELAS,
-    adminsDoAmbiente: ['plantao@sebratel.com.br'],
-    log: () => {},
+// ------------------------------------------------------------------- banco fora do ar
+
+test('sem banco configurado: só o .env entra, e a gestão responde 503', async () => {
+  const acesso = criaAcesso({
+    loja: null, telasConhecidas: TELAS, adminsDoAmbiente: ['chefe@sebratel.com.br'], dominio: 'sebratel.com.br', log: () => {},
   });
+  await acesso.recarrega();
   assert.equal(acesso.podeVer(pessoa('qualquer@sebratel.com.br'), 'capa'), false);
-  assert.equal(acesso.podeVer(pessoa('plantao@sebratel.com.br'), 'capa'), true);
-});
-
-test('o .env não é rebaixado pelo arquivo', () => {
-  const { acesso } = acessoDe(`admins: []\n`, { adminsDoAmbiente: [' Plantao@Sebratel.com.br '] });
-  assert.equal(acesso.ehAdmin(pessoa('plantao@sebratel.com.br')), true);
-});
-
-test('mudar o arquivo vale sem reiniciar — e tirar alguém tira de verdade', () => {
-  let t = 0;
-  const arquivo = yamlTemporario(BASE);
-  const acesso = carregaAcesso({ arquivo, telasConhecidas: TELAS, releituraMs: 1000, agora: () => t, log: () => {} });
-  const fulano = pessoa('fulano@sebratel.com.br');
-  assert.equal(acesso.podeVer(fulano, 'visao-geral'), true);
-
-  fs.writeFileSync(arquivo, BASE.replace('emails: [Fulano@Sebratel.com.br]', 'emails: []  # saiu da equipe'));
-  t += 1001;
-  assert.equal(acesso.podeVer(fulano, 'visao-geral'), false);
-});
-
-test('o permissoes.yaml do repositório é válido contra as abas que existem', () => {
-  // Um arquivo commitado quebrado tranca todo mundo fora (só ADMIN_EMAILS entra).
-  // Este teste é o que impede isso de chegar ao staging.
-  const ids = loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id);
-  const doc: unknown = YAML.parse(
-    fs.readFileSync(path.join(ROOT, 'backend', 'specs', '_catalog', 'permissoes.yaml'), 'utf8'),
+  assert.equal(acesso.podeVer(pessoa('chefe@sebratel.com.br'), 'capa'), true);
+  assert.equal(acesso.estado().ok, false);
+  await assert.rejects(
+    acesso.muda(pessoa('chefe@sebratel.com.br'), { acao: 'modo-da-tela', tela: 'capa', modo: 'todos' }),
+    { status: 503 },
   );
-  assert.doesNotThrow(() => validaPermissoes(doc, ids));
 });
 
-// ---------------------------------------------------------------------------
-// Ponta a ponta: o portão está ANTES do cache
-// ---------------------------------------------------------------------------
+test('banco cai depois de lido: vale a última leitura boa — e a saúde diz que não está em dia', async () => {
+  const { acesso, banco, logs } = await acessoCom(BASE);
+  banco.quebra();
+  await acesso.recarrega();
+  assert.equal(acesso.podeVer(pessoa('fulano@sebratel.com.br'), 'visao-geral'), true);
+  assert.equal(acesso.estado().ok, false);
+  assert.ok(logs.some((l) => l.includes('mantendo a última leitura boa')));
+});
+
+test('banco fora já no boot: só o .env entra até ele voltar', async () => {
+  const banco = lojaEmMemoria(BASE);
+  banco.quebra();
+  const acesso = criaAcesso({
+    loja: banco.loja, telasConhecidas: TELAS, adminsDoAmbiente: ['chefe@sebratel.com.br'], dominio: 'sebratel.com.br', log: () => {},
+  });
+  await acesso.recarrega();
+  assert.equal(acesso.podeVer(pessoa('fulano@sebratel.com.br'), 'visao-geral'), false);
+  assert.equal(acesso.podeVer(pessoa('chefe@sebratel.com.br'), 'visao-geral'), true);
+  banco.quebra(false);
+  await acesso.recarrega();
+  assert.equal(acesso.podeVer(pessoa('fulano@sebratel.com.br'), 'visao-geral'), true);
+});
+
+// ------------------------------------------------------------------- quem muda o quê
+
+test('dev dá e tira aba — e vale na hora, com log de quem fez', async () => {
+  const { acesso, banco } = await acessoCom(BASE, { devs: ['dev@sebratel.com.br'] });
+  const dev = pessoa('dev@sebratel.com.br');
+  await acesso.muda(dev, { acao: 'telas-da-pessoa', email: ' Novo@Sebratel.com.br ', telas: ['visao-geral'] });
+  assert.equal(acesso.podeVer(pessoa('novo@sebratel.com.br'), 'visao-geral'), true);
+  await acesso.muda(dev, { acao: 'telas-da-pessoa', email: 'novo@sebratel.com.br', telas: [] });
+  assert.equal(acesso.podeVer(pessoa('novo@sebratel.com.br'), 'visao-geral'), false);
+  assert.deepEqual(banco.log.map((l) => l.por), ['dev@sebratel.com.br', 'dev@sebratel.com.br']);
+});
+
+test('viewer não gerencia nada', async () => {
+  const { acesso } = await acessoCom(BASE);
+  await assert.rejects(
+    acesso.muda(pessoa('fulano@sebratel.com.br'), { acao: 'telas-da-pessoa', email: 'fulano@sebratel.com.br', telas: TELAS }),
+    { status: 403 },
+  );
+});
+
+test('dev não muda papel nem remove quem tem papel — senão se promoveria', async () => {
+  const { acesso } = await acessoCom({ papeis: [{ email: 'outro.dev@sebratel.com.br', papel: 'dev' }] }, { devs: ['dev@sebratel.com.br'] });
+  const dev = pessoa('dev@sebratel.com.br');
+  await assert.rejects(acesso.muda(dev, { acao: 'papel', email: 'dev@sebratel.com.br', papel: 'admin' }), { status: 403 });
+  await assert.rejects(acesso.muda(dev, { acao: 'remove-pessoa', email: 'outro.dev@sebratel.com.br' }), { status: 403 });
+});
+
+test('admin muda papel — mas não o de quem está no .env', async () => {
+  const { acesso } = await acessoCom({}, { devs: ['fixo@sebratel.com.br'] });
+  const chefe = pessoa('chefe@sebratel.com.br');
+  await acesso.muda(chefe, { acao: 'papel', email: 'novo@sebratel.com.br', papel: 'admin' });
+  assert.equal(acesso.papelDe(pessoa('novo@sebratel.com.br')), 'admin');
+  assert.equal(acesso.podeVer(pessoa('novo@sebratel.com.br'), 'premiacao-instalacao'), true);
+  await assert.rejects(acesso.muda(chefe, { acao: 'papel', email: 'fixo@sebratel.com.br', papel: 'viewer' }), { status: 400 });
+});
+
+test('e-mail fora do domínio e aba desconhecida são recusados', async () => {
+  const { acesso } = await acessoCom();
+  const chefe = pessoa('chefe@sebratel.com.br');
+  await assert.rejects(acesso.muda(chefe, { acao: 'telas-da-pessoa', email: 'alguem@gmail.com', telas: ['capa'] }), { status: 400 });
+  await assert.rejects(acesso.muda(chefe, { acao: 'telas-da-pessoa', email: 'a@sebratel.com.br', telas: ['aba-x'] }), { status: 400 });
+  await assert.rejects(acesso.muda(chefe, { acao: 'modo-da-tela', tela: 'aba-x', modo: 'todos' }), { status: 400 });
+});
+
+test('banco falha na gravação: 503 e nada muda', async () => {
+  const { acesso, banco } = await acessoCom(BASE);
+  banco.quebra();
+  await assert.rejects(
+    acesso.muda(pessoa('chefe@sebratel.com.br'), { acao: 'telas-da-pessoa', email: 'novo@sebratel.com.br', telas: ['capa'] }),
+    { status: 503 },
+  );
+  assert.equal(acesso.podeVer(pessoa('novo@sebratel.com.br'), 'premiacao-instalacao'), false);
+});
+
+// ------------------------------------------------------------------- ponta a ponta
 
 async function dirComCapa(): Promise<string> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'permissoes-snap-'));
@@ -170,66 +239,115 @@ async function dirComCapa(): Promise<string> {
   return dir;
 }
 
-test('com o cache já quente, quem não tem a aba leva 403 — em todas as rotas dela', async () => {
+async function sobe(inicial: Partial<LinhasDeAcesso>) {
   const ids = loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id);
-  const acesso = carregaAcesso({
-    arquivo: yamlTemporario(`
-admins: [chefe@sebratel.com.br]
-telas:
-  capa:
-    emails: [liberado@sebratel.com.br]
-`),
+  const acesso = criaAcesso({
+    loja: lojaEmMemoria(inicial).loja,
     telasConhecidas: ids,
+    adminsDoAmbiente: ['chefe@sebratel.com.br'],
+    devsDoAmbiente: ['dev@sebratel.com.br'],
+    dominio: 'sebratel.com.br',
     log: () => {},
   });
-  let quemPede = pessoa('chefe@sebratel.com.br');
+  await acesso.recarrega();
+  const estado = { quem: pessoa('chefe@sebratel.com.br') };
   const inst = new Servidor({
     root: ROOT,
     snapshotDir: await dirComCapa(),
     webDir: WEB,
     agora: () => new Date('2026-10-13T12:00:00.000Z'),
     cache: new MemoryCache(),
-    identifica: () => quemPede,
+    identifica: () => estado.quem,
     acesso,
   });
   const http = inst.criaHttp();
   await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
   const { port } = http.address() as { port: number };
-  const busca = (rota: string) => fetch(`http://127.0.0.1:${port}${rota}`);
-  try {
-    // O admin aquece.
-    assert.equal((await busca('/api/dashboards/capa')).status, 200);
-    assert.equal((await (await busca('/api/dashboards/capa')).json()).cache, 'hit');
+  const base = `http://127.0.0.1:${port}`;
+  return {
+    estado,
+    base,
+    busca: (rota: string, init?: RequestInit) => fetch(`${base}${rota}`, init),
+    fecha: () =>
+      new Promise<void>((ok) => {
+        inst.destroi();
+        http.close(() => ok());
+      }),
+  };
+}
 
-    // Sem a aba: 403 na página, nos valores e no layout — mesmo com a resposta pronta.
-    quemPede = pessoa('sem.acesso@sebratel.com.br');
-    for (const rota of [
-      '/api/dashboards/capa',
-      '/api/dashboards/capa/valores?tabela=X&coluna=Y',
-      '/api/dashboards/capa/layout',
-    ]) {
-      const r = await busca(rota);
+test('com o cache já quente, quem não tem a aba leva 403 — em todas as rotas dela', async () => {
+  const s = await sobe({ emails: [{ tela: 'capa', email: 'liberado@sebratel.com.br' }] });
+  try {
+    assert.equal((await s.busca('/api/dashboards/capa')).status, 200);
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
+
+    s.estado.quem = pessoa('sem.acesso@sebratel.com.br');
+    for (const rota of ['/api/dashboards/capa', '/api/dashboards/capa/valores?tabela=X&coluna=Y', '/api/dashboards/capa/layout']) {
+      const r = await s.busca(rota);
       assert.equal(r.status, 403, rota);
       assert.doesNotMatch(await r.text(), /visuais/, `${rota} vazou conteúdo da página`);
     }
-    const lista = await (await busca('/api/dashboards')).json();
+    const lista = await (await s.busca('/api/dashboards')).json();
     assert.deepEqual(lista.dashboards, []);
-    assert.deepEqual(lista.eu, { usuario: 'sem.acesso@sebratel.com.br', admin: false });
+    assert.deepEqual(lista.eu, { usuario: 'sem.acesso@sebratel.com.br', papel: 'viewer', podeGerir: false });
 
-    // Com a aba: a MESMA entrada que o admin aqueceu — o cache continua compartilhado.
-    quemPede = pessoa('liberado@sebratel.com.br');
-    assert.equal((await (await busca('/api/dashboards/capa')).json()).cache, 'hit');
-    assert.deepEqual(
-      (await (await busca('/api/dashboards')).json()).dashboards.map((d: { id: string }) => d.id),
-      ['capa'],
-    );
-
-    // Página inexistente segue 404, não 403.
-    assert.equal((await busca('/api/dashboards/nao-existe')).status, 404);
+    s.estado.quem = pessoa('liberado@sebratel.com.br');
+    assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
+    assert.equal((await s.busca('/api/dashboards/nao-existe')).status, 404);
   } finally {
-    await new Promise<void>((ok) => {
-      inst.destroi();
-      http.close(() => ok());
+    await s.fecha();
+  }
+});
+
+test('/api/admin/acessos: viewer leva 403 até no GET (a matriz lista e-mails)', async () => {
+  const s = await sobe({});
+  try {
+    s.estado.quem = pessoa('fulano@sebratel.com.br');
+    assert.equal((await s.busca('/api/admin/acessos')).status, 403);
+    const r = await s.busca('/api/admin/acessos/pessoa', {
+      method: 'POST',
+      headers: { origin: s.base, 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'fulano@sebratel.com.br', telas: ['capa'] }),
     });
+    assert.equal(r.status, 403);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('/api/admin/acessos: dev dá a aba pela tela — e o POST sem Origin é recusado (CSRF)', async () => {
+  const s = await sobe({});
+  try {
+    s.estado.quem = pessoa('dev@sebratel.com.br');
+    const matriz = await (await s.busca('/api/admin/acessos')).json();
+    assert.ok(matriz.telas.some((t: { id: string; nome: string }) => t.id === 'capa' && t.nome));
+    assert.ok(!matriz.telas.some((t: { id: string }) => t.id === 'l-inst'), 'página de dica não entra na matriz');
+
+    const corpo = JSON.stringify({ email: 'novo@sebratel.com.br', telas: ['capa'] });
+    const semOrigem = await s.busca('/api/admin/acessos/pessoa', { method: 'POST', body: corpo });
+    assert.equal(semOrigem.status, 403);
+    const outraOrigem = await s.busca('/api/admin/acessos/pessoa', { method: 'POST', body: corpo, headers: { origin: 'http://malicioso.example' } });
+    assert.equal(outraOrigem.status, 403);
+
+    const ok = await s.busca('/api/admin/acessos/pessoa', { method: 'POST', body: corpo, headers: { origin: s.base } });
+    assert.equal(ok.status, 200);
+    const nova = await ok.json();
+    assert.deepEqual(nova.pessoas.find((p: { email: string }) => p.email === 'novo@sebratel.com.br').telas, ['capa']);
+
+    s.estado.quem = pessoa('novo@sebratel.com.br');
+    assert.equal((await s.busca('/api/dashboards/capa')).status, 200);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('POST em qualquer outra rota de /api continua 405 — a exceção é só a gestão de acessos', async () => {
+  const s = await sobe({});
+  try {
+    const r = await s.busca('/api/dashboards/capa', { method: 'POST', headers: { origin: s.base } });
+    assert.equal(r.status, 405);
+  } finally {
+    await s.fecha();
   }
 });
