@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: premiacao-instalacao
-base: backend/specs/dashboards/premiacao-instalacao.spec.yaml
+base: backend/specs/dashboards/06-premiacao-instalacao.spec.yaml
 kpis:
   - visual: 2a9ac8db91770695881e
     enfase: normal

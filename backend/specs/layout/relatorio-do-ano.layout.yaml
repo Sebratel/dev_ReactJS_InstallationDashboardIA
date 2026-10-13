@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: relatorio-do-ano
-base: backend/specs/dashboards/relatorio-do-ano.spec.yaml
+base: backend/specs/dashboards/05-relatorio-do-ano.spec.yaml
 kpis:
   - visual: 08b3a855d0ea88074546
     enfase: normal

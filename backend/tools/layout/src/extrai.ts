@@ -186,6 +186,17 @@ function montaFaixas(c: Classificado): Faixa[] {
   return faixas;
 }
 
+/** O arquivo da spec da página `id`. O nome leva o prefixo da ordem das abas
+ *  (`01-capa.spec.yaml`), então não sai do `id`: procura-se a linha `id:` de dentro. */
+function arquivoDaSpec(id: string): string {
+  const dir = path.join(ROOT, 'backend', 'specs', 'dashboards');
+  const achado = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith('.spec.yaml'))
+    .find((f) => fs.readFileSync(path.join(dir, f), 'utf8').split(/\r?\n/).includes(`id: ${id}`));
+  return `backend/specs/dashboards/${achado ?? `${id}.spec.yaml`}`;
+}
+
 async function extrai(dash: DashboardSpec, model: SemanticModel): Promise<LayoutSpec> {
   const { ev } = await carrega({
     dir: path.join(ROOT, DIRETORIO_PADRAO), model, dashboards: [dash], now: AGORA,
@@ -203,7 +214,7 @@ async function extrai(dash: DashboardSpec, model: SemanticModel): Promise<Layout
 
   return {
     pagina: dash.id,
-    base: `backend/specs/dashboards/${dash.id}.spec.yaml`,
+    base: arquivoDaSpec(dash.id),
     kpis,
     faixas: montaFaixas(c),
     ocultos: c.ocultos,

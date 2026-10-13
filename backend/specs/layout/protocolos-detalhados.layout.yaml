@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: protocolos-detalhados
-base: backend/specs/dashboards/protocolos-detalhados.spec.yaml
+base: backend/specs/dashboards/08-protocolos-detalhados.spec.yaml
 kpis:
   - visual: 2b1d0cdb06764745d106
     enfase: normal

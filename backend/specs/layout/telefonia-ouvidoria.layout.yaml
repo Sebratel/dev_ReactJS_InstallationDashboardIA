@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: telefonia-ouvidoria
-base: backend/specs/dashboards/telefonia-ouvidoria.spec.yaml
+base: backend/specs/dashboards/09-telefonia-ouvidoria.spec.yaml
 kpis:
   - visual: 4580554505674d5d2c43
     enfase: normal

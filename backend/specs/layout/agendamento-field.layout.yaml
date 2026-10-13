@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: agendamento-field
-base: backend/specs/dashboards/agendamento-field.spec.yaml
+base: backend/specs/dashboards/03-agendamento-field.spec.yaml
 kpis:
   - visual: 116ebf72cb2018a25249
     enfase: normal

@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: instalacao-reincidente
-base: backend/specs/dashboards/instalacao-reincidente.spec.yaml
+base: backend/specs/dashboards/11-instalacao-reincidente.spec.yaml
 kpis:
   - visual: 03b4bcd9157cec19d13e
     enfase: normal

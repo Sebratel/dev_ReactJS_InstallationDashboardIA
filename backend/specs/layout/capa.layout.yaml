@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: capa
-base: backend/specs/dashboards/capa.spec.yaml
+base: backend/specs/dashboards/01-capa.spec.yaml
 kpis:
   - visual: 1d10da9f7a3e9a66d8ab
     enfase: normal

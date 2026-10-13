@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: visao-geral
-base: backend/specs/dashboards/visao-geral.spec.yaml
+base: backend/specs/dashboards/02-visao-geral.spec.yaml
 kpis:
   # Ordem = a ordem da esquerda para a direita medida ao vivo no BY (09/09/2026):
   # TOTAIS, AGENDADOS, INSTALADOS, CLIENTES DISTINTOS — os dois primeiros pares

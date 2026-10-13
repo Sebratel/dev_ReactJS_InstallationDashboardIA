@@ -14,7 +14,7 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import { inicioDoCorte, leCortesPorPagina, type CorteDePagina } from '../../semantic-model/src/corte-por-pagina.ts';
 import type { ModelColumn } from '../../semantic-model/src/types.ts';
 import { calculaCard } from '../../widget-engine/src/card.ts';
-import type { DashboardSpec, VisualSpec } from '../../widget-engine/src/spec.ts';
+import { loadDashboards, type DashboardSpec, type VisualSpec } from '../../widget-engine/src/spec.ts';
 import { carrega } from '../src/carrega.ts';
 import { escreve } from '../src/formato.ts';
 import { arquivoDaQuery } from '../src/manifesto.ts';
@@ -161,5 +161,7 @@ test('corte-por-pagina.yaml do repositório: as 5 páginas do Gerencial, PROTOCO
   assert.equal(cortes[0]!.coluna, 'DATA CRIADO');
   // E o modelo de verdade aceita: tabela, coluna e calculada existem.
   assert.equal(SemanticModel.fromSpecsDir(specs).cortes.length, 1);
-  for (const p of cortes[0]!.paginas) assert.ok(fs.existsSync(path.join(specs, 'dashboards', `${p}.spec.yaml`)), p);
+  // Pelo `id`, não pelo nome do arquivo: o arquivo leva o prefixo da ordem das abas (`06-premiacao-instalacao`).
+  const ids = loadDashboards(specs).map((d) => d.id);
+  for (const p of cortes[0]!.paginas) assert.ok(ids.includes(p), p);
 });

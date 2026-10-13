@@ -6,7 +6,7 @@
 # por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
 # derivada da heurística antiga.
 pagina: manutencao-inicial
-base: backend/specs/dashboards/manutencao-inicial.spec.yaml
+base: backend/specs/dashboards/10-manutencao-inicial.spec.yaml
 kpis:
   - visual: 0a9c8fb6aeb367c4a9d6
     enfase: normal

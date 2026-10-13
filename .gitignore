@@ -26,3 +26,7 @@ Thumbs.db
 
 # Perfis de CPU do `--cpu-prof`, gerados por sessão de medição.
 scratch-prof/
+
+# Clone de consulta do dashboard comercial (modelo do acesso por aba, ACHADOS #207).
+# É outro repositório git: commitá-lo aqui viraria um submódulo quebrado.
+dados_ReactJS_CommercialDashboards/
