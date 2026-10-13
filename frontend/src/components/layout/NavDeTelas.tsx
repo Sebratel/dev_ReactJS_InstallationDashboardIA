@@ -13,6 +13,7 @@ import { useEffect } from 'react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import { useAlturaMedida } from '../../hooks/useAlturaMedida.ts';
 import { cn } from '../../utils/cn.ts';
+import { nomeDaAba, ordenaTelas } from '../../utils/ordemDasTelas.ts';
 
 /** A aba: maiúsculas, apagada; a ativa vai para a primária com o sublinhado. A borda e o
  *  raio do reset de `button` (`@layer base`) não valem aqui. */
@@ -39,7 +40,8 @@ export function NavDeTelas(props: {
 
   return (
     <nav className="nav-telas" ref={navRef} aria-label="Telas do relatório">
-      {props.paginas.map((p) => {
+      {/* A ordem do relatório original, não a alfabética da API — `ordemDasTelas.ts`. */}
+      {ordenaTelas(props.paginas).map((p) => {
         const ativo = p.id === props.atual;
         return (
           <button
@@ -56,9 +58,9 @@ export function NavDeTelas(props: {
             onMouseLeave={ativo || !p.pronta ? undefined : () => props.aoSairDoMouse?.()}
             disabled={!p.pronta}
             aria-current={ativo ? 'page' : undefined}
-            title={p.pronta ? p.nome : `${p.nome} — sem snapshot`}
+            title={p.pronta ? nomeDaAba(p.nome) : `${nomeDaAba(p.nome)} — sem snapshot`}
           >
-            {p.nome}
+            {nomeDaAba(p.nome)}
           </button>
         );
       })}
