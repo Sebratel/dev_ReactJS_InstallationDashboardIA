@@ -10,6 +10,8 @@ export interface MatrizDeAcesso {
   eu: { usuario: string; papel: Papel };
   telas: { id: string; nome: string; modo: ModoDaTela }[];
   pessoas: { email: string; papel: Papel; fixo: boolean; telas: string[] }[];
+  /** Quem entrou e caiu em "sem acesso", ainda sem resposta. */
+  pedidos: { email: string; tentativas: number; ultimaVez: string }[];
   /** `ok: false` = o banco não respondeu na última leitura; a tela avisa. */
   banco: { ok: boolean; origem: string };
 }
@@ -42,3 +44,4 @@ export const definePapel = (email: string, papel: Papel) =>
 export const defineModoDaTela = (tela: string, modo: ModoDaTela) =>
   chama('/api/admin/acessos/tela', { tela, modo });
 export const removePessoa = (email: string) => chama('/api/admin/acessos/remove', { email });
+export const dispensaPedido = (email: string) => chama('/api/admin/acessos/dispensa', { email });

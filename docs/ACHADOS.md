@@ -15080,3 +15080,22 @@ O banco não pertence à stack. É também o lugar das três planilhas do Google
 
 `permissoes.yaml` ficou só com o desenho do recorte por linha (`linhas: {}`), que a trava
 de `escopo-cache.test.ts` continua lendo.
+
+**Mesmo dia, depois — banco criado e mais três peças.** O Erick criou o
+`DB_InstallationDashboard` pelo DBeaver (`backend/tools/banco/sql/schema.sql`: 10 tabelas,
+nomes em inglês no padrão do servidor). Ninguém à mão tem GRANT OPTION — nem o
+`DevSebratel` nem o `MARIA_USER` da API —, então os usuários restritos ficam para a TI
+(`usuarios.sql`). Até lá a API grava com o `MARIA_USER`, e isso **não piora** nada: ela já
+carrega essa credencial. Medido na mesma hora: o `MARIA_USER` tem `ALL PRIVILEGES ON *.*`
+e é **compartilhado** (conexões de 8 origens, inclusive IPs públicos) — por isso não se
+mexe nele; o ganho de verdade é o `installation_reader` substituir o `MARIA_USER` só no
+.env do dashboard. O servidor vê esta máquina como 192.168.214.168, não 10.x: os usuários
+vão com host `'%'`.
+
+- **Pedidos de acesso** (`access_requests`): quem entra e não abre nenhuma aba vira pedido
+  pendente na tela "Acessos" (uma vez a cada 10 min por e-mail); dar aba resolve o pedido na
+  mesma transação, e "Dispensar" não volta a incomodar.
+- **Eventos de segurança** (`security_events`): o `[seg]` do log, mais login certo e
+  errado, gravados em lote a cada 5 s (`eventos-seguranca.ts`). Banco fora: o lote volta
+  para a fila; buffer com teto de 5.000, e a perda é dita no log.
+- As planilhas ainda vêm do Google: as tabelas existem, falta o n8n e o refresh lendo delas.

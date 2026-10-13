@@ -25,19 +25,30 @@ const pessoa = (email: string): Identidade => ({ usuario: email, papeis: ['auten
 
 /** A loja em memória: mesmas regras de gravação da do MariaDB, e um log que só cresce. */
 function lojaEmMemoria(inicial: Partial<LinhasDeAcesso> = {}) {
-  const linhas: LinhasDeAcesso = { papeis: [], telas: [], emails: [], ...inicial };
+  const linhas: LinhasDeAcesso = { papeis: [], telas: [], emails: [], pedidos: [], ...inicial };
+  const status = new Map<string, 'pending' | 'approved' | 'dismissed'>();
   const log: { por: string; acao: string }[] = [];
   let quebrada = false;
   const loja: LojaDeAcesso = {
     async le() {
       if (quebrada) throw new Error('banco fora');
-      return structuredClone(linhas);
+      const pedidos = [...status].filter(([, st]) => st === 'pending').map(([email]) => ({ email, tentativas: 1, ultimaVez: '2026-10-13T12:00:00.000Z' }));
+      return structuredClone({ ...linhas, pedidos });
+    },
+    async registraPedido(email: string) {
+      if (quebrada) throw new Error('banco fora');
+      const st = status.get(email);
+      status.set(email, st === 'dismissed' ? 'dismissed' : 'pending');
+      log.push({ por: '(pedido)', acao: 'registra-pedido' });
     },
     async aplica(m: Mudanca, por: string) {
       if (quebrada) throw new Error('banco fora');
       if (m.acao === 'telas-da-pessoa') {
         linhas.emails = linhas.emails.filter((e) => e.email !== m.email);
         for (const tela of m.telas) linhas.emails.push({ tela, email: m.email });
+        if (m.telas.length > 0 && status.get(m.email) === 'pending') status.set(m.email, 'approved');
+      } else if (m.acao === 'dispensa-pedido') {
+        status.set(m.email, 'dismissed');
       } else if (m.acao === 'papel') {
         linhas.papeis = linhas.papeis.filter((p) => p.email !== m.email);
         if (m.papel !== 'viewer') linhas.papeis.push({ email: m.email, papel: m.papel });
@@ -51,7 +62,7 @@ function lojaEmMemoria(inicial: Partial<LinhasDeAcesso> = {}) {
       log.push({ por, acao: m.acao });
     },
   };
-  return { loja, linhas, log, quebra: (v = true) => (quebrada = v) };
+  return { loja, linhas, log, status, quebra: (v = true) => (quebrada = v) };
 }
 
 async function acessoCom(inicial: Partial<LinhasDeAcesso> = {}, extra: { admins?: string[]; devs?: string[] } = {}) {
@@ -216,6 +227,40 @@ test('banco falha na gravação: 503 e nada muda', async () => {
     { status: 503 },
   );
   assert.equal(acesso.podeVer(pessoa('novo@sebratel.com.br'), 'premiacao-instalacao'), false);
+});
+
+// ------------------------------------------------------------------- pedidos de acesso
+
+const espera = () => new Promise((ok) => setTimeout(ok, 10));
+
+test('quem entra sem aba vira pedido — uma vez a cada 10 min, e máquina nunca', async () => {
+  const { acesso, banco } = await acessoCom();
+  const novo = pessoa('novo@sebratel.com.br');
+  acesso.registraPedido(novo);
+  acesso.registraPedido(novo);
+  acesso.registraPedido({ usuario: 'aquecedor-interno', papeis: ['interno'] });
+  acesso.registraPedido(pessoa('alguem@gmail.com'));
+  await espera();
+  assert.equal(banco.log.filter((l) => l.acao === 'registra-pedido').length, 1);
+  assert.deepEqual(acesso.matriz().pedidos.map((p) => p.email), ['novo@sebratel.com.br']);
+});
+
+test('dar aba a quem pediu resolve o pedido; dispensar tira da lista e não volta', async () => {
+  const { acesso, banco } = await acessoCom({}, { devs: ['dev@sebratel.com.br'] });
+  const dev = pessoa('dev@sebratel.com.br');
+  acesso.registraPedido(pessoa('a@sebratel.com.br'));
+  acesso.registraPedido(pessoa('b@sebratel.com.br'));
+  await espera();
+  await acesso.muda(dev, { acao: 'telas-da-pessoa', email: 'a@sebratel.com.br', telas: ['capa'] });
+  await acesso.muda(dev, { acao: 'dispensa-pedido', email: 'b@sebratel.com.br' });
+  assert.deepEqual(acesso.matriz().pedidos, []);
+  assert.equal(banco.status.get('a@sebratel.com.br'), 'approved');
+  assert.equal(banco.status.get('b@sebratel.com.br'), 'dismissed');
+});
+
+test('viewer não dispensa pedido', async () => {
+  const { acesso } = await acessoCom();
+  await assert.rejects(acesso.muda(pessoa('x@sebratel.com.br'), { acao: 'dispensa-pedido', email: 'y@sebratel.com.br' }), { status: 403 });
 });
 
 // ------------------------------------------------------------------- ponta a ponta

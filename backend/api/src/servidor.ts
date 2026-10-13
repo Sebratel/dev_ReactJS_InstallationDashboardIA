@@ -65,6 +65,7 @@ import {
   type Sessoes,
 } from './identidade.ts';
 import { ErroDeAcesso, type Mudanca } from './permissoes.ts';
+import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
 import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
@@ -434,6 +435,7 @@ export class Servidor {
       // coisa. `naoReaquece` é uma constante e não `async () => {}` para que a
       // comparação por identidade em `aoTabelaMudar` funcione.
       reaquece: naoReaquece,
+      eventosDeSeguranca: SEM_GRAVACAO,
       ...resto,
     };
     this.limitadorAuth = new LimitadorDeTaxa(LIMITE_AUTH_TENTATIVAS, JANELA_AUTH_MS, () => this.opts.agora());
@@ -585,10 +587,33 @@ export class Servidor {
    * `console.warn`, canal separado do `[erro-500]` (que é `console.error`), no
    * mesmo estilo de prefixo entre colchetes do resto do arquivo.
    */
-  private registraEventoSeg(req: http.IncomingMessage, status: number, motivo: string): void {
+  private registraEventoSeg(req: http.IncomingMessage, status: number, motivo: string, email?: string): void {
     const ip = ipDoPedido(req, this.opts.confiaNoProxy ?? false);
     const rota = (req.url ?? '/').split('?')[0] ?? '/';
     console.warn(`[seg] status=${status} ip=${ip} metodo=${req.method ?? '?'} rota=${rota} motivo=${motivo}`);
+    // E no banco (`eventos-seguranca.ts`, ACHADOS #208), onde sobrevive ao container.
+    const tipo: TipoDeEvento = motivo.includes('csrf')
+      ? 'csrf'
+      : motivo === 'token-interno-invalido' || motivo === 'login-recusado'
+        ? 'login_failed'
+        : status === 429
+          ? 'rate_limited'
+          : status === 401
+            ? 'unauthorized'
+            : 'forbidden';
+    this.opts.eventosDeSeguranca.registra({ tipo, status, email: email ?? null, ip, metodo: req.method ?? '?', rota, motivo });
+  }
+
+  /** Login bem-sucedido — só no banco; no log do container ele nunca apareceu. */
+  private registraLogin(req: http.IncomingMessage, email: string): void {
+    this.opts.eventosDeSeguranca.registra({
+      tipo: 'login_ok',
+      status: 200,
+      email,
+      ip: ipDoPedido(req, this.opts.confiaNoProxy ?? false),
+      metodo: 'POST',
+      rota: (req.url ?? '/').split('?')[0] ?? '/',
+    });
   }
 
   private async atende(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
@@ -743,7 +768,7 @@ export class Servidor {
         // tem de vir antes de "já tenho pronto?". Página inexistente segue para o 404
         // de sempre — os ids não são segredo (estão no bundle da tela).
         if (this.dashboards.some((d) => d.id === id) && !this.opts.acesso.podeVer(quem, id)) {
-          this.registraEventoSeg(req, 403, 'aba-sem-acesso');
+          this.registraEventoSeg(req, 403, 'aba-sem-acesso', quem.usuario);
           responde(res, 403, { erro: 'Você não tem acesso a esta aba. Peça a um administrador do dashboard.' });
           return;
         }
@@ -814,11 +839,13 @@ export class Servidor {
       ...(this.verificadorGoogle ? { cliente: this.verificadorGoogle } : {}),
     });
     if (!identidade) {
+      this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
         erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
       });
       return;
     }
+    this.registraLogin(req, identidade.email);
     const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
@@ -859,11 +886,13 @@ export class Servidor {
       ...(this.certificadosFirebase ? { certificados: this.certificadosFirebase } : {}),
     });
     if (!identidade) {
+      this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
         erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
       });
       return;
     }
+    this.registraLogin(req, identidade.email);
     const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
@@ -1045,7 +1074,7 @@ export class Servidor {
   ): Promise<void> {
     const acesso = this.opts.acesso;
     if (!acesso.podeGerir(quem)) {
-      this.registraEventoSeg(req, 403, 'gestao-de-acesso-sem-papel');
+      this.registraEventoSeg(req, 403, 'gestao-de-acesso-sem-papel', quem.usuario);
       responde(res, 403, { erro: 'Só administrador ou dev gerencia acessos.' });
       return;
     }
@@ -1058,6 +1087,7 @@ export class Servidor {
         eu: { usuario: quem.usuario, papel: acesso.papelDe(quem) },
         telas: m.telas.filter((t) => nomes.has(t.id)).map((t) => ({ ...t, nome: nomes.get(t.id) })),
         pessoas: m.pessoas.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        pedidos: m.pedidos,
         banco: acesso.estado(),
       });
     };
@@ -1091,15 +1121,17 @@ export class Servidor {
       mudanca = { acao: 'modo-da-tela', tela: texto(corpo.tela), modo: texto(corpo.modo) as 'lista' };
     } else if (sub === '/remove') {
       mudanca = { acao: 'remove-pessoa', email: texto(corpo.email) };
+    } else if (sub === '/dispensa') {
+      mudanca = { acao: 'dispensa-pedido', email: texto(corpo.email) };
     } else {
-      responde(res, 404, { erro: `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove.` });
+      responde(res, 404, { erro: `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa.` });
       return;
     }
     try {
       await acesso.muda(quem, mudanca);
     } catch (err) {
       if (err instanceof ErroDeAcesso) {
-        if (err.status === 403) this.registraEventoSeg(req, 403, 'gestao-de-acesso-recusada');
+        if (err.status === 403) this.registraEventoSeg(req, 403, 'gestao-de-acesso-recusada', quem.usuario);
         responde(res, err.status, { erro: err.message });
         return;
       }
@@ -1111,6 +1143,9 @@ export class Servidor {
   private lista(res: http.ServerResponse, quem: Identidade): void {
     const manifesto = leManifesto(this.opts.snapshotDir);
     const emDisco = new Set(manifesto?.tabelas.map((t) => t.query) ?? []);
+    const liberadas = this.dashboards.filter((d) => this.opts.acesso.podeVer(quem, d.id));
+    // Entrou e não abre nenhuma aba: vira pedido na tela "Acessos" (sem esperar o banco).
+    if (!liberadas.some((d) => d.type !== 'Tooltip')) this.opts.acesso.registraPedido(quem);
     responde(res, 200, {
       // A tela monta a navegação SÓ com o que vem aqui. Esconder a aba é conforto; quem
       // barra é o 403 de `atende()` — pedir a aba pela URL dá no mesmo lugar.
@@ -1119,7 +1154,7 @@ export class Servidor {
         papel: this.opts.acesso.papelDe(quem),
         podeGerir: this.opts.acesso.podeGerir(quem),
       },
-      dashboards: this.dashboards.filter((d) => this.opts.acesso.podeVer(quem, d.id)).map((d) => ({
+      dashboards: liberadas.map((d) => ({
         id: d.id,
         nome: d.name,
         visuais: (d.visuals ?? []).length,

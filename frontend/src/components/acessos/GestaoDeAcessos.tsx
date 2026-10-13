@@ -14,6 +14,7 @@ import {
   definePapel,
   defineModoDaTela,
   defineTelasDaPessoa,
+  dispensaPedido,
   pegaMatriz,
   removePessoa,
   type MatrizDeAcesso,
@@ -93,6 +94,39 @@ export function GestaoDeAcessos({ aoFechar }: { aoFechar: () => void }) {
           ) : null}
           {matrizQ.error ? <Erro>{(matrizQ.error as Error).message}</Erro> : null}
           {muda.error ? <Erro>{(muda.error as Error).message}</Erro> : null}
+
+          {m && m.pedidos.length > 0 ? (
+            <section className="rounded-[2px] border border-pbi-borda p-[8px]">
+              <h4 className="m-0 mb-[6px] text-[0.74rem]">
+                Pedidos de acesso ({m.pedidos.length})
+              </h4>
+              <ul className="m-0 grid list-none gap-[4px] p-0">
+                {m.pedidos.map((p) => (
+                  <li key={p.email} className="flex flex-wrap items-center gap-[8px]">
+                    <span className="font-semibold">{p.email}</span>
+                    <span className="text-pbi-muted">
+                      {p.tentativas} tentativa(s), última em{' '}
+                      {new Date(p.ultimaVez).toLocaleString('pt-BR')}
+                    </span>
+                    <Botao
+                      variante="secundario"
+                      className="ml-auto"
+                      onClick={() => !novos.includes(p.email) && setNovos([...novos, p.email])}
+                    >
+                      Dar abas
+                    </Botao>
+                    <Botao
+                      variante="secundario"
+                      disabled={muda.isPending}
+                      onClick={() => muda.mutate(() => dispensaPedido(p.email))}
+                    >
+                      Dispensar
+                    </Botao>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
 
           <form onSubmit={adiciona} className="flex gap-[6px]">
             <input

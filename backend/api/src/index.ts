@@ -25,7 +25,8 @@ import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
 import { comoLiberar } from './porta.ts';
 import { decideLogin } from './portao-login.ts';
 import { criaAcesso } from './permissoes.ts';
-import { configDoAmbiente, lojaMaria } from './loja-acesso-maria.ts';
+import { configDoAmbiente, criaPoolDeAcesso, lojaMaria } from './loja-acesso-maria.ts';
+import { criaGravadorDeEventos } from './eventos-seguranca.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 
@@ -263,8 +264,17 @@ let poller: PollerRealtime | null = null;
 // relido a cada 30 s. Sem ACESSO_DB_* no ambiente, ou com o banco fora no boot, só
 // ADMIN_EMAILS/DEV_EMAILS entram — nunca "todo mundo vê".
 const configDoAcesso = configDoAmbiente(process.env);
+const poolDeAcesso = configDoAcesso ? criaPoolDeAcesso(configDoAcesso) : null;
+if (configDoAcesso?.compartilhado) {
+  console.warn(
+    '[acesso] gravando no DB_InstallationDashboard com o MARIA_USER (sem ACESSO_DB_USER) — ' +
+      'troque pelo installation_access quando a TI o criar (backend/tools/banco/sql/usuarios.sql).',
+  );
+}
+// Os eventos de segurança vão para o mesmo banco, em lote (`eventos-seguranca.ts`).
+const eventosDeSeguranca = poolDeAcesso ? criaGravadorDeEventos(poolDeAcesso) : undefined;
 const acesso = criaAcesso({
-  loja: configDoAcesso ? lojaMaria(configDoAcesso) : null,
+  loja: poolDeAcesso ? lojaMaria(poolDeAcesso) : null,
   telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
   adminsDoAmbiente: (process.env.ADMIN_EMAILS ?? '').split(','),
   devsDoAmbiente: (process.env.DEV_EMAILS ?? '').split(','),
@@ -278,6 +288,7 @@ const servidor = new Servidor({
   snapshotDir: path.join(ROOT, DIRETORIO_PADRAO),
   webDir: path.join(ROOT, 'frontend', 'dist'),
   acesso,
+  ...(eventosDeSeguranca ? { eventosDeSeguranca } : {}),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver
@@ -392,6 +403,8 @@ instalaDesligamento({
     { nome: 'aquecedor', fn: () => aquecedor?.para() },
     { nome: 'http', fn: () => fechaHttp(http) },
     { nome: 'servidor', fn: () => servidor.destroi() },
+    // Grava o que ainda está no buffer de eventos antes de fechar o pool.
+    { nome: 'eventos de segurança', fn: async () => { eventosDeSeguranca?.para(); await eventosDeSeguranca?.descarrega(); await poolDeAcesso?.end(); } },
   ],
 });
 

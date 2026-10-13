@@ -38,7 +38,16 @@ const RANK: Record<Papel, number> = { viewer: 0, dev: 1, admin: 2 };
  *  abre tudo, mas não gerencia nada — mudança de acesso exige um e-mail para o log. */
 const PAPEIS_DE_MAQUINA = ['interno', 'sem-login'];
 
+export interface PedidoDeAcesso {
+  email: string;
+  tentativas: number;
+  /** ISO 8601. */
+  ultimaVez: string;
+}
+
 export interface LinhasDeAcesso {
+  /** Só os pendentes. Opcional: a loja de teste não precisa simular pedidos. */
+  pedidos?: PedidoDeAcesso[];
   papeis: { email: string; papel: string }[];
   telas: { tela: string; modo: string }[];
   emails: { tela: string; email: string }[];
@@ -48,12 +57,15 @@ export type Mudanca =
   | { acao: 'telas-da-pessoa'; email: string; telas: string[] }
   | { acao: 'papel'; email: string; papel: Papel }
   | { acao: 'modo-da-tela'; tela: string; modo: ModoDaTela }
-  | { acao: 'remove-pessoa'; email: string };
+  | { acao: 'remove-pessoa'; email: string }
+  | { acao: 'dispensa-pedido'; email: string };
 
 /** Onde a configuração mora. `aplica` grava a mudança E o log, na mesma transação. */
 export interface LojaDeAcesso {
   le(): Promise<LinhasDeAcesso>;
   aplica(m: Mudanca, porQuem: string): Promise<void>;
+  /** Quem entrou e não abre nenhuma aba. Não precisa de transação nem de log: não dá acesso. */
+  registraPedido(email: string): Promise<void>;
 }
 
 export interface PessoaDaMatriz {
@@ -67,6 +79,8 @@ export interface PessoaDaMatriz {
 export interface Matriz {
   telas: { id: string; modo: ModoDaTela }[];
   pessoas: PessoaDaMatriz[];
+  /** Quem entrou e caiu em "sem acesso", ainda sem resposta. */
+  pedidos: PedidoDeAcesso[];
 }
 
 export interface AcessoDasTelas {
@@ -80,6 +94,9 @@ export interface AcessoDasTelas {
   muda(quem: Identidade, m: Mudanca): Promise<void>;
   /** Para `/api/saude`: só se a configuração está em dia. Sem e-mail — a rota é pública. */
   estado(): { ok: boolean; origem: string };
+  /** A pessoa entrou e não abre nenhuma aba: vira pedido pendente na tela "Acessos".
+   *  Não espera o banco e não lança — é registro, não decisão. */
+  registraPedido(quem: Identidade): void;
 }
 
 export class ErroDeAcesso extends Error {
@@ -148,6 +165,10 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
   const dominio = normEmail(opts.dominio);
 
   let config: Configuracao | null = null;
+  let pedidos: PedidoDeAcesso[] = [];
+  /** Último registro de pedido por e-mail: a mesma pessoa recarregando a tela não vira
+   *  um INSERT por segundo. */
+  const pedidoRegistradoEm = new Map<string, number>();
   let ultimaFalhou = opts.loja === null;
   if (!opts.loja) log('[acesso] banco de acesso NÃO configurado (ACESSO_DB_*) — só ADMIN_EMAILS/DEV_EMAILS entram.');
 
@@ -171,7 +192,9 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
   const recarrega = async (): Promise<void> => {
     if (!opts.loja) return;
     try {
-      config = configuracaoDe(await opts.loja.le(), opts.telasConhecidas);
+      const linhas = await opts.loja.le();
+      config = configuracaoDe(linhas, opts.telasConhecidas);
+      pedidos = linhas.pedidos ?? [];
       if (ultimaFalhou) log(`[acesso] lido do banco: ${config.papeis.size} papel(éis), ${config.telas.size} aba(s) com regra`);
       ultimaFalhou = false;
     } catch (err) {
@@ -245,7 +268,7 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
         telas: opts.telasConhecidas.filter((t) => config?.telas.get(t)?.emails.has(email)),
       }));
       pessoas.sort((a, b) => RANK[b.papel] - RANK[a.papel] || a.email.localeCompare(b.email));
-      return { telas, pessoas };
+      return { telas, pessoas, pedidos };
     },
     async muda(quem, m) {
       valida(quem, m);
@@ -260,6 +283,18 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
     },
     estado() {
       return { ok: !ultimaFalhou, origem: opts.loja ? 'banco' : 'só .env' };
+    },
+    registraPedido(quem) {
+      const e = emailDe(quem);
+      if (!e || ehMaquina(quem) || !opts.loja) return;
+      if (!e.endsWith(`@${dominio}`)) return;
+      const agora = Date.now();
+      if (agora - (pedidoRegistradoEm.get(e) ?? -Infinity) < 10 * 60_000) return;
+      pedidoRegistradoEm.set(e, agora);
+      opts.loja.registraPedido(e).then(
+        () => void recarrega(),
+        (err: unknown) => log(`[acesso] FALHA ao registrar pedido de acesso: ${(err as Error).message}`),
+      );
     },
     recarrega,
     releA(cadaMs) {
@@ -279,7 +314,8 @@ export const ACESSO_SO_DE_MAQUINA: AcessoDasTelas = {
   podeVer: (quem) => quem.papeis.some((p) => PAPEIS_DE_MAQUINA.includes(p)),
   papelDe: () => 'viewer',
   podeGerir: () => false,
-  matriz: () => ({ telas: [], pessoas: [] }),
+  matriz: () => ({ telas: [], pessoas: [], pedidos: [] }),
+  registraPedido: () => {},
   muda: () => Promise.reject(new ErroDeAcesso(403, 'Sonda não gerencia acesso.')),
   estado: () => ({ ok: true, origem: '(só máquina)' }),
 };

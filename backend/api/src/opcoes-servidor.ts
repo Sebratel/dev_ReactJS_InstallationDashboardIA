@@ -6,6 +6,7 @@ import type http from 'node:http';
 import type { Cache } from '../../packages/query-engine/src/types.ts';
 import type { Identidade } from './identidade.ts';
 import type { AcessoDasTelas } from './permissoes.ts';
+import type { GravadorDeEventos } from './eventos-seguranca.ts';
 import type { VerificadorDeToken } from './auth-google.ts';
 import type { BuscaCertificados } from './auth-firebase.ts';
 import type { PiscinaWorkers } from './piscina-workers.ts';
@@ -44,6 +45,9 @@ export interface ServidorOptions {
    * lado. Quem constrói o `Servidor` decide, e o compilador cobra.
    */
   acesso: AcessoDasTelas;
+  /** Onde os eventos de segurança são gravados (`eventos-seguranca.ts`). Padrão: em lugar
+   *  nenhum — só a linha `[seg]` do log, como antes de 13/10/2026. */
+  eventosDeSeguranca?: GravadorDeEventos;
   /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
    *  token — falha fechada, não aberta, enquanto não configurado. */
   googleClientId?: string;
