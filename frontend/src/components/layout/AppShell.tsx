@@ -13,6 +13,7 @@ import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import type { EstadoAvisoSaude } from '../../utils/avisoSaude.ts';
 import { dataHora, haQuanto } from '../../utils/formato.ts';
 import { cn } from '../../utils/cn.ts';
+import { nomeDaAba } from '../../utils/ordemDasTelas.ts';
 import { Aviso, Erro } from '../ui/Cartao.tsx';
 import { SO_ICONE } from './soIcone.ts';
 import { AcoesDoCabecalho } from './AcoesDoCabecalho.tsx';
@@ -23,10 +24,23 @@ const SOME_ESTREITO = '[@media(max-width:860px)]:hidden';
 
 /** O ponto ao lado da idade do dado: verde pulsando (em dia), dourado (parado), vermelho
  *  (alguma fonte falhou). O pulso é animação e mora no `estilo.css` (`.ponto-vivo`). */
-const PONTO: Record<EstadoAvisoSaude['nivel'], { classe: string; title: string }> = {
-  ok: { classe: '', title: 'Atualização automática ativa' },
-  vencida: { classe: 'parado', title: 'Dado parado além do esperado' },
-  falhou: { classe: 'falhou', title: 'Falha em alguma fonte' },
+const PONTO: Record<
+  EstadoAvisoSaude['nivel'],
+  { classe: string; title: string; texto: string; sufixo: string }
+> = {
+  ok: { classe: '', title: 'Atualização automática ativa', texto: '', sufixo: '' },
+  vencida: {
+    classe: 'parado',
+    title: 'Dado parado além do esperado',
+    texto: 'font-semibold text-pbi-gold-600',
+    sufixo: ' · dado parado',
+  },
+  falhou: {
+    classe: 'falhou',
+    title: 'Falha em alguma fonte',
+    texto: 'font-semibold text-pbi-critico-texto',
+    sufixo: ' · fonte com falha',
+  },
 };
 
 export function AppShell(props: {
@@ -57,11 +71,14 @@ export function AppShell(props: {
 }) {
   const nivel = props.avisoSaude?.temAviso ? props.avisoSaude.nivel : 'ok';
   const ponto = PONTO[nivel];
-  const quando = props.ultimaAtualizacaoRealtime
-    ? `ao vivo · ${props.ultimaAtualizacaoRealtime}`
-    : props.dadoDe
-      ? haQuanto(props.dadoDe)
-      : '—';
+  // O texto acompanha o ponto: "ao vivo" ao lado de um ponto vermelho dizia duas coisas
+  // opostas. A explicação inteira está no aviso logo abaixo da barra de filtros.
+  const quando =
+    (props.ultimaAtualizacaoRealtime
+      ? `ao vivo · ${props.ultimaAtualizacaoRealtime}`
+      : props.dadoDe
+        ? haQuanto(props.dadoDe)
+        : '—') + ponto.sufixo;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -79,7 +96,7 @@ export function AppShell(props: {
             SOME_ESTREITO,
           )}
         >
-          {props.titulo}
+          {nomeDaAba(props.titulo)}
         </h1>
 
         <div className="ml-auto flex items-center gap-[8px] text-[12.5px] whitespace-nowrap text-pbi-muted">
@@ -89,8 +106,14 @@ export function AppShell(props: {
             aria-hidden="true"
           />
           <span
-            className={SOME_ESTREITO}
-            title={props.dadoDe ? `Dado de ${dataHora(props.dadoDe)}` : undefined}
+            className={cn(SOME_ESTREITO, ponto.texto)}
+            title={
+              props.avisoSaude?.temAviso
+                ? props.avisoSaude.mensagem
+                : props.dadoDe
+                  ? `Dado de ${dataHora(props.dadoDe)}`
+                  : undefined
+            }
           >
             {quando}
           </span>
