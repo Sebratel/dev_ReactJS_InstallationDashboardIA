@@ -32,6 +32,7 @@ import {
   VERSAO,
 } from '../src/cache-resposta.ts';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const WEB = path.join(ROOT, 'frontend', 'dist');
@@ -477,6 +478,7 @@ async function sobe(
   agora: () => Date = () => AGORA,
 ): Promise<{ busca: (rota: string) => Promise<Response>; fecha: () => Promise<void> }> {
   const inst = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir,
     webDir: WEB,
@@ -738,6 +740,7 @@ test('a saúde diz o estado do reaquecimento, e o padrão é desligado', async (
   }
 
   const inst1 = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: dirVazio(),
     webDir: WEB,
@@ -778,6 +781,7 @@ test('a saúde diz quanto do orçamento de visual está em uso', async () => {
 
 test('teto zero desliga o cache de visual, e a saúde mostra isso', async () => {
   const inst2 = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: dirVazio(),
     webDir: WEB,

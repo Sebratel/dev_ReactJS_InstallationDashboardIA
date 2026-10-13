@@ -76,29 +76,27 @@ test('o escopo continua NA chave — tirá-lo seria vazamento no dia do recorte 
 });
 
 /**
- * A trava. `escopoDoCache` devolve constante porque **hoje toda conta vê todas as
- * linhas** — não porque dá menos trabalho. A afirmação mora em
+ * A trava. `escopoDoCache` devolve constante porque **toda conta que abre uma aba vê
+ * as mesmas linhas dela** — não porque dá menos trabalho. A afirmação mora em
  * `backend/specs/_catalog/permissoes.yaml`, e é ele que este teste lê: no dia em que
- * alguém ligar recorte por página ou por linha, a constante vira vazamento, e
- * quem avisa é esta falha, não a revisão de código.
+ * alguém ligar recorte por linha, a constante vira vazamento, e quem avisa é esta
+ * falha, não a revisão de código.
+ *
+ * Até 13/10/2026 a trava também reprovava `paginas:` preenchido. Saiu quando o acesso
+ * por aba foi ligado: ele barra ANTES do cache (`servidor.ts`) e não muda o conteúdo de
+ * aba nenhuma, então não pede partição — `permissoes.test.ts` prova isso com o cache
+ * aquecido. O recorte por linha muda o conteúdo, e é ele que continua travado aqui.
  */
-test('permissoes.yaml ainda é DESENHO — se não for, escopoDoCache tem de mudar ANTES', () => {
+test('permissoes.yaml sem recorte por linha — se tiver, escopoDoCache tem de mudar ANTES', () => {
   const doc = YAML.parse(fs.readFileSync(PERMISSOES, 'utf8')) as {
-    papeis?: { nome: string }[];
-    paginas?: Record<string, unknown>;
     linhas?: Record<string, unknown>;
   };
 
-  const recado =
-    'permissoes.yaml saiu do estado DESENHO. `escopoDoCache` (backend/api/src/escopo-cache.ts) ' +
-    'devolve UM escopo para todo mundo, o que passa a servir a linha de um usuário para outro. ' +
-    'Faça o escopo derivar da regra nova ANTES de ligar a regra.';
-
-  assert.deepEqual(Object.keys(doc.paginas ?? {}), [], recado);
-  assert.deepEqual(Object.keys(doc.linhas ?? {}), [], recado);
   assert.deepEqual(
-    (doc.papeis ?? []).map((p) => p.nome),
-    ['local'],
-    recado,
+    Object.keys(doc.linhas ?? {}),
+    [],
+    'permissoes.yaml ganhou recorte por linha. `escopoDoCache` (backend/api/src/escopo-cache.ts) ' +
+      'devolve UM escopo para todo mundo, o que passa a servir a linha de um usuário para outro. ' +
+      'Faça o escopo derivar da regra nova ANTES de ligar a regra.',
   );
 });

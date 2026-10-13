@@ -25,6 +25,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { SaudeDoRedis, redisAusente, semSegredo } from '../src/saude-do-redis.ts';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 import type { EstadoDoRedis } from '../src/saude-do-redis.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -135,6 +136,7 @@ async function sobe(estadoDoRedis?: () => EstadoDoRedis): Promise<{
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: dirVazio(),
     webDir: WEB,

@@ -23,7 +23,17 @@ import { idsIniciais } from '../utils/cargaProgressiva.ts';
 
 type Clicados = readonly { tabela: string; coluna: string }[];
 
-/** A lista de páginas. As páginas de DICA (`tooltip`) saem aqui — ver `App.tsx`. */
+/** Quem está logado — sai do MESMO pedido da lista de páginas (mesma chave), sem rede a mais. */
+export function useEu() {
+  return useQuery({
+    queryKey: chavesDeConsulta.dashboards,
+    queryFn: () => listaDashboards(),
+    select: (r) => r.eu ?? null,
+  });
+}
+
+/** A lista de páginas — só as que a conta pode abrir (filtro do servidor). As páginas
+ *  de DICA (`tooltip`) saem aqui — ver `App.tsx`. */
 export function useDashboards() {
   return useQuery({
     queryKey: chavesDeConsulta.dashboards,

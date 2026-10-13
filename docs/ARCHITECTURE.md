@@ -247,8 +247,9 @@ existe só o que o `/api/saude` responde.
 
 Os dois que bloqueiam produção multiusuário são **Identity** e **Permission**. O login
 existe (25/09/2026): Google SSO restrito ao domínio (`backend/api/src/auth-google.ts`),
-portão 401 antes do roteamento (`portao-login.ts`). Falta a **permissão**: o formato da
-decisão humana está em `backend/specs/_catalog/permissoes.yaml`, ainda sem leitor.
+portão 401 antes do roteamento (`portao-login.ts`). A **permissão por aba** existe desde
+13/10/2026 (`permissoes.ts` lendo `backend/specs/_catalog/permissoes.yaml`, 403 antes do
+cache); falta o **recorte por linha**.
 
 ## 9. Real-time (Debezium + Kafka + Redis)
 

@@ -24,6 +24,8 @@ import { PollerRealtime } from './poller-realtime.ts';
 import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
 import { comoLiberar } from './porta.ts';
 import { decideLogin } from './portao-login.ts';
+import { carregaAcesso } from './permissoes.ts';
+import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
@@ -260,6 +262,15 @@ const servidor = new Servidor({
   root: ROOT,
   snapshotDir: path.join(ROOT, DIRETORIO_PADRAO),
   webDir: path.join(ROOT, 'frontend', 'dist'),
+  // Quem abre cada aba. `PERMISSOES_ARQUIVO` existe para o container: lá o
+  // `backend/specs/` vai DENTRO da imagem, e sem um arquivo montado de fora mudar
+  // acesso pediria rebuild. O arquivo é relido sozinho quando muda.
+  acesso: carregaAcesso({
+    arquivo:
+      process.env.PERMISSOES_ARQUIVO || path.join(ROOT, 'backend', 'specs', '_catalog', 'permissoes.yaml'),
+    telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
+    adminsDoAmbiente: (process.env.ADMIN_EMAILS ?? '').split(','),
+  }),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver

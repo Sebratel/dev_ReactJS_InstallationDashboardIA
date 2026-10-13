@@ -21,6 +21,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Agendador } from '../src/agendador.ts';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 import type { GrupoDeRefresh } from '../../tools/refresh/src/grupos.ts';
 import { rodaGrupoAssincrono } from '../../tools/refresh/src/executa-grupo.ts';
 
@@ -59,6 +60,7 @@ async function apiComAgendador(
 }> {
   let ag!: Agendador;
   const inst = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: dir,
     webDir: WEB,

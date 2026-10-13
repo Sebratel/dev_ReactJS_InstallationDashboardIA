@@ -36,6 +36,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { Aquecedor } from '../../../api/src/aquecedor.ts';
 import { Servidor } from '../../../api/src/servidor.ts';
+import { ACESSO_SO_DE_MAQUINA } from '../../../api/src/permissoes.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { codificaFiltro, filtrosPadrao } from '../../../packages/widget-engine/src/index.ts';
 import { idsIniciais } from '../../layout/src/corte-eager.ts';
@@ -74,7 +75,8 @@ async function sobe(comReaquecimento: boolean): Promise<Bancada> {
     root: RAIZ,
     snapshotDir: SNAPSHOT,
     webDir: path.join(RAIZ, 'frontend', 'dist'),
-    identifica: () => ({ usuario: 'sonda', papeis: ['autenticado'] }),
+    identifica: () => ({ usuario: 'sonda', papeis: ['interno'] }),
+    acesso: ACESSO_SO_DE_MAQUINA,
     ...(comReaquecimento
       ? {
           reaquece: async (paginas: readonly string[]): Promise<void> => {
@@ -193,7 +195,8 @@ async function custoPorEvento(): Promise<Map<string, string[]>> {
     root: RAIZ,
     snapshotDir: SNAPSHOT,
     webDir: path.join(RAIZ, 'frontend', 'dist'),
-    identifica: () => ({ usuario: 'sonda', papeis: ['autenticado'] }),
+    identifica: () => ({ usuario: 'sonda', papeis: ['interno'] }),
+    acesso: ACESSO_SO_DE_MAQUINA,
     reaquece: async (paginas) => {
       afetadas = [...paginas];
     },

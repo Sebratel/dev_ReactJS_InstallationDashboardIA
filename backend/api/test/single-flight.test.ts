@@ -31,6 +31,7 @@ import { escreve } from '../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { PiscinaWorkers } from '../src/piscina-workers.ts';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -87,6 +88,7 @@ async function sobe(snapshotDir: string, piscina?: PiscinaWorkers): Promise<{
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir,
     webDir: WEB,

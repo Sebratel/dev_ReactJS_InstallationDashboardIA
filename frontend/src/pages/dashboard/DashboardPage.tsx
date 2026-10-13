@@ -8,11 +8,11 @@
 // componentes.
 
 import { useEffect, useMemo } from 'react';
-import { ehAbortError, ehErroDeSessao } from '../../services/dashboardService.ts';
+import { ehAbortError, ehErroDeAcesso, ehErroDeSessao } from '../../services/dashboardService.ts';
 import { sai } from '../../services/authService.ts';
 import { useSessaoStore } from '../../store/sessaoStore.ts';
 import { useModo } from '../../context/ModoContext.tsx';
-import { useDashboards, useLayout, usePaginaAberta, useSaude } from '../../hooks/useDadosDaTela.ts';
+import { useDashboards, useEu, useLayout, usePaginaAberta, useSaude } from '../../hooks/useDadosDaTela.ts';
 import { useEstadoDaTela } from '../../hooks/useEstadoDaTela.ts';
 import { useTempoReal } from '../../hooks/useTempoReal.ts';
 import { usePreCargas } from '../../hooks/usePreCargas.ts';
@@ -28,6 +28,7 @@ import { EsqueletoDaPagina } from '../../components/layout/EsqueletoDaPagina.tsx
 import { FaixaDeConferencia } from '../../components/layout/FaixaDeConferencia.tsx';
 import { BarraDeFiltros } from '../../components/filtros/BarraDeFiltros.tsx';
 import { Capa } from '../../components/capa/Capa.tsx';
+import { SemAcesso } from '../../components/auth/SemAcesso.tsx';
 import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
 import { KpiGridSection } from '../../components/visuais/KpiGridSection.tsx';
 import { VisualGridSection } from '../../components/visuais/VisualGridSection.tsx';
@@ -47,10 +48,15 @@ export function DashboardPage() {
   const layout = layoutQ.data ?? null;
   const paginaQ = usePaginaAberta(atual, layoutQ.data, filtros, clicados);
   const saude = useSaude().data ?? null;
+  const eu = useEu().data ?? null;
+  // A lista já vem só com as abas desta conta (`permissoes.yaml`, filtrado no servidor).
+  // `null` enquanto ela não chegou: até lá, uma aba da URL pode ser uma que a conta não abre.
+  const atualLiberada = dashboardsQ.data ? paginas.some((p) => p.id === atual) : null;
   // Erro que a tela mostra: o de sessão vira login (no `QueryCache`), e pedido
-  // cancelado não é erro — é o pedido seguinte fazendo o trabalho certo.
+  // cancelado não é erro — é o pedido seguinte fazendo o trabalho certo. O 403 de uma
+  // aba fora da lista também não: o efeito abaixo leva para uma aba liberada.
   const erroDeConsulta = [dashboardsQ.error, layoutQ.error, paginaQ.error].find(
-    (e) => e && !ehErroDeSessao(e) && !ehAbortError(e),
+    (e) => e && !ehErroDeSessao(e) && !ehAbortError(e) && !(ehErroDeAcesso(e) && atualLiberada !== true),
   );
   const erro = erroDeConsulta
     ? erroDeConsulta instanceof Error
@@ -74,6 +80,15 @@ export function DashboardPage() {
     const escolhida = lista.find((d) => d.pronta)?.id ?? lista[0]?.id;
     if (escolhida) iniciaEm(escolhida);
   }, [dashboardsQ.data, atual, iniciaEm]);
+
+  // A URL trouxe uma aba que esta conta não abre (link compartilhado, favorito antigo):
+  // vai para a primeira liberada. Quem barra o dado é o 403 do servidor; isto é só não
+  // deixar a pessoa parada diante dele.
+  useEffect(() => {
+    if (atualLiberada !== false || !atual) return;
+    const destino = paginas.find((d) => d.pronta)?.id ?? paginas[0]?.id;
+    if (destino) escolhe(destino);
+  }, [atualLiberada, atual, paginas, escolhe]);
 
   // A abertura de OUTRA página nunca é mostrada como se fosse desta (o
   // `placeholderData` mantém a anterior na tela enquanto a nova chega).
@@ -105,6 +120,11 @@ export function DashboardPage() {
   const nome = paginas.find((p) => p.id === atual)?.nome ?? 'Instalação';
   // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por query.
   const avisoSaude = avaliaSaudeQueries(saude?.refresh?.queries, paginaValida?.dadoDe);
+
+  // Logado, mas nenhuma aba liberada — `permissoes.yaml` nega por padrão.
+  if (dashboardsQ.data && paginas.length === 0) {
+    return <SemAcesso usuario={eu?.usuario ?? null} aoSair={() => void sai().finally(() => expirou())} />;
+  }
 
   return (
     <AppShell

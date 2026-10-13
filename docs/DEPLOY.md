@@ -129,9 +129,10 @@ errada) e há **formato de decisão** (`backend/specs/_catalog/permissoes.yaml`)
 decisão de **quem** é a fonte da identidade (SSO do HUBBI ou usuário local) e, com ela,
 o leitor de permissões.
 
-**Autenticar não é autorizar, e é por isso que a seção fica aberta.** Hoje qualquer
-pessoa com e-mail `@sebratel.com.br` que entre vê **tudo**, porque não há leitor de
-permissões — e o que a API serve inclui:
+**Autenticar não é autorizar.** Até 13/10/2026 qualquer pessoa com e-mail
+`@sebratel.com.br` que entrasse via **tudo**; desde então cada aba exige estar em
+`permissoes.yaml` (ou em `ADMIN_EMAILS`). Dentro de uma aba liberada, a pessoa ainda vê
+todas as linhas — e o que a API serve inclui:
 
 - endereço de cliente, em `field-agenda`;
 - **CPF e RG**, em `QUADRO FUNCIONAL`;
@@ -148,9 +149,13 @@ permissões — e o que a API serve inclui:
   405.~~ **CUMPRIDO** em `eb69069`; o teste que falha se a trava sair está em
   `backend/api/test/servidor.test.ts`.
 - **Critério de saída que resta:** nenhum usuário autenticado alcança página com dado
-  pessoal que o papel dele não autorize — e isso exige o leitor de
-  `backend/specs/_catalog/permissoes.yaml`, hoje em `ESTADO: DESENHO` (há teste que reprova se
-  o estado mudar sem `backend/api/src/escopo-cache.ts` mudar junto).
+  pessoal que o papel dele não autorize. **Por ABA, cumprido em 13/10/2026:**
+  `backend/api/src/permissoes.ts` lê `backend/specs/_catalog/permissoes.yaml` (modelo do
+  dashboard comercial — admin + lista de e-mails por aba), nega por padrão e responde
+  **403** em `/api/dashboards/:id`, `/valores` e `/layout` antes de qualquer leitura de
+  cache; `backend/api/test/permissoes.test.ts` prova com o cache aquecido. **Por LINHA
+  (o gestor ver só a própria equipe), em aberto:** `linhas:` tem de ficar vazio, e há
+  teste que reprova se ele for preenchido sem `backend/api/src/escopo-cache.ts` mudar junto.
 - **Mitigação aceitável para um piloto interno** (não é o deploy final): publicar
   **apenas na rede interna**, atrás do SSO que já existe no HUBBI, com a URL não
   divulgada e as páginas que expõem dado pessoal fora do menu. Isso é um piloto de

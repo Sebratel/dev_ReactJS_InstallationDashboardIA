@@ -22,6 +22,7 @@ import { arquivoDaQuery, escreveManifesto } from '../../packages/snapshot/src/ma
 import { escreveStatus } from '../../tools/refresh/src/status.ts';
 import type { VerificadorDeToken } from '../src/auth-google.ts';
 import { Servidor, chaveDeValores } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 // Um build mínimo da tela: o teste não depende de `npm run web:build` ter rodado.
@@ -44,6 +45,7 @@ async function servidor(snapshotDir: string): Promise<{
   fecha: () => Promise<void>;
 }> {
   const inst = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir,
     webDir: WEB,
@@ -85,6 +87,7 @@ async function servidorComLogin(
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir,
     webDir: WEB,
@@ -127,6 +130,7 @@ async function servidorComOverlay(
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir,
     webDir: WEB,

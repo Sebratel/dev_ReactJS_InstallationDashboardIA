@@ -14,6 +14,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const WEB = path.join(ROOT, 'frontend', 'dist');
@@ -40,6 +41,7 @@ async function sobe(opts: OpcoesServidor = {}): Promise<{
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: dirVazio(),
     webDir: WEB,

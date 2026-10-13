@@ -376,7 +376,19 @@ export async function pega<T>(
 export const ehErroDeSessao = (err: unknown): boolean =>
   err instanceof Error && (err as { status?: number }).status === 401;
 
-export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[] }> =>
+/** `true` quando a API recusou a aba para esta conta (`permissoes.yaml`). */
+export const ehErroDeAcesso = (err: unknown): boolean =>
+  err instanceof Error && (err as { status?: number }).status === 403;
+
+/** Quem está logado, como a API vê. Opcional porque uma API anterior a 13/10/2026 não
+ *  manda o campo. */
+export interface Eu {
+  usuario: string;
+  admin: boolean;
+}
+
+/** A lista já vem SÓ com as abas que a conta pode abrir — o filtro é do servidor. */
+export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[]; eu?: Eu }> =>
   pega('/api/dashboards');
 
 /**

@@ -5,6 +5,7 @@
 import type http from 'node:http';
 import type { Cache } from '../../packages/query-engine/src/types.ts';
 import type { Identidade } from './identidade.ts';
+import type { AcessoDasTelas } from './permissoes.ts';
 import type { VerificadorDeToken } from './auth-google.ts';
 import type { BuscaCertificados } from './auth-firebase.ts';
 import type { PiscinaWorkers } from './piscina-workers.ts';
@@ -36,6 +37,13 @@ export interface ServidorOptions {
    * Permission Engine (papéis/recorte por linha) entraria depois.
    */
   identifica?: (req: http.IncomingMessage) => Identidade | null;
+  /**
+   * Quem abre cada aba (`permissoes.ts`). **Obrigatória e sem padrão**, de propósito:
+   * um padrão "libera tudo" seria esquecido num ponto de construção e reabriria todas
+   * as abas sem erro nenhum; um padrão "nega tudo" quebraria em silêncio do outro
+   * lado. Quem constrói o `Servidor` decide, e o compilador cobra.
+   */
+  acesso: AcessoDasTelas;
   /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
    *  token — falha fechada, não aberta, enquanto não configurado. */
   googleClientId?: string;

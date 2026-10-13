@@ -1,90 +1,72 @@
 # MANTIDO POR HUMANOS — este arquivo NÃO é sobrescrito por `npm run extract`.
 #
-# Quem vê o quê. É o outro lado da regra 2: `backend/specs/dashboards/*.spec.yaml` e
-# `backend/specs/_catalog/**` são GERADOS, então permissão não pode morar lá — a próxima
-# extração a apagaria. Mesmo molde de `cache-policies.yaml` e `divergencias.yaml`.
+# Quem abre cada aba do dashboard. APLICADO desde 13/10/2026 por
+# `backend/api/src/permissoes.ts` — o mesmo modelo do dashboard comercial
+# (`dados_ReactJS_CommercialDashboards`), com a configuração aqui em vez de numa
+# tela de admin, porque a API é somente leitura.
 #
-# ---------------------------------------------------------------------------
-# ESTADO: DESENHO. Nada aqui é aplicado hoje.
-# ---------------------------------------------------------------------------
+# COMO FUNCIONA
+#   - admin: abre TODAS as abas. Vem de `admins:` abaixo OU de `ADMIN_EMAILS` no .env
+#     (separado por vírgula). O que está no .env vale mesmo com este arquivo quebrado.
+#   - qualquer outra conta @sebratel logada: abre SÓ as abas que a liberam.
+#   - cada aba:  modo: lista  → só os e-mails de `emails:`  (o padrão)
+#                modo: todos  → toda conta logada do domínio
+#   - aba que não aparece aqui, ou com `emails: []`: só admin.
 #
-# A audiência da plataforma em 11/08/2026 é uma pessoa, na máquina dela, e a API
-# não autentica ninguém. Implementar login agora seria trabalho com chance real de
-# ser jogado fora.
+# FALHA FECHADA. Chave com erro de digitação, aba que não existe, e-mail sem `@` ou
+# YAML ilegível invalidam o arquivo INTEIRO: até a correção, só ADMIN_EMAILS entra, o
+# log da API diz a linha do problema (`[permissoes] INVÁLIDO ...`) e `/api/saude`
+# mostra `permissoes.ok: false`.
 #
-# O que **não** dá para adiar é o formato, e é só isso que este arquivo entrega:
-# o lugar onde a decisão vai morar, escrito antes de a decisão existir. Descobrir
-# depois que a permissão precisava atravessar cinco assinaturas de função é o
-# custo que este arquivo evita — ver `identifica()` em `backend/api/src/identidade.ts`.
+# MUDAR ACESSO: edite, commit, e a API relê sozinha em até 2 s (sem reiniciar). No
+# container o `backend/specs/` vai dentro da imagem — lá, ou se reconstrói a imagem
+# ou se monta um arquivo de fora com `PERMISSOES_ARQUIVO=/caminho/permissoes.yaml`.
 #
-# Quando o segundo usuário aparecer, o que falta é: (1) o leitor deste arquivo,
-# (2) o provedor de identidade, (3) o recorte por linha entrando em `calculaPagina`.
-# A trava que já existe e **continua valendo** é a de
-# `GET /api/dashboards/:id/valores`: ela só lista coluna que é segmentação daquela
-# página. O recorte por usuário entra **em cima** dela, nunca no lugar dela.
-#
-# O gabarito de conferência é o mesmo `backend/specs/paridade/` — ditado com o filtro de
-# gestor aplicado no Power BI. Sem isso não há como provar que o RLS recorta igual.
+# O QUE ISTO NÃO FAZ: recorte de linha dentro da aba (o gestor ver só a própria
+# equipe). `linhas:` tem de ficar vazio — preenchido, o arquivo é recusado, porque
+# declarar um recorte que nada aplica daria falsa segurança. Quando entrar,
+# `backend/api/src/escopo-cache.ts` muda ANTES (o cache é compartilhado entre quem
+# vê a mesma aba).
 
-# ---------------------------------------------------------------------------
-# Papéis
-# ---------------------------------------------------------------------------
-#
-#   nome     identificador curto, é o que aparece em `paginas:` e `linhas:`
-#   descreve para quem lê depois
-#
-papeis:
-  - nome: local
-    descreve: >
-      O único papel em uso. É o que `identificaLocal()` devolve enquanto não há
-      login: vê tudo, porque hoje só o dono da máquina alcança a API.
+admins:
+  - erick.azambuja@sebratel.com.br
 
-  # --- Desenho, não ligado --------------------------------------------------
-  #
-  # - nome: gestor
-  #   descreve: >
-  #     Gestor de equipe. Vê as 14 páginas, mas só as linhas da própria equipe.
-  #     No Power BI de origem são três: Luis Aranda, Pablo Borges e Stefany Souza.
-  #
-  # - nome: diretoria
-  #   descreve: Vê tudo, sem recorte de linha.
+telas:
+  capa:
+    modo: lista
+    emails: []
+  visao-geral:
+    modo: lista
+    emails: []
+  agendamento-field:
+    modo: lista
+    emails: []
+  diario-instalacao:
+    modo: lista
+    emails: []
+  relatorio-do-mes:
+    modo: lista
+    emails: []
+  relatorio-do-ano:
+    modo: lista
+    emails: []
+  protocolos-detalhados:
+    modo: lista
+    emails: []
+  instalacao-reincidente:
+    modo: lista
+    emails: []
+  manutencao-inicial:
+    modo: lista
+    emails: []
+  telefonia-ouvidoria:
+    modo: lista
+    emails: []
+  premiacao-instalacao:
+    # valor de premiação por pessoa — dado sensível
+    modo: lista
+    emails: []
+  # l-inst, l-mapa e l-tec são páginas de DICA do relatório original (a tela não as
+  # navega): sem entrada, ficam só para admin.
 
-# ---------------------------------------------------------------------------
-# Páginas e visuais — quem pode abrir
-# ---------------------------------------------------------------------------
-#
-# Ausente = liberado para todos os papéis. Declarar é restringir.
-#
-paginas: {}
-  # premiacao-instalacao:
-  #   papeis: [diretoria]
-  #   porque: valor de premiação por pessoa; gestor não vê o da outra equipe
-  #
-  # protocolos-detalhados:
-  #   visuais:
-  #     - id: <id do visual, como em backend/specs/dashboards/*.spec.yaml>
-  #       papeis: [diretoria]
-
-# ---------------------------------------------------------------------------
-# Recorte por linha (RLS)
-# ---------------------------------------------------------------------------
-#
-# O filtro que entra **sempre**, como filtro de página, para um papel. Ele viaja
-# pelo mesmo caminho de `?filtro=` da tela (`FiltroSpec` → `traduzFiltros`), então
-# nenhuma engine precisa saber que ele veio de permissão e não de segmentação.
-#
-#   tabela / coluna   o que recortar
-#   de                de onde sai o valor: `identidade.<campo>`
-#
-# Regra que não pode ser afrouxada: papel com recorte declarado e valor ausente
-# **erra alto**. Cair para "sem filtro" mostraria a base inteira a quem só podia
-# ver a própria equipe — número plausível, e o vazamento é silencioso.
-#
 linhas: {}
-  # gestor:
-  #   - tabela: PROTOCOLOS GERAL
-  #     coluna: EQUIPE
-  #     de: identidade.equipes
-  #     porque: >
-  #       Reproduz a segmentação por gestor do relatório de origem. Conferir com
-  #       backend/specs/paridade ditado COM o filtro aplicado, não sem.

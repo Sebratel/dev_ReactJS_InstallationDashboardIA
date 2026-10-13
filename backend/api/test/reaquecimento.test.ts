@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 import { escreve } from '../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -93,6 +94,7 @@ async function sobe(
   // nó que `index.ts` desata com um `let`.
   let eu: Bancada;
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: await dirComCapa(),
     webDir: WEB,

@@ -14941,3 +14941,29 @@ derrubando a API, como devem.
 **Conserto:** o vigia guarda o fim da última suspensão (`retomadaEm`) e conta o limite do laço
 principal a partir do mais novo entre o último batimento e o despertar. Preso de verdade depois
 de acordar continua morrendo — só que 120 s depois do despertar, não 1 s.
+
+## #205 — acesso por aba ligado: o modelo do comercial, sem as três portas abertas dele (13/10)
+
+**O quê.** ackend/api/src/permissoes.ts lê ackend/specs/_catalog/permissoes.yaml
+(saiu de "ESTADO: DESENHO"). Modelo copiado do dados_ReactJS_CommercialDashboards
+(server/src/auth/access.js): admin (ADMIN_EMAILS ou dmins:) abre tudo; as outras
+contas abrem só as abas cuja emails: as cita, ou que estão em modo: todos. Sem tela de
+admin — a configuração é o YAML, por commit, relido sozinho em até 2 s (decisão do Erick:
+a API continua só leitura).
+
+**O que NÃO veio do comercial**, porque lá falha aberto: (1) aba sem configuração nasce
+	odos → aqui, só admin; (2) aba desconhecida é liberada → aqui, negada; (3) podeVer do
+front libera tudo com 	elas vazio → aqui o front só desenha o que a lista do servidor
+manda, e quem barra é o 403. E o YAML é validado inteiro: chave errada, aba inexistente,
+e-mail sem @ ou linhas: preenchido invalidam o arquivo, e inválido = só ADMIN_EMAILS.
+
+**Onde barra.** Em tende(), antes de pagina/alores/layout — logo, antes de
+qualquer leitura de cache. O cache continua compartilhado (escopoDoCache constante):
+quem abre uma aba vê o mesmo conteúdo que qualquer outro que a abre. A trava de
+escopo-cache.test.ts deixou de olhar paginas: (aba não muda conteúdo) e continua
+olhando linhas: (recorte por linha muda). permissoes.test.ts prova o 403 com o cache
+já aquecido pelo admin. A opção cesso do Servidor é obrigatória e sem padrão.
+
+**O que falta.** Preencher as listas — no commit, só o Erick é admin e toda aba está com
+emails: []: **promover à main assim tira o acesso de todo o resto**. Recorte por linha
+segue em aberto.

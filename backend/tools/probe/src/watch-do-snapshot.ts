@@ -29,6 +29,7 @@ import { fileURLToPath } from 'node:url';
 import { escreve } from '../../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { Servidor } from '../../../api/src/servidor.ts';
+import { ACESSO_SO_DE_MAQUINA } from '../../../api/src/permissoes.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const RAIZ = path.resolve(AQUI, '..', '..', '..', '..');
@@ -168,7 +169,8 @@ console.log(`  plataforma: ${process.platform}  node: ${process.version}\n`);
     root: RAIZ,
     snapshotDir: dir,
     webDir: path.join(RAIZ, 'frontend', 'dist'),
-    identifica: () => ({ usuario: 'sonda', papeis: ['autenticado'] }),
+    identifica: () => ({ usuario: 'sonda', papeis: ['interno'] }),
+    acesso: ACESSO_SO_DE_MAQUINA,
   });
 
   const primeiro = servidor.identidadeAtual();

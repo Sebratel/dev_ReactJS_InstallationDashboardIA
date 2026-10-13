@@ -22,6 +22,7 @@ import { arquivoDaQuery, escreveManifesto } from '../../packages/snapshot/src/ma
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PiscinaWorkers } from '../src/piscina-workers.ts';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 import type { OverlayDeTabela } from '../src/overlay-realtime.ts';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from '../src/worker-calculador.ts';
 
@@ -166,6 +167,7 @@ async function sobe(piscina: PiscinaWorkers): Promise<{
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: fs.mkdtempSync(path.join(os.tmpdir(), 'valores-worker-vazio-')),
     webDir: WEB,

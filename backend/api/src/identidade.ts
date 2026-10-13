@@ -12,10 +12,9 @@
 // porque um é sobre SESSÃO (não fala com o Google) e o outro é sobre TOKEN (fala
 // com o Google), e um teste de sessão não deveria precisar de rede para rodar.
 //
-// **Escopo desta etapa, por decisão do Erick: só o portão de entrada.** Toda
-// conta autenticada vê tudo, exatamente como via antes de existir login — o
-// desenho de papéis/recorte por linha de `backend/specs/_catalog/permissoes.yaml`
-// continua "ESTADO: DESENHO", para depois.
+// **Quem abre cada aba mora em `permissoes.ts`** (desde 13/10/2026), lido de
+// `backend/specs/_catalog/permissoes.yaml`. Aqui fica só "quem é"; o recorte por
+// linha continua fora (`linhas: {}`).
 //
 // **A parte que não é só desenho: a chave do cache já carrega o usuário.** O
 // cache da resposta guarda JSON pronto. No dia em que existir recorte por
@@ -30,9 +29,9 @@ export interface Identidade {
   /** Quem pediu. É o que entra na chave do cache. */
   usuario: string;
   /**
-   * Os papéis, como em `backend/specs/_catalog/permissoes.yaml`. Hoje sempre
-   * `['autenticado']` — não há papel nenhum além de "tem sessão válida" nesta
-   * etapa (decisão do Erick: portão de entrada primeiro, papéis depois).
+   * `['autenticado']` para pessoa (o que ela abre é `permissoes.ts` quem diz, pelo
+   * e-mail), `['interno']` para máquina (aquecedor, ferramenta de print) e
+   * `['sem-login']` no modo de desenvolvimento sem provedor.
    */
   papeis: string[];
 }
@@ -117,5 +116,11 @@ export function identificaPorSessao(sessoes: Sessoes, req: http.IncomingMessage)
     sessoes.delete(token);
     return null;
   }
+  // A sessão de `/auth/interno` (só existe com o TOKEN_INTERNO certo) é máquina, não
+  // pessoa: passa pelo portão de abas como o aquecedor (`permissoes.ts`). Nenhum login
+  // de pessoa produz este nome — o Firebase e o GIS só criam sessão com e-mail.
+  if (sessao.usuario === USUARIO_FERRAMENTA) return { usuario: sessao.usuario, papeis: ['interno'] };
   return { usuario: sessao.usuario, papeis: ['autenticado'] };
 }
+
+export const USUARIO_FERRAMENTA = 'ferramenta-interna';

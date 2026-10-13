@@ -655,7 +655,7 @@ export class Servidor {
         // voltaria a servir `/api/*` sem sessão — o defeito de 04/09 de novo,
         // por outra porta. Ver `portao-login.ts`.
         (!this.opts.googleClientId && !this.opts.firebaseProjectId
-          ? { usuario: 'dev-local', papeis: ['autenticado'] }
+          ? { usuario: 'dev-local', papeis: ['sem-login'] }
           : null);
 
     if (rota.startsWith('/api/')) {
@@ -678,7 +678,7 @@ export class Servidor {
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
         return;
       }
-      if (rota === '/api/dashboards') return this.lista(res);
+      if (rota === '/api/dashboards') return this.lista(res, quem);
       if (rota === '/api/eventos') return this.eventos(req, res);
       if (rota.startsWith('/api/dashboards/')) {
         // `<id>` ou `<id>/valores`. O `id` é decodificado depois do corte: há página
@@ -700,6 +700,16 @@ export class Servidor {
           return;
         }
         const sub = barra === -1 ? '' : resto.slice(barra + 1);
+
+        // O portão de aba (`permissoes.ts`), ANTES de qualquer leitura de cache: o
+        // cache é compartilhado entre quem pode abrir a aba, então a pergunta "pode?"
+        // tem de vir antes de "já tenho pronto?". Página inexistente segue para o 404
+        // de sempre — os ids não são segredo (estão no bundle da tela).
+        if (this.dashboards.some((d) => d.id === id) && !this.opts.acesso.podeVer(quem, id)) {
+          this.registraEventoSeg(req, 403, 'aba-sem-acesso');
+          responde(res, 403, { erro: 'Você não tem acesso a esta aba. Peça a um administrador do dashboard.' });
+          return;
+        }
 
         if (sub === '') return this.pagina(res, id, url, quem);
         if (sub === 'valores') return this.valores(res, id, url, quem);
@@ -956,6 +966,9 @@ export class Servidor {
       // foi essa combinação que passou despercebida por 3h43 em 16/09/2026.
       ...(this.opts.estadoDoAgendador ? { agendador: this.opts.estadoDoAgendador() } : {}),
       ...(this.opts.estadoDaGuarda ? { guarda: this.opts.estadoDaGuarda() } : {}),
+      // `ok: false` = `permissoes.yaml` inválido e só ADMIN_EMAILS entra. Sem o
+      // motivo: esta rota é pública, e o erro pode citar e-mail. O motivo está no log.
+      permissoes: this.opts.acesso.estado(),
     });
   }
 
@@ -969,11 +982,14 @@ export class Servidor {
     }
   }
 
-  private lista(res: http.ServerResponse): void {
+  private lista(res: http.ServerResponse, quem: Identidade): void {
     const manifesto = leManifesto(this.opts.snapshotDir);
     const emDisco = new Set(manifesto?.tabelas.map((t) => t.query) ?? []);
     responde(res, 200, {
-      dashboards: this.dashboards.map((d) => ({
+      // A tela monta a navegação SÓ com o que vem aqui. Esconder a aba é conforto; quem
+      // barra é o 403 de `atende()` — pedir a aba pela URL dá no mesmo lugar.
+      eu: { usuario: quem.usuario, admin: this.opts.acesso.ehAdmin(quem) },
+      dashboards: this.dashboards.filter((d) => this.opts.acesso.podeVer(quem, d.id)).map((d) => ({
         id: d.id,
         nome: d.name,
         visuais: (d.visuals ?? []).length,

@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 import { escreve } from '../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { Servidor } from '../src/servidor.ts';
+import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 import type { ServidorOptions } from '../src/opcoes-servidor.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -48,6 +49,7 @@ async function sobe(extras: Partial<ServidorOptions>): Promise<{
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
     root: ROOT,
     snapshotDir: await dirComCapa(),
     webDir: WEB,

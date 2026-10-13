@@ -19,10 +19,9 @@
 // podem — e devem — dividir a mesma entrada.
 //
 // **Hoje o escopo é constante, e isso é uma afirmação sobre o modelo, não um
-// atalho.** `backend/specs/_catalog/permissoes.yaml` diz "ESTADO: DESENHO" e traz
-// `paginas: {}` e `linhas: {}` vazios: toda conta autenticada vê tudo, exatamente
-// como via antes de o login existir (`identidade.ts`, decisão do Erick: portão de
-// entrada primeiro, papéis depois). No dia em que essa afirmação deixar de valer,
+// atalho.** `backend/specs/_catalog/permissoes.yaml` decide QUAIS abas cada conta
+// abre (`permissoes.ts`, barrado antes do cache), mas traz `linhas: {}` vazio: dentro
+// de uma aba, todo mundo que a abre vê as mesmas linhas. No dia em que essa afirmação deixar de valer,
 // quem avisa é `backend/api/test/escopo-cache.test.ts` — ele lê o YAML, não a
 // intenção de quem o editou.
 
