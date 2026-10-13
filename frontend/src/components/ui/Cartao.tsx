@@ -9,6 +9,7 @@
 // chutado: gráfico maior que a tela é gráfico que ninguém vê inteiro.
 
 import type { ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { useModo } from '../../context/ModoContext.tsx';
 import { alturaDoConteudo, type AlturaDeVisual } from '../../utils/alturaDoConteudo.ts';
 import { cn } from '../../utils/cn.ts';
@@ -82,26 +83,35 @@ export function Cartao(props: {
   );
 }
 
-/** Caixa de mensagem: fundo suave do tom, letra escurecida, borda (cor cheia é fundo). */
-const CAIXA = 'rounded-[2px] border px-[10px] py-[8px] text-[0.74rem] font-semibold';
+/** O aviso do COM (`.banner`): fundo suave do tom, borda fina e um filete de 3px à
+ *  esquerda na cor cheia, letra escurecida e o ícone na frente (cor cheia é fundo). */
+const CAIXA =
+  'flex items-start gap-[7px] rounded-[6px] border border-l-[3px] px-[11px] py-[6px] text-[12px] leading-[1.45] [&>svg]:mt-[2px] [&>svg]:flex-none';
 
 export function Erro({ children }: { children: ReactNode }) {
   return (
     <div
       className={cn(
         CAIXA,
-        'border-pbi-critico bg-pbi-erro-bg whitespace-pre-wrap text-pbi-critico-texto',
+        'border-pbi-critico border-l-pbi-critico bg-pbi-erro-bg whitespace-pre-wrap text-pbi-critico-texto',
       )}
     >
-      {children}
+      <AlertTriangle size={14} aria-hidden="true" />
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
 
 export function Aviso({ children }: { children: ReactNode }) {
   return (
-    <div className={cn(CAIXA, 'border-pbi-gold-600 bg-pbi-aviso-bg text-pbi-gold-600')}>
-      {children}
+    <div
+      className={cn(
+        CAIXA,
+        'border-pbi-gold-200 border-l-pbi-gold bg-pbi-aviso-bg text-pbi-gold-600',
+      )}
+    >
+      <AlertTriangle size={14} aria-hidden="true" />
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

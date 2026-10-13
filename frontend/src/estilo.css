@@ -35,7 +35,7 @@
    =========================================================================== */
 
 @theme {
-  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Segoe UI', 'Segoe UI Web (West European)', Arial, -apple-system, sans-serif;
 }
 
 @theme inline {
@@ -67,6 +67,7 @@
   --color-pbi-erro-bg: var(--pbi-erro-bg);
   --color-pbi-aviso-bg: var(--pbi-aviso-bg);
   --color-pbi-barra-fundo: var(--pbi-barra-fundo);
+  --color-pbi-hover: var(--pbi-hover);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -133,7 +134,9 @@
      e a cor de base continuam as mesmas, então a Fase L6 pode confiar. */
   --pct-ok-bg: 10%;
   --pct-erro-bg: 9%;
-  --pct-aviso-bg: 55%;
+  /* 25% desde 13/10/2026 (era 55%): o fundo de aviso do COM (#FDF9EC) é quase branco;
+     a letra `--pbi-gold-600` só ganha contraste com isso. */
+  --pct-aviso-bg: 25%;
   --pbi-ok-bg: color-mix(in srgb, var(--pbi-green) var(--pct-ok-bg), var(--pbi-superficie));
   --pbi-erro-bg: color-mix(in srgb, var(--pbi-critico) var(--pct-erro-bg), var(--pbi-superficie));
   --pbi-aviso-bg: color-mix(
@@ -162,7 +165,22 @@
   --grade: var(--pbi-grid);
   --sem-dado: var(--pbi-neutro);
 
-  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* A fonte, o raio, a sombra e o fundo são os do COM · Gestão Comercial
+     (`dados_ReactJS_CommercialDashboards/web/src/theme.css`), o frontend da Sebratel
+     aprovado pelo QA e em produção — a referência visual desta tela desde 13/10/2026. */
+  --font: 'Segoe UI', 'Segoe UI Web (West European)', Arial, -apple-system, sans-serif;
+  --card-radius: 8px;
+  --card-shadow: 0 1px 2px rgba(37, 36, 35, 0.06), 0 6px 16px -10px rgba(37, 36, 35, 0.35);
+  --card-shadow-hover: 0 1px 2px rgba(37, 36, 35, 0.08), 0 10px 22px -12px rgba(37, 36, 35, 0.45);
+  --pbi-hover: #faf9f8;
+  --fundo-pagina:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(238, 236, 233, 0.9) 45%,
+      rgba(248, 247, 245, 0.95) 100%
+    ),
+    var(--pbi-fundo);
 
   /* -------------------------------------------------------------------------
      A CONTA QUE FAZ A TELA CABER
@@ -178,7 +196,7 @@
      pequeno.
      ------------------------------------------------------------------------- */
   --h-topbar: 52px;
-  --h-nav: 64px;
+  --h-nav: 36px;
   --h-filtros: 50px;
   --h-antes: 0px;
   --h-entre: 0px;
@@ -214,7 +232,7 @@
 
      `--h-nav` também é medido em tempo de execução — o valor no `:root` é só o
      chão, para o primeiro quadro não sair absurdo. */
-  --chrome: calc(var(--h-topbar) + var(--h-nav) + 50px);
+  --chrome: calc(var(--h-topbar) + var(--h-nav) + 20px);
   --util: calc(100vh - var(--chrome) - var(--h-antes) - var(--h-entre));
 }
 
@@ -233,6 +251,10 @@
      `--pbi-sobre-primary` NÃO entra: a superfície bordô é a mesma nos dois temas,
      e o que separa o cabeçalho do corpo escuro é a borda dourada. */
   --pbi-primary-texto: var(--pbi-gold);
+  --pbi-hover: #2f2e2d;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 16px -10px rgba(0, 0, 0, 0.7);
+  --card-shadow-hover: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 22px -12px rgba(0, 0, 0, 0.8);
+  --fundo-pagina: linear-gradient(135deg, #222120 0%, #1b1a19 45%, #201f1e 100%);
   --superficie: var(--pbi-superficie);
   --fundo: var(--pbi-fundo);
   --texto: var(--pbi-ink);
@@ -299,7 +321,8 @@ html {
 
 body {
   margin: 0;
-  background: var(--fundo);
+  background: var(--fundo-pagina);
+  background-attachment: fixed;
   color: var(--texto);
   font-family: var(--font);
   font-size: 0.86rem;
@@ -321,80 +344,67 @@ body {
    utilitário em `AppShell`, `NavDeTelas`, `AcoesDoCabecalho`, `ui/BotaoDeIcone` e
    `Login` (fase 6e). Fica aqui a faixa de navegação: a altura dela é medida. */
 
-/* A FAIXA DE NAVEGAÇÃO.
+/* A FAIXA DE NAVEGAÇÃO — a `.pagenav` do COM: uma linha que rola na horizontal, sem
+   barra de rolagem à vista. As 11 telas não cabem em 1366px; a borda direita esmaece
+   (a máscara cai sobre os últimos 28px, que são `padding` — no fim da rolagem não
+   apagam aba nenhuma) para dizer que há mais. A rolagem é DESTA faixa, não da página.
 
-   `flex-wrap`, não `overflow-x`. Com 14 telas os rótulos somam 1.511px só de texto
-   e 2.113px com ícone e respiro (medido em 27/08/2026), contra 1.366px de tela —
-   não cabe em uma linha em monitor comum. Rolagem horizontal aqui esconderia metade
-   das telas atrás de um gesto que ninguém adivinha; quebrar em duas linhas mostra
-   as 14 de uma vez.
-
-   A altura REAL é medida pelo `NavDeTelas` e publicada em `--h-nav`, porque `--util`
-   a soma e todo card depende disso. Fixar o número mentiria em metade das
-   resoluções. */
+   A altura é medida pelo `NavDeTelas` e publicada em `--h-nav`, que `--util` desconta. */
 .nav-telas {
   flex: none;
   display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  padding: 5px 16px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 28px 0 10px;
   background: var(--superficie);
   border-bottom: 1px solid var(--borda);
+  overflow-x: auto;
+  scrollbar-width: none;
   position: sticky;
   top: var(--h-topbar);
-  z-index: 25;
+  z-index: 39;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.nav-telas::-webkit-scrollbar {
+  display: none;
 }
 
-/* ============================================================ selo "ao vivo" */
-/* O selo do título da tela quando o SSE trouxe dado novo. É animação: fica aqui. */
+/* ============================================================ ponto "ao vivo" */
+/* O ponto ao lado da idade do dado, no topo (o `.live-dot` do COM). Verde pulsando:
+   em dia. Dourado: parado além do esperado. Vermelho: alguma fonte falhou. É
+   animação: fica aqui. */
 
-.badge-realtime {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--pbi-green);
-  background: var(--pbi-ok-bg);
-  border: 1px solid var(--pbi-green);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  white-space: nowrap;
-  line-height: 1.3;
-  animation: pulse-suave 1.5s ease-in-out;
-}
 .ponto-vivo {
-  width: 6px;
-  height: 6px;
+  flex: none;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background-color: var(--pbi-green);
-  box-shadow: 0 0 5px var(--pbi-green);
-  display: inline-block;
-  animation: pisca-ponto 2s infinite ease-in-out;
+  background: var(--pbi-green);
+  animation: pulso-vivo 2.4s infinite;
 }
-@keyframes pisca-ponto {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.35;
-    transform: scale(0.75);
-  }
+.ponto-vivo.parado {
+  background: var(--pbi-gold);
+  animation: none;
 }
-@keyframes pulse-suave {
+.ponto-vivo.falhou {
+  background: var(--pbi-critico-texto);
+  animation: none;
+}
+@keyframes pulso-vivo {
   0% {
-    transform: scale(0.96);
-    opacity: 0.7;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 55%, transparent);
   }
-  50% {
-    transform: scale(1.02);
-    opacity: 1;
+  70% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--pbi-green) 0%, transparent);
   }
   100% {
-    transform: scale(1);
-    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ponto-vivo {
+    animation: none;
   }
 }
 
@@ -578,8 +588,8 @@ body {
   select,
   input {
     font-family: var(--font);
-    font-size: 0.74rem;
-    border-radius: 2px;
+    font-size: 12.5px;
+    border-radius: 6px;
     border: 1px solid var(--grade);
     background: var(--superficie);
     color: var(--texto);

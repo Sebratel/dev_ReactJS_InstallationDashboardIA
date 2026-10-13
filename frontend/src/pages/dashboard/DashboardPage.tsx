@@ -19,7 +19,6 @@ import { usePreCargas } from '../../hooks/usePreCargas.ts';
 import { useVizinhanca } from '../../hooks/useVizinhanca.ts';
 import { useEspacoSemVisual } from '../../hooks/useAlturaMedida.ts';
 import { avaliaSaudeQueries } from '../../utils/avisoSaude.ts';
-import { dataHora } from '../../utils/formato.ts';
 import { dataDaPagina } from '../../utils/filtrosPadrao.ts';
 import { segmentacoesDaTela } from '../../utils/segmentacoesDaTela.ts';
 import { AppShell } from '../../components/layout/AppShell.tsx';
@@ -117,14 +116,7 @@ export function DashboardPage() {
         sai().finally(() => expirou());
       }}
       titulo={nome}
-      sub={
-        avisoSaude.temAviso
-          ? avisoSaude.mensagem
-          : paginaValida
-            ? `dado de ${dataHora(paginaValida.dadoDe)}`
-            : ''
-      }
-      subAviso={avisoSaude.temAviso}
+      dadoDe={paginaValida?.dadoDe ?? null}
       avisoSaude={avisoSaude}
       ultimaAtualizacaoRealtime={horaRealtime}
       acoes={
