@@ -166,6 +166,17 @@ function carregaLayouts(dirLayout: string): Map<string, LayoutSpec> {
  */
 const naoReaquece = (): Promise<void> => Promise.resolve();
 
+/**
+ * Quem recebe o corpo inteiro de `GET /api/saude`: sessão válida (ou o Aquecedor), ou um
+ * pedido da própria máquina — o healthcheck do contêiner e o `npm start` batem em
+ * `127.0.0.1`. O endereço é o do SOCKET, nunca `X-Forwarded-For`, que quem pede escreve.
+ */
+export function saudeCompletaPara(e: { autenticado: boolean; enderecoRemoto: string | undefined }): boolean {
+  if (e.autenticado) return true;
+  const a = e.enderecoRemoto ?? '';
+  return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+}
+
 export class Servidor {
   private readonly piscina: PiscinaWorkers;
 
@@ -629,17 +640,28 @@ export class Servidor {
       return;
     }
 
-    // /api/saude fica de fora da guarda de sessão: quem bate nela é o
-    // healthcheck do container (docker-compose.prod.yml), que não tem como
-    // logar — e ela não expõe dado de cliente, só metadado operacional.
-    if (rota === '/api/saude') return this.saude(res);
-
     // O Aquecedor bate nestas mesmas rotas por HTTP, de propósito (ver o
     // comentário de `segredoAquecedor` acima) — reconhecê-lo aqui, antes do
     // cookie de sessão, é o que evita ele levar 401 de si mesmo.
     const cabecalhoAquecedor = req.headers['x-aquecedor-interno'];
     const ehAquecedor =
       typeof cabecalhoAquecedor === 'string' && cabecalhoAquecedor === this.segredoAquecedor;
+
+    // /api/saude fica de fora da guarda de sessão: quem bate nela é o
+    // healthcheck do container (docker-compose.prod.yml), que não tem como
+    // logar. Mas o corpo inteiro só vai para quem está logado ou para a própria
+    // máquina: ele repassa mensagens de erro cruas das fontes, e em 13/10/2026
+    // publicava o IP e a porta do banco do Voalle para a rede inteira, sem login.
+    if (rota === '/api/saude') {
+      let autenticado = ehAquecedor;
+      try {
+        autenticado ||=
+          this.opts.identifica(req) !== null || (!this.opts.googleClientId && !this.opts.firebaseProjectId);
+      } catch {
+        // Identificação quebrada não pode derrubar o healthcheck: vale como anônimo.
+      }
+      return this.saude(res, saudeCompletaPara({ autenticado, enderecoRemoto: req.socket.remoteAddress }));
+    }
 
     // Quem está pedindo. `null` sem sessão válida — e é aqui, antes de
     // qualquer roteamento de `/api/*`, que isso vira 401 (docs/DEPLOY.md
@@ -860,7 +882,7 @@ export class Servidor {
 
   // ------------------------------------------------------------------- rotas
 
-  private saude(res: http.ServerResponse): void {
+  private saude(res: http.ServerResponse, completa: boolean): void {
     // **A saúde CONFERE o carimbo, não só relata.** Esta rota é polida a cada
     // 30 s pelo healthcheck do container (`docker-compose.prod.yml`), então ela
     // já é um relógio existente — usá-la como segundo ponto de reconciliação
@@ -873,6 +895,12 @@ export class Servidor {
     this.confereCarimbo();
     const manifesto = leManifesto(this.opts.snapshotDir);
     const refresh = this.statusDeRefresh() as { queries?: QuerySaude[] };
+    if (!completa) {
+      // O que um monitor externo precisa (está de pé? há o que avisar?) e nada que
+      // descreva a infraestrutura: sem motivo, sem erro de fonte, sem nome de tabela.
+      responde(res, 200, { ok: manifesto !== null, degradado: resumeDegradacao(refresh.queries ?? []).degradado });
+      return;
+    }
     responde(res, 200, {
       // O resumo que um monitor externo lê sem entender o resto (ACHADOS #160). Continua
       // 200 de propósito: dado parado não se conserta reiniciando a API, e um 503 aqui

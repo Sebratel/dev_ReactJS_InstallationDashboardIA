@@ -13,7 +13,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { Servidor } from '../src/servidor.ts';
+import { Servidor, saudeCompletaPara } from '../src/servidor.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const WEB = path.join(ROOT, 'frontend', 'dist');
@@ -526,6 +526,32 @@ test('log de segurança: token interno inválido (brute force) emite [seg], sem 
     assert.doesNotMatch(linha!, /chute-errado-do-atacante/);
   } finally {
     cap.restaura();
+    await s.fecha();
+  }
+});
+
+// -------------------------------------------------- /api/saude sem login (13/10/2026)
+
+test('saudeCompletaPara: o corpo inteiro só para quem está logado ou para a própria máquina', () => {
+  // Em 13/10/2026 o `/api/saude` publicava, sem login, a mensagem crua do poller:
+  // `connect ECONNREFUSED <IP do banco do Voalle>:5432` — para a rede inteira.
+  assert.equal(saudeCompletaPara({ autenticado: true, enderecoRemoto: '10.1.1.50' }), true);
+  assert.equal(saudeCompletaPara({ autenticado: false, enderecoRemoto: '127.0.0.1' }), true, 'healthcheck do contêiner');
+  assert.equal(saudeCompletaPara({ autenticado: false, enderecoRemoto: '::1' }), true);
+  assert.equal(saudeCompletaPara({ autenticado: false, enderecoRemoto: '::ffff:127.0.0.1' }), true);
+  assert.equal(saudeCompletaPara({ autenticado: false, enderecoRemoto: '10.1.1.50' }), false, 'outra máquina da rede');
+  assert.equal(saudeCompletaPara({ autenticado: false, enderecoRemoto: '172.18.0.5' }), false, 'o proxy, repassando alguém de fora');
+  assert.equal(saudeCompletaPara({ autenticado: false, enderecoRemoto: undefined }), false);
+});
+
+test('/api/saude da própria máquina continua completo; o healthcheck não muda', async () => {
+  const s = await sobe({ firebaseProjectId: 'projeto-de-teste' });
+  try {
+    const r = await s.busca('/api/saude');
+    assert.equal(r.status, 200);
+    const corpo = (await r.json()) as Record<string, unknown>;
+    assert.ok('degradacao' in corpo && 'cache' in corpo, 'de 127.0.0.1 o corpo é o completo');
+  } finally {
     await s.fecha();
   }
 });

@@ -897,6 +897,10 @@ Antes:
 - [ ] `snapshot/` do dia, e `npm run snapshot:confere` sem divergência de tipo
 - [ ] `.env` de produção conferido contra o §3.5 — porta, `REDIS_URL`, usuário read-only
 - [ ] **não** rodar refresh nas horas anteriores: troca o carimbo e esfria todo o cache
+- [ ] pasta do snapshot no host gravável pelo uid 1000: `api` e `refresh` não rodam mais
+      como root (13/10/2026) — `chown -R 1000:1000 <SNAPSHOT_DIR_HOST>` num servidor Linux
+- [ ] HTTPS no proxy (§3.3) e `COOKIE_SECURE` ligado: sem isso o login trafega em claro
+- [ ] a porta 3100 publicada só em `127.0.0.1` (compose) — a tela entra pelo proxy
 
 Depois, na ordem:
 

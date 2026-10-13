@@ -118,11 +118,11 @@ services:
       # stack sem matar nada. Dentro da rede do compose o Nginx continua
       # falando com `api:3100`, então mudar isto não afeta o proxy.
       #
-      # Em produção, considere NÃO publicar esta porta: com o Nginx na frente,
-      # publicá-la é uma entrada que não passa pelo proxy (nem pelo TLS, quando
-      # existir). Fica publicada hoje porque é o que permite diagnosticar a API
-      # sem o proxy no caminho.
-      - '${API_PORT_HOST:-3100}:3100'
+      # Só na própria máquina (13/10/2026): publicada em todas as interfaces, era uma
+      # entrada que não passa pelo proxy (nem pelo TLS, quando existir), aberta para a
+      # rede inteira — o firewall do Windows libera o Docker. Diagnóstico local continua:
+      # `curl http://127.0.0.1:3100/api/saude`. A tela vai pelo proxy, na porta 80.
+      - '127.0.0.1:${API_PORT_HOST:-3100}:3100'
     depends_on:
       - redis
     # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
