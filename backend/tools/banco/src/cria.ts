@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import mysql from 'mysql2/promise';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
-const SQL = path.join(ROOT, 'backend', 'tools', 'banco', 'sql', 'acesso.sql');
+const SQL = path.join(ROOT, 'backend', 'tools', 'banco', 'sql', 'schema.sql');
 const BANCO = 'DB_InstallationDashboard';
 const USUARIO = 'installation_access';
 const TABELAS_EDITAVEIS = ['user_roles', 'screens', 'screen_users'];
