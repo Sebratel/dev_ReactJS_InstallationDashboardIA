@@ -262,3 +262,17 @@ test('o login da tela entra no build da imagem: toda VITE_FIREBASE_* lida pela t
   assert.doesNotMatch(dockerfile, /^\s*ARG\s+VITE_TOKEN_INTERNO/m, 'o botão de desenvolvimento não pode ir para a imagem');
   assert.ok(!('VITE_TOKEN_INTERNO' in args));
 });
+
+test('o CI define toda variável que o compose exige sem padrão — senão o job de imagens quebra', () => {
+  // 13/10/2026: a C.1 tornou as VITE_FIREBASE_* obrigatórias (`${VAR:?...}`) e o job
+  // `imagens` do CI, que só definia REDIS_PASSWORD e GOOGLE_CREDENCIAL_HOST, passou a
+  // quebrar em todo push — e ninguém viu, porque nada era empurrado.
+  const compose = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8');
+  const exigidas = [...new Set([...compose.matchAll(/\$\{([A-Z_]+):\?/g)].map((m) => m[1]!))];
+  assert.ok(exigidas.includes('VITE_FIREBASE_API_KEY'), 'a guarda achou as exigidas');
+  const ci = parse(fs.readFileSync(path.join(RAIZ, '.github', 'workflows', 'ci.yml'), 'utf8')) as {
+    jobs: Record<string, { steps: { run?: string; env?: Record<string, string> }[] }>;
+  };
+  const passo = ci.jobs['imagens']!.steps.find((s) => /docker compose .* build/.test(s.run ?? ''))!;
+  for (const v of exigidas) assert.ok(v in (passo.env ?? {}), `o job 'imagens' não define ${v}`);
+});

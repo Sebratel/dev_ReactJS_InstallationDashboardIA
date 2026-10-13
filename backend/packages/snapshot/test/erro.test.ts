@@ -85,7 +85,7 @@ test('ehFalhaTransitoria: as falhas de rede de 06/10/2026, literais, são transi
     "Falha ao ler a fonte da query 'contratos': Connection terminated unexpectedly",
     "Falha ao ler a fonte da query 'backlog-instalacao': connect ETIMEDOUT",
     "Falha ao ler a fonte da query 'apuracao-premiacao': fetch failed",
-    "Falha ao ler a fonte da query 'field-agenda': connect ECONNREFUSED 186.219.128.248:5432",
+    "Falha ao ler a fonte da query 'field-agenda': connect ECONNREFUSED 203.0.113.10:5432",
   ]) {
     assert.equal(ehFalhaTransitoria(erro), true, erro);
   }

@@ -24,6 +24,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      # Os testes da tela (Vitest) ficavam fora: 157 em 13/10/2026 que nenhum push conferia.
+      - run: npm run test:web
 
   imagens:
     runs-on: ubuntu-latest
@@ -35,10 +37,17 @@ jobs:
       # Construir PELO COMPOSE, não com `--target` na mão: o defeito de 25/09 era o
       # compose não declarar o `target`, e um build manual o esconderia.
       - name: constrói as imagens como o compose constrói
-        # O compose exige estas duas só para interpolar o arquivo; o build não usa nenhuma.
+        # O compose exige estas só para interpolar o arquivo. As VITE_FIREBASE_* entram no
+        # build da tela desde a C.1 (`${VAR:?...}`, sem padrão) — sem elas este job quebrava
+        # em todo push. Valores de mentira bastam: a imagem do CI não vai para lugar nenhum,
+        # e a da stack é construída com as do `.env`.
         env:
           REDIS_PASSWORD: so-para-o-build
           GOOGLE_CREDENCIAL_HOST: /dev/null
+          VITE_FIREBASE_API_KEY: so-para-o-build
+          VITE_FIREBASE_AUTH_DOMAIN: so-para-o-build.firebaseapp.com
+          VITE_FIREBASE_PROJECT_ID: so-para-o-build
+          VITE_FIREBASE_APP_ID: so-para-o-build
         run: docker compose -p ci -f docker-compose.prod.yml build api refresh snapshot-diario
       - name: cada serviço recebeu a imagem certa
         run: sh backend/tools/ci/confere-imagens.sh

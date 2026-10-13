@@ -60,7 +60,7 @@ commit (local) ──> push (CI GitHub) ──> deploy staging (fumaça) ──>
 
 Cada fase cabe numa sessão e termina com o portão rodando, não com o código escrito.
 
-### T.1 — CI de pé de novo (½ sessão)
+### T.1 — CI de pé de novo (½ sessão) — ✅ 13/10, reproduzido localmente; falta ver no GitHub
 - `VITE_FIREBASE_*` de mentira no job `imagens` (o build só precisa que existam; os
   valores reais entram no build da stack). Guardar com o teste `imagem-runtime.test.ts`.
 - `npm run test:web` no job `verifica`.

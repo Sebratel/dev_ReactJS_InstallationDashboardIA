@@ -12247,7 +12247,7 @@ com o daemon no ar. O tick das **14:04:15** pegou o arquivo no meio e matou o gr
 
 Entre 14:04 e 16:59 a máquina suspendeu por ~2h30. Um `quente` ficou pendurado
 8.653.240 ms e morreu; na volta, três grupos falharam com
-`EHOSTUNREACH 186.219.128.248:5432` — rede ainda fora. Nenhum deles tem a ver com a
+`EHOSTUNREACH <IP do Voalle>:5432` — rede ainda fora. Nenhum deles tem a ver com a
 plataforma, e os quatro grupos seguintes rodaram `ok:true`.
 
 O portão proposto para o deploy — *24 h de histórico sem um `ok:false`* — mede o sono do
@@ -14556,7 +14556,7 @@ havia 24 h.
 - 06/10 16:32 e 17:08: `quente` falha — `contratos` com `Connection terminated unexpectedly`
   no meio da query; depois `connect ETIMEDOUT` e `fetch failed` (Google) **no mesmo minuto**.
   `medio` e `frio` passam entre as duas: era a rede da estação, não uma query.
-- 17:53–18:21: tudo falha com `ECONNREFUSED 186.219.128.248:5432` **em 21 s** — o SYN sem
+- 17:53–18:21: tudo falha com `ECONNREFUSED <IP do Voalle>:5432` **em 21 s** — o SYN sem
   resposta do Windows, não uma recusa do Postgres. A `api` falhou igual no poller. Com 2–3
   falhas seguidas, a espera crescente adiou os grupos (teto 4 h).
 - 18:29: `ContainerStopComposeLinux` ×5 — um `docker compose stop` deliberado. **A queda do
