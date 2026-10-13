@@ -111,10 +111,10 @@ export function KpiCard({
 
   return (
     <MolduraDoKpi>
-      <NomeDoKpi title={nomeKpi}>{nomeKpi}</NomeDoKpi>
       <ValorDoKpi vazio={f.vazio} destaque={destaque}>
         {valorTexto}
       </ValorDoKpi>
+      <NomeDoKpi title={nomeKpi}>{nomeKpi}</NomeDoKpi>
       {dadosDaTendencia ? <Sparkline dados={dadosDaTendencia} /> : null}
       {metaValor !== undefined && valorNumerico !== undefined ? (
         <Bullet valor={valorNumerico} meta={metaValor} />

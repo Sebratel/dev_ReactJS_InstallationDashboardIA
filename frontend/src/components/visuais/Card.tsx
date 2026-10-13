@@ -23,8 +23,8 @@ export function Card({ visual }: { visual: VisualCalculado }) {
 
   return (
     <section className="cartao" data-visual>
-      <NomeDoKpi>{d.nome ?? '(sem rótulo)'}</NomeDoKpi>
       <ValorDoKpi vazio={f.vazio}>{f.texto}</ValorDoKpi>
+      <NomeDoKpi>{d.nome ?? '(sem rótulo)'}</NomeDoKpi>
       {filtros.length ? (
         <LinhaDoKpi tom="filtros" title="Segmentações que afetam este número">
           {filtros.length} filtro(s) aplicado(s)

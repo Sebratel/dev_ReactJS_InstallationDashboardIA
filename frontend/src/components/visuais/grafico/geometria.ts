@@ -6,12 +6,15 @@ export const FACETA = 96;
 // `base` de 64 e nao 46: a margem de baixo e o teto do rotulo girado, e com 46 ele
 // cabia em 8 caracteres. Numa caixa de 460px sobra espaco, e o plot fica com 382.
 export const MARGEM = { topo: 14, direita: 8, base: 64, esquerda: 54 };
-/** Marca de 24px é o teto do guia: acima disso a coluna vira bloco. */
-export const LARGURA_MAXIMA = 24;
+/** A coluna mais larga: 54px, o `maxBarSize` do COM. Até 13/10/2026 eram 24px, e um
+ *  gráfico de 6 categorias desenhava colunas de 11px num vão de 210. */
+export const LARGURA_MAXIMA = 54;
 /** O vão de 2px na cor do fundo é o que separa as fatias — nunca uma borda. */
 export const VAO = 2;
 
 export interface Geometria {
+  /** A margem de cima: maior quando há chip de valor acima das colunas. */
+  margemTopo: number;
   /** Largura de uma categoria no plot. */
   banda: number;
   alturaDoPlot: number;
@@ -43,22 +46,28 @@ export function geometriaDoGrafico(p: {
   teto: number;
   empilha: boolean;
   nAreas: number;
+  /** Há chip de valor acima das colunas: a margem de cima cresce para ele caber (26px,
+   *  a do COM com rótulo). */
+  comRotulos?: boolean;
 }): { geo: Geometria; marcas: number[] } {
-  const espacoAbaixoDoTopo = p.alturaDaCaixa - MARGEM.topo - (p.naFaceta ? FACETA : 0);
+  const margemTopo = p.comRotulos ? 26 : MARGEM.topo;
+  const espacoAbaixoDoTopo = p.alturaDaCaixa - margemTopo - (p.naFaceta ? FACETA : 0);
   const base = Math.max(18, Math.min(MARGEM.base, Math.round(espacoAbaixoDoTopo * 0.3)));
   const alturaDoPlot = Math.max(1, espacoAbaixoDoTopo - base);
   const banda = p.nCategorias > 0 ? p.larguraDoPlot / p.nCategorias : p.larguraDoPlot;
   const marcas = marcasDoEixo(p.teto);
   const topo = Math.max(...marcas, 1);
-  const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda - 10));
+  // 70% da categoria: o vão entre vizinhas fica proporcional, como no COM.
+  const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda * 0.7));
   return {
     marcas,
     geo: {
+      margemTopo,
       banda,
       alturaDoPlot,
       base,
       topo,
-      y: (v) => MARGEM.topo + alturaDoPlot * (1 - v / topo),
+      y: (v) => margemTopo + alturaDoPlot * (1 - v / topo),
       xMeio: (i) => MARGEM.esquerda + banda * (i + 0.5),
       larguraDaMarca,
       larguraDaFatia: p.empilha

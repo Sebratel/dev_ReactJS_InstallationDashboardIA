@@ -26,6 +26,7 @@ export function DesenhoDoGrafico(props: {
   marcas: readonly number[];
   geo: Geometria;
   interacao: InteracaoDoGrafico;
+  comRotulos: boolean;
 }) {
   const { largura, altura, categorias, geo, marcas } = props;
   return (
@@ -58,6 +59,7 @@ export function DesenhoDoGrafico(props: {
         tipo={props.tipo}
         geo={geo}
         interacao={props.interacao}
+        comRotulos={props.comRotulos}
       />
       <line
         className="eixo"

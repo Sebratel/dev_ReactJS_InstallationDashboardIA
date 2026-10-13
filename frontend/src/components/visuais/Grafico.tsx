@@ -35,6 +35,7 @@ import { useModo } from '../../context/ModoContext.tsx';
 import { useCaixa } from '../../hooks/useCaixa.ts';
 import { useCliqueNoEixo } from '../../hooks/useCliqueNoEixo.ts';
 import { MARGEM, geometriaDoGrafico } from './grafico/geometria.ts';
+import { MAXIMO_COM_ROTULO } from './grafico/ColunasDoGrafico.tsx';
 import { ControlesDeZoom } from './grafico/ControlesDeZoom.tsx';
 import { DesenhoDoGrafico } from './grafico/DesenhoDoGrafico.tsx';
 import { LegendaDoGrafico } from './grafico/LegendaDoGrafico.tsx';
@@ -125,6 +126,12 @@ export function Grafico({
 
   // O TETO SAI DE TODAS AS CATEGORIAS, não das visíveis — ver `geometriaDoGrafico`.
   const linhasDoTudo = naFaceta ? [] : gTudo.series.filter((x) => x.desenho === 'linha');
+  // O chip de valor (COM): série única ou pilha, sem percentual, até 24 categorias.
+  const comRotulos =
+    !g.percentual &&
+    areas.length > 0 &&
+    (areas.length === 1 || g.empilha) &&
+    g.categorias.length <= MAXIMO_COM_ROTULO;
   const { geo, marcas } = geometriaDoGrafico({
     alturaDaCaixa: caixa.h,
     larguraDoPlot,
@@ -135,6 +142,7 @@ export function Grafico({
       : maiorValorDe(linhasDoTudo, tetoDasAreas(gTudo.series, gTudo.empilha)),
     empilha: g.empilha,
     nAreas: areas.length,
+    comRotulos,
   });
 
   const sub = conferencia
@@ -225,6 +233,7 @@ export function Grafico({
           marcas={marcas}
           geo={geo}
           interacao={clique}
+          comRotulos={comRotulos}
         />
       </div>
     </Cartao>

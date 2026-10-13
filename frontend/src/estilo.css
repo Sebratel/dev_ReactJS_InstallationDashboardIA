@@ -173,6 +173,10 @@
   --card-shadow: 0 1px 2px rgba(37, 36, 35, 0.06), 0 6px 16px -10px rgba(37, 36, 35, 0.35);
   --card-shadow-hover: 0 1px 2px rgba(37, 36, 35, 0.08), 0 10px 22px -12px rgba(37, 36, 35, 0.45);
   --pbi-hover: #faf9f8;
+  /* As linhas de tabela do COM: hover num dourado quase branco (#FBF9F2) e a linha
+     selecionada num dourado claro (#FBF3D9) — misturas, para acompanhar o `.dark`. */
+  --linha-hover: color-mix(in srgb, var(--pbi-gold) 6%, var(--pbi-superficie));
+  --linha-selecionada: color-mix(in srgb, var(--pbi-gold) 16%, var(--pbi-superficie));
   --fundo-pagina:
     linear-gradient(
       135deg,
@@ -546,18 +550,23 @@ body {
 .cartao {
   background: var(--superficie);
   border: 1px solid var(--borda);
-  border-radius: 2px;
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.16s ease;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
   height: 100%;
 }
+.cartao:hover {
+  box-shadow: var(--card-shadow-hover);
+}
 .cartao-corpo {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 8px 10px;
+  padding: 7px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -647,48 +656,53 @@ button:disabled {
   min-height: 0;
   overflow: auto;
 }
+/* A `table.pbi` do COM: cabeçalho BRANCO e fixo, sublinhado em dourado, linha fina
+   entre as linhas e o hover num dourado claro. Até 13/10/2026 o cabeçalho era bordô
+   cheio — com o cabeçalho do cartão logo acima, eram duas faixas bordô empilhadas. */
 table.dados {
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
-  font-size: 0.72rem;
+  font-size: 12.5px;
 }
 table.dados th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--pbi-primary);
-  color: var(--pbi-sobre-primary);
-  text-transform: uppercase;
-  font-size: 0.64rem;
-  letter-spacing: 0.03em;
+  background: var(--superficie);
+  color: var(--texto);
+  font-size: 12px;
   font-weight: 700;
   text-align: left;
-  padding: 5px 8px;
+  padding: 7px 8px;
   white-space: nowrap;
-  border-bottom: 1px solid var(--pbi-primary-dark);
+  border-bottom: 2px solid var(--pbi-gold-soft);
 }
 table.dados th.th-clicavel {
   cursor: pointer;
   user-select: none;
 }
 table.dados th.th-clicavel:hover {
-  background: var(--pbi-primary-dark);
+  background: var(--pbi-hover);
 }
+/* `inline-block`: o preflight do Tailwind põe `display: block` em todo `svg`, e a seta
+   descia para baixo do nome da coluna — dobrando a altura do cabeçalho. */
 .icone-ordem {
+  display: inline-block;
   margin-left: 4px;
   vertical-align: -1px;
+  color: var(--pbi-primary-texto);
 }
 table.dados td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--grade);
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--fundo);
   white-space: nowrap;
   color: var(--texto);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 table.dados tbody tr:hover td {
-  background: var(--fundo);
+  background: var(--linha-hover);
 }
 /* Clique na linha filtra a página inteira a este registro — mesma ideia do clique numa
    barra do gráfico (`.col-grupo.clicavel`/`.apagada` em Grafico.tsx), só que o alvo é a
@@ -701,7 +715,10 @@ table.dados tbody tr.linha-apagada td {
 }
 table.dados tbody tr.linha-selecionada td,
 table.dados tbody tr.linha-selecionada:hover td {
-  background: var(--pbi-primary-soft);
+  background: var(--linha-selecionada);
+}
+table.dados tbody tr.linha-selecionada td:first-child {
+  box-shadow: inset 3px 0 0 var(--pbi-primary-texto);
 }
 td.num,
 th.num {
@@ -756,10 +773,10 @@ table.dados.matriz td:first-child {
 }
 .rolagem table.dados thead th:first-child {
   z-index: 3;
-  background: var(--pbi-primary);
+  background: var(--superficie);
 }
 .rolagem table.dados tbody tr:hover td:first-child {
-  background: var(--fundo);
+  background: var(--linha-hover);
 }
 
 .tabela-cabecalho-acoes {
@@ -836,8 +853,8 @@ table.dados.matriz td:first-child {
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 35%, transparent);
-  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 45%, transparent);
+  border-radius: 999px;
   overflow: hidden;
 }
 .paginador-grafico button,
@@ -876,8 +893,8 @@ table.dados.matriz td:first-child {
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 35%, transparent);
-  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 45%, transparent);
+  border-radius: 999px;
   overflow: hidden;
 }
 .grafico-svg {
@@ -901,10 +918,23 @@ table.dados.matriz td:first-child {
   stroke: var(--grade);
   stroke-width: 1px;
 }
-.rotulo-x {
-  fill: var(--muted);
-  font-size: 10px;
+/* O chip de valor acima da coluna (o `ChipLabel` do COM): fundo na cor do texto e
+   letra na da superfície — escuro no tema claro, claro no escuro, sempre legível. */
+.chip-valor rect {
+  fill: var(--texto);
+  opacity: 0.92;
+}
+.chip-valor text {
+  fill: var(--superficie);
+  font-size: 11px;
   font-weight: 600;
+  font-family: var(--font);
+}
+/* O eixo de categorias do COM: 11px, negrito, na cor do texto. */
+.rotulo-x {
+  fill: var(--texto);
+  font-size: 11px;
+  font-weight: 700;
   font-family: var(--font);
 }
 .rotulo-x.sob {

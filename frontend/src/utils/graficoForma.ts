@@ -70,16 +70,44 @@ export interface GraficoMontado {
  * A contrapartida do padrão continua valendo: **legenda sempre presente** com 2+
  * séries e rótulo direto no extremo da linha. Identidade nunca fica só na cor.
  */
+/*
+ * A ORDEM É A DO COM · Gestão Comercial desde 13/10/2026: a série principal é DOURADA
+ * (é a cor das colunas do Power BI de lá, e do nosso também), com o gradiente por valor
+ * de `corDaColunaPorValor` quando ela está sozinha. O bordô vem em segundo, antes do
+ * laranja do COM: dourado contra laranja separa só 18 em OKLab (a menor distância da
+ * paleta da marca), e dourado contra bordô separa por luminância.
+ */
 const SLOTS: readonly string[] = [
-  '#880F17', // bordô          — a série principal (--pbi-primary)
-  '#D9B300', // dourado        — a segunda, o par histórico do bordô
-  '#605E5C', // cinza          — a terceira (--pbi-muted)
-  '#C9707A', // bordô claro    — a quarta
-  '#f0e199', // dourado claro
-  '#A19F9D', // cinza claro
+  '#D9B300', // dourado        — a série principal (--pbi-gold)
+  '#880F17', // bordô          — a segunda (--pbi-primary)
+  '#E66C37', // laranja        — a terceira (--pbi-orange)
+  '#605E5C', // cinza          — a quarta (--pbi-muted)
+  '#E0C233', // dourado suave  (--pbi-gold-soft)
+  '#EB895F', // laranja suave  (--pbi-orange-soft)
   '#252423', // tinta          (--pbi-ink)
   '#C8C6C4', // neutro         — "Outros", nunca uma categoria de verdade
 ];
+
+/** O dourado da série principal e a base do gradiente por valor (o `escalaGradiente`
+ *  do COM: `--pbi-gold-light` no menor valor, `--pbi-gold` no maior). */
+export const DOURADO = '#D9B300';
+const DOURADO_CLARO = '#F0E199';
+
+/** A cor de UMA coluna de série única, pela magnitude: clara no menor valor da tela,
+ *  cheia no maior — o mesmo tom, mais claro para menos (é magnitude, não identidade). */
+export function corDaColunaPorValor(valor: number, min: number, max: number): string {
+  if (max <= min) return DOURADO;
+  const t = Math.max(0, Math.min(1, (valor - min) / (max - min)));
+  const de = [1, 3, 5].map((i) => parseInt(DOURADO_CLARO.slice(i, i + 2), 16));
+  const ate = [1, 3, 5].map((i) => parseInt(DOURADO.slice(i, i + 2), 16));
+  return `#${de
+    .map((v, i) =>
+      Math.round(v + (ate[i]! - v) * t)
+        .toString(16)
+        .padStart(2, '0'),
+    )
+    .join('')}`;
+}
 
 const POR_SIGNIFICADO: ReadonlyMap<string, string> = new Map([
   ['produtivo', '#1baf7a'],

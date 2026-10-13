@@ -1,5 +1,6 @@
-// Os rótulos do eixo X, girados a 45°. Quantos aparecem e com quantos caracteres é
-// conta de `utils/graficoEixo.ts`; aqui é só o desenho.
+// Os rótulos do eixo X: retos quando TODOS cabem na largura da categoria (o COM só
+// gira com série densa), girados a 45° quando não. Quantos aparecem e com quantos
+// caracteres é conta de `utils/graficoEixo.ts`; aqui é só o desenho.
 
 import { orcamentoDoRotulo, passoDoEixo, rotuloDoEixo } from '../../../utils/graficoEixo.ts';
 import type { Geometria } from './geometria.ts';
@@ -16,13 +17,27 @@ export function EixoXDoGrafico(props: {
   const { categorias, partes, geo, cabemRotulos, sob } = props;
   const passo = passoDoEixo(geo.banda);
   const orcamento = orcamentoDoRotulo(geo.banda, passo, geo.base);
+  // 11px em negrito dão ~6,4px por caractere; 8px de respiro entre vizinhos.
+  const inteiros = categorias.map((c, i) => rotuloDoEixo(partes[i] ?? [], c.rotulo, 999));
+  const retos = inteiros.every((t) => t.length * 6.4 + 8 <= geo.banda);
   return (
     <>
       {categorias.map((c, i) => {
         // A barra sob o mouse sempre mostra o rótulo, mesmo fora do passo — e é o
         // único que aparece quando a caixa é baixa demais para o eixo.
         if (!cabemRotulos ? sob !== i : i % passo !== 0 && sob !== i) return null;
-        return (
+        return retos ? (
+          <text
+            key={i}
+            className={`rotulo-x${sob === i ? ' sob' : ''}`}
+            x={geo.xMeio(i)}
+            y={geo.y(0) + 16}
+            textAnchor="middle"
+          >
+            <title>{c.rotulo}</title>
+            {inteiros[i]}
+          </text>
+        ) : (
           <text
             key={i}
             className={`rotulo-x${sob === i ? ' sob' : ''}`}
