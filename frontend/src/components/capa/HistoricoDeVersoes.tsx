@@ -7,7 +7,7 @@ import { cn } from '../../utils/cn.ts';
 
 export function HistoricoDeVersoes() {
   return (
-    <details className="overflow-hidden rounded-[6px] border border-pbi-borda bg-pbi-superficie">
+    <details className="overflow-hidden rounded-[var(--card-radius)] border border-pbi-borda bg-pbi-superficie shadow-[var(--card-shadow)]">
       <summary className="cursor-pointer border-pbi-borda px-[14px] py-[8px] text-[0.74rem] font-semibold tracking-[0.05em] text-pbi-primary-texto uppercase [details[open]>&]:border-b">
         Histórico de versões do painel
       </summary>

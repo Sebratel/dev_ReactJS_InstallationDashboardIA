@@ -173,6 +173,11 @@
   --card-shadow: 0 1px 2px rgba(37, 36, 35, 0.06), 0 6px 16px -10px rgba(37, 36, 35, 0.35);
   --card-shadow-hover: 0 1px 2px rgba(37, 36, 35, 0.08), 0 10px 22px -12px rgba(37, 36, 35, 0.45);
   --pbi-hover: #faf9f8;
+  /* O fundo da arte do login (o do COM): bordô quase preto, nos dois temas. */
+  --login-fundo: #1a0508;
+  --login-arte-1: #2a070c;
+  --login-arte-2: #14060a;
+  --login-arte-3: #0d0507;
   /* As linhas de tabela do COM: hover num dourado quase branco (#FBF9F2) e a linha
      selecionada num dourado claro (#FBF3D9) — misturas, para acompanhar o `.dark`. */
   --linha-hover: color-mix(in srgb, var(--pbi-gold) 6%, var(--pbi-superficie));
@@ -429,6 +434,13 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: var(--gap);
 }
+/* Dois indicadores por linha no celular, e não um: seis cartões de largura inteira
+   eram seis alturas de tela antes do primeiro gráfico. */
+@media (max-width: 640px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
 .kpi-pilha {
   display: flex;
   flex-direction: column;
@@ -449,12 +461,14 @@ body {
      - o PISO diz onde o visual deixa de comunicar, e ele vence quando a tela é baixa.
 
    Enquanto a fração ideal for maior que o piso, a igualdade vale e a tela de duas
-   faixas não rola. O ponto de virada, com o cromo REAL de 257px (ver acima):
+   faixas não rola. O ponto de virada, com o cromo de 13/10/2026 (191px: topo 52, nav
+   37, filtros 82, padding 20 — `DESIGN-SYSTEM.md` §3) e o piso de hoje (273px):
 
-       util(vh)      = vh - 257
-       gráfico ideal = (util - 10) x 0,455 >= 309  ->  util >= 689  ->  vh >= 946
+       util(vh)      = vh - 191
+       gráfico ideal = (util - 10) x 0,455 >= 273  ->  util >= 610  ->  vh >= 801
 
-   Ou seja: **a igualdade vale de ~950px de altura de janela para cima.** Em
+   Ou seja: **a igualdade vale de ~801px de altura de janela para cima.** (Com o cromo
+   de 257px e o piso de 309px de agosto, a conta abaixo dava ~950.) Em
    1920x1080 ela fecha ao pixel. Em 1440x900 e 1366x768 o piso vence e a página rola,
    e isso é escolha — o padrão manda preferir rolar a comprimir abaixo da
    legibilidade.
@@ -644,6 +658,13 @@ button:disabled {
   position: sticky;
   top: calc(var(--h-topbar) + var(--h-nav));
   z-index: 30;
+}
+/* No celular a barra quebra em cinco linhas; fixa no topo, ela cobriria meia tela
+   durante a rolagem. Ali ela rola junto com a página. */
+@media (max-width: 640px) {
+  .filtros {
+    position: static;
+  }
 }
 /* O filtro, o diálogo, os chips, a pílula de filtro sem segmentação e a árvore de
    datas são utilitário em `filtros/` e `ui/Dialogo` (fase 6f). Fica aqui a barra: a
@@ -1084,6 +1105,243 @@ table.dados.matriz td:first-child {
 }
 @media (prefers-reduced-motion: reduce) {
   .brilho::after {
+    animation: none;
+  }
+}
+
+/* ==================================================================== login */
+/* O login do COM · Gestão Comercial: arte bordô com dois brilhos que flutuam e uma
+   malha de curvas, a marca à esquerda, o cartão de acesso à direita e a barra de
+   "ambiente seguro" embaixo. É animação e composição de camadas: fica aqui. O cartão
+   (cores, tipografia) é utilitário em `auth/Login.tsx`. */
+
+.login {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow: hidden;
+  background: var(--login-fundo);
+  color: var(--pbi-sobre-primary);
+  display: flex;
+  flex-direction: column;
+}
+.login-arte {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.login-arte::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 30% 35%,
+      color-mix(in srgb, var(--pbi-primary) 85%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      var(--login-arte-1) 0%,
+      var(--login-arte-2) 55%,
+      var(--login-arte-3) 100%
+    );
+}
+.login-brilho {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+}
+.login-brilho.um {
+  left: -12%;
+  top: 12%;
+  width: min(80vw, 520px);
+  height: min(80vw, 520px);
+  background: color-mix(in srgb, var(--pbi-gold) 20%, transparent);
+  animation: flutua 16s ease-in-out infinite;
+}
+.login-brilho.dois {
+  right: -6%;
+  bottom: 8%;
+  width: min(65vw, 430px);
+  height: min(65vw, 430px);
+  background: color-mix(in srgb, var(--pbi-orange) 18%, transparent);
+  animation: flutua 21s ease-in-out infinite reverse;
+}
+.login-malha {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.5;
+}
+@keyframes flutua {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate(14px, -12px) scale(1.06);
+    opacity: 1;
+  }
+}
+
+.login-conteudo {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr min(100%, 470px);
+  align-items: center;
+  gap: 32px;
+  padding: 40px clamp(20px, 5vw, 72px) 70px;
+}
+.login-marca {
+  max-width: 620px;
+  display: grid;
+  gap: 16px;
+}
+.login-marca-topo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.login-marca-topo img {
+  border-radius: 50%;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+.login-marca-topo span {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.login-marca h2 {
+  margin: 0;
+  font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+}
+.login-marca h2 span {
+  color: var(--pbi-gold);
+}
+.login-marca p {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 15px;
+  line-height: 1.65;
+  color: color-mix(in srgb, var(--pbi-sobre-primary) 86%, transparent);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--superficie);
+  color: var(--texto);
+  border-radius: 18px;
+  padding: 30px 28px;
+  display: grid;
+  gap: 18px;
+  box-shadow: 0 36px 72px -12px rgba(0, 0, 0, 0.6);
+  border-top: 3px solid var(--pbi-gold);
+}
+.login-card.tremer {
+  animation: tremer 0.4s ease;
+}
+@keyframes tremer {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+.botao-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 46px;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--pbi-primary);
+  color: var(--pbi-sobre-primary);
+  font-size: 14.5px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--pbi-primary) 32%, transparent);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.botao-google:hover:not(:disabled) {
+  background: var(--pbi-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--pbi-primary) 38%, transparent);
+}
+.botao-google:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.botao-google .marca {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--pbi-sobre-primary);
+  display: grid;
+  place-items: center;
+  color: var(--pbi-primary);
+}
+
+.login-barra {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 12%, transparent);
+  background: rgba(0, 0, 0, 0.42);
+  padding: 10px;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--pbi-sobre-primary) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 980px) {
+  .login-conteudo {
+    grid-template-columns: 1fr;
+    padding-top: 28px;
+    gap: 24px;
+  }
+  .login-marca h2 {
+    font-size: 1.6rem;
+  }
+  .login-marca p {
+    font-size: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-brilho.um,
+  .login-brilho.dois,
+  .login-card.tremer {
     animation: none;
   }
 }

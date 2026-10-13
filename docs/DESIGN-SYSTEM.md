@@ -1,4 +1,4 @@
-# Design System — Analytics Platform (bordô Sebratel)
+# Design System — Analytics Platform (Sebratel, visual do COM · Gestão Comercial)
 
 Referência da interface desta plataforma. O `CLAUDE.md` (regra 4) e o cabeçalho de
 `frontend/src/estilo.css` apontam para cá.
@@ -225,17 +225,33 @@ posição no ranking — filtro que tira uma série não pode repintar as que fi
 
 Separação medida em OKLab (×100). Piso: **15** em visão normal, **8** em daltonismo.
 
-Os oito slots, na ordem de `SLOTS` em `grafico-forma.ts`: bordô `#880F17`, dourado
-`#D9B300`, cinza `#605E5C`, bordô claro `#C9707A`, dourado claro `#f0e199`, cinza
-claro `#A19F9D`, tinta `#252423`, neutro `#C8C6C4` ("Outros").
+Os oito slots, na ordem de `SLOTS` em `graficoForma.ts` (desde 13/10/2026, a ordem
+do COM · Gestão Comercial nos três primeiros): dourado `#D9B300`, bordô `#880F17`,
+laranja `#E66C37`, cinza `#605E5C`, dourado claro `#F0E199`, cinza claro `#A19F9D`,
+tinta `#252423`, neutro `#C8C6C4` ("Outros"). A série única sai em dourado graduado
+pelo valor (`#F0E199` no menor, `#D9B300` no maior) — é magnitude, não identidade.
+
+Do quinto em diante não é a paleta do COM: o dourado suave e o laranja suave de lá
+separam **4,0** e **6,6** do dourado e do laranja — a mesma cor para o olho. Os quatro
+de baixo saíram de uma busca entre as cores da marca pela maior separação mínima entre
+todos os pares. Medido em 13/10/2026 (simulação de Machado, severidade 1):
 
 | par | normal | deutan | tritan |
 |---|---|---|---|
-| bordô × dourado | **41,4** | 38,0 | 56,8 |
-| bordô × cinza | 17,0 | **10,8** | 89,6 |
-| dourado × cinza | 33,3 | 34,1 | 126,5 |
+| dourado × bordô | **41,4** | 38,2 | 36,7 |
+| bordô × laranja | 27,2 | 27,2 | 25,4 |
+| dourado × laranja | 17,7 | 11,1 | 16,0 |
+| bordô × cinza | 17,0 | **10,0** | 17,8 |
+| dourado × dourado claro (1º × 5º) | **14,5** | 14,1 | 13,4 |
 
-Pior par vizinho da lista: **19,8**. Pior caso em daltonismo entre os três primeiros:
+Pior par entre os sete de série: **14,5** em visão normal (1º × 5º, que só convivem num
+gráfico de cinco séries), **10,0** em deuteranopia e **11,6** em tritanopia — acima do
+piso 8. A contrapartida de sempre: legenda presente com 2+ séries.
+
+> Histórico: até 13/10/2026 a ordem era bordô, dourado, cinza, bordô claro, dourado
+> claro, cinza claro, tinta.
+
+(Medição anterior, da ordem antiga.) Pior par vizinho da lista: **19,8**. Pior caso em daltonismo entre os três primeiros:
 **10,8** — acima do piso 8, mas com bem menos folga do que esta tabela dizia antes
 (ela trazia 22,3 / 17,8 / 29,1, que são de outra rampa). A separação vem de
 **luminância** (bordô escuro, dourado claro, cinza no meio), e luminância sobrevive a
@@ -348,17 +364,17 @@ medido, e não constante declarada — declarar um único valor era o mesmo erro
 `--h-nav`/`--h-filtros` já tinham custado duas vezes.
 
 **Nenhum desses quatro números pode ser chutado, e três deles já foram.** Medido no
-navegador em 27/08/2026, igual nas três resoluções de referência:
+navegador em 13/10/2026, com a casca do COM · Gestão Comercial (§7):
 
 | termo | vale | como se sabe |
 |---|---|---|
 | `--h-topbar` | 52px | altura fixa do topo (`header` do `AppShell`), declarada |
-| `--h-nav` | **74px** | MEDIDO: as 14 telas quebram em duas linhas |
-| `--h-filtros` | **71px** | MEDIDO: 110px na MANUTENÇÃO INICIAL a 1366×768, que tem 13 controles |
-| resto | **60px** | rodapé 32 + padding da `.area` 28 |
+| `--h-nav` | **37px** | MEDIDO: uma linha que rola na horizontal (eram 74px em duas linhas até 13/10) |
+| `--h-filtros` | **82px** típico | MEDIDO: de 30px (RELATÓRIO DO ANO) a 113px (AGENDAMENTO FIELD, com os chips) a 1366×768 |
+| resto | **20px** | padding da `.area`; o rodapé de 32px saiu em 13/10 |
 
 Os dois do meio são **publicados em tempo de execução** por `altura-medida.ts`: os
-valores do `:root` (64 e 50) são só o chão, para o primeiro quadro não sair absurdo.
+valores do `:root` (36 e 50) são só o chão, para o primeiro quadro não sair absurdo.
 
 Duas correções que esta tabela representa, e as duas eram silenciosas:
 
@@ -395,12 +411,12 @@ o mesmo cromo "antigo" da nota no topo desta seção, ainda não remedido para o
 `--h-antes`/`--h-entre` novos:
 
 ```
-273 / 0,455 + 10 (gap)  ->  util >= 610   ->   vh >= 610 + 257 = 867
+273 / 0,455 + 10 (gap)  ->  util >= 610   ->   vh >= 610 + 191 = 801
 ```
 
-**A igualdade vale de ~867px de altura de janela para cima** (era ~950px antes do piso
-cair de 309 para 273 em 28/08/2026 — `frontend/test/casca.test.ts:156` é o teste que
-prende os dois números juntos). Abaixo disso o piso vence e a página rola — e isso é
+**A igualdade vale de ~801px de altura de janela para cima** (era ~950px antes do piso
+cair de 309 para 273 em 28/08/2026, e ~867px com o cromo de 257px até 13/10/2026 —
+`frontend/test/casca.test.ts` é o teste que prende os dois números juntos). Abaixo disso o piso vence e a página rola — e isso é
 escolha, não descuido: abaixo do piso o visual fica ilegível, e o padrão manda preferir
 rolar a comprimir.
 
@@ -599,20 +615,24 @@ alcance coluna com dado de cliente.
 
 ## 5. A casca: topo, navegação e os dois interruptores
 
-O formato é o do padrão de dashboards — **topbar, faixa de navegação entre telas,
+O formato é o do COM · Gestão Comercial (§7) — **topo, faixa de navegação entre telas,
 barra de filtros, área** —, não barra lateral. A lateral gastava 230px de LARGURA
 permanentemente: 17% do horizontal em 1366px, fora do conteúdo. E largura é o que
 gráfico e matriz mais precisam, porque é ela que decide quantas categorias cabem por
-página. A faixa de topo cobra ~74px de ALTURA em troca, e altura é dividida entre
-menos coisas.
+página.
 
-**A faixa mede a própria altura.** Os 14 rótulos somam 1.511px só de texto e 2.113px
-com ícone e respiro, contra 1.366px de tela: não cabe em uma linha. Ela usa
-`flex-wrap` (aba escondida atrás de rolagem horizontal é aba que ninguém acha) e o
-`AppShell` publica a altura real em `--h-nav`, porque `--util` a soma e todo card
-depende dela. `useLayoutEffect` + `resize`, **não** `ResizeObserver` — mesma escolha
-do medidor do gráfico, pelo mesmo motivo: no dashboard de referência o observer não
-disparou e os visuais ficaram invisíveis, sem erro no console.
+O topo diz três coisas: QUAL relatório (logo e "INST · RELATÓRIO INSTALAÇÃO", à
+esquerda), QUAL tela (o título, no centro, em maiúsculas) e SE o dado está em dia (o
+ponto — verde pulsando, dourado parado, vermelho com falha — e a idade, à direita). O
+aviso de saúde desce para dentro da página, no formato de aviso do COM.
+
+**A faixa de navegação é uma linha só, e rola.** As 11 telas somam ~1.600px de rótulo
+contra 1.366px de tela. Até 13/10/2026 ela quebrava em duas linhas (74px que `--util`
+descontava de todo card); o COM, com 16 telas, rola — e foi aprovado assim. Contra aba
+escondida: a borda direita esmaece onde há mais abas, e a aba ativa rola para a vista
+sempre que muda. A altura continua MEDIDA e publicada em `--h-nav` (`useLayoutEffect` +
+`resize`, **não** `ResizeObserver`: no dashboard de referência o observer não disparou e
+os visuais ficaram invisíveis, sem erro no console).
 
 ### Interruptor de estado global precisa de botão. Sempre.
 
@@ -631,13 +651,14 @@ diz o estado atual **e** o que o clique faz. Regra que fica: **estado que persis
 precisa de controle visível na mesma tela**; se você adicionar um, o botão faz parte
 da entrega, não do polimento.
 
-### A marca é desenhada, não baixada
+### A marca é o arquivo oficial, servido de `frontend/public/`
 
-O topo tinha `<img src="/assets/logo-sebratel-circular.png">` e esse arquivo **nunca
-existiu no repositório** — não há `frontend/public/`. Eram 404 em toda carga e o ícone
-quebrado do navegador ao lado do nome da empresa. Hoje é um `<svg>` inline, que não
-pede rede e acompanha a paleta. Se o arquivo oficial entrar em `frontend/public/`,
-troque só aquele bloco do `AppShell.tsx`.
+O topo teve `<img src="/assets/logo-sebratel-circular.png">` apontando para um arquivo
+que **nunca existiu no repositório** — 404 em toda carga e o ícone quebrado ao lado do
+nome da empresa. De 27/08 a 13/10/2026 a marca foi um "S" desenhado em SVG. Desde
+13/10 são os arquivos do COM, copiados para `frontend/public/`: `logo-sebratel.svg` no
+topo e `logo-circular-sebratel.png` na capa, no login e como favicon. O
+`casca.test.ts` barra `src="/..."` que não exista em `public/`.
 
 ---
 
@@ -667,3 +688,39 @@ troque só aquele bloco do `AppShell.tsx`.
     mais caro deste arquivo, e já apareceu três vezes.
 12. **Meça a invariante das duas faixas** em 1440×900 e 1920×1080: `gráfico + tabela
     + gap` tem de dar `--util` exatamente. Piso acima da fração ideal quebra isso.
+
+---
+
+## 7. A referência visual é o COM · Gestão Comercial
+
+Desde 13/10/2026, a pedido do Erick, esta tela segue o frontend do **COM · Gestão
+Comercial** (`Sebratel/dados_ReactJS_CommercialDashboards`, `web/src/theme.css`,
+`App.jsx`, `auth/LoginPage.jsx`, `components/charts.jsx`) — o frontend da Sebratel
+aprovado pelo QA e em produção. Copiado de lá, adaptado ao conteúdo daqui:
+
+| peça | como ficou |
+|---|---|
+| fonte | Segoe UI (a do sistema; a Inter saiu) |
+| fundo da página | gradiente claro do COM (`--fundo-pagina`), fixo |
+| topo | logo, marca, título centralizado, ponto de status, botões de ícone de 30px |
+| abas | uma linha, maiúsculas 11,5px, a ativa sublinhada na primária |
+| filtros | botão de 30px "Nome valor ▾", barra encostada na navegação, translúcida; os chips numa linha da própria barra |
+| cartão | raio 8, sombra, cabeçalho bordô centralizado em maiúsculas, ações em pílula |
+| indicador | o `.kpi-faixa`: valor grande na primária em cima, nome embaixo |
+| tabela | o `table.pbi`: cabeçalho branco fixo sublinhado em dourado, hover dourado claro |
+| gráfico | série única dourada graduada pelo valor, topo arredondado, chip de valor, eixo X 11px negrito |
+| aviso | o `.banner`: filete de 3px à esquerda, fundo quase branco, ícone |
+| login | arte bordô com a marca e a frase, cartão de acesso, barra "ambiente seguro" |
+| capa | a do COM, com a logo circular |
+
+**O que NÃO veio, e por quê:**
+- **a paleta de séries do quinto slot em diante** — o dourado suave e o laranja suave de
+  lá são a mesma cor que o dourado e o laranja para o olho (§2);
+- **o tema escuro** existe aqui e não lá: os tokens do `.dark` acompanham cada peça;
+- **o popover de filtro** — aqui é diálogo (§4: popover dentro de contêiner com rolagem é
+  cortado);
+- **a conta de altura** continua a desta tela (`--h-antes` medido, §3), mais exata que o
+  `--chrome` fixo de lá.
+
+No celular (até 640px) a barra de filtros deixa de ser fixa — com cinco linhas, ela
+cobriria meia tela — e os indicadores vão dois por linha.

@@ -52,6 +52,6 @@ node backend/tools/refresh/src/daemon.ts --historico   # histórico de grupos e 
 ## Tela
 Estrutura segue os padrões de frontend da Sebratel (skill `padroes-frontend`): `components/{ui,layout,visuais,filtros,auth,capa}`,
 rede só em `services/`, env só em `config.ts`, hooks `use*` em `hooks/`. Fases restantes: `docs/PLANO-PADROES-FRONTEND.md`.
-Fonte da verdade da paleta: `frontend/src/estilo.css` (bordô `#880F17`). Cor cheia é FUNDO, cor
+Referência VISUAL: o COM · Gestão Comercial (`docs/DESIGN-SYSTEM.md` §7). Fonte da verdade da paleta: `frontend/src/estilo.css` (bordô `#880F17`). Cor cheia é FUNDO, cor
 escurecida é LETRA — use os tokens de papel, nunca hexadecimal solto. Gráfico não rola: pagina.
 Rolagem dentro do card pode; página rolando na horizontal não. Reset de elemento em `@layer base`.

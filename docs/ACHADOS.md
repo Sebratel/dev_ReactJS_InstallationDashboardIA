@@ -14989,3 +14989,40 @@ FILTER(ALL(CALENDARIO INSTALADO[DATA INSTALADO]), NOT ISBLANK(...)))` dá 98.991
 70.231. Hoje não aparece na tela porque os filtros de data recortam uma parte do calendário;
 apareceu ao recalcular a CALENDARIO INSTALADO só com 2026 (TOTAL INSTALADOS 33.431). Por isso
 o corte mantém o calendário congelado.
+
+## #206 — o visual da Sebratel: a tela segue o COM · Gestão Comercial (13/10)
+
+**O pedido.** "O frontend está bem feio, não seguimos o design da empresa" — e a
+referência é o frontend do COM · Gestão Comercial (`dados_ReactJS_CommercialDashboards`),
+aprovado pelo QA e em produção: copiar o visual, inclusive o login, adaptado ao nosso
+conteúdo, e melhorar os gráficos. O mapa peça a peça está no `DESIGN-SYSTEM.md` §7.
+
+**O que mais pesava era a moldura.** Topo, abas em duas linhas, uma caixa de filtros com
+rótulo em cima de cada botão e outra caixa só de chips: na MANUTENÇÃO INICIAL o primeiro
+número começava a ~460px do topo em 1366×768. Com a casca do COM (abas numa linha que
+rola, filtro "Nome valor" de 30px, chips dentro da barra, sem rodapé), a ~220px. O cromo
+da conta de `--util` foi de 257 para 191px, e a fronteira em que duas faixas cabem numa
+tela desceu de ~867 para ~801px de altura de janela (`casca.test.ts` e §3 remedidos).
+
+**Três achados de passagem:**
+- **A paleta do COM tem dois pares que são a mesma cor.** Dourado × dourado suave mede
+  4,0 em OKLab e laranja × laranja suave 6,6 (piso da casa: 15). Os três primeiros slots
+  seguem o COM (dourado, bordô, laranja — o bordô antes do laranja porque dourado ×
+  laranja dá 17,7 e dourado × bordô 41,4); os quatro de baixo saíram de uma busca entre
+  as cores da marca: pior par 14,5 normal, 10,0 deutan, 11,6 tritan.
+- **A seta de ordem das tabelas descia para baixo do nome da coluna**: o preflight do
+  Tailwind põe `display: block` em todo `svg`, e o cabeçalho tinha o dobro da altura.
+- **Os rótulos de filtro eram nomes de coluna** (`CategoriaProdutividade`,
+  `instalador_Unificado`, `tecnico`): `rotuloDeCampo()` os escreve como gente, com teste.
+
+**O E2E tinha dois testes velhos.** O da busca da tabela esperava um pedido sem busca ao
+limpar o campo — desde o #190 a primeira janela sem busca É a resposta da página, sem
+pedido; não rodei o E2E naquela entrega, e a falha ficou escondida até aqui. O do clique
+cruzado mirava o centro geométrico do grupo da coluna, que agora inclui o chip de valor e
+caiu sobre o ponto da linha sobreposta; passou a clicar perto da base da coluna, onde a
+pessoa clica. E2E: 8 de 8 contra o build novo.
+
+**Prova:** fotos antes/depois em 1366 (claro e escuro), 1024 e 390 de login, capa e
+cinco páginas; nenhuma página com rolagem horizontal nas quatro larguras (11 páginas
+medidas em 1366 e 390); `npm test`, typecheck e E2E verdes. As fotos têm dado de cliente
+e foram apagadas.

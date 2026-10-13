@@ -110,7 +110,11 @@ test('clique cruzado: EMPILHA; voltar desfaz, avançar refaz, recarregar mantém
   const padrao = await filtrosNaTela();
   const antes = await historico();
   const url = busca();
-  await page.locator('.clicavel').first().click();
+  // Perto da BASE da coluna, onde a pessoa clica: o centro do grupo inclui o chip de
+  // valor acima da coluna e cai sobre o ponto da linha sobreposta, que pega o clique.
+  const coluna = page.locator('.clicavel').first();
+  const caixa = (await coluna.boundingBox())!;
+  await coluna.click({ position: { x: caixa.width / 2, y: caixa.height - 4 } });
   await page.waitForTimeout(2000);
   assert.match(busca(), /clicado=/);
   assert.equal(await historico(), antes + 1);
@@ -181,14 +185,24 @@ test('a busca da tabela vira pedido, e limpar volta à janela sem busca', { skip
       termos.push(u.searchParams.get('busca') ?? '');
     }
   });
-  const campo = page.locator('.tabela-busca-input').first();
+  const cartao = page
+    .locator('[data-visual]')
+    .filter({ has: page.locator('.tabela-busca-input') })
+    .first();
+  const campo = cartao.locator('.tabela-busca-input');
   await campo.scrollIntoViewIfNeeded();
+  const rotulo = cartao.locator('.paginacao');
+  const semBusca = await rotulo.innerText();
   await campo.fill('instala');
   await page.waitForTimeout(3000);
   assert.ok(termos.includes('instala'), 'o termo vira pedido depois da espera');
+  // Limpar não pede nada desde o `useJanela` no React Query (#190): a primeira janela
+  // sem busca É a resposta da página. O que importa é a tabela voltar a ela.
+  const pedidos = termos.length;
   await campo.fill('');
   await page.waitForTimeout(3000);
-  assert.equal(termos.at(-1), '');
+  assert.equal(await rotulo.innerText(), semBusca, 'limpar volta à janela de antes da busca');
+  assert.equal(termos.length, pedidos, 'limpar a busca não pede de novo');
 });
 
 test('o console terminou sem erro', { skip: pula }, (t) => {

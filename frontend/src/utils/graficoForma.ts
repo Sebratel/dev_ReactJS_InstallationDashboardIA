@@ -71,19 +71,24 @@ export interface GraficoMontado {
  * séries e rótulo direto no extremo da linha. Identidade nunca fica só na cor.
  */
 /*
- * A ORDEM É A DO COM · Gestão Comercial desde 13/10/2026: a série principal é DOURADA
- * (é a cor das colunas do Power BI de lá, e do nosso também), com o gradiente por valor
- * de `corDaColunaPorValor` quando ela está sozinha. O bordô vem em segundo, antes do
- * laranja do COM: dourado contra laranja separa só 18 em OKLab (a menor distância da
- * paleta da marca), e dourado contra bordô separa por luminância.
+ * A ORDEM SEGUE A DO COM · Gestão Comercial desde 13/10/2026: a série principal é
+ * DOURADA (é a cor das colunas do Power BI), com o gradiente por valor de
+ * `corDaColunaPorValor` quando ela está sozinha. O bordô vem em segundo, antes do
+ * laranja: dourado contra laranja separa só 17,7 em OKLab, dourado contra bordô 41,4.
+ *
+ * Do quinto em diante NÃO é a paleta do COM: lá vêm o dourado suave e o laranja suave,
+ * que separam 4,0 e 6,6 do dourado e do laranja — a mesma cor para o olho. Os quatro
+ * de baixo saíram de uma busca entre as cores da marca pela maior separação mínima
+ * entre TODOS os pares (`DESIGN-SYSTEM.md` §2): pior par 14,5 em visão normal, 10,0
+ * em deuteranopia, 11,6 em tritanopia.
  */
 const SLOTS: readonly string[] = [
   '#D9B300', // dourado        — a série principal (--pbi-gold)
   '#880F17', // bordô          — a segunda (--pbi-primary)
   '#E66C37', // laranja        — a terceira (--pbi-orange)
   '#605E5C', // cinza          — a quarta (--pbi-muted)
-  '#E0C233', // dourado suave  (--pbi-gold-soft)
-  '#EB895F', // laranja suave  (--pbi-orange-soft)
+  '#F0E199', // dourado claro  (--pbi-gold-light)
+  '#A19F9D', // cinza claro
   '#252423', // tinta          (--pbi-ink)
   '#C8C6C4', // neutro         — "Outros", nunca uma categoria de verdade
 ];
