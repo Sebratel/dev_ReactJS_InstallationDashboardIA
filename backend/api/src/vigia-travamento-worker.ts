@@ -17,15 +17,18 @@ const { batimento, limiteMs, snapshotDir } = workerData as {
 };
 
 let ultimoTique = Date.now();
+/** O fim da última suspensão vista — o limite do laço principal conta dali (`decideVigia`). */
+let retomadaEm: number | undefined;
 
 setInterval(() => {
   const agora = Date.now();
   const ultimoBatimento = Number(Atomics.load(batimento, 0));
-  const decisao = decideVigia({ agora, ultimoTique, ultimoBatimento, limiteMs });
+  const decisao = decideVigia({ agora, ultimoTique, ultimoBatimento, limiteMs, retomadaEm });
   ultimoTique = agora;
+  if (decisao === 'suspensao') retomadaEm = agora;
   if (decisao !== 'travou') return;
 
-  const paradoHaMs = agora - ultimoBatimento;
+  const paradoHaMs = agora - Math.max(ultimoBatimento, retomadaEm ?? 0);
   const quando = new Date(agora).toISOString();
   const linha =
     `\n[vigia] o laço principal da API está parado há ${Math.round(paradoHaMs / 1000)} s ` +

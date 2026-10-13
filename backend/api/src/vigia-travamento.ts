@@ -39,9 +39,16 @@ export function decideVigia(e: {
   ultimoBatimento: number;
   limiteMs: number;
   folgaSuspensaoMs?: number;
+  /**
+   * Quando o vigia viu a última suspensão terminar. O laço principal acorda com fila (poller,
+   * sentinela, reaquecimento) e pode levar mais que um tique para bater: conta-se o limite a
+   * partir do despertar, não do batimento de antes de dormir (10/10/2026, ACHADOS #204).
+   */
+  retomadaEm?: number;
 }): DecisaoDoVigia {
   if (e.agora - e.ultimoTique > (e.folgaSuspensaoMs ?? FOLGA_SUSPENSAO_MS)) return 'suspensao';
-  return e.agora - e.ultimoBatimento > e.limiteMs ? 'travou' : 'ok';
+  const desde = Math.max(e.ultimoBatimento, e.retomadaEm ?? Number.NEGATIVE_INFINITY);
+  return e.agora - desde > e.limiteMs ? 'travou' : 'ok';
 }
 
 /** Lê `VIGIA_TRAVAMENTO_S`: `null` = desligado (ausente, 0 ou inválido). */

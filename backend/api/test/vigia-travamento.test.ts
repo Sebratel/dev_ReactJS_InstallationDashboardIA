@@ -31,6 +31,23 @@ test('decideVigia: se o PRÓPRIO vigia atrasou, a máquina dormiu — não é tr
   assert.equal(decideVigia(acordou), 'suspensao');
 });
 
+test('decideVigia: depois de acordar, o laço principal tem o limite inteiro para bater de novo', () => {
+  // 10/10/2026, 01:37: o notebook dormiu 3h51. O primeiro tique viu a suspensão; o SEGUNDO,
+  // 1 s depois, achou o batimento ainda de 3h51 atrás — o laço principal acorda com fila
+  // (poller, sentinela, reaquecimento) — e matou a API. `paradoHaMs: 13.881.278`.
+  const retomadaEm = 8_000_000;
+  const depois = { ultimoTique: retomadaEm, ultimoBatimento: 0, limiteMs: 120_000, retomadaEm };
+  assert.equal(decideVigia({ ...depois, agora: retomadaEm + 1_000 }), 'ok');
+  assert.equal(decideVigia({ ...depois, agora: retomadaEm + 119_000, ultimoTique: retomadaEm + 118_000 }), 'ok');
+  // Preso DE VERDADE depois de acordar continua morrendo, só que contado do despertar.
+  assert.equal(decideVigia({ ...depois, agora: retomadaEm + 121_000, ultimoTique: retomadaEm + 120_000 }), 'travou');
+  // Batimento novo depois do despertar manda, como sempre.
+  assert.equal(
+    decideVigia({ ...depois, agora: retomadaEm + 300_000, ultimoTique: retomadaEm + 299_000, ultimoBatimento: retomadaEm + 250_000 }),
+    'ok',
+  );
+});
+
 test('limiteDoAmbiente: só liga com número positivo', () => {
   assert.equal(limiteDoAmbiente({ VIGIA_TRAVAMENTO_S: '120' }), 120_000);
   assert.equal(limiteDoAmbiente({}), null);

@@ -14924,3 +14924,20 @@ voltas davam ~16,7. Agora soma só os intervalos entre voltas, cada um até 3 mi
 (`LACUNA_MAXIMA_DE_VIGILIA_MS`): acordado, alguma volta começa a cada ≤ 2 min. Também visto
 hoje: depois do standby o `refresh` só volta no próximo tick (o temporizador conta tempo
 acordado — 20:33 → dormiu → 21:18); a saúde fica "parado" nesse meio, e é verdade.
+
+## #204 — o vigia de travamento matava a API ao acordar de um sono longo (10/10)
+
+`snapshot/diagnostico/api-travou.2026-10-10T04-37-44-190Z.json`: `paradoHaMs: 13.881.278` (3h51)
+— exatamente o tempo que o notebook dormiu. O vigia (`vigia-travamento-worker.ts`) já tinha a
+proteção de suspensão (`decideVigia` → `'suspensao'` quando o PRÓPRIO tique atrasa > 5 s), mas
+ela só valia no primeiro tique depois do despertar. No segundo, 1 s depois, o laço principal
+ainda não tinha batido — ele acorda com fila (poller, sentinela, reaquecimento) — e o vigia via
+o batimento de 3h51 atrás: `SIGKILL`, contêiner religado, cache frio.
+
+**Das cinco mortes registradas, três são isto** (sono de 4,8 h e 1,6 h em 05/10, 3,9 h em 10/10).
+As outras duas (120 s e 202 s, 05/10 e 09/10) podem ser travamento de verdade e continuam
+derrubando a API, como devem.
+
+**Conserto:** o vigia guarda o fim da última suspensão (`retomadaEm`) e conta o limite do laço
+principal a partir do mais novo entre o último batimento e o despertar. Preso de verdade depois
+de acordar continua morrendo — só que 120 s depois do despertar, não 1 s.
