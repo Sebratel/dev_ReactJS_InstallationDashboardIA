@@ -38,7 +38,6 @@ import {
   situacaoDaFonte,
   valorDoCard,
 } from '../../utils/capaConteudo.ts';
-import { MarcaSebratel } from '../ui/MarcaSebratel.tsx';
 import { HistoricoDeVersoes } from './HistoricoDeVersoes.tsx';
 
 /** Abaixo de 700px o selo perde o filete e vira grade de 2×2 na largura toda. */
@@ -60,11 +59,11 @@ function NumeroDoSelo({ valor, rotulo }: { valor: ReactNode; rotulo: string }) {
  *  na cor de LETRA da primária. */
 function Bloco({ titulo, children }: { titulo: string; children: ReactNode }) {
   return (
-    <article className="flex flex-col overflow-hidden rounded-[6px] border border-pbi-borda bg-pbi-superficie">
-      <h2 className="bg-pbi-primary px-[14px] py-[8px] text-center text-[0.78rem] font-semibold tracking-[0.05em] text-pbi-sobre-primary uppercase">
+    <article className="flex flex-col overflow-hidden rounded-[var(--card-radius)] border border-pbi-borda bg-pbi-superficie shadow-[var(--card-shadow)]">
+      <h2 className="bg-pbi-primary px-[14px] py-[8px] text-center text-[12.5px] font-semibold tracking-[0.8px] text-pbi-sobre-primary uppercase">
         {titulo}
       </h2>
-      <div className="flex-1 px-[15px] py-[13px] text-[0.8rem] leading-[1.6] text-pbi-ink [&_b]:text-pbi-primary-texto">
+      <div className="flex-1 px-[15px] py-[13px] text-[12.8px] leading-[1.6] text-pbi-ink [&_b]:text-pbi-primary-texto">
         {children}
       </div>
     </article>
@@ -92,11 +91,11 @@ export function Capa(props: {
     <div className="flex flex-col gap-[10px] pb-[16px]">
       {/* O gradiente vai da primária à ponta escura — os dois papéis medidos: a letra
           clara sobre eles dá 9,87:1 e 11,07:1. */}
-      <section className="flex flex-wrap items-center gap-[18px] rounded-[6px] bg-[linear-gradient(120deg,var(--pbi-primary)_0%,var(--pbi-primary-dark)_100%)] px-[22px] py-[18px] text-pbi-sobre-primary">
-        <MarcaSebratel
-          className="size-[54px] flex-none"
-          fundo="var(--pbi-sobre-primary)"
-          letra="var(--pbi-primary)"
+      <section className="flex flex-wrap items-center gap-[18px] rounded-[var(--card-radius)] bg-[linear-gradient(120deg,var(--pbi-primary)_0%,var(--pbi-primary-dark)_58%,color-mix(in_srgb,var(--pbi-primary-dark)_70%,black)_100%)] shadow-[var(--card-shadow)] px-[22px] py-[18px] text-pbi-sobre-primary">
+        <img
+          src="/logo-circular-sebratel.png"
+          alt=""
+          className="size-[54px] flex-none rounded-full"
         />
         <div className="min-w-[220px] flex-1">
           {/* O relatório é o de INSTALAÇÃO, não o "Instalação Gerencial" — são dois. */}

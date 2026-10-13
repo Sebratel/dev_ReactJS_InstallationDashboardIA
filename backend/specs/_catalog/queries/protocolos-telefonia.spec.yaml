@@ -92,7 +92,7 @@ sql: |-
   		where (it.id = '1011'or --- TEC - Instalação Telefonia
   			   it.id = '275' OR
   			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-  	and a.created >= DATE_TRUNC('year', CURRENT_DATE)),
+  	and a.created >= '2025-01-01'),
   	-- `base` e EXATAMENTE o SELECT DISTINCT que existia aqui antes da migracao de
   	-- 16/09/2026: as MESMAS 33 colunas da fonte, com o MESMO DISTINCT. Nao e zelo, e
   	-- o que mantem a contagem de linhas. O DISTINCT tem de rodar sobre as colunas da

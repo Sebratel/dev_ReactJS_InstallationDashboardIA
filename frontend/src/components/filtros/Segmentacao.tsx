@@ -19,6 +19,7 @@
 // tinham de abrir instantâneos, sem esperar o primeiro clique. Mesmo padrão de
 // `SegmentacaoChips.tsx`.
 
+import { rotuloDeCampo } from '../../utils/rotulos.ts';
 import { useState } from 'react';
 import { useValoresDaSegmentacao } from '../../hooks/useDadosDaTela.ts';
 import {
@@ -83,11 +84,11 @@ export function Segmentacao(props: {
       marcados={props.selecao.length}
       aberto={aberto}
       aoClicar={() => setAberto(true)}
-      title={props.selecao.length ? resumo : `Escolher ${props.spec.rotulo}`}
+      title={props.selecao.length ? resumo : `Escolher ${rotuloDeCampo(props.spec.rotulo)}`}
     >
       {aberto && (
         <Dialogo
-          titulo={props.spec.rotulo}
+          titulo={rotuloDeCampo(props.spec.rotulo)}
           aoFechar={() => setAberto(false)}
           rodape={
             <>

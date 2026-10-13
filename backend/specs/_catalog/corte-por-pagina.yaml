@@ -1,0 +1,47 @@
+# Corte de linhas POR PÁGINA. MANTIDO POR HUMANOS — `npm run extract` não toca.
+# Código: backend/packages/semantic-model/src/corte-por-pagina.ts (lido pelo modelo) e
+# backend/packages/snapshot/src/carrega.ts (aplicado quando a carga é de UMA página).
+#
+# **A decisão (Erick, 13/10/2026).** A plataforma reflete dois relatórios do Power BI que
+# têm o MESMO modelo (70 tabelas, 80 de 81 medidas com DAX idêntico) e cortes de data
+# diferentes, medidos no próprio Power BI:
+#
+#   INST - Relatório Instalação            PROTOCOLOS GERAL desde 01/01/2025 (98.970 linhas)
+#   INST - Relatório Instalação Gerencial   PROTOCOLOS GERAL desde 01/01/2026 (42.023 linhas)
+#
+# Filtrando o Instalação para 2026 dá o Gerencial (42.011 × 42.023; TOTAL MÊS ATIVO 33.786
+# × 33.795 — a diferença é a carga 3 h depois). As outras tabelas de protocolo
+# (PRODUTIVIDADE, TELEFONIA, REINCIDÊNCIA, RETORNO PRIORITARIO, Base Categorias Field) já
+# saem do nosso SQL no ano corrente e batem com o Gerencial linha a linha.
+#
+# Erick escolheu "por página": as 5 páginas que só existem no Gerencial seguem o corte
+# dele; as 9 que existem nos dois seguem o Instalação. O que muda na tela dessas 5 são
+# os protocolos criados no ano anterior e instalados neste (o efeito de borda de
+# ACHADOS #152): 25.053 × 24.808 instalados em Instalação/Reincidente, medido card a card
+# com os filtros da página contra o Gerencial publicado. Ver ACHADOS #205.
+#
+# **É corte no dado, não filtro de página.** Filtro de página não chega a medida com
+# ALL(); a tabela recortada chega.
+#
+# **A CALENDARIO INSTALADO fica a congelada (desde 2025), de propósito.** No Gerencial ela
+# nasce do recorte e tem só 2026. Recalculada assim aqui, o filtro "ano corrente" da
+# Manutenção Inicial passa a manter TODAS as linhas do calendário — e o nosso motor trata
+# "filtro que mantém tudo" como "sem filtro", deixando entrar os protocolos sem data de
+# instalação (o "membro em branco" que o DAX exclui): TOTAL INSTALADOS 33.431 contra 24.793
+# do Gerencial. Com a congelada o filtro continua sendo filtro e dá 24.796. O defeito do
+# motor está em ACHADOS #205; `recalcula:` existe e está testado para quando ele sair.
+# Medido card a card, com os filtros da página, contra o Gerencial publicado: as 5 páginas
+# batem em 16 de 16 cards comparáveis.
+
+formato: 1
+
+cortes:
+  - paginas:
+      - premiacao-instalacao
+      - diario-instalacao
+      - protocolos-detalhados
+      - manutencao-inicial
+      - instalacao-reincidente
+    tabela: PROTOCOLOS GERAL
+    coluna: DATA CRIADO
+    desde: inicio-do-ano

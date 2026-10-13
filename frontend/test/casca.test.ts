@@ -185,17 +185,19 @@ function regra(qual: keyof typeof REGRA): string {
 }
 
 /**
- * O cromo REAL, medido no navegador em 27/08/2026 e igual nas três resoluções de
- * referência: topo 52 + nav 74 + filtros 71 + (rodapé 32 + padding da área 28) = 257.
+ * O cromo REAL, medido no navegador em 13/10/2026 com a casca do COM (a da Sebratel):
+ * topo 52 + nav 37 (uma linha) + filtros 82 (a barra típica, em duas linhas compactas)
+ * + padding da área 20 (o rodapé saiu) = 191. Era 257 em 27/08 (nav 74 em duas linhas,
+ * filtros 71, rodapé 32 + padding 28).
  *
  * `--h-nav` e `--h-filtros` no `:root` são só o CHÃO — a tela mede as duas faixas e
  * reescreve os tokens (`useAlturaMedida.ts`). Por isso a conta de referência usa as
  * medidas, e não o que está escrito no CSS: usar o CSS aqui foi o que fez a derivação
  * do piso sair errada duas vezes.
  */
-const H_NAV_MEDIDO = 74;
-const H_FILTROS_MEDIDO = 71;
-const cromo = () => token('h-topbar') + H_NAV_MEDIDO + H_FILTROS_MEDIDO + 60;
+const H_NAV_MEDIDO = 37;
+const H_FILTROS_MEDIDO = 82;
+const cromo = () => token('h-topbar') + H_NAV_MEDIDO + H_FILTROS_MEDIDO + 20;
 const utilEm = (vh: number) => vh - cromo();
 
 function numero(texto: string, re: RegExp, oque: string): number {
@@ -247,9 +249,10 @@ test('o piso do gráfico não vence a fração ideal em 1920x1080', () => {
  * descreve.
  *
  * A faixa era 900–1000 (~950px). Em 28/08/2026 o piso do gráfico caiu de 309 para
- * 273px e a fronteira foi para 867px — `DESIGN-SYSTEM.md` §3 foi remedido junto.
+ * 273px e a fronteira foi para 867px; em 13/10/2026 a casca do COM tirou 66px do cromo
+ * e ela foi para ~801px — `DESIGN-SYSTEM.md` §3 foi remedido junto.
  */
-test('a fronteira em que o piso passa a vencer fica em ~867px de janela', () => {
+test('a fronteira em que o piso passa a vencer fica em ~801px de janela', () => {
   const r = regra('grafico');
   const piso = numero(r, /clamp\((\d+)px/, 'o piso do gráfico');
   const fracao = numero(r, /\*\s*(0?\.\d+)\)/, 'a fração do gráfico');
@@ -257,11 +260,11 @@ test('a fronteira em que o piso passa a vencer fica em ~867px de janela', () => 
   const vh = Math.ceil(piso / fracao + token('gap')) + cromo();
 
   assert.ok(
-    vh >= 820 && vh <= 920,
+    vh >= 760 && vh <= 840,
     'a fronteira foi para ' +
       vh +
       'px de altura de janela; o DESIGN-SYSTEM §3 diz ' +
-      '~867. Mova o documento junto, ou o próximo a ler acredita no número velho',
+      '~801. Mova o documento junto, ou o próximo a ler acredita no número velho',
   );
 });
 

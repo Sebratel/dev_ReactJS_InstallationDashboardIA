@@ -1,28 +1,32 @@
-// A casca: topo com a marca, faixa horizontal de navegação entre telas, e a área
-// de conteúdo. É o formato do padrão de dashboards — topbar, nav, filtros, área —
-// e não a barra lateral que estava aqui. As peças: `MarcaSebratel`,
-// `AcoesDoCabecalho` e `NavDeTelas` (fase 4 de `docs/PLANO-PADROES-FRONTEND.md`).
+// A casca: topo, faixa de navegação entre telas e a área de conteúdo — o formato do
+// COM · Gestão Comercial (`dados_ReactJS_CommercialDashboards/web/src/App.jsx`), o
+// frontend da Sebratel aprovado pelo QA e em produção, que esta tela segue desde
+// 13/10/2026. As peças: `AcoesDoCabecalho` e `NavDeTelas`.
+//
+// O topo diz três coisas e nada mais: QUAL relatório (a marca, à esquerda), QUAL tela (o
+// título, no centro) e SE o dado está em dia (o ponto e a idade, à direita). O aviso de
+// saúde, que antes ocupava o subtítulo E uma faixa inteira abaixo do topo — a mesma
+// frase duas vezes —, desce para dentro da página como aviso, igual ao do COM.
 
 import type { ReactNode } from 'react';
-import { AlertTriangle } from 'lucide-react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import type { EstadoAvisoSaude } from '../../utils/avisoSaude.ts';
+import { dataHora, haQuanto } from '../../utils/formato.ts';
 import { cn } from '../../utils/cn.ts';
+import { Aviso, Erro } from '../ui/Cartao.tsx';
 import { SO_ICONE } from './soIcone.ts';
-import { MarcaSebratel } from '../ui/MarcaSebratel.tsx';
 import { AcoesDoCabecalho } from './AcoesDoCabecalho.tsx';
 import { NavDeTelas } from './NavDeTelas.tsx';
 
-/** Título e subtítulo da tela numa linha só, cortados com reticências; somem abaixo de
- *  640px, onde a faixa de abas precisa da largura. */
-const TEXTO_DO_TITULO =
-  'overflow-hidden text-ellipsis whitespace-nowrap [@media(max-width:640px)]:hidden';
+/** Abaixo de 860px o título e a idade cedem a largura às ações, como no COM. */
+const SOME_ESTREITO = '[@media(max-width:860px)]:hidden';
 
-/** O banner de saúde do snapshot (Marco A6): impossível de ignorar. */
-const BANNER: Record<EstadoAvisoSaude['nivel'], string> = {
-  falhou: 'border-pbi-critico-texto bg-pbi-erro-bg text-pbi-critico-texto',
-  vencida: 'border-pbi-gold-600 bg-pbi-aviso-bg text-pbi-gold-600',
-  ok: '',
+/** O ponto ao lado da idade do dado: verde pulsando (em dia), dourado (parado), vermelho
+ *  (alguma fonte falhou). O pulso é animação e mora no `estilo.css` (`.ponto-vivo`). */
+const PONTO: Record<EstadoAvisoSaude['nivel'], { classe: string; title: string }> = {
+  ok: { classe: '', title: 'Atualização automática ativa' },
+  vencida: { classe: 'parado', title: 'Dado parado além do esperado' },
+  falhou: { classe: 'falhou', title: 'Falha em alguma fonte' },
 };
 
 export function AppShell(props: {
@@ -37,83 +41,62 @@ export function AppShell(props: {
    *  o prefetch pendente. Mesmo motivo de opcional que `aoPassarMouse`. */
   aoSairDoMouse?: () => void;
   titulo: string;
-  sub: string;
-  /** O dado por trás da tela passou do limite sem `npm run snapshot` — ver
-   *  `LIMITE_DIAS_DADO_ATRASADO` em `formato.ts`. Troca o carimbo discreto por
-   *  um aviso, em vez de deixar a idade do dado só no texto pequeno do canto. */
-  subAviso?: boolean;
+  /** Quando o dado desta tela foi lido (ISO). Vira "há 12min" ao lado do ponto. */
+  dadoDe?: string | null;
   /** Aviso de saúde ou falha das queries do snapshot (Marco A6). */
   avisoSaude?: EstadoAvisoSaude;
   /** Horário da última atualização automática recebida via SSE (Marco C2). */
   ultimaAtualizacaoRealtime?: string | null;
   acoes?: ReactNode;
+  /** A barra de filtros: vem antes de tudo na área, encostada na navegação. */
+  barra?: ReactNode;
   /** Encerra a sessão de login. Sempre presente — a tela só chega a existir
    *  depois que há sessão, então sempre há como sair dela. */
   aoSair: () => void;
   children: ReactNode;
 }) {
+  const nivel = props.avisoSaude?.temAviso ? props.avisoSaude.nivel : 'ok';
+  const ponto = PONTO[nivel];
+  const quando = props.ultimaAtualizacaoRealtime
+    ? `ao vivo · ${props.ultimaAtualizacaoRealtime}`
+    : props.dadoDe
+      ? haQuanto(props.dadoDe)
+      : '—';
+
   return (
     <div className="flex min-h-screen flex-col">
-      <header className="sticky top-0 z-30 flex h-[var(--h-topbar)] flex-none items-center gap-[16px] border-b border-pbi-borda bg-pbi-superficie px-[16px]">
-        <div className="flex flex-none items-center gap-[10px]">
-          <MarcaSebratel fundo="var(--pbi-primary)" letra="var(--pbi-sobre-primary)" tamanho={30} />
-          <div className={cn('flex flex-col', SO_ICONE)}>
-            <span className="text-[0.82rem] leading-[1.1] font-extrabold tracking-[0.06em] text-pbi-primary-texto">
-              SEBRATEL
-            </span>
-            <span className="text-[0.62rem] text-pbi-muted">Relatório Instalação</span>
-          </div>
+      <header className="sticky top-0 z-40 flex h-[var(--h-topbar)] flex-none items-center gap-[16px] border-b border-pbi-borda bg-pbi-superficie px-[14px]">
+        <div className="flex flex-none items-center gap-[11px] font-bold tracking-[0.5px] whitespace-nowrap text-pbi-primary-texto">
+          <img src="/logo-sebratel.svg" alt="Sebratel" className="block h-[34px] w-auto" />
+          <span className={cn('text-[12px] tracking-[0.9px]', SO_ICONE)}>
+            INST · RELATÓRIO INSTALAÇÃO
+          </span>
         </div>
 
-        {/* A régua à esquerda separa o título da tela da marca — sem ela as duas colunas
-            de texto se leem como um bloco só. */}
-        <div className="flex min-w-0 flex-col border-l border-pbi-borda pl-[16px]">
-          <h1
-            className={cn(TEXTO_DO_TITULO, 'text-[0.95rem] leading-[1.2] font-bold text-pbi-ink')}
-          >
-            {props.titulo}
-          </h1>
-          {props.sub ? (
-            <span
-              className={cn(
-                TEXTO_DO_TITULO,
-                'text-[0.72rem] text-pbi-muted',
-                // Os tokens do `Aviso` e do selo `neutro`: dado velho é o mesmo estado de
-                // atenção em outro lugar da tela, não uma cor nova.
-                props.subAviso &&
-                  'rounded-[4px] border border-pbi-gold-600 bg-pbi-aviso-bg px-[6px] py-[1px] font-bold text-pbi-gold-600',
-              )}
-            >
-              {props.sub}
-            </span>
-          ) : null}
-          {props.ultimaAtualizacaoRealtime ? (
-            <span
-              className="badge-realtime"
-              title="Conectado ao Voalle via SSE — dados atualizam automaticamente sem F5"
-            >
-              <span className="ponto-vivo" aria-hidden="true" />
-              <span className={SO_ICONE}>Ao vivo • {props.ultimaAtualizacaoRealtime}</span>
-            </span>
-          ) : null}
-        </div>
-
-        <AcoesDoCabecalho acoes={props.acoes} aoSair={props.aoSair} />
-      </header>
-
-      {props.avisoSaude?.temAviso ? (
-        <div
+        <h1
           className={cn(
-            'flex flex-none items-center gap-[8px] border-b border-transparent px-[16px] py-[6px] text-[0.72rem] font-semibold',
-            BANNER[props.avisoSaude.nivel],
+            'm-0 min-w-0 flex-1 truncate text-center text-[16px] font-semibold tracking-[0.8px] text-pbi-ink uppercase',
+            SOME_ESTREITO,
           )}
-          role="alert"
-          title={props.avisoSaude.mensagem}
         >
-          <AlertTriangle size={15} style={{ flex: 'none' }} />
-          <span>{props.avisoSaude.mensagem}</span>
+          {props.titulo}
+        </h1>
+
+        <div className="ml-auto flex items-center gap-[8px] text-[12.5px] whitespace-nowrap text-pbi-muted">
+          <span
+            className={cn('ponto-vivo', ponto.classe)}
+            title={props.avisoSaude?.temAviso ? props.avisoSaude.mensagem : ponto.title}
+            aria-hidden="true"
+          />
+          <span
+            className={SOME_ESTREITO}
+            title={props.dadoDe ? `Dado de ${dataHora(props.dadoDe)}` : undefined}
+          >
+            {quando}
+          </span>
+          <AcoesDoCabecalho acoes={props.acoes} aoSair={props.aoSair} />
         </div>
-      ) : null}
+      </header>
 
       <NavDeTelas
         paginas={props.paginas}
@@ -123,12 +106,19 @@ export function AppShell(props: {
         aoSairDoMouse={props.aoSairDoMouse}
       />
 
-      <main className="area">{props.children}</main>
-
-      <footer className="mt-auto flex flex-none flex-wrap gap-[16px] border-t border-pbi-borda px-[16px] py-[8px] text-[0.62rem] text-pbi-muted">
-        <span>Fonte: dbVoalle · dbMaria · GSheets</span>
-        <span>Somente leitura · snapshot agendado</span>
-      </footer>
+      <main className="area">
+        {props.barra}
+        {props.avisoSaude?.temAviso ? (
+          <div role="alert" title={props.avisoSaude.mensagem}>
+            {props.avisoSaude.nivel === 'falhou' ? (
+              <Erro>{props.avisoSaude.mensagem}</Erro>
+            ) : (
+              <Aviso>{props.avisoSaude.mensagem}</Aviso>
+            )}
+          </div>
+        ) : null}
+        {props.children}
+      </main>
     </div>
   );
 }

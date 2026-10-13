@@ -166,6 +166,24 @@ Tailwind e utilitários com `cn`, mantendo os tokens de papel (cor cheia é fund
 escurecida é letra). A validação é por screenshot, claro e escuro, nas três resoluções
 de referência.
 
+## Fase 7 — o visual da Sebratel (FEITA, 13/10/2026)
+
+O Erick pediu o visual do **COM · Gestão Comercial** (`dados_ReactJS_CommercialDashboards`),
+o frontend da Sebratel aprovado pelo QA e em produção, "até a tela de login, adaptado ao
+nosso", e melhorias nos gráficos (ACHADOS #206; o mapa peça a peça está no
+`DESIGN-SYSTEM.md` §7). Cinco etapas, cada uma com fotos antes/depois nos dois temas:
+1. casca — topo com a logo real, título centralizado e ponto de status; abas numa linha;
+   aviso de saúde dentro da página; fonte Segoe UI;
+2. barra de filtros — botão compacto "Nome valor", chips na própria barra, rótulos de
+   gente (`rotuloDeCampo`);
+3. cartões, indicadores e tabelas — raio e sombra, `.kpi-faixa`, `table.pbi`;
+4. gráficos — paleta da marca (com a correção dos slots 5–6), dourado graduado pelo
+   valor, chips de valor, colunas até 54px, eixo reto quando cabe;
+5. login, capa e celular.
+
+Diferente da fase 6, aqui a tela MUDA de propósito: a régua de estilo computado não se
+aplica; a prova é foto, E2E e a conta de altura remedida (cromo 257 → 191px).
+
 ## Desvios mantidos de propósito
 
 - **`fetch`, não axios.** O padrão dispensa a migração de projeto que já usa fetch.

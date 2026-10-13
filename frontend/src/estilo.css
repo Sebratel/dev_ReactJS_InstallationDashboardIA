@@ -35,7 +35,7 @@
    =========================================================================== */
 
 @theme {
-  --font-sans: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Segoe UI', 'Segoe UI Web (West European)', Arial, -apple-system, sans-serif;
 }
 
 @theme inline {
@@ -67,6 +67,7 @@
   --color-pbi-erro-bg: var(--pbi-erro-bg);
   --color-pbi-aviso-bg: var(--pbi-aviso-bg);
   --color-pbi-barra-fundo: var(--pbi-barra-fundo);
+  --color-pbi-hover: var(--pbi-hover);
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -133,7 +134,9 @@
      e a cor de base continuam as mesmas, então a Fase L6 pode confiar. */
   --pct-ok-bg: 10%;
   --pct-erro-bg: 9%;
-  --pct-aviso-bg: 55%;
+  /* 25% desde 13/10/2026 (era 55%): o fundo de aviso do COM (#FDF9EC) é quase branco;
+     a letra `--pbi-gold-600` só ganha contraste com isso. */
+  --pct-aviso-bg: 25%;
   --pbi-ok-bg: color-mix(in srgb, var(--pbi-green) var(--pct-ok-bg), var(--pbi-superficie));
   --pbi-erro-bg: color-mix(in srgb, var(--pbi-critico) var(--pct-erro-bg), var(--pbi-superficie));
   --pbi-aviso-bg: color-mix(
@@ -162,7 +165,31 @@
   --grade: var(--pbi-grid);
   --sem-dado: var(--pbi-neutro);
 
-  --font: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* A fonte, o raio, a sombra e o fundo são os do COM · Gestão Comercial
+     (`dados_ReactJS_CommercialDashboards/web/src/theme.css`), o frontend da Sebratel
+     aprovado pelo QA e em produção — a referência visual desta tela desde 13/10/2026. */
+  --font: 'Segoe UI', 'Segoe UI Web (West European)', Arial, -apple-system, sans-serif;
+  --card-radius: 8px;
+  --card-shadow: 0 1px 2px rgba(37, 36, 35, 0.06), 0 6px 16px -10px rgba(37, 36, 35, 0.35);
+  --card-shadow-hover: 0 1px 2px rgba(37, 36, 35, 0.08), 0 10px 22px -12px rgba(37, 36, 35, 0.45);
+  --pbi-hover: #faf9f8;
+  /* O fundo da arte do login (o do COM): bordô quase preto, nos dois temas. */
+  --login-fundo: #1a0508;
+  --login-arte-1: #2a070c;
+  --login-arte-2: #14060a;
+  --login-arte-3: #0d0507;
+  /* As linhas de tabela do COM: hover num dourado quase branco (#FBF9F2) e a linha
+     selecionada num dourado claro (#FBF3D9) — misturas, para acompanhar o `.dark`. */
+  --linha-hover: color-mix(in srgb, var(--pbi-gold) 6%, var(--pbi-superficie));
+  --linha-selecionada: color-mix(in srgb, var(--pbi-gold) 16%, var(--pbi-superficie));
+  --fundo-pagina:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(238, 236, 233, 0.9) 45%,
+      rgba(248, 247, 245, 0.95) 100%
+    ),
+    var(--pbi-fundo);
 
   /* -------------------------------------------------------------------------
      A CONTA QUE FAZ A TELA CABER
@@ -178,7 +205,7 @@
      pequeno.
      ------------------------------------------------------------------------- */
   --h-topbar: 52px;
-  --h-nav: 64px;
+  --h-nav: 36px;
   --h-filtros: 50px;
   --h-antes: 0px;
   --h-entre: 0px;
@@ -214,7 +241,7 @@
 
      `--h-nav` também é medido em tempo de execução — o valor no `:root` é só o
      chão, para o primeiro quadro não sair absurdo. */
-  --chrome: calc(var(--h-topbar) + var(--h-nav) + 50px);
+  --chrome: calc(var(--h-topbar) + var(--h-nav) + 20px);
   --util: calc(100vh - var(--chrome) - var(--h-antes) - var(--h-entre));
 }
 
@@ -233,6 +260,10 @@
      `--pbi-sobre-primary` NÃO entra: a superfície bordô é a mesma nos dois temas,
      e o que separa o cabeçalho do corpo escuro é a borda dourada. */
   --pbi-primary-texto: var(--pbi-gold);
+  --pbi-hover: #2f2e2d;
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 6px 16px -10px rgba(0, 0, 0, 0.7);
+  --card-shadow-hover: 0 1px 2px rgba(0, 0, 0, 0.35), 0 10px 22px -12px rgba(0, 0, 0, 0.8);
+  --fundo-pagina: linear-gradient(135deg, #222120 0%, #1b1a19 45%, #201f1e 100%);
   --superficie: var(--pbi-superficie);
   --fundo: var(--pbi-fundo);
   --texto: var(--pbi-ink);
@@ -299,7 +330,8 @@ html {
 
 body {
   margin: 0;
-  background: var(--fundo);
+  background: var(--fundo-pagina);
+  background-attachment: fixed;
   color: var(--texto);
   font-family: var(--font);
   font-size: 0.86rem;
@@ -321,80 +353,67 @@ body {
    utilitário em `AppShell`, `NavDeTelas`, `AcoesDoCabecalho`, `ui/BotaoDeIcone` e
    `Login` (fase 6e). Fica aqui a faixa de navegação: a altura dela é medida. */
 
-/* A FAIXA DE NAVEGAÇÃO.
+/* A FAIXA DE NAVEGAÇÃO — a `.pagenav` do COM: uma linha que rola na horizontal, sem
+   barra de rolagem à vista. As 11 telas não cabem em 1366px; a borda direita esmaece
+   (a máscara cai sobre os últimos 28px, que são `padding` — no fim da rolagem não
+   apagam aba nenhuma) para dizer que há mais. A rolagem é DESTA faixa, não da página.
 
-   `flex-wrap`, não `overflow-x`. Com 14 telas os rótulos somam 1.511px só de texto
-   e 2.113px com ícone e respiro (medido em 27/08/2026), contra 1.366px de tela —
-   não cabe em uma linha em monitor comum. Rolagem horizontal aqui esconderia metade
-   das telas atrás de um gesto que ninguém adivinha; quebrar em duas linhas mostra
-   as 14 de uma vez.
-
-   A altura REAL é medida pelo `NavDeTelas` e publicada em `--h-nav`, porque `--util`
-   a soma e todo card depende disso. Fixar o número mentiria em metade das
-   resoluções. */
+   A altura é medida pelo `NavDeTelas` e publicada em `--h-nav`, que `--util` desconta. */
 .nav-telas {
   flex: none;
   display: flex;
-  flex-wrap: wrap;
-  gap: 3px;
-  padding: 5px 16px;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 28px 0 10px;
   background: var(--superficie);
   border-bottom: 1px solid var(--borda);
+  overflow-x: auto;
+  scrollbar-width: none;
   position: sticky;
   top: var(--h-topbar);
-  z-index: 25;
+  z-index: 39;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.nav-telas::-webkit-scrollbar {
+  display: none;
 }
 
-/* ============================================================ selo "ao vivo" */
-/* O selo do título da tela quando o SSE trouxe dado novo. É animação: fica aqui. */
+/* ============================================================ ponto "ao vivo" */
+/* O ponto ao lado da idade do dado, no topo (o `.live-dot` do COM). Verde pulsando:
+   em dia. Dourado: parado além do esperado. Vermelho: alguma fonte falhou. É
+   animação: fica aqui. */
 
-.badge-realtime {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--pbi-green);
-  background: var(--pbi-ok-bg);
-  border: 1px solid var(--pbi-green);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 0.68rem;
-  font-weight: 700;
-  white-space: nowrap;
-  line-height: 1.3;
-  animation: pulse-suave 1.5s ease-in-out;
-}
 .ponto-vivo {
-  width: 6px;
-  height: 6px;
+  flex: none;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background-color: var(--pbi-green);
-  box-shadow: 0 0 5px var(--pbi-green);
-  display: inline-block;
-  animation: pisca-ponto 2s infinite ease-in-out;
+  background: var(--pbi-green);
+  animation: pulso-vivo 2.4s infinite;
 }
-@keyframes pisca-ponto {
-  0%,
-  100% {
-    opacity: 1;
-    transform: scale(1);
-  }
-  50% {
-    opacity: 0.35;
-    transform: scale(0.75);
-  }
+.ponto-vivo.parado {
+  background: var(--pbi-gold);
+  animation: none;
 }
-@keyframes pulse-suave {
+.ponto-vivo.falhou {
+  background: var(--pbi-critico-texto);
+  animation: none;
+}
+@keyframes pulso-vivo {
   0% {
-    transform: scale(0.96);
-    opacity: 0.7;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 55%, transparent);
   }
-  50% {
-    transform: scale(1.02);
-    opacity: 1;
+  70% {
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--pbi-green) 0%, transparent);
   }
   100% {
-    transform: scale(1);
-    opacity: 1;
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--pbi-green) 0%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ponto-vivo {
+    animation: none;
   }
 }
 
@@ -414,6 +433,13 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: var(--gap);
+}
+/* Dois indicadores por linha no celular, e não um: seis cartões de largura inteira
+   eram seis alturas de tela antes do primeiro gráfico. */
+@media (max-width: 640px) {
+  .kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 .kpi-pilha {
   display: flex;
@@ -435,12 +461,14 @@ body {
      - o PISO diz onde o visual deixa de comunicar, e ele vence quando a tela é baixa.
 
    Enquanto a fração ideal for maior que o piso, a igualdade vale e a tela de duas
-   faixas não rola. O ponto de virada, com o cromo REAL de 257px (ver acima):
+   faixas não rola. O ponto de virada, com o cromo de 13/10/2026 (191px: topo 52, nav
+   37, filtros 82, padding 20 — `DESIGN-SYSTEM.md` §3) e o piso de hoje (273px):
 
-       util(vh)      = vh - 257
-       gráfico ideal = (util - 10) x 0,455 >= 309  ->  util >= 689  ->  vh >= 946
+       util(vh)      = vh - 191
+       gráfico ideal = (util - 10) x 0,455 >= 273  ->  util >= 610  ->  vh >= 801
 
-   Ou seja: **a igualdade vale de ~950px de altura de janela para cima.** Em
+   Ou seja: **a igualdade vale de ~801px de altura de janela para cima.** (Com o cromo
+   de 257px e o piso de 309px de agosto, a conta abaixo dava ~950.) Em
    1920x1080 ela fecha ao pixel. Em 1440x900 e 1366x768 o piso vence e a página rola,
    e isso é escolha — o padrão manda preferir rolar a comprimir abaixo da
    legibilidade.
@@ -536,18 +564,23 @@ body {
 .cartao {
   background: var(--superficie);
   border: 1px solid var(--borda);
-  border-radius: 2px;
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+  transition: box-shadow 0.16s ease;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
   height: 100%;
 }
+.cartao:hover {
+  box-shadow: var(--card-shadow-hover);
+}
 .cartao-corpo {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
-  padding: 8px 10px;
+  padding: 7px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -578,8 +611,8 @@ body {
   select,
   input {
     font-family: var(--font);
-    font-size: 0.74rem;
-    border-radius: 2px;
+    font-size: 12.5px;
+    border-radius: 6px;
     border: 1px solid var(--grade);
     background: var(--superficie);
     color: var(--texto);
@@ -611,16 +644,27 @@ button:disabled {
    cromo. */
 .filtros {
   min-height: var(--h-filtros);
-  background: var(--superficie);
+  /* A `.filtros` do COM: encostada na navegação e de borda a borda (o `margin`
+     devolve o `padding` da `.area`), translúcida sobre o conteúdo que rola por baixo. */
+  margin: -8px -12px 0;
+  background: color-mix(in srgb, var(--superficie) 92%, transparent);
+  backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--borda);
-  padding: 8px 16px;
+  padding: 7px 12px;
   display: flex;
-  gap: 10px;
+  gap: 7px;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   position: sticky;
   top: calc(var(--h-topbar) + var(--h-nav));
-  z-index: 15;
+  z-index: 30;
+}
+/* No celular a barra quebra em cinco linhas; fixa no topo, ela cobriria meia tela
+   durante a rolagem. Ali ela rola junto com a página. */
+@media (max-width: 640px) {
+  .filtros {
+    position: static;
+  }
 }
 /* O filtro, o diálogo, os chips, a pílula de filtro sem segmentação e a árvore de
    datas são utilitário em `filtros/` e `ui/Dialogo` (fase 6f). Fica aqui a barra: a
@@ -633,48 +677,53 @@ button:disabled {
   min-height: 0;
   overflow: auto;
 }
+/* A `table.pbi` do COM: cabeçalho BRANCO e fixo, sublinhado em dourado, linha fina
+   entre as linhas e o hover num dourado claro. Até 13/10/2026 o cabeçalho era bordô
+   cheio — com o cabeçalho do cartão logo acima, eram duas faixas bordô empilhadas. */
 table.dados {
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
-  font-size: 0.72rem;
+  font-size: 12.5px;
 }
 table.dados th {
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--pbi-primary);
-  color: var(--pbi-sobre-primary);
-  text-transform: uppercase;
-  font-size: 0.64rem;
-  letter-spacing: 0.03em;
+  background: var(--superficie);
+  color: var(--texto);
+  font-size: 12px;
   font-weight: 700;
   text-align: left;
-  padding: 5px 8px;
+  padding: 7px 8px;
   white-space: nowrap;
-  border-bottom: 1px solid var(--pbi-primary-dark);
+  border-bottom: 2px solid var(--pbi-gold-soft);
 }
 table.dados th.th-clicavel {
   cursor: pointer;
   user-select: none;
 }
 table.dados th.th-clicavel:hover {
-  background: var(--pbi-primary-dark);
+  background: var(--pbi-hover);
 }
+/* `inline-block`: o preflight do Tailwind põe `display: block` em todo `svg`, e a seta
+   descia para baixo do nome da coluna — dobrando a altura do cabeçalho. */
 .icone-ordem {
+  display: inline-block;
   margin-left: 4px;
   vertical-align: -1px;
+  color: var(--pbi-primary-texto);
 }
 table.dados td {
-  padding: 4px 8px;
-  border-bottom: 1px solid var(--grade);
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--fundo);
   white-space: nowrap;
   color: var(--texto);
   overflow: hidden;
   text-overflow: ellipsis;
 }
 table.dados tbody tr:hover td {
-  background: var(--fundo);
+  background: var(--linha-hover);
 }
 /* Clique na linha filtra a página inteira a este registro — mesma ideia do clique numa
    barra do gráfico (`.col-grupo.clicavel`/`.apagada` em Grafico.tsx), só que o alvo é a
@@ -687,7 +736,10 @@ table.dados tbody tr.linha-apagada td {
 }
 table.dados tbody tr.linha-selecionada td,
 table.dados tbody tr.linha-selecionada:hover td {
-  background: var(--pbi-primary-soft);
+  background: var(--linha-selecionada);
+}
+table.dados tbody tr.linha-selecionada td:first-child {
+  box-shadow: inset 3px 0 0 var(--pbi-primary-texto);
 }
 td.num,
 th.num {
@@ -742,10 +794,10 @@ table.dados.matriz td:first-child {
 }
 .rolagem table.dados thead th:first-child {
   z-index: 3;
-  background: var(--pbi-primary);
+  background: var(--superficie);
 }
 .rolagem table.dados tbody tr:hover td:first-child {
-  background: var(--fundo);
+  background: var(--linha-hover);
 }
 
 .tabela-cabecalho-acoes {
@@ -822,8 +874,8 @@ table.dados.matriz td:first-child {
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 35%, transparent);
-  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 45%, transparent);
+  border-radius: 999px;
   overflow: hidden;
 }
 .paginador-grafico button,
@@ -862,8 +914,8 @@ table.dados.matriz td:first-child {
   display: inline-flex;
   align-items: center;
   gap: 1px;
-  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 35%, transparent);
-  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 45%, transparent);
+  border-radius: 999px;
   overflow: hidden;
 }
 .grafico-svg {
@@ -887,10 +939,23 @@ table.dados.matriz td:first-child {
   stroke: var(--grade);
   stroke-width: 1px;
 }
-.rotulo-x {
-  fill: var(--muted);
-  font-size: 10px;
+/* O chip de valor acima da coluna (o `ChipLabel` do COM): fundo na cor do texto e
+   letra na da superfície — escuro no tema claro, claro no escuro, sempre legível. */
+.chip-valor rect {
+  fill: var(--texto);
+  opacity: 0.92;
+}
+.chip-valor text {
+  fill: var(--superficie);
+  font-size: 11px;
   font-weight: 600;
+  font-family: var(--font);
+}
+/* O eixo de categorias do COM: 11px, negrito, na cor do texto. */
+.rotulo-x {
+  fill: var(--texto);
+  font-size: 11px;
+  font-weight: 700;
   font-family: var(--font);
 }
 .rotulo-x.sob {
@@ -1040,6 +1105,243 @@ table.dados.matriz td:first-child {
 }
 @media (prefers-reduced-motion: reduce) {
   .brilho::after {
+    animation: none;
+  }
+}
+
+/* ==================================================================== login */
+/* O login do COM · Gestão Comercial: arte bordô com dois brilhos que flutuam e uma
+   malha de curvas, a marca à esquerda, o cartão de acesso à direita e a barra de
+   "ambiente seguro" embaixo. É animação e composição de camadas: fica aqui. O cartão
+   (cores, tipografia) é utilitário em `auth/Login.tsx`. */
+
+.login {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100svh;
+  overflow: hidden;
+  background: var(--login-fundo);
+  color: var(--pbi-sobre-primary);
+  display: flex;
+  flex-direction: column;
+}
+.login-arte {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.login-arte::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(
+      ellipse 70% 55% at 30% 35%,
+      color-mix(in srgb, var(--pbi-primary) 85%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(
+      135deg,
+      var(--login-arte-1) 0%,
+      var(--login-arte-2) 55%,
+      var(--login-arte-3) 100%
+    );
+}
+.login-brilho {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+}
+.login-brilho.um {
+  left: -12%;
+  top: 12%;
+  width: min(80vw, 520px);
+  height: min(80vw, 520px);
+  background: color-mix(in srgb, var(--pbi-gold) 20%, transparent);
+  animation: flutua 16s ease-in-out infinite;
+}
+.login-brilho.dois {
+  right: -6%;
+  bottom: 8%;
+  width: min(65vw, 430px);
+  height: min(65vw, 430px);
+  background: color-mix(in srgb, var(--pbi-orange) 18%, transparent);
+  animation: flutua 21s ease-in-out infinite reverse;
+}
+.login-malha {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0.5;
+}
+@keyframes flutua {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translate(14px, -12px) scale(1.06);
+    opacity: 1;
+  }
+}
+
+.login-conteudo {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr min(100%, 470px);
+  align-items: center;
+  gap: 32px;
+  padding: 40px clamp(20px, 5vw, 72px) 70px;
+}
+.login-marca {
+  max-width: 620px;
+  display: grid;
+  gap: 16px;
+}
+.login-marca-topo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.login-marca-topo img {
+  border-radius: 50%;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.5);
+}
+.login-marca-topo span {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+.login-marca h2 {
+  margin: 0;
+  font-size: clamp(1.7rem, 3.4vw, 2.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.5px;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+}
+.login-marca h2 span {
+  color: var(--pbi-gold);
+}
+.login-marca p {
+  margin: 0;
+  max-width: 32rem;
+  font-size: 15px;
+  line-height: 1.65;
+  color: color-mix(in srgb, var(--pbi-sobre-primary) 86%, transparent);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.7);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 440px;
+  background: var(--superficie);
+  color: var(--texto);
+  border-radius: 18px;
+  padding: 30px 28px;
+  display: grid;
+  gap: 18px;
+  box-shadow: 0 36px 72px -12px rgba(0, 0, 0, 0.6);
+  border-top: 3px solid var(--pbi-gold);
+}
+.login-card.tremer {
+  animation: tremer 0.4s ease;
+}
+@keyframes tremer {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+.botao-google {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 46px;
+  width: 100%;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  background: var(--pbi-primary);
+  color: var(--pbi-sobre-primary);
+  font-size: 14.5px;
+  font-weight: 600;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--pbi-primary) 32%, transparent);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.botao-google:hover:not(:disabled) {
+  background: var(--pbi-primary-dark);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--pbi-primary) 38%, transparent);
+}
+.botao-google:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.botao-google .marca {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--pbi-sobre-primary);
+  display: grid;
+  place-items: center;
+  color: var(--pbi-primary);
+}
+
+.login-barra {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border-top: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 12%, transparent);
+  background: rgba(0, 0, 0, 0.42);
+  padding: 10px;
+  font-size: 11.5px;
+  color: color-mix(in srgb, var(--pbi-sobre-primary) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+@media (max-width: 980px) {
+  .login-conteudo {
+    grid-template-columns: 1fr;
+    padding-top: 28px;
+    gap: 24px;
+  }
+  .login-marca h2 {
+    font-size: 1.6rem;
+  }
+  .login-marca p {
+    font-size: 14px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-brilho.um,
+  .login-brilho.dois,
+  .login-card.tremer {
     animation: none;
   }
 }

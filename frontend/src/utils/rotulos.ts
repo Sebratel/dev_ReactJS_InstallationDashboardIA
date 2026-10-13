@@ -141,3 +141,55 @@ export function tituloDeGrafico(
     ? tituloDoVisual(visual)
     : `${nomesMedidas.slice(0, 3).join(' · ')} por ${nomeEixo}`;
 }
+
+// ---------------------------------------------------------------------------
+// RÓTULO DE CAMPO — o nome que a barra de filtros mostra.
+//
+// A segmentação chega com o nome da COLUNA do modelo (`CategoriaProdutividade`,
+// `instalador_Unificado`, `tecnico`, `data_abertura Ano`), que é identificador, não
+// texto. O COM · Gestão Comercial mostra "Vendedor", "Canal" — rótulo de gente. Aqui o
+// mesmo: um mapa para os nomes que nenhuma regra separa (palavras grudadas), e uma
+// regra para o resto. O valor que vai para o servidor continua sendo o da coluna.
+// ---------------------------------------------------------------------------
+
+/** Nomes que a regra geral não resolve: palavras grudadas ou nome técnico. */
+const CAMPOS: Record<string, string> = {
+  categoriaprodutividade: 'Categoria produtividade',
+  classificacaorelato: 'Classificação relato',
+  instalador_unificado: 'Instalador',
+  'n°protocolo': 'Nº protocolo',
+  protocol_type: 'Tipo de protocolo',
+  cliente_nome: 'Cliente',
+  tipo_manutencao: 'Tipo de manutenção',
+  reincidente_30d: 'Reincidente em 30 dias',
+};
+
+/** Palavra sem acento no modelo → a palavra escrita. */
+const ACENTOS: Record<string, string> = {
+  tecnico: 'técnico',
+  solucao: 'solução',
+  manutencao: 'manutenção',
+  situacao: 'situação',
+  catalogo: 'catálogo',
+  responsavel: 'responsável',
+  estagio: 'estágio',
+  classificacao: 'classificação',
+};
+
+export function rotuloDeCampo(nome: string): string {
+  const exato = CAMPOS[nome.toLowerCase()];
+  if (exato) return exato;
+  // O nível de uma data (`Data Criado Ano`) vira "Data criado (ano)".
+  const nivel = / (ano|mês|mes|dia)$/i.exec(nome);
+  const base = nivel ? nome.slice(0, nivel.index) : nome;
+  const palavras = base
+    .replace(/_/g, ' ')
+    .replace(/([a-z])(\d)/gi, '$1 $2')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((p) => ACENTOS[p] ?? p);
+  const texto = palavras.join(' ');
+  const frase = texto.charAt(0).toUpperCase() + texto.slice(1);
+  return nivel ? `${frase} (${nivel[1]!.toLowerCase()})` : frase;
+}

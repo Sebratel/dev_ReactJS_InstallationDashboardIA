@@ -31,6 +31,7 @@ import {
   materializeCalculatedTable,
 } from '../../measure-engine/src/calculated.ts';
 import { normalizeName as normaliza, type SemanticModel } from '../../semantic-model/src/model.ts';
+import { cortesDaPagina, inicioDoCorte } from '../../semantic-model/src/corte-por-pagina.ts';
 import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { aplicaTipo } from '../../measure-engine/src/calculated.ts';
 import type { ModelTable } from '../../semantic-model/src/types.ts';
@@ -179,6 +180,12 @@ export interface Carregado {
    */
   recalculadas: string[];
   /**
+   * As tabelas recortadas pelo corte desta página (`corte-por-pagina.ts`), com quantas
+   * linhas ficaram. Vazio fora das páginas com corte — o número de uma página que segue
+   * o outro relatório tem de ser dizível, não descoberto.
+   */
+  recortadas: string[];
+  /**
    * As conversões de tipo que **não** foram feitas para não quebrar um
    * relacionamento. Ver `preservaEspecieDeJuncao`.
    *
@@ -249,6 +256,15 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const omitidas: string[] = [];
   const liberadas = new Set((opts.liberaSobDemanda ?? []).map((r) => normaliza(r)));
 
+  // **Corte por página** (`corte-por-pagina.ts`, decisão de 13/10/2026). Só quando a
+  // carga é de UMA página: o dataset é dela, e o cache também. Carga de várias páginas
+  // juntas é materialização ou congelamento de calculada, e recortar ali gravaria em
+  // disco, para todas, o dado de uma.
+  const cortes = opts.dashboards.length === 1 ? cortesDaPagina(opts.model.cortes, opts.dashboards[0]!.id) : [];
+  const cortePorTabela = new Map(cortes.map((c) => [normaliza(c.tabela), c] as const));
+  const recalculaPorCorte = new Set(cortes.flatMap((c) => c.recalcula.map(normaliza)));
+  const recortadas: string[] = [];
+
   const juncao = preservaEspecieDeJuncao(opts.model, opts.dir, { ...plano, tabelas });
   const convertidas: string[] = [];
   for (const t of tabelas) {
@@ -260,7 +276,8 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // que pulam; nesse dia o custo volta a ser o de antes, e não o número muda.
     const cabecalhoEmDisco =
       juncao.cabecalhos.get(normaliza(t.nome)) ?? leCabecalho(arquivo);
-    const fora = usadas === null
+    const corte = cortePorTabela.get(normaliza(t.nome));
+    const fora = (usadas === null
       ? []
       : omissiveis(
           t.nome,
@@ -268,7 +285,9 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
           usadas,
           opts.model,
           sobDemandaLiberada(t.nome, opts.model.sobDemanda, liberadas),
-        );
+        )
+    // A coluna do corte entra mesmo que nenhum visual a cite: sem ela não há como cortar.
+    ).filter((c) => !corte || normaliza(c) !== normaliza(corte.coluna));
     for (const c of fora) omitidas.push(`'${t.nome}'[${c}]`);
 
     const modelo = opts.model.table(t.nome)!;
@@ -325,6 +344,22 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
         ...aplicaTiposDeclarados(modelo, cabecalho, linhas, semColuna, juncao.suprimir),
       );
     }
+    if (corte) {
+      // Depois do overlay e da conversão de tipo: a linha que o poller trouxe é cortada
+      // igual, e a coluna já é `Date`. Data em branco sai — `created >= X` no SQL do
+      // relatório de origem também a descarta.
+      const desde = inicioDoCorte(corte, opts.now);
+      const chave = normaliza(corte.coluna);
+      const antes = linhas.length;
+      linhas = linhas.filter((l) => {
+        const v = (l as Record<string, unknown>)[chave];
+        return v instanceof Date && v.getTime() >= desde.getTime();
+      });
+      recortadas.push(
+        `${t.nome}: ${antes} → ${linhas.length} linha(s), '${corte.coluna}' desde ` +
+          `${desde.toISOString().slice(0, 10)} (corte da página)`,
+      );
+    }
     // **Adotar, não copiar.** `addTable` remonta objeto por objeto para normalizar o
     // nome das colunas — trabalho que em `field-agenda` são 1,46 milhão de linhas
     // reconstruídas campo a campo, e um segundo exemplar delas vivo até o GC passar,
@@ -355,6 +390,15 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // `agendamento-field` (ACHADOS #53): quatro colunas calculadas desta tabela,
     // recalculadas a cada abertura de página. O Power BI as calcula no refresh.
     const arq = arquivoDaCalculada(opts.dir, t.name);
+
+    // O congelado em disco nasceu da tabela INTEIRA; com o corte da página, ela é
+    // recalculada sobre o recorte. Só as listadas em `recalcula` — todas baratas.
+    if (recalculaPorCorte.has(normaliza(t.name))) {
+      const m = materializeCalculatedTable(ev, t);
+      linhasPorTabela.set(t.name, m.rowCount);
+      recalculadas.push(`${t.name}: recalculada sobre o corte da página`);
+      continue;
+    }
 
     // **O tempo real mudou uma origem dela? Então o arquivo congelado está velho.**
     // O overlay do poller entra nas tabelas físicas (acima), mas uma calculada lida de
@@ -438,6 +482,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     omitidas,
     congeladas,
     recalculadas,
+    recortadas,
     juncoesPreservadas: juncao.notas,
     // **A mais ANTIGA, não a mais nova.** A tela escreve "dado de <isto>", e o que
     // ela promete é que *nada* do que está ali é mais velho que a data mostrada.

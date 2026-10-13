@@ -9,6 +9,7 @@
 // chutado: gráfico maior que a tela é gráfico que ninguém vê inteiro.
 
 import type { ReactNode } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import { useModo } from '../../context/ModoContext.tsx';
 import { alturaDoConteudo, type AlturaDeVisual } from '../../utils/alturaDoConteudo.ts';
 import { cn } from '../../utils/cn.ts';
@@ -20,16 +21,17 @@ import { IdVisual } from './IdVisual.tsx';
 export { alturaDoConteudo, type AlturaDeVisual };
 
 /** Os controles que cada visual põe no cabeçalho (exportar, transpor, paginar, buscar)
- *  herdam a faixa colorida: fundo transparente, letra sobre a primária. O ícone é irmão do
- *  texto e a linha de base não os alinha — `inline-flex` centraliza os dois, senão o SVG
- *  desce a caixa do botão e empurra o corpo do card, a altura que `--util` já disputa. */
+ *  são o `.btn-exportar` do COM: pílula de contorno claro sobre a faixa bordô, que vira
+ *  branca com a letra na primária no hover. O ícone é irmão do texto e a linha de base
+ *  não os alinha — `inline-flex` centraliza os dois. */
 const ACOES = cn(
-  'ml-auto flex flex-[0_0_auto] items-center gap-[6px]',
-  '[&_:is(button,input)]:rounded-[2px] [&_:is(button,input)]:border-pbi-sobre-primary-fraco',
-  '[&_:is(button,input)]:bg-transparent [&_:is(button,input)]:px-[8px] [&_:is(button,input)]:py-[2px]',
-  '[&_:is(button,input)]:text-[0.68rem] [&_:is(button,input)]:text-pbi-sobre-primary',
-  '[&_button]:inline-flex [&_button]:items-center [&_button]:gap-[4px]',
-  '[&_button:hover]:bg-pbi-primary-dark [&_input]:placeholder:text-pbi-sobre-primary-fraco',
+  'flex flex-[0_0_auto] items-center gap-[6px] normal-case',
+  '[&_:is(button,input)]:rounded-full [&_:is(button,input)]:border-pbi-sobre-primary-fraco',
+  '[&_:is(button,input)]:bg-transparent [&_:is(button,input)]:px-[10px] [&_:is(button,input)]:py-[2px]',
+  '[&_:is(button,input)]:text-[10.5px] [&_:is(button,input)]:font-bold [&_:is(button,input)]:text-pbi-sobre-primary',
+  '[&_button]:inline-flex [&_button]:items-center [&_button]:gap-[5px]',
+  '[&_button:hover]:bg-pbi-sobre-primary [&_button:hover]:text-pbi-primary',
+  '[&_input]:font-normal [&_input]:placeholder:text-pbi-sobre-primary-fraco',
 );
 
 const CLASSE_DE_ALTURA: Record<AlturaDeVisual, string> = {
@@ -56,52 +58,68 @@ export function Cartao(props: {
     // A MOLDURA (`.cartao`, `.v-*`, `.cartao-corpo`) fica no `estilo.css`: é a conta de
     // altura que faz a tela caber, e `useAlturaMedida` a procura pela classe.
     <section data-visual className={cn('cartao', altura, props.largo && 'largo')}>
-      <div className="flex flex-[0_0_auto] items-center gap-[10px] bg-pbi-primary px-[10px] py-[5px] text-pbi-sobre-primary">
-        <h2
-          title={props.titulo}
-          className="m-0 truncate text-[0.74rem] font-bold tracking-[0.02em]"
-        >
-          {props.titulo}
-        </h2>
+      {/* O cabeçalho do `.visual` do COM: faixa bordô, título centralizado em
+          maiúsculas com as ações ao lado, e o subtítulo embaixo, miúdo e sem caixa alta. */}
+      <header className="flex min-h-[32px] flex-[0_0_auto] flex-col justify-center gap-[1px] bg-pbi-primary px-[10px] text-center text-pbi-sobre-primary">
+        <div className="flex flex-wrap items-center justify-center gap-x-[10px] gap-y-[3px] py-[5px] leading-[1.2]">
+          <h2
+            title={props.titulo}
+            className="m-0 max-w-full min-w-0 truncate text-[12.5px] font-semibold tracking-[0.4px] uppercase"
+          >
+            {props.titulo}
+          </h2>
+          {props.acoes || (conferencia && props.id) ? (
+            <div className={ACOES}>
+              {props.acoes}
+              {conferencia && props.id ? (
+                <IdVisual id={props.id} title="id do visual na spec" />
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         {props.sub ? (
-          <span title={props.sub} className="truncate text-[0.68rem] text-pbi-sobre-primary-fraco">
+          <span
+            title={props.sub}
+            className="-mt-[3px] block truncate pb-[4px] text-[10px] tracking-[0.2px] text-pbi-sobre-primary-fraco"
+          >
             {props.sub}
           </span>
         ) : null}
-        {props.acoes || (conferencia && props.id) ? (
-          <div className={ACOES}>
-            {props.acoes}
-            {conferencia && props.id ? (
-              <IdVisual id={props.id} title="id do visual na spec" />
-            ) : null}
-          </div>
-        ) : null}
-      </div>
+      </header>
       <div className="cartao-corpo">{props.children}</div>
     </section>
   );
 }
 
-/** Caixa de mensagem: fundo suave do tom, letra escurecida, borda (cor cheia é fundo). */
-const CAIXA = 'rounded-[2px] border px-[10px] py-[8px] text-[0.74rem] font-semibold';
+/** O aviso do COM (`.banner`): fundo suave do tom, borda fina e um filete de 3px à
+ *  esquerda na cor cheia, letra escurecida e o ícone na frente (cor cheia é fundo). */
+const CAIXA =
+  'flex items-start gap-[7px] rounded-[6px] border border-l-[3px] px-[11px] py-[6px] text-[12px] leading-[1.45] [&>svg]:mt-[2px] [&>svg]:flex-none';
 
 export function Erro({ children }: { children: ReactNode }) {
   return (
     <div
       className={cn(
         CAIXA,
-        'border-pbi-critico bg-pbi-erro-bg whitespace-pre-wrap text-pbi-critico-texto',
+        'border-pbi-critico border-l-pbi-critico bg-pbi-erro-bg whitespace-pre-wrap text-pbi-critico-texto',
       )}
     >
-      {children}
+      <AlertTriangle size={14} aria-hidden="true" />
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }
 
 export function Aviso({ children }: { children: ReactNode }) {
   return (
-    <div className={cn(CAIXA, 'border-pbi-gold-600 bg-pbi-aviso-bg text-pbi-gold-600')}>
-      {children}
+    <div
+      className={cn(
+        CAIXA,
+        'border-pbi-gold-200 border-l-pbi-gold bg-pbi-aviso-bg text-pbi-gold-600',
+      )}
+    >
+      <AlertTriangle size={14} aria-hidden="true" />
+      <div className="min-w-0">{children}</div>
     </div>
   );
 }

@@ -1,58 +1,23 @@
-// A faixa de navegação entre as telas, abaixo do topo.
+// A faixa de navegação entre as telas, abaixo do topo — a `.pagenav` do COM · Gestão
+// Comercial: uma linha só, rótulo em maiúsculas, a aba ativa sublinhada na primária.
 //
-// **Por que ela mede a própria altura.** `--util` (o que sobra da tela depois do cromo)
-// alimenta a altura de todo card, e ela soma `--h-nav`. Com 14 telas e nomes longos, a
-// faixa quebra em duas linhas em monitor estreito e pode caber em uma no largo — medido
-// em 27/08/2026: os rótulos somam 2.113px com ícone e respiro, contra 1.366px de tela.
-// Fixar `--h-nav` seria mentir para a conta em metade das resoluções.
+// **Uma linha, e por isso rola.** As 11 telas somam ~1.600px de rótulo, mais que um
+// monitor de 1366. Até 13/10/2026 a faixa quebrava em duas linhas (74px de altura que a
+// conta de `--util` pagava em todo card); o COM, com 16 telas, rola — e foi aprovado
+// assim. O que impede aba escondida sem aviso: a borda esmaece onde há mais abas
+// (`.nav-telas` no `estilo.css`) e a aba ativa é rolada para a vista sempre que muda.
 //
-// `flex-wrap` e não rolagem horizontal: aba escondida atrás de um scroll é aba que
-// ninguém acha, e a regra de layout desta casa proíbe a PÁGINA rolar na horizontal.
+// A altura continua MEDIDA (`--h-nav`): é ela que `--util` desconta.
 
-import type { ComponentType } from 'react';
-import {
-  Award,
-  Calendar,
-  CalendarCheck,
-  CalendarDays,
-  Clock,
-  FileText,
-  LayoutDashboard,
-  Phone,
-  RotateCcw,
-  Wrench,
-} from 'lucide-react';
+import { useEffect } from 'react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import { useAlturaMedida } from '../../hooks/useAlturaMedida.ts';
 import { cn } from '../../utils/cn.ts';
 
-const ICONES_MENU: Record<string, ComponentType<{ size?: number }>> = {
-  'visao-geral': LayoutDashboard,
-  // ATENCAO AOS IDS: sao `relatorio-do-mes` e `relatorio-do-ano`, COM o `-do-`. Estava
-  // sem, e essas duas telas ficavam sem icone — falha silenciosa. Os ids reais estao em
-  // `backend/specs/dashboards/*.spec.yaml`.
-  'relatorio-do-mes': CalendarDays,
-  'relatorio-do-ano': Calendar,
-  'diario-instalacao': Clock,
-  'agendamento-field': CalendarCheck,
-  'protocolos-detalhados': FileText,
-  'premiacao-instalacao': Award,
-  'telefonia-ouvidoria': Phone,
-  'manutencao-inicial': Wrench,
-  'instalacao-reincidente': RotateCcw,
-};
-
-/**
- * A aba. Navegação ativa na primária — o mesmo papel que ela cumpre no cabeçalho do
- * visual; cor CHEIA é fundo, e a letra vem do token do papel (9,87:1). Sem snapshot, a
- * aba fica cinza e sem hover.
- *
- * Em tela estreita a aba encolhe e o rótulo cede espaço ao ícone, em vez de a faixa virar
- * quatro linhas e comer a altura que os cards usam (`--h-nav` entra em `--chrome`);
- * abaixo de 640px fica só o ícone, e o nome continua no `title`.
- */
+/** A aba: maiúsculas, apagada; a ativa vai para a primária com o sublinhado. A borda e o
+ *  raio do reset de `button` (`@layer base`) não valem aqui. */
 const ABA =
-  'inline-flex cursor-pointer items-center gap-[7px] rounded-[2px] border-0 border-b-2 border-transparent bg-transparent px-[10px] py-[5px] text-[0.74rem] font-semibold whitespace-nowrap text-pbi-ink disabled:cursor-default disabled:text-pbi-neutro [@media(max-width:900px)]:gap-[5px] [@media(max-width:900px)]:px-[7px] [@media(max-width:900px)]:text-[0.7rem]';
+  'flex h-[36px] flex-none cursor-pointer items-center rounded-none border-0 border-b-2 border-transparent bg-transparent px-[13px] py-0 text-[11.5px] font-semibold tracking-[0.4px] whitespace-nowrap text-pbi-muted uppercase transition-colors enabled:hover:bg-pbi-hover enabled:hover:text-pbi-ink disabled:cursor-default disabled:text-pbi-neutro';
 
 export function NavDeTelas(props: {
   paginas: DashboardDaLista[];
@@ -63,19 +28,26 @@ export function NavDeTelas(props: {
 }) {
   // `useLayoutEffect` e `resize`, não `ResizeObserver` — ver `useAlturaMedida.ts`.
   const navRef = useAlturaMedida<HTMLElement>('--h-nav');
+
+  // A aba ativa sempre à vista: entrar por link numa tela do fim da lista não pode
+  // deixá-la escondida além da borda.
+  useEffect(() => {
+    navRef.current
+      ?.querySelector('[aria-current="page"]')
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [props.atual, props.paginas, navRef]);
+
   return (
     <nav className="nav-telas" ref={navRef} aria-label="Telas do relatório">
       {props.paginas.map((p) => {
-        const Icone = ICONES_MENU[p.id] ?? LayoutDashboard;
         const ativo = p.id === props.atual;
         return (
           <button
             key={p.id}
             className={cn(
               ABA,
-              ativo
-                ? 'border-b-pbi-gold bg-pbi-primary font-bold text-pbi-sobre-primary'
-                : 'enabled:hover:bg-pbi-primary-soft',
+              ativo &&
+                'border-b-pbi-primary-texto text-pbi-primary-texto enabled:hover:bg-transparent enabled:hover:text-pbi-primary-texto',
             )}
             onClick={() => props.aoEscolher(p.id)}
             // Nem a aba já ativa (nada para adiantar) nem uma sem snapshot (o clique nem
@@ -86,10 +58,7 @@ export function NavDeTelas(props: {
             aria-current={ativo ? 'page' : undefined}
             title={p.pronta ? p.nome : `${p.nome} — sem snapshot`}
           >
-            <Icone size={14} />
-            <span className="overflow-hidden text-ellipsis [@media(max-width:640px)]:hidden [@media(max-width:900px)]:max-w-[11ch]">
-              {p.nome}
-            </span>
+            {p.nome}
           </button>
         );
       })}

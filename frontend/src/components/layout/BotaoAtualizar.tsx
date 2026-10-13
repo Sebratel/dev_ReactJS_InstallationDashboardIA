@@ -1,9 +1,8 @@
-// O botão "Atualizar" do cabeçalho. O que ele faz é `useTempoReal.atualiza`; aqui é só
-// o botão, girando enquanto a página busca de novo.
+// O botão "Atualizar" do topo — o `.icon-btn` com o giro do COM. O que ele faz é
+// `useTempoReal.atualiza`; aqui é só o botão, girando enquanto a página busca de novo.
 
 import { RefreshCw } from 'lucide-react';
-import { Botao } from '../ui/Botao.tsx';
-import { SO_ICONE } from './soIcone.ts';
+import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 
 export function BotaoAtualizar(props: {
   aoClicar: () => void;
@@ -11,15 +10,13 @@ export function BotaoAtualizar(props: {
   buscando: boolean;
 }) {
   return (
-    <Botao
-      variante="secundario"
+    <BotaoDeIcone
       onClick={props.aoClicar}
       disabled={props.desligado}
-      title="Buscar de novo os números desta página"
-      className="flex items-center gap-[6px]"
+      title="Atualizar agora"
+      aria-label="Atualizar agora"
     >
-      <RefreshCw size={14} className={props.buscando ? 'girando' : undefined} aria-hidden="true" />
-      <span className={SO_ICONE}>Atualizar</span>
-    </Botao>
+      <RefreshCw size={15} className={props.buscando ? 'girando' : undefined} aria-hidden="true" />
+    </BotaoDeIcone>
   );
 }

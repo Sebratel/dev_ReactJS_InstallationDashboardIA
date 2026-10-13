@@ -70,7 +70,13 @@ COPY --from=build /repo/backend ./backend
 
 # O snapshot é volume — este mountpoint existe só para o container ter onde
 # montar; nada é copiado para dentro da imagem aqui.
-RUN mkdir -p /repo/snapshot
+RUN mkdir -p /repo/snapshot && chown node:node /repo/snapshot
+
+# Sem root (13/10/2026): `api` e `refresh` rodam como o usuário `node` (uid 1000) da
+# imagem base. Só gravam no snapshot montado e em /tmp. Num servidor Linux, a pasta do
+# snapshot no host tem de ser gravável pelo uid 1000 (`chown -R 1000:1000 <pasta>`) —
+# docs/DEPLOY.md. O estágio `cron` abaixo volta a root: o daemon `cron` exige.
+USER node
 
 EXPOSE 3100
 
@@ -99,6 +105,7 @@ CMD ["node", "--max-old-space-size=3072", "--expose-gc", "backend/api/src/index.
 # de build. `api`/`refresh` continuam usando só o stage `runtime`, sem o pacote
 # `cron` a mais.
 FROM runtime AS cron
+USER root
 RUN apt-get update && apt-get install -y --no-install-recommends cron \
     && rm -rf /var/lib/apt/lists/*
 COPY docker/cron/crontab-snapshot-diario /etc/cron.d/snapshot-diario

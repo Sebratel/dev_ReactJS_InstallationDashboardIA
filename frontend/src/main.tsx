@@ -6,16 +6,8 @@ import { queryClient } from './services/queryClient.ts';
 import { App } from './App.tsx';
 import { ProvedorModo } from './context/ModoContext.tsx';
 import { applyInitialTheme } from './utils/theme.ts';
-// A fonte vem junto com a tela, e não do Google Fonts. O `@import` do Google em
-// `estilo.css` bloqueava o CSS — e, atrás dele, o JS e os pedidos de dados — até
-// buscar dois arquivos na internet: ~420–520 ms dos ~900 ms da entrada da
-// `agendamento-field` (medido em 05/10/2026, `PLANO-CARREGAMENTO.md` etapa 1). Os
-// mesmos pesos de antes (400–800); o pacote já declara `font-display: swap`.
-import '@fontsource/inter/400.css';
-import '@fontsource/inter/500.css';
-import '@fontsource/inter/600.css';
-import '@fontsource/inter/700.css';
-import '@fontsource/inter/800.css';
+// A fonte é a do sistema (Segoe UI), como no COM · Gestão Comercial: nada a baixar
+// antes do primeiro quadro. A Inter (`@fontsource/inter`) saiu em 13/10/2026.
 import './estilo.css';
 
 // Antes do primeiro render: com a classe aplicada só num efeito, quem usa o escuro via
