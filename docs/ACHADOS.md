@@ -14941,3 +14941,51 @@ derrubando a API, como devem.
 **Conserto:** o vigia guarda o fim da última suspensão (`retomadaEm`) e conta o limite do laço
 principal a partir do mais novo entre o último batimento e o despertar. Preso de verdade depois
 de acordar continua morrendo — só que 120 s depois do despertar, não 1 s.
+
+## #205 — os dois Power BI, card a card, e o corte por página (13/10)
+
+**Os dois relatórios** (workspace "Inteligência de Dados - Sebratel", lidos só por GET e
+`EVALUATE`): `INST - Relatório Instalação` (9 páginas, atualiza 06/10/14/18 h) e `INST -
+Relatório Instalação Gerencial` (14 páginas — as mesmas 14 da plataforma; 07/09/11/14/16/17 h).
+Mesmo modelo: 70 tabelas, 80 de 81 medidas com DAX idêntico. Dado diferente:
+
+| tabela | Instalação | Gerencial | nós |
+|---|---|---|---|
+| PROTOCOLOS GERAL | 98.970 (desde 2025) | 42.023 (2026) | 98.982 |
+| PRODUTIVIDADE | 201.585 | 84.952 | 84.952 |
+| TELEFONIA | 2.110 | 698 | 698 |
+| REINCIDÊNCIA | 2.372 | 1.613 | 1.613 |
+| RETORNO PRIORITARIO | 429 | 299 | 299 |
+
+O Instalação filtrado em 2026 dá o Gerencial (42.011 × 42.023, TOTAL MÊS ATIVO 33.786 ×
+33.795 — a carga 3 h depois). A plataforma era híbrida: PROTOCOLOS GERAL como o Instalação
+(decisão de 25/09, #152), o resto como o Gerencial.
+
+**Decisão do Erick (13/10): por página.** As 5 que só existem no Gerencial seguem o corte
+dele; as 9 que existem nos dois seguem o Instalação. Implementado como corte no DADO,
+na carga de UMA página (`backend/specs/_catalog/corte-por-pagina.yaml`, lido pelo modelo,
+aplicado em `carrega`). Carga de várias páginas juntas não corta.
+
+**Comparação por card, com os filtros da página e do visual**, a mesma consulta nos dois
+Power BI e no nosso cálculo (`calculaCard`); datas relativas resolvidas pelo nosso motor e
+passadas como literais. O `npm run powerbi` compara medida SEM filtro, e por isso apontava
+"42.023 × 98.982" onde a tela mostra 24.808 × 25.053. Resultado, na referência de cada página:
+
+- **As 5 do Gerencial, com o corte:** 16 de 16 cards batem (TOTAL INSTALADOS 24.796 ×
+  24.793; Instalados 24.811 × 24.808; Reincidentes 1.697 = 1.697). Sem o corte: ~1% acima.
+- **Agendamento Field, no mês corrente** (como a tela abre): Manhã 817 × 805/818, Tarde 972 ×
+  968/969, Futuro 327 × 309/325, Média 67,0 × 68,7/66,9 — segue a hora da carga. Sem o filtro
+  de mês dava 5.107 × 15.589: a nossa FIELD AGENDA guarda meses recentes, a do Power BI desde
+  31/08/2025 (as duas só com Canoas e São Leopoldo).
+- **Relatório do Mês:** diferenças de 0,6–1,3% que crescem com a hora da carga, e DIAS ÚTEIS
+  RESTANTES 16,5 × 17 = a divergência decidida `peso-instalado-fim-de-semana` (08/08).
+- **Telefonia & Ouvidoria:** 698 × 2.110 — a nossa telefonia corta no ano corrente; pela regra
+  da página, deveria seguir o Instalação (desde 2025). Em aberto.
+
+**Defeito do motor achado no caminho (aberto).** Um filtro sobre a dimensão que mantém TODAS
+as linhas dela é tratado como "sem filtro" — e o DAX exclui, nesse caso, as linhas do fato sem
+par na dimensão (o membro em branco). Medido: `CALCULATE(COUNT(PG[SOLICITACAO]),
+FILTER(ALL(CALENDARIO INSTALADO[DATA INSTALADO]), NOT ISBLANK(...)))` dá 98.991 aqui; o certo é
+70.231. Hoje não aparece na tela porque os filtros de data recortam uma parte do calendário;
+apareceu ao recalcular a CALENDARIO INSTALADO só com 2026 (TOTAL INSTALADOS 33.431). Por isso
+o corte mantém o calendário congelado.

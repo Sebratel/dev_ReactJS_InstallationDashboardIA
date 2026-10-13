@@ -13,6 +13,7 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { aplicaDivergencias, leDivergencias, type Aplicada } from './divergencias.ts';
 import { leGraoReduzido, leSobDemanda, type GraoReduzido, type SobDemanda } from './projecao.ts';
+import { leCortesPorPagina, type CorteDePagina } from './corte-por-pagina.ts';
 import type { ModelColumn, ModelMeasure, ModelRelationship, ModelTable } from './types.ts';
 
 interface TableSpecFile {
@@ -130,6 +131,11 @@ export class SemanticModel {
    * multiplicam relato/skill, e só escala para a completa quando o pedido precisa.
    */
   graoReduzido: GraoReduzido[] = [];
+  /**
+   * Linhas recortadas POR PÁGINA (`corte-por-pagina.ts`). Vazio em modelo montado à
+   * mão. Mora aqui pelo mesmo motivo de `sobDemanda`: quem monta a página não escolhe.
+   */
+  cortes: CorteDePagina[] = [];
   /** Quantos relacionamentos de hierarquia automática de datas foram ignorados. */
   autoDateRelationshipsIgnored = 0;
 
@@ -208,6 +214,19 @@ export class SemanticModel {
     model.divergencias = aplicaDivergencias(model, leDivergencias(specsDir));
     model.sobDemanda = leSobDemanda(specsDir);
     model.graoReduzido = leGraoReduzido(specsDir);
+    model.cortes = leCortesPorPagina(specsDir);
+    // Um corte sobre tabela ou coluna que não existe recortaria nada em silêncio — e a
+    // página mostraria o número do outro relatório como se fosse o dela.
+    for (const c of model.cortes) {
+      if (!model.table(c.tabela)) throw new Error(`corte-por-pagina.yaml: a tabela '${c.tabela}' não está no modelo.`);
+      if (!model.column(c.tabela, c.coluna)) {
+        throw new Error(`corte-por-pagina.yaml: a coluna '${c.tabela}'[${c.coluna}] não está no modelo.`);
+      }
+      for (const r of c.recalcula) {
+        const t = model.table(r);
+        if (!t?.tableDax) throw new Error(`corte-por-pagina.yaml: '${r}' não é tabela calculada do modelo.`);
+      }
+    }
 
     return model;
   }
