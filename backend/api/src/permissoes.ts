@@ -1,6 +1,6 @@
 // Quem abre cada aba, e quem pode mudar isso — o modelo do dashboard comercial
 // (`dados_ReactJS_CommercialDashboards/server/src/auth/access.js`), com a configuração no
-// banco da plataforma (`DB_InstalacaoDashboard`, `backend/tools/banco/sql/acesso.sql`).
+// banco da plataforma (`DB_InstallationDashboard`, `backend/tools/banco/sql/acesso.sql`).
 //
 // Papéis, do menor para o maior:
 //   viewer → qualquer conta logada; abre só as abas que a liberam.

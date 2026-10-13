@@ -633,7 +633,7 @@ export class Servidor {
     if (rota === '/auth/logout' && req.method === 'POST') return this.logout(req, res);
 
     // A gestão de acessos é a ÚNICA escrita fora de `/auth/*` (ACHADOS #208): grava quem
-    // abre cada aba no `DB_InstalacaoDashboard`, só para admin/dev (`permissoes.ts`). O
+    // abre cada aba no `DB_InstallationDashboard`, só para admin/dev (`permissoes.ts`). O
     // CSRF aqui é mais estrito que o de `/auth/*`: sem `Origin`/`Referer` também recusa —
     // esta rota só tem um cliente legítimo, a tela, e a tela é um navegador.
     const ehGestaoDeAcesso = rota === '/api/admin/acessos' || rota.startsWith('/api/admin/acessos/');

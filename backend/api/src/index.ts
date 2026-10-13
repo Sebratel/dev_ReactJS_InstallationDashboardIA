@@ -259,7 +259,7 @@ let agendador: Agendador | null = null;
  */
 let poller: PollerRealtime | null = null;
 
-// Quem abre cada aba: o `DB_InstalacaoDashboard` (ACHADOS #208), lido antes de abrir a porta e
+// Quem abre cada aba: o `DB_InstallationDashboard` (ACHADOS #208), lido antes de abrir a porta e
 // relido a cada 30 s. Sem ACESSO_DB_* no ambiente, ou com o banco fora no boot, só
 // ADMIN_EMAILS/DEV_EMAILS entram — nunca "todo mundo vê".
 const configDoAcesso = configDoAmbiente(process.env);

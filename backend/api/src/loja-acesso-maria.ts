@@ -1,9 +1,13 @@
-// A `LojaDeAcesso` (`permissoes.ts`) no MariaDB: `DB_InstalacaoDashboard`, com o usuário
-// `inst_acesso` criado por `npm run banco:cria` — ele só alcança as tabelas de acesso, e no
-// `acesso_log` só insere. Esta é a ÚNICA escrita da API em banco (a regra nº 1 do
-// CLAUDE.md continua valendo para todo dado de negócio).
+// A `LojaDeAcesso` (`permissoes.ts`) no MariaDB: `DB_InstallationDashboard`, com o usuário
+// `installation_access` criado por `npm run banco:cria` — ele só alcança as tabelas de
+// acesso, e no `audit_logs` só insere. Esta é a ÚNICA escrita da API em banco (a regra nº 1
+// do CLAUDE.md continua valendo para todo dado de negócio).
 //
-// Toda mudança grava o antes/depois no `acesso_log` na MESMA transação: ou as duas coisas
+// As tabelas seguem o padrão do servidor (inglês, snake_case, plural — `backend/tools/banco/
+// sql/acesso.sql`); o código fala o português do resto do projeto. A tradução mora só aqui:
+// `screens.access_mode` 'list'/'all' ↔ modo 'lista'/'todos'.
+//
+// Toda mudança grava o antes/depois em `audit_logs` na MESMA transação: ou as duas coisas
 // acontecem, ou nenhuma.
 
 import mysql from 'mysql2/promise';
@@ -26,11 +30,14 @@ export function configDoAmbiente(env: Record<string, string | undefined>): Confi
   return {
     host,
     port: Number(env.ACESSO_DB_PORT || env.MARIA_PORT || 3306),
-    database: env.ACESSO_DB_DATABASE || 'DB_InstalacaoDashboard',
+    database: env.ACESSO_DB_DATABASE || 'DB_InstallationDashboard',
     user,
     password,
   };
 }
+
+const MODO_DO_BANCO = { list: 'lista', all: 'todos' } as const;
+const MODO_PARA_O_BANCO = { lista: 'list', todos: 'all' } as const;
 
 export function lojaMaria(cfg: ConfigDoBancoDeAcesso): LojaDeAcesso & { fecha(): Promise<void> } {
   const pool = mysql.createPool({
@@ -40,23 +47,27 @@ export function lojaMaria(cfg: ConfigDoBancoDeAcesso): LojaDeAcesso & { fecha():
     // Sem `multipleStatements`: um valor mal escapado não vira um segundo comando.
   });
 
-  const emailsDe = async (c: mysql.PoolConnection, email: string): Promise<string[]> => {
-    const [r] = await c.query('SELECT tela FROM acesso_tela_email WHERE email = ? ORDER BY tela', [email]);
-    return (r as { tela: string }[]).map((x) => x.tela);
+  const telasDe = async (c: mysql.PoolConnection, email: string): Promise<string[]> => {
+    const [r] = await c.query('SELECT screen_id FROM screen_users WHERE email = ? ORDER BY screen_id', [email]);
+    return (r as { screen_id: string }[]).map((x) => x.screen_id);
   };
   const papelDe = async (c: mysql.PoolConnection, email: string): Promise<string> => {
-    const [r] = await c.query('SELECT papel FROM acesso_papel WHERE email = ?', [email]);
-    return (r as { papel: string }[])[0]?.papel ?? 'viewer';
+    const [r] = await c.query('SELECT role FROM user_roles WHERE email = ?', [email]);
+    return (r as { role: string }[])[0]?.role ?? 'viewer';
   };
 
   return {
     async le(): Promise<LinhasDeAcesso> {
-      const [papeis] = await pool.query('SELECT email, papel FROM acesso_papel');
-      const [telas] = await pool.query('SELECT tela, modo FROM acesso_tela');
-      const [emails] = await pool.query('SELECT tela, email FROM acesso_tela_email');
+      const [papeis] = await pool.query('SELECT email, role AS papel FROM user_roles');
+      const [telas] = await pool.query('SELECT screen_id AS tela, access_mode FROM screens');
+      const [emails] = await pool.query('SELECT screen_id AS tela, email FROM screen_users');
       return {
         papeis: papeis as LinhasDeAcesso['papeis'],
-        telas: telas as LinhasDeAcesso['telas'],
+        // Valor fora do ENUM vira '' — e `configuracaoDe` descarta (nunca vira 'todos').
+        telas: (telas as { tela: string; access_mode: string }[]).map((t) => ({
+          tela: t.tela,
+          modo: MODO_DO_BANCO[t.access_mode as keyof typeof MODO_DO_BANCO] ?? '',
+        })),
         emails: emails as LinhasDeAcesso['emails'],
       };
     },
@@ -70,10 +81,10 @@ export function lojaMaria(cfg: ConfigDoBancoDeAcesso): LojaDeAcesso & { fecha():
         let depois: unknown;
         if (m.acao === 'telas-da-pessoa') {
           alvo = m.email;
-          antes = await emailsDe(c, m.email);
-          await c.query('DELETE FROM acesso_tela_email WHERE email = ?', [m.email]);
+          antes = await telasDe(c, m.email);
+          await c.query('DELETE FROM screen_users WHERE email = ?', [m.email]);
           for (const tela of m.telas) {
-            await c.query('INSERT INTO acesso_tela_email (tela, email, atualizado_por) VALUES (?, ?, ?)', [
+            await c.query('INSERT INTO screen_users (screen_id, email, created_by) VALUES (?, ?, ?)', [
               tela,
               m.email,
               porQuem,
@@ -83,39 +94,37 @@ export function lojaMaria(cfg: ConfigDoBancoDeAcesso): LojaDeAcesso & { fecha():
         } else if (m.acao === 'papel') {
           alvo = m.email;
           antes = await papelDe(c, m.email);
-          if (m.papel === 'viewer') await c.query('DELETE FROM acesso_papel WHERE email = ?', [m.email]);
+          if (m.papel === 'viewer') await c.query('DELETE FROM user_roles WHERE email = ?', [m.email]);
           else {
             await c.query(
-              'INSERT INTO acesso_papel (email, papel, atualizado_por) VALUES (?, ?, ?) ' +
-                'ON DUPLICATE KEY UPDATE papel = VALUES(papel), atualizado_por = VALUES(atualizado_por)',
+              'INSERT INTO user_roles (email, role, updated_by) VALUES (?, ?, ?) ' +
+                'ON DUPLICATE KEY UPDATE role = VALUES(role), updated_by = VALUES(updated_by)',
               [m.email, m.papel, porQuem],
             );
           }
           depois = m.papel;
         } else if (m.acao === 'modo-da-tela') {
           alvo = m.tela;
-          const [r] = await c.query('SELECT modo FROM acesso_tela WHERE tela = ?', [m.tela]);
-          antes = (r as { modo: string }[])[0]?.modo ?? 'lista';
+          const [r] = await c.query('SELECT access_mode FROM screens WHERE screen_id = ?', [m.tela]);
+          antes = (r as { access_mode: string }[])[0]?.access_mode ?? 'list';
+          const modo = MODO_PARA_O_BANCO[m.modo];
           await c.query(
-            'INSERT INTO acesso_tela (tela, modo, atualizado_por) VALUES (?, ?, ?) ' +
-              'ON DUPLICATE KEY UPDATE modo = VALUES(modo), atualizado_por = VALUES(atualizado_por)',
-            [m.tela, m.modo, porQuem],
+            'INSERT INTO screens (screen_id, access_mode, updated_by) VALUES (?, ?, ?) ' +
+              'ON DUPLICATE KEY UPDATE access_mode = VALUES(access_mode), updated_by = VALUES(updated_by)',
+            [m.tela, modo, porQuem],
           );
-          depois = m.modo;
+          depois = modo;
         } else {
           alvo = m.email;
-          antes = { papel: await papelDe(c, m.email), telas: await emailsDe(c, m.email) };
-          await c.query('DELETE FROM acesso_papel WHERE email = ?', [m.email]);
-          await c.query('DELETE FROM acesso_tela_email WHERE email = ?', [m.email]);
+          antes = { role: await papelDe(c, m.email), screens: await telasDe(c, m.email) };
+          await c.query('DELETE FROM user_roles WHERE email = ?', [m.email]);
+          await c.query('DELETE FROM screen_users WHERE email = ?', [m.email]);
           depois = null;
         }
-        await c.query('INSERT INTO acesso_log (por, acao, alvo, antes, depois) VALUES (?, ?, ?, ?, ?)', [
-          porQuem,
-          m.acao,
-          alvo,
-          JSON.stringify(antes),
-          depois === null ? null : JSON.stringify(depois),
-        ]);
+        await c.query(
+          'INSERT INTO audit_logs (actor_email, action, target, before_value, after_value) VALUES (?, ?, ?, ?, ?)',
+          [porQuem, m.acao, alvo, JSON.stringify(antes), depois === null ? null : JSON.stringify(depois)],
+        );
         await c.commit();
       } catch (err) {
         await c.rollback().catch(() => {});

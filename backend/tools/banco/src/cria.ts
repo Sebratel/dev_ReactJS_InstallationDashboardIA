@@ -1,16 +1,16 @@
-// `npm run banco:cria` — cria o `DB_InstalacaoDashboard` e o usuário da API que grava as
+// `npm run banco:cria` — cria o `DB_InstallationDashboard` e o usuário da API que grava as
 // permissões. Roda UMA vez por servidor (e é seguro rodar de novo: tudo é IF NOT EXISTS).
 //
 // Precisa, no .env: MARIA_HOST, MARIA_PORT e a credencial de ADMIN do MariaDB em
 // MARIA_ADMIN_USER / MARIA_ADMIN_PASSWORD. A de admin só é usada aqui — a API nunca a vê.
 //
-// O usuário criado (`inst_acesso`) só alcança as tabelas de acesso: lê e escreve papel e
-// abas, e no `acesso_log` só INSERE (sem UPDATE/DELETE — o rastro não se apaga pela API).
+// O usuário criado (`installation_access`) só alcança as tabelas de acesso: lê e escreve
+// papel e abas, e no `audit_logs` só INSERE (sem UPDATE/DELETE — o rastro não se apaga pela API).
 // A senha dele é gerada aqui, gravada no .env (ACESSO_DB_PASSWORD) e NUNCA impressa.
 //
 //   npm run banco:cria                       # usa o .env da raiz deste checkout
 //   npm run banco:cria -- --env=C:/.../.env  # outro .env (ex.: o da pasta principal)
-//   npm run banco:cria -- --rotaciona        # gera senha nova para o inst_acesso
+//   npm run banco:cria -- --rotaciona        # gera senha nova para o installation_access
 
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -20,9 +20,9 @@ import mysql from 'mysql2/promise';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SQL = path.join(ROOT, 'backend', 'tools', 'banco', 'sql', 'acesso.sql');
-const BANCO = 'DB_InstalacaoDashboard';
-const USUARIO = 'inst_acesso';
-const TABELAS_EDITAVEIS = ['acesso_papel', 'acesso_tela', 'acesso_tela_email'];
+const BANCO = 'DB_InstallationDashboard';
+const USUARIO = 'installation_access';
+const TABELAS_EDITAVEIS = ['user_roles', 'screens', 'screen_users'];
 
 const arg = (nome: string): string | undefined =>
   process.argv.find((a) => a.startsWith(`--${nome}=`))?.slice(nome.length + 3);
@@ -110,7 +110,7 @@ async function main(): Promise<void> {
     for (const t of TABELAS_EDITAVEIS) {
       await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${BANCO}.${t} TO ?@?`, [USUARIO, hostPermitido]);
     }
-    await admin.query(`GRANT SELECT, INSERT ON ${BANCO}.acesso_log TO ?@?`, [USUARIO, hostPermitido]);
+    await admin.query(`GRANT SELECT, INSERT ON ${BANCO}.audit_logs TO ?@?`, [USUARIO, hostPermitido]);
 
     if (senha) {
       fs.writeFileSync(

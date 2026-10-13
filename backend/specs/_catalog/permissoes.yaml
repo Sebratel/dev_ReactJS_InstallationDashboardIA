@@ -1,7 +1,7 @@
 # MANTIDO POR HUMANOS — este arquivo NÃO é sobrescrito por `npm run extract`.
 #
 # QUEM ABRE CADA ABA NÃO MORA MAIS AQUI. Desde 13/10/2026 (ACHADOS #208) a regra fica no
-# banco da plataforma, `DB_InstalacaoDashboard` (tabelas `acesso_*`,
+# banco da plataforma, `DB_InstallationDashboard` (tabelas `user_roles`/`screens`/`screen_users`/`audit_logs`,
 # `backend/tools/banco/sql/acesso.sql`), e admin/dev a mudam pela tela "Acessos".
 # Quem lê é `backend/api/src/permissoes.ts`.
 #
