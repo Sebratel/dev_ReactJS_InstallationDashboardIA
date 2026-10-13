@@ -48,6 +48,8 @@ export function AppShell(props: {
   /** Horário da última atualização automática recebida via SSE (Marco C2). */
   ultimaAtualizacaoRealtime?: string | null;
   acoes?: ReactNode;
+  /** A barra de filtros: vem antes de tudo na área, encostada na navegação. */
+  barra?: ReactNode;
   /** Encerra a sessão de login. Sempre presente — a tela só chega a existir
    *  depois que há sessão, então sempre há como sair dela. */
   aoSair: () => void;
@@ -105,6 +107,7 @@ export function AppShell(props: {
       />
 
       <main className="area">
+        {props.barra}
         {props.avisoSaude?.temAviso ? (
           <div role="alert" title={props.avisoSaude.mensagem}>
             {props.avisoSaude.nivel === 'falhou' ? (

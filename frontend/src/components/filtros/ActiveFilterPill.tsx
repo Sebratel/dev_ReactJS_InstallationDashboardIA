@@ -1,5 +1,6 @@
 import type { FiltroDaTela } from '../../services/dashboardService.ts';
 import { X } from 'lucide-react';
+import { rotuloDeCampo } from '../../utils/rotulos.ts';
 
 export function ActiveFilterPill({
   filtro,
@@ -11,12 +12,11 @@ export function ActiveFilterPill({
   const valores = filtro.valores.map((v) => (v === null ? '(vazio)' : String(v))).join(', ');
   return (
     <span
-      className="inline-flex items-center gap-[6px] rounded-full border border-pbi-primary bg-pbi-primary-soft px-[8px] py-[2px] text-[0.68rem] font-semibold text-pbi-primary-texto"
+      className="inline-flex h-[30px] items-center gap-[6px] rounded-[8px] border border-pbi-primary-texto bg-pbi-primary-soft px-[10px] text-[12.5px] text-pbi-primary-texto"
       title={`${filtro.coluna}: ${valores}`}
     >
-      <span className="font-extrabold">
-        {filtro.coluna}
-        {filtro.nivel ? `.${filtro.nivel}` : ''}:
+      <span className="font-semibold">
+        {rotuloDeCampo(filtro.nivel ? `${filtro.coluna} ${filtro.nivel}` : filtro.coluna)}
       </span>
       <span className="max-w-[220px] truncate">{valores}</span>
       <button

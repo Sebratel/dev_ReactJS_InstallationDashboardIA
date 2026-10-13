@@ -119,6 +119,18 @@ export function DashboardPage() {
       dadoDe={paginaValida?.dadoDe ?? null}
       avisoSaude={avisoSaude}
       ultimaAtualizacaoRealtime={horaRealtime}
+      barra={
+        atual ? (
+          <BarraDeFiltros
+            pagina={atual}
+            filtros={filtros}
+            dataDaTela={dataDaTela}
+            segmentacoes={segmentacoes}
+            aoMudar={mudaFiltro}
+            aoPrever={aoPreverFiltro}
+          />
+        ) : null
+      }
       acoes={
         <BotaoAtualizar aoClicar={atualiza} desligado={!atual} buscando={paginaQ.isFetching} />
       }
@@ -130,17 +142,6 @@ export function DashboardPage() {
       ) : null}
 
       {erro ? <Erro>{erro}</Erro> : null}
-
-      {atual ? (
-        <BarraDeFiltros
-          pagina={atual}
-          filtros={filtros}
-          dataDaTela={dataDaTela}
-          segmentacoes={segmentacoes}
-          aoMudar={mudaFiltro}
-          aoPrever={aoPreverFiltro}
-        />
-      ) : null}
 
       {conferencia && paginaValida ? (
         <FaixaDeConferencia pagina={paginaValida} filtros={filtros} />

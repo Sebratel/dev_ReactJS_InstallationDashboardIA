@@ -20,17 +20,16 @@ import { alternaValor } from '../../utils/vizinhanca.ts';
 import { cn } from '../../utils/cn.ts';
 import { Nota } from '../ui/Nota.tsx';
 import { RotuloDeFiltro } from './GatilhoDoFiltro.tsx';
+import { rotuloDeCampo } from '../../utils/rotulos.ts';
 
 /**
- * O chip: a MESMA gramática da barra de filtros acima (superfície clara, borda fina), e
- * não a barra inteira na primária da primeira versão — medida pelo usuário em 09/09/2026
- * como "muito feio", chip escuro sobre chip escuro. A primária fica só no chip MARCADO,
- * o único lugar em que precisa puxar o olho.
+ * O chip: a gramática do `.chip` do COM — pílula baixa, borda fina, superfície clara —, e
+ * não a barra inteira na primária da primeira versão, medida pelo usuário em 09/09/2026
+ * como "muito feio". A primária (fundo suave, letra e borda) fica só no chip MARCADO.
  */
 const CHIP =
-  'rounded-full border border-pbi-borda px-[14px] py-[5px] text-[0.72rem] font-semibold whitespace-nowrap';
-const HOVER =
-  'hover:border-pbi-primary-texto hover:bg-pbi-primary-soft hover:text-pbi-primary-texto';
+  'inline-flex h-[24px] flex-none items-center rounded-full border-pbi-borda px-[10px] py-0 text-[11.5px] whitespace-nowrap';
+const HOVER = 'hover:border-pbi-primary-texto hover:text-pbi-primary-texto';
 
 export function SegmentacaoChips(props: {
   pagina: string;
@@ -52,9 +51,16 @@ export function SegmentacaoChips(props: {
   }
 
   return (
-    <div className="flex flex-col gap-[6px] border-b border-pbi-borda bg-pbi-superficie px-[16px] py-[8px]">
-      <RotuloDeFiltro>{spec.rotulo}</RotuloDeFiltro>
-      <div className="flex flex-wrap items-center gap-[8px]" role="group" aria-label={spec.rotulo}>
+    // Uma linha da barra de filtros, só dela (`basis-full`): os chips rolam na horizontal
+    // e a borda direita esmaece, como a linha de chips do COM — quebrar em duas linhas
+    // pagava 35px em todo card (a altura da barra entra em `--util`).
+    <div className="flex min-w-0 basis-full items-center gap-[8px]">
+      <RotuloDeFiltro>{rotuloDeCampo(spec.rotulo)}</RotuloDeFiltro>
+      <div
+        className="flex min-w-0 flex-1 items-center gap-[6px] overflow-x-auto pr-[22px] [mask-image:linear-gradient(to_right,#000_calc(100%-22px),transparent)] [scrollbar-width:none]"
+        role="group"
+        aria-label={rotuloDeCampo(spec.rotulo)}
+      >
         {erro ? (
           <Nota>não deu para carregar: {erro}</Nota>
         ) : opcoes === null ? (
@@ -69,9 +75,8 @@ export function SegmentacaoChips(props: {
                 className={cn(
                   CHIP,
                   marcado
-                    ? 'border-pbi-primary bg-pbi-primary text-pbi-sobre-primary hover:border-pbi-primary-dark hover:bg-pbi-primary-dark'
-                    : 'bg-pbi-superficie text-pbi-ink',
-                  !marcado && HOVER,
+                    ? 'border-pbi-primary-texto bg-pbi-primary-soft font-semibold text-pbi-primary-texto'
+                    : cn('bg-pbi-superficie text-pbi-ink', HOVER),
                 )}
                 aria-pressed={marcado}
                 onClick={() => alterna(o.valor)}

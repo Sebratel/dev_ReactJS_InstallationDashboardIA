@@ -100,7 +100,8 @@ export function SegmentacaoDataHierarquia(props: {
     <GatilhoDoFiltro
       rotulo={props.rotulo}
       resumo={resumoDeData(sel)}
-      marcados={marcado}
+      // O período tem um resumo próprio ("26 · out"); o contador de valores só confundiria.
+      marcados={marcado > 0 ? 1 : 0}
       aberto={aberto}
       aoClicar={() => setAberto((a) => !a)}
       title={marcado ? resumoDeData(sel) : `Escolher ${props.rotulo}`}

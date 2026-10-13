@@ -67,17 +67,16 @@ export function BarraDeFiltros(props: {
               aoPrever={(valores) => aoPrever(s.tabela, s.coluna, valores, s.nivel)}
             />
           ))}
+          {chips ? (
+            <SegmentacaoChips
+              pagina={pagina}
+              spec={chips}
+              selecao={selecaoDe(filtros, chips.tabela, chips.coluna, chips.nivel)}
+              aoMudar={(valores) => aoMudar(chips.tabela, chips.coluna, valores, chips.nivel)}
+              aoPrever={(valores) => aoPrever(chips.tabela, chips.coluna, valores, chips.nivel)}
+            />
+          ) : null}
         </div>
-      ) : null}
-
-      {chips ? (
-        <SegmentacaoChips
-          pagina={pagina}
-          spec={chips}
-          selecao={selecaoDe(filtros, chips.tabela, chips.coluna, chips.nivel)}
-          aoMudar={(valores) => aoMudar(chips.tabela, chips.coluna, valores, chips.nivel)}
-          aoPrever={(valores) => aoPrever(chips.tabela, chips.coluna, valores, chips.nivel)}
-        />
       ) : null}
     </>
   );

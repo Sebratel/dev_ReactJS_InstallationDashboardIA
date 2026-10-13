@@ -621,16 +621,20 @@ button:disabled {
    cromo. */
 .filtros {
   min-height: var(--h-filtros);
-  background: var(--superficie);
+  /* A `.filtros` do COM: encostada na navegação e de borda a borda (o `margin`
+     devolve o `padding` da `.area`), translúcida sobre o conteúdo que rola por baixo. */
+  margin: -8px -12px 0;
+  background: color-mix(in srgb, var(--superficie) 92%, transparent);
+  backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--borda);
-  padding: 8px 16px;
+  padding: 7px 12px;
   display: flex;
-  gap: 10px;
+  gap: 7px;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   position: sticky;
   top: calc(var(--h-topbar) + var(--h-nav));
-  z-index: 15;
+  z-index: 30;
 }
 /* O filtro, o diálogo, os chips, a pílula de filtro sem segmentação e a árvore de
    datas são utilitário em `filtros/` e `ui/Dialogo` (fase 6f). Fica aqui a barra: a
