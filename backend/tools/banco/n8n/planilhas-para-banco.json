@@ -1,0 +1,591 @@
+{
+  "name": "Dashboard Instalação — planilhas para o banco (15 min)",
+  "nodes": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "name": "A cada 15 minutos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        260
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "name": "Leia antes de ativar",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        -460
+      ],
+      "parameters": {
+        "width": 760,
+        "height": 440,
+        "content": "## Planilhas → DB_InstallationDashboard (a cada 15 min)\n\nCopia as 3 planilhas do dashboard de instalação para o MariaDB, **só com as colunas que a plataforma usa** (do QUADRO FUNCIONAL: nome e gestor — CPF, RG e o resto de RH não saem da planilha).\n\n**Antes de ativar:**\n1. Nos 3 nós do Google Sheets: escolha a credencial do Google que já lê essas planilhas.\n2. Nos 6 nós MySQL: crie/escolha a credencial **MySQL** → host `10.0.11.171`, porta `3306`, database `DB_InstallationDashboard`, usuário `installation_n8n` (quando a TI criar) ou um usuário que vocês já usam no n8n.\n3. Rode uma vez à mão (**Execute workflow**) e confira no DBeaver: `SELECT * FROM DB_InstallationDashboard.data_syncs;` — 3 linhas, `last_error` vazio.\n4. Ative o workflow.\n\n**Proteções:** cada planilha é independente (uma falhar não para as outras); planilha vazia **não apaga** a tabela; a troca é numa transação só; todo erro vai para `data_syncs.last_error`."
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "name": "Ler QUADRO FUNCIONAL",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        260,
+        0
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "13aqmagy60DF_KJ5I4jucJD67qlJNOzzE1g1-sdU0Gjo"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "QUADRO FUNCIONAL"
+        },
+        "options": {
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "SERIAL_NUMBER"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets (planilhas da instalação)"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "name": "Preparar employee_managers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// QUADRO FUNCIONAL → employee_managers. Das 37 colunas da planilha, SÓ nome e gestor saem\n// daqui: CPF, RG, nascimento, celular e o resto de RH nunca chegam ao banco nem à plataforma.\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  const s = String(v).trim();\n  if (s === '') return 'NULL';\n  const troca = { '\\0': '\\\\0', '\\b': '\\\\b', '\\t': '\\\\t', '\\n': '\\\\n', '\\r': '\\\\r', '\\x1a': '\\\\Z', '\"': '\\\\\"', \"'\": \"\\\\'\", '\\\\': '\\\\\\\\' };\n  return \"'\" + s.replace(/[\\0\\b\\t\\n\\r\\x1a\"'\\\\]/g, (c) => troca[c]) + \"'\";\n};\n// Acha a coluna pelo nome do cabeçalho, sem ligar para acento, maiúscula ou espaço sobrando.\nconst norm = (s) => String(s ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').trim().toUpperCase();\nconst campo = (linha, nome) => {\n  const alvo = norm(nome);\n  for (const [k, v] of Object.entries(linha)) if (norm(k) === alvo) return v;\n  return undefined;\n};\nconst linhas = $input.all().map((i) => i.json).filter((j) => j && Object.keys(j).length > 0);\nconst valores = linhas\n  .map((l) => [campo(l, 'NOME'), campo(l, 'GESTOR')])\n  .filter(([nome]) => String(nome ?? '').trim() !== '');\n// PROTEÇÃO: planilha vazia (aba renomeada, Google fora) NÃO apaga a tabela — vira erro e\n// vai para a data_syncs. A plataforma continua com a última cópia boa.\nif (valores.length === 0) throw new Error('Planilha veio sem nenhuma linha válida — a tabela employee_managers NÃO foi apagada.');\n// Troca inteira: o nó MySQL roda todos estes comandos numa TRANSAÇÃO só (Query Batching =\n// Transaction). Quem lê no meio nunca vê a tabela vazia nem pela metade.\nconst consultas = ['DELETE FROM employee_managers'];\nfor (let i = 0; i < valores.length; i += 500) {\n  consultas.push('INSERT INTO employee_managers (employee_name, manager_name) VALUES ' +\n    valores.slice(i, i + 500).map((v) => '(' + v.map(esc).join(', ') + ')').join(', '));\n}\nconsultas.push(\"INSERT INTO data_syncs (source, last_success_at, last_attempt_at, row_count, last_error) \" +\n  \"VALUES ('employee_managers', NOW(3), NOW(3), \" + valores.length + \", NULL) ON DUPLICATE KEY UPDATE \" +\n  \"last_success_at = VALUES(last_success_at), last_attempt_at = VALUES(last_attempt_at), \" +\n  \"row_count = VALUES(row_count), last_error = NULL\");\nreturn consultas.map((query) => ({ json: { query } }));"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "name": "Trocar employee_managers",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        780,
+        0
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {
+          "queryBatching": "transaction"
+        }
+      },
+      "credentials": {
+        "mySql": {
+          "id": "",
+          "name": "MariaDB — DB_InstallationDashboard"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "name": "Falha employee_managers",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        120
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Algo falhou nesta planilha (Google, coluna sumida, banco fora). Nada foi apagado: só\n// registra o erro na data_syncs — é o que a saúde da plataforma lê para avisar.\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  const s = String(v).trim();\n  if (s === '') return 'NULL';\n  const troca = { '\\0': '\\\\0', '\\b': '\\\\b', '\\t': '\\\\t', '\\n': '\\\\n', '\\r': '\\\\r', '\\x1a': '\\\\Z', '\"': '\\\\\"', \"'\": \"\\\\'\", '\\\\': '\\\\\\\\' };\n  return \"'\" + s.replace(/[\\0\\b\\t\\n\\r\\x1a\"'\\\\]/g, (c) => troca[c]) + \"'\";\n};\nconst e = $input.first().json;\nconst msg = String(e?.error?.message ?? e?.error ?? e?.message ?? 'erro desconhecido').slice(0, 480);\nreturn [{ json: { query: \"INSERT INTO data_syncs (source, last_attempt_at, last_error) VALUES ('employee_managers', NOW(3), \" + esc(msg) + \") ON DUPLICATE KEY UPDATE last_attempt_at = VALUES(last_attempt_at), last_error = VALUES(last_error)\" } }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000007",
+      "name": "Registrar falha employee_managers",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1300,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {}
+      },
+      "credentials": {
+        "mySql": {
+          "id": "",
+          "name": "MariaDB — DB_InstallationDashboard"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000008",
+      "name": "Ler CAPACIDADE EQUIPE",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        260,
+        280
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1hocqNXymH5U9NouhhcIQNOjujacdltwvS4lLA_hFGcI"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "STAGING"
+        },
+        "options": {
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "SERIAL_NUMBER"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets (planilhas da instalação)"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000009",
+      "name": "Preparar team_capacities",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        280
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// CAPACIDADE EQUIPE (aba STAGING) → team_capacities.\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  const s = String(v).trim();\n  if (s === '') return 'NULL';\n  const troca = { '\\0': '\\\\0', '\\b': '\\\\b', '\\t': '\\\\t', '\\n': '\\\\n', '\\r': '\\\\r', '\\x1a': '\\\\Z', '\"': '\\\\\"', \"'\": \"\\\\'\", '\\\\': '\\\\\\\\' };\n  return \"'\" + s.replace(/[\\0\\b\\t\\n\\r\\x1a\"'\\\\]/g, (c) => troca[c]) + \"'\";\n};\n// Acha a coluna pelo nome do cabeçalho, sem ligar para acento, maiúscula ou espaço sobrando.\nconst norm = (s) => String(s ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').trim().toUpperCase();\nconst campo = (linha, nome) => {\n  const alvo = norm(nome);\n  for (const [k, v] of Object.entries(linha)) if (norm(k) === alvo) return v;\n  return undefined;\n};\nconst linhas = $input.all().map((i) => i.json).filter((j) => j && Object.keys(j).length > 0);\n// DATA pode chegar como número serial do Sheets (dias desde 30/12/1899), como \"13/10/2026\"\n// ou como \"2026-10-13\" — conforme a formatação da célula. As três viram AAAA-MM-DD.\nconst data = (v) => {\n  if (typeof v === 'number') return new Date(Date.UTC(1899, 11, 30) + Math.round(v * 86400000)).toISOString().slice(0, 10);\n  const s = String(v ?? '').trim();\n  let m = s.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);\n  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');\n  m = s.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);\n  return m ? m[1] + '-' + m[2] + '-' + m[3] : null;\n};\nconst inteiro = (v) => {\n  if (v === null || v === undefined || String(v).trim() === '') return null;\n  const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));\n  return Number.isFinite(n) ? Math.round(n) : null;\n};\nconst valores = linhas\n  .map((l) => [\n    data(campo(l, 'DATA')),\n    campo(l, 'TÉCNICO 1'),\n    campo(l, 'TÉCNICO 2'),\n    campo(l, 'EQUIPE'),\n    campo(l, 'BASE DE ORIGEM'),\n    campo(l, 'GERENTE/SUPERVISOR'),\n    inteiro(campo(l, 'CAPACIDADE MANHÃ')),\n    inteiro(campo(l, 'CAPACIDADE TARDE')),\n  ])\n  .filter(([d]) => d !== null);\n// PROTEÇÃO: planilha vazia (aba renomeada, Google fora) NÃO apaga a tabela — vira erro e\n// vai para a data_syncs. A plataforma continua com a última cópia boa.\nif (valores.length === 0) throw new Error('Planilha veio sem nenhuma linha válida — a tabela team_capacities NÃO foi apagada.');\n// Troca inteira: o nó MySQL roda todos estes comandos numa TRANSAÇÃO só (Query Batching =\n// Transaction). Quem lê no meio nunca vê a tabela vazia nem pela metade.\nconst consultas = ['DELETE FROM team_capacities'];\nfor (let i = 0; i < valores.length; i += 500) {\n  consultas.push('INSERT INTO team_capacities (capacity_date, technician_1, technician_2, team, origin_base, manager_name, morning_capacity, afternoon_capacity) VALUES ' +\n    valores.slice(i, i + 500).map((v) => '(' + v.map(esc).join(', ') + ')').join(', '));\n}\nconsultas.push(\"INSERT INTO data_syncs (source, last_success_at, last_attempt_at, row_count, last_error) \" +\n  \"VALUES ('team_capacities', NOW(3), NOW(3), \" + valores.length + \", NULL) ON DUPLICATE KEY UPDATE \" +\n  \"last_success_at = VALUES(last_success_at), last_attempt_at = VALUES(last_attempt_at), \" +\n  \"row_count = VALUES(row_count), last_error = NULL\");\nreturn consultas.map((query) => ({ json: { query } }));"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "name": "Trocar team_capacities",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        780,
+        280
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {
+          "queryBatching": "transaction"
+        }
+      },
+      "credentials": {
+        "mySql": {
+          "id": "",
+          "name": "MariaDB — DB_InstallationDashboard"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "name": "Falha team_capacities",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Algo falhou nesta planilha (Google, coluna sumida, banco fora). Nada foi apagado: só\n// registra o erro na data_syncs — é o que a saúde da plataforma lê para avisar.\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  const s = String(v).trim();\n  if (s === '') return 'NULL';\n  const troca = { '\\0': '\\\\0', '\\b': '\\\\b', '\\t': '\\\\t', '\\n': '\\\\n', '\\r': '\\\\r', '\\x1a': '\\\\Z', '\"': '\\\\\"', \"'\": \"\\\\'\", '\\\\': '\\\\\\\\' };\n  return \"'\" + s.replace(/[\\0\\b\\t\\n\\r\\x1a\"'\\\\]/g, (c) => troca[c]) + \"'\";\n};\nconst e = $input.first().json;\nconst msg = String(e?.error?.message ?? e?.error ?? e?.message ?? 'erro desconhecido').slice(0, 480);\nreturn [{ json: { query: \"INSERT INTO data_syncs (source, last_attempt_at, last_error) VALUES ('team_capacities', NOW(3), \" + esc(msg) + \") ON DUPLICATE KEY UPDATE last_attempt_at = VALUES(last_attempt_at), last_error = VALUES(last_error)\" } }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000012",
+      "name": "Registrar falha team_capacities",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1300,
+        400
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {}
+      },
+      "credentials": {
+        "mySql": {
+          "id": "",
+          "name": "MariaDB — DB_InstallationDashboard"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000013",
+      "name": "Ler APURAÇÃO PREMIAÇÃO",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        260,
+        560
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1UUyahgV-Z6WJGT1U7BAQjPg1TfLxPZoKnwJoQSAcYYM"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "#APURAÇÃO PREMIAÇÃO"
+        },
+        "options": {
+          "dataLocationOnSheet": {
+            "values": {
+              "rangeDefinition": "specifyRange",
+              "headerRow": 2,
+              "firstDataRow": 3
+            }
+          },
+          "outputFormatting": {
+            "values": {
+              "general": "UNFORMATTED_VALUE",
+              "date": "SERIAL_NUMBER"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "",
+          "name": "Google Sheets (planilhas da instalação)"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000014",
+      "name": "Preparar installer_awards",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        560
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// #APURAÇÃO PREMIAÇÃO → installer_awards. O cabeçalho está na LINHA 2 (a 1ª é título),\n// como o relatório original lia (Table.Skip 1).\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  const s = String(v).trim();\n  if (s === '') return 'NULL';\n  const troca = { '\\0': '\\\\0', '\\b': '\\\\b', '\\t': '\\\\t', '\\n': '\\\\n', '\\r': '\\\\r', '\\x1a': '\\\\Z', '\"': '\\\\\"', \"'\": \"\\\\'\", '\\\\': '\\\\\\\\' };\n  return \"'\" + s.replace(/[\\0\\b\\t\\n\\r\\x1a\"'\\\\]/g, (c) => troca[c]) + \"'\";\n};\n// Acha a coluna pelo nome do cabeçalho, sem ligar para acento, maiúscula ou espaço sobrando.\nconst norm = (s) => String(s ?? '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').trim().toUpperCase();\nconst campo = (linha, nome) => {\n  const alvo = norm(nome);\n  for (const [k, v] of Object.entries(linha)) if (norm(k) === alvo) return v;\n  return undefined;\n};\nconst linhas = $input.all().map((i) => i.json).filter((j) => j && Object.keys(j).length > 0);\nconst inteiro = (v) => {\n  if (v === null || v === undefined || String(v).trim() === '') return null;\n  const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));\n  return Number.isFinite(n) ? Math.round(n) : null;\n};\nconst valores = linhas\n  .map((l) => [campo(l, 'INSTALADOR'), inteiro(campo(l, 'QTD.')), campo(l, 'FAIXAS')])\n  .filter(([nome]) => String(nome ?? '').trim() !== '');\n// PROTEÇÃO: planilha vazia (aba renomeada, Google fora) NÃO apaga a tabela — vira erro e\n// vai para a data_syncs. A plataforma continua com a última cópia boa.\nif (valores.length === 0) throw new Error('Planilha veio sem nenhuma linha válida — a tabela installer_awards NÃO foi apagada.');\n// Troca inteira: o nó MySQL roda todos estes comandos numa TRANSAÇÃO só (Query Batching =\n// Transaction). Quem lê no meio nunca vê a tabela vazia nem pela metade.\nconst consultas = ['DELETE FROM installer_awards'];\nfor (let i = 0; i < valores.length; i += 500) {\n  consultas.push('INSERT INTO installer_awards (installer_name, quantity, award_band) VALUES ' +\n    valores.slice(i, i + 500).map((v) => '(' + v.map(esc).join(', ') + ')').join(', '));\n}\nconsultas.push(\"INSERT INTO data_syncs (source, last_success_at, last_attempt_at, row_count, last_error) \" +\n  \"VALUES ('installer_awards', NOW(3), NOW(3), \" + valores.length + \", NULL) ON DUPLICATE KEY UPDATE \" +\n  \"last_success_at = VALUES(last_success_at), last_attempt_at = VALUES(last_attempt_at), \" +\n  \"row_count = VALUES(row_count), last_error = NULL\");\nreturn consultas.map((query) => ({ json: { query } }));"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000015",
+      "name": "Trocar installer_awards",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        780,
+        560
+      ],
+      "onError": "continueErrorOutput",
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {
+          "queryBatching": "transaction"
+        }
+      },
+      "credentials": {
+        "mySql": {
+          "id": "",
+          "name": "MariaDB — DB_InstallationDashboard"
+        }
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000016",
+      "name": "Falha installer_awards",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        680
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Algo falhou nesta planilha (Google, coluna sumida, banco fora). Nada foi apagado: só\n// registra o erro na data_syncs — é o que a saúde da plataforma lê para avisar.\nconst esc = (v) => {\n  if (v === null || v === undefined) return 'NULL';\n  if (typeof v === 'number') return Number.isFinite(v) ? String(v) : 'NULL';\n  const s = String(v).trim();\n  if (s === '') return 'NULL';\n  const troca = { '\\0': '\\\\0', '\\b': '\\\\b', '\\t': '\\\\t', '\\n': '\\\\n', '\\r': '\\\\r', '\\x1a': '\\\\Z', '\"': '\\\\\"', \"'\": \"\\\\'\", '\\\\': '\\\\\\\\' };\n  return \"'\" + s.replace(/[\\0\\b\\t\\n\\r\\x1a\"'\\\\]/g, (c) => troca[c]) + \"'\";\n};\nconst e = $input.first().json;\nconst msg = String(e?.error?.message ?? e?.error ?? e?.message ?? 'erro desconhecido').slice(0, 480);\nreturn [{ json: { query: \"INSERT INTO data_syncs (source, last_attempt_at, last_error) VALUES ('installer_awards', NOW(3), \" + esc(msg) + \") ON DUPLICATE KEY UPDATE last_attempt_at = VALUES(last_attempt_at), last_error = VALUES(last_error)\" } }];"
+      }
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000017",
+      "name": "Registrar falha installer_awards",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.4,
+      "position": [
+        1300,
+        680
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json.query }}",
+        "options": {}
+      },
+      "credentials": {
+        "mySql": {
+          "id": "",
+          "name": "MariaDB — DB_InstallationDashboard"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "A cada 15 minutos": {
+      "main": [
+        [
+          {
+            "node": "Ler QUADRO FUNCIONAL",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ler CAPACIDADE EQUIPE",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Ler APURAÇÃO PREMIAÇÃO",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler QUADRO FUNCIONAL": {
+      "main": [
+        [
+          {
+            "node": "Preparar employee_managers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha employee_managers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar employee_managers": {
+      "main": [
+        [
+          {
+            "node": "Trocar employee_managers",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha employee_managers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trocar employee_managers": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Falha employee_managers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Falha employee_managers": {
+      "main": [
+        [
+          {
+            "node": "Registrar falha employee_managers",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler CAPACIDADE EQUIPE": {
+      "main": [
+        [
+          {
+            "node": "Preparar team_capacities",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha team_capacities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar team_capacities": {
+      "main": [
+        [
+          {
+            "node": "Trocar team_capacities",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha team_capacities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trocar team_capacities": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Falha team_capacities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Falha team_capacities": {
+      "main": [
+        [
+          {
+            "node": "Registrar falha team_capacities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ler APURAÇÃO PREMIAÇÃO": {
+      "main": [
+        [
+          {
+            "node": "Preparar installer_awards",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha installer_awards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar installer_awards": {
+      "main": [
+        [
+          {
+            "node": "Trocar installer_awards",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Falha installer_awards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trocar installer_awards": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Falha installer_awards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Falha installer_awards": {
+      "main": [
+        [
+          {
+            "node": "Registrar falha installer_awards",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "all"
+  },
+  "pinData": {}
+}
