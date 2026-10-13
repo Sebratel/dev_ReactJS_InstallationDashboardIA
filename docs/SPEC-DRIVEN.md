@@ -513,6 +513,16 @@ expansão ficaram iguais, então a saída tem o mesmo esquema.
 linhas cada, **0** só numa ou só noutra, mesmas colunas; 116,6 s → 4,9 s. Golden capturado
 por `npm run validate:queries -- --only=protocolos-tipo`. ACHADOS #200.
 
+### `protocolos-telefonia` — corte de `created` passa a `'2025-01-01'` (13/10/2026)
+
+Era `a.created >= DATE_TRUNC('year', CURRENT_DATE)` — o corte do Power BI **Gerencial**. A
+página Telefonia & Ouvidoria existe nos dois relatórios e, pela decisão do Erick de 13/10
+(ACHADOS #205), segue o **Instalação**, que carrega a telefonia desde 2025 (2.110 linhas lá;
+698 aqui). Medido na réplica: 699 → **2.112** linhas, mesmo custo (~11 s). A mesma linha
+muda na costura de `realtime-poll.yaml`, que ancora nela. Efeito em cadeia, desejado: a
+CALENDARIO CRIADO nasce do `MIN` desta tabela e passa a começar em 2025, como no Instalação —
+ela só é usada por Visão Geral, Relatório do Mês e Telefonia, que seguem o Instalação.
+
 ## Estrutura de `backend/specs/`
 
 ```

@@ -201,12 +201,12 @@ queries:
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= DATE_TRUNC('year', CURRENT_DATE))
+        	and a.created >= '2025-01-01')
       para: |-
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= DATE_TRUNC('year', CURRENT_DATE)
+        	and a.created >= '2025-01-01'
         	and a.modified >= :desde)
 
   # `assignments` aqui só é ponte de JOIN (nunca teve coluna própria
