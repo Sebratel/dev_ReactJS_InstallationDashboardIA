@@ -15158,3 +15158,28 @@ frontend: 161/161; E2E: 9/9, com 156 pedidos interativos e só 7 prefetches; lay
 typecheck, lint, build e auditoria de dependências aprovados. O ganho está provado na worktree,
 não na API da porta 3100: falta promover e repetir a régua com o refresh real antes de fechar
 R.1/R.2.
+
+## #211 — o gerente sumia de todo protocolo desde julho/2025: a fonte tinha parado (14/10)
+
+**Sintoma.** `/api/saude` dizia "gestores-equipes: parado desde 07/10". O Erick estranhou, com
+razão: o problema era maior. A query lê `DB_Applicattion.Installation_Teams`, e essa tabela
+**parou em 16/07/2025** — 10.795 linhas, `MAX(DATA) = 2025-07-16`. O "07/10" era só a última
+releitura de uma tabela que não recebe nada há 15 meses.
+
+**Impacto medido.** `protocolos-geral` cruza (técnico, data) com ela para trazer
+GERENTE/SUPERVISOR e TÉCNICO 2. No snapshot de 14/10: até 16/07/2025, 17.615 protocolos com
+gerente e 2.186 sem; **depois de 16/07/2025, 0 com gerente e 50.363 sem**. A VISÃO GERAL (5
+referências a GERENTE/SUPERVISOR) mostrava 2026 inteiro "em branco" por gerente. O Power BI
+lê a mesma tabela parada — muito provavelmente tem o mesmo buraco.
+
+**Causa.** `Installation_Teams` era uma cópia da planilha de CAPACIDADE EQUIPE: as mesmas 12
+colunas (inclusive COLOR, EDITOR, DATA MODIFICAÇÃO, que só existem na planilha) e, no período
+comum, 91% das linhas idênticas à `team_capacities` que o n8n copia hoje (#209).
+
+**Correção (decisão do Erick: divergir do Power BI para melhor).** `gestores-equipes` passa a
+ler `DB_InstallationDashboard.team_capacities`, com os nomes de coluna antigos. A tabela
+antiga guardava vazio como `''` (726 linhas de TERCEIROS em TÉCNICO 2, BASE e GERENTE; nunca
+NULL) e o n8n grava NULL — por isso `COALESCE(…, '')` em toda coluna de texto, senão o
+`Table.ReplaceValue("" → "TERCEIROS")` do M deixaria de casar. Conferido materializando num
+diretório à parte: mesmas colunas e tipos, 91% iguais no período comum, mesma contagem de
+TERCEIROS, e 14.458 linhas novas (17/07/2025 a 13/11/2026).

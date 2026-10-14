@@ -3,17 +3,22 @@
 id: gestores-equipes
 name: GESTORES EQUIPES
 origin: expression
+# EDITADA À MÃO em 14/10/2026 (docs/SPEC-DRIVEN.md, ACHADOS #211): a fonte era
+# DB_Applicattion.Installation_Teams, uma cópia da planilha de capacidade que PAROU em
+# 16/07/2025 — todo protocolo depois disso ficava sem GERENTE/SUPERVISOR. Agora lê a
+# team_capacities (n8n, mesma planilha, a cada 15 min). COALESCE(…, '') porque a tabela
+# antiga guardava vazio como '', e o M troca '' por TERCEIROS no gerente.
 source_type: odbc
 datasource: dbMaria
-sql: "SELECT it.* FROM DB_Applicattion.Installation_Teams AS it"
+sql: "SELECT tc.capacity_date AS `DATA`, COALESCE(tc.technician_1, '') AS `TÉCNICO 1`, COALESCE(tc.technician_2, '') AS `TÉCNICO 2`, COALESCE(tc.team, '') AS `EQUIPE`, COALESCE(tc.origin_base, '') AS `BASE DE ORIGEM`, COALESCE(tc.manager_name, '') AS `GERENTE/SUPERVISOR`, tc.morning_capacity AS `CAPACIDADE MANHÃ`, tc.afternoon_capacity AS `CAPACIDADE TARDE` FROM DB_InstallationDashboard.team_capacities AS tc WHERE tc.capacity_date > '2024-12-31' ORDER BY tc.id"
 url: null
 sheet: null
 endpoints: null
 source_tables:
-- db_applicattion.installation_teams
+- db_installationdashboard.team_capacities
 m_expression: |-
   let
-      Fonte = Odbc.Query("dsn=dbMaria", "SELECT it.* FROM DB_Applicattion.Installation_Teams AS it"),
+      Fonte = Odbc.Query("dsn=dbMaria", "SELECT tc.capacity_date AS `DATA`, COALESCE(tc.technician_1, '') AS `TÉCNICO 1`, COALESCE(tc.technician_2, '') AS `TÉCNICO 2`, COALESCE(tc.team, '') AS `EQUIPE`, COALESCE(tc.origin_base, '') AS `BASE DE ORIGEM`, COALESCE(tc.manager_name, '') AS `GERENTE/SUPERVISOR`, tc.morning_capacity AS `CAPACIDADE MANHÃ`, tc.afternoon_capacity AS `CAPACIDADE TARDE` FROM DB_InstallationDashboard.team_capacities AS tc WHERE tc.capacity_date > '2024-12-31' ORDER BY tc.id"),
       #"Personalização Adicionada" = Table.AddColumn(Fonte, "CAPACIDADE TOTAL", each [CAPACIDADE MANHÃ] + [CAPACIDADE TARDE]),
       #"Tipo Alterado" = Table.TransformColumnTypes(#"Personalização Adicionada",{{"CAPACIDADE TOTAL", Int64.Type}}),
       #"Personalização Adicionada1" = Table.AddColumn(#"Tipo Alterado", "POSIÇÃO", each if [EQUIPE] = "TERCEIROS" then "TERCEIRO" else "EFETIVO"),

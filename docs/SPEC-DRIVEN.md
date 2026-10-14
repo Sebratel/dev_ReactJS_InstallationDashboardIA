@@ -46,6 +46,14 @@ não estão nem no `.env` nem no `.env.example`. Os números de `pbi:` em
 cabeçalho de cada arquivo pede que toda edição à mão seja registrada aqui. Esta é a
 lista.
 
+### `gestores-equipes` — Installation_Teams (parada em 16/07/2025) → team_capacities (14/10/2026)
+
+A fonte era `DB_Applicattion.Installation_Teams`, cópia da planilha de capacidade que parou de
+ser atualizada em 16/07/2025; agora é `DB_InstallationDashboard.team_capacities` (n8n, mesma
+planilha). O `sql:` devolve as colunas com os nomes antigos e `COALESCE(…, '')` nas de texto,
+porque a tabela antiga guardava vazio como `''` e o M troca `''` por TERCEIROS no gerente. O M
+não mudou. Diverge do Power BI de propósito (ele segue lendo a tabela parada). ACHADOS #211.
+
 ### `quadro-funcional`, `capacidade-equipe`, `apuracao-premiacao` — Google Sheets → MariaDB (14/10/2026)
 
 A fonte das três era a planilha do Google; agora é o `DB_InstallationDashboard`
