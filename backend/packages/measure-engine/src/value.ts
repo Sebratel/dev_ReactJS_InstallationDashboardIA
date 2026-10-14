@@ -144,6 +144,12 @@ export function toDate(v: DaxValue, onde: string): Date {
  * casa com "SEM INFORMAÇÃO" no relatório atual, e um comparador case-sensitive
  * mandaria essas linhas para o ramo errado do IF.
  *
+ * Texto também compara **sem os espaços do fim**, como o VertiPaq: no motor do Power BI
+ * "X" e "X " são o mesmo valor. A fonte traz espaço no fim em dezenas de colunas — o
+ * tipo "TEC - Instalação de Roteador Adicional " vem assim do Voalle, e o filtro do
+ * relatório, escrito sem o espaço, esvaziava as tabelas de ponto adicional da
+ * premiação. Espaço do INÍCIO continua contando, como lá.
+ *
  * Texto contra número **não compara**: erra alto, em vez de escolher uma
  * conversão e devolver ordenação inventada.
  */
@@ -170,8 +176,8 @@ export function compareValues(a: DaxValue, b: DaxValue, strict: boolean, onde: s
   const bText = typeof b === 'string';
 
   if (aText && bText) {
-    const x = (a as string).toLocaleLowerCase('pt-BR');
-    const y = (b as string).toLocaleLowerCase('pt-BR');
+    const x = textoComparavel(a as string);
+    const y = textoComparavel(b as string);
     return x < y ? -1 : x > y ? 1 : 0;
   }
 
@@ -186,6 +192,11 @@ export function compareValues(a: DaxValue, b: DaxValue, strict: boolean, onde: s
   const x = toNumber(a, onde);
   const y = toNumber(b, onde);
   return x < y ? -1 : x > y ? 1 : 0;
+}
+
+/** Forma de comparar texto: sem caixa e sem os espaços do fim — ver `compareValues`. */
+function textoComparavel(s: string): string {
+  return s.replace(/ +$/, '').toLocaleLowerCase('pt-BR');
 }
 
 export function valuesEqual(a: DaxValue, b: DaxValue, strict: boolean, onde: string): boolean {
@@ -294,7 +305,7 @@ export function identityKey(v: DaxValue): string {
   if (typeof v === 'string') {
     const memo = CHAVE_TEXTO.get(v);
     if (memo !== undefined) return memo;
-    const out = `s:${v.toLocaleLowerCase('pt-BR')}`;
+    const out = `s:${textoComparavel(v)}`;
     if (CHAVE_TEXTO.size < TETO_DE_CHAVES) CHAVE_TEXTO.set(v, out);
     return out;
   }

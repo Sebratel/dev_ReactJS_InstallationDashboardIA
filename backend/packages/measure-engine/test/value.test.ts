@@ -50,6 +50,16 @@ test('comparação de texto ignora caixa — é o collation do Power BI', () => 
   assert.equal(identityKey('ABC'), identityKey('abc'));
 });
 
+test('comparação de texto ignora espaço do FIM, não do início — como o VertiPaq', () => {
+  // O Voalle manda "TEC - Instalação de Roteador Adicional " e o filtro do relatório
+  // foi escrito sem o espaço: sem esta regra as tabelas de ponto adicional esvaziavam.
+  const tipo = 'TEC - Instalação de Roteador Adicional';
+  assert.ok(valuesEqual(tipo + ' ', tipo, true, 't'));
+  assert.equal(identityKey(tipo + '  '), identityKey(tipo));
+  assert.ok(!valuesEqual(' ' + tipo, tipo, true, 't'));
+  assert.notEqual(identityKey(' ' + tipo), identityKey(tipo));
+});
+
 test('comparar texto com número erra alto em vez de inventar ordem', () => {
   assert.throws(() => compareValues('10', 10, false, 't'), DaxEvalError);
   assert.throws(() => compareValues(makeDate(2026, 8, 4), '04/08/2026', false, 't'), DaxEvalError);
