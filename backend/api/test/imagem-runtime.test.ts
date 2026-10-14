@@ -178,7 +178,7 @@ test('refresh e snapshot-diario: heap autorizado + folga de não-heap cabem no m
 });
 
 
-test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google montada onde a variável aponta (ACHADOS #157)', () => {
+test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google só onde alguma query ainda lê planilha (ACHADOS #157, #209)', () => {
   const linhas = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8').split(/\r?\n/);
   const bloco = (nome: string): string => {
     const inicio = linhas.indexOf(`  ${nome}:`);
@@ -192,11 +192,23 @@ test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google 
     assert.ok(graca > 8, `${s}: stop_grace_period tem de passar do teto de 8 s do desligamento`);
   }
   assert.match(bloco('api'), /VIGIA_TRAVAMENTO_S: '\d+'/, 'a api do contêiner tem de ligar o vigia');
+  // Desde 14/10/2026 (ACHADOS #209) nenhuma query lê Google Sheets — o n8n copia as
+  // planilhas para o DB_InstallationDashboard. A regra virou condicional: query de planilha
+  // existindo, a credencial TEM de estar montada só-leitura (o defeito do #157); não
+  // existindo, o compose NÃO pode carregar um segredo que ninguém usa.
+  const dirQueries = path.join(RAIZ, 'backend', 'specs', '_catalog', 'queries');
+  const lePlanilha = fs
+    .readdirSync(dirQueries)
+    .some((f) => /^source_type: googlesheets$/m.test(fs.readFileSync(path.join(dirQueries, f), 'utf8')));
   for (const s of ['refresh', 'snapshot-diario']) {
     const b = bloco(s);
     const alvo = b.match(/GOOGLE_APPLICATION_CREDENTIALS: (\S+)/)?.[1];
-    assert.ok(alvo, `${s} sem GOOGLE_APPLICATION_CREDENTIALS no environment`);
-    assert.ok(b.includes(`:${alvo}:ro`), `${s}: a credencial não está montada só-leitura em ${alvo}`);
+    if (lePlanilha) {
+      assert.ok(alvo, `${s} sem GOOGLE_APPLICATION_CREDENTIALS no environment`);
+      assert.ok(b.includes(`:${alvo}:ro`), `${s}: a credencial não está montada só-leitura em ${alvo}`);
+    } else {
+      assert.equal(alvo, undefined, `${s}: nenhuma query lê planilha, mas o compose ainda monta a credencial do Google`);
+    }
   }
 });
 

@@ -107,9 +107,9 @@ function chamadasDoEscopo(): Set<string> {
  * puras (base64 -> deflate -> JSON) e foram implementadas, o que faz `feriados`
  * rodar inteira sem credencial nenhuma.
  */
-const FONTES = ['GoogleSheets.Contents', 'Odbc.Query'];
+const FONTES = ['Odbc.Query'];
 
-test('as funções que a base chama: 48 distintas, 46 implementadas', () => {
+test('as funções que a base chama: 45 distintas, 44 implementadas', () => {
   // 39 → 49 quando `clima-tempo` entrou no escopo (achado #42). As 10 novas são
   // dela, e 5 precisaram ser escritas: Date.ToText, Table.FromColumns,
   // Table.ToRecords, List.Repeat e Web.Contents.
@@ -118,12 +118,16 @@ test('as funções que a base chama: 48 distintas, 46 implementadas', () => {
   // ÚLTIMA chamada de `Table.ReorderColumns` do corpus inteiro. A função continua
   // implementada — o que caiu foi a demanda, não a cobertura. Este número descendo
   // por migração é o resultado desejado; subindo, alguém devolveu trabalho ao M.
+  //
+  // 48 → 45 (14/10/2026, ACHADOS #209): as três planilhas viraram SQL no MariaDB e
+  // levaram `GoogleSheets.Contents` (uma FONTE — sai também da lista do fim), `Table.Skip`
+  // e `Table.PromoteHeaders` do corpus. De novo, a demanda que caiu, não a cobertura.
   const usadas = chamadasDoEscopo();
-  assert.equal(usadas.size, 48);
+  assert.equal(usadas.size, 45);
 
   const conhecidas = new Set([...implementedMFunctions(), ...standardConstants().keys()]);
   const falta = [...usadas].filter((f) => !conhecidas.has(f)).sort();
-  assert.equal(usadas.size - falta.length, 46);
+  assert.equal(usadas.size - falta.length, 44);
   assert.deepEqual(falta, FONTES, 'o que falta tem que ser só fonte, não transformação');
 });
 
@@ -211,7 +215,7 @@ test('erro de avaliação é MEvalError, não exceção genérica', () => {
   assert.throws(() => ev.avaliaQuery('let a = Table.Pivot(1) in a'), MEvalError);
 });
 
-test('o corpus continua com 26 queries e 179 passos', () => {
+test('o corpus continua com 26 queries e 171 passos', () => {
   // 24 queries / 327 passos + `field-agenda-slot` (ACHADOS #87): 1 query, 3 passos
   // (mesma forma de `field-agenda` — Fonte, Linhas Filtradas1, Tipo Alterado). Não
   // vem do PBIP, mas é uma query de verdade e entra no corpus como qualquer outra.
@@ -243,16 +247,21 @@ test('o corpus continua com 26 queries e 179 passos', () => {
   // +1 query, +1 passo (09/10/2026, ACHADOS #200): `protocolos-tipo`, SQL de mão com só
   // o `Fonte` — o par (protocolo, tipo) da PG para a mesclagem de
   // `backlog-agendado-futuro`, que recalculava a PG inteira por uma coluna. 179.
+  //
+  // -8 (14/10/2026, ACHADOS #209): as três planilhas saíram do Google para o MariaDB, e
+  // com elas os passos que só existiam por causa da planilha — navegar na aba,
+  // `Table.Skip`, `PromoteHeaders` e o `RemoveColumns` de colunas que não chegam mais.
+  // 179 - 8 = 171.
   const qs = corpus();
   assert.equal(qs.length, 26);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    179,
+    171,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
   // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    179,
+    171,
   );
 });

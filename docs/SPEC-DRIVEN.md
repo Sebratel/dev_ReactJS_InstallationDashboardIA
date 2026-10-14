@@ -46,6 +46,17 @@ não estão nem no `.env` nem no `.env.example`. Os números de `pbi:` em
 cabeçalho de cada arquivo pede que toda edição à mão seja registrada aqui. Esta é a
 lista.
 
+### `quadro-funcional`, `capacidade-equipe`, `apuracao-premiacao` — Google Sheets → MariaDB (14/10/2026)
+
+A fonte das três era a planilha do Google; agora é o `DB_InstallationDashboard`
+(`employee_managers`, `team_capacities`, `installer_awards`), que o n8n preenche a cada
+15 min a partir da MESMA planilha (`backend/tools/banco/n8n/`). O `sql:` devolve as colunas
+com os nomes da planilha, então o M segue o de antes, menos a navegação de aba, o
+`PromoteHeaders` e o `RemoveColumns` de colunas que não chegam mais. O `quadro-funcional`
+chega com 2 colunas em vez de 38 — CPF, RG e o resto de RH ficam na planilha. Conferido
+contra o snapshot do Google no mesmo dia: premiação e capacidade idênticas (hash dos blocos),
+quadro 538/540 linhas iguais (o snapshot do Google era de 07/10). ACHADOS #209.
+
 ### `field-agenda` — janela deslizante de 3 meses no `sql:` (27/08/2026)
 
 ```sql

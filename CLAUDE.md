@@ -42,7 +42,8 @@ node backend/tools/refresh/src/daemon.ts --historico   # histórico de grupos e 
 - Refresh: `backend/specs/_catalog/refresh.yaml` (grupos quente/medio/frio); incremental: `backend/specs/_catalog/incremental.yaml`.
   Só a `field-agenda` roda incremental (`incremental: [lista]` no grupo, ACHADOS #165). Ligar outra
   exige provar contra a carga completa na mesma hora: `npm run probe:compara-incremental`.
-- Docker local: o `.env` precisa de `GOOGLE_CREDENCIAL_HOST` (sem ela as 3 tabelas do Google param).
+- Planilhas do Google: a plataforma NÃO lê mais (14/10/2026, ACHADOS #209). O n8n copia as 3 para o
+  `DB_InstallationDashboard` a cada 15 min (`backend/tools/banco/n8n/`); saúde da cópia em `data_syncs`.
   O `.env` também precisa das quatro `VITE_FIREBASE_*`: elas entram no BUILD da imagem (o `up`
   erra sem elas). **Recriar a `api` sempre com `-f ../contorno.yml`** (`AQUECE_FILTROS_ATE=0`, até a
   C.2) — ver `docs/PLANO-CARGA.md` §1. Sem ele, o pré-cálculo de filtros religa.

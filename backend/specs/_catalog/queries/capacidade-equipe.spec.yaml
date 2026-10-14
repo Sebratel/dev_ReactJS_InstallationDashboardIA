@@ -3,20 +3,22 @@
 id: capacidade-equipe
 name: CAPACIDADE EQUIPE
 origin: table:CAPACIDADE EQUIPE
-source_type: googlesheets
-datasource: gsheets
-sql: null
-url: "https://docs.google.com/spreadsheets/d/1hocqNXymH5U9NouhhcIQNOjujacdltwvS4lLA_hFGcI/edit?usp=sharing"
-sheet: STAGING
+# EDITADA À MÃO em 14/10/2026 (docs/SPEC-DRIVEN.md, ACHADOS #209): a fonte era Google
+# Sheets; agora é o DB_InstallationDashboard, que o n8n preenche a cada 15 min a partir da
+# MESMA planilha. As colunas saem do SQL com os nomes da planilha, então o M daqui para
+# frente é o de antes, sem a navegação de aba e o PromoteHeaders.
+source_type: odbc
+datasource: dbMaria
+sql: "SELECT tc.capacity_date AS `DATA`, tc.technician_1 AS `TÉCNICO 1`, tc.technician_2 AS `TÉCNICO 2`, tc.team AS `EQUIPE`, tc.origin_base AS `BASE DE ORIGEM`, tc.manager_name AS `GERENTE/SUPERVISOR`, tc.morning_capacity AS `CAPACIDADE MANHÃ`, tc.afternoon_capacity AS `CAPACIDADE TARDE` FROM DB_InstallationDashboard.team_capacities AS tc WHERE tc.capacity_date > '2025-12-31' ORDER BY tc.id"
+url: null
+sheet: null
 endpoints: null
-source_tables: []
+source_tables:
+- db_installationdashboard.team_capacities
 m_expression: |-
   let
-      Fonte = GoogleSheets.Contents("https://docs.google.com/spreadsheets/d/1hocqNXymH5U9NouhhcIQNOjujacdltwvS4lLA_hFGcI/edit?usp=sharing"),
-      STAGING_Table = Fonte{[name="STAGING",ItemKind="Table"]}[Data],
-      #"Cabeçalhos Promovidos" = Table.PromoteHeaders(STAGING_Table, [PromoteAllScalars=true]),
-      #"Tipo Alterado" = Table.TransformColumnTypes(#"Cabeçalhos Promovidos",{{"DATA", type date}, {"TÉCNICO 1", type text}, {"TÉCNICO 2", type text}, {"EQUIPE", type text}, {"BASE DE ORIGEM", type text}, {"GERENTE/SUPERVISOR", type text}, {"CAPACIDADE MANHÃ", Int64.Type}, {"CAPACIDADE TARDE", Int64.Type}, {"COLOR", type any}, {"TÉCNICO (OPCIONAL)", type text}, {"EDITOR", type text}, {"DATA MODIFICAÇÃO", type datetime}}),
-      #"Colunas Removidas" = Table.RemoveColumns(#"Tipo Alterado",{"COLOR", "TÉCNICO (OPCIONAL)", "EDITOR", "DATA MODIFICAÇÃO"}),
-      #"Linhas Filtradas" = Table.SelectRows(#"Colunas Removidas", each [DATA] > #date(2025, 12, 31))
+      Fonte = Odbc.Query("dsn=dbMaria", "SELECT tc.capacity_date AS `DATA`, tc.technician_1 AS `TÉCNICO 1`, tc.technician_2 AS `TÉCNICO 2`, tc.team AS `EQUIPE`, tc.origin_base AS `BASE DE ORIGEM`, tc.manager_name AS `GERENTE/SUPERVISOR`, tc.morning_capacity AS `CAPACIDADE MANHÃ`, tc.afternoon_capacity AS `CAPACIDADE TARDE` FROM DB_InstallationDashboard.team_capacities AS tc WHERE tc.capacity_date > '2025-12-31' ORDER BY tc.id"),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"DATA", type date}, {"TÉCNICO 1", type text}, {"TÉCNICO 2", type text}, {"EQUIPE", type text}, {"BASE DE ORIGEM", type text}, {"GERENTE/SUPERVISOR", type text}, {"CAPACIDADE MANHÃ", Int64.Type}, {"CAPACIDADE TARDE", Int64.Type}}),
+      #"Linhas Filtradas" = Table.SelectRows(#"Tipo Alterado", each [DATA] > #date(2025, 12, 31))
   in
       #"Linhas Filtradas"

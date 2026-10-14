@@ -15099,3 +15099,26 @@ vão com host `'%'`.
   errado, gravados em lote a cada 5 s (`eventos-seguranca.ts`). Banco fora: o lote volta
   para a fila; buffer com teto de 5.000, e a perda é dita no log.
 - As planilhas ainda vêm do Google: as tabelas existem, falta o n8n e o refresh lendo delas.
+
+## #209 — as planilhas saem do Google: a plataforma lê o DB_InstallationDashboard (14/10)
+
+**O quê.** `quadro-funcional`, `capacidade-equipe` e `apuracao-premiacao` deixaram de ser
+`googlesheets` e viraram `odbc` no `dbMaria`, lendo as tabelas que o n8n
+(`backend/tools/banco/n8n/planilhas-para-banco.json`) copia das MESMAS planilhas a cada
+15 min. Nenhuma query lê mais Google; o `docker-compose.prod.yml` parou de exigir e montar
+a credencial (`GOOGLE_CREDENCIAL_HOST`) — o conector só é montado se alguma query precisar.
+
+**Medido.** Materializado do banco num diretório à parte e comparado com o snapshot do
+Google: premiação (73) e capacidade (11.670) idênticas byte a byte nos blocos; quadro
+538 de 540 linhas iguais — o snapshot do Google era de 07/10, o banco é de hoje. Tempo por
+query: ~0,4 s, contra 3,7 s (capacidade) e 1,6 s (premiação) no Google. O filtro de data
+da capacidade foi TAMBÉM para o SQL (11.670 de 28.034 linhas saem do banco).
+
+**Dado pessoal.** O `quadro-funcional` chega com 3 colunas (nome, gestor, upper_name) em vez
+de 38: CPF, RG, nascimento, celular, ações trabalhistas e antecedentes não entram mais no
+snapshot. E o n8n passa a copiar só quem tem gestor — a planilha também lista candidatos de
+recrutamento (9.537 de 18.041 linhas sem gestor), gente que a plataforma não usa.
+
+**Achado de passagem.** `gestores-equipes` já lê `DB_Applicattion.Installation_Teams`, que tem
+as mesmas colunas da planilha de capacidade — alguém já copia essa planilha para o
+`DB_Applicattion`. Vale conferir se a `team_capacities` não duplica esse trabalho.

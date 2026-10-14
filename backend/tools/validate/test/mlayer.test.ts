@@ -209,7 +209,10 @@ test('as 26 queries reais: 25 são escaneáveis, e a exceção é a do let aninh
   // tem de onde ler.
   //
   // 153 → 154 (09/10/2026): `protocolos-tipo` (ACHADOS #200), SQL de mão, um passo só.
-  assert.equal(passos, 154, 'passos M nas 25 escaneáveis');
+  //
+  // 154 → 146 (14/10/2026): as três planilhas viraram SQL no MariaDB (ACHADOS #209) e
+  // perderam a navegação de aba, o `Table.Skip`, o `PromoteHeaders` e o `RemoveColumns`.
+  assert.equal(passos, 146, 'passos M nas 25 escaneáveis');
 });
 
 /**
@@ -225,14 +228,18 @@ test('as 26 queries reais: 25 são escaneáveis, e a exceção é a do let aninh
  * agora é o `WHERE` da consulta, e o `count(*)` do golden voltou a ser a contagem
  * da tabela. **Este é um ganho de fato da migração, e não estava previsto** — cada
  * query que migra devolve o `rowCount` dela à comparação com o Power BI.
+ *
+ * 10 → 9 em 14/10/2026 (ACHADOS #209): `#APURAÇÃO PREMIAÇÃO` voltou a ser comparável. O
+ * `Table.Skip` que pulava a linha de título da planilha saiu do M — quem pula agora é o n8n,
+ * antes de gravar no DB_InstallationDashboard.
  */
-test('em 10 tabelas o rowCount do golden não é comparável com o Power BI', () => {
+test('em 9 tabelas o rowCount do golden não é comparável com o Power BI', () => {
   const tabelas = verificarModelo(SPECS, GOLDEN);
   const naoComparaveis = tabelas.filter((t) => t.rowCountComparavel === false);
   const comparaveis = tabelas.filter((t) => t.rowCountComparavel === true);
 
-  assert.equal(naoComparaveis.length, 10, naoComparaveis.map((t) => t.table).join(', '));
-  assert.equal(comparaveis.length, 7);
+  assert.equal(naoComparaveis.length, 9, naoComparaveis.map((t) => t.table).join(', '));
+  assert.equal(comparaveis.length, 8);
 
   // Toda tabela "não comparável" tem de dizer qual passo faz a diferença.
   for (const t of naoComparaveis) assert.ok(t.efeitosDeLinha.length > 0, t.table);
