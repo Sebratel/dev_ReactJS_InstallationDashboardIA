@@ -55,6 +55,8 @@ export interface ServidorOptions {
   dominioCorporativo?: string;
   /** Por quanto tempo uma sessão criada em `/auth/google` vale. */
   sessaoTtlHoras?: number;
+  /** Só teste: troca `filtros.modo` de `seguranca.yaml` (S5). Produção usa a spec. */
+  modoDosFiltros?: 'observar' | 'bloquear';
   /** Substitui o cliente real do Google em teste — ver `auth-google.ts`. */
   verificadorGoogle?: VerificadorDeToken;
   /**

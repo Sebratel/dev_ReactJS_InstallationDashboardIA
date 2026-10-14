@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.audit_logs (
 CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.security_events (
   id         BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
-  event_type VARCHAR(32) NOT NULL,   -- login_ok, login_failed, unauthorized, forbidden, rate_limited, csrf, sessao_ip_mudou, sessao_derrubada
+  event_type VARCHAR(32) NOT NULL,   -- login_ok, login_failed, unauthorized, forbidden, rate_limited, csrf, sessao_ip_mudou, sessao_derrubada, filtro_fora_da_pagina
   http_status SMALLINT UNSIGNED NULL,
   email      VARCHAR(254) NULL,
   ip         VARCHAR(45) NULL,

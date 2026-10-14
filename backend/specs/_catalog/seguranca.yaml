@@ -37,3 +37,15 @@ sessao:
   troca_de_ip: registra
   # GET /api/admin/sessoes e POST /api/admin/sessoes/derruba — só admin.
   admin_ve_e_derruba: true
+
+# S5 — filtro só em coluna que a página oferece.
+filtros:
+  # As colunas que a spec da página cita (segmentações, campos dos visuais, filtros da
+  # página e dos visuais) mais a data padrão da aba (`filtros-padrao.ts`). É tudo de onde
+  # a tela tira um `?filtro=`. Fora disso, o filtro só serviria de oráculo sim/não sobre
+  # coluna que a aba não mostra (auditoria SEC-006).
+  permitidos: derivados_da_pagina
+  # observar: passa, e grava `filtro_fora_da_pagina` (uma vez por pessoa, aba e coluna).
+  # bloquear: 400. Muda para bloquear depois de uma semana de observar sem caso legítimo
+  # (D6 do plano), com a contagem registrada no ACHADOS.
+  modo: observar

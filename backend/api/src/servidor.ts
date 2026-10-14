@@ -82,6 +82,7 @@ import { redisAusente } from './saude-do-redis.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
 import { leSpecDeSeguranca, type SpecDeSeguranca } from './spec-seguranca.ts';
+import { chaveDeColuna, colunasFiltraveis } from './filtros-da-pagina.ts';
 import { comStatus, inteiro, leCorpo, parseJsonSeguro, responde, tokensIguais } from './http-util.ts';
 import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
 import { serveEstatico } from './estatico.ts';
@@ -204,10 +205,14 @@ export class Servidor {
       | 'estadoDoAgendador'
       | 'estadoDaGuarda'
       | 'estadoDoDisjuntor'
+      | 'modoDosFiltros'
       | 'avisoDasPaginas'
     >
   > &
-    Pick<ServidorOptions, 'estadoDoPoller' | 'estadoDoAgendador' | 'estadoDaGuarda' | 'estadoDoDisjuntor' | 'avisoDasPaginas'>;
+    Pick<
+      ServidorOptions,
+      'estadoDoPoller' | 'estadoDoAgendador' | 'estadoDaGuarda' | 'estadoDoDisjuntor' | 'avisoDasPaginas' | 'modoDosFiltros'
+    >;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
    *  "padrão" que faça sentido preencher, diferente dos outros campos. */
@@ -336,6 +341,12 @@ export class Servidor {
   private readonly politicaDeSessao: SpecDeSeguranca['sessao'];
   /** O TTL que vale: o pedido pela opção, mas nunca acima da spec (S2). */
   private readonly ttlSessaoHoras: number;
+  /** `seguranca.yaml` § `filtros.modo` (S5). */
+  private readonly modoDosFiltros: 'observar' | 'bloquear';
+  /** As colunas que cada página aceita em `?filtro=`, calculadas na primeira vez (S5). */
+  private readonly filtraveisPorPagina = new Map<string, Set<string>>();
+  /** `usuario|pagina|coluna` já registrados no modo observar — um evento por trio, não por pedido. */
+  private readonly filtrosForaJaVistos = new Set<string>();
   private readonly limitadorApi: LimitadorDeTaxa;
   private readonly limitadorPrefetch: LimitadorDeTaxa;
 
@@ -460,6 +471,7 @@ export class Servidor {
     const specSeg = leSpecDeSeguranca(this.opts.root);
     this.rotasSoLocais = new Set(specSeg.rotas_de_maquina.porta_publica_bloqueia);
     this.politicaDeSessao = specSeg.sessao;
+    this.modoDosFiltros = this.opts.modoDosFiltros ?? specSeg.filtros.modo;
     // SESSAO_TTL_HORAS só encurta; ilegível (NaN, zero, negativo) vale o da spec.
     const ttlPedido = this.opts.sessaoTtlHoras;
     this.ttlSessaoHoras =
@@ -831,7 +843,7 @@ export class Servidor {
           return;
         }
 
-        if (sub === '') return this.pagina(res, id, url, quem);
+        if (sub === '') return this.pagina(res, id, url, quem, req);
         if (sub === 'valores') return this.valores(res, id, url, quem);
         if (sub === 'layout') return this.layoutDe(res, id);
         responde(res, 404, {
@@ -1201,6 +1213,51 @@ export class Servidor {
       this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `remove-pessoa por=${quem.usuario}`);
     }
     respondeMatriz();
+  }
+
+  /**
+   * S5 (`seguranca.yaml` § `filtros`): `?filtro=` só em coluna que a página oferece. No
+   * modo `observar`, o de fora passa e vira um evento `filtro_fora_da_pagina` (uma vez
+   * por pessoa, aba e coluna — o prefetch repete o mesmo pedido dezenas de vezes); no
+   * `bloquear`, 400. `false` quando já respondeu.
+   */
+  private filtrosDaPaginaAceitos(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    dash: { id: string },
+    filtros: readonly FiltroSpec[],
+    quem: Identidade,
+  ): boolean {
+    if (filtros.length === 0) return true;
+    let filtraveis = this.filtraveisPorPagina.get(dash.id);
+    if (!filtraveis) this.filtraveisPorPagina.set(dash.id, (filtraveis = colunasFiltraveis(dash)));
+    const fora = filtros.filter((f) => !filtraveis.has(chaveDeColuna(f.entity ?? '', f.property ?? '')));
+    if (fora.length === 0) return true;
+    const colunas = fora.map((f) => `${f.entity}[${f.property}]`);
+    if (this.modoDosFiltros === 'bloquear') {
+      this.registraEventoSeg(req, 400, 'filtro-fora-da-pagina', quem.usuario);
+      responde(res, 400, { erro: `A página '${dash.id}' não filtra por ${colunas.join(', ')}.` });
+      return false;
+    }
+    if (quem.papeis.includes('interno')) return true;
+    for (const coluna of colunas) {
+      const chave = `${quem.usuario}|${dash.id}|${coluna}`;
+      if (this.filtrosForaJaVistos.has(chave)) continue;
+      if (this.filtrosForaJaVistos.size >= 10_000) this.filtrosForaJaVistos.clear();
+      this.filtrosForaJaVistos.add(chave);
+      const ip = ipDoPedido(req, this.opts.confiaNoProxy ?? false);
+      console.warn(`[seg] filtro_fora_da_pagina ip=${ip} pagina=${dash.id} coluna=${coluna}`);
+      this.opts.eventosDeSeguranca.registra({
+        tipo: 'filtro_fora_da_pagina',
+        status: 200,
+        email: quem.usuario,
+        ip,
+        metodo: req.method ?? '?',
+        rota: `/api/dashboards/${dash.id}`.slice(0, 255),
+        motivo: coluna.slice(0, 64),
+      });
+    }
+    return true;
   }
 
   /**
@@ -1644,6 +1701,7 @@ export class Servidor {
     id: string,
     url: URL,
     quem: Identidade,
+    req: http.IncomingMessage,
   ): Promise<void> {
     // O relógio do pedido inteiro — do começo à resposta, e não só do cálculo.
     // É o que `primeiro_get_pos_evento_ms` precisa medir: a pergunta da F4 é o
@@ -1688,6 +1746,7 @@ export class Servidor {
       responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
       return;
     }
+    if (!this.filtrosDaPaginaAceitos(req, res, dash, daTela, quem)) return;
 
     // `?clicado=` — quais colunas do recorte nasceram de CLIQUE num visual, e não de
     // seletor. É o que permite auto-excluir o filtro do visual que desenha aquela

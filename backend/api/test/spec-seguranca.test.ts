@@ -17,6 +17,10 @@ import type { EventoDeSeguranca } from '../src/eventos-seguranca.ts';
 import { criaAcesso, type LojaDeAcesso } from '../src/permissoes.ts';
 import { Servidor } from '../src/servidor.ts';
 import { caminhoDaSpecDeSeguranca, leSpecDeSeguranca } from '../src/spec-seguranca.ts';
+import { chaveDeColuna, colunasFiltraveis } from '../src/filtros-da-pagina.ts';
+import { segmentacaoDe } from '../src/calcula.ts';
+import { dataDaPagina } from '../../packages/widget-engine/src/filtros-padrao.ts';
+import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -375,6 +379,93 @@ test('S2 /api/admin/sessoes: só admin vê e derruba; a lista nunca traz o token
     assert.equal((await derruba.json()).derrubadas, 1);
     assert.equal(await s.status(fulano.cookie), 401);
     assert.equal((await s.posta(chefe.cookie, '/api/admin/sessoes/derruba', {})).status, 400);
+  } finally {
+    await s.fecha();
+  }
+});
+
+// ---------------------------------------------------------------- S5 — filtros
+
+const FILTRO_FORA = { tabela: 'CONTRATOS', coluna: 'CPF/CNPJ', valores: ['000'] };
+const filtroNaUrl = (f: object) => `filtro=${encodeURIComponent(JSON.stringify(f))}`;
+
+test('S5 derivação: toda segmentação e toda data padrão de cada aba é filtrável; coluna alheia não', () => {
+  secao('filtros');
+  const paginas = loadDashboards(path.join(RAIZ, 'backend', 'specs'));
+  assert.ok(paginas.length >= 10, `li ${paginas.length} páginas`);
+  let segmentacoes = 0;
+  for (const p of paginas) {
+    const filtraveis = colunasFiltraveis(p);
+    for (const v of p.visuals ?? []) {
+      const s = segmentacaoDe(v);
+      if (!s) continue;
+      segmentacoes++;
+      assert.ok(filtraveis.has(chaveDeColuna(s.tabela, s.coluna)), `${p.id}: segmentação ${s.tabela}[${s.coluna}] recusada`);
+    }
+    const data = dataDaPagina(p.id);
+    if (data) assert.ok(filtraveis.has(chaveDeColuna(data.tabela, data.coluna)), `${p.id}: a data padrão seria recusada`);
+    assert.ok(!filtraveis.has(chaveDeColuna(FILTRO_FORA.tabela, FILTRO_FORA.coluna)), `${p.id} aceitaria CPF/CNPJ`);
+  }
+  assert.ok(segmentacoes > 10, `só ${segmentacoes} segmentações no modelo inteiro`);
+});
+
+async function sobeParaFiltro(modoDosFiltros?: 'observar' | 'bloquear') {
+  const eventos: EventoDeSeguranca[] = [];
+  const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
+    root: RAIZ,
+    snapshotDir: fs.mkdtempSync(path.join(os.tmpdir(), 'api-spec-filtro-')),
+    webDir: path.join(RAIZ, 'frontend', 'dist'),
+    agora: () => new Date('2026-10-14T12:00:00.000Z'),
+    eventosDeSeguranca: { registra: (e) => eventos.push(e), descarrega: async () => {}, para: () => {} },
+    ...(modoDosFiltros ? { modoDosFiltros } : {}),
+  });
+  const http = servidor.criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  const { port } = http.address() as { port: number };
+  return {
+    eventos,
+    status: async (q: string) => (await fetch(`http://127.0.0.1:${port}/api/dashboards/visao-geral?${q}`)).status,
+    fecha: () =>
+      new Promise<void>((ok) => {
+        servidor.destroi();
+        http.close(() => ok());
+      }),
+  };
+}
+
+const DENTRO = () => {
+  const d = dataDaPagina('visao-geral')!;
+  return { tabela: d.tabela, coluna: d.coluna, valores: ['2026'] };
+};
+
+test('S5 observar (o modo da spec): filtro de fora passa e grava um evento por pessoa, aba e coluna', async () => {
+  secao('filtros');
+  assert.equal(spec.filtros.modo, 'observar', 'ao passar para bloquear, troque este teste pelo de baixo');
+  const s = await sobeParaFiltro();
+  try {
+    assert.notEqual(await s.status(filtroNaUrl(DENTRO())), 400);
+    assert.equal(s.eventos.filter((e) => e.tipo === 'filtro_fora_da_pagina').length, 0, 'filtro da própria aba não é evento');
+
+    assert.notEqual(await s.status(filtroNaUrl(FILTRO_FORA)), 400, 'observar não bloqueia');
+    assert.notEqual(await s.status(`${filtroNaUrl(DENTRO())}&${filtroNaUrl(FILTRO_FORA)}`), 400);
+    const fora = s.eventos.filter((e) => e.tipo === 'filtro_fora_da_pagina');
+    assert.equal(fora.length, 1, 'o mesmo trio repetido grava uma vez só');
+    assert.equal(fora[0]!.motivo, 'CONTRATOS[CPF/CNPJ]');
+    assert.equal(fora[0]!.rota, '/api/dashboards/visao-geral');
+    assert.ok(!JSON.stringify(fora[0]).includes('000'), 'o VALOR do filtro não vai para o evento');
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('S5 bloquear: filtro de fora é 400; o da própria aba segue', async () => {
+  secao('filtros');
+  const s = await sobeParaFiltro('bloquear');
+  try {
+    assert.equal(await s.status(filtroNaUrl(FILTRO_FORA)), 400);
+    assert.equal(await s.status(`${filtroNaUrl(DENTRO())}&${filtroNaUrl(FILTRO_FORA)}`), 400);
+    assert.notEqual(await s.status(filtroNaUrl(DENTRO())), 400);
   } finally {
     await s.fecha();
   }

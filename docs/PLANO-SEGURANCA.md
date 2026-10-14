@@ -129,6 +129,10 @@ dados_sensiveis:
 
 ### S5 — filtro só em coluna que a página oferece (primeiro observar, depois bloquear)
 
+> **Etapa a feita em 14/10 (ACHADOS #217)** — no `staging`, falta deploy. A semana de
+> `observar` começa no deploy; a contagem sai de `security_events` com
+> `event_type = 'filtro_fora_da_pagina'`. A etapa b é trocar `modo:` e o teste de `observar`.
+
 **Hoje:** `decodificaFiltros` só confere a sintaxe; `?filtro=` aceita qualquer tabela/coluna
 do modelo. A tela só gera filtro a partir das segmentações da página, dos cliques em
 visuais e de `filtrosPadrao` — então a lista de colunas permitidas sai da spec da página.

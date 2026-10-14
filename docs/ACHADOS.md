@@ -15317,3 +15317,25 @@ os 6 falham. Frontend: `sessoes-ativas.test.tsx`.
 **Limite.** Encurta e torna visível o uso de um cookie roubado; não impede o roubo — só o
 HTTPS (S1) impede. Uma aba aberta e esquecida segue viva enquanto o SSE trouxer dado novo
 (cada atualização é um pedido); o vencimento de 8 h continua valendo.
+
+## #217 — S5a: filtro fora da página passa a deixar rastro (modo observar) (14/10)
+
+**O que havia (SEC-006).** `?filtro=` aceitava qualquer `tabela/coluna` do modelo
+(`decodificaFiltros` só confere a sintaxe). Quem abre uma aba podia filtrar por coluna que
+ela não mostra e usar o total como oráculo sim/não.
+
+**O que mudou.** `seguranca.yaml` § `filtros`: as colunas permitidas saem da spec da
+própria página (`filtros-da-pagina.ts` varre todo `{ entity, property }` — segmentação,
+campo de visual, filtro de página e de visual, nível de hierarquia — e soma a data padrão
+da aba). Filtro de fora, no modo `observar`, passa e grava `filtro_fora_da_pagina` (coluna e
+página; o valor nunca), uma vez por pessoa, aba e coluna. No modo `bloquear`, 400. Máquina
+(`interno`) não grava.
+
+**Prova.** `spec-seguranca.test.ts`: toda segmentação e toda data padrão das 14 páginas
+é aceita, CPF/CNPJ não; observar grava um evento e não bloqueia; bloquear dá 400 só no de
+fora. No código anterior os dois de comportamento falham.
+
+**Próximo passo (S5b).** Uma semana de `observar` em produção. Zero evento de gente com
+uso normal → `modo: bloquear`. Evento legítimo → a coluna entra na spec da página antes.
+Não testado: o tráfego real da tela (rodar a API local contra o `snapshot/` da stack
+quebraria a regra 5 do CLAUDE.md) — é exatamente o que a semana de observar mede.

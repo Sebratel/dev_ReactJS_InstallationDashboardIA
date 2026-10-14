@@ -21,6 +21,10 @@ export interface SpecDeSeguranca {
     troca_de_ip: 'registra';
     admin_ve_e_derruba: true;
   };
+  filtros: {
+    permitidos: 'derivados_da_pagina';
+    modo: 'observar' | 'bloquear';
+  };
 }
 
 export function caminhoDaSpecDeSeguranca(root: string): string {
@@ -40,6 +44,7 @@ export function leSpecDeSeguranca(root: string): SpecDeSeguranca {
   if (!rotas) throw new Error("seguranca.yaml: falta a seção 'rotas_de_maquina'.");
   return {
     sessao: secaoDeSessao(bruto?.sessao),
+    filtros: secaoDeFiltros(bruto?.filtros),
     rotas_de_maquina: {
       porta_publica_bloqueia: listaDeTexto(rotas.porta_publica_bloqueia, 'rotas_de_maquina.porta_publica_bloqueia'),
       cabecalhos_apagados_no_proxy: listaDeTexto(
@@ -87,4 +92,16 @@ function secaoDeSessao(v: unknown): SpecDeSeguranca['sessao'] {
     troca_de_ip: exato(s.troca_de_ip, 'registra', 'troca_de_ip'),
     admin_ve_e_derruba: exato(s.admin_ve_e_derruba, true, 'admin_ve_e_derruba'),
   };
+}
+
+function secaoDeFiltros(v: unknown): SpecDeSeguranca['filtros'] {
+  const f = (v ?? null) as Record<string, unknown> | null;
+  if (!f) throw new Error("seguranca.yaml: falta a seção 'filtros'.");
+  if (f.permitidos !== 'derivados_da_pagina') {
+    throw new Error("seguranca.yaml: 'filtros.permitidos' só aceita derivados_da_pagina (o que a api implementa).");
+  }
+  if (f.modo !== 'observar' && f.modo !== 'bloquear') {
+    throw new Error("seguranca.yaml: 'filtros.modo' é observar ou bloquear.");
+  }
+  return { permitidos: 'derivados_da_pagina', modo: f.modo };
 }

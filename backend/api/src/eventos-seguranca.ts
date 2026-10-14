@@ -22,7 +22,9 @@ export type TipoDeEvento =
   | 'csrf'
   // S2 (seguranca.yaml § sessao): o mesmo cookie de outro IP, e sessão derrubada.
   | 'sessao_ip_mudou'
-  | 'sessao_derrubada';
+  | 'sessao_derrubada'
+  // S5 (seguranca.yaml § filtros, modo observar): filtro em coluna que a página não oferece.
+  | 'filtro_fora_da_pagina';
 
 export interface EventoDeSeguranca {
   tipo: TipoDeEvento;
