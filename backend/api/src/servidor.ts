@@ -79,6 +79,7 @@ import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente } from './saude-do-redis.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
+import { leSpecDeSeguranca } from './spec-seguranca.ts';
 import { comStatus, inteiro, leCorpo, parseJsonSeguro, responde, tokensIguais } from './http-util.ts';
 import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
 import { serveEstatico } from './estatico.ts';
@@ -327,6 +328,8 @@ export class Servidor {
    *  outro relógio deste arquivo: um teste precisa poder avançar o tempo sem
    *  esperar de verdade. */
   private readonly limitadorAuth: LimitadorDeTaxa;
+  /** Rotas que só respondem a quem fala direto com a api, nunca pelo proxy (S3, `seguranca.yaml`). */
+  private readonly rotasSoLocais: ReadonlySet<string>;
   private readonly limitadorApi: LimitadorDeTaxa;
   private readonly limitadorPrefetch: LimitadorDeTaxa;
 
@@ -442,6 +445,7 @@ export class Servidor {
       eventosDeSeguranca: SEM_GRAVACAO,
       ...resto,
     };
+    this.rotasSoLocais = new Set(leSpecDeSeguranca(this.opts.root).rotas_de_maquina.porta_publica_bloqueia);
     this.limitadorAuth = new LimitadorDeTaxa(LIMITE_AUTH_TENTATIVAS, JANELA_AUTH_MS, () => this.opts.agora());
     this.limitadorApi = new LimitadorDeTaxa(LIMITE_API_POR_MINUTO, JANELA_API_MS, () => this.opts.agora());
     this.limitadorPrefetch = new LimitadorDeTaxa(LIMITE_PREFETCH_POR_MINUTO, JANELA_API_MS, () => this.opts.agora());
@@ -635,6 +639,16 @@ export class Servidor {
     // apagam estado (sessão) em vez de servir dado calculado. Ficam ANTES de
     // qualquer outra guarda — pedir login não pode exigir já estar logado, e
     // a guarda de método abaixo é justamente o que barraria um POST.
+    // S3: rota de máquina não responde a pedido que passou por proxy. O nginx escreve
+    // `X-Real-IP` em todo pedido, e o cliente não consegue apagá-lo; as ferramentas que
+    // usam estas rotas falam direto com 127.0.0.1:3100, sem o cabeçalho. É a segunda
+    // camada: a primeira é o próprio nginx devolver 404.
+    if (this.rotasSoLocais.has(rota) && req.headers['x-real-ip'] !== undefined) {
+      this.registraEventoSeg(req, 404, 'rota-de-maquina-pelo-proxy');
+      responde(res, 404, { erro: `Rota '${rota}' não existe.` });
+      return;
+    }
+
     if (rota.startsWith('/auth/') && req.method === 'POST') {
       // CSRF: defesa em profundidade sobre o que `SameSite=Lax`
       // (`identidade.ts`) já impede na prática. Só recusa quando `Origin` (ou,

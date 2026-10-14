@@ -61,10 +61,13 @@ const DOMINIO_CORPORATIVO = process.env.DOMINIO_CORPORATIVO ?? 'sebratel.com.br'
 const TOKEN_INTERNO =
   GOOGLE_CLIENT_ID || FIREBASE.projectId ? '' : (process.env.TOKEN_INTERNO ?? '');
 
-export default defineConfig({
+// S3 (seguranca.yaml): o token só entra no `vite dev`. No build de produção ele não é
+// injetado nem com o `.env` sem provedor — o caso em que a condição acima o deixava passar
+// (medido em 14/10: build sem VITE_FIREBASE_* e com TOKEN_INTERNO punha o valor no bundle).
+export default defineConfig(({ command }) => ({
   define: {
     'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(GOOGLE_CLIENT_ID),
-    'import.meta.env.VITE_TOKEN_INTERNO': JSON.stringify(TOKEN_INTERNO),
+    'import.meta.env.VITE_TOKEN_INTERNO': JSON.stringify(command === 'serve' ? TOKEN_INTERNO : ''),
     'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(FIREBASE.apiKey),
     'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(FIREBASE.authDomain),
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(FIREBASE.projectId),
@@ -111,4 +114,4 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
   },
-});
+}));

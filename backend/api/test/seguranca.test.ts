@@ -315,15 +315,17 @@ test('rate limiting: a janela libera de novo depois de passar o tempo', async ()
 // socket, que o cliente não escolhe, senão o rate limit é decorativo.
 test('rate limiting: sem proxy confiável, X-Real-IP forjado NÃO abre balde novo (bypass fechado)', async () => {
   const s = await sobe({ tokenInterno: 'segredo-de-teste' }); // confiaNoProxy: false (padrão)
+  // `/auth/google`, e não `/auth/interno`: desde o S3 (seguranca.yaml) a rota de máquina
+  // com X-Real-IP é 404 antes do limitador. O balde de `/auth/*` é o mesmo para as quatro.
   try {
     // Todos vêm do mesmo socket (127.0.0.1); o X-Real-IP muda a cada pedido e
     // deve ser IGNORADO. Teto 10/5min → a 11ª tem de bloquear mesmo assim.
     let ultima: Response | undefined;
     for (let i = 0; i < 11; i++) {
-      ultima = await s.busca('/auth/interno', {
+      ultima = await s.busca('/auth/google', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-real-ip': `10.0.0.${i}` },
-        body: JSON.stringify({ token: 'chute-errado' }),
+        body: JSON.stringify({ idToken: 'chute-errado' }),
       });
     }
     assert.equal(ultima!.status, 429, 'X-Real-IP forjado não pode contornar o rate limit sem proxy');
@@ -340,10 +342,10 @@ test('rate limiting: com proxy confiável, X-Real-IP volta a ser a chave (cada I
     // pedidos de 20 IPs distintos são 20 clientes distintos, nenhum bloqueado.
     let bloqueados = 0;
     for (let i = 0; i < 20; i++) {
-      const r = await s.busca('/auth/interno', {
+      const r = await s.busca('/auth/google', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-real-ip': `10.0.0.${i}` },
-        body: JSON.stringify({ token: 'chute-errado' }),
+        body: JSON.stringify({ idToken: 'chute-errado' }),
       });
       if (r.status === 429) bloqueados++;
     }
@@ -352,10 +354,10 @@ test('rate limiting: com proxy confiável, X-Real-IP volta a ser a chave (cada I
     // E o mesmo IP, repetido além do teto, bloqueia — a contagem por chave vale.
     let ultima: Response | undefined;
     for (let i = 0; i < 11; i++) {
-      ultima = await s.busca('/auth/interno', {
+      ultima = await s.busca('/auth/google', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-real-ip': '10.9.9.9' },
-        body: JSON.stringify({ token: 'chute-errado' }),
+        body: JSON.stringify({ idToken: 'chute-errado' }),
       });
     }
     assert.equal(ultima!.status, 429, 'o mesmo X-Real-IP além do teto tem de bloquear');

@@ -1,0 +1,23 @@
+# MANTIDO POR HUMANOS — o contrato de segurança da plataforma (docs/PLANO-SEGURANCA.md).
+#
+# Cada seção de primeiro nível é uma spec do plano (S1–S8) e só existe junto com o teste
+# que a cobra, em `backend/api/test/spec-seguranca.test.ts`. O metateste de lá reprova
+# seção sem teste: spec que ninguém confere é decoração.
+#
+# Mudar um valor aqui é diff de contrato: vai com a justificativa no commit.
+
+# S3 — rota de máquina não sai pela porta pública.
+rotas_de_maquina:
+  # O nginx devolve 404 e a api recusa quando o pedido veio por proxy (traz `X-Real-IP`,
+  # que o nginx sempre escreve). As ferramentas falam direto com 127.0.0.1:3100.
+  porta_publica_bloqueia:
+    - /auth/interno
+  # Apagados pelo nginx antes de repassar: o cliente não escolhe o valor que a api lê.
+  cabecalhos_apagados_no_proxy:
+    - X-Aquecedor-Interno
+  # Segredo que só pode entrar no bundle em `vite dev`. `ambiente` é a variável que o
+  # `vite.config.ts` lê; `na_tela`, o nome que o `config.ts` usa. O build de produção
+  # (imagem e `npm start`) nunca o embute — o token interno abre todas as abas. Até 14/10
+  # embutia quando o build rodava sem VITE_FIREBASE_* (medido: o valor saía no .js).
+  bundle_so_em_dev:
+    - { ambiente: TOKEN_INTERNO, na_tela: VITE_TOKEN_INTERNO }

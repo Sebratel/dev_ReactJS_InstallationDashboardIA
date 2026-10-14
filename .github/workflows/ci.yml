@@ -31,7 +31,19 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm test
-      - run: npm run web:build
+      # S3 (seguranca.yaml, `bundle_so_em_dev`): o build de produção recebe um canário em
+      # cada segredo que só pode existir em `vite dev`, e falha se ele aparecer no bundle.
+      # Sem VITE_FIREBASE_*/VITE_GOOGLE_CLIENT_ID de propósito: é o pior caso, o que
+      # vazava até 14/10.
+      - name: build da tela, sem segredo de dev no bundle
+        env:
+          TOKEN_INTERNO: canario-s3-nao-pode-ir-ao-bundle
+        run: |
+          npm run web:build
+          if grep -rl "canario-s3-nao-pode-ir-ao-bundle" frontend/dist; then
+            echo "VITE_TOKEN_INTERNO vazou para o bundle de produção" >&2
+            exit 1
+          fi
 
   imagens:
     runs-on: ubuntu-latest

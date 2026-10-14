@@ -48,6 +48,12 @@ não `172.18.0.6`. Comando: `docker logs <api> | grep "\[seg\]" | tail -1`.
 
 ### S3 — rotas de máquina só pela porta local
 
+> **Feito em 14/10 (ACHADOS #215)** — no `staging`, falta deploy e a troca do token.
+> `seguranca.yaml` § `rotas_de_maquina` + `spec-seguranca.test.ts`. Na implementação
+> apareceu um caminho que este plano não previa: **o `TOKEN_INTERNO` entrava no
+> JavaScript público** quando o build rodava sem `VITE_FIREBASE_*` (medido com canário).
+> A spec ganhou `bundle_so_em_dev` e o CI builda com canário no pior caso.
+
 **Hoje:** `POST /auth/interno` responde pela porta 80. Quem tiver o `TOKEN_INTERNO` (está no
 `.env` desta estação) abre de qualquer máquina uma sessão `ferramenta-interna`, que passa
 por cima do controle de abas. O cabeçalho `X-Aquecedor-Interno` também atravessa o nginx;

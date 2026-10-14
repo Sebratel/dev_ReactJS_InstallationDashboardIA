@@ -29,8 +29,10 @@ export const TEM_FIREBASE = Boolean(
 /** Google Identity Services puro — o caminho de login anterior ao Firebase. */
 export const GOOGLE_CLIENT_ID = texto(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 
-/** Botão de desenvolvimento. Vazio em todo ambiente com provedor de login. */
-export const TOKEN_INTERNO = texto(import.meta.env.VITE_TOKEN_INTERNO);
+/** Botão de desenvolvimento. Só existe em `vite dev`: no build de produção o `DEV` vira
+ *  `false` e o minificador apaga o ramo — o valor nunca chega ao JavaScript público, mesmo
+ *  com a variável no ambiente do build (S3, `seguranca.yaml`; o CI prova com um canário). */
+export const TOKEN_INTERNO = import.meta.env.DEV ? texto(import.meta.env.VITE_TOKEN_INTERNO) : '';
 
 export const DOMINIO_CORPORATIVO =
   texto(import.meta.env.VITE_DOMINIO_CORPORATIVO) || 'sebratel.com.br';

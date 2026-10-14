@@ -15259,3 +15259,35 @@ Seguro porque o nginx sobrescreve `X-Real-IP` em toda `location` e a api só pub
 `permissions: contents: read` no CI. Relatório completo: `docs/AUDITORIA-2026-10-14.md` §G.
 
 **Vale em produção só depois de recriar a `api`** (com `-f ../contorno.yml`).
+
+## #215 — S3: rota de máquina fora da porta pública, e o token interno podia ir para o bundle (14/10)
+
+**O que o plano pedia (PLANO-SEGURANCA S3).** `POST /auth/interno` respondia pela porta 80:
+com o `TOKEN_INTERNO`, qualquer máquina abria uma sessão `ferramenta-interna`, que passa
+por cima do controle de abas. Agora são duas camadas: o nginx devolve 404 (regex, porque
+a api ignora a barra final e `location =` deixaria `/auth/interno/` passar), e a api
+recusa a rota quando o pedido traz `X-Real-IP` — o nginx sempre escreve, o cliente não
+apaga. As ferramentas (`npm run tela`, e2e, régua) já falavam direto com a 3100. O nginx
+também passou a apagar `X-Aquecedor-Interno` antes de repassar.
+
+**Prova no nginx de verdade** (contêiner descartável com o `nginx.conf` novo, na rede da
+stack): `/auth/interno`, `/auth/interno/`, `/auth//interno`, `/AUTH/INTERNO`,
+`/auth/%69nterno` e `?x=1` → 404 sem chegar à api; `/api/saude` → 200.
+
+**O que apareceu fazendo: o token ia para o JavaScript público.** O `vite.config.ts` lia
+`TOKEN_INTERNO` do `.env` e o injetava no bundle sempre que o build rodava sem
+`VITE_FIREBASE_*`/`VITE_GOOGLE_CLIENT_ID`. Medido com canário: config antigo → o valor no
+`.js`; config novo → 0 arquivos. O bundle da imagem de hoje está limpo (os 2 `.js`
+varridos sem o valor), e a guarda por provedor entrou junto com o Firebase (`83cdc32`,
+16/09) — não há evidência de que tenha vazado em produção. Agora o `vite.config.ts` só
+injeta no `serve` e o `config.ts` só lê atrás de `import.meta.env.DEV`; o CI builda com
+canário sem provedor (o pior caso) e falha se ele aparecer.
+
+**Spec-driven.** Primeira seção de `backend/specs/_catalog/seguranca.yaml`
+(`rotas_de_maquina`), lida pela api (`spec-seguranca.ts`) e cobrada por
+`spec-seguranca.test.ts`, que tem um metateste: seção do YAML sem teste reprova. Contra o
+código antigo, 4 dos 6 testes falham; os 2 que passam são os de "a ferramenta continua
+logando", como devem.
+
+**Falta:** recriar a `api` e o `proxy`; trocar o `TOKEN_INTERNO` (higiene — está em disco
+nesta estação desde o começo do projeto).
