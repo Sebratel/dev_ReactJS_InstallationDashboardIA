@@ -387,6 +387,35 @@ test('rate limiting /api: o prefetch tem balde próprio e não gasta a cota de q
   }
 });
 
+test('SSE /api/eventos: teto de conexões abertas por pessoa — a de número 21 leva 429 (auditoria SEC-003)', async () => {
+  // O rate limit conta ABERTURAS por minuto; uma SSE fica aberta por horas. Sem teto, 300
+  // aberturas por minuto da mesma conta somavam milhares de sockets presos na api e no
+  // nginx (`worker_connections` padrão 1024) — a tela de todo mundo fora por uma aba
+  // com script. Um navegador em HTTP/1.1 não passa de 6 conexões por host: 20 é folga.
+  const s = await sobe();
+  const abertas: http.ClientRequest[] = [];
+  const abre = () =>
+    new Promise<number>((ok, falha) => {
+      const req = http.get(`${s.base}/api/eventos`, (res) => {
+        ok(res.statusCode ?? 0);
+        res.resume();
+      });
+      req.on('error', (e) => (abertas.includes(req) ? undefined : falha(e)));
+      abertas.push(req);
+    });
+  try {
+    for (let i = 0; i < 20; i++) assert.equal(await abre(), 200, `conexão ${i + 1}`);
+    assert.equal(await abre(), 429);
+    // Fechar uma devolve a vaga — o teto é de ABERTAS, não de abertas na vida.
+    abertas.shift()!.destroy();
+    await new Promise((r) => setTimeout(r, 50));
+    assert.equal(await abre(), 200);
+  } finally {
+    for (const r of abertas) r.destroy();
+    await s.fecha();
+  }
+});
+
 // ------------------------------------------------------- prototype pollution
 
 test('__proto__ no corpo de /auth/google não contamina Object.prototype', async () => {

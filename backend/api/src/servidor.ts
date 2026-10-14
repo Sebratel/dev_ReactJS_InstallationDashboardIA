@@ -134,6 +134,9 @@ const LIMITE_PREFETCH_POR_MINUTO = 600;
 /** Quanto a "última pronta" de uma pergunta vive sem ser recalculada (ACHADOS #164). */
 const TTL_ULTIMA_PRONTA_S = 7 * 24 * 3600;
 const JANELA_API_MS = 60_000;
+/** SSE abertas ao mesmo tempo por conta (SEC-003). Um navegador em HTTP/1.1 não passa
+ *  de 6 conexões por host, então 20 cobre três navegadores da mesma pessoa. */
+const MAX_SSE_POR_USUARIO = 20;
 /** Tabela só-do-poller → calculadas que ela alimenta (ver `nativas.ts`). */
 const ALIMENTADAS_AO_VIVO = calculadasAlimentadasAoVivo();
 /** Calculada → fontes do recálculo pelo tempo real (ver `nativas.ts`). */
@@ -289,6 +292,7 @@ export class Servidor {
   private readonly calculadasPorDashboard = new Map<string, Set<string>>();
   /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
   private readonly assinantesSSE = new Set<http.ServerResponse>();
+  private readonly sseAbertasPorUsuario = new Map<string, number>();
 
   /**
    * Os contadores do F0 (ver `metricas.ts`). Somados no caminho quente, lidos em
@@ -741,7 +745,7 @@ export class Servidor {
       }
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
-      if (rota === '/api/eventos') return this.eventos(req, res);
+      if (rota === '/api/eventos') return this.eventos(req, res, quem);
       if (rota.startsWith('/api/dashboards/')) {
         // `<id>` ou `<id>/valores`. O `id` é decodificado depois do corte: há página
         // com acento, e decodificar antes faria um `%2F` no nome virar separador.
@@ -1188,7 +1192,17 @@ export class Servidor {
    * mesma rota de sempre (`GET /api/dashboards/:id`), só que sem esperar o
    * usuário apertar F5.
    */
-  private eventos(req: http.IncomingMessage, res: http.ServerResponse): void {
+  private eventos(req: http.IncomingMessage, res: http.ServerResponse, quem: Identidade): void {
+    // Teto de conexões ABERTAS por pessoa (SEC-003): o rate limit conta aberturas, e uma
+    // SSE vive horas. Máquina (`interno`, só com TOKEN_INTERNO) fica de fora.
+    const contaNoTeto = !quem.papeis.includes('interno');
+    const abertas = this.sseAbertasPorUsuario.get(quem.usuario) ?? 0;
+    if (contaNoTeto && abertas >= MAX_SSE_POR_USUARIO) {
+      this.registraEventoSeg(req, 429, 'sse-teto-por-usuario', quem.usuario);
+      responde(res, 429, { erro: 'Conexões de atualização demais abertas para esta conta. Feche outras abas.' });
+      return;
+    }
+    if (contaNoTeto) this.sseAbertasPorUsuario.set(quem.usuario, abertas + 1);
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -1207,6 +1221,11 @@ export class Servidor {
     this.ligaBatimento();
     req.on('close', () => {
       this.assinantesSSE.delete(res);
+      if (contaNoTeto) {
+        const restam = (this.sseAbertasPorUsuario.get(quem.usuario) ?? 1) - 1;
+        if (restam > 0) this.sseAbertasPorUsuario.set(quem.usuario, restam);
+        else this.sseAbertasPorUsuario.delete(quem.usuario);
+      }
       this.metricas.conta('sse_desconexoes');
       // Sem assinante o temporizador não tem o que fazer. Deixá-lo rodando
       // acordaria o processo a cada 25 s para escrever em ninguém.

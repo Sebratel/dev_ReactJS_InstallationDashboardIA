@@ -211,6 +211,23 @@ test('admin muda papel — mas não o de quem está no .env', async () => {
   await assert.rejects(acesso.muda(chefe, { acao: 'papel', email: 'fixo@sebratel.com.br', papel: 'viewer' }), { status: 400 });
 });
 
+test('papel que só existe no protótipo de Object é recusado com 400, e nada é gravado (auditoria SEC-002)', async () => {
+  // `'constructor' in RANK` é true: com `in`, o corpo `{"papel":"constructor"}` passava na
+  // validação e ia para o INSERT — o ENUM do MariaDB recusava e a tela via um 503 "banco
+  // fora", ou, sem modo estrito, gravava papel vazio. O `parseJsonSeguro` não pega: ele tira
+  // CHAVES `constructor`, não VALORES.
+  const { acesso, banco } = await acessoCom();
+  const chefe = pessoa('chefe@sebratel.com.br');
+  for (const papel of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    await assert.rejects(
+      acesso.muda(chefe, { acao: 'papel', email: 'novo@sebratel.com.br', papel: papel as 'viewer' }),
+      { status: 400 },
+      papel,
+    );
+  }
+  assert.deepEqual(banco.log, []);
+});
+
 test('e-mail fora do domínio e aba desconhecida são recusados', async () => {
   const { acesso } = await acessoCom();
   const chefe = pessoa('chefe@sebratel.com.br');

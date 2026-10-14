@@ -102,6 +102,12 @@ services:
       # pontas saíam como `analytics-platform`, e o custo de banco não tinha dono. Na API,
       # quem conecta é o poller de quase-realtime.
       VOALLE_APPLICATION_NAME: analytics-api-poller
+      # O rate limit conta pelo X-Real-IP, que o serviço `proxy` abaixo SOBRESCREVE em toda
+      # `location` (nginx.conf). Sem isto a api contava pelo IP do socket, que atrás do
+      # nginx é sempre o do nginx: um balde só para a empresa — 10 POST anônimos em /auth/*
+      # trancavam o login de todos por 5 min (auditoria SEC-001, 14/10/2026). Só é seguro
+      # porque a porta da api fica presa em 127.0.0.1; o teste em imagem-runtime cobra as três.
+      CONFIA_PROXY: '1'
       # Na rede interna do compose o serviço redis chama-se 'redis', não localhost.
       # A senha é a mesma REDIS_PASSWORD que autentica o container `redis` logo
       # abaixo (--requirepass) — as duas variam juntas, nunca uma sem a outra.

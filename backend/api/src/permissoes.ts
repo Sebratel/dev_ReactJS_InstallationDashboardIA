@@ -239,7 +239,8 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
       if (papelDeQuem !== 'admin') throw new ErroDeAcesso(403, 'Só administrador muda ou remove papel.');
     }
     if (m.acao === 'papel') {
-      if (!(m.papel in RANK)) throw new ErroDeAcesso(400, 'Papel inválido (viewer, dev ou admin).');
+      // `Object.hasOwn`, não `in`: `'constructor' in RANK` é true (SEC-002).
+      if (!Object.hasOwn(RANK, m.papel)) throw new ErroDeAcesso(400, 'Papel inválido (viewer, dev ou admin).');
       if (alvoFixo) throw new ErroDeAcesso(400, 'Este e-mail tem papel fixo no .env — a tela não muda.');
     }
   };

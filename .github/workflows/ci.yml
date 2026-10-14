@@ -11,6 +11,11 @@ on:
     branches: [main, staging]
   pull_request:
 
+# Menor privilégio (auditoria SEC-004): nenhum job escreve no repositório. Sem esta
+# chave, o GITHUB_TOKEN herda o padrão do repo/organização, que pode ser escrita.
+permissions:
+  contents: read
+
 jobs:
   verifica:
     runs-on: ubuntu-latest

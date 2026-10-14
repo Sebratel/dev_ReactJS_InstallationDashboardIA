@@ -89,7 +89,7 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 - Sessão revogada no logout e expirada no servidor.
 - Autorização por aba antes do cache em página, layout e valores; tentativa indevida retorna 403.
 - Gestão de acessos restrita a dev/admin; promoção e remoção de papéis privilegiados exigem admin.
-- CSRF em autenticação e gestão, rate limiting com proxy confiável explícito, CSP e cabeçalhos de segurança.
+- CSRF em autenticação e gestão, CSP e cabeçalhos de segurança. O rate limiting com proxy confiável estava certo **no código**, mas desligado na stack implantada — ver §G, SEC-001.
 - Corpo e cabeçalhos limitados, JSON endurecido contra chaves de protótipo e erros internos ocultos em produção.
 - Queries administrativas parametrizadas e transações com auditoria.
 - Servidor estático agora impede escape para diretório irmão.
@@ -129,3 +129,49 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 - Não foram realizados carga agressiva, ataques destrutivos ou alterações em dados reais.
 - Core Web Vitals não foram coletados em produção; a evidência desta rodada combina bundle, E2E e medição local fria/quente. O ganho sob refresh real ainda precisa ser confirmado após a promoção.
 - O teste WMI descrito acima permanece bloqueado exclusivamente pela permissão do host.
+
+## G. Reauditoria de segurança — norma SEC-QA-001 (14/10, tarde)
+
+Escopo: este repositório e a stack Docker local (`docker-compose.prod.yml`), com um único
+pedido anônimo pelo nginx para medir o IP que a API enxerga. Nenhum dado de cliente lido,
+nenhum teste de carga ou de negação de serviço executado, nenhuma credencial impressa.
+Base: OWASP Top 10:2025 e a norma da equipe (`auditoria-seguranca/`, `testes-backend`,
+`testes-unitarios`).
+
+### Achados corrigidos (com teste que falhava antes e passa depois)
+
+| ID | Sev. | Estado | O quê | Correção | Regressão |
+|---|---|---|---|---|---|
+| SEC-001 | **Alta** | Confirmada | A01/A02 — atrás do nginx a API contava o rate limit pelo IP do socket, que é o do nginx: medido `[seg] ... ip=::ffff:172.18.0.6` para um pedido de fora. Um balde só para a empresa: 10 POST anônimos em `/auth/*` a cada 5 min (nem precisa de token válido) trancam o login de todo mundo; 300 GET em `/api/*` por minuto dão 429 em todas as abas; `security_events` perde o IP de origem. Já anotado como aberto em ACHADOS #182. | `CONFIA_PROXY: '1'` na `api` do compose — seguro porque o nginx sobrescreve `X-Real-IP` em toda `location` e a porta da API fica em `127.0.0.1`. | `imagem-runtime.test.ts`: cobra as três condições juntas. |
+| SEC-002 | Baixa | Confirmada | A05 — `POST /api/admin/acessos/papel` validava com `m.papel in RANK`, e `'constructor' in RANK` é `true`. `{"papel":"constructor"}` passava e ia para o `INSERT`; o `ENUM` do MariaDB segurava, e a tela via um 503 "banco fora". Só admin alcança. | `Object.hasOwn(RANK, m.papel)` em `permissoes.ts`. | `permissoes.test.ts`: `constructor`, `toString`, `__proto__`, `hasOwnProperty` → 400 e nada gravado. |
+| SEC-003 | Média | Provável (DoS não executado) | A06 — `/api/eventos` (SSE) sem teto de conexões abertas: o rate limit conta aberturas por minuto, e cada SSE vive horas. Uma conta podia acumular milhares de sockets na API e no nginx (`worker_connections` padrão 1024). Demonstrado: a 21ª SSE da mesma conta abria. | Teto de 20 SSE abertas por conta (máquina `interno` fora), 429 com evento `[seg]`. Navegador em HTTP/1.1 não passa de 6 por host. | `seguranca.test.ts`: 20 abrem, a 21ª leva 429, fechar uma devolve a vaga. |
+| SEC-004 | Baixa | Confirmada | A03 — o CI não declarava `permissions:`; o `GITHUB_TOKEN` herdava o padrão do repo. | `permissions: contents: read` no topo de `ci.yml`. | Revisão: nenhum job escreve no repositório. |
+
+### Achados abertos — decisão sua
+
+| ID | Sev. | Estado | O quê | Por que não corrigi |
+|---|---|---|---|---|
+| SEC-005 | Alta | Confirmada | HTTP puro (nginx só `listen 80`), cookie sem `Secure`, sem HSTS: o cookie de sessão e o ID token do Firebase trafegam em claro na rede. Mesmo item da §D. | Precisa de certificado e do proxy do Misael; ligar `COOKIE_SECURE` sem TLS quebra o login. |
+| SEC-006 | Média | Provável, não testada | A01 — `?filtro=` aceita `tabela/coluna` de qualquer tabela do modelo (`decodificaFiltros` só valida a sintaxe). Quem tem uma aba poderia usar o total da página como oráculo sim/não sobre colunas que a aba não mostra (ex.: `QUADRO FUNCIONAL`). | Provar exige consultar o snapshot com dado real. Corrigir = restringir os filtros às colunas da página, o que pode quebrar recorte cruzado; é decisão de produto. |
+| SEC-007 | Info | — | Sessões e baldes do rate limit são `Map` sem varredura (só limpam no acesso). Crescimento limitado na prática: sessão exige login corporativo válido. | Sem impacto medido. |
+
+### Verificado e aprovado nesta rodada
+
+`npm audit`: 0 vulnerabilidades. Nenhum segredo real em arquivo versionado (o `.env.example`
+só tem identificadores públicos do Firebase/Google e IDs de planilha). `.env` e `snapshot/`
+fora do git e da imagem. Frontend sem `dangerouslySetInnerHTML`/`innerHTML`/`eval`. Imagem
+roda como `USER node`. `TOKEN_INTERNO` comparado em tempo constante; segredo do aquecedor é
+`randomUUID` por processo.
+
+### Testes
+
+Baseline antes das correções: 2.197 de 2.199 do backend passam, 1 pulado, 1 falha
+preexistente sem relação com segurança (`porta.test.ts`, consulta de processo do Windows).
+Depois: 2.200 de 2.202 (os 3 novos passam; a mesma falha preexistente), frontend 168/168,
+`npm run typecheck` e `npm run lint` verdes. `backend/api/test` rodou duas vezes com o
+mesmo resultado. Cada teste novo foi visto falhando antes da correção.
+
+### Para valer em produção
+
+A correção SEC-001 só entra recriando a `api` (com `-f ../contorno.yml`, PLANO-CARGA §1).
+SEC-003 e SEC-002 entram na mesma imagem.

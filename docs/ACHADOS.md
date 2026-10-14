@@ -15238,3 +15238,24 @@ protocolo_instalacao ORDER BY m.data_manutencao)` empata e escolhe qualquer item
 `data_hora_saida` (e às vezes `data_instalacao`) muda entre execuções. Na prova, a costura
 antiga divergiu da completa em 7 linhas e a nova em 15, todas só nessas colunas. Mesmo tipo
 de defeito do sorteio da PROTOCOLOS GERAL (resolvido em 04/09); o desempate é decisão do Erick.
+
+## #214 — o rate limit era um balde só para a empresa: a stack não ligava o CONFIA_PROXY (14/10)
+
+**Sintoma.** Reauditoria de segurança (norma SEC-QA-001). Um pedido anônimo pela porta 80
+da stack Docker saiu no log como `[seg] status=401 ip=::ffff:172.18.0.6` — o IP do
+contêiner do nginx, não o do cliente.
+
+**Causa.** O código estava certo (`ipDoPedido` lê `X-Real-IP` com `confiaNoProxy`), mas
+`CONFIA_PROXY` nunca entrou na stack: estava vazio no `.env.example` como "preparado, não
+ativado" desde o #182. Atrás do nginx, todo pedido é do nginx. Os três baldes eram da
+empresa inteira: 10 POST anônimos em `/auth/*` a cada 5 min trancam o login de todos (o
+limitador conta antes de olhar o token), 300 GET/min em `/api/*` dão 429 em todas as abas,
+e `security_events` gravava um IP só.
+
+**Correção.** `CONFIA_PROXY: '1'` no `environment:` da `api` em `docker-compose.prod.yml`.
+Seguro porque o nginx sobrescreve `X-Real-IP` em toda `location` e a api só publica em
+`127.0.0.1`; `imagem-runtime.test.ts` cobra as três juntas. Na mesma rodada: `papel in RANK`
+→ `Object.hasOwn` (`constructor` passava), teto de 20 SSE abertas por conta e
+`permissions: contents: read` no CI. Relatório completo: `docs/AUDITORIA-2026-10-14.md` §G.
+
+**Vale em produção só depois de recriar a `api`** (com `-f ../contorno.yml`).

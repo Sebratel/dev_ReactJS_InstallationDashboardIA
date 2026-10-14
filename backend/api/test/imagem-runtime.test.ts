@@ -241,6 +241,36 @@ test('nginx.conf: a API é resolvida a cada pedido, não na subida do proxy (02/
   assert.deepEqual(passes.filter((p) => p !== '$api'), [], 'proxy_pass com host literal volta a fixar o IP');
 });
 
+test('rate limit atrás do nginx: a api conta pelo X-Real-IP, que só o nginx escreve (auditoria SEC-001, 14/10/2026)', () => {
+  // Sem `CONFIA_PROXY=1`, a api contava pelo IP do socket — e atrás do nginx todo pedido
+  // vem do contêiner do proxy. Medido na stack de 14/10: `[seg] ... ip=::ffff:172.18.0.6`
+  // (o nginx) para um pedido de fora. Os baldes eram UM só para a empresa: 10 POST
+  // anônimos em /auth/* a cada 5 min trancavam o login de todo mundo, 300 GET em /api/*
+  // por minuto davam 429 em todas as abas, e a trilha de `security_events` perdia o IP.
+  //
+  // Ligar só é seguro com as duas metades juntas: o nginx SOBRESCREVE o X-Real-IP em toda
+  // `location` (senão o cliente escolhe o próprio balde), e a api não tem porta fora do
+  // host (senão dá para falar com ela sem passar pelo nginx).
+  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
+    services: Record<string, { environment?: Record<string, string>; ports?: string[] }>;
+  };
+  const api = compose.services.api!;
+  assert.equal(api.environment?.CONFIA_PROXY, '1', 'a api atrás do nginx tem de confiar no X-Real-IP');
+  for (const p of api.ports ?? []) {
+    assert.match(p, /^127\.0\.0\.1:/, `porta da api publicada fora do host (${p}) — X-Real-IP viraria forjável`);
+  }
+  assert.ok(compose.services.proxy, 'CONFIA_PROXY=1 sem o serviço proxy na frente abre bypass do rate limit');
+
+  const conf = fs.readFileSync(path.join(RAIZ, 'nginx.conf'), 'utf8');
+  const ativo = conf.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
+  const locations = [...ativo.matchAll(/location\s+[^{]+\{([^}]*)\}/g)].map((m) => m[1]!);
+  assert.ok(locations.length >= 4, `li ${locations.length} location`);
+  for (const corpo of locations) {
+    if (!/proxy_pass/.test(corpo)) continue;
+    assert.match(corpo, /proxy_set_header X-Real-IP \$remote_addr;/, 'location que repassa sem reescrever X-Real-IP');
+  }
+});
+
 test('crontab: o job exporta o ambiente ao carregar o .env.cron (04/10/2026)', () => {
   // `entrypoint.sh` grava `VAR='valor'` sem `export`; no `sh`, `. arquivo` sem `set -a` não
   // passa nada ao `node` filho. A primeira madrugada falhou nas 24 queries com "falta no
