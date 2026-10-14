@@ -13,7 +13,16 @@
 
 import type mysql from 'mysql2/promise';
 
-export type TipoDeEvento = 'login_ok' | 'login_failed' | 'unauthorized' | 'forbidden' | 'rate_limited' | 'csrf';
+export type TipoDeEvento =
+  | 'login_ok'
+  | 'login_failed'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'rate_limited'
+  | 'csrf'
+  // S2 (seguranca.yaml § sessao): o mesmo cookie de outro IP, e sessão derrubada.
+  | 'sessao_ip_mudou'
+  | 'sessao_derrubada';
 
 export interface EventoDeSeguranca {
   tipo: TipoDeEvento;

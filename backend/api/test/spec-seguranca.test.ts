@@ -12,6 +12,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
+import type { TokenPayload } from 'google-auth-library';
+import type { EventoDeSeguranca } from '../src/eventos-seguranca.ts';
+import { criaAcesso, type LojaDeAcesso } from '../src/permissoes.ts';
 import { Servidor } from '../src/servidor.ts';
 import { caminhoDaSpecDeSeguranca, leSpecDeSeguranca } from '../src/spec-seguranca.ts';
 import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
@@ -175,5 +178,204 @@ test('S3 bundle: segredo de dev só entra no `vite dev` — config.ts, vite.conf
     for (const provedor of ['VITE_FIREBASE_PROJECT_ID', 'VITE_GOOGLE_CLIENT_ID']) {
       assert.equal(passo.env![provedor], undefined, `com ${provedor} no passo, o canário não testa o pior caso`);
     }
+  }
+});
+
+// ------------------------------------------------------------------ S2 — sessão
+
+const HORA = 3_600_000;
+const MIN = 60_000;
+const T0 = Date.parse('2026-10-14T08:00:00.000Z');
+
+/** Servidor com login de pessoa DE VERDADE (`/auth/google`, verificador injetado: o
+ *  idToken é o próprio e-mail) — a política de sessão é o sujeito, não pode ser trocada. */
+async function sobeComLogin(opts: { sessaoTtlHoras?: number; confiaNoProxy?: boolean } = {}) {
+  const relogio = { ms: T0 };
+  const eventos: EventoDeSeguranca[] = [];
+  const loja: LojaDeAcesso = {
+    le: async () => ({ papeis: [], telas: [], emails: [], pedidos: [] }),
+    aplica: async () => {},
+    registraPedido: async () => {},
+  };
+  const acesso = criaAcesso({
+    loja,
+    telasConhecidas: [],
+    adminsDoAmbiente: ['chefe@sebratel.com.br'],
+    devsDoAmbiente: ['dev@sebratel.com.br'],
+    dominio: 'sebratel.com.br',
+    log: () => {},
+  });
+  await acesso.recarrega();
+  const servidor = new Servidor({
+    acesso,
+    root: RAIZ,
+    snapshotDir: fs.mkdtempSync(path.join(os.tmpdir(), 'api-spec-sessao-')),
+    webDir: path.join(RAIZ, 'frontend', 'dist'),
+    agora: () => new Date(relogio.ms),
+    googleClientId: 'cliente-de-teste',
+    verificadorGoogle: {
+      verifyIdToken: async ({ idToken }) => ({ getPayload: () => ({ email: idToken, hd: 'sebratel.com.br' }) as TokenPayload }),
+    },
+    eventosDeSeguranca: { registra: (e) => eventos.push(e), descarrega: async () => {}, para: () => {} },
+    ...(opts.sessaoTtlHoras !== undefined ? { sessaoTtlHoras: opts.sessaoTtlHoras } : {}),
+    ...(opts.confiaNoProxy !== undefined ? { confiaNoProxy: opts.confiaNoProxy } : {}),
+  });
+  const http = servidor.criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  const { port } = http.address() as { port: number };
+  const base = `http://127.0.0.1:${port}`;
+  return {
+    base,
+    relogio,
+    eventos,
+    /** Loga `email` e devolve o cabeçalho Cookie e o Set-Cookie cru. */
+    loga: async (email: string, cabecalhos: Record<string, string> = {}) => {
+      const r = await fetch(`${base}/auth/google`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...cabecalhos },
+        body: JSON.stringify({ idToken: email }),
+      });
+      assert.equal(r.status, 200, `login de ${email}`);
+      const setCookie = r.headers.get('set-cookie') ?? '';
+      return { cookie: setCookie.split(';')[0]!, setCookie };
+    },
+    /** Status de um GET autenticado — 200 com sessão viva, 401 sem. */
+    status: async (cookie: string, rota = '/api/dashboards', cabecalhos: Record<string, string> = {}) =>
+      (await fetch(`${base}${rota}`, { headers: { cookie, ...cabecalhos } })).status,
+    posta: (cookie: string, rota: string, corpo: unknown, origem: string | null = base) =>
+      fetch(`${base}${rota}`, {
+        method: 'POST',
+        headers: { cookie, 'content-type': 'application/json', ...(origem ? { origin: origem } : {}) },
+        body: JSON.stringify(corpo),
+      }),
+    fecha: () =>
+      new Promise<void>((ok) => {
+        servidor.destroi();
+        http.close(() => ok());
+      }),
+  };
+}
+
+test('S2 ttl: o cookie vale o ttl da spec, e SESSAO_TTL_HORAS só encurta', async () => {
+  secao('sessao');
+  const maxAge = (setCookie: string) => Number(/Max-Age=(\d+)/.exec(setCookie)?.[1]);
+  for (const [pedido, esperado] of [
+    [undefined, spec.sessao.ttl_horas],
+    [spec.sessao.ttl_horas * 3, spec.sessao.ttl_horas],
+    [1, 1],
+    [Number.NaN, spec.sessao.ttl_horas],
+  ] as const) {
+    const s = await sobeComLogin(pedido === undefined ? {} : { sessaoTtlHoras: pedido });
+    try {
+      assert.equal(maxAge((await s.loga('fulano@sebratel.com.br')).setCookie), esperado * 3600, `pedido ${pedido}`);
+    } finally {
+      await s.fecha();
+    }
+  }
+});
+
+test('S2 ttl: usada sem parar, a sessão morre no vencimento absoluto', async () => {
+  secao('sessao');
+  const s = await sobeComLogin();
+  try {
+    const { cookie } = await s.loga('fulano@sebratel.com.br');
+    const passo = Math.min(spec.sessao.ociosidade_minutos - 1, 60) * MIN;
+    while (s.relogio.ms + passo < T0 + spec.sessao.ttl_horas * HORA) {
+      s.relogio.ms += passo;
+      assert.equal(await s.status(cookie), 200, `viva em +${(s.relogio.ms - T0) / MIN} min`);
+    }
+    s.relogio.ms = T0 + spec.sessao.ttl_horas * HORA + MIN;
+    assert.equal(await s.status(cookie), 401);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('S2 ociosidade: sem uso pelo tempo da spec a sessão morre; usada antes, renova', async () => {
+  secao('sessao');
+  const s = await sobeComLogin();
+  try {
+    const { cookie } = await s.loga('fulano@sebratel.com.br');
+    s.relogio.ms += (spec.sessao.ociosidade_minutos - 1) * MIN;
+    assert.equal(await s.status(cookie), 200, 'um minuto antes do limite ainda vale');
+    s.relogio.ms += (spec.sessao.ociosidade_minutos - 1) * MIN;
+    assert.equal(await s.status(cookie), 200, 'o uso anterior renovou a janela');
+    s.relogio.ms += (spec.sessao.ociosidade_minutos + 1) * MIN;
+    assert.equal(await s.status(cookie), 401, 'parada além do limite, morre');
+    s.relogio.ms += MIN;
+    assert.equal(await s.status(cookie), 401, 'e não volta');
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('S2 troca de IP: o mesmo cookie de outro IP segue valendo e grava sessao_ip_mudou uma vez', async () => {
+  secao('sessao');
+  const s = await sobeComLogin({ confiaNoProxy: true });
+  try {
+    const { cookie } = await s.loga('fulano@sebratel.com.br', { 'X-Real-IP': '10.0.0.1' });
+    assert.equal(await s.status(cookie, '/api/dashboards', { 'X-Real-IP': '10.0.0.1' }), 200);
+    assert.equal(s.eventos.filter((e) => e.tipo === 'sessao_ip_mudou').length, 0);
+    assert.equal(await s.status(cookie, '/api/dashboards', { 'X-Real-IP': '10.0.0.2' }), 200, 'registra, não derruba');
+    assert.equal(await s.status(cookie, '/api/dashboards', { 'X-Real-IP': '10.0.0.2' }), 200);
+    const mudou = s.eventos.filter((e) => e.tipo === 'sessao_ip_mudou');
+    assert.equal(mudou.length, 1, 'um evento por troca, não por pedido');
+    assert.equal(mudou[0]!.email, 'fulano@sebratel.com.br');
+    assert.equal(mudou[0]!.ip, '10.0.0.2');
+    assert.match(mudou[0]!.motivo ?? '', /10\.0\.0\.1/);
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('S2 remover pessoa na tela "Acessos" derruba as sessões dela na hora', async () => {
+  secao('sessao');
+  const s = await sobeComLogin();
+  try {
+    const chefe = await s.loga('chefe@sebratel.com.br');
+    const fulano = await s.loga('fulano@sebratel.com.br');
+    assert.equal(await s.status(fulano.cookie), 200);
+    const r = await s.posta(chefe.cookie, '/api/admin/acessos/remove', { email: 'Fulano@Sebratel.com.br' });
+    assert.equal(r.status, 200);
+    assert.equal(await s.status(fulano.cookie), 401, 'a pessoa removida continuava logada');
+    assert.equal(await s.status(chefe.cookie), 200, 'derrubou a sessão de quem removeu');
+    assert.ok(s.eventos.some((e) => e.tipo === 'sessao_derrubada' && e.email === 'fulano@sebratel.com.br'));
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('S2 /api/admin/sessoes: só admin vê e derruba; a lista nunca traz o token; POST sem Origin é 403', async () => {
+  secao('sessao');
+  const s = await sobeComLogin();
+  try {
+    const chefe = await s.loga('chefe@sebratel.com.br');
+    const dev = await s.loga('dev@sebratel.com.br');
+    const fulano = await s.loga('fulano@sebratel.com.br');
+
+    for (const quem of [fulano, dev]) {
+      assert.equal(await s.status(quem.cookie, '/api/admin/sessoes'), 403);
+      assert.equal((await s.posta(quem.cookie, '/api/admin/sessoes/derruba', { email: 'chefe@sebratel.com.br' })).status, 403);
+    }
+    assert.equal(await s.status(chefe.cookie), 200, 'dev e viewer não derrubaram o admin');
+
+    const r = await fetch(`${s.base}/api/admin/sessoes`, { headers: { cookie: chefe.cookie } });
+    assert.equal(r.status, 200);
+    const texto = await r.text();
+    const tokenDoFulano = fulano.cookie.split('=')[1]!;
+    assert.ok(!texto.includes(tokenDoFulano), 'a lista de sessões expôs o token');
+    const { sessoes } = JSON.parse(texto) as { sessoes: { usuario: string; ip: string | null }[] };
+    assert.deepEqual(sessoes.map((x) => x.usuario).sort(), ['chefe@sebratel.com.br', 'dev@sebratel.com.br', 'fulano@sebratel.com.br']);
+
+    assert.equal((await s.posta(chefe.cookie, '/api/admin/sessoes/derruba', { email: 'fulano@sebratel.com.br' }, null)).status, 403);
+    assert.equal(await s.status(fulano.cookie), 200, 'o POST recusado por CSRF não pode ter derrubado');
+
+    const derruba = await s.posta(chefe.cookie, '/api/admin/sessoes/derruba', { email: 'FULANO@sebratel.com.br' });
+    assert.equal(derruba.status, 200);
+    assert.equal((await derruba.json()).derrubadas, 1);
+    assert.equal(await s.status(fulano.cookie), 401);
+    assert.equal((await s.posta(chefe.cookie, '/api/admin/sessoes/derruba', {})).status, 400);
+  } finally {
+    await s.fecha();
   }
 });

@@ -21,3 +21,19 @@ rotas_de_maquina:
   # embutia quando o build rodava sem VITE_FIREBASE_* (medido: o valor saía no .js).
   bundle_so_em_dev:
     - { ambiente: TOKEN_INTERNO, na_tela: VITE_TOKEN_INTERNO }
+
+# S2 — sessão curta, que morre sem uso e cai junto com o acesso.
+sessao:
+  # Vencimento absoluto, contado do login. Era 12 até 14/10 (D1 do plano). A variável
+  # SESSAO_TTL_HORAS do .env só ENCURTA: valor maior que este é ignorado.
+  ttl_horas: 8
+  # Sem nenhum pedido com o cookie nesse tempo, a sessão morre (D1). Um cookie roubado
+  # e guardado para depois não serve.
+  ociosidade_minutos: 120
+  # A tela "Acessos" → remover pessoa derruba as sessões dela na hora.
+  ao_remover_pessoa: derruba_sessoes
+  # O mesmo cookie vindo de outro IP: grava `sessao_ip_mudou` e segue (D2). Derrubar
+  # quebraria quem troca de rede (Wi-Fi ↔ cabo).
+  troca_de_ip: registra
+  # GET /api/admin/sessoes e POST /api/admin/sessoes/derruba — só admin.
+  admin_ve_e_derruba: true

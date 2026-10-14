@@ -74,6 +74,10 @@ rotas_de_maquina:
 
 ### S2 — sessão curta, que expira por inatividade e cai junto com o acesso
 
+> **Feito em 14/10 (ACHADOS #216)** — no `staging`, falta deploy. D1 e D2 seguiram a
+> recomendação (8 h + 120 min sem uso; troca de IP registra). `seguranca.yaml` § `sessao`;
+> a tela "Acessos" ganhou "Sessões abertas" (só admin).
+
 **Hoje:** a sessão dura 12 h corridas (`SESSAO_TTL_HORAS=12`), não expira por inatividade,
 não fica presa a nada do aparelho, e remover a pessoa na tela "Acessos" tira as abas mas
 deixa a sessão viva. Não há como ver nem derrubar as sessões de alguém.

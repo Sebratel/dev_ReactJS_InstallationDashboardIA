@@ -38,7 +38,30 @@ export interface Identidade {
 
 interface Sessao {
   usuario: string;
+  criadaEm: number;
   expiraEm: number;
+  /** Último pedido com este cookie — a base da expiração por inatividade (S2). */
+  ultimoUso: number;
+  /** De onde veio o último pedido. Trocar não derruba (S2, `troca_de_ip: registra`). */
+  ip: string | null;
+}
+
+/** A política de `seguranca.yaml` § `sessao`, aplicada a cada identificação. Tudo
+ *  opcional: sem ela, vale só o vencimento absoluto — o comportamento de antes. */
+export interface PoliticaDeSessao {
+  ociosidadeMs?: number;
+  agora?: number;
+  ip?: string;
+  aoTrocarIp?: (usuario: string, de: string, para: string) => void;
+}
+
+/** Uma sessão como o admin a vê — sem o token, que é a própria credencial. */
+export interface SessaoVisivel {
+  usuario: string;
+  criadaEm: string;
+  ultimoUso: string;
+  expiraEm: string;
+  ip: string | null;
 }
 
 /** O estado de sessões ativas — em memória, um `Map` como as outras caches
@@ -67,10 +90,46 @@ function tokenDoPedido(req: http.IncomingMessage): string | null {
 
 /** Cria uma sessão nova para `usuario` e devolve o token — ainda sem o `Set-Cookie`
  *  em volta, que é responsabilidade de quem monta a resposta HTTP. */
-export function criaSessao(sessoes: Sessoes, usuario: string, ttlHoras: number): string {
+export function criaSessao(
+  sessoes: Sessoes,
+  usuario: string,
+  ttlHoras: number,
+  extra: { agora?: number; ip?: string } = {},
+): string {
   const token = crypto.randomUUID();
-  sessoes.set(token, { usuario, expiraEm: Date.now() + ttlHoras * 3_600_000 });
+  const agora = extra.agora ?? Date.now();
+  sessoes.set(token, { usuario, criadaEm: agora, expiraEm: agora + ttlHoras * 3_600_000, ultimoUso: agora, ip: extra.ip ?? null });
   return token;
+}
+
+const mesmoUsuario = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Derruba toda sessão de `usuario` (S2: pessoa removida, ou o admin mandou). Devolve
+ *  quantas eram. A próxima chamada daquele cookie leva 401. */
+export function derrubaSessoesDe(sessoes: Sessoes, usuario: string): number {
+  let n = 0;
+  for (const [token, s] of sessoes) {
+    if (mesmoUsuario(s.usuario, usuario)) {
+      sessoes.delete(token);
+      n++;
+    }
+  }
+  return n;
+}
+
+/** As sessões vivas, da mais recente para a mais antiga — sem token. As vencidas saem
+ *  do `Map` no caminho, como em `identificaPorSessao`. */
+export function listaSessoes(sessoes: Sessoes, agora: number, ociosidadeMs?: number): SessaoVisivel[] {
+  const vivas: Sessao[] = [];
+  for (const [token, s] of sessoes) {
+    const ociosa = ociosidadeMs !== undefined && agora - s.ultimoUso > ociosidadeMs;
+    if (s.expiraEm < agora || ociosa) sessoes.delete(token);
+    else vivas.push(s);
+  }
+  const iso = (ms: number) => new Date(ms).toISOString();
+  return vivas
+    .sort((a, b) => b.ultimoUso - a.ultimoUso)
+    .map((s) => ({ usuario: s.usuario, criadaEm: iso(s.criadaEm), ultimoUso: iso(s.ultimoUso), expiraEm: iso(s.expiraEm), ip: s.ip }));
 }
 
 /** Apaga a sessão do cookie do pedido, se houver uma. Idempotente: chamar sem
@@ -107,14 +166,25 @@ export function cookieDeSessao(token: string, ttlHoras: number, secure = false):
  * Sessão expirada é removida na hora, para o `Map` não crescer sem limite com
  * gente que nunca mais voltou.
  */
-export function identificaPorSessao(sessoes: Sessoes, req: http.IncomingMessage): Identidade | null {
+export function identificaPorSessao(
+  sessoes: Sessoes,
+  req: http.IncomingMessage,
+  politica: PoliticaDeSessao = {},
+): Identidade | null {
   const token = tokenDoPedido(req);
   if (!token) return null;
   const sessao = sessoes.get(token);
   if (!sessao) return null;
-  if (sessao.expiraEm < Date.now()) {
+  const agora = politica.agora ?? Date.now();
+  const ociosa = politica.ociosidadeMs !== undefined && agora - sessao.ultimoUso > politica.ociosidadeMs;
+  if (sessao.expiraEm < agora || ociosa) {
     sessoes.delete(token);
     return null;
+  }
+  sessao.ultimoUso = agora;
+  if (politica.ip !== undefined) {
+    if (sessao.ip !== null && sessao.ip !== politica.ip) politica.aoTrocarIp?.(sessao.usuario, sessao.ip, politica.ip);
+    sessao.ip = politica.ip;
   }
   // A sessão de `/auth/interno` (só existe com o TOKEN_INTERNO certo) é máquina, não
   // pessoa: passa pelo portão de abas como o aquecedor (`permissoes.ts`). Nenhum login

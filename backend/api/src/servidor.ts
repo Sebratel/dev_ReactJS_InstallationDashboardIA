@@ -60,7 +60,9 @@ import {
   apagaSessaoDoPedido,
   cookieDeSessao,
   criaSessao,
+  derrubaSessoesDe,
   identificaPorSessao,
+  listaSessoes,
   type Identidade,
   type Sessoes,
 } from './identidade.ts';
@@ -79,7 +81,7 @@ import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente } from './saude-do-redis.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
-import { leSpecDeSeguranca } from './spec-seguranca.ts';
+import { leSpecDeSeguranca, type SpecDeSeguranca } from './spec-seguranca.ts';
 import { comStatus, inteiro, leCorpo, parseJsonSeguro, responde, tokensIguais } from './http-util.ts';
 import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
 import { serveEstatico } from './estatico.ts';
@@ -330,6 +332,10 @@ export class Servidor {
   private readonly limitadorAuth: LimitadorDeTaxa;
   /** Rotas que só respondem a quem fala direto com a api, nunca pelo proxy (S3, `seguranca.yaml`). */
   private readonly rotasSoLocais: ReadonlySet<string>;
+  /** `seguranca.yaml` § `sessao` (S2). */
+  private readonly politicaDeSessao: SpecDeSeguranca['sessao'];
+  /** O TTL que vale: o pedido pela opção, mas nunca acima da spec (S2). */
+  private readonly ttlSessaoHoras: number;
   private readonly limitadorApi: LimitadorDeTaxa;
   private readonly limitadorPrefetch: LimitadorDeTaxa;
 
@@ -423,13 +429,19 @@ export class Servidor {
 
     this.opts = {
       agora: () => new Date(),
-      identifica: (req) => identificaPorSessao(this.sessoes, req),
+      identifica: (req) =>
+        identificaPorSessao(this.sessoes, req, {
+          ociosidadeMs: this.politicaDeSessao.ociosidade_minutos * 60_000,
+          agora: this.opts.agora().getTime(),
+          ip: ipDoPedido(req, this.opts.confiaNoProxy ?? false),
+          aoTrocarIp: (usuario, de) => this.registraEventoDeSessao(req, 'sessao_ip_mudou', usuario, `ip-anterior=${de}`),
+        }),
       aquecimento: () => ({ ativo: false, pronto: false }),
       tetoDeVisuaisMB: TETO_PADRAO_MB,
       googleClientId: '',
       firebaseProjectId: '',
       dominioCorporativo: 'sebratel.com.br',
-      sessaoTtlHoras: 12,
+      sessaoTtlHoras: Number.POSITIVE_INFINITY, // vale o da spec (S2), ver ttlSessaoHoras
       tokenInterno: '',
       cookieSecure: false,
       producao: false,
@@ -445,7 +457,15 @@ export class Servidor {
       eventosDeSeguranca: SEM_GRAVACAO,
       ...resto,
     };
-    this.rotasSoLocais = new Set(leSpecDeSeguranca(this.opts.root).rotas_de_maquina.porta_publica_bloqueia);
+    const specSeg = leSpecDeSeguranca(this.opts.root);
+    this.rotasSoLocais = new Set(specSeg.rotas_de_maquina.porta_publica_bloqueia);
+    this.politicaDeSessao = specSeg.sessao;
+    // SESSAO_TTL_HORAS só encurta; ilegível (NaN, zero, negativo) vale o da spec.
+    const ttlPedido = this.opts.sessaoTtlHoras;
+    this.ttlSessaoHoras =
+      Number.isFinite(ttlPedido) && ttlPedido > 0
+        ? Math.min(ttlPedido, specSeg.sessao.ttl_horas)
+        : specSeg.sessao.ttl_horas;
     this.limitadorAuth = new LimitadorDeTaxa(LIMITE_AUTH_TENTATIVAS, JANELA_AUTH_MS, () => this.opts.agora());
     this.limitadorApi = new LimitadorDeTaxa(LIMITE_API_POR_MINUTO, JANELA_API_MS, () => this.opts.agora());
     this.limitadorPrefetch = new LimitadorDeTaxa(LIMITE_PREFETCH_POR_MINUTO, JANELA_API_MS, () => this.opts.agora());
@@ -612,6 +632,24 @@ export class Servidor {
     this.opts.eventosDeSeguranca.registra({ tipo, status, email: email ?? null, ip, metodo: req.method ?? '?', rota, motivo });
   }
 
+  /** O que a sessão nova guarda de quem a criou (S2): o relógio do servidor e o IP. */
+  private dadosDaSessaoNova(req: http.IncomingMessage): { agora: number; ip: string } {
+    return { agora: this.opts.agora().getTime(), ip: ipDoPedido(req, this.opts.confiaNoProxy ?? false) };
+  }
+
+  /** Evento de sessão (S2) — não é negativa, então não passa por `registraEventoSeg`. */
+  private registraEventoDeSessao(
+    req: http.IncomingMessage,
+    tipo: 'sessao_ip_mudou' | 'sessao_derrubada',
+    email: string,
+    motivo: string,
+  ): void {
+    const ip = ipDoPedido(req, this.opts.confiaNoProxy ?? false);
+    const rota = (req.url ?? '/').split('?')[0] ?? '/';
+    console.warn(`[seg] ${tipo} ip=${ip} rota=${rota} motivo=${motivo}`);
+    this.opts.eventosDeSeguranca.registra({ tipo, status: 200, email, ip, metodo: req.method ?? '?', rota, motivo: motivo.slice(0, 64) });
+  }
+
   /** Login bem-sucedido — só no banco; no log do container ele nunca apareceu. */
   private registraLogin(req: http.IncomingMessage, email: string): void {
     this.opts.eventosDeSeguranca.registra({
@@ -680,7 +718,8 @@ export class Servidor {
     // CSRF aqui é mais estrito que o de `/auth/*`: sem `Origin`/`Referer` também recusa —
     // esta rota só tem um cliente legítimo, a tela, e a tela é um navegador.
     const ehGestaoDeAcesso = rota === '/api/admin/acessos' || rota.startsWith('/api/admin/acessos/');
-    if (ehGestaoDeAcesso && req.method === 'POST') {
+    const ehGestaoDeSessao = rota === '/api/admin/sessoes' || rota.startsWith('/api/admin/sessoes/');
+    if ((ehGestaoDeAcesso || ehGestaoDeSessao) && req.method === 'POST') {
       const temOrigem = typeof req.headers.origin === 'string' || typeof req.headers.referer === 'string';
       if (!temOrigem || !this.origemPermitida(req)) {
         this.registraEventoSeg(req, 403, 'csrf-gestao-de-acesso');
@@ -691,8 +730,8 @@ export class Servidor {
       res.setHeader('Allow', 'GET, HEAD, POST');
       responde(res, 405, {
         erro: `Método ${req.method} não existe nesta rota. A API é somente leitura ` +
-          `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno, /auth/logout ` +
-          `e /api/admin/acessos/* (gestão de acessos, só admin/dev).`,
+          `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno, /auth/logout` +
+          `, /api/admin/acessos/* (gestão de acessos, só admin/dev) e /api/admin/sessoes/* (só admin).`,
       });
       return;
     }
@@ -758,6 +797,7 @@ export class Servidor {
         return;
       }
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
+      if (ehGestaoDeSessao) return this.gestaoDeSessao(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
       if (rota === '/api/eventos') return this.eventos(req, res, quem);
       if (rota.startsWith('/api/dashboards/')) {
@@ -864,8 +904,8 @@ export class Servidor {
       return;
     }
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
-    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
+    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req));
+    res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
 
@@ -911,8 +951,8 @@ export class Servidor {
       return;
     }
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.opts.sessaoTtlHoras);
-    res.setHeader('Set-Cookie', cookieDeSessao(token, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
+    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req));
+    res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
 
@@ -941,8 +981,8 @@ export class Servidor {
       responde(res, 401, { erro: 'Token interno inválido, ou TOKEN_INTERNO não configurado neste ambiente.' });
       return;
     }
-    const sessao = criaSessao(this.sessoes, 'ferramenta-interna', this.opts.sessaoTtlHoras);
-    res.setHeader('Set-Cookie', cookieDeSessao(sessao, this.opts.sessaoTtlHoras, this.opts.cookieSecure));
+    const sessao = criaSessao(this.sessoes, 'ferramenta-interna', this.ttlSessaoHoras, this.dadosDaSessaoNova(req));
+    res.setHeader('Set-Cookie', cookieDeSessao(sessao, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: 'ferramenta-interna' });
   }
 
@@ -1155,7 +1195,65 @@ export class Servidor {
       }
       throw err;
     }
+    // S2 (`sessao.ao_remover_pessoa: derruba_sessoes`): sem isso a pessoa removida seguia
+    // logada até o vencimento. `muda` já normalizou o e-mail.
+    if (mudanca.acao === 'remove-pessoa' && derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
+      this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `remove-pessoa por=${quem.usuario}`);
+    }
     respondeMatriz();
+  }
+
+  /**
+   * `/api/admin/sessoes` (S2, `seguranca.yaml` § `sessao.admin_ve_e_derruba`):
+   *
+   *   GET                          → as sessões vivas, sem o token
+   *   POST /derruba  { email }     → derruba todas as sessões daquele e-mail
+   *
+   * Só admin — dev gerencia abas, não sessões de colegas.
+   */
+  private async gestaoDeSessao(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rota: string,
+    quem: Identidade,
+  ): Promise<void> {
+    if (this.opts.acesso.papelDe(quem) !== 'admin') {
+      this.registraEventoSeg(req, 403, 'gestao-de-sessao-sem-papel', quem.usuario);
+      responde(res, 403, { erro: 'Só administrador vê e derruba sessões.' });
+      return;
+    }
+    const sub = rota.slice('/api/admin/sessoes'.length);
+    const lista = () =>
+      listaSessoes(
+        this.sessoes,
+        this.opts.agora().getTime(),
+        this.politicaDeSessao.ociosidade_minutos * 60_000,
+      );
+    if (req.method !== 'POST') {
+      if (sub !== '') {
+        responde(res, 404, { erro: `'${sub}' não existe em /api/admin/sessoes.` });
+        return;
+      }
+      responde(res, 200, { sessoes: lista() });
+      return;
+    }
+    if (sub !== '/derruba') {
+      responde(res, 404, { erro: `'${sub}' não existe. A ação: /derruba.` });
+      return;
+    }
+    let email: unknown;
+    try {
+      email = (parseJsonSeguro(await leCorpo(req)) as { email?: unknown } | null)?.email;
+    } catch {
+      email = undefined;
+    }
+    if (typeof email !== 'string' || email.trim() === '' || email.length > 254) {
+      responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { email }.' });
+      return;
+    }
+    const derrubadas = derrubaSessoesDe(this.sessoes, email);
+    this.registraEventoDeSessao(req, 'sessao_derrubada', email.trim().toLowerCase(), `por=${quem.usuario}`);
+    responde(res, 200, { derrubadas, sessoes: lista() });
   }
 
   private lista(res: http.ServerResponse, quem: Identidade): void {

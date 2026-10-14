@@ -15291,3 +15291,29 @@ logando", como devem.
 
 **Falta:** recriar a `api` e o `proxy`; trocar o `TOKEN_INTERNO` (higiene — está em disco
 nesta estação desde o começo do projeto).
+
+## #216 — S2: sessão de 8 h que morre sem uso, cai com o acesso e o admin vê e derruba (14/10)
+
+**O que havia.** Sessão de 12 h corridas (`SESSAO_TTL_HORAS`, sem teto), sem expirar por
+inatividade, sem saber de onde vinha, e remover a pessoa na tela "Acessos" tirava as abas
+mas a deixava logada. Um cookie copiado valia o dia inteiro, e ninguém via.
+
+**O que mudou** (`seguranca.yaml` § `sessao`, D1 e D2 do PLANO-SEGURANCA pela recomendação):
+- 8 h de vencimento absoluto; a variável do `.env` só encurta (valor maior, zero ou
+  ilegível vale a spec). 120 min sem nenhum pedido e a sessão morre.
+- A sessão guarda o IP. O mesmo cookie de outro IP segue valendo e grava
+  `sessao_ip_mudou` uma vez por troca (com o IP anterior no `motivo`).
+- "Remover pessoa" derruba as sessões dela na hora (`sessao_derrubada`).
+- `GET /api/admin/sessoes` (quem, IP, último uso, vencimento — nunca o token) e
+  `POST /api/admin/sessoes/derruba { email }`, só admin, com o CSRF estrito da gestão de
+  acessos. Na tela, "Sessões abertas" dentro do diálogo "Acessos".
+- O relógio da sessão passou a ser o `agora` do servidor (era `Date.now()` solto), o que
+  deixou o vencimento testável.
+
+**Prova.** 6 testes novos em `spec-seguranca.test.ts`, logando pessoas pelo caminho real
+(`/auth/google` com verificador injetado) e andando o relógio. Contra o código anterior,
+os 6 falham. Frontend: `sessoes-ativas.test.tsx`.
+
+**Limite.** Encurta e torna visível o uso de um cookie roubado; não impede o roubo — só o
+HTTPS (S1) impede. Uma aba aberta e esquecida segue viva enquanto o SSE trouxer dado novo
+(cada atualização é um pedido); o vencimento de 8 h continua valendo.

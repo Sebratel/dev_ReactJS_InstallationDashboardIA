@@ -16,7 +16,7 @@ export interface MatrizDeAcesso {
   banco: { ok: boolean; origem: string };
 }
 
-async function chama(caminho: string, corpo?: unknown): Promise<MatrizDeAcesso> {
+async function chama<T = MatrizDeAcesso>(caminho: string, corpo?: unknown): Promise<T> {
   const r = await fetch(
     caminho,
     corpo === undefined
@@ -33,7 +33,7 @@ async function chama(caminho: string, corpo?: unknown): Promise<MatrizDeAcesso> 
       json && typeof json === 'object' && 'erro' in json ? String(json.erro) : `HTTP ${r.status}`;
     throw Object.assign(new Error(erro), { status: r.status });
   }
-  return json as MatrizDeAcesso;
+  return json as T;
 }
 
 export const pegaMatriz = () => chama('/api/admin/acessos');
@@ -45,3 +45,18 @@ export const defineModoDaTela = (tela: string, modo: ModoDaTela) =>
   chama('/api/admin/acessos/tela', { tela, modo });
 export const removePessoa = (email: string) => chama('/api/admin/acessos/remove', { email });
 export const dispensaPedido = (email: string) => chama('/api/admin/acessos/dispensa', { email });
+
+// As sessões abertas (`/api/admin/sessoes`, S2 de docs/PLANO-SEGURANCA.md) — só admin.
+// O servidor nunca devolve o token: o que vem é quem, de onde e até quando.
+
+export interface SessaoAtiva {
+  usuario: string;
+  criadaEm: string;
+  ultimoUso: string;
+  expiraEm: string;
+  ip: string | null;
+}
+
+export const pegaSessoes = () => chama<{ sessoes: SessaoAtiva[] }>('/api/admin/sessoes');
+export const derrubaSessoes = (email: string) =>
+  chama<{ derrubadas: number; sessoes: SessaoAtiva[] }>('/api/admin/sessoes/derruba', { email });

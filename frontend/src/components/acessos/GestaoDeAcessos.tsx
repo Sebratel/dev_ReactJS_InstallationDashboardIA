@@ -24,6 +24,7 @@ import { chavesDeConsulta } from '../../services/dashboardService.ts';
 import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 import { Botao } from '../ui/Botao.tsx';
 import { Aviso, Erro } from '../ui/Cartao.tsx';
+import { CHAVE_SESSOES, SessoesAtivas } from './SessoesAtivas.tsx';
 
 const CHAVE = ['acessos'] as const;
 const nomeCurto = (nome: string) => nome.replace(/\s*\/\s*/g, ' / ');
@@ -39,6 +40,8 @@ export function GestaoDeAcessos({ aoFechar }: { aoFechar: () => void }) {
       qc.setQueryData(CHAVE, nova);
       // As abas de QUEM ESTÁ LOGADO podem ter mudado junto.
       void qc.invalidateQueries({ queryKey: chavesDeConsulta.dashboards });
+      // Remover pessoa derruba as sessões dela no servidor (S2).
+      void qc.invalidateQueries({ queryKey: CHAVE_SESSOES });
     },
   });
 
@@ -127,6 +130,8 @@ export function GestaoDeAcessos({ aoFechar }: { aoFechar: () => void }) {
               </ul>
             </section>
           ) : null}
+
+          {m && souAdmin ? <SessoesAtivas eu={m.eu.usuario} /> : null}
 
           <form onSubmit={adiciona} className="flex gap-[6px]">
             <input

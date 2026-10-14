@@ -14,6 +14,13 @@ export interface SpecDeSeguranca {
     cabecalhos_apagados_no_proxy: string[];
     bundle_so_em_dev: { ambiente: string; na_tela: string }[];
   };
+  sessao: {
+    ttl_horas: number;
+    ociosidade_minutos: number;
+    ao_remover_pessoa: 'derruba_sessoes';
+    troca_de_ip: 'registra';
+    admin_ve_e_derruba: true;
+  };
 }
 
 export function caminhoDaSpecDeSeguranca(root: string): string {
@@ -32,6 +39,7 @@ export function leSpecDeSeguranca(root: string): SpecDeSeguranca {
   const rotas = (bruto?.rotas_de_maquina ?? null) as Record<string, unknown> | null;
   if (!rotas) throw new Error("seguranca.yaml: falta a seção 'rotas_de_maquina'.");
   return {
+    sessao: secaoDeSessao(bruto?.sessao),
     rotas_de_maquina: {
       porta_publica_bloqueia: listaDeTexto(rotas.porta_publica_bloqueia, 'rotas_de_maquina.porta_publica_bloqueia'),
       cabecalhos_apagados_no_proxy: listaDeTexto(
@@ -55,4 +63,28 @@ function paresDeBundle(v: unknown): { ambiente: string; na_tela: string }[] {
     );
   if (!ok) throw new Error("seguranca.yaml: 'rotas_de_maquina.bundle_so_em_dev' tem de ser lista de { ambiente, na_tela }.");
   return v as { ambiente: string; na_tela: string }[];
+}
+
+/** Só aceita o que a api implementa: um valor novo na spec (ex.: `troca_de_ip: derruba`)
+ *  sem o código correspondente tem de derrubar a subida, não ser ignorado. */
+function secaoDeSessao(v: unknown): SpecDeSeguranca['sessao'] {
+  const s = (v ?? null) as Record<string, unknown> | null;
+  if (!s) throw new Error("seguranca.yaml: falta a seção 'sessao'.");
+  const positivo = (x: unknown, onde: string): number => {
+    if (typeof x !== 'number' || !Number.isFinite(x) || x <= 0) {
+      throw new Error(`seguranca.yaml: 'sessao.${onde}' tem de ser um número positivo.`);
+    }
+    return x;
+  };
+  const exato = <T extends string | boolean>(x: unknown, valor: T, onde: string): T => {
+    if (x !== valor) throw new Error(`seguranca.yaml: 'sessao.${onde}' só aceita ${String(valor)} (o que a api implementa).`);
+    return valor;
+  };
+  return {
+    ttl_horas: positivo(s.ttl_horas, 'ttl_horas'),
+    ociosidade_minutos: positivo(s.ociosidade_minutos, 'ociosidade_minutos'),
+    ao_remover_pessoa: exato(s.ao_remover_pessoa, 'derruba_sessoes', 'ao_remover_pessoa'),
+    troca_de_ip: exato(s.troca_de_ip, 'registra', 'troca_de_ip'),
+    admin_ve_e_derruba: exato(s.admin_ve_e_derruba, true, 'admin_ve_e_derruba'),
+  };
 }
