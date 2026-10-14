@@ -202,31 +202,25 @@ function mDaSpec(id: string): MQuerySpec {
   return yaml.parse(fs.readFileSync(p, 'utf8')) as MQuerySpec;
 }
 
-test('CAPACIDADE EQUIPE roda sobre a navegação do connector, com data serial', async () => {
+test('CAPACIDADE EQUIPE roda sobre a tabela do banco (n8n), com DATA vinda do MariaDB', async () => {
+  // Desde 14/10/2026 a fonte é `DB_InstallationDashboard.team_capacities` (ACHADOS #209): o
+  // SQL já devolve as colunas com os nomes da planilha, e o `mysql2` entrega DATE como
+  // `Date`. O M é o de antes, sem a navegação de aba e o PromoteHeaders.
   const s = mDaSpec('capacidade-equipe');
-  // Cabeçalho + duas linhas, como a aba STAGING chega da API: `Column1..N`,
-  // primeira linha é cabeçalho (o M promove), data como número de série.
-  const cabecalho = [
-    'DATA', 'TÉCNICO 1', 'TÉCNICO 2', 'EQUIPE', 'BASE DE ORIGEM', 'GERENTE/SUPERVISOR',
-    'CAPACIDADE MANHÃ', 'CAPACIDADE TARDE', 'COLOR', 'TÉCNICO (OPCIONAL)', 'EDITOR',
-    'DATA MODIFICAÇÃO',
-  ];
-  // Dias desde 1899-12-30: 46037 = 2026-01-15, 45998 = 2025-12-07. A segunda cai
-  // no filtro `[DATA] > #date(2025,12,31)` do M.
-  const linha = (serial: number) => [
-    serial, 'T1', 'T2', 'EQ', 'BASE', 'SUP', 4, 3, null, null, 'e', serial + 0.5,
-  ];
-  const grade = [cabecalho, linha(46037), linha(45998)];
-
-  const eng = executor({
-    'capacidade-equipe': [
-      {
-        name: 'STAGING',
-        ItemKind: 'Table',
-        Data: grade.map((l) => Object.fromEntries(l.map((v, i) => [`Column${i + 1}`, v]))),
-      },
-    ],
+  assert.equal(s.source_type, 'odbc');
+  const linha = (data: string) => ({
+    DATA: new Date(`${data}T00:00:00.000Z`),
+    'TÉCNICO 1': 'T1',
+    'TÉCNICO 2': 'T2',
+    EQUIPE: 'EQ',
+    'BASE DE ORIGEM': 'BASE',
+    'GERENTE/SUPERVISOR': 'SUP',
+    'CAPACIDADE MANHÃ': 4,
+    'CAPACIDADE TARDE': 3,
   });
+  // A segunda cai no filtro `[DATA] > #date(2025,12,31)` do M (o SQL também filtra; o M
+  // continua filtrando para o número não depender de quem escreveu o SQL).
+  const eng = executor({ 'capacidade-equipe': [linha('2026-01-15'), linha('2025-12-07')] });
 
   const feitas = await runQueries({
     specs: [s],
@@ -235,8 +229,6 @@ test('CAPACIDADE EQUIPE roda sobre a navegação do connector, com data serial',
   });
   const t = feitas.get('capacidade-equipe')!.tabela;
 
-  // O filtro do M (`[DATA] > #date(2025,12,31)`) derrubou a linha de dezembro:
-  // prova que a data serial virou data de verdade, não texto.
   assert.equal(t.rowCount, 1);
   assert.deepEqual(t.columns, [
     'DATA', 'TÉCNICO 1', 'TÉCNICO 2', 'EQUIPE', 'BASE DE ORIGEM', 'GERENTE/SUPERVISOR',

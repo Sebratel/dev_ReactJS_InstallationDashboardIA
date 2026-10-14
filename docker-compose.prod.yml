@@ -203,15 +203,13 @@ services:
     mem_limit: 6g
     environment:
       NODE_ENV: production
-      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-sa.json
       REFRESH_INTERVAL_MINUTOS: '15'
       REFRESH_MEMORIA_MB: '4096'
       VOALLE_APPLICATION_NAME: analytics-refresh
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
-      # Credencial Google só-leitura: o `.env` traz o caminho do HOST, que não existe no
-      # contêiner (ACHADOS #153). GOOGLE_CREDENCIAL_HOST = esse caminho, no servidor.
-      - ${GOOGLE_CREDENCIAL_HOST:?defina GOOGLE_CREDENCIAL_HOST no .env - caminho no host do JSON da service account Google}:/run/secrets/google-sa.json:ro
+      # A credencial do Google SAIU em 14/10/2026 (ACHADOS #209): nenhuma query lê mais
+      # planilha — o n8n copia as três para o DB_InstallationDashboard a cada 15 min.
     depends_on:
       api:
         condition: service_healthy
@@ -247,14 +245,12 @@ services:
     mem_limit: 6g
     environment:
       NODE_ENV: production
-      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/google-sa.json
       # Chega ao job pelo `/repo/.env.cron` que o entrypoint grava (docker/cron/entrypoint.sh).
       VOALLE_APPLICATION_NAME: analytics-snapshot-diario
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
-      # Credencial Google só-leitura: o `.env` traz o caminho do HOST, que não existe no
-      # contêiner (ACHADOS #153). GOOGLE_CREDENCIAL_HOST = esse caminho, no servidor.
-      - ${GOOGLE_CREDENCIAL_HOST:?defina GOOGLE_CREDENCIAL_HOST no .env - caminho no host do JSON da service account Google}:/run/secrets/google-sa.json:ro
+      # A credencial do Google SAIU em 14/10/2026 (ACHADOS #209): nenhuma query lê mais
+      # planilha — o n8n copia as três para o DB_InstallationDashboard a cada 15 min.
     depends_on:
       api:
         condition: service_healthy

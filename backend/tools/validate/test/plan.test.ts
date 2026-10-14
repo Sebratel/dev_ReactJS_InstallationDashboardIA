@@ -83,23 +83,26 @@ test('groupSkipped: agrupa por motivo', () => {
 
 // ------------------------------------------------------------ specs reais
 
-test('specs reais: o plano cobre as 20 queries SQL (18 do PBIP + 2 de mão)', () => {
+test('specs reais: o plano cobre as 23 queries SQL (18 do PBIP + 2 de mão + 3 planilhas)', () => {
   // 18 do PBIP + 2 de mão, registradas em docs/SPEC-DRIVEN.md: `field-agenda-slot`
   // (ACHADOS #87, o grão de slot de `field-agenda`) e `protocolos-tipo` (ACHADOS #200, o
   // par protocolo/tipo para a mesclagem de `backlog-agendado-futuro`). As duas no
   // dbVoalle: 15 → 17; dbMaria não muda.
+  //
+  // 20 → 23 (14/10/2026, ACHADOS #209): `quadro-funcional`, `capacidade-equipe` e
+  // `apuracao-premiacao` saíram do Google Sheets para o dbMaria (DB_InstallationDashboard).
   const registry = QueryRegistry.fromSpecsDir(SPECS);
   const plan = planValidation(registry.list(), { configured: [...EXECUTABLE_DATASOURCES] });
 
   assert.equal(plan.runnable.length + plan.skipped.length, registry.queries.size);
-  assert.equal(plan.runnable.length, 20, 'dbVoalle + dbMaria com SQL');
+  assert.equal(plan.runnable.length, 23, 'dbVoalle + dbMaria com SQL');
 
   const porFonte = new Map<string, number>();
   for (const item of plan.runnable) {
     porFonte.set(item.datasource, (porFonte.get(item.datasource) ?? 0) + 1);
   }
   assert.equal(porFonte.get('dbVoalle'), 17);
-  assert.equal(porFonte.get('dbMaria'), 3);
+  assert.equal(porFonte.get('dbMaria'), 6);
 });
 
 test('specs reais: nenhuma query executável é barrada pelo guard read-only', () => {

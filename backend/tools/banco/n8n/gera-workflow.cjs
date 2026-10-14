@@ -63,7 +63,9 @@ const PREPARA = {
 ` + COMUM + `
 const valores = linhas
   .map((l) => [campo(l, 'NOME'), campo(l, 'GESTOR')])
-  .filter(([nome]) => String(nome ?? '').trim() !== '');` + TROCA('employee_managers', 'employee_name, manager_name'),
+  // Só quem TEM gestor: a planilha também lista candidatos de recrutamento (9.537 linhas sem
+  // gestor em 14/10/2026), gente que a plataforma não usa e não tem por que guardar.
+  .filter(([nome, gestor]) => String(nome ?? '').trim() !== '' && String(gestor ?? '').trim() !== '');` + TROCA('employee_managers', 'employee_name, manager_name'),
 
   team_capacities:
     `// CAPACIDADE EQUIPE (aba STAGING) → team_capacities.

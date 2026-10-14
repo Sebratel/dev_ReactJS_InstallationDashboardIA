@@ -3,19 +3,22 @@
 id: quadro-funcional
 name: QUADRO FUNCIONAL
 origin: expression
-source_type: googlesheets
-datasource: gsheets
-sql: null
-url: "https://docs.google.com/spreadsheets/d/13aqmagy60DF_KJ5I4jucJD67qlJNOzzE1g1-sdU0Gjo/edit?gid=0#gid=0"
-sheet: QUADRO FUNCIONAL
+# EDITADA À MÃO em 14/10/2026 (docs/SPEC-DRIVEN.md, ACHADOS #209): a fonte era Google
+# Sheets; agora é o DB_InstallationDashboard, que o n8n preenche a cada 15 min a partir da
+# MESMA planilha. As colunas saem do SQL com os nomes da planilha, então o M daqui para
+# frente é o de antes, sem a navegação de aba e o PromoteHeaders.
+source_type: odbc
+datasource: dbMaria
+sql: "SELECT em.employee_name AS `NOME`, em.manager_name AS `GESTOR` FROM DB_InstallationDashboard.employee_managers AS em ORDER BY em.id"
+url: null
+sheet: null
 endpoints: null
-source_tables: []
+source_tables:
+- db_installationdashboard.employee_managers
 m_expression: |-
   let
-      Fonte = GoogleSheets.Contents("https://docs.google.com/spreadsheets/d/13aqmagy60DF_KJ5I4jucJD67qlJNOzzE1g1-sdU0Gjo/edit?gid=0#gid=0"),
-      #"QUADRO FUNCIONAL_Table" = Fonte{[name="QUADRO FUNCIONAL",ItemKind="Table"]}[Data],
-      #"Cabeçalhos Promovidos" = Table.PromoteHeaders(#"QUADRO FUNCIONAL_Table", [PromoteAllScalars=true]),
-      #"Tipo Alterado" = Table.TransformColumnTypes(#"Cabeçalhos Promovidos",{{"ID", type text}, {"NOME", type text}, {"ADMISSÃO", Int64.Type}, {"DEMISSÃO", Int64.Type}, {"CARGO", type text}, {"TIME", type text}, {"ÁREA", type text}, {"GESTOR", type text}, {"CPF", type any}, {"DATA DE NASCIMENTO ", Int64.Type}, {"SEXO", type text}, {"BASE", type text}, {"TIPO DE DEMISSÃO", type text}, {"MOTIVAÇÃO", type text}, {"RECRUTADOR", type text}, {"SITUAÇÃO", type text}, {"SUBSTITUIÇÃO", type text}, {"POSIÇÃO", type any}, {"ESCOLARIDADE", type text}, {"IMAGEM PERFIL", type text}, {"DATA RECRUTAMENTO", Int64.Type}, {"FONTE", type text}, {"ETAPA", type text}, {"STATUS", type text}, {"OBSERVAÇÕES", type text}, {"REFERÊNCIA PROFISSIONAL", type text}, {"POSSUI CONHECIDO", type text}, {"COLABORADOR CONHECIDO", type text}, {"RG", Int64.Type}, {"LINKS", type text}, {"CIS", type text}, {"AÇÕES TRABALHISTAS", type text}, {"MINDSIGTH", type number}, {"ANTECEDENTES", type text}, {"CELULAR", type text}, {"ID VAGA", Int64.Type}, {"MATRÍCULA", type any}}),
+      Fonte = Odbc.Query("dsn=dbMaria", "SELECT em.employee_name AS `NOME`, em.manager_name AS `GESTOR` FROM DB_InstallationDashboard.employee_managers AS em ORDER BY em.id"),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"NOME", type text}, {"GESTOR", type text}}),
       #"Linhas Filtradas" = Table.SelectRows(#"Tipo Alterado", each ([GESTOR] = "Luis Aranda" or [GESTOR] = "Pablo Borges" or [GESTOR] = "Stefany Souza")),
       #"Linhas Classificadas" = Table.Sort(#"Linhas Filtradas",{{"GESTOR", Order.Ascending}}),
       #"Personalização Adicionada" = Table.AddColumn(#"Linhas Classificadas", "upper_name", each Text.Upper([NOME]))
