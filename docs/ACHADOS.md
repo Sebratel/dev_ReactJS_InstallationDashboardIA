@@ -15208,3 +15208,33 @@ dica, sem clique.
 medida saem `null`, e a chave de hierarquia leva `nivel`. A tela filtra pela primeira
 coluna **com origem** (`Tabela.tsx`), não pela primeira. Cache de resposta v5 → v6. Testes
 em `tabela.test.ts` e `componentes-tabela.test.tsx`.
+
+## #213 — reincidência no poller: poda pela partição em vez de recalcular o ano (14/10)
+
+**Sintoma.** Medido no `/api/saude` de 14/10 (dia útil): o poller gastava 20,6 min/h de banco,
+6,8 deles nas duas queries de reincidência — 5,6 s e 7,7 s por volta, a cada 2 min, para
+devolver quase sempre 0 linhas. `EXPLAIN ANALYZE` da `reincidencia` costurada: 11,9 s, sendo
+~9 s na `primeiro_suporte` e ~2,5 s na `primeira_instalacao`, as duas sobre o ano inteiro.
+
+**Causa.** A costura (#93) filtrava só a SAÍDA: `alvos` decide quais linhas voltam, mas as
+CTEs com `ROW_NUMBER` rodavam inteiras a cada volta — de propósito, para a janela nunca ver
+partição pela metade.
+
+**Correção.** Filtrar pela **chave da partição** antes da janela dá o mesmo `rn` e lê só o
+que mudou. `mudadas` (tarefas com `modified >= :desde`, a varredura que a volta já pagava)
+→ `alvos` (service tags ou contratos tocados) → as CTEs leem só esses, com
+`= ANY(ARRAY(...))` (com `IN (SELECT…)` o planejador refazia a CTE por varredura a cada linha).
+`reincidencia`: 11,9 s → 1,1–1,5 s; `instalacoes-reincidentes`: 8,2 s → 1,3 s. Numa janela
+de 26 h (o recuo máximo), 3,5 s e 2,2 s.
+
+**Prova (26 h, contra a costura antiga e a query completa).** `reincidencia`: as 17 linhas
+da antiga estão nas 63 da nova, e as 63 são idênticas às da completa. `instalacoes-reincidentes`:
+nenhum dos 397 protocolos da antiga falta na nova; a poda é por contrato e só é exata porque
+0 de 25.291 protocolos do ano têm mais de um contrato (premissa medida, escrita no YAML).
+
+**Achado à parte, NÃO corrigido: a `instalacoes-reincidentes` não é determinística.** Um
+protocolo tem vários itens de patrimônio; sem manutenção, o `ROW_NUMBER() OVER (PARTITION BY
+protocolo_instalacao ORDER BY m.data_manutencao)` empata e escolhe qualquer item — e com ele
+`data_hora_saida` (e às vezes `data_instalacao`) muda entre execuções. Na prova, a costura
+antiga divergiu da completa em 7 linhas e a nova em 15, todas só nessas colunas. Mesmo tipo
+de defeito do sorteio da PROTOCOLOS GERAL (resolvido em 04/09); o desempate é decisão do Erick.
