@@ -285,181 +285,105 @@ queries:
   # idêntico à query original sem costura nenhuma.
   instalacoes-reincidentes:
     tabela: "INSTALAÇÕES REINCIDENTES"
-    # 30 s → 2 min: 3,2 s por volta. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
-    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
-    # mudanças — o dobro do refresh. A sentinela (09/10) não serve aqui: o `:desde` é das
-    # marcas de instalação/manutenção, não de `a.modified` (PLANO-MESTRE B.1d).
+    # **Poda por partição (PLANO-MESTRE B.1d, 14/10/2026).** A costura anterior filtrava
+    # só a SAÍDA: `instalacoes`/`manutencoes`/`ROW_NUMBER` rodavam sobre o ano inteiro a
+    # cada volta — 8,2 s medidos em 14/10 (2,9 min/h no poller). Agora `mudadas` (as
+    # tarefas com `modified >= :desde`, a mesma varredura de `assignments` que a volta já
+    # pagava) dá os CONTRATOS tocados, e as duas CTEs só leem esses contratos: 1,3 s na
+    # volta normal, 2,2 s numa janela de 26 h (o `RECUO_MAXIMO_MS`).
+    #
+    # **Exato só porque cada protocolo de instalação tem UM contrato.** A janela particiona
+    # por `protocolo_instalacao` e a poda é por `contract_id`: um protocolo em dois
+    # contratos, com só um deles tocado, teria a partição lida pela metade. Medido em
+    # 14/10: 0 de 25.291 protocolos do ano com mais de um contrato, 0 sem contrato.
+    # Prova da mesma data, janela de 26 h: os 397 protocolos da costura antiga estão
+    # todos na nova (997 — `alvos` é superconjunto, o resto volta igual e o poller
+    # descarta). As únicas diferenças contra a query completa são `data_hora_saida`/
+    # `data_instalacao` — o EMPATE que a query original já tem (vários itens de
+    # patrimônio por protocolo, e sem manutenção o `ROW_NUMBER` não desempata); a costura
+    # antiga diverge da completa do mesmo jeito.
     intervalo_ms: 120000
     margem_segundos: 30
     chave: [protocolo_instalacao]
     marca: [_marca_instalacao, _marca_manutencao]
     costura:
-      de: |-
-        )
-        SELECT
-            protocolo_instalacao,
-            tipo_instalacao,
-            contrato,
-            cliente,
-            data_instalacao,
-            data_hora_saida,
-            tecnico_responsavel,
-            protocolo_manutencao,
-            tipo_manutencao,
-            catalogo,
-            equipe,
-            categoria_1,
-            categoria_2,
-            categoria_3,
-            categoria_4,
-            categoria_5,
-            descricao_manutencao,
-            data_manutencao,
-            CASE 
-                WHEN protocolo_manutencao IS NOT NULL THEN 'SIM'
-                ELSE 'NÃO'
-            END AS reincidente_30d,
-            CASE
-                WHEN data_manutencao IS NOT NULL THEN
-                    FLOOR(EXTRACT(EPOCH FROM (data_manutencao - data_instalacao)) / 86400)
-            END AS dias_para_reincidencia,
-            _marca_instalacao,
-            _marca_manutencao
-        FROM reincidencias
-        WHERE rn = 1 OR rn IS NULL
-        ORDER BY data_instalacao DESC;
+    - de: |-
+        WITH instalacoes AS (
       para: |-
+        WITH mudadas AS (
+            SELECT a.id FROM assignments a WHERE a.modified >= :desde
         ),
-          alvos AS (
-            SELECT i.protocolo_instalacao
-            FROM instalacoes i
-            WHERE i._marca_instalacao >= :desde
+        alvos AS (
+            SELECT cst.contract_id
+            FROM patrimony_packing_lists ppl
+            JOIN mudadas m ON m.id = ppl.assignment_id
+            JOIN contract_service_tags cst ON cst.id = ppl.contract_service_tag_id
             UNION
-            SELECT i.protocolo_instalacao
-            FROM instalacoes i
-            JOIN manutencoes m
-              ON m.contract_id = i.contract_id
-             AND m.data_manutencao >= i.data_instalacao
-             AND m.data_manutencao <= i.data_instalacao + INTERVAL '30 days'
-            WHERE m._marca_manutencao >= :desde
-          )
-        SELECT
-            protocolo_instalacao,
-            tipo_instalacao,
-            contrato,
-            cliente,
-            data_instalacao,
-            data_hora_saida,
-            tecnico_responsavel,
-            protocolo_manutencao,
-            tipo_manutencao,
-            catalogo,
-            equipe,
-            categoria_1,
-            categoria_2,
-            categoria_3,
-            categoria_4,
-            categoria_5,
-            descricao_manutencao,
-            data_manutencao,
-            CASE 
-                WHEN protocolo_manutencao IS NOT NULL THEN 'SIM'
-                ELSE 'NÃO'
-            END AS reincidente_30d,
-            CASE
-                WHEN data_manutencao IS NOT NULL THEN
-                    FLOOR(EXTRACT(EPOCH FROM (data_manutencao - data_instalacao)) / 86400)
-            END AS dias_para_reincidencia,
-            _marca_instalacao,
-            _marca_manutencao
-        FROM reincidencias
-        WHERE (rn = 1 OR rn IS NULL)
-            AND protocolo_instalacao IN (SELECT protocolo_instalacao FROM alvos)
-        ORDER BY data_instalacao DESC;
+            SELECT cst.contract_id
+            FROM assignment_incidents ai
+            JOIN mudadas m ON m.id = ai.assignment_id
+            JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id
+        ),
+        instalacoes AS (
+    - de: |-
+        AND plis.out_date >= DATE_TRUNC('year', CURRENT_DATE)
+      para: |-
+        AND plis.out_date >= DATE_TRUNC('year', CURRENT_DATE)
+              AND cst.contract_id = ANY(ARRAY(SELECT contract_id FROM alvos))
+    - de: |-
+        AND t.id IN ('1050', '65', '1065', '1064', '1063', '1062', '1085')
+      para: |-
+        AND t.id IN ('1050', '65', '1065', '1064', '1063', '1062', '1085')
+            AND cst.contract_id = ANY(ARRAY(SELECT contract_id FROM alvos))
 
-  # Mesmo `alvos` de instalacoes-reincidentes, aplicado a duas CTEs paralelas
-  # (`primeira_instalacao`/`primeiro_suporte`) que particionam por `cst.id` —
-  # aqui o risco era pior: cada partição cruza MÚLTIPLOS registros distintos de
-  # `assignments`, e filtrar direto faria o ROW_NUMBER() eleger a linha "primeira"
-  # ERRADA. Verificado ao vivo: com `:desde` no passado, 1.363 linhas, idêntico à
-  # query original.
   reincidencia:
     tabela: "REINCIDÊNCIA"
-    # 30 s → 2 min: 5,9 s por volta, 12 min/h sozinha. Medido em 02/10/2026 (`/api/saude`, porQuery): cada volta recalcula a query
-    # inteira mesmo sem mudança, e o poller somava 38,6 min de banco por hora com 0
-    # mudanças — o dobro do refresh. A sentinela (09/10) não serve aqui: o `:desde` é das
-    # marcas de instalação/manutenção, não de `a.modified` (PLANO-MESTRE B.1d).
+    # **Poda por partição (PLANO-MESTRE B.1d, 14/10/2026).** As duas CTEs particionam por
+    # `cst.id` (o `service_tag_id`), então filtrar pela chave da partição ANTES da janela
+    # dá o mesmo `rn` em cada partição lida — é a chave da partição, não um subconjunto
+    # das linhas dela. A costura anterior filtrava só a saída e recalculava o ano inteiro:
+    # 11,9 s medidos em 14/10 (3,9 min/h no poller); agora 1,1–1,5 s, 3,5 s em 26 h.
+    #
+    # `= ANY(ARRAY(...))`, não `IN (SELECT ...)`: com o `IN` o planejador refazia a
+    # `primeiro_suporte` por varredura a cada linha de fora (12 × 140 ms); o ARRAY vira
+    # busca pelo índice de `contract_service_tag_id` — o mesmo truque da `field-agenda`.
+    # Prova de 14/10, janela de 26 h: as 17 linhas da costura antiga estão todas nas 63
+    # da nova, e as 63 são idênticas às da query completa.
     intervalo_ms: 120000
     margem_segundos: 30
     chave: [service_tag]
     marca: [_marca_instalacao, _marca_suporte]
     costura:
-      de: |-
-        )
-        SELECT
-            pi."Protocolo Instalação",
-            pi."Tipo",
-            pi.service_tag,
-            pi.cliente_nome,
-            pi.data_instalacao,
-            ps.data_suporte,
-            ps.protocol,
-            ps.protocol_type,
-            ps.titulo_protocolo,
-            ps.categoria1,
-            ps.categoria2,
-            ps.categoria3,
-            ps.categoria4,
-            ps.categoria5,
-            ps.solucao,
-            ps.data_suporte - pi.data_instalacao AS intervalo_suporte,
-            pi._marca_instalacao,
-            ps._marca_suporte
-        FROM primeira_instalacao pi
-        JOIN primeiro_suporte ps ON ps.service_tag_id = pi.service_tag_id
-        WHERE pi.rn = 1
-          AND ps.rn = 1
-          AND ps.data_suporte >= pi.data_instalacao
-          AND ps.data_suporte <= pi.data_instalacao + INTERVAL '30 days'
-        ORDER BY pi.data_instalacao DESC;
+    - de: |-
+        WITH primeira_instalacao AS (
       para: |-
+        WITH mudadas AS (
+            SELECT a.id FROM assignments a WHERE a.modified >= :desde
         ),
-          alvos AS (
-            SELECT pi.service_tag_id
-            FROM primeira_instalacao pi
-            WHERE pi._marca_instalacao >= :desde
+        alvos AS (
+            SELECT ppl.contract_service_tag_id AS service_tag_id
+            FROM patrimony_packing_lists ppl
+            JOIN mudadas m ON m.id = ppl.assignment_id
             UNION
-            SELECT ps.service_tag_id
-            FROM primeiro_suporte ps
-            WHERE ps._marca_suporte >= :desde
-          )
-        SELECT
-            pi."Protocolo Instalação",
-            pi."Tipo",
-            pi.service_tag,
-            pi.cliente_nome,
-            pi.data_instalacao,
-            ps.data_suporte,
-            ps.protocol,
-            ps.protocol_type,
-            ps.titulo_protocolo,
-            ps.categoria1,
-            ps.categoria2,
-            ps.categoria3,
-            ps.categoria4,
-            ps.categoria5,
-            ps.solucao,
-            ps.data_suporte - pi.data_instalacao AS intervalo_suporte,
-            pi._marca_instalacao,
-            ps._marca_suporte
-        FROM primeira_instalacao pi
-        JOIN primeiro_suporte ps ON ps.service_tag_id = pi.service_tag_id
-        WHERE pi.rn = 1
-          AND ps.rn = 1
-          AND ps.data_suporte >= pi.data_instalacao
-          AND ps.data_suporte <= pi.data_instalacao + INTERVAL '30 days'
-          AND pi.service_tag_id IN (SELECT service_tag_id FROM alvos)
-        ORDER BY pi.data_instalacao DESC;
+            SELECT ai.contract_service_tag_id
+            FROM assignment_incidents ai
+            JOIN mudadas m ON m.id = ai.assignment_id
+        ),
+        primeira_instalacao AS (
+    - de: |-
+        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '275', '1011', '1015')
+        ),
+        primeiro_suporte AS (
+      para: |-
+        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '275', '1011', '1015')
+              AND ppl.contract_service_tag_id = ANY(ARRAY(SELECT service_tag_id FROM alvos))
+        ),
+        primeiro_suporte AS (
+    - de: |-
+        WHERE a.created >= DATE_TRUNC('year', CURRENT_DATE)
+      para: |-
+        WHERE a.created >= DATE_TRUNC('year', CURRENT_DATE)
+            AND ai.contract_service_tag_id = ANY(ARRAY(SELECT service_tag_id FROM alvos))
 
   # FIELD AGENDA — a VISÃO PRODUTIVA em tempo real (pedido do Erick, 02/10/2026;
   # ACHADOS #166 e #169). Primeira query em DOIS PASSOS: a costura de
