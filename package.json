@@ -74,7 +74,8 @@
     "probe:reaquecimento": "node --max-old-space-size=3072 backend/tools/probe/src/reaquecimento-pos-evento.ts",
     "probe:watch-snapshot": "node backend/tools/probe/src/watch-do-snapshot.ts",
     "probe:staging": "node backend/tools/probe/src/staging.ts",
-    "probe:compara-materializacao": "node --max-old-space-size=8192 backend/tools/probe/src/compara-materializacao.ts"
+    "probe:compara-materializacao": "node --max-old-space-size=8192 backend/tools/probe/src/compara-materializacao.ts",
+    "seguranca:inventario": "node backend/tools/seguranca/src/inventario.ts"
   },
   "dependencies": {
     "google-auth-library": "^11.0.2",

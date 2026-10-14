@@ -49,3 +49,57 @@ filtros:
   # bloquear: 400. Muda para bloquear depois de uma semana de observar sem caso legítimo
   # (D6 do plano), com a contagem registrada no ACHADOS.
   modo: observar
+
+# S6 — dado pessoal que nenhuma tela usa não é carregado.
+dados_sensiveis:
+  # Nome de coluna que conta como dado pessoal (sem diferenciar maiúscula). Toda coluna
+  # do modelo que casar tem de estar em `colunas` — inventário fechado: coluna pessoal
+  # nova não entra calada. `npm run seguranca:inventario` diz onde cada uma é usada.
+  padrao_de_nome: 'CPF|CNPJ|\bRG\b|E-?MAIL|TELEFONE|CELULAR|\bCEP\b|COMPLEMENTO|\bRUA\b|ENDERE|BAIRRO|LOGRADOURO|NASCIMENTO|LATITUDE|LONGITUDE|CLIENTE|^NUMERO$'
+  # Coluna listada que continua no modelo tem de ter uso (página, DAX, relacionamento,
+  # catálogo, M ou código — o inventário é conservador), ou uma `excecao` com o motivo.
+  # `removida_em` registra o que saiu: se voltar sem uso, o teste reprova de novo.
+  regra: so_carrega_se_usada
+  colunas:
+    - { tabela: CONTRATOS, coluna: CLIENTE, classe: nome }
+    - { tabela: CONTRATOS, coluna: TELEFONE, classe: contato, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: BAIRRO, classe: endereco, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: RUA, classe: endereco, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: LATITUDE, classe: endereco, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: LONGITUDE, classe: endereco, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: NUMERO, classe: endereco, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: COMPLEMENTO, classe: endereco, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: CEP, classe: endereco, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: CPF/CNPJ, classe: documento, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: TELEFONE CONTATO, classe: contato, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS, coluna: E-MAIL, classe: contato, removida_em: 2026-10-14 }
+    - { tabela: CONTRATOS TELEFONIA, coluna: CLIENTE, classe: nome }
+    - tabela: CONTRATOS TELEFONIA
+      coluna: TELEFONE CONTRATO
+      classe: contato
+      excecao: >-
+        Sem uso, mas a query tem DISTINCT/GROUP BY: tirar a coluna pode fundir linhas
+        (contrato com dois números vira uma) e mudar contagem em tela. Medir as duas
+        contagens antes de decidir (ACHADOS #218).
+    - { tabela: INSTALAÇÕES REINCIDENTES, coluna: cliente, classe: nome }
+    - { tabela: PROTOCOLOS GERAL, coluna: CLIENTE, classe: nome }
+    - { tabela: PROTOCOLOS GERAL, coluna: TELEFONE, classe: contato }
+    - { tabela: PROTOCOLOS GERAL, coluna: RUA, classe: endereco }
+    - { tabela: PROTOCOLOS GERAL, coluna: BAIRRO, classe: endereco }
+    - { tabela: PROTOCOLOS GERAL, coluna: LATITUDE, classe: endereco }
+    - { tabela: PROTOCOLOS GERAL, coluna: LONGITUDE, classe: endereco }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: CLIENTE, classe: nome }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: TELEFONE, classe: contato }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: RUA, classe: endereco }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: BAIRRO, classe: endereco }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: LATITUDE, classe: endereco }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: LONGITUDE, classe: endereco }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: CLIENTE, classe: nome }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: TELEFONE, classe: contato }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: RUA, classe: endereco }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: BAIRRO, classe: endereco }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: LATITUDE, classe: endereco }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: LONGITUDE, classe: endereco }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: NUMERO, classe: endereco }
+    - { tabela: REINCIDÊNCIA, coluna: cliente_nome, classe: nome }
+    - { tabela: RETORNO PRIORITARIO, coluna: cliente_nome_instalacao, classe: nome }

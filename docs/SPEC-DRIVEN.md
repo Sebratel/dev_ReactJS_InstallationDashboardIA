@@ -532,6 +532,18 @@ expansão ficaram iguais, então a saída tem o mesmo esquema.
 linhas cada, **0** só numa ou só noutra, mesmas colunas; 116,6 s → 4,9 s. Golden capturado
 por `npm run validate:queries -- --only=protocolos-tipo`. ACHADOS #200.
 
+### `contratos` — onze colunas de dado pessoal sem uso saem da query (14/10/2026)
+
+`CPF/CNPJ`, `E-MAIL`, `TELEFONE`, `TELEFONE CONTATO`, `RUA`, `NUMERO`, `COMPLEMENTO`,
+`BAIRRO`, `CEP`, `LATITUDE` e `LONGITUDE` saíram do `sql:`,
+do SQL de origem guardado no `m_expression` e de `tables/contratos.spec.yaml` (S6 de
+`docs/PLANO-SEGURANCA.md`, ACHADOS #218). Nenhuma página, medida, coluna calculada,
+relacionamento, catálogo, passo M ou código as usava (`npm run seguranca:inventario`), e o
+carregador do snapshot (`colunas-usadas.ts`) só carregava `PLANO` e `CLIENTE` desta tabela.
+A query não tem `DISTINCT` nem `GROUP BY`, então a contagem não muda: SQL antigo e novo
+rodados em seguida devolveram as mesmas 89.019 linhas (23 → 12 colunas). Golden
+regravado. Voltar com qualquer uma delas sem uso reprova `spec-seguranca.test.ts`.
+
 ### `protocolos-telefonia` — corte de `created` passa a `'2025-01-01'` (13/10/2026)
 
 Era `a.created >= DATE_TRUNC('year', CURRENT_DATE)` — o corte do Power BI **Gerencial**. A

@@ -101,6 +101,11 @@ sessao:
 
 ### S6 — dado pessoal que nenhuma tela usa não é carregado
 
+> **Feito em 14/10 (ACHADOS #218)** — no `staging`; vale no próximo refresh de `contratos`
+> depois do deploy. Onze colunas saíram de `CONTRATOS` (documento, contato, endereço e
+> geolocalização). Ficou de fora `CONTRATOS TELEFONIA[TELEFONE CONTRATO]`:
+> sem uso, mas a query tem `DISTINCT`/`GROUP BY` e tirá-la pode fundir linhas — pede medição.
+
 **Hoje:** a query `contratos` traz do Voalle `CPF/CNPJ`, `E-MAIL`, `TELEFONE CONTATO`,
 `LATITUDE`/`LONGITUDE`, e eles ficam no `snapshot/` em disco. `CPF/CNPJ` não aparece em
 nenhum visual, medida, relacionamento ou junção (conferido por grep em 14/10). O

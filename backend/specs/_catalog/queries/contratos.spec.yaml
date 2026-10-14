@@ -16,19 +16,8 @@ sql: |-
   	sp.title "PLANO",
   	ac.city "CIDADE",
   	cs.title "CATALOGO",
-  	p.phone "TELEFONE",
   	ac.city "CIDADE",
-  	ac.neighborhood "BAIRRO",
-  	ac.street "RUA",
-  	ac.street_number "NUMERO",
-  	ac.complement "COMPLEMENTO",
-  	ac.postal_code "CEP",
   	ac.state "ESTADO",
-  	p.tx_id "CPF/CNPJ",
-  	p.cell_phone_1 "TELEFONE CONTATO",
-  	p.email "E-MAIL",
-  	ac.lat "LATITUDE",
-  	ac.lng "LONGITUDE",
           sp.id
   	from authentication_contracts ac
   	left join contracts c on c.id = ac.contract_id
@@ -52,7 +41,7 @@ source_tables:
 - service_products
 m_expression: |-
   let
-      Fonte = Odbc.Query("dsn=dbVoalle", "select#(lf)#(tab)p.name ""CLIENTE"",#(lf)#(tab)ac.user ""USUÁRIO"",#(lf)#(tab)c.contract_number ""NUMERO CONTRATO"",#(lf)#(tab)c.description ""CONTRATO"",#(lf)#(tab)c.created ""CRIADO"",#(lf)#(tab)cst.service_tag ""ETIQUETA"",#(lf)#(tab)sp.title ""PLANO"",#(lf)#(tab)ac.city ""CIDADE"",#(lf)#(tab)cs.title ""CATALOGO"",#(lf)#(tab)p.phone ""TELEFONE"",#(lf)#(tab)ac.city ""CIDADE"",#(lf)#(tab)ac.neighborhood ""BAIRRO"",#(lf)#(tab)ac.street ""RUA"",#(lf)#(tab)ac.street_number ""NUMERO"",#(lf)#(tab)ac.complement ""COMPLEMENTO"",#(lf)#(tab)ac.postal_code ""CEP"",#(lf)#(tab)ac.state ""ESTADO"",#(lf)#(tab)p.tx_id ""CPF/CNPJ"",#(lf)#(tab)p.cell_phone_1 ""TELEFONE CONTATO"",#(lf)#(tab)p.email ""E-MAIL"",#(lf)#(tab)ac.lat ""LATITUDE"",#(lf)#(tab)ac.lng ""LONGITUDE"",#(lf)        sp.id#(lf)#(tab)from authentication_contracts ac#(lf)#(tab)left join contracts c on c.id = ac.contract_id#(lf)#(tab)left join contract_service_tags cst on cst.id = ac.service_tag_id#(lf)#(tab)left join service_products sp on sp.id = ac.service_product_id#(lf)#(tab)left join contract_service_tags_catalog_services cst2 on cst2.contract_service_tag_id = cst.id #(lf)#(tab)left join catalog_services cs on cs.id = cst2.catalog_service_id#(lf)#(tab)left join people p on p.id = c.client_id#(lf)#(tab)where cst2.deleted is not true#(lf)#(tab)order by p.name asc"),
+      Fonte = Odbc.Query("dsn=dbVoalle", "select#(lf)#(tab)p.name ""CLIENTE"",#(lf)#(tab)ac.user ""USUÁRIO"",#(lf)#(tab)c.contract_number ""NUMERO CONTRATO"",#(lf)#(tab)c.description ""CONTRATO"",#(lf)#(tab)c.created ""CRIADO"",#(lf)#(tab)cst.service_tag ""ETIQUETA"",#(lf)#(tab)sp.title ""PLANO"",#(lf)#(tab)ac.city ""CIDADE"",#(lf)#(tab)cs.title ""CATALOGO"",#(lf)#(tab)ac.city ""CIDADE"",#(lf)#(tab)ac.state ""ESTADO"",#(lf)        sp.id#(lf)#(tab)from authentication_contracts ac#(lf)#(tab)left join contracts c on c.id = ac.contract_id#(lf)#(tab)left join contract_service_tags cst on cst.id = ac.service_tag_id#(lf)#(tab)left join service_products sp on sp.id = ac.service_product_id#(lf)#(tab)left join contract_service_tags_catalog_services cst2 on cst2.contract_service_tag_id = cst.id #(lf)#(tab)left join catalog_services cs on cs.id = cst2.catalog_service_id#(lf)#(tab)left join people p on p.id = c.client_id#(lf)#(tab)where cst2.deleted is not true#(lf)#(tab)order by p.name asc"),
       #"Linhas Filtradas1" = Table.SelectRows(Fonte, each true),
       #"Tipo Alterado1" = Table.TransformColumnTypes(#"Linhas Filtradas1",{{"CRIADO", type date}}),
       #"Tipo Alterado" = Table.TransformColumnTypes(#"Tipo Alterado1",{{"NUMERO CONTRATO", Int64.Type}})

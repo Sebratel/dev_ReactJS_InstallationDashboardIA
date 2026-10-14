@@ -25,6 +25,21 @@ export interface SpecDeSeguranca {
     permitidos: 'derivados_da_pagina';
     modo: 'observar' | 'bloquear';
   };
+  dados_sensiveis: {
+    padrao_de_nome: RegExp;
+    regra: 'so_carrega_se_usada';
+    colunas: ColunaSensivel[];
+  };
+}
+
+export interface ColunaSensivel {
+  tabela: string;
+  coluna: string;
+  classe: 'nome' | 'documento' | 'contato' | 'endereco';
+  /** A data em que saiu da query — não pode voltar sem uso. */
+  removida_em?: string;
+  /** Por que fica, mesmo sem uso. */
+  excecao?: string;
 }
 
 export function caminhoDaSpecDeSeguranca(root: string): string {
@@ -45,6 +60,7 @@ export function leSpecDeSeguranca(root: string): SpecDeSeguranca {
   return {
     sessao: secaoDeSessao(bruto?.sessao),
     filtros: secaoDeFiltros(bruto?.filtros),
+    dados_sensiveis: secaoDeDadosSensiveis(bruto?.dados_sensiveis),
     rotas_de_maquina: {
       porta_publica_bloqueia: listaDeTexto(rotas.porta_publica_bloqueia, 'rotas_de_maquina.porta_publica_bloqueia'),
       cabecalhos_apagados_no_proxy: listaDeTexto(
@@ -104,4 +120,32 @@ function secaoDeFiltros(v: unknown): SpecDeSeguranca['filtros'] {
     throw new Error("seguranca.yaml: 'filtros.modo' é observar ou bloquear.");
   }
   return { permitidos: 'derivados_da_pagina', modo: f.modo };
+}
+
+const CLASSES = new Set(['nome', 'documento', 'contato', 'endereco']);
+
+function secaoDeDadosSensiveis(v: unknown): SpecDeSeguranca['dados_sensiveis'] {
+  const d = (v ?? null) as Record<string, unknown> | null;
+  if (!d) throw new Error("seguranca.yaml: falta a seção 'dados_sensiveis'.");
+  if (typeof d.padrao_de_nome !== 'string' || d.padrao_de_nome === '') {
+    throw new Error("seguranca.yaml: 'dados_sensiveis.padrao_de_nome' tem de ser uma expressão regular.");
+  }
+  if (d.regra !== 'so_carrega_se_usada') {
+    throw new Error("seguranca.yaml: 'dados_sensiveis.regra' só aceita so_carrega_se_usada.");
+  }
+  if (!Array.isArray(d.colunas)) throw new Error("seguranca.yaml: 'dados_sensiveis.colunas' tem de ser uma lista.");
+  const colunas = d.colunas.map((c: unknown, i: number): ColunaSensivel => {
+    const o = (c ?? {}) as Record<string, unknown>;
+    if (typeof o.tabela !== 'string' || typeof o.coluna !== 'string' || !CLASSES.has(o.classe as string)) {
+      throw new Error(`seguranca.yaml: 'dados_sensiveis.colunas[${i}]' precisa de tabela, coluna e classe (${[...CLASSES].join(', ')}).`);
+    }
+    return {
+      tabela: o.tabela,
+      coluna: o.coluna,
+      classe: o.classe as ColunaSensivel['classe'],
+      ...(o.removida_em !== undefined ? { removida_em: String(o.removida_em) } : {}),
+      ...(typeof o.excecao === 'string' ? { excecao: o.excecao } : {}),
+    };
+  });
+  return { padrao_de_nome: new RegExp(d.padrao_de_nome, 'i'), regra: 'so_carrega_se_usada', colunas };
 }

@@ -15339,3 +15339,39 @@ fora. No código anterior os dois de comportamento falham.
 uso normal → `modo: bloquear`. Evento legítimo → a coluna entra na spec da página antes.
 Não testado: o tráfego real da tela (rodar a API local contra o `snapshot/` da stack
 quebraria a regra 5 do CLAUDE.md) — é exatamente o que a semana de observar mede.
+
+## #218 — S6: CONTRATOS deixa de carregar CPF/CNPJ, contato e endereço do cliente (14/10)
+
+**O que havia.** A query `contratos` trazia do Voalle, para o `snapshot/` em disco, de 89
+mil contratos: `CPF/CNPJ`, `E-MAIL`, `TELEFONE`, `TELEFONE CONTATO`, `RUA`, `NUMERO`,
+`COMPLEMENTO`, `BAIRRO`, `CEP`, `LATITUDE` e `LONGITUDE`. Nada as usava.
+
+**Como se provou "nada usa" — duas análises independentes.**
+1. `backend/tools/seguranca/src/uso-de-colunas.ts` (novo, `npm run seguranca:inventario`)
+   lê as specs como dado: pares tabela/coluna de todo YAML, o DAX pelo `extractRefs`, e
+   literais no M e no código. Conservador: na dúvida, conta uso. A primeira tentativa,
+   por regex sobre texto, disse que `CONTRATOS[PLANO]` não tinha uso — a página de
+   premiação usa; por isso virou módulo. Ele achou 6 sem uso; as outras 5 apareciam
+   "usadas" só porque uma ferramenta de probe de OUTRA query tem os mesmos nomes.
+2. `colunasUsadas` (`colunas-usadas.ts`, o carregador do snapshot), rodado sobre o
+   modelo ANTIGO: de `CONTRATOS` a plataforma só carrega `PLANO` e `CLIENTE`. Isso fechou
+   as 5 duvidosas e garante a transição: o snapshot velho, com as colunas a mais, segue
+   lido sem erro até o próximo refresh, porque coluna fora desse conjunto nunca sai do disco.
+
+**O que mudou.** As onze saíram do `sql:`, do SQL guardado no `m_expression` e da spec da
+tabela; golden regravado. Mesma contagem: SQL antigo e novo rodados em seguida contra o
+Voalle, 89.019 linhas nos dois (23 → 12 colunas, 2,95 s → 1,39 s; conexão
+`analytics-auditoria-s6`).
+
+**Spec-driven.** `seguranca.yaml` § `dados_sensiveis`: o padrão de nome de dado pessoal e a
+lista classificada de 36 colunas. Três regras, cada uma provada por mutação: coluna com
+nome pessoal fora da lista reprova (inventário fechado); coluna listada sem uso e sem
+`excecao` reprova; coluna `removida_em` que volta à tabela ou ao SQL reprova. No caminho
+apareceu um defeito do próprio teste: a varredura lia o `seguranca.yaml`, e classificar
+uma coluna lá a fazia parecer usada — a regra não reprovava nada. Corrigido antes do commit.
+
+**Ficou para decisão.**
+- `CONTRATOS TELEFONIA[TELEFONE CONTRATO]`: sem uso, mas a query tem `DISTINCT`/`GROUP BY`
+  — tirar a coluna pode fundir linhas e mudar contagem. Fica como `excecao` até medir.
+- `snapshot/` ainda tem as colunas antigas até o próximo refresh de `contratos` com a
+  imagem nova; os PROTOCOLOS seguem com nome, telefone e endereço porque as telas usam.

@@ -21,6 +21,7 @@ import { chaveDeColuna, colunasFiltraveis } from '../src/filtros-da-pagina.ts';
 import { segmentacaoDe } from '../src/calcula.ts';
 import { dataDaPagina } from '../../packages/widget-engine/src/filtros-padrao.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
+import { usoDeColunas } from '../../tools/seguranca/src/uso-de-colunas.ts';
 import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -469,4 +470,71 @@ test('S5 bloquear: filtro de fora é 400; o da própria aba segue', async () => 
   } finally {
     await s.fecha();
   }
+});
+
+// ------------------------------------------------------- S6 — dados sensíveis
+
+type SpecDeTabela = { name: string; query_ref?: string | null; columns?: { name: string }[] };
+
+const tabelasDoModelo = (): SpecDeTabela[] => {
+  const dir = path.join(RAIZ, 'backend', 'specs', '_catalog', 'tables');
+  return fs.readdirSync(dir).map((f) => parse(fs.readFileSync(path.join(dir, f), 'utf8')) as SpecDeTabela);
+};
+const queryDe = (id: string) =>
+  parse(fs.readFileSync(path.join(RAIZ, 'backend', 'specs', '_catalog', 'queries', `${id}.spec.yaml`), 'utf8')) as {
+    sql?: string | null;
+    m_expression?: string | null;
+  };
+const mesma = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+test('S6 inventário fechado: toda coluna com nome de dado pessoal está classificada', () => {
+  secao('dados_sensiveis');
+  const { padrao_de_nome, colunas } = spec.dados_sensiveis;
+  const soltas = tabelasDoModelo().flatMap((t) =>
+    (t.columns ?? [])
+      .filter((c) => padrao_de_nome.test(c.name))
+      .filter((c) => !colunas.some((s) => mesma(s.tabela, t.name) && mesma(s.coluna, c.name)))
+      .map((c) => `${t.name}[${c.name}]`),
+  );
+  assert.deepEqual(soltas, [], 'coluna pessoal fora de seguranca.yaml § dados_sensiveis.colunas');
+});
+
+test('S6 coluna pessoal que fica no modelo tem uso — ou uma exceção que ainda se justifica', () => {
+  secao('dados_sensiveis');
+  const uso = usoDeColunas(RAIZ);
+  const tabelas = tabelasDoModelo();
+  const semUso: string[] = [];
+  const excecaoVencida: string[] = [];
+  for (const s of spec.dados_sensiveis.colunas) {
+    const t = tabelas.find((x) => mesma(x.name, s.tabela));
+    if (!t?.columns?.some((c) => mesma(c.name, s.coluna))) continue;
+    const usada = uso(s.tabela, s.coluna).length > 0;
+    if (!usada && !s.excecao) semUso.push(`${s.tabela}[${s.coluna}]`);
+    if (usada && s.excecao) excecaoVencida.push(`${s.tabela}[${s.coluna}]`);
+  }
+  assert.deepEqual(semUso, [], 'dado pessoal carregado sem uso — tire da query (ou registre a exceção)');
+  assert.deepEqual(excecaoVencida, [], 'a coluna passou a ter uso: a exceção não se justifica mais, tire-a');
+});
+
+test('S6 coluna removida saiu da tabela, do sql: e do SQL de origem do M', () => {
+  secao('dados_sensiveis');
+  const tabelas = tabelasDoModelo();
+  for (const s of spec.dados_sensiveis.colunas.filter((c) => c.removida_em)) {
+    const t = tabelas.find((x) => mesma(x.name, s.tabela));
+    assert.ok(t, `${s.tabela}: tabela não existe no modelo`);
+    assert.ok(!t.columns?.some((c) => mesma(c.name, s.coluna)), `${s.tabela}[${s.coluna}] voltou para a spec da tabela`);
+    const q = queryDe(t.query_ref!);
+    assert.ok(!(q.sql ?? '').includes(`"${s.coluna}"`), `${s.tabela}[${s.coluna}] continua no sql: de ${t.query_ref}`);
+    assert.ok(!(q.m_expression ?? '').includes(`""${s.coluna}""`), `${s.tabela}[${s.coluna}] continua no SQL do M de ${t.query_ref}`);
+  }
+});
+
+test('S6 toda coluna classificada existe no modelo ou está marcada como removida', () => {
+  secao('dados_sensiveis');
+  const tabelas = tabelasDoModelo();
+  const fantasmas = spec.dados_sensiveis.colunas
+    .filter((s) => !s.removida_em)
+    .filter((s) => !tabelas.some((t) => mesma(t.name, s.tabela) && t.columns?.some((c) => mesma(c.name, s.coluna))))
+    .map((s) => `${s.tabela}[${s.coluna}]`);
+  assert.deepEqual(fantasmas, [], 'classificada mas inexistente — erro de digitação, ou faltou `removida_em`');
 });

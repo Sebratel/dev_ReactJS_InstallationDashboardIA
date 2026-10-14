@@ -60,82 +60,16 @@ columns:
   source_column: CATALOGO
   calculated: false
   dax: null
-- name: TELEFONE
-  type: string
-  format: null
-  source_column: TELEFONE
-  calculated: false
-  dax: null
 - name: CIDADE2
   type: string
   format: null
   source_column: CIDADE2
   calculated: false
   dax: null
-- name: BAIRRO
-  type: string
-  format: null
-  source_column: BAIRRO
-  calculated: false
-  dax: null
-- name: RUA
-  type: string
-  format: null
-  source_column: RUA
-  calculated: false
-  dax: null
-- name: NUMERO
-  type: string
-  format: null
-  source_column: NUMERO
-  calculated: false
-  dax: null
-- name: COMPLEMENTO
-  type: string
-  format: null
-  source_column: COMPLEMENTO
-  calculated: false
-  dax: null
-- name: CEP
-  type: string
-  format: null
-  source_column: CEP
-  calculated: false
-  dax: null
 - name: ESTADO
   type: string
   format: null
   source_column: ESTADO
-  calculated: false
-  dax: null
-- name: CPF/CNPJ
-  type: string
-  format: null
-  source_column: CPF/CNPJ
-  calculated: false
-  dax: null
-- name: TELEFONE CONTATO
-  type: string
-  format: null
-  source_column: TELEFONE CONTATO
-  calculated: false
-  dax: null
-- name: E-MAIL
-  type: string
-  format: null
-  source_column: E-MAIL
-  calculated: false
-  dax: null
-- name: LATITUDE
-  type: string
-  format: null
-  source_column: LATITUDE
-  calculated: false
-  dax: null
-- name: LONGITUDE
-  type: string
-  format: null
-  source_column: LONGITUDE
   calculated: false
   dax: null
 - name: id
