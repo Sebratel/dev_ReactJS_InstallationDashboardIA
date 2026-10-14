@@ -15438,3 +15438,27 @@ caíram: quem estava logado entra de novo.
 | erros na api desde o deploy | 0 |
 
 **Daqui a uma semana (S5b):** contar `filtro_fora_da_pagina` em `security_events`.
+
+---
+
+## #220 — eixo de data dos gráficos em ordem de calendário (14/10)
+
+**O que o Erick viu.** Na AGENDAMENTO FIELD, "AGENDA + CAPACIDADE POR TURNO" e "TAXAS DE
+PRODUTIVIDADE E IMPRODUTIVIDADE" com o período em outubro mostravam os dias 17, 10, 14, 19,
+9, 8, 20… — "não teria que ser dias do mês?". Os números de cada dia estavam certos
+(capacidade manhã+tarde do dia 10 = 48+50 = 98, o rótulo da tela); a ordem é que não.
+
+**Causa.** O defeito aberto em #103/#104: o motor entrega os pontos na ordem de primeira
+aparição (`grupos.ts`), porque a ordenação do PBIP nunca foi extraída. Sem filtro de
+período, o eixo vinha de 14/07 a 07/11 (89 dias) embaralhado, e o prefixo comum deixava
+só "17" — 17 de qual mês.
+
+**Decisão do Erick (14/10): ordenar.** Feito na forma do gráfico (`graficoForma.ts`), só
+quando o eixo inteiro é a hierarquia de datas (Ano/Mês/Dia); eixo de texto continua na
+ordem do motor. Rótulo do dia: `17` dentro de um mês, `17/10` quando o período cruza
+meses (o caso de "todo o período"), `17/10/26` quando cruza anos; o tooltip leva
+`sáb, 17/10/2026`. Teste: `frontend/test/grafico-eixo-de-data.test.ts`.
+
+**Ainda aberto.** A matriz com colunas de data (#103) não passa por aqui e continua na
+ordem do motor. O dado sem período traz capacidade em 05/11 e um protocolo em 07/11,
+isolados — vem da planilha/agenda, não do gráfico.

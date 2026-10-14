@@ -161,7 +161,9 @@ export function Grafico({
   const titulo = tituloDeGrafico(visual, d);
 
   // O prefixo comum sai de TODAS as categorias — ver `prefixoComum`.
-  const partesPorCat = gTudo.categorias.map((c) => c.rotulo.split(' / '));
+  const partesPorCat = gTudo.categorias.map((c) =>
+    c.eixo !== undefined ? [c.eixo] : c.rotulo.split(' / '),
+  );
   const comum = prefixoComum(partesPorCat);
   const partesVisiveis = g.categorias.map((_, i) => partesPorCat[de + i]?.slice(comum) ?? []);
 

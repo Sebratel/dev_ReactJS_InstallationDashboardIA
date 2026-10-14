@@ -22,6 +22,8 @@ export interface SerieMontada {
 export interface CategoriaMontada {
   rotulo: string;
   valores: Valor[];
+  /** O texto do eixo quando ele não sai dos níveis do `rotulo` — ver `rotulaDias`. */
+  eixo?: string;
 }
 
 export interface GraficoMontado {
@@ -220,6 +222,99 @@ const num = (v: Valor): number | null => (typeof v === 'number' ? v : null);
  */
 export const MAXIMO_DE_CATEGORIAS = 1000;
 
+const MESES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+const DIAS_DA_SEMANA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const NIVEIS_DE_DATA = new Set(['Ano', 'Mês', 'Dia']);
+
+/** O eixo é só a hierarquia automática de datas (`[Data].[Ano]`, `.[Mês]`, `.[Dia]`)? */
+function ehHierarquiaDeData(niveis: readonly (string | null)[]): boolean {
+  return niveis.length > 0 && niveis.every((n) => n !== null && NIVEIS_DE_DATA.has(n));
+}
+
+/** O número de um nível de data: ano e dia já são número, o mês chega por extenso. */
+function numeroDoNivel(v: Valor, nivel: string | null): number | null {
+  if (typeof v === 'number') return v;
+  if (nivel === 'Mês' && typeof v === 'string') {
+    const k = MESES.indexOf(v.toLowerCase());
+    return k >= 0 ? k + 1 : null;
+  }
+  return null;
+}
+
+/**
+ * Eixo de data em ordem de calendário (ACHADOS #103, #104, #220).
+ *
+ * O motor entrega os pontos na ordem de **primeira aparição** (`grupos.ts`), porque a
+ * ordenação do PBIP nunca foi extraída. Num eixo de data isso embaralha os dias
+ * (17, 10, 14, 19, 9…) e o gráfico parece ter número errado. O Power BI ordena eixo de
+ * data por data; o Erick decidiu em 14/10/2026 ordenar aqui. Só a hierarquia de datas
+ * — um eixo de texto continua na ordem do motor. Nível em branco vai para o fim.
+ */
+function ordenaPorData(
+  categorias: readonly CategoriaMontada[],
+  niveis: readonly (string | null)[],
+): CategoriaMontada[] {
+  const ordem = ['Ano', 'Mês', 'Dia'].map((n) => niveis.indexOf(n)).filter((i) => i >= 0);
+  const numeros = (c: CategoriaMontada) =>
+    ordem.map((i) => numeroDoNivel(c.valores[i] ?? null, niveis[i] ?? null) ?? Infinity);
+  return categorias
+    .map((c) => ({ c, n: numeros(c) }))
+    .sort((a, b) => {
+      for (let k = 0; k < a.n.length; k += 1) {
+        const dif = a.n[k]! - b.n[k]!;
+        if (dif !== 0 && !Number.isNaN(dif)) return dif;
+      }
+      return 0;
+    })
+    .map((x) => x.c);
+}
+
+/**
+ * Rótulo de dia que se lê sozinho: `17` dentro de um mês, `17/10` quando o período
+ * cruza meses, `17/10/26` quando cruza anos. Antes o eixo tirava o prefixo comum e,
+ * com "todo o período", sobrava `outubro/17` ou só `17` — e o 17 de quê? O tooltip
+ * leva a data inteira com o dia da semana, que explica o sábado baixo da agenda.
+ */
+function rotulaDias(categorias: CategoriaMontada[], niveis: readonly (string | null)[]): void {
+  const [iAno, iMes, iDia] = ['Ano', 'Mês', 'Dia'].map((n) => niveis.indexOf(n));
+  if (iDia! < 0 || iMes! < 0) return;
+  const datas = categorias.map((c) => ({
+    ano: iAno! >= 0 ? numeroDoNivel(c.valores[iAno!] ?? null, 'Ano') : null,
+    mes: numeroDoNivel(c.valores[iMes!] ?? null, 'Mês'),
+    dia: numeroDoNivel(c.valores[iDia!] ?? null, 'Dia'),
+  }));
+  const anos = new Set(datas.map((d) => d.ano));
+  const meses = new Set(datas.map((d) => `${d.ano}-${d.mes}`));
+  const dd = (n: number) => String(n).padStart(2, '0');
+  categorias.forEach((c, k) => {
+    const { ano, mes, dia } = datas[k]!;
+    if (mes === null || dia === null) return;
+    c.eixo =
+      anos.size > 1 && ano !== null
+        ? `${dd(dia)}/${dd(mes)}/${String(ano).slice(-2)}`
+        : meses.size > 1
+          ? `${dd(dia)}/${dd(mes)}`
+          : String(dia);
+    if (ano !== null) {
+      const semana = DIAS_DA_SEMANA[new Date(ano, mes - 1, dia).getDay()];
+      c.rotulo = `${semana}, ${dd(dia)}/${dd(mes)}/${ano}`;
+    }
+  });
+}
+
 export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
   const base = POR_TIPO[d.tipo] ?? { forma: 'colunas' as Forma, empilha: false, percentual: false };
   const avisos: string[] = [];
@@ -238,17 +333,26 @@ export function montaGrafico(d: DadosDeGrafico): GraficoMontado {
   const rotulo = (vals: Valor[], idx: number[]): string =>
     idx.map((i) => rotuloDaParte(vals[i], i)).join(' / ') || '—';
 
-  const categorias: CategoriaMontada[] = [];
-  const posDaCategoria = new Map<string, number>();
+  const vistas = new Set<string>();
+  let categorias: CategoriaMontada[] = [];
   for (const p of d.pontos) {
     const chave = JSON.stringify(iEixo.map((i) => p.categoria[i] ?? null));
-    if (posDaCategoria.has(chave)) continue;
-    posDaCategoria.set(chave, categorias.length);
+    if (vistas.has(chave)) continue;
+    vistas.add(chave);
     categorias.push({
       rotulo: rotulo(p.categoria, iEixo),
       valores: iEixo.map((i) => p.categoria[i] ?? null),
     });
   }
+
+  const niveisDoEixo = iEixo.map((i) => chaves[i]!.nivel ?? null);
+  if (ehHierarquiaDeData(niveisDoEixo)) {
+    categorias = ordenaPorData(categorias, niveisDoEixo);
+    rotulaDias(categorias, niveisDoEixo);
+  }
+  const posDaCategoria = new Map<string, number>(
+    categorias.map((c, k) => [JSON.stringify(c.valores), k]),
+  );
 
   const mapa = new Map<string, SerieMontada>();
   const ordem: string[] = [];
