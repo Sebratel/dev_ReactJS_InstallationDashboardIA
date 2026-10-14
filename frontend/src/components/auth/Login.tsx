@@ -19,13 +19,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Erro } from '../ui/Cartao.tsx';
-import { DOMINIO_CORPORATIVO, GOOGLE_CLIENT_ID, TOKEN_INTERNO } from '../../config.ts';
+import { DOMINIO_CORPORATIVO, GOOGLE_CLIENT_ID, TEM_FIREBASE, TOKEN_INTERNO } from '../../config.ts';
 import {
   abreSessaoFirebase,
   abreSessaoGoogle,
   abreSessaoInterna,
 } from '../../services/authService.ts';
-import { entraComGoogle, mensagemDeErro, temFirebase } from '../../services/firebaseAuth.ts';
 import { carregaScriptGis } from '../../services/googleIdentity.ts';
 import { Lock, RefreshCw, Wrench } from 'lucide-react';
 import { cn } from '../../utils/cn.ts';
@@ -43,7 +42,7 @@ export function Login({ aoLogar }: LoginProps) {
   // puro (o anterior, mantido para ambiente que ainda não migrou) e o botão de
   // desenvolvimento por `TOKEN_INTERNO`. Os três terminam igual — cookie de
   // sessão emitido pela nossa API — então `App.tsx` não sabe qual foi usado.
-  const firebase = temFirebase();
+  const firebase = TEM_FIREBASE;
   const clientId = firebase ? '' : GOOGLE_CLIENT_ID;
   const tokenInterno = TOKEN_INTERNO;
   const dominio = DOMINIO_CORPORATIVO;
@@ -67,8 +66,12 @@ export function Login({ aoLogar }: LoginProps) {
   const loginFirebase = async () => {
     setErro(null);
     setEntrando(true);
+    let traduzErro: ((err: unknown) => string | null) | null = null;
     try {
-      const idToken = await entraComGoogle(dominio);
+      // O SDK pesa ~100 kB minificado e só é necessário depois deste clique.
+      const firebaseAuth = await import('../../services/firebaseAuth.ts');
+      traduzErro = firebaseAuth.mensagemDeErro;
+      const idToken = await firebaseAuth.entraComGoogle(dominio);
       const recusa = await abreSessaoFirebase(idToken);
       if (recusa) {
         setErro(recusa);
@@ -77,7 +80,7 @@ export function Login({ aoLogar }: LoginProps) {
       aoLogar();
     } catch (err) {
       // `null` é o caso de quem fechou a janela — desistir não é erro.
-      const mensagem = mensagemDeErro(err);
+      const mensagem = traduzErro?.(err) ?? 'Não foi possível entrar com o Google.';
       if (mensagem) setErro(mensagem);
     } finally {
       setEntrando(false);

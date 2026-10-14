@@ -148,8 +148,9 @@ recriada → instrumento antes/depois → registro em `ACHADOS.md`. O Erick prom
 - *Pronto quando:* 0 aviso falso em 30 min de `ouve-sse` num horário parado.
 
 ### Etapa 7 — tudo pronto ao entrar (R.2 e R.3)
-- As 14 páginas aquecidas (hoje 11), os filtros pré-calculados (religar
-  `AQUECE_FILTROS_ATE` depois da etapa 4) e o cache que sobrevive a um reinício da API.
+- As 14 páginas aquecidas, os filtros da abertura disponíveis sem cálculo combinatório e o
+  cache que sobrevive a um reinício da API. `AQUECE_FILTROS_ATE` fica `0` por padrão; filtros
+  seguintes são preparados por intenção.
 - *Pronto quando:* reiniciar a API e a primeira abertura de cada página ficar ≤ 2 s, sem
   "carregando…".
 
@@ -177,6 +178,21 @@ travamento de 05/10 duas vezes por hora.
 - Entrada: o custo de cada query com o recorte trocado (hoje × 60 dias × 5 dias), medido em
   05/10 (ACHADOS #174): 2 meses a cada 30 min ≈ 8 min/h de banco, viável; 5 dias só com a janela dentro da SQL do poller e a sentinela.
 - *Pronto quando:* o instrumento "com carga" passa com o ciclo de 30 min rodando.
+
+### Estado em 14/10 — tempestade de aquecimento removida localmente
+
+- O processo em uso acumulava 9.640 pedidos de aquecimento para 520 interativos; a fila de
+  worker chegou a 45, e o reaquecimento levou 20,2 s em média e 74,7 s no máximo.
+- A causa era multiplicativa: evento ao vivo × períodos × detalhes × combinações de filtros,
+  somado ao prefetch de todas as páginas e de até 40 estados vizinhos em cada navegador.
+- O código agora aquece uma única abertura no evento, limita a abertura às quatro primeiras
+  faixas (com prioridade explícita), atualiza imediatamente só a consulta operacional e deixa
+  detalhes/filtros para progresso ou intenção.
+- Medição isolada: `agendamento-field` fria 4.219 → 2.062 ms e 36 → 12 pedidos; quente
+  339 → 267 ms; reaquecimento de evento em 1.724 ms com uma consulta de página. Todas as
+  páginas quentes ficaram entre 133 e 267 ms.
+- Estado: testes, build e E2E aprovados. A etapa só fecha depois do deploy e da régua com
+  refresh real; não há alegação de ganho em produção ainda.
 
 ---
 

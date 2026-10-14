@@ -2,35 +2,35 @@
 
 > GERADO POR `npm run tela -- --perf` — não editar à mão. Ver `docs/PLANO-LAYOUT-V1.md` §7.
 
-Gerado em 2026-08-31T15:10:49.730Z. Resolução de referência: 1920×1080.
+Gerado em 2026-10-14T13:31:46.181Z. Resolução de referência: 1920×1080.
 
 | página | passada | primeiro pixel (ms) | pronto (ms) | requisições | bytes | visuais na resposta | ms/visual |
 |---|---|---:|---:|---:|---:|---:|---:|
-| agendamento-field | fria | 224 | 1073 | 5 | 28499 | 8 | 134 |
-| agendamento-field | quente | 224 | 322 | 5 | 28494 | 8 | 40 |
-| capa | fria | 264 | 285 | 1 | 1092 | 2 | 143 |
-| capa | quente | 256 | 275 | 1 | 1091 | 2 | 138 |
-| diario-instalacao | fria | 220 | 1042 | 2 | 49237 | 7 | 149 |
-| diario-instalacao | quente | 232 | 306 | 2 | 49235 | 7 | 44 |
-| instalacao-reincidente | fria | 224 | 2544 | 3 | 62683 | 7 | 363 |
-| instalacao-reincidente | quente | 220 | 266 | 3 | 62680 | 7 | 38 |
-| l-inst | fria | 220 | 255 | 2 | 23457 | 1 | 255 |
-| l-inst | quente | 228 | 263 | 1 | 11728 | 1 | 263 |
-| l-mapa | fria | 232 | 277 | 2 | 42617 | 1 | 277 |
-| l-mapa | quente | 232 | 273 | 1 | 21308 | 1 | 273 |
-| l-tec | fria | 224 | 258 | 1 | 11671 | 1 | 258 |
-| l-tec | quente | 220 | 254 | 1 | 11670 | 1 | 254 |
-| manutencao-inicial | fria | 232 | 1544 | 2 | 106013 | 16 | 97 |
-| manutencao-inicial | quente | 220 | 283 | 2 | 106011 | 16 | 18 |
-| premiacao-instalacao | fria | 224 | 272 | 3 | 41705 | 5 | 54 |
-| premiacao-instalacao | quente | 220 | 272 | 3 | 41702 | 5 | 54 |
-| protocolos-detalhados | fria | 224 | 408 | 3 | 84033 | 4 | 102 |
-| protocolos-detalhados | quente | 236 | 281 | 1 | 40961 | 4 | 70 |
-| relatorio-do-ano | fria | 236 | 531 | 1 | 7305 | 6 | 89 |
-| relatorio-do-ano | quente | 228 | 269 | 1 | 7304 | 6 | 45 |
-| relatorio-do-mes | fria | 220 | 1532 | 3 | 27277 | 18 | 85 |
-| relatorio-do-mes | quente | 228 | 277 | 3 | 27274 | 18 | 15 |
-| telefonia-ouvidoria | fria | 236 | 312 | 4 | 104898 | 7 | 45 |
-| telefonia-ouvidoria | quente | 216 | 282 | 1 | 104897 | 7 | 40 |
-| visao-geral | fria | 224 | 440 | 2 | 96049 | 10 | 44 |
-| visao-geral | quente | 224 | 311 | 1 | 96048 | 10 | 31 |
+| agendamento-field | fria | 176 | 2062 | 12 | 500325 | 27 | 76 |
+| agendamento-field | quente | 100 | 267 | 12 | 500324 | 27 | 10 |
+| capa | fria | 128 | 205 | 1 | 1092 | 2 | 103 |
+| capa | quente | 112 | 133 | 1 | 1091 | 2 | 67 |
+| diario-instalacao | fria | 108 | 928 | 9 | 288588 | 1 | 928 |
+| diario-instalacao | quente | 100 | 260 | 9 | 288586 | 14 | 19 |
+| instalacao-reincidente | fria | 96 | 2433 | 14 | 552402 | 22 | 111 |
+| instalacao-reincidente | quente | 100 | 223 | 14 | 552401 | 22 | 10 |
+| l-inst | fria | 96 | 187 | 1 | 1091 | 2 | 94 |
+| l-inst | quente | 96 | 189 | 1 | 1091 | 2 | 95 |
+| l-mapa | fria | 100 | 195 | 1 | 1091 | 2 | 98 |
+| l-mapa | quente | 96 | 195 | 1 | 1091 | 2 | 98 |
+| l-tec | fria | 128 | 251 | 1 | 1091 | 2 | 126 |
+| l-tec | quente | 112 | 222 | 1 | 1091 | 2 | 111 |
+| manutencao-inicial | fria | 96 | 1436 | 14 | 257129 | 31 | 46 |
+| manutencao-inicial | quente | 96 | 226 | 14 | 257128 | 31 | 7 |
+| premiacao-instalacao | fria | 88 | 1952 | 5 | 264191 | 11 | 177 |
+| premiacao-instalacao | quente | 92 | 243 | 5 | 264190 | 11 | 22 |
+| protocolos-detalhados | fria | 108 | 934 | 10 | 327220 | 1 | 934 |
+| protocolos-detalhados | quente | 100 | 188 | 10 | 327217 | 11 | 17 |
+| relatorio-do-ano | fria | 92 | 927 | 4 | 22089 | 1 | 927 |
+| relatorio-do-ano | quente | 104 | 185 | 4 | 11661 | 7 | 26 |
+| relatorio-do-mes | fria | 92 | 2444 | 2 | 19904 | 21 | 116 |
+| relatorio-do-mes | quente | 92 | 176 | 2 | 19903 | 21 | 8 |
+| telefonia-ouvidoria | fria | 88 | 905 | 13 | 285824 | 1 | 905 |
+| telefonia-ouvidoria | quente | 88 | 211 | 13 | 387721 | 16 | 13 |
+| visao-geral | fria | 100 | 4992 | 15 | 702332 | 1 | 4992 |
+| visao-geral | quente | 112 | 246 | 15 | 600834 | 18 | 14 |

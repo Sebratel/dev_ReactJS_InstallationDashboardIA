@@ -58,15 +58,18 @@ export interface Passada {
   obsoleta: boolean;
 }
 
-/** Até quantos valores um filtro tem para ser pré-calculado valor a valor (ACHADOS #163). */
-export const FILTROS_ATE_PADRAO = 40;
+/**
+ * Pré-cálculo amplo de filtros é opt-in. No runtime real ele multiplicou cada mudança
+ * ao vivo em dezenas de cálculos e já provocou OOM; hover e vizinhança cobrem o uso comum.
+ */
+export const FILTROS_ATE_PADRAO = 0;
 
 export interface OpcoesDoAquecedor {
-  /** O corte eager. Padrão: `N_FAIXAS_EAGER` (todas). Os testes do mecanismo passam 4. */
+  /** O corte eager. Padrão: `N_FAIXAS_EAGER`. */
   nFaixasEager?: number;
   /**
    * Pré-calcula, depois do aquecimento, cada valor dos filtros com até este número de
-   * valores (ACHADOS #163). Padrão 40; 0 desliga. Na API vem de `AQUECE_FILTROS_ATE`.
+   * valores (ACHADOS #163). Padrão 0; habilite explicitamente só após medir memória.
    */
   filtrosAte?: number;
   /** Ex.: `http://127.0.0.1:3100`. Sem barra no fim. */
@@ -191,7 +194,7 @@ export class Aquecedor {
     try {
       for (const id of paginas) {
         // Sequencial pelo mesmo motivo de `passada`: a API é um processo só.
-        feitas.push(await this.#aquece(id));
+        feitas.push(await this.#aquece(id, 'abertura'));
       }
       const ms = this.#agora() - t0;
       const erros = feitas.filter((p) => p.status !== 200).length;
@@ -199,7 +202,6 @@ export class Aquecedor {
         `[reaquecedor] ${feitas.length} página(s) quentes em ${(ms / 1000).toFixed(1)}s` +
           (erros > 0 ? `, ${erros} com erro` : ''),
       );
-      this.#disparaFiltros(paginas);
       return feitas;
     } finally {
       this.#ocupado = false;
@@ -338,7 +340,10 @@ export class Aquecedor {
     }
   }
 
-  async #aquece(pagina: string): Promise<PaginaAquecida> {
+  async #aquece(
+    pagina: string,
+    modo: 'completo' | 'abertura' = 'completo',
+  ): Promise<PaginaAquecida> {
     const t0 = this.#agora();
     try {
       const layoutInfo = await this.#idsDoLayout(pagina);
@@ -348,8 +353,28 @@ export class Aquecedor {
           ? `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}?` +
             idsEager.map((id) => `visual=${encodeURIComponent(id)}`).join('&')
           : `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}`;
-      const r = await this.#buscar(url);
-      if (r.status === 200) {
+      const filtrosDaPagina = idsEager ? filtrosRecentes(pagina) : [];
+      const abertura = filtrosDaPagina[0] ?? [];
+      const urlDeAbertura = adicionaFiltros(url, abertura);
+
+      // O poller muda a cada ~30 s. Reaquecer aqui as versões sem filtro, meses
+      // anteriores, detalhes e combinações de segmentação gerava 9.640 warmups para
+      // 520 pedidos de gente. O evento prepara só a chave que a tela aberta consulta.
+      if (modo === 'abertura') {
+        const resposta = await this.#buscar(urlDeAbertura);
+        await resposta.arrayBuffer();
+        const ms = this.#agora() - t0;
+        if (resposta.status !== 200) {
+          this.#anuncia(
+            `[aquecedor]   ${pagina}: HTTP ${resposta.status} em ${(ms / 1000).toFixed(1)}s`,
+          );
+        }
+        return { pagina, ms, status: resposta.status };
+      }
+
+      let aberturaJaAquecida = false;
+      const r = await this.#buscar(this.#filtrosAte > 0 ? url : urlDeAbertura);
+      if (r.status === 200 && this.#filtrosAte > 0) {
         const body = (await r.json()) as {
           visuais?: {
             segmentacao?: {
@@ -395,6 +420,7 @@ export class Aquecedor {
         }
       } else {
         await r.arrayBuffer();
+        aberturaJaAquecida = r.status === 200;
       }
 
       // Se a página tem layout eager e filtros padrão (mês fechado ou ano corrente),
@@ -404,9 +430,9 @@ export class Aquecedor {
       // relatório — caía sempre na primeira vez: ~1,6 s, contra 2–3 ms quando
       // a mesma combinação já foi pedida. Ver `filtrosRecentes`.
       if (idsEager && idsEager.length > 0) {
-        for (const filtros of filtrosRecentes(pagina)) {
-          const qFiltros = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
-          const urlFiltrada = url.includes('?') ? `${url}&${qFiltros}` : `${url}?${qFiltros}`;
+        for (const [indice, filtros] of filtrosDaPagina.entries()) {
+          if (aberturaJaAquecida && indice === 0) continue;
+          const urlFiltrada = adicionaFiltros(url, filtros);
           try {
             const rFiltrada = await this.#buscar(urlFiltrada);
             await rFiltrada.arrayBuffer();
@@ -470,6 +496,14 @@ export class Aquecedor {
       return { pagina, ms, status: null, erro: mensagem(err) };
     }
   }
+}
+
+function adicionaFiltros(url: string, filtros: readonly FiltroDeTela[]): string {
+  const query = filtros
+    .map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`)
+    .join('&');
+  if (!query) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${query}`;
 }
 
 function mensagem(err: unknown): string {

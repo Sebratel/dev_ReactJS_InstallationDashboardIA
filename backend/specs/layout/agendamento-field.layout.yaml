@@ -59,6 +59,8 @@ faixas:
         span: 4
         render: tableEx
   - altura: matriz
+    # É o quadro operacional prioritário: fica na abertura mesmo sendo a 5ª faixa.
+    eager: true
     colunas:
       - visual: 04979b00e5329b67f349
         span: 12

@@ -15099,3 +15099,62 @@ vão com host `'%'`.
   errado, gravados em lote a cada 5 s (`eventos-seguranca.ts`). Banco fora: o lote volta
   para a fila; buffer com teto de 5.000, e a perda é dita no log.
 - As planilhas ainda vêm do Google: as tabelas existem, falta o n8n e o refresh lendo delas.
+
+## #209 — as planilhas saem do Google: a plataforma lê o DB_InstallationDashboard (14/10)
+
+**O quê.** `quadro-funcional`, `capacidade-equipe` e `apuracao-premiacao` deixaram de ser
+`googlesheets` e viraram `odbc` no `dbMaria`, lendo as tabelas que o n8n
+(`backend/tools/banco/n8n/planilhas-para-banco.json`) copia das MESMAS planilhas a cada
+15 min. Nenhuma query lê mais Google; o `docker-compose.prod.yml` parou de exigir e montar
+a credencial (`GOOGLE_CREDENCIAL_HOST`) — o conector só é montado se alguma query precisar.
+
+**Medido.** Materializado do banco num diretório à parte e comparado com o snapshot do
+Google: premiação (73) e capacidade (11.670) idênticas byte a byte nos blocos; quadro
+538 de 540 linhas iguais — o snapshot do Google era de 07/10, o banco é de hoje. Tempo por
+query: ~0,4 s, contra 3,7 s (capacidade) e 1,6 s (premiação) no Google. O filtro de data
+da capacidade foi TAMBÉM para o SQL (11.670 de 28.034 linhas saem do banco).
+
+**Dado pessoal.** O `quadro-funcional` chega com 3 colunas (nome, gestor, upper_name) em vez
+de 38: CPF, RG, nascimento, celular, ações trabalhistas e antecedentes não entram mais no
+snapshot. E o n8n passa a copiar só quem tem gestor — a planilha também lista candidatos de
+recrutamento (9.537 de 18.041 linhas sem gestor), gente que a plataforma não usa.
+
+**Achado de passagem.** `gestores-equipes` já lê `DB_Applicattion.Installation_Teams`, que tem
+as mesmas colunas da planilha de capacidade — alguém já copia essa planilha para o
+`DB_Applicattion`. Vale conferir se a `team_capacities` não duplica esse trabalho.
+
+## #210 — a lentidão era uma tempestade de aquecimento, não um card isolado (14/10)
+
+**A medida no processo em uso.** A saúde acumulava 9.640 pedidos de aquecimento para 520
+interativos e 602 prefetches; 360 reaquecimentos pedidos, 137 adiados e fila de worker com
+pico 45. Um reaquecimento levava 20.202 ms em média e 74.673 ms no máximo. A API estava com
+1.622 MB de RSS. Não faltava cache: o sistema gastava o dia invalidando e reconstruindo
+chaves que quase ninguém pediria.
+
+**A multiplicação.** Cada mudança da `FIELD AGENDA` invalidava a página e o aquecedor fazia
+abertura sem filtro, mês atual, períodos recentes, visuais abaixo da dobra e combinações de
+valores de filtro. Ao mesmo tempo, cada navegador pré-carregava todas as outras páginas após
+800 ms e até 40 estados vizinhos. Os eventos chegavam aproximadamente a cada 30 s, enquanto
+o reaquecimento levava 20–53 s: trabalho novo entrava antes do anterior terminar.
+
+**O corte.** O evento ao vivo agora aquece somente a abertura do período atual — uma consulta
+de página — e nunca dispara detalhes, períodos históricos ou combinações amplas. O padrão de
+`AQUECE_FILTROS_ATE` passou de 40 para 0; valor positivo é opt-in. A abertura pede quatro
+faixas, com `eager: true` para o visual prioritário fora desse corte, e o restante chega de
+forma progressiva. No navegador, saíram a varredura de páginas e a vizinhança caiu de 40 para
+6, com atraso maior; hover continua antecipando a ação exata. O SSE invalida imediatamente
+só a consulta marcada `tempoReal`; detalhes já visitados têm atualização de segurança a cada
+5 min, e o botão manual continua atualizando tudo.
+
+**Antes e depois, no mesmo snapshot isolado.** `agendamento-field` fria caiu de 4.219 ms e
+36 pedidos para 2.062 ms e 12 pedidos; quente, de 339 para 267 ms. Um
+`Aquecedor.reaquece(['agendamento-field'])` terminou em 1.724 ms, com layout + uma consulta
+de página — ~91,5% abaixo da média anterior de 20,2 s. Na varredura das 14 definições, todas
+as passadas quentes ficaram entre 133 e 267 ms; a fria mais lenta foi `visao-geral`, 4.992 ms,
+por isso o aquecimento inicial completo continua necessário.
+
+**Regressões e estado.** Backend: 2.194 aprovados e 1 teste WMI bloqueado pelo host;
+frontend: 161/161; E2E: 9/9, com 156 pedidos interativos e só 7 prefetches; layouts 14/14,
+typecheck, lint, build e auditoria de dependências aprovados. O ganho está provado na worktree,
+não na API da porta 3100: falta promover e repetir a régua com o refresh real antes de fechar
+R.1/R.2.

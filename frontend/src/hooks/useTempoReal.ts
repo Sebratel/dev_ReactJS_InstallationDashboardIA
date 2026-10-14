@@ -5,7 +5,7 @@
 // registram a hora disso, que o cabeçalho mostra.
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { chavesDeConsulta } from '../services/dashboardService.ts';
 import { assinaEventos } from '../services/eventosService.ts';
 
@@ -13,6 +13,15 @@ import { assinaEventos } from '../services/eventosService.ts';
  *  servidor — a rede de segurança para um aviso perdido numa reconexão do SSE.
  *  Fixo: era um seletor por pessoa ("Auto") até 05/10/2026. */
 const ATUALIZA_SOZINHA_S = 60;
+/** Detalhes já visitados aceitam frescor menor e não acompanham cada evento operacional. */
+const ATUALIZA_DETALHES_S = 5 * 60;
+
+function invalidaAbertura(qc: QueryClient, pagina: string): Promise<void> {
+  return qc.invalidateQueries({
+    queryKey: chavesDeConsulta.pagina(pagina),
+    predicate: (query) => query.meta?.tempoReal === true,
+  });
+}
 
 export interface TempoReal {
   /** Horário da última atualização (aviso do servidor, relógio ou "Atualizar"). */
@@ -48,18 +57,27 @@ export function useTempoReal(atual: string | null): TempoReal {
     atualRef.current = atual;
   }, [atual]);
 
-  // AUTO-REFRESH PERIÓDICO EM SEGUNDO PLANO: invalidar a página aberta faz a abertura E
-  // os visuais abaixo da dobra buscarem de novo, mantendo o número atual na tela.
+  // A faixa operacional acompanha o relógio de segurança. Os detalhes já visitados
+  // atualizam em cadência menor para não transformar uma mudança em dezenas de cálculos.
   useEffect(() => {
     if (!atual) return;
     const interval = setInterval(() => {
       if (!atualRef.current) return;
       marcaHora();
-      void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atualRef.current) });
+      void invalidaAbertura(qc, atualRef.current);
       void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
     }, ATUALIZA_SOZINHA_S * 1000);
     return () => clearInterval(interval);
   }, [atual, qc, marcaHora]);
+
+  useEffect(() => {
+    if (!atual) return;
+    const interval = setInterval(() => {
+      if (!atualRef.current) return;
+      void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atualRef.current) });
+    }, ATUALIZA_DETALHES_S * 1000);
+    return () => clearInterval(interval);
+  }, [atual, qc]);
 
   // ACHADOS #89/#90 — poller de quase-realtime: o servidor empurra por SSE quando
   // detecta mudança no Voalle. Nenhum dado chega pelo evento em si (só o id da
@@ -68,7 +86,7 @@ export function useTempoReal(atual: string | null): TempoReal {
   useEffect(() => {
     return assinaEventos((afetados) => {
       for (const id of afetados)
-        void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(id) });
+        void invalidaAbertura(qc, id);
       if (atualRef.current && afetados.includes(atualRef.current)) {
         marcaHora();
         void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });

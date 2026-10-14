@@ -29,13 +29,21 @@ export function serveEstatico(res: http.ServerResponse, webDir: string, rota: st
 }
 
 function serveArquivo(res: http.ServerResponse, base: string, arquivo: string): void {
-  // Só o que está dentro da base: `..` no caminho sairia do diretório.
-  const alvo = path.resolve(base, arquivo);
-  if (!alvo.startsWith(path.resolve(base))) {
+  const raiz = path.resolve(base);
+  const alvo = path.resolve(raiz, arquivo);
+  const relativo = path.relative(raiz, alvo);
+  // `startsWith(raiz)` não basta: `dist-segredos` também começa com `dist`.
+  if (relativo === '..' || relativo.startsWith(`..${path.sep}`) || path.isAbsolute(relativo)) {
     responde(res, 403, { erro: 'caminho fora do diretório de arquivos estáticos' });
     return;
   }
   if (!fs.existsSync(alvo) || !fs.statSync(alvo).isFile()) {
+    // O React Router entende `/visao-geral`; o servidor de produção precisa entregar
+    // a mesma casca que o Vite entrega em desenvolvimento. Arquivo com extensão segue
+    // como 404 para não esconder asset quebrado atrás do HTML da aplicação.
+    if (!arquivo.includes(path.sep) && !arquivo.includes('/') && path.extname(arquivo) === '') {
+      return serveArquivo(res, raiz, 'index.html');
+    }
     responde(res, 404, { erro: `arquivo '${arquivo}' não existe` });
     return;
   }

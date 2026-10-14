@@ -37,14 +37,11 @@ import type { LayoutSpec } from './schema.ts';
  * hoje.
  */
 /**
- * **Todas, desde 28/09/2026 (ACHADOS #162).** Era 4: o resto vinha por rolagem
- * (`VisualNaDobra`), e o aquecedor só o adiantava com o filtro de abertura — trocar de
- * filtro e rolar caía em "carregando…". O Erick pediu a tela inteira pronta ao entrar,
- * com o custo que for; com o aquecedor e o reaquecimento pós-evento mantendo a página
- * inteira quente, a abertura é um acerto de cache. O corte continua parâmetro de
- * `idsIniciais`/`idsRestantes` (os testes do mecanismo passam 4).
+ * Quatro faixas cobrem a viewport e sua margem de pré-carga. O restante continua sendo
+ * aquecido no arranque, mas não bloqueia a abertura nem o reaquecimento de tempo real.
+ * Uma faixa crítica mais abaixo pode declarar `eager: true` no layout.
  */
-export const N_FAIXAS_EAGER = Number.POSITIVE_INFINITY;
+export const N_FAIXAS_EAGER = 4;
 
 /**
  * O texto com que `backend/tools/extractor` marca, em `ocultos[].porque`, um visual que
@@ -84,15 +81,14 @@ function idsDeSegmentacao(layout: LayoutSpec): string[] {
 }
 
 /**
- * Os ids que a abertura pede eager: todo KPI (sempre visível, sempre barato), toda
- * segmentação (a barra de filtros, ver `idsDeSegmentacao`) e as colunas das
- * `N_FAIXAS_EAGER` primeiras faixas.
+ * Os ids que a abertura pede eager: todo KPI, toda segmentação, as primeiras faixas e
+ * qualquer faixa crítica marcada explicitamente com `eager: true`.
  */
 export function idsIniciais(layout: LayoutSpec, nFaixas: number = N_FAIXAS_EAGER): string[] {
   const kpis = layout.kpis.map((k) => k.visual);
   const segmentacoes = idsDeSegmentacao(layout);
   const faixas = layout.faixas
-    .slice(0, nFaixas)
+    .filter((f, indice) => indice < nFaixas || f.eager === true)
     .flatMap((f) => f.colunas.map((c) => c.visual));
   return [...kpis, ...segmentacoes, ...faixas];
 }

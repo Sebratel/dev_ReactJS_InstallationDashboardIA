@@ -33,10 +33,10 @@ import { consultaDaAbertura } from './useDadosDaTela.ts';
 
 /** Valores por segmentação, no máximo — o `FILTROS_ATE_PADRAO` do servidor. */
 const LIMITE = 40;
-/** Vizinhos por estado, no máximo. */
-const TETO = 40;
+/** Vizinhos por estado, no máximo. O hover exato cobre o restante sem rajada. */
+const TETO = 6;
 /** Quanto a página tem de ficar parada antes de a vizinhança começar. */
-const ESPERA_MS = 1000;
+const ESPERA_MS = 2000;
 
 export function useVizinhanca(
   pagina: string | null,

@@ -16,6 +16,8 @@ export interface ColunaDeFaixa {
 
 export interface Faixa {
   titulo?: string;
+  /** Entra na abertura mesmo depois do corte progressivo. */
+  eager?: boolean;
   altura: AlturaClasse;
   colunas: ColunaDeFaixa[];
 }

@@ -111,7 +111,7 @@ const layoutFalso = (
 
 test('com layout disponível, aquece com `?visual=` — a MESMA chave que o navegador pede', async () => {
   const idPagina = 'agendamento-field';
-  // 5 faixas, todas no corte eager desde 28/09/2026 (ACHADOS #162) — igual a `idsIniciais`.
+  // 5 faixas; as 4 primeiras entram no corte eager e `m1`, abaixo da dobra, fica de fora.
   const layout = layoutFalso(
     [
       { colunas: [{ visual: 'g1' }] },
@@ -122,7 +122,7 @@ test('com layout disponível, aquece com `?visual=` — a MESMA chave que o nave
     ],
     [{ visual: 'k1' }],
   );
-  const urlEsperada = `${pag(idPagina)}?visual=k1&visual=g1&visual=t1&visual=t2&visual=g2&visual=m1`;
+  const urlEsperada = `${pag(idPagina)}?visual=k1&visual=g1&visual=t1&visual=t2&visual=g2`;
   const { buscar, chamadas } = fetchFalso({
     [layoutUrl(idPagina)]: layout,
     [urlEsperada]: (n: number) => ({ visuais: [{}, {}, {}, {}, {}], cache: n === 1 ? 'miss' : 'hit' }),

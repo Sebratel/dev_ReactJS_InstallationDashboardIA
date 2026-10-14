@@ -68,6 +68,7 @@ export function consultaDaAbertura(
   const opcoes = { visuais: idsIniciais(layout) };
   return {
     queryKey: chavesDeConsulta.pagina(id, urlDaPagina(id, filtros, opcoes, clicados)),
+    meta: { tempoReal: true },
     queryFn: ({ signal }: { signal: AbortSignal }) =>
       pegaPagina(id, filtros, opcoes, signal, clicados, origem),
   };

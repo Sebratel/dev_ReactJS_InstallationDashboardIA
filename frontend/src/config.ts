@@ -18,6 +18,14 @@ export const FIREBASE_CONFIG = {
   appId: texto(import.meta.env.VITE_FIREBASE_APP_ID),
 };
 
+/** Permite escolher o botão de login sem carregar o SDK do Firebase no pacote inicial. */
+export const TEM_FIREBASE = Boolean(
+  FIREBASE_CONFIG.apiKey &&
+    FIREBASE_CONFIG.authDomain &&
+    FIREBASE_CONFIG.projectId &&
+    FIREBASE_CONFIG.appId,
+);
+
 /** Google Identity Services puro — o caminho de login anterior ao Firebase. */
 export const GOOGLE_CLIENT_ID = texto(import.meta.env.VITE_GOOGLE_CLIENT_ID);
 

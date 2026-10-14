@@ -44,13 +44,6 @@ import { FIREBASE_CONFIG } from '../config.ts';
  *  botão de desenvolvimento. */
 const CONFIG = FIREBASE_CONFIG;
 
-/** Há Firebase configurado neste ambiente? Só `projectId` e `apiKey` são
- *  indispensáveis para autenticar; os outros dois entram junto porque faltar um
- *  deles produz erro de runtime do SDK, e não um "login indisponível" legível. */
-export function temFirebase(): boolean {
-  return Boolean(CONFIG.apiKey && CONFIG.authDomain && CONFIG.projectId && CONFIG.appId);
-}
-
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 

@@ -96,6 +96,10 @@
     "yaml": "^2.5.0"
   },
   "overrides": {
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.13.6"
+    },
+    "source-map-js": "^1.2.2",
     "ts-api-utils": {
       "typescript": "5.9.3"
     }

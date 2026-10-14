@@ -37,26 +37,13 @@ A API do Docker foi recriada com uma sobreposição que **não está versionada*
 
 | contorno | por quê | sai quando |
 |---|---|---|
-| `AQUECE_FILTROS_ATE=0` | com o pré-cálculo de filtros (#163) a API entrava num ciclo de OOM ~1 min depois de subir: a worker estoura 768 MB, o cálculo cai para a thread principal e ela morre em ~3 GB. **Sem ninguém na tela.** Um cálculo pede > 2,7 GB; subir heap não resolve | etapa 3.2 |
+| ~~`AQUECE_FILTROS_ATE=0`~~ — **contorno removido em 14/10** (#210) | o padrão seguro do código agora é `0`; combinações amplas de filtro são opt-in, e a tela antecipa somente a intenção sob o cursor | — |
 | ~~`./frontend/dist` montado do host~~ — **saiu em 09/10** (C.1, ACHADOS #199): o login entra no build da imagem | sem ele a imagem saía **sem login na tela**. Em 09/10 quatro recriações só com o compose o desfizeram e a tela ficou ~4 h sem login, com `AQUECE_FILTROS_ATE` no padrão | — |
 | ~~`API_PORT_HOST=3101` no `up`~~ — **saiu em 02/10** (a 3100 ficou livre) | um `node` do host (`npm start`, iniciado 02/10 08:26) segura a 3100, e o `up` falha com "ports are not available" — **derrubando a API**. O proxy fala com `api:3100` por dentro, então a porta do host não muda nada para a tela | quando a 3100 do host estiver livre |
 
-Para recriar a `api`: o arquivo fica em `Desktop/DASHBOARD - Instalação/contorno.yml` (fora do repo; os
-caminhos relativos resolvem pela pasta do `docker-compose.prod.yml`):
-
-```yaml
-# ../contorno.yml
-services:
-  api:
-    environment:
-      AQUECE_FILTROS_ATE: '0'
-```
-
-```bash
-docker compose -f docker-compose.prod.yml -f ../contorno.yml build api
-docker compose -f docker-compose.prod.yml -f ../contorno.yml up -d --no-deps --no-build api
-docker exec dev_reactjs_installationdashboardia-api-1 printenv AQUECE_FILTROS_ATE   # tem de dar 0
-```
+Desde 14/10, recriar a `api` sem `contorno.yml` preserva o padrão seguro. Definir
+`AQUECE_FILTROS_ATE` com valor positivo volta a habilitar o pré-cálculo amplo e deve ser
+tratado como experimento de carga, não como configuração normal.
 
 **`.env` desta máquina (não versionado):** ganhou `GOOGLE_CREDENCIAL_HOST` em 01/10, com
 o mesmo caminho de `GOOGLE_APPLICATION_CREDENTIALS`. Sem ela o compose não sobe o
@@ -159,8 +146,9 @@ Meta: < 10 min/h de consulta pesada no banco.
 - [x] **3.1** ✅ 09/10 (`27c34e6`, ACHADOS #199): `Dockerfile` com `ARG` das quatro
       `VITE_FIREBASE_*` no estágio `build` e o compose passando `build.args`, com falha fechada.
       O contorno de `dist` da §1 saiu — a stack roda sem nenhuma montagem do host além do snapshot.
-- [ ] **3.2** Achar o cálculo de > 2,7 GB que o pré-cálculo de filtros dispara (qual
-      página × filtro), corrigir e religar `AQUECE_FILTROS_ATE`.
+- [x] **3.2** ✅ 14/10 (ACHADOS #210): o pré-cálculo combinatório deixou de ser objetivo.
+      O padrão é `AQUECE_FILTROS_ATE=0`; abertura, detalhe e filtro provável são preparados
+      separadamente e por intenção, sem reservar > 2,7 GB para combinações que talvez não ocorram.
 - [ ] **3.3** `GOOGLE_CREDENCIAL_HOST` como variável da stack no Portainer.
 - [ ] **3.4** `mem_limit` pelo medido **no servidor** (hoje api 6g + refresh 6g num Docker
       de notebook com 7,6 GB).

@@ -185,12 +185,17 @@ Em ordem de impacto no que se sente:
         por tabela.
       - O cache só cai nas páginas que usam a tabela que mudou.
       *Pronto quando:* com o refresh rodando, nenhuma página passa de ~2 s para ficar pronta.
+      **Estado 14/10 (#210):** o maior pico local foi removido: cada evento agora prepara só
+      a abertura atual, sem meses, detalhes ou combinações de filtros; clientes não varrem mais
+      todas as páginas. Localmente, o reaquecimento caiu de média 20,2 s para 1,7 s. Continua
+      aberto até medir com o refresh real depois do deploy.
 - [x] **R.1b** ✅ 09/10 (#203): a régua de "parado" conta também o `geradoEm` da tabela.
       **O snapshot da madrugada não renova o status dos grupos.** Em 04/10 ele renovou as
       25 tabelas, e a saúde seguiu "degradado: grupo X parado desde sexta" até cada grupo do
       `refresh` rodar de novo. É alarme falso, mas o aviso externo (C.7) dispararia por ele.
-- [ ] **R.2 Filtros prontos ao entrar.** É a C.2: achar o cálculo de > 2,7 GB e religar
-      `AQUECE_FILTROS_ATE`. *Pronto quando:* nenhum "carregando…" ao entrar.
+- [ ] **R.2 Filtros prontos ao entrar.** O pré-cálculo combinatório de > 2,7 GB não será
+      religado por padrão: a abertura traz as segmentações necessárias e o hover antecipa o
+      próximo filtro provável. *Pronto quando:* nenhum "carregando…" ao entrar em produção.
 - [ ] **R.3 As 14 páginas aquecidas, e o cache sobrevive a um reinício.** Hoje são 11, e a
       API reiniciada volta fria. *Pronto quando:* reiniciar a API e a primeira abertura de
       cada página continuar em ~1 s.

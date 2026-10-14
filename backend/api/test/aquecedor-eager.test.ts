@@ -36,8 +36,12 @@ function silencio(): (l: string) => void {
 
 test('com layout disponível, aquece com `?visual=` — a MESMA chave que o navegador pede', async () => {
   const chamadas: string[] = [];
-  const urlEsperada =
+  const baseEsperada =
     'http://x/api/dashboards/agendamento-field?visual=k1&visual=g1&visual=t1&visual=t2&visual=g2';
+  const queryDaAbertura = (filtrosRecentes('agendamento-field')[0] ?? [])
+    .map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`)
+    .join('&');
+  const urlEsperada = `${baseEsperada}&${queryDaAbertura}`;
   const buscar = (async (url: string | URL): Promise<Response> => {
     const u = String(url);
     chamadas.push(u);
@@ -185,7 +189,7 @@ test('abaixo da dobra: layout indisponível não inventa aquecimento nenhum', as
   );
 });
 
-test('padrão de produção (ACHADOS #162): a abertura aquecida é a página INTEIRA, sem GET à parte da rolagem', async () => {
+test('padrão de produção: a abertura fica no corte e o restante aquece separado', async () => {
   const chamadas: string[] = [];
   const buscar = (async (url: string | URL): Promise<Response> => {
     const u = String(url);
@@ -197,8 +201,8 @@ test('padrão de produção (ACHADOS #162): a abertura aquecida é a página INT
   const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
   await a.tenta();
   const aberturas = chamadas.filter((u) => u.includes('?visual=k1&'));
-  assert.ok(aberturas.length > 0 && aberturas.every((u) => u.includes('visual=m1')), 'm1 (5ª faixa) tem de vir na abertura');
-  assert.equal(chamadas.filter((u) => /\?visual=m1(&|$)/.test(u)).length, 0, 'nada de GET singular para a rolagem');
+  assert.ok(aberturas.length > 0 && aberturas.every((u) => !u.includes('visual=m1')), 'm1 (5ª faixa) não bloqueia a abertura');
+  assert.equal(chamadas.filter((u) => /\?visual=m1(&|$)/.test(u)).length, 1, 'm1 aquece na chave singular da rolagem');
 });
 
 // ── filtros pré-calculados (ACHADOS #163) ──────────────────────────────────
@@ -227,7 +231,7 @@ function buscaComFiltros(chamadas: string[]): typeof fetch {
 
 test('filtros: cada valor de filtro com poucos valores vira a URL do clique, com o filtro de abertura junto', async () => {
   const chamadas: string[] = [];
-  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar: buscaComFiltros(chamadas), anuncia: silencio() });
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar: buscaComFiltros(chamadas), anuncia: silencio(), filtrosAte: 40 });
   await a.tenta();
   assert.equal(a.pronto, true, 'o pronto não espera os filtros');
   await a.aguardaFiltros();
@@ -239,7 +243,7 @@ test('filtros: cada valor de filtro com poucos valores vira a URL do clique, com
     const us = deValor(v);
     assert.equal(us.length, 1, `o valor ${v} foi pré-calculado uma vez`);
     for (const f of abertura) assert.ok(us[0]!.includes(`filtro=${encodeURIComponent(codificaFiltro(f))}`), 'com o filtro de abertura');
-    assert.ok(us[0]!.includes('visual=m1'), 'com a página inteira — a chave que a tela pede');
+    assert.ok(!us[0]!.includes('visual=m1'), 'usa a chave de abertura, não um detalhe fora da dobra');
   }
   assert.equal(chamadas.filter((u) => u.includes('MUITOS') && u.includes('filtro=')).length, 0, 'filtro de 100 valores não é pré-calculado');
 });
@@ -250,4 +254,30 @@ test('filtros: `filtrosAte: 0` desliga o pré-cálculo', async () => {
   await a.tenta();
   await a.aguardaFiltros();
   assert.equal(chamadas.filter((u) => u.includes('POUCOS') && u.includes('filtro=')).length, 0);
+});
+
+test('filtros: o padrão seguro é desligado', async () => {
+  const chamadas: string[] = [];
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar: buscaComFiltros(chamadas), anuncia: silencio() });
+  await a.tenta();
+  await a.aguardaFiltros();
+  assert.equal(chamadas.filter((u) => u.includes('/valores?')).length, 0);
+  assert.equal(chamadas.filter((u) => u.includes('POUCOS') && u.includes('filtro=')).length, 0);
+});
+
+test('reaquecimento ao vivo prepara só a abertura atual, sem meses, detalhes ou filtros', async () => {
+  const chamadas: string[] = [];
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar: buscaComFiltros(chamadas), anuncia: silencio(), filtrosAte: 40 });
+  await a.tenta();
+  await a.aguardaFiltros();
+  chamadas.length = 0;
+
+  await a.reaquece(['agendamento-field']);
+
+  const paginas = chamadas.filter((u) => u.includes('/api/dashboards/agendamento-field?'));
+  assert.equal(paginas.length, 1, 'uma mudança ao vivo vira um único cálculo de página');
+  assert.ok(paginas[0]!.includes('filtro='), 'aquece a chave do período de abertura');
+  assert.ok(!paginas[0]!.includes('visual=m1'), 'detalhe abaixo da dobra não entra no evento');
+  assert.equal(chamadas.filter((u) => u.includes('/valores?')).length, 0, 'não relê listas de filtros');
+  assert.equal(chamadas.filter((u) => u.includes('POUCOS') && u.includes('filtro=')).length, 0, 'não dispara vizinhança ampla');
 });

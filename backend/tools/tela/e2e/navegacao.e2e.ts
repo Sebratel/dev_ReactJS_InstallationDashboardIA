@@ -92,6 +92,12 @@ test('abre no filtro padrão, com a URL limpa', { skip: pula }, async () => {
   assert.ok((await filtrosNaTela()) > 0, 'a página abre com o período padrão aplicado');
 });
 
+test('acesso direto pelo caminho abre a SPA em produção', { skip: pula }, async () => {
+  await abre(`${BASE}/visao-geral`);
+  assert.equal(new URL(page.url()).pathname, '/visao-geral');
+  assert.ok((await page.locator('[data-selo]').count()) > 0, 'a rota direta renderiza a página');
+});
+
 test('chip: entra na URL e SUBSTITUI no histórico; limpar volta à URL limpa', { skip: pula }, async () => {
   await abre(`${BASE}/?pagina=${PAGINA}`);
   const antes = await historico();

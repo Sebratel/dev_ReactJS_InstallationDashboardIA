@@ -1,12 +1,11 @@
-// Os pré-carregamentos que não são da página aberta: as outras páginas em segundo
-// plano, a aba sob o cursor e o clique sob o cursor (barra de gráfico e valor de
-// filtro). Nenhum mexe em estado visível: só deixam a resposta no cache do React Query
-// para o clique achá-la pronta. A vizinhança do estado é outro hook (`useVizinhanca`).
+// Os pré-carregamentos guiados por intenção: a aba sob o cursor e o clique sob o
+// cursor (barra de gráfico e valor de filtro). Não varre todas as páginas sozinho:
+// o aquecedor compartilhado da API já faz isso uma vez, sem multiplicar por usuário.
+// A vizinhança pequena do estado é outro hook (`useVizinhanca`).
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type {
-  DashboardDaLista,
   FiltroDaTela,
   LayoutSpec,
   Valor,
@@ -24,6 +23,8 @@ export interface PreCargas {
   aoPreverAlvos: (alvos: readonly AlvoDeFiltro[]) => void;
   /** O chip ou a opção de seletor sob o cursor (ACHADOS #179). */
   aoPreverFiltro: (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) => void;
+  /** O "Limpar filtros" sob o cursor: a página sem filtro nenhum. */
+  aoPreverLimpeza: () => void;
 }
 
 /** Em touch, hover e clique chegam quase juntos — sem esta guarda, todo toque
@@ -31,39 +32,12 @@ export interface PreCargas {
 const temCursor = (): boolean => window.matchMedia('(pointer: fine)').matches;
 
 export function usePreCargas(
-  paginas: readonly DashboardDaLista[] | undefined,
   atual: string | null,
   layout: LayoutSpec | null,
   filtros: FiltroDaTela[],
   clicados: CampoClicado[],
 ): PreCargas {
   const qc = useQueryClient();
-
-  // Pré-carregamento em segundo plano, sequencial, das outras páginas prontas —
-  // depois de a página inicial abrir, para não disputar a API com ela. Uma vez por
-  // carga da tela.
-  const paginaInicial = useRef(atual);
-  const fundoIniciado = useRef(false);
-  useEffect(() => {
-    if (!paginas || fundoIniciado.current) return;
-    fundoIniciado.current = true;
-    const inicial =
-      paginaInicial.current ?? paginas.find((d) => d.pronta)?.id ?? paginas[0]?.id ?? null;
-    void (async () => {
-      // Pequena pausa para a página em exibição carregar com prioridade máxima
-      await new Promise((resolve) => setTimeout(resolve, 800));
-      for (const d of paginas) {
-        if (!d.pronta || d.id === inicial) continue;
-        try {
-          await preCarregaAbertura(qc, d.id, filtrosPadrao(d.id));
-          // Intervalo leve entre páginas de fundo para manter a API responsiva
-          await new Promise((resolve) => setTimeout(resolve, 300));
-        } catch {
-          // Pré-carregamento em background silencioso
-        }
-      }
-    })();
-  }, [paginas, qc]);
 
   // FASE L5, R6 — a aba sob o cursor.
   const timeoutHover = useRef<number | null>(null);
@@ -129,5 +103,10 @@ export function usePreCargas(
     [prefetchaPrevisao, filtros, clicados],
   );
 
-  return { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro };
+  const aoPreverLimpeza = useCallback(
+    () => prefetchaPrevisao(() => ({ filtros: [], clicados: [] })),
+    [prefetchaPrevisao],
+  );
+
+  return { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro, aoPreverLimpeza };
 }

@@ -7,19 +7,28 @@ function layout(faixas: LayoutSpec['faixas'], kpis: LayoutSpec['kpis'] = []): La
   return { pagina: 'x', base: 'x', kpis, faixas, ocultos: [], improvements: [] };
 }
 
-// Até 28/09/2026 era 4 (ACHADOS #94); virou 'todas' porque a tela tem de abrir pronta
-// (ACHADOS #162). Os testes abaixo exercitam o MECANISMO do corte com 4, explícito.
-test('N_FAIXAS_EAGER cobre todas as faixas — a abertura pede a página inteira (ACHADOS #162)', () => {
-  assert.equal(N_FAIXAS_EAGER, Number.POSITIVE_INFINITY);
+test('N_FAIXAS_EAGER limita a abertura às quatro primeiras faixas', () => {
+  assert.equal(N_FAIXAS_EAGER, 4);
 });
 
-test('idsIniciais sem corte explícito: página de 9 faixas vem inteira, nada fica para a rolagem', () => {
+test('idsIniciais sem corte explícito: página de 9 faixas abre só as quatro primeiras', () => {
   const faixas = Array.from({ length: 9 }, (_, i) => ({
     altura: 'tabela' as const,
     colunas: [{ visual: `f${i}`, span: 12, render: 'x' }],
   }));
   const l = { pagina: 'x', base: 'x', kpis: [], faixas, ocultos: [], improvements: [] };
-  assert.equal(idsIniciais(l).length, 9);
+  assert.deepEqual(idsIniciais(l), ['f0', 'f1', 'f2', 'f3']);
+});
+
+test('idsIniciais inclui faixa prioritária mesmo depois do corte', () => {
+  const l = layout([
+    ...Array.from({ length: 4 }, (_, i) => ({
+      altura: 'tabela' as const,
+      colunas: [{ visual: `f${i}`, span: 12, render: 'x' }],
+    })),
+    { eager: true, altura: 'matriz', colunas: [{ visual: 'operacional', span: 12, render: 'x' }] },
+  ]);
+  assert.deepEqual(idsIniciais(l), ['f0', 'f1', 'f2', 'f3', 'operacional']);
 });
 
 test('idsIniciais: página com menos faixas que o corte pede tudo, igual a hoje', () => {
