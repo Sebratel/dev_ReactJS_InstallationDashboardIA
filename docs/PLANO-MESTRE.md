@@ -124,6 +124,13 @@ foi desligado antes de o substituto provar.
       - medir o poller com movimento de dia (`/api/saude` → `porQuery`);
       - comparar, para as 8 do poller, o que a tela mostrou com a carga do `frio`. Se
         baterem, elas saem do refresh do dia.
+      - ◐ **14/10 (quarta), 38 min de vigília após recriar a stack às 11:30:** poller com
+        291 voltas, 0 erros, 0 puladas; do fato à tela, mediana de 9 s na `field-agenda`
+        (meta ≤ 30 s) e 31 s na reincidência. **Custo: 20,6 min/h só do poller**: sentinela
+        6,4, reincidencia + instalacoes-reincidentes 6,8, auxiliares 3,5, alocação 2,4,
+        field-agenda 1,0. Bate com o que a B.1d diz que falta. O log das 03:00 se perdeu
+        com o container recriado; a comparação com o `frio` não tem ferramenta. **O
+        desligamento do `frio` economiza só ~2 min/h:** a meta depende da B.1d, não dele.
 - [ ] **B.2 (1.2)** `protocolos-produtividade` incremental. Prova de 02/10 22:31: 40.758 de
       40.762 iguais, 36,7 s × 192,3 s. Os 4 divergem em `STATUS CONTRATO` (nenhuma tela lê),
       mas é buraco de verdade: o contrato mudou sem a solicitação mudar. **Repetir de dia**
