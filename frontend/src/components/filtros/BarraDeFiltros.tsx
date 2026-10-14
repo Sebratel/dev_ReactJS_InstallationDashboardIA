@@ -2,6 +2,7 @@
 // seletores e a fileira de chips. Quais segmentações e em que forma é
 // `segmentacoesDaTela`; o que um clique faz é `useEstadoDaTela`.
 
+import { FilterX } from 'lucide-react';
 import type { FiltroDaTela, Valor } from '../../services/dashboardService.ts';
 import { useAlturaMedida } from '../../hooks/useAlturaMedida.ts';
 import { selecaoDe } from '../../utils/rota.ts';
@@ -21,8 +22,22 @@ export function BarraDeFiltros(props: {
   aoMudar: MudaFiltro;
   /** O mouse parou num valor: pré-carrega o clique (ACHADOS #179). */
   aoPrever: MudaFiltro;
+  /** Tira todo filtro da página, inclusive o período padrão. */
+  aoLimpar: () => void;
+  /** O mouse parou no botão: pré-carrega a página sem filtro. */
+  aoPreverLimpeza: () => void;
 }) {
-  const { pagina, filtros, dataDaTela, segmentacoes, aoMudar, aoPrever } = props;
+  const {
+    pagina,
+    filtros,
+    dataDaTela,
+    segmentacoes,
+    aoMudar,
+    aoPrever,
+    aoLimpar,
+    aoPreverLimpeza,
+  } = props;
+  const temFiltro = filtros.some((f) => f.valores.length > 0);
   const { chips, dropdowns, ocultos } = segmentacoes;
   // `--h-filtros` valia 50px fixos e a barra mede 71px na maioria das telas — 110px
   // na MANUTENÇÃO INICIAL em 1366x768, que tem 13 controles e quebra em três linhas.
@@ -75,6 +90,18 @@ export function BarraDeFiltros(props: {
               aoMudar={(valores) => aoMudar(chips.tabela, chips.coluna, valores, chips.nivel)}
               aoPrever={(valores) => aoPrever(chips.tabela, chips.coluna, valores, chips.nivel)}
             />
+          ) : null}
+          {temFiltro ? (
+            <button
+              type="button"
+              className="inline-flex h-[30px] cursor-pointer items-center gap-[6px] rounded-[8px] border border-pbi-borda bg-pbi-superficie px-[10px] py-0 font-semibold whitespace-nowrap text-pbi-muted transition-colors hover:border-pbi-critico-texto hover:text-pbi-critico-texto"
+              title="Remover todos os filtros desta página, inclusive o período padrão"
+              onClick={aoLimpar}
+              onMouseEnter={aoPreverLimpeza}
+            >
+              <FilterX size={14} />
+              Limpar filtros
+            </button>
           ) : null}
         </div>
       ) : null}

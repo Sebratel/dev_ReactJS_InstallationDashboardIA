@@ -49,6 +49,11 @@ export interface EstadoDaTela {
   mudaFiltro: (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) => void;
   /** O clique num visual: aplica a tupla inteira, ou a desfaz se já estiver valendo. Empilha. */
   aoFiltrarAlvos: (alvos: readonly AlvoDeFiltro[]) => void;
+  /**
+   * Tira TODO filtro da página — seletores, cliques e o recorte padrão (o mês corrente).
+   * Empilha: é o passo que mais se quer desfazer com o voltar.
+   */
+  limpaFiltros: () => void;
 }
 
 /** O estado na URL de AGORA — ver o cabeçalho. */
@@ -144,6 +149,13 @@ export function useEstadoDaTela(): EstadoDaTela {
     [vai],
   );
 
+  const limpaFiltros = useCallback(() => {
+    const a = agora();
+    if (!a.pagina) return;
+    // Lista vazia vira `limpo=1` na URL (`escreveRota`), e não o padrão da página.
+    vai(a.pagina, [], [], true);
+  }, [vai]);
+
   return {
     atual: rota.pagina,
     filtros,
@@ -153,5 +165,6 @@ export function useEstadoDaTela(): EstadoDaTela {
     iniciaEm,
     mudaFiltro,
     aoFiltrarAlvos,
+    limpaFiltros,
   };
 }

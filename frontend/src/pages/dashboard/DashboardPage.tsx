@@ -45,8 +45,17 @@ import { Esqueleto, MensagemDeEstado } from '../../components/ui/Estado.tsx';
 export function DashboardPage() {
   const { conferencia } = useModo();
   const expirou = useSessaoStore((s) => s.expirou);
-  const { atual, filtros, clicados, invalidos, escolhe, iniciaEm, mudaFiltro, aoFiltrarAlvos } =
-    useEstadoDaTela();
+  const {
+    atual,
+    filtros,
+    clicados,
+    invalidos,
+    escolhe,
+    iniciaEm,
+    mudaFiltro,
+    aoFiltrarAlvos,
+    limpaFiltros,
+  } = useEstadoDaTela();
 
   // **O estado do servidor mora no React Query** (fase 2): a lista de páginas, a forma
   // de cada uma, a abertura e a saúde. Ver `hooks/useDadosDaTela.ts`.
@@ -75,13 +84,8 @@ export function DashboardPage() {
     : null;
 
   const { horaRealtime, atualiza } = useTempoReal(atual);
-  const { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro } = usePreCargas(
-    dashboardsQ.data,
-    atual,
-    layout,
-    filtros,
-    clicados,
-  );
+  const { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro, aoPreverLimpeza } =
+    usePreCargas(dashboardsQ.data, atual, layout, filtros, clicados);
 
   // A página inicial, quando a URL não trouxe uma: a primeira pronta da lista.
   useEffect(() => {
@@ -161,6 +165,8 @@ export function DashboardPage() {
             segmentacoes={segmentacoes}
             aoMudar={mudaFiltro}
             aoPrever={aoPreverFiltro}
+            aoLimpar={limpaFiltros}
+            aoPreverLimpeza={aoPreverLimpeza}
           />
         ) : null
       }

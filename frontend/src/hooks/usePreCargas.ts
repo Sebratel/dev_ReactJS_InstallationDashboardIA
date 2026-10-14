@@ -24,6 +24,8 @@ export interface PreCargas {
   aoPreverAlvos: (alvos: readonly AlvoDeFiltro[]) => void;
   /** O chip ou a opção de seletor sob o cursor (ACHADOS #179). */
   aoPreverFiltro: (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) => void;
+  /** O "Limpar filtros" sob o cursor: a página sem filtro nenhum. */
+  aoPreverLimpeza: () => void;
 }
 
 /** Em touch, hover e clique chegam quase juntos — sem esta guarda, todo toque
@@ -129,5 +131,10 @@ export function usePreCargas(
     [prefetchaPrevisao, filtros, clicados],
   );
 
-  return { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro };
+  const aoPreverLimpeza = useCallback(
+    () => prefetchaPrevisao(() => ({ filtros: [], clicados: [] })),
+    [prefetchaPrevisao],
+  );
+
+  return { prefetchaPagina, cancelaPrefetch, aoPreverAlvos, aoPreverFiltro, aoPreverLimpeza };
 }
