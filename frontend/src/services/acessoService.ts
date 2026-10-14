@@ -3,6 +3,8 @@
 // escondido é conforto, o 403 é a trava). O `fetch` de POST no mesmo site manda `Origin`
 // sozinho, e é ele que a proteção de CSRF da API exige.
 
+import type { OperacaoDeAcesso } from '../utils/rascunhoDeAcessos.ts';
+
 export type Papel = 'viewer' | 'dev' | 'admin';
 export type ModoDaTela = 'lista' | 'todos';
 
@@ -45,6 +47,20 @@ export const defineModoDaTela = (tela: string, modo: ModoDaTela) =>
   chama('/api/admin/acessos/tela', { tela, modo });
 export const removePessoa = (email: string) => chama('/api/admin/acessos/remove', { email });
 export const dispensaPedido = (email: string) => chama('/api/admin/acessos/dispensa', { email });
+
+/** Um pedido do rascunho da aba PERMISSÕES (`utils/rascunhoDeAcessos.ts`) na rota dele. */
+export function aplicaOperacao(op: OperacaoDeAcesso): Promise<MatrizDeAcesso> {
+  switch (op.tipo) {
+    case 'modo':
+      return defineModoDaTela(op.tela, op.modo);
+    case 'remove':
+      return removePessoa(op.email);
+    case 'papel':
+      return definePapel(op.email, op.papel);
+    case 'telas':
+      return defineTelasDaPessoa(op.email, op.telas);
+  }
+}
 
 // As sessões abertas (`/api/admin/sessoes`, S2 de docs/PLANO-SEGURANCA.md) — só admin.
 // O servidor nunca devolve o token: o que vem é quem, de onde e até quando.

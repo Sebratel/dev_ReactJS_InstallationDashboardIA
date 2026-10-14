@@ -26,6 +26,10 @@ export function NavDeTelas(props: {
   aoEscolher: (id: string) => void;
   aoPassarMouse?: (id: string) => void;
   aoSairDoMouse?: () => void;
+  /** Uma aba que não é tela do relatório — a PERMISSÕES, só para admin/dev. Vai no fim,
+   *  encostada à direita, com o mesmo formato das outras; `marca` é o número ao lado
+   *  (as alterações por salvar). */
+  extra?: { id: string; rotulo: string; marca?: number };
 }) {
   // `useLayoutEffect` e `resize`, não `ResizeObserver` — ver `useAlturaMedida.ts`.
   const navRef = useAlturaMedida<HTMLElement>('--h-nav');
@@ -64,6 +68,30 @@ export function NavDeTelas(props: {
           </button>
         );
       })}
+      {props.extra ? (
+        <button
+          className={cn(
+            ABA,
+            'ml-auto',
+            props.extra.id === props.atual &&
+              'border-b-pbi-primary-texto text-pbi-primary-texto enabled:hover:bg-transparent enabled:hover:text-pbi-primary-texto',
+          )}
+          onClick={() => props.aoEscolher(props.extra!.id)}
+          aria-current={props.extra.id === props.atual ? 'page' : undefined}
+          title={
+            props.extra.marca
+              ? `${props.extra.rotulo} — ${props.extra.marca} alteração(ões) por salvar`
+              : props.extra.rotulo
+          }
+        >
+          {props.extra.rotulo}
+          {props.extra.marca ? (
+            <span className="ml-[6px] rounded-full bg-pbi-primary px-[6px] text-[10px] leading-[16px] text-pbi-sobre-primary">
+              {props.extra.marca}
+            </span>
+          ) : null}
+        </button>
+      ) : null}
     </nav>
   );
 }

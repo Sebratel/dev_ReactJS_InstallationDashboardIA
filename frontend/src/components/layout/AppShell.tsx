@@ -54,6 +54,8 @@ export function AppShell(props: {
   /** FASE L5, R6: o mouse saiu da aba antes do debounce de hover disparar — cancela
    *  o prefetch pendente. Mesmo motivo de opcional que `aoPassarMouse`. */
   aoSairDoMouse?: () => void;
+  /** Aba fora das telas do relatório (a PERMISSÕES) — ver `NavDeTelas`. */
+  abaExtra?: { id: string; rotulo: string; marca?: number };
   titulo: string;
   /** Quando o dado desta tela foi lido (ISO). Vira "há 12min" ao lado do ponto. */
   dadoDe?: string | null;
@@ -127,6 +129,7 @@ export function AppShell(props: {
         aoEscolher={props.aoEscolher}
         aoPassarMouse={props.aoPassarMouse}
         aoSairDoMouse={props.aoSairDoMouse}
+        extra={props.abaExtra}
       />
 
       <main className="area">

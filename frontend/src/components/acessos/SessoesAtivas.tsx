@@ -5,7 +5,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { derrubaSessoes, pegaSessoes } from '../../services/acessoService.ts';
 import { Botao } from '../ui/Botao.tsx';
-import { Erro } from '../ui/Cartao.tsx';
+import { Cartao, Erro } from '../ui/Cartao.tsx';
 
 export const CHAVE_SESSOES = ['sessoes'] as const;
 
@@ -21,12 +21,11 @@ export function SessoesAtivas({ eu }: { eu: string }) {
   const sessoes = sessoesQ.data?.sessoes ?? [];
 
   return (
-    <section className="rounded-[2px] border border-pbi-borda p-[8px]" aria-label="Sessões abertas">
-      <h4 className="m-0 mb-[6px] text-[0.74rem]">Sessões abertas ({sessoes.length})</h4>
+    <Cartao titulo={`Sessões abertas (${sessoes.length})`} largo>
       {sessoesQ.error ? <Erro>{(sessoesQ.error as Error).message}</Erro> : null}
       {derruba.error ? <Erro>{(derruba.error as Error).message}</Erro> : null}
       {sessoes.length > 0 ? (
-        <table className="w-full border-collapse">
+        <table className="w-full border-collapse text-[0.76rem]">
           <thead>
             <tr className="text-left text-pbi-muted">
               <th className="px-[6px] py-[3px]">Pessoa</th>
@@ -64,6 +63,6 @@ export function SessoesAtivas({ eu }: { eu: string }) {
       ) : sessoesQ.isPending ? (
         <p className="m-0 text-pbi-muted">Lendo as sessões…</p>
       ) : null}
-    </section>
+    </Cartao>
   );
 }
