@@ -3,7 +3,7 @@
 
 import type { DadosDeCard, VisualCalculado } from '../services/dashboardService.ts';
 import { formata, haQuanto } from './formato.ts';
-import type { QuerySaude, RespostaSaude } from './avisoSaude.ts';
+import type { RespostaSaude } from './avisoSaude.ts';
 
 export const OBJETIVOS = [
   'Monitorar a capacidade total e a utilização das equipes técnicas;',
@@ -63,22 +63,54 @@ export function valorDoCard(visuais: readonly VisualCalculado[], id: string): st
   return d ? formata(d.valor, d.tipoDoValor).texto : '—';
 }
 
-/** O pior estado da família: falha vence parada, parada vence ok; a idade é a da query mais velha. */
-export function situacaoDaFonte(ids: readonly string[], saude: RespostaSaude | null) {
+/**
+ * O pior estado da família: falha vence parada, parada vence ok; a idade é a da query mais velha.
+ *
+ * **A idade de cada query é a da última CONFERÊNCIA, não a da última carga.** Numa query
+ * vigiada pelo poller, a carga cheia é só a rede de segurança (60 min) e o dado está em dia
+ * há segundos; medir pela carga mostrava "há 50min" com o dado fresco, e "há 1min" ao lado
+ * de uma PROTOCOLOS GERAL de meia hora. Então vale a mais recente entre `ultimaCarga` e o
+ * `confirmadoEm` do poller, e a cadência é a do poll quando ele está conferindo.
+ */
+export function situacaoDaFonte(
+  ids: readonly string[],
+  saude: RespostaSaude | null,
+  agora: number = Date.now(),
+) {
   const qs = (saude?.refresh?.queries ?? []).filter((q) => ids.includes(q.id));
   if (qs.length === 0) return null;
-  const maisVelha = qs.reduce<QuerySaude>((a, b) => (b.idadeDias > a.idadeDias ? b : a), qs[0]!);
   const status = qs.some((q) => q.status === 'falhou')
     ? 'falhou'
     : qs.some((q) => q.status === 'vencida')
       ? 'vencida'
       : 'ok';
-  const intervalos = (saude?.agendador?.grupos ?? [])
-    .filter((g) => qs.some((q) => q.grupo === g.id))
-    .map((g) => g.intervaloMinutos);
+
+  const doPoller = new Map((saude?.poller?.porQuery ?? []).map((p) => [p.query, p]));
+  const grupos = new Map((saude?.agendador?.grupos ?? []).map((g) => [g.id, g.intervaloMinutos]));
+  const porQuery = qs.map((q) => {
+    const carga = q.ultimaCarga ? new Date(q.ultimaCarga).getTime() : NaN;
+    const p = doPoller.get(q.id);
+    const conferido = p?.confirmadoEm ? new Date(p.confirmadoEm).getTime() : NaN;
+    // Poll parado não dá frescor: a conferência só conta enquanto acompanha o intervalo.
+    const pollEmDia = !Number.isNaN(conferido) && agora - conferido <= 2 * p!.intervaloMs + 60_000;
+    const em = Math.max(Number.isNaN(carga) ? -Infinity : carga, pollEmDia ? conferido : -Infinity);
+    const grupo = q.grupo !== undefined ? grupos.get(q.grupo) : undefined;
+    return {
+      em,
+      cadenciaMin: pollEmDia ? p!.intervaloMs / 60_000 : (grupo ?? null),
+    };
+  });
+
+  const maisVelha = Math.min(...porQuery.map((x) => x.em));
+  const cadencias = porQuery.map((x) => x.cadenciaMin).filter((c): c is number => c !== null);
   return {
     status,
-    idade: haQuanto(maisVelha.ultimaCarga),
-    cadencia: intervalos.length ? Math.max(...intervalos) : null,
+    idade: Number.isFinite(maisVelha) ? haQuanto(new Date(maisVelha).toISOString(), agora) : '—',
+    cadencia: cadencias.length ? formataCadencia(Math.max(...cadencias)) : null,
   } as const;
+}
+
+/** `0.2` → `12 s`, `15` → `15 min`. Com o poll, a cadência de uma família pode ficar abaixo do minuto. */
+function formataCadencia(min: number): string {
+  return min < 1 ? `${Math.round(min * 60)} s` : `${Math.round(min)} min`;
 }

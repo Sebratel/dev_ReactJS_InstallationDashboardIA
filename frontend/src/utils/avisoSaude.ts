@@ -50,12 +50,23 @@ export interface GrupoAgendado {
   ultimoSucesso: string | null;
 }
 
+/** Uma query vigiada pelo poller realtime, como `GET /api/saude` a publica em `poller.porQuery`. */
+export interface QueryDoPoller {
+  query: string;
+  intervaloMs: number;
+  /** Última volta que conferiu o dado contra o banco (API de 14/10/2026 em diante). */
+  confirmadoEm?: string | null;
+}
+
 export interface RespostaSaude {
   refresh?: {
     queries: QuerySaude[];
   };
   agendador?: {
     grupos: GrupoAgendado[];
+  };
+  poller?: {
+    porQuery: QueryDoPoller[];
   };
 }
 

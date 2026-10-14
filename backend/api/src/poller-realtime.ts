@@ -530,6 +530,13 @@ export interface MedidaDaQuery {
    * atraso. Meta da VISÃO PRODUTIVA: do fato à tela ≤ 30 s (`PLANO-CARREGAMENTO.md` §0).
    */
   atrasoDoFato: { n: number; medianoMs: number | null; maxMs: number | null };
+  /**
+   * Até quando o dado desta query está CONFERIDO contra o banco: a última volta concluída,
+   * ou a última dispensada pela sentinela (que viu o escopo em dia e nada novo). É a idade
+   * real do dado — a `ultimaCarga` do refresh só mede a carga cheia, e numa query com
+   * poll ela chega a 60 min com o dado de segundos atrás (capa, 14/10/2026).
+   */
+  confirmadoEm: string | null;
 }
 
 interface Acumulado {
@@ -545,6 +552,7 @@ interface Acumulado {
   atrasos: number[];
   atrasoMax: number;
   atrasoN: number;
+  confirmadoEm: Date | null;
 }
 
 /**
@@ -968,6 +976,7 @@ export class PollerRealtime {
           medianoMs: m && m.atrasos.length ? [...m.atrasos].sort((a, b) => a - b)[Math.floor(m.atrasos.length / 2)]! : null,
           maxMs: m && m.atrasoN ? m.atrasoMax : null,
         },
+        confirmadoEm: m?.confirmadoEm?.toISOString() ?? null,
       };
     });
     const totalPorHora = porQuery.reduce((s, q) => s + q.bancoMsPorHora, 0);
@@ -997,7 +1006,7 @@ export class PollerRealtime {
   #medida(query: string): Acumulado {
     let m = this.#medidas.get(query);
     if (!m) {
-      m = { voltas: 0, puladas: 0, dispensadas: 0, erros: 0, suspensas: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null, atrasos: [], atrasoMax: 0, atrasoN: 0 };
+      m = { voltas: 0, puladas: 0, dispensadas: 0, erros: 0, suspensas: 0, bancoMs: 0, bancoMsMax: 0, ultimoBancoMs: null, atrasos: [], atrasoMax: 0, atrasoN: 0, confirmadoEm: null };
       this.#medidas.set(query, m);
     }
     return m;
@@ -1033,7 +1042,9 @@ export class PollerRealtime {
       return;
     }
     if (this.#dispensa(cfg)) {
-      this.#medida(cfg.query).dispensadas += 1;
+      const m = this.#medida(cfg.query);
+      m.dispensadas += 1;
+      m.confirmadoEm = this.#opts.agora();
       return;
     }
     this.#ocupado.add(cfg.query);
@@ -1124,6 +1135,7 @@ export class PollerRealtime {
     this.#voltas += 1;
     const med = this.#medida(cfg.query);
     med.voltas += 1;
+    med.confirmadoEm = this.#opts.agora();
     if (mudaram > 0) {
       const marca = marcaMaisNovaDasMudancas(antes, atualizado, cfg.marca);
       const atraso = marca ? agora.getTime() + this.#fusoMs - marca.getTime() : null;

@@ -128,8 +128,9 @@ export function Capa(props: {
         <Bloco titulo="Atualização dos dados">
           <p className="mb-[10px]">
             As consultas leem o <b>Voalle</b> (PostgreSQL), o <b>MariaDB</b> corporativo e as
-            planilhas Google, e cada grupo é relido na sua cadência. A idade do dado aparece também
-            no cabeçalho de toda tela — dado velho é visível, nunca silencioso.
+            planilhas Google. Cada grupo é relido na sua cadência, e o que muda durante o dia é
+            acompanhado ao vivo. A idade abaixo é a da última conferência com o banco, pela parte
+            mais velha de cada grupo — dado velho é visível, nunca silencioso.
           </p>
           <table className="w-full text-[0.78rem]">
             <tbody>
@@ -149,7 +150,7 @@ export function Capa(props: {
                       ) : s.status === 'vencida' ? (
                         <span className="font-bold text-pbi-gold-600">parado · {s.idade}</span>
                       ) : (
-                        `${s.idade}${s.cadencia ? ` · ${s.cadencia} min` : ''}`
+                        `${s.idade}${s.cadencia ? ` · a cada ${s.cadencia}` : ''}`
                       )}
                     </td>
                   </tr>

@@ -400,6 +400,23 @@ test(`PollerRealtime.estado(): o poller calado prova que está vivo`, async () =
   assert.ok(e.ultimaVolta, `quando ele rodou pela última vez`);
 });
 
+test(`PollerRealtime.estado(): cada query diz até quando o dado está conferido`, async () => {
+  // A capa media a idade pela carga cheia (60 min no grupo frio) e mostrava "há 50min"
+  // com o dado de segundos atrás. `confirmadoEm` é o que dá a idade real.
+  const fake = poolDeMentira([]);
+  const p = new PollerRealtime({
+    specsDir: `backend/specs`,
+    pool: fake.pool,
+    agora: () => new Date(`2026-09-03T10:00:00Z`),
+    anuncia: () => {},
+  });
+  const antes = p.estado().porQuery.find((q) => q.query === `protocolos-auxiliares`)!;
+  assert.equal(antes.confirmadoEm, null, `sem volta, nada conferido`);
+  await p.tentaAgora(`protocolos-auxiliares`);
+  const depois = p.estado().porQuery.find((q) => q.query === `protocolos-auxiliares`)!;
+  assert.equal(depois.confirmadoEm, `2026-09-03T10:00:00.000Z`, `volta sem mudança também confere`);
+});
+
 test(`PollerRealtime.estado(): erro na busca vira contagem e motivo`, async () => {
   const p = new PollerRealtime({
     specsDir: `backend/specs`,
