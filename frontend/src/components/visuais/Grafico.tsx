@@ -82,11 +82,15 @@ export function Grafico({
   );
   const pagina = Math.min(cabem, Math.max(nTotal, 1));
   const precisaPaginar = nTotal > pagina;
-  // Abre na ÚLTIMA página: categoria de gráfico operacional é quase sempre tempo
-  // ordenado, e o que interessa é o presente. `null` = ainda no padrão, então a janela
-  // acompanha o fim quando um filtro muda o tamanho da série.
+  // Abre na página que TERMINA NO ÚLTIMO DIA COM DADO: categoria de gráfico operacional
+  // é quase sempre tempo ordenado, e o que interessa é o presente. Não no fim da série:
+  // o calendário do mês corrente vem até o dia 31, e a última página caía inteira em
+  // dias futuros (nulos). `null` = ainda no padrão, então a janela acompanha o fim
+  // quando um filtro muda o tamanho da série.
   const maxInicio = Math.max(0, nTotal - pagina);
-  const de = Math.min(inicio ?? maxInicio, maxInicio);
+  const fimComDado = gTudo ? ultimaCategoriaComDado(gTudo.series) + 1 : nTotal;
+  const inicioPadrao = Math.min(maxInicio, Math.max(0, fimComDado - pagina));
+  const de = Math.min(inicio ?? inicioPadrao, maxInicio);
   const ate = Math.min(de + pagina, nTotal);
 
   /** Só a fatia visível, já com a cor do tema. O `teto` vem do TODO — ver abaixo. */
@@ -184,9 +188,10 @@ export function Grafico({
     </div>
   );
 
-  const semDados =
-    g.categorias.length === 0 ||
-    g.series.every((s) => s.valores.every((v) => v === null || v === 0));
+  // Do TODO, não da janela: uma página vazia ainda é um gráfico com dados (navegável), e
+  // este ramo não monta a `caixa-grafico` — a largura nunca era medida, a página ficava
+  // no tamanho padrão e o cartão preso em "sem dados".
+  const semDados = gTudo.categorias.length === 0 || ultimaCategoriaComDado(gTudo.series) < 0;
   if (semDados) {
     return (
       // `altura="grafico"`: sem ela o Cartao cai em `auto` e cresce com o conteúdo.
@@ -238,4 +243,20 @@ export function Grafico({
       </div>
     </Cartao>
   );
+}
+
+/** Índice da última categoria em que alguma série tem valor (≠ nulo e ≠ 0); -1 se nenhuma. */
+function ultimaCategoriaComDado(
+  series: readonly { valores: readonly (number | null)[] }[],
+): number {
+  let ultima = -1;
+  for (const s of series) {
+    for (let i = s.valores.length - 1; i > ultima; i--) {
+      if (s.valores[i] !== null && s.valores[i] !== 0) {
+        ultima = i;
+        break;
+      }
+    }
+  }
+  return ultima;
 }
