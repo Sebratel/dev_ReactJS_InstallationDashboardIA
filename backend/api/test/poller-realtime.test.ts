@@ -655,7 +655,12 @@ test('PollerRealtime: em produção a vigília parte do relógio do banco, não 
     },
     end: async () => {},
   });
-  const p = new PollerRealtime({ specsDir: 'backend/specs', pool, anuncia: () => {} });
+  const p = new PollerRealtime({
+    specsDir: 'backend/specs',
+    pool,
+    anuncia: () => {},
+    cobertoAte: () => null,
+  });
   await p.tentaAgora('protocolos-auxiliares');
   assert.equal(chamadas.length, 2);
   assert.match(chamadas[0]!.text, /LOCALTIMESTAMP/);

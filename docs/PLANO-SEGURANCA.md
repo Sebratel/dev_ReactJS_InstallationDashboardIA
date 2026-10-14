@@ -36,6 +36,8 @@ depende de decisão. Decisões marcadas **D1–D9**, com recomendação, estão 
 
 ## Fase 0 — colocar no ar o que já está no staging
 
+> **Feita em 14/10, 18:18 UTC (ACHADOS #219)**, junto com a fase 1 e a troca do `TOKEN_INTERNO`.
+
 Antes de tudo: recriar a `api` com `-f ../contorno.yml` (PLANO-CARGA §1). Leva SEC-001 a
 SEC-004 (commit `7065562`).
 

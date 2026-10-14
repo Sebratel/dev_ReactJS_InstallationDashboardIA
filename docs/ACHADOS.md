@@ -15375,3 +15375,66 @@ uma coluna lá a fazia parecer usada — a regra não reprovava nada. Corrigido 
   — tirar a coluna pode fundir linhas e mudar contagem. Fica como `excecao` até medir.
 - `snapshot/` ainda tem as colunas antigas até o próximo refresh de `contratos` com a
   imagem nova; os PROTOCOLOS seguem com nome, telefone e endereço porque as telas usam.
+
+## #219 — reauditoria pós-#218: código verde, API atual e dois serviços ainda na imagem antiga (14/10)
+
+**O pedido.** Depois dos achados #211–#218, a verificação foi refeita sobre `staging`, sem
+assumir que o que estava commitado já era o que rodava. A árvore principal estava limpa;
+os commits de segurança, tabela, poller e minimização foram revisados pelos caminhos de
+produção e por seus testes.
+
+**Validação limpa.** Em uma worktree sem `snapshot/`: backend 2.219 aprovados e 1 teste WMI
+pulado pelo host; frontend 170/170; E2E 9/9; 14 layouts, typecheck, lint, build e auditoria
+de dependências aprovados. O E2E fez 168 pedidos interativos e 5 prefetches. O bundle
+principal ficou em 426,90 kB e o Firebase separado em 98,67 kB.
+
+**Um falso vermelho virou correção de teste.** Na pasta principal,
+`PollerRealtime: em produção a vigília parte do relógio do banco` lia o manifesto real e
+ancorava `:desde` na cobertura do snapshot, embora o teste esperasse o relógio falso do
+banco. Na worktree sem snapshot passava. O teste agora injeta `cobertoAte: () => null`, que
+é a condição específica que ele pretende provar; não depende mais do estado da plataforma.
+
+**O que está implantado.** A `api` foi reconstruída e recriada às 15:18. Os hashes de
+`aquecedor.ts`, `servidor.ts` e `seguranca.yaml` dentro do contêiner são os do `staging`;
+`CONFIA_PROXY=1`, `AQUECE_FILTROS_ATE=0`, e `/auth/interno` pela porta 80 respondeu 404.
+Logo, desempenho #210, poller #213 e controles #214–#217 estão no processo em uso.
+
+**O que ainda não está.** `refresh` e `snapshot-diario` continuam na imagem das 11:30. Ela
+já contém a troca de gestores (#211), mas não a minimização de CONTRATOS (#218): os hashes
+das duas specs ainda são antigos. O arquivo `contratos.jsonl.gz`, gerado às 15:16, tem 23
+colunas e as 11 removidas no código novo continuam presentes. É preciso recriar os dois
+serviços e refazer `contratos`; só então conferir 12 colunas no cabeçalho.
+
+**Pendências de segurança que continuam reais:** TLS/cookie `Secure`; rotação do
+`TOKEN_INTERNO`; uma semana de `filtro_fora_da_pagina` antes de trocar `observar` por
+`bloquear`; usuário de banco dedicado. Uma conexão SSE aberta não é um pedido novo: a
+sessão revogada já não consegue buscar dado, mas o socket só some quando o navegador fecha
+ou reconecta. Os eventos SSE trazem apenas ids de página, nunca linhas.
+
+## #219 — deploy da segurança na stack desta máquina (14/10, 18:18 UTC)
+
+**O que subiu.** `c2fdbc3` (= `main` = `staging` no GitHub): SEC-001..004 (#214) e a fase 1
+do PLANO-SEGURANCA — S3 (#215), S2 (#216), S5a (#217), S6 (#218). `TOKEN_INTERNO` trocado
+no `.env` (43 caracteres aleatórios no lugar do UUID).
+
+**Como.** Imagens de `api`, `refresh` e `snapshot-diario` construídas com a stack de pé (48 s).
+`api` recriada sozinha (`--no-deps`, saudável em 12 s); nginx recarregado (`nginx -t` e
+`-s reload`, sem derrubar conexão); `refresh` e `snapshot-diario` recriados só depois de a
+trava de materialização soltar — havia um ciclo `quente`+`medio` em andamento, que terminou
+OK. Todos os comandos com `-f ../contorno.yml` (inofensivo desde o #210). As sessões
+caíram: quem estava logado entra de novo.
+
+**Provado na stack.**
+| o quê | resultado |
+|---|---|
+| IP do pedido pelo nginx no `[seg]` | `172.18.0.1` (quem pediu), era `172.18.0.6` (o nginx) |
+| `POST /auth/interno` pela porta 80, token certo | 404 |
+| direto na 3100: token novo / token qualquer | 200 / 401 |
+| cookie de sessão | `Max-Age=28800` (8 h) |
+| token no JavaScript servido | 0 arquivos |
+| `/api/admin/sessoes` com sessão de máquina | 403 |
+| `contratos` no `snapshot/` (18:38) | 12 colunas (eram 23), 89.022 linhas, 3,6 s (era 8,7 s) |
+| `premiacao-instalacao` (a página que lê CONTRATOS) | 200, 21 visuais, 0 com erro |
+| erros na api desde o deploy | 0 |
+
+**Daqui a uma semana (S5b):** contar `filtro_fora_da_pagina` em `security_events`.

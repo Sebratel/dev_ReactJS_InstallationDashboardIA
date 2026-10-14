@@ -46,8 +46,9 @@ node backend/tools/refresh/src/daemon.ts --historico   # histórico de grupos e 
 - Planilhas do Google: a plataforma NÃO lê mais (14/10/2026, ACHADOS #209). O n8n copia as 3 para o
   `DB_InstallationDashboard` a cada 15 min (`backend/tools/banco/n8n/`); saúde da cópia em `data_syncs`.
   O `.env` também precisa das quatro `VITE_FIREBASE_*`: elas entram no BUILD da imagem (o `up`
-  erra sem elas). **Recriar a `api` sempre com `-f ../contorno.yml`** (`AQUECE_FILTROS_ATE=0`, até a
-  C.2) — ver `docs/PLANO-CARGA.md` §1. Sem ele, o pré-cálculo de filtros religa.
+  erra sem elas). Desde 14/10, `AQUECE_FILTROS_ATE` já nasce `0` no código e o contorno deixou
+  de ser necessário; valor positivo é experimento de carga, não configuração normal. Ver
+  `docs/PLANO-CARGA.md` §1.
 - `backend/packages/snapshot/src/incremental.ts` tem um byte NUL — use `grep -a`.
 - Token Power BI: `~/.secrets/powerbi-token.json`, renova sozinho; somente-leitura garantido por `assertSomenteEvaluate`.
 - Morte da API: `snapshot/diagnostico/` (relatório fatal + cauda do stderr).

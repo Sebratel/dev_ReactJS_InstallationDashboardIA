@@ -2,13 +2,13 @@
 
 ## A. Diagnóstico geral
 
-O projeto é uma plataforma analítica orientada por metadados que substitui um relatório Power BI. O frontend usa React 19, Vite, React Router, React Query e Zustand. A API usa `node:http` e TypeScript executado diretamente pelo Node 24. Os cálculos leem snapshots locais gerados a partir de PostgreSQL, MariaDB, Google Sheets, fonte web e dados computados; Redis é opcional para cache.
+O projeto é uma plataforma analítica orientada por metadados que substitui um relatório Power BI. O frontend usa React 19, Vite, React Router, React Query e Zustand. A API usa `node:http` e TypeScript executado diretamente pelo Node 24. Os cálculos leem snapshots locais gerados a partir de PostgreSQL, MariaDB, fonte web e dados computados; as três planilhas são copiadas pelo n8n para o MariaDB e não são mais lidas diretamente. Redis é opcional para cache.
 
 Foram inventariadas 14 definições de dashboard: 11 telas navegáveis e 3 tooltips (`l-inst`, `l-mapa`, `l-tec`). A superfície HTTP encontrada foi:
 
 - Sessão: `POST /auth/firebase`, `/auth/google`, `/auth/interno` e `/auth/logout`.
 - Leitura: `GET /api/saude`, `/api/dashboards`, `/api/eventos`, `/api/dashboards/:id`, `/layout` e `/valores`.
-- Administração: `GET /api/admin/acessos` e `POST` em `/pessoa`, `/papel`, `/tela`, `/remove` e `/dispensa`.
+- Administração: gestão de acessos em `/api/admin/acessos/*` e gestão de sessões em `/api/admin/sessoes/*`.
 
 Os controles existentes cobrem validação de tokens Firebase/Google, domínio corporativo exato, sessão em cookie `HttpOnly`/`SameSite=Lax`, CSRF por origem, rate limiting, CSP e demais cabeçalhos, limite de corpo/cabeçalho, erro genérico em produção, SQL parametrizado e autorização por aba antes da leitura do cache.
 
@@ -25,9 +25,9 @@ Os controles existentes cobrem validação de tokens Firebase/Google, domínio c
 
 | Camada | Resultado | Evidência |
 |---|---:|---|
-| Backend/unitário/integração | 2.194 aprovados; 1 bloqueado | `node --test --test-skip-pattern="linhaDeComando acha um processo real" ...` |
-| Frontend unitário/componentes | 161/161 aprovados | `npm exec -w frontend -- vitest run` |
-| Segurança e permissões | 52/52 aprovados | subconjunto focado de `seguranca`, `permissoes` e `estatico` |
+| Backend/unitário/integração | 2.219 aprovados; 1 pulado | `node --test --test-skip-pattern="linhaDeComando acha um processo real" ...` |
+| Frontend unitário/componentes | 170/170 aprovados | `npm exec -w frontend -- vitest run` |
+| Segurança e mudanças recentes | 208/208 após corrigir o isolamento | subconjunto focado de segurança, permissões, poller, tabelas, M e plano |
 | E2E Playwright | 9/9 aprovados | API isolada na porta 3210, snapshot somente leitura, refresh/poller/aquecimento desligados |
 | Layouts | 14/14 aprovados | `npm run layout:valida` |
 | Tipos | aprovado | `npm run typecheck` |
@@ -35,13 +35,13 @@ Os controles existentes cobrem validação de tokens Firebase/Google, domínio c
 | Build de produção | aprovado | `npm run web:build` |
 | Dependências | 0 vulnerabilidades | `npm audit --json` |
 
-Total sem dupla contagem: **2.365 testes registrados, 2.364 aprovados e 1 bloqueado**.
+Total sem dupla contagem: **2.399 testes registrados, 2.398 aprovados e 1 pulado**.
 
-O teste bloqueado consulta `Win32_Process` para confirmar a linha de comando de um processo real. O Windows deste ambiente devolveu `0x80041003 — Acesso negado` mesmo fora do sandbox. O teste não foi removido nem alterado; toda a suíte restante passou.
+O teste pulado consulta `Win32_Process` para confirmar a linha de comando de um processo real. O Windows deste ambiente devolveu `0x80041003 — Acesso negado` mesmo fora do sandbox. O teste não foi removido nem alterado; toda a suíte restante passou.
 
-O E2E executou login interno temporário, acesso inicial, URL direta, filtros, histórico voltar/avançar, recarga, estado limpo, troca de aba, árvore de período, busca de tabela e console sem erros. Foram observadas 156 requisições interativas e 7 prefetches, abaixo do limite configurado.
+O E2E executou login interno temporário, acesso inicial, URL direta, filtros, histórico voltar/avançar, recarga, estado limpo, troca de aba, árvore de período, busca de tabela e console sem erros. Foram observadas 168 requisições interativas e 5 prefetches, abaixo do limite configurado.
 
-`npm run validate` não executou consultas reais: o worktree não contém `.env`. Das 26 queries, 20 ficaram sem datasource configurado e 6 usam conectores que esse comando não executa. Nenhuma credencial foi copiada ou impressa.
+`npm run validate` não executou consultas reais: o worktree não contém `.env`. Das 26 queries, 23 ficaram sem datasource configurado e 3 usam conectores que esse comando não executa. Nenhuma credencial foi copiada ou impressa.
 
 Cobertura percentual não foi informada porque não há instrumentação de cobertura configurada para toda a pirâmide. Não foi criada uma métrica artificial.
 
@@ -66,7 +66,7 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 - Arquivos: `frontend/src/config.ts`, `frontend/src/components/auth/Login.tsx`, `frontend/src/services/firebaseAuth.ts`.
 - Causa raiz: import estático do SDK Firebase no componente de login.
 - Solução: detecção da configuração sem importar o SDK e `import()` apenas após o clique.
-- Validação: bundle principal caiu de 521,26 kB para 424,45 kB; Firebase virou chunk separado de 98,67 kB; build e 161 testes web aprovados.
+- Validação: bundle principal caiu de 521,26 kB para 426,90 kB após as telas administrativas; Firebase ficou em chunk separado de 98,67 kB; build e 170 testes web aprovados.
 
 ### Controle da latência ao vivo
 
@@ -74,7 +74,7 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 - Causa raiz: cada evento ao vivo disparava aquecimento amplo de períodos, detalhes e filtros; no cliente, cada sessão pré-carregava todas as páginas e até 40 estados vizinhos.
 - Solução: reaquecimento ao vivo restrito à abertura atual, pré-cálculo amplo de filtros desligado por padrão, abertura progressiva em quatro faixas com prioridade explícita, invalidação imediata só da consulta operacional e prefetch guiado por intenção.
 - Validação local: `agendamento-field` fria caiu de 4.219 ms/36 pedidos para 2.062 ms/12; quente, de 339 ms para 267 ms. Um evento isolado reaquecido levou 1.724 ms e fez uma única consulta de página, contra média de 20.202 ms e máximo de 74.673 ms no processo anterior. Todas as páginas quentes ficaram entre 133 e 267 ms.
-- Estado: código, testes, build e E2E aprovados; a comprovação com refresh real e a promoção para a API em uso continuam pendentes.
+- Estado: código, testes, build e E2E aprovados; a API em uso foi recriada às 15:18 com o aquecedor novo. A comprovação sob refresh real continua pendente.
 
 ### CI
 
@@ -97,6 +97,9 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 ### Riscos residuais
 
 - **Alta:** TLS ainda não está configurado; enquanto isso, `COOKIE_SECURE` permanece desligado. Certificado, proxy HTTPS e cookie `Secure` precisam entrar juntos.
+- **Alta transitória:** `refresh` e `snapshot-diario` ainda usam a imagem anterior à minimização de CONTRATOS; o snapshot de 15:16 continua com as 11 colunas removidas no código novo.
+- **Média:** filtros fora da página ainda passam no modo `observar`; mudar para `bloquear` depende de uma semana sem evento legítimo.
+- **Média:** o `TOKEN_INTERNO` antigo ainda precisa ser rotacionado após fechar sua exposição pública.
 - **Média:** sem `ACESSO_DB_USER` dedicado, a API cai para `MARIA_USER`; funciona, mas perde a camada de menor privilégio prevista.
 - **Média futura:** não há isolamento por linha/tenant; o controle atual é por aba. Qualquer requisito multi-tenant exige regra no backend e chave de cache compatível antes de produção.
 - **Baixa/média em escala:** sessões e rate limits são locais ao processo. Múltiplas réplicas exigiriam armazenamento/contagem compartilhados.
@@ -107,8 +110,10 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 ### Correções obrigatórias pendentes
 
 1. Habilitar TLS, redirecionamento HTTP→HTTPS, `COOKIE_SECURE=1` e HSTS no mesmo deploy.
-2. Criar e usar o usuário `installation_access` restrito às tabelas de acesso/auditoria.
-3. Executar `npm run doctor` e `npm run validate` em ambiente autorizado com credenciais somente leitura.
+2. Recriar `refresh` e `snapshot-diario` com a imagem atual e refazer `contratos`; confirmar 12 colunas no arquivo novo.
+3. Rotacionar `TOKEN_INTERNO` e, após a janela de observação, decidir a troca de filtros para `bloquear`.
+4. Criar e usar o usuário `installation_access` restrito às tabelas de acesso/auditoria.
+5. Executar `npm run doctor` e `npm run validate` em ambiente autorizado com credenciais somente leitura.
 
 ### Melhorias recomendadas
 
@@ -156,7 +161,7 @@ O plano para fechar estes e os caminhos de um funcionário mal-intencionado, spe
 | ID | Sev. | Estado | O quê | Por que não corrigi |
 |---|---|---|---|---|
 | SEC-005 | Alta | Confirmada | HTTP puro (nginx só `listen 80`), cookie sem `Secure`, sem HSTS: o cookie de sessão e o ID token do Firebase trafegam em claro na rede. Mesmo item da §D. | Precisa de certificado e do proxy do Misael; ligar `COOKIE_SECURE` sem TLS quebra o login. |
-| SEC-006 | Média | Provável, não testada | A01 — `?filtro=` aceita `tabela/coluna` de qualquer tabela do modelo (`decodificaFiltros` só valida a sintaxe). Quem tem uma aba poderia usar o total da página como oráculo sim/não sobre colunas que a aba não mostra (ex.: `QUADRO FUNCIONAL`). | Provar exige consultar o snapshot com dado real. Corrigir = restringir os filtros às colunas da página, o que pode quebrar recorte cruzado; é decisão de produto. |
+| SEC-006 | Média | Mitigada, observação ativa | A01 — filtro fora da página agora deixa evento sem registrar o valor; o modo `bloquear` já existe e devolve 400. | Manter `observar` por uma semana; sem caso legítimo, mudar a spec para `bloquear`. |
 | SEC-007 | Info | — | Sessões e baldes do rate limit são `Map` sem varredura (só limpam no acesso). Crescimento limitado na prática: sessão exige login corporativo válido. | Sem impacto medido. |
 
 ### Verificado e aprovado nesta rodada
@@ -169,13 +174,14 @@ roda como `USER node`. `TOKEN_INTERNO` comparado em tempo constante; segredo do 
 
 ### Testes
 
-Baseline antes das correções: 2.197 de 2.199 do backend passam, 1 pulado, 1 falha
-preexistente sem relação com segurança (`porta.test.ts`, consulta de processo do Windows).
-Depois: 2.200 de 2.202 (os 3 novos passam; a mesma falha preexistente), frontend 168/168,
-`npm run typecheck` e `npm run lint` verdes. `backend/api/test` rodou duas vezes com o
-mesmo resultado. Cada teste novo foi visto falhando antes da correção.
+Estado final após #218: backend 2.219 aprovados, 1 teste WMI pulado; frontend 170/170;
+E2E 9/9; typecheck, lint, build, 14 layouts e `npm audit` verdes. Na árvore principal,
+um teste do poller lia o `snapshot/` vivo e usava a cobertura real em vez do relógio falso;
+na worktree sem snapshot ele passava. O teste passou a injetar `cobertoAte: () => null`,
+deixando explícita a condição que pretende provar.
 
 ### Para valer em produção
 
-A correção SEC-001 só entra recriando a `api` (com `-f ../contorno.yml`, PLANO-CARGA §1).
-SEC-003 e SEC-002 entram na mesma imagem.
+A API foi recriada às 15:18 com `CONFIA_PROXY=1`, `AQUECE_FILTROS_ATE=0` e o código atual;
+`POST /auth/interno` pela porta 80 devolveu 404. `refresh` e `snapshot-diario` ainda precisam
+ser recriados para a minimização de CONTRATOS chegar ao arquivo em disco.
