@@ -85,8 +85,7 @@ export function useTempoReal(atual: string | null): TempoReal {
   // novo na hora, e as outras quando voltarem a ser abertas.
   useEffect(() => {
     return assinaEventos((afetados) => {
-      for (const id of afetados)
-        void invalidaAbertura(qc, id);
+      for (const id of afetados) void invalidaAbertura(qc, id);
       if (atualRef.current && afetados.includes(atualRef.current)) {
         marcaHora();
         void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });

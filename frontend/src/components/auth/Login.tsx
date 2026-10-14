@@ -19,7 +19,12 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { Erro } from '../ui/Cartao.tsx';
-import { DOMINIO_CORPORATIVO, GOOGLE_CLIENT_ID, TEM_FIREBASE, TOKEN_INTERNO } from '../../config.ts';
+import {
+  DOMINIO_CORPORATIVO,
+  GOOGLE_CLIENT_ID,
+  TEM_FIREBASE,
+  TOKEN_INTERNO,
+} from '../../config.ts';
 import {
   abreSessaoFirebase,
   abreSessaoGoogle,

@@ -5,11 +5,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import type {
-  FiltroDaTela,
-  LayoutSpec,
-  Valor,
-} from '../services/dashboardService.ts';
+import type { FiltroDaTela, LayoutSpec, Valor } from '../services/dashboardService.ts';
 import { filtrosPadrao } from '../utils/filtrosPadrao.ts';
 import type { AlvoDeFiltro, CampoClicado } from '../utils/rota.ts';
 import { consultaDaAbertura, preCarregaAbertura } from './useDadosDaTela.ts';
