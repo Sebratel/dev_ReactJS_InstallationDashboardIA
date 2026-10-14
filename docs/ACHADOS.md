@@ -15183,3 +15183,28 @@ NULL) e o n8n grava NULL — por isso `COALESCE(…, '')` em toda coluna de text
 `Table.ReplaceValue("" → "TERCEIROS")` do M deixaria de casar. Conferido materializando num
 diretório à parte: mesmas colunas e tipos, 91% iguais no período comum, mesma contagem de
 TERCEIROS, e 14.458 linhas novas (17/07/2025 a 13/11/2026).
+
+## #212 — clicar numa linha de tabela que abre com contagem derrubava a página inteira (14/10)
+
+**Sintoma.** Em `agendamento-field`, clicar numa linha da "HISTÓRICO DE RELATOS" trocava
+todos os visuais que leem `FIELD AGENDA` por "filtro Tela 'FIELD AGENDA'[Protocolo]: o
+filtro compara número com texto (dado: "1848469", filtro: 1)" — inclusive a "VISÃO GERAL",
+que nem foi clicada: o filtro do clique vale para a página.
+
+**Causa.** O clique na linha filtrava por `colunas[0]`, e a API dava tabela/coluna de origem
+a **todo** campo, inclusive agregação. Essa tabela abre com `.` = `COUNT(Protocolo)`: o
+clique mandava `Protocolo = 1` — a contagem no lugar do protocolo. O guarda de espécie
+(`filtro.ts`) barrou, que é o certo; sem ele seria zero calado.
+
+**Alcance (varredura dos `tableEx` dos specs).** Seis tabelas abrem com `COUNT` de protocolo:
+`agendamento-field` 084be384 e 815c0959, `premiacao-instalacao` 50d44b50 e 77ebfd00,
+`protocolos-detalhados` ce6625eb, `instalacao-reincidente` d93e5f33. Uma sétima,
+`instalacao-reincidente` 1a8f0f42, abre com o nível **Ano** de `DATA INSTALADO`, e o clique
+ia sem `nivel` (ano contra data). `l-inst`/`l-tec` abrem com `SUM(CONTAGEM)` — mesma
+espécie, então o guarda não pegaria e o resultado seria vazio calado —, mas são páginas de
+dica, sem clique.
+
+**Correção.** `origemDasColunas` (`tabela.ts`) só dá origem a coluna-chave; agregação e
+medida saem `null`, e a chave de hierarquia leva `nivel`. A tela filtra pela primeira
+coluna **com origem** (`Tabela.tsx`), não pela primeira. Cache de resposta v5 → v6. Testes
+em `tabela.test.ts` e `componentes-tabela.test.tsx`.

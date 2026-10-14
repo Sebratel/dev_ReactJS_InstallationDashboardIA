@@ -184,6 +184,8 @@ export interface TabelaCompleta {
     /** A entidade e a propriedade de origem da coluna — o alvo de um clique na linha. */
     tabela: string | null;
     coluna: string | null;
+    /** Nível da hierarquia de datas (`Ano`, `Mês`) quando a coluna é um deles. */
+    nivel: string | null;
   }[];
   linhas: unknown[][];
   linhasTotais: number;
@@ -674,6 +676,7 @@ function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Tabe
       chave: r.linhas[0]?.[i]?.chave ?? true,
       tabela: r.origemDasColunas[i]?.tabela ?? null,
       coluna: r.origemDasColunas[i]?.coluna ?? null,
+      nivel: r.origemDasColunas[i]?.nivel ?? null,
     })),
     linhas: r.linhas.map((l) => l.map((c) => serializa(c.valor))),
     linhasTotais: r.linhas.length,

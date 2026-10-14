@@ -143,19 +143,32 @@ export function Tabela(props: {
   };
 
   /**
-   * O CLIQUE NUMA LINHA filtra pela PRIMEIRA coluna — no relatório de origem é ela que
-   * identifica o registro (PROTOCOLO), então recorta a página inteira para ESTE registro
-   * sem amarrar um filtro por coluna. Sem tabela/coluna de origem, o clique não filtra.
+   * O CLIQUE NUMA LINHA filtra pela PRIMEIRA coluna QUE TEM ORIGEM — no relatório de
+   * origem é ela que identifica o registro (PROTOCOLO), então recorta a página inteira
+   * para ESTE registro sem amarrar um filtro por coluna. Sem nenhuma, o clique não filtra.
+   *
+   * **Não é `colunas[0]`.** Seis tabelas abrem com uma contagem (o `.` de
+   * `COUNT(Protocolo)`), que não tem origem: filtrar por ela mandava `Protocolo = 1`, e
+   * a página inteira caía no guarda de espécie (14/10/2026). A API devolve
+   * tabela/coluna `null` em campo calculado justamente para ele ser pulado aqui.
    */
-  const colunaDoClique = d.colunas[0];
-  const podeClicarNaLinha =
-    props.aoFiltrar !== undefined && !!colunaDoClique?.tabela && !!colunaDoClique?.coluna;
-  const selecaoDaLinha = podeClicarNaLinha
-    ? selecaoDe(props.filtros, colunaDoClique!.tabela!, colunaDoClique!.coluna!)
+  const iDoClique = d.colunas.findIndex((c) => !!c.tabela && !!c.coluna);
+  const colunaDoClique = iDoClique >= 0 ? d.colunas[iDoClique]! : null;
+  const podeClicarNaLinha = props.aoFiltrar !== undefined && colunaDoClique !== null;
+  const selecaoDaLinha = colunaDoClique
+    ? selecaoDe(props.filtros, colunaDoClique.tabela!, colunaDoClique.coluna!, colunaDoClique.nivel)
     : [];
-  const clicaNaLinha = (valor: Valor) => {
+  const clicaNaLinha = (linha: readonly Valor[]) => {
+    const valor = linha[iDoClique];
     if (valor === null || valor === undefined) return;
-    props.aoFiltrar!([{ tabela: colunaDoClique!.tabela!, coluna: colunaDoClique!.coluna!, valor }]);
+    props.aoFiltrar!([
+      {
+        tabela: colunaDoClique!.tabela!,
+        coluna: colunaDoClique!.coluna!,
+        nivel: colunaDoClique!.nivel ?? null,
+        valor,
+      },
+    ]);
   };
 
   const exportarCSV = () => {
@@ -202,7 +215,7 @@ export function Tabela(props: {
           aoOrdenar={ordem.alterna}
           aoClicarLinha={podeClicarNaLinha ? clicaNaLinha : undefined}
           haSelecao={selecaoDaLinha.length > 0}
-          estaSelecionada={(valor) => selecaoDaLinha.some((v) => Object.is(v, valor))}
+          estaSelecionada={(linha) => selecaoDaLinha.some((v) => Object.is(v, linha[iDoClique]))}
         />
       )}
       {filtrando && totalLocal > 0 && d.linhas.length < d.linhasTotais ? (

@@ -136,6 +136,23 @@ test('cada célula diz se é chave ou calculada', () => {
 });
 
 /**
+ * A origem é o alvo do clique na linha. Agregação e medida têm `entity`/`property`,
+ * mas o valor da célula é a CONTA, não a coluna: com origem, o clique na tabela que
+ * abre com `COUNT(Protocolo)` mandava `Protocolo = 1` e derrubava a página
+ * inteira (agendamento-field, 14/10/2026).
+ */
+test('só coluna-chave tem origem; agregação e medida saem null', () => {
+  const campos = [agregacao('ID', 'count', '.'), coluna('CIDADE'), medida('Total')];
+  const v = visual(campos);
+  const r = calculaTabela(dashboard([v]), v, montar());
+  assert.deepEqual(r.origemDasColunas, [
+    { tabela: null, coluna: null, nivel: null },
+    { tabela: 'OS', coluna: 'CIDADE', nivel: null },
+    { tabela: null, coluna: null, nivel: null },
+  ]);
+});
+
+/**
  * Duas colunas com o mesmo rótulo na tela existem no relatório (há um campo
  * chamado `.`). Por isso a remontagem da linha é por identidade do campo, não
  * por nome — por nome, as duas leriam o mesmo valor.

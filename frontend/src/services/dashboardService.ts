@@ -75,6 +75,8 @@ export interface DadosDeTabela {
     /** A entidade e a propriedade de origem da coluna — o alvo de um clique na linha. */
     tabela: string | null;
     coluna: string | null;
+    /** Nível da hierarquia de datas (`Ano`, `Mês`); ausente em resposta anterior a 14/10. */
+    nivel?: string | null;
   }[];
   linhas: Valor[][];
   /** Quantas linhas a consulta tem — **já com a busca aplicada**, quando há uma. */

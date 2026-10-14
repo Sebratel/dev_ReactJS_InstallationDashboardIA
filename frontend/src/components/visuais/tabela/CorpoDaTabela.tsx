@@ -27,11 +27,11 @@ export function CorpoDaTabela(props: {
   colOrdenada: number | null;
   ordemDesc: boolean;
   aoOrdenar: (coluna: number) => void;
-  /** Clicar numa linha filtra a página pela PRIMEIRA coluna dela — `undefined` quando não dá. */
-  aoClicarLinha?: (valor: Valor) => void;
+  /** Clicar numa linha filtra a página — `undefined` quando não dá. A coluna é `Tabela.tsx` quem escolhe. */
+  aoClicarLinha?: (linha: readonly Valor[]) => void;
   /** Há uma linha selecionada? Então as outras esmaecem. */
   haSelecao: boolean;
-  estaSelecionada: (valor: Valor) => boolean;
+  estaSelecionada: (linha: readonly Valor[]) => boolean;
 }) {
   const { colunas, escalas, aoClicarLinha } = props;
   return (
@@ -59,12 +59,12 @@ export function CorpoDaTabela(props: {
               className={
                 (aoClicarLinha ? 'linha-clicavel' : '') +
                 (props.haSelecao
-                  ? props.estaSelecionada(linha[0] as Valor)
+                  ? props.estaSelecionada(linha)
                     ? ' linha-selecionada'
                     : ' linha-apagada'
                   : '')
               }
-              onClick={aoClicarLinha ? () => aoClicarLinha(linha[0] as Valor) : undefined}
+              onClick={aoClicarLinha ? () => aoClicarLinha(linha) : undefined}
               title={
                 aoClicarLinha ? 'Clique para filtrar a página inteira a este registro' : undefined
               }

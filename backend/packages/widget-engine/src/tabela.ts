@@ -38,11 +38,19 @@ export interface ValorDeTabela {
    *
    * É o que falta para um clique numa LINHA da tabela virar filtro — o mesmo papel que
    * `ChaveDoGrafico` (`graficoClique.ts`) já cumpre para o eixo de um gráfico. Campo
-   * calculado (medida, `%`) não tem uma coluna de origem única e sai como `null` nos
-   * dois — clicar numa célula dele não filtra nada, e o alvo de clique já descarta
-   * entradas sem tabela/coluna.
+   * calculado (medida, agregação, `%`) não tem uma coluna de origem única e sai como
+   * `null` nos dois — clicar numa célula dele não filtra nada, e o alvo de clique já
+   * descarta entradas sem tabela/coluna.
+   *
+   * **A agregação também é `null`, embora tenha `entity`/`property`.** O `.` de
+   * `agendamento-field` é `COUNT('FIELD AGENDA'[Protocolo])`: devolver a coluna fazia o
+   * clique mandar `Protocolo = 1` — a contagem no lugar do protocolo —, e a página
+   * inteira caía no guarda de espécie (14/10/2026; 6 tabelas começam assim).
+   *
+   * `nivel` acompanha a chave de hierarquia de datas: o valor da célula é o do nível
+   * (`2026`), não a data, e sem ele o filtro comparava ano com data.
    */
-  origemDasColunas: { tabela: string | null; coluna: string | null }[];
+  origemDasColunas: { tabela: string | null; coluna: string | null; nivel: string | null }[];
   linhas: CelulaTabela[][];
   /** `origem` de cada `TableFilter` de página e de visual. */
   filtros: string[];
@@ -192,7 +200,15 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
     dashboard: dash.id,
     visual: visual.id,
     colunas: campos.map((c) => c.name ?? null),
-    origemDasColunas: campos.map((c) => ({ tabela: c.entity, coluna: c.property })),
+    origemDasColunas: campos.map((c) =>
+      ehChave(c)
+        ? {
+            tabela: c.entity,
+            coluna: c.property,
+            nivel: c.kind === 'hierarchy_level' ? (c.level ?? null) : null,
+          }
+        : { tabela: null, coluna: null, nivel: null },
+    ),
     linhas: ordenaPorDataPadrao(linhas, campos.length),
     filtros: [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
   };

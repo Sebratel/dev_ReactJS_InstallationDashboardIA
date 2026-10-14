@@ -101,3 +101,37 @@ test('voltar uma página na fronteira de duas fatias mostra as linhas de antes, 
   await waitFor(() => expect(screen.getByText('181–200 de 400 linhas')).toBeTruthy());
   expect(screen.getByText('P180')).toBeTruthy();
 });
+
+// O clique na linha filtra pela primeira coluna COM ORIGEM, não por `colunas[0]`. A
+// tabela que abre com a contagem (`.` = COUNT(Protocolo), origem `null`) mandava
+// `Protocolo = 1` — a contagem no lugar do protocolo — e derrubava a página inteira
+// no guarda de espécie (agendamento-field, 14/10/2026).
+test('o clique pula a coluna de contagem e filtra pelo protocolo', () => {
+  const comContagem: DadosDeTabela = {
+    colunas: [
+      { nome: '.', tipo: 'number', chave: false, tabela: null, coluna: null },
+      {
+        nome: 'Protocolo',
+        tipo: 'string',
+        chave: true,
+        tabela: 'FIELD AGENDA',
+        coluna: 'Protocolo',
+      },
+    ],
+    linhas: [[1, '1848469']],
+    linhasTotais: 1,
+    de: 0,
+    filtros: [],
+  };
+  const aoFiltrar = vi.fn();
+  render(<Tabela pagina="p" visual={visual(comContagem)} filtros={[]} aoFiltrar={aoFiltrar} />);
+  fireEvent.click(screen.getByText('1848469'));
+  expect(aoFiltrar).toHaveBeenCalledWith([
+    { tabela: 'FIELD AGENDA', coluna: 'Protocolo', nivel: null, valor: '1848469' },
+  ]);
+});
+
+test('sem coluna com origem, a linha não é clicável', () => {
+  render(<Tabela pagina="p" visual={visual(dados)} filtros={[]} aoFiltrar={vi.fn()} />);
+  expect(screen.getByText('P1').closest('tr')!.className).not.toContain('linha-clicavel');
+});
