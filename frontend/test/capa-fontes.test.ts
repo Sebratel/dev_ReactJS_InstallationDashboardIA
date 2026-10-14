@@ -69,3 +69,15 @@ test('família só de poll mostra a cadência em segundos', () => {
   expect(s?.idade).toBe('agora');
   expect(s?.cadencia).toBe('12 s');
 });
+
+test('sem a cadência de alguma query, a família não mostra cadência', () => {
+  // O agendador roda fora da API: a cadência do grupo não chega, e mostrar só a do poll
+  // daria "há 33min · a cada 30 s".
+  const s = situacaoDaFonte(
+    TELEFONIA,
+    { ...saude(new Date(AGORA - 10_000).toISOString()), agendador: undefined },
+    AGORA,
+  );
+  expect(s?.idade).toBe('há 5min');
+  expect(s?.cadencia).toBeNull();
+});

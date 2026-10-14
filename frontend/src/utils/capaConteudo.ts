@@ -102,11 +102,15 @@ export function situacaoDaFonte(
   });
 
   const maisVelha = Math.min(...porQuery.map((x) => x.em));
-  const cadencias = porQuery.map((x) => x.cadenciaMin).filter((c): c is number => c !== null);
+  // Cadência só com todas conhecidas. Com o agendador fora da API (o refresh roda em outro
+  // container), a query sem poll fica sem cadência, e o máximo das restantes dava "há 33min ·
+  // a cada 30 s" — a cadência do poll ao lado da idade da carga.
+  const cadencias = porQuery.map((x) => x.cadenciaMin);
+  const todas = cadencias.every((c): c is number => c !== null);
   return {
     status,
     idade: Number.isFinite(maisVelha) ? haQuanto(new Date(maisVelha).toISOString(), agora) : '—',
-    cadencia: cadencias.length ? formataCadencia(Math.max(...cadencias)) : null,
+    cadencia: todas ? formataCadencia(Math.max(...(cadencias as number[]))) : null,
   } as const;
 }
 
