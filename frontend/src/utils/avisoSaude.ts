@@ -50,7 +50,7 @@ export interface GrupoAgendado {
   ultimoSucesso: string | null;
 }
 
-/** Uma query vigiada pelo poller realtime, como `GET /api/saude` a publica em `poller.porQuery`. */
+/** Uma query vigiada pelo poller realtime, como `GET /api/saude` a publica em `realtime.poller.porQuery`. */
 export interface QueryDoPoller {
   query: string;
   intervaloMs: number;
@@ -65,8 +65,10 @@ export interface RespostaSaude {
   agendador?: {
     grupos: GrupoAgendado[];
   };
-  poller?: {
-    porQuery: QueryDoPoller[];
+  realtime?: {
+    poller?: {
+      porQuery: QueryDoPoller[];
+    };
   };
 }
 

@@ -36,7 +36,9 @@ const saude = (confirmadoEm: string | null): RespostaSaude => ({
       { id: 'frio', intervaloMinutos: 60, ultimoSucesso: null },
     ],
   },
-  poller: { porQuery: [{ query: 'protocolos-telefonia', intervaloMs: 12_000, confirmadoEm }] },
+  realtime: {
+    poller: { porQuery: [{ query: 'protocolos-telefonia', intervaloMs: 12_000, confirmadoEm }] },
+  },
 });
 
 const TELEFONIA = ['contratos-telefonia', 'protocolos-telefonia'];

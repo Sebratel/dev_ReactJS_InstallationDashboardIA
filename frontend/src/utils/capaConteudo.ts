@@ -85,7 +85,7 @@ export function situacaoDaFonte(
       ? 'vencida'
       : 'ok';
 
-  const doPoller = new Map((saude?.poller?.porQuery ?? []).map((p) => [p.query, p]));
+  const doPoller = new Map((saude?.realtime?.poller?.porQuery ?? []).map((p) => [p.query, p]));
   const grupos = new Map((saude?.agendador?.grupos ?? []).map((g) => [g.id, g.intervaloMinutos]));
   const porQuery = qs.map((q) => {
     const carga = q.ultimaCarga ? new Date(q.ultimaCarga).getTime() : NaN;
