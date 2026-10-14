@@ -28,7 +28,8 @@ node backend/tools/refresh/src/daemon.ts --historico   # histórico de grupos e 
 1. **Somente leitura** nos bancos (`dbVoalle` réplica PostgreSQL, `dbMaria`). API só `GET`/`HEAD`.
    Única exceção (decisão do Erick, ACHADOS #208): `/api/admin/acessos/*` grava quem abre cada
    aba no `DB_InstallationDashboard`, só admin/dev, com usuário de banco restrito às tabelas `user_roles`/`screens`/`screen_users`/`audit_logs`.
-2. **`snapshot/` tem dado de cliente** (CPF/RG em QUADRO FUNCIONAL). Nunca imprima valor de linha.
+2. **`snapshot/` tem dado de cliente** (CPF/CNPJ, telefone, e-mail e endereço em CONTRATOS). Nunca imprima valor de linha.
+   Segurança em andamento: `docs/PLANO-SEGURANCA.md` (specs S1–S8).
 3. **`npm test` e `npm run typecheck` verdes** antes de commitar (o CI em `.github/workflows/ci.yml` roda os dois e constrói as imagens pelo compose). Fluxo: worktree própria → commit → `staging` → Erick promove `main`.
 4. **Não edite a pasta principal** (a plataforma roda dela). Trabalhe em `git worktree`.
 5. **Um runtime só**: `npm start` OU a stack `docker-compose.prod.yml`, nunca os dois no mesmo `snapshot/` (ACHADOS #148).

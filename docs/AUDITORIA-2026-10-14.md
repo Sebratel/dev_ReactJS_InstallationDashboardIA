@@ -149,6 +149,9 @@ Base: OWASP Top 10:2025 e a norma da equipe (`auditoria-seguranca/`, `testes-bac
 
 ### Achados abertos — decisão sua
 
+O plano para fechar estes e os caminhos de um funcionário mal-intencionado, spec por spec:
+`docs/PLANO-SEGURANCA.md`.
+
 | ID | Sev. | Estado | O quê | Por que não corrigi |
 |---|---|---|---|---|
 | SEC-005 | Alta | Confirmada | HTTP puro (nginx só `listen 80`), cookie sem `Secure`, sem HSTS: o cookie de sessão e o ID token do Firebase trafegam em claro na rede. Mesmo item da §D. | Precisa de certificado e do proxy do Misael; ligar `COOKIE_SECURE` sem TLS quebra o login. |
