@@ -44,7 +44,15 @@ export const CHAVE_ACESSOS = ['acessos'] as const;
 
 export function GestaoDeAcessos() {
   const qc = useQueryClient();
-  const matrizQ = useQuery({ queryKey: CHAVE_ACESSOS, queryFn: pegaMatriz });
+  // Ao contrário do dado das páginas, a matriz não tem aviso do servidor quando muda: outra
+  // aba do navegador, ou outro admin, salva e esta continuava mostrando quem já saiu (até
+  // o F5). Reler ao abrir a aba e ao voltar o foco é barato — o GET lê a memória da API.
+  const matrizQ = useQuery({
+    queryKey: CHAVE_ACESSOS,
+    queryFn: pegaMatriz,
+    staleTime: 0,
+    refetchOnWindowFocus: true,
+  });
   const { rascunho, muda, conta, descarta } = useRascunhoDeAcessos();
   const [email, setEmail] = useState('');
 

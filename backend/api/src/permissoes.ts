@@ -189,10 +189,18 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
   };
   const podeGerir = (quem: Identidade) => RANK[papelDe(quem)] >= RANK.dev;
 
+  /** Vale a leitura que COMEÇOU por último, não a que terminou: a releitura de 30 s que
+   *  saiu antes de uma gravação e voltou depois trazia a pessoa removida de volta. */
+  let leituraIniciada = 0;
+  let leituraAplicada = 0;
+
   const recarrega = async (): Promise<void> => {
     if (!opts.loja) return;
+    const minha = ++leituraIniciada;
     try {
       const linhas = await opts.loja.le();
+      if (minha < leituraAplicada) return;
+      leituraAplicada = minha;
       config = configuracaoDe(linhas, opts.telasConhecidas);
       pedidos = linhas.pedidos ?? [];
       if (ultimaFalhou) log(`[acesso] lido do banco: ${config.papeis.size} papel(éis), ${config.telas.size} aba(s) com regra`);

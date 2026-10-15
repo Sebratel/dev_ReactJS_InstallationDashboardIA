@@ -175,6 +175,26 @@ test('banco fora já no boot: só o .env entra até ele voltar', async () => {
   assert.equal(acesso.podeVer(pessoa('fulano@sebratel.com.br'), 'visao-geral'), true);
 });
 
+test('releitura que saiu antes de remover e voltou depois não traz a pessoa de volta', async () => {
+  const { acesso, banco } = await acessoCom({ emails: [{ tela: 'visao-geral', email: 'fulano@sebratel.com.br' }] });
+  const le = banco.loja.le;
+  let solta!: () => void;
+  const segura = new Promise<void>((r) => (solta = r));
+  // A releitura periódica lê a foto de ANTES e só devolve depois da gravação.
+  banco.loja.le = async () => {
+    const foto = await le();
+    banco.loja.le = le;
+    await segura;
+    return foto;
+  };
+  const periodica = acesso.recarrega();
+  await acesso.muda(pessoa('chefe@sebratel.com.br'), { acao: 'remove-pessoa', email: 'fulano@sebratel.com.br' });
+  solta();
+  await periodica;
+  assert.equal(acesso.podeVer(pessoa('fulano@sebratel.com.br'), 'visao-geral'), false);
+  assert.ok(!acesso.matriz().pessoas.some((p) => p.email === 'fulano@sebratel.com.br'));
+});
+
 // ------------------------------------------------------------------- quem muda o quê
 
 test('dev dá e tira aba — e vale na hora, com log de quem fez', async () => {
