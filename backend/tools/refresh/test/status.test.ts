@@ -3,7 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { escreveStatus, leStatus, montaStatusDeRefresh, resumeDegradacao, type StatusDeRefresh } from '../src/status.ts';
+import {
+  escreveStatus,
+  leStatus,
+  montaStatusDeRefresh,
+  previsaoDaProxima,
+  resumeDegradacao,
+  type StatusDeRefresh,
+} from '../src/status.ts';
 import { escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 
 function tmp(): string {
@@ -221,4 +228,44 @@ test('resumeDegradacao: um motivo por grupo, não um por query', () => {
     'grupo quente (1 queries): parado desde 2026-09-28T11:29:00.000Z',
   ]);
   assert.deepEqual(resumeDegradacao([{ id: 'd', idadeDias: 0, status: 'ok' }]), { degradado: false, motivos: [] });
+});
+
+// ------------------------------------------------------------- quando chega dado novo
+
+test('previsão: último sucesso + intervalo + a duração da última carga', () => {
+  // O `medio` de 15/10: começou 13:16:18, levou 5 min 25 s; volta 30 min depois do início.
+  const s = { ultimaTentativa: '2026-10-15T13:21:43.652Z', ultimoSucesso: '2026-10-15T13:16:18.410Z', duracaoMs: 325_242, ok: true, falhasConsecutivas: 0 };
+  assert.equal(previsaoDaProxima(s, 30, 15), '2026-10-15T13:51:43.652Z');
+});
+
+test('previsão depois de UMA falha: o tick seguinte já tenta de novo', () => {
+  const s = { ultimaTentativa: '2026-10-15T12:06:44.000Z', ultimoSucesso: '2026-10-15T11:35:26.000Z', duracaoMs: 60_000, ok: false, falhasConsecutivas: 1 };
+  assert.equal(previsaoDaProxima(s, 30, 15), '2026-10-15T12:21:44.000Z');
+});
+
+test('previsão com falhas seguidas: respeita a espera crescente', () => {
+  // 2 falhas → espera de 2 × 30 min contada da última tentativa.
+  const s = { ultimaTentativa: '2026-10-15T12:00:00.000Z', ultimoSucesso: '2026-10-15T10:00:00.000Z', duracaoMs: 60_000, ok: false, falhasConsecutivas: 2 };
+  assert.equal(previsaoDaProxima(s, 30, 15), '2026-10-15T13:01:00.000Z');
+});
+
+test('a saúde leva a previsão por query; grupo parado (ninguém tentando) fica sem', () => {
+  const dir = tmp();
+  const specs = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-specs-'));
+  fs.mkdirSync(path.join(specs, '_catalog'));
+  fs.writeFileSync(
+    path.join(specs, '_catalog', 'refresh.yaml'),
+    'grupos:\n  quente:\n    queries: [a]\n    intervalo_minutos: 15\n  medio:\n    queries: [b]\n    intervalo_minutos: 30\n',
+  );
+  const agora = new Date('2026-10-15T13:30:00.000Z');
+  fs.writeFileSync(
+    path.join(dir, 'refresh-status.json'),
+    JSON.stringify({
+      quente: { ultimaTentativa: '2026-10-15T13:16:00.000Z', ultimoSucesso: '2026-10-15T13:15:00.000Z', duracaoMs: 60_000, ok: true, falhasConsecutivas: 0 },
+      medio: { ultimaTentativa: '2026-10-15T09:00:00.000Z', ultimoSucesso: '2026-10-15T08:55:00.000Z', duracaoMs: 300_000, ok: true, falhasConsecutivas: 0 },
+    }),
+  );
+  const qs = montaStatusDeRefresh(dir, specs, agora).queries!;
+  assert.equal(qs.find((q) => q.id === 'a')?.proximaCarga, '2026-10-15T13:31:00.000Z');
+  assert.equal(qs.find((q) => q.id === 'b')?.proximaCarga, undefined);
 });

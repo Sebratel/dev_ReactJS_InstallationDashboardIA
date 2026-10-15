@@ -14,7 +14,7 @@ import path from 'node:path';
 import { renomeiaComRetentativa } from '../../../packages/snapshot/src/escrita-atomica.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, type GrupoDeRefresh } from './grupos.ts';
-import { emEsperaPorFalhas } from './tick.ts';
+import { emEsperaPorFalhas, proximaTentativa } from './tick.ts';
 
 const ARQUIVO = 'refresh-status.json';
 
@@ -48,6 +48,30 @@ export interface QuerySaude {
   grupo?: string;
   /** Desde quando está parada (ISO): o último sucesso que conta para `vencida`. */
   paradaDesde?: string;
+  /** Quando a próxima carga do grupo deve TERMINAR (ISO) — estimativa, ver `previsaoDaProxima`. */
+  proximaCarga?: string;
+}
+
+/**
+ * Quando o dado novo de um grupo deve aparecer: o daemon roda o grupo no primeiro tick em
+ * que ele vence (`estaVencido`: último sucesso + intervalo, contado do INÍCIO da carga), e
+ * a carga leva o mesmo que a última. Depois de uma falha o tick seguinte já tenta de novo
+ * (`tickMinutos` depois), e a partir da segunda vale a espera crescente de `proximaTentativa`.
+ * É estimativa: a duração varia, e grupos do mesmo tick rodam um depois do outro.
+ */
+export function previsaoDaProxima(
+  s: StatusDeGrupo,
+  intervaloMinutos: number,
+  tickMinutos: number,
+): string | undefined {
+  const inicioDaUltima = new Date(s.ultimaTentativa).getTime() - s.duracaoMs;
+  const espera = proximaTentativa(s, intervaloMinutos);
+  let inicio: number;
+  if (espera) inicio = espera.getTime();
+  else if (!s.ok) inicio = inicioDaUltima + tickMinutos * 60_000;
+  else if (s.ultimoSucesso) inicio = new Date(s.ultimoSucesso).getTime() + intervaloMinutos * 60_000;
+  else return undefined;
+  return Number.isFinite(inicio) ? new Date(inicio + s.duracaoMs).toISOString() : undefined;
 }
 
 /**
@@ -145,6 +169,8 @@ export function montaStatusDeRefresh(
     }
   }
 
+  // O daemon acorda na cadência do grupo mais curto (`REFRESH_INTERVAL_MINUTOS`, 15 hoje).
+  const tickMinutos = Math.min(...[...grupos.values()].map((g) => g.intervaloMinutos));
   const idsQueries = new Set<string>();
   for (const q of queryParaGrupo.keys()) {
     idsQueries.add(q);
@@ -234,6 +260,10 @@ export function montaStatusDeRefresh(
       status = 'vencida';
     }
 
+    const proximaCarga =
+      grupo && grupoStatus && !semTentar
+        ? previsaoDaProxima(grupoStatus, grupo.intervaloMinutos, tickMinutos)
+        : undefined;
     queriesSaude.push({
       id,
       ...(ultimaCarga ? { ultimaCarga } : {}),
@@ -242,6 +272,7 @@ export function montaStatusDeRefresh(
       ...(erro ? { erro } : {}),
       ...(grupo ? { grupo: grupo.id } : {}),
       ...(status === 'vencida' && paradaDesde ? { paradaDesde } : {}),
+      ...(proximaCarga ? { proximaCarga } : {}),
     });
   }
 

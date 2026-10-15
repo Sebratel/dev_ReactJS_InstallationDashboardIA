@@ -5,7 +5,7 @@
 // GERAL, sem poll, podia ter meia hora e aparecer como "há 1min" ao lado (14/10/2026).
 
 import { expect, test } from 'vitest';
-import { situacaoDaFonte } from '../src/utils/capaConteudo.ts';
+import { horaCurta, situacaoDaFonte } from '../src/utils/capaConteudo.ts';
 import type { RespostaSaude } from '../src/utils/avisoSaude.ts';
 
 const AGORA = Date.parse('2026-10-14T13:00:00Z');
@@ -80,4 +80,60 @@ test('sem a cadência de alguma query, a família não mostra cadência', () => 
   );
   expect(s?.idade).toBe('há 5min');
   expect(s?.cadencia).toBeNull();
+});
+
+// ------------------------------------------------- quando a família terá dado novo
+
+const comPrevisao = (
+  confirmadoEm: string | null,
+  previsoes: Record<string, string | undefined>,
+) => {
+  const s = saude(confirmadoEm);
+  for (const q of s.refresh!.queries) {
+    const p = previsoes[q.id];
+    if (p) q.proximaCarga = p;
+  }
+  return s;
+};
+const minDepois = (n: number) => new Date(AGORA + n * 60_000).toISOString();
+
+test('previsão: a hora da query que ainda espera carga cheia; a do poll já está ao vivo', () => {
+  const s = situacaoDaFonte(
+    TELEFONIA,
+    comPrevisao(new Date(AGORA - 10_000).toISOString(), {
+      'contratos-telefonia': minDepois(11),
+      'protocolos-telefonia': minDepois(50),
+    }),
+    AGORA,
+  );
+  expect(s?.proxima).toBe(`próxima ~${horaCurta(AGORA + 11 * 60_000)}`);
+});
+
+test('sem poll, a família espera a ÚLTIMA carga prevista', () => {
+  const s = situacaoDaFonte(
+    TELEFONIA,
+    comPrevisao(null, {
+      'contratos-telefonia': minDepois(11),
+      'protocolos-telefonia': minDepois(50),
+    }),
+    AGORA,
+  );
+  expect(s?.proxima).toBe(`próxima ~${horaCurta(AGORA + 50 * 60_000)}`);
+});
+
+test('previsão vencida vira "a qualquer momento"; sem previsão, nada é dito', () => {
+  const vencida = comPrevisao(new Date(AGORA - 10_000).toISOString(), {
+    'contratos-telefonia': minAtras(2),
+  });
+  expect(situacaoDaFonte(TELEFONIA, vencida, AGORA)?.proxima).toBe('próxima a qualquer momento');
+  expect(situacaoDaFonte(TELEFONIA, saude(null), AGORA)?.proxima).toBeNull();
+});
+
+test('família toda no poll: ao vivo', () => {
+  const s = situacaoDaFonte(
+    ['protocolos-telefonia'],
+    saude(new Date(AGORA - 10_000).toISOString()),
+    AGORA,
+  );
+  expect(s?.proxima).toBe('ao vivo');
 });

@@ -34,6 +34,8 @@ export interface QuerySaude {
   grupo?: string;
   /** Desde quando está parada — presente quando `vencida` e a API sabe (ACHADOS #160). */
   paradaDesde?: string;
+  /** Quando a próxima carga do grupo deve terminar — estimativa da API (15/10/2026). */
+  proximaCarga?: string;
 }
 
 /** Até 3 nomes, depois "e mais N": um grupo parado são 7–11 queries, e a faixa é uma linha. */

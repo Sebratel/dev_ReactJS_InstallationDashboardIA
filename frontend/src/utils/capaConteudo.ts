@@ -97,6 +97,8 @@ export function situacaoDaFonte(
     const grupo = q.grupo !== undefined ? grupos.get(q.grupo) : undefined;
     return {
       em,
+      pollEmDia,
+      proxima: q.proximaCarga ? new Date(q.proximaCarga).getTime() : NaN,
       cadenciaMin: pollEmDia ? p!.intervaloMs / 60_000 : (grupo ?? null),
     };
   });
@@ -111,7 +113,30 @@ export function situacaoDaFonte(
     status,
     idade: Number.isFinite(maisVelha) ? haQuanto(new Date(maisVelha).toISOString(), agora) : '—',
     cadencia: todas ? formataCadencia(Math.max(...(cadencias as number[]))) : null,
+    proxima: proximaDaFamilia(porQuery, agora),
   } as const;
+}
+
+/**
+ * Quando a família inteira terá dado novo — o que a pessoa quer saber ao ver "há 31min".
+ * Query com o poll em dia já está ao vivo; as outras esperam a carga cheia do grupo, e a
+ * idade da família só zera quando a ÚLTIMA delas chegar. Sem previsão da API para alguma,
+ * nada é dito (melhor calar do que inventar hora).
+ */
+function proximaDaFamilia(
+  porQuery: readonly { pollEmDia: boolean; proxima: number }[],
+  agora: number,
+): string | null {
+  const esperando = porQuery.filter((x) => !x.pollEmDia);
+  if (esperando.length === 0) return 'ao vivo';
+  if (esperando.some((x) => Number.isNaN(x.proxima))) return null;
+  const quando = Math.max(...esperando.map((x) => x.proxima));
+  return quando <= agora ? 'próxima a qualquer momento' : `próxima ~${horaCurta(quando)}`;
+}
+
+/** `10:51` no fuso de quem olha. */
+export function horaCurta(ms: number): string {
+  return new Date(ms).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
 
 /** `0.2` → `12 s`, `15` → `15 min`. Com o poll, a cadência de uma família pode ficar abaixo do minuto. */
