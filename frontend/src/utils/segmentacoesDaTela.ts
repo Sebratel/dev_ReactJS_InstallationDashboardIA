@@ -22,7 +22,8 @@ const ehChipDeSolicitacao = (s: { tabela: string; coluna: string }): boolean =>
   s.tabela === 'PROTOCOLOS GERAL' && s.coluna === 'TIPO DE PROTOCOLO';
 
 export function segmentacoesDaTela(
-  visuais: readonly VisualCalculado[],
+  /** As do layout (chegam antes) ou, sem elas, os visuais calculados. */
+  visuais: readonly Pick<VisualCalculado, 'id' | 'segmentacao'>[],
   dataDaTela: { tabela: string; coluna: string } | null,
   filtros: readonly FiltroDaTela[],
 ): SegmentacoesDaTela {

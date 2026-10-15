@@ -469,6 +469,21 @@ test('/layout devolve o layout.yaml da página, sem precisar de snapshot', async
   }
 });
 
+test('/layout traz as segmentações da página — a barra de filtros não espera o cálculo', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const capa = await (await s.busca('/api/dashboards/capa/layout')).json();
+    assert.deepEqual(capa.segmentacoes, []);
+    const mes = await (await s.busca('/api/dashboards/relatorio-do-mes/layout')).json();
+    assert.equal(mes.segmentacoes.length, 1);
+    assert.equal(mes.segmentacoes[0].segmentacao.tabela, 'PROTOCOLOS');
+    assert.equal(mes.segmentacoes[0].segmentacao.coluna, 'TIPO DE PROTOCOLO');
+    assert.equal(typeof mes.segmentacoes[0].id, 'string');
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('/layout de página inexistente dá 404 e lista as que existem', async () => {
   const s = await servidor(dirVazio());
   try {

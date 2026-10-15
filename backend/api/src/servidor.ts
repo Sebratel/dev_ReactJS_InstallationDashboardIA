@@ -1775,7 +1775,14 @@ export class Servidor {
       });
       return;
     }
-    responde(res, 200, layout);
+    // As segmentações vêm junto: são da spec, não do dado, e a barra de filtros que esperava
+    // o cálculo da página nascia só com "Período" e crescia uma linha quando ele chegava,
+    // empurrando os cards (15/10/2026). Mesma ordem de `calculaPagina` (a de `dash.visuals`).
+    const segmentacoes = (dash.visuals ?? []).flatMap((v) => {
+      const segmentacao = segmentacaoDe(v);
+      return segmentacao ? [{ id: v.id, segmentacao }] : [];
+    });
+    responde(res, 200, { ...layout, segmentacoes });
   }
 
   private async pagina(

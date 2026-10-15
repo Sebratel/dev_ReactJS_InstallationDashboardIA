@@ -158,7 +158,10 @@ export function DashboardPage() {
   const paginaValida = pagina && pagina.id === paginaDoDado ? pagina : null;
   const visuais = paginaValida?.visuais ?? [];
   const dataDaTela = dataDaPagina(paginaDoDado);
-  const segmentacoes = segmentacoesDaTela(visuais, dataDaTela, filtros);
+  // Do LAYOUT, não do dado: o layout chega antes do cálculo, e trocar para uma página fora
+  // do cache deixava a barra só com "Período" até a página chegar — aí ela crescia uma
+  // linha e empurrava os cards. `visuais` fica para API antiga, sem `segmentacoes`.
+  const segmentacoes = segmentacoesDaTela(layout?.segmentacoes ?? visuais, dataDaTela, filtros);
 
   // Os estados a um clique de filtro deste, pré-carregados enquanto a pessoa lê — os
   // chips primeiro, que são o clique mais provável (ACHADOS #179).

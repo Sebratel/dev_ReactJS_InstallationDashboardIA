@@ -427,9 +427,15 @@ export const pegaPagina = (
   return pega(origem ? `${url}${url.includes('?') ? '&' : '?'}origem=${origem}` : url, signal);
 };
 
+/** O layout como a API o entrega: o YAML mais as segmentações da página, que são da spec
+ *  e chegam antes do cálculo (a barra de filtros nasce completa). Opcional: API antiga. */
+export type LayoutDaTela = LayoutSpec & {
+  segmentacoes?: { id: string; segmentacao: Segmentacao }[];
+};
+
 /** A forma declarada da página (`backend/specs/layout/<id>.layout.yaml`) — não depende de
  *  filtro nem de clique, só de qual página está aberta. Ver Fase L4. */
-export const pegaLayout = (id: string, signal?: AbortSignal): Promise<LayoutSpec> =>
+export const pegaLayout = (id: string, signal?: AbortSignal): Promise<LayoutDaTela> =>
   pega(`/api/dashboards/${encodeURIComponent(id)}/layout`, signal);
 
 export const pegaValores = (
