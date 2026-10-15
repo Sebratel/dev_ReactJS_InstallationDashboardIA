@@ -173,7 +173,9 @@ test('algumEhNosso: lista vazia de PIDs nunca é nosso', () => {
  */
 test('linhaDeComando acha um processo real, com acento no argv, sem corromper', async () => {
   const marcador = 'raiz-com-acento-Instalação-teste-9f31';
-  const filho = spawn(process.execPath, ['-e', `setTimeout(()=>{}, 6000); // ${marcador}`], {
+  // Vive até o `finally` matar: no Windows cada pergunta abre um PowerShell, são três, e
+  // com a suíte inteira em paralelo um prazo fixo de 6 s podia vencer antes da última.
+  const filho = spawn(process.execPath, ['-e', `setInterval(()=>{}, 1000); // ${marcador}`], {
     stdio: 'ignore',
   });
   try {

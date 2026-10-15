@@ -114,8 +114,10 @@ export function linhaDeComando(pid: number): string | null {
         `$cl = (Get-CimInstance Win32_Process -Filter "ProcessId=${pid}").CommandLine`,
         `if ($cl) { [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cl)) }`,
       ].join('; ');
+      // 15 s, não 5: PowerShell + CIM a frio passa de 5 s com a máquina ocupada (medido
+      // 15/10/2026 com a suíte inteira rodando), e o estouro vira `null` — "não é nosso".
       const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-        encoding: 'utf8', timeout: 5000,
+        encoding: 'utf8', timeout: 15_000,
       });
       const b64 = r.stdout?.trim();
       return b64 ? Buffer.from(b64, 'base64').toString('utf8') : null;

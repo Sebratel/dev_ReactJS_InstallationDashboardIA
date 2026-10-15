@@ -214,7 +214,7 @@ function poolDeMentira(linhas: Record<string, unknown>[] = []): PoolDeMentira & 
 test('PollerRealtime: tentaAgora costura o SQL, passa :desde como parâmetro, e não chama aoMudar sem linha nova', async () => {
   const fake = poolDeMentira([]);
   let mudancas = 0;
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: 'backend/specs',
     pool: fake.pool,
     // Dígitos UTC, sem `Z`: a convenção de `parseSemFuso`, nos dois sentidos (ACHADOS #168).
@@ -236,7 +236,7 @@ test('PollerRealtime: uma linha nova dispara aoMudar e entra no overlay', async 
     { SOLICITACAO: 'A', 'DATA CRIADO': new Date('2026-09-03T09:00:00Z'), 'DATA ENCERRADO': new Date('2026-09-03T09:59:00Z') },
   ]);
   let recebido: [string, string] | null = null;
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: 'backend/specs',
     pool: fake.pool,
     agora: () => new Date('2026-09-03T10:00:00Z'),
@@ -253,7 +253,7 @@ test('PollerRealtime: uma linha nova dispara aoMudar e entra no overlay', async 
 });
 
 test('PollerRealtime: erro na busca não lança — anuncia e mantém o delta intacto', async () => {
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: 'backend/specs',
     pool: async () => ({
       query: async () => {
@@ -270,7 +270,7 @@ test('PollerRealtime: erro na busca não lança — anuncia e mantém o delta in
 
 test('PollerRealtime.overlays(): tabela sem mudança nenhuma ainda fica de fora do Map', async () => {
   const fake = poolDeMentira([]);
-  const p = new PollerRealtime({ specsDir: 'backend/specs', pool: fake.pool, agora: () => new Date('2026-09-03T10:00:00Z'), anuncia: () => {} });
+  const p = new PollerRealtime({ cobertoAte: () => null, specsDir: 'backend/specs', pool: fake.pool, agora: () => new Date('2026-09-03T10:00:00Z'), anuncia: () => {} });
   await p.tentaAgora('protocolos-auxiliares');
   assert.equal(p.overlays().size, 0, 'delta vazio não deveria entrar no Map que vai para carrega()');
 });
@@ -283,7 +283,7 @@ test('PollerRealtime.overlays(): tabela com delta entra, chaveada pelo nome norm
   const fake = poolDeMentira([
     { SOLICITACAO: 'A', 'DATA CRIADO': new Date('2026-09-03T09:00:00Z'), 'DATA ENCERRADO': new Date('2026-09-03T09:59:00Z') },
   ]);
-  const p = new PollerRealtime({ specsDir: 'backend/specs', pool: fake.pool, agora: () => new Date('2026-09-03T10:00:00Z'), anuncia: () => {} });
+  const p = new PollerRealtime({ cobertoAte: () => null, specsDir: 'backend/specs', pool: fake.pool, agora: () => new Date('2026-09-03T10:00:00Z'), anuncia: () => {} });
   await p.tentaAgora('protocolos-auxiliares');
   const ovs = p.overlays();
   assert.equal(ovs.size, 1);
@@ -331,7 +331,7 @@ test(`PollerRealtime: a mesma linha em duas voltas dispara aoMudar UMA vez`, asy
     { SOLICITACAO: `A`, [`DATA CRIADO`]: new Date(`2026-09-03T09:00:00Z`), [`DATA ENCERRADO`]: new Date(`2026-09-03T09:59:00Z`) },
   ]);
   let mudancas = 0;
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: fake.pool,
     agora: () => new Date(`2026-09-03T10:00:00Z`),
@@ -356,7 +356,7 @@ test(`PollerRealtime: interval do Postgres não é mudança fantasma, e chega em
   }
   const nomes = ['Protocolo Retorno Prioritário', '_MARCA_REALTIME', 'intervalo_retorno'];
   let mudancas = 0;
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: async () => ({
       query: async () => ({
@@ -384,7 +384,7 @@ test(`PollerRealtime.estado(): o poller calado prova que está vivo`, async () =
   const fake = poolDeMentira([
     { SOLICITACAO: `A`, [`DATA CRIADO`]: new Date(`2026-09-03T09:00:00Z`), [`DATA ENCERRADO`]: new Date(`2026-09-03T09:59:00Z`) },
   ]);
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: fake.pool,
     agora: () => new Date(`2026-09-03T10:00:00Z`),
@@ -404,7 +404,7 @@ test(`PollerRealtime.estado(): cada query diz até quando o dado está conferido
   // A capa media a idade pela carga cheia (60 min no grupo frio) e mostrava "há 50min"
   // com o dado de segundos atrás. `confirmadoEm` é o que dá a idade real.
   const fake = poolDeMentira([]);
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: fake.pool,
     agora: () => new Date(`2026-09-03T10:00:00Z`),
@@ -418,7 +418,7 @@ test(`PollerRealtime.estado(): cada query diz até quando o dado está conferido
 });
 
 test(`PollerRealtime.estado(): erro na busca vira contagem e motivo`, async () => {
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: async () => ({ query: async () => { throw new Error(`ECONNRESET`); }, end: async () => {} }),
     agora: () => new Date(`2026-09-03T10:00:00Z`),
@@ -437,7 +437,7 @@ test(`PollerRealtime.estado(): volta disparada com a anterior em voo conta como 
   // volta pulada é a consulta mais longa que o intervalo — sem esta contagem, invisível.
   let solta!: () => void;
   const segura = new Promise<void>((r) => { solta = r; });
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: async () => ({
       query: async () => { await segura; return { rows: [], fields: [] }; },
@@ -463,7 +463,7 @@ test(`PollerRealtime.estado(): volta que atravessa uma suspensão NÃO conta com
   Date.now = () => real() + salto;
   try {
     let primeira = true;
-    const p = new PollerRealtime({
+    const p = new PollerRealtime({ cobertoAte: () => null,
       specsDir: `backend/specs`,
       pool: async () => ({
         query: async () => {
@@ -489,7 +489,7 @@ test(`PollerRealtime.estado(): volta que atravessa uma suspensão NÃO conta com
 test(`PollerRealtime.estado(): o tempo dormindo não entra no denominador do "por hora"`, async () => {
   // 09/10/2026: o notebook dormiu 1h44 e a saúde disse 5,1 min/h; as voltas davam ~16,7.
   let agora = new Date('2026-10-09T17:00:00Z').getTime();
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: async () => ({
       query: async () => { await new Promise((r) => setTimeout(r, 25)); return { rows: [], fields: [] }; },
@@ -508,7 +508,7 @@ test(`PollerRealtime.estado(): o tempo dormindo não entra no denominador do "po
 });
 
 test(`PollerRealtime.estado(): tempo de banco por query e somado por hora`, async () => {
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: async () => ({
       query: async () => { await new Promise((r) => setTimeout(r, 25)); return { rows: [], fields: [] }; },
@@ -712,7 +712,7 @@ test('sentinela: toda query vigiada só tem `a.modified >= :desde`, e todo tipo 
 
 test('protocolos-auxiliares: a volta restringe `alocacao` e `troca` às solicitações dela (B.1d, #202)', async () => {
   const fake = poolDeMentira([]);
-  const p = new PollerRealtime({ specsDir: 'backend/specs', pool: fake.pool, agora: () => new Date('2026-10-09T17:00:00Z'), anuncia: () => {} });
+  const p = new PollerRealtime({ cobertoAte: () => null, specsDir: 'backend/specs', pool: fake.pool, agora: () => new Date('2026-10-09T17:00:00Z'), anuncia: () => {} });
   await p.tentaAgora('protocolos-auxiliares');
   const sql = fake.chamadas[0]!.text;
   assert.match(sql, /a\.title IN \(SELECT "SOLICITACAO" FROM base\)/);
@@ -760,7 +760,7 @@ const assenta = () => new Promise((r) => setTimeout(r, 20));
 function pollerComSentinela() {
   const fake = poolComSentinela();
   const relogio = new Date('2026-10-09T16:00:00Z');
-  const p = new PollerRealtime({
+  const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: 'backend/specs',
     pool: fake.pool,
     agora: () => relogio,

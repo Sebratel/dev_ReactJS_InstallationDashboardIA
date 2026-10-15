@@ -102,7 +102,9 @@ test('PollerRealtime em dois passos: agrupa por protocolo, calcula as colunas, d
     ],
   });
   const avisos: string[] = [];
-  const p = new PollerRealtime({ specsDir: 'backend/specs', pool, anuncia: (l) => avisos.push(l) });
+  // Sem `cobertoAte`, a partida viria do `snapshot/manifesto.json` REAL da máquina (onde o
+  // Docker monta a pasta) — e o teste dependia de haver ou não carga no disco.
+  const p = new PollerRealtime({ specsDir: 'backend/specs', pool, anuncia: (l) => avisos.push(l), cobertoAte: () => null });
   await p.tentaAgora('field-agenda');
 
   // Relógio (semente), relógio (volta), alvos, definição da view, busca.
@@ -137,7 +139,7 @@ test('PollerRealtime em dois passos: agrupa por protocolo, calcula as colunas, d
 
 test('PollerRealtime em dois passos: nenhum alvo, nenhuma busca', async () => {
   const { pool, chamadas } = poolPorPasso({ relogio: [new Date('2026-10-02T10:00:00Z')], ids: [], linhas: [] });
-  const p = new PollerRealtime({ specsDir: 'backend/specs', pool, anuncia: () => {} });
+  const p = new PollerRealtime({ specsDir: 'backend/specs', pool, anuncia: () => {}, cobertoAte: () => null });
   await p.tentaAgora('field-agenda');
   assert.equal(chamadas.filter((c) => /pg_get_viewdef/.test(c.text)).length, 0);
   assert.equal(p.overlay('FIELD AGENDA')!.linhas.length, 0);
