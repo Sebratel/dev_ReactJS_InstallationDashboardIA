@@ -38,6 +38,7 @@ import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 import { Botao } from '../ui/Botao.tsx';
 import { Aviso, Cartao, Erro } from '../ui/Cartao.tsx';
 import { CHAVE_SESSOES, SessoesAtivas } from './SessoesAtivas.tsx';
+import { UsoDasTelas } from './UsoDasTelas.tsx';
 
 export const CHAVE_ACESSOS = ['acessos'] as const;
 
@@ -287,6 +288,8 @@ export function GestaoDeAcessos() {
           </Botao>
         </div>
       </Cartao>
+
+      <UsoDasTelas />
 
       {m.pedidos.length > 0 ? (
         <Cartao titulo={`Pedidos de acesso (${m.pedidos.length})`} largo>

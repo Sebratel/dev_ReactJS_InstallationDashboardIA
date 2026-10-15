@@ -443,6 +443,15 @@ export const pegaValores = (
 export const pegaSaude = (signal?: AbortSignal): Promise<RespostaSaude> =>
   pega('/api/saude', signal);
 
+/** Telemetria leve de abertura: não bloqueia a navegação nem devolve dado para a tela. */
+export const registraAberturaDeAba = (tela: string): void => {
+  void fetch('/api/uso/abertura', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ tela }),
+  }).catch(() => undefined);
+};
+
 /**
  * As chaves do cache da tela (React Query), num lugar só — fase 2 de
  * `docs/PLANO-PADROES-FRONTEND.md`.

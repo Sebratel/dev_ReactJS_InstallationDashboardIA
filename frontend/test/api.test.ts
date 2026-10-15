@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
-import { ehAbortError, pega } from '../src/services/dashboardService.ts';
+import { test, vi } from 'vitest';
+import { ehAbortError, pega, registraAberturaDeAba } from '../src/services/dashboardService.ts';
 
 test('ehAbortError: reconhece o DOMException que fetch() lança ao abortar', () => {
   assert.equal(ehAbortError(new DOMException('The user aborted a request.', 'AbortError')), true);
@@ -14,6 +14,20 @@ test('ehAbortError: erro comum não é abort', () => {
   assert.equal(ehAbortError(new Error('falhou')), false);
   assert.equal(ehAbortError('string qualquer'), false);
   assert.equal(ehAbortError(null), false);
+});
+
+test('registro de abertura é fire-and-forget e falha de rede não afeta a tela', async () => {
+  const fetchFalso = vi.fn((_url: string, _init?: RequestInit) =>
+    Promise.reject(new TypeError('banco indisponível')),
+  );
+  vi.stubGlobal('fetch', fetchFalso);
+  try {
+    assert.equal(registraAberturaDeAba('capa'), undefined);
+    await Promise.resolve();
+    assert.equal(fetchFalso.mock.calls[0]?.[0], '/api/uso/abertura');
+  } finally {
+    vi.unstubAllGlobals();
+  }
 });
 
 // ------------------------------------------------------------------ pega(): queda e teto

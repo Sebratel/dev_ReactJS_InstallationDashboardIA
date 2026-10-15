@@ -48,6 +48,24 @@ export const defineModoDaTela = (tela: string, modo: ModoDaTela) =>
 export const removePessoa = (email: string) => chama('/api/admin/acessos/remove', { email });
 export const dispensaPedido = (email: string) => chama('/api/admin/acessos/dispensa', { email });
 
+export interface UsoDeTela {
+  id: string;
+  nome: string;
+  aberturas: number;
+  pessoas: number;
+  ultimaAbertura: string | null;
+}
+
+export interface ResumoDeUso {
+  dias: 7 | 30 | 90;
+  pessoasAtivas: number;
+  telas: UsoDeTela[];
+  geradoEm: string;
+}
+
+export const pegaUsoDasTelas = (dias: 7 | 30 | 90) =>
+  chama<ResumoDeUso>(`/api/admin/uso?dias=${dias}`);
+
 /** Um pedido do rascunho da aba PERMISSÕES (`utils/rascunhoDeAcessos.ts`) na rota dele. */
 export function aplicaOperacao(op: OperacaoDeAcesso): Promise<MatrizDeAcesso> {
   switch (op.tipo) {

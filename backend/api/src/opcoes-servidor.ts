@@ -12,6 +12,7 @@ import type { BuscaCertificados } from './auth-firebase.ts';
 import type { PiscinaWorkers } from './piscina-workers.ts';
 import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { EstadoDoRedis } from './saude-do-redis.ts';
+import type { UsoDasTelas } from './uso-das-telas.ts';
 
 export interface ServidorOptions {
   /** Raiz do repositório — de onde saem `backend/specs/` e o `snapshot/`. */
@@ -48,6 +49,8 @@ export interface ServidorOptions {
   /** Onde os eventos de segurança são gravados (`eventos-seguranca.ts`). Padrão: em lugar
    *  nenhum — só a linha `[seg]` do log, como antes de 13/10/2026. */
   eventosDeSeguranca?: GravadorDeEventos;
+  /** Agregado leve de aberturas de aba e sua leitura administrativa. */
+  usoDasTelas?: UsoDasTelas;
   /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
    *  token — falha fechada, não aberta, enquanto não configurado. */
   googleClientId?: string;

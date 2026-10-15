@@ -95,6 +95,18 @@ CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.security_events (
   KEY by_type (event_type, created_at)
 ) ENGINE = InnoDB;
 
+-- Aberturas de aba agregadas por dia e pessoa. A API acumula em memória e grava em lote;
+-- não há evento por clique, IP, filtro nem tempo de permanência.
+CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.screen_usage_daily (
+  day            DATE NOT NULL,
+  screen_id      VARCHAR(64) NOT NULL,
+  email          VARCHAR(254) NOT NULL,
+  opens          INT UNSIGNED NOT NULL DEFAULT 0,
+  last_opened_at DATETIME(3) NOT NULL,
+  PRIMARY KEY (day, screen_id, email),
+  KEY by_screen (screen_id, day)
+) ENGINE = InnoDB;
+
 -- ============================================================================
 -- Planilhas do Google, copiadas pelo n8n a cada 15 min
 -- ============================================================================

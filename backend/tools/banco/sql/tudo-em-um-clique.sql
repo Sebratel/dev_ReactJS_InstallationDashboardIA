@@ -65,6 +65,15 @@ BEGIN NOT ATOMIC
     KEY by_email (email, created_at),
     KEY by_type (event_type, created_at)
   ) ENGINE=InnoDB;
+  CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.screen_usage_daily (
+    day DATE NOT NULL,
+    screen_id VARCHAR(64) NOT NULL,
+    email VARCHAR(254) NOT NULL,
+    opens INT UNSIGNED NOT NULL DEFAULT 0,
+    last_opened_at DATETIME(3) NOT NULL,
+    PRIMARY KEY (day, screen_id, email),
+    KEY by_screen (screen_id, day)
+  ) ENGINE=InnoDB;
 
   -- Planilhas (n8n a cada 15 min), só com as colunas usadas
   CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.employee_managers (
@@ -118,6 +127,7 @@ BEGIN NOT ATOMIC
   GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.access_requests TO 'installation_access'@'%';
   GRANT SELECT, INSERT                 ON DB_InstallationDashboard.audit_logs      TO 'installation_access'@'%';
   GRANT SELECT, INSERT                 ON DB_InstallationDashboard.security_events TO 'installation_access'@'%';
+  GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.screen_usage_daily TO 'installation_access'@'%';
 
   CREATE USER IF NOT EXISTS 'installation_n8n'@'%' IDENTIFIED BY 'TROQUE_SENHA_3';
   GRANT SELECT, INSERT, DELETE ON DB_InstallationDashboard.employee_managers TO 'installation_n8n'@'%';

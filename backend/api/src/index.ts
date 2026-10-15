@@ -27,6 +27,7 @@ import { decideLogin } from './portao-login.ts';
 import { criaAcesso } from './permissoes.ts';
 import { configDoAmbiente, criaPoolDeAcesso, lojaMaria } from './loja-acesso-maria.ts';
 import { criaGravadorDeEventos } from './eventos-seguranca.ts';
+import { criaUsoDasTelas } from './uso-das-telas.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 
@@ -273,6 +274,7 @@ if (configDoAcesso?.compartilhado) {
 }
 // Os eventos de segurança vão para o mesmo banco, em lote (`eventos-seguranca.ts`).
 const eventosDeSeguranca = poolDeAcesso ? criaGravadorDeEventos(poolDeAcesso) : undefined;
+const usoDasTelas = poolDeAcesso ? criaUsoDasTelas(poolDeAcesso) : undefined;
 const acesso = criaAcesso({
   loja: poolDeAcesso ? lojaMaria(poolDeAcesso) : null,
   telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
@@ -289,6 +291,7 @@ const servidor = new Servidor({
   webDir: path.join(ROOT, 'frontend', 'dist'),
   acesso,
   ...(eventosDeSeguranca ? { eventosDeSeguranca } : {}),
+  ...(usoDasTelas ? { usoDasTelas } : {}),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver
@@ -404,7 +407,13 @@ instalaDesligamento({
     { nome: 'http', fn: () => fechaHttp(http) },
     { nome: 'servidor', fn: () => servidor.destroi() },
     // Grava o que ainda está no buffer de eventos antes de fechar o pool.
-    { nome: 'eventos de segurança', fn: async () => { eventosDeSeguranca?.para(); await eventosDeSeguranca?.descarrega(); await poolDeAcesso?.end(); } },
+    { nome: 'eventos e uso', fn: async () => {
+      eventosDeSeguranca?.para();
+      usoDasTelas?.para();
+      await eventosDeSeguranca?.descarrega();
+      await usoDasTelas?.descarrega();
+      await poolDeAcesso?.end();
+    } },
   ],
 });
 

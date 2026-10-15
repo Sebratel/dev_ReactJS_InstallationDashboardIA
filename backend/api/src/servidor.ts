@@ -212,11 +212,18 @@ export class Servidor {
       | 'estadoDoDisjuntor'
       | 'modoDosFiltros'
       | 'avisoDasPaginas'
+      | 'usoDasTelas'
     >
   > &
     Pick<
       ServidorOptions,
-      'estadoDoPoller' | 'estadoDoAgendador' | 'estadoDaGuarda' | 'estadoDoDisjuntor' | 'avisoDasPaginas' | 'modoDosFiltros'
+      | 'estadoDoPoller'
+      | 'estadoDoAgendador'
+      | 'estadoDaGuarda'
+      | 'estadoDoDisjuntor'
+      | 'avisoDasPaginas'
+      | 'modoDosFiltros'
+      | 'usoDasTelas'
     >;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
@@ -730,13 +737,19 @@ export class Servidor {
     if (rota === '/auth/interno' && req.method === 'POST') return this.autenticaInterno(req, res);
     if (rota === '/auth/logout' && req.method === 'POST') return this.logout(req, res);
 
-    // A gestão de acessos é a ÚNICA escrita fora de `/auth/*` (ACHADOS #208): grava quem
-    // abre cada aba no `DB_InstallationDashboard`, só para admin/dev (`permissoes.ts`). O
-    // CSRF aqui é mais estrito que o de `/auth/*`: sem `Origin`/`Referer` também recusa —
-    // esta rota só tem um cliente legítimo, a tela, e a tela é um navegador.
+    // As escritas fora de `/auth/*` são a gestão de acessos e o contador leve de abertura.
+    // O CSRF aqui é mais estrito que o de `/auth/*`: sem `Origin`/`Referer` também recusa —
+    // estas rotas só têm um cliente legítimo, a tela, e a tela é um navegador.
     const ehGestaoDeAcesso = rota === '/api/admin/acessos' || rota.startsWith('/api/admin/acessos/');
     const ehGestaoDeSessao = rota === '/api/admin/sessoes' || rota.startsWith('/api/admin/sessoes/');
-    if ((ehGestaoDeAcesso || ehGestaoDeSessao) && req.method === 'POST') {
+    const ehConsultaDeUso = rota === '/api/admin/uso';
+    const ehRegistroDeUso = rota === '/api/uso/abertura';
+    if (ehRegistroDeUso && req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      responde(res, 405, { erro: 'Esta rota aceita somente POST.' });
+      return;
+    }
+    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehRegistroDeUso) && req.method === 'POST') {
       const temOrigem = typeof req.headers.origin === 'string' || typeof req.headers.referer === 'string';
       if (!temOrigem || !this.origemPermitida(req)) {
         this.registraEventoSeg(req, 403, 'csrf-gestao-de-acesso');
@@ -748,7 +761,8 @@ export class Servidor {
       responde(res, 405, {
         erro: `Método ${req.method} não existe nesta rota. A API é somente leitura ` +
           `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno, /auth/logout` +
-          `, /api/admin/acessos/* (gestão de acessos, só admin/dev) e /api/admin/sessoes/* (só admin).`,
+          `, /api/admin/acessos/* (gestão de acessos, só admin/dev), /api/admin/sessoes/* (só admin)` +
+          ` e /api/uso/abertura (a própria pessoa registra a aba aberta).`,
       });
       return;
     }
@@ -813,6 +827,8 @@ export class Servidor {
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
         return;
       }
+      if (ehRegistroDeUso) return this.registraAbertura(req, res, url, quem, ehAquecedor);
+      if (ehConsultaDeUso) return this.usoDasTelas(res, url, quem, req);
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
       if (ehGestaoDeSessao) return this.gestaoDeSessao(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
@@ -1113,10 +1129,71 @@ export class Servidor {
       // foi essa combinação que passou despercebida por 3h43 em 16/09/2026.
       ...(this.opts.estadoDoAgendador ? { agendador: this.opts.estadoDoAgendador() } : {}),
       ...(this.opts.estadoDaGuarda ? { guarda: this.opts.estadoDaGuarda() } : {}),
+      ...(this.opts.usoDasTelas ? { usoDasTelas: this.opts.usoDasTelas.estado() } : {}),
       // `ok: false` = `permissoes.yaml` inválido e só ADMIN_EMAILS entra. Sem o
       // motivo: esta rota é pública, e o erro pode citar e-mail. O motivo está no log.
       permissoes: this.opts.acesso.estado(),
     });
+  }
+
+  private async registraAbertura(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL,
+    quem: Identidade,
+    ehAquecedor: boolean,
+  ): Promise<void> {
+    if (ehAquecedor || quem.papeis.includes('interno') || url.searchParams.get('origem') === 'prefetch') {
+      res.writeHead(204).end();
+      return;
+    }
+    let tela: unknown;
+    try {
+      tela = (parseJsonSeguro(await leCorpo(req)) as { tela?: unknown } | null)?.tela;
+    } catch {
+      tela = undefined;
+    }
+    if (typeof tela !== 'string' || tela.length > 64 || !this.dashboards.some((d) => d.id === tela && d.type !== 'Tooltip')) {
+      responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { tela } de uma aba conhecida.' });
+      return;
+    }
+    if (!this.opts.acesso.podeVer(quem, tela)) {
+      this.registraEventoSeg(req, 403, 'aba-sem-acesso', quem.usuario);
+      responde(res, 403, { erro: 'Você não tem acesso a esta aba.' });
+      return;
+    }
+    this.opts.usoDasTelas?.registra(quem.usuario.trim().toLowerCase(), tela, this.opts.agora());
+    res.writeHead(204).end();
+  }
+
+  private async usoDasTelas(
+    res: http.ServerResponse,
+    url: URL,
+    quem: Identidade,
+    req: http.IncomingMessage,
+  ): Promise<void> {
+    if (!this.opts.acesso.podeGerir(quem)) {
+      this.registraEventoSeg(req, 403, 'uso-das-abas-sem-papel', quem.usuario);
+      responde(res, 403, { erro: 'Só administrador ou dev consulta o uso das abas.' });
+      return;
+    }
+    if (!this.opts.usoDasTelas) {
+      responde(res, 503, { erro: 'Medição de uso das abas não configurada neste ambiente.' });
+      return;
+    }
+    const bruto = Number(url.searchParams.get('dias') ?? 30);
+    if (bruto !== 7 && bruto !== 30 && bruto !== 90) {
+      responde(res, 400, { erro: 'Período inválido — use dias=7, 30 ou 90.' });
+      return;
+    }
+    try {
+      const telas = this.dashboards
+        .filter((d) => d.type !== 'Tooltip')
+        .map((d) => ({ id: d.id, nome: d.name }));
+      responde(res, 200, await this.opts.usoDasTelas.le(bruto, telas, this.opts.agora()));
+    } catch {
+      responde(res, 503, { erro: 'Não foi possível ler o uso das abas agora.' });
+    }
   }
 
   private statusDeRefresh(): unknown {

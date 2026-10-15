@@ -41,6 +41,25 @@ beforeEach(() => {
         );
       }
       if (url === '/api/admin/sessoes') return new Response(JSON.stringify({ sessoes: [] }));
+      if (url === '/api/admin/uso?dias=30') {
+        return new Response(
+          JSON.stringify({
+            dias: 30,
+            pessoasAtivas: 1,
+            geradoEm: '2026-10-15T12:00:00.000Z',
+            telas: [
+              {
+                id: 'visao-geral',
+                nome: 'VISÃO GERAL',
+                aberturas: 4,
+                pessoas: 1,
+                ultimaAbertura: '2026-10-15T12:00:00.000Z',
+              },
+              { id: 'diario', nome: 'DIÁRIO', aberturas: 0, pessoas: 0, ultimaAbertura: null },
+            ],
+          }),
+        );
+      }
       return new Response(JSON.stringify(MATRIZ));
     }),
   );
@@ -81,6 +100,14 @@ test('marcar a caixa não grava; só "Salvar alterações" posta', async () => {
       corpo: { email: 'ana@sebratel.com.br', telas: ['visao-geral', 'diario'] },
     },
   ]);
+});
+
+test('mostra KPIs e a aba sem abertura no cartão de uso', async () => {
+  monta();
+  expect(await screen.findByText('Mais aberta')).toBeTruthy();
+  expect(screen.getByText('Sem abertura')).toBeTruthy();
+  expect(screen.getByText('Nunca no período')).toBeTruthy();
+  expect(screen.getByRole('combobox', { name: 'Período do uso das abas' })).toBeTruthy();
 });
 
 test('"Descartar" volta ao que está no banco sem postar nada', async () => {

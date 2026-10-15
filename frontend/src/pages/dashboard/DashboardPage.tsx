@@ -9,11 +9,16 @@
 
 import { useEffect, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ehAbortError, ehErroDeAcesso, ehErroDeSessao } from '../../services/dashboardService.ts';
+import {
+  ehAbortError,
+  ehErroDeAcesso,
+  ehErroDeSessao,
+  registraAberturaDeAba,
+} from '../../services/dashboardService.ts';
 import { sai } from '../../services/authService.ts';
 import { useSessaoStore } from '../../store/sessaoStore.ts';
 import { useRascunhoDeAcessos } from '../../store/rascunhoDeAcessosStore.ts';
-import { pegaMatriz } from '../../services/acessoService.ts';
+import { pegaMatriz, pegaUsoDasTelas } from '../../services/acessoService.ts';
 import { useModo } from '../../context/ModoContext.tsx';
 import {
   useDashboards,
@@ -38,6 +43,7 @@ import { BarraDeFiltros } from '../../components/filtros/BarraDeFiltros.tsx';
 import { Capa } from '../../components/capa/Capa.tsx';
 import { SemAcesso } from '../../components/auth/SemAcesso.tsx';
 import { CHAVE_ACESSOS, GestaoDeAcessos } from '../../components/acessos/GestaoDeAcessos.tsx';
+import { chaveDoUso, PERIODOS_DE_USO } from '../../components/acessos/UsoDasTelas.tsx';
 import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
 import { KpiGridSection } from '../../components/visuais/KpiGridSection.tsx';
 import { VisualGridSection } from '../../components/visuais/VisualGridSection.tsx';
@@ -89,8 +95,19 @@ export function DashboardPage() {
   // A matriz chega antes do clique na aba (`feedback-tudo-pre-carregado`) — só para quem
   // a vê; para os outros o servidor responderia 403.
   useEffect(() => {
-    if (eu?.podeGerir) void qc.prefetchQuery({ queryKey: CHAVE_ACESSOS, queryFn: pegaMatriz });
+    if (!eu?.podeGerir) return;
+    void qc.prefetchQuery({ queryKey: CHAVE_ACESSOS, queryFn: pegaMatriz });
+    // Os três períodos do cartão "Uso das abas": trocar o seletor não mostra "Lendo…".
+    for (const dias of PERIODOS_DE_USO) {
+      void qc.prefetchQuery({ queryKey: chaveDoUso(dias), queryFn: () => pegaUsoDasTelas(dias) });
+    }
   }, [eu?.podeGerir, qc]);
+
+  // Só a troca efetiva de aba dispara isto. Filtro, prefetch e aquecimento não alteram
+  // `paginaDoDado`; a API ainda aplica as exclusões e a deduplicação de 30 minutos.
+  useEffect(() => {
+    if (paginaDoDado && atualLiberada === true) registraAberturaDeAba(paginaDoDado);
+  }, [paginaDoDado, atualLiberada]);
 
   // Alteração de permissão por salvar não some calada num recarregar ou fechar de aba
   // do navegador. Trocar de aba DENTRO do relatório não perde nada (o rascunho mora na

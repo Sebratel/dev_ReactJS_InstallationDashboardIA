@@ -15474,3 +15474,42 @@ trancado. Agora é **5 por minuto** (`LIMITE_AUTH_TENTATIVAS`/`JANELA_AUTH_MS` e
 1 min. O teto por hora sobe de 120 para 300 — aceitável porque a senha é do
 Google/Firebase e o `TOKEN_INTERNO` tem 43 caracteres aleatórios. Testes de
 `seguranca.test.ts` ajustados (6ª tentativa dá 429; libera depois de 1 min).
+
+---
+
+## #222 — KPIs leves de abertura das abas (15/10)
+
+**O que foi medido antes de escolher o sinal.** No navegador real, abrir uma aba pede o
+`layout` e a página; trocar filtro repete o pedido da página; o prefetch de vizinhança
+repete a mesma rota com `origem=prefetch`. O prefetch por mouse pode preencher o cache e
+fazer o clique seguinte não emitir pedido da página. Portanto, inferir abertura por uma
+rota de dados contaria filtros ou perderia cliques. A solução é um `POST
+/api/uso/abertura` fire-and-forget disparado somente quando a aba efetiva muda.
+
+**Contagem e privacidade.** O servidor exclui `origem=prefetch`, aquecedor e papel
+`interno`, confere sessão e permissão da aba e deduplica `(email, aba)` por 30 minutos.
+Guarda apenas dia, id da aba, e-mail, contagem e última abertura — sem IP, filtro, tempo de
+permanência ou sinal periódico. O buffer agregado tem teto e grava lotes a cada 3 minutos
+com `INSERT ... ON DUPLICATE KEY UPDATE`; queda do MariaDB nunca bloqueia a página e
+descartes ficam visíveis em `/api/saude`.
+
+**Leitura.** `GET /api/admin/uso?dias=7|30|90` exige admin/dev, faz consultas agregadas
+pequenas com cache de 5 minutos e parte da lista de telas para também devolver as abas com
+zero. O cartão “Uso das abas” fica dentro de “Permissões”, com os quatro KPIs pedidos e a
+tabela das 14 abas; não foi criada outra aba de navegação.
+
+**Banco e implantação.** O DDL de `screen_usage_daily` e os privilégios mínimos de
+`installation_access` estão nos scripts versionados. Eles não foram executados sem a
+autorização explícita do Erick, como combinado; até a tabela existir, a medição falha
+isoladamente e a leitura administrativa responde indisponível.
+
+**Pré-carga.** Para admin/dev, a `DashboardPage` já pede os três períodos (7/30/90) junto
+com a matriz de acessos (`feedback-tudo-pre-carregado`): entrar em “Permissões” ou trocar o
+período não mostra “Lendo o uso…”. São três `GROUP BY` pequenos, com cache de 5 min na API.
+
+**Suíte.** `npm test` para no `node --test` por um teste que não é deste trabalho:
+`busca-por-ids.test.ts` (“PollerRealtime em dois passos”) lê o `snapshot/manifesto.json` REAL
+da máquina (`#cobertoAte` em `poller-realtime.ts`) e, com o manifesto regravado hoje, a
+semente vira `08:42` em vez de `10:00`. Numa cópia limpa do HEAD (`git archive`, sem
+`snapshot/`) passa 4/4. `porta.test.ts` (linha de comando de processo) falhou só sob carga e
+passa isolado. Vitest (186/186), `typecheck` e `web:build` verdes.

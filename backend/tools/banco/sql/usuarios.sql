@@ -26,6 +26,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON DB_InstallationDashboard.screen_users   
 GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.access_requests TO 'installation_access'@'%';
 GRANT SELECT, INSERT                 ON DB_InstallationDashboard.audit_logs      TO 'installation_access'@'%';
 GRANT SELECT, INSERT                 ON DB_InstallationDashboard.security_events TO 'installation_access'@'%';
+GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.screen_usage_daily TO 'installation_access'@'%';
 
 -- 3) n8n: só as três tabelas das planilhas e o registro da cópia. Não lê acesso nem
 --    eventos de segurança, e não alcança outro banco.
