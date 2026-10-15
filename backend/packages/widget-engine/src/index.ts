@@ -65,6 +65,7 @@ export {
 export { codificaFiltro, decodificaFiltro, decodificaFiltros, type FiltroDeTela } from './filtro-url.ts';
 export {
   loadDashboards,
+  soDoPbip,
   type BordaSpec,
   type CampoSpec,
   type CondicaoSpec,

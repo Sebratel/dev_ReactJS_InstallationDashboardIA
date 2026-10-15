@@ -26,7 +26,7 @@ interface Expressao {
 function todasAsExpressoes(): Expressao[] {
   const model = SemanticModel.fromSpecsDir(SPECS);
   return [
-    ...model.measures.map((m) => ({ nome: `${m.table}[${m.name}]`, dax: m.dax })),
+    ...model.measuresDoPbip.map((m) => ({ nome: `${m.table}[${m.name}]`, dax: m.dax })),
     ...model.calculatedColumns.map(({ table, column }) => ({
       nome: `${table.name}[${column.name}] (coluna)`,
       dax: column.dax!,

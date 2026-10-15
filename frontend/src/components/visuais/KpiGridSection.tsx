@@ -17,7 +17,8 @@ import { KpiCard } from './KpiCard.tsx';
  * `visuais` — a mesma lista que a página inteira recebeu, sem requisição extra. `porId`
  * é o mesmo mapa que já resolve o KPI; resolver a tendência nele é reaproveitar, não
  * duplicar. `kpis[].meta` e `kpis[].calendario` seguem o mesmo princípio, apontando
- * outro KPI ou uma matriz da mesma página.
+ * outro KPI ou uma matriz da mesma página. `kpis[].comparado` também: outro card (em
+ * `ocultos`) que o corte eager pede junto.
  */
 export function KpiGridSection({
   layout,
@@ -52,6 +53,8 @@ export function KpiGridSection({
           tendencia={entrada.tendencia ? porId.get(entrada.tendencia) : undefined}
           meta={entrada.meta ? porId.get(entrada.meta) : undefined}
           calendario={entrada.calendario ? porId.get(entrada.calendario) : undefined}
+          comparado={entrada.comparado ? porId.get(entrada.comparado) : undefined}
+          melhor={entrada.melhor}
         />
       ))}
     </section>

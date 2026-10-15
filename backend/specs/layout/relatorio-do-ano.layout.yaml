@@ -1,31 +1,72 @@
 # MANTIDO POR HUMANOS — a forma da tela. O número continua vindo da spec gerada.
 #
-# Gerado por `npm run layout:extrai` em 2026-08-28 a partir da
-# forma que `relatorio-do-ano` desenha hoje (filtro padrão de abertura, sem clique). Editar à
-# mão é o esperado — é o "contrato revisável" de docs/PLANO-LAYOUT-V1.md §1. Reextrair
-# por cima de uma edição manual perde a edição; extraia só quando quiser voltar à forma
-# derivada da heurística antiga.
+# Gerado por `npm run layout:extrai` em 2026-08-28; refeito à mão em 15/10/2026
+# (decisão do Erick): a página do ano passou a ser feita de visuais NATIVOS
+# (backend/specs/visuais-novos/relatorio-do-ano.yaml) — ano atual × mesmo período do ano
+# anterior. Os visuais do PBIP continuam na spec gerada e ficam em `ocultos` com o motivo;
+# como `ocultos` não entra no corte eager, eles também deixam de ser calculados.
 pagina: relatorio-do-ano
 base: backend/specs/dashboards/05-relatorio-do-ano.spec.yaml
 kpis:
+  - visual: ano-instalados
+    enfase: alta
+    comparado: ano-instalados-anterior
+  - visual: ano-criados
+    enfase: normal
+    comparado: ano-criados-anterior
+  - visual: ano-conversao
+    enfase: normal
+    comparado: ano-conversao-anterior
+  - visual: ano-prazo
+    enfase: normal
+    comparado: ano-prazo-anterior
+    melhor: menor
   - visual: 08b3a855d0ea88074546
     enfase: normal
   - visual: 193ecfd32794b8820a34
     enfase: normal
-  - visual: 410a4f77a85cc3dd51d3
-    enfase: normal
-  - visual: 5b18ee85a8688e8cc625
-    enfase: normal
 faixas:
   - altura: grafico
     colunas:
-      - visual: 2d498e7a60ec27af9ead
+      - visual: ano-instalados-por-mes
+        span: 12
+        render: clusteredColumnChart
+  - altura: grafico
+    colunas:
+      - visual: ano-prazo-por-mes
         span: 6
-        render: lineStackedColumnComboChart
-      - visual: ea214b703c020e5c31cd
+        render: lineChart
+      - visual: ano-cidades
         span: 6
-        render: clusteredBarChart
+        render: tableEx
 ocultos:
+  - visual: ano-instalados-anterior
+    porque: comparativo lido pelo card ano-instalados (kpis[].comparado), não desenhado sozinho
+  - visual: ano-criados-anterior
+    porque: comparativo lido pelo card ano-criados (kpis[].comparado), não desenhado sozinho
+  - visual: ano-conversao-anterior
+    porque: comparativo lido pelo card ano-conversao (kpis[].comparado), não desenhado sozinho
+  - visual: ano-prazo-anterior
+    porque: comparativo lido pelo card ano-prazo (kpis[].comparado), não desenhado sozinho
+  - visual: 410a4f77a85cc3dd51d3
+    porque: >-
+      TOTAL INSTALADOS de toda a base (desde 2025), sem recorte de ano — numa página do ano
+      lia-se como total do ano. Substituído por ano-instalados (1º/jan até hoje, com
+      comparativo). Decisão do Erick, 15/10/2026
+  - visual: 5b18ee85a8688e8cc625
+    porque: >-
+      TOTAL CRIADOS de toda a base, sem recorte de ano — mesmo motivo do TOTAL INSTALADOS.
+      Substituído por ano-criados. Decisão do Erick, 15/10/2026
+  - visual: 2d498e7a60ec27af9ead
+    porque: >-
+      combo VISÃO GERAL: colunas empilhadas por base + linha de média de clientes em eixo
+      secundário — ilegível (escalas diferentes, uma série por base). Substituído por
+      ano-instalados-por-mes (ano atual × anterior, mesmo eixo). Decisão do Erick, 15/10/2026
+  - visual: ea214b703c020e5c31cd
+    porque: >-
+      barra TOTAL INSTALADO POR CIDADE com as 26 cidades, 20 delas somando menos de 1% do
+      volume. Substituída pela tabela ano-cidades (ano atual × anterior, variação,
+      participação). Decisão do Erick, 15/10/2026
   - visual: 06a491ea04cbed19da23
     porque: tipo 'textbox' não calcula e não vira segmentação — hoje invisível na tela
   - visual: 2389e34767d010a25d0d

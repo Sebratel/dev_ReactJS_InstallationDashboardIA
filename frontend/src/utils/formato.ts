@@ -110,6 +110,22 @@ export function percentualDeRazao(v: unknown): string {
   return `${nf.format(escala)}%`;
 }
 
+const nfUmaCasa = new Intl.NumberFormat('pt-BR', {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+/**
+ * Razão SEMPRE escrita como porcentagem (`93,71` → `9.371,0%`), sem o palpite de escala
+ * de `percentualDeRazao`. É para coluna que a API marcou `percentual` (tabela nativa):
+ * ali a medida é razão por definição, e uma variação de +9.371% é real — o palpite a
+ * mostraria como "93,71%".
+ */
+export function razaoComoPercentual(v: unknown): string {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
+  return `${nfUmaCasa.format(v * 100)}%`;
+}
+
 /** Data e hora de um ISO, para o carimbo de "dado de". */
 export function dataHora(iso: string | null): string {
   if (!iso) return '—';

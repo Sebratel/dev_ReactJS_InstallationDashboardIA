@@ -24,6 +24,8 @@ export interface ModelMeasure {
   format: string | null;
   displayFolder: string | null;
   dax: string;
+  /** `nativo` = escrita à mão, não existe no Power BI (arquivo de medidas com `origem: nativo`). */
+  origem?: 'nativo';
 }
 
 export interface ModelTable {

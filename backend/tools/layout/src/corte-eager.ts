@@ -85,7 +85,9 @@ function idsDeSegmentacao(layout: LayoutSpec): string[] {
  * qualquer faixa crítica marcada explicitamente com `eager: true`.
  */
 export function idsIniciais(layout: LayoutSpec, nFaixas: number = N_FAIXAS_EAGER): string[] {
-  const kpis = layout.kpis.map((k) => k.visual);
+  // O comparativo de um KPI (`kpis[].comparado`) mora em `ocultos`, mas é lido pelo
+  // card na abertura — sem ele aqui o card nasceria sem a linha "vs ano anterior".
+  const kpis = layout.kpis.flatMap((k) => (k.comparado ? [k.visual, k.comparado] : [k.visual]));
   const segmentacoes = idsDeSegmentacao(layout);
   const faixas = layout.faixas
     .filter((f, indice) => indice < nFaixas || f.eager === true)
@@ -118,7 +120,7 @@ export function idsIniciais(layout: LayoutSpec, nFaixas: number = N_FAIXAS_EAGER
 export function idsRestantes(layout: LayoutSpec, nFaixas: number = N_FAIXAS_EAGER): string[] {
   const eager = new Set(idsIniciais(layout, nFaixas));
   const todos = [
-    ...layout.kpis.map((k) => k.visual),
+    ...layout.kpis.flatMap((k) => (k.comparado ? [k.visual, k.comparado] : [k.visual])),
     ...idsDeSegmentacao(layout),
     ...layout.faixas.flatMap((f) => f.colunas.map((c) => c.visual)),
   ];

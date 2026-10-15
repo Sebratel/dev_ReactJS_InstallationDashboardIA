@@ -51,6 +51,13 @@ export interface ValorDeTabela {
    * (`2026`), não a data, e sem ele o filtro comparava ano com data.
    */
   origemDasColunas: { tabela: string | null; coluna: string | null; nivel: string | null }[];
+  /**
+   * Coluna que a tela escreve como porcentagem (`0,0529` → `5,3%`). Só em visual NATIVO,
+   * quando o campo é medida com formato `%` no catálogo. Nos visuais do PBIP fica tudo
+   * `false`: cinco tabelas de lá têm coluna "%" cuja escala nunca foi conferida, e
+   * mudá-las aqui seria mexer em número de tela sem paridade.
+   */
+  percentuais: boolean[];
   linhas: CelulaTabela[][];
   /** `origem` de cada `TableFilter` de página e de visual. */
   filtros: string[];
@@ -86,6 +93,40 @@ function ordenaPorDataPadrao(linhas: CelulaTabela[][], nColunas: number): Celula
     if (isBlank(va)) return isBlank(vb) ? 0 : 1;
     if (isBlank(vb)) return -1;
     return (vb as Date).getTime() - (va as Date).getTime();
+  });
+}
+
+/**
+ * Linha de tabela nativa em que nenhuma célula calculada tem valor não entra — é o que
+ * o Power BI faz por padrão ("mostrar itens sem dados" desligado). Só vale para visual
+ * nativo (`spec.ts`): nos do PBIP, que só têm colunas, a regra nunca foi medida, e
+ * aplicá-la ali mudaria contagem de linha em silêncio.
+ */
+function temAlgumNumero(linha: CelulaTabela[]): boolean {
+  return linha.some((c) => !c.chave && !isBlank(c.valor));
+}
+
+/** A ordem declarada em `ordem` do visual nativo; BLANK sempre no fim. */
+function ordenaNativo(
+  linhas: CelulaTabela[][],
+  campos: readonly CampoSpec[],
+  visual: VisualSpec,
+  onde: string,
+): CelulaTabela[][] {
+  if (!visual.ordem) return linhas;
+  const i = campos.findIndex((c) => c.name === visual.ordem!.campo);
+  if (i < 0) {
+    throw new DaxEvalError(`${onde}: 'ordem' aponta o campo '${visual.ordem.campo}', que a tabela não tem.`);
+  }
+  const sinal = visual.ordem.desc ? -1 : 1;
+  return [...linhas].sort((a, b) => {
+    const va = a[i]!.valor;
+    const vb = b[i]!.valor;
+    if (isBlank(va)) return isBlank(vb) ? 0 : 1;
+    if (isBlank(vb)) return -1;
+    const ka = va instanceof Date ? va.getTime() : typeof va === 'number' ? va : String(va);
+    const kb = vb instanceof Date ? vb.getTime() : typeof vb === 'number' ? vb : String(vb);
+    return ka < kb ? -sinal : ka > kb ? sinal : 0;
   });
 }
 
@@ -209,7 +250,16 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
           }
         : { tabela: null, coluna: null, nivel: null },
     ),
-    linhas: ordenaPorDataPadrao(linhas, campos.length),
+    percentuais: campos.map(
+      (c) =>
+        visual.origem === 'nativo' &&
+        c.kind === 'measure' &&
+        (ev.model.measure(c.property ?? '')?.format ?? '').includes('%'),
+    ),
+    linhas:
+      visual.origem === 'nativo'
+        ? ordenaNativo(linhas.filter(temAlgumNumero), campos, visual, onde)
+        : ordenaPorDataPadrao(linhas, campos.length),
     filtros: [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
   };
 }

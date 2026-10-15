@@ -28,6 +28,14 @@ export interface KpiEntry {
   tendencia?: string;
   meta?: string;
   calendario?: string;
+  /**
+   * OUTRO card da página com o valor de referência (o mesmo período do ano anterior),
+   * desenhado como a linha "▲ +6,2% vs ano anterior". O card apontado não aparece
+   * sozinho: fica em `ocultos`, e o corte eager o pede junto com este KPI.
+   */
+  comparado?: string;
+  /** Sentido bom da variação de `comparado`. Padrão `maior`; prazo usa `menor`. */
+  melhor?: 'maior' | 'menor';
 }
 
 export interface OcultoEntry {

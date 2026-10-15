@@ -38,6 +38,14 @@ export function validaLayout(layout: LayoutSpec, idsDoSpec: readonly string[]): 
   }
 
   const idsConhecidos = new Set(idsDoSpec);
+  const ocultos = new Set((layout.ocultos ?? []).map((o) => o.visual));
+  for (const k of layout.kpis ?? []) {
+    if (k.comparado && !ocultos.has(k.comparado)) {
+      problemas.push({
+        mensagem: `kpi '${k.visual}': comparado '${k.comparado}' tem de estar em ocultos (é lido pelo card, não desenhado)`,
+      });
+    }
+  }
   for (const id of contagem.keys()) {
     if (!idsConhecidos.has(id)) {
       problemas.push({ mensagem: `visual '${id}' citado no layout não existe em '${layout.base}'` });

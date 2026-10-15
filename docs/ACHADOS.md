@@ -15513,3 +15513,43 @@ da máquina (`#cobertoAte` em `poller-realtime.ts`) e, com o manifesto regravado
 semente vira `08:42` em vez de `10:00`. Numa cópia limpa do HEAD (`git archive`, sem
 `snapshot/`) passa 4/4. `porta.test.ts` (linha de comando de processo) falhou só sob carga e
 passa isolado. Vitest (186/186), `typecheck` e `web:build` verdes.
+
+## #223 — Relatório do Ano refeito com visuais nativos: ano atual × mesmo período do anterior (15/10)
+
+**Pedido do Erick:** a página estava "muito crua" e os gráficos não se entendiam. Medido
+antes de propor: os 4 visuais com número eram dois totais da base inteira (desde 2025, sem
+recorte de ano), um combo de colunas empilhadas por base + linha de média de clientes em
+eixo secundário, e uma barra de 26 cidades, 20 delas somando menos de 1% do volume.
+Proposta aprovada (blocos 1–4; originais ficam na spec e saem da tela).
+
+**O que entrou** (`backend/specs/visuais-novos/relatorio-do-ano.yaml`, registro em
+`SPEC-DRIVEN.md`): 4 KPIs de 1º/jan até hoje com comparativo do mesmo período do ano
+anterior (instalados, criados, % instalados por criado, prazo médio até instalar),
+colunas de instalados por mês (2025 × 2026 no mesmo eixo), prazo médio por mês e tabela de
+cidades (ano anterior, ano atual, variação, participação), ordenada pelo ano atual.
+Números no snapshot de 15/10: instalados 31.994 (+6,2%), criados 42.488 (−6,1%),
+instalados/criados 75,3% (+8,8 p.p.), prazo 2,86 dias (3,80 no ano anterior).
+
+**Mediana descartada, medindo.** O prazo nasceu como mediana (`MEDIANX` chegou a ser
+implementada). Em dias inteiros ela dava 2 em quase todo mês de 2026: a linha saía reta. A
+média conta o que a mediana escondia (mai/2025: 5,3 dias; 2026: 2,5–3,0). A `MEDIANX` saiu
+junto, sem uso. Uma estimativa anterior, feita com `DATA ENCERRADO` no lugar de
+`DATA INSTALAÇÃO`, sugeria piora em set/out; a regra oficial não confirma — não usar aquela
+conta.
+
+**Borda:** jan/2026 teve 324 instalações de protocolo criado em dezembro; o equivalente de
+jan/2025 não está na base (piso em 2025-01-01). O ano anterior sai ~1% menor. Registrado no
+`porque` do card.
+
+**Achado de passagem, NÃO resolvido aqui:** `CALENDARIO INSTALADO` termina em
+`DATE(2026,12,31)` fixo (`tables/calendario-instalado.spec.yaml`). Em 01/01/2027 toda
+medida por data de instalação — estas e as do PBIP — fica sem calendário. Precisa de
+decisão antes da virada.
+
+**Também de passagem:** a grade de faixas não empilha em tela estreita (`gridColumn: span N`
+fixo em `VisualGridSection.tsx`); faixa 6 + 6 fica espremida a 390 px em todas as páginas,
+não só nesta.
+
+**Verificação:** `npm test` (back 2.240 + front 195) e `typecheck` verdes; `layout:valida`
+verde; página aberta numa API isolada (porta 3199, cópia do snapshot, `--sem-refresh`) em
+1600 px claro e 390 px escuro, sem rolagem horizontal nem erro de página.

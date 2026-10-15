@@ -188,7 +188,7 @@ test('checkModelRefs: [Nome] resolve para coluna da própria tabela', () => {
 test('specs reais: o modelo carrega completo', () => {
   const m = SemanticModel.fromSpecsDir(SPECS);
   assert.equal(m.tables.size, 25, 'tabelas');
-  assert.equal(m.measures.length, 78, 'medidas');
+  assert.equal(m.measuresDoPbip.length, 78, 'medidas do PBIP');
   assert.equal(m.calculatedColumns.length, 49, 'colunas calculadas com DAX');
   assert.equal(m.relationships.length, 22, 'relacionamentos');
   assert.ok(m.autoDateRelationshipsIgnored > 0, 'hierarquia de datas contada');

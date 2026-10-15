@@ -110,3 +110,11 @@ test('haQuanto dá a idade curta da capa, e travessão quando não há data', ()
   assert.equal(haQuanto('2026-10-02T09:30:00Z', agora), 'há 2h');
   assert.equal(haQuanto('2026-09-28T12:00:00Z', agora), 'há 4d');
 });
+
+test('razão de coluna percentual: sempre ×100, sem palpite de escala', async () => {
+  const { razaoComoPercentual } = await import('../src/utils/formato.ts');
+  assert.equal(razaoComoPercentual(0.2929), '29,3%');
+  assert.equal(razaoComoPercentual(-0.0168), '-1,7%');
+  assert.equal(razaoComoPercentual(93.714), '9.371,4%', 'variação de +9.371% é real, não "93,71%"');
+  assert.equal(razaoComoPercentual(null), '—');
+});

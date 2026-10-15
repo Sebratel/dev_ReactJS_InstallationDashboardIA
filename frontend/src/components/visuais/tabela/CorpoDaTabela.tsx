@@ -3,17 +3,26 @@
 // `Tabela.tsx`; aqui é só o desenho.
 
 import type { DadosDeTabela, Valor } from '../../../services/dashboardService.ts';
-import { formata } from '../../../utils/formato.ts';
+import { formata, razaoComoPercentual } from '../../../utils/formato.ts';
 import { larguraDaBarra } from '../../../utils/magnitude.ts';
 import { seloDeStatus } from '../../../utils/tabelaDados.ts';
 import { SetaDeOrdem } from '../../ui/icones.tsx';
 import { BadgeDeStatus } from '../../ui/Selo.tsx';
 
+/** O texto da célula — porcentagem quando a API marcou a coluna (`percentual`). */
+export function textoDaCelula(
+  valor: unknown,
+  coluna: DadosDeTabela['colunas'][number] | undefined,
+) {
+  const f = formata(valor, coluna?.tipo ?? null);
+  return coluna?.percentual && !f.vazio ? { ...f, texto: razaoComoPercentual(valor) } : f;
+}
+
 function ConteudoDaCelula(props: {
   valor: unknown;
-  tipo: DadosDeTabela['colunas'][number]['tipo'] | null;
+  coluna: DadosDeTabela['colunas'][number] | undefined;
 }) {
-  const f = formata(props.valor, props.tipo);
+  const f = textoDaCelula(props.valor, props.coluna);
   if (f.vazio) return <span className="sem">{f.texto}</span>;
   const txt = f.texto.trim();
   const selo = seloDeStatus(txt);
@@ -70,7 +79,7 @@ export function CorpoDaTabela(props: {
               }
             >
               {linha.map((valor, j) => {
-                const f = formata(valor, colunas[j]?.tipo ?? null);
+                const f = textoDaCelula(valor, colunas[j]);
                 const escala = escalas.get(j);
                 const temBarra = escala !== undefined && typeof valor === 'number';
                 return (
@@ -86,7 +95,7 @@ export function CorpoDaTabela(props: {
                       />
                     ) : null}
                     <span>
-                      <ConteudoDaCelula valor={valor} tipo={colunas[j]?.tipo ?? null} />
+                      <ConteudoDaCelula valor={valor} coluna={colunas[j]} />
                     </span>
                   </td>
                 );

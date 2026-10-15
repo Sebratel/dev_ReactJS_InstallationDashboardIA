@@ -13,7 +13,6 @@ import type {
   Valor,
   VisualCalculado,
 } from '../../services/dashboardService.ts';
-import { formata } from '../../utils/formato.ts';
 import { baixaCsv, textoCsv } from '../../utils/csv.ts';
 import { escalasDaTabela, ordenaLinhas } from '../../utils/tabelaDados.ts';
 import { Cartao, Erro } from '../ui/Cartao.tsx';
@@ -23,7 +22,7 @@ import { tituloDeTabela } from '../../utils/rotulos.ts';
 import { Download } from 'lucide-react';
 import { janelaDeServidorPara, LINHAS_VISIVEIS } from '../../utils/janela.ts';
 import { selecaoDe, type AoFiltrar } from '../../utils/rota.ts';
-import { CorpoDaTabela } from './tabela/CorpoDaTabela.tsx';
+import { CorpoDaTabela, textoDaCelula } from './tabela/CorpoDaTabela.tsx';
 import { useOrdemDaTabela } from '../../hooks/useOrdemDaTabela.ts';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
 import { Nota } from '../ui/Nota.tsx';
@@ -174,7 +173,7 @@ export function Tabela(props: {
   const exportarCSV = () => {
     const cabecalho = d.colunas.map((c) => c.nome ?? '');
     const corpo = d.linhas.map((linha) =>
-      linha.map((v, j) => formata(v, d.colunas[j]?.tipo ?? null).texto),
+      linha.map((v, j) => textoDaCelula(v, d.colunas[j]).texto),
     );
     baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, corpo));
   };

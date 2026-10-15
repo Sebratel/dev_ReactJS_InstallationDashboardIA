@@ -47,7 +47,7 @@ interface Expressao {
 
 function todasAsExpressoes(model: SemanticModel): Expressao[] {
   return [
-    ...model.measures.map((m) => ({ nome: `${m.table}[${m.name}]`, dax: m.dax, medida: true, tabela: m.table })),
+    ...model.measuresDoPbip.map((m) => ({ nome: `${m.table}[${m.name}]`, dax: m.dax, medida: true, tabela: m.table })),
     ...model.calculatedColumns.map(({ table, column }) => ({
       nome: `${table.name}[${column.name}] (coluna)`,
       dax: column.dax!,
@@ -378,7 +378,7 @@ function tabelasCitadas(dax: string, model: SemanticModel, vistos = new Set<stri
  */
 test(`${CRUZAM_SEM_TREATAS} medidas cruzam tabela sem TREATAS e portanto dependem de relacionamento`, () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
-  const cruzam = model.measures.filter(
+  const cruzam = model.measuresDoPbip.filter(
     (m) => tabelasCitadas(m.dax, model).size > 1 && !/TREATAS/i.test(m.dax),
   );
   assert.equal(
@@ -469,7 +469,7 @@ test('as 4 que não executam têm cada uma seu motivo declarado', () => {
 test('74 das 78 medidas executam; a 75ª depende do Widget Engine', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const { ok, falhas } = executar(model);
-  const medidas = new Set(model.measures.map((m) => `${m.table}[${m.name}]`));
+  const medidas = new Set(model.measuresDoPbip.map((m) => `${m.table}[${m.name}]`));
   const okMedidas = ok.filter((n) => medidas.has(n));
   const falhasMedidas = falhas.filter((f) => medidas.has(f.nome));
 

@@ -655,6 +655,12 @@ entrada em `divergencias.yaml`, nunca um silêncio.
 requisição nova. Visual que precisa de dado novo é outra conversa, e entra depois da
 paridade fechada.
 
+**Essa outra conversa aconteceu em 15/10/2026** para `relatorio-do-ano`: visuais
+**nativos**, com medida nova, em `backend/specs/visuais-novos/` (ver `SPEC-DRIVEN.md`, seção
+"`relatorio-do-ano` — visuais e medidas NATIVOS"). O `layout.yaml` os trata como qualquer
+outro visual; o contrato ganhou `kpis[].comparado` (outro card, em `ocultos`, que vira a
+linha "▲ +6,2% vs ano anterior" e entra no corte eager junto) e `kpis[].melhor`.
+
 A forma é declarada no `layout.yaml` (`render:`), com o tipo original do PBIP registrado ao
 lado. Trocar a forma nunca troca o valor — e o teste de paridade, que compara **número**,
 continua sendo a rede.

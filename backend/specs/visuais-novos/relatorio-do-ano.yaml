@@ -1,0 +1,266 @@
+# MANTIDO POR HUMANOS — visuais que NÃO existem no Power BI.
+#
+# `loadDashboards` (backend/packages/widget-engine/src/spec.ts) soma estes visuais à
+# página `relatorio-do-ano` com `origem: nativo`. Medidas em
+# backend/specs/_catalog/measures/relatorio-do-ano.measures.yaml. Decisão do Erick,
+# 15/10/2026: a página do ano não respondia "melhor ou pior que o ano passado?".
+# Os visuais originais do PBIP continuam na spec gerada (registro do original) e saem
+# da tela pelo `ocultos` do layout.
+pagina: relatorio-do-ano
+visuals:
+- id: ano-instalados
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · INSTALADOS ATÉ HOJE
+    name: INSTALADOS NO ANO
+    active: null
+  porque: 'o número principal da página: quanto foi instalado de 1º/jan até hoje, comparado com o mesmo
+    período do ano anterior. Borda medida em 15/10/2026: jan/2026 teve 324 instalações de protocolos
+    criados em dezembro; o equivalente de jan/2025 não existe na base (carga começa em 2025-01-01), então
+    o ano anterior sai ~1% menor e a variação ~1 ponto maior do que a real'
+- id: ano-instalados-anterior
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · INSTALADOS MESMO PERÍODO ANO ANTERIOR
+    name: INSTALADOS — ANO ANTERIOR
+    active: null
+  porque: 'comparativo do card ao lado: a MESMA janela (1º/jan até hoje) deslocada um ano. Não aparece
+    sozinho — vira a linha "vs ano anterior" do card. Borda: a carga começa em 2025-01-01, então jan/2025
+    sai subestimado (protocolo criado em dez/2024 não existe na base).'
+- id: ano-criados
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · CRIADOS ATÉ HOJE
+    name: PROTOCOLOS CRIADOS NO ANO
+    active: null
+  porque: 'a demanda: quantos pedidos entraram no ano, contra o mesmo período do ano anterior'
+- id: ano-criados-anterior
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · CRIADOS MESMO PERÍODO ANO ANTERIOR
+    name: CRIADOS — ANO ANTERIOR
+    active: null
+  porque: 'comparativo do card ao lado: a MESMA janela (1º/jan até hoje) deslocada um ano. Não aparece
+    sozinho — vira a linha "vs ano anterior" do card. Borda: a carga começa em 2025-01-01, então jan/2025
+    sai subestimado (protocolo criado em dez/2024 não existe na base).'
+- id: ano-conversao
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · % INSTALADOS POR CRIADO
+    name: '% INSTALADOS POR CRIADO'
+    active: null
+  porque: 'a vazão: instalados ÷ criados no ano. Acima de 100% a fila está diminuindo; abaixo, crescendo'
+- id: ano-conversao-anterior
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · % INSTALADOS POR CRIADO ANO ANTERIOR
+    name: '% INSTALADOS POR CRIADO — ANO ANTERIOR'
+    active: null
+  porque: 'comparativo do card ao lado: a MESMA janela (1º/jan até hoje) deslocada um ano. Não aparece
+    sozinho — vira a linha "vs ano anterior" do card. Borda: a carga começa em 2025-01-01, então jan/2025
+    sai subestimado (protocolo criado em dez/2024 não existe na base).'
+- id: ano-prazo
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · PRAZO MÉDIO ATÉ HOJE (DIAS)
+    name: PRAZO MÉDIO ATÉ INSTALAR (DIAS)
+    active: null
+  porque: 'quanto o cliente espera: média de dias corridos entre a criação do protocolo e a instalação,
+    nas instalações do ano'
+- id: ano-prazo-anterior
+  type: card
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  - CALENDARIO CRIADO
+  fields:
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · PRAZO MÉDIO ANO ANTERIOR (DIAS)
+    name: PRAZO MÉDIO — ANO ANTERIOR
+    active: null
+  porque: 'comparativo do card ao lado: a MESMA janela (1º/jan até hoje) deslocada um ano. Não aparece
+    sozinho — vira a linha "vs ano anterior" do card. Borda: a carga começa em 2025-01-01, então jan/2025
+    sai subestimado (protocolo criado em dez/2024 não existe na base).'
+- id: ano-instalados-por-mes
+  type: clusteredColumnChart
+  title: INSTALADOS POR MÊS — ANO ATUAL × ANO ANTERIOR
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  fields:
+  - role: Category
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Mês
+    name: DATA INSTALADO Mês
+    active: true
+  - role: Series
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
+    name: DATA INSTALADO Ano
+    active: true
+  - role: Y
+    kind: aggregation
+    entity: PROTOCOLOS GERAL
+    property: SOLICITACAO
+    aggregation: count
+    aggregation_code: 2
+    name: INSTALADOS
+    active: null
+  filters:
+  - &id001
+    name: ano-corrente-e-anterior
+    type: Advanced
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    conditions:
+    - op: between_relativo
+      property: DATA INSTALADO
+      lower:
+        anchor_kind: agora
+        anchor: null
+        truncate: year
+        truncate_code: null
+        offsets:
+        - amount: -1
+          time_unit: year
+          time_unit_code: null
+      upper:
+        anchor_kind: agora
+        anchor: null
+        truncate: day
+        truncate_code: null
+        offsets: []
+  porque: 'substitui o combo empilhado por base com eixo duplo (ilegível): duas colunas por mês, no mesmo
+    eixo, mostram onde o ano ganhou ou perdeu do anterior'
+- id: ano-prazo-por-mes
+  type: lineChart
+  title: PRAZO MÉDIO ATÉ INSTALAR (DIAS) — ANO ATUAL × ANO ANTERIOR
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  fields:
+  - role: Category
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Mês
+    name: DATA INSTALADO Mês
+    active: true
+  - role: Series
+    kind: hierarchy_level
+    entity: CALENDARIO INSTALADO
+    property: DATA INSTALADO
+    hierarchy: Hierarquia de datas
+    level: Ano
+    name: DATA INSTALADO Ano
+    active: true
+  - role: Y
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: PRAZO MÉDIO (DIAS)
+    name: PRAZO MÉDIO (DIAS)
+    active: null
+  filters:
+  - *id001
+  porque: 'o prazo não aparecia em tela nenhuma; mês a mês mostra se o atendimento está ficando mais lento.
+    Medido em 15/10/2026: média de 5,3 dias em mai/2025 contra 2,5 a 3,0 ao longo de 2026'
+- id: ano-cidades
+  type: tableEx
+  title: INSTALADOS POR CIDADE — ANO ATUAL × ANO ANTERIOR
+  entities_used:
+  - PROTOCOLOS GERAL
+  - CALENDARIO INSTALADO
+  fields:
+  - role: Values
+    kind: column
+    entity: PROTOCOLOS GERAL
+    property: CIDADE
+    name: CIDADE
+    active: null
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · INSTALADOS MESMO PERÍODO ANO ANTERIOR
+    name: ANO ANTERIOR (MESMO PERÍODO)
+    active: null
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · INSTALADOS ATÉ HOJE
+    name: ANO ATUAL
+    active: null
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · VARIAÇÃO INSTALADOS
+    name: VARIAÇÃO
+    active: null
+  - role: Values
+    kind: measure
+    entity: PROTOCOLOS GERAL
+    property: ANO · PARTICIPAÇÃO NOS INSTALADOS
+    name: PARTICIPAÇÃO
+    active: null
+  ordem:
+    campo: ANO ATUAL
+    desc: true
+  porque: 'substitui a barra de 26 cidades, em que 20 somam menos de 1% do volume: a tabela, ordenada
+    pelo ano atual, mostra as cidades que importam com variação e participação lado a lado'

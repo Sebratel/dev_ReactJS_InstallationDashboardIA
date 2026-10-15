@@ -186,6 +186,8 @@ export interface TabelaCompleta {
     coluna: string | null;
     /** Nível da hierarquia de datas (`Ano`, `Mês`) quando a coluna é um deles. */
     nivel: string | null;
+    /** Só presente (e `true`) em coluna de porcentagem de visual nativo — ver `tabela.ts`. */
+    percentual?: true;
   }[];
   linhas: unknown[][];
   linhasTotais: number;
@@ -677,6 +679,7 @@ function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Tabe
       tabela: r.origemDasColunas[i]?.tabela ?? null,
       coluna: r.origemDasColunas[i]?.coluna ?? null,
       nivel: r.origemDasColunas[i]?.nivel ?? null,
+      ...(r.percentuais[i] ? { percentual: true as const } : {}),
     })),
     linhas: r.linhas.map((l) => l.map((c) => serializa(c.valor))),
     linhasTotais: r.linhas.length,

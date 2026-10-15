@@ -112,6 +112,19 @@ export interface VisualSpec {
   fields: CampoSpec[];
   filters: FiltroSpec[];
   filters_vazios: number;
+  /**
+   * `nativo` = visual que NÃO existe no Power BI: nasceu em
+   * `backend/specs/visuais-novos/<pagina>.yaml`, escrito à mão. Ausente = veio do PBIP.
+   * Paridade não se aplica a ele (não há número no Power BI para comparar).
+   */
+  origem?: 'nativo';
+  /** Só nos nativos: por que o visual existe — a pergunta de negócio que ele responde. */
+  porque?: string;
+  /**
+   * Só em `tableEx` nativo: a ordem inicial das linhas, pelo `name` de um campo. Sem ela
+   * a tabela sai na ordem de chegada do snapshot (ver `ordenaPorDataPadrao`).
+   */
+  ordem?: { campo: string; desc: boolean };
 }
 
 export interface DashboardSpec {
@@ -128,12 +141,65 @@ export interface DashboardSpec {
   visuals: VisualSpec[];
 }
 
-/** Lê `backend/specs/dashboards/*.spec.yaml`. Ordem alfabética, para saída determinística. */
+/**
+ * As páginas como o Power BI as tem — sem os visuais nativos. É o que os testes de
+ * inventário contam ("o relatório tem 306 visuais"): eles descrevem o original.
+ */
+export function soDoPbip(paginas: DashboardSpec[]): DashboardSpec[] {
+  return paginas.map((p) => ({ ...p, visuals: p.visuals.filter((v) => v.origem !== 'nativo') }));
+}
+
+/** O arquivo de visuais nativos de uma página — escrito à mão, nunca pelo extrator. */
+interface VisuaisNovosFile {
+  pagina: string;
+  visuals: VisualSpec[];
+}
+
+/**
+ * Lê `backend/specs/dashboards/*.spec.yaml` e soma a cada página os visuais nativos de
+ * `backend/specs/visuais-novos/<pagina>.yaml`. Ordem alfabética, para saída determinística.
+ *
+ * **Por que um arquivo à parte, e não editar a spec gerada.** A spec do dashboard é o
+ * registro do original (docs/PLANO-LAYOUT-V1.md §1): reextrair por cima apagaria a
+ * edição. Os nativos são visuais que o Power BI não tem — perguntas que o relatório
+ * original não respondia (decisão do Erick, 15/10/2026, para `relatorio-do-ano`). Eles
+ * entram na mesma lista para que API, aquecedor, snapshot e testes vejam a mesma
+ * página; `origem: 'nativo'` é o que os separa onde a diferença importa (paridade).
+ *
+ * Arquivo de visual nativo para página que não existe, id repetido ou visual sem
+ * `porque` erra alto: um visual novo sem motivo escrito é o que este plano proíbe.
+ */
 export function loadDashboards(specsDir: string): DashboardSpec[] {
   const dir = path.join(specsDir, 'dashboards');
-  return fs
+  const paginas = fs
     .readdirSync(dir)
     .filter((f) => f.endsWith('.spec.yaml'))
     .sort()
     .map((f) => parseYaml(fs.readFileSync(path.join(dir, f), 'utf8')) as DashboardSpec);
+
+  const dirNovos = path.join(specsDir, 'visuais-novos');
+  if (!fs.existsSync(dirNovos)) return paginas;
+  for (const f of fs.readdirSync(dirNovos).filter((x) => x.endsWith('.yaml')).sort()) {
+    const arq = parseYaml(fs.readFileSync(path.join(dirNovos, f), 'utf8')) as VisuaisNovosFile;
+    const pagina = paginas.find((p) => p.id === arq.pagina);
+    if (!pagina) {
+      throw new Error(`visuais-novos/${f}: página '${arq.pagina}' não existe em specs/dashboards.`);
+    }
+    const ids = new Set(pagina.visuals.map((v) => v.id));
+    for (const v of arq.visuals ?? []) {
+      if (ids.has(v.id)) throw new Error(`visuais-novos/${f}: id '${v.id}' repetido na página.`);
+      if (!v.porque) throw new Error(`visuais-novos/${f}: visual '${v.id}' sem 'porque'.`);
+      ids.add(v.id);
+      // O YAML à mão não traz o que só faz sentido no PBIP (posição na tela fixa).
+      pagina.visuals.push({
+        ...v,
+        position: v.position ?? { x: 0, y: 0, width: 0, height: 0 },
+        entities_used: v.entities_used ?? [],
+        filters: v.filters ?? [],
+        filters_vazios: v.filters_vazios ?? 0,
+        origem: 'nativo',
+      });
+    }
+  }
+  return paginas;
 }

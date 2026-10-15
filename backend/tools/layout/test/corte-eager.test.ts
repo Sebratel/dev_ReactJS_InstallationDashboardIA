@@ -177,3 +177,13 @@ test('idsIniciais + idsRestantes partem o layout: sem sobra e sem repetição', 
   // `img1` não existe aqui de propósito: o que não calcula não entra em nenhum dos dois.
   assert.equal(restantes.length, (9 - 4) * 2);
 });
+
+test('idsIniciais: o comparativo de um KPI (kpis[].comparado) entra junto com ele', () => {
+  const l = layout(
+    [],
+    [{ visual: 'k1', enfase: 'alta', comparado: 'k1-anterior' }],
+    [{ visual: 'k1-anterior', porque: 'comparativo lido pelo card k1' }],
+  );
+  assert.deepEqual(idsIniciais(l), ['k1', 'k1-anterior']);
+  assert.deepEqual(idsRestantes(l), []);
+});

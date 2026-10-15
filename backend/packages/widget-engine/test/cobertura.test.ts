@@ -23,13 +23,16 @@ import { escolheAncora } from '../src/expansao.ts';
 import { calculaMatriz, matrizesDoDashboard } from '../src/matriz.ts';
 import {
   loadDashboards,
+  soDoPbip,
   type CondicaoSpec,
   type DashboardSpec,
   type FiltroSpec,
   type VisualSpec,
 } from '../src/spec.ts';
 
-const DASHBOARDS = loadDashboards(SPECS);
+// Inventário do relatório ORIGINAL: os visuais nativos (`visuais-novos/`) ficam fora
+// da contagem e têm teste próprio em `visuais-novos.test.ts`.
+const DASHBOARDS = soDoPbip(loadDashboards(SPECS));
 
 /** Todos os filtros do relatório, de página e de visual, com onde cada um vive. */
 function todosOsFiltros(): { onde: string; filtro: FiltroSpec; visual: VisualSpec | null }[] {

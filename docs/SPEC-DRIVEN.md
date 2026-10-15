@@ -554,6 +554,37 @@ muda na costura de `realtime-poll.yaml`, que ancora nela. Efeito em cadeia, dese
 CALENDARIO CRIADO nasce do `MIN` desta tabela e passa a começar em 2025, como no Instalação —
 ela só é usada por Visão Geral, Relatório do Mês e Telefonia, que seguem o Instalação.
 
+### `relatorio-do-ano` — visuais e medidas NATIVOS, que não existem no PBIP (15/10/2026)
+
+Decisão do Erick: a página do ano só tinha dois totais da base inteira, um combo
+empilhado por base com eixo duplo e uma barra de 26 cidades — não respondia "o ano está
+melhor ou pior que o anterior?". Entraram **11 visuais nativos** (8 cards, 2 gráficos, 1
+tabela) e **11 medidas** sem contraparte no Power BI:
+
+- `backend/specs/visuais-novos/relatorio-do-ano.yaml` — escrito à mão. `loadDashboards`
+  (`widget-engine/src/spec.ts`) soma estes visuais à página com `origem: nativo`; a spec
+  gerada **não** é editada. Visual nativo sem `porque`, com id repetido ou de página
+  inexistente erra alto na carga.
+- `backend/specs/_catalog/measures/relatorio-do-ano.measures.yaml` — `origem: nativo` no
+  arquivo marca as medidas (`SemanticModel.measuresDoPbip` as exclui).
+- Os testes de **inventário** do relatório original (`cobertura.test.ts` dos dois motores,
+  `model.test.ts`) contam só o PBIP (`soDoPbip`, `measuresDoPbip`); os nativos têm teste
+  próprio em `widget-engine/test/visuais-novos.test.ts`.
+- Paridade não se aplica: não há número no Power BI para comparar. Os 4 visuais originais
+  que a tela deixou de mostrar continuam na spec e em `paridade/relatorio-do-ano.yaml`.
+
+O que muda de comportamento, só para visual nativo: `tableEx` poda linha sem nenhum número
+(o padrão do Power BI) e aceita `ordem: {campo, desc}`; coluna de medida com formato `%`
+sai marcada `percentual` para a tela. Os visuais do PBIP seguem exatamente como antes.
+
+**Ressalva de borda**, medida em 15/10/2026: a carga de `PROTOCOLOS GERAL` começa em
+`DATA CRIADO >= 2025-01-01`, então instalação de jan/2025 de protocolo criado em dez/2024
+não existe na base. Jan/2026 teve 324 dessas; o "mesmo período do ano anterior" sai ~1%
+menor e a variação de instalados ~1 ponto maior que a real. Some sozinho em 2027 (o ano
+anterior passa a ser 2026, inteiro na base) — **mas** `CALENDARIO INSTALADO` termina em
+`DATE(2026,12,31)` fixo no `table_dax`, e em 2027 todas as medidas por data de instalação
+precisam disso resolvido antes.
+
 ## Estrutura de `backend/specs/`
 
 ```
@@ -563,8 +594,10 @@ backend/specs/
     relationships.yaml        # 22 relacionamentos + cardinalidade e direção do filtro
     queries/*.spec.yaml       # cada consulta (SQL + colunas + source_tables + cache)
     tables/*.spec.yaml        # 25 tabelas: colunas, tipos, e o DAX das calculadas
-    measures/*.spec.yaml      # 78 medidas DAX
+    measures/*.spec.yaml      # 78 medidas DAX do PBIP + as nativas (`origem: nativo`)
   dashboards/*.spec.yaml      # 14 páginas: layout, visuais, filtros, medidas usadas
+  visuais-novos/*.yaml        # À MÃO: visuais que o PBIP não tem, somados à página na carga
+  layout/*.layout.yaml        # À MÃO: a forma da tela (kpis, faixas, ocultos)
   golden/*.golden.json        # GERADO por validate:queries — linha de base contra
                               # dados reais (forma + agregados, SEM linhas)
   EXTRACTION-REPORT.md        # gerado: contagens e alertas do extrator

@@ -1,0 +1,148 @@
+# MANTIDO POR HUMANOS — NÃO vem do PBIP. Medidas dos visuais nativos de
+# `relatorio-do-ano` (backend/specs/visuais-novos/relatorio-do-ano.yaml).
+#
+# Decisão do Erick (15/10/2026): a página do ano só tinha dois totais, um combo empilhado
+# por base e uma barra de 26 cidades — não respondia "o ano está melhor ou pior que o
+# anterior?". Estas medidas não existem no Power BI; não há paridade a conferir.
+#
+# "Até hoje" e "mesmo período do ano anterior" usam a MESMA janela de 1º/jan até o dia
+# de hoje, deslocada um ano — comparar o ano corrente (incompleto) com o anterior
+# inteiro daria sempre queda.
+#
+# RESSALVA DE BORDA (registrada também no `porque` dos visuais): a carga de PROTOCOLOS
+# GERAL começa em `DATA CRIADO >= 2025-01-01`. Protocolo criado em dez/2024 e instalado
+# em jan/2025 não existe na base, então o ano anterior sai subestimado no começo de
+# janeiro (o mesmo efeito de borda do piso — ver CLAUDE.md, "Paridade").
+spec: measures
+table: PROTOCOLOS GERAL
+id: relatorio-do-ano
+origem: nativo
+measures:
+- name: "ANO · INSTALADOS ATÉ HOJE"
+  format: "#,0"
+  display_folder: relatorio-do-ano
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        COUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        FILTER(
+            ALL('CALENDARIO INSTALADO'[DATA INSTALADO]),
+            'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(YEAR(Hoje), 1, 1)
+                && 'CALENDARIO INSTALADO'[DATA INSTALADO] <= Hoje
+        )
+    )
+- name: "ANO · INSTALADOS MESMO PERÍODO ANO ANTERIOR"
+  format: "#,0"
+  display_folder: relatorio-do-ano
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        COUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
+        FILTER(
+            ALL('CALENDARIO INSTALADO'[DATA INSTALADO]),
+            'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(YEAR(Hoje) - 1, 1, 1)
+                && 'CALENDARIO INSTALADO'[DATA INSTALADO] <= DATE(YEAR(Hoje) - 1, MONTH(Hoje), DAY(Hoje))
+        )
+    )
+- name: "ANO · CRIADOS ATÉ HOJE"
+  format: "#,0"
+  display_folder: relatorio-do-ano
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        COUNT('PROTOCOLOS GERAL'[DATA CRIADO]),
+        FILTER(
+            ALL('CALENDARIO CRIADO'[DATA CRIADO]),
+            'CALENDARIO CRIADO'[DATA CRIADO] >= DATE(YEAR(Hoje), 1, 1)
+                && 'CALENDARIO CRIADO'[DATA CRIADO] <= Hoje
+        )
+    )
+- name: "ANO · CRIADOS MESMO PERÍODO ANO ANTERIOR"
+  format: "#,0"
+  display_folder: relatorio-do-ano
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        COUNT('PROTOCOLOS GERAL'[DATA CRIADO]),
+        FILTER(
+            ALL('CALENDARIO CRIADO'[DATA CRIADO]),
+            'CALENDARIO CRIADO'[DATA CRIADO] >= DATE(YEAR(Hoje) - 1, 1, 1)
+                && 'CALENDARIO CRIADO'[DATA CRIADO] <= DATE(YEAR(Hoje) - 1, MONTH(Hoje), DAY(Hoje))
+        )
+    )
+- name: "ANO · % INSTALADOS POR CRIADO"
+  format: "0.0%"
+  display_folder: relatorio-do-ano
+  dax: "DIVIDE([ANO · INSTALADOS ATÉ HOJE], [ANO · CRIADOS ATÉ HOJE])"
+- name: "ANO · % INSTALADOS POR CRIADO ANO ANTERIOR"
+  format: "0.0%"
+  display_folder: relatorio-do-ano
+  dax: "DIVIDE([ANO · INSTALADOS MESMO PERÍODO ANO ANTERIOR], [ANO · CRIADOS MESMO PERÍODO ANO ANTERIOR])"
+# Dias corridos entre a criação do protocolo e a instalação. MÉDIA, não mediana: em
+# dias inteiros a mediana dava 2 em quase todo mês de 2026 (medido em 15/10/2026) e
+# achatava justamente a cauda que o cliente sente — mai/2025 tinha mediana 5, média 5,3,
+# e 17% acima de 7 dias. Protocolo não instalado dá BLANK e fica fora (não vira zero).
+- name: "PRAZO MÉDIO (DIAS)"
+  format: "0.0"
+  display_folder: relatorio-do-ano
+  dax: |-
+    AVERAGEX(
+        'PROTOCOLOS GERAL',
+        IF(
+            ISBLANK('PROTOCOLOS GERAL'[DATA INSTALAÇÃO]),
+            BLANK(),
+            DATEDIFF('PROTOCOLOS GERAL'[DATA CRIADO], 'PROTOCOLOS GERAL'[DATA INSTALAÇÃO], DAY)
+        )
+    )
+- name: "ANO · PRAZO MÉDIO ATÉ HOJE (DIAS)"
+  format: "0.0"
+  display_folder: relatorio-do-ano
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        [PRAZO MÉDIO (DIAS)],
+        FILTER(
+            ALL('CALENDARIO INSTALADO'[DATA INSTALADO]),
+            'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(YEAR(Hoje), 1, 1)
+                && 'CALENDARIO INSTALADO'[DATA INSTALADO] <= Hoje
+        )
+    )
+- name: "ANO · PRAZO MÉDIO ANO ANTERIOR (DIAS)"
+  format: "0.0"
+  display_folder: relatorio-do-ano
+  dax: |-
+    VAR Hoje = TODAY()
+    RETURN
+    CALCULATE(
+        [PRAZO MÉDIO (DIAS)],
+        FILTER(
+            ALL('CALENDARIO INSTALADO'[DATA INSTALADO]),
+            'CALENDARIO INSTALADO'[DATA INSTALADO] >= DATE(YEAR(Hoje) - 1, 1, 1)
+                && 'CALENDARIO INSTALADO'[DATA INSTALADO] <= DATE(YEAR(Hoje) - 1, MONTH(Hoje), DAY(Hoje))
+        )
+    )
+# Tabela de cidades: variação e participação, linha a linha.
+- name: "ANO · VARIAÇÃO INSTALADOS"
+  format: "+0.0%;-0.0%;0.0%"
+  display_folder: relatorio-do-ano
+  dax: |-
+    DIVIDE(
+        [ANO · INSTALADOS ATÉ HOJE] - [ANO · INSTALADOS MESMO PERÍODO ANO ANTERIOR],
+        [ANO · INSTALADOS MESMO PERÍODO ANO ANTERIOR]
+    )
+- name: "ANO · PARTICIPAÇÃO NOS INSTALADOS"
+  format: "0.0%"
+  display_folder: relatorio-do-ano
+  dax: |-
+    VAR Aqui = [ANO · INSTALADOS ATÉ HOJE]
+    RETURN
+    IF(
+        ISBLANK(Aqui),
+        BLANK(),
+        DIVIDE(Aqui, CALCULATE([ANO · INSTALADOS ATÉ HOJE], ALL('PROTOCOLOS GERAL'[CIDADE])))
+    )

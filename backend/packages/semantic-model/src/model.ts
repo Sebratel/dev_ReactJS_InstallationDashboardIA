@@ -36,6 +36,8 @@ interface MeasuresSpecFile {
   spec: 'measures';
   id: string;
   table: string;
+  /** `nativo` = arquivo escrito à mão (ver `relatorio-do-ano.measures.yaml`), fora do PBIP. */
+  origem?: 'nativo';
   measures: {
     name: string;
     format: string | null;
@@ -182,6 +184,7 @@ export class SemanticModel {
             format: m.format ?? null,
             displayFolder: m.display_folder ?? null,
             dax: m.dax,
+            ...(spec.origem === 'nativo' ? { origem: 'nativo' as const } : {}),
           });
         }
       }
@@ -267,6 +270,15 @@ export class SemanticModel {
 
   get measures(): ModelMeasure[] {
     return [...this.measureIndex.values()];
+  }
+
+  /**
+   * Só as medidas que vieram do Power BI — sem as nativas. É o que os testes de
+   * inventário contam: eles descrevem o relatório original, e uma medida escrita à
+   * mão não pode mudar "o PBIP tem 78 medidas".
+   */
+  get measuresDoPbip(): ModelMeasure[] {
+    return this.measures.filter((m) => m.origem !== 'nativo');
   }
 
   /** Colunas calculadas são DAX igual a medida — e precisam ser avaliadas. */

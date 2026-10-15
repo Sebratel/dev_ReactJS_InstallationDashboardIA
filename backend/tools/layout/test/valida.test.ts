@@ -75,3 +75,13 @@ test('faixa com título aparece na mensagem, para localizar o problema no arquiv
   const problemas = validaLayout(l, ['g1']);
   assert.match(problemas[0]!.mensagem, /"Gráficos e tendências"/);
 });
+
+test('kpis[].comparado tem de estar em ocultos — é lido pelo card, não desenhado', () => {
+  const fora = layout({ kpis: [{ visual: 'k1', enfase: 'normal', comparado: 'k2' }, { visual: 'k2', enfase: 'normal' }] });
+  assert.ok(validaLayout(fora, ['k1', 'k2']).some((p) => p.mensagem.includes("comparado 'k2'")));
+  const certo = layout({
+    kpis: [{ visual: 'k1', enfase: 'normal', comparado: 'k2' }],
+    ocultos: [{ visual: 'k2', porque: 'comparativo' }],
+  });
+  assert.deepEqual(validaLayout(certo, ['k1', 'k2']), []);
+});

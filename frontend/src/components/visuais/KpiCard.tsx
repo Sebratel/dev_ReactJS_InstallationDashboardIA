@@ -8,6 +8,8 @@ import { useModo } from '../../context/ModoContext.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { Bullet } from './Bullet.tsx';
 import { Calendario } from '../ui/Calendario.tsx';
+import { comparativo } from '../../utils/comparativo.ts';
+import { cn } from '../../utils/cn.ts';
 import { IdVisual } from '../ui/IdVisual.tsx';
 import { LinhaDoKpi, MolduraDoKpi, NomeDoKpi, ValorDoKpi } from './kpi/partes.tsx';
 
@@ -42,6 +44,10 @@ import { LinhaDoKpi, MolduraDoKpi, NomeDoKpi, ValorDoKpi } from './kpi/partes.ts
  * soma por coluna de data para desenhar uma grade de semana. `Calendario` recusa
  * sozinho a matriz que não estiver inteiramente carregada ou que cobrir mais de um
  * mês — nesses casos o card desenha exatamente como antes.
+ *
+ * `comparado` (`kpis[].comparado`) é OUTRO card da página com o valor do mesmo período
+ * do ano anterior — número da API, não texto fixo. Vira a linha "▲ +6,2% vs ano
+ * anterior" (`utils/comparativo.ts`). Sem valor numérico dos dois lados, não aparece.
  */
 export function KpiCard({
   visual,
@@ -49,12 +55,16 @@ export function KpiCard({
   tendencia,
   meta,
   calendario,
+  comparado,
+  melhor = 'maior',
 }: {
   visual: VisualCalculado;
   destaque?: boolean;
   tendencia?: VisualCalculado;
   meta?: VisualCalculado;
   calendario?: VisualCalculado;
+  comparado?: VisualCalculado;
+  melhor?: 'maior' | 'menor';
 }) {
   const { conferencia } = useModo();
   const d = visual.dados as
@@ -104,6 +114,25 @@ export function KpiCard({
   const valorNumerico =
     d.tipoDoValor === 'number' && typeof d.valor === 'number' ? d.valor : undefined;
 
+  const dadosDoComparado =
+    comparado && !comparado.erro && comparado.conteudo === 'card'
+      ? (comparado.dados as { valor?: unknown; tipoDoValor?: string | null } | undefined)
+      : undefined;
+  const valorAnterior =
+    dadosDoComparado?.tipoDoValor === 'number' && typeof dadosDoComparado.valor === 'number'
+      ? dadosDoComparado.valor
+      : undefined;
+  const variacao =
+    valorNumerico !== undefined && valorAnterior !== undefined
+      ? comparativo(valorNumerico, valorAnterior, { percentual: ehPercentual, melhor })
+      : null;
+  const textoAnterior =
+    valorAnterior === undefined
+      ? ''
+      : ehPercentual
+        ? percentualDeRazao(valorAnterior)
+        : formata(valorAnterior, 'number').texto;
+
   const dadosDoCalendario =
     calendario && !calendario.erro && calendario.conteudo === 'matriz'
       ? (calendario.dados as DadosDeMatriz | undefined)
@@ -120,6 +149,23 @@ export function KpiCard({
         <Bullet valor={valorNumerico} meta={metaValor} />
       ) : null}
       {dadosDoCalendario ? <Calendario dados={dadosDoCalendario} /> : null}
+      {variacao ? (
+        <div
+          title={`Mesmo período (1º/jan até hoje) do ano anterior: ${textoAnterior}`}
+          className="mt-[2px] truncate text-[10.5px] leading-[1.35] text-pbi-muted tabular-nums"
+        >
+          <span
+            className={cn(
+              'font-bold',
+              variacao.tom === 'bom' && 'text-pbi-green-texto',
+              variacao.tom === 'ruim' && 'text-pbi-critico-texto',
+            )}
+          >
+            {variacao.seta} {variacao.texto}
+          </span>{' '}
+          vs ano anterior ({textoAnterior})
+        </div>
+      ) : null}
       {conferencia && origem ? (
         <LinhaDoKpi title={`${origem} · ${visual.id}`}>
           {origem} · <IdVisual id={visual.id} />
