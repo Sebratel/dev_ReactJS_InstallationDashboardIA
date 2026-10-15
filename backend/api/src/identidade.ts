@@ -53,6 +53,9 @@ export interface PoliticaDeSessao {
   agora?: number;
   ip?: string;
   aoTrocarIp?: (usuario: string, de: string, para: string) => void;
+  /** O domínio corporativo: sessão de pessoa com e-mail de fora cai no pedido (ver `ehDoDominio`). */
+  dominio?: string;
+  aoForaDoDominio?: (usuario: string) => void;
 }
 
 /** Uma sessão como o admin a vê — sem o token, que é a própria credencial. */
@@ -119,11 +122,17 @@ export function derrubaSessoesDe(sessoes: Sessoes, usuario: string): number {
 
 /** As sessões vivas, da mais recente para a mais antiga — sem token. As vencidas saem
  *  do `Map` no caminho, como em `identificaPorSessao`. */
-export function listaSessoes(sessoes: Sessoes, agora: number, ociosidadeMs?: number): SessaoVisivel[] {
+export function listaSessoes(
+  sessoes: Sessoes,
+  agora: number,
+  ociosidadeMs?: number,
+  dominio?: string,
+): SessaoVisivel[] {
   const vivas: Sessao[] = [];
   for (const [token, s] of sessoes) {
     const ociosa = ociosidadeMs !== undefined && agora - s.ultimoUso > ociosidadeMs;
-    if (s.expiraEm < agora || ociosa) sessoes.delete(token);
+    const foraDoDominio = dominio !== undefined && s.usuario !== USUARIO_FERRAMENTA && !ehDoDominio(s.usuario, dominio);
+    if (s.expiraEm < agora || ociosa || foraDoDominio) sessoes.delete(token);
     else vivas.push(s);
   }
   const iso = (ms: number) => new Date(ms).toISOString();
@@ -181,6 +190,18 @@ export function identificaPorSessao(
     sessoes.delete(token);
     return null;
   }
+  // A segunda trava do domínio. O login já confere (`auth-google.ts`, `auth-firebase.ts`);
+  // uma sessão de pessoa com e-mail de fora só existe por defeito no login, ou por
+  // alguém mexendo no `Map`. Cai no primeiro pedido, e o evento é a prova do defeito.
+  if (
+    politica.dominio !== undefined &&
+    sessao.usuario !== USUARIO_FERRAMENTA &&
+    !ehDoDominio(sessao.usuario, politica.dominio)
+  ) {
+    sessoes.delete(token);
+    politica.aoForaDoDominio?.(sessao.usuario);
+    return null;
+  }
   sessao.ultimoUso = agora;
   if (politica.ip !== undefined) {
     if (sessao.ip !== null && sessao.ip !== politica.ip) politica.aoTrocarIp?.(sessao.usuario, sessao.ip, politica.ip);
@@ -194,3 +215,13 @@ export function identificaPorSessao(
 }
 
 export const USUARIO_FERRAMENTA = 'ferramenta-interna';
+
+/**
+ * O e-mail é exatamente do `dominio`, comparado depois do ÚLTIMO `@` e nunca por sufixo:
+ * `x@sebratel.com.br.evil.com` e `x@evilsebratel.com.br` não passam. Sem `@`, não é
+ * e-mail de pessoa. A mesma regra de `auth-firebase.ts`.
+ */
+export function ehDoDominio(email: string, dominio: string): boolean {
+  const i = email.lastIndexOf('@');
+  return i > 0 && email.slice(i + 1).trim().toLowerCase() === dominio.trim().toLowerCase();
+}

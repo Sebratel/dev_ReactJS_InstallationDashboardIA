@@ -23,6 +23,8 @@ export type TipoDeEvento =
   // S2 (seguranca.yaml § sessao): o mesmo cookie de outro IP, e sessão derrubada.
   | 'sessao_ip_mudou'
   | 'sessao_derrubada'
+  // Sessão de pessoa com e-mail fora do domínio: derrubada no pedido (defeito no login).
+  | 'sessao_fora_do_dominio'
   // S5 (seguranca.yaml § filtros, modo observar): filtro em coluna que a página não oferece.
   | 'filtro_fora_da_pagina';
 

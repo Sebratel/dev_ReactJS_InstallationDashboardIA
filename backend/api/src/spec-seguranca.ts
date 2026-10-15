@@ -20,6 +20,7 @@ export interface SpecDeSeguranca {
     ao_remover_pessoa: 'derruba_sessoes';
     troca_de_ip: 'registra';
     admin_ve_e_derruba: true;
+    fora_do_dominio: 'derruba';
   };
   filtros: {
     permitidos: 'derivados_da_pagina';
@@ -107,6 +108,7 @@ function secaoDeSessao(v: unknown): SpecDeSeguranca['sessao'] {
     ao_remover_pessoa: exato(s.ao_remover_pessoa, 'derruba_sessoes', 'ao_remover_pessoa'),
     troca_de_ip: exato(s.troca_de_ip, 'registra', 'troca_de_ip'),
     admin_ve_e_derruba: exato(s.admin_ve_e_derruba, true, 'admin_ve_e_derruba'),
+    fora_do_dominio: exato(s.fora_do_dominio, 'derruba', 'fora_do_dominio'),
   };
 }
 

@@ -15,6 +15,14 @@ import { parse } from 'yaml';
 import type { TokenPayload } from 'google-auth-library';
 import type { EventoDeSeguranca } from '../src/eventos-seguranca.ts';
 import { criaAcesso, type LojaDeAcesso } from '../src/permissoes.ts';
+import {
+  criaSessao,
+  ehDoDominio,
+  identificaPorSessao,
+  listaSessoes,
+  USUARIO_FERRAMENTA,
+  type Sessoes,
+} from '../src/identidade.ts';
 import { Servidor } from '../src/servidor.ts';
 import { caminhoDaSpecDeSeguranca, leSpecDeSeguranca } from '../src/spec-seguranca.ts';
 import { chaveDeColuna, colunasFiltraveis } from '../src/filtros-da-pagina.ts';
@@ -331,6 +339,58 @@ test('S2 troca de IP: o mesmo cookie de outro IP segue valendo e grava sessao_ip
   } finally {
     await s.fecha();
   }
+});
+
+test('sessao.fora_do_dominio: o login com e-mail de fora não cria sessão', async () => {
+  secao('sessao');
+  assert.equal(spec.sessao.fora_do_dominio, 'derruba');
+  const s = await sobeComLogin();
+  try {
+    // O verificador de teste devolve `hd` da Sebratel para qualquer token: é o defeito que
+    // a trava existe para pegar — Workspace certo, e-mail de outro domínio.
+    const r = await fetch(`${s.base}/auth/google`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'intruso@gmail.com' }),
+    });
+    assert.equal(r.status, 401);
+    assert.equal(r.headers.get('set-cookie'), null, 'criou cookie para e-mail de fora');
+    assert.ok(s.eventos.some((e) => e.tipo === 'login_failed' && e.email === 'intruso@gmail.com'));
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('sessao.fora_do_dominio: sessão de fora que já existe cai no primeiro pedido', () => {
+  secao('sessao');
+  const sessoes: Sessoes = new Map();
+  const tokens = {
+    intruso: criaSessao(sessoes, 'intruso@gmail.com', 8),
+    sufixo: criaSessao(sessoes, 'x@sebratel.com.br.evil.com', 8),
+    semEmail: criaSessao(sessoes, 'alguem', 8),
+    pessoa: criaSessao(sessoes, 'Fulano@Sebratel.com.br', 8),
+    maquina: criaSessao(sessoes, USUARIO_FERRAMENTA, 8),
+  };
+  const pedido = (token: string) => ({ headers: { cookie: `sessao=${token}` } }) as never;
+  const derrubados: string[] = [];
+  const politica = { dominio: 'sebratel.com.br', aoForaDoDominio: (u: string) => derrubados.push(u) };
+
+  assert.equal(identificaPorSessao(sessoes, pedido(tokens.intruso), politica), null);
+  assert.equal(identificaPorSessao(sessoes, pedido(tokens.sufixo), politica), null);
+  assert.equal(identificaPorSessao(sessoes, pedido(tokens.semEmail), politica), null);
+  assert.deepEqual(derrubados, ['intruso@gmail.com', 'x@sebratel.com.br.evil.com', 'alguem']);
+  assert.equal(sessoes.has(tokens.intruso), false, 'a sessão de fora continuou no Map');
+  assert.equal(identificaPorSessao(sessoes, pedido(tokens.pessoa), politica)?.usuario, 'Fulano@Sebratel.com.br');
+  assert.deepEqual(identificaPorSessao(sessoes, pedido(tokens.maquina), politica)?.papeis, ['interno']);
+
+  // A lista do admin também limpa: o que sobra vivo é só gente do domínio e a máquina.
+  criaSessao(sessoes, 'outro@hotmail.com', 8);
+  const vivas = listaSessoes(sessoes, Date.now(), undefined, 'sebratel.com.br').map((v) => v.usuario);
+  assert.deepEqual(vivas.sort(), ['Fulano@Sebratel.com.br', USUARIO_FERRAMENTA].sort());
+
+  for (const e of ['a@sebratel.com.br', 'A@SEBRATEL.COM.BR']) assert.ok(ehDoDominio(e, 'sebratel.com.br'), e);
+  for (const e of ['a@evilsebratel.com.br', 'a@sebratel.com.br.evil.com', '@sebratel.com.br', 'sebratel.com.br'])
+    assert.ok(!ehDoDominio(e, 'sebratel.com.br'), e);
 });
 
 test('S2 remover pessoa na tela "Acessos" derruba as sessões dela na hora', async () => {

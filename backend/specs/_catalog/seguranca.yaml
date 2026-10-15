@@ -37,6 +37,10 @@ sessao:
   troca_de_ip: registra
   # GET /api/admin/sessoes e POST /api/admin/sessoes/derruba — só admin.
   admin_ve_e_derruba: true
+  # E-mail fora do domínio corporativo: o login não cria a sessão e, se mesmo assim ela
+  # existir (defeito no login), cai no primeiro pedido e grava `sessao_fora_do_dominio`.
+  # A lista do admin também não a mostra viva. Sem processo à parte: a conta é por pedido.
+  fora_do_dominio: derruba
 
 # S5 — filtro só em coluna que a página oferece.
 filtros:

@@ -61,6 +61,7 @@ import {
   cookieDeSessao,
   criaSessao,
   derrubaSessoesDe,
+  ehDoDominio,
   identificaPorSessao,
   listaSessoes,
   type Identidade,
@@ -451,6 +452,9 @@ export class Servidor {
           agora: this.opts.agora().getTime(),
           ip: ipDoPedido(req, this.opts.confiaNoProxy ?? false),
           aoTrocarIp: (usuario, de) => this.registraEventoDeSessao(req, 'sessao_ip_mudou', usuario, `ip-anterior=${de}`),
+          dominio: this.opts.dominioCorporativo,
+          aoForaDoDominio: (usuario) =>
+            this.registraEventoDeSessao(req, 'sessao_fora_do_dominio', usuario, 'derrubada no pedido'),
         }),
       aquecimento: () => ({ ativo: false, pronto: false }),
       tetoDeVisuaisMB: TETO_PADRAO_MB,
@@ -657,7 +661,7 @@ export class Servidor {
   /** Evento de sessão (S2) — não é negativa, então não passa por `registraEventoSeg`. */
   private registraEventoDeSessao(
     req: http.IncomingMessage,
-    tipo: 'sessao_ip_mudou' | 'sessao_derrubada',
+    tipo: 'sessao_ip_mudou' | 'sessao_derrubada' | 'sessao_fora_do_dominio',
     email: string,
     motivo: string,
   ): void {
@@ -913,8 +917,9 @@ export class Servidor {
       dominioCorporativo: this.opts.dominioCorporativo,
       ...(this.verificadorGoogle ? { cliente: this.verificadorGoogle } : {}),
     });
-    if (!identidade) {
-      this.registraEventoSeg(req, 401, 'login-recusado');
+    // Sessão só nasce com e-mail do domínio (o verificador do Google confere o `hd`, não o e-mail).
+    if (!identidade || !ehDoDominio(identidade.email, this.opts.dominioCorporativo)) {
+      this.registraEventoSeg(req, 401, 'login-recusado', identidade?.email);
       responde(res, 401, {
         erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
       });
@@ -960,8 +965,9 @@ export class Servidor {
       dominioCorporativo: this.opts.dominioCorporativo,
       ...(this.certificadosFirebase ? { certificados: this.certificadosFirebase } : {}),
     });
-    if (!identidade) {
-      this.registraEventoSeg(req, 401, 'login-recusado');
+    // Sessão só nasce com e-mail do domínio (o verificador do Google confere o `hd`, não o e-mail).
+    if (!identidade || !ehDoDominio(identidade.email, this.opts.dominioCorporativo)) {
+      this.registraEventoSeg(req, 401, 'login-recusado', identidade?.email);
       responde(res, 401, {
         erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
       });
@@ -1290,6 +1296,7 @@ export class Servidor {
         this.sessoes,
         this.opts.agora().getTime(),
         this.politicaDeSessao.ociosidade_minutos * 60_000,
+        this.opts.dominioCorporativo,
       );
     if (req.method !== 'POST') {
       if (sub !== '') {
