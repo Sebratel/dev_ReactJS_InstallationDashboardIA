@@ -121,10 +121,15 @@ export const PADRAO_AVISO_DAS_PAGINAS = { imediatas: ['agendamento-field'], dema
  * janela abaixo. É a rota que importa de verdade: `/auth/interno` compara
  * `TOKEN_INTERNO` em tempo constante (`tokensIguais`), mas nada limitava a
  * FREQUÊNCIA de tentativa antes desta peça.
+ *
+ * 5 por minuto desde 15/10/2026 (ACHADOS #221, pedido do Erick): o 10/5min de antes
+ * trancava por até 5 min quem saía e entrava algumas vezes — o logout também conta.
+ * O bloqueio dura no máximo 1 min; o teto por hora sobe para 300 (era 120), o que não
+ * pesa: a senha é do Google/Firebase e o `TOKEN_INTERNO` tem 43 caracteres aleatórios.
  */
-const LIMITE_AUTH_TENTATIVAS = 10;
+const LIMITE_AUTH_TENTATIVAS = 5;
 /** A janela do limite acima, em ms. */
-const JANELA_AUTH_MS = 5 * 60_000;
+const JANELA_AUTH_MS = 60_000;
 /** O teto frouxo de `/api/*`, só contra abuso grosseiro — não deve incomodar
  *  uso normal nem paginação rápida numa tabela grande. */
 const LIMITE_API_POR_MINUTO = 300;

@@ -15462,3 +15462,15 @@ meses (o caso de "todo o período"), `17/10/26` quando cruza anos; o tooltip lev
 **Ainda aberto.** A matriz com colunas de data (#103) não passa por aqui e continua na
 ordem do motor. O dado sem período traz capacidade em 05/11 e um protocolo em 07/11,
 isolados — vem da planilha/agenda, não do gráfico.
+
+---
+
+## #221 — login: 5 tentativas por minuto em vez de 10 a cada 5 minutos (15/10)
+
+**Pedido do Erick.** O teto de `POST /auth/*` (Google, Firebase, interno e **logout**) era
+10 por IP numa janela fixa de 5 min: quem saía e entrava algumas vezes ficava até 5 min
+trancado. Agora é **5 por minuto** (`LIMITE_AUTH_TENTATIVAS`/`JANELA_AUTH_MS` em
+`servidor.ts`); o logout continua contando, como o Erick quis. O bloqueio dura no máximo
+1 min. O teto por hora sobe de 120 para 300 — aceitável porque a senha é do
+Google/Firebase e o `TOKEN_INTERNO` tem 43 caracteres aleatórios. Testes de
+`seguranca.test.ts` ajustados (6ª tentativa dá 429; libera depois de 1 min).

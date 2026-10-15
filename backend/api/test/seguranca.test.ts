@@ -259,10 +259,10 @@ test('CSRF: POST /auth/interno sem Origin nem Referer passa (chamada servidor-a-
 test('rate limiting: /auth/interno bloqueia depois do teto de tentativas, com Retry-After', async () => {
   const s = await sobe({ tokenInterno: 'segredo-de-teste' });
   try {
-    // O teto é 10/5min (LIMITE_AUTH_TENTATIVAS em servidor.ts) — token ERRADO
+    // O teto é 5/min (LIMITE_AUTH_TENTATIVAS em servidor.ts) — token ERRADO
     // de propósito, para não deslogar o cenário com sessão criada no meio.
     let ultima: Response | undefined;
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 6; i++) {
       ultima = await s.busca('/auth/interno', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -280,7 +280,7 @@ test('rate limiting: a janela libera de novo depois de passar o tempo', async ()
   let relogio = new Date('2026-09-17T12:00:00.000Z');
   const s = await sobe({ tokenInterno: 'segredo-de-teste', agora: () => relogio });
   try {
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 5; i++) {
       await s.busca('/auth/interno', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -294,8 +294,8 @@ test('rate limiting: a janela libera de novo depois de passar o tempo', async ()
     });
     assert.equal(bloqueado.status, 429);
 
-    // Passa da janela (5 min + folga) — LIMITE_AUTH_TENTATIVAS/JANELA_AUTH_MS em servidor.ts.
-    relogio = new Date(relogio.getTime() + 5 * 60_000 + 1_000);
+    // Passa da janela (1 min + folga) — LIMITE_AUTH_TENTATIVAS/JANELA_AUTH_MS em servidor.ts.
+    relogio = new Date(relogio.getTime() + 60_000 + 1_000);
 
     const depoisDaJanela = await s.busca('/auth/interno', {
       method: 'POST',
@@ -321,7 +321,7 @@ test('rate limiting: sem proxy confiável, X-Real-IP forjado NÃO abre balde nov
     // Todos vêm do mesmo socket (127.0.0.1); o X-Real-IP muda a cada pedido e
     // deve ser IGNORADO. Teto 10/5min → a 11ª tem de bloquear mesmo assim.
     let ultima: Response | undefined;
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 6; i++) {
       ultima = await s.busca('/auth/google', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-real-ip': `10.0.0.${i}` },
@@ -353,7 +353,7 @@ test('rate limiting: com proxy confiável, X-Real-IP volta a ser a chave (cada I
 
     // E o mesmo IP, repetido além do teto, bloqueia — a contagem por chave vale.
     let ultima: Response | undefined;
-    for (let i = 0; i < 11; i++) {
+    for (let i = 0; i < 6; i++) {
       ultima = await s.busca('/auth/google', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-real-ip': '10.9.9.9' },
