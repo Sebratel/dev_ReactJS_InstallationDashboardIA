@@ -15,7 +15,8 @@
 #
 #   1. a camada M dela precisa ser LINHA A LINHA. `protocolos-geral` não é
 #      (`Table.Distinct` e `Table.Sort` decidem sobre o conjunto inteiro), então
-#      ela não entra aqui mesmo sendo pesada;
+#      ela não entra aqui mesmo sendo pesada. O que ela tem (16/10/2026) é histórico
+#      congelado, que junta as partes ANTES do M: `snapshot/src/historico-congelado.ts`;
 #   2. a `marca` tem de captar MODIFICAÇÃO, não só criação;
 #   3. a `chave` nomeia o grupo que a fonte reentrega junto — e a costura do SQL
 #      tem de garantir que ele venha inteiro.

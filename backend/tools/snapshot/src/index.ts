@@ -92,6 +92,16 @@ import {
 } from '../../../packages/snapshot/src/colunas-calculadas.ts';
 import { GRAO_REDUZIDO_DE } from '../../../packages/snapshot/src/grao-reduzido.ts';
 import {
+  arquivoDoHistorico,
+  corteDoMes,
+  gravaHistorico,
+  HISTORICOS,
+  leHistorico,
+  shaDoSql,
+  sqlComCorte,
+  type Historico,
+} from '../../../packages/snapshot/src/historico-congelado.ts';
+import {
   queriesQueAlimentamCalculada,
   shaDasChaves,
 } from '../../../packages/snapshot/src/tabelas-calculadas.ts';
@@ -618,6 +628,40 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   if (plano.modo === 'incremental') {
     registry.queries.set(q.id, { ...q, sql: plano.sql });
   }
+
+  // HISTÓRICO CONGELADO (`historico-congelado.ts`): com `--incremental` vindo do grupo, a
+  // parte velha sai do disco e só a recente vai ao banco. Sem ele (a madrugada), ou com
+  // o histórico velho/ausente/de outro SQL, o histórico é rebuscado e regravado aqui.
+  // As duas partes se juntam ANTES do M, na `fonte` logo abaixo.
+  const politicaHist = HISTORICOS.get(q.id);
+  let historico: Historico | null = null;
+  if (politicaHist && plano.modo === 'completo') {
+    const sqlBase = q.sql ?? '';
+    const sqlSha = shaDoSql(sqlBase);
+    const arquivoHist = arquivoDoHistorico(saida, q.id);
+    if (tentaIncremental) {
+      const r = await leHistorico(arquivoHist, sqlSha, AGORA, politicaHist);
+      if ('historico' in r) historico = r.historico;
+      else avisos.push(`histórico congelado rebuscado: ${r.motivo}`);
+    }
+    if (historico) {
+      console.error(`    histórico congelado: ${historico.linhas.length.toLocaleString('pt-BR')} linha(s) antes de ${historico.corte}, do disco`);
+    } else {
+      const corte = corteDoMes(AGORA, politicaHist.mesesRecentes);
+      registry.queries.set(q.id, { ...q, sql: sqlComCorte(sqlBase, politicaHist, '<', corte) });
+      const tHist = Date.now();
+      // Engine próprio, com cache próprio: o da carga guardaria estas linhas sob o mesmo
+      // id e as devolveria no lugar da parte recente.
+      const { rows } = await new QueryEngine({ registry, connectors, cache: new MemoryCache() }).execute(q.id);
+      historico = { corte, linhas: rows as Record<string, Escalar>[] };
+      await gravaHistorico(arquivoHist, q.id, historico, sqlSha, AGORA);
+      console.error(
+        `    histórico congelado: ${rows.length.toLocaleString('pt-BR')} linha(s) antes de ${corte} ` +
+          `buscadas e gravadas em ${Date.now() - tHist} ms`,
+      );
+    }
+    registry.queries.set(q.id, { ...q, sql: sqlComCorte(sqlBase, politicaHist, '>=', historico.corte) });
+  }
   // Por id, não um objeto global: o M desta query pode citar OUTRAS como
   // dependência (protocolos-produtividade cita alocacao-patrimonio), e um
   // params sem escopo vazaria :desde para elas — traduzParametros erraria "parâmetro
@@ -627,7 +671,7 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
   // protocolos-geral) — sem isto, "a query demorou X" não diz se X é banco, rede
   // ou a conversão de linha em JS. ACHADOS #82 (field-agenda: 22,0s documentados
   // eram só SQL isolado, não os 21min49s reais) é exatamente o buraco que isto tapa.
-  const fonte = fonteDoEngine(engine, {
+  const fonteDoBanco = fonteDoEngine(engine, {
     ...(Object.keys(plano.params).length ? { paramsPorQuery: { [q.id]: plano.params } } : {}),
     onBusca: (e) => {
       if (e.erro) return; // o erro real já sobe pela exceção; nada a medir aqui
@@ -637,6 +681,15 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
       );
     },
   });
+  // Histórico primeiro, recente depois: só a fonte DESTA query; as dependências do M
+  // (ALOCAÇÃO, GESTORES…) passam direto.
+  const congelado = historico;
+  const fonte: typeof fonteDoBanco = congelado
+    ? async (spec) => {
+        const linhas = await fonteDoBanco(spec);
+        return spec.id === q.id ? [...congelado.linhas, ...linhas] : linhas;
+      }
+    : fonteDoBanco;
   // Allowlist só do que ESTA query declara em `endpoints` (gerado do PBIP).
   const web = q.endpoints?.length ? buscadorWeb({ permitidos: q.endpoints }) : undefined;
 
@@ -979,15 +1032,20 @@ console.log(
 if (args.incremental) {
   // Um nome em `--incremental=` sem política é erro de digitação ou política
   // apagada — e nos dois casos a query iria inteira, calada, sob um pedido de delta.
-  const semPolitica = (args.incrementalSo ?? []).filter((id) => !politicas.has(id));
+  // Histórico congelado conta como política: ali `--incremental` quer dizer "a parte
+  // velha vem do disco" (`historico-congelado.ts`).
+  const semPolitica = (args.incrementalSo ?? []).filter((id) => !politicas.has(id) && !HISTORICOS.has(id));
   if (semPolitica.length) {
     console.error(
-      `--incremental=: ${semPolitica.join(', ')} sem política em backend/specs/_catalog/incremental.yaml.`,
+      `--incremental=: ${semPolitica.join(', ')} sem política em backend/specs/_catalog/incremental.yaml ` +
+        `nem histórico congelado.`,
     );
     process.exit(2);
   }
   const comPolitica = aBuscar.filter(
-    (id) => politicas.has(id) && (args.incrementalSo === null || args.incrementalSo.includes(id)),
+    (id) =>
+      (politicas.has(id) || HISTORICOS.has(id)) &&
+      (args.incrementalSo === null || args.incrementalSo.includes(id)),
   );
   console.log(
     `  --incremental: ${comPolitica.length} com política` +

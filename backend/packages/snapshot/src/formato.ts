@@ -446,6 +446,13 @@ export interface CabecalhoDeSnapshot {
    * campo separado.
    */
   completoEm?: string;
+  /**
+   * Só em arquivo de histórico congelado (`historico-congelado.ts`): o corte `AAAA-MM-DD`
+   * com que as linhas foram buscadas e o `sha256` do SQL de origem. A parte recente busca
+   * a partir DESTE corte, e um SQL diferente invalida o arquivo.
+   */
+  corte?: string;
+  sqlSha?: string;
 }
 
 /** Etiquetas de valor em coluna `misto`. Uma letra para não engordar o arquivo. */

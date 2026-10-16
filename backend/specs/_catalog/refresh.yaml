@@ -424,7 +424,10 @@ grupos:
       - gestores-equipes
       - quadro-funcional
     intervalo_minutos: 30
-    incremental: false
+    # Só a `protocolos-geral`, e NÃO pela `incremental.yaml`: é histórico congelado
+    # (`backend/packages/snapshot/src/historico-congelado.ts`, ACHADOS #225). A parte
+    # criada antes do corte vem do disco, buscada na madrugada; aqui só a recente.
+    incremental: [protocolos-geral]
 
   # `field-agenda-slot` (achado #87): mesma origem de `field-agenda`
   # (v_service_desk_slots_productivity_informative), sem os LEFT JOIN de

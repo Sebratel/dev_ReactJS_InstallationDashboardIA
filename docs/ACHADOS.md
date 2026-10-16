@@ -15578,3 +15578,40 @@ NÃO medido:** a estação estava com 0,5–0,8 GB livres de 15,7 (VM do WSL em 
 de 1 GB ali é o cenário que já derrubou o Docker. Falta no servidor: `visao-geral` com worker
 de 512 MB, SHA da janela igual ao de antes, RSS da api < ~2,2 GB com as 11 páginas
 (handoff `docs/handoff/2026-10-16-ram-e-carga-protocolos-geral.md`, item 1).
+
+## #225 — `protocolos-geral`: histórico congelado + parte recente, juntados antes do M (16/10)
+
+**A prova veio antes do código.** `npm run probe:paridade-divisao` roda, numa transação
+`REPEATABLE READ READ ONLY`, a consulta inteira, o histórico (`a.created < corte`) e a parte
+recente (`>= corte`), e compara com `EXCEPT ALL` nos dois sentidos — só contagens. Corte
+2026-07-01: inteira 104.331 = 88.669 + 15.662; **0 linha só de um lado**, 0 título com
+atribuição dos dois lados do corte, 0 solicitação repetida. O risco que ela mede é o
+`ROW_NUMBER() OVER (PARTITION BY a.title …)`: um título dos dois lados escolheria duas
+vencedoras.
+
+**Por que provar no SQL basta para o M.** As partes se juntam ANTES do M, então ele recebe o
+mesmo multiconjunto de linhas; só a ordem muda (histórico, depois recente), e ela já é
+arbitrária hoje (o SQL não tem `ORDER BY`). Cada solicitação chega como UMA linha bruta; as
+cópias nascem nos `NestedJoin`, na ordem da tabela da direita; e `Table.Sort` é estável
+(`functions.ts`). Logo a cópia que o `Table.Distinct({"SOLICITACAO"})` guarda não depende
+da ordem de entrada. A hipótese do handoff ("o Distinct é por solicitação") está certa, mas
+deixou de ser necessária: com a junção antes do M, nada de M precisa ser linha a linha.
+
+**Com dado real, pelo conector da carga:** histórico gravado em disco e relido (88.669) +
+recente do banco (15.665) contra a inteira (104.334): mesma ordem de colunas, e as únicas
+diferenças foram `STATUS CONTRATO` em linhas criadas antes do corte, mudadas no banco nos
+minutos entre as buscas — o preço aceito. O teste também pegou um defeito antes do commit:
+`le()` devolve chave normalizada (`data criado`) e o M espera `DATA CRIADO`.
+
+**Como funciona.** `historico-congelado.ts` + `materializa` (`tools/snapshot`): com
+`--incremental` vindo do grupo, o histórico vem de `snapshot/historico/protocolos-geral.jsonl.gz`
+e o banco só entrega `a.created >= corte`; sem ele (a madrugada), ou com o arquivo ausente,
+de outro SQL (`sqlSha` no cabeçalho) ou com mais de 30 h, o histórico é rebuscado e regravado.
+**O corte é o gravado no arquivo**, nunca recalculado: na virada do mês a parte recente
+cresce um mês até a madrugada seguinte, sem buraco nem linha dobrada. `refresh.yaml`: `medio`
+com `incremental: [protocolos-geral]`.
+
+**Medido nesta estação (VPN):** recente 5,2 s contra 23,5 s da inteira, só banco + rede.
+**NÃO medido:** a carga ponta a ponta com o M — o dbMaria recusa `DevSebratel` deste IP
+(`gestores-equipes`, dependência do M; a stack viva carrega normalmente). Falta no Docker:
+o `medio` com a `protocolos-geral` e o tempo do grupo antes/depois.

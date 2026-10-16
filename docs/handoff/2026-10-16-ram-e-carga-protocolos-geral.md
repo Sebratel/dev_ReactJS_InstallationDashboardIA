@@ -45,6 +45,10 @@ quais arquivos evitar antes de tocar em `frontend/`.
 
 ## 2 · `protocolos-geral`: histórico congelado + parte recente
 
+**Estado (16/10, branch `trabalho/protocolos-geral-historico`):** paridade provada no banco e
+com dado real (ACHADOS #225); código e `refresh.yaml` feitos. Falta a carga ponta a ponta com o M
+(esta estação é recusada pelo dbMaria) e medir o `medio` no Docker.
+
 **Medido em 16/10/2026** (snapshot de 99.675 linhas, coluna `data encerrado` = `a.modified`):
 
 | criados em | linhas | mexidos em 30 d | em 90 d |

@@ -32,6 +32,7 @@
     "probe:gsheets": "node backend/tools/probe/src/gsheets.ts",
     "probe:redis": "node backend/tools/probe/src/redis.ts",
     "probe:tipos-data": "node backend/tools/probe/src/tipos-data.ts",
+    "probe:paridade-divisao": "node backend/tools/probe/src/paridade-divisao.ts",
     "probe:determinismo-pg": "node --max-old-space-size=8192 backend/tools/probe/src/determinismo.ts",
     "probe:instalador-ramo": "node backend/tools/probe/src/instalador-ramo.ts",
     "probe:memoria-api": "node backend/tools/probe/src/memoria-api.ts",
