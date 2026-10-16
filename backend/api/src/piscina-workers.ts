@@ -1,11 +1,12 @@
 // Gerenciador de Piscina de Worker Threads para computação paralela de DAX.
 
-import { Worker } from 'node:worker_threads';
+import { MessageChannel, Worker, type MessagePort } from 'node:worker_threads';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from './worker-calculador.ts';
 import { TETO_PADRAO_MB } from './cache-visual.ts';
+import type { MedidaDaWorker, MemoriaDeWorkerNaSaude, MensagemDeMemoria } from './memoria-da-saude.ts';
 
 export interface OpcoesPiscina {
   /** Quantas workers manter na piscina. Padrão: `configuracaoDaPiscina`. */
@@ -212,7 +213,21 @@ export class FilaDePrioridade<T extends { prioridade: number }> {
   }
 }
 
+/**
+ * Quanto `GET /api/saude` espera uma worker dizer a própria memória.
+ *
+ * Curto de propósito: o cálculo de página é SÍNCRONO dentro da worker, então uma worker
+ * no meio de uma página fria (10–20 s) só lê a pergunta quando termina. Esperar por ela
+ * faria a saúde — que é o healthcheck do contêiner, com prazo de 5 s — demorar o tempo
+ * de um cálculo. Quem não responde no prazo sai com a última medida e a idade dela.
+ */
+export const PRAZO_MEMORIA_WORKER_MS = 250;
+
 export class PiscinaWorkers {
+  /** Última medida de cada worker e quando chegou. Ver `memoria()`. */
+  private readonly ultimaMemoria = new Map<Worker, { medida: MedidaDaWorker; em: number }>();
+  /** A pergunta que ainda não voltou, no máximo UMA por worker. Ver `memoria()`. */
+  private readonly memoriaEmVoo = new Map<Worker, { resposta: Promise<void>; porta: MessagePort }>();
   private readonly workers: Worker[] = [];
   private readonly livres: Worker[] = [];
   private readonly tarefas = new FilaDePrioridade<TarefaPendente>(CLASSES_DE_PRIORIDADE);
@@ -487,6 +502,89 @@ export class PiscinaWorkers {
    */
   invalidaPagina(dashboardId: string): void {
     for (const w of this.workers) w.postMessage({ tipo: 'invalida', dashboardId });
+  }
+
+  /**
+   * A memória de cada worker, medida DENTRO dela (`memoria-da-saude.ts`), para o bloco
+   * `memoria` de `GET /api/saude`. Nunca rejeita e nunca espera mais que `prazoMs`.
+   *
+   * **Só espera pelas workers LIVRES.** Uma worker com tarefa em curso está, quase sempre,
+   * no cálculo síncrono, e não vai ler a pergunta antes de terminar: esperar por ela é
+   * gastar o prazo inteiro para receber a mesma medida velha. Ela recebe a pergunta do
+   * mesmo jeito (responde quando soltar a thread), mas a saúde não fica parada — numa API
+   * ocupada, a saúde é pedida justamente quando mais se quer que ela seja rápida.
+   *
+   * **Uma pergunta em voo por worker, e a resposta atrasada não se perde.** Uma worker
+   * presa num cálculo de 20 s leva a pergunta do healthcheck (a cada 30 s) e responde
+   * quando termina; essa resposta atualiza `ultimaMemoria` mesmo tendo chegado depois do
+   * prazo, e a próxima saúde já a publica. Sem o limite de uma por worker, uma worker
+   * travada de verdade acumularia uma porta aberta por healthcheck.
+   *
+   * **Pela porta, nunca pelo `parentPort`** — ver `MensagemDeMemoria`. Uma worker que
+   * não conhece a mensagem (as de fixture dos testes, ou uma morta) simplesmente nunca
+   * responde, e aparece com `medida: null`: degradação, não erro.
+   *
+   * As portas ficam `unref`: uma pergunta sem resposta não pode segurar o processo de pé
+   * no desligamento. As de worker que saiu da piscina são fechadas aqui mesmo, na próxima
+   * pergunta — sem mexer no ciclo de vida das workers, que é de `removeWorker`.
+   */
+  async memoria(prazoMs: number = PRAZO_MEMORIA_WORKER_MS): Promise<MemoriaDeWorkerNaSaude[]> {
+    if (!this.ativa) return [];
+    const vivas = new Set(this.workers);
+    for (const [w, voo] of this.memoriaEmVoo) {
+      if (!vivas.has(w)) {
+        voo.porta.close();
+        this.memoriaEmVoo.delete(w);
+      }
+    }
+    for (const w of this.ultimaMemoria.keys()) if (!vivas.has(w)) this.ultimaMemoria.delete(w);
+
+    const respostas = this.workers.map((w) => {
+      const ocupada = this.pendentesPorWorker.has(w);
+      const emVoo = this.memoriaEmVoo.get(w);
+      if (emVoo) return ocupada ? Promise.resolve() : emVoo.resposta;
+      const { port1, port2 } = new MessageChannel();
+      const resposta = new Promise<void>((pronto) => {
+        port1.once('message', (medida: MedidaDaWorker) => {
+          this.ultimaMemoria.set(w, { medida, em: Date.now() });
+          this.memoriaEmVoo.delete(w);
+          port1.close();
+          pronto();
+        });
+      });
+      port1.unref();
+      this.memoriaEmVoo.set(w, { resposta, porta: port1 });
+      try {
+        const msg: MensagemDeMemoria = { tipo: 'memoria', porta: port2 };
+        w.postMessage(msg, [port2]);
+      } catch {
+        // Worker já encerrada entre a lista e o `postMessage`: fica sem medida nova.
+        port1.close();
+        this.memoriaEmVoo.delete(w);
+      }
+      return ocupada ? Promise.resolve() : resposta;
+    });
+
+    let prazo: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.all(respostas),
+      new Promise<void>((pronto) => {
+        // Referenciado de propósito: são `prazoMs` no máximo, e um prazo que se deixa
+        // desreferenciar pode não disparar justamente quando nada mais segura o processo.
+        prazo = setTimeout(pronto, prazoMs);
+      }),
+    ]);
+    clearTimeout(prazo);
+
+    const agora = Date.now();
+    return this.workers.map((w) => {
+      const ultima = this.ultimaMemoria.get(w);
+      return {
+        threadId: w.threadId,
+        idadeMs: ultima ? agora - ultima.em : null,
+        medida: ultima?.medida ?? null,
+      };
+    });
   }
 
   destroi(): void {

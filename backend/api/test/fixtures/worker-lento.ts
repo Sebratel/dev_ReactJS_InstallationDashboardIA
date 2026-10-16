@@ -14,6 +14,9 @@ import { parentPort } from 'node:worker_threads';
 import type { MensagemCalculoWorker } from '../../src/worker-calculador.ts';
 
 parentPort?.on('message', (msg: MensagemCalculoWorker) => {
+  // A pergunta de memória da saúde (`memoria-da-saude.ts`) não é tarefa: estas workers
+  // de fixture a ignoram, e a saúde as publica com `medida: null` — o caso "não respondeu".
+  if ((msg as { tipo?: string }).tipo === 'memoria') return;
   setTimeout(() => {
     parentPort?.postMessage({
       idReq: msg.idReq,

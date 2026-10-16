@@ -57,6 +57,19 @@ export class CacheEmCamadas implements Cache {
     return `${this.#rapida.constructor.name}+${this.#duravel.constructor.name}`;
   }
 
+  /**
+   * Quantas entradas a camada RÁPIDA guarda — a única que ocupa a RAM deste processo
+   * (a durável mora no Redis). Sai no bloco `memoria` de `GET /api/saude`.
+   *
+   * `null` quando a camada rápida não sabe contar: `Cache` não exige `size`, e só o
+   * `MemoryCache` o tem. Um getter só de leitura, e não a camada em si, para a saúde
+   * poder contar sem ganhar um jeito de escrever por fora das duas camadas.
+   */
+  get entradasNaMemoria(): number | null {
+    const n = (this.#rapida as { size?: unknown }).size;
+    return typeof n === 'number' ? n : null;
+  }
+
   async get<T>(key: string): Promise<T | undefined> {
     const local = await this.#rapida.get<T>(key);
     if (local !== undefined) return local;

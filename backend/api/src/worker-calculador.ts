@@ -23,6 +23,7 @@ import { mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 import { valoresDistintos } from './valores-segmentacao.ts';
 import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { loadDashboards, type DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
+import { medeIsolate, type MedidaDaWorker, type MensagemDeMemoria } from './memoria-da-saude.ts';
 
 export interface MensagemCalculoWorker {
   tipo?: 'calcula';
@@ -108,7 +109,7 @@ export interface MensagemDeInvalidacao {
   dashboardId: string;
 }
 
-export type MensagemParaWorker = MensagemCalculoWorker | MensagemDeInvalidacao;
+export type MensagemParaWorker = MensagemCalculoWorker | MensagemDeInvalidacao | MensagemDeMemoria;
 
 export interface RespostaCalculoWorker {
   idReq: string;
@@ -337,6 +338,21 @@ function guardaNoCache(chave: string, promessa: Promise<Carregado>): void {
 
 if (parentPort) {
   parentPort.on('message', async (msg: MensagemParaWorker) => {
+    // A saúde perguntando quanto esta worker gasta (`memoria-da-saude.ts`). Responde pela
+    // porta que veio na mensagem, nunca pelo `parentPort` — lá, qualquer mensagem é lida
+    // como a resposta do cálculo em curso. Só chega aqui entre cálculos: o cálculo em si é
+    // síncrono e segura esta thread, e é por isso que a principal pergunta com prazo.
+    if (msg.tipo === 'memoria') {
+      const medida: MedidaDaWorker = {
+        threadId,
+        ...medeIsolate(),
+        datasets: cacheDeCarga.size,
+        visuais: { itens: completos.itens, mb: Math.round((completos.bytes / 1048576) * 10) / 10 },
+      };
+      msg.porta.postMessage(medida);
+      msg.porta.close();
+      return;
+    }
     if (msg.tipo === 'invalida') {
       esqueceAPagina(msg.dashboardId);
       // **E a identidade guardada dela junto.** Sem esta linha o mapa ficaria
