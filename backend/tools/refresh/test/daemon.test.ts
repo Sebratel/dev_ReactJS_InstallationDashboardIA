@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { executaCiclo } from '../src/daemon.ts';
+import { configuracaoDoRefresh, executaCiclo } from '../src/daemon.ts';
 import type { GrupoDeRefresh } from '../src/grupos.ts';
 import { leHistorico } from '../src/historico.ts';
 
@@ -28,6 +28,17 @@ test('daemon.ts: executaCiclo em modo --so-plano identifica grupos sem executar 
   assert.ok(res.resultados.length >= 3, 'deve conter pelo menos quente, medio e frio');
   const quente = res.resultados.find((r) => r.id === 'quente');
   assert.ok(quente, 'grupo quente deve estar presente');
+});
+
+test('daemon.ts: configuração do contêiner preserva teto por grupo', () => {
+  assert.deepEqual(
+    configuracaoDoRefresh({
+      REFRESH_INTERVAL_MINUTOS: '15',
+      REFRESH_MEMORIA_MB: '1400',
+      REFRESH_TEMPO_MAXIMO_MINUTOS: '30',
+    }),
+    { intervaloMinutos: 15, memoriaMb: 1400, tempoMaximoMs: 1_800_000 },
+  );
 });
 
 // `snapshotDir` EXPLÍCITO, e temporário. Sem ele, `executaCiclo` cai no padrão

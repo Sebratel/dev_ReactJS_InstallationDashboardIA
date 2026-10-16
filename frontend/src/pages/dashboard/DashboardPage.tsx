@@ -213,6 +213,8 @@ export function DashboardPage() {
         sai().finally(() => expirou());
       }}
       titulo={nome}
+      usuario={eu?.usuario}
+      foto={eu?.foto}
       dadoDe={paginaValida?.dadoDe ?? null}
       avisoSaude={avisoSaude}
       ultimaAtualizacaoRealtime={horaRealtime}

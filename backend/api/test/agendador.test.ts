@@ -18,7 +18,12 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { Agendador, agendaNesteProcesso } from '../src/agendador.ts';
+import {
+  Agendador,
+  agendaNesteProcesso,
+  atrasoAteProximoDisparo,
+  atrasoAteRetentativa,
+} from '../src/agendador.ts';
 import type { GrupoDeRefresh } from '../../tools/refresh/src/grupos.ts';
 import { leHistorico } from '../../tools/refresh/src/historico.ts';
 import { leStatus } from '../../tools/refresh/src/status.ts';
@@ -64,6 +69,34 @@ async function drena(ag: Agendador, quantos: number): Promise<void> {
 
 test('agendaNesteProcesso: o padrão é agendar', () => {
   assert.deepEqual(agendaNesteProcesso({}, []), { agenda: true });
+});
+
+test('atrasoAteProximoDisparo: reiniciar preserva o próximo vencimento, não reinicia o intervalo', () => {
+  const agora = new Date('2026-10-16T16:40:00.000Z');
+  const anterior = {
+    ultimaTentativa: '2026-10-16T16:27:00.000Z',
+    ultimoSucesso: '2026-10-16T16:27:00.000Z',
+    duracaoMs: 1,
+    ok: true,
+    falhasConsecutivas: 0,
+  };
+  // 15 min menos 1 min de folga: vence às 16:41, então faltam 60 s — não 15 min.
+  assert.equal(atrasoAteProximoDisparo(anterior, 15, agora), 60_000);
+});
+
+test('atrasoAteRetentativa: a primeira falha volta em dois minutos, sem esperar a cadência do grupo', () => {
+  const agora = new Date('2026-10-16T17:00:00.000Z');
+  const falhouUmaVez = {
+    ultimaTentativa: agora.toISOString(),
+    ultimoSucesso: null,
+    duracaoMs: 1,
+    ok: false,
+    falhasConsecutivas: 1,
+  };
+  assert.equal(atrasoAteRetentativa(falhouUmaVez, 30, agora), 2 * 60_000);
+
+  const falhouDuasVezes = { ...falhouUmaVez, falhasConsecutivas: 2 };
+  assert.equal(atrasoAteRetentativa(falhouDuasVezes, 30, agora), 60 * 60_000);
 });
 
 test('agendaNesteProcesso: --sem-refresh e AUTO_REFRESH desligam, e dizem por quê', () => {
@@ -424,6 +457,67 @@ test('agendador: máquina suspensa NÃO é falha — a carga é refeita e nada f
     !leHistorico(dir).some((e) => e.evento === 'grupo' && !e.ok),
     'nenhum evento `grupo` com ok:false — é esse que o banner lê como "cargas falharam"',
   );
+});
+
+test('agendador: parada planejada não conta como falha nem cria backoff no próximo deploy', async () => {
+  const dir = tmp();
+  const ag = new Agendador({
+    raiz: ROOT,
+    snapshotDir: dir,
+    anuncia: () => {},
+    roda: async (_grupo: GrupoDeRefresh, sinal?: AbortSignal) => {
+      await new Promise<void>((resolve) => sinal?.addEventListener('abort', () => resolve(), { once: true }));
+      return { ok: false, erro: 'interrompida: agendador encerrado' };
+    },
+  });
+
+  ag.inicia();
+  await esperaAte(() => ag.estado().emExecucao !== null, 'uma carga entrar em voo');
+  await ag.encerra();
+
+  assert.equal(ag.estado().falhas, 0);
+  assert.deepEqual(leStatus(dir), {}, 'a parada não pode sobrescrever o último status verdadeiro');
+  assert.ok(
+    !leHistorico(dir).some((e) => e.evento === 'grupo' && !e.ok),
+    'o banner não pode ler uma parada de deploy como falha de dado',
+  );
+});
+
+test('agendador: depois de acordar, o quente vencido vem antes da carga média interrompida', async () => {
+  const dir = tmp();
+  let relogio = new Date('2026-10-16T16:00:00.000Z');
+  const verde = { ultimaTentativa: relogio.toISOString(), ultimoSucesso: relogio.toISOString(), duracaoMs: 1, ok: true, falhasConsecutivas: 0 };
+  fs.writeFileSync(path.join(dir, 'refresh-status.json'), JSON.stringify({ quente: verde, frio: verde }), 'utf8');
+
+  const tentativas: string[] = [];
+  let primeira = true;
+  const ag = new Agendador({
+    raiz: ROOT,
+    snapshotDir: dir,
+    anuncia: () => {},
+    batimentoMs: 20,
+    carenciaMs: 10,
+    agora: () => relogio,
+    roda: async (grupo: GrupoDeRefresh, sinal?: AbortSignal) => {
+      tentativas.push(grupo.id);
+      if (primeira) {
+        primeira = false;
+        await new Promise<void>((resolve) => sinal?.addEventListener('abort', () => resolve(), { once: true }));
+        return { ok: false, erro: 'interrompida: máquina suspensa' };
+      }
+      return { ok: true };
+    },
+  });
+
+  ag.inicia();
+  assert.equal(tentativas[0], 'medio', 'só o médio estava vencido antes do sono');
+  relogio = new Date(relogio.getTime() + 8_040_000);
+  await esperaAte(() => ag.estado().suspensoes === 1, 'a suspensão ser detectada');
+  await drena(ag, 2);
+  ag.para();
+
+  assert.deepEqual(tentativas.slice(0, 3), ['medio', 'quente', 'medio']);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
 
 test('agendador: suspensão sem nada em voo é registrada e não inventa trabalho', async () => {

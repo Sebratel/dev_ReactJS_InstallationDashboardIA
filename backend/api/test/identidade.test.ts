@@ -26,6 +26,18 @@ test('criaSessao + identificaPorSessao: o token que sai de um entra no outro', (
   assert.deepEqual(identidade, { usuario: 'fulano@sebratel.com.br', papeis: ['autenticado'] });
 });
 
+test('a foto recebida no login fica na sessão e volta na identidade', () => {
+  const sessoes: Sessoes = new Map();
+  const token = criaSessao(sessoes, 'fulano@sebratel.com.br', 12, {
+    foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+  });
+  assert.deepEqual(identificaPorSessao(sessoes, pedidoComCookie(`${NOME_COOKIE}=${token}`)), {
+    usuario: 'fulano@sebratel.com.br',
+    foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+    papeis: ['autenticado'],
+  });
+});
+
 test('sem cookie nenhum, sem identidade', () => {
   const sessoes: Sessoes = new Map();
   assert.equal(identificaPorSessao(sessoes, pedidoComCookie(undefined)), null);

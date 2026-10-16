@@ -1,4 +1,4 @@
-// O botão quadrado só com ícone: as ações do topo (link, conferência, tema, sair) e o
+// O botão quadrado só com ícone: as ações do topo (link, tema, sair) e o
 // fechar do diálogo de filtro. Sem rótulo visível, o nome vai em `title`/`aria-label`.
 
 import type { ButtonHTMLAttributes } from 'react';
@@ -19,7 +19,7 @@ export function BotaoDeIcone({
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & {
   tom?: keyof typeof TONS;
-  /** Interruptor ligado (conferência) ou confirmação momentânea (link copiado). */
+  /** Confirmação momentânea, como o link copiado. */
   ativo?: boolean;
 }) {
   return (

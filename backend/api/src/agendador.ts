@@ -84,7 +84,13 @@ import {
   escreveStatus,
   type StatusDeRefresh,
 } from '../../tools/refresh/src/status.ts';
-import { emEsperaPorFalhas, estaVencido, proximaTentativa, proximoStatus } from '../../tools/refresh/src/tick.ts';
+import {
+  emEsperaPorFalhas,
+  estaVencido,
+  FOLGA_DE_VENCIMENTO_MS,
+  proximaTentativa,
+  proximoStatus,
+} from '../../tools/refresh/src/tick.ts';
 import {
   rodaGrupoAssincrono,
   type ResultadoDeExecucao,
@@ -134,6 +140,8 @@ export interface OpcoesDoAgendador {
   specsDir?: string;
   snapshotDir?: string;
   memoriaMb?: number;
+  /** Teto de cada materialização; protege a fila de socket de fonte pendurado. */
+  tempoMaximoMs?: number;
   /**
    * Roda UM grupo até o fim. Injetável no teste; em produção, o subprocesso.
    *
@@ -207,6 +215,38 @@ export const FATOR_DE_SUSPENSAO = 3;
 export const CARENCIA_APOS_RETOMADA_MS = 60_000;
 
 /**
+ * A primeira falha merece uma nova tentativa logo: esperar o relógio normal de
+ * um grupo médio transformava uma oscilação de fonte em até 30 min de dado parado.
+ * As falhas seguintes continuam obedecendo ao backoff de `proximaTentativa`.
+ */
+export const ESPERA_DA_PRIMEIRA_RETENTATIVA_MS = 2 * 60_000;
+
+/** Quanto falta para o próximo disparo ao iniciar no meio de uma cadência. */
+export function atrasoAteProximoDisparo(
+  anterior: StatusDeRefresh[string] | undefined,
+  intervaloMinutos: number,
+  agora: Date,
+): number {
+  if (estaVencido(anterior, intervaloMinutos, agora)) return 0;
+  const aposFalha = proximaTentativa(anterior, intervaloMinutos);
+  if (aposFalha) return Math.max(0, aposFalha.getTime() - agora.getTime());
+  if (!anterior?.ultimoSucesso) return 0;
+  const venceEm = new Date(anterior.ultimoSucesso).getTime() + intervaloMinutos * 60_000 - FOLGA_DE_VENCIMENTO_MS;
+  return Math.max(0, venceEm - agora.getTime());
+}
+
+/** Quanto esperar para refazer um grupo que acabou de falhar. */
+export function atrasoAteRetentativa(
+  anterior: StatusDeRefresh[string] | undefined,
+  intervaloMinutos: number,
+  agora: Date,
+): number {
+  const aposFalhas = proximaTentativa(anterior, intervaloMinutos);
+  if (aposFalhas) return Math.max(0, aposFalhas.getTime() - agora.getTime());
+  return Math.min(ESPERA_DA_PRIMEIRA_RETENTATIVA_MS, intervaloMinutos * 60_000);
+}
+
+/**
  * Lê `AUTO_REFRESH` e o argv, e decide se a API agenda.
  *
  * **O nome é o mesmo que `backend/tools/subir/src/index.ts` já usava**, de propósito: quem
@@ -232,6 +272,7 @@ export class Agendador {
   readonly #specsDir: string;
   readonly #snapshotDir: string;
   readonly #memoriaMb: number | undefined;
+  readonly #tempoMaximoMs: number | undefined;
   readonly #roda: (grupo: GrupoDeRefresh, sinal?: AbortSignal) => Promise<ResultadoDeExecucao>;
   readonly #agora: () => Date;
   readonly #anuncia: (linha: string) => void;
@@ -241,6 +282,8 @@ export class Agendador {
 
   #grupos = new Map<string, GrupoDeRefresh>();
   #timers: NodeJS.Timeout[] = [];
+  /** Uma única retentativa curta por grupo; nunca duplica um relógio recorrente. */
+  #retentativas = new Map<string, NodeJS.Timeout>();
   #fila: string[] = [];
   #emExecucao: string | null = null;
   #comecouEm = 0;
@@ -256,6 +299,8 @@ export class Agendador {
   #ultimoBatimento = 0;
   /** Por onde a suspensão mata o filho em voo. `null` quando nada roda. */
   #aborto: AbortController | null = null;
+  /** A execução atual, para o desligamento esperar a trava do snapshot ser solta. */
+  #execucaoAtual: Promise<void> | null = null;
   /** Marcado pela suspensão, lido e zerado por `#executa` na volta. */
   #interrompidaPorSuspensao = false;
   /** Instante antes do qual nada começa — a carência da retomada. `0` = liberado. */
@@ -267,11 +312,13 @@ export class Agendador {
     this.#specsDir = opts.specsDir ?? path.join(opts.raiz, 'backend', 'specs');
     this.#snapshotDir = opts.snapshotDir ?? path.join(opts.raiz, DIRETORIO_PADRAO);
     this.#memoriaMb = opts.memoriaMb;
+    this.#tempoMaximoMs = opts.tempoMaximoMs;
     this.#roda =
       opts.roda ??
       ((g, sinal) =>
         rodaGrupoAssincrono(this.#raiz, g, {
           ...(this.#memoriaMb !== undefined ? { memoriaMb: this.#memoriaMb } : {}),
+          ...(this.#tempoMaximoMs !== undefined ? { tempoMaximoMs: this.#tempoMaximoMs } : {}),
           ...(sinal ? { sinal } : {}),
         }));
     this.#agora = opts.agora ?? (() => new Date());
@@ -334,8 +381,8 @@ export class Agendador {
     });
 
     this.#anuncia(
-      `[refresh] agendador no processo da API — ${this.#grupos.size} grupo(s), ` +
-        'sem daemon e sem tarefa de host.',
+      `[refresh] agendador por grupo — ${this.#grupos.size} grupo(s), ` +
+        'fila serial, sem tarefa de host.',
     );
 
     const agora = this.#agora();
@@ -348,24 +395,43 @@ export class Agendador {
     this.#batimento = bat;
 
     for (const grupo of this.#grupos.values()) {
-      const t = setInterval(
-        () =>
-          this.#semDerrubar(`relógio de ${grupo.id}`, () => {
-            if (!this.#adiadoPorFalhas(grupo.id, grupo.intervaloMinutos)) this.#enfileira(grupo.id, 'cadência');
-          }),
-        grupo.intervaloMinutos * 60_000,
-      );
-      // Sem isto o agendador segura o processo vivo sozinho, e um `Ctrl+C` ou um
-      // `SIGTERM` de container passaria a esperar o próximo relógio.
-      t.unref?.();
-      this.#timers.push(t);
-
       const vencido = estaVencido(this.#status[grupo.id], grupo.intervaloMinutos, agora);
       this.#anuncia(
         `[refresh]   ${grupo.id.padEnd(8)} a cada ${String(grupo.intervaloMinutos).padStart(3)} min` +
           `${vencido ? '  (vencido — entra na fila agora)' : ''}`,
       );
-      if (vencido) this.#enfileira(grupo.id, 'vencido-no-arranque');
+      const dispara = (): void =>
+        this.#semDerrubar(`relógio de ${grupo.id}`, () => {
+          if (!this.#adiadoPorFalhas(grupo.id, grupo.intervaloMinutos)) this.#enfileira(grupo.id, 'cadência');
+        });
+      const agendaRecorrente = (): void => {
+        const t = setInterval(dispara, grupo.intervaloMinutos * 60_000);
+        // Sem isto o agendador segura o processo vivo sozinho, e um `Ctrl+C` ou um
+        // `SIGTERM` de container passaria a esperar o próximo relógio.
+        t.unref?.();
+        this.#timers.push(t);
+      };
+
+      if (vencido) {
+        this.#enfileira(grupo.id, 'vencido-no-arranque');
+        agendaRecorrente();
+        continue;
+      }
+
+      // Mesmo quando a próxima tentativa ainda está distante, o histórico precisa
+      // dizer por que este grupo não entrou na fila depois de um restart.
+      this.#adiadoPorFalhas(grupo.id, grupo.intervaloMinutos);
+
+      // Reiniciar às 13:40 não pode transformar um `quente` que vence às 13:41
+      // em uma carga das 13:55. O primeiro relógio fecha só o resto da cadência;
+      // os seguintes voltam ao intervalo normal do grupo.
+      const atraso = atrasoAteProximoDisparo(this.#status[grupo.id], grupo.intervaloMinutos, agora);
+      const primeiro = setTimeout(() => {
+        dispara();
+        agendaRecorrente();
+      }, atraso);
+      primeiro.unref?.();
+      this.#timers.push(primeiro);
     }
   }
 
@@ -379,6 +445,8 @@ export class Agendador {
   para(): void {
     for (const t of this.#timers) clearInterval(t);
     this.#timers = [];
+    for (const t of this.#retentativas.values()) clearTimeout(t);
+    this.#retentativas.clear();
     if (this.#batimento !== null) clearInterval(this.#batimento);
     this.#batimento = null;
     if (this.#destravaCarencia !== null) clearTimeout(this.#destravaCarencia);
@@ -386,6 +454,13 @@ export class Agendador {
     this.#liberadoEm = 0;
     this.#fila = [];
     this.#ativo = false;
+    this.#aborto?.abort('agendador encerrado');
+  }
+
+  /** Para a cadência e aguarda o filho em voo soltar a trava do snapshot. */
+  async encerra(): Promise<void> {
+    this.para();
+    await this.#execucaoAtual;
   }
 
   estado(): EstadoDoAgendador {
@@ -528,6 +603,57 @@ export class Agendador {
     return true;
   }
 
+  /**
+   * Depois de uma suspensão, o grupo de maior cadência vencido vem antes da carga
+   * interrompida. Sem isso um `medio` que travou durante o sono volta para a frente
+   * e faz o painel esperar outra materialização pesada antes de receber `quente`.
+   */
+  #recolocaAposSuspensao(interrompido: string): void {
+    if (!this.#ativo) return;
+    const agora = this.#agora();
+    const prioritario = [...this.#grupos.values()]
+      .filter((g) => g.id !== interrompido && estaVencido(this.#status[g.id], g.intervaloMinutos, agora))
+      .sort((a, b) => a.intervaloMinutos - b.intervaloMinutos)[0];
+    const grupoInterrompido = this.#grupos.get(interrompido);
+
+    if (!prioritario || (grupoInterrompido && grupoInterrompido.intervaloMinutos <= prioritario.intervaloMinutos)) {
+      if (!this.#fila.includes(interrompido)) this.#fila.unshift(interrompido);
+      return;
+    }
+
+    this.#fila = this.#fila.filter((id) => id !== prioritario.id && id !== interrompido);
+    this.#fila.unshift(interrompido);
+    this.#fila.unshift(prioritario.id);
+  }
+
+  #cancelaRetentativa(id: string): void {
+    const timer = this.#retentativas.get(id);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.#retentativas.delete(id);
+  }
+
+  /**
+   * A cadência normal é de 15--60 min, boa para custo previsível, mas longa demais
+   * para a primeira falha de uma fonte já recuperada. Esta tentativa é separada do
+   * relógio recorrente; a segunda falha volta a respeitar o backoff persistido.
+   */
+  #agendaRetentativa(id: string): void {
+    const grupo = this.#grupos.get(id);
+    if (!this.#ativo || !grupo) return;
+    this.#cancelaRetentativa(id);
+    const atraso = atrasoAteRetentativa(this.#status[id], grupo.intervaloMinutos, this.#agora());
+    const timer = setTimeout(() => {
+      this.#retentativas.delete(id);
+      this.#semDerrubar(`retentativa de ${id}`, () => {
+        if (!this.#adiadoPorFalhas(id, grupo.intervaloMinutos)) this.#enfileira(id, 'cadência');
+      });
+    }, atraso);
+    timer.unref?.();
+    this.#retentativas.set(id, timer);
+    this.#anuncia(`[refresh] ${id}: nova tentativa em ${(atraso / 60_000).toFixed(0)} min.`);
+  }
+
   #enfileira(id: string, motivo: MotivoDeDisparo): void {
     if (!this.#ativo) return;
     if (this.#emExecucao === id || this.#fila.includes(id)) {
@@ -564,16 +690,20 @@ export class Agendador {
     this.#comecouEm = this.#agora().getTime();
     const aborto = new AbortController();
     this.#aborto = aborto;
-    void this.#executa(id, aborto.signal).finally(() => {
+    const execucao = this.#executa(id, aborto.signal).finally(() => {
       this.#emExecucao = null;
       this.#aborto = null;
+      this.#execucaoAtual = null;
       this.#bombeia();
     });
+    this.#execucaoAtual = execucao;
+    void execucao;
   }
 
   async #executa(id: string, sinal?: AbortSignal): Promise<void> {
     const grupo = this.#grupos.get(id);
     if (!grupo) return;
+    this.#cancelaRetentativa(id);
     const inicio = this.#agora();
     let resultado: ResultadoDeExecucao;
     try {
@@ -598,6 +728,7 @@ export class Agendador {
     // O que continua de pé é o alarme que importa — `estaVencido` mede idade do
     // último SUCESSO, então dormir três dias continua acendendo "vencida", com razão.
     const interrompida = this.#interrompidaPorSuspensao;
+    const paradaPlanejada = sinal?.aborted && sinal.reason === 'agendador encerrado';
     this.#interrompidaPorSuspensao = false;
     if (interrompida && !resultado.ok) {
       registra(this.#snapshotDir, {
@@ -613,7 +744,14 @@ export class Agendador {
       );
       // Na FRENTE: este grupo perdeu a vez inteira, enquanto quem está atrás dele
       // apenas esperou. `#enfileira` não serve aqui — ela põe no fim e coalesce.
-      if (this.#ativo && !this.#fila.includes(id)) this.#fila.unshift(id);
+      this.#recolocaAposSuspensao(id);
+      return;
+    }
+
+    // Deploy, restart e desligamento do processo não são falha da fonte. O próximo
+    // processo lê o último status verdadeiro e retoma a carga sem inventar backoff.
+    if (paradaPlanejada && !resultado.ok) {
+      this.#anuncia(`[refresh] ${id}: interrompida para encerrar o agendador — sem alterar o status.`);
       return;
     }
 
@@ -640,6 +778,8 @@ export class Agendador {
       // status em memória continua certo, e o próximo grupo tenta gravar de novo.
       this.#anuncia(`[refresh] não consegui gravar refresh-status.json: ${mensagem(err)}`);
     }
+
+    if (!resultado.ok) this.#agendaRetentativa(id);
 
     this.#anuncia(
       `[refresh] ${id}: ${resultado.ok ? 'OK' : 'FALHOU'} em ` +

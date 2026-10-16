@@ -26,6 +26,7 @@ import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
 import { MEMORIA_PADRAO_MB, TEMPO_MAXIMO_GRUPO_PADRAO_MS, rodaGrupoAssincrono } from './executa-grupo.ts';
+import { Agendador } from '../../../api/src/agendador.ts';
 import {
   descreveMortesDaApi,
   leHistorico,
@@ -156,29 +157,62 @@ export interface DaemonOptions {
   aoConcluirTick?: (resultado: CicloRefreshResult) => void;
 }
 
+interface ConfiguracaoDoRefresh {
+  intervaloMinutos: number | undefined;
+  memoriaMb: number | undefined;
+  tempoMaximoMs: number;
+}
+
+/** Lê os limites compartilhados pelos dois agendadores de refresh. */
+export function configuracaoDoRefresh(env: NodeJS.ProcessEnv = process.env): ConfiguracaoDoRefresh {
+  const inteiroPositivo = (valor: string | undefined): number | undefined => {
+    if (!valor) return undefined;
+    const numero = Number.parseInt(valor, 10);
+    return Number.isFinite(numero) && numero > 0 ? numero : undefined;
+  };
+  const intervaloMinutos = inteiroPositivo(env.REFRESH_INTERVAL_MINUTOS);
+  const memoriaMb = inteiroPositivo(env.REFRESH_MEMORIA_MB);
+  const tempoMaximoMinutos = inteiroPositivo(env.REFRESH_TEMPO_MAXIMO_MINUTOS);
+  return {
+    intervaloMinutos,
+    memoriaMb,
+    tempoMaximoMs: (tempoMaximoMinutos ?? TEMPO_MAXIMO_GRUPO_PADRAO_MS / 60_000) * 60_000,
+  };
+}
+
+/**
+ * Agendador dedicado por grupo, usado no contêiner `refresh`.
+ *
+ * O daemon global continua disponível para diagnóstico e compatibilidade, mas no
+ * Docker este é o modo seguro: uma carga média congelada não descarta os disparos
+ * do grupo quente, e uma suspensão do host aborta o filho e recupera a fila.
+ */
+export function iniciaAgendadorPorGrupo(opts: Pick<DaemonOptions, 'raiz' | 'snapshotDir' | 'specsDir' | 'memoriaMb' | 'tempoMaximoMs'> = {}): Agendador {
+  const raiz = opts.raiz ?? ROOT;
+  applyDotEnv(raiz);
+  const configuracao = configuracaoDoRefresh();
+  const agendador = new Agendador({
+    raiz,
+    specsDir: opts.specsDir,
+    snapshotDir: opts.snapshotDir,
+    memoriaMb: opts.memoriaMb ?? configuracao.memoriaMb,
+    tempoMaximoMs: opts.tempoMaximoMs ?? configuracao.tempoMaximoMs,
+  });
+  agendador.inicia();
+  return agendador;
+}
+
 export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
   const raiz = opts.raiz ?? ROOT;
   applyDotEnv(raiz);
 
-  const envIntervalo = process.env.REFRESH_INTERVAL_MINUTOS
-    ? Number.parseInt(process.env.REFRESH_INTERVAL_MINUTOS, 10)
-    : undefined;
-  const intervaloMinutos = opts.intervaloMinutos ?? (Number.isFinite(envIntervalo) && envIntervalo! > 0 ? envIntervalo! : 15);
+  const configuracao = configuracaoDoRefresh();
+  const intervaloMinutos = opts.intervaloMinutos ?? configuracao.intervaloMinutos ?? 15;
   const intervaloMs = intervaloMinutos * 60_000;
   // Heap do filho de cada grupo. No contêiner vem de REFRESH_MEMORIA_MB, para caber no
   // `mem_limit` do serviço (ACHADOS #154); sem ela, o padrão de `executa-grupo.ts`.
-  const envMemoria = process.env.REFRESH_MEMORIA_MB
-    ? Number.parseInt(process.env.REFRESH_MEMORIA_MB, 10)
-    : undefined;
-  const memoriaMb = opts.memoriaMb ?? (Number.isFinite(envMemoria) && envMemoria! > 0 ? envMemoria : undefined);
-  const envTempoMaximoMinutos = process.env.REFRESH_TEMPO_MAXIMO_MINUTOS
-    ? Number.parseInt(process.env.REFRESH_TEMPO_MAXIMO_MINUTOS, 10)
-    : undefined;
-  const tempoMaximoMs = opts.tempoMaximoMs ?? (
-    Number.isFinite(envTempoMaximoMinutos) && envTempoMaximoMinutos! > 0
-      ? envTempoMaximoMinutos! * 60_000
-      : TEMPO_MAXIMO_GRUPO_PADRAO_MS
-  );
+  const memoriaMb = opts.memoriaMb ?? configuracao.memoriaMb;
+  const tempoMaximoMs = opts.tempoMaximoMs ?? configuracao.tempoMaximoMs;
   const imediato = opts.imediato ?? true;
   const soUmaVez = opts.soUmaVez ?? false;
   const soPlano = opts.soPlano ?? false;
@@ -434,15 +468,44 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
   const soPlano = args.includes('--so-plano');
   const semImediato = args.includes('--sem-imediato');
   const soUmaVez = args.includes('--so-uma-vez');
+  const porGrupo = args.includes('--por-grupo');
   const argIntervalo = args.find((a) => a.startsWith('--intervalo='));
   const intervaloMinutos = argIntervalo ? Number.parseInt(argIntervalo.slice('--intervalo='.length), 10) : undefined;
 
   for (const a of args) {
-    if (!['--so-plano', '--sem-imediato', '--so-uma-vez', '--historico'].includes(a) && !a.startsWith('--intervalo=')) {
+    if (!['--so-plano', '--sem-imediato', '--so-uma-vez', '--historico', '--por-grupo'].includes(a) && !a.startsWith('--intervalo=')) {
       console.error(`argumento desconhecido: ${a}`);
-      console.error('use: --intervalo=N | --so-plano | --sem-imediato | --so-uma-vez | --historico');
+      console.error('use: --intervalo=N | --so-plano | --sem-imediato | --so-uma-vez | --por-grupo | --historico');
       process.exit(2);
     }
+  }
+
+  // O plano é leitura e continua usando o caminho determinístico já existente.
+  // Os outros flags são incompatíveis com o relógio individual de cada grupo.
+  if (porGrupo && !soPlano) {
+    if (semImediato || soUmaVez || intervaloMinutos !== undefined) {
+      console.error('--por-grupo não combina com --sem-imediato, --so-uma-vez nem --intervalo');
+      process.exit(2);
+    }
+    const agendador = iniciaAgendadorPorGrupo();
+    // Os relógios internos são `unref()` de propósito: a API pode encerrar sem
+    // esperar quinze minutos. No contêiner dedicado, porém, eles seriam a ÚNICA
+    // atividade e o Node encerraria com "unsettled top-level await". Este timer
+    // mantém só o processo do serviço vivo; não agenda nem faz I/O.
+    await new Promise<void>((resolve) => {
+      const mantenedor = setInterval(() => {}, 60_000);
+      let encerrando = false;
+      const encerra = async (sinal: string): Promise<void> => {
+        if (encerrando) return;
+        encerrando = true;
+        console.log(`\n[Refresh] Recebido sinal ${sinal}. Encerrando agendador por grupo.`);
+        await agendador.encerra();
+        clearInterval(mantenedor);
+        resolve();
+      };
+      process.on('SIGINT', () => void encerra('SIGINT'));
+      process.on('SIGTERM', () => void encerra('SIGTERM'));
+    });
   }
 
   await iniciaDaemon({

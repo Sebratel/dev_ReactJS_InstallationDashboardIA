@@ -97,6 +97,14 @@ test('motivoDeAbandono: viva no mesmo host com batimento recente não é abandon
     'de outro host o PID não diz nada — só o batimento');
 });
 
+test('motivoDeAbandono: PID reutilizado no host estável é abandonado na hora', () => {
+  const dono = { pid: 7, host: 'refresh', desde: 'x', comando: 'c', inicioProcesso: 'antigo' };
+  assert.match(
+    motivoDeAbandono(dono, 1_000, { host: 'refresh', velhaMs: 600_000, vivo: () => true, identidadeDoPid: () => 'novo' })!,
+    /foi reutilizado/,
+  );
+});
+
 test('trava: dois PROCESSOS no mesmo ler→somar→gravar não perdem atualização', async () => {
   const dir = tmp();
   const contador = path.join(dir, 'contador.txt');

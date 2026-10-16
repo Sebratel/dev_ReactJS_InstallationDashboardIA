@@ -899,7 +899,11 @@ test('a tela (estático) é servida sem sessão — é ela que mostra o login', 
 
 test('login de verdade: idToken válido cria sessão, e o cookie libera /api/*', async () => {
   const s = await servidorComLogin(dirVazio(), {
-    verificadorGoogle: clienteQueDevolve({ email: 'fulano@sebratel.com.br', hd: 'sebratel.com.br' }),
+    verificadorGoogle: clienteQueDevolve({
+      email: 'fulano@sebratel.com.br',
+      hd: 'sebratel.com.br',
+      picture: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+    }),
   });
   try {
     const antes = await s.busca('/api/dashboards');
@@ -917,6 +921,7 @@ test('login de verdade: idToken válido cria sessão, e o cookie libera /api/*',
 
     const depois = await s.busca('/api/dashboards', { headers: { cookie } });
     assert.equal(depois.status, 200);
+    assert.equal((await depois.json()).eu.foto, 'https://lh3.googleusercontent.com/a/foto-do-fulano');
   } finally {
     await s.fecha();
   }

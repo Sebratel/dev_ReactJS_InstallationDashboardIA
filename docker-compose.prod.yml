@@ -148,6 +148,9 @@ services:
     # protege a API de OOM durante a carga, mas não transforma um host inteiro de
     # 3 GB em capacidade suficiente: valide a concorrência API + refresh no host.
     mem_limit: 1450m
+    # A trava do snapshot usa hostname + PID. Mantê-lo estável permite ao
+    # contêiner substituto reconhecer imediatamente um PID morto de deploy.
+    hostname: dashboard-instalacao-refresh
     environment:
       NODE_ENV: production
       REFRESH_INTERVAL_MINUTOS: '15'
@@ -163,7 +166,9 @@ services:
     depends_on:
       api:
         condition: service_healthy
-    command: ["node", "--max-old-space-size=1024", "backend/tools/refresh/src/daemon.ts"]
+    # Um relógio por grupo: se uma carga média ficar pendurada, `quente` continua
+    # entrando na fila e a retomada de suspensão aborta o filho congelado.
+    command: ["node", "--max-old-space-size=1024", "backend/tools/refresh/src/daemon.ts", "--por-grupo"]
     # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
     # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
     init: true

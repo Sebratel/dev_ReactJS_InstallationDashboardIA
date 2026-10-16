@@ -64,6 +64,8 @@ export function AppShell(props: {
   /** Horário da última atualização automática recebida via SSE (Marco C2). */
   ultimaAtualizacaoRealtime?: string | null;
   acoes?: ReactNode;
+  usuario?: string;
+  foto?: string;
   /** A barra de filtros: vem antes de tudo na área, encostada na navegação. */
   barra?: ReactNode;
   /** Encerra a sessão de login. Sempre presente — a tela só chega a existir
@@ -119,7 +121,12 @@ export function AppShell(props: {
           >
             {quando}
           </span>
-          <AcoesDoCabecalho acoes={props.acoes} aoSair={props.aoSair} />
+          <AcoesDoCabecalho
+            acoes={props.acoes}
+            aoSair={props.aoSair}
+            usuario={props.usuario}
+            foto={props.foto}
+          />
         </div>
       </header>
 

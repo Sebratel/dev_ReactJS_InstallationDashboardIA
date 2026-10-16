@@ -147,11 +147,9 @@ test('nenhuma classe do CSS tem nome de utilitário do Tailwind', () => {
 
 test('todo estado que persiste tem botão que o desliga', () => {
   // Persistir no localStorage sem controle visível TRANCA o usuário: ele recarrega e
-  // o estado continua lá. Os dois já estiveram órfãos ao mesmo tempo.
-  const casos = [
-    { arquivo: ['utils', 'theme.ts'], gatilho: 'toggleTheme' },
-    { arquivo: ['context', 'ModoContext.tsx'], gatilho: 'alterna' },
-  ];
+  // o estado continua lá. O modo de conferência não entra mais: não persiste nem é
+  // exposto na operação.
+  const casos = [{ arquivo: ['utils', 'theme.ts'], gatilho: 'toggleTheme' }];
   for (const { arquivo, gatilho } of casos) {
     const nome = arquivo.join('/');
     assert.match(
@@ -303,8 +301,8 @@ test('a barra lateral não deixou restos', () => {
  * Este é o teste que teria pego, de uma vez, os **quatro** achados mais caros de
  * 27/08/2026 — todos da mesma forma: código bom, escrito, revisado, e desligado.
  *
- *   `HeaderSebratel.tsx` ......... o cabeçalho com os dois interruptores globais.
- *                                  Sem ele, tema e modo conferência ficaram sem botão.
+ *   `HeaderSebratel.tsx` ......... o cabeçalho com os controles globais.
+ *                                  Sem ele, o tema ficaria sem botão.
  *   `Capa.tsx` ................... a capa inteira. Enquanto isso a CAPA gerada da spec
  *                                  desenhava dois cartões de indicador num vazio.
  *   `filtros-padrao.ts` .......... o gap nº1 da auditoria de paridade. A tela abria

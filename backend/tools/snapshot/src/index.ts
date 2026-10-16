@@ -921,6 +921,15 @@ if (args.plano) {
 const trava = await adquireTrava(args.saida, { comando: `snapshot ${process.argv.slice(2).join(' ')}` });
 process.env[VAR_TRAVA_HERDADA] = String(process.pid);
 process.on('exit', () => trava.solta());
+// `SIGKILL` não executa o handler de `exit`, mas o refresh sempre tenta SIGTERM
+// primeiro. Soltar explicitamente aqui evita que uma recriação de contêiner deixe a
+// próxima carga esperando o batimento da trava vencer.
+const encerraComTravaSolta = (codigo: number): void => {
+  trava.solta();
+  process.exit(codigo);
+};
+process.once('SIGINT', () => encerraComTravaSolta(130));
+process.once('SIGTERM', () => encerraComTravaSolta(143));
 
 /**
  * A entrada de manifesto de um arquivo que já está em disco.

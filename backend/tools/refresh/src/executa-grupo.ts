@@ -40,6 +40,9 @@ export const MEMORIA_PADRAO_MB = 8192;
  */
 export const TEMPO_MAXIMO_GRUPO_PADRAO_MS = 30 * 60_000;
 
+/** Tempo para o materializador soltar a trava antes do encerramento forçado. */
+export const TEMPO_DE_GRACA_PARA_ENCERRAR_MS = 5_000;
+
 /**
  * O argv exato que materializa um grupo. Separado da execução para o teste poder
  * afirmar sobre ele sem criar processo nenhum.
@@ -69,6 +72,8 @@ export interface OpcoesDeExecucao {
   memoriaMb?: number;
   /** Mata a árvore do materializador se ela ultrapassar este prazo. Zero desliga. */
   tempoMaximoMs?: number;
+  /** Só para casos excepcionais: após este prazo, SIGTERM vira SIGKILL. */
+  tempoGracaMs?: number;
   /** Injetável no teste. Em produção é `node:child_process.spawn`. */
   cria?: typeof spawn;
   /**
@@ -83,18 +88,21 @@ export interface OpcoesDeExecucao {
   sinal?: AbortSignal;
 }
 
-/** Mata o grupo inteiro no Linux; matar só o pai deixaria a query órfã no snapshot. */
-function mataArvore(filho: { pid?: number; kill?: (sinal?: NodeJS.Signals) => boolean }): void {
+/** Sinaliza o grupo inteiro no Linux; sinalizar só o pai deixaria a query órfã no snapshot. */
+function sinalizaArvore(
+  filho: { pid?: number; kill?: (sinal?: NodeJS.Signals) => boolean },
+  sinal: NodeJS.Signals,
+): void {
   if (process.platform !== 'win32' && typeof filho.pid === 'number') {
     try {
-      process.kill(-filho.pid, 'SIGKILL');
+      process.kill(-filho.pid, sinal);
       return;
     } catch {
       // O filho pode ter saído entre a checagem e o sinal; tenta o PID direto.
     }
   }
   try {
-    filho.kill?.('SIGKILL');
+    filho.kill?.(sinal);
   } catch {
     // Filho já encerrado não precisa morrer de novo.
   }
@@ -135,9 +143,12 @@ export function rodaGrupoAssincrono(
   return new Promise<ResultadoDeExecucao>((resolve) => {
     let respondido = false;
     let temporizador: ReturnType<typeof setTimeout> | null = null;
+    let encerramentoForcado: ReturnType<typeof setTimeout> | null = null;
     let aoAbortar: (() => void) | null = null;
+    let interrupcao: ResultadoDeExecucao | null = null;
     const limpa = (): void => {
       if (temporizador !== null) clearTimeout(temporizador);
+      if (encerramentoForcado !== null) clearTimeout(encerramentoForcado);
       if (aoAbortar && opts.sinal) opts.sinal.removeEventListener('abort', aoAbortar);
     };
     const responde = (r: ResultadoDeExecucao): void => {
@@ -173,11 +184,20 @@ export function rodaGrupoAssincrono(
     });
 
     const interrompe = (motivo: string, transitoria = false): void => {
-      // `SIGKILL` e não `SIGTERM`: quem aborta já concluiu que este filho não vai
-      // terminar sozinho. Pedir educadamente a um processo com socket pendurado é
-      // esperar mais um tempo indefinido.
-      mataArvore(filho);
-      responde({ ok: false, erro: `interrompida: ${motivo}`, ...(transitoria ? { transitoria: true } : {}) });
+      if (respondido || interrupcao) return;
+      interrupcao = { ok: false, erro: `interrompida: ${motivo}`, ...(transitoria ? { transitoria: true } : {}) };
+      // O materializador usa uma trava de arquivo. SIGKILL sem esta oportunidade
+      // deixa o lock para trás e o contêiner novo espera até o batimento envelhecer.
+      // SIGTERM o faz soltar a trava; SIGKILL continua sendo a última garantia contra
+      // socket pendurado, mas só depois de uma graça curta e limitada.
+      sinalizaArvore(filho, 'SIGTERM');
+      const encerraAForca = (): void => {
+        sinalizaArvore(filho, 'SIGKILL');
+        responde(interrupcao!);
+      };
+      const tempoGracaMs = opts.tempoGracaMs ?? TEMPO_DE_GRACA_PARA_ENCERRAR_MS;
+      if (tempoGracaMs <= 0) encerraAForca();
+      else encerramentoForcado = setTimeout(encerraAForca, tempoGracaMs);
     };
 
     if (opts.sinal) {
@@ -198,10 +218,10 @@ export function rodaGrupoAssincrono(
     // derruba o processo. É o mesmo defeito que o `ioredis` causou na API em
     // 08/09/2026, e o mesmo que `CarimboVigiado` fechou para o `fs.watch`.
     filho.on('error', (err: unknown) => {
-      responde({ ok: false, erro: err instanceof Error ? err.message : String(err) });
+      responde(interrupcao ?? { ok: false, erro: err instanceof Error ? err.message : String(err) });
     });
     filho.on('exit', (codigo, sinal) => {
-      responde(resultadoDaSaida(codigo, sinal, caudaDeErro(erroDoFilho)));
+      responde(interrupcao ?? resultadoDaSaida(codigo, sinal, caudaDeErro(erroDoFilho)));
     });
   });
 }

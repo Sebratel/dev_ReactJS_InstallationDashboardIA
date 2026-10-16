@@ -26,10 +26,17 @@ function clienteQueRecusa(mensagem = 'assinatura inválida'): VerificadorDeToken
   };
 }
 
-test('token válido, domínio certo: devolve o e-mail', async () => {
-  const cliente = clienteQueDevolve({ email: 'fulano@sebratel.com.br', hd: DOMINIO });
+test('token válido, domínio certo: devolve o e-mail e a foto HTTPS do Google', async () => {
+  const cliente = clienteQueDevolve({
+    email: 'fulano@sebratel.com.br',
+    hd: DOMINIO,
+    picture: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+  });
   const r = await verificaIdToken('token-qualquer', { clientId: CLIENT_ID, dominioCorporativo: DOMINIO, cliente });
-  assert.deepEqual(r, { email: 'fulano@sebratel.com.br' });
+  assert.deepEqual(r, {
+    email: 'fulano@sebratel.com.br',
+    foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+  });
 });
 
 test('domínio (hd) diferente do corporativo: recusado', async () => {

@@ -388,6 +388,8 @@ export const ehErroDeAcesso = (err: unknown): boolean =>
  *  manda o campo. */
 export interface Eu {
   usuario: string;
+  /** Foto de perfil recebida no token assinado do Google, quando disponível. */
+  foto?: string;
   papel: 'viewer' | 'dev' | 'admin';
   /** Admin ou dev: a tela mostra o botão de gestão de acessos. */
   podeGerir: boolean;

@@ -176,7 +176,7 @@ test('rodaGrupoAssincrono: o sinal mata o filho e devolve resultado, não exceç
     sinalRecebido = s;
   };
   const ac = new AbortController();
-  const p = rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, sinal: ac.signal });
+  const p = rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, sinal: ac.signal, tempoGracaMs: 0 });
   ac.abort('máquina suspensa');
   const r = await p;
   // SIGKILL e não SIGTERM: quem aborta já concluiu que este filho não termina sozinho
@@ -190,7 +190,7 @@ test('rodaGrupoAssincrono: sinal já abortado antes do spawn não trava a promes
   (filho as unknown as { kill: () => void }).kill = () => {};
   const ac = new AbortController();
   ac.abort('tarde demais');
-  const r = await rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, sinal: ac.signal });
+  const r = await rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, sinal: ac.signal, tempoGracaMs: 0 });
   assert.deepEqual(r, { ok: false, erro: 'interrompida: tarde demais' });
 });
 
@@ -200,7 +200,7 @@ test('rodaGrupoAssincrono: o vigia encerra grupo pendurado e o marca transitóri
   (filho as unknown as { kill: (s: string) => void }).kill = (s) => {
     sinalRecebido = s;
   };
-  const r = await rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, tempoMaximoMs: 10 });
+  const r = await rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, tempoMaximoMs: 10, tempoGracaMs: 0 });
   assert.equal(sinalRecebido, 'SIGKILL');
   assert.equal(r.ok, false);
   assert.equal(r.transitoria, true);

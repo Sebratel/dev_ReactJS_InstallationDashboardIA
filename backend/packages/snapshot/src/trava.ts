@@ -37,6 +37,8 @@ export interface DonoDaTrava {
   host: string;
   desde: string;
   comando: string;
+  /** Identidade do processo além do PID; no Linux é o starttime de `/proc`. */
+  inicioProcesso?: string;
 }
 
 export interface Trava {
@@ -56,8 +58,24 @@ export interface OpcoesDaTrava {
   /** Injetável no teste. */
   host?: string;
   pid?: number;
+  /** Injetável no teste; impede PID reutilizado de parecer o dono antigo. */
+  identidadeDoPid?: (pid: number) => string | null;
   agora?: () => number;
   env?: NodeJS.ProcessEnv;
+}
+
+function identidadeDoPid(pid: number): string | null {
+  try {
+    // Campo 22 do proc(5): começa depois do nome entre parênteses, que pode ter
+    // espaço. Separar pelo último `)` conserva a posição mesmo nesses nomes.
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    const depoisDoNome = stat.slice(stat.lastIndexOf(')') + 2).trim().split(/\s+/);
+    return depoisDoNome[19] ?? null;
+  } catch {
+    // Windows não tem /proc. Lá o PID ainda é uma identidade suficiente dentro do
+    // mesmo host; entre contêineres, continua valendo o batimento da trava.
+    return null;
+  }
 }
 
 function pidVivo(pid: number): boolean {
@@ -87,10 +105,19 @@ function descreve(d: DonoDaTrava | null): string {
 export function motivoDeAbandono(
   dono: DonoDaTrava | null,
   idadeDoBatimentoMs: number,
-  e: { host: string; velhaMs: number; vivo?: (pid: number) => boolean },
+  e: {
+    host: string;
+    velhaMs: number;
+    vivo?: (pid: number) => boolean;
+    identidadeDoPid?: (pid: number) => string | null;
+  },
 ): string | null {
-  if (dono && dono.host === e.host && !(e.vivo ?? pidVivo)(dono.pid)) {
-    return `o PID ${dono.pid} não existe mais neste host`;
+  if (dono && dono.host === e.host) {
+    if (!(e.vivo ?? pidVivo)(dono.pid)) return `o PID ${dono.pid} não existe mais neste host`;
+    const atual = (e.identidadeDoPid ?? identidadeDoPid)(dono.pid);
+    if (dono.inicioProcesso && atual && dono.inicioProcesso !== atual) {
+      return `o PID ${dono.pid} foi reutilizado neste host`;
+    }
   }
   if (idadeDoBatimentoMs > e.velhaMs) {
     return `sem batimento há ${Math.round(idadeDoBatimentoMs / 60_000)} min`;
@@ -106,6 +133,7 @@ export async function adquireTrava(snapshotDir: string, opts: OpcoesDaTrava): Pr
   const agora = opts.agora ?? Date.now;
   const host = opts.host ?? os.hostname();
   const pid = opts.pid ?? process.pid;
+  const inicioProcesso = (opts.identidadeDoPid ?? identidadeDoPid)(pid) ?? undefined;
   const esperaMaxMs = opts.esperaMaxMs ?? ESPERA_MAX_MS;
   const velhaMs = opts.velhaMs ?? VELHA_MS;
   const pausaMs = opts.pausaMs ?? 5_000;
@@ -115,7 +143,13 @@ export async function adquireTrava(snapshotDir: string, opts: OpcoesDaTrava): Pr
   const inicio = agora();
   let avisou = false;
   for (;;) {
-    const dono: DonoDaTrava = { pid, host, desde: new Date(agora()).toISOString(), comando: opts.comando };
+    const dono: DonoDaTrava = {
+      pid,
+      host,
+      desde: new Date(agora()).toISOString(),
+      comando: opts.comando,
+      ...(inicioProcesso ? { inicioProcesso } : {}),
+    };
     try {
       fs.writeFileSync(arquivo, JSON.stringify(dono), { flag: 'wx' });
     } catch (err) {
@@ -127,7 +161,7 @@ export async function adquireTrava(snapshotDir: string, opts: OpcoesDaTrava): Pr
       } catch {
         continue; // sumiu entre o wx e o stat: tenta de novo
       }
-      const motivo = motivoDeAbandono(atual, idade, { host, velhaMs });
+      const motivo = motivoDeAbandono(atual, idade, { host, velhaMs, identidadeDoPid: opts.identidadeDoPid });
       if (motivo) {
         const velho = `${arquivo}.abandonada.${pid}.${agora()}`;
         try {

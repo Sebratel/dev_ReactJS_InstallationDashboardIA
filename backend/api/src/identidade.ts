@@ -28,6 +28,8 @@ import type http from 'node:http';
 export interface Identidade {
   /** Quem pediu. É o que entra na chave do cache. */
   usuario: string;
+  /** Avatar recebido no token assinado do Google. Nunca vem de header do cliente. */
+  foto?: string;
   /**
    * `['autenticado']` para pessoa (o que ela abre é `permissoes.ts` quem diz, pelo
    * e-mail), `['interno']` para máquina (aquecedor, ferramenta de print) e
@@ -38,6 +40,7 @@ export interface Identidade {
 
 interface Sessao {
   usuario: string;
+  foto?: string;
   criadaEm: number;
   expiraEm: number;
   /** Último pedido com este cookie — a base da expiração por inatividade (S2). */
@@ -94,11 +97,18 @@ export function criaSessao(
   sessoes: Sessoes,
   usuario: string,
   ttlHoras: number,
-  extra: { agora?: number; ip?: string } = {},
+  extra: { agora?: number; ip?: string; foto?: string } = {},
 ): string {
   const token = crypto.randomUUID();
   const agora = extra.agora ?? Date.now();
-  sessoes.set(token, { usuario, criadaEm: agora, expiraEm: agora + ttlHoras * 3_600_000, ultimoUso: agora, ip: extra.ip ?? null });
+  sessoes.set(token, {
+    usuario,
+    ...(extra.foto ? { foto: extra.foto } : {}),
+    criadaEm: agora,
+    expiraEm: agora + ttlHoras * 3_600_000,
+    ultimoUso: agora,
+    ip: extra.ip ?? null,
+  });
   return token;
 }
 
@@ -190,7 +200,7 @@ export function identificaPorSessao(
   // pessoa: passa pelo portão de abas como o aquecedor (`permissoes.ts`). Nenhum login
   // de pessoa produz este nome — o Firebase e o GIS só criam sessão com e-mail.
   if (sessao.usuario === USUARIO_FERRAMENTA) return { usuario: sessao.usuario, papeis: ['interno'] };
-  return { usuario: sessao.usuario, papeis: ['autenticado'] };
+  return { usuario: sessao.usuario, ...(sessao.foto ? { foto: sessao.foto } : {}), papeis: ['autenticado'] };
 }
 
 export const USUARIO_FERRAMENTA = 'ferramenta-interna';
