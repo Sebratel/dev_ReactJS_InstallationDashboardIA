@@ -127,7 +127,16 @@ test('perdidas todas as workers, a piscina se declara INATIVA e o pedido seguint
   // O que faz a degradação funcionar: `Servidor.pagina()` só entra no ramo da
   // worker se `piscina.ativa`. Com a piscina se declarando morta, os pedidos
   // seguintes vão direto para o cálculo em linha — mais devagar, e respondendo.
-  const p = new PiscinaWorkers({ tamanhoPool: 1, scriptDaWorker: MORRE });
+  //
+  // Desde 16/10/2026 a piscina REPÕE a worker morta (`piscina-recriacao.test.ts`),
+  // então "inativa" é o estado durante o backoff ou com o teto estourado. Teto 0
+  // fixa o segundo caso: sem ele, este teste dependeria de rodar dentro do 1 s
+  // de backoff padrão.
+  const p = new PiscinaWorkers({
+    tamanhoPool: 1,
+    scriptDaWorker: MORRE,
+    recriacao: { tetoNaJanela: 0 },
+  });
   try {
     // Disparada e não esperada, de propósito: com o conserto REMOVIDO esta
     // promessa nunca termina, e um `await` aqui penduraria o arquivo de teste

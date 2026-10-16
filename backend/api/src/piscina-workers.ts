@@ -27,6 +27,80 @@ export interface OpcoesPiscina {
    * afirmação passa a ser sobre a piscina, não sobre o cálculo.
    */
   scriptDaWorker?: string;
+  /**
+   * Ritmo e teto da recriação de workers mortas. Padrão: `POLITICA_DE_RECRIACAO`.
+   * Produção nunca passa isto; existe para o teste não ter de esperar segundos
+   * de backoff nem dez minutos de janela.
+   */
+  recriacao?: Partial<PoliticaDeRecriacao>;
+}
+
+/**
+ * Quando e quantas vezes a piscina repõe uma worker que morreu sozinha.
+ *
+ * **Por que repor (16/10/2026).** Até aqui a worker era criada só no
+ * construtor: morta por estouro de heap numa página grande, ela saía da lista e
+ * nunca voltava. Morrendo as duas, `ativa` virava falso e TODO cálculo passava a
+ * rodar em linha, na thread principal, sem limite de concorrência nenhum — o
+ * caminho mais curto para o contêiner de 3 GB estourar com vários usuários.
+ * Repor devolve o teto por worker (`resourceLimits`) e a fila, que são as duas
+ * coisas que seguram a memória quando há gente usando.
+ *
+ * **Por que com freio.** Uma worker que morre ao nascer (script quebrado,
+ * `import` que falha) ou que é morta de novo pela mesma página a cada clique
+ * viraria um laço de criar-carregar-morrer, cada volta pagando o custo de subir
+ * uma thread e — no caso do OOM — de encher meio giga de heap antes de cair.
+ * Daí o backoff exponencial (a primeira reposição sai em 1 s, a sexta espera
+ * 30 s) e o teto por janela: estourado o teto, a piscina PARA de repor, grita
+ * no log, e o que vale é o fallback que já existia (cálculo em linha). A janela
+ * é deslizante: quando a recriação mais antiga sai dela, uma nova tentativa é
+ * agendada — um pico de OOM às 10h não condena a API a rodar sem workers até o
+ * próximo reinício.
+ *
+ * Os números: 6 recriações em 10 min são 3 por worker no pool padrão de 2 — o
+ * suficiente para atravessar alguns OOM isolados de páginas pesadas, e pouco
+ * para um laço passar despercebido (o log grita na 7ª morte da janela).
+ */
+export interface PoliticaDeRecriacao {
+  /** Espera antes da 1ª reposição dentro da janela. Dobra a cada reposição seguinte. */
+  esperaInicialMs: number;
+  /** Teto do backoff. */
+  esperaMaximaMs: number;
+  /** Quantas recriações cabem em `janelaMs`. Passou disso, a reposição para. */
+  tetoNaJanela: number;
+  /** Janela deslizante do teto. */
+  janelaMs: number;
+}
+
+export const POLITICA_DE_RECRIACAO: Readonly<PoliticaDeRecriacao> = Object.freeze({
+  esperaInicialMs: 1_000,
+  esperaMaximaMs: 30_000,
+  tetoNaJanela: 6,
+  janelaMs: 10 * 60_000,
+});
+
+/**
+ * O que a piscina sabe das próprias mortes. Feito para sair em `GET /api/saude`
+ * (`PiscinaWorkers.recriacao`) — sem ele, uma worker morrendo em laço só
+ * aparece como "a API ficou lenta", porque o fallback em linha esconde a falha.
+ */
+export interface EstadoDaRecriacao {
+  /** Quantas workers a piscina tenta manter vivas. */
+  alvo: number;
+  /** Mortes inesperadas desde que a piscina subiu (encerramento não conta). */
+  mortes: number;
+  /** Workers repostas com sucesso desde que a piscina subiu. */
+  workersRecriadas: number;
+  /** A última morte inesperada, ou `null` se nenhuma worker morreu. */
+  ultimaMorte: { em: string; motivo: string } | null;
+  /**
+   * `true` quando o teto da janela foi atingido e a reposição está parada até a
+   * recriação mais antiga sair da janela. Enquanto isso, quem calcula o que
+   * faltar é a thread principal.
+   */
+  suspensa: boolean;
+  /** Quando a próxima reposição vai rodar (ISO), ou `null` se nada agendado. */
+  proximaReposicaoEm: string | null;
 }
 
 /**
@@ -222,8 +296,41 @@ export class PiscinaWorkers {
   /** Ver `medeCom()`. Padrão: ninguém medindo, custo zero. */
   private medidor: ((m: MedidaDaTarefa) => void) | null = null;
 
+  // --- Recriação (ver `PoliticaDeRecriacao`) -------------------------------
+  /**
+   * O que `criaWorker()` repete a cada worker. Guardado no construtor porque a
+   * worker reposta tem de nascer com o MESMO teto de heap e o MESMO orçamento
+   * de visuais da que morreu — recalcular na reposição (relendo o ambiente)
+   * abriria a porta para as duas discordarem.
+   */
+  private receita: {
+    script: string;
+    execArgv: string[];
+    heapPorWorkerMB: number;
+    tetoDeVisuaisMB: number;
+  } | null = null;
+  /** Quantas workers a piscina tenta manter vivas — o `tamanhoPool` resolvido. */
+  private alvo = 0;
+  private readonly politica: PoliticaDeRecriacao;
+  /**
+   * Ligada em `destroi()`. Sem ela, o `'exit'` que o próprio `terminate()`
+   * provoca poderia ser lido como morte inesperada e a piscina se recriaria
+   * durante o encerramento da API — segurando o processo e brigando com o
+   * shutdown.
+   */
+  private encerrada = false;
+  /** Instantes (ms) das recriações ainda dentro da janela — é o que o teto conta. */
+  private readonly recriacoesRecentes: number[] = [];
+  private temporizadorDeReposicao: NodeJS.Timeout | null = null;
+  private reposicaoEm = 0;
+  private suspensa = false;
+  private mortes = 0;
+  private workersRecriadas = 0;
+  private ultimaMorte: { em: string; motivo: string } | null = null;
+
   constructor(opts: OpcoesPiscina = {}) {
     this.desativado = opts.desativado ?? false;
+    this.politica = { ...POLITICA_DE_RECRIACAO, ...opts.recriacao };
 
     if (this.desativado) return;
 
@@ -252,66 +359,92 @@ export class PiscinaWorkers {
       ALLOWED_FLAGS.some((prefix) => arg.startsWith(prefix)),
     );
 
+    this.receita = {
+      script: workerScript,
+      execArgv: execArgvValidos,
+      heapPorWorkerMB,
+      tetoDeVisuaisMB: tetoDeVisuaisPorWorkerMB,
+    };
+    this.alvo = numWorkers;
+
     for (let i = 0; i < numWorkers; i++) {
       try {
-        const w = new Worker(workerScript, {
-          execArgv: execArgvValidos,
-          resourceLimits: { maxOldGenerationSizeMb: heapPorWorkerMB },
-          // O orçamento do `CacheDeVisual` desta worker. Vai por `workerData` e
-          // não por `process.env` porque quem reparte é a piscina, que é a
-          // única que sabe quantas workers existem: lendo `CACHE_VISUAL_MB`
-          // cada worker sozinha, todas pegariam o total e o teto viraria
-          // `CACHE_VISUAL_MB × nº de workers` — o mesmo erro de multiplicar
-          // orçamento que `PADRAO_HEAP_POR_WORKER_MB` documenta acima.
-          workerData: { tetoDeVisuaisMB: tetoDeVisuaisPorWorkerMB },
-        });
-
-
-
-        w.on('message', (res: RespostaCalculoWorker) => {
-          const tarefa = this.pendentesPorWorker.get(w);
-          if (tarefa) {
-            this.pendentesPorWorker.delete(w);
-            this.livres.push(w);
-            this.mede(tarefa);
-            if (res.ok) {
-              tarefa.resolve(res);
-            } else {
-              tarefa.reject(new Error(res.erro ?? 'Erro desconhecido na worker thread.'));
-            }
-            this.processaFila();
-          }
-        });
-
-        // `err` chega como `unknown` — o `'error'` de um `EventEmitter` não é
-        // tipado como `Error`, e quem emite pode emitir qualquer coisa. Sem a
-        // normalização, `String(err)` viraria "[object Object]" na resposta ao
-        // pedido, e o motivo real da morte da worker se perderia.
-        w.on('error', (err: unknown) => {
-          this.removeWorker(w, err instanceof Error ? err : new Error(String(err)));
-        });
-
-        // **A morte de uma worker TEM de rejeitar a tarefa dela.** Até
-        // 08/09/2026 este handler só a tirava das listas: a promessa do pedido
-        // ficava PENDENTE para sempre (medido — 2 s depois de `terminate()`, a
-        // promessa continuava pendente). Antes disso o estrago era um pedido
-        // pendurado; com o single-flight (F2) passaria a ser a CHAVE inteira
-        // travada, porque todo pedido seguinte àquela chave entraria no voo que
-        // nunca resolve. Rejeitar faz o `catch` de `pagina()` cair no cálculo em
-        // linha, que é a degradação que já existe e já é testada.
-        w.on('exit', (codigo) => {
-          this.removeWorker(
-            w,
-            new Error(`worker de cálculo terminou com código ${codigo} antes de responder`),
-          );
-        });
-
-        this.workers.push(w);
-        this.livres.push(w);
+        this.criaWorker();
       } catch (err) {
         console.error('[piscina-workers] Não foi possível criar worker thread:', err);
       }
     }
+  }
+
+  /**
+   * Sobe UMA worker com a receita da piscina e a põe na lista de livres. Lança
+   * se `new Worker` lançar — quem chama decide o que isso significa (no
+   * construtor é log e segue; na reposição, conta como tentativa e volta para o
+   * freio).
+   */
+  private criaWorker(): void {
+    const r = this.receita!;
+    const w = new Worker(r.script, {
+      execArgv: r.execArgv,
+      resourceLimits: { maxOldGenerationSizeMb: r.heapPorWorkerMB },
+      // O orçamento do `CacheDeVisual` desta worker. Vai por `workerData` e
+      // não por `process.env` porque quem reparte é a piscina, que é a
+      // única que sabe quantas workers existem: lendo `CACHE_VISUAL_MB`
+      // cada worker sozinha, todas pegariam o total e o teto viraria
+      // `CACHE_VISUAL_MB × nº de workers` — o mesmo erro de multiplicar
+      // orçamento que `PADRAO_HEAP_POR_WORKER_MB` documenta acima.
+      workerData: { tetoDeVisuaisMB: r.tetoDeVisuaisMB },
+    });
+
+    w.on('message', (res: RespostaCalculoWorker) => {
+      const tarefa = this.pendentesPorWorker.get(w);
+      if (tarefa) {
+        this.pendentesPorWorker.delete(w);
+        this.livres.push(w);
+        this.mede(tarefa);
+        if (res.ok) {
+          tarefa.resolve(res);
+        } else {
+          tarefa.reject(new Error(res.erro ?? 'Erro desconhecido na worker thread.'));
+        }
+        this.processaFila();
+      }
+    });
+
+    // `err` chega como `unknown` — o `'error'` de um `EventEmitter` não é
+    // tipado como `Error`, e quem emite pode emitir qualquer coisa. Sem a
+    // normalização, `String(err)` viraria "[object Object]" na resposta ao
+    // pedido, e o motivo real da morte da worker se perderia.
+    //
+    // No estouro de heap o Node emite `'error'` com `code:
+    // 'ERR_WORKER_OUT_OF_MEMORY'` e DEPOIS `'exit'`. Quem chega primeiro tira a
+    // worker da lista e registra a morte; o segundo já não a acha e não faz
+    // nada — por isso o motivo guardado é o do `'error'`, o que tem o código.
+    w.on('error', (err: unknown) => {
+      this.removeWorker(w, err instanceof Error ? err : new Error(String(err)));
+    });
+
+    // **A morte de uma worker TEM de rejeitar a tarefa dela.** Até
+    // 08/09/2026 este handler só a tirava das listas: a promessa do pedido
+    // ficava PENDENTE para sempre (medido — 2 s depois de `terminate()`, a
+    // promessa continuava pendente). Antes disso o estrago era um pedido
+    // pendurado; com o single-flight (F2) passaria a ser a CHAVE inteira
+    // travada, porque todo pedido seguinte àquela chave entraria no voo que
+    // nunca resolve. Rejeitar faz o `catch` de `pagina()` cair no cálculo em
+    // linha, que é a degradação que já existe e já é testada.
+    //
+    // Qualquer `'exit'` fora de `destroi()` é inesperado, inclusive o código 0:
+    // `worker-calculador.ts` não tem caminho nenhum que encerre a thread, então
+    // uma saída "limpa" ali também é uma worker a menos na piscina.
+    w.on('exit', (codigo) => {
+      this.removeWorker(
+        w,
+        new Error(`worker de cálculo terminou com código ${codigo} antes de responder`),
+      );
+    });
+
+    this.workers.push(w);
+    this.livres.push(w);
   }
 
   get ativa(): boolean {
@@ -337,6 +470,23 @@ export class PiscinaWorkers {
       ocupados: this.pendentesPorWorker.size,
       workers: this.workers.length,
       porClasse: this.tarefas.porClasse(),
+    };
+  }
+
+  /**
+   * Mortes e reposições de worker, para `GET /api/saude`. Getter separado de
+   * `estado` de propósito: `estado` é lido a cada enfileiramento
+   * (`worker_fila_max`) e não tem por que montar data e motivo toda vez.
+   */
+  get recriacao(): EstadoDaRecriacao {
+    return {
+      alvo: this.alvo,
+      mortes: this.mortes,
+      workersRecriadas: this.workersRecriadas,
+      ultimaMorte: this.ultimaMorte,
+      suspensa: this.suspensa,
+      proximaReposicaoEm:
+        this.temporizadorDeReposicao === null ? null : new Date(this.reposicaoEm).toISOString(),
     };
   }
 
@@ -451,6 +601,9 @@ export class PiscinaWorkers {
   private removeWorker(w: Worker, motivo?: Error): void {
     const idx = this.workers.indexOf(w);
     if (idx !== -1) this.workers.splice(idx, 1);
+    // Só a PRIMEIRA notícia da morte conta (no OOM chegam `'error'` e `'exit'`),
+    // e nada conta depois de `destroi()`.
+    const morteNova = idx !== -1 && motivo !== undefined && !this.encerrada;
 
     const idxLivre = this.livres.indexOf(w);
     if (idxLivre !== -1) this.livres.splice(idxLivre, 1);
@@ -467,12 +620,130 @@ export class PiscinaWorkers {
     // todas morreram, ninguém mais a chama, e cada tarefa enfileirada seria uma
     // promessa que nunca resolve. Rejeitar manda cada uma para o cálculo em
     // linha, que continua respondendo (mais devagar) em vez de não responder.
+    //
+    // Continua valendo com a recriação: entre a morte e a reposição (o backoff)
+    // não há worker nenhuma, e segurar a fila esperando uma worker que pode nem
+    // vir (teto atingido, ou a nova morrendo ao nascer) seria trocar resposta
+    // lenta por resposta nenhuma.
     if (motivo && this.workers.length === 0 && this.tarefas.tamanho > 0) {
       for (const t of this.tarefas.drena()) {
         this.mede(t);
         t.reject(motivo);
       }
     }
+
+    if (morteNova) {
+      const codigo = (motivo as NodeJS.ErrnoException).code;
+      this.mortes++;
+      this.ultimaMorte = {
+        em: new Date().toISOString(),
+        motivo: codigo ? `${codigo}: ${motivo.message}` : motivo.message,
+      };
+      console.warn(
+        `[piscina-workers] worker morreu (${this.ultimaMorte.motivo}); ` +
+          `${this.workers.length}/${this.alvo} vivas.`,
+      );
+      // **A tarefa da worker morta NÃO é reenviada para a nova.** Ela já foi
+      // rejeitada acima e segue para o cálculo em linha; reenviar seria dar à
+      // worker recém-nascida justamente a página que pode ter matado a
+      // anterior — e o laço de mortes passaria a ser automático.
+      this.agendaReposicao();
+    }
+  }
+
+  /**
+   * Agenda a reposição das workers que faltam, respeitando o freio.
+   *
+   * Um temporizador só para a piscina inteira: duas mortes durante o mesmo
+   * backoff são repostas pela mesma volta de `repoe()`, que preenche até o
+   * `alvo`. O temporizador é `unref()` — uma reposição pendente não pode,
+   * sozinha, segurar o processo vivo.
+   */
+  private agendaReposicao(): void {
+    if (this.encerrada || this.temporizadorDeReposicao !== null) return;
+    if (this.workers.length >= this.alvo) return;
+
+    const agora = Date.now();
+    const recentes = this.podaRecentes(agora);
+    let espera: number;
+    if (recentes >= this.politica.tetoNaJanela) {
+      // Teto atingido: para de repor e grita. Volta a tentar só quando a
+      // recriação mais antiga sair da janela. Com teto 0 não há recriação
+      // nenhuma na conta para sair dela — a reposição fica desligada de vez.
+      const maisAntiga = this.recriacoesRecentes[0];
+      espera =
+        maisAntiga === undefined
+          ? Number.POSITIVE_INFINITY
+          : Math.max(0, maisAntiga + this.politica.janelaMs - agora);
+      if (!this.suspensa) {
+        this.suspensa = true;
+        console.error(
+          `[piscina-workers] REPOSIÇÃO DE WORKERS SUSPENSA: ${recentes} recriações em ` +
+            `${Math.round(this.politica.janelaMs / 1000)} s (teto ${this.politica.tetoNaJanela}). ` +
+            `Última morte: ${this.ultimaMorte?.motivo ?? 'desconhecida'}. ` +
+            `${this.workers.length}/${this.alvo} workers vivas; sem worker, o cálculo roda na ` +
+            `thread principal ${
+              Number.isFinite(espera)
+                ? `até ${new Date(agora + espera).toISOString()}`
+                : 'até a API reiniciar'
+            }. Worker morrendo em laço é página maior que o heap da worker ` +
+            `(API_WORKER_HEAP_MB) ou script quebrado.`,
+        );
+      }
+      if (!Number.isFinite(espera)) return;
+    } else {
+      espera = Math.min(
+        this.politica.esperaInicialMs * 2 ** recentes,
+        this.politica.esperaMaximaMs,
+      );
+    }
+
+    this.reposicaoEm = agora + espera;
+    this.temporizadorDeReposicao = setTimeout(() => this.repoe(), espera);
+    this.temporizadorDeReposicao.unref();
+  }
+
+  /** Tira da conta as recriações que já saíram da janela; devolve quantas sobraram. */
+  private podaRecentes(agora: number): number {
+    const limite = agora - this.politica.janelaMs;
+    while (this.recriacoesRecentes.length > 0 && this.recriacoesRecentes[0]! <= limite) {
+      this.recriacoesRecentes.shift();
+    }
+    return this.recriacoesRecentes.length;
+  }
+
+  /**
+   * Sobe as workers que faltam até o `alvo`, uma a uma, cada uma contando no
+   * teto. A nova nasce vazia — sem dataset carregado, sem `CacheDeVisual` —, e
+   * por isso nenhuma invalidação (`invalidaPagina`) anterior precisa ser
+   * reenviada a ela: não há o que invalidar. As que vierem depois a alcançam,
+   * porque ela já está em `this.workers`.
+   */
+  private repoe(): void {
+    this.temporizadorDeReposicao = null;
+    if (this.encerrada) return;
+
+    while (this.workers.length < this.alvo) {
+      if (this.podaRecentes(Date.now()) >= this.politica.tetoNaJanela) {
+        this.agendaReposicao();
+        return;
+      }
+      // Conta ANTES de criar: um `new Worker` que lança também é uma volta do
+      // laço, e é justamente o caso que não pode girar sem freio.
+      this.recriacoesRecentes.push(Date.now());
+      try {
+        this.criaWorker();
+      } catch (err) {
+        console.error('[piscina-workers] Falha ao repor worker thread:', err);
+        this.agendaReposicao();
+        return;
+      }
+      this.workersRecriadas++;
+    }
+
+    this.suspensa = false;
+    console.warn(`[piscina-workers] piscina reposta: ${this.workers.length}/${this.alvo} workers.`);
+    this.processaFila();
   }
 
   /**
@@ -490,6 +761,13 @@ export class PiscinaWorkers {
   }
 
   destroi(): void {
+    // Primeiro a trava, depois o `terminate()`: os `'exit'` que ele provoca
+    // chegam depois e não podem ser lidos como morte a repor.
+    this.encerrada = true;
+    if (this.temporizadorDeReposicao !== null) {
+      clearTimeout(this.temporizadorDeReposicao);
+      this.temporizadorDeReposicao = null;
+    }
     for (const w of this.workers) {
       void w.terminate();
     }
