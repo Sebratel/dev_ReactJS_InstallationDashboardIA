@@ -266,6 +266,19 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const recortadas: string[] = [];
 
   const juncao = preservaEspecieDeJuncao(opts.model, opts.dir, { ...plano, tabelas });
+
+  // **Recusar ANTES de ler, não depois.** As conferências da calculada congelada
+  // (definição e idade) só dependem de CABEÇALHOS: o da calculada e o `geradoEm` de
+  // cada tabela física — e esses `preservaEspecieDeJuncao` acabou de ler. Feitas só
+  // no laço das calculadas, lá embaixo, elas recusavam DEPOIS de ler todas as tabelas
+  // físicas do disco: centenas de MB por página pesada, parte em `Int32Array` fora do
+  // heap. E a recusa por recongelamento é a passageira: a thread principal repete o
+  // pedido a cada ~1 s por até 20 s (`#esperaOSnapshotInteiro`, servidor.ts), nas duas
+  // workers — ~40 cargas inteiras jogadas fora por página logo depois de cada refresh,
+  // a suspeita principal do salto de +1 GB em ~45 s medido em produção (16/10/2026).
+  // A regra é a MESMA de lá, chamando as mesmas funções; muda só o momento.
+  confereCalculadasAntesDeLer(opts, plano, recalculaPorCorte, juncao.cabecalhos);
+
   const convertidas: string[] = [];
   for (const t of tabelas) {
     if (t.query === null) continue;
@@ -407,14 +420,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     // tradução nativa recalcula aqui: o DAX de `Status Protocolo Dia` leva horas, e
     // pagar isso por volta do poller não é opção — sem tradução, fica o arquivo, e o
     // motivo vai para `recalculadas`, que a página reporta.
-    const origens = calculatedTableSourceTables(opts.model, t);
-    const tocadas = (origens ?? []).filter((o) => opts.overlay?.has(normaliza(o)));
-    // A fonte só-do-poller (`aoVivo` em nativas.ts) não está no modelo: ninguém mescla o
-    // overlay dela em tabela nenhuma, e é chamando o mesclador com o disco vazio que
-    // saem as linhas ao vivo.
-    const vivaDeclarada = traducaoAoVivoDe(t);
-    const mescladorVivo = vivaDeclarada ? opts.overlay?.get(normaliza(vivaDeclarada.tabela)) : undefined;
-    if (vivaDeclarada && mescladorVivo) tocadas.push(vivaDeclarada.tabela);
+    const { tocadas, mescladorVivo } = tocadasPeloTempoReal(opts.model, t, opts.overlay);
     if (tocadas.length > 0) {
       const nativa = traducaoDe(t);
       if ('traducao' in nativa) {
@@ -449,6 +455,12 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
 
     if (opts.lerCalculadas !== false && fs.existsSync(arq)) {
       const cab = leCabecalho(arq);
+      // **Rede de segurança, não a recusa principal.** `confereCalculadasAntesDeLer`
+      // já fez estas duas conferências antes de qualquer tabela física ser lida, com
+      // os cabeçalhos de então. Aqui elas se repetem com o `geradoEm` que a LEITURA
+      // de fato viu: se o materializador trocou um arquivo de query entre um momento
+      // e outro (rename atômico no meio desta carga), o carimbo novo só aparece aqui,
+      // e é aqui que a calculada velha tem de ser recusada. Sem corrida, nunca dispara.
       confereTabelaCalculada(t, cab, opts.dir);
       confereIdadeDaCalculada(t, cab, maisNovoDeQuery, opts.dir, opts.model, geradoEmPorTabela);
 
@@ -815,6 +827,104 @@ function confereTabelaCalculada(
         `(${cabecalho.tabelaSha} -> ${agora}). As linhas em disco são as do DAX antigo — ` +
         `da tabela ou de alguma coluna calculada dela. Rode: ${comando}`,
     );
+  }
+}
+
+/**
+ * As origens de uma calculada que o tempo real mudou nesta carga, e o mesclador da
+ * fonte só-do-poller dela, se houver.
+ *
+ * Sai do laço das calculadas para ser chamada também por
+ * `confereCalculadasAntesDeLer`: é desta lista que depende se a calculada vai pela
+ * tradução nativa (que não recusa) ou pelo arquivo congelado (que confere e recusa).
+ * Duas cópias desta decisão seriam a conferência antecipada recusando o que o laço
+ * aceitaria, ou o contrário — exatamente o que ela promete não fazer.
+ */
+function tocadasPeloTempoReal(
+  model: SemanticModel,
+  t: ModelTable,
+  overlay: CarregaOptions['overlay'],
+): {
+  tocadas: string[];
+  mescladorVivo: ((doDisco: readonly Record<string, Escalar>[]) => Record<string, Escalar>[]) | undefined;
+} {
+  const origens = calculatedTableSourceTables(model, t);
+  const tocadas = (origens ?? []).filter((o) => overlay?.has(normaliza(o)));
+  // A fonte só-do-poller (`aoVivo` em nativas.ts) não está no modelo: ninguém mescla o
+  // overlay dela em tabela nenhuma, e é chamando o mesclador com o disco vazio que
+  // saem as linhas ao vivo.
+  const vivaDeclarada = traducaoAoVivoDe(t);
+  const mescladorVivo = vivaDeclarada ? overlay?.get(normaliza(vivaDeclarada.tabela)) : undefined;
+  if (vivaDeclarada && mescladorVivo) tocadas.push(vivaDeclarada.tabela);
+  return { tocadas, mescladorVivo };
+}
+
+/**
+ * O começo da recusa PASSAGEIRA de `confereIdadeDaCalculada` — a origem foi regravada
+ * e a calculada ainda não foi recongelada —, com o nome da calculada no grupo 1.
+ *
+ * Exportado para quem precisa distinguir esta recusa das permanentes (DAX ou definição
+ * mudou) sem reescrever o padrão: hoje o log da worker (`worker-calculador.ts`). A
+ * thread principal tem a cópia dela em `CALCULADA_SENDO_RECONGELADA` (servidor.ts); o
+ * teste `carrega-recusa-antes-de-ler.test.ts` prende a mensagem real a este padrão.
+ */
+export const RECUSA_POR_RECONGELAMENTO = /^Snapshot desatualizado: '([^']+)' foi congelada em /;
+
+/**
+ * As conferências da calculada congelada — `confereTabelaCalculada` e
+ * `confereIdadeDaCalculada` —, feitas **antes de ler qualquer tabela física**.
+ *
+ * **Por que dá para fazer antes.** A decisão de recusar não olha linha nenhuma. Ela
+ * compara o `geradoEm` do cabeçalho da calculada com o `geradoEm` das tabelas físicas
+ * de que ela nasce (ou, sem origem apurável, com o mais novo do plano), e o `tabelaSha`
+ * com o DAX de hoje. Tudo isso está nos cabeçalhos, que `preservaEspecieDeJuncao` já leu
+ * para toda tabela do plano — o mesmo carimbo que `le`/`leColunar` devolvem, porque o
+ * cabeçalho deles é a mesma primeira linha do mesmo arquivo.
+ *
+ * **Quem passa por aqui é exatamente quem passa pela conferência do laço**, e na mesma
+ * ordem (`calculatedTableOrder`), para a primeira recusa ser a mesma calculada com a
+ * mesma mensagem. Ficam de fora, como lá: a calculada fora do plano, a recalculada pelo
+ * corte da página, a que o tempo real tocou E tem tradução nativa (essa confere dentro
+ * de `recalculoParcial`, sob `try`, e nunca recusa), `lerCalculadas: false` e calculada
+ * sem arquivo.
+ *
+ * **A conferência do laço continua lá**, como rede de segurança: ver o comentário dela.
+ * Esta só pode recusar o que aquela também recusaria com os cabeçalhos deste instante —
+ * o carimbo de uma query só cresce, então o limite visto aqui nunca passa o de lá. A
+ * única diferença possível é de corrida, e para o lado de recusar mais cedo: a calculada
+ * recongelada ENTRE este instante e a leitura dela lá embaixo seria aceita pelo caminho
+ * antigo e é recusada aqui — o mesmo que o pedido ter chegado meio segundo antes. A
+ * recusa é a passageira, e a thread principal espera e repete.
+ */
+function confereCalculadasAntesDeLer(
+  opts: CarregaOptions,
+  plano: PlanoDeSnapshot,
+  recalculaPorCorte: ReadonlySet<string>,
+  cabecalhos: ReadonlyMap<string, CabecalhoDeSnapshot>,
+): void {
+  if (opts.lerCalculadas === false) return;
+  const noPlano = new Set(plano.calculadas.map(normaliza));
+  if (noPlano.size === 0) return;
+
+  // Os mesmos dois valores que o laço das tabelas físicas monta, só que dos cabeçalhos:
+  // o mapa tem uma entrada por tabela com query — as mesmas que o laço carrega.
+  const geradoEmPorTabela = new Map<string, string>();
+  let maisNovoDeQuery: string | null = null;
+  for (const [nome, cab] of cabecalhos) {
+    geradoEmPorTabela.set(nome, cab.geradoEm);
+    if (maisNovoDeQuery === null || cab.geradoEm > maisNovoDeQuery) maisNovoDeQuery = cab.geradoEm;
+  }
+
+  for (const t of calculatedTableOrder(opts.model)) {
+    if (!noPlano.has(normaliza(t.name))) continue;
+    if (recalculaPorCorte.has(normaliza(t.name))) continue;
+    const { tocadas } = tocadasPeloTempoReal(opts.model, t, opts.overlay);
+    if (tocadas.length > 0 && 'traducao' in traducaoDe(t)) continue;
+    const arq = arquivoDaCalculada(opts.dir, t.name);
+    if (!fs.existsSync(arq)) continue;
+    const cab = leCabecalho(arq);
+    confereTabelaCalculada(t, cab, opts.dir);
+    confereIdadeDaCalculada(t, cab, maisNovoDeQuery, opts.dir, opts.model, geradoEmPorTabela);
   }
 }
 
