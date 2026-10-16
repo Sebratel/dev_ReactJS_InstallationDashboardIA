@@ -65,6 +65,7 @@ export function AppShell(props: {
   ultimaAtualizacaoRealtime?: string | null;
   acoes?: ReactNode;
   usuario?: string;
+  nome?: string;
   foto?: string;
   /** A barra de filtros: vem antes de tudo na área, encostada na navegação. */
   barra?: ReactNode;
@@ -125,6 +126,7 @@ export function AppShell(props: {
             acoes={props.acoes}
             aoSair={props.aoSair}
             usuario={props.usuario}
+            nome={props.nome}
             foto={props.foto}
           />
         </div>

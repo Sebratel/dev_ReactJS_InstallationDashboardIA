@@ -1,5 +1,4 @@
-/** A foto vem em claim assinado do Google/Firebase e será usada pelo navegador.
- * Só HTTPS entra na sessão para não transformar o cabeçalho em conteúdo misto. */
+/** Dados visuais vêm em claims assinados do Google/Firebase e serão usados pelo navegador. */
 export function fotoDePerfilSegura(valor: unknown): string | undefined {
   if (typeof valor !== 'string' || valor.length === 0 || valor.length > 2_048) return undefined;
   try {
@@ -8,4 +7,10 @@ export function fotoDePerfilSegura(valor: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function nomeDePerfilSeguro(valor: unknown): string | undefined {
+  if (typeof valor !== 'string' || valor.length === 0 || valor.length > 160) return undefined;
+  const nome = valor.trim().replace(/\s+/g, ' ');
+  return nome || undefined;
 }

@@ -902,6 +902,7 @@ test('login de verdade: idToken válido cria sessão, e o cookie libera /api/*',
     verificadorGoogle: clienteQueDevolve({
       email: 'fulano@sebratel.com.br',
       hd: 'sebratel.com.br',
+      name: 'Fulano da Silva',
       picture: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
     }),
   });
@@ -921,7 +922,13 @@ test('login de verdade: idToken válido cria sessão, e o cookie libera /api/*',
 
     const depois = await s.busca('/api/dashboards', { headers: { cookie } });
     assert.equal(depois.status, 200);
-    assert.equal((await depois.json()).eu.foto, 'https://lh3.googleusercontent.com/a/foto-do-fulano');
+    assert.deepEqual((await depois.json()).eu, {
+      usuario: 'fulano@sebratel.com.br',
+      nome: 'Fulano da Silva',
+      foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+      papel: 'viewer',
+      podeGerir: false,
+    });
   } finally {
     await s.fecha();
   }

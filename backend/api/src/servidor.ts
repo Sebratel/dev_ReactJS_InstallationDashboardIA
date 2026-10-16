@@ -668,11 +668,15 @@ export class Servidor {
   }
 
   /** O que a sessão nova guarda de quem a criou (S2): o relógio do servidor e o IP. */
-  private dadosDaSessaoNova(req: http.IncomingMessage, foto?: string): { agora: number; ip: string; foto?: string } {
+  private dadosDaSessaoNova(
+    req: http.IncomingMessage,
+    perfil: { foto?: string; nome?: string } = {},
+  ): { agora: number; ip: string; foto?: string; nome?: string } {
     return {
       agora: this.opts.agora().getTime(),
       ip: ipDoPedido(req, this.opts.confiaNoProxy ?? false),
-      ...(foto ? { foto } : {}),
+      ...(perfil.foto ? { foto: perfil.foto } : {}),
+      ...(perfil.nome ? { nome: perfil.nome } : {}),
     };
   }
 
@@ -952,7 +956,7 @@ export class Servidor {
       return;
     }
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade.foto));
+    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
@@ -999,7 +1003,7 @@ export class Servidor {
       return;
     }
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade.foto));
+    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
@@ -1422,6 +1426,7 @@ export class Servidor {
       eu: {
         usuario: quem.usuario,
         ...(quem.foto ? { foto: quem.foto } : {}),
+        ...(quem.nome ? { nome: quem.nome } : {}),
         papel: this.opts.acesso.papelDe(quem),
         podeGerir: this.opts.acesso.podeGerir(quem),
       },

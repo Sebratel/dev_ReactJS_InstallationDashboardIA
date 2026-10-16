@@ -16,7 +16,7 @@
 // não copiada calada.
 
 import { OAuth2Client, type TokenPayload } from 'google-auth-library';
-import { fotoDePerfilSegura } from './foto-perfil.ts';
+import { fotoDePerfilSegura, nomeDePerfilSeguro } from './foto-perfil.ts';
 
 /** O que este módulo precisa do `OAuth2Client` — não a classe inteira, só o
  *  método usado. Permite injetar um cliente de mentira em teste. */
@@ -27,6 +27,7 @@ export interface VerificadorDeToken {
 export interface IdentidadeGoogle {
   email: string;
   foto?: string;
+  nome?: string;
 }
 
 /**
@@ -56,5 +57,6 @@ export async function verificaIdToken(
     return null;
   }
   const foto = fotoDePerfilSegura(payload.picture);
-  return { email: payload.email, ...(foto ? { foto } : {}) };
+  const nome = nomeDePerfilSeguro(payload.name);
+  return { email: payload.email, ...(foto ? { foto } : {}), ...(nome ? { nome } : {}) };
 }

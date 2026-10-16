@@ -62,12 +62,13 @@ function token(
 const verifica = (t: string) =>
   verificaIdTokenFirebase(t, { projectId: PROJETO, dominioCorporativo: DOMINIO, certificados, agora });
 
-test('token válido do nosso projeto, domínio certo: devolve e-mail, uid e foto HTTPS', async () => {
-  const r = await verifica(token({ picture: 'https://lh3.googleusercontent.com/a/foto-do-fulano' }));
+test('token válido do nosso projeto, domínio certo: devolve o perfil Google', async () => {
+  const r = await verifica(token({ name: 'Fulano da Silva', picture: 'https://lh3.googleusercontent.com/a/foto-do-fulano' }));
   assert.deepEqual(r, {
     email: 'fulano@sebratel.com.br',
     uid: 'uid-do-fulano',
     foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+    nome: 'Fulano da Silva',
   });
 });
 

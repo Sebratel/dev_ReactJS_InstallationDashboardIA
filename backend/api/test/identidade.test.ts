@@ -30,10 +30,12 @@ test('a foto recebida no login fica na sessão e volta na identidade', () => {
   const sessoes: Sessoes = new Map();
   const token = criaSessao(sessoes, 'fulano@sebratel.com.br', 12, {
     foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+    nome: 'Fulano da Silva',
   });
   assert.deepEqual(identificaPorSessao(sessoes, pedidoComCookie(`${NOME_COOKIE}=${token}`)), {
     usuario: 'fulano@sebratel.com.br',
     foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
+    nome: 'Fulano da Silva',
     papeis: ['autenticado'],
   });
 });

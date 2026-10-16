@@ -52,7 +52,7 @@
 // checagens acima são o que segura.
 
 import crypto from 'node:crypto';
-import { fotoDePerfilSegura } from './foto-perfil.ts';
+import { fotoDePerfilSegura, nomeDePerfilSeguro } from './foto-perfil.ts';
 
 /** Onde ficam as chaves públicas com que o Firebase assina ID token. São
  *  certificados X.509 em PEM, indexados pelo `kid` do cabeçalho do JWT. */
@@ -75,6 +75,7 @@ export interface IdentidadeFirebase {
    *  dia em que houver papéis por usuário. */
   uid: string;
   foto?: string;
+  nome?: string;
 }
 
 /** Cache das chaves públicas, com validade vinda do `Cache-Control` da resposta.
@@ -121,6 +122,7 @@ interface ClaimsFirebase {
   iat?: number;
   email?: string;
   picture?: unknown;
+  name?: unknown;
   email_verified?: boolean;
   firebase?: { sign_in_provider?: string };
 }
@@ -236,5 +238,6 @@ export async function verificaIdTokenFirebase(
   }
 
   const foto = fotoDePerfilSegura(claims.picture);
-  return { email: claims.email, uid: claims.sub, ...(foto ? { foto } : {}) };
+  const nome = nomeDePerfilSeguro(claims.name);
+  return { email: claims.email, uid: claims.sub, ...(foto ? { foto } : {}), ...(nome ? { nome } : {}) };
 }

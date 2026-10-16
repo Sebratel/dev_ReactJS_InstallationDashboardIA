@@ -214,6 +214,7 @@ export function DashboardPage() {
       }}
       titulo={nome}
       usuario={eu?.usuario}
+      nome={eu?.nome}
       foto={eu?.foto}
       dadoDe={paginaValida?.dadoDe ?? null}
       avisoSaude={avisoSaude}
