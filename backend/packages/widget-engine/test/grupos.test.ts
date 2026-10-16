@@ -310,3 +310,19 @@ test('combinacoesDistintas dá as mesmas combinações, na mesma ordem, que agru
     }
   }
 });
+
+test('o escopo do grupo só é montado quando alguém o lê, e uma vez só', () => {
+  const ev = montar();
+  let montados = 0;
+  const original = ev.scopeWithFilter.bind(ev);
+  ev.scopeWithFilter = ((...a: Parameters<typeof original>) => {
+    montados++;
+    return original(...a);
+  }) as typeof ev.scopeWithFilter;
+  const grupos = agrupar([chave('OS', 'CIDADE')], ev.rootScope(), ev, 't');
+  assert.equal(montados, 0, 'quem só lê `valores` (a matriz) não paga escopo nenhum');
+  const primeiro = grupos[0]!.escopo;
+  assert.equal(grupos[0]!.escopo, primeiro);
+  assert.equal(montados, 1);
+  assert.equal(ev.measureInScope('Total', primeiro), 300);
+});

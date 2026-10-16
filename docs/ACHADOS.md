@@ -15615,3 +15615,19 @@ com `incremental: [protocolos-geral]`.
 **NÃO medido:** a carga ponta a ponta com o M — o dbMaria recusa `DevSebratel` deste IP
 (`gestores-equipes`, dependência do M; a stack viva carrega normalmente). Falta no Docker:
 o `medio` com a `protocolos-geral` e o tempo do grupo antes/depois.
+
+## #226 — varredura do desperdício do #224 no resto do motor: só a matriz repetia (16/10)
+
+Procurados todos os que montam agrupamento (`agrupar`/`prepara`) e se leem o escopo do grupo:
+tabela só de chaves (corrigida no #224); tabela com medida e gráfico leem (toda série de
+gráfico é medida); a **matriz não lia** — monta o escopo da CÉLULA com `filtrosDe` dos dois
+eixos e dos grupos de eixo só usa `valores`. A lista dos seletores (`valoresDistintos`) não
+agrupa: varre a coluna uma vez.
+
+Correção na origem: em `prepara` o escopo do grupo virou leitura preguiçosa (montado na
+primeira leitura, guardado). Quem lê paga o mesmo de antes; a matriz deixa de pagar. Teste
+em `grupos.test.ts` conta as montagens (0 antes da leitura, 1 depois de duas leituras).
+
+Sintético (matriz com 30.000 linhas de eixo, 1 medida, worker com `resourceLimits`): antes
+passa com 96 MB e estoura com 64; depois passa com 64 e estoura com 48; ~25% mais rápida.
+Ganho menor que o da tabela porque a célula da matriz continua precisando do escopo dela.

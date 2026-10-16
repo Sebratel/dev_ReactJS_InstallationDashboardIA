@@ -344,9 +344,23 @@ export function prepara(
     return filtros.map((f) => ({ ...f, grupo }));
   };
 
-  const grupos = combinacoes.lista.map(({ valores }) => {
-    const comFiltro = ev.scopeWithFilter(base, base.filter.with(filtrosDe(valores)));
-    return { valores, escopo: ev.scopeWithGrouping(comFiltro, declaracao) };
+  // **O escopo é montado na primeira leitura, não aqui.** A matriz lê só `valores` dos
+  // grupos de cada eixo — o escopo dela é o da CÉLULA, montado com `filtrosDe` dos dois
+  // eixos juntos (`matriz.ts`). Montá-lo de antemão custava, por linha e por coluna do
+  // eixo, os filtros, o carimbo e dois escopos que ninguém lia (16/10/2026, o mesmo
+  // desperdício da tabela só de chaves, ACHADOS #224). Tabela com medida e gráfico leem
+  // o de todo grupo, uma vez cada, e não mudam.
+  const grupos = combinacoes.lista.map(({ valores }): Grupo => {
+    let escopo: EvalScope | undefined;
+    return {
+      valores,
+      get escopo(): EvalScope {
+        return (escopo ??= ev.scopeWithGrouping(
+          ev.scopeWithFilter(base, base.filter.with(filtrosDe(valores))),
+          declaracao,
+        ));
+      },
+    };
   });
 
   return { grupos, filtrosDe, declaracao };
