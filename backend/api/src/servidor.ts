@@ -79,6 +79,7 @@ import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente } from './saude-do-redis.ts';
+import { entradasDoCache, medeProcesso } from './memoria-da-saude.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
 import { leSpecDeSeguranca, type SpecDeSeguranca } from './spec-seguranca.ts';
@@ -269,6 +270,10 @@ export class Servidor {
   /** Qual adapter está ligado. Sai em `GET /api/saude` — sem isso não há como
    * saber, olhando um servidor de fora, se o Redis entrou ou se caiu no padrão. */
   private readonly tipoDeCache: string;
+  /** Entradas do cache de respostas NESTE processo (`entradasDoCache`), para o bloco
+   *  `memoria` da saúde. Uma função sobre o adapter, e não o adapter guardado num campo,
+   *  para que nada além da saúde ganhe um caminho que contorne `CacheDeResposta`. */
+  private readonly entradasDoCacheDeResposta: () => number | null;
   /** Página → avaliador carregado. A promessa entra no mapa **antes** de resolver,
    * para que dois pedidos simultâneos da mesma página não carreguem duas vezes. */
   private readonly carregadas = new Map<string, Promise<Carregado>>();
@@ -540,6 +545,7 @@ export class Servidor {
     // saber que o Redis entrou não basta, é preciso saber que ele entrou **atrás** da
     // memória e não no lugar dela.
     this.tipoDeCache = (adapter as { nome?: string }).nome ?? adapter.constructor.name;
+    this.entradasDoCacheDeResposta = () => entradasDoCache(adapter);
     this.cache = new CacheDeResposta({
       cache: adapter,
       ...(aoFalharCache ? { aoFalhar: aoFalharCache } : {}),
@@ -1060,7 +1066,7 @@ export class Servidor {
 
   // ------------------------------------------------------------------- rotas
 
-  private saude(res: http.ServerResponse, completa: boolean): void {
+  private async saude(res: http.ServerResponse, completa: boolean): Promise<void> {
     // **A saúde CONFERE o carimbo, não só relata.** Esta rota é polida a cada
     // 30 s pelo healthcheck do container (`docker-compose.prod.yml`), então ela
     // já é um relógio existente — usá-la como segundo ponto de reconciliação
@@ -1079,6 +1085,10 @@ export class Servidor {
       responde(res, 200, { ok: manifesto !== null, degradado: resumeDegradacao(refresh.queries ?? []).degradado });
       return;
     }
+    // Só na versão completa: o anônimo não paga nem a pergunta às workers. Nunca
+    // rejeita e espera no máximo `PRAZO_MEMORIA_WORKER_MS` — ver `PiscinaWorkers.memoria`.
+    const workers = await this.piscina.memoria();
+    const processo = medeProcesso();
     responde(res, 200, {
       // O resumo que um monitor externo lê sem entender o resto (ACHADOS #160). Continua
       // 200 de propósito: dado parado não se conserta reiniciando a API, e um 503 aqui
@@ -1122,9 +1132,34 @@ export class Servidor {
       // O sinal que denuncia vazamento ANTES do OOM, num processo com heap de
       // 10 GB (docs/DEPLOY.md §3.4) — sem isto, ninguém vê o RSS subindo entre
       // refreshes até o processo já ter morrido.
+      //
+      // **E desde 16/10/2026, separado por dono.** Naquele dia a API bateu no teto de
+      // 3 GB e `rssMB` + `heapUsedMB` não diziam QUEM encheu: as colunas dos datasets são
+      // TypedArray e moram fora do heap (`externalMB`/`arrayBuffersMB`), e cada worker é
+      // uma isolate própria que `process.memoryUsage()` da principal não enxerga. Ver
+      // `memoria-da-saude.ts`.
+      //
+      // `rssMB`/`heapUsedMB` continuam no topo, com o mesmo sentido de sempre: as sondas
+      // (`probe/src/memoria-api.ts`, `probe/src/staging.ts`) leem esses dois nomes.
       memoria: {
-        rssMB: Math.round(process.memoryUsage().rss / 1048576),
-        heapUsedMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+        rssMB: processo.rssMB,
+        heapUsedMB: processo.heapUsedMB,
+        processo,
+        // Uma por worker viva, medida DENTRO dela e sem RSS (lá ele é o do processo).
+        workers,
+        // As estruturas que crescem com o uso, em contagem: é o número que liga um pico
+        // de `heapUsedMB`/`arrayBuffersMB` a "N páginas carregadas" em vez de a um palpite.
+        caches: {
+          // Entradas na camada que mora NESTE processo; `null` se o adapter não sabe contar.
+          respostas: this.entradasDoCacheDeResposta(),
+          valoresDistintos: this.cacheValoresDistintos.size,
+          // Datasets na thread principal — os das workers estão em `workers[].medida.datasets`.
+          paginasCarregadas: this.carregadas.size,
+          visuais: {
+            itens: this.completos.itens,
+            mb: Math.round((this.completos.bytes / 1048576) * 10) / 10,
+          },
+        },
       },
       // Sem isto, `npm start` teria de **adivinhar** se a API está se aquecendo
       // sozinha — e adivinharia errado nas duas direções: esperando dez minutos por

@@ -1,4 +1,4 @@
-// Uma worker que MORRE ao receber a primeira mensagem, sem responder nada.
+// Uma worker que MORRE ao receber a primeira tarefa, sem responder nada.
 //
 // É o cenário que `piscina-ciclo-de-vida.test.ts` precisa reproduzir e que o
 // calculador de verdade não reproduz: em produção uma worker morre por estouro
@@ -11,6 +11,9 @@
 
 import { parentPort } from 'node:worker_threads';
 
-parentPort?.on('message', () => {
+parentPort?.on('message', (msg: unknown) => {
+  // A pergunta de memória da saúde (`memoria-da-saude.ts`) não é tarefa: estas workers
+  // de fixture a ignoram, e a saúde as publica com `medida: null` — o caso "não respondeu".
+  if ((msg as { tipo?: string }).tipo === 'memoria') return;
   process.exit(7);
 });
