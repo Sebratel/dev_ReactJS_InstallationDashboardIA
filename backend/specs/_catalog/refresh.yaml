@@ -7,17 +7,9 @@
 # Ver o docstring de index.ts para o porquê (read-modify-write do manifesto).
 #
 # Query que não aparece em grupo nenhum aqui NÃO tem refresh automático — continua
-# só no passe manual (`npm run snapshot -- --todas`). Isso vale hoje para QUATRO
-# categorias, nenhuma por acidente — as duas últimas só apareceram ao rodar o
-# primeiro tick de verdade em 02/09/2026:
-#
-#   1. 4 das 7 fontes nunca medidas isoladamente continuam de fora
-#      (gestores-equipes, dbMaria; apuracao-premiacao, capacidade-equipe,
-#      quadro-funcional, gsheets) — dar cadência automática a
-#      uma fonte sem custo medido é a mesma aposta sem evidência que
-#      incremental.yaml já cometeu uma vez com "67s, medido" antes de existir
-#      caminho de código que produzisse esse número (ACHADOS #80).
-#      `backlog-instalacao`/`backlog-agendado-futuro` (2 das 7) foram
+# só no passe manual (`npm run snapshot -- --todas`). Fonte que alimenta tela entra
+# em grupo somente depois de uma medição isolada. `backlog-instalacao`/
+# `backlog-agendado-futuro` (2 das 7) foram
 #      medidas ao vivo em 03/09/2026 (ACHADOS #93) — 58-60ms cada, entraram no
 #      grupo `quente` abaixo. `clima-tempo` (a 7ª, fonte web) foi medida ao vivo
 #      em 09/09/2026: **7.267 ms**, 1.869 linhas, 14 chamadas à Open-Meteo — e
@@ -416,11 +408,11 @@ grupos:
   #   retorno-prioritario ......   8.396 ms      TOTAL do grupo ....... 286 s
   #   instalacoes-reincidentes .   5.477 ms                            (24% de 1.200 s)
   #
-  # NÃO entraram, e a decisão é deliberada: `quadro-funcional` e `gestores-equipes`
-  # não alimentam tela nenhuma e já são rebuscadas a cada tick como dependência de M
-  # de quem as usa — um grupo as buscaria DE NOVO. E `quadro-funcional` traz CPF e RG
-  # (ver a regra 6 do CLAUDE.md): materializar sem necessidade é aumentar exposição
-  # de dado pessoal em troca de nada.
+  # `gestores-equipes` e `quadro-funcional` entraram em 16/10/2026: desde 14/10 as
+  # duas leem o DB_InstallationDashboard, alimentado pelo n8n, e não carregam mais
+  # CPF/RG. Embora sejam dependências M de outras queries deste grupo, precisam de
+  # carimbo próprio para não ficar sem vigia entre o snapshot diário. Medidas isoladas:
+  # 2.240 ms (20.053 linhas) + 608 ms (540 linhas), custo irrelevante no grupo de ~290 s.
   medio:
     queries:
       - alocacao-patrimonio
@@ -429,6 +421,8 @@ grupos:
       - backlog-agendado-futuro
       - protocolos-produtividade
       - clima-tempo
+      - gestores-equipes
+      - quadro-funcional
     intervalo_minutos: 30
     incremental: false
 
