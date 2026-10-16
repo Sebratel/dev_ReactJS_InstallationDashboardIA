@@ -26,7 +26,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { FilaDePrioridade, PiscinaWorkers, type MedidaDaTarefa } from '../src/piscina-workers.ts';
+import { FilaDePrioridade, PiscinaWorkers, rankDeVagas, type MedidaDaTarefa } from '../src/piscina-workers.ts';
 import { ORIGENS, origemDoPedido, prioridadeDe } from '../src/metricas.ts';
 import { ESCOPO_TODOS } from '../src/escopo-cache.ts';
 import type { MensagemCalculoWorker } from '../src/worker-calculador.ts';
@@ -39,12 +39,17 @@ const INTERACTIVE = prioridadeDe('interactive');
 const PREFETCH = prioridadeDe('prefetch');
 const WARMUP = prioridadeDe('warmup');
 
-/** Uma mensagem válida em forma; `janela.de` é a demora da worker de fixture. */
-function tarefa(demoraMs: number): Omit<MensagemCalculoWorker, 'idReq'> {
+/**
+ * Uma mensagem válida em forma; `janela.de` é a demora da worker de fixture. `pagina`
+ * decide a worker dona (afinidade, `piscina-workers.ts`): com duas workers, tarefas da
+ * MESMA página nunca se espalham pelas duas — o teste que quer as duas ocupadas tem de
+ * usar páginas de donas diferentes (`NA_VAGA`).
+ */
+function tarefa(demoraMs: number, pagina = 'fixture'): Omit<MensagemCalculoWorker, 'idReq'> {
   return {
     snapshotDir: path.join(AQUI, 'nao-existe'),
     specsDir: path.join(AQUI, 'nao-existe'),
-    dashboardSpec: { id: 'fixture', name: 'fixture', visuals: [] } as unknown as DashboardSpec,
+    dashboardSpec: { id: pagina, name: 'fixture', visuals: [] } as unknown as DashboardSpec,
     janela: { de: demoraMs, linhas: 10 },
     clicados: [],
     agoraIso: '2026-09-08T12:00:00.000Z',
@@ -52,6 +57,11 @@ function tarefa(demoraMs: number): Omit<MensagemCalculoWorker, 'idReq'> {
     escopo: ESCOPO_TODOS,
   };
 }
+
+/** Uma página por vaga de um pool de 2: `NA_VAGA[0]` tem dona diferente de `NA_VAGA[1]`. */
+const NA_VAGA = [0, 1].map((vaga) => {
+  for (let i = 0; ; i++) if (rankDeVagas(`fixture-${i}`, [0, 1])[0] === vaga) return `fixture-${i}`;
+});
 
 // ------------------------------------------------------- a estrutura sozinha
 
@@ -224,14 +234,19 @@ test('reserva (ACHADOS #163): com fundo enchendo a piscina, um clique NÃO esper
   // Duas workers, quatro aquecimentos de 400 ms na fila, e um clique 30 ms depois. Sem
   // a reserva, as duas workers pegam aquecimento e o clique espera ~400 ms; com ela,
   // uma worker fica livre e o clique sai na hora.
+  //
+  // Os aquecimentos são de DUAS páginas com donas diferentes (`NA_VAGA`): com a
+  // afinidade, quatro aquecimentos da mesma página ficariam todos na mesma dona, e
+  // `ocupados === 1` passaria mesmo sem reserva nenhuma — o teste deixaria de provar algo.
   const p = new PiscinaWorkers({ tamanhoPool: 2, scriptDaWorker: LENTO });
   try {
     // As duas workers de pé ANTES de medir: elas nascem no construtor, mas carregam o script
     // depois, e com a máquina ocupada (a suíte inteira em paralelo) a partida passava de
     // 250 ms — o clique "esperava" a worker livre terminar de subir, não a fila (falhou em 2 de
-    // 3 rodadas da suíte em 09/10, ACHADOS #203). Dois cliques simultâneos ocupam as duas.
-    await Promise.all([p.executa(tarefa(1), INTERACTIVE), p.executa(tarefa(1), INTERACTIVE)]);
-    const fundo = [1, 2, 3, 4].map(() => p.executa(tarefa(400), WARMUP));
+    // 3 rodadas da suíte em 09/10, ACHADOS #203). Dois cliques simultâneos, de páginas com
+    // donas diferentes, ocupam as duas (da mesma página, cairiam os dois na mesma dona).
+    await Promise.all(NA_VAGA.map((pg) => p.executa(tarefa(1, pg), INTERACTIVE)));
+    const fundo = [0, 1, 0, 1].map((v) => p.executa(tarefa(400, NA_VAGA[v]), WARMUP));
     await new Promise((r) => setTimeout(r, 30));
     assert.equal(p.estado.ocupados, 1, 'o fundo só pode ocupar workers - 1');
     const t0 = Date.now();

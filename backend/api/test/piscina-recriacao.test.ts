@@ -18,7 +18,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { POLITICA_DE_RECRIACAO, PiscinaWorkers } from '../src/piscina-workers.ts';
+import { POLITICA_DE_RECRIACAO, PiscinaWorkers, rankDeVagas } from '../src/piscina-workers.ts';
 import { ESCOPO_TODOS } from '../src/escopo-cache.ts';
 import type { MensagemCalculoWorker } from '../src/worker-calculador.ts';
 import type { DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
@@ -30,11 +30,11 @@ const MORRE = path.join(AQUI, 'fixtures', 'worker-que-morre.ts');
 const RESPONDE = path.join(AQUI, 'fixtures', 'worker-que-responde.ts');
 const ESTOURA = path.join(AQUI, 'fixtures', 'worker-que-estoura.ts');
 
-function tarefa(identidade = 'fixture@2026-10-16'): Omit<MensagemCalculoWorker, 'idReq'> {
+function tarefa(identidade = 'fixture@2026-10-16', pagina = 'fixture'): Omit<MensagemCalculoWorker, 'idReq'> {
   return {
     snapshotDir: path.join(AQUI, 'nao-existe'),
     specsDir: path.join(AQUI, 'nao-existe'),
-    dashboardSpec: { id: 'fixture', name: 'fixture', visuals: [] } as unknown as DashboardSpec,
+    dashboardSpec: { id: pagina, name: 'fixture', visuals: [] } as unknown as DashboardSpec,
     janela: { de: 0, linhas: 10 },
     clicados: [],
     agoraIso: '2026-10-16T12:00:00.000Z',
@@ -84,8 +84,13 @@ test('worker que morre é REPOSTA: a piscina volta a ter N e volta a calcular', 
     assert.equal(p.recriacao.proximaReposicaoEm, null);
 
     // Contagem de volta a 2 não basta: a reposta tem de pegar trabalho. Duas
-    // tarefas ao mesmo tempo ocupam as duas workers.
-    const duas = await Promise.all([p.executa(tarefa()), p.executa(tarefa())]);
+    // tarefas ao mesmo tempo, de páginas com donas DIFERENTES, ocupam as duas workers —
+    // da mesma página iriam as duas para a mesma dona (afinidade, `piscina-workers.ts`),
+    // e a reposta podia nunca ser exercitada.
+    const naVaga = (vaga: number): string => {
+      for (let i = 0; ; i++) if (rankDeVagas(`fixture-${i}`, [0, 1])[0] === vaga) return `fixture-${i}`;
+    };
+    const duas = await Promise.all([0, 1].map((v) => p.executa(tarefa(undefined, naVaga(v)))));
     for (const r of duas) assert.equal(r.ok, true);
     // Nenhuma tarefa da worker morta foi reexecutada às escondidas.
     assert.equal(p.recriacao.mortes, 1);

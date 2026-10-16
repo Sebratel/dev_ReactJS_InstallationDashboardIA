@@ -34,6 +34,108 @@ export interface OpcoesPiscina {
    * de backoff nem dez minutos de janela.
    */
   recriacao?: Partial<PoliticaDeRecriacao>;
+  /**
+   * Quanto um pedido interativo espera a worker dona da página antes de desviar para
+   * outra. Padrão: `ESPERA_LONGA_PADRAO_MS`. Produção nunca passa isto; existe para o
+   * teste não ter de esperar 10 s.
+   */
+  esperaLongaMs?: number;
+}
+
+/**
+ * Quanto um pedido INTERATIVO aceita esperar a worker dona da página, ocupada com outro
+ * pedido interativo, antes de desviar para uma worker livre e pagar a cópia do dataset.
+ * Ver `PiscinaWorkers.destinoDe`.
+ *
+ * **Por que 10 s.** Desviar não sai de graça nem em tempo: a outra worker, sem o dataset
+ * da página, paga a carga fria — 10–20 s medidos nas páginas pesadas — e ainda segura
+ * uma segunda cópia de 250 MB–1 GB. Enquanto a espera acumulada é menor que uma carga
+ * fria, esperar a dona (que já tem o dataset quente) quase sempre termina antes. Passado
+ * disso, a dona está mastigando uma fila de verdade e quem clicou já esperou o preço de
+ * uma carga: a memória a mais vira o mal menor. É o piso da faixa medida, não o meio,
+ * porque o erro para cima (usuário parado) dói mais que o erro para baixo (uma cópia
+ * temporária, que o teto de 2 do `cacheDeCarga` acaba despejando).
+ */
+export const ESPERA_LONGA_PADRAO_MS = 10_000;
+
+/**
+ * Para onde as tarefas foram, desde que a piscina subiu. Feito para sair em
+ * `GET /api/saude` (`PiscinaWorkers.afinidade`): é o número que diz se a afinidade está
+ * de fato poupando as cópias de dataset (quase tudo em `naDona`) ou se os desvios a
+ * estão anulando — e, em `esperaramADona`, quanto ela está cobrando em espera.
+ */
+export interface EstadoDaAfinidade {
+  /** Despachadas para a dona da página, com a piscina inteira de pé. */
+  naDona: number;
+  /**
+   * Despachadas para a dona SUBSTITUTA: a dona de verdade está morta (aguardando
+   * reposição) e a página foi remapeada, de forma determinística, para a próxima do
+   * ranking. Volta a zero de crescimento quando a reposta nasce no mesmo lugar.
+   */
+  remapeadas: number;
+  /** Interativas que desviaram porque a dona estava num cálculo de fundo (warmup/prefetch). */
+  desviosPorFundo: number;
+  /** Interativas que desviaram depois de esperar `esperaLongaMs` pela dona. */
+  desviosPorEspera: number;
+  /** Sem id de página: seguiram o LIFO de antes da afinidade. */
+  semPagina: number;
+  /**
+   * Das despachadas, quantas ficaram na fila esperando a dona COM outra worker livre ao
+   * lado — o custo de latência da afinidade. Sem afinidade, essas teriam saído na hora.
+   */
+  esperaramADona: number;
+  /** O limite em vigor, para quem lê a saúde não ter de adivinhar a configuração. */
+  esperaLongaMs: number;
+}
+
+/**
+ * O ranking das vagas (`0..alvo-1`) da piscina para uma página: a primeira é a dona, a
+ * segunda é para onde a página vai se a dona sair, e assim por diante.
+ *
+ * **Hashing de maior peso (rendezvous), e não `hash(página) % workers vivas`.** O módulo
+ * pelo nº de vivas remapeia QUASE TODAS as páginas quando uma worker morre (com 2 → 1 →
+ * 2, todas as páginas da que sobrou podiam trocar de dona na volta) — e cada troca é um
+ * dataset recarregado e uma cópia a mais até o despejo. No rendezvous, cada página
+ * pontua cada vaga e fica com a de maior nota: tirar uma vaga do jogo só move as páginas
+ * que eram DELA (para a vaga seguinte do ranking delas, que é determinística), e a vaga
+ * reposta recebe de volta exatamente essas, sem mexer nas outras.
+ *
+ * **Vaga, não worker.** O ranking é sobre o número da vaga, que a worker reposta herda
+ * da morta (`criaWorker(vaga)` em `repoe`). Por isso a dona é estável enquanto o `alvo`
+ * não muda: morte e reposição não reembaralham nada.
+ *
+ * O separador é `\u0000` porque não pode aparecer num id de página — `a` + `1` e `a1`
+ * nunca colidem. E é, entre os três que medimos (`#`, `:`, NUL), um dos dois que mandam
+ * `agendamento-field` e `protocolos-detalhados` — as duas páginas mais pesadas no teste
+ * de carga de 16/10 — para vagas diferentes com o pool padrão de 2 (com `#` as duas
+ * caíam na mesma worker, que passaria a segurar sozinha os dois maiores datasets e a
+ * serializar quem abre as duas). `piscina-afinidade.test.ts` trava essa separação: um
+ * hash novo que junte as duas tem de ser decisão, não acidente.
+ */
+export function rankDeVagas(pagina: string, vagas: readonly number[]): number[] {
+  const nota = (vaga: number): number => {
+    // FNV-1a de 32 bits, com a mistura final do MurmurHash3: o FNV sozinho espalha mal
+    // os bits altos de strings que diferem só no fim — exatamente o caso aqui, em que
+    // todas as notas de uma página só diferem no número da vaga.
+    const s = `${pagina}\u0000${vaga}`;
+    let h = 0x811c9dc5;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    h ^= h >>> 16;
+    h = Math.imul(h, 0x85ebca6b);
+    h ^= h >>> 13;
+    h = Math.imul(h, 0xc2b2ae35);
+    h ^= h >>> 16;
+    return h >>> 0;
+  };
+  // Empate (improvável em 32 bits) desempata pela vaga menor: o ranking nunca depende
+  // da ordem em que as vagas chegaram.
+  return [...vagas]
+    .map((vaga) => ({ vaga, n: nota(vaga) }))
+    .sort((a, b) => b.n - a.n || a.vaga - b.vaga)
+    .map((x) => x.vaga);
 }
 
 /**
@@ -215,6 +317,18 @@ interface TarefaPendente {
   enfileiradaEm: number;
   /** Quando foi despachada para a worker — o fim de `esperaMs`. */
   despachadaEm: number;
+  /**
+   * Ficou na fila pela afinidade com outra worker livre ao lado. Marca, não contador:
+   * a mesma tarefa é recusada a cada varredura da fila, e contar cada recusa mediria
+   * quantas vezes a fila andou, não quantas tarefas pagaram espera.
+   */
+  esperouADona: boolean;
+}
+
+/** Para onde uma tarefa vai e por quê — a chave de `EstadoDaAfinidade` que ela soma. */
+interface Destino {
+  worker: Worker;
+  via: 'naDona' | 'remapeadas' | 'desviosPorFundo' | 'desviosPorEspera' | 'semPagina';
 }
 
 /** O que `medeCom()` recebe quando uma tarefa termina (bem ou mal). */
@@ -264,6 +378,32 @@ export class FilaDePrioridade<T extends { prioridade: number }> {
     for (let i = 0; i <= Math.min(classeMax, this.#filas.length - 1); i++) {
       const fila = this.#filas[i]!;
       if (fila.length > 0) return fila.shift();
+    }
+    return undefined;
+  }
+
+  /**
+   * A primeira tarefa — na ordem de `saiAte` — para a qual `escolhe` devolve um destino,
+   * tirada da fila junto com o destino. As que `escolhe` recusa ficam onde estavam, na
+   * mesma posição.
+   *
+   * **Existe por causa da afinidade (16/10/2026).** Com ela, a tarefa da frente pode
+   * estar esperando uma worker específica (a dona da página dela) enquanto outra worker
+   * está livre; `saiAte` só sabe tirar a da frente, e a piscina inteira travaria atrás
+   * dela — a página B esperando a dona da página A terminar. Varrer é O(n) por despacho,
+   * e n aqui é a fila de uma API com duas workers: dezenas, não milhares.
+   *
+   * O destino volta junto, e não por uma variável de fora preenchida no callback, para o
+   * tipo dele chegar ao chamador sem `!` — o TypeScript não acompanha atribuição feita
+   * dentro de closure e trataria a variável como `undefined` para sempre.
+   */
+  tiraPrimeira<D>(classeMax: number, escolhe: (item: T) => D | undefined): { item: T; destino: D } | undefined {
+    for (let i = 0; i <= Math.min(classeMax, this.#filas.length - 1); i++) {
+      const fila = this.#filas[i]!;
+      for (let j = 0; j < fila.length; j++) {
+        const destino = escolhe(fila[j]!);
+        if (destino !== undefined) return { item: fila.splice(j, 1)[0]!, destino };
+      }
     }
     return undefined;
   }
@@ -343,9 +483,34 @@ export class PiscinaWorkers {
   private workersRecriadas = 0;
   private ultimaMorte: { em: string; motivo: string } | null = null;
 
+  // --- Afinidade página → worker (ver `destinoDe`) ---------------------------
+  /**
+   * A vaga de cada worker viva (`0..alvo-1`). A reposta herda a vaga da morta, e é isso
+   * que mantém a dona de cada página estável através de morte e reposição — ver
+   * `rankDeVagas`.
+   */
+  private readonly vagaDe = new Map<Worker, number>();
+  private readonly esperaLongaMs: number;
+  private readonly contagemDaAfinidade: Omit<EstadoDaAfinidade, 'esperaLongaMs'> = {
+    naDona: 0,
+    remapeadas: 0,
+    desviosPorFundo: 0,
+    desviosPorEspera: 0,
+    semPagina: 0,
+    esperaramADona: 0,
+  };
+  /**
+   * Preenchido a cada varredura da fila: o instante mais cedo em que um interativo,
+   * hoje esperando a dona ocupada com outro interativo, completa `esperaLongaMs` e
+   * passa a poder desviar. Ver `armaDesvioPorEspera`.
+   */
+  private desvioPossivelEm = Number.POSITIVE_INFINITY;
+  private temporizadorDeDesvio: NodeJS.Timeout | null = null;
+
   constructor(opts: OpcoesPiscina = {}) {
     this.desativado = opts.desativado ?? false;
     this.politica = { ...POLITICA_DE_RECRIACAO, ...opts.recriacao };
+    this.esperaLongaMs = opts.esperaLongaMs ?? ESPERA_LONGA_PADRAO_MS;
 
     if (this.desativado) return;
 
@@ -384,7 +549,7 @@ export class PiscinaWorkers {
 
     for (let i = 0; i < numWorkers; i++) {
       try {
-        this.criaWorker();
+        this.criaWorker(i);
       } catch (err) {
         console.error('[piscina-workers] Não foi possível criar worker thread:', err);
       }
@@ -396,8 +561,12 @@ export class PiscinaWorkers {
    * se `new Worker` lançar — quem chama decide o que isso significa (no
    * construtor é log e segue; na reposição, conta como tentativa e volta para o
    * freio).
+   *
+   * `vaga` é o lugar dela no ranking da afinidade (`rankDeVagas`). Só é registrada
+   * depois de o `new Worker` dar certo: uma vaga cuja criação lançou continua vazia, e
+   * as páginas dela seguem atendidas pela substituta.
    */
-  private criaWorker(): void {
+  private criaWorker(vaga: number): void {
     const r = this.receita!;
     const w = new Worker(r.script, {
       execArgv: r.execArgv,
@@ -459,6 +628,7 @@ export class PiscinaWorkers {
     });
 
     this.workers.push(w);
+    this.vagaDe.set(w, vaga);
     this.livres.push(w);
   }
 
@@ -506,6 +676,14 @@ export class PiscinaWorkers {
   }
 
   /**
+   * Para onde as tarefas foram (dona, substituta, desvio), para `GET /api/saude`. Cópia,
+   * para quem lê não poder mexer na contagem. Ver `EstadoDaAfinidade`.
+   */
+  get afinidade(): EstadoDaAfinidade {
+    return { ...this.contagemDaAfinidade, esperaLongaMs: this.esperaLongaMs };
+  }
+
+  /**
    * Quem recebe a espera e a execução de cada tarefa que termina.
    *
    * É um método e não uma opção de construtor porque `Servidor` também aceita
@@ -543,6 +721,7 @@ export class PiscinaWorkers {
         prioridade,
         enfileiradaEm: Date.now(),
         despachadaEm: 0,
+        esperouADona: false,
       };
       this.tarefas.entra(tarefa);
       this.processaFila();
@@ -550,24 +729,27 @@ export class PiscinaWorkers {
   }
 
   /**
-   * `.pop()`, não `.shift()` — a MESMA lista de livres, na ordem inversa, e a troca
-   * é o que faz `cacheDeCarga` (`worker-calculador.ts`) valer alguma coisa na
-   * prática.
+   * Despacha o que puder para as workers livres: a tarefa mais urgente (e, dentro da
+   * classe, a mais antiga) QUE TENHA DESTINO, segundo `destinoDe`.
    *
-   * Cada worker guarda o dataset carregado NA SUA PRÓPRIA memória — pedidos
-   * seguidos só reaproveitam se caírem NA MESMA worker. Com `.shift()` (FIFO) a
-   * lista de livres é um rodízio: a worker que acabou de atender vai para o FIM
-   * da fila e só volta a ser escolhida depois de todas as outras — com 2
-   * workers, isso é ALTERNAR a cada pedido, e uma sessão clicando em técnicos
-   * diferentes nunca acerta a mesma worker duas vezes seguidas.
+   * **Por que a escolha da worker deixou de ser LIFO (16/10/2026).** Até aqui a worker
+   * era a do topo da lista de livres (`.pop()`): a que acabou de atender era a primeira
+   * candidata ao próximo pedido, e uma sessão clicando em sequência acertava a mesma
+   * worker — e o mesmo `cacheDeCarga` (`worker-calculador.ts`), que mora na memória de
+   * CADA worker. Com mais de um usuário, ou com o aquecedor rodando junto, a página caía
+   * em qualquer uma: medido no teste de carga de 16/10, `agendamento-field` carregou 4
+   * vezes numa worker e 2 na outra, `protocolos-detalhados` 4 + 3. Cada dataset de página
+   * pesada tem 250 MB–1 GB, boa parte em `Int32Array` FORA do heap de 512 MB da worker —
+   * o `resourceLimits` nem vê —, e duas workers com a mesma página é o dobro disso: a
+   * principal causa que sobrava do pico de memória de curto prazo.
    *
-   * Com `.pop()` (LIFO), a worker que acabou de atender é a PRIMEIRA candidata
-   * ao próximo pedido — e como um pedido só demora enquanto ela está ocupada, é
-   * exatamente enquanto ela está ocupada que um pedido CONCORRENTE (outro
-   * usuário) forçosamente cai na outra: a distribuição entre usuários
-   * simultâneos continua correta, só que agora por NECESSIDADE (só há uma
-   * livre) em vez de por rodízio. Uma sessão sozinha, clicando em sequência
-   * (o caso comum), acerta a mesma worker sempre.
+   * Agora a página tem dona (`destinoDe`, `rankDeVagas`), e a tarefa espera a dona em vez
+   * de ir para a outra worker livre. O LIFO continua só para tarefa sem página.
+   *
+   * A varredura (`tiraPrimeira`) é o que impede a espera de virar bloqueio de cabeça de
+   * fila: a tarefa da frente esperando a dona dela não segura a de outra página cuja dona
+   * está livre. A ordem por classe e por chegada continua sendo a de antes — só pula quem
+   * não tem para onde ir AGORA.
    */
   private processaFila(): void {
     while (this.livres.length > 0) {
@@ -577,15 +759,121 @@ export class PiscinaWorkers {
       // um clique esperava um cálculo inteiro (até 17,6 s medidos). Fundo (prefetch,
       // warmup) usa no máximo `workers - 1`; a última livre só pega pedido interativo.
       // Com uma worker só não há reserva — senão o fundo nunca rodaria.
+      //
+      // A afinidade não mexe nisto: ela decide QUAL worker, a reserva decide QUANTAS o
+      // fundo pode ocupar. Um fundo cuja dona é justamente a última livre continua
+      // barrado pela reserva, como antes.
       const deFundo = [...this.pendentesPorWorker.values()].filter((t) => t.prioridade > 0).length;
       const fundoPode = this.workers.length <= 1 || deFundo < this.workers.length - 1;
-      const tarefa = fundoPode ? this.tarefas.sai() : this.tarefas.saiAte(0);
-      if (tarefa === undefined) return;
-      const worker = this.livres.pop()!;
-      tarefa.despachadaEm = Date.now();
-      this.pendentesPorWorker.set(worker, tarefa);
-      worker.postMessage(tarefa.msg);
+      const agora = Date.now();
+      this.desvioPossivelEm = Number.POSITIVE_INFINITY;
+      const saida = this.tarefas.tiraPrimeira(
+        fundoPode ? CLASSES_DE_PRIORIDADE - 1 : 0,
+        (t) => this.destinoDe(t, agora),
+      );
+      if (saida === undefined) break;
+      const { item: tarefa, destino } = saida;
+      this.livres.splice(this.livres.indexOf(destino.worker), 1);
+      this.contagemDaAfinidade[destino.via]++;
+      if (tarefa.esperouADona) this.contagemDaAfinidade.esperaramADona++;
+      tarefa.despachadaEm = agora;
+      this.pendentesPorWorker.set(destino.worker, tarefa);
+      destino.worker.postMessage(tarefa.msg);
     }
+    this.armaDesvioPorEspera();
+  }
+
+  /**
+   * Para qual worker LIVRE esta tarefa pode ir agora, ou `undefined` se ela deve esperar.
+   *
+   * **A regra.**
+   *   1. Sem id de página: a livre do topo (o LIFO de antes da afinidade).
+   *   2. A dona é a primeira worker VIVA no `rankDeVagas` da página. Livre → vai para ela.
+   *      Se a dona de verdade (a primeira vaga do ranking) está morta esperando
+   *      reposição, a primeira viva É a substituta — determinística, e a mesma para
+   *      todos os pedidos da página até a reposta nascer na vaga antiga.
+   *   3. Dona ocupada e tarefa de FUNDO (prefetch/warmup): espera a dona. Sempre — é o
+   *      aquecimento que mais semeava cópias, e ninguém está olhando para ele.
+   *   4. Dona ocupada e tarefa INTERATIVA: espera a dona, EXCETO
+   *        a. se a dona está num cálculo de FUNDO → desvia na hora. A reserva de #163
+   *           existe para quem clica não esperar aquecimento (17,6 s medidos); com a
+   *           afinidade, a worker reservada estaria livre e o clique parado atrás do
+   *           aquecimento na dona, que é exatamente o que a reserva quis matar.
+   *           Vale também quando o fundo é da MESMA página, e isso tem preço: a outra
+   *           worker paga a carga fria e guarda uma cópia. Esperar talvez fosse mais
+   *           rápido (o fundo pode estar carregando o mesmo dataset), mas só se a chave
+   *           do `cacheDeCarga` do fundo e a do clique coincidirem — o que hoje depende
+   *           de `libera`/`formaCompleta` e não está medido. Até medir, ganha a regra que
+   *           #163 já provou: clique não espera fundo. `desviosPorFundo` diz quanto isso
+   *           custa em cópias.
+   *        b. se ela já esperou `esperaLongaMs` → desvia. Ver `ESPERA_LONGA_PADRAO_MS`.
+   *      O desvio vai para a próxima LIVRE no ranking da página (não para uma qualquer):
+   *      desvios repetidos da mesma página caem na mesma segunda worker, que reaproveita
+   *      a cópia em vez de fazer uma terceira.
+   *
+   * Uma tarefa só é marcada como "esperou a dona" quando havia outra worker livre — sem
+   * nenhuma livre ela esperaria de qualquer jeito, e não é custo da afinidade.
+   */
+  private destinoDe(t: TarefaPendente, agora: number): Destino | undefined {
+    const pagina = t.msg.dashboardSpec?.id;
+    if (typeof pagina !== 'string' || pagina === '') {
+      const topo = this.livres[this.livres.length - 1];
+      return topo === undefined ? undefined : { worker: topo, via: 'semPagina' };
+    }
+
+    const porVaga = new Map<number, Worker>();
+    for (const w of this.workers) {
+      const vaga = this.vagaDe.get(w);
+      if (vaga !== undefined) porVaga.set(vaga, w);
+    }
+    const ranking = rankDeVagas(pagina, Array.from({ length: this.alvo }, (_, i) => i));
+    const vivas = ranking.flatMap((v) => porVaga.get(v) ?? []);
+    const dona = vivas[0];
+    if (dona === undefined) return undefined;
+    const livre = (w: Worker): boolean => this.livres.includes(w);
+
+    if (livre(dona)) {
+      return { worker: dona, via: porVaga.get(ranking[0]!) === dona ? 'naDona' : 'remapeadas' };
+    }
+    const outra = vivas.slice(1).find(livre);
+    if (outra === undefined) return undefined;
+
+    if (t.prioridade === 0) {
+      const daDona = this.pendentesPorWorker.get(dona);
+      if (daDona !== undefined && daDona.prioridade > 0) {
+        return { worker: outra, via: 'desviosPorFundo' };
+      }
+      if (agora - t.enfileiradaEm >= this.esperaLongaMs) {
+        return { worker: outra, via: 'desviosPorEspera' };
+      }
+      this.desvioPossivelEm = Math.min(this.desvioPossivelEm, t.enfileiradaEm + this.esperaLongaMs);
+    }
+    t.esperouADona = true;
+    return undefined;
+  }
+
+  /**
+   * Acorda a fila quando um interativo parado na dona completa `esperaLongaMs`.
+   *
+   * Sem isto a regra 4b de `destinoDe` só valeria por acaso: a fila só é varrida quando
+   * uma tarefa entra ou uma worker termina, e um clique esperando atrás de um cálculo de
+   * 20 s na dona — com a outra worker LIVRE e nada mais acontecendo — ficaria os 20 s
+   * inteiros, porque ninguém olharia para ele no 10º segundo.
+   *
+   * Um temporizador para a piscina inteira, rearmado a cada varredura que termina com
+   * worker livre e alguém esperando a dona; `unref()` pela mesma razão do da reposição.
+   */
+  private armaDesvioPorEspera(): void {
+    if (this.encerrada || this.livres.length === 0 || !Number.isFinite(this.desvioPossivelEm)) return;
+    if (this.temporizadorDeDesvio !== null) clearTimeout(this.temporizadorDeDesvio);
+    // +1 ms: o temporizador não pode acordar no milissegundo em que a espera ainda é
+    // `esperaLongaMs - 0,x` e voltar a dormir sem desviar.
+    const espera = Math.max(0, this.desvioPossivelEm - Date.now()) + 1;
+    this.temporizadorDeDesvio = setTimeout(() => {
+      this.temporizadorDeDesvio = null;
+      this.processaFila();
+    }, espera);
+    this.temporizadorDeDesvio.unref();
   }
 
   /**
@@ -622,6 +910,9 @@ export class PiscinaWorkers {
 
     const idxLivre = this.livres.indexOf(w);
     if (idxLivre !== -1) this.livres.splice(idxLivre, 1);
+    // A vaga fica vazia: as páginas dela passam à próxima viva do ranking de cada uma
+    // (`destinoDe`) até `repoe` pôr uma worker nova NESTA vaga.
+    this.vagaDe.delete(w);
 
     const tarefa = this.pendentesPorWorker.get(w);
     this.pendentesPorWorker.delete(w);
@@ -664,6 +955,14 @@ export class PiscinaWorkers {
       // anterior — e o laço de mortes passaria a ser automático.
       this.agendaReposicao();
     }
+
+    // **Quem esperava a dona morta não pode esperar a reposição.** Com a afinidade, uma
+    // tarefa pode estar na fila esperando ESTA worker com a outra livre ao lado; antes,
+    // nenhuma tarefa esperava uma worker específica e a morte não tinha o que destravar.
+    // Varrer agora remapeia essas tarefas para a substituta (a próxima viva no ranking
+    // da página) em vez de deixá-las paradas o backoff inteiro — que pode ser 30 s, ou
+    // para sempre com a reposição suspensa.
+    if (!this.encerrada && this.workers.length > 0) this.processaFila();
   }
 
   /**
@@ -746,8 +1045,14 @@ export class PiscinaWorkers {
       // Conta ANTES de criar: um `new Worker` que lança também é uma volta do
       // laço, e é justamente o caso que não pode girar sem freio.
       this.recriacoesRecentes.push(Date.now());
+      // A reposta nasce na vaga da morta — é o que devolve a ela as MESMAS páginas
+      // (`rankDeVagas`), em vez de reembaralhar a dona de todas. Há sempre uma vaga
+      // vazia aqui: `vagaDe` tem uma entrada por worker viva, e há menos vivas que `alvo`.
+      const ocupadas = new Set(this.vagaDe.values());
+      let vaga = 0;
+      while (ocupadas.has(vaga)) vaga++;
       try {
-        this.criaWorker();
+        this.criaWorker(vaga);
       } catch (err) {
         console.error('[piscina-workers] Falha ao repor worker thread:', err);
         this.agendaReposicao();
@@ -866,10 +1171,15 @@ export class PiscinaWorkers {
       clearTimeout(this.temporizadorDeReposicao);
       this.temporizadorDeReposicao = null;
     }
+    if (this.temporizadorDeDesvio !== null) {
+      clearTimeout(this.temporizadorDeDesvio);
+      this.temporizadorDeDesvio = null;
+    }
     for (const w of this.workers) {
       void w.terminate();
     }
     this.workers.length = 0;
+    this.vagaDe.clear();
     this.livres.length = 0;
     this.pendentesPorWorker.clear();
     this.tarefas.drena();

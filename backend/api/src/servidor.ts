@@ -1152,6 +1152,10 @@ export class Servidor {
         // Mortes e reposições de worker (`piscina-workers.ts`): uma worker que estoura e
         // volta aparece aqui, e não só como um buraco no gráfico de memória.
         recriacaoDeWorkers: this.piscina.recriacao,
+        // Para onde as tarefas foram: na worker dona da página, ou desviadas (cada desvio
+        // pode ser uma cópia a mais do dataset numa segunda worker). `esperaramADona` é o
+        // que a afinidade cobra em latência. Ver `EstadoDaAfinidade` em `piscina-workers.ts`.
+        afinidadeDeWorkers: this.piscina.afinidade,
         // As estruturas que crescem com o uso, em contagem: é o número que liga um pico
         // de `heapUsedMB`/`arrayBuffersMB` a "N páginas carregadas" em vez de a um palpite.
         caches: {
