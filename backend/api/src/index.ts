@@ -10,7 +10,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv, loadConfig, missingFor } from '../../packages/query-engine/src/config.ts';
 import { CacheEmCamadas } from '../../packages/query-engine/src/cache-camadas.ts';
-import { MemoryCache } from '../../packages/query-engine/src/cache-memory.ts';
 import { RedisCache } from '../../packages/query-engine/src/cache-redis.ts';
 import { CacheComDisjuntor } from '../../packages/query-engine/src/cache-disjuntor.ts';
 import { createVoallePool } from '../../packages/query-engine/src/connectors-sql.ts';
@@ -30,6 +29,7 @@ import { criaAcesso } from './permissoes.ts';
 import { configDoAmbiente, criaPoolDeAcesso, lojaMaria } from './loja-acesso-maria.ts';
 import { criaGravadorDeEventos } from './eventos-seguranca.ts';
 import { criaUsoDasTelas } from './uso-das-telas.ts';
+import { leTetoDaResposta, memoriaDaResposta } from './memoria-limitada.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 
@@ -60,7 +60,7 @@ applyDotEnv(ROOT);
  */
 let disjuntorDoCache: CacheComDisjuntor | null = null;
 
-async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
+async function cacheDaEnv(saude: SaudeDoRedis, tetoDaMemoriaMB: number): Promise<Cache | undefined> {
   const url = process.env.REDIS_URL;
   if (!url) return undefined;
   try {
@@ -148,7 +148,11 @@ async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
     // aparecendo como lentidão sem causa visível.
     disjuntorDoCache = new CacheComDisjuntor(new RedisCache(cliente));
     return new CacheEmCamadas({
-      rapida: new MemoryCache(),
+      // Com teto (`CACHE_RESPOSTA_MB`): a camada rápida guardava tudo que passava por
+      // ela por até 7 dias e foi um dos motivos de a API bater no teto de memória
+      // (16/10/2026). Despejar daqui não perde a resposta — ela continua no Redis, e
+      // o próximo pedido dela paga uma ida ao Redis, não um recálculo.
+      rapida: memoriaDaResposta(tetoDaMemoriaMB),
       duravel: disjuntorDoCache,
       // O outro caminho de falha, e ele não é redundante com o `'error'` acima:
       // um Redis que ACEITA conexão e recusa comando (memória cheia, `AUTH`
@@ -176,8 +180,19 @@ async function cacheDaEnv(saude: SaudeDoRedis): Promise<Cache | undefined> {
   }
 }
 
+/**
+ * Teto da camada em memória do cache de respostas, em MB estimados. Padrão 256.
+ *
+ * Lido aqui, antes das outras, porque `cacheDaEnv` logo abaixo já monta a memória
+ * com ele. Vale nas duas montagens — na frente do Redis e sozinha, sem `REDIS_URL`
+ * (aí quem monta é o `Servidor`). Zero ou lixo NÃO desliga: vira o padrão, com aviso.
+ * Ver `memoria-limitada.ts`.
+ */
+const tetoDaResposta = leTetoDaResposta(process.env.CACHE_RESPOSTA_MB);
+if (tetoDaResposta.aviso) console.error(`[cache] ${tetoDaResposta.aviso}`);
+
 const saudeRedis = new SaudeDoRedis();
-const cache = await cacheDaEnv(saudeRedis);
+const cache = await cacheDaEnv(saudeRedis, tetoDaResposta.mb);
 const porta = Number.parseInt(process.env.PORT ?? '3100', 10);
 
 /**
@@ -342,6 +357,7 @@ const servidor = new Servidor({
   ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
     ? { tetoDeVisuaisMB }
     : {}),
+  tetoDoCacheDeRespostaMB: tetoDaResposta.mb,
   ...(!semLogin && process.env.GOOGLE_CLIENT_ID ? { googleClientId: process.env.GOOGLE_CLIENT_ID } : {}),
   ...(!semLogin && process.env.FIREBASE_PROJECT_ID ? { firebaseProjectId: process.env.FIREBASE_PROJECT_ID } : {}),
   ...(process.env.DOMINIO_CORPORATIVO ? { dominioCorporativo: process.env.DOMINIO_CORPORATIVO } : {}),
@@ -440,7 +456,7 @@ http.listen(porta, () => {
           : 'Google Identity Services'}, domínio ${process.env.DOMINIO_CORPORATIVO ?? 'sebratel.com.br'}`}`,
   );
   console.log(
-    `  Cache da resposta: ${cache ? 'memória + Redis (REDIS_URL)' : 'memória'}`,
+    `  Cache da resposta: ${cache ? 'memória + Redis (REDIS_URL)' : 'memória'}, teto da memória ${tetoDaResposta.mb} MB (CACHE_RESPOSTA_MB)`,
   );
   console.log(`  Reaquecimento: ${semAquecer ? 'desligado (--sem-aquecer)' : 'automático'}`);
   console.log(

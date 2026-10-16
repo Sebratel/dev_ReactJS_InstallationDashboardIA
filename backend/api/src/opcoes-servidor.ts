@@ -126,6 +126,13 @@ export interface ServidorOptions {
    */
   tetoDeVisuaisMB?: number;
   /**
+   * Teto, em MB estimados, do `MemoryCache` padrão de respostas — o que o servidor
+   * monta quando `cache` não vem. Padrão `TETO_RESPOSTA_PADRAO_MB`; ver
+   * `memoria-limitada.ts` para o defeito que ele fecha. Não vale para um `cache`
+   * passado de fora: quem monta aquele (`index.ts`, com Redis) põe o teto lá.
+   */
+  tetoDoCacheDeRespostaMB?: number;
+  /**
    * Intervalo do batimento do SSE, em ms. Padrão 25.000 — ver
    * `Servidor.BATIMENTO_SSE_MS` para o porquê desse número.
    *

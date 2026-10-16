@@ -40,7 +40,6 @@ import { carimboDasCalculadas } from '../../packages/snapshot/src/tabelas-calcul
 import { planeja } from '../../packages/snapshot/src/plano.ts';
 import { calculadasAlimentadasAoVivo, recalculosAoVivo } from '../../packages/snapshot/src/nativas.ts';
 import { type DaxValue } from '../../packages/measure-engine/src/value.ts';
-import { MemoryCache } from '../../packages/query-engine/src/cache-memory.ts';
 import { QueryRegistry } from '../../packages/query-engine/src/registry.ts';
 import type { Cache } from '../../packages/query-engine/src/types.ts';
 import {
@@ -56,6 +55,7 @@ import {
 import { CarimboVigiado } from './carimbo-vigiado.ts';
 import { escopoDoCache } from './escopo-cache.ts';
 import { CacheDeVisual, TETO_PADRAO_MB } from './cache-visual.ts';
+import { MapaLru, memoriaDaResposta, TETO_RESPOSTA_PADRAO_MB, TETO_VALORES_PADRAO } from './memoria-limitada.ts';
 import {
   apagaSessaoDoPedido,
   cookieDeSessao,
@@ -272,8 +272,17 @@ export class Servidor {
   /** Página → avaliador carregado. A promessa entra no mapa **antes** de resolver,
    * para que dois pedidos simultâneos da mesma página não carreguem duas vezes. */
   private readonly carregadas = new Map<string, Promise<Carregado>>();
-  /** Cache dos valores distintos de segmentações (categorias) para eliminar buscas repetidas de disco/dataset. */
-  private readonly cacheValoresDistintos = new Map<string, DaxValue[]>();
+  /**
+   * Cache dos valores distintos de segmentações (categorias) para eliminar buscas
+   * repetidas de disco/dataset.
+   *
+   * **Com teto desde 16/10/2026.** A chave carrega carimbo e dia, então cada refresh
+   * deixava a geração anterior de listas inalcançável e presa — ninguém mais a
+   * pedia, e `esqueceAPagina` só limpa a página que ele invalida. `MapaLru` é um
+   * `Map` com a mesma interface: a leitura, a gravação depois de `valoresEmCurso` e
+   * a limpeza por página continuam iguais. Ver `memoria-limitada.ts`.
+   */
+  private readonly cacheValoresDistintos = new MapaLru<string, DaxValue[]>(TETO_VALORES_PADRAO);
   /**
    * A lista em cálculo, por `chaveDeValores`. A tela abre uma página pedindo as
    * segmentações todas de uma vez (10 na `agendamento-field`), e o reaquecimento pede
@@ -472,6 +481,7 @@ export class Servidor {
         }),
       aquecimento: () => ({ ativo: false, pronto: false }),
       tetoDeVisuaisMB: TETO_PADRAO_MB,
+      tetoDoCacheDeRespostaMB: TETO_RESPOSTA_PADRAO_MB,
       googleClientId: '',
       firebaseProjectId: '',
       dominioCorporativo: 'sebratel.com.br',
@@ -521,7 +531,11 @@ export class Servidor {
     this.dashboards = loadDashboards(path.join(opts.root, 'backend', 'specs'));
     this.layouts = carregaLayouts(path.join(opts.root, 'backend', 'specs', 'layout'));
     this.registry = QueryRegistry.fromSpecsDir(path.join(opts.root, 'backend', 'specs'));
-    const adapter = cache ?? new MemoryCache();
+    // Sem `cache` de fora (sem Redis), a memória é a ÚNICA camada — e precisa de
+    // teto pelo mesmo motivo da camada rápida em `index.ts`: sem ele, cada carimbo
+    // velho fica preso por 7 dias. Aqui despejar custa recálculo, não uma ida ao
+    // Redis; ver `TETO_RESPOSTA_PADRAO_MB`.
+    const adapter = cache ?? memoriaDaResposta(this.opts.tetoDoCacheDeRespostaMB);
     // `nome` quando o adapter tem um (`CacheEmCamadas` diz "MemoryCache+RedisCache"):
     // saber que o Redis entrou não basta, é preciso saber que ele entrou **atrás** da
     // memória e não no lugar dela.
