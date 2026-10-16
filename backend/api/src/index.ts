@@ -5,6 +5,7 @@
 // disco. Sem snapshot ela sobe do mesmo jeito e `GET /api/saude` diz o que falta —
 // morrer no arranque só esconderia a mensagem.
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv, loadConfig, missingFor } from '../../packages/query-engine/src/config.ts';
@@ -15,6 +16,7 @@ import { CacheComDisjuntor } from '../../packages/query-engine/src/cache-disjunt
 import { createVoallePool } from '../../packages/query-engine/src/connectors-sql.ts';
 import type { Cache } from '../../packages/query-engine/src/types.ts';
 import { DIRETORIO_PADRAO } from '../../packages/snapshot/src/manifesto.ts';
+import { ARQUIVO_DA_TRAVA, VELHA_MS } from '../../packages/snapshot/src/trava.ts';
 import { Agendador, agendaNesteProcesso } from './agendador.ts';
 import { fechaHttp, instalaDesligamento } from './desligamento.ts';
 import { instalaGuardaDeProcesso } from './guarda-de-processo.ts';
@@ -459,6 +461,17 @@ http.listen(porta, () => {
     aquecedor = new Aquecedor({
       base: `http://127.0.0.1:${porta}`,
       carimbo: () => servidor.identidadeAtual(),
+      // A trava de materialização viva = o refresh está gravando. Lida pelo arquivo e
+      // não pelo PID: o refresh roda em outro contêiner. Sem batimento há mais de
+      // `VELHA_MS` ela está abandonada, e esperar por ela pararia o aquecimento de vez.
+      gravando: () => {
+        try {
+          const st = fs.statSync(path.join(ROOT, DIRETORIO_PADRAO, ARQUIVO_DA_TRAVA));
+          return Date.now() - st.mtimeMs <= VELHA_MS;
+        } catch {
+          return false;
+        }
+      },
       // O login gate (`/api/*` exige sessão) bloquearia o próprio Aquecedor,
       // que bate nessas rotas por HTTP de propósito (ver comentário de
       // `segredoAquecedor` em servidor.ts). Este cabeçalho é o reconhecimento

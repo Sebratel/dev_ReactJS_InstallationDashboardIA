@@ -79,6 +79,11 @@ export interface OpcoesDoAquecedor {
    * fora para que este módulo não precise conhecer nem snapshot nem manifesto.
    */
   carimbo: () => string;
+  /**
+   * O refresh está gravando o snapshot agora? Enquanto estiver, o aquecimento espera.
+   * Ver `tenta`. Padrão: nunca — quem não passa nada aquece como antes.
+   */
+  gravando?: () => boolean;
   buscar?: typeof fetch;
   agora?: () => number;
   intervaloMs?: number;
@@ -96,6 +101,9 @@ export class Aquecedor {
   #geracao = 0;
   #filtrosEmCurso: Promise<void> = Promise.resolve();
   readonly #carimbo: () => string;
+  readonly #gravando: () => boolean;
+  /** O carimbo cuja espera já foi anunciada — uma linha por espera, não uma a cada 5 s. */
+  #esperaAnunciada: string | null = null;
   readonly #buscar: typeof fetch;
   readonly #agora: () => number;
   readonly #intervaloMs: number;
@@ -112,6 +120,7 @@ export class Aquecedor {
     this.#nFaixasEager = opts.nFaixasEager ?? N_FAIXAS_EAGER;
     this.#filtrosAte = opts.filtrosAte ?? FILTROS_ATE_PADRAO;
     this.#carimbo = opts.carimbo;
+    this.#gravando = opts.gravando ?? (() => false);
     this.#buscar = opts.buscar ?? fetch;
     this.#agora = opts.agora ?? (() => Date.now());
     this.#intervaloMs = opts.intervaloMs ?? INTERVALO_PADRAO_MS;
@@ -163,6 +172,22 @@ export class Aquecedor {
     if (this.#ocupado) return null;
     const carimbo = this.#carimbo();
     if (carimbo === this.#aquecido) return null;
+
+    // **Refresh no meio: o disco está pela metade.** O refresh grava a query nova e só
+    // DEPOIS recongela as calculadas que nascem dela (~13–16 s). Aquecer nessa janela
+    // pede a página com a query nova e o calendário velho: a worker recusa
+    // ("Snapshot desatualizado"), a thread principal carrega a `visao-geral` inteira
+    // para recusar de novo, e o aquecimento termina em HTTP 409. Medido em 16/10/2026:
+    // 9 vezes em 6 h, sempre ~10 s depois de gravar `PROTOCOLOS GERAL` ou
+    // `PROTOCOLOS TELEFONIA`. Esperar a trava soltar aquece uma vez, sobre o disco
+    // inteiro. O carimbo novo não se perde: a próxima volta confere de novo.
+    if (this.#gravando()) {
+      if (this.#esperaAnunciada !== carimbo) {
+        this.#esperaAnunciada = carimbo;
+        this.#anuncia('[aquecedor] o snapshot mudou, mas o refresh ainda está gravando — aqueço quando ele terminar');
+      }
+      return null;
+    }
     return await this.passada(carimbo);
   }
 

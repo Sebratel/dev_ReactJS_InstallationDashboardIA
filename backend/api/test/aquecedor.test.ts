@@ -173,6 +173,56 @@ test('carimbo que muda no meio da passada não conta como aquecido', async () =>
 });
 
 /**
+ * O refresh grava a query e só depois recongela as calculadas. Aquecer no meio pede a
+ * página com o disco pela metade, e a `visao-geral` saía em HTTP 409 (16/10/2026:
+ * 9 vezes em 6 h). Com a trava viva, espera; solta a trava, aquece uma vez.
+ */
+test('refresh gravando: espera a trava soltar, e aí aquece uma vez só', async () => {
+  const { buscar, pedidos } = apiFalsa();
+  const linhas: string[] = [];
+  let carimbo = 'c1';
+  let gravando = false;
+  const a = new Aquecedor({
+    base: 'http://x',
+    carimbo: () => carimbo,
+    gravando: () => gravando,
+    buscar,
+    anuncia: (l) => linhas.push(l),
+  });
+  await a.tenta();
+  assert.equal(pedidos.length, 2);
+
+  // A query nova caiu no disco; as calculadas ainda não.
+  carimbo = 'c2';
+  gravando = true;
+  assert.equal(await a.tenta(), null, 'com a trava viva, não aquece');
+  assert.equal(await a.tenta(), null);
+  // O congelamento das calculadas muda o carimbo de novo, ainda com a trava.
+  carimbo = 'c3';
+  assert.equal(await a.tenta(), null);
+  assert.equal(pedidos.length, 2, 'nenhum pedido enquanto o refresh grava');
+  assert.equal(
+    linhas.filter((l) => l.includes('ainda está gravando')).length,
+    2,
+    'uma linha por carimbo novo, não uma por volta',
+  );
+
+  gravando = false;
+  const p = await a.tenta();
+  assert.ok(p !== null);
+  assert.equal(p.carimbo, 'c3', 'aquece o disco inteiro, não o do meio');
+  assert.equal(pedidos.length, 4);
+  assert.equal(await a.tenta(), null, 'e não repete');
+});
+
+test('sem `gravando`, aquece como antes — quem não passa nada não muda de comportamento', async () => {
+  const { buscar, pedidos } = apiFalsa();
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio() });
+  assert.ok((await a.tenta()) !== null);
+  assert.equal(pedidos.length, 2);
+});
+
+/**
  * Duas passadas ao mesmo tempo dobrariam o pico de memória de uma máquina de 16 GB
  * para recalcular o que a primeira já está calculando.
  */
