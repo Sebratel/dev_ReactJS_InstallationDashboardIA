@@ -7,7 +7,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chaveDeCarga } from '../src/worker-calculador.ts';
+import { chaveDeCarga, linhaDeRecusaPorRecongelamento } from '../src/worker-calculador.ts';
 
 test('chaveDeCarga: mesmos conjuntos, ordem diferente, mesma chave', () => {
   const a = chaveDeCarga('visao-geral', ['v1', 'v2', 'v3'], ['ColA'], ['TabelaX', 'TabelaY']);
@@ -43,4 +43,30 @@ test('chaveDeCarga: forma completa diferente é chave diferente', () => {
   const padrao = chaveDeCarga('visao-geral', ['v1'], [], []);
   const formaCompleta = chaveDeCarga('visao-geral', ['v1'], [], ['ALOCACAO PATRIMONIO']);
   assert.notEqual(padrao, formaCompleta);
+});
+
+// ---------------------------------------------------------------------------
+// A carga recusada por recongelamento vira uma linha de log na worker
+// ---------------------------------------------------------------------------
+
+test('linhaDeRecusaPorRecongelamento: a recusa passageira vira UMA linha, com página, calculada e tempo', () => {
+  const motivo =
+    "Snapshot desatualizado: 'CALENDARIO CRIADO' foi congelada em 2026-10-16T16:52:26.799Z, antes da " +
+    "materialização mais recente de 'PROTOCOLOS GERAL', de que ela nasce (2026-10-16T17:09:36.670Z).";
+  const linha = linhaDeRecusaPorRecongelamento(motivo, 'visao-geral', 12, 3);
+  assert.equal(
+    linha,
+    "[worker 3] carga de 'visao-geral' recusada em 12 ms: 'CALENDARIO CRIADO' está sendo " +
+      'recongelada pelo refresh (a thread principal espera e repete)',
+  );
+  assert.equal(linha!.includes('\n'), false, 'uma linha só');
+});
+
+test('linhaDeRecusaPorRecongelamento: recusa permanente e erro qualquer não logam aqui', () => {
+  // Esses já viram resposta de erro e log na thread principal (uma linha por motivo);
+  // repetir aqui duplicaria o log sem dizer nada novo.
+  const permanente =
+    "Snapshot desatualizado: o DAX de 'CALENDARIO CRIADO'[PESO] mudou desde a materialização (a -> b).";
+  assert.equal(linhaDeRecusaPorRecongelamento(permanente, 'visao-geral', 5, 1), null);
+  assert.equal(linhaDeRecusaPorRecongelamento('ENOENT: arquivo sumiu', 'visao-geral', 5, 1), null);
 });

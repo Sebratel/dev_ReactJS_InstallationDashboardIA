@@ -15,7 +15,11 @@
 
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { SemanticModel } from '../../packages/semantic-model/src/model.ts';
-import { carrega, type Carregado } from '../../packages/snapshot/src/carrega.ts';
+import {
+  carrega,
+  RECUSA_POR_RECONGELAMENTO,
+  type Carregado,
+} from '../../packages/snapshot/src/carrega.ts';
 import { calculaPagina, type Janela, type MemoDeCompletos } from './calcula.ts';
 import { chaveDoCompleto, diaDoCalculo } from './cache-resposta.ts';
 import { CacheDeVisual } from './cache-visual.ts';
@@ -174,6 +178,37 @@ export function chaveDeCarga(
     [...libera].sort().join(','),
     [...formaCompleta].sort().join(','),
   ].join(' ');
+}
+
+/**
+ * A linha de log de uma carga recusada porque o refresh está recongelando uma
+ * calculada — ou `null` para qualquer outro motivo (esses já viram a resposta de erro
+ * e o log da thread principal).
+ *
+ * **Por que esta recusa ganha linha própria.** Ela é a passageira: a thread principal
+ * repete o pedido a cada ~1 s por até 20 s (`#esperaOSnapshotInteiro`, servidor.ts),
+ * e cada repetição que erra o `cacheDeCarga` é uma carga nova nesta worker. O log de
+ * carga só sai no sucesso (`carga` na resposta), e a métrica
+ * `worker_espera_recongelamento` conta esperas da thread principal, não cargas aqui —
+ * então o salto de +1 GB em ~45 s depois de um refresh (16/10/2026) teve de ser
+ * deduzido em vez de lido. Com `ms`, a linha diz também se a recusa saiu barata
+ * (`confereCalculadasAntesDeLer`, carrega.ts) ou depois de ler as tabelas físicas.
+ *
+ * Só nomes de página e de tabela do modelo, e o tempo: nenhum valor de linha.
+ * Função pura e exportada para o teste não precisar subir worker thread.
+ */
+export function linhaDeRecusaPorRecongelamento(
+  motivo: string,
+  pagina: string,
+  ms: number,
+  worker: number,
+): string | null {
+  const m = RECUSA_POR_RECONGELAMENTO.exec(motivo);
+  if (!m) return null;
+  return (
+    `[worker ${worker}] carga de '${pagina}' recusada em ${ms} ms: '${m[1]}' está sendo ` +
+    `recongelada pelo refresh (a thread principal espera e repete)`
+  );
 }
 
 /** Nº de datasets que uma worker guarda ao mesmo tempo antes de podar o mais
@@ -437,9 +472,23 @@ if (parentPort) {
         });
         guardaNoCache(chave, promessa);
         // Medida só no sucesso: uma carga que falhou já vira a resposta de erro abaixo.
-        await promessa.then(() => {
-          carga = { ms: Date.now() - t0, libera: [...libera].sort(), formaCompleta: [...formaCompleta].sort(), worker: threadId };
-        }, () => undefined);
+        // A exceção é a recusa por recongelamento, que ganha uma linha no log — ver
+        // `linhaDeRecusaPorRecongelamento`. Só quem CRIOU a promessa passa aqui, então
+        // é uma linha por carga tentada, não por pedido que esperou por ela.
+        await promessa.then(
+          () => {
+            carga = { ms: Date.now() - t0, libera: [...libera].sort(), formaCompleta: [...formaCompleta].sort(), worker: threadId };
+          },
+          (err: unknown) => {
+            const linha = linhaDeRecusaPorRecongelamento(
+              err instanceof Error ? err.message : String(err),
+              dashboardSpec.id,
+              Date.now() - t0,
+              threadId,
+            );
+            if (linha !== null) console.error(linha);
+          },
+        );
       }
 
       const carregado = await promessa;
