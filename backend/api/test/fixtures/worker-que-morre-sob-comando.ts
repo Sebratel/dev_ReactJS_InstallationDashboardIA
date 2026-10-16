@@ -13,6 +13,8 @@ import { parentPort } from 'node:worker_threads';
 import type { MensagemCalculoWorker } from '../../src/worker-calculador.ts';
 
 parentPort?.on('message', (msg: MensagemCalculoWorker) => {
+  // A pergunta de memória da saúde (`tipo: 'memoria'`) não é tarefa: ignorar.
+  if ((msg as { tipo?: string }).tipo === 'memoria') return;
   if (msg.identidade === 'morre') process.exit(7);
   parentPort?.postMessage({
     idReq: msg.idReq,

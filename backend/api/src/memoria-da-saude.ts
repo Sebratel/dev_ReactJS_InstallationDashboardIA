@@ -120,3 +120,18 @@ export function entradasDoCache(adapter: unknown): number | null {
   if (typeof a?.entradasNaMemoria === 'number') return a.entradasNaMemoria;
   return null;
 }
+
+/**
+ * Bytes estimados e despejos do cache de respostas NESTE processo — o par que diz se o teto
+ * de `CACHE_RESPOSTA_MB` está mordendo (`despejadas` subindo) ou folgado. `null` quando o
+ * adapter não tem teto. Por pato, pelo mesmo motivo de `entradasDoCache`.
+ */
+export function tetoDoCache(adapter: unknown): { mb: number; despejadas: number } | null {
+  const a = adapter as {
+    bytes?: unknown; despejadas?: unknown; bytesNaMemoria?: unknown; despejadasNaMemoria?: unknown;
+  } | null;
+  const bytes = typeof a?.bytes === 'number' ? a.bytes : a?.bytesNaMemoria;
+  const despejadas = typeof a?.despejadas === 'number' ? a.despejadas : a?.despejadasNaMemoria;
+  if (typeof bytes !== 'number' || typeof despejadas !== 'number') return null;
+  return { mb: mb(bytes), despejadas };
+}

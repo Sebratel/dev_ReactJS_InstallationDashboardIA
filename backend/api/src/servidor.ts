@@ -79,7 +79,7 @@ import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente } from './saude-do-redis.ts';
-import { entradasDoCache, medeProcesso } from './memoria-da-saude.ts';
+import { entradasDoCache, medeProcesso, tetoDoCache } from './memoria-da-saude.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
 import { leSpecDeSeguranca, type SpecDeSeguranca } from './spec-seguranca.ts';
@@ -274,6 +274,7 @@ export class Servidor {
    *  `memoria` da saúde. Uma função sobre o adapter, e não o adapter guardado num campo,
    *  para que nada além da saúde ganhe um caminho que contorne `CacheDeResposta`. */
   private readonly entradasDoCacheDeResposta: () => number | null;
+  private readonly tetoDoCacheDeResposta: () => { mb: number; despejadas: number } | null;
   /** Página → avaliador carregado. A promessa entra no mapa **antes** de resolver,
    * para que dois pedidos simultâneos da mesma página não carreguem duas vezes. */
   private readonly carregadas = new Map<string, Promise<Carregado>>();
@@ -546,6 +547,7 @@ export class Servidor {
     // memória e não no lugar dela.
     this.tipoDeCache = (adapter as { nome?: string }).nome ?? adapter.constructor.name;
     this.entradasDoCacheDeResposta = () => entradasDoCache(adapter);
+    this.tetoDoCacheDeResposta = () => tetoDoCache(adapter);
     this.cache = new CacheDeResposta({
       cache: adapter,
       ...(aoFalharCache ? { aoFalhar: aoFalharCache } : {}),
@@ -1147,11 +1149,16 @@ export class Servidor {
         processo,
         // Uma por worker viva, medida DENTRO dela e sem RSS (lá ele é o do processo).
         workers,
+        // Mortes e reposições de worker (`piscina-workers.ts`): uma worker que estoura e
+        // volta aparece aqui, e não só como um buraco no gráfico de memória.
+        recriacaoDeWorkers: this.piscina.recriacao,
         // As estruturas que crescem com o uso, em contagem: é o número que liga um pico
         // de `heapUsedMB`/`arrayBuffersMB` a "N páginas carregadas" em vez de a um palpite.
         caches: {
           // Entradas na camada que mora NESTE processo; `null` se o adapter não sabe contar.
           respostas: this.entradasDoCacheDeResposta(),
+          // MB estimados e despejos pelo teto de `CACHE_RESPOSTA_MB` (`memoria-limitada.ts`).
+          respostasTeto: this.tetoDoCacheDeResposta(),
           valoresDistintos: this.cacheValoresDistintos.size,
           // Datasets na thread principal — os das workers estão em `workers[].medida.datasets`.
           paginasCarregadas: this.carregadas.size,

@@ -70,6 +70,18 @@ export class CacheEmCamadas implements Cache {
     return typeof n === 'number' ? n : null;
   }
 
+  /** Bytes estimados da camada rápida, quando ela tem teto (`MemoryCache` com `tamanhoDe`). */
+  get bytesNaMemoria(): number | null {
+    const n = (this.#rapida as { bytes?: unknown }).bytes;
+    return typeof n === 'number' ? n : null;
+  }
+
+  /** Quantas entradas a camada rápida já despejou por teto. */
+  get despejadasNaMemoria(): number | null {
+    const n = (this.#rapida as { despejadas?: unknown }).despejadas;
+    return typeof n === 'number' ? n : null;
+  }
+
   async get<T>(key: string): Promise<T | undefined> {
     const local = await this.#rapida.get<T>(key);
     if (local !== undefined) return local;

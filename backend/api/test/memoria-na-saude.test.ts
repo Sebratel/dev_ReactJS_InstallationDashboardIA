@@ -148,13 +148,18 @@ test('a saúde completa traz memória do processo, de cada worker (medida nela) 
     assert.deepEqual(w.medida.visuais, { itens: 0, mb: 0 });
     assert.ok(w.idadeMs !== null && w.idadeMs >= 0);
 
-    // Sem nada aberto, tudo zero — e `respostas` é número, porque o padrão é `MemoryCache`.
+    // Sem nada aberto, tudo zero — e `respostas` é número, porque o padrão é `MemoryCache`,
+    // agora com teto (`memoria-limitada.ts`): daí `respostasTeto` existir, zerado.
     assert.deepEqual(m.caches, {
       respostas: 0,
+      respostasTeto: { mb: 0, despejadas: 0 },
       valoresDistintos: 0,
       paginasCarregadas: 0,
       visuais: { itens: 0, mb: 0 },
     });
+    // A recriação de workers (`piscina-workers.ts`) aparece junto, ainda sem morte nenhuma.
+    assert.equal(m.recriacaoDeWorkers.mortes, 0);
+    assert.equal(m.recriacaoDeWorkers.suspensa, false);
   } finally {
     await s.fecha();
   }

@@ -8,7 +8,9 @@
 
 import { parentPort } from 'node:worker_threads';
 
-parentPort?.on('message', () => {
+parentPort?.on('message', (msg: { tipo?: string }) => {
+  // A pergunta de memória da saúde não é tarefa: estourar com ela mataria a worker à toa.
+  if (msg?.tipo === 'memoria') return;
   const guarda: number[][] = [];
   for (;;) guarda.push(Array.from({ length: 100_000 }, (_, i) => i));
 });
