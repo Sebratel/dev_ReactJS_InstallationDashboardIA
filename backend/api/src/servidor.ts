@@ -151,6 +151,16 @@ const MAX_SSE_POR_USUARIO = 20;
 const ALIMENTADAS_AO_VIVO = calculadasAlimentadasAoVivo();
 /** Calculada → fontes do recálculo pelo tempo real (ver `nativas.ts`). */
 const RECALCULOS_AO_VIVO = recalculosAoVivo();
+/** O começo de toda recusa de `carrega.ts` por disco que não bate com o DAX ou com a origem. */
+const SNAPSHOT_DESATUALIZADO = 'Snapshot desatualizado:';
+/**
+ * A recusa PASSAGEIRA: a origem foi regravada e a calculada ainda não foi recongelada.
+ * As outras (DAX ou definição mudou) só saem com `snapshot:calculadas`; esperar não ajuda.
+ */
+const CALCULADA_SENDO_RECONGELADA = /^Snapshot desatualizado: '[^']+' foi congelada em /;
+/** Quanto um pedido espera o refresh recongelar. A janela medida em 16/10/2026: 13–16 s. */
+const ESPERA_DO_RECONGELAMENTO_MS = 20_000;
+const PAUSA_DO_RECONGELAMENTO_MS = 1_000;
 
 /**
  * Carrega `backend/specs/layout/*.layout.yaml` uma vez, na subida. Diretório ausente vira mapa
@@ -2065,7 +2075,7 @@ export class Servidor {
       this.metricas.conta(`fila_entradas_${origem}`);
       const tWorker = Date.now();
       try {
-        const workerRes = await this.piscina.executa({
+        const pedeAWorker = () => this.piscina.executa({
           snapshotDir: this.opts.snapshotDir,
           specsDir: path.join(this.opts.root, 'backend', 'specs'),
           dashboardSpec: alvo,
@@ -2109,6 +2119,7 @@ export class Servidor {
           // vir até aqui procurar.
           escopo: escopoDoCache(quem),
         }, prio);
+        const workerRes = await this.#esperaOSnapshotInteiro(pedeAWorker);
         // `worker_ms` continua sendo a SOMA (espera + cálculo). Ele não foi
         // substituído por `fila_ms_*`/`calculo_ms_*`: é o número que os
         // testes e as medições das fases F1 e F2 usam, e trocar o significado
@@ -2131,6 +2142,19 @@ export class Servidor {
         // Uma linha por MOTIVO distinto, não por ocorrência: 32 cópias da
         // mesma mensagem soterram a primeira, que era a que importava.
         const motivo = errWorker instanceof Error ? errWorker.message : String(errWorker);
+        // **Snapshot desatualizado não cai para a thread principal.** A conferência
+        // é sobre o disco, e a thread principal lê o mesmo disco: carregaria a
+        // página inteira (a `visao-geral` pede ~1 GB) para recusar igual. Medido
+        // em 16/10/2026: 9 vezes em 6 h, todas terminando em 409. A espera pela
+        // gravação do refresh já passou em `#esperaOSnapshotInteiro`.
+        if (motivo.startsWith(SNAPSHOT_DESATUALIZADO)) {
+          this.metricas.conta('worker_snapshot_desatualizado');
+          if (!this.motivosDeFallback.has(motivo)) {
+            this.motivosDeFallback.add(motivo);
+            console.error(`[worker] recusou, sem cálculo em linha (a thread principal recusaria igual): ${motivo}`);
+          }
+          throw comStatus(errWorker, 409);
+        }
         if (!this.motivosDeFallback.has(motivo)) {
           this.motivosDeFallback.add(motivo);
           console.error(
@@ -2630,6 +2654,28 @@ export class Servidor {
       return valoresDistintos(carregado.ev, tabela, coluna, nivel);
     } catch (err) {
       return { erroDoPedido: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  /**
+   * Pede à worker e, se o refresh estiver no meio de recongelar as calculadas, espera.
+   *
+   * O refresh grava a query e só depois recongela as calculadas que nascem dela. Um
+   * pedido nessa janela é recusado pela worker, e a tela não repete pedido que falhou
+   * (`retry: false` no `queryClient`): sem esta espera, quem abre a página nesses
+   * segundos vê erro. Com ela, espera alguns segundos e recebe a página.
+   */
+  async #esperaOSnapshotInteiro<T>(pede: () => Promise<T>): Promise<T> {
+    const ate = Date.now() + ESPERA_DO_RECONGELAMENTO_MS;
+    for (;;) {
+      try {
+        return await pede();
+      } catch (err) {
+        const motivo = err instanceof Error ? err.message : String(err);
+        if (!CALCULADA_SENDO_RECONGELADA.test(motivo) || Date.now() >= ate) throw err;
+        this.metricas.conta('worker_espera_recongelamento');
+        await new Promise((ok) => setTimeout(ok, PAUSA_DO_RECONGELAMENTO_MS));
+      }
     }
   }
 
