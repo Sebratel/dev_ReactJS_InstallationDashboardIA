@@ -124,6 +124,11 @@ const politicas = lePoliticas(path.join(ROOT, 'backend', 'specs'));
  */
 const FORA_DO_ESCOPO = new Set<string>();
 
+function coletaLixo(): void {
+  const gc = (globalThis as typeof globalThis & { gc?: () => void }).gc;
+  gc?.();
+}
+
 // ------------------------------------------------------------------ argumentos
 interface Args {
   paginas: string[];
@@ -651,8 +656,12 @@ async function materializa(q: ResolvedQuery, saida: string): Promise<Resultado> 
     });
     console.error(`    busca + avaliação de M: ${Date.now() - tBusca} ms`);
 
+    const tabela = feitas.get(q.id)!.tabela;
+    feitas.clear();
+    coletaLixo();
+
     const tConverte = Date.now();
-    const { columns, rows: buscadas } = toDatasetRows(feitas.get(q.id)!.tabela, q.id);
+    const { columns, rows: buscadas } = toDatasetRows(tabela, q.id);
     console.error(`    toDatasetRows: ${Date.now() - tConverte} ms`);
 
     // Modo incremental: o que a busca trouxe é só a janela reentregue — junta com

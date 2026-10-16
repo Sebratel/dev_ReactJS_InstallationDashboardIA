@@ -26,7 +26,7 @@ import {
 import { standardConstants, standardFunctions } from './functions.ts';
 import { parseM, parseMLet } from './parser.ts';
 import {
-  linha,
+  linhaPor,
   MDuration,
   MEvalError,
   MRecord,
@@ -474,7 +474,7 @@ export function deLinhas(rows: readonly Record<string, unknown>[]): MTable {
         );
       }
     }
-    return linha(colunas.map((c) => [c, comoM(r[c])] as const));
+    return linhaPor(colunas, (c) => comoM(r[c]));
   });
   return new MTable(colunas, linhas);
 }

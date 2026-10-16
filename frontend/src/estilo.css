@@ -643,7 +643,7 @@ button:disabled {
    é a regra da §4 do DESIGN-SYSTEM, e ela estava sendo quebrada pelo próprio
    cromo. */
 .filtros {
-  min-height: var(--h-filtros);
+  min-height: 44px;
   /* A `.filtros` do COM: encostada na navegação e de borda a borda (o `margin`
      devolve o `padding` da `.area`), translúcida sobre o conteúdo que rola por baixo. */
   margin: -8px -12px 0;

@@ -13,13 +13,14 @@
 ## 1. Estado agora (01/10/2026, ~18:00 UTC)
 
 > **02/10/2026, ~22:45: modelo "madrugada + poller" no ar** (ACHADOS #172, `PLANO-MESTRE.md` §B).
-> A stack roda `api`, `redis`, `proxy`, `refresh` e, pela primeira vez, **`snapshot-diario`**
+> A stack da aplicação roda `api`, `refresh` e, pela primeira vez, **`snapshot-diario`**;
+> Redis e proxy são externos e ficam sob gestão do Misael.
 > (cron às 06:00 UTC = 03:00 de Brasília). A API está na **3100** do host, e o contorno
 > `API_PORT_HOST=3101` saiu. Os outros dois contornos continuam. Os grupos do `refresh` mudaram:
 > ver o topo de `backend/specs/_catalog/refresh.yaml`.
 
-**Runtime: a stack Docker, rodando da pasta principal (`staging`).** `api`, `redis`,
-`proxy` (porta 80) e `refresh`. O `snapshot-diario` **não** foi subido. Não há
+**Runtime: a stack Docker, rodando da pasta principal (`staging`).** `api` e `refresh`.
+O Redis e o proxy são externos. O `snapshot-diario` **não** foi subido. Não há
 `npm start` rodando (regra 5 do `CLAUDE.md`; ver a §4, incidente de 30/09).
 
 Conferir em 30 s:
@@ -150,8 +151,10 @@ Meta: < 10 min/h de consulta pesada no banco.
       O padrão é `AQUECE_FILTROS_ATE=0`; abertura, detalhe e filtro provável são preparados
       separadamente e por intenção, sem reservar > 2,7 GB para combinações que talvez não ocorram.
 - [ ] **3.3** `GOOGLE_CREDENCIAL_HOST` como variável da stack no Portainer.
-- [ ] **3.4** `mem_limit` pelo medido **no servidor** (hoje api 6g + refresh 6g num Docker
-      de notebook com 7,6 GB).
+- [x] **3.4** ✅ 16/10: API com `mem_limit: 3g`, processo pai de 1.536 MB e 2 workers de
+      512 MB. A medição no cgroup serviu 200 aberturas simultâneas, com RSS pico de
+      1.827 MB e p95 de 256 ms em cache quente; `refresh` e `snapshot-diario` usam heap de
+      1.400 MB e teto de 1.450m.
 - [x] **3.5** ✅ 02/10, `055d9c1`: no cron, que disparava à MEIA-NOITE de Brasília (contêiner em UTC) e agora às 06:00 UTC. Era: `protocolos-produtividade` no cron das 03:00 (está fora: 24 de 25). Com
       ela incremental, é a madrugada que renova a `completoEm`.
 - [ ] **3.6** Aviso externo quando `/api/saude` ficar degradado (destino com o Erick).

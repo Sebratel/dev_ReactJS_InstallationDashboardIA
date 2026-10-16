@@ -178,7 +178,7 @@ export function chaveDeCarga(
 
 /** Nº de datasets que uma worker guarda ao mesmo tempo antes de podar o mais
  *  antigo — ver o comentário de `cacheDeCarga` para a conta de memória. */
-export const TETO_CACHE_POR_WORKER = 6;
+export const TETO_CACHE_POR_WORKER = 2;
 
 /**
  * O dataset já carregado — tabelas do disco, tipadas, calculadas materializadas

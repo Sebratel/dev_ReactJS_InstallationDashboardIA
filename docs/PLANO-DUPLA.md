@@ -39,7 +39,7 @@ vem antes do plano.
 | **CPF/RG na tela** | **nenhuma** das 14 specs de dashboard usa `QUADRO FUNCIONAL` | `grep` em `backend/specs/dashboards/` |
 | Filtro na URL | existe; **falta store** (só `useThemeStore`) | `frontend/src/store/` |
 | Refresh | Manager + daemon automático integrados no compose e CLI (06/09/2026), sem requerer crontab manual | `backend/tools/refresh/`, §3 abaixo |
-| Memória | ~~piscina autoriza 4 × 8 GB~~ **RESOLVIDO** em 04/09: pai 3072 + 2 × 768 = **4.608 MB** autorizados, `mem_limit: 6g`, RSS pico medido **2.938 MB** | `npm run probe:memoria-api`, `ACHADOS.md` #98 |
+| Memória | **Atualizado em 16/10:** pai 1536 + 2 × 512 = **2.560 MB** autorizados, `mem_limit: 3g`; 200 aberturas simultâneas passaram no cgroup com RSS pico de **1.827 MB** e p95 quente de **256 ms** | medição no cgroup |
 | Paridade | **7 divergências reais** + `INSTALADOR` (94 × 166) | `ACHADOS.md`, `CONTINUACAO.md` §9.1 |
 | Deploy | **nunca rodou em máquina que não é a do Erick** | — |
 | Branches | `staging` está **23 commits à frente** de `main`; `main` 3 à frente de `origin/main` | `git rev-list` |

@@ -42,7 +42,8 @@ function spawnFalso(): {
 
 test('argvDoGrupo: o heap vai duas vezes — para o Node e para o materializador', () => {
   const argv = argvDoGrupo(RAIZ, cheio);
-  assert.equal(argv[0], `--max-old-space-size=${MEMORIA_PADRAO_MB}`);
+  assert.equal(argv[0], '--expose-gc');
+  assert.equal(argv[1], `--max-old-space-size=${MEMORIA_PADRAO_MB}`);
   assert.ok(argv.includes(`--memoria=${MEMORIA_PADRAO_MB}`));
   // Não é redundância: o primeiro dimensiona o V8 do processo filho, o segundo é lido
   // por `backend/tools/snapshot/src/index.ts` para os subprocessos que ELE dispara.
@@ -71,7 +72,7 @@ test('argvDoGrupo: lista liga só as citadas (ACHADOS #165)', () => {
 
 test('argvDoGrupo: memória explícita vence o padrão nos dois lugares', () => {
   const argv = argvDoGrupo(RAIZ, cheio, 12288);
-  assert.equal(argv[0], '--max-old-space-size=12288');
+  assert.equal(argv[1], '--max-old-space-size=12288');
   assert.ok(argv.includes('--memoria=12288'));
 });
 
@@ -127,7 +128,7 @@ test('rodaGrupoAssincrono: resolve UMA vez só, mesmo com error e exit seguidos'
 });
 
 test('rodaGrupoAssincrono: roda na raiz, herda stdout e CANALIZA stderr', () => {
-  const { cria, recebido } = spawnFalso();
+  const { cria, filho, recebido } = spawnFalso();
   void rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never });
   assert.equal(recebido.comando, process.execPath);
   // `stdout: 'inherit'` é o que faz o log do materializador aparecer no log de quem o
@@ -137,7 +138,12 @@ test('rodaGrupoAssincrono: roda na raiz, herda stdout e CANALIZA stderr', () => 
   // que sobrou da falha de 19/09/2026 foi `saiu com código 1`, e a causa só apareceu
   // cruzando o histórico com o log de energia do Windows. O texto continua sendo
   // reescrito no nosso stderr, então nada some da tela.
-  assert.deepEqual(recebido.opcoes, { cwd: RAIZ, stdio: ['ignore', 'inherit', 'pipe'] });
+  assert.deepEqual(recebido.opcoes, {
+    cwd: RAIZ,
+    stdio: ['ignore', 'inherit', 'pipe'],
+    detached: process.platform !== 'win32',
+  });
+  filho.emit('exit', 0, null);
 });
 
 test('rodaGrupoAssincrono: a cauda do stderr entra no resumo da falha', async () => {
@@ -186,4 +192,17 @@ test('rodaGrupoAssincrono: sinal já abortado antes do spawn não trava a promes
   ac.abort('tarde demais');
   const r = await rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, sinal: ac.signal });
   assert.deepEqual(r, { ok: false, erro: 'interrompida: tarde demais' });
+});
+
+test('rodaGrupoAssincrono: o vigia encerra grupo pendurado e o marca transitório', async () => {
+  const { cria, filho } = spawnFalso();
+  let sinalRecebido: string | undefined;
+  (filho as unknown as { kill: (s: string) => void }).kill = (s) => {
+    sinalRecebido = s;
+  };
+  const r = await rodaGrupoAssincrono(RAIZ, cheio, { cria: cria as never, tempoMaximoMs: 10 });
+  assert.equal(sinalRecebido, 'SIGKILL');
+  assert.equal(r.ok, false);
+  assert.equal(r.transitoria, true);
+  assert.match(r.erro ?? '', /vigia de refresh: grupo 'quente'/);
 });

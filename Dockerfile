@@ -80,25 +80,22 @@ USER node
 
 EXPOSE 3100
 
-# 3072, e o número é medido — era 10240, escolhido por estimativa.
+# 1536, e o número é medido — era 10240, escolhido por estimativa.
 #
-# `npm run probe:memoria-api` sobe a API com um teto e pede as 10 páginas do
-# menu uma a uma. Medido em 04/09/2026, com a piscina em 2 workers × 768 MB:
+# A API tem a mesma cota de 3 GB do dashboard Comercial. Medido em 16/10/2026,
+# em um contêiner isolado de 3 GB, com a piscina em 2 workers × 512 MB:
 #
-#     pai 1024 MB .... estoura o heap na 1ª página (RSS pico 1198 MB)
-#     pai 1536 MB .... estoura o heap na 1ª página (RSS pico 1730 MB)
-#     pai 2048 MB .... estoura o heap na 1ª página (RSS pico 2270 MB)
-#     pai 3072 MB .... 10/10 páginas  (RSS pico 3137–3622 MB)
+#     200 aberturas simultâneas .... 200/200 OK; p95 3,82 s na primeira rajada
+#     cache já aquecida ............ 200/200 OK; p95 256 ms; RSS pico 1827 MB
 #
-# Ou seja: o piso real está entre 2048 e 3072, e 3072 é o menor valor medido que
-# serve. Os 10240 anteriores autorizavam, junto com os 4 × 8192 MB da piscina de
-# então, até 42 GB de heap numa máquina de 16 GB — e o `mem_limit` do compose
-# tem de ser derivado desta linha, não adivinhado a partir dela.
+# Os 10240 anteriores autorizavam, junto com os 4 × 8192 MB da piscina de então,
+# até 42 GB de heap numa máquina de 16 GB. O `mem_limit` do compose tem de ser
+# derivado desta linha e revalidado dentro do cgroup.
 #
-# Heap autorizado hoje: 3072 (aqui) + 2 × 768 (piscina) = 4608 MB, dentro do
-# `mem_limit: 6g` do docker-compose.prod.yml. `backend/api/test/piscina-workers.test.ts`
+# Heap autorizado hoje: 1536 (aqui) + 2 × 512 (piscina) = 2560 MB, dentro do
+# `mem_limit: 3g` do docker-compose.prod.yml, com 512 MB de folga. `backend/api/test/piscina-workers.test.ts`
 # falha se os três números saírem de sincronia.
-CMD ["node", "--max-old-space-size=3072", "--expose-gc", "backend/api/src/index.ts"]
+CMD ["node", "--max-old-space-size=1536", "--expose-gc", "backend/api/src/index.ts"]
 
 # Estágio dedicado ao snapshot diário completo via cron (docker-compose.prod.yml,
 # serviço `snapshot-diario`) — parte de `runtime` acima em vez de repetir o stage

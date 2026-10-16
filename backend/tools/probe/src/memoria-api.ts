@@ -47,6 +47,8 @@ const HEAPS = listaDeNumeros('--heap=', [1024, 2048, 3072]);
 const WORKERS = listaDeNumeros('--workers=', [2]);
 const PAIS = listaDeNumeros('--pai=', [3072]);
 const PORTA_BASE = listaDeNumeros('--porta=', [3399])[0]!;
+const CONCORRENCIA = listaDeNumeros('--concorrencia=', [1])[0]!;
+const RETER_MS = listaDeNumeros('--reter-ms=', [])[0] ?? 0;
 
 /**
  * As páginas do MENU, que é o que um usuário abre. As três `l-*` são Tooltip
@@ -87,15 +89,19 @@ interface Resultado {
   rssPicoMB: number;
   subiu: boolean;
   morreu: boolean;
-  saida?: number | null;
+  saida?: number | NodeJS.Signals | null;
+}
+
+function estaEncerrado(proc: ChildProcess): boolean {
+  return proc.exitCode !== null || proc.signalCode !== null;
 }
 
 async function esperaSaude(porta: number, proc: ChildProcess, tetoMs = 90_000): Promise<boolean> {
   const limite = Date.now() + tetoMs;
   while (Date.now() < limite) {
-    if (proc.exitCode !== null) return false;
+    if (estaEncerrado(proc)) return false;
     try {
-      const r = await fetch(`http://127.0.0.1:${porta}/api/saude`);
+      const r = await fetch(`http://127.0.0.1:${porta}/api/saude`, { signal: AbortSignal.timeout(1_000) });
       if (r.ok) return true;
     } catch {
       /* ainda não escuta */
@@ -115,7 +121,7 @@ async function esperaSaude(porta: number, proc: ChildProcess, tetoMs = 90_000): 
  */
 async function rssMB(porta: number): Promise<number> {
   try {
-    const r = await fetch(`http://127.0.0.1:${porta}/api/saude`);
+    const r = await fetch(`http://127.0.0.1:${porta}/api/saude`, { signal: AbortSignal.timeout(1_000) });
     if (!r.ok) return 0;
     const j = (await r.json()) as { memoria?: { rssMB?: number } };
     return j.memoria?.rssMB ?? 0;
@@ -133,6 +139,7 @@ async function rodaConfiguracao(workers: number, heapMB: number, paiMB: number, 
       'backend/api/src/index.ts',
       '--sem-poller',
       '--sem-aquecer',
+      '--sem-login',
     ],
     {
       cwd: RAIZ,
@@ -158,7 +165,7 @@ async function rodaConfiguracao(workers: number, heapMB: number, paiMB: number, 
 
   let rssPico = 0;
   const amostra = setInterval(() => {
-    if (proc.exitCode === null) void rssMB(porta).then((v) => (rssPico = Math.max(rssPico, v)));
+    if (!estaEncerrado(proc)) void rssMB(porta).then((v) => (rssPico = Math.max(rssPico, v)));
   }, 750);
 
   let stderr = '';
@@ -181,14 +188,16 @@ async function rodaConfiguracao(workers: number, heapMB: number, paiMB: number, 
   res.subiu = subiu;
 
   if (subiu) {
-    for (const id of PAGINAS) {
+    const pedePagina = async (id: string): Promise<void> => {
       const t0 = Date.now();
       try {
-        const r = await fetch(`http://127.0.0.1:${porta}/api/dashboards/${id}`);
+        const r = await fetch(`http://127.0.0.1:${porta}/api/dashboards/${id}`, {
+          signal: AbortSignal.timeout(45_000),
+        });
         const ms = Date.now() - t0;
         if (!r.ok) {
           res.paginas.push({ id, ok: false, ms, erro: `HTTP ${r.status}` });
-          continue;
+          return;
         }
         // Só a forma; nenhum valor de linha sai daqui.
         const v = (await r.json()) as { visuais?: unknown[] };
@@ -202,19 +211,26 @@ async function rodaConfiguracao(workers: number, heapMB: number, paiMB: number, 
           erro: (e as Error).message.slice(0, 80),
         });
       }
-      if (proc.exitCode !== null) {
+    };
+
+    for (let inicio = 0; inicio < PAGINAS.length; inicio += CONCORRENCIA) {
+      await Promise.all(PAGINAS.slice(inicio, inicio + CONCORRENCIA).map(pedePagina));
+      if (estaEncerrado(proc)) {
         res.morreu = true;
         break;
       }
+    }
+    if (RETER_MS > 0 && !estaEncerrado(proc)) {
+      await new Promise((resolve) => setTimeout(resolve, RETER_MS));
     }
   }
 
   clearInterval(amostra);
   res.rssPicoMB = rssPico;
-  res.saida = proc.exitCode;
-  res.morreu = res.morreu || proc.exitCode !== null;
+  res.saida = proc.exitCode ?? proc.signalCode;
+  res.morreu = res.morreu || estaEncerrado(proc);
 
-  if (proc.exitCode === null) {
+  if (!estaEncerrado(proc)) {
     proc.kill();
     await once(proc, 'exit').catch(() => undefined);
   }
@@ -230,7 +246,7 @@ async function rodaConfiguracao(workers: number, heapMB: number, paiMB: number, 
 
 console.log(`\nDemanda de memória da API — bisseção do teto`);
 console.log(`  pai: --max-old-space-size= ${PAIS.join(", ")} MB`);
-console.log(`  ${PAGINAS.length} página(s) por configuração, uma por vez, todas frias`);
+console.log(`  ${PAGINAS.length} página(s) por configuração, em lotes de até ${CONCORRENCIA}, todas frias`);
 console.log(`  RSS pico vem de GET /api/saude — cobre pai + piscina (mesma thread pool)\n`);
 
 const resultados: Resultado[] = [];

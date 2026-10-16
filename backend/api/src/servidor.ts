@@ -96,8 +96,9 @@ export { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, comparaValorDeSegmentac
 /**
  * Quantos datasets a thread principal guarda antes de podar o mais antigo.
  *
- * **6, o mesmo de `TETO_CACHE_POR_WORKER`**, e pelo mesmo argumento: uma thread
- * atende TODAS as páginas do menu, não uma. O número é folgado de propósito —
+ * **2, o mesmo de `TETO_CACHE_POR_WORKER`**, e pelo mesmo argumento: uma thread
+ * atende TODAS as páginas do menu, não uma. O número mantém as páginas recentes
+ * sem reter uma cópia do snapshot por toda a navegação.
  * medido em 21/09/2026, depois de servir as 14 páginas uma vez, a thread
  * principal tinha **2** datasets vivos (`paginasCarregadas` em `/api/saude`),
  * porque no caminho de produção quem calcula é a piscina. Até 05/10/2026 quem
@@ -107,7 +108,7 @@ export { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, comparaValorDeSegmentac
  *
  * Ver `guardaCarregada` para por que um teto passou a ser necessário.
  */
-export const TETO_CARREGADAS = 6;
+export const TETO_CARREGADAS = 2;
 
 /**
  * O que `npm run api` passa em `avisoDasPaginas` (ACHADOS #175): a VISÃO PRODUTIVA

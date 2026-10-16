@@ -18,7 +18,8 @@
 >
 > | o que este documento trata como aberto | o que foi medido |
 > |---|---|
-> | "a piscina de workers autoriza 4 × 8 GB" | **4.608 MB autorizados** (pai 3.072 + 2 × 768), `mem_limit: 6g`, ACHADOS #98 |
+> | "a piscina de workers autoriza 4 × 8 GB" | **2.560 MB autorizados** (pai 1.536 + 2 × 512), `mem_limit: 3g`; 200 aberturas simultâneas passaram, com RSS pico de 1.827 MB e p95 de 256 ms em cache quente (16/10) |
+> | "uma fonte caiu e o refresh ficou preso" | o vigia encerra a árvore do grupo após 30 min, registra falha transitória e o daemon tenta de novo; a fila não fica parada indefinidamente |
 > | "três queries têm defeito de carga" | expostas em `/api/saude` → `refresh.queries[]` com idade e estado, e a tela avisa (A2/A6, commits `c193490` / `58ac4b9`) |
 > | "a stack nunca subiu" | subiu: **10/10 páginas pelo proxy na porta 80**, pico 4.356 MB de 6.144, `OOMKilled=false`, ACHADOS #99 e PLANO-DUPLA §A7 |
 >
@@ -67,9 +68,8 @@
 | **Autenticação** | **existe** desde o commit `eb69069`: Google SSO restrito a `sebratel.com.br` (`backend/api/src/auth-google.ts`), com portão de 401 antes do roteamento — o teste *"sem cookie de sessão, `/api/*` leva 401 antes de qualquer rota"*, em `backend/api/test/servidor.test.ts`, é o que o prova. Esta linha dizia "não existe" até 17/09/2026, contradizendo o próprio aviso no topo deste arquivo. **O que continua aberto é a §2.1: origem da identidade e o dado pessoal que a API serve** | não — mas ver §2.1 |
 | **Refresh do dado** | `backend/tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
 | **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando **24 das 25 queries** do catálogo. A de fora é `protocolos-produtividade`, e **o motivo original caiu**: até 17/09/2026 esta linha dizia "não materializa em nenhum modo hoje, #81", o que deixou de valer em **13/09/2026** — ela materializa ponta a ponta (**162 s**; o `manifesto.json` a traz com **77.452 linhas × 51 colunas**, carga de 16/09) e entrou no grupo `frio` de `backend/specs/_catalog/refresh.yaml`. A ausência dela na lista do cron é hoje uma **decisão pendente, não um impedimento técnico** (~3 min a mais na madrugada) — `docker/cron/crontab-snapshot-diario` já traz esse aviso no comentário, e era este documento que não tinha sido alinhado. Ver §2.2 abaixo | **pronto — com uma decisão em aberto** |
-| Containerização | **existe** (16/09/2026): `Dockerfile` na raiz, `docker-compose.prod.yml` com `api`/`redis`/`proxy` e `docker-compose.local.yml` como sobreposição de desenvolvimento | **pronto** |
-| Proxy reverso | **existe** desde o commit `7642fab`: `nginx.conf` na raiz, montado como `/etc/nginx/conf.d/default.conf` no serviço `proxy` do `docker-compose.prod.yml` (`nginx:1.27-alpine`, porta 80). Traz `/`, `/api/` com `proxy_read_timeout 90s` (o padrão de 60 s cortava `agendamento-field` a frio), `/api/eventos` com as quatro linhas de SSE e `/auth/`. Até 17/09/2026 esta linha dizia "não existe" — errado desde então | **pronto** |
-| TLS | **não existe** — o `nginx.conf` só tem `listen 80`, e a publicação da porta 443 está comentada no compose. O que falta é o **certificado**, decisão de infraestrutura e não do repositório (§3.3) | sim |
+| Containerização | `Dockerfile` na raiz e `docker-compose.prod.yml` com `api`/`refresh`/`snapshot-diario`; Redis, proxy e TLS ficam na infraestrutura do Misael. `docker-compose.local.yml` é a sobreposição de desenvolvimento | **pronto** |
+| Proxy reverso e TLS | configurados externamente pelo Misael; `nginx.conf` fica como referência de rotas, timeout e SSE, sem ser executado pela stack | **pronto, depende da configuração externa** |
 | Processo supervisionado | **mudou em 19/09/2026, e o bloqueio caiu pela metade.** A cadência do refresh deixou de depender do Agendador de Tarefas do Windows: ela é um relógio por grupo dentro do processo da API (`backend/api/src/agendador.ts`), e em produção quem supervisiona é o `restart: unless-stopped` do `docker-compose.prod.yml`, que já existe. **O que sobra:** no host, fora do Docker, nada reergue a API se o processo morrer — `npm start` não a ressuscita, de propósito (a morte mais comum dela é outra instância tomando a porta 3100). A resposta para isso é subir pelo compose, não registrar tarefa de host. Ver §2.2 | **não, se subir por Docker**; sim, se rodar `npm start` a seco |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
 
@@ -196,15 +196,19 @@ todas as linhas — e o que a API serve inclui:
 >
 > **Produção continua com o container `refresh` separado, e isso é deliberado.** O
 > serviço `api` do `docker-compose.prod.yml` ganhou `AUTO_REFRESH: false`, porque o
-> `mem_limit` dele é 6g (dimensionado com `npm run probe:memoria-api`, RSS de pico
-> 3137–3622 MB) e uma materialização dispara um filho com
-> `--max-old-space-size=8192` — `protocolos-geral` já precisou de 12 GB. Esse filho
-> nasceria dentro do cgroup da API e o OOM killer levaria a tela junto com a carga.
+> `mem_limit` dele é 3g (validado no cgroup com 200 aberturas e RSS pico de 1.827 MB).
+> A materialização usa outro container, com teto de 1450 MB e memória medida de
+> 1234 MiB para `protocolos-geral`; dentro do cgroup da API, ela poderia levar a tela
+> junto com a carga em caso de OOM.
 >
 > **Dois agendadores NÃO podem coexistir**: os dois fariam read-modify-write no
 > mesmo `manifesto.json` e um apagaria as tabelas que o outro acabou de registrar,
 > sem erro nenhum. Se um dia a API passar a agendar em produção, o serviço
 > `refresh` tem de sair do compose na mesma alteração.
+>
+> **Limite do host:** os `mem_limit` são limites de cgroup, não reserva nem soma que
+> caiba automaticamente em uma máquina de 3 GB. Antes de habilitar o `refresh` na mesma
+> máquina com esse teto físico, meça a concorrência com a API em carga.
 >
 > **E isto aconteceu na estação de trabalho, não em produção (ACHADOS #148).** A
 > stack de compose, subida para teste em 09/09, voltava sozinha a cada boot do Docker
@@ -288,7 +292,7 @@ valendo para quem for mexer na cadência.
   **O agendamento é 100% automático de fábrica** (06/09/2026):
   - Em produção (Docker Compose / Portainer): o `docker-compose.prod.yml` já traz
     o serviço `refresh` embutido executando `backend/tools/refresh/src/daemon.ts` a cada
-    15 minutos com `mem_limit: 6g` (medido, ACHADOS #154) e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
+    15 minutos com `mem_limit: 1450m` e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
     compartilhado com a API. Subir a stack já sobe o agendador ativo.
   - **Credencial Google (27/09/2026, ACHADOS #157):** `GOOGLE_CREDENCIAL_HOST` = caminho,
     NO SERVIDOR, do JSON da service account. O compose o monta só-leitura em
@@ -512,11 +516,10 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
 - **Não há passo de build no backend.** O Node 22+ executa TypeScript direto; a imagem
   não precisa de `tsc` para a API. O **frontend** sim: `npm run web:build` roda
   `tsc --noEmit` e o Vite.
-- **A API precisa de heap grande.** `npm run api` sobe com
-  `--max-old-space-size=10240` e `--expose-gc` porque ela mantém tabelas carregadas em
-  memória. Uma imagem sem esse flag, ou um container com limite de memória menor que
-  isso, morre com OOM **sob carga** — não no arranque, que é o pior momento para
-  descobrir.
+- **A API tem heap e piscina limitados.** A imagem sobe com
+  `--max-old-space-size=1536` e `--expose-gc`, mais duas workers de 512 MB, dentro
+  de `mem_limit: 3g`. A cota foi validada sob 200 aberturas simultâneas; não aumente
+  um dos três valores isoladamente.
 - **O `snapshot/` não vai dentro da imagem.** São **39 MB** de dado de cliente, e ele
   muda a cada refresh: é **volume**, e um volume que precisa de backup e de política de
   retenção como qualquer base com dado pessoal. **O que obriga a tratá-lo assim é o dado
@@ -547,28 +550,27 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
 
 ### 3.2 `docker-compose` de produção
 
-⚠ **Não existe mais `docker-compose.yml` na raiz.** Até 16/09/2026 este parágrafo
-dizia que ele subia *Redis e Kafka* e servia de infra local — e o arquivo não está no
-repositório; nenhum compose declara Kafka. A descrição sobreviveu ao arquivo, e o
-estrago é concreto: é ela que faz alguém apontar `REDIS_URL` para
-`redis://localhost:6379` num `.env` de desenvolvimento, onde nada escuta. O sintoma
-é o log `[cache] Redis desligado do caminho por 10s após 3 falhas seguidas` a cada
-pedido, com a memória servindo por baixo.
+⚠ **Não existe `docker-compose.yml` na raiz.** O arquivo de produção é
+`docker-compose.prod.yml`; ele sobe somente os serviços da aplicação. Redis, proxy
+reverso e TLS são infraestrutura externa configurada pelo Misael no Portainer.
 
-**Onde o Redis existe hoje:** só em `docker-compose.prod.yml`, como serviço `redis`,
-alcançável pelo nome `redis` dentro da rede do compose (`REDIS_URL` é montada lá, com
-`REDIS_PASSWORD`). Rodando **fora** do compose (`npm run api`, `npm start`) não há
-Redis nenhum: deixe `REDIS_URL` comentada e o cache é o de memória, que é o padrão
-documentado no §3.5.
+`REDIS_URL` é opcional: quando o Portainer a fornece, a API usa o Redis externo; sem
+ela, usa o cache limitado em memória, que é descartado a cada reinicialização e não
+acumula dados. Não aponte desenvolvimento para `redis://localhost:6379` se não houver
+um Redis realmente escutando nesse host.
 
 Para desenvolvimento há `docker-compose.local.yml`, que é **sobreposição** e não
 stack própria — ele só rebaixa `NODE_ENV` e liga `SEM_LOGIN`, e se usa com os dois
 `-f` (o cabeçalho do arquivo traz os comandos).
 
-O de produção tem três serviços: `api`, `redis` e `proxy`. **A tela não é um serviço:**
-a API já serve o build estático na raiz. Um container de Nginx servindo o React *e*
-outro servindo a API é peça a mais sem problema que resolva — o proxy entra pelo TLS
-(§3.3), não por causa do estático.
+O de produção tem três serviços: `api`, `refresh` e `snapshot-diario`. **A tela não é
+um serviço:** a API já serve o build estático na raiz. O proxy externo aponta para
+`${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}`; deixe o bind em loopback salvo
+quando a rede do Misael exigir outra interface.
+
+`CONFIA_PROXY=1` só é seguro quando esse proxy externo sobrescreve `X-Real-IP` antes de
+encaminhar cada requisição. O padrão é `0`, para impedir que alguém forje o IP e burle
+o rate limit pela porta direta.
 
 - **Critério de saída:** `docker compose -f docker-compose.prod.yml up -d` sobe tudo, e
   matar o container da API o traz de volta sozinho pelo healthcheck.
@@ -651,17 +653,12 @@ exige plano Blaze, e **ainda não está ligada**. Ver o cabeçalho de
 
 ### 3.3 Proxy reverso e TLS
 
-> **Esta seção abria com "não existe arquivo de Nginx no repositório" até 17/09/2026.**
-> Existe desde o commit `7642fab`, e a §0 chegou a listar as duas coisas ao mesmo tempo.
-> O texto abaixo descreve o que está commitado; **só o TLS continua faltando.**
+`nginx.conf` é uma **referência** para a infraestrutura do Misael; não é montado nem
+executado pelo `docker-compose.prod.yml`. O proxy e o TLS devem ser configurados no
+Portainer/host externo, preservando estes comportamentos:
 
-`nginx.conf` está na raiz e entra no container pelo serviço `proxy` do
-`docker-compose.prod.yml` (`nginx:1.27-alpine`, montado somente-leitura como
-`/etc/nginx/conf.d/default.conf`, publicando a porta 80 e subindo depois do
-`healthcheck` da API). O que ele já resolve, cada item pela razão que o pôs lá:
-
-- **`/` e `/api/` vão para `http://api:3100`** — a API serve a tela (build estático) e o
-  JSON na mesma porta; não há container de tela separado (§3.2).
+- **`/` e `/api/` vão para a API na porta 3100** — a API serve a tela (build estático) e
+  o JSON na mesma porta; não há container de tela separado (§3.2).
 - **`proxy_read_timeout 90s` em `/api/`** — o padrão de 60 s do Nginx cortava
   `agendamento-field` na abertura fria (~1 min de cálculo) e devolvia 504 exatamente na
   página mais lenta do relatório. Medido, não estimado.
@@ -675,11 +672,13 @@ exige plano Blaze, e **ainda não está ligada**. Ver o cabeçalho de
   `frontend/src/App.tsx:153`).
 - **`/auth/` tem bloco próprio** — as duas únicas rotas que escrevem estado (sessão) em
   vez de servir dado calculado, de propósito fora de `/api/`.
+- **`X-Real-IP` é sobrescrito pelo proxy** — só então o Portainer pode definir
+  `CONFIA_PROXY=1`; sem essa reescrita, mantenha `0` para o cliente não escolher o
+  próprio balde do rate limit.
 
-**O que falta é só o certificado.** O arquivo serve HTTP puro; o `listen 443 ssl` entra
-quando existir certificado — Let's Encrypt se o host for alcançável de fora, o da
-Sebratel para rede interna. A publicação da porta 443 já está no compose, comentada.
-Isto é decisão de infraestrutura, não do repositório.
+Certificado, porta pública e endereço do upstream são decisão de infraestrutura do
+Misael. Ajuste o upstream do exemplo para o endereço que alcança a API e faça o TLS no
+proxy externo; não acrescente outro container de proxy a esta stack.
 
 - **Critério de saída:** as 14 páginas abrem pelo endereço real com TLS, incluindo a
   mais lenta a frio, e nenhum pedido volta 504.
@@ -699,16 +698,14 @@ Isto é decisão de infraestrutura, não do repositório.
 
 ### 3.5 `.env` de produção — e um pé de ouvido já plantado
 
-- `.env.example` traz `PORT=3000`; o código, sem `PORT`, usa **3100**. Um `.env` de
-  produção copiado do exemplo com um Nginx apontado para 3100 dá "502 sem motivo".
-  Conferir os dois no mesmo minuto.
+- `docker-compose.prod.yml` fixa a porta interna em **3100**. O proxy externo deve
+  apontar para `API_BIND_HOST:API_PORT_HOST` e as duas variáveis devem refletir a rede
+  definida pelo Misael.
 - `REDIS_URL` está **comentada** no exemplo. Sem ela o cache é o de memória — funciona,
   e perde tudo a cada reinício, o que num container que reinicia é um frio por reinício.
   `GET /api/saude` diz qual adapter está ligado; é lá que se confere, não no `.env`.
 - credenciais do Voalle e do MariaDB de produção: **usuário sem permissão de escrita**.
   É a camada 1 das quatro do read-only, e a única que o repositório não garante sozinho.
-- as variáveis de **broker** do Kafka (as que o compose interpola) não são lidas pelo
-  Node. Se o deploy não sobe Kafka, elas não precisam existir.
 
 ---
 

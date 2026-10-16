@@ -340,8 +340,8 @@ const servidor = new Servidor({
   ...(tetoDeVisuaisMB !== undefined && Number.isFinite(tetoDeVisuaisMB)
     ? { tetoDeVisuaisMB }
     : {}),
-  ...(process.env.GOOGLE_CLIENT_ID ? { googleClientId: process.env.GOOGLE_CLIENT_ID } : {}),
-  ...(process.env.FIREBASE_PROJECT_ID ? { firebaseProjectId: process.env.FIREBASE_PROJECT_ID } : {}),
+  ...(!semLogin && process.env.GOOGLE_CLIENT_ID ? { googleClientId: process.env.GOOGLE_CLIENT_ID } : {}),
+  ...(!semLogin && process.env.FIREBASE_PROJECT_ID ? { firebaseProjectId: process.env.FIREBASE_PROJECT_ID } : {}),
   ...(process.env.DOMINIO_CORPORATIVO ? { dominioCorporativo: process.env.DOMINIO_CORPORATIVO } : {}),
   ...(process.env.SESSAO_TTL_HORAS
     ? { sessaoTtlHoras: Number.parseFloat(process.env.SESSAO_TTL_HORAS) }

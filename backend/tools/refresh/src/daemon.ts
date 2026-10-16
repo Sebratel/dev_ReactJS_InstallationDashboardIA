@@ -25,7 +25,7 @@ import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
 import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
-import { MEMORIA_PADRAO_MB, rodaGrupoAssincrono } from './executa-grupo.ts';
+import { MEMORIA_PADRAO_MB, TEMPO_MAXIMO_GRUPO_PADRAO_MS, rodaGrupoAssincrono } from './executa-grupo.ts';
 import {
   descreveMortesDaApi,
   leHistorico,
@@ -57,8 +57,9 @@ export function rodaGrupo(
   raiz: string,
   grupo: GrupoDeRefresh,
   memoriaMb = MEMORIA_PADRAO_MB,
+  tempoMaximoMs = TEMPO_MAXIMO_GRUPO_PADRAO_MS,
 ): Promise<ResultadoDeExecucao> {
-  return rodaGrupoAssincrono(raiz, grupo, { memoriaMb });
+  return rodaGrupoAssincrono(raiz, grupo, { memoriaMb, tempoMaximoMs });
 }
 
 export async function executaCiclo(opts: {
@@ -67,6 +68,7 @@ export async function executaCiclo(opts: {
   snapshotDir?: string;
   soPlano?: boolean;
   memoriaMb?: number;
+  tempoMaximoMs?: number;
   roda?: (grupo: GrupoDeRefresh) => ResultadoDeExecucao | Promise<ResultadoDeExecucao>;
 } = {}): Promise<CicloRefreshResult> {
   const raiz = opts.raiz ?? ROOT;
@@ -99,7 +101,7 @@ export async function executaCiclo(opts: {
   }
 
   const t0 = Date.now();
-  const rodaBase = opts.roda ?? ((g: GrupoDeRefresh) => rodaGrupo(raiz, g, memoriaMb));
+  const rodaBase = opts.roda ?? ((g: GrupoDeRefresh) => rodaGrupo(raiz, g, memoriaMb, opts.tempoMaximoMs));
   // **O histórico é escrito por GRUPO, não por tick.** `executaTick` já persiste o
   // status depois de cada grupo justamente para que um tick morto no meio não perca os
   // que terminaram (ver o docstring dele); o histórico segue a mesma regra. Embrulhar
@@ -150,6 +152,7 @@ export interface DaemonOptions {
   snapshotDir?: string;
   specsDir?: string;
   memoriaMb?: number;
+  tempoMaximoMs?: number;
   aoConcluirTick?: (resultado: CicloRefreshResult) => void;
 }
 
@@ -168,6 +171,14 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
     ? Number.parseInt(process.env.REFRESH_MEMORIA_MB, 10)
     : undefined;
   const memoriaMb = opts.memoriaMb ?? (Number.isFinite(envMemoria) && envMemoria! > 0 ? envMemoria : undefined);
+  const envTempoMaximoMinutos = process.env.REFRESH_TEMPO_MAXIMO_MINUTOS
+    ? Number.parseInt(process.env.REFRESH_TEMPO_MAXIMO_MINUTOS, 10)
+    : undefined;
+  const tempoMaximoMs = opts.tempoMaximoMs ?? (
+    Number.isFinite(envTempoMaximoMinutos) && envTempoMaximoMinutos! > 0
+      ? envTempoMaximoMinutos! * 60_000
+      : TEMPO_MAXIMO_GRUPO_PADRAO_MS
+  );
   const imediato = opts.imediato ?? true;
   const soUmaVez = opts.soUmaVez ?? false;
   const soPlano = opts.soPlano ?? false;
@@ -220,6 +231,7 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
         snapshotDir: opts.snapshotDir,
         soPlano,
         memoriaMb,
+        tempoMaximoMs,
       });
 
       if (soPlano) {

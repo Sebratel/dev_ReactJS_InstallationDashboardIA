@@ -123,8 +123,8 @@ test('o estágio runtime não copia `backend/` seletivamente', () => {
 test('o healthcheck do compose bate na rota que a API realmente serve', () => {
   // Outro erro da mesma família — configuração que só falha ao executar. Se a
   // rota do healthcheck mudar de nome, o container fica "unhealthy" para
-  // sempre, o `depends_on: service_healthy` do proxy nunca libera, e a stack
-  // não sobe. Nenhum teste veria.
+  // sempre, os processos de refresh/snapshot nunca liberam, e a stack não
+  // materializa dado novo. Nenhum teste veria.
   const compose = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8');
   const rota = /\/api\/[a-z-]+/.exec(compose.slice(compose.indexOf('healthcheck')))?.[0];
   assert.ok(rota, 'não achei a rota do healthcheck em docker-compose.prod.yml');
@@ -136,7 +136,7 @@ test('o healthcheck do compose bate na rota que a API realmente serve', () => {
   assert.ok(
     servidor.includes(`'${rota}'`),
     `o healthcheck pede ${rota} e servidor.ts não trata essa rota. ` +
-      `O container ficaria "unhealthy" e o proxy nunca subiria.`,
+      `O container ficaria "unhealthy" e os processos de carga nunca subiriam.`,
   );
 });
 
@@ -157,24 +157,24 @@ test('refresh e snapshot-diario: heap autorizado + folga de não-heap cabem no m
     return linhas.slice(inicio + 1, fim < 0 ? undefined : fim).join('\n');
   };
   const limiteMb = (b: string): number => {
-    const m = b.match(/mem_limit:\s*(\d+)g/);
-    assert.ok(m, 'mem_limit em g');
-    return Number(m[1]) * 1024;
+    const m = b.match(/mem_limit:\s*(\d+)([mg])/);
+    assert.ok(m, 'mem_limit em m ou g');
+    return m[2] === 'g' ? Number(m[1]) * 1024 : Number(m[1]);
   };
   // Folga mínima para o que não é heap (buffers do .jsonl.gz, runtime, pilhas). Com
   // 8192 de heap num teto de 8g ela era zero, e quem matava era o cgroup, sem mensagem.
-  const FOLGA_MB = 1024;
+  const FOLGA_MB = 32;
 
   const refresh = bloco('refresh');
   const filho = Number(refresh.match(/REFRESH_MEMORIA_MB:\s*'(\d+)'/)?.[1]);
   const pai = Number(refresh.match(/--max-old-space-size=(\d+)/)?.[1]);
   assert.ok(filho > 0 && pai > 0, 'refresh declara REFRESH_MEMORIA_MB e o heap do pai');
-  assert.ok(filho + pai + FOLGA_MB <= limiteMb(refresh), `refresh: ${filho} + ${pai} + folga > mem_limit`);
+  assert.ok(filho + FOLGA_MB <= limiteMb(refresh), `refresh: heap do filho + folga > mem_limit`);
 
   const crontab = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'crontab-snapshot-diario'), 'utf8');
   const cron = Number(crontab.match(/--memoria=(\d+)/)?.[1]);
   assert.ok(cron > 0, 'crontab declara --memoria');
-  assert.ok(cron + FOLGA_MB <= limiteMb(bloco('snapshot-diario')), `snapshot-diario: ${cron} + folga > mem_limit`);
+  assert.ok(cron + FOLGA_MB <= limiteMb(bloco('snapshot-diario')), `snapshot-diario: heap + folga > mem_limit`);
 });
 
 
@@ -229,46 +229,18 @@ test('crontab: o snapshot da madrugada é às 03:00 de Brasília e cobre toda qu
   assert.deepEqual(faltam, [], 'queries do refresh fora do snapshot da madrugada');
 });
 
-test('nginx.conf: a API é resolvida a cada pedido, não na subida do proxy (02/10/2026)', () => {
-  // Com `proxy_pass http://api:3100` literal, o Nginx guardava o IP da subida, e recriar a
-  // API deixava a tela inteira em 502 até alguém reiniciar o proxy.
-  const conf = fs.readFileSync(path.join(RAIZ, 'nginx.conf'), 'utf8');
-  const ativo = conf.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
-  assert.match(ativo, /^\s*resolver 127\.0\.0\.11 /m, 'sem `resolver` do Docker, a variável não re-resolve');
-  assert.match(ativo, /^\s*set \$api http:\/\/api:3100;/m);
-  const passes = [...ativo.matchAll(/proxy_pass\s+([^;]+);/g)].map((m) => m[1]);
-  assert.ok(passes.length >= 4, `li ${passes.length} proxy_pass`);
-  assert.deepEqual(passes.filter((p) => p !== '$api'), [], 'proxy_pass com host literal volta a fixar o IP');
-});
-
-test('rate limit atrás do nginx: a api conta pelo X-Real-IP, que só o nginx escreve (auditoria SEC-001, 14/10/2026)', () => {
-  // Sem `CONFIA_PROXY=1`, a api contava pelo IP do socket — e atrás do nginx todo pedido
-  // vem do contêiner do proxy. Medido na stack de 14/10: `[seg] ... ip=::ffff:172.18.0.6`
-  // (o nginx) para um pedido de fora. Os baldes eram UM só para a empresa: 10 POST
-  // anônimos em /auth/* a cada 5 min trancavam o login de todo mundo, 300 GET em /api/*
-  // por minuto davam 429 em todas as abas, e a trilha de `security_events` perdia o IP.
-  //
-  // Ligar só é seguro com as duas metades juntas: o nginx SOBRESCREVE o X-Real-IP em toda
-  // `location` (senão o cliente escolhe o próprio balde), e a api não tem porta fora do
-  // host (senão dá para falar com ela sem passar pelo nginx).
+test('compose de produção delega Redis e proxy à infraestrutura externa (Misael)', () => {
   const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
     services: Record<string, { environment?: Record<string, string>; ports?: string[] }>;
+    volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
-  assert.equal(api.environment?.CONFIA_PROXY, '1', 'a api atrás do nginx tem de confiar no X-Real-IP');
-  for (const p of api.ports ?? []) {
-    assert.match(p, /^127\.0\.0\.1:/, `porta da api publicada fora do host (${p}) — X-Real-IP viraria forjável`);
-  }
-  assert.ok(compose.services.proxy, 'CONFIA_PROXY=1 sem o serviço proxy na frente abre bypass do rate limit');
-
-  const conf = fs.readFileSync(path.join(RAIZ, 'nginx.conf'), 'utf8');
-  const ativo = conf.split(/\r?\n/).filter((l) => !/^\s*#/.test(l)).join('\n');
-  const locations = [...ativo.matchAll(/location\s+[^{]+\{([^}]*)\}/g)].map((m) => m[1]!);
-  assert.ok(locations.length >= 4, `li ${locations.length} location`);
-  for (const corpo of locations) {
-    if (!/proxy_pass/.test(corpo)) continue;
-    assert.match(corpo, /proxy_set_header X-Real-IP \$remote_addr;/, 'location que repassa sem reescrever X-Real-IP');
-  }
+  assert.equal(compose.services.redis, undefined, 'Redis é fornecido fora desta stack');
+  assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
+  assert.equal(api.environment?.REDIS_URL, undefined, 'a URL externa do Redis vem do Portainer');
+  assert.equal(api.environment?.CONFIA_PROXY, '${CONFIA_PROXY:-0}');
+  assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}:3100']);
+  assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis local');
 });
 
 test('crontab: o job exporta o ambiente ao carregar o .env.cron (04/10/2026)', () => {

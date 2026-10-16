@@ -18,7 +18,7 @@ import { nomeDaAba, ordenaTelas } from '../../utils/ordemDasTelas.ts';
 /** A aba: maiúsculas, apagada; a ativa vai para a primária com o sublinhado. A borda e o
  *  raio do reset de `button` (`@layer base`) não valem aqui. */
 const ABA =
-  'flex h-[36px] flex-none cursor-pointer items-center rounded-none border-0 border-b-2 border-transparent bg-transparent px-[13px] py-0 text-[11.5px] font-semibold tracking-[0.4px] whitespace-nowrap text-pbi-muted uppercase transition-colors enabled:hover:bg-pbi-hover enabled:hover:text-pbi-ink disabled:cursor-default disabled:text-pbi-neutro';
+  'flex h-[36px] flex-none scroll-mr-[38px] cursor-pointer items-center rounded-none border-0 border-b-2 border-transparent bg-transparent px-[10px] py-0 text-[11.5px] font-semibold tracking-[0.4px] whitespace-nowrap text-pbi-muted uppercase transition-colors enabled:hover:bg-pbi-hover enabled:hover:text-pbi-ink disabled:cursor-default disabled:text-pbi-neutro';
 
 export function NavDeTelas(props: {
   paginas: DashboardDaLista[];

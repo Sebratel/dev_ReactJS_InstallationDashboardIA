@@ -34,6 +34,13 @@ export type { ResultadoDeExecucao };
 export const MEMORIA_PADRAO_MB = 8192;
 
 /**
+ * Nenhuma carga pode segurar a fila para sempre. O maior grupo já medido levou
+ * pouco mais de 20 min; 30 min preserva essa folga e corta socket de banco que
+ * ficou pendurado. A falha sai como transitória para o daemon tentar de novo.
+ */
+export const TEMPO_MAXIMO_GRUPO_PADRAO_MS = 30 * 60_000;
+
+/**
  * O argv exato que materializa um grupo. Separado da execução para o teste poder
  * afirmar sobre ele sem criar processo nenhum.
  */
@@ -43,6 +50,7 @@ export function argvDoGrupo(
   memoriaMb: number = MEMORIA_PADRAO_MB,
 ): string[] {
   return [
+    '--expose-gc',
     `--max-old-space-size=${memoriaMb}`,
     path.join(raiz, 'backend', 'tools', 'snapshot', 'src', 'index.ts'),
     `--memoria=${memoriaMb}`,
@@ -59,6 +67,8 @@ const LARGURA_MAXIMA = 200;
 
 export interface OpcoesDeExecucao {
   memoriaMb?: number;
+  /** Mata a árvore do materializador se ela ultrapassar este prazo. Zero desliga. */
+  tempoMaximoMs?: number;
   /** Injetável no teste. Em produção é `node:child_process.spawn`. */
   cria?: typeof spawn;
   /**
@@ -71,6 +81,23 @@ export interface OpcoesDeExecucao {
    * (`backend/api/src/agendador.ts`) aborta por aqui em vez de esperar o filho perceber.
    */
   sinal?: AbortSignal;
+}
+
+/** Mata o grupo inteiro no Linux; matar só o pai deixaria a query órfã no snapshot. */
+function mataArvore(filho: { pid?: number; kill?: (sinal?: NodeJS.Signals) => boolean }): void {
+  if (process.platform !== 'win32' && typeof filho.pid === 'number') {
+    try {
+      process.kill(-filho.pid, 'SIGKILL');
+      return;
+    } catch {
+      // O filho pode ter saído entre a checagem e o sinal; tenta o PID direto.
+    }
+  }
+  try {
+    filho.kill?.('SIGKILL');
+  } catch {
+    // Filho já encerrado não precisa morrer de novo.
+  }
 }
 
 /** As últimas `LINHAS_DE_ERRO` linhas não vazias, para anexar ao resumo da falha. */
@@ -107,9 +134,16 @@ export function rodaGrupoAssincrono(
   const argv = argvDoGrupo(raiz, grupo, opts.memoriaMb ?? MEMORIA_PADRAO_MB);
   return new Promise<ResultadoDeExecucao>((resolve) => {
     let respondido = false;
+    let temporizador: ReturnType<typeof setTimeout> | null = null;
+    let aoAbortar: (() => void) | null = null;
+    const limpa = (): void => {
+      if (temporizador !== null) clearTimeout(temporizador);
+      if (aoAbortar && opts.sinal) opts.sinal.removeEventListener('abort', aoAbortar);
+    };
     const responde = (r: ResultadoDeExecucao): void => {
       if (respondido) return;
       respondido = true;
+      limpa();
       resolve(r);
     };
     // `stdout` continua herdado: é o log de progresso do materializador, e ele tem
@@ -124,6 +158,9 @@ export function rodaGrupoAssincrono(
     const filho = cria(process.execPath, argv, {
       cwd: raiz,
       stdio: ['ignore', 'inherit', 'pipe'],
+      // No Linux, abre uma sessão própria para o vigia encerrar também os filhos
+      // que o materializador cria para cada query. No Windows o fallback mata o pai.
+      detached: process.platform !== 'win32',
     });
 
     let erroDoFilho = '';
@@ -135,23 +172,25 @@ export function rodaGrupoAssincrono(
       erroDoFilho = (erroDoFilho + texto).slice(-8192);
     });
 
+    const interrompe = (motivo: string, transitoria = false): void => {
+      // `SIGKILL` e não `SIGTERM`: quem aborta já concluiu que este filho não vai
+      // terminar sozinho. Pedir educadamente a um processo com socket pendurado é
+      // esperar mais um tempo indefinido.
+      mataArvore(filho);
+      responde({ ok: false, erro: `interrompida: ${motivo}`, ...(transitoria ? { transitoria: true } : {}) });
+    };
+
     if (opts.sinal) {
-      const aborta = (): void => {
-        // `SIGKILL` e não `SIGTERM`: quem aborta já concluiu que este filho não vai
-        // terminar sozinho (ver `sinal` em `OpcoesDeExecucao`). Pedir educadamente a
-        // um processo cujas conexões morreram é esperar mais um tempo indefinido.
-        try {
-          filho.kill?.('SIGKILL');
-        } catch {
-          // Filho que já morreu não precisa morrer de novo.
-        }
-        responde({
-          ok: false,
-          erro: `interrompida: ${String(opts.sinal?.reason ?? 'abortada')}`,
-        });
-      };
-      if (opts.sinal.aborted) aborta();
-      else opts.sinal.addEventListener('abort', aborta, { once: true });
+      aoAbortar = (): void => interrompe(String(opts.sinal?.reason ?? 'abortada'));
+      if (opts.sinal.aborted) aoAbortar();
+      else opts.sinal.addEventListener('abort', aoAbortar, { once: true });
+    }
+
+    const tempoMaximoMs = opts.tempoMaximoMs ?? TEMPO_MAXIMO_GRUPO_PADRAO_MS;
+    if (!respondido && Number.isFinite(tempoMaximoMs) && tempoMaximoMs > 0) {
+      temporizador = setTimeout(() => {
+        interrompe(`vigia de refresh: grupo '${grupo.id}' passou de ${Math.round(tempoMaximoMs / 60_000)} min`, true);
+      }, tempoMaximoMs);
     }
     // `'error'` cobre o que `'exit'` não cobre: o binário não existe, a pasta sumiu,
     // o sistema recusou criar processo. Sem este ouvinte o `ChildProcess` emitiria

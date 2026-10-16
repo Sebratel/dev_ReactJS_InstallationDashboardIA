@@ -54,8 +54,8 @@ export type MList = readonly MValue[];
  * `Table.AddColumn` criam um registro **por linha** só para o `each [COLUNA]` ler
  * um campo; em `protocolos-produtividade` são 65 mil linhas × 60 passos. Copiar 48
  * campos para responder um foi 24% do tempo em coletor de lixo no perfil de
- * 06/08/2026. Um registro criado por `daLinha` compartilha o `Map` da linha, que já
- * é imutável (`MRow` é `ReadonlyMap`), e não copia nada.
+ * 06/08/2026. Um registro criado por `daLinha` compartilha a linha compacta,
+ * imutável, e não copia nada.
  */
 export class MRecord {
   /** Materializado sob demanda quando o registro vem de `daLinha`. */
@@ -66,8 +66,8 @@ export class MRecord {
 
   constructor(fields: Iterable<readonly [string, MValue]>);
   /**
-   * Espelha uma linha, sem copiar campo. `colunas` é a **forma** — a da tabela, não
-   * a do `Map` da linha: linha que não guardou uma coluna a tem como `null`, e é
+ * Espelha uma linha, sem copiar campo. `colunas` é a **forma** — a da tabela, não
+ * a da linha: linha que não guardou uma coluna a tem como `null`, e é
    * isso que o M vê.
    */
   constructor(colunas: readonly string[], linha: MRow);
@@ -224,15 +224,47 @@ export function exigeSemErro(v: MValue, onde: string): MValue {
 }
 
 /** Uma linha: nome de coluna (como escrito) → valor. */
-export type MRow = ReadonlyMap<string, MValue>;
+export interface MRow {
+  get(nome: string): MValue | undefined;
+  has(nome: string): boolean;
+}
+
+class LinhaCompacta implements MRow {
+  readonly #indices: ReadonlyMap<string, number>;
+  readonly #valores: readonly MValue[];
+
+  constructor(indices: ReadonlyMap<string, number>, valores: readonly MValue[]) {
+    this.#indices = indices;
+    this.#valores = valores;
+  }
+
+  get(nome: string): MValue | undefined {
+    const indice = this.#indices.get(nome);
+    return indice === undefined ? undefined : this.#valores[indice];
+  }
+
+  has(nome: string): boolean {
+    return this.#indices.has(nome);
+  }
+}
+
+const indicesPorColunas = new WeakMap<readonly string[], ReadonlyMap<string, number>>();
+
+function indicesDasColunas(colunas: readonly string[]): ReadonlyMap<string, number> {
+  const existente = indicesPorColunas.get(colunas);
+  if (existente) return existente;
+  const indices = new Map<string, number>();
+  for (const [indice, coluna] of colunas.entries()) indices.set(coluna, indice);
+  indicesPorColunas.set(colunas, indices);
+  return indices;
+}
 
 /**
  * Tabela M: colunas ordenadas e linhas ordenadas.
  *
- * As linhas são `Map` e não objeto simples por um motivo prático: nome de coluna
- * da base tem espaço, acento e `#` (`[HR. ALOCAÇÃO]`), e `Map` não confunde nada
- * disso com propriedade de protótipo — `row["constructor"]` num objeto simples
- * devolveria função em vez de `undefined`.
+ * As linhas são valores compactos indexados pelas colunas, e não objetos simples:
+ * nome de coluna da base pode ter espaço, acento e `#` (`[HR. ALOCAÇÃO]`) sem
+ * confundir com propriedades de protótipo como `constructor`.
  */
 export class MTable {
   readonly columns: readonly string[];
@@ -293,7 +325,9 @@ export function isList(v: MValue): v is MList {
 
 /** Constrói uma linha a partir de pares, na ordem dada. */
 export function linha(pares: Iterable<readonly [string, MValue]>): MRow {
-  return new Map(pares);
+  const entradas = [...pares];
+  const colunas = entradas.map(([coluna]) => coluna);
+  return new LinhaCompacta(indicesDasColunas(colunas), entradas.map(([, valor]) => valor));
 }
 
 /**
@@ -301,10 +335,10 @@ export function linha(pares: Iterable<readonly [string, MValue]>): MRow {
  * intermediário**.
  *
  * Existe por medição. O idioma natural, `linha(t.columns.map((c) => [c, r.get(c)]))`,
- * cria um array de N arrays de dois elementos por linha, e o `Map` os descarta
+ * cria um array de N arrays de dois elementos por linha, e a linha compacta os descarta
  * imediatamente: em `protocolos-produtividade` são 65 mil linhas × 48 colunas × 60
  * passos de lixo puro, e o perfil de 06/08/2026 mediu 24% do tempo em coletor de
- * lixo. Aqui o valor vai direto para o `Map`.
+ * lixo. Aqui o valor vai direto para o vetor da linha.
  *
  * A ordem de inserção segue `columns`, que é a ordem de coluna da tabela — e ordem
  * de coluna é parte da semântica de M, não detalhe (ver o topo deste arquivo).
@@ -313,12 +347,11 @@ export function linhaPor(
   columns: readonly string[],
   valor: (coluna: string, i: number) => MValue,
 ): MRow {
-  const m = new Map<string, MValue>();
+  const valores = new Array<MValue>(columns.length);
   for (let i = 0; i < columns.length; i++) {
-    const c = columns[i]!;
-    m.set(c, valor(c, i));
+    valores[i] = valor(columns[i]!, i);
   }
-  return m;
+  return new LinhaCompacta(indicesDasColunas(columns), valores);
 }
 
 /** Tabela a partir de registros, com a ordem de coluna dada explicitamente. */

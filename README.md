@@ -708,7 +708,8 @@ backend/                   # BACK — tudo que roda no Node, sem build step
 docs/                      # PLANO-CARGA.md é o estado de agora; ACHADOS.md é o diário
 docker/cron/               # crontab e entrypoint do serviço snapshot-diario
 snapshot/                  # DADO GERADO (CPF/RG) — nunca versionado
-Dockerfile, docker-compose.prod.yml, nginx.conf   # a stack de produção
+Dockerfile, docker-compose.prod.yml               # aplicação de produção
+nginx.conf                                        # referência para o proxy externo
 ```
 
 > Arquivos marcados **GERADO** são reescritos por `npm run extract` — nenhuma

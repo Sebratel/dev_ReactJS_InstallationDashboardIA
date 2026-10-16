@@ -114,7 +114,7 @@ describe('portão de login: o contrato com quem sobe a API de propósito sem log
   const casos: Array<[string, Record<string, string | undefined>, readonly string[]]> = [
     ['npm run api', {}, ['node', 'backend/api/src/index.ts', '--sem-login']],
     ['backend/tools/subir', {}, ['node', 'backend/api/src/index.ts', '--sem-aquecer', '--sem-login']],
-    ['probe:memoria-api', { SEM_LOGIN: '1', GOOGLE_CLIENT_ID: '' }, ['node', 'backend/api/src/index.ts', '--sem-poller', '--sem-aquecer']],
+    ['probe:memoria-api', { SEM_LOGIN: '1', GOOGLE_CLIENT_ID: '' }, ['node', 'backend/api/src/index.ts', '--sem-poller', '--sem-aquecer', '--sem-login']],
   ];
 
   for (const [nome, env, argv] of casos) {

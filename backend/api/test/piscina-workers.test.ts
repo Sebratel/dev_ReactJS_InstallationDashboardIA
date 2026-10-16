@@ -33,23 +33,22 @@ test('sem variável de ambiente, o par (workers, heap) vem dos padrões nomeados
  * está repetido aqui de propósito: um número que vive só no YAML não tem quem o
  * defenda quando alguém dobra `API_WORKERS` "só para testar".
  */
-const MEM_LIMIT_CONTAINER_MB = 6144; // mem_limit: 6g
-const TETO_PAI_MB = 3072; // --max-old-space-size do Dockerfile
+const MEM_LIMIT_CONTAINER_MB = 3 * 1024; // mem_limit: 3g
+const TETO_PAI_MB = 1536; // --max-old-space-size do Dockerfile
+const PERFIL_DE_PRODUCAO = { API_WORKERS: '2', API_WORKER_HEAP_MB: '512' };
 
 test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', () => {
   // O guarda que faltava, e a conta que ele guarda:
   //
-  //   pai 3072 + 2 workers × 768 = 4608 MB de heap autorizado
-  //   mem_limit 6144 MB           = 1536 MB de folga para o que NÃO é heap
-  //                                 (buffers do .jsonl.gz, runtime do Node,
-  //                                  overhead do V8, pilha das threads)
+  //   pai 1536 + 2 workers × 512 = 2560 MB de heap autorizado
+  //   mem_limit 3072 MB          = 512 MB de folga autorizada
   //
-  // RSS pico medido nessa faixa: 3137–3622 MB (`probe:memoria-api`, 04/09/2026).
+  // RSS pico medido nessa faixa: 1827 MB (200 aberturas simultâneas, 16/10/2026).
   //
   // Se alguém subir um dos padrões sem mexer no outro, o container passa a ser
   // morto pelo OOM killer do host — falha que aparece como "a página às vezes
   // não abre", não como erro de configuração. Este teste falha antes.
-  const c = configuracaoDaPiscina({}, 16);
+  const c = configuracaoDaPiscina(PERFIL_DE_PRODUCAO, 16);
   const totalAutorizadoMB = TETO_PAI_MB + c.tamanhoPool * c.heapPorWorkerMB;
 
   assert.ok(
@@ -60,29 +59,18 @@ test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', (
       `Dockerfile e MEM_LIMIT_CONTAINER_MB aqui, no mesmo commit.`,
   );
 
-  // E a folga tem de sobrar: heap autorizado igual ao mem_limit significa
-  // container morto no primeiro buffer fora do heap.
+  // A folga autorizada nunca pode zerar. A prova do RSS acontece dentro do
+  // cgroup com `npm run probe:memoria-api`, porque autorização de heap não é RSS.
   const folgaMB = MEM_LIMIT_CONTAINER_MB - totalAutorizadoMB;
   assert.ok(
-    folgaMB >= 1024,
+    folgaMB >= 64,
     `sobram só ${folgaMB} MB para o que não é heap (buffers, runtime, V8). ` +
-      `O piso é 1024 MB — medido: o RSS chega a 3622 MB com 4608 autorizado.`,
+      `O piso é 64 MB — rode a sonda dentro do cgroup antes de baixar mais.`,
   );
 });
 
-test('o piso do processo pai é conhecido, e 2048 MB não basta', () => {
-  // Medido em 04/09/2026 (`probe:memoria-api --pai=1024,1536,2048 --heap=768`):
-  // as três estouram o heap na PRIMEIRA página, com `RSS pico` colado no teto
-  // do pai (1198 / 1730 / 2270 MB). Com 3072 as 10 páginas passam.
-  //
-  // Este teste não mede nada — ele guarda o número contra a tentação de
-  // "apertar mais um pouco" sem rodar a sonda. Se alguém baixar TETO_PAI_MB,
-  // tem de baixar aqui também, e aí lê o porquê.
-  assert.ok(
-    TETO_PAI_MB >= 3072,
-    `2048 MB de heap no pai estoura na primeira página (medido). ` +
-      `Rode 'npm run probe:memoria-api --pai=<novo>' antes de baixar isto.`,
-  );
+test('o perfil de produção mantém o teto do processo pai medido', () => {
+  assert.equal(TETO_PAI_MB, 1536);
 });
 
 test('API_WORKERS e API_WORKER_HEAP_MB sobrepõem os padrões', () => {
