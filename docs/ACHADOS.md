@@ -15631,3 +15631,28 @@ em `grupos.test.ts` conta as montagens (0 antes da leitura, 1 depois de duas lei
 Sintético (matriz com 30.000 linhas de eixo, 1 medida, worker com `resourceLimits`): antes
 passa com 96 MB e estoura com 64; depois passa com 64 e estoura com 48; ~25% mais rápida.
 Ganho menor que o da tabela porque a célula da matriz continua precisando do escopo dela.
+
+## #227 — #224/#225/#226 no Docker: RAM medida e histórico congelado em produção (16/10)
+
+Deploy de `b790e39` (`api`, `refresh`, `snapshot-diario`) às ~19:20 UTC; imagens anteriores
+guardadas como `:antes-16-10` (`api`, `refresh`).
+
+**`visao-geral` sem filtro, mesma cópia congelada do snapshot, container avulso com a imagem:**
+antes precisava de 1024–1536 MB de heap (1.158 MB retidos, 2,8 s); depois 256–384 MB (227 MB,
+1,5 s); SHA do `Completo` da tableEx e da janela IDÊNTICOS (`2b210a0d…`/`955dbbfb…`).
+
+**`api` inteira, 11 páginas SEM filtro + fim da tabela e buscas, login interno com token
+efêmero (não gravado em disco; desligado e conferido 401 no fim):** pico 2.072 MB, 1.578 MB ao
+final, 0 queda para cálculo em linha. Re-aquecimento depois de `medio` + um usuário logado:
+pico 2.115 MB. **Aberto:** entre 19:22 e 19:26 UTC a `api` nova bateu 3.072 MB (o teto) por
+~3 min, logo após um `quente`; os logs se perderam ao recriar o container. Pode ter sido uso
+real junto do re-aquecimento — não reproduzido. O processo principal roda com
+`--max-old-space-size=1536` e as 2 workers com 512: até 2,5 GB de heap autorizados num
+container de 3 GB.
+
+**Histórico congelado em produção:** 1ª rodada do `medio` — "histórico congelado rebuscado:
+sem histórico em disco", `protocolos-geral` 61,6 s, arquivo gravado; 2ª rodada — histórico do
+disco (arquivo não regravado), `protocolos-geral` **33,7 s**, 99.702 linhas. O grupo `medio`
+inteiro foi 284 s e 275 s (média histórica 427,5 s em 120 rodadas): o grupo é dominado pelas
+outras queries, e o ganho da divisão é ~28 s por rodada — menor que a estimativa de "133 s →
+25–30 s" do handoff, que media a VPN de casa.
