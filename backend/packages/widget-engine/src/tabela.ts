@@ -17,7 +17,7 @@ import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts
 import { DaxEvalError, isBlank, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
-import { agrupar, campoAtivo, chaveDoCampo, type Chave } from './grupos.ts';
+import { agrupar, campoAtivo, chaveDoCampo, combinacoesDistintas, type Chave } from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
 export interface CelulaTabela {
@@ -205,7 +205,7 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
     );
   }
 
-  const { chaves } = separaCampos(visual, onde);
+  const { chaves, calculados } = separaCampos(visual, onde);
 
   // **Os dois tipos de filtro entram em momentos diferentes, e a ordem é a regra.**
   // O de linha restringe o que entra na conta e vale **antes** de agrupar; o de
@@ -216,7 +216,6 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
   const filtros = traduzFiltros(deLinha, ev, onde);
   const base = escopoComFiltros(ev, filtros);
   const having = deGrupo.map((f) => predicadoDeGrupo(f, ev, onde));
-  const grupos = agrupar(chaves, base, ev, onde).filter((g) => having.every((h) => h.passa(g.escopo)));
 
   // Qual chave é cada campo, para remontar a ordem da spec sem procurar por nome
   // (dois campos podem ter o mesmo `displayName`; em `agendamento-field` há um `.`).
@@ -224,18 +223,32 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
   let n = 0;
   for (const c of campos) if (ehChave(c)) indiceDaChave.set(c, n++);
 
-  const linhas = grupos.map((grupo) =>
-    campos.map((campo): CelulaTabela => {
-      const i = indiceDaChave.get(campo);
-      if (i !== undefined) {
-        return { nome: campo.name ?? null, valor: grupo.valores[i]!, chave: true };
-      }
-      // `base` é o total do visual: o denominador de um campo `% do total`, que
-      // precisa da mesma conta sem o agrupamento da linha.
-      const valor = valorDoCampo(campo, grupo.escopo, ev, onde, base);
-      return { nome: campo.name ?? null, valor, chave: false };
-    }),
-  );
+  // **Tabela só de chaves não precisa do escopo de cada grupo** — e é a tabela de
+  // detalhe, a maior que existe. Sem célula calculada e sem HAVING, ninguém o lê; a
+  // linha é a combinação distinta e pronto. Ver `combinacoesDistintas`.
+  const linhas =
+    calculados.length === 0 && having.length === 0
+      ? combinacoesDistintas(chaves, base, ev, onde).map((valores) =>
+          campos.map((campo): CelulaTabela => ({
+            nome: campo.name ?? null,
+            valor: valores[indiceDaChave.get(campo)!]!,
+            chave: true,
+          })),
+        )
+      : agrupar(chaves, base, ev, onde)
+          .filter((g) => having.every((h) => h.passa(g.escopo)))
+          .map((grupo) =>
+            campos.map((campo): CelulaTabela => {
+              const i = indiceDaChave.get(campo);
+              if (i !== undefined) {
+                return { nome: campo.name ?? null, valor: grupo.valores[i]!, chave: true };
+              }
+              // `base` é o total do visual: o denominador de um campo `% do total`, que
+              // precisa da mesma conta sem o agrupamento da linha.
+              const valor = valorDoCampo(campo, grupo.escopo, ev, onde, base);
+              return { nome: campo.name ?? null, valor, chave: false };
+            }),
+          );
 
   return {
     dashboard: dash.id,

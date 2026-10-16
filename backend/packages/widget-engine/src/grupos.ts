@@ -211,6 +211,30 @@ export function agrupar(
 }
 
 /**
+ * Só os VALORES das combinações distintas, na mesma ordem de `agrupar` — sem escopo.
+ *
+ * **Existe para a tabela que só tem chaves** (`tabela.ts`). Ali ninguém lê o escopo do
+ * grupo: sem célula calculada e sem filtro de grupo, a linha é a própria combinação.
+ * Montá-lo mesmo assim custava, por grupo, um filtro por chave, o carimbo de
+ * materialização e dois escopos novos — na tabela de detalhe da `visao-geral` (99.447
+ * grupos × 23 chaves, 16/10/2026) era isso que levava o cálculo a ~1 GB de heap. As
+ * linhas de cada combinação também não são guardadas: só serviam à materialização.
+ *
+ * A enumeração é a MESMA de `agrupar` (`planeja` + `enumeraCombinacoes`), então a
+ * distinção e a ordem de primeira aparição não podem divergir entre os dois caminhos.
+ */
+export function combinacoesDistintas(
+  chaves: readonly Chave[],
+  base: EvalScope,
+  ev: Evaluator,
+  onde: string,
+): DaxValue[][] {
+  if (chaves.length === 0) return [[]];
+  const plano = planeja(chaves, base, ev, onde, []);
+  return enumeraCombinacoes(chaves, plano, base, ev, onde, false).lista.map((c) => c.valores);
+}
+
+/**
  * O agrupamento com a **construção de filtro exposta**.
  *
  * `agrupar` basta para tabela e gráfico, onde cada linha é uma combinação e pronto.
@@ -627,6 +651,8 @@ function enumeraCombinacoes(
   base: EvalScope,
   ev: Evaluator,
   onde: string,
+  /** `false` quando ninguém vai materializar o grupo — ver `combinacoesDistintas`. */
+  guardaLinhas = true,
 ): Combinacoes {
   const lista: Combinacao[] = [];
   const porValores = new Map<readonly DaxValue[], Combinacao>();
@@ -637,10 +663,10 @@ function enumeraCombinacoes(
   const guarda = (g: number, linha: Row, valores: () => DaxValue[]): void => {
     const achada = lista[g];
     if (achada !== undefined) {
-      achada.linhas.push(linha);
+      if (guardaLinhas) achada.linhas.push(linha);
       return;
     }
-    const nova: Combinacao = { valores: valores(), linhas: [linha], materializacao: null };
+    const nova: Combinacao = { valores: valores(), linhas: guardaLinhas ? [linha] : [], materializacao: null };
     lista.push(nova);
     porValores.set(nova.valores, nova);
   };

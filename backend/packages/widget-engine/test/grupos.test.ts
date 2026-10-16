@@ -11,7 +11,7 @@ import type { ModelColumn, ModelRelationship } from '../../semantic-model/src/ty
 import { Dataset, type Row } from '../../measure-engine/src/dataset.ts';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
 import { DaxEvalError, makeDate } from '../../measure-engine/src/value.ts';
-import { agrupar, chaveDoCampo, type Chave } from '../src/grupos.ts';
+import { agrupar, chaveDoCampo, combinacoesDistintas, type Chave } from '../src/grupos.ts';
 import type { CampoSpec } from '../src/spec.ts';
 
 const AGORA = makeDate(2026, 3, 15);
@@ -266,4 +266,47 @@ test('chaveDoCampo devolve tabela, coluna e o rótulo da tela', () => {
   assert.deepEqual(chaveDoCampo(campo('column', { name: 'Município' }), 'x'), {
     tabela: 'OS', coluna: 'CIDADE', nivel: null, nome: 'Município',
   });
+});
+
+// ---------------------------------------------------------------------------
+// `combinacoesDistintas`: o caminho sem escopo da tabela só de chaves
+// ---------------------------------------------------------------------------
+
+/**
+ * A prova de que o atalho da tabela de detalhe não muda linha nenhuma: as mesmas
+ * combinações, na mesma ordem, que `agrupar` — o caminho de antes. Os dois ramos da
+ * enumeração (uma tabela só; chaves atravessando o relacionamento), com BLANK, data
+ * com nível de hierarquia e um escopo já filtrado.
+ */
+test('combinacoesDistintas dá as mesmas combinações, na mesma ordem, que agrupar', () => {
+  // Determinístico e com repetição de propósito: 600 linhas, bem menos combinações.
+  const cidades = ['Bauru', 'Jaú', null, 'BAURU'];
+  const tipos = ['Instalação', 'Reparo', null];
+  const linhas: Row[] = Array.from({ length: 600 }, (_, i) => ({
+    ID: i % 97,
+    CIDADE: cidades[(i * 7) % cidades.length]!,
+    TIPO: tipos[(i * 5) % tipos.length]!,
+    EQUIPE: i % 11 === 0 ? null : i % 3 === 0 ? 'Alfa' : 'Beta',
+    VALOR: i % 13 === 0 ? null : makeDate(2025 + (i % 2), 1 + (i % 12), 1 + (i % 28)),
+  }));
+  const ev = montar(linhas);
+  const raiz = ev.rootScope();
+  const semJau = ev.scopeWithFilter(raiz, raiz.filter.with([{
+    table: 'os', columns: new Set(['cidade']), origem: 'teste',
+    keep: (r: Row) => r.cidade !== 'Jaú',
+  }]));
+  const casos: Chave[][] = [
+    [chave('OS', 'CIDADE')],
+    [chave('OS', 'ID'), chave('OS', 'CIDADE'), chave('OS', 'TIPO'), chave('OS', 'EQUIPE')],
+    [chave('OS', 'TIPO'), chave('OS', 'VALOR'), chave('OS', 'VALOR', 'Ano')],
+    [chave('OS', 'CIDADE'), chave('EQUIPES', 'REGIAO')],
+    [chave('EQUIPES', 'REGIAO'), chave('OS', 'TIPO'), chave('OS', 'ID')],
+  ];
+  for (const chaves of casos) {
+    for (const escopo of [raiz, semJau]) {
+      const antes = agrupar(chaves, escopo, ev, 't').map((g) => g.valores);
+      assert.ok(antes.length > 1);
+      assert.deepEqual(combinacoesDistintas(chaves, escopo, ev, 't'), antes);
+    }
+  }
 });

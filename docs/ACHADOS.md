@@ -15553,3 +15553,28 @@ não só nesta.
 **Verificação:** `npm test` (back 2.240 + front 195) e `typecheck` verdes; `layout:valida`
 verde; página aberta numa API isolada (porta 3199, cópia do snapshot, `--sem-refresh`) em
 1600 px claro e 390 px escuro, sem rolagem horizontal nem erro de página.
+
+## #224 — tabela só de chaves deixa de montar o escopo de cada grupo (16/10)
+
+**O que custava.** A tableEx `704b7bcb68fd3e17cd30` da `visao-geral` (99.447 linhas × 23
+colunas) precisava de ~1 GB de heap para calcular. Não era a paginação nem o JSON: o
+`agrupar` montava, para CADA grupo, um filtro por chave (23), o carimbo de materialização,
+dois escopos novos e a lista das linhas da combinação. Numa tabela só de chaves ninguém lê
+nada disso: sem célula calculada e sem filtro de grupo, a linha é a própria combinação.
+
+**O que mudou.** `combinacoesDistintas` (`grupos.ts`) devolve só os valores, pela MESMA
+enumeração de `agrupar` (`planeja` + `enumeraCombinacoes`, sem guardar as linhas);
+`calculaTabela` usa esse caminho quando `calculados` e `having` estão vazios. A semântica
+de combinações distintas (o que o Power BI mostra) não muda — a direção do handoff,
+"listagem de linhas sem agrupar", mudaria contagem se houvesse linha repetida.
+
+**Paridade:** `grupos.test.ts` compara `combinacoesDistintas` com `agrupar` linha a linha e
+na ordem, nos dois ramos (uma tabela; chaves atravessando relacionamento), com BLANK, data,
+nível de hierarquia e escopo já filtrado.
+
+**Medido só em sintético (30.000 × 23, worker com `resourceLimits`, dataset incluído):**
+antes passa com 384 MB e estoura com 352; depois passa com 128 e estoura com 112. **Dado real
+NÃO medido:** a estação estava com 0,5–0,8 GB livres de 15,7 (VM do WSL em 3,2 GB), e worker
+de 1 GB ali é o cenário que já derrubou o Docker. Falta no servidor: `visao-geral` com worker
+de 512 MB, SHA da janela igual ao de antes, RSS da api < ~2,2 GB com as 11 páginas
+(handoff `docs/handoff/2026-10-16-ram-e-carga-protocolos-geral.md`, item 1).

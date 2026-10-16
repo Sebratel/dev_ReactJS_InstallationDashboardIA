@@ -11,6 +11,10 @@ quebra o Relatório do Ano (5 das 11 medidas comparam com 2025).
 
 ## 1 · Tabela de detalhe da visão geral sem montar as 99 mil linhas
 
+**Estado (16/10, branch `trabalho/visao-geral-janela`):** código feito e provado em teste e em
+sintético (ACHADOS #224). O pico não era montar as linhas, era o escopo de filtro de cada
+grupo. Falta só a medição com dado real no servidor (os três números abaixo).
+
 **O que é.** A tableEx `704b7bcb68fd3e17cd30` de `visao-geral` ("INFORMAÇÕES GERAIS DOS
 PROTOCOLOS"): 99.447 linhas × 23 colunas, sem filtro. Calcular a página exige ~1 GB de
 heap vivo (estoura com 896 MB, passa com 1024); o resultado retido é 155 MB e o JSON
