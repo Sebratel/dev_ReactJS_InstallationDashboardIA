@@ -39,8 +39,6 @@ services:
       # sem `target` este serviço subia a imagem do cron e ficava reiniciando (25/09/2026).
       target: runtime
     pull_policy: build
-    env_file:
-      - .env
     # O CONTRATO DE MEMÓRIA, e os três números têm de andar juntos:
     #
     #   Dockerfile  --max-old-space-size=1024   heap do processo pai
@@ -62,6 +60,20 @@ services:
     # qualquer um dos três números exige repetir a medição no cgroup.
     mem_limit: 2560m
     environment:
+      # No Portainer, os segredos vivem nas variáveis da stack; não há `.env` no
+      # repositório nem arquivo secreto para copiar ao host. Localmente, o Compose
+      # lê o `.env` ignorado e preenche estas mesmas substituições.
+      VOALLE_HOST: ${VOALLE_HOST:-}
+      VOALLE_DATABASE: ${VOALLE_DATABASE:-}
+      VOALLE_USER: ${VOALLE_USER:-}
+      VOALLE_PASSWORD: ${VOALLE_PASSWORD:-}
+      MARIA_HOST: ${MARIA_HOST:-}
+      MARIA_DATABASE: ${MARIA_DATABASE:-}
+      MARIA_USER: ${MARIA_USER:-}
+      MARIA_PASSWORD: ${MARIA_PASSWORD:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
       API_WORKERS: '2'
       API_WORKER_HEAP_MB: '512'
       # PORT declarada AQUI, não deixada para o .env — `environment:` vence
@@ -150,8 +162,6 @@ services:
       # sem `target` este serviço subia a imagem do cron e ficava reiniciando (25/09/2026).
       target: runtime
     pull_policy: build
-    env_file:
-      - .env
     # Desde 17/10/2026 este contêiner faz TAMBÉM a carga completa das 3h (era o serviço
     # `snapshot-diario`, com cron e um segundo teto de 1450m). Um teto só basta: as duas
     # cargas dividem a trava do snapshot e nunca materializam juntas — a que chega espera
@@ -166,6 +176,14 @@ services:
     # contêiner substituto reconhecer imediatamente um PID morto de deploy.
     hostname: dashboard-instalacao-refresh
     environment:
+      VOALLE_HOST: ${VOALLE_HOST:-}
+      VOALLE_DATABASE: ${VOALLE_DATABASE:-}
+      VOALLE_USER: ${VOALLE_USER:-}
+      VOALLE_PASSWORD: ${VOALLE_PASSWORD:-}
+      MARIA_HOST: ${MARIA_HOST:-}
+      MARIA_DATABASE: ${MARIA_DATABASE:-}
+      MARIA_USER: ${MARIA_USER:-}
+      MARIA_PASSWORD: ${MARIA_PASSWORD:-}
       NODE_ENV: production
       REFRESH_INTERVAL_MINUTOS: '15'
       REFRESH_MEMORIA_MB: '1400'

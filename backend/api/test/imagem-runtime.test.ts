@@ -255,6 +255,32 @@ test('compose de produção: proxy externo, Redis PRÓPRIO da stack e fechado (1
   assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
 });
 
+test('compose de produção recebe segredos pelas variáveis da stack, não por arquivo .env no host', () => {
+  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
+    services: Record<string, {
+      env_file?: unknown;
+      environment?: Record<string, string>;
+    }>;
+  };
+  const fontes = [
+    'VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD',
+    'MARIA_HOST', 'MARIA_DATABASE', 'MARIA_USER', 'MARIA_PASSWORD',
+  ];
+
+  for (const nome of ['api', 'refresh']) {
+    const servico = compose.services[nome]!;
+    assert.equal(servico.env_file, undefined, `${nome} não pode depender de .env no host do Portainer`);
+    for (const chave of fontes) {
+      assert.equal(servico.environment?.[chave], `\${${chave}:-}`, `${nome} não recebe ${chave} da stack`);
+    }
+  }
+
+  const api = compose.services.api!;
+  assert.equal(api.environment?.FIREBASE_PROJECT_ID, '${FIREBASE_PROJECT_ID:-}');
+  assert.equal(api.environment?.ADMIN_EMAILS, '${ADMIN_EMAILS:-}');
+  assert.equal(api.environment?.COOKIE_SECURE, '${COOKIE_SECURE:-0}');
+});
+
 test('o login da tela entra no build da imagem: toda VITE_FIREBASE_* lida pela tela é ARG, e o compose a passa', () => {
   // PLANO-CARGA 3.1. Sem o ARG, a imagem saía sem login, e a stack dependia de um
   // `frontend/dist` do host montado por cima — que cai em toda recriação sem o contorno

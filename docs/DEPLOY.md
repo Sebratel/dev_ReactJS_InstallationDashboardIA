@@ -557,7 +557,8 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
 respostas** (serviço `redis`, desde 16/10/2026, no mesmo padrão do antifraude). Proxy
 reverso e TLS são infraestrutura externa configurada pelo Misael no Portainer.
 
-O Redis exige `REDIS_PASSWORD` no `.env` (só `[0-9a-f]`, ex.: `openssl rand -hex 24`,
+O Redis exige `REDIS_PASSWORD` nas variáveis da stack (ou no `.env` apenas em execução
+local; só `[0-9a-f]`, ex.: `openssl rand -hex 24`,
 porque vai crua na `REDIS_URL` que o compose monta para a `api`). Sem porta publicada,
 64 MB de dado com `allkeys-lru` num teto de 192 MB (a fragmentação chega a 2× e mais, ACHADOS #229/#230), sem persistência. Se ele cair, a API segue com o cache em
 memória (teto `CACHE_RESPOSTA_MB`, padrão 256 MB) — ACHADOS #228. Não aponte desenvolvimento para `redis://localhost:6379` se não houver
@@ -705,8 +706,9 @@ proxy externo; não acrescente outro container de proxy a esta stack.
 - `docker-compose.prod.yml` fixa a porta interna em **3100**. O proxy externo deve
   apontar para `API_BIND_HOST:API_PORT_HOST` e as duas variáveis devem refletir a rede
   definida pelo Misael.
-- `REDIS_PASSWORD` é obrigatória no `.env` desde 16/10/2026: o compose monta a `REDIS_URL`
-  da `api` apontando para o serviço `redis` da própria stack, e o `up` falha sem ela.
+- `REDIS_PASSWORD` é obrigatória nas variáveis da stack desde 16/10/2026 (no `.env` só
+  para uso local): o compose monta a `REDIS_URL` da `api` apontando para o serviço
+  `redis` da própria stack, e o `up` falha sem ela.
   `GET /api/saude` diz qual adapter está ligado; é lá que se confere, não no `.env`.
 - credenciais do Voalle e do MariaDB de produção: **usuário sem permissão de escrita**.
   É a camada 1 das quatro do read-only, e a única que o repositório não garante sozinho.
