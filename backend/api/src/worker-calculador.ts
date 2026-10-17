@@ -28,6 +28,7 @@ import { valoresDistintos } from './valores-segmentacao.ts';
 import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { loadDashboards, type DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
 import { medeIsolate, type MedidaDaWorker, type MensagemDeMemoria } from './memoria-da-saude.ts';
+import { CacheDeCarga, coletorDaWorker } from './cache-de-carga.ts';
 
 export interface MensagemCalculoWorker {
   tipo?: 'calcula';
@@ -255,8 +256,32 @@ export const TETO_CACHE_POR_WORKER = 2;
  * dataset TRANSIENTE, não guardado. Poda por ordem de inserção (mesma ideia de
  * `TETO_PAGINAS_VISTAS` em `frontend/src/utils/cachePagina.ts`): a entrada mais
  * antiga sai, a mais recentemente usada nunca é a próxima a cair.
+ *
+ * **A ordem da poda e o coletor (16/10/2026).** A poda acontecia DEPOIS de a carga
+ * nova começar, e ninguém chamava o coletor aqui: durante a carga a worker segurava o
+ * vivo, o que montava e o descartado esperando o V8 — 3 datasets, parte em
+ * `Int32Array` fora do heap, onde `maxOldGenerationSizeMb` não alcança. Agora a poda
+ * vem ANTES da carga, o `gc()` roda depois de um descarte (só então, e só sem cálculo
+ * lendo dataset), e um dataset em uso nunca é podado. Ver `cache-de-carga.ts`.
  */
-const cacheDeCarga = new Map<string, Promise<Carregado>>();
+const cacheDeCarga = new CacheDeCarga<Carregado>({
+  teto: TETO_CACHE_POR_WORKER,
+  ...(() => {
+    const gc = coletorDaWorker();
+    if (gc === null) return {};
+    return {
+      coleta: () => {
+        // Uma linha só quando a coleta foi LENTA: um descarte a cada evento do poller
+        // (~35 s na `agendamento-field`) encheria o log de linhas de 3 ms. Se o `gc()`
+        // começar a custar caro, é isto que diz — e quanto.
+        const t0 = Date.now();
+        gc();
+        const ms = Date.now() - t0;
+        if (ms >= 200) console.error(`[worker ${threadId}] coletor depois de descartar dataset: ${ms} ms`);
+      },
+    };
+  })(),
+});
 
 /**
  * A última `identidade` vista **POR PÁGINA** — e a razão de não ser uma só.
@@ -307,9 +332,9 @@ const identidadePorPagina = new Map<string, string>();
  */
 function esqueceAPagina(dashboardId: string): void {
   const prefixo = `${dashboardId} `;
-  for (const chave of [...cacheDeCarga.keys()]) {
-    if (chave.startsWith(prefixo)) cacheDeCarga.delete(chave);
-  }
+  // Sai mesmo se um cálculo em curso ainda o lê (ninguém mais pode pegar carona no
+  // dado velho); a memória volta quando ele soltar, e o coletor roda ali.
+  cacheDeCarga.esquece((chave) => chave.startsWith(prefixo));
   // O resultado inteiro desta página também: ele foi calculado sobre o dataset
   // que acabou de ser descartado. `limpaPagina` e não `limpa` pelo mesmo motivo
   // de `Servidor.aoTabelaMudar` (`servidor.ts`) — só quem depende da tabela que
@@ -359,18 +384,6 @@ const completos = new CacheDeVisual({
   },
 });
 
-function guardaNoCache(chave: string, promessa: Promise<Carregado>): void {
-  cacheDeCarga.delete(chave);
-  cacheDeCarga.set(chave, promessa);
-  if (cacheDeCarga.size > TETO_CACHE_POR_WORKER) {
-    const maisAntiga = cacheDeCarga.keys().next().value;
-    if (maisAntiga !== undefined) cacheDeCarga.delete(maisAntiga);
-  }
-  // Falhou? Não fica preso — a próxima mensagem tenta carregar de novo, em vez
-  // de repetir o mesmo erro (ou um erro de rede/disco já sanado) para sempre.
-  promessa.catch(() => cacheDeCarga.delete(chave));
-}
-
 if (parentPort) {
   parentPort.on('message', async (msg: MensagemParaWorker) => {
     // A saúde perguntando quanto esta worker gasta (`memoria-da-saude.ts`). Responde pela
@@ -381,7 +394,7 @@ if (parentPort) {
       const medida: MedidaDaWorker = {
         threadId,
         ...medeIsolate(),
-        datasets: cacheDeCarga.size,
+        datasets: cacheDeCarga.tamanho,
         visuais: { itens: completos.itens, mb: Math.round((completos.bytes / 1048576) * 10) / 10 },
       };
       msg.porta.postMessage(medida);
@@ -415,11 +428,16 @@ if (parentPort) {
       valores,
     } = msg;
 
+    /** A obrigação de soltar o dataset em uso — ver `cacheDeCarga.usa`. */
+    let soltaUso: (() => void) | null = null;
     try {
       if (!modelCached || lastSpecsDir !== specsDir) {
         modelCached = SemanticModel.fromSpecsDir(specsDir);
         lastSpecsDir = specsDir;
       }
+      // Fixado aqui porque a carga agora roda dentro de um fechamento (`cacheDeCarga.usa`),
+      // onde o TypeScript não carrega o estreitamento de `modelCached` acima.
+      const model = modelCached;
 
       // **A identidade que chega é a DESTA página** (`identidadeDaPagina`,
       // `servidor.ts`), não a do snapshot inteiro — então um refresh de tabela
@@ -447,6 +465,11 @@ if (parentPort) {
       // recorte dela, então nenhum pedido acha coluna omitida; o custo é a carga
       // trazer as colunas da página toda, que é exatamente o que a thread
       // principal sempre fez.
+      //
+      // **E desde 16/10/2026 `libera`/`formaCompleta` também são da página inteira**
+      // (`Servidor.#liberacaoDaPagina`), para todo tipo de pedido. Antes a rota da página
+      // as montava com os visuais pedidos e `/valores` com todos, e as duas entram nesta
+      // chave: recortes da mesma página podiam virar dois datasets nesta worker.
       const paginaInteira = paginaInteiraDe(specsDir, dashboardSpec.id) ?? dashboardSpec;
       const chave = chaveDeCarga(
         dashboardSpec.id,
@@ -455,19 +478,20 @@ if (parentPort) {
         formaCompleta,
       );
 
-      let promessa = cacheDeCarga.get(chave);
       // Este pedido pagou a carga do disco? Sai na resposta — é o número que diz se
       // o `cacheDeCarga` está acertando (ACHADOS #175: 304 tarefas de fundo em ~6 min,
       // ~0,9 s cada, quando a lista em si custa milissegundos).
       let carga: RespostaCalculoWorker['carga'];
-      if (!promessa) {
-        const agora = new Date(agoraIso);
-        const t0 = Date.now();
-        promessa = carrega({
+      // `t0` nasce DENTRO da carga, e não antes de `usa`: num erro do cache, `usa` poda e
+      // roda o coletor antes de chamar isto, e esse tempo não é da carga.
+      let t0 = 0;
+      const uso = cacheDeCarga.usa(chave, () => {
+        t0 = Date.now();
+        return carrega({
           dir: snapshotDir,
-          model: modelCached,
+          model,
           dashboards: [paginaInteira],
-          now: agora,
+          now: new Date(agoraIso),
           liberaSobDemanda,
           precisaFormaCompleta,
           // **Armazenamento colunar.** Medido em 13/09/2026 nesta API, com `--sem-aquecer`,
@@ -486,7 +510,13 @@ if (parentPort) {
           colunar: true,
           ...(overlays && overlays.size > 0 ? { overlay: mescladoresDe(overlays) } : {}),
         });
-        guardaNoCache(chave, promessa);
+      });
+      // Solto no `finally` lá de baixo, DEPOIS da resposta postada: até lá o dataset
+      // está sendo lido e não pode ser podado, e o coletor (se houve descarte) roda com
+      // a resposta já a caminho, sem atrasá-la.
+      soltaUso = uso.solta;
+      const promessa = uso.promessa;
+      if (uso.nova) {
         // Medida só no sucesso: uma carga que falhou já vira a resposta de erro abaixo.
         // A exceção é a recusa por recongelamento, que ganha uma linha no log — ver
         // `linhaDeRecusaPorRecongelamento`. Só quem CRIOU a promessa passa aqui, então
@@ -585,6 +615,8 @@ if (parentPort) {
         erro: err instanceof Error ? err.message : String(err),
       };
       parentPort?.postMessage(resp);
+    } finally {
+      soltaUso?.();
     }
   });
 }

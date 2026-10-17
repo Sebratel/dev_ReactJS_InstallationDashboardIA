@@ -310,6 +310,15 @@ export class Servidor {
    * isto deixou de ser uma string só.
    */
   private readonly identidadeDasCarregadas = new Map<string, string>();
+  /** Memo de `#liberacaoDaPagina` — constante por página durante a vida do processo. */
+  private readonly liberacaoPorPagina = new Map<string, { libera: string[]; formaCompleta: string[] }>();
+  /**
+   * A identidade de cada página que as WORKERS já foram avisadas de ter — ver
+   * `soltaGeracoesVelhas`. Separada de `identidadeDasCarregadas` de propósito: aquela diz
+   * o que ESTA thread carregou (e só anda quando ela carrega); esta diz até onde o aviso
+   * às workers chegou, e anda a cada troca de snapshot, carregue alguém ou não.
+   */
+  private readonly identidadeAvisadaAsWorkers = new Map<string, string>();
   /**
    * O resultado inteiro de cada tabela e matriz já calculada, para que a janela
    * seguinte seja um `slice`. Ver `cache-visual.ts` — e note que ele **não** é o
@@ -2057,13 +2066,10 @@ export class Servidor {
       filters: [...(dash.filters ?? []), ...daTela],
     };
 
-    const amarrado = visuaisPedidos === null
-      ? []
-      : visuaisPedidos.map((vid) => this.sobDemandaDoVisual(dash, vid));
-    const libera = [...new Set(amarrado.flatMap((a) => a.colunas))];
-    const formaCompleta = [
-      ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
-    ];
+    // A liberação da PÁGINA INTEIRA, não a dos visuais pedidos — ver
+    // `#liberacaoDaPagina`: é o que faz abertura, rolagem e `/valores` caírem na mesma
+    // entrada de `cacheDeCarga` em cada worker.
+    const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
 
     // A rajada, medida: quantos pedidos com esta MESMA chave estão em curso
     // agora. Continua sendo medido DEPOIS do single-flight, e de propósito — ele
@@ -2236,7 +2242,7 @@ export class Servidor {
         // travaria a CHAVE inteira, não só um pedido (ver o handler de
         // `exit` em `piscina-workers.ts`).
         this.metricas.conta('worker_fallback');
-        const carregado = await this.carrega(dash, visuaisPedidos).catch((err: unknown) => {
+        const carregado = await this.carrega(dash).catch((err: unknown) => {
           throw comStatus(err, 409);
         });
         paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
@@ -2245,7 +2251,7 @@ export class Servidor {
         tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
       }
     } else {
-      const carregado = await this.carrega(dash, visuaisPedidos).catch((err: unknown) => {
+      const carregado = await this.carrega(dash).catch((err: unknown) => {
         throw comStatus(err, 409);
       });
 
@@ -2671,12 +2677,7 @@ export class Servidor {
     quem: Identidade,
   ): Promise<DaxValue[] | { erroDoPedido: string }> {
     const overlays = this.#overlayDe(dash);
-    const todos = (dash.visuals ?? []).map((v) => v.id);
-    const amarrado = todos.map((vid) => this.sobDemandaDoVisual(dash, vid));
-    const libera = [...new Set(amarrado.flatMap((a) => a.colunas))];
-    const formaCompleta = [
-      ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
-    ];
+    const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
     if (this.piscina.ativa) {
       try {
         const r = await this.piscina.executa(
@@ -2712,9 +2713,9 @@ export class Servidor {
         }
       }
     }
-    // Os mesmos visuais amarrados: `carrega` deriva deles a mesma liberação e a mesma
-    // forma completa mandadas à worker, e os dois ramos não podem listar valores diferentes.
-    const carregado = await this.carrega(dash, todos);
+    // `carrega` usa a MESMA `#liberacaoDaPagina` mandada à worker: os dois ramos não podem
+    // listar valores diferentes.
+    const carregado = await this.carrega(dash);
     try {
       return valoresDistintos(carregado.ev, tabela, coluna, nivel);
     } catch (err) {
@@ -2781,21 +2782,12 @@ export class Servidor {
     return (ALIMENTADAS_AO_VIVO.get(tabela) ?? []).some((c) => calculadas?.has(normalizeName(c)) ?? false);
   }
 
-  private carrega(dash: DashboardSpec, visuaisPedidos: readonly string[] | null = null): Promise<Carregado> {
-    // A UNIÃO das colunas sob demanda E das tabelas de grão reduzido que os visuais
-    // pedidos amarram — pedir três visuais numa rolagem rápida não pode liberar três
-    // vezes o mesmo texto livre, nem esquecer a coluna/tabela de um deles porque
-    // outro já tinha liberado a sua. Ver `sobDemandaDoVisual` e ACHADOS #87.
-    const amarrado = visuaisPedidos === null
-      ? []
-      : visuaisPedidos.map((vid) => this.sobDemandaDoVisual(dash, vid));
-    const libera = [...new Set(amarrado.flatMap((a) => a.colunas))];
-    // Filtro de PÁGINA (não de visual) vale para todo pedido a esta página,
-    // liberado ou não — por isso entra incondicionalmente, e não só quando o
-    // visual dono aparece em `visuaisPedidos`.
-    const formaCompleta = [
-      ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
-    ];
+  private carrega(dash: DashboardSpec): Promise<Carregado> {
+    // A liberação da PÁGINA INTEIRA, a mesma que vai para a worker — ver
+    // `#liberacaoDaPagina`. Era a dos visuais pedidos, e cada recorte da mesma página
+    // podia virar um dataset a mais aqui também (`carregadas` tem teto de páginas, não
+    // de recortes).
+    const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
     const chave = libera.length === 0 && formaCompleta.length === 0
       ? dash.id
       : `${dash.id}\u0000${libera.sort().join(',')}\u0000${formaCompleta.sort().join(',')}`;
@@ -3026,6 +3018,54 @@ export class Servidor {
   }
 
   /**
+   * Manda as workers soltarem o dataset de toda página cuja identidade mudou desde o
+   * último aviso — e devolve quais foram. Chamada pelo `Aquecedor` no começo de cada
+   * passada (`antesDeAquecer`), isto é, logo depois de ele perceber o snapshot novo e
+   * ANTES de pedir a primeira página.
+   *
+   * **O defeito, medido em 16/10/2026.** Na troca de snapshot ninguém avisava as
+   * workers: o dataset velho de uma página só saía de `cacheDeCarga` quando chegava o
+   * próximo pedido DELA (a identidade não bate, `esqueceAPagina`) ou quando o teto
+   * expulsava. O aquecedor aquece em série, e a piscina reparte as páginas entre as
+   * workers: uma worker que não recebesse o pedido de uma página segurava o dataset
+   * velho dela — até dois, de 250 MB–1 GB — enquanto a geração nova era carregada.
+   * Velhas e novas juntas é parte da subida de +1 GB em ~45 s depois de cada refresh.
+   *
+   * **Por que é seguro soltar tudo o que mudou.** Depois da troca, todo pedido chega com
+   * a identidade NOVA (`identidadeDaPagina` lê o disco), então o dataset velho não serve
+   * a ninguém — a worker o descartaria no primeiro pedido de qualquer jeito. Soltar
+   * antes só antecipa o descarte. Um cálculo em curso sobre ele termina normalmente: a
+   * worker tira a entrada do cache, mas a referência do cálculo segura o dado até ele
+   * acabar (ver `cache-de-carga.ts`).
+   *
+   * **A primeira chamada só anota.** Sem aviso anterior não há geração velha conhecida,
+   * e invalidar tudo no arranque seria inofensivo mas mentiroso no retorno.
+   *
+   * A mensagem `invalida` vai pela mesma porta das tarefas, e a porta entrega em ordem:
+   * qualquer pedido que o aquecedor fizer depois disto chega à worker DEPOIS do aviso.
+   * A thread principal solta o dela junto, pela mesma regra de `carrega()`.
+   */
+  soltaGeracoesVelhas(): string[] {
+    const soltas: string[] = [];
+    for (const dash of this.dashboards) {
+      const nova = this.identidadeDaPagina(dash);
+      const anterior = this.identidadeAvisadaAsWorkers.get(dash.id);
+      this.identidadeAvisadaAsWorkers.set(dash.id, nova);
+      if (anterior === undefined || anterior === nova) continue;
+      soltas.push(dash.id);
+      this.piscina.invalidaPagina(dash.id);
+      // O dataset desta thread (o do cálculo em linha) também: a MESMA conferência que
+      // `carrega()` faria no próximo pedido, feita agora.
+      const daThread = this.identidadeDasCarregadas.get(dash.id);
+      if (daThread !== undefined && daThread !== nova) {
+        this.esqueceAPagina(dash.id);
+        this.identidadeDasCarregadas.delete(dash.id);
+      }
+    }
+    return soltas;
+  }
+
+  /**
    * As colunas sob demanda e as tabelas de grão reduzido que **este** visual amarra
    * — e só elas.
    *
@@ -3062,6 +3102,56 @@ export class Servidor {
     for (const f of v.filters ?? []) olha(f.entity, f.property);
 
     return { colunas: [...foraColunas], tabelasCompletas: [...foraTabelas] };
+  }
+
+  /**
+   * A liberação de colunas sob demanda e as tabelas na forma completa de **uma página
+   * inteira** — a união do que TODOS os visuais dela amarram, mais os filtros de página e
+   * as fontes do tempo real (`tabelasCompletasDaPagina`). Uma por página, para todo tipo
+   * de pedido: abertura, `?visual=`, `/valores` e o cálculo em linha.
+   *
+   * **Por que a página e não os visuais pedidos (16/10/2026).** As duas listas entram na
+   * chave do dataset (`chaveDeCarga` na worker, `carregadas` aqui). A rota da página as
+   * montava só com os visuais PEDIDOS e `/valores` com todos: o mesmo dataset da mesma
+   * página podia nascer duas vezes na mesma worker, cada um de 250 MB–1 GB, disputando o
+   * teto de 2 (`TETO_CACHE_POR_WORKER`) com as outras páginas — e uma carga inteira a mais
+   * a cada recorte novo. Desde 05/10 a worker já carrega as colunas da página inteira
+   * (`paginaInteiraDe`); faltava a liberação acompanhar.
+   *
+   * **Não muda resultado.** Liberar coluna só ACRESCENTA coluna à carga (`omissiveis`,
+   * `carrega.ts`): um visual que calculava com a liberação menor calcula igual com a maior,
+   * e um que voltava com a coluna omitida passa a vir calculado. E com as specs de hoje
+   * as listas já coincidiam — conferido para as 14 páginas em `test/geracao-de-dataset.test.ts`:
+   * `sob_demanda` está vazio em `projecao.yaml`, e a única página com visual que toca coluna
+   * gatilho do grão reduzido (`agendamento-field`, 6 de 39) já levava a FIELD AGENDA
+   * completa pelas fontes do tempo real (ACHADOS #194). O que esta função fecha é o
+   * mecanismo, para o dia em que uma das duas condições deixar de valer.
+   *
+   * **O custo, e por que ele não cai nas páginas leves.** Cada página paga só o que OS
+   * VISUAIS DELA amarram — página sem visual de coluna sob demanda ou gatilho continua com
+   * as listas vazias, exatamente como antes. O que muda é a página que TEM um visual
+   * desses: a abertura dela passa a trazer a coluna/forma completa que antes só a rolagem
+   * até aquele visual trazia. Hoje isso é zero (ver acima). No dia em que `projecao.yaml`
+   * ganhar uma coluna sob demanda, o trade-off é este: uma carga um pouco mais larga na
+   * abertura contra DOIS datasets inteiros da mesma página na worker — e o segundo é o que
+   * estourava a memória.
+   *
+   * Memo por página: o modelo e as specs não mudam durante a vida do `Servidor`. Devolve
+   * cópias porque quem recebe ordena e manda pela `postMessage`.
+   */
+  #liberacaoDaPagina(dash: DashboardSpec): { libera: string[]; formaCompleta: string[] } {
+    let memo = this.liberacaoPorPagina.get(dash.id);
+    if (memo === undefined) {
+      const amarrado = (dash.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
+      memo = {
+        libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(),
+        formaCompleta: [
+          ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
+        ].sort(),
+      };
+      this.liberacaoPorPagina.set(dash.id, memo);
+    }
+    return { libera: [...memo.libera], formaCompleta: [...memo.formaCompleta] };
   }
 
   /** Mapas rótulo-normalizado → (nome declarado | tabela), montados uma vez por chamada. */
