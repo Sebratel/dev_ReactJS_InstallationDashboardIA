@@ -84,6 +84,22 @@ export interface OpcoesDoAquecedor {
    * Ver `tenta`. Padrão: nunca — quem não passa nada aquece como antes.
    */
   gravando?: () => boolean;
+  /**
+   * Chamada no começo de cada passada, ANTES do primeiro pedido — é onde o `Servidor`
+   * manda as workers soltarem o dataset das páginas cuja identidade mudou
+   * (`Servidor.soltaGeracoesVelhas`).
+   *
+   * **Por que aqui.** Este laço é quem percebe o snapshot novo, e aquece as páginas em
+   * série: sem o aviso, o dataset velho de uma página só saía da worker quando chegava
+   * o pedido DELA, e uma worker que não recebesse esse pedido segurava os dois datasets
+   * velhos (`TETO_CACHE_POR_WORKER`) enquanto a outra carregava os novos — gerações
+   * velhas e novas convivendo, parte da subida de +1 GB depois de cada refresh
+   * (16/10/2026). Avisando antes, a geração velha sai antes de a nova ser carregada.
+   *
+   * Uma falha aqui vira linha e o aquecimento segue: soltar cedo é economia de memória,
+   * não condição de corretude — a worker ainda confere a identidade a cada pedido.
+   */
+  antesDeAquecer?: () => void;
   buscar?: typeof fetch;
   agora?: () => number;
   intervaloMs?: number;
@@ -102,6 +118,7 @@ export class Aquecedor {
   #filtrosEmCurso: Promise<void> = Promise.resolve();
   readonly #carimbo: () => string;
   readonly #gravando: () => boolean;
+  readonly #antesDeAquecer: () => void;
   /** O carimbo cuja espera já foi anunciada — uma linha por espera, não uma a cada 5 s. */
   #esperaAnunciada: string | null = null;
   readonly #buscar: typeof fetch;
@@ -121,6 +138,7 @@ export class Aquecedor {
     this.#filtrosAte = opts.filtrosAte ?? FILTROS_ATE_PADRAO;
     this.#carimbo = opts.carimbo;
     this.#gravando = opts.gravando ?? (() => false);
+    this.#antesDeAquecer = opts.antesDeAquecer ?? (() => {});
     this.#buscar = opts.buscar ?? fetch;
     this.#agora = opts.agora ?? (() => Date.now());
     this.#intervaloMs = opts.intervaloMs ?? INTERVALO_PADRAO_MS;
@@ -243,6 +261,13 @@ export class Aquecedor {
       this.#anuncia(
         `[aquecedor] ${primeira ? 'arranque' : 'o snapshot mudou'} — aquecendo as páginas…`,
       );
+      // Antes de `#lista()`, que já é um pedido: nada desta passada pode chegar a uma
+      // worker antes do aviso. Ver `antesDeAquecer`.
+      try {
+        this.#antesDeAquecer();
+      } catch (err) {
+        this.#anuncia(`[aquecedor] não consegui avisar as workers da troca de snapshot: ${mensagem(err)}`);
+      }
 
       for (const id of await this.#lista()) {
         // Sequencial de propósito: a API é um processo só, e duas páginas ao mesmo

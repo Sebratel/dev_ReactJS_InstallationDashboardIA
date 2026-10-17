@@ -477,6 +477,12 @@ http.listen(porta, () => {
     aquecedor = new Aquecedor({
       base: `http://127.0.0.1:${porta}`,
       carimbo: () => servidor.identidadeAtual(),
+      // A geração velha sai das workers ANTES de a nova ser carregada — ver
+      // `Servidor.soltaGeracoesVelhas` e `antesDeAquecer`.
+      antesDeAquecer: () => {
+        const soltas = servidor.soltaGeracoesVelhas();
+        if (soltas.length > 0) console.error(`[aquecedor] workers soltaram o dataset velho de: ${soltas.join(', ')}`);
+      },
       // A trava de materialização viva = o refresh está gravando. Lida pelo arquivo e
       // não pelo PID: o refresh roda em outro contêiner. Sem batimento há mais de
       // `VELHA_MS` ela está abandonada, e esperar por ela pararia o aquecimento de vez.
