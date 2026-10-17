@@ -229,18 +229,34 @@ test('crontab: o snapshot da madrugada é às 03:00 de Brasília e cobre toda qu
   assert.deepEqual(faltam, [], 'queries do refresh fora do snapshot da madrugada');
 });
 
-test('compose de produção delega Redis e proxy à infraestrutura externa (Misael)', () => {
+test('compose de produção: proxy externo, Redis PRÓPRIO da stack e fechado (16/10/2026)', () => {
   const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
-    services: Record<string, { environment?: Record<string, string>; ports?: string[] }>;
+    services: Record<string, {
+      environment?: Record<string, string>; ports?: string[]; command?: string; mem_limit?: string;
+      volumes?: string[];
+    }>;
     volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
-  assert.equal(compose.services.redis, undefined, 'Redis é fornecido fora desta stack');
   assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
-  assert.equal(api.environment?.REDIS_URL, undefined, 'a URL externa do Redis vem do Portainer');
   assert.equal(api.environment?.CONFIA_PROXY, '${CONFIA_PROXY:-0}');
   assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}:3100']);
-  assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis local');
+
+  // Redis desta stack (ACHADOS #228): a api aponta para o serviço pelo nome, com senha.
+  const redis = compose.services.redis!;
+  assert.ok(redis, 'o Redis do cache de respostas mora nesta stack');
+  assert.equal(api.environment?.REDIS_URL, 'redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}@redis:6379/0');
+  // Senha obrigatória: `up` sem REDIS_PASSWORD falha em vez de subir um Redis aberto.
+  assert.match(redis.command!, /--requirepass \$\{REDIS_PASSWORD:\?/);
+  assert.match(redis.command!, /--maxmemory 512mb/);
+  assert.match(redis.command!, /--maxmemory-policy allkeys-lru/);
+  // Sem porta publicada e sem nada em disco: é cache sobre dado de cliente.
+  assert.equal(redis.ports, undefined, 'Redis não pode ser alcançável de fora da stack');
+  assert.equal(redis.volumes, undefined, 'cache não grava dado de cliente em volume');
+  assert.match(redis.command!, /--save ''/);
+  assert.match(redis.command!, /--appendonly no/);
+  assert.equal(redis.mem_limit, '640m');
+  assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
 });
 
 test('crontab: o job exporta o ambiente ao carregar o .env.cron (04/10/2026)', () => {

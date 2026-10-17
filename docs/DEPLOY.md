@@ -551,12 +551,14 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
 ### 3.2 `docker-compose` de produção
 
 ⚠ **Não existe `docker-compose.yml` na raiz.** O arquivo de produção é
-`docker-compose.prod.yml`; ele sobe somente os serviços da aplicação. Redis, proxy
+`docker-compose.prod.yml`; ele sobe os serviços da aplicação e o **Redis do cache de
+respostas** (serviço `redis`, desde 16/10/2026, no mesmo padrão do antifraude). Proxy
 reverso e TLS são infraestrutura externa configurada pelo Misael no Portainer.
 
-`REDIS_URL` é opcional: quando o Portainer a fornece, a API usa o Redis externo; sem
-ela, usa o cache limitado em memória, que é descartado a cada reinicialização e não
-acumula dados. Não aponte desenvolvimento para `redis://localhost:6379` se não houver
+O Redis exige `REDIS_PASSWORD` no `.env` (só `[0-9a-f]`, ex.: `openssl rand -hex 24`,
+porque vai crua na `REDIS_URL` que o compose monta para a `api`). Sem porta publicada,
+512 MB com `allkeys-lru`, sem persistência. Se ele cair, a API segue com o cache em
+memória (teto `CACHE_RESPOSTA_MB`, padrão 256 MB) — ACHADOS #228. Não aponte desenvolvimento para `redis://localhost:6379` se não houver
 um Redis realmente escutando nesse host.
 
 Para desenvolvimento há `docker-compose.local.yml`, que é **sobreposição** e não
@@ -701,8 +703,8 @@ proxy externo; não acrescente outro container de proxy a esta stack.
 - `docker-compose.prod.yml` fixa a porta interna em **3100**. O proxy externo deve
   apontar para `API_BIND_HOST:API_PORT_HOST` e as duas variáveis devem refletir a rede
   definida pelo Misael.
-- `REDIS_URL` está **comentada** no exemplo. Sem ela o cache é o de memória — funciona,
-  e perde tudo a cada reinício, o que num container que reinicia é um frio por reinício.
+- `REDIS_PASSWORD` é obrigatória no `.env` desde 16/10/2026: o compose monta a `REDIS_URL`
+  da `api` apontando para o serviço `redis` da própria stack, e o `up` falha sem ela.
   `GET /api/saude` diz qual adapter está ligado; é lá que se confere, não no `.env`.
 - credenciais do Voalle e do MariaDB de produção: **usuário sem permissão de escrita**.
   É a camada 1 das quatro do read-only, e a única que o repositório não garante sozinho.
@@ -898,7 +900,7 @@ Antes:
 - [ ] árvore limpa (`git status` sem modificação) e commit empurrado
 - [ ] `npm run paginas -- --pagina=<três páginas diferentes>` sem erro
 - [ ] `snapshot/` do dia, e `npm run snapshot:confere` sem divergência de tipo
-- [ ] `.env` de produção conferido contra o §3.5 — porta, `REDIS_URL`, usuário read-only
+- [ ] `.env` de produção conferido contra o §3.5 — porta, `REDIS_PASSWORD`, usuário read-only
 - [ ] **não** rodar refresh nas horas anteriores: troca o carimbo e esfria todo o cache
 - [ ] pasta do snapshot no host gravável pelo uid 1000: `api` e `refresh` não rodam mais
       como root (13/10/2026) — `chown -R 1000:1000 <SNAPSHOT_DIR_HOST>` num servidor Linux

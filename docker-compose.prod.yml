@@ -105,6 +105,12 @@ services:
       # Resultado calculado pode ser recriado do snapshot; 256 MB é um teto global,
       # repartido entre as workers, e mantém as rolagens já abertas rápidas.
       CACHE_VISUAL_MB: '256'
+      # Redis DESTA stack (serviço `redis` abaixo), atrás do cache em memória: o que o
+      # teto de `CACHE_RESPOSTA_MB` despeja volta daqui em vez de ser recalculado, e o
+      # cache sobrevive ao restart da api. Decisão do Erick em 16/10/2026, no mesmo padrão
+      # do antifraude (Redis próprio na stack). A senha vem do `.env`; use só [0-9a-f]
+      # (`openssl rand -hex 24`), porque ela vai crua dentro da URL.
+      REDIS_URL: redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}@redis:6379/0
     volumes:
       # O snapshot é dado de cliente (CPF/RG/endereço, ~371 MB) — nunca entra
       # na imagem. Aponte SNAPSHOT_DIR_HOST para onde o refresh agendado
@@ -215,3 +221,27 @@ services:
     # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
     stop_grace_period: 15s
     restart: unless-stopped
+
+  # Cache de respostas da api (ACHADOS #228). Volta para dentro da stack em 16/10/2026: o
+  # `31299ad` o tirou supondo Redis externo do Misael, que nunca chegou — e a `api` rodou
+  # sem Redis nenhum desde então (`REDIS_URL` vazio), com o container antigo órfão.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # `requirepass` EXIGIDO, sem padrão: sem porta publicada ele já não é alcançável de
+    # fora, mas fica aberto a qualquer container que entrar nesta rede — e o que se guarda
+    # aqui é resposta calculada sobre dado de cliente. Falha fechada no `up`, não silêncio.
+    # `allkeys-lru` porque toda chave deste projeto sai com TTL (`Cache.set` recusa
+    # ttl<=0, `cache-redis.ts`): expulsar a menos usada é a degradação que o disjuntor já
+    # assume. Sem persistência (`--save ''`, `--appendonly no`): é cache, refaz sozinho, e
+    # gravar em disco só copiaria dado de cliente para mais um lugar.
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save ''
+      --appendonly no
+    # Acima do `maxmemory` para caber o overhead do próprio Redis (buffers, fragmentação).
+    mem_limit: 640m
+    stop_grace_period: 15s
