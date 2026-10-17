@@ -15656,3 +15656,41 @@ disco (arquivo não regravado), `protocolos-geral` **33,7 s**, 99.702 linhas. O 
 inteiro foi 284 s e 275 s (média histórica 427,5 s em 120 rodadas): o grupo é dominado pelas
 outras queries, e o ganho da divisão é ~28 s por rodada — menor que a estimativa de "133 s →
 25–30 s" do handoff, que media a VPN de casa.
+
+## #228 — por que a `api` batia 3 GB, e as seis correções (16/10)
+
+Investigado com 3 agentes lendo o código (workers, processo principal, re-aquecimento) e um
+teste de carga numa `api` de TESTE isolada (porta 3199, cópia do snapshot, sem Redis/poller,
+token efêmero; usuários simulados com IP próprio por `x-real-ip` + `CONFIA_PROXY=1`, só nela).
+
+**Causas.** (1) Pico depois de cada refresh: enquanto as calculadas eram recongeladas, a
+worker lia TODAS as tabelas físicas e só no fim recusava; a principal repetia a cada 1 s por
+até 20 s (`d710592`), nas duas workers, invisível no log. (2) Cada worker carregava sua cópia
+da mesma página (sem afinidade), com 1 dataset vivo + 1 montando + 1 descartado esperando GC;
+as colunas `Int32Array` ficam FORA do heap, então os 512 MB por worker não seguram nada; e a
+geração velha só saía no próximo pedido daquela página. (3) Crescimento contínuo: o cache de
+respostas era um `MemoryCache` sem teto, "última pronta" de 7 dias por pergunta distinta, e
+toda virada de carimbo deixava a geração anterior presa (estimativa 0,5–1,5 GB/dia com 10
+usuários); `cacheValoresDistintos` idem. (4) Worker morta não era recriada: morrendo as duas,
+tudo ia para a principal sem limite de concorrência.
+
+**Correções** (cada uma com testes; suíte 2.324 + 195 verde):
+- `ddf1cee` teto LRU de 256 MB (`CACHE_RESPOSTA_MB`) no cache de respostas e 500 listas em
+  `cacheValoresDistintos`; `MemoryCache` sem opções segue idêntico (`tools/snapshot`, `mrun`);
+- `fd03a2c` a recusa por recongelamento é decidida pelos CABEÇALHOS antes de ler o disco
+  (mesma regra e mensagem; teste com tabela física truncada prova que não lê);
+- `71bfcce` worker morta é recriada (backoff 1–30 s, teto 6 em 10 min, nunca no encerramento;
+  a tarefa da morta não é reenviada);
+- `513bccf` `/api/saude` completa ganha `memoria` por dono (processo, cada worker medida nela,
+  caches, recriação, afinidade); anônimo continua só com `{ok, degradado}`;
+- `7b6f389` afinidade página→worker (rendezvous hashing sobre as vagas; fundo espera a dona;
+  clique desvia se a dona está em fundo ou após 10 s de espera);
+- `18bf47b` uma chave de dataset por página; na troca de carimbo o aquecedor avisa as workers
+  (`invalidaPagina`) antes de aquecer; o `CacheDeCarga` poda ANTES de carregar e chama `gc()`
+  quando descarta (o `--expose-gc` do processo vale nas workers: 400 MB soltos → 0 em 3 ms).
+
+**Medido em teste (curto) e o que NÃO deu para medir aqui.** Até 6 usuários, versão atual e
+corrigida ficaram na mesma faixa (1,7–2,1 GB, tudo 200); a estação chegou a 388 MB livres e o
+teste abortou na fase de 10. O ganho das correções de crescimento contínuo só aparece em
+horas de uso; o da afinidade/geração, no servidor. **`REDIS_URL` está vazio na stack** (o
+container do Redis roda, a `api` não o usa): despejo do teto = recálculo, não ida ao Redis.
