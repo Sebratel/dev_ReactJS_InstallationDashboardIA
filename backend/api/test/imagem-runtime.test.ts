@@ -248,7 +248,8 @@ test('compose de produção: proxy externo, Redis PRÓPRIO da stack e fechado (1
   assert.equal(api.environment?.REDIS_URL, 'redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}@redis:6379/0');
   // Senha obrigatória: `up` sem REDIS_PASSWORD falha em vez de subir um Redis aberto.
   assert.match(redis.command!, /--requirepass \$\{REDIS_PASSWORD:\?/);
-  assert.match(redis.command!, /--maxmemory 512mb/);
+  // 256mb/640m: com fragmentação de 2× (medida, ACHADOS #229) 512mb/640m morria por OOM.
+  assert.match(redis.command!, /--maxmemory 256mb/);
   assert.match(redis.command!, /--maxmemory-policy allkeys-lru/);
   // Sem porta publicada e sem nada em disco: é cache sobre dado de cliente.
   assert.equal(redis.ports, undefined, 'Redis não pode ser alcançável de fora da stack');

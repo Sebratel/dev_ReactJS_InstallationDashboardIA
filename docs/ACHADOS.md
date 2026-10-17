@@ -15694,3 +15694,39 @@ corrigida ficaram na mesma faixa (1,7–2,1 GB, tudo 200); a estação chegou a 
 teste abortou na fase de 10. O ganho das correções de crescimento contínuo só aparece em
 horas de uso; o da afinidade/geração, no servidor. **`REDIS_URL` está vazio na stack** (o
 container do Redis roda, a `api` não o usa): despejo do teto = recálculo, não ida ao Redis.
+
+## #229 — o Redis da stack não derruba a `api`, mas 512mb/640m derrubava o próprio Redis (16/10)
+
+**Pergunta do Erick:** o Redis (de volta na stack em `8b6c97b`) pode derrubar o container?
+Estudo isolado (rede, Redis e `api` de teste próprios; nada da produção tocado).
+
+**1. O teto do Redis estava errado.** `maxmemory` conta o dado; o cgroup conta o que o
+processo segura, e a fragmentação chega a 2× quando chaves pequenas (valores de filtro) dão
+lugar a grandes (páginas inteiras). Escrita contínua de ~2,4–2,9 GB, cliente em OUTRO
+container, 400 mil chaves de 4 KB e depois valores grandes ("misto"):
+
+| maxmemory / mem_limit | valores | resultado |
+|---|---|---|
+| 512mb / 640m (o de `8b6c97b`) | 1 MB e 5 MB, misto | **OOMKilled**, 3 de 3 |
+| 384mb / 640m | 1 MB e 5 MB, misto | **OOMKilled** |
+| 512mb / 1g | 5 MB, misto | **OOMKilled** (1 MB passou, 795 MiB) |
+| **256mb / 640m** | 100 KB, 1 MB, 5 MB, misto, 2× cada | **passou 8 de 8**, pico 456 MiB, fragmentação até 2,16 |
+
+Sem o "misto" (só valores grandes) até 512mb/640m passava: foi o padrão real de uso que
+quebrou. Produção tinha 119 respostas em 12 MB (~100 KB cada), então 256 MB é folga de 20×.
+**Regra:** `mem_limit` ≈ 2,5× `maxmemory`. Mesmo o OOM do Redis ficava no cgroup dele: com
+`restart: unless-stopped` ele volta vazio e a `api` segue.
+
+**2. A `api` sobrevive a toda falha do Redis** (4 páginas, `API_WORKERS=1`,
+`CACHE_RESPOSTA_MB=1` para forçar o caminho do Redis): Redis morto (`docker kill`), travado
+(`docker pause`), cheio recusando escrita (`noeviction` 1mb), de volta vazio, e senha errada
+após restart da `api` — **todos os pedidos 200**, `Restarts=0`, `OOMKilled=false`, 0 exceção
+solta. `/api/saude` mostrou `redis=degradado` no morto e na senha errada, e o disjuntor abriu
+(3 aberturas, 92 desvios) com `WRONGPASS`; o log saiu uma linha por transição. Limite do
+ensaio: no travado e no cheio as respostas pequenas couberam na memória e o Redis quase não
+foi tocado. O tempo de espera contra Redis inalcançável segue o medido em 08/09
+(`commandTimeout` 300 ms + disjuntor, `backend/api/src/index.ts`).
+
+**Não medido aqui:** as 14 páginas com Redis morto (a `api` de teste chegou a 2,1 GB e a
+estação ficou com 527 MB livres; abortado). C1 dessa rodada ainda deu 14×200 com o Redis
+morto.

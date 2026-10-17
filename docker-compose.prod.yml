@@ -238,10 +238,16 @@ services:
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}
-      --maxmemory 512mb
+      --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --save ''
       --appendonly no
-    # Acima do `maxmemory` para caber o overhead do próprio Redis (buffers, fragmentação).
+    # **`mem_limit` ≈ 2,5× o `maxmemory`, e isso é medição, não folga.** O `maxmemory` conta
+    # o dado; o cgroup conta a memória que o processo segura, e a fragmentação chega a 2×
+    # quando chaves pequenas (valores de filtro) dão lugar a grandes (páginas inteiras). Medido
+    # em 16/10/2026 (ACHADOS #229): 512mb/640m morreu por OOM em 3 de 3 ensaios mistos;
+    # 384mb/640m e 512mb/1g também. 256mb/640m passou 8 de 8 (pico 456 MiB, fragmentação
+    # 2,16 com valores de 5 MB). Produção usava 12 MB em 119 respostas (~100 KB cada):
+    # 256 MB é folga de 20×. Subir o `maxmemory` exige subir o `mem_limit` na mesma razão.
     mem_limit: 640m
     stop_grace_period: 15s
