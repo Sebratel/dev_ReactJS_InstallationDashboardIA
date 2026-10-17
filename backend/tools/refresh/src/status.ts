@@ -229,7 +229,7 @@ export function montaStatusDeRefresh(
     // Para quem está em grupo, "parado" se mede pelo último SUCESSO do grupo — a pergunta
     // é "rodou?", e o `geradoEm` de uma query pode não andar numa incremental sem novidade.
     // Mas vale o mais novo dos dois: a query que gravou numa tentativa falha rodou, e a
-    // carga da madrugada (`snapshot-diario`) renova o arquivo sem passar pelo grupo — até
+    // carga da madrugada (`diario.ts`, no próprio `refresh` desde 17/10/2026) renova o arquivo sem passar pelo grupo — até
     // 09/10/2026 a saúde seguia "parado desde sexta" depois dela (PLANO-MESTRE R.1b).
     const paradaDesde = grupo ? (maisNovo(grupoStatus?.ultimoSucesso, geradoEm) ?? ultimaCarga) : ultimaCarga;
 

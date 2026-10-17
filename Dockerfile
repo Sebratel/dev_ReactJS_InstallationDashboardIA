@@ -75,12 +75,12 @@ RUN mkdir -p /repo/snapshot && chown node:node /repo/snapshot
 # Sem root (13/10/2026): `api` e `refresh` rodam como o usuário `node` (uid 1000) da
 # imagem base. Só gravam no snapshot montado e em /tmp. Num servidor Linux, a pasta do
 # snapshot no host tem de ser gravável pelo uid 1000 (`chown -R 1000:1000 <pasta>`) —
-# docs/DEPLOY.md. O estágio `cron` abaixo volta a root: o daemon `cron` exige.
+# docs/DEPLOY.md. (O estágio `cron`, que voltava a root, saiu em 17/10/2026.)
 USER node
 
 EXPOSE 3100
 
-# 1536, e o número é medido — era 10240, escolhido por estimativa.
+# 1024, e o número é medido — era 10240, escolhido por estimativa (e 1536 até 17/10/2026).
 #
 # A API tem a mesma cota de 3 GB do dashboard Comercial. Medido em 16/10/2026,
 # em um contêiner isolado de 3 GB, com a piscina em 2 workers × 512 MB:
@@ -92,24 +92,8 @@ EXPOSE 3100
 # até 42 GB de heap numa máquina de 16 GB. O `mem_limit` do compose tem de ser
 # derivado desta linha e revalidado dentro do cgroup.
 #
-# Heap autorizado hoje: 1536 (aqui) + 2 × 512 (piscina) = 2560 MB, dentro do
-# `mem_limit: 3g` do docker-compose.prod.yml, com 512 MB de folga. `backend/api/test/piscina-workers.test.ts`
+# Heap autorizado hoje: 1024 (aqui) + 2 × 512 (piscina) = 2048 MB, dentro do
+# `mem_limit: 2560m` do docker-compose.prod.yml, com 512 MB de folga. 1536 -> 1024 em
+# 17/10/2026: o pai usa 34-42 MB de heap em produção (ACHADOS #230). `backend/api/test/piscina-workers.test.ts`
 # falha se os três números saírem de sincronia.
-CMD ["node", "--max-old-space-size=1536", "--expose-gc", "backend/api/src/index.ts"]
-
-# Estágio dedicado ao snapshot diário completo via cron (docker-compose.prod.yml,
-# serviço `snapshot-diario`) — parte de `runtime` acima em vez de repetir o stage
-# de build. `api`/`refresh` continuam usando só o stage `runtime`, sem o pacote
-# `cron` a mais.
-FROM runtime AS cron
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends cron \
-    && rm -rf /var/lib/apt/lists/*
-COPY docker/cron/crontab-snapshot-diario /etc/cron.d/snapshot-diario
-COPY docker/cron/entrypoint.sh /usr/local/bin/entrypoint-cron.sh
-# `/etc/cron.d/*` já é lido direto pelo daemon `cron` (formato com coluna de
-# usuário) — NÃO rodar `crontab` sobre ele: esse comando instala num formato
-# diferente (crontab pessoal, sem coluna de usuário) e quebraria a linha.
-RUN chmod 0644 /etc/cron.d/snapshot-diario \
-    && chmod +x /usr/local/bin/entrypoint-cron.sh
-CMD ["/usr/local/bin/entrypoint-cron.sh"]
+CMD ["node", "--max-old-space-size=1024", "--expose-gc", "backend/api/src/index.ts"]

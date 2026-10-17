@@ -67,8 +67,8 @@
 | **Paridade com o Power BI** | **não fechada** — 42 cards em jogo, **18 batem**, 7 divergências reais na fila (§2.4) | **sim, para "substituir"** |
 | **Autenticação** | **existe** desde o commit `eb69069`: Google SSO restrito a `sebratel.com.br` (`backend/api/src/auth-google.ts`), com portão de 401 antes do roteamento — o teste *"sem cookie de sessão, `/api/*` leva 401 antes de qualquer rota"*, em `backend/api/test/servidor.test.ts`, é o que o prova. Esta linha dizia "não existe" até 17/09/2026, contradizendo o próprio aviso no topo deste arquivo. **O que continua aberto é a §2.1: origem da identidade e o dado pessoal que a API serve** | não — mas ver §2.1 |
 | **Refresh do dado** | `backend/tools/refresh/` existe e é **100% automático** (06/09/2026): serviço `refresh` embutido no `docker-compose.prod.yml` rodando `daemon.ts` a cada 15 min, sem depender de crontab do host | **pronto** |
-| **Snapshot diário completo** | (10/09/2026) serviço `snapshot-diario` embutido no `docker-compose.prod.yml`: cron **dentro do container** (`docker/cron/`), às 3h, materializando **24 das 25 queries** do catálogo. A de fora é `protocolos-produtividade`, e **o motivo original caiu**: até 17/09/2026 esta linha dizia "não materializa em nenhum modo hoje, #81", o que deixou de valer em **13/09/2026** — ela materializa ponta a ponta (**162 s**; o `manifesto.json` a traz com **77.452 linhas × 51 colunas**, carga de 16/09) e entrou no grupo `frio` de `backend/specs/_catalog/refresh.yaml`. A ausência dela na lista do cron é hoje uma **decisão pendente, não um impedimento técnico** (~3 min a mais na madrugada) — `docker/cron/crontab-snapshot-diario` já traz esse aviso no comentário, e era este documento que não tinha sido alinhado. Ver §2.2 abaixo | **pronto — com uma decisão em aberto** |
-| Containerização | `Dockerfile` na raiz e `docker-compose.prod.yml` com `api`/`refresh`/`snapshot-diario`/`redis` (Redis próprio desde 16/10/2026); proxy (o nginx da Sebratel) e TLS ficam na infraestrutura do Misael, sem container de proxy na stack. `docker-compose.local.yml` é a sobreposição de desenvolvimento | **pronto** |
+| **Snapshot diário completo** | (10/09/2026; **desde 17/10/2026 dentro do `refresh`**, `diario.ts`, sem cron, com TODA query de `refresh.yaml`) antes era o serviço `snapshot-diario`: cron **dentro do container** (`docker/cron/`), às 3h, materializando **24 das 25 queries** do catálogo. A de fora é `protocolos-produtividade`, e **o motivo original caiu**: até 17/09/2026 esta linha dizia "não materializa em nenhum modo hoje, #81", o que deixou de valer em **13/09/2026** — ela materializa ponta a ponta (**162 s**; o `manifesto.json` a traz com **77.452 linhas × 51 colunas**, carga de 16/09) e entrou no grupo `frio` de `backend/specs/_catalog/refresh.yaml`. A ausência dela na lista do cron é hoje uma **decisão pendente, não um impedimento técnico** (~3 min a mais na madrugada) — `docker/cron/crontab-snapshot-diario` já traz esse aviso no comentário, e era este documento que não tinha sido alinhado. Ver §2.2 abaixo | **pronto — com uma decisão em aberto** |
+| Containerização | `Dockerfile` na raiz e `docker-compose.prod.yml` com `api`/`refresh`/`redis` (Redis próprio desde 16/10/2026; a carga das 3h entrou no `refresh` em 17/10/2026); proxy (o nginx da Sebratel) e TLS ficam na infraestrutura do Misael, sem container de proxy na stack. `docker-compose.local.yml` é a sobreposição de desenvolvimento | **pronto** |
 | Proxy reverso e TLS | configurados externamente pelo Misael; `nginx.conf` fica como referência de rotas, timeout e SSE, sem ser executado pela stack | **pronto, depende da configuração externa** |
 | Processo supervisionado | **mudou em 19/09/2026, e o bloqueio caiu pela metade.** A cadência do refresh deixou de depender do Agendador de Tarefas do Windows: ela é um relógio por grupo dentro do processo da API (`backend/api/src/agendador.ts`), e em produção quem supervisiona é o `restart: unless-stopped` do `docker-compose.prod.yml`, que já existe. **O que sobra:** no host, fora do Docker, nada reergue a API se o processo morrer — `npm start` não a ressuscita, de propósito (a morte mais comum dela é outra instância tomando a porta 3100). A resposta para isso é subir pelo compose, não registrar tarefa de host. Ver §2.2 | **não, se subir por Docker**; sim, se rodar `npm start` a seco |
 | CDC contra o Voalle real | validado só contra a stack descartável de `docker/cdc/` | não — está fora do deploy (§5) |
@@ -244,9 +244,10 @@ todas as linhas — e o que a API serve inclui:
   5s→15s→45s→2min→5min, só conta como tentativa a morte com menos de um minuto de vida,
   e **no teto desiste em voz alta** com o comando de diagnóstico — respawn sem limite
   esconderia um `.env` quebrado para sempre.
-- **O catálogo inteiro é rematerializado às 3h** pelo serviço `snapshot-diario`, com
-  cron dentro do container (`docker/cron/`) — é ele que corrige alteração retroativa que
-  a cadência de minutos não vê.
+- **O catálogo inteiro é rematerializado às 3h** pelo próprio `refresh`
+  (`SNAPSHOT_DIARIO_UTC=06:00`, `backend/tools/refresh/src/diario.ts`; até 17/10/2026 era
+  o serviço `snapshot-diario`, com cron) — é ela que corrige alteração retroativa que a
+  cadência de minutos não vê.
 
 **O que ainda falta, e é honestamente o buraco desta seção:** quem ressuscita o daemon é
 o próprio `npm start`; se **ELE** morrer, ou se a máquina reiniciar, não há nada.
@@ -296,7 +297,7 @@ valendo para quem for mexer na cadência.
     compartilhado com a API. Subir a stack já sobe o agendador ativo.
   - **Credencial Google (27/09/2026, ACHADOS #157):** `GOOGLE_CREDENCIAL_HOST` = caminho,
     NO SERVIDOR, do JSON da service account. O compose o monta só-leitura em
-    `/run/secrets/google-sa.json` no `refresh` e no `snapshot-diario` e aponta
+    `/run/secrets/google-sa.json` no `refresh` (e no `snapshot-diario`, enquanto existiu) e aponta
     `GOOGLE_APPLICATION_CREDENTIALS` para lá. Sem a variável a stack não sobe (de
     propósito: sem ela `apuracao-premiacao`, `capacidade-equipe` e
     `protocolos-produtividade` falham a cada ciclo). No Portainer, é variável da stack.
@@ -357,7 +358,8 @@ valendo para quem for mexer na cadência.
   de npm que falta, `mysql2` (#83). As duas saíram de `refresh.yaml` até serem
   resolvidas; os grupos que sobraram (~11s e ~24s medidos ao vivo) são seguros
   para a cadência declarada.
-- **Snapshot diário COMPLETO, separado da cadência de minutos (10/09/2026).** O
+- **Snapshot diário COMPLETO, separado da cadência de minutos (10/09/2026; desde
+  17/10/2026 roda dentro do `refresh`, sem cron nem contêiner próprio — ACHADOS #230).** O
   `refresh.yaml` acima só cobre uma fatia (`quente`/`medio`/`frio`); o resto do
   catálogo (o que hoje só roda manual com `npm run snapshot -- --todas`) ficava
   sem cadência nenhuma, e a carga incremental dos grupos rápidos não corrige
@@ -557,7 +559,7 @@ reverso e TLS são infraestrutura externa configurada pelo Misael no Portainer.
 
 O Redis exige `REDIS_PASSWORD` no `.env` (só `[0-9a-f]`, ex.: `openssl rand -hex 24`,
 porque vai crua na `REDIS_URL` que o compose monta para a `api`). Sem porta publicada,
-256 MB de dado com `allkeys-lru` num teto de 640 MB (a fragmentação chega a 2×, ACHADOS #229), sem persistência. Se ele cair, a API segue com o cache em
+64 MB de dado com `allkeys-lru` num teto de 192 MB (a fragmentação chega a 2× e mais, ACHADOS #229/#230), sem persistência. Se ele cair, a API segue com o cache em
 memória (teto `CACHE_RESPOSTA_MB`, padrão 256 MB) — ACHADOS #228. Não aponte desenvolvimento para `redis://localhost:6379` se não houver
 um Redis realmente escutando nesse host.
 
@@ -565,7 +567,7 @@ Para desenvolvimento há `docker-compose.local.yml`, que é **sobreposição** e
 stack própria — ele só rebaixa `NODE_ENV` e liga `SEM_LOGIN`, e se usa com os dois
 `-f` (o cabeçalho do arquivo traz os comandos).
 
-O de produção tem quatro serviços: `api`, `refresh`, `snapshot-diario` e `redis`. **A tela não é
+O de produção tem três serviços: `api` (teto 2560m), `refresh` (1450m, com a carga completa das 3h dentro) e `redis` (192m) — 4,1 GB de tetos somados (ACHADOS #230). **A tela não é
 um serviço:** a API já serve o build estático na raiz. O proxy externo aponta para
 `${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}`; deixe o bind em loopback salvo
 quando a rede do Misael exigir outra interface.

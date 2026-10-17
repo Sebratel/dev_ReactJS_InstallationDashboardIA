@@ -35,29 +35,32 @@ services:
       context: .
       dockerfile: Dockerfile
       args: *args-da-tela
-      # O último estágio do Dockerfile é o `cron`: sem `target`, este serviço
-      # subia a imagem do cron e ficava reiniciando (medido em 25/09/2026).
+      # Explícito: enquanto o último estágio do Dockerfile era o `cron` (até 17/10/2026),
+      # sem `target` este serviço subia a imagem do cron e ficava reiniciando (25/09/2026).
       target: runtime
     pull_policy: build
     env_file:
       - .env
     # O CONTRATO DE MEMÓRIA, e os três números têm de andar juntos:
     #
-    #   Dockerfile  --max-old-space-size=1536   heap do processo pai
+    #   Dockerfile  --max-old-space-size=1024   heap do processo pai
     #   API_WORKER_HEAP_MB=512 × API_WORKERS=2  heap da piscina de DAX
     #   ------------------------------------------------------------
-    #   2560 MB autorizados de heap
-    #   mem_limit 3g -> 512 MB de folga para buffers, runtime, V8 e pilhas.
+    #   2048 MB autorizados de heap
+    #   mem_limit 2560m -> 512 MB de folga para buffers, runtime, V8 e pilhas.
     #
-    # Medido em 16/10/2026 no cgroup de 3 GB: o aquecimento completo ficou em
-    # 1608 MB de RSS; 200 aberturas simultâneas passaram (p95 3,82 s na primeira
-    # rajada e 256 ms com cache quente), com RSS pico de 1827 MB e sem OOM.
+    # 17/10/2026: 3g -> 2560m para caber no host compartilhado do Portainer (15,6 GB, 11,2
+    # já em uso por outras stacks). O pai usa 34-42 MB de heap em produção (log de 3 h,
+    # 16/10), daí 1536 -> 1024. **Ainda NÃO validado no servidor:** produção depois das
+    # correções do #228 ficou em pico de 1789 MB (noite, pouco uso); o teste de carga de
+    # 10 usuários + refresh, ANTES da afinidade e da liberação de geração, bateu 2386 MB.
+    # Medir em dia útil antes de levar para produção (ACHADOS #230).
     #
     # `backend/api/test/piscina-workers.test.ts` falha se alguém mexer num dos três
     # sem mexer nos outros. No Portainer, é `mem_limit` que aparece como o
     # "Memory limit" da stack. Esta é a configuração validada pela sonda; mudar
     # qualquer um dos três números exige repetir a medição no cgroup.
-    mem_limit: 3g
+    mem_limit: 2560m
     environment:
       API_WORKERS: '2'
       API_WORKER_HEAP_MB: '512'
@@ -143,12 +146,17 @@ services:
       context: .
       dockerfile: Dockerfile
       args: *args-da-tela
-      # O último estágio do Dockerfile é o `cron`: sem `target`, este serviço
-      # subia a imagem do cron e ficava reiniciando (medido em 25/09/2026).
+      # Explícito: enquanto o último estágio do Dockerfile era o `cron` (até 17/10/2026),
+      # sem `target` este serviço subia a imagem do cron e ficava reiniciando (25/09/2026).
       target: runtime
     pull_policy: build
     env_file:
       - .env
+    # Desde 17/10/2026 este contêiner faz TAMBÉM a carga completa das 3h (era o serviço
+    # `snapshot-diario`, com cron e um segundo teto de 1450m). Um teto só basta: as duas
+    # cargas dividem a trava do snapshot e nunca materializam juntas — a que chega espera
+    # (`backend/packages/snapshot/src/trava.ts`). Ver `backend/tools/refresh/src/diario.ts`.
+    #
     # Medido em 15/10/2026: `protocolos-geral` concluiu com heap de 1400 MB; o
     # cgroup alcançou 1234 MiB com a linha compacta do motor M. O cgroup separado
     # protege a API de OOM durante a carga, mas não transforma um host inteiro de
@@ -165,6 +173,10 @@ services:
       # mata o grupo após 30 min, registra falha transitória e tenta novamente.
       REFRESH_TEMPO_MAXIMO_MINUTOS: '30'
       VOALLE_APPLICATION_NAME: analytics-refresh
+      # Carga completa (`--refazer`, toda query de refresh.yaml) todo dia neste horário
+      # UTC: 06:00 = 03:00 em Brasília. Corrige alteração retroativa que a incremental não
+      # vê e renova o teto de 7 dias dela. Vazio desliga.
+      SNAPSHOT_DIARIO_UTC: '06:00'
     volumes:
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
       # A credencial do Google SAIU em 14/10/2026 (ACHADOS #209): nenhuma query lê mais
@@ -175,44 +187,6 @@ services:
     # Um relógio por grupo: se uma carga média ficar pendurada, `quente` continua
     # entrando na fila e a retomada de suspensão aborta o filho congelado.
     command: ["node", "--max-old-space-size=1024", "backend/tools/refresh/src/daemon.ts", "--por-grupo"]
-    # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
-    # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
-    init: true
-    # Explícito: o Compose v5.1.3 desta estação criava os contêineres com StopTimeout=1,
-    # e o `docker stop` matava com SIGKILL no meio do desligamento (ACHADOS #157). 15 s
-    # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
-    stop_grace_period: 15s
-    restart: unless-stopped
-
-  # Snapshot diário COMPLETO — cron dentro do container, às 3h de Brasília (06:00 UTC; docker/cron/
-  # crontab-snapshot-diario), separado da cadência de minutos do `refresh`
-  # acima. Corrige alteração retroativa que a carga incremental não vê, e
-  # materializa o catálogo inteiro (desde 02/10, com protocolos-produtividade; ver o
-  # comentário do crontab).
-  #
-  # Mesmo teto de 1450m e heap de 1400 MB do `refresh`: os dois compartilham a
-  # trava do snapshot, portanto uma materialização pesada nunca sobrepõe a outra.
-  snapshot-diario:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args: *args-da-tela
-      target: cron
-    pull_policy: build
-    env_file:
-      - .env
-    mem_limit: 1450m
-    environment:
-      NODE_ENV: production
-      # Chega ao job pelo `/repo/.env.cron` que o entrypoint grava (docker/cron/entrypoint.sh).
-      VOALLE_APPLICATION_NAME: analytics-snapshot-diario
-    volumes:
-      - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
-      # A credencial do Google SAIU em 14/10/2026 (ACHADOS #209): nenhuma query lê mais
-      # planilha — o n8n copia as três para o DB_InstallationDashboard a cada 15 min.
-    depends_on:
-      api:
-        condition: service_healthy
     # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
     # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
     init: true
@@ -238,7 +212,7 @@ services:
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}
-      --maxmemory 256mb
+      --maxmemory 64mb
       --maxmemory-policy allkeys-lru
       --save ''
       --appendonly no
@@ -246,8 +220,8 @@ services:
     # o dado; o cgroup conta a memória que o processo segura, e a fragmentação chega a 2×
     # quando chaves pequenas (valores de filtro) dão lugar a grandes (páginas inteiras). Medido
     # em 16/10/2026 (ACHADOS #229): 512mb/640m morreu por OOM em 3 de 3 ensaios mistos;
-    # 384mb/640m e 512mb/1g também. 256mb/640m passou 8 de 8 (pico 456 MiB, fragmentação
-    # 2,16 com valores de 5 MB). Produção usava 12 MB em 119 respostas (~100 KB cada):
-    # 256 MB é folga de 20×. Subir o `maxmemory` exige subir o `mem_limit` na mesma razão.
-    mem_limit: 640m
+    # 384mb/640m e 512mb/1g também. 17/10 (#230): 64mb/192m passou 6 de 6 (pico 110 MiB).
+    # Produção usava 12 MB em 119 respostas (~100 KB cada): 64 MB é folga de 5×.
+    # Subir o `maxmemory` exige subir o `mem_limit` na mesma razão (≈3×).
+    mem_limit: 192m
     stop_grace_period: 15s

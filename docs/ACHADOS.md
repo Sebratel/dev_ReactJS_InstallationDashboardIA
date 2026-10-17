@@ -15730,3 +15730,36 @@ foi tocado. O tempo de espera contra Redis inalcançável segue o medido em 08/0
 **Não medido aqui:** as 14 páginas com Redis morto (a `api` de teste chegou a 2,1 GB e a
 estação ficou com 527 MB livres; abortado). C1 dessa rodada ainda deu 14×200 com o Redis
 morto.
+
+## #230 — tetos da stack de 6,5 GB para 4,1 GB: `snapshot-diario` dentro do `refresh` (17/10)
+
+**Por quê.** O host do Portainer (ambiente 3, `STR-N8N-STAGING`, lido só por GET) tem
+15,6 GB e 11,2 GB já em uso por 53 contêineres, 45 deles sem `mem_limit`; ELK (4,6 GB) e
+Wazuh (2,6 GB) são os maiores. Sobram ~4,4 GB. Os tetos desta stack somavam 6,5 GB, e
+host sem memória faz o kernel matar o maior processo da máquina, não o nosso.
+
+| serviço | antes | depois |
+|---|---|---|
+| `api` | 3g, pai `--max-old-space-size=1536` | **2560m**, pai **1024** (2 × 512 nas workers sem mudança) |
+| `refresh` | 1450m | 1450m, **com a carga completa das 3h dentro** |
+| `snapshot-diario` | 1450m (cron, estágio `cron` do Dockerfile) | **removido** |
+| `redis` | 256mb / 640m | **64mb / 192m** |
+| **soma** | **6,5 GB** | **4,1 GB** |
+
+- **Carga das 3h no `refresh`** (`backend/tools/refresh/src/diario.ts`, ligada por
+  `SNAPSHOT_DIARIO_UTC=06:00` no daemon `--por-grupo`): mesmo comando do crontab
+  (`--refazer`, heap = `REFRESH_MEMORIA_MB`), lista = união dos grupos de `refresh.yaml`
+  (não mais à mão). Um teto só basta porque as duas cargas já dividiam a trava do snapshot,
+  e quem chega espera. Não empilha sobre a anterior em voo; `SIGTERM` no daemon pede ao
+  filho que solte a trava. Sai também o `cron` rodando como root.
+- **Redis 64mb/192m:** ensaio misto (400 mil chaves de 4 KB, depois 100 KB, 1 MB e 5 MB),
+  6 de 6 sem OOM, pico 110 MiB; a fragmentação passou de 6× com valores de 5 MB, mas em
+  absoluto coube. Produção usa ~12 MB.
+- **`piscina-workers.test.ts` agora LÊ o `mem_limit` do compose e o `CMD` do Dockerfile**
+  (eram literais repetidos; baixar o `mem_limit` não quebrava teste nenhum).
+
+**Aberto: a `api` em 2560m NÃO está validada no servidor.** O pai usa 34–42 MB de heap em
+produção (log de 3 h, 16/10), então 1024 é folga larga. Mas o RSS total já passou de
+2.386 MB no teste de 10 usuários + refresh simulado, de antes da afinidade e da liberação
+de geração (#228); em produção, depois delas, o pico foi 1.789 MB à noite. Medir um dia útil
+com o `/api/saude` antes de levar à produção; se passar de ~2,2 GB, voltar a 3g.

@@ -5,7 +5,7 @@
 // dois processos ao mesmo tempo são um read-modify-write clássico: o segundo a terminar
 // regrava o índice sem as tabelas que o primeiro acabou de registrar, sem erro nenhum.
 // Dentro de um agendador isso não acontece (a fila é de um), mas havia três escritores
-// que não se conheciam: o `refresh` (daemon ou API), o `snapshot-diario` das 3h e um
+// que não se conheciam: o `refresh` (daemon ou API), a carga completa das 3h (contêiner `snapshot-diario` até 17/10/2026, hoje `diario.ts` dentro do `refresh`) e um
 // `npm run snapshot` manual — e, no pior caso, o `npm start` e a stack Docker juntos no
 // mesmo diretório (ACHADOS #148).
 //

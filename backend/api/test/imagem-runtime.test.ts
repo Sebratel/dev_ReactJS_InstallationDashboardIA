@@ -147,7 +147,7 @@ test('o compose declara o serviço refresh automático apontando para daemon.ts 
   assert.match(compose, /:\/repo\/snapshot/, 'refresh deve montar o volume /repo/snapshot');
 });
 
-test('refresh e snapshot-diario: heap autorizado + folga de não-heap cabem no mem_limit (ACHADOS #154)', () => {
+test('refresh: heap autorizado + folga de não-heap cabem no mem_limit (ACHADOS #154)', () => {
   const linhas = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8').split(/\r?\n/);
   // O bloco de um serviço vai da linha `  nome:` até o próximo serviço (ou `volumes:`).
   const bloco = (nome: string): string => {
@@ -170,15 +170,12 @@ test('refresh e snapshot-diario: heap autorizado + folga de não-heap cabem no m
   const pai = Number(refresh.match(/--max-old-space-size=(\d+)/)?.[1]);
   assert.ok(filho > 0 && pai > 0, 'refresh declara REFRESH_MEMORIA_MB e o heap do pai');
   assert.ok(filho + FOLGA_MB <= limiteMb(refresh), `refresh: heap do filho + folga > mem_limit`);
-
-  const crontab = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'crontab-snapshot-diario'), 'utf8');
-  const cron = Number(crontab.match(/--memoria=(\d+)/)?.[1]);
-  assert.ok(cron > 0, 'crontab declara --memoria');
-  assert.ok(cron + FOLGA_MB <= limiteMb(bloco('snapshot-diario')), `snapshot-diario: heap + folga > mem_limit`);
+  // A carga das 3h roda neste mesmo contêiner com o MESMO heap (`diario.ts` usa
+  // REFRESH_MEMORIA_MB): ela não pede teto próprio.
 });
 
 
-test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google só onde alguma query ainda lê planilha (ACHADOS #157, #209)', () => {
+test('compose: api/refresh fora do PID 1, e a credencial Google só onde alguma query ainda lê planilha (ACHADOS #157, #209)', () => {
   const linhas = fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8').split(/\r?\n/);
   const bloco = (nome: string): string => {
     const inicio = linhas.indexOf(`  ${nome}:`);
@@ -186,7 +183,7 @@ test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google 
     const fim = linhas.findIndex((l, k) => k > inicio && /^(  [a-z-]+:|volumes:)$/.test(l));
     return linhas.slice(inicio + 1, fim < 0 ? undefined : fim).join('\n');
   };
-  for (const s of ['api', 'refresh', 'snapshot-diario']) {
+  for (const s of ['api', 'refresh']) {
     assert.match(bloco(s), /^\s+init: true$/m, `${s} sem init: true — como PID 1 ele não recebe SIGTERM`);
     const graca = Number(bloco(s).match(/stop_grace_period: (\d+)s/)?.[1]);
     assert.ok(graca > 8, `${s}: stop_grace_period tem de passar do teto de 8 s do desligamento`);
@@ -200,7 +197,7 @@ test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google 
   const lePlanilha = fs
     .readdirSync(dirQueries)
     .some((f) => /^source_type: googlesheets$/m.test(fs.readFileSync(path.join(dirQueries, f), 'utf8')));
-  for (const s of ['refresh', 'snapshot-diario']) {
+  for (const s of ['refresh']) {
     const b = bloco(s);
     const alvo = b.match(/GOOGLE_APPLICATION_CREDENTIALS: (\S+)/)?.[1];
     if (lePlanilha) {
@@ -212,21 +209,18 @@ test('compose: api/refresh/snapshot-diario fora do PID 1, e a credencial Google 
   }
 });
 
-test('crontab: o snapshot da madrugada é às 03:00 de Brasília e cobre toda query do refresh (02/10/2026)', () => {
-  // O contêiner roda em UTC: `0 3` disparava à meia-noite de Brasília. E com o dia
-  // servido por poller + incremental, esta carga é a referência — query do refresh que
-  // ficar de fora dela (como `protocolos-produtividade` ficou até 02/10) não tem quem a
-  // corrija nem quem renove o teto de 7 dias da incremental.
-  const crontab = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'crontab-snapshot-diario'), 'utf8');
-  const linha = crontab.split(/\r?\n/).find((l) => /^\d/.test(l));
-  assert.ok(linha, 'crontab sem linha de agendamento');
-  assert.match(linha, /^0 6 \* \* \* /, '06:00 UTC = 03:00 em Brasília');
-  const doCron = new Set(linha.match(/--query=(\S+)/)?.[1]?.split(',') ?? []);
-  const refresh = fs.readFileSync(path.join(RAIZ, 'backend', 'specs', '_catalog', 'refresh.yaml'), 'utf8');
-  const doRefresh = [...refresh.matchAll(/^\s+- ([a-z0-9-]+)\s*$/gm)].map((m) => m[1]!);
-  assert.ok(doRefresh.length > 10, `li ${doRefresh.length} queries do refresh.yaml`);
-  const faltam = doRefresh.filter((q) => !doCron.has(q));
-  assert.deepEqual(faltam, [], 'queries do refresh fora do snapshot da madrugada');
+test('a carga completa da madrugada mora no refresh, às 03:00 de Brasília, sem contêiner de cron (17/10/2026)', () => {
+  // O contêiner roda em UTC: 06:00 UTC = 03:00 em Brasília. Que ela cobre TODA query do
+  // refresh.yaml é provado em backend/tools/refresh/test/diario.test.ts (a lista agora é
+  // derivada dos grupos, não mantida à mão como no crontab).
+  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
+    services: Record<string, { environment?: Record<string, string>; command?: string[] }>;
+  };
+  assert.equal(compose.services['snapshot-diario'], undefined, 'a carga diária saiu do contêiner próprio');
+  const refresh = compose.services.refresh!;
+  assert.equal(refresh.environment?.SNAPSHOT_DIARIO_UTC, '06:00');
+  assert.ok(refresh.command?.includes('--por-grupo'), 'só o modo por grupo liga a carga diária');
+  assert.doesNotMatch(fs.readFileSync(path.join(RAIZ, 'Dockerfile'), 'utf8'), /AS cron/, 'estágio cron sem uso');
 });
 
 test('compose de produção: proxy externo, Redis PRÓPRIO da stack e fechado (16/10/2026)', () => {
@@ -248,27 +242,17 @@ test('compose de produção: proxy externo, Redis PRÓPRIO da stack e fechado (1
   assert.equal(api.environment?.REDIS_URL, 'redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}@redis:6379/0');
   // Senha obrigatória: `up` sem REDIS_PASSWORD falha em vez de subir um Redis aberto.
   assert.match(redis.command!, /--requirepass \$\{REDIS_PASSWORD:\?/);
-  // 256mb/640m: com fragmentação de 2× (medida, ACHADOS #229) 512mb/640m morria por OOM.
-  assert.match(redis.command!, /--maxmemory 256mb/);
+  // A fragmentação chega a 2× e mais (medida, ACHADOS #229/#230): 512mb/640m morria por
+  // OOM; 64mb/192m passou com pico de 110 MiB.
+  assert.match(redis.command!, /--maxmemory 64mb/);
   assert.match(redis.command!, /--maxmemory-policy allkeys-lru/);
   // Sem porta publicada e sem nada em disco: é cache sobre dado de cliente.
   assert.equal(redis.ports, undefined, 'Redis não pode ser alcançável de fora da stack');
   assert.equal(redis.volumes, undefined, 'cache não grava dado de cliente em volume');
   assert.match(redis.command!, /--save ''/);
   assert.match(redis.command!, /--appendonly no/);
-  assert.equal(redis.mem_limit, '640m');
+  assert.equal(redis.mem_limit, '192m');
   assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
-});
-
-test('crontab: o job exporta o ambiente ao carregar o .env.cron (04/10/2026)', () => {
-  // `entrypoint.sh` grava `VAR='valor'` sem `export`; no `sh`, `. arquivo` sem `set -a` não
-  // passa nada ao `node` filho. A primeira madrugada falhou nas 24 queries com "falta no
-  // .env VOALLE_HOST…", e o `docker exec` manual passava porque herda o ambiente do contêiner.
-  const crontab = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'crontab-snapshot-diario'), 'utf8');
-  const linha = crontab.split(/\r?\n/).find((l) => /^\d/.test(l))!;
-  assert.match(linha, / root set -a && \. \/repo\/\.env\.cron && set \+a && /, 'carregar o .env.cron sem `set -a` deixa o job sem credencial');
-  const entrypoint = fs.readFileSync(path.join(RAIZ, 'docker', 'cron', 'entrypoint.sh'), 'utf8');
-  assert.match(entrypoint, /> \/repo\/\.env\.cron/, 'o job depende do arquivo que o entrypoint grava');
 });
 
 test('o login da tela entra no build da imagem: toda VITE_FIREBASE_* lida pela tela é ARG, e o compose a passa', () => {

@@ -26,6 +26,7 @@ import { QueryRegistry } from '../../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
 import { MEMORIA_PADRAO_MB, TEMPO_MAXIMO_GRUPO_PADRAO_MS, rodaGrupoAssincrono } from './executa-grupo.ts';
+import { iniciaSnapshotDiario, leHorarioUtc, queriesDoDiario } from './diario.ts';
 import { Agendador } from '../../../api/src/agendador.ts';
 import {
   descreveMortesDaApi,
@@ -488,6 +489,18 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
       process.exit(2);
     }
     const agendador = iniciaAgendadorPorGrupo();
+    // A carga completa da madrugada mora AQUI desde 17/10/2026 (era o contêiner
+    // `snapshot-diario`, com cron): mesmo teto de memória, porque a trava do snapshot já
+    // impedia as duas de materializar juntas. `SNAPSHOT_DIARIO_UTC` vazio desliga.
+    const horarioDiario = leHorarioUtc(process.env.SNAPSHOT_DIARIO_UTC);
+    const diario = horarioDiario
+      ? iniciaSnapshotDiario({
+          raiz: ROOT,
+          horario: horarioDiario,
+          queries: queriesDoDiario(leGrupos(path.join(ROOT, 'backend', 'specs')).values()),
+          memoriaMb: configuracaoDoRefresh().memoriaMb ?? MEMORIA_PADRAO_MB,
+        })
+      : undefined;
     // Os relógios internos são `unref()` de propósito: a API pode encerrar sem
     // esperar quinze minutos. No contêiner dedicado, porém, eles seriam a ÚNICA
     // atividade e o Node encerraria com "unsettled top-level await". Este timer
@@ -499,6 +512,7 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
         if (encerrando) return;
         encerrando = true;
         console.log(`\n[Refresh] Recebido sinal ${sinal}. Encerrando agendador por grupo.`);
+        diario?.encerra();
         await agendador.encerra();
         clearInterval(mantenedor);
         resolve();

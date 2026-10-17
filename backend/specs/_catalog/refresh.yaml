@@ -217,8 +217,8 @@
 # (docs/PLANO-MESTRE.md; docs/PLANO-CARGA.md §3)
 #
 # O dia deixou de ser "tudo de 15 em 15 a 30 em 30 min". A carga de referência é o
-# snapshot completo das 03:00 de Brasília (`docker/cron/crontab-snapshot-diario`, com
-# as 23 queries). De dia, cada query fica onde o custo e o frescor pedem:
+# snapshot completo das 03:00 de Brasília (`backend/tools/refresh/src/diario.ts`, dentro
+# do `refresh` desde 17/10/2026, com toda query deste arquivo). De dia, cada query fica onde o custo e o frescor pedem:
 #
 #   quente  15 min  as baratas que mudam de dia e não têm poll (< ~17 s cada)
 #   medio   30 min  as pesadas que alimentam o número principal, juntas porque o M

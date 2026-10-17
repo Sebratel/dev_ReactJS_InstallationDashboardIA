@@ -15,7 +15,11 @@
 // falham se ele voltar a ser um.
 
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { parse } from 'yaml';
 import {
   PADRAO_HEAP_POR_WORKER_MB,
   PADRAO_TAMANHO_POOL,
@@ -29,21 +33,41 @@ test('sem variável de ambiente, o par (workers, heap) vem dos padrões nomeados
 });
 
 /**
- * O teto do container, em MB. É o `mem_limit` de `docker-compose.prod.yml`, e
- * está repetido aqui de propósito: um número que vive só no YAML não tem quem o
- * defenda quando alguém dobra `API_WORKERS` "só para testar".
+ * O teto do container e o heap do pai, LIDOS dos arquivos que valem (`mem_limit` da
+ * `api` em `docker-compose.prod.yml` e o `CMD` do `Dockerfile`). Até 17/10/2026 eles
+ * eram literais repetidos aqui, e baixar o `mem_limit` no YAML não quebrava teste
+ * nenhum. O perfil da piscina também vem do compose.
  */
-const MEM_LIMIT_CONTAINER_MB = 3 * 1024; // mem_limit: 3g
-const TETO_PAI_MB = 1536; // --max-old-space-size do Dockerfile
-const PERFIL_DE_PRODUCAO = { API_WORKERS: '2', API_WORKER_HEAP_MB: '512' };
+const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const COMPOSE_API = (
+  parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
+    services: { api: { mem_limit: string; environment: Record<string, string> } };
+  }
+).services.api;
+const emMB = (v: string): number => {
+  const m = v.match(/^(\d+)([mg])$/);
+  assert.ok(m, `mem_limit em m ou g: ${v}`);
+  return m[2] === 'g' ? Number(m[1]) * 1024 : Number(m[1]);
+};
+const MEM_LIMIT_CONTAINER_MB = emMB(COMPOSE_API.mem_limit);
+const TETO_PAI_MB = Number(
+  fs
+    .readFileSync(path.join(RAIZ, 'Dockerfile'), 'utf8')
+    .match(/^CMD \[.*"--max-old-space-size=(\d+)".*backend\/api\/src\/index\.ts/m)?.[1],
+);
+const PERFIL_DE_PRODUCAO = {
+  API_WORKERS: COMPOSE_API.environment.API_WORKERS!,
+  API_WORKER_HEAP_MB: COMPOSE_API.environment.API_WORKER_HEAP_MB!,
+};
 
 test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', () => {
   // O guarda que faltava, e a conta que ele guarda:
   //
-  //   pai 1536 + 2 workers × 512 = 2560 MB de heap autorizado
-  //   mem_limit 3072 MB          = 512 MB de folga autorizada
+  //   pai 1024 + 2 workers × 512 = 2048 MB de heap autorizado
+  //   mem_limit 2560 MB          = 512 MB de folga autorizada
   //
-  // RSS pico medido nessa faixa: 1827 MB (200 aberturas simultâneas, 16/10/2026).
+  // RSS pico medido: 1827 MB (200 aberturas, 16/10/2026, pai de 1536 e teto de 3g);
+  // a faixa de 2560m ainda falta medir no servidor (ACHADOS #230).
   //
   // Se alguém subir um dos padrões sem mexer no outro, o container passa a ser
   // morto pelo OOM killer do host — falha que aparece como "a página às vezes
@@ -56,7 +80,7 @@ test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', (
     `os padrões autorizam ${totalAutorizadoMB} MB de heap e o mem_limit é ` +
       `${MEM_LIMIT_CONTAINER_MB} MB. Mexeu em API_WORKERS ou API_WORKER_HEAP_MB? ` +
       `Ajuste mem_limit (docker-compose.prod.yml), o --max-old-space-size do ` +
-      `Dockerfile e MEM_LIMIT_CONTAINER_MB aqui, no mesmo commit.`,
+      `Dockerfile, no mesmo commit.`,
   );
 
   // A folga autorizada nunca pode zerar. A prova do RSS acontece dentro do
@@ -69,8 +93,12 @@ test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', (
   );
 });
 
-test('o perfil de produção mantém o teto do processo pai medido', () => {
-  assert.equal(TETO_PAI_MB, 1536);
+test('o perfil de produção mantém o teto do processo pai e da piscina', () => {
+  // O pai usa 34-42 MB de heap em produção (log de 3 h, 16/10/2026); 1024 guarda o
+  // cache de respostas (teto de 256 MB) com folga.
+  assert.equal(TETO_PAI_MB, 1024);
+  assert.deepEqual(PERFIL_DE_PRODUCAO, { API_WORKERS: '2', API_WORKER_HEAP_MB: '512' });
+  assert.equal(MEM_LIMIT_CONTAINER_MB, 2560);
 });
 
 test('API_WORKERS e API_WORKER_HEAP_MB sobrepõem os padrões', () => {

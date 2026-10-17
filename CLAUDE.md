@@ -6,7 +6,7 @@ relatórios; o errado dá gabarito plausível e falso).
 **Front = `frontend/`** (React 19 + Vite; build em `frontend/dist`, servido pela API).
 **Back = `backend/`**: `api/` (Node somente-leitura, porta 3100), `packages/` (motores),
 `tools/` (CLI: refresh, snapshot, subir, doctor…), `specs/` (metadados YAML). Na raiz
-ficam só infra (`Dockerfile`, compose, `nginx.conf`, `docker/cron`), `docs/` e o
+ficam só infra (`Dockerfile`, compose, `nginx.conf`), `docs/` e o
 `snapshot/` gerado. Mapa completo: README § Estrutura. Layout mudou em 02/10/2026 —
 doc mais velho que isso cita `apps/web`, `apps/api`, `packages/`, `tools/`, `specs/` na raiz.
 
