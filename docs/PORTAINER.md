@@ -11,7 +11,8 @@ porta interna da API continua `3100`.
 2. Em **Environment variables**, importe o arquivo local `.env.portainer` com
    **Load variables from .env file**. Ele foi gerado a partir do `.env` desta
    máquina, está ignorado pelo Git e deve ficar restrito a quem administra a
-   stack. O modelo sem credenciais é `portainer.env.example`.
+   stack. O modelo sem credenciais é `portainer.env.example`. Não cadastre
+   `SEM_LOGIN`: a produção o fixa em `0` e recusa subir sem um provedor de login.
 3. A API e o refresh usam a conta já configurada em `MARIA_HOST`, `MARIA_USER`
    e `MARIA_PASSWORD`. `ACESSO_DB_DATABASE` escolhe apenas o banco das tabelas de
    permissões, sem outra conta. Confirme que essa conta tem os grants necessários

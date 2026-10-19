@@ -235,6 +235,7 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
   assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
   assert.equal(api.environment?.CONFIA_PROXY, '1');
   assert.equal(api.environment?.COOKIE_SECURE, '1');
+  assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
   assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}:3100']);
 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');

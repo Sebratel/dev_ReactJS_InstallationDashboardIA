@@ -96,6 +96,11 @@ services:
       # modo de desenvolvimento — e todo comportamento condicionado a
       # `NODE_ENV === 'production'` ficava desligado, sem erro e sem log.
       NODE_ENV: production
+      # Produção nunca herda o atalho do ambiente local. Mesmo que alguém
+      # cadastre SEM_LOGIN=1 por engano nas variáveis do Portainer, este valor
+      # declarado pelo serviço prevalece e mantém a autenticação Firebase ativa.
+      # O único bypass permitido fica no overlay docker-compose.local.yml.
+      SEM_LOGIN: '0'
       # Mata a API se o laço principal ficar parado 120 s, para o `restart` religar
       # (ACHADOS #157). Só aqui: no `npm start` ninguém religaria.
       VIGIA_TRAVAMENTO_S: '120'
