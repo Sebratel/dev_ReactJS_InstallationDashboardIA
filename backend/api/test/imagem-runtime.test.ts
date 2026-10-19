@@ -223,20 +223,28 @@ test('a carga completa da madrugada mora no refresh, às 03:00 de Brasília, sem
   assert.doesNotMatch(fs.readFileSync(path.join(RAIZ, 'Dockerfile'), 'utf8'), /AS cron/, 'estágio cron sem uso');
 });
 
-test('compose de produção: proxy externo, Redis exclusivo e limites de segurança', () => {
-  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
+test('compose de produção: publicação direta, Redis exclusivo e limites de segurança', () => {
+  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8'), { merge: true }) as {
     services: Record<string, {
-      environment?: Record<string, string>; ports?: string[]; command?: string; mem_limit?: string;
-      volumes?: string[]; read_only?: boolean; cap_drop?: string[]; security_opt?: string[]; tmpfs?: string[]; user?: string;
+      environment?: Record<string, string>; ports?: string[]; command?: string | string[]; mem_limit?: string;
+      volumes?: string[]; read_only?: boolean; cap_drop?: string[]; cap_add?: string[]; security_opt?: string[];
+      tmpfs?: string[]; user?: string; network_mode?: string; restart?: string;
+      depends_on?: Record<string, { condition?: string }>;
+      logging?: { driver?: string; options?: Record<string, string> };
     }>;
     volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
-  assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
-  assert.equal(api.environment?.CONFIA_PROXY, '1');
-  assert.equal(api.environment?.COOKIE_SECURE, '1');
+  // 19/10/2026: só contêineres, porta publicada direto (docs/PORTAINER.md). A API recusa
+  // subir se COOKIE_SECURE/CONFIA_PROXY não baterem com PUBLICACAO (configuracao-producao.ts).
+  for (const proxy of ['proxy', 'web', 'nginx']) {
+    assert.equal(compose.services[proxy], undefined, `a stack não tem proxy (${proxy})`);
+  }
+  assert.equal(api.environment?.PUBLICACAO, 'direta');
+  assert.equal(api.environment?.CONFIA_PROXY, '0', 'sem proxy, X-Real-IP vem do cliente');
+  assert.equal(api.environment?.COOKIE_SECURE, '0', 'em HTTP o cookie Secure não volta do navegador');
   assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
-  assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}:3100']);
+  assert.deepEqual(api.ports, ['${API_PORT_HOST:-3101}:3100']);
 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
@@ -272,6 +280,33 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
   assert.ok(api.volumes?.some((v) => v.endsWith(':/repo/snapshot:ro')), 'API não pode escrever no snapshot');
   assert.ok(api.volumes?.includes('api-runtime:/repo/runtime'), 'diagnóstico da API precisa sair do snapshot');
   assert.ok(compose.volumes?.['api-runtime'] !== undefined, 'volume de diagnóstico da API não declarado');
+
+  // A pasta do snapshot no host ganha dono por contêiner, não por passo manual: sem isso o
+  // Docker a cria como root e o refresh (uid 1000) não grava nada.
+  const permissao = compose.services['snapshot-permissao']!;
+  assert.ok(permissao, 'falta o contêiner que acerta o dono da pasta do snapshot');
+  const pastaDoRefresh = compose.services.refresh!.volumes?.find((v) => v.endsWith(':/repo/snapshot'));
+  assert.ok(pastaDoRefresh, 'refresh sem a pasta do snapshot');
+  assert.deepEqual(permissao.volumes, [pastaDoRefresh], 'o chown tem de cair na mesma pasta que o refresh grava');
+  assert.deepEqual(permissao.command, ['chown', '-R', '1000:1000', '/repo/snapshot']);
+  assert.equal(permissao.user, '0:0');
+  assert.equal(permissao.restart, 'no', 'é um passo de subida, não um serviço');
+  assert.equal(permissao.network_mode, 'none');
+  assert.equal(permissao.read_only, true);
+  assert.deepEqual(permissao.cap_drop, ['ALL']);
+  assert.deepEqual(permissao.cap_add, ['CHOWN', 'DAC_READ_SEARCH'], 'root, mas só com o que o chown precisa');
+  assert.ok(permissao.security_opt?.includes('no-new-privileges:true'));
+  assert.equal(
+    compose.services.refresh!.depends_on?.['snapshot-permissao']?.condition,
+    'service_completed_successfully',
+    'o refresh não pode subir antes da pasta ter dono',
+  );
+
+  for (const [nome, servico] of Object.entries(compose.services)) {
+    assert.equal(servico.logging?.driver, 'json-file', `${nome} sem teto de log`);
+    assert.equal(servico.logging?.options?.['max-size'], '10m', `${nome} sem teto de log`);
+    assert.equal(servico.logging?.options?.['max-file'], '3', `${nome} sem teto de log`);
+  }
 });
 
 test('compose de produção recebe segredos pelas variáveis da stack, não por arquivo .env no host', () => {
@@ -302,7 +337,9 @@ test('compose de produção recebe segredos pelas variáveis da stack, não por 
   assert.equal(refresh.environment?.MARIA_SSL, '1');
   assert.equal(api.environment?.FIREBASE_PROJECT_ID, '${FIREBASE_PROJECT_ID:-}');
   assert.equal(api.environment?.ADMIN_EMAILS, '${ADMIN_EMAILS:-}');
-  assert.equal(api.environment?.COOKIE_SECURE, '1');
+  for (const chave of ['PUBLICACAO', 'COOKIE_SECURE', 'CONFIA_PROXY']) {
+    assert.doesNotMatch(api.environment?.[chave] ?? '', /\$\{/, `${chave} é fixada pelo compose, não pela tela do Portainer`);
+  }
 });
 
 test('a referência do proxy de produção força HTTPS, HSTS e TLS moderno', () => {

@@ -15785,3 +15785,41 @@ e pelo proxy responderam 200; `/auth/interno` pela porta 80 respondeu 404; `ngin
 passou; e os três contêineres ficaram `running`, com `RestartCount=0`.
 `snapshot:confere` terminou com 0 erros e 4 avisos já classificados: colunas inteiramente
 nulas que nenhuma tela lê em `protocolos-auxiliares` e `retorno-prioritario`.
+
+---
+
+## #232 — publicação direta no Portainer, e os bancos com certificado autoassinado (19/10)
+
+**Decisão do Misael:** só contêineres, com a porta da `api` publicada direto (`3101:3100`)
+e sem proxy. O proxy HTTPS de `bc7ab84`/`1a3d450` saiu do caminho. `nginx.conf` ficou como
+contrato de referência, caso um dia se use `PUBLICACAO: proxy-https`.
+
+**A trava de produção agora exige a publicação declarada.** `PUBLICACAO=direta` exige
+`COOKIE_SECURE=0` e `CONFIA_PROXY=0`. `proxy-https` exige os dois em 1. Sem a variável, a API
+recusa subir. A coerência impede dois erros: cookie `Secure` em HTTP (o navegador não o
+devolve, e o login fica em laço sem erro) e `X-Real-IP` confiado sem proxy (cada valor
+forjado ganha um balde novo de rate limit, o furo medido em 17/09). O que o nginx bloqueava,
+a API já bloqueia sozinha em produção: `/auth/interno` dá 404, `X-Aquecedor-Interno` só vale
+com o UUID do processo, e corpo acima de 8 KB é recusado.
+
+**Medido na stack de produção local (Docker 29.8, compose v5.5.1):** `api` healthy em
+`0.0.0.0:3101`. Por uma interface que não é loopback: `/api/saude` 200, `/` 200 sem HSTS,
+`/api/paginas` sem sessão 401 e `POST /auth/interno` 404.
+
+**Pasta do snapshot sem passo manual.** O Docker cria a pasta do bind como `root:root`, e o
+`refresh` (uid 1000 desde 13/10) não conseguia gravar nela. Agora o `snapshot-permissao`
+(busybox com `chown -R 1000:1000`, sem rede, só com `CHOWN` e `DAC_READ_SEARCH`) roda e sai
+antes do `refresh`. Medido numa pasta Linux da VM do Docker que nasceu `0:0`: ela virou
+`1000:1000` e o refresh gravou o `manifesto.json`. Armadilha do teste: no Git Bash,
+`SNAPSHOT_DIR_HOST=/tmp/...` vira uma pasta do Windows, onde `chown` não faz nada. Use
+`MSYS_NO_PATHCONV=1`.
+
+**Aberto: os dois bancos têm certificado autoassinado, e a stack exige validar.** Voalle: CN
+`localhost`, SAN `DNS:localhost`, válido até 09/02/2036. MariaDB: `O=Sebratel, OU=TI`, sem
+SAN, válido até 24/11/2034. Com `*_SSL_REJECT_UNAUTHORIZED=1` nenhum dos dois conecta
+(`DEPTH_ZERO_SELF_SIGNED_CERT`). O mesmo aparece dentro dos contêineres: a `api` cai em "só
+ADMIN_EMAILS entram", e o poller e o refresh falham em toda query. Sem validar, os dois
+conectam cifrados, e sem TLS também conectam. A decisão está pendente com o Misael. Um
+detalhe vale para qualquer escolha: o conector Maria do refresh (`createMariaPool`) ignora
+`MARIA_SSL_REJECT_UNAUTHORIZED` e sempre valida (`ssl: {}`). Só a loja de acesso da API
+respeita a variável.

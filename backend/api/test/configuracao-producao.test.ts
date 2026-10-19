@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mensagemDaConfiguracaoDeProducao, problemasDaConfiguracaoDeProducao } from '../src/configuracao-producao.ts';
 
-const PRODUCAO_SEGURA = {
+// O que a stack do Portainer declara: porta publicada direto, sem proxy na frente.
+const PRODUCAO_DIRETA = {
   NODE_ENV: 'production',
-  COOKIE_SECURE: '1',
-  CONFIA_PROXY: '1',
+  PUBLICACAO: 'direta',
+  COOKIE_SECURE: '0',
+  CONFIA_PROXY: '0',
   VOALLE_SSL: '1',
   VOALLE_SSL_REJECT_UNAUTHORIZED: '1',
   MARIA_SSL: '1',
@@ -15,13 +17,23 @@ const PRODUCAO_SEGURA = {
   MARIA_PASSWORD: 'nao-e-um-segredo-real',
 };
 
-test('produção recusa HTTP, proxy não confiável, banco sem TLS e conta Maria ausente', () => {
+const PRODUCAO_ATRAS_DE_PROXY = {
+  ...PRODUCAO_DIRETA,
+  PUBLICACAO: 'proxy-https',
+  COOKIE_SECURE: '1',
+  CONFIA_PROXY: '1',
+};
+
+const chaves = (env: Record<string, string | undefined>) =>
+  problemasDaConfiguracaoDeProducao(env).map((p) => p.chave);
+
+test('produção sem nada declarado recusa: publicação, banco sem TLS e conta Maria ausente', () => {
   const problemas = problemasDaConfiguracaoDeProducao({ NODE_ENV: 'production' });
   assert.deepEqual(
     problemas.map((p) => p.chave),
     [
-      'COOKIE_SECURE', 'CONFIA_PROXY', 'VOALLE_SSL', 'VOALLE_SSL_REJECT_UNAUTHORIZED',
-      'MARIA_SSL', 'MARIA_SSL_REJECT_UNAUTHORIZED', 'MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD',
+      'PUBLICACAO', 'VOALLE_SSL', 'VOALLE_SSL_REJECT_UNAUTHORIZED', 'MARIA_SSL', 'MARIA_SSL_REJECT_UNAUTHORIZED',
+      'MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD',
     ],
   );
   const mensagem = mensagemDaConfiguracaoDeProducao(problemas);
@@ -29,8 +41,41 @@ test('produção recusa HTTP, proxy não confiável, banco sem TLS e conta Maria
   assert.doesNotMatch(mensagem, /nao-e-um-segredo-real/);
 });
 
-test('produção com todo o contrato seguro pode subir', () => {
-  assert.deepEqual(problemasDaConfiguracaoDeProducao(PRODUCAO_SEGURA), []);
+test('publicação direta (stack do Portainer) pode subir', () => {
+  assert.deepEqual(chaves(PRODUCAO_DIRETA), []);
+});
+
+test('publicação atrás de proxy HTTPS pode subir', () => {
+  assert.deepEqual(chaves(PRODUCAO_ATRAS_DE_PROXY), []);
+});
+
+test('publicação direta recusa confiar no X-Real-IP: sem proxy, quem escreve o cabeçalho é o cliente', () => {
+  assert.deepEqual(chaves({ ...PRODUCAO_DIRETA, CONFIA_PROXY: '1' }), ['CONFIA_PROXY']);
+  assert.deepEqual(chaves({ ...PRODUCAO_DIRETA, CONFIA_PROXY: 'true' }), ['CONFIA_PROXY']);
+});
+
+test('publicação direta recusa cookie Secure: em HTTP o navegador não o devolve e o login não fecha', () => {
+  assert.deepEqual(chaves({ ...PRODUCAO_DIRETA, COOKIE_SECURE: '1' }), ['COOKIE_SECURE']);
+});
+
+test('atrás de proxy, HTTPS e X-Real-IP reescrito continuam obrigatórios', () => {
+  assert.deepEqual(chaves({ ...PRODUCAO_ATRAS_DE_PROXY, COOKIE_SECURE: '0', CONFIA_PROXY: undefined }), [
+    'COOKIE_SECURE',
+    'CONFIA_PROXY',
+  ]);
+});
+
+test('publicação com valor desconhecido recusa em vez de adivinhar', () => {
+  assert.deepEqual(chaves({ ...PRODUCAO_DIRETA, PUBLICACAO: 'Direta' }), ['PUBLICACAO']);
+});
+
+test('a publicação não mexe no TLS dos bancos: continua exigido nas duas formas', () => {
+  for (const base of [PRODUCAO_DIRETA, PRODUCAO_ATRAS_DE_PROXY]) {
+    assert.deepEqual(chaves({ ...base, VOALLE_SSL: '0', MARIA_SSL_REJECT_UNAUTHORIZED: undefined }), [
+      'VOALLE_SSL',
+      'MARIA_SSL_REJECT_UNAUTHORIZED',
+    ]);
+  }
 });
 
 test('desenvolvimento não herda as exigências de infraestrutura da produção', () => {
