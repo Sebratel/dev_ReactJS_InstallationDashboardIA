@@ -4,17 +4,48 @@ build/
 coverage/
 .env
 .env.*
+*.env
+*.env.*
 !.env.example
+!portainer.env.example
 *.log
 .DS_Store
 Thumbs.db
 
 # Segredos locais e certificados de integrações — nunca publicar.
 .envrc
+.npmrc
+.pypirc
+.netrc
+.secrets/
+secrets/
+credentials/
+credenciais/
+*credentials*.json
+*credenciais*.json
+*service-account*.json
+*service_account*.json
+*firebase-admin*.json
+*secret*.json
+*token*.json
+*secret*.yaml
+*secret*.yml
+*credentials*.yaml
+*credentials*.yml
+*credenciais*.yaml
+*credenciais*.yml
+*.secret
+*.secrets
+*.kdbx
 *.pem
 *.key
 *.p12
 *.pfx
+*.jks
+*.keystore
+*.p8
+id_rsa*
+id_ed25519*
 
 # Bancos locais e arquivos auxiliares do DuckDB/SQLite.
 *.duckdb
