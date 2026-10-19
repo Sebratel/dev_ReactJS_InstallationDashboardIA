@@ -14,6 +14,41 @@ import { SegmentacaoDataHierarquia } from './SegmentacaoDataHierarquia.tsx';
 
 type MudaFiltro = (tabela: string, coluna: string, valores: Valor[], nivel?: string | null) => void;
 
+/**
+ * Ocupa o lugar da barra enquanto o layout da página — de onde vêm as
+ * segmentações — ainda está a caminho. A mesma classe e a mesma medição da barra
+ * real evitam que os cards saltem quando os filtros aparecem.
+ */
+export function EsqueletoDaBarraDeFiltros() {
+  const barraRef = useAlturaMedida<HTMLDivElement>('--h-filtros');
+
+  return (
+    <div className="filtros" ref={barraRef} aria-busy="true" aria-live="polite">
+      <span className="sr-only">Carregando filtros…</span>
+      <div
+        className="brilho h-[30px] w-[178px] rounded-[8px] border border-pbi-borda bg-pbi-superficie"
+        aria-hidden="true"
+      />
+      <div
+        className="brilho h-[30px] w-[136px] rounded-[8px] border border-pbi-borda bg-pbi-superficie"
+        aria-hidden="true"
+      />
+      <div
+        className="brilho h-[30px] w-[190px] rounded-[8px] border border-pbi-borda bg-pbi-superficie"
+        aria-hidden="true"
+      />
+      <div
+        className="brilho h-[30px] w-[152px] rounded-[8px] border border-pbi-borda bg-pbi-superficie"
+        aria-hidden="true"
+      />
+      <div
+        className="brilho h-[30px] w-[168px] rounded-[8px] border border-pbi-borda bg-pbi-superficie"
+        aria-hidden="true"
+      />
+    </div>
+  );
+}
+
 export function BarraDeFiltros(props: {
   pagina: string;
   filtros: FiltroDaTela[];

@@ -39,7 +39,10 @@ import { AppShell } from '../../components/layout/AppShell.tsx';
 import { BotaoAtualizar } from '../../components/layout/BotaoAtualizar.tsx';
 import { EsqueletoDaPagina } from '../../components/layout/EsqueletoDaPagina.tsx';
 import { FaixaDeConferencia } from '../../components/layout/FaixaDeConferencia.tsx';
-import { BarraDeFiltros } from '../../components/filtros/BarraDeFiltros.tsx';
+import {
+  BarraDeFiltros,
+  EsqueletoDaBarraDeFiltros,
+} from '../../components/filtros/BarraDeFiltros.tsx';
 import { Capa } from '../../components/capa/Capa.tsx';
 import { SemAcesso } from '../../components/auth/SemAcesso.tsx';
 import { CHAVE_ACESSOS, GestaoDeAcessos } from '../../components/acessos/GestaoDeAcessos.tsx';
@@ -221,16 +224,20 @@ export function DashboardPage() {
       ultimaAtualizacaoRealtime={horaRealtime}
       barra={
         paginaDoDado ? (
-          <BarraDeFiltros
-            pagina={paginaDoDado}
-            filtros={filtros}
-            dataDaTela={dataDaTela}
-            segmentacoes={segmentacoes}
-            aoMudar={mudaFiltro}
-            aoPrever={aoPreverFiltro}
-            aoLimpar={limpaFiltros}
-            aoPreverLimpeza={aoPreverLimpeza}
-          />
+          layoutQ.isLoading ? (
+            <EsqueletoDaBarraDeFiltros />
+          ) : (
+            <BarraDeFiltros
+              pagina={paginaDoDado}
+              filtros={filtros}
+              dataDaTela={dataDaTela}
+              segmentacoes={segmentacoes}
+              aoMudar={mudaFiltro}
+              aoPrever={aoPreverFiltro}
+              aoLimpar={limpaFiltros}
+              aoPreverLimpeza={aoPreverLimpeza}
+            />
+          )
         ) : null
       }
       acoes={
