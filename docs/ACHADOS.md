@@ -15376,7 +15376,7 @@ uma coluna lá a fazia parecer usada — a regra não reprovava nada. Corrigido 
 - `snapshot/` ainda tem as colunas antigas até o próximo refresh de `contratos` com a
   imagem nova; os PROTOCOLOS seguem com nome, telefone e endereço porque as telas usam.
 
-## #219 — reauditoria pós-#218: código verde, API atual e dois serviços ainda na imagem antiga (14/10)
+## Reauditoria intermediária pós-#218: código verde, API atual e dois serviços ainda na imagem antiga (14/10)
 
 **O pedido.** Depois dos achados #211–#218, a verificação foi refeita sobre `staging`, sem
 assumir que o que estava commitado já era o que rodava. A árvore principal estava limpa;
@@ -15763,3 +15763,25 @@ produção (log de 3 h, 16/10), então 1024 é folga larga. Mas o RSS total já 
 2.386 MB no teste de 10 usuários + refresh simulado, de antes da afinidade e da liberação
 de geração (#228); em produção, depois delas, o pico foi 1.789 MB à noite. Medir um dia útil
 com o `/api/saude` antes de levar à produção; se passar de ~2,2 GB, voltar a 3g.
+
+---
+
+## #220 — revalidação final: refresh, snapshot diário e proxy na versão atual (14/10, 18:43 UTC)
+
+**Troca coordenada.** As imagens de `refresh` e `snapshot-diario` foram reconstruídas. O
+daemon antigo já tinha os grupos `quente` e `frio` vencidos; o ciclo regular terminou OK
+antes da troca, evitando encerrar uma materialização ou duplicar carga. Depois disso,
+`refresh`, `snapshot-diario` e `proxy` foram recriados sem tocar na API.
+
+**Atualização isolada.** Já com a imagem nova, `contratos` foi refeito com
+`--query=contratos --refazer --sem-calculadas`: 89.022 linhas, 12 colunas, 4,2 MB e
+3.960 ms. Nenhuma outra query foi incluída nessa execução manual. A conferência detectou
+que as sete tabelas calculadas tinham ficado anteriores ao arquivo novo; elas foram
+recongeladas só a partir do snapshot, sem consultar outra fonte, em 10.074 ms.
+
+**Provas finais.** Os hashes das specs `queries/contratos` e `tables/contratos` dentro dos
+dois serviços são idênticos aos do host. O cabeçalho publicado tem 12 colunas; API direta
+e pelo proxy responderam 200; `/auth/interno` pela porta 80 respondeu 404; `nginx -t`
+passou; e os três contêineres ficaram `running`, com `RestartCount=0`.
+`snapshot:confere` terminou com 0 erros e 4 avisos já classificados: colunas inteiramente
+nulas que nenhuma tela lê em `protocolos-auxiliares` e `retorno-prioritario`.

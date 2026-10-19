@@ -97,9 +97,7 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 ### Riscos residuais
 
 - **Alta:** TLS ainda não está configurado; enquanto isso, `COOKIE_SECURE` permanece desligado. Certificado, proxy HTTPS e cookie `Secure` precisam entrar juntos.
-- **Alta transitória:** `refresh` e `snapshot-diario` ainda usam a imagem anterior à minimização de CONTRATOS; o snapshot de 15:16 continua com as 11 colunas removidas no código novo.
 - **Média:** filtros fora da página ainda passam no modo `observar`; mudar para `bloquear` depende de uma semana sem evento legítimo.
-- **Média:** o `TOKEN_INTERNO` antigo ainda precisa ser rotacionado após fechar sua exposição pública.
 - **Média:** sem `ACESSO_DB_USER` dedicado, a API cai para `MARIA_USER`; funciona, mas perde a camada de menor privilégio prevista.
 - **Média futura:** não há isolamento por linha/tenant; o controle atual é por aba. Qualquer requisito multi-tenant exige regra no backend e chave de cache compatível antes de produção.
 - **Baixa/média em escala:** sessões e rate limits são locais ao processo. Múltiplas réplicas exigiriam armazenamento/contagem compartilhados.
@@ -110,10 +108,9 @@ Cobertura percentual não foi informada porque não há instrumentação de cobe
 ### Correções obrigatórias pendentes
 
 1. Habilitar TLS, redirecionamento HTTP→HTTPS, `COOKIE_SECURE=1` e HSTS no mesmo deploy.
-2. Recriar `refresh` e `snapshot-diario` com a imagem atual e refazer `contratos`; confirmar 12 colunas no arquivo novo.
-3. Rotacionar `TOKEN_INTERNO` e, após a janela de observação, decidir a troca de filtros para `bloquear`.
-4. Criar e usar o usuário `installation_access` restrito às tabelas de acesso/auditoria.
-5. Executar `npm run doctor` e `npm run validate` em ambiente autorizado com credenciais somente leitura.
+2. Após a janela de observação, decidir a troca de filtros para `bloquear`.
+3. Criar e usar o usuário `installation_access` restrito às tabelas de acesso/auditoria.
+4. Executar `npm run doctor` e `npm run validate` em ambiente autorizado com credenciais somente leitura.
 
 ### Melhorias recomendadas
 
@@ -183,5 +180,9 @@ deixando explícita a condição que pretende provar.
 ### Para valer em produção
 
 A API foi recriada às 15:18 com `CONFIA_PROXY=1`, `AQUECE_FILTROS_ATE=0` e o código atual;
-`POST /auth/interno` pela porta 80 devolveu 404. `refresh` e `snapshot-diario` ainda precisam
-ser recriados para a minimização de CONTRATOS chegar ao arquivo em disco.
+`POST /auth/interno` pela porta 80 devolveu 404. Às 18:43 UTC, `refresh`, `snapshot-diario`
+e `proxy` foram recriados; os hashes das specs de CONTRATOS ficaram iguais aos do host.
+`contratos` foi refeito isoladamente em 3,96 s, com 89.022 linhas e 12 colunas. API direta
+e proxy responderam 200, o nginx passou em `nginx -t` e os três serviços ficaram sem restart.
+As sete tabelas calculadas foram recongeladas a partir do snapshot, sem nova consulta às
+fontes; `snapshot:confere` terminou com 0 erros e 4 avisos de colunas nulas não utilizadas.
