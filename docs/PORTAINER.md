@@ -20,13 +20,13 @@ porta interna da API continua `3100`.
 4. Crie no host `/srv/dashboard-instalacao/snapshot` e dê permissão de leitura
    à API e escrita ao refresh (ambos usam uid `1000`). Confirme que os dados
    iniciais do snapshot estão nessa pasta. Ela não entra na imagem nem no Git.
-5. Configure o proxy HTTPS do Misael para encaminhar ao host na porta `3101`.
-   A API exige `X-Real-IP` sobrescrito pelo proxy e cookies Secure. `nginx.conf`
-   é a referência de rotas, TLS e cabeçalhos; ajuste seu upstream para a porta
-   publicada, pois a porta `3100` nele é a porta interna do contêiner.
-6. Publique a stack e confira `api`, `refresh` e `redis`. A API deve responder
-   em `/api/saude`; consulte os logs se a configuração de banco ou TLS for
-   recusada.
+5. Crie no host o diretório de `TLS_CERT_DIR` e coloque nele `fullchain.pem` e
+   `privkey.pem`, com leitura permitida ao Docker. O serviço `web` publica a
+   aplicação em `80` e `443`, redireciona HTTP para HTTPS e encaminha tela e API
+   internamente; a porta `3101` continua privada no host.
+6. Publique a stack e confira `web`, `api`, `refresh` e `redis`. A aplicação
+   deve abrir pelo DNS em HTTPS e `/api/saude` deve responder por esse mesmo
+   domínio; consulte os logs se a configuração de banco ou TLS for recusada.
 
 O Compose usa `build:` e precisa que o endpoint Docker do Portainer consiga
 construir imagens a partir do clone. Em endpoints remotos que não suportam
