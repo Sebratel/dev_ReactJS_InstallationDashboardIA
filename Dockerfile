@@ -48,7 +48,6 @@ ENV NODE_ENV=production
 
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/package.json ./package.json
-COPY --from=build /repo/frontend/dist ./frontend/dist
 
 # `backend/` INTEIRO (api, packages, tools, specs), e a mudança tem motivo medido.
 #
@@ -98,3 +97,10 @@ EXPOSE 3100
 # 18/10/2026 passou 200 usuários distintos com pico de cgroup de 1344,2 MiB.
 # `backend/api/test/piscina-workers.test.ts` falha se os três números saírem de sincronia.
 CMD ["node", "--max-old-space-size=1024", "--expose-gc", "backend/api/src/index.ts"]
+
+# Frontend separado: entrega o bundle React e encaminha rotas dinâmicas para a
+# API na rede Docker. TLS continua sob responsabilidade do proxy externo.
+FROM nginxinc/nginx-unprivileged:1.29-alpine AS web
+COPY --from=build /repo/frontend/dist /usr/share/nginx/html
+COPY nginx.web.conf /etc/nginx/conf.d/default.conf
+EXPOSE 8080

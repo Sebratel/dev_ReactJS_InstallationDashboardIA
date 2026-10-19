@@ -153,10 +153,6 @@ services:
       # (docs/DEPLOY.md §2.2) materializa no host.
       - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot:ro
       - api-runtime:/repo/runtime
-    ports:
-      # O proxy externo do Misael aponta para esta porta. O bind continua local por
-      # padrão para não expor a API sem TLS ou sem reescrever X-Real-IP.
-      - '${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}:3100'
     # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
     # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
     init: true
@@ -179,6 +175,32 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args: *args-da-tela
+      target: web
+    pull_policy: build
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - '${WEB_BIND_HOST:-0.0.0.0}:${WEB_PORT_HOST:-3101}:8080'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   # Agendador Automático do Refresh Manager — materializa e atualiza o snapshot
   # periodicamente de 15 em 15 minutos em background (backend/specs/_catalog/refresh.yaml),

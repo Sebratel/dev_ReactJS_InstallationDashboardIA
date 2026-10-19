@@ -232,11 +232,14 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
     volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
+  const web = compose.services.web!;
   assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
   assert.equal(api.environment?.CONFIA_PROXY, '1');
   assert.equal(api.environment?.COOKIE_SECURE, '1');
   assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
-  assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}:3100']);
+  assert.equal(api.ports, undefined, 'a API não pode publicar porta no host');
+  assert.ok(web, 'a tela precisa de contêiner próprio');
+  assert.deepEqual(web.ports, ['${WEB_BIND_HOST:-0.0.0.0}:${WEB_PORT_HOST:-3101}:8080']);
 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
@@ -262,7 +265,7 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
   assert.equal(redis.user, '999:1000', 'Redis precisa iniciar sem root antes de remover capabilities');
   assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
 
-  for (const nome of ['api', 'refresh', 'redis']) {
+  for (const nome of ['api', 'web', 'refresh', 'redis']) {
     const servico = compose.services[nome]!;
     assert.equal(servico.read_only, true, `${nome} precisa de filesystem raiz somente leitura`);
     assert.deepEqual(servico.cap_drop, ['ALL'], `${nome} não pode manter capabilities Linux`);
@@ -272,6 +275,7 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
   assert.ok(api.volumes?.some((v) => v.endsWith(':/repo/snapshot:ro')), 'API não pode escrever no snapshot');
   assert.ok(api.volumes?.includes('api-runtime:/repo/runtime'), 'diagnóstico da API precisa sair do snapshot');
   assert.ok(compose.volumes?.['api-runtime'] !== undefined, 'volume de diagnóstico da API não declarado');
+  assert.equal(web.mem_limit, undefined, 'a tela estática não precisa reservar memória de cálculo');
 });
 
 test('compose de produção recebe segredos pelas variáveis da stack, não por arquivo .env no host', () => {
@@ -325,13 +329,21 @@ test('o login da tela entra no build da imagem: toda VITE_FIREBASE_* lida pela t
   const build = dockerfile.slice(dockerfile.indexOf(' AS build'), dockerfile.indexOf(' AS runtime'));
   const antesDoBuild = build.slice(0, build.indexOf('npm run web:build'));
   const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8'), { merge: true }) as {
-    services: Record<string, { build?: { args?: Record<string, string> } }>;
+    services: Record<string, { build?: { args?: Record<string, string>; target?: string } }>;
   };
-  const args = compose.services['api']?.build?.args ?? {};
+  const apiBuild = compose.services['api']?.build;
+  const webBuild = compose.services['web']?.build;
+  const args = apiBuild?.args ?? {};
   for (const v of lidas) {
     assert.match(antesDoBuild, new RegExp(`^ARG ${v}$`, 'm'), `${v} não é ARG antes do web:build`);
     assert.ok(v in args, `o compose não passa ${v} ao build da api`);
+    assert.ok(v in (webBuild?.args ?? {}), `o compose não passa ${v} ao build da web`);
   }
+  assert.equal(apiBuild?.target, 'runtime');
+  assert.equal(webBuild?.target, 'web');
+  const nginxWeb = fs.readFileSync(path.join(RAIZ, 'nginx.web.conf'), 'utf8');
+  assert.match(nginxWeb, /proxy_pass \$api;/, 'web precisa encaminhar chamadas dinâmicas para a API privada');
+  assert.match(nginxWeb, /location \/api\/eventos/, 'web precisa manter SSE sem buffer');
   assert.doesNotMatch(dockerfile, /^\s*ARG\s+VITE_TOKEN_INTERNO/m, 'o botão de desenvolvimento não pode ir para a imagem');
   assert.ok(!('VITE_TOKEN_INTERNO' in args));
 });

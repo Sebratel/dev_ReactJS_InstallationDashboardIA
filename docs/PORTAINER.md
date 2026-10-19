@@ -2,8 +2,8 @@
 
 Esta stack usa o mesmo fluxo do Comercial: o Portainer clona o repositório, lê o
 Compose e recebe as variáveis pela tela. Use o nome **instalacao-dashboard**. O
-Comercial publica `8081`; a Instalação publica `127.0.0.1:3101` por padrão. A
-porta interna da API continua `3100`.
+Comercial publica `8081`; a Instalação publica o frontend em `3101`. A porta
+interna da API continua `3100` e não é publicada no host.
 
 1. Em **Stacks > Add stack > Git repository**, use
    `https://github.com/Sebratel/dev_ReactJS_InstallationDashboardIA.git`, referência
@@ -21,12 +21,11 @@ porta interna da API continua `3100`.
    à API e escrita ao refresh (ambos usam uid `1000`). Confirme que os dados
    iniciais do snapshot estão nessa pasta. Ela não entra na imagem nem no Git.
 5. Configure o proxy HTTPS do Misael para encaminhar ao host na porta `3101`.
-   A API exige `X-Real-IP` sobrescrito pelo proxy e cookies Secure. `nginx.conf`
-   é a referência de rotas, TLS e cabeçalhos; ajuste seu upstream para a porta
-   publicada, pois a porta `3100` nele é a porta interna do contêiner.
-6. Publique a stack e confira `api`, `refresh` e `redis`. A API deve responder
-   em `/api/saude`; consulte os logs se a configuração de banco ou TLS for
-   recusada.
+   Ele recebe somente o serviço `web`; a `api` não publica porta e só recebe
+   chamadas dele pela rede Docker. A API exige `X-Real-IP` sobrescrito pelo
+   proxy e cookies Secure.
+6. Publique a stack e confira `web`, `api`, `refresh` e `redis`. A aplicação
+   deve abrir no DNS e `/api/saude` deve responder pelo mesmo domínio.
 
 O Compose usa `build:` e precisa que o endpoint Docker do Portainer consiga
 construir imagens a partir do clone. Em endpoints remotos que não suportam
