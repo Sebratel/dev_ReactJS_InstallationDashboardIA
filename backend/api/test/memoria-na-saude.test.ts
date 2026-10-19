@@ -268,5 +268,6 @@ test('na worker, heapLimiteMB é o resourceLimits dela, não o teto do processo 
     w.once('error', reject);
   });
   await w.terminate();
-  assert.ok(limite >= 256 && limite < 400, `heapLimiteMB na worker = ${limite}`);
+  // O V8 soma a geração nova ao teto de 256 MB; no Node 24 ela pode chegar a 192 MB.
+  assert.ok(limite >= 256 && limite < 512, `heapLimiteMB na worker = ${limite}`);
 });

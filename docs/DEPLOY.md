@@ -565,7 +565,7 @@ stack própria — ele só rebaixa `NODE_ENV` e liga `SEM_LOGIN`, e se usa com o
 
 O de produção tem três serviços: `api` (teto 1600m), `refresh` (1400m, com a carga completa das 3h dentro) e `redis` (192m) — 3192 MiB de tetos somados. **A tela não é
 um serviço:** a API já serve o build estático na raiz. O proxy externo aponta para
-`${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}`; deixe o bind em loopback salvo
+`${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}`; deixe o bind em loopback salvo
 quando a rede do Misael exigir outra interface.
 
 `CONFIA_PROXY=1` só é seguro quando esse proxy externo sobrescreve `X-Real-IP` antes de
@@ -911,7 +911,7 @@ Antes:
 - [ ] pasta do snapshot no host gravável pelo uid 1000: `api` e `refresh` não rodam mais
       como root (13/10/2026) — `chown -R 1000:1000 <SNAPSHOT_DIR_HOST>` num servidor Linux
 - [ ] HTTPS no proxy (§3.3) e `COOKIE_SECURE` ligado: sem isso o login trafega em claro
-- [ ] a porta 3100 publicada só em `127.0.0.1` (compose) — a tela entra pelo proxy
+- [ ] a porta 3101 publicada só em `127.0.0.1` (compose) — a tela entra pelo proxy
 
 Depois, na ordem:
 
