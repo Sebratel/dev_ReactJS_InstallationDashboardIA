@@ -17,7 +17,7 @@
 // precisam do MESMO tipo — e os dois arquivos grandes são onde mais gente mexe ao mesmo
 // tempo.
 
-import type { MessagePort } from 'node:worker_threads';
+import { isMainThread, resourceLimits, type MessagePort } from 'node:worker_threads';
 import v8 from 'node:v8';
 
 /** Bytes → MB inteiro, a mesma unidade que `rssMB`/`heapUsedMB` sempre usaram na saúde. */
@@ -48,12 +48,24 @@ export interface MemoriaDaIsolate {
   arrayBuffersMB: number;
 }
 
+/**
+ * Na worker, o `heap_size_limit` do V8 devolve o teto do PROCESSO (1728 MB com o pai em
+ * 1536), não o `resourceLimits` dela — medido em 17/10/2026: a saúde mostrava 1728 numa
+ * worker que morre com `ERR_WORKER_OUT_OF_MEMORY` ao passar de 512. O teto que vale é o
+ * do `resourceLimits`, que a própria worker enxerga.
+ */
+function limiteDoHeapMB(): number {
+  const velha = resourceLimits.maxOldGenerationSizeMb;
+  if (!isMainThread && velha) return velha + (resourceLimits.maxYoungGenerationSizeMb ?? 0);
+  return mb(v8.getHeapStatistics().heap_size_limit);
+}
+
 export function medeIsolate(): MemoriaDaIsolate {
   const m = process.memoryUsage();
   return {
     heapUsedMB: mb(m.heapUsed),
     heapTotalMB: mb(m.heapTotal),
-    heapLimiteMB: mb(v8.getHeapStatistics().heap_size_limit),
+    heapLimiteMB: limiteDoHeapMB(),
     externalMB: mb(m.external),
     arrayBuffersMB: mb(m.arrayBuffers),
   };

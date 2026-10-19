@@ -255,3 +255,18 @@ test('entradasDoCache: conta a camada que mora no processo, e diz null quando n�
   assert.equal(entradasDoCache(rapida), 2);
   assert.equal(entradasDoCache({ get: async () => undefined }), null, 'um Redis puro não guarda nada aqui');
 });
+
+test('na worker, heapLimiteMB é o resourceLimits dela, não o teto do processo (17/10/2026)', async () => {
+  const { Worker } = await import('node:worker_threads');
+  const alvo = new URL('../src/memoria-da-saude.ts', import.meta.url).href;
+  const w = new Worker(
+    `import(${JSON.stringify(alvo)}).then((m) => require('node:worker_threads').parentPort.postMessage(m.medeIsolate().heapLimiteMB))`,
+    { eval: true, resourceLimits: { maxOldGenerationSizeMb: 256 } },
+  );
+  const limite = await new Promise<number>((resolve, reject) => {
+    w.once('message', resolve);
+    w.once('error', reject);
+  });
+  await w.terminate();
+  assert.ok(limite >= 256 && limite < 400, `heapLimiteMB na worker = ${limite}`);
+});

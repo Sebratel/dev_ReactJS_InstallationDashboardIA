@@ -117,9 +117,19 @@ services:
       # O proxy é infraestrutura externa. Só confie no X-Real-IP quando ele estiver
       # configurado para sobrescrever esse header antes de chegar nesta API.
       CONFIA_PROXY: ${CONFIA_PROXY:-0}
-      # Resultado calculado pode ser recriado do snapshot; 256 MB é um teto global,
-      # repartido entre as workers, e mantém as rolagens já abertas rápidas.
-      CACHE_VISUAL_MB: '256'
+      # Resultado calculado pode ser recriado do snapshot; teto global, repartido entre as
+      # workers. 256 -> 128 em 17/10/2026 (ACHADOS #231): produção usava 49 MB. Lado ruim
+      # quando morde: rolar de volta numa tabela grande recalcula a janela.
+      CACHE_VISUAL_MB: '128'
+      # Camada em memória do cache de respostas, no processo principal. 256 (padrão) -> 64
+      # em 17/10/2026 (#231): produção usava 79 MB, e o que sai daqui volta do Redis em
+      # milissegundos. Lado ruim: com o Redis fora do ar, o despejado é RECALCULADO.
+      CACHE_RESPOSTA_MB: '64'
+      # glibc abre até 8 arenas de malloc por núcleo, e cada thread (principal, 2 workers,
+      # libuv, V8) segura memória devolvida na sua. 2 arenas: menos RSS preso, contenção
+      # desprezível com 3 threads de JS. Afeta só o que é malloc (zlib do .jsonl.gz,
+      # buffers), não o heap do V8. Ganho NÃO medido ainda (#231).
+      MALLOC_ARENA_MAX: '2'
       # Redis DESTA stack (serviço `redis` abaixo), atrás do cache em memória: o que o
       # teto de `CACHE_RESPOSTA_MB` despeja volta daqui em vez de ser recalculado, e o
       # cache sobrevive ao restart da api. Decisão do Erick em 16/10/2026, no mesmo padrão
@@ -191,6 +201,8 @@ services:
       # mata o grupo após 30 min, registra falha transitória e tenta novamente.
       REFRESH_TEMPO_MAXIMO_MINUTOS: '30'
       VOALLE_APPLICATION_NAME: analytics-refresh
+      # Ver o comentário na `api` (#231): o refresh descompacta e compacta .jsonl.gz o dia todo.
+      MALLOC_ARENA_MAX: '2'
       # Carga completa (`--refazer`, toda query de refresh.yaml) todo dia neste horário
       # UTC: 06:00 = 03:00 em Brasília. Corrige alteração retroativa que a incremental não
       # vê e renova o teto de 7 dias dela. Vazio desliga.
