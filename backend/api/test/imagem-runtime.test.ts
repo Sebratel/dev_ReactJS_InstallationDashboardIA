@@ -232,11 +232,7 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
     volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
-  const web = compose.services.web!;
-  assert.ok(web, 'a stack publica a aplicação por um proxy HTTPS próprio');
-  assert.deepEqual(web.ports, ['${WEB_BIND_HOST:-0.0.0.0}:${WEB_HTTP_PORT_HOST:-80}:8080', '${WEB_BIND_HOST:-0.0.0.0}:${WEB_HTTPS_PORT_HOST:-443}:8443']);
-  assert.ok(web.volumes?.includes('./nginx.conf:/etc/nginx/conf.d/default.conf:ro'));
-  assert.ok(web.volumes?.some((v) => v.endsWith(':/etc/nginx/ssl:ro')), 'certificados TLS precisam ser montados somente leitura');
+  assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
   assert.equal(api.environment?.CONFIA_PROXY, '1');
   assert.equal(api.environment?.COOKIE_SECURE, '1');
   assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
@@ -266,7 +262,7 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
   assert.equal(redis.user, '999:1000', 'Redis precisa iniciar sem root antes de remover capabilities');
   assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
 
-  for (const nome of ['api', 'web', 'refresh', 'redis']) {
+  for (const nome of ['api', 'refresh', 'redis']) {
     const servico = compose.services[nome]!;
     assert.equal(servico.read_only, true, `${nome} precisa de filesystem raiz somente leitura`);
     assert.deepEqual(servico.cap_drop, ['ALL'], `${nome} não pode manter capabilities Linux`);
@@ -311,8 +307,8 @@ test('compose de produção recebe segredos pelas variáveis da stack, não por 
 
 test('a referência do proxy de produção força HTTPS, HSTS e TLS moderno', () => {
   const nginx = fs.readFileSync(path.join(RAIZ, 'nginx.conf'), 'utf8');
-  assert.match(nginx, /listen 8080;[\s\S]*return 301 https:\/\/\$host\$request_uri;/);
-  assert.match(nginx, /listen 8443 ssl;/);
+  assert.match(nginx, /listen 80;[\s\S]*return 301 https:\/\/\$host\$request_uri;/);
+  assert.match(nginx, /listen 443 ssl;/);
   assert.match(nginx, /ssl_protocols TLSv1\.2 TLSv1\.3;/);
   assert.match(nginx, /Strict-Transport-Security "max-age=31536000; includeSubDomains" always;/);
 });

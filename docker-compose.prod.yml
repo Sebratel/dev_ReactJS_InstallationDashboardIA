@@ -1,6 +1,6 @@
 # Produção — arquivo SEPARADO do docker-compose.yml de desenvolvimento (que
-# sobe infraestrutura de observação, não a aplicação). A API serve o build
-# estático, e o serviço `web` publica-o exclusivamente por HTTPS.
+# sobe infraestrutura de observação, não a aplicação). A tela NÃO é serviço
+# próprio: a API já serve o build estático na mesma porta (docs/DEPLOY.md §3.2).
 #
 # Uso:
 #   docker compose -f docker-compose.prod.yml up -d --build
@@ -179,30 +179,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
-  # Única porta pública da stack. Termina TLS e encaminha a tela e a API para o
-  # serviço `api`, que continua preso a 127.0.0.1 no host. O certificado precisa
-  # existir no host antes de publicar: não há alternativa HTTP em produção.
-  web:
-    image: nginx:1.29-alpine
-    depends_on:
-      api:
-        condition: service_healthy
-    ports:
-      - '${WEB_BIND_HOST:-0.0.0.0}:${WEB_HTTP_PORT_HOST:-80}:8080'
-      - '${WEB_BIND_HOST:-0.0.0.0}:${WEB_HTTPS_PORT_HOST:-443}:8443'
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - ${TLS_CERT_DIR:?defina TLS_CERT_DIR com fullchain.pem e privkey.pem}:/etc/nginx/ssl:ro
-    read_only: true
-    cap_drop: [ALL]
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
-      - /var/cache/nginx:rw,noexec,nosuid,nodev,size=16m,mode=0755
-      - /var/run:rw,noexec,nosuid,nodev,size=1m,mode=0755
-    restart: unless-stopped
 
   # Agendador Automático do Refresh Manager — materializa e atualiza o snapshot
   # periodicamente de 15 em 15 minutos em background (backend/specs/_catalog/refresh.yaml),

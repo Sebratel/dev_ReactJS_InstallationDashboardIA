@@ -36,10 +36,6 @@
 #   docker compose -f docker-compose.prod.yml up api
 
 services:
-  # O proxy HTTPS é exclusivo da publicação. No desenvolvimento a API é
-  # acessada diretamente em localhost:3101, sem exigir certificado local.
-  web:
-    profiles: ['producao']
   api:
     environment:
       SEM_LOGIN: '1'
