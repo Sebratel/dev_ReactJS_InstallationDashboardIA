@@ -16,8 +16,8 @@
 // }
 //
 // Regra do Marco A:
-// - Com uma query "vencida", a tela nomeia a query e a idade.
-// - Com uma query "falhou", a tela diz que falhou (e indica o erro).
+// - Com uma query "vencida", a tela informa que o dado está desatualizado.
+// - Com uma query "falhou", a tela informa indisponibilidade sem expor detalhes internos.
 // - Com todas "ok", o aviso não aparece.
 // - Falhas têm precedência sobre vencidas no aviso principal.
 // - Suporta fallback gracioso para dadoDe caso queries ainda não venha populado.
@@ -36,13 +36,6 @@ export interface QuerySaude {
   paradaDesde?: string;
   /** Quando a próxima carga do grupo deve terminar — estimativa da API (15/10/2026). */
   proximaCarga?: string;
-}
-
-/** Até 3 nomes, depois "e mais N": um grupo parado são 7–11 queries, e a faixa é uma linha. */
-export function listaCurta(ids: readonly string[]): string {
-  return ids.length <= 3
-    ? ids.join(', ')
-    : `${ids.slice(0, 3).join(', ')} e mais ${ids.length - 3}`;
 }
 
 /** Um grupo do agendador de refresh, como `GET /api/saude` o publica em `agendador.grupos`. */
@@ -103,23 +96,10 @@ export function avaliaSaudeQueries(
 
     // 1. Falha é a maior gravidade: impossível de ignorar
     if (falhas.length > 0) {
-      let mensagem: string;
-      if (falhas.length === 1) {
-        const q = falhas[0]!;
-        const detalheErro = q.erro ? ` (${q.erro})` : '';
-        mensagem = `carga falhou em ${q.id}${detalheErro}`;
-      } else if (falhas.every((q) => q.erro === falhas[0]!.erro)) {
-        // Um grupo que falha dá o MESMO erro em todas as queries dele: dizer uma vez só.
-        const erro = falhas[0]!.erro;
-        mensagem = `cargas falharam${erro ? ` (${erro})` : ''}: ${listaCurta(falhas.map((q) => q.id))}`;
-      } else {
-        const nomes = falhas.map((q) => (q.erro ? `${q.id} (${q.erro})` : q.id)).join(', ');
-        mensagem = `cargas falharam: ${nomes}`;
-      }
       return {
         temAviso: true,
         nivel: 'falhou',
-        mensagem,
+        mensagem: 'Não foi possível atualizar os dados. Exibindo a última versão disponível.',
         queriesComProblema: [...falhas, ...vencidas],
       };
     }
@@ -134,13 +114,9 @@ export function avaliaSaudeQueries(
       if (desde) {
         // A régua é o intervalo do grupo, não dias (ACHADOS #160): "parado há 0,1 dia"
         // não diz nada; a hora da última carga boa, sim.
-        mensagem = `dados parados desde ${dataHora(desde)}: ${listaCurta(vencidas.map((q) => q.id))}`;
-      } else if (vencidas.length === 1) {
-        const q = vencidas[0]!;
-        mensagem = `${q.id} vencida há ${formataDiasIdade(q.idadeDias)}`;
+        mensagem = `Dados desatualizados desde ${dataHora(desde)}. Exibindo a última versão disponível.`;
       } else {
-        const nomes = vencidas.map((q) => `${q.id} (${formataDiasIdade(q.idadeDias)})`).join(', ');
-        mensagem = `${nomes} vencidas`;
+        mensagem = 'Dados desatualizados. Exibindo a última versão disponível.';
       }
       return {
         temAviso: true,

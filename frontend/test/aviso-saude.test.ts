@@ -1,11 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'vitest';
-import {
-  listaCurta,
-  avaliaSaudeQueries,
-  formataDiasIdade,
-  type QuerySaude,
-} from '../src/utils/avisoSaude.ts';
+import { avaliaSaudeQueries, formataDiasIdade, type QuerySaude } from '../src/utils/avisoSaude.ts';
 
 test('A6.1 - com todas queries ok, o aviso não aparece', () => {
   const queries: QuerySaude[] = [
@@ -20,7 +15,7 @@ test('A6.1 - com todas queries ok, o aviso não aparece', () => {
   assert.equal(resultado.queriesComProblema.length, 0);
 });
 
-test('A6.2 - com uma query vencida, a tela nomeia a query e a idade', () => {
+test('A6.2 - com uma query vencida, a tela informa dado desatualizado sem expor a fonte', () => {
   const queries: QuerySaude[] = [
     {
       id: 'protocolos-produtividade',
@@ -34,13 +29,12 @@ test('A6.2 - com uma query vencida, a tela nomeia a query e a idade', () => {
   const resultado = avaliaSaudeQueries(queries);
   assert.equal(resultado.temAviso, true);
   assert.equal(resultado.nivel, 'vencida');
-  assert.match(resultado.mensagem, /protocolos-produtividade/);
-  assert.match(resultado.mensagem, /9\.9 dias/);
+  assert.equal(resultado.mensagem, 'Dados desatualizados. Exibindo a última versão disponível.');
   assert.equal(resultado.queriesComProblema.length, 1);
   assert.equal(resultado.queriesComProblema[0]?.id, 'protocolos-produtividade');
 });
 
-test('A6.3 - com uma query falhou, a tela diz que falhou e indica o erro', () => {
+test('A6.3 - com uma query falhou, a tela informa indisponibilidade sem expor o erro', () => {
   const queries: QuerySaude[] = [
     {
       id: 'field-agenda',
@@ -61,12 +55,13 @@ test('A6.3 - com uma query falhou, a tela diz que falhou e indica o erro', () =>
   const resultado = avaliaSaudeQueries(queries);
   assert.equal(resultado.temAviso, true);
   assert.equal(resultado.nivel, 'falhou');
-  assert.match(resultado.mensagem, /falhou/i);
-  assert.match(resultado.mensagem, /field-agenda/);
-  assert.match(resultado.mensagem, /ECONNRESET/);
+  assert.equal(
+    resultado.mensagem,
+    'Não foi possível atualizar os dados. Exibindo a última versão disponível.',
+  );
 });
 
-test('A6.4 - múltiplas vencidas: todas são nomeadas com suas idades', () => {
+test('A6.4 - múltiplas vencidas: a tela não expõe fontes nem idades internas', () => {
   const queries: QuerySaude[] = [
     { id: 'query-a', idadeDias: 5, status: 'vencida' },
     { id: 'query-b', idadeDias: 8.5, status: 'vencida' },
@@ -75,10 +70,7 @@ test('A6.4 - múltiplas vencidas: todas são nomeadas com suas idades', () => {
   const resultado = avaliaSaudeQueries(queries);
   assert.equal(resultado.temAviso, true);
   assert.equal(resultado.nivel, 'vencida');
-  assert.match(resultado.mensagem, /query-a/);
-  assert.match(resultado.mensagem, /5 dias/);
-  assert.match(resultado.mensagem, /query-b/);
-  assert.match(resultado.mensagem, /8\.5 dias/);
+  assert.equal(resultado.mensagem, 'Dados desatualizados. Exibindo a última versão disponível.');
 });
 
 test('A6.5 - fallback gracioso para dadoDe quando queries não estão no envelope', () => {
@@ -102,7 +94,7 @@ test('A6.6 - formataDiasIdade formata inteiros e decimais corretamente', () => {
   assert.equal(formataDiasIdade(0.1), '0.1 dias');
 });
 
-test('#160 - parada com hora: a faixa diz desde quando, não "0,1 dia"', () => {
+test('#160 - parada com hora: a faixa diz desde quando, sem expor fontes internas', () => {
   const r = avaliaSaudeQueries([
     {
       id: 'contratos',
@@ -120,11 +112,14 @@ test('#160 - parada com hora: a faixa diz desde quando, não "0,1 dia"', () => {
     },
   ]);
   assert.equal(r.nivel, 'vencida');
-  assert.match(r.mensagem, /^dados parados desde .+: contratos, backlog-instalacao$/);
+  assert.match(
+    r.mensagem,
+    /^Dados desatualizados desde .+\. Exibindo a última versão disponível\.$/,
+  );
   assert.doesNotMatch(r.mensagem, /dia/);
 });
 
-test('#160 - grupo inteiro falhando com o mesmo erro: o erro aparece uma vez, a lista é curta', () => {
+test('#160 - grupo inteiro falhando não expõe o erro nem a lista de fontes', () => {
   const ids = ['a', 'b', 'c', 'd', 'e'];
   const r = avaliaSaudeQueries(
     ids.map((id) => ({
@@ -135,11 +130,9 @@ test('#160 - grupo inteiro falhando com o mesmo erro: o erro aparece uma vez, a 
       grupo: 'medio',
     })),
   );
-  assert.equal(r.mensagem, 'cargas falharam (ECONNRESET): a, b, c e mais 2');
-});
-
-test('#160 - listaCurta', () => {
-  assert.equal(listaCurta(['a']), 'a');
-  assert.equal(listaCurta(['a', 'b', 'c']), 'a, b, c');
-  assert.equal(listaCurta(['a', 'b', 'c', 'd']), 'a, b, c e mais 1');
+  assert.equal(
+    r.mensagem,
+    'Não foi possível atualizar os dados. Exibindo a última versão disponível.',
+  );
+  assert.doesNotMatch(r.mensagem, /ECONNRESET/);
 });

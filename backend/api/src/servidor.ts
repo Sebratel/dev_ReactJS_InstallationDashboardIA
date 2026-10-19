@@ -203,6 +203,22 @@ export function saudeCompletaPara(e: { autenticado: boolean; enderecoRemoto: str
   return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 }
 
+/**
+ * O arquivo de status guarda o erro técnico do refresh para investigação nos logs e no
+ * próprio snapshot. A resposta da tela só precisa saber se o dado está em dia: entregar
+ * comando, stack trace ou nome de fonte ao navegador transformava uma falha operacional
+ * em um alerta ilegível e expunha detalhes internos a qualquer pessoa autenticada.
+ */
+function ocultaErrosDoStatus(valor: unknown): unknown {
+  if (Array.isArray(valor)) return valor.map(ocultaErrosDoStatus);
+  if (!valor || typeof valor !== 'object') return valor;
+  return Object.fromEntries(
+    Object.entries(valor as Record<string, unknown>)
+      .filter(([chave]) => chave !== 'erro')
+      .map(([chave, item]) => [chave, ocultaErrosDoStatus(item)]),
+  );
+}
+
 export class Servidor {
   private readonly piscina: PiscinaWorkers;
 
@@ -1096,10 +1112,11 @@ export class Servidor {
     this.confereCarimbo();
     const manifesto = leManifesto(this.opts.snapshotDir);
     const refresh = this.statusDeRefresh() as { queries?: QuerySaude[] };
+    const degradacao = resumeDegradacao(refresh.queries ?? []);
     if (!completa) {
       // O que um monitor externo precisa (está de pé? há o que avisar?) e nada que
       // descreva a infraestrutura: sem motivo, sem erro de fonte, sem nome de tabela.
-      responde(res, 200, { ok: manifesto !== null, degradado: resumeDegradacao(refresh.queries ?? []).degradado });
+      responde(res, 200, { ok: manifesto !== null, degradado: degradacao.degradado });
       return;
     }
     // Só na versão completa: o anônimo não paga nem a pergunta às workers. Nunca
@@ -1110,7 +1127,7 @@ export class Servidor {
       // O resumo que um monitor externo lê sem entender o resto (ACHADOS #160). Continua
       // 200 de propósito: dado parado não se conserta reiniciando a API, e um 503 aqui
       // faria o healthcheck do contêiner derrubá-la à toa.
-      degradacao: resumeDegradacao(refresh.queries ?? []),
+      degradacao: { degradado: degradacao.degradado },
       ok: manifesto !== null,
       snapshot: manifesto === null
         ? { presente: false, dica: 'Rode: npm run snapshot -- --pagina=<id>' }
@@ -1217,7 +1234,7 @@ export class Servidor {
       // rodou nesta máquina, então o try/catch fica aqui também, defesa em
       // profundidade. Rota de operador, não caminho quente: um `readFileSync` a
       // mais aqui não paga o mesmo preço que pagaria em `carimboAtual()`.
-      refresh,
+      refresh: ocultaErrosDoStatus(refresh),
       // Separado de `refresh` de propósito: aquele descreve o dado (idade, último
       // sucesso), este descreve o RELÓGIO. Um pode estar verde com o outro morto, e
       // foi essa combinação que passou despercebida por 3h43 em 16/09/2026.

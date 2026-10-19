@@ -282,18 +282,19 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     assert.ok(Array.isArray(j.refresh?.queries));
     assert.ok(j.refresh.queries.length > 0);
 
-    // Grupo frio com falha marca a query do grupo como falhou com erro
+    // Grupo frio com falha marca a query do grupo como falhou. O motivo técnico fica
+    // nos logs e no refresh-status.json, nunca no navegador.
     // Exemplos do `frio` desde a reorganização de 02/10/2026 (`refresh.yaml`): as 8 do
     // poller. `field-agenda-slot` e `protocolos-produtividade` eram os exemplos e saíram dele.
     const aux = j.refresh.queries.find((q: any) => q.id === 'protocolos-auxiliares');
     assert.ok(aux);
     assert.equal(aux.status, 'falhou');
-    assert.equal(aux.erro, 'ECONNRESET');
+    assert.equal(aux.erro, undefined);
 
     const reinc = j.refresh.queries.find((q: any) => q.id === 'reincidencia');
     assert.ok(reinc);
     assert.equal(reinc.status, 'falhou');
-    assert.equal(reinc.erro, 'ECONNRESET');
+    assert.equal(reinc.erro, undefined);
 
     // **`field-agenda` entrou no grupo `frio` em 22/09/2026** (ACHADOS #145: os
     // 21min49s que a mantinham fora morreram no #86, e o arquivo custa 4min21s).
@@ -308,11 +309,12 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     const fieldAgenda = j.refresh.queries.find((q: any) => q.id === 'field-agenda');
     assert.ok(fieldAgenda);
     assert.equal(fieldAgenda.status, 'falhou');
-    assert.equal(fieldAgenda.erro, 'ECONNRESET');
+    assert.equal(fieldAgenda.erro, undefined);
 
     // O resumo do topo (ACHADOS #160): 2 falhas seguidas no frio acendem, e continua 200.
     assert.equal(j.degradacao.degradado, true);
-    assert.ok(j.degradacao.motivos.some((m: string) => /grupo frio .*falhando seguido — ECONNRESET/.test(m)));
+    assert.deepEqual(j.degradacao, { degradado: true });
+    assert.doesNotMatch(JSON.stringify(j), /ECONNRESET/, 'detalhe técnico fica nos logs, não na resposta HTTP');
   } finally {
     await s.fecha();
   }
