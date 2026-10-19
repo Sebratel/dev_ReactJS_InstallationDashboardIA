@@ -1,6 +1,10 @@
 # Produção — arquivo SEPARADO do docker-compose.yml de desenvolvimento (que
-# sobe infraestrutura de observação, não a aplicação). A tela NÃO é serviço
-# próprio: a API já serve o build estático na mesma porta (docs/DEPLOY.md §3.2).
+# sobe infraestrutura de observação, não a aplicação). A tela roda no serviço
+# `web`, separado da API, e é a única porta publicada no host.
+#
+# **Publicação direta, só contêineres (19/10/2026).** O serviço `web` publica a tela no
+# host, sem proxy TLS dentro desta stack, como as outras stacks da Sebratel no Portainer.
+# A API permanece privada na rede Docker. Passo a passo em docs/PORTAINER.md.
 #
 # Uso:
 #   docker compose -f docker-compose.prod.yml up -d --build
@@ -28,6 +32,14 @@ x-args-da-tela: &args-da-tela
   VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:?defina VITE_FIREBASE_AUTH_DOMAIN no .env}
   VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:?defina VITE_FIREBASE_PROJECT_ID no .env}
   VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:?defina VITE_FIREBASE_APP_ID no .env}
+
+# Log com teto, como no dashboard Comercial: o `refresh` escreve o dia todo, e o
+# json-file sem limite enche o disco do host do Portainer em silêncio.
+x-logs: &logs
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
 
 services:
   api:
@@ -77,8 +89,12 @@ services:
       MARIA_SSL_REJECT_UNAUTHORIZED: '1'
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      # Sem HTTPS, não sobe: cookie Secure + HSTS têm de entrar no mesmo deploy.
-      COOKIE_SECURE: '1'
+      # Porta publicada direto, sem proxy: HTTP (decisão do Misael, 19/10/2026). Os três
+      # andam juntos e a API recusa subir se discordarem — cookie `Secure` em HTTP não volta
+      # do navegador (login em laço), e sem proxy o `X-Real-IP` é escrito pelo cliente.
+      # Fixados aqui, e não nas variáveis da stack, para ninguém os trocar pela tela.
+      PUBLICACAO: direta
+      COOKIE_SECURE: '0'
       API_WORKERS: '1'
       API_WORKER_HEAP_MB: '512'
       # PORT declarada AQUI, não deixada para o .env — `environment:` vence
@@ -123,9 +139,8 @@ services:
       # pontas saíam como `analytics-platform`, e o custo de banco não tinha dono. Na API,
       # quem conecta é o poller de quase-realtime.
       VOALLE_APPLICATION_NAME: analytics-api-poller
-      # O proxy externo deve sobrescrever X-Real-IP; sem isso a guarda de produção
-      # recusa a subida. A API fica bindada só no localhost do host.
-      CONFIA_PROXY: '1'
+      # Sem proxy, a chave do rate limit é o endereço do socket, que o cliente não escolhe.
+      CONFIA_PROXY: '0'
       # Diagnóstico da API não pode tornar o snapshot gravável.
       API_RUNTIME_DIR: /repo/runtime
       # Resultado calculado pode ser recriado do snapshot; teto global, repartido entre as
@@ -168,6 +183,7 @@ services:
     # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
     stop_grace_period: 15s
     restart: unless-stopped
+    logging: *logs
 
     healthcheck:
       test: ['CMD', 'node', '-e', "fetch('http://127.0.0.1:3100/api/saude').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
@@ -176,6 +192,8 @@ services:
       retries: 3
       start_period: 30s
 
+  # A única porta publicada: entrega o React e encaminha /api e /auth para a
+  # API privada na rede Docker. A publicação direta segue o padrão do Comercial.
   web:
     build:
       context: .
@@ -187,7 +205,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - '${WEB_BIND_HOST:-0.0.0.0}:${WEB_PORT_HOST:-3101}:8080'
+      - '${WEB_PORT_HOST:-3101}:8080'
     read_only: true
     cap_drop: [ALL]
     security_opt:
@@ -195,6 +213,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m,mode=1777
     restart: unless-stopped
+    logging: *logs
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/ >/dev/null || exit 1']
       interval: 30s
@@ -259,6 +278,8 @@ services:
     depends_on:
       api:
         condition: service_healthy
+      snapshot-permissao:
+        condition: service_completed_successfully
     # Um relógio por grupo: se uma carga média ficar pendurada, `quente` continua
     # entrando na fila e a retomada de suspensão aborta o filho congelado.
     command: ["node", "--max-old-space-size=1024", "backend/tools/refresh/src/daemon.ts", "--por-grupo"]
@@ -277,10 +298,33 @@ services:
     # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
     stop_grace_period: 15s
     restart: unless-stopped
+    logging: *logs
+
+  # Dono da pasta do snapshot, acertado por contêiner (19/10/2026) — antes era passo manual
+  # no host (`chown -R 1000:1000`). Quando `SNAPSHOT_DIR_HOST` não existe, o Docker cria a
+  # pasta como root, e o `refresh` (uid 1000, sem root desde 13/10) não grava nada nela: a
+  # tela subia vazia e o refresh falhava para sempre. Roda a cada `up`, sai, e só então o
+  # refresh sobe. Sem rede, raiz somente leitura e só as duas capabilities que o `chown`
+  # precisa (mudar o dono e atravessar pasta de outro dono).
+  snapshot-permissao:
+    image: busybox:1.37
+    user: '0:0'
+    command: ['chown', '-R', '1000:1000', '/repo/snapshot']
+    volumes:
+      - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_READ_SEARCH]
+    security_opt:
+      - no-new-privileges:true
+    restart: 'no'
+    logging: *logs
 
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    logging: *logs
     user: "999:1000"
     # `requirepass` EXIGIDO, sem padrão: sem porta publicada ele já não é alcançável de
     # fora, mas fica aberto a qualquer container que entrar nesta rede — e o que se guarda

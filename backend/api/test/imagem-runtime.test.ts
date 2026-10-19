@@ -223,23 +223,32 @@ test('a carga completa da madrugada mora no refresh, às 03:00 de Brasília, sem
   assert.doesNotMatch(fs.readFileSync(path.join(RAIZ, 'Dockerfile'), 'utf8'), /AS cron/, 'estágio cron sem uso');
 });
 
-test('compose de produção: proxy externo, Redis exclusivo e limites de segurança', () => {
-  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
+test('compose de produção: frontend publicado, API privada, Redis exclusivo e limites de segurança', () => {
+  const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8'), { merge: true }) as {
     services: Record<string, {
-      environment?: Record<string, string>; ports?: string[]; command?: string; mem_limit?: string;
-      volumes?: string[]; read_only?: boolean; cap_drop?: string[]; security_opt?: string[]; tmpfs?: string[]; user?: string;
+      environment?: Record<string, string>; ports?: string[]; command?: string | string[]; mem_limit?: string;
+      volumes?: string[]; read_only?: boolean; cap_drop?: string[]; cap_add?: string[]; security_opt?: string[];
+      tmpfs?: string[]; user?: string; network_mode?: string; restart?: string;
+      depends_on?: Record<string, { condition?: string }>;
+      logging?: { driver?: string; options?: Record<string, string> };
     }>;
     volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
+  // 19/10/2026: só contêineres. O frontend é publicado direto (docs/PORTAINER.md),
+  // enquanto a API fica apenas na rede Docker.
+  for (const proxy of ['proxy', 'nginx']) {
+    assert.equal(compose.services[proxy], undefined, `a stack não tem proxy (${proxy})`);
+  }
   const web = compose.services.web!;
-  assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
-  assert.equal(api.environment?.CONFIA_PROXY, '1');
-  assert.equal(api.environment?.COOKIE_SECURE, '1');
-  assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
-  assert.equal(api.ports, undefined, 'a API não pode publicar porta no host');
   assert.ok(web, 'a tela precisa de contêiner próprio');
-  assert.deepEqual(web.ports, ['${WEB_BIND_HOST:-0.0.0.0}:${WEB_PORT_HOST:-3101}:8080']);
+  assert.equal(api.environment?.PUBLICACAO, 'direta');
+  assert.equal(api.environment?.CONFIA_PROXY, '0', 'sem proxy, X-Real-IP vem do cliente');
+  assert.equal(api.environment?.COOKIE_SECURE, '0', 'em HTTP o cookie Secure não volta do navegador');
+  assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
+  assert.equal(api.ports, undefined, 'a API não pode ser alcançável de fora da stack');
+  assert.deepEqual(web.ports, ['${WEB_PORT_HOST:-3101}:8080']);
+  assert.equal(web.depends_on?.api?.condition, 'service_healthy');
 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
@@ -275,7 +284,33 @@ test('compose de produção: proxy externo, Redis exclusivo e limites de seguran
   assert.ok(api.volumes?.some((v) => v.endsWith(':/repo/snapshot:ro')), 'API não pode escrever no snapshot');
   assert.ok(api.volumes?.includes('api-runtime:/repo/runtime'), 'diagnóstico da API precisa sair do snapshot');
   assert.ok(compose.volumes?.['api-runtime'] !== undefined, 'volume de diagnóstico da API não declarado');
-  assert.equal(web.mem_limit, undefined, 'a tela estática não precisa reservar memória de cálculo');
+
+  // A pasta do snapshot no host ganha dono por contêiner, não por passo manual: sem isso o
+  // Docker a cria como root e o refresh (uid 1000) não grava nada.
+  const permissao = compose.services['snapshot-permissao']!;
+  assert.ok(permissao, 'falta o contêiner que acerta o dono da pasta do snapshot');
+  const pastaDoRefresh = compose.services.refresh!.volumes?.find((v) => v.endsWith(':/repo/snapshot'));
+  assert.ok(pastaDoRefresh, 'refresh sem a pasta do snapshot');
+  assert.deepEqual(permissao.volumes, [pastaDoRefresh], 'o chown tem de cair na mesma pasta que o refresh grava');
+  assert.deepEqual(permissao.command, ['chown', '-R', '1000:1000', '/repo/snapshot']);
+  assert.equal(permissao.user, '0:0');
+  assert.equal(permissao.restart, 'no', 'é um passo de subida, não um serviço');
+  assert.equal(permissao.network_mode, 'none');
+  assert.equal(permissao.read_only, true);
+  assert.deepEqual(permissao.cap_drop, ['ALL']);
+  assert.deepEqual(permissao.cap_add, ['CHOWN', 'DAC_READ_SEARCH'], 'root, mas só com o que o chown precisa');
+  assert.ok(permissao.security_opt?.includes('no-new-privileges:true'));
+  assert.equal(
+    compose.services.refresh!.depends_on?.['snapshot-permissao']?.condition,
+    'service_completed_successfully',
+    'o refresh não pode subir antes da pasta ter dono',
+  );
+
+  for (const [nome, servico] of Object.entries(compose.services)) {
+    assert.equal(servico.logging?.driver, 'json-file', `${nome} sem teto de log`);
+    assert.equal(servico.logging?.options?.['max-size'], '10m', `${nome} sem teto de log`);
+    assert.equal(servico.logging?.options?.['max-file'], '3', `${nome} sem teto de log`);
+  }
 });
 
 test('compose de produção recebe segredos pelas variáveis da stack, não por arquivo .env no host', () => {
@@ -306,7 +341,9 @@ test('compose de produção recebe segredos pelas variáveis da stack, não por 
   assert.equal(refresh.environment?.MARIA_SSL, '1');
   assert.equal(api.environment?.FIREBASE_PROJECT_ID, '${FIREBASE_PROJECT_ID:-}');
   assert.equal(api.environment?.ADMIN_EMAILS, '${ADMIN_EMAILS:-}');
-  assert.equal(api.environment?.COOKIE_SECURE, '1');
+  for (const chave of ['PUBLICACAO', 'COOKIE_SECURE', 'CONFIA_PROXY']) {
+    assert.doesNotMatch(api.environment?.[chave] ?? '', /\$\{/, `${chave} é fixada pelo compose, não pela tela do Portainer`);
+  }
 });
 
 test('a referência do proxy de produção força HTTPS, HSTS e TLS moderno', () => {
@@ -329,23 +366,21 @@ test('o login da tela entra no build da imagem: toda VITE_FIREBASE_* lida pela t
   const build = dockerfile.slice(dockerfile.indexOf(' AS build'), dockerfile.indexOf(' AS runtime'));
   const antesDoBuild = build.slice(0, build.indexOf('npm run web:build'));
   const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8'), { merge: true }) as {
-    services: Record<string, { build?: { args?: Record<string, string>; target?: string } }>;
+    services: Record<string, { build?: { args?: Record<string, string> } }>;
   };
-  const apiBuild = compose.services['api']?.build;
-  const webBuild = compose.services['web']?.build;
-  const args = apiBuild?.args ?? {};
+  const argsApi = compose.services['api']?.build?.args ?? {};
+  const argsWeb = compose.services.web?.build?.args ?? {};
   for (const v of lidas) {
     assert.match(antesDoBuild, new RegExp(`^ARG ${v}$`, 'm'), `${v} não é ARG antes do web:build`);
-    assert.ok(v in args, `o compose não passa ${v} ao build da api`);
-    assert.ok(v in (webBuild?.args ?? {}), `o compose não passa ${v} ao build da web`);
+    assert.ok(v in argsApi, `o compose não passa ${v} ao build da api`);
+    assert.ok(v in argsWeb, `o compose não passa ${v} ao build da tela`);
   }
-  assert.equal(apiBuild?.target, 'runtime');
-  assert.equal(webBuild?.target, 'web');
-  const nginxWeb = fs.readFileSync(path.join(RAIZ, 'nginx.web.conf'), 'utf8');
-  assert.match(nginxWeb, /proxy_pass \$api;/, 'web precisa encaminhar chamadas dinâmicas para a API privada');
-  assert.match(nginxWeb, /location \/api\/eventos/, 'web precisa manter SSE sem buffer');
+  assert.equal(compose.services.api?.build?.target, 'runtime');
+  assert.equal(compose.services.web?.build?.target, 'web');
+  assert.match(dockerfile, /FROM nginxinc\/nginx-unprivileged:[^\s]+ AS web/);
   assert.doesNotMatch(dockerfile, /^\s*ARG\s+VITE_TOKEN_INTERNO/m, 'o botão de desenvolvimento não pode ir para a imagem');
-  assert.ok(!('VITE_TOKEN_INTERNO' in args));
+  assert.ok(!('VITE_TOKEN_INTERNO' in argsApi));
+  assert.ok(!('VITE_TOKEN_INTERNO' in argsWeb));
 });
 
 test('o CI define toda variável que o compose exige sem padrão — senão o job de imagens quebra', () => {

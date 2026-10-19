@@ -9,11 +9,29 @@ export interface ProblemaDeConfiguracaoDeProducao {
 const ligado = (valor: string | undefined): boolean => valor === '1' || valor?.toLowerCase() === 'true';
 
 /**
+ * Como a porta da API chega ao navegador. Declarado pelo compose, nunca deduzido,
+ * porque as duas formas exigem o contrário uma da outra:
+ *
+ * - `direta` — a porta do contêiner é publicada sem nada na frente, o padrão das stacks
+ *   da Sebratel no Portainer (decisão do Misael, 19/10/2026). É HTTP: um cookie `Secure`
+ *   nunca voltaria do navegador (login em laço, sem erro), e o `X-Real-IP` seria escrito
+ *   pelo próprio cliente — confiar nele dá um balde novo de rate limit por valor forjado.
+ * - `proxy-https` — um proxy termina TLS e reescreve `X-Real-IP` (`nginx.conf` é a
+ *   referência). Aí os dois têm de estar ligados.
+ *
+ * O que o proxy fazia além disso a API já faz sozinha em produção: `/auth/interno` some
+ * (`authInternaAtiva: false`), o cabeçalho do aquecedor só vale com o segredo aleatório
+ * do processo, e o corpo passa de 8 KB é recusado.
+ */
+export const PUBLICACOES = ['direta', 'proxy-https'] as const;
+
+/**
  * Tudo que a stack de produção precisa declarar antes de abrir a porta.
  *
  * Não verifica certificados nem grants aqui: isso pertence à infraestrutura. A
- * função garante que o processo não volte a subir em HTTP ou sem TLS no banco.
- * A conta Maria compartilhada é uma decisão explícita de operação (19/10/2026).
+ * função garante que o processo não volte a subir sem TLS no banco nem com a
+ * publicação incoerente. A conta Maria compartilhada é uma decisão explícita de
+ * operação (19/10/2026).
  */
 export function problemasDaConfiguracaoDeProducao(
   env: Record<string, string | undefined>,
@@ -24,12 +42,23 @@ export function problemasDaConfiguracaoDeProducao(
   const exigeLigado = (chave: string, esperado: string) => {
     if (!ligado(env[chave])) problemas.push({ chave, esperado });
   };
+  const exigeDesligado = (chave: string, esperado: string) => {
+    if (ligado(env[chave])) problemas.push({ chave, esperado });
+  };
   const exigeValor = (chave: string, esperado: string) => {
     if (!env[chave]?.trim()) problemas.push({ chave, esperado });
   };
 
-  exigeLigado('COOKIE_SECURE', '1 (HTTPS terminado pelo proxy)');
-  exigeLigado('CONFIA_PROXY', '1 (proxy que sobrescreve X-Real-IP)');
+  const publicacao = env.PUBLICACAO;
+  if (publicacao === 'direta') {
+    exigeDesligado('COOKIE_SECURE', '0 (PUBLICACAO=direta é HTTP: cookie Secure não volta e o login não fecha)');
+    exigeDesligado('CONFIA_PROXY', '0 (PUBLICACAO=direta: sem proxy, X-Real-IP vem do cliente e fura o rate limit)');
+  } else if (publicacao === 'proxy-https') {
+    exigeLigado('COOKIE_SECURE', '1 (HTTPS terminado pelo proxy)');
+    exigeLigado('CONFIA_PROXY', '1 (proxy que sobrescreve X-Real-IP)');
+  } else {
+    problemas.push({ chave: 'PUBLICACAO', esperado: `${PUBLICACOES.map((p) => `'${p}'`).join(' ou ')}` });
+  }
   exigeLigado('VOALLE_SSL', '1');
   exigeLigado('VOALLE_SSL_REJECT_UNAUTHORIZED', '1');
   exigeLigado('MARIA_SSL', '1');
@@ -46,7 +75,8 @@ export function mensagemDaConfiguracaoDeProducao(problemas: readonly ProblemaDeC
   return (
     `\n[segurança] RECUSANDO SUBIR: configuração de produção incompleta.\n\n` +
     `${itens}\n\n` +
-    `  Não publique a API em HTTP ou com TLS de banco desligado.\n` +
-    `  Veja docs/DEPLOY.md antes de subir a stack.\n`
+    `  Não publique a API com TLS de banco desligado nem com a publicação incoerente.\n` +
+    `  PUBLICACAO=direta: COOKIE_SECURE=0 e CONFIA_PROXY=0. PUBLICACAO=proxy-https: os dois em 1.\n` +
+    `  Veja docs/PORTAINER.md antes de subir a stack.\n`
   );
 }
