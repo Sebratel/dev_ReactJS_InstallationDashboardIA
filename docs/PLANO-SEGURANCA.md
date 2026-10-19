@@ -192,8 +192,9 @@ auditoria_de_leitura:
 
 ### S7 — usuário de banco próprio, com só o que precisa
 
-**Hoje:** sem `ACESSO_DB_USER`, a API grava em `DB_InstallationDashboard` com o `MARIA_USER`
-geral (risco da §D). O `usuarios.sql` existe, mas a TI ainda não rodou.
+**Código fechado em 17/10:** a API não recebe mais `MARIA_USER` e produção recusa subir sem
+`ACESSO_DB_USER`/`ACESSO_DB_PASSWORD` dedicados, com TLS. O `usuarios.sql` ainda precisa ser
+executado pela TI: até isso acontecer, o bloqueio é intencional e evita voltar à credencial geral.
 
 ```yaml
 banco_de_acesso:
@@ -224,7 +225,9 @@ melhoria possível, mas fica fora deste plano até ter medido que nada lê.
 
 ### S1 — HTTPS de ponta a ponta
 
-**Hoje:** o nginx só escuta na 80; cookie sem `Secure`; sem HSTS. É o caminho 1, o mais sério.
+**Código fechado em 17/10:** `nginx.conf` virou referência HTTPS (80→443, TLS 1.2+ e HSTS) e o
+Compose fixa `COOKIE_SECURE=1`. Falta o Misael instalar o certificado e aplicar a referência no
+proxy externo; sem isso a API de produção recusa subir.
 
 ```yaml
 transporte:
@@ -246,9 +249,9 @@ transporte:
 
 ### S8 — a stack sai desta estação de trabalho
 
-**Hoje:** a produção roda no Docker do desktop do Erick, com a porta 80 aberta para a rede.
-Quem entra nesta conta do Windows tem o `snapshot/`, o `.env` (senhas dos bancos,
-`TOKEN_INTERNO`) e o Docker.
+**Parcialmente fechado em 17/10:** a API recebeu snapshot somente leitura, filesystem raiz
+imutável, capabilities removidas e volume separado para diagnóstico. A migração para o host do
+Portainer e a restrição de acesso físico ao volume continuam responsabilidade operacional.
 
 ```yaml
 hospedagem:

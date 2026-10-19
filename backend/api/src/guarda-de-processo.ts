@@ -40,6 +40,8 @@ export const JANELA_MS = 60_000;
 export interface OpcoesDaGuarda {
   /** Onde o `refresh-historico.log` mora — o mesmo do agendador. */
   snapshotDir: string;
+  /** Diretório gravável da API no container; em produção não é o snapshot. */
+  registroDir?: string;
   anuncia?: (linha: string) => void;
   agora?: () => Date;
   /** Injetável no teste: em produção é o `process` de verdade. */
@@ -68,6 +70,7 @@ export function instalaGuardaDeProcesso(opts: OpcoesDaGuarda): () => EstadoDaGua
   const agora = opts.agora ?? ((): Date => new Date());
   const processo = opts.processo ?? process;
   const desiste = opts.desiste ?? ((c: number): void => void process.exit(c));
+  const registroDir = opts.registroDir ?? opts.snapshotDir;
 
   let total = 0;
   let naJanela = 0;
@@ -101,7 +104,7 @@ export function instalaGuardaDeProcesso(opts: OpcoesDaGuarda): () => EstadoDaGua
 
     // O registro vem antes da desistência de propósito: num processo que está saindo,
     // é a única coisa que sobrevive para o próximo a investigar.
-    registra(opts.snapshotDir, {
+    registra(registroDir, {
       evento: 'erro-nao-tratado',
       quando: ultimo,
       origem,

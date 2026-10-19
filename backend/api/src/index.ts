@@ -25,6 +25,7 @@ import { PollerRealtime } from './poller-realtime.ts';
 import { SaudeDoRedis, semSegredo } from './saude-do-redis.ts';
 import { comoLiberar } from './porta.ts';
 import { decideLogin } from './portao-login.ts';
+import { mensagemDaConfiguracaoDeProducao, problemasDaConfiguracaoDeProducao } from './configuracao-producao.ts';
 import { criaAcesso } from './permissoes.ts';
 import { configDoAmbiente, criaPoolDeAcesso, lojaMaria } from './loja-acesso-maria.ts';
 import { criaGravadorDeEventos } from './eventos-seguranca.ts';
@@ -36,6 +37,15 @@ import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
 applyDotEnv(ROOT);
+
+const problemasDeProducao = problemasDaConfiguracaoDeProducao(process.env);
+if (problemasDeProducao.length > 0) {
+  console.error(mensagemDaConfiguracaoDeProducao(problemasDeProducao));
+  process.exit(1);
+}
+
+const DIR_SNAPSHOT = path.join(ROOT, DIRETORIO_PADRAO);
+const DIR_RUNTIME = process.env.API_RUNTIME_DIR || DIR_SNAPSHOT;
 
 /**
  * O Redis, se houver `REDIS_URL` — **na frente dele, sempre a memória**.
@@ -262,7 +272,7 @@ const semAquecer = process.argv.includes('--sem-aquecer') || process.env.SEM_AQU
  * que esta API sobrevive a um erro solto em vez de sair, e por que ela AINDA sai numa
  * rajada.
  */
-const estadoDaGuarda = instalaGuardaDeProcesso({ snapshotDir: path.join(ROOT, DIRETORIO_PADRAO) });
+const estadoDaGuarda = instalaGuardaDeProcesso({ snapshotDir: DIR_SNAPSHOT, registroDir: DIR_RUNTIME });
 
 const decisaoDoRefresh = agendaNesteProcesso(process.env, process.argv);
 
@@ -278,17 +288,10 @@ let agendador: Agendador | null = null;
  */
 let poller: PollerRealtime | null = null;
 
-// Quem abre cada aba: o `DB_InstallationDashboard` (ACHADOS #208), lido antes de abrir a porta e
-// relido a cada 30 s. Sem ACESSO_DB_* no ambiente, ou com o banco fora no boot, só
-// ADMIN_EMAILS/DEV_EMAILS entram — nunca "todo mundo vê".
+// Quem abre cada aba: só a credencial restrita do `DB_InstallationDashboard`.
+// Sem ela fora de produção, só ADMIN_EMAILS/DEV_EMAILS entram — nunca "todo mundo vê".
 const configDoAcesso = configDoAmbiente(process.env);
 const poolDeAcesso = configDoAcesso ? criaPoolDeAcesso(configDoAcesso) : null;
-if (configDoAcesso?.compartilhado) {
-  console.warn(
-    '[acesso] gravando no DB_InstallationDashboard com o MARIA_USER (sem ACESSO_DB_USER) — ' +
-      'troque pelo installation_access quando a TI o criar (backend/tools/banco/sql/usuarios.sql).',
-  );
-}
 // Os eventos de segurança vão para o mesmo banco, em lote (`eventos-seguranca.ts`).
 const eventosDeSeguranca = poolDeAcesso ? criaGravadorDeEventos(poolDeAcesso) : undefined;
 const usoDasTelas = poolDeAcesso ? criaUsoDasTelas(poolDeAcesso) : undefined;
@@ -304,7 +307,7 @@ acesso.releA(30_000);
 
 const servidor = new Servidor({
   root: ROOT,
-  snapshotDir: path.join(ROOT, DIRETORIO_PADRAO),
+  snapshotDir: DIR_SNAPSHOT,
   webDir: path.join(ROOT, 'frontend', 'dist'),
   acesso,
   ...(eventosDeSeguranca ? { eventosDeSeguranca } : {}),
@@ -365,6 +368,7 @@ const servidor = new Servidor({
     ? { sessaoTtlHoras: Number.parseFloat(process.env.SESSAO_TTL_HORAS) }
     : {}),
   ...(process.env.TOKEN_INTERNO ? { tokenInterno: process.env.TOKEN_INTERNO } : {}),
+  ...(process.env.NODE_ENV === 'production' ? { authInternaAtiva: false } : {}),
   ...(process.env.NODE_ENV === 'production' ? { producao: true } : {}),
   // Preparado, não ativado: liga o cookie `Secure` e o header HSTS só quando
   // COOKIE_SECURE=1 estiver no ambiente — que só deve acontecer junto com o
@@ -439,7 +443,7 @@ http.listen(porta, () => {
   // Depois do `listen`, não antes: a carga inicial do snapshot pode segurar o laço por
   // bem mais que o limite, e isso é subir, não travar.
   if (limiteDoVigiaMs !== null) {
-    vigia = iniciaVigiaDeTravamento({ limiteMs: limiteDoVigiaMs, snapshotDir: path.join(ROOT, DIRETORIO_PADRAO) });
+    vigia = iniciaVigiaDeTravamento({ limiteMs: limiteDoVigiaMs, snapshotDir: DIR_SNAPSHOT, registroDir: DIR_RUNTIME });
   }
   console.log(`\nAnalytics Platform — API de leitura`);
   console.log(`  tela  http://localhost:${porta}/`);

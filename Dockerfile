@@ -69,8 +69,9 @@ COPY --from=build /repo/frontend/dist ./frontend/dist
 COPY --from=build /repo/backend ./backend
 
 # O snapshot é volume — este mountpoint existe só para o container ter onde
-# montar; nada é copiado para dentro da imagem aqui.
-RUN mkdir -p /repo/snapshot && chown node:node /repo/snapshot
+# montar; nada é copiado para dentro da imagem aqui. `runtime/` recebe somente
+# diagnóstico da API: separar os dois deixa o snapshot montado como leitura.
+RUN mkdir -p /repo/snapshot /repo/runtime && chown node:node /repo/snapshot /repo/runtime
 
 # Sem root (13/10/2026): `api` e `refresh` rodam como o usuário `node` (uid 1000) da
 # imagem base. Só gravam no snapshot montado e em /tmp. Num servidor Linux, a pasta do

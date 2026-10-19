@@ -254,6 +254,21 @@ test('CSRF: POST /auth/interno sem Origin nem Referer passa (chamada servidor-a-
   }
 });
 
+test('produção desliga /auth/interno até na porta local, mesmo com token configurado', async () => {
+  const s = await sobe({ tokenInterno: 'segredo-de-teste', producao: true });
+  try {
+    const r = await s.busca('/auth/interno', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token: 'segredo-de-teste' }),
+    });
+    assert.equal(r.status, 404);
+    assert.equal(r.headers.get('set-cookie'), null);
+  } finally {
+    await s.fecha();
+  }
+});
+
 // --------------------------------------------------------- rate limiting
 
 test('rate limiting: /auth/interno bloqueia depois do teto de tentativas, com Retry-After', async () => {

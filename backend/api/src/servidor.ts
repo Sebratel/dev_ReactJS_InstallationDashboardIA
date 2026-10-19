@@ -502,6 +502,7 @@ export class Servidor {
       dominioCorporativo: 'sebratel.com.br',
       sessaoTtlHoras: Number.POSITIVE_INFINITY, // vale o da spec (S2), ver ttlSessaoHoras
       tokenInterno: '',
+      authInternaAtiva: !opts.producao,
       cookieSecure: false,
       producao: false,
       confiaNoProxy: false,
@@ -1048,6 +1049,11 @@ export class Servidor {
    * nada".
    */
   private async autenticaInterno(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!this.opts.authInternaAtiva) {
+      this.registraEventoSeg(req, 404, 'rota-de-maquina-desligada');
+      responde(res, 404, { erro: "Rota '/auth/interno' não existe." });
+      return;
+    }
     let corpo: unknown;
     try {
       corpo = parseJsonSeguro(await leCorpo(req));

@@ -84,6 +84,12 @@ export interface ServidorOptions {
    */
   tokenInterno?: string;
   /**
+   * A rota de ferramenta existe só para desenvolvimento local. Produção a
+   * desliga mesmo que TOKEN_INTERNO esteja no ambiente, reduzindo o impacto de
+   * um segredo vazado ou de um proxy externo configurado errado.
+   */
+  authInternaAtiva?: boolean;
+  /**
    * Liga `Secure` no cookie de sessão e `Strict-Transport-Security` nos
    * headers de resposta (`headers-seguranca.ts`). Padrão: `false` — hoje não
    * há TLS na frente (`nginx.conf` só tem `listen 80`), e um cookie `Secure`

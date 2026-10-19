@@ -42,3 +42,20 @@ services:
       # Rebaixa o `production` declarado em docker-compose.prod.yml. Sem esta
       # linha a própria guarda recusa a stack — e está certa.
       NODE_ENV: development
+      # O overlay assume explicitamente o risco da execução local. A stack de
+      # produção continua com TLS e proxy obrigatórios.
+      COOKIE_SECURE: '0'
+      CONFIA_PROXY: '0'
+      VOALLE_SSL: '0'
+      VOALLE_SSL_REJECT_UNAUTHORIZED: '0'
+      ACESSO_DB_SSL: '0'
+      ACESSO_DB_HOST: ${MARIA_HOST:-}
+      ACESSO_DB_PORT: ${MARIA_PORT:-3306}
+      ACESSO_DB_DATABASE: ${ACESSO_DB_DATABASE:-DB_InstallationDashboard}
+      ACESSO_DB_USER: ${MARIA_USER:-}
+      ACESSO_DB_PASSWORD: ${MARIA_PASSWORD:-}
+  refresh:
+    environment:
+      VOALLE_SSL: '0'
+      VOALLE_SSL_REJECT_UNAUTHORIZED: '0'
+      MARIA_SSL: '0'

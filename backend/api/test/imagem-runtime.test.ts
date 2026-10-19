@@ -223,25 +223,54 @@ test('a carga completa da madrugada mora no refresh, às 03:00 de Brasília, sem
   assert.doesNotMatch(fs.readFileSync(path.join(RAIZ, 'Dockerfile'), 'utf8'), /AS cron/, 'estágio cron sem uso');
 });
 
-test('compose de produção: proxy e Redis são infraestrutura externa', () => {
+test('compose de produção: proxy externo, Redis exclusivo e limites de segurança', () => {
   const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
     services: Record<string, {
-      environment?: Record<string, string>; ports?: string[]; mem_limit?: string;
+      environment?: Record<string, string>; ports?: string[]; command?: string; mem_limit?: string;
+      volumes?: string[]; read_only?: boolean; cap_drop?: string[]; security_opt?: string[]; tmpfs?: string[]; user?: string;
     }>;
+    volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
   assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
-  assert.equal(api.environment?.CONFIA_PROXY, '${CONFIA_PROXY:-0}');
-  assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}:3100']);
+  assert.equal(api.environment?.CONFIA_PROXY, '1');
+  assert.equal(api.environment?.COOKIE_SECURE, '1');
+  assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}:3100']);
 
-  assert.equal(compose.services.redis, undefined, 'Redis compartilhado não deve duplicar memória nesta stack');
-  assert.equal(api.environment?.REDIS_URL, '${REDIS_URL:-}');
-  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '96');
+  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
   assert.equal(api.mem_limit, '1600m');
   assert.equal(compose.services.refresh?.mem_limit, '1400m');
-  assert.ok(1600 + 1400 <= 3 * 1024, 'api + refresh devem caber no teto físico de 3 GiB');
+  // Redis desta stack (ACHADOS #228): a api aponta para o serviço pelo nome, com senha.
+  const redis = compose.services.redis!;
+  assert.ok(redis, 'o Redis do cache de respostas mora nesta stack');
+  assert.equal(api.environment?.REDIS_URL, 'redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD nas variaveis da stack}@redis:6379/0');
+  // Senha obrigatória: `up` sem REDIS_PASSWORD falha em vez de subir um Redis aberto.
+  assert.match(redis.command!, /--requirepass \$\{REDIS_PASSWORD:\?/);
+  // A fragmentação chega a 2× e mais (medida, ACHADOS #229/#230): 512mb/640m morria por
+  // OOM; 64mb/192m passou com pico de 110 MiB.
+  assert.match(redis.command!, /--maxmemory 64mb/);
+  assert.match(redis.command!, /--maxmemory-policy allkeys-lru/);
+  // Sem porta publicada e sem nada em disco: é cache sobre dado de cliente.
+  assert.equal(redis.ports, undefined, 'Redis não pode ser alcançável de fora da stack');
+  assert.equal(redis.volumes, undefined, 'cache não grava dado de cliente em volume');
+  assert.match(redis.command!, /--save ''/);
+  assert.match(redis.command!, /--appendonly no/);
+  assert.equal(redis.mem_limit, '192m');
+  assert.equal(redis.user, '999:1000', 'Redis precisa iniciar sem root antes de remover capabilities');
+  assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
+
+  for (const nome of ['api', 'refresh', 'redis']) {
+    const servico = compose.services[nome]!;
+    assert.equal(servico.read_only, true, `${nome} precisa de filesystem raiz somente leitura`);
+    assert.deepEqual(servico.cap_drop, ['ALL'], `${nome} não pode manter capabilities Linux`);
+    assert.ok(servico.security_opt?.includes('no-new-privileges:true'), `${nome} permite escalar privilégios`);
+    assert.ok(servico.tmpfs?.some((v) => v.startsWith('/tmp:')), `${nome} precisa de /tmp efêmero`);
+  }
+  assert.ok(api.volumes?.some((v) => v.endsWith(':/repo/snapshot:ro')), 'API não pode escrever no snapshot');
+  assert.ok(api.volumes?.includes('api-runtime:/repo/runtime'), 'diagnóstico da API precisa sair do snapshot');
+  assert.ok(compose.volumes?.['api-runtime'] !== undefined, 'volume de diagnóstico da API não declarado');
 });
 
 test('compose de produção recebe segredos pelas variáveis da stack, não por arquivo .env no host', () => {
@@ -251,23 +280,35 @@ test('compose de produção recebe segredos pelas variáveis da stack, não por 
       environment?: Record<string, string>;
     }>;
   };
-  const fontes = [
-    'VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD',
-    'MARIA_HOST', 'MARIA_DATABASE', 'MARIA_USER', 'MARIA_PASSWORD',
-  ];
-
-  for (const nome of ['api', 'refresh']) {
-    const servico = compose.services[nome]!;
-    assert.equal(servico.env_file, undefined, `${nome} não pode depender de .env no host do Portainer`);
-    for (const chave of fontes) {
-      assert.equal(servico.environment?.[chave], `\${${chave}:-}`, `${nome} não recebe ${chave} da stack`);
-    }
-  }
-
   const api = compose.services.api!;
+  const refresh = compose.services.refresh!;
+  for (const [nome, servico, fontes] of [
+    ['api', api, ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD']],
+    ['refresh', refresh, ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD', 'MARIA_HOST', 'MARIA_DATABASE', 'MARIA_USER', 'MARIA_PASSWORD']],
+  ] as const) {
+    assert.equal(servico.env_file, undefined, `${nome} não pode depender de .env no host do Portainer`);
+    for (const chave of fontes) assert.equal(servico.environment?.[chave], `\${${chave}:-}`, `${nome} não recebe ${chave} da stack`);
+  }
+  for (const chave of ['ACESSO_DB_HOST', 'ACESSO_DB_USER', 'ACESSO_DB_PASSWORD']) {
+    assert.equal(api.environment?.[chave], `\${${chave}:-}`, `API não recebe ${chave} da stack`);
+  }
+  assert.equal(api.environment?.MARIA_USER, undefined, 'API não pode receber a credencial Maria geral');
+  assert.equal(api.environment?.VOALLE_SSL, '1');
+  assert.equal(api.environment?.VOALLE_SSL_REJECT_UNAUTHORIZED, '1');
+  assert.equal(api.environment?.ACESSO_DB_SSL, '1');
+  assert.equal(refresh.environment?.VOALLE_SSL, '1');
+  assert.equal(refresh.environment?.MARIA_SSL, '1');
   assert.equal(api.environment?.FIREBASE_PROJECT_ID, '${FIREBASE_PROJECT_ID:-}');
   assert.equal(api.environment?.ADMIN_EMAILS, '${ADMIN_EMAILS:-}');
-  assert.equal(api.environment?.COOKIE_SECURE, '${COOKIE_SECURE:-0}');
+  assert.equal(api.environment?.COOKIE_SECURE, '1');
+});
+
+test('a referência do proxy de produção força HTTPS, HSTS e TLS moderno', () => {
+  const nginx = fs.readFileSync(path.join(RAIZ, 'nginx.conf'), 'utf8');
+  assert.match(nginx, /listen 80;[\s\S]*return 301 https:\/\/\$host\$request_uri;/);
+  assert.match(nginx, /listen 443 ssl;/);
+  assert.match(nginx, /ssl_protocols TLSv1\.2 TLSv1\.3;/);
+  assert.match(nginx, /Strict-Transport-Security "max-age=31536000; includeSubDomains" always;/);
 });
 
 test('o login da tela entra no build da imagem: toda VITE_FIREBASE_* lida pela tela é ARG, e o compose a passa', () => {

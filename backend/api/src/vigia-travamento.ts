@@ -61,8 +61,8 @@ export interface Vigia {
   para(): void;
 }
 
-/** Liga o batimento e a worker. `snapshotDir` é onde o motivo fica, se ele matar. */
-export function iniciaVigiaDeTravamento(opts: { limiteMs: number; snapshotDir: string }): Vigia {
+/** Liga o batimento e a worker. `registroDir` é onde o motivo fica, se ele matar. */
+export function iniciaVigiaDeTravamento(opts: { limiteMs: number; snapshotDir: string; registroDir?: string }): Vigia {
   const batimento = new BigInt64Array(new SharedArrayBuffer(8));
   const carimba = (): void => void Atomics.store(batimento, 0, BigInt(Date.now()));
   carimba();
@@ -70,7 +70,7 @@ export function iniciaVigiaDeTravamento(opts: { limiteMs: number; snapshotDir: s
   relogio.unref();
 
   const worker = new Worker(path.join(path.dirname(fileURLToPath(import.meta.url)), 'vigia-travamento-worker.ts'), {
-    workerData: { batimento, limiteMs: opts.limiteMs, snapshotDir: opts.snapshotDir },
+    workerData: { batimento, limiteMs: opts.limiteMs, snapshotDir: opts.registroDir ?? opts.snapshotDir },
     execArgv: [],
     resourceLimits: { maxOldGenerationSizeMb: 32 },
   });

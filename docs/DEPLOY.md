@@ -653,9 +653,10 @@ exige plano Blaze, e **ainda não está ligada**. Ver o cabeçalho de
 
 ### 3.3 Proxy reverso e TLS
 
-`nginx.conf` é uma **referência** para a infraestrutura do Misael; não é montado nem
-executado pelo `docker-compose.prod.yml`. O proxy e o TLS devem ser configurados no
-Portainer/host externo, preservando estes comportamentos:
+`nginx.conf` é o **contrato HTTPS** para a infraestrutura do Misael; não é montado nem
+executado pelo `docker-compose.prod.yml`. Antes do deploy, ajuste somente os caminhos do
+certificado e o upstream no proxy externo. A porta 80 redireciona para HTTPS, e não existe
+modo HTTP de produção:
 
 - **`/` e `/api/` vão para a API na porta 3100** — a API serve a tela (build estático) e
   o JSON na mesma porta; não há container de tela separado (§3.2).
@@ -672,9 +673,10 @@ Portainer/host externo, preservando estes comportamentos:
   `frontend/src/App.tsx:153`).
 - **`/auth/` tem bloco próprio** — as duas únicas rotas que escrevem estado (sessão) em
   vez de servir dado calculado, de propósito fora de `/api/`.
-- **`X-Real-IP` é sobrescrito pelo proxy** — só então o Portainer pode definir
-  `CONFIA_PROXY=1`; sem essa reescrita, mantenha `0` para o cliente não escolher o
-  próprio balde do rate limit.
+- **`X-Real-IP` é sobrescrito pelo proxy** — é obrigatório: a API de produção recusa subir
+  sem `CONFIA_PROXY=1`, para o cliente não escolher o próprio balde do rate limit.
+- **TLS 1.2+ e HSTS** — o proxy escuta em 443, redireciona 80→443 e o Compose fixa
+  `COOKIE_SECURE=1`; publicar sem certificado válido não é suportado.
 
 Certificado, porta pública e endereço do upstream são decisão de infraestrutura do
 Misael. Ajuste o upstream do exemplo para o endereço que alcança a API e faça o TLS no
@@ -704,7 +706,14 @@ proxy externo; não acrescente outro container de proxy a esta stack.
 - `REDIS_PASSWORD` é obrigatória nas variáveis da stack. O Compose monta a
   `REDIS_URL` da API apontando para o Redis exclusivo; `GET /api/saude` confirma o adapter.
 - credenciais do Voalle e do MariaDB de produção: **usuário sem permissão de escrita**.
-  É a camada 1 das quatro do read-only, e a única que o repositório não garante sozinho.
+  Use `installation_reader` para o refresh e `installation_access` somente para a API;
+  execute `backend/tools/banco/sql/usuarios.sql` pela TI, trocando as senhas e validando
+  `SHOW GRANTS`. A API recusa produção sem `ACESSO_DB_*` e nunca recebe `MARIA_USER`.
+- TLS dos bancos é obrigatório no Compose (`VOALLE_SSL=1`, validação do certificado,
+  `MARIA_SSL=1` e `ACESSO_DB_SSL=1`). O banco precisa oferecer certificado confiável e os
+  usuários provisionados recebem `REQUIRE SSL`.
+- o snapshot entra como somente leitura na API. O volume `api-runtime` guarda apenas
+  diagnósticos; mantenha ambos restritos ao usuário do serviço no host.
 
 ---
 

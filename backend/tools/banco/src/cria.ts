@@ -106,6 +106,10 @@ async function main(): Promise<void> {
       await admin.query('ALTER USER ?@? IDENTIFIED BY ?', [USUARIO, hostPermitido, senha]);
       console.log(`[banco] senha de ${USUARIO}@${hostPermitido} trocada.`);
     }
+    // A API de produção exige TLS para o banco de acesso. Deixar essa trava no
+    // próprio usuário impede que uma configuração posterior da aplicação volte
+    // a mandar a credencial ou os eventos de segurança em claro pela rede.
+    await admin.query('ALTER USER ?@? REQUIRE SSL', [USUARIO, hostPermitido]);
 
     for (const t of TABELAS_EDITAVEIS) {
       await admin.query(`GRANT SELECT, INSERT, UPDATE, DELETE ON ${BANCO}.${t} TO ?@?`, [USUARIO, hostPermitido]);

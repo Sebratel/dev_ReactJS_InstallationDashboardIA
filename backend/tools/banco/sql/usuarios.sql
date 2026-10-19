@@ -11,7 +11,7 @@
 
 -- 1) Leitura do dashboard: substitui o MARIA_USER no .env do dashboard. É o ganho grande —
 --    a API deixa de carregar uma credencial com ALL PRIVILEGES no servidor inteiro.
-CREATE USER IF NOT EXISTS 'installation_reader'@'%' IDENTIFIED BY 'TROQUE_SENHA_1';
+CREATE USER IF NOT EXISTS 'installation_reader'@'%' IDENTIFIED BY 'TROQUE_SENHA_1' REQUIRE SSL;
 GRANT SELECT ON DB_Applicattion.* TO 'installation_reader'@'%';
 GRANT SELECT ON DB_InstallationDashboard.employee_managers TO 'installation_reader'@'%';
 GRANT SELECT ON DB_InstallationDashboard.team_capacities   TO 'installation_reader'@'%';
@@ -19,7 +19,7 @@ GRANT SELECT ON DB_InstallationDashboard.installer_awards  TO 'installation_read
 GRANT SELECT ON DB_InstallationDashboard.data_syncs        TO 'installation_reader'@'%';
 
 -- 2) Acessos da API: a tela "Acessos" e os eventos de segurança. Logs só aceitam inclusão.
-CREATE USER IF NOT EXISTS 'installation_access'@'%' IDENTIFIED BY 'TROQUE_SENHA_2';
+CREATE USER IF NOT EXISTS 'installation_access'@'%' IDENTIFIED BY 'TROQUE_SENHA_2' REQUIRE SSL;
 GRANT SELECT, INSERT, UPDATE, DELETE ON DB_InstallationDashboard.user_roles      TO 'installation_access'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON DB_InstallationDashboard.screens         TO 'installation_access'@'%';
 GRANT SELECT, INSERT, UPDATE, DELETE ON DB_InstallationDashboard.screen_users    TO 'installation_access'@'%';
@@ -30,7 +30,7 @@ GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.screen_usage_da
 
 -- 3) n8n: só as três tabelas das planilhas e o registro da cópia. Não lê acesso nem
 --    eventos de segurança, e não alcança outro banco.
-CREATE USER IF NOT EXISTS 'installation_n8n'@'%' IDENTIFIED BY 'TROQUE_SENHA_3';
+CREATE USER IF NOT EXISTS 'installation_n8n'@'%' IDENTIFIED BY 'TROQUE_SENHA_3' REQUIRE SSL;
 GRANT SELECT, INSERT, DELETE         ON DB_InstallationDashboard.employee_managers TO 'installation_n8n'@'%';
 GRANT SELECT, INSERT, DELETE         ON DB_InstallationDashboard.team_capacities   TO 'installation_n8n'@'%';
 GRANT SELECT, INSERT, DELETE         ON DB_InstallationDashboard.installer_awards  TO 'installation_n8n'@'%';

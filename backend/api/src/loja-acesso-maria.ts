@@ -19,33 +19,32 @@ export interface ConfigDoBancoDeAcesso {
   database: string;
   user: string;
   password: string;
+  ssl?: { rejectUnauthorized: boolean };
 }
 
 /**
- * As ACESSO_DB_* do ambiente, ou `null` se não houver nem elas nem o MARIA_* (a API sobe
- * só com o .env).
+ * Lê somente as ACESSO_DB_* dedicadas. A API nunca deve cair para MARIA_USER:
+ * essa credencial serve ao refresh e pode alcançar o banco operacional inteiro.
  *
- * **Sem ACESSO_DB_USER, usa o MARIA_USER** (decisão do Erick, 13/10/2026). Não piora nada:
- * a API já carrega essa credencial para ler o `DB_Applicattion`. O que se perde até a TI
- * criar o `installation_access` (`backend/tools/banco/sql/usuarios.sql`) é a camada a mais
- * — usuário restrito às tabelas de acesso e log que nem a API apaga. `compartilhado` diz
- * qual dos dois está em uso, para o log da subida não esconder isso.
+ * Em desenvolvimento, sem banco de acesso, devolve `null` e só ADMIN_EMAILS/DEV_EMAILS
+ * entram. Em produção, `configuracao-producao.ts` recusa a subida antes desta função.
  */
 export function configDoAmbiente(
   env: Record<string, string | undefined>,
-): (ConfigDoBancoDeAcesso & { compartilhado: boolean }) | null {
-  const host = env.ACESSO_DB_HOST || env.MARIA_HOST;
-  const proprio = Boolean(env.ACESSO_DB_USER && env.ACESSO_DB_PASSWORD);
-  const user = proprio ? env.ACESSO_DB_USER : env.MARIA_USER;
-  const password = proprio ? env.ACESSO_DB_PASSWORD : env.MARIA_PASSWORD;
+): ConfigDoBancoDeAcesso | null {
+  const host = env.ACESSO_DB_HOST;
+  const user = env.ACESSO_DB_USER;
+  const password = env.ACESSO_DB_PASSWORD;
   if (!host || !user || !password) return null;
   return {
     host,
-    port: Number(env.ACESSO_DB_PORT || env.MARIA_PORT || 3306),
+    port: Number(env.ACESSO_DB_PORT || 3306),
     database: env.ACESSO_DB_DATABASE || 'DB_InstallationDashboard',
     user,
     password,
-    compartilhado: !proprio,
+    ...(env.ACESSO_DB_SSL === '1' || env.ACESSO_DB_SSL?.toLowerCase() === 'true'
+      ? { ssl: { rejectUnauthorized: env.ACESSO_DB_SSL_REJECT_UNAUTHORIZED !== '0' } }
+      : {}),
   };
 }
 
@@ -58,6 +57,7 @@ export function criaPoolDeAcesso(cfg: ConfigDoBancoDeAcesso): mysql.Pool {
     database: cfg.database,
     user: cfg.user,
     password: cfg.password,
+    ...(cfg.ssl ? { ssl: cfg.ssl } : {}),
     connectionLimit: 3,
     connectTimeout: 5_000,
     // Sem `multipleStatements`: um valor mal escapado não vira um segundo comando.

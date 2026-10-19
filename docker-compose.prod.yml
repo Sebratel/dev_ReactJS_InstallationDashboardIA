@@ -64,13 +64,22 @@ services:
       VOALLE_DATABASE: ${VOALLE_DATABASE:-}
       VOALLE_USER: ${VOALLE_USER:-}
       VOALLE_PASSWORD: ${VOALLE_PASSWORD:-}
-      MARIA_HOST: ${MARIA_HOST:-}
-      MARIA_DATABASE: ${MARIA_DATABASE:-}
-      MARIA_USER: ${MARIA_USER:-}
-      MARIA_PASSWORD: ${MARIA_PASSWORD:-}
+      # Produção sempre negocia TLS e valida o certificado da réplica PostgreSQL.
+      VOALLE_SSL: '1'
+      VOALLE_SSL_REJECT_UNAUTHORIZED: '1'
+      # A API não recebe MARIA_USER: ela só grava a matriz de acessos com uma
+      # credencial dedicada, limitada a DB_InstallationDashboard.
+      ACESSO_DB_HOST: ${ACESSO_DB_HOST:-}
+      ACESSO_DB_PORT: ${ACESSO_DB_PORT:-3306}
+      ACESSO_DB_DATABASE: ${ACESSO_DB_DATABASE:-DB_InstallationDashboard}
+      ACESSO_DB_USER: ${ACESSO_DB_USER:-}
+      ACESSO_DB_PASSWORD: ${ACESSO_DB_PASSWORD:-}
+      ACESSO_DB_SSL: '1'
+      ACESSO_DB_SSL_REJECT_UNAUTHORIZED: '1'
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+      # Sem HTTPS, não sobe: cookie Secure + HSTS têm de entrar no mesmo deploy.
+      COOKIE_SECURE: '1'
       API_WORKERS: '1'
       API_WORKER_HEAP_MB: '512'
       # PORT declarada AQUI, não deixada para o .env — `environment:` vence
@@ -110,9 +119,11 @@ services:
       # pontas saíam como `analytics-platform`, e o custo de banco não tinha dono. Na API,
       # quem conecta é o poller de quase-realtime.
       VOALLE_APPLICATION_NAME: analytics-api-poller
-      # O proxy é infraestrutura externa. Só confie no X-Real-IP quando ele estiver
-      # configurado para sobrescrever esse header antes de chegar nesta API.
-      CONFIA_PROXY: ${CONFIA_PROXY:-0}
+      # O proxy externo deve sobrescrever X-Real-IP; sem isso a guarda de produção
+      # recusa a subida. A API fica bindada só no localhost do host.
+      CONFIA_PROXY: '1'
+      # Diagnóstico da API não pode tornar o snapshot gravável.
+      API_RUNTIME_DIR: /repo/runtime
       # Resultado calculado pode ser recriado do snapshot; teto global, repartido entre as
       # workers. 256 -> 128 em 17/10/2026 (ACHADOS #231): produção usava 49 MB. Lado ruim
       # quando morde: rolar de volta numa tabela grande recalcula a janela.
@@ -131,19 +142,27 @@ services:
       # cache sobrevive ao restart da api. Decisão do Erick em 16/10/2026, no mesmo padrão
       # do antifraude (Redis próprio na stack). A senha vem do `.env`; use só [0-9a-f]
       # (`openssl rand -hex 24`), porque ela vai crua dentro da URL.
-      REDIS_URL: redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}@redis:6379/0
+      REDIS_URL: redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD nas variaveis da stack}@redis:6379/0
     volumes:
       # O snapshot é dado de cliente (CPF/RG/endereço, ~371 MB) — nunca entra
       # na imagem. Aponte SNAPSHOT_DIR_HOST para onde o refresh agendado
       # (docs/DEPLOY.md §2.2) materializa no host.
-      - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot
+      - ${SNAPSHOT_DIR_HOST:-./snapshot}:/repo/snapshot:ro
+      - api-runtime:/repo/runtime
     ports:
       # O proxy externo do Misael aponta para esta porta. O bind continua local por
       # padrão para não expor a API sem TLS ou sem reescrever X-Real-IP.
-      - '${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}:3100'
+      - '${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}:3100'
     # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
     # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
     init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
     # Explícito: o Compose v5.1.3 desta estação criava os contêineres com StopTimeout=1,
     # e o `docker stop` matava com SIGKILL no meio do desligamento (ACHADOS #157). 15 s
     # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
@@ -186,10 +205,13 @@ services:
       VOALLE_DATABASE: ${VOALLE_DATABASE:-}
       VOALLE_USER: ${VOALLE_USER:-}
       VOALLE_PASSWORD: ${VOALLE_PASSWORD:-}
+      VOALLE_SSL: '1'
+      VOALLE_SSL_REJECT_UNAUTHORIZED: '1'
       MARIA_HOST: ${MARIA_HOST:-}
       MARIA_DATABASE: ${MARIA_DATABASE:-}
       MARIA_USER: ${MARIA_USER:-}
       MARIA_PASSWORD: ${MARIA_PASSWORD:-}
+      MARIA_SSL: '1'
       NODE_ENV: production
       REFRESH_INTERVAL_MINUTOS: '15'
       REFRESH_MEMORIA_MB: '1360'
@@ -216,6 +238,13 @@ services:
     # PID 1 é o `tini`, não o Node: o Linux não entrega ao PID 1 sinal sem tratador, e
     # sem isto o `docker stop` esperava 10 s e matava (ACHADOS #157).
     init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 96
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777
     # Explícito: o Compose v5.1.3 desta estação criava os contêineres com StopTimeout=1,
     # e o `docker stop` matava com SIGKILL no meio do desligamento (ACHADOS #157). 15 s
     # fica acima do teto de 8 s de `backend/api/src/desligamento.ts`.
@@ -225,6 +254,14 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    user: "999:1000"
+    # `requirepass` EXIGIDO, sem padrão: sem porta publicada ele já não é alcançável de
+    # fora, mas fica aberto a qualquer container que entrar nesta rede — e o que se guarda
+    # aqui é resposta calculada sobre dado de cliente. Falha fechada no `up`, não silêncio.
+    # `allkeys-lru` porque toda chave deste projeto sai com TTL (`Cache.set` recusa
+    # ttl<=0, `cache-redis.ts`): expulsar a menos usada é a degradação que o disjuntor já
+    # assume. Sem persistência (`--save ''`, `--appendonly no`): é cache, refaz sozinho, e
+    # gravar em disco só copiaria dado de cliente para mais um lugar.
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD:?defina REDIS_PASSWORD nas variaveis da stack}
@@ -233,4 +270,14 @@ services:
       --save ''
       --appendonly no
     mem_limit: 192m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=32m,mode=1777
     stop_grace_period: 15s
+
+volumes:
+  api-runtime:
