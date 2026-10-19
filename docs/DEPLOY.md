@@ -705,13 +705,13 @@ proxy externo; não acrescente outro container de proxy a esta stack.
   definida pelo Misael.
 - `REDIS_PASSWORD` é obrigatória nas variáveis da stack. O Compose monta a
   `REDIS_URL` da API apontando para o Redis exclusivo; `GET /api/saude` confirma o adapter.
-- credenciais do Voalle e do MariaDB de produção: **usuário sem permissão de escrita**.
-  Use `installation_reader` para o refresh e `installation_access` somente para a API;
-  execute `backend/tools/banco/sql/usuarios.sql` pela TI, trocando as senhas e validando
-  `SHOW GRANTS`. A API recusa produção sem `ACESSO_DB_*` e nunca recebe `MARIA_USER`.
+- A API e o refresh usam a mesma conta `MARIA_*`, por decisão de 19/10/2026.
+  `MARIA_DATABASE` serve ao refresh; `ACESSO_DB_DATABASE` aponta a API para as tabelas
+  de permissões. Confirme com `SHOW GRANTS` que a conta consegue ler as fontes e gravar
+  somente as tabelas de acesso necessárias em `DB_InstallationDashboard`.
 - TLS dos bancos é obrigatório no Compose (`VOALLE_SSL=1`, validação do certificado,
-  `MARIA_SSL=1` e `ACESSO_DB_SSL=1`). O banco precisa oferecer certificado confiável e os
-  usuários provisionados recebem `REQUIRE SSL`.
+  `MARIA_SSL=1` e validação do certificado na API). O banco precisa oferecer
+  certificado confiável.
 - o snapshot entra como somente leitura na API. O volume `api-runtime` guarda apenas
   diagnósticos; mantenha ambos restritos ao usuário do serviço no host.
 

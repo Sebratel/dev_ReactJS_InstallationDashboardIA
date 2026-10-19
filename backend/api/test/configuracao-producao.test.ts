@@ -8,19 +8,20 @@ const PRODUCAO_SEGURA = {
   CONFIA_PROXY: '1',
   VOALLE_SSL: '1',
   VOALLE_SSL_REJECT_UNAUTHORIZED: '1',
-  ACESSO_DB_SSL: '1',
-  ACESSO_DB_HOST: 'mariadb.interno',
-  ACESSO_DB_USER: 'installation_access',
-  ACESSO_DB_PASSWORD: 'nao-e-um-segredo-real',
+  MARIA_SSL: '1',
+  MARIA_SSL_REJECT_UNAUTHORIZED: '1',
+  MARIA_HOST: 'mariadb.interno',
+  MARIA_USER: 'conta-existente',
+  MARIA_PASSWORD: 'nao-e-um-segredo-real',
 };
 
-test('produção recusa HTTP, proxy não confiável, banco sem TLS e credencial de acesso ausente', () => {
+test('produção recusa HTTP, proxy não confiável, banco sem TLS e conta Maria ausente', () => {
   const problemas = problemasDaConfiguracaoDeProducao({ NODE_ENV: 'production' });
   assert.deepEqual(
     problemas.map((p) => p.chave),
     [
-      'COOKIE_SECURE', 'CONFIA_PROXY', 'VOALLE_SSL', 'VOALLE_SSL_REJECT_UNAUTHORIZED', 'ACESSO_DB_SSL',
-      'ACESSO_DB_HOST', 'ACESSO_DB_USER', 'ACESSO_DB_PASSWORD',
+      'COOKIE_SECURE', 'CONFIA_PROXY', 'VOALLE_SSL', 'VOALLE_SSL_REJECT_UNAUTHORIZED',
+      'MARIA_SSL', 'MARIA_SSL_REJECT_UNAUTHORIZED', 'MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD',
     ],
   );
   const mensagem = mensagemDaConfiguracaoDeProducao(problemas);

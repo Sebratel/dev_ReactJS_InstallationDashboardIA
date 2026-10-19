@@ -192,6 +192,12 @@ auditoria_de_leitura:
 
 ### S7 — usuário de banco próprio, com só o que precisa
 
+**Decisão de 19/10/2026:** não será usada uma conta dedicada nesta implantação. A API
+e o refresh passam a usar `MARIA_*`; `ACESSO_DB_DATABASE` conserva apenas a escolha do
+banco das tabelas de acesso. O risco de permissões mais amplas na conta compartilhada
+foi aceito para esta publicação. O plano abaixo fica como histórico e não bloqueia o
+deploy.
+
 **Código fechado em 17/10:** a API não recebe mais `MARIA_USER` e produção recusa subir sem
 `ACESSO_DB_USER`/`ACESSO_DB_PASSWORD` dedicados, com TLS. O `usuarios.sql` ainda precisa ser
 executado pela TI: até isso acontecer, o bloqueio é intencional e evita voltar à credencial geral.

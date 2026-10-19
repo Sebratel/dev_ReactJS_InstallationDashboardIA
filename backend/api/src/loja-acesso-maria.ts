@@ -1,7 +1,6 @@
-// A `LojaDeAcesso` (`permissoes.ts`) no MariaDB: `DB_InstallationDashboard`, com o usuário
-// `installation_access` criado por `npm run banco:cria` — ele só alcança as tabelas de
-// acesso, e no `audit_logs` só insere. Esta é a ÚNICA escrita da API em banco (a regra nº 1
-// do CLAUDE.md continua valendo para todo dado de negócio).
+// A `LojaDeAcesso` (`permissoes.ts`) no MariaDB: `DB_InstallationDashboard`.
+// A API usa a mesma conta MARIA_* do refresh, por decisão de operação em 19/10/2026.
+// Esta é a única escrita da API em banco; dados de negócio continuam somente leitura.
 //
 // As tabelas seguem o padrão do servidor (inglês, snake_case, plural — `backend/tools/banco/
 // sql/acesso.sql`); o código fala o português do resto do projeto. A tradução mora só aqui:
@@ -23,8 +22,8 @@ export interface ConfigDoBancoDeAcesso {
 }
 
 /**
- * Lê somente as ACESSO_DB_* dedicadas. A API nunca deve cair para MARIA_USER:
- * essa credencial serve ao refresh e pode alcançar o banco operacional inteiro.
+ * Usa MARIA_* para a conexão e ACESSO_DB_DATABASE somente para escolher o banco
+ * das tabelas de acesso, que é diferente do MARIA_DATABASE usado no refresh.
  *
  * Em desenvolvimento, sem banco de acesso, devolve `null` e só ADMIN_EMAILS/DEV_EMAILS
  * entram. Em produção, `configuracao-producao.ts` recusa a subida antes desta função.
@@ -32,18 +31,18 @@ export interface ConfigDoBancoDeAcesso {
 export function configDoAmbiente(
   env: Record<string, string | undefined>,
 ): ConfigDoBancoDeAcesso | null {
-  const host = env.ACESSO_DB_HOST;
-  const user = env.ACESSO_DB_USER;
-  const password = env.ACESSO_DB_PASSWORD;
+  const host = env.MARIA_HOST;
+  const user = env.MARIA_USER;
+  const password = env.MARIA_PASSWORD;
   if (!host || !user || !password) return null;
   return {
     host,
-    port: Number(env.ACESSO_DB_PORT || 3306),
+    port: Number(env.MARIA_PORT || 3306),
     database: env.ACESSO_DB_DATABASE || 'DB_InstallationDashboard',
     user,
     password,
-    ...(env.ACESSO_DB_SSL === '1' || env.ACESSO_DB_SSL?.toLowerCase() === 'true'
-      ? { ssl: { rejectUnauthorized: env.ACESSO_DB_SSL_REJECT_UNAUTHORIZED !== '0' } }
+    ...(env.MARIA_SSL === '1' || env.MARIA_SSL?.toLowerCase() === 'true'
+      ? { ssl: { rejectUnauthorized: env.MARIA_SSL_REJECT_UNAUTHORIZED !== '0' } }
       : {}),
   };
 }

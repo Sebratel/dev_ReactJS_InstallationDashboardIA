@@ -170,7 +170,7 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
    *  um INSERT por segundo. */
   const pedidoRegistradoEm = new Map<string, number>();
   let ultimaFalhou = opts.loja === null;
-  if (!opts.loja) log('[acesso] banco de acesso NÃO configurado (ACESSO_DB_*) — só ADMIN_EMAILS/DEV_EMAILS entram.');
+  if (!opts.loja) log('[acesso] banco de acesso NÃO configurado (MARIA_*) — só ADMIN_EMAILS/DEV_EMAILS entram.');
 
   const emailDe = (quem: Identidade): string | null => {
     const e = normEmail(quem.usuario);

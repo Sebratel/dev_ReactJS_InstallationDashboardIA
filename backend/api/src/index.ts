@@ -288,8 +288,8 @@ let agendador: Agendador | null = null;
  */
 let poller: PollerRealtime | null = null;
 
-// Quem abre cada aba: só a credencial restrita do `DB_InstallationDashboard`.
-// Sem ela fora de produção, só ADMIN_EMAILS/DEV_EMAILS entram — nunca "todo mundo vê".
+// Quem abre cada aba: a conta MARIA_* consulta o `DB_InstallationDashboard`.
+// Sem conexão fora de produção, só ADMIN_EMAILS/DEV_EMAILS entram — nunca "todo mundo vê".
 const configDoAcesso = configDoAmbiente(process.env);
 const poolDeAcesso = configDoAcesso ? criaPoolDeAcesso(configDoAcesso) : null;
 // Os eventos de segurança vão para o mesmo banco, em lote (`eventos-seguranca.ts`).

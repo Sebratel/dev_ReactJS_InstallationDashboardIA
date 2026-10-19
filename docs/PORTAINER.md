@@ -12,12 +12,10 @@ porta interna da API continua `3100`.
    **Load variables from .env file**. Ele foi gerado a partir do `.env` desta
    máquina, está ignorado pelo Git e deve ficar restrito a quem administra a
    stack. O modelo sem credenciais é `portainer.env.example`.
-3. Antes de subir, preencha `ACESSO_DB_USER` e `ACESSO_DB_PASSWORD` com a conta
-   dedicada `installation_access`; a TI deve criá-la conforme
-   `backend/tools/banco/sql/usuarios.sql`. `ACESSO_DB_HOST` usa o mesmo servidor
-   de `MARIA_HOST` se ambos os bancos estão nele. A API recusa iniciar sem essa
-   credencial. As contas de leitura `VOALLE_USER` e `MARIA_USER` continuam
-   separadas.
+3. A API e o refresh usam a conta já configurada em `MARIA_HOST`, `MARIA_USER`
+   e `MARIA_PASSWORD`. `ACESSO_DB_DATABASE` escolhe apenas o banco das tabelas de
+   permissões, sem outra conta. Confirme que essa conta tem os grants necessários
+   em `DB_InstallationDashboard`; sem eles, a gravação das permissões falhará.
 4. Crie no host `/srv/dashboard-instalacao/snapshot` e dê permissão de leitura
    à API e escrita ao refresh (ambos usam uid `1000`). Confirme que os dados
    iniciais do snapshot estão nessa pasta. Ela não entra na imagem nem no Git.

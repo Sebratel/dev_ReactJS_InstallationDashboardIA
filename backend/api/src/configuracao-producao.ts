@@ -12,8 +12,8 @@ const ligado = (valor: string | undefined): boolean => valor === '1' || valor?.t
  * Tudo que a stack de produção precisa declarar antes de abrir a porta.
  *
  * Não verifica certificados nem grants aqui: isso pertence à infraestrutura. A
- * função garante que o processo não volte a subir em HTTP, sem TLS no banco ou
- * com a credencial Maria compartilhada por acidente.
+ * função garante que o processo não volte a subir em HTTP ou sem TLS no banco.
+ * A conta Maria compartilhada é uma decisão explícita de operação (19/10/2026).
  */
 export function problemasDaConfiguracaoDeProducao(
   env: Record<string, string | undefined>,
@@ -32,10 +32,11 @@ export function problemasDaConfiguracaoDeProducao(
   exigeLigado('CONFIA_PROXY', '1 (proxy que sobrescreve X-Real-IP)');
   exigeLigado('VOALLE_SSL', '1');
   exigeLigado('VOALLE_SSL_REJECT_UNAUTHORIZED', '1');
-  exigeLigado('ACESSO_DB_SSL', '1');
-  exigeValor('ACESSO_DB_HOST', 'host do DB_InstallationDashboard');
-  exigeValor('ACESSO_DB_USER', 'usuário installation_access');
-  exigeValor('ACESSO_DB_PASSWORD', 'senha do usuário installation_access');
+  exigeLigado('MARIA_SSL', '1');
+  exigeLigado('MARIA_SSL_REJECT_UNAUTHORIZED', '1');
+  exigeValor('MARIA_HOST', 'host do MariaDB');
+  exigeValor('MARIA_USER', 'usuário MariaDB configurado para a stack');
+  exigeValor('MARIA_PASSWORD', 'senha do usuário MariaDB configurado para a stack');
 
   return problemas;
 }
@@ -45,7 +46,7 @@ export function mensagemDaConfiguracaoDeProducao(problemas: readonly ProblemaDeC
   return (
     `\n[segurança] RECUSANDO SUBIR: configuração de produção incompleta.\n\n` +
     `${itens}\n\n` +
-    `  Não publique a API em HTTP, com TLS de banco desligado ou usando MARIA_USER\n` +
-    `  compartilhado. Veja docs/DEPLOY.md antes de subir a stack.\n`
+    `  Não publique a API em HTTP ou com TLS de banco desligado.\n` +
+    `  Veja docs/DEPLOY.md antes de subir a stack.\n`
   );
 }

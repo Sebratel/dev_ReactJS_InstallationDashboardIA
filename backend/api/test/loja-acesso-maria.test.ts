@@ -2,25 +2,27 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { configDoAmbiente } from '../src/loja-acesso-maria.ts';
 
-test('banco de acesso não cai para MARIA_USER compartilhado', () => {
+test('banco de acesso fica desabilitado sem as credenciais Maria completas', () => {
   assert.equal(
-    configDoAmbiente({ MARIA_HOST: 'maria', MARIA_USER: 'geral', MARIA_PASSWORD: 'senha' }),
+    configDoAmbiente({ MARIA_HOST: 'maria', MARIA_USER: 'geral' }),
     null,
   );
 });
 
-test('banco de acesso usa somente a credencial dedicada e habilita TLS quando declarado', () => {
+test('banco de acesso usa a conta Maria e o banco de permissões com TLS', () => {
   const cfg = configDoAmbiente({
-    ACESSO_DB_HOST: 'acesso',
-    ACESSO_DB_USER: 'installation_access',
-    ACESSO_DB_PASSWORD: 'senha',
-    ACESSO_DB_SSL: '1',
+    MARIA_HOST: 'maria',
+    MARIA_USER: 'geral',
+    MARIA_PASSWORD: 'senha',
+    MARIA_DATABASE: 'fonte_do_refresh',
+    MARIA_SSL: '1',
+    MARIA_SSL_REJECT_UNAUTHORIZED: '1',
   });
   assert.deepEqual(cfg, {
-    host: 'acesso',
+    host: 'maria',
     port: 3306,
     database: 'DB_InstallationDashboard',
-    user: 'installation_access',
+    user: 'geral',
     password: 'senha',
     ssl: { rejectUnauthorized: true },
   });

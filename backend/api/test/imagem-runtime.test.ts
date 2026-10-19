@@ -283,19 +283,20 @@ test('compose de produção recebe segredos pelas variáveis da stack, não por 
   const api = compose.services.api!;
   const refresh = compose.services.refresh!;
   for (const [nome, servico, fontes] of [
-    ['api', api, ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD']],
+    ['api', api, ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD', 'MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD']],
     ['refresh', refresh, ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD', 'MARIA_HOST', 'MARIA_DATABASE', 'MARIA_USER', 'MARIA_PASSWORD']],
   ] as const) {
     assert.equal(servico.env_file, undefined, `${nome} não pode depender de .env no host do Portainer`);
     for (const chave of fontes) assert.equal(servico.environment?.[chave], `\${${chave}:-}`, `${nome} não recebe ${chave} da stack`);
   }
   for (const chave of ['ACESSO_DB_HOST', 'ACESSO_DB_USER', 'ACESSO_DB_PASSWORD']) {
-    assert.equal(api.environment?.[chave], `\${${chave}:-}`, `API não recebe ${chave} da stack`);
+    assert.equal(api.environment?.[chave], undefined, `API não deve exigir ${chave}`);
   }
-  assert.equal(api.environment?.MARIA_USER, undefined, 'API não pode receber a credencial Maria geral');
+  assert.equal(api.environment?.ACESSO_DB_DATABASE, '${ACESSO_DB_DATABASE:-DB_InstallationDashboard}');
   assert.equal(api.environment?.VOALLE_SSL, '1');
   assert.equal(api.environment?.VOALLE_SSL_REJECT_UNAUTHORIZED, '1');
-  assert.equal(api.environment?.ACESSO_DB_SSL, '1');
+  assert.equal(api.environment?.MARIA_SSL, '1');
+  assert.equal(api.environment?.MARIA_SSL_REJECT_UNAUTHORIZED, '1');
   assert.equal(refresh.environment?.VOALLE_SSL, '1');
   assert.equal(refresh.environment?.MARIA_SSL, '1');
   assert.equal(api.environment?.FIREBASE_PROJECT_ID, '${FIREBASE_PROJECT_ID:-}');

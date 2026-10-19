@@ -67,15 +67,14 @@ services:
       # Produção sempre negocia TLS e valida o certificado da réplica PostgreSQL.
       VOALLE_SSL: '1'
       VOALLE_SSL_REJECT_UNAUTHORIZED: '1'
-      # A API não recebe MARIA_USER: ela só grava a matriz de acessos com uma
-      # credencial dedicada, limitada a DB_InstallationDashboard.
-      ACESSO_DB_HOST: ${ACESSO_DB_HOST:-}
-      ACESSO_DB_PORT: ${ACESSO_DB_PORT:-3306}
+      # A API usa a mesma conta MARIA_* do refresh. O banco de acessos é outro.
+      MARIA_HOST: ${MARIA_HOST:-}
+      MARIA_PORT: ${MARIA_PORT:-3306}
+      MARIA_USER: ${MARIA_USER:-}
+      MARIA_PASSWORD: ${MARIA_PASSWORD:-}
       ACESSO_DB_DATABASE: ${ACESSO_DB_DATABASE:-DB_InstallationDashboard}
-      ACESSO_DB_USER: ${ACESSO_DB_USER:-}
-      ACESSO_DB_PASSWORD: ${ACESSO_DB_PASSWORD:-}
-      ACESSO_DB_SSL: '1'
-      ACESSO_DB_SSL_REJECT_UNAUTHORIZED: '1'
+      MARIA_SSL: '1'
+      MARIA_SSL_REJECT_UNAUTHORIZED: '1'
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # Sem HTTPS, não sobe: cookie Secure + HSTS têm de entrar no mesmo deploy.
@@ -208,6 +207,7 @@ services:
       VOALLE_SSL: '1'
       VOALLE_SSL_REJECT_UNAUTHORIZED: '1'
       MARIA_HOST: ${MARIA_HOST:-}
+      MARIA_PORT: ${MARIA_PORT:-3306}
       MARIA_DATABASE: ${MARIA_DATABASE:-}
       MARIA_USER: ${MARIA_USER:-}
       MARIA_PASSWORD: ${MARIA_PASSWORD:-}
