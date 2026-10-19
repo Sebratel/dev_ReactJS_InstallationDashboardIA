@@ -60,10 +60,10 @@ contrato está em `nginx.conf`). Depois troque no compose para `PUBLICACAO: prox
 
 ## Bancos
 
-A stack exige TLS **validando o certificado** no Voalle e no MariaDB. Em 19/10/2026
-os dois servidores apresentavam certificado autoassinado: o Voalle com CN `localhost`,
-válido até 2036, e o MariaDB com O=Sebratel/OU=TI, válido até 2034. Validando, nenhum
-dos dois conecta. Ver `docs/ACHADOS.md` #232.
+A stack mantém TLS no Voalle e no MariaDB, mas aceita temporariamente seus certificados
+autoassinados (`*_SSL_REJECT_UNAUTHORIZED=0`): em 19/10/2026 a validação impedia toda
+carga. Quando a CA corporativa for montada nos contêineres, volte os dois valores para
+`1` e valide o redeploy.
 
 O Compose usa `build:` e precisa que o endpoint Docker do Portainer consiga
 construir imagens a partir do clone. Em endpoints remotos que não suportam

@@ -335,11 +335,13 @@ test('compose de produção recebe segredos pelas variáveis da stack, não por 
   }
   assert.equal(api.environment?.ACESSO_DB_DATABASE, '${ACESSO_DB_DATABASE:-DB_InstallationDashboard}');
   assert.equal(api.environment?.VOALLE_SSL, '1');
-  assert.equal(api.environment?.VOALLE_SSL_REJECT_UNAUTHORIZED, '1');
+  assert.equal(api.environment?.VOALLE_SSL_REJECT_UNAUTHORIZED, '0');
   assert.equal(api.environment?.MARIA_SSL, '1');
-  assert.equal(api.environment?.MARIA_SSL_REJECT_UNAUTHORIZED, '1');
+  assert.equal(api.environment?.MARIA_SSL_REJECT_UNAUTHORIZED, '0');
   assert.equal(refresh.environment?.VOALLE_SSL, '1');
+  assert.equal(refresh.environment?.VOALLE_SSL_REJECT_UNAUTHORIZED, '0');
   assert.equal(refresh.environment?.MARIA_SSL, '1');
+  assert.equal(refresh.environment?.MARIA_SSL_REJECT_UNAUTHORIZED, '0');
   assert.equal(api.environment?.FIREBASE_PROJECT_ID, '${FIREBASE_PROJECT_ID:-}');
   assert.equal(api.environment?.ADMIN_EMAILS, '${ADMIN_EMAILS:-}');
   for (const chave of ['PUBLICACAO', 'COOKIE_SECURE', 'CONFIA_PROXY']) {

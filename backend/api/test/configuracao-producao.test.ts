@@ -9,9 +9,9 @@ const PRODUCAO_DIRETA = {
   COOKIE_SECURE: '0',
   CONFIA_PROXY: '0',
   VOALLE_SSL: '1',
-  VOALLE_SSL_REJECT_UNAUTHORIZED: '1',
+  VOALLE_SSL_REJECT_UNAUTHORIZED: '0',
   MARIA_SSL: '1',
-  MARIA_SSL_REJECT_UNAUTHORIZED: '1',
+  MARIA_SSL_REJECT_UNAUTHORIZED: '0',
   MARIA_HOST: 'mariadb.interno',
   MARIA_USER: 'conta-existente',
   MARIA_PASSWORD: 'nao-e-um-segredo-real',
@@ -32,7 +32,7 @@ test('produção sem nada declarado recusa: publicação, banco sem TLS e conta 
   assert.deepEqual(
     problemas.map((p) => p.chave),
     [
-      'PUBLICACAO', 'VOALLE_SSL', 'VOALLE_SSL_REJECT_UNAUTHORIZED', 'MARIA_SSL', 'MARIA_SSL_REJECT_UNAUTHORIZED',
+      'PUBLICACAO', 'VOALLE_SSL', 'MARIA_SSL',
       'MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD',
     ],
   );
@@ -69,12 +69,9 @@ test('publicação com valor desconhecido recusa em vez de adivinhar', () => {
   assert.deepEqual(chaves({ ...PRODUCAO_DIRETA, PUBLICACAO: 'Direta' }), ['PUBLICACAO']);
 });
 
-test('a publicação não mexe no TLS dos bancos: continua exigido nas duas formas', () => {
+test('a publicação não mexe na criptografia TLS dos bancos', () => {
   for (const base of [PRODUCAO_DIRETA, PRODUCAO_ATRAS_DE_PROXY]) {
-    assert.deepEqual(chaves({ ...base, VOALLE_SSL: '0', MARIA_SSL_REJECT_UNAUTHORIZED: undefined }), [
-      'VOALLE_SSL',
-      'MARIA_SSL_REJECT_UNAUTHORIZED',
-    ]);
+    assert.deepEqual(chaves({ ...base, VOALLE_SSL: '0', MARIA_SSL: '0' }), ['VOALLE_SSL', 'MARIA_SSL']);
   }
 });
 

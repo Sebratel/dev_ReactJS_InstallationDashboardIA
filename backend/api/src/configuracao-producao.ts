@@ -60,9 +60,7 @@ export function problemasDaConfiguracaoDeProducao(
     problemas.push({ chave: 'PUBLICACAO', esperado: `${PUBLICACOES.map((p) => `'${p}'`).join(' ou ')}` });
   }
   exigeLigado('VOALLE_SSL', '1');
-  exigeLigado('VOALLE_SSL_REJECT_UNAUTHORIZED', '1');
   exigeLigado('MARIA_SSL', '1');
-  exigeLigado('MARIA_SSL_REJECT_UNAUTHORIZED', '1');
   exigeValor('MARIA_HOST', 'host do MariaDB');
   exigeValor('MARIA_USER', 'usuário MariaDB configurado para a stack');
   exigeValor('MARIA_PASSWORD', 'senha do usuário MariaDB configurado para a stack');

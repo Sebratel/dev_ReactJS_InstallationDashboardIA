@@ -76,9 +76,10 @@ services:
       VOALLE_DATABASE: ${VOALLE_DATABASE:-}
       VOALLE_USER: ${VOALLE_USER:-}
       VOALLE_PASSWORD: ${VOALLE_PASSWORD:-}
-      # Produção sempre negocia TLS e valida o certificado da réplica PostgreSQL.
+      # Mantém TLS até o banco. A CA corporativa ainda não está disponível dentro do
+      # container; por isso aceita temporariamente o certificado autoassinado.
       VOALLE_SSL: '1'
-      VOALLE_SSL_REJECT_UNAUTHORIZED: '1'
+      VOALLE_SSL_REJECT_UNAUTHORIZED: '0'
       # A API usa a mesma conta MARIA_* do refresh. O banco de acessos é outro.
       MARIA_HOST: ${MARIA_HOST:-}
       MARIA_PORT: ${MARIA_PORT:-3306}
@@ -86,7 +87,7 @@ services:
       MARIA_PASSWORD: ${MARIA_PASSWORD:-}
       ACESSO_DB_DATABASE: ${ACESSO_DB_DATABASE:-DB_InstallationDashboard}
       MARIA_SSL: '1'
-      MARIA_SSL_REJECT_UNAUTHORIZED: '1'
+      MARIA_SSL_REJECT_UNAUTHORIZED: '0'
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # Porta publicada direto, sem proxy: HTTP (decisão do Misael, 19/10/2026). Os três
@@ -254,13 +255,14 @@ services:
       VOALLE_USER: ${VOALLE_USER:-}
       VOALLE_PASSWORD: ${VOALLE_PASSWORD:-}
       VOALLE_SSL: '1'
-      VOALLE_SSL_REJECT_UNAUTHORIZED: '1'
+      VOALLE_SSL_REJECT_UNAUTHORIZED: '0'
       MARIA_HOST: ${MARIA_HOST:-}
       MARIA_PORT: ${MARIA_PORT:-3306}
       MARIA_DATABASE: ${MARIA_DATABASE:-}
       MARIA_USER: ${MARIA_USER:-}
       MARIA_PASSWORD: ${MARIA_PASSWORD:-}
       MARIA_SSL: '1'
+      MARIA_SSL_REJECT_UNAUTHORIZED: '0'
       NODE_ENV: production
       REFRESH_INTERVAL_MINUTOS: '15'
       REFRESH_MEMORIA_MB: '1360'
