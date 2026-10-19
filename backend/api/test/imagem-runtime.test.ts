@@ -249,6 +249,7 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.equal(api.ports, undefined, 'a API não pode ser alcançável de fora da stack');
   assert.deepEqual(web.ports, ['${WEB_PORT_HOST:-3101}:8080']);
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
+  assert.equal(web.mem_limit, '3g', 'a tela não pode herdar toda a memória do host');
 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');

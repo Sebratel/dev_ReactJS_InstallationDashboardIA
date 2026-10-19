@@ -201,6 +201,9 @@ services:
       args: *args-da-tela
       target: web
     pull_policy: build
+    # A tela tem teto explícito para o Portainer não herdar toda a memória do host.
+    # Mantém os 3 GB usados pelo serviço público antes da separação web/API.
+    mem_limit: 3g
     depends_on:
       api:
         condition: service_healthy
