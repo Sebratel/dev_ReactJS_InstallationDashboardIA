@@ -38,6 +38,7 @@ const LENTO = path.join(AQUI, 'fixtures', 'worker-lento.ts');
 const INTERACTIVE = prioridadeDe('interactive');
 const PREFETCH = prioridadeDe('prefetch');
 const WARMUP = prioridadeDe('warmup');
+const EXPORT = prioridadeDe('export');
 
 /**
  * Uma mensagem válida em forma; `janela.de` é a demora da worker de fixture. `pagina`
@@ -212,6 +213,7 @@ test('um pedido pode REBAIXAR a si mesmo, e a promoção não existe para ser de
   assert.equal(origemDoPedido(false, null), 'interactive');
   assert.equal(origemDoPedido(false, 'prefetch'), 'prefetch');
   assert.equal(origemDoPedido(false, 'warmup'), 'warmup');
+  assert.equal(origemDoPedido(false, 'export'), 'export');
   assert.equal(origemDoPedido(false, 'interactive'), 'interactive');
   assert.equal(origemDoPedido(false, 'qualquer-coisa'), 'interactive', 'o desconhecido é o padrão');
   // O Aquecedor é reconhecido pelo cabeçalho que já o autentica, não por um
@@ -224,9 +226,10 @@ test('a ordem das classes é a que a fila usa, e ORIGENS é a única tabela', ()
   // Dois lugares declarando a mesma ordem divergem no primeiro conserto: a
   // piscina devolve o número, o servidor traduz com `ORIGENS[n]`, e é este
   // teste que amarra os dois.
-  assert.deepEqual([...ORIGENS], ['interactive', 'prefetch', 'warmup']);
+  assert.deepEqual([...ORIGENS], ['interactive', 'prefetch', 'warmup', 'export']);
   assert.ok(prioridadeDe('interactive') < prioridadeDe('prefetch'));
   assert.ok(prioridadeDe('prefetch') < prioridadeDe('warmup'));
+  assert.ok(prioridadeDe('warmup') < EXPORT);
   for (const o of ORIGENS) assert.equal(ORIGENS[prioridadeDe(o)], o);
 });
 

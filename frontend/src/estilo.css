@@ -491,7 +491,7 @@ body {
 }
 .v-tabela,
 .cartao.v-tabela {
-  height: clamp(280px, calc(var(--util) * 0.545), 500px);
+  height: clamp(520px, calc(var(--util) * 0.545), 650px);
 }
 .v-meia,
 .cartao.v-meia {
@@ -520,7 +520,7 @@ body {
   height: var(--h-faixa-grafico, clamp(273px, calc(var(--util) * 0.455), 430px));
 }
 .filas-largas .cartao.v-tabela {
-  height: var(--h-faixa-tabela, clamp(280px, calc(var(--util) * 0.545), 500px));
+  height: var(--h-faixa-tabela, clamp(520px, calc(var(--util) * 0.545), 650px));
 }
 .filas-largas .cartao.v-matriz {
   height: var(--h-faixa-matriz, clamp(360px, var(--util), 900px));

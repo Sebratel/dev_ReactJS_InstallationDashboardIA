@@ -14,14 +14,14 @@ test('utilPx não finito não publica nada — nunca "NaNpx" numa altura', () =>
   assert.equal(calculaAlturasDeFaixa(1, 0, 0, Infinity), null);
 });
 
-test('uma faixa sozinha de cada tipo reproduz EXATAMENTE a fração fixa de hoje', () => {
+test('uma faixa sozinha respeita a fração e o piso de leitura de cada tipo', () => {
   // É o caso que existia antes desta fase inteira, e não pode regredir: a primeira
   // versão desta conta (peso relativo entre tipos, dividindo --util inteiro) inflava
   // exatamente este caso — uma tabela larga sozinha passava de 54,5% para 100% de
   // --util. Ver o comentário de `FRACAO_POOL` em useAlturaMedida.ts.
   const util = 600;
   assert.equal(calculaAlturasDeFaixa(1, 0, 0, util)!.grafico, Math.round(util * 0.455));
-  assert.equal(calculaAlturasDeFaixa(0, 1, 0, util)!.tabela, Math.round(util * 0.545));
+  assert.equal(calculaAlturasDeFaixa(0, 1, 0, util)!.tabela, 520);
   assert.equal(calculaAlturasDeFaixa(0, 0, 1, util)!.matriz, util); // matriz sempre pegou 100% sozinha
 });
 
@@ -34,7 +34,7 @@ test('três matrizes + duas tabelas largas + um gráfico largo: cada tipo no seu
   const util = 1200;
   const r = calculaAlturasDeFaixa(1, 2, 3, util)!;
   assert.equal(r.grafico, 430); // 0,455*1200=546, mas o teto do tipo (430) vence — sozinho, mas grande
-  assert.equal(r.tabela, 327); // (0,545*1200)/2=327, dentro de [280,500]
+  assert.equal(r.tabela, 520); // (0,545*1200)/2=327, então o piso de leitura vence
   assert.equal(r.matriz, 400); // 1200/3=400, dentro de [360,900]
 });
 
@@ -47,7 +47,7 @@ test('nunca fica abaixo do piso, não importa quantas faixas do mesmo tipo exist
   // agendamento-field: 2 gráficos largos + 3 tabelas largas + 3 matrizes, --util pequeno
   const r = calculaAlturasDeFaixa(2, 3, 3, 100)!;
   assert.equal(r.grafico, 273);
-  assert.equal(r.tabela, 280);
+  assert.equal(r.tabela, 520);
   assert.equal(r.matriz, 360);
 });
 

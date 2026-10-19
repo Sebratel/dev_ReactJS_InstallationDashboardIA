@@ -178,10 +178,10 @@ export class Metricas {
  * reconhecido como fundo é tratado como `interactive`, porque tratar um usuário
  * como warmup é o único erro dos três que alguém sente.
  */
-export type OrigemDoPedido = 'interactive' | 'prefetch' | 'warmup';
+export type OrigemDoPedido = 'interactive' | 'prefetch' | 'warmup' | 'export';
 
-/** As três classes, da mais urgente para a menos. Sem faixas intermediárias. */
-export const ORIGENS: readonly OrigemDoPedido[] = ['interactive', 'prefetch', 'warmup'];
+/** As classes, da mais urgente para a menos. Sem faixas intermediárias. */
+export const ORIGENS: readonly OrigemDoPedido[] = ['interactive', 'prefetch', 'warmup', 'export'];
 
 /**
  * A ordem da fila: menor número passa na frente.
@@ -213,6 +213,7 @@ export function prioridadeDe(origem: OrigemDoPedido): number {
  */
 export function origemDoPedido(ehAquecedor: boolean, origemNaUrl: string | null): OrigemDoPedido {
   if (ehAquecedor) return 'warmup';
-  if (origemNaUrl === 'prefetch' || origemNaUrl === 'warmup') return origemNaUrl;
+  if (origemNaUrl === 'prefetch' || origemNaUrl === 'warmup' || origemNaUrl === 'export')
+    return origemNaUrl;
   return 'interactive';
 }

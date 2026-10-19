@@ -18,7 +18,7 @@
 >
 > | o que este documento trata como aberto | o que foi medido |
 > |---|---|
-> | "a piscina de workers autoriza 4 × 8 GB" | **2.560 MB autorizados** (pai 1.536 + 2 × 512), `mem_limit: 3g`; 200 aberturas simultâneas passaram, com RSS pico de 1.827 MB e p95 de 256 ms em cache quente (16/10) |
+> | "a piscina de workers autoriza 4 × 8 GB" | **1.536 MB autorizados** (pai 1.024 + 1 × 512), `mem_limit: 1600m`; 200 usuários distintos abriram três telas cada sem falha, com pico de cgroup de 1.344,2 MiB e p95 de 1,14 s (18/10) |
 > | "uma fonte caiu e o refresh ficou preso" | o vigia encerra a árvore do grupo após 30 min, registra falha transitória e o daemon tenta de novo; a fila não fica parada indefinidamente |
 > | "três queries têm defeito de carga" | expostas em `/api/saude` → `refresh.queries[]` com idade e estado, e a tela avisa (A2/A6, commits `c193490` / `58ac4b9`) |
 > | "a stack nunca subiu" | subiu: **10/10 páginas pelo proxy na porta 80**, pico 4.356 MB de 6.144, `OOMKilled=false`, ACHADOS #99 e PLANO-DUPLA §A7 |
@@ -196,7 +196,7 @@ todas as linhas — e o que a API serve inclui:
 >
 > **Produção continua com o container `refresh` separado, e isso é deliberado.** O
 > serviço `api` do `docker-compose.prod.yml` ganhou `AUTO_REFRESH: false`, porque o
-> `mem_limit` dele é 3g (validado no cgroup com 200 aberturas e RSS pico de 1.827 MB).
+> `mem_limit` dele é 1600m (validado no cgroup com 200 usuários distintos e pico de 1.344,2 MiB).
 > A materialização usa outro container, com teto de 1450 MB e memória medida de
 > 1234 MiB para `protocolos-geral`; dentro do cgroup da API, ela poderia levar a tela
 > junto com a carga em caso de OOM.
@@ -293,7 +293,7 @@ valendo para quem for mexer na cadência.
   **O agendamento é 100% automático de fábrica** (06/09/2026):
   - Em produção (Docker Compose / Portainer): o `docker-compose.prod.yml` já traz
     o serviço `refresh` embutido executando `backend/tools/refresh/src/daemon.ts` a cada
-    15 minutos com `mem_limit: 1450m` e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
+    15 minutos com `mem_limit: 1400m` e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
     compartilhado com a API. Subir a stack já sobe o agendador ativo.
   - **Credencial Google (27/09/2026, ACHADOS #157):** `GOOGLE_CREDENCIAL_HOST` = caminho,
     NO SERVIDOR, do JSON da service account. O compose o monta só-leitura em
@@ -519,8 +519,8 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
   não precisa de `tsc` para a API. O **frontend** sim: `npm run web:build` roda
   `tsc --noEmit` e o Vite.
 - **A API tem heap e piscina limitados.** A imagem sobe com
-  `--max-old-space-size=1536` e `--expose-gc`, mais duas workers de 512 MB, dentro
-  de `mem_limit: 3g`. A cota foi validada sob 200 aberturas simultâneas; não aumente
+  `--max-old-space-size=1024` e `--expose-gc`, mais uma worker de 512 MB, dentro
+  de `mem_limit: 1600m`. A cota foi validada sob 200 usuários distintos; não aumente
   um dos três valores isoladamente.
 - **O `snapshot/` não vai dentro da imagem.** São **39 MB** de dado de cliente, e ele
   muda a cada refresh: é **volume**, e um volume que precisa de backup e de política de
@@ -553,22 +553,17 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
 ### 3.2 `docker-compose` de produção
 
 ⚠ **Não existe `docker-compose.yml` na raiz.** O arquivo de produção é
-`docker-compose.prod.yml`; ele sobe os serviços da aplicação e o **Redis do cache de
-respostas** (serviço `redis`, desde 16/10/2026, no mesmo padrão do antifraude). Proxy
-reverso e TLS são infraestrutura externa configurada pelo Misael no Portainer.
+`docker-compose.prod.yml`; ele sobe `api`, `refresh` e um Redis exclusivo desta stack.
+Proxy reverso e TLS são infraestrutura externa configurada pelo Misael no Portainer.
 
-O Redis exige `REDIS_PASSWORD` nas variáveis da stack (ou no `.env` apenas em execução
-local; só `[0-9a-f]`, ex.: `openssl rand -hex 24`,
-porque vai crua na `REDIS_URL` que o compose monta para a `api`). Sem porta publicada,
-64 MB de dado com `allkeys-lru` num teto de 192 MB (a fragmentação chega a 2× e mais, ACHADOS #229/#230), sem persistência. Se ele cair, a API segue com o cache em
-memória (teto `CACHE_RESPOSTA_MB`, padrão 256 MB) — ACHADOS #228. Não aponte desenvolvimento para `redis://localhost:6379` se não houver
-um Redis realmente escutando nesse host.
+Defina `REDIS_PASSWORD` nas variáveis da stack. O Compose monta a `REDIS_URL` da API
+para o Redis exclusivo, sem publicar a porta dele. A API usa 64 MB de cache local.
 
 Para desenvolvimento há `docker-compose.local.yml`, que é **sobreposição** e não
 stack própria — ele só rebaixa `NODE_ENV` e liga `SEM_LOGIN`, e se usa com os dois
 `-f` (o cabeçalho do arquivo traz os comandos).
 
-O de produção tem três serviços: `api` (teto 2560m), `refresh` (1450m, com a carga completa das 3h dentro) e `redis` (192m) — 4,1 GB de tetos somados (ACHADOS #230). **A tela não é
+O de produção tem três serviços: `api` (teto 1600m), `refresh` (1400m, com a carga completa das 3h dentro) e `redis` (192m) — 3192 MiB de tetos somados. **A tela não é
 um serviço:** a API já serve o build estático na raiz. O proxy externo aponta para
 `${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}`; deixe o bind em loopback salvo
 quando a rede do Misael exigir outra interface.
@@ -706,10 +701,8 @@ proxy externo; não acrescente outro container de proxy a esta stack.
 - `docker-compose.prod.yml` fixa a porta interna em **3100**. O proxy externo deve
   apontar para `API_BIND_HOST:API_PORT_HOST` e as duas variáveis devem refletir a rede
   definida pelo Misael.
-- `REDIS_PASSWORD` é obrigatória nas variáveis da stack desde 16/10/2026 (no `.env` só
-  para uso local): o compose monta a `REDIS_URL` da `api` apontando para o serviço
-  `redis` da própria stack, e o `up` falha sem ela.
-  `GET /api/saude` diz qual adapter está ligado; é lá que se confere, não no `.env`.
+- `REDIS_PASSWORD` é obrigatória nas variáveis da stack. O Compose monta a
+  `REDIS_URL` da API apontando para o Redis exclusivo; `GET /api/saude` confirma o adapter.
 - credenciais do Voalle e do MariaDB de produção: **usuário sem permissão de escrita**.
   É a camada 1 das quatro do read-only, e a única que o repositório não garante sozinho.
 
@@ -904,7 +897,7 @@ Antes:
 - [ ] árvore limpa (`git status` sem modificação) e commit empurrado
 - [ ] `npm run paginas -- --pagina=<três páginas diferentes>` sem erro
 - [ ] `snapshot/` do dia, e `npm run snapshot:confere` sem divergência de tipo
-- [ ] `.env` de produção conferido contra o §3.5 — porta, `REDIS_PASSWORD`, usuário read-only
+- [ ] variáveis da stack conferidas contra o §3.5 — porta, `REDIS_PASSWORD`, usuário read-only
 - [ ] **não** rodar refresh nas horas anteriores: troca o carimbo e esfria todo o cache
 - [ ] pasta do snapshot no host gravável pelo uid 1000: `api` e `refresh` não rodam mais
       como root (13/10/2026) — `chown -R 1000:1000 <SNAPSHOT_DIR_HOST>` num servidor Linux

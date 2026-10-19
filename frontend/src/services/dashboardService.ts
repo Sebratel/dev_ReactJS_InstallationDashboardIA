@@ -421,13 +421,15 @@ export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[]; eu?
  * (`useVizinhanca`); o mouse sobre um valor continua interativo, porque o clique que
  * vem logo depois se junta a ele.
  */
+export type OrigemDePagina = 'prefetch' | 'export';
+
 export const pegaPagina = (
   id: string,
   filtros: readonly FiltroDaTela[],
   opcoes?: OpcoesDePagina,
   signal?: AbortSignal,
   clicados?: readonly { tabela: string; coluna: string }[],
-  origem?: 'prefetch',
+  origem?: OrigemDePagina,
 ): Promise<PaginaCalculada> => {
   const url = urlDaPagina(id, filtros, opcoes, clicados);
   return pega(origem ? `${url}${url.includes('?') ? '&' : '?'}origem=${origem}` : url, signal);

@@ -83,7 +83,7 @@ EXPOSE 3100
 # 1024, e o número é medido — era 10240, escolhido por estimativa (e 1536 até 17/10/2026).
 #
 # A API tem a mesma cota de 3 GB do dashboard Comercial. Medido em 16/10/2026,
-# em um contêiner isolado de 3 GB, com a piscina em 2 workers × 512 MB:
+# em um contêiner isolado de 3 GB, com a piscina em 1 worker de 512 MB:
 #
 #     200 aberturas simultâneas .... 200/200 OK; p95 3,82 s na primeira rajada
 #     cache já aquecida ............ 200/200 OK; p95 256 ms; RSS pico 1827 MB
@@ -92,8 +92,8 @@ EXPOSE 3100
 # até 42 GB de heap numa máquina de 16 GB. O `mem_limit` do compose tem de ser
 # derivado desta linha e revalidado dentro do cgroup.
 #
-# Heap autorizado hoje: 1024 (aqui) + 2 × 512 (piscina) = 2048 MB, dentro do
-# `mem_limit: 2560m` do docker-compose.prod.yml, com 512 MB de folga. 1536 -> 1024 em
-# 17/10/2026: o pai usa 34-42 MB de heap em produção (ACHADOS #230). `backend/api/test/piscina-workers.test.ts`
-# falha se os três números saírem de sincronia.
+# Heap autorizado hoje: 1024 (aqui) + 1 × 512 (piscina) = 1536 MB, dentro do
+# `mem_limit: 1600m` do docker-compose.prod.yml, com 64 MB de folga. A medição de
+# 18/10/2026 passou 200 usuários distintos com pico de cgroup de 1344,2 MiB.
+# `backend/api/test/piscina-workers.test.ts` falha se os três números saírem de sincronia.
 CMD ["node", "--max-old-space-size=1024", "--expose-gc", "backend/api/src/index.ts"]

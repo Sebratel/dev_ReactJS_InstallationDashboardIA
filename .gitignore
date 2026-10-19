@@ -9,6 +9,38 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# Segredos locais e certificados de integrações — nunca publicar.
+.envrc
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Bancos locais e arquivos auxiliares do DuckDB/SQLite.
+*.duckdb
+*.duckdb.wal
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.db
+*.db-*
+
+# Saídas locais de exportação, execução e ferramentas.
+/downloads/
+/exports/
+*.csv
+*.tsv
+*.xls
+*.xlsx
+/tmp/
+/.cache/
+/.eslintcache
+/.nyc_output/
+/.npm/
+frontend/.cache/
+frontend/.vite/
+*.pid
+
 # Artefatos Power BI (base de referência, não versionar aqui)
 *.pbix
 **/.pbi/localSettings.json
@@ -35,4 +67,5 @@ test-results/
 
 # Clone de consulta do dashboard comercial (modelo do acesso por aba, ACHADOS #207).
 # É outro repositório git: commitá-lo aqui viraria um submódulo quebrado.
+# Nunca faz parte deste produto nem pode entrar no GitHub deste repositório.
 dados_ReactJS_CommercialDashboards/

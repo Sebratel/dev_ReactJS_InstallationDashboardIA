@@ -63,11 +63,10 @@ const PERFIL_DE_PRODUCAO = {
 test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', () => {
   // O guarda que faltava, e a conta que ele guarda:
   //
-  //   pai 1024 + 2 workers × 512 = 2048 MB de heap autorizado
-  //   mem_limit 2560 MB          = 512 MB de folga autorizada
+  //   pai 1024 + 1 worker × 512 = 1536 MB de heap autorizado
+  //   mem_limit 1600 MB         = 64 MB de folga autorizada
   //
-  // RSS pico medido: 1827 MB (200 aberturas, 16/10/2026, pai de 1536 e teto de 3g);
-  // a faixa de 2560m ainda falta medir no servidor (ACHADOS #230).
+  // Pico de cgroup medido: 1344,2 MiB (200 usuários distintos, 18/10/2026).
   //
   // Se alguém subir um dos padrões sem mexer no outro, o container passa a ser
   // morto pelo OOM killer do host — falha que aparece como "a página às vezes
@@ -97,8 +96,8 @@ test('o perfil de produção mantém o teto do processo pai e da piscina', () =>
   // O pai usa 34-42 MB de heap em produção (log de 3 h, 16/10/2026); 1024 guarda o
   // cache de respostas (teto de 256 MB) com folga.
   assert.equal(TETO_PAI_MB, 1024);
-  assert.deepEqual(PERFIL_DE_PRODUCAO, { API_WORKERS: '2', API_WORKER_HEAP_MB: '512' });
-  assert.equal(MEM_LIMIT_CONTAINER_MB, 2560);
+  assert.deepEqual(PERFIL_DE_PRODUCAO, { API_WORKERS: '1', API_WORKER_HEAP_MB: '512' });
+  assert.equal(MEM_LIMIT_CONTAINER_MB, 1600);
 });
 
 test('API_WORKERS e API_WORKER_HEAP_MB sobrepõem os padrões', () => {

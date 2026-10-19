@@ -122,12 +122,29 @@ test('?origem= classifica o pedido, e cada classe é medida em separado', async 
   try {
     await s.busca('/api/dashboards/capa?de=20&linhas=1&origem=prefetch');
     await s.busca('/api/dashboards/capa?de=20&linhas=2&origem=warmup');
+    await s.busca('/api/dashboards/capa?de=20&linhas=3&origem=export');
     const m = await s.metricas();
     assert.equal(m.contadores.pedidos_prefetch, 1);
     assert.equal(m.contadores.pedidos_warmup, 1);
+    assert.equal(m.contadores.pedidos_export, 1);
     assert.equal(m.duracoes.fila_ms_prefetch!.n, 1);
     assert.equal(m.duracoes.fila_ms_warmup!.n, 1);
+    assert.equal(m.duracoes.fila_ms_export!.n, 1);
     assert.equal(m.duracoes.fila_ms_interactive, undefined, 'nenhum destes dois era clique');
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('exportação não lê nem preenche o cache compartilhado', async () => {
+  const s = await sobe();
+  try {
+    await s.busca('/api/dashboards/capa?de=25&linhas=1');
+    await s.busca('/api/dashboards/capa?de=25&linhas=1&origem=export');
+    const m = await s.metricas();
+    assert.equal(m.contadores.cache_misses, 1);
+    assert.equal(m.contadores.cache_hits, undefined);
+    assert.equal(m.contadores.fila_entradas_export, 1);
   } finally {
     await s.fecha();
   }
@@ -219,7 +236,7 @@ test('a saúde diz a fila POR CLASSE — uma fila de 6 não diz se alguém está
     ];
     await s.ate((m) => m.piscina.fila >= 2, 'a fila encher');
     const m = await s.metricas();
-    assert.deepEqual(m.piscina.porClasse.length, 3);
+    assert.deepEqual(m.piscina.porClasse.length, 4);
     assert.equal(m.piscina.porClasse[0], 0, 'nenhum clique esperando');
     assert.ok(m.piscina.porClasse[2]! >= 2, 'os aquecimentos é que estão na fila');
     await Promise.all(emVoo);

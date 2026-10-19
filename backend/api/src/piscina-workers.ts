@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from './worker-calculador.ts';
 import { TETO_PADRAO_MB } from './cache-visual.ts';
 import type { MedidaDaWorker, MemoriaDeWorkerNaSaude, MensagemDeMemoria } from './memoria-da-saude.ts';
+import { ORIGENS } from './metricas.ts';
 
 export interface OpcoesPiscina {
   /** Quantas workers manter na piscina. Padrão: `configuracaoDaPiscina`. */
@@ -352,8 +353,8 @@ export interface MedidaDaTarefa {
  * ordenação é a coisa que a F3 entrega, e ela não pode depender de um teste que
  * precisa de duas threads e um snapshot para rodar.
  */
-/** `interactive`, `prefetch`, `warmup` — ver `ORIGENS` em `metricas.ts`. */
-export const CLASSES_DE_PRIORIDADE = 3;
+/** Ver `ORIGENS` em `metricas.ts`. */
+export const CLASSES_DE_PRIORIDADE = ORIGENS.length;
 
 export class FilaDePrioridade<T extends { prioridade: number }> {
   readonly #filas: T[][];

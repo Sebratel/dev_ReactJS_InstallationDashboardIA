@@ -2032,8 +2032,9 @@ export class Servidor {
     );
     const prioridade = prioridadeDe(origem);
     this.metricas.conta(`pedidos_${origem}`);
+    const usaCacheCompartilhado = origem !== 'export';
 
-    if (ttl > 0 && !recalcula) {
+    if (usaCacheCompartilhado && ttl > 0 && !recalcula) {
       const guardado = await this.cache.le<object>(chave);
       if (guardado !== undefined) {
         this.metricas.conta('cache_hits');
@@ -2311,10 +2312,12 @@ export class Servidor {
     // O corpo vai para o cache **sem** o campo `cache`: ele descreve o
     // pedido, não a resposta, e congelá-lo como `miss` faria todo acerto se
     // anunciar como falha.
-    await this.cache.guarda(chave, corpo, ttl);
-    // A "última pronta" aponta para o mesmo objeto (o cache em memória guarda
-    // referência): a segunda chave não dobra a memória.
-    await this.cache.guarda(chaveAnterior, corpo, TTL_ULTIMA_PRONTA_S);
+    if (usaCacheCompartilhado) {
+      await this.cache.guarda(chave, corpo, ttl);
+      // A "última pronta" aponta para o mesmo objeto (o cache em memória guarda
+      // referência): a segunda chave não dobra a memória.
+      await this.cache.guarda(chaveAnterior, corpo, TTL_ULTIMA_PRONTA_S);
+    }
     return corpo;
     };
 
@@ -2323,7 +2326,7 @@ export class Servidor {
     // calculada em segundo plano com prioridade de fundo (a piscina deixa uma
     // worker livre para quem usa). O aquecedor não entra aqui — é ele quem prepara a
     // versão nova, e servir-lhe a velha o faria aquecer nada.
-    if (ttl > 0 && !recalcula && origem !== 'warmup') {
+    if (usaCacheCompartilhado && ttl > 0 && !recalcula && origem !== 'warmup') {
       const anterior = await this.cache.le<object>(chaveAnterior);
       if (anterior !== undefined) {
         this.metricas.conta('servido_anterior');

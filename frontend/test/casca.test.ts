@@ -210,6 +210,11 @@ test('as duas frações somam 1 — duas faixas são uma tela', () => {
   assert.equal(fracao('grafico') + fracao('tabela'), 1, 'gráfico + tabela têm de dar 1');
 });
 
+test('a tabela reserva altura para pelo menos dez linhas visíveis', () => {
+  const piso = numero(regra('tabela'), /clamp\((\d+)px/, 'o piso da tabela');
+  assert.equal(piso, 520);
+});
+
 /**
  * As duas faixas cabem na resolução de referência ALTA — e a fronteira é sabida.
  *

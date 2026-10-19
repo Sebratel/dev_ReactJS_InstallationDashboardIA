@@ -143,7 +143,7 @@ function piscinaFalsa(): {
   const pendentes: ((r: RespostaCalculoWorker) => void)[] = [];
   const falsa = {
     ativa: true,
-    estado: { fila: 0, ocupados: 0, workers: 1, porClasse: [0, 0, 0] },
+    estado: { fila: 0, ocupados: 0, workers: 1, porClasse: [0, 0, 0, 0] },
     executa(msg: Omit<MensagemCalculoWorker, 'idReq'>): Promise<RespostaCalculoWorker> {
       pedidos.push(msg);
       return new Promise((ok) => pendentes.push(ok));

@@ -14,6 +14,7 @@ import type {
   VisualCalculado,
 } from '../../services/dashboardService.ts';
 import { baixaCsv, textoCsv } from '../../utils/csv.ts';
+import { coletaTabelaCompleta } from '../../services/exportacaoService.ts';
 import { escalasDaTabela, ordenaLinhas } from '../../utils/tabelaDados.ts';
 import { Cartao, Erro } from '../ui/Cartao.tsx';
 import { Paginacao } from '../ui/Paginacao.tsx';
@@ -45,6 +46,12 @@ export function Tabela(props: {
   // garantia, porque a URL pode chegar de qualquer lugar).
   const [termoBusca, setTermoBusca] = useState<string>('');
   const [termoAplicado, setTermoAplicado] = useState<string>('');
+  const [exportando, setExportando] = useState(false);
+  const [progressoDaExportacao, setProgressoDaExportacao] = useState<{
+    baixadas: number;
+    total: number;
+  } | null>(null);
+  const [erroDaExportacao, setErroDaExportacao] = useState<string | null>(null);
   useEffect(() => {
     const t = setTimeout(
       () => setTermoAplicado(termoBusca.trim().toLowerCase()),
@@ -170,12 +177,32 @@ export function Tabela(props: {
     ]);
   };
 
-  const exportarCSV = () => {
-    const cabecalho = d.colunas.map((c) => c.nome ?? '');
-    const corpo = d.linhas.map((linha) =>
-      linha.map((v, j) => textoDaCelula(v, d.colunas[j]).texto),
-    );
-    baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, corpo));
+  const exportarCSV = async () => {
+    if (exportando) return;
+    setExportando(true);
+    setErroDaExportacao(null);
+    setProgressoDaExportacao({ baixadas: 0, total: d.linhasTotais });
+    try {
+      const completa = await coletaTabelaCompleta({
+        pagina: props.pagina,
+        visual: props.visual.id,
+        filtros: props.filtros,
+        busca: termoAplicado,
+        aoProgredir: setProgressoDaExportacao,
+      });
+      const cabecalho = completa.colunas.map((c) => c.nome ?? '');
+      const corpo = ordenaLinhas(completa.linhas, colOrdenada, ordemDesc).map((linha) =>
+        linha.map((v, j) => textoDaCelula(v, completa.colunas[j]).texto),
+      );
+      baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, corpo));
+    } catch (err) {
+      setErroDaExportacao(
+        err instanceof Error ? err.message : 'Não foi possível exportar os dados.',
+      );
+    } finally {
+      setExportando(false);
+      setProgressoDaExportacao(null);
+    }
   };
 
   return (
@@ -193,13 +220,21 @@ export function Tabela(props: {
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
           />
-          <button onClick={exportarCSV} title="Exportar dados da tabela em formato CSV">
-            <Download size={12} /> CSV
+          <button
+            onClick={() => void exportarCSV()}
+            disabled={exportando}
+            title="Exportar todas as linhas do período filtrado em formato CSV"
+          >
+            <Download size={12} />{' '}
+            {exportando && progressoDaExportacao
+              ? `CSV ${progressoDaExportacao.baixadas}/${progressoDaExportacao.total}`
+              : 'CSV'}
           </button>
         </>
       }
     >
       {janela.erro ? <Erro>{janela.erro}</Erro> : null}
+      {erroDaExportacao ? <Erro>{erroDaExportacao}</Erro> : null}
       {totalLocal === 0 ? (
         <MensagemDeEstado>
           {termoBusca ? 'Nenhuma linha para esta busca.' : 'Nenhuma linha para os filtros atuais.'}

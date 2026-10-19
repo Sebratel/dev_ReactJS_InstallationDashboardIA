@@ -223,36 +223,25 @@ test('a carga completa da madrugada mora no refresh, às 03:00 de Brasília, sem
   assert.doesNotMatch(fs.readFileSync(path.join(RAIZ, 'Dockerfile'), 'utf8'), /AS cron/, 'estágio cron sem uso');
 });
 
-test('compose de produção: proxy externo, Redis PRÓPRIO da stack e fechado (16/10/2026)', () => {
+test('compose de produção: proxy e Redis são infraestrutura externa', () => {
   const compose = parse(fs.readFileSync(path.join(RAIZ, 'docker-compose.prod.yml'), 'utf8')) as {
     services: Record<string, {
-      environment?: Record<string, string>; ports?: string[]; command?: string; mem_limit?: string;
-      volumes?: string[];
+      environment?: Record<string, string>; ports?: string[]; mem_limit?: string;
     }>;
-    volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
   assert.equal(compose.services.proxy, undefined, 'proxy/TLS é fornecido fora desta stack');
   assert.equal(api.environment?.CONFIA_PROXY, '${CONFIA_PROXY:-0}');
   assert.deepEqual(api.ports, ['${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3100}:3100']);
 
-  // Redis desta stack (ACHADOS #228): a api aponta para o serviço pelo nome, com senha.
-  const redis = compose.services.redis!;
-  assert.ok(redis, 'o Redis do cache de respostas mora nesta stack');
-  assert.equal(api.environment?.REDIS_URL, 'redis://:${REDIS_PASSWORD:?defina REDIS_PASSWORD no .env}@redis:6379/0');
-  // Senha obrigatória: `up` sem REDIS_PASSWORD falha em vez de subir um Redis aberto.
-  assert.match(redis.command!, /--requirepass \$\{REDIS_PASSWORD:\?/);
-  // A fragmentação chega a 2× e mais (medida, ACHADOS #229/#230): 512mb/640m morria por
-  // OOM; 64mb/192m passou com pico de 110 MiB.
-  assert.match(redis.command!, /--maxmemory 64mb/);
-  assert.match(redis.command!, /--maxmemory-policy allkeys-lru/);
-  // Sem porta publicada e sem nada em disco: é cache sobre dado de cliente.
-  assert.equal(redis.ports, undefined, 'Redis não pode ser alcançável de fora da stack');
-  assert.equal(redis.volumes, undefined, 'cache não grava dado de cliente em volume');
-  assert.match(redis.command!, /--save ''/);
-  assert.match(redis.command!, /--appendonly no/);
-  assert.equal(redis.mem_limit, '192m');
-  assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
+  assert.equal(compose.services.redis, undefined, 'Redis compartilhado não deve duplicar memória nesta stack');
+  assert.equal(api.environment?.REDIS_URL, '${REDIS_URL:-}');
+  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '96');
+  assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
+  assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
+  assert.equal(api.mem_limit, '1600m');
+  assert.equal(compose.services.refresh?.mem_limit, '1400m');
+  assert.ok(1600 + 1400 <= 3 * 1024, 'api + refresh devem caber no teto físico de 3 GiB');
 });
 
 test('compose de produção recebe segredos pelas variáveis da stack, não por arquivo .env no host', () => {

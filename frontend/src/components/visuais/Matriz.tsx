@@ -17,6 +17,7 @@ import type {
 } from '../../services/dashboardService.ts';
 import { inteiro } from '../../utils/formato.ts';
 import { baixaCsv, textoCsv } from '../../utils/csv.ts';
+import { coletaMatrizCompleta } from '../../services/exportacaoService.ts';
 import {
   cabecalhosDaDireita,
   corpoDaMatriz,
@@ -64,6 +65,12 @@ export function Matriz(props: {
   // Com setter: sem ele a janela ficava presa na última página. `null` = ainda no padrão,
   // então ela acompanha o fim quando um filtro muda o tamanho da matriz.
   const [inicioColuna, setInicioColuna] = useState<number | null>(null);
+  const [exportando, setExportando] = useState(false);
+  const [progressoDaExportacao, setProgressoDaExportacao] = useState<{
+    baixadas: number;
+    total: number;
+  } | null>(null);
+  const [erroDaExportacao, setErroDaExportacao] = useState<string | null>(null);
 
   if (!d || !d.colunas || !d.linhas) {
     return (
@@ -96,9 +103,28 @@ export function Matriz(props: {
   const nomeChavesColuna = d.chavesDeColuna.map((c) => c.nome ?? c.coluna).join(' / ') || 'Coluna';
   const corpo = corpoDaMatriz(d, transposto, deColuna, ateColuna, escalas);
 
-  const exportarCSV = () => {
-    const { cabecalho, linhas } = csvDaMatriz(d);
-    baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, linhas));
+  const exportarCSV = async () => {
+    if (exportando) return;
+    setExportando(true);
+    setErroDaExportacao(null);
+    setProgressoDaExportacao({ baixadas: 0, total: d.linhasTotais });
+    try {
+      const completa = await coletaMatrizCompleta({
+        pagina: props.pagina,
+        visual: props.visual.id,
+        filtros: props.filtros,
+        aoProgredir: setProgressoDaExportacao,
+      });
+      const { cabecalho, linhas } = csvDaMatriz(completa);
+      baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, linhas));
+    } catch (err) {
+      setErroDaExportacao(
+        err instanceof Error ? err.message : 'Não foi possível exportar os dados.',
+      );
+    } finally {
+      setExportando(false);
+      setProgressoDaExportacao(null);
+    }
   };
 
   return (
@@ -141,13 +167,21 @@ export function Matriz(props: {
               <Transpor /> {transposto ? 'Desfazer transposição' : 'Transpor'}
             </button>
           )}
-          <button onClick={exportarCSV} title="Exportar matriz em formato CSV">
-            <Download size={12} /> CSV
+          <button
+            onClick={() => void exportarCSV()}
+            disabled={exportando}
+            title="Exportar todas as linhas do período filtrado em formato CSV"
+          >
+            <Download size={12} />{' '}
+            {exportando && progressoDaExportacao
+              ? `CSV ${progressoDaExportacao.baixadas}/${progressoDaExportacao.total}`
+              : 'CSV'}
           </button>
         </>
       }
     >
       {janela.erro ? <Erro>{janela.erro}</Erro> : null}
+      {erroDaExportacao ? <Erro>{erroDaExportacao}</Erro> : null}
       <div className="rolagem">
         <table className="dados">
           <thead>

@@ -112,7 +112,7 @@ const FRACAO_POOL = { grafico: 0.455, tabela: 0.545, matriz: 1 } as const;
 
 const PISO_TETO_FAIXA = {
   grafico: [273, 430],
-  tabela: [280, 500],
+  tabela: [520, 650],
   matriz: [360, 900],
 } as const;
 

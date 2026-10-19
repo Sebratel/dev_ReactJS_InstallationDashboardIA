@@ -87,7 +87,7 @@ function piscinaQueAnota(): {
   const eventos: string[] = [];
   const falsa = {
     ativa: true,
-    estado: { fila: 0, ocupados: 0, workers: 1, porClasse: [0, 0, 0] },
+    estado: { fila: 0, ocupados: 0, workers: 1, porClasse: [0, 0, 0, 0] },
     executa(msg: Omit<MensagemCalculoWorker, 'idReq'>): Promise<RespostaCalculoWorker> {
       pedidos.push(msg);
       eventos.push(`${msg.valores ? 'valores' : 'calcula'} ${msg.dashboardSpec.id}`);
