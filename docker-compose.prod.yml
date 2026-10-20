@@ -245,10 +245,10 @@ services:
     # cargas dividem a trava do snapshot e nunca materializam juntas — a que chega espera
     # (`backend/packages/snapshot/src/trava.ts`). Ver `backend/tools/refresh/src/diario.ts`.
     #
-    # Medido em 18/10/2026: `field-agenda` incremental concluiu com heap de 1360 MB
-    # dentro de 1400 MiB de cgroup; 1280 MB estoura o heap. O cgroup separado protege
-    # a API de OOM durante a carga.
-    mem_limit: 1400m
+    # `field-agenda` passou de 632 mil linhas em 20/10/2026 e o processo era morto pelo
+    # cgroup de 1400 MiB antes de publicar o snapshot. Os 3 GB deixam folga para buffers
+    # fora do heap durante a transformação, sem dividir o orçamento da API.
+    mem_limit: 3g
     # A trava do snapshot usa hostname + PID. Mantê-lo estável permite ao
     # contêiner substituto reconhecer imediatamente um PID morto de deploy.
     hostname: dashboard-instalacao-refresh
@@ -267,7 +267,7 @@ services:
       MARIA_SSL: '0'
       NODE_ENV: production
       REFRESH_INTERVAL_MINUTOS: '15'
-      REFRESH_MEMORIA_MB: '1360'
+      REFRESH_MEMORIA_MB: '2500'
       # Uma conexão de fonte pendurada não segura a fila para sempre: o daemon
       # mata o grupo após 30 min, registra falha transitória e tenta novamente.
       REFRESH_TEMPO_MAXIMO_MINUTOS: '30'

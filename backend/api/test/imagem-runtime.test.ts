@@ -263,7 +263,7 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
   assert.equal(api.mem_limit, '1600m');
-  assert.equal(compose.services.refresh?.mem_limit, '1400m');
+  assert.equal(compose.services.refresh?.mem_limit, '3g');
   // Redis desta stack (ACHADOS #228): a api aponta para o serviço pelo nome, com senha.
   const redis = compose.services.redis!;
   assert.ok(redis, 'o Redis do cache de respostas mora nesta stack');
