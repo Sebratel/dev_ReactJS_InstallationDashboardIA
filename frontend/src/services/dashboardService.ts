@@ -49,6 +49,8 @@ export interface Segmentacao {
   nivel?: string;
   /** Presente quando esta segmentação não sabe filtrar. A tela desabilita e explica. */
   naoFiltra?: string;
+  /** Hierarquia de data (Ano/Mês/Dia): só se filtra pela árvore de período. */
+  niveis?: string[];
 }
 
 export interface OrigemDeCard {
