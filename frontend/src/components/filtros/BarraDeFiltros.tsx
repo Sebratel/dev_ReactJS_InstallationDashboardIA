@@ -82,6 +82,21 @@ export function BarraDeFiltros(props: {
   // devolve o espaço.
   const barraRef = useAlturaMedida<HTMLDivElement>('--h-filtros');
 
+  // Com chips, o "Limpar filtros" fecha a fileira deles (à direita) em vez de ganhar uma
+  // linha só para ele — era a terceira linha da barra na AGENDAMENTO FIELD (20/10/2026).
+  const limpar = temFiltro ? (
+    <button
+      type="button"
+      className="inline-flex h-[30px] cursor-pointer items-center gap-[6px] rounded-[8px] border border-pbi-borda bg-pbi-superficie px-[10px] py-0 font-semibold whitespace-nowrap text-pbi-muted transition-colors hover:border-pbi-critico-texto hover:text-pbi-critico-texto"
+      title="Remover todos os filtros desta página, inclusive o período padrão"
+      onClick={aoLimpar}
+      onMouseEnter={aoPreverLimpeza}
+    >
+      <FilterX size={14} />
+      Limpar filtros
+    </button>
+  ) : null;
+
   return (
     <>
       {dropdowns.length > 0 || chips || ocultos.length > 0 || dataDaTela ? (
@@ -124,20 +139,11 @@ export function BarraDeFiltros(props: {
               selecao={selecaoDe(filtros, chips.tabela, chips.coluna, chips.nivel)}
               aoMudar={(valores) => aoMudar(chips.tabela, chips.coluna, valores, chips.nivel)}
               aoPrever={(valores) => aoPrever(chips.tabela, chips.coluna, valores, chips.nivel)}
+              fim={limpar}
             />
-          ) : null}
-          {temFiltro ? (
-            <button
-              type="button"
-              className="inline-flex h-[30px] cursor-pointer items-center gap-[6px] rounded-[8px] border border-pbi-borda bg-pbi-superficie px-[10px] py-0 font-semibold whitespace-nowrap text-pbi-muted transition-colors hover:border-pbi-critico-texto hover:text-pbi-critico-texto"
-              title="Remover todos os filtros desta página, inclusive o período padrão"
-              onClick={aoLimpar}
-              onMouseEnter={aoPreverLimpeza}
-            >
-              <FilterX size={14} />
-              Limpar filtros
-            </button>
-          ) : null}
+          ) : (
+            limpar
+          )}
         </div>
       ) : null}
     </>
