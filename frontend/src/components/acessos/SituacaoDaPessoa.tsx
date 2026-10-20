@@ -109,7 +109,7 @@ export function SituacaoDaPessoa(props: {
               className="m-0 grid gap-[6px] border border-pbi-borda p-[8px]"
               disabled={!props.podeAgir || acao.isPending}
             >
-              <legend className="px-[4px] font-semibold">Suspensão</legend>
+              <legend className="px-[4px] font-semibold">Suspensão manual (opcional)</legend>
               {suspensa ? (
                 <div className="flex flex-wrap items-center gap-[8px]">
                   <span>{p.bloqueio?.motivo}</span>
@@ -145,7 +145,11 @@ export function SituacaoDaPessoa(props: {
                   </Botao>
                 </div>
               )}
-              <Nota>Suspender derruba as sessões abertas dela na hora.</Nota>
+              <Nota>
+                Para casos que a Senior não conhece (saiu do projeto, auditoria). Férias e
+                afastamentos não precisam disto: vêm da Senior sozinhos. Suspender derruba as
+                sessões dela na hora.
+              </Nota>
             </fieldset>
 
             <fieldset
@@ -190,7 +194,7 @@ export function SituacaoDaPessoa(props: {
               className="m-0 grid gap-[6px] border border-pbi-borda p-[8px]"
               disabled={!props.podeAgir || acao.isPending}
             >
-              <legend className="px-[4px] font-semibold">Senior</legend>
+              <legend className="px-[4px] font-semibold">Senior (automático)</legend>
               <label className="flex items-center gap-[6px]">
                 <input
                   type="checkbox"
@@ -203,7 +207,11 @@ export function SituacaoDaPessoa(props: {
                 />
                 Ignorar a Senior para esta pessoa (consultor, terceiro, conta de serviço)
               </label>
-              <Nota>Suspensão e prazo continuam valendo com a exceção ligada.</Nota>
+              <Nota>
+                Férias, atestado, licença e desligamento barram sozinhos e liberam quando a Senior
+                voltar a dizer Trabalhando. Com a exceção ligada, a Senior é ignorada; suspensão e
+                prazo continuam valendo.
+              </Nota>
             </fieldset>
             {!props.podeAgir ? (
               <Nota como="p">Só administrador barra ou libera quem tem papel.</Nota>
