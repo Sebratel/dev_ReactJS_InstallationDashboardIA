@@ -60,10 +60,12 @@ contrato está em `nginx.conf`). Depois troque no compose para `PUBLICACAO: prox
 
 ## Bancos
 
-A stack mantém TLS no Voalle e no MariaDB, mas aceita temporariamente seus certificados
-autoassinados (`*_SSL_REJECT_UNAUTHORIZED=0`): em 19/10/2026 a validação impedia toda
-carga. Quando a CA corporativa for montada nos contêineres, volte os dois valores para
-`1` e valide o redeploy.
+A `api` e o `refresh` conectam no Voalle e no MariaDB **sem TLS**, como o Comercial e as
+outras stacks (decisão do Misael, 19/10/2026). Os dois servidores apresentam certificado
+autoassinado, e com validação nenhum dos dois conectava. Para religar o TLS, volte
+`VOALLE_SSL`/`MARIA_SSL` para `'1'` no compose. Para validar o certificado, a CA tem de
+estar nos contêineres, e o conector Maria do refresh precisa passar a respeitar
+`MARIA_SSL_REJECT_UNAUTHORIZED` (hoje ele sempre valida). Ver `docs/ACHADOS.md` #232/#233.
 
 O Compose usa `build:` e precisa que o endpoint Docker do Portainer consiga
 construir imagens a partir do clone. Em endpoints remotos que não suportam

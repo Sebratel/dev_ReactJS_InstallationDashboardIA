@@ -43,8 +43,8 @@ services:
       # linha a própria guarda recusa a stack — e está certa.
       NODE_ENV: development
       # O overlay assume explicitamente o risco da execução local. A stack de
-      # produção continua com TLS obrigatório nos bancos e a publicação declarada
-      # (PUBLICACAO), que a guarda confere contra estes dois.
+      # produção continua com a publicação declarada (PUBLICACAO), que a guarda
+      # confere contra estes dois.
       COOKIE_SECURE: '0'
       CONFIA_PROXY: '0'
       VOALLE_SSL: '0'

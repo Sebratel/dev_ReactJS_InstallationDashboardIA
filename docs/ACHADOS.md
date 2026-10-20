@@ -15823,3 +15823,24 @@ conectam cifrados, e sem TLS também conectam. A decisão está pendente com o M
 detalhe vale para qualquer escolha: o conector Maria do refresh (`createMariaPool`) ignora
 `MARIA_SSL_REJECT_UNAUTHORIZED` e sempre valida (`ssl: {}`). Só a loja de acesso da API
 respeita a variável.
+
+---
+
+## #233 — bancos sem TLS, como as outras stacks (19/10)
+
+**Decisão do Misael**, que fecha o aberto do #232: a `api` e o `refresh` conectam no Voalle
+e no MariaDB sem TLS (`VOALLE_SSL: '0'`, `MARIA_SSL: '0'`), como o dashboard Comercial e
+as outras stacks. A exigência de TLS era só deste projeto, não dos bancos. A trava de
+produção deixou de cobrar `*_SSL`, e as variáveis seguem lidas por `config.ts`, então
+religar continua sendo opção.
+
+**Substitui `e891ab5`** (TLS ligado, aceitando o autoassinado), por escolha do Misael
+depois de comparar as duas. Aquela versão tinha ainda um furo: o conector Maria do refresh
+ignora `MARIA_SSL_REJECT_UNAUTHORIZED` (`ssl: {}` sempre valida), e o refresh continuaria
+falhando em toda fonte do MariaDB. Quem religar o TLS com o certificado autoassinado tem
+de consertar isso antes.
+
+**Medido:** com as credenciais da stack, a conexão sem TLS abre nos dois bancos (mesma
+sonda do #232). A rodada da stack inteira contra os bancos ficou para depois: na hora do
+teste, a VPN desta estação tinha caído, e nem o Windows alcançava `10.0.11.171:3306` nem
+`186.219.128.248:5432` (timeout de TCP, antes de qualquer TLS).

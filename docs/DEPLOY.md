@@ -709,10 +709,9 @@ proxy externo; não acrescente outro container de proxy a esta stack.
   `MARIA_DATABASE` serve ao refresh; `ACESSO_DB_DATABASE` aponta a API para as tabelas
   de permissões. Confirme com `SHOW GRANTS` que a conta consegue ler as fontes e gravar
   somente as tabelas de acesso necessárias em `DB_InstallationDashboard`.
-- TLS dos bancos é obrigatório no Compose (`VOALLE_SSL=1` e `MARIA_SSL=1`). Enquanto
-  a CA corporativa não for montada nos contêineres, certificados autoassinados usam
-  `*_SSL_REJECT_UNAUTHORIZED=0`; ao instalar a CA, volte os dois para `1`. O banco precisa oferecer
-  certificado confiável.
+- Bancos sem TLS no Compose (`VOALLE_SSL=0` e `MARIA_SSL=0`), como as outras stacks
+  (decisão do Misael, 19/10/2026; ACHADOS #233). Os dois servidores usam certificado
+  autoassinado. Religar é voltar os dois para `1`; ver docs/PORTAINER.md § Bancos.
 - o snapshot entra como somente leitura na API. O volume `api-runtime` guarda apenas
   diagnósticos; mantenha ambos restritos ao usuário do serviço no host.
 

@@ -334,14 +334,15 @@ test('compose de produção recebe segredos pelas variáveis da stack, não por 
     assert.equal(api.environment?.[chave], undefined, `API não deve exigir ${chave}`);
   }
   assert.equal(api.environment?.ACESSO_DB_DATABASE, '${ACESSO_DB_DATABASE:-DB_InstallationDashboard}');
-  assert.equal(api.environment?.VOALLE_SSL, '1');
-  assert.equal(api.environment?.VOALLE_SSL_REJECT_UNAUTHORIZED, '0');
-  assert.equal(api.environment?.MARIA_SSL, '1');
-  assert.equal(api.environment?.MARIA_SSL_REJECT_UNAUTHORIZED, '0');
-  assert.equal(refresh.environment?.VOALLE_SSL, '1');
-  assert.equal(refresh.environment?.VOALLE_SSL_REJECT_UNAUTHORIZED, '0');
-  assert.equal(refresh.environment?.MARIA_SSL, '1');
-  assert.equal(refresh.environment?.MARIA_SSL_REJECT_UNAUTHORIZED, '0');
+  // Bancos sem TLS, como as outras stacks (19/10/2026, ACHADOS #232/#233): os dois
+  // servidores têm certificado autoassinado.
+  for (const [nome, servico] of [['api', api], ['refresh', refresh]] as const) {
+    assert.equal(servico.environment?.VOALLE_SSL, '0', `${nome}: Voalle sem TLS`);
+    assert.equal(servico.environment?.MARIA_SSL, '0', `${nome}: Maria sem TLS`);
+    for (const chave of ['VOALLE_SSL_REJECT_UNAUTHORIZED', 'MARIA_SSL_REJECT_UNAUTHORIZED']) {
+      assert.equal(servico.environment?.[chave], undefined, `${nome}: ${chave} não faz nada sem TLS`);
+    }
+  }
   assert.equal(api.environment?.FIREBASE_PROJECT_ID, '${FIREBASE_PROJECT_ID:-}');
   assert.equal(api.environment?.ADMIN_EMAILS, '${ADMIN_EMAILS:-}');
   for (const chave of ['PUBLICACAO', 'COOKIE_SECURE', 'CONFIA_PROXY']) {

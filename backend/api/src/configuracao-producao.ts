@@ -29,9 +29,14 @@ export const PUBLICACOES = ['direta', 'proxy-https'] as const;
  * Tudo que a stack de produção precisa declarar antes de abrir a porta.
  *
  * Não verifica certificados nem grants aqui: isso pertence à infraestrutura. A
- * função garante que o processo não volte a subir sem TLS no banco nem com a
- * publicação incoerente. A conta Maria compartilhada é uma decisão explícita de
- * operação (19/10/2026).
+ * função garante que o processo não suba com a publicação incoerente nem sem a
+ * conta Maria. A conta Maria compartilhada é uma decisão explícita de operação
+ * (19/10/2026).
+ *
+ * **TLS dos bancos deixou de ser exigido em 19/10/2026** (decisão do Misael): as outras
+ * stacks da Sebratel, o Comercial entre elas, conectam sem TLS, e os dois servidores
+ * apresentam certificado autoassinado (ACHADOS #232). `*_SSL` seguem lidos por
+ * `config.ts`; ligar é opção.
  */
 export function problemasDaConfiguracaoDeProducao(
   env: Record<string, string | undefined>,
@@ -59,8 +64,6 @@ export function problemasDaConfiguracaoDeProducao(
   } else {
     problemas.push({ chave: 'PUBLICACAO', esperado: `${PUBLICACOES.map((p) => `'${p}'`).join(' ou ')}` });
   }
-  exigeLigado('VOALLE_SSL', '1');
-  exigeLigado('MARIA_SSL', '1');
   exigeValor('MARIA_HOST', 'host do MariaDB');
   exigeValor('MARIA_USER', 'usuário MariaDB configurado para a stack');
   exigeValor('MARIA_PASSWORD', 'senha do usuário MariaDB configurado para a stack');
@@ -73,7 +76,7 @@ export function mensagemDaConfiguracaoDeProducao(problemas: readonly ProblemaDeC
   return (
     `\n[segurança] RECUSANDO SUBIR: configuração de produção incompleta.\n\n` +
     `${itens}\n\n` +
-    `  Não publique a API com TLS de banco desligado nem com a publicação incoerente.\n` +
+    `  Não publique a API com a publicação incoerente.\n` +
     `  PUBLICACAO=direta: COOKIE_SECURE=0 e CONFIA_PROXY=0. PUBLICACAO=proxy-https: os dois em 1.\n` +
     `  Veja docs/PORTAINER.md antes de subir a stack.\n`
   );

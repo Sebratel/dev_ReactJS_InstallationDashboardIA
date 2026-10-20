@@ -8,10 +8,8 @@ const PRODUCAO_DIRETA = {
   PUBLICACAO: 'direta',
   COOKIE_SECURE: '0',
   CONFIA_PROXY: '0',
-  VOALLE_SSL: '1',
-  VOALLE_SSL_REJECT_UNAUTHORIZED: '0',
-  MARIA_SSL: '1',
-  MARIA_SSL_REJECT_UNAUTHORIZED: '0',
+  VOALLE_SSL: '0',
+  MARIA_SSL: '0',
   MARIA_HOST: 'mariadb.interno',
   MARIA_USER: 'conta-existente',
   MARIA_PASSWORD: 'nao-e-um-segredo-real',
@@ -27,14 +25,11 @@ const PRODUCAO_ATRAS_DE_PROXY = {
 const chaves = (env: Record<string, string | undefined>) =>
   problemasDaConfiguracaoDeProducao(env).map((p) => p.chave);
 
-test('produção sem nada declarado recusa: publicação, banco sem TLS e conta Maria ausente', () => {
+test('produção sem nada declarado recusa: publicação e conta Maria ausente', () => {
   const problemas = problemasDaConfiguracaoDeProducao({ NODE_ENV: 'production' });
   assert.deepEqual(
     problemas.map((p) => p.chave),
-    [
-      'PUBLICACAO', 'VOALLE_SSL', 'MARIA_SSL',
-      'MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD',
-    ],
+    ['PUBLICACAO', 'MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD'],
   );
   const mensagem = mensagemDaConfiguracaoDeProducao(problemas);
   assert.match(mensagem, /RECUSANDO SUBIR/);
@@ -69,9 +64,10 @@ test('publicação com valor desconhecido recusa em vez de adivinhar', () => {
   assert.deepEqual(chaves({ ...PRODUCAO_DIRETA, PUBLICACAO: 'Direta' }), ['PUBLICACAO']);
 });
 
-test('a publicação não mexe na criptografia TLS dos bancos', () => {
+test('TLS dos bancos é opção, não exigência: sobe com ele ligado ou desligado', () => {
   for (const base of [PRODUCAO_DIRETA, PRODUCAO_ATRAS_DE_PROXY]) {
-    assert.deepEqual(chaves({ ...base, VOALLE_SSL: '0', MARIA_SSL: '0' }), ['VOALLE_SSL', 'MARIA_SSL']);
+    assert.deepEqual(chaves({ ...base, VOALLE_SSL: undefined, MARIA_SSL: undefined }), []);
+    assert.deepEqual(chaves({ ...base, VOALLE_SSL: '1', MARIA_SSL: '1' }), []);
   }
 });
 
