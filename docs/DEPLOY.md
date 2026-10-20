@@ -293,7 +293,7 @@ valendo para quem for mexer na cadência.
   **O agendamento é 100% automático de fábrica** (06/09/2026):
   - Em produção (Docker Compose / Portainer): o `docker-compose.prod.yml` já traz
     o serviço `refresh` embutido executando `backend/tools/refresh/src/daemon.ts` a cada
-    15 minutos com `mem_limit: 1400m` e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
+    15 minutos com `mem_limit: 3g` e o volume `${SNAPSHOT_DIR_HOST:-./snapshot}`
     compartilhado com a API. Subir a stack já sobe o agendador ativo.
   - **Credencial Google (27/09/2026, ACHADOS #157):** `GOOGLE_CREDENCIAL_HOST` = caminho,
     NO SERVIDOR, do JSON da service account. O compose o monta só-leitura em
