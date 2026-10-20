@@ -1023,7 +1023,7 @@ export class Servidor {
       return;
     }
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
+    const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
@@ -1070,9 +1070,27 @@ export class Servidor {
       return;
     }
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
+    const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
+  }
+
+  /**
+   * **Uma sessão por pessoa (decisão do Erick, 20/10/2026).** O login novo derruba as
+   * sessões anteriores do mesmo e-mail: o outro navegador leva 401 no próximo pedido
+   * (ou no próximo aviso do tempo real) e volta para a tela de login. Derrubar o antigo,
+   * e não recusar o novo, é de propósito: recusar travaria fora quem fechou o navegador
+   * sem sair, até a sessão vencer. Vale para `/auth/google` e `/auth/firebase`; a de
+   * máquina (`/auth/interno`, que nem existe em produção) segue podendo ter várias.
+   */
+  private abreSessaoUnica(
+    req: http.IncomingMessage,
+    identidade: { email: string; foto?: string; nome?: string },
+  ): string {
+    if (derrubaSessoesDe(this.sessoes, identidade.email) > 0) {
+      this.registraEventoDeSessao(req, 'sessao_derrubada', identidade.email, 'novo-login');
+    }
+    return criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
   }
 
   /**

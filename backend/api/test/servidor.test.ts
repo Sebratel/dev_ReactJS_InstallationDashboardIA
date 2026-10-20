@@ -936,6 +936,39 @@ test('login de verdade: idToken válido cria sessão, e o cookie libera /api/*',
   }
 });
 
+test('uma sessão por pessoa: o login novo derruba o anterior, e só o da mesma pessoa', async () => {
+  // Decisão do Erick (20/10/2026): o mesmo usuário abria o painel em dois navegadores.
+  let email = 'fulano@sebratel.com.br';
+  const s = await servidorComLogin(dirVazio(), {
+    verificadorGoogle: {
+      async verifyIdToken() {
+        return { getPayload: () => ({ email, hd: 'sebratel.com.br' }) as TokenPayload };
+      },
+    },
+  });
+  const loga = async (quem: string) => {
+    email = quem;
+    const r = await s.busca('/auth/google', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ idToken: 'x' }),
+    });
+    assert.equal(r.status, 200);
+    return cookieDe(r);
+  };
+  try {
+    const navegadorA = await loga('fulano@sebratel.com.br');
+    const outraPessoa = await loga('ciclana@sebratel.com.br');
+    const navegadorB = await loga('Fulano@sebratel.com.br');
+
+    assert.equal((await s.busca('/api/dashboards', { headers: { cookie: navegadorA } })).status, 401, 'o navegador A caiu');
+    assert.equal((await s.busca('/api/dashboards', { headers: { cookie: navegadorB } })).status, 200, 'o B segue');
+    assert.equal((await s.busca('/api/dashboards', { headers: { cookie: outraPessoa } })).status, 200, 'outra pessoa não cai');
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('login com domínio fora de sebratel.com.br: 401, sem cookie nenhum', async () => {
   const s = await servidorComLogin(dirVazio(), {
     verificadorGoogle: clienteQueDevolve({ email: 'fulano@gmail.com', hd: 'gmail.com' }),
