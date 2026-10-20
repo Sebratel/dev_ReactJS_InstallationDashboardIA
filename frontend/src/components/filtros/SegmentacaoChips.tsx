@@ -51,13 +51,20 @@ export function SegmentacaoChips(props: {
   }
 
   return (
-    // Uma linha da barra de filtros, só dela (`basis-full`): os chips rolam na horizontal
-    // e a borda direita esmaece, como a linha de chips do COM — quebrar em duas linhas
-    // pagava 35px em todo card (a altura da barra entra em `--util`).
-    <div className="flex min-w-0 basis-full items-center gap-[8px]">
-      <RotuloDeFiltro>{rotuloDeCampo(spec.rotulo)}</RotuloDeFiltro>
+    // Uma linha da barra de filtros, só dela (`basis-full`). **Os chips QUEBRAM linha, não
+    // rolam (20/10/2026).** Até aqui rolavam na horizontal com a borda esmaecida e a
+    // barra de rolagem escondida: em 1366/1600px a 100% de zoom o último tipo ("TEC -
+    // Troca de Endereço") ficava fora da tela, sem nada dizendo que havia mais — o
+    // Erick só achou porque sabia que ele existia. Quebrar custa uma linha a mais só
+    // quando não cabe, e a altura da barra é MEDIDA (`useAlturaMedida`, `--h-filtros`),
+    // então os cards descontam a linha a mais sozinhos.
+    <div className="flex min-w-0 basis-full items-start gap-[8px]">
+      {/* Na altura de um chip: com duas linhas, o rótulo fica na primeira, não no meio. */}
+      <div className="flex h-[24px] flex-none items-center">
+        <RotuloDeFiltro>{rotuloDeCampo(spec.rotulo)}</RotuloDeFiltro>
+      </div>
       <div
-        className="flex min-w-0 flex-1 items-center gap-[6px] overflow-x-auto pr-[22px] [mask-image:linear-gradient(to_right,#000_calc(100%-22px),transparent)] [scrollbar-width:none]"
+        className="flex min-w-0 flex-1 flex-wrap items-center gap-[6px]"
         role="group"
         aria-label={rotuloDeCampo(spec.rotulo)}
       >
