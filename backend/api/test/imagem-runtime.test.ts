@@ -257,13 +257,20 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   }
   assert.deepEqual(web.ports, ['${WEB_PORT_HOST:-3101}:8080']);
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
-  assert.equal(web.mem_limit, '3g', 'a tela não pode herdar toda a memória do host');
+  assert.equal(web.mem_limit, '128m', 'a tela não pode herdar toda a memória do host');
 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
   assert.equal(api.mem_limit, '1600m');
   assert.equal(compose.services.refresh?.mem_limit, '3g');
+  // Orçamento do host (20/10/2026): 3 GB contínuos; o pico do refresh não pode
+  // afetar a API nem as outras aplicações do servidor.
+  const refresh = compose.services.refresh as Record<string, unknown> | undefined;
+  assert.equal(refresh?.mem_reservation, '512m');
+  assert.equal(refresh?.oom_score_adj, 500);
+  assert.equal(refresh?.cpus, '1.0');
+  assert.equal(refresh?.cpu_shares, 256);
   // Redis desta stack (ACHADOS #228): a api aponta para o serviço pelo nome, com senha.
   const redis = compose.services.redis!;
   assert.ok(redis, 'o Redis do cache de respostas mora nesta stack');

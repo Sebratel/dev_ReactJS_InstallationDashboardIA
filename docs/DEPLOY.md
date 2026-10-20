@@ -206,9 +206,13 @@ todas as linhas — e o que a API serve inclui:
 > sem erro nenhum. Se um dia a API passar a agendar em produção, o serviço
 > `refresh` tem de sair do compose na mesma alteração.
 >
-> **Limite do host:** os `mem_limit` são limites de cgroup, não reserva nem soma que
-> caiba automaticamente em uma máquina de 3 GB. Antes de habilitar o `refresh` na mesma
-> máquina com esse teto físico, meça a concorrência com a API em carga.
+> **Limite do host (20/10/2026):** a stack não pode ocupar mais de 3 GB o tempo todo;
+> pico pode, desde que não afete as outras aplicações do servidor. Contínuo: api 1600m
+> + redis 192m + web 128m + o daemon do `refresh` ocioso. O `mem_limit: 3g` do
+> `refresh` é pico da transformação do `field-agenda`, e vem com `mem_reservation:
+> 512m`, `oom_score_adj: 500`, `cpus: '1.0'` e `cpu_shares: 256` — sob pressão o
+> kernel recolhe e, no limite, mata a carga, não a API nem outra aplicação. O teste
+> `imagem-runtime.test.ts` trava esses valores.
 >
 > **E isto aconteceu na estação de trabalho, não em produção (ACHADOS #148).** A
 > stack de compose, subida para teste em 09/09, voltava sozinha a cada boot do Docker

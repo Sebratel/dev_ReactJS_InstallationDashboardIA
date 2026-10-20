@@ -206,8 +206,10 @@ services:
       target: web
     pull_policy: build
     # A tela tem teto explícito para o Portainer não herdar toda a memória do host.
-    # Mantém os 3 GB usados pelo serviço público antes da separação web/API.
-    mem_limit: 3g
+    # Era 3g, herdado do serviço público de antes da separação web/API — mas aqui só
+    # roda nginx (estático + proxy), que usa poucos MB. 128m devolve ~2,9 GB ao
+    # orçamento de 3 GB contínuos da stack (20/10/2026).
+    mem_limit: 128m
     depends_on:
       api:
         condition: service_healthy
@@ -249,6 +251,21 @@ services:
     # cgroup de 1400 MiB antes de publicar o snapshot. Os 3 GB deixam folga para buffers
     # fora do heap durante a transformação, sem dividir o orçamento da API.
     mem_limit: 3g
+    # **Orçamento do host (20/10/2026):** a stack não pode ocupar mais de 3 GB o tempo
+    # todo; pico pode, desde que não afete as outras aplicações do servidor. Contínuo:
+    # api 1600m + redis 192m + web 128m + este daemon ocioso (heap até 1024 MB) cabe
+    # em 3 GB. Os 3 GB acima são PICO, só durante a transformação do `field-agenda`.
+    # Para o pico não cair em cima de ninguém:
+    # - `mem_reservation`: sob pressão de memória do host, o kernel recolhe primeiro
+    #   o que este contêiner usa acima de 512m;
+    # - `oom_score_adj`: se faltar memória mesmo assim, o OOM do host mata a carga
+    #   (que tenta de novo no próximo ciclo), e não a API nem outra aplicação;
+    # - `cpus` + `cpu_shares`: a carga usa no máximo um núcleo e, na disputa, a API
+    #   (1024, o padrão) tem 4x a prioridade — o filtro não espera a transformação.
+    mem_reservation: 512m
+    oom_score_adj: 500
+    cpus: '1.0'
+    cpu_shares: 256
     # A trava do snapshot usa hostname + PID. Mantê-lo estável permite ao
     # contêiner substituto reconhecer imediatamente um PID morto de deploy.
     hostname: dashboard-instalacao-refresh
