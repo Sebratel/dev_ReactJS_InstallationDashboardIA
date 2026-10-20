@@ -913,6 +913,16 @@ export class Servidor {
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
         return;
       }
+      // Barrada DEPOIS de logar (suspensa agora, entrou de férias na Senior, acesso
+      // venceu): as sessões dela caem e a tela volta para o login, que mostra o motivo.
+      const bloqueio = this.opts.acesso.bloqueio(quem);
+      if (bloqueio) {
+        if (derrubaSessoesDe(this.sessoes, quem.usuario) > 0) {
+          this.registraEventoDeSessao(req, 'sessao_derrubada', quem.usuario, `bloqueio-${bloqueio.origem}`);
+        }
+        responde(res, 401, { erro: bloqueio.motivo });
+        return;
+      }
       if (ehRegistroDeUso) return this.registraAbertura(req, res, url, quem, ehAquecedor);
       if (ehConsultaDeUso) return this.usoDasTelas(res, url, quem, req);
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
@@ -1022,6 +1032,7 @@ export class Servidor {
       });
       return;
     }
+    if (this.recusaLoginBarrado(req, res, identidade.email)) return;
     this.registraLogin(req, identidade.email);
     const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
@@ -1069,6 +1080,7 @@ export class Servidor {
       });
       return;
     }
+    if (this.recusaLoginBarrado(req, res, identidade.email)) return;
     this.registraLogin(req, identidade.email);
     const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
@@ -1083,6 +1095,19 @@ export class Servidor {
    * sem sair, até a sessão vencer. Vale para `/auth/google` e `/auth/firebase`; a de
    * máquina (`/auth/interno`, que nem existe em produção) segue podendo ter várias.
    */
+  /**
+   * O token do Google é válido, mas a pessoa está barrada (suspensa, acesso vencido,
+   * afastada ou desligada na Senior): 403 com o motivo, que a tela de login mostra, e
+   * nenhuma sessão nasce. Devolve `true` quando já respondeu.
+   */
+  private recusaLoginBarrado(req: http.IncomingMessage, res: http.ServerResponse, email: string): boolean {
+    const bloqueio = this.opts.acesso.bloqueio({ usuario: email, papeis: ['autenticado'] });
+    if (!bloqueio) return false;
+    this.registraEventoSeg(req, 403, `login-bloqueado-${bloqueio.origem}`, email);
+    responde(res, 403, { erro: bloqueio.motivo });
+    return true;
+  }
+
   private abreSessaoUnica(
     req: http.IncomingMessage,
     identidade: { email: string; foto?: string; nome?: string },
@@ -1423,8 +1448,25 @@ export class Servidor {
       mudanca = { acao: 'remove-pessoa', email: texto(corpo.email) };
     } else if (sub === '/dispensa') {
       mudanca = { acao: 'dispensa-pedido', email: texto(corpo.email) };
+    } else if (sub === '/suspende') {
+      mudanca = {
+        acao: 'suspende',
+        email: texto(corpo.email),
+        motivo: texto(corpo.motivo).trim(),
+        ate: corpo.ate == null ? null : texto(corpo.ate),
+      };
+    } else if (sub === '/reativa') {
+      mudanca = { acao: 'reativa', email: texto(corpo.email) };
+    } else if (sub === '/validade') {
+      mudanca = { acao: 'validade', email: texto(corpo.email), expiraEm: corpo.expiraEm == null ? null : texto(corpo.expiraEm) };
+    } else if (sub === '/excecao-senior') {
+      mudanca = { acao: 'excecao-senior', email: texto(corpo.email), ligada: corpo.ligada as boolean };
     } else {
-      responde(res, 404, { erro: `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa.` });
+      responde(res, 404, {
+        erro:
+          `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa, ` +
+          '/suspende, /reativa, /validade, /excecao-senior.',
+      });
       return;
     }
     try {
@@ -1441,6 +1483,12 @@ export class Servidor {
     // logada até o vencimento. `muda` já normalizou o e-mail.
     if (mudanca.acao === 'remove-pessoa' && derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
       this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `remove-pessoa por=${quem.usuario}`);
+    }
+    // Suspensa, validade vencida ou Senior voltando a valer: cai já, não no próximo clique.
+    if ('email' in mudanca && this.opts.acesso.bloqueio({ usuario: mudanca.email, papeis: ['autenticado'] })) {
+      if (derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
+        this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `${mudanca.acao} por=${quem.usuario}`);
+      }
     }
     respondeMatriz();
   }

@@ -100,6 +100,12 @@ services:
       MARIA_SSL: '0'
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # A situação dos colaboradores na Senior, pelo Data Hub (`backend/api/src/senior.ts`):
+      # desligado, afastado ou fora da Senior não entra. Vazio = regra desligada.
+      DATAHUB_TOKEN: ${DATAHUB_TOKEN:-}
+      # `observar` (padrão): a aba PERMISSÕES mostra quem a Senior barraria, sem barrar.
+      # Conferido, troque para `bloquear` nas variáveis da stack.
+      SENIOR_MODO: ${SENIOR_MODO:-observar}
       # O navegador fala HTTP com o contêiner `web` (nginx), que repassa à API; a API não
       # tem porta publicada. Os três andam juntos e a API recusa subir se discordarem
       # (`configuracao-producao.ts`): cookie `Secure` em HTTP não volta do navegador (login

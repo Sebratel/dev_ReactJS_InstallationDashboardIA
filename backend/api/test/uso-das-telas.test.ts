@@ -171,6 +171,7 @@ async function sobe() {
     muda: async () => {},
     estado: () => ({ ok: true, origem: "teste" }),
     registraPedido: () => {},
+    bloqueio: () => null,
   };
   const resumo: ResumoDeUso = {
     dias: 30,

@@ -38,6 +38,7 @@ import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 import { Botao } from '../ui/Botao.tsx';
 import { Aviso, Cartao, Erro } from '../ui/Cartao.tsx';
 import { CHAVE_SESSOES, SessoesAtivas } from './SessoesAtivas.tsx';
+import { SituacaoDaPessoa } from './SituacaoDaPessoa.tsx';
 import { UsoDasTelas } from './UsoDasTelas.tsx';
 
 export const CHAVE_ACESSOS = ['acessos'] as const;
@@ -121,6 +122,7 @@ export function GestaoDeAcessos() {
           {m.pedidos.length} pedido(s) de acesso esperando resposta — logo abaixo da matriz.
         </Aviso>
       ) : null}
+      {m.senior ? <AvisoDaSenior m={m} /> : null}
 
       <Cartao
         titulo="Acessos às abas"
@@ -147,6 +149,7 @@ export function GestaoDeAcessos() {
             <tr>
               <th className="px-[8px] py-[6px] text-left">Pessoa</th>
               <th className="px-[8px] py-[6px] text-left">Papel</th>
+              <th className="px-[8px] py-[6px] text-left">Situação</th>
               {vista.telas.map((t) => (
                 <th
                   key={t.id}
@@ -208,6 +211,20 @@ export function GestaoDeAcessos() {
                         {p.papel}
                         {p.fixo ? ' (fixo)' : ''}
                       </span>
+                    )}
+                  </td>
+                  <td className="px-[8px] py-[4px] whitespace-nowrap">
+                    {p.nova ? (
+                      <span className="text-pbi-muted">ao salvar</span>
+                    ) : (
+                      <SituacaoDaPessoa
+                        pessoa={p}
+                        podeAgir={souAdmin || p.papel === 'viewer'}
+                        aoAtualizar={(nova) => {
+                          qc.setQueryData(CHAVE_ACESSOS, nova);
+                          releLigadas();
+                        }}
+                      />
                     )}
                   </td>
                   {vista.telas.map((t) => (
@@ -332,6 +349,36 @@ export function GestaoDeAcessos() {
       ) : null}
 
       {souAdmin ? <SessoesAtivas eu={m.eu.usuario} /> : null}
+    </>
+  );
+}
+
+/** O estado da Senior em cima da matriz: em `observar`, quantos ela barraria. */
+function AvisoDaSenior({ m }: { m: MatrizDeAcesso }) {
+  const s = m.senior!;
+  const seriam = m.pessoas.filter((p) => p.bloqueio?.origem === 'senior' && !p.barrada).length;
+  if (!s.carregada) {
+    return (
+      <Aviso>
+        A Senior ainda não foi lida{s.falhou ? ` (${s.falhou})` : ''} — por enquanto ela não barra
+        ninguém.
+      </Aviso>
+    );
+  }
+  return (
+    <>
+      {s.falhou ? (
+        <Aviso>
+          A última leitura da Senior falhou ({s.falhou}); vale a de{' '}
+          {s.lidaEm ? new Date(s.lidaEm).toLocaleString('pt-BR') : '—'}.
+        </Aviso>
+      ) : null}
+      {s.modo === 'observar' ? (
+        <Aviso>
+          Senior em modo observar: {seriam} pessoa(s) seriam barradas (selo amarelo na coluna
+          Situação). Confira e, quando estiver certo, troque SENIOR_MODO para bloquear na stack.
+        </Aviso>
+      ) : null}
     </>
   );
 }

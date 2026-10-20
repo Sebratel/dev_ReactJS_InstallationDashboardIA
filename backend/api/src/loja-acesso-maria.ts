@@ -63,6 +63,37 @@ export function criaPoolDeAcesso(cfg: ConfigDoBancoDeAcesso): mysql.Pool {
   });
 }
 
+/**
+ * As tabelas que a API cria sozinha ao subir (20/10/2026, autorizado pelo Erick): a
+ * estação não alcança o MariaDB, e a API no Portainer alcança. `IF NOT EXISTS` torna a
+ * subida repetível; o mesmo SQL está em `backend/tools/banco/sql/schema.sql`.
+ */
+export const DDL_DA_API = [
+  `CREATE TABLE IF NOT EXISTS user_access_rules (
+  email             VARCHAR(254) NOT NULL PRIMARY KEY,
+  suspended         TINYINT(1) NOT NULL DEFAULT 0,
+  suspended_reason  VARCHAR(200) NULL,
+  suspended_until   DATETIME NULL,
+  access_expires_at DATETIME NULL,
+  senior_exempt     TINYINT(1) NOT NULL DEFAULT 0,
+  updated_by        VARCHAR(254) NOT NULL,
+  updated_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE = InnoDB`,
+];
+
+/** Cria o que falta. Não lança: sem permissão de DDL, o resto do acesso segue igual. */
+export async function garanteTabelas(pool: mysql.Pool, log: (m: string) => void = console.error): Promise<void> {
+  for (const ddl of DDL_DA_API) {
+    try {
+      await pool.query(ddl);
+    } catch (err) {
+      log(`[acesso] não consegui criar tabela (${(err as Error).message}) — rode o schema.sql no banco`);
+    }
+  }
+}
+
+const isoOuNull = (v: unknown): string | null => (v ? new Date(v as string).toISOString() : null);
+
 const MODO_DO_BANCO = { list: 'lista', all: 'todos' } as const;
 const MODO_PARA_O_BANCO = { lista: 'list', todos: 'all' } as const;
 
@@ -85,7 +116,26 @@ export function lojaMaria(pool: mysql.Pool): LojaDeAcesso {
         "SELECT email, attempts AS tentativas, last_seen_at AS ultimaVez FROM access_requests WHERE status = 'pending' " +
           'ORDER BY last_seen_at DESC LIMIT 200',
       );
+      // Tabela de 20/10/2026: se ainda não existe, ninguém tem regra — o resto da leitura
+      // não pode cair junto (ela decide quem abre cada aba).
+      let regras: LinhasDeAcesso['regras'] = [];
+      try {
+        const [r] = await pool.query(
+          'SELECT email, suspended, suspended_reason, suspended_until, access_expires_at, senior_exempt FROM user_access_rules',
+        );
+        regras = (r as Record<string, unknown>[]).map((x) => ({
+          email: String(x.email),
+          suspensa: Boolean(Number(x.suspended)),
+          motivo: (x.suspended_reason as string | null) ?? null,
+          suspensaAte: isoOuNull(x.suspended_until),
+          expiraEm: isoOuNull(x.access_expires_at),
+          excecaoSenior: Boolean(Number(x.senior_exempt)),
+        }));
+      } catch (err) {
+        if ((err as { code?: string }).code !== 'ER_NO_SUCH_TABLE') throw err;
+      }
       return {
+        regras,
         pedidos: (pedidos as { email: string; tentativas: number; ultimaVez: Date }[]).map((p) => ({
           email: p.email,
           tentativas: Number(p.tentativas),
@@ -160,6 +210,28 @@ export function lojaMaria(pool: mysql.Pool): LojaDeAcesso {
             [m.tela, modo, porQuem],
           );
           depois = modo;
+        } else if (m.acao === 'suspende' || m.acao === 'reativa' || m.acao === 'validade' || m.acao === 'excecao-senior') {
+          alvo = m.email;
+          const [r] = await c.query(
+            'SELECT suspended, suspended_reason, suspended_until, access_expires_at, senior_exempt FROM user_access_rules WHERE email = ?',
+            [m.email],
+          );
+          antes = (r as unknown[])[0] ?? null;
+          const campos =
+            m.acao === 'suspende'
+              ? { suspended: 1, suspended_reason: m.motivo || null, suspended_until: m.ate ? new Date(m.ate) : null }
+              : m.acao === 'reativa'
+                ? { suspended: 0, suspended_reason: null, suspended_until: null }
+                : m.acao === 'validade'
+                  ? { access_expires_at: m.expiraEm ? new Date(m.expiraEm) : null }
+                  : { senior_exempt: m.ligada ? 1 : 0 };
+          const nomes = Object.keys(campos);
+          await c.query(
+            `INSERT INTO user_access_rules (email, updated_by, ${nomes.join(', ')}) VALUES (?, ?, ${nomes.map(() => '?').join(', ')}) ` +
+              `ON DUPLICATE KEY UPDATE updated_by = VALUES(updated_by), ${nomes.map((n) => `${n} = VALUES(${n})`).join(', ')}`,
+            [m.email, porQuem, ...Object.values(campos)],
+          );
+          depois = campos;
         } else {
           alvo = m.email;
           antes = { role: await papelDe(c, m.email), screens: await telasDe(c, m.email) };
