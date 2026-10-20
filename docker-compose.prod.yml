@@ -89,11 +89,13 @@ services:
       MARIA_SSL: '0'
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      # Porta publicada direto, sem proxy: HTTP (decisão do Misael, 19/10/2026). Os três
-      # andam juntos e a API recusa subir se discordarem — cookie `Secure` em HTTP não volta
-      # do navegador (login em laço), e sem proxy o `X-Real-IP` é escrito pelo cliente.
+      # O navegador fala HTTP com o contêiner `web` (nginx), que repassa à API; a API não
+      # tem porta publicada. Os três andam juntos e a API recusa subir se discordarem
+      # (`configuracao-producao.ts`): cookie `Secure` em HTTP não volta do navegador (login
+      # em laço), e o `X-Real-IP` que o `web` sobrescreve é o único jeito de a API ver o
+      # usuário — sem ele, todos chegam do IP do `web` e dividem um balde de rate limit.
       # Fixados aqui, e não nas variáveis da stack, para ninguém os trocar pela tela.
-      PUBLICACAO: direta
+      PUBLICACAO: web-http
       COOKIE_SECURE: '0'
       API_WORKERS: '1'
       API_WORKER_HEAP_MB: '512'
@@ -139,8 +141,10 @@ services:
       # pontas saíam como `analytics-platform`, e o custo de banco não tinha dono. Na API,
       # quem conecta é o poller de quase-realtime.
       VOALLE_APPLICATION_NAME: analytics-api-poller
-      # Sem proxy, a chave do rate limit é o endereço do socket, que o cliente não escolhe.
-      CONFIA_PROXY: '0'
+      # A chave do rate limit é o `X-Real-IP` que o `web` escreve com `$remote_addr`
+      # (`nginx.web.conf`, em toda location que repassa). Seguro só porque a API não tem
+      # porta publicada: ninguém de fora fala com ela sem passar pelo `web`.
+      CONFIA_PROXY: '1'
       # Diagnóstico da API não pode tornar o snapshot gravável.
       API_RUNTIME_DIR: /repo/runtime
       # Resultado calculado pode ser recriado do snapshot; teto global, repartido entre as

@@ -42,12 +42,16 @@ no host, sem proxy na frente (decisão do Misael, 19/10/2026). Nome da stack:
    responde. Se a API morrer com `RECUSANDO SUBIR`, o log diz qual chave está errada e
    qual valor ela espera.
 
-## HTTP sem proxy: o que muda
+## HTTP pelo contêiner `web`: o que muda
 
 - O cookie de sessão sai sem `Secure` e não há HSTS: em HTTP, um cookie `Secure` não
   volta do navegador e o login fica em laço.
-- O rate limit usa o endereço do socket. Sem proxy, quem escreve o `X-Real-IP` é o
-  próprio cliente, por isso `CONFIA_PROXY` fica em `0`.
+- O rate limit usa o `X-Real-IP` que o `web` escreve com o endereço real
+  (`PUBLICACAO: web-http`, `CONFIA_PROXY: '1'`). Sem isso, todo pedido chega à API do IP
+  do `web`, e a empresa inteira divide um balde: 5 logins por minuto e 300 pedidos de
+  dados por minuto para todos. É seguro porque a API não tem porta publicada. Se um dia
+  publicarem a porta da API, o cabeçalho vira forjável: troque para `PUBLICACAO: direta`
+  e `CONFIA_PROXY: '0'`.
 - O que o proxy bloqueava continua bloqueado pela própria API em produção:
   `/auth/interno` some, o cabeçalho do aquecedor só vale com o segredo aleatório do
   processo, e corpo acima de 8 KB é recusado.

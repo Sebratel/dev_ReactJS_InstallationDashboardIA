@@ -10,12 +10,17 @@ const ligado = (valor: string | undefined): boolean => valor === '1' || valor?.t
 
 /**
  * Como a porta da API chega ao navegador. Declarado pelo compose, nunca deduzido,
- * porque as duas formas exigem o contrário uma da outra:
+ * porque as formas exigem o contrário uma da outra:
  *
- * - `direta` — a porta do contêiner é publicada sem nada na frente, o padrão das stacks
- *   da Sebratel no Portainer (decisão do Misael, 19/10/2026). É HTTP: um cookie `Secure`
+ * - `direta` — a porta da API é publicada sem nada na frente. É HTTP: um cookie `Secure`
  *   nunca voltaria do navegador (login em laço, sem erro), e o `X-Real-IP` seria escrito
  *   pelo próprio cliente — confiar nele dá um balde novo de rate limit por valor forjado.
+ * - `web-http` — o contêiner `web` da própria stack (nginx, `nginx.web.conf`) recebe o
+ *   navegador em HTTP e repassa à API, que NÃO tem porta publicada. O nginx sobrescreve
+ *   `X-Real-IP` com o endereço real, então a API TEM de confiar nele: sem isso, todo
+ *   pedido chega do IP do `web`, e a empresa inteira divide um balde de rate limit — 5
+ *   logins por minuto e 300 pedidos de dados por minuto para todos (20/10/2026). Cookie
+ *   sem `Secure`, porque continua HTTP.
  * - `proxy-https` — um proxy termina TLS e reescreve `X-Real-IP` (`nginx.conf` é a
  *   referência). Aí os dois têm de estar ligados.
  *
@@ -23,7 +28,7 @@ const ligado = (valor: string | undefined): boolean => valor === '1' || valor?.t
  * (`authInternaAtiva: false`), o cabeçalho do aquecedor só vale com o segredo aleatório
  * do processo, e o corpo passa de 8 KB é recusado.
  */
-export const PUBLICACOES = ['direta', 'proxy-https'] as const;
+export const PUBLICACOES = ['direta', 'web-http', 'proxy-https'] as const;
 
 /**
  * Tudo que a stack de produção precisa declarar antes de abrir a porta.
@@ -58,6 +63,9 @@ export function problemasDaConfiguracaoDeProducao(
   if (publicacao === 'direta') {
     exigeDesligado('COOKIE_SECURE', '0 (PUBLICACAO=direta é HTTP: cookie Secure não volta e o login não fecha)');
     exigeDesligado('CONFIA_PROXY', '0 (PUBLICACAO=direta: sem proxy, X-Real-IP vem do cliente e fura o rate limit)');
+  } else if (publicacao === 'web-http') {
+    exigeDesligado('COOKIE_SECURE', '0 (PUBLICACAO=web-http é HTTP: cookie Secure não volta e o login não fecha)');
+    exigeLigado('CONFIA_PROXY', '1 (PUBLICACAO=web-http: sem ele, todos os usuários dividem o rate limit do IP do web)');
   } else if (publicacao === 'proxy-https') {
     exigeLigado('COOKIE_SECURE', '1 (HTTPS terminado pelo proxy)');
     exigeLigado('CONFIA_PROXY', '1 (proxy que sobrescreve X-Real-IP)');
@@ -77,7 +85,8 @@ export function mensagemDaConfiguracaoDeProducao(problemas: readonly ProblemaDeC
     `\n[segurança] RECUSANDO SUBIR: configuração de produção incompleta.\n\n` +
     `${itens}\n\n` +
     `  Não publique a API com a publicação incoerente.\n` +
-    `  PUBLICACAO=direta: COOKIE_SECURE=0 e CONFIA_PROXY=0. PUBLICACAO=proxy-https: os dois em 1.\n` +
+    `  PUBLICACAO=direta: COOKIE_SECURE=0 e CONFIA_PROXY=0. PUBLICACAO=web-http: COOKIE_SECURE=0 e\n` +
+    `  CONFIA_PROXY=1. PUBLICACAO=proxy-https: os dois em 1.\n` +
     `  Veja docs/PORTAINER.md antes de subir a stack.\n`
   );
 }

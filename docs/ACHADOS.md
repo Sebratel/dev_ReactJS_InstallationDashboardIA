@@ -15844,3 +15844,22 @@ de consertar isso antes.
 sonda do #232). A rodada da stack inteira contra os bancos ficou para depois: na hora do
 teste, a VPN desta estação tinha caído, e nem o Windows alcançava `10.0.11.171:3306` nem
 `186.219.128.248:5432` (timeout de TCP, antes de qualquer TLS).
+
+---
+
+## #234 — com o `web` na frente, a empresa inteira dividia um balde de rate limit (20/10)
+
+`b9f5179` pôs o contêiner `web` (nginx, `nginx.web.conf`) na frente da API e tirou a porta
+dela, mas a API seguiu com `PUBLICACAO: direta` e `CONFIA_PROXY: '0'`. Com isso, a chave do
+rate limit (`ipDoPedido`) virou o endereço do socket, que agora é **sempre o IP do `web`**.
+Todos os usuários caíam no mesmo balde: 5 logins/logouts por minuto
+(`LIMITE_AUTH_TENTATIVAS`) e 300 pedidos de dados por minuto (`LIMITE_API_POR_MINUTO`) para
+a empresa inteira. O próprio comentário do #182 mede que cinco aberturas de página num
+minuto já esgotavam o balde de UMA pessoa. O log de sessão (`sessao_ip_mudou`) também
+perderia o IP real.
+
+**Conserto:** terceiro modo, `PUBLICACAO: web-http`. A trava exige `CONFIA_PROXY=1` e
+`COOKIE_SECURE=0` nesse modo. Confiar no cabeçalho é seguro aqui porque o `web` o
+sobrescreve com `$remote_addr` em toda location que repassa, e a API não tem porta
+publicada. `imagem-runtime.test.ts` cobra as duas condições: `api.ports` vazio e
+`X-Real-IP $remote_addr` em cada location do `nginx.web.conf` com `proxy_pass`.

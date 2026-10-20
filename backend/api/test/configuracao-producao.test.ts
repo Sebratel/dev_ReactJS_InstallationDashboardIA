@@ -15,6 +15,13 @@ const PRODUCAO_DIRETA = {
   MARIA_PASSWORD: 'nao-e-um-segredo-real',
 };
 
+// O que a stack do Portainer declara: o contêiner `web` (nginx, HTTP) na frente da API.
+const PRODUCAO_WEB_HTTP = {
+  ...PRODUCAO_DIRETA,
+  PUBLICACAO: 'web-http',
+  CONFIA_PROXY: '1',
+};
+
 const PRODUCAO_ATRAS_DE_PROXY = {
   ...PRODUCAO_DIRETA,
   PUBLICACAO: 'proxy-https',
@@ -38,6 +45,19 @@ test('produção sem nada declarado recusa: publicação e conta Maria ausente',
 
 test('publicação direta (stack do Portainer) pode subir', () => {
   assert.deepEqual(chaves(PRODUCAO_DIRETA), []);
+});
+
+test('publicação pelo contêiner web (stack do Portainer) pode subir', () => {
+  assert.deepEqual(chaves(PRODUCAO_WEB_HTTP), []);
+});
+
+test('pelo contêiner web, confiar no X-Real-IP é obrigatório: senão todos dividem o rate limit', () => {
+  assert.deepEqual(chaves({ ...PRODUCAO_WEB_HTTP, CONFIA_PROXY: '0' }), ['CONFIA_PROXY']);
+  assert.deepEqual(chaves({ ...PRODUCAO_WEB_HTTP, CONFIA_PROXY: undefined }), ['CONFIA_PROXY']);
+});
+
+test('pelo contêiner web continua HTTP: cookie Secure recusado', () => {
+  assert.deepEqual(chaves({ ...PRODUCAO_WEB_HTTP, COOKIE_SECURE: '1' }), ['COOKIE_SECURE']);
 });
 
 test('publicação atrás de proxy HTTPS pode subir', () => {
@@ -65,7 +85,7 @@ test('publicação com valor desconhecido recusa em vez de adivinhar', () => {
 });
 
 test('TLS dos bancos é opção, não exigência: sobe com ele ligado ou desligado', () => {
-  for (const base of [PRODUCAO_DIRETA, PRODUCAO_ATRAS_DE_PROXY]) {
+  for (const base of [PRODUCAO_DIRETA, PRODUCAO_WEB_HTTP, PRODUCAO_ATRAS_DE_PROXY]) {
     assert.deepEqual(chaves({ ...base, VOALLE_SSL: undefined, MARIA_SSL: undefined }), []);
     assert.deepEqual(chaves({ ...base, VOALLE_SSL: '1', MARIA_SSL: '1' }), []);
   }

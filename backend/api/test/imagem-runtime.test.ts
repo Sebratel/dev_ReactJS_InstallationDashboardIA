@@ -242,11 +242,19 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   }
   const web = compose.services.web!;
   assert.ok(web, 'a tela precisa de contêiner próprio');
-  assert.equal(api.environment?.PUBLICACAO, 'direta');
-  assert.equal(api.environment?.CONFIA_PROXY, '0', 'sem proxy, X-Real-IP vem do cliente');
+  // 20/10/2026: com o `web` na frente, a API só vê o IP dele. Sem confiar no X-Real-IP
+  // que ele escreve, a empresa inteira divide um balde de rate limit (5 logins/min).
+  assert.equal(api.environment?.PUBLICACAO, 'web-http');
+  assert.equal(api.environment?.CONFIA_PROXY, '1', 'atrás do web, a API só enxerga o usuário pelo X-Real-IP');
   assert.equal(api.environment?.COOKIE_SECURE, '0', 'em HTTP o cookie Secure não volta do navegador');
   assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
-  assert.equal(api.ports, undefined, 'a API não pode ser alcançável de fora da stack');
+  assert.equal(api.ports, undefined, 'a API não pode ser alcançável de fora da stack — senão o X-Real-IP é forjável');
+  const confWeb = fs.readFileSync(path.join(RAIZ, 'nginx.web.conf'), 'utf8');
+  const repassam = confWeb.split(/\blocation\b/).slice(1).filter((bloco) => /proxy_pass/.test(bloco));
+  assert.ok(repassam.length >= 3, `li ${repassam.length} location do web que repassam à API`);
+  for (const bloco of repassam) {
+    assert.match(bloco, /proxy_set_header X-Real-IP \$remote_addr;/, 'toda location que repassa sobrescreve o X-Real-IP');
+  }
   assert.deepEqual(web.ports, ['${WEB_PORT_HOST:-3101}:8080']);
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
   assert.equal(web.mem_limit, '3g', 'a tela não pode herdar toda a memória do host');
