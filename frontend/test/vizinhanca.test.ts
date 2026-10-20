@@ -5,10 +5,11 @@
 // (`aplicaSelecao` + a seleção alternada), e não com um valor escrito à mão.
 
 import assert from 'node:assert/strict';
-import { test } from 'vitest';
+import { describe, expect, it, test } from 'vitest';
 import { urlDaPagina, type FiltroDaTela } from '../src/services/dashboardService.ts';
 import { aplicaSelecao, selecaoDe } from '../src/utils/rota.ts';
-import { alternaValor, estadosVizinhos } from '../src/utils/vizinhanca.ts';
+import { alternaValor, estadosDoPeriodo, estadosVizinhos } from '../src/utils/vizinhanca.ts';
+import type { AnoDaArvore } from '../src/utils/hierarquiaData.ts';
 
 const TIPO = {
   tabela: 'PROTOCOLOS GERAL',
@@ -78,4 +79,47 @@ test('o teto corta, na ordem das segmentações', () => {
     vizinhos.map((v) => v.filtros[0]!.valores[0]),
     ['Instalação', 'Mudança', 'Reparo', 'Canoas'],
   );
+});
+
+describe('estadosDoPeriodo', () => {
+  const DATA = { tabela: 'CAL', coluna: 'DATA' };
+  const ARVORE: AnoDaArvore[] = [
+    { ano: 2025, meses: [{ indice: 11, nome: 'dezembro', dias: [1] }] },
+    {
+      ano: 2026,
+      meses: [
+        { indice: 8, nome: 'setembro', dias: [1] },
+        { indice: 9, nome: 'outubro', dias: [1] },
+      ],
+    },
+  ];
+
+  it('vizinhos de quem está num mês: os meses do ano marcado e cada ano, com a conta do clique', () => {
+    const estado = {
+      filtros: [
+        { tabela: 'CAL', coluna: 'DATA', nivel: 'Ano', valores: [2026] },
+        { tabela: 'CAL', coluna: 'DATA', nivel: 'Mês', valores: ['outubro'] },
+      ],
+      clicados: [{ tabela: 'CAL', coluna: 'DATA' }],
+    };
+    const out = estadosDoPeriodo(estado, DATA, ARVORE, 10);
+    // outubro (desmarca), setembro (soma), 2026 (desmarca o ano), 2025 (soma o ano).
+    expect(out).toHaveLength(4);
+    const meses = (e: (typeof out)[number]) =>
+      e.filtros.find((f) => f.nivel === 'Mês')?.valores ?? [];
+    const anos = (e: (typeof out)[number]) =>
+      e.filtros.find((f) => f.nivel === 'Ano')?.valores ?? [];
+    expect(meses(out[0]!)).toEqual([]);
+    expect(meses(out[1]!)).toEqual(['setembro', 'outubro']);
+    expect(anos(out[3]!)).toEqual([2025, 2026]);
+    // O período passou a ser do controle: a marca de clique sai, como em `mudaFiltro`.
+    expect(out.every((e) => e.clicados.length === 0)).toBe(true);
+  });
+
+  it('sem ano marcado, os meses vêm do ano mais recente; respeita o teto', () => {
+    const out = estadosDoPeriodo({ filtros: [], clicados: [] }, DATA, ARVORE, 3);
+    expect(out).toHaveLength(3);
+    expect(out[0]!.filtros.find((f) => f.nivel === 'Mês')?.valores).toEqual(['outubro']);
+    expect(out[0]!.filtros.find((f) => f.nivel === 'Ano')?.valores).toEqual([2026]);
+  });
 });

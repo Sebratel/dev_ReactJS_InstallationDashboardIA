@@ -70,8 +70,9 @@ services:
     #
     # Orçamento: a stack não passa de 3 GB contínuos (decisão do Erick, 20/10/2026).
     # Medido em 18/10 com uma worker: pico de cgroup de 1344,2 MiB (200 usuários). O pai
-    # usa 34-42 MB de heap; a segunda worker soma até 512 MB. Com web 128m e redis 192m,
-    # o contínuo fica perto de 2,1 GB; o pico do `refresh` é tratado lá.
+    # usa 34-42 MB de heap; a segunda worker soma até 512 MB. Com web 128m e redis 384m,
+    # o contínuo fica perto de 2,5 GB (com o cache de 256 MB e o Redis cheios); o pico
+    # do `refresh` é tratado lá.
     #
     # `backend/api/test/piscina-workers.test.ts` falha se alguém mexer num dos três
     # sem mexer nos outros. No Portainer, é `mem_limit` que aparece como o
@@ -164,7 +165,17 @@ services:
       # Camada em memória do cache de respostas, no processo principal. 256 (padrão) -> 64
       # em 17/10/2026 (#231): produção usava 79 MB, e o que sai daqui volta do Redis em
       # milissegundos. Lado ruim: com o Redis fora do ar, o despejado é RECALCULADO.
-      CACHE_RESPOSTA_MB: '64'
+      # 20/10/2026: 64 -> 256 MB junto com `AQUECE_FILTROS_ATE`. Cada valor de filtro
+      # pré-calculado é uma resposta guardada (mais os visuais `sobDemanda` dela); com
+      # 64 MB o LRU expulsava o pré-cálculo antes do clique. O pai usa 34-42 MB de heap
+      # e tem teto de 1024 — 256 é o teto de `TETO_RESPOSTA_PADRAO_MB`.
+      CACHE_RESPOSTA_MB: '256'
+      # Pré-calcula cada valor dos filtros de até 40 valores, depois de cada carga
+      # (ACHADOS #163). Estava desligado desde 14/10 por OOM — com o heap da piscina sem
+      # teto. Agora a worker tem 512 MB, o fundo usa no máximo uma das duas e o clique
+      # tem a outra. Religado a pedido do Erick ("tudo pré-carregado"); conferir o RSS da
+      # `api` no Portainer depois do deploy.
+      AQUECE_FILTROS_ATE: '40'
       # glibc abre até 8 arenas de malloc por núcleo, e cada thread (principal, 1 worker,
       # libuv, V8) segura memória devolvida na sua. 2 arenas: menos RSS preso, contenção
       # desprezível com 3 threads de JS. Afeta só o que é malloc (zlib do .jsonl.gz,
@@ -263,7 +274,7 @@ services:
     mem_limit: 3g
     # **Orçamento do host (20/10/2026):** a stack não pode ocupar mais de 3 GB o tempo
     # todo; pico pode, desde que não afete as outras aplicações do servidor. Contínuo:
-    # api 1600m + redis 192m + web 128m + este daemon ocioso (heap até 1024 MB) cabe
+    # api ~2,1 GB + redis até 384m + web 128m + este daemon ocioso cabe
     # em 3 GB. Os 3 GB acima são PICO, só durante a transformação do `field-agenda`.
     # Para o pico não cair em cima de ninguém:
     # - `mem_reservation`: sob pressão de memória do host, o kernel recolhe primeiro
@@ -370,11 +381,11 @@ services:
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD:?defina REDIS_PASSWORD nas variaveis da stack}
-      --maxmemory 64mb
+      --maxmemory 256mb
       --maxmemory-policy allkeys-lru
       --save ''
       --appendonly no
-    mem_limit: 192m
+    mem_limit: 384m
     read_only: true
     cap_drop: [ALL]
     security_opt:

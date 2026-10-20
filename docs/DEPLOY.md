@@ -208,7 +208,7 @@ todas as linhas — e o que a API serve inclui:
 >
 > **Limite do host (20/10/2026):** a stack não pode ocupar mais de 3 GB o tempo todo;
 > pico pode, desde que não afete as outras aplicações do servidor. Contínuo: api (teto
-> 2304m, uso esperado ~1,9 GB com duas workers) + redis 192m + web 128m + o daemon do `refresh` ocioso. O `mem_limit: 3g` do
+> 2304m, uso esperado ~2,1 GB com duas workers e o cache de 256 MB) + redis até 384m + web 128m + o daemon do `refresh` ocioso. O `mem_limit: 3g` do
 > `refresh` é pico da transformação do `field-agenda`, e vem com `mem_reservation:
 > 512m`, `oom_score_adj: 500`, `cpus: '1.0'` e `cpu_shares: 256` — sob pressão o
 > kernel recolhe e, no limite, mata a carga, não a API nem outra aplicação. O teste
@@ -570,7 +570,7 @@ stack própria — ele só rebaixa `NODE_ENV` e liga `SEM_LOGIN`, e se usa com o
 O de produção tem quatro serviços de longa duração (20/10/2026): `api` (teto 2304m, duas
 workers), `web` (nginx com o build estático, 128m, publicado em `${WEB_PORT_HOST:-3101}`),
 `refresh` (pico de 3g só durante a carga do `field-agenda`, com `mem_reservation`,
-`oom_score_adj` e `cpus` para não afetar o resto do servidor) e `redis` (192m). A API não
+`oom_score_adj` e `cpus` para não afetar o resto do servidor) e `redis` (384m, 256 MB de cache). A API não
 tem porta publicada: o proxy HTTPS externo aponta para o `web`, que repassa `/api` e `/auth`.
 
 `CONFIA_PROXY=1` só é seguro quando esse proxy externo sobrescreve `X-Real-IP` antes de

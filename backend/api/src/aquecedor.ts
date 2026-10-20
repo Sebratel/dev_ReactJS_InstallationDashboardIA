@@ -342,7 +342,20 @@ export class Aquecedor {
           const q = filtros.map((f) => `filtro=${encodeURIComponent(codificaFiltro(f))}`).join('&');
           try {
             const r = await this.#buscar(`${info.url}${info.url.includes('?') ? '&' : '?'}${q}`);
-            await r.arrayBuffer();
+            // **E os visuais `sobDemanda` desta resposta (20/10/2026).** A tela os pede
+            // um a um com `?visual=` logo depois da abertura (`useSobDemandaJunto`); sem
+            // eles aqui, o clique pré-calculado ainda esperava os caros — na
+            // `agendamento-field`, 5 visuais e até 11 s no teste de cliques do staging.
+            const corpo = (await r.json().catch(() => null)) as {
+              visuais?: { id: string; sobDemanda?: string[] }[];
+            } | null;
+            for (const v of corpo?.visuais ?? []) {
+              if (!v.sobDemanda || minha !== this.#geracao) continue;
+              const rv = await this.#buscar(
+                `${this.#base}/api/dashboards/${encodeURIComponent(pagina)}?visual=${encodeURIComponent(v.id)}&${q}`,
+              );
+              await rv.arrayBuffer();
+            }
             feitos += 1;
           } catch {
             // Um recorte que falhe custa o primeiro clique nele, não a rodada.
