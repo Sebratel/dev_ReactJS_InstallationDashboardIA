@@ -13,11 +13,18 @@ import { Trash2, Undo2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   aplicaOperacao,
+  definePerfilDaPessoa,
   dispensaPedido,
   pegaMatriz,
+  reativaPessoa,
+  suspendePessoa,
   type MatrizDeAcesso,
   type Papel,
 } from '../../services/acessoService.ts';
+import { ultimoAcessoNaTela } from '../../utils/inatividade.ts';
+import { Selo } from '../ui/Selo.tsx';
+import { HistoricoDeAcessos } from './HistoricoDeAcessos.tsx';
+import { PerfisDeAcesso } from './PerfisDeAcesso.tsx';
 import { chavesDeConsulta } from '../../services/dashboardService.ts';
 import { useRascunhoDeAcessos } from '../../store/rascunhoDeAcessosStore.ts';
 import { cn } from '../../utils/cn.ts';
@@ -56,6 +63,8 @@ export function GestaoDeAcessos() {
   });
   const { rascunho, muda, conta, descarta } = useRascunhoDeAcessos();
   const [email, setEmail] = useState('');
+  const [busca, setBusca] = useState('');
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
 
   const m = matrizQ.data;
   const ops = useMemo(() => (m ? operacoesDoRascunho(m, rascunho) : []), [m, rascunho]);
@@ -89,6 +98,18 @@ export function GestaoDeAcessos() {
     mutationFn: dispensaPedido,
     onSuccess: (nova: MatrizDeAcesso) => qc.setQueryData(CHAVE_ACESSOS, nova),
   });
+  // Ações no clique (perfil, suspensão, situação): a resposta já é a matriz relida.
+  const aoAtualizar = (nova: MatrizDeAcesso) => {
+    qc.setQueryData(CHAVE_ACESSOS, nova);
+    releLigadas();
+  };
+  // Em massa: um pedido por pessoa, em ordem; o que gravou fica, mesmo se um falhar.
+  const emMassa = useMutation({
+    mutationFn: async (f: (email: string) => Promise<MatrizDeAcesso>) => {
+      for (const e of selecionados) aoAtualizar(await f(e));
+    },
+    onSuccess: () => setSelecionados(new Set()),
+  });
 
   if (!m) {
     return matrizQ.error ? (
@@ -100,6 +121,21 @@ export function GestaoDeAcessos() {
 
   const souAdmin = m.eu.papel === 'admin';
   const vista = matrizComRascunho(m, rascunho);
+  const perfis = m.perfis ?? [];
+  const perfilDe = (id: string | null | undefined) => perfis.find((p) => p.id === id);
+  const termo = busca.trim().toLowerCase();
+  const visiveis = termo
+    ? vista.pessoas.filter(
+        (p) => p.email.includes(termo) || (p.senior?.nome ?? '').toLowerCase().includes(termo),
+      )
+    : vista.pessoas;
+  const alterna = (e: string) =>
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(e)) novo.delete(e);
+      else novo.add(e);
+      return novo;
+    });
   const nomeDaTela = (id: string) => nomeDaAba(m.telas.find((t) => t.id === id)?.nome ?? id);
   const travado = salva.isPending;
 
@@ -142,14 +178,92 @@ export function GestaoDeAcessos() {
           <Botao variante="secundario" type="submit" disabled={travado}>
             Adicionar pessoa
           </Botao>
+          <input
+            type="search"
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar por e-mail ou nome"
+            aria-label="Buscar pessoa"
+            className="ml-auto w-[min(240px,100%)] rounded-[2px] border border-pbi-borda bg-pbi-superficie px-[8px] py-[4px]"
+          />
         </form>
+
+        {selecionados.size > 0 ? (
+          <div className="flex flex-none flex-wrap items-center gap-[8px] rounded-[2px] bg-pbi-aviso-bg px-[8px] py-[6px] text-[0.74rem]">
+            <strong>{selecionados.size} selecionada(s)</strong>
+            <select
+              value=""
+              disabled={emMassa.isPending}
+              aria-label="Aplicar perfil às selecionadas"
+              onChange={(e) => {
+                const perfil = e.target.value === '-' ? null : e.target.value;
+                if (e.target.value) emMassa.mutate((x) => definePerfilDaPessoa(x, perfil));
+              }}
+            >
+              <option value="">Aplicar perfil…</option>
+              {perfis.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome}
+                </option>
+              ))}
+              <option value="-">(sem perfil)</option>
+            </select>
+            <Botao
+              variante="secundario"
+              disabled={emMassa.isPending}
+              onClick={() => {
+                const motivo = window.prompt('Motivo da suspensão (vai para a tela de login):');
+                if (motivo !== null) emMassa.mutate((x) => suspendePessoa(x, motivo.trim(), null));
+              }}
+            >
+              Suspender
+            </Botao>
+            <Botao
+              variante="secundario"
+              disabled={emMassa.isPending}
+              onClick={() => emMassa.mutate(reativaPessoa)}
+            >
+              Reativar
+            </Botao>
+            <Botao
+              variante="secundario"
+              disabled={emMassa.isPending}
+              onClick={() => setSelecionados(new Set())}
+            >
+              Limpar seleção
+            </Botao>
+            {emMassa.error ? (
+              <Erro>{(emMassa.error as Error).message} — as anteriores ficaram gravadas.</Erro>
+            ) : null}
+          </div>
+        ) : null}
 
         <table className="w-full border-collapse text-[0.76rem]">
           <thead className="sticky top-0 z-10 bg-pbi-fundo">
             <tr>
+              <th className="w-[1%] px-[6px] py-[6px]">
+                <input
+                  type="checkbox"
+                  className="w-auto"
+                  aria-label="Selecionar todas as visíveis"
+                  checked={
+                    visiveis.length > 0 &&
+                    visiveis.every((p) => p.fixo || p.nova || selecionados.has(p.email))
+                  }
+                  onChange={(e) =>
+                    setSelecionados(
+                      e.target.checked
+                        ? new Set(visiveis.filter((p) => !p.fixo && !p.nova).map((p) => p.email))
+                        : new Set(),
+                    )
+                  }
+                />
+              </th>
               <th className="px-[8px] py-[6px] text-left">Pessoa</th>
               <th className="px-[8px] py-[6px] text-left">Papel</th>
+              <th className="px-[8px] py-[6px] text-left">Perfil</th>
               <th className="px-[8px] py-[6px] text-left">Situação</th>
+              <th className="px-[8px] py-[6px] text-left">Último acesso</th>
               {vista.telas.map((t) => (
                 <th
                   key={t.id}
@@ -176,8 +290,11 @@ export function GestaoDeAcessos() {
             </tr>
           </thead>
           <tbody>
-            {vista.pessoas.map((p) => {
+            {visiveis.map((p) => {
               const veTudo = p.papel === 'admin';
+              const doPerfil = perfilDe(p.perfil);
+              const peloPerfil = (tela: string) => Boolean(doPerfil?.telas.includes(tela));
+              const ultimo = ultimoAcessoNaTela(p.ultimoAcesso);
               const podeRemover = !p.fixo && (souAdmin || p.papel === 'viewer');
               return (
                 <tr
@@ -188,9 +305,22 @@ export function GestaoDeAcessos() {
                     p.removida && 'text-pbi-muted line-through',
                   )}
                 >
+                  <td className="px-[6px] py-[4px]">
+                    <input
+                      type="checkbox"
+                      className="w-auto"
+                      aria-label={`Selecionar ${p.email}`}
+                      disabled={p.fixo || p.nova}
+                      checked={selecionados.has(p.email)}
+                      onChange={() => alterna(p.email)}
+                    />
+                  </td>
                   <td className="px-[8px] py-[4px] whitespace-nowrap">
                     {p.email}
                     {p.nova ? <span className="ml-[6px] text-pbi-muted">(nova)</span> : null}
+                    {p.senior?.nome ? (
+                      <div className="text-[0.66rem] text-pbi-muted">{p.senior.nome}</div>
+                    ) : null}
                   </td>
                   <td className="px-[8px] py-[4px]">
                     {souAdmin && !p.fixo ? (
@@ -213,6 +343,29 @@ export function GestaoDeAcessos() {
                       </span>
                     )}
                   </td>
+                  <td className="px-[8px] py-[4px]">
+                    {p.nova || p.fixo ? (
+                      <span className="text-pbi-muted">—</span>
+                    ) : (
+                      <select
+                        value={p.perfil ?? ''}
+                        disabled={emMassa.isPending || p.removida}
+                        aria-label={`Perfil de ${p.email}`}
+                        onChange={(e) =>
+                          void definePerfilDaPessoa(p.email, e.target.value || null).then(
+                            aoAtualizar,
+                          )
+                        }
+                      >
+                        <option value="">(sem perfil)</option>
+                        {perfis.map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.nome}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
                   <td className="px-[8px] py-[4px] whitespace-nowrap">
                     {p.nova ? (
                       <span className="text-pbi-muted">ao salvar</span>
@@ -220,25 +373,38 @@ export function GestaoDeAcessos() {
                       <SituacaoDaPessoa
                         pessoa={p}
                         podeAgir={souAdmin || p.papel === 'viewer'}
-                        aoAtualizar={(nova) => {
-                          qc.setQueryData(CHAVE_ACESSOS, nova);
-                          releLigadas();
-                        }}
+                        aoAtualizar={aoAtualizar}
                       />
                     )}
+                  </td>
+                  <td
+                    className="px-[8px] py-[4px] whitespace-nowrap"
+                    title={
+                      p.ultimoAcesso
+                        ? new Date(p.ultimoAcesso).toLocaleString('pt-BR')
+                        : 'Nenhum acesso registrado'
+                    }
+                  >
+                    {p.nova ? null : <Selo tom={ultimo.tom}>{ultimo.texto}</Selo>}
                   </td>
                   {vista.telas.map((t) => (
                     <td key={t.id} className="px-[6px] py-[4px] text-center">
                       <input
                         type="checkbox"
-                        checked={veTudo || t.modo === 'todos' || p.telas.includes(t.id)}
-                        disabled={veTudo || t.modo === 'todos' || p.removida || travado}
+                        checked={
+                          veTudo || t.modo === 'todos' || p.telas.includes(t.id) || peloPerfil(t.id)
+                        }
+                        disabled={
+                          veTudo || t.modo === 'todos' || p.removida || travado || peloPerfil(t.id)
+                        }
                         title={
                           veTudo
                             ? 'Admin abre todas as abas'
                             : t.modo === 'todos'
                               ? 'Aba aberta para todos'
-                              : undefined
+                              : peloPerfil(t.id)
+                                ? `Vem do perfil ${doPerfil!.nome}`
+                                : undefined
                         }
                         aria-label={`${p.email} abre ${t.nome}`}
                         onChange={(e) =>
@@ -316,6 +482,8 @@ export function GestaoDeAcessos() {
 
       <UsoDasTelas />
 
+      <PerfisDeAcesso m={m} aoAtualizar={aoAtualizar} />
+
       {m.pedidos.length > 0 ? (
         <Cartao titulo={`Pedidos de acesso (${m.pedidos.length})`} largo>
           {dispensa.error ? <Erro>{(dispensa.error as Error).message}</Erro> : null}
@@ -327,9 +495,28 @@ export function GestaoDeAcessos() {
                   {p.tentativas} tentativa(s), última em{' '}
                   {new Date(p.ultimaVez).toLocaleString('pt-BR')}
                 </span>
+                {perfis.length > 0 ? (
+                  <select
+                    value=""
+                    className="ml-auto"
+                    aria-label={`Aprovar ${p.email} com um perfil`}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        void definePerfilDaPessoa(p.email, e.target.value).then(aoAtualizar);
+                      }
+                    }}
+                  >
+                    <option value="">Aprovar com perfil…</option>
+                    {perfis.map((x) => (
+                      <option key={x.id} value={x.id}>
+                        {x.nome}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
                 <Botao
                   variante="secundario"
-                  className="ml-auto"
+                  className={perfis.length > 0 ? undefined : 'ml-auto'}
                   disabled={travado}
                   onClick={() => muda((r) => comPessoa(r, p.email))}
                 >
@@ -349,6 +536,8 @@ export function GestaoDeAcessos() {
       ) : null}
 
       {souAdmin ? <SessoesAtivas eu={m.eu.usuario} /> : null}
+
+      <HistoricoDeAcessos />
     </>
   );
 }

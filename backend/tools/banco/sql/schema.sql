@@ -75,6 +75,24 @@ CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.user_access_rules (
   updated_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
 ) ENGINE = InnoDB;
 
+-- Perfis (grupos de abas, 20/10/2026): a pessoa abre as abas dela MAIS as do perfil; uma
+-- pessoa, um perfil. Também criadas pela API ao subir (`DDL_DA_API`).
+CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.access_profiles (
+  profile_id VARCHAR(64) NOT NULL PRIMARY KEY,
+  name       VARCHAR(80) NOT NULL,
+  screens    TEXT NOT NULL,
+  updated_by VARCHAR(254) NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE = InnoDB;
+
+CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.access_profile_members (
+  email      VARCHAR(254) NOT NULL PRIMARY KEY,
+  profile_id VARCHAR(64) NOT NULL,
+  updated_by VARCHAR(254) NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  KEY by_profile (profile_id)
+) ENGINE = InnoDB;
+
 -- Toda mudança feita pela tela "Acessos": quem, o quê, antes e depois. Só cresce — o
 -- usuário restrito da API (quando a TI o criar) terá INSERT e SELECT aqui, nunca UPDATE
 -- nem DELETE.

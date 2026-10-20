@@ -14,4 +14,5 @@ export const ACESSO_LIBERADO: AcessoDasTelas = {
   muda: () => Promise.reject(new ErroDeAcesso(403, 'teste')),
   estado: () => ({ ok: true, origem: '(teste)' }),
   bloqueio: () => null,
+  historico: () => Promise.resolve([]),
 };

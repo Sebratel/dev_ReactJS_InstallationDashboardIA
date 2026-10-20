@@ -172,6 +172,7 @@ async function sobe() {
     estado: () => ({ ok: true, origem: "teste" }),
     registraPedido: () => {},
     bloqueio: () => null,
+    historico: () => Promise.resolve([]),
   };
   const resumo: ResumoDeUso = {
     dias: 30,

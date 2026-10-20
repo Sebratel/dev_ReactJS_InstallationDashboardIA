@@ -1406,23 +1406,53 @@ export class Servidor {
     const sub = rota.slice('/api/admin/acessos'.length);
     const navegaveis = this.dashboards.filter((d) => d.type !== 'Tooltip');
     const nomes = new Map(navegaveis.map((d) => [d.id, d.name] as const));
-    const respondeMatriz = (): void => {
+    const respondeMatriz = async (): Promise<void> => {
       const m = acesso.matriz();
+      // O último acesso: o mais novo entre o uso das abas (banco) e a última atividade de
+      // uma sessão viva (memória). Sem a tabela de uso, vale só a sessão.
+      const ultimos = await this.opts.usoDasTelas?.ultimosAcessos?.().catch(() => undefined);
+      const daSessao = new Map<string, string>();
+      for (const s of this.sessoes.values()) {
+        const e = s.usuario.trim().toLowerCase();
+        const iso = new Date(s.ultimoUso).toISOString();
+        if ((daSessao.get(e) ?? '') < iso) daSessao.set(e, iso);
+      }
+      const ultimoAcesso = (e: string): string | null => {
+        const a = ultimos?.get(e) ?? '';
+        const b = daSessao.get(e) ?? '';
+        return (a > b ? a : b) || null;
+      };
       responde(res, 200, {
         eu: { usuario: quem.usuario, papel: acesso.papelDe(quem) },
         telas: m.telas.filter((t) => nomes.has(t.id)).map((t) => ({ ...t, nome: nomes.get(t.id) })),
-        pessoas: m.pessoas.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        pessoas: m.pessoas.map((p) => ({
+          ...p,
+          telas: p.telas.filter((t) => nomes.has(t)),
+          ultimoAcesso: ultimoAcesso(p.email),
+        })),
         pedidos: m.pedidos,
+        perfis: m.perfis.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        ...(m.senior ? { senior: m.senior } : {}),
         banco: acesso.estado(),
       });
     };
 
     if (req.method !== 'POST') {
+      if (sub === '/historico') {
+        try {
+          const email = new URL(req.url ?? '/', 'http://x').searchParams.get('email');
+          responde(res, 200, { registros: await acesso.historico(quem, email) });
+        } catch (err) {
+          if (!(err instanceof ErroDeAcesso)) throw err;
+          responde(res, err.status, { erro: err.message });
+        }
+        return;
+      }
       if (sub !== '') {
         responde(res, 404, { erro: `'${sub}' não existe em /api/admin/acessos.` });
         return;
       }
-      respondeMatriz();
+      await respondeMatriz();
       return;
     }
 
@@ -1461,11 +1491,18 @@ export class Servidor {
       mudanca = { acao: 'validade', email: texto(corpo.email), expiraEm: corpo.expiraEm == null ? null : texto(corpo.expiraEm) };
     } else if (sub === '/excecao-senior') {
       mudanca = { acao: 'excecao-senior', email: texto(corpo.email), ligada: corpo.ligada as boolean };
+    } else if (sub === '/perfil') {
+      const telas = Array.isArray(corpo.telas) ? corpo.telas.filter((t): t is string => typeof t === 'string') : [];
+      mudanca = { acao: 'perfil-salva', id: texto(corpo.id), nome: texto(corpo.nome), telas };
+    } else if (sub === '/perfil-remove') {
+      mudanca = { acao: 'perfil-remove', id: texto(corpo.id) };
+    } else if (sub === '/perfil-da-pessoa') {
+      mudanca = { acao: 'perfil-da-pessoa', email: texto(corpo.email), perfil: corpo.perfil == null ? null : texto(corpo.perfil) };
     } else {
       responde(res, 404, {
         erro:
           `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa, ` +
-          '/suspende, /reativa, /validade, /excecao-senior.',
+          '/suspende, /reativa, /validade, /excecao-senior, /perfil, /perfil-remove, /perfil-da-pessoa.',
       });
       return;
     }
@@ -1490,7 +1527,7 @@ export class Servidor {
         this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `${mudanca.acao} por=${quem.usuario}`);
       }
     }
-    respondeMatriz();
+    await respondeMatriz();
   }
 
   /**
