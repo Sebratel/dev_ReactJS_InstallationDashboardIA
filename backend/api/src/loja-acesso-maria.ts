@@ -10,7 +10,7 @@
 // acontecem, ou nenhuma.
 
 import mysql from 'mysql2/promise';
-import type { LinhasDeAcesso, LojaDeAcesso, Mudanca } from './permissoes.ts';
+import type { LinhasDeAcesso, LojaDeAcesso, Mudanca, RegistroDeAuditoria } from './permissoes.ts';
 
 export interface ConfigDoBancoDeAcesso {
   host: string;
@@ -63,6 +63,65 @@ export function criaPoolDeAcesso(cfg: ConfigDoBancoDeAcesso): mysql.Pool {
   });
 }
 
+/**
+ * As tabelas que a API cria sozinha ao subir (20/10/2026, autorizado pelo Erick): a
+ * estação não alcança o MariaDB, e a API no Portainer alcança. `IF NOT EXISTS` torna a
+ * subida repetível; o mesmo SQL está em `backend/tools/banco/sql/schema.sql`.
+ */
+export const DDL_DA_API = [
+  `CREATE TABLE IF NOT EXISTS user_access_rules (
+  email             VARCHAR(254) NOT NULL PRIMARY KEY,
+  suspended         TINYINT(1) NOT NULL DEFAULT 0,
+  suspended_reason  VARCHAR(200) NULL,
+  suspended_until   DATETIME NULL,
+  access_expires_at DATETIME NULL,
+  senior_exempt     TINYINT(1) NOT NULL DEFAULT 0,
+  updated_by        VARCHAR(254) NOT NULL,
+  updated_at        DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE = InnoDB`,
+  // Perfis (grupos de abas): a pessoa abre as abas dela MAIS as do perfil. Uma pessoa,
+  // um perfil (a chave de `access_profile_members` é o e-mail).
+  `CREATE TABLE IF NOT EXISTS access_profiles (
+  profile_id VARCHAR(64) NOT NULL PRIMARY KEY,
+  name       VARCHAR(80) NOT NULL,
+  screens    TEXT NOT NULL,
+  updated_by VARCHAR(254) NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3)
+) ENGINE = InnoDB`,
+  `CREATE TABLE IF NOT EXISTS access_profile_members (
+  email      VARCHAR(254) NOT NULL PRIMARY KEY,
+  profile_id VARCHAR(64) NOT NULL,
+  updated_by VARCHAR(254) NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  KEY by_profile (profile_id)
+) ENGINE = InnoDB`,
+  // O uso das abas (#222): o DDL esperava autorização, que veio em 20/10/2026 com as
+  // tabelas acima. É dele que sai o "último acesso" de cada pessoa.
+  `CREATE TABLE IF NOT EXISTS screen_usage_daily (
+  day            DATE NOT NULL,
+  screen_id      VARCHAR(64) NOT NULL,
+  email          VARCHAR(254) NOT NULL,
+  opens          INT UNSIGNED NOT NULL DEFAULT 0,
+  last_opened_at DATETIME(3) NOT NULL,
+  PRIMARY KEY (day, screen_id, email),
+  KEY by_screen (screen_id, day)
+) ENGINE = InnoDB`,
+];
+
+
+/** Cria o que falta. Não lança: sem permissão de DDL, o resto do acesso segue igual. */
+export async function garanteTabelas(pool: mysql.Pool, log: (m: string) => void = console.error): Promise<void> {
+  for (const ddl of DDL_DA_API) {
+    try {
+      await pool.query(ddl);
+    } catch (err) {
+      log(`[acesso] não consegui criar tabela (${(err as Error).message}) — rode o schema.sql no banco`);
+    }
+  }
+}
+
+const isoOuNull = (v: unknown): string | null => (v ? new Date(v as string).toISOString() : null);
+
 const MODO_DO_BANCO = { list: 'lista', all: 'todos' } as const;
 const MODO_PARA_O_BANCO = { lista: 'list', todos: 'all' } as const;
 
@@ -85,7 +144,46 @@ export function lojaMaria(pool: mysql.Pool): LojaDeAcesso {
         "SELECT email, attempts AS tentativas, last_seen_at AS ultimaVez FROM access_requests WHERE status = 'pending' " +
           'ORDER BY last_seen_at DESC LIMIT 200',
       );
+      // Tabela de 20/10/2026: se ainda não existe, ninguém tem regra — o resto da leitura
+      // não pode cair junto (ela decide quem abre cada aba).
+      let regras: LinhasDeAcesso['regras'] = [];
+      try {
+        const [r] = await pool.query(
+          'SELECT email, suspended, suspended_reason, suspended_until, access_expires_at, senior_exempt FROM user_access_rules',
+        );
+        regras = (r as Record<string, unknown>[]).map((x) => ({
+          email: String(x.email),
+          suspensa: Boolean(Number(x.suspended)),
+          motivo: (x.suspended_reason as string | null) ?? null,
+          suspensaAte: isoOuNull(x.suspended_until),
+          expiraEm: isoOuNull(x.access_expires_at),
+          excecaoSenior: Boolean(Number(x.senior_exempt)),
+        }));
+      } catch (err) {
+        if ((err as { code?: string }).code !== 'ER_NO_SUCH_TABLE') throw err;
+      }
+      let perfis: LinhasDeAcesso['perfis'] = [];
+      let membros: LinhasDeAcesso['membros'] = [];
+      try {
+        const [p] = await pool.query('SELECT profile_id AS id, name AS nome, screens FROM access_profiles');
+        perfis = (p as { id: string; nome: string; screens: string }[]).map((x) => {
+          let telas: unknown;
+          try {
+            telas = JSON.parse(x.screens);
+          } catch {
+            telas = [];
+          }
+          return { id: x.id, nome: x.nome, telas: Array.isArray(telas) ? telas.filter((t) => typeof t === 'string') : [] };
+        });
+        const [m] = await pool.query('SELECT email, profile_id AS perfil FROM access_profile_members');
+        membros = m as LinhasDeAcesso['membros'];
+      } catch (err) {
+        if ((err as { code?: string }).code !== 'ER_NO_SUCH_TABLE') throw err;
+      }
       return {
+        regras,
+        perfis,
+        membros,
         pedidos: (pedidos as { email: string; tentativas: number; ultimaVez: Date }[]).map((p) => ({
           email: p.email,
           tentativas: Number(p.tentativas),
@@ -160,11 +258,74 @@ export function lojaMaria(pool: mysql.Pool): LojaDeAcesso {
             [m.tela, modo, porQuem],
           );
           depois = modo;
+        } else if (m.acao === 'suspende' || m.acao === 'reativa' || m.acao === 'validade' || m.acao === 'excecao-senior') {
+          alvo = m.email;
+          const [r] = await c.query(
+            'SELECT suspended, suspended_reason, suspended_until, access_expires_at, senior_exempt FROM user_access_rules WHERE email = ?',
+            [m.email],
+          );
+          antes = (r as unknown[])[0] ?? null;
+          const campos =
+            m.acao === 'suspende'
+              ? { suspended: 1, suspended_reason: m.motivo || null, suspended_until: m.ate ? new Date(m.ate) : null }
+              : m.acao === 'reativa'
+                ? { suspended: 0, suspended_reason: null, suspended_until: null }
+                : m.acao === 'validade'
+                  ? { access_expires_at: m.expiraEm ? new Date(m.expiraEm) : null }
+                  : { senior_exempt: m.ligada ? 1 : 0 };
+          const nomes = Object.keys(campos);
+          await c.query(
+            `INSERT INTO user_access_rules (email, updated_by, ${nomes.join(', ')}) VALUES (?, ?, ${nomes.map(() => '?').join(', ')}) ` +
+              `ON DUPLICATE KEY UPDATE updated_by = VALUES(updated_by), ${nomes.map((n) => `${n} = VALUES(${n})`).join(', ')}`,
+            [m.email, porQuem, ...Object.values(campos)],
+          );
+          depois = campos;
+        } else if (m.acao === 'perfil-salva') {
+          alvo = m.id;
+          const [r] = await c.query('SELECT name, screens FROM access_profiles WHERE profile_id = ?', [m.id]);
+          antes = (r as unknown[])[0] ?? null;
+          await c.query(
+            'INSERT INTO access_profiles (profile_id, name, screens, updated_by) VALUES (?, ?, ?, ?) ' +
+              'ON DUPLICATE KEY UPDATE name = VALUES(name), screens = VALUES(screens), updated_by = VALUES(updated_by)',
+            [m.id, m.nome, JSON.stringify(m.telas), porQuem],
+          );
+          depois = { name: m.nome, screens: m.telas };
+        } else if (m.acao === 'perfil-remove') {
+          alvo = m.id;
+          const [r] = await c.query('SELECT name, screens FROM access_profiles WHERE profile_id = ?', [m.id]);
+          const [membros] = await c.query('SELECT email FROM access_profile_members WHERE profile_id = ?', [m.id]);
+          antes = { perfil: (r as unknown[])[0] ?? null, membros: (membros as { email: string }[]).map((x) => x.email) };
+          await c.query('DELETE FROM access_profile_members WHERE profile_id = ?', [m.id]);
+          await c.query('DELETE FROM access_profiles WHERE profile_id = ?', [m.id]);
+          depois = null;
+        } else if (m.acao === 'perfil-da-pessoa') {
+          alvo = m.email;
+          const [r] = await c.query('SELECT profile_id FROM access_profile_members WHERE email = ?', [m.email]);
+          antes = (r as { profile_id: string }[])[0]?.profile_id ?? null;
+          if (m.perfil === null) await c.query('DELETE FROM access_profile_members WHERE email = ?', [m.email]);
+          else {
+            await c.query(
+              'INSERT INTO access_profile_members (email, profile_id, updated_by) VALUES (?, ?, ?) ' +
+                'ON DUPLICATE KEY UPDATE profile_id = VALUES(profile_id), updated_by = VALUES(updated_by)',
+              [m.email, m.perfil, porQuem],
+            );
+            // Dar perfil a quem pediu acesso resolve o pedido, como dar abas.
+            await c.query(
+              "UPDATE access_requests SET status = 'approved', resolved_at = CURRENT_TIMESTAMP(3), resolved_by = ? " +
+                "WHERE email = ? AND status = 'pending'",
+              [porQuem, m.email],
+            );
+          }
+          depois = m.perfil;
         } else {
           alvo = m.email;
           antes = { role: await papelDe(c, m.email), screens: await telasDe(c, m.email) };
           await c.query('DELETE FROM user_roles WHERE email = ?', [m.email]);
           await c.query('DELETE FROM screen_users WHERE email = ?', [m.email]);
+          // Tabela de 20/10/2026: sem ela, não há membro a tirar.
+          await c.query('DELETE FROM access_profile_members WHERE email = ?', [m.email]).catch((err: { code?: string }) => {
+            if (err.code !== 'ER_NO_SUCH_TABLE') throw err;
+          });
           depois = null;
         }
         await c.query(
@@ -178,6 +339,23 @@ export function lojaMaria(pool: mysql.Pool): LojaDeAcesso {
       } finally {
         c.release();
       }
+    },
+
+    async historico(email: string | null, limite: number): Promise<RegistroDeAuditoria[]> {
+      const [r] = await pool.query(
+        'SELECT created_at, actor_email, action, target, before_value, after_value FROM audit_logs ' +
+          (email ? 'WHERE target = ? ' : '') +
+          'ORDER BY id DESC LIMIT ?',
+        email ? [email, limite] : [limite],
+      );
+      return (r as Record<string, unknown>[]).map((x) => ({
+        em: new Date(x.created_at as string).toISOString(),
+        por: String(x.actor_email),
+        acao: String(x.action),
+        alvo: (x.target as string | null) ?? null,
+        antes: (x.before_value as string | null) ?? null,
+        depois: (x.after_value as string | null) ?? null,
+      }));
     },
 
     // Uma linha por e-mail; tentar de novo só soma. Quem já foi aprovado e voltou a ficar

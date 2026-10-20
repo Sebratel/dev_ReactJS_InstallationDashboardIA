@@ -22,6 +22,7 @@ import { pegaMatriz, pegaUsoDasTelas } from '../../services/acessoService.ts';
 import { useModo } from '../../context/ModoContext.tsx';
 import {
   useDashboards,
+  idsSobDemanda,
   useEu,
   useLayout,
   usePaginaAberta,
@@ -31,6 +32,8 @@ import { useEstadoDaTela } from '../../hooks/useEstadoDaTela.ts';
 import { useTempoReal } from '../../hooks/useTempoReal.ts';
 import { usePreCargas } from '../../hooks/usePreCargas.ts';
 import { useVizinhanca } from '../../hooks/useVizinhanca.ts';
+import { useAbaixoDaDobra } from '../../hooks/useAbaixoDaDobra.ts';
+import { useSobDemandaJunto } from '../../hooks/useSobDemandaJunto.ts';
 import { useEspacoSemVisual } from '../../hooks/useAlturaMedida.ts';
 import { avaliaSaudeQueries } from '../../utils/avisoSaude.ts';
 import { dataDaPagina } from '../../utils/filtrosPadrao.ts';
@@ -165,6 +168,20 @@ export function DashboardPage() {
   // do cache deixava a barra só com "Período" até a página chegar — aí ela crescia uma
   // linha e empurrava os cards. `visuais` fica para API antiga, sem `segmentacoes`.
   const segmentacoes = segmentacoesDaTela(layout?.segmentacoes ?? visuais, dataDaTela, filtros);
+
+  // Os visuais caros saem junto com a abertura no clique, não depois dela. A lista vem
+  // da resposta desta página que está na tela (a anterior, enquanto a nova chega).
+  useSobDemandaJunto(paginaDoDado, filtros, clicados, idsSobDemanda(paginaValida));
+
+  // O resto da página ESTE recorte, logo depois da abertura: quem rola até o fim não
+  // encontra esqueleto. Antes da vizinhança, que espera a página parar 2 s.
+  useAbaixoDaDobra(
+    paginaDoDado,
+    layout,
+    filtros,
+    clicados,
+    paginaValida !== null && !paginaQ.isPlaceholderData && !paginaQ.isFetching,
+  );
 
   // Os estados a um clique de filtro deste, pré-carregados enquanto a pessoa lê — os
   // chips primeiro, que são o clique mais provável (ACHADOS #179).

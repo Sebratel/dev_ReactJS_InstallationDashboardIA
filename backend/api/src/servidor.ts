@@ -311,6 +311,25 @@ export class Servidor {
    * as mesmas: sem isto, cada pedido igual viraria uma tarefa a mais na piscina.
    */
   private readonly valoresEmCurso = new Map<string, Promise<DaxValue[] | { erroDoPedido: string }>>();
+  /**
+   * A ÚLTIMA lista pronta de cada segmentação, por `chaveDeValores` SEM frescor.
+   *
+   * **O defeito que criou isto (20/10/2026, staging).** Cada refresh troca o carimbo e
+   * cada aviso do tempo real apaga as listas da página, então a próxima abertura
+   * recalculava as 7 segmentações da `protocolos-detalhados` em fila na worker única,
+   * junto com a página. Os chips de TIPO DE PROTOCOLO (o único filtro com a lista à
+   * vista) sumiam em "carregando…" por segundos depois de todo refresh.
+   *
+   * A lista de uma segmentação quase nunca muda entre duas cargas. Então, sem a lista
+   * fresca, a rota responde esta na hora e recalcula em segundo plano, com a
+   * prioridade do prefetch — o clique de alguém passa na frente. O frescor não se
+   * perde: o recálculo grava a lista nova aqui e no cache com carimbo, e o pedido
+   * seguinte já a recebe. Uma cidade nova aparece no seletor um pedido depois, não
+   * nunca (o defeito descrito em `valores`). Não entra em `esqueceAPagina`: ser
+   * mantida através da invalidação é a razão de existir. Uma entrada por segmentação,
+   * então o tamanho é o do catálogo, e o teto é o mesmo do cache com carimbo.
+   */
+  private readonly ultimaListaDeValores = new MapaLru<string, DaxValue[]>(TETO_VALORES_PADRAO);
   /** Páginas que receberam a "última pronta" e esperam o aviso da nova. Ver `pagina()`. */
   private readonly paginasComAnterior = new Set<string>();
   /** Quantas vezes `esqueceAPagina` passou por cada página. Ver o uso em `valores`. */
@@ -874,6 +893,18 @@ export class Servidor {
           ? { usuario: 'dev-local', papeis: ['sem-login'] }
           : null);
 
+    // **"Tenho sessão?" — sempre 200, só um booleano (20/10/2026).** A tela abria otimista,
+    // pedia `/api/dashboards` e `/api/eventos`, levava 401 e só então mostrava o login: o
+    // Chrome registrava os dois 401 em vermelho no console de quem nem tinha entrado. Com
+    // esta pergunta antes, a tela de login não faz pedido nenhum que falhe. Barrado
+    // (suspenso, Senior) conta como sem sessão — o login mostra o motivo ao tentar.
+    if (rota === '/auth/sessao' && req.method === 'GET') {
+      const logado = quem !== null && !ehAquecedor && this.opts.acesso.bloqueio(quem) === null;
+      res.setHeader('Cache-Control', 'no-store');
+      responde(res, 200, { logado });
+      return;
+    }
+
     if (rota.startsWith('/api/')) {
       // O Aquecedor fica isento — ele bate nestas rotas em rajada de
       // propósito (reaquecimento pós-evento, F4), e é reconhecimento pelo
@@ -892,6 +923,16 @@ export class Servidor {
       if (!quem) {
         this.registraEventoSeg(req, 401, 'sessao-ausente-ou-invalida');
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
+        return;
+      }
+      // Barrada DEPOIS de logar (suspensa agora, entrou de férias na Senior, acesso
+      // venceu): as sessões dela caem e a tela volta para o login, que mostra o motivo.
+      const bloqueio = this.opts.acesso.bloqueio(quem);
+      if (bloqueio) {
+        if (derrubaSessoesDe(this.sessoes, quem.usuario) > 0) {
+          this.registraEventoDeSessao(req, 'sessao_derrubada', quem.usuario, `bloqueio-${bloqueio.origem}`);
+        }
+        responde(res, 401, { erro: bloqueio.motivo, publico: true });
         return;
       }
       if (ehRegistroDeUso) return this.registraAbertura(req, res, url, quem, ehAquecedor);
@@ -999,12 +1040,14 @@ export class Servidor {
     if (!identidade) {
       this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
-        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+        erro: `Não foi possível entrar com esta conta. Use a sua conta @${this.opts.dominioCorporativo}.`,
+        publico: true,
       });
       return;
     }
+    if (this.recusaLoginBarrado(req, res, identidade.email)) return;
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
+    const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
@@ -1046,14 +1089,47 @@ export class Servidor {
     if (!identidade) {
       this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
-        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+        erro: `Não foi possível entrar com esta conta. Use a sua conta @${this.opts.dominioCorporativo}.`,
+        publico: true,
       });
       return;
     }
+    if (this.recusaLoginBarrado(req, res, identidade.email)) return;
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
+    const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
+  }
+
+  /**
+   * **Uma sessão por pessoa (decisão do Erick, 20/10/2026).** O login novo derruba as
+   * sessões anteriores do mesmo e-mail: o outro navegador leva 401 no próximo pedido
+   * (ou no próximo aviso do tempo real) e volta para a tela de login. Derrubar o antigo,
+   * e não recusar o novo, é de propósito: recusar travaria fora quem fechou o navegador
+   * sem sair, até a sessão vencer. Vale para `/auth/google` e `/auth/firebase`; a de
+   * máquina (`/auth/interno`, que nem existe em produção) segue podendo ter várias.
+   */
+  /**
+   * O token do Google é válido, mas a pessoa está barrada (suspensa, acesso vencido,
+   * afastada ou desligada na Senior): 403 com o motivo, que a tela de login mostra, e
+   * nenhuma sessão nasce. Devolve `true` quando já respondeu.
+   */
+  private recusaLoginBarrado(req: http.IncomingMessage, res: http.ServerResponse, email: string): boolean {
+    const bloqueio = this.opts.acesso.bloqueio({ usuario: email, papeis: ['autenticado'] });
+    if (!bloqueio) return false;
+    this.registraEventoSeg(req, 403, `login-bloqueado-${bloqueio.origem}`, email);
+    responde(res, 403, { erro: bloqueio.motivo, publico: true });
+    return true;
+  }
+
+  private abreSessaoUnica(
+    req: http.IncomingMessage,
+    identidade: { email: string; foto?: string; nome?: string },
+  ): string {
+    if (derrubaSessoesDe(this.sessoes, identidade.email) > 0) {
+      this.registraEventoDeSessao(req, 'sessao_derrubada', identidade.email, 'novo-login');
+    }
+    return criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
   }
 
   /**
@@ -1344,23 +1420,53 @@ export class Servidor {
     const sub = rota.slice('/api/admin/acessos'.length);
     const navegaveis = this.dashboards.filter((d) => d.type !== 'Tooltip');
     const nomes = new Map(navegaveis.map((d) => [d.id, d.name] as const));
-    const respondeMatriz = (): void => {
+    const respondeMatriz = async (): Promise<void> => {
       const m = acesso.matriz();
+      // O último acesso: o mais novo entre o uso das abas (banco) e a última atividade de
+      // uma sessão viva (memória). Sem a tabela de uso, vale só a sessão.
+      const ultimos = await this.opts.usoDasTelas?.ultimosAcessos?.().catch(() => undefined);
+      const daSessao = new Map<string, string>();
+      for (const s of this.sessoes.values()) {
+        const e = s.usuario.trim().toLowerCase();
+        const iso = new Date(s.ultimoUso).toISOString();
+        if ((daSessao.get(e) ?? '') < iso) daSessao.set(e, iso);
+      }
+      const ultimoAcesso = (e: string): string | null => {
+        const a = ultimos?.get(e) ?? '';
+        const b = daSessao.get(e) ?? '';
+        return (a > b ? a : b) || null;
+      };
       responde(res, 200, {
         eu: { usuario: quem.usuario, papel: acesso.papelDe(quem) },
         telas: m.telas.filter((t) => nomes.has(t.id)).map((t) => ({ ...t, nome: nomes.get(t.id) })),
-        pessoas: m.pessoas.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        pessoas: m.pessoas.map((p) => ({
+          ...p,
+          telas: p.telas.filter((t) => nomes.has(t)),
+          ultimoAcesso: ultimoAcesso(p.email),
+        })),
         pedidos: m.pedidos,
+        perfis: m.perfis.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        ...(m.senior ? { senior: m.senior } : {}),
         banco: acesso.estado(),
       });
     };
 
     if (req.method !== 'POST') {
+      if (sub === '/historico') {
+        try {
+          const email = new URL(req.url ?? '/', 'http://x').searchParams.get('email');
+          responde(res, 200, { registros: await acesso.historico(quem, email) });
+        } catch (err) {
+          if (!(err instanceof ErroDeAcesso)) throw err;
+          responde(res, err.status, { erro: err.message, publico: true });
+        }
+        return;
+      }
       if (sub !== '') {
         responde(res, 404, { erro: `'${sub}' não existe em /api/admin/acessos.` });
         return;
       }
-      respondeMatriz();
+      await respondeMatriz();
       return;
     }
 
@@ -1386,8 +1492,32 @@ export class Servidor {
       mudanca = { acao: 'remove-pessoa', email: texto(corpo.email) };
     } else if (sub === '/dispensa') {
       mudanca = { acao: 'dispensa-pedido', email: texto(corpo.email) };
+    } else if (sub === '/suspende') {
+      mudanca = {
+        acao: 'suspende',
+        email: texto(corpo.email),
+        motivo: texto(corpo.motivo).trim(),
+        ate: corpo.ate == null ? null : texto(corpo.ate),
+      };
+    } else if (sub === '/reativa') {
+      mudanca = { acao: 'reativa', email: texto(corpo.email) };
+    } else if (sub === '/validade') {
+      mudanca = { acao: 'validade', email: texto(corpo.email), expiraEm: corpo.expiraEm == null ? null : texto(corpo.expiraEm) };
+    } else if (sub === '/excecao-senior') {
+      mudanca = { acao: 'excecao-senior', email: texto(corpo.email), ligada: corpo.ligada as boolean };
+    } else if (sub === '/perfil') {
+      const telas = Array.isArray(corpo.telas) ? corpo.telas.filter((t): t is string => typeof t === 'string') : [];
+      mudanca = { acao: 'perfil-salva', id: texto(corpo.id), nome: texto(corpo.nome), telas };
+    } else if (sub === '/perfil-remove') {
+      mudanca = { acao: 'perfil-remove', id: texto(corpo.id) };
+    } else if (sub === '/perfil-da-pessoa') {
+      mudanca = { acao: 'perfil-da-pessoa', email: texto(corpo.email), perfil: corpo.perfil == null ? null : texto(corpo.perfil) };
     } else {
-      responde(res, 404, { erro: `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa.` });
+      responde(res, 404, {
+        erro:
+          `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa, ` +
+          '/suspende, /reativa, /validade, /excecao-senior, /perfil, /perfil-remove, /perfil-da-pessoa.',
+      });
       return;
     }
     try {
@@ -1395,7 +1525,7 @@ export class Servidor {
     } catch (err) {
       if (err instanceof ErroDeAcesso) {
         if (err.status === 403) this.registraEventoSeg(req, 403, 'gestao-de-acesso-recusada', quem.usuario);
-        responde(res, err.status, { erro: err.message });
+        responde(res, err.status, { erro: err.message, publico: true });
         return;
       }
       throw err;
@@ -1405,7 +1535,13 @@ export class Servidor {
     if (mudanca.acao === 'remove-pessoa' && derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
       this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `remove-pessoa por=${quem.usuario}`);
     }
-    respondeMatriz();
+    // Suspensa, validade vencida ou Senior voltando a valer: cai já, não no próximo clique.
+    if ('email' in mudanca && this.opts.acesso.bloqueio({ usuario: mudanca.email, papeis: ['autenticado'] })) {
+      if (derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
+        this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `${mudanca.acao} por=${quem.usuario}`);
+      }
+    }
+    await respondeMatriz();
   }
 
   /**
@@ -2503,10 +2639,16 @@ export class Servidor {
     const frescorDaPagina = `${this.carimboDaPagina(dash)}@${diaDoCalculo(this.opts.agora())}`;
     const chaveValores = chaveDeValores(id, frescorDaPagina, tabela, coluna, nivel);
     let distintos = this.cacheValoresDistintos.get(chaveValores);
+    const chaveDaUltima = chaveDeValores(id, '', tabela, coluna, nivel);
+    const anterior = distintos ? undefined : this.ultimaListaDeValores.get(chaveDaUltima);
     if (!distintos) {
       let emCurso = this.valoresEmCurso.get(chaveValores);
       if (!emCurso) {
-        const origem = origemDoPedido(quem.usuario === 'aquecedor-interno', url.searchParams.get('origem'));
+        // Com a lista anterior em mãos ninguém espera este cálculo: ele vai para o
+        // fundo da fila. Ver `ultimaListaDeValores`.
+        const origem = anterior
+          ? 'prefetch'
+          : origemDoPedido(quem.usuario === 'aquecedor-interno', url.searchParams.get('origem'));
         // **A geração, porque a chave não basta.** A chave carrega o carimbo do DISCO,
         // e uma mudança do tempo real não o troca: ela apaga as listas da página em
         // `esqueceAPagina`. Uma lista que estava sendo calculada sobre o overlay de
@@ -2521,6 +2663,7 @@ export class Servidor {
             (r) => {
               if (Array.isArray(r) && this.geracaoDaPagina(dash.id) === geracao) {
                 this.cacheValoresDistintos.set(chaveValores, r);
+                this.ultimaListaDeValores.set(chaveDaUltima, r);
               }
             },
             () => undefined,
@@ -2531,7 +2674,7 @@ export class Servidor {
       }
       let r: DaxValue[] | { erroDoPedido: string };
       try {
-        r = await emCurso;
+        r = anterior ?? (await emCurso);
       } catch (err) {
         responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
         return;

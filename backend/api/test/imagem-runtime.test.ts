@@ -257,13 +257,22 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   }
   assert.deepEqual(web.ports, ['${WEB_PORT_HOST:-3101}:8080']);
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
-  assert.equal(web.mem_limit, '3g', 'a tela não pode herdar toda a memória do host');
+  assert.equal(web.mem_limit, '128m', 'a tela não pode herdar toda a memória do host');
 
-  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
+  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '256');
+  // Pré-cálculo de filtros religado em 20/10/2026 ("tudo pré-carregado").
+  assert.equal(api.environment?.AQUECE_FILTROS_ATE, '40');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
-  assert.equal(api.mem_limit, '1600m');
+  assert.equal(api.mem_limit, '2304m');
   assert.equal(compose.services.refresh?.mem_limit, '3g');
+  // Orçamento do host (20/10/2026): 3 GB contínuos; o pico do refresh não pode
+  // afetar a API nem as outras aplicações do servidor.
+  const refresh = compose.services.refresh as Record<string, unknown> | undefined;
+  assert.equal(refresh?.mem_reservation, '512m');
+  assert.equal(refresh?.oom_score_adj, 500);
+  assert.equal(refresh?.cpus, '1.0');
+  assert.equal(refresh?.cpu_shares, 256);
   // Redis desta stack (ACHADOS #228): a api aponta para o serviço pelo nome, com senha.
   const redis = compose.services.redis!;
   assert.ok(redis, 'o Redis do cache de respostas mora nesta stack');
@@ -272,14 +281,15 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.match(redis.command!, /--requirepass \$\{REDIS_PASSWORD:\?/);
   // A fragmentação chega a 2× e mais (medida, ACHADOS #229/#230): 512mb/640m morria por
   // OOM; 64mb/192m passou com pico de 110 MiB.
-  assert.match(redis.command!, /--maxmemory 64mb/);
+  // 20/10/2026: 256mb/384m para caber o pré-cálculo de filtros religado.
+  assert.match(redis.command!, /--maxmemory 256mb/);
   assert.match(redis.command!, /--maxmemory-policy allkeys-lru/);
   // Sem porta publicada e sem nada em disco: é cache sobre dado de cliente.
   assert.equal(redis.ports, undefined, 'Redis não pode ser alcançável de fora da stack');
   assert.equal(redis.volumes, undefined, 'cache não grava dado de cliente em volume');
   assert.match(redis.command!, /--save ''/);
   assert.match(redis.command!, /--appendonly no/);
-  assert.equal(redis.mem_limit, '192m');
+  assert.equal(redis.mem_limit, '384m');
   assert.equal(redis.user, '999:1000', 'Redis precisa iniciar sem root antes de remover capabilities');
   assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
 

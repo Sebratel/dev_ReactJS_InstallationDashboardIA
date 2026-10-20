@@ -15,6 +15,13 @@
 
 import type { FiltroDaTela, Valor } from '../services/dashboardService.ts';
 import { aplicaSelecao, chaveDeCampo, selecaoDe, type CampoClicado } from './rota.ts';
+import {
+  clicaAno,
+  clicaMes,
+  selecaoDeData,
+  type AnoDaArvore,
+  type MudancaDeNivel,
+} from './hierarquiaData.ts';
 
 /** Uma segmentação com a lista de valores já carregada. */
 export interface SegmentacaoComValores {
@@ -58,4 +65,38 @@ export function estadosVizinhos(
     }
   }
   return out;
+}
+
+/**
+ * Os estados a um clique no PERÍODO: cada ano da árvore e cada mês dos anos marcados
+ * (ou do ano mais recente, se nenhum estiver marcado), até `teto`.
+ *
+ * **Por que entrou (20/10/2026, teste de cliques no staging).** O período não estava em
+ * pré-carregamento nenhum — nem aqui, nem no servidor — e foi o clique mais lento do
+ * teste: `Período = 2024` na INSTALAÇÃO / REINCIDENTE levou 32 s. As contas são as do
+ * clique de verdade: `clicaAno`/`clicaMes` (`ArvoreDeDatas`) e cada mudança aplicada como
+ * `mudaFiltro` aplica (`aplicaSeletor`: o campo deixa de ser "clicado").
+ */
+export function estadosDoPeriodo(
+  estado: EstadoDaTela,
+  data: { tabela: string; coluna: string },
+  arvore: readonly AnoDaArvore[],
+  teto: number,
+): EstadoDaTela[] {
+  const sel = selecaoDeData(estado.filtros, data.tabela, data.coluna);
+  const aplica = (mudancas: MudancaDeNivel[]): EstadoDaTela => ({
+    filtros: mudancas.reduce(
+      (f, m) => aplicaSelecao(f, data.tabela, data.coluna, m.valores, m.nivel),
+      estado.filtros,
+    ),
+    clicados: estado.clicados.filter((c) => chaveDeCampo(c) !== chaveDeCampo(data)),
+  });
+  const anos = [...arvore].sort((a, b) => b.ano - a.ano);
+  const doMes = anos.filter((a) => sel.anos.includes(a.ano));
+  const out: EstadoDaTela[] = [];
+  for (const a of doMes.length > 0 ? doMes : anos.slice(0, 1)) {
+    for (const m of [...a.meses].reverse()) out.push(aplica(clicaMes(sel, a.ano, m.nome)));
+  }
+  for (const a of anos) out.push(aplica(clicaAno(sel, a.ano)));
+  return out.slice(0, teto);
 }

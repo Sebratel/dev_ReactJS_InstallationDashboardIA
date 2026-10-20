@@ -32,9 +32,15 @@ export function segmentacoesDaTela(
   // escolha ali é um caminho, não um conjunto de valores de um nível"), então ela
   // desenhava um botão que dizia "todos" com a página filtrada em julho. Deixar os
   // dois seria oferecer dois controles para a mesma coluna, um deles morto.
+  //
+  // E hierarquia que NÃO é a data da página também sai: um menu dela lista datas soltas,
+  // e escolher uma manda texto contra data — os cards caem em "não calculou" (PREMIAÇÃO,
+  // 20/10/2026). Hierarquia só se filtra pela árvore; se ela aparecer sem árvore, o
+  // defeito é a página faltar em `filtros-padrao.ts` (há teste para isso).
   const todas = visuais.filter(
     (v) =>
       v.segmentacao &&
+      !v.segmentacao.niveis &&
       !(
         dataDaTela !== null &&
         v.segmentacao.tabela === dataDaTela.tabela &&

@@ -41,6 +41,9 @@ beforeEach(() => {
         );
       }
       if (url === '/api/admin/sessoes') return new Response(JSON.stringify({ sessoes: [] }));
+      if (url.startsWith('/api/admin/acessos/historico')) {
+        return new Response(JSON.stringify({ registros: [] }));
+      }
       if (url === '/api/admin/uso?dias=30') {
         return new Response(
           JSON.stringify({

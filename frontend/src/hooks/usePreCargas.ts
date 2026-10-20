@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { FiltroDaTela, LayoutSpec, Valor } from '../services/dashboardService.ts';
 import { filtrosPadrao } from '../utils/filtrosPadrao.ts';
 import type { AlvoDeFiltro, CampoClicado } from '../utils/rota.ts';
-import { consultaDaAbertura, preCarregaAbertura } from './useDadosDaTela.ts';
+import { preCarregaAbertura, preCarregaEstado } from './useDadosDaTela.ts';
 import { aplicaClique, aplicaSeletor } from './useEstadoDaTela.ts';
 
 export interface PreCargas {
@@ -81,7 +81,9 @@ export function usePreCargas(
       timeoutHoverClique.current = window.setTimeout(() => {
         timeoutHoverClique.current = null;
         const p = prever();
-        void qc.prefetchQuery(consultaDaAbertura(atual, layout, p.filtros, p.clicados));
+        // A abertura e os visuais `sobDemanda` dela: só a abertura deixava o clique
+        // esperando os caros (`preCarregaEstado`).
+        preCarregaEstado(qc, atual, layout, p.filtros, p.clicados).catch(() => undefined);
       }, 150);
     },
     [atual, layout, qc],

@@ -22,8 +22,77 @@ export function comStatus(err: unknown, status: number): Error {
   return Object.assign(e, { status });
 }
 
+/**
+ * **O que sai para o navegador em produção (pedido do Erick, 20/10/2026).** A aba Network
+ * mostra toda resposta a quem abrir o DevTools, e as mensagens de erro desta API foram
+ * escritas para quem depura: caminho de arquivo (`/repo/snapshot/...`), comando
+ * (`npm run snapshot:calculadas`), nome de tabela e coluna, a lista de rotas e de ações
+ * válidas. É um mapa para quem quer atacar. Em produção, erro vira uma frase genérica e
+ * um código (`ref`); o detalhe vai para o log do servidor com o mesmo código, que é
+ * onde quem conserta procura.
+ *
+ * Fica de fora o que foi escrito PARA a pessoa — o motivo de um bloqueio, a recusa do
+ * login, a validação da aba PERMISSÕES —, marcado com `publico: true` por quem responde.
+ * O erro de um visual dentro de uma resposta 200 (`visuais[].erro`) também é trocado.
+ */
+const GENERICOS: Record<number, string> = {
+  400: 'Pedido inválido.',
+  401: 'Sua sessão expirou. Entre novamente.',
+  403: 'Você não tem acesso a este conteúdo.',
+  404: 'Não encontrado.',
+  405: 'Operação não permitida.',
+  413: 'Pedido grande demais.',
+  429: 'Muitas requisições. Aguarde um instante e tente de novo.',
+};
+export const ERRO_GENERICO = 'Não foi possível carregar agora. Tente novamente em instantes.';
+export const ERRO_DE_VISUAL = 'Este visual não pôde ser calculado agora.';
+
+/** Produção esconde o detalhe; desenvolvimento e testes veem tudo. */
+export const errosGenericos = (): boolean => process.env.NODE_ENV === 'production';
+
+export function corpoPublico(
+  status: number,
+  corpo: unknown,
+  log: (msg: string) => void = (m) => console.error(m),
+): unknown {
+  if (!corpo || typeof corpo !== 'object' || Array.isArray(corpo)) return corpo;
+  const c = corpo as Record<string, unknown>;
+  if (status >= 400 && typeof c.erro === 'string') {
+    if (c.publico === true) {
+      const { publico: _, ...resto } = c;
+      return resto;
+    }
+    const ref = crypto.randomBytes(4).toString('hex');
+    log(`[erro ${ref}] HTTP ${status}: ${c.erro}`);
+    return { erro: GENERICOS[status] ?? ERRO_GENERICO, ref };
+  }
+  if (Array.isArray(c.visuais) && c.visuais.some((v) => v && typeof v === 'object' && 'erro' in v)) {
+    return {
+      ...c,
+      visuais: c.visuais.map((v: Record<string, unknown>) => {
+        if (!v || typeof v.erro !== 'string') return v;
+        const ref = crypto.randomBytes(4).toString('hex');
+        log(`[erro ${ref}] visual ${String(v.id)}: ${v.erro}`);
+        return { ...v, erro: `${ERRO_DE_VISUAL} (ref ${ref})` };
+      }),
+    };
+  }
+  if (c.publico === true) {
+    const { publico: _, ...resto } = c;
+    return resto;
+  }
+  return corpo;
+}
+
+/** A marca `publico` é instrução para `corpoPublico`, não parte da resposta. */
+function semMarca(corpo: unknown): unknown {
+  if (!corpo || typeof corpo !== 'object' || !('publico' in corpo)) return corpo;
+  const { publico: _, ...resto } = corpo as Record<string, unknown>;
+  return resto;
+}
+
 export function responde(res: http.ServerResponse, status: number, corpo: unknown): void {
-  const texto = JSON.stringify(corpo);
+  const texto = JSON.stringify(errosGenericos() ? corpoPublico(status, corpo) : semMarca(corpo));
   res.writeHead(status, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(texto),

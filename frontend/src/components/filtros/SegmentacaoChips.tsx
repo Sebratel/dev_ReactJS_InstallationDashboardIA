@@ -18,6 +18,8 @@ import {
 import { formata } from '../../utils/formato.ts';
 import { alternaValor } from '../../utils/vizinhanca.ts';
 import { cn } from '../../utils/cn.ts';
+import { rotulosCurtos } from '../../utils/rotulosCurtos.ts';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Nota } from '../ui/Nota.tsx';
 import { RotuloDeFiltro } from './GatilhoDoFiltro.tsx';
 import { rotuloDeCampo } from '../../utils/rotulos.ts';
@@ -38,6 +40,8 @@ export function SegmentacaoChips(props: {
   aoMudar: (valores: Valor[]) => void;
   /** O mouse parou num chip: a seleção que o clique nele daria (pré-carregamento). */
   aoPrever?: (valores: Valor[]) => void;
+  /** O que fecha a fileira, à direita (o "Limpar filtros" da barra) — sem linha própria. */
+  fim?: ReactNode;
 }) {
   const { pagina, spec } = props;
   const { opcoes, erro } = useValoresDaSegmentacao(pagina, spec.tabela, spec.coluna, spec.nivel);
@@ -50,16 +54,42 @@ export function SegmentacaoChips(props: {
     props.aoMudar(proxima(v));
   }
 
+  const completos = (opcoes ?? []).map((o) =>
+    o.valor === null ? '(vazio)' : formata(o.valor, o.tipo).texto,
+  );
+  const curtos = rotulosCurtos(completos);
+
+  // A roda do mouse sobre a fileira rola para o lado: sem isso, quem não tem trackpad só
+  // alcança o fim arrastando a barra. Ouvinte nativo e não passivo: o `onWheel` do React é
+  // passivo e não impede a página de rolar junto.
+  const fileiraRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = fileiraRef.current;
+    if (!el) return;
+    const rola = (e: globalThis.WheelEvent) => {
+      if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+    el.addEventListener('wheel', rola, { passive: false });
+    return () => el.removeEventListener('wheel', rola);
+  }, []);
+
   return (
-    // Uma linha da barra de filtros, só dela (`basis-full`): os chips rolam na horizontal
-    // e a borda direita esmaece, como a linha de chips do COM — quebrar em duas linhas
-    // pagava 35px em todo card (a altura da barra entra em `--util`).
+    // Uma linha da barra de filtros, só dela (`basis-full`), que ROLA para o lado com a
+    // barra de rolagem À VISTA (pedido do Erick, 20/10/2026: "uma barra para passar para o
+    // lado, igual a de descer"). Até aqui a barra ficava escondida e a borda esmaecia: em
+    // 1366/1920px a 100% de zoom o último tipo ("TEC - Troca de Endereço") ficava fora da
+    // tela sem nada dizendo que havia mais. Quebrar em duas linhas mostrava tudo, mas
+    // pesava a barra. Os rótulos curtos (`rotulosCurtos`) fazem caber mais antes de rolar,
+    // e o "Limpar filtros" (`fim`) fica fixo à direita, fora do que rola.
     <div className="flex min-w-0 basis-full items-center gap-[8px]">
       <RotuloDeFiltro>{rotuloDeCampo(spec.rotulo)}</RotuloDeFiltro>
       <div
-        className="flex min-w-0 flex-1 items-center gap-[6px] overflow-x-auto pr-[22px] [mask-image:linear-gradient(to_right,#000_calc(100%-22px),transparent)] [scrollbar-width:none]"
+        className="flex min-w-0 flex-1 items-center gap-[6px] overflow-x-auto pb-[4px] [scrollbar-color:var(--color-pbi-borda)_transparent] [scrollbar-width:thin]"
         role="group"
         aria-label={rotuloDeCampo(spec.rotulo)}
+        ref={fileiraRef}
       >
         {erro ? (
           <Nota>não deu para carregar: {erro}</Nota>
@@ -81,9 +111,9 @@ export function SegmentacaoChips(props: {
                 aria-pressed={marcado}
                 onClick={() => alterna(o.valor)}
                 onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
-                title={o.valor === null ? '(vazio)' : formata(o.valor, o.tipo).texto}
+                title={completos[i]}
               >
-                {o.valor === null ? '(vazio)' : formata(o.valor, o.tipo).texto}
+                {curtos[i]}
               </button>
             );
           })
@@ -98,6 +128,7 @@ export function SegmentacaoChips(props: {
           </button>
         ) : null}
       </div>
+      {props.fim ? <div className="flex-none">{props.fim}</div> : null}
     </div>
   );
 }

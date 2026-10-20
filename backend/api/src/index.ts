@@ -27,7 +27,8 @@ import { comoLiberar } from './porta.ts';
 import { decideLogin } from './portao-login.ts';
 import { mensagemDaConfiguracaoDeProducao, problemasDaConfiguracaoDeProducao } from './configuracao-producao.ts';
 import { criaAcesso } from './permissoes.ts';
-import { configDoAmbiente, criaPoolDeAcesso, lojaMaria } from './loja-acesso-maria.ts';
+import { configDoAmbiente, criaPoolDeAcesso, garanteTabelas, lojaMaria } from './loja-acesso-maria.ts';
+import { criaSenior } from './senior.ts';
 import { criaGravadorDeEventos } from './eventos-seguranca.ts';
 import { criaUsoDasTelas } from './uso-das-telas.ts';
 import { leTetoDaResposta, memoriaDaResposta } from './memoria-limitada.ts';
@@ -295,7 +296,22 @@ const poolDeAcesso = configDoAcesso ? criaPoolDeAcesso(configDoAcesso) : null;
 // Os eventos de segurança vão para o mesmo banco, em lote (`eventos-seguranca.ts`).
 const eventosDeSeguranca = poolDeAcesso ? criaGravadorDeEventos(poolDeAcesso) : undefined;
 const usoDasTelas = poolDeAcesso ? criaUsoDasTelas(poolDeAcesso) : undefined;
+if (poolDeAcesso) await garanteTabelas(poolDeAcesso);
+// A situação dos colaboradores (Senior, pelo Data Hub). Sem DATAHUB_TOKEN a regra da Senior
+// não existe neste ambiente — ninguém é barrado por ela. Ver `senior.ts`.
+const senior = process.env.DATAHUB_TOKEN
+  ? criaSenior({
+      baseUrl: process.env.DATAHUB_BASE_URL || 'https://data-hub.sebratel.net.br/api/public/v1',
+      token: process.env.DATAHUB_TOKEN,
+      api: process.env.SENIOR_API || 'instalacao-senior',
+      arquivo: path.join(DIR_RUNTIME, 'senior-colaboradores.json'),
+    })
+  : null;
+if (senior) await senior.sincroniza();
+senior?.sincronizaA(Number(process.env.SENIOR_SYNC_MIN || 30) * 60_000);
 const acesso = criaAcesso({
+  senior,
+  modoSenior: process.env.SENIOR_MODO === 'bloquear' ? 'bloquear' : 'observar',
   loja: poolDeAcesso ? lojaMaria(poolDeAcesso) : null,
   telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
   adminsDoAmbiente: (process.env.ADMIN_EMAILS ?? '').split(','),

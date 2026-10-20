@@ -248,6 +248,32 @@ test('filtros: cada valor de filtro com poucos valores vira a URL do clique, com
   assert.equal(chamadas.filter((u) => u.includes('MUITOS') && u.includes('filtro=')).length, 0, 'filtro de 100 valores não é pré-calculado');
 });
 
+test('filtros: cada valor pré-calculado leva junto os visuais sobDemanda da resposta', async () => {
+  // 20/10/2026, teste de cliques no staging: o clique pré-calculado ainda esperava os
+  // visuais caros da `agendamento-field`, que a tela pede um a um com `?visual=`.
+  const chamadas: string[] = [];
+  const base = buscaComFiltros(chamadas);
+  const buscar = (async (url: string | URL, init?: RequestInit) => {
+    const u = String(url);
+    if (u.includes('/api/dashboards/agendamento-field?') && u.includes('POUCOS') && !u.includes('visual=caro')) {
+      chamadas.push(u);
+      return new Response(JSON.stringify({ visuais: [{ id: 'leve' }, { id: 'caro', sobDemanda: ['FIELD AGENDA'] }] }), {
+        status: 200,
+      });
+    }
+    return base(url, init);
+  }) as typeof fetch;
+  const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar, anuncia: silencio(), filtrosAte: 40 });
+  await a.tenta();
+  await a.aguardaFiltros();
+  for (const v of ['A', 'B']) {
+    const filtro = `filtro=${encodeURIComponent(codificaFiltro({ tabela: 'T', coluna: 'POUCOS', valores: [v] }))}`;
+    const caros = chamadas.filter((u) => u.includes('visual=caro') && u.includes(filtro));
+    assert.equal(caros.length, 1, `o visual caro do valor ${v} foi pré-calculado uma vez`);
+  }
+  assert.equal(chamadas.filter((u) => u.includes('visual=leve&')).length, 0, 'o visual da abertura não é pedido à parte');
+});
+
 test('filtros: `filtrosAte: 0` desliga o pré-cálculo', async () => {
   const chamadas: string[] = [];
   const a = new Aquecedor({ base: 'http://x', carimbo: () => 'c1', buscar: buscaComFiltros(chamadas), anuncia: silencio(), filtrosAte: 0 });

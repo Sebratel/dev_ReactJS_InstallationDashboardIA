@@ -84,11 +84,12 @@ test('pega: 500 NÃO é repetido — é a API dizendo o que deu errado, e a mens
   assert.equal(r.chamadas(), 1);
 });
 
-test('pega: fora do ar além das tentativas vira erro, com o HTTP', async () => {
+test('pega: fora do ar além das tentativas vira erro, com o status — e sem o endereço no texto', async () => {
   const r = roteiro([resposta(502)]);
   await assert.rejects(
     pega('/api/x', undefined, { fetch: r.fetch, dorme: async () => {} }),
-    /HTTP 502/,
+    (err: unknown) =>
+      (err as { status?: number }).status === 502 && !String(err).includes('/api/x'),
   );
   assert.equal(r.chamadas(), 4, '1 + 3 novas tentativas');
 });
