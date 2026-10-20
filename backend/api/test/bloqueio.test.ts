@@ -251,3 +251,45 @@ test('servidor: login de quem está barrado é 403 com o motivo; barrado depois 
     await new Promise<void>((ok) => http.close(() => ok()));
   }
 });
+
+test('GET /auth/sessao: sempre 200, só o booleano — e barrado conta como sem sessão', async () => {
+  let barrado: Bloqueio | null = null;
+  const acesso: AcessoDasTelas = { ...ACESSO_LIBERADO, bloqueio: () => barrado };
+  const servidor = new Servidor({
+    acesso,
+    root: ROOT,
+    snapshotDir: fs.mkdtempSync(path.join(os.tmpdir(), 'sessao-')),
+    webDir: path.join(ROOT, 'frontend', 'dist'),
+    agora: () => new Date(AGORA),
+    googleClientId: '123.apps.googleusercontent.com',
+    dominioCorporativo: 'sebratel.com.br',
+    verificadorGoogle: {
+      async verifyIdToken() {
+        return { getPayload: () => ({ email: 'ana@sebratel.com.br', hd: 'sebratel.com.br' }) as never };
+      },
+    },
+  });
+  const http = servidor.criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  const base = `http://127.0.0.1:${(http.address() as { port: number }).port}`;
+  try {
+    const sem = await fetch(`${base}/auth/sessao`);
+    assert.equal(sem.status, 200);
+    assert.deepEqual(await sem.json(), { logado: false });
+
+    const login = await fetch(`${base}/auth/google`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: base },
+      body: JSON.stringify({ idToken: 'x' }),
+    });
+    const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0]!;
+    assert.deepEqual(await (await fetch(`${base}/auth/sessao`, { headers: { cookie } })).json(), { logado: true });
+
+    barrado = { origem: 'manual', motivo: 'x' };
+    assert.deepEqual(await (await fetch(`${base}/auth/sessao`, { headers: { cookie } })).json(), { logado: false });
+  } finally {
+    servidor.destroi();
+    http.closeAllConnections?.();
+    await new Promise<void>((ok) => http.close(() => ok()));
+  }
+});

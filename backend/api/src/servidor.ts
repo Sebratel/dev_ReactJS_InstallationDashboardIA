@@ -893,6 +893,18 @@ export class Servidor {
           ? { usuario: 'dev-local', papeis: ['sem-login'] }
           : null);
 
+    // **"Tenho sessão?" — sempre 200, só um booleano (20/10/2026).** A tela abria otimista,
+    // pedia `/api/dashboards` e `/api/eventos`, levava 401 e só então mostrava o login: o
+    // Chrome registrava os dois 401 em vermelho no console de quem nem tinha entrado. Com
+    // esta pergunta antes, a tela de login não faz pedido nenhum que falhe. Barrado
+    // (suspenso, Senior) conta como sem sessão — o login mostra o motivo ao tentar.
+    if (rota === '/auth/sessao' && req.method === 'GET') {
+      const logado = quem !== null && !ehAquecedor && this.opts.acesso.bloqueio(quem) === null;
+      res.setHeader('Cache-Control', 'no-store');
+      responde(res, 200, { logado });
+      return;
+    }
+
     if (rota.startsWith('/api/')) {
       // O Aquecedor fica isento — ele bate nestas rotas em rajada de
       // propósito (reaquecimento pós-evento, F4), e é reconhecimento pelo
