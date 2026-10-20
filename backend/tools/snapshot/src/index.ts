@@ -1177,6 +1177,11 @@ function congelaCalculadas(): Promise<boolean> {
   });
 }
 
+function fontesDasCalculadasEstaoProntas(): string[] {
+  if (!alimentam.seguro) return [];
+  return [...alimentam.queries].filter((query) => !fs.existsSync(arquivoDaQuery(args.saida, query)));
+}
+
 const resultados: Resultado[] = [];
 /** Congelou no meio do laço? Então o bloco do fim não repete o trabalho. */
 let congelouCedo = false;
@@ -1202,7 +1207,12 @@ for (const [i, id] of aBuscar.entries()) {
   // não é origem de calculada nenhuma, então não as envelhece — é a mesma apuração de
   // dependência que `confereIdadeDaCalculada` usa para decidir se recusa (ver o
   // docstring dela em `backend/packages/snapshot/src/carrega.ts`).
-  if (!args.semCalculadas && i === ultimaQueAlimenta && resultados.some((x) => x.ok)) {
+  if (
+    !args.semCalculadas &&
+    i === ultimaQueAlimenta &&
+    resultados.some((x) => x.ok) &&
+    fontesDasCalculadasEstaoProntas().length === 0
+  ) {
     const faltam = aBuscar.length - 1 - i;
     console.log(
       `\n  Congelando as calculadas AGORA: '${id}' era a última desta execução que as` +
@@ -1325,14 +1335,19 @@ console.log('\n  Contém dado de cliente. O diretório está no .gitignore.');
 //      incompleta), ou a apuração recusou (`seguro: false`) e vale a régua antiga;
 //   2. o congelamento antecipado FALHOU — a mensagem abaixo é a que importa.
 if (!args.semCalculadas && resultados.some((r) => r.ok) && !(congelouCedo && congelouCedoOk)) {
-  const ok = congelouCedo ? false : await congelaCalculadas();
-  if (!ok) {
-    console.error(
-      '\nAs queries foram materializadas, mas o congelamento das calculadas FALHOU.\n' +
-        'O snapshot está inconsistente e as páginas vão responder 409 até isto rodar:\n' +
-        '  npm run snapshot:calculadas -- --todas',
-    );
-    process.exit(1);
+  const faltamFontes = fontesDasCalculadasEstaoProntas();
+  if (faltamFontes.length > 0) {
+    console.log(`\nCalculadas adiadas: aguardando ${faltamFontes.length} fonte(s) de outro grupo de refresh.`);
+  } else {
+    const ok = congelouCedo ? false : await congelaCalculadas();
+    if (!ok) {
+      console.error(
+        '\nAs queries foram materializadas, mas o congelamento das calculadas FALHOU.\n' +
+          'O snapshot está inconsistente e as páginas vão responder 409 até isto rodar:\n' +
+          '  npm run snapshot:calculadas -- --todas',
+      );
+      process.exit(1);
+    }
   }
 }
 
