@@ -54,20 +54,30 @@ services:
     # O CONTRATO DE MEMÓRIA, e os três números têm de andar juntos:
     #
     #   Dockerfile  --max-old-space-size=1024   heap do processo pai
-    #   API_WORKER_HEAP_MB=512 × API_WORKERS=1  heap da piscina de DAX
+    #   API_WORKER_HEAP_MB=512 × API_WORKERS=2  heap da piscina de DAX
     #   ------------------------------------------------------------
-    #   1536 MB autorizados de heap
-    #   mem_limit 1600m -> 64 MB de folga para buffers, runtime, V8 e pilhas.
+    #   2048 MB autorizados de heap
+    #   mem_limit 2304m -> 256 MB de folga para buffers, runtime, V8 e pilhas (a mesma
+    #   margem que sobrou no pico medido com uma worker: 1600 - 1344).
     #
-    # Medido em 18/10/2026: 200 usuários distintos abriram três telas cada sem falha;
-    # p95 de 1,14 s e pico do cgroup de 1344,2 MiB. O worker único elimina a cópia de
-    # datasets da segunda worker e deixa o host de 3 GiB com API + refresh dentro de 3000 MiB.
+    # **Duas workers desde 20/10/2026, e o motivo é o clique, não a vazão.** A piscina
+    # guarda sempre uma worker para quem está usando (ACHADOS #163: um clique esperou
+    # 17,6 s atrás de um aquecimento) — mas com uma worker só não há reserva, porque o
+    # fundo nunca rodaria (`piscina-workers.ts`, `processaFila`). De 18 a 20/10 a stack
+    # rodou com uma: cada refresh reaquecia até 13 páginas por baixo e o clique numa
+    # combinação de filtro ainda não calculada esperava o aquecimento em curso. O Erick
+    # mediu como "filtros demorando" no staging.
+    #
+    # Orçamento: a stack não passa de 3 GB contínuos (decisão do Erick, 20/10/2026).
+    # Medido em 18/10 com uma worker: pico de cgroup de 1344,2 MiB (200 usuários). O pai
+    # usa 34-42 MB de heap; a segunda worker soma até 512 MB. Com web 128m e redis 192m,
+    # o contínuo fica perto de 2,1 GB; o pico do `refresh` é tratado lá.
     #
     # `backend/api/test/piscina-workers.test.ts` falha se alguém mexer num dos três
     # sem mexer nos outros. No Portainer, é `mem_limit` que aparece como o
-    # "Memory limit" da stack. Esta é a configuração validada pela sonda; mudar
-    # qualquer um dos três números exige repetir a medição no cgroup.
-    mem_limit: 1600m
+    # "Memory limit" da stack. A sonda (`npm run probe:memoria-api`) ainda não rodou
+    # com duas workers dentro do cgroup — o RSS real fica para conferir no staging.
+    mem_limit: 2304m
     environment:
       # No Portainer, os segredos vivem nas variáveis da stack; não há `.env` no
       # repositório nem arquivo secreto para copiar ao host. Localmente, o Compose
@@ -97,7 +107,7 @@ services:
       # Fixados aqui, e não nas variáveis da stack, para ninguém os trocar pela tela.
       PUBLICACAO: web-http
       COOKIE_SECURE: '0'
-      API_WORKERS: '1'
+      API_WORKERS: '2'
       API_WORKER_HEAP_MB: '512'
       # PORT declarada AQUI, não deixada para o .env — `environment:` vence
       # `env_file:`, e é isso que fecha a armadilha registrada em

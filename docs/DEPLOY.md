@@ -18,7 +18,7 @@
 >
 > | o que este documento trata como aberto | o que foi medido |
 > |---|---|
-> | "a piscina de workers autoriza 4 × 8 GB" | **1.536 MB autorizados** (pai 1.024 + 1 × 512), `mem_limit: 1600m`; 200 usuários distintos abriram três telas cada sem falha, com pico de cgroup de 1.344,2 MiB e p95 de 1,14 s (18/10) |
+> | "a piscina de workers autoriza 4 × 8 GB" | **2.048 MB autorizados** (pai 1.024 + 2 × 512), `mem_limit: 2304m` desde 20/10 — a segunda worker é a reserva do clique (ACHADOS #163). Com 1 × 512 e 1600m, 200 usuários distintos abriram três telas cada sem falha, pico de cgroup de 1.344,2 MiB e p95 de 1,14 s (18/10); com duas, o RSS falta medir no staging |
 > | "uma fonte caiu e o refresh ficou preso" | o vigia encerra a árvore do grupo após 30 min, registra falha transitória e o daemon tenta de novo; a fila não fica parada indefinidamente |
 > | "três queries têm defeito de carga" | expostas em `/api/saude` → `refresh.queries[]` com idade e estado, e a tela avisa (A2/A6, commits `c193490` / `58ac4b9`) |
 > | "a stack nunca subiu" | subiu: **10/10 páginas pelo proxy na porta 80**, pico 4.356 MB de 6.144, `OOMKilled=false`, ACHADOS #99 e PLANO-DUPLA §A7 |
@@ -196,7 +196,7 @@ todas as linhas — e o que a API serve inclui:
 >
 > **Produção continua com o container `refresh` separado, e isso é deliberado.** O
 > serviço `api` do `docker-compose.prod.yml` ganhou `AUTO_REFRESH: false`, porque o
-> `mem_limit` dele é 1600m (validado no cgroup com 200 usuários distintos e pico de 1.344,2 MiB).
+> `mem_limit` dele é 2304m, com duas workers desde 20/10 (com uma e 1600m, validado no cgroup com 200 usuários distintos e pico de 1.344,2 MiB).
 > A materialização usa outro container, com teto de 1450 MB e memória medida de
 > 1234 MiB para `protocolos-geral`; dentro do cgroup da API, ela poderia levar a tela
 > junto com a carga em caso de OOM.
@@ -207,8 +207,8 @@ todas as linhas — e o que a API serve inclui:
 > `refresh` tem de sair do compose na mesma alteração.
 >
 > **Limite do host (20/10/2026):** a stack não pode ocupar mais de 3 GB o tempo todo;
-> pico pode, desde que não afete as outras aplicações do servidor. Contínuo: api 1600m
-> + redis 192m + web 128m + o daemon do `refresh` ocioso. O `mem_limit: 3g` do
+> pico pode, desde que não afete as outras aplicações do servidor. Contínuo: api (teto
+> 2304m, uso esperado ~1,9 GB com duas workers) + redis 192m + web 128m + o daemon do `refresh` ocioso. O `mem_limit: 3g` do
 > `refresh` é pico da transformação do `field-agenda`, e vem com `mem_reservation:
 > 512m`, `oom_score_adj: 500`, `cpus: '1.0'` e `cpu_shares: 256` — sob pressão o
 > kernel recolhe e, no limite, mata a carga, não a API nem outra aplicação. O teste
@@ -523,9 +523,9 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
   não precisa de `tsc` para a API. O **frontend** sim: `npm run web:build` roda
   `tsc --noEmit` e o Vite.
 - **A API tem heap e piscina limitados.** A imagem sobe com
-  `--max-old-space-size=1024` e `--expose-gc`, mais uma worker de 512 MB, dentro
-  de `mem_limit: 1600m`. A cota foi validada sob 200 usuários distintos; não aumente
-  um dos três valores isoladamente.
+  `--max-old-space-size=1024` e `--expose-gc`, mais duas workers de 512 MB, dentro
+  de `mem_limit: 2304m` (20/10/2026: com uma só a piscina não reserva worker para o
+  clique). Não aumente um dos três valores isoladamente.
 - **O `snapshot/` não vai dentro da imagem.** São **39 MB** de dado de cliente, e ele
   muda a cada refresh: é **volume**, e um volume que precisa de backup e de política de
   retenção como qualquer base com dado pessoal. **O que obriga a tratá-lo assim é o dado
@@ -567,10 +567,11 @@ Para desenvolvimento há `docker-compose.local.yml`, que é **sobreposição** e
 stack própria — ele só rebaixa `NODE_ENV` e liga `SEM_LOGIN`, e se usa com os dois
 `-f` (o cabeçalho do arquivo traz os comandos).
 
-O de produção tem três serviços: `api` (teto 1600m), `refresh` (1400m, com a carga completa das 3h dentro) e `redis` (192m) — 3192 MiB de tetos somados. **A tela não é
-um serviço:** a API já serve o build estático na raiz. O proxy externo aponta para
-`${API_BIND_HOST:-127.0.0.1}:${API_PORT_HOST:-3101}`; deixe o bind em loopback salvo
-quando a rede do Misael exigir outra interface.
+O de produção tem quatro serviços de longa duração (20/10/2026): `api` (teto 2304m, duas
+workers), `web` (nginx com o build estático, 128m, publicado em `${WEB_PORT_HOST:-3101}`),
+`refresh` (pico de 3g só durante a carga do `field-agenda`, com `mem_reservation`,
+`oom_score_adj` e `cpus` para não afetar o resto do servidor) e `redis` (192m). A API não
+tem porta publicada: o proxy HTTPS externo aponta para o `web`, que repassa `/api` e `/auth`.
 
 `CONFIA_PROXY=1` só é seguro quando esse proxy externo sobrescreve `X-Real-IP` antes de
 encaminhar cada requisição. O padrão é `0`, para impedir que alguém forje o IP e burle

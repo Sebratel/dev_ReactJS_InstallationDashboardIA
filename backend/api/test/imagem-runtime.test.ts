@@ -262,7 +262,7 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
-  assert.equal(api.mem_limit, '1600m');
+  assert.equal(api.mem_limit, '2304m');
   assert.equal(compose.services.refresh?.mem_limit, '3g');
   // Orçamento do host (20/10/2026): 3 GB contínuos; o pico do refresh não pode
   // afetar a API nem as outras aplicações do servidor.
