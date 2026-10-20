@@ -29,7 +29,7 @@ import {
 } from '../services/dashboardService.ts';
 import type { CampoClicado } from '../utils/rota.ts';
 import { estadosVizinhos, type SegmentacaoComValores } from '../utils/vizinhanca.ts';
-import { consultaDaAbertura } from './useDadosDaTela.ts';
+import { preCarregaEstado } from './useDadosDaTela.ts';
 
 /** Valores por segmentação, no máximo — o `FILTROS_ATE_PADRAO` do servidor. */
 const LIMITE = 40;
@@ -76,10 +76,12 @@ export function useVizinhanca(
       });
       for (const e of estadosVizinhos({ filtros, clicados }, comValores, TETO)) {
         if (parou) return;
-        const consulta = consultaDaAbertura(pagina, layout, e.filtros, e.clicados, 'prefetch');
-        if (qc.getQueryData(consulta.queryKey) !== undefined) continue;
-        // Falhar aqui não aparece em lugar nenhum: o clique de verdade tenta de novo.
-        await qc.prefetchQuery(consulta).catch(() => undefined);
+        // A abertura e os visuais `sobDemanda` dela, um por vez (`preCarregaEstado`): o
+        // que já está fresco no cache sai dele, sem pedido. Falhar aqui não aparece em
+        // lugar nenhum: o clique de verdade tenta de novo.
+        await preCarregaEstado(qc, pagina, layout, e.filtros, e.clicados, 'prefetch').catch(
+          () => undefined,
+        );
       }
     }, ESPERA_MS);
     return () => {
