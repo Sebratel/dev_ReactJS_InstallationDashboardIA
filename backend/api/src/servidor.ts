@@ -311,6 +311,25 @@ export class Servidor {
    * as mesmas: sem isto, cada pedido igual viraria uma tarefa a mais na piscina.
    */
   private readonly valoresEmCurso = new Map<string, Promise<DaxValue[] | { erroDoPedido: string }>>();
+  /**
+   * A ÚLTIMA lista pronta de cada segmentação, por `chaveDeValores` SEM frescor.
+   *
+   * **O defeito que criou isto (20/10/2026, staging).** Cada refresh troca o carimbo e
+   * cada aviso do tempo real apaga as listas da página, então a próxima abertura
+   * recalculava as 7 segmentações da `protocolos-detalhados` em fila na worker única,
+   * junto com a página. Os chips de TIPO DE PROTOCOLO (o único filtro com a lista à
+   * vista) sumiam em "carregando…" por segundos depois de todo refresh.
+   *
+   * A lista de uma segmentação quase nunca muda entre duas cargas. Então, sem a lista
+   * fresca, a rota responde esta na hora e recalcula em segundo plano, com a
+   * prioridade do prefetch — o clique de alguém passa na frente. O frescor não se
+   * perde: o recálculo grava a lista nova aqui e no cache com carimbo, e o pedido
+   * seguinte já a recebe. Uma cidade nova aparece no seletor um pedido depois, não
+   * nunca (o defeito descrito em `valores`). Não entra em `esqueceAPagina`: ser
+   * mantida através da invalidação é a razão de existir. Uma entrada por segmentação,
+   * então o tamanho é o do catálogo, e o teto é o mesmo do cache com carimbo.
+   */
+  private readonly ultimaListaDeValores = new MapaLru<string, DaxValue[]>(TETO_VALORES_PADRAO);
   /** Páginas que receberam a "última pronta" e esperam o aviso da nova. Ver `pagina()`. */
   private readonly paginasComAnterior = new Set<string>();
   /** Quantas vezes `esqueceAPagina` passou por cada página. Ver o uso em `valores`. */
@@ -2503,10 +2522,16 @@ export class Servidor {
     const frescorDaPagina = `${this.carimboDaPagina(dash)}@${diaDoCalculo(this.opts.agora())}`;
     const chaveValores = chaveDeValores(id, frescorDaPagina, tabela, coluna, nivel);
     let distintos = this.cacheValoresDistintos.get(chaveValores);
+    const chaveDaUltima = chaveDeValores(id, '', tabela, coluna, nivel);
+    const anterior = distintos ? undefined : this.ultimaListaDeValores.get(chaveDaUltima);
     if (!distintos) {
       let emCurso = this.valoresEmCurso.get(chaveValores);
       if (!emCurso) {
-        const origem = origemDoPedido(quem.usuario === 'aquecedor-interno', url.searchParams.get('origem'));
+        // Com a lista anterior em mãos ninguém espera este cálculo: ele vai para o
+        // fundo da fila. Ver `ultimaListaDeValores`.
+        const origem = anterior
+          ? 'prefetch'
+          : origemDoPedido(quem.usuario === 'aquecedor-interno', url.searchParams.get('origem'));
         // **A geração, porque a chave não basta.** A chave carrega o carimbo do DISCO,
         // e uma mudança do tempo real não o troca: ela apaga as listas da página em
         // `esqueceAPagina`. Uma lista que estava sendo calculada sobre o overlay de
@@ -2521,6 +2546,7 @@ export class Servidor {
             (r) => {
               if (Array.isArray(r) && this.geracaoDaPagina(dash.id) === geracao) {
                 this.cacheValoresDistintos.set(chaveValores, r);
+                this.ultimaListaDeValores.set(chaveDaUltima, r);
               }
             },
             () => undefined,
@@ -2531,7 +2557,7 @@ export class Servidor {
       }
       let r: DaxValue[] | { erroDoPedido: string };
       try {
-        r = await emCurso;
+        r = anterior ?? (await emCurso);
       } catch (err) {
         responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
         return;
