@@ -93,7 +93,9 @@ async function chama<T = MatrizDeAcesso>(caminho: string, corpo?: unknown): Prom
   const json: unknown = await r.json().catch(() => null);
   if (!r.ok) {
     const erro =
-      json && typeof json === 'object' && 'erro' in json ? String(json.erro) : `HTTP ${r.status}`;
+      json && typeof json === 'object' && 'erro' in json
+        ? String(json.erro)
+        : 'Não foi possível concluir agora. Tente novamente.';
     throw Object.assign(new Error(erro), { status: r.status });
   }
   return json as T;

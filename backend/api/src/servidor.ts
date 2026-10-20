@@ -920,7 +920,7 @@ export class Servidor {
         if (derrubaSessoesDe(this.sessoes, quem.usuario) > 0) {
           this.registraEventoDeSessao(req, 'sessao_derrubada', quem.usuario, `bloqueio-${bloqueio.origem}`);
         }
-        responde(res, 401, { erro: bloqueio.motivo });
+        responde(res, 401, { erro: bloqueio.motivo, publico: true });
         return;
       }
       if (ehRegistroDeUso) return this.registraAbertura(req, res, url, quem, ehAquecedor);
@@ -1028,7 +1028,8 @@ export class Servidor {
     if (!identidade) {
       this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
-        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+        erro: `Não foi possível entrar com esta conta. Use a sua conta @${this.opts.dominioCorporativo}.`,
+        publico: true,
       });
       return;
     }
@@ -1076,7 +1077,8 @@ export class Servidor {
     if (!identidade) {
       this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
-        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+        erro: `Não foi possível entrar com esta conta. Use a sua conta @${this.opts.dominioCorporativo}.`,
+        publico: true,
       });
       return;
     }
@@ -1104,7 +1106,7 @@ export class Servidor {
     const bloqueio = this.opts.acesso.bloqueio({ usuario: email, papeis: ['autenticado'] });
     if (!bloqueio) return false;
     this.registraEventoSeg(req, 403, `login-bloqueado-${bloqueio.origem}`, email);
-    responde(res, 403, { erro: bloqueio.motivo });
+    responde(res, 403, { erro: bloqueio.motivo, publico: true });
     return true;
   }
 
@@ -1444,7 +1446,7 @@ export class Servidor {
           responde(res, 200, { registros: await acesso.historico(quem, email) });
         } catch (err) {
           if (!(err instanceof ErroDeAcesso)) throw err;
-          responde(res, err.status, { erro: err.message });
+          responde(res, err.status, { erro: err.message, publico: true });
         }
         return;
       }
@@ -1511,7 +1513,7 @@ export class Servidor {
     } catch (err) {
       if (err instanceof ErroDeAcesso) {
         if (err.status === 403) this.registraEventoSeg(req, 403, 'gestao-de-acesso-recusada', quem.usuario);
-        responde(res, err.status, { erro: err.message });
+        responde(res, err.status, { erro: err.message, publico: true });
         return;
       }
       throw err;
