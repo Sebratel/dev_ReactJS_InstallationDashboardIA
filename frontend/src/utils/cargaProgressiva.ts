@@ -16,4 +16,8 @@
 // porquê completo (inclui o incidente que motivou a extração: 17s de espera numa
 // página que o `npm start` tinha acabado de anunciar como "quente").
 
-export { N_FAIXAS_EAGER, idsIniciais } from '../../../backend/tools/layout/src/corte-eager.ts';
+export {
+  N_FAIXAS_EAGER,
+  idsIniciais,
+  idsRestantes,
+} from '../../../backend/tools/layout/src/corte-eager.ts';
