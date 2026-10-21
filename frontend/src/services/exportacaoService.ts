@@ -7,13 +7,15 @@ import {
   type Valor,
 } from './dashboardService.ts';
 
-// O lote casa com o teto por pedido do servidor (`LINHAS_MAXIMO`, calcula.ts): o
+// O lote casa com o teto de export do servidor (`LINHAS_MAXIMO_EXPORT`, calcula.ts): o
 // visual é calculado INTEIRO a cada pedido, então cada lote a mais é a tabela toda
-// recalculada. Pedir o máximo de uma vez faz a maioria das exportações caber numa
-// requisição só — 1 cálculo em vez de N —, sem depender do cache de visual (que em
-// produção tem orçamento pequeno e recusa as tabelas grandes). Medido em 21/10/2026:
-// com 1.000, "Protocolos Distintos" (2.750 linhas) levava 6 lotes e ~80 s.
-export const LINHAS_POR_LOTE_DE_EXPORTACAO = 5_000;
+// recalculada (o export não usa cache). Pedir o máximo de uma vez faz a tabela caber numa
+// requisição só — 1 cálculo em vez de N. O navegador junta todas as linhas de qualquer
+// jeito para montar o CSV, então o pico de memória é o mesmo paginando ou não.
+// Medido em 21/10/2026: com 1.000, "Protocolos Distintos" (2.750 linhas) levava 6 lotes e
+// ~80 s; a lista da Reincidência (>15 mil) paginava em 4 lotes de 5.000 e o 4º estourava
+// os 90 s do `TETO_PEDIDO_MS`. Com 30.000, ambas viram 1 lote.
+export const LINHAS_POR_LOTE_DE_EXPORTACAO = 30_000;
 
 export interface ProgressoDeExportacao {
   baixadas: number;

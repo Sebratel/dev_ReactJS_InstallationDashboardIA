@@ -70,7 +70,7 @@ import { ErroDeAcesso, type Mudanca } from './permissoes.ts';
 import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
-import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
+import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh, resumeDegradacao, type QuerySaude } from '../../tools/refresh/src/status.ts';
@@ -2055,7 +2055,10 @@ export class Servidor {
     }
 
     const de = inteiro(url.searchParams.get('de'), 0, 0, Number.MAX_SAFE_INTEGER);
-    const linhas = inteiro(url.searchParams.get('linhas'), LINHAS_PADRAO, 1, LINHAS_MAXIMO);
+    // O export (`origem=export`) tem um teto de linhas mais alto que a tela: ele quer a
+    // tabela inteira e o navegador já junta tudo para montar o CSV. Ver `LINHAS_MAXIMO_EXPORT`.
+    const tetoLinhas = url.searchParams.get('origem') === 'export' ? LINHAS_MAXIMO_EXPORT : LINHAS_MAXIMO;
+    const linhas = inteiro(url.searchParams.get('linhas'), LINHAS_PADRAO, 1, tetoLinhas);
 
     // `?busca=` — o campo "Filtrar…" da tabela. Normalizado AQUI, uma vez, e não a
     // cada linha comparada: `janelaDe` roda `casaComTermo` por linha do resultado

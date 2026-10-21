@@ -75,8 +75,18 @@ export interface Segmentacao {
 
 /** Quantas linhas de tabela a resposta manda quando ninguém pede outra coisa. */
 export const LINHAS_PADRAO = 200;
-/** Teto duro. Acima disto a resposta passa de dezenas de MB e o navegador engasga. */
+/** Teto duro DA TELA. Acima disto a resposta passa de dezenas de MB e o navegador engasga. */
 export const LINHAS_MAXIMO = 5000;
+/**
+ * Teto do EXPORT (`origem=export`). Mais alto que o da tela porque quem baixa CSV quer a
+ * tabela INTEIRA, e o navegador já acumula todas as linhas para montar o arquivo — então o
+ * pico de memória do browser é o mesmo paginando ou não. Pedir até aqui de uma vez evita
+ * repaginar e RECALCULAR a tabela N vezes (o export não usa cache; cada janela a mais é a
+ * tabela toda recomputada). Medido em 21/10/2026: a lista da Reincidência (>15 mil linhas)
+ * paginava em 4 lotes de 5.000 e o 4º estourava os 90 s de `TETO_PEDIDO_MS`. Ver
+ * `exportacaoService.ts`. A tela segue em `LINHAS_MAXIMO` — este teto é só do download.
+ */
+export const LINHAS_MAXIMO_EXPORT = 30000;
 
 /** O tipo de um valor, para a tela saber formatar. `null` quando é BLANK. */
 export type TipoDeValor = 'number' | 'string' | 'boolean' | 'date' | null;
