@@ -109,12 +109,18 @@ export function Matriz(props: {
     setErroDaExportacao(null);
     setProgressoDaExportacao({ baixadas: 0, total: d.linhasTotais });
     try {
-      const completa = await coletaMatrizCompleta({
-        pagina: props.pagina,
-        visual: props.visual.id,
-        filtros: props.filtros,
-        aoProgredir: setProgressoDaExportacao,
-      });
+      // Matriz que já veio inteira numa janela só: as linhas e células já estão no
+      // navegador. Exportar delas é instantâneo e não recalcula a query — ver o mesmo
+      // conserto em `Tabela.tsx`. Só vale quando a janela começa em 0 e cobre o total.
+      const jaInteira = d.de === 0 && d.linhas.length >= d.linhasTotais;
+      const completa = jaInteira
+        ? d
+        : await coletaMatrizCompleta({
+            pagina: props.pagina,
+            visual: props.visual.id,
+            filtros: props.filtros,
+            aoProgredir: setProgressoDaExportacao,
+          });
       const { cabecalho, linhas } = csvDaMatriz(completa);
       baixaCsv(`${props.pagina}_${props.visual.id}.csv`, textoCsv(cabecalho, linhas));
     } catch (err) {
