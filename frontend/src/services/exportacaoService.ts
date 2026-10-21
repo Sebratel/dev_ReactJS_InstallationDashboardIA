@@ -7,7 +7,13 @@ import {
   type Valor,
 } from './dashboardService.ts';
 
-export const LINHAS_POR_LOTE_DE_EXPORTACAO = 1_000;
+// O lote casa com o teto por pedido do servidor (`LINHAS_MAXIMO`, calcula.ts): o
+// visual é calculado INTEIRO a cada pedido, então cada lote a mais é a tabela toda
+// recalculada. Pedir o máximo de uma vez faz a maioria das exportações caber numa
+// requisição só — 1 cálculo em vez de N —, sem depender do cache de visual (que em
+// produção tem orçamento pequeno e recusa as tabelas grandes). Medido em 21/10/2026:
+// com 1.000, "Protocolos Distintos" (2.750 linhas) levava 6 lotes e ~80 s.
+export const LINHAS_POR_LOTE_DE_EXPORTACAO = 5_000;
 
 export interface ProgressoDeExportacao {
   baixadas: number;
