@@ -75,6 +75,9 @@ export function GestaoDeAcessos() {
   const releLigadas = () => {
     void qc.invalidateQueries({ queryKey: chavesDeConsulta.dashboards });
     void qc.invalidateQueries({ queryKey: CHAVE_SESSOES });
+    // O histórico também: a gravação acabou de entrar nele, e sem isto ele só aparecia
+    // com F5 (22/10/2026). A matriz não: ela já vem na resposta de cada gravação.
+    void qc.invalidateQueries({ queryKey: ['acessos-historico'] });
   };
 
   // Um pedido por vez, na ordem de `operacoesDoRascunho`. Cada resposta já é a matriz

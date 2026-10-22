@@ -9,6 +9,17 @@ const POR_PAGINA = new Set(['pagina', 'layout', 'valores']);
 const DA_GESTAO = new Set(['acessos', 'acessos-historico', 'sessoes', 'uso-das-telas']);
 
 /**
+ * Os acessos mudaram: tudo que os mostra busca de novo — a lista de abas (e o papel), a
+ * matriz, o HISTÓRICO e as sessões. O histórico ficou de fora na primeira versão e só
+ * aparecia com F5 (Erick, 22/10/2026): `['acessos']` não alcança `['acessos-historico', …]`,
+ * porque a chave casa por elemento e não por começo de texto.
+ */
+export function releAcessos(qc: QueryClient): void {
+  void qc.invalidateQueries({ queryKey: chavesDeConsulta.dashboards });
+  for (const tipo of DA_GESTAO) void qc.invalidateQueries({ queryKey: [tipo] });
+}
+
+/**
  * Apaga do navegador o que esta conta deixou de poder ver.
  *
  * A trava é do servidor (403 a cada pedido); isto é para a TELA acompanhar. Sem isto,

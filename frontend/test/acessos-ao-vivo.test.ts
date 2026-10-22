@@ -5,7 +5,7 @@
 
 import { afterEach, expect, test, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import { limpaAcessoPerdido } from '../src/hooks/useAcessosAoVivo.ts';
+import { limpaAcessoPerdido, releAcessos } from '../src/hooks/useAcessosAoVivo.ts';
 import { assinaEventos } from '../src/services/eventosService.ts';
 import { queryClient } from '../src/services/queryClient.ts';
 import { chavesDeConsulta } from '../src/services/dashboardService.ts';
@@ -80,4 +80,25 @@ test('403 em qualquer consulta faz a lista de abas vir de novo (rede de seguran�
     .catch(() => undefined);
 
   expect(queryClient.getQueryState(chavesDeConsulta.dashboards)?.isInvalidated).toBe(true);
+});
+
+test('releAcessos: o aviso de acesso recarrega também o HISTÓRICO e as sessões, não só o menu', () => {
+  // O histórico ficou de fora na 1ª versão e só aparecia com F5 (Erick, 22/10/2026):
+  // `['acessos']` não alcança `['acessos-historico', …]`.
+  const qc = new QueryClient();
+  const chaves = [
+    chavesDeConsulta.dashboards,
+    ['acessos'],
+    ['acessos-historico', null],
+    ['acessos-historico', 'fulano@sebratel.com.br'],
+    ['sessoes'],
+    ['uso-das-telas', 7],
+  ];
+  for (const k of chaves) qc.setQueryData(k, { ok: 1 });
+  qc.setQueryData(['saude'], { ok: 1 });
+
+  releAcessos(qc);
+
+  for (const k of chaves) expect(qc.getQueryState(k)?.isInvalidated, JSON.stringify(k)).toBe(true);
+  expect(qc.getQueryState(['saude'])?.isInvalidated, 'o que não é de acesso fica').toBe(false);
 });
