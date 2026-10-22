@@ -203,6 +203,32 @@ export function saudeCompletaPara(e: { autenticado: boolean; enderecoRemoto: str
   return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 }
 
+/** As chaves da saúde que carregam texto de erro cru (driver do banco, Redis, `fs.watch`). */
+const CHAVES_DE_ERRO_CRU = new Set(['erro', 'ultimoErro', 'motivo']);
+
+/**
+ * A saúde completa de quem NÃO é operador: a mesma estrutura, sem os textos de erro cru.
+ *
+ * **O defeito (22/10/2026).** O corpo completo ia para qualquer sessão válida — um viewer
+ * sem aba nenhuma, ou alguém barrado que ainda tinha cookie — e levava
+ * `realtime.poller.ultimoErro`, a mensagem crua do driver do Voalle (pode citar host,
+ * porta e usuário). É o vazamento de 13/10, que foi fechado só para o anônimo.
+ *
+ * **Por que não cortar o corpo inteiro.** A tela de todo mundo lê `/api/saude` para o
+ * aviso de dado atrasado e a "próxima carga" (`frontend/src/utils/avisoSaude.ts`:
+ * `refresh.queries`, `agendador.grupos`, `realtime.poller.porQuery`). Nenhum desses usa
+ * as chaves tiradas aqui, então o viewer perde só o que não devia ver.
+ */
+export function semErroCru(valor: unknown): unknown {
+  if (Array.isArray(valor)) return valor.map(semErroCru);
+  if (!valor || typeof valor !== 'object') return valor;
+  return Object.fromEntries(
+    Object.entries(valor as Record<string, unknown>)
+      .filter(([chave]) => !CHAVES_DE_ERRO_CRU.has(chave))
+      .map(([chave, item]) => [chave, semErroCru(item)]),
+  );
+}
+
 /**
  * O arquivo de status guarda o erro técnico do refresh para investigação nos logs e no
  * próprio snapshot. A resposta da tela só precisa saber se o dado está em dia: entregar
@@ -866,14 +892,23 @@ export class Servidor {
     // máquina: ele repassa mensagens de erro cruas das fontes, e em 13/10/2026
     // publicava o IP e a porta do banco do Voalle para a rede inteira, sem login.
     if (rota === '/api/saude') {
+      const semLogin = !this.opts.googleClientId && !this.opts.firebaseProjectId;
       let autenticado = ehAquecedor;
+      // Quem lê o erro cru: a própria máquina, o Aquecedor, a ferramenta interna, dev e
+      // admin. Pessoa comum logada recebe a mesma saúde sem ele — ver `semErroCru`.
+      let operador = ehAquecedor || semLogin;
       try {
-        autenticado ||=
-          this.opts.identifica(req) !== null || (!this.opts.googleClientId && !this.opts.firebaseProjectId);
+        const quem = this.opts.identifica(req);
+        autenticado ||= quem !== null || semLogin;
+        if (quem) {
+          operador ||= quem.papeis.includes('interno') || this.opts.acesso.papelDe(quem) !== 'viewer';
+        }
       } catch {
         // Identificação quebrada não pode derrubar o healthcheck: vale como anônimo.
       }
-      return this.saude(res, saudeCompletaPara({ autenticado, enderecoRemoto: req.socket.remoteAddress }));
+      const enderecoRemoto = req.socket.remoteAddress;
+      operador ||= saudeCompletaPara({ autenticado: false, enderecoRemoto });
+      return this.saude(res, saudeCompletaPara({ autenticado, enderecoRemoto }), operador);
     }
 
     // Quem está pedindo. `null` sem sessão válida — e é aqui, antes de
@@ -1175,7 +1210,7 @@ export class Servidor {
 
   // ------------------------------------------------------------------- rotas
 
-  private async saude(res: http.ServerResponse, completa: boolean): Promise<void> {
+  private async saude(res: http.ServerResponse, completa: boolean, operador: boolean): Promise<void> {
     // **A saúde CONFERE o carimbo, não só relata.** Esta rota é polida a cada
     // 30 s pelo healthcheck do container (`docker-compose.prod.yml`), então ela
     // já é um relógio existente — usá-la como segundo ponto de reconciliação
@@ -1199,7 +1234,7 @@ export class Servidor {
     // rejeita e espera no máximo `PRAZO_MEMORIA_WORKER_MS` — ver `PiscinaWorkers.memoria`.
     const workers = await this.piscina.memoria();
     const processo = medeProcesso();
-    responde(res, 200, {
+    const corpo = {
       // O resumo que um monitor externo lê sem entender o resto (ACHADOS #160). Continua
       // 200 de propósito: dado parado não se conserta reiniciando a API, e um 503 aqui
       // faria o healthcheck do contêiner derrubá-la à toa.
@@ -1320,7 +1355,8 @@ export class Servidor {
       // `ok: false` = `permissoes.yaml` inválido e só ADMIN_EMAILS entra. Sem o
       // motivo: esta rota é pública, e o erro pode citar e-mail. O motivo está no log.
       permissoes: this.opts.acesso.estado(),
-    });
+    };
+    responde(res, 200, operador ? corpo : semErroCru(corpo));
   }
 
   private async registraAbertura(
