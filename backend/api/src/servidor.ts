@@ -407,7 +407,10 @@ export class Servidor {
   /** Dashboard → calculadas que ele carrega (normalizadas), do mesmo `planeja`. */
   private readonly calculadasPorDashboard = new Map<string, Set<string>>();
   /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
-  private readonly assinantesSSE = new Set<http.ServerResponse>();
+  /** Cada conexão SSE aberta e de QUEM ela é — para fechar a de quem é derrubado. */
+  private readonly assinantesSSE = new Map<http.ServerResponse, string>();
+  /** Desliga o aviso de mudança de acesso (`AcessoDasTelas.aoMudar`). */
+  private desligaAvisoDeAcesso: (() => void) | undefined;
   private readonly sseAbertasPorUsuario = new Map<string, number>();
 
   /**
@@ -660,6 +663,9 @@ export class Servidor {
       },
       agora: () => this.opts.agora(),
     });
+    // A configuração de acesso mudou (tela de Permissões ou banco): as telas abertas
+    // refazem o menu sem F5. Ver `avisaAcessos`.
+    this.desligaAvisoDeAcesso = this.opts.acesso.aoMudar?.(() => this.avisaAcessos());
   }
 
   /** O segredo desta subida, para `index.ts` repassar ao `Aquecedor` — ver o
@@ -725,6 +731,7 @@ export class Servidor {
     this.timerDasJuntadas = null;
     this.carimbo.para();
     this.desligaBatimento();
+    this.desligaAvisoDeAcesso?.();
     this.piscina.destroi();
   }
 
@@ -964,7 +971,7 @@ export class Servidor {
       // venceu): as sessões dela caem e a tela volta para o login, que mostra o motivo.
       const bloqueio = this.opts.acesso.bloqueio(quem);
       if (bloqueio) {
-        if (derrubaSessoesDe(this.sessoes, quem.usuario) > 0) {
+        if (this.derrubaSessoes(quem.usuario) > 0) {
           this.registraEventoDeSessao(req, 'sessao_derrubada', quem.usuario, `bloqueio-${bloqueio.origem}`);
         }
         responde(res, 401, { erro: bloqueio.motivo, publico: true });
@@ -1161,7 +1168,7 @@ export class Servidor {
     req: http.IncomingMessage,
     identidade: { email: string; foto?: string; nome?: string },
   ): string {
-    if (derrubaSessoesDe(this.sessoes, identidade.email) > 0) {
+    if (this.derrubaSessoes(identidade.email) > 0) {
       this.registraEventoDeSessao(req, 'sessao_derrubada', identidade.email, 'novo-login');
     }
     return criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
@@ -1568,12 +1575,12 @@ export class Servidor {
     }
     // S2 (`sessao.ao_remover_pessoa: derruba_sessoes`): sem isso a pessoa removida seguia
     // logada até o vencimento. `muda` já normalizou o e-mail.
-    if (mudanca.acao === 'remove-pessoa' && derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
+    if (mudanca.acao === 'remove-pessoa' && this.derrubaSessoes(mudanca.email) > 0) {
       this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `remove-pessoa por=${quem.usuario}`);
     }
     // Suspensa, validade vencida ou Senior voltando a valer: cai já, não no próximo clique.
     if ('email' in mudanca && this.opts.acesso.bloqueio({ usuario: mudanca.email, papeis: ['autenticado'] })) {
-      if (derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
+      if (this.derrubaSessoes(mudanca.email) > 0) {
         this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `${mudanca.acao} por=${quem.usuario}`);
       }
     }
@@ -1673,7 +1680,7 @@ export class Servidor {
       responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { email }.' });
       return;
     }
-    const derrubadas = derrubaSessoesDe(this.sessoes, email);
+    const derrubadas = this.derrubaSessoes(email);
     this.registraEventoDeSessao(req, 'sessao_derrubada', email.trim().toLowerCase(), `por=${quem.usuario}`);
     responde(res, 200, { derrubadas, sessoes: lista() });
   }
@@ -1748,7 +1755,7 @@ export class Servidor {
     // considerar a conexão estabelecida na hora, em vez de esperar o 1º evento
     // de verdade para sair do estado "conectando".
     res.write(': conectado\n\n');
-    this.assinantesSSE.add(res);
+    this.assinantesSSE.set(res, quem.usuario);
     // A marca d'água responde "quantos usuários ficam conectados ao mesmo
     // tempo?" — a pergunta do requisito 19 que o valor instantâneo nunca
     // responde, porque quem lê `/api/saude` lê num instante qualquer.
@@ -1777,7 +1784,7 @@ export class Servidor {
   private ligaBatimento(): void {
     if (this.batimentoSSE) return;
     this.batimentoSSE = setInterval(() => {
-      for (const res of this.assinantesSSE) {
+      for (const res of this.assinantesSSE.keys()) {
         // `write` num socket já morto não lança — devolve `false` e emite
         // 'error' no stream. Quem limpa o Set é o `req.on('close')`; aqui só
         // não vale deixar a exceção subir e derrubar o temporizador dos outros.
@@ -1808,13 +1815,53 @@ export class Servidor {
     return this.batimentoSSE !== null;
   }
 
+  /**
+   * Derruba as sessões de `usuario` E fecha as conexões SSE dele.
+   *
+   * Sem a segunda metade, quem era removido, suspenso ou barrado pela Senior seguia
+   * conectado no canal de tempo real (achado da auditoria de 22/10/2026): sem dado de
+   * cliente, mas recebendo os avisos e ocupando o teto de conexões.
+   */
+  private derrubaSessoes(usuario: string): number {
+    const n = derrubaSessoesDe(this.sessoes, usuario);
+    const alvo = usuario.trim().toLowerCase();
+    for (const [res, dono] of this.assinantesSSE) {
+      if (dono.trim().toLowerCase() !== alvo) continue;
+      // `end` dispara o 'close' do pedido, que tira a conexão do mapa e do teto.
+      try {
+        res.end();
+      } catch {
+        /* conexão já indo embora */
+      }
+    }
+    return n;
+  }
+
+  /**
+   * Avisa toda tela aberta que os acessos mudaram, para ela refazer o menu e largar o
+   * que deixou de poder ver — sem F5. O evento não leva nada (nem quem mudou): cada tela
+   * pergunta de novo a lista dela, e quem decide o que ela vê continua sendo o servidor.
+   * Vai para todos porque uma mudança de perfil alcança várias pessoas; são no máximo
+   * algumas dezenas de conexões, e cada uma faz uma consulta leve.
+   */
+  private avisaAcessos(): void {
+    this.metricas.conta('sse_avisos_de_acesso');
+    for (const res of this.assinantesSSE.keys()) {
+      try {
+        res.write('event: acessos\ndata: {}\n\n');
+      } catch {
+        /* conexão indo embora */
+      }
+    }
+  }
+
   /** Manda `dashboards` para toda conexão SSE aberta. Sem assinante, não faz nada. */
   private emiteEvento(dashboards: readonly string[]): void {
     this.metricas.conta('poller_invalidacoes');
     if (dashboards.length === 0 || this.assinantesSSE.size === 0) return;
     this.metricas.conta('sse_eventos_emitidos', this.assinantesSSE.size);
     const linha = `data: ${JSON.stringify({ dashboards })}\n\n`;
-    for (const res of this.assinantesSSE) res.write(linha);
+    for (const res of this.assinantesSSE.keys()) res.write(linha);
   }
 
   /**

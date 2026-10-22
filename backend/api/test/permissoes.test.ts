@@ -354,6 +354,8 @@ async function sobe(inicial: Partial<LinhasDeAcesso>) {
       new Promise<void>((ok) => {
         inst.destroi();
         http.close(() => ok());
+        // Uma SSE aberta seguraria o `close` para sempre.
+        http.closeAllConnections();
       }),
   };
 }
@@ -429,6 +431,115 @@ test('POST em qualquer outra rota de /api continua 405 — a exceção é só a 
   try {
     const r = await s.busca('/api/dashboards/capa', { method: 'POST', headers: { origin: s.base } });
     assert.equal(r.status, 405);
+  } finally {
+    await s.fecha();
+  }
+});
+
+// ------------------------------------------------- acessos ao vivo, sem F5 (22/10/2026)
+
+/** Lê a SSE até `alvo` aparecer, ou até ela fechar (`fechou`). Falha passado o prazo. */
+async function leSseAte(
+  leitor: ReadableStreamDefaultReader<Uint8Array>,
+  alvo: RegExp | 'fechou',
+  prazoMs = 5_000,
+): Promise<string> {
+  let lido = '';
+  const fim = Date.now() + prazoMs;
+  while (Date.now() < fim) {
+    const r = await Promise.race([
+      leitor.read(),
+      new Promise<null>((ok) => setTimeout(() => ok(null), Math.max(1, fim - Date.now()))),
+    ]);
+    if (r === null) break;
+    if (r.done) {
+      if (alvo === 'fechou') return lido;
+      throw new Error(`a SSE fechou antes de ${String(alvo)}; lido: ${lido}`);
+    }
+    lido += Buffer.from(r.value).toString();
+    if (alvo !== 'fechou' && alvo.test(lido)) return lido;
+  }
+  throw new Error(`prazo esgotado esperando ${String(alvo)}; lido: ${lido}`);
+}
+
+test('aoMudar: avisa quando o acesso muda — não no arranque, nem em releitura igual, nem por pedido', async () => {
+  const { acesso, banco } = await acessoCom(BASE);
+  let avisos = 0;
+  acesso.aoMudar!(() => avisos++);
+
+  await acesso.recarrega();
+  assert.equal(avisos, 0, 'releitura sem mudança não é mudança');
+
+  banco.status.set('alguem@sebratel.com.br', 'pending');
+  await acesso.recarrega();
+  assert.equal(avisos, 0, 'pedido de acesso pendente não muda o que ninguém vê');
+
+  await acesso.muda(pessoa('chefe@sebratel.com.br'), { acao: 'papel', email: 'fulano@sebratel.com.br', papel: 'dev' });
+  assert.equal(avisos, 1, 'gravação pela tela avisa');
+
+  banco.linhas.emails.push({ tela: 'capa', email: 'outro@sebratel.com.br' });
+  await acesso.recarrega();
+  assert.equal(avisos, 2, 'mudança feita direto no banco, achada pela releitura, também avisa');
+});
+
+test('rebaixado sem F5: a tela dele recebe o aviso, e ele não consegue se recolocar como admin', async () => {
+  // O caso do roteiro de QA do Fabrício (AC-11): tirar alguém de admin com a tela dele
+  // aberta. A tela é avisada para refazer o menu; e o que ele tentar sem F5 é recusado.
+  const s = await sobe({ papeis: [{ email: 'fulano@sebratel.com.br', papel: 'admin' }] });
+  try {
+    s.estado.quem = pessoa('fulano@sebratel.com.br');
+    const sse = await s.busca('/api/eventos');
+    assert.equal(sse.status, 200);
+    const leitor = sse.body!.getReader();
+    await leSseAte(leitor, /: conectado/);
+
+    s.estado.quem = pessoa('chefe@sebratel.com.br');
+    const rebaixa = await s.busca('/api/admin/acessos/papel', {
+      method: 'POST',
+      headers: { origin: s.base, 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'fulano@sebratel.com.br', papel: 'viewer' }),
+    });
+    assert.equal(rebaixa.status, 200);
+
+    // A tela do fulano é avisada — é isto que dispensa o F5.
+    await leSseAte(leitor, /event: acessos/);
+
+    // Sem F5, ele tenta voltar a ser admin, e a gestão de acessos inteira lhe é negada.
+    s.estado.quem = pessoa('fulano@sebratel.com.br');
+    const tenta = await s.busca('/api/admin/acessos/papel', {
+      method: 'POST',
+      headers: { origin: s.base, 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'fulano@sebratel.com.br', papel: 'admin' }),
+    });
+    assert.equal(tenta.status, 403);
+    assert.equal((await s.busca('/api/admin/acessos')).status, 403);
+    const lista = await (await s.busca('/api/dashboards')).json();
+    assert.equal(lista.eu.papel, 'viewer');
+    assert.equal(lista.eu.podeGerir, false);
+
+    await leitor.cancel();
+  } finally {
+    await s.fecha();
+  }
+});
+
+test('removido: a conexão de tempo real dele é fechada junto com a sessão', async () => {
+  // Achado da auditoria de 22/10/2026: a sessão caía, mas a SSE seguia aberta.
+  const s = await sobe({ emails: [{ tela: 'capa', email: 'fulano@sebratel.com.br' }] });
+  try {
+    s.estado.quem = pessoa('fulano@sebratel.com.br');
+    const leitor = (await s.busca('/api/eventos')).body!.getReader();
+    await leSseAte(leitor, /: conectado/);
+
+    s.estado.quem = pessoa('chefe@sebratel.com.br');
+    const remove = await s.busca('/api/admin/acessos/remove', {
+      method: 'POST',
+      headers: { origin: s.base, 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'fulano@sebratel.com.br' }),
+    });
+    assert.equal(remove.status, 200);
+
+    await leSseAte(leitor, 'fechou');
   } finally {
     await s.fecha();
   }

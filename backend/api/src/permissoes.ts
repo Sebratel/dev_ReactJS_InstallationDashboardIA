@@ -157,6 +157,13 @@ export interface AcessoDasTelas {
   muda(quem: Identidade, m: Mudanca): Promise<void>;
   /** Para `/api/saude`: só se a configuração está em dia. Sem e-mail — a rota é pública. */
   estado(): { ok: boolean; origem: string };
+  /**
+   * Chama `fn` quando a configuração de acesso MUDA de fato — por uma gravação da tela ou
+   * por alguém mexendo no banco, que a releitura de 30 s encontra. É o que deixa o servidor
+   * avisar as telas abertas para refazerem o menu sem F5. Devolve a função que desliga.
+   * Opcional: quem não tem banco (fixtures, `só .env`) não muda nunca.
+   */
+  aoMudar?(fn: () => void): () => void;
   /** A pessoa entrou e não abre nenhuma aba: vira pedido pendente na tela "Acessos".
    *  Não espera o banco e não lança — é registro, não decisão. */
   registraPedido(quem: Identidade): void;
@@ -326,6 +333,10 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
    *  saiu antes de uma gravação e voltou depois trazia a pessoa removida de volta. */
   let leituraIniciada = 0;
   let leituraAplicada = 0;
+  /** A forma da última leitura aplicada, para saber se a seguinte mudou alguma coisa. Sem os
+   *  pedidos pendentes: pedir acesso não muda o que ninguém vê. */
+  let assinaturaAplicada: string | null = null;
+  const ouvintes = new Set<() => void>();
 
   const recarrega = async (): Promise<void> => {
     if (!opts.loja) return;
@@ -335,6 +346,20 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
       if (minha < leituraAplicada) return;
       leituraAplicada = minha;
       config = configuracaoDe(linhas, opts.telasConhecidas);
+      const { pedidos: _semPedidos, ...semPedidos } = linhas as typeof linhas & { pedidos?: unknown };
+      const assinatura = JSON.stringify(semPedidos);
+      // A primeira leitura não é mudança: é o arranque. Daí em diante, mudou = avisa.
+      const mudou = assinaturaAplicada !== null && assinatura !== assinaturaAplicada;
+      assinaturaAplicada = assinatura;
+      if (mudou) {
+        for (const fn of ouvintes) {
+          try {
+            fn();
+          } catch (err) {
+            log(`[acesso] aviso de mudança falhou: ${(err as Error).message}`);
+          }
+        }
+      }
       pedidos = linhas.pedidos ?? [];
       if (ultimaFalhou) log(`[acesso] lido do banco: ${config.papeis.size} papel(éis), ${config.telas.size} aba(s) com regra`);
       ultimaFalhou = false;
@@ -531,6 +556,10 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
       );
     },
     recarrega,
+    aoMudar(fn) {
+      ouvintes.add(fn);
+      return () => ouvintes.delete(fn);
+    },
     releA(cadaMs) {
       const t = setInterval(() => void recarrega(), cadaMs);
       t.unref?.();

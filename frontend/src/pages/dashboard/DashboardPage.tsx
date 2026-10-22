@@ -48,6 +48,7 @@ import {
 } from '../../components/filtros/BarraDeFiltros.tsx';
 import { Capa } from '../../components/capa/Capa.tsx';
 import { SemAcesso } from '../../components/auth/SemAcesso.tsx';
+import { useAcessosAoVivo } from '../../hooks/useAcessosAoVivo.ts';
 import { CHAVE_ACESSOS, GestaoDeAcessos } from '../../components/acessos/GestaoDeAcessos.tsx';
 import { chaveDoUso, PERIODOS_DE_USO } from '../../components/acessos/UsoDasTelas.tsx';
 import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
@@ -82,6 +83,8 @@ export function DashboardPage() {
   // **O estado do servidor mora no React Query** (fase 2): a lista de páginas, a forma
   // de cada uma, a abertura e a saúde. Ver `hooks/useDadosDaTela.ts`.
   const dashboardsQ = useDashboards();
+  // Menu, aba Permissões e cache seguem os acessos desta conta sem F5.
+  useAcessosAoVivo();
   const paginas = useMemo(() => dashboardsQ.data ?? [], [dashboardsQ.data]);
   const layoutQ = useLayout(paginaDoDado);
   const layout = layoutQ.data ?? null;
