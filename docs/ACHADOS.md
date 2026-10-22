@@ -15863,3 +15863,22 @@ perderia o IP real.
 sobrescreve com `$remote_addr` em toda location que repassa, e a API não tem porta
 publicada. `imagem-runtime.test.ts` cobra as duas condições: `api.ports` vazio e
 `X-Real-IP $remote_addr` em cada location do `nginx.web.conf` com `proxy_pass`.
+
+---
+
+## #235 — as telas vão consultar a Voalle ao vivo; medições e desenho (22/10)
+
+Decidido pelo Misael e pelo Erick: sem snapshot em memória e sem copiar tabela. O
+porquê, as medições no SRD e o desenho estão em [DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md).
+Três achados que valem fora dela:
+
+- **A view da agenda tem piso de 4–6 s** porque filtra a data DEPOIS das funções de
+  janela sobre `fsm_attendance_history` inteira. Pré-selecionar os atendimentos pelo
+  `service_desk_slots` e calcular as janelas só sobre o histórico deles dá o mesmo
+  resultado (hash de linha) em 2,2 s para 7 dias.
+- **`protocolos-produtividade` passa 93% do tempo numa junção só** (`auxiliar` por
+  `_chave`, Nested Loop sobre CTE Scan, 3,5 bilhões de leituras). É o "próximo passo" que
+  o comentário de 12/09 do próprio SQL deixou anotado.
+- **Armadilha de medição:** no `field-agenda` o `'2026-01-01'` está num COMENTÁRIO do SQL;
+  o corte real é `begin_date_slot >= CURRENT_DATE - INTERVAL '3 months'`. Trocar o
+  literal mediu a coisa errada por uma rodada inteira.
