@@ -264,7 +264,8 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.equal(api.environment?.AQUECE_FILTROS_ATE, '40');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
-  assert.equal(api.mem_limit, '2304m');
+  // 2304m -> 3072m em 21/10/2026: a api caiu 4 vezes em ~6 h (kill por memória do cgroup).
+  assert.equal(api.mem_limit, '3072m');
   assert.equal(compose.services.refresh?.mem_limit, '3g');
   // Orçamento do host (20/10/2026): 3 GB contínuos; o pico do refresh não pode
   // afetar a API nem as outras aplicações do servidor.

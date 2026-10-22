@@ -64,10 +64,13 @@ test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', (
   // O guarda que faltava, e a conta que ele guarda:
   //
   //   pai 1024 + 2 workers × 512 = 2048 MB de heap autorizado
-  //   mem_limit 2304 MB          = 256 MB de folga autorizada
+  //   mem_limit 3072 MB          = 1024 MB de folga autorizada
   //
   // Pico de cgroup medido com UMA worker: 1344,2 MiB (200 usuários, 18/10/2026). A
-  // segunda voltou em 20/10/2026 para a reserva do clique existir (ACHADOS #163).
+  // segunda voltou em 20/10/2026 para a reserva do clique existir (ACHADOS #163), e a
+  // folga de 256 MB extrapolada daquela medição não cobria os datasets fora do heap: a
+  // api caiu 4 vezes em ~6 h em 21/10/2026 (RestartCount=4, sem erro no log), então a
+  // folga subiu para 1024 MB (mem_limit 2304m -> 3072m).
   //
   // Se alguém subir um dos padrões sem mexer no outro, o container passa a ser
   // morto pelo OOM killer do host — falha que aparece como "a página às vezes
@@ -99,7 +102,7 @@ test('o perfil de produção mantém o teto do processo pai e da piscina', () =>
   assert.equal(TETO_PAI_MB, 1024);
   // Duas, não uma: com uma worker só a piscina não reserva nenhuma para o clique.
   assert.deepEqual(PERFIL_DE_PRODUCAO, { API_WORKERS: '2', API_WORKER_HEAP_MB: '512' });
-  assert.equal(MEM_LIMIT_CONTAINER_MB, 2304);
+  assert.equal(MEM_LIMIT_CONTAINER_MB, 3072);
 });
 
 test('API_WORKERS e API_WORKER_HEAP_MB sobrepõem os padrões', () => {

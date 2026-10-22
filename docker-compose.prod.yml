@@ -57,8 +57,19 @@ services:
     #   API_WORKER_HEAP_MB=512 × API_WORKERS=2  heap da piscina de DAX
     #   ------------------------------------------------------------
     #   2048 MB autorizados de heap
-    #   mem_limit 2304m -> 256 MB de folga para buffers, runtime, V8 e pilhas (a mesma
-    #   margem que sobrou no pico medido com uma worker: 1600 - 1344).
+    #   mem_limit 3072m -> 1024 MB de folga para o que NÃO é heap: os datasets das páginas
+    #   (250 MB a 1 GB cada, em Int32Array fora do heap, até 2 por worker —
+    #   `TETO_CACHE_POR_WORKER`), buffers do .jsonl.gz, runtime, V8 e pilhas.
+    #
+    # **2304m -> 3072m em 21/10/2026, porque a `api` caiu 4 vezes em ~6 h** (restarts
+    # 18:51, 20:58, 22:21 e 23:36 UTC; `RestartCount=4`, nenhum erro no log antes de
+    # nenhuma — assinatura de kill por memória do cgroup, não de exceção do Node). Os 256
+    # MB de folga de antes saíram do pico medido com UMA worker (1600 - 1344) e foram
+    # reaproveitados para DUAS (20/10) sem a sonda rodar: cada worker segura seus próprios
+    # datasets fora do heap, e o pico real passa do que a folga cobria. Em repouso a api
+    # usa ~1,5 GB (21/10); o limite é TETO DE PICO, não consumo contínuo — a regra do
+    # Erick (stack ≤ 3 GB contínuos, picos permitidos sem afetar as outras apps) segue
+    # valendo, e o próprio cgroup é o que impede o pico de alcançar os vizinhos.
     #
     # **Duas workers desde 20/10/2026, e o motivo é o clique, não a vazão.** A piscina
     # guarda sempre uma worker para quem está usando (ACHADOS #163: um clique esperou
@@ -78,7 +89,7 @@ services:
     # sem mexer nos outros. No Portainer, é `mem_limit` que aparece como o
     # "Memory limit" da stack. A sonda (`npm run probe:memoria-api`) ainda não rodou
     # com duas workers dentro do cgroup — o RSS real fica para conferir no staging.
-    mem_limit: 2304m
+    mem_limit: 3072m
     environment:
       # No Portainer, os segredos vivem nas variáveis da stack; não há `.env` no
       # repositório nem arquivo secreto para copiar ao host. Localmente, o Compose
