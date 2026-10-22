@@ -254,7 +254,8 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   for (const bloco of repassam) {
     assert.match(bloco, /proxy_set_header X-Real-IP \$remote_addr;/, 'toda location que repassa sobrescreve o X-Real-IP');
   }
-  assert.deepEqual(web.ports, ['${WEB_BIND_HOST:-127.0.0.1}:${WEB_PORT_HOST:-3101}:8080']);
+  // 0.0.0.0: o proxy TLS é outro contêiner e não alcança o loopback do host (502 em 22/10).
+  assert.deepEqual(web.ports, ['${WEB_BIND_HOST:-0.0.0.0}:${WEB_PORT_HOST:-3101}:8080']);
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
   assert.equal(web.mem_limit, '128m', 'a tela não pode herdar toda a memória do host');
 

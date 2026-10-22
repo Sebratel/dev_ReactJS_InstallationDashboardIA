@@ -2,7 +2,9 @@
 
 Mesmo fluxo do Comercial: o Portainer clona o repositório, constrói as imagens e
 recebe as variáveis pela tela. O proxy TLS externo encaminha para a porta **3101**
-no host (`WEB_PORT_HOST`), presa a `127.0.0.1` por padrão. O container `web` escuta
+no host (`WEB_PORT_HOST`), em todas as interfaces por padrão (`WEB_BIND_HOST=0.0.0.0`).
+Não prenda em `127.0.0.1`: o proxy é outro contêiner e não alcança o loopback do host
+(foi o 502 de 22/10/2026). O container `web` escuta
 `8080` e a API permanece privada em `3100`.
 
 | Serviço | O que faz | Estado normal |
@@ -37,7 +39,8 @@ no host (`WEB_PORT_HOST`), presa a `127.0.0.1` por padrão. O container `web` es
    19/10/2026 estavam lá `localhost`, os dois domínios do próprio Firebase e
    `hub-apps-staging.sebratel.net.br`. Pelo IP do servidor o popup falha com
    `auth/unauthorized-domain`. A regra é por nome; a porta não conta.
-6. Confirme que o proxy TLS encaminha para `127.0.0.1:3101` e reescreve `X-Real-IP`.
+6. Confirme que o proxy TLS encaminha para `<IP do host>:3101` (não `127.0.0.1`, que para
+   o contêiner do proxy é ele mesmo) e reescreve `X-Real-IP`.
    Publique a stack e abra a URL HTTPS do proxy. Se a API morrer com `RECUSANDO SUBIR`,
    o log diz qual chave está errada e qual valor ela espera.
 

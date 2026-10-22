@@ -253,8 +253,15 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # **0.0.0.0, não 127.0.0.1 (22/10/2026).** O proxy TLS (nginx-proxy-manager) é OUTRO
+    # contêiner, em outra rede Docker: o `127.0.0.1` dele é ele mesmo, e não o host. Com
+    # a porta presa ao loopback o proxy não alcançava a tela e o staging inteiro deu 502
+    # (commit 0338fd0, deploy das 15:00). O fechamento certo é pôr o `web` na rede do
+    # proxy e apontá-lo pelo nome do contêiner, sem porta no host — depende de quem
+    # administra o proxy. Até lá, `WEB_BIND_HOST` nas variáveis da stack restringe a
+    # interface (ex.: o IP interno do host), se for preciso.
     ports:
-      - '${WEB_BIND_HOST:-127.0.0.1}:${WEB_PORT_HOST:-3101}:8080'
+      - '${WEB_BIND_HOST:-0.0.0.0}:${WEB_PORT_HOST:-3101}:8080'
     read_only: true
     cap_drop: [ALL]
     security_opt:
