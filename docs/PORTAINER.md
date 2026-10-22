@@ -1,10 +1,9 @@
 # Publicar a stack no Portainer
 
 Mesmo fluxo do Comercial: o Portainer clona o repositório, constrói as imagens e
-recebe as variáveis pela tela. **Só contêineres**: o frontend é publicado direto
-no host, sem proxy na frente (decisão do Misael, 19/10/2026). Nome da stack:
-**instalacao-dashboard**. Porta **3101** no host (`WEB_PORT_HOST`); o container
-`web` escuta `8080` e a API permanece privada em `3100`.
+recebe as variáveis pela tela. O proxy TLS externo encaminha para a porta **3101**
+no host (`WEB_PORT_HOST`), presa a `127.0.0.1` por padrão. O container `web` escuta
+`8080` e a API permanece privada em `3100`.
 
 | Serviço | O que faz | Estado normal |
 |---|---|---|
@@ -38,29 +37,22 @@ no host, sem proxy na frente (decisão do Misael, 19/10/2026). Nome da stack:
    19/10/2026 estavam lá `localhost`, os dois domínios do próprio Firebase e
    `hub-apps-staging.sebratel.net.br`. Pelo IP do servidor o popup falha com
    `auth/unauthorized-domain`. A regra é por nome; a porta não conta.
-6. Publique a stack. `http://<host>:3101/` abre a tela e `http://<host>:3101/api/saude`
-   responde. Se a API morrer com `RECUSANDO SUBIR`, o log diz qual chave está errada e
-   qual valor ela espera.
+6. Confirme que o proxy TLS encaminha para `127.0.0.1:3101` e reescreve `X-Real-IP`.
+   Publique a stack e abra a URL HTTPS do proxy. Se a API morrer com `RECUSANDO SUBIR`,
+   o log diz qual chave está errada e qual valor ela espera.
 
-## HTTP pelo contêiner `web`: o que muda
+## HTTPS pelo proxy externo
 
-- O cookie de sessão sai sem `Secure` e não há HSTS: em HTTP, um cookie `Secure` não
-  volta do navegador e o login fica em laço.
-- O rate limit usa o `X-Real-IP` que o `web` escreve com o endereço real
-  (`PUBLICACAO: web-http`, `CONFIA_PROXY: '1'`). Sem isso, todo pedido chega à API do IP
-  do `web`, e a empresa inteira divide um balde: 5 logins por minuto e 300 pedidos de
-  dados por minuto para todos. É seguro porque a API não tem porta publicada. Se um dia
-  publicarem a porta da API, o cabeçalho vira forjável: troque para `PUBLICACAO: direta`
-  e `CONFIA_PROXY: '0'`.
+- O cookie de sessão sai com `Secure` e a API usa `PUBLICACAO: proxy-https`.
+- O proxy deve reescrever `X-Real-IP`; o `web` o encaminha à API para que o rate limit
+  identifique cada usuário. A API não tem porta publicada.
 - O que o proxy bloqueava continua bloqueado pela própria API em produção:
   `/auth/interno` some, o cabeçalho do aquecedor só vale com o segredo aleatório do
   processo, e corpo acima de 8 KB é recusado.
 - A API recusa subir se `PUBLICACAO`, `COOKIE_SECURE` e `CONFIA_PROXY` não baterem
   (`backend/api/src/configuracao-producao.ts`).
 
-Para voltar a ter HTTPS, ponha um proxy que termine TLS e reescreva `X-Real-IP` (o
-contrato está em `nginx.conf`). Depois troque no compose para `PUBLICACAO: proxy-https`,
-`COOKIE_SECURE: '1'` e `CONFIA_PROXY: '1'`, e volte a prender a porta em `127.0.0.1`.
+O contrato de proxy TLS, cabeçalhos e HSTS está em `nginx.conf`.
 
 ## Bancos
 

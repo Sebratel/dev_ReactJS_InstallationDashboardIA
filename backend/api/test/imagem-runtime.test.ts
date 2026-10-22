@@ -235,8 +235,7 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
     volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
-  // 19/10/2026: só contêineres. O frontend é publicado direto (docs/PORTAINER.md),
-  // enquanto a API fica apenas na rede Docker.
+  // O proxy TLS externo chega ao frontend; a API fica apenas na rede Docker.
   for (const proxy of ['proxy', 'nginx']) {
     assert.equal(compose.services[proxy], undefined, `a stack não tem proxy (${proxy})`);
   }
@@ -244,9 +243,9 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.ok(web, 'a tela precisa de contêiner próprio');
   // 20/10/2026: com o `web` na frente, a API só vê o IP dele. Sem confiar no X-Real-IP
   // que ele escreve, a empresa inteira divide um balde de rate limit (5 logins/min).
-  assert.equal(api.environment?.PUBLICACAO, 'web-http');
+  assert.equal(api.environment?.PUBLICACAO, 'proxy-https');
   assert.equal(api.environment?.CONFIA_PROXY, '1', 'atrás do web, a API só enxerga o usuário pelo X-Real-IP');
-  assert.equal(api.environment?.COOKIE_SECURE, '0', 'em HTTP o cookie Secure não volta do navegador');
+  assert.equal(api.environment?.COOKIE_SECURE, '1', 'o proxy HTTPS exige cookie Secure');
   assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
   assert.equal(api.ports, undefined, 'a API não pode ser alcançável de fora da stack — senão o X-Real-IP é forjável');
   const confWeb = fs.readFileSync(path.join(RAIZ, 'nginx.web.conf'), 'utf8');
@@ -255,7 +254,7 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   for (const bloco of repassam) {
     assert.match(bloco, /proxy_set_header X-Real-IP \$remote_addr;/, 'toda location que repassa sobrescreve o X-Real-IP');
   }
-  assert.deepEqual(web.ports, ['${WEB_PORT_HOST:-3101}:8080']);
+  assert.deepEqual(web.ports, ['${WEB_BIND_HOST:-127.0.0.1}:${WEB_PORT_HOST:-3101}:8080']);
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
   assert.equal(web.mem_limit, '128m', 'a tela não pode herdar toda a memória do host');
 

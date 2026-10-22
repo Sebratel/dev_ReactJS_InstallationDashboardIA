@@ -2,9 +2,8 @@
 # sobe infraestrutura de observação, não a aplicação). A tela roda no serviço
 # `web`, separado da API, e é a única porta publicada no host.
 #
-# **Publicação direta, só contêineres (19/10/2026).** O serviço `web` publica a tela no
-# host, sem proxy TLS dentro desta stack, como as outras stacks da Sebratel no Portainer.
-# A API permanece privada na rede Docker. Passo a passo em docs/PORTAINER.md.
+# **Publicação por proxy HTTPS.** O serviço `web` permanece privado no host e recebe
+# somente o tráfego do proxy TLS externo. A API permanece privada na rede Docker.
 #
 # Uso:
 #   docker compose -f docker-compose.prod.yml up -d --build
@@ -117,14 +116,14 @@ services:
       # `observar` (padrão): a aba PERMISSÕES mostra quem a Senior barraria, sem barrar.
       # Conferido, troque para `bloquear` nas variáveis da stack.
       SENIOR_MODO: ${SENIOR_MODO:-observar}
-      # O navegador fala HTTP com o contêiner `web` (nginx), que repassa à API; a API não
-      # tem porta publicada. Os três andam juntos e a API recusa subir se discordarem
-      # (`configuracao-producao.ts`): cookie `Secure` em HTTP não volta do navegador (login
-      # em laço), e o `X-Real-IP` que o `web` sobrescreve é o único jeito de a API ver o
-      # usuário — sem ele, todos chegam do IP do `web` e dividem um balde de rate limit.
+      # O navegador fala HTTPS com o proxy externo, que encaminha HTTP para `web`; a API
+      # não tem porta publicada. Os três andam juntos e a API recusa subir se discordarem
+      # (`configuracao-producao.ts`): o cookie Secure exige HTTPS no navegador, e o
+      # `X-Real-IP` que o `web` encaminha é o único jeito de a API ver o usuário — sem ele,
+      # todos chegam do IP do `web` e dividem um balde de rate limit.
       # Fixados aqui, e não nas variáveis da stack, para ninguém os trocar pela tela.
-      PUBLICACAO: web-http
-      COOKIE_SECURE: '0'
+      PUBLICACAO: proxy-https
+      COOKIE_SECURE: '1'
       API_WORKERS: '2'
       API_WORKER_HEAP_MB: '512'
       # Dois datasets por worker retinham até quatro cópias grandes em memória externa
@@ -238,8 +237,7 @@ services:
       retries: 3
       start_period: 30s
 
-  # A única porta publicada: entrega o React e encaminha /api e /auth para a
-  # API privada na rede Docker. A publicação direta segue o padrão do Comercial.
+  # Recebe o proxy TLS externo e encaminha /api e /auth para a API privada na rede Docker.
   web:
     build:
       context: .
@@ -256,7 +254,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - '${WEB_PORT_HOST:-3101}:8080'
+      - '${WEB_BIND_HOST:-127.0.0.1}:${WEB_PORT_HOST:-3101}:8080'
     read_only: true
     cap_drop: [ALL]
     security_opt:
