@@ -1,0 +1,121 @@
+# MANTIDO POR HUMANOS — o recorte que a fonte ao vivo costura no SQL do catálogo
+# (docs/DECISAO-AO-VIVO.md). Mesmo formato e mesma regra da `costura` de
+# `incremental.yaml`: cada âncora (`de`) tem de casar EXATAMENTE uma vez no SQL da spec,
+# e todo parâmetro declarado tem de aparecer no SQL costurado. Se a spec mudar embaixo
+# disto, a costura recusa — ela nunca devolve o conjunto inteiro calada.
+#
+# `recorte` não entra no SQL: é o que a sonda (`npm run probe:ao-vivo`) usa para
+# recortar a consulta ORIGINAL do mesmo jeito e comparar as duas, linha a linha.
+#
+# `janela` repete, do lado de cá, um trecho que mora no SQL da spec. O teste
+# `backend/packages/ao-vivo/test/catalogo.test.ts` cobra que ele continue lá.
+
+formato: 1
+
+consultas:
+
+  # A agenda no grão de horário. A view da Voalle calcula as janelas por atendimento
+  # sobre `fsm_attendance_history` inteira e só depois filtra a data (piso de 4–6 s
+  # mesmo para 7 dias). Aqui a view é aberta: os atendimentos são escolhidos ANTES,
+  # pelos protocolos com horário no período, e cada protocolo entra com TODOS os seus
+  # atendimentos — as partições das janelas ficam inteiras e o resultado é o mesmo da
+  # view (conferido por hash de linha em 7 e 30 dias, 22/10/2026). O protocolo inteiro,
+  # e não só o dia pedido, porque `RankDataProtocolo` conta os dias DELE na janela.
+  field-agenda-slot:
+    parametros: [desde, ate]
+    janela: "AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')"
+    recorte:
+      tipo: protocolos-com-data-no-periodo
+      protocolo: Protocolo
+      data: Slot Agenda
+    costura:
+      - de: "FROM v_service_desk_slots_productivity_informative vsdspi\n"
+        para: |
+          FROM (
+              WITH protocolos_do_periodo AS (
+                  SELECT DISTINCT ai.protocol
+                    FROM service_desk_slots sds
+                    JOIN assignment_incidents ai ON ai.assignment_id = sds.pre_reserved_assignment_id
+                   WHERE sds.begin_date >= :desde::date
+                     AND sds.begin_date <  :ate::date
+                     AND sds.begin_date >= (CURRENT_DATE - INTERVAL '3 months')
+              ),
+              candidatos AS (
+                  SELECT DISTINCT ai.assignment_id AS id
+                    FROM assignment_incidents ai
+                   WHERE ai.protocol IN (SELECT protocol FROM protocolos_do_periodo)
+              ),
+              fah AS (
+                  SELECT h.* FROM fsm_attendance_history h
+                   WHERE h.reserved_assignment_id IN (SELECT id FROM candidatos)
+              )
+              SELECT a.id AS assignment_id,
+                     ai.protocol,
+                     it.title AS incident_type_title,
+                     a.final_date,
+                     inc.title AS incident_status_title,
+                     r.title AS region_title,
+                     f.begin_date,
+                     f.end_date,
+                     f.rescheduling_type,
+                     f.begin_date_slot,
+                     f.first_attendance_history,
+                     f.last_attendance_history,
+                     p.name AS resource_name,
+                     a.created AS assignment_created,
+                     ( SELECT h2.begin_date
+                         FROM fsm_attendance_history h2
+                        WHERE h2.reserved_assignment_id = f.reserved_assignment_id
+                          AND h2.identifier_attendance = f.identifier_attendance
+                          AND h2.routing_status = ANY (ARRAY[6, 8])
+                        ORDER BY h2.begin_date DESC
+                        LIMIT 1) AS conclusion_date
+                FROM ( SELECT fah.region_id,
+                              fah.begin_date,
+                              fah.end_date,
+                              fah.identifier_attendance,
+                              fah.rescheduling_type,
+                              first_value(fah.begin_date_slot) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.begin_date DESC) AS begin_date_slot,
+                              fah.routing_status,
+                              lag(fah.routing_status) OVER (PARTITION BY fah.reserved_assignment_id ORDER BY fah.begin_date, fah.routing_status) AS previous_routing_status,
+                              min(fah.begin_date) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.begin_date) AS first_attendance_history,
+                              max(fah.end_date) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.end_date DESC) AS last_attendance_history,
+                              fah.resource_id,
+                              fah.reserved_assignment_id
+                         FROM fah
+                         LEFT JOIN ( SELECT DISTINCT ON (ff.reserved_assignment_id, ff.identifier_attendance)
+                                            ff.reserved_assignment_id, ff.identifier_attendance, ff.begin_date_slot
+                                       FROM fah ff
+                                      ORDER BY ff.reserved_assignment_id, ff.identifier_attendance, ff.begin_date DESC
+                                   ) fah_begin_date_slot
+                                ON fah_begin_date_slot.reserved_assignment_id = fah.reserved_assignment_id
+                               AND fah_begin_date_slot.identifier_attendance = fah.identifier_attendance
+                        WHERE fah.routing_status = ANY (ARRAY[0, 4, 6, 8])
+                          AND EXISTS ( SELECT 1 FROM service_desk_slots sds
+                                        WHERE sds.pre_reserved_assignment_id = fah.reserved_assignment_id
+                                          AND sds.begin_date = fah_begin_date_slot.begin_date_slot)
+                        GROUP BY fah.shift, fah.region_id, fah.routing_status, fah.reserved_date, fah.resource_id, fah.begin_date,
+                                 fah.end_date, fah.identifier_attendance, fah.rescheduling_type, fah.begin_date_slot,
+                                 fah.reserved_skills, fah.reserved_assignment_id, fah.activation_type
+                     ) f
+                JOIN assignments a ON a.id = f.reserved_assignment_id
+                JOIN assignment_incidents ai ON a.id = ai.assignment_id
+                JOIN regions r ON f.region_id = r.id
+                JOIN incident_types it ON ai.incident_type_id = it.id
+                JOIN incident_status inc ON ai.incident_status_id = inc.id
+                LEFT JOIN people p ON f.resource_id = p.id
+               WHERE f.routing_status <> f.previous_routing_status OR f.previous_routing_status IS NULL
+          ) vsdspi
+
+  # Os protocolos da agenda. O recorte é pelas SOLICITAÇÕES desses protocolos, e não
+  # pelo protocolo: o `ROW_NUMBER` que escolhe a linha (`PERSONA1`) particiona por
+  # `a.title`. Cortar por protocolo poderia tirar linhas do meio de uma partição e
+  # mudar qual delas vence; pela solicitação, a partição entra inteira.
+  protocolos-geral:
+    parametros: [protocolos]
+    recorte:
+      tipo: protocolos-da-lista
+      protocolo: "N°PROTOCOLO"
+    costura:
+      - de: "      AND a.created >= '2025-01-01'\n),\nPLANOS_CONTRATO AS ("
+        para: "      AND a.created >= '2025-01-01'\n      AND a.title IN (\n          SELECT a2.title\n            FROM assignment_incidents ai2\n            JOIN assignments a2 ON a2.id = ai2.assignment_id\n           WHERE ai2.protocol = ANY(:protocolos::bigint[])\n      )\n),\nPLANOS_CONTRATO AS ("
