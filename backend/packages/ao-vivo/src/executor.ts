@@ -27,7 +27,7 @@ import { materializaColunas, materializaColunasPorGrao } from '../../snapshot/sr
 import type { Escalar } from '../../snapshot/src/formato.ts';
 import { GRAO_REDUZIDO_DE } from '../../snapshot/src/grao-reduzido.ts';
 import { fonteDoEngine } from '../../transform-engine/src/fonte.ts';
-import { runQueries, type RunnerOptions } from '../../transform-engine/src/runner.ts';
+import { queryDependencies, runQueries, type RunnerOptions } from '../../transform-engine/src/runner.ts';
 import { toDatasetRows } from '../../transform-engine/src/value.ts';
 import { costuraAoVivo, type ConsultaAoVivo } from './catalogo.ts';
 
@@ -64,18 +64,69 @@ export interface ResultadoAoVivo {
   readonly query: string;
   readonly colunas: string[];
   readonly linhas: Record<string, Escalar>[];
+  /** As queries que foram costuradas neste pedido (a pedida e dependências de M). */
+  readonly recortadas: string[];
   /** Uma por sub-busca: a própria query e cada dependência de M. */
   readonly buscas: BuscaFeita[];
   readonly ms: { readonly total: number; readonly m: number; readonly calculadas: number };
 }
 
-/** Uma cópia do catálogo com o SQL de UMA query trocado. A original fica intacta. */
-export function catalogoComSql(base: QueryRegistry, query: string, sql: string): QueryRegistry {
+/** Uma cópia do catálogo com o SQL de algumas queries trocado. A original fica intacta. */
+export function catalogoComSql(base: QueryRegistry, trocas: ReadonlyMap<string, string>): QueryRegistry {
   const copia = new QueryRegistry();
   for (const [k, v] of base.datasources) copia.datasources.set(k, v);
   for (const [k, v] of base.dependents) copia.dependents.set(k, new Set(v));
-  for (const [k, v] of base.queries) copia.queries.set(k, k === query ? { ...v, sql } : v);
+  for (const [k, v] of base.queries) {
+    const sql = trocas.get(k);
+    copia.queries.set(k, sql === undefined ? v : { ...v, sql });
+  }
   return copia;
+}
+
+/** A query e o fechamento das dependências de M dela, na ordem em que aparecem. */
+export function fechamentoDeM(registry: QueryRegistry, query: string): string[] {
+  const comM = registry.list().filter((q) => q.m_expression);
+  const porNome = new Map(comM.map((q) => [q.name, q]));
+  const nomes = new Set(porNome.keys());
+  const vistas: string[] = [];
+  const anda = (id: string): void => {
+    if (vistas.includes(id)) return;
+    vistas.push(id);
+    const q = registry.get(id);
+    if (!q.m_expression) return;
+    for (const dep of queryDependencies(q.m_expression, nomes).dependencias) {
+      const d = porNome.get(dep);
+      if (d) anda(d.id);
+    }
+  };
+  anda(query);
+  return vistas;
+}
+
+/**
+ * Quais queries do pedido levam recorte, e com quais parâmetros.
+ *
+ * A pedida sempre que vierem parâmetros; cada dependência de M quando tem entrada em
+ * `ao-vivo.yaml` e o pedido traz TODOS os parâmetros dela. Cada uma recebe só os
+ * parâmetros que declara — `traduzParametros` recusa parâmetro sem uso no SQL, e é
+ * essa recusa que impede uma costura que ignora o recorte.
+ */
+export function recortesDoPedido(
+  ctx: Pick<ContextoAoVivo, 'registry' | 'catalogo'>,
+  pedido: Pick<PedidoAoVivo, 'query' | 'params'>,
+): Map<string, Record<string, unknown>> {
+  const recortes = new Map<string, Record<string, unknown>>();
+  if (!pedido.params) return recortes;
+  const pedida = ctx.catalogo.get(pedido.query);
+  if (!pedida) {
+    throw new Error(`'${pedido.query}' não tem recorte em ao-vivo.yaml — pedir parâmetros a ela não recortaria nada.`);
+  }
+  for (const id of fechamentoDeM(ctx.registry, pedido.query)) {
+    const c = ctx.catalogo.get(id);
+    if (!c || !c.parametros.every((p) => p in pedido.params!)) continue;
+    recortes.set(id, Object.fromEntries(c.parametros.map((p) => [p, pedido.params![p]])));
+  }
+  return recortes;
 }
 
 /**
@@ -105,19 +156,17 @@ export async function buscaAoVivo(ctx: ContextoAoVivo, pedido: PedidoAoVivo): Pr
   const inicio = Date.now();
   const original = ctx.registry.get(pedido.query);
 
-  let registry = ctx.registry;
-  if (pedido.params) {
-    const consulta = ctx.catalogo.get(pedido.query);
-    if (!consulta) {
-      throw new Error(`'${pedido.query}' não tem recorte em ao-vivo.yaml — pedir parâmetros a ela não recortaria nada.`);
-    }
-    registry = catalogoComSql(ctx.registry, pedido.query, costuraAoVivo(original.sql ?? '', consulta));
+  const recortes = recortesDoPedido(ctx, pedido);
+  const trocas = new Map<string, string>();
+  for (const id of recortes.keys()) {
+    trocas.set(id, costuraAoVivo(ctx.registry.get(id).sql ?? '', ctx.catalogo.get(id)!));
   }
+  const registry = trocas.size ? catalogoComSql(ctx.registry, trocas) : ctx.registry;
 
   const buscas: BuscaFeita[] = [];
   const engine = new QueryEngine({ registry, connectors: ctx.connectors, cache: new MemoryCache() });
   const fonte = fonteDoEngine(engine, {
-    ...(pedido.params ? { paramsPorQuery: { [pedido.query]: { ...pedido.params } } } : {}),
+    ...(recortes.size ? { paramsPorQuery: Object.fromEntries(recortes) } : {}),
     onBusca: (e) => {
       if (e.erro) return;
       buscas.push({ id: e.id, linhas: e.linhas ?? 0, msBanco: e.msExecute ?? 0, msConversao: e.msConversao ?? 0 });
@@ -164,6 +213,7 @@ export async function buscaAoVivo(ctx: ContextoAoVivo, pedido: PedidoAoVivo): Pr
     query: pedido.query,
     colunas: columns,
     linhas,
+    recortadas: [...recortes.keys()],
     buscas,
     ms: { total: Date.now() - inicio, m: msM, calculadas: Date.now() - tCalc },
   };

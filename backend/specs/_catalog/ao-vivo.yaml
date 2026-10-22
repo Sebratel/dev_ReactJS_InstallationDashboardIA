@@ -119,3 +119,49 @@ consultas:
     costura:
       - de: "      AND a.created >= '2025-01-01'\n),\nPLANOS_CONTRATO AS ("
         para: "      AND a.created >= '2025-01-01'\n      AND a.title IN (\n          SELECT a2.title\n            FROM assignment_incidents ai2\n            JOIN assignments a2 ON a2.id = ai2.assignment_id\n           WHERE ai2.protocol = ANY(:protocolos::bigint[])\n      )\n),\nPLANOS_CONTRATO AS ("
+
+  # As três dependências de M de `protocolos-geral` que pesam (gestores-equipes, do
+  # MariaDB, leva ~2 s e fica inteira). Sem o recorte, elas rodavam inteiras a cada
+  # pedido: troca-endereco 53 s e alocacao-patrimonio 19,6 s, medidos em 22/10/2026.
+  # O executor costura uma dependência quando ela tem entrada aqui e o pedido traz
+  # TODOS os parâmetros dela — o mesmo `protocolos` da query que a puxa.
+  #
+  # Cada recorte preserva a chave pela qual o M junta a dependência E a partição do
+  # ROW_NUMBER dela, para a linha que casa ser a mesma da consulta inteira.
+
+  # Junta por SOLICITACAO; sem ROW_NUMBER (uma linha por item de patrimônio). Recorte
+  # pelas solicitações dos protocolos: todos os itens delas entram.
+  alocacao-patrimonio:
+    parametros: [protocolos]
+    recorte:
+      tipo: protocolos-da-lista
+      protocolo: "N°PROTOCOLO"
+    costura:
+      - de: "AND plis.out_date >= '2025-01-01'"
+        para: "AND plis.out_date >= '2025-01-01'\nAND a.title IN (\n    SELECT a2.title\n      FROM assignment_incidents ai2\n      JOIN assignments a2 ON a2.id = ai2.assignment_id\n     WHERE ai2.protocol = ANY(:protocolos::bigint[])\n)"
+
+  # Junta por PROTOCOLO, e o ROW_NUMBER particiona por `ai.protocol`: o recorte pela
+  # lista mantém cada partição inteira.
+  troca-endereco:
+    parametros: [protocolos]
+    recorte:
+      tipo: protocolos-da-lista
+      protocolo: PROTOCOLO
+    costura:
+      - de: "        AND it.id in ('15', '1256')"
+        para: "        AND it.id in ('15', '1256')\n        AND ai.protocol = ANY(:protocolos::bigint[])"
+
+  # Junta pelo número do protocolo extraído de `r.tags` (o M compara como inteiro, ver
+  # juncoes.yaml), e o ROW_NUMBER particiona por `r.tags`. O recorte usa a MESMA
+  # extração, comparada como texto sem zeros à esquerda: o `::bigint` poderia estourar
+  # numa tag com lixo de outro tipo de solicitação, porque o banco não promete avaliar
+  # o filtro de RAUX antes. Toda linha de uma mesma tag tem os mesmos dígitos, então a
+  # partição entra inteira.
+  tecnicos-auxiliares:
+    parametros: [protocolos]
+    recorte:
+      tipo: protocolos-da-lista
+      protocolo: "PROTOCOLO:"
+    costura:
+      - de: "      and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)"
+        para: "      and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)\n      and ltrim(NULLIF(regexp_replace(r.tags::text, '\\D', '', 'g'), ''), '0') = ANY(:protocolos::text[])"

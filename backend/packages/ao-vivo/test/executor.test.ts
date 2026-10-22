@@ -10,7 +10,14 @@ import { QueryRegistry } from '../../query-engine/src/registry.ts';
 import type { Connector, ResolvedQuery } from '../../query-engine/src/types.ts';
 import { SemanticModel } from '../../semantic-model/src/model.ts';
 import { leCatalogoAoVivo } from '../src/catalogo.ts';
-import { buscaAoVivo, calculadasDaQuery, catalogoComSql, type ContextoAoVivo } from '../src/executor.ts';
+import {
+  buscaAoVivo,
+  calculadasDaQuery,
+  catalogoComSql,
+  fechamentoDeM,
+  recortesDoPedido,
+  type ContextoAoVivo,
+} from '../src/executor.ts';
 
 const SPECS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'specs');
 const registry = QueryRegistry.fromSpecsDir(SPECS);
@@ -51,12 +58,29 @@ function contexto(pedidos: { sql: string; params?: Record<string, unknown> }[]):
   return { registry, model, catalogo, connectors: new Map([['dbVoalle', voalle]]), culture: null };
 }
 
-test('catalogoComSql troca o SQL de UMA query numa cópia — o catálogo do projeto fica intacto', () => {
+test('catalogoComSql troca o SQL numa cópia — o catálogo do projeto fica intacto', () => {
   const antes = registry.get('field-agenda-slot').sql;
-  const copia = catalogoComSql(registry, 'field-agenda-slot', 'SELECT 1');
+  const copia = catalogoComSql(registry, new Map([['field-agenda-slot', 'SELECT 1']]));
   assert.equal(copia.get('field-agenda-slot').sql, 'SELECT 1');
   assert.equal(registry.get('field-agenda-slot').sql, antes);
   assert.equal(copia.get('protocolos-geral'), registry.get('protocolos-geral'), 'as outras queries são as mesmas');
+});
+
+test('os protocolos levam o recorte para as dependências pesadas, e só para elas', () => {
+  const recortes = recortesDoPedido({ registry, catalogo }, { query: 'protocolos-geral', params: { protocolos: ['1'] } });
+  assert.deepEqual([...recortes.keys()].sort(), ['alocacao-patrimonio', 'protocolos-geral', 'tecnicos-auxiliares', 'troca-endereco']);
+  // gestores-equipes é dependência, mas não tem entrada em ao-vivo.yaml: roda inteira.
+  assert.ok(fechamentoDeM(registry, 'protocolos-geral').includes('gestores-equipes'));
+  for (const params of recortes.values()) assert.deepEqual(params, { protocolos: ['1'] });
+});
+
+test('dependência só leva recorte se o pedido traz TODOS os parâmetros dela', () => {
+  const recortes = recortesDoPedido({ registry, catalogo }, { query: 'field-agenda-slot', params: { desde: 'a', ate: 'b' } });
+  assert.deepEqual([...recortes.entries()], [['field-agenda-slot', { desde: 'a', ate: 'b' }]]);
+});
+
+test('sem parâmetros, nada é recortado', () => {
+  assert.equal(recortesDoPedido({ registry, catalogo }, { query: 'protocolos-geral' }).size, 0);
 });
 
 test('calculadasDaQuery espelha o refresh: grão de slot só com as colunas de grão', () => {
