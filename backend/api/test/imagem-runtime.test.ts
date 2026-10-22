@@ -261,7 +261,8 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
 
   assert.equal(api.environment?.CACHE_RESPOSTA_MB, '256');
   // Pré-cálculo de filtros religado em 20/10/2026 ("tudo pré-carregado").
-  assert.equal(api.environment?.AQUECE_FILTROS_ATE, '40');
+  assert.equal(api.environment?.AQUECE_FILTROS_ATE, '20');
+  assert.equal(api.environment?.API_DATASETS_POR_WORKER, '1');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
   // 2304m -> 3072m em 21/10/2026: a api caiu 4 vezes em ~6 h (kill por memória do cgroup).

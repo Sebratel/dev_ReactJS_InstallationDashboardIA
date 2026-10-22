@@ -215,7 +215,14 @@ export function linhaDeRecusaPorRecongelamento(
 
 /** Nº de datasets que uma worker guarda ao mesmo tempo antes de podar o mais
  *  antigo — ver o comentário de `cacheDeCarga` para a conta de memória. */
-export const TETO_CACHE_POR_WORKER = 2;
+export const TETO_CACHE_POR_WORKER_PADRAO = 2;
+
+export function tetoDeCachePorWorker(env: Record<string, string | undefined> = process.env): number {
+  const valor = Number.parseInt(env.API_DATASETS_POR_WORKER ?? '', 10);
+  return Number.isFinite(valor) && valor > 0 ? valor : TETO_CACHE_POR_WORKER_PADRAO;
+}
+
+export const TETO_CACHE_POR_WORKER = tetoDeCachePorWorker();
 
 /**
  * O dataset já carregado — tabelas do disco, tipadas, calculadas materializadas

@@ -127,6 +127,10 @@ services:
       COOKIE_SECURE: '0'
       API_WORKERS: '2'
       API_WORKER_HEAP_MB: '512'
+      # Dois datasets por worker retinham até quatro cópias grandes em memória externa
+      # (fora do heap do V8), que foi a causa dos OOM kills. Mantemos duas workers para
+      # o clique não esperar o aquecimento, mas cada uma conserva apenas o dataset atual.
+      API_DATASETS_POR_WORKER: '1'
       # PORT declarada AQUI, não deixada para o .env — `environment:` vence
       # `env_file:`, e é isso que fecha a armadilha registrada em
       # docs/DEPLOY.md §3.5: o `.env.example` traz `PORT=3000` e o código sem
@@ -187,12 +191,12 @@ services:
       # 64 MB o LRU expulsava o pré-cálculo antes do clique. O pai usa 34-42 MB de heap
       # e tem teto de 1024 — 256 é o teto de `TETO_RESPOSTA_PADRAO_MB`.
       CACHE_RESPOSTA_MB: '256'
-      # Pré-calcula cada valor dos filtros de até 40 valores, depois de cada carga
+      # Pré-calcula cada valor dos filtros de até 20 valores, depois de cada carga
       # (ACHADOS #163). Estava desligado desde 14/10 por OOM — com o heap da piscina sem
       # teto. Agora a worker tem 512 MB, o fundo usa no máximo uma das duas e o clique
       # tem a outra. Religado a pedido do Erick ("tudo pré-carregado"); conferir o RSS da
       # `api` no Portainer depois do deploy.
-      AQUECE_FILTROS_ATE: '40'
+      AQUECE_FILTROS_ATE: '20'
       # glibc abre até 8 arenas de malloc por núcleo, e cada thread (principal, 1 worker,
       # libuv, V8) segura memória devolvida na sua. 2 arenas: menos RSS preso, contenção
       # desprezível com 3 threads de JS. Afeta só o que é malloc (zlib do .jsonl.gz,

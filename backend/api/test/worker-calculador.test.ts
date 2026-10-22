@@ -7,7 +7,20 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chaveDeCarga, linhaDeRecusaPorRecongelamento } from '../src/worker-calculador.ts';
+import {
+  chaveDeCarga,
+  linhaDeRecusaPorRecongelamento,
+  TETO_CACHE_POR_WORKER_PADRAO,
+  tetoDeCachePorWorker,
+} from '../src/worker-calculador.ts';
+
+test('tetoDeCachePorWorker aceita apenas limites positivos', () => {
+  assert.equal(tetoDeCachePorWorker({ API_DATASETS_POR_WORKER: '1' }), 1);
+  assert.equal(tetoDeCachePorWorker({ API_DATASETS_POR_WORKER: '3' }), 3);
+  for (const valor of ['', '0', '-1', 'invalido']) {
+    assert.equal(tetoDeCachePorWorker({ API_DATASETS_POR_WORKER: valor }), TETO_CACHE_POR_WORKER_PADRAO);
+  }
+});
 
 test('chaveDeCarga: mesmos conjuntos, ordem diferente, mesma chave', () => {
   const a = chaveDeCarga('visao-geral', ['v1', 'v2', 'v3'], ['ColA'], ['TabelaX', 'TabelaY']);
