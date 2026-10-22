@@ -265,6 +265,10 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.equal(api.environment?.API_DATASETS_POR_WORKER, '1');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
+  // Fuso do RS nos processos que calculam (22/10/2026): em UTC, filtro padrão de mês/ano e
+  // recálculo da meia-noite viravam às 21:00 daqui.
+  assert.equal(api.environment?.TZ, 'America/Sao_Paulo');
+  assert.equal(compose.services.refresh?.environment?.TZ, 'America/Sao_Paulo');
   // 2304m -> 3072m em 21/10/2026: a api caiu 4 vezes em ~6 h (kill por memória do cgroup).
   assert.equal(api.mem_limit, '3072m');
   assert.equal(compose.services.refresh?.mem_limit, '3g');

@@ -159,11 +159,12 @@ test('chaveDaResposta: a ORDEM da lista de visuais não muda a chave', () => {
  * três horas depois — e nessa janela a página serviria o dia novo com o número do
  * dia velho. As duas datas abaixo são o mesmo instante visto dos dois fusos.
  */
-test('diaDoCalculo: é o dia UTC, que é o que TODAY() enxerga', () => {
-  // 21:00 em Brasília (UTC-3) do dia 7 já é dia 8 em UTC — e `TODAY()` diz 8.
-  assert.equal(diaDoCalculo(new Date('2026-08-08T00:30:00.000Z')), '2026-08-08');
-  assert.equal(diaDoCalculo(new Date('2026-08-07T23:59:59.999Z')), '2026-08-07');
-  assert.equal(diaDoCalculo(new Date('2026-08-08T00:00:00.000Z')), '2026-08-08');
+test('diaDoCalculo: é o dia do RS, que é o que TODAY() enxerga', () => {
+  // Até 22/10/2026 era o dia UTC, e às 21:00 daqui já virava o dia 8. Agora o dia é o do
+  // RS (UTC-3), o mesmo do `TODAY()` (measure-engine/src/relogio.ts).
+  assert.equal(diaDoCalculo(new Date('2026-08-08T00:30:00.000Z')), '2026-08-07', '21:30 no RS ainda é dia 7');
+  assert.equal(diaDoCalculo(new Date('2026-08-08T02:59:59.999Z')), '2026-08-07', '23:59 no RS');
+  assert.equal(diaDoCalculo(new Date('2026-08-08T03:00:00.000Z')), '2026-08-08', 'meia-noite no RS');
   // A hora não entra: o cache não pode virar de hora em hora, só na virada do dia.
   assert.equal(
     diaDoCalculo(new Date('2026-08-07T03:00:00.000Z')),
@@ -611,17 +612,26 @@ test('a virada do dia invalida, mesmo com o snapshot intacto', async () => {
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'miss');
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');
 
-    // Mesmo dia UTC, quase na virada: ainda é acerto.
-    relogio = new Date('2026-08-07T23:59:59.000Z');
+    // 21:30 no RS já é dia 8 em UTC — e até 22/10/2026 o cache virava aqui. O dia é o
+    // do RS: ainda é acerto.
+    relogio = new Date('2026-08-08T00:30:00.000Z');
+    assert.equal(
+      (await (await s.busca('/api/dashboards/capa')).json()).cache,
+      'hit',
+      'às 21:30 do RS o dia ainda é o mesmo',
+    );
+
+    // Mesmo dia no RS, quase na virada: ainda é acerto.
+    relogio = new Date('2026-08-08T02:59:59.000Z');
     assert.equal(
       (await (await s.busca('/api/dashboards/capa')).json()).cache,
       'hit',
       'a hora não pode invalidar — só o dia',
     );
 
-    // Passou. O disco não mudou uma linha; `TODAY()` mudou. A de ontem sai na hora,
-    // marcada `anterior`, e a de hoje é calculada em fundo (ACHADOS #164).
-    relogio = new Date('2026-08-08T00:00:01.000Z');
+    // Passou da meia-noite do RS. O disco não mudou uma linha; `TODAY()` mudou. A de
+    // ontem sai na hora, marcada `anterior`, e a de hoje é calculada em fundo (ACHADOS #164).
+    relogio = new Date('2026-08-08T03:00:01.000Z');
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'anterior');
     assert.equal(
       (await esperaFresco(s, '/api/dashboards/capa')).cache,

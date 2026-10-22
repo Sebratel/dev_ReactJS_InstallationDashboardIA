@@ -25,6 +25,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Dataset } from '../../measure-engine/src/dataset.ts';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
+import { relogioDeParede } from '../../measure-engine/src/relogio.ts';
 import {
   calculatedTableOrder,
   calculatedTableSourceTables,
@@ -388,7 +389,10 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
     }
   }
 
-  const ev = new Evaluator({ model: opts.model, dataset, now: opts.now });
+  // TODAY()/NOW() na hora de parede do RS, a mesma régua das datas do banco. `opts.now`
+  // segue sendo o instante real: o corte de período e o "gerado hoje?" abaixo o comparam
+  // com instantes reais. Ver `relogio.ts`.
+  const ev = new Evaluator({ model: opts.model, dataset, now: relogioDeParede(opts.now) });
 
   // Só as calculadas do plano, e na ordem de dependência que o modelo dita: uma
   // tabela calculada pode nascer de outra, e materializar fora de ordem daria
