@@ -29,8 +29,9 @@ consultas:
       protocolo: Protocolo
       data: Slot Agenda
     costura:
+      # `&vista-da-agenda`: o mesmo texto entra na agregada `relatos-do-dia`, lá embaixo.
       - de: "FROM v_service_desk_slots_productivity_informative vsdspi\n"
-        para: |
+        para: &vista-da-agenda |
           FROM (
               WITH protocolos_do_periodo AS (
                   SELECT DISTINCT ai.protocol
@@ -165,3 +166,31 @@ consultas:
     costura:
       - de: "      and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)"
         para: "      and a.final_date >= DATE_TRUNC('year', CURRENT_DATE)\n      and ltrim(NULLIF(regexp_replace(r.tags::text, '\\D', '', 'g'), ''), '0') = ANY(:protocolos::text[])"
+
+# AGREGADAS — respostas que saem do banco JÁ CONTADAS, sem Power Query e sem passar
+# linha a linha pela API. A costura é a mesma (âncora exata, parâmetro que aparece),
+# e os `marcadores` (`{{nome}}`) são preenchidos por quem chama com SQL gerado do modelo.
+agregadas:
+
+  # Os dois contadores de `Status Protocolo Dia` que dependem do TEXTO dos relatos:
+  # houve relato improdutivo, e houve relato de técnico (alguém com skill), por
+  # (protocolo, dia do relato). É a parte da tabela que exigia a agenda no grão relato —
+  # 220 mil linhas e ~3 min em 30 dias (22/10/2026) — e que daqui sai como algumas
+  # centenas de linhas. A base é a `field-agenda` COMPLETA do catálogo: as junções com
+  # relatos, pessoas e skills e os filtros ficam os dela; só muda o SELECT (contagens),
+  # o FROM (a mesma view aberta da `field-agenda-slot`) e o ORDER BY (vira GROUP BY).
+  #
+  # `{{categoria_do_relato}}` é o `CategoriaProdutividade` do modelo, gerado das 38
+  # regras de `ClassificacaoRelato` (backend/packages/ao-vivo/src/status-dia.ts).
+  relatos-do-dia:
+    base: field-agenda
+    parametros: [desde, ate]
+    janela: "AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')"
+    marcadores: [categoria_do_relato]
+    costura:
+      - de: "SELECT \n    vsdspi.protocol AS \"Protocolo\",\n    vsdspi.incident_type_title AS \"Tipo de Protocolo\",\n    vsdspi.incident_status_title AS \"Status Protocolo\",\n    vsdspi.region_title AS \"Base\",\n    vsdspi.resource_name AS \"Instalador\",\n    vsdspi.assignment_created AS \"Data Criado\",\n    vsdspi.rescheduling_type AS \"Reagenda\",\n    vsdspi.conclusion_date AS \"Data finalizado atendimento app\",\n    vsdspi.first_attendance_history AS \"Data primeiro Play app\",\n    vsdspi.last_attendance_history AS \"Data ultimo play app\",\n    vsdspi.final_date AS \"Prazo SLA\",\n    vsdspi.begin_date AS \"Inicio relato\",\n    vsdspi.end_date AS \"Fim relato\",\n    vsdspi.begin_date_slot AS \"Slot Agenda\",\n    p.name as \"Relator\",\n    s.title as \"Skill\",\n    r.title AS \"Descrição\",\n    r.description AS \"Relato\",\n    r.beginning_date AS \"Data Relato\"\n"
+        para: "SELECT\n    vsdspi.protocol::text AS \"Protocolo\",\n    to_char(r.beginning_date, 'YYYY-MM-DD') AS \"Dia Relato\",\n    COALESCE(bool_or(({{categoria_do_relato}}) = 'Improdutiva'), false) AS \"Improdutivo\",\n    COALESCE(bool_or(s.title IS NOT NULL), false) AS \"Tecnico\"\n"
+      - de: "FROM v_service_desk_slots_productivity_informative vsdspi\n"
+        para: *vista-da-agenda
+      - de: "ORDER BY vsdspi.assignment_created DESC;"
+        para: "GROUP BY 1, 2;"

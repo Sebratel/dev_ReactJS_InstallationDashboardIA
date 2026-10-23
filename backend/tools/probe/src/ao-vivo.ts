@@ -1,7 +1,7 @@
 // Sonda da fonte ao vivo (docs/DECISAO-AO-VIVO.md): a consulta COSTURADA devolve as
 // mesmas linhas que a ORIGINAL do catálogo, recortada do mesmo jeito?
 //
-//   npm run probe:ao-vivo -- --desde=2026-10-06 --ate=2026-10-13
+//   npm run probe:ao-vivo -- --desde=2026-10-06 --ate=2026-10-13 [--so=agenda|status-dia]
 //
 // Para o período pedido (use um período FECHADO — dia que já não muda):
 //   1. `field-agenda-slot`: a original (janela inteira de 3 meses) recortada em memória
@@ -20,7 +20,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import yaml from 'yaml';
-import { leCatalogoAoVivo, type Recorte } from '../../../packages/ao-vivo/src/catalogo.ts';
+import { leAgregadasAoVivo, leCatalogoAoVivo, type Recorte } from '../../../packages/ao-vivo/src/catalogo.ts';
+import { buscaRelatosDoDia, statusProtocoloDiaAoVivo } from '../../../packages/ao-vivo/src/status-dia.ts';
+import { statusProtocoloDia } from '../../../packages/snapshot/src/nativas.ts';
 import { buscaAoVivo, type ContextoAoVivo, type ResultadoAoVivo } from '../../../packages/ao-vivo/src/executor.ts';
 import { aplicaRecorte, celula, texto } from '../../../packages/ao-vivo/src/recorte.ts';
 import { applyDotEnv, loadConfig, missingFor } from '../../../packages/query-engine/src/config.ts';
@@ -143,8 +145,54 @@ try {
   console.log(`  ao vivo trouxe ${vivoAgenda.linhas.length - vivoRecortado.length} linha(s) de protocolo reagendado para fora do período (o recorte as tira)`);
   tudoIgual = compara('linhas', refAgenda.colunas, recorta(refAgenda, cAgenda.recorte, new Set()), vivoRecortado) && tudoIgual;
 
+  // 3. `Status Protocolo Dia` (`--so=status-dia`). A referência é a regra de nativas.ts
+  // sobre a agenda COMPLETA original (grão relato, 3 meses, colunas calculadas pelo DAX
+  // — ~4 min e ~640 mil linhas: rode com --max-old-space-size=4096) e os protocolos
+  // originais; o lado ao vivo é a mesma regra sobre a agenda no grão de slot, as
+  // contagens de `relatos-do-dia` e os protocolos recortados.
+  if (arg('so') === 'status-dia') {
+    const lista = [...new Set(vivoRecortado.map((l) => texto(celula(l, 'Protocolo'))))];
+    const conjunto = new Set(lista);
+    const agregada = leAgregadasAoVivo(SPECS).get('relatos-do-dia')!;
+    const tRel = Date.now();
+    const relatos = await buscaRelatosDoDia(ctx, agregada, { desde: desde!, ate: ate! });
+    const msRel = Date.now() - tRel;
+    const vivoPg = await buscaAoVivo(ctx, { query: 'protocolos-geral', params: { protocolos: lista }, agora: AGORA });
+    const vivoStatus = statusProtocoloDiaAoVivo(vivoRecortado, relatos, aplicaRecorte(vivoPg.linhas, ctx.catalogo.get('protocolos-geral')!.recorte, { protocolos: conjunto }));
+    console.log(`\nStatus Protocolo Dia — ao vivo: relatos-do-dia ${(msRel / 1000).toFixed(1)} s/${relatos.length} grupo(s), protocolos ${tempos(vivoPg)}`);
+
+    const refCompleta = await buscaAoVivo(ctx, { query: 'field-agenda', agora: AGORA });
+    const refPg = await buscaAoVivo(ctx, { query: 'protocolos-geral', agora: AGORA });
+    console.log(`  referência: field-agenda ${tempos(refCompleta)}; protocolos ${tempos(refPg)}`);
+    const completaRecortada = aplicaRecorte(refCompleta.linhas, cAgenda.recorte, { desde: desde!, ate: ate! });
+    const comoNativa = completaRecortada.map((l) => ({
+      protocolo: celula(l, 'Protocolo'),
+      'slot agenda': celula(l, 'Slot Agenda'),
+      'data relato': celula(l, 'Data Relato'),
+      base: celula(l, 'Base'),
+      turno: celula(l, 'Turno'),
+      rankdataprotocolo: celula(l, 'RankDataProtocolo'),
+      'tipo de protocolo': celula(l, 'Tipo de Protocolo'),
+      categoriaprodutividade: celula(l, 'CategoriaProdutividade'),
+      skill: celula(l, 'Skill'),
+    }));
+    const pgComoNativa = aplicaRecorte(refPg.linhas, ctx.catalogo.get('protocolos-geral')!.recorte, { protocolos: conjunto }).map((l) => ({
+      'n°protocolo': celula(l, 'N°PROTOCOLO'),
+      'data instalação': celula(l, 'DATA INSTALAÇÃO'),
+    }));
+    const refStatus = statusProtocoloDia(comoNativa, pgComoNativa);
+    const colunasStatus = ['dia', 'protocolo', 'status', 'base dia', 'turno dia', 'rank protocolo dia', 'tipo protocolo dia'];
+    tudoIgual = compara('Status Protocolo Dia', colunasStatus, refStatus, vivoStatus) && tudoIgual;
+    const porStatus = (ls: Record<string, Escalar>[]) =>
+      [...ls.reduce((m, l) => m.set(String(l['status']), (m.get(String(l['status'])) ?? 0) + 1), new Map<string, number>())]
+        .sort()
+        .map(([s, n]) => `${s} ${n}`)
+        .join(', ');
+    console.log(`    referência: ${porStatus(refStatus)}\n    ao vivo:    ${porStatus(vivoStatus)}`);
+  }
+
   // 2. Protocolos da agenda (`--so=agenda` pula: a original deles leva minutos).
-  if (arg('so') !== 'agenda') {
+  if (arg('so') !== 'agenda' && arg('so') !== 'status-dia') {
     const lista = [...new Set(vivoRecortado.map((l) => texto(celula(l, 'Protocolo'))))];
     console.log(`\nprotocolos-geral (${lista.length} protocolo(s) da agenda do período)`);
     const cPg = ctx.catalogo.get('protocolos-geral')!;
