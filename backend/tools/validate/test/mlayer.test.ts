@@ -212,7 +212,10 @@ test('as 26 queries reais: 25 são escaneáveis, e a exceção é a do let aninh
   //
   // 154 → 146 (14/10/2026): as três planilhas viraram SQL no MariaDB (ACHADOS #209) e
   // perderam a navegação de aba, o `Table.Skip`, o `PromoteHeaders` e o `RemoveColumns`.
-  assert.equal(passos, 146, 'passos M nas 25 escaneáveis');
+  //
+  // 146 → 145 (23/10/2026): `quadro-funcional` lê o GESTOR da Senior e perdeu o filtro
+  // nos três nomes da planilha (ACHADOS #237).
+  assert.equal(passos, 145, 'passos M nas 25 escaneáveis');
 });
 
 /**
