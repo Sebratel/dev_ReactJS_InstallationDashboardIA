@@ -146,10 +146,10 @@ quando a sombra fechar sem diferença.
 
 ## Em aberto
 
-- **Gestor da Premiação e do Diário.** A Senior (`API_WebDeveloper.db_senior_collaborators`)
-  casa o nome do instalador em 97,5% (193 de 198 responsáveis do ano). Mas o gestor da
-  planilha não é a hierarquia formal: por palavras, 44% = supervisor da Senior, 6%
-  coordenador, 5% gerente e 44% nenhum; a planilha tem 32 gestores para 18 supervisores.
-  Trocar muda o agrupamento — decisão de negócio.
+- ~~**Gestor da Premiação e do Diário.**~~ **Decidido em 23/10/2026 (Misael): vem da
+  Senior**, não mais da planilha — branch `gestor-pela-senior`, ACHADOS #237. GESTOR =
+  supervisor, senão coordenador, senão gerente; um registro por nome. Ficam sem gestor os
+  desligados (a Senior só guarda hierarquia de quem está ativo) e quem não tem par de nome
+  na Senior (~4%). Na fase 3 a API lê a mesma tabela.
 - **A conta MariaDB da stack** (`DevSebratel`) tem `ALL PRIVILEGES ON *.*`. A stack só
   precisa ler os bancos que usa e gravar nas tabelas de acesso.
