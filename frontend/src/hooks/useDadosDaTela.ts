@@ -18,8 +18,10 @@ import {
   urlDaPagina,
   type FiltroDaTela,
   type LayoutSpec,
+  type PaginaCalculada,
 } from '../services/dashboardService.ts';
 import { idsIniciais } from '../utils/cargaProgressiva.ts';
+import { consultaDoVisual } from './useVisualSobDemanda.ts';
 
 type Clicados = readonly { tabela: string; coluna: string }[];
 
@@ -108,6 +110,37 @@ export function useSaude() {
   });
 }
 
+/** Os visuais que o servidor deixou fora da abertura por serem caros (`sobDemanda`). */
+export function idsSobDemanda(p: PaginaCalculada | null | undefined): string[] {
+  return (p?.visuais ?? []).filter((v) => v.sobDemanda).map((v) => v.id);
+}
+
+/**
+ * Pré-carrega um ESTADO inteiro da tela: a abertura e, quando ela volta, os visuais
+ * `sobDemanda` dela.
+ *
+ * **O defeito (20/10/2026, teste de cliques no staging).** O pré-carregamento (hover e
+ * vizinhança) enchia só a chave da abertura. Os visuais caros — 5 na
+ * `agendamento-field` — ficavam de fora, e o clique "adiantado" ainda esperava cada um
+ * deles: 6 pedidos em `miss`, até 11 s. Com `origem`, os visuais vão um por vez, para a
+ * vizinhança não virar rajada; sem ela (hover), juntos, porque o clique vem logo.
+ */
+export async function preCarregaEstado(
+  qc: QueryClient,
+  id: string,
+  layout: LayoutSpec,
+  filtros: readonly FiltroDaTela[],
+  clicados: Clicados,
+  origem?: 'prefetch',
+): Promise<void> {
+  const p = await qc.fetchQuery(consultaDaAbertura(id, layout, filtros, clicados, origem));
+  const visuais = idsSobDemanda(p).map(
+    (v) => () => qc.prefetchQuery(consultaDoVisual(id, v, filtros, clicados, origem)),
+  );
+  if (origem) for (const busca of visuais) await busca();
+  else await Promise.all(visuais.map((busca) => busca()));
+}
+
 /** Pré-carrega a abertura de uma página com os filtros dela, sem tocar na tela. */
 export async function preCarregaAbertura(
   qc: QueryClient,
@@ -119,7 +152,7 @@ export async function preCarregaAbertura(
     queryKey: chavesDeConsulta.layout(id),
     queryFn: ({ signal }) => pegaLayout(id, signal),
   });
-  await qc.prefetchQuery(consultaDaAbertura(id, layout, filtros, clicados));
+  await preCarregaEstado(qc, id, layout, filtros, clicados);
 }
 
 /**

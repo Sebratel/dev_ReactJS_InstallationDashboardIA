@@ -50,6 +50,8 @@ export interface UsoDasTelas {
   ): Promise<ResumoDeUso>;
   estado(): EstadoDoUso;
   para(): void;
+  /** O último acesso de cada e-mail (ISO), para a coluna da aba PERMISSÕES. */
+  ultimosAcessos(agora?: Date): Promise<Map<string, string>>;
 }
 
 type BancoDeUso = Pick<mysql.Pool, "query">;
@@ -89,6 +91,7 @@ export function criaUsoDasTelas(
   const pendentes = new Map<string, Pendente>();
   const vistos = new Map<string, number>();
   const cache = new Map<number, { venceEm: number; valor: ResumoDeUso }>();
+  let ultimos: { venceEm: number; valor: Map<string, string> } | null = null;
   let descartadas = 0;
   let falhando = false;
   let ultimaGravacao: Date | null = null;
@@ -240,6 +243,23 @@ export function criaUsoDasTelas(
       };
       cache.set(dias, { venceEm: agora.getTime() + cacheMs, valor: resumo });
       return resumo;
+    },
+    async ultimosAcessos(agora = relogio()) {
+      if (ultimos && ultimos.venceEm > agora.getTime()) return ultimos.valor;
+      const [linhas] = await banco.query(
+        "SELECT email, MAX(last_opened_at) AS ultimo FROM screen_usage_daily GROUP BY email",
+      );
+      const valor = new Map<string, string>();
+      for (const l of linhas as { email: string; ultimo: Date | string }[]) {
+        valor.set(String(l.email).toLowerCase(), new Date(l.ultimo).toISOString());
+      }
+      // O que ainda está no buffer (não descarregado) é mais novo que o banco.
+      for (const p of pendentes.values()) {
+        const iso = p.ultimaAbertura.toISOString();
+        if ((valor.get(p.email) ?? "") < iso) valor.set(p.email, iso);
+      }
+      ultimos = { venceEm: agora.getTime() + cacheMs, valor };
+      return valor;
     },
     estado: () => ({
       pendentes: pendentes.size,

@@ -267,6 +267,34 @@ test('lista calculada sobre o dado de ANTES de um evento não fica gravada como 
   }
 });
 
+test('depois de um evento a lista anterior responde na hora, e a nova chega no pedido seguinte', async () => {
+  // O defeito de 20/10/2026: depois de todo refresh os chips de TIPO DE PROTOCOLO
+  // sumiam em "carregando…" até a worker única recalcular as listas da página.
+  const f = piscinaFalsa();
+  const s = await sobe(f.piscina);
+  try {
+    const a = s.busca(ROTA);
+    await ate(() => f.pedidos.length === 1);
+    f.respondeTodos(['ANTES']);
+    await (await a).arrayBuffer();
+
+    s.servidor.aoTabelaMudar('PROTOCOLOS GERAL', 'protocolos-geral');
+
+    // Responde sem esperar a piscina — que só responde quando o teste mandar.
+    const rb = await s.busca(ROTA);
+    assert.deepEqual((await rb.json()).valores.map((v: { valor: unknown }) => v.valor), ['ANTES']);
+    await ate(() => f.pedidos.length === 2);
+
+    f.respondeTodos(['DEPOIS']);
+    await new Promise((r) => setTimeout(r, 10));
+    const rc = await s.busca(ROTA);
+    assert.deepEqual((await rc.json()).valores.map((v: { valor: unknown }) => v.valor), ['DEPOIS']);
+    assert.equal(f.pedidos.length, 2, 'a lista nova ficou guardada');
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('?visual= da VISÃO PRODUTIVA leva as fontes do recálculo ao vivo na forma completa', async () => {
   // ACHADOS #194. O visual não lê a FIELD AGENDA direto: sem isto ela vinha no grão
   // reduzido, a tradução nativa de Status Protocolo Dia recusava por falta de colunas, e

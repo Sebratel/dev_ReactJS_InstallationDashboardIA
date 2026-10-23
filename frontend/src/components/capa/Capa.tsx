@@ -39,6 +39,7 @@ import {
   valorDoCard,
 } from '../../utils/capaConteudo.ts';
 import { HistoricoDeVersoes } from './HistoricoDeVersoes.tsx';
+import { useAgora } from '../../hooks/useAgora.ts';
 
 /** Abaixo de 700px o selo perde o filete e vira grade de 2×2 na largura toda. */
 const SELO_ESTREITO =
@@ -84,6 +85,8 @@ export function Capa(props: {
 }) {
   const saude = props.saude ?? null;
   const visuais = props.visuais ?? [];
+  // As idades ("há 23min") e a "próxima ~HH:MM" andam sozinhas, sem esperar um clique.
+  const agora = useAgora();
   const leitura =
     saude?.refresh?.queries.find((q) => q.id === 'hora-atualizado')?.ultimaCarga ?? props.dadoDe;
 
@@ -112,7 +115,7 @@ export function Capa(props: {
           <NumeroDoSelo valor={props.telas || '—'} rotulo="telas" />
           <NumeroDoSelo valor={valorDoCard(visuais, CARD_DATA)} rotulo="data do dado" />
           <NumeroDoSelo valor={valorDoCard(visuais, CARD_HORA)} rotulo="hora do dado" />
-          <NumeroDoSelo valor={haQuanto(leitura)} rotulo="última leitura" />
+          <NumeroDoSelo valor={haQuanto(leitura, agora)} rotulo="última leitura" />
         </div>
       </section>
 
@@ -136,7 +139,7 @@ export function Capa(props: {
           <table className="w-full text-[0.78rem]">
             <tbody>
               {FONTES.map(([nome, ids], i) => {
-                const s = situacaoDaFonte(ids, saude);
+                const s = situacaoDaFonte(ids, saude, agora);
                 const linha = i < FONTES.length - 1 ? 'border-b border-pbi-borda' : '';
                 return (
                   <tr key={nome}>

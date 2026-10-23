@@ -14,13 +14,18 @@
 // O 401 de QUALQUER consulta leva ao login, como antes levava o de cada `fetch` à mão.
 
 import { QueryCache, QueryClient } from '@tanstack/react-query';
-import { ehErroDeSessao } from './dashboardService.ts';
+import { chavesDeConsulta, ehErroDeAcesso, ehErroDeSessao } from './dashboardService.ts';
 import { useSessaoStore } from '../store/sessaoStore.ts';
 
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     onError: (err) => {
       if (ehErroDeSessao(err)) useSessaoStore.getState().expirou();
+      // 403: a conta perdeu algo que a tela ainda achava que tinha. Rede de segurança
+      // para quando o aviso de acesso do SSE não chegou — a lista de abas vem de novo.
+      // `/api/dashboards` nunca responde 403, então isto não entra em laço.
+      else if (ehErroDeAcesso(err))
+        void queryClient.invalidateQueries({ queryKey: chavesDeConsulta.dashboards });
     },
   }),
   defaultOptions: {

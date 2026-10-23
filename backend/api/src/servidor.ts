@@ -70,7 +70,7 @@ import { ErroDeAcesso, type Mudanca } from './permissoes.ts';
 import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
-import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
+import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh, resumeDegradacao, type QuerySaude } from '../../tools/refresh/src/status.ts';
@@ -203,6 +203,32 @@ export function saudeCompletaPara(e: { autenticado: boolean; enderecoRemoto: str
   return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
 }
 
+/** As chaves da saúde que carregam texto de erro cru (driver do banco, Redis, `fs.watch`). */
+const CHAVES_DE_ERRO_CRU = new Set(['erro', 'ultimoErro', 'motivo']);
+
+/**
+ * A saúde completa de quem NÃO é operador: a mesma estrutura, sem os textos de erro cru.
+ *
+ * **O defeito (22/10/2026).** O corpo completo ia para qualquer sessão válida — um viewer
+ * sem aba nenhuma, ou alguém barrado que ainda tinha cookie — e levava
+ * `realtime.poller.ultimoErro`, a mensagem crua do driver do Voalle (pode citar host,
+ * porta e usuário). É o vazamento de 13/10, que foi fechado só para o anônimo.
+ *
+ * **Por que não cortar o corpo inteiro.** A tela de todo mundo lê `/api/saude` para o
+ * aviso de dado atrasado e a "próxima carga" (`frontend/src/utils/avisoSaude.ts`:
+ * `refresh.queries`, `agendador.grupos`, `realtime.poller.porQuery`). Nenhum desses usa
+ * as chaves tiradas aqui, então o viewer perde só o que não devia ver.
+ */
+export function semErroCru(valor: unknown): unknown {
+  if (Array.isArray(valor)) return valor.map(semErroCru);
+  if (!valor || typeof valor !== 'object') return valor;
+  return Object.fromEntries(
+    Object.entries(valor as Record<string, unknown>)
+      .filter(([chave]) => !CHAVES_DE_ERRO_CRU.has(chave))
+      .map(([chave, item]) => [chave, semErroCru(item)]),
+  );
+}
+
 /**
  * O arquivo de status guarda o erro técnico do refresh para investigação nos logs e no
  * próprio snapshot. A resposta da tela só precisa saber se o dado está em dia: entregar
@@ -311,6 +337,25 @@ export class Servidor {
    * as mesmas: sem isto, cada pedido igual viraria uma tarefa a mais na piscina.
    */
   private readonly valoresEmCurso = new Map<string, Promise<DaxValue[] | { erroDoPedido: string }>>();
+  /**
+   * A ÚLTIMA lista pronta de cada segmentação, por `chaveDeValores` SEM frescor.
+   *
+   * **O defeito que criou isto (20/10/2026, staging).** Cada refresh troca o carimbo e
+   * cada aviso do tempo real apaga as listas da página, então a próxima abertura
+   * recalculava as 7 segmentações da `protocolos-detalhados` em fila na worker única,
+   * junto com a página. Os chips de TIPO DE PROTOCOLO (o único filtro com a lista à
+   * vista) sumiam em "carregando…" por segundos depois de todo refresh.
+   *
+   * A lista de uma segmentação quase nunca muda entre duas cargas. Então, sem a lista
+   * fresca, a rota responde esta na hora e recalcula em segundo plano, com a
+   * prioridade do prefetch — o clique de alguém passa na frente. O frescor não se
+   * perde: o recálculo grava a lista nova aqui e no cache com carimbo, e o pedido
+   * seguinte já a recebe. Uma cidade nova aparece no seletor um pedido depois, não
+   * nunca (o defeito descrito em `valores`). Não entra em `esqueceAPagina`: ser
+   * mantida através da invalidação é a razão de existir. Uma entrada por segmentação,
+   * então o tamanho é o do catálogo, e o teto é o mesmo do cache com carimbo.
+   */
+  private readonly ultimaListaDeValores = new MapaLru<string, DaxValue[]>(TETO_VALORES_PADRAO);
   /** Páginas que receberam a "última pronta" e esperam o aviso da nova. Ver `pagina()`. */
   private readonly paginasComAnterior = new Set<string>();
   /** Quantas vezes `esqueceAPagina` passou por cada página. Ver o uso em `valores`. */
@@ -362,7 +407,10 @@ export class Servidor {
   /** Dashboard → calculadas que ele carrega (normalizadas), do mesmo `planeja`. */
   private readonly calculadasPorDashboard = new Map<string, Set<string>>();
   /** Conexões `GET /api/eventos` abertas — o SSE do poller de quase-realtime. */
-  private readonly assinantesSSE = new Set<http.ServerResponse>();
+  /** Cada conexão SSE aberta e de QUEM ela é — para fechar a de quem é derrubado. */
+  private readonly assinantesSSE = new Map<http.ServerResponse, string>();
+  /** Desliga o aviso de mudança de acesso (`AcessoDasTelas.aoMudar`). */
+  private desligaAvisoDeAcesso: (() => void) | undefined;
   private readonly sseAbertasPorUsuario = new Map<string, number>();
 
   /**
@@ -615,6 +663,9 @@ export class Servidor {
       },
       agora: () => this.opts.agora(),
     });
+    // A configuração de acesso mudou (tela de Permissões ou banco): as telas abertas
+    // refazem o menu sem F5. Ver `avisaAcessos`.
+    this.desligaAvisoDeAcesso = this.opts.acesso.aoMudar?.(() => this.avisaAcessos());
   }
 
   /** O segredo desta subida, para `index.ts` repassar ao `Aquecedor` — ver o
@@ -680,6 +731,7 @@ export class Servidor {
     this.timerDasJuntadas = null;
     this.carimbo.para();
     this.desligaBatimento();
+    this.desligaAvisoDeAcesso?.();
     this.piscina.destroi();
   }
 
@@ -847,14 +899,23 @@ export class Servidor {
     // máquina: ele repassa mensagens de erro cruas das fontes, e em 13/10/2026
     // publicava o IP e a porta do banco do Voalle para a rede inteira, sem login.
     if (rota === '/api/saude') {
+      const semLogin = !this.opts.googleClientId && !this.opts.firebaseProjectId;
       let autenticado = ehAquecedor;
+      // Quem lê o erro cru: a própria máquina, o Aquecedor, a ferramenta interna, dev e
+      // admin. Pessoa comum logada recebe a mesma saúde sem ele — ver `semErroCru`.
+      let operador = ehAquecedor || semLogin;
       try {
-        autenticado ||=
-          this.opts.identifica(req) !== null || (!this.opts.googleClientId && !this.opts.firebaseProjectId);
+        const quem = this.opts.identifica(req);
+        autenticado ||= quem !== null || semLogin;
+        if (quem) {
+          operador ||= quem.papeis.includes('interno') || this.opts.acesso.papelDe(quem) !== 'viewer';
+        }
       } catch {
         // Identificação quebrada não pode derrubar o healthcheck: vale como anônimo.
       }
-      return this.saude(res, saudeCompletaPara({ autenticado, enderecoRemoto: req.socket.remoteAddress }));
+      const enderecoRemoto = req.socket.remoteAddress;
+      operador ||= saudeCompletaPara({ autenticado: false, enderecoRemoto });
+      return this.saude(res, saudeCompletaPara({ autenticado, enderecoRemoto }), operador);
     }
 
     // Quem está pedindo. `null` sem sessão válida — e é aqui, antes de
@@ -874,6 +935,18 @@ export class Servidor {
           ? { usuario: 'dev-local', papeis: ['sem-login'] }
           : null);
 
+    // **"Tenho sessão?" — sempre 200, só um booleano (20/10/2026).** A tela abria otimista,
+    // pedia `/api/dashboards` e `/api/eventos`, levava 401 e só então mostrava o login: o
+    // Chrome registrava os dois 401 em vermelho no console de quem nem tinha entrado. Com
+    // esta pergunta antes, a tela de login não faz pedido nenhum que falhe. Barrado
+    // (suspenso, Senior) conta como sem sessão — o login mostra o motivo ao tentar.
+    if (rota === '/auth/sessao' && req.method === 'GET') {
+      const logado = quem !== null && !ehAquecedor && this.opts.acesso.bloqueio(quem) === null;
+      res.setHeader('Cache-Control', 'no-store');
+      responde(res, 200, { logado });
+      return;
+    }
+
     if (rota.startsWith('/api/')) {
       // O Aquecedor fica isento — ele bate nestas rotas em rajada de
       // propósito (reaquecimento pós-evento, F4), e é reconhecimento pelo
@@ -892,6 +965,16 @@ export class Servidor {
       if (!quem) {
         this.registraEventoSeg(req, 401, 'sessao-ausente-ou-invalida');
         responde(res, 401, { erro: 'Sessão inválida ou ausente. Faça login em /auth/firebase ou /auth/google.' });
+        return;
+      }
+      // Barrada DEPOIS de logar (suspensa agora, entrou de férias na Senior, acesso
+      // venceu): as sessões dela caem e a tela volta para o login, que mostra o motivo.
+      const bloqueio = this.opts.acesso.bloqueio(quem);
+      if (bloqueio) {
+        if (this.derrubaSessoes(quem.usuario) > 0) {
+          this.registraEventoDeSessao(req, 'sessao_derrubada', quem.usuario, `bloqueio-${bloqueio.origem}`);
+        }
+        responde(res, 401, { erro: bloqueio.motivo, publico: true });
         return;
       }
       if (ehRegistroDeUso) return this.registraAbertura(req, res, url, quem, ehAquecedor);
@@ -999,12 +1082,14 @@ export class Servidor {
     if (!identidade) {
       this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
-        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+        erro: `Não foi possível entrar com esta conta. Use a sua conta @${this.opts.dominioCorporativo}.`,
+        publico: true,
       });
       return;
     }
+    if (this.recusaLoginBarrado(req, res, identidade.email)) return;
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
+    const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
   }
@@ -1046,14 +1131,47 @@ export class Servidor {
     if (!identidade) {
       this.registraEventoSeg(req, 401, 'login-recusado');
       responde(res, 401, {
-        erro: `Token inválido, expirado, ou fora do domínio ${this.opts.dominioCorporativo}.`,
+        erro: `Não foi possível entrar com esta conta. Use a sua conta @${this.opts.dominioCorporativo}.`,
+        publico: true,
       });
       return;
     }
+    if (this.recusaLoginBarrado(req, res, identidade.email)) return;
     this.registraLogin(req, identidade.email);
-    const token = criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
+    const token = this.abreSessaoUnica(req, identidade);
     res.setHeader('Set-Cookie', cookieDeSessao(token, this.ttlSessaoHoras, this.opts.cookieSecure));
     responde(res, 200, { usuario: identidade.email });
+  }
+
+  /**
+   * **Uma sessão por pessoa (decisão do Erick, 20/10/2026).** O login novo derruba as
+   * sessões anteriores do mesmo e-mail: o outro navegador leva 401 no próximo pedido
+   * (ou no próximo aviso do tempo real) e volta para a tela de login. Derrubar o antigo,
+   * e não recusar o novo, é de propósito: recusar travaria fora quem fechou o navegador
+   * sem sair, até a sessão vencer. Vale para `/auth/google` e `/auth/firebase`; a de
+   * máquina (`/auth/interno`, que nem existe em produção) segue podendo ter várias.
+   */
+  /**
+   * O token do Google é válido, mas a pessoa está barrada (suspensa, acesso vencido,
+   * afastada ou desligada na Senior): 403 com o motivo, que a tela de login mostra, e
+   * nenhuma sessão nasce. Devolve `true` quando já respondeu.
+   */
+  private recusaLoginBarrado(req: http.IncomingMessage, res: http.ServerResponse, email: string): boolean {
+    const bloqueio = this.opts.acesso.bloqueio({ usuario: email, papeis: ['autenticado'] });
+    if (!bloqueio) return false;
+    this.registraEventoSeg(req, 403, `login-bloqueado-${bloqueio.origem}`, email);
+    responde(res, 403, { erro: bloqueio.motivo, publico: true });
+    return true;
+  }
+
+  private abreSessaoUnica(
+    req: http.IncomingMessage,
+    identidade: { email: string; foto?: string; nome?: string },
+  ): string {
+    if (this.derrubaSessoes(identidade.email) > 0) {
+      this.registraEventoDeSessao(req, 'sessao_derrubada', identidade.email, 'novo-login');
+    }
+    return criaSessao(this.sessoes, identidade.email, this.ttlSessaoHoras, this.dadosDaSessaoNova(req, identidade));
   }
 
   /**
@@ -1099,7 +1217,7 @@ export class Servidor {
 
   // ------------------------------------------------------------------- rotas
 
-  private async saude(res: http.ServerResponse, completa: boolean): Promise<void> {
+  private async saude(res: http.ServerResponse, completa: boolean, operador: boolean): Promise<void> {
     // **A saúde CONFERE o carimbo, não só relata.** Esta rota é polida a cada
     // 30 s pelo healthcheck do container (`docker-compose.prod.yml`), então ela
     // já é um relógio existente — usá-la como segundo ponto de reconciliação
@@ -1123,7 +1241,7 @@ export class Servidor {
     // rejeita e espera no máximo `PRAZO_MEMORIA_WORKER_MS` — ver `PiscinaWorkers.memoria`.
     const workers = await this.piscina.memoria();
     const processo = medeProcesso();
-    responde(res, 200, {
+    const corpo = {
       // O resumo que um monitor externo lê sem entender o resto (ACHADOS #160). Continua
       // 200 de propósito: dado parado não se conserta reiniciando a API, e um 503 aqui
       // faria o healthcheck do contêiner derrubá-la à toa.
@@ -1244,7 +1362,8 @@ export class Servidor {
       // `ok: false` = `permissoes.yaml` inválido e só ADMIN_EMAILS entra. Sem o
       // motivo: esta rota é pública, e o erro pode citar e-mail. O motivo está no log.
       permissoes: this.opts.acesso.estado(),
-    });
+    };
+    responde(res, 200, operador ? corpo : semErroCru(corpo));
   }
 
   private async registraAbertura(
@@ -1344,23 +1463,53 @@ export class Servidor {
     const sub = rota.slice('/api/admin/acessos'.length);
     const navegaveis = this.dashboards.filter((d) => d.type !== 'Tooltip');
     const nomes = new Map(navegaveis.map((d) => [d.id, d.name] as const));
-    const respondeMatriz = (): void => {
+    const respondeMatriz = async (): Promise<void> => {
       const m = acesso.matriz();
+      // O último acesso: o mais novo entre o uso das abas (banco) e a última atividade de
+      // uma sessão viva (memória). Sem a tabela de uso, vale só a sessão.
+      const ultimos = await this.opts.usoDasTelas?.ultimosAcessos?.().catch(() => undefined);
+      const daSessao = new Map<string, string>();
+      for (const s of this.sessoes.values()) {
+        const e = s.usuario.trim().toLowerCase();
+        const iso = new Date(s.ultimoUso).toISOString();
+        if ((daSessao.get(e) ?? '') < iso) daSessao.set(e, iso);
+      }
+      const ultimoAcesso = (e: string): string | null => {
+        const a = ultimos?.get(e) ?? '';
+        const b = daSessao.get(e) ?? '';
+        return (a > b ? a : b) || null;
+      };
       responde(res, 200, {
         eu: { usuario: quem.usuario, papel: acesso.papelDe(quem) },
         telas: m.telas.filter((t) => nomes.has(t.id)).map((t) => ({ ...t, nome: nomes.get(t.id) })),
-        pessoas: m.pessoas.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        pessoas: m.pessoas.map((p) => ({
+          ...p,
+          telas: p.telas.filter((t) => nomes.has(t)),
+          ultimoAcesso: ultimoAcesso(p.email),
+        })),
         pedidos: m.pedidos,
+        perfis: m.perfis.map((p) => ({ ...p, telas: p.telas.filter((t) => nomes.has(t)) })),
+        ...(m.senior ? { senior: m.senior } : {}),
         banco: acesso.estado(),
       });
     };
 
     if (req.method !== 'POST') {
+      if (sub === '/historico') {
+        try {
+          const email = new URL(req.url ?? '/', 'http://x').searchParams.get('email');
+          responde(res, 200, { registros: await acesso.historico(quem, email) });
+        } catch (err) {
+          if (!(err instanceof ErroDeAcesso)) throw err;
+          responde(res, err.status, { erro: err.message, publico: true });
+        }
+        return;
+      }
       if (sub !== '') {
         responde(res, 404, { erro: `'${sub}' não existe em /api/admin/acessos.` });
         return;
       }
-      respondeMatriz();
+      await respondeMatriz();
       return;
     }
 
@@ -1386,8 +1535,32 @@ export class Servidor {
       mudanca = { acao: 'remove-pessoa', email: texto(corpo.email) };
     } else if (sub === '/dispensa') {
       mudanca = { acao: 'dispensa-pedido', email: texto(corpo.email) };
+    } else if (sub === '/suspende') {
+      mudanca = {
+        acao: 'suspende',
+        email: texto(corpo.email),
+        motivo: texto(corpo.motivo).trim(),
+        ate: corpo.ate == null ? null : texto(corpo.ate),
+      };
+    } else if (sub === '/reativa') {
+      mudanca = { acao: 'reativa', email: texto(corpo.email) };
+    } else if (sub === '/validade') {
+      mudanca = { acao: 'validade', email: texto(corpo.email), expiraEm: corpo.expiraEm == null ? null : texto(corpo.expiraEm) };
+    } else if (sub === '/excecao-senior') {
+      mudanca = { acao: 'excecao-senior', email: texto(corpo.email), ligada: corpo.ligada as boolean };
+    } else if (sub === '/perfil') {
+      const telas = Array.isArray(corpo.telas) ? corpo.telas.filter((t): t is string => typeof t === 'string') : [];
+      mudanca = { acao: 'perfil-salva', id: texto(corpo.id), nome: texto(corpo.nome), telas };
+    } else if (sub === '/perfil-remove') {
+      mudanca = { acao: 'perfil-remove', id: texto(corpo.id) };
+    } else if (sub === '/perfil-da-pessoa') {
+      mudanca = { acao: 'perfil-da-pessoa', email: texto(corpo.email), perfil: corpo.perfil == null ? null : texto(corpo.perfil) };
     } else {
-      responde(res, 404, { erro: `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa.` });
+      responde(res, 404, {
+        erro:
+          `'${sub}' não existe. As ações: /pessoa, /papel, /tela, /remove, /dispensa, ` +
+          '/suspende, /reativa, /validade, /excecao-senior, /perfil, /perfil-remove, /perfil-da-pessoa.',
+      });
       return;
     }
     try {
@@ -1395,17 +1568,23 @@ export class Servidor {
     } catch (err) {
       if (err instanceof ErroDeAcesso) {
         if (err.status === 403) this.registraEventoSeg(req, 403, 'gestao-de-acesso-recusada', quem.usuario);
-        responde(res, err.status, { erro: err.message });
+        responde(res, err.status, { erro: err.message, publico: true });
         return;
       }
       throw err;
     }
     // S2 (`sessao.ao_remover_pessoa: derruba_sessoes`): sem isso a pessoa removida seguia
     // logada até o vencimento. `muda` já normalizou o e-mail.
-    if (mudanca.acao === 'remove-pessoa' && derrubaSessoesDe(this.sessoes, mudanca.email) > 0) {
+    if (mudanca.acao === 'remove-pessoa' && this.derrubaSessoes(mudanca.email) > 0) {
       this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `remove-pessoa por=${quem.usuario}`);
     }
-    respondeMatriz();
+    // Suspensa, validade vencida ou Senior voltando a valer: cai já, não no próximo clique.
+    if ('email' in mudanca && this.opts.acesso.bloqueio({ usuario: mudanca.email, papeis: ['autenticado'] })) {
+      if (this.derrubaSessoes(mudanca.email) > 0) {
+        this.registraEventoDeSessao(req, 'sessao_derrubada', mudanca.email, `${mudanca.acao} por=${quem.usuario}`);
+      }
+    }
+    await respondeMatriz();
   }
 
   /**
@@ -1501,7 +1680,7 @@ export class Servidor {
       responde(res, 400, { erro: 'Corpo inválido — esperado JSON com { email }.' });
       return;
     }
-    const derrubadas = derrubaSessoesDe(this.sessoes, email);
+    const derrubadas = this.derrubaSessoes(email);
     this.registraEventoDeSessao(req, 'sessao_derrubada', email.trim().toLowerCase(), `por=${quem.usuario}`);
     responde(res, 200, { derrubadas, sessoes: lista() });
   }
@@ -1576,7 +1755,7 @@ export class Servidor {
     // considerar a conexão estabelecida na hora, em vez de esperar o 1º evento
     // de verdade para sair do estado "conectando".
     res.write(': conectado\n\n');
-    this.assinantesSSE.add(res);
+    this.assinantesSSE.set(res, quem.usuario);
     // A marca d'água responde "quantos usuários ficam conectados ao mesmo
     // tempo?" — a pergunta do requisito 19 que o valor instantâneo nunca
     // responde, porque quem lê `/api/saude` lê num instante qualquer.
@@ -1605,7 +1784,7 @@ export class Servidor {
   private ligaBatimento(): void {
     if (this.batimentoSSE) return;
     this.batimentoSSE = setInterval(() => {
-      for (const res of this.assinantesSSE) {
+      for (const res of this.assinantesSSE.keys()) {
         // `write` num socket já morto não lança — devolve `false` e emite
         // 'error' no stream. Quem limpa o Set é o `req.on('close')`; aqui só
         // não vale deixar a exceção subir e derrubar o temporizador dos outros.
@@ -1636,13 +1815,53 @@ export class Servidor {
     return this.batimentoSSE !== null;
   }
 
+  /**
+   * Derruba as sessões de `usuario` E fecha as conexões SSE dele.
+   *
+   * Sem a segunda metade, quem era removido, suspenso ou barrado pela Senior seguia
+   * conectado no canal de tempo real (achado da auditoria de 22/10/2026): sem dado de
+   * cliente, mas recebendo os avisos e ocupando o teto de conexões.
+   */
+  private derrubaSessoes(usuario: string): number {
+    const n = derrubaSessoesDe(this.sessoes, usuario);
+    const alvo = usuario.trim().toLowerCase();
+    for (const [res, dono] of this.assinantesSSE) {
+      if (dono.trim().toLowerCase() !== alvo) continue;
+      // `end` dispara o 'close' do pedido, que tira a conexão do mapa e do teto.
+      try {
+        res.end();
+      } catch {
+        /* conexão já indo embora */
+      }
+    }
+    return n;
+  }
+
+  /**
+   * Avisa toda tela aberta que os acessos mudaram, para ela refazer o menu e largar o
+   * que deixou de poder ver — sem F5. O evento não leva nada (nem quem mudou): cada tela
+   * pergunta de novo a lista dela, e quem decide o que ela vê continua sendo o servidor.
+   * Vai para todos porque uma mudança de perfil alcança várias pessoas; são no máximo
+   * algumas dezenas de conexões, e cada uma faz uma consulta leve.
+   */
+  private avisaAcessos(): void {
+    this.metricas.conta('sse_avisos_de_acesso');
+    for (const res of this.assinantesSSE.keys()) {
+      try {
+        res.write('event: acessos\ndata: {}\n\n');
+      } catch {
+        /* conexão indo embora */
+      }
+    }
+  }
+
   /** Manda `dashboards` para toda conexão SSE aberta. Sem assinante, não faz nada. */
   private emiteEvento(dashboards: readonly string[]): void {
     this.metricas.conta('poller_invalidacoes');
     if (dashboards.length === 0 || this.assinantesSSE.size === 0) return;
     this.metricas.conta('sse_eventos_emitidos', this.assinantesSSE.size);
     const linha = `data: ${JSON.stringify({ dashboards })}\n\n`;
-    for (const res of this.assinantesSSE) res.write(linha);
+    for (const res of this.assinantesSSE.keys()) res.write(linha);
   }
 
   /**
@@ -1919,7 +2138,10 @@ export class Servidor {
     }
 
     const de = inteiro(url.searchParams.get('de'), 0, 0, Number.MAX_SAFE_INTEGER);
-    const linhas = inteiro(url.searchParams.get('linhas'), LINHAS_PADRAO, 1, LINHAS_MAXIMO);
+    // O export (`origem=export`) tem um teto de linhas mais alto que a tela: ele quer a
+    // tabela inteira e o navegador já junta tudo para montar o CSV. Ver `LINHAS_MAXIMO_EXPORT`.
+    const tetoLinhas = url.searchParams.get('origem') === 'export' ? LINHAS_MAXIMO_EXPORT : LINHAS_MAXIMO;
+    const linhas = inteiro(url.searchParams.get('linhas'), LINHAS_PADRAO, 1, tetoLinhas);
 
     // `?busca=` — o campo "Filtrar…" da tabela. Normalizado AQUI, uma vez, e não a
     // cada linha comparada: `janelaDe` roda `casaComTermo` por linha do resultado
@@ -2503,10 +2725,16 @@ export class Servidor {
     const frescorDaPagina = `${this.carimboDaPagina(dash)}@${diaDoCalculo(this.opts.agora())}`;
     const chaveValores = chaveDeValores(id, frescorDaPagina, tabela, coluna, nivel);
     let distintos = this.cacheValoresDistintos.get(chaveValores);
+    const chaveDaUltima = chaveDeValores(id, '', tabela, coluna, nivel);
+    const anterior = distintos ? undefined : this.ultimaListaDeValores.get(chaveDaUltima);
     if (!distintos) {
       let emCurso = this.valoresEmCurso.get(chaveValores);
       if (!emCurso) {
-        const origem = origemDoPedido(quem.usuario === 'aquecedor-interno', url.searchParams.get('origem'));
+        // Com a lista anterior em mãos ninguém espera este cálculo: ele vai para o
+        // fundo da fila. Ver `ultimaListaDeValores`.
+        const origem = anterior
+          ? 'prefetch'
+          : origemDoPedido(quem.usuario === 'aquecedor-interno', url.searchParams.get('origem'));
         // **A geração, porque a chave não basta.** A chave carrega o carimbo do DISCO,
         // e uma mudança do tempo real não o troca: ela apaga as listas da página em
         // `esqueceAPagina`. Uma lista que estava sendo calculada sobre o overlay de
@@ -2521,6 +2749,7 @@ export class Servidor {
             (r) => {
               if (Array.isArray(r) && this.geracaoDaPagina(dash.id) === geracao) {
                 this.cacheValoresDistintos.set(chaveValores, r);
+                this.ultimaListaDeValores.set(chaveDaUltima, r);
               }
             },
             () => undefined,
@@ -2531,7 +2760,7 @@ export class Servidor {
       }
       let r: DaxValue[] | { erroDoPedido: string };
       try {
-        r = await emCurso;
+        r = anterior ?? (await emCurso);
       } catch (err) {
         responde(res, 409, { erro: err instanceof Error ? err.message : String(err) });
         return;

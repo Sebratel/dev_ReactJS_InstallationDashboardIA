@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { chavesDeConsulta } from '../services/dashboardService.ts';
 import { assinaEventos } from '../services/eventosService.ts';
+import { releAcessos } from './useAcessosAoVivo.ts';
 
 /** De quanto em quanto a página aberta busca de novo sozinha, além do aviso do
  *  servidor — a rede de segurança para um aviso perdido numa reconexão do SSE.
@@ -84,13 +85,19 @@ export function useTempoReal(atual: string | null): TempoReal {
   // página). Toda combinação daquela página fica velha; a que está na tela busca de
   // novo na hora, e as outras quando voltarem a ser abertas.
   useEffect(() => {
-    return assinaEventos((afetados) => {
-      for (const id of afetados) void invalidaAbertura(qc, id);
-      if (atualRef.current && afetados.includes(atualRef.current)) {
-        marcaHora();
-        void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
-      }
-    });
+    return assinaEventos(
+      (afetados) => {
+        for (const id of afetados) void invalidaAbertura(qc, id);
+        if (atualRef.current && afetados.includes(atualRef.current)) {
+          marcaHora();
+          void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
+        }
+      },
+      // Acessos mudaram (Permissões salva, ou o banco mudou): a lista de abas e o papel
+      // vêm de novo, e `useAcessosAoVivo` larga o que a conta perdeu — sem F5. A matriz
+      // de quem gere também, para dois admins verem a mudança um do outro.
+      () => releAcessos(qc),
+    );
   }, [qc, marcaHora]);
 
   const atualiza = useCallback(() => {

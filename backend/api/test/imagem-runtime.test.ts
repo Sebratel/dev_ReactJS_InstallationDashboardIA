@@ -235,8 +235,7 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
     volumes?: Record<string, unknown>;
   };
   const api = compose.services.api!;
-  // 19/10/2026: só contêineres. O frontend é publicado direto (docs/PORTAINER.md),
-  // enquanto a API fica apenas na rede Docker.
+  // O proxy TLS externo chega ao frontend; a API fica apenas na rede Docker.
   for (const proxy of ['proxy', 'nginx']) {
     assert.equal(compose.services[proxy], undefined, `a stack não tem proxy (${proxy})`);
   }
@@ -244,9 +243,9 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.ok(web, 'a tela precisa de contêiner próprio');
   // 20/10/2026: com o `web` na frente, a API só vê o IP dele. Sem confiar no X-Real-IP
   // que ele escreve, a empresa inteira divide um balde de rate limit (5 logins/min).
-  assert.equal(api.environment?.PUBLICACAO, 'web-http');
+  assert.equal(api.environment?.PUBLICACAO, 'proxy-https');
   assert.equal(api.environment?.CONFIA_PROXY, '1', 'atrás do web, a API só enxerga o usuário pelo X-Real-IP');
-  assert.equal(api.environment?.COOKIE_SECURE, '0', 'em HTTP o cookie Secure não volta do navegador');
+  assert.equal(api.environment?.COOKIE_SECURE, '1', 'o proxy HTTPS exige cookie Secure');
   assert.equal(api.environment?.SEM_LOGIN, '0', 'produção não pode herdar bypass de login do ambiente');
   assert.equal(api.ports, undefined, 'a API não pode ser alcançável de fora da stack — senão o X-Real-IP é forjável');
   const confWeb = fs.readFileSync(path.join(RAIZ, 'nginx.web.conf'), 'utf8');
@@ -255,15 +254,31 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   for (const bloco of repassam) {
     assert.match(bloco, /proxy_set_header X-Real-IP \$remote_addr;/, 'toda location que repassa sobrescreve o X-Real-IP');
   }
-  assert.deepEqual(web.ports, ['${WEB_PORT_HOST:-3101}:8080']);
+  // 0.0.0.0: o proxy TLS é outro contêiner e não alcança o loopback do host (502 em 22/10).
+  assert.deepEqual(web.ports, ['${WEB_BIND_HOST:-0.0.0.0}:${WEB_PORT_HOST:-3101}:8080']);
   assert.equal(web.depends_on?.api?.condition, 'service_healthy');
-  assert.equal(web.mem_limit, '3g', 'a tela não pode herdar toda a memória do host');
+  assert.equal(web.mem_limit, '128m', 'a tela não pode herdar toda a memória do host');
 
-  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '64');
+  assert.equal(api.environment?.CACHE_RESPOSTA_MB, '256');
+  // Pré-cálculo de filtros religado em 20/10/2026 ("tudo pré-carregado").
+  assert.equal(api.environment?.AQUECE_FILTROS_ATE, '20');
+  assert.equal(api.environment?.API_DATASETS_POR_WORKER, '1');
   assert.equal(api.environment?.CACHE_VISUAL_MB, '128');
   assert.equal(api.environment?.MALLOC_ARENA_MAX, '2');
-  assert.equal(api.mem_limit, '1600m');
+  // Fuso do RS nos processos que calculam (22/10/2026): em UTC, filtro padrão de mês/ano e
+  // recálculo da meia-noite viravam às 21:00 daqui.
+  assert.equal(api.environment?.TZ, 'America/Sao_Paulo');
+  assert.equal(compose.services.refresh?.environment?.TZ, 'America/Sao_Paulo');
+  // 2304m -> 3072m em 21/10/2026: a api caiu 4 vezes em ~6 h (kill por memória do cgroup).
+  assert.equal(api.mem_limit, '3072m');
   assert.equal(compose.services.refresh?.mem_limit, '3g');
+  // Orçamento do host (20/10/2026): 3 GB contínuos; o pico do refresh não pode
+  // afetar a API nem as outras aplicações do servidor.
+  const refresh = compose.services.refresh as Record<string, unknown> | undefined;
+  assert.equal(refresh?.mem_reservation, '512m');
+  assert.equal(refresh?.oom_score_adj, 500);
+  assert.equal(refresh?.cpus, '1.0');
+  assert.equal(refresh?.cpu_shares, 256);
   // Redis desta stack (ACHADOS #228): a api aponta para o serviço pelo nome, com senha.
   const redis = compose.services.redis!;
   assert.ok(redis, 'o Redis do cache de respostas mora nesta stack');
@@ -272,14 +287,15 @@ test('compose de produção: frontend publicado, API privada, Redis exclusivo e 
   assert.match(redis.command!, /--requirepass \$\{REDIS_PASSWORD:\?/);
   // A fragmentação chega a 2× e mais (medida, ACHADOS #229/#230): 512mb/640m morria por
   // OOM; 64mb/192m passou com pico de 110 MiB.
-  assert.match(redis.command!, /--maxmemory 64mb/);
+  // 20/10/2026: 256mb/384m para caber o pré-cálculo de filtros religado.
+  assert.match(redis.command!, /--maxmemory 256mb/);
   assert.match(redis.command!, /--maxmemory-policy allkeys-lru/);
   // Sem porta publicada e sem nada em disco: é cache sobre dado de cliente.
   assert.equal(redis.ports, undefined, 'Redis não pode ser alcançável de fora da stack');
   assert.equal(redis.volumes, undefined, 'cache não grava dado de cliente em volume');
   assert.match(redis.command!, /--save ''/);
   assert.match(redis.command!, /--appendonly no/);
-  assert.equal(redis.mem_limit, '192m');
+  assert.equal(redis.mem_limit, '384m');
   assert.equal(redis.user, '999:1000', 'Redis precisa iniciar sem root antes de remover capabilities');
   assert.equal(compose.volumes?.['redis-dados'], undefined, 'não deve sobrar volume de Redis');
 

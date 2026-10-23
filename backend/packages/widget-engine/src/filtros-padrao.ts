@@ -56,6 +56,10 @@ interface DataPadrao {
 const POR_PAGINA: Record<string, DataPadrao> = {
   'visao-geral': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'nenhum' },
   'agendamento-field': { tabela: 'calendar', coluna: 'Data', escopo: 'mes-corrente' },
+  // Sem recorte ao abrir (como sempre abriu), mas COM a árvore de data: sem esta linha
+  // a hierarquia DATA ATIVAÇÃO (Ano/Mês/Dia) virava um menu de datas soltas, e escolher
+  // uma (28/12/2026, 20/10/2026) mandava texto contra data e derrubava os três cards.
+  'premiacao-instalacao': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'nenhum' },
   'diario-instalacao': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
   'protocolos-detalhados': { tabela: 'CALENDARIO INSTALADO', coluna: 'DATA INSTALADO', escopo: 'mes' },
   'manutencao-inicial': { tabela: 'REINCIDÊNCIA', coluna: 'data_suporte', escopo: 'ano' },

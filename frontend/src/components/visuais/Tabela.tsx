@@ -183,13 +183,21 @@ export function Tabela(props: {
     setErroDaExportacao(null);
     setProgressoDaExportacao({ baixadas: 0, total: d.linhasTotais });
     try {
-      const completa = await coletaTabelaCompleta({
-        pagina: props.pagina,
-        visual: props.visual.id,
-        filtros: props.filtros,
-        busca: termoAplicado,
-        aoProgredir: setProgressoDaExportacao,
-      });
+      // A tabela que já veio inteira numa janela só (as pequenas da tela): as linhas já
+      // estão no navegador, idênticas ao que a tela mostra. Exportar delas é instantâneo e
+      // NÃO recalcula a query — é o que conserta o CSV lento de tabela de poucas linhas
+      // cujo cálculo por trás é caro (ex.: PROTOCOLOS POR BASE, 2 linhas, ~15 s). Só vale
+      // quando a janela começa em 0 e cobre o total; fora disso, busca tudo do servidor.
+      const jaInteira = d.de === 0 && d.linhas.length >= d.linhasTotais;
+      const completa = jaInteira
+        ? d
+        : await coletaTabelaCompleta({
+            pagina: props.pagina,
+            visual: props.visual.id,
+            filtros: props.filtros,
+            busca: termoAplicado,
+            aoProgredir: setProgressoDaExportacao,
+          });
       const cabecalho = completa.colunas.map((c) => c.nome ?? '');
       const corpo = ordenaLinhas(completa.linhas, colOrdenada, ordemDesc).map((linha) =>
         linha.map((v, j) => textoDaCelula(v, completa.colunas[j]).texto),

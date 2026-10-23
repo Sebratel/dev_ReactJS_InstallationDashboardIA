@@ -10,7 +10,7 @@ async function erroDaResposta(r: Response): Promise<string> {
   const corpo: unknown = await r.json().catch(() => null);
   if (corpo && typeof corpo === 'object' && 'erro' in corpo)
     return String((corpo as { erro: unknown }).erro);
-  return `Não foi possível entrar (HTTP ${r.status}).`;
+  return 'Não foi possível entrar agora. Tente novamente.';
 }
 
 /**

@@ -22,6 +22,7 @@ import {
   pegaPagina,
   urlDaPagina,
   type FiltroDaTela,
+  type OrigemDePagina,
   type VisualCalculado,
 } from '../services/dashboardService.ts';
 
@@ -34,22 +35,40 @@ export interface VisualSobDemanda {
   tentarDeNovo: () => void;
 }
 
+/**
+ * A consulta de UM visual buscado à parte — a mesma chave e a mesma busca para quem o
+ * mostra (`useVisualSobDemanda`) e para quem o adianta (`useAbaixoDaDobra`). Duas
+ * montagens da chave divergiriam em silêncio, e o adiantado cairia numa chave que a
+ * tela nunca lê. `origem` vai só no pedido, nunca na chave (`pegaPagina`).
+ */
+export function consultaDoVisual(
+  pagina: string,
+  visualId: string,
+  filtros: readonly FiltroDaTela[],
+  clicados: readonly { tabela: string; coluna: string }[] = [],
+  origem?: OrigemDePagina,
+) {
+  const opcoes = { visual: visualId };
+  return {
+    queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes, clicados)),
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<VisualCalculado> => {
+      const p = await pegaPagina(pagina, filtros, opcoes, signal, clicados, origem);
+      const achado = p.visuais.find((v) => v.id === visualId);
+      if (!achado) throw new Error('a resposta não trouxe este visual.');
+      if (achado.erro) throw new Error(achado.erro);
+      return achado;
+    },
+  };
+}
+
 export function useVisualSobDemanda(
   pagina: string,
   visualId: string,
   filtros: readonly FiltroDaTela[],
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): VisualSobDemanda {
-  const opcoes = { visual: visualId };
   const q = useQuery({
-    queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes, clicados)),
-    queryFn: async ({ signal }) => {
-      const p = await pegaPagina(pagina, filtros, opcoes, signal, clicados);
-      const achado = p.visuais.find((v) => v.id === visualId);
-      if (!achado) throw new Error('a resposta não trouxe este visual.');
-      if (achado.erro) throw new Error(achado.erro);
-      return achado;
-    },
+    ...consultaDoVisual(pagina, visualId, filtros, clicados),
     placeholderData: keepPreviousData,
   });
   return {

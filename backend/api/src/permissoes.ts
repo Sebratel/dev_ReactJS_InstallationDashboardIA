@@ -27,6 +27,13 @@
 // mesmo conteúdo que qualquer outro que a abre.
 
 import type { Identidade } from './identidade.ts';
+import {
+  SITUACAO_ATIVA,
+  SITUACAO_DESLIGADO,
+  type ColaboradorSenior,
+  type EstadoDaSenior,
+  type FonteSenior,
+} from './senior.ts';
 
 export type Papel = 'viewer' | 'dev' | 'admin';
 export type ModoDaTela = 'lista' | 'todos';
@@ -45,12 +52,46 @@ export interface PedidoDeAcesso {
   ultimaVez: string;
 }
 
+/**
+ * O que vale para UMA pessoa além das abas (20/10/2026): suspensão manual, validade do
+ * acesso e a exceção à regra da Senior. Datas em ISO 8601; `null` = sem prazo.
+ */
+export interface RegraDePessoa {
+  email: string;
+  suspensa: boolean;
+  motivo: string | null;
+  suspensaAte: string | null;
+  expiraEm: string | null;
+  excecaoSenior: boolean;
+}
+
+/** Por que a pessoa não entra — o texto vai para a tela de login. */
+export interface Bloqueio {
+  origem: 'manual' | 'validade' | 'senior';
+  motivo: string;
+}
+
 export interface LinhasDeAcesso {
   /** Só os pendentes. Opcional: a loja de teste não precisa simular pedidos. */
   pedidos?: PedidoDeAcesso[];
   papeis: { email: string; papel: string }[];
   telas: { tela: string; modo: string }[];
   emails: { tela: string; email: string }[];
+  /** Opcional: banco ainda sem a tabela, ou loja de teste. */
+  regras?: RegraDePessoa[];
+  /** Perfis (grupos de abas) e quem está em cada um — um perfil por pessoa. */
+  perfis?: { id: string; nome: string; telas: string[] }[];
+  membros?: { email: string; perfil: string }[];
+}
+
+/** Uma linha de `audit_logs`, para o histórico da aba PERMISSÕES. */
+export interface RegistroDeAuditoria {
+  em: string;
+  por: string;
+  acao: string;
+  alvo: string | null;
+  antes: string | null;
+  depois: string | null;
 }
 
 export type Mudanca =
@@ -58,7 +99,14 @@ export type Mudanca =
   | { acao: 'papel'; email: string; papel: Papel }
   | { acao: 'modo-da-tela'; tela: string; modo: ModoDaTela }
   | { acao: 'remove-pessoa'; email: string }
-  | { acao: 'dispensa-pedido'; email: string };
+  | { acao: 'dispensa-pedido'; email: string }
+  | { acao: 'suspende'; email: string; motivo: string; ate: string | null }
+  | { acao: 'reativa'; email: string }
+  | { acao: 'validade'; email: string; expiraEm: string | null }
+  | { acao: 'excecao-senior'; email: string; ligada: boolean }
+  | { acao: 'perfil-salva'; id: string; nome: string; telas: string[] }
+  | { acao: 'perfil-remove'; id: string }
+  | { acao: 'perfil-da-pessoa'; email: string; perfil: string | null };
 
 /** Onde a configuração mora. `aplica` grava a mudança E o log, na mesma transação. */
 export interface LojaDeAcesso {
@@ -66,6 +114,8 @@ export interface LojaDeAcesso {
   aplica(m: Mudanca, porQuem: string): Promise<void>;
   /** Quem entrou e não abre nenhuma aba. Não precisa de transação nem de log: não dá acesso. */
   registraPedido(email: string): Promise<void>;
+  /** As mudanças gravadas, da mais nova para a mais antiga; `email` filtra pelo alvo. */
+  historico?(email: string | null, limite: number): Promise<RegistroDeAuditoria[]>;
 }
 
 export interface PessoaDaMatriz {
@@ -74,6 +124,16 @@ export interface PessoaDaMatriz {
   /** O papel vem do .env — a tela não muda. */
   fixo: boolean;
   telas: string[];
+  /** O perfil da pessoa (as abas dele somam às individuais); `null` = sem perfil. */
+  perfil: string | null;
+  /** Suspensão, validade e exceção da Senior; `null` = nada além das abas. */
+  regra: Omit<RegraDePessoa, 'email'> | null;
+  /** A situação na Senior: `null` = fora da Senior; ausente = Senior não carregada. */
+  senior?: ColaboradorSenior | null;
+  /** Por que a regra barra esta pessoa — inclusive a Senior em modo `observar`. */
+  bloqueio: Bloqueio | null;
+  /** O bloqueio vale de fato (em `observar`, o da Senior só aparece). */
+  barrada: boolean;
 }
 
 export interface Matriz {
@@ -81,6 +141,9 @@ export interface Matriz {
   pessoas: PessoaDaMatriz[];
   /** Quem entrou e caiu em "sem acesso", ainda sem resposta. */
   pedidos: PedidoDeAcesso[];
+  perfis: { id: string; nome: string; telas: string[]; membros: number }[];
+  /** A fonte da Senior; ausente quando a integração não está configurada. */
+  senior?: EstadoDaSenior & { modo: 'observar' | 'bloquear' };
 }
 
 export interface AcessoDasTelas {
@@ -94,9 +157,20 @@ export interface AcessoDasTelas {
   muda(quem: Identidade, m: Mudanca): Promise<void>;
   /** Para `/api/saude`: só se a configuração está em dia. Sem e-mail — a rota é pública. */
   estado(): { ok: boolean; origem: string };
+  /**
+   * Chama `fn` quando a configuração de acesso MUDA de fato — por uma gravação da tela ou
+   * por alguém mexendo no banco, que a releitura de 30 s encontra. É o que deixa o servidor
+   * avisar as telas abertas para refazerem o menu sem F5. Devolve a função que desliga.
+   * Opcional: quem não tem banco (fixtures, `só .env`) não muda nunca.
+   */
+  aoMudar?(fn: () => void): () => void;
   /** A pessoa entrou e não abre nenhuma aba: vira pedido pendente na tela "Acessos".
    *  Não espera o banco e não lança — é registro, não decisão. */
   registraPedido(quem: Identidade): void;
+  /** Por que esta pessoa não pode entrar agora; `null` = pode. Máquina nunca é barrada. */
+  bloqueio(quem: Identidade): Bloqueio | null;
+  /** O histórico de mudanças de acesso. Só admin/dev (lança `ErroDeAcesso`). */
+  historico(quem: Identidade, email: string | null): Promise<RegistroDeAuditoria[]>;
 }
 
 export class ErroDeAcesso extends Error {
@@ -110,6 +184,9 @@ export class ErroDeAcesso extends Error {
 interface Configuracao {
   papeis: Map<string, 'dev' | 'admin'>;
   telas: Map<string, { modo: ModoDaTela; emails: Set<string> }>;
+  regras: Map<string, RegraDePessoa>;
+  perfis: Map<string, { nome: string; telas: Set<string> }>;
+  membros: Map<string, string>;
 }
 
 export const normEmail = (e: string): string => e.trim().toLowerCase();
@@ -136,7 +213,49 @@ export function configuracaoDe(linhas: LinhasDeAcesso, telasConhecidas: readonly
   for (const { tela, email } of linhas.emails) {
     if (telasConhecidas.includes(tela) && ehEmail(normEmail(email))) regra(tela).emails.add(normEmail(email));
   }
-  return { papeis, telas };
+  const regras = new Map<string, RegraDePessoa>();
+  for (const r of linhas.regras ?? []) {
+    if (ehEmail(normEmail(r.email))) regras.set(normEmail(r.email), { ...r, email: normEmail(r.email) });
+  }
+  // Aba que não existe mais sai do perfil; membro de perfil apagado fica sem perfil.
+  const perfis = new Map<string, { nome: string; telas: Set<string> }>();
+  for (const p of linhas.perfis ?? []) {
+    perfis.set(p.id, { nome: p.nome, telas: new Set(p.telas.filter((t) => telasConhecidas.includes(t))) });
+  }
+  const membros = new Map<string, string>();
+  for (const m of linhas.membros ?? []) {
+    if (ehEmail(normEmail(m.email)) && perfis.has(m.perfil)) membros.set(normEmail(m.email), m.perfil);
+  }
+  return { papeis, telas, regras, perfis, membros };
+}
+
+const dataBr = (iso: string): string =>
+  new Date(iso).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+
+/**
+ * Por que uma pessoa não entra, na ordem: suspensão manual, validade vencida, Senior.
+ * A Senior só vale carregada (`undefined` = não) e sem exceção do admin; fora dela é
+ * bloqueio (decisão do Erick, 20/10/2026), assim como desligado e afastado.
+ */
+export function bloqueioDe(
+  regra: RegraDePessoa | undefined,
+  senior: ColaboradorSenior | null | undefined,
+  agora: number,
+): Bloqueio | null {
+  if (regra?.suspensa && (!regra.suspensaAte || Date.parse(regra.suspensaAte) > agora)) {
+    const ate = regra.suspensaAte ? ` até ${dataBr(regra.suspensaAte)}` : '';
+    return { origem: 'manual', motivo: `Acesso suspenso${ate}${regra.motivo ? `: ${regra.motivo}` : '.'}` };
+  }
+  if (regra?.expiraEm && Date.parse(regra.expiraEm) <= agora) {
+    return { origem: 'validade', motivo: `O acesso expirou em ${dataBr(regra.expiraEm)}.` };
+  }
+  if (senior === undefined || regra?.excecaoSenior) return null;
+  if (senior === null) return { origem: 'senior', motivo: 'E-mail não encontrado como colaborador na Senior.' };
+  if (senior.situacao === SITUACAO_DESLIGADO) return { origem: 'senior', motivo: 'Colaborador desligado na Senior.' };
+  if (senior.situacao !== SITUACAO_ATIVA) {
+    return { origem: 'senior', motivo: `Acesso bloqueado enquanto a Senior indicar: ${senior.situacao}.` };
+  }
+  return null;
 }
 
 export interface OpcoesDoAcesso {
@@ -148,6 +267,15 @@ export interface OpcoesDoAcesso {
   /** Só e-mail deste domínio recebe acesso pela tela. */
   dominio: string;
   log?: (msg: string) => void;
+  /** A situação dos colaboradores. Ausente = a regra da Senior não existe neste ambiente. */
+  senior?: FonteSenior | null;
+  /**
+   * `observar`: a matriz mostra quem a Senior barraria, mas ninguém é barrado por ela —
+   * para o admin conferir os e-mails antes de ligar (`SENIOR_MODO`, padrão `observar`).
+   * Suspensão e validade valem sempre.
+   */
+  modoSenior?: 'observar' | 'bloquear';
+  agora?: () => number;
 }
 
 export interface AcessoComBanco extends AcessoDasTelas {
@@ -177,6 +305,7 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
     return e.includes('@') ? e : null;
   };
   const ehMaquina = (quem: Identidade) => quem.papeis.some((p) => PAPEIS_DE_MAQUINA.includes(p));
+  const agora = opts.agora ?? (() => Date.now());
 
   const papelDoEmail = (e: string): Papel => {
     const doEnv: Papel = adminsEnv.has(e) ? 'admin' : devsEnv.has(e) ? 'dev' : 'viewer';
@@ -188,11 +317,26 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
     return e && !ehMaquina(quem) ? papelDoEmail(e) : 'viewer';
   };
   const podeGerir = (quem: Identidade) => RANK[papelDe(quem)] >= RANK.dev;
+  /** O que a regra diria — com a Senior mesmo em `observar`. Quem está no .env nunca é
+   *  barrado: é a porta de quem conserta o banco e a Senior. */
+  const bloqueioPrevisto = (e: string): Bloqueio | null =>
+    adminsEnv.has(e) || devsEnv.has(e)
+      ? null
+      : bloqueioDe(config?.regras.get(e), opts.senior?.situacaoDe(e), agora());
+  /** O que vale de fato: em `observar`, a Senior não barra. */
+  const bloqueioDoEmail = (e: string): Bloqueio | null => {
+    const b = bloqueioPrevisto(e);
+    return b?.origem === 'senior' && opts.modoSenior !== 'bloquear' ? null : b;
+  };
 
   /** Vale a leitura que COMEÇOU por último, não a que terminou: a releitura de 30 s que
    *  saiu antes de uma gravação e voltou depois trazia a pessoa removida de volta. */
   let leituraIniciada = 0;
   let leituraAplicada = 0;
+  /** A forma da última leitura aplicada, para saber se a seguinte mudou alguma coisa. Sem os
+   *  pedidos pendentes: pedir acesso não muda o que ninguém vê. */
+  let assinaturaAplicada: string | null = null;
+  const ouvintes = new Set<() => void>();
 
   const recarrega = async (): Promise<void> => {
     if (!opts.loja) return;
@@ -202,6 +346,20 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
       if (minha < leituraAplicada) return;
       leituraAplicada = minha;
       config = configuracaoDe(linhas, opts.telasConhecidas);
+      const { pedidos: _semPedidos, ...semPedidos } = linhas as typeof linhas & { pedidos?: unknown };
+      const assinatura = JSON.stringify(semPedidos);
+      // A primeira leitura não é mudança: é o arranque. Daí em diante, mudou = avisa.
+      const mudou = assinaturaAplicada !== null && assinatura !== assinaturaAplicada;
+      assinaturaAplicada = assinatura;
+      if (mudou) {
+        for (const fn of ouvintes) {
+          try {
+            fn();
+          } catch (err) {
+            log(`[acesso] aviso de mudança falhou: ${(err as Error).message}`);
+          }
+        }
+      }
       pedidos = linhas.pedidos ?? [];
       if (ultimaFalhou) log(`[acesso] lido do banco: ${config.papeis.size} papel(éis), ${config.telas.size} aba(s) com regra`);
       ultimaFalhou = false;
@@ -226,6 +384,19 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
       if (m.modo !== 'lista' && m.modo !== 'todos') throw new ErroDeAcesso(400, 'Modo inválido (lista ou todos).');
       return;
     }
+    if (m.acao === 'perfil-salva' || m.acao === 'perfil-remove') {
+      if (typeof m.id !== 'string' || !/^[a-z0-9-]{1,64}$/.test(m.id)) {
+        throw new ErroDeAcesso(400, 'Identificador do perfil: letras minúsculas, números e hífen.');
+      }
+      if (m.acao === 'perfil-remove') return;
+      m.nome = typeof m.nome === 'string' ? m.nome.trim() : '';
+      if (!m.nome || m.nome.length > 80) throw new ErroDeAcesso(400, 'Nome do perfil: de 1 a 80 caracteres.');
+      if (!Array.isArray(m.telas)) throw new ErroDeAcesso(400, 'telas tem de ser uma lista.');
+      const desconhecida = m.telas.find((t) => !opts.telasConhecidas.includes(t));
+      if (desconhecida) throw new ErroDeAcesso(400, `Aba desconhecida: ${desconhecida}.`);
+      m.telas = [...new Set(m.telas)];
+      return;
+    }
 
     m.email = normEmail(m.email ?? '');
     if (!new RegExp(`^[^@\\s]+@${dominio.replace(/\./g, '\\.')}$`).test(m.email)) {
@@ -234,6 +405,33 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
     const alvoTemPapel = papelDoEmail(m.email) !== 'viewer';
     const alvoFixo = adminsEnv.has(m.email) || devsEnv.has(m.email);
 
+    if (m.acao === 'suspende' || m.acao === 'reativa' || m.acao === 'validade' || m.acao === 'excecao-senior') {
+      // Barrar quem tem papel é coisa de admin, pelo mesmo motivo de `papel` abaixo.
+      if (alvoTemPapel && papelDeQuem !== 'admin') {
+        throw new ErroDeAcesso(403, 'Só administrador barra ou libera quem tem papel.');
+      }
+      if (alvoFixo) throw new ErroDeAcesso(400, 'Este e-mail é fixo no .env — a tela não o barra.');
+      if (m.email === emailDe(quem) && m.acao !== 'reativa') {
+        throw new ErroDeAcesso(400, 'Você não pode barrar a si mesmo.');
+      }
+      const dataValida = (v: unknown) => v === null || (typeof v === 'string' && Number.isFinite(Date.parse(v)));
+      if (m.acao === 'suspende') {
+        if (typeof m.motivo !== 'string' || m.motivo.length > 200) {
+          throw new ErroDeAcesso(400, 'Motivo de até 200 caracteres.');
+        }
+        if (!dataValida(m.ate)) throw new ErroDeAcesso(400, 'Data final da suspensão inválida.');
+      }
+      if (m.acao === 'validade' && !dataValida(m.expiraEm)) throw new ErroDeAcesso(400, 'Data de validade inválida.');
+      if (m.acao === 'excecao-senior' && typeof m.ligada !== 'boolean') {
+        throw new ErroDeAcesso(400, 'ligada tem de ser true ou false.');
+      }
+      return;
+    }
+
+    if (m.acao === 'perfil-da-pessoa') {
+      if (m.perfil !== null && !config?.perfis.has(m.perfil)) throw new ErroDeAcesso(400, 'Perfil desconhecido.');
+      return;
+    }
     if (m.acao === 'telas-da-pessoa') {
       if (!Array.isArray(m.telas)) throw new ErroDeAcesso(400, 'telas tem de ser uma lista.');
       const desconhecida = m.telas.find((t) => !opts.telasConhecidas.includes(t));
@@ -256,28 +454,80 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
   const acesso: AcessoComBanco = {
     papelDe,
     podeGerir,
+    async historico(quem, email) {
+      if (!podeGerir(quem)) throw new ErroDeAcesso(403, 'Só administrador ou dev vê o histórico.');
+      if (!opts.loja?.historico) throw new ErroDeAcesso(503, 'Banco de acesso não configurado neste ambiente.');
+      try {
+        return await opts.loja.historico(email ? normEmail(email) : null, 200);
+      } catch (err) {
+        log(`[acesso] FALHA ao ler o histórico: ${(err as Error).message}`);
+        throw new ErroDeAcesso(503, 'Não foi possível ler o histórico agora.');
+      }
+    },
+    bloqueio(quem) {
+      if (ehMaquina(quem)) return null;
+      const e = emailDe(quem);
+      return e ? bloqueioDoEmail(e) : null;
+    },
     podeVer(quem, tela) {
       if (ehMaquina(quem)) return true;
       if (!opts.telasConhecidas.includes(tela)) return false;
       const e = emailDe(quem);
       if (!e) return false;
+      if (bloqueioDoEmail(e)) return false;
       if (papelDoEmail(e) === 'admin') return true;
       const regra = config?.telas.get(tela);
-      if (!regra) return false;
-      return regra.modo === 'todos' || regra.emails.has(e);
+      if (regra && (regra.modo === 'todos' || regra.emails.has(e))) return true;
+      // O perfil soma: a pessoa abre as abas dela e as do perfil.
+      const perfil = config?.membros.get(e);
+      return perfil !== undefined && Boolean(config?.perfis.get(perfil)?.telas.has(tela));
     },
     matriz() {
       const telas = opts.telasConhecidas.map((id) => ({ id, modo: config?.telas.get(id)?.modo ?? ('lista' as const) }));
-      const emails = new Set<string>([...adminsEnv, ...devsEnv, ...(config?.papeis.keys() ?? [])]);
+      const emails = new Set<string>([
+        ...adminsEnv,
+        ...devsEnv,
+        ...(config?.papeis.keys() ?? []),
+        ...(config?.regras.keys() ?? []),
+        ...(config?.membros.keys() ?? []),
+      ]);
       for (const r of config?.telas.values() ?? []) for (const e of r.emails) emails.add(e);
-      const pessoas = [...emails].map((email) => ({
-        email,
-        papel: papelDoEmail(email),
-        fixo: adminsEnv.has(email) || devsEnv.has(email),
-        telas: opts.telasConhecidas.filter((t) => config?.telas.get(t)?.emails.has(email)),
-      }));
+      const pessoas: PessoaDaMatriz[] = [...emails].map((email) => {
+        const r = config?.regras.get(email);
+        const senior = opts.senior?.situacaoDe(email);
+        return {
+          email,
+          papel: papelDoEmail(email),
+          fixo: adminsEnv.has(email) || devsEnv.has(email),
+          telas: opts.telasConhecidas.filter((t) => config?.telas.get(t)?.emails.has(email)),
+          perfil: config?.membros.get(email) ?? null,
+          regra: r
+            ? {
+                suspensa: r.suspensa,
+                motivo: r.motivo,
+                suspensaAte: r.suspensaAte,
+                expiraEm: r.expiraEm,
+                excecaoSenior: r.excecaoSenior,
+              }
+            : null,
+          ...(senior !== undefined ? { senior } : {}),
+          bloqueio: bloqueioPrevisto(email),
+          barrada: bloqueioDoEmail(email) !== null,
+        };
+      });
       pessoas.sort((a, b) => RANK[b.papel] - RANK[a.papel] || a.email.localeCompare(b.email));
-      return { telas, pessoas, pedidos };
+      return {
+        telas,
+        pessoas,
+        pedidos,
+        perfis: [...(config?.perfis ?? [])].map(([id, p]) => ({
+          id,
+          nome: p.nome,
+          telas: opts.telasConhecidas.filter((t) => p.telas.has(t)),
+          membros: [...(config?.membros.values() ?? [])].filter((x) => x === id).length,
+        })),
+        ...(opts.senior ? { senior: { ...opts.senior.estado(), modo: opts.modoSenior ?? 'observar' } } : {}),
+      };
     },
     async muda(quem, m) {
       valida(quem, m);
@@ -287,7 +537,7 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
         log(`[acesso] FALHA ao gravar ${m.acao}: ${(err as Error).message}`);
         throw new ErroDeAcesso(503, 'Não foi possível gravar no banco de acesso. Nada mudou.');
       }
-      log(`[acesso] ${emailDe(quem)} → ${m.acao}${'email' in m ? ` ${m.email}` : ` ${m.tela}`}`);
+      log(`[acesso] ${emailDe(quem)} → ${m.acao} ${'email' in m ? m.email : 'tela' in m ? m.tela : m.id}`);
       await recarrega();
     },
     estado() {
@@ -306,6 +556,10 @@ export function criaAcesso(opts: OpcoesDoAcesso): AcessoComBanco {
       );
     },
     recarrega,
+    aoMudar(fn) {
+      ouvintes.add(fn);
+      return () => ouvintes.delete(fn);
+    },
     releA(cadaMs) {
       const t = setInterval(() => void recarrega(), cadaMs);
       t.unref?.();
@@ -323,8 +577,10 @@ export const ACESSO_SO_DE_MAQUINA: AcessoDasTelas = {
   podeVer: (quem) => quem.papeis.some((p) => PAPEIS_DE_MAQUINA.includes(p)),
   papelDe: () => 'viewer',
   podeGerir: () => false,
-  matriz: () => ({ telas: [], pessoas: [], pedidos: [] }),
+  matriz: () => ({ telas: [], pessoas: [], pedidos: [], perfis: [] }),
   registraPedido: () => {},
-  muda: () => Promise.reject(new ErroDeAcesso(403, 'Sonda não gerencia acesso.')),
+  bloqueio: () => null,
+  historico: () => Promise.reject(new ErroDeAcesso(403, 'Sonda não vê histórico.')),
+  muda:() => Promise.reject(new ErroDeAcesso(403, 'Sonda não gerencia acesso.')),
   estado: () => ({ ok: true, origem: '(só máquina)' }),
 };

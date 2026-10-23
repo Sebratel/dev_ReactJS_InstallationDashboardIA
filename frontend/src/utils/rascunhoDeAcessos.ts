@@ -8,7 +8,12 @@
 //
 // Puro de propósito: nada de rede nem de React aqui — `test/rascunho-de-acessos.test.ts`.
 
-import type { MatrizDeAcesso, ModoDaTela, Papel } from '../services/acessoService.ts';
+import type {
+  MatrizDeAcesso,
+  ModoDaTela,
+  Papel,
+  PessoaDeAcesso,
+} from '../services/acessoService.ts';
 
 export interface RascunhoDeAcessos {
   /** Aba → modo pedido. */
@@ -37,11 +42,9 @@ export type OperacaoDeAcesso =
   | { tipo: 'papel'; email: string; papel: Papel }
   | { tipo: 'telas'; email: string; telas: string[] };
 
-export interface PessoaNaTela {
-  email: string;
-  papel: Papel;
-  fixo: boolean;
-  telas: string[];
+/** A linha da matriz: o que veio do servidor (situação, perfil, último acesso) mais o
+ *  estado do rascunho. */
+export interface PessoaNaTela extends PessoaDeAcesso {
   nova: boolean;
   removida: boolean;
   /** Alguma coisa desta linha muda ao salvar. */

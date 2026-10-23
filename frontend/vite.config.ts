@@ -65,6 +65,10 @@ const TOKEN_INTERNO =
 // injetado nem com o `.env` sem provedor — o caso em que a condição acima o deixava passar
 // (medido em 14/10: build sem VITE_FIREBASE_* e com TOKEN_INTERNO punha o valor no bundle).
 export default defineConfig(({ command }) => ({
+  // No build de produção, `console.*` e `debugger` saem do bundle (20/10/2026): o console
+  // do navegador não pode narrar o que a tela faz por dentro para quem abrir o DevTools.
+  // O `vite` de desenvolvimento continua com os logs.
+  esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : {},
   define: {
     'import.meta.env.VITE_GOOGLE_CLIENT_ID': JSON.stringify(GOOGLE_CLIENT_ID),
     'import.meta.env.VITE_TOKEN_INTERNO': JSON.stringify(command === 'serve' ? TOKEN_INTERNO : ''),

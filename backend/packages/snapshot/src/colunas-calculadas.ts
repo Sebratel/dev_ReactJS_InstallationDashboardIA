@@ -21,6 +21,7 @@
 
 import { Dataset } from '../../measure-engine/src/dataset.ts';
 import { Evaluator } from '../../measure-engine/src/evaluator.ts';
+import { relogioDeParede } from '../../measure-engine/src/relogio.ts';
 import { parseDax } from '../../measure-engine/src/parser.ts';
 import { walk } from '../../measure-engine/src/ast.ts';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
@@ -117,7 +118,8 @@ export function materializaColunas(
   // linha que vai ser gravada — que é justamente o efeito que se quer aqui.
   const dataset = new Dataset();
   dataset.adotaTabela(t.name, linhas as never);
-  const ev = new Evaluator({ model, dataset, now: agora });
+  // TODAY()/NOW() na hora de parede do RS — ver `relogio.ts`.
+  const ev = new Evaluator({ model, dataset, now: relogioDeParede(agora) });
 
   const daxSha = new Map<string, string>();
   const colunas: string[] = [];

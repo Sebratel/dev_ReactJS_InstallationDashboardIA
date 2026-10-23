@@ -49,6 +49,8 @@ export interface Segmentacao {
   nivel?: string;
   /** Presente quando esta segmentação não sabe filtrar. A tela desabilita e explica. */
   naoFiltra?: string;
+  /** Hierarquia de data (Ano/Mês/Dia): só se filtra pela árvore de período. */
+  niveis?: string[];
 }
 
 export interface OrigemDeCard {
@@ -366,7 +368,8 @@ export async function pega<T>(
     const erro =
       corpo && typeof corpo === 'object' && 'erro' in corpo
         ? String((corpo as { erro: unknown }).erro)
-        : `HTTP ${resp.status} em ${url}`;
+        : // Sem o endereço do pedido: a mensagem aparece na tela e não deve guiar ninguém.
+          'Não foi possível carregar este dado agora. Tente novamente em instantes.';
     // `status` vai junto do erro — é como `App.tsx` distingue "sem sessão"
     // (401, mostra a tela de login) de qualquer outra falha (mostra o erro).
     throw Object.assign(new Error(erro), { status: resp.status });

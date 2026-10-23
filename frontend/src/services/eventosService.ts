@@ -3,8 +3,13 @@
 // páginas afetadas) — quem assina decide o que revalidar.
 
 /** Assina `/api/eventos` e devolve a função que fecha a conexão. */
-export function assinaEventos(aoMudar: (dashboards: string[]) => void): () => void {
+export function assinaEventos(
+  aoMudar: (dashboards: string[]) => void,
+  /** O servidor avisou que os acessos mudaram (evento `acessos`): refazer o menu. */
+  aoMudarAcesso?: () => void,
+): () => void {
   const es = new EventSource('/api/eventos');
+  if (aoMudarAcesso) es.addEventListener('acessos', () => aoMudarAcesso());
   es.onmessage = (ev) => {
     let corpo: { dashboards?: unknown };
     try {

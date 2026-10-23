@@ -28,13 +28,21 @@ import {
   type ValoresDeColuna,
 } from '../services/dashboardService.ts';
 import type { CampoClicado } from '../utils/rota.ts';
-import { estadosVizinhos, type SegmentacaoComValores } from '../utils/vizinhanca.ts';
-import { consultaDaAbertura } from './useDadosDaTela.ts';
+import {
+  estadosDoPeriodo,
+  estadosVizinhos,
+  type SegmentacaoComValores,
+} from '../utils/vizinhanca.ts';
+import { dataDaPagina } from '../utils/filtrosPadrao.ts';
+import { montaArvore } from '../utils/hierarquiaData.ts';
+import { preCarregaEstado } from './useDadosDaTela.ts';
 
 /** Valores por segmentação, no máximo — o `FILTROS_ATE_PADRAO` do servidor. */
 const LIMITE = 40;
 /** Vizinhos por estado, no máximo. O hover exato cobre o restante sem rajada. */
 const TETO = 6;
+/** Estados do PERÍODO por estado: os meses do ano marcado e os anos (`estadosDoPeriodo`). */
+const TETO_PERIODO = 16;
 /** Quanto a página tem de ficar parada antes de a vizinhança começar. */
 const ESPERA_MS = 2000;
 
@@ -74,12 +82,25 @@ export function useVizinhanca(
           },
         ];
       });
-      for (const e of estadosVizinhos({ filtros, clicados }, comValores, TETO)) {
+      // O período primeiro: era o clique mais lento do teste (até 32 s), e o mais comum.
+      const data = dataDaPagina(pagina);
+      const datas = data
+        ? qc.getQueryData<ValoresDeColuna>(
+            chavesDeConsulta.valores(pagina, data.tabela, data.coluna, null),
+          )
+        : undefined;
+      const doPeriodo =
+        data && datas
+          ? estadosDoPeriodo({ filtros, clicados }, data, montaArvore(datas.valores), TETO_PERIODO)
+          : [];
+      for (const e of [...doPeriodo, ...estadosVizinhos({ filtros, clicados }, comValores, TETO)]) {
         if (parou) return;
-        const consulta = consultaDaAbertura(pagina, layout, e.filtros, e.clicados, 'prefetch');
-        if (qc.getQueryData(consulta.queryKey) !== undefined) continue;
-        // Falhar aqui não aparece em lugar nenhum: o clique de verdade tenta de novo.
-        await qc.prefetchQuery(consulta).catch(() => undefined);
+        // A abertura e os visuais `sobDemanda` dela, um por vez (`preCarregaEstado`): o
+        // que já está fresco no cache sai dele, sem pedido. Falhar aqui não aparece em
+        // lugar nenhum: o clique de verdade tenta de novo.
+        await preCarregaEstado(qc, pagina, layout, e.filtros, e.clicados, 'prefetch').catch(
+          () => undefined,
+        );
       }
     }, ESPERA_MS);
     return () => {
