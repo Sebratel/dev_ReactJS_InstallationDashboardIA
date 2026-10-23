@@ -15882,3 +15882,21 @@ Três achados que valem fora dela:
 - **Armadilha de medição:** no `field-agenda` o `'2026-01-01'` está num COMENTÁRIO do SQL;
   o corte real é `begin_date_slot >= CURRENT_DATE - INTERVAL '3 months'`. Trocar o
   literal mediu a coisa errada por uma rodada inteira.
+
+## #236 — Agendamento Field ao vivo: 32 de 32 visuais iguais em setembro, e a ordem dos empates (23/10)
+
+A página calculada pelo `carrega` + `calculaPagina` de hoje sobre um snapshot pequeno só do
+período (`snapshot-do-periodo.ts`), contra a mesma página sobre as tabelas inteiras:
+`npm run probe:ao-vivo -- --desde=2026-09-01 --ate=2026-10-01 --so=pagina`. Detalhe em
+[DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md) § Fase 1. Dois achados que valem fora dela:
+
+- **Duas buscas da mesma consulta não são o mesmo dado.** Entre a original e a costurada
+  passam segundos, e um atendimento em andamento muda o "Fim relato" e o "Data ultimo
+  play app" de um protocolo de setembro que tem slot hoje (1–2 linhas por rodada). A sonda
+  da página só fecha com uma referência "no mesmo instante": as tabelas inteiras com as
+  linhas dos protocolos do período tiradas da busca ao vivo.
+- **A VISÃO GERAL ordena com empate.** Contra a referência bruta, ela veio com as mesmas
+  4.357 linhas em outra ordem; o hash da original mudou entre duas buscas dela, e o da
+  costurada não. Os empatados seguem a ordem de chegada das linhas, então a ordem dentro
+  do empate já muda de um refresh para o outro em produção. A comparação ao vivo conta
+  isso à parte (`soOrdem`).

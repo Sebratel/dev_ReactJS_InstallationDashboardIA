@@ -179,6 +179,13 @@ services:
       # pontas saíam como `analytics-platform`, e o custo de banco não tinha dono. Na API,
       # quem conecta é o poller de quase-realtime.
       VOALLE_APPLICATION_NAME: analytics-api-poller
+      # Modo sombra da fonte ao vivo (docs/DECISAO-AO-VIVO.md, fase 1): a página
+      # `agendamento-field` de período FECHADO refeita no SRD em segundo plano e comparada
+      # visual a visual com a do snapshot; o resultado vai só para o log
+      # (`[ao-vivo] sombra …`) e para as métricas `sombra_*`. Não muda resposta nenhuma.
+      # Desligado ('0') salvo decisão nas variáveis da stack; a sombra abre 2 conexões
+      # próprias no SRD, que aparecem como `analytics-ao-vivo-sombra`.
+      AO_VIVO_SOMBRA: ${AO_VIVO_SOMBRA:-0}
       # A chave do rate limit é o `X-Real-IP` que o `web` escreve com `$remote_addr`
       # (`nginx.web.conf`, em toda location que repassa). Seguro só porque a API não tem
       # porta publicada: ninguém de fora fala com ela sem passar pelo `web`.

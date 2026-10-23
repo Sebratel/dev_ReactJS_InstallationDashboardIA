@@ -2,6 +2,7 @@
 // mesmas linhas que a ORIGINAL do catálogo, recortada do mesmo jeito?
 //
 //   npm run probe:ao-vivo -- --desde=2026-10-06 --ate=2026-10-13 [--so=agenda|status-dia]
+//   npm run probe:ao-vivo -- --desde=2026-09-01 --ate=2026-10-01 --so=pagina
 //
 // Para o período pedido (use um período FECHADO — dia que já não muda):
 //   1. `field-agenda-slot`: a original (janela inteira de 3 meses) recortada em memória
@@ -24,7 +25,14 @@ import { leAgregadasAoVivo, leCatalogoAoVivo, type Recorte } from '../../../pack
 import { buscaRelatosDoDia, statusProtocoloDiaAoVivo } from '../../../packages/ao-vivo/src/status-dia.ts';
 import { statusProtocoloDia } from '../../../packages/snapshot/src/nativas.ts';
 import { buscaAoVivo, type ContextoAoVivo, type ResultadoAoVivo } from '../../../packages/ao-vivo/src/executor.ts';
+import { decideAoVivo } from '../../../packages/ao-vivo/src/periodo.ts';
 import { aplicaRecorte, celula, texto } from '../../../packages/ao-vivo/src/recorte.ts';
+import { buscaDoPeriodo, type TabelaDoPeriodo } from '../../../packages/ao-vivo/src/snapshot-do-periodo.ts';
+import { projecaoDeHierarquia } from '../../../packages/measure-engine/src/evaluator.ts';
+import { codificaFiltro, decodificaFiltros } from '../../../packages/widget-engine/src/filtro-url.ts';
+import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
+import { LINHAS_MAXIMO } from '../../../api/src/calcula.ts';
+import { calculaSobrePeriodo, comparaPaginas, queriesPequenas } from '../../../api/src/pagina-ao-vivo.ts';
 import { applyDotEnv, loadConfig, missingFor } from '../../../packages/query-engine/src/config.ts';
 import {
   createMariaConnector,
@@ -122,7 +130,11 @@ function tempos(r: ResultadoAoVivo): string {
   return `${(r.ms.total / 1000).toFixed(1)} s (M ${(r.ms.m / 1000).toFixed(1)} s, calculadas ${(r.ms.calculadas / 1000).toFixed(1)} s; ${buscas})`;
 }
 
-let tudoIgual = true;
+/** O nome de cada conferência que deu diferente — o veredito diz QUAL, não só que houve. */
+const falhas: string[] = [];
+const confere = (nome: string, ok: boolean): void => {
+  if (!ok) falhas.push(nome);
+};
 try {
   console.log(`período [${desde}, ${ate}) — agora ${AGORA.toISOString()}\n`);
 
@@ -135,7 +147,7 @@ try {
   console.log(`  ao vivo  ${tempos(vivoAgenda)}`);
   if (refAgenda.colunas.join('|') !== vivoAgenda.colunas.join('|')) {
     console.log('  COLUNAS DIFERENTES entre as duas pontas');
-    tudoIgual = false;
+    confere('colunas da agenda', false);
   }
   // O MESMO recorte nas duas pontas. A costurada escolhe os protocolos por qualquer
   // `service_desk_slots` no período; a régua é o `Slot Agenda` FINAL (o da view). Um
@@ -143,7 +155,7 @@ try {
   // superconjunto por construção, e quem consome aplica o mesmo `recorta`.
   const vivoRecortado = recorta(vivoAgenda, cAgenda.recorte, new Set());
   console.log(`  ao vivo trouxe ${vivoAgenda.linhas.length - vivoRecortado.length} linha(s) de protocolo reagendado para fora do período (o recorte as tira)`);
-  tudoIgual = compara('linhas', refAgenda.colunas, recorta(refAgenda, cAgenda.recorte, new Set()), vivoRecortado) && tudoIgual;
+  confere('linhas da agenda', compara('linhas', refAgenda.colunas, recorta(refAgenda, cAgenda.recorte, new Set()), vivoRecortado));
 
   // 3. `Status Protocolo Dia` (`--so=status-dia`). A referência é a regra de nativas.ts
   // sobre a agenda COMPLETA original (grão relato, 3 meses, colunas calculadas pelo DAX
@@ -182,7 +194,7 @@ try {
     }));
     const refStatus = statusProtocoloDia(comoNativa, pgComoNativa);
     const colunasStatus = ['dia', 'protocolo', 'status', 'base dia', 'turno dia', 'rank protocolo dia', 'tipo protocolo dia'];
-    tudoIgual = compara('Status Protocolo Dia', colunasStatus, refStatus, vivoStatus) && tudoIgual;
+    confere('Status Protocolo Dia', compara('Status Protocolo Dia', colunasStatus, refStatus, vivoStatus));
     const porStatus = (ls: Record<string, Escalar>[]) =>
       [...ls.reduce((m, l) => m.set(String(l['status']), (m.get(String(l['status'])) ?? 0) + 1), new Map<string, number>())]
         .sort()
@@ -191,8 +203,126 @@ try {
     console.log(`    referência: ${porStatus(refStatus)}\n    ao vivo:    ${porStatus(vivoStatus)}`);
   }
 
+  // 4. A PÁGINA (`--so=pagina`, período de meses inteiros): `agendamento-field` calculada
+  // pelo mesmo `carrega` + `calculaPagina` duas vezes, com a segmentação do período na
+  // tela — sobre as tabelas INTEIRAS (a agenda original de 3 meses, os protocolos
+  // originais) e sobre as RECORTADAS ao vivo. Visual a visual, prova que o recorte não
+  // muda nenhum número que a página mostra. `Status Protocolo Dia` sai nas duas pontas
+  // pelo caminho ao vivo (`--so=status-dia` prova esse contra a referência do DAX); a
+  // referência o calcula sobre a janela inteira. As queries pequenas são buscadas uma vez
+  // e entram iguais nas duas.
+  if (arg('so') === 'pagina') {
+    const dash = loadDashboards(SPECS).find((d) => d.id === 'agendamento-field')!;
+    const mesDe = projecaoDeHierarquia('Mês')!;
+    const anos = new Set<number>();
+    const meses = new Set<string>();
+    for (let d = new Date(`${desde}T00:00:00Z`); d.getTime() < Date.parse(`${ate}T00:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1)) {
+      anos.add(d.getUTCFullYear());
+      meses.add(String(mesDe(d)));
+    }
+    // Pelo decodificador da URL, como a tela manda.
+    const daTela = decodificaFiltros([
+      codificaFiltro({ tabela: 'calendar', coluna: 'Data', nivel: 'Ano', valores: [...anos] }),
+      codificaFiltro({ tabela: 'calendar', coluna: 'Data', nivel: 'Mês', valores: [...meses] }),
+    ]);
+    const decisao = decideAoVivo(dash, daTela, ctx.model);
+    if ('porque' in decisao) {
+      console.error(`\no período não vai ao vivo: ${decisao.porque}`);
+      process.exit(2);
+    }
+    if (decisao.periodo.desde !== desde || decisao.periodo.ate !== ate) {
+      console.error(`\n--so=pagina pede meses inteiros: a tela daria [${decisao.periodo.desde}, ${decisao.periodo.ate})`);
+      process.exit(2);
+    }
+    console.log(`\npágina agendamento-field — ${decisao.fora.size} visual(is) fora do ao vivo:`);
+    for (const [id, porque] of decisao.fora) {
+      console.log(`  ${(dash.visuals.find((v) => v.id === id)?.title ?? id).slice(0, 40).padEnd(40)} ${porque}`);
+    }
+
+    const pequenas: TabelaDoPeriodo[] = [];
+    for (const q of queriesPequenas(dash, ctx.model)) {
+      const r = await buscaAoVivo(ctx, { query: q, agora: AGORA });
+      pequenas.push({ query: q, colunas: r.colunas, linhas: r.linhas });
+    }
+    const agregada = leAgregadasAoVivo(SPECS).get('relatos-do-dia')!;
+    const vivo = await buscaDoPeriodo(ctx, agregada, decisao.periodo, AGORA);
+    const ms = (n: number) => `${(n / 1000).toFixed(1)} s`;
+    console.log(
+      `  ao vivo: agenda ${ms(vivo.ms.agenda)}, relatos ${ms(vivo.ms.relatos)}, protocolos ${ms(vivo.ms.protocolos)} ` +
+        `(${vivo.protocolos} protocolo(s)); total ${ms(vivo.ms.total)}`,
+    );
+
+    const refPg = await buscaAoVivo(ctx, { query: 'protocolos-geral', agora: AGORA });
+    const relatosRef = await buscaRelatosDoDia(ctx, agregada, { desde: '2000-01-01', ate: '2100-01-01' });
+    console.log(`  referência: protocolos ${tempos(refPg)}; relatos da janela inteira ${relatosRef.length} grupo(s)`);
+    const refSpd = statusProtocoloDiaAoVivo(refAgenda.linhas, relatosRef, refPg.linhas);
+    const ref = {
+      consultas: [
+        { query: 'field-agenda-slot', colunas: refAgenda.colunas, linhas: refAgenda.linhas },
+        { query: 'protocolos-geral', colunas: refPg.colunas, linhas: refPg.linhas },
+      ],
+      statusProtocoloDia: refSpd,
+    };
+    // A referência NO MESMO INSTANTE: as tabelas inteiras, mas as linhas dos protocolos
+    // do período tiradas da busca ao vivo. As duas buscas rodam com segundos de
+    // distância, e um atendimento em andamento muda nesse meio (o "Fim relato" de um
+    // protocolo de setembro que tem slot hoje). Trocando as linhas deles, a única
+    // diferença que sobra entre as pontas são os protocolos FORA do período — que é o
+    // que o recorte tira, e o que esta comparação existe para provar que não conta.
+    // `Status Protocolo Dia` é por protocolo (`particao` em nativas.ts): trocar as linhas
+    // dele é o mesmo que recalculá-la sobre as tabelas trocadas.
+    const [vAgenda, vPg] = vivo.consultas;
+    if (vAgenda!.colunas.join('|') !== refAgenda.colunas.join('|') || vPg!.colunas.join('|') !== refPg.colunas.join('|')) {
+      console.error('  COLUNAS DIFERENTES entre a busca inteira e a recortada — não há como misturar');
+      process.exit(1);
+    }
+    const doPeriodo = new Set(vAgenda!.linhas.map((l) => texto(celula(l, 'Protocolo'))));
+    const semOsDoPeriodo = <L extends Record<string, Escalar>>(ls: readonly L[], coluna: string): L[] =>
+      ls.filter((l) => !doPeriodo.has(texto(celula(l, coluna))));
+    const mesmoInstante = {
+      consultas: [
+        { query: 'field-agenda-slot', colunas: refAgenda.colunas, linhas: [...semOsDoPeriodo(refAgenda.linhas, 'Protocolo'), ...vAgenda!.linhas] },
+        { query: 'protocolos-geral', colunas: refPg.colunas, linhas: [...semOsDoPeriodo(refPg.linhas, 'N°PROTOCOLO'), ...vPg!.linhas] },
+      ],
+      statusProtocoloDia: [...semOsDoPeriodo(refSpd, 'protocolo'), ...vivo.statusProtocoloDia],
+    };
+
+    const comum = {
+      model: ctx.model,
+      dash,
+      alvo: { ...dash, filters: [...(dash.filters ?? []), ...daTela] },
+      fora: decisao.fora,
+      janela: { de: 0, linhas: LINHAS_MAXIMO },
+      clicados: [],
+      agora: AGORA,
+    };
+    const pRef = await calculaSobrePeriodo({ ...comum, dados: { ...ref, consultas: [...ref.consultas, ...pequenas] } });
+    const pMesmo = await calculaSobrePeriodo({ ...comum, dados: { ...mesmoInstante, consultas: [...mesmoInstante.consultas, ...pequenas] } });
+    const pVivo = await calculaSobrePeriodo({ ...comum, dados: { ...vivo, consultas: [...vivo.consultas, ...pequenas] } });
+    const linhas = (p: typeof pRef) => [...p.linhasPorTabela].map(([t, n]) => `${t} ${n}`).join(', ');
+    const etapas = (p: typeof pRef) => `escrita ${ms(p.ms.escrita)}, carga ${ms(p.ms.carga)}, cálculo ${ms(p.ms.calculo)}`;
+    console.log(`  referência: ${etapas(pRef)} — ${linhas(pRef)}`);
+    console.log(`  ao vivo:    ${etapas(pVivo)} — ${linhas(pVivo)}`);
+    for (const [nome, p] of [['referência', pRef], ['mesmo instante', pMesmo], ['ao vivo', pVivo]] as const) {
+      const r = p.pagina.resumo;
+      console.log(`  ${nome}: ${r.calculados} calculado(s), ${r.falharam} com erro, ${r.semCalculo} sem cálculo`);
+    }
+
+    const imprime = (rotulo: string, c: ReturnType<typeof comparaPaginas>) => {
+      console.log(
+        `  ${rotulo}: ${c.comparados} visual(is) comparado(s), ${c.iguais} iguais, ` +
+          `${c.soOrdem.length} só na ordem de linhas empatadas, ${c.diferentes.length} diferente(s)`,
+      );
+      for (const d of [...c.soOrdem, ...c.diferentes]) console.log(`    ${(d.titulo ?? d.id).slice(0, 40).padEnd(40)} ${d.porque}`);
+    };
+    imprime('referência inteira × ao vivo (buscas em instantes diferentes)', comparaPaginas(pRef.pagina, pVivo.pagina, new Map()));
+    const c = comparaPaginas(pMesmo.pagina, pVivo.pagina, new Map());
+    imprime('referência no mesmo instante × ao vivo (o que conta)', c);
+    confere('página no mesmo instante', c.diferentes.length === 0 && pMesmo.pagina.resumo.falharam === 0);
+  }
+
   // 2. Protocolos da agenda (`--so=agenda` pula: a original deles leva minutos).
-  if (arg('so') !== 'agenda' && arg('so') !== 'status-dia') {
+  if (arg('so') !== 'agenda' && arg('so') !== 'status-dia' && arg('so') !== 'pagina') {
     const lista = [...new Set(vivoRecortado.map((l) => texto(celula(l, 'Protocolo'))))];
     console.log(`\nprotocolos-geral (${lista.length} protocolo(s) da agenda do período)`);
     const cPg = ctx.catalogo.get('protocolos-geral')!;
@@ -202,17 +332,23 @@ try {
     console.log(`  ao vivo  ${tempos(vivoPg)}`);
     if (refPg.colunas.join('|') !== vivoPg.colunas.join('|')) {
       console.log('  COLUNAS DIFERENTES entre as duas pontas');
-      tudoIgual = false;
+      confere('colunas dos protocolos', false);
     }
     const conjunto = new Set(lista);
-    tudoIgual =
-      compara('linhas', refPg.colunas, recorta(refPg, cPg.recorte, conjunto), recorta(vivoPg, cPg.recorte, conjunto)) &&
-      tudoIgual;
+    confere(
+      'linhas dos protocolos',
+      compara('linhas', refPg.colunas, recorta(refPg, cPg.recorte, conjunto), recorta(vivoPg, cPg.recorte, conjunto)),
+    );
   }
 
-  console.log(`\n${tudoIgual ? 'PARIDADE: as consultas costuradas devolvem as mesmas linhas.' : 'HÁ DIFERENÇA — ver acima.'}`);
+  console.log(
+    falhas.length === 0
+      ? '\nPARIDADE: as consultas costuradas devolvem as mesmas linhas.'
+      : `\nHÁ DIFERENÇA em: ${falhas.join(', ')} — ver acima. As duas pontas rodam com segundos de ` +
+          'distância: diferença que muda de rodada para rodada (um atendimento em andamento) é o instante, não a costura.',
+  );
 } finally {
   await voallePool.end();
   await mariaPool.end();
 }
-process.exit(tudoIgual ? 0 : 1);
+process.exit(falhas.length === 0 ? 0 : 1);

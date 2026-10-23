@@ -13,6 +13,7 @@ import type { PiscinaWorkers } from './piscina-workers.ts';
 import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { EstadoDoRedis } from './saude-do-redis.ts';
 import type { UsoDasTelas } from './uso-das-telas.ts';
+import type { ObservadorAoVivo } from './sombra-ao-vivo.ts';
 
 export interface ServidorOptions {
   /** Raiz do repositório — de onde saem `backend/specs/` e o `snapshot/`. */
@@ -243,6 +244,14 @@ export interface ServidorOptions {
    * nenhum — ver `reaquecePorBaixo` para a medida que decidiu isso.
    */
   reaquece?: (paginas: readonly string[]) => Promise<void>;
+  /**
+   * O modo sombra da fonte ao vivo (`sombra-ao-vivo.ts`, docs/DECISAO-AO-VIVO.md): recebe
+   * cada página que o snapshot acabou de calcular e a refaz ao vivo em segundo plano,
+   * comparando visual a visual. Não espera, não muda a resposta, não lança.
+   *
+   * Padrão: nenhum — e aí nada muda. `npm run api` só o passa com `AO_VIVO_SOMBRA=1`.
+   */
+  sombraAoVivo?: ObservadorAoVivo;
   /** Instância ou opção para a piscina de worker threads. */
   piscinaWorkers?: PiscinaWorkers;
 }

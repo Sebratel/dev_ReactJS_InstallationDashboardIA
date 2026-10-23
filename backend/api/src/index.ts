@@ -34,6 +34,7 @@ import { criaUsoDasTelas } from './uso-das-telas.ts';
 import { leTetoDaResposta, memoriaDaResposta } from './memoria-limitada.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
+import { criaSombraDoAmbiente } from './sombra-ao-vivo.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -321,6 +322,20 @@ const acesso = criaAcesso({
 await acesso.recarrega();
 acesso.releA(30_000);
 
+// O modo sombra da fonte ao vivo (`sombra-ao-vivo.ts`, docs/DECISAO-AO-VIVO.md): a página
+// do snapshot refeita ao vivo em segundo plano e comparada. Desligado salvo
+// `AO_VIVO_SOMBRA=1`; a linha diz qual dos dois estados vale, e por quê.
+const sombraAoVivo = await criaSombraDoAmbiente({
+  root: ROOT,
+  snapshotDir: DIR_SNAPSHOT,
+  conta: (nome, quanto) => servidor.metricas.conta(nome, quanto),
+});
+console.log(
+  'porque' in sombraAoVivo
+    ? `[ao-vivo] sombra desligada: ${sombraAoVivo.porque}`
+    : '[ao-vivo] sombra ligada: agendamento-field, períodos fechados, uma rodada por vez',
+);
+
 const servidor = new Servidor({
   root: ROOT,
   snapshotDir: DIR_SNAPSHOT,
@@ -334,6 +349,7 @@ const servidor = new Servidor({
   // `backend/api/src/overlay-realtime.ts` — trocar de volta faz o near-realtime
   // voltar a detectar, invalidar, avisar e servir o número velho.
   overlayRealtime: () => poller?.overlays() ?? new Map(),
+  ...('sombra' in sombraAoVivo ? { sombraAoVivo: sombraAoVivo.sombra } : {}),
   // A VISÃO PRODUTIVA na hora; as demais páginas, juntas a cada 2 min. Ver
   // `aoTabelaMudar` e ACHADOS #175.
   avisoDasPaginas: {
@@ -443,6 +459,7 @@ instalaDesligamento({
     { nome: 'poller', fn: () => poller?.para() },
     { nome: 'aquecedor', fn: () => aquecedor?.para() },
     { nome: 'http', fn: () => fechaHttp(http) },
+    { nome: 'sombra ao vivo', fn: () => ('sombra' in sombraAoVivo ? sombraAoVivo.fecha() : undefined) },
     { nome: 'servidor', fn: () => servidor.destroi() },
     // Grava o que ainda está no buffer de eventos antes de fechar o pool.
     { nome: 'eventos e uso', fn: async () => {

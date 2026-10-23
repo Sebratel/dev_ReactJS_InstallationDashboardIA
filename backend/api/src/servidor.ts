@@ -267,6 +267,7 @@ export class Servidor {
       | 'modoDosFiltros'
       | 'avisoDasPaginas'
       | 'usoDasTelas'
+      | 'sombraAoVivo'
     >
   > &
     Pick<
@@ -278,6 +279,7 @@ export class Servidor {
       | 'avisoDasPaginas'
       | 'modoDosFiltros'
       | 'usoDasTelas'
+      | 'sombraAoVivo'
     >;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
@@ -2535,6 +2537,19 @@ export class Servidor {
       omitidas = carregado.omitidas;
       tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
     }
+
+    // **Modo sombra da fonte ao vivo** (docs/DECISAO-AO-VIVO.md): a mesma pergunta
+    // refeita ao vivo em segundo plano e comparada com esta. `observa` é síncrona e não
+    // lança; o resultado só vai para o log e para as métricas `sombra_*`.
+    this.opts.sombraAoVivo?.observa({
+      dash,
+      alvo,
+      daTela,
+      janela: { de, linhas, termo },
+      clicados,
+      agora: this.opts.agora(),
+      pagina: paginaCalculada,
+    });
 
     const corpo: CorpoDaPagina = {
       ...paginaCalculada,
