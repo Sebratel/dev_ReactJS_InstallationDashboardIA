@@ -15900,3 +15900,26 @@ período (`snapshot-do-periodo.ts`), contra a mesma página sobre as tabelas int
   costurada não. Os empatados seguem a ordem de chegada das linhas, então a ordem dentro
   do empate já muda de um refresh para o outro em produção. A comparação ao vivo conta
   isso à parte (`soOrdem`).
+
+## #237 — o gestor da Premiação e do Diário passa a vir da Senior (23/10)
+
+Decisão do Misael: `quadro-funcional` lê `API_WebDeveloper.db_senior_collaborators` em vez
+da planilha; GESTOR = supervisor, senão coordenador, senão gerente; um registro por nome.
+Regra e conferência em [SPEC-DRIVEN](./SPEC-DRIVEN.md). O que muda na tela, medido nos
+protocolos do ano (pares instalador × protocolo, instalador ≈ quem alocou o patrimônio e o
+auxiliar):
+
+- **O filtro da planilha deixava 64% sem gestor.** O M só aceitava três nomes (Luis
+  Aranda, Pablo Borges, Stefany Souza); com a Senior, cada instalador ganha o líder que a
+  árvore dela diz — 21 nomes nos protocolos do ano.
+- **Luis Aranda não lidera ninguém na Senior.** Ele existe como colaborador, mas não é
+  supervisor, coordenador nem gerente de ninguém; a equipe que a planilha dá a ele (~18%)
+  aparece sob quem está acima dela na árvore. Se ele é o líder de fato, o conserto é na
+  estrutura da Senior, não aqui.
+- **Desligado não tem líder na Senior** (~20%): o fluxo n8n preenche a hierarquia só de
+  quem está ativo (9 de 1.986 demitidos têm supervisor). Protocolo antigo de quem saiu fica
+  sem gestor. Conserto possível no fluxo: guardar o último líder na demissão.
+- **Fora da Senior: ~4%** — nome do Voalle sem par exato na Senior.
+- **Nome repetido multiplicaria linha.** 131 nomes aparecem mais de uma vez (readmissão,
+  duas empresas); a mescla de `protocolos-produtividade` é por nome, então o `sql:` escolhe
+  um. Conferido: 2.521 linhas, 2.521 `upper_name` distintos.

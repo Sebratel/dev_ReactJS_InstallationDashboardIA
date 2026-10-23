@@ -91,7 +91,7 @@ queries:
     realtime: false # MariaDB: sem CDC, atualiza por polling/TTL
   quadro-funcional:
     ttl: 3600
-    realtime: false # Google Sheets: sem CDC
+    realtime: false # MariaDB (Senior, via n8n): sem CDC
   clima-tempo:
     ttl: 1800
     realtime: false

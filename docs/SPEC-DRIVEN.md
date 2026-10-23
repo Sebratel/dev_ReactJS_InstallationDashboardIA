@@ -65,6 +65,26 @@ chega com 2 colunas em vez de 38 — CPF, RG e o resto de RH ficam na planilha. 
 contra o snapshot do Google no mesmo dia: premiação e capacidade idênticas (hash dos blocos),
 quadro 538/540 linhas iguais (o snapshot do Google era de 07/10). ACHADOS #209.
 
+### `quadro-funcional` — o GESTOR sai da Senior, não da planilha (23/10/2026)
+
+Decisão do Misael: o gestor da Premiação e do Diário (`PROTOCOLOS PRODUTIVIDADE[GESTOR]`,
+que a mescla de `protocolos-produtividade` traz daqui por `upper_name`) vem de
+`API_WebDeveloper.db_senior_collaborators`, a tabela que o fluxo n8n "Senior G5 — Sync
+Colaboradores" mantém; a planilha (`employee_managers`) deixa de ser lida. O `sql:`:
+
+- **um registro por nome** (`ROW_NUMBER() OVER (PARTITION BY TRIM(name))`): a Senior tem
+  131 nomes repetidos, e nome repetido multiplicaria linha na mescla. Vale o ativo
+  (`termination_date` nulo), depois o que tem líder, depois a admissão mais nova;
+- **GESTOR = o líder imediato na árvore**: `supervisor_name`; sem ele, `coordinator_name`;
+  sem os dois, `manager_name`.
+
+O `Table.SelectRows` nos três nomes da planilha saiu (a Senior escreve o nome completo em
+maiúsculas; o filtro zeraria tudo). Conferido no banco em 23/10: 2.521 linhas, 2.521
+`upper_name` distintos, 50 gestores. A conta MariaDB da stack precisa de `SELECT` em
+`API_WebDeveloper.db_senior_collaborators`. `capacidade-equipe` e `gestores-equipes` (a
+planilha de capacidade, de onde saem a capacidade e o `TÉCNICO 2`) continuam como estão: a
+Senior não tem esse dado. ACHADOS #237.
+
 ### `field-agenda` — janela deslizante de 3 meses no `sql:` (27/08/2026)
 
 ```sql

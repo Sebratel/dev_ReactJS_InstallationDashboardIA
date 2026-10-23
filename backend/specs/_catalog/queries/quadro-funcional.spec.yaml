@@ -4,23 +4,33 @@ id: quadro-funcional
 name: QUADRO FUNCIONAL
 origin: expression
 # EDITADA À MÃO em 14/10/2026 (docs/SPEC-DRIVEN.md, ACHADOS #209): a fonte era Google
-# Sheets; agora é o DB_InstallationDashboard, que o n8n preenche a cada 15 min a partir da
-# MESMA planilha. As colunas saem do SQL com os nomes da planilha, então o M daqui para
-# frente é o de antes, sem a navegação de aba e o PromoteHeaders.
+# Sheets; passou ao DB_InstallationDashboard, cópia da MESMA planilha pelo n8n.
+#
+# EDITADA À MÃO de novo em 23/10/2026 (docs/SPEC-DRIVEN.md, ACHADOS #237), decisão do
+# Misael: o GESTOR sai da Senior (`API_WebDeveloper.db_senior_collaborators`, que o fluxo
+# n8n "Senior G5 — Sync Colaboradores" preenche), não mais da planilha. Duas regras:
+#   - UM registro por nome: a Senior tem 131 nomes repetidos (readmissão, duas empresas),
+#     e a mescla de `protocolos-produtividade` é por nome — repetido multiplicaria linha.
+#     Vale o ativo (`termination_date` nulo), depois o que tem líder, depois a admissão
+#     mais nova;
+#   - GESTOR = o líder imediato na árvore da Senior: supervisor; sem supervisor, o
+#     coordenador; sem os dois, o gerente.
+# O filtro do M nos três nomes da planilha ("Luis Aranda", "Pablo Borges", "Stefany
+# Souza") saiu: a Senior escreve o nome completo em maiúsculas, e o gestor de cada
+# instalador passa a ser quem ela diz.
 source_type: odbc
 datasource: dbMaria
-sql: "SELECT em.employee_name AS `NOME`, em.manager_name AS `GESTOR` FROM DB_InstallationDashboard.employee_managers AS em ORDER BY em.id"
+sql: "SELECT TRIM(s.name) AS `NOME`, s.lider AS `GESTOR` FROM (SELECT sc.id, sc.name, COALESCE(NULLIF(TRIM(sc.supervisor_name), ''), NULLIF(TRIM(sc.coordinator_name), ''), NULLIF(TRIM(sc.manager_name), '')) AS lider, ROW_NUMBER() OVER (PARTITION BY TRIM(sc.name) ORDER BY sc.termination_date IS NULL DESC, COALESCE(NULLIF(TRIM(sc.supervisor_name), ''), NULLIF(TRIM(sc.coordinator_name), ''), NULLIF(TRIM(sc.manager_name), '')) IS NOT NULL DESC, sc.admission_date DESC, sc.id DESC) AS ordem FROM API_WebDeveloper.db_senior_collaborators AS sc WHERE TRIM(sc.name) <> '') AS s WHERE s.ordem = 1 ORDER BY s.id"
 url: null
 sheet: null
 endpoints: null
 source_tables:
-- db_installationdashboard.employee_managers
+- api_webdeveloper.db_senior_collaborators
 m_expression: |-
   let
-      Fonte = Odbc.Query("dsn=dbMaria", "SELECT em.employee_name AS `NOME`, em.manager_name AS `GESTOR` FROM DB_InstallationDashboard.employee_managers AS em ORDER BY em.id"),
+      Fonte = Odbc.Query("dsn=dbMaria", "SELECT TRIM(s.name) AS `NOME`, s.lider AS `GESTOR` FROM (SELECT sc.id, sc.name, COALESCE(NULLIF(TRIM(sc.supervisor_name), ''), NULLIF(TRIM(sc.coordinator_name), ''), NULLIF(TRIM(sc.manager_name), '')) AS lider, ROW_NUMBER() OVER (PARTITION BY TRIM(sc.name) ORDER BY sc.termination_date IS NULL DESC, COALESCE(NULLIF(TRIM(sc.supervisor_name), ''), NULLIF(TRIM(sc.coordinator_name), ''), NULLIF(TRIM(sc.manager_name), '')) IS NOT NULL DESC, sc.admission_date DESC, sc.id DESC) AS ordem FROM API_WebDeveloper.db_senior_collaborators AS sc WHERE TRIM(sc.name) <> '') AS s WHERE s.ordem = 1 ORDER BY s.id"),
       #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"NOME", type text}, {"GESTOR", type text}}),
-      #"Linhas Filtradas" = Table.SelectRows(#"Tipo Alterado", each ([GESTOR] = "Luis Aranda" or [GESTOR] = "Pablo Borges" or [GESTOR] = "Stefany Souza")),
-      #"Linhas Classificadas" = Table.Sort(#"Linhas Filtradas",{{"GESTOR", Order.Ascending}}),
+      #"Linhas Classificadas" = Table.Sort(#"Tipo Alterado",{{"GESTOR", Order.Ascending}}),
       #"Personalização Adicionada" = Table.AddColumn(#"Linhas Classificadas", "upper_name", each Text.Upper([NOME]))
   in
       #"Personalização Adicionada"
