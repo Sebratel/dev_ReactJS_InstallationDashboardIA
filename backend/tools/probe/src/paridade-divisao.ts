@@ -58,7 +58,7 @@ if (!/^\d{4}-\d{2}-\d{2}$/.test(corte)) {
 const spec = yaml.parse(
   fs.readFileSync(path.join(ROOT, 'backend/specs/_catalog/queries/protocolos-geral.spec.yaml'), 'utf8'),
 ) as { sql: string };
-const PISO = "a.created >= '2025-01-01'";
+const PISO = "a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')";
 const sql = spec.sql.trim().replace(/;\s*$/, '');
 if (sql.split(PISO).length !== 2) {
   console.error(`o \`sql:\` da protocolos-geral não tem exatamente um "${PISO}" — a costura mudou.`);

@@ -47,7 +47,7 @@ sql: |-
   		   it.id = '1015') --- TEC - Instalação de Radio – CORPORATIVO)
   	--and p.tag_number like '178254'
   -- 25/09/2026: desde 2025, como protocolos-geral; o corte no ano corrente deixava instalado de 2025 sem data (ACHADOS #152)
-  AND plis.out_date >= '2025-01-01'
+  AND plis.out_date >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
 url: null
 sheet: null
 endpoints: null

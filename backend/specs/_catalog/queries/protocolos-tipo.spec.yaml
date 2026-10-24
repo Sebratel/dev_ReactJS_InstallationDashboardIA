@@ -6,7 +6,7 @@
 # (medido em 09/10, ACHADOS #200).
 #
 # O recorte é o MESMO da PG, porque a mesclagem LeftOuter dá tipo vazio a protocolo fora dela:
-#   - os 12 `incident_type_id` e `a.created >= '2025-01-01'` do SQL da PG;
+#   - os 12 `incident_type_id` e `a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')` do SQL da PG;
 #   - `STATUS <> "Cancelado"`, que na PG é passo de M. Em M, `null <> "Cancelado"` é
 #     verdadeiro, então status ausente FICA; em SQL o `<>` sozinho o tiraria.
 # `N°PROTOCOLO` é único na PG (0 repetidos em 98.491, medido em 08/10), e o tipo é do
@@ -25,7 +25,7 @@ sql: |-
   JOIN incident_types it ON it.id = ai.incident_type_id
   LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id
   WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15')
-    AND a.created >= '2025-01-01'
+    AND a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
     AND (is2.title IS NULL OR is2.title <> 'Cancelado')
 url: null
 sheet: null

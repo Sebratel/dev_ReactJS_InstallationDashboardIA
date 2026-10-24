@@ -118,8 +118,8 @@ consultas:
       tipo: protocolos-da-lista
       protocolo: "N°PROTOCOLO"
     costura:
-      - de: "      AND a.created >= '2025-01-01'\n),\nPLANOS_CONTRATO AS ("
-        para: "      AND a.created >= '2025-01-01'\n      AND a.title IN (\n          SELECT a2.title\n            FROM assignment_incidents ai2\n            JOIN assignments a2 ON a2.id = ai2.assignment_id\n           WHERE ai2.protocol = ANY(:protocolos::bigint[])\n      )\n),\nPLANOS_CONTRATO AS ("
+      - de: "      AND a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')\n),\nPLANOS_CONTRATO AS ("
+        para: "      AND a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')\n      AND a.title IN (\n          SELECT a2.title\n            FROM assignment_incidents ai2\n            JOIN assignments a2 ON a2.id = ai2.assignment_id\n           WHERE ai2.protocol = ANY(:protocolos::bigint[])\n      )\n),\nPLANOS_CONTRATO AS ("
 
   # As três dependências de M de `protocolos-geral` que pesam (gestores-equipes, do
   # MariaDB, leva ~2 s e fica inteira). Sem o recorte, elas rodavam inteiras a cada
@@ -138,8 +138,8 @@ consultas:
       tipo: protocolos-da-lista
       protocolo: "N°PROTOCOLO"
     costura:
-      - de: "AND plis.out_date >= '2025-01-01'"
-        para: "AND plis.out_date >= '2025-01-01'\nAND a.title IN (\n    SELECT a2.title\n      FROM assignment_incidents ai2\n      JOIN assignments a2 ON a2.id = ai2.assignment_id\n     WHERE ai2.protocol = ANY(:protocolos::bigint[])\n)"
+      - de: "AND plis.out_date >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')"
+        para: "AND plis.out_date >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')\nAND a.title IN (\n    SELECT a2.title\n      FROM assignment_incidents ai2\n      JOIN assignments a2 ON a2.id = ai2.assignment_id\n     WHERE ai2.protocol = ANY(:protocolos::bigint[])\n)"
 
   # Junta por PROTOCOLO, e o ROW_NUMBER particiona por `ai.protocol`: o recorte pela
   # lista mantém cada partição inteira.
@@ -211,5 +211,5 @@ variantes:
       protocolo: "N°PROTOCOLO"
       data: "DATA CRIADO"
     costura:
-      - de: "      AND a.created >= '2025-01-01'\n),\nPLANOS_CONTRATO AS ("
-        para: "      AND a.created >= '2025-01-01'\n      AND a.title IN (\n          SELECT a2.title\n            FROM assignments a2\n           WHERE a2.created >= :desde::date\n             AND a2.created < :ate::date\n      )\n),\nPLANOS_CONTRATO AS ("
+      - de: "      AND a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')\n),\nPLANOS_CONTRATO AS ("
+        para: "      AND a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')\n      AND a.title IN (\n          SELECT a2.title\n            FROM assignments a2\n           WHERE a2.created >= :desde::date\n             AND a2.created < :ate::date\n      )\n),\nPLANOS_CONTRATO AS ("

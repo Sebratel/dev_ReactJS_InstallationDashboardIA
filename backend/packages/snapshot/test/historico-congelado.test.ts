@@ -35,8 +35,11 @@ test('o SQL real da protocolos-geral tem o piso exatamente uma vez', () => {
   ) as { sql: string };
   const hist = sqlComCorte(spec.sql, P, '<', '2026-07-01');
   const rec = sqlComCorte(spec.sql, P, '>=', '2026-07-01');
-  assert.ok(hist.includes("a.created >= '2025-01-01' AND a.created < '2026-07-01'"));
-  assert.ok(rec.includes("a.created >= '2025-01-01' AND a.created >= '2026-07-01'"));
+  // O piso é a janela de negócio — no máximo o ano anterior inteiro (24/10/2026) —, e o
+  // corte do arquivo entra colado nele.
+  const piso = "a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')";
+  assert.ok(hist.includes(`${piso} AND a.created < '2026-07-01'`));
+  assert.ok(rec.includes(`${piso} AND a.created >= '2026-07-01'`));
 });
 
 test('costura ausente, repetida ou corte malformado erra alto', () => {

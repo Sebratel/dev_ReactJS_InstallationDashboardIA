@@ -201,12 +201,12 @@ queries:
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= '2025-01-01')
+        	and a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year'))
       para: |-
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= '2025-01-01'
+        	and a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
         	and a.modified >= :desde)
 
   # `assignments` aqui só é ponte de JOIN (nunca teve coluna própria
@@ -227,10 +227,10 @@ queries:
       tipos: ['15', '1256']
     costura:
       de: |2-
-                DATE(r.final_date) >= '2025-01-01'
+                DATE(r.final_date) >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
                 AND it.id in ('15', '1256')
       para: |2-
-                DATE(r.final_date) >= '2025-01-01'
+                DATE(r.final_date) >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
                 AND it.id in ('15', '1256')
                 AND a.modified >= :desde
 
@@ -471,8 +471,8 @@ queries:
     chave: [SOLICITACAO]
     marca: [DATA HORA SAIDA]
     costura:
-      de: "AND plis.out_date >= '2025-01-01'"
+      de: "AND plis.out_date >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')"
       para: |-
-        AND plis.out_date >= '2025-01-01'
+        AND plis.out_date >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
           AND it.id <> '15'
           AND GREATEST(plis.created, COALESCE(plis.modified, plis.created)) >= :desde

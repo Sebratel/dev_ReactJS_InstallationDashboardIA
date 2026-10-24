@@ -97,7 +97,7 @@ sql: |-
       LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id
       LEFT JOIN v_users vu ON vu.id = a.created_by
       WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo
-        AND a.created >= '2025-01-01'
+        AND a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
   ),
   PLANOS_CONTRATO AS (
       SELECT
