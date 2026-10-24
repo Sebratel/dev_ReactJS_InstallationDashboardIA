@@ -215,7 +215,7 @@ test('erro de avaliação é MEvalError, não exceção genérica', () => {
   assert.throws(() => ev.avaliaQuery('let a = Table.Pivot(1) in a'), MEvalError);
 });
 
-test('o corpus continua com 26 queries e 170 passos', () => {
+test('o corpus continua com 26 queries e 176 passos', () => {
   // 24 queries / 327 passos + `field-agenda-slot` (ACHADOS #87): 1 query, 3 passos
   // (mesma forma de `field-agenda` — Fonte, Linhas Filtradas1, Tipo Alterado). Não
   // vem do PBIP, mas é uma query de verdade e entra no corpus como qualquer outra.
@@ -255,16 +255,20 @@ test('o corpus continua com 26 queries e 170 passos', () => {
   //
   // -1 (23/10/2026, ACHADOS #237): `quadro-funcional` passou a ler o GESTOR da Senior, e
   // o `Table.SelectRows` nos três nomes da planilha saiu. 171 - 1 = 170.
+  //
+  // +6 (24/10/2026, ACHADOS #239): a mescla com TECNICOS AUXILIARES voltou do `sql:` de
+  // `protocolos-produtividade` para o M — tipar a chave, mesclar, expandir, as duas
+  // colunas do ramo e tirar as de apoio. 170 + 6 = 176.
   const qs = corpus();
   assert.equal(qs.length, 26);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    170,
+    176,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
   // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    170,
+    176,
   );
 });

@@ -479,8 +479,15 @@ test('o sql: de protocolos-produtividade é cópia FIEL do SQL de produção em 
 
   // As marcas do que se perdeu, nomeadas. Se o `assert.equal` acima falhar, estas
   // dizem O QUE falta — e é isso que se quer ler numa saída de teste.
-  for (const marca of ['ramo_produtividade AS (', 'ramo_auxiliares AS (', 'UNION ALL', '"INSTALADOR"']) {
+  // `"INSTALADOR"` saiu do SQL em 24/10/2026 (ACHADOS #239): a mescla com TECNICOS
+  // AUXILIARES voltou para o M, e o SQL entrega o ramo e a chave para ela. A marca do
+  // append passa a ser `"_RAMO"` — sem ele o M não sabe de que ramo é a linha.
+  for (const marca of ['ramo_produtividade AS (', 'ramo_auxiliares AS (', 'UNION ALL', '"_RAMO"', '"_CHAVE AUXILIAR"']) {
     assert.ok(sql.includes(marca), `o SQL perdeu \`${marca}\` — é o append dos dois ramos`);
+  }
+  const { m_expression: m } = parseYaml(fs.readFileSync(spec, 'utf8')) as { m_expression: string };
+  for (const passo of ['#"TECNICOS AUXILIARES"', '"INSTALADOR", each if [_RAMO] = "A"']) {
+    assert.ok(m.includes(passo), `o M perdeu \`${passo}\` — é onde o INSTALADOR é montado desde 24/10/2026`);
   }
 });
 

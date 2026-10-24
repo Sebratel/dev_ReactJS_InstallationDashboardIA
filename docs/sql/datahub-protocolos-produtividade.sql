@@ -457,39 +457,19 @@ troca AS (
     ) x WHERE x._persona = 1
 ),
 
--- TECNICOS AUXILIARES: uma linha por protocolo (PERSONA = 1 no original).
--- MATERIALIZED: sem isto o PostgreSQL 12+ inlina a CTE referenciada uma so vez, a
--- expressao de `_chave` volta para dentro do `ON` do `mesclado`, e o plano regride
--- para o Nested Loop com `regexp_replace` por par de linhas. Medido em 12/09/2026:
--- calcular a chave numa subconsulta SEM a cerca nao mudou o plano em NADA -- o
--- `EXPLAIN` saiu identico, byte a byte. A cerca e o que faz a diferenca.
+-- TECNICOS AUXILIARES: a mescla SAIU daqui em 24/10/2026 e voltou para a camada M,
+-- como no relatorio original -- com a query `tecnicos-auxiliares` (ACHADOS #239).
 --
--- O ganho, medido em 12/09/2026 (`count(*)` sobre a query inteira):
+-- Aqui ela custava 93% da consulta. `EXPLAIN ANALYZE` em 22/10/2026: 469 s no
+-- total, 434 s numa junção so -- Nested Loop sobre CTE Scan, 88 mil x 40 mil
+-- leituras. A cerca MATERIALIZED de 12/09 tirou o `regexp_replace` de dentro do par
+-- (antes nem terminava em 600 s), mas nao a causa: `bruto` estima ~11 mil linhas
+-- onde ha dezenas de milhares, e com essa estimativa o planejador sempre escolhe o
+-- Nested Loop. Na camada M a mescla e por hash.
 --
---   antes ....... nao terminava em 600 s (statement timeout)
---   depois ...... 76.393 linhas em 151,3 s
---
--- Ainda acima do `VOALLE_STATEMENT_TIMEOUT_MS` (30 s), entao capturar o golden
--- exige teto maior na chamada. Derrubar os 151 s e o proximo passo, e ele passa
--- pela estimativa: `bruto` estima 11.423 linhas onde ha dezenas de milhares, e e
--- dai que vem o `rows=1` que ainda faz o planejador escolher Nested Loop.
-auxiliar AS MATERIALIZED (
-    SELECT *,
-           NULLIF(regexp_replace("PROTOCOLO:"::text, '\D', '', 'g'), '')::bigint AS _chave
-    FROM (
-        SELECT
-            r.tags        AS "PROTOCOLO:",
-            p.name        AS "AUXILIAR",
-            ROW_NUMBER() OVER (PARTITION BY r.tags ORDER BY a.final_date DESC) AS _persona
-        FROM reports r
-        LEFT JOIN assignments          a  ON a.id  = r.assignment_id
-        LEFT JOIN assignment_incidents ai ON ai.assignment_id = a.id
-        LEFT JOIN people               p  ON p.id  = r.person_id
-        WHERE a.corresponding_parent_id IS NOT NULL
-          AND a.assignment_type = 'RAUX'
-          AND a.final_date >= DATE_TRUNC('year', CURRENT_DATE)   -- idem alocacao: so casa com 2026
-    ) x WHERE x._persona = 1
-),
+-- O SQL entrega `_RAMO` e `_CHAVE AUXILIAR` (a MESMA chave inteira de antes, ja
+-- calculada em `unificado`), e o M monta "TECNICOS AUXILIARES.AUXILIAR" e
+-- "INSTALADOR" com as regras que moravam no SELECT final -- ver la.
 
 -- -----------------------------------------------------------------------------
 -- 4. MESCLAGEM + FILTRO DE CANCELADO
@@ -510,30 +490,15 @@ mesclado AS (
         al."ALOCADO POR:"      AS _alocado_por,
         al."POSIÇÃO"           AS _posicao,
         tr."TÉCNICO"           AS _tecnico_troca,
-        tr."DATA DA TROCA"     AS _data_troca,
-        ax."AUXILIAR"          AS _auxiliar
-    -- O `ON` usa as chaves JA CALCULADAS (`_chave`), nunca o `regexp_replace` cru.
-    --
-    -- `unificado._chave` existe desde antes de 12/09/2026 -- com um comentario que
-    -- explica exatamente este risco -- mas o join aqui embaixo continuava
-    -- recalculando a expressao nos dois lados, e portanto nao a usava para nada.
-    --
-    -- O que o `EXPLAIN` mostrou em 12/09/2026, com a expressao dentro do `ON`: o
-    -- planejador nao tem estatistica sobre expressao, estimou `rows=2` (o real passa
-    -- de 70 mil) e escolheu **Nested Loop Left Join com Join Filter** -- dois
-    -- `regexp_replace` por PAR de linhas, nao por linha. Nem `count(*)` terminava
-    -- em 600 s.
-    --
-    -- `::text` antes do regexp porque os dois lados NAO tem a mesma especie no
-    -- banco: `ai.protocol` e numerico e `r.tags` e texto. Foi exatamente essa
-    -- diferenca que fez o join casar ZERO por especie e 77,4% como inteiro.
+        tr."DATA DA TROCA"     AS _data_troca
+    -- A mescla com TECNICOS AUXILIARES foi para a camada M (ver o comentario no lugar
+    -- do antigo CTE `auxiliar`). A chave dela continua sendo `unificado._chave`, que
+    -- sai no SELECT final como "_CHAVE AUXILIAR".
     FROM unificado u
     LEFT JOIN alocacao al
            ON al."SOLICITACAO" = u."SOLICITACAO"
     LEFT JOIN troca tr
            ON tr."PROTOCOLO" = u."N°PROTOCOLO"
-    LEFT JOIN auxiliar ax
-           ON ax._chave = u._chave
     WHERE u."STATUS" IS DISTINCT FROM 'Cancelado'
 )
 
@@ -635,12 +600,17 @@ SELECT
     -- e o navegador do usuario travando para montar a tabela.
     _data_troca::date                                     AS "DATA DA TROCA",
 
+    -- TECNICOS AUXILIARES.AUXILIAR e INSTALADOR: desde 24/10/2026 montadas na camada
+    -- M, sobre `_RAMO` e `_CHAVE AUXILIAR` (as duas linhas logo abaixo). As regras e o
+    -- porque delas continuam sendo os destes comentarios:
+    --
     -- vinda de TECNICOS AUXILIARES -- e SO no ramo de produtividade.
     -- No ramo acrescentado esta coluna deixou de existir (foi renomeada para
     -- `TECNICO`, ver abaixo), e `Table.Combine` preenche com nulo o que falta de um
     -- lado. Medido no modelo publicado em 25/08/2026: 5.395 de 5.395 linhas do ramo
     -- acrescentado com esta coluna VAZIA (100%).
-    CASE WHEN _ramo = 'A' THEN NULL ELSE _auxiliar END    AS "TECNICOS AUXILIARES.AUXILIAR",
+    --   "TECNICOS AUXILIARES.AUXILIAR" = nulo no ramo A, o auxiliar no ramo P.
+    _ramo                                                 AS "_RAMO",
 
     -- as duas condicionais do M, na ordem em que ele as escreve
     --
@@ -667,9 +637,10 @@ SELECT
     --   linhas em branco              17.610       16.672     16.777
     --   razao do grupo em branco      99,4176      63,4247    62,7891
     --   Media Geral                    4,3943       4,1050     3,8998
-    CASE WHEN _ramo = 'A' THEN _auxiliar
-         WHEN "TIPO DE PROTOCOLO" = 'TEC - Troca de Endereço'
-         THEN _tecnico_troca ELSE _alocado_por END        AS "INSTALADOR",
+    --
+    --   "INSTALADOR" = o auxiliar no ramo A; senao o tecnico da troca (Troca de
+    --   Endereco) ou quem alocou o patrimonio.
+    _chave                                                AS "_CHAVE AUXILIAR",
     CASE WHEN "TIPO DE PROTOCOLO" = 'TEC - Troca de Endereço'
          THEN _data_troca::date ELSE _data_saida::date END AS "DATA FINAL"
 

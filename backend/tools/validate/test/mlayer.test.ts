@@ -215,7 +215,10 @@ test('as 26 queries reais: 25 são escaneáveis, e a exceção é a do let aninh
   //
   // 146 → 145 (23/10/2026): `quadro-funcional` lê o GESTOR da Senior e perdeu o filtro
   // nos três nomes da planilha (ACHADOS #237).
-  assert.equal(passos, 145, 'passos M nas 25 escaneáveis');
+  //
+  // 145 → 151 (24/10/2026): a mescla com TECNICOS AUXILIARES voltou do `sql:` de
+  // `protocolos-produtividade` para o M, em 6 passos (ACHADOS #239).
+  assert.equal(passos, 151, 'passos M nas 25 escaneáveis');
 });
 
 /**
@@ -267,7 +270,7 @@ test('em 9 tabelas o rowCount do golden não é comparável com o Power BI', () 
  * As 7 que restam são TODAS de `PROTOCOLOS GERAL`, que ainda as cria em M — é a
  * próxima tabela a receber o mesmo tratamento.
  */
-test('7 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
+test('8 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   const tabelas = verificarModelo(SPECS, GOLDEN);
   const emM = tabelas.flatMap((t) => t.colunas.filter((c) => c.procedencia === 'm'));
   const citadas = emM.filter((c) => c.noDax);
@@ -289,8 +292,16 @@ test('7 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   //
   // Este número CAI quando trabalho sai do M e vai para o SQL — que é a direção
   // desejada. Se ele SUBIR, alguém devolveu transformação para a camada M.
-  assert.equal(emM.length, 33, 'colunas nascidas em M');
-  assert.equal(citadas.length, 7, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
+  //
+  // 33 -> 35 (24/10/2026, ACHADOS #239): e foi de propósito, uma vez, medido. A mescla
+  // de `protocolos-produtividade` com TECNICOS AUXILIARES era 434 dos 469 s da consulta
+  // no SQL (Nested Loop por estimativa errada, sem conserto no plano); no M ela é por
+  // hash e o ano inteiro roda em 43 s. Com ela voltam TECNICOS AUXILIARES.AUXILIAR e
+  // INSTALADOR — o resto das 15 de 25/08 continua no SQL.
+  assert.equal(emM.length, 35, 'colunas nascidas em M');
+  // 7 -> 8 junto: das duas que voltaram, 'PROTOCOLOS PRODUTIVIDADE'[INSTALADOR] é citada
+  // pelo DAX (é o eixo da Premiação e do Diário).
+  assert.equal(citadas.length, 8, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
   for (const c of citadas) assert.ok(c.step, `${c.table}[${c.column}] sem passo`);
 
   // A coluna de junção da fase 2b.5 está entre elas — e é o caso mais concreto:

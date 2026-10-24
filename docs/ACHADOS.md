@@ -15941,3 +15941,28 @@ O que vale fora dela:
   cada pedido, e o aviso do poller (`invalidaPagina`) limparia um dado que não veio dele.
 - **Agosto também fecha:** 32 de 32 visuais contra a referência no mesmo instante. A busca de
   um mês levou 17 s em 23/10 e 25 s em 24/10 — os protocolos são a maior parte.
+
+## #239 — `protocolos-produtividade` de 169–469 s para 43–54 s: a mescla do auxiliar volta para o M (24/10)
+
+A junção com o auxiliar era 434 dos 469 s da consulta (`EXPLAIN ANALYZE`, 22/10): Nested Loop
+sobre CTE Scan porque o planejador estima `bruto` em ~11 mil linhas onde há dezenas de
+milhares. Sem `SET` na sessão não há como mudar o plano, então a mescla voltou para o M,
+onde o relatório original a fazia — por hash, com `tecnicos-auxiliares`, que tem a mesma
+regra do CTE que saiu. O SQL entrega `_RAMO` e `_CHAVE AUXILIAR`; o M monta
+`TECNICOS AUXILIARES.AUXILIAR` e `INSTALADOR` com as regras de antes. Detalhe em
+[SPEC-DRIVEN](./SPEC-DRIVEN.md).
+
+- **Tempo, ano inteiro:** 43 s (`validate:queries`); 54 s pelo pipeline do refresh com as
+  dependências, contra 169 s do SQL antigo rodando AO MESMO TEMPO (e 469 s medidos em 22/10).
+- **Resultado, as duas versões no mesmo instante, três rodadas:** o mesmo número de linhas
+  nas duas (88.758 e 88.762) e as mesmas colunas; 46, 44 e 52 linhas diferentes (≤ 0,06%),
+  em 22–25 solicitações, só no auxiliar/instalador e no que deriva deles (GESTOR,
+  INSTALADOR_PAD).
+- **A diferença não é da mudança — é empate que já existia.** A regra do auxiliar é "o
+  relato RAUX mais recente por protocolo" (`ROW_NUMBER ... ORDER BY a.final_date DESC`), e
+  63 dos 40.597 protocolos têm auxiliares diferentes empatados no topo. O banco escolhe um
+  qualquer: a MESMA regra rodada duas vezes seguidas troca o auxiliar de 29 protocolos. O
+  SQL antigo já variava assim de um refresh para o outro. Conferido na terceira rodada:
+  **0 das 104 linhas diferentes** estão fora desses 63 protocolos.
+- **Em aberto:** desempatar (por exemplo, o relato de `id` mais alto) tornaria o auxiliar
+  estável. Muda quem aparece em 63 protocolos, então é regra de negócio: fica para o Erick.

@@ -65,6 +65,27 @@ chega com 2 colunas em vez de 38 — CPF, RG e o resto de RH ficam na planilha. 
 contra o snapshot do Google no mesmo dia: premiação e capacidade idênticas (hash dos blocos),
 quadro 538/540 linhas iguais (o snapshot do Google era de 07/10). ACHADOS #209.
 
+### `protocolos-produtividade` — a mescla com TECNICOS AUXILIARES volta para o M (24/10/2026)
+
+A junção `LEFT JOIN auxiliar ax ON ax._chave = u._chave` era 434 dos 469 s da consulta
+(`EXPLAIN ANALYZE`, 22/10/2026): o planejador estima `bruto` em ~11 mil linhas onde há
+dezenas de milhares e escolhe Nested Loop sobre CTE Scan (88 mil × 40 mil leituras). A
+cerca `MATERIALIZED` de 12/09 tirou o `regexp_replace` de dentro do par, mas não a
+estimativa, e não há como corrigi-la sem `SET` na sessão. Então a mescla voltou para onde
+o relatório original a fazia — o M, que mescla por hash:
+
+- o `sql:` perdeu o CTE `auxiliar` e a junção, e passou a entregar `_RAMO` e
+  `_CHAVE AUXILIAR` (a MESMA chave inteira de antes, calculada em `unificado`) no lugar de
+  `TECNICOS AUXILIARES.AUXILIAR` e `INSTALADOR`;
+- o M tipa a chave, mescla com `tecnicos-auxiliares` (mesma regra do CTE: RAUX do ano, o
+  relato mais recente por protocolo; "PROTOCOLO:" já é Int64 lá) e monta as duas colunas
+  com as regras que estavam no SELECT final.
+
+O ano inteiro: **43 s** (`validate:queries`) contra 469 s. `docs/sql/datahub-protocolos-
+produtividade.sql` segue igual ao `sql:` (o teste de `incremental.test.ts` trava). A costura
+incremental não mudou: as âncoras são a abertura de `bruto` e o filtro de `a.created`.
+ACHADOS #239.
+
 ### `quadro-funcional` — o GESTOR sai da Senior, não da planilha (23/10/2026)
 
 Decisão do Misael: o gestor da Premiação e do Diário (`PROTOCOLOS PRODUTIVIDADE[GESTOR]`,
