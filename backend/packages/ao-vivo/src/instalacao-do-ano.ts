@@ -22,8 +22,19 @@ import type { Decisao, PeriodoAoVivo } from './periodo.ts';
 import { aplicaRecorte, celula, texto } from './recorte.ts';
 import type { TabelaDoPeriodo } from './snapshot-do-periodo.ts';
 
-/** As páginas que o conjunto do ano serve. */
-export const PAGINAS_DO_ANO: readonly string[] = ['premiacao-instalacao', 'diario-instalacao'];
+/**
+ * As páginas que o conjunto do ano serve: as cinco com o corte da PG no início do ano
+ * (`corte-por-pagina.yaml`). Premiação e Diário entraram em 24/10/2026; Protocolos
+ * Detalhados (as mesmas tabelas do Diário), Manutenção Inicial e Instalação Reincidente
+ * no mesmo dia — as consultas de reincidência delas vêm do snapshot, como contratos.
+ */
+export const PAGINAS_DO_ANO: readonly string[] = [
+  'premiacao-instalacao',
+  'diario-instalacao',
+  'protocolos-detalhados',
+  'manutencao-inicial',
+  'instalacao-reincidente',
+];
 
 /** As queries que vêm do SRD; as outras das duas páginas são copiadas do snapshot. */
 export const QUERIES_DO_ANO: readonly string[] = ['protocolos-produtividade', 'protocolos-geral'];

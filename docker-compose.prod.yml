@@ -190,10 +190,11 @@ services:
       #   agendamento-field — o mês da tela, buscado uma vez e válido por 2 min (mês
       #     corrente) ou 1 h (fechado); os visuais do grão relato e a previsão de chuva
       #     seguem pelo snapshot;
-      #   premiacao-instalacao, diario-instalacao — UM conjunto do ano para as duas
-      #     (produtividade + protocolos do ano, ~2 min de SRD), buscado em segundo plano
-      #     na subida e válido por 10 min; o calendário de instalação vem congelado do
-      #     snapshot.
+      #   premiacao-instalacao, diario-instalacao, protocolos-detalhados,
+      #   manutencao-inicial, instalacao-reincidente — UM conjunto do ano para as cinco
+      #     (produtividade + protocolos do ano, ~1–2 min de SRD), buscado em segundo plano
+      #     na subida e válido por 10 min; o calendário de instalação e as consultas de
+      #     reincidência vêm do snapshot.
       # Vazio = todas pelo snapshot, como sempre. Busca que falha ou passa de 45 s: o pedido
       # sai pelo snapshot. Pools próprios no SRD (`analytics-ao-vivo`), pastas em
       # `API_RUNTIME_DIR/ao-vivo`.

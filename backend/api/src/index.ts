@@ -343,9 +343,10 @@ acesso.releA(30_000);
 // do SRD e `AO_VIVO_SOMBRA=1` liga a comparação em segundo plano. Sem nenhum dos dois
 // nada é montado, nem pool; a linha de log diz qual estado vale, e por quê.
 //
-// Duas formas: a Agendamento Field busca o MÊS da tela (`periodo.ts`); a Premiação e o
-// Diário dividem UM conjunto do ano (`instalacao-do-ano.ts`), que leva 1–2 min de SRD e
-// por isso vale 10 min e é buscado por baixo — a tela recebe sempre a versão pronta.
+// Duas formas: a Agendamento Field busca o MÊS da tela (`periodo.ts`); as cinco páginas
+// do ano (Premiação, Diário, Detalhados, Manutenção Inicial, Reincidente) dividem UM
+// conjunto do ano (`instalacao-do-ano.ts`), que leva 1–2 min de SRD e por isso vale 10 min
+// e é buscado por baixo — a tela recebe sempre a versão pronta.
 const SABEM_SER_AO_VIVO = new Set(['agendamento-field', ...PAGINAS_DO_ANO]);
 const pedidasAoVivo = (process.env.AO_VIVO_PAGINAS ?? '').split(',').map((p) => p.trim()).filter(Boolean);
 for (const p of pedidasAoVivo) {

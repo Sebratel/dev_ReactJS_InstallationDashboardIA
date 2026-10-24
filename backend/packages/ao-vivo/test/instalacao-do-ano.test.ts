@@ -24,7 +24,7 @@ const model = SemanticModel.fromSpecsDir(SPECS);
 const paginas = loadDashboards(SPECS).filter((d) => PAGINAS_DO_ANO.includes(d.id));
 
 test('o ano é o do corte da página, no fuso do RS — inclusive na virada', () => {
-  assert.equal(paginas.length, 2);
+  assert.equal(paginas.length, PAGINAS_DO_ANO.length, 'toda página da lista existe');
   for (const d of paginas) {
     assert.deepEqual(periodoDoAno(model, d.id, new Date('2026-10-24T15:00:00Z')), { desde: '2026-01-01', ate: '2027-01-01' });
     // 31/12 às 23:30 no RS já é 1º/01 em UTC: o ano ainda é 2026.
@@ -44,10 +44,14 @@ test('todo pedido vai pelo ano, e nenhum visual fica de fora', () => {
   }
 });
 
-test('as queries do SRD e as calculadas congeladas são as do plano das duas páginas', () => {
+test('toda página do ano tem o corte na PG, carrega a PG, e só o calendário é calculada', () => {
+  const usadas = new Set<string>();
   for (const d of paginas) {
+    assert.equal(cortesDaPagina(model.cortes, d.id)[0]?.tabela, 'PROTOCOLOS GERAL', `${d.id}: sem o corte do ano na PG`);
     const plano = planeja([d], model);
-    for (const q of QUERIES_DO_ANO) assert.ok(plano.queries.includes(q), `${d.id} não carrega ${q}`);
+    assert.ok(plano.queries.includes('protocolos-geral'), `${d.id} não carrega a PG`);
+    for (const q of plano.queries) usadas.add(q);
     assert.deepEqual(plano.calculadas, [...CALCULADAS_DO_ANO], `${d.id}: calculada nova precisa decidir de onde vem`);
   }
+  for (const q of QUERIES_DO_ANO) assert.ok(usadas.has(q), `${q} é buscada no SRD e nenhuma página do ano a usa`);
 });

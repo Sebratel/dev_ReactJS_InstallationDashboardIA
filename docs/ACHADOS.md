@@ -15982,3 +15982,19 @@ valem fora dela:
   deu 100% igual, mas as duas erravam do mesmo jeito em relação à produção, onde ele é o
   congelado da PG inteira (#205). A rodada que vale usa o congelado nos dois lados; a API
   copia o do snapshot e recusa se o DAX dele mudou.
+
+## #241 — histórico até o início do ano anterior, e a PG não é determinística em duas colunas (24/10)
+
+Regra do Misael: histórico de no máximo 1 ano para trás. Aplicada como "desde o início do
+ano anterior" nas seis queries que tinham o piso fixo em 2025-01-01 — porque o Relatório
+do Ano compara com o mesmo período do ano anterior, e 12 meses corridos o deixariam
+comparando com um ano quase vazio. Detalhe em [SPEC-DRIVEN](./SPEC-DRIVEN.md).
+
+- **A memória não muda hoje.** O piso novo vale 2025-01-01 até 31/12/2026; a partir de
+  1º/01/2027 vira 2026-01-01 e 2025 sai — antes disso a PG chegaria a dois anos inteiros.
+- **A PG varia de uma busca para a outra em duas colunas, sem ninguém mexer no banco.**
+  A versão antiga contra ela mesma, ao mesmo tempo: mesmas 100.870 linhas, 35 diferentes
+  em `TECNICOS AUXILIARES.AUXILIAR` (o empate do auxiliar, #239) e em `HR. ALOCAÇÃO` —
+  uma solicitação com vários itens de patrimônio fica com a hora do item que chega
+  primeiro (`Table.Distinct` depois do `Table.Sort` por INSTALADO POR, que empata). As
+  comparações entre versões da PG têm de contar com isso.

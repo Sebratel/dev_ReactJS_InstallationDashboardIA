@@ -169,7 +169,7 @@ pesadas saírem do snapshot (fases 2 e 3) e de vez na fase 4.
 **Próximo:** Premiação e Diário (fase 3), onde a memória subiu em 23/10; depois os
 protocolos, que são 14–18 dos 17–25 s da busca de um mês.
 
-## Fase 3 — Premiação e Diário (24/10/2026, na `staging`)
+## Fase 3 — as cinco páginas do ano (24/10/2026, na `staging`)
 
 **Primeiro a consulta.** A `protocolos-produtividade` levava 169–469 s: 93% era a junção
 com o auxiliar, que voltou para o M (ACHADOS #239). O ano inteiro passou a 43–54 s — sem
@@ -205,6 +205,13 @@ pequenas iguais nos dois lados; o calendário congelado (729 dias, da PG inteira
 | Premiação — mês corrente | 21 de 21 |
 | Diário — como abre (último mês fechado) | 22 de 22 |
 | Diário — mês corrente | 22 de 22 |
+| Protocolos Detalhados — como abre / mês corrente | 19 de 19 / 19 de 19 |
+| Manutenção Inicial — como abre (ano) / mês corrente | 41 de 41 / 41 de 41 |
+| Instalação Reincidente — como abre (ano) / mês corrente | 29 de 29 / 29 de 29 |
+
+As três últimas entraram no conjunto do ano no mesmo dia: têm o mesmo corte da PG e o
+mesmo calendário congelado; as consultas de reincidência delas (`reincidencia`,
+`retorno-prioritario`, `instalacoes-reincidentes`) vêm do snapshot, como contratos.
 
 A PG depois do corte da página tem as mesmas 43.900 linhas nos dois lados. Tempos com
 tudo correndo junto: produtividade 111 s, PG do ano 108 s, PG inteira 137 s, contratos
