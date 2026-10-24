@@ -6,6 +6,7 @@
 // morrer no arranque só esconderia a mensagem.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv, loadConfig, missingFor } from '../../packages/query-engine/src/config.ts';
@@ -34,7 +35,11 @@ import { criaUsoDasTelas } from './uso-das-telas.ts';
 import { leTetoDaResposta, memoriaDaResposta } from './memoria-limitada.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
-import { criaSombraDoAmbiente } from './sombra-ao-vivo.ts';
+import { SombraAoVivo } from './sombra-ao-vivo.ts';
+import { montaContextoAoVivo } from './contexto-ao-vivo.ts';
+import { PeriodosAoVivo } from './periodos-ao-vivo.ts';
+import { queriesPequenas } from './pagina-ao-vivo.ts';
+import { buscaDoPeriodo, escreveSnapshotDoPeriodo } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -322,18 +327,57 @@ const acesso = criaAcesso({
 await acesso.recarrega();
 acesso.releA(30_000);
 
-// O modo sombra da fonte ao vivo (`sombra-ao-vivo.ts`, docs/DECISAO-AO-VIVO.md): a página
-// do snapshot refeita ao vivo em segundo plano e comparada. Desligado salvo
-// `AO_VIVO_SOMBRA=1`; a linha diz qual dos dois estados vale, e por quê.
-const sombraAoVivo = await criaSombraDoAmbiente({
-  root: ROOT,
-  snapshotDir: DIR_SNAPSHOT,
-  conta: (nome, quanto) => servidor.metricas.conta(nome, quanto),
-});
+// A fonte ao vivo (docs/DECISAO-AO-VIVO.md). `AO_VIVO_PAGINAS` lista as páginas servidas
+// do SRD — hoje só `agendamento-field` sabe ser — e `AO_VIVO_SOMBRA=1` liga a comparação
+// em segundo plano. Sem nenhum dos dois nada é montado, nem pool; a linha de log diz qual
+// estado vale, e por quê.
+const SABEM_SER_AO_VIVO = new Set(['agendamento-field']);
+const pedidasAoVivo = (process.env.AO_VIVO_PAGINAS ?? '').split(',').map((p) => p.trim()).filter(Boolean);
+for (const p of pedidasAoVivo) {
+  if (!SABEM_SER_AO_VIVO.has(p)) console.error(`[ao-vivo] '${p}' em AO_VIVO_PAGINAS ainda não sabe ser ao vivo — ignorada`);
+}
+const paginasAoVivo = pedidasAoVivo.filter((p) => SABEM_SER_AO_VIVO.has(p));
+const querSombra = process.env.AO_VIVO_SOMBRA === '1';
+const contextoAoVivo =
+  paginasAoVivo.length > 0 || querSombra
+    ? await montaContextoAoVivo(ROOT)
+    : { porque: 'AO_VIVO_PAGINAS vazia e AO_VIVO_SOMBRA não é 1' };
+const periodosAoVivo = new Map<string, PeriodosAoVivo>();
+let sombraAoVivo: SombraAoVivo | null = null;
+if ('ctx' in contextoAoVivo) {
+  const { ctx, model, relatosDoDia } = contextoAoVivo;
+  const paginas = loadDashboards(path.join(ROOT, 'backend', 'specs'));
+  for (const id of paginasAoVivo) {
+    const dash = paginas.find((d) => d.id === id);
+    if (!dash) continue;
+    const pequenas = queriesPequenas(dash, model);
+    periodosAoVivo.set(
+      id,
+      new PeriodosAoVivo({
+        busca: (periodo, agora) => buscaDoPeriodo(ctx, relatosDoDia, periodo, agora),
+        // As queries pequenas (capacidade, clima, hora) vêm do snapshot de hoje.
+        grava: (dir, dados, geradoEm) =>
+          escreveSnapshotDoPeriodo(dir, model, dados, geradoEm, { dir: DIR_SNAPSHOT, queries: pequenas }),
+        // Fora do snapshot: a pasta do snapshot só é gravável pelo refresh.
+        dirBase: path.join(process.env.API_RUNTIME_DIR || os.tmpdir(), 'ao-vivo', id),
+        registra: (linha) => console.error(linha),
+      }),
+    );
+  }
+  if (querSombra) {
+    sombraAoVivo = new SombraAoVivo({
+      ctx,
+      model,
+      relatosDoDia,
+      snapshotDir: DIR_SNAPSHOT,
+      conta: (nome, quanto) => servidor.metricas.conta(nome, quanto),
+    });
+  }
+}
 console.log(
-  'porque' in sombraAoVivo
-    ? `[ao-vivo] sombra desligada: ${sombraAoVivo.porque}`
-    : '[ao-vivo] sombra ligada: agendamento-field, períodos fechados, uma rodada por vez',
+  'porque' in contextoAoVivo
+    ? `[ao-vivo] desligado: ${contextoAoVivo.porque}`
+    : `[ao-vivo] servidas do SRD: ${[...periodosAoVivo.keys()].join(', ') || 'nenhuma'}; sombra ${sombraAoVivo ? 'ligada' : 'desligada'}`,
 );
 
 const servidor = new Servidor({
@@ -349,7 +393,8 @@ const servidor = new Servidor({
   // `backend/api/src/overlay-realtime.ts` — trocar de volta faz o near-realtime
   // voltar a detectar, invalidar, avisar e servir o número velho.
   overlayRealtime: () => poller?.overlays() ?? new Map(),
-  ...('sombra' in sombraAoVivo ? { sombraAoVivo: sombraAoVivo.sombra } : {}),
+  ...(sombraAoVivo ? { sombraAoVivo } : {}),
+  ...(periodosAoVivo.size > 0 ? { aoVivo: { paginas: periodosAoVivo } } : {}),
   // A VISÃO PRODUTIVA na hora; as demais páginas, juntas a cada 2 min. Ver
   // `aoTabelaMudar` e ACHADOS #175.
   avisoDasPaginas: {
@@ -459,7 +504,10 @@ instalaDesligamento({
     { nome: 'poller', fn: () => poller?.para() },
     { nome: 'aquecedor', fn: () => aquecedor?.para() },
     { nome: 'http', fn: () => fechaHttp(http) },
-    { nome: 'sombra ao vivo', fn: () => ('sombra' in sombraAoVivo ? sombraAoVivo.fecha() : undefined) },
+    { nome: 'ao vivo', fn: async () => {
+      await sombraAoVivo?.emCurso;
+      if ('fecha' in contextoAoVivo) await contextoAoVivo.fecha();
+    } },
     { nome: 'servidor', fn: () => servidor.destroi() },
     // Grava o que ainda está no buffer de eventos antes de fechar o pool.
     { nome: 'eventos e uso', fn: async () => {

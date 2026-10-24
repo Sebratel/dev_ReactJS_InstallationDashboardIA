@@ -11,7 +11,14 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import { codificaFiltro, decodificaFiltros, type FiltroDeTela } from '../../widget-engine/src/filtro-url.ts';
 import { filtrosPadrao } from '../../widget-engine/src/filtros-padrao.ts';
 import { loadDashboards } from '../../widget-engine/src/spec.ts';
-import { decideAoVivo, periodoDaTela, visuaisForaDoAoVivo } from '../src/periodo.ts';
+import {
+  decideAoVivo,
+  idDaPaginaAoVivo,
+  paginaDoIdAoVivo,
+  periodoDaTela,
+  semForaDoAoVivo,
+  visuaisForaDoAoVivo,
+} from '../src/periodo.ts';
 
 const SPECS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'specs');
 const model = SemanticModel.fromSpecsDir(SPECS);
@@ -66,6 +73,16 @@ test('ficam fora os 6 visuais do grão relato e o horizonte de previsão', () =>
   assert.equal(fora.size, 7);
   assert.match(fora.get('56d3352b476659cd7972') ?? '', /horizonte de previsão/);
   assert.equal([...fora.values()].filter((p) => /grão relato/.test(p)).length, 6);
+});
+
+test('o id ao vivo leva o período e devolve a página; a carga é a página sem os de fora', () => {
+  const id = idDaPaginaAoVivo('agendamento-field', { desde: '2026-09-01', ate: '2026-10-01' });
+  assert.equal(id, 'agendamento-field@ao-vivo:2026-09-01..2026-10-01');
+  assert.equal(paginaDoIdAoVivo(id), 'agendamento-field');
+  assert.equal(paginaDoIdAoVivo('agendamento-field'), null, 'id de página comum não é ao vivo');
+  const sem = semForaDoAoVivo(dash, model);
+  assert.equal(sem.visuals.length, dash.visuals.length - 7);
+  assert.ok(!sem.visuals.some((v) => v.id === '56d3352b476659cd7972'));
 });
 
 test('filtro de tela em coluna gatilho tira o pedido inteiro do ao vivo', () => {

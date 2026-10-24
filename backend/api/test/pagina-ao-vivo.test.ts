@@ -16,7 +16,7 @@ import { SemanticModel } from '../../packages/semantic-model/src/model.ts';
 import { codificaFiltro, decodificaFiltros } from '../../packages/widget-engine/src/filtro-url.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import type { PaginaCalculada, VisualCalculado } from '../src/calcula.ts';
-import { comparaPaginas } from '../src/pagina-ao-vivo.ts';
+import { comparaPaginas, juntaPaginas } from '../src/pagina-ao-vivo.ts';
 import { SombraAoVivo, type ObservacaoDaSombra } from '../src/sombra-ao-vivo.ts';
 
 const SPECS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'specs');
@@ -69,6 +69,18 @@ test('igual é igual mesmo com outro tempo de cálculo; ordem, valor, erro e aus
   assert.equal(porque.get('d'), 'erro só ao vivo');
   assert.equal(porque.get('e'), 'ausente ao vivo');
   for (const p of porque.values()) assert.doesNotMatch(p, /SEGREDO/, 'nenhum valor nem mensagem de erro no motivo');
+});
+
+test('a página volta inteira na ordem do relatório: os ao vivo e os de fora, do snapshot', () => {
+  const alvo = { ...loadDashboards(SPECS).find((d) => d.id === 'agendamento-field')!, visuals: [] as never[] };
+  const ids = ['a', 'b', 'c', 'd'];
+  const alvoComVisuais = { ...alvo, visuals: ids.map((id) => ({ id })) as never };
+  const vivo = pagina([visual('a', 1), visual('c', 3)]);
+  const doSnapshot = { ...pagina([visual('b', 2)]), resumo: { calculados: 1, falharam: 1, semCalculo: 2 } };
+  const junta = juntaPaginas(alvoComVisuais, vivo, doSnapshot);
+  assert.deepEqual(junta.visuais.map((v) => v.id), ['a', 'b', 'c'], 'na ordem do alvo; o que ninguém trouxe não é inventado');
+  assert.deepEqual(junta.resumo, { calculados: 3, falharam: 1, semCalculo: 2 });
+  assert.equal(junta.id, 'agendamento-field');
 });
 
 // ------------------------------------------------------------------ a sombra

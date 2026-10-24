@@ -183,9 +183,15 @@ services:
       # `agendamento-field` de período FECHADO refeita no SRD em segundo plano e comparada
       # visual a visual com a do snapshot; o resultado vai só para o log
       # (`[ao-vivo] sombra …`) e para as métricas `sombra_*`. Não muda resposta nenhuma.
-      # Desligado ('0') salvo decisão nas variáveis da stack; a sombra abre 2 conexões
-      # próprias no SRD, que aparecem como `analytics-ao-vivo-sombra`.
+      # Desligado ('0') salvo decisão nas variáveis da stack. Ligada, ela e `AO_VIVO_PAGINAS`
+      # dividem pools próprios no SRD (até 4 conexões, `analytics-ao-vivo`).
       AO_VIVO_SOMBRA: ${AO_VIVO_SOMBRA:-0}
+      # Páginas SERVIDAS ao vivo do SRD, separadas por vírgula (hoje só `agendamento-field`
+      # sabe ser). Vazio = todas pelo snapshot, como sempre. Cada mês é buscado no SRD uma
+      # vez e vale 2 min (mês corrente) ou 1 h (mês fechado); os visuais do grão relato e a
+      # previsão de chuva seguem pelo snapshot, e busca que falha ou passa de 45 s também.
+      # Pools próprios no SRD (`analytics-ao-vivo`), pastas em `API_RUNTIME_DIR/ao-vivo`.
+      AO_VIVO_PAGINAS: ${AO_VIVO_PAGINAS:-}
       # A chave do rate limit é o `X-Real-IP` que o `web` escreve com `$remote_addr`
       # (`nginx.web.conf`, em toda location que repassa). Seguro só porque a API não tem
       # porta publicada: ninguém de fora fala com ela sem passar pelo `web`.

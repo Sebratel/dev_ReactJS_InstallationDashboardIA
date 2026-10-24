@@ -59,9 +59,35 @@ export interface PaginaSobrePeriodo {
   readonly ms: { readonly escrita: number; readonly carga: number; readonly calculo: number };
 }
 
+/**
+ * Carrega o snapshot de um período já gravado e calcula a página do pedido — o caminho
+ * em linha, sem worker. Sem forma completa: a FIELD AGENDA no grão de slot, que é o
+ * arquivo gravado; os visuais que pediriam a completa estão em `fora` e saem do plano.
+ */
+export async function calculaNoDiretorio(
+  c: Pick<CalculoSobrePeriodo, 'model' | 'dash' | 'alvo' | 'fora' | 'janela' | 'clicados' | 'agora'> & { readonly dir: string },
+): Promise<Omit<PaginaSobrePeriodo, 'ms'> & { readonly ms: { readonly carga: number; readonly calculo: number } }> {
+  const semFora = (d: DashboardSpec): DashboardSpec => ({ ...d, visuals: (d.visuals ?? []).filter((v) => !c.fora.has(v.id)) });
+  const tCarga = Date.now();
+  const carregado = await carrega({
+    dir: c.dir,
+    model: c.model,
+    dashboards: [semFora(c.dash)],
+    now: c.agora,
+    precisaFormaCompleta: [],
+    colunar: true,
+  });
+  const tCalculo = Date.now();
+  const pagina = calculaPagina(semFora(c.alvo), carregado.ev, c.janela, undefined, undefined, c.clicados);
+  return {
+    pagina,
+    linhasPorTabela: carregado.linhasPorTabela,
+    ms: { carga: tCalculo - tCarga, calculo: Date.now() - tCalculo },
+  };
+}
+
 /** Grava o snapshot do período, carrega e calcula. A pasta sai mesmo se algo falhar. */
 export async function calculaSobrePeriodo(c: CalculoSobrePeriodo): Promise<PaginaSobrePeriodo> {
-  const semFora = (d: DashboardSpec): DashboardSpec => ({ ...d, visuals: (d.visuals ?? []).filter((v) => !c.fora.has(v.id)) });
   const dir = fs.mkdtempSync(path.join(c.tmp ?? os.tmpdir(), 'ao-vivo-'));
   try {
     const tEscrita = Date.now();
@@ -74,27 +100,35 @@ export async function calculaSobrePeriodo(c: CalculoSobrePeriodo): Promise<Pagin
       c.agora.toISOString(),
       c.pequenasDe ? { dir: c.pequenasDe, queries: copiar } : undefined,
     );
-    const tCarga = Date.now();
-    // Sem forma completa: a FIELD AGENDA no grão de slot, que é o arquivo gravado. Os
-    // visuais que pediriam a completa estão em `fora`, e saem do plano junto.
-    const carregado = await carrega({
-      dir,
-      model: c.model,
-      dashboards: [semFora(c.dash)],
-      now: c.agora,
-      precisaFormaCompleta: [],
-      colunar: true,
-    });
-    const tCalculo = Date.now();
-    const pagina = calculaPagina(semFora(c.alvo), carregado.ev, c.janela, undefined, undefined, c.clicados);
-    return {
-      pagina,
-      linhasPorTabela: carregado.linhasPorTabela,
-      ms: { escrita: tCarga - tEscrita, carga: tCalculo - tCarga, calculo: Date.now() - tCalculo },
-    };
+    const escrita = Date.now() - tEscrita;
+    const r = await calculaNoDiretorio({ ...c, dir });
+    return { ...r, ms: { escrita, ...r.ms } };
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+}
+
+/**
+ * A página do pedido montada de duas fontes: os visuais ao vivo e os que o ao vivo não
+ * responde (`fora`), calculados pelo snapshot. Na ORDEM de `alvo` — a do relatório —, e
+ * com o resumo somado. Um visual que nenhuma das duas trouxe não é inventado: falta.
+ */
+export function juntaPaginas(alvo: DashboardSpec, vivo: PaginaCalculada, doSnapshot: PaginaCalculada): PaginaCalculada {
+  const porId = new Map<string, VisualCalculado>();
+  for (const v of doSnapshot.visuais) porId.set(v.id, v);
+  for (const v of vivo.visuais) porId.set(v.id, v);
+  const visuais = (alvo.visuals ?? []).map((v) => porId.get(v.id)).filter((v): v is VisualCalculado => v !== undefined);
+  return {
+    ...doSnapshot,
+    id: alvo.id,
+    visuais,
+    resumo: {
+      calculados: vivo.resumo.calculados + doSnapshot.resumo.calculados,
+      falharam: vivo.resumo.falharam + doSnapshot.resumo.falharam,
+      semCalculo: vivo.resumo.semCalculo + doSnapshot.resumo.semCalculo,
+    },
+    ms: Math.max(vivo.ms, doSnapshot.ms),
+  };
 }
 
 export interface PedidoDaPaginaAoVivo extends Omit<CalculoSobrePeriodo, 'fora' | 'dados'> {

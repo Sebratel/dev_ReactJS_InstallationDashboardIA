@@ -70,7 +70,9 @@ import { ErroDeAcesso, type Mudanca } from './permissoes.ts';
 import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
-import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
+import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type Janela, type PaginaCalculada } from './calcula.ts';
+import { decideAoVivo, idDaPaginaAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { calculaNoDiretorio, juntaPaginas } from './pagina-ao-vivo.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh, resumeDegradacao, type QuerySaude } from '../../tools/refresh/src/status.ts';
@@ -268,6 +270,7 @@ export class Servidor {
       | 'avisoDasPaginas'
       | 'usoDasTelas'
       | 'sombraAoVivo'
+      | 'aoVivo'
     >
   > &
     Pick<
@@ -280,6 +283,7 @@ export class Servidor {
       | 'modoDosFiltros'
       | 'usoDasTelas'
       | 'sombraAoVivo'
+      | 'aoVivo'
     >;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
@@ -1348,6 +1352,11 @@ export class Servidor {
         piscina: this.piscina.estado,
         overlayTabelas: this.opts.overlayRealtime().size,
         ...(this.opts.estadoDoPoller ? { poller: this.opts.estadoDoPoller() } : {}),
+        // As páginas servidas ao vivo e os períodos guardados de cada uma: de quando é o
+        // dado e quanto a busca no SRD levou (docs/DECISAO-AO-VIVO.md).
+        ...(this.opts.aoVivo
+          ? { aoVivo: Object.fromEntries([...this.opts.aoVivo.paginas].map(([id, p]) => [id, p.estado?.() ?? null])) }
+          : {}),
       },
       // `leStatus` nunca lança (arquivo ausente ou corrompido viram `{}`) — mas
       // `/api/saude` não pode cair por causa de um operador de refresh que nunca
@@ -2375,6 +2384,15 @@ export class Servidor {
     let omitidas: string[] = [];
     let tabelasResumo: { nome: string; linhas: number }[] = [];
 
+    // **A parte ao vivo do pedido** (docs/DECISAO-AO-VIVO.md, `#paginaAoVivo`): os
+    // visuais que o SRD responde saem do snapshot pequeno do período; só os de fora
+    // (grão relato, horizonte de previsão) seguem pelo snapshot de hoje, em `alvoDoSnapshot`.
+    // `null` = este pedido não vai ao vivo, ou a busca falhou — e tudo segue como antes.
+    const vivo = await this.#paginaAoVivo(dash, alvo, daTela, { de, linhas, termo }, clicados, quem, prio);
+    const alvoDoSnapshot: DashboardSpec = vivo
+      ? { ...alvo, visuals: (alvo.visuals ?? []).filter((v) => vivo.fora.has(v.id)) }
+      : alvo;
+
     // **O overlay do poller, recortado para esta página.** Buscado UMA vez
     // por cálculo e usado nos dois ramos abaixo: buscá-lo duas vezes faria o
     // ramo da worker calcular sobre um overlay e o de fallback sobre outro,
@@ -2384,7 +2402,11 @@ export class Servidor {
     this.metricas.maximo('overlay_linhas_max', linhasDoOverlay(overlays));
     if (overlays.size > 0) this.metricas.conta('calculos_com_overlay');
 
-    if (this.piscina.ativa) {
+    if (vivo && (alvoDoSnapshot.visuals ?? []).length === 0) {
+      paginaCalculada = vivo.pagina;
+      dadoDe = vivo.dadoDe;
+      tabelasResumo = vivo.tabelas;
+    } else if (this.piscina.ativa) {
       this.metricas.maximo('worker_fila_max', this.piscina.estado.fila);
       // Quantas tarefas de cada classe REALMENTE chegaram à piscina. Comparado
       // com `pedidos_<origem>`, é o que responde "quanto da fila que existia
@@ -2397,7 +2419,7 @@ export class Servidor {
         const pedeAWorker = () => this.piscina.executa({
           snapshotDir: this.opts.snapshotDir,
           specsDir: path.join(this.opts.root, 'backend', 'specs'),
-          dashboardSpec: alvo,
+          dashboardSpec: alvoDoSnapshot,
           janela: { de, linhas, termo },
           clicados,
           liberaSobDemanda: libera,
@@ -2493,7 +2515,7 @@ export class Servidor {
         const carregado = await this.carrega(dash).catch((err: unknown) => {
           throw comStatus(err, 409);
         });
-        paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
+        paginaCalculada = calculaPagina(alvoDoSnapshot, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
         dadoDe = carregado.dadoDe;
         omitidas = carregado.omitidas;
         tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
@@ -2532,24 +2554,34 @@ export class Servidor {
         },
       };
 
-      paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, memo, clicados);
+      paginaCalculada = calculaPagina(alvoDoSnapshot, carregado.ev, { de, linhas, termo }, undefined, memo, clicados);
       dadoDe = carregado.dadoDe;
       omitidas = carregado.omitidas;
       tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
     }
 
+    // Os visuais de fora vieram do snapshot de hoje: a página volta inteira, na ordem do
+    // relatório, e o `dadoDe` é o mais ANTIGO dos dois (a promessa dele, ver `carrega`).
+    if (vivo && (alvoDoSnapshot.visuals ?? []).length > 0) {
+      paginaCalculada = juntaPaginas(alvo, vivo.pagina, paginaCalculada);
+      if (dadoDe === null || vivo.dadoDe < dadoDe) dadoDe = vivo.dadoDe;
+    }
+
     // **Modo sombra da fonte ao vivo** (docs/DECISAO-AO-VIVO.md): a mesma pergunta
     // refeita ao vivo em segundo plano e comparada com esta. `observa` é síncrona e não
-    // lança; o resultado só vai para o log e para as métricas `sombra_*`.
-    this.opts.sombraAoVivo?.observa({
-      dash,
-      alvo,
-      daTela,
-      janela: { de, linhas, termo },
-      clicados,
-      agora: this.opts.agora(),
-      pagina: paginaCalculada,
-    });
+    // lança; o resultado só vai para o log e para as métricas `sombra_*`. Pedido que já
+    // saiu ao vivo não passa: seria comparar o ao vivo com ele mesmo.
+    if (!vivo) {
+      this.opts.sombraAoVivo?.observa({
+        dash,
+        alvo,
+        daTela,
+        janela: { de, linhas, termo },
+        clicados,
+        agora: this.opts.agora(),
+        pagina: paginaCalculada,
+      });
+    }
 
     const corpo: CorpoDaPagina = {
       ...paginaCalculada,
@@ -2567,6 +2599,9 @@ export class Servidor {
         valores: f.conditions[0]?.op === 'in' ? f.conditions[0].values : [],
       })),
       tabelas: tabelasResumo,
+      // De onde saiu a resposta, para conferir olhando a rede: o período buscado no SRD,
+      // de quando é, e quantos visuais vieram dele.
+      ...(vivo ? { aoVivo: vivo.info } : {}),
     };
 
     // O corpo vai para o cache **sem** o campo `cache`: ele descreve o
@@ -3046,6 +3081,106 @@ export class Servidor {
     return [...fora];
   }
 
+  /**
+   * A parte AO VIVO de um pedido de página (docs/DECISAO-AO-VIVO.md), ou `null` quando
+   * ele segue inteiro pelo snapshot: página fora de `AO_VIVO_PAGINAS`, pedido sem período
+   * reconhecível (`decideAoVivo`), só visuais de fora pedidos, ou a busca falhou.
+   *
+   * O SRD não é consultado aqui: quem busca é `periodos-ao-vivo.ts`, uma vez por período
+   * enquanto ele vale. Aqui a página é calculada sobre o snapshot pequeno já gravado —
+   * na piscina, com um id próprio por período (`idDaPaginaAoVivo`), para não disputar o
+   * conjunto carregado com o snapshot de hoje da mesma página.
+   *
+   * Nunca lança: falha ou demora acima de `tetoMs` vira uma linha de log por motivo, a
+   * métrica `ao_vivo_queda`, e o pedido segue pelo snapshot. A busca que passou do teto
+   * continua por baixo e serve o pedido seguinte.
+   */
+  async #paginaAoVivo(
+    dash: DashboardSpec,
+    alvo: DashboardSpec,
+    daTela: readonly FiltroSpec[],
+    janela: Janela,
+    clicados: readonly { tabela: string; coluna: string }[],
+    quem: Identidade,
+    prio: number,
+  ): Promise<PaginaAoVivoDoPedido | null> {
+    const periodos = this.opts.aoVivo?.paginas.get(dash.id);
+    if (!periodos) return null;
+    const d = decideAoVivo(dash, daTela, this.model);
+    if ('porque' in d) {
+      this.metricas.conta('ao_vivo_fora_do_periodo');
+      return null;
+    }
+    const visuais = (alvo.visuals ?? []).filter((v) => !d.fora.has(v.id));
+    if (visuais.length === 0) return null;
+
+    const t0 = Date.now();
+    try {
+      const g = await comTeto(
+        periodos.obtem(d.periodo),
+        this.opts.aoVivo?.tetoMs ?? TETO_AO_VIVO_MS,
+        `a busca de ${d.periodo.desde}..${d.periodo.ate} no SRD`,
+      );
+      const alvoVivo: DashboardSpec = { ...alvo, id: idDaPaginaAoVivo(dash.id, d.periodo), visuals: visuais };
+      let pagina: PaginaCalculada;
+      let linhasPorTabela: [string, number][];
+      if (this.piscina.ativa) {
+        const r = await this.piscina.executa(
+          {
+            snapshotDir: g.dir,
+            specsDir: path.join(this.opts.root, 'backend', 'specs'),
+            dashboardSpec: alvoVivo,
+            janela,
+            clicados: [...clicados],
+            liberaSobDemanda: [],
+            precisaFormaCompleta: [],
+            agoraIso: this.opts.agora().toISOString(),
+            identidade: g.identidade,
+            escopo: escopoDoCache(quem),
+          },
+          prio,
+        );
+        pagina = r.pagina as PaginaCalculada;
+        linhasPorTabela = r.linhasPorTabela ?? [];
+      } else {
+        const r = await calculaNoDiretorio({
+          dir: g.dir,
+          model: this.model,
+          dash,
+          alvo: alvoVivo,
+          fora: d.fora,
+          janela,
+          clicados,
+          agora: this.opts.agora(),
+        });
+        pagina = r.pagina;
+        linhasPorTabela = [...r.linhasPorTabela];
+      }
+      this.metricas.conta('ao_vivo_pedidos');
+      this.metricas.observa('ao_vivo_ms', Date.now() - t0);
+      return {
+        pagina: { ...pagina, id: dash.id },
+        fora: d.fora,
+        dadoDe: g.geradoEm,
+        tabelas: linhasPorTabela.map(([nome, n]) => ({ nome, linhas: n })),
+        info: {
+          periodo: d.periodo,
+          dadoDe: g.geradoEm,
+          visuais: visuais.length,
+          foraDoAoVivo: (alvo.visuals ?? []).length - visuais.length,
+        },
+      };
+    } catch (err) {
+      this.metricas.conta('ao_vivo_queda');
+      const motivo = err instanceof Error ? err.message.split('\n')[0]!.slice(0, 200) : String(err).slice(0, 200);
+      if (!this.motivosDeFallback.has(`ao-vivo: ${motivo}`)) {
+        this.motivosDeFallback.add(`ao-vivo: ${motivo}`);
+        console.error(`[ao-vivo] ${dash.id} saiu pelo snapshot neste pedido: ${motivo}`);
+      }
+      return null;
+    }
+  }
+
   /** A tabela só-do-poller alimenta uma calculada que esta página carrega? */
   #alimentaDaPagina(tabela: string, dashId: string): boolean {
     const calculadas = this.calculadasPorDashboard.get(dashId);
@@ -3486,5 +3621,41 @@ type CorpoDaPagina = PaginaCalculada & {
   omitidas: string[];
   filtrosDaTela: { tabela: string | null; coluna: string | null; nivel?: string; valores: unknown[] }[];
   tabelas: { nome: string; linhas: number }[];
+  /** Presente quando parte da página saiu ao vivo do SRD. Ver `#paginaAoVivo`. */
+  aoVivo?: InfoDoAoVivo;
 };
+
+interface InfoDoAoVivo {
+  periodo: PeriodoAoVivo;
+  /** Quando o SRD foi lido para este período. */
+  dadoDe: string;
+  /** Visuais que vieram do ao vivo, e os pedidos que seguiram pelo snapshot. */
+  visuais: number;
+  foraDoAoVivo: number;
+}
+
+interface PaginaAoVivoDoPedido {
+  pagina: PaginaCalculada;
+  fora: ReadonlyMap<string, string>;
+  dadoDe: string;
+  tabelas: { nome: string; linhas: number }[];
+  info: InfoDoAoVivo;
+}
+
+/**
+ * Quanto um pedido espera a PRIMEIRA busca de um período no SRD. Passou disso, ele sai
+ * pelo snapshot de hoje e a busca segue por baixo: o pedido seguinte já a encontra.
+ * Medido em 23–24/10/2026: 17–25 s para um mês.
+ */
+const TETO_AO_VIVO_MS = 45_000;
+
+/** A promessa, ou um erro dizendo o que passou do tempo. A promessa original segue viva. */
+function comTeto<T>(p: Promise<T>, ms: number, oQue: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const teto = new Promise<never>((_, recusa) => {
+    timer = setTimeout(() => recusa(new Error(`${oQue} passou de ${Math.round(ms / 1000)} s (segue por baixo)`)), ms);
+    timer.unref?.();
+  });
+  return Promise.race([p, teto]).finally(() => clearTimeout(timer));
+}
 

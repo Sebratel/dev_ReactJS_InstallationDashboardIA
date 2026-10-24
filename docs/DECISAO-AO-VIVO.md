@@ -92,9 +92,13 @@ primeira consulta de uma sessão pode sair lenta por cache frio (uma janela de 7
 4. Visões de ano pelo aquecedor; sai o snapshot, o refresh e a piscina; teto da `api`
    para perto de 512m.
 
-## Fase 1 — onde está (23/10/2026, branch `fase1/agendamento-ao-vivo`)
+## Fase 1 — onde está (24/10/2026, na `staging`)
 
-O caminho inteiro existe e foi provado contra o SRD; a tela ainda é servida pelo snapshot.
+O caminho inteiro existe, foi provado contra o SRD e **serve a tela** onde
+`AO_VIVO_PAGINAS=agendamento-field` estiver ligado. Decisão do Misael em 24/10: a sombra
+deixou de ser etapa obrigatória — na `staging`, que é ambiente de teste, a página vai ao
+vivo direto, com volta automática ao snapshot. A sombra continua disponível
+(`AO_VIVO_SOMBRA=1`) para diagnóstico.
 
 | Peça | Onde |
 |---|---|
@@ -104,8 +108,23 @@ O caminho inteiro existe e foi provado contra o SRD; a tela ainda é servida pel
 | Período da tela e visuais fora do ao vivo | `backend/packages/ao-vivo/src/periodo.ts` |
 | Snapshot pequeno do período, que o `carrega` de hoje lê sem mudança | `backend/packages/ao-vivo/src/snapshot-do-periodo.ts` |
 | Página ao vivo e comparação visual a visual | `backend/api/src/pagina-ao-vivo.ts` |
+| **A tela servida ao vivo** (`AO_VIVO_PAGINAS`) | `backend/api/src/servidor.ts` (`#paginaAoVivo`) |
+| Um snapshot pequeno por período, buscado no SRD uma vez e válido por um tempo | `backend/api/src/periodos-ao-vivo.ts` |
+| Pools próprios no SRD (`analytics-ao-vivo`) e specs | `backend/api/src/contexto-ao-vivo.ts` |
 | Modo sombra (`AO_VIVO_SOMBRA=1`) | `backend/api/src/sombra-ao-vivo.ts` |
 | Sonda | `npm run probe:ao-vivo -- --desde --ate [--so=agenda\|status-dia\|pagina]` |
+
+**Como a tela é servida.** O SRD é lido UMA vez por período (o mês da tela), e o
+resultado vira um snapshot pequeno em `API_RUNTIME_DIR/ao-vivo`. Vale 2 min no mês que
+inclui hoje e 1 h nos fechados; vencido, ele continua servindo enquanto o novo é buscado
+por baixo, e no máximo 2 buscas correm juntas. Os recálculos da página — e são muitos: o
+poller invalida a Agendamento Field a cada ~35 s e o aquecedor refaz o padrão, os meses
+anteriores e cada valor de seletor — rodam nas workers sobre esse snapshot, em décimos de
+segundo, com um id de página próprio por período (`idDaPaginaAoVivo`) para não dividir o
+conjunto carregado com o snapshot de hoje. Os visuais de fora seguem pelo snapshot de hoje
+e voltam juntos, na ordem do relatório; a resposta traz `aoVivo` (período, de quando é,
+quantos visuais). Busca que falha ou que passa de 45 s na primeira vez: o pedido sai
+inteiro pelo snapshot, uma linha `[ao-vivo]` no log e a métrica `ao_vivo_queda`.
 
 **O período** sai da segmentação Ano/Mês de `calendar[Data]` — a que a página abre por
 padrão. Teto de 62 dias; acima disso, nível Dia, data crua ou filtro de tela em coluna do
@@ -126,6 +145,8 @@ a matriz de previsão de chuva, que ignora o mês da tela.
 | **Página, setembro inteiro** | **32 de 32 visuais iguais** (referência no mesmo instante, ver abaixo) |
 | Busca ao vivo de setembro | 17 s: agenda 2,9 s e relatos 2,9 s em paralelo, protocolos 14,0 s (3.384 protocolos) |
 | Escrita, carga e cálculo da página de setembro | 0,4 s + 0,1 s + 0,3 s (a referência inteira: 5,1 + 0,8 + 0,6 s) |
+| **Página, agosto inteiro** (24/10) | **32 de 32 visuais iguais**; busca de 25 s (protocolos 18,5 s) |
+| Pela rota HTTP, com as 2 workers (24/10, setembro) | 1º pedido 24,6 s (a busca); outro recorte do mesmo mês e o mesmo pedido de novo, na hora; 32 visuais sem erro |
 
 **A referência "no mesmo instante".** As duas pontas de uma sonda rodam com segundos de
 distância, e um atendimento em andamento muda nesse meio (o "Fim relato" de um protocolo
@@ -140,9 +161,13 @@ seguem a ordem em que as linhas chegam; o hash da referência mudou entre duas b
 consulta original e o do ao vivo não mudou. A comparação conta isso à parte (`soOrdem`),
 porque número nenhum da tela muda.
 
-**Próximo:** os protocolos são 14 dos 17 s (cache de `gestores-equipes` e o porquê dos
-~8–13 s do próprio `protocolos-geral`); depois o cache no Redis e servir a página ao vivo
-quando a sombra fechar sem diferença.
+**A memória ainda não cai com isto.** Cada worker guarda o conjunto da página que está
+calculando, e o pico é a página mais pesada mais os caches; os visuais de fora ainda
+carregam a agenda completa quando alguém rola até eles. A memória cai quando as páginas
+pesadas saírem do snapshot (fases 2 e 3) e de vez na fase 4.
+
+**Próximo:** Premiação e Diário (fase 3), onde a memória subiu em 23/10; depois os
+protocolos, que são 14–18 dos 17–25 s da busca de um mês.
 
 ## Em aberto
 

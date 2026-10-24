@@ -118,6 +118,33 @@ export function visuaisForaDoAoVivo(dash: DashboardSpec, model: SemanticModel): 
   return fora;
 }
 
+/** A página sem os visuais que o ao vivo não responde — o plano de carga do snapshot do período. */
+export function semForaDoAoVivo(dash: DashboardSpec, model: SemanticModel): DashboardSpec {
+  const fora = visuaisForaDoAoVivo(dash, model);
+  return { ...dash, visuals: (dash.visuals ?? []).filter((v) => !fora.has(v.id)) };
+}
+
+const MARCA_AO_VIVO = '@ao-vivo:';
+
+/**
+ * O id com que a página ao vivo de UM período anda pela piscina de workers.
+ *
+ * Próprio, e não o da página: a worker guarda o conjunto carregado por id de página
+ * (`cacheDeCarga`, `identidadePorPagina`). Com o mesmo id, o snapshot pequeno de um
+ * período e o snapshot inteiro da página (que ainda responde os visuais de fora) se
+ * derrubariam a cada pedido, e o aviso do poller (`invalidaPagina`) limparia junto um
+ * dado que não veio do snapshot.
+ */
+export function idDaPaginaAoVivo(pagina: string, p: PeriodoAoVivo): string {
+  return `${pagina}${MARCA_AO_VIVO}${p.desde}..${p.ate}`;
+}
+
+/** A página de um id ao vivo, ou `null` se o id é de página comum. */
+export function paginaDoIdAoVivo(id: string): string | null {
+  const i = id.indexOf(MARCA_AO_VIVO);
+  return i < 0 ? null : id.slice(0, i);
+}
+
 /** O pedido inteiro: dá para buscar ao vivo? E, se dá, quais visuais ficam de fora. */
 export function decideAoVivo(dash: DashboardSpec, daTela: readonly FiltroSpec[], model: SemanticModel): Decisao {
   const gatilhos = colunasGatilho(model);

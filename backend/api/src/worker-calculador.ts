@@ -29,6 +29,7 @@ import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { loadDashboards, type DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
 import { medeIsolate, type MedidaDaWorker, type MensagemDeMemoria } from './memoria-da-saude.ts';
 import { CacheDeCarga, coletorDaWorker } from './cache-de-carga.ts';
+import { paginaDoIdAoVivo, semForaDoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 
 export interface MensagemCalculoWorker {
   tipo?: 'calcula';
@@ -477,7 +478,16 @@ if (parentPort) {
       // (`Servidor.#liberacaoDaPagina`), para todo tipo de pedido. Antes a rota da página
       // as montava com os visuais pedidos e `/valores` com todos, e as duas entram nesta
       // chave: recortes da mesma página podiam virar dois datasets nesta worker.
-      const paginaInteira = paginaInteiraDe(specsDir, dashboardSpec.id) ?? dashboardSpec;
+      //
+      // **Página ao vivo (docs/DECISAO-AO-VIVO.md).** O id traz o período
+      // (`idDaPaginaAoVivo`) para o conjunto carregado não dividir entrada com o da
+      // página comum; a carga é a página do catálogo SEM os visuais que o ao vivo não
+      // responde — o mesmo plano com que a sonda provou a paridade.
+      const daPaginaAoVivo = paginaDoIdAoVivo(dashboardSpec.id);
+      const paginaInteira =
+        daPaginaAoVivo !== null
+          ? semForaDoAoVivo(paginaInteiraDe(specsDir, daPaginaAoVivo) ?? dashboardSpec, model)
+          : (paginaInteiraDe(specsDir, dashboardSpec.id) ?? dashboardSpec);
       const chave = chaveDeCarga(
         dashboardSpec.id,
         (paginaInteira.visuals ?? []).map((v) => v.id),

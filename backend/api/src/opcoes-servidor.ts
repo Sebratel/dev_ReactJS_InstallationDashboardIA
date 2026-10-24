@@ -14,6 +14,8 @@ import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { EstadoDoRedis } from './saude-do-redis.ts';
 import type { UsoDasTelas } from './uso-das-telas.ts';
 import type { ObservadorAoVivo } from './sombra-ao-vivo.ts';
+import type { GeracaoDoPeriodo } from './periodos-ao-vivo.ts';
+import type { PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 
 export interface ServidorOptions {
   /** Raiz do repositório — de onde saem `backend/specs/` e o `snapshot/`. */
@@ -252,6 +254,20 @@ export interface ServidorOptions {
    * Padrão: nenhum — e aí nada muda. `npm run api` só o passa com `AO_VIVO_SOMBRA=1`.
    */
   sombraAoVivo?: ObservadorAoVivo;
+  /**
+   * As páginas servidas AO VIVO (docs/DECISAO-AO-VIVO.md): por página, quem entrega o
+   * snapshot pequeno do período (`periodos-ao-vivo.ts`). Os visuais que o ao vivo não
+   * responde e todo pedido sem período reconhecível seguem pelo snapshot de hoje; se a
+   * busca falhar ou passar de `tetoMs`, o pedido inteiro também — a tela nunca fica sem
+   * resposta por causa do ao vivo.
+   *
+   * Padrão: nenhuma. `npm run api` monta a partir de `AO_VIVO_PAGINAS`.
+   */
+  aoVivo?: {
+    readonly paginas: ReadonlyMap<string, { obtem(p: PeriodoAoVivo): Promise<GeracaoDoPeriodo>; estado?(): unknown }>;
+    /** Quanto um pedido espera a PRIMEIRA busca de um período antes de cair. Padrão: 45 s. */
+    readonly tetoMs?: number;
+  };
   /** Instância ou opção para a piscina de worker threads. */
   piscinaWorkers?: PiscinaWorkers;
 }

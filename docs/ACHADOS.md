@@ -15923,3 +15923,21 @@ auxiliar):
 - **Nome repetido multiplicaria linha.** 131 nomes aparecem mais de uma vez (readmissão,
   duas empresas); a mescla de `protocolos-produtividade` é por nome, então o `sql:` escolhe
   um. Conferido: 2.521 linhas, 2.521 `upper_name` distintos.
+
+## #238 — a Agendamento Field servida ao vivo; o SRD é lido por período, não por pedido (24/10)
+
+`AO_VIVO_PAGINAS=agendamento-field` liga (decisão do Misael: direto na `staging`, sem a
+etapa de sombra). Desenho e números em [DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md) § Fase 1.
+O que vale fora dela:
+
+- **Ao vivo por pedido seria uma rajada no SRD.** A página é invalidada pelo poller a cada
+  ~35 s (#175), e cada invalidação reaquece o padrão, três meses para trás e cada valor de
+  seletor de até 20 valores. Por isso o SRD é lido uma vez por PERÍODO e o resultado vale
+  um tempo (2 min no mês corrente, 1 h nos fechados); vencido, segue servindo enquanto o
+  novo é buscado. Os reaquecimentos ficam nas workers, sobre o snapshot pequeno.
+- **Id de página próprio por período na piscina.** A worker guarda o conjunto carregado
+  por id de página (`cacheDeCarga`, `identidadePorPagina`). Com o id da página, o snapshot
+  do período e o snapshot de hoje (que ainda responde os 7 visuais de fora) se derrubariam a
+  cada pedido, e o aviso do poller (`invalidaPagina`) limparia um dado que não veio dele.
+- **Agosto também fecha:** 32 de 32 visuais contra a referência no mesmo instante. A busca de
+  um mês levou 17 s em 23/10 e 25 s em 24/10 — os protocolos são a maior parte.
