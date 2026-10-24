@@ -15998,3 +15998,42 @@ comparando com um ano quase vazio. Detalhe em [SPEC-DRIVEN](./SPEC-DRIVEN.md).
   uma solicitação com vários itens de patrimônio fica com a hora do item que chega
   primeiro (`Table.Distinct` depois do `Table.Sort` por INSTALADO POR, que empata). As
   comparações entre versões da PG têm de contar com isso.
+
+## #242 — as sete páginas de protocolos servidas de UM conjunto da janela; a resposta ao vivo presa no cache; a memória é o pico do cálculo (24/10)
+
+Desenho e números em [DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md) § Fase 2 e § Memória.
+
+- **A agenda completa e a de slot do snapshot não são do mesmo instante.** O refresh busca
+  as duas com minutos de distância; no snapshot de 24/10 havia 4 horários novos e 1
+  reagendado entre uma e outra. A primeira rodada da sonda da janela acusou diferença no
+  Relatório do Mês por isso, e não pelo grão. A sonda passou a tirar a de slot da completa
+  do mesmo snapshot — aí só sobra o grão, e deu 100% igual.
+- **O RSS de uma página é o pico do cálculo, não o conjunto carregado.** Por página, num
+  processo só: depois da carga 165–370 MB, depois do cálculo 302–728 MB, com heap pós-GC de
+  48–118 MB. O V8 não devolve o pico ao sistema. Ler menos do SRD baixa a carga, não o pico;
+  a alavanca é reciclar a worker por teto de RSS ou baixar o heap dela (fase 4).
+- **A resposta ao vivo ficava presa no cache.** A chave da resposta é o carimbo do
+  snapshot de hoje mais o dia, e ela vale 7 dias. A página pedida enquanto o conjunto do
+  SRD ainda era buscado saía pelo snapshot e era guardada; pronto o conjunto, a mesma
+  chave seguia devolvendo a resposta do snapshot (medido nas 13 páginas: Visão Geral e
+  Premiação, 0,0 s, sem `aoVivo`). E uma geração renovada nunca chegava à tela enquanto o
+  snapshot não mudasse. Na Agendamento Field o poller invalida a cada ~35 s e escondia.
+  Conserto: a geração entra no carimbo (`PeriodosAoVivo.marca`), e a marca é quem pede a
+  busca do período vencido — o acerto no cache não passa por `obtem`. Teste:
+  `backend/api/test/cache-ao-vivo.test.ts`, que sem o conserto falha com `hit` onde
+  devia ser `anterior`.
+- **A montagem ao vivo saiu do `index.ts`** para `backend/api/src/ao-vivo-da-api.ts`.
+  Subir o `index.ts` num teste local grava acesso e evento de segurança no
+  `DB_InstallationDashboard` de produção (mesma conta `MARIA_*`); o teste de ponta a ponta
+  chama a função da montagem e sobe só o `Servidor`.
+
+## #243 — três testes do aquecedor da subida cancelados, também na `staging` limpa (24/10)
+
+`backend/tools/subir/test/aquece.test.ts`: "página que passa do teto…" e os dois seguintes
+saíam `cancelled` ("Promise resolution is still pending but the event loop has already
+resolved"), isolados e na suíte, numa cópia limpa da `staging` — em 23/10 tinham passado.
+O teto de `aquecePagina` é um timer `unref` de propósito (não segura o `npm start`); na
+vida real o socket do fetch segura o laço de eventos, mas o fetch falso do teste não tem
+socket: o laço esvaziava antes de o teto disparar e o runner cancelava o resto do arquivo.
+Passar dependia de sobrar outro handle vivo por acaso. O falso agora segura um timer
+próprio até o abort; o código de produção não mudou.

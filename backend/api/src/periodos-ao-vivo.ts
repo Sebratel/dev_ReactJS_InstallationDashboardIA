@@ -64,6 +64,8 @@ export interface OpcoesDosPeriodos {
    * hora pelo snapshot, em vez de esperar 45 s para sair pelo mesmo snapshot.
    */
   readonly esperaAPrimeira?: boolean;
+  /** Padrão: 1 min. Quanto `marca` espera, depois de uma busca que falhou, para pedir outra. */
+  readonly esperaAposFalhaMs?: number;
   readonly registra?: (linha: string) => void;
 }
 
@@ -74,6 +76,8 @@ export class PeriodosAoVivo {
   /** Período → geração atual. A ordem de inserção é a do uso: o primeiro é o que sai. */
   readonly #geracoes = new Map<string, GeracaoDoPeriodo>();
   readonly #emVoo = new Map<string, Promise<GeracaoDoPeriodo>>();
+  /** Período → quando a última busca dele falhou (só até a próxima dar certo). */
+  readonly #falhouEm = new Map<string, number>();
   readonly #fila: (() => void)[] = [];
   #buscando = 0;
   #seq = 0;
@@ -87,6 +91,7 @@ export class PeriodosAoVivo {
       maxBuscasJuntas: 2,
       gracaMs: 120_000,
       esperaAPrimeira: true,
+      esperaAposFalhaMs: 60_000,
       ...o,
     };
     fs.rmSync(o.dirBase, { recursive: true, force: true });
@@ -114,6 +119,32 @@ export class PeriodosAoVivo {
       this.#renova(periodo).catch(() => undefined);
     }
     return Promise.resolve(g);
+  }
+
+  /**
+   * A geração que um pedido deste período vai encontrar, para a chave do cache de
+   * respostas (`servidor.ts`). Sem ela a chave só via o snapshot de hoje: a resposta que
+   * saiu pelo snapshot antes da primeira geração — e a de uma geração já substituída —
+   * seguia servida até o snapshot mudar, que no grupo médio leva horas.
+   *
+   * Vencida ou ausente, já pede a busca por baixo: um acerto no cache não chega a
+   * `obtem`, e sem isto o período só se renovaria quando a chave mudasse por outro
+   * motivo. Depois de uma busca que falhou, espera `esperaAposFalhaMs` antes de tentar de
+   * novo — com o SRD fora, cada pedido seria uma busca.
+   *
+   * Sem `:` (`apagaPagina` acha a página por `:id:` na chave), e com o instante da busca:
+   * o Redis atravessa reinícios, e um número de sequência repetiria.
+   */
+  marca(periodo: PeriodoAoVivo): string {
+    const k = chave(periodo);
+    const g = this.#geracoes.get(k);
+    const agora = this.#o.agora().getTime();
+    const falhou = this.#falhouEm.get(k);
+    const vencida = !g || agora >= g.expiraEm;
+    if (vencida && !(falhou !== undefined && agora - falhou < this.#o.esperaAposFalhaMs)) {
+      this.#renova(periodo).catch(() => undefined);
+    }
+    return g ? g.identidade.replace(/:/g, '') : 'ao-vivo-pendente';
   }
 
   /**
@@ -172,6 +203,7 @@ export class PeriodosAoVivo {
         protocolos: dados.protocolos,
       };
       const k = chave(periodo);
+      this.#falhouEm.delete(k);
       const anterior = this.#geracoes.get(k);
       this.#geracoes.delete(k);
       this.#geracoes.set(k, g);
@@ -184,6 +216,7 @@ export class PeriodosAoVivo {
       return g;
     } catch (err) {
       if (dir) fs.rmSync(dir, { recursive: true, force: true });
+      this.#falhouEm.set(chave(periodo), this.#o.agora().getTime());
       const msg = err instanceof Error ? err.message.split('\n')[0]!.slice(0, 200) : String(err).slice(0, 200);
       this.#o.registra?.(`[ao-vivo] busca de ${chave(periodo)} no SRD falhou: ${msg}`);
       throw err;

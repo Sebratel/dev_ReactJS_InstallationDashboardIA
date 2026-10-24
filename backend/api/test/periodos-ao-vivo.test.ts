@@ -142,6 +142,41 @@ test('sem esperar a primeira: o pedido cai na hora, a busca segue, e o seguinte 
   assert.equal((await c.p.obtem(OUTUBRO)).identidade, g.identidade, 'pronta, o pedido recebe na hora');
 });
 
+test('a marca do cache de respostas: pede a busca sozinha, muda com a geração, e espera depois de falhar', async (t) => {
+  const c = cenario(t, { esperaAPrimeira: false });
+  assert.equal(c.p.marca(OUTUBRO), 'ao-vivo-pendente');
+  await assenta();
+  assert.deepEqual(c.buscas, ['2026-10-01'], 'sem geração, a marca já pede a busca (um acerto no cache não chega a obtem)');
+  const m1 = c.p.marca(OUTUBRO);
+  assert.notEqual(m1, 'ao-vivo-pendente');
+  assert.equal(m1.includes(':'), false, '`apagaPagina` acha a página por `:id:` na chave');
+  assert.equal(c.p.marca(OUTUBRO), m1, 'dentro da validade, a mesma marca');
+  await assenta();
+  assert.equal(c.buscas.length, 1, 'e nenhuma busca');
+
+  c.avanca(121_000);
+  assert.equal(c.p.marca(OUTUBRO), m1, 'vencida, a marca segue a da geração servida');
+  await assenta();
+  assert.equal(c.buscas.length, 2, 'mas a busca nova já saiu, sem ninguém chamar obtem');
+  const m2 = c.p.marca(OUTUBRO);
+  assert.notEqual(m2, m1, 'geração nova, marca nova');
+
+  c.avanca(121_000);
+  c.falhar(new Error('SRD fora'));
+  c.p.marca(OUTUBRO);
+  await assenta();
+  assert.equal(c.buscas.length, 3);
+  c.p.marca(OUTUBRO);
+  c.p.marca(OUTUBRO);
+  await assenta();
+  assert.equal(c.buscas.length, 3, 'logo depois de uma falha, pedido nenhum vira busca');
+  assert.equal(c.p.marca(OUTUBRO), m2, 'e a geração vencida segue servindo');
+  c.avanca(61_000);
+  c.p.marca(OUTUBRO);
+  await assenta();
+  assert.equal(c.buscas.length, 4, 'passado 1 min, tenta de novo');
+});
+
 test('o período menos usado sai quando passa do máximo; o que sobrou de outro processo é apagado', async (t) => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'periodos-resto-'));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));

@@ -26,6 +26,11 @@ import type { DashboardSpec, FiltroSpec } from '../../packages/widget-engine/src
 export interface PaginaServidaAoVivo {
   decide(dash: DashboardSpec, daTela: readonly FiltroSpec[], agora: Date): Decisao;
   obtem(p: PeriodoAoVivo): Promise<GeracaoDoPeriodo>;
+  /**
+   * A geração que o pedido vai encontrar, que entra na chave do cache de respostas
+   * (`PeriodosAoVivo.marca`). Sem ela, a resposta em cache só muda com o snapshot de hoje.
+   */
+  marca?(p: PeriodoAoVivo): string;
   estado?(): unknown;
 }
 

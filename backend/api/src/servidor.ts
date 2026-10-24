@@ -2250,6 +2250,13 @@ export class Servidor {
     const pediuRecalculo = url.searchParams.get('recalcula') === '1';
     const recalcula = pediuRecalculo && (quem.usuario === 'ferramenta-interna' || quem.papeis.includes('interno'));
     if (pediuRecalculo && !recalcula) this.metricas.conta('recalcula_ignorado');
+    // **Página servida ao vivo: a geração do SRD entra no carimbo** (`PeriodosAoVivo.marca`).
+    // A resposta guardada vale 7 dias e só caía com o snapshot de hoje, então a que saiu
+    // pelo snapshot enquanto o conjunto do ano não estava pronto continuava sendo servida
+    // depois de ele ficar — medido em 24/10/2026 pelo teste de ponta a ponta. Com a marca,
+    // geração nova é chave nova: quem chega recebe a anterior na hora e a nova sai por
+    // baixo, com aviso (#164), como num refresh.
+    const marcaAoVivo = this.#marcaAoVivo(dash, daTela);
     const chave = chaveDaResposta({
       escopo: escopoDoCache(quem),
       pagina: dash.id,
@@ -2259,7 +2266,7 @@ export class Servidor {
       de,
       linhas,
       termo,
-      carimbo,
+      carimbo: marcaAoVivo ? `${carimbo}+${marcaAoVivo}` : carimbo,
       dia,
     });
     // **A última resposta pronta desta MESMA pergunta, de qualquer snapshot (ACHADOS #164).**
@@ -3095,6 +3102,14 @@ export class Servidor {
    * métrica `ao_vivo_queda`, e o pedido segue pelo snapshot. A busca que passou do teto
    * continua por baixo e serve o pedido seguinte.
    */
+  /** A marca da geração ao vivo que este pedido encontraria, ou `null` se ele não vai ao vivo. */
+  #marcaAoVivo(dash: DashboardSpec, daTela: readonly FiltroSpec[]): string | null {
+    const periodos = this.opts.aoVivo?.paginas.get(dash.id);
+    if (!periodos?.marca) return null;
+    const d = periodos.decide(dash, daTela, this.opts.agora());
+    return 'porque' in d ? null : periodos.marca(d.periodo);
+  }
+
   async #paginaAoVivo(
     dash: DashboardSpec,
     alvo: DashboardSpec,

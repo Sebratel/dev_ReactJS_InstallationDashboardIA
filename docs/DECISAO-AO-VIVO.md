@@ -167,7 +167,8 @@ carregam a agenda completa quando alguém rola até eles. A memória cai quando 
 pesadas saírem do snapshot (fases 2 e 3) e de vez na fase 4.
 
 **Próximo:** Premiação e Diário (fase 3), onde a memória subiu em 23/10; depois os
-protocolos, que são 14–18 dos 17–25 s da busca de um mês.
+protocolos, que são 14–18 dos 17–25 s da busca de um mês. (Feitas as duas em 24/10 —
+fases 3 e 2 abaixo.)
 
 ## Fase 3 — as cinco páginas do ano (24/10/2026, na `staging`)
 
@@ -222,6 +223,90 @@ teste de ponta a ponta o derrubou: com o SRD ocupado a produtividade do ano pass
 Ninguém espera essa consulta — a tela cai para o snapshot em 45 s e a busca segue por
 baixo —, então o teto só precisa caber a consulta mais pesada num banco cheio.
 
+## Fase 2 — as sete páginas de protocolos (24/10/2026, na `staging`)
+
+**Um conjunto da janela para as sete** (`backend/packages/ao-vivo/src/janela-de-protocolos.ts`):
+Visão Geral, Relatório do Mês, Relatório do Ano, Telefonia e Ouvidoria e as três dicas
+(`l-inst`, `l-mapa`, `l-tec`). Elas mostram a janela inteira da PROTOCOLOS GERAL — do
+início do ano anterior em diante (ACHADOS #241) —, sem corte de página e, quase todas, sem
+filtro de período ao abrir. Então o conjunto é a janela: a PG, a telefonia e a agenda nas
+consultas do catálogo, sem costura de período, e o filtro da tela é aplicado no cálculo.
+Leva ~2 min de SRD; buscado na subida, vale 10 min e se renova por baixo, como o do ano.
+Backlog, capacidade, clima, consolidado, feriados e hora vêm do snapshot de hoje; as
+calculadas são recalculadas no carregamento (nenhuma destas páginas tem corte).
+
+**A agenda vem no grão de slot** (42 mil linhas), não a completa (633 mil). Pelo snapshot
+o Relatório do Mês carrega a completa só porque o tempo real recalcula a `calendar` sobre
+o grão relato; o ao vivo não tem overlay, e a `calendar` é o DISTINCT (protocolo, data) do
+slot — o mesmo. Visual que citasse coluna do grão relato seguiria pelo snapshot, como na
+Agendamento Field; nestas sete, nenhum cita.
+
+**Medido (`npm run probe:ao-vivo-janela`, 24/10)**, sem banco, sobre o snapshot local: a
+referência é a página carregada como a produção carrega (agenda completa quando o servidor
+a pede, calculadas congeladas); o ao vivo é a mesma página montada só com o que o conjunto
+traria (agenda de slot, calculadas recalculadas).
+
+| Página — como abre / setembro no calendário da página | Visuais iguais |
+|---|---|
+| Visão Geral | 28 de 28 / 28 de 28 |
+| Relatório do Mês (referência com a agenda completa, 633 mil linhas; ao vivo, 42 mil) | 36 de 36 / 36 de 36 |
+| Relatório do Ano | 25 de 25 / 25 de 25 |
+| Telefonia e Ouvidoria (calendário de criação) | 24 de 24 / 24 de 24 |
+| `l-inst`, `l-mapa`, `l-tec` (como abre) | 1 de 1 cada |
+
+Nenhum visual destas páginas ficou fora do ao vivo, e nenhum erro dos dois lados.
+
+**A agenda de slot da sonda é tirada da completa do mesmo snapshot.** O refresh busca as
+duas com minutos de distância, e um reagendamento nesse meio aparecia como diferença
+(medido: 4 horários novos e 1 reagendado entre as duas buscas). Tirando uma da outra, a
+única diferença que sobra é o grão — o que a sonda prova. Que a consulta do SRD traz o
+mesmo que o refresh grava é o mesmo SQL do catálogo.
+
+**Liga com:** `AO_VIVO_PAGINAS` com as 13 páginas —
+`agendamento-field,premiacao-instalacao,diario-instalacao,protocolos-detalhados,manutencao-inicial,instalacao-reincidente,visao-geral,relatorio-do-mes,relatorio-do-ano,telefonia-ouvidoria,l-inst,l-mapa,l-tec`.
+A montagem é `backend/api/src/ao-vivo-da-api.ts`: o `index.ts` e o teste de ponta a ponta
+chamam a mesma função.
+
+**Ponta a ponta (24/10), as 13 páginas juntas** pela rota HTTP com as 2 workers, contra o
+SRD e o snapshot local: até os dois conjuntos ficarem prontos (134–188 s depois da subida,
+buscados ao mesmo tempo), a página sai pelo snapshot em 2–3 s; depois, todas trazem
+`aoVivo`, em 0,5–3,3 s, sem erro em visual nenhum. A Agendamento Field espera a busca do
+mês no primeiro pedido (~25 s), como na fase 1. Página fora da lista segue pelo snapshot,
+e nome desconhecido em `AO_VIVO_PAGINAS` vira uma linha de aviso.
+
+**A geração do SRD entra na chave do cache de respostas** (`PeriodosAoVivo.marca`). O
+teste de ponta a ponta das 13 páginas achou o defeito: a Visão Geral e a Premiação pedidas
+antes de o conjunto ficar pronto saíram pelo snapshot — certo — e continuaram saindo pelo
+snapshot depois, do cache, porque a chave só via o carimbo do snapshot e o dia (a resposta
+vale 7 dias). Valia também para a Agendamento Field, só que o poller a invalida a cada
+~35 s e escondia. Agora geração nova é chave nova: quem pede recebe a resposta anterior na
+hora e a nova é calculada por baixo, com aviso por SSE, como num refresh (ACHADOS #164). E
+a marca pede a busca do período vencido: um acerto no cache não chega a `obtem`, e o
+conjunto deixaria de se renovar. Depois de uma busca que falhou, espera 1 min para tentar
+de novo.
+
+## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
+
+Medido por página, um processo cada, carga colunar como a worker faz e cálculo com o
+filtro de abertura (RSS depois de GC):
+
+| Página | Depois da carga | Depois do cálculo |
+|---|---|---|
+| Agendamento Field | 329 MB | 728 MB |
+| Instalação Reincidente | 166 MB | 517 MB |
+| `l-inst` | 169 MB | 543 MB |
+| Visão Geral | 192 MB | 512 MB |
+| Relatório do Mês | 370 MB | 463 MB |
+| Premiação | 214 MB | 375 MB |
+| Manutenção Inicial | 185 MB | 341 MB |
+| Relatório do Ano | 165 MB | 302 MB |
+
+O heap depois do GC é pequeno (48–118 MB); o RSS fica com o pico do cálculo, que o V8 não
+devolve ao sistema. Trazer menos linhas do SRD baixa a coluna da carga — as duas que carregam
+a agenda completa (633 mil linhas) são as duas mais pesadas nela —, mas não o pico.
+A alavanca que falta é a worker: reciclar a que passou de um teto de RSS depois de
+responder, ou baixar o `maxOldGenerationSizeMb` para o pico caber — próximo passo da fase 4.
+
 ## Em aberto
 
 - ~~**Gestor da Premiação e do Diário.**~~ **Decidido em 23/10/2026 (Misael): vem da
@@ -231,3 +316,11 @@ baixo —, então o teto só precisa caber a consulta mais pesada num banco chei
   na Senior (~4%). Na fase 3 a API lê a mesma tabela.
 - **A conta MariaDB da stack** (`DevSebratel`) tem `ALL PRIVILEGES ON *.*`. A stack só
   precisa ler os bancos que usa e gravar nas tabelas de acesso.
+- **Os valores dos seletores** (`/api/dashboards/:id/valores`) ainda saem do snapshot de
+  hoje, também nas páginas ao vivo: um técnico ou cidade que apareceu depois do último
+  refresh entra no número antes de entrar na lista do seletor.
+- **Desempate do auxiliar** (63 protocolos com dois auxiliares empatados no topo, ACHADOS
+  #239): decisão do Erick. Até lá, duas buscas podem trocar o INSTALADOR desses protocolos.
+- **Fase 4** — o que falta para a memória cair: a worker (reciclar por teto de RSS ou
+  heap menor, § Memória) e, depois, tirar do snapshot o que as páginas ao vivo ainda copiam
+  dele (contratos, backlog, capacidade, clima, consolidado, reincidência, feriados, hora).

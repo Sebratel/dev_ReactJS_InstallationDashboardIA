@@ -287,8 +287,14 @@ test('página que não respondeu reprova, e não conta como sem-cache', () => {
  */
 test('página que passa do teto vira falha nomeada, não espera infinita', async () => {
   const buscar = (async (_url: string | URL, init?: RequestInit) => {
+    // O timer do teto é `unref` (não segura o processo, ver `aquecePagina`); na vida real
+    // quem segura o laço de eventos é o socket do fetch. Este falso não tem socket: sem um
+    // timer próprio o laço esvaziava antes do teto, e o runner cancelava este teste e os
+    // seguintes do arquivo ("Promise resolution is still pending…", medido em 24/10/2026).
+    const segura = setTimeout(() => undefined, 10_000);
     await new Promise((_, rejeita) => {
       init?.signal?.addEventListener('abort', () => {
+        clearTimeout(segura);
         const e = new Error('The operation was aborted due to timeout');
         e.name = 'TimeoutError';
         rejeita(e);
