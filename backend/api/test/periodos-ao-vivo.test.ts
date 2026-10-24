@@ -122,6 +122,26 @@ test('a primeira busca que falha erra para quem pediu; a renovação que falha m
   assert.equal(c.linhas.length, 2);
 });
 
+test('sem esperar a primeira: o pedido cai na hora, a busca segue, e o seguinte já recebe', async (t) => {
+  let solta: () => void = () => undefined;
+  const c = cenario(t, {
+    esperaAPrimeira: false,
+    busca: async () => {
+      await new Promise<void>((ok) => {
+        solta = ok;
+      });
+      return { consultas: [], statusProtocoloDia: [], protocolos: 1 };
+    },
+  });
+  await assert.rejects(c.p.obtem(OUTUBRO), /a primeira busca de 2026-10-01\.\.2026-11-01 no SRD ainda corre/);
+  await assert.rejects(c.p.obtem(OUTUBRO), /ainda corre/, 'outro pedido no meio da busca também não espera');
+  assert.equal(c.p.estado().buscando, 1, 'e não abre uma segunda busca');
+  const pronto = c.p.pronto(OUTUBRO);
+  solta();
+  const g = await pronto;
+  assert.equal((await c.p.obtem(OUTUBRO)).identidade, g.identidade, 'pronta, o pedido recebe na hora');
+});
+
 test('o período menos usado sai quando passa do máximo; o que sobrou de outro processo é apagado', async (t) => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'periodos-resto-'));
   t.after(() => fs.rmSync(base, { recursive: true, force: true }));

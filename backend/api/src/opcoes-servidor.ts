@@ -15,7 +15,19 @@ import type { EstadoDoRedis } from './saude-do-redis.ts';
 import type { UsoDasTelas } from './uso-das-telas.ts';
 import type { ObservadorAoVivo } from './sombra-ao-vivo.ts';
 import type { GeracaoDoPeriodo } from './periodos-ao-vivo.ts';
-import type { PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import type { Decisao, PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import type { DashboardSpec, FiltroSpec } from '../../packages/widget-engine/src/spec.ts';
+
+/**
+ * Uma página servida ao vivo: a regra que tira o período do pedido (e os visuais que
+ * ficam de fora), e quem entrega o snapshot pequeno daquele período. Páginas diferentes
+ * podem dividir o mesmo `obtem` — a Premiação e o Diário dividem o conjunto do ano.
+ */
+export interface PaginaServidaAoVivo {
+  decide(dash: DashboardSpec, daTela: readonly FiltroSpec[], agora: Date): Decisao;
+  obtem(p: PeriodoAoVivo): Promise<GeracaoDoPeriodo>;
+  estado?(): unknown;
+}
 
 export interface ServidorOptions {
   /** Raiz do repositório — de onde saem `backend/specs/` e o `snapshot/`. */
@@ -264,7 +276,7 @@ export interface ServidorOptions {
    * Padrão: nenhuma. `npm run api` monta a partir de `AO_VIVO_PAGINAS`.
    */
   aoVivo?: {
-    readonly paginas: ReadonlyMap<string, { obtem(p: PeriodoAoVivo): Promise<GeracaoDoPeriodo>; estado?(): unknown }>;
+    readonly paginas: ReadonlyMap<string, PaginaServidaAoVivo>;
     /** Quanto um pedido espera a PRIMEIRA busca de um período antes de cair. Padrão: 45 s. */
     readonly tetoMs?: number;
   };

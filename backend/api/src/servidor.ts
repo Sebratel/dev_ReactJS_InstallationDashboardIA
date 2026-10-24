@@ -71,7 +71,7 @@ import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
 import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type Janela, type PaginaCalculada } from './calcula.ts';
-import { decideAoVivo, idDaPaginaAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { idDaPaginaAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 import { calculaNoDiretorio, juntaPaginas } from './pagina-ao-vivo.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
@@ -3106,7 +3106,7 @@ export class Servidor {
   ): Promise<PaginaAoVivoDoPedido | null> {
     const periodos = this.opts.aoVivo?.paginas.get(dash.id);
     if (!periodos) return null;
-    const d = decideAoVivo(dash, daTela, this.model);
+    const d = periodos.decide(dash, daTela, this.opts.agora());
     if ('porque' in d) {
       this.metricas.conta('ao_vivo_fora_do_periodo');
       return null;

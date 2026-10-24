@@ -15966,3 +15966,19 @@ regra do CTE que saiu. O SQL entrega `_RAMO` e `_CHAVE AUXILIAR`; o M monta
   **0 das 104 linhas diferentes** estão fora desses 63 protocolos.
 - **Em aberto:** desempatar (por exemplo, o relato de `id` mais alto) tornaria o auxiliar
   estável. Muda quem aparece em 63 protocolos, então é regra de negócio: fica para o Erick.
+
+## #240 — Premiação e Diário servidos de UM conjunto do ano; o calendário fica o congelado (24/10)
+
+Desenho e números em [DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md) § Fase 3. Dois achados que
+valem fora dela:
+
+- **A PG dessas duas páginas só serve ao calendário e a três seletores.** A ligação
+  PROTOCOLOS GERAL ↔ PROTOCOLOS PRODUTIVIDADE (por SOLICITACAO) está INATIVA, e nenhum
+  visual calculado lê a PG: os 21 da Premiação e os 22 do Diário saem da produtividade
+  (e um, de CONTRATOS). Mesmo assim a página carregava as 100 mil linhas da PG e cortava
+  no carregamento; o conjunto do ano traz só as 43.900 que sobram do corte.
+- **Uma sonda que calcula o calendário igual nos dois lados passa sem provar nada.** A
+  primeira rodada calculou o CALENDARIO INSTALADO sobre a PG cortada nas duas pontas — e
+  deu 100% igual, mas as duas erravam do mesmo jeito em relação à produção, onde ele é o
+  congelado da PG inteira (#205). A rodada que vale usa o congelado nos dois lados; a API
+  copia o do snapshot e recusa se o DAX dele mudou.

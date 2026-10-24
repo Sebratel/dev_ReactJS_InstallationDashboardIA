@@ -30,6 +30,7 @@
     "banco:cria": "node backend/tools/banco/src/cria.ts",
     "probe:datahub": "node backend/tools/probe/src/datahub.ts",
     "probe:ao-vivo": "node backend/tools/probe/src/ao-vivo.ts",
+    "probe:ao-vivo-ano": "node --max-old-space-size=6144 backend/tools/probe/src/ao-vivo-ano.ts",
     "probe:gsheets": "node backend/tools/probe/src/gsheets.ts",
     "probe:redis": "node backend/tools/probe/src/redis.ts",
     "probe:tipos-data": "node backend/tools/probe/src/tipos-data.ts",

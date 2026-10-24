@@ -18,6 +18,7 @@ import { decideAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/per
 import {
   buscaDoPeriodo,
   escreveSnapshotDoPeriodo,
+  type CalculadaPronta,
   type DadosDoPeriodo,
 } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
 import type { SemanticModel } from '../../packages/semantic-model/src/model.ts';
@@ -46,7 +47,8 @@ export interface CalculoSobrePeriodo {
   readonly clicados: readonly { tabela: string; coluna: string }[];
   readonly agora: Date;
   /** As queries buscadas. Uma query pequena da página que venha aqui não é copiada. */
-  readonly dados: Pick<DadosDoPeriodo, 'consultas' | 'statusProtocoloDia'>;
+  readonly dados: Pick<DadosDoPeriodo, 'consultas'> &
+    Partial<Pick<DadosDoPeriodo, 'statusProtocoloDia'>> & { readonly calculadas?: readonly CalculadaPronta[] };
   /** O snapshot de onde copiar as queries pequenas que `dados` não trouxe. */
   readonly pequenasDe?: string;
   /** Onde criar a pasta temporária. Padrão: `os.tmpdir()`. */

@@ -59,9 +59,12 @@ async function monta(root: string): Promise<ContextoMontado> {
   if (!relatosDoDia) throw new Error('ao-vivo.yaml sem a agregada relatos-do-dia');
 
   const cfg = loadConfig();
-  // O teto do pedido de tela (30 s no .env) não cabe a agenda e os protocolos de um mês
-  // com folga; quem espera a busca é o cache do período, não uma pessoa.
-  const statementTimeoutMs = 120_000;
+  // O teto do pedido de tela (30 s no .env) não cabe nem o mês da agenda. Quem espera a
+  // busca é o cache do período, não uma pessoa (a tela cai para o snapshot em 45 s), então
+  // o teto é o da consulta mais pesada com o SRD ocupado: a produtividade do ano leva
+  // 43–54 s sozinha, 110 s disputando o banco, e passou de 2 min no teste de ponta a ponta
+  // de 24/10/2026 — que é o teto que estava aqui.
+  const statementTimeoutMs = 300_000;
   // 4 conexões: duas buscas de período ao mesmo tempo (`maxBuscasJuntas`), e cada uma
   // roda a agenda e as contagens de relato em paralelo.
   const voalle = await createVoallePool({ ...cfg.voalle, poolMax: 4, statementTimeoutMs, applicationName: 'analytics-ao-vivo' });

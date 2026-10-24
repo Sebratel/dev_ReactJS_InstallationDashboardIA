@@ -169,6 +169,52 @@ pesadas saírem do snapshot (fases 2 e 3) e de vez na fase 4.
 **Próximo:** Premiação e Diário (fase 3), onde a memória subiu em 23/10; depois os
 protocolos, que são 14–18 dos 17–25 s da busca de um mês.
 
+## Fase 3 — Premiação e Diário (24/10/2026, na `staging`)
+
+**Primeiro a consulta.** A `protocolos-produtividade` levava 169–469 s: 93% era a junção
+com o auxiliar, que voltou para o M (ACHADOS #239). O ano inteiro passou a 43–54 s — sem
+isso, nenhuma das duas páginas cabia ao vivo.
+
+**Um conjunto do ano para as duas** (`backend/packages/ao-vivo/src/instalacao-do-ano.ts`).
+Elas só mostram o ano corrente: a produtividade já nasce do ano e a PROTOCOLOS GERAL é
+cortada em DATA CRIADO >= início do ano. Quase todo visual lê só a produtividade; a PG
+entra pelo calendário de instalação e por três seletores do Diário, e a ligação dela com
+a produtividade está inativa. Então o SRD é lido uma vez para o ano — a produtividade
+(a consulta do catálogo) e a PG do ano (a variante `protocolos-geral-criados-desde` de
+`ao-vivo.yaml`) —, e qualquer filtro das duas páginas é aplicado no cálculo, como hoje.
+Leva ~2 min de SRD; por isso é buscado na subida da API, vale 10 min e se renova por
+baixo, servindo o anterior enquanto isso. Contratos, apuração, feriados e hora vêm do
+snapshot de hoje.
+
+**O calendário vem congelado do snapshot.** O CALENDARIO INSTALADO destas páginas nasce
+da PG INTEIRA (desde 2025), de propósito (`corte-por-pagina.yaml`, ACHADOS #205): sobre a
+PG do ano, um filtro de "ano corrente" manteria o calendário inteiro e o motor contaria
+protocolo sem data de instalação. O conjunto do ano copia o congelado
+(`calculadasCongeladas`), e recusa — o pedido sai pelo snapshot — se o DAX dele mudou.
+
+**Visuais fora:** nenhum. **Liga com:**
+`AO_VIVO_PAGINAS=agendamento-field,premiacao-instalacao,diario-instalacao`.
+
+**Medido no SRD (`npm run probe:ao-vivo-ano`, 24/10):** a PG inteira (100.859 linhas, a
+referência) e a do ano (43.900) buscadas ao mesmo tempo; produtividade e tabelas
+pequenas iguais nos dois lados; o calendário congelado (729 dias, da PG inteira) nos dois.
+
+| Página — filtro | Visuais iguais |
+|---|---|
+| Premiação — como abre (sem filtro de data) | 21 de 21 |
+| Premiação — mês corrente | 21 de 21 |
+| Diário — como abre (último mês fechado) | 22 de 22 |
+| Diário — mês corrente | 22 de 22 |
+
+A PG depois do corte da página tem as mesmas 43.900 linhas nos dois lados. Tempos com
+tudo correndo junto: produtividade 111 s, PG do ano 108 s, PG inteira 137 s, contratos
+26 s — sozinha, a produtividade leva 43–54 s.
+
+**O teto de consulta dos pools ao vivo é 5 min** (`contexto-ao-vivo.ts`). Era 2 min, e o
+teste de ponta a ponta o derrubou: com o SRD ocupado a produtividade do ano passou disso.
+Ninguém espera essa consulta — a tela cai para o snapshot em 45 s e a busca segue por
+baixo —, então o teto só precisa caber a consulta mais pesada num banco cheio.
+
 ## Em aberto
 
 - ~~**Gestor da Premiação e do Diário.**~~ **Decidido em 23/10/2026 (Misael): vem da

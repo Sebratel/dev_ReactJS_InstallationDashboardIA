@@ -12,7 +12,7 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import { escreve, le, leCabecalho } from '../../snapshot/src/formato.ts';
 import { arquivoDaQuery, arquivoDeEscrita, leManifesto } from '../../snapshot/src/manifesto.ts';
 import { arquivoDaCalculada, shaDaCalculada } from '../../snapshot/src/tabelas-calculadas.ts';
-import { escreveSnapshotDoPeriodo } from '../src/snapshot-do-periodo.ts';
+import { calculadasCongeladas, escreveSnapshotDoPeriodo } from '../src/snapshot-do-periodo.ts';
 
 const SPECS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'specs');
 const model = SemanticModel.fromSpecsDir(SPECS);
@@ -68,6 +68,31 @@ test('grava as queries, copia as pequenas e congela Status Protocolo Dia como o 
 
   const m = leManifesto(dir)!;
   assert.deepEqual(m.tabelas.map((e) => e.query), ['field-agenda-slot', 'hora-atualizado']);
+});
+
+test('a calculada congelada vem do snapshot de hoje com o carimbo novo — e recusa se o DAX mudou', async (t) => {
+  const origem = temporario(t);
+  const tCal = model.table('CALENDARIO INSTALADO')!;
+  const nomes = [...tCal.columns.filter((c) => !c.calculated), ...tCal.columns.filter((c) => c.calculated && c.dax)].map((c) => c.name);
+  const linha = Object.fromEntries(nomes.map((n) => [n, null])) as Record<string, null | Date>;
+  linha['DATA INSTALADO'] = new Date('2025-01-02T00:00:00Z');
+  const cab = { query: 'calc.calendario-instalado', tabelas: [tCal.name], geradoEm: '2026-10-24T03:00:00.000Z' };
+  await escreve(arquivoDaCalculada(origem, tCal.name), { ...cab, tabelaSha: shaDaCalculada(tCal) }, nomes, [linha]);
+
+  const prontas = await calculadasCongeladas(origem, model, ['CALENDARIO INSTALADO']);
+  assert.equal(prontas[0]!.linhas.length, 1);
+  const dir = temporario(t);
+  await escreveSnapshotDoPeriodo(dir, model, { consultas: [], calculadas: prontas }, GERADO);
+  const gravada = leCabecalho(arquivoDaCalculada(dir, tCal.name));
+  assert.equal(gravada.geradoEm, GERADO, 'o carimbo é o do snapshot do período — senão o carregador a recusaria por idade');
+  assert.equal(gravada.tabelaSha, shaDaCalculada(tCal));
+  const { linhas } = await le(arquivoDaCalculada(dir, tCal.name));
+  assert.equal((linhas[0]!['data instalado'] as Date).toISOString(), '2025-01-02T00:00:00.000Z', 'o calendário de 2025 sobrevive');
+
+  const velha = temporario(t);
+  await escreve(arquivoDaCalculada(velha, tCal.name), { ...cab, tabelaSha: 'outro-dax' }, nomes, [linha]);
+  await assert.rejects(calculadasCongeladas(velha, model, ['CALENDARIO INSTALADO']), /mudou desde o congelamento/);
+  await assert.rejects(calculadasCongeladas(temporario(t), model, ['CALENDARIO INSTALADO']), /não está em/);
 });
 
 test('recusa pasta com coisa dentro e query pequena que não existe na origem', async (t) => {

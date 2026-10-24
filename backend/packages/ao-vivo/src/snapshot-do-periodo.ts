@@ -21,7 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
-import { escreve, leCabecalho, type Escalar } from '../../snapshot/src/formato.ts';
+import { escreve, le, leCabecalho, type Escalar } from '../../snapshot/src/formato.ts';
 import { arquivoDaQuery, arquivoDeEscrita, escreveManifesto, type EntradaDeManifesto } from '../../snapshot/src/manifesto.ts';
 import { arquivoDaCalculada, paraGravacao, shaDaCalculada } from '../../snapshot/src/tabelas-calculadas.ts';
 import type { AgregadaAoVivo } from './catalogo.ts';
@@ -96,6 +96,46 @@ export async function buscaDoPeriodo(
   };
 }
 
+/** Uma tabela calculada já pronta, com as chaves do dataset (normalizadas). */
+export interface CalculadaPronta {
+  readonly tabela: string;
+  readonly linhas: readonly Record<string, Escalar>[];
+}
+
+/**
+ * As calculadas CONGELADAS do snapshot de hoje, para entrarem no snapshot do período.
+ *
+ * Existe por causa do CALENDARIO INSTALADO da Premiação e do Diário: o corte da página
+ * deixa a PG só do ano, mas a calendário fica a congelada, que nasceu da PG INTEIRA
+ * (desde 2025) — de propósito, ver `corte-por-pagina.yaml` e ACHADOS #205. Calculada
+ * sobre a PG do ano, um filtro de "ano corrente" manteria todo o calendário e o motor o
+ * trataria como "sem filtro", contando protocolo sem data de instalação. Então ela vem do
+ * snapshot, igual à da tela de hoje.
+ *
+ * Erra alto se a calculada não está lá ou se o DAX dela mudou desde o congelamento: quem
+ * busca cai para o snapshot, em vez de servir calendário de outra definição.
+ */
+export async function calculadasCongeladas(
+  snapshotDir: string,
+  model: SemanticModel,
+  tabelas: readonly string[],
+): Promise<CalculadaPronta[]> {
+  const saida: CalculadaPronta[] = [];
+  for (const nome of tabelas) {
+    const t = model.table(nome);
+    if (!t) throw new Error(`calculada congelada: o modelo não tem '${nome}'`);
+    const arquivo = arquivoDaCalculada(snapshotDir, t.name);
+    if (!fs.existsSync(arquivo)) throw new Error(`calculada congelada: '${t.name}' não está em ${snapshotDir}`);
+    const cab = leCabecalho(arquivo);
+    if (cab.tabelaSha !== shaDaCalculada(t)) {
+      throw new Error(`calculada congelada: o DAX de '${t.name}' mudou desde o congelamento — espera o refresh recongelar`);
+    }
+    const { linhas } = await le(arquivo);
+    saida.push({ tabela: t.name, linhas });
+  }
+  return saida;
+}
+
 /** As tabelas do modelo que carregam do arquivo de uma query — o `tabelas` do cabeçalho. */
 function tabelasDoArquivo(model: SemanticModel, query: string): string[] {
   return calculadasDaQuery(model, query).map((t) => t.tabela);
@@ -112,7 +152,13 @@ function tabelasDoArquivo(model: SemanticModel, query: string): string[] {
 export async function escreveSnapshotDoPeriodo(
   dir: string,
   model: SemanticModel,
-  dados: Pick<DadosDoPeriodo, 'consultas' | 'statusProtocoloDia'>,
+  /**
+   * `statusProtocoloDia` é a calculada da agenda; `calculadas`, as que vêm prontas de
+   * outro lugar (`calculadasCongeladas`). As duas são gravadas congeladas, com o
+   * `geradoEm` deste snapshot.
+   */
+  dados: Pick<DadosDoPeriodo, 'consultas'> &
+    Partial<Pick<DadosDoPeriodo, 'statusProtocoloDia'>> & { readonly calculadas?: readonly CalculadaPronta[] },
   geradoEm: string,
   copia?: { readonly dir: string; readonly queries: readonly string[] },
 ): Promise<void> {
@@ -135,23 +181,29 @@ export async function escreveSnapshotDoPeriodo(
 
   // Como `calculadas.ts` do refresh grava a tradução nativa: as colunas físicas e as
   // calculadas do modelo, com as chaves que o cabeçalho declara.
-  const t = model.table(STATUS_DIA);
-  if (!t) throw new Error(`snapshot do período: o modelo não tem '${STATUS_DIA}'`);
-  const nomes = [
-    ...t.columns.filter((x) => !x.calculated).map((x) => x.name),
-    ...t.columns.filter((x) => x.calculated && x.dax).map((x) => x.name),
+  const calculadas = [
+    ...(dados.statusProtocoloDia ? [{ tabela: STATUS_DIA, linhas: dados.statusProtocoloDia }] : []),
+    ...(dados.calculadas ?? []),
   ];
-  await escreve(
-    arquivoDaCalculada(dir, t.name),
-    {
-      query: `calc.${normalizeName(t.name).replace(/[^a-z0-9]+/g, '-')}`,
-      tabelas: [t.name],
-      geradoEm,
-      tabelaSha: shaDaCalculada(t),
-    },
-    nomes,
-    paraGravacao(dados.statusProtocoloDia, nomes, t.name),
-  );
+  for (const c of calculadas) {
+    const t = model.table(c.tabela);
+    if (!t) throw new Error(`snapshot do período: o modelo não tem '${c.tabela}'`);
+    const nomes = [
+      ...t.columns.filter((x) => !x.calculated).map((x) => x.name),
+      ...t.columns.filter((x) => x.calculated && x.dax).map((x) => x.name),
+    ];
+    await escreve(
+      arquivoDaCalculada(dir, t.name),
+      {
+        query: `calc.${normalizeName(t.name).replace(/[^a-z0-9]+/g, '-')}`,
+        tabelas: [t.name],
+        geradoEm,
+        tabelaSha: shaDaCalculada(t),
+      },
+      nomes,
+      paraGravacao(c.linhas, nomes, t.name),
+    );
+  }
 
   const entradas: EntradaDeManifesto[] = arquivos.map(({ query, arquivo }) => {
     const cab = leCabecalho(arquivo);

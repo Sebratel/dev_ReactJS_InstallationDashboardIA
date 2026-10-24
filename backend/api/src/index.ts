@@ -39,7 +39,19 @@ import { SombraAoVivo } from './sombra-ao-vivo.ts';
 import { montaContextoAoVivo } from './contexto-ao-vivo.ts';
 import { PeriodosAoVivo } from './periodos-ao-vivo.ts';
 import { queriesPequenas } from './pagina-ao-vivo.ts';
-import { buscaDoPeriodo, escreveSnapshotDoPeriodo } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
+import { buscaDoPeriodo, calculadasCongeladas, escreveSnapshotDoPeriodo } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
+import { decideAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { leVariantesAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
+import {
+  buscaDoAno,
+  CALCULADAS_DO_ANO,
+  decideDoAno,
+  PAGINAS_DO_ANO,
+  periodoDoAno,
+  QUERIES_DO_ANO,
+  VARIANTE_PG_DO_ANO,
+} from '../../packages/ao-vivo/src/instalacao-do-ano.ts';
+import type { PaginaServidaAoVivo } from './opcoes-servidor.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -328,10 +340,13 @@ await acesso.recarrega();
 acesso.releA(30_000);
 
 // A fonte ao vivo (docs/DECISAO-AO-VIVO.md). `AO_VIVO_PAGINAS` lista as páginas servidas
-// do SRD — hoje só `agendamento-field` sabe ser — e `AO_VIVO_SOMBRA=1` liga a comparação
-// em segundo plano. Sem nenhum dos dois nada é montado, nem pool; a linha de log diz qual
-// estado vale, e por quê.
-const SABEM_SER_AO_VIVO = new Set(['agendamento-field']);
+// do SRD e `AO_VIVO_SOMBRA=1` liga a comparação em segundo plano. Sem nenhum dos dois
+// nada é montado, nem pool; a linha de log diz qual estado vale, e por quê.
+//
+// Duas formas: a Agendamento Field busca o MÊS da tela (`periodo.ts`); a Premiação e o
+// Diário dividem UM conjunto do ano (`instalacao-do-ano.ts`), que leva 1–2 min de SRD e
+// por isso vale 10 min e é buscado por baixo — a tela recebe sempre a versão pronta.
+const SABEM_SER_AO_VIVO = new Set(['agendamento-field', ...PAGINAS_DO_ANO]);
 const pedidasAoVivo = (process.env.AO_VIVO_PAGINAS ?? '').split(',').map((p) => p.trim()).filter(Boolean);
 for (const p of pedidasAoVivo) {
   if (!SABEM_SER_AO_VIVO.has(p)) console.error(`[ao-vivo] '${p}' em AO_VIVO_PAGINAS ainda não sabe ser ao vivo — ignorada`);
@@ -342,27 +357,77 @@ const contextoAoVivo =
   paginasAoVivo.length > 0 || querSombra
     ? await montaContextoAoVivo(ROOT)
     : { porque: 'AO_VIVO_PAGINAS vazia e AO_VIVO_SOMBRA não é 1' };
-const periodosAoVivo = new Map<string, PeriodosAoVivo>();
+const paginasServidasAoVivo = new Map<string, PaginaServidaAoVivo>();
+let anoAoVivo: { periodos: PeriodosAoVivo; aquece: () => void } | null = null;
 let sombraAoVivo: SombraAoVivo | null = null;
 if ('ctx' in contextoAoVivo) {
   const { ctx, model, relatosDoDia } = contextoAoVivo;
-  const paginas = loadDashboards(path.join(ROOT, 'backend', 'specs'));
-  for (const id of paginasAoVivo) {
-    const dash = paginas.find((d) => d.id === id);
-    if (!dash) continue;
-    const pequenas = queriesPequenas(dash, model);
-    periodosAoVivo.set(
-      id,
-      new PeriodosAoVivo({
-        busca: (periodo, agora) => buscaDoPeriodo(ctx, relatosDoDia, periodo, agora),
-        // As queries pequenas (capacidade, clima, hora) vêm do snapshot de hoje.
-        grava: (dir, dados, geradoEm) =>
-          escreveSnapshotDoPeriodo(dir, model, dados, geradoEm, { dir: DIR_SNAPSHOT, queries: pequenas }),
-        // Fora do snapshot: a pasta do snapshot só é gravável pelo refresh.
-        dirBase: path.join(process.env.API_RUNTIME_DIR || os.tmpdir(), 'ao-vivo', id),
-        registra: (linha) => console.error(linha),
-      }),
-    );
+  const specsDir = path.join(ROOT, 'backend', 'specs');
+  const paginas = loadDashboards(specsDir);
+  // Fora do snapshot: a pasta do snapshot só é gravável pelo refresh.
+  const dirBase = (nome: string) => path.join(process.env.API_RUNTIME_DIR || os.tmpdir(), 'ao-vivo', nome);
+
+  const agenda = paginas.find((d) => d.id === 'agendamento-field');
+  if (agenda && paginasAoVivo.includes(agenda.id)) {
+    // As queries pequenas (capacidade, clima, hora) vêm do snapshot de hoje.
+    const pequenas = queriesPequenas(agenda, model);
+    const periodos = new PeriodosAoVivo({
+      busca: (periodo, agora) => buscaDoPeriodo(ctx, relatosDoDia, periodo, agora),
+      grava: (dir, dados, geradoEm) =>
+        escreveSnapshotDoPeriodo(dir, model, dados, geradoEm, { dir: DIR_SNAPSHOT, queries: pequenas }),
+      dirBase: dirBase(agenda.id),
+      registra: (linha) => console.error(linha),
+    });
+    paginasServidasAoVivo.set(agenda.id, {
+      decide: (dash, daTela) => decideAoVivo(dash, daTela, model),
+      obtem: (p) => periodos.obtem(p),
+      estado: () => periodos.estado(),
+    });
+  }
+
+  const doAno = paginas.filter((d) => PAGINAS_DO_ANO.includes(d.id) && paginasAoVivo.includes(d.id));
+  const variante = leVariantesAoVivo(specsDir).get(VARIANTE_PG_DO_ANO);
+  if (doAno.length > 0 && variante) {
+    // Contratos, apuração, feriados e hora vêm do snapshot de hoje; produtividade e
+    // protocolos, do SRD.
+    const copiadas = [...new Set(doAno.flatMap((d) => queriesPequenas(d, model)))].filter((q) => !QUERIES_DO_ANO.includes(q));
+    const periodos = new PeriodosAoVivo({
+      busca: (periodo, agora) => buscaDoAno(ctx, variante, periodo, agora),
+      // O calendário de instalação vem congelado do snapshot (nasce da PG inteira).
+      grava: async (dir, dados, geradoEm) =>
+        escreveSnapshotDoPeriodo(
+          dir,
+          model,
+          { ...dados, calculadas: await calculadasCongeladas(DIR_SNAPSHOT, model, CALCULADAS_DO_ANO) },
+          geradoEm,
+          { dir: DIR_SNAPSHOT, queries: copiadas },
+        ),
+      dirBase: dirBase('ano'),
+      // O ano é sempre o período "aberto"; 10 min é o frescor combinado para ele.
+      ttlAbertoMs: 10 * 60_000,
+      maxPeriodos: 2,
+      // A busca do ano (~70 s) passa do teto do pedido: enquanto a primeira corre, o
+      // pedido sai na hora pelo snapshot em vez de esperar 45 s por ele.
+      esperaAPrimeira: false,
+      registra: (linha) => console.error(linha),
+    });
+    for (const d of doAno) {
+      paginasServidasAoVivo.set(d.id, {
+        decide: (dash, _daTela, agora) => decideDoAno(model, dash.id, agora),
+        obtem: (p) => periodos.obtem(p),
+        estado: () => periodos.estado(),
+      });
+    }
+    anoAoVivo = {
+      periodos,
+      // A primeira busca do ano leva mais que o teto de um pedido: começa na subida, e
+      // até ela terminar os pedidos saem pelo snapshot.
+      aquece: () => {
+        periodos.pronto(periodoDoAno(model, doAno[0]!.id, new Date())).catch(() => undefined);
+      },
+    };
+  } else if (doAno.length > 0) {
+    console.error(`[ao-vivo] ao-vivo.yaml sem a variante ${VARIANTE_PG_DO_ANO} — ${doAno.map((d) => d.id).join(', ')} seguem pelo snapshot`);
   }
   if (querSombra) {
     sombraAoVivo = new SombraAoVivo({
@@ -377,8 +442,9 @@ if ('ctx' in contextoAoVivo) {
 console.log(
   'porque' in contextoAoVivo
     ? `[ao-vivo] desligado: ${contextoAoVivo.porque}`
-    : `[ao-vivo] servidas do SRD: ${[...periodosAoVivo.keys()].join(', ') || 'nenhuma'}; sombra ${sombraAoVivo ? 'ligada' : 'desligada'}`,
+    : `[ao-vivo] servidas do SRD: ${[...paginasServidasAoVivo.keys()].join(', ') || 'nenhuma'}; sombra ${sombraAoVivo ? 'ligada' : 'desligada'}`,
 );
+anoAoVivo?.aquece();
 
 const servidor = new Servidor({
   root: ROOT,
@@ -394,7 +460,7 @@ const servidor = new Servidor({
   // voltar a detectar, invalidar, avisar e servir o número velho.
   overlayRealtime: () => poller?.overlays() ?? new Map(),
   ...(sombraAoVivo ? { sombraAoVivo } : {}),
-  ...(periodosAoVivo.size > 0 ? { aoVivo: { paginas: periodosAoVivo } } : {}),
+  ...(paginasServidasAoVivo.size > 0 ? { aoVivo: { paginas: paginasServidasAoVivo } } : {}),
   // A VISÃO PRODUTIVA na hora; as demais páginas, juntas a cada 2 min. Ver
   // `aoTabelaMudar` e ACHADOS #175.
   avisoDasPaginas: {

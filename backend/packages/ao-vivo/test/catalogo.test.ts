@@ -11,7 +11,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { traduzParametros } from '../../query-engine/src/connectors-sql.ts';
 import { QueryRegistry } from '../../query-engine/src/registry.ts';
-import { costuraAoVivo, leCatalogoAoVivo, type ConsultaAoVivo } from '../src/catalogo.ts';
+import { costuraAoVivo, leCatalogoAoVivo, leVariantesAoVivo, type ConsultaAoVivo } from '../src/catalogo.ts';
 
 const SPECS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'specs');
 const registry = QueryRegistry.fromSpecsDir(SPECS);
@@ -47,6 +47,21 @@ test('os protocolos são recortados pela SOLICITAÇÃO, a partição do ROW_NUMB
   const costurado = costuraAoVivo(sql, catalogo.get('protocolos-geral')!);
   assert.match(costurado, /AND a\.title IN \(/);
   assert.match(costurado, /ai2\.protocol = ANY\(:protocolos::bigint\[\]\)/);
+});
+
+test('toda variante costura no SQL atual da query que ela nomeia', () => {
+  const variantes = leVariantesAoVivo(SPECS);
+  assert.ok(variantes.size >= 1, `li ${variantes.size} variante(s) em ao-vivo.yaml`);
+  for (const [nome, v] of variantes) {
+    const sql = registry.get(v.query).sql ?? '';
+    const costurado = costuraAoVivo(sql, v);
+    assert.notEqual(costurado, sql, `${nome}: a costura não mudou nada`);
+    const { values } = traduzParametros(costurado, Object.fromEntries(v.parametros.map((p) => [p, '2026-01-01'])), (i) => `$${i}`);
+    assert.ok(values.length >= v.parametros.length, `${nome}: algum parâmetro não entrou`);
+  }
+  // A dos protocolos do ano preserva a partição do ROW_NUMBER: recorta por SOLICITAÇÃO.
+  const doAno = costuraAoVivo(registry.get('protocolos-geral').sql ?? '', variantes.get('protocolos-geral-criados-desde')!);
+  assert.match(doAno, /AND a\.title IN \(\s*SELECT a2\.title\s+FROM assignments a2\s+WHERE a2\.created >= :desde::date/);
 });
 
 const BASE: ConsultaAoVivo = {

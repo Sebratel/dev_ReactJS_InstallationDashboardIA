@@ -194,3 +194,22 @@ agregadas:
         para: *vista-da-agenda
       - de: "ORDER BY vsdspi.assignment_created DESC;"
         para: "GROUP BY 1, 2;"
+
+# Outra costura para uma query que já tem entrada em `consultas` — quem a usa monta o
+# catálogo do pedido com ela no lugar da entrada padrão (`query` diz de qual spec é).
+variantes:
+  # PROTOCOLOS GERAL do ano, para a Premiação e o Diário (docs/DECISAO-AO-VIVO.md, fase 3).
+  # As duas páginas cortam a PG em DATA CRIADO >= início do ano (`corte-por-pagina.yaml`).
+  # Aqui vêm as SOLICITAÇÕES com algum atendimento criado desde `desde` — superconjunto
+  # do corte, com a partição do ROW_NUMBER (por `a.title`) inteira — e o recorte final é
+  # o mesmo do corte, pela DATA CRIADO da linha que venceu.
+  protocolos-geral-criados-desde:
+    query: protocolos-geral
+    parametros: [desde, ate]
+    recorte:
+      tipo: protocolos-com-data-no-periodo
+      protocolo: "N°PROTOCOLO"
+      data: "DATA CRIADO"
+    costura:
+      - de: "      AND a.created >= '2025-01-01'\n),\nPLANOS_CONTRATO AS ("
+        para: "      AND a.created >= '2025-01-01'\n      AND a.title IN (\n          SELECT a2.title\n            FROM assignments a2\n           WHERE a2.created >= :desde::date\n             AND a2.created < :ate::date\n      )\n),\nPLANOS_CONTRATO AS ("

@@ -36,7 +36,8 @@ export interface GeracaoDoPeriodo {
   readonly protocolos: number;
 }
 
-export type DadosParaGravar = Pick<DadosDoPeriodo, 'consultas' | 'statusProtocoloDia' | 'protocolos'>;
+export type DadosParaGravar = Pick<DadosDoPeriodo, 'consultas' | 'protocolos'> &
+  Partial<Pick<DadosDoPeriodo, 'statusProtocoloDia'>>;
 
 export interface OpcoesDosPeriodos {
   /** A busca no SRD (`buscaDoPeriodo`, com o contexto já montado). */
@@ -56,6 +57,13 @@ export interface OpcoesDosPeriodos {
   readonly maxBuscasJuntas?: number;
   /** Padrão: 2 min de folga antes de apagar a pasta de uma geração substituída. */
   readonly gracaMs?: number;
+  /**
+   * O pedido que chega antes da PRIMEIRA geração de um período espera a busca? Padrão:
+   * sim — o mês da agenda fica pronto em ~20 s, e quem pediu recebe o ao vivo. Não, para
+   * o ano (~70 s, mais que o teto do pedido): enquanto a busca corre, o pedido sai na
+   * hora pelo snapshot, em vez de esperar 45 s para sair pelo mesmo snapshot.
+   */
+  readonly esperaAPrimeira?: boolean;
   readonly registra?: (linha: string) => void;
 }
 
@@ -78,6 +86,7 @@ export class PeriodosAoVivo {
       maxPeriodos: 8,
       maxBuscasJuntas: 2,
       gracaMs: 120_000,
+      esperaAPrimeira: true,
       ...o,
     };
     fs.rmSync(o.dirBase, { recursive: true, force: true });
@@ -92,6 +101,11 @@ export class PeriodosAoVivo {
   obtem(periodo: PeriodoAoVivo): Promise<GeracaoDoPeriodo> {
     const k = chave(periodo);
     const g = this.#geracoes.get(k);
+    if (!g && !this.#o.esperaAPrimeira) {
+      // Começa a busca (ou deixa a que já corre) e não espera por ela.
+      this.#renova(periodo).catch(() => undefined);
+      return Promise.reject(new Error(`a primeira busca de ${k} no SRD ainda corre`));
+    }
     if (!g) return this.#renova(periodo);
     this.#geracoes.delete(k);
     this.#geracoes.set(k, g);
@@ -100,6 +114,14 @@ export class PeriodosAoVivo {
       this.#renova(periodo).catch(() => undefined);
     }
     return Promise.resolve(g);
+  }
+
+  /**
+   * A geração do período, esperando a busca se ainda não há uma — para quem quer o
+   * período pronto (o aquecimento na subida, os testes), e não para o pedido de tela.
+   */
+  pronto(periodo: PeriodoAoVivo): Promise<GeracaoDoPeriodo> {
+    return this.#geracoes.get(chave(periodo)) ? this.obtem(periodo) : this.#renova(periodo);
   }
 
   /** Para `/api/saude`: o que está guardado e de quando, e quantas buscas correm. */

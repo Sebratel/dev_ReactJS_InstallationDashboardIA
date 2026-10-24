@@ -72,6 +72,10 @@ interface Arquivo {
     string,
     { base: string; parametros: string[]; costura: Costura[]; marcadores?: string[]; janela?: string }
   >;
+  variantes?: Record<
+    string,
+    { query: string; parametros: string[]; costura: Costura[]; recorte: Recorte; janela?: string }
+  >;
 }
 
 export function caminhoDoCatalogo(specsDir: string): string {
@@ -128,6 +132,24 @@ export function leCatalogoAoVivo(specsDir: string): Map<string, ConsultaAoVivo> 
     if (!c.costura?.length) throw new Error(`${arquivo}: '${query}' sem costura`);
     if (!c.recorte?.tipo) throw new Error(`${arquivo}: '${query}' sem recorte — a sonda não teria como comparar`);
     saida.set(query, { query, ...c });
+  }
+  return saida;
+}
+
+/**
+ * As variantes: outra costura para uma query que já tem entrada em `consultas`, pelo
+ * nome da variante. `query` é a spec; quem usa monta o catálogo do pedido com a variante
+ * no lugar da entrada padrão daquela query.
+ */
+export function leVariantesAoVivo(specsDir: string): Map<string, ConsultaAoVivo> {
+  const { arquivo, doc } = leArquivo(specsDir);
+  const saida = new Map<string, ConsultaAoVivo>();
+  for (const [nome, v] of Object.entries(doc.variantes ?? {})) {
+    if (!v.query) throw new Error(`${arquivo}: variante '${nome}' sem query`);
+    if (!v.parametros?.length) throw new Error(`${arquivo}: variante '${nome}' sem parametros`);
+    if (!v.costura?.length) throw new Error(`${arquivo}: variante '${nome}' sem costura`);
+    if (!v.recorte?.tipo) throw new Error(`${arquivo}: variante '${nome}' sem recorte`);
+    saida.set(nome, { ...v });
   }
   return saida;
 }
