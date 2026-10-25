@@ -385,12 +385,25 @@ Os filhos, um por vez: mês da agenda 1037 MB (116 s), ano 1076 MB (168 s), jane
 busca morta pelo prazo de 10 min sem motivo legível no log; a cauda do erro do filho
 passou a trazer a linha `Error: …` em vez do fim da pilha.
 
-**O que isto destrava (passo 2).** Com as páginas ao vivo, a API não precisa mais da agenda
-completa do snapshot. Sobra quem ainda a usa: o tempo real (`realtime-poll.yaml` vigia a
-`field-agenda`), o congelamento do `Status Protocolo Dia` e do `calendar` no refresh, e a
-página quando cai para o snapshot (SRD fora). Tirá-la do grupo `frio` do refresh é o que
-derruba o pico de 3 GB do contêiner `refresh` — decisão a tomar junto com o Erick, porque
-muda a garantia de queda: com o SRD fora, os seis visuais de relato ficariam sem resposta.
+**O que isto destrava (passo 2, proposto ao Erick em 25/10/2026).** Com as páginas ao vivo,
+a API não precisa mais da agenda completa do snapshot. Tirá-la do refresh (grupo `frio` e
+carga das 3h) derruba o pico de 3 GB do contêiner `refresh`. Quem ainda a usa, e o destino
+de cada um:
+
+| Onde | Depois do passo 2 |
+|---|---|
+| Agendamento Field ao vivo | igual, com o overlay do tempo real aplicado sobre o mês (hoje ela fica em 5 min; volta a 30–60 s) |
+| Agendamento Field pelo snapshot (main sem `AO_VIVO_PAGINAS`, SRD fora) | **decidir:** na main, só ao vivo; na queda, agenda de slot e os 6 visuais de relato indisponíveis |
+| Relatório do Mês pelo snapshot (o tempo real recalcula o `calendar` e pede a completa) | **decidir:** ao vivo pela janela (~1 GB por 2 min a cada 10 min de uso) ou snapshot sem o recálculo do tempo real |
+| `Status Protocolo Dia` congelado | agenda de slot + agregada `relatos-do-dia` (provada igual numa semana em 23/10; refazer na janela inteira) |
+| `calendar` congelado | tradução nativa sobre a agenda de slot (lê só protocolo e data; confirmar a coluna Data no slot) |
+| Tempo real (`realtime-poll.yaml`) | overlay sobre o mês ao vivo, não sobre a completa do snapshot |
+| Carga das 3h | sem a `field-agenda` |
+
+Ordem proposta, cada passo reversível recolocando a `field-agenda` no `refresh.yaml`: (1)
+overlay do tempo real sobre o mês ao vivo; (2) congelados sem a agenda completa, com sonda
+contra os atuais; (3) queda sem ela; (4) `AO_VIVO_PAGINAS` na main; (5) tirar a
+`field-agenda` do refresh, medir e baixar o `mem_limit` dele.
 
 ## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
 
