@@ -53,7 +53,11 @@ export async function buscaDaJanela(
   ctx: ContextoAoVivo,
   agora: Date,
 ): Promise<{ consultas: TabelaDoPeriodo[]; protocolos: number }> {
-  const feitas = await Promise.all(QUERIES_DA_JANELA.map((query) => buscaAoVivo(ctx, { query, agora })));
+  // Uma depois da outra, a PG primeiro: juntas, os pipelines de M somavam os picos e o
+  // processo da busca não cabia em 800 MB de heap; assim cabe, com pico de 902 MB de RSS
+  // (24/10/2026, `geracao-em-processo.ts`).
+  const feitas = [];
+  for (const query of QUERIES_DA_JANELA) feitas.push(await buscaAoVivo(ctx, { query, agora }));
   const consultas = feitas.map((r) => ({ query: r.query, colunas: r.colunas, linhas: r.linhas }));
   return { consultas, protocolos: feitas[0]!.linhas.length };
 }

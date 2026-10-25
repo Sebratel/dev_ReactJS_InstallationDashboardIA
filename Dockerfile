@@ -80,7 +80,8 @@ USER node
 
 EXPOSE 3100
 
-# 1024, e o número é medido — era 10240, escolhido por estimativa (e 1536 até 17/10/2026).
+# 768, e o número é medido — era 10240, escolhido por estimativa (1536 até 17/10/2026 e
+# 1024 até 24/10/2026).
 #
 # A API tem a mesma cota de 3 GB do dashboard Comercial. Medido em 16/10/2026,
 # em um contêiner isolado de 3 GB, com a piscina em 1 worker de 512 MB:
@@ -92,11 +93,16 @@ EXPOSE 3100
 # até 42 GB de heap numa máquina de 16 GB. O `mem_limit` do compose tem de ser
 # derivado desta linha e revalidado dentro do cgroup.
 #
-# Heap autorizado hoje: 1024 (aqui) + 1 × 512 (piscina) = 1536 MB, dentro do
-# `mem_limit: 1600m` do docker-compose.prod.yml, com 64 MB de folga. A medição de
-# 18/10/2026 passou 200 usuários distintos com pico de cgroup de 1344,2 MiB.
-# `backend/api/test/piscina-workers.test.ts` falha se os três números saírem de sincronia.
-CMD ["node", "--max-old-space-size=1024", "--expose-gc", "backend/api/src/index.ts"]
+# **768 desde 24/10/2026**, para caber o processo filho da busca ao vivo
+# (`backend/api/src/geracao-em-processo.ts`, até 1024 MB de heap, um por vez) no mesmo
+# `mem_limit`. O pai usa 34–42 MB de heap em produção (16/10/2026) mais o cache de
+# respostas em memória (teto de 256 MB); 768 continua acima dos 512 de cada worker, então
+# o que uma worker calcula o pai calcula no caminho de emergência (piscina parada).
+#
+# Heap autorizado hoje: 768 (aqui) + 2 × 512 (piscina) + 1024 (o filho ao vivo) = 2816 MB,
+# dentro do `mem_limit: 3072m` do docker-compose.prod.yml, com 256 MB de folga.
+# `backend/api/test/piscina-workers.test.ts` falha se os números saírem de sincronia.
+CMD ["node", "--max-old-space-size=768", "--expose-gc", "backend/api/src/index.ts"]
 
 # Frontend separado: entrega o bundle React e encaminha rotas dinâmicas para a
 # API na rede Docker. TLS continua sob responsabilidade do proxy externo.

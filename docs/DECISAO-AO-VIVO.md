@@ -262,7 +262,8 @@ duas com minutos de distância, e um reagendamento nesse meio aparecia como dife
 única diferença que sobra é o grão — o que a sonda prova. Que a consulta do SRD traz o
 mesmo que o refresh grava é o mesmo SQL do catálogo.
 
-**Liga com:** `AO_VIVO_PAGINAS` com as 13 páginas —
+**Liga com** (antes, leia § A busca num processo filho: estas páginas compram frescor,
+não memória): `AO_VIVO_PAGINAS` com as 13 páginas —
 `agendamento-field,premiacao-instalacao,diario-instalacao,protocolos-detalhados,manutencao-inicial,instalacao-reincidente,visao-geral,relatorio-do-mes,relatorio-do-ano,telefonia-ouvidoria,l-inst,l-mapa,l-tec`.
 A montagem é `backend/api/src/ao-vivo-da-api.ts`: o `index.ts` e o teste de ponta a ponta
 chamam a mesma função.
@@ -284,6 +285,55 @@ hora e a nova é calculada por baixo, com aviso por SSE, como num refresh (ACHAD
 a marca pede a busca do período vencido: um acerto no cache não chega a `obtem`, e o
 conjunto deixaria de se renovar. Depois de uma busca que falhou, espera 1 min para tentar
 de novo.
+
+## A busca num processo filho (24/10/2026, noite)
+
+**O defeito.** A busca de cada conjunto roda o pipeline do refresh — SQL, passos do Power
+Query e colunas calculadas — e rodava na thread principal da API. Medido com o contrato de
+produção (pai em 1024 MB, 2 workers × 512, 1 dataset por worker), com as 13 páginas: a API
+**morreu por heap na subida**, em ~2 min, com as buscas do ano e da janela correndo juntas.
+Sem teto, cada uma pede 1,9 GB (ano) e 2,3 GB (janela) de RSS. O teste de ponta a ponta
+anterior não pegou porque rodou sem o teto do pai. Com Premiação e Diário ligados, a
+`staging` roda hoje a busca do ano dentro da API a cada 10 min de uso.
+
+**O conserto** é a regra que o refresh já seguia (`executa-grupo.ts`): materializar fora
+da API. Cada busca é um processo filho (`backend/api/src/geracao-em-processo.ts` →
+`filho-ao-vivo.ts`, com a mesma `geracao-do-conjunto.ts`), que grava a pasta do período e
+sai, devolvendo a memória. Dentro dele as consultas rodam uma depois da outra — juntas,
+os pipelines somavam os picos. Teto de heap medido:
+
+| Conjunto | Não cabe | Cabe | Teto dado | Pico de RSS do filho |
+|---|---|---|---|---|
+| janela (PG inteira, telefonia, agenda de slot) | 640 MB | 800 MB | 1024 MB | 0,9–1,0 GB |
+| ano (PG do ano, produtividade) | 640 MB | 800 MB | 1024 MB | 0,9–1,1 GB |
+| agenda (um mês) | — | 160 MB | 384 MB | 0,24 GB |
+
+**Uma busca por vez**, de qualquer conjunto (`FilaDeBuscas`). O contrato de memória passou
+a contar o filho: pai 768 + workers 2 × 512 + um filho 1024 = 2816 MB autorizados nos 3072
+da `api`. O pai desceu de 1024 para 768 (usa 34–42 MB mais o cache de respostas). O preço da
+fila: um mês novo da agenda pedido durante a busca de um conjunto espera a vez, e passando
+de 45 s sai pelo snapshot.
+
+**Medido depois, com as 13 páginas ao vivo** (o mesmo processo da API, 2 workers × 512,
+1 dataset por worker; as 13 abertas como abrem e seis delas em setembro):
+
+| Fase | Só o snapshot (pai 1024) | 13 ao vivo (pai 768) |
+|---|---|---|
+| Durante as buscas no SRD | — | 140–170 MB (antes: morria) |
+| Pico abrindo as páginas e os filtros | 1274 MB | 1172 MB |
+| Repouso, depois do GC | 746 MB | 604 MB |
+
+Os filhos, fora disso e um por vez: 237 MB (mês da agenda, 20 s), 1075 MB (ano, 122 s),
+1012 MB (janela, 100 s). 13 de 13 páginas com `aoVivo`, nenhum visual com erro.
+
+**O que cada conjunto compra, sem rodeio.** Só a agenda corta dado: o mês em vez das 633
+mil linhas da agenda completa. O ano e a janela trazem do SRD o MESMO tamanho que o
+snapshot carrega (a PG do ano cortada nas cinco páginas, a PG inteira nas de protocolos);
+o que eles dão é frescor de 10 min em vez dos 30 do grupo `medio` do refresh — ao custo de
+um filho de ~1 GB por 1–2 min a cada 10 min de uso, e da PG inteira lida no SRD a cada 10
+min (o refresh lê só a parte recente, `historico-congelado.ts`). A exceção é o Relatório do
+Mês, que pelo snapshot carrega a agenda completa e pelo conjunto da janela, a de slot.
+**Para a memória, o que vale ligar é `agendamento-field`**; as outras são frescor.
 
 ## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
 

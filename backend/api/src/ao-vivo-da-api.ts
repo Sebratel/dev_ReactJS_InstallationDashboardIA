@@ -12,36 +12,24 @@
 //     janela (`janela-de-protocolos.ts`).
 // Os dois conjuntos levam 1–2 min de SRD: valem 10 min, são buscados por baixo, e a
 // primeira busca começa na subida (`aquece`). O que não vem do SRD é copiado do snapshot.
+//
+// **Cada busca roda num processo filho** (`geracao-em-processo.ts`): dentro da API, as
+// duas dos conjuntos estouraram o heap do processo na subida. TODAS passam por uma fila
+// de UMA busca por vez: é o que mantém o heap autorizado (pai + workers + um filho) dentro
+// do `mem_limit` da `api`. O preço: um mês novo da agenda pedido enquanto um conjunto
+// grande é buscado espera a vez, e passando de 45 s o pedido sai pelo snapshot.
 
 import path from 'node:path';
 import { leVariantesAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
-import {
-  buscaDoAno,
-  CALCULADAS_DO_ANO,
-  decideDoAno,
-  PAGINAS_DO_ANO,
-  periodoDoAno,
-  QUERIES_DO_ANO,
-  VARIANTE_PG_DO_ANO,
-} from '../../packages/ao-vivo/src/instalacao-do-ano.ts';
-import {
-  buscaDaJanela,
-  decideDaJanela,
-  PAGINAS_DA_JANELA,
-  periodoDaJanela,
-  QUERIES_DA_JANELA,
-} from '../../packages/ao-vivo/src/janela-de-protocolos.ts';
+import { decideDoAno, PAGINAS_DO_ANO, periodoDoAno, VARIANTE_PG_DO_ANO } from '../../packages/ao-vivo/src/instalacao-do-ano.ts';
+import { decideDaJanela, PAGINAS_DA_JANELA, periodoDaJanela } from '../../packages/ao-vivo/src/janela-de-protocolos.ts';
 import { decideAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
-import {
-  buscaDoPeriodo,
-  calculadasCongeladas,
-  escreveSnapshotDoPeriodo,
-} from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { montaContextoAoVivo } from './contexto-ao-vivo.ts';
+import type { ConjuntoAoVivo, PedidoDeGeracao } from './geracao-do-conjunto.ts';
+import { geraEmProcesso } from './geracao-em-processo.ts';
 import type { PaginaServidaAoVivo } from './opcoes-servidor.ts';
-import { queriesPequenas } from './pagina-ao-vivo.ts';
-import { PeriodosAoVivo } from './periodos-ao-vivo.ts';
+import { FilaDeBuscas, PeriodosAoVivo } from './periodos-ao-vivo.ts';
 import { SombraAoVivo } from './sombra-ao-vivo.ts';
 
 /** As páginas que sabem ser servidas ao vivo. Outra em `AO_VIVO_PAGINAS` é ignorada, com aviso. */
@@ -69,6 +57,8 @@ export async function montaAoVivoDaApi(o: {
   readonly dirBase: string;
   readonly conta: (nome: string, quanto: number) => void;
   readonly registra?: (linha: string) => void;
+  /** Quem gera um conjunto. Padrão: um processo filho por busca. */
+  readonly gera?: (pedido: PedidoDeGeracao) => Promise<{ protocolos: number; picoMB?: number }>;
 }): Promise<AoVivoDaApi> {
   const registra = o.registra ?? ((linha: string) => console.error(linha));
   for (const p of o.paginasPedidas) {
@@ -77,23 +67,30 @@ export async function montaAoVivoDaApi(o: {
   const pedidas = o.paginasPedidas.filter((p) => SABEM_SER_AO_VIVO.has(p));
   const nada = { paginas: new Map(), sombra: null, aquece: () => undefined, prontos: async () => undefined, fecha: async () => undefined };
   if (pedidas.length === 0 && !o.querSombra) return { ...nada, linha: '[ao-vivo] desligado: AO_VIVO_PAGINAS vazia e AO_VIVO_SOMBRA não é 1' };
+  // Aqui o contexto valida as specs e serve a sombra; as buscas montam o delas no filho.
+  // Os pools nascem sem conexão nenhuma — sem sombra, a API não conecta no SRD.
   const contexto = await montaContextoAoVivo(o.root);
   if ('porque' in contexto) return { ...nada, linha: `[ao-vivo] desligado: ${contexto.porque}` };
 
-  const { ctx, model, relatosDoDia } = contexto;
+  const { model } = contexto;
   const specsDir = path.join(o.root, 'backend', 'specs');
   const paginas = loadDashboards(specsDir);
   const servidas = new Map<string, PaginaServidaAoVivo>();
   const conjuntos: (() => Promise<unknown>)[] = [];
+  const gera = o.gera ?? ((pedido: PedidoDeGeracao) => geraEmProcesso(o.root, pedido));
+  /** O `gera` de um conjunto para o `PeriodosAoVivo`: o pedido que o filho recebe. */
+  const geraDo = (conjunto: ConjuntoAoVivo, ids: readonly string[]) =>
+    (periodo: PedidoDeGeracao['periodo'], dir: string, agora: Date) =>
+      gera({ conjunto, paginas: ids, periodo, dir, snapshotDir: o.snapshotDir, agoraIso: agora.toISOString() });
+  /** Um processo de busca por vez, de qualquer conjunto (ver o cabeçalho). */
+  const fila = new FilaDeBuscas(1);
 
   const agenda = paginas.find((d) => d.id === 'agendamento-field');
   if (agenda && pedidas.includes(agenda.id)) {
-    // As queries pequenas (capacidade, clima, hora) vêm do snapshot de hoje.
-    const pequenas = queriesPequenas(agenda, model);
     const periodos = new PeriodosAoVivo({
-      busca: (periodo, agora) => buscaDoPeriodo(ctx, relatosDoDia, periodo, agora),
-      grava: (dir, dados, geradoEm) => escreveSnapshotDoPeriodo(dir, model, dados, geradoEm, { dir: o.snapshotDir, queries: pequenas }),
+      gera: geraDo('agenda', [agenda.id]),
       dirBase: path.join(o.dirBase, agenda.id),
+      fila,
       registra,
     });
     servidas.set(agenda.id, {
@@ -105,25 +102,14 @@ export async function montaAoVivoDaApi(o: {
   }
 
   const doAno = paginas.filter((d) => PAGINAS_DO_ANO.includes(d.id) && pedidas.includes(d.id));
-  const variante = leVariantesAoVivo(specsDir).get(VARIANTE_PG_DO_ANO);
-  if (doAno.length > 0 && variante) {
-    // Produtividade e protocolos do SRD; o resto do snapshot, e o calendário de instalação
-    // congelado dele (nasce da PG inteira, ACHADOS #205).
-    const copiadas = [...new Set(doAno.flatMap((d) => queriesPequenas(d, model)))].filter((q) => !QUERIES_DO_ANO.includes(q));
+  if (doAno.length > 0 && leVariantesAoVivo(specsDir).has(VARIANTE_PG_DO_ANO)) {
     const periodos = new PeriodosAoVivo({
-      busca: (periodo, agora) => buscaDoAno(ctx, variante, periodo, agora),
-      grava: async (dir, dados, geradoEm) =>
-        escreveSnapshotDoPeriodo(
-          dir,
-          model,
-          { ...dados, calculadas: await calculadasCongeladas(o.snapshotDir, model, CALCULADAS_DO_ANO) },
-          geradoEm,
-          { dir: o.snapshotDir, queries: copiadas },
-        ),
+      gera: geraDo('ano', doAno.map((d) => d.id)),
       dirBase: path.join(o.dirBase, 'ano'),
       // O ano é sempre o período "aberto"; 10 min é o frescor combinado para ele.
       ttlAbertoMs: 10 * 60_000,
       maxPeriodos: 2,
+      fila,
       // A busca do ano (~70 s) passa do teto do pedido: enquanto a primeira corre, o
       // pedido sai na hora pelo snapshot em vez de esperar 45 s por ela.
       esperaAPrimeira: false,
@@ -144,15 +130,12 @@ export async function montaAoVivoDaApi(o: {
 
   const daJanela = paginas.filter((d) => PAGINAS_DA_JANELA.includes(d.id) && pedidas.includes(d.id));
   if (daJanela.length > 0) {
-    // PG, telefonia e agenda (no grão de slot) do SRD; backlog, capacidade, clima,
-    // consolidado, feriados e hora do snapshot. As calculadas são recalculadas.
-    const copiadas = [...new Set(daJanela.flatMap((d) => queriesPequenas(d, model)))].filter((q) => !QUERIES_DA_JANELA.includes(q));
     const periodos = new PeriodosAoVivo({
-      busca: (_periodo, agora) => buscaDaJanela(ctx, agora),
-      grava: (dir, dados, geradoEm) => escreveSnapshotDoPeriodo(dir, model, dados, geradoEm, { dir: o.snapshotDir, queries: copiadas }),
+      gera: geraDo('janela', daJanela.map((d) => d.id)),
       dirBase: path.join(o.dirBase, 'janela'),
       ttlAbertoMs: 10 * 60_000,
       maxPeriodos: 2,
+      fila,
       esperaAPrimeira: false,
       registra,
     });
@@ -168,7 +151,7 @@ export async function montaAoVivoDaApi(o: {
   }
 
   const sombra = o.querSombra
-    ? new SombraAoVivo({ ctx, model, relatosDoDia, snapshotDir: o.snapshotDir, conta: o.conta })
+    ? new SombraAoVivo({ ctx: contexto.ctx, model, relatosDoDia: contexto.relatosDoDia, snapshotDir: o.snapshotDir, conta: o.conta })
     : null;
   return {
     paginas: servidas,

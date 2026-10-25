@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import type { PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
-import { PeriodosAoVivo, type OpcoesDosPeriodos } from '../src/periodos-ao-vivo.ts';
+import { FilaDeBuscas, PeriodosAoVivo, type OpcoesDosPeriodos } from '../src/periodos-ao-vivo.ts';
 
 const SETEMBRO: PeriodoAoVivo = { desde: '2026-09-01', ate: '2026-10-01' };
 const OUTUBRO: PeriodoAoVivo = { desde: '2026-10-01', ate: '2026-11-01' };
@@ -25,12 +25,12 @@ function cenario(t: { after: (f: () => void) => void }, extra: Partial<OpcoesDos
   const linhas: string[] = [];
   let falha: Error | null = null;
   const p = new PeriodosAoVivo({
-    busca: async (periodo) => {
+    gera: async (periodo, dir) => {
       buscas.push(periodo.desde);
       if (falha) throw falha;
-      return { consultas: [], statusProtocoloDia: [], protocolos: 3 };
+      fs.writeFileSync(path.join(dir, 'arquivo'), 'x');
+      return { protocolos: 3 };
     },
-    grava: async (dir) => fs.writeFileSync(path.join(dir, 'arquivo'), 'x'),
     dirBase: path.join(base, 'ao-vivo'),
     agora: () => agora,
     gracaMs: 0,
@@ -84,12 +84,12 @@ test('no máximo 2 buscas ao mesmo tempo, mesmo de períodos diferentes', async 
   let maximo = 0;
   const portas: (() => void)[] = [];
   const c = cenario(t, {
-    busca: async () => {
+    gera: async () => {
       correndo++;
       maximo = Math.max(maximo, correndo);
       await new Promise<void>((ok) => portas.push(ok));
       correndo--;
-      return { consultas: [], statusProtocoloDia: [], protocolos: 0 };
+      return { protocolos: 0 };
     },
   });
   const todas = Promise.all([c.p.obtem(SETEMBRO), c.p.obtem(OUTUBRO), c.p.obtem(AGOSTO)]);
@@ -103,6 +103,36 @@ test('no máximo 2 buscas ao mesmo tempo, mesmo de períodos diferentes', async 
   await todas;
   assert.equal(maximo, 2);
   assert.equal(c.p.estado().buscando, 0);
+});
+
+test('a fila dividida vale para os dois conjuntos juntos: com teto 1, o segundo espera o primeiro', async (t) => {
+  const fila = new FilaDeBuscas(1);
+  const portas: (() => void)[] = [];
+  let correndo = 0;
+  let maximo = 0;
+  const gera = async () => {
+    correndo++;
+    maximo = Math.max(maximo, correndo);
+    await new Promise<void>((ok) => portas.push(ok));
+    correndo--;
+    return { protocolos: 1 };
+  };
+  const ano = cenario(t, { gera, fila, esperaAPrimeira: false });
+  const janela = cenario(t, { gera, fila, esperaAPrimeira: false });
+  const prontos = Promise.all([ano.p.pronto(OUTUBRO), janela.p.pronto(SETEMBRO)]);
+  await assenta();
+  assert.equal(correndo, 1, 'um processo de busca por vez, de qualquer conjunto');
+  assert.deepEqual(
+    [ano.p.estado().buscando, ano.p.estado().naFila],
+    [1, 1],
+    'a saúde de cada um mostra a fila inteira',
+  );
+  while (portas.length) {
+    portas.shift()!();
+    await assenta();
+  }
+  await prontos;
+  assert.equal(maximo, 1);
 });
 
 test('a primeira busca que falha erra para quem pediu; a renovação que falha mantém o anterior servindo', async (t) => {
@@ -126,11 +156,11 @@ test('sem esperar a primeira: o pedido cai na hora, a busca segue, e o seguinte 
   let solta: () => void = () => undefined;
   const c = cenario(t, {
     esperaAPrimeira: false,
-    busca: async () => {
+    gera: async () => {
       await new Promise<void>((ok) => {
         solta = ok;
       });
-      return { consultas: [], statusProtocoloDia: [], protocolos: 1 };
+      return { protocolos: 1 };
     },
   });
   await assert.rejects(c.p.obtem(OUTUBRO), /a primeira busca de 2026-10-01\.\.2026-11-01 no SRD ainda corre/);

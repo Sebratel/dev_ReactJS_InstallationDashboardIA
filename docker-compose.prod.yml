@@ -50,15 +50,21 @@ services:
       # sem `target` este serviço subia a imagem do cron e ficava reiniciando (25/09/2026).
       target: runtime
     pull_policy: build
-    # O CONTRATO DE MEMÓRIA, e os três números têm de andar juntos:
+    # O CONTRATO DE MEMÓRIA, e os números têm de andar juntos:
     #
-    #   Dockerfile  --max-old-space-size=1024   heap do processo pai
+    #   Dockerfile  --max-old-space-size=768    heap do processo pai
     #   API_WORKER_HEAP_MB=512 × API_WORKERS=2  heap da piscina de DAX
+    #   filho da busca ao vivo, um por vez     1024 (`geracao-em-processo.ts`)
     #   ------------------------------------------------------------
-    #   2048 MB autorizados de heap
-    #   mem_limit 3072m -> 1024 MB de folga para o que NÃO é heap: os datasets das páginas
-    #   (250 MB a 1 GB cada, em Int32Array fora do heap, até 2 por worker —
-    #   `TETO_CACHE_POR_WORKER`), buffers do .jsonl.gz, runtime, V8 e pilhas.
+    #   2816 MB autorizados de heap (1792 sem AO_VIVO_PAGINAS: o filho só existe com ela)
+    #   mem_limit 3072m -> 256 MB de folga no pior caso, 1280 sem o ao vivo, para o que
+    #   NÃO é heap: os datasets das páginas (em Int32Array fora do heap, 1 por worker —
+    #   `API_DATASETS_POR_WORKER`), buffers do .jsonl.gz, runtime, V8 e pilhas.
+    #
+    # **24/10/2026: pai de 1024 para 768 e o filho no contrato.** Com as 13 páginas ao
+    # vivo e a busca dentro do processo, a API morreu por heap na subida; no filho, o pai
+    # ficou entre 140 e 170 MB durante as buscas e o filho chegou a 1,0–1,1 GB, saindo
+    # em seguida (docs/DECISAO-AO-VIVO.md § A busca num processo filho).
     #
     # **2304m -> 3072m em 21/10/2026, porque a `api` caiu 4 vezes em ~6 h** (restarts
     # 18:51, 20:58, 22:21 e 23:36 UTC; `RestartCount=4`, nenhum erro no log antes de
@@ -201,8 +207,11 @@ services:
       #     buscado e renovado do mesmo jeito; backlog, capacidade, clima e consolidado vêm
       #     do snapshot.
       # Vazio = todas pelo snapshot, como sempre. Busca que falha ou passa de 45 s: o pedido
-      # sai pelo snapshot. Pools próprios no SRD (`analytics-ao-vivo`), pastas em
-      # `API_RUNTIME_DIR/ao-vivo`.
+      # sai pelo snapshot. Cada busca é um processo filho, UMA por vez (pico de ~1 GB nos
+      # conjuntos, 0,24 GB no mês da agenda; está no contrato de memória acima). Pools
+      # próprios no SRD (`analytics-ao-vivo`), pastas em `API_RUNTIME_DIR/ao-vivo`.
+      # Para MEMÓRIA, só `agendamento-field` corta dado; ano e janela dão frescor de 10
+      # min contra os 30 do refresh (docs/DECISAO-AO-VIVO.md § A busca num processo filho).
       AO_VIVO_PAGINAS: ${AO_VIVO_PAGINAS:-}
       # A chave do rate limit é o `X-Real-IP` que o `web` escreve com `$remote_addr`
       # (`nginx.web.conf`, em toda location que repassa). Seguro só porque a API não tem

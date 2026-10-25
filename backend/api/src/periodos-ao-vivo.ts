@@ -11,8 +11,8 @@
 //
 // **Vencido, ele continua servindo** o snapshot anterior enquanto o novo é buscado em
 // segundo plano: depois da primeira busca de um período, ninguém espera o SRD de novo. E
-// no máximo `maxBuscasJuntas` buscas correm ao mesmo tempo, nem que sejam de períodos
-// diferentes — o SRD é compartilhado.
+// as buscas passam por uma fila com teto (`FilaDeBuscas`), nem que sejam de períodos ou
+// conjuntos diferentes — o SRD é compartilhado, e cada busca tem o seu pico de memória.
 //
 // A pasta de uma geração substituída sai depois de `gracaMs`: uma worker pode estar no
 // meio da leitura dela, e a leitura é rápida (décimos de segundo), então a folga basta.
@@ -20,7 +20,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
-import type { DadosDoPeriodo } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
 import { relogioDeParede } from '../../packages/measure-engine/src/relogio.ts';
 
 export interface GeracaoDoPeriodo {
@@ -34,16 +33,54 @@ export interface GeracaoDoPeriodo {
   /** Quanto a busca levou (SRD, M e gravação). */
   readonly ms: number;
   readonly protocolos: number;
+  /** O pico de memória do processo que fez a busca, quando ela rodou num filho. */
+  readonly picoMB?: number;
 }
 
-export type DadosParaGravar = Pick<DadosDoPeriodo, 'consultas' | 'protocolos'> &
-  Partial<Pick<DadosDoPeriodo, 'statusProtocoloDia'>>;
+/**
+ * A fila das buscas no SRD. Pode ser dividida entre vários `PeriodosAoVivo` — a agenda,
+ * o conjunto do ano e o da janela —, e aí o teto vale para todos juntos: cada busca é um
+ * processo filho com o seu pico de memória (`geracao-em-processo.ts`), e é a soma deles
+ * que cabe ou não no contêiner.
+ */
+export class FilaDeBuscas {
+  readonly #max: number;
+  readonly #fila: (() => void)[] = [];
+  #correndo = 0;
+
+  constructor(max: number) {
+    this.#max = Math.max(1, max);
+  }
+
+  vez(): Promise<void> {
+    if (this.#correndo < this.#max) {
+      this.#correndo++;
+      return Promise.resolve();
+    }
+    return new Promise((ok) => this.#fila.push(ok));
+  }
+
+  libera(): void {
+    const proximo = this.#fila.shift();
+    if (proximo) proximo();
+    else this.#correndo--;
+  }
+
+  get correndo(): number {
+    return this.#correndo;
+  }
+
+  get naFila(): number {
+    return this.#fila.length;
+  }
+}
 
 export interface OpcoesDosPeriodos {
-  /** A busca no SRD (`buscaDoPeriodo`, com o contexto já montado). */
-  readonly busca: (periodo: PeriodoAoVivo, agora: Date) => Promise<DadosParaGravar>;
-  /** A gravação do snapshot do período (`escreveSnapshotDoPeriodo`, com as pequenas). */
-  readonly grava: (dir: string, dados: DadosParaGravar, geradoEm: string) => Promise<void>;
+  /**
+   * Busca o período no SRD e grava o snapshot dele em `dir` (`geraConjunto`, aqui ou num
+   * processo filho). Devolve quantos protocolos vieram, para a saúde.
+   */
+  readonly gera: (periodo: PeriodoAoVivo, dir: string, agora: Date) => Promise<{ protocolos: number; picoMB?: number }>;
   /** Onde as pastas moram. Esvaziada na criação: o que sobrou de outro processo não vale. */
   readonly dirBase: string;
   readonly agora?: () => Date;
@@ -53,8 +90,10 @@ export interface OpcoesDosPeriodos {
   readonly ttlFechadoMs?: number;
   /** Padrão: 8 períodos guardados; o menos usado sai. */
   readonly maxPeriodos?: number;
-  /** Padrão: 2 buscas ao mesmo tempo. */
+  /** Padrão: 2 buscas ao mesmo tempo. Ignorado quando `fila` vem de fora. */
   readonly maxBuscasJuntas?: number;
+  /** A fila dividida com outros períodos ao vivo. Padrão: uma só deste, com `maxBuscasJuntas`. */
+  readonly fila?: FilaDeBuscas;
   /** Padrão: 2 min de folga antes de apagar a pasta de uma geração substituída. */
   readonly gracaMs?: number;
   /**
@@ -72,14 +111,13 @@ export interface OpcoesDosPeriodos {
 const chave = (p: PeriodoAoVivo): string => `${p.desde}..${p.ate}`;
 
 export class PeriodosAoVivo {
-  readonly #o: Required<Omit<OpcoesDosPeriodos, 'registra'>> & Pick<OpcoesDosPeriodos, 'registra'>;
+  readonly #o: Required<Omit<OpcoesDosPeriodos, 'registra' | 'fila'>> & Pick<OpcoesDosPeriodos, 'registra'>;
   /** Período → geração atual. A ordem de inserção é a do uso: o primeiro é o que sai. */
   readonly #geracoes = new Map<string, GeracaoDoPeriodo>();
   readonly #emVoo = new Map<string, Promise<GeracaoDoPeriodo>>();
   /** Período → quando a última busca dele falhou (só até a próxima dar certo). */
   readonly #falhouEm = new Map<string, number>();
-  readonly #fila: (() => void)[] = [];
-  #buscando = 0;
+  readonly #fila: FilaDeBuscas;
   #seq = 0;
 
   constructor(o: OpcoesDosPeriodos) {
@@ -94,6 +132,7 @@ export class PeriodosAoVivo {
       esperaAposFalhaMs: 60_000,
       ...o,
     };
+    this.#fila = o.fila ?? new FilaDeBuscas(this.#o.maxBuscasJuntas);
     fs.rmSync(o.dirBase, { recursive: true, force: true });
     fs.mkdirSync(o.dirBase, { recursive: true });
   }
@@ -157,7 +196,7 @@ export class PeriodosAoVivo {
 
   /** Para `/api/saude`: o que está guardado e de quando, e quantas buscas correm. */
   estado(): {
-    periodos: { periodo: string; geradoEm: string; venceEm: string; ms: number; protocolos: number }[];
+    periodos: { periodo: string; geradoEm: string; venceEm: string; ms: number; protocolos: number; picoMB?: number }[];
     buscando: number;
     naFila: number;
   } {
@@ -168,9 +207,10 @@ export class PeriodosAoVivo {
         venceEm: new Date(g.expiraEm).toISOString(),
         ms: g.ms,
         protocolos: g.protocolos,
+        ...(g.picoMB !== undefined ? { picoMB: g.picoMB } : {}),
       })),
-      buscando: this.#buscando,
-      naFila: this.#fila.length,
+      buscando: this.#fila.correndo,
+      naFila: this.#fila.naFila,
     };
   }
 
@@ -184,14 +224,13 @@ export class PeriodosAoVivo {
   }
 
   async #busca(periodo: PeriodoAoVivo): Promise<GeracaoDoPeriodo> {
-    await this.#vez();
+    await this.#fila.vez();
     let dir: string | null = null;
     try {
       const agora = this.#o.agora();
       const t0 = Date.now();
-      const dados = await this.#o.busca(periodo, agora);
       dir = fs.mkdtempSync(path.join(this.#o.dirBase, `${periodo.desde}_`));
-      await this.#o.grava(dir, dados, agora.toISOString());
+      const { protocolos, picoMB } = await this.#o.gera(periodo, dir, agora);
       const hoje = relogioDeParede(agora).toISOString().slice(0, 10);
       const g: GeracaoDoPeriodo = {
         periodo,
@@ -200,7 +239,8 @@ export class PeriodosAoVivo {
         identidade: `ao-vivo#${++this.#seq}@${agora.toISOString()}`,
         expiraEm: agora.getTime() + (periodo.ate > hoje ? this.#o.ttlAbertoMs : this.#o.ttlFechadoMs),
         ms: Date.now() - t0,
-        protocolos: dados.protocolos,
+        protocolos,
+        ...(picoMB !== undefined ? { picoMB } : {}),
       };
       const k = chave(periodo);
       this.#falhouEm.delete(k);
@@ -221,26 +261,12 @@ export class PeriodosAoVivo {
       this.#o.registra?.(`[ao-vivo] busca de ${chave(periodo)} no SRD falhou: ${msg}`);
       throw err;
     } finally {
-      this.#libera();
+      this.#fila.libera();
     }
   }
 
   #descarta(dir: string): void {
     const t = setTimeout(() => fs.rmSync(dir, { recursive: true, force: true }), this.#o.gracaMs);
     t.unref?.();
-  }
-
-  #vez(): Promise<void> {
-    if (this.#buscando < this.#o.maxBuscasJuntas) {
-      this.#buscando++;
-      return Promise.resolve();
-    }
-    return new Promise((ok) => this.#fila.push(ok));
-  }
-
-  #libera(): void {
-    const proximo = this.#fila.shift();
-    if (proximo) proximo();
-    else this.#buscando--;
   }
 }

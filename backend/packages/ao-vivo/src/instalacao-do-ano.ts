@@ -72,9 +72,11 @@ export function decideDoAno(model: SemanticModel, pagina: string, agora: Date): 
 }
 
 /**
- * A produtividade (a consulta do catálogo, que já é do ano) e a PG do ano (a variante),
- * ao mesmo tempo. A PG sai com o recorte da variante — a DATA CRIADO da linha que
- * venceu no período —, que é a mesma regra do corte da página.
+ * A PG do ano (a variante) e a produtividade (a consulta do catálogo, que já é do ano),
+ * UMA DEPOIS DA OUTRA, como a janela: juntas, os dois pipelines de M somam os picos no
+ * processo da busca (`geracao-em-processo.ts`). A PG sai com o
+ * recorte da variante — a DATA CRIADO da linha que venceu no período —, que é a mesma
+ * regra do corte da página.
  */
 export async function buscaDoAno(
   ctx: ContextoAoVivo,
@@ -82,13 +84,11 @@ export async function buscaDoAno(
   periodo: PeriodoAoVivo,
   agora: Date,
 ): Promise<{ consultas: TabelaDoPeriodo[]; protocolos: number }> {
-  const [pp, pg] = await Promise.all([
-    buscaAoVivo(ctx, { query: 'protocolos-produtividade', agora }),
-    buscaAoVivo(
-      { ...ctx, catalogo: new Map([[variantePg.query, variantePg]]) },
-      { query: variantePg.query, params: { desde: periodo.desde, ate: periodo.ate }, agora },
-    ),
-  ]);
+  const pg = await buscaAoVivo(
+    { ...ctx, catalogo: new Map([[variantePg.query, variantePg]]) },
+    { query: variantePg.query, params: { desde: periodo.desde, ate: periodo.ate }, agora },
+  );
+  const pp = await buscaAoVivo(ctx, { query: 'protocolos-produtividade', agora });
   return {
     consultas: [
       { query: 'protocolos-produtividade', colunas: pp.colunas, linhas: pp.linhas },

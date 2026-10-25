@@ -16037,3 +16037,22 @@ vida real o socket do fetch segura o laço de eventos, mas o fetch falso do test
 socket: o laço esvaziava antes de o teto disparar e o runner cancelava o resto do arquivo.
 Passar dependia de sobrar outro handle vivo por acaso. O falso agora segura um timer
 próprio até o abort; o código de produção não mudou.
+
+## #244 — a busca ao vivo dentro da API estourou o heap do processo; foi para um filho (24/10)
+
+Desenho e números em [DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md) § A busca num processo filho.
+
+- **Com o teto de produção, as 13 páginas derrubavam a API na subida.** Medido no mesmo
+  processo, pai com `--max-old-space-size=1024`: `FATAL ERROR: Reached heap limit` em ~2
+  min, as buscas do ano e da janela correndo juntas na thread que serve HTTP. O teste de
+  ponta a ponta de #242 passou porque rodou sem o teto — a lição: medir memória sempre com
+  as flags do `Dockerfile`.
+- **A busca de um conjunto custa memória de refresh.** Sem teto: 1,9 GB (ano) e 2,3 GB
+  (janela) de RSS para gravar 11–15 MB de arquivo. Com as consultas em sequência e teto de
+  heap, cabem em 800 MB e não em 640; o filho roda com 1024 e chega a 0,9–1,1 GB.
+- **O ano e a janela não baixam a memória da API.** Trazem do SRD o mesmo tamanho que o
+  snapshot carrega; dão frescor (10 min contra os 30 do `medio`). Só a agenda corta dado.
+  A subida de memória vista no Grafana da `staging` coincide com a busca do ano rodando
+  dentro da API (Premiação e Diário ligados).
+- **Contrato de memória:** pai de 1024 para 768 e o filho (um por vez) somado —
+  2816 de 3072 MB autorizados (`piscina-workers.test.ts`).
