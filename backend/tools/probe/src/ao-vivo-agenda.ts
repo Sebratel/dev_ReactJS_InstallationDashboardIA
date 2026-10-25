@@ -40,6 +40,7 @@ import { codificaFiltro, decodificaFiltros, type FiltroDeTela } from '../../../p
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { calculaPagina, LINHAS_MAXIMO } from '../../../api/src/calcula.ts';
 import { calculaNoDiretorio, comparaPaginas, queriesPequenas } from '../../../api/src/pagina-ao-vivo.ts';
+import { mescladoresDe, overlaySobreBuscaAoVivo } from '../../../api/src/overlay-realtime.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SPECS = path.join(ROOT, 'backend', 'specs');
@@ -86,17 +87,26 @@ function formaDosFora(dash: DashboardSpec): string[] {
   return [...fora];
 }
 
-/** Uma query do snapshot, com as linhas sob os nomes do cabeçalho — como a busca as entrega. */
-async function daQuery(query: string): Promise<TabelaDoPeriodo> {
+/**
+ * Uma query do snapshot, com as linhas sob os nomes do cabeçalho — como a busca as entrega —
+ * e as brutas, com as chaves do dataset — como o poller entrega o delta.
+ */
+async function daQuery(query: string): Promise<TabelaDoPeriodo & { brutas: Record<string, Escalar>[]; geradoEm: string }> {
   const arquivo = arquivoDaQuery(DIR, query);
-  const colunas = leCabecalho(arquivo).colunas.map((c) => c.nome);
+  const cab = leCabecalho(arquivo);
+  const colunas = cab.colunas.map((c) => c.nome);
   const { linhas } = await le(arquivo);
   return {
     query,
     colunas,
     linhas: linhas.map((l) => Object.fromEntries(colunas.map((c) => [c, (l[normalizeName(c)] ?? null) as Escalar]))),
+    brutas: linhas as Record<string, Escalar>[],
+    geradoEm: cab.geradoEm,
   };
 }
+
+/** O instante de uma célula de data, ou -∞. */
+const instante = (v: Escalar): number => (v instanceof Date ? v.getTime() : Number.NEGATIVE_INFINITY);
 
 const dash = loadDashboards(SPECS).find((d) => d.id === 'agendamento-field')!;
 const mesesPedidos = (arg('meses') ?? `${AGORA.getFullYear()}-${String(AGORA.getMonth()).padStart(2, '0')},${AGORA.getFullYear()}-${String(AGORA.getMonth() + 1).padStart(2, '0')}`)
@@ -195,6 +205,78 @@ for (const mes of mesesPedidos) {
       );
       for (const x of cf.diferentes) console.log(`    ${(x.titulo ?? x.id).slice(0, 40).padEnd(40)} ${x.porque}`);
       diferentes += cf.diferentes.length + pFora.resumo.falharam;
+    }
+
+    // O TEMPO REAL sobre o mês ao vivo (`overlaySobreBuscaAoVivo`, servidor.ts): um delta
+    // como o poller entrega — 10 protocolos do mês reentregues sem o relato mais novo, e um
+    // protocolo de fora do mês reentregue inteiro — aplicado ao snapshot inteiro (com o corte
+    // do poller) e à pasta do mês (com o corte da busca). As duas pontas têm de dar o mesmo;
+    // e o delta tem de mudar algum número, ou a prova não prova nada.
+    {
+      const doMes = new Set(lista.slice(0, 10));
+      const porProtocolo = new Map<string, Record<string, Escalar>[]>();
+      for (const l of agenda.brutas) {
+        const p = texto(l['protocolo'] ?? null);
+        if (!doMes.has(p) && porProtocolo.size > 10) continue;
+        const ls = porProtocolo.get(p) ?? [];
+        ls.push(l);
+        porProtocolo.set(p, ls);
+      }
+      const delta: Record<string, Escalar>[] = [];
+      for (const p of doMes) {
+        // TODAS as linhas do relato mais novo: o grão relato repete linha (os dois ramos
+        // do append), e tirar uma cópia só não muda o que a tela mostra.
+        const ls = porProtocolo.get(p) ?? [];
+        const maisNovo = Math.max(...ls.map((l) => instante(l['data relato'] ?? null)));
+        delta.push(...ls.filter((l) => !Number.isFinite(maisNovo) || instante(l['data relato'] ?? null) !== maisNovo));
+      }
+      const deFora = [...porProtocolo.keys()].find((p) => !lista.includes(p));
+      if (deFora) delta.push(...porProtocolo.get(deFora)!);
+      const overlays = new Map([
+        [
+          normalizeName('FIELD AGENDA'),
+          { linhas: delta, corte: new Date(agenda.geradoEm), chave: ['Protocolo'], marca: ['Data Criado', 'Inicio relato', 'Fim relato', 'Data Relato'] },
+        ],
+      ]);
+      const daTela = decodificaFiltros(cal.map(codificaFiltro));
+      const d = decideAoVivo(dash, daTela, model);
+      if (!('porque' in d)) {
+        const alvo = { ...dash, filters: [...(dash.filters ?? []), ...daTela] };
+        const janela = { de: 0, linhas: LINHAS_MAXIMO };
+        const refOv = await carrega({
+          dir: DIR,
+          model,
+          dashboards: [dash],
+          now: AGORA,
+          liberaSobDemanda: [],
+          precisaFormaCompleta: completa,
+          colunar: true,
+          overlay: mescladoresDe(overlays),
+        });
+        const pRefOv = calculaPagina(alvo, refOv.ev, janela);
+        const vivo = await calculaNoDiretorio({
+          dir: tmp,
+          model,
+          dash,
+          alvo,
+          fora: d.fora,
+          ...(d.formaCompleta ? { formaCompleta: d.formaCompleta } : {}),
+          overlay: overlaySobreBuscaAoVivo(overlays, AGORA.toISOString()),
+          janela,
+          clicados: [],
+          agora: AGORA,
+        });
+        const mudou = comparaPaginas(calculaPagina(alvo, ref.ev, janela), pRefOv, d.fora).diferentes.length;
+        const c = comparaPaginas(pRefOv, vivo.pagina, d.fora);
+        console.log(
+          `  + tempo real (${delta.length} linhas de ${doMes.size + (deFora ? 1 : 0)} protocolos): ${c.comparados} visuais, ` +
+            `${c.iguais} iguais, ${c.diferentes.length} diferentes; o delta mudou ${mudou} visual(is) da referência; ` +
+            `erros ${pRefOv.resumo.falharam} na referência, ${vivo.pagina.resumo.falharam} ao vivo`,
+        );
+        for (const x of c.diferentes) console.log(`    ${(x.titulo ?? x.id).slice(0, 40).padEnd(40)} ${x.porque}`);
+        diferentes += c.diferentes.length + vivo.pagina.resumo.falharam + (mudou === 0 ? 1 : 0);
+        if (mudou === 0) console.log('    o delta não mudou nada — a prova não vale');
+      }
     }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

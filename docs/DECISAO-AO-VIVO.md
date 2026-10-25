@@ -392,7 +392,7 @@ de cada um:
 
 | Onde | Depois do passo 2 |
 |---|---|
-| Agendamento Field ao vivo | igual, com o overlay do tempo real aplicado sobre o mês (hoje ela fica em 5 min; volta a 30–60 s) |
+| Agendamento Field ao vivo | igual; o overlay do tempo real já entra sobre o mês (passo 1, feito em 25/10 — abaixo) |
 | Agendamento Field pelo snapshot (main sem `AO_VIVO_PAGINAS`, SRD fora) | **decidir:** na main, só ao vivo; na queda, agenda de slot e os 6 visuais de relato indisponíveis |
 | Relatório do Mês pelo snapshot (o tempo real recalcula o `calendar` e pede a completa) | **decidir:** ao vivo pela janela (~1 GB por 2 min a cada 10 min de uso) ou snapshot sem o recálculo do tempo real |
 | `Status Protocolo Dia` congelado | agenda de slot + agregada `relatos-do-dia` (provada igual numa semana em 23/10; refazer na janela inteira) |
@@ -404,6 +404,22 @@ Ordem proposta, cada passo reversível recolocando a `field-agenda` no `refresh.
 overlay do tempo real sobre o mês ao vivo; (2) congelados sem a agenda completa, com sonda
 contra os atuais; (3) queda sem ela; (4) `AO_VIVO_PAGINAS` na main; (5) tirar a
 `field-agenda` do refresh, medir e baixar o `mem_limit` dele.
+
+**Passo 1, feito (25/10/2026): o tempo real sobre o mês ao vivo.** Até aqui o overlay do
+poller não entrava na página ao vivo: a Agendamento Field ao vivo tinha o frescor da
+geração (5 min) e a do snapshot, o do poller (30–60 s). Agora, onde o período traz a forma
+completa (o mês da agenda — o delta do poller é do grão relato), o overlay vai junto ao
+cálculo ao vivo, e a geração da página (que o poller avança a cada mudança) entra na
+identidade da carga: a worker troca o conjunto quando o poller muda. **O corte do overlay
+vai para o instante da busca** (`overlaySobreBuscaAoVivo`): `mescla()` dá como apagada a
+linha do disco com marca depois do corte que o delta não reentregou — certo sobre o
+snapshot, que é mais velho que o corte, e errado sobre a pasta ao vivo, que é mais nova e
+traz relatos de protocolos que o poller não vigia (ele só olha agendas dos últimos 7 dias).
+Provas: `overlay-ao-vivo.test.ts` (o defeito com o corte do poller e o conserto),
+`cache-ao-vivo.test.ts` (a mudança do poller chega à página ao vivo; sem o overlay, falha)
+e `probe:ao-vivo-agenda`, cenário "+ tempo real": um delta de 10–11 protocolos que muda 2
+visuais da referência dá 38 de 38 iguais entre o snapshot inteiro e a pasta do mês, em
+setembro e outubro.
 
 ## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
 

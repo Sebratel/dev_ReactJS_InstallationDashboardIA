@@ -26,6 +26,7 @@ import { carrega } from '../../packages/snapshot/src/carrega.ts';
 import { planeja } from '../../packages/snapshot/src/plano.ts';
 import type { DashboardSpec, FiltroSpec } from '../../packages/widget-engine/src/spec.ts';
 import { calculaPagina, type Janela, type PaginaCalculada, type VisualCalculado } from './calcula.ts';
+import { mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
 
 /** As queries que vêm do SRD recortadas. As outras da página são pequenas e vêm do snapshot. */
 const AO_VIVO = new Set(['field-agenda', 'field-agenda-slot', 'protocolos-geral']);
@@ -71,6 +72,8 @@ export interface PaginaSobrePeriodo {
 export async function calculaNoDiretorio(
   c: Pick<CalculoSobrePeriodo, 'model' | 'dash' | 'alvo' | 'fora' | 'formaCompleta' | 'janela' | 'clicados' | 'agora'> & {
     readonly dir: string;
+    /** O overlay do tempo real, já com o corte da busca (`overlaySobreBuscaAoVivo`). */
+    readonly overlay?: ReadonlyMap<string, OverlayDeTabela>;
   },
 ): Promise<Omit<PaginaSobrePeriodo, 'ms'> & { readonly ms: { readonly carga: number; readonly calculo: number } }> {
   const semFora = (d: DashboardSpec): DashboardSpec => ({ ...d, visuals: (d.visuals ?? []).filter((v) => !c.fora.has(v.id)) });
@@ -82,6 +85,7 @@ export async function calculaNoDiretorio(
     now: c.agora,
     precisaFormaCompleta: [...(c.formaCompleta ?? [])],
     colunar: true,
+    ...(c.overlay && c.overlay.size > 0 ? { overlay: mescladoresDe(c.overlay) } : {}),
   });
   const tCalculo = Date.now();
   const pagina = calculaPagina(semFora(c.alvo), carregado.ev, c.janela, undefined, undefined, c.clicados);

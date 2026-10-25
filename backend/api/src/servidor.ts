@@ -77,7 +77,7 @@ import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh, resumeDegradacao, type QuerySaude } from '../../tools/refresh/src/status.ts';
 import { PiscinaWorkers } from './piscina-workers.ts';
-import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
+import { linhasDoOverlay, mescladoresDe, overlaySobreBuscaAoVivo, type OverlayDeTabela } from './overlay-realtime.ts';
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente } from './saude-do-redis.ts';
@@ -2391,23 +2391,24 @@ export class Servidor {
     let omitidas: string[] = [];
     let tabelasResumo: { nome: string; linhas: number }[] = [];
 
-    // **A parte ao vivo do pedido** (docs/DECISAO-AO-VIVO.md, `#paginaAoVivo`): os
-    // visuais que o SRD responde saem do snapshot pequeno do período; só os de fora
-    // (grão relato, horizonte de previsão) seguem pelo snapshot de hoje, em `alvoDoSnapshot`.
-    // `null` = este pedido não vai ao vivo, ou a busca falhou — e tudo segue como antes.
-    const vivo = await this.#paginaAoVivo(dash, alvo, daTela, { de, linhas, termo }, clicados, quem, prio);
-    const alvoDoSnapshot: DashboardSpec = vivo
-      ? { ...alvo, visuals: (alvo.visuals ?? []).filter((v) => vivo.fora.has(v.id)) }
-      : alvo;
-
     // **O overlay do poller, recortado para esta página.** Buscado UMA vez
     // por cálculo e usado nos dois ramos abaixo: buscá-lo duas vezes faria o
     // ramo da worker calcular sobre um overlay e o de fallback sobre outro,
     // colhido milissegundos depois — dois números diferentes para o mesmo
-    // pedido, conforme a worker tivesse falhado ou não.
+    // pedido, conforme a worker tivesse falhado ou não. E antes da parte ao vivo,
+    // que também o aplica (o mês da agenda, ver `#paginaAoVivo`).
     const overlays = this.#overlayDe(dash);
     this.metricas.maximo('overlay_linhas_max', linhasDoOverlay(overlays));
     if (overlays.size > 0) this.metricas.conta('calculos_com_overlay');
+
+    // **A parte ao vivo do pedido** (docs/DECISAO-AO-VIVO.md, `#paginaAoVivo`): os
+    // visuais que o SRD responde saem do snapshot pequeno do período; só os de fora
+    // (o horizonte de previsão) seguem pelo snapshot de hoje, em `alvoDoSnapshot`.
+    // `null` = este pedido não vai ao vivo, ou a busca falhou — e tudo segue como antes.
+    const vivo = await this.#paginaAoVivo(dash, alvo, daTela, { de, linhas, termo }, clicados, quem, prio, overlays);
+    const alvoDoSnapshot: DashboardSpec = vivo
+      ? { ...alvo, visuals: (alvo.visuals ?? []).filter((v) => vivo.fora.has(v.id)) }
+      : alvo;
 
     if (vivo && (alvoDoSnapshot.visuals ?? []).length === 0) {
       paginaCalculada = vivo.pagina;
@@ -3124,6 +3125,7 @@ export class Servidor {
     clicados: readonly { tabela: string; coluna: string }[],
     quem: Identidade,
     prio: number,
+    overlays: ReadonlyMap<string, OverlayDeTabela>,
   ): Promise<PaginaAoVivoDoPedido | null> {
     const periodos = this.opts.aoVivo?.paginas.get(dash.id);
     if (!periodos) return null;
@@ -3143,6 +3145,14 @@ export class Servidor {
         `a busca de ${d.periodo.desde}..${d.periodo.ate} no SRD`,
       );
       const alvoVivo: DashboardSpec = { ...alvo, id: idDaPaginaAoVivo(dash.id, d.periodo), visuals: visuais };
+      // **O tempo real sobre o mês ao vivo** (25/10/2026). Sem isto, a Agendamento Field
+      // ao vivo ficava com o frescor da geração (5 min), e a do snapshot, com o do poller
+      // (30–60 s). Só onde o período traz a forma completa: o delta do poller é do grão
+      // relato, e mesclado num grão reduzido trocaria linha de slot por linha de relato. O
+      // corte vai para o instante da busca (`overlaySobreBuscaAoVivo`), e a geração da
+      // página entra na identidade: a worker troca o conjunto quando o poller muda.
+      const ovVivo = d.formaCompleta?.length && overlays.size > 0 ? overlaySobreBuscaAoVivo(overlays, g.geradoEm) : null;
+      const identidade = ovVivo ? `${g.identidade}#tr${this.geracaoDaPagina(dash.id)}` : g.identidade;
       let pagina: PaginaCalculada;
       let linhasPorTabela: [string, number][];
       if (this.piscina.ativa) {
@@ -3157,7 +3167,8 @@ export class Servidor {
             // A forma que o período trouxe: o mês da agenda vem com a FIELD AGENDA completa.
             precisaFormaCompleta: [...(d.formaCompleta ?? [])],
             agoraIso: this.opts.agora().toISOString(),
-            identidade: g.identidade,
+            ...(ovVivo ? { overlays: ovVivo } : {}),
+            identidade,
             escopo: escopoDoCache(quem),
           },
           prio,
@@ -3173,6 +3184,7 @@ export class Servidor {
           alvo: { ...alvoVivo, id: dash.id },
           fora: d.fora,
           ...(d.formaCompleta ? { formaCompleta: d.formaCompleta } : {}),
+          ...(ovVivo ? { overlay: ovVivo } : {}),
           janela,
           clicados,
           agora: this.opts.agora(),

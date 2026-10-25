@@ -17,6 +17,7 @@ import type { PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 import { escreve } from '../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery, escreveManifesto } from '../../packages/snapshot/src/manifesto.ts';
 import type { PaginaServidaAoVivo } from '../src/opcoes-servidor.ts';
+import type { OverlayDeTabela } from '../src/overlay-realtime.ts';
 import type { GeracaoDoPeriodo } from '../src/periodos-ao-vivo.ts';
 import { PiscinaWorkers } from '../src/piscina-workers.ts';
 import { Servidor } from '../src/servidor.ts';
@@ -122,4 +123,74 @@ test('a resposta que saiu pelo snapshot antes da geração não fica servida dep
   pronta = g2;
   const renovada = await ate('a resposta da geração nova', (c) => c.aoVivo?.dadoDe === g2.geradoEm);
   assert.equal(renovada.dadoDe, g2.geradoEm, 'a geração que substituiu a anterior chega à tela');
+});
+
+// O tempo real sobre a página ao vivo (25/10/2026): onde o período traz a forma completa
+// (o mês da agenda), o overlay do poller entra no cálculo ao vivo, e a mudança seguinte do
+// poller chega à tela sem esperar a geração nova — como chegava pelo snapshot.
+test('o overlay do tempo real entra na página ao vivo de forma completa, e a mudança do poller chega à tela', async (t) => {
+  const snapshot = await dirComHora(t, '2026-08-07T11:00:00.000Z');
+  const g1 = geracao(await dirComHora(t, '2026-08-07T11:30:00.000Z'), '2026-08-07T11:30:00.000Z', 1);
+  let overlay = new Map<string, OverlayDeTabela>();
+  const capa: PaginaServidaAoVivo = {
+    // Qualquer tabela em `formaCompleta` liga o overlay; HORA ATUALIZADO não tem grão
+    // reduzido, então a carga não muda por isso.
+    decide: () => ({ periodo: PERIODO, fora: new Map(), formaCompleta: ['HORA ATUALIZADO'] }),
+    obtem: async () => g1,
+    marca: () => g1.identidade,
+  };
+  const servidor = new Servidor({
+    acesso: ACESSO_LIBERADO,
+    root: ROOT,
+    snapshotDir: snapshot,
+    webDir: path.join(ROOT, 'frontend', 'dist'),
+    agora: () => AGORA,
+    identifica: () => ({ usuario: 'teste', papeis: ['autenticado'] }),
+    piscinaWorkers: new PiscinaWorkers({ desativado: true }),
+    overlayRealtime: () => overlay,
+    aoVivo: { paginas: new Map([['capa', capa]]) },
+  });
+  const http = servidor.criaHttp();
+  await new Promise<void>((ok) => http.listen(0, '127.0.0.1', ok));
+  t.after(
+    () =>
+      new Promise<void>((ok) => {
+        servidor.destroi();
+        http.closeAllConnections?.();
+        http.close(() => ok());
+      }),
+  );
+  const { port } = http.address() as { port: number };
+  const pede = async (): Promise<Corpo & { visuais: unknown[] }> => {
+    const r = await fetch(`http://127.0.0.1:${port}/api/dashboards/capa`);
+    assert.equal(r.status, 200);
+    return (await r.json()) as Corpo & { visuais: unknown[] };
+  };
+
+  const sem = await pede();
+  assert.ok(sem.aoVivo, 'sai ao vivo');
+  const antes = JSON.stringify(sem.visuais);
+
+  // O poller viu a hora mudar. O corte dele é anterior à busca: sobre a pasta ao vivo ele
+  // vai para o instante da busca (`overlaySobreBuscaAoVivo`) e nada da busca some.
+  overlay = new Map([
+    [
+      'hora atualizado',
+      {
+        linhas: [{ datahora: new Date('2026-08-07T11:59:00.000Z'), data: new Date('2026-08-07T00:00:00.000Z'), hora: new Date('1899-12-30T11:59:00.000Z') }],
+        corte: new Date('2026-08-07T00:00:00.000Z'),
+        chave: ['data'],
+        marca: ['datahora'],
+      },
+    ],
+  ]);
+  servidor.aoTabelaMudar('HORA ATUALIZADO', 'hora-atualizado');
+  let depois = '';
+  for (let i = 0; i < 100 && (depois === '' || depois === antes); i++) {
+    const c = await pede();
+    assert.ok(c.aoVivo, 'continua ao vivo');
+    depois = JSON.stringify(c.visuais);
+    if (depois === antes) await new Promise((r) => setTimeout(r, 20));
+  }
+  assert.notEqual(depois, antes, 'a mudança do poller chega à página ao vivo');
 });

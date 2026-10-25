@@ -16078,3 +16078,16 @@ FIELD AGENDA completa.
   de banco para 208.501 linhas, ~60 s para trazer 132 MB (48 MB de texto de relato) até
   esta estação. O `statement_timeout` do Postgres conta o tempo de enviar as linhas: numa
   rede lenta, a busca de um mês pode chegar ao teto de 5 min.
+
+## #246 — o overlay do tempo real não serve como está para uma pasta mais nova que o corte dele (25/10)
+
+O passo 1 da proposta de 25/10 (DECISAO-AO-VIVO § passo 2) leva o overlay do poller para a
+Agendamento Field ao vivo. A armadilha estava na regra da mescla (`incremental.ts`):
+linha do disco com marca a partir do `corte` que o delta não reentregou é dada como
+APAGADA. Ela foi escrita para o snapshot, mais velho que o corte. A pasta ao vivo é mais
+nova, e o poller só vigia protocolos com agenda dos últimos 7 dias: um relato registrado
+depois do corte num protocolo do começo do mês viria na pasta, não viria no delta — e
+sumiria. Conserto: sobre a pasta ao vivo o corte vai para o instante da busca
+(`overlaySobreBuscaAoVivo`). Teste do defeito e do conserto em `overlay-ao-vivo.test.ts`.
+Vale para qualquer pasta que se queira mesclar com o delta do poller: o corte tem de ser
+o mais novo entre o do poller e o da pasta.

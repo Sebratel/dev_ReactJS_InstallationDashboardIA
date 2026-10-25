@@ -194,7 +194,8 @@ services:
       AO_VIVO_SOMBRA: ${AO_VIVO_SOMBRA:-0}
       # Páginas SERVIDAS ao vivo do SRD, separadas por vírgula. Sabem ser:
       #   agendamento-field — o mês da tela com a agenda COMPLETA (grão relato, ~1 min de
-      #     busca), válido por 5 min (mês corrente) ou 1 h (fechado); só a previsão de
+      #     busca), válido por 5 min (mês corrente) ou 1 h (fechado), com o tempo real do
+      #     poller (30–60 s) aplicado por cima; só a previsão de
       #     chuva segue pelo snapshot, e com a agenda de slot — a worker não carrega mais
       #     as 633 mil linhas da completa para esta página;
       #   premiacao-instalacao, diario-instalacao, protocolos-detalhados,
