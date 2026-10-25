@@ -29,7 +29,7 @@ const status = [
   { dia: new Date('2026-09-11T00:00:00Z'), status: 'Sem Ação', protocolo: '2', 'base dia': 'Canoas', 'turno dia': 'Tarde', 'rank protocolo dia': 1, 'tipo protocolo dia': 'TEC - Troca' },
 ];
 
-test('grava as queries, copia as pequenas e congela Status Protocolo Dia como o refresh', async (t) => {
+test('grava as queries, copia as pequenas e grava Status Protocolo Dia pronta como o refresh', async (t) => {
   const origem = temporario(t);
   const dir = temporario(t);
   // Uma query pequena "do snapshot de hoje", com carimbo próprio.
@@ -40,7 +40,8 @@ test('grava as queries, copia as pequenas e congela Status Protocolo Dia como o 
     model,
     {
       consultas: [{ query: 'field-agenda-slot', colunas: ['Protocolo', 'Slot Agenda'], linhas: [{ Protocolo: '1', 'Slot Agenda': new Date('2026-09-10T08:00:00Z') }] }],
-      statusProtocoloDia: status,
+      // Como `congelaStatusDoDia` a entrega, depois da tradução nativa.
+      calculadas: [{ tabela: 'Status Protocolo Dia', linhas: status }],
     },
     GERADO,
     { dir: origem, queries: ['hora-atualizado'] },

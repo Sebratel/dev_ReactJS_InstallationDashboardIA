@@ -9,10 +9,11 @@
 // mesmo arquivo custa milissegundos para um mês de agenda.
 //
 // O que entra:
-//   - `field-agenda-slot` (FIELD AGENDA no grão de slot) e `protocolos-geral`, ao vivo
-//     e recortados (`aplicaRecorte`) — o MESMO recorte que a sonda provou igual;
-//   - `Status Protocolo Dia`, congelada como o refresh congela, a partir de
-//     `statusProtocoloDiaAoVivo` (as contagens de relato vêm do banco já agrupadas);
+//   - `field-agenda` (FIELD AGENDA COMPLETA, no grão relato) e `protocolos-geral`, ao vivo
+//     e recortados (`aplicaRecorte`) — o MESMO recorte que a sonda provou igual. Até
+//     25/10/2026 era a `field-agenda-slot`, e os seis visuais de relato seguiam pelo
+//     snapshot, que por isso guardava a agenda completa inteira (633 mil linhas);
+//   - `Status Protocolo Dia`, congelada como o refresh congela (`congelaStatusDoDia`);
 //   - as queries pequenas da página (capacidade, clima, hora), copiadas do snapshot de
 //     quem chama ou passadas prontas;
 //   - `calendar` NÃO: sem arquivo, o carregador a calcula pelo DAX sobre a agenda do
@@ -21,14 +22,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
+import { carrega } from '../../snapshot/src/carrega.ts';
 import { escreve, le, leCabecalho, type Escalar } from '../../snapshot/src/formato.ts';
 import { arquivoDaQuery, arquivoDeEscrita, escreveManifesto, type EntradaDeManifesto } from '../../snapshot/src/manifesto.ts';
+import { traducaoDe } from '../../snapshot/src/nativas.ts';
 import { arquivoDaCalculada, paraGravacao, shaDaCalculada } from '../../snapshot/src/tabelas-calculadas.ts';
-import type { AgregadaAoVivo } from './catalogo.ts';
+import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import { buscaAoVivo, calculadasDaQuery, type BuscaFeita, type ContextoAoVivo } from './executor.ts';
-import type { PeriodoAoVivo } from './periodo.ts';
+import { FORMA_DA_AGENDA, type PeriodoAoVivo } from './periodo.ts';
 import { aplicaRecorte, celula, texto } from './recorte.ts';
-import { buscaRelatosDoDia, statusProtocoloDiaAoVivo } from './status-dia.ts';
 
 export interface TabelaDoPeriodo {
   readonly query: string;
@@ -39,44 +41,26 @@ export interface TabelaDoPeriodo {
 export interface DadosDoPeriodo {
   readonly periodo: PeriodoAoVivo;
   readonly consultas: readonly TabelaDoPeriodo[];
-  /** As linhas de `Status Protocolo Dia`, com as chaves da tradução nativa. */
-  readonly statusProtocoloDia: readonly Record<string, Escalar>[];
   readonly protocolos: number;
   readonly buscas: readonly BuscaFeita[];
-  readonly ms: { readonly agenda: number; readonly relatos: number; readonly protocolos: number; readonly total: number };
+  readonly ms: { readonly agenda: number; readonly protocolos: number; readonly total: number };
 }
 
-const AGENDA = 'field-agenda-slot';
+const AGENDA = 'field-agenda';
 const PROTOCOLOS = 'protocolos-geral';
 const STATUS_DIA = 'Status Protocolo Dia';
 
 /**
- * A agenda, os protocolos e as contagens de relato do período, ao vivo.
- *
- * A agenda e as contagens saem juntas (as duas só dependem do período); os protocolos
- * esperam a agenda, porque o recorte deles é a lista de protocolos dela.
+ * A agenda completa e os protocolos do período, ao vivo — uma busca depois da outra: o
+ * recorte dos protocolos é a lista de protocolos da agenda.
  */
-export async function buscaDoPeriodo(
-  ctx: ContextoAoVivo,
-  relatosDoDia: AgregadaAoVivo,
-  periodo: PeriodoAoVivo,
-  agora: Date,
-): Promise<DadosDoPeriodo> {
+export async function buscaDoPeriodo(ctx: ContextoAoVivo, periodo: PeriodoAoVivo, agora: Date): Promise<DadosDoPeriodo> {
   const inicio = Date.now();
   const cAgenda = ctx.catalogo.get(AGENDA);
   const cProtocolos = ctx.catalogo.get(PROTOCOLOS);
   if (!cAgenda || !cProtocolos) throw new Error(`ao-vivo.yaml sem '${!cAgenda ? AGENDA : PROTOCOLOS}'`);
 
-  let msRelatos = 0;
-  const [agenda, relatos] = await Promise.all([
-    buscaAoVivo(ctx, { query: AGENDA, params: { desde: periodo.desde, ate: periodo.ate }, agora }),
-    (async () => {
-      const t = Date.now();
-      const r = await buscaRelatosDoDia(ctx, relatosDoDia, periodo);
-      msRelatos = Date.now() - t;
-      return r;
-    })(),
-  ]);
+  const agenda = await buscaAoVivo(ctx, { query: AGENDA, params: { desde: periodo.desde, ate: periodo.ate }, agora });
   const linhasAgenda = aplicaRecorte(agenda.linhas, cAgenda.recorte, periodo);
   const lista = [...new Set(linhasAgenda.map((l) => texto(celula(l, 'Protocolo'))))];
 
@@ -89,11 +73,35 @@ export async function buscaDoPeriodo(
       { query: AGENDA, colunas: agenda.colunas, linhas: linhasAgenda },
       { query: PROTOCOLOS, colunas: protocolos.colunas, linhas: linhasProtocolos },
     ],
-    statusProtocoloDia: statusProtocoloDiaAoVivo(linhasAgenda, relatos, linhasProtocolos),
     protocolos: lista.length,
     buscas: [...agenda.buscas, ...protocolos.buscas],
-    ms: { agenda: agenda.ms.total, relatos: msRelatos, protocolos: protocolos.ms.total, total: Date.now() - inicio },
+    ms: { agenda: agenda.ms.total, protocolos: protocolos.ms.total, total: Date.now() - inicio },
   };
+}
+
+/**
+ * O `Status Protocolo Dia` do período, congelado em `dir` como o refresh congela
+ * (`backend/tools/snapshot/src/calculadas.ts`): a pasta carregada pelo carregador de
+ * sempre, sem calculadas lidas e com a FIELD AGENDA completa, e a tradução nativa sobre
+ * as linhas dela. Sem o congelado, o carregador cairia no DAX — horas.
+ *
+ * Mesma regra da tabela inteira, sobre o recorte: os mapas da tradução são chaveados por
+ * (protocolo, dia), e o recorte traz cada protocolo com TODAS as suas linhas.
+ */
+export async function congelaStatusDoDia(
+  dir: string,
+  model: SemanticModel,
+  agenda: DashboardSpec,
+  agora: Date,
+  geradoEm: string,
+): Promise<void> {
+  const t = model.table(STATUS_DIA);
+  if (!t) throw new Error(`o modelo não tem '${STATUS_DIA}'`);
+  const nativa = traducaoDe(t);
+  if (!('traducao' in nativa)) throw new Error(`${STATUS_DIA} sem tradução nativa válida: ${nativa.porque}`);
+  const c = await carrega({ dir, model, dashboards: [agenda], now: agora, lerCalculadas: false, precisaFormaCompleta: [...FORMA_DA_AGENDA] });
+  const fontes = nativa.traducao.fontes.map((nome) => c.ev.dataset.rows(nome) as unknown as Record<string, Escalar>[]);
+  await escreveCalculadas(dir, model, [{ tabela: t.name, linhas: nativa.traducao.calcula(fontes) }], geradoEm);
 }
 
 /** Uma tabela calculada já pronta, com as chaves do dataset (normalizadas). */
@@ -153,12 +161,10 @@ export async function escreveSnapshotDoPeriodo(
   dir: string,
   model: SemanticModel,
   /**
-   * `statusProtocoloDia` é a calculada da agenda; `calculadas`, as que vêm prontas de
-   * outro lugar (`calculadasCongeladas`). As duas são gravadas congeladas, com o
-   * `geradoEm` deste snapshot.
+   * `calculadas`: as que vêm prontas de outro lugar (`calculadasCongeladas`), gravadas
+   * congeladas com o `geradoEm` deste snapshot.
    */
-  dados: Pick<DadosDoPeriodo, 'consultas'> &
-    Partial<Pick<DadosDoPeriodo, 'statusProtocoloDia'>> & { readonly calculadas?: readonly CalculadaPronta[] },
+  dados: Pick<DadosDoPeriodo, 'consultas'> & { readonly calculadas?: readonly CalculadaPronta[] },
   geradoEm: string,
   copia?: { readonly dir: string; readonly queries: readonly string[] },
 ): Promise<void> {
@@ -179,12 +185,33 @@ export async function escreveSnapshotDoPeriodo(
     arquivos.push({ query: q, arquivo });
   }
 
-  // Como `calculadas.ts` do refresh grava a tradução nativa: as colunas físicas e as
-  // calculadas do modelo, com as chaves que o cabeçalho declara.
-  const calculadas = [
-    ...(dados.statusProtocoloDia ? [{ tabela: STATUS_DIA, linhas: dados.statusProtocoloDia }] : []),
-    ...(dados.calculadas ?? []),
-  ];
+  await escreveCalculadas(dir, model, dados.calculadas ?? [], geradoEm);
+
+  const entradas: EntradaDeManifesto[] = arquivos.map(({ query, arquivo }) => {
+    const cab = leCabecalho(arquivo);
+    return {
+      query,
+      tabelas: cab.tabelas,
+      linhas: cab.linhas,
+      colunas: cab.colunas.length,
+      bytes: fs.statSync(arquivo).size,
+      geradoEm: cab.geradoEm,
+    };
+  });
+  await escreveManifesto(dir, entradas.sort((a, b) => a.query.localeCompare(b.query)));
+}
+
+/**
+ * Grava calculadas congeladas como `calculadas.ts` do refresh grava a tradução nativa: as
+ * colunas físicas e as calculadas do modelo, com as chaves que o cabeçalho declara. Fora
+ * do manifesto, como no snapshot de hoje.
+ */
+async function escreveCalculadas(
+  dir: string,
+  model: SemanticModel,
+  calculadas: readonly CalculadaPronta[],
+  geradoEm: string,
+): Promise<void> {
   for (const c of calculadas) {
     const t = model.table(c.tabela);
     if (!t) throw new Error(`snapshot do período: o modelo não tem '${c.tabela}'`);
@@ -204,17 +231,4 @@ export async function escreveSnapshotDoPeriodo(
       paraGravacao(c.linhas, nomes, t.name),
     );
   }
-
-  const entradas: EntradaDeManifesto[] = arquivos.map(({ query, arquivo }) => {
-    const cab = leCabecalho(arquivo);
-    return {
-      query,
-      tabelas: cab.tabelas,
-      linhas: cab.linhas,
-      colunas: cab.colunas.length,
-      bytes: fs.statSync(arquivo).size,
-      geradoEm: cab.geradoEm,
-    };
-  });
-  await escreveManifesto(dir, entradas.sort((a, b) => a.query.localeCompare(b.query)));
 }

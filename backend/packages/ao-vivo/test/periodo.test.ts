@@ -13,6 +13,7 @@ import { filtrosPadrao } from '../../widget-engine/src/filtros-padrao.ts';
 import { loadDashboards } from '../../widget-engine/src/spec.ts';
 import {
   decideAoVivo,
+  FORMA_DA_AGENDA,
   idDaPaginaAoVivo,
   paginaDoIdAoVivo,
   periodoDaTela,
@@ -68,11 +69,17 @@ test('sem período reconhecível, o pedido fica no snapshot — e diz por quê',
   }
 });
 
-test('ficam fora os 6 visuais do grão relato e o horizonte de previsão', () => {
+test('sem a forma completa ficam fora os 6 visuais do grão relato e o horizonte de previsão', () => {
   const fora = visuaisForaDoAoVivo(dash, model);
   assert.equal(fora.size, 7);
   assert.match(fora.get('56d3352b476659cd7972') ?? '', /horizonte de previsão/);
   assert.equal([...fora.values()].filter((p) => /grão relato/.test(p)).length, 6);
+});
+
+test('com a FIELD AGENDA completa (o mês da agenda), só o horizonte de previsão fica fora', () => {
+  const fora = visuaisForaDoAoVivo(dash, model, FORMA_DA_AGENDA);
+  assert.deepEqual([...fora.keys()], ['56d3352b476659cd7972']);
+  assert.equal(semForaDoAoVivo(dash, model, FORMA_DA_AGENDA).visuals.length, dash.visuals.length - 1);
 });
 
 test('o id ao vivo leva o período e devolve a página; a carga é a página sem os de fora', () => {
@@ -85,10 +92,14 @@ test('o id ao vivo leva o período e devolve a página; a carga é a página sem
   assert.ok(!sem.visuals.some((v) => v.id === '56d3352b476659cd7972'));
 });
 
-test('filtro de tela em coluna gatilho tira o pedido inteiro do ao vivo', () => {
+test('o mês da agenda vem completo: filtro de tela em coluna de relato continua ao vivo, e a carga pede a forma completa', () => {
   const d = decideAoVivo(dash, daTela([cal('Ano', [2026]), cal('Mês', ['setembro']), { tabela: 'FIELD AGENDA', coluna: 'ClassificacaoRelato', valores: ['x'] }]), model);
-  assert.ok('porque' in d);
-  assert.match(d.porque, /ClassificacaoRelato/);
-  const ok = decideAoVivo(dash, daTela([cal('Ano', [2026]), cal('Mês', ['setembro']), { tabela: 'FIELD AGENDA', coluna: 'Base', valores: ['x'] }]), model);
-  assert.ok('periodo' in ok, 'filtro em coluna de slot continua ao vivo');
+  assert.ok('periodo' in d, 'até 25/10/2026 isto tirava o pedido inteiro do ao vivo');
+  assert.deepEqual(d.formaCompleta, FORMA_DA_AGENDA);
+  assert.equal(d.fora.size, 1, 'só o horizonte de previsão');
+  const slot = decideAoVivo(dash, daTela([cal('Ano', [2026]), cal('Mês', ['setembro']), { tabela: 'FIELD AGENDA', coluna: 'Base', valores: ['x'] }]), model);
+  assert.ok('periodo' in slot, 'filtro em coluna de slot continua ao vivo');
+  const doisMeses = decideAoVivo(dash, daTela([cal('Ano', [2026]), cal('Mês', ['agosto', 'setembro'])]), model);
+  assert.ok('porque' in doisMeses, 'com a agenda completa, dois meses não cabem no processo da busca');
+  assert.match(doisMeses.porque, /teto de 31/);
 });

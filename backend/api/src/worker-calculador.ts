@@ -29,7 +29,7 @@ import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { loadDashboards, type DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
 import { medeIsolate, type MedidaDaWorker, type MensagemDeMemoria } from './memoria-da-saude.ts';
 import { CacheDeCarga, coletorDaWorker } from './cache-de-carga.ts';
-import { paginaDoIdAoVivo, semForaDoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { paginaDoIdAoVivo, paginaDoIdDosForaDoAoVivo, semForaDoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 
 export interface MensagemCalculoWorker {
   tipo?: 'calcula';
@@ -482,12 +482,27 @@ if (parentPort) {
       // **Página ao vivo (docs/DECISAO-AO-VIVO.md).** O id traz o período
       // (`idDaPaginaAoVivo`) para o conjunto carregado não dividir entrada com o da
       // página comum; a carga é a página do catálogo SEM os visuais que o ao vivo não
-      // responde — o mesmo plano com que a sonda provou a paridade.
+      // responde — o mesmo plano com que a sonda provou a paridade. Quais são depende da
+      // forma que o período trouxe (`precisaFormaCompleta`): com a FIELD AGENDA completa,
+      // os visuais de relato ficam.
+      //
+      // **Os visuais de fora de uma página ao vivo** (`idDosForaDoAoVivo`) carregam só eles,
+      // com os filtros da página do catálogo: a carga da página inteira traria de volta o
+      // que o ao vivo tirou (a agenda completa, na Agendamento Field).
       const daPaginaAoVivo = paginaDoIdAoVivo(dashboardSpec.id);
+      const dosForaDe = paginaDoIdDosForaDoAoVivo(dashboardSpec.id);
+      const pedidos = new Set((dashboardSpec.visuals ?? []).map((v) => v.id));
+      const doCatalogo = (id: string): DashboardSpec => paginaInteiraDe(specsDir, id) ?? dashboardSpec;
       const paginaInteira =
         daPaginaAoVivo !== null
-          ? semForaDoAoVivo(paginaInteiraDe(specsDir, daPaginaAoVivo) ?? dashboardSpec, model)
-          : (paginaInteiraDe(specsDir, dashboardSpec.id) ?? dashboardSpec);
+          ? semForaDoAoVivo(doCatalogo(daPaginaAoVivo), model, formaCompleta)
+          : dosForaDe !== null
+            ? { ...doCatalogo(dosForaDe), visuals: (doCatalogo(dosForaDe).visuals ?? []).filter((v) => pedidos.has(v.id)) }
+            : doCatalogo(dashboardSpec.id);
+      // O cálculo leva o id da PÁGINA: há regra por página e visual nele (`ignoraDataDaTela`,
+      // a previsão de chuva). O id próprio fica só para a carga e os caches desta worker.
+      const paginaReal = daPaginaAoVivo ?? dosForaDe;
+      const alvoDoCalculo = paginaReal !== null ? { ...dashboardSpec, id: paginaReal } : dashboardSpec;
       const chave = chaveDeCarga(
         dashboardSpec.id,
         (paginaInteira.visuals ?? []).map((v) => v.id),
@@ -606,7 +621,7 @@ if (parentPort) {
       };
 
       const pagina = calculaPagina(
-        dashboardSpec,
+        alvoDoCalculo,
         carregado.ev,
         janela,
         undefined,

@@ -10,11 +10,13 @@
 // plano e a memória da busca volta inteira ao sistema quando ele sai.
 //
 // **O teto do filho, medido.** Uma consulta por vez dentro dele (`buscaDaJanela`,
-// `buscaDoAno`), a janela cabe em 800 MB de heap e não em 640; o ano, idem. 1024 MB dão
-// ≥ 22% de folga, com pico de 0,9–1,2 GB de RSS. O mês da agenda cabe em 160 MB (pico de
-// 237 MB de RSS); 384 cobre o período máximo da tela, 62 dias. Quem chama põe TODAS as
-// buscas numa fila de UMA (`FilaDeBuscas`): pai 1024 + workers 2 × 512 + um filho de até
-// 1024 é o que cabe nos 3072 MB da `api` (`piscina-workers.test.ts`).
+// `buscaDoAno`), a janela cabe em 800 MB de heap e não em 640; o ano, idem. O mês da
+// agenda, desde que traz a agenda completa (25/10/2026), também: setembro de 2026, 208 mil
+// linhas, coube em 800 (pico de 917 MB de RSS) e não em 640 — e por isso o período da
+// agenda ao vivo é de um mês (`TETO_DE_DIAS_DA_AGENDA`). 1024 MB dão ≥ 22% de folga, com
+// pico de 0,9–1,2 GB de RSS. Quem chama põe TODAS as buscas numa fila de UMA
+// (`FilaDeBuscas`): pai 768 + workers 2 × 512 + um filho de até 1024 é o que cabe nos
+// 3072 MB da `api` (`piscina-workers.test.ts`).
 
 import { spawn } from 'node:child_process';
 import path from 'node:path';
@@ -29,8 +31,6 @@ const ENTRADA = path.join(path.dirname(fileURLToPath(import.meta.url)), 'filho-a
  * está no repositório.
  */
 export const HEAP_DO_CONJUNTO_MB = 1024;
-/** O mês da agenda: ver o cabeçalho. */
-export const HEAP_DA_AGENDA_MB = 384;
 
 /** A busca mais longa medida levou ~95 s; 10 min corta conexão pendurada sem cortar busca lenta. */
 export const TEMPO_MAXIMO_DO_FILHO_MS = 10 * 60_000;
@@ -45,9 +45,9 @@ export interface ResultadoDaGeracao {
   readonly picoMB: number;
 }
 
-/** O teto de heap do filho de um conjunto. */
-export function heapDoFilhoMB(conjunto: ConjuntoAoVivo): number {
-  return conjunto === 'agenda' ? HEAP_DA_AGENDA_MB : HEAP_DO_CONJUNTO_MB;
+/** O teto de heap do filho de um conjunto — o mesmo para os três, ver o cabeçalho. */
+export function heapDoFilhoMB(_conjunto: ConjuntoAoVivo): number {
+  return HEAP_DO_CONJUNTO_MB;
 }
 
 /** O argv do filho. Separado para o teste afirmar sobre ele sem criar processo. */
@@ -60,8 +60,11 @@ function cauda(bruto: string): string {
     .split(/\r?\n/)
     .map((l) => l.trim())
     .filter(Boolean)
-    // A pilha nativa do V8 num estouro de heap são dezenas de linhas de endereço.
-    .filter((l) => !/^\d+: [0-9A-Fa-fx]+ /.test(l))
+    // O que não diz o motivo: a pilha nativa do V8 num estouro de heap (dezenas de linhas
+    // de endereço), os quadros da pilha de JS e a versão que o Node imprime ao sair. Sem
+    // este corte, as últimas linhas eram exatamente estas, e a do `Error: …` ficava de fora
+    // (medido em 25/10/2026: uma busca que falhou deixou só "at async …" no log).
+    .filter((l) => !/^\d+: [0-9A-Fa-fx]+ /.test(l) && !/^at /.test(l) && !/^Node\.js v/.test(l) && !/^[{}()^]+$/.test(l))
     .slice(-LINHAS_DE_ERRO)
     .map((l) => (l.length > LARGURA ? `${l.slice(0, LARGURA)}...` : l))
     .join(' | ');

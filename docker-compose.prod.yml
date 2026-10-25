@@ -193,9 +193,10 @@ services:
       # dividem pools próprios no SRD (até 4 conexões, `analytics-ao-vivo`).
       AO_VIVO_SOMBRA: ${AO_VIVO_SOMBRA:-0}
       # Páginas SERVIDAS ao vivo do SRD, separadas por vírgula. Sabem ser:
-      #   agendamento-field — o mês da tela, buscado uma vez e válido por 2 min (mês
-      #     corrente) ou 1 h (fechado); os visuais do grão relato e a previsão de chuva
-      #     seguem pelo snapshot;
+      #   agendamento-field — o mês da tela com a agenda COMPLETA (grão relato, ~1 min de
+      #     busca), válido por 5 min (mês corrente) ou 1 h (fechado); só a previsão de
+      #     chuva segue pelo snapshot, e com a agenda de slot — a worker não carrega mais
+      #     as 633 mil linhas da completa para esta página;
       #   premiacao-instalacao, diario-instalacao, protocolos-detalhados,
       #   manutencao-inicial, instalacao-reincidente — UM conjunto do ano para as cinco
       #     (produtividade + protocolos do ano, ~1–2 min de SRD), buscado em segundo plano
@@ -207,8 +208,8 @@ services:
       #     buscado e renovado do mesmo jeito; backlog, capacidade, clima e consolidado vêm
       #     do snapshot.
       # Vazio = todas pelo snapshot, como sempre. Busca que falha ou passa de 45 s: o pedido
-      # sai pelo snapshot. Cada busca é um processo filho, UMA por vez (pico de ~1 GB nos
-      # conjuntos, 0,24 GB no mês da agenda; está no contrato de memória acima). Pools
+      # sai pelo snapshot. Cada busca é um processo filho, UMA por vez (pico de ~1 GB, de
+      # 1 a 2 min; está no contrato de memória acima). Pools
       # próprios no SRD (`analytics-ao-vivo`), pastas em `API_RUNTIME_DIR/ao-vivo`.
       # Para MEMÓRIA, só `agendamento-field` corta dado; ano e janela dão frescor de 10
       # min contra os 30 do refresh (docs/DECISAO-AO-VIVO.md § A busca num processo filho).

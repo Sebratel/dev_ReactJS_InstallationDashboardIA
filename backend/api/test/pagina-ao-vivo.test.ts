@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { leAgregadasAoVivo, leCatalogoAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
+import { leCatalogoAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
 import { QueryRegistry } from '../../packages/query-engine/src/registry.ts';
 import type { Connector } from '../../packages/query-engine/src/types.ts';
 import { SemanticModel } from '../../packages/semantic-model/src/model.ts';
@@ -109,7 +109,6 @@ function sombra(): { s: SombraAoVivo; contas: Map<string, number>; linhas: strin
       culture: null,
     },
     model,
-    relatosDoDia: leAgregadasAoVivo(SPECS).get('relatos-do-dia')!,
     snapshotDir: '/nao/existe',
     registra: (l) => linhas.push(l),
     conta: (n, q) => contas.set(n, (contas.get(n) ?? 0) + q),

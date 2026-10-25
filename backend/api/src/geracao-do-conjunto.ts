@@ -3,8 +3,9 @@
 // — o processo filho da API (`filho-ao-vivo.ts`, o caminho de produção) e o teste que a
 // roda no próprio processo —, para os dois nunca divergirem no que copiam do snapshot.
 //
-//   - agenda — o MÊS da tela da Agendamento Field, com o `Status Protocolo Dia` agregado
-//     no SQL; capacidade, clima e hora copiados do snapshot;
+//   - agenda — o MÊS da tela da Agendamento Field, com a FIELD AGENDA completa (grão
+//     relato) e o `Status Protocolo Dia` congelado pela tradução nativa sobre ela;
+//     capacidade, clima e hora copiados do snapshot;
 //   - ano — produtividade e a PG do ano (`instalacao-do-ano.ts`); o calendário de
 //     instalação congelado e o resto copiados do snapshot;
 //   - janela — PG, telefonia e a agenda no grão de slot (`janela-de-protocolos.ts`); o
@@ -15,7 +16,12 @@ import { leVariantesAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
 import { buscaDoAno, CALCULADAS_DO_ANO, QUERIES_DO_ANO, VARIANTE_PG_DO_ANO } from '../../packages/ao-vivo/src/instalacao-do-ano.ts';
 import { buscaDaJanela, QUERIES_DA_JANELA } from '../../packages/ao-vivo/src/janela-de-protocolos.ts';
 import type { PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
-import { buscaDoPeriodo, calculadasCongeladas, escreveSnapshotDoPeriodo } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
+import {
+  buscaDoPeriodo,
+  calculadasCongeladas,
+  congelaStatusDoDia,
+  escreveSnapshotDoPeriodo,
+} from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import type { ContextoMontado } from './contexto-ao-vivo.ts';
 import { queriesPequenas } from './pagina-ao-vivo.ts';
@@ -36,11 +42,11 @@ export interface PedidoDeGeracao {
 }
 
 export async function geraConjunto(
-  contexto: Pick<ContextoMontado, 'ctx' | 'model' | 'relatosDoDia'>,
+  contexto: Pick<ContextoMontado, 'ctx' | 'model'>,
   root: string,
   p: PedidoDeGeracao,
 ): Promise<{ protocolos: number }> {
-  const { ctx, model, relatosDoDia } = contexto;
+  const { ctx, model } = contexto;
   const specsDir = path.join(root, 'backend', 'specs');
   const paginas = loadDashboards(specsDir).filter((d) => p.paginas.includes(d.id));
   const agora = new Date(p.agoraIso);
@@ -48,9 +54,17 @@ export async function geraConjunto(
     [...new Set(paginas.flatMap((d) => queriesPequenas(d, model)))].filter((q) => !doSrd.includes(q));
 
   if (p.conjunto === 'agenda') {
-    const dados = await buscaDoPeriodo(ctx, relatosDoDia, p.periodo, agora);
-    await escreveSnapshotDoPeriodo(p.dir, model, dados, p.agoraIso, { dir: p.snapshotDir, queries: copiadas([]) });
-    return { protocolos: dados.protocolos };
+    const agenda = paginas.find((d) => d.id === 'agendamento-field');
+    if (!agenda) throw new Error('o conjunto da agenda sem a página agendamento-field');
+    // As linhas da busca saem de escopo antes do congelamento, que carrega a pasta de novo:
+    // as duas juntas somariam o pico do processo.
+    const protocolos = await (async () => {
+      const dados = await buscaDoPeriodo(ctx, p.periodo, agora);
+      await escreveSnapshotDoPeriodo(p.dir, model, dados, p.agoraIso, { dir: p.snapshotDir, queries: copiadas([]) });
+      return dados.protocolos;
+    })();
+    await congelaStatusDoDia(p.dir, model, agenda, agora, p.agoraIso);
+    return { protocolos };
   }
   if (p.conjunto === 'ano') {
     const variante = leVariantesAoVivo(specsDir).get(VARIANTE_PG_DO_ANO);

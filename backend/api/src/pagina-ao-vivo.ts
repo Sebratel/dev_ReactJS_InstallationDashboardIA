@@ -12,16 +12,16 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { AgregadaAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
 import type { ContextoAoVivo } from '../../packages/ao-vivo/src/executor.ts';
 import { decideAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 import {
   buscaDoPeriodo,
+  congelaStatusDoDia,
   escreveSnapshotDoPeriodo,
   type CalculadaPronta,
   type DadosDoPeriodo,
 } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
-import type { SemanticModel } from '../../packages/semantic-model/src/model.ts';
+import { normalizeName, type SemanticModel } from '../../packages/semantic-model/src/model.ts';
 import { carrega } from '../../packages/snapshot/src/carrega.ts';
 import { planeja } from '../../packages/snapshot/src/plano.ts';
 import type { DashboardSpec, FiltroSpec } from '../../packages/widget-engine/src/spec.ts';
@@ -43,12 +43,13 @@ export interface CalculoSobrePeriodo {
   readonly alvo: DashboardSpec;
   /** Visuais que o ao vivo não responde (`visuaisForaDoAoVivo`): saem do cálculo. */
   readonly fora: ReadonlyMap<string, string>;
+  /** As tabelas de grão reduzido que o período traz completas (`Decisao.formaCompleta`). */
+  readonly formaCompleta?: readonly string[];
   readonly janela: Janela;
   readonly clicados: readonly { tabela: string; coluna: string }[];
   readonly agora: Date;
   /** As queries buscadas. Uma query pequena da página que venha aqui não é copiada. */
-  readonly dados: Pick<DadosDoPeriodo, 'consultas'> &
-    Partial<Pick<DadosDoPeriodo, 'statusProtocoloDia'>> & { readonly calculadas?: readonly CalculadaPronta[] };
+  readonly dados: Pick<DadosDoPeriodo, 'consultas'> & { readonly calculadas?: readonly CalculadaPronta[] };
   /** O snapshot de onde copiar as queries pequenas que `dados` não trouxe. */
   readonly pequenasDe?: string;
   /** Onde criar a pasta temporária. Padrão: `os.tmpdir()`. */
@@ -63,11 +64,14 @@ export interface PaginaSobrePeriodo {
 
 /**
  * Carrega o snapshot de um período já gravado e calcula a página do pedido — o caminho
- * em linha, sem worker. Sem forma completa: a FIELD AGENDA no grão de slot, que é o
- * arquivo gravado; os visuais que pediriam a completa estão em `fora` e saem do plano.
+ * em linha, sem worker. A forma de cada tabela de grão reduzido é a que o período trouxe
+ * (`formaCompleta`); os visuais que pediriam uma forma que não veio estão em `fora` e
+ * saem do plano.
  */
 export async function calculaNoDiretorio(
-  c: Pick<CalculoSobrePeriodo, 'model' | 'dash' | 'alvo' | 'fora' | 'janela' | 'clicados' | 'agora'> & { readonly dir: string },
+  c: Pick<CalculoSobrePeriodo, 'model' | 'dash' | 'alvo' | 'fora' | 'formaCompleta' | 'janela' | 'clicados' | 'agora'> & {
+    readonly dir: string;
+  },
 ): Promise<Omit<PaginaSobrePeriodo, 'ms'> & { readonly ms: { readonly carga: number; readonly calculo: number } }> {
   const semFora = (d: DashboardSpec): DashboardSpec => ({ ...d, visuals: (d.visuals ?? []).filter((v) => !c.fora.has(v.id)) });
   const tCarga = Date.now();
@@ -76,7 +80,7 @@ export async function calculaNoDiretorio(
     model: c.model,
     dashboards: [semFora(c.dash)],
     now: c.agora,
-    precisaFormaCompleta: [],
+    precisaFormaCompleta: [...(c.formaCompleta ?? [])],
     colunar: true,
   });
   const tCalculo = Date.now();
@@ -102,6 +106,10 @@ export async function calculaSobrePeriodo(c: CalculoSobrePeriodo): Promise<Pagin
       c.agora.toISOString(),
       c.pequenasDe ? { dir: c.pequenasDe, queries: copiar } : undefined,
     );
+    // A agenda do período não traz o `Status Protocolo Dia`: congela como o filho da busca.
+    const temStatusDia = planeja([c.dash], c.model).calculadas.some((t) => normalizeName(t) === 'status protocolo dia');
+    const veioPronto = (c.dados.calculadas ?? []).some((t) => normalizeName(t.tabela) === 'status protocolo dia');
+    if (temStatusDia && !veioPronto) await congelaStatusDoDia(dir, c.model, c.dash, c.agora, c.agora.toISOString());
     const escrita = Date.now() - tEscrita;
     const r = await calculaNoDiretorio({ ...c, dir });
     return { ...r, ms: { escrita, ...r.ms } };
@@ -133,9 +141,8 @@ export function juntaPaginas(alvo: DashboardSpec, vivo: PaginaCalculada, doSnaps
   };
 }
 
-export interface PedidoDaPaginaAoVivo extends Omit<CalculoSobrePeriodo, 'fora' | 'dados'> {
+export interface PedidoDaPaginaAoVivo extends Omit<CalculoSobrePeriodo, 'fora' | 'formaCompleta' | 'dados'> {
   readonly ctx: ContextoAoVivo;
-  readonly relatosDoDia: AgregadaAoVivo;
   /** Os filtros da tela (`?filtro=`) — é deles que sai o período. */
   readonly daTela: readonly FiltroSpec[];
 }
@@ -153,8 +160,8 @@ export type PaginaAoVivo =
 export async function calculaPaginaAoVivo(p: PedidoDaPaginaAoVivo): Promise<PaginaAoVivo> {
   const d = decideAoVivo(p.dash, p.daTela, p.model);
   if ('porque' in d) return d;
-  const dados = await buscaDoPeriodo(p.ctx, p.relatosDoDia, d.periodo, p.agora);
-  const r = await calculaSobrePeriodo({ ...p, fora: d.fora, dados });
+  const dados = await buscaDoPeriodo(p.ctx, d.periodo, p.agora);
+  const r = await calculaSobrePeriodo({ ...p, fora: d.fora, ...(d.formaCompleta ? { formaCompleta: d.formaCompleta } : {}), dados });
   return { ...r, periodo: d.periodo, fora: d.fora, busca: dados.ms, protocolos: dados.protocolos };
 }
 

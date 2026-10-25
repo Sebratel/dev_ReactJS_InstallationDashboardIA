@@ -46,8 +46,9 @@ test('o argv leva o teto de heap do conjunto, o filho e o pedido em JSON', () =>
   assert.equal(argv[0], `--max-old-space-size=${HEAP_DO_CONJUNTO_MB}`);
   assert.match(argv[1]!, /filho-ao-vivo\.ts$/);
   assert.deepEqual(JSON.parse(argv[2]!), PEDIDO);
-  assert.equal(heapDoFilhoMB('ano'), HEAP_DO_CONJUNTO_MB);
-  assert.ok(heapDoFilhoMB('agenda') < HEAP_DO_CONJUNTO_MB, 'o mês da agenda tem o seu, menor');
+  // O mês da agenda tinha 384 MB até trazer a agenda completa (25/10/2026): ele cabe em 800
+  // e não em 640, como os outros dois.
+  for (const c of ['agenda', 'ano', 'janela'] as const) assert.equal(heapDoFilhoMB(c), HEAP_DO_CONJUNTO_MB);
 });
 
 test('saída 0: a última linha da saída padrão é o resultado, com o pico de memória', async () => {
@@ -74,6 +75,25 @@ test('estouro de heap no filho vira erro com o motivo, sem as linhas de endereç
   await assert.rejects(
     geraEmProcesso('C:/repo', PEDIDO, { cria: p.cria }),
     (e: Error) => /saiu com 134/.test(e.message) && /heap out of memory/.test(e.message) && !/00007FF/.test(e.message),
+  );
+});
+
+test('exceção no filho: a mensagem chega, e não o fim da pilha', async () => {
+  const p = falso((f) => {
+    f.stderr.emit(
+      'data',
+      'file:///C:/repo/backend/api/src/geracao-do-conjunto.ts:62\n' +
+        '      const dados = await buscaDoPeriodo(ctx, p.periodo, agora);\n' +
+        '                    ^\n\n' +
+        'Error: canceling statement due to statement timeout\n' +
+        '    at Pool.query (file:///C:/repo/node_modules/pg/lib/pool.js:1:1)\n' +
+        '    at async file:///C:/repo/backend/api/src/geracao-do-conjunto.ts:62:21\n' +
+        '}\n\nNode.js v22.23.2\n',
+    );
+    f.emit('exit', 1, null);
+  });
+  await assert.rejects(geraEmProcesso('C:/repo', PEDIDO, { cria: p.cria }), (e: Error) =>
+    /statement timeout/.test(e.message) && !/at async/.test(e.message) && !/Node\.js v/.test(e.message),
   );
 });
 

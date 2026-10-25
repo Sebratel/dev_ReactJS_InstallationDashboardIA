@@ -335,6 +335,63 @@ min (o refresh lê só a parte recente, `historico-congelado.ts`). A exceção �
 Mês, que pelo snapshot carrega a agenda completa e pelo conjunto da janela, a de slot.
 **Para a memória, o que vale ligar é `agendamento-field`**; as outras são frescor.
 
+## O mês da agenda com a FIELD AGENDA completa (25/10/2026)
+
+**Por quê.** Os seis visuais de relato da Agendamento Field (os dois HISTÓRICOS DE
+RELATOS, MOTIVO IMPRODUTIVO/PRODUTIVO e os seletores PRODUTIVO?, MOTIVO e TIPO RELATO)
+seguiam pelo snapshot, e o snapshot só os responde com a agenda completa: 633 mil linhas,
+o conjunto mais pesado de uma worker (329 MB depois da carga, 728 MB depois do cálculo) e
+o pico de 3 GB do contêiner `refresh`. Com eles fora, quem rolasse até eles — ou usasse um
+dos três seletores — trazia a agenda completa de volta para a API.
+
+**Como.** O mês da agenda passou a buscar a agenda COMPLETA (a mesma view aberta da
+`field-agenda-slot`, costurada no SQL da `field-agenda`, `ao-vivo.yaml`), no lugar da de
+slot mais as contagens de relato. O `Status Protocolo Dia` é congelado no filho como o
+refresh congela: a pasta carregada e a tradução nativa sobre ela (`congelaStatusDoDia`). Os
+seis visuais e os filtros de tela nas colunas deles passaram a ser respondidos ao vivo;
+fica fora só a previsão de chuva, que agora vai à worker com carga própria
+(`idDosForaDoAoVivo`): a agenda de slot e o calendário congelado, sem o overlay do tempo
+real. Antes, para esse único visual, a worker carregava a página inteira — com a agenda
+completa.
+
+**O custo.** O banco responde setembro inteiro (208.501 linhas) em 1,7–2,6 s; o resto é
+transferência — 132 MB de linha, 48 MB só do texto dos relatos —, ~60 s medidos desta
+estação. O filho leva 93–108 s e chega a 0,9–1,1 GB; cabe em 800 MB de heap e não em 640.
+Por isso: o mês corrente vale 5 min (era 2), a primeira busca não segura o pedido
+(`esperaAPrimeira: false`, o mês com que a tela abre é buscado na subida), e o período da
+agenda ao vivo é de UM mês (`TETO_DE_DIAS_DA_AGENDA`): dois meses não caberiam no filho.
+
+**Paridade (`npm run probe:ao-vivo-agenda`, sem banco, sobre o snapshot local):**
+
+| Mês — filtro | Visuais iguais | A previsão de chuva, com a carga só dela |
+|---|---|---|
+| setembro — como abre / + MOTIVO / + PRODUTIVO? = Improdutiva | 38 de 38 nos três | igual; agenda 633.161 → 42.010 linhas |
+| outubro — como abre / + MOTIVO / + PRODUTIVO? = Improdutiva | 38 de 38 nos três | igual; agenda 633.161 → 42.010 linhas |
+
+A sonda online antiga (`probe:ao-vivo --so=pagina`) saiu: a referência dela seria a agenda
+completa original de 3 meses, mais de 20 min de busca.
+
+**Medido no processo da API, com as 13 páginas ao vivo** (pai 768, 2 workers × 512, como
+na § A busca num processo filho):
+
+| | Só o snapshot | 13 ao vivo, agenda de slot | 13 ao vivo, agenda completa |
+|---|---|---|---|
+| Pico abrindo as páginas e os filtros | 1274 MB | 1172 MB | 1076 MB |
+| Repouso, depois do GC | 746 MB | 604 MB | 534 MB |
+| A previsão de chuva na worker | página inteira | página inteira (agenda completa) | 122 ms, sem a agenda completa |
+
+Os filhos, um por vez: mês da agenda 1037 MB (116 s), ano 1076 MB (168 s), janela 981 MB
+(126 s) — 411 s até os três prontos na subida, nesta estação. Uma rodada anterior teve uma
+busca morta pelo prazo de 10 min sem motivo legível no log; a cauda do erro do filho
+passou a trazer a linha `Error: …` em vez do fim da pilha.
+
+**O que isto destrava (passo 2).** Com as páginas ao vivo, a API não precisa mais da agenda
+completa do snapshot. Sobra quem ainda a usa: o tempo real (`realtime-poll.yaml` vigia a
+`field-agenda`), o congelamento do `Status Protocolo Dia` e do `calendar` no refresh, e a
+página quando cai para o snapshot (SRD fora). Tirá-la do grupo `frio` do refresh é o que
+derruba o pico de 3 GB do contêiner `refresh` — decisão a tomar junto com o Erick, porque
+muda a garantia de queda: com o SRD fora, os seis visuais de relato ficariam sem resposta.
+
 ## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
 
 Medido por página, um processo cada, carga colunar como a worker faz e cálculo com o

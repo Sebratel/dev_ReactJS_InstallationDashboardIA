@@ -16056,3 +16056,25 @@ Desenho e números em [DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md) § A busca num pro
   dentro da API (Premiação e Diário ligados).
 - **Contrato de memória:** pai de 1024 para 768 e o filho (um por vez) somado —
   2816 de 3072 MB autorizados (`piscina-workers.test.ts`).
+
+## #245 — o mês da agenda ao vivo traz a agenda completa; o visual de fora levava a página inteira (25/10)
+
+Desenho e números em [DECISAO-AO-VIVO](./DECISAO-AO-VIVO.md) § O mês da agenda com a
+FIELD AGENDA completa.
+
+- **O visual que fica no snapshot puxava a página inteira.** Numa página ao vivo, os
+  visuais de fora iam à worker com o id e a carga da página — e a carga da Agendamento
+  Field, pelas fontes do tempo real, é a agenda completa (633 mil linhas). Com 7 visuais
+  fora, e depois com só a previsão de chuva, a worker carregava o snapshot inteiro da
+  página a cada pedido (`forma completa: FIELD AGENDA, PROTOCOLOS GERAL` no log) ALÉM do
+  conjunto ao vivo: a página ao vivo gastava mais memória que a do snapshot. Agora eles vão
+  com id próprio (`idDosForaDoAoVivo`), a carga só deles e sem overlay — 122 ms, sem a
+  agenda completa.
+- **O cálculo usava o id do período.** A worker calculava a página ao vivo com o id
+  `agendamento-field@ao-vivo:…`, e há regra por página no cálculo (`ignoraDataDaTela`, a
+  previsão de chuva). Não mordeu porque esse visual estava fora; passou a calcular sempre
+  com o id da página.
+- **O banco não é o custo da agenda completa — a transferência é.** Setembro inteiro: 1,7 s
+  de banco para 208.501 linhas, ~60 s para trazer 132 MB (48 MB de texto de relato) até
+  esta estação. O `statement_timeout` do Postgres conta o tempo de enviar as linhas: numa
+  rede lenta, a busca de um mês pode chegar ao teto de 5 min.

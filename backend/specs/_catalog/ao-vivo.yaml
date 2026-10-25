@@ -108,6 +108,22 @@ consultas:
                WHERE f.routing_status <> f.previous_routing_status OR f.previous_routing_status IS NULL
           ) vsdspi
 
+  # A agenda COMPLETA, no grão relato (25/10/2026): o mês da Agendamento Field passou a
+  # trazê-la, e os seis visuais de relato e os filtros nas colunas deles saem ao vivo.
+  # Mesma view aberta e mesmo recorte da `field-agenda-slot`; as junções com relatos,
+  # pessoas e skills são as do SQL da spec. Medido em setembro de 2026: 208.501 linhas,
+  # 1,7 s de banco (contagem) — o resto é transferência, 132 MB de linha.
+  field-agenda:
+    parametros: [desde, ate]
+    janela: "AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')"
+    recorte:
+      tipo: protocolos-com-data-no-periodo
+      protocolo: Protocolo
+      data: Slot Agenda
+    costura:
+      - de: "FROM v_service_desk_slots_productivity_informative vsdspi\n"
+        para: *vista-da-agenda
+
   # Os protocolos da agenda. O recorte é pelas SOLICITAÇÕES desses protocolos, e não
   # pelo protocolo: o `ROW_NUMBER` que escolhe a linha (`PERSONA1`) particiona por
   # `a.title`. Cortar por protocolo poderia tirar linhas do meio de uma partição e

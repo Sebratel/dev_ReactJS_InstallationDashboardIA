@@ -4,8 +4,8 @@
 // processo (que grava acessos no banco de produção).
 //
 // Três formas:
-//   - Agendamento Field — o MÊS da tela (`periodo.ts`), buscado uma vez e válido por 2 min
-//     (mês corrente) ou 1 h (fechado);
+//   - Agendamento Field — o MÊS da tela (`periodo.ts`), com a agenda completa (grão
+//     relato), buscado uma vez e válido por 5 min (mês corrente) ou 1 h (fechado);
 //   - as cinco páginas do ano (Premiação, Diário, Detalhados, Manutenção Inicial,
 //     Reincidente) — UM conjunto do ano (`instalacao-do-ano.ts`);
 //   - as páginas de protocolos (Visão Geral, Relatórios, Telefonia, dicas) — UM conjunto da
@@ -24,6 +24,8 @@ import { leVariantesAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
 import { decideDoAno, PAGINAS_DO_ANO, periodoDoAno, VARIANTE_PG_DO_ANO } from '../../packages/ao-vivo/src/instalacao-do-ano.ts';
 import { decideDaJanela, PAGINAS_DA_JANELA, periodoDaJanela } from '../../packages/ao-vivo/src/janela-de-protocolos.ts';
 import { decideAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { codificaFiltro, decodificaFiltros } from '../../packages/widget-engine/src/filtro-url.ts';
+import { filtrosPadrao } from '../../packages/widget-engine/src/filtros-padrao.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { montaContextoAoVivo } from './contexto-ao-vivo.ts';
 import type { ConjuntoAoVivo, PedidoDeGeracao } from './geracao-do-conjunto.ts';
@@ -90,6 +92,12 @@ export async function montaAoVivoDaApi(o: {
     const periodos = new PeriodosAoVivo({
       gera: geraDo('agenda', [agenda.id]),
       dirBase: path.join(o.dirBase, agenda.id),
+      // Com a agenda completa, o mês leva ~1 min de busca (132 MB de linha em setembro de
+      // 2026; o banco responde em 2 s, o resto é transferência): a renovação a cada 2 min
+      // viraria busca sem parar, e a primeira passa do teto do pedido — ela sai pelo
+      // snapshot enquanto a busca corre por baixo.
+      ttlAbertoMs: 5 * 60_000,
+      esperaAPrimeira: false,
       fila,
       registra,
     });
@@ -98,6 +106,12 @@ export async function montaAoVivoDaApi(o: {
       obtem: (p) => periodos.obtem(p),
       marca: (p) => periodos.marca(p),
       estado: () => periodos.estado(),
+    });
+    // O mês com que a tela abre, já na subida.
+    conjuntos.push(async () => {
+      const d = decideAoVivo(agenda, decodificaFiltros(filtrosPadrao(agenda.id, new Date()).map(codificaFiltro)), model);
+      if ('porque' in d) return;
+      await periodos.pronto(d.periodo);
     });
   }
 
@@ -151,7 +165,7 @@ export async function montaAoVivoDaApi(o: {
   }
 
   const sombra = o.querSombra
-    ? new SombraAoVivo({ ctx: contexto.ctx, model, relatosDoDia: contexto.relatosDoDia, snapshotDir: o.snapshotDir, conta: o.conta })
+    ? new SombraAoVivo({ ctx: contexto.ctx, model, snapshotDir: o.snapshotDir, conta: o.conta })
     : null;
   return {
     paginas: servidas,

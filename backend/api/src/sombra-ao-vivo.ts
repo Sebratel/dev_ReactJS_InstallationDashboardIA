@@ -18,9 +18,8 @@
 // O log diz QUAIS visuais divergem e a forma da diferença, nunca o valor (CLAUDE.md,
 // regra 2).
 
-import type { AgregadaAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
 import type { ContextoAoVivo } from '../../packages/ao-vivo/src/executor.ts';
-import { decideAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { decideAoVivo, type Decisao, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 import { buscaDoPeriodo } from '../../packages/ao-vivo/src/snapshot-do-periodo.ts';
 import { relogioDeParede } from '../../packages/measure-engine/src/relogio.ts';
 import type { SemanticModel } from '../../packages/semantic-model/src/model.ts';
@@ -47,7 +46,6 @@ export interface ObservadorAoVivo {
 export interface OpcoesDaSombra {
   readonly ctx: ContextoAoVivo;
   readonly model: SemanticModel;
-  readonly relatosDoDia: AgregadaAoVivo;
   /** De onde copiar as queries pequenas da página (capacidade, clima, hora). */
   readonly snapshotDir: string;
   /** Padrão: só `agendamento-field`, a única página da fase 1. */
@@ -125,7 +123,7 @@ export class SombraAoVivo implements ObservadorAoVivo {
         return;
       }
       this.#rodadas.set(chave, agora);
-      this.#emCurso = this.#roda(obs, d.periodo, d.fora).finally(() => {
+      this.#emCurso = this.#roda(obs, d).finally(() => {
         this.#emCurso = null;
       });
     } catch (err) {
@@ -133,15 +131,17 @@ export class SombraAoVivo implements ObservadorAoVivo {
     }
   }
 
-  async #roda(obs: ObservacaoDaSombra, periodo: PeriodoAoVivo, fora: ReadonlyMap<string, string>): Promise<RodadaDaSombra | null> {
+  async #roda(obs: ObservacaoDaSombra, d: Exclude<Decisao, { porque: string }>): Promise<RodadaDaSombra | null> {
+    const { periodo, fora } = d;
     try {
       this.#conta('sombra_rodadas');
-      const dados = await buscaDoPeriodo(this.#o.ctx, this.#o.relatosDoDia, periodo, obs.agora);
+      const dados = await buscaDoPeriodo(this.#o.ctx, periodo, obs.agora);
       const vivo = await calculaSobrePeriodo({
         model: this.#o.model,
         dash: obs.dash,
         alvo: obs.alvo,
         fora,
+        ...(d.formaCompleta ? { formaCompleta: d.formaCompleta } : {}),
         janela: obs.janela,
         clicados: obs.clicados,
         agora: obs.agora,
@@ -166,7 +166,7 @@ export class SombraAoVivo implements ObservadorAoVivo {
           `${comparacao.soOrdem.length ? `, ${comparacao.soOrdem.length} só na ordem de linhas empatadas` : ''}` +
           `, ${comparacao.fora} fora do ao vivo` +
           `${diferentes ? ` — diferentes: ${diferentes}` : ''}. ` +
-          `Busca ${s(dados.ms.total)} (agenda ${s(dados.ms.agenda)}, relatos ${s(dados.ms.relatos)}, ` +
+          `Busca ${s(dados.ms.total)} (agenda ${s(dados.ms.agenda)}, ` +
           `protocolos ${s(dados.ms.protocolos)}; ${dados.protocolos} protocolo(s)), escrita ${s(vivo.ms.escrita)}, ` +
           `carga ${s(vivo.ms.carga)}, cálculo ${s(vivo.ms.calculo)}`,
       );

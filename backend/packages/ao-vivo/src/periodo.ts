@@ -10,12 +10,15 @@
 //
 // Fica FORA do ao vivo — o pedido ou o visual segue pelo snapshot, como hoje:
 //   - pedido sem período reconhecível (sem filtro de calendário, data crua, nível Dia…);
-//   - período mais longo que `TETO_DE_DIAS` (o ano inteiro é a fase de cache aquecido);
-//   - filtro de tela em coluna gatilho do grão reduzido (o grão relato não vem para a API);
-//   - visual que cita coluna gatilho, pela MESMA regra de `sobDemandaDoVisual`
-//     (servidor.ts): campo que não é medida, e filtro do visual;
+//   - período mais longo que o teto (`TETO_DE_DIAS_DA_AGENDA`, um mês, desde que a agenda
+//     vem completa);
 //   - visual de horizonte de previsão (`ignoraDataDaTela`): ele ignora o mês da tela, e o
-//     que ele mostra vive de hoje em diante, fora do período buscado.
+//     que ele mostra vive de hoje em diante, fora do período buscado;
+//   - visual que cita coluna gatilho do grão reduzido (campo que não é medida, ou filtro
+//     do visual — a MESMA regra de `sobDemandaDoVisual`, servidor.ts) de uma tabela que o
+//     período NÃO trouxe na forma completa. Desde 25/10/2026 o mês da agenda traz a FIELD
+//     AGENDA completa, no grão relato (`FORMA_DA_AGENDA`): os seis visuais de relato e os
+//     filtros de tela nas colunas deles passaram a ser respondidos ao vivo.
 
 import { projecaoDeHierarquia } from '../../measure-engine/src/evaluator.ts';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
@@ -48,8 +51,26 @@ const MESES: readonly string[] = Array.from({ length: 12 }, (_, m) =>
 const dia = (ano: number, mes: number): string => new Date(Date.UTC(ano, mes, 1)).toISOString().slice(0, 10);
 
 export type Decisao =
-  | { readonly periodo: PeriodoAoVivo; readonly fora: ReadonlyMap<string, string> }
+  | {
+      readonly periodo: PeriodoAoVivo;
+      readonly fora: ReadonlyMap<string, string>;
+      /** As tabelas de grão reduzido que o período traz na forma completa — a carga as pede assim. */
+      readonly formaCompleta?: readonly string[];
+    }
   | { readonly porque: string };
+
+/**
+ * O mês da agenda vem com a FIELD AGENDA completa (grão relato): a busca é a mesma view
+ * aberta da `field-agenda-slot`, costurada no SQL da `field-agenda` (`ao-vivo.yaml`).
+ */
+export const FORMA_DA_AGENDA: readonly string[] = ['FIELD AGENDA'];
+
+/**
+ * Um mês. Com a agenda completa, setembro de 2026 (208 mil linhas) pede 640–800 MB de heap
+ * ao processo da busca, que tem 1024 (`geracao-em-processo.ts`): dois meses não caberiam,
+ * e a seleção de dois meses fica no snapshot em vez de estourar a busca.
+ */
+export const TETO_DE_DIAS_DA_AGENDA = 31;
 
 /** O período da segmentação da tela, ou por que ela não dá um. */
 export function periodoDaTela(filtros: readonly FiltroSpec[], tetoDeDias = TETO_DE_DIAS): { periodo: PeriodoAoVivo } | { porque: string } {
@@ -87,18 +108,30 @@ export function periodoDaTela(filtros: readonly FiltroSpec[], tetoDeDias = TETO_
   return { periodo };
 }
 
-/** As colunas gatilho do grão reduzido, por rótulo normalizado. */
-function colunasGatilho(model: SemanticModel): Map<string, string> {
+/**
+ * As colunas gatilho do grão reduzido, por rótulo normalizado — menos as das tabelas que
+ * vieram na forma completa, que respondem qualquer coluna.
+ */
+function colunasGatilho(model: SemanticModel, formaCompleta: readonly string[] = []): Map<string, string> {
+  const completas = new Set(formaCompleta.map(normalizeName));
   const m = new Map<string, string>();
   for (const g of model.graoReduzido) {
+    if (completas.has(normalizeName(g.tabela))) continue;
     for (const c of g.colunasGatilho) m.set(normalizeName(rotuloDeColuna(g.tabela, c)), rotuloDeColuna(g.tabela, c));
   }
   return m;
 }
 
-/** Os visuais da página que o ao vivo não responde, com o motivo de cada um. */
-export function visuaisForaDoAoVivo(dash: DashboardSpec, model: SemanticModel): Map<string, string> {
-  const gatilhos = colunasGatilho(model);
+/**
+ * Os visuais da página que o ao vivo não responde, com o motivo de cada um.
+ * `formaCompleta`: as tabelas de grão reduzido que o período traz completas.
+ */
+export function visuaisForaDoAoVivo(
+  dash: DashboardSpec,
+  model: SemanticModel,
+  formaCompleta: readonly string[] = [],
+): Map<string, string> {
+  const gatilhos = colunasGatilho(model, formaCompleta);
   const fora = new Map<string, string>();
   for (const v of dash.visuals ?? []) {
     if (ignoraDataDaTela(dash.id, v.id)) {
@@ -119,8 +152,8 @@ export function visuaisForaDoAoVivo(dash: DashboardSpec, model: SemanticModel): 
 }
 
 /** A página sem os visuais que o ao vivo não responde — o plano de carga do snapshot do período. */
-export function semForaDoAoVivo(dash: DashboardSpec, model: SemanticModel): DashboardSpec {
-  const fora = visuaisForaDoAoVivo(dash, model);
+export function semForaDoAoVivo(dash: DashboardSpec, model: SemanticModel, formaCompleta: readonly string[] = []): DashboardSpec {
+  const fora = visuaisForaDoAoVivo(dash, model, formaCompleta);
   return { ...dash, visuals: (dash.visuals ?? []).filter((v) => !fora.has(v.id)) };
 }
 
@@ -145,12 +178,35 @@ export function paginaDoIdAoVivo(id: string): string | null {
   return i < 0 ? null : id.slice(0, i);
 }
 
-/** O pedido inteiro: dá para buscar ao vivo? E, se dá, quais visuais ficam de fora. */
+const MARCA_DOS_FORA = '#fora-do-ao-vivo';
+
+/**
+ * O id com que os visuais que ficaram FORA de uma página servida ao vivo (a previsão de
+ * chuva da Agendamento Field) andam pela piscina. Próprio pelo mesmo motivo de
+ * `idDaPaginaAoVivo`: com o id da página, a carga deles seria a da página INTEIRA — e na
+ * Agendamento Field isso é a agenda completa de 633 mil linhas, que a página ao vivo
+ * existe para não carregar. Com este id, a worker carrega só o que eles pedem.
+ */
+export function idDosForaDoAoVivo(pagina: string): string {
+  return `${pagina}${MARCA_DOS_FORA}`;
+}
+
+/** A página de um id dos de fora (`idDosForaDoAoVivo`), ou `null`. */
+export function paginaDoIdDosForaDoAoVivo(id: string): string | null {
+  return id.endsWith(MARCA_DOS_FORA) ? id.slice(0, -MARCA_DOS_FORA.length) : null;
+}
+
+/**
+ * O pedido inteiro da Agendamento Field: dá para buscar ao vivo? E, se dá, quais visuais
+ * ficam de fora. O mês vem com a FIELD AGENDA completa (`FORMA_DA_AGENDA`), então filtro
+ * de tela em coluna de relato também é respondido; um gatilho de outra tabela de grão
+ * reduzido ainda tiraria o pedido do ao vivo.
+ */
 export function decideAoVivo(dash: DashboardSpec, daTela: readonly FiltroSpec[], model: SemanticModel): Decisao {
-  const gatilhos = colunasGatilho(model);
+  const gatilhos = colunasGatilho(model, FORMA_DA_AGENDA);
   const tocada = daTela.find((f) => f.entity && f.property && gatilhos.has(normalizeName(rotuloDeColuna(f.entity, f.property))));
   if (tocada) return { porque: `filtro de tela em ${rotuloDeColuna(tocada.entity!, tocada.property!)} (grão relato)` };
-  const p = periodoDaTela(daTela);
+  const p = periodoDaTela(daTela, TETO_DE_DIAS_DA_AGENDA);
   if ('porque' in p) return p;
-  return { periodo: p.periodo, fora: visuaisForaDoAoVivo(dash, model) };
+  return { periodo: p.periodo, fora: visuaisForaDoAoVivo(dash, model, FORMA_DA_AGENDA), formaCompleta: FORMA_DA_AGENDA };
 }

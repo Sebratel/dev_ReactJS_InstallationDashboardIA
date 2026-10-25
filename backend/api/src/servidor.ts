@@ -71,7 +71,7 @@ import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
 import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type Janela, type PaginaCalculada } from './calcula.ts';
-import { idDaPaginaAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { idDaPaginaAoVivo, idDosForaDoAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 import { calculaNoDiretorio, juntaPaginas } from './pagina-ao-vivo.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
@@ -2422,15 +2422,21 @@ export class Servidor {
       // reordenar.
       this.metricas.conta(`fila_entradas_${origem}`);
       const tWorker = Date.now();
+      // **Página ao vivo: só os visuais de fora chegam aqui** (a previsão de chuva da
+      // Agendamento Field). Com a carga da página inteira — a do tempo real, que pede a
+      // agenda completa —, a worker voltaria a guardar as 633 mil linhas que o ao vivo
+      // existe para não carregar (medido em 25/10/2026). Vão com id próprio, a carga só
+      // deles e sem overlay: o que eles mostram é o do refresh.
+      const dosFora = vivo ? this.#liberacaoDosForaDoAoVivo(dash, alvoDoSnapshot) : null;
       try {
         const pedeAWorker = () => this.piscina.executa({
           snapshotDir: this.opts.snapshotDir,
           specsDir: path.join(this.opts.root, 'backend', 'specs'),
-          dashboardSpec: alvoDoSnapshot,
+          dashboardSpec: dosFora ? { ...alvoDoSnapshot, id: idDosForaDoAoVivo(dash.id) } : alvoDoSnapshot,
           janela: { de, linhas, termo },
           clicados,
-          liberaSobDemanda: libera,
-          precisaFormaCompleta: formaCompleta,
+          liberaSobDemanda: dosFora?.libera ?? libera,
+          precisaFormaCompleta: dosFora?.formaCompleta ?? formaCompleta,
           agoraIso: this.opts.agora().toISOString(),
           // **A linha que destrava o near-realtime inteiro** (F1,
           // 08/09/2026). Sem ela a worker chamava `carrega()` sem overlay e
@@ -2439,7 +2445,7 @@ export class Servidor {
           // recebia o mesmo de antes, depois de 10–20 s de recálculo. Nada
           // falhava; o realtime só não entregava dado novo. Ver
           // `worker-calculador.ts` e `overlay-realtime.ts`.
-          ...(overlays.size > 0 ? { overlays } : {}),
+          ...(!dosFora && overlays.size > 0 ? { overlays } : {}),
           // O que faz `cacheDeCarga` (worker-calculador.ts) saber que o disco
           // mudou por baixo, do mesmo jeito que `identidadeDaPagina()` já faz
           // para `this.carregadas` aqui na thread principal — DISCO, não o
@@ -3148,7 +3154,8 @@ export class Servidor {
             janela,
             clicados: [...clicados],
             liberaSobDemanda: [],
-            precisaFormaCompleta: [],
+            // A forma que o período trouxe: o mês da agenda vem com a FIELD AGENDA completa.
+            precisaFormaCompleta: [...(d.formaCompleta ?? [])],
             agoraIso: this.opts.agora().toISOString(),
             identidade: g.identidade,
             escopo: escopoDoCache(quem),
@@ -3162,8 +3169,10 @@ export class Servidor {
           dir: g.dir,
           model: this.model,
           dash,
-          alvo: alvoVivo,
+          // O id da página, não o do período: há regra por página e visual no cálculo.
+          alvo: { ...alvoVivo, id: dash.id },
           fora: d.fora,
+          ...(d.formaCompleta ? { formaCompleta: d.formaCompleta } : {}),
           janela,
           clicados,
           agora: this.opts.agora(),
@@ -3572,6 +3581,23 @@ export class Servidor {
       this.liberacaoPorPagina.set(dash.id, memo);
     }
     return { libera: [...memo.libera], formaCompleta: [...memo.formaCompleta] };
+  }
+
+  /**
+   * A carga dos visuais que ficaram FORA de uma página servida ao vivo: o que ELES amarram
+   * e os filtros de página — sem as fontes do tempo real, que `#liberacaoDaPagina` soma
+   * para a página inteira (o overlay não vai junto, ver o pedido à worker).
+   */
+  #liberacaoDosForaDoAoVivo(dash: DashboardSpec, fora: DashboardSpec): { libera: string[]; formaCompleta: string[] } {
+    const amarrado = (fora.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
+    const { tabelasCompletas } = this.amarraGraoReduzido();
+    const completas = new Set(amarrado.flatMap((a) => a.tabelasCompletas));
+    for (const f of dash.filters ?? []) {
+      if (!f.entity || !f.property) continue;
+      const t = tabelasCompletas.get(normalizeName(rotuloDeColuna(f.entity, f.property)));
+      if (t) completas.add(t);
+    }
+    return { libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(), formaCompleta: [...completas].sort() };
   }
 
   /** Mapas rótulo-normalizado → (nome declarado | tabela), montados uma vez por chamada. */
