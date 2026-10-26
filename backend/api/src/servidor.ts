@@ -71,7 +71,7 @@ import { ErroDeAcesso, type Mudanca } from './permissoes.ts';
 import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
-import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type Janela, type PaginaCalculada } from './calcula.ts';
+import { calculaPagina, segmentacaoDe, visualIndisponivel, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type Janela, type PaginaCalculada, type VisualCalculado } from './calcula.ts';
 import { idDaPaginaAoVivo, idDosForaDoAoVivo, idDosSeletores, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 import { calculaNoDiretorio, juntaPaginas } from './pagina-ao-vivo.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
@@ -382,6 +382,8 @@ export class Servidor {
   private readonly liberacaoPorPagina = new Map<string, { libera: string[]; formaCompleta: string[] }>();
   /** Memo de `#seletoresDoSnapshot` — idem. */
   private readonly seletoresPorPagina = new Map<string, DashboardSpec>();
+  /** Memo de `#semCompletaNoSnapshot` — vem do modelo, constante na vida do processo. */
+  private semCompletaMemo: ReadonlySet<string> | null = null;
   /**
    * A identidade de cada página que as WORKERS já foram avisadas de ter — ver
    * `soltaGeracoesVelhas`. Separada de `identidadeDasCarregadas` de propósito: aquela diz
@@ -2409,14 +2411,36 @@ export class Servidor {
     // (o horizonte de previsão) seguem pelo snapshot de hoje, em `alvoDoSnapshot`.
     // `null` = este pedido não vai ao vivo, ou a busca falhou — e tudo segue como antes.
     const vivo = await this.#paginaAoVivo(dash, alvo, daTela, { de, linhas, termo }, clicados, quem, prio, overlays);
-    const alvoDoSnapshot: DashboardSpec = vivo
+    const peloSnapshot: DashboardSpec = vivo
       ? { ...alvo, visuals: (alvo.visuals ?? []).filter((v) => vivo.fora.has(v.id)) }
       : alvo;
+    // **O que o snapshot não pode responder** (passo 3b): sem a agenda completa nele, o
+    // visual de relato e o filtro de tela em coluna de relato voltam indisponíveis, com o
+    // motivo, em vez de calculados pela metade. Vazio enquanto a agenda completa estiver no
+    // refresh. E o overlay do snapshot perde as fontes do recálculo que ele não sabe fazer.
+    const indisponiveis = this.#indisponiveisNoSnapshot(dash, peloSnapshot, daTela);
+    const alvoDoSnapshot: DashboardSpec = indisponiveis.size === 0
+      ? peloSnapshot
+      : { ...peloSnapshot, visuals: (peloSnapshot.visuals ?? []).filter((v) => !indisponiveis.has(v.id)) };
+    const overlaysDoSnapshot = this.#overlayDoSnapshot(dash, overlays);
 
     if (vivo && (alvoDoSnapshot.visuals ?? []).length === 0) {
       paginaCalculada = vivo.pagina;
       dadoDe = vivo.dadoDe;
       tabelasResumo = vivo.tabelas;
+    } else if ((alvoDoSnapshot.visuals ?? []).length === 0 && indisponiveis.size > 0) {
+      // Só indisponíveis: nada a carregar.
+      paginaCalculada = {
+        id: alvo.id,
+        nome: alvo.name,
+        tamanho: alvo.size,
+        dadoDe: null,
+        visuais: [],
+        resumo: { calculados: 0, falharam: 0, semCalculo: 0 },
+        ms: 0,
+      };
+      dadoDe = null;
+      tabelasResumo = [];
     } else if (this.piscina.ativa) {
       this.metricas.maximo('worker_fila_max', this.piscina.estado.fila);
       // Quantas tarefas de cada classe REALMENTE chegaram à piscina. Comparado
@@ -2449,7 +2473,7 @@ export class Servidor {
           // recebia o mesmo de antes, depois de 10–20 s de recálculo. Nada
           // falhava; o realtime só não entregava dado novo. Ver
           // `worker-calculador.ts` e `overlay-realtime.ts`.
-          ...(!dosFora && overlays.size > 0 ? { overlays } : {}),
+          ...(!dosFora && overlaysDoSnapshot.size > 0 ? { overlays: overlaysDoSnapshot } : {}),
           // O que faz `cacheDeCarga` (worker-calculador.ts) saber que o disco
           // mudou por baixo, do mesmo jeito que `identidadeDaPagina()` já faz
           // para `this.carregadas` aqui na thread principal — DISCO, não o
@@ -2598,6 +2622,20 @@ export class Servidor {
         agora: this.opts.agora(),
         pagina: paginaCalculada,
       });
+    }
+
+    // Os indisponíveis entram no lugar deles, na ordem do relatório.
+    if (indisponiveis.size > 0) {
+      paginaCalculada = juntaPaginas(
+        alvo,
+        {
+          ...paginaCalculada,
+          visuais: [...indisponiveis.values()],
+          resumo: { calculados: 0, falharam: 0, semCalculo: indisponiveis.size },
+          ms: 0,
+        },
+        paginaCalculada,
+      );
     }
 
     const corpo: CorpoDaPagina = {
@@ -3011,7 +3049,16 @@ export class Servidor {
     if (daAgregada !== null) return daAgregada;
     const dosSeletores = await this.#valoresDosSeletores(dash, tabela, coluna, nivel, prioridade, quem);
     if (dosSeletores !== null) return dosSeletores;
-    const overlays = this.#overlayDe(dash);
+    // Sem a agregada e sem a forma completa no snapshot, a página inteira listaria a coluna
+    // de relato pela agenda de slot — com parte dos valores, calada. Melhor dizer (409).
+    const completa = this.amarraGraoReduzido().tabelasCompletas.get(normalizeName(rotuloDeColuna(tabela, coluna)));
+    if (completa !== undefined && this.#semCompletaNoSnapshot().has(normalizeName(completa))) {
+      throw new Error(
+        `A lista de '${tabela}'[${coluna}] sai da agregada dos relatos, que o refresh ainda não gravou neste snapshot ` +
+          `(${completa} completa não está mais nele). Ela aparece depois da próxima carga do grupo frio.`,
+      );
+    }
+    const overlays = this.#overlayDoSnapshot(dash, this.#overlayDe(dash));
     const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
     if (this.piscina.ativa) {
       try {
@@ -3419,7 +3466,7 @@ export class Servidor {
       // `overlay-realtime.ts`). Este é o caminho que calcula na própria thread —
       // fallback de falha da worker, e a piscina desligada em teste —, e é o
       // único lado da fronteira onde a função pode ser montada de véspera.
-      overlay: mescladoresDe(this.#overlayDe(dash)),
+      overlay: mescladoresDe(this.#overlayDoSnapshot(dash, this.#overlayDe(dash))),
     })
       .then((c) => {
         // Recalcular uma tabela que estava congelada custa tempo e muda o número. Um
@@ -3717,9 +3764,9 @@ export class Servidor {
       const amarrado = (dash.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
       memo = {
         libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(),
-        formaCompleta: [
+        formaCompleta: this.#soAsQueOSnapshotTem([
           ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
-        ].sort(),
+        ]).sort(),
       };
       this.liberacaoPorPagina.set(dash.id, memo);
     }
@@ -3741,7 +3788,109 @@ export class Servidor {
       const t = tabelasCompletas.get(normalizeName(rotuloDeColuna(f.entity, f.property)));
       if (t) completas.add(t);
     }
-    return { libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(), formaCompleta: [...completas].sort() };
+    return { libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(), formaCompleta: this.#soAsQueOSnapshotTem([...completas]).sort() };
+  }
+
+  /**
+   * As tabelas de grão reduzido que o snapshot NÃO tem na forma completa
+   * (`completa_no_snapshot: false`, `projecao.yaml`), em nome normalizado. Vazio enquanto a
+   * agenda completa estiver no refresh — até o passo 5 do ao vivo, nada do que depende
+   * disto muda (docs/DECISAO-AO-VIVO.md, passo 3b).
+   */
+  #semCompletaNoSnapshot(): ReadonlySet<string> {
+    this.semCompletaMemo ??= new Set(this.model.graoReduzido.filter((g) => !g.completaNoSnapshot).map((g) => normalizeName(g.tabela)));
+    return this.semCompletaMemo;
+  }
+
+  /**
+   * A forma completa que uma carga do SNAPSHOT pode pedir: sem as tabelas que ele não tem
+   * completas. Pedida assim mesmo, a carga leria um arquivo que o refresh não atualiza
+   * mais. O que dependia dela tem destino próprio: o visual de relato sai indisponível
+   * (`#indisponiveisNoSnapshot`), e o recálculo do tempo real que a lia perde o overlay
+   * (`#overlayDoSnapshot`).
+   */
+  #soAsQueOSnapshotTem(tabelas: readonly string[]): string[] {
+    const sem = this.#semCompletaNoSnapshot();
+    return sem.size === 0 ? [...tabelas] : tabelas.filter((t) => !sem.has(normalizeName(t)));
+  }
+
+  /**
+   * O overlay do tempo real para uma carga do SNAPSHOT da página, sem as fontes que
+   * recalculariam uma calculada que o snapshot não sabe mais recalcular: a que cita coluna
+   * gatilho de uma tabela que ele não tem completa. É o `Status Protocolo Dia` (lê relato,
+   * data do relato e skill da agenda): recalculado sobre a agenda de slot, sairia errado;
+   * sem o overlay das fontes dele, fica o congelado do refresh (15 min). O `calendar` lê só
+   * protocolo e data, e segue recalculando. Igual ao recebido enquanto o snapshot tiver
+   * tudo completo. A página AO VIVO não passa por aqui: a pasta do mês tem a agenda completa.
+   */
+  #overlayDoSnapshot(dash: DashboardSpec, overlays: ReadonlyMap<string, OverlayDeTabela>): Map<string, OverlayDeTabela> {
+    const fora = this.#fontesSemRecalculo(dash);
+    return new Map([...overlays].filter(([tabela]) => !fora.has(tabela)));
+  }
+
+  /** As fontes (nome normalizado) do recálculo pelo tempo real das calculadas da página que citam coluna que o snapshot não tem. */
+  #fontesSemRecalculo(dash: DashboardSpec): ReadonlySet<string> {
+    const fontes = new Set<string>();
+    if (this.#semCompletaNoSnapshot().size === 0) return fontes;
+    for (const c of this.calculadasPorDashboard.get(dash.id) ?? []) {
+      const r = RECALCULOS_AO_VIVO.get(c);
+      if (!r || !this.#citaColunaSemCompleta(c)) continue;
+      for (const f of r.fontes) fontes.add(normalizeName(f));
+      if (r.aoVivo) fontes.add(normalizeName(r.aoVivo));
+    }
+    return fontes;
+  }
+
+  /** O DAX da calculada cita coluna gatilho de uma tabela que o snapshot não tem completa? */
+  #citaColunaSemCompleta(calculada: string): boolean {
+    const dax = this.model.table(calculada)?.tableDax ?? '';
+    const escapa = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.model.graoReduzido
+      .filter((g) => !g.completaNoSnapshot)
+      .some((g) => g.colunasGatilho.some((c) => new RegExp(`'?${escapa(g.tabela)}'?\\s*\\[${escapa(c)}\\]`, 'i').test(dax)));
+  }
+
+  /**
+   * Os visuais de um pedido pelo SNAPSHOT que ele não pode calcular, com o motivo — vazio
+   * enquanto o snapshot tiver tudo completo (passo 3b). Sem a agenda completa:
+   *
+   *   - visual que lê coluna de relato (os históricos de relato e o motivo
+   *     improdutivo/produtivo da Agendamento Field): sobre a agenda de slot ele sairia com
+   *     parte dos relatos, calado;
+   *   - com filtro de tela em coluna de relato, todo visual que calcula: o filtro sobre a
+   *     agenda de slot recortaria pela metade, e não há como saber que visual ele alcança.
+   *
+   * O ao vivo responde os dois (o mês da agenda vem completo); por aqui só passa a queda:
+   * período maior que um mês, o SRD fora, ou a página fora de `AO_VIVO_PAGINAS`.
+   */
+  #indisponiveisNoSnapshot(dash: DashboardSpec, alvo: DashboardSpec, daTela: readonly FiltroSpec[]): Map<string, VisualCalculado> {
+    const sem = this.#semCompletaNoSnapshot();
+    const fora = new Map<string, VisualCalculado>();
+    if (sem.size === 0) return fora;
+    const { tabelasCompletas } = this.amarraGraoReduzido();
+    const semCompleta = (rotulo: string) => {
+      const t = tabelasCompletas.get(normalizeName(rotulo));
+      return t !== undefined && sem.has(normalizeName(t)) ? t : null;
+    };
+    const filtro = daTela.find((f) => f.entity && f.property && semCompleta(rotuloDeColuna(f.entity, f.property)));
+    for (const v of alvo.visuals ?? []) {
+      let motivo: string | null = null;
+      if (filtro) {
+        motivo =
+          `O filtro em ${rotuloDeColuna(filtro.entity!, filtro.property!)} lê os relatos da agenda, que só chegam pelo ` +
+          'ao vivo — e este pedido saiu pelo snapshot. Escolha um mês só no período, ou tente de novo em instantes.';
+      } else {
+        const t = this.sobDemandaDoVisual(dash, v.id).tabelasCompletas.find((x) => sem.has(normalizeName(x)));
+        if (t) {
+          motivo =
+            `Este visual lê os relatos da agenda (${t} completa), que só chegam pelo ao vivo — e este pedido saiu ` +
+            'pelo snapshot. Escolha um mês só no período, ou tente de novo em instantes.';
+        }
+      }
+      const indisponivel = motivo ? visualIndisponivel(v, motivo) : null;
+      if (indisponivel) fora.set(v.id, indisponivel);
+    }
+    return fora;
   }
 
   /** Mapas rótulo-normalizado → (nome declarado | tabela), montados uma vez por chamada. */

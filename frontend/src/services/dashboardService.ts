@@ -136,6 +136,12 @@ export interface VisualCalculado {
   erro?: string;
   /** Ressalva de leitura vinda da API — hoje, só o horizonte de previsão. */
   nota?: string;
+  /**
+   * Por que a API não calculou este visual neste pedido — o dado dele só chega por outro
+   * caminho (hoje: os relatos da agenda, só pelo ao vivo). Não é erro: a tela mostra o
+   * motivo em tom neutro.
+   */
+  indisponivel?: string;
   dados?: unknown;
   ms: number;
 }

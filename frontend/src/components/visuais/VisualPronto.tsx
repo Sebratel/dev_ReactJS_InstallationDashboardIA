@@ -43,6 +43,16 @@ export function VisualPronto({
     );
   }
 
+  // Indisponível não é erro: o número existe, só não vem por este pedido (o motivo diz
+  // por onde ele vem).
+  if (visual.indisponivel) {
+    return (
+      <Cartao titulo={titulo} sub="indisponível" id={visual.id} altura={altura}>
+        <MensagemDeEstado>{visual.indisponivel}</MensagemDeEstado>
+      </Cartao>
+    );
+  }
+
   if (!visual.dados) {
     return (
       <Cartao titulo={titulo} sub="sem dados" id={visual.id} altura={altura}>

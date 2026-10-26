@@ -393,8 +393,8 @@ de cada um:
 | Onde | Depois do passo 2 |
 |---|---|
 | Agendamento Field ao vivo | igual; o overlay do tempo real já entra sobre o mês (passo 1, feito em 25/10 — abaixo) |
-| Agendamento Field pelo snapshot (main sem `AO_VIVO_PAGINAS`, SRD fora) | **decidir:** na main, só ao vivo; na queda, agenda de slot e os 6 visuais de relato indisponíveis |
-| Relatório do Mês pelo snapshot (o tempo real recalcula o `calendar` e pede a completa) | **decidir:** ao vivo pela janela (~1 GB por 2 min a cada 10 min de uso) ou snapshot sem o recálculo do tempo real |
+| Agendamento Field pelo snapshot (main sem `AO_VIVO_PAGINAS`, SRD fora) | feito no passo 3b: na queda, agenda de slot, os 3 visuais de relato indisponíveis (os 3 seletores listam da agregada) |
+| Relatório do Mês pelo snapshot (o tempo real recalcula o `calendar` e pede a completa) | passo 3b: pelo snapshot, com o `calendar` recalculando sobre o slot (falta provar com o delta do poller) — sem decisão |
 | `Status Protocolo Dia` congelado | agenda de slot + agregada `relatos-do-dia` (provada igual numa semana em 23/10; refazer na janela inteira) |
 | `calendar` congelado | tradução nativa sobre a agenda de slot (lê só protocolo e data; confirmar a coluna Data no slot) |
 | Tempo real (`realtime-poll.yaml`) | overlay sobre o mês ao vivo, não sobre a completa do snapshot |
@@ -482,6 +482,32 @@ seletor dão a mesma lista pela carga só dos seletores, que não pede forma com
 nenhuma (a da Agendamento Field pedia FIELD AGENDA e PROTOCOLOS GERAL, a do Relatório do
 Mês, FIELD AGENDA); as listas de relato pela agregada batem com as da agenda completa,
 salvo dois valores de instante (ACHADOS #249).
+
+**Passo 3b, feito (26/10/2026): o snapshot sem a agenda completa.** Tudo atrás da mesma
+chave do passo 2: com `completa_no_snapshot: true` (hoje), nada muda. Com `false` (passo 5):
+
+- nenhuma carga do snapshot pede a FIELD AGENDA completa — leria um arquivo que o refresh
+  não atualiza mais (`#soAsQueOSnapshotTem`);
+- os três visuais de relato da Agendamento Field (os dois históricos e o motivo
+  improdutivo/produtivo) voltam **indisponíveis**, com o motivo, quando o pedido sai pelo
+  snapshot; com filtro de tela em coluna de relato, todo visual que calcula. Indisponível
+  não é erro: campo próprio (`VisualCalculado.indisponivel`) e mensagem neutra na tela. O
+  ao vivo responde os dois — pelo snapshot só passa a queda (período maior que um mês, SRD
+  fora, página fora de `AO_VIVO_PAGINAS`);
+- o overlay do tempo real perde as fontes do `Status Protocolo Dia` (agenda, PG e
+  alocação), cujo DAX cita colunas de relato: recalculado sobre a agenda de slot, ele
+  sairia errado, e sem o overlay fica o congelado (15 min). A regra sai do DAX, não de uma
+  lista: o `calendar` não cita coluna de relato e segue recalculando sobre o slot;
+- a lista de um seletor de relato sem a agregada no snapshot é 409 com o motivo, não lista
+  parcial.
+
+Prova: `snapshot-sem-completa.test.ts` (specs copiadas com a chave desligada; controle com
+as reais) e `visual-indisponivel.test.tsx` na tela.
+
+**Com isso, o Relatório do Mês não precisa de decisão:** ele não tem visual de relato; pelo
+snapshot sem a agenda completa, carrega o slot e o `calendar` segue recalculando pelo tempo
+real sobre ele. O que falta provar no passo 5 é esse recálculo com o delta do poller sobre
+o slot igual ao de hoje sobre a completa.
 
 **Desenho descartado no caminho:** listar as colunas de relato do mês ao vivo da abertura,
 no mesmo conjunto da página. A sonda mostrou o custo: em 26/10, Classificação do Relato

@@ -248,6 +248,13 @@ export interface VisualCalculado {
    * o mês do seletor, e quem olha precisa saber disso ao comparar com os vizinhos.
    */
   nota?: string;
+  /**
+   * Por que este pedido não calcula o visual, quando o dado dele não está no caminho por
+   * onde o pedido saiu — hoje, a agenda completa fora do snapshot (passo 3b,
+   * docs/DECISAO-AO-VIVO.md). Não é erro nem "sem dados": a tela escreve o motivo, e o
+   * número volta pelo caminho que tem o dado (o ao vivo).
+   */
+  indisponivel?: string;
   erro?: string;
   dados?: unknown;
   /**
@@ -350,6 +357,25 @@ export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
   }
 
   return base;
+}
+
+/**
+ * O visual `v` indisponível neste pedido, com o motivo (`VisualCalculado.indisponivel`) — ou
+ * `null` quando ele não calcula número de todo jeito (seletor, imagem, texto): esses saem
+ * como sempre.
+ */
+export function visualIndisponivel(v: VisualSpec, motivo: string): VisualCalculado | null {
+  const conteudo = conteudoDe(v.type);
+  if (conteudo === null) return null;
+  return {
+    id: v.id,
+    tipo: v.type,
+    posicao: v.position,
+    ...(v.title ? { titulo: v.title } : {}),
+    conteudo,
+    indisponivel: motivo,
+    ms: 0,
+  };
 }
 
 function conteudoDe(tipo: string): VisualCalculado['conteudo'] {

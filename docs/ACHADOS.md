@@ -16141,3 +16141,22 @@ gerada das mesmas regras. Contra a agenda completa do snapshot: Categoria igual;
 Classificação com 1 valor a mais (relatos só de 26/10 08:52, depois do snapshot de 24/10)
 e Descrição com 1 a menos (1 protocolo de slot em 25/07, que saiu da janela de 3 meses
 entre o snapshot e a consulta). Investigado só com contagem e data, sem imprimir valor.
+
+## #250 — sem a agenda completa, o tempo real só pode recalcular a calculada que não lê relato (26/10)
+
+Passo 3b (DECISAO-AO-VIVO). O recálculo do tempo real (`carrega.ts`) dispara quando o
+overlay traz QUALQUER fonte da calculada, e roda a tradução nativa sobre o que o dataset
+tem. Hoje o servidor carrega essas fontes na forma completa (`#formaCompletaDoTempoReal`,
+#194). Sem a agenda completa no snapshot, isso parte em dois, e o DAX diz qual é qual:
+
+- `Status Protocolo Dia` cita `'FIELD AGENDA'[CategoriaProdutividade]`, `[Data Relato]` e
+  `[Skill]` — colunas que a agenda de slot não tem. Recalculado sobre ela, sairia errado
+  (ou recusaria, como em #194). No caminho do snapshot, o overlay das fontes dele (agenda,
+  PG, alocação) não vai à carga, e fica o congelado do refresh (15 min);
+- `calendar` não cita coluna de relato (lê protocolo e a data do slot). Recalcula sobre o
+  slot como recalculava sobre a completa — o que falta provar com o delta do poller.
+
+A regra (`#citaColunaSemCompleta`) lê o `tableDax` contra as colunas gatilho de
+`projecao.yaml`; uma calculada nova que leia relato cai sozinha no primeiro grupo. Não dá
+para pôr a regra no `carrega.ts` nem no `nativas.ts` (byte NUL): ela mora no servidor, que
+decide o overlay.
