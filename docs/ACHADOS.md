@@ -16160,3 +16160,18 @@ A regra (`#citaColunaSemCompleta`) lê o `tableDax` contra as colunas gatilho de
 `projecao.yaml`; uma calculada nova que leia relato cai sozinha no primeiro grupo. Não dá
 para pôr a regra no `carrega.ts` nem no `nativas.ts` (byte NUL): ela mora no servidor, que
 decide o overlay.
+
+## #251 — o carimbo da página não via o refresh da agenda de slot (26/10)
+
+O carimbo de uma página (chave da resposta e identidade do conjunto na worker) e o "pronta"
+da lista de páginas saem de `queriesDe` = `planeja(...).queries`. Para tabela de grão
+reduzido o plano nomeia a canônica, `field-agenda`; quem troca pela `field-agenda-slot` é a
+carga (`carrega.ts`). Então o refresh da de slot (grupo `quente`, 15 min) não entrava no
+carimbo da Visão Geral, da Agendamento Field e do Relatório do Mês. Não aparecia porque o
+carimbo global das calculadas muda junto — o `Status Protocolo Dia` e o `calendar` são
+recongelados logo depois do slot — e é ele que mudava a chave. Acaso, não desenho.
+
+No passo 5 isso viraria defeito: a `field-agenda` para de ser atualizada (carimbo parado) e,
+num snapshot novo, nem existe — as três páginas ficariam "não prontas" para sempre.
+Consertado: `queriesDe` devolve o que a carga lê — a padrão sempre, e a completa só enquanto
+ela estiver no snapshot. Teste em `snapshot-sem-completa.test.ts` (reprova sem o conserto).

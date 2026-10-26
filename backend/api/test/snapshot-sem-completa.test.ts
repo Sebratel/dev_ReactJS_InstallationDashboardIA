@@ -20,7 +20,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test, { after } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { normalizeName } from '../../packages/semantic-model/src/model.ts';
+import { escreveManifesto } from '../../packages/snapshot/src/manifesto.ts';
+import { planeja } from '../../packages/snapshot/src/plano.ts';
+import { normalizeName, SemanticModel } from '../../packages/semantic-model/src/model.ts';
 import { codificaFiltro } from '../../packages/widget-engine/src/filtro-url.ts';
 import { filtrosPadrao } from '../../packages/widget-engine/src/filtros-padrao.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
@@ -35,6 +37,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 const AGORA = new Date('2026-08-07T12:00:00.000Z');
 const PAGINAS = loadDashboards(path.join(ROOT, 'backend', 'specs'));
 const AGENDA = PAGINAS.find((d) => d.id === 'agendamento-field')!;
+const MODELO = SemanticModel.fromSpecsDir(path.join(ROOT, 'backend', 'specs'));
 const RELATO = ['HISTÓRICO DE RELATOS', 'HISTÓRICO DE RELATOS COMPLETOS', 'MOTIVO IMPRODUTIVO/ PRODUTIVO'];
 
 /** Uma raiz com as specs copiadas e a agenda completa FORA do snapshot. */
@@ -89,8 +92,8 @@ const OVERLAY = new Map<string, OverlayDeTabela>(
 async function sobe(
   t: { after: (f: () => void | Promise<void>) => void },
   raiz: string,
-): Promise<{ pedidos: Pedido[]; busca: (rota: string) => Promise<Response> }> {
-  const snapshot = fs.mkdtempSync(path.join(os.tmpdir(), 'snapshot-sem-completa-dir-'));
+  snapshot: string = fs.mkdtempSync(path.join(os.tmpdir(), 'snapshot-sem-completa-dir-')),
+): Promise<{ pedidos: Pedido[]; busca: (rota: string) => Promise<Response>; servidor: Servidor }> {
   t.after(() => fs.rmSync(snapshot, { recursive: true, force: true }));
   const { piscina, pedidos } = piscinaQueAnota();
   const servidor = new Servidor({
@@ -114,7 +117,17 @@ async function sobe(
       }),
   );
   const { port } = http.address() as { port: number };
-  return { pedidos, busca: (rota) => fetch(`http://127.0.0.1:${port}${rota}`) };
+  return { pedidos, busca: (rota) => fetch(`http://127.0.0.1:${port}${rota}`), servidor };
+}
+
+/** Um snapshot só com o manifesto: as queries da Agendamento Field, cada uma com o seu `geradoEm`. */
+async function manifestoDaAgenda(queries: readonly string[], geradoEm: (q: string) => string): Promise<string> {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'snapshot-sem-completa-manifesto-'));
+  await escreveManifesto(
+    dir,
+    queries.map((query) => ({ query, tabelas: [], linhas: 1, colunas: 1, bytes: 1, geradoEm: geradoEm(query) })),
+  );
+  return dir;
 }
 
 const comFiltros = (pagina: string, extra: string[] = []) =>
@@ -167,6 +180,37 @@ test('sem a agenda completa e sem a agregada: a lista de relato é 409, não lis
   assert.equal(r.status, 409);
   assert.match(((await r.json()) as { erro: string }).erro, /agregada dos relatos/);
   assert.equal(pedidos.filter((p) => p.valores).length, 0);
+});
+
+// O carimbo da página sai das queries que ela usa. O plano nomeia a `field-agenda` (a
+// canônica), e a carga lê a `field-agenda-slot`: o refresh da de slot tem de chegar ao
+// carimbo por ela mesma, e não pelo acaso do carimbo global das calculadas.
+test('o refresh da agenda de slot muda o carimbo da página, com a completa parada', async (t) => {
+  const queries = [...new Set([...planeja([AGENDA], MODELO).queries, 'field-agenda-slot'])];
+  const snapshot = await manifestoDaAgenda(queries, () => '2026-08-07T10:00:00.000Z');
+  t.after(() => fs.rmSync(snapshot, { recursive: true, force: true }));
+  const { servidor } = await sobe(t, ROOT, snapshot);
+  const antes = servidor['carimboDaPagina'](AGENDA);
+
+  await escreveManifesto(
+    snapshot,
+    queries.map((query) => ({ query, tabelas: [], linhas: 1, colunas: 1, bytes: 1, geradoEm: query === 'field-agenda-slot' ? '2026-08-07T10:15:00.000Z' : '2026-08-07T10:00:00.000Z' })),
+  );
+  servidor['confereCarimbo']();
+  assert.notEqual(servidor['carimboDaPagina'](AGENDA), antes);
+});
+
+test('sem a agenda completa, a página fica pronta sem o arquivo dela (o snapshot novo nunca o terá)', async (t) => {
+  const semACompleta = [...new Set([...planeja([AGENDA], MODELO).queries, 'field-agenda-slot'])].filter((q) => q !== 'field-agenda');
+  const snapshot = await manifestoDaAgenda(semACompleta, () => '2026-08-07T10:00:00.000Z');
+  t.after(() => fs.rmSync(snapshot, { recursive: true, force: true }));
+  const pronta = async (raiz: string) => {
+    const { busca } = await sobe(t, raiz, snapshot);
+    const corpo = (await (await busca('/api/dashboards')).json()) as { dashboards: { id: string; pronta: boolean }[] };
+    return corpo.dashboards.find((d) => d.id === AGENDA.id)!.pronta;
+  };
+  assert.equal(await pronta(SEM_COMPLETA), true);
+  assert.equal(await pronta(ROOT), false, 'controle: com a chave ligada, a completa ainda é exigida');
 });
 
 test('controle — com a agenda completa no snapshot (hoje): nada indisponível, e a carga a pede', async (t) => {

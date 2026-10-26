@@ -3931,7 +3931,20 @@ export class Servidor {
 
   private queriesDe(dash: DashboardSpec): string[] {
     try {
-      return planeja([dash], this.model).queries;
+      // **As queries que a carga LÊ, não as que o plano nomeia.** Para tabela de grão
+      // reduzido o plano nomeia a canônica (`field-agenda`), e a carga troca pela padrão
+      // (`field-agenda-slot`) quando não pede a completa (`carrega.ts`). Com só a canônica
+      // aqui, o refresh da padrão (15 min) não chegava ao carimbo da página — quem o
+      // levava era, por acaso, o carimbo global das calculadas recongeladas depois dele. E
+      // sem a completa no snapshot (passo 5 do ao vivo) ela sai daqui: nunca mais muda, e
+      // num snapshot novo nem existe — a página ficaria "não pronta" para sempre.
+      const queries = new Set(planeja([dash], this.model).queries);
+      for (const g of this.model.graoReduzido) {
+        if (!queries.has(g.queryCompleta)) continue;
+        queries.add(g.queryPadrao);
+        if (!g.completaNoSnapshot) queries.delete(g.queryCompleta);
+      }
+      return [...queries].sort();
     } catch {
       // `planeja` erra alto em página com tabela que não tem como ser
       // materializada. Na listagem isso é "não está pronta", não uma falha: um id
