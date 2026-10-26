@@ -3145,13 +3145,16 @@ export class Servidor {
         `a busca de ${d.periodo.desde}..${d.periodo.ate} no SRD`,
       );
       const alvoVivo: DashboardSpec = { ...alvo, id: idDaPaginaAoVivo(dash.id, d.periodo), visuals: visuais };
-      // **O tempo real sobre o mês ao vivo** (25/10/2026). Sem isto, a Agendamento Field
-      // ao vivo ficava com o frescor da geração (5 min), e a do snapshot, com o do poller
-      // (30–60 s). Só onde o período traz a forma completa: o delta do poller é do grão
-      // relato, e mesclado num grão reduzido trocaria linha de slot por linha de relato. O
-      // corte vai para o instante da busca (`overlaySobreBuscaAoVivo`), e a geração da
-      // página entra na identidade: a worker troca o conjunto quando o poller muda.
-      const ovVivo = d.formaCompleta?.length && overlays.size > 0 ? overlaySobreBuscaAoVivo(overlays, g.geradoEm) : null;
+      // **O tempo real sobre a página ao vivo** (25–26/10/2026). Sem isto, a página ao vivo
+      // ficava com o frescor da geração (5 min a agenda, 10 min os conjuntos), e a do
+      // snapshot, com o do poller (30–60 s) nas tabelas que ele vigia — a agenda e a
+      // telefonia, entre elas. O mesmo overlay que o caminho do snapshot recebe, inclusive
+      // o delta da agenda no grão relato sobre a agenda de slot: é o que a Visão Geral já
+      // recebe pelo snapshot, e os visuais fora do grão relato dão o mesmo nos dois grãos
+      // (a premissa do grão reduzido, `projecao.yaml`). O corte vai para o instante da busca
+      // (`overlaySobreBuscaAoVivo`), e a geração da página entra na identidade: a worker
+      // troca o conjunto quando o poller muda.
+      const ovVivo = overlays.size > 0 ? overlaySobreBuscaAoVivo(overlays, g.geradoEm) : null;
       const identidade = ovVivo ? `${g.identidade}#tr${this.geracaoDaPagina(dash.id)}` : g.identidade;
       let pagina: PaginaCalculada;
       let linhasPorTabela: [string, number][];

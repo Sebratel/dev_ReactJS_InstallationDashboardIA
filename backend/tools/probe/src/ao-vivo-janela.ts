@@ -39,6 +39,7 @@ import { filtrosPadrao } from '../../../packages/widget-engine/src/filtros-padra
 import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
 import { calculaPagina, LINHAS_MAXIMO } from '../../../api/src/calcula.ts';
 import { calculaNoDiretorio, comparaPaginas, queriesPequenas } from '../../../api/src/pagina-ao-vivo.ts';
+import { mescladoresDe, overlaySobreBuscaAoVivo, type OverlayDeTabela } from '../../../api/src/overlay-realtime.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SPECS = path.join(ROOT, 'backend', 'specs');
@@ -89,10 +90,62 @@ async function agendaDeSlotDaCompleta(): Promise<TabelaDoPeriodo> {
   return { query: 'field-agenda-slot', colunas, linhas: saida };
 }
 
+/**
+ * Um delta do tempo real como o poller entrega a agenda (grão relato, chaves do dataset):
+ * 10 protocolos com horário no mês corrente, reentregues sem as linhas do relato mais novo
+ * e com o status trocado para o mais comum que eles não têm — tirar relato não muda nada
+ * no grão de slot, trocar o status muda. Sobre a pasta da janela ele cai na agenda de SLOT:
+ * a mistura de grãos que a Visão Geral já recebe pelo snapshot (26/10/2026).
+ */
+async function deltaDaAgenda(): Promise<Map<string, OverlayDeTabela>> {
+  const arquivo = arquivoDaQuery(DIR, 'field-agenda');
+  const { linhas } = await le(arquivo);
+  const inicioDoMes = Date.UTC(AGORA.getFullYear(), AGORA.getMonth(), 1);
+  const porProtocolo = new Map<string, Record<string, Escalar>[]>();
+  for (const l of linhas as Record<string, Escalar>[]) {
+    const p = texto(l['protocolo'] ?? null);
+    const slot = l['slot agenda'];
+    const doMes = slot instanceof Date && slot.getTime() >= inicioDoMes;
+    if (!porProtocolo.has(p) && (!doMes || porProtocolo.size >= 10)) continue;
+    const ls = porProtocolo.get(p) ?? [];
+    ls.push(l);
+    porProtocolo.set(p, ls);
+  }
+  const instante = (v: Escalar | undefined) => (v instanceof Date ? v.getTime() : Number.NEGATIVE_INFINITY);
+  const frequencia = new Map<string, number>();
+  for (const l of linhas as Record<string, Escalar>[]) {
+    const s = texto(l['status protocolo'] ?? null);
+    frequencia.set(s, (frequencia.get(s) ?? 0) + 1);
+  }
+  const porFrequencia = [...frequencia.entries()].sort((a, b) => b[1] - a[1]).map(([s]) => s);
+  const delta: Record<string, Escalar>[] = [];
+  for (const ls of porProtocolo.values()) {
+    const maisNovo = Math.max(...ls.map((l) => instante(l['data relato'])));
+    const atual = texto(ls[0]!['status protocolo'] ?? null);
+    const outro = porFrequencia.find((s) => s !== atual && s !== '∅') ?? atual;
+    for (const l of ls) {
+      if (Number.isFinite(maisNovo) && instante(l['data relato']) === maisNovo) continue;
+      delta.push({ ...l, 'status protocolo': outro });
+    }
+  }
+  return new Map([
+    [
+      normalizeName('FIELD AGENDA'),
+      {
+        linhas: delta,
+        corte: new Date(leCabecalho(arquivo).geradoEm),
+        chave: ['Protocolo'],
+        marca: ['Data Criado', 'Inicio relato', 'Fim relato', 'Data Relato'],
+      },
+    ],
+  ]);
+}
+
 const paginasPedidas = arg('paginas')?.split(',');
 let diferentes = 0;
 const paginas = loadDashboards(SPECS).filter((d) => (paginasPedidas ?? PAGINAS_DA_JANELA).includes(d.id));
 const slotDaCompleta = await agendaDeSlotDaCompleta();
+const overlays = await deltaDaAgenda();
 console.log(`snapshot ${path.relative(ROOT, DIR) || DIR} — ${paginas.length} página(s); agenda de slot tirada da completa: ${slotDaCompleta.linhas.length} horário(s)\n`);
 for (const dash of paginas) {
   const plano = planeja([dash], model);
@@ -145,6 +198,48 @@ for (const dash of paginas) {
         `  FIELD AGENDA ${fa(ref.linhasPorTabela)} → ${fa(vivo.linhasPorTabela)} linhas` +
           `${completa.length ? ` (a referência carrega a completa: ${completa.join(', ')})` : ''}; ` +
           `carga ${(msRef / 1000).toFixed(1)} s → ${((Date.now() - tVivo) / 1000).toFixed(1)} s com o cálculo`,
+      );
+      for (const d of [...c.soOrdem, ...c.diferentes]) console.log(`    ${(d.titulo ?? d.id).slice(0, 40).padEnd(40)} ${d.porque}`);
+      diferentes += c.diferentes.length + vivo.pagina.resumo.falharam;
+    }
+
+    // O TEMPO REAL sobre a pasta da janela (`overlaySobreBuscaAoVivo`, servidor.ts): o delta
+    // da agenda no grão relato aplicado ao snapshot como a produção carrega e à pasta com a
+    // agenda de slot. Tem de dar o mesmo.
+    {
+      const daTela = decodificaFiltros(filtrosPadrao(dash.id, AGORA).map(codificaFiltro));
+      const alvo = { ...dash, filters: [...(dash.filters ?? []), ...daTela] };
+      const janela = { de: 0, linhas: LINHAS_MAXIMO };
+      const refOv = await carrega({
+        dir: DIR,
+        model,
+        dashboards: [dash],
+        now: AGORA,
+        liberaSobDemanda: [],
+        precisaFormaCompleta: completa,
+        colunar: true,
+        overlay: mescladoresDe(overlays),
+      });
+      const pRefOv = calculaPagina(alvo, refOv.ev, janela);
+      const vivo = await calculaNoDiretorio({
+        dir: tmp,
+        model,
+        dash,
+        alvo,
+        fora,
+        overlay: overlaySobreBuscaAoVivo(overlays, AGORA.toISOString()),
+        janela,
+        clicados: [],
+        agora: AGORA,
+      });
+      const mudou = comparaPaginas(calculaPagina(alvo, ref.ev, janela), pRefOv, fora).diferentes.length;
+      const c = comparaPaginas(pRefOv, vivo.pagina, fora);
+      const fa = (m: ReadonlyMap<string, number>) => m.get('FIELD AGENDA') ?? 0;
+      console.log(
+        `${dash.id} — como abre + tempo real (${overlays.get('field agenda')!.linhas.length} linhas da agenda): ` +
+          `${c.comparados} visuais, ${c.iguais} iguais, ${c.diferentes.length} diferentes; o delta mudou ${mudou} da referência; ` +
+          `erros ${pRefOv.resumo.falharam} na referência, ${vivo.pagina.resumo.falharam} ao vivo; ` +
+          `FIELD AGENDA ${fa(ref.linhasPorTabela)} → ${fa(refOv.linhasPorTabela)} na referência, ${fa(vivo.linhasPorTabela)} ao vivo`,
       );
       for (const d of [...c.soOrdem, ...c.diferentes]) console.log(`    ${(d.titulo ?? d.id).slice(0, 40).padEnd(40)} ${d.porque}`);
       diferentes += c.diferentes.length + vivo.pagina.resumo.falharam;

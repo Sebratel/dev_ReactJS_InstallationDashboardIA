@@ -421,6 +421,19 @@ e `probe:ao-vivo-agenda`, cenário "+ tempo real": um delta de 10–11 protocolo
 visuais da referência dá 38 de 38 iguais entre o snapshot inteiro e a pasta do mês, em
 setembro e outubro.
 
+**E nas páginas dos conjuntos (26/10/2026).** A afirmação de que o ano e a janela "dão
+frescor de 10 min contra os 30 do refresh" estava incompleta: pelo snapshot, as tabelas
+que o poller vigia — a agenda e a telefonia, entre elas — chegam em 30–60 s, e a página ao
+vivo da janela ficava com os 10 min da geração. O overlay passou a entrar em toda página
+ao vivo, inclusive o delta da agenda no grão relato sobre a agenda de slot da janela: é a
+mistura que a Visão Geral já recebe pelo snapshot, e os visuais fora do grão relato dão o
+mesmo nos dois grãos. `probe:ao-vivo-janela`, cenário "+ tempo real": as 7 páginas iguais
+com o mesmo delta nas duas pontas (a agenda passa de 42.010 para 42.029 linhas na
+referência, de 42.003 para 42.022 na pasta). O delta não mudou visual nenhum dessas
+páginas — elas não leem da agenda o que ele troca —, então a sonda prova que ele não
+estraga; que a mudança do poller chega à tela, prova `cache-ao-vivo.test.ts`. Agora o PG
+das páginas da janela tem 10 min (era 30), e o que o poller vigia, os 30–60 s de sempre.
+
 ## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
 
 Medido por página, um processo cada, carga colunar como a worker faz e cálculo com o

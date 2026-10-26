@@ -125,17 +125,15 @@ test('a resposta que saiu pelo snapshot antes da geração não fica servida dep
   assert.equal(renovada.dadoDe, g2.geradoEm, 'a geração que substituiu a anterior chega à tela');
 });
 
-// O tempo real sobre a página ao vivo (25/10/2026): onde o período traz a forma completa
-// (o mês da agenda), o overlay do poller entra no cálculo ao vivo, e a mudança seguinte do
-// poller chega à tela sem esperar a geração nova — como chegava pelo snapshot.
-test('o overlay do tempo real entra na página ao vivo de forma completa, e a mudança do poller chega à tela', async (t) => {
+// O tempo real sobre a página ao vivo (25–26/10/2026): o overlay do poller entra no
+// cálculo ao vivo, e a mudança seguinte do poller chega à tela sem esperar a geração nova
+// — como chegava pelo snapshot.
+test('o overlay do tempo real entra na página ao vivo, e a mudança do poller chega à tela', async (t) => {
   const snapshot = await dirComHora(t, '2026-08-07T11:00:00.000Z');
   const g1 = geracao(await dirComHora(t, '2026-08-07T11:30:00.000Z'), '2026-08-07T11:30:00.000Z', 1);
   let overlay = new Map<string, OverlayDeTabela>();
   const capa: PaginaServidaAoVivo = {
-    // Qualquer tabela em `formaCompleta` liga o overlay; HORA ATUALIZADO não tem grão
-    // reduzido, então a carga não muda por isso.
-    decide: () => ({ periodo: PERIODO, fora: new Map(), formaCompleta: ['HORA ATUALIZADO'] }),
+    decide: () => ({ periodo: PERIODO, fora: new Map() }),
     obtem: async () => g1,
     marca: () => g1.identidade,
   };
