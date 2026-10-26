@@ -459,9 +459,34 @@ gera:relatos-do-dia`; SPEC-DRIVEN § `relatos-do-dia`).
 **Achado no caminho, entra no passo 3:** as listas dos seletores (`/valores`) são
 calculadas sobre o conjunto inteiro da página no snapshot — na Agendamento Field, a agenda
 completa (ACHADOS #248). Sem ela no snapshot, as listas de Classificação do Relato,
-Categoria de Produtividade e Descrição perdem a fonte. O conserto: carga mínima por seletor (só a tabela
-da coluna, no grão de slot); as três colunas de relato vêm do mês ao vivo; o período
-(`calendar[Data]`) segue do snapshot, que tem todos os meses.
+Categoria de Produtividade e Descrição perdem a fonte.
+
+**Passo 3a, feito (26/10/2026): as listas dos seletores sem a página do snapshot.** Duas
+fontes, nenhuma com a agenda completa:
+
+- **As três colunas de relato** listam da agregada nova `valores-do-relato`: o SRD devolve
+  os valores distintos na janela da agenda (~70 combinações, ~11–25 s), o refresh grava no
+  grupo `frio`, e a rota lê o arquivo (`valores_dos_seletores` em `projecao.yaml`). Vale
+  para toda página, ao vivo ou não; sem o arquivo (primeiro deploy), a lista sai da página
+  inteira, como antes. O carimbo da agregada entra no frescor da lista.
+- **Os outros seletores de uma página ao vivo** listam de uma carga do snapshot só com os
+  seletores dela (`idDosSeletores`), uma para todos, sem overlay — o recálculo do tempo
+  real pediria a agenda completa de volta. A lista anda com o refresh (15–60 min), e a tela
+  já a busca uma vez por abertura. Página fora do ao vivo segue com a página inteira (o
+  conjunto que a abertura já carregou).
+
+Provas: `valores-ao-vivo.test.ts` (de onde cada lista sai, sem carga de página para as de
+relato, e o refresh da agregada chegando ao seletor; reprova sem o conserto) e `npm run
+probe:valores-ao-vivo` no snapshot real: os 73 seletores comuns das 10 páginas com
+seletor dão a mesma lista pela carga só dos seletores, que não pede forma completa
+nenhuma (a da Agendamento Field pedia FIELD AGENDA e PROTOCOLOS GERAL, a do Relatório do
+Mês, FIELD AGENDA); as listas de relato pela agregada batem com as da agenda completa,
+salvo dois valores de instante (ACHADOS #249).
+
+**Desenho descartado no caminho:** listar as colunas de relato do mês ao vivo da abertura,
+no mesmo conjunto da página. A sonda mostrou o custo: em 26/10, Classificação do Relato
+com 26 valores no mês contra 36 na janela, e Descrição com 9 contra 13 — quem trocasse o
+período para setembro não acharia a classificação que só existiu em setembro (#249).
 
 ## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
 
@@ -496,8 +521,8 @@ responder, ou baixar o `maxOldGenerationSizeMb` para o pico caber — próximo p
   precisa ler os bancos que usa e gravar nas tabelas de acesso.
 - **Os valores dos seletores** (`/api/dashboards/:id/valores`) ainda saem do snapshot de
   hoje, também nas páginas ao vivo: um técnico ou cidade que apareceu depois do último
-  refresh entra no número antes de entrar na lista do seletor. E carregam a página inteira
-  para isso — na Agendamento Field, a agenda completa (ACHADOS #248, passo 3).
+  refresh entra no número antes de entrar na lista do seletor. (Carregar a página inteira
+  para isso — na Agendamento Field, a agenda completa — acabou no passo 3a, ACHADOS #248.)
 - **Desempate do auxiliar** (63 protocolos com dois auxiliares empatados no topo, ACHADOS
   #239): decisão do Erick. Até lá, duas buscas podem trocar o INSTALADOR desses protocolos.
 - **Fase 4** — o que falta para a memória cair: a worker (reciclar por teto de RSS ou

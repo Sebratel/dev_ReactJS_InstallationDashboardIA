@@ -29,7 +29,7 @@ import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { loadDashboards, type DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
 import { medeIsolate, type MedidaDaWorker, type MensagemDeMemoria } from './memoria-da-saude.ts';
 import { CacheDeCarga, coletorDaWorker } from './cache-de-carga.ts';
-import { paginaDoIdAoVivo, paginaDoIdDosForaDoAoVivo, semForaDoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { paginaDoIdAoVivo, paginaDoIdDosForaDoAoVivo, paginaDoIdDosSeletores, semForaDoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 
 export interface MensagemCalculoWorker {
   tipo?: 'calcula';
@@ -488,20 +488,22 @@ if (parentPort) {
       //
       // **Os visuais de fora de uma página ao vivo** (`idDosForaDoAoVivo`) carregam só eles,
       // com os filtros da página do catálogo: a carga da página inteira traria de volta o
-      // que o ao vivo tirou (a agenda completa, na Agendamento Field).
+      // que o ao vivo tirou (a agenda completa, na Agendamento Field). **E os seletores dela
+      // que listam do snapshot** (`idDosSeletores`, passo 3), pelo mesmo motivo. A página da
+      // carga guarda o id real: o corte por página (`corte-por-pagina.yaml`) é por ele.
       const daPaginaAoVivo = paginaDoIdAoVivo(dashboardSpec.id);
-      const dosForaDe = paginaDoIdDosForaDoAoVivo(dashboardSpec.id);
+      const recorteDe = paginaDoIdDosForaDoAoVivo(dashboardSpec.id) ?? paginaDoIdDosSeletores(dashboardSpec.id);
       const pedidos = new Set((dashboardSpec.visuals ?? []).map((v) => v.id));
       const doCatalogo = (id: string): DashboardSpec => paginaInteiraDe(specsDir, id) ?? dashboardSpec;
       const paginaInteira =
         daPaginaAoVivo !== null
           ? semForaDoAoVivo(doCatalogo(daPaginaAoVivo), model, formaCompleta)
-          : dosForaDe !== null
-            ? { ...doCatalogo(dosForaDe), visuals: (doCatalogo(dosForaDe).visuals ?? []).filter((v) => pedidos.has(v.id)) }
+          : recorteDe !== null
+            ? { ...doCatalogo(recorteDe), visuals: (doCatalogo(recorteDe).visuals ?? []).filter((v) => pedidos.has(v.id)) }
             : doCatalogo(dashboardSpec.id);
       // O cálculo leva o id da PÁGINA: há regra por página e visual nele (`ignoraDataDaTela`,
       // a previsão de chuva). O id próprio fica só para a carga e os caches desta worker.
-      const paginaReal = daPaginaAoVivo ?? dosForaDe;
+      const paginaReal = daPaginaAoVivo ?? recorteDe;
       const alvoDoCalculo = paginaReal !== null ? { ...dashboardSpec, id: paginaReal } : dashboardSpec;
       const chave = chaveDeCarga(
         dashboardSpec.id,

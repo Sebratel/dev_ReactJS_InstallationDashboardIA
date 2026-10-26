@@ -32,15 +32,13 @@ import { congelaStatusDoDia, escreveSnapshotDoPeriodo, type TabelaDoPeriodo } fr
 import { carrega } from '../../../packages/snapshot/src/carrega.ts';
 import { le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
 import { arquivoDaQuery } from '../../../packages/snapshot/src/manifesto.ts';
-import { recalculosAoVivo } from '../../../packages/snapshot/src/nativas.ts';
-import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { normalizeName, SemanticModel } from '../../../packages/semantic-model/src/model.ts';
-import { rotuloDeColuna } from '../../../packages/semantic-model/src/projecao.ts';
 import { codificaFiltro, decodificaFiltros, type FiltroDeTela } from '../../../packages/widget-engine/src/filtro-url.ts';
-import { loadDashboards, type DashboardSpec } from '../../../packages/widget-engine/src/spec.ts';
+import { loadDashboards } from '../../../packages/widget-engine/src/spec.ts';
 import { calculaPagina, LINHAS_MAXIMO } from '../../../api/src/calcula.ts';
 import { calculaNoDiretorio, comparaPaginas, queriesPequenas } from '../../../api/src/pagina-ao-vivo.ts';
 import { mescladoresDe, overlaySobreBuscaAoVivo } from '../../../api/src/overlay-realtime.ts';
+import { formaDaPagina, formaDoRecorte } from './forma-do-servidor.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 const SPECS = path.join(ROOT, 'backend', 'specs');
@@ -50,42 +48,6 @@ const model = SemanticModel.fromSpecsDir(SPECS);
 const catalogo = leCatalogoAoVivo(SPECS);
 const AGORA = new Date();
 const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
-
-/** A forma completa que o servidor pede para a página (`#liberacaoDaPagina`, servidor.ts). */
-function formaCompleta(dash: DashboardSpec): string[] {
-  const gatilhos = new Map<string, string>();
-  for (const g of model.graoReduzido) for (const c of g.colunasGatilho) gatilhos.set(normalizeName(rotuloDeColuna(g.tabela, c)), g.tabela);
-  const fora = new Set<string>();
-  const olha = (e: string | null, p: string | null) => {
-    const t = e && p ? gatilhos.get(normalizeName(rotuloDeColuna(e, p))) : undefined;
-    if (t) fora.add(t);
-  };
-  for (const v of dash.visuals ?? []) {
-    for (const c of v.fields ?? []) if (c.kind !== 'measure') olha(c.entity, c.property);
-    for (const f of v.filters ?? []) olha(f.entity, f.property);
-  }
-  for (const f of dash.filters ?? []) olha(f.entity, f.property);
-  const recalc = recalculosAoVivo();
-  for (const c of planeja([dash], model).calculadas) for (const f of recalc.get(normalizeName(c))?.fontes ?? []) fora.add(f);
-  return [...fora];
-}
-
-/** A forma completa que o servidor pede para os de fora (`#liberacaoDosForaDoAoVivo`): sem o tempo real. */
-function formaDosFora(dash: DashboardSpec): string[] {
-  const gatilhos = new Map<string, string>();
-  for (const g of model.graoReduzido) for (const c of g.colunasGatilho) gatilhos.set(normalizeName(rotuloDeColuna(g.tabela, c)), g.tabela);
-  const fora = new Set<string>();
-  const olha = (e: string | null, p: string | null) => {
-    const t = e && p ? gatilhos.get(normalizeName(rotuloDeColuna(e, p))) : undefined;
-    if (t) fora.add(t);
-  };
-  for (const v of dash.visuals ?? []) {
-    for (const c of v.fields ?? []) if (c.kind !== 'measure') olha(c.entity, c.property);
-    for (const f of v.filters ?? []) olha(f.entity, f.property);
-  }
-  for (const f of dash.filters ?? []) olha(f.entity, f.property);
-  return [...fora];
-}
 
 /**
  * Uma query do snapshot, com as linhas sob os nomes do cabeçalho — como a busca as entrega —
@@ -115,7 +77,7 @@ const mesesPedidos = (arg('meses') ?? `${AGORA.getFullYear()}-${String(AGORA.get
   .filter(Boolean);
 const agenda = await daQuery('field-agenda');
 const pg = await daQuery('protocolos-geral');
-const completa = formaCompleta(dash);
+const completa = formaDaPagina(dash, model);
 console.log(
   `snapshot ${path.relative(ROOT, DIR) || DIR}: FIELD AGENDA completa ${agenda.linhas.length} linha(s), PG ${pg.linhas.length}; ` +
     `a referência carrega na forma completa: ${completa.join(', ') || '(nenhuma)'}\n`,
@@ -194,7 +156,7 @@ for (const mes of mesesPedidos) {
       // Os de fora, como o servidor os pede agora (`idDosForaDoAoVivo`): a carga só deles,
       // sem a forma completa do tempo real — contra a mesma referência.
       const soFora = { ...dash, visuals: (dash.visuals ?? []).filter((v) => d.fora.has(v.id)) };
-      const cFora = await carrega({ dir: DIR, model, dashboards: [soFora], now: AGORA, liberaSobDemanda: [], precisaFormaCompleta: formaDosFora(soFora), colunar: true });
+      const cFora = await carrega({ dir: DIR, model, dashboards: [soFora], now: AGORA, liberaSobDemanda: [], precisaFormaCompleta: formaDoRecorte(soFora, model), colunar: true });
       const pFora = calculaPagina({ ...alvo, visuals: soFora.visuals }, cFora.ev, janela);
       const so = (p: typeof pRef) => ({ ...p, visuais: p.visuais.filter((v) => d.fora.has(v.id)) });
       const cf = comparaPaginas(so(pRef), so(pFora), new Map());

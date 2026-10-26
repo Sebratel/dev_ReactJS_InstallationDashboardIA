@@ -109,6 +109,12 @@ export interface GraoReduzido {
    * sai de outra fonte (`Status Protocolo Dia`: as contagens de `relatos-do-dia`).
    */
   completaNoSnapshot: boolean;
+  /**
+   * A query que lista os valores das colunas gatilho para os SELETORES (`/valores`), sem
+   * carregar a forma completa (passo 3 do ao vivo): uma linha por combinação distinta, com
+   * as colunas pelo nome do modelo. Ausente, a lista sai da página inteira, como antes.
+   */
+  valoresDosSeletores?: string;
 }
 
 /**
@@ -147,6 +153,7 @@ export function leGraoReduzido(specsDir: string): GraoReduzido[] {
     por: g.por as string,
     porque: g.porque as string,
     completaNoSnapshot: g.completa_no_snapshot !== false,
+    ...(typeof g.valores_dos_seletores === 'string' ? { valoresDosSeletores: g.valores_dos_seletores } : {}),
   }));
 }
 

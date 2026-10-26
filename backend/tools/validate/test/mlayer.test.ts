@@ -179,7 +179,7 @@ test('scanM: transformação de valor e de tipo não conta como efeito nenhum', 
 
 // ── integração: as 25 queries reais ──────────────────────────────────────────
 
-test('as 27 queries reais: 26 são escaneáveis, e a exceção é a do let aninhado', () => {
+test('as 28 queries reais: 27 são escaneáveis, e a exceção é a do let aninhado', () => {
   // 24 do PBIP + `field-agenda-slot` (ACHADOS #87) — SQL de mão, mesma forma de M
   // de 3 passos de `field-agenda`, e escaneável como qualquer outra: 303 + 3 = 306.
   //
@@ -220,7 +220,8 @@ test('as 27 queries reais: 26 são escaneáveis, e a exceção é a do let aninh
   // `protocolos-produtividade` para o M, em 6 passos (ACHADOS #239).
   //
   // 151 → 152 (26/10/2026): `relatos-do-dia`, gerada, um passo só (docs/SPEC-DRIVEN.md).
-  assert.equal(passos, 152, 'passos M nas 26 escaneáveis');
+  // 152 → 153 (26/10/2026): `valores-do-relato`, gerada pelo mesmo script, idem.
+  assert.equal(passos, 153, 'passos M nas 27 escaneáveis');
 });
 
 /**

@@ -196,6 +196,24 @@ export function paginaDoIdDosForaDoAoVivo(id: string): string | null {
   return id.endsWith(MARCA_DOS_FORA) ? id.slice(0, -MARCA_DOS_FORA.length) : null;
 }
 
+const MARCA_DOS_SELETORES = '#seletores';
+
+/**
+ * O id com que as listas dos seletores de uma página servida ao vivo andam pela piscina
+ * quando saem do snapshot (passo 3, docs/DECISAO-AO-VIVO.md). Próprio pelo mesmo motivo de
+ * `idDosForaDoAoVivo`: com o id da página, a lista de um seletor carregava a página
+ * INTEIRA do snapshot — na Agendamento Field, a agenda completa (ACHADOS #248). Com este
+ * id, a worker carrega só os seletores.
+ */
+export function idDosSeletores(pagina: string): string {
+  return `${pagina}${MARCA_DOS_SELETORES}`;
+}
+
+/** A página de um id dos seletores (`idDosSeletores`), ou `null`. */
+export function paginaDoIdDosSeletores(id: string): string | null {
+  return id.endsWith(MARCA_DOS_SELETORES) ? id.slice(0, -MARCA_DOS_SELETORES.length) : null;
+}
+
 /**
  * O pedido inteiro da Agendamento Field: dá para buscar ao vivo? E, se dá, quais visuais
  * ficam de fora. O mês vem com a FIELD AGENDA completa (`FORMA_DA_AGENDA`), então filtro

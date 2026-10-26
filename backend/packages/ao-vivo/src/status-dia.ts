@@ -88,20 +88,38 @@ function contem(coluna: string, trecho: string): string {
  * pré-filtro só tira relato que de todo jeito cairia em BLANK.
  */
 export function categoriaDoRelatoSql(model: SemanticModel, coluna = 'r.description'): string {
+  return casoDoRelato(model, coluna, (r) => r.categoria);
+}
+
+/**
+ * `ClassificacaoRelato` como expressão SQL sobre o texto do relato: a classificação da
+ * primeira regra que casa, ou NULL (o `BLANK()` do `SWITCH`). O mesmo pré-filtro da
+ * categoria — texto sem "PROD" não casa regra nenhuma.
+ */
+export function classificacaoDoRelatoSql(model: SemanticModel, coluna = 'r.description'): string {
+  return casoDoRelato(model, coluna, (r) => r.classificacao);
+}
+
+/** O `SWITCH(TRUE(), …)` das regras do relato em `CASE`, devolvendo `valorDa(regra)`. */
+function casoDoRelato(model: SemanticModel, coluna: string, valorDa: (r: RegraDoRelato) => string | null): string {
   const t = model.table('FIELD AGENDA');
   const dax = (nome: string) => t?.columns.find((c) => c.name === nome)?.dax ?? '';
   const regras = regrasDoRelato(dax('ClassificacaoRelato'), dax('CategoriaProdutividade'));
   const valor = (v: string | null) => (v === null ? 'NULL' : `'${v.replace(/'/g, "''")}'`);
-  const casos = regras.map((r) => `WHEN ${contem(coluna, r.trecho)} THEN ${valor(r.categoria)}`).join('\n            ');
+  const casos = regras.map((r) => `WHEN ${contem(coluna, r.trecho)} THEN ${valor(valorDa(r))}`).join('\n            ');
   const interno = `CASE\n            ${casos}\n            ELSE NULL END`;
   const preFiltro = regras.every((r) => r.trecho.toUpperCase().includes('PROD'));
   return preFiltro ? `CASE WHEN ${contem(coluna, 'PROD')} THEN (${interno}) END` : interno;
 }
 
-/** O SQL de `relatos-do-dia`, com a categoria gerada do modelo. */
+/**
+ * O SQL de uma agregada do relato (`relatos-do-dia`, `valores-do-relato`), com os
+ * marcadores gerados do modelo — a agregada usa os que declara.
+ */
 export function sqlRelatosDoDia(ctx: Pick<ContextoAoVivo, 'registry' | 'model'>, agregada: AgregadaAoVivo): string {
   return sqlDaAgregada(ctx.registry.get(agregada.base).sql ?? '', agregada, {
     categoria_do_relato: categoriaDoRelatoSql(ctx.model),
+    classificacao_do_relato: classificacaoDoRelatoSql(ctx.model),
   });
 }
 
@@ -114,13 +132,14 @@ export function sqlRelatosDoDia(ctx: Pick<ContextoAoVivo, 'registry' | 'model'>,
  *
  * A spec é uma CÓPIA deste texto, porque o refresh lê SQL de spec; `relatos-do-dia.test.ts`
  * trava as duas juntas — mudou a agenda, o DAX das regras ou a costura, o teste manda
- * regravar com `npm run gera:relatos-do-dia`.
+ * regravar com `npm run gera:relatos-do-dia`. Vale igual para `valores-do-relato` (os
+ * valores dos seletores de relato, passo 3).
  */
 export function sqlRelatosDaJanela(ctx: Pick<ContextoAoVivo, 'registry' | 'model'>, agregada: AgregadaAoVivo): string {
   const sql = sqlRelatosDoDia(ctx, agregada);
   const vezes = (t: string) => sql.split(t).length - 1;
   if (vezes(':desde::date') !== 1 || vezes(':ate::date') !== 1) {
-    throw new Error('relatos-do-dia: esperava um :desde::date e um :ate::date na costura — revise sqlRelatosDaJanela');
+    throw new Error(`${agregada.nome}: esperava um :desde::date e um :ate::date na costura — revise sqlRelatosDaJanela`);
   }
   return sql.replace(':desde::date', "(CURRENT_DATE - INTERVAL '3 months')").replace(':ate::date', "'infinity'::date");
 }

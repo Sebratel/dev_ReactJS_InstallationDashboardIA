@@ -671,6 +671,24 @@ congelador tira o `Status Protocolo Dia` da agenda de slot, da PG e destas conta
   completa desligada, deu a mesma tabela nos dias antes da agenda em disco; as 141 linhas
   trocadas são todas de 24/10 em diante, relatos que o SRD já tinha.
 
+### `valores-do-relato` — arquivo NOVO e GERADO, não vem do PBIP (26/10/2026)
+
+Os valores distintos de `Descrição`, `ClassificacaoRelato` e `CategoriaProdutividade` na
+janela inteira da agenda — uma linha por combinação, ~70. É a agregada `valores-do-relato`
+de `ao-vivo.yaml` sem período, gerada pelo mesmo script da `relatos-do-dia`, com as duas
+colunas DAX traduzidas das mesmas 38 regras (`classificacaoDoRelatoSql`,
+`categoriaDoRelatoSql`). Existe para o passo 3 do ao vivo: a API lista os três seletores de
+relato da Agendamento Field daqui (`valores_dos_seletores` em `projecao.yaml`), em vez de
+carregar a página com a agenda completa (ACHADOS #248).
+
+- **Não se edita à mão**, pelo mesmo motivo e com o mesmo teste da `relatos-do-dia`.
+- `origin: expression`. O refresh a grava no grupo `frio` (~11–25 s de SRD); quem lê é a
+  rota `/valores`. Sem o arquivo (primeiro deploy), a lista sai da página inteira, como antes.
+- **Prova** (`npm run probe:valores-ao-vivo`, 26/10/2026): contra a agenda completa do
+  snapshot, a Categoria é igual; a Classificação tem 1 valor a mais (só em relatos de
+  26/10, depois do snapshot) e a Descrição 1 a menos (1 protocolo de slot em 25/07, que
+  saiu da janela entre o snapshot e a consulta). Diferença de instante, nenhuma de regra.
+
 ## Estrutura de `backend/specs/`
 
 ```

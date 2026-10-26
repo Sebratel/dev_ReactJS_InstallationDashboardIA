@@ -30,6 +30,19 @@ test('a agenda completa está no refresh se e só se a projeção diz que ela es
   }
 });
 
+// E a query de onde saem as listas dos seletores de relato (passo 3): fora do refresh, a
+// API cai para a página inteira — que, sem a agenda completa, não tem de onde listar.
+test('a query dos valores dos seletores de cada grão reduzido está no refresh', () => {
+  const grupos = [...leGrupos(SPECS).values()];
+  for (const g of leGraoReduzido(SPECS)) {
+    if (!g.valoresDosSeletores) continue;
+    assert.ok(
+      grupos.some((x) => x.queries.includes(g.valoresDosSeletores!)),
+      `${g.tabela}: '${g.valoresDosSeletores}' (valores_dos_seletores) não está em refresh.yaml`,
+    );
+  }
+});
+
 test('relatos-do-dia está no refresh, no mesmo grupo da agenda de slot', () => {
   const grupos = [...leGrupos(SPECS).values()];
   const grupoDe = (q: string) => grupos.find((g) => g.queries.includes(q))?.id ?? null;

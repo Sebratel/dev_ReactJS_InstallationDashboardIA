@@ -215,7 +215,7 @@ test('erro de avaliação é MEvalError, não exceção genérica', () => {
   assert.throws(() => ev.avaliaQuery('let a = Table.Pivot(1) in a'), MEvalError);
 });
 
-test('o corpus continua com 27 queries e 177 passos', () => {
+test('o corpus continua com 28 queries e 178 passos', () => {
   // 24 queries / 327 passos + `field-agenda-slot` (ACHADOS #87): 1 query, 3 passos
   // (mesma forma de `field-agenda` — Fonte, Linhas Filtradas1, Tipo Alterado). Não
   // vem do PBIP, mas é uma query de verdade e entra no corpus como qualquer outra.
@@ -262,17 +262,18 @@ test('o corpus continua com 27 queries e 177 passos', () => {
   //
   // +1 query, +1 passo (26/10/2026, docs/SPEC-DRIVEN.md): `relatos-do-dia`, gerada, só o
   // `Fonte` — as contagens de relato que congelam o `Status Protocolo Dia` sem a agenda
-  // completa. 177.
+  // completa. 177. E +1/+1 no mesmo dia: `valores-do-relato`, gerada pelo mesmo script —
+  // os valores dos seletores de relato. 178.
   const qs = corpus();
-  assert.equal(qs.length, 27);
+  assert.equal(qs.length, 28);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    177,
+    178,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
   // ser a diferença entre os dois números (eram 303 contra 327).
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    177,
+    178,
   );
 });

@@ -78,3 +78,8 @@ grao_reduzido:
     # `field-agenda` sai de `refresh.yaml` (`completa-no-snapshot.test.ts` cobra os dois
     # juntos). Falso, o `Status Protocolo Dia` congela pelas contagens de `relatos-do-dia`.
     completa_no_snapshot: true
+    # As listas dos seletores de relato (Classificação, Categoria de Produtividade,
+    # Descrição) saem desta agregada do SRD — os valores distintos na janela da agenda —, e
+    # não da página carregada com a agenda completa (passo 3, ACHADOS #248). Gerada por
+    # `npm run gera:relatos-do-dia`; o refresh a grava no grupo `frio`.
+    valores_dos_seletores: valores-do-relato

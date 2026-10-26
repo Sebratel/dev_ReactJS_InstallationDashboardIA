@@ -35,7 +35,8 @@ import { rotuloDeColuna } from '../../packages/semantic-model/src/projecao.ts';
 import { loadDashboards, type DashboardSpec, type FiltroSpec } from '../../packages/widget-engine/src/spec.ts';
 import { decodificaFiltros } from '../../packages/widget-engine/src/filtro-url.ts';
 import { carrega, type Carregado } from '../../packages/snapshot/src/carrega.ts';
-import { leManifesto, maisAntigo, type Manifesto } from '../../packages/snapshot/src/manifesto.ts';
+import { arquivoDaQuery, leManifesto, maisAntigo, type Manifesto } from '../../packages/snapshot/src/manifesto.ts';
+import { le, leCabecalho } from '../../packages/snapshot/src/formato.ts';
 import { carimboDasCalculadas } from '../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../packages/snapshot/src/plano.ts';
 import { calculadasAlimentadasAoVivo, recalculosAoVivo } from '../../packages/snapshot/src/nativas.ts';
@@ -71,7 +72,7 @@ import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
 import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type Janela, type PaginaCalculada } from './calcula.ts';
-import { idDaPaginaAoVivo, idDosForaDoAoVivo, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { idDaPaginaAoVivo, idDosForaDoAoVivo, idDosSeletores, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 import { calculaNoDiretorio, juntaPaginas } from './pagina-ao-vivo.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
@@ -87,7 +88,7 @@ import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
 import { leSpecDeSeguranca, type SpecDeSeguranca } from './spec-seguranca.ts';
 import { chaveDeColuna, colunasFiltraveis } from './filtros-da-pagina.ts';
 import { comStatus, inteiro, leCorpo, parseJsonSeguro, responde, tokensIguais } from './http-util.ts';
-import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
+import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, distintosOrdenados, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
 import { serveEstatico } from './estatico.ts';
 import type { ServidorOptions } from './opcoes-servidor.ts';
 
@@ -379,6 +380,8 @@ export class Servidor {
   private readonly identidadeDasCarregadas = new Map<string, string>();
   /** Memo de `#liberacaoDaPagina` — constante por página durante a vida do processo. */
   private readonly liberacaoPorPagina = new Map<string, { libera: string[]; formaCompleta: string[] }>();
+  /** Memo de `#seletoresDoSnapshot` — idem. */
+  private readonly seletoresPorPagina = new Map<string, DashboardSpec>();
   /**
    * A identidade de cada página que as WORKERS já foram avisadas de ter — ver
    * `soltaGeracoesVelhas`. Separada de `identidadeDasCarregadas` de propósito: aquela diz
@@ -2428,7 +2431,7 @@ export class Servidor {
       // agenda completa —, a worker voltaria a guardar as 633 mil linhas que o ao vivo
       // existe para não carregar (medido em 25/10/2026). Vão com id próprio, a carga só
       // deles e sem overlay: o que eles mostram é o do refresh.
-      const dosFora = vivo ? this.#liberacaoDosForaDoAoVivo(dash, alvoDoSnapshot) : null;
+      const dosFora = vivo ? this.#liberacaoDoRecorte(dash, alvoDoSnapshot) : null;
       try {
         const pedeAWorker = () => this.piscina.executa({
           snapshotDir: this.opts.snapshotDir,
@@ -2786,7 +2789,13 @@ export class Servidor {
     // MESMA conta que a chave do cache de resposta faz, e esta rota responde em
     // 1–7 ms quente — 0,57 ms de leitura de disco por seletor aberto seria
     // pagar frescor que o memo já entrega.
-    const frescorDaPagina = `${this.carimboDaPagina(dash)}@${diaDoCalculo(this.opts.agora())}`;
+    //
+    // A lista de coluna de relato sai da agregada do SRD (`#valoresDaAgregada`), que não é
+    // query da página: o carimbo dela entra no frescor, ou um refresh dela não chegaria ao
+    // seletor.
+    const agregada = this.#agregadaDosValores(tabela, coluna);
+    const daAgregada = agregada ? `+${carimboDoSnapshot(this.manifestoMemo, this.calculadasMemo, [agregada])}` : '';
+    const frescorDaPagina = `${this.carimboDaPagina(dash)}${daAgregada}@${diaDoCalculo(this.opts.agora())}`;
     const chaveValores = chaveDeValores(id, frescorDaPagina, tabela, coluna, nivel);
     let distintos = this.cacheValoresDistintos.get(chaveValores);
     const chaveDaUltima = chaveDeValores(id, '', tabela, coluna, nivel);
@@ -2995,6 +3004,13 @@ export class Servidor {
     prioridade: number,
     quem: Identidade,
   ): Promise<DaxValue[] | { erroDoPedido: string }> {
+    // Passo 3 (docs/DECISAO-AO-VIVO.md): coluna de relato lista da agregada do SRD, e os
+    // outros seletores de uma página ao vivo, de uma carga só deles — nenhum dos dois
+    // carrega a página do snapshot (ACHADOS #248).
+    const daAgregada = await this.#valoresDaAgregada(tabela, coluna, nivel);
+    if (daAgregada !== null) return daAgregada;
+    const dosSeletores = await this.#valoresDosSeletores(dash, tabela, coluna, nivel, prioridade, quem);
+    if (dosSeletores !== null) return dosSeletores;
     const overlays = this.#overlayDe(dash);
     const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
     if (this.piscina.ativa) {
@@ -3218,6 +3234,118 @@ export class Servidor {
       }
       return null;
     }
+  }
+
+  /**
+   * A lista de um seletor de coluna de relato (Classificação do Relato, Categoria de
+   * Produtividade, Descrição), lida da agregada do SRD que a projeção declara
+   * (`valores_dos_seletores`, `projecao.yaml`) — ou `null` para seguir pelo caminho de
+   * sempre: coluna que não é gatilho de um grão com agregada, nível de data, ou o refresh
+   * ainda não a gravou (o primeiro deploy).
+   *
+   * Antes a lista saía da página carregada com a agenda completa (ACHADOS #248): 633 mil
+   * linhas para oferecer algumas dezenas de valores, e uma fonte que o passo 5 tira do
+   * snapshot. A agregada é a mesma janela, as mesmas junções e as mesmas regras do DAX
+   * (`npm run probe:valores-ao-vivo` compara as duas). Vale para toda página, ao vivo ou
+   * não: é a lista que o seletor sempre ofereceu, sem depender do mês da tela.
+   */
+  async #valoresDaAgregada(tabela: string, coluna: string, nivel: string | null): Promise<DaxValue[] | null> {
+    const agregada = this.#agregadaDosValores(tabela, coluna);
+    if (agregada === null || nivel) return null;
+    const arquivo = arquivoDaQuery(this.opts.snapshotDir, agregada);
+    if (!fs.existsSync(arquivo)) return null;
+    const k = normalizeName(coluna);
+    if (!leCabecalho(arquivo).colunas.some((c) => normalizeName(c.nome) === k)) return null;
+    const { linhas } = await le(arquivo);
+    return distintosOrdenados(linhas.map((l) => (l[k] ?? null) as DaxValue));
+  }
+
+  /** A agregada de onde sai a lista desta coluna, se ela é gatilho de um grão reduzido que declara uma. */
+  #agregadaDosValores(tabela: string, coluna: string): string | null {
+    const g = this.model.graoReduzido.find((x) => normalizeName(x.tabela) === normalizeName(tabela));
+    if (!g?.valoresDosSeletores || !g.colunasGatilho.some((c) => normalizeName(c) === normalizeName(coluna))) return null;
+    return g.valoresDosSeletores;
+  }
+
+  /**
+   * A lista de um seletor de página servida AO VIVO, de uma carga do snapshot só com os
+   * seletores dela (`idDosSeletores`, passo 3), ou `null` para seguir pela página inteira:
+   * página que não está ao vivo, sem piscina, coluna de relato (essa sai da agregada, ou da
+   * página inteira quando a agregada falta), ou a worker falhou.
+   *
+   * Pela página inteira, a lista carregava o que a página ao vivo existe para não carregar
+   * — na Agendamento Field, a agenda completa (ACHADOS #248). Uma carga para todos os
+   * seletores da página, e sem overlay: a lista anda com o refresh (15–60 min), e a tela já
+   * a busca uma vez por abertura. Com o overlay, o recálculo do tempo real pediria as fontes
+   * completas (`#formaCompletaDoTempoReal`) — de novo a agenda completa.
+   */
+  async #valoresDosSeletores(
+    dash: DashboardSpec,
+    tabela: string,
+    coluna: string,
+    nivel: string | null,
+    prioridade: number,
+    quem: Identidade,
+  ): Promise<DaxValue[] | { erroDoPedido: string } | null> {
+    if (!this.opts.aoVivo?.paginas.has(dash.id) || !this.piscina.ativa || this.#ehGatilho(tabela, coluna)) return null;
+    const seletores = this.#seletoresDoSnapshot(dash);
+    const { libera, formaCompleta } = this.#liberacaoDoRecorte(dash, seletores);
+    try {
+      // Com a espera do recongelamento, como a página: a recusa é passageira, e cair para a
+      // página inteira por ela seria trocar segundos de espera pela carga pesada.
+      const r = await this.#esperaOSnapshotInteiro(() => this.piscina.executa(
+        {
+          snapshotDir: this.opts.snapshotDir,
+          specsDir: path.join(this.opts.root, 'backend', 'specs'),
+          dashboardSpec: { ...seletores, id: idDosSeletores(dash.id) },
+          janela: { de: 0, linhas: 0 },
+          clicados: [],
+          liberaSobDemanda: libera,
+          precisaFormaCompleta: formaCompleta,
+          agoraIso: this.opts.agora().toISOString(),
+          identidade: this.identidadeDaPagina(dash),
+          escopo: escopoDoCache(quem),
+          valores: { tabela, coluna, nivel },
+        },
+        prioridade,
+      ));
+      this.registraCarga(dash.id, 'valores', r.carga);
+      if (r.erroDoPedido !== undefined) return { erroDoPedido: r.erroDoPedido };
+      if (r.valores) return r.valores;
+      throw new Error('a worker respondeu sem a lista de valores');
+    } catch (err) {
+      this.metricas.conta('valores_seletores_queda');
+      const motivo = err instanceof Error ? err.message.split('\n')[0]!.slice(0, 200) : String(err).slice(0, 200);
+      if (!this.motivosDeFallback.has(`seletores: ${motivo}`)) {
+        this.motivosDeFallback.add(`seletores: ${motivo}`);
+        console.error(`[ao-vivo] a lista de '${tabela}'[${coluna}] em ${dash.id} saiu pela página inteira: ${motivo}`);
+      }
+      return null;
+    }
+  }
+
+  /** A coluna é gatilho de um grão reduzido (só existe inteira na forma completa)? */
+  #ehGatilho(tabela: string, coluna: string): boolean {
+    return this.amarraGraoReduzido().tabelasCompletas.has(normalizeName(rotuloDeColuna(tabela, coluna)));
+  }
+
+  /**
+   * Os seletores de uma página que listam do snapshot quando ela está ao vivo: todos, menos
+   * os de coluna gatilho. Uma página só com eles, para uma carga só servir a todos.
+   */
+  #seletoresDoSnapshot(dash: DashboardSpec): DashboardSpec {
+    let memo = this.seletoresPorPagina.get(dash.id);
+    if (memo === undefined) {
+      memo = {
+        ...dash,
+        visuals: (dash.visuals ?? []).filter((v) => {
+          const s = segmentacaoDe(v);
+          return s !== undefined && !this.#ehGatilho(s.tabela, s.coluna);
+        }),
+      };
+      this.seletoresPorPagina.set(dash.id, memo);
+    }
+    return memo;
   }
 
   /** A tabela só-do-poller alimenta uma calculada que esta página carrega? */
@@ -3599,12 +3727,13 @@ export class Servidor {
   }
 
   /**
-   * A carga dos visuais que ficaram FORA de uma página servida ao vivo: o que ELES amarram
-   * e os filtros de página — sem as fontes do tempo real, que `#liberacaoDaPagina` soma
-   * para a página inteira (o overlay não vai junto, ver o pedido à worker).
+   * A carga de um RECORTE de uma página servida ao vivo — os visuais que ficaram fora dela,
+   * ou os seletores que listam do snapshot: o que OS VISUAIS DO RECORTE amarram e os
+   * filtros de página — sem as fontes do tempo real, que `#liberacaoDaPagina` soma para a
+   * página inteira (o overlay não vai junto, ver os pedidos à worker).
    */
-  #liberacaoDosForaDoAoVivo(dash: DashboardSpec, fora: DashboardSpec): { libera: string[]; formaCompleta: string[] } {
-    const amarrado = (fora.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
+  #liberacaoDoRecorte(dash: DashboardSpec, recorte: DashboardSpec): { libera: string[]; formaCompleta: string[] } {
+    const amarrado = (recorte.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
     const { tabelasCompletas } = this.amarraGraoReduzido();
     const completas = new Set(amarrado.flatMap((a) => a.tabelasCompletas));
     for (const f of dash.filters ?? []) {

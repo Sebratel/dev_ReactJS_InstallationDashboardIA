@@ -16120,6 +16120,24 @@ Para a Agendamento Field isso é a FIELD AGENDA completa — inclusive quando a 
 vivo e os visuais saem do mês buscado no SRD, e também no aquecedor. Duas consequências:
 a memória que o ao vivo poupa nos visuais volta pelo seletor; e, sem a agenda completa no
 snapshot (passo 5), as listas de Classificação do Relato, Categoria de Produtividade e
-Descrição perdem a fonte. Conserto previsto no passo 3: carga mínima por seletor (só a
-tabela da coluna, no grão de slot), as três colunas de relato pelo mês ao vivo, e o período
-(`calendar[Data]`) do snapshot, que tem todos os meses.
+Descrição perdem a fonte. Consertado no mesmo dia (passo 3a, DECISAO-AO-VIVO): as três
+colunas de relato listam da agregada `valores-do-relato` do SRD, e os outros seletores de
+uma página ao vivo, de uma carga do snapshot só com os seletores (#249 diz por que não o
+mês ao vivo).
+
+## #249 — a lista de um seletor não pode depender do mês da tela; a de relato saiu de uma agregada (26/10)
+
+O primeiro desenho do passo 3a listava Classificação do Relato, Categoria de Produtividade
+e Descrição do conjunto da página ao vivo no mês da abertura — de graça, porque é o
+conjunto que a abertura já carregou. A sonda (`probe:valores-ao-vivo`) desmentiu o "de
+graça": em 26/10, a Classificação tinha 26 valores no mês contra 36 na janela da agenda, e
+a Descrição 9 contra 13. A rota `/valores` não recebe o filtro da tela (a lista é uma só
+por página, de propósito, ver `Segmentacao.tsx`), então a lista do mês da abertura é a
+lista de TODOS os meses: quem trocasse para setembro não acharia a classificação que só
+existiu em setembro. Não é o começo do mês: é a variedade das classificações.
+
+Ficou a agregada `valores-do-relato` (SRD, valores distintos na janela, ~70 combinações),
+gerada das mesmas regras. Contra a agenda completa do snapshot: Categoria igual;
+Classificação com 1 valor a mais (relatos só de 26/10 08:52, depois do snapshot de 24/10)
+e Descrição com 1 a menos (1 protocolo de slot em 25/07, que saiu da janela de 3 meses
+entre o snapshot e a consulta). Investigado só com contagem e data, sem imprimir valor.

@@ -204,12 +204,31 @@ agregadas:
     janela: "AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')"
     marcadores: [categoria_do_relato]
     costura:
-      - de: "SELECT \n    vsdspi.protocol AS \"Protocolo\",\n    vsdspi.incident_type_title AS \"Tipo de Protocolo\",\n    vsdspi.incident_status_title AS \"Status Protocolo\",\n    vsdspi.region_title AS \"Base\",\n    vsdspi.resource_name AS \"Instalador\",\n    vsdspi.assignment_created AS \"Data Criado\",\n    vsdspi.rescheduling_type AS \"Reagenda\",\n    vsdspi.conclusion_date AS \"Data finalizado atendimento app\",\n    vsdspi.first_attendance_history AS \"Data primeiro Play app\",\n    vsdspi.last_attendance_history AS \"Data ultimo play app\",\n    vsdspi.final_date AS \"Prazo SLA\",\n    vsdspi.begin_date AS \"Inicio relato\",\n    vsdspi.end_date AS \"Fim relato\",\n    vsdspi.begin_date_slot AS \"Slot Agenda\",\n    p.name as \"Relator\",\n    s.title as \"Skill\",\n    r.title AS \"Descrição\",\n    r.description AS \"Relato\",\n    r.beginning_date AS \"Data Relato\"\n"
+      - de: &select-da-agenda "SELECT \n    vsdspi.protocol AS \"Protocolo\",\n    vsdspi.incident_type_title AS \"Tipo de Protocolo\",\n    vsdspi.incident_status_title AS \"Status Protocolo\",\n    vsdspi.region_title AS \"Base\",\n    vsdspi.resource_name AS \"Instalador\",\n    vsdspi.assignment_created AS \"Data Criado\",\n    vsdspi.rescheduling_type AS \"Reagenda\",\n    vsdspi.conclusion_date AS \"Data finalizado atendimento app\",\n    vsdspi.first_attendance_history AS \"Data primeiro Play app\",\n    vsdspi.last_attendance_history AS \"Data ultimo play app\",\n    vsdspi.final_date AS \"Prazo SLA\",\n    vsdspi.begin_date AS \"Inicio relato\",\n    vsdspi.end_date AS \"Fim relato\",\n    vsdspi.begin_date_slot AS \"Slot Agenda\",\n    p.name as \"Relator\",\n    s.title as \"Skill\",\n    r.title AS \"Descrição\",\n    r.description AS \"Relato\",\n    r.beginning_date AS \"Data Relato\"\n"
         para: "SELECT\n    vsdspi.protocol::text AS \"Protocolo\",\n    to_char(r.beginning_date, 'YYYY-MM-DD') AS \"Dia Relato\",\n    COALESCE(bool_or(({{categoria_do_relato}}) = 'Improdutiva'), false) AS \"Improdutivo\",\n    COALESCE(bool_or(s.title IS NOT NULL), false) AS \"Tecnico\"\n"
       - de: "FROM v_service_desk_slots_productivity_informative vsdspi\n"
         para: *vista-da-agenda
       - de: "ORDER BY vsdspi.assignment_created DESC;"
         para: "GROUP BY 1, 2;"
+
+  # Os valores das três colunas de relato que têm SELETOR na Agendamento Field —
+  # `Descrição`, `ClassificacaoRelato` e `CategoriaProdutividade` —, uma linha por
+  # combinação distinta (dezenas). É a lista que o seletor oferecia lendo a agenda completa
+  # do snapshot (ACHADOS #248); daqui ela sai sem a agenda, na mesma janela e pelas mesmas
+  # junções e filtros (passo 3, docs/DECISAO-AO-VIVO.md). Os dois marcadores são as duas
+  # colunas DAX geradas das mesmas 38 regras (backend/packages/ao-vivo/src/status-dia.ts).
+  valores-do-relato:
+    base: field-agenda
+    parametros: [desde, ate]
+    janela: "AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')"
+    marcadores: [classificacao_do_relato, categoria_do_relato]
+    costura:
+      - de: *select-da-agenda
+        para: "SELECT\n    r.title AS \"Descrição\",\n    ({{classificacao_do_relato}}) AS \"ClassificacaoRelato\",\n    ({{categoria_do_relato}}) AS \"CategoriaProdutividade\"\n"
+      - de: "FROM v_service_desk_slots_productivity_informative vsdspi\n"
+        para: *vista-da-agenda
+      - de: "ORDER BY vsdspi.assignment_created DESC;"
+        para: "GROUP BY 1, 2, 3;"
 
 # Outra costura para uma query que já tem entrada em `consultas` — quem a usa monta o
 # catálogo do pedido com ela no lugar da entrada padrão (`query` diz de qual spec é).

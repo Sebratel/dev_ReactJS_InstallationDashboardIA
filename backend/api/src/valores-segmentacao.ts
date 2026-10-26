@@ -79,18 +79,30 @@ export function valoresDistintos(
     );
   }
 
+  function* daColuna(): Generator<DaxValue> {
+    for (const row of ev.dataset.rows(tabela)) {
+      const cru = ev.columnValue(tabela, coluna, row);
+      // BLANK não é projetado: o vazio viraria o ano de 1970 e apareceria na lista
+      // como um ano de verdade.
+      yield projeta && !isBlank(cru) && cru instanceof Date ? projeta(cru) : cru;
+    }
+  }
+  return distintosOrdenados(daColuna());
+}
+
+/**
+ * Os valores distintos, na ordem do seletor. Separada de `valoresDistintos` para a lista
+ * que não sai de um dataset — a dos seletores de relato, lida da agregada do SRD
+ * (`valores_dos_seletores`, `projecao.yaml`) — sair pela MESMA conta.
+ */
+export function distintosOrdenados(valores: Iterable<DaxValue>): DaxValue[] {
   const vistos = new Map<string, DaxValue>();
-  for (const row of ev.dataset.rows(tabela)) {
-    const cru = ev.columnValue(tabela, coluna, row);
-    // BLANK não é projetado: o vazio viraria o ano de 1970 e apareceria na lista
-    // como um ano de verdade.
-    const v = projeta && !isBlank(cru) && cru instanceof Date ? projeta(cru) : cru;
+  for (const v of valores) {
     // Data como chave precisa ser o instante, não o objeto: dois `Date` do mesmo
     // milissegundo são chaves diferentes num `Set`, e a lista viria com repetido.
     const chave = isBlank(v) ? '\u0000blank' : v instanceof Date ? `d${v.getTime()}` : `${typeof v}:${String(v)}`;
     if (!vistos.has(chave)) vistos.set(chave, v);
   }
-
   return [...vistos.values()].sort(comparaValorDeSegmentacao);
 }
 

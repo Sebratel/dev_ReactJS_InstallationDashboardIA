@@ -542,9 +542,15 @@ grupos:
   # pelo motivo de sempre (ver acima). A cada 7 dias (`idade_maxima_dias`) a própria
   # incremental recusa e faz a completa — é o que pega cadastro renomeado e linha
   # apagada na fonte sem rastro de data.
+  #
+  # `valores-do-relato` entrou em 26/10/2026 (docs/DECISAO-AO-VIVO.md, passo 3): os
+  # valores distintos das três colunas de relato com seletor, de onde a API lista esses
+  # seletores sem carregar a agenda completa. Aqui, na cadência da `field-agenda` de quem
+  # a lista saía antes; dezenas de linhas, poucos segundos de SRD.
   frio:
     queries:
       - field-agenda
+      - valores-do-relato
       - protocolos-auxiliares
       - protocolos-telefonia
       - troca-endereco

@@ -83,7 +83,7 @@ test('groupSkipped: agrupa por motivo', () => {
 
 // ------------------------------------------------------------ specs reais
 
-test('specs reais: o plano cobre as 24 queries SQL (18 do PBIP + 2 de mão + 1 gerada + 3 planilhas)', () => {
+test('specs reais: o plano cobre as 25 queries SQL (18 do PBIP + 2 de mão + 2 geradas + 3 planilhas)', () => {
   // 18 do PBIP + 2 de mão, registradas em docs/SPEC-DRIVEN.md: `field-agenda-slot`
   // (ACHADOS #87, o grão de slot de `field-agenda`) e `protocolos-tipo` (ACHADOS #200, o
   // par protocolo/tipo para a mesclagem de `backlog-agendado-futuro`). As duas no
@@ -92,19 +92,19 @@ test('specs reais: o plano cobre as 24 queries SQL (18 do PBIP + 2 de mão + 1 g
   // 20 → 23 (14/10/2026, ACHADOS #209): `quadro-funcional`, `capacidade-equipe` e
   // `apuracao-premiacao` saíram do Google Sheets para o dbMaria (DB_InstallationDashboard).
   //
-  // 23 → 24 (26/10/2026): `relatos-do-dia`, gerada (`npm run gera:relatos-do-dia`), no
-  // dbVoalle: 17 → 18 (docs/SPEC-DRIVEN.md).
+  // 23 → 25 (26/10/2026): `relatos-do-dia` e `valores-do-relato`, geradas (`npm run
+  // gera:relatos-do-dia`), no dbVoalle: 17 → 19 (docs/SPEC-DRIVEN.md).
   const registry = QueryRegistry.fromSpecsDir(SPECS);
   const plan = planValidation(registry.list(), { configured: [...EXECUTABLE_DATASOURCES] });
 
   assert.equal(plan.runnable.length + plan.skipped.length, registry.queries.size);
-  assert.equal(plan.runnable.length, 24, 'dbVoalle + dbMaria com SQL');
+  assert.equal(plan.runnable.length, 25, 'dbVoalle + dbMaria com SQL');
 
   const porFonte = new Map<string, number>();
   for (const item of plan.runnable) {
     porFonte.set(item.datasource, (porFonte.get(item.datasource) ?? 0) + 1);
   }
-  assert.equal(porFonte.get('dbVoalle'), 18);
+  assert.equal(porFonte.get('dbVoalle'), 19);
   assert.equal(porFonte.get('dbMaria'), 6);
 });
 
