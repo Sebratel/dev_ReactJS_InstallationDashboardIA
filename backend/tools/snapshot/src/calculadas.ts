@@ -47,7 +47,8 @@ import { loadDashboards, type DashboardSpec } from '../../../packages/widget-eng
 import { carrega, todaFormaCompleta } from '../../../packages/snapshot/src/carrega.ts';
 import { escreve, le, leCabecalho, type Escalar } from '../../../packages/snapshot/src/formato.ts';
 import { adquireTrava } from '../../../packages/snapshot/src/trava.ts';
-import { DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
+import { arquivoDaQuery, DIRETORIO_PADRAO } from '../../../packages/snapshot/src/manifesto.ts';
+import { paginaDasFontesDoStatusDia, statusProtocoloDiaDasContagens } from '../../../packages/ao-vivo/src/status-dia.ts';
 import { planeja } from '../../../packages/snapshot/src/plano.ts';
 import { traducaoDe } from '../../../packages/snapshot/src/nativas.ts';
 import {
@@ -354,6 +355,72 @@ async function congelaIsolada(t: ModelTable): Promise<void> {
   }
 }
 
+/** O snapshot traz a forma completa desta tabela de grão reduzido (`completa_no_snapshot`)? */
+function completaNoSnapshot(tabela: string): boolean {
+  return model.graoReduzido.find((g) => normalizeName(g.tabela) === normalizeName(tabela))?.completaNoSnapshot ?? true;
+}
+
+/** `Status Protocolo Dia` congela pelas contagens: a agenda completa saiu do snapshot. */
+function ehStatusDiaSemCompleta(t: ModelTable): boolean {
+  return amostra === 0 && normalizeName(t.name) === 'status protocolo dia' && !completaNoSnapshot('FIELD AGENDA');
+}
+
+/**
+ * As páginas da carga principal SEM os visuais que põem `Status Protocolo Dia` no plano,
+ * quando ela congela pelas contagens: com a calculada no plano e `lerCalculadas: false`, a
+ * carga materializaria o corpo dela pelo DAX, que lê o grão relato que não veio.
+ */
+function semOStatusDia(paginas: readonly DashboardSpec[]): DashboardSpec[] {
+  if (!emProcessoUnico.some(ehStatusDiaSemCompleta)) return [...paginas];
+  return paginas.map((d) => ({
+    ...d,
+    visuals: (d.visuals ?? []).filter(
+      (v) => !planeja([{ ...d, visuals: [v] }], model).calculadas.some((n) => normalizeName(n) === 'status protocolo dia'),
+    ),
+  }));
+}
+
+/**
+ * `Status Protocolo Dia` sem a agenda completa no snapshot (docs/DECISAO-AO-VIVO.md, passo
+ * 2): a agenda de slot, PROTOCOLOS GERAL e as contagens de relato que o refresh grava em
+ * `relatos-do-dia` (`statusProtocoloDiaDasContagens`, a mesma função de `nativas.ts` com
+ * entrada equivalente ao grão relato). `null` quando a tabela não é essa, ou quando a
+ * agenda completa ainda está no snapshot — aí vale a tradução nativa de sempre.
+ */
+async function statusDiaPelasContagens(t: ModelTable): Promise<Record<string, Escalar>[] | null> {
+  if (!ehStatusDiaSemCompleta(t)) return null;
+  let arq: string;
+  try {
+    arq = arquivoDaQuery(DIR, 'relatos-do-dia');
+    leCabecalho(arq);
+  } catch {
+    console.error(
+      `\nERRO: ${t.name}: a agenda completa saiu do snapshot e 'relatos-do-dia' não está nele. ` +
+        'Ela entra no mesmo grupo de refresh da agenda (refresh.yaml).',
+    );
+    process.exit(1);
+  }
+  const { linhas: relatos } = await le(arq);
+  // Carga própria, só das fontes: a da Agendamento Field, com `lerCalculadas: false`,
+  // materializaria o corpo desta calculada pelo DAX — e ele lê o grão relato.
+  const fontes = await carrega({
+    dir: DIR,
+    model,
+    dashboards: [paginaDasFontesDoStatusDia(alvo[0] ?? todas[0]!)],
+    now: new Date(),
+    lerCalculadas: false,
+    precisaFormaCompleta: [],
+  });
+  const agenda = fontes.ev.dataset.rows('FIELD AGENDA') as unknown as Record<string, Escalar>[];
+  const pg = fontes.ev.dataset.rows('PROTOCOLOS GERAL') as unknown as Record<string, Escalar>[];
+  if (agenda.length === 0 || pg.length === 0) {
+    // Mesmo guarda da tradução nativa: fonte vazia daria tabela vazia de cabeçalho honesto.
+    console.error(`\nERRO: ${t.name}: FIELD AGENDA ou PROTOCOLOS GERAL chegou sem linha nenhuma.`);
+    process.exit(1);
+  }
+  return statusProtocoloDiaDasContagens(agenda, relatos, pg);
+}
+
 const isoladas = escolhidas.filter((t) => paraIsolar.has(t.name));
 const emProcessoUnico = escolhidas.filter((t) => !paraIsolar.has(t.name));
 
@@ -372,16 +439,18 @@ if (emProcessoUnico.length > 0) {
   c = await carrega({
     dir: DIR,
     model,
-    dashboards: alvo,
+    dashboards: semOStatusDia(alvo),
     now: new Date(),
     lerCalculadas: false,
-    // Sempre a forma COMPLETA de toda tabela com grão reduzido (ACHADOS #87) —
-    // este programa é o congelamento em lote, não um pedido de tela: não há
+    // A forma COMPLETA de toda tabela com grão reduzido que a tem no snapshot (ACHADOS
+    // #87) — este programa é o congelamento em lote, não um pedido de tela: não há
     // latência a proteger, e uma coluna calculada (ex.: 'Status Protocolo
     // Dia'[Base Dia], que lê 'FIELD AGENDA'[Relato]) pode legitimamente precisar
     // do grão fino. Pedir a forma padrão aqui só trocaria "rápido e certo" por
-    // "rápido e errado alto no meio do congelamento".
-    precisaFormaCompleta: todaFormaCompleta(model),
+    // "rápido e errado alto no meio do congelamento". A que saiu do snapshot
+    // (`completa_no_snapshot: false`, projecao.yaml) carrega a padrão, e quem dependia da
+    // completa congela de outra fonte — ver `statusDiaPelasContagens`.
+    precisaFormaCompleta: todaFormaCompleta(model).filter((t) => completaNoSnapshot(t)),
   });
   console.error(`  carga: ${(Date.now() - tc).toLocaleString('pt-BR')} ms`);
 }
@@ -395,8 +464,9 @@ for (const t of emProcessoUnico) {
 
   // O avaliador de `carrega` já tem a tabela dentro (sem as colunas calculadas
   // preenchidas). Preencher no lugar é o caminho barato e correto: `columnValue`
-  // memoiza na própria linha, que é a linha que vai ser gravada.
-  const linhas = c!.ev.dataset.rows(t.name) as unknown as Record<string, unknown>[];
+  // memoiza na própria linha, que é a linha que vai ser gravada. A exceção é a que congela
+  // pelas contagens: ela saiu do plano da carga (`semOStatusDia`) e nasce inteira abaixo.
+  const linhas = ehStatusDiaSemCompleta(t) ? [] : (c!.ev.dataset.rows(t.name) as unknown as Record<string, unknown>[]);
   const fisicas = t.columns.filter((x) => !x.calculated).map((x) => x.name);
   const todasCalc = t.columns.filter((x) => x.calculated && x.dax).map((x) => x.name);
   // `--coluna=` respeita a ORDEM em que foi pedida, não a do modelo: é ela que decide
@@ -436,7 +506,15 @@ for (const t of emProcessoUnico) {
   // `--amostra=` não desvia: ela existe para medir ms/linha do AVALIADOR, e a
   // tradução não tem "por linha" para medir — é uma passada só.
   const nativa = amostra > 0 ? { porque: '--amostra mede o avaliador' } : traducaoDe(t);
-  if ('traducao' in nativa) {
+  const pelasContagens = await statusDiaPelasContagens(t);
+  if (pelasContagens) {
+    linhas.length = 0;
+    for (const l of pelasContagens) linhas.push(l as never);
+    process.stderr.write(
+      `\n  [sem a agenda completa] ${linhas.length.toLocaleString('pt-BR')} linha(s) pela agenda de slot + ` +
+        'relatos-do-dia (status-dia.ts)',
+    );
+  } else if ('traducao' in nativa) {
     const tn = Date.now();
     const fontes = nativa.traducao.fontes.map(
       (nome) => c!.ev.dataset.rows(nome) as unknown as Record<string, unknown>[],

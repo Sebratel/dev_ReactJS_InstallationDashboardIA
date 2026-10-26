@@ -72,3 +72,9 @@ grao_reduzido:
       as únicas colunas que dependem de `reports` na SQL de `field-agenda`, então
       errar para MAIS exigiria uma coluna nova em `reports`/`people`/`skills` que
       ninguém adicionou a esta lista.
+    # O refresh grava a agenda COMPLETA no snapshot? Sim até o passo 5 da proposta de
+    # 25/10/2026 (docs/DECISAO-AO-VIVO.md, aprovada pelo Erick): com a Agendamento Field
+    # servida do SRD, ela sai do refresh, e isto vira `false` no mesmo commit em que a
+    # `field-agenda` sai de `refresh.yaml` (`completa-no-snapshot.test.ts` cobra os dois
+    # juntos). Falso, o `Status Protocolo Dia` congela pelas contagens de `relatos-do-dia`.
+    completa_no_snapshot: true

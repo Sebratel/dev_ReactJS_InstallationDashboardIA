@@ -1,0 +1,42 @@
+{
+  "queryId": "relatos-do-dia",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 38312,
+  "truncated": false,
+  "profiledRows": 5000,
+  "columnsFromSample": true,
+  "columns": [
+    {
+      "name": "Protocolo",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 1321,
+      "numericString": true,
+      "sum": 8764834177
+    },
+    {
+      "name": "Dia Relato",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 62,
+      "minLength": 10,
+      "maxLength": 10
+    },
+    {
+      "name": "Improdutivo",
+      "type": "boolean",
+      "nulls": 0,
+      "distinct": 2
+    },
+    {
+      "name": "Tecnico",
+      "type": "boolean",
+      "nulls": 0,
+      "distinct": 2
+    }
+  ],
+  "schemaFingerprint": "c447cf4102781079",
+  "dataFingerprint": "01a33cd2d8c46bf9",
+  "capturedAt": "2026-10-26T18:49:44.587Z"
+}

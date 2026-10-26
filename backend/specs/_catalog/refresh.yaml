@@ -285,6 +285,11 @@ grupos:
   # DUAS estão no grupo `medio` abaixo, e não aqui, porque 33s + 80s dentro de um
   # ciclo de 15 min apertariam este grupo sem necessidade medida (ver o comentário
   # do `medio`).
+  # `relatos-do-dia` entrou em 26/10/2026 (docs/DECISAO-AO-VIVO.md, passo 2): as contagens
+  # de relato por (protocolo, dia), ~38 mil linhas e ~11 s, de que o congelador tira o
+  # `Status Protocolo Dia` quando a agenda completa sai do snapshot. No MESMO grupo da
+  # `field-agenda-slot` porque as duas entram juntas na calculada: buscadas em instantes
+  # diferentes, um horário novo no meio vira linha a mais (medido: 4 em 2 dias).
   quente:
     queries:
       - contratos
@@ -294,6 +299,7 @@ grupos:
       - hora-atualizado
       - backlog-instalacao
       - field-agenda-slot
+      - relatos-do-dia
       - capacidade-equipe
       - apuracao-premiacao
     intervalo_minutos: 15

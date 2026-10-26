@@ -75,8 +75,10 @@ test('registry: carrega as specs reais do PBIP', () => {
   const r = QueryRegistry.fromSpecsDir(SPECS_DIR);
   // 24 extraídas do PBIP + 2 de mão, que não vêm do PBIP: `field-agenda-slot` (ACHADOS
   // #87, o grão de slot de `field-agenda`) e `protocolos-tipo` (ACHADOS #200, o par
-  // protocolo/tipo para a mesclagem de `backlog-agendado-futuro`).
-  assert.equal(r.queries.size, 26, '24 extraídas + field-agenda-slot + protocolos-tipo');
+  // protocolo/tipo para a mesclagem de `backlog-agendado-futuro`) — e 1 gerada,
+  // `relatos-do-dia` (26/10/2026, `npm run gera:relatos-do-dia`): as contagens de relato
+  // que congelam o `Status Protocolo Dia` sem a agenda completa (docs/SPEC-DRIVEN.md).
+  assert.equal(r.queries.size, 27, '24 extraídas + field-agenda-slot + protocolos-tipo + relatos-do-dia');
   assert.ok(r.has('contratos'));
   assert.ok(r.has('protocolos-geral'));
   // as 3 fontes externas reais + os pseudo-datasources classificados

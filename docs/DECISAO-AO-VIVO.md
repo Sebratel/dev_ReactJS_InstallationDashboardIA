@@ -434,6 +434,35 @@ páginas — elas não leem da agenda o que ele troca —, então a sonda prova 
 estraga; que a mudança do poller chega à tela, prova `cache-ao-vivo.test.ts`. Agora o PG
 das páginas da janela tem 10 min (era 30), e o que o poller vigia, os 30–60 s de sempre.
 
+**Passo 2, feito (26/10/2026): os congelados sem a agenda completa.** O refresh já sabe
+congelar o `Status Protocolo Dia` e o `calendar` sem ler a `field-agenda`, atrás de uma
+chave: `completa_no_snapshot` em `projecao.yaml`. Ela segue `true` (nada muda em produção)
+e vira `false` no passo 5, no mesmo commit que tira a `field-agenda` do `refresh.yaml` —
+`completa-no-snapshot.test.ts` reprova se um andar sem o outro. Com a chave em `false`:
+
+- o `Status Protocolo Dia` sai das contagens: agenda de slot + a agregada nova
+  `relatos-do-dia` (o SRD conta relatos por protocolo e dia, ~38 mil linhas na janela de
+  3 meses) + PG, pela mesma tradução nativa (`statusProtocoloDiaDasContagens`);
+- o `calendar` sai da tradução nativa sobre a agenda de slot (ela lê só protocolo e data);
+- a `relatos-do-dia` está no grupo `quente`, o mesmo da `field-agenda-slot`: as duas
+  precisam ser do mesmo instante, ou o slot e as contagens discordam (ACHADOS #247).
+
+Provas, todas na janela inteira e no mesmo instante: o status pelas contagens é igual ao
+nativo sobre a agenda completa (13.200 linhas, 0 diferença); a agregada do SRD é igual às
+contagens tiradas da agenda completa (37.580 de 37.580); e o congelador de verdade com a
+chave em `false` dá o `Status Protocolo Dia` idêntico até 23/10 — as 141 linhas que mudam
+são todas de 24/10 em diante, relatos que entraram entre uma carga e outra —, e o
+`calendar` com 4 linhas a mais pelo mesmo motivo. Sonda: `npm run
+probe:status-dia-sem-completa`. A spec é gerada do SQL de `status-dia.ts` (`npm run
+gera:relatos-do-dia`; SPEC-DRIVEN § `relatos-do-dia`).
+
+**Achado no caminho, entra no passo 3:** as listas dos seletores (`/valores`) são
+calculadas sobre o conjunto inteiro da página no snapshot — na Agendamento Field, a agenda
+completa (ACHADOS #248). Sem ela no snapshot, as listas de Classificação do Relato,
+Categoria de Produtividade e Descrição perdem a fonte. O conserto: carga mínima por seletor (só a tabela
+da coluna, no grão de slot); as três colunas de relato vêm do mês ao vivo; o período
+(`calendar[Data]`) segue do snapshot, que tem todos os meses.
+
 ## Memória: o que pesa é o cálculo, não o conjunto (24/10/2026)
 
 Medido por página, um processo cada, carga colunar como a worker faz e cálculo com o
@@ -467,7 +496,8 @@ responder, ou baixar o `maxOldGenerationSizeMb` para o pico caber — próximo p
   precisa ler os bancos que usa e gravar nas tabelas de acesso.
 - **Os valores dos seletores** (`/api/dashboards/:id/valores`) ainda saem do snapshot de
   hoje, também nas páginas ao vivo: um técnico ou cidade que apareceu depois do último
-  refresh entra no número antes de entrar na lista do seletor.
+  refresh entra no número antes de entrar na lista do seletor. E carregam a página inteira
+  para isso — na Agendamento Field, a agenda completa (ACHADOS #248, passo 3).
 - **Desempate do auxiliar** (63 protocolos com dois auxiliares empatados no topo, ACHADOS
   #239): decisão do Erick. Até lá, duas buscas podem trocar o INSTALADOR desses protocolos.
 - **Fase 4** — o que falta para a memória cair: a worker (reciclar por teto de RSS ou

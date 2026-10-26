@@ -649,6 +649,28 @@ anterior passa a ser 2026, inteiro na base) — **mas** `CALENDARIO INSTALADO` t
 `DATE(2026,12,31)` fixo no `table_dax`, e em 2027 todas as medidas por data de instalação
 precisam disso resolvido antes.
 
+### `relatos-do-dia` — arquivo NOVO e GERADO, não vem do PBIP (26/10/2026)
+
+As contagens de relato por (protocolo, dia) — houve relato improdutivo, houve relato de
+técnico — sobre a janela inteira da agenda. É a agregada `relatos-do-dia` de
+`ao-vivo.yaml` sem período (`sqlRelatosDaJanela`): o SQL da `field-agenda` com a view
+aberta, o `GROUP BY` e a `CategoriaProdutividade` gerada das 38 regras do DAX. Ela existe
+para o passo 2 do ao vivo (docs/DECISAO-AO-VIVO.md): sem a agenda completa no snapshot, o
+congelador tira o `Status Protocolo Dia` da agenda de slot, da PG e destas contagens
+(`statusProtocoloDiaDasContagens`), em vez das 633 mil linhas do grão relato.
+
+- **Não se edita à mão.** `npm run gera:relatos-do-dia` regrava; `backend/tools/snapshot/
+  test/relatos-do-dia.test.ts` reprova quando a spec da agenda, a costura ou o DAX das
+  regras mudam e a cópia fica para trás.
+- `origin: expression`: não é tabela do modelo. O refresh grava o arquivo (`quente`, junto
+  da `field-agenda-slot`, ~38 mil linhas e ~11 s) e só o congelador o lê.
+- **Prova** (`npm run probe:status-dia-sem-completa`, 26/10/2026): com slot e contagens do
+  mesmo instante, o `Status Protocolo Dia` é o da tradução nativa sobre a agenda completa —
+  13.200 linhas, 0 diferenças; e as contagens do SRD batem com as tiradas da agenda
+  completa nos dias fechados, 37.580 de 37.580. O congelador real, rodado com a agenda
+  completa desligada, deu a mesma tabela nos dias antes da agenda em disco; as 141 linhas
+  trocadas são todas de 24/10 em diante, relatos que o SRD já tinha.
+
 ## Estrutura de `backend/specs/`
 
 ```

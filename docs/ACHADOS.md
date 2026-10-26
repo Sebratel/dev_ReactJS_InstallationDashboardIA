@@ -16091,3 +16091,35 @@ sumiria. Conserto: sobre a pasta ao vivo o corte vai para o instante da busca
 (`overlaySobreBuscaAoVivo`). Teste do defeito e do conserto em `overlay-ao-vivo.test.ts`.
 Vale para qualquer pasta que se queira mesclar com o delta do poller: o corte tem de ser
 o mais novo entre o do poller e o da pasta.
+
+## #247 — o status do dia pelas contagens só bate com o slot do mesmo instante (26/10)
+
+Passo 2 da proposta (DECISAO-AO-VIVO § passo 2): o `Status Protocolo Dia` congelado sem a
+agenda completa, pela agenda de slot + a agregada `relatos-do-dia` do SRD. Duas armadilhas
+no caminho:
+
+- **O instante.** A primeira sonda comparou o status pelas contagens, sobre o slot do
+  snapshot (grupo `quente`), com o nativo sobre a agenda completa do snapshot (grupo
+  `frio`) e acusou 4 linhas de diferença. Não era a tradução: eram relatos que entraram
+  entre as duas cargas. Derivando o slot da agenda completa do mesmo instante, 0 diferença
+  em 13.200 linhas. Por isso a `relatos-do-dia` está no grupo
+  `quente`, junto da `field-agenda-slot` — em grupos diferentes, o congelador mistura
+  instantes e o status de um protocolo do dia pode sair com relato de menos ou de mais.
+  `completa-no-snapshot.test.ts` reprova se elas se separarem.
+- **A carga do congelador.** `carrega` com `lerCalculadas: false` e a FIELD AGENDA no grão
+  reduzido lança `DaxEvalError` em `'FIELD AGENDA'[Relato]` quando o `Status Protocolo
+  Dia` está no plano: a tabela calculada pede a coluna que o slot não tem. O congelador
+  passou a tirar o status do plano principal (`semOStatusDia`) e a fazer uma carga própria
+  só das fontes dele (`paginaDasFontesDoStatusDia`: protocolo da agenda e nº do PG).
+
+## #248 — as listas dos seletores carregam a página inteira, e na Agendamento Field isso é a agenda completa (26/10)
+
+`GET /api/dashboards/:id/valores` calcula na worker sobre o conjunto da página inteira do
+snapshot (a mesma chave de carga da página, desde 16/10, `Servidor.#liberacaoDaPagina`).
+Para a Agendamento Field isso é a FIELD AGENDA completa — inclusive quando a página está ao
+vivo e os visuais saem do mês buscado no SRD, e também no aquecedor. Duas consequências:
+a memória que o ao vivo poupa nos visuais volta pelo seletor; e, sem a agenda completa no
+snapshot (passo 5), as listas de Classificação do Relato, Categoria de Produtividade e
+Descrição perdem a fonte. Conserto previsto no passo 3: carga mínima por seletor (só a
+tabela da coluna, no grão de slot), as três colunas de relato pelo mês ao vivo, e o período
+(`calendar[Data]`) do snapshot, que tem todos os meses.

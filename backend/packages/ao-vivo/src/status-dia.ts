@@ -20,6 +20,7 @@
 // `> 0`. `status-dia.test.ts` prova a equivalência contra o grão relato.
 
 import type { ResolvedQuery } from '../../query-engine/src/types.ts';
+import type { DashboardSpec } from '../../widget-engine/src/spec.ts';
 import type { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { Escalar } from '../../snapshot/src/formato.ts';
 import { statusProtocoloDia } from '../../snapshot/src/nativas.ts';
@@ -104,6 +105,81 @@ export function sqlRelatosDoDia(ctx: Pick<ContextoAoVivo, 'registry' | 'model'>,
   });
 }
 
+/**
+ * O SQL de `relatos-do-dia` sobre a JANELA INTEIRA da agenda — o que a spec
+ * `relatos-do-dia.spec.yaml` guarda para o refresh (26/10/2026). Sem a agenda completa no
+ * snapshot, o refresh congela o `Status Protocolo Dia` com estas contagens
+ * (`statusProtocoloDiaAoVivo`). O período vira as fronteiras da própria janela: o começo
+ * dela (o mesmo `CURRENT_DATE - 3 meses` da spec da agenda) e nenhum fim.
+ *
+ * A spec é uma CÓPIA deste texto, porque o refresh lê SQL de spec; `relatos-do-dia.test.ts`
+ * trava as duas juntas — mudou a agenda, o DAX das regras ou a costura, o teste manda
+ * regravar com `npm run gera:relatos-do-dia`.
+ */
+export function sqlRelatosDaJanela(ctx: Pick<ContextoAoVivo, 'registry' | 'model'>, agregada: AgregadaAoVivo): string {
+  const sql = sqlRelatosDoDia(ctx, agregada);
+  const vezes = (t: string) => sql.split(t).length - 1;
+  if (vezes(':desde::date') !== 1 || vezes(':ate::date') !== 1) {
+    throw new Error('relatos-do-dia: esperava um :desde::date e um :ate::date na costura — revise sqlRelatosDaJanela');
+  }
+  return sql.replace(':desde::date', "(CURRENT_DATE - INTERVAL '3 months')").replace(':ate::date', "'infinity'::date");
+}
+
+/**
+ * `Status Protocolo Dia` para o CONGELADO do refresh sem a agenda completa (passo 2 do ao
+ * vivo): as linhas de slot e de PROTOCOLOS GERAL como o carregador as entrega (chaves do
+ * dataset) e as linhas do arquivo `relatos-do-dia`.
+ */
+export function statusProtocoloDiaDasContagens(
+  agendaSlot: readonly Readonly<Record<string, Escalar>>[],
+  linhasDosRelatos: readonly Readonly<Record<string, Escalar>>[],
+  protocolosGeral: readonly Readonly<Record<string, Escalar>>[],
+): Record<string, Escalar>[] {
+  return statusProtocoloDiaAoVivo(agendaSlot, relatosDoDiaDasLinhas(linhasDosRelatos), protocolosGeral);
+}
+
+/**
+ * Uma página que só carrega as fontes de `Status Protocolo Dia` (FIELD AGENDA e PROTOCOLOS
+ * GERAL), para quem quer as linhas delas sem a calculada no plano. Sem a agenda completa,
+ * carregar a Agendamento Field com `lerCalculadas: false` materializaria o corpo da
+ * calculada pelo DAX, e ele lê `'FIELD AGENDA'[Relato]` — que a agenda de slot não tem.
+ */
+export function paginaDasFontesDoStatusDia(base: DashboardSpec): DashboardSpec {
+  const campo = (entity: string, property: string) => ({ role: 'Values', kind: 'column', entity, property, name: null });
+  return {
+    ...base,
+    id: 'fontes-do-status-protocolo-dia',
+    name: 'fontes do Status Protocolo Dia',
+    filters: [],
+    filters_vazios: 0,
+    visual_count: 1,
+    visuals: [
+      {
+        id: 'fontes',
+        type: 'tableEx',
+        position: { x: 0, y: 0, width: 0, height: 0 },
+        entities_used: ['FIELD AGENDA', 'PROTOCOLOS GERAL'],
+        fields: [campo('FIELD AGENDA', 'Protocolo'), campo('PROTOCOLOS GERAL', 'N°PROTOCOLO')],
+        filters: [],
+        filters_vazios: 0,
+      },
+    ],
+  };
+}
+
+/** As contagens como `buscaRelatosDoDia` as entrega, a partir das linhas da consulta (do banco ou do arquivo). */
+export function relatosDoDiaDasLinhas(linhas: readonly Readonly<Record<string, Escalar>>[]): RelatoDoDia[] {
+  return linhas.map((l) => {
+    const dia = celula(l, 'Dia Relato');
+    return {
+      protocolo: String(celula(l, 'Protocolo')),
+      dia: dia === null ? null : String(dia),
+      improdutivo: celula(l, 'Improdutivo') === true,
+      tecnico: celula(l, 'Tecnico') === true,
+    };
+  });
+}
+
 export async function buscaRelatosDoDia(
   ctx: ContextoAoVivo,
   agregada: AgregadaAoVivo,
@@ -114,12 +190,7 @@ export async function buscaRelatosDoDia(
   if (!conector) throw new Error(`relatos-do-dia: sem conector para '${base.datasource}'`);
   const q: ResolvedQuery = { ...base, id: `${agregada.base}:${agregada.nome}`, sql: sqlRelatosDoDia(ctx, agregada) };
   const linhas = await conector.execute(q, { desde: periodo.desde, ate: periodo.ate });
-  return linhas.map((l) => ({
-    protocolo: String(l['Protocolo']),
-    dia: l['Dia Relato'] === null || l['Dia Relato'] === undefined ? null : String(l['Dia Relato']),
-    improdutivo: l['Improdutivo'] === true,
-    tecnico: l['Tecnico'] === true,
-  }));
+  return relatosDoDiaDasLinhas(linhas as Record<string, Escalar>[]);
 }
 
 /**
