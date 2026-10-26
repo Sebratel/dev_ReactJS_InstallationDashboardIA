@@ -35,6 +35,7 @@ import type { PiscinaWorkers } from '../src/piscina-workers.ts';
 import { Servidor } from '../src/servidor.ts';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from '../src/worker-calculador.ts';
 import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
+import { raizComAgendaCompleta } from './fixtures/specs-com-chave.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SPECS = path.join(ROOT, 'backend', 'specs');
@@ -74,7 +75,7 @@ async function gravaAgregada(dir: string, geradoEm: string, linhas: Record<strin
 
 async function sobe(
   t: { after: (f: () => void | Promise<void>) => void },
-  o: { aoVivo: boolean },
+  o: { aoVivo: boolean; raiz?: string },
 ): Promise<{ pedidos: Pedido[]; busca: (rota: string) => Promise<Response>; snapshot: string; servidor: Servidor }> {
   const snapshot = fs.mkdtempSync(path.join(os.tmpdir(), 'valores-ao-vivo-'));
   t.after(() => fs.rmSync(snapshot, { recursive: true, force: true }));
@@ -94,7 +95,7 @@ async function sobe(
   };
   const servidor = new Servidor({
     acesso: ACESSO_LIBERADO,
-    root: ROOT,
+    root: o.raiz ?? ROOT,
     snapshotDir: snapshot,
     webDir: path.join(ROOT, 'frontend', 'dist'),
     agora: () => AGORA,
@@ -185,8 +186,8 @@ test('um refresh da agregada chega ao seletor', async (t) => {
   assert.deepEqual(valores, ['Alfa', 'Gama'], 'o carimbo da agregada entra no frescor da lista');
 });
 
-test('sem a agregada no snapshot (o primeiro deploy): a lista de relato segue pela página inteira, como antes', async (t) => {
-  const { pedidos, busca, snapshot } = await sobe(t, { aoVivo: true });
+test('sem a agregada no snapshot (o primeiro deploy), com a agenda completa nele: a lista de relato segue pela página inteira, como antes', async (t) => {
+  const { pedidos, busca, snapshot } = await sobe(t, { aoVivo: true, raiz: raizComAgendaCompleta(true) });
   assert.equal((await busca(lista('FIELD AGENDA', 'ClassificacaoRelato'))).status, 200);
   const [p] = pedidos.filter((x) => x.valores);
   assert.equal(p!.dashboardSpec.id, AGENDA.id);
@@ -194,8 +195,8 @@ test('sem a agregada no snapshot (o primeiro deploy): a lista de relato segue pe
   assert.ok(p!.precisaFormaCompleta?.includes('FIELD AGENDA'));
 });
 
-test('página fora do ao vivo: o seletor comum segue pela página inteira do snapshot (a mesma carga da abertura)', async (t) => {
-  const { pedidos, busca } = await sobe(t, { aoVivo: false });
+test('página fora do ao vivo, com a agenda completa no snapshot: o seletor comum segue pela página inteira (a mesma carga da abertura)', async (t) => {
+  const { pedidos, busca } = await sobe(t, { aoVivo: false, raiz: raizComAgendaCompleta(true) });
   assert.equal((await busca(lista('PROTOCOLOS GERAL', 'CIDADE'))).status, 200);
   const [p] = pedidos.filter((x) => x.valores);
   assert.equal(p!.dashboardSpec.id, AGENDA.id);

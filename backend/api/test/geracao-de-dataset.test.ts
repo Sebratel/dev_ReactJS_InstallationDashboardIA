@@ -171,16 +171,23 @@ async function chavesPorPagina(
   pedidos: Omit<MensagemCalculoWorker, 'idReq'>[],
   ids: readonly string[],
 ): Promise<Map<string, { chaves: Set<string>; tipos: Set<string> }>> {
+  // O tipo vem da ROTA que gerou o pedido. Contar visuais não serve desde o passo 3b do ao
+  // vivo: sem a agenda completa no snapshot, a abertura da Agendamento Field manda à worker
+  // 3 visuais a menos (os de relato saem indisponíveis) e parecia um `?visual=`.
+  const tipoDe = new Map<Omit<MensagemCalculoWorker, 'idReq'>, string>();
   for (const id of ids) {
-    for (const rota of rotasDe(id)) await (await s.busca(rota)).arrayBuffer();
+    for (const rota of rotasDe(id)) {
+      const antes = pedidos.length;
+      await (await s.busca(rota)).arrayBuffer();
+      const tipo = rota.includes('/valores?') ? 'valores' : rota.includes('?visual=') ? 'visual' : 'abertura';
+      for (const p of pedidos.slice(antes)) tipoDe.set(p, tipo);
+    }
   }
   const por = new Map<string, { chaves: Set<string>; tipos: Set<string> }>();
   for (const p of pedidos) {
     const e = por.get(p.dashboardSpec.id) ?? { chaves: new Set<string>(), tipos: new Set<string>() };
     e.chaves.add(chaveDoPedido(p));
-    // Página de um visual só (as de dica) não distingue abertura de recorte: conta como abertura.
-    const total = PAGINAS.find((d) => d.id === p.dashboardSpec.id)?.visuals?.length ?? 0;
-    e.tipos.add(p.valores ? 'valores' : (p.dashboardSpec.visuals?.length ?? 0) < total ? 'visual' : 'abertura');
+    e.tipos.add(tipoDe.get(p) ?? 'abertura');
     por.set(p.dashboardSpec.id, e);
   }
   return por;

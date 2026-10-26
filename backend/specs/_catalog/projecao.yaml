@@ -72,12 +72,15 @@ grao_reduzido:
       as únicas colunas que dependem de `reports` na SQL de `field-agenda`, então
       errar para MAIS exigiria uma coluna nova em `reports`/`people`/`skills` que
       ninguém adicionou a esta lista.
-    # O refresh grava a agenda COMPLETA no snapshot? Sim até o passo 5 da proposta de
-    # 25/10/2026 (docs/DECISAO-AO-VIVO.md, aprovada pelo Erick): com a Agendamento Field
-    # servida do SRD, ela sai do refresh, e isto vira `false` no mesmo commit em que a
-    # `field-agenda` sai de `refresh.yaml` (`completa-no-snapshot.test.ts` cobra os dois
-    # juntos). Falso, o `Status Protocolo Dia` congela pelas contagens de `relatos-do-dia`.
-    completa_no_snapshot: true
+    # O refresh grava a agenda COMPLETA no snapshot? NÃO desde 26/10/2026 — passo 5 da
+    # proposta de 25/10/2026 (docs/DECISAO-AO-VIVO.md, aprovada pelo Erick): com a
+    # Agendamento Field servida do SRD, ela saiu do refresh no mesmo commit em que isto
+    # virou `false` (`completa-no-snapshot.test.ts` cobra os dois juntos). Sem ela: o
+    # `Status Protocolo Dia` congela pelas contagens de `relatos-do-dia`; nenhuma carga do
+    # snapshot pede a forma completa, e os visuais de relato que saem pelo snapshot voltam
+    # indisponíveis (passo 3b); o poller mede a cobertura da agenda pelo slot (ACHADOS #252).
+    # EXIGE a Agendamento Field em `AO_VIVO_PAGINAS` — sem isso a subida avisa.
+    completa_no_snapshot: false
     # As listas dos seletores de relato (Classificação, Categoria de Produtividade,
     # Descrição) saem desta agregada do SRD — os valores distintos na janela da agenda —, e
     # não da página carregada com a agenda completa (passo 3, ACHADOS #248). Gerada por

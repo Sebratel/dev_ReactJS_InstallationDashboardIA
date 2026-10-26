@@ -528,6 +528,24 @@ real sobre ele.
 - **A subida avisa** (`avisoSemCompleta`): agenda completa fora do snapshot e a Agendamento
   Field fora de `AO_VIVO_PAGINAS` é o estado que tira número da tela sem erro nenhum.
 
+**Passo 5, virado na `staging` (26/10/2026).** `completa_no_snapshot: false` e a
+`field-agenda` fora do grupo `frio` (e da carga das 3h, que é a união dos grupos), no mesmo
+commit; a incremental do `frio` desligou junto (era a única ligada). Voltar atrás é um commit:
+a query de volta no `frio`, `incremental: [field-agenda]` e a chave em `true`.
+
+Antes de promover para a `main`, e depois:
+
+1. **`AO_VIVO_PAGINAS` com `agendamento-field` na stack da main** (passo 4, configuração).
+   Sem isso, os três visuais de relato saem indisponíveis para todo mundo — a subida avisa
+   no log, mas a tela não erra.
+2. **Medir o refresh e baixar o `mem_limit`**: o pico do contêiner numa carga das 3h sem a
+   agenda completa, na staging. O teto de 3 GB existia por ela; antes de ela crescer, 1.400
+   MiB bastavam para o resto. Baixar só com a medida (comentário em `docker-compose.prod.yml`).
+3. O arquivo velho da `field-agenda` fica no volume do snapshot e no manifesto. Nada o lê
+   (servidor, congelador, poller e saúde já o ignoram); apagá-lo é só faxina de ~15 MB.
+4. As listas de relato dependem de `valores-do-relato` (grupo `frio`): até a primeira carga
+   dela num volume novo, o seletor de relato responde 409 com o motivo.
+
 **Desenho descartado no caminho:** listar as colunas de relato do mês ao vivo da abertura,
 no mesmo conjunto da página. A sonda mostrou o custo: em 26/10, Classificação do Relato
 com 26 valores no mês contra 36 na janela, e Descrição com 9 contra 13 — quem trocasse o

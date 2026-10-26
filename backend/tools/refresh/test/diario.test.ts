@@ -36,10 +36,13 @@ test('a carga da madrugada cobre toda query do refresh.yaml real, sem repetiçã
   assert.ok(queries.length >= 25, `li ${queries.length}`);
   for (const g of grupos.values()) for (const q of g.queries) assert.ok(queries.includes(q), q);
   assert.equal(new Set(queries).size, queries.length);
-  // As 25 que o crontab listava à mão até 17/10/2026.
-  for (const q of ['protocolos-geral', 'protocolos-produtividade', 'field-agenda', 'contratos', 'troca-endereco']) {
+  // As 25 que o crontab listava à mão até 17/10/2026 — menos a `field-agenda`, que saiu do
+  // refresh em 26/10/2026 (passo 5 do ao vivo); no lugar dela entraram as duas agregadas do
+  // relato.
+  for (const q of ['protocolos-geral', 'protocolos-produtividade', 'contratos', 'troca-endereco', 'relatos-do-dia', 'valores-do-relato']) {
     assert.ok(queries.includes(q), q);
   }
+  assert.ok(!queries.includes('field-agenda'), 'a agenda completa não é mais carregada');
 });
 
 test('argumentos: os mesmos do antigo crontab (heap do filho, --refazer, --memoria)', () => {

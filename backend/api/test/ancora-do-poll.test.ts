@@ -30,7 +30,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { leConfigDePoll } from '../src/poller-realtime.ts';
+import { leConfigDePoll, queryQueCobre } from '../src/poller-realtime.ts';
+import { leGraoReduzido } from '../../packages/semantic-model/src/projecao.ts';
 import { costura } from '../../packages/snapshot/src/incremental.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -133,7 +134,11 @@ test('toda query com poll de quase-realtime tem um grupo de refresh atrás dela'
     Object.values(grupos.grupos ?? {}).flatMap((g) => g.queries ?? []),
   );
 
-  const orfas = polls.filter((q) => !comGrupo.has(q));
+  // A carga que COBRE a query vigiada (`queryQueCobre`): a própria, salvo a forma completa
+  // de um grão reduzido fora do snapshot — a `field-agenda` desde 26/10/2026 (passo 5 do ao
+  // vivo), coberta pela `field-agenda-slot` do `quente`.
+  const grao = leGraoReduzido(SPECS);
+  const orfas = polls.filter((q) => !comGrupo.has(queryQueCobre(q, grao)));
   assert.deepEqual(
     orfas,
     [],

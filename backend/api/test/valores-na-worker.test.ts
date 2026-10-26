@@ -23,6 +23,7 @@ import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PiscinaWorkers } from '../src/piscina-workers.ts';
 import { Servidor } from '../src/servidor.ts';
 import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
+import { raizComAgendaCompleta } from './fixtures/specs-com-chave.ts';
 import type { OverlayDeTabela } from '../src/overlay-realtime.ts';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from '../src/worker-calculador.ts';
 
@@ -161,14 +162,14 @@ function piscinaFalsa(): {
   };
 }
 
-async function sobe(piscina: PiscinaWorkers): Promise<{
+async function sobe(piscina: PiscinaWorkers, raiz: string = ROOT): Promise<{
   servidor: Servidor;
   busca: (rota: string) => Promise<Response>;
   fecha: () => Promise<void>;
 }> {
   const servidor = new Servidor({
     acesso: ACESSO_LIBERADO,
-    root: ROOT,
+    root: raiz,
     snapshotDir: fs.mkdtempSync(path.join(os.tmpdir(), 'valores-worker-vazio-')),
     webDir: WEB,
     agora: () => AGORA,
@@ -225,12 +226,12 @@ test('a rota de valores calcula na piscina, e pedidos iguais simultâneos viram 
   }
 });
 
-test('a lista de uma coluna-gatilho vem da forma completa, a mesma que os visuais da página usam', async () => {
+test('com a agenda completa no snapshot (antes do passo 5), a lista de uma coluna-gatilho vem da forma completa, a mesma dos visuais', async () => {
   // `ClassificacaoRelato` é coluna-gatilho do grão reduzido da FIELD AGENDA
   // (`projecao.yaml`). Carregada sem nenhum visual amarrado, a lista caía no grão
   // reduzido: medido em 05/10/2026, 14 de 36 valores (ACHADOS #175).
   const f = piscinaFalsa();
-  const s = await sobe(f.piscina);
+  const s = await sobe(f.piscina, raizComAgendaCompleta(true));
   try {
     const r = s.busca('/api/dashboards/agendamento-field/valores?tabela=FIELD AGENDA&coluna=ClassificacaoRelato');
     await ate(() => f.pedidos.length === 1);
@@ -295,12 +296,12 @@ test('depois de um evento a lista anterior responde na hora, e a nova chega no p
   }
 });
 
-test('?visual= da VISÃO PRODUTIVA leva as fontes do recálculo ao vivo na forma completa', async () => {
+test('com a agenda completa no snapshot (antes do passo 5), ?visual= da VISÃO PRODUTIVA leva as fontes do recálculo ao vivo na forma completa', async () => {
   // ACHADOS #194. O visual não lê a FIELD AGENDA direto: sem isto ela vinha no grão
   // reduzido, a tradução nativa de Status Protocolo Dia recusava por falta de colunas, e
   // o visual voltava como erro em 3–8 s, medido na stack em 09/10/2026.
   const f = piscinaFalsa();
-  const s = await sobe(f.piscina);
+  const s = await sobe(f.piscina, raizComAgendaCompleta(true));
   try {
     void s.busca('/api/dashboards/agendamento-field?visual=04979b00e5329b67f349').catch(() => undefined);
     await ate(() => f.pedidos.length === 1);

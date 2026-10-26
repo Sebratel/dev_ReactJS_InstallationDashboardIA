@@ -547,9 +547,17 @@ grupos:
   # valores distintos das três colunas de relato com seletor, de onde a API lista esses
   # seletores sem carregar a agenda completa. Aqui, na cadência da `field-agenda` de quem
   # a lista saía antes; dezenas de linhas, poucos segundos de SRD.
+  #
+  # **`field-agenda` SAIU do refresh em 26/10/2026** (passo 5 de DECISAO-AO-VIVO, proposto
+  # e aprovado pelo Erick em 25/10), junto com `completa_no_snapshot: false` em
+  # `projecao.yaml` — `completa-no-snapshot.test.ts` cobra os dois juntos. Quem lia a agenda
+  # completa do snapshot tem outro caminho: a Agendamento Field vem do SRD (o mês da tela,
+  # completo), o `Status Protocolo Dia` congela pelas contagens de `relatos-do-dia`, os
+  # seletores de relato listam de `valores-do-relato`, e o `calendar` sai da agenda de slot.
+  # Com ela saiu a incremental do grupo (era a única ligada). Voltar atrás: recolocar a
+  # query aqui, `incremental: [field-agenda]`, e a chave em `true`.
   frio:
     queries:
-      - field-agenda
       - valores-do-relato
       - protocolos-auxiliares
       - protocolos-telefonia
@@ -559,4 +567,4 @@ grupos:
       - instalacoes-reincidentes
       - reincidencia
     intervalo_minutos: 60
-    incremental: [field-agenda]
+    incremental: false

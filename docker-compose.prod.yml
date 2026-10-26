@@ -340,6 +340,11 @@ services:
     # `field-agenda` passou de 632 mil linhas em 20/10/2026 e o processo era morto pelo
     # cgroup de 1400 MiB antes de publicar o snapshot. Os 3 GB deixam folga para buffers
     # fora do heap durante a transformação, sem dividir o orçamento da API.
+    #
+    # **A `field-agenda` SAIU do refresh em 26/10/2026** (passo 5 de docs/DECISAO-AO-VIVO.md).
+    # Este teto existia por ela, e desce depois de MEDIDO: o pico do contêiner numa carga das
+    # 3h sem ela (`docker stats` / estatística do Portainer). Antes dela crescer, 1400 MiB
+    # bastavam para o resto. Não baixe sem a medida.
     mem_limit: 3g
     # **Orçamento do host (20/10/2026):** a stack não pode ocupar mais de 3 GB o tempo
     # todo; pico pode, desde que não afete as outras aplicações do servidor. Contínuo:

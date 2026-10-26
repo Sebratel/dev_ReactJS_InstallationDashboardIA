@@ -18,6 +18,7 @@ import { leGraoReduzido } from '../../../packages/semantic-model/src/projecao.ts
 import { escreveManifesto } from '../../../packages/snapshot/src/manifesto.ts';
 import { leGrupos } from '../src/grupos.ts';
 import { montaStatusDeRefresh } from '../src/status.ts';
+import { raizComAgendaCompleta } from '../../../api/test/fixtures/specs-com-chave.ts';
 
 const SPECS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'specs');
 
@@ -52,10 +53,7 @@ test('a query dos valores dos seletores de cada grão reduzido está no refresh'
 test('a saúde do refresh não avalia a forma completa que saiu do snapshot', async () => {
   const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'completa-no-snapshot-'));
   try {
-    const specs = path.join(raiz, 'specs');
-    fs.cpSync(SPECS, specs, { recursive: true });
-    const projecao = path.join(specs, '_catalog', 'projecao.yaml');
-    fs.writeFileSync(projecao, fs.readFileSync(projecao, 'utf8').replace('completa_no_snapshot: true', 'completa_no_snapshot: false'));
+    const specs = path.join(raizComAgendaCompleta(false), 'backend', 'specs');
     const snapshot = path.join(raiz, 'snapshot');
     fs.mkdirSync(snapshot);
     await escreveManifesto(snapshot, [
@@ -66,7 +64,7 @@ test('a saúde do refresh não avalia a forma completa que saiu do snapshot', as
     const ids = (dir: string) => (montaStatusDeRefresh(snapshot, dir, agora).queries ?? []).map((q) => q.id);
     assert.ok(!ids(specs).includes('field-agenda'), 'fora do snapshot por decisão, não é carga parada');
     assert.ok(ids(specs).includes('field-agenda-slot'));
-    assert.ok(ids(SPECS).includes('field-agenda'), 'controle: com a chave ligada, ela é avaliada');
+    assert.ok(ids(path.join(raizComAgendaCompleta(true), 'backend', 'specs')).includes('field-agenda'), 'controle: com a chave ligada, ela é avaliada');
   } finally {
     fs.rmSync(raiz, { recursive: true, force: true });
   }

@@ -306,10 +306,11 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     // `montaStatusDeRefresh`, não da rota, e está em
     // `backend/tools/refresh/test/status.test.ts`. Testá-lo aqui amarrava o contrato da
     // rota ao arranjo de grupos do dia — que é exatamente o que acabou de mudar.
-    const fieldAgenda = j.refresh.queries.find((q: any) => q.id === 'field-agenda');
-    assert.ok(fieldAgenda);
-    assert.equal(fieldAgenda.status, 'falhou');
-    assert.equal(fieldAgenda.erro, undefined);
+    //
+    // **E saiu do refresh em 26/10/2026** (passo 5 do ao vivo): a agenda completa não está
+    // mais no snapshot, e a saúde não a avalia — o arquivo velho no manifesto acusaria
+    // "vencida" para sempre (`completa-no-snapshot.test.ts`).
+    assert.equal(j.refresh.queries.find((q: any) => q.id === 'field-agenda'), undefined);
 
     // O resumo do topo (ACHADOS #160): 2 falhas seguidas no frio acendem, e continua 200.
     assert.equal(j.degradacao.degradado, true);

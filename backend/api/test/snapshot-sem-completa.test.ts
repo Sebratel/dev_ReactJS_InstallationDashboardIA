@@ -11,14 +11,15 @@
 //     e data);
 //   - a lista de um seletor de relato sem a agregada no snapshot é 409, não lista parcial.
 //
-// As specs são uma CÓPIA com a chave desligada; a piscina é de mentira e anota os pedidos.
-// O controle (specs reais, chave ligada) mostra que hoje nada disso acontece.
+// As specs são CÓPIAS com a chave nos dois valores (`fixtures/specs-com-chave.ts`), para o
+// teste não depender do valor do dia; a piscina é de mentira e anota os pedidos. O controle,
+// com a chave ligada, é o estado de antes do passo 5 (que a virou em 26/10/2026).
 
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import test, { after } from 'node:test';
+import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { escreveManifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { planeja } from '../../packages/snapshot/src/plano.ts';
@@ -34,6 +35,7 @@ import { queryQueCobre } from '../src/poller-realtime.ts';
 import { Servidor } from '../src/servidor.ts';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from '../src/worker-calculador.ts';
 import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
+import { raizComAgendaCompleta } from './fixtures/specs-com-chave.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const AGORA = new Date('2026-08-07T12:00:00.000Z');
@@ -42,17 +44,9 @@ const AGENDA = PAGINAS.find((d) => d.id === 'agendamento-field')!;
 const MODELO = SemanticModel.fromSpecsDir(path.join(ROOT, 'backend', 'specs'));
 const RELATO = ['HISTÓRICO DE RELATOS', 'HISTÓRICO DE RELATOS COMPLETOS', 'MOTIVO IMPRODUTIVO/ PRODUTIVO'];
 
-/** Uma raiz com as specs copiadas e a agenda completa FORA do snapshot. */
-const SEM_COMPLETA = (() => {
-  const raiz = fs.mkdtempSync(path.join(os.tmpdir(), 'snapshot-sem-completa-'));
-  fs.cpSync(path.join(ROOT, 'backend', 'specs'), path.join(raiz, 'backend', 'specs'), { recursive: true });
-  const projecao = path.join(raiz, 'backend', 'specs', '_catalog', 'projecao.yaml');
-  const texto = fs.readFileSync(projecao, 'utf8');
-  assert.match(texto, /completa_no_snapshot: true/);
-  fs.writeFileSync(projecao, texto.replace('completa_no_snapshot: true', 'completa_no_snapshot: false'));
-  return raiz;
-})();
-after(() => fs.rmSync(SEM_COMPLETA, { recursive: true, force: true }));
+/** Raízes com as specs copiadas e a agenda completa fora / dentro do snapshot. */
+const SEM_COMPLETA = raizComAgendaCompleta(false);
+const COM_COMPLETA = raizComAgendaCompleta(true);
 
 type Pedido = Omit<MensagemCalculoWorker, 'idReq'>;
 
@@ -191,7 +185,7 @@ test('o refresh da agenda de slot muda o carimbo da página, com a completa para
   const queries = [...new Set([...planeja([AGENDA], MODELO).queries, 'field-agenda-slot'])];
   const snapshot = await manifestoDaAgenda(queries, () => '2026-08-07T10:00:00.000Z');
   t.after(() => fs.rmSync(snapshot, { recursive: true, force: true }));
-  const { servidor } = await sobe(t, ROOT, snapshot);
+  const { servidor } = await sobe(t, COM_COMPLETA, snapshot);
   const antes = servidor['carimboDaPagina'](AGENDA);
 
   await escreveManifesto(
@@ -212,7 +206,7 @@ test('sem a agenda completa, a página fica pronta sem o arquivo dela (o snapsho
     return corpo.dashboards.find((d) => d.id === AGENDA.id)!.pronta;
   };
   assert.equal(await pronta(SEM_COMPLETA), true);
-  assert.equal(await pronta(ROOT), false, 'controle: com a chave ligada, a completa ainda é exigida');
+  assert.equal(await pronta(COM_COMPLETA), false, 'controle: com a chave ligada, a completa ainda é exigida');
 });
 
 // O poller poda o delta da agenda pelo `geradoEm` da carga em lote que o cobre. Sem a
@@ -221,7 +215,7 @@ test('sem a agenda completa, a página fica pronta sem o arquivo dela (o snapsho
 test('o poller mede a cobertura da agenda pelo slot quando a completa sai do snapshot', () => {
   const semCompleta = SemanticModel.fromSpecsDir(path.join(SEM_COMPLETA, 'backend', 'specs')).graoReduzido;
   assert.equal(queryQueCobre('field-agenda', semCompleta), 'field-agenda-slot');
-  assert.equal(queryQueCobre('field-agenda', MODELO.graoReduzido), 'field-agenda', 'controle: hoje, a própria');
+  assert.equal(queryQueCobre('field-agenda', SemanticModel.fromSpecsDir(path.join(COM_COMPLETA, 'backend', 'specs')).graoReduzido), 'field-agenda', 'controle: com a chave ligada, a própria');
   assert.equal(queryQueCobre('protocolos-geral', semCompleta), 'protocolos-geral', 'as outras, as próprias');
 });
 
@@ -232,11 +226,11 @@ test('a subida avisa quando a agenda completa saiu do snapshot e a página de re
   assert.ok(aviso);
   assert.match(aviso, /agendamento-field não está em AO_VIVO_PAGINAS/);
   assert.equal(avisoSemCompleta(SEM_COMPLETA, new Set(['agendamento-field'])), null, 'com ela ao vivo, nada a avisar');
-  assert.equal(avisoSemCompleta(ROOT, new Set()), null, 'controle: com a completa no snapshot, nada a avisar');
+  assert.equal(avisoSemCompleta(COM_COMPLETA, new Set()), null, 'controle: com a completa no snapshot, nada a avisar');
 });
 
-test('controle — com a agenda completa no snapshot (hoje): nada indisponível, e a carga a pede', async (t) => {
-  const { pedidos, busca } = await sobe(t, ROOT);
+test('controle — com a agenda completa no snapshot (antes do passo 5): nada indisponível, e a carga a pede', async (t) => {
+  const { pedidos, busca } = await sobe(t, COM_COMPLETA);
   const r = await busca(comFiltros(AGENDA.id));
   assert.equal(r.status, 200);
   const corpo = (await r.json()) as { visuais: VisualCalculado[] };
