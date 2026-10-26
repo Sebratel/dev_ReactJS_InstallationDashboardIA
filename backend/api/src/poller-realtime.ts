@@ -35,6 +35,7 @@ import type { PgPoolLike } from '../../packages/query-engine/src/connectors-sql.
 import { postgresRunner } from '../../packages/query-engine/src/connectors-sql.ts';
 import type { Escalar } from '../../packages/snapshot/src/formato.ts';
 import { SemanticModel } from '../../packages/semantic-model/src/model.ts';
+import type { GraoReduzido } from '../../packages/semantic-model/src/projecao.ts';
 import { materializaColunas, materializaColunasPorGrao } from '../../packages/snapshot/src/colunas-calculadas.ts';
 import { GRAO_REDUZIDO_DE } from '../../packages/snapshot/src/grao-reduzido.ts';
 import { DIRETORIO_PADRAO, leManifesto } from '../../packages/snapshot/src/manifesto.ts';
@@ -297,6 +298,17 @@ export function aplicaBusca(
   }
 
   return { porChave, vistoEm, inicioJanela: delta.inicioJanela, desde };
+}
+
+/**
+ * A query cuja carga em lote cobre as mudanças da tabela vigiada por `query` — de onde sai
+ * o `cobertoAte` da partida e da poda. É a própria, salvo a forma completa de um grão
+ * reduzido fora do snapshot (`completa_no_snapshot: false`): ela não é mais carregada, e
+ * quem cobre é a padrão.
+ */
+export function queryQueCobre(query: string, grao: readonly Pick<GraoReduzido, 'queryCompleta' | 'queryPadrao' | 'completaNoSnapshot'>[]): string {
+  const g = grao.find((x) => x.queryCompleta === query && !x.completaNoSnapshot);
+  return g ? g.queryPadrao : query;
 }
 
 /**
@@ -715,11 +727,26 @@ export class PollerRealtime {
     try {
       // `backend/specs/` -> raiz do repositório, onde fica o `snapshot/`.
       const m = leManifesto(path.join(this.#specsDir, '..', '..', DIRETORIO_PADRAO));
-      const e = m?.tabelas.find((x) => x.query === cfg.query);
+      const query = this.#queryNoDisco(cfg.query);
+      const e = m?.tabelas.find((x) => x.query === query);
       return e ? Date.parse(e.geradoEm) - 10 * 60_000 : null;
     } catch {
       return null;
     }
+  }
+
+  /**
+   * A query cuja carga cobre as mudanças desta tabela no disco. É a própria — salvo a forma
+   * completa de um grão reduzido que saiu do snapshot (`completa_no_snapshot: false`,
+   * passo 5 do ao vivo): a `field-agenda` deixa de ser carregada, a entrada dela no
+   * manifesto para no dia da virada, e a poda do delta (`podaDelta`) nunca mais tiraria
+   * nada — o overlay da agenda juntaria 48 h de mudança no grão relato. Aí quem cobre é a
+   * padrão (`field-agenda-slot`, 15 min). A página ao vivo segue coberta: a geração do mês
+   * aberto (até ~5 min) é sempre mais nova que a cobertura do slot (10 min ou mais).
+   */
+  #queryNoDisco(query: string): string {
+    this.#modelo ??= SemanticModel.fromSpecsDir(this.#specsDir);
+    return queryQueCobre(query, this.#modelo.graoReduzido);
   }
 
   /**

@@ -35,6 +35,7 @@
     "probe:ao-vivo-agenda": "node --max-old-space-size=8192 backend/tools/probe/src/ao-vivo-agenda.ts",
     "probe:status-dia-sem-completa": "node --max-old-space-size=8192 backend/tools/probe/src/status-dia-sem-completa.ts",
     "probe:valores-ao-vivo": "node --max-old-space-size=8192 backend/tools/probe/src/valores-ao-vivo.ts",
+    "probe:snapshot-sem-completa": "node --max-old-space-size=8192 backend/tools/probe/src/snapshot-sem-completa.ts",
     "probe:gsheets": "node backend/tools/probe/src/gsheets.ts",
     "probe:redis": "node backend/tools/probe/src/redis.ts",
     "probe:tipos-data": "node backend/tools/probe/src/tipos-data.ts",

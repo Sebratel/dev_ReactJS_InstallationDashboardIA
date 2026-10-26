@@ -23,9 +23,10 @@ import path from 'node:path';
 import { leVariantesAoVivo } from '../../packages/ao-vivo/src/catalogo.ts';
 import { decideDoAno, PAGINAS_DO_ANO, periodoDoAno, VARIANTE_PG_DO_ANO } from '../../packages/ao-vivo/src/instalacao-do-ano.ts';
 import { decideDaJanela, PAGINAS_DA_JANELA, periodoDaJanela } from '../../packages/ao-vivo/src/janela-de-protocolos.ts';
-import { decideAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { decideAoVivo, visuaisForaDoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { SemanticModel } from '../../packages/semantic-model/src/model.ts';
 import { codificaFiltro, decodificaFiltros } from '../../packages/widget-engine/src/filtro-url.ts';
-import { filtrosPadrao } from '../../packages/widget-engine/src/filtros-padrao.ts';
+import { filtrosPadrao, ignoraDataDaTela } from '../../packages/widget-engine/src/filtros-padrao.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { montaContextoAoVivo } from './contexto-ao-vivo.ts';
 import type { ConjuntoAoVivo, PedidoDeGeracao } from './geracao-do-conjunto.ts';
@@ -33,6 +34,30 @@ import { geraEmProcesso } from './geracao-em-processo.ts';
 import type { PaginaServidaAoVivo } from './opcoes-servidor.ts';
 import { FilaDeBuscas, PeriodosAoVivo } from './periodos-ao-vivo.ts';
 import { SombraAoVivo } from './sombra-ao-vivo.ts';
+
+/**
+ * O aviso da subida para o estado que tira número da tela sem erro nenhum: a agenda completa
+ * fora do snapshot (`completa_no_snapshot: false`, passo 5) e uma página que lê relato FORA
+ * do ao vivo. Os visuais de relato dela saem indisponíveis em todo pedido — certo, mas
+ * calado para quem configurou a stack. `null` quando não há o que avisar.
+ */
+export function avisoSemCompleta(root: string, servidas: ReadonlySet<string>): string | null {
+  const specs = path.join(root, 'backend', 'specs');
+  const model = SemanticModel.fromSpecsDir(specs);
+  const fora = model.graoReduzido.filter((g) => !g.completaNoSnapshot);
+  if (fora.length === 0) return null;
+  // Gatilho só das tabelas que saíram: as que seguem completas no snapshot não contam.
+  const completas = model.graoReduzido.filter((g) => g.completaNoSnapshot).map((g) => g.tabela);
+  const faltam = loadDashboards(specs).filter(
+    (d) => !servidas.has(d.id) && [...visuaisForaDoAoVivo(d, model, completas).keys()].some((v) => !ignoraDataDaTela(d.id, v)),
+  );
+  if (faltam.length === 0) return null;
+  return (
+    `[ao-vivo] ATENÇÃO: ${fora.map((g) => g.tabela).join(', ')} completa não está no snapshot (completa_no_snapshot: ` +
+    `false, projecao.yaml), e ${faltam.map((d) => d.id).join(', ')} não está em AO_VIVO_PAGINAS — os visuais de ` +
+    'relato vão sair indisponíveis em todo pedido. Ponha a página em AO_VIVO_PAGINAS.'
+  );
+}
 
 /** As páginas que sabem ser servidas ao vivo. Outra em `AO_VIVO_PAGINAS` é ignorada, com aviso. */
 export const SABEM_SER_AO_VIVO: ReadonlySet<string> = new Set(['agendamento-field', ...PAGINAS_DO_ANO, ...PAGINAS_DA_JANELA]);

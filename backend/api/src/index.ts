@@ -35,7 +35,7 @@ import { criaUsoDasTelas } from './uso-das-telas.ts';
 import { leTetoDaResposta, memoriaDaResposta } from './memoria-limitada.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
-import { montaAoVivoDaApi } from './ao-vivo-da-api.ts';
+import { avisoSemCompleta, montaAoVivoDaApi } from './ao-vivo-da-api.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -337,6 +337,8 @@ const aoVivo = await montaAoVivoDaApi({
   conta: (nome, quanto) => servidor.metricas.conta(nome, quanto),
 });
 console.log(aoVivo.linha);
+const avisoDaCompleta = avisoSemCompleta(ROOT, new Set(aoVivo.paginas.keys()));
+if (avisoDaCompleta) console.error(avisoDaCompleta);
 aoVivo.aquece();
 
 const servidor = new Servidor({

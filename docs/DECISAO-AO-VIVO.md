@@ -506,8 +506,27 @@ as reais) e `visual-indisponivel.test.tsx` na tela.
 
 **Com isso, o Relatório do Mês não precisa de decisão:** ele não tem visual de relato; pelo
 snapshot sem a agenda completa, carrega o slot e o `calendar` segue recalculando pelo tempo
-real sobre ele. O que falta provar no passo 5 é esse recálculo com o delta do poller sobre
-o slot igual ao de hoje sobre a completa.
+real sobre ele.
+
+**Preparação do passo 5 (26/10/2026): o que a virada quebraria calado, e a prova.**
+
+- `npm run probe:snapshot-sem-completa`, numa cópia do snapshot com o slot tirado da
+  própria completa (mesmo instante): Relatório do Mês 36 de 36 visuais iguais e Agendamento
+  Field 36 de 36 (os 3 de relato à parte), completa contra slot; e o Relatório do Mês com
+  um delta do poller que adianta um dia o horário de 10 protocolos — o delta muda 3
+  visuais, o `calendar` é recalculado nas duas pontas, e as duas dão 36 de 36 iguais. O
+  delta é montado como o poller entrega: colunas da consulta, e as calculadas da agenda
+  recalculadas sobre elas (com as do disco, a `Data` velha ficava, e nada mudava).
+- **O poller** podava o delta da agenda pelo `geradoEm` da `field-agenda` no manifesto
+  (`cobertoAte`). Parada a carga dela, a poda pararia, e o overlay juntaria 48 h de
+  mudanças no grão relato, mandado à worker em todo cálculo. Sem a completa no snapshot,
+  quem cobre é a `field-agenda-slot` (`queryQueCobre`, ACHADOS #252).
+- **A saúde do refresh** deixa de avaliar a completa que saiu do snapshot: o arquivo velho
+  fica no manifesto, e ela acusaria "vencida" para sempre.
+- **O carimbo da página** passa a vir das queries que a carga lê (ACHADOS #251): com só a
+  `field-agenda`, ele pararia e, num snapshot novo, três páginas ficariam "não prontas".
+- **A subida avisa** (`avisoSemCompleta`): agenda completa fora do snapshot e a Agendamento
+  Field fora de `AO_VIVO_PAGINAS` é o estado que tira número da tela sem erro nenhum.
 
 **Desenho descartado no caminho:** listar as colunas de relato do mês ao vivo da abertura,
 no mesmo conjunto da página. A sonda mostrou o custo: em 26/10, Classificação do Relato

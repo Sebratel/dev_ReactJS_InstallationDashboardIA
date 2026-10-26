@@ -26,9 +26,11 @@ import { normalizeName, SemanticModel } from '../../packages/semantic-model/src/
 import { codificaFiltro } from '../../packages/widget-engine/src/filtro-url.ts';
 import { filtrosPadrao } from '../../packages/widget-engine/src/filtros-padrao.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
+import { avisoSemCompleta } from '../src/ao-vivo-da-api.ts';
 import { segmentacaoDe, type VisualCalculado } from '../src/calcula.ts';
 import type { OverlayDeTabela } from '../src/overlay-realtime.ts';
 import type { PiscinaWorkers } from '../src/piscina-workers.ts';
+import { queryQueCobre } from '../src/poller-realtime.ts';
 import { Servidor } from '../src/servidor.ts';
 import type { MensagemCalculoWorker, RespostaCalculoWorker } from '../src/worker-calculador.ts';
 import { ACESSO_LIBERADO } from './fixtures/acesso.ts';
@@ -211,6 +213,26 @@ test('sem a agenda completa, a página fica pronta sem o arquivo dela (o snapsho
   };
   assert.equal(await pronta(SEM_COMPLETA), true);
   assert.equal(await pronta(ROOT), false, 'controle: com a chave ligada, a completa ainda é exigida');
+});
+
+// O poller poda o delta da agenda pelo `geradoEm` da carga em lote que o cobre. Sem a
+// completa no snapshot, a entrada dela no manifesto para no dia da virada, e a poda nunca
+// mais tiraria nada (48 h de mudança no grão relato no overlay). Quem cobre passa a ser o slot.
+test('o poller mede a cobertura da agenda pelo slot quando a completa sai do snapshot', () => {
+  const semCompleta = SemanticModel.fromSpecsDir(path.join(SEM_COMPLETA, 'backend', 'specs')).graoReduzido;
+  assert.equal(queryQueCobre('field-agenda', semCompleta), 'field-agenda-slot');
+  assert.equal(queryQueCobre('field-agenda', MODELO.graoReduzido), 'field-agenda', 'controle: hoje, a própria');
+  assert.equal(queryQueCobre('protocolos-geral', semCompleta), 'protocolos-geral', 'as outras, as próprias');
+});
+
+// O estado que tira número da tela sem erro: a completa fora do snapshot e a Agendamento
+// Field fora do ao vivo (a main sem `AO_VIVO_PAGINAS`). A subida avisa.
+test('a subida avisa quando a agenda completa saiu do snapshot e a página de relato não está ao vivo', () => {
+  const aviso = avisoSemCompleta(SEM_COMPLETA, new Set());
+  assert.ok(aviso);
+  assert.match(aviso, /agendamento-field não está em AO_VIVO_PAGINAS/);
+  assert.equal(avisoSemCompleta(SEM_COMPLETA, new Set(['agendamento-field'])), null, 'com ela ao vivo, nada a avisar');
+  assert.equal(avisoSemCompleta(ROOT, new Set()), null, 'controle: com a completa no snapshot, nada a avisar');
 });
 
 test('controle — com a agenda completa no snapshot (hoje): nada indisponível, e a carga a pede', async (t) => {

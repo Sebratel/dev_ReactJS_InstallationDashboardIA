@@ -16175,3 +16175,20 @@ No passo 5 isso viraria defeito: a `field-agenda` para de ser atualizada (carimb
 num snapshot novo, nem existe — as três páginas ficariam "não prontas" para sempre.
 Consertado: `queriesDe` devolve o que a carga lê — a padrão sempre, e a completa só enquanto
 ela estiver no snapshot. Teste em `snapshot-sem-completa.test.ts` (reprova sem o conserto).
+
+## #252 — o poller podava o delta da agenda pela carga que o passo 5 desliga (26/10)
+
+O poller guarda o delta de cada tabela e o poda pelo `cobertoAte`: o `geradoEm` da última
+carga em lote dela no manifesto, menos 10 min (`podaDelta`) — o que o disco já tem sai do
+delta. Para a FIELD AGENDA essa carga é a `field-agenda`, a hora a hora do `frio`. Sem ela
+no refresh (passo 5), a entrada no manifesto para no dia da virada, a poda pela cobertura
+nunca mais tiraria nada, e o overlay da agenda cresceria até o teto de 48 h de mudanças no
+grão relato — copiado para a worker em todo cálculo de página. Nada erraria; a página só
+ficaria mais lenta e mais pesada a cada hora.
+
+Consertado antes da virada: sem a completa no snapshot, a cobertura sai da
+`field-agenda-slot` (15 min; `queryQueCobre`). A página ao vivo segue coberta: a geração do
+mês aberto (até ~5 min) é sempre mais nova que a cobertura do slot (10 min ou mais). No
+mesmo passo, a saúde do refresh deixou de avaliar a completa que saiu (acusaria "vencida"
+para sempre), e a subida avisa quando a completa saiu e a Agendamento Field não está em
+`AO_VIVO_PAGINAS`. Testes em `snapshot-sem-completa.test.ts` e `completa-no-snapshot.test.ts`.
