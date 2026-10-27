@@ -10,9 +10,10 @@ export const ACESSO_LIBERADO: AcessoDasTelas = {
   podeVer: () => true,
   papelDe: () => 'viewer',
   podeGerir: () => false,
-  matriz: () => ({ telas: [], pessoas: [] }),
+  matriz: () => ({ telas: [], pessoas: [], pedidos: [], perfis: [] }),
   muda: () => Promise.reject(new ErroDeAcesso(403, 'teste')),
   estado: () => ({ ok: true, origem: '(teste)' }),
+  registraPedido: () => undefined,
   bloqueio: () => null,
   historico: () => Promise.resolve([]),
 };

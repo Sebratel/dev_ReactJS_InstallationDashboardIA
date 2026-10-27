@@ -16192,3 +16192,29 @@ mês aberto (até ~5 min) é sempre mais nova que a cobertura do slot (10 min ou
 mesmo passo, a saúde do refresh deixou de avaliar a completa que saiu (acusaria "vencida"
 para sempre), e a subida avisa quando a completa saiu e a Agendamento Field não está em
 `AO_VIVO_PAGINAS`. Testes em `snapshot-sem-completa.test.ts` e `completa-no-snapshot.test.ts`.
+
+## #253 — a memória da `api` entre um cálculo e outro era página livre do V8, guardada para reuso (27/10)
+
+A linha da `api` no Grafana ficava entre 1,5 e 1,9 GB mesmo com a Agendamento Field ao vivo,
+e a hipótese registrada (#231, DECISAO-AO-VIVO § Memória) era o alocador do sistema prendendo
+o pico do cálculo. Medido na imagem de produção (`node:24-slim`, cgroup de 3 GB, sonda nova
+`npm run probe:memoria-workers`), a hipótese caiu:
+
+- o `malloc` quase não pesa: sem `MALLOC_ARENA_MAX` são ~50 MB a mais; jemalloc, nada;
+  devolver acima de 128 KB, ~70 MB;
+- heap menor na worker (384, 256 MB) não muda o processo;
+- encerrar as workers devolve só ~100 MB: o processo fica com ~1 GB em ~3.600 regiões
+  anônimas de ~250 KB, o tamanho da página do V8, com o heap do processo principal em 45 MB.
+
+Era o reservatório de páginas que o V8 libera e guarda para reaproveitar, do processo
+inteiro. Uma coleta de último recurso (`gc({ type: 'major', execution: 'sync', flavor:
+'last-resort' })`) o esvazia: 1.114 → 238 MB no teste com as workers encerradas. A worker
+também não coletava parada (o V8 só coleta quando aloca), então o lixo do último cálculo
+ficava junto.
+
+Conserto: a worker parada há `API_WORKER_COLETA_OCIOSA_MS` (padrão 5 s) faz essa coleta,
+e tarefa nova cancela a marcada. Na sonda, API ociosa de 1.252 para 653 MB (585 com o
+`malloc` devolvendo acima de 128 KB, também ligado); cada coleta ~100–170 ms. O pico DURANTE
+o cálculo não muda (~1,25 GB), então o `mem_limit` fica. A coleta não depende de
+`--expose-gc` (sem a flag, a worker tira o `gc()` do próprio V8), e a saúde conta
+(`coletaOciosa`). Teste: `coleta-ociosa.test.ts`, com a worker de verdade.

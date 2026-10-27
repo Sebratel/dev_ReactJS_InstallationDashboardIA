@@ -573,6 +573,31 @@ a agenda completa (633 mil linhas) são as duas mais pesadas nela —, mas não 
 A alavanca que falta é a worker: reciclar a que passou de um teto de RSS depois de
 responder, ou baixar o `maxOldGenerationSizeMb` para o pico caber — próximo passo da fase 4.
 
+**Fase 4, a worker (27/10/2026): nenhuma das duas — uma coleta ociosa de último recurso.**
+Medido na imagem de produção (`node:24-slim`, `npm run probe:memoria-workers`: 3 rodadas de
+reaquecimento das 14 páginas e dos seletores, 2 workers de 512 MB, um conjunto por worker,
+teto de 3 GB), com a memória do cgroup, que é a linha da `api` no Grafana:
+
+| Variante | Fim das rodadas | Ociosa (30–60 s) |
+|---|---|---|
+| Produção de hoje | ~1.180–1.250 MB | ~1.180–1.250 MB |
+| sem `MALLOC_ARENA_MAX` | 1.228 MB | 1.228 MB |
+| heap da worker 384 / 256 MB | 1.265 / 1.212 MB | 1.242 / 1.181 MB |
+| jemalloc | 1.207 MB | 1.190 MB |
+| workers ENCERRADAS no fim | — | 1.091 MB |
+| coleta ociosa comum | 1.274 MB | 1.246 MB |
+| **coleta ociosa de último recurso** | 1.206 MB | **653 MB** |
+| a de cima + `malloc` devolvendo acima de 128 KB | 1.148 MB | **585 MB** |
+
+O que isso diz: com as workers encerradas, o processo ainda segurava ~1 GB em ~3.600 regiões
+de ~250 KB — o tamanho da página do V8. Era o reservatório de páginas que o V8 libera e
+guarda para reuso, do processo inteiro; uma coleta de último recurso (`gc({flavor:
+'last-resort'})`) o esvazia (1.114 → 238 MB no teste). Reciclar a worker não adiantava (ela
+morre, as páginas ficam no reservatório) e heap menor também não. Agora a worker parada há
+`API_WORKER_COLETA_OCIOSA_MS` (5 s) faz essa coleta (~100–170 ms; tarefa nova cancela), e a
+saúde conta (`memoria.workers[].medida.coletaOciosa`). O pico DURANTE o cálculo não muda
+(~1,25 GB na sonda); o que cai é o patamar entre cálculos. ACHADOS #253.
+
 ## Em aberto
 
 - ~~**Gestor da Premiação e do Diário.**~~ **Decidido em 23/10/2026 (Misael): vem da

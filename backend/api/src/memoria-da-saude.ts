@@ -102,6 +102,11 @@ export interface MedidaDaWorker extends MemoriaDaIsolate {
   datasets: number;
   /** O `CacheDeVisual` desta worker — o orçamento dela, separado do da principal. */
   visuais: { itens: number; mb: number };
+  /**
+   * A coleta da worker ociosa (`API_WORKER_COLETA_OCIOSA_MS`, `worker-calculador.ts`):
+   * quantas rodaram e quanto custaram. É ela que devolve ao sistema o pico do cálculo.
+   */
+  coletaOciosa?: { vezes: number; ultimaMs: number; maiorMs: number };
 }
 
 /**

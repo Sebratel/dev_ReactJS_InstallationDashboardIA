@@ -242,8 +242,21 @@ services:
       # glibc abre até 8 arenas de malloc por núcleo, e cada thread (principal, 1 worker,
       # libuv, V8) segura memória devolvida na sua. 2 arenas: menos RSS preso, contenção
       # desprezível com 3 threads de JS. Afeta só o que é malloc (zlib do .jsonl.gz,
-      # buffers), não o heap do V8. Ganho NÃO medido ainda (#231).
+      # buffers), não o heap do V8. MEDIDO em 27/10/2026 (`npm run probe:memoria-workers` na
+      # imagem de produção): ~50 MB a menos no fim e ~60 MB no pico. Pouco, mas de graça.
       MALLOC_ARENA_MAX: '2'
+      # E o glibc devolve ao sistema o que passa de 128 KB, em vez de guardar: mais ~70 MB
+      # a menos, ociosa e no pico, sem custo de tempo medido (mesma sonda, 27/10/2026).
+      MALLOC_MMAP_THRESHOLD_: '131072'
+      MALLOC_TRIM_THRESHOLD_: '131072'
+      # **A alavanca que importava (fase 4, 27/10/2026, ACHADOS #253).** A memória que a
+      # `api` segurava entre um cálculo e outro não era dado: eram páginas que o V8 libera
+      # e GUARDA para reuso, num reservatório do processo inteiro. A worker parada nem
+      # coletava. Com isto, cada worker parada há N ms faz uma coleta de último recurso, que
+      # esvazia o reservatório: a sonda foi de 1.252 MB para 653 MB com a API ociosa (com o
+      # ajuste do malloc acima, 585). O pico durante o cálculo não muda. Cada coleta leva
+      # ~100–170 ms e só roda com a worker parada; tarefa nova cancela. 0 desliga.
+      API_WORKER_COLETA_OCIOSA_MS: ${API_WORKER_COLETA_OCIOSA_MS:-5000}
       # Redis DESTA stack (serviço `redis` abaixo), atrás do cache em memória: o que o
       # teto de `CACHE_RESPOSTA_MB` despeja volta daqui em vez de ser recalculado, e o
       # cache sobrevive ao restart da api. Decisão do Erick em 16/10/2026, no mesmo padrão

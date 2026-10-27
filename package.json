@@ -43,6 +43,7 @@
     "probe:determinismo-pg": "node --max-old-space-size=8192 backend/tools/probe/src/determinismo.ts",
     "probe:instalador-ramo": "node backend/tools/probe/src/instalador-ramo.ts",
     "probe:memoria-api": "node backend/tools/probe/src/memoria-api.ts",
+    "probe:memoria-workers": "node --max-old-space-size=768 --expose-gc backend/tools/probe/src/memoria-workers.ts",
     "probe:prioridade-fila": "node backend/tools/probe/src/prioridade-fila.ts",
     "probe:custo-contratos": "node backend/tools/probe/src/custo-contratos.ts",
     "probe:compara-incremental": "node --max-old-space-size=6144 backend/tools/probe/src/compara-incremental.ts",
