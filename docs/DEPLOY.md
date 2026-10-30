@@ -134,7 +134,8 @@ o leitor de permissões.
 no banco `DB_InstallationDashboard` (tela "Acessos") ou em `ADMIN_EMAILS`. Desde 20/10/2026
 a pessoa também pode ser **barrada**: suspensa ou com prazo vencido (tabela
 `user_access_rules`, que a API cria ao subir) e pela situação na **Senior** (`DATAHUB_TOKEN`,
-publicação `instalacao-senior`): desligado, afastado (férias, licença, atestado) ou fora da
+conjunto `db-senior-collaborators-2` pela API de consumo do Data Hub,
+`/datasets/{conjunto}/rows`, desde 30/10/2026; `SENIOR_DATASET` troca o conjunto): desligado, afastado (férias, licença, atestado) ou fora da
 Senior não entra. `SENIOR_MODO=observar` (padrão) só mostra na aba PERMISSÕES quem seria
 barrado; `bloquear` barra. `ADMIN_EMAILS`/`DEV_EMAILS` nunca são barrados. Dentro de uma aba liberada, a pessoa ainda vê
 todas as linhas — e o que a API serve inclui:

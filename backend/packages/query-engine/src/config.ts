@@ -83,7 +83,7 @@ export interface PlatformConfig {
    * em vez do Google Sheets do Power BI de hoje (divergência deliberada de fonte,
    * ver docs/DECISAO-CAMADA-M.md, Anexo A).
    */
-  datahub: { token: string; baseUrl: string; apis: { quadroFuncional: string } };
+  datahub: { token: string; baseUrl: string; datasets: { quadroFuncional: string } };
   /**
    * As 3 planilhas. `QUADRO FUNCIONAL` voltou para cá em 05/08/2026: a troca
    * para o Data Hub ficou bloqueada por falta de dado de gestor (ACHADOS.md #17).
@@ -154,9 +154,10 @@ export function loadConfig(): PlatformConfig {
     datahub: {
       token: env('DATAHUB_TOKEN'),
       baseUrl: env('DATAHUB_BASE_URL', 'https://data-hub.sebratel.net.br/api/public/v1'),
-      // O caminho é `/p/{api}`. A "api" é a publicação; o dataset por trás dela
-      // vem no envelope da resposta (`db-senior-collaborators`), não na URL.
-      apis: { quadroFuncional: env('DATAHUB_API_QUADRO_FUNCIONAL', 'dash-instalacao') },
+      // O caminho é `/datasets/{conjunto}/rows` — a API de consumo do Data Hub por conjunto
+      // desde 30/10/2026 (antes, `/p/{publicação}`). O padrão é o conjunto que o token da
+      // stack alcança; o `db-senior-collaborators` (sem o -2) devolve 403 para ele.
+      datasets: { quadroFuncional: env('DATAHUB_DATASET_QUADRO_FUNCIONAL', 'db-senior-collaborators-2') },
     },
     gsheets: {
       credentialsPath: env('GOOGLE_APPLICATION_CREDENTIALS'),

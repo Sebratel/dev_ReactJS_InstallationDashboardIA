@@ -43,7 +43,6 @@ const chave = (s: string): string =>
 // -------------------------------------------------------------- a chamada
 type Linha = Record<string, unknown>;
 interface Envelope {
-  api?: string;
   dataset?: string;
   total?: number;
   limit?: number;
@@ -52,7 +51,7 @@ interface Envelope {
 }
 
 const PAGINA = 500;
-const alvo = `${cfg.datahub.baseUrl}/p/${cfg.datahub.apis.quadroFuncional}`;
+const alvo = `${cfg.datahub.baseUrl}/datasets/${encodeURIComponent(cfg.datahub.datasets.quadroFuncional)}/rows`;
 console.log(`GET ${alvo}?limit=${PAGINA}&offset=…`);
 console.log('auth: header X-Api-Token (não query string — token em URL vaza para log)');
 
@@ -74,9 +73,9 @@ async function pagina(offset: number): Promise<Envelope> {
     console.error(`\nHTTP ${res.status} ${res.statusText} — ${mask(corpo.slice(0, 300))}`);
     if (res.status === 403) {
       console.error(
-        '403 = token reconhecido, sem permissão nesta publicação. A API responde 403\n' +
-          'igual para slug inexistente, então isto não distingue "falta liberação" de\n' +
-          '"slug errado" — e não há endpoint de catálogo (/datasets dá 404).',
+        '403 = token reconhecido, sem acesso a este conjunto (o escopo do token não o inclui).\n' +
+          'Conjunto inexistente é 404, e ainda não sincronizado é 409. Corpo que não é JSON\n' +
+          'não veio da API: é o proxy do nome público (use o endereço interno).',
       );
     }
     return process.exit(1);

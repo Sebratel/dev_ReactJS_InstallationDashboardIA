@@ -305,7 +305,7 @@ const senior = process.env.DATAHUB_TOKEN
   ? criaSenior({
       baseUrl: process.env.DATAHUB_BASE_URL || 'https://data-hub.sebratel.net.br/api/public/v1',
       token: process.env.DATAHUB_TOKEN,
-      api: process.env.SENIOR_API || 'instalacao-senior',
+      dataset: process.env.SENIOR_DATASET || 'db-senior-collaborators-2',
       arquivo: path.join(DIR_RUNTIME, 'senior-colaboradores.json'),
     })
   : null;
