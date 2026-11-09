@@ -30,22 +30,27 @@ divergencias:
     tabela: CALENDARIO INSTALADO
     objeto: PESO
     pergunta: PERGUNTAS-NEGOCIO#1
-    decidido: '2026-08-08'
+    decidido: '2026-11-09'
     porque: >
-      Fabrício: "sábado conta como 0.5 e domingo 0,5 pois é equipe reduzida". O DAX do
-      Power BI dava domingo 0 e sábado 1 — o 0,5 do sábado estava lá, comentado, com a
-      nota "Cerqueira afirmou que o sábado era 100% 19/05/2025". As duas pontas estão
-      erradas: domingo não é dia parado e sábado não é dia cheio. Trocado também o
-      SWITCH sobre [DIA_SEMANA], que compara o nome do dia em texto, por WEEKDAY(_, 2):
-      o resultado deixa de depender do idioma da fonte.
+      Revisto em 09/11/2026 pelo Fabrício (QA): na Instalação o sábado é dia cheio (1),
+      o domingo vale 0 e o feriado vale 0 — a mesma régua que o Power BI já usava. A
+      decisão de 08/08/2026 ("sábado 0,5 e domingo 0,5") ficou registrada errada, e a
+      régua do comercial (sábado 0,5) não vale para a Instalação. O que continua
+      divergindo do Power BI é só o feriado: além da tabela FERIADOS, o 20/11 (Dia
+      Nacional de Zumbi e da Consciência Negra, feriado nacional desde 2024, Lei
+      14.759/2023) conta como feriado — a lista embutida no PBIP não o tem. Fica aqui, e
+      não na tabela, porque FERIADOS é gerada pelo extrator. Mantido o WEEKDAY(_, 2) no
+      lugar do SWITCH sobre o nome do dia em texto, que dependia do idioma da fonte.
     original_sha: 3d02c52af9b3657f
     dax: |
-      VAR Feriado =
-          NOT(ISBLANK(LOOKUPVALUE(FERIADOS[Feriado], FERIADOS[Data], 'CALENDARIO INSTALADO'[DATA INSTALADO])))
-      VAR DiaDaSemana = WEEKDAY('CALENDARIO INSTALADO'[DATA INSTALADO], 2)
+      VAR Dia = 'CALENDARIO INSTALADO'[DATA INSTALADO]
+      VAR NaTabela =
+          NOT(ISBLANK(LOOKUPVALUE(FERIADOS[Feriado], FERIADOS[Data], Dia)))
+      VAR ConscienciaNegra = YEAR(Dia) >= 2024 && Dia = DATE(YEAR(Dia), 11, 20)
+      VAR DiaDaSemana = WEEKDAY(Dia, 2)
       RETURN
-          IF(Feriado, 0,
-              IF(DiaDaSemana >= 6, 0.5, 1)
+          IF(NaTabela || ConscienciaNegra, 0,
+              SWITCH(DiaDaSemana, 7, 0, 1)
           )
 
   - id: peso-criado-domingo
@@ -53,31 +58,25 @@ divergencias:
     tabela: CALENDARIO CRIADO
     objeto: PESO
     pergunta: PERGUNTAS-NEGOCIO#1
-    decidido: '2026-08-08'
+    decidido: '2026-11-09'
     porque: >
-      Mesma decisão da 'peso-instalado-fim-de-semana'. Aqui o sábado já valia 0,5 e só
-      o domingo estava zerado — as duas colunas PESO do modelo discordavam entre si, o
-      que por si só já era sinal de que uma estava errada. NÃO foi mexida a lista de
-      feriados chumbada no DAX (2020, 2021 e 2026-06-04, em vez da tabela FERIADOS):
-      isso é o ACHADOS #7, é outro problema, e corrigir de carona seria esconder uma
-      mudança dentro de outra.
+      Mesma régua da 'peso-instalado-fim-de-semana', revista em 09/11/2026: sábado 1,
+      domingo 0, feriado 0. Aqui o Power BI dava sábado 0,5 — a régua do comercial, que
+      não vale para a Instalação — e as duas colunas PESO do modelo discordavam entre
+      si. Corrigidos também os feriados (ACHADOS #7): o DAX do Power BI tinha uma lista
+      chumbada (2020, 2021 e 2026-06-04) em vez da tabela FERIADOS, e nenhum feriado de
+      2022 a 2026 zerava o dia. Agora usa a tabela FERIADOS, como o CALENDARIO
+      INSTALADO, mais o 20/11 a partir de 2024.
     original_sha: 68dba23b8a13d10a
     dax: |
-      VAR DiaDaSemana = WEEKDAY('CALENDARIO CRIADO'[DATA CRIADO], 2)
-      VAR Feriados =
-          SWITCH(
-              TRUE(),
-              'CALENDARIO CRIADO'[DATA CRIADO] IN {DATE(2020,1,1), DATE(2020,4,10), DATE(2020,4,21), DATE(2020,5,1),
-                                    DATE(2020,9,7), DATE(2020,10,12), DATE(2020,11,2), DATE(2020,11,15),
-                                    DATE(2020,12,25), DATE(2021,1,1), DATE(2021,4,2), DATE(2021,4,21),
-                                    DATE(2021,5,1), DATE(2021,9,7), DATE(2021,10,12), DATE(2021,11,2),
-                                    DATE(2021,11,15), DATE(2021,12,25), DATE(2026,6,4)},
-              1,
-              0
-          )
+      VAR Dia = 'CALENDARIO CRIADO'[DATA CRIADO]
+      VAR NaTabela =
+          NOT(ISBLANK(LOOKUPVALUE(FERIADOS[Feriado], FERIADOS[Data], Dia)))
+      VAR ConscienciaNegra = YEAR(Dia) >= 2024 && Dia = DATE(YEAR(Dia), 11, 20)
+      VAR DiaDaSemana = WEEKDAY(Dia, 2)
       RETURN
-          IF(Feriados = 1, 0,
-              IF(DiaDaSemana >= 6, 0.5, 1)
+          IF(NaTabela || ConscienciaNegra, 0,
+              SWITCH(DiaDaSemana, 7, 0, 1)
           )
 
 # ADIADA em 10/08/2026 pelo Erick: "como está no Power BI".
