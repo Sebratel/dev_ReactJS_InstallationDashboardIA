@@ -151,6 +151,7 @@ measures:
             NOT (
                 'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
                     "TEC - Troca de Endereço",
+                    "TEC-CORP-TROCA-ENDERECO",
                     "TEC - Instalação de Rádio",
                     "TEC - Instalação de Radio – CORPORATIVO",
                     "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano",
@@ -251,6 +252,7 @@ measures:
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Rádio" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Rádio - CORPORATIVO" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Troca de Endereço" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC-CORP-TROCA-ENDERECO" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Suporte de Retorno Prioritário" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Migração com troca de Equipamento"
@@ -263,8 +265,10 @@ measures:
         DISTINCTCOUNT('PROTOCOLOS GERAL'[SOLICITACAO]),
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Fibra" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Fibra – CORPORATIVO" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC-CORP-ATIVACAO" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Fibra - Cortesia" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Troca de Endereço" &&
+        'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC-CORP-TROCA-ENDERECO" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Suporte de Retorno Prioritário" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano" &&
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] <> "TEC - Migração com troca de Equipamento"
@@ -330,6 +334,7 @@ measures:
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
             "TEC - INSTALAÇÃO DE FIBRA",
             "TEC - Instalação de Fibra – CORPORATIVO",
+            "TEC-CORP-ATIVACAO",
             "#HR - TEC - Instalação de Fibra"
         },
         FILTER(
@@ -350,6 +355,7 @@ measures:
         'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
             "TEC - INSTALAÇÃO DE FIBRA",
             "TEC - Instalação de Fibra – CORPORATIVO",
+            "TEC-CORP-ATIVACAO",
             "#HR - TEC - Instalação de Fibra"
         },
         FILTER(

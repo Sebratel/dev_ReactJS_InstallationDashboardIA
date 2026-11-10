@@ -36,6 +36,7 @@ filters:
     values:
     - "TEC - Instalação de Fibra - Cortesia"
     - "TEC - Instalação de Fibra – CORPORATIVO"
+    - "TEC-CORP-ATIVACAO"
     - "TEC - Instalação de Fibra"
     - "#HR - TEC - Instalação de Fibra"
 - name: 04de392877a970c77789
@@ -452,6 +453,7 @@ visuals:
       - "#HR - TEC - Instalação de Fibra"
       - "TEC - Instalação de Fibra"
       - "TEC - Instalação de Fibra – CORPORATIVO"
+      - "TEC-CORP-ATIVACAO"
       - "TEC - Instalação de Fibra - Cortesia"
   - name: Filter14c4c5ff6ad3679956c8
     type: Categorical

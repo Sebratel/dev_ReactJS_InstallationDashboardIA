@@ -51,6 +51,7 @@ measures:
     CALCULATE(
         DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO]),
         'PROTOCOLOS PRODUTIVIDADE'[TIPO DE PROTOCOLO] = "TEC - Instalação de Fibra – CORPORATIVO" ||
+        'PROTOCOLOS PRODUTIVIDADE'[TIPO DE PROTOCOLO] = "TEC-CORP-ATIVACAO" ||
         'PROTOCOLOS PRODUTIVIDADE'[TIPO DE PROTOCOLO] = "TEC - Instalação de Fibra")
 - name: protocolos_troca
   format: "0"
@@ -58,7 +59,8 @@ measures:
   dax: |-
     CALCULATE(
         DISTINCTCOUNT('PROTOCOLOS PRODUTIVIDADE'[N°PROTOCOLO]),
-        'PROTOCOLOS PRODUTIVIDADE'[TIPO DE PROTOCOLO] = "TEC - Troca de Endereço")
+        'PROTOCOLOS PRODUTIVIDADE'[TIPO DE PROTOCOLO] = "TEC - Troca de Endereço" ||
+        'PROTOCOLOS PRODUTIVIDADE'[TIPO DE PROTOCOLO] = "TEC-CORP-TROCA-ENDERECO")
 - name: Faixas
   format: null
   display_folder: null

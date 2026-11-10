@@ -116,7 +116,7 @@ columns:
                                 IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Ativação Diversos - CORPOATIVO", "INSTALAÇÃO",
                                     IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Fibra - Reativação", "INSTALAÇÃO",
                                         IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra", "INSTALAÇÃO",
-                                            IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra – CORPORATIVO", "INSTALAÇÃO",
+                                            IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra – CORPORATIVO" || 'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC-CORP-ATIVACAO", "INSTALAÇÃO",
                                                 IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra - Cortesia", "INSTALAÇÃO",
                                                     IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Rádio", "INSTALAÇÃO",
                                                         IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano", "INSTALAÇÃO",
@@ -126,7 +126,7 @@ columns:
                                                                         IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação [Nova Santa Rita, Esteio]", "INSTALAÇÃO",
                                                                             IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação [SLE/SPS/NHO/EIO/CAN]", "INSTALAÇÃO",
                                                                                 IF('PROTOCOLOS GERAL'[EQUIPE] == "Operacional Fibra – Instalações", "INSTALAÇÃO",
-                                                                                    IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Troca de Endereço", "INSTALAÇÃO",
+                                                                                    IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Troca de Endereço" || 'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC-CORP-TROCA-ENDERECO", "INSTALAÇÃO",
                                                                                         IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Suporte / Roubo, Furto, Quebra e/ou Equipamento Danificado", "MANUTENÇÃO",
                                                                                             IF('PROTOCOLOS GERAL'[EQUIPE] == "Troca equipamentos enchente", "MANUTENÇÃO",
                                                                                                IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação Corporativo", "INSTALAÇÃO", "OUTROS"))))))))))))))))))))))
@@ -357,6 +357,7 @@ columns:
         IF(
             'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
                 "TEC - Troca de Endereço",
+                "TEC-CORP-TROCA-ENDERECO",
                 "#HR - TEC - Troca de Endereço"
             }, 
             'PROTOCOLOS GERAL'[DATA DA TROCA],

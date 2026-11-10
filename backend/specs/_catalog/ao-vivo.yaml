@@ -165,8 +165,8 @@ consultas:
       tipo: protocolos-da-lista
       protocolo: PROTOCOLO
     costura:
-      - de: "        AND it.id in ('15', '1256')"
-        para: "        AND it.id in ('15', '1256')\n        AND ai.protocol = ANY(:protocolos::bigint[])"
+      - de: "        AND it.id in ('15', '1298', '1256')"
+        para: "        AND it.id in ('15', '1298', '1256')\n        AND ai.protocol = ANY(:protocolos::bigint[])"
 
   # Junta pelo número do protocolo extraído de `r.tags` (o M compara como inteiro, ver
   # juncoes.yaml), e o ROW_NUMBER particiona por `r.tags`. O recorte usa a MESMA

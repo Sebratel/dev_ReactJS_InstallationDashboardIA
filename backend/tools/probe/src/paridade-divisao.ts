@@ -80,7 +80,7 @@ SELECT
   (SELECT count(*) FROM (
      SELECT a.title FROM assignment_incidents ai
      JOIN assignments a ON a.id = ai.assignment_id
-     WHERE ai.incident_type_id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15')
+     WHERE ai.incident_type_id IN ('12', '1014', '1297', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15', '1298')
        AND ${PISO}
      GROUP BY a.title
      HAVING min(a.created) < '${corte}' AND max(a.created) >= '${corte}'

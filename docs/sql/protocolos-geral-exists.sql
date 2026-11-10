@@ -162,7 +162,7 @@ WITH PERSONALIZADO AS (
     LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id
     LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id
     LEFT JOIN v_users vu ON vu.id = a.created_by
-        WHERE it.id IN ('12', '1014', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15') -- Filtrando os tipos de protocolo
+        WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15', '1298') -- Filtrando os tipos de protocolo
       AND a.created >= '2025-01-01'
 ),
 PLANOS_CONTRATO AS (

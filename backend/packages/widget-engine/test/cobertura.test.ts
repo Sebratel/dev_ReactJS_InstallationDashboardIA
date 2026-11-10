@@ -142,12 +142,15 @@ test('os operadores das 108 condições, contados — e nenhum desconhecido', ()
  * data como texto ISO nos valores, todo filtro categórico sobre data erraria alto
  * — e o conserto seria no extrator, não afrouxar a checagem.
  *
+ * 68 textos desde 10/11/2026: os tipos TEC-CORP-ATIVACAO entraram em 4 filtros (Manutenção
+ * Inicial e Instalação/Reincidente), ao lado da Instalação de Fibra – CORPORATIVO.
+ *
  * Os 40 `null` são a outra metade do fato: é como o painel escreve "(Em branco)"
  * entre as opções marcadas, e por isso vazio **não** tem espécie conferida.
  */
 test('os valores de in/not_in são texto e null, nunca data', () => {
   const valores = todasAsCondicoes().flatMap((c) => (c.op === 'in' || c.op === 'not_in' ? c.values ?? [] : []));
-  assert.deepEqual(contar(valores, (v) => (v === null ? 'null' : typeof v)), { string: 64, null: 40 });
+  assert.deepEqual(contar(valores, (v) => (v === null ? 'null' : typeof v)), { string: 68, null: 40 });
   const comCaraDeData = valores.filter((v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v));
   assert.deepEqual(comCaraDeData, []);
 });

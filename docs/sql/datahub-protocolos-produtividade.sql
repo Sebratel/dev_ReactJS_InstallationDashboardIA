@@ -182,7 +182,7 @@ WITH bruto AS (
     LEFT JOIN solicitation_classifications   sc   ON sc.id  = ai.solicitation_classification_id
     LEFT JOIN authentication_splitters       as2  ON as2.id = asp.authentication_splitter_id
     LEFT JOIN v_users                        vu   ON vu.id  = a.created_by
-    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
+    WHERE it.id IN ('12','1014','1297','1254','1255','1256','1136','249','268','1160','1015','279','15', '1298')
       AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo
 ),
 
@@ -295,7 +295,7 @@ ramo_produtividade AS (
                      b._pa_criado DESC NULLS LAST, b._pa_id DESC NULLS LAST
         ) AS _persona
         FROM bruto b
-        WHERE b._tipo IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')
+        WHERE b._tipo IN ('12','1014','1297','1254','1255','1256','1136','249','268','1160','1015','279','15', '1298')
           AND b."DATA CRIADO" >= DATE_TRUNC('year', CURRENT_DATE)
     ) x WHERE x._persona = 1
 ),
@@ -389,7 +389,7 @@ ramo_auxiliares AS (
                      b._pa_criado DESC NULLS LAST, b._pa_id DESC NULLS LAST
         ) AS _persona
         FROM bruto b
-        WHERE b._tipo IN ('12','1014','1254','1255','1136','249','268','1160','1015','15')
+        WHERE b._tipo IN ('12','1014','1297','1254','1255','1136','249','268','1160','1015','15', '1298')
           AND b."DATA CRIADO" >= DATE_TRUNC('year', CURRENT_DATE)
     ) x WHERE x._persona = 1
 ),
@@ -430,7 +430,7 @@ alocacao AS (
     LEFT JOIN assignment_incidents    ai  ON ai.assignment_id = a.id
     LEFT JOIN incident_types          it  ON it.id  = ai.incident_type_id
     LEFT JOIN people                  p3  ON p3.id  = plis.person_allocator_id
-    WHERE it.id IN ('12','1254','1255','1014','1136','249','15','279','1015')
+    WHERE it.id IN ('12','1254','1255','1014','1297','1136','249','15','1298','279','1015')
       -- 2026 como os protocolos: esta CTE so existe para casar com `unificado`, que
       -- agora comeca em 2026-01-01. Linha mais velha que isso nao encontra par -- ela
       -- so custaria varredura e memoria no hash join.
@@ -451,7 +451,7 @@ troca AS (
         LEFT JOIN people               p  ON p.id = r.person_id
         LEFT JOIN incident_types       it ON it.id = ai.incident_type_id
         WHERE DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)   -- idem alocacao: so casa com 2026
-          AND it.id IN ('15','1256')
+          AND it.id IN ('15','1298','1256')
           AND (r.description LIKE '%O condomínio é adequado?%'
             OR r.description LIKE '%Foi feita a instalação?%')
     ) x WHERE x._persona = 1

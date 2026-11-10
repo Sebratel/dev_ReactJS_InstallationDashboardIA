@@ -304,6 +304,7 @@ columns:
         IF(
             'PROTOCOLOS PRODUTIVIDADE'[TIPO DE PROTOCOLO] IN {
                 "TEC - Troca de Endereço",
+                "TEC-CORP-TROCA-ENDERECO",
                 "#HR - TEC - Troca de Endereço"
             }, 
             'PROTOCOLOS PRODUTIVIDADE'[DATA DA TROCA],

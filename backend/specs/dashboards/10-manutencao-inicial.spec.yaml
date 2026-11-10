@@ -988,6 +988,7 @@ visuals:
       - "#HR - TEC - Instalação de Fibra"
       - "TEC - Instalação de Fibra"
       - "TEC - Instalação de Fibra – CORPORATIVO"
+      - "TEC-CORP-ATIVACAO"
   - name: 73d437e40313868726b2
     type: Categorical
     entity: CALENDARIO INSTALADO
@@ -1221,6 +1222,7 @@ visuals:
       - "#HR - TEC - Instalação de Fibra"
       - "TEC - Instalação de Fibra"
       - "TEC - Instalação de Fibra – CORPORATIVO"
+      - "TEC-CORP-ATIVACAO"
       - "TEC - Instalação de Fibra - Cortesia"
   - name: 8a2a3c9878110ea02c08
     type: Categorical

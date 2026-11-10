@@ -735,6 +735,32 @@ backend/specs/
   EXTRACTION-REPORT.md        # gerado: contagens e alertas do extrator
 ```
 
+### Tipos corporativos novos — `1297` e `1298` entram ao lado de `1014` e `15` (10/11/2026)
+
+O Voalle ganhou tipos de protocolo corporativos novos, e o Power BI já os inclui.
+Decisão do Fabrício (QA), 10/11/2026: **`1297` TEC-CORP-ATIVACAO** se comporta como
+**`1014` TEC - Instalação de Fibra – CORPORATIVO**, e **`1298` TEC-CORP-TROCA-ENDERECO**
+como **`15` TEC - Troca de Endereço**. Onde um aparece, o outro aparece junto:
+
+- nas listas de `it.id` do `sql:` **e** do SQL de origem guardado no `m_expression` de
+  `protocolos-geral`, `protocolos-tipo`, `protocolos-auxiliares`, `protocolos-produtividade`
+  (e na cópia em `docs/sql/datahub-protocolos-produtividade.sql`), `alocacao-patrimonio`,
+  `troca-endereco`, `reincidencia`, `instalacoes-reincidentes` e `retorno-prioritario`;
+- nas costuras de `realtime-poll.yaml`, `ao-vivo.yaml` e `incremental.yaml`, que ancoram
+  nessas linhas (a âncora tem de casar exatamente uma vez — mudou junto);
+- no DAX, pelo nome: as listas e exclusões de `protocolos-geral.measures.yaml` e
+  `protocolos-produtividade.measures.yaml`, a coluna calculada que classifica
+  "INSTALAÇÃO" em `tables/protocolos-geral.spec.yaml` e a lista de
+  `tables/protocolos-produtividade.spec.yaml`;
+- nos filtros de visual de `10-manutencao-inicial` e `11-instalacao-reincidente` (só o
+  1297; a troca não aparece ali).
+
+Ficam de fora os demais `TEC-CORP-*` (1299 a 1343), que a operação não usa no relatório.
+O `1342` (TEC-CORP-SERVICOS-INSTALACAO DE PONTO ADICIONAL) está em aberto.
+**Fora do repositório:** as tabelas `Backlog_Installation` e `Backlog_Schedules` do MariaDB
+são gravadas por um fluxo externo; o filtro de tipos dele precisa dos mesmos IDs, senão o
+BACKLOG não conta esses protocolos.
+
 ### O que conta como DAX na spec
 
 São **três** lugares, não um. Ignorar qualquer um deles quebra a paridade:

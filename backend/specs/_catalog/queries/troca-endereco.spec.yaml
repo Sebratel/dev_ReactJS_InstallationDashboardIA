@@ -33,7 +33,7 @@ sql: |-
       WHERE 
           -- 25/09/2026: desde 2025, como protocolos-geral; o corte no ano corrente deixava instalado de 2025 sem data (ACHADOS #152)
           DATE(r.final_date) >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
-          AND it.id in ('15', '1256')
+          AND it.id in ('15', '1298', '1256')
           AND (
               r.description LIKE '%O condomínio é adequado?%'
               OR r.description LIKE '%Foi feita a instalação?%'
@@ -56,7 +56,7 @@ source_tables:
 - reports
 m_expression: |-
   let
-      Fonte = Odbc.Query("dsn=dbVoalle", "WITH PERSONALIZADO AS (#(lf)    SELECT #(lf)        p.name AS ""TÉCNICO"", #(lf)        ai.protocol AS ""PROTOCOLO"", #(lf)        r.final_date AS ""DATA DA TROCA"", #(lf)        c.contract_number AS ""CONTRATO"",#(lf)        ROW_NUMBER() OVER (#(lf)            PARTITION BY ai.protocol #(lf)            ORDER BY r.final_date DESC#(lf)        ) AS PERSONA1#(lf)    FROM assignments a#(lf)    LEFT JOIN assignment_incidents ai #(lf)        ON ai.assignment_id = a.id#(lf)    LEFT JOIN reports r #(lf)        ON r.assignment_id = a.id#(lf)    LEFT JOIN people p #(lf)        ON p.id = r.person_id#(lf)    LEFT JOIN contract_service_tags cst #(lf)        ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN contracts c #(lf)        ON c.id = cst.contract_id#(lf)    LEFT JOIN incident_types it #(lf)        ON it.id = ai.incident_type_id#(lf)    WHERE #(lf)        DATE(r.final_date) >= '2026-01-01'#(lf)        AND it.id in ('15', '1256')#(lf)        AND (#(lf)            r.description LIKE '%O condomínio é adequado?%'#(lf)            OR r.description LIKE '%Foi feita a instalação?%'#(lf)        )#(lf))  -- <<< fecha a CTE aqui#(lf)SELECT #(lf)    * #(lf)FROM PERSONALIZADO#(lf)WHERE PERSONA1 = 1;#(lf)"),
+      Fonte = Odbc.Query("dsn=dbVoalle", "WITH PERSONALIZADO AS (#(lf)    SELECT #(lf)        p.name AS ""TÉCNICO"", #(lf)        ai.protocol AS ""PROTOCOLO"", #(lf)        r.final_date AS ""DATA DA TROCA"", #(lf)        c.contract_number AS ""CONTRATO"",#(lf)        ROW_NUMBER() OVER (#(lf)            PARTITION BY ai.protocol #(lf)            ORDER BY r.final_date DESC#(lf)        ) AS PERSONA1#(lf)    FROM assignments a#(lf)    LEFT JOIN assignment_incidents ai #(lf)        ON ai.assignment_id = a.id#(lf)    LEFT JOIN reports r #(lf)        ON r.assignment_id = a.id#(lf)    LEFT JOIN people p #(lf)        ON p.id = r.person_id#(lf)    LEFT JOIN contract_service_tags cst #(lf)        ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN contracts c #(lf)        ON c.id = cst.contract_id#(lf)    LEFT JOIN incident_types it #(lf)        ON it.id = ai.incident_type_id#(lf)    WHERE #(lf)        DATE(r.final_date) >= '2026-01-01'#(lf)        AND it.id in ('15', '1298', '1256')#(lf)        AND (#(lf)            r.description LIKE '%O condomínio é adequado?%'#(lf)            OR r.description LIKE '%Foi feita a instalação?%'#(lf)        )#(lf))  -- <<< fecha a CTE aqui#(lf)SELECT #(lf)    * #(lf)FROM PERSONALIZADO#(lf)WHERE PERSONA1 = 1;#(lf)"),
       #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"DATA DA TROCA", type date}})
   in
       #"Tipo Alterado"
