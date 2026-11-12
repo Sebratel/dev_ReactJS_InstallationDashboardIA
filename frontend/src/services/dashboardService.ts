@@ -404,6 +404,12 @@ export interface Eu {
   papel: 'viewer' | 'dev' | 'admin';
   /** Admin ou dev: a tela mostra o botão de gestão de acessos. */
   podeGerir: boolean;
+  /**
+   * As abas que NÃO são tela do relatório e esta conta abre — hoje só "Metas"
+   * (12/11/2026). Ausente numa API mais velha, e aí a faixa simplesmente não as mostra.
+   * Esconder a aba é conforto: quem barra é o 403 da rota.
+   */
+  abasExtras?: { id: string; nome: string }[];
 }
 
 /** A lista já vem SÓ com as abas que a conta pode abrir — o filtro é do servidor. */

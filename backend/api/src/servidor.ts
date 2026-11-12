@@ -27,6 +27,8 @@
 // o corpo de `/api/saude`.
 
 import crypto from 'node:crypto';
+import { ErroDeMeta } from './loja-metas-maria.ts';
+import { TELAS_SEM_DASHBOARD } from './telas-extras.ts';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -270,6 +272,7 @@ export class Servidor {
       | 'modoDosFiltros'
       | 'avisoDasPaginas'
       | 'usoDasTelas'
+      | 'metas'
       | 'sombraAoVivo'
       | 'aoVivo'
     >
@@ -283,6 +286,7 @@ export class Servidor {
       | 'avisoDasPaginas'
       | 'modoDosFiltros'
       | 'usoDasTelas'
+      | 'metas'
       | 'sombraAoVivo'
       | 'aoVivo'
     >;
@@ -873,13 +877,16 @@ export class Servidor {
     const ehGestaoDeAcesso = rota === '/api/admin/acessos' || rota.startsWith('/api/admin/acessos/');
     const ehGestaoDeSessao = rota === '/api/admin/sessoes' || rota.startsWith('/api/admin/sessoes/');
     const ehConsultaDeUso = rota === '/api/admin/uso';
+    // As metas de negocio (aba "Metas", 12/11/2026): GET le, POST grava. Mesma protecao
+    // CSRF estrita da gestao de acesso — a unica cliente legitima e a tela.
+    const ehGestaoDeMetas = rota === '/api/admin/metas' || rota.startsWith('/api/admin/metas/');
     const ehRegistroDeUso = rota === '/api/uso/abertura';
     if (ehRegistroDeUso && req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
       responde(res, 405, { erro: 'Esta rota aceita somente POST.' });
       return;
     }
-    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehRegistroDeUso) && req.method === 'POST') {
+    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehGestaoDeMetas || ehRegistroDeUso) && req.method === 'POST') {
       const temOrigem = typeof req.headers.origin === 'string' || typeof req.headers.referer === 'string';
       if (!temOrigem || !this.origemPermitida(req)) {
         this.registraEventoSeg(req, 403, 'csrf-gestao-de-acesso');
@@ -892,6 +899,7 @@ export class Servidor {
         erro: `Método ${req.method} não existe nesta rota. A API é somente leitura ` +
           `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno, /auth/logout` +
           `, /api/admin/acessos/* (gestão de acessos, só admin/dev), /api/admin/sessoes/* (só admin)` +
+          `, /api/admin/metas (a meta de negócio, só quem tem a aba "Metas")` +
           ` e /api/uso/abertura (a própria pessoa registra a aba aberta).`,
       });
       return;
@@ -992,6 +1000,7 @@ export class Servidor {
       if (ehConsultaDeUso) return this.usoDasTelas(res, url, quem, req);
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
       if (ehGestaoDeSessao) return this.gestaoDeSessao(req, res, rota, quem);
+      if (ehGestaoDeMetas) return this.gestaoDeMetas(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
       if (rota === '/api/eventos') return this.eventos(req, res, quem);
       if (rota.startsWith('/api/dashboards/')) {
@@ -1453,6 +1462,72 @@ export class Servidor {
   }
 
   /**
+   * `/api/admin/metas` — os números de NEGÓCIO que um gestor edita (`loja-metas-maria.ts`):
+   *
+   *   GET                        → as metas conhecidas, com valor, autor e data
+   *   POST  { id, valor }        → grava uma; responde com a lista nova
+   *
+   * O portão é a ABA, não o papel (decisão do Erick, 12/11/2026): quem tem `metas`
+   * liberada na tela "Acessos" edita, sem precisar virar admin. Admin tem por ser admin
+   * (`podeVer` devolve true para ele em qualquer aba). O 403 é daqui, do servidor — a
+   * tela esconder o botão não é barreira.
+   *
+   * Sem banco de metas (desenvolvimento, ou MariaDB fora) é 503, nunca um "salvo" falso:
+   * a meta que a tela mostra tem de ser a que o painel vai ler.
+   */
+  private async gestaoDeMetas(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rota: string,
+    quem: Identidade,
+  ): Promise<void> {
+    if (!this.opts.acesso.podeVer(quem, 'metas')) {
+      this.registraEventoSeg(req, 403, 'aba-sem-acesso', quem.usuario);
+      responde(res, 403, { erro: 'Sem acesso à aba "Metas".' });
+      return;
+    }
+    const sub = rota.slice('/api/admin/metas'.length);
+    if (sub !== '') {
+      responde(res, 404, { erro: `'${sub}' não existe em /api/admin/metas.` });
+      return;
+    }
+    const loja = this.opts.metas;
+    if (!loja) {
+      responde(res, 503, { erro: 'Banco de metas não configurado neste ambiente.', publico: true });
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      try {
+        responde(res, 200, { eu: { usuario: quem.usuario }, metas: await loja.le() });
+      } catch (err) {
+        if (!(err instanceof ErroDeMeta)) throw err;
+        responde(res, err.status, { erro: err.message, publico: true });
+      }
+      return;
+    }
+
+    let corpo: Record<string, unknown>;
+    try {
+      const c = parseJsonSeguro(await leCorpo(req));
+      if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('corpo não é objeto');
+      corpo = c as Record<string, unknown>;
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido: esperado um objeto JSON.' });
+      return;
+    }
+    try {
+      const metas = await loja.grava(corpo.id, corpo.valor, quem.usuario);
+      // A meta entra no painel pelo refresh (grupo `quente`, 15 min): a tela diz isso em
+      // vez de deixar o gestor achar que o KPI mudou no mesmo segundo.
+      responde(res, 200, { eu: { usuario: quem.usuario }, metas });
+    } catch (err) {
+      if (!(err instanceof ErroDeMeta)) throw err;
+      responde(res, err.status, { erro: err.message, publico: true });
+    }
+  }
+
+  /**
    * `/api/admin/acessos` — a gestão de quem abre cada aba (`permissoes.ts`):
    *
    *   GET                                → a matriz: abas (nome, modo) × pessoas (papel, abas)
@@ -1478,7 +1553,13 @@ export class Servidor {
     }
     const sub = rota.slice('/api/admin/acessos'.length);
     const navegaveis = this.dashboards.filter((d) => d.type !== 'Tooltip');
-    const nomes = new Map(navegaveis.map((d) => [d.id, d.name] as const));
+    // As abas do relatorio MAIS as que nao sao dashboard (hoje "Metas"): a matriz filtra
+    // por este mapa, entao uma aba fora dele sumiria da tela de Acessos e nao teria como
+    // ser liberada a ninguem — ficaria so para admin, calada.
+    const nomes = new Map<string, string>([
+      ...navegaveis.map((d) => [d.id, d.name] as const),
+      ...TELAS_SEM_DASHBOARD.map((t) => [t.id, t.nome] as const),
+    ]);
     const respondeMatriz = async (): Promise<void> => {
       const m = acesso.matriz();
       // O último acesso: o mais novo entre o uso das abas (banco) e a última atividade de
@@ -1706,7 +1787,11 @@ export class Servidor {
     const emDisco = new Set(manifesto?.tabelas.map((t) => t.query) ?? []);
     const liberadas = this.dashboards.filter((d) => this.opts.acesso.podeVer(quem, d.id));
     // Entrou e não abre nenhuma aba: vira pedido na tela "Acessos" (sem esperar o banco).
-    if (!liberadas.some((d) => d.type !== 'Tooltip')) this.opts.acesso.registraPedido(quem);
+    // Quem abre SO a aba "Metas" nao e um pedido de acesso pendente: ja foi liberado.
+    const extras = TELAS_SEM_DASHBOARD.filter((t) => this.opts.acesso.podeVer(quem, t.id));
+    if (!liberadas.some((d) => d.type !== 'Tooltip') && extras.length === 0) {
+      this.opts.acesso.registraPedido(quem);
+    }
     responde(res, 200, {
       // A tela monta a navegação SÓ com o que vem aqui. Esconder a aba é conforto; quem
       // barra é o 403 de `atende()` — pedir a aba pela URL dá no mesmo lugar.
@@ -1716,6 +1801,11 @@ export class Servidor {
         ...(quem.nome ? { nome: quem.nome } : {}),
         papel: this.opts.acesso.papelDe(quem),
         podeGerir: this.opts.acesso.podeGerir(quem),
+        // As abas que NAO sao dashboard e esta conta abre (hoje so "metas"). A tela monta
+        // a faixa com isto; quem barra de verdade continua sendo o 403 da rota.
+        abasExtras: TELAS_SEM_DASHBOARD.filter((t) => this.opts.acesso.podeVer(quem, t.id)).map(
+          (t) => ({ id: t.id, nome: t.nome }),
+        ),
       },
       dashboards: liberadas.map((d) => ({
         id: d.id,

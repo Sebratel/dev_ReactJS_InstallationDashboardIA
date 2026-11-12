@@ -12,6 +12,7 @@ import type { BuscaCertificados } from './auth-firebase.ts';
 import type { PiscinaWorkers } from './piscina-workers.ts';
 import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { EstadoDoRedis } from './saude-do-redis.ts';
+import type { LojaDeMetas } from './loja-metas-maria.ts';
 import type { UsoDasTelas } from './uso-das-telas.ts';
 import type { ObservadorAoVivo } from './sombra-ao-vivo.ts';
 import type { GeracaoDoPeriodo } from './periodos-ao-vivo.ts';
@@ -71,6 +72,12 @@ export interface ServidorOptions {
   eventosDeSeguranca?: GravadorDeEventos;
   /** Agregado leve de aberturas de aba e sua leitura administrativa. */
   usoDasTelas?: UsoDasTelas;
+  /**
+   * Os numeros de negocio que um gestor edita pela aba "Metas" (`loja-metas-maria.ts`).
+   * Ausente (sem banco, como em desenvolvimento) faz `/api/admin/metas` responder 503 —
+   * a tela diz que nao da para editar agora, e NUNCA finge ter gravado.
+   */
+  metas?: LojaDeMetas;
   /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
    *  token — falha fechada, não aberta, enquanto não configurado. */
   googleClientId?: string;

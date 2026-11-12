@@ -17,6 +17,7 @@ GRANT SELECT ON DB_InstallationDashboard.employee_managers TO 'installation_read
 GRANT SELECT ON DB_InstallationDashboard.team_capacities   TO 'installation_reader'@'%';
 GRANT SELECT ON DB_InstallationDashboard.installer_awards  TO 'installation_reader'@'%';
 GRANT SELECT ON DB_InstallationDashboard.data_syncs        TO 'installation_reader'@'%';
+GRANT SELECT ON DB_InstallationDashboard.business_goals   TO 'installation_reader'@'%';
 
 -- 2) Acessos da API: a tela "Acessos" e os eventos de segurança. Logs só aceitam inclusão.
 CREATE USER IF NOT EXISTS 'installation_access'@'%' IDENTIFIED BY 'TROQUE_SENHA_2' REQUIRE SSL;
@@ -27,6 +28,9 @@ GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.access_requests
 GRANT SELECT, INSERT                 ON DB_InstallationDashboard.audit_logs      TO 'installation_access'@'%';
 GRANT SELECT, INSERT                 ON DB_InstallationDashboard.security_events TO 'installation_access'@'%';
 GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.screen_usage_daily TO 'installation_access'@'%';
+-- A meta que o gestor edita pela aba "Metas" (12/11/2026). Sem DELETE: uma meta é
+-- trocada, nunca apagada, e a troca fica em audit_logs.
+GRANT SELECT, INSERT, UPDATE         ON DB_InstallationDashboard.business_goals  TO 'installation_access'@'%';
 
 -- 3) n8n: só as três tabelas das planilhas e o registro da cópia. Não lê acesso nem
 --    eventos de segurança, e não alcança outro banco.

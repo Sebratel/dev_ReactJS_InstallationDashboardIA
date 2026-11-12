@@ -689,6 +689,34 @@ carregar a página com a agenda completa (ACHADOS #248).
   26/10, depois do snapshot) e a Descrição 1 a menos (1 protocolo de slot em 25/07, que
   saiu da janela entre o snapshot e a consulta). Diferença de instante, nenhuma de regra.
 
+### `metas-instalacao` — arquivo NOVO e MANTIDO POR HUMANOS; `# META` deixa de ser constante (12/11/2026)
+
+A META DO MÊS saiu do código. Era `dax: "2865"` na medida `# META` de
+`protocolos-geral.measures.yaml` — um número de NEGÓCIO guardado como se fosse cálculo,
+copiado à mão do relatório vivo do Power BI sempre que alguém notava que tinha mudado. Em
+11/11/2026 o QA do Fabricio (defeito D-20) achou o painel em 2.865 contra 2.583 no Power
+BI e no n8n: 24 dias de número errado na tela, pelo mesmo motivo das duas vezes anteriores
+(3000 → 2928 em 25/08, 2928 → 2865 em 18/09).
+
+Agora o valor é UMA LINHA do `DB_InstallationDashboard` (`business_goals`, chave
+`meta_mes`), que um gestor edita na aba "Metas" e o refresh traz em até 15 minutos.
+
+- **Dois arquivos novos**, nenhum dos dois sai do PBIP:
+  `_catalog/queries/metas-instalacao.spec.yaml` (o `SELECT` de uma linha no `dbMaria`) e
+  `_catalog/tables/metas-instalacao.spec.yaml` (a tabela `METAS`, coluna `META`).
+- **A medida passou a ser** `COALESCE(MAX('METAS'[META]), BLANK())`. `MAX` sobre uma tabela
+  de uma linha e SEM relação com o resto do modelo não é recortado por filtro de página
+  nenhum: a medida devolve o mesmo valor em qualquer contexto, que é exatamente o que a
+  constante fazia. O `COALESCE` é a falha fechada — tabela vazia deixa o KPI em branco, em
+  vez de herdar um número velho.
+- **Um valor vigente, não um por mês** (decisão do Erick, 12/11/2026): vale para qualquer
+  competência, inclusive meses fechados, como a constante do Power BI valia. É o que
+  mantém a prova de paridade do QA comparável; o preço é que trocar a meta muda também o
+  que setembro e outubro comparam.
+- **Refresh:** grupo `quente` (15 min), junto da `capacidade-equipe`. Custo desprezível.
+- **Não há golden**: a linha é editável por gente, então um golden congelaria o valor de
+  um dia. O que o teste cobre é o portão e a validação (`backend/api/test/metas.test.ts`).
+
 ## Estrutura de `backend/specs/`
 
 ```

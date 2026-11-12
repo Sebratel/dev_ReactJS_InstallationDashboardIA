@@ -126,8 +126,20 @@ measures:
   # disfarçada. O valor anterior (2928) foi medido em 25/08 e ficou 24 dias correto.
   # **CONFIRMAR COM QUEM DEFINE A META**: este arquivo segue o relatório, e o
   # relatório segue uma decisão de negócio que ninguém aqui tomou.
+  #
+  # DEIXOU DE SER CONSTANTE EM 12/11/2026 (QA, defeito D-20). O ciclo acima - alguém
+  # percebe que a meta mudou, mede o relatório vivo, edita este arquivo, sobe - falhou
+  # outra vez: em 11/11/2026 o painel mostrava 2865 e o Power BI, 2583. Vinte e quatro
+  # dias de numero errado porque um numero de negocio estava guardado como codigo.
+  #
+  # Agora o valor vem da tabela METAS (uma linha, uma coluna), que um gestor edita pela
+  # aba "Metas" e o refresh de 15 min traz. `MAX` sobre uma tabela de UMA linha e SEM
+  # relacao com o resto do modelo nao e afetado por filtro de pagina nenhum: a medida
+  # continua devolvendo o mesmo valor em qualquer contexto, como a constante devolvia.
+  # O `COALESCE` e a falha fechada: tabela vazia (refresh que nunca rodou, banco fora)
+  # devolve BLANK e o KPI aparece vazio, em vez de herdar um numero velho de codigo.
   display_folder: null
-  dax: "2865"
+  dax: "COALESCE(MAX('METAS'[META]), BLANK())"
 - name: "# TOTAL MÊS ATIVO"
   format: "0"
   display_folder: null

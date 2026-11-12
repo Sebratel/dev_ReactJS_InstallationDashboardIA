@@ -302,6 +302,11 @@ grupos:
       - relatos-do-dia
       - capacidade-equipe
       - apuracao-premiacao
+      # `metas-instalacao` entrou em 12/11/2026 (QA, D-20): UMA linha do
+      # DB_InstallationDashboard, o valor que a medida `# META` passou a ler no lugar da
+      # constante. Custo desprezivel, e aqui porque a meta que um gestor acabou de salvar
+      # tem de aparecer no painel no mesmo quarto de hora - nao no dia seguinte.
+      - metas-instalacao
     intervalo_minutos: 15
     incremental: false
 

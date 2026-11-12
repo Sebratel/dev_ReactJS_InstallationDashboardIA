@@ -191,3 +191,31 @@ CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.data_syncs (
   row_count       INT UNSIGNED NULL,
   last_error      VARCHAR(500) NULL
 ) ENGINE = InnoDB;
+
+-- ============================================================================
+-- Números de negócio que um gestor edita pela tela (12/11/2026)
+-- ============================================================================
+-- A META DO MÊS era uma CONSTANTE no catálogo (`# META`, dax: "2865"), copiada à mão do
+-- relatório vivo do Power BI toda vez que alguém notava que tinha mudado — e em 11/11/2026
+-- o QA (D-20) achou o painel em 2.865 contra 2.583 no Power BI e no n8n. Não é cálculo: é
+-- um número que a operação define. Aqui ele passa a ter dono, data e autor.
+--
+-- UMA LINHA POR CHAVE, e a meta do mês é a chave `meta_mes`: o valor vigente vale para
+-- qualquer mês, exatamente como a constante do Power BI valia (decisão do Erick,
+-- 12/11/2026). Trocar a meta muda também os meses fechados — é o comportamento do
+-- relatório que serve de gabarito, e é o que mantém a paridade do QA válida.
+-- Quem mudou e de quanto para quanto fica em `audit_logs` (action `meta_alterada`).
+--
+-- A chave existir aqui NÃO libera ninguém: a aba `metas` nasce sem lista (só admin) e é
+-- liberada pessoa a pessoa na tela "Acessos", como qualquer outra.
+CREATE TABLE IF NOT EXISTS DB_InstallationDashboard.business_goals (
+  goal_id    VARCHAR(64) NOT NULL PRIMARY KEY,
+  goal_value INT NOT NULL,
+  updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  updated_by VARCHAR(254) NOT NULL
+) ENGINE = InnoDB;
+
+-- Semente: o valor que o Power BI e o n8n mostravam em 11/11/2026 (QA, D-20). `IGNORE`
+-- para que rodar o schema de novo NÃO desfaça o que um gestor já tiver gravado.
+INSERT IGNORE INTO DB_InstallationDashboard.business_goals (goal_id, goal_value, updated_by)
+VALUES ('meta_mes', 2583, 'schema.sql');

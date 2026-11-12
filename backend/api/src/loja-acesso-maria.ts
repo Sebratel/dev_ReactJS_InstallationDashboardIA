@@ -10,6 +10,7 @@
 // acontecem, ou nenhuma.
 
 import mysql from 'mysql2/promise';
+import { DDL_DAS_METAS } from './loja-metas-maria.ts';
 import type { LinhasDeAcesso, LojaDeAcesso, Mudanca, RegistroDeAuditoria } from './permissoes.ts';
 
 export interface ConfigDoBancoDeAcesso {
@@ -106,6 +107,10 @@ export const DDL_DA_API = [
   PRIMARY KEY (day, screen_id, email),
   KEY by_screen (screen_id, day)
 ) ENGINE = InnoDB`,
+  // Os numeros de negocio que um gestor edita pela aba "Metas" (12/11/2026, QA D-20).
+  // O DDL mora em `loja-metas-maria.ts`, junto da loja que o usa; aqui so entra na
+  // mesma subida das outras, porque a estacao nao alcanca o MariaDB e a API alcanca.
+  DDL_DAS_METAS,
 ];
 
 

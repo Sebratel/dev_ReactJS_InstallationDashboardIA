@@ -29,6 +29,8 @@ import { decideLogin } from './portao-login.ts';
 import { mensagemDaConfiguracaoDeProducao, problemasDaConfiguracaoDeProducao } from './configuracao-producao.ts';
 import { criaAcesso } from './permissoes.ts';
 import { configDoAmbiente, criaPoolDeAcesso, garanteTabelas, lojaMaria } from './loja-acesso-maria.ts';
+import { lojaDeMetasMaria } from './loja-metas-maria.ts';
+import { IDS_SEM_DASHBOARD } from './telas-extras.ts';
 import { criaSenior } from './senior.ts';
 import { criaGravadorDeEventos } from './eventos-seguranca.ts';
 import { criaUsoDasTelas } from './uso-das-telas.ts';
@@ -315,7 +317,12 @@ const acesso = criaAcesso({
   senior,
   modoSenior: process.env.SENIOR_MODO === 'bloquear' ? 'bloquear' : 'observar',
   loja: poolDeAcesso ? lojaMaria(poolDeAcesso) : null,
-  telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
+  // As abas do relatorio MAIS as que nao sao dashboard (hoje so "Metas"): o portao de
+  // acesso e o mesmo para as duas (telas-extras.ts).
+  telasConhecidas: [
+    ...loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
+    ...IDS_SEM_DASHBOARD,
+  ],
   adminsDoAmbiente: (process.env.ADMIN_EMAILS ?? '').split(','),
   devsDoAmbiente: (process.env.DEV_EMAILS ?? '').split(','),
   dominio: process.env.DOMINIO_CORPORATIVO || 'sebratel.com.br',
@@ -348,6 +355,8 @@ const servidor = new Servidor({
   acesso,
   ...(eventosDeSeguranca ? { eventosDeSeguranca } : {}),
   ...(usoDasTelas ? { usoDasTelas } : {}),
+  // A aba "Metas" so edita com banco; sem ele a rota responde 503 (opcoes-servidor.ts).
+  ...(poolDeAcesso ? { metas: lojaDeMetasMaria(poolDeAcesso) } : {}),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver
