@@ -56,8 +56,11 @@ services:
     #   API_WORKER_HEAP_MB=512 × API_WORKERS=2  heap da piscina de DAX
     #   filho da busca ao vivo, um por vez     1024 (`geracao-em-processo.ts`)
     #   ------------------------------------------------------------
-    #   2816 MB autorizados de heap (1792 sem AO_VIVO_PAGINAS: o filho só existe com ela)
-    #   mem_limit 3072m -> 256 MB de folga no pior caso, 1280 sem o ao vivo, para o que
+    #   2816 MB autorizados de heap. **Desde 12/11/2026 isto vale SEMPRE**: o padrão de
+    #   `AO_VIVO_PAGINAS` deixou de ser vazio (D-16, lá embaixo), então o processo filho
+    #   da busca ao vivo sempre existe. Os 1792 MB de antes — sem ao vivo, sem filho — só
+    #   acontecem se alguém puser a variável da stack em vazio de propósito.
+    #   mem_limit 3072m -> 256 MB de folga no pior caso, para o que
     #   NÃO é heap: os datasets das páginas (em Int32Array fora do heap, 1 por worker —
     #   `API_DATASETS_POR_WORKER`), buffers do .jsonl.gz, runtime, V8 e pilhas.
     #
@@ -214,7 +217,18 @@ services:
       # próprios no SRD (`analytics-ao-vivo`), pastas em `API_RUNTIME_DIR/ao-vivo`.
       # Para MEMÓRIA, só `agendamento-field` corta dado; ano e janela dão frescor de 10
       # min contra os 30 do refresh (docs/DECISAO-AO-VIVO.md § A busca num processo filho).
-      AO_VIVO_PAGINAS: ${AO_VIVO_PAGINAS:-}
+      #
+      # **O PADRAO DEIXOU DE SER VAZIO EM 12/11/2026 (QA, D-16).** A `field-agenda` completa
+      # saiu do snapshot no passo 5 (`completa_no_snapshot: false`), e com a variavel vazia
+      # a Agendamento Field abria com SETE visuais indisponiveis — Historico de relatos,
+      # Relatos completos, Improdutivo/Produtivo — em todo pedido, para sempre. A API
+      # avisava na subida (`avisoSemCompleta`), mas um aviso no log do container nao e uma
+      # trava: a homologacao rodou assim ate o QA achar na tela.
+      # Entao a `agendamento-field` entra por PADRAO: ela nao e opcional, e a unica pagina
+      # cujo grao saiu do snapshot. As outras doze seguem opcionais (dao frescor de 10 min
+      # contra os 30 do refresh, nao corrigem numero) — ponha-as na variavel da stack para
+      # liga-las. Uma lista explicita na stack substitui este padrao inteiro.
+      AO_VIVO_PAGINAS: ${AO_VIVO_PAGINAS:-agendamento-field}
       # A chave do rate limit é o `X-Real-IP` que o `web` escreve com `$remote_addr`
       # (`nginx.web.conf`, em toda location que repassa). Seguro só porque a API não tem
       # porta publicada: ninguém de fora fala com ela sem passar pelo `web`.
