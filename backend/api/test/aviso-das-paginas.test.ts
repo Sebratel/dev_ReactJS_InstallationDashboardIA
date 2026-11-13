@@ -219,9 +219,21 @@ test('?recalcula=1 de um usuário comum é ignorado; o de ferramenta interna val
   }
 });
 
-test('alocação ao vivo avisa SÓ quem carrega Status Protocolo Dia — não as páginas da PG', async () => {
+test('alocação ao vivo avisa quem carrega Status Protocolo Dia — e não todas as da PG', async () => {
   // PLANO-MESTRE §A.1. Ela não está no fechamento de queries de página nenhuma: sem o
   // roteamento por calculada, este aviso não saía, e a tela nunca via o tempo real.
+  //
+  // **Eram 1 página, viraram 3 em 13/11/2026 (QA D-21, ACHADOS #261).** A
+  // `Status Protocolo Dia` passou a entrar também na `visao-geral` e na
+  // `relatorio-do-mes` como PONTE de propagação — sem ela o filtro de tipo morria no meio
+  // do caminho e dois cartões devolviam número sem recorte, calados. O preço é este
+  // aviso: quem carrega a calculada é avisado quando a alocação muda, mesmo que não
+  // mostre nenhuma coluna dela. Conservador de propósito — o contrário seria servir
+  // chave de junção velha.
+  //
+  // O contraste que o teste guarda continua de pé: a alocação alcança POUCAS páginas, e
+  // a PG alcança quase todas. Se a lista da alocação crescer para perto da da PG, o
+  // roteamento por calculada deixou de discriminar e isso é o achado.
   const s = await sobe({});
   try {
     const sse = await ouve(await s.busca('/api/eventos'));
@@ -230,8 +242,11 @@ test('alocação ao vivo avisa SÓ quem carrega Status Protocolo Dia — não as
     await ate(() => sse.eventos.length >= 2);
     await sse.para();
     const [viva, geral] = sse.eventos;
-    assert.deepEqual(viva!.dashboards, ['agendamento-field']);
-    assert.ok(geral!.dashboards.length > 5, `a PG alcança ${geral!.dashboards.length} página(s) — o contraste do teste`);
+    assert.deepEqual([...viva!.dashboards].sort(), ['agendamento-field', 'relatorio-do-mes', 'visao-geral']);
+    assert.ok(
+      geral!.dashboards.length > viva!.dashboards.length + 2,
+      `a alocação alcança ${viva!.dashboards.length} e a PG ${geral!.dashboards.length} — o contraste do teste`,
+    );
   } finally {
     await s.fecha();
   }

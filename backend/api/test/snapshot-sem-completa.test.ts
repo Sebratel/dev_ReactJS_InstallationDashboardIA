@@ -146,15 +146,31 @@ test('sem a agenda completa: nenhuma carga a pede, e os três visuais de relato 
   for (const v of corpo.visuais.filter((x) => x.indisponivel)) assert.match(v.indisponivel!, /só chegam pelo ao vivo/);
 });
 
-test('sem a agenda completa: o overlay perde as fontes do Status Protocolo Dia, e o calendar segue recalculando', async (t) => {
+/**
+ * **Mudou em 13/11/2026 (QA D-21, ACHADOS #261), e o que mudou é o preço do conserto.**
+ *
+ * Antes, só a `agendamento-field` carregava a `Status Protocolo Dia`, e por isso só ela
+ * perdia o overlay — as fontes dela (FIELD AGENDA, PG e alocação) recalculariam a
+ * calculada sobre a agenda de slot. A `relatorio-do-mes` ficava com o overlay e só
+ * recalculava o `calendar`.
+ *
+ * Agora a `relatorio-do-mes` também carrega a calculada — como PONTE, para o filtro de
+ * tipo alcançar `AGENDADOS` e `MÉDIA AGENDADA`. Então ela entra no mesmo caminho caro:
+ * sem overlay, recalculando. Foi uma troca consciente — um número que ignora o filtro em
+ * silêncio é pior que um recálculo a mais — e está registrada no ACHADOS com o custo.
+ *
+ * Se um dia isso pesar no Grafana, o caminho de saída é podar a ponte às colunas de
+ * junção (`protocolo`, `Dia`) e não materializar o `Status` para quem só a usa de ponte.
+ */
+test('sem a agenda completa: quem carrega o Status Protocolo Dia perde o overlay — inclusive quem o tem só de ponte', async (t) => {
   const { pedidos, busca } = await sobe(t, SEM_COMPLETA);
   assert.equal((await busca(comFiltros(AGENDA.id))).status, 200);
   assert.equal((await busca(comFiltros('relatorio-do-mes'))).status, 200);
   const daAgenda = pedidos.find((p) => p.dashboardSpec.id === AGENDA.id)!;
   const doMes = pedidos.find((p) => p.dashboardSpec.id === 'relatorio-do-mes')!;
   assert.equal(daAgenda.overlays, undefined, 'FIELD AGENDA, PG e alocação recalculariam o Status Protocolo Dia sobre a agenda de slot');
-  assert.ok(doMes.overlays?.has(normalizeName('FIELD AGENDA')), 'o calendar do Relatório do Mês recalcula sobre a agenda de slot');
-  assert.ok(!doMes.precisaFormaCompleta?.includes('FIELD AGENDA'));
+  assert.equal(doMes.overlays, undefined, 'a ponte põe o Relatório do Mês no mesmo caminho');
+  assert.ok(!doMes.precisaFormaCompleta?.includes('FIELD AGENDA'), 'a completa continua fora da carga');
 });
 
 test('sem a agenda completa: filtro de tela em coluna de relato deixa indisponível todo visual que calcula', async (t) => {

@@ -16516,3 +16516,78 @@ Enquanto não for consertado, o que vale saber: qualquer página cujo fechamento
 uma ponte perde o filtro que dependia dela, sem aviso. Não existe hoje nada que detecte
 isso — e um teste que compare "caminhos do modelo" com "caminhos que sobram no
 fechamento de cada página" acharia todos de uma vez.
+
+## #261 — D-21 consertado: a ponte vira a quinta aresta do fechamento, e custou 76 KB (13/11)
+
+O #260 registrou a D-21 medida e **não** consertada, porque o conserto parecia custar
+memória — justo o que o Erick pediu para cortar. Ele mandou consertar e escolher o
+caminho. Medindo o custo de verdade, a premissa do #260 estava pessimista.
+
+**Primeiro, quantas pontes faltam.** Escrevi a busca sobre o grafo de propagação e rodei
+nas 14 páginas. O primeiro resultado deu **7 pontes em 4 páginas**, incluindo
+`Base Categorias Field` (258 mil linhas) e `CONTRATOS` (89 mil) — o que tornaria o
+conserto caro. **Era falso-positivo meu.** O critério "alguém de dentro alcança X e X
+alcança alguém de dentro" conta ida-e-volta pelo MESMO relacionamento: num
+`bothDirections`, A → X → A. Isso não propaga nada. As duas tabelas estão ligadas só a
+`PROTOCOLOS PRODUTIVIDADE`, por relacionamento bidirecional, e por isso apareciam.
+
+Exigindo **caminho simples no relacionamento** — a mesma regra do "não voltar por onde
+veio" de `filter.ts` — o número verdadeiro é:
+
+```
+  visao-geral        +1 ponte: Status Protocolo Dia
+  relatorio-do-mes   +1 ponte: Status Protocolo Dia
+  as outras 12       +0
+```
+
+**Duas pontes, a mesma tabela.** E ela já é materializada hoje, porque a
+`agendamento-field` a nomeia: o arquivo é `snapshot/calc.status-protocolo-dia.jsonl.gz`,
+**76 KB**. Não há query nova, não há cálculo novo — há carregar um arquivo pequeno em
+duas páginas a mais, e ainda com a poda de `colunas-usadas.ts` na carga, que para uma
+ponte deixa só as colunas de junção. O custo real não é o que o #260 temia.
+
+**O conserto** é uma quinta aresta no fechamento de `plano.ts`, ao lado das quatro de
+DAX que já existiam: *tabela que é nó intermediário de um caminho de propagação entre
+duas tabelas já incluídas*. O laço de fora repete até não crescer mais — hoje estabiliza
+na primeira volta, mas uma ponte pode trazer DAX que traga outra ponte, e não quis
+depender disso.
+
+**O que muda em tela:** só os dois cartões do Relatório do Mês, e só quando há filtro.
+Conferido: na `visao-geral` nenhum visual lê `FIELD AGENDA` diretamente (ela entra lá por
+DAX de medida), e na `relatorio-do-mes` os únicos que leem são `AGENDADOS` e
+`MÉDIA AGENDADA (MÊS ATUAL)` — exatamente os dois do defeito. Sem filtro escolhido, nada
+propaga e nada muda. Com filtro, eles passam a recortar, que é o que o Power BI faz.
+
+Teste: `pontes-de-propagacao.test.ts`, varrendo as 14 páginas e cobrando zero. A busca é
+**reimplementada no teste**, a partir do grafo, de propósito: um teste que chamasse a
+função do `plano.ts` concordaria com ela até quando ela estivesse errada.
+
+### O custo que eu não tinha visto, e que não é 76 KB
+
+O parágrafo acima mede o ARQUIVO. O custo de verdade apareceu quando a suíte rodou: dois
+testes caíram, os dois no caminho do tempo real, e os dois estavam certos.
+
+1. **`aviso-das-paginas.test.ts`** — o roteamento do SSE avisa quem carrega a calculada.
+   Eram 1 página, viraram 3: mudança de `ALOCAÇÃO PATRIMONIO` agora acorda também a
+   `visao-geral` e a `relatorio-do-mes`, mesmo que elas não mostrem nenhuma coluna dela.
+2. **`snapshot-sem-completa.test.ts`** — quem carrega a calculada PERDE o overlay e passa
+   a recalculá-la sobre a agenda de slot a cada busca ao vivo. A `relatorio-do-mes` entrou
+   nesse caminho, que até ontem era só da `agendamento-field`.
+
+Ou seja: a ponte não custa memória de arquivo, custa **recálculo nas duas páginas mais
+usadas, a cada ciclo do ao vivo**. Isso anda contra a meta de memória, e eu não tinha
+medido isso quando escrevi "o custo real não é o que o #260 temia" — aquilo valia para o
+disco, não para o relógio.
+
+**Por que mesmo assim ficou.** A regra do projeto é explícita: *"uma segmentação que
+finge filtrar é a mesma classe de erro que um BLANK calado"*. Entre um recálculo a mais e
+dois cartões que ignoram o filtro em silêncio, o recálculo é o mal menor — e é
+mensurável, enquanto o outro não aparece em lugar nenhum.
+
+**A saída, se pesar no Grafana.** A ponte não precisa do `Status`, que é a parte cara
+(um `SWITCH` com três `CALCULATE` por linha). Ela precisa só das colunas de junção,
+`protocolo` e `Dia`. Hoje `colunas-usadas.ts` devolve `protocolo, status, dia` para quem
+a tem só de ponte, e a materialização não sabe pular saída de `ADDCOLUMNS` que ninguém
+lê. Podar isso tira quase todo o custo e mantém o conserto — é o próximo passo natural,
+e está fora deste commit de propósito: é máquina nova no caminho do tempo real, e não se
+mexe nele sem medir antes.
