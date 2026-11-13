@@ -24,7 +24,7 @@ sql: |-
   -- NAO entrega `GESTOR`: ela vem de QUADRO FUNCIONAL, que e Google Sheets. A
   -- camada M continua fazendo so esse join (2.448 linhas, e leve).
   --
-  -- Resultado: 47 colunas. Grao: uma linha por (solicitacao x item de patrimonio),
+  -- Resultado: 41 colunas. Grao: uma linha por (solicitacao x item de patrimonio),
   -- nos dois ramos do append.
   --
   -- =============================================================================
@@ -101,13 +101,8 @@ sql: |-
           is2.title                        AS "STATUS",
           p.city                           AS "CIDADE",
           p.neighborhood                   AS "BAIRRO",
-          p.street                         AS "RUA",
-          p.number                         AS "NUMERO PATRIMÔNIO",
           p.name                           AS "CLIENTE",
-          p.phone                          AS "TELEFONE",
           t.title                          AS "EQUIPE",
-          ac.lat                           AS "LATITUDE",
-          ac.lng                           AS "LONGITUDE",
           p2.name                          AS "RESPONSÁVEL",
           it.title                         AS "TIPO DE PROTOCOLO",
           aap.title                        AS "PONTO DE ACESSO",
@@ -123,7 +118,6 @@ sql: |-
           sp.title                         AS "PROBLEMA",
           as3.title                        AS "OLT",
           m.title                          AS "EQUIPAMENTO",
-          ac.user                          AS "USUÁRIO",
           vu.name                          AS "CRIADO POR",
           -- EXISTS, nao LEFT JOIN (12/09/2026). Medido: `financial_receivable_titles`
           -- tem 78,57 titulos por contrato em media (maximo 654). Como esta coluna e
@@ -216,10 +210,10 @@ sql: |-
   ramo_produtividade AS (
       SELECT DISTINCT
           "SOLICITACAO","N°PROTOCOLO","DATA AGENDA","DATA CRIADO","DATA ENCERRADO","STATUS",
-          "CIDADE","BAIRRO","RUA","NUMERO PATRIMÔNIO","TELEFONE","CLIENTE","EQUIPE",
-          "LATITUDE","LONGITUDE","RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
+          "CIDADE","BAIRRO","CLIENTE","EQUIPE",
+          "RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
           "CODIGO","SLOT","PORTA","CTO","STATUS CONTRATO","ESTAGIO CONTRATO",
-          "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
+          "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO",
           "CRIADO POR","STATUS FINANCEIRO"
       FROM (
           SELECT b.*, ROW_NUMBER() OVER (
@@ -310,10 +304,10 @@ sql: |-
   ramo_auxiliares AS (
       SELECT DISTINCT
           "SOLICITACAO","N°PROTOCOLO","DATA AGENDA","DATA CRIADO","DATA ENCERRADO","STATUS",
-          "CIDADE","BAIRRO","RUA","NUMERO PATRIMÔNIO","TELEFONE","CLIENTE","EQUIPE",
-          "LATITUDE","LONGITUDE","RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
+          "CIDADE","BAIRRO","CLIENTE","EQUIPE",
+          "RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
           "CODIGO","SLOT","PORTA","CTO","STATUS CONTRATO","ESTAGIO CONTRATO",
-          "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
+          "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO",
           "CRIADO POR","STATUS FINANCEIRO"
       FROM (
           SELECT b.*, ROW_NUMBER() OVER (
@@ -408,7 +402,7 @@ sql: |-
       SELECT u.*,
              NULLIF(regexp_replace(u."N°PROTOCOLO"::text, '\D', '', 'g'), '')::bigint AS _chave
       FROM (
-          -- `_ramo` NAO e coluna de saida: o SELECT final enumera as 47 colunas e nao
+          -- `_ramo` NAO e coluna de saida: o SELECT final enumera as 41 colunas e nao
           -- inclui esta. Ela existe porque o `INSTALADOR` depende do RAMO -- ver o
           -- comentario dele la embaixo. Sem ela, os dois ramos ficam com o MESMO
           -- instalador e a coluna cai de 166 pessoas para 94 (ACHADOS #100).
@@ -511,7 +505,7 @@ sql: |-
   )
 
   -- -----------------------------------------------------------------------------
-  -- 5. RESULTADO -- 47 colunas, ja com as derivacoes que hoje sao passos de M
+  -- 5. RESULTADO -- 41 colunas, ja com as derivacoes que hoje sao passos de M
   -- -----------------------------------------------------------------------------
   SELECT
       "SOLICITACAO",
@@ -524,13 +518,7 @@ sql: |-
       "STATUS CONTRATO",
       "ESTAGIO CONTRATO",
       "STATUS FINANCEIRO",
-      "TELEFONE",
-      "NUMERO PATRIMÔNIO",
-      "USUÁRIO",
       "CRIADO POR",
-      "RUA",
-      "LATITUDE",
-      "LONGITUDE",
       "SLOT",
       "PORTA",
 
@@ -684,10 +672,10 @@ source_tables:
 - v_users
 m_expression: |-
   let
-      Fonte = Odbc.Query("dsn=dbVoalle", " WITH PERSONALIZADO AS (#(lf)    SELECT #(lf)        a.title AS ""SOLICITACAO"",#(lf)        ai.protocol AS ""N°PROTOCOLO"",#(lf)        s.start_date AS ""DATA AGENDA"",#(lf)        a.modified AS ""DATA ENCERRADO"",#(lf)        a.created AS ""DATA CRIADO"",#(lf)        is2.title AS ""STATUS"",#(lf)        p.city AS ""CIDADE"",#(lf)        p.neighborhood AS ""BAIRRO"",#(lf)        p.street AS ""RUA"",#(lf)        p.number AS ""NUMERO PATRIMÔNIO"",#(lf)        p.name AS ""CLIENTE"",#(lf)        p.phone AS ""TELEFONE"",#(lf)        t.title AS ""EQUIPE"",#(lf)        ac.lat AS ""LATITUDE"",#(lf)        ac.lng AS ""LONGITUDE"",#(lf)        p2.name AS ""RESPONSÁVEL"",#(lf)        it.title AS ""TIPO DE PROTOCOLO"",#(lf)        aap.title AS ""PONTO DE ACESSO"",#(lf)        aap.code AS ""CODIGO"",#(lf)        aap.slots_first_number AS ""SLOT"",#(lf)        aap.ports_first_number AS ""PORTA"",  #(lf)        as2.title AS ""CTO"",#(lf)        c.v_status AS ""STATUS CONTRATO"",#(lf)        c.v_stage AS ""ESTAGIO CONTRATO"",#(lf)        c.contract_number AS ""NUMERO CONTRATO"",#(lf)        csi.title AS ""ITEM"",#(lf)        sc.title AS ""CONTEXTO"",#(lf)        sp.title AS ""PROBLEMA"",#(lf)        as3.title AS ""OLT"",#(lf)        m.title AS ""EQUIPAMENTO"",#(lf)        ac.user AS ""USUÁRIO"",#(lf)        vu.name AS ""CRIADO POR"",#(lf)        ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,#(lf)        CASE #(lf)            WHEN frt.title IS NULL THEN 'Pendente' #(lf)            ELSE 'Cobrado' #(lf)        END AS ""STATUS FINANCEIRO""#(lf)    FROM assignment_incidents ai#(lf)    LEFT JOIN assignments a ON a.id = ai.assignment_id#(lf)    LEFT JOIN schedules s ON s.assignment_id = a.id#(lf)    LEFT JOIN incident_types it ON it.id = ai.incident_type_id#(lf)    LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id#(lf)    LEFT JOIN people p ON p.id = a.requestor_id#(lf)    LEFT JOIN teams t ON t.id = ai.team_id#(lf)    LEFT JOIN people_addresses pa ON pa.person_id = p.id#(lf)    LEFT JOIN authentication_contracts ac ON ac.people_address_id = pa.id#(lf)    LEFT JOIN people p2 ON p2.id = a.responsible_id#(lf)    LEFT JOIN authentication_access_points aap ON aap.id = ac.authentication_access_point_id#(lf)    LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN contracts c ON cst.contract_id = c.id#(lf)    LEFT JOIN catalog_services_items csi ON csi.id = ai.catalog_service_item_id#(lf)    LEFT JOIN authentication_splitter_ports asp ON asp.authentication_contract_id = ac.id#(lf)    LEFT JOIN authentication_sites as3 ON as3.id = aap.authentication_site_id#(lf)    LEFT JOIN manufacturers m ON m.id = aap.manufacturer_id#(lf)    LEFT JOIN solicitation_problems sp ON sp.id = ai.solicitation_problem_id#(lf)    LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id#(lf)    LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id#(lf)    LEFT JOIN v_users vu ON vu.id = a.created_by#(lf)    LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id#(lf)    WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15', '1298') -- Filtrando os tipos de protocolo#(lf)      AND a.created >= '2026-01-01'#(lf))#(lf)SELECT DISTINCT #(lf)    ""SOLICITACAO"", #(lf)    ""N°PROTOCOLO"", #(lf)    ""DATA AGENDA"", #(lf)    ""DATA CRIADO"", #(lf)    ""DATA ENCERRADO"", #(lf)    ""STATUS"", #(lf)    ""CIDADE"", #(lf)    ""BAIRRO"",#(lf)    ""RUA"", #(lf)    ""NUMERO PATRIMÔNIO"",#(lf)    ""TELEFONE"", #(lf)    ""CLIENTE"", #(lf)    ""EQUIPE"", #(lf)    ""LATITUDE"", #(lf)    ""LONGITUDE"", #(lf)    ""RESPONSÁVEL"",#(lf)    ""TIPO DE PROTOCOLO"",#(lf)    ""PONTO DE ACESSO"",#(lf)    ""CODIGO"",#(lf)    ""SLOT"",#(lf)    ""PORTA"",#(lf)    ""CTO"",#(lf)    ""STATUS CONTRATO"",#(lf)    ""ESTAGIO CONTRATO"",#(lf)    ""NUMERO CONTRATO"",#(lf)    ""ITEM"",#(lf)    ""CONTEXTO"",#(lf)    ""PROBLEMA"",#(lf)    ""OLT"",#(lf)    ""EQUIPAMENTO"",#(lf)    ""USUÁRIO"",#(lf)    ""CRIADO POR"",#(lf)    ""STATUS FINANCEIRO""#(lf)FROM PERSONALIZADO#(lf)WHERE PERSONA1 = 1;"),
+      Fonte = Odbc.Query("dsn=dbVoalle", " WITH PERSONALIZADO AS (#(lf)    SELECT #(lf)        a.title AS ""SOLICITACAO"",#(lf)        ai.protocol AS ""N°PROTOCOLO"",#(lf)        s.start_date AS ""DATA AGENDA"",#(lf)        a.modified AS ""DATA ENCERRADO"",#(lf)        a.created AS ""DATA CRIADO"",#(lf)        is2.title AS ""STATUS"",#(lf)        p.city AS ""CIDADE"",#(lf)        p.neighborhood AS ""BAIRRO"",#(lf)        p.name AS ""CLIENTE"",#(lf)        t.title AS ""EQUIPE"",#(lf)        p2.name AS ""RESPONSÁVEL"",#(lf)        it.title AS ""TIPO DE PROTOCOLO"",#(lf)        aap.title AS ""PONTO DE ACESSO"",#(lf)        aap.code AS ""CODIGO"",#(lf)        aap.slots_first_number AS ""SLOT"",#(lf)        aap.ports_first_number AS ""PORTA"",  #(lf)        as2.title AS ""CTO"",#(lf)        c.v_status AS ""STATUS CONTRATO"",#(lf)        c.v_stage AS ""ESTAGIO CONTRATO"",#(lf)        c.contract_number AS ""NUMERO CONTRATO"",#(lf)        csi.title AS ""ITEM"",#(lf)        sc.title AS ""CONTEXTO"",#(lf)        sp.title AS ""PROBLEMA"",#(lf)        as3.title AS ""OLT"",#(lf)        m.title AS ""EQUIPAMENTO"",#(lf)        vu.name AS ""CRIADO POR"",#(lf)        ROW_NUMBER() OVER (PARTITION BY a.title ORDER BY s.start_date DESC) AS PERSONA1,#(lf)        CASE #(lf)            WHEN frt.title IS NULL THEN 'Pendente' #(lf)            ELSE 'Cobrado' #(lf)        END AS ""STATUS FINANCEIRO""#(lf)    FROM assignment_incidents ai#(lf)    LEFT JOIN assignments a ON a.id = ai.assignment_id#(lf)    LEFT JOIN schedules s ON s.assignment_id = a.id#(lf)    LEFT JOIN incident_types it ON it.id = ai.incident_type_id#(lf)    LEFT JOIN incident_status is2 ON is2.id = ai.incident_status_id#(lf)    LEFT JOIN people p ON p.id = a.requestor_id#(lf)    LEFT JOIN teams t ON t.id = ai.team_id#(lf)    LEFT JOIN people_addresses pa ON pa.person_id = p.id#(lf)    LEFT JOIN authentication_contracts ac ON ac.people_address_id = pa.id#(lf)    LEFT JOIN people p2 ON p2.id = a.responsible_id#(lf)    LEFT JOIN authentication_access_points aap ON aap.id = ac.authentication_access_point_id#(lf)    LEFT JOIN contract_service_tags cst ON cst.id = ai.contract_service_tag_id#(lf)    LEFT JOIN contracts c ON cst.contract_id = c.id#(lf)    LEFT JOIN catalog_services_items csi ON csi.id = ai.catalog_service_item_id#(lf)    LEFT JOIN authentication_splitter_ports asp ON asp.authentication_contract_id = ac.id#(lf)    LEFT JOIN authentication_sites as3 ON as3.id = aap.authentication_site_id#(lf)    LEFT JOIN manufacturers m ON m.id = aap.manufacturer_id#(lf)    LEFT JOIN solicitation_problems sp ON sp.id = ai.solicitation_problem_id#(lf)    LEFT JOIN solicitation_classifications sc ON sc.id = ai.solicitation_classification_id#(lf)    LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id#(lf)    LEFT JOIN v_users vu ON vu.id = a.created_by#(lf)    LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id#(lf)    WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1256', '1136', '249', '268', '1160', '1015', '279', '15', '1298') -- Filtrando os tipos de protocolo#(lf)      AND a.created >= '2026-01-01'#(lf))#(lf)SELECT DISTINCT #(lf)    ""SOLICITACAO"", #(lf)    ""N°PROTOCOLO"", #(lf)    ""DATA AGENDA"", #(lf)    ""DATA CRIADO"", #(lf)    ""DATA ENCERRADO"", #(lf)    ""STATUS"", #(lf)    ""CIDADE"", #(lf)    ""BAIRRO"",#(lf)    ""CLIENTE"", #(lf)    ""EQUIPE"", #(lf)    ""RESPONSÁVEL"",#(lf)    ""TIPO DE PROTOCOLO"",#(lf)    ""PONTO DE ACESSO"",#(lf)    ""CODIGO"",#(lf)    ""SLOT"",#(lf)    ""PORTA"",#(lf)    ""CTO"",#(lf)    ""STATUS CONTRATO"",#(lf)    ""ESTAGIO CONTRATO"",#(lf)    ""NUMERO CONTRATO"",#(lf)    ""ITEM"",#(lf)    ""CONTEXTO"",#(lf)    ""PROBLEMA"",#(lf)    ""OLT"",#(lf)    ""EQUIPAMENTO"",#(lf)    ""CRIADO POR"",#(lf)    ""STATUS FINANCEIRO""#(lf)FROM PERSONALIZADO#(lf)WHERE PERSONA1 = 1;"),
       // ACHADOS #81, Bloqueio 1 (docs/ACHADOS.md) + docs/SPEC-DRIVEN.md, entrada de
       // 10/09/2026: a partir daqui o M só faz o que o `sql:` acima NÃO faz. O SQL de
-      // produção (migrado 25/08/2026) já entrega as 47 colunas prontas -- inclusive
+      // produção (migrado 25/08/2026) já entrega as 41 colunas prontas -- inclusive
       // "HORA CRIADO"/"HORA AGENDA"/"INSTALADOR" -- e os ~45 passos que existiam aqui
       // antes tentavam recriar essas MESMAS colunas do zero, sem remover as versões
       // do SQL primeiro. O avaliador parava sempre na primeira colisão

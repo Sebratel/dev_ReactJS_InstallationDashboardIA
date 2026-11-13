@@ -16369,3 +16369,60 @@ Fica para uma decisão à parte.
 
 **Regra que fica:** mudou `overrides`? Apague `node_modules` ANTES de instalar, ou a
 mudança não acontece e nada avisa.
+
+## #258 — a regra S6 tinha um furo: a lista que confere formato contava como uso (13/11)
+
+Pedido do Erick: empurrar o máximo para o SGBD e parar de gastar memória. Procurando o
+que o modelo carrega sem ninguém ler, o fechamento de colunas deu 157 de 337 sem citação
+em visual, medida, coluna calculada ou relacionamento. **O número é enganoso e quase me
+fez propor a coisa errada**, por dois motivos que vale deixar escritos:
+
+1. **A API já não carrega o que não usa.** `colunas-usadas.ts` deriva o mesmo fechamento
+   e `carrega.ts` pula o resto ao ler o snapshot. Então poda de coluna NÃO devolve
+   memória da API — devolve espaço no arquivo do snapshot (regra 2: ali tem dado de
+   cliente) e tempo de refresh. Quem quiser mexer nos 653 MB ociosos tem de atacar a
+   agregação, não a largura da tabela.
+2. **A minha primeira sonda não seguia tabela calculada.** A `PROTOCOLOS GERAL` parecia
+   ter 31 colunas ociosas; tem 2. `RUA`, `TELEFONE`, `BAIRRO`, `LATITUDE`, `LONGITUDE`,
+   `INDICE 2` e `SIGLA CIDADE` dela alimentam a tabela calculada `Status Protocolo Dia`.
+   O certo é rodar `npm run seguranca:inventario`, que é a ferramenta do projeto.
+
+**O achado de verdade.** Rodando o inventário, seis colunas da `protocolos-produtividade`
+têm como ÚNICO uso em todo o repositório o array `esperadas` de
+`backend/tools/probe/src/valida-sql-conjunto.ts` — uma lista que confere o FORMATO da
+saída e não lê o dado. O inventário é conservador de propósito (referência que não dá
+para resolver com certeza mantém a coluna), então elas passavam pela regra
+`so_carrega_se_usada` havia meses: `RUA`, `TELEFONE`, `LATITUDE`, `LONGITUDE` — dado
+pessoal — mais `NUMERO PATRIMÔNIO` e `USUÁRIO`.
+
+**Por que não dava para simplesmente apagar.** Diferente da `contratos` (#218), esta
+query tem `SELECT DISTINCT` em dois ramos de `UNION`: tirar coluna de um `DISTINCT` pode
+fundir linhas e mudar contagem em tela. Em vez de reescrever o SQL para medir — tentei, e
+ele quebrou de três jeitos diferentes (o `indexOf` acertava "SELECT DISTINCT" escrito
+DENTRO de um comentário; mexer num ramo só quebrava a aridade do `UNION`; e o nível de
+fora ainda citava a coluna) — a pergunta foi feita ao banco sobre o resultado ORIGINAL,
+sem tocar nele:
+
+```sql
+SELECT count(*) AS grupos, sum(n - 1) AS linhas_fundidas FROM (
+  SELECT <as 41 que ficam>, count(*) AS n FROM (<query original>) _q
+   GROUP BY <as 41 que ficam> HAVING count(*) > 1) _d
+```
+
+Resposta: **0 grupos, 0 linhas**. Tirar as seis não funde nada. Depois da poda, as duas
+versões rodadas em seguida deram as **mesmas 94.320 linhas**, 47 → 41 colunas.
+
+Mesma pergunta para `protocolos-telefonia` com `LATITUDE`/`LONGITUDE`: também 0 e 0, e a
+poda foi feita junto. A forma do SQL dela é outra — o apelido da coluna é implícito
+(`ac.lat "LATITUDE"`, sem `AS`), e por isso o padrão que achou as seis da produtividade
+não casou nenhuma aqui. Foi preciso um segundo padrão, com o mesmo cuidado de contar as
+ocorrências antes de gravar. Depois da poda: 39 → 37 colunas, e as **mesmas 2.190
+linhas**.
+
+Saiu também do `seguranca.yaml` com `removida_em: 2026-11-13`: voltar com qualquer uma
+das quatro pessoais sem uso reprova `spec-seguranca.test.ts`.
+
+**A lição que fica para a próxima poda:** antes de chamar coluna de ociosa, rodar
+`npm run seguranca:inventario` e OLHAR onde ela é usada. "Usada por uma lista de
+conferência de formato" e "usada por um visual" são coisas diferentes, e só a segunda
+impede a poda.

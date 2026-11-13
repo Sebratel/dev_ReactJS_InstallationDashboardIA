@@ -21,8 +21,6 @@ sql: |-
   		p.name "CLIENTE",
   		p.phone "TELEFONE",
   		t.title "EQUIPE",
-  		ac.lat "LATITUDE",
-  		ac.lng "LONGITUDE",
   		p2.name "RESPONSÁVEL",
   		it.title "TIPO DE PROTOCOLO",
   		aap.title "PONTO DE ACESSO",
@@ -113,8 +111,6 @@ sql: |-
       				"TELEFONE",
       				"CLIENTE",
       				"EQUIPE",
-      				"LATITUDE",
-      				"LONGITUDE",
       				"RESPONSÁVEL",
       				"TIPO DE PROTOCOLO",
       				"PONTO DE ACESSO",
@@ -221,8 +217,6 @@ sql: |-
       "TELEFONE",
       "CLIENTE",
       "EQUIPE",
-      "LATITUDE",
-      "LONGITUDE",
       -- Text.Upper e depois nulo -> "SEM INFORMAÇÃO" (26 linhas em 16/09). Em CAIXA
       -- ALTA, ao contrario das seis de baixo -- e do M, nao e deslize a copiar.
       COALESCE(upper("RESPONSÁVEL"), 'SEM INFORMAÇÃO')      AS "RESPONSÁVEL",

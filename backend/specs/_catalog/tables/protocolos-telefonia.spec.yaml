@@ -96,18 +96,6 @@ columns:
   source_column: EQUIPE
   calculated: false
   dax: null
-- name: LATITUDE
-  type: string
-  format: null
-  source_column: LATITUDE
-  calculated: false
-  dax: null
-- name: LONGITUDE
-  type: string
-  format: null
-  source_column: LONGITUDE
-  calculated: false
-  dax: null
 - name: "RESPONSÁVEL"
   type: string
   format: null

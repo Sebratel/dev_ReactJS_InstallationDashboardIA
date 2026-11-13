@@ -2,7 +2,7 @@
   "queryId": "protocolos-produtividade",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 88758,
+  "rowCount": 94326,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -11,23 +11,23 @@
       "name": "SOLICITACAO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2465,
-      "minLength": 70,
-      "maxLength": 136
+      "distinct": 2494,
+      "minLength": 74,
+      "maxLength": 137
     },
     {
       "name": "N°PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2465,
+      "distinct": 2494,
       "numericString": true,
-      "sum": 9273770169
+      "sum": 9391333267
     },
     {
       "name": "CLIENTE",
       "type": "string",
       "nulls": 0,
-      "distinct": 2334,
+      "distinct": 2367,
       "minLength": 10,
       "maxLength": 60
     },
@@ -35,23 +35,23 @@
       "name": "STATUS",
       "type": "string",
       "nulls": 0,
-      "distinct": 22,
+      "distinct": 20,
       "minLength": 7,
-      "maxLength": 30
+      "maxLength": 40
     },
     {
       "name": "TIPO DE PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 9,
-      "minLength": 23,
+      "distinct": 11,
+      "minLength": 17,
       "maxLength": 39
     },
     {
       "name": "EQUIPE",
       "type": "string",
       "nulls": 0,
-      "distinct": 10,
+      "distinct": 11,
       "minLength": 9,
       "maxLength": 49
     },
@@ -59,9 +59,9 @@
       "name": "NUMERO CONTRATO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2401,
+      "distinct": 2423,
       "numericString": true,
-      "sum": 1412316450
+      "sum": 1419869364
     },
     {
       "name": "STATUS CONTRATO",
@@ -88,113 +88,65 @@
       "maxLength": 8
     },
     {
-      "name": "TELEFONE",
-      "type": "string",
-      "nulls": 0,
-      "distinct": 2307,
-      "minLength": 0,
-      "maxLength": 15
-    },
-    {
-      "name": "NUMERO PATRIMÔNIO",
-      "type": "string",
-      "nulls": 0,
-      "distinct": 939,
-      "numericString": true,
-      "sum": 2811953
-    },
-    {
-      "name": "USUÁRIO",
-      "type": "string",
-      "nulls": 579,
-      "distinct": 2056,
-      "minLength": 8,
-      "maxLength": 27
-    },
-    {
       "name": "CRIADO POR",
       "type": "string",
       "nulls": 0,
-      "distinct": 68,
+      "distinct": 76,
       "minLength": 13,
       "maxLength": 46
     },
     {
-      "name": "RUA",
-      "type": "string",
-      "nulls": 0,
-      "distinct": 1412,
-      "minLength": 5,
-      "maxLength": 76
-    },
-    {
-      "name": "LATITUDE",
-      "type": "string",
-      "nulls": 737,
-      "distinct": 1553,
-      "minLength": 0,
-      "maxLength": 19
-    },
-    {
-      "name": "LONGITUDE",
-      "type": "string",
-      "nulls": 737,
-      "distinct": 1550,
-      "minLength": 0,
-      "maxLength": 18
-    },
-    {
       "name": "SLOT",
       "type": "string",
-      "nulls": 605,
+      "nulls": 498,
       "distinct": 2,
       "numericString": true,
-      "sum": 3942
+      "sum": 4126
     },
     {
       "name": "PORTA",
       "type": "string",
-      "nulls": 603,
-      "distinct": 2,
+      "nulls": 498,
+      "distinct": 1,
       "numericString": true,
-      "sum": 4425
+      "sum": 4502
     },
     {
       "name": "DATA CRIADO",
       "type": "date",
       "nulls": 0,
-      "distinct": 18,
-      "min": "2026-10-07T00:00:00.000Z",
-      "max": "2026-10-24T00:00:00.000Z"
+      "distinct": 17,
+      "min": "2026-10-26T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
       "name": "DATA ENCERRADO",
       "type": "date",
       "nulls": 0,
       "distinct": 16,
-      "min": "2026-10-07T00:00:00.000Z",
-      "max": "2026-10-24T00:00:00.000Z"
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
       "name": "DATA AGENDA",
       "type": "date",
-      "nulls": 4940,
-      "distinct": 10,
-      "min": "2026-10-10T00:00:00.000Z",
-      "max": "2026-10-30T00:00:00.000Z"
+      "nulls": 4964,
+      "distinct": 11,
+      "min": "2026-10-01T00:00:00.000Z",
+      "max": "2026-11-17T00:00:00.000Z"
     },
     {
       "name": "HORA CRIADO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2465,
-      "minLength": 12,
+      "distinct": 2494,
+      "minLength": 11,
       "maxLength": 15
     },
     {
       "name": "HORA AGENDA",
       "type": "string",
-      "nulls": 4940,
+      "nulls": 4964,
       "distinct": 9,
       "minLength": 8,
       "maxLength": 8
@@ -203,7 +155,7 @@
       "name": "CIDADE",
       "type": "string",
       "nulls": 0,
-      "distinct": 8,
+      "distinct": 7,
       "minLength": 6,
       "maxLength": 15
     },
@@ -211,33 +163,33 @@
       "name": "BAIRRO",
       "type": "string",
       "nulls": 0,
-      "distinct": 145,
+      "distinct": 138,
       "minLength": 4,
-      "maxLength": 28
+      "maxLength": 24
     },
     {
       "name": "SIGLA CIDADE",
       "type": "string",
       "nulls": 0,
-      "distinct": 8,
+      "distinct": 7,
       "minLength": 3,
-      "maxLength": 15
+      "maxLength": 12
     },
     {
       "name": "INDICE 2",
       "type": "string",
       "nulls": 0,
-      "distinct": 166,
+      "distinct": 156,
       "minLength": 8,
-      "maxLength": 41
+      "maxLength": 36
     },
     {
       "name": "RESPONSÁVEL",
       "type": "string",
       "nulls": 0,
-      "distinct": 71,
-      "minLength": 12,
-      "maxLength": 46
+      "distinct": 94,
+      "minLength": 13,
+      "maxLength": 39
     },
     {
       "name": "PONTO DE ACESSO",
@@ -245,7 +197,7 @@
       "nulls": 0,
       "distinct": 28,
       "minLength": 14,
-      "maxLength": 19
+      "maxLength": 15
     },
     {
       "name": "ITEM",
@@ -259,23 +211,23 @@
       "name": "CONTEXTO",
       "type": "string",
       "nulls": 0,
-      "distinct": 5,
-      "minLength": 9,
+      "distinct": 8,
+      "minLength": 8,
       "maxLength": 30
     },
     {
       "name": "PROBLEMA",
       "type": "string",
       "nulls": 0,
-      "distinct": 2,
-      "minLength": 14,
+      "distinct": 6,
+      "minLength": 6,
       "maxLength": 25
     },
     {
       "name": "OLT",
       "type": "string",
       "nulls": 0,
-      "distinct": 19,
+      "distinct": 20,
       "minLength": 5,
       "maxLength": 14
     },
@@ -293,7 +245,7 @@
       "nulls": 0,
       "distinct": 28,
       "minLength": 5,
-      "maxLength": 19
+      "maxLength": 14
     },
     {
       "name": "VLAN",
@@ -306,31 +258,31 @@
     {
       "name": "CTO",
       "type": "string",
-      "nulls": 609,
-      "distinct": 1570,
+      "nulls": 512,
+      "distinct": 1617,
       "numericString": true,
-      "sum": 8567947
+      "sum": 8305884
     },
     {
       "name": "DATA ALOCAÇÃO",
       "type": "date",
-      "nulls": 2082,
+      "nulls": 1995,
       "distinct": 15,
-      "min": "2026-10-07T00:00:00.000Z",
-      "max": "2026-10-24T00:00:00.000Z"
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
       "name": "HR. ALOCAÇÃO",
       "type": "string",
-      "nulls": 2082,
-      "distinct": 1475,
-      "minLength": 13,
+      "nulls": 1995,
+      "distinct": 1522,
+      "minLength": 12,
       "maxLength": 15
     },
     {
       "name": "POSIÇÃO",
       "type": "string",
-      "nulls": 2082,
+      "nulls": 1995,
       "distinct": 1,
       "minLength": 7,
       "maxLength": 7
@@ -338,26 +290,26 @@
     {
       "name": "TÉCNICO INSTALAÇÃO",
       "type": "string",
-      "nulls": 2082,
-      "distinct": 38,
+      "nulls": 1995,
+      "distinct": 40,
       "minLength": 13,
       "maxLength": 37
     },
     {
       "name": "TÉCNICO TROCA",
       "type": "string",
-      "nulls": 4453,
-      "distinct": 37,
+      "nulls": 4446,
+      "distinct": 39,
       "minLength": 13,
       "maxLength": 37
     },
     {
       "name": "DATA DA TROCA",
       "type": "date",
-      "nulls": 4453,
-      "distinct": 14,
-      "min": "2026-10-08T00:00:00.000Z",
-      "max": "2026-10-24T00:00:00.000Z"
+      "nulls": 4446,
+      "distinct": 15,
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
       "name": "_RAMO",
@@ -371,20 +323,20 @@
       "name": "_CHAVE AUXILIAR",
       "type": "string",
       "nulls": 0,
-      "distinct": 2465,
+      "distinct": 2494,
       "numericString": true,
-      "sum": 9273770169
+      "sum": 9391333267
     },
     {
       "name": "DATA FINAL",
       "type": "date",
-      "nulls": 1592,
+      "nulls": 1493,
       "distinct": 15,
-      "min": "2026-10-07T00:00:00.000Z",
-      "max": "2026-10-24T00:00:00.000Z"
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     }
   ],
-  "schemaFingerprint": "c9cf0c2f4cee4fc3",
-  "dataFingerprint": "5e69453b9d6cca3e",
-  "capturedAt": "2026-10-24T16:48:14.388Z"
+  "schemaFingerprint": "30e4791f28356707",
+  "dataFingerprint": "934ec6abe38a534f",
+  "capturedAt": "2026-11-13T13:49:33.143Z"
 }

@@ -717,6 +717,55 @@ Agora o valor é UMA LINHA do `DB_InstallationDashboard` (`business_goals`, chav
 - **Não há golden**: a linha é editável por gente, então um golden congelaria o valor de
   um dia. O que o teste cobre é o portão e a validação (`backend/api/test/metas.test.ts`).
 
+### `protocolos-produtividade` e `protocolos-telefonia` — oito colunas sem consumidor saem das queries (13/11/2026)
+
+`RUA`, `TELEFONE`, `LATITUDE`, `LONGITUDE`, `NUMERO PATRIMÔNIO` e `USUÁRIO` saíram do
+`sql:`, do SQL histórico guardado no `m_expression` e de
+`tables/protocolos-produtividade.spec.yaml` (S6 de `docs/PLANO-SEGURANCA.md`,
+ACHADOS #258). As quatro primeiras são dado pessoal.
+
+**O que as mantinha vivas.** Nenhuma página, medida, coluna calculada, relacionamento ou
+passo M as usa. O que as fazia passar pela regra `so_carrega_se_usada` era um único
+lugar: o array `esperadas` de `backend/tools/probe/src/valida-sql-conjunto.ts`, que
+confere o FORMATO da saída e não lê o dado. O inventário (`npm run seguranca:inventario`)
+é conservador de propósito — referência que não dá para resolver com certeza mantém a
+coluna — e por isso as contava como usadas. Elas saem de lá junto.
+
+**Por que não foi corte livre, como na `contratos`.** Esta query tem `SELECT DISTINCT`
+em dois ramos de `UNION`, e tirar coluna de um `DISTINCT` pode FUNDIR linhas. É a mesma
+ressalva que o `seguranca.yaml` já registra para `CONTRATOS TELEFONIA[TELEFONE CONTRATO]`.
+Medido no SRD antes de mexer, agrupando o resultado original por todas as colunas MENOS
+as seis candidatas:
+
+```
+  grupos que colidiriam: 0
+  linhas que sumiriam:   0
+```
+
+Zero colisão: tirá-las não funde nada. Depois da poda, as duas versões rodadas em seguida
+devolveram as **mesmas 94.320 linhas**, com 47 → 41 colunas de saída.
+
+**O `m_expression` não executa.** Quem roda é o campo `sql:`; o texto dentro do
+`Odbc.Query(...)` só nomeia o passo (`backend/packages/transform-engine/src/fonte.ts`), e
+nele mora o SQL ORIGINAL do Power BI, que é outro texto — 4.181 caracteres contra os
+37.767 do `sql:` migrado. As colunas saíram dos dois assim mesmo: é registro histórico,
+mas não há por que o nome de uma coluna de telefone continuar ali.
+
+**A `protocolos-telefonia` foi junto**, com `LATITUDE` e `LONGITUDE` — mesma causa (o
+array do probe era o único "uso") e mesma medição: 0 grupos colidem, e a consulta devolve
+as mesmas 2.190 linhas, 39 → 37 colunas. A forma do SQL dela é diferente: o apelido é
+implícito (`ac.lat "LATITUDE"`, sem `AS`), então o padrão que achou as seis da
+produtividade não casa nenhuma aqui.
+
+**Um lugar a mais para lembrar:** `docs/sql/datahub-protocolos-produtividade.sql` é a
+cópia-irmã do `sql:` da spec, e `incremental.test.ts` cobra que os dois sejam idênticos —
+foi o único teste a reprovar nesta mudança, e é exatamente para isso que ele existe.
+
+Voltar com qualquer uma das seis pessoais sem uso reprova `spec-seguranca.test.ts`
+(`removida_em: 2026-11-13` no `seguranca.yaml`). Goldens regravados
+(`npm run validate:queries -- --only=...`; a produtividade precisa de
+`VOALLE_STATEMENT_TIMEOUT_MS` acima dos 30 s padrão para o perfil de colunas terminar).
+
 ## Estrutura de `backend/specs/`
 
 ```

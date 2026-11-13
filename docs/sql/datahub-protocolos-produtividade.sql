@@ -16,7 +16,7 @@
 -- NAO entrega `GESTOR`: ela vem de QUADRO FUNCIONAL, que e Google Sheets. A
 -- camada M continua fazendo so esse join (2.448 linhas, e leve).
 --
--- Resultado: 47 colunas. Grao: uma linha por (solicitacao x item de patrimonio),
+-- Resultado: 41 colunas. Grao: uma linha por (solicitacao x item de patrimonio),
 -- nos dois ramos do append.
 --
 -- =============================================================================
@@ -93,13 +93,8 @@ WITH bruto AS (
         is2.title                        AS "STATUS",
         p.city                           AS "CIDADE",
         p.neighborhood                   AS "BAIRRO",
-        p.street                         AS "RUA",
-        p.number                         AS "NUMERO PATRIMÔNIO",
         p.name                           AS "CLIENTE",
-        p.phone                          AS "TELEFONE",
         t.title                          AS "EQUIPE",
-        ac.lat                           AS "LATITUDE",
-        ac.lng                           AS "LONGITUDE",
         p2.name                          AS "RESPONSÁVEL",
         it.title                         AS "TIPO DE PROTOCOLO",
         aap.title                        AS "PONTO DE ACESSO",
@@ -115,7 +110,6 @@ WITH bruto AS (
         sp.title                         AS "PROBLEMA",
         as3.title                        AS "OLT",
         m.title                          AS "EQUIPAMENTO",
-        ac.user                          AS "USUÁRIO",
         vu.name                          AS "CRIADO POR",
         -- EXISTS, nao LEFT JOIN (12/09/2026). Medido: `financial_receivable_titles`
         -- tem 78,57 titulos por contrato em media (maximo 654). Como esta coluna e
@@ -208,10 +202,10 @@ WITH bruto AS (
 ramo_produtividade AS (
     SELECT DISTINCT
         "SOLICITACAO","N°PROTOCOLO","DATA AGENDA","DATA CRIADO","DATA ENCERRADO","STATUS",
-        "CIDADE","BAIRRO","RUA","NUMERO PATRIMÔNIO","TELEFONE","CLIENTE","EQUIPE",
-        "LATITUDE","LONGITUDE","RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
+        "CIDADE","BAIRRO","CLIENTE","EQUIPE",
+        "RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
         "CODIGO","SLOT","PORTA","CTO","STATUS CONTRATO","ESTAGIO CONTRATO",
-        "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
+        "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO",
         "CRIADO POR","STATUS FINANCEIRO"
     FROM (
         SELECT b.*, ROW_NUMBER() OVER (
@@ -302,10 +296,10 @@ ramo_produtividade AS (
 ramo_auxiliares AS (
     SELECT DISTINCT
         "SOLICITACAO","N°PROTOCOLO","DATA AGENDA","DATA CRIADO","DATA ENCERRADO","STATUS",
-        "CIDADE","BAIRRO","RUA","NUMERO PATRIMÔNIO","TELEFONE","CLIENTE","EQUIPE",
-        "LATITUDE","LONGITUDE","RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
+        "CIDADE","BAIRRO","CLIENTE","EQUIPE",
+        "RESPONSÁVEL","TIPO DE PROTOCOLO","PONTO DE ACESSO",
         "CODIGO","SLOT","PORTA","CTO","STATUS CONTRATO","ESTAGIO CONTRATO",
-        "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO","USUÁRIO",
+        "NUMERO CONTRATO","ITEM","CONTEXTO","PROBLEMA","OLT","EQUIPAMENTO",
         "CRIADO POR","STATUS FINANCEIRO"
     FROM (
         SELECT b.*, ROW_NUMBER() OVER (
@@ -400,7 +394,7 @@ unificado AS MATERIALIZED (
     SELECT u.*,
            NULLIF(regexp_replace(u."N°PROTOCOLO"::text, '\D', '', 'g'), '')::bigint AS _chave
     FROM (
-        -- `_ramo` NAO e coluna de saida: o SELECT final enumera as 47 colunas e nao
+        -- `_ramo` NAO e coluna de saida: o SELECT final enumera as 41 colunas e nao
         -- inclui esta. Ela existe porque o `INSTALADOR` depende do RAMO -- ver o
         -- comentario dele la embaixo. Sem ela, os dois ramos ficam com o MESMO
         -- instalador e a coluna cai de 166 pessoas para 94 (ACHADOS #100).
@@ -503,7 +497,7 @@ mesclado AS (
 )
 
 -- -----------------------------------------------------------------------------
--- 5. RESULTADO -- 47 colunas, ja com as derivacoes que hoje sao passos de M
+-- 5. RESULTADO -- 41 colunas, ja com as derivacoes que hoje sao passos de M
 -- -----------------------------------------------------------------------------
 SELECT
     "SOLICITACAO",
@@ -516,13 +510,7 @@ SELECT
     "STATUS CONTRATO",
     "ESTAGIO CONTRATO",
     "STATUS FINANCEIRO",
-    "TELEFONE",
-    "NUMERO PATRIMÔNIO",
-    "USUÁRIO",
     "CRIADO POR",
-    "RUA",
-    "LATITUDE",
-    "LONGITUDE",
     "SLOT",
     "PORTA",
 
