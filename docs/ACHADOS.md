@@ -16285,3 +16285,43 @@ filho da busca ao vivo passa a existir sempre (2.816 MB de heap autorizado: 768 
 O que isso NÃO explica: a D-23 (ocorrências faltando na Manutenção Inicial). Com
 `AO_VIVO_PAGINAS` vazio a Manutenção Inicial não perde visual nenhum — a causa é outra e
 segue aberta.
+
+## #256 — D-23: o SQL da `reincidencia` está exato; o que falta acontece depois dele (13/11)
+
+QA D-23 — "faltam ocorrências recentes na Manutenção Inicial". Medido no SRD, com o SQL
+da spec rodado inteiro (`reincidencia.spec.yaml`, já com o `1297` do patch do Fabrício),
+e recortado por data de corte para simular o que um snapshot congelado em cada dia
+mostraria:
+
+```
+  congelado em   total   outubro   novembro
+  31/10           1733      203          0
+  11/11           1806      209         67   <-- o que o Fabricio viu no Power BI
+  13/11 (hoje)    1827      209         88
+```
+
+Os números do Power BI do roteiro — novembro **67**, outubro **209**, total **1.804** —
+batem com a linha de 11/11 (1.806 hoje; 2 linhas de deriva do `rn = 1`, que se remaneja
+quando chega atendimento novo). **Ou seja: a consulta do catálogo devolve, do banco, exatamente
+o que o Power BI mostra.** Não há defeito no SQL, e a dedup do M (`Table.Distinct` por
+`Protocolo Instalação`) é no-op — 1.828 linhas, 1.828 protocolos distintos, nenhum nulo.
+
+A perda está **depois** da consulta. E não é um congelamento simples do snapshot: os dois
+números que o QA viu do nosso lado são incompatíveis entre si com qualquer data de corte.
+Total **1.655** corresponde a um corte ANTES de 20/10 (1.657), onde outubro teria ~124;
+outubro **182** corresponde a um corte entre 27 e 28/10 (173 e 184), onde o total seria
+~1.710. Um snapshot congelado num dia só não produz esse par.
+
+O que isso deixa como próximo passo, em ordem:
+
+1. **Na stack que o QA usou**, conferir a idade do grupo `frio` (`reincidencia` está nele,
+   `intervalo_minutos: 60`): `node backend/tools/refresh/src/daemon.ts --historico` e o
+   `snapshot/refresh-status.json`. Localmente, aqui, o `frio` parou em 20/10 — mas esta é
+   máquina de desenvolvimento, não diz nada sobre produção.
+2. Se o `frio` estiver em dia, a diferença é da MEDIDA, não da carga: o total da página e a
+   contagem por mês teriam de vir do mesmo recorte, e não vêm. O filtro de abertura da
+   `manutencao-inicial` é `REINCIDÊNCIA[data_suporte]` com escopo `ano`
+   (`filtros-padrao.ts`), então o card de total não pode estar fora dele.
+
+Fica registrado o que NÃO é: não é o SQL, não é a dedup do M, e não é a lista de tipos
+(a medição de hoje já roda com o `1297`).
