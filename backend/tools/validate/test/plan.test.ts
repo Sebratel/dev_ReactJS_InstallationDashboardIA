@@ -83,7 +83,7 @@ test('groupSkipped: agrupa por motivo', () => {
 
 // ------------------------------------------------------------ specs reais
 
-test('specs reais: o plano cobre as 25 queries SQL (18 do PBIP + 2 de mão + 2 geradas + 3 planilhas)', () => {
+test('specs reais: o plano cobre as 26 queries SQL (18 do PBIP + 3 de mão + 2 geradas + 3 planilhas)', () => {
   // 18 do PBIP + 2 de mão, registradas em docs/SPEC-DRIVEN.md: `field-agenda-slot`
   // (ACHADOS #87, o grão de slot de `field-agenda`) e `protocolos-tipo` (ACHADOS #200, o
   // par protocolo/tipo para a mesclagem de `backlog-agendado-futuro`). As duas no
@@ -94,18 +94,21 @@ test('specs reais: o plano cobre as 25 queries SQL (18 do PBIP + 2 de mão + 2 g
   //
   // 23 → 25 (26/10/2026): `relatos-do-dia` e `valores-do-relato`, geradas (`npm run
   // gera:relatos-do-dia`), no dbVoalle: 17 → 19 (docs/SPEC-DRIVEN.md).
+  //
+  // 25 → 26 (12/11/2026, QA D-20, ACHADOS #254): `metas-instalacao`, à mão, no dbMaria
+  // (`DB_InstallationDashboard.business_goals`): 6 → 7. dbVoalle não muda.
   const registry = QueryRegistry.fromSpecsDir(SPECS);
   const plan = planValidation(registry.list(), { configured: [...EXECUTABLE_DATASOURCES] });
 
   assert.equal(plan.runnable.length + plan.skipped.length, registry.queries.size);
-  assert.equal(plan.runnable.length, 25, 'dbVoalle + dbMaria com SQL');
+  assert.equal(plan.runnable.length, 26, 'dbVoalle + dbMaria com SQL');
 
   const porFonte = new Map<string, number>();
   for (const item of plan.runnable) {
     porFonte.set(item.datasource, (porFonte.get(item.datasource) ?? 0) + 1);
   }
   assert.equal(porFonte.get('dbVoalle'), 19);
-  assert.equal(porFonte.get('dbMaria'), 6);
+  assert.equal(porFonte.get('dbMaria'), 7);
 });
 
 test('specs reais: nenhuma query executável é barrada pelo guard read-only', () => {

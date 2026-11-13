@@ -171,13 +171,13 @@ test('parser e scanner concordam sobre as referências das 134 expressões', () 
  * extrator perdeu. Se este teste falhar, olhe a partition no TMDL antes de
  * mexer em qualquer outra coisa.
  */
-test('nenhuma tabela fica sem origem: 18 vêm de query, 7 vêm de DAX', () => {
+test('nenhuma tabela fica sem origem: 19 vêm de query, 7 vêm de DAX', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const semOrigem = [...model.tables.values()].filter((t) => !t.queryRef && !t.tableDax);
   assert.deepEqual(semOrigem.map((t) => t.name), []);
 
   const deQuery = [...model.tables.values()].filter((t) => t.queryRef).length;
-  assert.equal(deQuery, 18);
+  assert.equal(deQuery, 19); // +1 em 12/11/2026: METAS (metas-instalacao, ACHADOS #254)
   assert.equal(model.calculatedTables.length, 7);
   assert.equal(deQuery + model.calculatedTables.length, model.tables.size);
 });

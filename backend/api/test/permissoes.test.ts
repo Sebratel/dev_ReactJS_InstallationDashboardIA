@@ -374,7 +374,13 @@ test('com o cache já quente, quem não tem a aba leva 403 — em todas as rotas
     }
     const lista = await (await s.busca('/api/dashboards')).json();
     assert.deepEqual(lista.dashboards, []);
-    assert.deepEqual(lista.eu, { usuario: 'sem.acesso@sebratel.com.br', papel: 'viewer', podeGerir: false });
+    // `abasExtras` vazio: quem nao tem a aba "Metas" tambem nao a ve na faixa (12/11/2026).
+    assert.deepEqual(lista.eu, {
+      usuario: 'sem.acesso@sebratel.com.br',
+      papel: 'viewer',
+      podeGerir: false,
+      abasExtras: [],
+    });
 
     s.estado.quem = pessoa('liberado@sebratel.com.br');
     assert.equal((await (await s.busca('/api/dashboards/capa')).json()).cache, 'hit');

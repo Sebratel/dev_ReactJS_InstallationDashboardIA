@@ -187,7 +187,7 @@ test('checkModelRefs: [Nome] resolve para coluna da própria tabela', () => {
 // ---------- Integração: specs reais ----------
 test('specs reais: o modelo carrega completo', () => {
   const m = SemanticModel.fromSpecsDir(SPECS);
-  assert.equal(m.tables.size, 25, 'tabelas');
+  assert.equal(m.tables.size, 26, 'tabelas'); // +METAS em 12/11/2026 (ACHADOS #254)
   assert.equal(m.measuresDoPbip.length, 78, 'medidas do PBIP');
   assert.equal(m.calculatedColumns.length, 49, 'colunas calculadas com DAX');
   assert.equal(m.relationships.length, 22, 'relacionamentos');

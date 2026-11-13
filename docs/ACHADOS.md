@@ -16218,3 +16218,70 @@ e tarefa nova cancela a marcada. Na sonda, API ociosa de 1.252 para 653 MB (585 
 o cálculo não muda (~1,25 GB), então o `mem_limit` fica. A coleta não depende de
 `--expose-gc` (sem a flag, a worker tira o `gc()` do próprio V8), e a saúde conta
 (`coletaOciosa`). Teste: `coleta-ociosa.test.ts`, com a worker de verdade.
+
+## #254 — a meta do mês era código; virou linha de banco, com portão de aba e trilha (12/11)
+
+QA D-20. A medida `# META` de `protocolos-geral.measures.yaml` era `dax: "2865"` — um
+número de negócio guardado como código. Trocar a meta exigia editar spec, rodar o portão
+verde, commitar, subir para `staging` e esperar o Erick promover. Um gestor não faz isso.
+
+Agora: `dax: "COALESCE(MAX('METAS'[META]), BLANK())"`, lendo a tabela `METAS`
+(`metas-instalacao`, query + table novas, à mão), que é UMA linha e UMA coluna vinda de
+`DB_InstallationDashboard.business_goals`. `MAX` sobre tabela de uma linha SEM
+relacionamento nenhum não é cortada por filtro de página: o comportamento é idêntico ao
+da constante. O `COALESCE` é a falha fechada — tabela vazia dá KPI em branco, nunca um
+número velho herdado.
+
+O que isso traz junto, e por quê:
+
+- **tabela `business_goals`** (`schema.sql`) com `goal_id` PK, `goal_value`, `updated_at`,
+  `updated_by`. Semente `meta_mes = 2583` (o valor em vigor; o `2865` do DAX era de um
+  mês anterior e já estava defasado no código).
+- **permissões** (`usuarios.sql`): `installation_reader` só `SELECT`; `installation_access`
+  ganha `INSERT`/`UPDATE` e **não** ganha `DELETE` — meta se troca, não se apaga, e a
+  troca fica em `audit_logs` (`action = 'meta_alterada'`, valor antes e depois), na MESMA
+  transação do `INSERT ... ON DUPLICATE KEY UPDATE`, depois de um `SELECT ... FOR UPDATE`.
+  Valor igual ao que já está lá não gera linha de auditoria.
+- **`/api/admin/metas`** (`servidor.ts`): `GET` e `POST` atrás do portão de aba
+  (`podeVer(quem, 'metas')` → 403 do SERVIDOR), CSRF estrito como a gestão de acesso, e
+  **503 quando não há loja configurada** — nunca um "salvo" que não salvou.
+- **aba sem dashboard**: `telas-extras.ts` cria o conceito. O `id` `metas` entra em
+  `telasConhecidas` sem existir spec de página, nasce com lista vazia (só admin) e é
+  liberado pela tela "Acessos" como qualquer outra aba. Foi preciso ensinar o `lista()` a
+  não registrar pedido de acesso para quem só tem aba fora de dashboard.
+- **refresh**: `metas-instalacao` no grupo `quente` (15 min). Meta salva aparece no painel
+  em até um quarto de hora — a tela diz isso ao gestor, em vez de deixar ele achar que
+  não gravou.
+
+Duas armadilhas achadas pelo teste, não pela leitura:
+
+1. `{"valor": null}` virava meta **zero**. `Number(null)` é `0`, que passa em
+   `Number.isInteger` e na faixa 0..1.000.000. Falha ABERTA. `validaMeta` agora só aceita
+   número, ou texto não vazio que converta.
+2. Três casos deram 403 em vez de 200/400/503 porque o teste mandava
+   `origin: http://127.0.0.1` sem a porta — e sem a porta é outra origem para o CSRF.
+   O erro era do teste, mas prova que a trava morde.
+
+Teste: `backend/api/test/metas.test.ts`, com `Servidor` de verdade e `fetch` de verdade.
+Sem golden: a linha é editável por gente, um golden congelaria o valor de um dia.
+
+## #255 — "relatos não aparecem" era o padrão vazio do `AO_VIVO_PAGINAS` no compose (12/11)
+
+QA D-16. Medido antes de mexer: `avisoSemCompleta(ROOT, new Set())` imprime
+`tabelas de grao reduzido FORA do snapshot: FIELD AGENDA` e
+`agendamento-field: 7 visual(is) indisponivel(is)`.
+
+Não é bug de código. A `field-agenda` tem `completa_no_snapshot: false` — o grão de relato
+não entra no snapshot de propósito, ele é servido ao vivo do SRD. Só que o
+`docker-compose.prod.yml` trazia `AO_VIVO_PAGINAS: ${AO_VIVO_PAGINAS:-}`: sem a variável
+na stack, nenhuma página ao vivo, e os 7 visuais de relato da Agendamento Field ficavam
+indisponíveis. Quem subiu a stack sem ler o `.env` viu "relatos não aparecem".
+
+Padrão agora é `${AO_VIVO_PAGINAS:-agendamento-field}`: a página que PRECISA do ao vivo
+já nasce ligada. O contrato de memória do compose passa a valer sempre, porque o processo
+filho da busca ao vivo passa a existir sempre (2.816 MB de heap autorizado: 768 do pai +
+2 workers de 512 + 1.024 do filho, dentro do `mem_limit: 3072m`).
+
+O que isso NÃO explica: a D-23 (ocorrências faltando na Manutenção Inicial). Com
+`AO_VIVO_PAGINAS` vazio a Manutenção Inicial não perde visual nenhum — a causa é outra e
+segue aberta.

@@ -290,12 +290,13 @@ test('as 24 m_expression do PBIP parseiam — inclusive clima-tempo e feriados',
   assert.deepEqual(falhas, [], `queries que não parseiam:\n${falhas.join('\n')}`);
 });
 
-test('o corpus tem as 28 queries, e nenhuma perdeu o m_expression', () => {
+test('o corpus tem as 29 queries, e nenhuma perdeu o m_expression', () => {
   // Prende o número: se o extrator parar de trazer M de alguma query, o teste
   // acima passaria com menos trabalho e ninguém notaria. 24 do PBIP + 2 de mão, sem
   // PBIP correspondente: `field-agenda-slot` (ACHADOS #87) e `protocolos-tipo` (#200);
-  // e 2 geradas: `relatos-do-dia` e `valores-do-relato` (26/10/2026, docs/SPEC-DRIVEN.md).
-  assert.equal(corpus().length, 28);
+  // e 2 geradas: `relatos-do-dia` e `valores-do-relato` (26/10/2026, docs/SPEC-DRIVEN.md);
+  // e `metas-instalacao`, à mão (12/11/2026, QA D-20, ACHADOS #254).
+  assert.equal(corpus().length, 29);
 });
 
 test('todo passo de todo let tem nome e expressão — nenhum passo vazio', () => {

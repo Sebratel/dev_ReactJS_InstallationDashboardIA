@@ -179,7 +179,7 @@ test('scanM: transformação de valor e de tipo não conta como efeito nenhum', 
 
 // ── integração: as 25 queries reais ──────────────────────────────────────────
 
-test('as 28 queries reais: 27 são escaneáveis, e a exceção é a do let aninhado', () => {
+test('as 29 queries reais: 28 são escaneáveis, e a exceção é a do let aninhado', () => {
   // 24 do PBIP + `field-agenda-slot` (ACHADOS #87) — SQL de mão, mesma forma de M
   // de 3 passos de `field-agenda`, e escaneável como qualquer outra: 303 + 3 = 306.
   //
@@ -221,7 +221,10 @@ test('as 28 queries reais: 27 são escaneáveis, e a exceção é a do let aninh
   //
   // 151 → 152 (26/10/2026): `relatos-do-dia`, gerada, um passo só (docs/SPEC-DRIVEN.md).
   // 152 → 153 (26/10/2026): `valores-do-relato`, gerada pelo mesmo script, idem.
-  assert.equal(passos, 153, 'passos M nas 27 escaneáveis');
+  //
+  // 153 → 155 (12/11/2026, QA D-20, ACHADOS #254): `metas-instalacao`, à mão, com dois
+  // passos — o `Fonte` e o `Table.TransformColumnTypes` que tipa `META` como inteiro.
+  assert.equal(passos, 155, 'passos M nas 28 escaneáveis');
 });
 
 /**
@@ -248,7 +251,9 @@ test('em 9 tabelas o rowCount do golden não é comparável com o Power BI', () 
   const comparaveis = tabelas.filter((t) => t.rowCountComparavel === true);
 
   assert.equal(naoComparaveis.length, 9, naoComparaveis.map((t) => t.table).join(', '));
-  assert.equal(comparaveis.length, 8);
+  // 8 → 9 em 12/11/2026: `METAS` nasce comparável — o M dela só tipa a coluna, não
+  // filtra nem deduplica, então o `count(*)` do SQL É a contagem da tabela.
+  assert.equal(comparaveis.length, 9);
 
   // Toda tabela "não comparável" tem de dizer qual passo faz a diferença.
   for (const t of naoComparaveis) assert.ok(t.efeitosDeLinha.length > 0, t.table);

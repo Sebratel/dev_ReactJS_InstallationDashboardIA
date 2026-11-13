@@ -931,6 +931,9 @@ test('login de verdade: idToken válido cria sessão, e o cookie libera /api/*',
       foto: 'https://lh3.googleusercontent.com/a/foto-do-fulano',
       papel: 'viewer',
       podeGerir: false,
+      // `ACESSO_LIBERADO` abre tudo, inclusive a aba "Metas" (12/11/2026). Quem NAO a
+      // tem recebe a lista vazia — isso e o `permissoes.test.ts` que prova.
+      abasExtras: [{ id: 'metas', nome: 'Metas' }],
     });
   } finally {
     await s.fecha();
