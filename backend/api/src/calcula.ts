@@ -71,6 +71,23 @@ export interface Segmentacao {
    * níveis todos.
    */
   niveis?: string[];
+  /**
+   * Esta segmentação veio de uma HIERARQUIA de datas — independente de quantos níveis
+   * estão ativos.
+   *
+   * **Por que não dava para deduzir isto de `niveis`** (QA D-22, 13/11/2026). `niveis`
+   * só aparece quando a hierarquia NÃO reduz a um nível só; quando reduz, a
+   * segmentação sai daqui como se fosse uma coluna comum com `nivel: 'Ano'`. A rota
+   * `/valores` usava `niveis` como sinônimo de "é hierarquia" para liberar o pedido SEM
+   * `nivel` — que é o que a árvore Ano > Mês > Dia da tela faz para descobrir quais
+   * meses cada ano tem. Resultado: na Manutenção Inicial, cujo poço de data tem só o
+   * `Ano` ativo, a árvore "Período" levava 404 e abria vazia.
+   *
+   * Este campo separa as duas perguntas. `niveis` continua respondendo "é um caminho de
+   * drill, não filtra"; `hierarquia` responde "a coluna é um poço de data desta página,
+   * e as datas cruas dela são o que a árvore precisa".
+   */
+  hierarquia?: true;
 }
 
 /** Quantas linhas de tabela a resposta manda quando ninguém pede outra coisa. */
@@ -334,6 +351,7 @@ export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
     if (ativos.length !== 1) {
       return {
         ...base,
+        hierarquia: true,
         niveis: ativos.map((c) => c.level ?? '?'),
         naoFiltra:
           `segmentação de hierarquia com ${ativos.length} níveis ativos ` +
@@ -345,9 +363,15 @@ export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
 
     const nivel = ativos[0]!.level;
     if (!nivel) {
-      return { ...base, naoFiltra: 'nível de hierarquia sem nome do nível na spec.' };
+      return { ...base, hierarquia: true, naoFiltra: 'nível de hierarquia sem nome do nível na spec.' };
     }
-    return { ...base, coluna: ativos[0]!.property ?? base.coluna, nivel, rotulo: ativos[0]!.name ?? base.rotulo };
+    return {
+      ...base,
+      hierarquia: true,
+      coluna: ativos[0]!.property ?? base.coluna,
+      nivel,
+      rotulo: ativos[0]!.name ?? base.rotulo,
+    };
   }
 
   // Um `kind` novo do Power BI cai aqui. Desabilitar dizendo o nome é melhor que

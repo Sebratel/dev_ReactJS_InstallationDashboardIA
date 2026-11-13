@@ -16426,3 +16426,40 @@ das quatro pessoais sem uso reprova `spec-seguranca.test.ts`.
 `npm run seguranca:inventario` e OLHAR onde ela é usada. "Usada por uma lista de
 conferência de formato" e "usada por um visual" são coisas diferentes, e só a segunda
 impede a poda.
+
+## #259 — D-22: a árvore "Período" pedia datas cruas, e a rota só liberava isso para hierarquia de 3 níveis (13/11)
+
+QA D-22: o filtro Período da Manutenção Inicial dá 404. Medido, não deduzido — rodando
+`segmentacaoDe` sobre as specs reais e aplicando a mesma decisão que a rota `/valores`
+toma, página por página:
+
+```
+  manutencao-inicial   REINCIDÊNCIA[data_suporte]          nivel=Ano  niveis=-    sem nivel: 404
+  visao-geral          CALENDARIO INSTALADO[DATA INSTALADO] nivel=-   niveis=sim  sem nivel: OK
+```
+
+A diferença é quantos níveis o poço de data tem ATIVOS na spec. Com mais de um,
+`segmentacaoDe` devolve `niveis` e marca `naoFiltra` — "é um caminho de drill". Com **um
+só**, ela reduz a segmentação a uma coluna comum com `nivel: 'Ano'`, e o `niveis`
+desaparece. A rota usava a presença de `niveis` como sinônimo de "é hierarquia" para
+liberar o pedido SEM `nivel`, que é justamente o que a árvore Ano > Mês > Dia faz para
+descobrir quais meses cada ano tem (`SegmentacaoDataHierarquia.tsx`: *"Sem `nivel`: a
+árvore precisa das datas cruas"*). Na Manutenção Inicial o poço tem só o `Ano` ativo —
+então 404, e a árvore, que a tela rotula **"Período"**, abria vazia.
+
+**O conserto não podia ser "toda hierarquia passa sem nível".** Existe teste, desde
+27/08/2026, cobrando 404 para `CALENDARIO CRIADO[DATA CRIADO]` na visao-geral — que
+também é hierarquia reduzida a um nível, mas é um dropdown comum, não a árvore. Afrouxar
+em bloco apagaria essa trava.
+
+Então a liberação é amarrada a QUEM pede: `Segmentacao` ganhou `hierarquia?: true`
+(separado de `niveis`, que continua significando "é caminho de drill"), e a rota libera o
+pedido sem `nivel` só quando a coluna é a `dataDaPagina` daquela página — que é a única
+para a qual `BarraDeFiltros.tsx` desenha a árvore. `CALENDARIO CRIADO[DATA CRIADO]`
+continua 404, e pedir `nivel=Dia` numa segmentação que declara `Ano` continua 404.
+
+Conferido antes de mexer: as **69** segmentações `hierarchy_level` das 14 páginas são,
+todas, `Hierarquia de datas`. Não há caso em que isto alcance coluna com dado de cliente.
+
+Três testes novos em `servidor.test.ts`, e o do meio reprova sem o conserto (conferido
+rodando com o arquivo revertido: `pass 71, fail 1`).

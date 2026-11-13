@@ -815,12 +815,66 @@ test('a abertura para hierarquia não alcança coluna que não é segmentação'
   }
 });
 
-/** Segmentação de hierarquia que REDUZ a um nível sem o nível não passa: chaves diferentes. */
+/**
+ * Segmentação de hierarquia que REDUZ a um nível, sem o nível, continua 404 — **desde
+ * que não seja a data da página**.
+ *
+ * `CALENDARIO CRIADO[DATA CRIADO]` na visao-geral é um dropdown de um nível (Ano); a
+ * árvore "Período" daquela página é outra coluna (`CALENDARIO INSTALADO[DATA
+ * INSTALADO]`). Ninguém pede as datas cruas desta aqui, e as chaves são diferentes.
+ */
 test('valores de coluna de hierarquia sem nível dá 404', async () => {
   const s = await servidor(dirVazio());
   try {
     const r = await s.busca(
       '/api/dashboards/visao-geral/valores?tabela=CALENDARIO CRIADO&coluna=DATA CRIADO',
+    );
+    assert.equal(r.status, 404);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/**
+ * **QA D-22.** Mas quando a hierarquia reduzida É a data da página, o pedido sem nível
+ * tem de passar: é a árvore "Período" pedindo as datas cruas.
+ *
+ * Na `manutencao-inicial` o poço de `REINCIDÊNCIA[data_suporte]` tem só o `Ano` ativo,
+ * então a segmentação sai de `segmentacaoDe` sem `niveis` — como se fosse coluna comum
+ * com `nivel: 'Ano'` — e o 404 deixava a árvore vazia. Era o defeito que o QA registrou
+ * como "o filtro Período dá 404 por faltar o nível Ano".
+ */
+test('a árvore de Período da data DA PÁGINA passa mesmo com um nível só (QA D-22)', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca(
+      '/api/dashboards/manutencao-inicial/valores?tabela=REINCIDÊNCIA&coluna=data_suporte',
+    );
+    assert.notEqual(r.status, 404, 'a árvore "Período" da Manutenção Inicial voltou a ser recusada');
+  } finally {
+    await s.fecha();
+  }
+});
+
+/** E o nível declarado continua passando, como antes — o dropdown não regrediu. */
+test('a mesma coluna COM nivel=Ano continua passando', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca(
+      '/api/dashboards/manutencao-inicial/valores?tabela=REINCIDÊNCIA&coluna=data_suporte&nivel=Ano',
+    );
+    assert.notEqual(r.status, 404);
+  } finally {
+    await s.fecha();
+  }
+});
+
+/** E um nível que a segmentação NÃO declara segue barrado. */
+test('a abertura da D-22 não libera um nível que a segmentação não declara', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const r = await s.busca(
+      '/api/dashboards/manutencao-inicial/valores?tabela=REINCIDÊNCIA&coluna=data_suporte&nivel=Dia',
     );
     assert.equal(r.status, 404);
   } finally {

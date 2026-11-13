@@ -36,6 +36,7 @@ import { normalizeName, SemanticModel } from '../../packages/semantic-model/src/
 import { rotuloDeColuna } from '../../packages/semantic-model/src/projecao.ts';
 import { loadDashboards, type DashboardSpec, type FiltroSpec } from '../../packages/widget-engine/src/spec.ts';
 import { decodificaFiltros } from '../../packages/widget-engine/src/filtro-url.ts';
+import { dataDaPagina } from '../../packages/widget-engine/src/filtros-padrao.ts';
 import { carrega, type Carregado } from '../../packages/snapshot/src/carrega.ts';
 import { arquivoDaQuery, leManifesto, maisAntigo, type Manifesto } from '../../packages/snapshot/src/manifesto.ts';
 import { le, leCabecalho } from '../../packages/snapshot/src/formato.ts';
@@ -2883,6 +2884,36 @@ export class Servidor {
       // com dado de cliente.
       if (s.niveis !== undefined) return !nivel;
       if (s.naoFiltra !== undefined) return false;
+
+      // **QA D-22.** `niveis` só existe quando a hierarquia NÃO reduz a um nível só.
+      // Quando reduz — poço de data com apenas o `Ano` ativo, que é o caso da
+      // `manutencao-inicial` — a segmentação chega aqui como coluna comum com
+      // `nivel: 'Ano'`, e o pedido SEM `nivel` da árvore "Período" levava 404: ela
+      // abria vazia. A necessidade é a mesma do caso de cima (datas cruas para saber
+      // quais meses cada ano tem), só que num poço de um nível só.
+      //
+      // **Por que amarrado à data DA PÁGINA, e não a toda hierarquia.** Quem pede sem
+      // `nivel` é a árvore, e a árvore só existe para a coluna de `dataDaPagina`
+      // (`BarraDeFiltros.tsx` desenha uma só, com rótulo "Período"). Uma hierarquia
+      // reduzida que NÃO é a data da página continua sendo um dropdown de um nível, e
+      // o pedido sem `nivel` dela continua 404 — é o caso de
+      // `CALENDARIO CRIADO[DATA CRIADO]` na visao-geral, que `servidor.test.ts` cobra
+      // desde 27/08/2026 e que não faz sentido afrouxar.
+      //
+      // A trava que importa — a coluna tem de ser segmentação DESTA página — continua
+      // inteira. Conferido em 13/11/2026: as 69 segmentações `hierarchy_level` das 14
+      // páginas são, todas, `Hierarquia de datas`. Pedido COM `nivel` segue tendo de
+      // casar o nível declarado.
+      if (s.hierarquia === true && !nivel) {
+        const daPagina = dataDaPagina(id);
+        if (
+          daPagina !== null &&
+          normalizeName(daPagina.tabela) === normalizeName(s.tabela) &&
+          normalizeName(daPagina.coluna) === normalizeName(s.coluna)
+        ) {
+          return true;
+        }
+      }
 
       return normalizeName(s.nivel ?? '') === normalizeName(nivel ?? '');
     });
