@@ -16325,3 +16325,47 @@ O que isso deixa como próximo passo, em ordem:
 
 Fica registrado o que NÃO é: não é o SQL, não é a dedup do M, e não é a lista de tipos
 (a medição de hoje já roda com o `1297`).
+
+## #257 — o `npm audit` do CI quebrou, e o `overrides` do projeto nunca tinha pegado (13/11)
+
+O passo `npm audit --audit-level=high` do CI falhou com 4 altas: `re2js` (2.2.0–2.8.6),
+`undici` (8.0.0–8.12.1), `vite` (7.0.0–7.3.6) e `zod` (<4.6.6). Nenhuma das quatro está no
+runtime do servidor: `re2js` vem do `@firebase/firestore` (o front importa só
+`firebase/app` e `firebase/auth`, então nem entra no bundle), `undici` do `jsdom` (teste),
+`zod` do `eslint-plugin-react-hooks` (lint) e `vite` é o build.
+
+**O que custou o tempo.** `npm audit fix` morre num conflito de peer (`eslint@^10` do
+front contra o `typescript-eslint@^8`, que quer eslint 8 ou 9). Tentei `overrides` no
+`package.json` da raiz: `npm pkg get overrides` mostrava os três, e o lock saía com
+`overrides: null` e as versões velhas — mesmo depois de apagar o `package-lock.json` e
+regenerar. **A causa é que, sem lock, o `npm install` reconstrói a árvore a partir do
+`node_modules` que já está lá.** Enquanto a pasta existe, mudança de `overrides` não tem
+efeito nenhum.
+
+Isso também explica um achado que estava escondido: o `overrides` que JÁ existia —
+`"@firebase/firestore": {"@grpc/grpc-js": "1.13.6"}` — **nunca tinha sido aplicado**. A
+árvore rodava com `@grpc/grpc-js@1.9.16`, que é vulnerável (`<=1.13.5`, alta) e que o
+`audit` só passou a reportar depois que as outras quatro saíram da frente. O
+`@firebase/firestore` pede `~1.9.0` em TODA versão, inclusive a mais nova, então ali o
+`overrides` é a única saída — e ele estava morto.
+
+**O conserto**, em três partes:
+
+1. `vite` de `^7.3.6` para `^7.3.8` nos dois `package.json` (raiz e `frontend`) — fica no
+   `^7`, é só patch.
+2. `npm update zod undici re2js` — as três faixas declaradas pelos pais já aceitavam as
+   versões corrigidas (`^4.0.0`, `^8.11.2`, `^2.8.3`); o lock é que estava preso no piso.
+3. `rm -rf node_modules frontend/node_modules package-lock.json && npm install` — é o
+   único jeito de o `overrides` do `@grpc/grpc-js` valer. Depois disso: 1.13.6.
+
+`npm audit --audit-level=high` sai com 0. O lock mexeu em 147 pacotes, 130 deles de
+desenvolvimento; os 17 de runtime são patch ou minor dentro da faixa já declarada (os
+maiores: react 19.2.8 → 19.3.1, @tanstack/react-query 5.104.1 → 5.107.1, e gaxios 7.3.1 →
+8.3.2, que é major mas é transitivo do `google-auth-library@11.3.4`, cuja faixa é `^8`).
+
+As 10 moderadas que sobram são todas o mesmo `minimatch` vindo do eslint, e o conserto
+delas é `eslint@9` — regressão de major no lint, que o `--audit-level=high` não cobra.
+Fica para uma decisão à parte.
+
+**Regra que fica:** mudou `overrides`? Apague `node_modules` ANTES de instalar, ou a
+mudança não acontece e nada avisa.
