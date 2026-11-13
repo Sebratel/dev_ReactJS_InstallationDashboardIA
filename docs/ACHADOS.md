@@ -16463,3 +16463,56 @@ todas, `Hierarquia de datas`. Não há caso em que isto alcance coluna com dado 
 
 Três testes novos em `servidor.test.ts`, e o do meio reprova sem o conserto (conferido
 rodando com o arquivo revertido: `pass 71, fail 1`).
+
+## #260 — D-21: o fechamento por página corta caminho de propagação, e o filtro some calado (13/11)
+
+QA D-21: no Relatório do Mês, o filtro de TIPO não chega em `AGENDADOS` nem em
+`MÉDIA AGENDADA`. **Não é desvio herdado do Power BI — é nosso, e é da classe silenciosa.**
+
+As duas medidas são da `FIELD AGENDA` (`Protocolos Restantes no Mês` e
+`Média Mensal Protocolos2`), e o seletor de tipo é `PROTOCOLOS[TIPO DE PROTOCOLO]` — uma
+dimensão desconectada, `DISTINCT('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO])`. No MODELO o
+caminho existe, em três saltos, todos de direção única e no sentido certo:
+
+```
+  PROTOCOLOS -> PROTOCOLOS GERAL -> Status Protocolo Dia -> FIELD AGENDA
+```
+
+No Power BI o modelo inteiro está carregado, então o filtro percorre os três. Aqui não,
+e o motivo foi medido rodando `planeja()` sobre as specs reais:
+
+```
+  relatorio-do-mes (15 tabelas)   PROTOCOLOS: presente   PROTOCOLOS GERAL: presente
+                                  Status Protocolo Dia: AUSENTE
+                                  FIELD AGENDA: presente
+  agendamento-field (7 tabelas)   Status Protocolo Dia: presente
+```
+
+O fechamento de `plano.ts` traz as tabelas que os visuais e as medidas da página
+NOMEIAM. `Status Protocolo Dia` não é nomeada por nenhum visual do Relatório do Mês — ela
+só aparece como PONTE. Fica de fora, e `filter.ts` então faz, na travessia:
+
+```ts
+if (!dataset.hasTable(a.source)) continue;
+```
+
+— pula a aresta e segue. O filtro simplesmente não chega, o cartão devolve o número sem
+recorte nenhum, e **nada erra alto**. É a mesma família do `Contagem Solicitacao 2026`
+que deu origem ao `propagation.ts`: a medida roda, devolve número, e o número responde
+outra pergunta.
+
+**O conserto certo é no fechamento, não na travessia.** `planeja()` precisa incluir
+também as tabelas que são nó INTERMEDIÁRIO de um caminho de propagação entre duas
+tabelas já incluídas. A travessia pular aresta de tabela ausente está certo para quem
+nunca teve caminho; o que está errado é a página não ter a ponte.
+
+**E tem preço, que é preciso dizer:** trazer a ponte custa memória e carga na página que
+a recebe — e `Status Protocolo Dia` é calculada sobre o grão de relato, que desde 26/10
+nem está no snapshot (`completa_no_snapshot: false`). Ou seja, o conserto do D-21 anda na
+direção contrária da meta de memória. A decisão de como pagar isso é do Erick, e por isso
+este achado fica registrado medido e **não consertado** neste commit.
+
+Enquanto não for consertado, o que vale saber: qualquer página cujo fechamento não traga
+uma ponte perde o filtro que dependia dela, sem aviso. Não existe hoje nada que detecte
+isso — e um teste que compare "caminhos do modelo" com "caminhos que sobram no
+fechamento de cada página" acharia todos de uma vez.
