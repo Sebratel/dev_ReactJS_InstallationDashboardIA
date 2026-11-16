@@ -17107,3 +17107,82 @@ regressão das mudanças acima (nenhuma delas toca `trava.ts`).
 Fica registrado porque teste que falha de vez em quando é exatamente o que ensina a
 ignorar o vermelho. Se aparecer no CI, o lugar de olhar é o tempo de espera da trava sob
 carga, não o conteúdo do contador.
+
+## #268 — a esteira inteira, rodada de ponta a ponta: o que passou, o que não dá para rodar aqui, e um bloqueio de deploy que apareceu (16/11)
+
+`npm test` é o portão, não a esteira. Rodando o resto, apareceu uma coisa que nenhum
+teste pegaria — porque não é código, é o DADO em disco.
+
+### O bloqueio: a calculada no snapshot é mais velha que o modelo
+
+`npm run paridade` nem chegou a comparar número. Morreu na carga:
+
+```
+Snapshot desatualizado: a definição de 'CALENDARIO INSTALADO' mudou desde a
+materialização (c7eb6cabceeb6890 -> aec5976667bd42cd).
+Rode: npm run snapshot:calculadas -- --tabela="CALENDARIO INSTALADO"
+```
+
+É a guarda do ACHADOS #47 funcionando exatamente como projetada — e o que ela denuncia é
+que **o patch do PESO (QA D-18/D-19, commit `5f63691`, 09/11) entrou no código e nunca
+chegou ao disco.** A régua nova (sábado 1, domingo 0, feriado 0, com o 20/11) mudou o DAX
+da `CALENDARIO INSTALADO`; os `calc.*.jsonl.gz` do snapshot são de 20/10 e carregam os
+valores da régua velha.
+
+**Por que a plataforma no ar não quebrou:** a pasta principal está em `e631bb9`, que é
+ANTERIOR ao patch. Código velho + dado velho = coerente. O problema nasce no instante da
+promoção.
+
+**O que acontece ao promover `staging` → `main`:** o código novo calcula outro sha, não
+encontra par no disco e a carga **erra alto** em toda página que toca a
+`CALENDARIO INSTALADO` — que são as do PESO, isto é, as de dias úteis. Dura até a
+primeira materialização: tanto o ciclo de 15 min (`executa-grupo.ts`) quanto a carga das
+3h (`diario.ts`) rodam `snapshot --refazer` SEM `--sem-calculadas`, e o congelamento das
+calculadas vem junto. Para não esperar, o comando que a própria mensagem dá:
+
+```
+npm run snapshot:calculadas -- --tabela="CALENDARIO INSTALADO"
+```
+
+Não é defeito do patch nem das mudanças de hoje: é um passo de implantação que não estava
+escrito em lugar nenhum. Agora está.
+
+### O que rodou, e com que resultado
+
+Tudo na worktree `metas-e-sgbd`, depois do último commit do dia:
+
+```
+  npm test                         2.522 passam, 0 falham (back 2.293 + tela 229)
+  npm run typecheck                verde (back strict + tela)
+  npm run lint                     verde
+  npm audit --audit-level=high     passa (9 moderadas, todas de ferramenta; produção 0)
+  npm run validate:model           26 tabelas, 89 medidas, 48 calculadas, 22 relações;
+                                   3 referências quebradas, as 3 já conhecidas
+  npm run validate:tables          0 colunas sem explicação além do EQUIPE_BASE conhecido
+  npm run layout:valida            10 layouts, todos ✔
+  npm run web:build + canário S3   build ok, e o TOKEN_INTERNO NÃO vaza para o bundle
+  npm run doctor                   specs/registry ok; snapshot e .env ausentes NA WORKTREE
+                                   (esperado: dado de cliente e segredo não moram aqui)
+```
+
+E, durante o D-13, contra o banco de verdade: `npm run validate:queries --only=alocacao-patrimonio`
+(golden regravado, 65.411 linhas) e duas materializações completas da `protocolos-geral`
+comparadas no mesmo instante.
+
+### O que NÃO dá para rodar desta máquina, e por quê
+
+- **`npm run e2e`** (Playwright, `backend/tools/tela/e2e/navegacao.e2e.ts`) — precisa de
+  uma stack NO AR. A que está no ar roda o código de `e631bb9`: apontar o e2e para ela
+  testaria o deploy atual, não este ramo. E subir um segundo runtime aqui esbarra na
+  regra 5 do `CLAUDE.md` (um runtime só por `snapshot/`). **O lugar deste teste é depois
+  da promoção**, e ele cobre justamente o que mudou hoje: a busca da tabela virando
+  pedido (e agora a ordem também).
+- **`npm run paridade`** e **`npm run paginas`** — bloqueados pelo item acima: os dois
+  carregam o snapshot, e a carga para na guarda da calculada. Depois de rematerializar a
+  `CALENDARIO INSTALADO`, os dois voltam a rodar — e a paridade é o lugar certo para
+  conferir o efeito do D-13 nos cards de instalação.
+- **`docker compose build`** (job `imagens` do CI, mais `confere-imagens.sh`) — o Docker
+  não está rodando nesta máquina. É também o que exercita o `versao.json` novo do D-15:
+  quem prova esse caminho é o CI, no push.
+- **`probe:*` e `bench:*`** — não são portões; são medições sob demanda, e as que
+  importavam hoje (`probe:peso-memoria`) rodaram.

@@ -44,6 +44,29 @@ Não prenda em `127.0.0.1`: o proxy é outro contêiner e não alcança o loopba
    Publique a stack e abra a URL HTTPS do proxy. Se a API morrer com `RECUSANDO SUBIR`,
    o log diz qual chave está errada e qual valor ela espera.
 
+## Ao promover código que mexe em DAX de tabela calculada
+
+Uma tabela calculada mora **congelada no snapshot**, e a carga confere o sha do DAX que a
+gerou (ACHADOS #47). Subir código com DAX novo sobre um snapshot materializado com o
+antigo faz a carga **errar alto**:
+
+```
+Snapshot desatualizado: a definição de 'CALENDARIO INSTALADO' mudou desde a
+materialização (c7eb6cab... -> aec59766...).
+```
+
+Isso acontece de verdade hoje: a régua do PESO mudou em 09/11 (QA D-18/D-19) e os
+`calc.*.jsonl.gz` do snapshot são anteriores. Ao promover, **rode logo depois**:
+
+```
+npm run snapshot:calculadas -- --tabela="CALENDARIO INSTALADO"
+```
+
+Sem isso, as páginas que somam dias úteis ficam erradas — não: ficam FORA, com erro — até
+a primeira materialização. O ciclo de 15 min e a carga das 3h já refazem as calculadas
+(as duas rodam `snapshot --refazer` sem `--sem-calculadas`), então o próprio sistema se
+conserta; o comando acima só evita a janela de erro. Detalhe em ACHADOS #268.
+
 ## Qual versão está no ar (QA D-15)
 
 A pergunta aparece sempre do mesmo jeito — "este número estranho é de antes ou de depois
