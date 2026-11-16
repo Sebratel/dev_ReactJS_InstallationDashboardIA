@@ -16717,3 +16717,65 @@ comparação impossível (`kind === 'measure'`, que `extractRefs` nunca devolve)
 no teste novo até eu olhar. Dentro do teste ela era ramo morto e inofensivo — medida chega
 como `bare`, que o teste já tratava — e saiu. Ampliar o `include` é mudança de gate, não
 de feature, e tem de ser medida antes.
+
+## #263 — a régua de memória vira sonda permanente: `probe:peso-memoria` (16/11)
+
+Os números do #262 saíram de três sondas temporárias que eu apaguei antes de commitar.
+Isso é exatamente o erro que o projeto já cometeu antes: medir, escrever o número no doc,
+e deixar a régua morrer junto com a sessão — o número envelhece e ninguém consegue
+conferir sem refazer tudo. Agora é `npm run probe:peso-memoria`.
+
+```
+  npm run probe:peso-memoria [-- --dir=snapshot] [-- --pagina=visao-geral]
+```
+
+Sem banco. Lê o `snapshot/` em disco e responde duas coisas:
+
+1. **Quanto o dado de cada página pesa na memória** — por página e por tabela. É a conta
+   que separa "o processo usa 653 MB" de "o dataset desta página tem 46 MB".
+2. **O que é lido do banco e nunca carregado** — coluna a coluna, com a QUERY que gerou o
+   arquivo na primeira coluna (duas queries podem alimentar a mesma tabela, como
+   `field-agenda` e `field-agenda-slot`). Essa lista é a entrada natural do S6.
+
+Imprime nome de tabela, nome de coluna e bytes. **Nunca valor de linha**, e nunca o campo
+`b` do formato 2 — o vetor de índices em base64, que numa coluna da `field-agenda` são
+megabytes de texto numa linha só. Para não desserializá-lo à toa, a sonda corta a linha
+antes de `,"b":"` e só então faz o `JSON.parse`; se a ordem das chaves mudar, o corte
+falha e ela cai no parse inteiro, que dá o mesmo número mais devagar.
+
+Medido logo depois do #262, sobre o snapshot de 20/10:
+
+```
+  premiacao-instalacao    47,86 MB      l-tec                   32,04 MB
+  visao-geral             46,32 MB      l-mapa                  31,94 MB
+  protocolos-detalhados   42,39 MB      relatorio-do-mes        31,16 MB
+  diario-instalacao       42,27 MB      telefonia-ouvidoria     29,89 MB
+  l-inst                  37,08 MB      manutencao-inicial      29,80 MB
+  agendamento-field       36,70 MB      relatorio-do-ano        29,12 MB
+  instalacao-reincidente  32,90 MB      capa                     0,00 MB
+```
+
+**Lida do banco e nunca carregada: 94,49 MB.** As maiores não são as pessoais:
+
+```
+  base-categorias-field    beginning_service_date   16,74 MB
+  contratos                contrato                 12,72 MB
+  protocolos-geral         hora criado               6,48 MB   (órfã desde o #262)
+  contratos                usuário                   4,43 MB
+  field-agenda             inicio relato             3,72 MB
+  contratos                etiqueta                  3,05 MB
+  protocolos-geral         latitude                  1,35 MB
+  protocolos-geral         longitude                 1,31 MB
+```
+
+**Uma ressalva de leitura:** o snapshot medido é de 20/10 e as queries mudaram depois.
+`protocolos-produtividade[telefone, rua, latitude, longitude]` ainda aparecem na lista
+porque estão no ARQUIVO; elas saíram do `sql:` em 13/11 (#258) e somem no próximo refresh
+dessa query. A sonda lê disco, não a spec — é bom que seja assim, mas a data do arquivo
+tem de entrar na leitura do número.
+
+**Correção ao que eu tinha dito no #262.** Eu havia listado `telefone` e `rua` da
+PROTOCOLOS GERAL como "lidas e nunca carregadas". Não são: a `02-visao-geral` as exibe, e
+elas entram na memória de quem abre essa página. O corte S6 que sobra na PROTOCOLOS GERAL
+é menor do que eu disse — `latitude`, `longitude`, `cto` e `numero patrimônio`, 3,26 MB de
+arquivo, dois deles pessoais.
