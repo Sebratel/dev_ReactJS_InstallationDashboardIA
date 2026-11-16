@@ -240,6 +240,27 @@ test('a saúde expõe RSS e heap — o sinal que denuncia vazamento antes do OOM
   }
 });
 
+/**
+ * QA D-15. O roteiro reprovou em "versão no ar sem identificação": diante de um número
+ * estranho, ninguém conseguia responder se a tela já era a do conserto.
+ *
+ * Aqui a API roda do próprio repositório, então a origem é `git` — em imagem seria
+ * `imagem`, com a hora do build e a impressão do conteúdo (`versao.ts`).
+ */
+test('a saúde diz qual código está no ar', async () => {
+  const s = await servidor(dirVazio());
+  try {
+    const j = await (await s.busca('/api/saude')).json();
+    assert.ok(j.versao, 'o bloco existe');
+    assert.ok(['imagem', 'git', 'desconhecida'].includes(j.versao.origem));
+    if (j.versao.origem === 'git') {
+      assert.match(j.versao.commit, /^[0-9a-f]{7}$/, 'o commit curto do `.git` do repo');
+    }
+  } finally {
+    await s.fecha();
+  }
+});
+
 test('a saúde inclui refresh vazio quando o Refresh Manager nunca rodou nesta máquina', async () => {
   const s = await servidor(dirVazio());
   try {

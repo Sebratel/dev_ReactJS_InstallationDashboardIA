@@ -85,6 +85,7 @@ import { linhasDoOverlay, mescladoresDe, overlaySobreBuscaAoVivo, type OverlayDe
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente } from './saude-do-redis.ts';
+import { versaoDaInstancia } from './versao.ts';
 import { entradasDoCache, medeProcesso, tetoDoCache } from './memoria-da-saude.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
@@ -1268,6 +1269,9 @@ export class Servidor {
       // faria o healthcheck do contêiner derrubá-la à toa.
       degradacao: { degradado: degradacao.degradado },
       ok: manifesto !== null,
+      // QA D-15: qual código está no ar. Só no corpo completo — quem chega sem sessão
+      // recebe "está de pé?" e nada que descreva o que roda aqui. Ver `versao.ts`.
+      versao: versaoDaInstancia(this.opts.root),
       snapshot: manifesto === null
         ? { presente: false, dica: 'Rode: npm run snapshot -- --pagina=<id>' }
         : {

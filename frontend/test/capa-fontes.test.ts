@@ -137,3 +137,48 @@ test('família toda no poll: ao vivo', () => {
   );
   expect(s?.proxima).toBe('ao vivo');
 });
+
+/**
+ * QA D-15 — o rodapé da capa diz qual versão está no ar.
+ *
+ * A ordem é a da pergunta que ele responde ("esta tela já é a do conserto?"): o commit
+ * primeiro, a data do build atrás. Sem commit, vale a impressão da imagem; sem nenhum
+ * dos dois, o texto DIZ que não sabe — sumir é o defeito que o QA abriu.
+ */
+test('rótulo de versão: commit, impressão, ou um "não sei" explícito', async () => {
+  const { rotuloDaVersao } = await import('../src/utils/capaConteudo.ts');
+  const data = (iso: string | null) => (iso === null ? '' : '16/11/2026 09:00');
+
+  expect(
+    rotuloDaVersao(
+      {
+        commit: 'abc1234',
+        construidoEm: '2026-11-16T12:00:00Z',
+        impressao: 'ff00',
+        origem: 'imagem',
+      },
+      data,
+    ),
+  ).toBe('versão abc1234 · 16/11/2026 09:00');
+
+  expect(
+    rotuloDaVersao(
+      { commit: null, construidoEm: null, impressao: 'ff00ff00', origem: 'imagem' },
+      data,
+    ),
+  ).toBe('versão imagem ff00ff00');
+
+  expect(
+    rotuloDaVersao({ commit: 'abc1234', construidoEm: null, impressao: null, origem: 'git' }, data),
+  ).toBe('versão abc1234');
+
+  expect(
+    rotuloDaVersao(
+      { commit: null, construidoEm: null, impressao: null, origem: 'desconhecida' },
+      data,
+    ),
+  ).toBe('versão não identificada');
+
+  // API mais velha que a tela: o bloco não vem, e o rodapé continua dizendo algo.
+  expect(rotuloDaVersao(undefined, data)).toBe('versão não identificada');
+});

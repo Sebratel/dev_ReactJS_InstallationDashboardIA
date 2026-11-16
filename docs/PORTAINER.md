@@ -44,6 +44,24 @@ Não prenda em `127.0.0.1`: o proxy é outro contêiner e não alcança o loopba
    Publique a stack e abra a URL HTTPS do proxy. Se a API morrer com `RECUSANDO SUBIR`,
    o log diz qual chave está errada e qual valor ela espera.
 
+## Qual versão está no ar (QA D-15)
+
+A pergunta aparece sempre do mesmo jeito — "este número estranho é de antes ou de depois
+do conserto?" — e até 16/11/2026 não tinha resposta: a stack constrói a imagem aqui
+mesmo, então não há tag para olhar.
+
+- **Não cadastre `COMMIT` nas variáveis da stack.** Ele existe no compose para o CI e
+  para build manual; fixado na tela do Portainer, ele congela e passa a MENTIR no
+  primeiro redeploy. Deixe vazio: o build lê o commit do clone que o próprio Portainer
+  acabou de fazer (o `.dockerignore` deixa `HEAD` e `refs/` entrarem; o histórico, não).
+- **Onde ver:** `GET /api/saude` (corpo completo, com sessão) traz
+  `versao: { commit, construidoEm, impressao, origem }`, e o pé da CAPA mostra o mesmo em
+  uma linha. Anônimo não vê — continua recebendo só `{ ok, degradado }`.
+- **`impressao`** é o sha256 do que embarcou (`backend/`, `frontend/dist`,
+  `package*.json`). Ela não depende de ninguém informar nada: duas imagens com a mesma
+  impressão são a mesma coisa, tenham o commit que tiverem. É com ela que se desconfia de
+  um commit errado.
+
 ## HTTPS pelo proxy externo
 
 - O cookie de sessão sai com `Secure` e a API usa `PUBLICACAO: proxy-https`.

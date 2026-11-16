@@ -42,12 +42,44 @@ ARG VITE_FIREBASE_PROJECT_ID
 ARG VITE_FIREBASE_APP_ID
 RUN npm run web:build
 
+# QUAL VERSÃO ESTÁ NO AR (QA D-15). A stack constrói a imagem no Portainer e o
+# `.dockerignore` tira o `.git/`, então dentro do contêiner não há de onde deduzir isso:
+# este arquivo é a única resposta que a API tem.
+#
+# De onde sai o commit, nesta ordem:
+#
+#   1. O `ARG COMMIT`, quando quem constrói informa (o CI manda o sha do workflow).
+#   2. O `.git/HEAD` do próprio contexto, que o `.dockerignore` deixa entrar junto com
+#      `refs/` e `packed-refs` — alguns KB. É o que faz o build do Portainer, que clona
+#      o repositório e constrói ali, sair identificado sem ninguém digitar nada.
+#
+# Quem lê o `.git` é `backend/api/src/versao.ts`, o MESMO código que a API usa para
+# responder — não uma segunda implementação em shell que divergiria em silêncio.
+#
+# A `impressao` não depende de nenhuma das duas: é o sha256 do que de fato embarcou, e é
+# ela que permite desconfiar de um commit errado. Duas imagens com a mesma impressão são
+# a mesma coisa, tenham o commit que tiverem.
+ARG COMMIT=""
+RUN set -eu; \
+    commit="$COMMIT"; \
+    if [ -z "$commit" ]; then \
+      commit=$(node -e "import('/repo/backend/api/src/versao.ts').then((m) => process.stdout.write(m.versaoDaInstancia('/repo').commit ?? ''))" || true); \
+    fi; \
+    impressao=$(find backend frontend/dist package.json package-lock.json -type f -print0 \
+      | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16); \
+    construido=$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+    printf '{"commit":"%s","construidoEm":"%s","impressao":"%s"}' \
+      "$commit" "$construido" "$impressao" > /repo/versao.json; \
+    cat /repo/versao.json
+
 FROM node:24-slim AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/package.json ./package.json
+# Quem está no ar: commit, hora do build e impressão do conteúdo (`versao.ts`).
+COPY --from=build /repo/versao.json ./versao.json
 
 # `backend/` INTEIRO (api, packages, tools, specs), e a mudança tem motivo medido.
 #

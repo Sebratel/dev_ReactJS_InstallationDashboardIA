@@ -35,6 +35,7 @@ import {
   FONTES,
   INDICADORES,
   OBJETIVOS,
+  rotuloDaVersao,
   situacaoDaFonte,
   valorDoCard,
 } from '../../utils/capaConteudo.ts';
@@ -184,7 +185,11 @@ export function Capa(props: {
             intel@sebratel.com.br
           </a>
         </span>
-        <span>{props.dadoDe ? `snapshot de ${dataHora(props.dadoDe)}` : ''}</span>
+        <span>
+          {props.dadoDe ? `snapshot de ${dataHora(props.dadoDe)}` : ''}
+          {props.dadoDe ? ' · ' : ''}
+          {rotuloDaVersao(saude?.versao, dataHora)}
+        </span>
         <span>Inteligência de Dados · Sebratel</span>
       </div>
     </div>

@@ -31,6 +31,12 @@ x-args-da-tela: &args-da-tela
   VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:?defina VITE_FIREBASE_AUTH_DOMAIN no .env}
   VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:?defina VITE_FIREBASE_PROJECT_ID no .env}
   VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:?defina VITE_FIREBASE_APP_ID no .env}
+  # Qual commit está sendo construído (QA D-15). SEM `:?`, ao contrário das de cima:
+  # vazio é um "não sei" honesto, e a imagem continua identificada pela impressão do
+  # conteúdo (ver Dockerfile). Quem constrói informa —
+  # `COMMIT=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml build` —
+  # e o CI manda o sha do próprio workflow.
+  COMMIT: ${COMMIT:-}
 
 # Log com teto, como no dashboard Comercial: o `refresh` escreve o dia todo, e o
 # json-file sem limite enche o disco do host do Portainer em silêncio.

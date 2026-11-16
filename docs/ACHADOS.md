@@ -16857,3 +16857,76 @@ formatados pelo formato, e não pelo rótulo. Some com eles o palpite de escala
 (`valor <= 1,5 ? ×100 : já é percentual`) de `percentualDeRazao`, que continua existindo
 só como reserva para resposta de API mais velha que a tela. Em número isso muda
 `6,4%` para `6,40%` — as casas que o PBIP pede.
+
+## #265 — QA D-15: a versão no ar passa a ter nome (16/11)
+
+O roteiro de QA tem 64 itens e **duas reprovações**. Esta é uma delas: *"versão no ar sem
+identificação"*. A pergunta que ela representa é sempre a mesma, e aparece toda vez que
+um número parece estranho — **esta tela já é a do conserto?** — e até hoje não tinha
+resposta.
+
+**Por que não tinha.** A stack constrói a imagem no próprio Portainer
+(`pull_policy: build`), não baixa de registro: não há tag para olhar. O `.dockerignore`
+tirava o `.git/` do contexto, então dentro do contêiner não havia repositório para
+perguntar. E o `package.json` diz `version: 0.0.0` desde o primeiro commit.
+
+### O que passa a existir
+
+`GET /api/saude` (corpo completo) traz, e o pé da CAPA mostra em uma linha:
+
+```
+  versao: { commit, construidoEm, impressao, origem }
+```
+
+- **`commit`** — vem do `ARG COMMIT` quando quem constrói informa (o CI manda o sha do
+  workflow), e, quando não informa, do `.git/HEAD` do próprio contexto de build.
+- **`construidoEm`** — a hora do build da imagem.
+- **`impressao`** — sha256 (16 caracteres) de tudo que embarcou: `backend/`,
+  `frontend/dist`, `package*.json`.
+- **`origem`** — `imagem`, `git` ou `desconhecida`, para o leitor saber no que crer.
+
+Anônimo continua recebendo só `{ ok, degradado }`: versão é informação sobre o que roda
+aqui dentro, e a regra é falhar fechado. O teste que cobra o corpo curto
+(`memoria-na-saude.test.ts`) já guardava isso e continuou verde sem precisar de retoque.
+
+### As três decisões que não são óbvias
+
+**1. O `.dockerignore` deixa `HEAD`, `refs/` e `packed-refs` entrarem.** São alguns KB; o
+histórico (`.git/objects`) continua fora, que é o que pesa. É isso que faz o build do
+Portainer — que clona o repositório e constrói ali — sair identificado **sem ninguém
+digitar nada**. A alternativa seria cadastrar `COMMIT` na tela da stack, e aí o valor
+congela: no primeiro redeploy a imagem passa a mentir, com cara de certeza.
+`docs/PORTAINER.md` registra em letras maiúsculas que não se cadastra `COMMIT` lá.
+
+**2. Quem lê o `.git` no build é o MESMO código que a API usa para responder.** O
+`RUN` do Dockerfile chama `node -e` sobre `backend/api/src/versao.ts`, em vez de reler
+`HEAD` em shell. Duas implementações do mesmo parsing divergiriam em silêncio, e o jeito
+de descobrir seria um commit errado em tela — exatamente o defeito que isto fecha.
+
+**3. A impressão existe mesmo havendo commit.** Commit é um valor que alguém informa, e
+informação pode faltar ou estar errada; a impressão é calculada do que entrou na imagem e
+não depende de ninguém. Commit vazio é um "não sei" honesto, commit errado é uma mentira
+plausível — e a impressão é o que permite desconfiar: duas imagens com a mesma impressão
+são a mesma coisa, tenham o commit que tiverem.
+
+### Worktree conta
+
+`versao.ts` lê o `.git` direto, sem `child_process`: um processo que se quer previsível
+não deve abrir shell na subida para descobrir um texto de diagnóstico. E trata o caso que
+este projeto usa todo dia — a regra 4 do `CLAUDE.md` é trabalhar em `git worktree`, onde
+`.git` é um **arquivo** (`gitdir: …`), o `HEAD` fica no diretório apontado e os refs
+ficam no repositório comum (`commondir`). Sem isso, justamente quem está desenvolvendo
+veria "versão não identificada".
+
+`versao.test.ts` cobre as sete situações: imagem ganha do git, commit vazio vira `null`,
+ref solto, ref empacotado, worktree, `versao.json` quebrado (cai para o git em vez de
+derrubar a API) e nada de nada (diz que não sabe). Mais dois: o repositório desta suíte se
+identifica, e o rótulo da capa nunca some — `versão não identificada` é texto, não vazio.
+
+### O que NÃO foi verificado aqui
+
+O Docker não roda nesta máquina, então o `RUN` novo do Dockerfile **não foi executado em
+imagem**: o que rodou foi a mesma sequência de comandos no shell do repositório, e o
+`node -e` devolvendo `54f69c9`, igual ao `git rev-parse --short HEAD`. Quem constrói de
+verdade é o CI, no push — e ele agora constrói com `COMMIT: ${{ github.sha }}`, o que
+também prova que o `ARG` existe e que o `versao.json` sai preenchido.
