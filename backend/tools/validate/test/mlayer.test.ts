@@ -275,10 +275,13 @@ test('em 9 tabelas o rowCount do golden não é comparável com o Power BI', () 
  *
  * Eram 11 até 12/09/2026. As 4 que saíram são de `PROTOCOLOS PRODUTIVIDADE`
  * (DATA ALOCAÇÃO, TÉCNICO TROCA, DATA DA TROCA, INSTALADOR) e agora vêm do `sql:`.
- * As 7 que restam são TODAS de `PROTOCOLOS GERAL`, que ainda as cria em M — é a
- * próxima tabela a receber o mesmo tratamento.
+ * Voltou a ser 7 em 13/11/2026, por outro motivo: `HORA CRIADO` saiu da lista porque
+ * ninguém mais a cita em DAX (ACHADOS #262), não porque tenha migrado para o `sql:`.
+ * Seis das 7 são de `PROTOCOLOS GERAL`, que ainda as cria em M — é a próxima tabela
+ * a receber o tratamento; a sétima é `PROTOCOLOS PRODUTIVIDADE[INSTALADOR]`, que
+ * voltou ao M de propósito em 24/10/2026 (ACHADOS #239).
  */
-test('8 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
+test('7 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   const tabelas = verificarModelo(SPECS, GOLDEN);
   const emM = tabelas.flatMap((t) => t.colunas.filter((c) => c.procedencia === 'm'));
   const citadas = emM.filter((c) => c.noDax);
@@ -309,7 +312,11 @@ test('8 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   assert.equal(emM.length, 35, 'colunas nascidas em M');
   // 7 -> 8 junto: das duas que voltaram, 'PROTOCOLOS PRODUTIVIDADE'[INSTALADOR] é citada
   // pelo DAX (é o eixo da Premiação e do Diário).
-  assert.equal(citadas.length, 8, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
+  // 8 -> 7 (13/11/2026, ACHADOS #262): saiu 'PROTOCOLOS GERAL'[HORA CRIADO]. Ela
+  // continua nascendo em M (por isso emM segue 35), mas nenhum DAX a cita mais: a
+  // única que a citava era a calculada órfã TURNO CRIADO, que custava 6,48 MB em
+  // cada uma das 13 páginas sem ninguém ler o resultado.
+  assert.equal(citadas.length, 7, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
   for (const c of citadas) assert.ok(c.step, `${c.table}[${c.column}] sem passo`);
 
   // A coluna de junção da fase 2b.5 está entre elas — e é o caso mais concreto:

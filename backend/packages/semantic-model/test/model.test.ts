@@ -189,7 +189,9 @@ test('specs reais: o modelo carrega completo', () => {
   const m = SemanticModel.fromSpecsDir(SPECS);
   assert.equal(m.tables.size, 26, 'tabelas'); // +METAS em 12/11/2026 (ACHADOS #254)
   assert.equal(m.measuresDoPbip.length, 78, 'medidas do PBIP');
-  assert.equal(m.calculatedColumns.length, 49, 'colunas calculadas com DAX');
+  // 49 -> 48 em 13/11/2026 (ACHADOS #262): TURNO CRIADO saiu — órfã, e segurava
+  // PROTOCOLOS GERAL[HORA CRIADO] na memória de toda página.
+  assert.equal(m.calculatedColumns.length, 48, 'colunas calculadas com DAX');
   assert.equal(m.relationships.length, 22, 'relacionamentos');
   assert.ok(m.autoDateRelationshipsIgnored > 0, 'hierarquia de datas contada');
 });

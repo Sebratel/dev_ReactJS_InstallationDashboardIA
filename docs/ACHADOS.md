@@ -16591,3 +16591,129 @@ a tem só de ponte, e a materialização não sabe pular saída de `ADDCOLUMNS` 
 lê. Podar isso tira quase todo o custo e mantém o conserto — é o próximo passo natural,
 e está fora deste commit de propósito: é máquina nova no caminho do tempo real, e não se
 mexe nele sem medir antes.
+
+
+## #262 — uma calculada que ninguém lê custava 6,48 MB em TODAS as 13 páginas (16/11)
+
+Medido em 13/11 sobre o snapshot de produção; escrito e commitado em 16/11.
+
+**O pedido era "empurrar agregação para o SGBD porque o dash passa de 300 MB".** A
+primeira coisa que fiz foi medir, e a medida mudou o alvo. Cada coluna foi pesada como
+ela fica no colunar — dicionário de distintos (`len*2+16` por string, 8 por número) mais
+o vetor de índices (`linhas × w`) — e depois somada POR PÁGINA, só com o que
+`colunas-usadas.ts` mantém:
+
+```
+  snapshot inteiro, todas as colunas        ~300,8 MB
+  página mais cara  (premiacao)               54,3 MB
+  página mais leve  (qualquer uma real)       35,6 MB
+```
+
+Ou seja: os ~653 MB ociosos do processo **não são o dado**. O dado de uma página é
+36–54 MB; o resto é heap do V8 e runtime. Empurrar agregação para o SGBD continua valendo
+por tempo de resposta e por refresh — mas não é o caminho para "caber em 300 MB", porque
+o dataset por página já está muito abaixo disso.
+
+**O piso de toda página é a PROTOCOLOS GERAL** — 100.064 linhas × 63 colunas, 57,30 MB
+inteira, e ela entra com 29 a 51 MB em cada uma das 13 páginas. Foi ali que procurei.
+
+### O que estava errado, e não era o tamanho
+
+`colunas-usadas.ts` dobra o DAX de TODAS as medidas e de TODAS as colunas calculadas do
+modelo, de propósito: errar para MANTER custa memória, errar para TIRAR faz a página não
+abrir (`columnValue` erra alto). O efeito colateral é que uma **calculada que nenhum
+visual alcança continua segurando as colunas físicas que ela lê** — em todas as páginas,
+para sempre, sem ninguém ler o resultado.
+
+Refiz o alcance a partir dos VISUAIS (campo, filtro, ponta de relacionamento, e o fecho
+disso por medida, calculada e tabela calculada) e separei cada coluna física do snapshot
+em três destinos:
+
+```
+  carregada e viva          288,17 MB
+  CARREGADA E SEM ALCANCE     7,53 MB   <- RAM em toda página, sem leitor
+  já podada na carga         88,82 MB   (custa disco, rede e refresh; não custa RAM)
+```
+
+**6,48 dos 7,53 MB eram uma coluna só**: `PROTOCOLOS GERAL[HORA CRIADO]`. Quem a segurava
+era a calculada `TURNO CRIADO`, cujo nome aparecia UMA vez no repositório inteiro — a
+própria declaração. Nenhum visual, filtro, medida ou outra calculada a citava.
+
+### O conserto
+
+`TURNO CRIADO` saiu de `tables/protocolos-geral.spec.yaml`, com o porquê no lugar dela.
+Resultado medido depois:
+
+```
+  premiacao      54,3 -> 47,9 MB
+  visao-geral    52,8 -> 46,3 MB
+  piso da página 35,6 -> 29,1 MB      (-18% do piso que a PROTOCOLOS GERAL impõe)
+  morto total     7,53 -> 1,05 MB
+```
+
+**`TURNO ALOCADO` é órfã do mesmo jeito e FICOU.** A coluna que ela lê, `HR. ALOCAÇÃO`,
+é exibida pela `l-mapa`: apagá-la não tiraria byte nenhum de memória, só afastaria o
+modelo do relatório original de graça. A assimetria é a regra da decisão — sai a órfã que
+CUSTA, fica a órfã que não custa — e está escrita no YAML e no teste para não ser
+"arrumada" por engano.
+
+### A guarda
+
+`backend/packages/snapshot/test/calculada-sem-leitor.test.ts`. Três testes: nenhuma
+coluna física NOVA entra na carga sem um visual que a alcance; `TURNO CRIADO` não volta e
+`HORA CRIADO` continua fora; `TURNO ALOCADO` continua no modelo.
+
+O alcance é **reimplementado no teste**, a partir dos visuais, de propósito — um teste que
+chamasse `colunasUsadas` concordaria com ela até quando ela estivesse errada. É a mesma
+postura do #261.
+
+Ele carrega uma LISTA, não um zero: sobraram 1,05 MB em seis casos pequenos
+(`FIELD AGENDA[RankAtualProtocolo]` 0,60 MB, `BACKLOG AGENDADO FUTURO[data_inicio_slot]`
+0,22, `PROTOCOLOS GERAL[ITEM]` 0,10, `PROTOCOLOS PRODUTIVIDADE[TÉCNICO TROCA]` 0,09, e
+dois que arredondam para 0,00), e tirar qualquer um deles mexe em medida ou em tabela
+calculada — risco desproporcional ao byte. Cada linha tem o custo medido ao lado, que é o
+que torna a revisão possível; lista que ninguém revisa apodrece.
+
+### Cinco censos caíram junto, e os cinco estavam certos
+
+Nenhum teste de lógica reprovou; o que reprovou foram as contagens travadas, que é
+exatamente o trabalho delas:
+
+```
+  cobertura.test.ts            134 -> 133 expressões DAX
+  model.test.ts                 49 -> 48  colunas calculadas
+  avaliador-cobertura.test.ts  127 -> 126 no escopo, e 123 -> 122 executadas
+  mlayer.test.ts                 8 -> 7   colunas citadas pelo DAX nascidas em M
+```
+
+O `emM` do `mlayer` continua 35: `HORA CRIADO` **ainda nasce no passo M**; o que ela
+deixou de ter é quem a cite em DAX.
+
+### Dois caminhos que medi e NÃO segui
+
+1. **Restringir o fold de DAX ao fecho da própria página.** É o conserto "certo" da causa,
+   mas vale −3,6% de memória e troca um erro barato (manter coluna a mais) por um caro
+   (página não abre). Não compensa hoje.
+2. **Trocar `SOLICITACAO` pelos dígitos dela.** A chave é `assignments.title`, custa
+   19,66 MB na PROTOCOLOS GERAL (34% da tabela), e todo uso em DAX é COUNT ou
+   DISTINCTCOUNT — identidade pura, nenhum visual a exibe. Os dígitos são injetivos
+   DENTRO da janela de instalação (108.396/108.396), mas **não** sobre a tabela inteira:
+   2.192.493 títulos viram 2.004.925 strings de dígitos, e 271.623 títulos não têm dígito
+   nenhum. Como `alocacao-patrimonio` e `tecnicos-auxiliares` cortam por datas diferentes,
+   os títulos que entram numa junção não são os que entram na outra — a troca funde linha
+   no dia em que a janela mudar. Recusado.
+
+### O que sobra como próximo passo
+
+Os 88,82 MB que a poda já descarta (agora 95,30 MB) são SELECTados, trafegados, gravados
+e relidos a cada refresh sem nunca entrar na memória. Ali estão `latitude`, `longitude`,
+`telefone`, `rua`, `cto` e `numero patrimônio` da PROTOCOLOS GERAL — o mesmo corte S6 que
+a produtividade e a telefonia já levaram no #258. É tempo de refresh, disco e, em quatro
+delas, dado pessoal.
+
+**Um furo colateral, registrado aqui porque não é deste commit:** `npm run typecheck` não
+cobre `test/**` — o `include` do `tsconfig.json` termina em `src/**`. Foi por isso que uma
+comparação impossível (`kind === 'measure'`, que `extractRefs` nunca devolve) sobreviveu
+no teste novo até eu olhar. Dentro do teste ela era ramo morto e inofensivo — medida chega
+como `bare`, que o teste já tratava — e saiu. Ampliar o `include` é mudança de gate, não
+de feature, e tem de ser medida antes.

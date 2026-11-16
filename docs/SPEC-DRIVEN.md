@@ -766,6 +766,31 @@ Voltar com qualquer uma das seis pessoais sem uso reprova `spec-seguranca.test.t
 (`npm run validate:queries -- --only=...`; a produtividade precisa de
 `VOALLE_STATEMENT_TIMEOUT_MS` acima dos 30 s padrão para o perfil de colunas terminar).
 
+### `protocolos-geral` — a calculada `TURNO CRIADO` sai; `TURNO ALOCADO` fica (13/11/2026)
+
+`TURNO CRIADO` era `if(HORA CRIADO < TIME(12,0,0) && > TIME(0,0,0), "MANHÃ", "TARDE")` e
+saiu de `tables/protocolos-geral.spec.yaml`, com o motivo escrito no lugar dela
+(ACHADOS #262).
+
+**O que ela custava não era o tamanho dela.** `colunas-usadas.ts` dobra TODO o DAX do
+modelo de propósito — errar para MANTER custa memória, errar para TIRAR faz a página não
+abrir —, então uma calculada que nenhum visual alcança continua segurando as colunas
+físicas que ela lê. O nome `TURNO CRIADO` aparecia UMA vez no repositório inteiro (a
+própria declaração), e mesmo assim `PROTOCOLOS GERAL[HORA CRIADO]` entrava na memória das
+13 páginas por causa dela: **6,48 MB por página**, 18% do piso de 35,6 MB que a
+PROTOCOLOS GERAL impõe a toda página. Medido sobre o snapshot de produção.
+
+**`TURNO ALOCADO` é órfã do mesmo jeito e FICA.** A coluna que ela lê, `HR. ALOCAÇÃO`, é
+exibida pela `l-mapa` — apagá-la não tiraria byte nenhum de memória, só afastaria o
+modelo do relatório original de graça. Sai a órfã que CUSTA; fica a órfã que não custa.
+
+**Isto é edição à mão em spec gerada:** um `npm run extract` a partir do PBIP traria
+`TURNO CRIADO` de volta, porque ela existe no relatório original. Quem reprova nesse dia é
+`calculada-sem-leitor.test.ts`, que também cobra que nenhuma coluna física NOVA entre na
+carga sem um visual que a alcance. A query e o golden da `protocolos-geral` não mudam:
+`HORA CRIADO` continua nascendo no passo M e continua no arquivo do snapshot — ela só
+deixa de ser carregada para a memória.
+
 ## Estrutura de `backend/specs/`
 
 ```

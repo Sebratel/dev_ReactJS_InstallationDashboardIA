@@ -113,10 +113,14 @@ function funcoesQueFaltam(dax: string, model: SemanticModel, visitadas = new Set
 // ---------------------------------------------------------------------------
 
 /** Dentro do implementado, contando dependências. Travado: se mudar, é informação. */
-const NO_ESCOPO = 127;
+// 127 -> 126 aqui e 123 -> 122 logo abaixo, em 13/11/2026 (ACHADOS #262): saiu
+// 'PROTOCOLOS GERAL'[TURNO CRIADO]. Ela estava no escopo e executava bem — o que ela
+// não tinha era LEITOR: nenhum visual a alcançava, e mesmo assim ela segurava
+// [HORA CRIADO] na memória das 13 páginas, 6,48 MB em cada uma.
+const NO_ESCOPO = 126;
 
 /** Executam de fato. A diferença com `NO_ESCOPO` é explicada pelo teste abaixo. */
-const EXECUTAM = 123;
+const EXECUTAM = 122;
 
 /**
  * Medidas que citam mais de uma tabela **sem** `TREATAS`, ou seja: que só dão o
@@ -142,7 +146,7 @@ function noEscopo(model: SemanticModel): Expressao[] {
   return todasAsExpressoes(model).filter((e) => funcoesQueFaltam(e.dax, model).length === 0);
 }
 
-test(`as 127 expressões estão todas dentro do implementado`, () => {
+test(`as ${NO_ESCOPO} expressões estão todas dentro do implementado`, () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   assert.equal(noEscopo(model).length, NO_ESCOPO);
 });

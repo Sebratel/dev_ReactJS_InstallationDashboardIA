@@ -42,9 +42,13 @@ function todasAsExpressoes(): Expressao[] {
   ];
 }
 
-test('o parser dá conta das 134 expressões DAX da base', () => {
+// 134 -> 133 (13/11/2026, ACHADOS #262): saiu 'PROTOCOLOS GERAL'[TURNO CRIADO],
+// calculada que nenhum visual alcançava e que mantinha [HORA CRIADO] na memória
+// de todas as 13 páginas (6,48 MB cada). Este número CAI quando DAX morto sai do
+// modelo; se SUBIR sem uma linha nova aqui, alguém acrescentou expressão sem contar.
+test('o parser dá conta das 133 expressões DAX da base', () => {
   const expressoes = todasAsExpressoes();
-  assert.equal(expressoes.length, 134, '78 medidas + 49 colunas + 7 tabelas calculadas');
+  assert.equal(expressoes.length, 133, '78 medidas + 48 colunas + 7 tabelas calculadas');
 
   const falhas: string[] = [];
   for (const e of expressoes) {

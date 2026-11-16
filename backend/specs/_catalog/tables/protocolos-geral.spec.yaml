@@ -364,12 +364,24 @@ columns:
             'PROTOCOLOS GERAL'[DATA ALOCAÇÃO]
         )
     )
-- name: TURNO CRIADO
-  type: null
-  format: null
-  source_column: null
-  calculated: true
-  dax: "if('PROTOCOLOS GERAL'[HORA CRIADO] < TIME(12,0,0) && 'PROTOCOLOS GERAL'[HORA CRIADO] > TIME(0,0,0), \"MANHÃ\", \"TARDE\")"
+# TURNO CRIADO saiu em 13/11/2026 — calculada sem nenhum leitor, e cara.
+#
+# Ela era `if(HORA CRIADO < TIME(12,0,0) && > TIME(0,0,0), "MANHÃ", "TARDE")`, e o nome
+# dela aparecia UMA vez no repositório inteiro: aqui. Nenhum visual, filtro, medida ou
+# outra calculada a citava.
+#
+# O custo não era o dela — era o da coluna que ela mantinha viva. `colunas-usadas.ts`
+# dobra TODO o DAX do modelo de propósito (errar para MANTER é o lado barato), então
+# `PROTOCOLOS GERAL[HORA CRIADO]` entrava na memória das 13 páginas só para alimentar
+# esta. Medido em 13/11/2026 sobre o snapshot de produção: 6,48 MB por página — 18% do
+# piso de 35,6 MB que a PROTOCOLOS GERAL impõe a TODA página.
+#
+# `TURNO ALOCADO`, logo abaixo, é órfã do mesmo jeito e FICA: a coluna que ela lê
+# (`HR. ALOCAÇÃO`) é exibida pela `l-mapa`, então apagá-la não tiraria byte nenhum de
+# memória — só afastaria o modelo do relatório original de graça.
+#
+# `calculada-sem-leitor.test.ts` reprova no dia em que aparecer outra órfã que cobre
+# este mesmo preço.
 - name: "HR. ALOCAÇÃO"
   type: dateTime
   format: Long Time
