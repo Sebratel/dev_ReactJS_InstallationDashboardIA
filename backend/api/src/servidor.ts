@@ -1857,6 +1857,13 @@ export class Servidor {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
       connection: 'keep-alive',
+      // QA D-09. O `nginx.conf` deste repositório já desliga o buffer em
+      // `location /api/eventos`, mas em produção o pedido passa ANTES por um
+      // openresty da TI, que não conhece esta rota e segura o stream: nenhum evento
+      // chega, sem erro e sem log. `X-Accel-Buffering: no` é a instrução que o
+      // próprio upstream dá, e vale em qualquer nginx/openresty do caminho — é o
+      // único lado da conversa que está sob o nosso controle.
+      'x-accel-buffering': 'no',
     });
     // Comentário SSE (linha começando com `:`), não dado — só para o navegador
     // considerar a conexão estabelecida na hora, em vez de esperar o 1º evento

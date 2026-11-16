@@ -16779,3 +16779,81 @@ PROTOCOLOS GERAL como "lidas e nunca carregadas". Não são: a `02-visao-geral` 
 elas entram na memória de quem abre essa página. O corte S6 que sobra na PROTOCOLOS GERAL
 é menor do que eu disse — `latitude`, `longitude`, `cto` e `numero patrimônio`, 3,26 MB de
 arquivo, dois deles pessoais.
+
+## #264 — QA: D-03 (caminho oculto), D-09 (o proxy segurando o SSE) e D-12 (porcentagem sem formato) (16/11)
+
+Três defeitos da rodada do Fabrício (staging 4b953b4, devolvida em 11/11), fechados num
+commit só porque os três são pequenos e independentes. Os retestes da seção 8 que eles
+destravam: TF-05 e AC-11 (D-09), PA-01/PA-02 nas telas de porcentagem (D-12).
+
+### D-03 — `/.env` respondia 200 com a casca do React
+
+`serveEstatico` manda o `index.html` para caminho sem extensão e sem barra, porque é
+assim que o React Router recebe `/visao-geral`. `path.extname('.env')` é **string
+vazia** — para o Node o ponto inicial é o nome, não a extensão —, então `/.env`,
+`/.htpasswd` e companhia passavam pelas duas condições e voltavam 200.
+
+Não vazava nada: o arquivo não existe no build e o corpo era o HTML da aplicação.
+O problema é o STATUS. Um varredor lê 200 como "existe" e insiste; 404 é a resposta
+verdadeira. `/.git/config` já respondia 404, por ter barra.
+
+Agora nome que começa com ponto nunca é rota da tela. Teste em `estatico.test.ts`,
+provado reprovando com o código antigo (`/.env devia ser 404`).
+
+### D-09 — o canal ao vivo morria no proxy da TI, sem erro e sem log
+
+O `nginx.conf` deste repositório já desliga o buffer em `location /api/eventos`. Em
+produção, porém, o pedido passa ANTES por um openresty da TI, onde `/api/eventos` é só
+mais uma rota sob `/api/`: ele segura o stream, nenhum evento chega, e a tela fica
+esperando o F5 que o tempo real existe para evitar.
+
+O conserto não depende de ninguém: a resposta do SSE agora manda
+`X-Accel-Buffering: no`. É a instrução que o próprio upstream dá, qualquer
+nginx/openresty do caminho obedece, e é o único lado da conversa sob nosso controle. A
+linha no `nginx.conf` fica: as duas valem juntas e nenhuma é alternativa à outra.
+
+Teste em `aviso-das-paginas.test.ts`: o cabeçalho sai junto do `text/event-stream`.
+
+### D-12 — a tela decidia porcentagem pelo RÓTULO
+
+`MÉDIA GERAL`, da Manutenção Inicial, aparecia como `0,064`; a coluna `%` da Premiação,
+como `-0,23`. A regra era: KPI cujo NOME tem `%` vira porcentagem. `MÉDIA GERAL` é
+`REINCIDÊNCIA[Porcentagem]` — o nome não tem `%` nenhum, e o valor é razão.
+
+Quem decide agora é o `format` da medida no catálogo (`percentual.ts`), que é a mesma
+informação que o Power BI usa para exibir e que já vem do PBIP junto com o DAX. A API
+manda `percentual` e `casas`; as casas são as do próprio formato, então `0.00%` sai com
+duas (`6,40%`) e `0.0%` com uma — antes a tela usava uma casa para todo mundo.
+
+**A restrição que caiu, e por que agora dá.** O `percentuais` da `tabela.ts` valia só
+para visual NATIVO, com a ressalva escrita no tipo: *"cinco tabelas do PBIP têm coluna
+'%' cuja escala nunca foi conferida"*. A escala deixou de ser palpite: formato com `%`
+no Power BI multiplica por 100 na exibição, logo o valor guardado é **razão por
+construção**. E a lista é pequena o bastante para conferir à mão — são **11 campos no
+modelo inteiro**:
+
+```
+  relatorio-do-ano        card     % INSTALADOS POR CRIADO            1 casa   (nativo, não muda)
+  relatorio-do-ano        card     % INSTALADOS POR CRIADO — ANTERIOR 1 casa   (nativo, não muda)
+  relatorio-do-ano        tableEx  VARIAÇÃO                           1 casa   (nativo, não muda)
+  relatorio-do-ano        tableEx  PARTICIPAÇÃO                       1 casa   (nativo, não muda)
+  premiacao-instalacao    tableEx  %                                  2 casas  <- D-12
+  manutencao-inicial      card     % SOBRE OS ULTIMOS 30 DIAS         2 casas
+  manutencao-inicial      card     % SOBRE O MÊS ATUAL                2 casas
+  manutencao-inicial      card     MÉDIA GERAL                        2 casas  <- D-12
+  instalacao-reincidente  tableEx  % Reincidente (duas tabelas)       2 casas
+  instalacao-reincidente  card     % Reincidencia                     2 casas
+```
+
+Os 7 do PBIP são todos `DIVIDE(…)` — conferido um a um, não deduzido. Os 4 nativos
+mantêm exatamente o que mostravam.
+
+`percentual.test.ts` guarda a lista inteira, com página, rótulo, medida e casas. Campo
+novo nela é conversa, não acidente — é o que mantém viva a conferência que a ressalva
+antiga pedia.
+
+**Um efeito de borda assumido:** os três cards cujo nome já tinha `%` passam a ser
+formatados pelo formato, e não pelo rótulo. Some com eles o palpite de escala
+(`valor <= 1,5 ? ×100 : já é percentual`) de `percentualDeRazao`, que continua existindo
+só como reserva para resposta de API mais velha que a tela. Em número isso muda
+`6,4%` para `6,40%` — as casas que o PBIP pede.

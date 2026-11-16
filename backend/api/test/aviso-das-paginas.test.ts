@@ -251,3 +251,26 @@ test('alocação ao vivo avisa quem carrega Status Protocolo Dia — e não toda
     await s.fecha();
   }
 });
+
+/**
+ * QA D-09. Em produção o pedido passa por um openresty da TI antes de chegar ao
+ * `nginx.conf` deste repositório, e lá `/api/eventos` é só mais uma rota sob `/api/`:
+ * o proxy guarda o stream no buffer e **nenhum evento chega, sem erro e sem log** —
+ * a tela fica parada esperando o F5 que o tempo real existe para evitar.
+ *
+ * `X-Accel-Buffering: no` é a instrução que o upstream dá a qualquer nginx do
+ * caminho, e é o único lado da conversa que está sob o nosso controle: ele vale sem
+ * ninguém mexer na configuração do proxy da TI.
+ */
+test('o SSE manda X-Accel-Buffering: no, para o proxy não segurar o stream (D-09)', async () => {
+  const s = await sobe({});
+  try {
+    const resposta = await s.busca('/api/eventos');
+    assert.equal(resposta.status, 200);
+    assert.equal(resposta.headers.get('content-type'), 'text/event-stream');
+    assert.equal(resposta.headers.get('x-accel-buffering'), 'no');
+    await resposta.body!.cancel();
+  } finally {
+    await s.fecha();
+  }
+});

@@ -3,7 +3,7 @@ import type {
   DadosDeMatriz,
   VisualCalculado,
 } from '../../services/dashboardService.ts';
-import { formata, percentualDeRazao } from '../../utils/formato.ts';
+import { formata, percentualDeRazao, razaoComoPercentual } from '../../utils/formato.ts';
 import { useModo } from '../../context/ModoContext.tsx';
 import { Sparkline } from './Sparkline.tsx';
 import { Bullet } from './Bullet.tsx';
@@ -72,6 +72,9 @@ export function KpiCard({
         nome?: string;
         valor?: unknown;
         tipoDoValor?: 'number' | 'string' | 'boolean' | 'date' | null;
+        /** A medida tem `%` no formato do catálogo, e `casas` são as decimais dele. */
+        percentual?: true;
+        casas?: number;
         origem?: {
           kind: string;
           measure?: string;
@@ -91,10 +94,20 @@ export function KpiCard({
     d.origem?.measure ??
     (d.origem?.column ? `${d.origem?.aggregation ?? ''} ${d.origem.column}`.trim() : null);
 
-  // KPI de porcentagem: o nome traz "%" e a medida devolve razão (0,05). O Power BI
-  // mostra "5%"; casamos com ele em vez de exibir "0,05", que ninguém lê como taxa.
-  const ehPercentual = nomeKpi.includes('%') && d.tipoDoValor === 'number';
-  const valorTexto = f.vazio ? '—' : ehPercentual ? percentualDeRazao(d.valor) : f.texto;
+  // KPI de porcentagem. A medida devolve RAZÃO (0,064) e o Power BI mostra "6,40%".
+  //
+  // Quem decide é o `format` da medida, que a API manda em `percentual`/`casas` desde
+  // 16/11/2026 (QA D-12). Até então a tela decidia pelo RÓTULO, e `MÉDIA GERAL` — que é
+  // `REINCIDÊNCIA[Porcentagem]`, formato `0.00%` — saía como `0,064`: o nome dela não
+  // tem `%` nenhum. O rótulo fica como reserva, para resposta de API mais velha que a
+  // tela (`percentual` ausente).
+  const porFormato = d.percentual === true;
+  const ehPercentual = (porFormato || nomeKpi.includes('%')) && d.tipoDoValor === 'number';
+  // Com o formato na mão não há palpite de escala: `razaoComoPercentual` sempre
+  // multiplica por 100, e as casas são as que o formato pede.
+  const comoPercentual = (v: unknown): string =>
+    porFormato ? razaoComoPercentual(v, d.casas) : percentualDeRazao(v);
+  const valorTexto = f.vazio ? '—' : ehPercentual ? comoPercentual(d.valor) : f.texto;
 
   const dadosDaTendencia =
     tendencia && !tendencia.erro && tendencia.conteudo === 'grafico'
@@ -130,7 +143,7 @@ export function KpiCard({
     valorAnterior === undefined
       ? ''
       : ehPercentual
-        ? percentualDeRazao(valorAnterior)
+        ? comoPercentual(valorAnterior)
         : formata(valorAnterior, 'number').texto;
 
   const dadosDoCalendario =

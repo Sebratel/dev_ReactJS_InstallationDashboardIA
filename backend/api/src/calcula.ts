@@ -29,6 +29,7 @@ import {
 } from '../../packages/widget-engine/src/index.ts';
 import type { DashboardSpec, FiltroSpec, VisualSpec } from '../../packages/widget-engine/src/spec.ts';
 import { TIPO_DE_TELA } from '../../packages/widget-engine/src/filtro-url.ts';
+import { casasDoPercentual } from '../../packages/widget-engine/src/percentual.ts';
 import type { Evaluator } from '../../packages/measure-engine/src/evaluator.ts';
 import { isBlank, type DaxValue } from '../../packages/measure-engine/src/value.ts';
 
@@ -213,8 +214,14 @@ export interface TabelaCompleta {
     coluna: string | null;
     /** Nível da hierarquia de datas (`Ano`, `Mês`) quando a coluna é um deles. */
     nivel: string | null;
-    /** Só presente (e `true`) em coluna de porcentagem de visual nativo — ver `tabela.ts`. */
+    /**
+     * Só presente em coluna de porcentagem — a medida tem `%` no `format` do catálogo
+     * (ver `percentual.ts`). `casas` são as decimais que o próprio formato pede: a
+     * `% Diferença` da Premiação é `0.00%` e sai com duas, a `ANO · VARIAÇÃO` é `0.0%`
+     * e sai com uma.
+     */
     percentual?: true;
+    casas?: number;
   }[];
   linhas: unknown[][];
   linhasTotais: number;
@@ -694,12 +701,20 @@ function dadosDo(
 
   if (conteudo === 'card') {
     const r = calculaCard(dash, v, ev);
+    // QA D-12: o card de porcentagem sai marcado, com as casas do próprio formato. Até
+    // 16/11/2026 a tela decidia pelo RÓTULO (nome com `%`), e `MÉDIA GERAL` — que é
+    // `REINCIDÊNCIA[Porcentagem]`, formato `0.00%` — aparecia como `0,064`.
+    const casas =
+      r.origem.kind === 'measure'
+        ? casasDoPercentual(ev.model.measure(r.origem.measure)?.format)
+        : null;
     return {
       nome: r.nome,
       valor: serializa(r.valor),
       tipoDoValor: tipoDe(r.valor),
       origem: r.origem,
       filtros: r.filtros,
+      ...(casas !== null ? { percentual: true as const, casas } : {}),
     };
   }
 
@@ -739,7 +754,9 @@ function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Tabe
       tabela: r.origemDasColunas[i]?.tabela ?? null,
       coluna: r.origemDasColunas[i]?.coluna ?? null,
       nivel: r.origemDasColunas[i]?.nivel ?? null,
-      ...(r.percentuais[i] ? { percentual: true as const } : {}),
+      ...(r.percentuais[i] !== null && r.percentuais[i] !== undefined
+        ? { percentual: true as const, casas: r.percentuais[i]! }
+        : {}),
     })),
     linhas: r.linhas.map((l) => l.map((c) => serializa(c.valor))),
     linhasTotais: r.linhas.length,

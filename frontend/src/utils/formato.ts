@@ -110,20 +110,31 @@ export function percentualDeRazao(v: unknown): string {
   return `${nf.format(escala)}%`;
 }
 
-const nfUmaCasa = new Intl.NumberFormat('pt-BR', {
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-});
+const nfDeCasas = new Map<number, Intl.NumberFormat>();
+function comCasas(casas: number): Intl.NumberFormat {
+  let f = nfDeCasas.get(casas);
+  if (!f) {
+    f = new Intl.NumberFormat('pt-BR', {
+      minimumFractionDigits: casas,
+      maximumFractionDigits: casas,
+    });
+    nfDeCasas.set(casas, f);
+  }
+  return f;
+}
 
 /**
  * Razão SEMPRE escrita como porcentagem (`93,71` → `9.371,0%`), sem o palpite de escala
- * de `percentualDeRazao`. É para coluna que a API marcou `percentual` (tabela nativa):
- * ali a medida é razão por definição, e uma variação de +9.371% é real — o palpite a
- * mostraria como "93,71%".
+ * de `percentualDeRazao`. É para valor que a API marcou `percentual`: ali a medida tem
+ * `%` no formato do catálogo, e formato com `%` no Power BI significa que o valor
+ * guardado é razão. Uma variação de +9.371% é real — o palpite a mostraria como "93,71%".
+ *
+ * `casas` vem do próprio formato: `0.00%` → 2, `0.0%` → 1 (o padrão, que era o único
+ * comportamento até 16/11/2026).
  */
-export function razaoComoPercentual(v: unknown): string {
+export function razaoComoPercentual(v: unknown, casas = 1): string {
   if (typeof v !== 'number' || !Number.isFinite(v)) return '—';
-  return `${nfUmaCasa.format(v * 100)}%`;
+  return `${comCasas(casas).format(v * 100)}%`;
 }
 
 /** Data e hora de um ISO, para o carimbo de "dado de". */

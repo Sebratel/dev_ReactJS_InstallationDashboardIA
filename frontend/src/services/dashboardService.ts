@@ -79,8 +79,12 @@ export interface DadosDeTabela {
     coluna: string | null;
     /** Nível da hierarquia de datas (`Ano`, `Mês`); ausente em resposta anterior a 14/10. */
     nivel?: string | null;
-    /** Razão a escrever como porcentagem — só em tabela nativa (`visuais-novos/`). */
+    /**
+     * Razão a escrever como porcentagem, com as casas do `format` da medida. Desde
+     * 16/11/2026 vale também nas tabelas do PBIP (QA D-12); antes, só nas nativas.
+     */
     percentual?: true;
+    casas?: number;
   }[];
   linhas: Valor[][];
   /** Quantas linhas a consulta tem — **já com a busca aplicada**, quando há uma. */

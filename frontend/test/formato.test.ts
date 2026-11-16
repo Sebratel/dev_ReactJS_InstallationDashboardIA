@@ -118,3 +118,14 @@ test('razão de coluna percentual: sempre ×100, sem palpite de escala', async (
   assert.equal(razaoComoPercentual(93.714), '9.371,4%', 'variação de +9.371% é real, não "93,71%"');
   assert.equal(razaoComoPercentual(null), '—');
 });
+
+test('as casas da porcentagem vêm do formato da medida (QA D-12)', async () => {
+  const { razaoComoPercentual } = await import('../src/utils/formato.ts');
+  // `MÉDIA GERAL` é `REINCIDÊNCIA[Porcentagem]`, formato `0.00%`: o QA viu "0,064".
+  assert.equal(razaoComoPercentual(0.064, 2), '6,40%');
+  // `% Diferença` da Premiação, mesmo formato: o QA viu "-0,23", que é a razão crua.
+  assert.equal(razaoComoPercentual(-0.23, 2), '-23,00%');
+  // Sem casas, o padrão de antes — é o que as medidas nativas (`0.0%`) pedem.
+  assert.equal(razaoComoPercentual(0.064), '6,4%');
+  assert.equal(razaoComoPercentual(0.064, 0), '6%');
+});

@@ -15,7 +15,9 @@ export function textoDaCelula(
   coluna: DadosDeTabela['colunas'][number] | undefined,
 ) {
   const f = formata(valor, coluna?.tipo ?? null);
-  return coluna?.percentual && !f.vazio ? { ...f, texto: razaoComoPercentual(valor) } : f;
+  return coluna?.percentual && !f.vazio
+    ? { ...f, texto: razaoComoPercentual(valor, coluna.casas) }
+    : f;
 }
 
 function ConteudoDaCelula(props: {

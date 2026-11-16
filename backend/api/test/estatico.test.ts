@@ -59,3 +59,28 @@ test('prefixo parecido não permite sair do diretório estático', async () => {
   assert.equal(resposta.status, 403);
   assert.doesNotMatch(await resposta.text(), /NAO-DEVE-SAIR/);
 });
+
+/**
+ * QA D-03. `/.env` e `/.git/config` tinham de responder 404 — e o `.env` não
+ * respondia: `path.extname('.env')` é string vazia (para o Node o ponto inicial é o
+ * nome, não a extensão), então ele caía na casca da SPA e voltava 200.
+ *
+ * Não havia vazamento: o arquivo não existe no build e o corpo era o HTML do React.
+ * O problema é o STATUS — um varredor lê 200 como "achei" e continua cavando.
+ */
+test('caminho que começa com ponto responde 404, nunca a casca da SPA', async () => {
+  const webDir = buildDeTeste();
+  for (const rota of ['/.env', '/.git/config', '/.htpasswd', '/.well-known/x']) {
+    const resposta = await busca(webDir, rota);
+    assert.equal(resposta.status, 404, `${rota} devia ser 404`);
+    assert.doesNotMatch(await resposta.text(), /id="raiz"/, `${rota} devolveu a tela`);
+  }
+});
+
+test('rota normal da tela continua recebendo o index', async () => {
+  // A guarda do D-03 olha o último segmento: `/premiacao-instalacao` não começa com
+  // ponto e continua sendo rota da SPA.
+  const resposta = await busca(buildDeTeste(), '/premiacao-instalacao');
+  assert.equal(resposta.status, 200);
+  assert.match(await resposta.text(), /id="raiz"/);
+});

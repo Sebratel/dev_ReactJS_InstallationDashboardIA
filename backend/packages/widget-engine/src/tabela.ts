@@ -17,6 +17,7 @@ import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts
 import { DaxEvalError, isBlank, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
+import { casasDoPercentual } from './percentual.ts';
 import { agrupar, campoAtivo, chaveDoCampo, combinacoesDistintas, type Chave } from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
@@ -52,12 +53,18 @@ export interface ValorDeTabela {
    */
   origemDasColunas: { tabela: string | null; coluna: string | null; nivel: string | null }[];
   /**
-   * Coluna que a tela escreve como porcentagem (`0,0529` → `5,3%`). Só em visual NATIVO,
-   * quando o campo é medida com formato `%` no catálogo. Nos visuais do PBIP fica tudo
-   * `false`: cinco tabelas de lá têm coluna "%" cuja escala nunca foi conferida, e
-   * mudá-las aqui seria mexer em número de tela sem paridade.
+   * Coluna que a tela escreve como porcentagem, e com quantas casas — `null` quando não
+   * é. Sai do `format` da medida no catálogo (`casasDoPercentual`), que é a mesma
+   * informação que o Power BI usa para exibir.
+   *
+   * **Até 16/11/2026 valia só para visual NATIVO** — a ressalva era que "cinco tabelas do
+   * PBIP têm coluna '%' cuja escala nunca foi conferida". A restrição caiu junto com o QA
+   * D-12, e a escala não é mais palpite: formato com `%` no Power BI multiplica por 100
+   * na exibição, então o valor guardado é RAZÃO por construção. São 11 campos no modelo
+   * inteiro (4 nativos, que não mudam, e 7 do PBIP), e os 7 são `DIVIDE(…)` — conferido
+   * um a um, não deduzido.
    */
-  percentuais: boolean[];
+  percentuais: (number | null)[];
   linhas: CelulaTabela[][];
   /** `origem` de cada `TableFilter` de página e de visual. */
   filtros: string[];
@@ -263,11 +270,8 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
           }
         : { tabela: null, coluna: null, nivel: null },
     ),
-    percentuais: campos.map(
-      (c) =>
-        visual.origem === 'nativo' &&
-        c.kind === 'measure' &&
-        (ev.model.measure(c.property ?? '')?.format ?? '').includes('%'),
+    percentuais: campos.map((c) =>
+      c.kind === 'measure' ? casasDoPercentual(ev.model.measure(c.property ?? '')?.format) : null,
     ),
     linhas:
       visual.origem === 'nativo'
