@@ -17038,3 +17038,72 @@ linhas não muda: a janela não cria nem apaga linha.
 multi-linha por desenho (87.158 linhas para 43.105 solicitações, uma por técnico/auxiliar)
 e 110 solicitações têm mais de uma DATA ALOCAÇÃO ali. Mexer nela move os números da
 Premiação, que o QA conferiu e bateram. É medição separada, com o Erick no circuito.
+
+## #267 — QA D-17 e D-08: a ordenação passa a valer sobre a consulta inteira (16/11)
+
+### D-17 — o cabeçalho ordenava a página, não a tabela
+
+A busca saiu da tela e foi para o servidor em 16/09/2026 (#135). A ordenação ficou: o
+clique no cabeçalho reordenava `d.linhas`, que são as 200 linhas da janela já baixada.
+Numa tabela de 95.157 linhas, "maior primeiro" reordenava a PÁGINA e deixava o maior
+valor de verdade em alguma janela que ninguém abriu.
+
+A tela chegava a avisar — *"Busca e ordenação valem sobre as 200 linhas desta fatia, não
+sobre as 33.462 da consulta"*. Um aviso desses é a confissão de que o botão não faz o que
+diz, e foi exatamente isso que o QA registrou.
+
+**O conserto é o mesmo da busca, e de propósito.** `?ordem=<coluna>:<asc|desc>` chega na
+rota, vira `Janela.ordem` e é aplicada em `janelaDe` ANTES do corte:
+
+```
+  linhas inteiras → busca (casaComTermo) → ordem (ordenaLinhas) → slice da janela
+```
+
+As três decisões que isto carrega:
+
+1. **A comparação veio da tela, palavra por palavra** (`frontend/src/utils/tabelaDados.ts`),
+   como `casaComTermo` já tinha vindo. Duas regras de comparação fariam a tabela mudar de
+   ordem ao mudar de lado, e o sintoma seria "a linha trocou de lugar sozinha", sem erro.
+   Nulo vai para o fim nas duas direções: ausência não é "o menor".
+2. **`chaveDaResposta` inclui a ordem; `chaveDoCompleto`, não.** Mesma assimetria do
+   termo: a ordem muda QUAIS linhas a janela traz, nunca o cálculo que ela recorta —
+   então trocar a coluna custa um `slice`, não os 2,9 s das 33.462 linhas. Sem ela na
+   chave da resposta, a primeira página ordenada sairia do cache da não ordenada: a
+   lista certa para a pergunta errada.
+3. **Índice fora da tabela erra alto.** Ordenar por uma coluna que não existe compararia
+   `undefined` com `undefined` em toda linha e devolveria uma ordem que ninguém pediu,
+   com cara de ordenada. Agora o visual mostra o erro.
+
+**A tela só manda a ordem que SAI DO PADRÃO.** A de abertura (primeira coluna de data,
+decrescente) é a que `ordenaPorDataPadrao` já aplica sobre a consulta inteira no servidor
+— mandá-la de volta custaria um pedido a mais em toda tabela que abre, para o mesmo
+resultado. Some junto o "modo universo local" da paginação, que existia só para paginar
+dentro da fatia ordenada à mão.
+
+Testes: `ordem-de-tabela.test.ts` (ordena e depois corta; busca e ordem juntas; a segunda
+janela é a mesma linha da ordem global; coluna inexistente erra) e, em `cache.test.ts`, a
+chave que separa ordens diferentes.
+
+### D-08 — o histórico de permissões mostrava texto cortado
+
+A linha de `telas-da-pessoa` imprimia as duas listas de abas inteiras, cortadas em 80
+caracteres — e o que interessa, **o que entrou e o que saiu**, era justamente o que o
+corte comia.
+
+Agora a linha diz o diff: `+ premiacao-instalacao · − l-mapa`. Quando nada muda (salvar a
+matriz sem mexer grava uma linha assim), ela diz `sem mudança (2 abas)`, que é informação
+— repetir a mesma lista duas vezes não era. O que não é lista de abas continua saindo como
+`antes → depois`.
+
+### Um ruído observado de passagem, que não é destes defeitos
+
+Numa das rodadas de `npm test`, `trava.test.ts` reprovou em *"dois PROCESSOS no mesmo
+ler→somar→gravar não perdem atualização"*: um dos dois processos filhos saiu com código 1.
+Rodado sozinho, o arquivo passa; a suíte inteira rodada de novo passa (2.522 testes, zero
+falhas). É um teste que sobe dois processos de verdade para disputar a trava do snapshot,
+enquanto a suíte já está com dezenas de processos no ar — instabilidade de carga, não
+regressão das mudanças acima (nenhuma delas toca `trava.ts`).
+
+Fica registrado porque teste que falha de vez em quando é exatamente o que ensina a
+ignorar o vermelho. Se aparecer no CI, o lugar de olhar é o tempo de espera da trava sob
+carga, não o conteúdo do contador.

@@ -2278,6 +2278,25 @@ export class Servidor {
     }
     const termo = buscaBruta === '' ? undefined : buscaBruta;
 
+    // `?ordem=<coluna>:<asc|desc>` — o clique no cabeçalho da tabela (QA D-17). A tela
+    // ordenava as 200 linhas da janela baixada, o que numa tabela de 95 mil linhas
+    // reordena a PÁGINA e deixa o maior valor de verdade numa janela que ninguém abriu.
+    //
+    // Erra alto, como `?filtro=`: índice que não existe derruba o pedido. Ordenar por uma
+    // coluna que a tela não tem seria devolver uma ordem que ninguém pediu, calada.
+    let ordem: { coluna: number; desc: boolean } | undefined;
+    const ordemBruta = url.searchParams.get('ordem');
+    if (ordemBruta !== null && ordemBruta !== '') {
+      const casa = /^(\d{1,3}):(asc|desc)$/.exec(ordemBruta);
+      if (!casa) {
+        responde(res, 400, {
+          erro: `?ordem= espera '<coluna>:asc' ou '<coluna>:desc' (veio '${ordemBruta}').`,
+        });
+        return;
+      }
+      ordem = { coluna: Number.parseInt(casa[1]!, 10), desc: casa[2] === 'desc' };
+    }
+
     // `?filtro=` — a escolha das segmentações da tela, uma por coluna. Filtro que não
     // dá para entender **derruba o pedido** com 400: aplicar os que deram certo e
     // calar os outros mostraria um número filtrado pela metade dizendo-se filtrado.
@@ -2373,6 +2392,7 @@ export class Servidor {
       de,
       linhas,
       termo,
+      ordem,
       carimbo: marcaAoVivo ? `${carimbo}+${marcaAoVivo}` : carimbo,
       dia,
     });
@@ -2390,6 +2410,7 @@ export class Servidor {
       de,
       linhas,
       termo,
+      ordem,
       carimbo: '*',
       dia: '*',
     });
@@ -2563,7 +2584,7 @@ export class Servidor {
           snapshotDir: this.opts.snapshotDir,
           specsDir: path.join(this.opts.root, 'backend', 'specs'),
           dashboardSpec: dosFora ? { ...alvoDoSnapshot, id: idDosForaDoAoVivo(dash.id) } : alvoDoSnapshot,
-          janela: { de, linhas, termo },
+          janela: { de, linhas, termo, ordem },
           clicados,
           liberaSobDemanda: dosFora?.libera ?? libera,
           precisaFormaCompleta: dosFora?.formaCompleta ?? formaCompleta,
@@ -2719,7 +2740,7 @@ export class Servidor {
         dash,
         alvo,
         daTela,
-        janela: { de, linhas, termo },
+        janela: { de, linhas, termo, ordem },
         clicados,
         agora: this.opts.agora(),
         pagina: paginaCalculada,

@@ -155,6 +155,23 @@ export interface Janela {
    * `CacheDeVisual` existe para não pagar.
    */
   termo?: string;
+  /**
+   * A coluna por onde ordenar e a direção — o clique no cabeçalho da tabela.
+   *
+   * **Pelo mesmo motivo do `termo`** (QA D-17). A tela ordenava `d.linhas`, que são as
+   * 200 linhas da janela JÁ baixada: numa tabela de 95.157 linhas, clicar em "maior
+   * primeiro" reordenava a página e deixava o maior valor de verdade em alguma janela
+   * que ninguém abriu. Ordenação que vale só para o pedaço visível é pior que nenhuma,
+   * porque parece que valeu.
+   *
+   * `coluna` é o ÍNDICE na lista de colunas do visual; quem valida que ele existe é a
+   * rota (`servidor.ts`), não aqui.
+   *
+   * Entra DEPOIS do cálculo, como o termo: `chaveDoCompleto` não o inclui, então trocar
+   * a ordem não recalcula nada — e `chaveDaResposta` inclui, senão a janela ordenada
+   * sairia do cache da não ordenada.
+   */
+  ordem?: { coluna: number; desc: boolean };
 }
 
 /**
@@ -170,6 +187,37 @@ export interface Janela {
  *
  * `null`/`undefined` nunca casam: BLANK não é texto vazio que contém tudo.
  */
+/**
+ * Ordena as linhas por uma coluna — **esta função veio da tela, palavra por palavra**
+ * (`frontend/src/utils/tabelaDados.ts`, `ordenaLinhas`), pelo mesmo motivo de
+ * `casaComTermo`: duas regras de comparação fariam a tabela mudar de ordem ao mudar de
+ * lado, e o sintoma seria "a linha trocou de lugar sozinha", sem erro nenhum.
+ *
+ * Opera sobre a linha **já serializada**, onde data é texto ISO — que ordena igual à
+ * data, porque ISO é ordenável como texto. Nulo vai para o fim nas duas direções: ele
+ * não é "o menor", é ausência.
+ */
+export function ordenaLinhas(
+  linhas: readonly unknown[][],
+  coluna: number,
+  desc: boolean,
+): unknown[][] {
+  const fora = [...linhas];
+  fora.sort((a, b) => {
+    const vA = a[coluna];
+    const vB = b[coluna];
+    if (vA === null || vA === undefined) return 1;
+    if (vB === null || vB === undefined) return -1;
+    if (typeof vA === 'number' && typeof vB === 'number') return desc ? vB - vA : vA - vB;
+    const sA = String(vA).toLowerCase();
+    const sB = String(vB).toLowerCase();
+    if (sA < sB) return desc ? 1 : -1;
+    if (sA > sB) return desc ? -1 : 1;
+    return 0;
+  });
+  return fora;
+}
+
 export function casaComTermo(linha: readonly unknown[], termo: string): boolean {
   for (const v of linha) {
     if (v === null || v === undefined) continue;
@@ -817,10 +865,24 @@ export function janelaDe(completo: Completo, janela: Janela): unknown {
     const { especie: _, linhas, ...resto } = completo;
     const termo = janela.termo;
     const achadas = termo ? linhas.filter((l) => casaComTermo(l, termo)) : linhas;
+    // A ordem vale sobre o resultado INTEIRO, e por isso vem antes do `slice` (D-17).
+    //
+    // Índice fora da tabela ERRA ALTO, em vez de ordenar por uma coluna que não existe:
+    // o comparador compararia `undefined` com `undefined` em toda linha e devolveria
+    // uma ordem que ninguém pediu, com cara de ordenada. O visual mostra o erro —
+    // `calculaPagina` guarda a mensagem por visual —, que é o oposto de calar.
+    if (janela.ordem && (janela.ordem.coluna < 0 || janela.ordem.coluna >= completo.colunas.length)) {
+      throw new Error(
+        `?ordem= pede a coluna ${janela.ordem.coluna}, e esta tabela tem ${completo.colunas.length}.`,
+      );
+    }
+    const ordenadas = janela.ordem
+      ? ordenaLinhas(achadas, janela.ordem.coluna, janela.ordem.desc)
+      : achadas;
     return {
       ...resto,
-      linhas: achadas.slice(janela.de, ate),
-      linhasTotais: achadas.length,
+      linhas: ordenadas.slice(janela.de, ate),
+      linhasTotais: ordenadas.length,
       ...(termo ? { totalSemBusca: completo.linhasTotais } : {}),
       de: janela.de,
     };

@@ -56,3 +56,20 @@ test('o "Atualizar" das listas alcança só as segmentações daquela página', 
   await qc.invalidateQueries({ queryKey: chavesDeConsulta.valores('capa') });
   assert.deepEqual(invalidadas(qc), [JSON.stringify(chavesDeConsulta.valores('capa', 'T', 'C'))]);
 });
+
+/**
+ * QA D-17: a ordenação escolhida no cabeçalho vai ao servidor, porque é lá que ela
+ * alcança a consulta inteira. Sem ordem escolhida, nenhum parâmetro — a abertura tem de
+ * cair na MESMA chave do aquecedor.
+ */
+test('urlDaPagina: a ordem vira ?ordem=<coluna>:<asc|desc>, e sem ela não vira nada', () => {
+  assert.doesNotMatch(urlDaPagina('protocolos-detalhados', [], { visual: 'v1' }), /ordem=/);
+  assert.match(
+    urlDaPagina('protocolos-detalhados', [], { visual: 'v1', ordem: { coluna: 3, desc: true } }),
+    /ordem=3%3Adesc/,
+  );
+  assert.match(
+    urlDaPagina('protocolos-detalhados', [], { visual: 'v1', ordem: { coluna: 0, desc: false } }),
+    /ordem=0%3Aasc/,
+  );
+});

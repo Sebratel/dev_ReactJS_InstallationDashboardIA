@@ -46,6 +46,14 @@ export function useJanela(
    * Dois estados, um por velocidade.
    */
   termo: string = '',
+  /**
+   * A ordenação escolhida no cabeçalho, ou `null` para a ordem natural do visual.
+   *
+   * **Ela vai ao servidor desde 16/11/2026 (QA D-17).** Antes a tela ordenava as 200
+   * linhas da janela baixada: numa tabela de 95 mil linhas, "maior primeiro" reordenava
+   * a PÁGINA e deixava o maior valor de verdade numa janela que ninguém abriu.
+   */
+  ordem: { coluna: number; desc: boolean } | null = null,
 ): EstadoDeJanela {
   /**
    * Onde a janela está, e PARA QUAL resposta da página e qual termo.
@@ -60,14 +68,25 @@ export function useJanela(
    * ignorá-lo o ressuscitava quando o termo voltava ao de antes — limpar a busca
    * devolvia a tabela à linha 201 em vez do começo (pego na tela, 07/10/2026).
    */
-  const [pedido, setPedido] = useState({ de: 0, inicial, termo });
-  const valido = pedido.inicial === inicial && pedido.termo === termo;
-  if (!valido) setPedido({ de: 0, inicial, termo });
+  // A ordem entra na identidade do pedido como o termo: trocar a coluna refaz o
+  // conjunto, e continuar na linha 4.000 mostraria uma janela de outra ordenação.
+  const chaveDaOrdem = ordem ? `${ordem.coluna}:${ordem.desc ? 'd' : 'a'}` : '';
+  const [pedido, setPedido] = useState({ de: 0, inicial, termo, chaveDaOrdem });
+  const valido =
+    pedido.inicial === inicial && pedido.termo === termo && pedido.chaveDaOrdem === chaveDaOrdem;
+  if (!valido) setPedido({ de: 0, inicial, termo, chaveDaOrdem });
   const de = valido ? pedido.de : 0;
 
-  // A primeira janela sem busca É a resposta da página (`inicial`): não há o que pedir.
-  const precisa = de > 0 || termo !== '';
-  const opcoes = { visual: inicial.id, de, linhas: LINHAS_POR_JANELA, busca: termo || undefined };
+  // A primeira janela sem busca e sem ordem É a resposta da página (`inicial`): não há o
+  // que pedir. Com ordem, há: a primeira janela ordenada não é a primeira janela.
+  const precisa = de > 0 || termo !== '' || ordem !== null;
+  const opcoes = {
+    visual: inicial.id,
+    de,
+    linhas: LINHAS_POR_JANELA,
+    busca: termo || undefined,
+    ordem: ordem ?? undefined,
+  };
   const q = useQuery({
     queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes)),
     queryFn: async ({ signal }) => {
@@ -91,7 +110,7 @@ export function useJanela(
     vaiPara: (novo: number) => {
       // Pedir de novo a janela que falhou é "tentar de novo": a chave não muda.
       if (novo === de && q.isError) void q.refetch();
-      else setPedido({ de: novo, inicial, termo });
+      else setPedido({ de: novo, inicial, termo, chaveDaOrdem });
     },
   };
 }

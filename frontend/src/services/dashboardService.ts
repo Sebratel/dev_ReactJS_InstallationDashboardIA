@@ -203,6 +203,12 @@ export interface OpcoesDePagina {
   linhas?: number;
   /** O campo "Filtrar…" da tabela. Ver `?busca=` em `backend/api/src/servidor.ts`. */
   busca?: string;
+  /**
+   * A ordenação da tabela — o clique no cabeçalho (QA D-17). `coluna` é o ÍNDICE na
+   * lista de colunas do visual, e o servidor ordena o resultado INTEIRO antes de
+   * recortar a janela. Ver `?ordem=` em `backend/api/src/servidor.ts`.
+   */
+  ordem?: { coluna: number; desc: boolean };
   // Sem `recalcula` desde 05/10/2026: a tela não força recálculo no servidor (ele
   // regravava o cache de todo mundo por um clique). A API só o aceita de ferramenta
   // interna — ver `servidor.ts`.
@@ -246,6 +252,8 @@ export function urlDaPagina(
   // daria uma segunda chave para o mesmo pedido, e a abertura sem busca deixaria de
   // reaproveitar o que o aquecedor já calculou.
   if (opcoes.busca) p.set('busca', opcoes.busca);
+  // Idem: sem ordem escolhida, nenhum parâmetro — a chave tem de ser a da abertura.
+  if (opcoes.ordem) p.set('ordem', `${opcoes.ordem.coluna}:${opcoes.ordem.desc ? 'desc' : 'asc'}`);
   const q = p.toString();
   return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
 }

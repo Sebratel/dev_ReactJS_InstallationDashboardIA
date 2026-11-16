@@ -23,9 +23,49 @@ const ACOES: Record<string, string> = {
   'perfil-da-pessoa': 'mudou o perfil de',
 };
 
+/**
+ * Lista de abas gravada no histórico, ou `null` quando o valor não é uma lista.
+ *
+ * `telas-da-pessoa` grava as abas ANTES e DEPOIS como lista. Mostrar as duas inteiras
+ * nunca coube na linha — vinham cortadas em 80 caracteres, e o que importa (o que
+ * entrou e o que saiu) é justamente o que o corte comia (QA D-08).
+ */
+function listaDeAbas(v: string | null): string[] | null {
+  if (v === null) return null;
+  try {
+    const o: unknown = JSON.parse(v);
+    return Array.isArray(o) && o.every((x) => typeof x === 'string') ? (o as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** `+ premiacao, visao-geral · − l-mapa` — só o que mudou, nunca a lista inteira. */
+function diffDeAbas(antes: string[], depois: string[]): string {
+  const entraram = depois.filter((t) => !antes.includes(t));
+  const sairam = antes.filter((t) => !depois.includes(t));
+  if (entraram.length === 0 && sairam.length === 0) {
+    // Acontece: salvar a matriz sem mexer em nada grava uma linha assim. Dizer "nada
+    // mudou" é informação; repetir a lista das duas vezes não é.
+    return `sem mudança (${depois.length} aba${depois.length === 1 ? '' : 's'})`;
+  }
+  const partes: string[] = [];
+  if (entraram.length > 0) partes.push(`+ ${entraram.join(', ')}`);
+  if (sairam.length > 0) partes.push(`− ${sairam.join(', ')}`);
+  return partes.join(' · ');
+}
+
 /** Uma linha em português: "chefe@ suspendeu ana@ (antes → depois)". */
 export function descreveRegistro(r: RegistroDeAuditoria): string {
   const acao = ACOES[r.acao] ?? r.acao;
+  const antes = listaDeAbas(r.antes);
+  const depois = listaDeAbas(r.depois);
+  // Mudança de abas: o que entrou e o que saiu. As duas pontas têm de ser lista — uma
+  // só (a primeira vez de alguém, com `antes` nulo) ainda assim compara, com a vazia.
+  if (antes !== null || depois !== null) {
+    const corpo = diffDeAbas(antes ?? [], depois ?? []);
+    return `${r.por} ${acao} ${r.alvo ?? ''} (${corpo})`;
+  }
   const curto = (v: string | null) => (v === null ? '—' : v.length > 80 ? `${v.slice(0, 77)}…` : v);
   return `${r.por} ${acao} ${r.alvo ?? ''} (${curto(r.antes)} → ${curto(r.depois)})`;
 }
