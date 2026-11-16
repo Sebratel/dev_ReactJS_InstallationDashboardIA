@@ -2,7 +2,7 @@
   "queryId": "alocacao-patrimonio",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 25151,
+  "rowCount": 65411,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -11,57 +11,73 @@
       "name": "SOLICITACAO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4811,
-      "minLength": 66,
-      "maxLength": 152
+      "distinct": 4828,
+      "minLength": 72,
+      "maxLength": 149
     },
     {
       "name": "N°PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4811,
+      "distinct": 4828,
       "numericString": true,
-      "sum": 7637945853
+      "sum": 6029717278
     },
     {
       "name": "EQUIPAMENTO",
       "type": "string",
       "nulls": 0,
-      "distinct": 25,
-      "minLength": 17,
-      "maxLength": 84
+      "distinct": 35,
+      "minLength": 18,
+      "maxLength": 67
     },
     {
       "name": "PATRIMONIO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4911,
+      "distinct": 4931,
       "minLength": 3,
-      "maxLength": 8
+      "maxLength": 12
     },
     {
       "name": "SERIAL",
       "type": "string",
       "nulls": 0,
-      "distinct": 4912,
+      "distinct": 4933,
       "minLength": 6,
-      "maxLength": 16
+      "maxLength": 161
     },
     {
       "name": "DATA SAIDA",
       "type": "date",
       "nulls": 0,
-      "distinct": 42,
-      "min": "2026-01-09T00:00:00.000Z",
-      "max": "2026-04-01T00:00:00.000Z"
+      "distinct": 64,
+      "min": "2025-01-02T00:00:00.000Z",
+      "max": "2026-03-04T00:00:00.000Z"
     },
     {
       "name": "DATA HORA SAIDA",
       "type": "date",
       "nulls": 0,
       "distinct": 5000,
-      "min": "2026-01-09T09:04:09.313Z",
-      "max": "2026-04-01T12:27:32.258Z"
+      "min": "2025-01-02T09:22:47.373Z",
+      "max": "2026-03-04T14:18:39.169Z"
+    },
+    {
+      "name": "DATA SAIDA PRIMEIRA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 63,
+      "min": "2025-01-02T00:00:00.000Z",
+      "max": "2026-03-04T00:00:00.000Z"
+    },
+    {
+      "name": "DATA HORA SAIDA PRIMEIRA",
+      "type": "date",
+      "nulls": 0,
+      "distinct": 4828,
+      "min": "2025-01-02T09:22:47.373Z",
+      "max": "2026-03-04T14:18:39.169Z"
     },
     {
       "name": "STATUS RETORNO",
@@ -69,47 +85,47 @@
       "nulls": 0,
       "distinct": 2,
       "numericString": true,
-      "sum": 1367
+      "sum": 2389
     },
     {
       "name": "DATA DO RETORNO",
       "type": "date",
-      "nulls": 3633,
-      "distinct": 216,
-      "min": "2026-01-09T00:00:00.000Z",
-      "max": "2026-09-17T00:00:00.000Z"
+      "nulls": 2611,
+      "distinct": 555,
+      "min": "2025-01-02T00:00:00.000Z",
+      "max": "2026-11-14T00:00:00.000Z"
     },
     {
       "name": "RESPONSAVEL",
       "type": "string",
-      "nulls": 0,
-      "distinct": 58,
-      "minLength": 7,
+      "nulls": 4,
+      "distinct": 61,
+      "minLength": 12,
       "maxLength": 47
     },
     {
       "name": "ALOCADO POR:",
       "type": "string",
       "nulls": 0,
-      "distinct": 58,
+      "distinct": 62,
       "minLength": 9,
-      "maxLength": 39
+      "maxLength": 38
     },
     {
       "name": "CLIENTE",
       "type": "string",
       "nulls": 0,
-      "distinct": 4739,
-      "minLength": 10,
+      "distinct": 4772,
+      "minLength": 9,
       "maxLength": 60
     },
     {
       "name": "SITE",
       "type": "string",
-      "nulls": 4002,
-      "distinct": 19,
+      "nulls": 4995,
+      "distinct": 5,
       "minLength": 5,
-      "maxLength": 11
+      "maxLength": 5
     },
     {
       "name": "CIDADE",
@@ -117,34 +133,34 @@
       "nulls": 0,
       "distinct": 10,
       "minLength": 6,
-      "maxLength": 21
+      "maxLength": 15
     },
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
-      "nulls": 3908,
-      "distinct": 105,
+      "nulls": 4852,
+      "distinct": 137,
       "minLength": 14,
       "maxLength": 69
     },
     {
       "name": "PROBLEMA",
       "type": "string",
-      "nulls": 4983,
-      "distinct": 5,
-      "minLength": 14,
-      "maxLength": 33
+      "nulls": 4992,
+      "distinct": 1,
+      "minLength": 23,
+      "maxLength": 23
     },
     {
       "name": "POSIÇÃO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2,
+      "distinct": 1,
       "minLength": 7,
-      "maxLength": 8
+      "maxLength": 7
     }
   ],
-  "schemaFingerprint": "34bc014eea8e0a14",
-  "dataFingerprint": "fc5c4968d03a787b",
-  "capturedAt": "2026-09-17T20:12:35.755Z"
+  "schemaFingerprint": "83298472e87aa88d",
+  "dataFingerprint": "a8c754bdb98973c2",
+  "capturedAt": "2026-11-16T12:47:52.195Z"
 }

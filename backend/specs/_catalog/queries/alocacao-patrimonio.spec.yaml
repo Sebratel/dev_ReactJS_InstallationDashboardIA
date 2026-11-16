@@ -14,6 +14,25 @@ sql: |-
   	p.serial_number "SERIAL",
   	plis.out_date "DATA SAIDA",
   	plis.created "DATA HORA SAIDA",
+  	-- QA D-13 (16/11/2026). Um protocolo pode ter VARIAS alocacoes de patrimonio, e
+  	-- o `Table.Distinct(..., {"SOLICITACAO"})` do M guarda a linha que a ORDEM deixou
+  	-- sobrar -- ordem que nem este SQL nem o M fixam. Medido no snapshot de 20/10:
+  	-- 222 solicitacoes tem mais de uma DATA de alocacao, e em 148 delas a plataforma
+  	-- ficou com a primeira, em 72 com a ultima e em 1 com uma do meio. Nao era uma
+  	-- regra errada: era a ausencia de regra. 47 dessas trocam de MES conforme o sorteio.
+  	--
+  	-- A regra passa a ser A PRIMEIRA ALOCACAO, que e quando o equipamento saiu para
+  	-- aquele protocolo. Uma alocacao posterior e troca ou complemento e nao muda a data
+  	-- da instalacao -- inclusive quando a primeira foi devolvida depois (161 dos 222),
+  	-- que e justamente o caso de equipamento trocado por defeito. E o valor que o Power
+  	-- BI mostra no protocolo que o QA conferiu (1791835: 31/08, nao 11/09).
+  	--
+  	-- Quem usa estas duas e so a `protocolos-geral`; "DATA SAIDA" e "DATA HORA SAIDA"
+  	-- seguem linha a linha para quem precisa de cada item (reincidencia, retorno).
+  	min(plis.out_date) over (partition by a.title) "DATA SAIDA PRIMEIRA",
+  	first_value(plis.created) over (
+  	    partition by a.title order by plis.out_date asc, plis.id asc
+  	) "DATA HORA SAIDA PRIMEIRA",
   	plis.returned "STATUS RETORNO",
   	plis.returned_date "DATA DO RETORNO",
   	p2.name "RESPONSAVEL",

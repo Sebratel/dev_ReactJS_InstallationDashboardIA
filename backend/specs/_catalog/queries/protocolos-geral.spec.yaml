@@ -211,7 +211,11 @@ m_expression: |-
       #"Texto Extraído Após o Delimitador" = Table.TransformColumns(#"Valor Substituído15", {{"CTO", each Text.AfterDelimiter(_, "-", 1), type text}}),
       #"Texto Extraído Antes do Delimitador" = Table.TransformColumns(#"Texto Extraído Após o Delimitador", {{"CTO", each Text.BeforeDelimiter(_, "-"), type text}}),
       #"Consultas Mescladas1" = Table.NestedJoin(#"Texto Extraído Antes do Delimitador", {"SOLICITACAO"}, #"ALOCAÇÃO PATRIMONIO", {"SOLICITACAO"}, "ALOCAÇÃO_PATRIMONIO", JoinKind.LeftOuter),
-      #"ALOCAÇÃO_PATRIMONIO Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas1", "ALOCAÇÃO_PATRIMONIO", {"DATA SAIDA", "DATA HORA SAIDA", "ALOCADO POR:", "POSIÇÃO"}, {"ALOCAÇÃO_PATRIMONIO.DATA SAIDA", "ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA", "ALOCAÇÃO_PATRIMONIO.ALOCADO POR:", "ALOCAÇÃO_PATRIMONIO.POSIÇÃO"}),
+      // QA D-13 (16/11/2026): as duas datas que descem daqui passam a ser as da PRIMEIRA
+      // alocacao do protocolo, nao as da linha que o `Table.Distinct` la embaixo deixou
+      // sobrar. A conta e feita no SQL da `alocacao-patrimonio` (janela por SOLICITACAO),
+      // e os nomes de saida sao os MESMOS de antes -- o resto deste M nao muda.
+      #"ALOCAÇÃO_PATRIMONIO Expandido" = Table.ExpandTableColumn(#"Consultas Mescladas1", "ALOCAÇÃO_PATRIMONIO", {"DATA SAIDA PRIMEIRA", "DATA HORA SAIDA PRIMEIRA", "ALOCADO POR:", "POSIÇÃO"}, {"ALOCAÇÃO_PATRIMONIO.DATA SAIDA", "ALOCAÇÃO_PATRIMONIO.DATA HORA SAIDA", "ALOCAÇÃO_PATRIMONIO.ALOCADO POR:", "ALOCAÇÃO_PATRIMONIO.POSIÇÃO"}),
       #"Colunas Renomeadas5" = Table.RenameColumns(#"ALOCAÇÃO_PATRIMONIO Expandido",{{"ALOCAÇÃO_PATRIMONIO.DATA SAIDA", "DT.INSTA"}}),
       #"Linhas Filtradas1" = Table.SelectRows(#"Colunas Renomeadas5", each ([STATUS] <> "Cancelado")),
       #"Colunas Renomeadas4" = Table.RenameColumns(#"Linhas Filtradas1",{{"DT.INSTA", "DT.ALOCAÇÃO"}}),

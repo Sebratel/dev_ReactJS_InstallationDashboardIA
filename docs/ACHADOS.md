@@ -16930,3 +16930,111 @@ imagem**: o que rodou foi a mesma sequência de comandos no shell do repositóri
 `node -e` devolvendo `54f69c9`, igual ao `git rev-parse --short HEAD`. Quem constrói de
 verdade é o CI, no push — e ele agora constrói com `COMMIT: ${{ github.sha }}`, o que
 também prova que o `ARG` existe e que o `versao.json` sai preenchido.
+
+## #266 — QA D-13: a DATA INSTALADO não tinha regra, tinha sorteio (16/11)
+
+O defeito chegou como "seguir a regra do Power BI": o protocolo 1791835 conta em setembro
+no painel e em agosto no Power BI — 11/09 contra 31/08, a data de alocação do patrimônio.
+Medindo, o diagnóstico ficou diferente do enunciado: **nenhum dos dois tinha regra.**
+
+### O que estava acontecendo
+
+`DATA INSTALAÇÃO` (coluna DAX) cai em `[DATA ALOCAÇÃO]`, que vem da `alocacao-patrimonio`
+por `NestedJoin` + `ExpandTableColumn` e termina num
+`Table.Distinct(…, {"SOLICITACAO"})`. Um protocolo pode ter VÁRIAS alocações de
+patrimônio, e o `Distinct` guarda **a primeira linha da ordem corrente** — ordem que nem
+o SQL (sem `ORDER BY`) nem o M fixam.
+
+Medido sobre o snapshot de produção de 20/10, nas 60.202 solicitações da
+`alocacao-patrimonio`:
+
+```
+  com mais de uma LINHA de alocação      2.253
+  com mais de uma DATA de alocação         222   <- aqui a ordem decide
+  maior vão entre a primeira e a última    301 dias
+```
+
+E o que a plataforma ficou guardando nessas 222:
+
+```
+  a primeira alocação     148
+  a última alocação        72
+  uma do meio               1
+```
+
+Não é uma regra errada; é a ausência de uma. 47 das 222 têm primeira e última em **meses
+diferentes**, então o mês em que o protocolo é contado saía do sorteio. O 1791835 é um
+dos 72.
+
+**Uma ressalva honesta:** rodei a versão ANTIGA duas vezes contra o banco, com minutos de
+diferença, e as duas deram exatamente o mesmo resultado — zero protocolos mudaram. O
+PostgreSQL devolve as linhas numa ordem estável enquanto o plano e os dados não mudam.
+Ou seja: hoje não é instável, é **não especificado** — um índice novo, um `VACUUM` ou o
+crescimento da tabela viram o resultado sem aviso e sem erro. O defeito não é a variação,
+é a escolha não ter dono.
+
+### A regra escolhida: a PRIMEIRA alocação
+
+É quando o equipamento saiu para aquele protocolo. Alocação posterior é troca ou
+complemento e não move a data da instalação — inclusive, e principalmente, quando a
+primeira foi **devolvida** depois (161 das 222), que é exatamente o caso de equipamento
+trocado por defeito: a instalação aconteceu na primeira data, o defeito veio depois. É
+também o valor que o Power BI mostra no protocolo que o QA conferiu.
+
+Considerei e descartei a variante "a primeira que não foi devolvida": ela concorda com a
+primeira em 117 das 222 e empurraria a data da instalação para a troca nas outras — mais
+engenhosa e menos certa, e inventa um critério que o relatório original nunca teve.
+
+### Onde o conserto mora
+
+No SQL, que é onde determinismo se resolve — e é também para onde este projeto vem
+empurrando trabalho:
+
+```sql
+min(plis.out_date) over (partition by a.title)                         "DATA SAIDA PRIMEIRA",
+first_value(plis.created) over (
+    partition by a.title order by plis.out_date asc, plis.id asc
+)                                                                      "DATA HORA SAIDA PRIMEIRA",
+```
+
+O M de `protocolos-geral` expande essas duas **com os nomes de saída de sempre**
+(`ALOCAÇÃO_PATRIMONIO.DATA SAIDA` e `.DATA HORA SAIDA`), então o resto do M — `DT.INSTA`
+→ `DT.ALOCAÇÃO` → `DATA ALOCAÇÃO` — não muda uma linha. Qual linha sobrevive ao `Distinct`
+deixa de importar para a data: todas carregam a mesma.
+
+A hora acompanha a data de propósito (`first_value` da mesma ordenação): data de uma
+alocação com a hora de outra seria um valor que não existiu.
+
+`DATA SAIDA` e `DATA HORA SAIDA` por item continuam saindo — `reincidencia` e
+`retorno-prioritario` leem linha a linha, e isso não é assunto deste defeito.
+
+### O que muda em número
+
+As duas versões rodadas contra o banco **no mesmo instante**, 103.817 linhas nas duas:
+
+```
+  protocolos com DATA ALOCAÇÃO diferente    75
+  deles, mudam de MÊS                       13   (todos para um mês ANTERIOR)
+  protocolo 1791835                         11/09 -> 31/08, igual ao Power BI
+```
+
+Os meses afetados vão de 2025-04 a 2026-08, um ou dois protocolos em cada. O número de
+linhas não muda: a janela não cria nem apaga linha.
+
+### As guardas
+
+- `transform-engine/test/primeira-alocacao.test.ts` reproduz o mecanismo no avaliador de
+  M real, nas DUAS ordens de linha: com a coluna de cada item a data muda com a ordem,
+  com a da janela não muda. É o teste que mostra que o conserto não é "o número mudou", e
+  sim "o número parou de depender da ordem".
+- `validate/test/primeira-alocacao-spec.test.ts` cobra o PAR: a janela no SQL, o expand
+  apontando para ela no M, o golden com as duas colunas, e `reincidencia`/`retorno`
+  intactas. As duas specs são geradas — um `npm run extract` desfaz as duas pontas sem
+  erro nenhum, e é por isso que isto é teste e não comentário.
+
+### O que fica em aberto
+
+`PROTOCOLOS PRODUTIVIDADE` tem a mesma matéria-prima e **não** foi tocada: ela é
+multi-linha por desenho (87.158 linhas para 43.105 solicitações, uma por técnico/auxiliar)
+e 110 solicitações têm mais de uma DATA ALOCAÇÃO ali. Mexer nela move os números da
+Premiação, que o QA conferiu e bateram. É medição separada, com o Erick no circuito.

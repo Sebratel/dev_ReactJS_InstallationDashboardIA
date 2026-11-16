@@ -791,6 +791,40 @@ carga sem um visual que a alcance. A query e o golden da `protocolos-geral` não
 `HORA CRIADO` continua nascendo no passo M e continua no arquivo do snapshot — ela só
 deixa de ser carregada para a memória.
 
+### `alocacao-patrimonio` e `protocolos-geral` — a primeira alocação vira coluna de janela (16/11/2026)
+
+Duas edições à mão que só funcionam juntas (QA D-13, ACHADOS #266).
+
+**Na `alocacao-patrimonio`**, duas colunas novas no `sql:`:
+
+```sql
+min(plis.out_date) over (partition by a.title)                      "DATA SAIDA PRIMEIRA",
+first_value(plis.created) over (
+    partition by a.title order by plis.out_date asc, plis.id asc
+)                                                                   "DATA HORA SAIDA PRIMEIRA",
+```
+
+**No `protocolos-geral`**, o `Table.ExpandTableColumn` da `ALOCAÇÃO_PATRIMONIO` passa a
+pedir essas duas — com os nomes de saída de sempre (`ALOCAÇÃO_PATRIMONIO.DATA SAIDA` e
+`.DATA HORA SAIDA`), para o resto do M ficar intacto.
+
+**Por quê.** Um protocolo pode ter várias alocações de patrimônio e o
+`Table.Distinct(…, {"SOLICITACAO"})` guarda a primeira linha da ORDEM CORRENTE — que nem
+o SQL nem o M fixam. Das 222 solicitações com mais de uma data, a plataforma ficava com a
+primeira em 148, com a última em 72 e com uma do meio em 1. Com a janela, todas as linhas
+do protocolo carregam a mesma data e a escolha do `Distinct` deixa de importar.
+
+**O que muda em número:** 75 protocolos, 13 deles de mês, todos para um mês anterior —
+as duas versões rodadas contra o banco no mesmo instante, com as mesmas 103.817 linhas.
+
+**Um `npm run extract` desfaz as duas pontas**, porque as duas specs são geradas do PBIP.
+Quem reprova nesse dia é `validate/test/primeira-alocacao-spec.test.ts`, que cobra o par
+inteiro (janela no SQL, expand no M, golden com as colunas) — e
+`transform-engine/test/primeira-alocacao.test.ts`, que prova o mecanismo no avaliador.
+
+Golden regravado: `npm run validate:queries -- --only=alocacao-patrimonio`
+(65.411 linhas, 19 colunas).
+
 ## Estrutura de `backend/specs/`
 
 ```
