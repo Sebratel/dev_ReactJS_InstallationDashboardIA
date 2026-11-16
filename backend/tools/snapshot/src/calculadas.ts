@@ -409,6 +409,7 @@ async function statusDiaPelasContagens(t: ModelTable): Promise<Record<string, Es
     dashboards: [paginaDasFontesDoStatusDia(alvo[0] ?? todas[0]!)],
     now: new Date(),
     lerCalculadas: false,
+    pulaCalculadas: new Set([normalizeName(t.name)]),
     precisaFormaCompleta: [],
   });
   const agenda = fontes.ev.dataset.rows('FIELD AGENDA') as unknown as Record<string, Escalar>[];
@@ -439,9 +440,10 @@ if (emProcessoUnico.length > 0) {
   c = await carrega({
     dir: DIR,
     model,
-    dashboards: semOStatusDia(alvo),
+    dashboards: alvo,
     now: new Date(),
     lerCalculadas: false,
+    pulaCalculadas: new Set(escolhidas.filter(ehStatusDiaSemCompleta).map((t) => normalizeName(t.name))),
     // A forma COMPLETA de toda tabela com grão reduzido que a tem no snapshot (ACHADOS
     // #87) — este programa é o congelamento em lote, não um pedido de tela: não há
     // latência a proteger, e uma coluna calculada (ex.: 'Status Protocolo

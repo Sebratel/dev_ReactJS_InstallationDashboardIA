@@ -51,6 +51,7 @@ services:
       VOALLE_SSL_REJECT_UNAUTHORIZED: '0'
       MARIA_SSL: '0'
       MARIA_SSL_REJECT_UNAUTHORIZED: '0'
+      MARIA_DATABASE: ${MARIA_DATABASE:-DB_Applicattion}
   refresh:
     environment:
       VOALLE_SSL: '0'

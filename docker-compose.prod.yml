@@ -119,6 +119,7 @@ services:
       # A API usa a mesma conta MARIA_* do refresh. O banco de acessos é outro.
       MARIA_HOST: ${MARIA_HOST:-}
       MARIA_PORT: ${MARIA_PORT:-3306}
+      MARIA_DATABASE: ${MARIA_DATABASE:-DB_Applicattion}
       MARIA_USER: ${MARIA_USER:-}
       MARIA_PASSWORD: ${MARIA_PASSWORD:-}
       ACESSO_DB_DATABASE: ${ACESSO_DB_DATABASE:-DB_InstallationDashboard}
