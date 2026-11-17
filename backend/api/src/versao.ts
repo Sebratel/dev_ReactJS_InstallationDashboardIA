@@ -44,7 +44,7 @@ const DESCONHECIDA: Versao = {
 };
 
 /** O `versao.json` que o Dockerfile escreve. Ausente fora de imagem — não é erro. */
-function daImagem(root: string): Versao | null {
+export function versaoDaImagem(root: string): Versao | null {
   try {
     const cru = fs.readFileSync(path.join(root, 'versao.json'), 'utf8');
     const o = JSON.parse(cru) as Partial<Record<keyof Versao, unknown>>;
@@ -136,7 +136,7 @@ function doGit(root: string): Versao | null {
 let guardada: Versao | null = null;
 
 export function versaoDaInstancia(root: string): Versao {
-  guardada ??= daImagem(root) ?? doGit(root) ?? DESCONHECIDA;
+  guardada ??= versaoDaImagem(root) ?? doGit(root) ?? DESCONHECIDA;
   return guardada;
 }
 

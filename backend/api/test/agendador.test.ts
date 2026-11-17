@@ -654,3 +654,44 @@ test('agendador: zera backoff no arranque quando query do grupo falta ou tem >24
   ag.para();
   assert.ok(rodados.includes('frio'), 'grupo frio com query >24h deve rodar imediatamente no arranque');
 });
+
+test('agendador: zera espera de falhas anteriores quando sobe nova imagem (versao.json)', async (t) => {
+  const dir = tmp();
+  const raizTeste = tmp();
+  t.after(() => {
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(raizTeste, { recursive: true, force: true });
+  });
+  fs.cpSync(path.join(ROOT, 'backend', 'specs'), path.join(raizTeste, 'backend', 'specs'), { recursive: true });
+  fs.writeFileSync(
+    path.join(raizTeste, 'versao.json'),
+    JSON.stringify({ commit: 'abc1234', construidoEm: '2026-11-17T17:25:00Z', impressao: 'nova-impressao-1' }),
+  );
+  const agora = new Date('2026-11-17T17:25:00.000Z');
+  await escreveStatus(dir, {
+    quente: {
+      ultimaTentativa: '2026-11-17T17:20:00.000Z',
+      ultimoSucesso: '2026-11-13T12:00:00.000Z',
+      duracaoMs: 1000,
+      ok: false,
+      falhasConsecutivas: 29,
+      erro: 'erro antigo',
+    },
+  });
+
+  const rodados: string[] = [];
+  const ag = new Agendador({
+    raiz: raizTeste,
+    snapshotDir: dir,
+    agora: () => agora,
+    anuncia: () => {},
+    roda: async (g) => {
+      rodados.push(g.id);
+      return { ok: true };
+    },
+  });
+  ag.inicia();
+  await new Promise((r) => setTimeout(r, 40));
+  ag.para();
+  assert.ok(rodados.includes('quente'), 'nova imagem deve zerar backoff e rodar quente imediatamente');
+});

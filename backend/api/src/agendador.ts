@@ -70,9 +70,11 @@
 //
 // REGRA DE SAÍDA: id de grupo, contagem e tempo. Nunca valor de linha.
 
+import fs from 'node:fs';
 import path from 'node:path';
 import { QueryRegistry } from '../../packages/query-engine/src/registry.ts';
 import { DIRETORIO_PADRAO, leManifesto } from '../../packages/snapshot/src/manifesto.ts';
+import { versaoDaImagem } from './versao.ts';
 import {
   leGrupos,
   validaGrupos,
@@ -367,6 +369,36 @@ export class Agendador {
     }
 
     this.#status = leStatus(this.#snapshotDir);
+    const impressao = versaoDaImagem(this.#raiz)?.impressao;
+    if (impressao) {
+      const arqVersao = path.join(this.#snapshotDir, 'refresh-versao.txt');
+      let anterior: string | null = null;
+      try {
+        anterior = fs.readFileSync(arqVersao, 'utf8').trim();
+      } catch {
+        /* primeiro arranque com versao.json */
+      }
+      if (anterior !== impressao) {
+        let zerados = 0;
+        for (const id of Object.keys(this.#status)) {
+          if ((this.#status[id]?.falhasConsecutivas ?? 0) > 0) {
+            delete this.#status[id];
+            zerados++;
+          }
+        }
+        if (zerados > 0) {
+          this.#anuncia(
+            `[refresh] nova imagem (${impressao}) — zerando espera de falhas anteriores (${zerados} grupo(s)).`,
+          );
+        }
+        try {
+          fs.mkdirSync(this.#snapshotDir, { recursive: true });
+          fs.writeFileSync(arqVersao, impressao);
+        } catch {
+          /* melhor esforço */
+        }
+      }
+    }
     const manifesto = leManifesto(this.#snapshotDir);
     const agoraMs = this.#agora().getTime();
     if (manifesto) {
