@@ -42,7 +42,7 @@ test('a carga da madrugada cobre toda query do refresh.yaml real, sem repetiçã
   for (const q of ['protocolos-geral', 'protocolos-produtividade', 'contratos', 'troca-endereco', 'relatos-do-dia', 'valores-do-relato']) {
     assert.ok(queries.includes(q), q);
   }
-  assert.ok(!queries.includes('field-agenda'), 'a agenda completa não é mais carregada');
+  assert.ok(queries.includes('field-agenda'), 'a agenda completa voltou ao refresh');
 });
 
 test('argumentos: os mesmos do antigo crontab (heap do filho, --refazer, --memoria)', () => {
