@@ -98,30 +98,33 @@ test('a API responde NORMALMENTE enquanto um grupo está materializando', async 
     return { ok: true };
   });
 
-  api.ag.inicia();
-  await esperaAte(() => api.ag.estado().emExecucao !== null, 'um grupo entrar em voo');
+  try {
+    api.ag.inicia();
+    await esperaAte(() => api.ag.estado().emExecucao !== null, 'um grupo entrar em voo');
 
-  // Vinte pedidos com a carga presa em voo. Se o laço de eventos estivesse bloqueado
-  // — que é o que `spawnSync` faria —, nenhum deles voltaria até a carga terminar.
-  const latencias: number[] = [];
-  for (let i = 0; i < 20; i += 1) {
-    const t0 = Date.now();
-    const r = await api.busca('/api/saude');
-    latencias.push(Date.now() - t0);
-    assert.equal(r.status, 200, `pedido ${i} não foi servido durante a carga`);
+    // Vinte pedidos com a carga presa em voo. Se o laço de eventos estivesse bloqueado
+    // — que é o que `spawnSync` faria —, nenhum deles voltaria até a carga terminar.
+    const latencias: number[] = [];
+    for (let i = 0; i < 20; i += 1) {
+      const t0 = Date.now();
+      const r = await api.busca('/api/saude');
+      latencias.push(Date.now() - t0);
+      assert.equal(r.status, 200, `pedido ${i} não foi servido durante a carga`);
+    }
+    const pior = Math.max(...latencias);
+    assert.ok(pior < 1_000, `o pior pedido levou ${pior}ms durante a carga — o laço travou`);
+
+    // E a saúde CONTA o que está acontecendo, em vez de fingir que está tudo parado.
+    const saude = (await (await api.busca('/api/saude')).json()) as {
+      agendador: { emExecucao: string | null; emCursoHaMs: number | null };
+    };
+    assert.ok(saude.agendador.emExecucao !== null, 'quem está de plantão precisa ver a carga em voo');
+    assert.ok((saude.agendador.emCursoHaMs ?? 0) >= 0);
+  } finally {
+    preso.abre();
+    await api.fecha();
+    fs.rmSync(dir, { recursive: true, force: true });
   }
-  const pior = Math.max(...latencias);
-  assert.ok(pior < 1_000, `o pior pedido levou ${pior}ms durante a carga — o laço travou`);
-
-  // E a saúde CONTA o que está acontecendo, em vez de fingir que está tudo parado.
-  const saude = (await (await api.busca('/api/saude')).json()) as {
-    agendador: { emExecucao: string | null; emCursoHaMs: number | null };
-  };
-  assert.ok(saude.agendador.emExecucao !== null, 'quem está de plantão precisa ver a carga em voo');
-  assert.ok((saude.agendador.emCursoHaMs ?? 0) >= 0);
-
-  preso.abre();
-  await api.fecha();
 });
 
 test('um grupo que FALHA não tira a API do ar nem para a cadência', async () => {
@@ -135,16 +138,19 @@ test('um grupo que FALHA não tira a API do ar nem para a cadência', async () =
     return { ok: false, erro: 'saiu com código 1 — Connection terminated unexpectedly' };
   });
 
-  api.ag.inicia();
-  await esperaAte(() => api.ag.estado().execucoes >= 3, 'os três grupos tentarem');
+  try {
+    api.ag.inicia();
+    await esperaAte(() => api.ag.estado().execucoes >= 3, 'os três grupos tentarem');
 
-  const r = await api.busca('/api/saude');
-  assert.equal(r.status, 200, 'três falhas seguidas não podem derrubar a tela');
-  const saude = (await r.json()) as { agendador: { ativo: boolean; falhas: number } };
-  assert.equal(saude.agendador.ativo, true, 'a cadência continua de pé depois de falhar');
-  assert.equal(saude.agendador.falhas, 3);
-
-  await api.fecha();
+    const r = await api.busca('/api/saude');
+    assert.equal(r.status, 200, 'três falhas seguidas não podem derrubar a tela');
+    const saude = (await r.json()) as { agendador: { ativo: boolean; falhas: number } };
+    assert.equal(saude.agendador.ativo, true, 'a cadência continua de pé depois de falhar');
+    assert.equal(saude.agendador.falhas, 3);
+  } finally {
+    await api.fecha();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('o EXECUTOR REAL não bloqueia o laço de eventos — subprocesso, não spawnSync', async () => {
@@ -180,15 +186,20 @@ test('a saúde continua respondendo com o agendador DESLIGADO por catálogo queb
   // virar uma API sem saúde: "não há cadência, e o motivo é este" é justamente a frase
   // que faltava em 16/09/2026.
   const dir = tmp();
+  const vazio = tmp(); // sem `_catalog/refresh.yaml` nenhum
   const api = await apiComAgendador(dir, async () => ({ ok: true }));
 
-  const vazio = tmp(); // sem `_catalog/refresh.yaml` nenhum
-  const desligado = new Agendador({ raiz: ROOT, specsDir: vazio, snapshotDir: dir, anuncia: () => {} });
-  desligado.inicia();
-  assert.equal(desligado.estado().ativo, false);
-  assert.match(String(desligado.estado().motivo), /nenhum grupo/);
+  try {
+    const desligado = new Agendador({ raiz: ROOT, specsDir: vazio, snapshotDir: dir, anuncia: () => {} });
+    desligado.inicia();
+    assert.equal(desligado.estado().ativo, false);
+    assert.match(String(desligado.estado().motivo), /nenhum grupo/);
 
-  const r = await api.busca('/api/saude');
-  assert.equal(r.status, 200);
-  await api.fecha();
+    const r = await api.busca('/api/saude');
+    assert.equal(r.status, 200);
+  } finally {
+    await api.fecha();
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(vazio, { recursive: true, force: true });
+  }
 });

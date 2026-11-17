@@ -92,7 +92,7 @@ sql: |-
       LEFT JOIN authentication_splitters as2 ON as2.id = asp.authentication_splitter_id
       LEFT JOIN v_users vu ON vu.id = a.created_by
       LEFT JOIN financial_receivable_titles frt ON c.id = frt.contract_id
-      WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+      WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1136', '249', '268', '1160', '1015', '15', '1298') -- Filtrando os tipos de protocolo
         AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
   ),
   -- `base` e EXATAMENTE o SELECT DISTINCT que existia aqui antes da migracao de
@@ -197,7 +197,7 @@ sql: |-
       LEFT JOIN people                  p3  ON p3.id  = plis.person_allocator_id
       -- Os NOVE tipos de `alocacao-patrimonio.spec.yaml`, na ordem em que ela os
       -- escreve. Nao sao os dez desta query: '268' e '1160' nao estao la, e '279' esta.
-      WHERE it.id IN ('12','1254','1255','1014','1136','249','15','279','1015')
+      WHERE it.id IN ('12','1254','1255','1014','1297','1136','249','15','1298','279','1015')
         -- `AND plis.out_date > '01/01/2026'` no original. `01/01` e o mesmo dia em MDY e
         -- em DMY, entao a data nao depende do `DateStyle` da sessao -- escrita em ISO
         -- aqui para que ela tambem nao PARECA depender.
@@ -238,7 +238,7 @@ sql: |-
           LEFT JOIN people               p  ON p.id = r.person_id
           LEFT JOIN incident_types       it ON it.id = ai.incident_type_id
           WHERE DATE(r.final_date) >= DATE_TRUNC('year', CURRENT_DATE)
-            AND it.id IN ('15','1256')
+            AND it.id IN ('15','1298','1256')
             AND (r.description LIKE '%O condomínio é adequado?%'
               OR r.description LIKE '%Foi feita a instalação?%')
       ) x WHERE x._persona = 1

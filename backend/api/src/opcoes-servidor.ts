@@ -12,7 +12,29 @@ import type { BuscaCertificados } from './auth-firebase.ts';
 import type { PiscinaWorkers } from './piscina-workers.ts';
 import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { EstadoDoRedis } from './saude-do-redis.ts';
+import type { LojaDeMetas } from './loja-metas-maria.ts';
+import type { LojaDeIa } from './ia/loja-ia.ts';
 import type { UsoDasTelas } from './uso-das-telas.ts';
+import type { ObservadorAoVivo } from './sombra-ao-vivo.ts';
+import type { GeracaoDoPeriodo } from './periodos-ao-vivo.ts';
+import type { Decisao, PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import type { DashboardSpec, FiltroSpec } from '../../packages/widget-engine/src/spec.ts';
+
+/**
+ * Uma página servida ao vivo: a regra que tira o período do pedido (e os visuais que
+ * ficam de fora), e quem entrega o snapshot pequeno daquele período. Páginas diferentes
+ * podem dividir o mesmo `obtem` — a Premiação e o Diário dividem o conjunto do ano.
+ */
+export interface PaginaServidaAoVivo {
+  decide(dash: DashboardSpec, daTela: readonly FiltroSpec[], agora: Date): Decisao;
+  obtem(p: PeriodoAoVivo): Promise<GeracaoDoPeriodo>;
+  /**
+   * A geração que o pedido vai encontrar, que entra na chave do cache de respostas
+   * (`PeriodosAoVivo.marca`). Sem ela, a resposta em cache só muda com o snapshot de hoje.
+   */
+  marca?(p: PeriodoAoVivo): string;
+  estado?(): unknown;
+}
 
 export interface ServidorOptions {
   /** Raiz do repositório — de onde saem `backend/specs/` e o `snapshot/`. */
@@ -51,6 +73,17 @@ export interface ServidorOptions {
   eventosDeSeguranca?: GravadorDeEventos;
   /** Agregado leve de aberturas de aba e sua leitura administrativa. */
   usoDasTelas?: UsoDasTelas;
+  /**
+   * Os numeros de negocio que um gestor edita pela aba "Metas" (`loja-metas-maria.ts`).
+   * Ausente (sem banco, como em desenvolvimento) faz `/api/admin/metas` responder 503 —
+   * a tela diz que nao da para editar agora, e NUNCA finge ter gravado.
+   */
+  metas?: LojaDeMetas;
+  /**
+   * Registro e configuração do provedor de IA (`ia/loja-ia.ts`), para leitura interpretativa
+   * de visuais agregados e gestão na aba administrativa.
+   */
+  ia?: LojaDeIa;
   /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
    *  token — falha fechada, não aberta, enquanto não configurado. */
   googleClientId?: string;
@@ -243,6 +276,30 @@ export interface ServidorOptions {
    * nenhum — ver `reaquecePorBaixo` para a medida que decidiu isso.
    */
   reaquece?: (paginas: readonly string[]) => Promise<void>;
+  /**
+   * O modo sombra da fonte ao vivo (`sombra-ao-vivo.ts`, docs/DECISAO-AO-VIVO.md): recebe
+   * cada página que o snapshot acabou de calcular e a refaz ao vivo em segundo plano,
+   * comparando visual a visual. Não espera, não muda a resposta, não lança.
+   *
+   * Padrão: nenhum — e aí nada muda. `npm run api` só o passa com `AO_VIVO_SOMBRA=1`.
+   */
+  sombraAoVivo?: ObservadorAoVivo;
+  /**
+   * As páginas servidas AO VIVO (docs/DECISAO-AO-VIVO.md): por página, quem entrega o
+   * snapshot pequeno do período (`periodos-ao-vivo.ts`). Os visuais que o ao vivo não
+   * responde e todo pedido sem período reconhecível seguem pelo snapshot de hoje; se a
+   * busca falhar ou passar de `tetoMs`, o pedido inteiro também — a tela nunca fica sem
+   * resposta por causa do ao vivo.
+   *
+   * Padrão: nenhuma. `npm run api` monta a partir de `AO_VIVO_PAGINAS`.
+   */
+  aoVivo?: {
+    readonly paginas: ReadonlyMap<string, PaginaServidaAoVivo>;
+    /** Quanto um pedido espera a PRIMEIRA busca de um período antes de cair. Padrão: 45 s. */
+    readonly tetoMs?: number;
+  };
   /** Instância ou opção para a piscina de worker threads. */
   piscinaWorkers?: PiscinaWorkers;
+  /** Dispara atualização imediata de grupos/poller quando alguém clica no botão Atualizar. */
+  pedeRefresh?: () => Promise<{ disparados: string[] }>;
 }

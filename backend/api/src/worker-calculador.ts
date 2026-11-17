@@ -13,6 +13,8 @@
 // reconstruir o mesclador deste lado com a MESMA `mesclador()` que o processo
 // principal usa. Ver `overlay-realtime.ts`.
 
+import v8 from 'node:v8';
+import vm from 'node:vm';
 import { parentPort, threadId, workerData } from 'node:worker_threads';
 import { SemanticModel } from '../../packages/semantic-model/src/model.ts';
 import {
@@ -29,6 +31,7 @@ import type { DaxValue } from '../../packages/measure-engine/src/value.ts';
 import { loadDashboards, type DashboardSpec } from '../../packages/widget-engine/src/spec.ts';
 import { medeIsolate, type MedidaDaWorker, type MensagemDeMemoria } from './memoria-da-saude.ts';
 import { CacheDeCarga, coletorDaWorker } from './cache-de-carga.ts';
+import { paginaDoIdAoVivo, paginaDoIdDosForaDoAoVivo, paginaDoIdDosSeletores, semForaDoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
 
 export interface MensagemCalculoWorker {
   tipo?: 'calcula';
@@ -291,6 +294,76 @@ const cacheDeCarga = new CacheDeCarga<Carregado>({
 });
 
 /**
+ * A coleta da worker OCIOSA (fase 4, docs/DECISAO-AO-VIVO.md § Memória).
+ *
+ * Uma worker parada não coleta: o V8 só coleta quando aloca, e ela não aloca nada até a
+ * próxima tarefa. O lixo do último cálculo — que é a maior parte do pico, medido em
+ * 27/10/2026 na imagem de produção — fica no heap dela, e o contêiner o carrega até a
+ * próxima página chegar àquela worker. Com isto, `API_WORKER_COLETA_OCIOSA_MS` (padrão 5 s)
+ * depois da última tarefa ela coleta; tarefa nova cancela a coleta marcada. 0 desliga.
+ *
+ * Medido na imagem de produção (`npm run probe:memoria-workers`, 3 rodadas das 14 páginas,
+ * 2 workers de 512 MB): API ociosa com 1.252 MB sem isto, 715 MB com. O pico durante o
+ * cálculo não muda (~1,25 GB) — o que cai é o que ficava retido entre um cálculo e outro.
+ */
+export const COLETA_OCIOSA_PADRAO_MS = 5000;
+const COLETA_OCIOSA_MS = (() => {
+  const n = Number.parseInt(process.env.API_WORKER_COLETA_OCIOSA_MS ?? '', 10);
+  return Number.isFinite(n) && n >= 0 ? n : COLETA_OCIOSA_PADRAO_MS;
+})();
+/**
+ * O `gc()` da coleta ociosa, ou `null` se o V8 não o der. A de ÚLTIMO RECURSO, e não a
+ * comum: só ela devolve ao sistema as páginas que o V8 guarda para reuso — e o reservatório
+ * é do processo inteiro (medido em 27/10/2026, imagem de produção: 1.114 MB -> 238 MB). A
+ * comum esvaziava o heap, e o contêiner nem via.
+ *
+ * Não depende de `--expose-gc` no processo (o `CMD` da imagem o passa, `npm test` não):
+ * sem ele, a função vem do próprio V8, num contexto novo. Resolvida só na primeira coleta,
+ * para que importar este módulo fora de uma worker (os testes importam `chaveDeCarga`) não
+ * mexa em flag nenhuma.
+ */
+let gcResolvido: ((opcoes?: unknown) => void) | null | undefined;
+function gcOcioso(): ((opcoes?: unknown) => void) | null {
+  if (gcResolvido !== undefined) return gcResolvido;
+  let gc = (globalThis as { gc?: (opcoes?: unknown) => void }).gc;
+  if (typeof gc !== 'function') {
+    try {
+      v8.setFlagsFromString('--expose-gc');
+      gc = vm.runInNewContext('gc') as (opcoes?: unknown) => void;
+    } catch {
+      gc = undefined;
+    }
+  }
+  gcResolvido = typeof gc === 'function' ? gc : null;
+  return gcResolvido;
+}
+let coletaMarcada: ReturnType<typeof setTimeout> | null = null;
+/** Para `/api/saude` (`MedidaDaWorker.coletaOciosa`). */
+const coletas = { vezes: 0, ultimaMs: 0, maiorMs: 0 };
+
+function cancelaColetaOciosa(): void {
+  if (coletaMarcada !== null) clearTimeout(coletaMarcada);
+  coletaMarcada = null;
+}
+
+function marcaColetaOciosa(): void {
+  cancelaColetaOciosa();
+  const gc = COLETA_OCIOSA_MS > 0 ? gcOcioso() : null;
+  if (gc === null) return;
+  coletaMarcada = setTimeout(() => {
+    coletaMarcada = null;
+    const t0 = Date.now();
+    gc({ type: 'major', execution: 'sync', flavor: 'last-resort' });
+    const ms = Date.now() - t0;
+    coletas.vezes++;
+    coletas.ultimaMs = ms;
+    coletas.maiorMs = Math.max(coletas.maiorMs, ms);
+    if (ms >= 500) console.error(`[worker ${threadId}] coleta ociosa: ${ms} ms`);
+  }, COLETA_OCIOSA_MS);
+  coletaMarcada.unref?.();
+}
+
+/**
  * A última `identidade` vista **POR PÁGINA** — e a razão de não ser uma só.
  *
  * **O defeito que isto conserta, medido em 21/09/2026.** Este era um
@@ -403,6 +476,8 @@ if (parentPort) {
         ...medeIsolate(),
         datasets: cacheDeCarga.tamanho,
         visuais: { itens: completos.itens, mb: Math.round((completos.bytes / 1048576) * 10) / 10 },
+        // Só quando a coleta existe de fato: ligada e com `gc()` à mão.
+        ...(COLETA_OCIOSA_MS > 0 && gcOcioso() !== null ? { coletaOciosa: { ...coletas } } : {}),
       };
       msg.porta.postMessage(medida);
       msg.porta.close();
@@ -437,6 +512,7 @@ if (parentPort) {
 
     /** A obrigação de soltar o dataset em uso — ver `cacheDeCarga.usa`. */
     let soltaUso: (() => void) | null = null;
+    cancelaColetaOciosa();
     try {
       if (!modelCached || lastSpecsDir !== specsDir) {
         modelCached = SemanticModel.fromSpecsDir(specsDir);
@@ -477,7 +553,33 @@ if (parentPort) {
       // (`Servidor.#liberacaoDaPagina`), para todo tipo de pedido. Antes a rota da página
       // as montava com os visuais pedidos e `/valores` com todos, e as duas entram nesta
       // chave: recortes da mesma página podiam virar dois datasets nesta worker.
-      const paginaInteira = paginaInteiraDe(specsDir, dashboardSpec.id) ?? dashboardSpec;
+      //
+      // **Página ao vivo (docs/DECISAO-AO-VIVO.md).** O id traz o período
+      // (`idDaPaginaAoVivo`) para o conjunto carregado não dividir entrada com o da
+      // página comum; a carga é a página do catálogo SEM os visuais que o ao vivo não
+      // responde — o mesmo plano com que a sonda provou a paridade. Quais são depende da
+      // forma que o período trouxe (`precisaFormaCompleta`): com a FIELD AGENDA completa,
+      // os visuais de relato ficam.
+      //
+      // **Os visuais de fora de uma página ao vivo** (`idDosForaDoAoVivo`) carregam só eles,
+      // com os filtros da página do catálogo: a carga da página inteira traria de volta o
+      // que o ao vivo tirou (a agenda completa, na Agendamento Field). **E os seletores dela
+      // que listam do snapshot** (`idDosSeletores`, passo 3), pelo mesmo motivo. A página da
+      // carga guarda o id real: o corte por página (`corte-por-pagina.yaml`) é por ele.
+      const daPaginaAoVivo = paginaDoIdAoVivo(dashboardSpec.id);
+      const recorteDe = paginaDoIdDosForaDoAoVivo(dashboardSpec.id) ?? paginaDoIdDosSeletores(dashboardSpec.id);
+      const pedidos = new Set((dashboardSpec.visuals ?? []).map((v) => v.id));
+      const doCatalogo = (id: string): DashboardSpec => paginaInteiraDe(specsDir, id) ?? dashboardSpec;
+      const paginaInteira =
+        daPaginaAoVivo !== null
+          ? semForaDoAoVivo(doCatalogo(daPaginaAoVivo), model, formaCompleta)
+          : recorteDe !== null
+            ? { ...doCatalogo(recorteDe), visuals: (doCatalogo(recorteDe).visuals ?? []).filter((v) => pedidos.has(v.id)) }
+            : doCatalogo(dashboardSpec.id);
+      // O cálculo leva o id da PÁGINA: há regra por página e visual nele (`ignoraDataDaTela`,
+      // a previsão de chuva). O id próprio fica só para a carga e os caches desta worker.
+      const paginaReal = daPaginaAoVivo ?? recorteDe;
+      const alvoDoCalculo = paginaReal !== null ? { ...dashboardSpec, id: paginaReal } : dashboardSpec;
       const chave = chaveDeCarga(
         dashboardSpec.id,
         (paginaInteira.visuals ?? []).map((v) => v.id),
@@ -596,7 +698,7 @@ if (parentPort) {
       };
 
       const pagina = calculaPagina(
-        dashboardSpec,
+        alvoDoCalculo,
         carregado.ev,
         janela,
         undefined,
@@ -624,6 +726,7 @@ if (parentPort) {
       parentPort?.postMessage(resp);
     } finally {
       soltaUso?.();
+      marcaColetaOciosa();
     }
   });
 }

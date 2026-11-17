@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { parse } from 'yaml';
+import { heapDoFilhoMB } from '../src/geracao-em-processo.ts';
 import {
   PADRAO_HEAP_POR_WORKER_MB,
   PADRAO_TAMANHO_POOL,
@@ -63,8 +64,13 @@ const PERFIL_DE_PRODUCAO = {
 test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', () => {
   // O guarda que faltava, e a conta que ele guarda:
   //
-  //   pai 1024 + 2 workers × 512 = 2048 MB de heap autorizado
-  //   mem_limit 3072 MB          = 1024 MB de folga autorizada
+  //   pai 768 + 2 workers × 512 + o filho da busca ao vivo 1024 = 2816 MB autorizados
+  //   mem_limit 3072 MB                                         = 256 MB de folga
+  //
+  // O filho (`geracao-em-processo.ts`) entrou em 24/10/2026: a busca ao vivo dentro do
+  // pai estourou o heap dele na subida com as 13 páginas. É UM por vez (`FilaDeBuscas`
+  // de 1 em `ao-vivo-da-api.ts`), e por isso conta o maior teto, não a soma. Para caber,
+  // o pai desceu de 1024 para 768 — ele usa 34–42 MB mais o cache de respostas.
   //
   // Pico de cgroup medido com UMA worker: 1344,2 MiB (200 usuários, 18/10/2026). A
   // segunda voltou em 20/10/2026 para a reserva do clique existir (ACHADOS #163), e a
@@ -76,14 +82,15 @@ test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', (
   // morto pelo OOM killer do host — falha que aparece como "a página às vezes
   // não abre", não como erro de configuração. Este teste falha antes.
   const c = configuracaoDaPiscina(PERFIL_DE_PRODUCAO, 16);
-  const totalAutorizadoMB = TETO_PAI_MB + c.tamanhoPool * c.heapPorWorkerMB;
+  const maiorFilhoMB = Math.max(heapDoFilhoMB('agenda'), heapDoFilhoMB('ano'), heapDoFilhoMB('janela'));
+  const totalAutorizadoMB = TETO_PAI_MB + c.tamanhoPool * c.heapPorWorkerMB + maiorFilhoMB;
 
   assert.ok(
     totalAutorizadoMB <= MEM_LIMIT_CONTAINER_MB,
     `os padrões autorizam ${totalAutorizadoMB} MB de heap e o mem_limit é ` +
-      `${MEM_LIMIT_CONTAINER_MB} MB. Mexeu em API_WORKERS ou API_WORKER_HEAP_MB? ` +
-      `Ajuste mem_limit (docker-compose.prod.yml), o --max-old-space-size do ` +
-      `Dockerfile, no mesmo commit.`,
+      `${MEM_LIMIT_CONTAINER_MB} MB. Mexeu em API_WORKERS, API_WORKER_HEAP_MB ou no ` +
+      `heap do filho ao vivo (geracao-em-processo.ts)? Ajuste mem_limit ` +
+      `(docker-compose.prod.yml), o --max-old-space-size do Dockerfile, no mesmo commit.`,
   );
 
   // A folga autorizada nunca pode zerar. A prova do RSS acontece dentro do
@@ -97,9 +104,10 @@ test('o heap autorizado pelos padrões cabe dentro do mem_limit do container', (
 });
 
 test('o perfil de produção mantém o teto do processo pai e da piscina', () => {
-  // O pai usa 34-42 MB de heap em produção (log de 3 h, 16/10/2026); 1024 guarda o
-  // cache de respostas (teto de 256 MB) com folga.
-  assert.equal(TETO_PAI_MB, 1024);
+  // O pai usa 34-42 MB de heap em produção (log de 3 h, 16/10/2026); 768 guarda o
+  // cache de respostas (teto de 256 MB) com folga e fica acima dos 512 de cada worker —
+  // o que uma worker calcula, o pai calcula no caminho de emergência.
+  assert.equal(TETO_PAI_MB, 768);
   // Duas, não uma: com uma worker só a piscina não reserva nenhuma para o clique.
   assert.deepEqual(PERFIL_DE_PRODUCAO, { API_WORKERS: '2', API_WORKER_HEAP_MB: '512' });
   assert.equal(MEM_LIMIT_CONTAINER_MB, 3072);

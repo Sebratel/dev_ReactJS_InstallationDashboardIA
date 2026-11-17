@@ -18,6 +18,7 @@ export function VisualPronto({
   pagina,
   visual,
   filtros,
+  clicados,
   aoFiltrar,
   aoPrever,
   render,
@@ -25,6 +26,7 @@ export function VisualPronto({
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
+  clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
   /** Hover-prefetch do alvo de um clique cruzado — ver `App.tsx` (`aoPreverAlvos`). */
   aoPrever?: AoFiltrar;
@@ -43,6 +45,16 @@ export function VisualPronto({
     );
   }
 
+  // Indisponível não é erro: o número existe, só não vem por este pedido (o motivo diz
+  // por onde ele vem).
+  if (visual.indisponivel) {
+    return (
+      <Cartao titulo={titulo} sub="indisponível" id={visual.id} altura={altura}>
+        <MensagemDeEstado>{visual.indisponivel}</MensagemDeEstado>
+      </Cartao>
+    );
+  }
+
   if (!visual.dados) {
     return (
       <Cartao titulo={titulo} sub="sem dados" id={visual.id} altura={altura}>
@@ -54,10 +66,18 @@ export function VisualPronto({
   if (visual.conteudo === 'card') return <Card visual={visual} />;
   if (visual.conteudo === 'tabela') {
     if (render === 'rosca') return <Rosca visual={visual} />;
-    return <Tabela pagina={pagina} visual={visual} filtros={filtros} aoFiltrar={aoFiltrar} />;
+    return (
+      <Tabela
+        pagina={pagina}
+        visual={visual}
+        filtros={filtros}
+        clicados={clicados}
+        aoFiltrar={aoFiltrar}
+      />
+    );
   }
   if (visual.conteudo === 'matriz') {
-    return <Matriz pagina={pagina} visual={visual} filtros={filtros} />;
+    return <Matriz pagina={pagina} visual={visual} filtros={filtros} clicados={clicados} />;
   }
   if (visual.conteudo === 'grafico') {
     if (render === 'ranking-barra') {

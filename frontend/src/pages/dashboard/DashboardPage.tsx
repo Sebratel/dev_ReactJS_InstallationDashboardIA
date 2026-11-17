@@ -50,6 +50,7 @@ import { Capa } from '../../components/capa/Capa.tsx';
 import { SemAcesso } from '../../components/auth/SemAcesso.tsx';
 import { useAcessosAoVivo } from '../../hooks/useAcessosAoVivo.ts';
 import { CHAVE_ACESSOS, GestaoDeAcessos } from '../../components/acessos/GestaoDeAcessos.tsx';
+import { Metas } from '../../components/metas/Metas.tsx';
 import { chaveDoUso, PERIODOS_DE_USO } from '../../components/acessos/UsoDasTelas.tsx';
 import { Aviso, Erro } from '../../components/ui/Cartao.tsx';
 import { KpiGridSection } from '../../components/visuais/KpiGridSection.tsx';
@@ -59,6 +60,9 @@ import { Esqueleto, MensagemDeEstado } from '../../components/ui/Estado.tsx';
 /** A aba PERMISSÕES na URL (`?pagina=permissoes`). Não é tela do relatório: não tem
  *  layout, filtro nem snapshot, e só admin/dev a recebe na faixa. */
 const ABA_PERMISSOES = 'permissoes';
+/** A aba METAS (`?pagina=metas`, 12/11/2026). Também não é tela do relatório — edita o
+ *  número que a medida `# META` lê. Quem a recebe vem do servidor (`eu.abasExtras`). */
+const ABA_METAS = 'metas';
 
 export function DashboardPage() {
   const qc = useQueryClient();
@@ -76,9 +80,12 @@ export function DashboardPage() {
     limpaFiltros,
   } = useEstadoDaTela();
   const naGestao = atual === ABA_PERMISSOES;
-  // A página cujo DADO a tela busca: nenhuma na PERMISSÕES — layout, abertura, tempo real
-  // e pré-carga ficam parados enquanto ela está aberta.
-  const paginaDoDado = naGestao ? null : atual;
+  const nasMetas = atual === ABA_METAS;
+  // As duas abas que não são do relatório: nenhuma delas busca dado de página.
+  const foraDoRelatorio = naGestao || nasMetas;
+  // A página cujo DADO a tela busca: nenhuma na PERMISSÕES nem na METAS — layout,
+  // abertura, tempo real e pré-carga ficam parados enquanto uma delas está aberta.
+  const paginaDoDado = foraDoRelatorio ? null : atual;
 
   // **O estado do servidor mora no React Query** (fase 2): a lista de páginas, a forma
   // de cada uma, a abertura e a saúde. Ver `hooks/useDadosDaTela.ts`.
@@ -92,13 +99,24 @@ export function DashboardPage() {
   const saude = useSaude().data ?? null;
   const eu = useEu().data ?? null;
   const pendentes = useRascunhoDeAcessos((s) => s.pendentes);
+  // As abas fora do relatório, na ordem em que aparecem à direita da faixa. PERMISSÕES sai
+  // do papel (admin/dev); as outras saem do servidor, que já aplicou o acesso por aba.
+  const abasExtras = useMemo(
+    () => [
+      ...(eu?.podeGerir ? [{ id: ABA_PERMISSOES, rotulo: 'Permissões', marca: pendentes }] : []),
+      ...(eu?.abasExtras ?? []).map((a) => ({ id: a.id, rotulo: a.nome })),
+    ],
+    [eu?.podeGerir, eu?.abasExtras, pendentes],
+  );
   // A lista já vem só com as abas desta conta (`permissoes.ts`, filtrado no servidor).
   // `null` enquanto ela não chegou: até lá, uma aba da URL pode ser uma que a conta não abre.
   // A PERMISSÕES não está na lista: vale para quem pode gerir.
   const atualLiberada = dashboardsQ.data
     ? naGestao
       ? eu?.podeGerir === true
-      : paginas.some((p) => p.id === atual)
+      : nasMetas
+        ? abasExtras.some((a) => a.id === ABA_METAS)
+        : paginas.some((p) => p.id === atual)
     : null;
 
   // A matriz chega antes do clique na aba (`feedback-tudo-pre-carregado`) — só para quem
@@ -207,10 +225,12 @@ export function DashboardPage() {
 
   const nome = naGestao
     ? 'Permissões'
-    : (paginas.find((p) => p.id === atual)?.nome ?? 'Instalação');
+    : nasMetas
+      ? 'Metas'
+      : (paginas.find((p) => p.id === atual)?.nome ?? 'Instalação');
   // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por query.
   // Na PERMISSÕES não há dado de snapshot para avisar.
-  const avisoSaude = naGestao
+  const avisoSaude = foraDoRelatorio
     ? undefined
     : avaliaSaudeQueries(saude?.refresh?.queries, paginaValida?.dadoDe);
 
@@ -228,10 +248,9 @@ export function DashboardPage() {
       aoEscolher={escolhe}
       aoPassarMouse={prefetchaPagina}
       aoSairDoMouse={cancelaPrefetch}
-      // Só admin/dev vê a aba; quem barra de verdade é o 403 de /api/admin/acessos.
-      abaExtra={
-        eu?.podeGerir ? { id: ABA_PERMISSOES, rotulo: 'Permissões', marca: pendentes } : undefined
-      }
+      // Quem barra de verdade é o 403 do servidor (/api/admin/acessos, /api/admin/metas);
+      // a faixa só esconde o que a conta não abre.
+      abasExtras={abasExtras}
       aoSair={() => {
         sai().finally(() => expirou());
       }}
@@ -276,7 +295,11 @@ export function DashboardPage() {
 
       {erro ? <Erro>{erro}</Erro> : null}
 
-      {naGestao ? (
+      {nasMetas ? (
+        <div ref={antesDosVisuaisRef} className="flex flex-col gap-[var(--gap)]">
+          <Metas />
+        </div>
+      ) : naGestao ? (
         // A PERMISSÕES dentro do mesmo nó medido: a matriz é um cartão `matriz`, e a
         // altura dele sai de `--util`, que desconta o `--h-antes` medido aqui.
         <div ref={antesDosVisuaisRef} className="flex flex-col gap-[var(--gap)]">

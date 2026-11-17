@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { renomeiaComRetentativa } from '../../../packages/snapshot/src/escrita-atomica.ts';
 import { leManifesto } from '../../../packages/snapshot/src/manifesto.ts';
+import { leGraoReduzido } from '../../../packages/semantic-model/src/projecao.ts';
 import { leGrupos, type GrupoDeRefresh } from './grupos.ts';
 import { emEsperaPorFalhas, proximaTentativa } from './tick.ts';
 
@@ -185,6 +186,18 @@ export function montaStatusDeRefresh(
   idsQueries.add('protocolos-produtividade');
   idsQueries.add('field-agenda');
   idsQueries.add('protocolos-geral');
+
+  // A forma completa de um grão reduzido que saiu do snapshot por decisão
+  // (`completa_no_snapshot: false`, passo 5 do ao vivo) não é carga parada: ninguém a
+  // carrega mais, e o arquivo velho que ficou no manifesto não é lido. Avaliá-la acusaria
+  // "vencida" para sempre.
+  if (specsDir) {
+    try {
+      for (const g of leGraoReduzido(specsDir)) if (!g.completaNoSnapshot) idsQueries.delete(g.queryCompleta);
+    } catch {
+      // Sem `projecao.yaml` (ambiente de teste temporário): nada saiu do snapshot.
+    }
+  }
 
   const geradoEmPorQuery = new Map<string, string>();
   if (manifesto?.tabelas) {

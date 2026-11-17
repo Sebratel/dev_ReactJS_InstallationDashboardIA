@@ -100,3 +100,8 @@ test-results/
 # É outro repositório git: commitá-lo aqui viraria um submódulo quebrado.
 # Nunca faz parte deste produto nem pode entrar no GitHub deste repositório.
 dados_ReactJS_CommercialDashboards/
+
+# Quem está no ar (QA D-15): este arquivo é ESCRITO PELO BUILD da imagem, com o commit,
+# a hora e a impressão do conteúdo. Versionado, ele passaria a mandar em `versao.ts` e a
+# API reportaria para sempre o commit do dia em que alguém o commitou.
+/versao.json

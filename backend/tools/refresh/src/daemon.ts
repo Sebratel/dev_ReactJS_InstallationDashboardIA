@@ -19,6 +19,7 @@
 // todas, e é o único lugar onde uma falha de madrugada que o tick seguinte
 // consertou continua existindo de manhã. Leia com `--historico` (ver `historico.ts`).
 
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
@@ -41,6 +42,10 @@ import { leStatus, escreveStatus } from './status.ts';
 import { estaVencido, executaTick, type ResultadoDeExecucao, type ResultadoDoGrupoNoTick } from './tick.ts';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+
+function diretorioSnapshotPadrao(raiz: string, env: NodeJS.ProcessEnv = process.env): string {
+  return env.SNAPSHOT_DIR ? path.resolve(raiz, env.SNAPSHOT_DIR) : path.join(raiz, DIRETORIO_PADRAO);
+}
 
 export interface CicloRefreshResult {
   houveExecucao: boolean;
@@ -75,7 +80,7 @@ export async function executaCiclo(opts: {
 } = {}): Promise<CicloRefreshResult> {
   const raiz = opts.raiz ?? ROOT;
   const specsDir = opts.specsDir ?? path.join(raiz, 'backend', 'specs');
-  const snapshotDir = opts.snapshotDir ?? path.join(raiz, DIRETORIO_PADRAO);
+  const snapshotDir = opts.snapshotDir ?? diretorioSnapshotPadrao(raiz);
   const memoriaMb = opts.memoriaMb ?? 8192;
   const soPlano = opts.soPlano ?? false;
 
@@ -195,7 +200,7 @@ export function iniciaAgendadorPorGrupo(opts: Pick<DaemonOptions, 'raiz' | 'snap
   const agendador = new Agendador({
     raiz,
     specsDir: opts.specsDir,
-    snapshotDir: opts.snapshotDir,
+    snapshotDir: opts.snapshotDir ?? diretorioSnapshotPadrao(raiz),
     memoriaMb: opts.memoriaMb ?? configuracao.memoriaMb,
     tempoMaximoMs: opts.tempoMaximoMs ?? configuracao.tempoMaximoMs,
   });
@@ -206,6 +211,7 @@ export function iniciaAgendadorPorGrupo(opts: Pick<DaemonOptions, 'raiz' | 'snap
 export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
   const raiz = opts.raiz ?? ROOT;
   applyDotEnv(raiz);
+  const snapshotDirPadrao = opts.snapshotDir ?? diretorioSnapshotPadrao(raiz);
 
   const configuracao = configuracaoDoRefresh();
   const intervaloMinutos = opts.intervaloMinutos ?? configuracao.intervaloMinutos ?? 15;
@@ -224,7 +230,7 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
   // "o daemon reiniciou às 03:00 e às 03:05 e às 03:11" — a supervisão de
   // `backend/tools/subir/src/index.ts` respawna, e sem esta linha o respawn é invisível.
   if (!soPlano) {
-    registra(opts.snapshotDir ?? path.join(raiz, DIRETORIO_PADRAO), {
+    registra(snapshotDirPadrao, {
       evento: 'arranque',
       quando: new Date().toISOString(),
       intervaloMinutos,
@@ -248,7 +254,7 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
       // Este console.log some com o terminal, e era só ele que existia (#129). O
       // evento no histórico é o que sobrevive: pular não é falha, então nada em
       // `refresh-status.json` muda — a cadência cai e o painel continua verde.
-      registra(opts.snapshotDir ?? path.join(raiz, DIRETORIO_PADRAO), {
+      registra(snapshotDirPadrao, {
         evento: 'ciclo-pulado',
         quando: new Date().toISOString(),
         cicloEmCursoHaMs: ha,
@@ -294,7 +300,7 @@ export async function iniciaDaemon(opts: DaemonOptions = {}): Promise<void> {
       return res;
     } catch (err) {
       console.error(`[Refresh Daemon] [${carimbo}] Erro durante ciclo de refresh:`, err);
-      registra(opts.snapshotDir ?? path.join(raiz, DIRETORIO_PADRAO), {
+      registra(snapshotDirPadrao, {
         evento: 'erro-de-ciclo',
         quando: new Date().toISOString(),
         erro: err instanceof Error ? err.message : String(err),
@@ -489,6 +495,18 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
       process.exit(2);
     }
     const agendador = iniciaAgendadorPorGrupo();
+    const portaInterna = Number(process.env.REFRESH_PORT || 3102);
+    const controleHttp = http.createServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/pede') {
+        const disparados = ['quente', 'medio', 'frio'].filter((id) => agendador.pede(id));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, disparados }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    controleHttp.listen(portaInterna);
     // A carga completa da madrugada mora AQUI desde 17/10/2026 (era o contêiner
     // `snapshot-diario`, com cron): mesmo teto de memória, porque a trava do snapshot já
     // impedia as duas de materializar juntas. `SNAPSHOT_DIARIO_UTC` vazio desliga.
@@ -499,6 +517,22 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
           horario: horarioDiario,
           queries: queriesDoDiario(leGrupos(path.join(ROOT, 'backend', 'specs')).values()),
           memoriaMb: configuracaoDoRefresh().memoriaMb ?? MEMORIA_PADRAO_MB,
+          aoConcluir: (r) => {
+            registra(diretorioSnapshotPadrao(ROOT), {
+              evento: 'grupo',
+              quando: new Date().toISOString(),
+              grupo: 'diario',
+              ok: r.ok,
+              duracaoMs: r.duracaoMs,
+              ...(r.ok
+                ? {}
+                : {
+                    erro: r.interrompidaPorPrazo
+                      ? 'interrompida: vigia do snapshot diário estourou o prazo máximo'
+                      : `saiu com código ${r.codigo}`,
+                  }),
+            });
+          },
         })
       : undefined;
     // Os relógios internos são `unref()` de propósito: a API pode encerrar sem
@@ -513,6 +547,7 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
         encerrando = true;
         console.log(`\n[Refresh] Recebido sinal ${sinal}. Encerrando agendador por grupo.`);
         diario?.encerra();
+        controleHttp.close();
         await agendador.encerra();
         clearInterval(mantenedor);
         resolve();
@@ -520,12 +555,13 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
       process.on('SIGINT', () => void encerra('SIGINT'));
       process.on('SIGTERM', () => void encerra('SIGTERM'));
     });
+    process.exit(0);
+  } else {
+    await iniciaDaemon({
+      intervaloMinutos,
+      imediato: !semImediato,
+      soUmaVez,
+      soPlano,
+    });
   }
-
-  await iniciaDaemon({
-    intervaloMinutos,
-    imediato: !semImediato,
-    soUmaVez,
-    soPlano,
-  });
 }

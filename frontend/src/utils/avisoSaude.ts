@@ -54,6 +54,18 @@ export interface QueryDoPoller {
 }
 
 export interface RespostaSaude {
+  /**
+   * Qual código está no ar (QA D-15). Só vem no corpo completo de `/api/saude`, e só em
+   * API de 16/11/2026 em diante — daí ser opcional. `commit` pode ser `null` quando
+   * quem construiu a imagem não informou; a `impressao` (sha256 do que embarcou) sempre
+   * existe em imagem, e é ela que identifica a versão quando o commit falta.
+   */
+  versao?: {
+    commit: string | null;
+    construidoEm: string | null;
+    impressao: string | null;
+    origem: 'imagem' | 'git' | 'desconhecida';
+  };
   refresh?: {
     queries: QuerySaude[];
   };

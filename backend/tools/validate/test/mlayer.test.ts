@@ -179,7 +179,7 @@ test('scanM: transformação de valor e de tipo não conta como efeito nenhum', 
 
 // ── integração: as 25 queries reais ──────────────────────────────────────────
 
-test('as 26 queries reais: 25 são escaneáveis, e a exceção é a do let aninhado', () => {
+test('as 29 queries reais: 28 são escaneáveis, e a exceção é a do let aninhado', () => {
   // 24 do PBIP + `field-agenda-slot` (ACHADOS #87) — SQL de mão, mesma forma de M
   // de 3 passos de `field-agenda`, e escaneável como qualquer outra: 303 + 3 = 306.
   //
@@ -215,7 +215,16 @@ test('as 26 queries reais: 25 são escaneáveis, e a exceção é a do let aninh
   //
   // 146 → 145 (23/10/2026): `quadro-funcional` lê o GESTOR da Senior e perdeu o filtro
   // nos três nomes da planilha (ACHADOS #237).
-  assert.equal(passos, 145, 'passos M nas 25 escaneáveis');
+  //
+  // 145 → 151 (24/10/2026): a mescla com TECNICOS AUXILIARES voltou do `sql:` de
+  // `protocolos-produtividade` para o M, em 6 passos (ACHADOS #239).
+  //
+  // 151 → 152 (26/10/2026): `relatos-do-dia`, gerada, um passo só (docs/SPEC-DRIVEN.md).
+  // 152 → 153 (26/10/2026): `valores-do-relato`, gerada pelo mesmo script, idem.
+  //
+  // 153 → 155 (12/11/2026, QA D-20, ACHADOS #254): `metas-instalacao`, à mão, com dois
+  // passos — o `Fonte` e o `Table.TransformColumnTypes` que tipa `META` como inteiro.
+  assert.equal(passos, 155, 'passos M nas 28 escaneáveis');
 });
 
 /**
@@ -242,7 +251,9 @@ test('em 9 tabelas o rowCount do golden não é comparável com o Power BI', () 
   const comparaveis = tabelas.filter((t) => t.rowCountComparavel === true);
 
   assert.equal(naoComparaveis.length, 9, naoComparaveis.map((t) => t.table).join(', '));
-  assert.equal(comparaveis.length, 8);
+  // 8 → 9 em 12/11/2026: `METAS` nasce comparável — o M dela só tipa a coluna, não
+  // filtra nem deduplica, então o `count(*)` do SQL É a contagem da tabela.
+  assert.equal(comparaveis.length, 9);
 
   // Toda tabela "não comparável" tem de dizer qual passo faz a diferença.
   for (const t of naoComparaveis) assert.ok(t.efeitosDeLinha.length > 0, t.table);
@@ -264,8 +275,11 @@ test('em 9 tabelas o rowCount do golden não é comparável com o Power BI', () 
  *
  * Eram 11 até 12/09/2026. As 4 que saíram são de `PROTOCOLOS PRODUTIVIDADE`
  * (DATA ALOCAÇÃO, TÉCNICO TROCA, DATA DA TROCA, INSTALADOR) e agora vêm do `sql:`.
- * As 7 que restam são TODAS de `PROTOCOLOS GERAL`, que ainda as cria em M — é a
- * próxima tabela a receber o mesmo tratamento.
+ * Voltou a ser 7 em 13/11/2026, por outro motivo: `HORA CRIADO` saiu da lista porque
+ * ninguém mais a cita em DAX (ACHADOS #262), não porque tenha migrado para o `sql:`.
+ * Seis das 7 são de `PROTOCOLOS GERAL`, que ainda as cria em M — é a próxima tabela
+ * a receber o tratamento; a sétima é `PROTOCOLOS PRODUTIVIDADE[INSTALADOR]`, que
+ * voltou ao M de propósito em 24/10/2026 (ACHADOS #239).
  */
 test('7 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   const tabelas = verificarModelo(SPECS, GOLDEN);
@@ -289,7 +303,19 @@ test('7 colunas citadas pelo DAX nascem em passo M, não no SQL', () => {
   //
   // Este número CAI quando trabalho sai do M e vai para o SQL — que é a direção
   // desejada. Se ele SUBIR, alguém devolveu transformação para a camada M.
-  assert.equal(emM.length, 33, 'colunas nascidas em M');
+  //
+  // 33 -> 35 (24/10/2026, ACHADOS #239): e foi de propósito, uma vez, medido. A mescla
+  // de `protocolos-produtividade` com TECNICOS AUXILIARES era 434 dos 469 s da consulta
+  // no SQL (Nested Loop por estimativa errada, sem conserto no plano); no M ela é por
+  // hash e o ano inteiro roda em 43 s. Com ela voltam TECNICOS AUXILIARES.AUXILIAR e
+  // INSTALADOR — o resto das 15 de 25/08 continua no SQL.
+  assert.equal(emM.length, 35, 'colunas nascidas em M');
+  // 7 -> 8 junto: das duas que voltaram, 'PROTOCOLOS PRODUTIVIDADE'[INSTALADOR] é citada
+  // pelo DAX (é o eixo da Premiação e do Diário).
+  // 8 -> 7 (13/11/2026, ACHADOS #262): saiu 'PROTOCOLOS GERAL'[HORA CRIADO]. Ela
+  // continua nascendo em M (por isso emM segue 35), mas nenhum DAX a cita mais: a
+  // única que a citava era a calculada órfã TURNO CRIADO, que custava 6,48 MB em
+  // cada uma das 13 páginas sem ninguém ler o resultado.
   assert.equal(citadas.length, 7, citadas.map((c) => `${c.table}[${c.column}]`).join(', '));
   for (const c of citadas) assert.ok(c.step, `${c.table}[${c.column}] sem passo`);
 

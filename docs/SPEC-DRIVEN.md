@@ -65,6 +65,50 @@ chega com 2 colunas em vez de 38 — CPF, RG e o resto de RH ficam na planilha. 
 contra o snapshot do Google no mesmo dia: premiação e capacidade idênticas (hash dos blocos),
 quadro 538/540 linhas iguais (o snapshot do Google era de 07/10). ACHADOS #209.
 
+### Seis queries — o histórico vai no máximo até o início do ano anterior (24/10/2026)
+
+Decisão do Misael: "não precisamos de históricos muito antigos, no máximo 1 ano para
+trás". O piso fixo `'2025-01-01'` virou `(DATE_TRUNC('year', CURRENT_DATE) - INTERVAL
+'1 year')` no `sql:` de `protocolos-geral`, `protocolos-telefonia`, `protocolos-tipo`,
+`alocacao-patrimonio` e `troca-endereco`, e `tc.capacity_date > '2024-12-31'` virou
+`>= MAKEDATE(YEAR(CURDATE()) - 1, 1)` em `gestores-equipes` (MariaDB). O texto dentro do
+`Odbc.Query` do M não mudou: ele só nomeia o passo.
+
+**Por que o ano anterior inteiro, e não 12 meses corridos.** O Relatório do Ano compara
+"até hoje" com o "mesmo período do ano anterior" — de 1º/jan do ano passado até o dia de
+hoje do ano passado. Com 12 meses corridos (desde out/2025) esses cards comparariam com
+um ano quase vazio: número errado e plausível. Com o ano anterior inteiro nenhum relatório
+muda, e o histórico para de crescer — hoje o piso ainda é 2025-01-01; em 2027 vira
+2026-01-01 e 2025 sai.
+
+Mudaram junto, porque repetem o texto: o piso do histórico congelado
+(`historico-congelado.ts`), as costuras do poller (`realtime-poll.yaml`) e do ao vivo
+(`ao-vivo.yaml`), e a sonda `paridade-divisao.ts`. Conferido no banco, versão antiga e nova
+ao mesmo tempo: as cinco menores linha a linha iguais; a `protocolos-geral` com as mesmas
+100.870 linhas e diferença só em TECNICOS AUXILIARES.AUXILIAR e HR. ALOCAÇÃO — a mesma
+que a versão antiga tem contra ela mesma (empate, ACHADOS #241).
+
+### `protocolos-produtividade` — a mescla com TECNICOS AUXILIARES volta para o M (24/10/2026)
+
+A junção `LEFT JOIN auxiliar ax ON ax._chave = u._chave` era 434 dos 469 s da consulta
+(`EXPLAIN ANALYZE`, 22/10/2026): o planejador estima `bruto` em ~11 mil linhas onde há
+dezenas de milhares e escolhe Nested Loop sobre CTE Scan (88 mil × 40 mil leituras). A
+cerca `MATERIALIZED` de 12/09 tirou o `regexp_replace` de dentro do par, mas não a
+estimativa, e não há como corrigi-la sem `SET` na sessão. Então a mescla voltou para onde
+o relatório original a fazia — o M, que mescla por hash:
+
+- o `sql:` perdeu o CTE `auxiliar` e a junção, e passou a entregar `_RAMO` e
+  `_CHAVE AUXILIAR` (a MESMA chave inteira de antes, calculada em `unificado`) no lugar de
+  `TECNICOS AUXILIARES.AUXILIAR` e `INSTALADOR`;
+- o M tipa a chave, mescla com `tecnicos-auxiliares` (mesma regra do CTE: RAUX do ano, o
+  relato mais recente por protocolo; "PROTOCOLO:" já é Int64 lá) e monta as duas colunas
+  com as regras que estavam no SELECT final.
+
+O ano inteiro: **43 s** (`validate:queries`) contra 469 s. `docs/sql/datahub-protocolos-
+produtividade.sql` segue igual ao `sql:` (o teste de `incremental.test.ts` trava). A costura
+incremental não mudou: as âncoras são a abertura de `bruto` e o filtro de `a.created`.
+ACHADOS #239.
+
 ### `quadro-funcional` — o GESTOR sai da Senior, não da planilha (23/10/2026)
 
 Decisão do Misael: o gestor da Premiação e do Diário (`PROTOCOLOS PRODUTIVIDADE[GESTOR]`,
@@ -605,6 +649,182 @@ anterior passa a ser 2026, inteiro na base) — **mas** `CALENDARIO INSTALADO` t
 `DATE(2026,12,31)` fixo no `table_dax`, e em 2027 todas as medidas por data de instalação
 precisam disso resolvido antes.
 
+### `relatos-do-dia` — arquivo NOVO e GERADO, não vem do PBIP (26/10/2026)
+
+As contagens de relato por (protocolo, dia) — houve relato improdutivo, houve relato de
+técnico — sobre a janela inteira da agenda. É a agregada `relatos-do-dia` de
+`ao-vivo.yaml` sem período (`sqlRelatosDaJanela`): o SQL da `field-agenda` com a view
+aberta, o `GROUP BY` e a `CategoriaProdutividade` gerada das 38 regras do DAX. Ela existe
+para o passo 2 do ao vivo (docs/DECISAO-AO-VIVO.md): sem a agenda completa no snapshot, o
+congelador tira o `Status Protocolo Dia` da agenda de slot, da PG e destas contagens
+(`statusProtocoloDiaDasContagens`), em vez das 633 mil linhas do grão relato.
+
+- **Não se edita à mão.** `npm run gera:relatos-do-dia` regrava; `backend/tools/snapshot/
+  test/relatos-do-dia.test.ts` reprova quando a spec da agenda, a costura ou o DAX das
+  regras mudam e a cópia fica para trás.
+- `origin: expression`: não é tabela do modelo. O refresh grava o arquivo (`quente`, junto
+  da `field-agenda-slot`, ~38 mil linhas e ~11 s) e só o congelador o lê.
+- **Prova** (`npm run probe:status-dia-sem-completa`, 26/10/2026): com slot e contagens do
+  mesmo instante, o `Status Protocolo Dia` é o da tradução nativa sobre a agenda completa —
+  13.200 linhas, 0 diferenças; e as contagens do SRD batem com as tiradas da agenda
+  completa nos dias fechados, 37.580 de 37.580. O congelador real, rodado com a agenda
+  completa desligada, deu a mesma tabela nos dias antes da agenda em disco; as 141 linhas
+  trocadas são todas de 24/10 em diante, relatos que o SRD já tinha.
+
+### `valores-do-relato` — arquivo NOVO e GERADO, não vem do PBIP (26/10/2026)
+
+Os valores distintos de `Descrição`, `ClassificacaoRelato` e `CategoriaProdutividade` na
+janela inteira da agenda — uma linha por combinação, ~70. É a agregada `valores-do-relato`
+de `ao-vivo.yaml` sem período, gerada pelo mesmo script da `relatos-do-dia`, com as duas
+colunas DAX traduzidas das mesmas 38 regras (`classificacaoDoRelatoSql`,
+`categoriaDoRelatoSql`). Existe para o passo 3 do ao vivo: a API lista os três seletores de
+relato da Agendamento Field daqui (`valores_dos_seletores` em `projecao.yaml`), em vez de
+carregar a página com a agenda completa (ACHADOS #248).
+
+- **Não se edita à mão**, pelo mesmo motivo e com o mesmo teste da `relatos-do-dia`.
+- `origin: expression`. O refresh a grava no grupo `frio` (~11–25 s de SRD); quem lê é a
+  rota `/valores`. Sem o arquivo (primeiro deploy), a lista sai da página inteira, como antes.
+- **Prova** (`npm run probe:valores-ao-vivo`, 26/10/2026): contra a agenda completa do
+  snapshot, a Categoria é igual; a Classificação tem 1 valor a mais (só em relatos de
+  26/10, depois do snapshot) e a Descrição 1 a menos (1 protocolo de slot em 25/07, que
+  saiu da janela entre o snapshot e a consulta). Diferença de instante, nenhuma de regra.
+
+### `metas-instalacao` — arquivo NOVO e MANTIDO POR HUMANOS; `# META` deixa de ser constante (12/11/2026)
+
+A META DO MÊS saiu do código. Era `dax: "2865"` na medida `# META` de
+`protocolos-geral.measures.yaml` — um número de NEGÓCIO guardado como se fosse cálculo,
+copiado à mão do relatório vivo do Power BI sempre que alguém notava que tinha mudado. Em
+11/11/2026 o QA do Fabricio (defeito D-20) achou o painel em 2.865 contra 2.583 no Power
+BI e no n8n: 24 dias de número errado na tela, pelo mesmo motivo das duas vezes anteriores
+(3000 → 2928 em 25/08, 2928 → 2865 em 18/09).
+
+Agora o valor é UMA LINHA do `DB_InstallationDashboard` (`business_goals`, chave
+`meta_mes`), que um gestor edita na aba "Metas" e o refresh traz em até 15 minutos.
+
+- **Dois arquivos novos**, nenhum dos dois sai do PBIP:
+  `_catalog/queries/metas-instalacao.spec.yaml` (o `SELECT` de uma linha no `dbMaria`) e
+  `_catalog/tables/metas-instalacao.spec.yaml` (a tabela `METAS`, coluna `META`).
+- **A medida passou a ser** `COALESCE(MAX('METAS'[META]), BLANK())`. `MAX` sobre uma tabela
+  de uma linha e SEM relação com o resto do modelo não é recortado por filtro de página
+  nenhum: a medida devolve o mesmo valor em qualquer contexto, que é exatamente o que a
+  constante fazia. O `COALESCE` é a falha fechada — tabela vazia deixa o KPI em branco, em
+  vez de herdar um número velho.
+- **Um valor vigente, não um por mês** (decisão do Erick, 12/11/2026): vale para qualquer
+  competência, inclusive meses fechados, como a constante do Power BI valia. É o que
+  mantém a prova de paridade do QA comparável; o preço é que trocar a meta muda também o
+  que setembro e outubro comparam.
+- **Refresh:** grupo `quente` (15 min), junto da `capacidade-equipe`. Custo desprezível.
+- **Não há golden**: a linha é editável por gente, então um golden congelaria o valor de
+  um dia. O que o teste cobre é o portão e a validação (`backend/api/test/metas.test.ts`).
+
+### `protocolos-produtividade` e `protocolos-telefonia` — oito colunas sem consumidor saem das queries (13/11/2026)
+
+`RUA`, `TELEFONE`, `LATITUDE`, `LONGITUDE`, `NUMERO PATRIMÔNIO` e `USUÁRIO` saíram do
+`sql:`, do SQL histórico guardado no `m_expression` e de
+`tables/protocolos-produtividade.spec.yaml` (S6 de `docs/PLANO-SEGURANCA.md`,
+ACHADOS #258). As quatro primeiras são dado pessoal.
+
+**O que as mantinha vivas.** Nenhuma página, medida, coluna calculada, relacionamento ou
+passo M as usa. O que as fazia passar pela regra `so_carrega_se_usada` era um único
+lugar: o array `esperadas` de `backend/tools/probe/src/valida-sql-conjunto.ts`, que
+confere o FORMATO da saída e não lê o dado. O inventário (`npm run seguranca:inventario`)
+é conservador de propósito — referência que não dá para resolver com certeza mantém a
+coluna — e por isso as contava como usadas. Elas saem de lá junto.
+
+**Por que não foi corte livre, como na `contratos`.** Esta query tem `SELECT DISTINCT`
+em dois ramos de `UNION`, e tirar coluna de um `DISTINCT` pode FUNDIR linhas. É a mesma
+ressalva que o `seguranca.yaml` já registra para `CONTRATOS TELEFONIA[TELEFONE CONTRATO]`.
+Medido no SRD antes de mexer, agrupando o resultado original por todas as colunas MENOS
+as seis candidatas:
+
+```
+  grupos que colidiriam: 0
+  linhas que sumiriam:   0
+```
+
+Zero colisão: tirá-las não funde nada. Depois da poda, as duas versões rodadas em seguida
+devolveram as **mesmas 94.320 linhas**, com 47 → 41 colunas de saída.
+
+**O `m_expression` não executa.** Quem roda é o campo `sql:`; o texto dentro do
+`Odbc.Query(...)` só nomeia o passo (`backend/packages/transform-engine/src/fonte.ts`), e
+nele mora o SQL ORIGINAL do Power BI, que é outro texto — 4.181 caracteres contra os
+37.767 do `sql:` migrado. As colunas saíram dos dois assim mesmo: é registro histórico,
+mas não há por que o nome de uma coluna de telefone continuar ali.
+
+**A `protocolos-telefonia` foi junto**, com `LATITUDE` e `LONGITUDE` — mesma causa (o
+array do probe era o único "uso") e mesma medição: 0 grupos colidem, e a consulta devolve
+as mesmas 2.190 linhas, 39 → 37 colunas. A forma do SQL dela é diferente: o apelido é
+implícito (`ac.lat "LATITUDE"`, sem `AS`), então o padrão que achou as seis da
+produtividade não casa nenhuma aqui.
+
+**Um lugar a mais para lembrar:** `docs/sql/datahub-protocolos-produtividade.sql` é a
+cópia-irmã do `sql:` da spec, e `incremental.test.ts` cobra que os dois sejam idênticos —
+foi o único teste a reprovar nesta mudança, e é exatamente para isso que ele existe.
+
+Voltar com qualquer uma das seis pessoais sem uso reprova `spec-seguranca.test.ts`
+(`removida_em: 2026-11-13` no `seguranca.yaml`). Goldens regravados
+(`npm run validate:queries -- --only=...`; a produtividade precisa de
+`VOALLE_STATEMENT_TIMEOUT_MS` acima dos 30 s padrão para o perfil de colunas terminar).
+
+### `protocolos-geral` — a calculada `TURNO CRIADO` sai; `TURNO ALOCADO` fica (13/11/2026)
+
+`TURNO CRIADO` era `if(HORA CRIADO < TIME(12,0,0) && > TIME(0,0,0), "MANHÃ", "TARDE")` e
+saiu de `tables/protocolos-geral.spec.yaml`, com o motivo escrito no lugar dela
+(ACHADOS #262).
+
+**O que ela custava não era o tamanho dela.** `colunas-usadas.ts` dobra TODO o DAX do
+modelo de propósito — errar para MANTER custa memória, errar para TIRAR faz a página não
+abrir —, então uma calculada que nenhum visual alcança continua segurando as colunas
+físicas que ela lê. O nome `TURNO CRIADO` aparecia UMA vez no repositório inteiro (a
+própria declaração), e mesmo assim `PROTOCOLOS GERAL[HORA CRIADO]` entrava na memória das
+13 páginas por causa dela: **6,48 MB por página**, 18% do piso de 35,6 MB que a
+PROTOCOLOS GERAL impõe a toda página. Medido sobre o snapshot de produção.
+
+**`TURNO ALOCADO` é órfã do mesmo jeito e FICA.** A coluna que ela lê, `HR. ALOCAÇÃO`, é
+exibida pela `l-mapa` — apagá-la não tiraria byte nenhum de memória, só afastaria o
+modelo do relatório original de graça. Sai a órfã que CUSTA; fica a órfã que não custa.
+
+**Isto é edição à mão em spec gerada:** um `npm run extract` a partir do PBIP traria
+`TURNO CRIADO` de volta, porque ela existe no relatório original. Quem reprova nesse dia é
+`calculada-sem-leitor.test.ts`, que também cobra que nenhuma coluna física NOVA entre na
+carga sem um visual que a alcance. A query e o golden da `protocolos-geral` não mudam:
+`HORA CRIADO` continua nascendo no passo M e continua no arquivo do snapshot — ela só
+deixa de ser carregada para a memória.
+
+### `alocacao-patrimonio` e `protocolos-geral` — a primeira alocação vira coluna de janela (16/11/2026)
+
+Duas edições à mão que só funcionam juntas (QA D-13, ACHADOS #266).
+
+**Na `alocacao-patrimonio`**, duas colunas novas no `sql:`:
+
+```sql
+min(plis.out_date) over (partition by a.title)                      "DATA SAIDA PRIMEIRA",
+first_value(plis.created) over (
+    partition by a.title order by plis.out_date asc, plis.id asc
+)                                                                   "DATA HORA SAIDA PRIMEIRA",
+```
+
+**No `protocolos-geral`**, o `Table.ExpandTableColumn` da `ALOCAÇÃO_PATRIMONIO` passa a
+pedir essas duas — com os nomes de saída de sempre (`ALOCAÇÃO_PATRIMONIO.DATA SAIDA` e
+`.DATA HORA SAIDA`), para o resto do M ficar intacto.
+
+**Por quê.** Um protocolo pode ter várias alocações de patrimônio e o
+`Table.Distinct(…, {"SOLICITACAO"})` guarda a primeira linha da ORDEM CORRENTE — que nem
+o SQL nem o M fixam. Das 222 solicitações com mais de uma data, a plataforma ficava com a
+primeira em 148, com a última em 72 e com uma do meio em 1. Com a janela, todas as linhas
+do protocolo carregam a mesma data e a escolha do `Distinct` deixa de importar.
+
+**O que muda em número:** 75 protocolos, 13 deles de mês, todos para um mês anterior —
+as duas versões rodadas contra o banco no mesmo instante, com as mesmas 103.817 linhas.
+
+**Um `npm run extract` desfaz as duas pontas**, porque as duas specs são geradas do PBIP.
+Quem reprova nesse dia é `validate/test/primeira-alocacao-spec.test.ts`, que cobra o par
+inteiro (janela no SQL, expand no M, golden com as colunas) — e
+`transform-engine/test/primeira-alocacao.test.ts`, que prova o mecanismo no avaliador.
+
+Golden regravado: `npm run validate:queries -- --only=alocacao-patrimonio`
+(65.411 linhas, 19 colunas).
+
 ## Estrutura de `backend/specs/`
 
 ```
@@ -622,6 +842,32 @@ backend/specs/
                               # dados reais (forma + agregados, SEM linhas)
   EXTRACTION-REPORT.md        # gerado: contagens e alertas do extrator
 ```
+
+### Tipos corporativos novos — `1297` e `1298` entram ao lado de `1014` e `15` (10/11/2026)
+
+O Voalle ganhou tipos de protocolo corporativos novos, e o Power BI já os inclui.
+Decisão do Fabrício (QA), 10/11/2026: **`1297` TEC-CORP-ATIVACAO** se comporta como
+**`1014` TEC - Instalação de Fibra – CORPORATIVO**, e **`1298` TEC-CORP-TROCA-ENDERECO**
+como **`15` TEC - Troca de Endereço**. Onde um aparece, o outro aparece junto:
+
+- nas listas de `it.id` do `sql:` **e** do SQL de origem guardado no `m_expression` de
+  `protocolos-geral`, `protocolos-tipo`, `protocolos-auxiliares`, `protocolos-produtividade`
+  (e na cópia em `docs/sql/datahub-protocolos-produtividade.sql`), `alocacao-patrimonio`,
+  `troca-endereco`, `reincidencia`, `instalacoes-reincidentes` e `retorno-prioritario`;
+- nas costuras de `realtime-poll.yaml`, `ao-vivo.yaml` e `incremental.yaml`, que ancoram
+  nessas linhas (a âncora tem de casar exatamente uma vez — mudou junto);
+- no DAX, pelo nome: as listas e exclusões de `protocolos-geral.measures.yaml` e
+  `protocolos-produtividade.measures.yaml`, a coluna calculada que classifica
+  "INSTALAÇÃO" em `tables/protocolos-geral.spec.yaml` e a lista de
+  `tables/protocolos-produtividade.spec.yaml`;
+- nos filtros de visual de `10-manutencao-inicial` e `11-instalacao-reincidente` (só o
+  1297; a troca não aparece ali).
+
+Ficam de fora os demais `TEC-CORP-*` (1299 a 1343), que a operação não usa no relatório.
+O `1342` (TEC-CORP-SERVICOS-INSTALACAO DE PONTO ADICIONAL) está em aberto.
+**Fora do repositório:** as tabelas `Backlog_Installation` e `Backlog_Schedules` do MariaDB
+são gravadas por um fluxo externo; o filtro de tipos dele precisa dos mesmos IDs, senão o
+BACKLOG não conta esses protocolos.
 
 ### O que conta como DAX na spec
 

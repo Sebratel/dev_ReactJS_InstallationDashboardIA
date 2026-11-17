@@ -27,6 +27,11 @@
 // o corpo de `/api/saude`.
 
 import crypto from 'node:crypto';
+import { ErroDeMeta } from './loja-metas-maria.ts';
+import { criaLojaDeIaArquivo, ErroDeIa, type LojaDeIa } from './ia/loja-ia.ts';
+import { VISUAIS_IA, ehVisualComIa, infoDoVisualIa } from './ia/visuais-ia.ts';
+import { CacheInsightsIa, gerarInsightsDoVisual } from './ia/insights.ts';
+import { TELAS_SEM_DASHBOARD } from './telas-extras.ts';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
@@ -34,8 +39,10 @@ import { normalizeName, SemanticModel } from '../../packages/semantic-model/src/
 import { rotuloDeColuna } from '../../packages/semantic-model/src/projecao.ts';
 import { loadDashboards, type DashboardSpec, type FiltroSpec } from '../../packages/widget-engine/src/spec.ts';
 import { decodificaFiltros } from '../../packages/widget-engine/src/filtro-url.ts';
+import { dataDaPagina } from '../../packages/widget-engine/src/filtros-padrao.ts';
 import { carrega, type Carregado } from '../../packages/snapshot/src/carrega.ts';
-import { leManifesto, maisAntigo, type Manifesto } from '../../packages/snapshot/src/manifesto.ts';
+import { arquivoDaQuery, leManifesto, maisAntigo, type Manifesto } from '../../packages/snapshot/src/manifesto.ts';
+import { le, leCabecalho } from '../../packages/snapshot/src/formato.ts';
 import { carimboDasCalculadas } from '../../packages/snapshot/src/tabelas-calculadas.ts';
 import { planeja } from '../../packages/snapshot/src/plano.ts';
 import { calculadasAlimentadasAoVivo, recalculosAoVivo } from '../../packages/snapshot/src/nativas.ts';
@@ -70,22 +77,25 @@ import { ErroDeAcesso, type Mudanca } from './permissoes.ts';
 import { SEM_GRAVACAO, type TipoDeEvento } from './eventos-seguranca.ts';
 import { verificaIdToken, type VerificadorDeToken } from './auth-google.ts';
 import { verificaIdTokenFirebase, type BuscaCertificados } from './auth-firebase.ts';
-import { calculaPagina, segmentacaoDe, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type PaginaCalculada } from './calcula.ts';
+import { calculaPagina, segmentacaoDe, visualIndisponivel, LINHAS_MAXIMO, LINHAS_MAXIMO_EXPORT, LINHAS_PADRAO, TERMO_MAXIMO, type Janela, type PaginaCalculada, type VisualCalculado } from './calcula.ts';
+import { idDaPaginaAoVivo, idDosForaDoAoVivo, idDosSeletores, type PeriodoAoVivo } from '../../packages/ao-vivo/src/periodo.ts';
+import { calculaNoDiretorio, juntaPaginas } from './pagina-ao-vivo.ts';
 import { carregaLayout } from '../../tools/layout/src/valida.ts';
 import type { LayoutSpec } from '../../tools/layout/src/schema.ts';
 import { leStatus, montaStatusDeRefresh, resumeDegradacao, type QuerySaude } from '../../tools/refresh/src/status.ts';
 import { PiscinaWorkers } from './piscina-workers.ts';
-import { linhasDoOverlay, mescladoresDe, type OverlayDeTabela } from './overlay-realtime.ts';
+import { linhasDoOverlay, mescladoresDe, overlaySobreBuscaAoVivo, type OverlayDeTabela } from './overlay-realtime.ts';
 import { Metricas, ORIGENS, origemDoPedido, prioridadeDe, type OrigemDoPedido } from './metricas.ts';
 import { VooUnico, type Voo } from './voo-unico.ts';
 import { redisAusente } from './saude-do-redis.ts';
+import { versaoDaInstancia } from './versao.ts';
 import { entradasDoCache, medeProcesso, tetoDoCache } from './memoria-da-saude.ts';
 import { aplicaHeadersDeSeguranca } from './headers-seguranca.ts';
 import { LimitadorDeTaxa, ipDoPedido } from './limitador-taxa.ts';
 import { leSpecDeSeguranca, type SpecDeSeguranca } from './spec-seguranca.ts';
 import { chaveDeColuna, colunasFiltraveis } from './filtros-da-pagina.ts';
 import { comStatus, inteiro, leCorpo, parseJsonSeguro, responde, tokensIguais } from './http-util.ts';
-import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
+import { VALORES_MAXIMO, VALORES_PADRAO, chaveDeValores, distintosOrdenados, serializaValor, valoresDistintos } from './valores-segmentacao.ts';
 import { serveEstatico } from './estatico.ts';
 import type { ServidorOptions } from './opcoes-servidor.ts';
 
@@ -267,6 +277,11 @@ export class Servidor {
       | 'modoDosFiltros'
       | 'avisoDasPaginas'
       | 'usoDasTelas'
+      | 'metas'
+      | 'ia'
+      | 'sombraAoVivo'
+      | 'aoVivo'
+      | 'pedeRefresh'
     >
   > &
     Pick<
@@ -278,7 +293,14 @@ export class Servidor {
       | 'avisoDasPaginas'
       | 'modoDosFiltros'
       | 'usoDasTelas'
+      | 'metas'
+      | 'ia'
+      | 'sombraAoVivo'
+      | 'aoVivo'
+      | 'pedeRefresh'
     >;
+  private readonly lojaIa: LojaDeIa;
+  private readonly cacheInsightsIa: CacheInsightsIa;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
    *  "padrão" que faça sentido preencher, diferente dos outros campos. */
@@ -373,6 +395,10 @@ export class Servidor {
   private readonly identidadeDasCarregadas = new Map<string, string>();
   /** Memo de `#liberacaoDaPagina` — constante por página durante a vida do processo. */
   private readonly liberacaoPorPagina = new Map<string, { libera: string[]; formaCompleta: string[] }>();
+  /** Memo de `#seletoresDoSnapshot` — idem. */
+  private readonly seletoresPorPagina = new Map<string, DashboardSpec>();
+  /** Memo de `#semCompletaNoSnapshot` — vem do modelo, constante na vida do processo. */
+  private semCompletaMemo: ReadonlySet<string> | null = null;
   /**
    * A identidade de cada página que as WORKERS já foram avisadas de ter — ver
    * `soltaGeracoesVelhas`. Separada de `identidadeDasCarregadas` de propósito: aquela diz
@@ -581,6 +607,7 @@ export class Servidor {
       eventosDeSeguranca: SEM_GRAVACAO,
       ...resto,
     };
+    this.lojaIa = this.opts.ia ?? criaLojaDeIaArquivo({ dir: this.opts.snapshotDir });
     const specSeg = leSpecDeSeguranca(this.opts.root);
     this.rotasSoLocais = new Set(specSeg.rotas_de_maquina.porta_publica_bloqueia);
     this.politicaDeSessao = specSeg.sessao;
@@ -626,6 +653,7 @@ export class Servidor {
       cache: adapter,
       ...(aoFalharCache ? { aoFalhar: aoFalharCache } : {}),
     });
+    this.cacheInsightsIa = new CacheInsightsIa({ armazenamento: this.cache });
     for (const dash of this.dashboards) {
       const plano = planeja([dash], this.model);
       this.queriesPorDashboard.set(dash.id, plano.queries);
@@ -862,13 +890,19 @@ export class Servidor {
     const ehGestaoDeAcesso = rota === '/api/admin/acessos' || rota.startsWith('/api/admin/acessos/');
     const ehGestaoDeSessao = rota === '/api/admin/sessoes' || rota.startsWith('/api/admin/sessoes/');
     const ehConsultaDeUso = rota === '/api/admin/uso';
+    // As metas de negocio (aba "Metas", 12/11/2026): GET le, POST grava. Mesma protecao
+    // CSRF estrita da gestao de acesso — a unica cliente legitima e a tela.
+    const ehGestaoDeMetas = rota === '/api/admin/metas' || rota.startsWith('/api/admin/metas/');
+    const ehGestaoDeIa = rota === '/api/admin/ia' || rota.startsWith('/api/admin/ia/');
+    const ehInsightsVisual = /^\/api\/dashboards\/[^/]+\/insights\/[^/]+$/.test(rota);
     const ehRegistroDeUso = rota === '/api/uso/abertura';
-    if (ehRegistroDeUso && req.method !== 'POST') {
+    const ehPedidoDeRefresh = rota === '/api/refresh';
+    if ((ehRegistroDeUso || ehPedidoDeRefresh) && req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
       responde(res, 405, { erro: 'Esta rota aceita somente POST.' });
       return;
     }
-    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehRegistroDeUso) && req.method === 'POST') {
+    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehGestaoDeMetas || ehGestaoDeIa || ehInsightsVisual || ehRegistroDeUso || ehPedidoDeRefresh) && req.method === 'POST') {
       const temOrigem = typeof req.headers.origin === 'string' || typeof req.headers.referer === 'string';
       if (!temOrigem || !this.origemPermitida(req)) {
         this.registraEventoSeg(req, 403, 'csrf-gestao-de-acesso');
@@ -881,6 +915,7 @@ export class Servidor {
         erro: `Método ${req.method} não existe nesta rota. A API é somente leitura ` +
           `— as únicas exceções são POST /auth/google, /auth/firebase, /auth/interno, /auth/logout` +
           `, /api/admin/acessos/* (gestão de acessos, só admin/dev), /api/admin/sessoes/* (só admin)` +
+          `, /api/admin/metas (a meta de negócio, só quem tem a aba "Metas")` +
           ` e /api/uso/abertura (a própria pessoa registra a aba aberta).`,
       });
       return;
@@ -978,9 +1013,12 @@ export class Servidor {
         return;
       }
       if (ehRegistroDeUso) return this.registraAbertura(req, res, url, quem, ehAquecedor);
+      if (ehPedidoDeRefresh) return await this.pedeAtualizacaoImediata(res);
       if (ehConsultaDeUso) return this.usoDasTelas(res, url, quem, req);
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
       if (ehGestaoDeSessao) return this.gestaoDeSessao(req, res, rota, quem);
+      if (ehGestaoDeMetas) return this.gestaoDeMetas(req, res, rota, quem);
+      if (ehGestaoDeIa) return this.gestaoDeIa(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
       if (rota === '/api/eventos') return this.eventos(req, res, quem);
       if (rota.startsWith('/api/dashboards/')) {
@@ -1017,8 +1055,18 @@ export class Servidor {
         if (sub === '') return this.pagina(res, id, url, quem, req);
         if (sub === 'valores') return this.valores(res, id, url, quem);
         if (sub === 'layout') return this.layoutDe(res, id);
+        if (sub.startsWith('insights/')) {
+          let visualId: string;
+          try {
+            visualId = decodeURIComponent(sub.slice('insights/'.length));
+          } catch {
+            responde(res, 400, { erro: 'Identificador de visual com percent-encoding inválido.' });
+            return;
+          }
+          return this.insightsDoVisual(req, res, id, visualId, url, quem);
+        }
         responde(res, 404, {
-          erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores, layout.`,
+          erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores, layout, insights/<visualId>.`,
         });
         return;
       }
@@ -1247,6 +1295,9 @@ export class Servidor {
       // faria o healthcheck do contêiner derrubá-la à toa.
       degradacao: { degradado: degradacao.degradado },
       ok: manifesto !== null,
+      // QA D-15: qual código está no ar. Só no corpo completo — quem chega sem sessão
+      // recebe "está de pé?" e nada que descreva o que roda aqui. Ver `versao.ts`.
+      versao: versaoDaInstancia(this.opts.root),
       snapshot: manifesto === null
         ? { presente: false, dica: 'Rode: npm run snapshot -- --pagina=<id>' }
         : {
@@ -1346,6 +1397,11 @@ export class Servidor {
         piscina: this.piscina.estado,
         overlayTabelas: this.opts.overlayRealtime().size,
         ...(this.opts.estadoDoPoller ? { poller: this.opts.estadoDoPoller() } : {}),
+        // As páginas servidas ao vivo e os períodos guardados de cada uma: de quando é o
+        // dado e quanto a busca no SRD levou (docs/DECISAO-AO-VIVO.md).
+        ...(this.opts.aoVivo
+          ? { aoVivo: Object.fromEntries([...this.opts.aoVivo.paginas].map(([id, p]) => [id, p.estado?.() ?? null])) }
+          : {}),
       },
       // `leStatus` nunca lança (arquivo ausente ou corrompido viram `{}`) — mas
       // `/api/saude` não pode cair por causa de um operador de refresh que nunca
@@ -1437,6 +1493,327 @@ export class Servidor {
   }
 
   /**
+   * `/api/admin/metas` — os números de NEGÓCIO que um gestor edita (`loja-metas-maria.ts`):
+   *
+   *   GET                        → as metas conhecidas, com valor, autor e data
+   *   POST  { id, valor }        → grava uma; responde com a lista nova
+   *
+   * O portão é a ABA, não o papel (decisão do Erick, 12/11/2026): quem tem `metas`
+   * liberada na tela "Acessos" edita, sem precisar virar admin. Admin tem por ser admin
+   * (`podeVer` devolve true para ele em qualquer aba). O 403 é daqui, do servidor — a
+   * tela esconder o botão não é barreira.
+   *
+   * Sem banco de metas (desenvolvimento, ou MariaDB fora) é 503, nunca um "salvo" falso:
+   * a meta que a tela mostra tem de ser a que o painel vai ler.
+   */
+  private async gestaoDeMetas(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rota: string,
+    quem: Identidade,
+  ): Promise<void> {
+    if (!this.opts.acesso.podeVer(quem, 'metas')) {
+      this.registraEventoSeg(req, 403, 'aba-sem-acesso', quem.usuario);
+      responde(res, 403, { erro: 'Sem acesso à aba "Metas".' });
+      return;
+    }
+    const sub = rota.slice('/api/admin/metas'.length);
+    if (sub !== '') {
+      responde(res, 404, { erro: `'${sub}' não existe em /api/admin/metas.` });
+      return;
+    }
+    const loja = this.opts.metas;
+    if (!loja) {
+      responde(res, 503, { erro: 'Banco de metas não configurado neste ambiente.', publico: true });
+      return;
+    }
+
+    if (req.method !== 'POST') {
+      try {
+        responde(res, 200, { eu: { usuario: quem.usuario }, metas: await loja.le() });
+      } catch (err) {
+        if (!(err instanceof ErroDeMeta)) throw err;
+        responde(res, err.status, { erro: err.message, publico: true });
+      }
+      return;
+    }
+
+    let corpo: Record<string, unknown>;
+    try {
+      const c = parseJsonSeguro(await leCorpo(req));
+      if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('corpo não é objeto');
+      corpo = c as Record<string, unknown>;
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido: esperado um objeto JSON.' });
+      return;
+    }
+    try {
+      const metas = await loja.grava(corpo.id, corpo.valor, quem.usuario);
+      // A meta entra no painel pelo refresh (grupo `quente`, 15 min): a tela diz isso em
+      // vez de deixar o gestor achar que o KPI mudou no mesmo segundo.
+      responde(res, 200, { eu: { usuario: quem.usuario }, metas });
+    } catch (err) {
+      if (!(err instanceof ErroDeMeta)) throw err;
+      responde(res, err.status, { erro: err.message, publico: true });
+    }
+  }
+
+  /**
+   * `/api/admin/ia` — gestão do provedor de IA (Anthropic, OpenAI/compatíveis, Gemini).
+   * Restrita a administradores (`papelDe(quem) === 'admin'`). A chave é gravada cifrada em
+   * AES-256-GCM e nunca sai na resposta.
+   *
+   *   GET                  → estado público (`configurado`, `tipo`, `modelo`, `dica`, `ultimoTeste`, `tipos`)
+   *   POST                 → salva configuração (`{ tipo, modelo, chave?, baseUrl?, maxTokens? }`)
+   *   POST /remover        → apaga a chave salva na tela (volta para `.env` ou desconfigurado)
+   *   POST /modelos        → lista modelos disponíveis na API do provedor
+   *   POST /testar         → testa conectividade com o modelo configurado
+   */
+  private async gestaoDeIa(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rota: string,
+    quem: Identidade,
+  ): Promise<void> {
+    if (this.opts.acesso.papelDe(quem) !== 'admin') {
+      this.registraEventoSeg(req, 403, 'ia-sem-admin', quem.usuario);
+      responde(res, 403, { erro: 'Só administrador gerencia o provedor de IA.' });
+      return;
+    }
+    const sub = rota.slice('/api/admin/ia'.length);
+
+    if (req.method !== 'POST') {
+      if (sub !== '') {
+        responde(res, 404, { erro: `'${sub}' não aceita GET em /api/admin/ia.` });
+        return;
+      }
+      responde(res, 200, await this.lojaIa.estado());
+      return;
+    }
+
+    let corpo: Record<string, unknown> = {};
+    try {
+      const texto = await leCorpo(req);
+      if (texto.trim() !== '') {
+        const c = parseJsonSeguro(texto);
+        if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('corpo não é objeto');
+        corpo = c as Record<string, unknown>;
+      }
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido: esperado um objeto JSON.' });
+      return;
+    }
+
+    try {
+      if (sub === '') {
+        const estado = await this.lojaIa.salvar(corpo, quem.usuario);
+        responde(res, 200, estado);
+        return;
+      }
+      if (sub === '/remover') {
+        const estado = await this.lojaIa.remover(quem.usuario);
+        responde(res, 200, estado);
+        return;
+      }
+      if (sub === '/modelos') {
+        const modelos = await this.lojaIa.listarModelos(corpo);
+        responde(res, 200, { modelos });
+        return;
+      }
+      if (sub === '/testar') {
+        const resultado = await this.lojaIa.testar();
+        responde(res, 200, resultado);
+        return;
+      }
+      responde(res, 404, {
+        erro: `'${sub}' não existe em /api/admin/ia. Sub-rotas: /remover, /modelos, /testar.`,
+      });
+    } catch (err) {
+      if (err instanceof ErroDeIa) {
+        responde(res, err.status, { erro: err.message, publico: true });
+        return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * `POST /api/dashboards/:id/insights/:visualId` — leitura interpretativa de IA para um
+   * visual agregado do catálogo `VISUAIS_IA`.
+   *
+   * O navegador envia apenas os filtros da tela (`?filtro=...&clicado=...`) na URL;
+   * quem obtém os números é o servidor (do cache de resposta ou calculando o visual),
+   * garantindo que nenhum número seja inventado ou adulterado pelo cliente e que nenhuma
+   * tabela de detalhe com dados pessoais saia para provedor externo.
+   */
+  private async insightsDoVisual(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    id: string,
+    visualId: string,
+    url: URL,
+    quem: Identidade,
+  ): Promise<void> {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      responde(res, 405, { erro: 'Esta rota aceita somente POST.' });
+      return;
+    }
+    const dash = this.dashboards.find((d) => d.id === id);
+    if (!dash) {
+      responde(res, 404, { erro: `Página '${id}' não existe.` });
+      return;
+    }
+    const info = infoDoVisualIa(id, visualId);
+    if (!info || !ehVisualComIa(id, visualId)) {
+      responde(res, 404, {
+        erro: `Visual '${visualId}' não existe ou não possui leitura de IA habilitada.`,
+      });
+      return;
+    }
+    const specVisual = (dash.visuals ?? []).find((v) => v.id === visualId);
+    if (!specVisual) {
+      responde(res, 404, { erro: `Visual '${visualId}' não encontrado na spec de '${id}'.` });
+      return;
+    }
+
+    let daTela: FiltroSpec[];
+    try {
+      daTela = decodificaFiltros(url.searchParams.getAll('filtro'));
+    } catch (err) {
+      responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    if (!this.filtrosDaPaginaAceitos(req, res, dash, daTela, quem)) return;
+
+    const clicados: { tabela: string; coluna: string }[] = [];
+    for (const bruto of url.searchParams.getAll('clicado')) {
+      try {
+        const o = JSON.parse(bruto) as { tabela?: unknown; coluna?: unknown };
+        if (typeof o.tabela === 'string' && typeof o.coluna === 'string' && o.tabela && o.coluna) {
+          clicados.push({ tabela: o.tabela, coluna: o.coluna });
+        } else {
+          responde(res, 400, { erro: `clicado '${bruto}' inválido.` });
+          return;
+        }
+      } catch {
+        responde(res, 400, { erro: `clicado '${bruto}' não é JSON válido.` });
+        return;
+      }
+    }
+
+    const ativo = await this.lojaIa.provedorAtivo();
+    if (!ativo) {
+      responde(res, 503, {
+        erro: 'Nenhum provedor de IA configurado. Um administrador pode cadastrar a chave em Acessos → Provedor de IA.',
+        publico: true,
+      });
+      return;
+    }
+
+    let visualCalculado: VisualCalculado | undefined;
+    const carimbo = this.carimboDaPagina(dash);
+    const dia = diaDoCalculo(this.opts.agora());
+    const marcaAoVivo = this.#marcaAoVivo(dash, daTela);
+    const carimboEfetivo = marcaAoVivo ? `${carimbo}+${marcaAoVivo}` : carimbo;
+
+    // 1. Tenta aproveitar a resposta já pronta no cache (página inteira ou visual isolado)
+    for (const visuaisChave of [null, [visualId]] as const) {
+      const chaveCache = chaveDaResposta({
+        escopo: escopoDoCache(quem),
+        pagina: dash.id,
+        filtros: daTela,
+        clicados,
+        visuais: visuaisChave,
+        de: 0,
+        linhas: LINHAS_PADRAO,
+        termo: undefined,
+        ordem: undefined,
+        carimbo: carimboEfetivo,
+        dia,
+      });
+      const guardado = await this.cache.le<{ visuais?: VisualCalculado[] }>(chaveCache);
+      const achado = guardado?.visuais?.find((v) => v.id === visualId && v.dados !== undefined);
+      if (achado) {
+        visualCalculado = achado;
+        break;
+      }
+    }
+
+    // 2. Se ainda não estava no cache de resposta, calcula apenas este visual pelo motor semântico
+    if (!visualCalculado) {
+      const alvo: DashboardSpec = {
+        ...dash,
+        visuals: [specVisual],
+        filters: [...(dash.filters ?? []), ...daTela],
+      };
+      const overlays = this.#overlayDe(dash);
+      const linhasParaIa = visualId === 'ae5871aa76bb028341c9' ? LINHAS_MAXIMO_EXPORT : LINHAS_PADRAO;
+      const vivo = await this.#paginaAoVivo(
+        dash,
+        alvo,
+        daTela,
+        { de: 0, linhas: linhasParaIa, termo: undefined },
+        clicados,
+        quem,
+        prioridadeDe('interactive'),
+        overlays,
+      );
+      if (vivo && !vivo.fora.has(visualId)) {
+        visualCalculado = vivo.pagina.visuais.find((v) => v.id === visualId);
+      } else {
+        try {
+          const carregado = await this.#esperaOSnapshotInteiro(() => this.carrega(dash));
+          const pag = calculaPagina(
+            alvo,
+            carregado.ev,
+            { de: 0, linhas: linhasParaIa, termo: undefined },
+            undefined,
+            undefined,
+            clicados,
+          );
+          visualCalculado = pag.visuais.find((v) => v.id === visualId);
+        } catch (err) {
+          responde(res, 409, {
+            erro: err instanceof Error ? err.message : 'Não foi possível carregar o snapshot para este visual.',
+          });
+          return;
+        }
+      }
+    }
+
+    if (!visualCalculado) {
+      responde(res, 404, { erro: `Não foi possível apurar os dados do visual '${visualId}'.` });
+      return;
+    }
+
+    try {
+      const insights = await gerarInsightsDoVisual({
+        loja: this.lojaIa,
+        pagina: id,
+        visualId,
+        visualCalculado,
+        filtros: daTela,
+        clicados,
+        agora: this.opts.agora(),
+        cache: this.cacheInsightsIa,
+      });
+      console.error(
+        `[ia] leitura de ${id}:${visualId} para ${quem.usuario} (${insights.modelo}${insights.emCache ? ', cache' : ''})`,
+      );
+      responde(res, 200, insights);
+    } catch (err) {
+      if (err instanceof ErroDeIa) {
+        responde(res, err.status, { erro: err.message, publico: true });
+        return;
+      }
+      responde(res, 502, {
+        erro: err instanceof Error ? err.message : 'Falha ao consultar o provedor de IA.',
+      });
+    }
+  }
+
+  /**
    * `/api/admin/acessos` — a gestão de quem abre cada aba (`permissoes.ts`):
    *
    *   GET                                → a matriz: abas (nome, modo) × pessoas (papel, abas)
@@ -1462,7 +1839,13 @@ export class Servidor {
     }
     const sub = rota.slice('/api/admin/acessos'.length);
     const navegaveis = this.dashboards.filter((d) => d.type !== 'Tooltip');
-    const nomes = new Map(navegaveis.map((d) => [d.id, d.name] as const));
+    // As abas do relatorio MAIS as que nao sao dashboard (hoje "Metas"): a matriz filtra
+    // por este mapa, entao uma aba fora dele sumiria da tela de Acessos e nao teria como
+    // ser liberada a ninguem — ficaria so para admin, calada.
+    const nomes = new Map<string, string>([
+      ...navegaveis.map((d) => [d.id, d.name] as const),
+      ...TELAS_SEM_DASHBOARD.map((t) => [t.id, t.nome] as const),
+    ]);
     const respondeMatriz = async (): Promise<void> => {
       const m = acesso.matriz();
       // O último acesso: o mais novo entre o uso das abas (banco) e a última atividade de
@@ -1685,13 +2068,37 @@ export class Servidor {
     responde(res, 200, { derrubadas, sessoes: lista() });
   }
 
-  private lista(res: http.ServerResponse, quem: Identidade): void {
+  private ultimoPedidoRefreshMs = 0;
+
+  private async pedeAtualizacaoImediata(res: http.ServerResponse): Promise<void> {
+    const agora = Date.now();
+    if (agora - this.ultimoPedidoRefreshMs < 10_000) {
+      responde(res, 200, { ok: true, disparados: [], emEspera: true });
+      return;
+    }
+    this.ultimoPedidoRefreshMs = agora;
+    try {
+      const r = this.opts.pedeRefresh ? await this.opts.pedeRefresh() : { disparados: [] };
+      responde(res, 200, { ok: true, disparados: r.disparados });
+    } catch {
+      responde(res, 200, { ok: false, disparados: [] });
+    }
+  }
+
+  private async lista(res: http.ServerResponse, quem: Identidade): Promise<void> {
     const manifesto = leManifesto(this.opts.snapshotDir);
     const emDisco = new Set(manifesto?.tabelas.map((t) => t.query) ?? []);
     const liberadas = this.dashboards.filter((d) => this.opts.acesso.podeVer(quem, d.id));
     // Entrou e não abre nenhuma aba: vira pedido na tela "Acessos" (sem esperar o banco).
-    if (!liberadas.some((d) => d.type !== 'Tooltip')) this.opts.acesso.registraPedido(quem);
+    // Quem abre SO a aba "Metas" nao e um pedido de acesso pendente: ja foi liberado.
+    const extras = TELAS_SEM_DASHBOARD.filter((t) => this.opts.acesso.podeVer(quem, t.id));
+    if (!liberadas.some((d) => d.type !== 'Tooltip') && extras.length === 0) {
+      this.opts.acesso.registraPedido(quem);
+    }
+    const estadoIa = await this.lojaIa.estado();
     responde(res, 200, {
+      iaConfigurada: estadoIa.configurado,
+      visuaisIa: Object.keys(VISUAIS_IA),
       // A tela monta a navegação SÓ com o que vem aqui. Esconder a aba é conforto; quem
       // barra é o 403 de `atende()` — pedir a aba pela URL dá no mesmo lugar.
       eu: {
@@ -1700,6 +2107,11 @@ export class Servidor {
         ...(quem.nome ? { nome: quem.nome } : {}),
         papel: this.opts.acesso.papelDe(quem),
         podeGerir: this.opts.acesso.podeGerir(quem),
+        // As abas que NAO sao dashboard e esta conta abre (hoje so "metas"). A tela monta
+        // a faixa com isto; quem barra de verdade continua sendo o 403 da rota.
+        abasExtras: TELAS_SEM_DASHBOARD.filter((t) => this.opts.acesso.podeVer(quem, t.id)).map(
+          (t) => ({ id: t.id, nome: t.nome }),
+        ),
       },
       dashboards: liberadas.map((d) => ({
         id: d.id,
@@ -1750,6 +2162,13 @@ export class Servidor {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
       connection: 'keep-alive',
+      // QA D-09. O `nginx.conf` deste repositório já desliga o buffer em
+      // `location /api/eventos`, mas em produção o pedido passa ANTES por um
+      // openresty da TI, que não conhece esta rota e segura o stream: nenhum evento
+      // chega, sem erro e sem log. `X-Accel-Buffering: no` é a instrução que o
+      // próprio upstream dá, e vale em qualquer nginx/openresty do caminho — é o
+      // único lado da conversa que está sob o nosso controle.
+      'x-accel-buffering': 'no',
     });
     // Comentário SSE (linha começando com `:`), não dado — só para o navegador
     // considerar a conexão estabelecida na hora, em vez de esperar o 1º evento
@@ -2160,6 +2579,25 @@ export class Servidor {
     }
     const termo = buscaBruta === '' ? undefined : buscaBruta;
 
+    // `?ordem=<coluna>:<asc|desc>` — o clique no cabeçalho da tabela (QA D-17). A tela
+    // ordenava as 200 linhas da janela baixada, o que numa tabela de 95 mil linhas
+    // reordena a PÁGINA e deixa o maior valor de verdade numa janela que ninguém abriu.
+    //
+    // Erra alto, como `?filtro=`: índice que não existe derruba o pedido. Ordenar por uma
+    // coluna que a tela não tem seria devolver uma ordem que ninguém pediu, calada.
+    let ordem: { coluna: number; desc: boolean } | undefined;
+    const ordemBruta = url.searchParams.get('ordem');
+    if (ordemBruta !== null && ordemBruta !== '') {
+      const casa = /^(\d{1,3}):(asc|desc)$/.exec(ordemBruta);
+      if (!casa) {
+        responde(res, 400, {
+          erro: `?ordem= espera '<coluna>:asc' ou '<coluna>:desc' (veio '${ordemBruta}').`,
+        });
+        return;
+      }
+      ordem = { coluna: Number.parseInt(casa[1]!, 10), desc: casa[2] === 'desc' };
+    }
+
     // `?filtro=` — a escolha das segmentações da tela, uma por coluna. Filtro que não
     // dá para entender **derruba o pedido** com 400: aplicar os que deram certo e
     // calar os outros mostraria um número filtrado pela metade dizendo-se filtrado.
@@ -2239,6 +2677,13 @@ export class Servidor {
     const pediuRecalculo = url.searchParams.get('recalcula') === '1';
     const recalcula = pediuRecalculo && (quem.usuario === 'ferramenta-interna' || quem.papeis.includes('interno'));
     if (pediuRecalculo && !recalcula) this.metricas.conta('recalcula_ignorado');
+    // **Página servida ao vivo: a geração do SRD entra no carimbo** (`PeriodosAoVivo.marca`).
+    // A resposta guardada vale 7 dias e só caía com o snapshot de hoje, então a que saiu
+    // pelo snapshot enquanto o conjunto do ano não estava pronto continuava sendo servida
+    // depois de ele ficar — medido em 24/10/2026 pelo teste de ponta a ponta. Com a marca,
+    // geração nova é chave nova: quem chega recebe a anterior na hora e a nova sai por
+    // baixo, com aviso (#164), como num refresh.
+    const marcaAoVivo = this.#marcaAoVivo(dash, daTela);
     const chave = chaveDaResposta({
       escopo: escopoDoCache(quem),
       pagina: dash.id,
@@ -2248,7 +2693,8 @@ export class Servidor {
       de,
       linhas,
       termo,
-      carimbo,
+      ordem,
+      carimbo: marcaAoVivo ? `${carimbo}+${marcaAoVivo}` : carimbo,
       dia,
     });
     // **A última resposta pronta desta MESMA pergunta, de qualquer snapshot (ACHADOS #164).**
@@ -2265,6 +2711,7 @@ export class Servidor {
       de,
       linhas,
       termo,
+      ordem,
       carimbo: '*',
       dia: '*',
     });
@@ -2377,12 +2824,48 @@ export class Servidor {
     // por cálculo e usado nos dois ramos abaixo: buscá-lo duas vezes faria o
     // ramo da worker calcular sobre um overlay e o de fallback sobre outro,
     // colhido milissegundos depois — dois números diferentes para o mesmo
-    // pedido, conforme a worker tivesse falhado ou não.
+    // pedido, conforme a worker tivesse falhado ou não. E antes da parte ao vivo,
+    // que também o aplica (o mês da agenda, ver `#paginaAoVivo`).
     const overlays = this.#overlayDe(dash);
     this.metricas.maximo('overlay_linhas_max', linhasDoOverlay(overlays));
     if (overlays.size > 0) this.metricas.conta('calculos_com_overlay');
 
-    if (this.piscina.ativa) {
+    // **A parte ao vivo do pedido** (docs/DECISAO-AO-VIVO.md, `#paginaAoVivo`): os
+    // visuais que o SRD responde saem do snapshot pequeno do período; só os de fora
+    // (o horizonte de previsão) seguem pelo snapshot de hoje, em `alvoDoSnapshot`.
+    // `null` = este pedido não vai ao vivo, ou a busca falhou — e tudo segue como antes.
+    const vivo = await this.#paginaAoVivo(dash, alvo, daTela, { de, linhas, termo }, clicados, quem, prio, overlays);
+    const peloSnapshot: DashboardSpec = vivo
+      ? { ...alvo, visuals: (alvo.visuals ?? []).filter((v) => vivo.fora.has(v.id)) }
+      : alvo;
+    // **O que o snapshot não pode responder** (passo 3b): sem a agenda completa nele, o
+    // visual de relato e o filtro de tela em coluna de relato voltam indisponíveis, com o
+    // motivo, em vez de calculados pela metade. Vazio enquanto a agenda completa estiver no
+    // refresh. E o overlay do snapshot perde as fontes do recálculo que ele não sabe fazer.
+    const indisponiveis = this.#indisponiveisNoSnapshot(dash, peloSnapshot, daTela);
+    const alvoDoSnapshot: DashboardSpec = indisponiveis.size === 0
+      ? peloSnapshot
+      : { ...peloSnapshot, visuals: (peloSnapshot.visuals ?? []).filter((v) => !indisponiveis.has(v.id)) };
+    const overlaysDoSnapshot = this.#overlayDoSnapshot(dash, overlays);
+
+    if (vivo && (alvoDoSnapshot.visuals ?? []).length === 0) {
+      paginaCalculada = vivo.pagina;
+      dadoDe = vivo.dadoDe;
+      tabelasResumo = vivo.tabelas;
+    } else if ((alvoDoSnapshot.visuals ?? []).length === 0 && indisponiveis.size > 0) {
+      // Só indisponíveis: nada a carregar.
+      paginaCalculada = {
+        id: alvo.id,
+        nome: alvo.name,
+        tamanho: alvo.size,
+        dadoDe: null,
+        visuais: [],
+        resumo: { calculados: 0, falharam: 0, semCalculo: 0 },
+        ms: 0,
+      };
+      dadoDe = null;
+      tabelasResumo = [];
+    } else if (this.piscina.ativa) {
       this.metricas.maximo('worker_fila_max', this.piscina.estado.fila);
       // Quantas tarefas de cada classe REALMENTE chegaram à piscina. Comparado
       // com `pedidos_<origem>`, é o que responde "quanto da fila que existia
@@ -2391,15 +2874,21 @@ export class Servidor {
       // reordenar.
       this.metricas.conta(`fila_entradas_${origem}`);
       const tWorker = Date.now();
+      // **Página ao vivo: só os visuais de fora chegam aqui** (a previsão de chuva da
+      // Agendamento Field). Com a carga da página inteira — a do tempo real, que pede a
+      // agenda completa —, a worker voltaria a guardar as 633 mil linhas que o ao vivo
+      // existe para não carregar (medido em 25/10/2026). Vão com id próprio, a carga só
+      // deles e sem overlay: o que eles mostram é o do refresh.
+      const dosFora = vivo ? this.#liberacaoDoRecorte(dash, alvoDoSnapshot) : null;
       try {
         const pedeAWorker = () => this.piscina.executa({
           snapshotDir: this.opts.snapshotDir,
           specsDir: path.join(this.opts.root, 'backend', 'specs'),
-          dashboardSpec: alvo,
-          janela: { de, linhas, termo },
+          dashboardSpec: dosFora ? { ...alvoDoSnapshot, id: idDosForaDoAoVivo(dash.id) } : alvoDoSnapshot,
+          janela: { de, linhas, termo, ordem },
           clicados,
-          liberaSobDemanda: libera,
-          precisaFormaCompleta: formaCompleta,
+          liberaSobDemanda: dosFora?.libera ?? libera,
+          precisaFormaCompleta: dosFora?.formaCompleta ?? formaCompleta,
           agoraIso: this.opts.agora().toISOString(),
           // **A linha que destrava o near-realtime inteiro** (F1,
           // 08/09/2026). Sem ela a worker chamava `carrega()` sem overlay e
@@ -2408,7 +2897,7 @@ export class Servidor {
           // recebia o mesmo de antes, depois de 10–20 s de recálculo. Nada
           // falhava; o realtime só não entregava dado novo. Ver
           // `worker-calculador.ts` e `overlay-realtime.ts`.
-          ...(overlays.size > 0 ? { overlays } : {}),
+          ...(!dosFora && overlaysDoSnapshot.size > 0 ? { overlays: overlaysDoSnapshot } : {}),
           // O que faz `cacheDeCarga` (worker-calculador.ts) saber que o disco
           // mudou por baixo, do mesmo jeito que `identidadeDaPagina()` já faz
           // para `this.carregadas` aqui na thread principal — DISCO, não o
@@ -2491,7 +2980,7 @@ export class Servidor {
         const carregado = await this.carrega(dash).catch((err: unknown) => {
           throw comStatus(err, 409);
         });
-        paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
+        paginaCalculada = calculaPagina(alvoDoSnapshot, carregado.ev, { de, linhas, termo }, undefined, undefined, clicados);
         dadoDe = carregado.dadoDe;
         omitidas = carregado.omitidas;
         tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
@@ -2530,10 +3019,47 @@ export class Servidor {
         },
       };
 
-      paginaCalculada = calculaPagina(alvo, carregado.ev, { de, linhas, termo }, undefined, memo, clicados);
+      paginaCalculada = calculaPagina(alvoDoSnapshot, carregado.ev, { de, linhas, termo }, undefined, memo, clicados);
       dadoDe = carregado.dadoDe;
       omitidas = carregado.omitidas;
       tabelasResumo = [...carregado.linhasPorTabela].map(([nome, n]) => ({ nome, linhas: n }));
+    }
+
+    // Os visuais de fora vieram do snapshot de hoje: a página volta inteira, na ordem do
+    // relatório, e o `dadoDe` é o mais ANTIGO dos dois (a promessa dele, ver `carrega`).
+    if (vivo && (alvoDoSnapshot.visuals ?? []).length > 0) {
+      paginaCalculada = juntaPaginas(alvo, vivo.pagina, paginaCalculada);
+      if (dadoDe === null || vivo.dadoDe < dadoDe) dadoDe = vivo.dadoDe;
+    }
+
+    // **Modo sombra da fonte ao vivo** (docs/DECISAO-AO-VIVO.md): a mesma pergunta
+    // refeita ao vivo em segundo plano e comparada com esta. `observa` é síncrona e não
+    // lança; o resultado só vai para o log e para as métricas `sombra_*`. Pedido que já
+    // saiu ao vivo não passa: seria comparar o ao vivo com ele mesmo.
+    if (!vivo) {
+      this.opts.sombraAoVivo?.observa({
+        dash,
+        alvo,
+        daTela,
+        janela: { de, linhas, termo, ordem },
+        clicados,
+        agora: this.opts.agora(),
+        pagina: paginaCalculada,
+      });
+    }
+
+    // Os indisponíveis entram no lugar deles, na ordem do relatório.
+    if (indisponiveis.size > 0) {
+      paginaCalculada = juntaPaginas(
+        alvo,
+        {
+          ...paginaCalculada,
+          visuais: [...indisponiveis.values()],
+          resumo: { calculados: 0, falharam: 0, semCalculo: indisponiveis.size },
+          ms: 0,
+        },
+        paginaCalculada,
+      );
     }
 
     const corpo: CorpoDaPagina = {
@@ -2552,6 +3078,9 @@ export class Servidor {
         valores: f.conditions[0]?.op === 'in' ? f.conditions[0].values : [],
       })),
       tabelas: tabelasResumo,
+      // De onde saiu a resposta, para conferir olhando a rede: o período buscado no SRD,
+      // de quando é, e quantos visuais vieram dele.
+      ...(vivo ? { aoVivo: vivo.info } : {}),
     };
 
     // O corpo vai para o cache **sem** o campo `cache`: ele descreve o
@@ -2689,6 +3218,36 @@ export class Servidor {
       if (s.niveis !== undefined) return !nivel;
       if (s.naoFiltra !== undefined) return false;
 
+      // **QA D-22.** `niveis` só existe quando a hierarquia NÃO reduz a um nível só.
+      // Quando reduz — poço de data com apenas o `Ano` ativo, que é o caso da
+      // `manutencao-inicial` — a segmentação chega aqui como coluna comum com
+      // `nivel: 'Ano'`, e o pedido SEM `nivel` da árvore "Período" levava 404: ela
+      // abria vazia. A necessidade é a mesma do caso de cima (datas cruas para saber
+      // quais meses cada ano tem), só que num poço de um nível só.
+      //
+      // **Por que amarrado à data DA PÁGINA, e não a toda hierarquia.** Quem pede sem
+      // `nivel` é a árvore, e a árvore só existe para a coluna de `dataDaPagina`
+      // (`BarraDeFiltros.tsx` desenha uma só, com rótulo "Período"). Uma hierarquia
+      // reduzida que NÃO é a data da página continua sendo um dropdown de um nível, e
+      // o pedido sem `nivel` dela continua 404 — é o caso de
+      // `CALENDARIO CRIADO[DATA CRIADO]` na visao-geral, que `servidor.test.ts` cobra
+      // desde 27/08/2026 e que não faz sentido afrouxar.
+      //
+      // A trava que importa — a coluna tem de ser segmentação DESTA página — continua
+      // inteira. Conferido em 13/11/2026: as 69 segmentações `hierarchy_level` das 14
+      // páginas são, todas, `Hierarquia de datas`. Pedido COM `nivel` segue tendo de
+      // casar o nível declarado.
+      if (s.hierarquia === true && !nivel) {
+        const daPagina = dataDaPagina(id);
+        if (
+          daPagina !== null &&
+          normalizeName(daPagina.tabela) === normalizeName(s.tabela) &&
+          normalizeName(daPagina.coluna) === normalizeName(s.coluna)
+        ) {
+          return true;
+        }
+      }
+
       return normalizeName(s.nivel ?? '') === normalizeName(nivel ?? '');
     });
     if (!permitida) {
@@ -2722,7 +3281,13 @@ export class Servidor {
     // MESMA conta que a chave do cache de resposta faz, e esta rota responde em
     // 1–7 ms quente — 0,57 ms de leitura de disco por seletor aberto seria
     // pagar frescor que o memo já entrega.
-    const frescorDaPagina = `${this.carimboDaPagina(dash)}@${diaDoCalculo(this.opts.agora())}`;
+    //
+    // A lista de coluna de relato sai da agregada do SRD (`#valoresDaAgregada`), que não é
+    // query da página: o carimbo dela entra no frescor, ou um refresh dela não chegaria ao
+    // seletor.
+    const agregada = this.#agregadaDosValores(tabela, coluna);
+    const daAgregada = agregada ? `+${carimboDoSnapshot(this.manifestoMemo, this.calculadasMemo, [agregada])}` : '';
+    const frescorDaPagina = `${this.carimboDaPagina(dash)}${daAgregada}@${diaDoCalculo(this.opts.agora())}`;
     const chaveValores = chaveDeValores(id, frescorDaPagina, tabela, coluna, nivel);
     let distintos = this.cacheValoresDistintos.get(chaveValores);
     const chaveDaUltima = chaveDeValores(id, '', tabela, coluna, nivel);
@@ -2931,37 +3496,63 @@ export class Servidor {
     prioridade: number,
     quem: Identidade,
   ): Promise<DaxValue[] | { erroDoPedido: string }> {
-    const overlays = this.#overlayDe(dash);
+    // Passo 3 (docs/DECISAO-AO-VIVO.md): coluna de relato lista da agregada do SRD, e os
+    // outros seletores de uma página ao vivo, de uma carga só deles — nenhum dos dois
+    // carrega a página do snapshot (ACHADOS #248).
+    const daAgregada = await this.#valoresDaAgregada(tabela, coluna, nivel);
+    if (daAgregada !== null) return daAgregada;
+    const dosSeletores = await this.#valoresDosSeletores(dash, tabela, coluna, nivel, prioridade, quem);
+    if (dosSeletores !== null) return dosSeletores;
+    // Sem a agregada e sem a forma completa no snapshot, a página inteira listaria a coluna
+    // de relato pela agenda de slot — com parte dos valores, calada. Melhor dizer (409).
+    const completa = this.amarraGraoReduzido().tabelasCompletas.get(normalizeName(rotuloDeColuna(tabela, coluna)));
+    if (completa !== undefined && this.#semCompletaNoSnapshot().has(normalizeName(completa))) {
+      throw new Error(
+        `A lista de '${tabela}'[${coluna}] sai da agregada dos relatos, que o refresh ainda não gravou neste snapshot ` +
+          `(${completa} completa não está mais nele). Ela aparece depois da próxima carga do grupo frio.`,
+      );
+    }
+    const overlays = this.#overlayDoSnapshot(dash, this.#overlayDe(dash));
     const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
     if (this.piscina.ativa) {
       try {
-        const r = await this.piscina.executa(
-          {
-            snapshotDir: this.opts.snapshotDir,
-            specsDir: path.join(this.opts.root, 'backend', 'specs'),
-            dashboardSpec: dash,
-            janela: { de: 0, linhas: 0 },
-            clicados: [],
-            liberaSobDemanda: libera,
-            precisaFormaCompleta: formaCompleta,
-            agoraIso: this.opts.agora().toISOString(),
-            ...(overlays.size > 0 ? { overlays } : {}),
-            identidade: this.identidadeDaPagina(dash),
-            escopo: escopoDoCache(quem),
-            valores: { tabela, coluna, nivel },
-          },
-          prioridade,
+        const r = await this.#esperaOSnapshotInteiro(() =>
+          this.piscina.executa(
+            {
+              snapshotDir: this.opts.snapshotDir,
+              specsDir: path.join(this.opts.root, 'backend', 'specs'),
+              dashboardSpec: dash,
+              janela: { de: 0, linhas: 0 },
+              clicados: [],
+              liberaSobDemanda: libera,
+              precisaFormaCompleta: formaCompleta,
+              agoraIso: this.opts.agora().toISOString(),
+              ...(overlays.size > 0 ? { overlays } : {}),
+              identidade: this.identidadeDaPagina(dash),
+              escopo: escopoDoCache(quem),
+              valores: { tabela, coluna, nivel },
+            },
+            prioridade,
+          ),
         );
         this.registraCarga(dash.id, 'valores', r.carga);
         if (r.erroDoPedido !== undefined) return { erroDoPedido: r.erroDoPedido };
         if (r.valores) return r.valores;
         throw new Error('a worker respondeu sem a lista de valores');
       } catch (err) {
+        const motivo = err instanceof Error ? err.message : String(err);
+        if (motivo.startsWith(SNAPSHOT_DESATUALIZADO)) {
+          this.metricas.conta('worker_snapshot_desatualizado');
+          if (!this.motivosDeFallback.has(motivo)) {
+            this.motivosDeFallback.add(motivo);
+            console.error(`[worker] recusou, sem cálculo em linha (a thread principal recusaria igual): ${motivo}`);
+          }
+          throw err;
+        }
         // O mesmo contrato do cálculo da página: cair para cá responde certo e custa
         // a thread que atende. Contado à parte, porque o número que a etapa 4 persegue
         // (`worker_fallback` = 0) é o das páginas.
         this.metricas.conta('valores_fallback');
-        const motivo = err instanceof Error ? err.message : String(err);
         if (!this.motivosDeFallback.has(motivo)) {
           this.motivosDeFallback.add(motivo);
           console.error(`[worker] valores de segmentação caíram para a thread principal: ${motivo}`);
@@ -2970,7 +3561,7 @@ export class Servidor {
     }
     // `carrega` usa a MESMA `#liberacaoDaPagina` mandada à worker: os dois ramos não podem
     // listar valores diferentes.
-    const carregado = await this.carrega(dash);
+    const carregado = await this.#esperaOSnapshotInteiro(() => this.carrega(dash));
     try {
       return valoresDistintos(carregado.ev, tabela, coluna, nivel);
     } catch (err) {
@@ -3029,6 +3620,243 @@ export class Servidor {
       for (const f of RECALCULOS_AO_VIVO.get(c)?.fontes ?? []) fora.add(f);
     }
     return [...fora];
+  }
+
+  /**
+   * A parte AO VIVO de um pedido de página (docs/DECISAO-AO-VIVO.md), ou `null` quando
+   * ele segue inteiro pelo snapshot: página fora de `AO_VIVO_PAGINAS`, pedido sem período
+   * reconhecível (`decideAoVivo`), só visuais de fora pedidos, ou a busca falhou.
+   *
+   * O SRD não é consultado aqui: quem busca é `periodos-ao-vivo.ts`, uma vez por período
+   * enquanto ele vale. Aqui a página é calculada sobre o snapshot pequeno já gravado —
+   * na piscina, com um id próprio por período (`idDaPaginaAoVivo`), para não disputar o
+   * conjunto carregado com o snapshot de hoje da mesma página.
+   *
+   * Nunca lança: falha ou demora acima de `tetoMs` vira uma linha de log por motivo, a
+   * métrica `ao_vivo_queda`, e o pedido segue pelo snapshot. A busca que passou do teto
+   * continua por baixo e serve o pedido seguinte.
+   */
+  /** A marca da geração ao vivo que este pedido encontraria, ou `null` se ele não vai ao vivo. */
+  #marcaAoVivo(dash: DashboardSpec, daTela: readonly FiltroSpec[]): string | null {
+    const periodos = this.opts.aoVivo?.paginas.get(dash.id);
+    if (!periodos?.marca) return null;
+    const d = periodos.decide(dash, daTela, this.opts.agora());
+    return 'porque' in d ? null : periodos.marca(d.periodo);
+  }
+
+  async #paginaAoVivo(
+    dash: DashboardSpec,
+    alvo: DashboardSpec,
+    daTela: readonly FiltroSpec[],
+    janela: Janela,
+    clicados: readonly { tabela: string; coluna: string }[],
+    quem: Identidade,
+    prio: number,
+    overlays: ReadonlyMap<string, OverlayDeTabela>,
+  ): Promise<PaginaAoVivoDoPedido | null> {
+    const periodos = this.opts.aoVivo?.paginas.get(dash.id);
+    if (!periodos) return null;
+    const d = periodos.decide(dash, daTela, this.opts.agora());
+    if ('porque' in d) {
+      this.metricas.conta('ao_vivo_fora_do_periodo');
+      return null;
+    }
+    const visuais = (alvo.visuals ?? []).filter((v) => !d.fora.has(v.id));
+    if (visuais.length === 0) return null;
+
+    const t0 = Date.now();
+    try {
+      const g = await comTeto(
+        periodos.obtem(d.periodo),
+        this.opts.aoVivo?.tetoMs ?? TETO_AO_VIVO_MS,
+        `a busca de ${d.periodo.desde}..${d.periodo.ate} no SRD`,
+      );
+      const alvoVivo: DashboardSpec = { ...alvo, id: idDaPaginaAoVivo(dash.id, d.periodo), visuals: visuais };
+      // **O tempo real sobre a página ao vivo** (25–26/10/2026). Sem isto, a página ao vivo
+      // ficava com o frescor da geração (5 min a agenda, 10 min os conjuntos), e a do
+      // snapshot, com o do poller (30–60 s) nas tabelas que ele vigia — a agenda e a
+      // telefonia, entre elas. O mesmo overlay que o caminho do snapshot recebe, inclusive
+      // o delta da agenda no grão relato sobre a agenda de slot: é o que a Visão Geral já
+      // recebe pelo snapshot, e os visuais fora do grão relato dão o mesmo nos dois grãos
+      // (a premissa do grão reduzido, `projecao.yaml`). O corte vai para o instante da busca
+      // (`overlaySobreBuscaAoVivo`), e a geração da página entra na identidade: a worker
+      // troca o conjunto quando o poller muda.
+      const ovVivo = overlays.size > 0 ? overlaySobreBuscaAoVivo(overlays, g.geradoEm) : null;
+      const identidade = ovVivo ? `${g.identidade}#tr${this.geracaoDaPagina(dash.id)}` : g.identidade;
+      let pagina: PaginaCalculada;
+      let linhasPorTabela: [string, number][];
+      if (this.piscina.ativa) {
+        const r = await this.piscina.executa(
+          {
+            snapshotDir: g.dir,
+            specsDir: path.join(this.opts.root, 'backend', 'specs'),
+            dashboardSpec: alvoVivo,
+            janela,
+            clicados: [...clicados],
+            liberaSobDemanda: [],
+            // A forma que o período trouxe: o mês da agenda vem com a FIELD AGENDA completa.
+            precisaFormaCompleta: [...(d.formaCompleta ?? [])],
+            agoraIso: this.opts.agora().toISOString(),
+            ...(ovVivo ? { overlays: ovVivo } : {}),
+            identidade,
+            escopo: escopoDoCache(quem),
+          },
+          prio,
+        );
+        pagina = r.pagina as PaginaCalculada;
+        linhasPorTabela = r.linhasPorTabela ?? [];
+      } else {
+        const r = await calculaNoDiretorio({
+          dir: g.dir,
+          model: this.model,
+          dash,
+          // O id da página, não o do período: há regra por página e visual no cálculo.
+          alvo: { ...alvoVivo, id: dash.id },
+          fora: d.fora,
+          ...(d.formaCompleta ? { formaCompleta: d.formaCompleta } : {}),
+          ...(ovVivo ? { overlay: ovVivo } : {}),
+          janela,
+          clicados,
+          agora: this.opts.agora(),
+        });
+        pagina = r.pagina;
+        linhasPorTabela = [...r.linhasPorTabela];
+      }
+      this.metricas.conta('ao_vivo_pedidos');
+      this.metricas.observa('ao_vivo_ms', Date.now() - t0);
+      return {
+        pagina: { ...pagina, id: dash.id },
+        fora: d.fora,
+        dadoDe: g.geradoEm,
+        tabelas: linhasPorTabela.map(([nome, n]) => ({ nome, linhas: n })),
+        info: {
+          periodo: d.periodo,
+          dadoDe: g.geradoEm,
+          visuais: visuais.length,
+          foraDoAoVivo: (alvo.visuals ?? []).length - visuais.length,
+        },
+      };
+    } catch (err) {
+      this.metricas.conta('ao_vivo_queda');
+      const motivo = err instanceof Error ? err.message.split('\n')[0]!.slice(0, 200) : String(err).slice(0, 200);
+      if (!this.motivosDeFallback.has(`ao-vivo: ${motivo}`)) {
+        this.motivosDeFallback.add(`ao-vivo: ${motivo}`);
+        console.error(`[ao-vivo] ${dash.id} saiu pelo snapshot neste pedido: ${motivo}`);
+      }
+      return null;
+    }
+  }
+
+  /**
+   * A lista de um seletor de coluna de relato (Classificação do Relato, Categoria de
+   * Produtividade, Descrição), lida da agregada do SRD que a projeção declara
+   * (`valores_dos_seletores`, `projecao.yaml`) — ou `null` para seguir pelo caminho de
+   * sempre: coluna que não é gatilho de um grão com agregada, nível de data, ou o refresh
+   * ainda não a gravou (o primeiro deploy).
+   *
+   * Antes a lista saía da página carregada com a agenda completa (ACHADOS #248): 633 mil
+   * linhas para oferecer algumas dezenas de valores, e uma fonte que o passo 5 tira do
+   * snapshot. A agregada é a mesma janela, as mesmas junções e as mesmas regras do DAX
+   * (`npm run probe:valores-ao-vivo` compara as duas). Vale para toda página, ao vivo ou
+   * não: é a lista que o seletor sempre ofereceu, sem depender do mês da tela.
+   */
+  async #valoresDaAgregada(tabela: string, coluna: string, nivel: string | null): Promise<DaxValue[] | null> {
+    const agregada = this.#agregadaDosValores(tabela, coluna);
+    if (agregada === null || nivel) return null;
+    const arquivo = arquivoDaQuery(this.opts.snapshotDir, agregada);
+    if (!fs.existsSync(arquivo)) return null;
+    const k = normalizeName(coluna);
+    if (!leCabecalho(arquivo).colunas.some((c) => normalizeName(c.nome) === k)) return null;
+    const { linhas } = await le(arquivo);
+    return distintosOrdenados(linhas.map((l) => (l[k] ?? null) as DaxValue));
+  }
+
+  /** A agregada de onde sai a lista desta coluna, se ela é gatilho de um grão reduzido que declara uma. */
+  #agregadaDosValores(tabela: string, coluna: string): string | null {
+    const g = this.model.graoReduzido.find((x) => normalizeName(x.tabela) === normalizeName(tabela));
+    if (!g?.valoresDosSeletores || !g.colunasGatilho.some((c) => normalizeName(c) === normalizeName(coluna))) return null;
+    return g.valoresDosSeletores;
+  }
+
+  /**
+   * A lista de um seletor de página servida AO VIVO, de uma carga do snapshot só com os
+   * seletores dela (`idDosSeletores`, passo 3), ou `null` para seguir pela página inteira:
+   * página que não está ao vivo, sem piscina, coluna de relato (essa sai da agregada, ou da
+   * página inteira quando a agregada falta), ou a worker falhou.
+   *
+   * Pela página inteira, a lista carregava o que a página ao vivo existe para não carregar
+   * — na Agendamento Field, a agenda completa (ACHADOS #248). Uma carga para todos os
+   * seletores da página, e sem overlay: a lista anda com o refresh (15–60 min), e a tela já
+   * a busca uma vez por abertura. Com o overlay, o recálculo do tempo real pediria as fontes
+   * completas (`#formaCompletaDoTempoReal`) — de novo a agenda completa.
+   */
+  async #valoresDosSeletores(
+    dash: DashboardSpec,
+    tabela: string,
+    coluna: string,
+    nivel: string | null,
+    prioridade: number,
+    quem: Identidade,
+  ): Promise<DaxValue[] | { erroDoPedido: string } | null> {
+    if (!this.opts.aoVivo?.paginas.has(dash.id) || !this.piscina.ativa || this.#ehGatilho(tabela, coluna)) return null;
+    const seletores = this.#seletoresDoSnapshot(dash);
+    const { libera, formaCompleta } = this.#liberacaoDoRecorte(dash, seletores);
+    try {
+      // Com a espera do recongelamento, como a página: a recusa é passageira, e cair para a
+      // página inteira por ela seria trocar segundos de espera pela carga pesada.
+      const r = await this.#esperaOSnapshotInteiro(() => this.piscina.executa(
+        {
+          snapshotDir: this.opts.snapshotDir,
+          specsDir: path.join(this.opts.root, 'backend', 'specs'),
+          dashboardSpec: { ...seletores, id: idDosSeletores(dash.id) },
+          janela: { de: 0, linhas: 0 },
+          clicados: [],
+          liberaSobDemanda: libera,
+          precisaFormaCompleta: formaCompleta,
+          agoraIso: this.opts.agora().toISOString(),
+          identidade: this.identidadeDaPagina(dash),
+          escopo: escopoDoCache(quem),
+          valores: { tabela, coluna, nivel },
+        },
+        prioridade,
+      ));
+      this.registraCarga(dash.id, 'valores', r.carga);
+      if (r.erroDoPedido !== undefined) return { erroDoPedido: r.erroDoPedido };
+      if (r.valores) return r.valores;
+      throw new Error('a worker respondeu sem a lista de valores');
+    } catch (err) {
+      this.metricas.conta('valores_seletores_queda');
+      const motivo = err instanceof Error ? err.message.split('\n')[0]!.slice(0, 200) : String(err).slice(0, 200);
+      if (!this.motivosDeFallback.has(`seletores: ${motivo}`)) {
+        this.motivosDeFallback.add(`seletores: ${motivo}`);
+        console.error(`[ao-vivo] a lista de '${tabela}'[${coluna}] em ${dash.id} saiu pela página inteira: ${motivo}`);
+      }
+      return null;
+    }
+  }
+
+  /** A coluna é gatilho de um grão reduzido (só existe inteira na forma completa)? */
+  #ehGatilho(tabela: string, coluna: string): boolean {
+    return this.amarraGraoReduzido().tabelasCompletas.has(normalizeName(rotuloDeColuna(tabela, coluna)));
+  }
+
+  /**
+   * Os seletores de uma página que listam do snapshot quando ela está ao vivo: todos, menos
+   * os de coluna gatilho. Uma página só com eles, para uma carga só servir a todos.
+   */
+  #seletoresDoSnapshot(dash: DashboardSpec): DashboardSpec {
+    let memo = this.seletoresPorPagina.get(dash.id);
+    if (memo === undefined) {
+      memo = {
+        ...dash,
+        visuals: (dash.visuals ?? []).filter((v) => {
+          const s = segmentacaoDe(v);
+          return s !== undefined && !this.#ehGatilho(s.tabela, s.coluna);
+        }),
+      };
+      this.seletoresPorPagina.set(dash.id, memo);
+    }
+    return memo;
   }
 
   /** A tabela só-do-poller alimenta uma calculada que esta página carrega? */
@@ -3102,7 +3930,7 @@ export class Servidor {
       // `overlay-realtime.ts`). Este é o caminho que calcula na própria thread —
       // fallback de falha da worker, e a piscina desligada em teste —, e é o
       // único lado da fronteira onde a função pode ser montada de véspera.
-      overlay: mescladoresDe(this.#overlayDe(dash)),
+      overlay: mescladoresDe(this.#overlayDoSnapshot(dash, this.#overlayDe(dash))),
     })
       .then((c) => {
         // Recalcular uma tabela que estava congelada custa tempo e muda o número. Um
@@ -3400,13 +4228,133 @@ export class Servidor {
       const amarrado = (dash.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
       memo = {
         libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(),
-        formaCompleta: [
+        formaCompleta: this.#soAsQueOSnapshotTem([
           ...new Set([...amarrado.flatMap((a) => a.tabelasCompletas), ...this.tabelasCompletasDaPagina(dash)]),
-        ].sort(),
+        ]).sort(),
       };
       this.liberacaoPorPagina.set(dash.id, memo);
     }
     return { libera: [...memo.libera], formaCompleta: [...memo.formaCompleta] };
+  }
+
+  /**
+   * A carga de um RECORTE de uma página servida ao vivo — os visuais que ficaram fora dela,
+   * ou os seletores que listam do snapshot: o que OS VISUAIS DO RECORTE amarram e os
+   * filtros de página — sem as fontes do tempo real, que `#liberacaoDaPagina` soma para a
+   * página inteira (o overlay não vai junto, ver os pedidos à worker).
+   */
+  #liberacaoDoRecorte(dash: DashboardSpec, recorte: DashboardSpec): { libera: string[]; formaCompleta: string[] } {
+    const amarrado = (recorte.visuals ?? []).map((v) => this.sobDemandaDoVisual(dash, v.id));
+    const { tabelasCompletas } = this.amarraGraoReduzido();
+    const completas = new Set(amarrado.flatMap((a) => a.tabelasCompletas));
+    for (const f of dash.filters ?? []) {
+      if (!f.entity || !f.property) continue;
+      const t = tabelasCompletas.get(normalizeName(rotuloDeColuna(f.entity, f.property)));
+      if (t) completas.add(t);
+    }
+    return { libera: [...new Set(amarrado.flatMap((a) => a.colunas))].sort(), formaCompleta: this.#soAsQueOSnapshotTem([...completas]).sort() };
+  }
+
+  /**
+   * As tabelas de grão reduzido que o snapshot NÃO tem na forma completa
+   * (`completa_no_snapshot: false`, `projecao.yaml`), em nome normalizado. Vazio enquanto a
+   * agenda completa estiver no refresh — até o passo 5 do ao vivo, nada do que depende
+   * disto muda (docs/DECISAO-AO-VIVO.md, passo 3b).
+   */
+  #semCompletaNoSnapshot(): ReadonlySet<string> {
+    this.semCompletaMemo ??= new Set(this.model.graoReduzido.filter((g) => !g.completaNoSnapshot).map((g) => normalizeName(g.tabela)));
+    return this.semCompletaMemo;
+  }
+
+  /**
+   * A forma completa que uma carga do SNAPSHOT pode pedir: sem as tabelas que ele não tem
+   * completas. Pedida assim mesmo, a carga leria um arquivo que o refresh não atualiza
+   * mais. O que dependia dela tem destino próprio: o visual de relato sai indisponível
+   * (`#indisponiveisNoSnapshot`), e o recálculo do tempo real que a lia perde o overlay
+   * (`#overlayDoSnapshot`).
+   */
+  #soAsQueOSnapshotTem(tabelas: readonly string[]): string[] {
+    const sem = this.#semCompletaNoSnapshot();
+    return sem.size === 0 ? [...tabelas] : tabelas.filter((t) => !sem.has(normalizeName(t)));
+  }
+
+  /**
+   * O overlay do tempo real para uma carga do SNAPSHOT da página, sem as fontes que
+   * recalculariam uma calculada que o snapshot não sabe mais recalcular: a que cita coluna
+   * gatilho de uma tabela que ele não tem completa. É o `Status Protocolo Dia` (lê relato,
+   * data do relato e skill da agenda): recalculado sobre a agenda de slot, sairia errado;
+   * sem o overlay das fontes dele, fica o congelado do refresh (15 min). O `calendar` lê só
+   * protocolo e data, e segue recalculando. Igual ao recebido enquanto o snapshot tiver
+   * tudo completo. A página AO VIVO não passa por aqui: a pasta do mês tem a agenda completa.
+   */
+  #overlayDoSnapshot(dash: DashboardSpec, overlays: ReadonlyMap<string, OverlayDeTabela>): Map<string, OverlayDeTabela> {
+    const fora = this.#fontesSemRecalculo(dash);
+    return new Map([...overlays].filter(([tabela]) => !fora.has(tabela)));
+  }
+
+  /** As fontes (nome normalizado) do recálculo pelo tempo real das calculadas da página que citam coluna que o snapshot não tem. */
+  #fontesSemRecalculo(dash: DashboardSpec): ReadonlySet<string> {
+    const fontes = new Set<string>();
+    if (this.#semCompletaNoSnapshot().size === 0) return fontes;
+    for (const c of this.calculadasPorDashboard.get(dash.id) ?? []) {
+      const r = RECALCULOS_AO_VIVO.get(c);
+      if (!r || !this.#citaColunaSemCompleta(c)) continue;
+      for (const f of r.fontes) fontes.add(normalizeName(f));
+      if (r.aoVivo) fontes.add(normalizeName(r.aoVivo));
+    }
+    return fontes;
+  }
+
+  /** O DAX da calculada cita coluna gatilho de uma tabela que o snapshot não tem completa? */
+  #citaColunaSemCompleta(calculada: string): boolean {
+    const dax = this.model.table(calculada)?.tableDax ?? '';
+    const escapa = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return this.model.graoReduzido
+      .filter((g) => !g.completaNoSnapshot)
+      .some((g) => g.colunasGatilho.some((c) => new RegExp(`'?${escapa(g.tabela)}'?\\s*\\[${escapa(c)}\\]`, 'i').test(dax)));
+  }
+
+  /**
+   * Os visuais de um pedido pelo SNAPSHOT que ele não pode calcular, com o motivo — vazio
+   * enquanto o snapshot tiver tudo completo (passo 3b). Sem a agenda completa:
+   *
+   *   - visual que lê coluna de relato (os históricos de relato e o motivo
+   *     improdutivo/produtivo da Agendamento Field): sobre a agenda de slot ele sairia com
+   *     parte dos relatos, calado;
+   *   - com filtro de tela em coluna de relato, todo visual que calcula: o filtro sobre a
+   *     agenda de slot recortaria pela metade, e não há como saber que visual ele alcança.
+   *
+   * O ao vivo responde os dois (o mês da agenda vem completo); por aqui só passa a queda:
+   * período maior que um mês, o SRD fora, ou a página fora de `AO_VIVO_PAGINAS`.
+   */
+  #indisponiveisNoSnapshot(dash: DashboardSpec, alvo: DashboardSpec, daTela: readonly FiltroSpec[]): Map<string, VisualCalculado> {
+    const sem = this.#semCompletaNoSnapshot();
+    const fora = new Map<string, VisualCalculado>();
+    if (sem.size === 0) return fora;
+    const { tabelasCompletas } = this.amarraGraoReduzido();
+    const semCompleta = (rotulo: string) => {
+      const t = tabelasCompletas.get(normalizeName(rotulo));
+      return t !== undefined && sem.has(normalizeName(t)) ? t : null;
+    };
+    const filtro = daTela.find((f) => f.entity && f.property && semCompleta(rotuloDeColuna(f.entity, f.property)));
+    for (const v of alvo.visuals ?? []) {
+      let motivo: string | null = null;
+      if (filtro) {
+        motivo =
+          `O filtro em ${rotuloDeColuna(filtro.entity!, filtro.property!)} lê os relatos da agenda, que só chegam pelo ` +
+          'ao vivo — e este pedido saiu pelo snapshot. Escolha um mês só no período, ou tente de novo em instantes.';
+      } else {
+        const t = this.sobDemandaDoVisual(dash, v.id).tabelasCompletas.find((x) => sem.has(normalizeName(x)));
+        if (t) {
+          motivo =
+            `Este visual lê os relatos da agenda (${t} completa), que só chegam pelo ao vivo — e este pedido saiu ` +
+            'pelo snapshot. Escolha um mês só no período, ou tente de novo em instantes.';
+        }
+      }
+      const indisponivel = motivo ? visualIndisponivel(v, motivo) : null;
+      if (indisponivel) fora.set(v.id, indisponivel);
+    }
+    return fora;
   }
 
   /** Mapas rótulo-normalizado → (nome declarado | tabela), montados uma vez por chamada. */
@@ -3447,7 +4395,20 @@ export class Servidor {
 
   private queriesDe(dash: DashboardSpec): string[] {
     try {
-      return planeja([dash], this.model).queries;
+      // **As queries que a carga LÊ, não as que o plano nomeia.** Para tabela de grão
+      // reduzido o plano nomeia a canônica (`field-agenda`), e a carga troca pela padrão
+      // (`field-agenda-slot`) quando não pede a completa (`carrega.ts`). Com só a canônica
+      // aqui, o refresh da padrão (15 min) não chegava ao carimbo da página — quem o
+      // levava era, por acaso, o carimbo global das calculadas recongeladas depois dele. E
+      // sem a completa no snapshot (passo 5 do ao vivo) ela sai daqui: nunca mais muda, e
+      // num snapshot novo nem existe — a página ficaria "não pronta" para sempre.
+      const queries = new Set(planeja([dash], this.model).queries);
+      for (const g of this.model.graoReduzido) {
+        if (!queries.has(g.queryCompleta)) continue;
+        queries.add(g.queryPadrao);
+        if (!g.completaNoSnapshot) queries.delete(g.queryCompleta);
+      }
+      return [...queries].sort();
     } catch {
       // `planeja` erra alto em página com tabela que não tem como ser
       // materializada. Na listagem isso é "não está pronta", não uma falha: um id
@@ -3471,5 +4432,41 @@ type CorpoDaPagina = PaginaCalculada & {
   omitidas: string[];
   filtrosDaTela: { tabela: string | null; coluna: string | null; nivel?: string; valores: unknown[] }[];
   tabelas: { nome: string; linhas: number }[];
+  /** Presente quando parte da página saiu ao vivo do SRD. Ver `#paginaAoVivo`. */
+  aoVivo?: InfoDoAoVivo;
 };
+
+interface InfoDoAoVivo {
+  periodo: PeriodoAoVivo;
+  /** Quando o SRD foi lido para este período. */
+  dadoDe: string;
+  /** Visuais que vieram do ao vivo, e os pedidos que seguiram pelo snapshot. */
+  visuais: number;
+  foraDoAoVivo: number;
+}
+
+interface PaginaAoVivoDoPedido {
+  pagina: PaginaCalculada;
+  fora: ReadonlyMap<string, string>;
+  dadoDe: string;
+  tabelas: { nome: string; linhas: number }[];
+  info: InfoDoAoVivo;
+}
+
+/**
+ * Quanto um pedido espera a PRIMEIRA busca de um período no SRD. Passou disso, ele sai
+ * pelo snapshot de hoje e a busca segue por baixo: o pedido seguinte já a encontra.
+ * Medido em 23–24/10/2026: 17–25 s para um mês.
+ */
+const TETO_AO_VIVO_MS = 45_000;
+
+/** A promessa, ou um erro dizendo o que passou do tempo. A promessa original segue viva. */
+function comTeto<T>(p: Promise<T>, ms: number, oQue: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const teto = new Promise<never>((_, recusa) => {
+    timer = setTimeout(() => recusa(new Error(`${oQue} passou de ${Math.round(ms / 1000)} s (segue por baixo)`)), ms);
+    timer.unref?.();
+  });
+  return Promise.race([p, teto]).finally(() => clearTimeout(timer));
+}
 

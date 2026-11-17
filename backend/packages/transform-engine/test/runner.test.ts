@@ -247,7 +247,7 @@ test('feriados roda inteira sem fonte externa: base64 + deflate + JSON', async (
   assert.ok(t.columns.length > 0);
 });
 
-test('as 25 queries do escopo executam os passos; o que falha é tipo do dado sintético', async () => {
+test('as 28 queries do escopo executam os passos; o que falha é tipo do dado sintético', async () => {
   // O que este teste PODE provar sem credencial: que nenhuma query para por função
   // faltando, semântica não implementada ou ordem errada entre queries.
   //
@@ -321,8 +321,13 @@ test('as 25 queries do escopo executam os passos; o que falha é tipo do dado si
     [],
     `falhas que NÃO são tipo do fixture (função faltando, semântica, ordem):\n  ${lista(problemas)}`,
   );
-  assert.equal(ok.length + tipoDoFixture.length, 25);
-  // Piso em 25 = **todas**. Era 24 antes de `protocolos-tipo` (ACHADOS #200), que tem
+  assert.equal(ok.length + tipoDoFixture.length, 28);
+  // Piso em 28 = **todas**. Era 27 antes de `metas-instalacao` (12/11/2026, QA D-20,
+  // ACHADOS #254), que tem `sql:` de mão e dois passos de M; 26 antes de
+  // `valores-do-relato` e 25 antes de
+  // `relatos-do-dia` (as duas geradas em 26/10/2026, cada uma com golden de perfil — o M
+  // delas é só o `Fonte`, e sem golden o dado sintético não teria coluna nenhuma); 24
+  // antes de `protocolos-tipo` (ACHADOS #200), que tem
   // golden e roda como as outras; 23 antes de `field-agenda-slot` (ACHADOS #87) —
   // SQL de mão, sem golden, cai para dado sintético como qualquer query nova; e
   // era 22 antes disso, enquanto `base-categorias-field` esbarrava em

@@ -115,6 +115,7 @@ function VisualBuscado(props: {
         pagina={props.pagina}
         visual={pronto}
         filtros={props.filtros}
+        clicados={props.clicados}
         aoFiltrar={props.aoFiltrar}
         aoPrever={props.aoPrever}
         render={props.render}

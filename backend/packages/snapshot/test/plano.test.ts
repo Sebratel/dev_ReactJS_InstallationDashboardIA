@@ -26,11 +26,13 @@ const SPECS = path.join(ROOT, 'backend', 'specs');
 const model = SemanticModel.fromSpecsDir(SPECS);
 const dashboards = loadDashboards(SPECS);
 
-test('as 14 páginas juntas fecham em 23 tabelas e 16 queries', () => {
+// +1 tabela e +1 query em 12/11/2026: METAS entra pelo fechamento, porque `# META`
+// passou a lê-la em vez de ser a constante `2865` (QA D-20, ACHADOS #254).
+test('as 14 páginas juntas fecham em 24 tabelas e 17 queries', () => {
   const p = planeja(dashboards, model);
   assert.equal(dashboards.length, 14);
-  assert.equal(p.tabelas.length, 23);
-  assert.equal(p.queries.length, 16);
+  assert.equal(p.tabelas.length, 24);
+  assert.equal(p.queries.length, 17);
   // As 7 do catálogo: as calculadas nascem de DAX, não de arquivo.
   assert.equal(p.calculadas.length, 7);
   assert.equal(p.tabelas.length, p.queries.length + p.calculadas.length);

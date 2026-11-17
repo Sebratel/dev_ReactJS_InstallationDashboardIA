@@ -111,10 +111,11 @@ test('montaStatusDeRefresh expõe queries[] com status, idades e falhas (Contrat
   assert.equal(geral.status, 'ok');
   assert.equal(geral.idadeDias, 0);
 
-  // Query de grupo sem carga registrada (ex: field-agenda, no frio) entra como vencida
-  const fa = res.queries.find((q) => q.id === 'field-agenda');
-  assert.ok(fa);
-  assert.equal(fa.status, 'vencida');
+  // Query de grupo sem carga registrada (ex: troca-endereco, no frio) entra como vencida.
+  // Era a `field-agenda` até ela sair do refresh (26/10/2026, passo 5 do ao vivo).
+  const troca = res.queries.find((q) => q.id === 'troca-endereco');
+  assert.ok(troca);
+  assert.equal(troca.status, 'vencida');
 });
 
 // ------------------------------------------------ "parado" e "falhando" (ACHADOS #160)

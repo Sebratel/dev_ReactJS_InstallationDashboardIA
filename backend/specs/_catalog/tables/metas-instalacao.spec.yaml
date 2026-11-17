@@ -1,0 +1,15 @@
+# MANTIDO POR HUMANOS — ver backend/specs/_catalog/queries/metas-instalacao.spec.yaml e
+# docs/SPEC-DRIVEN.md (12/11/2026).
+spec: table
+id: metas-instalacao
+name: METAS
+query_ref: metas-instalacao
+table_dax: null
+columns:
+- name: META
+  type: int64
+  format: "0"
+  source_column: META
+  calculated: false
+  dax: null
+measure_count: 0

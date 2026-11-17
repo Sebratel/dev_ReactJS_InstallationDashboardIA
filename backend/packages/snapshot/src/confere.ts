@@ -24,7 +24,8 @@
 
 import type { ColunasUsadas } from './colunas-usadas.ts';
 import type { CabecalhoDeSnapshot } from './formato.ts';
-import { normalizeName as normaliza } from '../../semantic-model/src/model.ts';
+import { normalizeName as normaliza, type SemanticModel } from '../../semantic-model/src/model.ts';
+import { queriesDeOrigemDaCalculada } from './tabelas-calculadas.ts';
 
 export interface ArquivoDeSnapshot {
   /** O nome do arquivo, como aparece na mensagem. */
@@ -70,11 +71,12 @@ function eUsada(usadas: ColunasUsadas, tabelas: readonly string[], coluna: strin
 export function confereSnapshot(
   arquivos: readonly ArquivoDeSnapshot[],
   usadas: ColunasUsadas | null,
+  model?: SemanticModel | null,
 ): Problema[] {
   const problemas: Problema[] = [];
 
-  const maisNovoDeQuery = arquivos
-    .filter((a) => !a.calculada)
+  const deQueries = arquivos.filter((a) => !a.calculada);
+  const maisNovoDeQuery = deQueries
     .map((a) => a.cabecalho.geradoEm)
     .sort()
     .at(-1);
@@ -82,16 +84,30 @@ export function confereSnapshot(
   for (const a of arquivos) {
     const { cabecalho: cab } = a;
 
-    if (a.calculada && maisNovoDeQuery !== undefined && cab.geradoEm < maisNovoDeQuery) {
-      problemas.push({
-        tipo: 'calculada-obsoleta',
-        gravidade: 'erro',
-        onde: a.arquivo,
-        detalhe:
-          `congelada em ${cab.geradoEm}, antes da materialização de query mais recente ` +
-          `(${maisNovoDeQuery}). As linhas são as do dado antigo, e o DAX igual não ` +
-          `denuncia isso. Rode: npm run snapshot:calculadas -- --tabela="${cab.tabelas[0] ?? '<tabela>'}"`,
-      });
+    if (a.calculada) {
+      let limite = maisNovoDeQuery;
+      const nomeTabela = cab.tabelas[0];
+      const t = model && nomeTabela ? model.table(nomeTabela) : undefined;
+      const origens = model && t ? queriesDeOrigemDaCalculada(model, t) : null;
+      if (origens !== null) {
+        limite = deQueries
+          .filter((q) => origens.has(q.cabecalho.query))
+          .map((q) => q.cabecalho.geradoEm)
+          .sort()
+          .at(-1);
+      }
+
+      if (limite !== undefined && cab.geradoEm < limite) {
+        problemas.push({
+          tipo: 'calculada-obsoleta',
+          gravidade: 'erro',
+          onde: a.arquivo,
+          detalhe:
+            `congelada em ${cab.geradoEm}, antes da materialização de query mais recente ` +
+            `(${limite}). As linhas são as do dado antigo, e o DAX igual não ` +
+            `denuncia isso. Rode: npm run snapshot:calculadas -- --tabela="${cab.tabelas[0] ?? '<tabela>'}"`,
+        });
+      }
     }
 
     // Tabela sem linha nenhuma não tem coluna vazia — tem tabela vazia, que é outra

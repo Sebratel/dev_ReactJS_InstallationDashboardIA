@@ -2,10 +2,12 @@
 // pode continuar no painel (decisão do Erick, 20/10/2026): desligado não entra, férias e
 // afastamento ficam bloqueados enquanto durarem, e quem não está na Senior também não entra.
 //
-// **A fonte.** `GET {DATAHUB_BASE_URL}/p/instalacao-senior` → dataset
-// `db-senior-collaborators-2`, autenticado pelo cabeçalho `X-Api-Token` (token na URL vaza
-// para log). Envelope `{ total, limit, offset, rows }`; paginar por `offset` até `total`.
-// Medido em 20/10/2026: 2654 linhas, atualizadas uma vez por dia (~03:00).
+// **A fonte.** `GET {DATAHUB_BASE_URL}/datasets/db-senior-collaborators-2/rows` — a API de
+// consumo do Data Hub por conjunto (desde 30/10/2026; antes era a publicação
+// `/p/instalacao-senior`, que devolvia o mesmo conteúdo: 2682 linhas e o mesmo hash nas duas),
+// autenticado SÓ pelo cabeçalho `X-Api-Token` (na URL o Data Hub recusa, SEG-06). Envelope
+// `{ dataset, total, limit, offset, rows }`; paginar por `offset` até `total`. Medido em
+// 20/10/2026: 2654 linhas, atualizadas uma vez por dia (~03:00).
 //
 // **Uma linha é um VÍNCULO, não uma pessoa.** `record_type` é `admitted` (674) ou
 // `terminated` (1980, todos com `status = 'Demitido'`); recontratação deixa a mesma pessoa
@@ -50,8 +52,8 @@ export interface FonteSenior {
 export interface OpcoesDaSenior {
   baseUrl: string;
   token: string;
-  /** O slug da publicação. Padrão `instalacao-senior`. */
-  api?: string;
+  /** O conjunto no Data Hub. Padrão `db-senior-collaborators-2` (o que o token da stack alcança). */
+  dataset?: string;
   /** Onde guardar a última leitura boa. Sem ela, só vale a memória. */
   arquivo?: string;
   buscar?: typeof fetch;
@@ -69,6 +71,24 @@ interface LinhaDoDataHub {
 }
 
 const POR_PAGINA = 1000;
+
+/**
+ * Quem recusou a leitura, dito na mensagem. A API do Data Hub SEMPRE responde
+ * `{ error: "…" }` em JSON (token inválido, sem acesso ao conjunto, conjunto não
+ * sincronizado); corpo que não é JSON não veio dela — é o proxy do nome público, que já
+ * bloqueou servidor por origem. Sem esta distinção, as duas falhas chegam como "HTTP 403" e
+ * a primeira suspeita vira o token.
+ */
+async function quemRecusou(r: Response): Promise<string> {
+  const corpo = await r.text().catch(() => '');
+  try {
+    const erro = (JSON.parse(corpo) as { error?: unknown }).error;
+    if (typeof erro === 'string') return `Data Hub respondeu HTTP ${r.status}: ${erro}`;
+  } catch {
+    // não é JSON: cai abaixo
+  }
+  return `HTTP ${r.status} com corpo que não é JSON — não foi a API do Data Hub, é proxy no caminho (use o endereço interno em DATAHUB_BASE_URL)`;
+}
 
 const normEmail = (e: unknown): string => String(e ?? '').trim().toLowerCase();
 
@@ -104,7 +124,7 @@ export function criaSenior(opts: OpcoesDaSenior): FonteSeniorSincronizada {
   const buscar = opts.buscar ?? fetch;
   const agora = opts.agora ?? (() => new Date());
   const log = opts.log ?? ((m: string) => console.error(m));
-  const url = `${opts.baseUrl.replace(/\/+$/, '')}/p/${encodeURIComponent(opts.api ?? 'instalacao-senior')}`;
+  const url = `${opts.baseUrl.replace(/\/+$/, '')}/datasets/${encodeURIComponent(opts.dataset ?? 'db-senior-collaborators-2')}/rows`;
 
   let pessoas: Map<string, ColaboradorSenior> | null = null;
   let lidaEm: string | null = null;
@@ -131,7 +151,7 @@ export function criaSenior(opts: OpcoesDaSenior): FonteSeniorSincronizada {
         headers: { accept: 'application/json', 'X-Api-Token': opts.token },
         signal: AbortSignal.timeout(30_000),
       });
-      if (!r.ok) throw new Error(`Data Hub respondeu HTTP ${r.status}`);
+      if (!r.ok) throw new Error(await quemRecusou(r));
       const j = (await r.json()) as { total?: number; rows?: LinhaDoDataHub[] };
       const pagina = j.rows ?? [];
       linhas.push(...pagina);

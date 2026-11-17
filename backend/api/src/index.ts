@@ -6,6 +6,7 @@
 // morrer no arranque só esconderia a mensagem.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv, loadConfig, missingFor } from '../../packages/query-engine/src/config.ts';
@@ -28,12 +29,16 @@ import { decideLogin } from './portao-login.ts';
 import { mensagemDaConfiguracaoDeProducao, problemasDaConfiguracaoDeProducao } from './configuracao-producao.ts';
 import { criaAcesso } from './permissoes.ts';
 import { configDoAmbiente, criaPoolDeAcesso, garanteTabelas, lojaMaria } from './loja-acesso-maria.ts';
+import { lojaDeMetasMaria } from './loja-metas-maria.ts';
+import { criaLojaDeIaArquivo, criaLojaDeIaMaria } from './ia/loja-ia.ts';
+import { IDS_SEM_DASHBOARD } from './telas-extras.ts';
 import { criaSenior } from './senior.ts';
 import { criaGravadorDeEventos } from './eventos-seguranca.ts';
 import { criaUsoDasTelas } from './uso-das-telas.ts';
 import { leTetoDaResposta, memoriaDaResposta } from './memoria-limitada.ts';
 import { loadDashboards } from '../../packages/widget-engine/src/spec.ts';
 import { PADRAO_AVISO_DAS_PAGINAS, Servidor } from './servidor.ts';
+import { avisoSemCompleta, montaAoVivoDaApi } from './ao-vivo-da-api.ts';
 
 const AQUI = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(AQUI, '..', '..', '..');
@@ -303,7 +308,7 @@ const senior = process.env.DATAHUB_TOKEN
   ? criaSenior({
       baseUrl: process.env.DATAHUB_BASE_URL || 'https://data-hub.sebratel.net.br/api/public/v1',
       token: process.env.DATAHUB_TOKEN,
-      api: process.env.SENIOR_API || 'instalacao-senior',
+      dataset: process.env.SENIOR_DATASET || 'db-senior-collaborators-2',
       arquivo: path.join(DIR_RUNTIME, 'senior-colaboradores.json'),
     })
   : null;
@@ -313,13 +318,36 @@ const acesso = criaAcesso({
   senior,
   modoSenior: process.env.SENIOR_MODO === 'bloquear' ? 'bloquear' : 'observar',
   loja: poolDeAcesso ? lojaMaria(poolDeAcesso) : null,
-  telasConhecidas: loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
+  // As abas do relatorio MAIS as que nao sao dashboard (hoje so "Metas"): o portao de
+  // acesso e o mesmo para as duas (telas-extras.ts).
+  telasConhecidas: [
+    ...loadDashboards(path.join(ROOT, 'backend', 'specs')).map((d) => d.id),
+    ...IDS_SEM_DASHBOARD,
+  ],
   adminsDoAmbiente: (process.env.ADMIN_EMAILS ?? '').split(','),
   devsDoAmbiente: (process.env.DEV_EMAILS ?? '').split(','),
   dominio: process.env.DOMINIO_CORPORATIVO || 'sebratel.com.br',
 });
 await acesso.recarrega();
 acesso.releA(30_000);
+
+// A fonte ao vivo (docs/DECISAO-AO-VIVO.md, montagem em `ao-vivo-da-api.ts`).
+// `AO_VIVO_PAGINAS` lista as páginas servidas do SRD e `AO_VIVO_SOMBRA=1` liga a
+// comparação em segundo plano. Sem nenhum dos dois nada é montado, nem pool; a linha de
+// log diz qual estado vale, e por quê.
+const aoVivo = await montaAoVivoDaApi({
+  root: ROOT,
+  snapshotDir: DIR_SNAPSHOT,
+  paginasPedidas: (process.env.AO_VIVO_PAGINAS ?? '').split(',').map((p) => p.trim()).filter(Boolean),
+  querSombra: process.env.AO_VIVO_SOMBRA === '1',
+  // Fora do snapshot: a pasta do snapshot só é gravável pelo refresh.
+  dirBase: path.join(process.env.API_RUNTIME_DIR || os.tmpdir(), 'ao-vivo'),
+  conta: (nome, quanto) => servidor.metricas.conta(nome, quanto),
+});
+console.log(aoVivo.linha);
+const avisoDaCompleta = avisoSemCompleta(ROOT, new Set(aoVivo.paginas.keys()));
+if (avisoDaCompleta) console.error(avisoDaCompleta);
+aoVivo.aquece();
 
 const servidor = new Servidor({
   root: ROOT,
@@ -328,12 +356,19 @@ const servidor = new Servidor({
   acesso,
   ...(eventosDeSeguranca ? { eventosDeSeguranca } : {}),
   ...(usoDasTelas ? { usoDasTelas } : {}),
+  // A aba "Metas" so edita com banco; sem ele a rota responde 503 (opcoes-servidor.ts).
+  ...(poolDeAcesso ? { metas: lojaDeMetasMaria(poolDeAcesso) } : {}),
+  ia: poolDeAcesso
+    ? criaLojaDeIaMaria(poolDeAcesso, { dirFallback: DIR_RUNTIME })
+    : criaLojaDeIaArquivo({ dir: DIR_RUNTIME }),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver
   // `backend/api/src/overlay-realtime.ts` — trocar de volta faz o near-realtime
   // voltar a detectar, invalidar, avisar e servir o número velho.
   overlayRealtime: () => poller?.overlays() ?? new Map(),
+  ...(aoVivo.sombra ? { sombraAoVivo: aoVivo.sombra } : {}),
+  ...(aoVivo.paginas.size > 0 ? { aoVivo: { paginas: aoVivo.paginas } } : {}),
   // A VISÃO PRODUTIVA na hora; as demais páginas, juntas a cada 2 min. Ver
   // `aoTabelaMudar` e ACHADOS #175.
   avisoDasPaginas: {
@@ -347,6 +382,33 @@ const servidor = new Servidor({
   // responde `ausente`, que é a verdade.
   ...(process.env.REDIS_URL ? { estadoDoRedis: () => saudeRedis.estado() } : {}),
   estadoDoPoller: () => poller?.estado() ?? null,
+  pedeRefresh: async () => {
+    const disparados: string[] = [];
+    if (agendador) {
+      for (const id of ['quente', 'medio', 'frio']) {
+        if (agendador.pede(id)) disparados.push(id);
+      }
+    } else if (process.env.REFRESH_URL) {
+      try {
+        const res = await fetch(`${process.env.REFRESH_URL.replace(/\/+$/, '')}/pede`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(3_000),
+        });
+        if (res.ok) {
+          const body = (await res.json()) as { disparados?: string[] };
+          if (Array.isArray(body.disparados)) disparados.push(...body.disparados);
+        }
+      } catch {
+        /* refresh pode estar reiniciando */
+      }
+    }
+    if (poller?.ativo) {
+      for (const q of poller.estado().porQuery) {
+        void poller.tentaAgora(q.query);
+      }
+    }
+    return { disparados };
+  },
   // Sempre passado, mesmo desligado — "não há agendador neste processo, e o motivo é
   // este" é justamente a frase que faltava em 16/09/2026.
   estadoDoAgendador: () =>
@@ -443,6 +505,7 @@ instalaDesligamento({
     { nome: 'poller', fn: () => poller?.para() },
     { nome: 'aquecedor', fn: () => aquecedor?.para() },
     { nome: 'http', fn: () => fechaHttp(http) },
+    { nome: 'ao vivo', fn: () => aoVivo.fecha() },
     { nome: 'servidor', fn: () => servidor.destroi() },
     // Grava o que ainda está no buffer de eventos antes de fechar o pool.
     { nome: 'eventos e uso', fn: async () => {

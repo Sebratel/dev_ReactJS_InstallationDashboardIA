@@ -42,12 +42,44 @@ ARG VITE_FIREBASE_PROJECT_ID
 ARG VITE_FIREBASE_APP_ID
 RUN npm run web:build
 
+# QUAL VERSÃO ESTÁ NO AR (QA D-15). A stack constrói a imagem no Portainer e o
+# `.dockerignore` tira o `.git/`, então dentro do contêiner não há de onde deduzir isso:
+# este arquivo é a única resposta que a API tem.
+#
+# De onde sai o commit, nesta ordem:
+#
+#   1. O `ARG COMMIT`, quando quem constrói informa (o CI manda o sha do workflow).
+#   2. O `.git/HEAD` do próprio contexto, que o `.dockerignore` deixa entrar junto com
+#      `refs/` e `packed-refs` — alguns KB. É o que faz o build do Portainer, que clona
+#      o repositório e constrói ali, sair identificado sem ninguém digitar nada.
+#
+# Quem lê o `.git` é `backend/api/src/versao.ts`, o MESMO código que a API usa para
+# responder — não uma segunda implementação em shell que divergiria em silêncio.
+#
+# A `impressao` não depende de nenhuma das duas: é o sha256 do que de fato embarcou, e é
+# ela que permite desconfiar de um commit errado. Duas imagens com a mesma impressão são
+# a mesma coisa, tenham o commit que tiverem.
+ARG COMMIT=""
+RUN set -eu; \
+    commit="$COMMIT"; \
+    if [ -z "$commit" ]; then \
+      commit=$(node -e "import('/repo/backend/api/src/versao.ts').then((m) => process.stdout.write(m.versaoDaInstancia('/repo').commit ?? ''))" || true); \
+    fi; \
+    impressao=$(find backend frontend/dist package.json package-lock.json -type f -print0 \
+      | sort -z | xargs -0 sha256sum | sha256sum | cut -c1-16); \
+    construido=$(date -u +%Y-%m-%dT%H:%M:%SZ); \
+    printf '{"commit":"%s","construidoEm":"%s","impressao":"%s"}' \
+      "$commit" "$construido" "$impressao" > /repo/versao.json; \
+    cat /repo/versao.json
+
 FROM node:24-slim AS runtime
 WORKDIR /repo
 ENV NODE_ENV=production
 
 COPY --from=build /repo/node_modules ./node_modules
 COPY --from=build /repo/package.json ./package.json
+# Quem está no ar: commit, hora do build e impressão do conteúdo (`versao.ts`).
+COPY --from=build /repo/versao.json ./versao.json
 
 # `backend/` INTEIRO (api, packages, tools, specs), e a mudança tem motivo medido.
 #
@@ -80,7 +112,8 @@ USER node
 
 EXPOSE 3100
 
-# 1024, e o número é medido — era 10240, escolhido por estimativa (e 1536 até 17/10/2026).
+# 768, e o número é medido — era 10240, escolhido por estimativa (1536 até 17/10/2026 e
+# 1024 até 24/10/2026).
 #
 # A API tem a mesma cota de 3 GB do dashboard Comercial. Medido em 16/10/2026,
 # em um contêiner isolado de 3 GB, com a piscina em 1 worker de 512 MB:
@@ -92,11 +125,16 @@ EXPOSE 3100
 # até 42 GB de heap numa máquina de 16 GB. O `mem_limit` do compose tem de ser
 # derivado desta linha e revalidado dentro do cgroup.
 #
-# Heap autorizado hoje: 1024 (aqui) + 1 × 512 (piscina) = 1536 MB, dentro do
-# `mem_limit: 1600m` do docker-compose.prod.yml, com 64 MB de folga. A medição de
-# 18/10/2026 passou 200 usuários distintos com pico de cgroup de 1344,2 MiB.
-# `backend/api/test/piscina-workers.test.ts` falha se os três números saírem de sincronia.
-CMD ["node", "--max-old-space-size=1024", "--expose-gc", "backend/api/src/index.ts"]
+# **768 desde 24/10/2026**, para caber o processo filho da busca ao vivo
+# (`backend/api/src/geracao-em-processo.ts`, até 1024 MB de heap, um por vez) no mesmo
+# `mem_limit`. O pai usa 34–42 MB de heap em produção (16/10/2026) mais o cache de
+# respostas em memória (teto de 256 MB); 768 continua acima dos 512 de cada worker, então
+# o que uma worker calcula o pai calcula no caminho de emergência (piscina parada).
+#
+# Heap autorizado hoje: 768 (aqui) + 2 × 512 (piscina) + 1024 (o filho ao vivo) = 2816 MB,
+# dentro do `mem_limit: 3072m` do docker-compose.prod.yml, com 256 MB de folga.
+# `backend/api/test/piscina-workers.test.ts` falha se os números saírem de sincronia.
+CMD ["node", "--max-old-space-size=768", "--expose-gc", "backend/api/src/index.ts"]
 
 # Frontend separado: entrega o bundle React e encaminha rotas dinâmicas para a
 # API na rede Docker. TLS continua sob responsabilidade do proxy externo.

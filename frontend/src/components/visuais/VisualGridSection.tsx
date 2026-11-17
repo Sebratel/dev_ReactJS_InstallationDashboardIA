@@ -5,6 +5,7 @@ import {
   useAlturaDasFaixasLargas,
 } from '../../hooks/useAlturaMedida.ts';
 import type { AoFiltrar } from '../../utils/rota.ts';
+import { ProvedorContextoDaPagina } from '../../context/ContextoDaPagina.tsx';
 import { Visual } from './Visual.tsx';
 import { VisualNaDobra } from './VisualNaDobra.tsx';
 
@@ -60,49 +61,51 @@ export function VisualGridSection({
   if (!layout) return null;
 
   return (
-    <div className="flex flex-col gap-[var(--gap)]">
-      {layout.faixas.map((faixa, i) => {
-        if (faixa.colunas.length === 0) return null;
-        const cheia = faixa.colunas.length === 1;
+    <ProvedorContextoDaPagina pagina={pagina} filtros={filtros} clicados={clicados}>
+      <div className="flex flex-col gap-[var(--gap)]">
+        {layout.faixas.map((faixa, i) => {
+          if (faixa.colunas.length === 0) return null;
+          const cheia = faixa.colunas.length === 1;
 
-        return (
-          <div key={i} className="flex flex-col gap-[var(--gap)]">
-            {faixa.titulo ? <TituloSecao>{faixa.titulo}</TituloSecao> : null}
-            <div className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
-              {faixa.colunas.map((col) => {
-                const visual = porId.get(col.visual);
-                return (
-                  <div key={col.visual} style={{ gridColumn: `span ${col.span}` }}>
-                    {visual ? (
-                      <Visual
-                        pagina={pagina}
-                        visual={visual}
-                        filtros={filtros}
-                        clicados={clicados}
-                        aoFiltrar={aoFiltrar}
-                        aoPrever={aoPrever}
-                        render={col.render}
-                      />
-                    ) : (
-                      <VisualNaDobra
-                        pagina={pagina}
-                        id={col.visual}
-                        altura={faixa.altura}
-                        filtros={filtros}
-                        clicados={clicados}
-                        aoFiltrar={aoFiltrar}
-                        aoPrever={aoPrever}
-                        render={col.render}
-                      />
-                    )}
-                  </div>
-                );
-              })}
+          return (
+            <div key={i} className="flex flex-col gap-[var(--gap)]">
+              {faixa.titulo ? <TituloSecao>{faixa.titulo}</TituloSecao> : null}
+              <div className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
+                {faixa.colunas.map((col) => {
+                  const visual = porId.get(col.visual);
+                  return (
+                    <div key={col.visual} style={{ gridColumn: `span ${col.span}` }}>
+                      {visual ? (
+                        <Visual
+                          pagina={pagina}
+                          visual={visual}
+                          filtros={filtros}
+                          clicados={clicados}
+                          aoFiltrar={aoFiltrar}
+                          aoPrever={aoPrever}
+                          render={col.render}
+                        />
+                      ) : (
+                        <VisualNaDobra
+                          pagina={pagina}
+                          id={col.visual}
+                          altura={faixa.altura}
+                          filtros={filtros}
+                          clicados={clicados}
+                          aoFiltrar={aoFiltrar}
+                          aoPrever={aoPrever}
+                          render={col.render}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+    </ProvedorContextoDaPagina>
   );
 }
 

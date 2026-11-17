@@ -119,6 +119,8 @@ export interface CarregaOptions {
    * `projetar`.
    */
   lerCalculadas?: boolean;
+  /** Tabelas calculadas a NÃO materializar nesta carga (por nome normalizado ou original). */
+  pulaCalculadas?: ReadonlySet<string>;
   /**
    * O poller de quase-realtime (`backend/api/src/poller-realtime.ts`), por nome de
    * tabela: uma função que recebe as linhas lidas do arquivo e devolve a versão
@@ -402,6 +404,7 @@ export async function carrega(opts: CarregaOptions): Promise<Carregado> {
   const recalculadas: string[] = [];
   for (const t of calculatedTableOrder(opts.model)) {
     if (!noPlano.has(normaliza(t.name))) continue;
+    if (opts.pulaCalculadas?.has(normaliza(t.name))) continue;
 
     // Congelada em disco? Então não recalcula. Foram ~21 dos ~25 minutos de
     // `agendamento-field` (ACHADOS #53): quatro colunas calculadas desta tabela,
@@ -921,6 +924,7 @@ function confereCalculadasAntesDeLer(
 
   for (const t of calculatedTableOrder(opts.model)) {
     if (!noPlano.has(normaliza(t.name))) continue;
+    if (opts.pulaCalculadas?.has(normaliza(t.name))) continue;
     if (recalculaPorCorte.has(normaliza(t.name))) continue;
     const { tocadas } = tocadasPeloTempoReal(opts.model, t, opts.overlay);
     if (tocadas.length > 0 && 'traducao' in traducaoDe(t)) continue;

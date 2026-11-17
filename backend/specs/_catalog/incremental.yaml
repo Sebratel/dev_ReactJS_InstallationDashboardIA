@@ -134,8 +134,8 @@ queries:
       #
       # Há ainda um terceiro `it.id IN (...)` no CTE `alocacao` (linha ~232 do SQL),
       # com outra lista de tipos. A âncora de duas linhas não o alcança.
-      - de: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo"
-        para: "    WHERE it.id IN ('12','1014','1254','1255','1256','1136','249','268','1160','1015','279','15')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo\n      AND a.title IN (SELECT title FROM alvos)"
+      - de: "    WHERE it.id IN ('12','1014','1297','1254','1255','1256','1136','249','268','1160','1015','279','15', '1298')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo"
+        para: "    WHERE it.id IN ('12','1014','1297','1254','1255','1256','1136','249','268','1160','1015','279','15', '1298')\n      AND a.created >= DATE_TRUNC('year', CURRENT_DATE)   -- o mais largo dos dois ramos; cada um se recorta abaixo\n      AND a.title IN (SELECT title FROM alvos)"
 
   # -------------------------------------------------------------------------
   # field-agenda — a query mais pesada do corpus (226,9 s só de busca em 22/09,

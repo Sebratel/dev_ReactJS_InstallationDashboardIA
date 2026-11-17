@@ -215,7 +215,7 @@ test('erro de avaliação é MEvalError, não exceção genérica', () => {
   assert.throws(() => ev.avaliaQuery('let a = Table.Pivot(1) in a'), MEvalError);
 });
 
-test('o corpus continua com 26 queries e 170 passos', () => {
+test('o corpus continua com 29 queries e 180 passos', () => {
   // 24 queries / 327 passos + `field-agenda-slot` (ACHADOS #87): 1 query, 3 passos
   // (mesma forma de `field-agenda` — Fonte, Linhas Filtradas1, Tipo Alterado). Não
   // vem do PBIP, mas é uma query de verdade e entra no corpus como qualquer outra.
@@ -255,16 +255,30 @@ test('o corpus continua com 26 queries e 170 passos', () => {
   //
   // -1 (23/10/2026, ACHADOS #237): `quadro-funcional` passou a ler o GESTOR da Senior, e
   // o `Table.SelectRows` nos três nomes da planilha saiu. 171 - 1 = 170.
+  //
+  // +6 (24/10/2026, ACHADOS #239): a mescla com TECNICOS AUXILIARES voltou do `sql:` de
+  // `protocolos-produtividade` para o M — tipar a chave, mesclar, expandir, as duas
+  // colunas do ramo e tirar as de apoio. 170 + 6 = 176.
+  //
+  // +1 query, +1 passo (26/10/2026, docs/SPEC-DRIVEN.md): `relatos-do-dia`, gerada, só o
+  // `Fonte` — as contagens de relato que congelam o `Status Protocolo Dia` sem a agenda
+  // completa. 177. E +1/+1 no mesmo dia: `valores-do-relato`, gerada pelo mesmo script —
+  // os valores dos seletores de relato. 178.
+  //
+  // +1 query, +2 passos (12/11/2026, QA D-20, ACHADOS #254): `metas-instalacao`, À MÃO —
+  // a meta do mês que um gestor edita. `Fonte` (o ponteiro para o `sql:`) e o
+  // `Table.TransformColumnTypes` que tipa `META` como inteiro. 180.
   const qs = corpus();
-  assert.equal(qs.length, 26);
+  assert.equal(qs.length, 29);
   assert.equal(
     qs.reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    170,
+    180,
   );
   // Escopo == corpus desde o achado #42: os 24 passos de `clima-tempo` deixaram de
-  // ser a diferença entre os dois números (eram 303 contra 327).
+  // ser a diferença entre os dois números (eram 303 contra 327). Os dois sobem juntos:
+  // `metas-instalacao` está no escopo como qualquer outra.
   assert.equal(
     qs.filter(NO_ESCOPO).reduce((soma, q) => soma + (parseMLet(q.m_expression!)?.length ?? 0), 0),
-    170,
+    180,
   );
 });

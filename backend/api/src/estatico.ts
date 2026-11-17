@@ -41,7 +41,20 @@ function serveArquivo(res: http.ServerResponse, base: string, arquivo: string): 
     // O React Router entende `/visao-geral`; o servidor de produção precisa entregar
     // a mesma casca que o Vite entrega em desenvolvimento. Arquivo com extensão segue
     // como 404 para não esconder asset quebrado atrás do HTML da aplicação.
-    if (!arquivo.includes(path.sep) && !arquivo.includes('/') && path.extname(arquivo) === '') {
+    //
+    // **Nome que começa com ponto nunca é rota da tela** (QA D-03, 16/11/2026). `/.env`
+    // e `/.htpasswd` passavam pelas duas condições acima — para o Node o ponto inicial
+    // é o NOME, não a extensão, então `path.extname('.env')` é string vazia — e
+    // recebiam o HTML da aplicação com 200. Não vazava nada (o arquivo não existe, e o
+    // que voltava era a casca do React), mas um varredor lê 200 como "existe" e insiste.
+    const nome = arquivo.split(/[\\/]/).pop() ?? arquivo;
+    const comecaComPonto = nome.startsWith('.');
+    if (
+      !arquivo.includes(path.sep) &&
+      !arquivo.includes('/') &&
+      path.extname(arquivo) === '' &&
+      !comecaComPonto
+    ) {
       return serveArquivo(res, raiz, 'index.html');
     }
     responde(res, 404, { erro: `arquivo '${arquivo}' não existe` });

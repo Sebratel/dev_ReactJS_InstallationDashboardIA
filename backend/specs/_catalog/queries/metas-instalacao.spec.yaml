@@ -1,0 +1,28 @@
+# MANTIDO POR HUMANOS — não sai do PBIP (registrado em docs/SPEC-DRIVEN.md, 12/11/2026).
+#
+# A META DO MÊS deixou de ser a constante `2865` dentro da medida `# META` e passou a ser
+# uma linha do `DB_InstallationDashboard`, editável por um gestor na aba "Metas". O QA
+# achou o painel em 2.865 contra 2.583 no Power BI (D-20): a meta é número de negócio, e
+# número de negócio não mora em código.
+#
+# UMA LINHA, UMA COLUNA. Sem relação com nenhuma outra tabela do modelo, de propósito:
+# assim nenhum filtro de página a recorta e `MAX('METAS'[META])` devolve o mesmo valor em
+# qualquer contexto — exatamente o que a constante fazia. Se um dia a meta passar a valer
+# por competência, é aqui e na medida que isso muda.
+id: metas-instalacao
+name: METAS
+origin: table:METAS
+source_type: odbc
+datasource: dbMaria
+sql: "SELECT bg.goal_value AS `META` FROM DB_InstallationDashboard.business_goals AS bg WHERE bg.goal_id = 'meta_mes'"
+url: null
+sheet: null
+endpoints: null
+source_tables:
+- db_installationdashboard.business_goals
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbMaria", "SELECT bg.goal_value AS `META` FROM DB_InstallationDashboard.business_goals AS bg WHERE bg.goal_id = 'meta_mes'"),
+      #"Tipo Alterado" = Table.TransformColumnTypes(Fonte,{{"META", Int64.Type}})
+  in
+      #"Tipo Alterado"

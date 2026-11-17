@@ -31,6 +31,12 @@ x-args-da-tela: &args-da-tela
   VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:?defina VITE_FIREBASE_AUTH_DOMAIN no .env}
   VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:?defina VITE_FIREBASE_PROJECT_ID no .env}
   VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:?defina VITE_FIREBASE_APP_ID no .env}
+  # Qual commit está sendo construído (QA D-15). SEM `:?`, ao contrário das de cima:
+  # vazio é um "não sei" honesto, e a imagem continua identificada pela impressão do
+  # conteúdo (ver Dockerfile). Quem constrói informa —
+  # `COMMIT=$(git rev-parse --short HEAD) docker compose -f docker-compose.prod.yml build` —
+  # e o CI manda o sha do próprio workflow.
+  COMMIT: ${COMMIT:-}
 
 # Log com teto, como no dashboard Comercial: o `refresh` escreve o dia todo, e o
 # json-file sem limite enche o disco do host do Portainer em silêncio.
@@ -50,15 +56,24 @@ services:
       # sem `target` este serviço subia a imagem do cron e ficava reiniciando (25/09/2026).
       target: runtime
     pull_policy: build
-    # O CONTRATO DE MEMÓRIA, e os três números têm de andar juntos:
+    # O CONTRATO DE MEMÓRIA, e os números têm de andar juntos:
     #
-    #   Dockerfile  --max-old-space-size=1024   heap do processo pai
+    #   Dockerfile  --max-old-space-size=768    heap do processo pai
     #   API_WORKER_HEAP_MB=512 × API_WORKERS=2  heap da piscina de DAX
+    #   filho da busca ao vivo, um por vez     1024 (`geracao-em-processo.ts`)
     #   ------------------------------------------------------------
-    #   2048 MB autorizados de heap
-    #   mem_limit 3072m -> 1024 MB de folga para o que NÃO é heap: os datasets das páginas
-    #   (250 MB a 1 GB cada, em Int32Array fora do heap, até 2 por worker —
-    #   `TETO_CACHE_POR_WORKER`), buffers do .jsonl.gz, runtime, V8 e pilhas.
+    #   2816 MB autorizados de heap. **Desde 12/11/2026 isto vale SEMPRE**: o padrão de
+    #   `AO_VIVO_PAGINAS` deixou de ser vazio (D-16, lá embaixo), então o processo filho
+    #   da busca ao vivo sempre existe. Os 1792 MB de antes — sem ao vivo, sem filho — só
+    #   acontecem se alguém puser a variável da stack em vazio de propósito.
+    #   mem_limit 3072m -> 256 MB de folga no pior caso, para o que
+    #   NÃO é heap: os datasets das páginas (em Int32Array fora do heap, 1 por worker —
+    #   `API_DATASETS_POR_WORKER`), buffers do .jsonl.gz, runtime, V8 e pilhas.
+    #
+    # **24/10/2026: pai de 1024 para 768 e o filho no contrato.** Com as 13 páginas ao
+    # vivo e a busca dentro do processo, a API morreu por heap na subida; no filho, o pai
+    # ficou entre 140 e 170 MB durante as buscas e o filho chegou a 1,0–1,1 GB, saindo
+    # em seguida (docs/DECISAO-AO-VIVO.md § A busca num processo filho).
     #
     # **2304m -> 3072m em 21/10/2026, porque a `api` caiu 4 vezes em ~6 h** (restarts
     # 18:51, 20:58, 22:21 e 23:36 UTC; `RestartCount=4`, nenhum erro no log antes de
@@ -104,6 +119,7 @@ services:
       # A API usa a mesma conta MARIA_* do refresh. O banco de acessos é outro.
       MARIA_HOST: ${MARIA_HOST:-}
       MARIA_PORT: ${MARIA_PORT:-3306}
+      MARIA_DATABASE: ${MARIA_DATABASE:-DB_Applicattion}
       MARIA_USER: ${MARIA_USER:-}
       MARIA_PASSWORD: ${MARIA_PASSWORD:-}
       ACESSO_DB_DATABASE: ${ACESSO_DB_DATABASE:-DB_InstallationDashboard}
@@ -179,6 +195,48 @@ services:
       # pontas saíam como `analytics-platform`, e o custo de banco não tinha dono. Na API,
       # quem conecta é o poller de quase-realtime.
       VOALLE_APPLICATION_NAME: analytics-api-poller
+      # Modo sombra da fonte ao vivo (docs/DECISAO-AO-VIVO.md, fase 1): a página
+      # `agendamento-field` de período FECHADO refeita no SRD em segundo plano e comparada
+      # visual a visual com a do snapshot; o resultado vai só para o log
+      # (`[ao-vivo] sombra …`) e para as métricas `sombra_*`. Não muda resposta nenhuma.
+      # Desligado ('0') salvo decisão nas variáveis da stack. Ligada, ela e `AO_VIVO_PAGINAS`
+      # dividem pools próprios no SRD (até 4 conexões, `analytics-ao-vivo`).
+      AO_VIVO_SOMBRA: ${AO_VIVO_SOMBRA:-0}
+      # Páginas SERVIDAS ao vivo do SRD, separadas por vírgula. Sabem ser:
+      #   agendamento-field — o mês da tela com a agenda COMPLETA (grão relato, ~1 min de
+      #     busca), válido por 5 min (mês corrente) ou 1 h (fechado), com o tempo real do
+      #     poller (30–60 s) aplicado por cima; só a previsão de
+      #     chuva segue pelo snapshot, e com a agenda de slot — a worker não carrega mais
+      #     as 633 mil linhas da completa para esta página;
+      #   premiacao-instalacao, diario-instalacao, protocolos-detalhados,
+      #   manutencao-inicial, instalacao-reincidente — UM conjunto do ano para as cinco
+      #     (produtividade + protocolos do ano, ~1–2 min de SRD), buscado em segundo plano
+      #     na subida e válido por 10 min; o calendário de instalação e as consultas de
+      #     reincidência vêm do snapshot;
+      #   visao-geral, relatorio-do-mes, relatorio-do-ano, telefonia-ouvidoria, l-inst,
+      #   l-mapa, l-tec — UM conjunto da janela para as sete (protocolos, telefonia e a
+      #     agenda no grão de slot, do início do ano anterior em diante, ~2 min de SRD),
+      #     buscado e renovado do mesmo jeito; backlog, capacidade, clima e consolidado vêm
+      #     do snapshot.
+      # Vazio = todas pelo snapshot, como sempre. Busca que falha ou passa de 45 s: o pedido
+      # sai pelo snapshot. Cada busca é um processo filho, UMA por vez (pico de ~1 GB, de
+      # 1 a 2 min; está no contrato de memória acima). Pools
+      # próprios no SRD (`analytics-ao-vivo`), pastas em `API_RUNTIME_DIR/ao-vivo`.
+      # Para MEMÓRIA, só `agendamento-field` corta dado; ano e janela dão frescor de 10
+      # min contra os 30 do refresh (docs/DECISAO-AO-VIVO.md § A busca num processo filho).
+      #
+      # **O PADRAO DEIXOU DE SER VAZIO EM 12/11/2026 (QA, D-16).** A `field-agenda` completa
+      # saiu do snapshot no passo 5 (`completa_no_snapshot: false`), e com a variavel vazia
+      # a Agendamento Field abria com SETE visuais indisponiveis — Historico de relatos,
+      # Relatos completos, Improdutivo/Produtivo — em todo pedido, para sempre. A API
+      # avisava na subida (`avisoSemCompleta`), mas um aviso no log do container nao e uma
+      # trava: a homologacao rodou assim ate o QA achar na tela.
+      # Entao a `agendamento-field` entra por PADRAO: ela nao e opcional, e a unica pagina
+      # cujo grao saiu do snapshot. As outras doze seguem opcionais (dao frescor de 10 min
+      # contra os 30 do refresh, nao corrigem numero) — ponha-as na variavel da stack para
+      # liga-las. Uma lista explicita na stack substitui este padrao inteiro.
+      AO_VIVO_PAGINAS: ${AO_VIVO_PAGINAS:-agendamento-field}
+      REFRESH_URL: http://refresh:3102
       # A chave do rate limit é o `X-Real-IP` que o `web` escreve com `$remote_addr`
       # (`nginx.web.conf`, em toda location que repassa). Seguro só porque a API não tem
       # porta publicada: ninguém de fora fala com ela sem passar pelo `web`.
@@ -206,8 +264,21 @@ services:
       # glibc abre até 8 arenas de malloc por núcleo, e cada thread (principal, 1 worker,
       # libuv, V8) segura memória devolvida na sua. 2 arenas: menos RSS preso, contenção
       # desprezível com 3 threads de JS. Afeta só o que é malloc (zlib do .jsonl.gz,
-      # buffers), não o heap do V8. Ganho NÃO medido ainda (#231).
+      # buffers), não o heap do V8. MEDIDO em 27/10/2026 (`npm run probe:memoria-workers` na
+      # imagem de produção): ~50 MB a menos no fim e ~60 MB no pico. Pouco, mas de graça.
       MALLOC_ARENA_MAX: '2'
+      # E o glibc devolve ao sistema o que passa de 128 KB, em vez de guardar: mais ~70 MB
+      # a menos, ociosa e no pico, sem custo de tempo medido (mesma sonda, 27/10/2026).
+      MALLOC_MMAP_THRESHOLD_: '131072'
+      MALLOC_TRIM_THRESHOLD_: '131072'
+      # **A alavanca que importava (fase 4, 27/10/2026, ACHADOS #253).** A memória que a
+      # `api` segurava entre um cálculo e outro não era dado: eram páginas que o V8 libera
+      # e GUARDA para reuso, num reservatório do processo inteiro. A worker parada nem
+      # coletava. Com isto, cada worker parada há N ms faz uma coleta de último recurso, que
+      # esvazia o reservatório: a sonda foi de 1.252 MB para 653 MB com a API ociosa (com o
+      # ajuste do malloc acima, 585). O pico durante o cálculo não muda. Cada coleta leva
+      # ~100–170 ms e só roda com a worker parada; tarefa nova cancela. 0 desliga.
+      API_WORKER_COLETA_OCIOSA_MS: ${API_WORKER_COLETA_OCIOSA_MS:-5000}
       # Redis DESTA stack (serviço `redis` abaixo), atrás do cache em memória: o que o
       # teto de `CACHE_RESPOSTA_MB` despeja volta daqui em vez de ser recalculado, e o
       # cache sobrevive ao restart da api. Decisão do Erick em 16/10/2026, no mesmo padrão
@@ -304,6 +375,11 @@ services:
     # `field-agenda` passou de 632 mil linhas em 20/10/2026 e o processo era morto pelo
     # cgroup de 1400 MiB antes de publicar o snapshot. Os 3 GB deixam folga para buffers
     # fora do heap durante a transformação, sem dividir o orçamento da API.
+    #
+    # **A `field-agenda` SAIU do refresh em 26/10/2026** (passo 5 de docs/DECISAO-AO-VIVO.md).
+    # Este teto existia por ela, e desce depois de MEDIDO: o pico do contêiner numa carga das
+    # 3h sem ela (`docker stats` / estatística do Portainer). Antes dela crescer, 1400 MiB
+    # bastavam para o resto. Não baixe sem a medida.
     mem_limit: 3g
     # **Orçamento do host (20/10/2026):** a stack não pode ocupar mais de 3 GB o tempo
     # todo; pico pode, desde que não afete as outras aplicações do servidor. Contínuo:

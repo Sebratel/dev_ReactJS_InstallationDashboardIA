@@ -58,13 +58,22 @@ try {
   console.log('colunas devolvidas:');
   console.log('  ' + r.fields.map((f) => f.name).join(' | '));
 
-  // As 48 físicas que o modelo declara, menos GESTOR (que fica na camada M).
+  // As físicas que o modelo declara, menos GESTOR (que fica na camada M).
+  //
+  // **Esta lista NÃO consome o dado — ela só confere o formato da saída.** E foi
+  // exatamente isso que o inventário de S6 mostrou em 13/11/2026: seis colunas desta
+  // query tinham como único "uso" em todo o repositório este array, e por isso passavam
+  // pela regra `so_carrega_se_usada` sem que ninguém jamais as lesse. Saíram do `sql:` e
+  // saem daqui junto (ACHADOS #258): `RUA`, `TELEFONE`, `LATITUDE` e `LONGITUDE`, que são
+  // dado pessoal, mais `NUMERO PATRIMÔNIO` e `USUÁRIO`. Medido antes de tirar: nenhum
+  // grupo colide e nenhuma linha se funde ao reduzir o `SELECT DISTINCT`, e a consulta
+  // devolve as mesmas 94.320 linhas de antes.
   const esperadas = [
     'SOLICITACAO','N°PROTOCOLO','DATA AGENDA','DATA CRIADO','DATA ENCERRADO','STATUS',
-    'CIDADE','BAIRRO','RUA','NUMERO PATRIMÔNIO','TELEFONE','CLIENTE','EQUIPE','LATITUDE',
-    'LONGITUDE','RESPONSÁVEL','TIPO DE PROTOCOLO','PONTO DE ACESSO','POP','VLAN','SLOT',
+    'CIDADE','BAIRRO','CLIENTE','EQUIPE',
+    'RESPONSÁVEL','TIPO DE PROTOCOLO','PONTO DE ACESSO','POP','VLAN','SLOT',
     'PORTA','CTO','STATUS CONTRATO','ESTAGIO CONTRATO','NUMERO CONTRATO','ITEM','CONTEXTO',
-    'PROBLEMA','OLT','EQUIPAMENTO','USUÁRIO','CRIADO POR','STATUS FINANCEIRO','HORA CRIADO',
+    'PROBLEMA','OLT','EQUIPAMENTO','CRIADO POR','STATUS FINANCEIRO','HORA CRIADO',
     'SIGLA CIDADE','INDICE 2','HORA AGENDA','DATA ALOCAÇÃO','TÉCNICO INSTALAÇÃO','POSIÇÃO',
     'HR. ALOCAÇÃO','TÉCNICO TROCA','DATA DA TROCA','INSTALADOR','DATA FINAL',
     'TECNICOS AUXILIARES.AUXILIAR',

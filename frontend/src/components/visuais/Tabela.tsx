@@ -26,7 +26,6 @@ import { selecaoDe, type AoFiltrar } from '../../utils/rota.ts';
 import { CorpoDaTabela, textoDaCelula } from './tabela/CorpoDaTabela.tsx';
 import { useOrdemDaTabela } from '../../hooks/useOrdemDaTabela.ts';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
-import { Nota } from '../ui/Nota.tsx';
 
 /**
  * Quanto o pedido de busca espera depois da última tecla. Sem isto, `1784218` são sete
@@ -38,6 +37,7 @@ export function Tabela(props: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
+  clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
 }) {
   // **Duas velocidades, e por isso dois estados.** `termoBusca` é o que está escrito no
@@ -60,7 +60,28 @@ export function Tabela(props: {
     return () => clearTimeout(t);
   }, [termoBusca]);
 
-  const janela = useJanela(props.pagina, props.visual, props.filtros, termoAplicado);
+  // A ordem sai das colunas da PRIMEIRA resposta, e não das da janela: as colunas não
+  // mudam de uma janela para outra, e o `useJanela` precisa da ordem para montar o
+  // pedido — pegar as colunas dele aqui seria circular.
+  const colunasIniciais = (props.visual.dados as DadosDeTabela | undefined)?.colunas ?? [];
+  const ordem = useOrdemDaTabela(colunasIniciais.findIndex((c) => c.tipo === 'date'));
+  const colOrdenada = ordem.coluna;
+  const ordemDesc = ordem.desc;
+  // **A ordem escolhida vai ao SERVIDOR (QA D-17).** Só a que sai do padrão: a de
+  // abertura é a mesma que `ordenaPorDataPadrao` já aplicou sobre a consulta inteira, e
+  // mandá-la de volta custaria um pedido a mais em toda tabela que abre. `coluna` nula é
+  // o terceiro estado do cabeçalho ("nenhuma"), que também é a ordem natural do servidor.
+  const ordemParaServidor =
+    ordem.foraDoPadrao && colOrdenada !== null ? { coluna: colOrdenada, desc: ordemDesc } : null;
+
+  const janela = useJanela(
+    props.pagina,
+    props.visual,
+    props.filtros,
+    termoAplicado,
+    ordemParaServidor,
+    props.clicados,
+  );
   const d = janela.visual.dados as DadosDeTabela | undefined;
   const temDados = !!d && !!d.colunas && !!d.linhas;
   const colunas = useMemo(() => (temDados ? d!.colunas : []), [temDados, d]);
@@ -69,13 +90,11 @@ export function Tabela(props: {
   // TODOS os hooks antes do `return` de "sem dados" (fase 4): eles estavam depois dele,
   // e uma tabela que perdesse os dados entre dois quadros derrubaria a árvore.
 
-  const colunaDataPadrao = useMemo(() => colunas.findIndex((c) => c.tipo === 'date'), [colunas]);
-  const ordem = useOrdemDaTabela(colunaDataPadrao);
-  const colOrdenada = ordem.coluna;
-  const ordemDesc = ordem.desc;
-
-  // **Só ordena.** A busca saiu daqui em 16/09/2026 e foi para o servidor (`janelaDe`/
-  // `casaComTermo`): peneirar as 200 linhas da janela baixada não é buscar.
+  // **Ordenar aqui virou redundância, e fica como rede.** A busca saiu daqui em
+  // 16/09/2026 e a ordenação em 16/11/2026 (QA D-17): as duas valem sobre o resultado
+  // inteiro, no servidor. A fatia que chega JÁ vem ordenada, então este `sort` não
+  // reordena nada — ele só garante que, contra uma API mais velha que a tela, a fatia
+  // visível continue na ordem que o cabeçalho anuncia.
   const ordenadas = useMemo(
     () => ordenaLinhas(linhas, colOrdenada, ordemDesc),
     [linhas, colOrdenada, ordemDesc],
@@ -116,29 +135,24 @@ export function Tabela(props: {
     );
   }
 
-  const filtrando = ordem.foraDoPadrao;
-
   const totalLocal = ordenadas.length;
   const inicio = Math.min(inicioLocal, Math.max(0, totalLocal - 1));
   const visiveis = ordenadas.slice(inicio, inicio + LINHAS_VISIVEIS);
 
-  // Filtrando, a paginação é sobre o universo local. Sem filtro, ela é sobre a consulta
-  // inteira — e aí `de` é o índice GLOBAL da primeira linha.
-  const estado = filtrando
-    ? { de: inicio, mostradas: visiveis.length, total: totalLocal }
-    : {
-        de: d.de + inicio,
-        mostradas: visiveis.length,
-        total: d.linhasTotais,
-        totalSemBusca: d.totalSemBusca,
-      };
+  // A paginação é SEMPRE sobre a consulta inteira, e `de` é o índice global da primeira
+  // linha. Até 16/11/2026 havia um segundo modo, "universo local", para quando a ordem
+  // saía do padrão: a tela ordenava a fatia e tinha de paginar só dentro dela. Com a
+  // ordem no servidor (D-17) esse modo deixou de existir — e com ele a nota que avisava
+  // "vale sobre as N linhas desta fatia", que era a confissão do defeito.
+  const estado = {
+    de: d.de + inicio,
+    mostradas: visiveis.length,
+    total: d.linhasTotais,
+    totalSemBusca: d.totalSemBusca,
+  };
 
   /** Recebe um índice GLOBAL e decide se anda em memória ou busca outra fatia. */
   const vaiParaLinha = (linhaGlobal: number) => {
-    if (filtrando) {
-      setInicioLocal(Math.max(0, Math.min(linhaGlobal, Math.max(0, totalLocal - 1))));
-      return;
-    }
     if (linhaGlobal >= d.de && linhaGlobal < d.de + d.linhas.length) {
       setInicioLocal(linhaGlobal - d.de);
       return;
@@ -195,6 +209,7 @@ export function Tabela(props: {
             pagina: props.pagina,
             visual: props.visual.id,
             filtros: props.filtros,
+            clicados: props.clicados,
             busca: termoAplicado,
             aoProgredir: setProgressoDaExportacao,
           });
@@ -260,13 +275,6 @@ export function Tabela(props: {
           estaSelecionada={(linha) => selecaoDaLinha.some((v) => Object.is(v, linha[iDoClique]))}
         />
       )}
-      {filtrando && totalLocal > 0 && d.linhas.length < d.linhasTotais ? (
-        // Dizer o recorte em vez de deixar o número parecer o total.
-        <Nota como="p">
-          Busca e ordenação valem sobre as {d.linhas.length} linhas desta fatia, não sobre as{' '}
-          {d.linhasTotais} da consulta.
-        </Nota>
-      ) : null}
       <Paginacao
         janela={estado}
         carregando={janela.carregando}

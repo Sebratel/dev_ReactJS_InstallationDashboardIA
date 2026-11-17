@@ -285,6 +285,11 @@ grupos:
   # DUAS estão no grupo `medio` abaixo, e não aqui, porque 33s + 80s dentro de um
   # ciclo de 15 min apertariam este grupo sem necessidade medida (ver o comentário
   # do `medio`).
+  # `relatos-do-dia` entrou em 26/10/2026 (docs/DECISAO-AO-VIVO.md, passo 2): as contagens
+  # de relato por (protocolo, dia), ~38 mil linhas e ~11 s, de que o congelador tira o
+  # `Status Protocolo Dia` quando a agenda completa sai do snapshot. No MESMO grupo da
+  # `field-agenda-slot` porque as duas entram juntas na calculada: buscadas em instantes
+  # diferentes, um horário novo no meio vira linha a mais (medido: 4 em 2 dias).
   quente:
     queries:
       - contratos
@@ -294,8 +299,14 @@ grupos:
       - hora-atualizado
       - backlog-instalacao
       - field-agenda-slot
+      - relatos-do-dia
       - capacidade-equipe
       - apuracao-premiacao
+      # `metas-instalacao` entrou em 12/11/2026 (QA, D-20): UMA linha do
+      # DB_InstallationDashboard, o valor que a medida `# META` passou a ler no lugar da
+      # constante. Custo desprezivel, e aqui porque a meta que um gestor acabou de salvar
+      # tem de aparecer no painel no mesmo quarto de hora - nao no dia seguinte.
+      - metas-instalacao
     intervalo_minutos: 15
     incremental: false
 
@@ -536,9 +547,24 @@ grupos:
   # pelo motivo de sempre (ver acima). A cada 7 dias (`idade_maxima_dias`) a própria
   # incremental recusa e faz a completa — é o que pega cadastro renomeado e linha
   # apagada na fonte sem rastro de data.
+  #
+  # `valores-do-relato` entrou em 26/10/2026 (docs/DECISAO-AO-VIVO.md, passo 3): os
+  # valores distintos das três colunas de relato com seletor, de onde a API lista esses
+  # seletores sem carregar a agenda completa. Aqui, na cadência da `field-agenda` de quem
+  # a lista saía antes; dezenas de linhas, poucos segundos de SRD.
+  #
+  # **`field-agenda` SAIU do refresh em 26/10/2026** (passo 5 de DECISAO-AO-VIVO, proposto
+  # e aprovado pelo Erick em 25/10), junto com `completa_no_snapshot: false` em
+  # `projecao.yaml` — `completa-no-snapshot.test.ts` cobra os dois juntos. Quem lia a agenda
+  # completa do snapshot tem outro caminho: a Agendamento Field vem do SRD (o mês da tela,
+  # completo), o `Status Protocolo Dia` congela pelas contagens de `relatos-do-dia`, os
+  # seletores de relato listam de `valores-do-relato`, e o `calendar` sai da agenda de slot.
+  # Com ela saiu a incremental do grupo (era a única ligada). Voltar atrás: recolocar a
+  # query aqui, `incremental: [field-agenda]`, e a chave em `true`.
   frio:
     queries:
       - field-agenda
+      - valores-do-relato
       - protocolos-auxiliares
       - protocolos-telefonia
       - troca-endereco
@@ -547,4 +573,5 @@ grupos:
       - instalacoes-reincidentes
       - reincidencia
     intervalo_minutos: 60
-    incremental: [field-agenda]
+    incremental:
+      - field-agenda

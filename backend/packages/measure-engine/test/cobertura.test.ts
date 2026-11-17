@@ -42,9 +42,13 @@ function todasAsExpressoes(): Expressao[] {
   ];
 }
 
-test('o parser dá conta das 134 expressões DAX da base', () => {
+// 134 -> 133 (13/11/2026, ACHADOS #262): saiu 'PROTOCOLOS GERAL'[TURNO CRIADO],
+// calculada que nenhum visual alcançava e que mantinha [HORA CRIADO] na memória
+// de todas as 13 páginas (6,48 MB cada). Este número CAI quando DAX morto sai do
+// modelo; se SUBIR sem uma linha nova aqui, alguém acrescentou expressão sem contar.
+test('o parser dá conta das 133 expressões DAX da base', () => {
   const expressoes = todasAsExpressoes();
-  assert.equal(expressoes.length, 134, '78 medidas + 49 colunas + 7 tabelas calculadas');
+  assert.equal(expressoes.length, 133, '78 medidas + 48 colunas + 7 tabelas calculadas');
 
   const falhas: string[] = [];
   for (const e of expressoes) {
@@ -171,13 +175,13 @@ test('parser e scanner concordam sobre as referências das 134 expressões', () 
  * extrator perdeu. Se este teste falhar, olhe a partition no TMDL antes de
  * mexer em qualquer outra coisa.
  */
-test('nenhuma tabela fica sem origem: 18 vêm de query, 7 vêm de DAX', () => {
+test('nenhuma tabela fica sem origem: 19 vêm de query, 7 vêm de DAX', () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   const semOrigem = [...model.tables.values()].filter((t) => !t.queryRef && !t.tableDax);
   assert.deepEqual(semOrigem.map((t) => t.name), []);
 
   const deQuery = [...model.tables.values()].filter((t) => t.queryRef).length;
-  assert.equal(deQuery, 18);
+  assert.equal(deQuery, 19); // +1 em 12/11/2026: METAS (metas-instalacao, ACHADOS #254)
   assert.equal(model.calculatedTables.length, 7);
   assert.equal(deQuery + model.calculatedTables.length, model.tables.size);
 });

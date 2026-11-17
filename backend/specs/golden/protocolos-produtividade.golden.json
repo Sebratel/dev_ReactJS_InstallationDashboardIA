@@ -2,7 +2,7 @@
   "queryId": "protocolos-produtividade",
   "datasource": "dbVoalle",
   "strategy": "wrapped",
-  "rowCount": 76398,
+  "rowCount": 94326,
   "truncated": false,
   "profiledRows": 5000,
   "columnsFromSample": true,
@@ -11,40 +11,40 @@
       "name": "SOLICITACAO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2473,
-      "minLength": 73,
-      "maxLength": 139
+      "distinct": 2494,
+      "minLength": 74,
+      "maxLength": 137
     },
     {
       "name": "N°PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2473,
+      "distinct": 2494,
       "numericString": true,
-      "sum": 9017044103
+      "sum": 9391333267
     },
     {
       "name": "CLIENTE",
       "type": "string",
       "nulls": 0,
-      "distinct": 2310,
-      "minLength": 9,
-      "maxLength": 57
+      "distinct": 2367,
+      "minLength": 10,
+      "maxLength": 60
     },
     {
       "name": "STATUS",
       "type": "string",
       "nulls": 0,
-      "distinct": 19,
+      "distinct": 20,
       "minLength": 7,
-      "maxLength": 30
+      "maxLength": 40
     },
     {
       "name": "TIPO DE PROTOCOLO",
       "type": "string",
       "nulls": 0,
-      "distinct": 9,
-      "minLength": 23,
+      "distinct": 11,
+      "minLength": 17,
       "maxLength": 39
     },
     {
@@ -59,17 +59,17 @@
       "name": "NUMERO CONTRATO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2364,
+      "distinct": 2423,
       "numericString": true,
-      "sum": 1365528558
+      "sum": 1419869364
     },
     {
       "name": "STATUS CONTRATO",
       "type": "string",
       "nulls": 0,
-      "distinct": 4,
+      "distinct": 3,
       "minLength": 6,
-      "maxLength": 9
+      "maxLength": 19
     },
     {
       "name": "ESTAGIO CONTRATO",
@@ -88,114 +88,66 @@
       "maxLength": 8
     },
     {
-      "name": "TELEFONE",
-      "type": "string",
-      "nulls": 0,
-      "distinct": 2285,
-      "minLength": 0,
-      "maxLength": 15
-    },
-    {
-      "name": "NUMERO PATRIMÔNIO",
-      "type": "string",
-      "nulls": 0,
-      "distinct": 935,
-      "minLength": 1,
-      "maxLength": 6
-    },
-    {
-      "name": "USUÁRIO",
-      "type": "string",
-      "nulls": 383,
-      "distinct": 2149,
-      "minLength": 5,
-      "maxLength": 27
-    },
-    {
       "name": "CRIADO POR",
       "type": "string",
       "nulls": 0,
-      "distinct": 67,
+      "distinct": 76,
       "minLength": 13,
       "maxLength": 46
     },
     {
-      "name": "RUA",
-      "type": "string",
-      "nulls": 0,
-      "distinct": 1370,
-      "minLength": 5,
-      "maxLength": 47
-    },
-    {
-      "name": "LATITUDE",
-      "type": "string",
-      "nulls": 1269,
-      "distinct": 1289,
-      "minLength": 0,
-      "maxLength": 19
-    },
-    {
-      "name": "LONGITUDE",
-      "type": "string",
-      "nulls": 1269,
-      "distinct": 1287,
-      "minLength": 0,
-      "maxLength": 19
-    },
-    {
       "name": "SLOT",
       "type": "string",
-      "nulls": 413,
+      "nulls": 498,
       "distinct": 2,
       "numericString": true,
-      "sum": 4159
+      "sum": 4126
     },
     {
       "name": "PORTA",
       "type": "string",
-      "nulls": 413,
+      "nulls": 498,
       "distinct": 1,
       "numericString": true,
-      "sum": 4587
+      "sum": 4502
     },
     {
       "name": "DATA CRIADO",
       "type": "date",
       "nulls": 0,
-      "distinct": 18,
-      "min": "2026-08-26T00:00:00.000Z",
-      "max": "2026-09-13T00:00:00.000Z"
+      "distinct": 17,
+      "min": "2026-10-26T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
       "name": "DATA ENCERRADO",
       "type": "date",
       "nulls": 0,
       "distinct": 16,
-      "min": "2026-08-27T00:00:00.000Z",
-      "max": "2026-09-13T00:00:00.000Z"
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
       "name": "DATA AGENDA",
       "type": "date",
-      "nulls": 4945,
-      "distinct": 15,
-      "min": "2026-08-01T00:00:00.000Z",
-      "max": "2026-09-21T00:00:00.000Z"
+      "nulls": 4964,
+      "distinct": 11,
+      "min": "2026-10-01T00:00:00.000Z",
+      "max": "2026-11-17T00:00:00.000Z"
     },
     {
       "name": "HORA CRIADO",
       "type": "string",
       "nulls": 0,
-      "distinct": 2473,
+      "distinct": 2494,
       "minLength": 11,
       "maxLength": 15
     },
     {
       "name": "HORA AGENDA",
       "type": "string",
-      "nulls": 4945,
-      "distinct": 12,
+      "nulls": 4964,
+      "distinct": 9,
       "minLength": 8,
       "maxLength": 8
     },
@@ -211,9 +163,9 @@
       "name": "BAIRRO",
       "type": "string",
       "nulls": 0,
-      "distinct": 141,
+      "distinct": 138,
       "minLength": 4,
-      "maxLength": 28
+      "maxLength": 24
     },
     {
       "name": "SIGLA CIDADE",
@@ -227,23 +179,23 @@
       "name": "INDICE 2",
       "type": "string",
       "nulls": 0,
-      "distinct": 159,
+      "distinct": 156,
       "minLength": 8,
-      "maxLength": 41
+      "maxLength": 36
     },
     {
       "name": "RESPONSÁVEL",
       "type": "string",
       "nulls": 0,
-      "distinct": 87,
+      "distinct": 94,
       "minLength": 13,
-      "maxLength": 46
+      "maxLength": 39
     },
     {
       "name": "PONTO DE ACESSO",
       "type": "string",
       "nulls": 0,
-      "distinct": 27,
+      "distinct": 28,
       "minLength": 14,
       "maxLength": 15
     },
@@ -259,23 +211,23 @@
       "name": "CONTEXTO",
       "type": "string",
       "nulls": 0,
-      "distinct": 5,
+      "distinct": 8,
       "minLength": 8,
-      "maxLength": 27
+      "maxLength": 30
     },
     {
       "name": "PROBLEMA",
       "type": "string",
       "nulls": 0,
-      "distinct": 3,
-      "minLength": 14,
-      "maxLength": 23
+      "distinct": 6,
+      "minLength": 6,
+      "maxLength": 25
     },
     {
       "name": "OLT",
       "type": "string",
       "nulls": 0,
-      "distinct": 19,
+      "distinct": 20,
       "minLength": 5,
       "maxLength": 14
     },
@@ -291,7 +243,7 @@
       "name": "POP",
       "type": "string",
       "nulls": 0,
-      "distinct": 27,
+      "distinct": 28,
       "minLength": 5,
       "maxLength": 14
     },
@@ -306,85 +258,85 @@
     {
       "name": "CTO",
       "type": "string",
-      "nulls": 431,
-      "distinct": 1608,
+      "nulls": 512,
+      "distinct": 1617,
       "numericString": true,
-      "sum": 8684237
+      "sum": 8305884
     },
     {
       "name": "DATA ALOCAÇÃO",
       "type": "date",
-      "nulls": 2402,
-      "distinct": 14,
-      "min": "2026-08-27T00:00:00.000Z",
-      "max": "2026-09-12T00:00:00.000Z"
+      "nulls": 1995,
+      "distinct": 15,
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
       "name": "HR. ALOCAÇÃO",
       "type": "string",
-      "nulls": 2402,
-      "distinct": 1316,
-      "minLength": 13,
+      "nulls": 1995,
+      "distinct": 1522,
+      "minLength": 12,
       "maxLength": 15
     },
     {
       "name": "POSIÇÃO",
       "type": "string",
-      "nulls": 2402,
-      "distinct": 2,
+      "nulls": 1995,
+      "distinct": 1,
       "minLength": 7,
-      "maxLength": 8
+      "maxLength": 7
     },
     {
       "name": "TÉCNICO INSTALAÇÃO",
       "type": "string",
-      "nulls": 2402,
-      "distinct": 43,
+      "nulls": 1995,
+      "distinct": 40,
       "minLength": 13,
       "maxLength": 37
     },
     {
       "name": "TÉCNICO TROCA",
       "type": "string",
-      "nulls": 4388,
-      "distinct": 38,
+      "nulls": 4446,
+      "distinct": 39,
       "minLength": 13,
       "maxLength": 37
     },
     {
       "name": "DATA DA TROCA",
       "type": "date",
-      "nulls": 4388,
-      "distinct": 14,
-      "min": "2026-08-27T00:00:00.000Z",
-      "max": "2026-09-12T00:00:00.000Z"
+      "nulls": 4446,
+      "distinct": 15,
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     },
     {
-      "name": "TECNICOS AUXILIARES.AUXILIAR",
+      "name": "_RAMO",
       "type": "string",
-      "nulls": 3302,
-      "distinct": 42,
-      "minLength": 14,
-      "maxLength": 37
+      "nulls": 0,
+      "distinct": 2,
+      "minLength": 1,
+      "maxLength": 1
     },
     {
-      "name": "INSTALADOR",
+      "name": "_CHAVE AUXILIAR",
       "type": "string",
-      "nulls": 1757,
-      "distinct": 80,
-      "minLength": 13,
-      "maxLength": 37
+      "nulls": 0,
+      "distinct": 2494,
+      "numericString": true,
+      "sum": 9391333267
     },
     {
       "name": "DATA FINAL",
       "type": "date",
-      "nulls": 1842,
-      "distinct": 14,
-      "min": "2026-08-27T00:00:00.000Z",
-      "max": "2026-09-12T00:00:00.000Z"
+      "nulls": 1493,
+      "distinct": 15,
+      "min": "2026-10-27T00:00:00.000Z",
+      "max": "2026-11-13T00:00:00.000Z"
     }
   ],
-  "schemaFingerprint": "6720d357ec8f7b53",
-  "dataFingerprint": "9eb385cd5a027635",
-  "capturedAt": "2026-09-13T16:24:41.746Z"
+  "schemaFingerprint": "30e4791f28356707",
+  "dataFingerprint": "934ec6abe38a534f",
+  "capturedAt": "2026-11-13T13:49:33.143Z"
 }

@@ -47,6 +47,7 @@ import { Aviso, Cartao, Erro } from '../ui/Cartao.tsx';
 import { CHAVE_SESSOES, SessoesAtivas } from './SessoesAtivas.tsx';
 import { SituacaoDaPessoa } from './SituacaoDaPessoa.tsx';
 import { UsoDasTelas } from './UsoDasTelas.tsx';
+import { ProvedorDeIA } from './ProvedorDeIA.tsx';
 
 export const CHAVE_ACESSOS = ['acessos'] as const;
 
@@ -537,6 +538,8 @@ export function GestaoDeAcessos() {
           </ul>
         </Cartao>
       ) : null}
+
+      {souAdmin ? <ProvedorDeIA /> : null}
 
       {souAdmin ? <SessoesAtivas eu={m.eu.usuario} /> : null}
 

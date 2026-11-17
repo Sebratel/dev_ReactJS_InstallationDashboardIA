@@ -1,0 +1,174 @@
+# GERADO por backend/tools/snapshot/src/gera-relatos-do-dia.ts — NÃO vem do PBIP.
+# NÃO editar à mão: `npm run gera:relatos-do-dia` (docs/SPEC-DRIVEN.md, 26/10/2026).
+#
+# As contagens de relato por (protocolo, dia) sobre a janela inteira da agenda — a agregada
+# `relatos-do-dia` de ao-vivo.yaml sem período. O refresh as grava para congelar o
+# `Status Protocolo Dia` sem a agenda completa (docs/DECISAO-AO-VIVO.md, passo 2).
+id: relatos-do-dia
+name: RELATOS DO DIA
+origin: expression
+source_type: odbc
+datasource: dbVoalle
+sql: |-
+  SELECT
+      vsdspi.protocol::text AS "Protocolo",
+      to_char(r.beginning_date, 'YYYY-MM-DD') AS "Dia Relato",
+      COALESCE(bool_or((CASE WHEN r.description ILIKE '%PROD%' THEN (CASE
+              WHEN r.description ILIKE '%2.015 - REL - IMPRODUTIVO - Fechamento de Instalação de Fibra%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%2.04 - REL - PRODUTIVA - Fechamento de Instalação de Fibra%' THEN 'Produtiva'
+              WHEN r.description ILIKE '%INST.001 - IMPROD - INVIABILIDADE INFRA CLIENTE%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.002 - IMPROD - CLI CANCELA AGENDA (SEM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.003 - IMPROD - CLI CANCELA AGENDA (COM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.004 - IMPROD - REAGENDA POR CHUVA (SEM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.005 - IMPROD - REAGENDA POR CHUVA (COM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.006 - IMPROD - CLI SOL REAGENDAMENTO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.007 - IMPROD - ERRO DO OPERACIONAL (SEM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.008 - IMPROD - ERRO COMERCIAL (SEM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.009 - IMPROD - ERRO COMERCIAL (COM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.010 - IMPROD - REAGENDADO PELO TÉCNICO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.011 - IMPROD - INVIABILIDADE TÉCNICA – INST%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.012 - IMPROD - INVIÁVEL - CLI FORA DA ÁREA%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.013 - IMPROD - INVIÁVEL - INTERNA DO CLI%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.014 - IMPROD - REAGENDADO PELO TÉCNICO (SEM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.015 - IMPROD - INVIÁVEL - CTO SEM PORTA LIVRE%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.016 - IMPROD - RESP AUSENTE/MENOR NO LOCAL%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.017 - IMPROD - ERRO OPERACIONAL%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.018 - IMPROD - PEDÊNCIA ÁREA DE RISCO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.019 - IMPROD - SST - RISCO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.020 - IMPROD - CLI SOLICITA CANCELAR CONTRATAÇÃO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%INST.021 - IMPROD - ACESSO NEGADO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.001 - IMPROD - AGUARDANDO RETORNO INFRA%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.002 - IMPROD - REAGENDA CLI (COM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.003 - IMPROD - REAGENDA CLI (SEM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.004 - IMPROD - REAGENDA POR CHUVA (COM VISITA) - MAN%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.005 - IMPROD - REAGENDA POR CHUVA (SEM VISITA) - MAN%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.006 - IMPROD - REAGENDADO PELO TÉCNICO (COM VISITA)%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.007 - IMPROD - REAGENDADO PELO TÉCNICO (SEM VISITA) - MAN%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.008 - IMPROD - CLI AUSENTE/SEM CONTATO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.009 - IMPROD - CANCELA A PEDIDO DO CLIENTE%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.010 - IMPROD - PENDÊNCIA DE ENDEREÇO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.011 - IMPROD - INVIABILIDADE NO CLIENTE%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.012 - IMPROD - INVIABILIDADE TÉCNICA - MAN%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%MAN.013 - IMPROD - NÃO FOI PARA CX DO TÉCNICO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%OPER.001 - IMPROD – OPERACIONAL NÃO COLOCOU NA CAIXA DO TÉCNICO%' THEN 'Improdutiva'
+              WHEN r.description ILIKE '%OPER.002 - IMPROD – ERRO DO BACKOFFICE (SEM VISITA)%' THEN 'Improdutiva'
+              ELSE NULL END) END) = 'Improdutiva'), false) AS "Improdutivo",
+      COALESCE(bool_or(s.title IS NOT NULL), false) AS "Tecnico"
+  FROM (
+      WITH protocolos_do_periodo AS (
+          SELECT DISTINCT ai.protocol
+            FROM service_desk_slots sds
+            JOIN assignment_incidents ai ON ai.assignment_id = sds.pre_reserved_assignment_id
+           WHERE sds.begin_date >= (CURRENT_DATE - INTERVAL '3 months')
+             AND sds.begin_date <  'infinity'::date
+             AND sds.begin_date >= (CURRENT_DATE - INTERVAL '3 months')
+      ),
+      candidatos AS (
+          SELECT DISTINCT ai.assignment_id AS id
+            FROM assignment_incidents ai
+           WHERE ai.protocol IN (SELECT protocol FROM protocolos_do_periodo)
+      ),
+      fah AS (
+          SELECT h.* FROM fsm_attendance_history h
+           WHERE h.reserved_assignment_id IN (SELECT id FROM candidatos)
+      )
+      SELECT a.id AS assignment_id,
+             ai.protocol,
+             it.title AS incident_type_title,
+             a.final_date,
+             inc.title AS incident_status_title,
+             r.title AS region_title,
+             f.begin_date,
+             f.end_date,
+             f.rescheduling_type,
+             f.begin_date_slot,
+             f.first_attendance_history,
+             f.last_attendance_history,
+             p.name AS resource_name,
+             a.created AS assignment_created,
+             ( SELECT h2.begin_date
+                 FROM fsm_attendance_history h2
+                WHERE h2.reserved_assignment_id = f.reserved_assignment_id
+                  AND h2.identifier_attendance = f.identifier_attendance
+                  AND h2.routing_status = ANY (ARRAY[6, 8])
+                ORDER BY h2.begin_date DESC
+                LIMIT 1) AS conclusion_date
+        FROM ( SELECT fah.region_id,
+                      fah.begin_date,
+                      fah.end_date,
+                      fah.identifier_attendance,
+                      fah.rescheduling_type,
+                      first_value(fah.begin_date_slot) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.begin_date DESC) AS begin_date_slot,
+                      fah.routing_status,
+                      lag(fah.routing_status) OVER (PARTITION BY fah.reserved_assignment_id ORDER BY fah.begin_date, fah.routing_status) AS previous_routing_status,
+                      min(fah.begin_date) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.begin_date) AS first_attendance_history,
+                      max(fah.end_date) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.end_date DESC) AS last_attendance_history,
+                      fah.resource_id,
+                      fah.reserved_assignment_id
+                 FROM fah
+                 LEFT JOIN ( SELECT DISTINCT ON (ff.reserved_assignment_id, ff.identifier_attendance)
+                                    ff.reserved_assignment_id, ff.identifier_attendance, ff.begin_date_slot
+                               FROM fah ff
+                              ORDER BY ff.reserved_assignment_id, ff.identifier_attendance, ff.begin_date DESC
+                           ) fah_begin_date_slot
+                        ON fah_begin_date_slot.reserved_assignment_id = fah.reserved_assignment_id
+                       AND fah_begin_date_slot.identifier_attendance = fah.identifier_attendance
+                WHERE fah.routing_status = ANY (ARRAY[0, 4, 6, 8])
+                  AND EXISTS ( SELECT 1 FROM service_desk_slots sds
+                                WHERE sds.pre_reserved_assignment_id = fah.reserved_assignment_id
+                                  AND sds.begin_date = fah_begin_date_slot.begin_date_slot)
+                GROUP BY fah.shift, fah.region_id, fah.routing_status, fah.reserved_date, fah.resource_id, fah.begin_date,
+                         fah.end_date, fah.identifier_attendance, fah.rescheduling_type, fah.begin_date_slot,
+                         fah.reserved_skills, fah.reserved_assignment_id, fah.activation_type
+             ) f
+        JOIN assignments a ON a.id = f.reserved_assignment_id
+        JOIN assignment_incidents ai ON a.id = ai.assignment_id
+        JOIN regions r ON f.region_id = r.id
+        JOIN incident_types it ON ai.incident_type_id = it.id
+        JOIN incident_status inc ON ai.incident_status_id = inc.id
+        LEFT JOIN people p ON f.resource_id = p.id
+       WHERE f.routing_status <> f.previous_routing_status OR f.previous_routing_status IS NULL
+  ) vsdspi
+  LEFT JOIN reports r ON vsdspi.assignment_id = r.assignment_id
+  left join people p on p.id = r.person_id
+  left join person_skills ps on ps.person_id = p.id
+  left join skills s on s.id = ps.skill_id 
+  WHERE (
+      vsdspi.region_title LIKE '%Base Canoas (Ativação)%'
+      OR vsdspi.region_title LIKE '%Base São Leopoldo (Ativação)%'
+  )
+  AND (
+      r.title NOT LIKE 'Execução:%'
+      AND r.title NOT LIKE 'Manutenção de Solicitação%'
+      AND r.title NOT LIKE '%Apontamento interno%'
+      AND r.title NOT LIKE 'Manutençao de Solicitação%'
+      AND r.title NOT LIKE 'Reabertura (Retrabalho)'
+      AND r.title NOT LIKE 'Reabertura (Simples)%'
+  )
+  -- JANELA DESLIZANTE: divergência DE PROPÓSITO do relatório original, que corta
+  -- em '2026-01-01' (ver o `m_expression` abaixo, que é o extraído do PBIP).
+  -- Esta é a query mais pesada do corpus — grão (slot, relato) — e a última carga
+  -- completa MORREU com ECONNRESET após 38 min. Perdida num reset em 26/08/2026 e
+  -- restaurada em 27/08 por medição: ver docs/ACHADOS.md e docs/SPEC-DRIVEN.md.
+  AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')
+  GROUP BY 1, 2;
+url: null
+sheet: null
+endpoints: null
+source_tables:
+- assignment_incidents
+- assignments
+- fsm_attendance_history
+- incident_status
+- incident_types
+- people
+- person_skills
+- regions
+- reports
+- service_desk_slots
+- skills
+m_expression: |-
+  let
+      Fonte = Odbc.Query("dsn=dbVoalle", "SELECT#(lf)    vsdspi.protocol::text AS ""Protocolo"",#(lf)    to_char(r.beginning_date, 'YYYY-MM-DD') AS ""Dia Relato"",#(lf)    COALESCE(bool_or((CASE WHEN r.description ILIKE '%PROD%' THEN (CASE#(lf)            WHEN r.description ILIKE '%2.015 - REL - IMPRODUTIVO - Fechamento de Instalação de Fibra%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%2.04 - REL - PRODUTIVA - Fechamento de Instalação de Fibra%' THEN 'Produtiva'#(lf)            WHEN r.description ILIKE '%INST.001 - IMPROD - INVIABILIDADE INFRA CLIENTE%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.002 - IMPROD - CLI CANCELA AGENDA (SEM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.003 - IMPROD - CLI CANCELA AGENDA (COM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.004 - IMPROD - REAGENDA POR CHUVA (SEM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.005 - IMPROD - REAGENDA POR CHUVA (COM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.006 - IMPROD - CLI SOL REAGENDAMENTO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.007 - IMPROD - ERRO DO OPERACIONAL (SEM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.008 - IMPROD - ERRO COMERCIAL (SEM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.009 - IMPROD - ERRO COMERCIAL (COM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.010 - IMPROD - REAGENDADO PELO TÉCNICO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.011 - IMPROD - INVIABILIDADE TÉCNICA – INST%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.012 - IMPROD - INVIÁVEL - CLI FORA DA ÁREA%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.013 - IMPROD - INVIÁVEL - INTERNA DO CLI%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.014 - IMPROD - REAGENDADO PELO TÉCNICO (SEM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.015 - IMPROD - INVIÁVEL - CTO SEM PORTA LIVRE%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.016 - IMPROD - RESP AUSENTE/MENOR NO LOCAL%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.017 - IMPROD - ERRO OPERACIONAL%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.018 - IMPROD - PEDÊNCIA ÁREA DE RISCO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.019 - IMPROD - SST - RISCO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.020 - IMPROD - CLI SOLICITA CANCELAR CONTRATAÇÃO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%INST.021 - IMPROD - ACESSO NEGADO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.001 - IMPROD - AGUARDANDO RETORNO INFRA%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.002 - IMPROD - REAGENDA CLI (COM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.003 - IMPROD - REAGENDA CLI (SEM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.004 - IMPROD - REAGENDA POR CHUVA (COM VISITA) - MAN%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.005 - IMPROD - REAGENDA POR CHUVA (SEM VISITA) - MAN%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.006 - IMPROD - REAGENDADO PELO TÉCNICO (COM VISITA)%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.007 - IMPROD - REAGENDADO PELO TÉCNICO (SEM VISITA) - MAN%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.008 - IMPROD - CLI AUSENTE/SEM CONTATO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.009 - IMPROD - CANCELA A PEDIDO DO CLIENTE%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.010 - IMPROD - PENDÊNCIA DE ENDEREÇO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.011 - IMPROD - INVIABILIDADE NO CLIENTE%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.012 - IMPROD - INVIABILIDADE TÉCNICA - MAN%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%MAN.013 - IMPROD - NÃO FOI PARA CX DO TÉCNICO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%OPER.001 - IMPROD – OPERACIONAL NÃO COLOCOU NA CAIXA DO TÉCNICO%' THEN 'Improdutiva'#(lf)            WHEN r.description ILIKE '%OPER.002 - IMPROD – ERRO DO BACKOFFICE (SEM VISITA)%' THEN 'Improdutiva'#(lf)            ELSE NULL END) END) = 'Improdutiva'), false) AS ""Improdutivo"",#(lf)    COALESCE(bool_or(s.title IS NOT NULL), false) AS ""Tecnico""#(lf)FROM (#(lf)    WITH protocolos_do_periodo AS (#(lf)        SELECT DISTINCT ai.protocol#(lf)          FROM service_desk_slots sds#(lf)          JOIN assignment_incidents ai ON ai.assignment_id = sds.pre_reserved_assignment_id#(lf)         WHERE sds.begin_date >= (CURRENT_DATE - INTERVAL '3 months')#(lf)           AND sds.begin_date <  'infinity'::date#(lf)           AND sds.begin_date >= (CURRENT_DATE - INTERVAL '3 months')#(lf)    ),#(lf)    candidatos AS (#(lf)        SELECT DISTINCT ai.assignment_id AS id#(lf)          FROM assignment_incidents ai#(lf)         WHERE ai.protocol IN (SELECT protocol FROM protocolos_do_periodo)#(lf)    ),#(lf)    fah AS (#(lf)        SELECT h.* FROM fsm_attendance_history h#(lf)         WHERE h.reserved_assignment_id IN (SELECT id FROM candidatos)#(lf)    )#(lf)    SELECT a.id AS assignment_id,#(lf)           ai.protocol,#(lf)           it.title AS incident_type_title,#(lf)           a.final_date,#(lf)           inc.title AS incident_status_title,#(lf)           r.title AS region_title,#(lf)           f.begin_date,#(lf)           f.end_date,#(lf)           f.rescheduling_type,#(lf)           f.begin_date_slot,#(lf)           f.first_attendance_history,#(lf)           f.last_attendance_history,#(lf)           p.name AS resource_name,#(lf)           a.created AS assignment_created,#(lf)           ( SELECT h2.begin_date#(lf)               FROM fsm_attendance_history h2#(lf)              WHERE h2.reserved_assignment_id = f.reserved_assignment_id#(lf)                AND h2.identifier_attendance = f.identifier_attendance#(lf)                AND h2.routing_status = ANY (ARRAY[6, 8])#(lf)              ORDER BY h2.begin_date DESC#(lf)              LIMIT 1) AS conclusion_date#(lf)      FROM ( SELECT fah.region_id,#(lf)                    fah.begin_date,#(lf)                    fah.end_date,#(lf)                    fah.identifier_attendance,#(lf)                    fah.rescheduling_type,#(lf)                    first_value(fah.begin_date_slot) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.begin_date DESC) AS begin_date_slot,#(lf)                    fah.routing_status,#(lf)                    lag(fah.routing_status) OVER (PARTITION BY fah.reserved_assignment_id ORDER BY fah.begin_date, fah.routing_status) AS previous_routing_status,#(lf)                    min(fah.begin_date) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.begin_date) AS first_attendance_history,#(lf)                    max(fah.end_date) OVER (PARTITION BY fah.reserved_assignment_id, fah.identifier_attendance ORDER BY fah.end_date DESC) AS last_attendance_history,#(lf)                    fah.resource_id,#(lf)                    fah.reserved_assignment_id#(lf)               FROM fah#(lf)               LEFT JOIN ( SELECT DISTINCT ON (ff.reserved_assignment_id, ff.identifier_attendance)#(lf)                                  ff.reserved_assignment_id, ff.identifier_attendance, ff.begin_date_slot#(lf)                             FROM fah ff#(lf)                            ORDER BY ff.reserved_assignment_id, ff.identifier_attendance, ff.begin_date DESC#(lf)                         ) fah_begin_date_slot#(lf)                      ON fah_begin_date_slot.reserved_assignment_id = fah.reserved_assignment_id#(lf)                     AND fah_begin_date_slot.identifier_attendance = fah.identifier_attendance#(lf)              WHERE fah.routing_status = ANY (ARRAY[0, 4, 6, 8])#(lf)                AND EXISTS ( SELECT 1 FROM service_desk_slots sds#(lf)                              WHERE sds.pre_reserved_assignment_id = fah.reserved_assignment_id#(lf)                                AND sds.begin_date = fah_begin_date_slot.begin_date_slot)#(lf)              GROUP BY fah.shift, fah.region_id, fah.routing_status, fah.reserved_date, fah.resource_id, fah.begin_date,#(lf)                       fah.end_date, fah.identifier_attendance, fah.rescheduling_type, fah.begin_date_slot,#(lf)                       fah.reserved_skills, fah.reserved_assignment_id, fah.activation_type#(lf)           ) f#(lf)      JOIN assignments a ON a.id = f.reserved_assignment_id#(lf)      JOIN assignment_incidents ai ON a.id = ai.assignment_id#(lf)      JOIN regions r ON f.region_id = r.id#(lf)      JOIN incident_types it ON ai.incident_type_id = it.id#(lf)      JOIN incident_status inc ON ai.incident_status_id = inc.id#(lf)      LEFT JOIN people p ON f.resource_id = p.id#(lf)     WHERE f.routing_status <> f.previous_routing_status OR f.previous_routing_status IS NULL#(lf)) vsdspi#(lf)LEFT JOIN reports r ON vsdspi.assignment_id = r.assignment_id#(lf)left join people p on p.id = r.person_id#(lf)left join person_skills ps on ps.person_id = p.id#(lf)left join skills s on s.id = ps.skill_id #(lf)WHERE (#(lf)    vsdspi.region_title LIKE '%Base Canoas (Ativação)%'#(lf)    OR vsdspi.region_title LIKE '%Base São Leopoldo (Ativação)%'#(lf))#(lf)AND (#(lf)    r.title NOT LIKE 'Execução:%'#(lf)    AND r.title NOT LIKE 'Manutenção de Solicitação%'#(lf)    AND r.title NOT LIKE '%Apontamento interno%'#(lf)    AND r.title NOT LIKE 'Manutençao de Solicitação%'#(lf)    AND r.title NOT LIKE 'Reabertura (Retrabalho)'#(lf)    AND r.title NOT LIKE 'Reabertura (Simples)%'#(lf))#(lf)-- JANELA DESLIZANTE: divergência DE PROPÓSITO do relatório original, que corta#(lf)-- em '2026-01-01' (ver o `m_expression` abaixo, que é o extraído do PBIP).#(lf)-- Esta é a query mais pesada do corpus — grão (slot, relato) — e a última carga#(lf)-- completa MORREU com ECONNRESET após 38 min. Perdida num reset em 26/08/2026 e#(lf)-- restaurada em 27/08 por medição: ver docs/ACHADOS.md e docs/SPEC-DRIVEN.md.#(lf)AND vsdspi.begin_date_slot >= (CURRENT_DATE - INTERVAL '3 months')#(lf)GROUP BY 1, 2;")
+  in
+      Fonte

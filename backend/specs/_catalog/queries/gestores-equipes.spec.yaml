@@ -10,7 +10,7 @@ origin: expression
 # antiga guardava vazio como '', e o M troca '' por TERCEIROS no gerente.
 source_type: odbc
 datasource: dbMaria
-sql: "SELECT tc.capacity_date AS `DATA`, COALESCE(tc.technician_1, '') AS `TÉCNICO 1`, COALESCE(tc.technician_2, '') AS `TÉCNICO 2`, COALESCE(tc.team, '') AS `EQUIPE`, COALESCE(tc.origin_base, '') AS `BASE DE ORIGEM`, COALESCE(tc.manager_name, '') AS `GERENTE/SUPERVISOR`, tc.morning_capacity AS `CAPACIDADE MANHÃ`, tc.afternoon_capacity AS `CAPACIDADE TARDE` FROM DB_InstallationDashboard.team_capacities AS tc WHERE tc.capacity_date > '2024-12-31' ORDER BY tc.id"
+sql: "SELECT tc.capacity_date AS `DATA`, COALESCE(tc.technician_1, '') AS `TÉCNICO 1`, COALESCE(tc.technician_2, '') AS `TÉCNICO 2`, COALESCE(tc.team, '') AS `EQUIPE`, COALESCE(tc.origin_base, '') AS `BASE DE ORIGEM`, COALESCE(tc.manager_name, '') AS `GERENTE/SUPERVISOR`, tc.morning_capacity AS `CAPACIDADE MANHÃ`, tc.afternoon_capacity AS `CAPACIDADE TARDE` FROM DB_InstallationDashboard.team_capacities AS tc WHERE tc.capacity_date >= MAKEDATE(YEAR(CURDATE()) - 1, 1) ORDER BY tc.id"
 url: null
 sheet: null
 endpoints: null

@@ -79,8 +79,12 @@ export interface DadosDeTabela {
     coluna: string | null;
     /** Nível da hierarquia de datas (`Ano`, `Mês`); ausente em resposta anterior a 14/10. */
     nivel?: string | null;
-    /** Razão a escrever como porcentagem — só em tabela nativa (`visuais-novos/`). */
+    /**
+     * Razão a escrever como porcentagem, com as casas do `format` da medida. Desde
+     * 16/11/2026 vale também nas tabelas do PBIP (QA D-12); antes, só nas nativas.
+     */
     percentual?: true;
+    casas?: number;
   }[];
   linhas: Valor[][];
   /** Quantas linhas a consulta tem — **já com a busca aplicada**, quando há uma. */
@@ -136,6 +140,12 @@ export interface VisualCalculado {
   erro?: string;
   /** Ressalva de leitura vinda da API — hoje, só o horizonte de previsão. */
   nota?: string;
+  /**
+   * Por que a API não calculou este visual neste pedido — o dado dele só chega por outro
+   * caminho (hoje: os relatos da agenda, só pelo ao vivo). Não é erro: a tela mostra o
+   * motivo em tom neutro.
+   */
+  indisponivel?: string;
   dados?: unknown;
   ms: number;
 }
@@ -193,6 +203,12 @@ export interface OpcoesDePagina {
   linhas?: number;
   /** O campo "Filtrar…" da tabela. Ver `?busca=` em `backend/api/src/servidor.ts`. */
   busca?: string;
+  /**
+   * A ordenação da tabela — o clique no cabeçalho (QA D-17). `coluna` é o ÍNDICE na
+   * lista de colunas do visual, e o servidor ordena o resultado INTEIRO antes de
+   * recortar a janela. Ver `?ordem=` em `backend/api/src/servidor.ts`.
+   */
+  ordem?: { coluna: number; desc: boolean };
   // Sem `recalcula` desde 05/10/2026: a tela não força recálculo no servidor (ele
   // regravava o cache de todo mundo por um clique). A API só o aceita de ferramenta
   // interna — ver `servidor.ts`.
@@ -236,6 +252,8 @@ export function urlDaPagina(
   // daria uma segunda chave para o mesmo pedido, e a abertura sem busca deixaria de
   // reaproveitar o que o aquecedor já calculou.
   if (opcoes.busca) p.set('busca', opcoes.busca);
+  // Idem: sem ordem escolhida, nenhum parâmetro — a chave tem de ser a da abertura.
+  if (opcoes.ordem) p.set('ordem', `${opcoes.ordem.coluna}:${opcoes.ordem.desc ? 'desc' : 'asc'}`);
   const q = p.toString();
   return `/api/dashboards/${encodeURIComponent(id)}${q ? `?${q}` : ''}`;
 }
@@ -398,11 +416,21 @@ export interface Eu {
   papel: 'viewer' | 'dev' | 'admin';
   /** Admin ou dev: a tela mostra o botão de gestão de acessos. */
   podeGerir: boolean;
+  /**
+   * As abas que NÃO são tela do relatório e esta conta abre — hoje só "Metas"
+   * (12/11/2026). Ausente numa API mais velha, e aí a faixa simplesmente não as mostra.
+   * Esconder a aba é conforto: quem barra é o 403 da rota.
+   */
+  abasExtras?: { id: string; nome: string }[];
 }
 
 /** A lista já vem SÓ com as abas que a conta pode abrir — o filtro é do servidor. */
-export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[]; eu?: Eu }> =>
-  pega('/api/dashboards');
+export const listaDashboards = (): Promise<{
+  dashboards: DashboardDaLista[];
+  eu?: Eu;
+  iaConfigurada?: boolean;
+  visuaisIa?: string[];
+}> => pega('/api/dashboards');
 
 /**
  * O `signal` existe para o pedido ANTERIOR morrer quando chega um novo.
@@ -467,6 +495,11 @@ export const registraAberturaDeAba = (tela: string): void => {
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ tela }),
   }).catch(() => undefined);
+};
+
+/** Pede ao servidor para tentar atualizar grupos parados e poller na hora (fire-and-forget). */
+export const pedeAtualizacaoAgora = (): void => {
+  void fetch('/api/refresh', { method: 'POST' }).catch(() => undefined);
 };
 
 /**

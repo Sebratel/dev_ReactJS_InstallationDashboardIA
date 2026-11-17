@@ -41,9 +41,11 @@ node backend/tools/refresh/src/daemon.ts --historico   # histórico de grupos e 
   O piso corta por `DATA CRIADO`, as medidas agregam por `DATA INSTALAÇÃO` (efeito de borda em janeiro).
 - Extração do relatório original (M/SQL/DAX): `../QUERIES-DASHBOARD-INSTALACAO/`. Não existe `.pbip`.
 - Refresh: `backend/specs/_catalog/refresh.yaml` (grupos quente/medio/frio); incremental: `backend/specs/_catalog/incremental.yaml`.
-  Só a `field-agenda` roda incremental (`incremental: [lista]` no grupo, ACHADOS #165); a `protocolos-geral`
-  está na lista do `medio` por outro mecanismo, o histórico congelado (`historico-congelado.ts`, #225). Ligar outra
-  exige provar contra a carga completa na mesma hora: `npm run probe:compara-incremental`.
+  Nenhuma query roda incremental pela lista do grupo desde 26/10/2026: a única era a `field-agenda`, que SAIU do
+  refresh (a agenda completa não está mais no snapshot — `completa_no_snapshot: false`, docs/DECISAO-AO-VIVO.md
+  passo 5; a Agendamento Field vem do SRD e EXIGE `AO_VIVO_PAGINAS`). A `protocolos-geral` está na lista do
+  `medio` por outro mecanismo, o histórico congelado (`historico-congelado.ts`, #225). Ligar outra exige provar
+  contra a carga completa na mesma hora: `npm run probe:compara-incremental`.
 - Planilhas do Google: a plataforma NÃO lê mais (14/10/2026, ACHADOS #209). O n8n copia as 3 para o
   `DB_InstallationDashboard` a cada 15 min (`backend/tools/banco/n8n/`); saúde da cópia em `data_syncs`.
   O `.env` também precisa das quatro `VITE_FIREBASE_*`: elas entram no BUILD da imagem (o `up`

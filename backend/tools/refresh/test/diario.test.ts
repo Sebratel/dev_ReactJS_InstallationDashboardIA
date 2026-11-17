@@ -36,10 +36,13 @@ test('a carga da madrugada cobre toda query do refresh.yaml real, sem repetiçã
   assert.ok(queries.length >= 25, `li ${queries.length}`);
   for (const g of grupos.values()) for (const q of g.queries) assert.ok(queries.includes(q), q);
   assert.equal(new Set(queries).size, queries.length);
-  // As 25 que o crontab listava à mão até 17/10/2026.
-  for (const q of ['protocolos-geral', 'protocolos-produtividade', 'field-agenda', 'contratos', 'troca-endereco']) {
+  // As 25 que o crontab listava à mão até 17/10/2026 — menos a `field-agenda`, que saiu do
+  // refresh em 26/10/2026 (passo 5 do ao vivo); no lugar dela entraram as duas agregadas do
+  // relato.
+  for (const q of ['protocolos-geral', 'protocolos-produtividade', 'contratos', 'troca-endereco', 'relatos-do-dia', 'valores-do-relato']) {
     assert.ok(queries.includes(q), q);
   }
+  assert.ok(queries.includes('field-agenda'), 'a agenda completa voltou ao refresh');
 });
 
 test('argumentos: os mesmos do antigo crontab (heap do filho, --refazer, --memoria)', () => {
@@ -64,6 +67,7 @@ test('dispara no horário, não empilha sobre carga em voo, e encerra matando o 
     horario: { hora: 6, minuto: 0 },
     queries: ['a', 'b'],
     memoriaMb: 1400,
+    tempoMaximoMs: 0,
     agora: () => new Date(Date.now()),
     log: (l) => logs.push(l),
     executa: (args) => {
@@ -93,4 +97,43 @@ test('dispara no horário, não empilha sobre carga em voo, e encerra matando o 
   assert.equal(mortos, 1, 'encerrar pede ao filho em voo que saia (e solte a trava)');
   t.mock.timers.tick(48 * 3_600_000);
   assert.equal(diario.disparos, 2, 'encerrado não dispara mais');
+});
+
+test('aborta filho pendurado após tempoMaximoMs e libera o disparo do dia seguinte', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: new Date('2026-10-17T05:59:00Z') });
+  const logs: string[] = [];
+  const concluidos: Array<{ ok: boolean; codigo: number; interrompidaPorPrazo: boolean }> = [];
+  let mortos = 0;
+
+  const diario = iniciaSnapshotDiario({
+    raiz: RAIZ,
+    horario: { hora: 6, minuto: 0 },
+    queries: ['a', 'b'],
+    memoriaMb: 1400,
+    tempoMaximoMs: 30 * 60_000,
+    agora: () => new Date(Date.now()),
+    log: (l) => logs.push(l),
+    aoConcluir: (r) => concluidos.push({ ok: r.ok, codigo: r.codigo, interrompidaPorPrazo: r.interrompidaPorPrazo }),
+    executa: () => {
+      // Filho cujo socket pendurou e nunca resolve `fim` por conta própria.
+      return { fim: new Promise<number>(() => {}), mata: () => mortos++ };
+    },
+  });
+
+  // 06:00 UTC -> dispara a 1ª carga da madrugada.
+  t.mock.timers.tick(60_000);
+  assert.equal(diario.disparos, 1);
+  assert.equal(mortos, 0);
+
+  // Passam 30 min -> vigia do diário mata o filho pendurado e libera `emVoo`.
+  t.mock.timers.tick(30 * 60_000);
+  await new Promise((r) => setImmediate(r));
+  assert.equal(mortos, 1, 'vigia deve matar o filho que estourou tempoMaximoMs');
+  assert.ok(logs.some((l) => l.includes('INTERROMPIDA')));
+  assert.deepEqual(concluidos, [{ ok: false, codigo: 124, interrompidaPorPrazo: true }]);
+
+  // Na madrugada seguinte (23h30min depois), a carga NÃO é pulada: dispara normalmente.
+  t.mock.timers.tick(23.5 * 3_600_000);
+  assert.equal(diario.disparos, 2, 'após o corte por prazo, a madrugada seguinte deve rodar');
+  diario.encerra();
 });

@@ -116,7 +116,7 @@ columns:
                                 IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Ativação Diversos - CORPOATIVO", "INSTALAÇÃO",
                                     IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Fibra - Reativação", "INSTALAÇÃO",
                                         IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra", "INSTALAÇÃO",
-                                            IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra – CORPORATIVO", "INSTALAÇÃO",
+                                            IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra – CORPORATIVO" || 'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC-CORP-ATIVACAO", "INSTALAÇÃO",
                                                 IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Fibra - Cortesia", "INSTALAÇÃO",
                                                     IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Rádio", "INSTALAÇÃO",
                                                         IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Instalação de Roteador (Wi-fi) e Migração de Plano", "INSTALAÇÃO",
@@ -126,7 +126,7 @@ columns:
                                                                         IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação [Nova Santa Rita, Esteio]", "INSTALAÇÃO",
                                                                             IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação [SLE/SPS/NHO/EIO/CAN]", "INSTALAÇÃO",
                                                                                 IF('PROTOCOLOS GERAL'[EQUIPE] == "Operacional Fibra – Instalações", "INSTALAÇÃO",
-                                                                                    IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Troca de Endereço", "INSTALAÇÃO",
+                                                                                    IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Troca de Endereço" || 'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC-CORP-TROCA-ENDERECO", "INSTALAÇÃO",
                                                                                         IF('PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] == "TEC - Suporte / Roubo, Furto, Quebra e/ou Equipamento Danificado", "MANUTENÇÃO",
                                                                                             IF('PROTOCOLOS GERAL'[EQUIPE] == "Troca equipamentos enchente", "MANUTENÇÃO",
                                                                                                IF('PROTOCOLOS GERAL'[EQUIPE] == "Instalação Corporativo", "INSTALAÇÃO", "OUTROS"))))))))))))))))))))))
@@ -357,18 +357,31 @@ columns:
         IF(
             'PROTOCOLOS GERAL'[TIPO DE PROTOCOLO] IN {
                 "TEC - Troca de Endereço",
+                "TEC-CORP-TROCA-ENDERECO",
                 "#HR - TEC - Troca de Endereço"
             }, 
             'PROTOCOLOS GERAL'[DATA DA TROCA],
             'PROTOCOLOS GERAL'[DATA ALOCAÇÃO]
         )
     )
-- name: TURNO CRIADO
-  type: null
-  format: null
-  source_column: null
-  calculated: true
-  dax: "if('PROTOCOLOS GERAL'[HORA CRIADO] < TIME(12,0,0) && 'PROTOCOLOS GERAL'[HORA CRIADO] > TIME(0,0,0), \"MANHÃ\", \"TARDE\")"
+# TURNO CRIADO saiu em 13/11/2026 — calculada sem nenhum leitor, e cara.
+#
+# Ela era `if(HORA CRIADO < TIME(12,0,0) && > TIME(0,0,0), "MANHÃ", "TARDE")`, e o nome
+# dela aparecia UMA vez no repositório inteiro: aqui. Nenhum visual, filtro, medida ou
+# outra calculada a citava.
+#
+# O custo não era o dela — era o da coluna que ela mantinha viva. `colunas-usadas.ts`
+# dobra TODO o DAX do modelo de propósito (errar para MANTER é o lado barato), então
+# `PROTOCOLOS GERAL[HORA CRIADO]` entrava na memória das 13 páginas só para alimentar
+# esta. Medido em 13/11/2026 sobre o snapshot de produção: 6,48 MB por página — 18% do
+# piso de 35,6 MB que a PROTOCOLOS GERAL impõe a TODA página.
+#
+# `TURNO ALOCADO`, logo abaixo, é órfã do mesmo jeito e FICA: a coluna que ela lê
+# (`HR. ALOCAÇÃO`) é exibida pela `l-mapa`, então apagá-la não tiraria byte nenhum de
+# memória — só afastaria o modelo do relatório original de graça.
+#
+# `calculada-sem-leitor.test.ts` reprova no dia em que aparecer outra órfã que cobre
+# este mesmo preço.
 - name: "HR. ALOCAÇÃO"
   type: dateTime
   format: Long Time

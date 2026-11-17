@@ -21,8 +21,6 @@ sql: |-
   		p.name "CLIENTE",
   		p.phone "TELEFONE",
   		t.title "EQUIPE",
-  		ac.lat "LATITUDE",
-  		ac.lng "LONGITUDE",
   		p2.name "RESPONSÁVEL",
   		it.title "TIPO DE PROTOCOLO",
   		aap.title "PONTO DE ACESSO",
@@ -92,7 +90,7 @@ sql: |-
   		where (it.id = '1011'or --- TEC - Instalação Telefonia
   			   it.id = '275' OR
   			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-  	and a.created >= '2025-01-01'),
+  	and a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')),
   	-- `base` e EXATAMENTE o SELECT DISTINCT que existia aqui antes da migracao de
   	-- 16/09/2026: as MESMAS 33 colunas da fonte, com o MESMO DISTINCT. Nao e zelo, e
   	-- o que mantem a contagem de linhas. O DISTINCT tem de rodar sobre as colunas da
@@ -113,8 +111,6 @@ sql: |-
       				"TELEFONE",
       				"CLIENTE",
       				"EQUIPE",
-      				"LATITUDE",
-      				"LONGITUDE",
       				"RESPONSÁVEL",
       				"TIPO DE PROTOCOLO",
       				"PONTO DE ACESSO",
@@ -221,8 +217,6 @@ sql: |-
       "TELEFONE",
       "CLIENTE",
       "EQUIPE",
-      "LATITUDE",
-      "LONGITUDE",
       -- Text.Upper e depois nulo -> "SEM INFORMAÇÃO" (26 linhas em 16/09). Em CAIXA
       -- ALTA, ao contrario das seis de baixo -- e do M, nao e deslize a copiar.
       COALESCE(upper("RESPONSÁVEL"), 'SEM INFORMAÇÃO')      AS "RESPONSÁVEL",

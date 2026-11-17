@@ -108,10 +108,13 @@ test('as divergências declaradas em backend/specs/ aplicam ao modelo real', asy
   const ids = model.divergencias.map((a) => a.divergencia.id).sort();
   assert.deepEqual(ids, ['peso-criado-domingo', 'peso-instalado-fim-de-semana']);
 
-  // A regra decidida em 08/08/2026: sábado e domingo valem 0,5 nas duas tabelas.
+  // A régua revista em 09/11/2026: sábado 1, domingo 0, feriado 0 (tabela FERIADOS e
+  // o 20/11), igual nas duas tabelas.
   for (const tabela of ['CALENDARIO INSTALADO', 'CALENDARIO CRIADO']) {
     const dax = model.column(tabela, 'PESO')!.dax!;
-    assert.match(dax, /DiaDaSemana >= 6, 0\.5/, `${tabela}: o fim de semana tem de valer 0,5`);
+    assert.match(dax, /SWITCH\(DiaDaSemana, 7, 0, 1\)/, `${tabela}: domingo 0 e sábado 1`);
+    assert.match(dax, /LOOKUPVALUE\(FERIADOS\[Feriado\]/, `${tabela}: feriado pela tabela FERIADOS`);
+    assert.match(dax, /Dia = DATE\(YEAR\(Dia\), 11, 20\)/, `${tabela}: o 20/11 conta como feriado`);
   }
 
   // E toda divergência tem de dizer de onde veio.
@@ -122,102 +125,45 @@ test('as divergências declaradas em backend/specs/ aplicam ao modelo real', asy
 });
 
 // ---------------------------------------------------------------------------
-// Por que os dois cards de PESO podem bater com o Power BI sem que nada esteja
-// quebrado.
+// A régua do PESO, revista em 09/11/2026.
 // ---------------------------------------------------------------------------
 //
-// A paridade de 11/08/2026 acusou `divergencia-nao-aplicada` em
-// `DIAS TRABALHADOS NO MÊS` (8) e `DIAS ÚTEIS RESTANTES NO MÊS` (18): os dois
-// batiam exatamente com o Power BI, e card marcado `divergente:` que bate é falha
-// por desenho. Parecia que a decisão do PESO tinha ficado no papel.
-//
-// Não tinha. A coluna PESO do snapshot traz domingo 0,5 e sábado 0,5, como
-// decidido. O que acontece é aritmética:
-//
-//     nossa regra    sáb 0,5 + dom 0,5 = 1,0
-//     regra antiga   sáb 1,0 + dom 0,0 = 1,0
-//
-// **Um fim de semana COMPLETO vale o mesmo nas duas.** As medidas somam PESO sobre
-// uma janela de datas, e as duas janelas de agosto/2026 têm só fins de semana
-// inteiros (01–10 tem dois, 11–31 tem três). Os cards são cegos para a decisão.
-//
-// Isto não é motivo para afrouxar o harness: ele está certo em dizer que aquele
-// card não prova o que se esperava dele. É motivo para saber quando o card serve
-// de testemunha — e é isso que este teste fixa.
+// De 08/08 a 09/11/2026 o PESO deu sábado 0,5 e domingo 0,5 — uma decisão que ficou
+// registrada errada. Na Instalação o sábado é dia cheio e o domingo não conta, que é
+// a régua que o Power BI já usava; a régua do comercial (sábado 0,5) não vale aqui.
+// O que diverge do Power BI agora é só o feriado de 20/11, que a lista embutida no
+// PBIP não tem.
 
-/** A regra decidida em 08/08/2026. Feriado zera; fim de semana vale meio dia. */
-const pesoDecidido = (diaDaSemana: number): number => (diaDaSemana >= 6 ? 0.5 : 1);
+/** A régua decidida em 09/11/2026. `semana` no padrão WEEKDAY(_, 2): 1=segunda, 7=domingo. */
+const pesoDecidido = (semana: number): number => (semana === 7 ? 0 : 1);
 
-/** A regra que o Power BI aplica: sábado é dia cheio, domingo não existe. */
-const pesoPowerBI = (diaDaSemana: number): number =>
-  diaDaSemana === 6 ? 1 : diaDaSemana === 7 ? 0 : 1;
+/** Soma a janela sob a régua, zerando os dias-do-mês que são feriado. */
+const soma = (dias: readonly { dia: number; semana: number }[], feriados: ReadonlySet<number>): number =>
+  dias.reduce((a, d) => a + (feriados.has(d.dia) ? 0 : pesoDecidido(d.semana)), 0);
 
-/** Soma a janela sob uma regra. `dias` são dias-da-semana no padrão WEEKDAY(_, 2). */
-const soma = (dias: readonly number[], regra: (d: number) => number): number =>
-  dias.reduce((a, d) => a + regra(d), 0);
+/** Dias de um mês: `primeiro` é o dia-da-semana do dia 1 (WEEKDAY(_, 2)). */
+const mes = (primeiro: number, tamanho: number) =>
+  Array.from({ length: tamanho }, (_, i) => ({ dia: i + 1, semana: ((primeiro - 1 + i) % 7) + 1 }));
 
-/** Uma janela de `n` dias começando na `inicio`-ésima posição da semana (1=segunda). */
-const janela = (inicio: number, n: number): number[] =>
-  Array.from({ length: n }, (_, i) => ((inicio - 1 + i) % 7) + 1);
-
-test('PESO: fim de semana completo vale o mesmo nas duas regras — o card fica cego', () => {
-  // Sábado + domingo: 0,5+0,5 contra 1+0.
-  assert.equal(soma([6, 7], pesoDecidido), 1);
-  assert.equal(soma([6, 7], pesoPowerBI), 1);
-
-  // Semana inteira, e qualquer múltiplo dela.
-  for (const semanas of [1, 2, 3, 8]) {
-    const dias = janela(1, 7 * semanas);
-    assert.equal(
-      soma(dias, pesoDecidido),
-      soma(dias, pesoPowerBI),
-      `${semanas} semana(s) inteira(s) não distinguem as regras`,
-    );
-  }
+test('PESO: domingo 0, sábado e dia de semana 1', () => {
+  assert.equal(pesoDecidido(7), 0);
+  for (const d of [1, 2, 3, 4, 5, 6]) assert.equal(pesoDecidido(d), 1);
 });
 
-test('PESO: as duas janelas reais de agosto/2026 são cegas — e por quê', () => {
-  // 01/08/2026 é sábado; 11/08/2026 é terça. Conferido contra o calendário
-  // materializado em snapshot/calc.calendario-instalado.jsonl.
-  const trabalhados = janela(6, 10); // 01 a 10/08 — sáb .. seg
-  const restantes = janela(2, 21); // 11 a 31/08 — ter .. seg
-
-  assert.equal(soma(trabalhados, pesoDecidido), 8, 'DIAS TRABALHADOS NO MÊS');
-  assert.equal(soma(trabalhados, pesoPowerBI), 8, 'e o Power BI mostra 8');
-
-  assert.equal(soma(restantes, pesoDecidido), 18, 'DIAS ÚTEIS RESTANTES NO MÊS');
-  assert.equal(soma(restantes, pesoPowerBI), 18, 'e o Power BI mostra 18');
-
-  // A causa, dita como condição e não como coincidência.
-  for (const dias of [trabalhados, restantes]) {
-    const sabados = dias.filter((d) => d === 6).length;
-    const domingos = dias.filter((d) => d === 7).length;
-    assert.equal(sabados, domingos, 'a janela tem fins de semana emparelhados');
-  }
+test('PESO: novembro/2026 — 5 até 08/11, 18 restantes, 23 no mês', () => {
+  // 01/11/2026 é domingo. Feriados: 02/11 (Finados), 15/11 (Proclamação, domingo) e
+  // 20/11 (Consciência Negra, sexta).
+  const novembro = mes(7, 30);
+  const feriados = new Set([2, 15, 20]);
+  assert.equal(soma(novembro.filter((d) => d.dia <= 8), feriados), 5, 'DIAS TRABALHADOS até 08/11');
+  assert.equal(soma(novembro.filter((d) => d.dia >= 9), feriados), 18, 'DIAS ÚTEIS RESTANTES a partir de 09/11');
+  assert.equal(soma(novembro, feriados), 23, 'dias úteis no mês');
 });
 
-test('PESO: janela com sábado ou domingo solto DISTINGUE as regras', () => {
-  // É esta a condição: as duas regras divergem se, e só se, a janela tiver
-  // sábados e domingos em número diferente. Um card sobre uma janela assim
-  // serviria de testemunha — os dois de agosto/2026 não servem.
-  const soSabado = [5, 6]; // sexta e sábado
-  assert.equal(soma(soSabado, pesoDecidido), 1.5);
-  assert.equal(soma(soSabado, pesoPowerBI), 2);
+test('PESO: a única diferença para o Power BI é o 20/11 — um dia a menos em novembro', () => {
+  const novembro = mes(7, 30);
+  const comoPowerBI = soma(novembro, new Set([2, 15]));
+  const decidido = soma(novembro, new Set([2, 15, 20]));
+  assert.equal(comoPowerBI - decidido, 1);
 
-  const soDomingo = [7, 1]; // domingo e segunda
-  assert.equal(soma(soDomingo, pesoDecidido), 1.5);
-  assert.equal(soma(soDomingo, pesoPowerBI), 1);
-
-  // E a diferença é exatamente meio dia por dia solto, com o sinal do lado que sobra.
-  for (let n = 1; n <= 6; n += 1) {
-    const dias = janela(6, n); // começa no sábado, corta antes de fechar a semana
-    const sabados = dias.filter((d) => d === 6).length;
-    const domingos = dias.filter((d) => d === 7).length;
-    const esperado = 0.5 * (sabados - domingos);
-    assert.equal(
-      soma(dias, pesoPowerBI) - soma(dias, pesoDecidido),
-      esperado,
-      `janela de ${n} dia(s) a partir do sábado`,
-    );
-  }
 });

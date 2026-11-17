@@ -158,7 +158,7 @@ queries:
     # Máximo entre criação e modificação — mesma armadilha 1 de incremental.ts.
     marca: [DATA CRIADO, DATA ENCERRADO]
     sentinela:
-      tipos: ['12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15']
+      tipos: ['12', '1014', '1297', '1254', '1255', '1136', '249', '268', '1160', '1015', '15', '1298']
     # Três costuras (B.1d, 09/10, ACHADOS #202). A primeira é o recorte. As outras duas
     # restringem as CTEs `alocacao` e `troca`, que rodavam inteiras a cada volta para casar
     # com meia dúzia de solicitações, às que a volta trouxe (`base`). Não muda resultado:
@@ -168,10 +168,10 @@ queries:
     # 5,97 s → 2,12 s na janela de 72 h.
     costura:
       - de: |-
-          WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+          WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1136', '249', '268', '1160', '1015', '15', '1298') -- Filtrando os tipos de protocolo
                 AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
         para: |-
-          WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '268', '1160', '1015', '15') -- Filtrando os tipos de protocolo
+          WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1136', '249', '268', '1160', '1015', '15', '1298') -- Filtrando os tipos de protocolo
                 AND a.created >= DATE_TRUNC('year', CURRENT_DATE)
                 AND a.modified >= :desde
       - de: |-
@@ -201,12 +201,12 @@ queries:
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= '2025-01-01')
+        	and a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year'))
       para: |-
         where (it.id = '1011'or --- TEC - Instalação Telefonia
         			   it.id = '275' OR
         			   it.id = '269') --- TEC - Instalação Telefonia com Portabilidade - Telefonia
-        	and a.created >= '2025-01-01'
+        	and a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
         	and a.modified >= :desde)
 
   # `assignments` aqui só é ponte de JOIN (nunca teve coluna própria
@@ -224,14 +224,14 @@ queries:
     chave: [PROTOCOLO]
     marca: [_MARCA_REALTIME]
     sentinela:
-      tipos: ['15', '1256']
+      tipos: ['15', '1298', '1256']
     costura:
       de: |2-
-                DATE(r.final_date) >= '2025-01-01'
-                AND it.id in ('15', '1256')
+                DATE(r.final_date) >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
+                AND it.id in ('15', '1298', '1256')
       para: |2-
-                DATE(r.final_date) >= '2025-01-01'
-                AND it.id in ('15', '1256')
+                DATE(r.final_date) >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
+                AND it.id in ('15', '1298', '1256')
                 AND a.modified >= :desde
 
   # Mesma ressalva de troca-endereco: "_MARCA_REALTIME" é sintética
@@ -371,11 +371,11 @@ queries:
         ),
         primeira_instalacao AS (
     - de: |-
-        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '275', '1011', '1015')
+        WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1136', '249', '275', '1011', '1015')
         ),
         primeiro_suporte AS (
       para: |-
-        WHERE it.id IN ('12', '1014', '1254', '1255', '1136', '249', '275', '1011', '1015')
+        WHERE it.id IN ('12', '1014', '1297', '1254', '1255', '1136', '249', '275', '1011', '1015')
               AND ppl.contract_service_tag_id = ANY(ARRAY(SELECT service_tag_id FROM alvos))
         ),
         primeiro_suporte AS (
@@ -471,8 +471,8 @@ queries:
     chave: [SOLICITACAO]
     marca: [DATA HORA SAIDA]
     costura:
-      de: "AND plis.out_date >= '2025-01-01'"
+      de: "AND plis.out_date >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')"
       para: |-
-        AND plis.out_date >= '2025-01-01'
-          AND it.id <> '15'
+        AND plis.out_date >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')
+          AND it.id NOT IN ('15', '1298')
           AND GREATEST(plis.created, COALESCE(plis.modified, plis.created)) >= :desde

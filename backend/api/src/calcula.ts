@@ -29,6 +29,7 @@ import {
 } from '../../packages/widget-engine/src/index.ts';
 import type { DashboardSpec, FiltroSpec, VisualSpec } from '../../packages/widget-engine/src/spec.ts';
 import { TIPO_DE_TELA } from '../../packages/widget-engine/src/filtro-url.ts';
+import { casasDoPercentual } from '../../packages/widget-engine/src/percentual.ts';
 import type { Evaluator } from '../../packages/measure-engine/src/evaluator.ts';
 import { isBlank, type DaxValue } from '../../packages/measure-engine/src/value.ts';
 
@@ -71,6 +72,23 @@ export interface Segmentacao {
    * níveis todos.
    */
   niveis?: string[];
+  /**
+   * Esta segmentação veio de uma HIERARQUIA de datas — independente de quantos níveis
+   * estão ativos.
+   *
+   * **Por que não dava para deduzir isto de `niveis`** (QA D-22, 13/11/2026). `niveis`
+   * só aparece quando a hierarquia NÃO reduz a um nível só; quando reduz, a
+   * segmentação sai daqui como se fosse uma coluna comum com `nivel: 'Ano'`. A rota
+   * `/valores` usava `niveis` como sinônimo de "é hierarquia" para liberar o pedido SEM
+   * `nivel` — que é o que a árvore Ano > Mês > Dia da tela faz para descobrir quais
+   * meses cada ano tem. Resultado: na Manutenção Inicial, cujo poço de data tem só o
+   * `Ano` ativo, a árvore "Período" levava 404 e abria vazia.
+   *
+   * Este campo separa as duas perguntas. `niveis` continua respondendo "é um caminho de
+   * drill, não filtra"; `hierarquia` responde "a coluna é um poço de data desta página,
+   * e as datas cruas dela são o que a árvore precisa".
+   */
+  hierarquia?: true;
 }
 
 /** Quantas linhas de tabela a resposta manda quando ninguém pede outra coisa. */
@@ -137,6 +155,23 @@ export interface Janela {
    * `CacheDeVisual` existe para não pagar.
    */
   termo?: string;
+  /**
+   * A coluna por onde ordenar e a direção — o clique no cabeçalho da tabela.
+   *
+   * **Pelo mesmo motivo do `termo`** (QA D-17). A tela ordenava `d.linhas`, que são as
+   * 200 linhas da janela JÁ baixada: numa tabela de 95.157 linhas, clicar em "maior
+   * primeiro" reordenava a página e deixava o maior valor de verdade em alguma janela
+   * que ninguém abriu. Ordenação que vale só para o pedaço visível é pior que nenhuma,
+   * porque parece que valeu.
+   *
+   * `coluna` é o ÍNDICE na lista de colunas do visual; quem valida que ele existe é a
+   * rota (`servidor.ts`), não aqui.
+   *
+   * Entra DEPOIS do cálculo, como o termo: `chaveDoCompleto` não o inclui, então trocar
+   * a ordem não recalcula nada — e `chaveDaResposta` inclui, senão a janela ordenada
+   * sairia do cache da não ordenada.
+   */
+  ordem?: { coluna: number; desc: boolean };
 }
 
 /**
@@ -152,6 +187,37 @@ export interface Janela {
  *
  * `null`/`undefined` nunca casam: BLANK não é texto vazio que contém tudo.
  */
+/**
+ * Ordena as linhas por uma coluna — **esta função veio da tela, palavra por palavra**
+ * (`frontend/src/utils/tabelaDados.ts`, `ordenaLinhas`), pelo mesmo motivo de
+ * `casaComTermo`: duas regras de comparação fariam a tabela mudar de ordem ao mudar de
+ * lado, e o sintoma seria "a linha trocou de lugar sozinha", sem erro nenhum.
+ *
+ * Opera sobre a linha **já serializada**, onde data é texto ISO — que ordena igual à
+ * data, porque ISO é ordenável como texto. Nulo vai para o fim nas duas direções: ele
+ * não é "o menor", é ausência.
+ */
+export function ordenaLinhas(
+  linhas: readonly unknown[][],
+  coluna: number,
+  desc: boolean,
+): unknown[][] {
+  const fora = [...linhas];
+  fora.sort((a, b) => {
+    const vA = a[coluna];
+    const vB = b[coluna];
+    if (vA === null || vA === undefined) return 1;
+    if (vB === null || vB === undefined) return -1;
+    if (typeof vA === 'number' && typeof vB === 'number') return desc ? vB - vA : vA - vB;
+    const sA = String(vA).toLowerCase();
+    const sB = String(vB).toLowerCase();
+    if (sA < sB) return desc ? 1 : -1;
+    if (sA > sB) return desc ? -1 : 1;
+    return 0;
+  });
+  return fora;
+}
+
 export function casaComTermo(linha: readonly unknown[], termo: string): boolean {
   for (const v of linha) {
     if (v === null || v === undefined) continue;
@@ -196,8 +262,14 @@ export interface TabelaCompleta {
     coluna: string | null;
     /** Nível da hierarquia de datas (`Ano`, `Mês`) quando a coluna é um deles. */
     nivel: string | null;
-    /** Só presente (e `true`) em coluna de porcentagem de visual nativo — ver `tabela.ts`. */
+    /**
+     * Só presente em coluna de porcentagem — a medida tem `%` no `format` do catálogo
+     * (ver `percentual.ts`). `casas` são as decimais que o próprio formato pede: a
+     * `% Diferença` da Premiação é `0.00%` e sai com duas, a `ANO · VARIAÇÃO` é `0.0%`
+     * e sai com uma.
+     */
     percentual?: true;
+    casas?: number;
   }[];
   linhas: unknown[][];
   linhasTotais: number;
@@ -248,6 +320,13 @@ export interface VisualCalculado {
    * o mês do seletor, e quem olha precisa saber disso ao comparar com os vizinhos.
    */
   nota?: string;
+  /**
+   * Por que este pedido não calcula o visual, quando o dado dele não está no caminho por
+   * onde o pedido saiu — hoje, a agenda completa fora do snapshot (passo 3b,
+   * docs/DECISAO-AO-VIVO.md). Não é erro nem "sem dados": a tela escreve o motivo, e o
+   * número volta pelo caminho que tem o dado (o ao vivo).
+   */
+  indisponivel?: string;
   erro?: string;
   dados?: unknown;
   /**
@@ -327,6 +406,7 @@ export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
     if (ativos.length !== 1) {
       return {
         ...base,
+        hierarquia: true,
         niveis: ativos.map((c) => c.level ?? '?'),
         naoFiltra:
           `segmentação de hierarquia com ${ativos.length} níveis ativos ` +
@@ -338,9 +418,15 @@ export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
 
     const nivel = ativos[0]!.level;
     if (!nivel) {
-      return { ...base, naoFiltra: 'nível de hierarquia sem nome do nível na spec.' };
+      return { ...base, hierarquia: true, naoFiltra: 'nível de hierarquia sem nome do nível na spec.' };
     }
-    return { ...base, coluna: ativos[0]!.property ?? base.coluna, nivel, rotulo: ativos[0]!.name ?? base.rotulo };
+    return {
+      ...base,
+      hierarquia: true,
+      coluna: ativos[0]!.property ?? base.coluna,
+      nivel,
+      rotulo: ativos[0]!.name ?? base.rotulo,
+    };
   }
 
   // Um `kind` novo do Power BI cai aqui. Desabilitar dizendo o nome é melhor que
@@ -350,6 +436,25 @@ export function segmentacaoDe(v: VisualSpec): Segmentacao | undefined {
   }
 
   return base;
+}
+
+/**
+ * O visual `v` indisponível neste pedido, com o motivo (`VisualCalculado.indisponivel`) — ou
+ * `null` quando ele não calcula número de todo jeito (seletor, imagem, texto): esses saem
+ * como sempre.
+ */
+export function visualIndisponivel(v: VisualSpec, motivo: string): VisualCalculado | null {
+  const conteudo = conteudoDe(v.type);
+  if (conteudo === null) return null;
+  return {
+    id: v.id,
+    tipo: v.type,
+    posicao: v.position,
+    ...(v.title ? { titulo: v.title } : {}),
+    conteudo,
+    indisponivel: motivo,
+    ms: 0,
+  };
 }
 
 function conteudoDe(tipo: string): VisualCalculado['conteudo'] {
@@ -644,12 +749,20 @@ function dadosDo(
 
   if (conteudo === 'card') {
     const r = calculaCard(dash, v, ev);
+    // QA D-12: o card de porcentagem sai marcado, com as casas do próprio formato. Até
+    // 16/11/2026 a tela decidia pelo RÓTULO (nome com `%`), e `MÉDIA GERAL` — que é
+    // `REINCIDÊNCIA[Porcentagem]`, formato `0.00%` — aparecia como `0,064`.
+    const casas =
+      r.origem.kind === 'measure'
+        ? casasDoPercentual(ev.model.measure(r.origem.measure)?.format)
+        : null;
     return {
       nome: r.nome,
       valor: serializa(r.valor),
       tipoDoValor: tipoDe(r.valor),
       origem: r.origem,
       filtros: r.filtros,
+      ...(casas !== null ? { percentual: true as const, casas } : {}),
     };
   }
 
@@ -689,7 +802,9 @@ function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Tabe
       tabela: r.origemDasColunas[i]?.tabela ?? null,
       coluna: r.origemDasColunas[i]?.coluna ?? null,
       nivel: r.origemDasColunas[i]?.nivel ?? null,
-      ...(r.percentuais[i] ? { percentual: true as const } : {}),
+      ...(r.percentuais[i] !== null && r.percentuais[i] !== undefined
+        ? { percentual: true as const, casas: r.percentuais[i]! }
+        : {}),
     })),
     linhas: r.linhas.map((l) => l.map((c) => serializa(c.valor))),
     linhasTotais: r.linhas.length,
@@ -750,10 +865,24 @@ export function janelaDe(completo: Completo, janela: Janela): unknown {
     const { especie: _, linhas, ...resto } = completo;
     const termo = janela.termo;
     const achadas = termo ? linhas.filter((l) => casaComTermo(l, termo)) : linhas;
+    // A ordem vale sobre o resultado INTEIRO, e por isso vem antes do `slice` (D-17).
+    //
+    // Índice fora da tabela ERRA ALTO, em vez de ordenar por uma coluna que não existe:
+    // o comparador compararia `undefined` com `undefined` em toda linha e devolveria
+    // uma ordem que ninguém pediu, com cara de ordenada. O visual mostra o erro —
+    // `calculaPagina` guarda a mensagem por visual —, que é o oposto de calar.
+    if (janela.ordem && (janela.ordem.coluna < 0 || janela.ordem.coluna >= completo.colunas.length)) {
+      throw new Error(
+        `?ordem= pede a coluna ${janela.ordem.coluna}, e esta tabela tem ${completo.colunas.length}.`,
+      );
+    }
+    const ordenadas = janela.ordem
+      ? ordenaLinhas(achadas, janela.ordem.coluna, janela.ordem.desc)
+      : achadas;
     return {
       ...resto,
-      linhas: achadas.slice(janela.de, ate),
-      linhasTotais: achadas.length,
+      linhas: ordenadas.slice(janela.de, ate),
+      linhasTotais: ordenadas.length,
       ...(termo ? { totalSemBusca: completo.linhasTotais } : {}),
       de: janela.de,
     };

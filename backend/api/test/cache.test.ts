@@ -125,6 +125,29 @@ test('chaveDaResposta: o termo de busca muda a chave — buscas diferentes não 
   assert.equal(semBusca, chaveDaResposta({ ...base, termo: '' }));
 });
 
+// A ORDENAÇÃO DE TABELA (`?ordem=`, 16/11/2026, QA D-17). Mesma assimetria do termo, e
+// pelo mesmo motivo: a ordem muda QUAIS linhas a janela traz, nunca o cálculo que ela
+// recorta.
+test('chaveDaResposta: a ordem muda a chave — a primeira página ordenada não é a primeira página', () => {
+  const base = {
+    escopo: 'todos', pagina: 'protocolos-detalhados', filtros: [], visuais: null,
+    de: 0, linhas: 200, carimbo: 'c1', dia: '2026-11-16',
+  };
+  const semOrdem = chaveDaResposta(base);
+  const porQtdDesc = chaveDaResposta({ ...base, ordem: { coluna: 3, desc: true } });
+
+  assert.notEqual(semOrdem, porQtdDesc, 'ordenar não pode cair na chave de quem não ordenou');
+  assert.notEqual(
+    porQtdDesc,
+    chaveDaResposta({ ...base, ordem: { coluna: 3, desc: false } }),
+    'crescente e decrescente trazem linhas diferentes na primeira página',
+  );
+  assert.notEqual(porQtdDesc, chaveDaResposta({ ...base, ordem: { coluna: 2, desc: true } }));
+  assert.equal(porQtdDesc, chaveDaResposta({ ...base, ordem: { coluna: 3, desc: true } }));
+  // Ausente é "sem ordem", como `?busca=` vazio é "sem busca".
+  assert.equal(semOrdem, chaveDaResposta({ ...base, ordem: undefined }));
+});
+
 test('chaveDoCompleto: o termo NÃO participa — é o que impede uma tecla de recalcular a tabela', () => {
   // `janelaDe` filtra o resultado já pronto. Se o termo entrasse aqui, cada tecla de
   // `1784218` seria um recálculo das 33.462 linhas (2,9 s medidos) e mais uma cópia

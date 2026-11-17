@@ -103,3 +103,40 @@ test('daemon.ts CLI: recusa argumento desconhecido', () => {
   assert.equal(status, 2, saida);
   assert.match(saida, /argumento desconhecido: --invalido/);
 });
+
+test('daemon.ts CLI: --por-grupo encerra ao receber SIGTERM sem cair para iniciaDaemon', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'refresh-por-grupo-'));
+  const agora = new Date().toISOString();
+  const fresco = { ultimaTentativa: agora, ultimoSucesso: agora, duracaoMs: 1, ok: true, falhasConsecutivas: 0 };
+  fs.writeFileSync(path.join(dir, 'refresh-status.json'), JSON.stringify({ quente: fresco, medio: fresco, frio: fresco }));
+
+  try {
+    const gatilho = path.join(dir, 'gatilho-sigterm.mjs');
+    fs.writeFileSync(
+      gatilho,
+      `setTimeout(() => process.emit('SIGTERM', 'SIGTERM'), 120).unref();\n`,
+    );
+    const r = spawnSync(process.execPath, ['--import', `file:///${gatilho.replace(/\\/g, '/')}`, DAEMON, '--por-grupo'], {
+      cwd: ROOT,
+      encoding: 'utf8',
+      timeout: 3000,
+      env: {
+        ...process.env,
+        SNAPSHOT_DIR: dir,
+        SNAPSHOT_DIARIO_UTC: 'off',
+      },
+    });
+    const saida = (r.stdout ?? '') + (r.stderr ?? '');
+    assert.equal(r.status, 0, `esperava saída 0 ao encerrar --por-grupo, obteve status=${r.status} signal=${r.signal}\n${saida}`);
+    assert.match(saida, /\[Refresh\] Recebido sinal SIGTERM\. Encerrando agendador por grupo\./);
+    assert.doesNotMatch(saida, /\[Refresh Daemon\] Agendador automático iniciado\./);
+    const eventos = leHistorico(dir);
+    assert.equal(
+      eventos.filter((e) => e.evento === 'arranque').length,
+      0,
+      'desligar --por-grupo não pode iniciar o daemon legado nem gravar evento de arranque',
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

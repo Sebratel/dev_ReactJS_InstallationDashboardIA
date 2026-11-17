@@ -143,3 +143,27 @@ export function horaCurta(ms: number): string {
 function formataCadencia(min: number): string {
   return min < 1 ? `${Math.round(min * 60)} s` : `${Math.round(min)} min`;
 }
+
+/**
+ * O texto de versão no pé da capa — QA D-15 ("versão no ar sem identificação").
+ *
+ * A pergunta que ele responde é uma só, e é a primeira que alguém faz diante de um
+ * número estranho: **esta tela já é a do conserto?** Por isso o commit vem primeiro e a
+ * data do build logo atrás: as duas juntas são o que dá para comparar com o que subiu.
+ *
+ * `commit` pode faltar (quem construiu a imagem não informou). Nesse caso vale a
+ * impressão — o sha256 do que embarcou —, que não identifica QUAL commit é, mas
+ * identifica a imagem: duas telas com a mesma impressão são a mesma tela. Sem nenhum dos
+ * dois, o texto diz que não sabe, em vez de sumir: um rodapé vazio parece que a versão
+ * nunca existiu, e é esse o defeito que o QA abriu.
+ */
+export function rotuloDaVersao(
+  versao: RespostaSaude['versao'] | undefined,
+  formataData: (iso: string | null) => string,
+): string {
+  if (!versao) return 'versão não identificada';
+  const id = versao.commit ?? (versao.impressao ? `imagem ${versao.impressao}` : null);
+  if (!id) return 'versão não identificada';
+  const quando = versao.construidoEm ? ` · ${formataData(versao.construidoEm)}` : '';
+  return `versão ${id}${quando}`;
+}

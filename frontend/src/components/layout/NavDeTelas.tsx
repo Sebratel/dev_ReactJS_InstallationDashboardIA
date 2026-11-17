@@ -26,10 +26,10 @@ export function NavDeTelas(props: {
   aoEscolher: (id: string) => void;
   aoPassarMouse?: (id: string) => void;
   aoSairDoMouse?: () => void;
-  /** Uma aba que não é tela do relatório — a PERMISSÕES, só para admin/dev. Vai no fim,
-   *  encostada à direita, com o mesmo formato das outras; `marca` é o número ao lado
-   *  (as alterações por salvar). */
-  extra?: { id: string; rotulo: string; marca?: number };
+  /** As abas que não são tela do relatório — PERMISSÕES e Metas. Vão no fim, encostadas
+   *  à direita, com o mesmo formato das outras; `marca` é o número ao lado (as alterações
+   *  por salvar). Lista, e não uma só, desde 12/11/2026: a aba Metas é a segunda. */
+  extras?: readonly { id: string; rotulo: string; marca?: number }[];
 }) {
   // `useLayoutEffect` e `resize`, não `ResizeObserver` — ver `useAlturaMedida.ts`.
   const navRef = useAlturaMedida<HTMLElement>('--h-nav');
@@ -68,30 +68,33 @@ export function NavDeTelas(props: {
           </button>
         );
       })}
-      {props.extra ? (
+      {(props.extras ?? []).map((extra, i) => (
         <button
+          key={extra.id}
           className={cn(
             ABA,
-            'ml-auto',
-            props.extra.id === props.atual &&
+            // Só a primeira empurra: `ml-auto` em todas separaria uma da outra e elas
+            // deixariam de parecer um grupo no canto direito.
+            i === 0 && 'ml-auto',
+            extra.id === props.atual &&
               'border-b-pbi-primary-texto text-pbi-primary-texto enabled:hover:bg-transparent enabled:hover:text-pbi-primary-texto',
           )}
-          onClick={() => props.aoEscolher(props.extra!.id)}
-          aria-current={props.extra.id === props.atual ? 'page' : undefined}
+          onClick={() => props.aoEscolher(extra.id)}
+          aria-current={extra.id === props.atual ? 'page' : undefined}
           title={
-            props.extra.marca
-              ? `${props.extra.rotulo} — ${props.extra.marca} alteração(ões) por salvar`
-              : props.extra.rotulo
+            extra.marca
+              ? `${extra.rotulo} — ${extra.marca} alteração(ões) por salvar`
+              : extra.rotulo
           }
         >
-          {props.extra.rotulo}
-          {props.extra.marca ? (
+          {extra.rotulo}
+          {extra.marca ? (
             <span className="ml-[6px] rounded-full bg-pbi-primary px-[6px] text-[10px] leading-[16px] text-pbi-sobre-primary">
-              {props.extra.marca}
+              {extra.marca}
             </span>
           ) : null}
         </button>
-      ) : null}
+      ))}
     </nav>
   );
 }

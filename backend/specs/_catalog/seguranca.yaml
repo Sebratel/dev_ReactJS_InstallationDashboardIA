@@ -89,17 +89,25 @@ dados_sensiveis:
     - { tabela: PROTOCOLOS GERAL, coluna: LATITUDE, classe: endereco }
     - { tabela: PROTOCOLOS GERAL, coluna: LONGITUDE, classe: endereco }
     - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: CLIENTE, classe: nome }
-    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: TELEFONE, classe: contato }
-    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: RUA, classe: endereco }
+    # As quatro de 13/11/2026 (ACHADOS #258): o unico "uso" delas em todo o repositorio
+    # era a lista de conferencia de formato do `valida-sql-conjunto.ts`, que nao le o
+    # dado. Sairam do `sql:`, do SQL historico do `m_expression` e do tables/. Antes de
+    # tirar, medido no SRD: zero grupos colidem e zero linhas se fundem no `SELECT
+    # DISTINCT` sem elas, e a consulta devolve as mesmas 94.320 linhas.
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: TELEFONE, classe: contato, removida_em: 2026-11-13 }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: RUA, classe: endereco, removida_em: 2026-11-13 }
     - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: BAIRRO, classe: endereco }
-    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: LATITUDE, classe: endereco }
-    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: LONGITUDE, classe: endereco }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: LATITUDE, classe: endereco, removida_em: 2026-11-13 }
+    - { tabela: PROTOCOLOS PRODUTIVIDADE, coluna: LONGITUDE, classe: endereco, removida_em: 2026-11-13 }
     - { tabela: PROTOCOLOS TELEFONIA, coluna: CLIENTE, classe: nome }
     - { tabela: PROTOCOLOS TELEFONIA, coluna: TELEFONE, classe: contato }
     - { tabela: PROTOCOLOS TELEFONIA, coluna: RUA, classe: endereco }
     - { tabela: PROTOCOLOS TELEFONIA, coluna: BAIRRO, classe: endereco }
-    - { tabela: PROTOCOLOS TELEFONIA, coluna: LATITUDE, classe: endereco }
-    - { tabela: PROTOCOLOS TELEFONIA, coluna: LONGITUDE, classe: endereco }
+    # Mesma historia das da PROTOCOLOS PRODUTIVIDADE, no mesmo dia (ACHADOS #258): o
+    # unico "uso" era a lista de conferencia de formato. Medido: 0 grupos colidem, e a
+    # consulta devolve as mesmas 2.190 linhas sem elas.
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: LATITUDE, classe: endereco, removida_em: 2026-11-13 }
+    - { tabela: PROTOCOLOS TELEFONIA, coluna: LONGITUDE, classe: endereco, removida_em: 2026-11-13 }
     - { tabela: PROTOCOLOS TELEFONIA, coluna: NUMERO, classe: endereco }
     - { tabela: REINCIDÊNCIA, coluna: cliente_nome, classe: nome }
     - { tabela: RETORNO PRIORITARIO, coluna: cliente_nome_instalacao, classe: nome }

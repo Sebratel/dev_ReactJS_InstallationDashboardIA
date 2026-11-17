@@ -100,3 +100,25 @@ test('coleta as células de todas as linhas da matriz', async () => {
   assert.deepEqual(completa.linhas, [['A'], ['B'], ['C']]);
   assert.deepEqual(completa.celulas, [[[1]], [[2]], [[3]]]);
 });
+
+test('repassa clicados do cross-filtering para o servidor ao exportar tabela e matriz', async () => {
+  const clicadosRecebidos: Array<readonly { tabela: string; coluna: string }[]> = [];
+  const busca: BuscaDeExportacao = async (_id, _filtros, opcoes, _signal, clicados) => {
+    clicadosRecebidos.push(clicados);
+    return paginaCom({
+      colunas: [{ nome: 'Protocolo', tipo: 'string', chave: true, tabela: 'T', coluna: 'P' }],
+      linhas: [['123']],
+      linhasTotais: 1,
+      de: opcoes.de,
+      filtros: [],
+    });
+  };
+
+  const origem = [{ tabela: 'PROTOCOLOS GERAL', coluna: 'REGIONAL' }];
+  await coletaTabelaCompleta(
+    { pagina: 'pagina', visual: 'visual', filtros: [], clicados: origem },
+    busca,
+  );
+
+  assert.deepEqual(clicadosRecebidos, [origem]);
+});

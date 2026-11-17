@@ -134,7 +134,8 @@ o leitor de permissões.
 no banco `DB_InstallationDashboard` (tela "Acessos") ou em `ADMIN_EMAILS`. Desde 20/10/2026
 a pessoa também pode ser **barrada**: suspensa ou com prazo vencido (tabela
 `user_access_rules`, que a API cria ao subir) e pela situação na **Senior** (`DATAHUB_TOKEN`,
-publicação `instalacao-senior`): desligado, afastado (férias, licença, atestado) ou fora da
+conjunto `db-senior-collaborators-2` pela API de consumo do Data Hub,
+`/datasets/{conjunto}/rows`, desde 30/10/2026; `SENIOR_DATASET` troca o conjunto): desligado, afastado (férias, licença, atestado) ou fora da
 Senior não entra. `SENIOR_MODO=observar` (padrão) só mostra na aba PERMISSÕES quem seria
 barrado; `bloquear` barra. `ADMIN_EMAILS`/`DEV_EMAILS` nunca são barrados. Dentro de uma aba liberada, a pessoa ainda vê
 todas as linhas — e o que a API serve inclui:
@@ -528,9 +529,11 @@ Não há `Dockerfile`. Três particularidades deste repositório mudam o desenho
   não precisa de `tsc` para a API. O **frontend** sim: `npm run web:build` roda
   `tsc --noEmit` e o Vite.
 - **A API tem heap e piscina limitados.** A imagem sobe com
-  `--max-old-space-size=1024` e `--expose-gc`, mais duas workers de 512 MB, dentro
-  de `mem_limit: 3072m` (20/10/2026: com uma só a piscina não reserva worker para o
-  clique). Não aumente um dos três valores isoladamente.
+  `--max-old-space-size=768` e `--expose-gc`, mais duas workers de 512 MB e, com
+  `AO_VIVO_PAGINAS`, um processo filho de busca ao vivo de até 1024 MB por vez, dentro
+  de `mem_limit: 3072m` (20/10/2026: com uma só worker a piscina não reserva nenhuma para
+  o clique; 24/10/2026: o pai desceu de 1024 para 768 para o filho caber). Não aumente
+  um dos valores isoladamente.
 - **O `snapshot/` não vai dentro da imagem.** São **39 MB** de dado de cliente, e ele
   muda a cada refresh: é **volume**, e um volume que precisa de backup e de política de
   retenção como qualquer base com dado pessoal. **O que obriga a tratá-lo assim é o dado

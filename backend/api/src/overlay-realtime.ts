@@ -61,6 +61,30 @@ export function mesclador(
     mescla({ antigas: doDisco, novas: ov.linhas, chave: ov.chave, marca: ov.marca, corte: ov.corte }).linhas;
 }
 
+/**
+ * O overlay aplicado sobre uma pasta AO VIVO (docs/DECISAO-AO-VIVO.md), e não sobre o
+ * snapshot: o mesmo delta, com o `corte` levado para o instante em que o SRD foi lido.
+ *
+ * **Por quê.** `mescla()` trata como APAGADA toda linha do disco com marca a partir do
+ * `corte` que o delta não reentregou. Sobre o snapshot isso é certo: ele é mais velho que
+ * o corte do poller. A pasta ao vivo é mais nova — tem relatos de depois do corte — e o
+ * poller só vigia protocolos com agenda dos últimos 7 dias (`realtime-poll.yaml`): um
+ * relato de ontem num protocolo do começo do mês viria na pasta, não viria no delta, e
+ * sairia como apagado. Com o corte no instante da busca, o delta só substitui os
+ * protocolos que ele reentregou, e nada que a busca trouxe é dado como sumido.
+ */
+export function overlaySobreBuscaAoVivo(
+  overlays: ReadonlyMap<string, OverlayDeTabela>,
+  buscadoEm: string,
+): Map<string, OverlayDeTabela> {
+  const busca = Date.parse(buscadoEm);
+  const out = new Map<string, OverlayDeTabela>();
+  for (const [tabela, ov] of overlays) {
+    out.set(tabela, { ...ov, corte: new Date(Math.max(ov.corte.getTime(), busca)) });
+  }
+  return out;
+}
+
 /** Converte um mapa de overlays (dado) no mapa de funções que `carrega()` espera. */
 export function mescladoresDe(
   overlays: ReadonlyMap<string, OverlayDeTabela>,

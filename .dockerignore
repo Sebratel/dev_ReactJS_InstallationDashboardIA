@@ -41,6 +41,14 @@ id_ed25519*
 
 node_modules/
 .git/
+# ...mas HEAD e os refs FICAM: são alguns KB, e é deles que o build tira o commit que
+# vai para `/api/saude` (QA D-15, `versao.ts`). Sem isto o Portainer — que clona o
+# repositório e constrói a imagem ali — produziria uma imagem que não sabe de onde veio,
+# e a alternativa seria alguém digitar o commit na tela da stack e esquecer dele.
+# O histórico (`.git/objects`) continua fora, que é o que pesa.
+!.git/HEAD
+!.git/refs
+!.git/packed-refs
 .claude/
 docs/
 auditoria-seguranca/

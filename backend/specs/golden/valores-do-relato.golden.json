@@ -1,0 +1,38 @@
+{
+  "queryId": "valores-do-relato",
+  "datasource": "dbVoalle",
+  "strategy": "wrapped",
+  "rowCount": 68,
+  "truncated": false,
+  "profiledRows": 68,
+  "columnsFromSample": false,
+  "columns": [
+    {
+      "name": "Descrição",
+      "type": "string",
+      "nulls": 0,
+      "distinct": 12,
+      "minLength": 11,
+      "maxLength": 59
+    },
+    {
+      "name": "ClassificacaoRelato",
+      "type": "string",
+      "nulls": 12,
+      "distinct": 36,
+      "minLength": 31,
+      "maxLength": 63
+    },
+    {
+      "name": "CategoriaProdutividade",
+      "type": "string",
+      "nulls": 12,
+      "distinct": 2,
+      "minLength": 9,
+      "maxLength": 11
+    }
+  ],
+  "schemaFingerprint": "96fdba6fae59d5a3",
+  "dataFingerprint": "2b435843e35f81c5",
+  "capturedAt": "2026-10-26T19:49:43.932Z"
+}

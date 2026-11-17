@@ -65,7 +65,7 @@ if (arquivos.length === 0) {
 
 const model = SemanticModel.fromSpecsDir(path.join(ROOT, 'backend', 'specs'));
 const usadas = colunasUsadas(loadDashboards(path.join(ROOT, 'backend', 'specs')), model);
-const problemas = confereSnapshot(arquivos, usadas);
+const problemas = confereSnapshot(arquivos, usadas, model);
 const conta = contaPorGravidade(problemas);
 
 const linhas = arquivos.reduce((a, x) => a + x.cabecalho.linhas, 0);

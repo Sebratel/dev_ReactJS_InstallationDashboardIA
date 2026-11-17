@@ -123,3 +123,26 @@ test('limpar a busca volta ao começo, e não à janela de antes da busca', asyn
   rerender({ inicial, termo: '' });
   expect(result.current.visual).toBe(inicial);
 });
+
+test('propaga clicados para urlDaPagina/pegaPagina na paginação, busca e ordenação (acerto em CacheDeVisual)', async () => {
+  const f = fetchFalso();
+  const inicial = visual(0);
+  const clicados = [{ tabela: 'PROTOCOLOS GERAL', coluna: 'REGIONAL' }];
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const envolve = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  const { result } = renderHook(
+    () => useJanela('pg', inicial, [], 'fibra', { coluna: 1, desc: true }, clicados),
+    { wrapper: envolve },
+  );
+  await waitFor(() => expect(f.urls).toHaveLength(1));
+  expect(decodeURIComponent(f.urls[0]!.replace(/\+/g, ' '))).toContain(
+    'clicado={"tabela":"PROTOCOLOS GERAL","coluna":"REGIONAL"}',
+  );
+  act(() => result.current.vaiPara(200));
+  await waitFor(() => expect(f.urls).toHaveLength(2));
+  expect(decodeURIComponent(f.urls[1]!.replace(/\+/g, ' '))).toContain(
+    'clicado={"tabela":"PROTOCOLOS GERAL","coluna":"REGIONAL"}',
+  );
+});

@@ -11,6 +11,7 @@
 
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ColunasUsadas } from '../src/colunas-usadas.ts';
 import {
   confereSnapshot,
@@ -171,4 +172,71 @@ test('contaPorGravidade separa o que derruba o comando do que só informa', () =
     usadas({ t: ['a'] }),
   );
   assert.deepEqual(contaPorGravidade(p), { erro: 1, aviso: 1 });
+});
+
+test('com modelo semântico, query que NÃO alimenta a calculada não a torna obsoleta', () => {
+  const m = new SemanticModel();
+  m.addTable({
+    id: 'os',
+    name: 'OS',
+    queryRef: 'protocolos-geral',
+    columns: [{ name: 'CIDADE', type: null, format: null, sourceColumn: null, calculated: false, dax: null }],
+  });
+  m.addTable({
+    id: 'qf',
+    name: 'QUADRO FUNCIONAL',
+    queryRef: 'quadro-funcional',
+    columns: [{ name: 'NOME', type: null, format: null, sourceColumn: null, calculated: false, dax: null }],
+  });
+  m.addTable({
+    id: 'cid',
+    name: 'CIDADES',
+    queryRef: null,
+    tableDax: "DISTINCT('OS'[CIDADE])",
+    columns: [{ name: 'CIDADE', type: null, format: null, sourceColumn: 'CIDADE', calculated: false, dax: null }],
+  });
+
+  // No grupo `medio`, `protocolos-geral` termina, as calculadas são congeladas logo em
+  // seguida, e depois `quadro-funcional` (que não alimenta calculada nenhuma) termina.
+  const arquivos = [
+    arquivo('protocolos-geral.jsonl.gz', {
+      query: 'protocolos-geral',
+      tabelas: ['OS'],
+      linhas: 10,
+      colunas: [coluna('CIDADE', 0)],
+      geradoEm: '2026-11-16T18:26:55.000Z',
+    }),
+    arquivo('calc.cidades.jsonl.gz', {
+      query: 'calc.cidades',
+      tabelas: ['CIDADES'],
+      linhas: 2,
+      colunas: [coluna('CIDADE', 0)],
+      geradoEm: '2026-11-16T18:27:03.000Z',
+    }),
+    arquivo('quadro-funcional.jsonl.gz', {
+      query: 'quadro-funcional',
+      tabelas: ['QUADRO FUNCIONAL'],
+      linhas: 5,
+      colunas: [coluna('NOME', 0)],
+      geradoEm: '2026-11-16T18:27:29.000Z',
+    }),
+  ];
+
+  assert.deepEqual(confereSnapshot(arquivos, usadas({}), m), []);
+
+  // Mas se a PRÓPRIA origem (`protocolos-geral`) for mais nova que `calc.cidades`, continua sendo ERRO.
+  const comOrigemMaisNova = [
+    arquivo('protocolos-geral.jsonl.gz', {
+      query: 'protocolos-geral',
+      tabelas: ['OS'],
+      linhas: 10,
+      colunas: [coluna('CIDADE', 0)],
+      geradoEm: '2026-11-16T18:28:00.000Z',
+    }),
+    arquivos[1]!,
+    arquivos[2]!,
+  ];
+  const problemas = confereSnapshot(comOrigemMaisNova, usadas({}), m);
+  assert.equal(problemas.length, 1);
+  assert.equal(problemas[0]!.tipo, 'calculada-obsoleta');
 });

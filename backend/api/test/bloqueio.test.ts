@@ -61,6 +61,8 @@ test('senior: pagina até o total, guarda em disco e relê ao subir', async () =
   assert.equal(s.situacaoDe('p1@sebratel.com.br'), undefined, 'antes da primeira leitura a regra não existe');
   await s.sincroniza();
   assert.equal(pedidos.length, 3, '2500 linhas em páginas de 1000');
+  // A API de consumo por conjunto (30/10/2026), não mais a publicação `/p/instalacao-senior`.
+  assert.equal(pedidos[0], 'http://dh/datasets/db-senior-collaborators-2/rows?limit=1000&offset=0');
   assert.equal(s.situacaoDe('p2499@sebratel.com.br')?.situacao, 'Trabalhando');
   assert.equal(s.situacaoDe('ninguem@sebratel.com.br'), null, 'fora da Senior');
 
@@ -69,6 +71,19 @@ test('senior: pagina até o total, guarda em disco e relê ao subir', async () =
   await deNovo.sincroniza();
   assert.equal(deNovo.estado().carregada, true, 'falha não apaga a leitura boa');
   assert.match(deNovo.estado().falhou ?? '', /HTTP 500/);
+});
+
+// A API do Data Hub sempre responde `{ error }` em JSON; corpo que não é JSON é o proxy do
+// nome público. As duas chegavam como "HTTP 403", e a primeira suspeita virava o token.
+test('senior: a falha diz quem recusou — a API do Data Hub ou um proxy no caminho', async () => {
+  const comResposta = (corpo: string) =>
+    criaSenior({ baseUrl: 'http://dh', token: 't', buscar: (async () => new Response(corpo, { status: 403 })) as unknown as typeof fetch, log: () => {} });
+  const daApi = comResposta(JSON.stringify({ error: 'Este token não tem acesso a este conjunto de dados.' }));
+  await daApi.sincroniza();
+  assert.match(daApi.estado().falhou ?? '', /HTTP 403: Este token não tem acesso a este conjunto/);
+  const doProxy = comResposta('<html><body>403 Forbidden</body></html>');
+  await doProxy.sincroniza();
+  assert.match(doProxy.estado().falhou ?? '', /não é JSON .* proxy no caminho/);
 });
 
 test('senior: leitura com menos da metade das pessoas é descartada', async () => {

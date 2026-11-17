@@ -113,17 +113,28 @@ function funcoesQueFaltam(dax: string, model: SemanticModel, visitadas = new Set
 // ---------------------------------------------------------------------------
 
 /** Dentro do implementado, contando dependências. Travado: se mudar, é informação. */
-const NO_ESCOPO = 127;
+// 127 -> 126 aqui e 123 -> 122 logo abaixo, em 13/11/2026 (ACHADOS #262): saiu
+// 'PROTOCOLOS GERAL'[TURNO CRIADO]. Ela estava no escopo e executava bem — o que ela
+// não tinha era LEITOR: nenhum visual a alcançava, e mesmo assim ela segurava
+// [HORA CRIADO] na memória das 13 páginas, 6,48 MB em cada uma.
+const NO_ESCOPO = 126;
 
 /** Executam de fato. A diferença com `NO_ESCOPO` é explicada pelo teste abaixo. */
-const EXECUTAM = 123;
+const EXECUTAM = 122;
 
 /**
  * Medidas que citam mais de uma tabela **sem** `TREATAS`, ou seja: que só dão o
  * número certo se o filtro atravessar relacionamento. Antes da fase 2b.5, todas
  * as 22 rodavam e devolviam número — nenhuma dava erro.
+ *
+ * **23 desde 12/11/2026, e a 23ª é de outra natureza.** `# META` deixou de ser a
+ * constante `2865` e passou a ler `MAX('METAS'[META])` (QA D-20, ACHADOS #254), então
+ * `# FALTA MÊS ATIVO`, que a cita, passou a citar duas tabelas. Só que `METAS` NÃO TEM
+ * relacionamento nenhum: nada propaga até ela, e é exatamente isso que se quer — o
+ * valor é o mesmo em qualquer contexto de filtro, como era com a constante. Ela entra
+ * na contagem porque a regra aqui é sintática; não entra na superfície de erro.
  */
-const CRUZAM_SEM_TREATAS = 22;
+const CRUZAM_SEM_TREATAS = 23;
 
 /**
  * Dessas, quantas o dataset sintético consegue **mostrar** mudando de valor
@@ -135,7 +146,7 @@ function noEscopo(model: SemanticModel): Expressao[] {
   return todasAsExpressoes(model).filter((e) => funcoesQueFaltam(e.dax, model).length === 0);
 }
 
-test(`as 127 expressões estão todas dentro do implementado`, () => {
+test(`as ${NO_ESCOPO} expressões estão todas dentro do implementado`, () => {
   const model = SemanticModel.fromSpecsDir(SPECS);
   assert.equal(noEscopo(model).length, NO_ESCOPO);
 });

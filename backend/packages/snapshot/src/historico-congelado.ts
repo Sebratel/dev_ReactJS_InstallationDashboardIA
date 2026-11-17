@@ -44,7 +44,7 @@ export const HISTORICOS: ReadonlyMap<string, PoliticaDeHistorico> = new Map([
   [
     'protocolos-geral',
     {
-      piso: "a.created >= '2025-01-01'",
+      piso: "a.created >= (DATE_TRUNC('year', CURRENT_DATE) - INTERVAL '1 year')",
       coluna: 'a.created',
       // Medido em 16/10/2026: dos criados antes de julho, 0,01% mexeram em 30 dias; dos
       // criados de julho em diante, 34%. Três meses antes do corrente põe o corte ali.
