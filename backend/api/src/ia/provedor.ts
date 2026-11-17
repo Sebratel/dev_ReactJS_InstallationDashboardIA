@@ -238,7 +238,11 @@ function gemini(cfg: ConfigProvedorIa, fetchFn: typeof fetch): ProvedorIa {
         generationConfig,
       };
       const headers = { 'x-goog-api-key': cfg.chave };
-      let json: Record<string, unknown>;
+      const reservas = ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'].filter(
+        (m) => m !== cfg.modelo,
+      );
+      let json: Record<string, unknown> | undefined;
+      let ultimoErro: unknown;
       try {
         json = await pedir(
           `${base}/models/${encodeURIComponent(cfg.modelo)}:generateContent`,
@@ -247,21 +251,29 @@ function gemini(cfg: ConfigProvedorIa, fetchFn: typeof fetch): ProvedorIa {
           fetchFn,
         );
       } catch (err) {
+        ultimoErro = err;
         const msg = err instanceof Error ? err.message : String(err);
         const status = err instanceof ErroHttpIa ? err.status : 0;
-        const modeloReserva = 'gemini-2.0-flash';
-        if (cfg.modelo !== modeloReserva && ehErroTransitorioIa(status, msg)) {
-          json = await pedir(
-            `${base}/models/${encodeURIComponent(modeloReserva)}:generateContent`,
-            corpo,
-            headers,
-            fetchFn,
-            1,
-          );
-        } else {
-          throw err;
+        if (!ehErroTransitorioIa(status, msg) && status !== 404) throw err;
+        for (const modeloReserva of reservas) {
+          try {
+            json = await pedir(
+              `${base}/models/${encodeURIComponent(modeloReserva)}:generateContent`,
+              corpo,
+              headers,
+              fetchFn,
+              1,
+            );
+            break;
+          } catch (errReserva) {
+            ultimoErro = errReserva;
+            const msgR = errReserva instanceof Error ? errReserva.message : String(errReserva);
+            const statusR = errReserva instanceof ErroHttpIa ? errReserva.status : 0;
+            if (!ehErroTransitorioIa(statusR, msgR) && statusR !== 404) throw errReserva;
+          }
         }
       }
+      if (!json) throw ultimoErro;
       const candidates = Array.isArray(json.candidates)
         ? (json.candidates as { content?: { parts?: { text?: string; thought?: boolean }[] } }[])
         : [];

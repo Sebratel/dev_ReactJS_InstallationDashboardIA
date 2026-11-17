@@ -492,7 +492,7 @@ test(`PollerRealtime.estado(): o tempo dormindo não entra no denominador do "po
   const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: async () => ({
-      query: async () => { await new Promise((r) => setTimeout(r, 25)); return { rows: [], fields: [] }; },
+      query: async () => { await new Promise((r) => setTimeout(r, 35)); return { rows: [], fields: [] }; },
       end: async () => {},
     }),
     agora: () => new Date(agora),
@@ -511,7 +511,7 @@ test(`PollerRealtime.estado(): tempo de banco por query e somado por hora`, asyn
   const p = new PollerRealtime({ cobertoAte: () => null,
     specsDir: `backend/specs`,
     pool: async () => ({
-      query: async () => { await new Promise((r) => setTimeout(r, 25)); return { rows: [], fields: [] }; },
+      query: async () => { await new Promise((r) => setTimeout(r, 35)); return { rows: [], fields: [] }; },
       end: async () => {},
     }),
     agora: () => new Date(`2026-09-03T10:00:00Z`),
