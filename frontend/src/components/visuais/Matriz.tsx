@@ -50,8 +50,9 @@ export function Matriz(props: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
+  clicados?: readonly { tabela: string; coluna: string }[];
 }) {
-  const janela = useJanela(props.pagina, props.visual, props.filtros);
+  const janela = useJanela(props.pagina, props.visual, props.filtros, '', null, props.clicados);
   const visual = janela.visual;
   const d = visual.dados as DadosDeMatriz | undefined;
   const temDados = !!d && !!d.colunas && !!d.linhas;
@@ -119,6 +120,7 @@ export function Matriz(props: {
             pagina: props.pagina,
             visual: props.visual.id,
             filtros: props.filtros,
+            clicados: props.clicados,
             aoProgredir: setProgressoDaExportacao,
           });
       const { cabecalho, linhas } = csvDaMatriz(completa);

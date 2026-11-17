@@ -21,6 +21,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { relogioDeParede } from '../../measure-engine/src/relogio.ts';
 import { normalizeName, type SemanticModel } from '../../semantic-model/src/model.ts';
 import { carrega } from '../../snapshot/src/carrega.ts';
 import { escreve, le, leCabecalho, type Escalar } from '../../snapshot/src/formato.ts';
@@ -50,19 +51,200 @@ const AGENDA = 'field-agenda';
 const PROTOCOLOS = 'protocolos-geral';
 const STATUS_DIA = 'Status Protocolo Dia';
 
+/** Divide `[desde, ate)` em fatias contíguas de no máximo `diasPorFatia` dias (padrão: 7 = semana). */
+export function fatiaPeriodoEmSemanas(
+  periodo: PeriodoAoVivo,
+  diasPorFatia = 7,
+): PeriodoAoVivo[] {
+  const passo = Math.max(1, Math.trunc(diasPorFatia));
+  const inicioMs = Date.parse(`${periodo.desde}T00:00:00Z`);
+  const fimMs = Date.parse(`${periodo.ate}T00:00:00Z`);
+  if (!Number.isFinite(inicioMs) || !Number.isFinite(fimMs) || inicioMs >= fimMs) {
+    return [];
+  }
+  const diaMs = 86_400_000;
+  const fatias: PeriodoAoVivo[] = [];
+  for (let t = inicioMs; t < fimMs; t += passo * diaMs) {
+    const prox = Math.min(fimMs, t + passo * diaMs);
+    fatias.push({
+      desde: new Date(t).toISOString().slice(0, 10),
+      ate: new Date(prox).toISOString().slice(0, 10),
+    });
+  }
+  return fatias;
+}
+
+function chaveProtocolo(linha: Record<string, Escalar>): string {
+  return texto(celula(linha, 'Protocolo'));
+}
+
+function chaveProtocoloPg(linha: Record<string, Escalar>): string {
+  const v = linha['N°PROTOCOLO'] ?? linha['PROTOCOLO'] ?? celula(linha, 'N°PROTOCOLO');
+  return texto(v ?? null);
+}
+
+function dentroDaJanela(valor: Escalar, desde: string, ate: string): boolean {
+  const iso =
+    valor instanceof Date
+      ? valor.toISOString().slice(0, 10)
+      : typeof valor === 'string'
+        ? valor.slice(0, 10)
+        : '';
+  return iso >= desde && iso < ate;
+}
+
+function agrupaPorProtocolo(
+  linhas: readonly Record<string, Escalar>[],
+  destino: Map<string, Record<string, Escalar>[]>,
+): void {
+  const porSemana = new Map<string, Record<string, Escalar>[]>();
+  for (const l of linhas) {
+    const k = chaveProtocolo(l);
+    let arr = porSemana.get(k);
+    if (!arr) {
+      arr = [];
+      porSemana.set(k, arr);
+    }
+    arr.push(l);
+  }
+  for (const [k, arr] of porSemana) {
+    destino.set(k, arr);
+  }
+}
+
+async function buscaAgendaFatiada(
+  ctx: ContextoAoVivo,
+  periodo: PeriodoAoVivo,
+  agora: Date,
+  diasPorFatia: number,
+): Promise<{
+  colunas: readonly string[];
+  porProtocolo: Map<string, Record<string, Escalar>[]>;
+  buscas: BuscaFeita[];
+  ms: number;
+}> {
+  const cAgenda = ctx.catalogo.get(AGENDA)!;
+  const fatias = fatiaPeriodoEmSemanas(periodo, diasPorFatia);
+  const porProtocolo = new Map<string, Record<string, Escalar>[]>();
+  const buscas: BuscaFeita[] = [];
+  let colunas: readonly string[] = [];
+  let ms = 0;
+
+  for (const fatia of fatias) {
+    const agenda = await buscaAoVivo(ctx, {
+      query: AGENDA,
+      params: { desde: fatia.desde, ate: fatia.ate },
+      agora,
+    });
+    if (colunas.length === 0) colunas = agenda.colunas;
+    const recortadas = aplicaRecorte(agenda.linhas, cAgenda.recorte, fatia);
+    agrupaPorProtocolo(recortadas, porProtocolo);
+    buscas.push(...agenda.buscas);
+    ms += agenda.ms.total;
+  }
+
+  return { colunas, porProtocolo, buscas, ms };
+}
+
 /**
- * A agenda completa e os protocolos do período, ao vivo — uma busca depois da outra: o
- * recorte dos protocolos é a lista de protocolos da agenda.
+ * A agenda completa e os protocolos do período, ao vivo, em fatias semanais:
+ * - na primeira carga, busca semana a semana (evita pico de 640–800 MB em 1 query só);
+ * - quando já existe uma geração anterior em `anteriorDir`, busca apenas a última semana
+ *   (7 dias) e mescla incrementalmente com o disco anterior.
  */
-export async function buscaDoPeriodo(ctx: ContextoAoVivo, periodo: PeriodoAoVivo, agora: Date): Promise<DadosDoPeriodo> {
+export async function buscaDoPeriodo(
+  ctx: ContextoAoVivo,
+  periodo: PeriodoAoVivo,
+  agora: Date,
+  opcoes?: { readonly diasPorFatia?: number; readonly anteriorDir?: string },
+): Promise<DadosDoPeriodo> {
   const inicio = Date.now();
   const cAgenda = ctx.catalogo.get(AGENDA);
   const cProtocolos = ctx.catalogo.get(PROTOCOLOS);
   if (!cAgenda || !cProtocolos) throw new Error(`ao-vivo.yaml sem '${!cAgenda ? AGENDA : PROTOCOLOS}'`);
 
-  const agenda = await buscaAoVivo(ctx, { query: AGENDA, params: { desde: periodo.desde, ate: periodo.ate }, agora });
-  const linhasAgenda = aplicaRecorte(agenda.linhas, cAgenda.recorte, periodo);
-  const lista = [...new Set(linhasAgenda.map((l) => texto(celula(l, 'Protocolo'))))];
+  const diasPorFatia = opcoes?.diasPorFatia ?? 7;
+  const arqAgendaAnt = opcoes?.anteriorDir ? arquivoDaQuery(opcoes.anteriorDir, AGENDA) : null;
+  const arqPgAnt = opcoes?.anteriorDir ? arquivoDaQuery(opcoes.anteriorDir, PROTOCOLOS) : null;
+
+  if (arqAgendaAnt && arqPgAnt && fs.existsSync(arqAgendaAnt) && fs.existsSync(arqPgAnt)) {
+    const hoje = relogioDeParede(agora).toISOString().slice(0, 10);
+    const refMs = Math.min(Date.parse(`${hoje}T00:00:00Z`), Date.parse(`${periodo.ate}T00:00:00Z`));
+    const seteDiasAntes = new Date(refMs - diasPorFatia * 86_400_000).toISOString().slice(0, 10);
+    const desdeInc = seteDiasAntes > periodo.desde ? seteDiasAntes : periodo.desde;
+
+    const {
+      colunas: colAgenda,
+      porProtocolo: novosPorProto,
+      buscas: buscasAgenda,
+      ms: msAgenda,
+    } = await buscaAgendaFatiada(ctx, { desde: desdeInc, ate: periodo.ate }, agora, diasPorFatia);
+
+    const novosProtocolos = [...novosPorProto.keys()];
+    const antAgenda = await le(arqAgendaAnt);
+    const antPg = await le(arqPgAnt);
+
+    const substituir = new Set<string>(novosProtocolos);
+    for (const l of antAgenda.linhas) {
+      if (dentroDaJanela(celula(l, 'Slot Agenda'), desdeInc, periodo.ate)) {
+        substituir.add(chaveProtocolo(l));
+      }
+    }
+
+    const linhasAgenda: Record<string, Escalar>[] = antAgenda.linhas.filter(
+      (l) => !substituir.has(chaveProtocolo(l)),
+    );
+    for (const arr of novosPorProto.values()) {
+      for (const l of arr) linhasAgenda.push(l);
+    }
+
+    let linhasProtocolos: Record<string, Escalar>[] = antPg.linhas.filter(
+      (l) => !substituir.has(chaveProtocoloPg(l)),
+    );
+    let colPg: readonly string[] = antPg.cabecalho.colunas.map((c) => c.nome);
+    const buscasPg: BuscaFeita[] = [];
+    let msPg = 0;
+
+    if (novosProtocolos.length > 0) {
+      const pgNovos = await buscaAoVivo(ctx, {
+        query: PROTOCOLOS,
+        params: { protocolos: novosProtocolos },
+        agora,
+      });
+      if (pgNovos.colunas.length > 0) colPg = pgNovos.colunas;
+      const recortadasPg = aplicaRecorte(pgNovos.linhas, cProtocolos.recorte, {
+        protocolos: novosProtocolos,
+      });
+      linhasProtocolos = [...linhasProtocolos, ...recortadasPg];
+      buscasPg.push(...pgNovos.buscas);
+      msPg = pgNovos.ms.total;
+    }
+
+    const todosProtocolos = new Set(linhasAgenda.map(chaveProtocolo));
+    return {
+      periodo,
+      consultas: [
+        {
+          query: AGENDA,
+          colunas: colAgenda.length > 0 ? colAgenda : antAgenda.cabecalho.colunas.map((c) => c.nome),
+          linhas: linhasAgenda,
+        },
+        { query: PROTOCOLOS, colunas: colPg, linhas: linhasProtocolos },
+      ],
+      protocolos: todosProtocolos.size,
+      buscas: [...buscasAgenda, ...buscasPg],
+      ms: { agenda: msAgenda, protocolos: msPg, total: Date.now() - inicio },
+    };
+  }
+
+  const {
+    colunas: colAgenda,
+    porProtocolo,
+    buscas: buscasAgenda,
+    ms: msAgenda,
+  } = await buscaAgendaFatiada(ctx, periodo, agora, diasPorFatia);
+  const lista = [...porProtocolo.keys()];
+  const linhasAgenda = [...porProtocolo.values()].flat();
 
   const protocolos = await buscaAoVivo(ctx, { query: PROTOCOLOS, params: { protocolos: lista }, agora });
   const linhasProtocolos = aplicaRecorte(protocolos.linhas, cProtocolos.recorte, { protocolos: lista });
@@ -70,12 +252,12 @@ export async function buscaDoPeriodo(ctx: ContextoAoVivo, periodo: PeriodoAoVivo
   return {
     periodo,
     consultas: [
-      { query: AGENDA, colunas: agenda.colunas, linhas: linhasAgenda },
+      { query: AGENDA, colunas: colAgenda, linhas: linhasAgenda },
       { query: PROTOCOLOS, colunas: protocolos.colunas, linhas: linhasProtocolos },
     ],
     protocolos: lista.length,
-    buscas: [...agenda.buscas, ...protocolos.buscas],
-    ms: { agenda: agenda.ms.total, protocolos: protocolos.ms.total, total: Date.now() - inicio },
+    buscas: [...buscasAgenda, ...protocolos.buscas],
+    ms: { agenda: msAgenda, protocolos: protocolos.ms.total, total: Date.now() - inicio },
   };
 }
 

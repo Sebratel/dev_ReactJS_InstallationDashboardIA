@@ -80,7 +80,12 @@ export interface OpcoesDosPeriodos {
    * Busca o período no SRD e grava o snapshot dele em `dir` (`geraConjunto`, aqui ou num
    * processo filho). Devolve quantos protocolos vieram, para a saúde.
    */
-  readonly gera: (periodo: PeriodoAoVivo, dir: string, agora: Date) => Promise<{ protocolos: number; picoMB?: number }>;
+  readonly gera: (
+    periodo: PeriodoAoVivo,
+    dir: string,
+    agora: Date,
+    anteriorDir?: string,
+  ) => Promise<{ protocolos: number; picoMB?: number }>;
   /** Onde as pastas moram. Esvaziada na criação: o que sobrou de outro processo não vale. */
   readonly dirBase: string;
   readonly agora?: () => Date;
@@ -229,8 +234,9 @@ export class PeriodosAoVivo {
     try {
       const agora = this.#o.agora();
       const t0 = Date.now();
+      const geracaoAnterior = this.#geracoes.get(chave(periodo));
       dir = fs.mkdtempSync(path.join(this.#o.dirBase, `${periodo.desde}_`));
-      const { protocolos, picoMB } = await this.#o.gera(periodo, dir, agora);
+      const { protocolos, picoMB } = await this.#o.gera(periodo, dir, agora, geracaoAnterior?.dir);
       const hoje = relogioDeParede(agora).toISOString().slice(0, 10);
       const g: GeracaoDoPeriodo = {
         periodo,

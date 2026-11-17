@@ -39,6 +39,8 @@ export interface PedidoDeGeracao {
   /** O snapshot de hoje, de onde vêm as queries copiadas e as calculadas congeladas. */
   readonly snapshotDir: string;
   readonly agoraIso: string;
+  /** Diretório da geração anterior do mesmo período, para busca incremental da última semana. */
+  readonly anteriorDir?: string;
 }
 
 export async function geraConjunto(
@@ -59,7 +61,7 @@ export async function geraConjunto(
     // As linhas da busca saem de escopo antes do congelamento, que carrega a pasta de novo:
     // as duas juntas somariam o pico do processo.
     const protocolos = await (async () => {
-      const dados = await buscaDoPeriodo(ctx, p.periodo, agora);
+      const dados = await buscaDoPeriodo(ctx, p.periodo, agora, { anteriorDir: p.anteriorDir });
       await escreveSnapshotDoPeriodo(p.dir, model, dados, p.agoraIso, { dir: p.snapshotDir, queries: copiadas([]) });
       return dados.protocolos;
     })();

@@ -97,6 +97,14 @@ export function useTempoReal(atual: string | null): TempoReal {
       // vêm de novo, e `useAcessosAoVivo` larga o que a conta perdeu — sem F5. A matriz
       // de quem gere também, para dois admins verem a mudança um do outro.
       () => releAcessos(qc),
+      // Se o SSE caiu (ex.: restart da API) e reconectou, revalida a página aberta e a saúde
+      // na hora para não esperar até 60 s pelo relógio de segurança.
+      () => {
+        if (!atualRef.current) return;
+        marcaHora();
+        void invalidaAbertura(qc, atualRef.current);
+        void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });
+      },
     );
   }, [qc, marcaHora]);
 

@@ -30,6 +30,7 @@ import { mensagemDaConfiguracaoDeProducao, problemasDaConfiguracaoDeProducao } f
 import { criaAcesso } from './permissoes.ts';
 import { configDoAmbiente, criaPoolDeAcesso, garanteTabelas, lojaMaria } from './loja-acesso-maria.ts';
 import { lojaDeMetasMaria } from './loja-metas-maria.ts';
+import { criaLojaDeIaArquivo, criaLojaDeIaMaria } from './ia/loja-ia.ts';
 import { IDS_SEM_DASHBOARD } from './telas-extras.ts';
 import { criaSenior } from './senior.ts';
 import { criaGravadorDeEventos } from './eventos-seguranca.ts';
@@ -357,6 +358,9 @@ const servidor = new Servidor({
   ...(usoDasTelas ? { usoDasTelas } : {}),
   // A aba "Metas" so edita com banco; sem ele a rota responde 503 (opcoes-servidor.ts).
   ...(poolDeAcesso ? { metas: lojaDeMetasMaria(poolDeAcesso) } : {}),
+  ia: poolDeAcesso
+    ? criaLojaDeIaMaria(poolDeAcesso, { dirFallback: DIR_RUNTIME })
+    : criaLojaDeIaArquivo({ dir: DIR_RUNTIME }),
   aquecimento: () => ({ ativo: aquecedor !== null, pronto: aquecedor?.pronto ?? false }),
   // `overlays()` (DADO), não `mescladores()` (função): é isto que atravessa o
   // `postMessage` até a worker, que é o caminho de produção. Ver

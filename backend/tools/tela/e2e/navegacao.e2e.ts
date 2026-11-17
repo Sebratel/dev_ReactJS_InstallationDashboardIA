@@ -182,15 +182,30 @@ test('árvore de período: um dia de mês não marcado manda DIA e MÊS, e os do
   await page.getByRole('dialog').getByRole('button', { name: 'Aplicar' }).click();
 });
 
-test('a busca da tabela vira pedido, e limpar volta à janela sem busca', { skip: pula }, async () => {
+test('a busca e a ordenação da tabela viram pedido (preservando clicado=), e limpar volta à janela inicial', { skip: pula }, async () => {
   await abre(`${BASE}/?pagina=${PAGINA}`);
   const termos: string[] = [];
+  const ordens: Array<{ ordem: string; clicado: string }> = [];
   page.on('request', (r) => {
     const u = new URL(r.url());
     if (u.pathname.startsWith('/api/dashboards/') && u.searchParams.has('linhas')) {
-      termos.push(u.searchParams.get('busca') ?? '');
+      if (u.searchParams.has('busca')) termos.push(u.searchParams.get('busca') ?? '');
+      if (u.searchParams.has('ordem')) {
+        ordens.push({
+          ordem: u.searchParams.get('ordem') ?? '',
+          clicado: u.searchParams.get('clicado') ?? '',
+        });
+      }
     }
   });
+  // Ativa um clique cruzado num gráfico antes de interagir com a tabela para provar que
+  // `clicados` é repassado nas janelas de busca/ordenação da tabela.
+  const coluna = page.locator('.clicavel').first();
+  const caixa = (await coluna.boundingBox())!;
+  await coluna.click({ position: { x: caixa.width / 2, y: caixa.height - 4 } });
+  await page.waitForTimeout(2000);
+  assert.match(busca(), /clicado=/);
+
   const cartao = page
     .locator('[data-visual]')
     .filter({ has: page.locator('.tabela-busca-input') })
@@ -209,6 +224,13 @@ test('a busca da tabela vira pedido, e limpar volta à janela sem busca', { skip
   await page.waitForTimeout(3000);
   assert.equal(await rotulo.innerText(), semBusca, 'limpar volta à janela de antes da busca');
   assert.equal(termos.length, pedidos, 'limpar a busca não pede de novo');
+
+  // Clica no cabeçalho da primeira coluna para ordenar no servidor e confirma que `clicado=` vai junto.
+  const cabecalho = cartao.locator('thead th.th-clicavel').first();
+  await cabecalho.click();
+  await page.waitForTimeout(2000);
+  assert.ok(ordens.length >= 1, 'clicar no cabeçalho da tabela dispara ordenação no servidor');
+  assert.ok(ordens[0]!.clicado.length > 0, 'pedido de ordenação preserva clicado= do clique cruzado');
 });
 
 test('o console terminou sem erro', { skip: pula }, (t) => {

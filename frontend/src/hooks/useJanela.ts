@@ -54,6 +54,7 @@ export function useJanela(
    * a PÁGINA e deixava o maior valor de verdade numa janela que ninguém abriu.
    */
   ordem: { coluna: number; desc: boolean } | null = null,
+  clicados: readonly { tabela: string; coluna: string }[] = [],
 ): EstadoDeJanela {
   /**
    * Onde a janela está, e PARA QUAL resposta da página e qual termo.
@@ -88,9 +89,9 @@ export function useJanela(
     ordem: ordem ?? undefined,
   };
   const q = useQuery({
-    queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes)),
+    queryKey: chavesDeConsulta.pagina(pagina, urlDaPagina(pagina, filtros, opcoes, clicados)),
     queryFn: async ({ signal }) => {
-      const p = await pegaPagina(pagina, filtros, opcoes, signal);
+      const p = await pegaPagina(pagina, filtros, opcoes, signal, clicados);
       const achado = p.visuais.find((v) => v.id === inicial.id);
       if (!achado) throw new Error('a resposta não trouxe este visual.');
       if (achado.erro) throw new Error(achado.erro);

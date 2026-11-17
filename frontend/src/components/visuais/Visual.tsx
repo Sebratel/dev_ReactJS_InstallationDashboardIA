@@ -30,6 +30,7 @@ export function Visual(props: {
       pagina={props.pagina}
       visual={props.visual}
       filtros={props.filtros}
+      clicados={props.clicados}
       aoFiltrar={props.aoFiltrar}
       aoPrever={props.aoPrever}
       render={props.render}

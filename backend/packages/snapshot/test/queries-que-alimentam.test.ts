@@ -12,10 +12,14 @@
 // `confereIdadeDaCalculada` e qualquer query posterior a envelheceria de novo.
 
 import assert from 'node:assert/strict';
+import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { SemanticModel } from '../../semantic-model/src/model.ts';
 import type { ModelColumn } from '../../semantic-model/src/types.ts';
-import { queriesQueAlimentamCalculada } from '../src/tabelas-calculadas.ts';
+import { queriesDeOrigemDaCalculada, queriesQueAlimentamCalculada } from '../src/tabelas-calculadas.ts';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
 
 function col(name: string, extra: Partial<ModelColumn> = {}): ModelColumn {
   return { name, type: null, format: null, sourceColumn: null, calculated: false, dax: null, ...extra };
@@ -82,4 +86,35 @@ test('modelo sem tabela calculada: conjunto vazio, mas seguro', () => {
   const r = queriesQueAlimentamCalculada(m);
   assert.equal(r.seguro, true);
   assert.equal(r.queries.size, 0);
+});
+
+test('grão reduzido: completaNoSnapshot=true inclui field-agenda, e completaNoSnapshot=false exclui e inclui relatos-do-dia', () => {
+  const m = SemanticModel.fromSpecsDir(path.join(ROOT, 'backend', 'specs'));
+  const rTrue = queriesQueAlimentamCalculada(m);
+  assert.equal(rTrue.seguro, true);
+  assert.equal(rTrue.queries.has('field-agenda'), true);
+
+  // Simula completaNoSnapshot=false na cópia em memória para validar o ramo reduzido.
+  const mReduzido = SemanticModel.fromSpecsDir(path.join(ROOT, 'backend', 'specs'));
+  (mReduzido.graoReduzido[0] as { completaNoSnapshot: boolean }).completaNoSnapshot = false;
+  const r = queriesQueAlimentamCalculada(mReduzido);
+  assert.equal(r.seguro, true);
+  assert.equal(
+    r.queries.has('field-agenda'),
+    false,
+    'field-agenda fora do snapshot (completa_no_snapshot: false) — não exigir em fontesDasCalculadasEstaoProntas',
+  );
+  assert.equal(r.queries.has('field-agenda-slot'), true);
+  assert.equal(
+    r.queries.has('relatos-do-dia'),
+    true,
+    'Status Protocolo Dia lê relatos-do-dia quando a agenda completa está fora do snapshot — congelar antes de relatos-do-dia terminar no grupo quente usa contagens velhas',
+  );
+  const statusDia = mReduzido.table('Status Protocolo Dia')!;
+  const origensStatusDia = queriesDeOrigemDaCalculada(mReduzido, statusDia);
+  assert.ok(origensStatusDia);
+  assert.deepEqual(
+    [...origensStatusDia].sort(),
+    ['field-agenda-slot', 'protocolos-geral', 'relatos-do-dia'],
+  );
 });

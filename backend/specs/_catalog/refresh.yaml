@@ -563,6 +563,7 @@ grupos:
   # query aqui, `incremental: [field-agenda]`, e a chave em `true`.
   frio:
     queries:
+      - field-agenda
       - valores-do-relato
       - protocolos-auxiliares
       - protocolos-telefonia
@@ -572,4 +573,5 @@ grupos:
       - instalacoes-reincidentes
       - reincidencia
     intervalo_minutos: 60
-    incremental: false
+    incremental:
+      - field-agenda

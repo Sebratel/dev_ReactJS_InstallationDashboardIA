@@ -425,8 +425,12 @@ export interface Eu {
 }
 
 /** A lista já vem SÓ com as abas que a conta pode abrir — o filtro é do servidor. */
-export const listaDashboards = (): Promise<{ dashboards: DashboardDaLista[]; eu?: Eu }> =>
-  pega('/api/dashboards');
+export const listaDashboards = (): Promise<{
+  dashboards: DashboardDaLista[];
+  eu?: Eu;
+  iaConfigurada?: boolean;
+  visuaisIa?: string[];
+}> => pega('/api/dashboards');
 
 /**
  * O `signal` existe para o pedido ANTERIOR morrer quando chega um novo.

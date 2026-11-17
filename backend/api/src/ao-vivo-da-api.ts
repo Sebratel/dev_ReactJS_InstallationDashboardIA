@@ -107,8 +107,16 @@ export async function montaAoVivoDaApi(o: {
   const gera = o.gera ?? ((pedido: PedidoDeGeracao) => geraEmProcesso(o.root, pedido));
   /** O `gera` de um conjunto para o `PeriodosAoVivo`: o pedido que o filho recebe. */
   const geraDo = (conjunto: ConjuntoAoVivo, ids: readonly string[]) =>
-    (periodo: PedidoDeGeracao['periodo'], dir: string, agora: Date) =>
-      gera({ conjunto, paginas: ids, periodo, dir, snapshotDir: o.snapshotDir, agoraIso: agora.toISOString() });
+    (periodo: PedidoDeGeracao['periodo'], dir: string, agora: Date, anteriorDir?: string) =>
+      gera({
+        conjunto,
+        paginas: ids,
+        periodo,
+        dir,
+        snapshotDir: o.snapshotDir,
+        agoraIso: agora.toISOString(),
+        ...(anteriorDir ? { anteriorDir } : {}),
+      });
   /** Um processo de busca por vez, de qualquer conjunto (ver o cabeçalho). */
   const fila = new FilaDeBuscas(1);
 

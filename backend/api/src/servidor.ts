@@ -28,6 +28,9 @@
 
 import crypto from 'node:crypto';
 import { ErroDeMeta } from './loja-metas-maria.ts';
+import { criaLojaDeIaArquivo, ErroDeIa, type LojaDeIa } from './ia/loja-ia.ts';
+import { VISUAIS_IA, ehVisualComIa, infoDoVisualIa } from './ia/visuais-ia.ts';
+import { CacheInsightsIa, gerarInsightsDoVisual } from './ia/insights.ts';
 import { TELAS_SEM_DASHBOARD } from './telas-extras.ts';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -275,6 +278,7 @@ export class Servidor {
       | 'avisoDasPaginas'
       | 'usoDasTelas'
       | 'metas'
+      | 'ia'
       | 'sombraAoVivo'
       | 'aoVivo'
     >
@@ -289,9 +293,12 @@ export class Servidor {
       | 'modoDosFiltros'
       | 'usoDasTelas'
       | 'metas'
+      | 'ia'
       | 'sombraAoVivo'
       | 'aoVivo'
     >;
+  private readonly lojaIa: LojaDeIa;
+  private readonly cacheInsightsIa: CacheInsightsIa;
   /** Substitui o `OAuth2Client` real em teste. `undefined` em produção — ver
    *  `auth-google.ts`. Fica fora de `this.opts` porque não tem um valor
    *  "padrão" que faça sentido preencher, diferente dos outros campos. */
@@ -598,6 +605,7 @@ export class Servidor {
       eventosDeSeguranca: SEM_GRAVACAO,
       ...resto,
     };
+    this.lojaIa = this.opts.ia ?? criaLojaDeIaArquivo({ dir: this.opts.snapshotDir });
     const specSeg = leSpecDeSeguranca(this.opts.root);
     this.rotasSoLocais = new Set(specSeg.rotas_de_maquina.porta_publica_bloqueia);
     this.politicaDeSessao = specSeg.sessao;
@@ -643,6 +651,7 @@ export class Servidor {
       cache: adapter,
       ...(aoFalharCache ? { aoFalhar: aoFalharCache } : {}),
     });
+    this.cacheInsightsIa = new CacheInsightsIa({ armazenamento: this.cache });
     for (const dash of this.dashboards) {
       const plano = planeja([dash], this.model);
       this.queriesPorDashboard.set(dash.id, plano.queries);
@@ -882,13 +891,15 @@ export class Servidor {
     // As metas de negocio (aba "Metas", 12/11/2026): GET le, POST grava. Mesma protecao
     // CSRF estrita da gestao de acesso — a unica cliente legitima e a tela.
     const ehGestaoDeMetas = rota === '/api/admin/metas' || rota.startsWith('/api/admin/metas/');
+    const ehGestaoDeIa = rota === '/api/admin/ia' || rota.startsWith('/api/admin/ia/');
+    const ehInsightsVisual = /^\/api\/dashboards\/[^/]+\/insights\/[^/]+$/.test(rota);
     const ehRegistroDeUso = rota === '/api/uso/abertura';
     if (ehRegistroDeUso && req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
       responde(res, 405, { erro: 'Esta rota aceita somente POST.' });
       return;
     }
-    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehGestaoDeMetas || ehRegistroDeUso) && req.method === 'POST') {
+    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehGestaoDeMetas || ehGestaoDeIa || ehInsightsVisual || ehRegistroDeUso) && req.method === 'POST') {
       const temOrigem = typeof req.headers.origin === 'string' || typeof req.headers.referer === 'string';
       if (!temOrigem || !this.origemPermitida(req)) {
         this.registraEventoSeg(req, 403, 'csrf-gestao-de-acesso');
@@ -1003,6 +1014,7 @@ export class Servidor {
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
       if (ehGestaoDeSessao) return this.gestaoDeSessao(req, res, rota, quem);
       if (ehGestaoDeMetas) return this.gestaoDeMetas(req, res, rota, quem);
+      if (ehGestaoDeIa) return this.gestaoDeIa(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
       if (rota === '/api/eventos') return this.eventos(req, res, quem);
       if (rota.startsWith('/api/dashboards/')) {
@@ -1039,8 +1051,18 @@ export class Servidor {
         if (sub === '') return this.pagina(res, id, url, quem, req);
         if (sub === 'valores') return this.valores(res, id, url, quem);
         if (sub === 'layout') return this.layoutDe(res, id);
+        if (sub.startsWith('insights/')) {
+          let visualId: string;
+          try {
+            visualId = decodeURIComponent(sub.slice('insights/'.length));
+          } catch {
+            responde(res, 400, { erro: 'Identificador de visual com percent-encoding inválido.' });
+            return;
+          }
+          return this.insightsDoVisual(req, res, id, visualId, url, quem);
+        }
         responde(res, 404, {
-          erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores, layout.`,
+          erro: `'${sub}' não existe em /api/dashboards/${id}. As sub-rotas: valores, layout, insights/<visualId>.`,
         });
         return;
       }
@@ -1533,6 +1555,261 @@ export class Servidor {
   }
 
   /**
+   * `/api/admin/ia` — gestão do provedor de IA (Anthropic, OpenAI/compatíveis, Gemini).
+   * Restrita a administradores (`papelDe(quem) === 'admin'`). A chave é gravada cifrada em
+   * AES-256-GCM e nunca sai na resposta.
+   *
+   *   GET                  → estado público (`configurado`, `tipo`, `modelo`, `dica`, `ultimoTeste`, `tipos`)
+   *   POST                 → salva configuração (`{ tipo, modelo, chave?, baseUrl?, maxTokens? }`)
+   *   POST /remover        → apaga a chave salva na tela (volta para `.env` ou desconfigurado)
+   *   POST /modelos        → lista modelos disponíveis na API do provedor
+   *   POST /testar         → testa conectividade com o modelo configurado
+   */
+  private async gestaoDeIa(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rota: string,
+    quem: Identidade,
+  ): Promise<void> {
+    if (this.opts.acesso.papelDe(quem) !== 'admin') {
+      this.registraEventoSeg(req, 403, 'ia-sem-admin', quem.usuario);
+      responde(res, 403, { erro: 'Só administrador gerencia o provedor de IA.' });
+      return;
+    }
+    const sub = rota.slice('/api/admin/ia'.length);
+
+    if (req.method !== 'POST') {
+      if (sub !== '') {
+        responde(res, 404, { erro: `'${sub}' não aceita GET em /api/admin/ia.` });
+        return;
+      }
+      responde(res, 200, await this.lojaIa.estado());
+      return;
+    }
+
+    let corpo: Record<string, unknown> = {};
+    try {
+      const texto = await leCorpo(req);
+      if (texto.trim() !== '') {
+        const c = parseJsonSeguro(texto);
+        if (!c || typeof c !== 'object' || Array.isArray(c)) throw new Error('corpo não é objeto');
+        corpo = c as Record<string, unknown>;
+      }
+    } catch {
+      responde(res, 400, { erro: 'Corpo inválido: esperado um objeto JSON.' });
+      return;
+    }
+
+    try {
+      if (sub === '') {
+        const estado = await this.lojaIa.salvar(corpo, quem.usuario);
+        responde(res, 200, estado);
+        return;
+      }
+      if (sub === '/remover') {
+        const estado = await this.lojaIa.remover(quem.usuario);
+        responde(res, 200, estado);
+        return;
+      }
+      if (sub === '/modelos') {
+        const modelos = await this.lojaIa.listarModelos(corpo);
+        responde(res, 200, { modelos });
+        return;
+      }
+      if (sub === '/testar') {
+        const resultado = await this.lojaIa.testar();
+        responde(res, 200, resultado);
+        return;
+      }
+      responde(res, 404, {
+        erro: `'${sub}' não existe em /api/admin/ia. Sub-rotas: /remover, /modelos, /testar.`,
+      });
+    } catch (err) {
+      if (err instanceof ErroDeIa) {
+        responde(res, err.status, { erro: err.message, publico: true });
+        return;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * `POST /api/dashboards/:id/insights/:visualId` — leitura interpretativa de IA para um
+   * visual agregado do catálogo `VISUAIS_IA`.
+   *
+   * O navegador envia apenas os filtros da tela (`?filtro=...&clicado=...`) na URL;
+   * quem obtém os números é o servidor (do cache de resposta ou calculando o visual),
+   * garantindo que nenhum número seja inventado ou adulterado pelo cliente e que nenhuma
+   * tabela de detalhe com dados pessoais saia para provedor externo.
+   */
+  private async insightsDoVisual(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    id: string,
+    visualId: string,
+    url: URL,
+    quem: Identidade,
+  ): Promise<void> {
+    if (req.method !== 'POST') {
+      res.setHeader('Allow', 'POST');
+      responde(res, 405, { erro: 'Esta rota aceita somente POST.' });
+      return;
+    }
+    const dash = this.dashboards.find((d) => d.id === id);
+    if (!dash) {
+      responde(res, 404, { erro: `Página '${id}' não existe.` });
+      return;
+    }
+    const info = infoDoVisualIa(id, visualId);
+    if (!info || !ehVisualComIa(id, visualId)) {
+      responde(res, 404, {
+        erro: `Visual '${visualId}' não existe ou não possui leitura de IA habilitada.`,
+      });
+      return;
+    }
+    const specVisual = (dash.visuals ?? []).find((v) => v.id === visualId);
+    if (!specVisual) {
+      responde(res, 404, { erro: `Visual '${visualId}' não encontrado na spec de '${id}'.` });
+      return;
+    }
+
+    let daTela: FiltroSpec[];
+    try {
+      daTela = decodificaFiltros(url.searchParams.getAll('filtro'));
+    } catch (err) {
+      responde(res, 400, { erro: err instanceof Error ? err.message : String(err) });
+      return;
+    }
+    if (!this.filtrosDaPaginaAceitos(req, res, dash, daTela, quem)) return;
+
+    const clicados: { tabela: string; coluna: string }[] = [];
+    for (const bruto of url.searchParams.getAll('clicado')) {
+      try {
+        const o = JSON.parse(bruto) as { tabela?: unknown; coluna?: unknown };
+        if (typeof o.tabela === 'string' && typeof o.coluna === 'string' && o.tabela && o.coluna) {
+          clicados.push({ tabela: o.tabela, coluna: o.coluna });
+        } else {
+          responde(res, 400, { erro: `clicado '${bruto}' inválido.` });
+          return;
+        }
+      } catch {
+        responde(res, 400, { erro: `clicado '${bruto}' não é JSON válido.` });
+        return;
+      }
+    }
+
+    const ativo = await this.lojaIa.provedorAtivo();
+    if (!ativo) {
+      responde(res, 503, {
+        erro: 'Nenhum provedor de IA configurado. Um administrador pode cadastrar a chave em Acessos → Provedor de IA.',
+        publico: true,
+      });
+      return;
+    }
+
+    let visualCalculado: VisualCalculado | undefined;
+    const carimbo = this.carimboDaPagina(dash);
+    const dia = diaDoCalculo(this.opts.agora());
+    const marcaAoVivo = this.#marcaAoVivo(dash, daTela);
+    const carimboEfetivo = marcaAoVivo ? `${carimbo}+${marcaAoVivo}` : carimbo;
+
+    // 1. Tenta aproveitar a resposta já pronta no cache (página inteira ou visual isolado)
+    for (const visuaisChave of [null, [visualId]] as const) {
+      const chaveCache = chaveDaResposta({
+        escopo: escopoDoCache(quem),
+        pagina: dash.id,
+        filtros: daTela,
+        clicados,
+        visuais: visuaisChave,
+        de: 0,
+        linhas: LINHAS_PADRAO,
+        termo: undefined,
+        ordem: undefined,
+        carimbo: carimboEfetivo,
+        dia,
+      });
+      const guardado = await this.cache.le<{ visuais?: VisualCalculado[] }>(chaveCache);
+      const achado = guardado?.visuais?.find((v) => v.id === visualId && v.dados !== undefined);
+      if (achado) {
+        visualCalculado = achado;
+        break;
+      }
+    }
+
+    // 2. Se ainda não estava no cache de resposta, calcula apenas este visual pelo motor semântico
+    if (!visualCalculado) {
+      const alvo: DashboardSpec = {
+        ...dash,
+        visuals: [specVisual],
+        filters: [...(dash.filters ?? []), ...daTela],
+      };
+      const overlays = this.#overlayDe(dash);
+      const linhasParaIa = visualId === 'ae5871aa76bb028341c9' ? LINHAS_MAXIMO_EXPORT : LINHAS_PADRAO;
+      const vivo = await this.#paginaAoVivo(
+        dash,
+        alvo,
+        daTela,
+        { de: 0, linhas: linhasParaIa, termo: undefined },
+        clicados,
+        quem,
+        prioridadeDe('interactive'),
+        overlays,
+      );
+      if (vivo && !vivo.fora.has(visualId)) {
+        visualCalculado = vivo.pagina.visuais.find((v) => v.id === visualId);
+      } else {
+        try {
+          const carregado = await this.#esperaOSnapshotInteiro(() => this.carrega(dash));
+          const pag = calculaPagina(
+            alvo,
+            carregado.ev,
+            { de: 0, linhas: linhasParaIa, termo: undefined },
+            undefined,
+            undefined,
+            clicados,
+          );
+          visualCalculado = pag.visuais.find((v) => v.id === visualId);
+        } catch (err) {
+          responde(res, 409, {
+            erro: err instanceof Error ? err.message : 'Não foi possível carregar o snapshot para este visual.',
+          });
+          return;
+        }
+      }
+    }
+
+    if (!visualCalculado) {
+      responde(res, 404, { erro: `Não foi possível apurar os dados do visual '${visualId}'.` });
+      return;
+    }
+
+    try {
+      const insights = await gerarInsightsDoVisual({
+        loja: this.lojaIa,
+        pagina: id,
+        visualId,
+        visualCalculado,
+        filtros: daTela,
+        clicados,
+        agora: this.opts.agora(),
+        cache: this.cacheInsightsIa,
+      });
+      console.error(
+        `[ia] leitura de ${id}:${visualId} para ${quem.usuario} (${insights.modelo}${insights.emCache ? ', cache' : ''})`,
+      );
+      responde(res, 200, insights);
+    } catch (err) {
+      if (err instanceof ErroDeIa) {
+        responde(res, err.status, { erro: err.message, publico: true });
+        return;
+      }
+      responde(res, 502, {
+        erro: err instanceof Error ? err.message : 'Falha ao consultar o provedor de IA.',
+      });
+    }
+  }
+
+  /**
    * `/api/admin/acessos` — a gestão de quem abre cada aba (`permissoes.ts`):
    *
    *   GET                                → a matriz: abas (nome, modo) × pessoas (papel, abas)
@@ -1787,7 +2064,7 @@ export class Servidor {
     responde(res, 200, { derrubadas, sessoes: lista() });
   }
 
-  private lista(res: http.ServerResponse, quem: Identidade): void {
+  private async lista(res: http.ServerResponse, quem: Identidade): Promise<void> {
     const manifesto = leManifesto(this.opts.snapshotDir);
     const emDisco = new Set(manifesto?.tabelas.map((t) => t.query) ?? []);
     const liberadas = this.dashboards.filter((d) => this.opts.acesso.podeVer(quem, d.id));
@@ -1797,7 +2074,10 @@ export class Servidor {
     if (!liberadas.some((d) => d.type !== 'Tooltip') && extras.length === 0) {
       this.opts.acesso.registraPedido(quem);
     }
+    const estadoIa = await this.lojaIa.estado();
     responde(res, 200, {
+      iaConfigurada: estadoIa.configurado,
+      visuaisIa: Object.keys(VISUAIS_IA),
       // A tela monta a navegação SÓ com o que vem aqui. Esconder a aba é conforto; quem
       // barra é o 403 de `atende()` — pedir a aba pela URL dá no mesmo lugar.
       eu: {
@@ -3215,33 +3495,43 @@ export class Servidor {
     const { libera, formaCompleta } = this.#liberacaoDaPagina(dash);
     if (this.piscina.ativa) {
       try {
-        const r = await this.piscina.executa(
-          {
-            snapshotDir: this.opts.snapshotDir,
-            specsDir: path.join(this.opts.root, 'backend', 'specs'),
-            dashboardSpec: dash,
-            janela: { de: 0, linhas: 0 },
-            clicados: [],
-            liberaSobDemanda: libera,
-            precisaFormaCompleta: formaCompleta,
-            agoraIso: this.opts.agora().toISOString(),
-            ...(overlays.size > 0 ? { overlays } : {}),
-            identidade: this.identidadeDaPagina(dash),
-            escopo: escopoDoCache(quem),
-            valores: { tabela, coluna, nivel },
-          },
-          prioridade,
+        const r = await this.#esperaOSnapshotInteiro(() =>
+          this.piscina.executa(
+            {
+              snapshotDir: this.opts.snapshotDir,
+              specsDir: path.join(this.opts.root, 'backend', 'specs'),
+              dashboardSpec: dash,
+              janela: { de: 0, linhas: 0 },
+              clicados: [],
+              liberaSobDemanda: libera,
+              precisaFormaCompleta: formaCompleta,
+              agoraIso: this.opts.agora().toISOString(),
+              ...(overlays.size > 0 ? { overlays } : {}),
+              identidade: this.identidadeDaPagina(dash),
+              escopo: escopoDoCache(quem),
+              valores: { tabela, coluna, nivel },
+            },
+            prioridade,
+          ),
         );
         this.registraCarga(dash.id, 'valores', r.carga);
         if (r.erroDoPedido !== undefined) return { erroDoPedido: r.erroDoPedido };
         if (r.valores) return r.valores;
         throw new Error('a worker respondeu sem a lista de valores');
       } catch (err) {
+        const motivo = err instanceof Error ? err.message : String(err);
+        if (motivo.startsWith(SNAPSHOT_DESATUALIZADO)) {
+          this.metricas.conta('worker_snapshot_desatualizado');
+          if (!this.motivosDeFallback.has(motivo)) {
+            this.motivosDeFallback.add(motivo);
+            console.error(`[worker] recusou, sem cálculo em linha (a thread principal recusaria igual): ${motivo}`);
+          }
+          throw err;
+        }
         // O mesmo contrato do cálculo da página: cair para cá responde certo e custa
         // a thread que atende. Contado à parte, porque o número que a etapa 4 persegue
         // (`worker_fallback` = 0) é o das páginas.
         this.metricas.conta('valores_fallback');
-        const motivo = err instanceof Error ? err.message : String(err);
         if (!this.motivosDeFallback.has(motivo)) {
           this.motivosDeFallback.add(motivo);
           console.error(`[worker] valores de segmentação caíram para a thread principal: ${motivo}`);
@@ -3250,7 +3540,7 @@ export class Servidor {
     }
     // `carrega` usa a MESMA `#liberacaoDaPagina` mandada à worker: os dois ramos não podem
     // listar valores diferentes.
-    const carregado = await this.carrega(dash);
+    const carregado = await this.#esperaOSnapshotInteiro(() => this.carrega(dash));
     try {
       return valoresDistintos(carregado.ev, tabela, coluna, nivel);
     } catch (err) {

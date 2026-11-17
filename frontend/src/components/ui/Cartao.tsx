@@ -11,6 +11,9 @@
 import type { ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useModo } from '../../context/ModoContext.tsx';
+import { useContextoDaPagina } from '../../context/ContextoDaPagina.tsx';
+import { ehVisualComIaNaTela } from '../../services/iaService.ts';
+import { BotaoInsights } from '../ia/InsightsIA.tsx';
 import { alturaDoConteudo, type AlturaDeVisual } from '../../utils/alturaDoConteudo.ts';
 import { cn } from '../../utils/cn.ts';
 import { IdVisual } from './IdVisual.tsx';
@@ -52,7 +55,11 @@ export function Cartao(props: {
   children: ReactNode;
 }) {
   const { conferencia } = useModo();
+  const contexto = useContextoDaPagina();
   const altura = CLASSE_DE_ALTURA[props.altura ?? 'auto'];
+  const temInsightsIa = Boolean(
+    contexto && props.id && ehVisualComIaNaTela(contexto.pagina, props.id),
+  );
 
   return (
     // A MOLDURA (`.cartao`, `.v-*`, `.cartao-corpo`) fica no `estilo.css`: é a conta de
@@ -68,9 +75,18 @@ export function Cartao(props: {
           >
             {props.titulo}
           </h2>
-          {props.acoes || (conferencia && props.id) ? (
+          {props.acoes || temInsightsIa || (conferencia && props.id) ? (
             <div className={ACOES}>
               {props.acoes}
+              {temInsightsIa && contexto && props.id ? (
+                <BotaoInsights
+                  pagina={contexto.pagina}
+                  visualId={props.id}
+                  titulo={props.titulo}
+                  filtros={contexto.filtros}
+                  clicados={contexto.clicados}
+                />
+              ) : null}
               {conferencia && props.id ? (
                 <IdVisual id={props.id} title="id do visual na spec" />
               ) : null}

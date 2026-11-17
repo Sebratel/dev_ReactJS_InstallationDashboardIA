@@ -67,24 +67,57 @@ import {
  * alimentava calculada nenhuma, quando `field-agenda-slot` está justamente nele. As
  * DUAS queries entram no conjunto.
  */
-export function queriesQueAlimentamCalculada(
-  m: SemanticModel,
-): { queries: Set<string>; seguro: boolean } {
-  const queries = new Set<string>();
+function mapaDeQueriesPorTabela(m: SemanticModel): Map<string, string[]> {
   const porTabela = new Map<string, string[]>();
   for (const t of m.tables.values()) {
     if (t.queryRef) porTabela.set(normalizeName(t.name), [t.queryRef]);
   }
   for (const g of m.graoReduzido) {
     const k = normalizeName(g.tabela);
-    porTabela.set(k, [...(porTabela.get(k) ?? []), g.queryPadrao, g.queryCompleta]);
-  }
-  for (const t of m.calculatedTables) {
-    const origens = calculatedTableSourceTables(m, t);
-    if (origens === null) return { queries, seguro: false };
-    for (const o of origens) {
-      for (const q of porTabela.get(normalizeName(o)) ?? []) queries.add(q);
+    if (g.completaNoSnapshot === false) {
+      porTabela.set(k, [g.queryPadrao]);
+    } else {
+      const atuais = new Set(porTabela.get(k) ?? []);
+      atuais.add(g.queryPadrao);
+      atuais.add(g.queryCompleta);
+      porTabela.set(k, [...atuais]);
     }
+  }
+  return porTabela;
+}
+
+/**
+ * As queries do snapshot de que UMA tabela calculada nasce, ou `null` quando a origem
+ * não é apurável com certeza (aí quem chama cai na régua conservadora).
+ */
+export function queriesDeOrigemDaCalculada(
+  m: SemanticModel,
+  t: ModelTable,
+): Set<string> | null {
+  const origens = calculatedTableSourceTables(m, t);
+  if (origens === null) return null;
+  const porTabela = mapaDeQueriesPorTabela(m);
+  const semCompleta = new Set(
+    m.graoReduzido.filter((g) => g.completaNoSnapshot === false).map((g) => normalizeName(g.tabela)),
+  );
+  const queries = new Set<string>();
+  for (const o of origens) {
+    for (const q of porTabela.get(normalizeName(o)) ?? []) queries.add(q);
+  }
+  if (normalizeName(t.name) === 'status protocolo dia' && semCompleta.has('field agenda')) {
+    queries.add('relatos-do-dia');
+  }
+  return queries;
+}
+
+export function queriesQueAlimentamCalculada(
+  m: SemanticModel,
+): { queries: Set<string>; seguro: boolean } {
+  const queries = new Set<string>();
+  for (const t of m.calculatedTables) {
+    const origens = queriesDeOrigemDaCalculada(m, t);
+    if (origens === null) return { queries, seguro: false };
+    for (const q of origens) queries.add(q);
   }
   return { queries, seguro: true };
 }

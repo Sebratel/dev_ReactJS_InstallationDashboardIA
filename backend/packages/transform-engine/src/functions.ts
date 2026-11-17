@@ -657,6 +657,7 @@ const TABELA: MFunctionImpl[] = [
     maxArgs: 3,
     call: ([tv, transformacoes]) => {
       const t = exigeTabela(tv, 'Table.TransformColumns');
+      if (t.rows.length === 0) return t;
       const lista = isList(transformacoes) ? transformacoes : [transformacoes];
       // `{{"col", each …}}` ou `{"col", each …}` (par solto).
       const pares: { coluna: string; f: MFunction }[] = [];
@@ -689,6 +690,7 @@ const TABELA: MFunctionImpl[] = [
     maxArgs: 3,
     call: ([tv, tipos], ctx) => {
       const t = exigeTabela(tv, 'Table.TransformColumnTypes');
+      if (t.rows.length === 0) return t;
       const pares = paresDeNome(tipos, 'Table.TransformColumnTypes');
       // Coluna citada que não existe é erro: é o sinal de que a fonte mudou.
       for (const [c] of pares) t.exigeColuna(c, 'Table.TransformColumnTypes');

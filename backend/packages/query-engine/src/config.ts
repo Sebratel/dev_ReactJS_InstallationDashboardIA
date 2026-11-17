@@ -184,7 +184,8 @@ export function missingFor(
 ): string[] {
   const required: Record<string, string[]> = {
     voalle: ['VOALLE_HOST', 'VOALLE_DATABASE', 'VOALLE_USER', 'VOALLE_PASSWORD'],
-    maria: ['MARIA_HOST', 'MARIA_DATABASE', 'MARIA_USER', 'MARIA_PASSWORD'],
+    // MARIA_DATABASE tem default ('DB_Applicattion') no loadConfig, então não bloqueia quando vazio.
+    maria: ['MARIA_HOST', 'MARIA_USER', 'MARIA_PASSWORD'],
     redis: ['REDIS_URL'],
     // baseUrl e dataset têm default no loadConfig; só o token não pode ter.
     datahub: ['DATAHUB_TOKEN'],

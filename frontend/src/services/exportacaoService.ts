@@ -26,6 +26,7 @@ export interface PedidoDeExportacao {
   pagina: string;
   visual: string;
   filtros: readonly FiltroDaTela[];
+  clicados?: readonly { tabela: string; coluna: string }[];
   busca?: string;
   aoProgredir?: (progresso: ProgressoDeExportacao) => void;
 }
@@ -97,7 +98,7 @@ async function coletaEmLotes<T extends DadosPaginados>(
         busca: pedido.busca || undefined,
       },
       undefined,
-      [],
+      pedido.clicados ?? [],
       'export',
     );
     const dados = dadosDoVisual(pagina, pedido.visual, valido);

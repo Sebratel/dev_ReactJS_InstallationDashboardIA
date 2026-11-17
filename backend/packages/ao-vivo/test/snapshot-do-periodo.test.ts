@@ -12,7 +12,11 @@ import { SemanticModel } from '../../semantic-model/src/model.ts';
 import { escreve, le, leCabecalho } from '../../snapshot/src/formato.ts';
 import { arquivoDaQuery, arquivoDeEscrita, leManifesto } from '../../snapshot/src/manifesto.ts';
 import { arquivoDaCalculada, shaDaCalculada } from '../../snapshot/src/tabelas-calculadas.ts';
-import { calculadasCongeladas, escreveSnapshotDoPeriodo } from '../src/snapshot-do-periodo.ts';
+import {
+  calculadasCongeladas,
+  escreveSnapshotDoPeriodo,
+  fatiaPeriodoEmSemanas,
+} from '../src/snapshot-do-periodo.ts';
 
 const SPECS = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'specs');
 const model = SemanticModel.fromSpecsDir(SPECS);
@@ -107,4 +111,16 @@ test('recusa pasta com coisa dentro e query pequena que não existe na origem', 
     escreveSnapshotDoPeriodo(vazio, model, { consultas: [], statusProtocoloDia: [] }, GERADO, { dir: origem, queries: ['clima-tempo'] }),
     /'clima-tempo' não está em/,
   );
+});
+
+test('fatiaPeriodoEmSemanas divide um mês em fatias semanais contíguas sem lacunas nem sobreposição', () => {
+  const fatias = fatiaPeriodoEmSemanas({ desde: '2026-11-01', ate: '2026-12-01' });
+  assert.deepEqual(fatias, [
+    { desde: '2026-11-01', ate: '2026-11-08' },
+    { desde: '2026-11-08', ate: '2026-11-15' },
+    { desde: '2026-11-15', ate: '2026-11-22' },
+    { desde: '2026-11-22', ate: '2026-11-29' },
+    { desde: '2026-11-29', ate: '2026-12-01' },
+  ]);
+  assert.deepEqual(fatiaPeriodoEmSemanas({ desde: '2026-11-01', ate: '2026-11-01' }), []);
 });

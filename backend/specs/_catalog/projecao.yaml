@@ -80,7 +80,7 @@ grao_reduzido:
     # snapshot pede a forma completa, e os visuais de relato que saem pelo snapshot voltam
     # indisponíveis (passo 3b); o poller mede a cobertura da agenda pelo slot (ACHADOS #252).
     # EXIGE a Agendamento Field em `AO_VIVO_PAGINAS` — sem isso a subida avisa.
-    completa_no_snapshot: false
+    completa_no_snapshot: true
     # As listas dos seletores de relato (Classificação, Categoria de Produtividade,
     # Descrição) saem desta agregada do SRD — os valores distintos na janela da agenda —, e
     # não da página carregada com a agenda completa (passo 3, ACHADOS #248). Gerada por

@@ -13,6 +13,7 @@ import type { PiscinaWorkers } from './piscina-workers.ts';
 import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { EstadoDoRedis } from './saude-do-redis.ts';
 import type { LojaDeMetas } from './loja-metas-maria.ts';
+import type { LojaDeIa } from './ia/loja-ia.ts';
 import type { UsoDasTelas } from './uso-das-telas.ts';
 import type { ObservadorAoVivo } from './sombra-ao-vivo.ts';
 import type { GeracaoDoPeriodo } from './periodos-ao-vivo.ts';
@@ -78,6 +79,11 @@ export interface ServidorOptions {
    * a tela diz que nao da para editar agora, e NUNCA finge ter gravado.
    */
   metas?: LojaDeMetas;
+  /**
+   * Registro e configuração do provedor de IA (`ia/loja-ia.ts`), para leitura interpretativa
+   * de visuais agregados e gestão na aba administrativa.
+   */
+  ia?: LojaDeIa;
   /** Client ID do OAuth do Google, para `POST /auth/google`. Vazio recusa todo
    *  token — falha fechada, não aberta, enquanto não configurado. */
   googleClientId?: string;

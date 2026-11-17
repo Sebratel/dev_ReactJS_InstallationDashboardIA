@@ -37,6 +37,7 @@ export function Tabela(props: {
   pagina: string;
   visual: VisualCalculado;
   filtros: readonly FiltroDaTela[];
+  clicados?: readonly { tabela: string; coluna: string }[];
   aoFiltrar?: AoFiltrar;
 }) {
   // **Duas velocidades, e por isso dois estados.** `termoBusca` é o que está escrito no
@@ -79,6 +80,7 @@ export function Tabela(props: {
     props.filtros,
     termoAplicado,
     ordemParaServidor,
+    props.clicados,
   );
   const d = janela.visual.dados as DadosDeTabela | undefined;
   const temDados = !!d && !!d.colunas && !!d.linhas;
@@ -207,6 +209,7 @@ export function Tabela(props: {
             pagina: props.pagina,
             visual: props.visual.id,
             filtros: props.filtros,
+            clicados: props.clicados,
             busca: termoAplicado,
             aoProgredir: setProgressoDaExportacao,
           });
