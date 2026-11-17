@@ -41,42 +41,75 @@ const TIMEOUT_PADRAO_MS = Number(process.env.AI_TIMEOUT_MS) || 90_000;
 
 const limpaBarra = (u: string): string => String(u).replace(/\/+$/, '');
 
+const ehErroTransitorioIa = (status: number, msg: string): boolean =>
+  status === 429 ||
+  status === 500 ||
+  status === 502 ||
+  status === 503 ||
+  status === 504 ||
+  /high demand|overloaded|temporarily unavailable|rate limit/i.test(msg);
+
+class ErroHttpIa extends Error {
+  readonly status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
 async function pedir(
   url: string,
   corpo: unknown,
   headers: Record<string, string>,
   fetchFn: typeof fetch,
+  tentativas = 2,
 ): Promise<Record<string, unknown>> {
-  const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), TIMEOUT_PADRAO_MS);
-  try {
-    const res = await fetchFn(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(corpo),
-      signal: abort.signal,
-    });
-    const texto = await res.text();
-    let json: Record<string, unknown> = {};
+  let ultimoErro: unknown;
+  for (let i = 0; i <= tentativas; i++) {
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TIMEOUT_PADRAO_MS);
     try {
-      json = JSON.parse(texto) as Record<string, unknown>;
-    } catch {
-      /* resposta não-JSON */
+      const res = await fetchFn(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...headers },
+        body: JSON.stringify(corpo),
+        signal: abort.signal,
+      });
+      const texto = await res.text();
+      let json: Record<string, unknown> = {};
+      try {
+        json = JSON.parse(texto) as Record<string, unknown>;
+      } catch {
+        /* resposta não-JSON */
+      }
+      if (!res.ok) {
+        const err = json.error as string | { message?: string } | undefined;
+        const detalhe = typeof err === 'string' ? err : err?.message;
+        const msg = detalhe || texto.slice(0, 300) || `HTTP ${res.status}`;
+        if (i < tentativas && ehErroTransitorioIa(res.status, msg)) {
+          await new Promise((r) => setTimeout(r, 700 * (i + 1)));
+          continue;
+        }
+        throw new ErroHttpIa(res.status, msg);
+      }
+      return json;
+    } catch (e) {
+      if (abort.signal.aborted) {
+        ultimoErro = new Error(`O provedor de IA não respondeu em ${Math.round(TIMEOUT_PADRAO_MS / 1000)}s.`);
+        break;
+      }
+      ultimoErro = e;
+      if (e instanceof ErroHttpIa) break;
+      if (i < tentativas) {
+        await new Promise((r) => setTimeout(r, 700 * (i + 1)));
+        continue;
+      }
+      break;
+    } finally {
+      clearTimeout(timer);
     }
-    if (!res.ok) {
-      const err = json.error as string | { message?: string } | undefined;
-      const detalhe = typeof err === 'string' ? err : err?.message;
-      throw new Error(detalhe || texto.slice(0, 300) || `HTTP ${res.status}`);
-    }
-    return json;
-  } catch (e) {
-    if (abort.signal.aborted) {
-      throw new Error(`O provedor de IA não respondeu em ${Math.round(TIMEOUT_PADRAO_MS / 1000)}s.`);
-    }
-    throw e;
-  } finally {
-    clearTimeout(timer);
   }
+  throw ultimoErro instanceof Error ? ultimoErro : new Error(String(ultimoErro));
 }
 
 async function buscar(
@@ -199,16 +232,36 @@ function gemini(cfg: ConfigProvedorIa, fetchFn: typeof fetch): ProvedorIa {
       if (opcoes?.json) {
         generationConfig.responseMimeType = 'application/json';
       }
-      const json = await pedir(
-        `${base}/models/${encodeURIComponent(cfg.modelo)}:generateContent`,
-        {
-          systemInstruction: { parts: [{ text: sistema }] },
-          contents: [{ role: 'user', parts: [{ text: pergunta }] }],
-          generationConfig,
-        },
-        { 'x-goog-api-key': cfg.chave },
-        fetchFn,
-      );
+      const corpo = {
+        systemInstruction: { parts: [{ text: sistema }] },
+        contents: [{ role: 'user', parts: [{ text: pergunta }] }],
+        generationConfig,
+      };
+      const headers = { 'x-goog-api-key': cfg.chave };
+      let json: Record<string, unknown>;
+      try {
+        json = await pedir(
+          `${base}/models/${encodeURIComponent(cfg.modelo)}:generateContent`,
+          corpo,
+          headers,
+          fetchFn,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        const status = err instanceof ErroHttpIa ? err.status : 0;
+        const modeloReserva = 'gemini-2.0-flash';
+        if (cfg.modelo !== modeloReserva && ehErroTransitorioIa(status, msg)) {
+          json = await pedir(
+            `${base}/models/${encodeURIComponent(modeloReserva)}:generateContent`,
+            corpo,
+            headers,
+            fetchFn,
+            1,
+          );
+        } else {
+          throw err;
+        }
+      }
       const candidates = Array.isArray(json.candidates)
         ? (json.candidates as { content?: { parts?: { text?: string; thought?: boolean }[] } }[])
         : [];

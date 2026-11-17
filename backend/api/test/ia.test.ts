@@ -380,6 +380,28 @@ test('gemini e insights: trata todos os padrões de retorno (thought, prosa, ví
   );
   const textoGemini = await pGemini.conversar('sis', 'perg', { json: true });
   assert.equal(textoGemini, '{"resumo":"Ok sem pensamento.","insights":[],"perguntas":[]}');
+
+  // 1b) Retentativa e fallback para gemini-2.0-flash quando modelo sofre high demand (503)
+  const urlsChamadas: string[] = [];
+  const pGeminiFallback = construirProvedor(
+    { tipo: 'gemini', modelo: 'gemini-3.5-flash-lite', chave: 'AIza9999', baseUrl: null, maxTokens: 4000, origem: 'tela' },
+    async (url) => {
+      urlsChamadas.push(String(url));
+      if (String(url).includes('gemini-3.5-flash-lite')) {
+        return new Response(
+          JSON.stringify({ error: { message: 'This model is currently experiencing high demand.' } }),
+          { status: 503 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ candidates: [{ content: { parts: [{ text: '{"resumo":"Fallback ok.","insights":[],"perguntas":[]}' }] } }] }),
+        { status: 200 },
+      );
+    },
+  );
+  const textoFallback = await pGeminiFallback.conversar('sis', 'perg', { json: true });
+  assert.equal(textoFallback, '{"resumo":"Fallback ok.","insights":[],"perguntas":[]}');
+  assert.ok(urlsChamadas.some((u) => u.includes('gemini-2.0-flash')), 'usou modelo reserva em 503');
   assert.equal(
     (corpoEnviado as { generationConfig?: { responseMimeType?: string } } | null)?.generationConfig?.responseMimeType,
     'application/json',
