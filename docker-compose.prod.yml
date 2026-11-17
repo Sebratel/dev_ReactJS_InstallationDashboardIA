@@ -236,6 +236,7 @@ services:
       # contra os 30 do refresh, nao corrigem numero) — ponha-as na variavel da stack para
       # liga-las. Uma lista explicita na stack substitui este padrao inteiro.
       AO_VIVO_PAGINAS: ${AO_VIVO_PAGINAS:-agendamento-field}
+      REFRESH_URL: http://refresh:3102
       # A chave do rate limit é o `X-Real-IP` que o `web` escreve com `$remote_addr`
       # (`nginx.web.conf`, em toda location que repassa). Seguro só porque a API não tem
       # porta publicada: ninguém de fora fala com ela sem passar pelo `web`.

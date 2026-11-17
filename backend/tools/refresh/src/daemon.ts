@@ -19,6 +19,7 @@
 // todas, e é o único lugar onde uma falha de madrugada que o tick seguinte
 // consertou continua existindo de manhã. Leia com `--historico` (ver `historico.ts`).
 
+import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { applyDotEnv } from '../../../packages/query-engine/src/config.ts';
@@ -494,6 +495,18 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
       process.exit(2);
     }
     const agendador = iniciaAgendadorPorGrupo();
+    const portaInterna = Number(process.env.REFRESH_PORT || 3102);
+    const controleHttp = http.createServer((req, res) => {
+      if (req.method === 'POST' && req.url === '/pede') {
+        const disparados = ['quente', 'medio', 'frio'].filter((id) => agendador.pede(id));
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, disparados }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    controleHttp.listen(portaInterna);
     // A carga completa da madrugada mora AQUI desde 17/10/2026 (era o contêiner
     // `snapshot-diario`, com cron): mesmo teto de memória, porque a trava do snapshot já
     // impedia as duas de materializar juntas. `SNAPSHOT_DIARIO_UTC` vazio desliga.
@@ -534,6 +547,7 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
         encerrando = true;
         console.log(`\n[Refresh] Recebido sinal ${sinal}. Encerrando agendador por grupo.`);
         diario?.encerra();
+        controleHttp.close();
         await agendador.encerra();
         clearInterval(mantenedor);
         resolve();

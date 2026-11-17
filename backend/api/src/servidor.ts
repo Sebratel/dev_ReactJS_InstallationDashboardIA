@@ -281,6 +281,7 @@ export class Servidor {
       | 'ia'
       | 'sombraAoVivo'
       | 'aoVivo'
+      | 'pedeRefresh'
     >
   > &
     Pick<
@@ -296,6 +297,7 @@ export class Servidor {
       | 'ia'
       | 'sombraAoVivo'
       | 'aoVivo'
+      | 'pedeRefresh'
     >;
   private readonly lojaIa: LojaDeIa;
   private readonly cacheInsightsIa: CacheInsightsIa;
@@ -894,12 +896,13 @@ export class Servidor {
     const ehGestaoDeIa = rota === '/api/admin/ia' || rota.startsWith('/api/admin/ia/');
     const ehInsightsVisual = /^\/api\/dashboards\/[^/]+\/insights\/[^/]+$/.test(rota);
     const ehRegistroDeUso = rota === '/api/uso/abertura';
-    if (ehRegistroDeUso && req.method !== 'POST') {
+    const ehPedidoDeRefresh = rota === '/api/refresh';
+    if ((ehRegistroDeUso || ehPedidoDeRefresh) && req.method !== 'POST') {
       res.setHeader('Allow', 'POST');
       responde(res, 405, { erro: 'Esta rota aceita somente POST.' });
       return;
     }
-    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehGestaoDeMetas || ehGestaoDeIa || ehInsightsVisual || ehRegistroDeUso) && req.method === 'POST') {
+    if ((ehGestaoDeAcesso || ehGestaoDeSessao || ehGestaoDeMetas || ehGestaoDeIa || ehInsightsVisual || ehRegistroDeUso || ehPedidoDeRefresh) && req.method === 'POST') {
       const temOrigem = typeof req.headers.origin === 'string' || typeof req.headers.referer === 'string';
       if (!temOrigem || !this.origemPermitida(req)) {
         this.registraEventoSeg(req, 403, 'csrf-gestao-de-acesso');
@@ -1010,6 +1013,7 @@ export class Servidor {
         return;
       }
       if (ehRegistroDeUso) return this.registraAbertura(req, res, url, quem, ehAquecedor);
+      if (ehPedidoDeRefresh) return await this.pedeAtualizacaoImediata(res);
       if (ehConsultaDeUso) return this.usoDasTelas(res, url, quem, req);
       if (ehGestaoDeAcesso) return this.gestaoDeAcesso(req, res, rota, quem);
       if (ehGestaoDeSessao) return this.gestaoDeSessao(req, res, rota, quem);
@@ -2062,6 +2066,23 @@ export class Servidor {
     const derrubadas = this.derrubaSessoes(email);
     this.registraEventoDeSessao(req, 'sessao_derrubada', email.trim().toLowerCase(), `por=${quem.usuario}`);
     responde(res, 200, { derrubadas, sessoes: lista() });
+  }
+
+  private ultimoPedidoRefreshMs = 0;
+
+  private async pedeAtualizacaoImediata(res: http.ServerResponse): Promise<void> {
+    const agora = Date.now();
+    if (agora - this.ultimoPedidoRefreshMs < 10_000) {
+      responde(res, 200, { ok: true, disparados: [], emEspera: true });
+      return;
+    }
+    this.ultimoPedidoRefreshMs = agora;
+    try {
+      const r = this.opts.pedeRefresh ? await this.opts.pedeRefresh() : { disparados: [] };
+      responde(res, 200, { ok: true, disparados: r.disparados });
+    } catch {
+      responde(res, 200, { ok: false, disparados: [] });
+    }
   }
 
   private async lista(res: http.ServerResponse, quem: Identidade): Promise<void> {

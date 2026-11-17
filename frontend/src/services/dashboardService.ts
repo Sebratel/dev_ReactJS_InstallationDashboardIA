@@ -497,6 +497,11 @@ export const registraAberturaDeAba = (tela: string): void => {
   }).catch(() => undefined);
 };
 
+/** Pede ao servidor para tentar atualizar grupos parados e poller na hora (fire-and-forget). */
+export const pedeAtualizacaoAgora = (): void => {
+  void fetch('/api/refresh', { method: 'POST' }).catch(() => undefined);
+};
+
 /**
  * As chaves do cache da tela (React Query), num lugar só — fase 2 de
  * `docs/PLANO-PADROES-FRONTEND.md`.

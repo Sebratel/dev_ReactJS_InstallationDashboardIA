@@ -300,4 +300,6 @@ export interface ServidorOptions {
   };
   /** Instância ou opção para a piscina de worker threads. */
   piscinaWorkers?: PiscinaWorkers;
+  /** Dispara atualização imediata de grupos/poller quando alguém clica no botão Atualizar. */
+  pedeRefresh?: () => Promise<{ disparados: string[] }>;
 }

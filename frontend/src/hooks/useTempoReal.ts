@@ -6,7 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { chavesDeConsulta } from '../services/dashboardService.ts';
+import { chavesDeConsulta, pedeAtualizacaoAgora } from '../services/dashboardService.ts';
 import { assinaEventos } from '../services/eventosService.ts';
 import { releAcessos } from './useAcessosAoVivo.ts';
 
@@ -111,6 +111,7 @@ export function useTempoReal(atual: string | null): TempoReal {
   const atualiza = useCallback(() => {
     if (!atual) return;
     marcaHora();
+    pedeAtualizacaoAgora();
     void qc.invalidateQueries({ queryKey: chavesDeConsulta.pagina(atual) });
     void qc.invalidateQueries({ queryKey: chavesDeConsulta.valores(atual) });
     void qc.invalidateQueries({ queryKey: chavesDeConsulta.saude });

@@ -382,6 +382,33 @@ const servidor = new Servidor({
   // responde `ausente`, que é a verdade.
   ...(process.env.REDIS_URL ? { estadoDoRedis: () => saudeRedis.estado() } : {}),
   estadoDoPoller: () => poller?.estado() ?? null,
+  pedeRefresh: async () => {
+    const disparados: string[] = [];
+    if (agendador) {
+      for (const id of ['quente', 'medio', 'frio']) {
+        if (agendador.pede(id)) disparados.push(id);
+      }
+    } else if (process.env.REFRESH_URL) {
+      try {
+        const res = await fetch(`${process.env.REFRESH_URL.replace(/\/+$/, '')}/pede`, {
+          method: 'POST',
+          signal: AbortSignal.timeout(3_000),
+        });
+        if (res.ok) {
+          const body = (await res.json()) as { disparados?: string[] };
+          if (Array.isArray(body.disparados)) disparados.push(...body.disparados);
+        }
+      } catch {
+        /* refresh pode estar reiniciando */
+      }
+    }
+    if (poller?.ativo) {
+      for (const q of poller.estado().porQuery) {
+        void poller.tentaAgora(q.query);
+      }
+    }
+    return { disparados };
+  },
   // Sempre passado, mesmo desligado — "não há agendador neste processo, e o motivo é
   // este" é justamente a frase que faltava em 16/09/2026.
   estadoDoAgendador: () =>
