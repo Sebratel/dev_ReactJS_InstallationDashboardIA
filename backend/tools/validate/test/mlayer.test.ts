@@ -215,16 +215,7 @@ test('as 29 queries reais: 28 são escaneáveis, e a exceção é a do let aninh
   //
   // 146 → 145 (23/10/2026): `quadro-funcional` lê o GESTOR da Senior e perdeu o filtro
   // nos três nomes da planilha (ACHADOS #237).
-  //
-  // 145 → 151 (24/10/2026): a mescla com TECNICOS AUXILIARES voltou do `sql:` de
-  // `protocolos-produtividade` para o M, em 6 passos (ACHADOS #239).
-  //
-  // 151 → 152 (26/10/2026): `relatos-do-dia`, gerada, um passo só (docs/SPEC-DRIVEN.md).
-  // 152 → 153 (26/10/2026): `valores-do-relato`, gerada pelo mesmo script, idem.
-  //
-  // 153 → 155 (12/11/2026, QA D-20, ACHADOS #254): `metas-instalacao`, à mão, com dois
-  // passos — o `Fonte` e o `Table.TransformColumnTypes` que tipa `META` como inteiro.
-  assert.equal(passos, 155, 'passos M nas 28 escaneáveis');
+  assert.equal(passos, 145, 'passos M nas 25 escaneáveis');
 });
 
 /**

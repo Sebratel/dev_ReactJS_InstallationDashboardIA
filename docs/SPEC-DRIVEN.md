@@ -65,50 +65,6 @@ chega com 2 colunas em vez de 38 — CPF, RG e o resto de RH ficam na planilha. 
 contra o snapshot do Google no mesmo dia: premiação e capacidade idênticas (hash dos blocos),
 quadro 538/540 linhas iguais (o snapshot do Google era de 07/10). ACHADOS #209.
 
-### Seis queries — o histórico vai no máximo até o início do ano anterior (24/10/2026)
-
-Decisão do Misael: "não precisamos de históricos muito antigos, no máximo 1 ano para
-trás". O piso fixo `'2025-01-01'` virou `(DATE_TRUNC('year', CURRENT_DATE) - INTERVAL
-'1 year')` no `sql:` de `protocolos-geral`, `protocolos-telefonia`, `protocolos-tipo`,
-`alocacao-patrimonio` e `troca-endereco`, e `tc.capacity_date > '2024-12-31'` virou
-`>= MAKEDATE(YEAR(CURDATE()) - 1, 1)` em `gestores-equipes` (MariaDB). O texto dentro do
-`Odbc.Query` do M não mudou: ele só nomeia o passo.
-
-**Por que o ano anterior inteiro, e não 12 meses corridos.** O Relatório do Ano compara
-"até hoje" com o "mesmo período do ano anterior" — de 1º/jan do ano passado até o dia de
-hoje do ano passado. Com 12 meses corridos (desde out/2025) esses cards comparariam com
-um ano quase vazio: número errado e plausível. Com o ano anterior inteiro nenhum relatório
-muda, e o histórico para de crescer — hoje o piso ainda é 2025-01-01; em 2027 vira
-2026-01-01 e 2025 sai.
-
-Mudaram junto, porque repetem o texto: o piso do histórico congelado
-(`historico-congelado.ts`), as costuras do poller (`realtime-poll.yaml`) e do ao vivo
-(`ao-vivo.yaml`), e a sonda `paridade-divisao.ts`. Conferido no banco, versão antiga e nova
-ao mesmo tempo: as cinco menores linha a linha iguais; a `protocolos-geral` com as mesmas
-100.870 linhas e diferença só em TECNICOS AUXILIARES.AUXILIAR e HR. ALOCAÇÃO — a mesma
-que a versão antiga tem contra ela mesma (empate, ACHADOS #241).
-
-### `protocolos-produtividade` — a mescla com TECNICOS AUXILIARES volta para o M (24/10/2026)
-
-A junção `LEFT JOIN auxiliar ax ON ax._chave = u._chave` era 434 dos 469 s da consulta
-(`EXPLAIN ANALYZE`, 22/10/2026): o planejador estima `bruto` em ~11 mil linhas onde há
-dezenas de milhares e escolhe Nested Loop sobre CTE Scan (88 mil × 40 mil leituras). A
-cerca `MATERIALIZED` de 12/09 tirou o `regexp_replace` de dentro do par, mas não a
-estimativa, e não há como corrigi-la sem `SET` na sessão. Então a mescla voltou para onde
-o relatório original a fazia — o M, que mescla por hash:
-
-- o `sql:` perdeu o CTE `auxiliar` e a junção, e passou a entregar `_RAMO` e
-  `_CHAVE AUXILIAR` (a MESMA chave inteira de antes, calculada em `unificado`) no lugar de
-  `TECNICOS AUXILIARES.AUXILIAR` e `INSTALADOR`;
-- o M tipa a chave, mescla com `tecnicos-auxiliares` (mesma regra do CTE: RAUX do ano, o
-  relato mais recente por protocolo; "PROTOCOLO:" já é Int64 lá) e monta as duas colunas
-  com as regras que estavam no SELECT final.
-
-O ano inteiro: **43 s** (`validate:queries`) contra 469 s. `docs/sql/datahub-protocolos-
-produtividade.sql` segue igual ao `sql:` (o teste de `incremental.test.ts` trava). A costura
-incremental não mudou: as âncoras são a abertura de `bruto` e o filtro de `a.created`.
-ACHADOS #239.
-
 ### `quadro-funcional` — o GESTOR sai da Senior, não da planilha (23/10/2026)
 
 Decisão do Misael: o gestor da Premiação e do Diário (`PROTOCOLOS PRODUTIVIDADE[GESTOR]`,
