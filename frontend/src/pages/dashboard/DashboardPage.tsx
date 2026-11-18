@@ -8,6 +8,7 @@
 // componentes.
 
 import { useEffect, useMemo } from 'react';
+import { Settings } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ehAbortError,
@@ -101,10 +102,23 @@ export function DashboardPage() {
   const pendentes = useRascunhoDeAcessos((s) => s.pendentes);
   // As abas fora do relatório, na ordem em que aparecem à direita da faixa. PERMISSÕES sai
   // do papel (admin/dev); as outras saem do servidor, que já aplicou o acesso por aba.
+  //
+  // Desde 17/11/2026 a aba se chama CONFIGURAÇÕES (rótulo da casca padrão e da Manutenção),
+  // vai por ÚLTIMO, encostada na direita, e leva a engrenagem. O id na URL continua
+  // `permissoes`: link e favorito antigos seguem abrindo a mesma tela.
   const abasExtras = useMemo(
     () => [
-      ...(eu?.podeGerir ? [{ id: ABA_PERMISSOES, rotulo: 'Permissões', marca: pendentes }] : []),
       ...(eu?.abasExtras ?? []).map((a) => ({ id: a.id, rotulo: a.nome })),
+      ...(eu?.podeGerir
+        ? [
+            {
+              id: ABA_PERMISSOES,
+              rotulo: 'Configurações',
+              marca: pendentes,
+              icone: <Settings size={13} aria-hidden />,
+            },
+          ]
+        : []),
     ],
     [eu?.podeGerir, eu?.abasExtras, pendentes],
   );
@@ -224,7 +238,7 @@ export function DashboardPage() {
   const antesDosVisuaisRef = useEspacoSemVisual<HTMLDivElement>('--h-antes', '--h-entre');
 
   const nome = naGestao
-    ? 'Permissões'
+    ? 'Configurações'
     : nasMetas
       ? 'Metas'
       : (paginas.find((p) => p.id === atual)?.nome ?? 'Instalação');

@@ -188,7 +188,7 @@ export function PainelInsights({
                 )}
                 {statusErro === 503 && ehAdmin && (
                   <p className="ia-dica">
-                    Cadastre a chave em <b>Permissões → Provedor de IA</b>.
+                    Cadastre a chave em <b>Configurações → Provedor de IA</b>.
                   </p>
                 )}
                 {statusErro !== 503 && (

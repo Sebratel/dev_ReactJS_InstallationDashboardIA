@@ -9,7 +9,7 @@
 // sessão derrubada continuam valendo no clique — são ações, não edições da matriz.
 
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Trash2, Undo2 } from 'lucide-react';
+import { Activity, History, Layers, Monitor, Sparkles, Trash2, Undo2, Users } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   aplicaOperacao,
@@ -63,6 +63,7 @@ export function GestaoDeAcessos() {
     refetchOnWindowFocus: true,
   });
   const { rascunho, muda, conta, descarta } = useRascunhoDeAcessos();
+  const [aba, setAba] = useState<AbaDeConfiguracao>('usuarios');
   const [email, setEmail] = useState('');
   const [busca, setBusca] = useState('');
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
@@ -149,402 +150,513 @@ export function GestaoDeAcessos() {
     setEmail('');
   };
 
+  // Uma seção por vez, em abas — como as Configurações da Manutenção e a casca padrão.
+  // Antes as sete seções vinham empilhadas numa página de ~2.200px, e a de baixo (histórico)
+  // só aparecia rolando três telas. A IA e as sessões continuam só para administrador.
+  const abas = ABAS_DE_CONFIGURACAO.filter((a) => souAdmin || !a.soAdmin);
+  const abaAberta = abas.some((a) => a.id === aba) ? aba : 'usuarios';
+
   return (
     <>
-      {!m.banco.ok ? (
-        <Aviso>
-          O banco de acessos não respondeu na última leitura — o que aparece pode estar
-          desatualizado.
-        </Aviso>
-      ) : null}
-      {m.pedidos.length > 0 ? (
-        <Aviso>
-          {m.pedidos.length} pedido(s) de acesso esperando resposta — logo abaixo da matriz.
-        </Aviso>
-      ) : null}
-      {m.senior ? <AvisoDaSenior m={m} /> : null}
+      <AbasDeConfiguracao
+        abas={abas}
+        aberta={abaAberta}
+        aoEscolher={setAba}
+        pedidos={m.pedidos.length}
+        quem={`${m.eu.usuario} · ${ROTULO_DO_PAPEL[m.eu.papel]}`}
+      />
 
-      <Cartao
-        titulo="Acessos às abas"
-        sub="Admin abre todas as abas. As demais contas abrem só o que estiver marcado — ou a aba em Todos. Toda mudança salva fica registrada com o seu e-mail."
-        altura="matriz"
-        largo
-      >
-        <form onSubmit={adiciona} className="flex flex-none gap-[6px]">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="nome.sobrenome@sebratel.com.br"
-            aria-label="E-mail da pessoa"
-            className="w-[min(320px,100%)] rounded-[2px] border border-pbi-borda bg-pbi-superficie px-[8px] py-[4px]"
-          />
-          <Botao variante="secundario" type="submit" disabled={travado}>
-            Adicionar pessoa
-          </Botao>
-          <input
-            type="search"
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Buscar por e-mail ou nome"
-            aria-label="Buscar pessoa"
-            className="ml-auto w-[min(240px,100%)] rounded-[2px] border border-pbi-borda bg-pbi-superficie px-[8px] py-[4px]"
-          />
-        </form>
+      {abaAberta === 'usuarios' ? (
+        <>
+          {!m.banco.ok ? (
+            <Aviso>
+              O banco de acessos não respondeu na última leitura — o que aparece pode estar
+              desatualizado.
+            </Aviso>
+          ) : null}
+          {m.pedidos.length > 0 ? (
+            <Aviso>
+              {m.pedidos.length} pedido(s) de acesso esperando resposta — logo abaixo da matriz.
+            </Aviso>
+          ) : null}
+          {m.senior ? <AvisoDaSenior m={m} /> : null}
 
-        {selecionados.size > 0 ? (
-          <div className="flex flex-none flex-wrap items-center gap-[8px] rounded-[2px] bg-pbi-aviso-bg px-[8px] py-[6px] text-[0.74rem]">
-            <strong>{selecionados.size} selecionada(s)</strong>
-            <select
-              value=""
-              disabled={emMassa.isPending}
-              aria-label="Aplicar perfil às selecionadas"
-              onChange={(e) => {
-                const perfil = e.target.value === '-' ? null : e.target.value;
-                if (e.target.value) emMassa.mutate((x) => definePerfilDaPessoa(x, perfil));
-              }}
-            >
-              <option value="">Aplicar perfil…</option>
-              {perfis.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nome}
-                </option>
-              ))}
-              <option value="-">(sem perfil)</option>
-            </select>
-            <Botao
-              variante="secundario"
-              disabled={emMassa.isPending}
-              onClick={() => {
-                const motivo = window.prompt('Motivo da suspensão (vai para a tela de login):');
-                if (motivo !== null) emMassa.mutate((x) => suspendePessoa(x, motivo.trim(), null));
-              }}
-            >
-              Suspender
-            </Botao>
-            <Botao
-              variante="secundario"
-              disabled={emMassa.isPending}
-              onClick={() => emMassa.mutate(reativaPessoa)}
-            >
-              Reativar
-            </Botao>
-            <Botao
-              variante="secundario"
-              disabled={emMassa.isPending}
-              onClick={() => setSelecionados(new Set())}
-            >
-              Limpar seleção
-            </Botao>
-            {emMassa.error ? (
-              <Erro>{(emMassa.error as Error).message} — as anteriores ficaram gravadas.</Erro>
+          <Cartao
+            titulo="Acessos às abas"
+            sub="Admin abre todas as abas. As demais contas abrem só o que estiver marcado — ou a aba em Todos. Toda mudança salva fica registrada com o seu e-mail."
+            altura="matriz"
+            largo
+          >
+            <form onSubmit={adiciona} className="flex flex-none gap-[6px]">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="nome.sobrenome@sebratel.com.br"
+                aria-label="E-mail da pessoa"
+                className="w-[min(320px,100%)] rounded-[2px] border border-pbi-borda bg-pbi-superficie px-[8px] py-[4px]"
+              />
+              <Botao variante="secundario" type="submit" disabled={travado}>
+                Adicionar pessoa
+              </Botao>
+              <input
+                type="search"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por e-mail ou nome"
+                aria-label="Buscar pessoa"
+                className="ml-auto w-[min(240px,100%)] rounded-[2px] border border-pbi-borda bg-pbi-superficie px-[8px] py-[4px]"
+              />
+            </form>
+
+            {selecionados.size > 0 ? (
+              <div className="flex flex-none flex-wrap items-center gap-[8px] rounded-[2px] bg-pbi-aviso-bg px-[8px] py-[6px] text-[0.74rem]">
+                <strong>{selecionados.size} selecionada(s)</strong>
+                <select
+                  value=""
+                  disabled={emMassa.isPending}
+                  aria-label="Aplicar perfil às selecionadas"
+                  onChange={(e) => {
+                    const perfil = e.target.value === '-' ? null : e.target.value;
+                    if (e.target.value) emMassa.mutate((x) => definePerfilDaPessoa(x, perfil));
+                  }}
+                >
+                  <option value="">Aplicar perfil…</option>
+                  {perfis.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nome}
+                    </option>
+                  ))}
+                  <option value="-">(sem perfil)</option>
+                </select>
+                <Botao
+                  variante="secundario"
+                  disabled={emMassa.isPending}
+                  onClick={() => {
+                    const motivo = window.prompt('Motivo da suspensão (vai para a tela de login):');
+                    if (motivo !== null)
+                      emMassa.mutate((x) => suspendePessoa(x, motivo.trim(), null));
+                  }}
+                >
+                  Suspender
+                </Botao>
+                <Botao
+                  variante="secundario"
+                  disabled={emMassa.isPending}
+                  onClick={() => emMassa.mutate(reativaPessoa)}
+                >
+                  Reativar
+                </Botao>
+                <Botao
+                  variante="secundario"
+                  disabled={emMassa.isPending}
+                  onClick={() => setSelecionados(new Set())}
+                >
+                  Limpar seleção
+                </Botao>
+                {emMassa.error ? (
+                  <Erro>{(emMassa.error as Error).message} — as anteriores ficaram gravadas.</Erro>
+                ) : null}
+              </div>
             ) : null}
-          </div>
-        ) : null}
 
-        <table className="w-full border-collapse text-[0.76rem]">
-          <thead className="sticky top-0 z-10 bg-pbi-fundo">
-            <tr>
-              <th className="w-[1%] px-[6px] py-[6px]">
-                <input
-                  type="checkbox"
-                  className="w-auto"
-                  aria-label="Selecionar todas as visíveis"
-                  checked={
-                    visiveis.length > 0 &&
-                    visiveis.every((p) => p.fixo || p.nova || selecionados.has(p.email))
-                  }
-                  onChange={(e) =>
-                    setSelecionados(
-                      e.target.checked
-                        ? new Set(visiveis.filter((p) => !p.fixo && !p.nova).map((p) => p.email))
-                        : new Set(),
-                    )
-                  }
-                />
-              </th>
-              <th className="px-[8px] py-[6px] text-left">Pessoa</th>
-              <th className="px-[8px] py-[6px] text-left">Papel</th>
-              <th className="px-[8px] py-[6px] text-left">Perfil</th>
-              <th className="px-[8px] py-[6px] text-left">Situação</th>
-              <th className="px-[8px] py-[6px] text-left">Último acesso</th>
-              {vista.telas.map((t) => (
-                <th
-                  key={t.id}
-                  className={cn(
-                    'min-w-[84px] px-[6px] py-[6px] text-center align-bottom',
-                    t.mudou && 'bg-pbi-aviso-bg',
-                  )}
-                >
-                  <div className="text-[0.68rem] leading-tight">{nomeDaAba(t.nome)}</div>
-                  <label className="mt-[4px] flex items-center justify-center gap-[3px] text-[0.64rem] font-normal text-pbi-muted">
-                    <input
-                      type="checkbox"
-                      checked={t.modo === 'todos'}
-                      disabled={travado}
-                      onChange={(e) =>
-                        muda((r) => comModo(m, r, t.id, e.target.checked ? 'todos' : 'lista'))
-                      }
-                    />
-                    Todos
-                  </label>
-                </th>
-              ))}
-              <th className="w-[1%]" />
-            </tr>
-          </thead>
-          <tbody>
-            {visiveis.map((p) => {
-              const veTudo = p.papel === 'admin';
-              const doPerfil = perfilDe(p.perfil);
-              const peloPerfil = (tela: string) => Boolean(doPerfil?.telas.includes(tela));
-              const ultimo = ultimoAcessoNaTela(p.ultimoAcesso);
-              const podeRemover = !p.fixo && (souAdmin || p.papel === 'viewer');
-              return (
-                <tr
-                  key={p.email}
-                  className={cn(
-                    'border-t border-pbi-borda',
-                    p.mudou && 'bg-pbi-aviso-bg',
-                    p.removida && 'text-pbi-muted line-through',
-                  )}
-                >
-                  <td className="px-[6px] py-[4px]">
+            <table className="w-full border-collapse text-[0.76rem]">
+              <thead className="sticky top-0 z-10 bg-pbi-fundo">
+                <tr>
+                  <th className="w-[1%] px-[6px] py-[6px]">
                     <input
                       type="checkbox"
                       className="w-auto"
-                      aria-label={`Selecionar ${p.email}`}
-                      disabled={p.fixo || p.nova}
-                      checked={selecionados.has(p.email)}
-                      onChange={() => alterna(p.email)}
+                      aria-label="Selecionar todas as visíveis"
+                      checked={
+                        visiveis.length > 0 &&
+                        visiveis.every((p) => p.fixo || p.nova || selecionados.has(p.email))
+                      }
+                      onChange={(e) =>
+                        setSelecionados(
+                          e.target.checked
+                            ? new Set(
+                                visiveis.filter((p) => !p.fixo && !p.nova).map((p) => p.email),
+                              )
+                            : new Set(),
+                        )
+                      }
                     />
-                  </td>
-                  <td className="px-[8px] py-[4px] whitespace-nowrap">
-                    {p.email}
-                    {p.nova ? <span className="ml-[6px] text-pbi-muted">(nova)</span> : null}
-                    {p.senior?.nome ? (
-                      <div className="text-[0.66rem] text-pbi-muted">{p.senior.nome}</div>
-                    ) : null}
-                  </td>
-                  <td className="px-[8px] py-[4px]">
-                    {souAdmin && !p.fixo ? (
-                      <select
-                        value={p.papel}
-                        disabled={travado || p.removida}
-                        onChange={(e) =>
-                          muda((r) => comPapel(m, r, p.email, e.target.value as Papel))
+                  </th>
+                  <th className="px-[8px] py-[6px] text-left">Pessoa</th>
+                  <th className="px-[8px] py-[6px] text-left">Papel</th>
+                  <th className="px-[8px] py-[6px] text-left">Perfil</th>
+                  <th className="px-[8px] py-[6px] text-left">Situação</th>
+                  <th className="px-[8px] py-[6px] text-left">Último acesso</th>
+                  {vista.telas.map((t) => (
+                    <th
+                      key={t.id}
+                      className={cn(
+                        'min-w-[84px] px-[6px] py-[6px] text-center align-bottom',
+                        t.mudou && 'bg-pbi-aviso-bg',
+                      )}
+                    >
+                      <div className="text-[0.68rem] leading-tight">{nomeDaAba(t.nome)}</div>
+                      <label className="mt-[4px] flex items-center justify-center gap-[3px] text-[0.64rem] font-normal text-pbi-muted">
+                        <input
+                          type="checkbox"
+                          checked={t.modo === 'todos'}
+                          disabled={travado}
+                          onChange={(e) =>
+                            muda((r) => comModo(m, r, t.id, e.target.checked ? 'todos' : 'lista'))
+                          }
+                        />
+                        Todos
+                      </label>
+                    </th>
+                  ))}
+                  <th className="w-[1%]" />
+                </tr>
+              </thead>
+              <tbody>
+                {visiveis.map((p) => {
+                  const veTudo = p.papel === 'admin';
+                  const doPerfil = perfilDe(p.perfil);
+                  const peloPerfil = (tela: string) => Boolean(doPerfil?.telas.includes(tela));
+                  const ultimo = ultimoAcessoNaTela(p.ultimoAcesso);
+                  const podeRemover = !p.fixo && (souAdmin || p.papel === 'viewer');
+                  return (
+                    <tr
+                      key={p.email}
+                      className={cn(
+                        'border-t border-pbi-borda',
+                        p.mudou && 'bg-pbi-aviso-bg',
+                        p.removida && 'text-pbi-muted line-through',
+                      )}
+                    >
+                      <td className="px-[6px] py-[4px]">
+                        <input
+                          type="checkbox"
+                          className="w-auto"
+                          aria-label={`Selecionar ${p.email}`}
+                          disabled={p.fixo || p.nova}
+                          checked={selecionados.has(p.email)}
+                          onChange={() => alterna(p.email)}
+                        />
+                      </td>
+                      <td className="px-[8px] py-[4px] whitespace-nowrap">
+                        {p.email}
+                        {p.nova ? <span className="ml-[6px] text-pbi-muted">(nova)</span> : null}
+                        {p.senior?.nome ? (
+                          <div className="text-[0.66rem] text-pbi-muted">{p.senior.nome}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-[8px] py-[4px]">
+                        {souAdmin && !p.fixo ? (
+                          <select
+                            value={p.papel}
+                            disabled={travado || p.removida}
+                            onChange={(e) =>
+                              muda((r) => comPapel(m, r, p.email, e.target.value as Papel))
+                            }
+                            aria-label={`Papel de ${p.email}`}
+                          >
+                            <option value="viewer">viewer</option>
+                            <option value="dev">dev</option>
+                            <option value="admin">admin</option>
+                          </select>
+                        ) : (
+                          <span title={p.fixo ? 'Definido no .env do servidor' : undefined}>
+                            {p.papel}
+                            {p.fixo ? ' (fixo)' : ''}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-[8px] py-[4px]">
+                        {p.nova || p.fixo ? (
+                          <span className="text-pbi-muted">—</span>
+                        ) : (
+                          <select
+                            value={p.perfil ?? ''}
+                            disabled={emMassa.isPending || p.removida}
+                            aria-label={`Perfil de ${p.email}`}
+                            onChange={(e) =>
+                              void definePerfilDaPessoa(p.email, e.target.value || null).then(
+                                aoAtualizar,
+                              )
+                            }
+                          >
+                            <option value="">(sem perfil)</option>
+                            {perfis.map((x) => (
+                              <option key={x.id} value={x.id}>
+                                {x.nome}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </td>
+                      <td className="px-[8px] py-[4px] whitespace-nowrap">
+                        {p.nova ? (
+                          <span className="text-pbi-muted">ao salvar</span>
+                        ) : (
+                          <SituacaoDaPessoa
+                            pessoa={p}
+                            podeAgir={souAdmin || p.papel === 'viewer'}
+                            aoAtualizar={aoAtualizar}
+                          />
+                        )}
+                      </td>
+                      <td
+                        className="px-[8px] py-[4px] whitespace-nowrap"
+                        title={
+                          p.ultimoAcesso
+                            ? new Date(p.ultimoAcesso).toLocaleString('pt-BR')
+                            : 'Nenhum acesso registrado'
                         }
-                        aria-label={`Papel de ${p.email}`}
                       >
-                        <option value="viewer">viewer</option>
-                        <option value="dev">dev</option>
-                        <option value="admin">admin</option>
-                      </select>
-                    ) : (
-                      <span title={p.fixo ? 'Definido no .env do servidor' : undefined}>
-                        {p.papel}
-                        {p.fixo ? ' (fixo)' : ''}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-[8px] py-[4px]">
-                    {p.nova || p.fixo ? (
-                      <span className="text-pbi-muted">—</span>
-                    ) : (
+                        {p.nova ? null : <Selo tom={ultimo.tom}>{ultimo.texto}</Selo>}
+                      </td>
+                      {vista.telas.map((t) => (
+                        <td key={t.id} className="px-[6px] py-[4px] text-center">
+                          <input
+                            type="checkbox"
+                            checked={
+                              veTudo ||
+                              t.modo === 'todos' ||
+                              p.telas.includes(t.id) ||
+                              peloPerfil(t.id)
+                            }
+                            disabled={
+                              veTudo ||
+                              t.modo === 'todos' ||
+                              p.removida ||
+                              travado ||
+                              peloPerfil(t.id)
+                            }
+                            title={
+                              veTudo
+                                ? 'Admin abre todas as abas'
+                                : t.modo === 'todos'
+                                  ? 'Aba aberta para todos'
+                                  : peloPerfil(t.id)
+                                    ? `Vem do perfil ${doPerfil!.nome}`
+                                    : undefined
+                            }
+                            aria-label={`${p.email} abre ${t.nome}`}
+                            onChange={(e) =>
+                              muda((r) => comTela(m, r, p.email, t.id, e.target.checked))
+                            }
+                          />
+                        </td>
+                      ))}
+                      <td className="px-[6px] py-[4px]">
+                        <BotaoDeIcone
+                          onClick={() => muda((r) => alternaRemocao(m, r, p.email))}
+                          disabled={!podeRemover || travado}
+                          title={
+                            p.removida
+                              ? 'Desfazer a remoção'
+                              : podeRemover
+                                ? 'Tirar todos os acessos (ao salvar)'
+                                : 'Só admin remove quem tem papel; papel fixo não sai pela tela'
+                          }
+                          aria-label={p.removida ? `Manter ${p.email}` : `Remover ${p.email}`}
+                        >
+                          {p.removida ? <Undo2 size={13} /> : <Trash2 size={13} />}
+                        </BotaoDeIcone>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+
+            {/* O rodapé fica preso embaixo do cartão enquanto a matriz rola: o botão de
+            salvar e a lista do que muda estão sempre à vista. */}
+            <div className="sticky bottom-0 left-0 mt-auto flex flex-none flex-wrap items-end gap-[8px] border-t border-pbi-borda bg-pbi-superficie pt-[6px] text-[0.74rem]">
+              <div className="min-w-[240px] flex-1">
+                {ops.length === 0 ? (
+                  <span className="text-pbi-muted">Nenhuma alteração pendente.</span>
+                ) : (
+                  <>
+                    <strong>{ops.length} alteração(ões) por salvar</strong>
+                    <ul className="m-0 mt-[2px] max-h-[72px] list-disc overflow-auto pl-[18px] text-pbi-muted">
+                      {ops.map((op) => (
+                        <li key={JSON.stringify(op)}>{descreveOperacao(op, nomeDaTela)}</li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+                {salva.error ? (
+                  <div className="mt-[4px]">
+                    <Erro>
+                      {(salva.error as Error).message} — o que já tinha gravado ficou; o resto
+                      continua pendente.
+                    </Erro>
+                  </div>
+                ) : null}
+              </div>
+              <Botao
+                variante="secundario"
+                disabled={travado || (ops.length === 0 && rascunho.novos.length === 0)}
+                onClick={() => {
+                  salva.reset();
+                  descarta();
+                }}
+              >
+                Descartar
+              </Botao>
+              <Botao
+                variante="primario"
+                disabled={travado || ops.length === 0}
+                onClick={() => salva.mutate(ops)}
+              >
+                {travado ? 'Salvando…' : 'Salvar alterações'}
+              </Botao>
+            </div>
+          </Cartao>
+
+          {m.pedidos.length > 0 ? (
+            <Cartao titulo={`Pedidos de acesso (${m.pedidos.length})`} largo>
+              {dispensa.error ? <Erro>{(dispensa.error as Error).message}</Erro> : null}
+              <ul className="m-0 grid list-none gap-[4px] p-0 text-[0.76rem]">
+                {m.pedidos.map((p) => (
+                  <li key={p.email} className="flex flex-wrap items-center gap-[8px]">
+                    <span className="font-semibold">{p.email}</span>
+                    <span className="text-pbi-muted">
+                      {p.tentativas} tentativa(s), última em{' '}
+                      {new Date(p.ultimaVez).toLocaleString('pt-BR')}
+                    </span>
+                    {perfis.length > 0 ? (
                       <select
-                        value={p.perfil ?? ''}
-                        disabled={emMassa.isPending || p.removida}
-                        aria-label={`Perfil de ${p.email}`}
-                        onChange={(e) =>
-                          void definePerfilDaPessoa(p.email, e.target.value || null).then(
-                            aoAtualizar,
-                          )
-                        }
+                        value=""
+                        className="ml-auto"
+                        aria-label={`Aprovar ${p.email} com um perfil`}
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            void definePerfilDaPessoa(p.email, e.target.value).then(aoAtualizar);
+                          }
+                        }}
                       >
-                        <option value="">(sem perfil)</option>
+                        <option value="">Aprovar com perfil…</option>
                         {perfis.map((x) => (
                           <option key={x.id} value={x.id}>
                             {x.nome}
                           </option>
                         ))}
                       </select>
-                    )}
-                  </td>
-                  <td className="px-[8px] py-[4px] whitespace-nowrap">
-                    {p.nova ? (
-                      <span className="text-pbi-muted">ao salvar</span>
-                    ) : (
-                      <SituacaoDaPessoa
-                        pessoa={p}
-                        podeAgir={souAdmin || p.papel === 'viewer'}
-                        aoAtualizar={aoAtualizar}
-                      />
-                    )}
-                  </td>
-                  <td
-                    className="px-[8px] py-[4px] whitespace-nowrap"
-                    title={
-                      p.ultimoAcesso
-                        ? new Date(p.ultimoAcesso).toLocaleString('pt-BR')
-                        : 'Nenhum acesso registrado'
-                    }
-                  >
-                    {p.nova ? null : <Selo tom={ultimo.tom}>{ultimo.texto}</Selo>}
-                  </td>
-                  {vista.telas.map((t) => (
-                    <td key={t.id} className="px-[6px] py-[4px] text-center">
-                      <input
-                        type="checkbox"
-                        checked={
-                          veTudo || t.modo === 'todos' || p.telas.includes(t.id) || peloPerfil(t.id)
-                        }
-                        disabled={
-                          veTudo || t.modo === 'todos' || p.removida || travado || peloPerfil(t.id)
-                        }
-                        title={
-                          veTudo
-                            ? 'Admin abre todas as abas'
-                            : t.modo === 'todos'
-                              ? 'Aba aberta para todos'
-                              : peloPerfil(t.id)
-                                ? `Vem do perfil ${doPerfil!.nome}`
-                                : undefined
-                        }
-                        aria-label={`${p.email} abre ${t.nome}`}
-                        onChange={(e) =>
-                          muda((r) => comTela(m, r, p.email, t.id, e.target.checked))
-                        }
-                      />
-                    </td>
-                  ))}
-                  <td className="px-[6px] py-[4px]">
-                    <BotaoDeIcone
-                      onClick={() => muda((r) => alternaRemocao(m, r, p.email))}
-                      disabled={!podeRemover || travado}
-                      title={
-                        p.removida
-                          ? 'Desfazer a remoção'
-                          : podeRemover
-                            ? 'Tirar todos os acessos (ao salvar)'
-                            : 'Só admin remove quem tem papel; papel fixo não sai pela tela'
-                      }
-                      aria-label={p.removida ? `Manter ${p.email}` : `Remover ${p.email}`}
+                    ) : null}
+                    <Botao
+                      variante="secundario"
+                      className={perfis.length > 0 ? undefined : 'ml-auto'}
+                      disabled={travado}
+                      onClick={() => muda((r) => comPessoa(r, p.email))}
                     >
-                      {p.removida ? <Undo2 size={13} /> : <Trash2 size={13} />}
-                    </BotaoDeIcone>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-
-        {/* O rodapé fica preso embaixo do cartão enquanto a matriz rola: o botão de
-            salvar e a lista do que muda estão sempre à vista. */}
-        <div className="sticky bottom-0 left-0 mt-auto flex flex-none flex-wrap items-end gap-[8px] border-t border-pbi-borda bg-pbi-superficie pt-[6px] text-[0.74rem]">
-          <div className="min-w-[240px] flex-1">
-            {ops.length === 0 ? (
-              <span className="text-pbi-muted">Nenhuma alteração pendente.</span>
-            ) : (
-              <>
-                <strong>{ops.length} alteração(ões) por salvar</strong>
-                <ul className="m-0 mt-[2px] max-h-[72px] list-disc overflow-auto pl-[18px] text-pbi-muted">
-                  {ops.map((op) => (
-                    <li key={JSON.stringify(op)}>{descreveOperacao(op, nomeDaTela)}</li>
-                  ))}
-                </ul>
-              </>
-            )}
-            {salva.error ? (
-              <div className="mt-[4px]">
-                <Erro>
-                  {(salva.error as Error).message} — o que já tinha gravado ficou; o resto continua
-                  pendente.
-                </Erro>
-              </div>
-            ) : null}
-          </div>
-          <Botao
-            variante="secundario"
-            disabled={travado || (ops.length === 0 && rascunho.novos.length === 0)}
-            onClick={() => {
-              salva.reset();
-              descarta();
-            }}
-          >
-            Descartar
-          </Botao>
-          <Botao
-            variante="primario"
-            disabled={travado || ops.length === 0}
-            onClick={() => salva.mutate(ops)}
-          >
-            {travado ? 'Salvando…' : 'Salvar alterações'}
-          </Botao>
-        </div>
-      </Cartao>
-
-      <UsoDasTelas />
-
-      <PerfisDeAcesso m={m} aoAtualizar={aoAtualizar} />
-
-      {m.pedidos.length > 0 ? (
-        <Cartao titulo={`Pedidos de acesso (${m.pedidos.length})`} largo>
-          {dispensa.error ? <Erro>{(dispensa.error as Error).message}</Erro> : null}
-          <ul className="m-0 grid list-none gap-[4px] p-0 text-[0.76rem]">
-            {m.pedidos.map((p) => (
-              <li key={p.email} className="flex flex-wrap items-center gap-[8px]">
-                <span className="font-semibold">{p.email}</span>
-                <span className="text-pbi-muted">
-                  {p.tentativas} tentativa(s), última em{' '}
-                  {new Date(p.ultimaVez).toLocaleString('pt-BR')}
-                </span>
-                {perfis.length > 0 ? (
-                  <select
-                    value=""
-                    className="ml-auto"
-                    aria-label={`Aprovar ${p.email} com um perfil`}
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        void definePerfilDaPessoa(p.email, e.target.value).then(aoAtualizar);
-                      }
-                    }}
-                  >
-                    <option value="">Aprovar com perfil…</option>
-                    {perfis.map((x) => (
-                      <option key={x.id} value={x.id}>
-                        {x.nome}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-                <Botao
-                  variante="secundario"
-                  className={perfis.length > 0 ? undefined : 'ml-auto'}
-                  disabled={travado}
-                  onClick={() => muda((r) => comPessoa(r, p.email))}
-                >
-                  Dar abas
-                </Botao>
-                <Botao
-                  variante="secundario"
-                  disabled={dispensa.isPending}
-                  onClick={() => dispensa.mutate(p.email)}
-                >
-                  Dispensar
-                </Botao>
-              </li>
-            ))}
-          </ul>
-        </Cartao>
+                      Dar abas
+                    </Botao>
+                    <Botao
+                      variante="secundario"
+                      disabled={dispensa.isPending}
+                      onClick={() => dispensa.mutate(p.email)}
+                    >
+                      Dispensar
+                    </Botao>
+                  </li>
+                ))}
+              </ul>
+            </Cartao>
+          ) : null}
+        </>
       ) : null}
 
-      {souAdmin ? <ProvedorDeIA /> : null}
+      {abaAberta === 'perfis' ? <PerfisDeAcesso m={m} aoAtualizar={aoAtualizar} /> : null}
 
-      {souAdmin ? <SessoesAtivas eu={m.eu.usuario} /> : null}
+      {abaAberta === 'uso' ? <UsoDasTelas /> : null}
 
-      <HistoricoDeAcessos />
+      {abaAberta === 'ia' && souAdmin ? <ProvedorDeIA /> : null}
+
+      {abaAberta === 'sessoes' && souAdmin ? <SessoesAtivas eu={m.eu.usuario} /> : null}
+
+      {abaAberta === 'historico' ? <HistoricoDeAcessos /> : null}
     </>
+  );
+}
+
+type AbaDeConfiguracao = 'usuarios' | 'perfis' | 'uso' | 'ia' | 'sessoes' | 'historico';
+
+const ROTULO_DO_PAPEL: Record<Papel, string> = {
+  admin: 'Administrador',
+  dev: 'DEV',
+  viewer: 'Visualizador',
+};
+
+/** As seções da aba, na ordem de uso: quem acessa primeiro, o resto depois. */
+const ABAS_DE_CONFIGURACAO: readonly {
+  id: AbaDeConfiguracao;
+  rotulo: string;
+  Icone: typeof Users;
+  soAdmin?: boolean;
+}[] = [
+  { id: 'usuarios', rotulo: 'Usuários e acessos', Icone: Users },
+  { id: 'perfis', rotulo: 'Perfis', Icone: Layers },
+  { id: 'uso', rotulo: 'Uso das abas', Icone: Activity },
+  { id: 'ia', rotulo: 'Provedor de IA', Icone: Sparkles, soAdmin: true },
+  { id: 'sessoes', rotulo: 'Sessões abertas', Icone: Monitor, soAdmin: true },
+  { id: 'historico', rotulo: 'Histórico', Icone: History },
+];
+
+/**
+ * A faixa de abas das Configurações, no desenho do `.cfg-abas` da Manutenção: rótulo com
+ * ícone, a aberta sublinhada na primária. À direita, quem está logado e com que papel — o
+ * subtítulo que a Manutenção põe no cartão "Configurações".
+ *
+ * NÃO é um `.cartao`, de propósito: `useEspacoSemVisual` mede o espaço ANTES do primeiro
+ * cartão e desconta de `--util`. Como faixa solta, ela entra nessa conta e a matriz de
+ * acessos (altura `matriz`) continua cabendo numa tela; como cartão, viraria o primeiro
+ * e a matriz passaria da dobra.
+ */
+function AbasDeConfiguracao(props: {
+  abas: typeof ABAS_DE_CONFIGURACAO;
+  aberta: AbaDeConfiguracao;
+  aoEscolher: (aba: AbaDeConfiguracao) => void;
+  pedidos: number;
+  quem: string;
+}) {
+  return (
+    <div className="flex flex-none flex-wrap items-end gap-x-[16px] rounded-[4px] border border-pbi-borda bg-pbi-superficie px-[10px] shadow-[var(--card-shadow)]">
+      <div
+        role="tablist"
+        aria-label="Seções das configurações"
+        className="flex flex-wrap gap-[6px]"
+      >
+        {props.abas.map(({ id, rotulo, Icone }) => {
+          const ativa = id === props.aberta;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={ativa}
+              onClick={() => props.aoEscolher(id)}
+              className={cn(
+                'inline-flex cursor-pointer items-center gap-[6px] rounded-none border-0 border-b-2 border-transparent bg-transparent px-[12px] py-[9px] text-[13px] font-semibold text-pbi-muted hover:text-pbi-ink',
+                ativa &&
+                  'border-b-pbi-primary-texto text-pbi-primary-texto hover:text-pbi-primary-texto',
+              )}
+            >
+              <Icone size={14} aria-hidden />
+              {rotulo}
+              {id === 'usuarios' && props.pedidos > 0 ? (
+                <span
+                  className="rounded-full bg-pbi-primary px-[6px] text-[10px] leading-[16px] text-pbi-sobre-primary"
+                  title={`${props.pedidos} pedido(s) de acesso esperando resposta`}
+                >
+                  {props.pedidos}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      <span className="ml-auto truncate py-[9px] text-[11.5px] text-pbi-muted" title={props.quem}>
+        {props.quem} — quem entra no dashboard e o que cada pessoa enxerga
+      </span>
+    </div>
   );
 }
 

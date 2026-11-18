@@ -29,11 +29,12 @@ export { alturaDoConteudo, type AlturaDeVisual };
  *  não os alinha — `inline-flex` centraliza os dois. */
 const ACOES = cn(
   'flex flex-[0_0_auto] items-center gap-[6px] normal-case',
-  '[&_:is(button,input)]:rounded-full [&_:is(button,input)]:border-pbi-sobre-primary-fraco',
-  '[&_:is(button,input)]:bg-transparent [&_:is(button,input)]:px-[10px] [&_:is(button,input)]:py-[2px]',
-  '[&_:is(button,input)]:text-[10.5px] [&_:is(button,input)]:font-bold [&_:is(button,input)]:text-pbi-sobre-primary',
-  '[&_button]:inline-flex [&_button]:items-center [&_button]:gap-[5px]',
-  '[&_button:hover]:bg-pbi-sobre-primary [&_button:hover]:text-pbi-primary',
+  // 17/11/2026: cantos retos e 22px, o `.btn-cab` da Manutenção (era pílula).
+  '[&_:is(button,input)]:rounded-[4px] [&_:is(button,input)]:border-pbi-sobre-primary-fraco',
+  '[&_:is(button,input)]:bg-transparent [&_:is(button,input)]:px-[7px] [&_:is(button,input)]:py-0 [&_:is(button,input)]:h-[22px]',
+  '[&_:is(button,input)]:text-[11px] [&_:is(button,input)]:font-semibold [&_:is(button,input)]:text-pbi-sobre-primary',
+  '[&_button]:inline-flex [&_button]:items-center [&_button]:gap-[4px]',
+  '[&_button:hover]:bg-pbi-sobre-primary/15',
   '[&_input]:font-normal [&_input]:placeholder:text-pbi-sobre-primary-fraco',
 );
 
@@ -65,13 +66,15 @@ export function Cartao(props: {
     // A MOLDURA (`.cartao`, `.v-*`, `.cartao-corpo`) fica no `estilo.css`: é a conta de
     // altura que faz a tela caber, e `useAlturaMedida` a procura pela classe.
     <section data-visual className={cn('cartao', altura, props.largo && 'largo')}>
-      {/* O cabeçalho do `.visual` do COM: faixa bordô, título centralizado em
-          maiúsculas com as ações ao lado, e o subtítulo embaixo, miúdo e sem caixa alta. */}
-      <header className="flex min-h-[32px] flex-[0_0_auto] flex-col justify-center gap-[1px] bg-pbi-primary px-[10px] text-center text-pbi-sobre-primary">
-        <div className="flex flex-wrap items-center justify-center gap-x-[10px] gap-y-[3px] py-[5px] leading-[1.2]">
+      {/* O cabeçalho do `.visual` da Manutenção (17/11/2026): faixa bordô com o título à
+          ESQUERDA e as ações encostadas à direita; o subtítulo sai da faixa e vem logo
+          abaixo dela, em texto discreto. Antes era tudo centralizado dentro da faixa, com
+          o subtítulo em 10px — o desenho antigo do relatório. */}
+      <header className="flex min-h-[32px] flex-[0_0_auto] items-center bg-pbi-primary px-[8px] pl-[12px] text-pbi-sobre-primary">
+        <div className="flex min-w-0 flex-1 items-center gap-x-[8px] py-[5px] leading-[1.2]">
           <h2
             title={props.titulo}
-            className="m-0 max-w-full min-w-0 truncate text-[12.5px] font-semibold tracking-[0.4px] uppercase"
+            className="m-0 min-w-0 flex-1 truncate text-[12.5px] font-semibold tracking-[0.3px] uppercase"
           >
             {props.titulo}
           </h2>
@@ -93,15 +96,15 @@ export function Cartao(props: {
             </div>
           ) : null}
         </div>
-        {props.sub ? (
-          <span
-            title={props.sub}
-            className="-mt-[3px] block truncate pb-[4px] text-[10px] tracking-[0.2px] text-pbi-sobre-primary-fraco"
-          >
-            {props.sub}
-          </span>
-        ) : null}
       </header>
+      {props.sub ? (
+        <p
+          title={props.sub}
+          className="m-0 flex-[0_0_auto] truncate px-[12px] pt-[6px] text-[11.5px] leading-[1.4] text-pbi-muted"
+        >
+          {props.sub}
+        </p>
+      ) : null}
       <div className="cartao-corpo">{props.children}</div>
     </section>
   );
