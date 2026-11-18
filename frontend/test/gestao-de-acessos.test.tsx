@@ -107,6 +107,8 @@ test('marcar a caixa não grava; só "Salvar alterações" posta', async () => {
 
 test('mostra KPIs e a aba sem abertura no cartão de uso', async () => {
   monta();
+  // Desde 17/11/2026 as seções da tela ficam em abas: o uso das abas é a terceira.
+  fireEvent.click(await screen.findByRole('tab', { name: 'Uso das abas' }));
   expect(await screen.findByText('Mais aberta')).toBeTruthy();
   expect(screen.getByText('Sem abertura')).toBeTruthy();
   expect(screen.getByText('Nunca no período')).toBeTruthy();
@@ -124,6 +126,17 @@ test('"Descartar" volta ao que está no banco sem postar nada', async () => {
   expect(caixa.checked).toBe(false);
   expect(screen.getByText('Nenhuma alteração pendente.')).toBeTruthy();
   expect(posts).toEqual([]);
+});
+
+test('as seções ficam em abas: abre na matriz, e o histórico só aparece na aba dele', async () => {
+  monta();
+  expect(
+    await screen.findByRole('tab', { name: 'Usuários e acessos', selected: true }),
+  ).toBeTruthy();
+  expect(screen.queryByText('Mais aberta')).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: 'Histórico' }));
+  expect(await screen.findByText('Nada registrado.')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Salvar alterações' })).toBeNull();
 });
 
 test('a lixeira só marca a remoção; o pedido sai no salvar', async () => {

@@ -9,7 +9,7 @@
 //
 // A altura continua MEDIDA (`--h-nav`): é ela que `--util` desconta.
 
-import { useEffect } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import { useAlturaMedida } from '../../hooks/useAlturaMedida.ts';
 import { cn } from '../../utils/cn.ts';
@@ -29,7 +29,7 @@ export function NavDeTelas(props: {
   /** As abas que não são tela do relatório — PERMISSÕES e Metas. Vão no fim, encostadas
    *  à direita, com o mesmo formato das outras; `marca` é o número ao lado (as alterações
    *  por salvar). Lista, e não uma só, desde 12/11/2026: a aba Metas é a segunda. */
-  extras?: readonly { id: string; rotulo: string; marca?: number }[];
+  extras?: readonly { id: string; rotulo: string; marca?: number; icone?: ReactNode }[];
 }) {
   // `useLayoutEffect` e `resize`, não `ResizeObserver` — ver `useAlturaMedida.ts`.
   const navRef = useAlturaMedida<HTMLElement>('--h-nav');
@@ -87,6 +87,7 @@ export function NavDeTelas(props: {
               : extra.rotulo
           }
         >
+          {extra.icone ? <span className="mr-[6px] inline-flex">{extra.icone}</span> : null}
           {extra.rotulo}
           {extra.marca ? (
             <span className="ml-[6px] rounded-full bg-pbi-primary px-[6px] text-[10px] leading-[16px] text-pbi-sobre-primary">

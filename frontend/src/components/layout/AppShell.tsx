@@ -55,7 +55,7 @@ export function AppShell(props: {
    *  o prefetch pendente. Mesmo motivo de opcional que `aoPassarMouse`. */
   aoSairDoMouse?: () => void;
   /** Abas fora das telas do relatório (PERMISSÕES, Metas) — ver `NavDeTelas`. */
-  abasExtras?: readonly { id: string; rotulo: string; marca?: number }[];
+  abasExtras?: readonly { id: string; rotulo: string; marca?: number; icone?: ReactNode }[];
   titulo: string;
   /** Quando o dado desta tela foi lido (ISO). Vira "há 12min" ao lado do ponto. */
   dadoDe?: string | null;
