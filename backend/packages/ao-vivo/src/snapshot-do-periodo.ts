@@ -93,6 +93,26 @@ function dentroDaJanela(valor: Escalar, desde: string, ate: string): boolean {
   return iso >= desde && iso < ate;
 }
 
+/**
+ * `le()` devolve linhas indexadas pelo nome normalizado (`normalizeName`), enquanto
+ * `buscaAoVivo()` devolve chaves no nome de exibição (`colunas`) que `escreve()` usa.
+ * Sem realinhar, linhas antigas gravadas com `colunas` perdem campos como
+ * `CategoriaProdutividade` e `DATA INSTALAÇÃO` no merge incremental (`anteriorDir`).
+ */
+function realinhaColunas(
+  linhas: readonly Record<string, Escalar>[],
+  colunas: readonly string[],
+): Record<string, Escalar>[] {
+  const pares = colunas.map((c) => [c, normalizeName(c)] as const);
+  return linhas.map((l) => {
+    const out: Record<string, Escalar> = {};
+    for (const [col, norm] of pares) {
+      out[col] = l[col] !== undefined ? l[col] : (l[norm] ?? null);
+    }
+    return out;
+  });
+}
+
 function agrupaPorProtocolo(
   linhas: readonly Record<string, Escalar>[],
   destino: Map<string, Record<string, Escalar>[]>,
@@ -191,17 +211,19 @@ export async function buscaDoPeriodo(
       }
     }
 
-    const linhasAgenda: Record<string, Escalar>[] = antAgenda.linhas.filter(
-      (l) => !substituir.has(chaveProtocolo(l)),
+    const colAgendaFinal =
+      colAgenda.length > 0 ? colAgenda : antAgenda.cabecalho.colunas.map((c) => c.nome);
+    const linhasAgenda: Record<string, Escalar>[] = realinhaColunas(
+      antAgenda.linhas.filter((l) => !substituir.has(chaveProtocolo(l))),
+      colAgendaFinal,
     );
     for (const arr of novosPorProto.values()) {
       for (const l of arr) linhasAgenda.push(l);
     }
 
-    let linhasProtocolos: Record<string, Escalar>[] = antPg.linhas.filter(
-      (l) => !substituir.has(chaveProtocoloPg(l)),
-    );
     let colPg: readonly string[] = antPg.cabecalho.colunas.map((c) => c.nome);
+    const antPgFiltradas = antPg.linhas.filter((l) => !substituir.has(chaveProtocoloPg(l)));
+    let novasPg: Record<string, Escalar>[] = [];
     const buscasPg: BuscaFeita[] = [];
     let msPg = 0;
 
@@ -212,13 +234,17 @@ export async function buscaDoPeriodo(
         agora,
       });
       if (pgNovos.colunas.length > 0) colPg = pgNovos.colunas;
-      const recortadasPg = aplicaRecorte(pgNovos.linhas, cProtocolos.recorte, {
+      novasPg = aplicaRecorte(pgNovos.linhas, cProtocolos.recorte, {
         protocolos: novosProtocolos,
       });
-      linhasProtocolos = [...linhasProtocolos, ...recortadasPg];
       buscasPg.push(...pgNovos.buscas);
       msPg = pgNovos.ms.total;
     }
+
+    const linhasProtocolos: Record<string, Escalar>[] = [
+      ...realinhaColunas(antPgFiltradas, colPg),
+      ...novasPg,
+    ];
 
     const todosProtocolos = new Set(linhasAgenda.map(chaveProtocolo));
     return {
@@ -226,7 +252,7 @@ export async function buscaDoPeriodo(
       consultas: [
         {
           query: AGENDA,
-          colunas: colAgenda.length > 0 ? colAgenda : antAgenda.cabecalho.colunas.map((c) => c.nome),
+          colunas: colAgendaFinal,
           linhas: linhasAgenda,
         },
         { query: PROTOCOLOS, colunas: colPg, linhas: linhasProtocolos },

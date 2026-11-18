@@ -128,6 +128,7 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # A situação dos colaboradores na Senior, pelo Data Hub (`backend/api/src/senior.ts`):
       # desligado, afastado ou fora da Senior não entra. Vazio = regra desligada.
+      DATAHUB_BASE_URL: ${DATAHUB_BASE_URL:-}
       DATAHUB_TOKEN: ${DATAHUB_TOKEN:-}
       # `observar` (padrão): a aba PERMISSÕES mostra quem a Senior barraria, sem barrar.
       # Conferido, troque para `bloquear` nas variáveis da stack.
