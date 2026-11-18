@@ -49,6 +49,9 @@ const ehErroTransitorioIa = (status: number, msg: string): boolean =>
   status === 504 ||
   /high demand|overloaded|temporarily unavailable|rate limit/i.test(msg);
 
+const ehModeloIndisponivel = (status: number, msg: string): boolean =>
+  status === 404 || /no longer available|not found|deprecated/i.test(msg);
+
 class ErroHttpIa extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
@@ -238,9 +241,12 @@ function gemini(cfg: ConfigProvedorIa, fetchFn: typeof fetch): ProvedorIa {
         generationConfig,
       };
       const headers = { 'x-goog-api-key': cfg.chave };
-      const reservas = ['gemini-2.0-flash', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'].filter(
-        (m) => m !== cfg.modelo,
-      );
+      const reservas = [
+        'gemini-3.5-flash-lite',
+        'gemini-3.1-flash-lite',
+        'gemini-flash-lite-latest',
+        'gemini-3.5-flash',
+      ].filter((m) => m !== cfg.modelo);
       let json: Record<string, unknown> | undefined;
       let ultimoErro: unknown;
       try {
@@ -254,7 +260,7 @@ function gemini(cfg: ConfigProvedorIa, fetchFn: typeof fetch): ProvedorIa {
         ultimoErro = err;
         const msg = err instanceof Error ? err.message : String(err);
         const status = err instanceof ErroHttpIa ? err.status : 0;
-        if (!ehErroTransitorioIa(status, msg) && status !== 404) throw err;
+        if (!ehErroTransitorioIa(status, msg) && !ehModeloIndisponivel(status, msg)) throw err;
         for (const modeloReserva of reservas) {
           try {
             json = await pedir(
@@ -269,7 +275,7 @@ function gemini(cfg: ConfigProvedorIa, fetchFn: typeof fetch): ProvedorIa {
             ultimoErro = errReserva;
             const msgR = errReserva instanceof Error ? errReserva.message : String(errReserva);
             const statusR = errReserva instanceof ErroHttpIa ? errReserva.status : 0;
-            if (!ehErroTransitorioIa(statusR, msgR) && statusR !== 404) throw errReserva;
+            if (!ehErroTransitorioIa(statusR, msgR) && !ehModeloIndisponivel(statusR, msgR)) throw errReserva;
           }
         }
       }
