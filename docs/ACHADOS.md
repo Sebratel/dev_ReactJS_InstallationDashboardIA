@@ -17186,3 +17186,56 @@ comparadas no mesmo instante.
   quem prova esse caminho é o CI, no push.
 - **`probe:*` e `bench:*`** — não são portões; são medições sob demanda, e as que
   importavam hoje (`probe:peso-memoria`) rodaram.
+
+## #269 — a faixa de abas rolava, mas não havia como rolar (19/11)
+
+O Erick abriu a CAPA a 1366px e mandou a captura: a faixa de navegação terminava em
+`OPERAÇÃ`, cortada no meio da palavra, e não havia **nada clicável** para continuar.
+"Faltou colocar uma barra para jogar para o lado e escolher outras opções."
+
+**O que estava errado não era o corte.** Rolar uma linha só foi decisão de 13/10 — a
+faixa em duas linhas custava 74px de `--util` em todo card, e o COM faz igual. O
+defeito é que a faixa foi desenhada com TODOS os caminhos de saída escondidos ao mesmo
+tempo:
+
+```
+  barra de rolagem .......... escondida de propósito (`scrollbar-width: none`)
+  roda horizontal ........... notebook não tem; mouse de duas teclas, idem
+  shift + roda .............. existe, e é truque de quem já sabe que existe
+  tabular até a aba ......... funciona — se a pessoa usa teclado
+  máscara esmaecendo a borda  é AVISO, não CAMINHO
+```
+
+Sobrava o esmaecido: ele diz que há mais coisa e não dá como chegar lá. Para quem usa
+mouse — a operação inteira — as quatro últimas abas não existiam.
+
+### O que passa a existir
+
+Uma seta em cada ponta da faixa, e **só do lado que tem aba escondida** (`bordas` em
+`frontend/src/hooks/useRolagemHorizontal.ts`): no começo só a da direita, no fim só a da
+esquerda, em tela larga nenhuma. Seta apontando para o vazio é cromo que mente, e
+ensina a ignorar o cromo que não mente.
+
+Três decisões que não são óbvias, e o porquê:
+
+- **A faixa virou dois elementos.** `.nav-telas-faixa` fica `sticky` e desenha fundo e
+  borda; a `<nav>` de dentro é a que ROLA. Um filho absoluto do elemento que rola anda
+  junto com o conteúdo: a seta sairia da tela junto com as abas que ela deveria trazer
+  de volta. Quem mede `--h-nav` passou a ser a faixa — medido no navegador, **37px nos
+  dois casos**, então `--util` não mudou.
+- **Folga de 1px na conta.** Com zoom de 110%/125% `scrollWidth` e `clientWidth` saem de
+  arredondamentos diferentes e sobra meio pixel numa faixa que cabe inteira; sem a
+  folga, a seta da direita aparecia em tela cheia apontando para nada.
+- **A seta fica fora da ordem de tabulação** (`tabIndex=-1`, `aria-hidden`). Quem usa
+  teclado já tabula direto para a próxima aba e o `scroll-margin` dela traz a faixa
+  junto; dois tab-stops a mais em TODA tela seria atrapalhar quem usa teclado para
+  ajudar quem usa mouse. O esmaecido também deixou de ser fixo à direita e passou a
+  seguir o lado que tem conteúdo (`data-esq`/`data-dir`).
+
+### Como foi conferido
+
+`npm test` (2.554 back + 251 tela), `typecheck` e `lint` verdes, mais 12 testes novos
+(`rolagem-horizontal.test.ts`, `nav-de-telas.test.tsx`). E no navegador de verdade, com
+as 14 abas a 1366px: início → só a seta direita; um clique → rola 1.024px e sobra só a
+esquerda; de volta ao começo; a 2400px nenhuma seta. Console limpo, sem rolagem
+horizontal de página, contraste do ícone 5,7:1 no claro e 7:1 no escuro.
