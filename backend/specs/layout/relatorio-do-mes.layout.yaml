@@ -31,6 +31,11 @@ kpis:
     enfase: normal
   - visual: bbc6684676e273565d65
     enfase: normal
+  # ⚠️ A sparkline deste KPI lê os pontos de PROTOCOLOS REALIZADOS (74caae…), e
+  # `idsIniciais` (`corte-eager.ts`) NÃO pede `kpis[].tendencia` — só KPI, segmentação, as
+  # 4 primeiras faixas e quem declara `eager: true`. Hoje aquele visual é a 1ª faixa e
+  # está coberto; se ele descer para a 5ª ou além, marque a faixa com `eager: true`, senão
+  # a sparkline nasce vazia e nenhum teste fica vermelho.
   - visual: d914bdf23072848ca977
     enfase: normal
     tendencia: 74caae7037048fb1ad13
@@ -43,51 +48,41 @@ kpis:
   - visual: f8d993576d24ed2ca01a
     enfase: normal
 faixas:
-  # 19/11/2026 — ESPAÇAMENTO DOS GRÁFICOS. Eram QUATRO faixas de gráfico de largura
-  # cheia empilhadas. Faixa de UMA coluna só entra no pool de altura
-  # (`useAlturaMedida.ts`): a fração de `--util` do tipo `grafico` é dividida pelo
-  # número de faixas largas daquele tipo, e com quatro todas caíam no PISO (273px) —
-  # uma coluna de gráficos baixos, cada um com a largura inteira da tela para umas
-  # poucas categorias, que é o branco que o Erick viu. BACKLOG e PROTOCOLOS GERADOS
-  # passam a dividir a MESMA faixa (span 6 cada): faixa de várias colunas não entra no
-  # pool, usa a fração fixa do `estilo.css` (clamp 273–430px), então os dois ficam mais
-  # ALTOS que antes ocupando metade da largura.
+  # 19/11/2026 — a ordem que o Erick pediu olhando a tela: os dois números do mesmo
+  # assunto lado a lado (o que foi REALIZADO e o que foi CRIADO no mês), depois a agenda,
+  # depois o backlog. Antes o BACKLOG abria a tela e o REALIZADOS estava lá embaixo,
+  # abaixo da matriz de previsão do tempo.
+  #
+  # Faixa de VÁRIAS colunas não entra no pool de altura (`useAlturaMedida.ts`): usa a
+  # fração fixa do `estilo.css`, então os dois ficam mais ALTOS em meia largura do que
+  # ficariam empilhados em largura cheia.
   - titulo: Gráficos e tendências
     altura: grafico
     colunas:
-      - visual: b191d2c2621275eb43b3
+      - visual: 74caae7037048fb1ad13
         span: 6
-        render: clusteredColumnChart
+        render: lineChart
       - visual: d6780942e086341bde5a
         span: 6
         render: lineChart
-  # AGENDA + CAPACIDADE POR TURNO continua sozinho na largura cheia: são duas séries de
-  # coluna por turno mais a linha de capacidade, e `geometria.ts` reparte a banda entre
-  # as áreas — em span 6 a fatia de cada turno cai perto do mínimo de 3px.
+  # AGENDA + CAPACIDADE POR TURNO fica na largura cheia: são duas séries de coluna por
+  # turno mais a linha de capacidade, e `geometria.ts` reparte a banda entre as áreas.
   - altura: grafico
     colunas:
       - visual: dbb2eba36037470ca925
         span: 12
         render: lineStackedColumnComboChart
+  - altura: grafico
+    colunas:
+      - visual: b191d2c2621275eb43b3
+        span: 12
+        render: clusteredColumnChart
   - titulo: Análise detalhada
     altura: matriz
     colunas:
       - visual: 1bb5d2e4002cb4703bde
         span: 12
         render: pivotTable
-  # PROTOCOLOS REALIZADOS desceu para logo ABAIXO de HISTÓRICO E PREVISÃO DO TEMPO
-  # (pedido do Erick, 19/11/2026). O `eager: true` não é enfeite: o KPI
-  # d914bdf23072848ca977 desenha a sparkline com os pontos DESTE visual
-  # (`kpis[].tendencia`), e `idsIniciais` (`corte-eager.ts`) só pede KPI, segmentação,
-  # as `N_FAIXAS_EAGER` primeiras faixas e quem declara `eager`. Hoje esta é a 4ª e
-  # caberia no corte por índice; a marca é o que impede uma faixa nova acima de
-  # empurrá-la para fora e deixar a sparkline nascer vazia, sem nenhum teste vermelho.
-  - altura: grafico
-    eager: true
-    colunas:
-      - visual: 74caae7037048fb1ad13
-        span: 12
-        render: lineChart
   - altura: matriz
     colunas:
       - visual: 381f3e30e0700e006aad
