@@ -20,6 +20,11 @@ Nada neste plano toca banco, consulta ou medida, com UMA exceção marcada (F-1,
 | ✅ E-1 | RELATÓRIO DO MÊS | 4 faixas de gráfico de largura cheia → 2. BACKLOG e PROTOCOLOS GERADOS dividem a mesma faixa (`span: 6`) | `backend/specs/layout/relatorio-do-mes.layout.yaml` |
 | ✅ E-2 | RELATÓRIO DO MÊS | PROTOCOLOS REALIZADOS desceu para logo abaixo de HISTÓRICO E PREVISÃO DO TEMPO, com `eager: true` | idem |
 | ✅ E-3 | INSTALAÇÃO REINCIDENTE | REINCIDÊNCIA POR MÊS e MANUTENÇÃO INICIAL POR MÊS lado a lado (`span: 6`) | `backend/specs/layout/instalacao-reincidente.layout.yaml` |
+| ✅ T-1 | todas | número em cima em toda forma de gráfico — regra extraída para `utils/graficoRotulos.ts`, com teste por porta | `Grafico.tsx`, `ColunasDoGrafico.tsx`, `LinhasDoGrafico.tsx` |
+| ✅ T-2 | todas | o passo do eixo passa a consultar o rótulo real; mês deixa de ser pulado | `utils/graficoEixo.ts`, `EixoXDoGrafico.tsx` |
+| ✅ T-3a | todas | P/M/G (densidade) removido; o paginador fica | `Grafico.tsx`, `estilo.css` |
+| ✅ P-1…P-4 | PREMIAÇÃO | Resumo no topo, duplicata e apuração de maio para `ocultos`, detalhamento renomeado via `titulo:` novo no layout | `premiacao-instalacao.layout.yaml`, `schema.ts`, `VisualGridSection.tsx`, `VisualNaDobra.tsx` |
+| ✅ F-1 | 6 tabelas | a coluna `"."` sai no MOTOR, com teste provando que as linhas não mudam | `backend/packages/widget-engine/src/tabela.ts` |
 
 **Por que E-1 resolve o branco.** Faixa de UMA coluna entra no pool de altura
 (`frontend/src/hooks/useAlturaMedida.ts`): a fração de `--util` do tipo `grafico` é
@@ -239,23 +244,33 @@ PROTOCOLOS DETALHADOS → DIÁRIO INSTALAÇÃO → L-INST/L-MAPA/L-TEC → CAPA.
 
 ## 4. Ordem de execução
 
-| Fase | Itens | Por que nesta ordem |
+| Fase | Itens | Situação |
 |---|---|---|
-| 1 ✅ | E-1, E-2, E-3 | só YAML, sem risco de número |
-| 2 | T-1, T-2 | o pedido mais repetido (print do gestor); mexe em componente e cobre todas as telas |
-| 3 | P-1, P-2, P-3 | só YAML; depende da confirmação da ordem |
-| 4 | M-1, M-3 | M-1 precisa ser reproduzido primeiro |
-| 5 | P-4 | schema novo (`titulo:` na coluna) |
-| 6 | F-1 | única com gate de paridade |
-| 7 | T-3a, F-2, V-1 | decisões de layout que pedem a tela na frente |
-| 8 | seção 3 | varredura |
+| 1 ✅ | E-1, E-2, E-3 | feito |
+| 2 ✅ | T-1, T-2, T-3a | feito |
+| 3 ✅ | P-1, P-2, P-3 | feito |
+| 4 | **M-1, M-3** | **a fazer** — M-2 já saiu junto com T-2; M-1 pode já estar resolvido (ver abaixo) |
+| 5 ✅ | P-4 | feito, com `titulo:` novo em `ColunaDeFaixa` |
+| 6 ✅ | F-1 | feito — gate cumprido por teste; falta a conferência na tela |
+| 7 | **F-2, V-1** | **a fazer** — pedem a tela na frente |
+| 8 | **seção 3** | **a fazer** — varredura |
 
-## 5. Em aberto (precisa do Erick)
+## 5. Em aberto
 
-1. **Ordem da PREMIAÇÃO** — a leitura de P-1…P-4 acima está certa?
-2. **Tirar o P/M/G (densidade)** — confirma T-3a? Some a saída para gráfico de 90
-   categorias.
-3. **F-1** — a coluna `"."` sai das **6** tabelas ou só do HISTÓRICO DE RELATOS COMPLETOS?
-4. **M-1** — qual filtro estava na tela quando outubro sumiu? (mês, tipo de manutenção)
-5. **Nome novo** do "Detalhamento instalação Ponto Adicional" (P-4): "Detalhamento
-   Instalação 2º Ponto"?
+As cinco perguntas de 19/11 foram respondidas com "sim" e já estão aplicadas: ordem da
+premiação como em P-1…P-4, P/M/G removido, a coluna `"."` fora das **6** tabelas, e o nome
+"Detalhamento Instalação 2º Ponto".
+
+Fica de pé só o que depende de ver a tela:
+
+1. **M-1, "outubro sumiu".** A correção de T-2 (o eixo deixa de pular mês) é a hipótese
+   principal e já foi aplicada — **conferir na tela se resolveu**. Se não resolveu, as
+   outras duas hipóteses continuam válidas e têm correções diferentes: coluna de valor `0`
+   não é desenhada, e a janela de abertura termina na última categoria com valor ≠ 0
+   (`ultimaCategoriaComDado`). A segunda NÃO foi mexida de propósito — ver ACHADOS #269.
+   Para isso ainda preciso do filtro que estava na tela.
+2. **M-3, "análise detalhada muito feia".** Falta decidir se o desalinhamento é do
+   componente de tabela (vale para todas) ou da tela.
+3. **F-2 e V-1** — pedem a tela na frente.
+4. **Conferência de F-1 na tela:** as 6 tabelas sem a coluna `"."`, com a contagem de
+   linhas igual à de antes.

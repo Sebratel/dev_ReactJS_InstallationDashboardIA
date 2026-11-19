@@ -17186,3 +17186,96 @@ comparadas no mesmo instante.
   quem prova esse caminho é o CI, no push.
 - **`probe:*` e `bench:*`** — não são portões; são medições sob demanda, e as que
   importavam hoje (`probe:peso-memoria`) rodaram.
+
+## #269 — os gráficos ficaram mudos por uma condição só, e o eixo pulava mês que cabia (19/11)
+
+Pedido do Erick, com a razão explícita: **os gestores tiram print do gráfico e mandam no
+grupo**. Print não tem `title` de SVG. Três achados, um layout e uma limpeza.
+
+### 1. Uma condição fechava três portas, e nenhuma delas aparecia como defeito
+
+`Grafico.tsx` decidia o rótulo de valor assim:
+
+```ts
+!g.percentual && areas.length > 0 && (areas.length === 1 || g.empilha)
+```
+
+Lida de trás para frente, ela nega **três** formas inteiras:
+
+| forma | o que ficava sem número | onde dói |
+|---|---|---|
+| só linha (`areas.length === 0`) | tudo, menos o pico de cada série | PROTOCOLOS REALIZADOS/GERADOS, prazo do RELATÓRIO DO ANO |
+| coluna agrupada (`!empilha && areas>1`) | tudo | BACKLOG, instalado por mês do ANO |
+| 100% empilhado (`percentual`) | tudo | TAXAS DE PRODUTIVIDADE |
+
+Era por isso que a AGENDA + CAPACIDADE tinha número e "o relatório do ano não" — a
+primeira é empilhada, a segunda é agrupada. Ninguém tinha decidido esconder: a condição
+foi escrita para o caso que existia (série única) e os outros caíram no `else` por
+omissão. **Rótulo que não aparece não quebra nada:** a tela desenha, os testes passam, e
+só quem olha percebe. Por isso a regra saiu do componente para `utils/graficoRotulos.ts`,
+pura, com um teste por porta.
+
+Cada forma precisava de um LUGAR, não de uma permissão: chip acima da coluna (série única
+ou total da pilha), número acima de **cada fatia** na coluna agrupada — sem chip, porque
+em ~25px de fatia o chip não cabe e o texto de 10px cabe —, e número **dentro** da fatia
+no 100% empilhado, onde o total é sempre 100% e só a parte informa. Esse último não cobra
+margem do plot, e a margem é o recurso escasso da tela.
+
+### 2. "Outubro sumiu" era o eixo, não o dado
+
+`passoDoEixo(banda)` era `banda < 30 ? 3 : banda < 44 ? 2 : 1`: supõe o pior rótulo
+possível. Na MANUTENÇÃO INICIAL POR MÊS os dois gráficos estão em `span: 6` — plot de
+~740px, ~18 meses, banda de ~41px — e isso dá **passo 2: um mês sim, um mês não**. A
+coluna continua desenhada; só o nome dela não é escrito. Quem olha não lê "um rótulo a
+cada dois", lê *outubro sumiu*.
+
+A conta certa já existia seis linhas abaixo (`orcamentoDoRotulo`) e nunca tinha sido
+consultada: girado a 45°, em 41px cabem ~10 caracteres, e "outubro" tem 7. O passo passou
+a receber o maior rótulo que SERÁ desenhado (já cortado pela altura — daí
+`orcamentoPorAltura` ter saído para fora) e só cresce quando o texto de fato não cabe.
+Sem o argumento, a régua antiga continua valendo: nada que já chamava mudou.
+
+⚠️ **O que não foi descartado.** Faltou o filtro que o Erick tinha na tela, então as duas
+outras hipóteses seguem de pé e têm correções diferentes: coluna de valor `0` não é
+desenhada (`v === 0` → `null` em `ColunasDoGrafico`), e a janela de abertura termina na
+última categoria com valor ≠ 0 (`ultimaCategoriaComDado`). A segunda **não** foi mexida
+de propósito: trocar `!== 0` por `!== null` ali reintroduziria o defeito que o comentário
+do código diz ter corrigido (a última página caindo em dias futuros) se alguma série
+devolver `0` em vez de BLANK. Medir antes.
+
+### 3. A coluna chamada "." sai, e não muda número nenhum
+
+Seis tabelas abrem com uma coluna cujo `displayName` é `.` — `COUNT(…[Protocolo])`,
+resíduo do Power BI, que conta a própria chave da linha e vale `1` quase sempre.
+
+Saiu no MOTOR (`camposAtivos`), não na tela: a Tabela do front manda ao servidor o
+**índice** da coluna ordenada, e filtrar coluna depois do cálculo deslocaria esse índice
+em silêncio — a tela ordenando por uma coluna e o servidor por outra.
+
+"Vai mudar algo?" Não, e dá para provar sem o banco: nessas tabelas o `.` é o único campo
+calculado, então sem ele `calculaTabela` troca `agrupar` por `combinacoesDistintas`, e a
+enumeração das duas é a MESMA (`planeja` + `enumeraCombinacoes`). O teste novo compara os
+dois caminhos lado a lado. De quebra, o caminho novo é o que não monta escopo por grupo —
+o mesmo que tirou ~1 GB de heap da tabela de detalhe da `visao-geral`. Perde-se uma
+informação, e só uma: quantas vezes a linha repetia.
+
+A paridade não se abala: `backend/specs/paridade/*.yaml` só guarda gabarito de CARD.
+
+### 4. O branco entre os gráficos era o pool de altura
+
+Faixa de uma coluna só divide a fração de `--util` do seu tipo pelo número de faixas
+largas daquele tipo. O RELATÓRIO DO MÊS tinha QUATRO gráficos em `span: 12`: as quatro no
+piso de 273px, cada uma com a largura inteira para meia dúzia de categorias. Dois deles
+passaram a dividir uma faixa (`span: 6`) e ficaram **mais altos** com metade da largura.
+
+Junto: PROTOCOLOS REALIZADOS desceu para abaixo da matriz de previsão do tempo com
+`eager: true` — o KPI `d914bdf23072848ca977` lê os pontos dele para a sparkline
+(`kpis[].tendencia`), e `idsIniciais` não pede `tendencia`. Sem a marca, uma faixa nova
+acima empurra o visual para fora do corte e a sparkline nasce vazia, **sem teste
+vermelho**.
+
+### 5. O P/M/G saiu
+
+O controle de densidade existia para socorrer gráfico apertado. Quem aperta é o layout, e
+isso agora se resolve no `layout.yaml` e no eixo. O paginador fica — é ele que alcança o
+que não cabe.

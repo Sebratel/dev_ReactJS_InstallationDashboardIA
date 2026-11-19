@@ -38,6 +38,8 @@ const MARGEM_DE_PRE_CARGA = '200px 0px';
 export function VisualNaDobra(props: {
   pagina: string;
   id: string;
+  /** O nome que `layout.yaml` deu ao cartão (`ColunaDeFaixa.titulo`), quando deu um. */
+  titulo?: string;
   altura: AlturaDeVisual;
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
@@ -70,6 +72,7 @@ export function VisualNaDobra(props: {
       <VisualBuscado
         pagina={props.pagina}
         id={props.id}
+        titulo={props.titulo}
         altura={props.altura}
         filtros={props.filtros}
         clicados={props.clicados}
@@ -80,7 +83,7 @@ export function VisualNaDobra(props: {
     );
   }
 
-  const titulo = tituloDoVisual({ id: props.id });
+  const titulo = props.titulo ?? tituloDoVisual({ id: props.id });
   return (
     <div ref={ref}>
       <Cartao titulo={titulo} sub="fora da tela" id={props.id} altura={props.altura}>
@@ -95,6 +98,7 @@ export function VisualNaDobra(props: {
 function VisualBuscado(props: {
   pagina: string;
   id: string;
+  titulo?: string;
   altura: AlturaDeVisual;
   filtros: readonly FiltroDaTela[];
   clicados?: readonly { tabela: string; coluna: string }[];
@@ -113,7 +117,7 @@ function VisualBuscado(props: {
     return (
       <VisualPronto
         pagina={props.pagina}
-        visual={pronto}
+        visual={props.titulo ? { ...pronto, titulo: props.titulo } : pronto}
         filtros={props.filtros}
         clicados={props.clicados}
         aoFiltrar={props.aoFiltrar}
@@ -123,7 +127,7 @@ function VisualBuscado(props: {
     );
   }
 
-  const titulo = tituloDoVisual({ id: props.id });
+  const titulo = props.titulo ?? tituloDoVisual({ id: props.id });
 
   if (estado === 'carregando') {
     return (

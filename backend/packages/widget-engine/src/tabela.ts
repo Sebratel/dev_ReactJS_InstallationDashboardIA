@@ -178,6 +178,36 @@ function ehChave(c: CampoSpec): boolean {
 }
 
 /**
+ * A coluna de contagem cujo nome é só um PONTO.
+ *
+ * Seis tabelas começam com ela — `COUNT('FIELD AGENDA'[Protocolo])` e irmãs, com
+ * `displayName` `"."`: HISTÓRICO DE RELATOS e HISTÓRICO DE RELATOS COMPLETOS
+ * (`agendamento-field`), os dois quadros de ponto adicional da `premiacao-instalacao`, o
+ * detalhado de FTTx (`protocolos-detalhados`) e os protocolos de 30 dias da
+ * `instalacao-reincidente`. É resíduo do Power BI: uma coluna sem rótulo que conta a
+ * própria chave da linha, e por isso vale `1` quase sempre.
+ *
+ * **Retirada em 19/11/2026, a pedido do Erick ("remover o ponto que é o contador […] e
+ * não ser mostrado para o usuário").** Sai aqui, no motor, e não na tela: a Tabela do
+ * front manda ao SERVIDOR o ÍNDICE da coluna ordenada (`ordemParaServidor`), e filtrar
+ * coluna depois do cálculo deslocaria esse índice em silêncio — a tela ordenaria por uma
+ * coluna e o servidor por outra.
+ *
+ * **O que muda no número: nada.** Nessas tabelas o `.` é o único campo calculado, então
+ * sem ele `calculaTabela` troca `agrupar` por `combinacoesDistintas` — e a enumeração das
+ * duas é a MESMA (`planeja` + `enumeraCombinacoes`, ver `grupos.ts`), na mesma ordem. O
+ * que o caminho novo deixa de montar é o escopo de cada grupo, que ninguém mais lê: é o
+ * mesmo caminho que tirou ~1 GB de heap da tabela de detalhe da `visao-geral`. Perde-se
+ * uma informação real, e só uma: quantas vezes a linha repetia.
+ *
+ * O critério é estreito de propósito — nome `.` **e** campo calculado. Uma coluna crua
+ * que por acidente se chamasse `.` continua na tela.
+ */
+function ehContadorSemNome(c: CampoSpec): boolean {
+  return c.name?.trim() === '.' && !ehChave(c);
+}
+
+/**
  * Os campos que a tela mostra.
  *
  * Campo inativo não é "não agrupa" — é **não aparece**. Ele é um nível de
@@ -185,7 +215,7 @@ function ehChave(c: CampoSpec): boolean {
  * a tela não tem. Ver ACHADOS.md #32.
  */
 export function camposAtivos(visual: VisualSpec): CampoSpec[] {
-  return (visual.fields ?? []).filter(campoAtivo);
+  return (visual.fields ?? []).filter((c) => campoAtivo(c) && !ehContadorSemNome(c));
 }
 
 /**

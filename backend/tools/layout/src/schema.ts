@@ -12,6 +12,19 @@ export interface ColunaDeFaixa {
   visual: string;
   span: number;
   render: string;
+  /**
+   * Outro nome para o cartão, no lugar do `title` que a extração trouxe do Power BI.
+   *
+   * **Por que aqui e não no spec.** `backend/specs/dashboards/*.spec.yaml` é GERADO pelo
+   * extractor: editar o `title` à mão ali é uma mudança que a próxima extração apaga sem
+   * avisar. O `layout.yaml` é o contrato mantido por humanos, e como o cartão se chama na
+   * tela é decisão de tela. Foi o que o pedido de 19/11/2026 precisou, para o
+   * "Detalhamento instalação Ponto Adicional" acompanhar o nome do "2º Ponto".
+   *
+   * Ausente mantém o título do spec. Não muda número nem id: `visual` continua sendo a
+   * chave de `backend/specs/paridade`.
+   */
+  titulo?: string;
 }
 
 export interface Faixa {
