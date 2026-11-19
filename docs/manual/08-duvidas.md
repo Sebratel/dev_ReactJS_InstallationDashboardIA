@@ -8,6 +8,8 @@
 | "Você não tem acesso a esta aba" | A aba existe, mas não é sua. Peça a liberação a um administrador |
 | Voltou para a tela de login | A sessão dura 8 horas; também cai se o acesso foi suspenso, venceu ou há afastamento na Senior |
 | "Muitas requisições. Tente novamente mais tarde." | Espere o tempo indicado na tela e repita |
+| "Dados desatualizados desde ..." | A tela mostra a última versão que conseguiu calcular. Se a data for de horas ou dias atrás, avise o time técnico |
+| "dado parado", ao lado do relógio no topo | Mesmo caso: o ciclo de atualização não concluiu. Os números valem, mas são do horário indicado |
 
 ## Quando o número parece errado
 

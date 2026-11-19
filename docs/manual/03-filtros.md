@@ -12,9 +12,9 @@
 
 ## Filtrar por cidade, equipe, status
 
-- **Seletores** {LuFilter}: cada aba traz os filtros do relatório original — cidade, equipe, status, tipo de solicitação, instalador, responsável.
-- **Chips** {LuCheck}: cada filtro escolhido vira um chip na barra; clique no "x" do chip para tirar só aquele.
-- **Limpar tudo** {LuRefreshCw}: o botão no fim da barra remove todos os filtros da página, inclusive o período padrão.
+- **Seletores** {LuFilter}: cada aba traz os filtros do relatório original — cidade, equipe, status, tipo de protocolo, instalador, responsável.
+- **O diálogo** {LuMousePointerClick}: marque as opções, ou ache pelo campo "Filtrar opções...", e clique em "Aplicar"; "Todos" marca tudo e "Limpar" desmarca.
+- **Chips e limpeza** {LuCheck}: cada escolha vira um chip na barra; o "x" tira só aquele filtro, e o botão de funil no fim da barra remove todos, inclusive o período padrão.
 
 ## Clicar no gráfico também filtra
 

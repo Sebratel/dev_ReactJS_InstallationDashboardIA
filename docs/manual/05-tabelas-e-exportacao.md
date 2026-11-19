@@ -2,17 +2,17 @@
 
 ## Trabalhar com a tabela
 
-1. Clique no cabeçalho da coluna para ordenar; a seta mostra a direção.
-2. Use o campo "Filtrar…" para procurar dentro do que está na tela.
-3. Use a paginação do rodapé para ver as linhas seguintes.
+1. Clique no cabeçalho da coluna para ordenar; a seta ao lado do nome mostra a direção.
+2. Use o campo "Filtrar..." do cabeçalho para procurar dentro da tabela.
+3. Use "anterior" e "próxima", no rodapé, para ver as linhas seguintes.
 
 ![Tabela de detalhe](imagens/tabela.png)
 
-> **O corte é sempre dito.** Quando a tabela mostra só parte das linhas, a própria tela avisa — ela nunca esconde linha em silêncio.
+> **O corte é sempre dito.** O rodapé mostra quantas linhas você está vendo do total — por exemplo, "1–20 de 24 linhas". A tabela nunca esconde linha em silêncio.
 
 ## Baixar em CSV
 
-1. Clique no botão de exportar, no cabeçalho da tabela.
+1. Clique no botão "CSV", no cabeçalho da tabela.
 2. Espere a barra de progresso: o arquivo traz **todas as linhas do período filtrado**, não só a página aberta.
 3. Abra o arquivo no Excel ou no Google Planilhas.
 
@@ -20,7 +20,7 @@
 
 ## Pedir a leitura da IA
 
-1. Clique no botão de IA, no cabeçalho de um gráfico, ranking ou matriz.
+1. Clique em "Insights", no cabeçalho de um gráfico, ranking ou tabela.
 2. Leia o resumo e os pontos marcados como crítico, atenção ou positivo.
 3. Cada ponto traz uma ação sugerida.
 
