@@ -43,22 +43,27 @@ kpis:
   - visual: f8d993576d24ed2ca01a
     enfase: normal
 faixas:
+  # 19/11/2026 — ESPAÇAMENTO DOS GRÁFICOS. Eram QUATRO faixas de gráfico de largura
+  # cheia empilhadas. Faixa de UMA coluna só entra no pool de altura
+  # (`useAlturaMedida.ts`): a fração de `--util` do tipo `grafico` é dividida pelo
+  # número de faixas largas daquele tipo, e com quatro todas caíam no PISO (273px) —
+  # uma coluna de gráficos baixos, cada um com a largura inteira da tela para umas
+  # poucas categorias, que é o branco que o Erick viu. BACKLOG e PROTOCOLOS GERADOS
+  # passam a dividir a MESMA faixa (span 6 cada): faixa de várias colunas não entra no
+  # pool, usa a fração fixa do `estilo.css` (clamp 273–430px), então os dois ficam mais
+  # ALTOS que antes ocupando metade da largura.
   - titulo: Gráficos e tendências
     altura: grafico
     colunas:
       - visual: b191d2c2621275eb43b3
-        span: 12
+        span: 6
         render: clusteredColumnChart
-  - altura: grafico
-    colunas:
-      - visual: 74caae7037048fb1ad13
-        span: 12
-        render: lineChart
-  - altura: grafico
-    colunas:
       - visual: d6780942e086341bde5a
-        span: 12
+        span: 6
         render: lineChart
+  # AGENDA + CAPACIDADE POR TURNO continua sozinho na largura cheia: são duas séries de
+  # coluna por turno mais a linha de capacidade, e `geometria.ts` reparte a banda entre
+  # as áreas — em span 6 a fatia de cada turno cai perto do mínimo de 3px.
   - altura: grafico
     colunas:
       - visual: dbb2eba36037470ca925
@@ -70,6 +75,19 @@ faixas:
       - visual: 1bb5d2e4002cb4703bde
         span: 12
         render: pivotTable
+  # PROTOCOLOS REALIZADOS desceu para logo ABAIXO de HISTÓRICO E PREVISÃO DO TEMPO
+  # (pedido do Erick, 19/11/2026). O `eager: true` não é enfeite: o KPI
+  # d914bdf23072848ca977 desenha a sparkline com os pontos DESTE visual
+  # (`kpis[].tendencia`), e `idsIniciais` (`corte-eager.ts`) só pede KPI, segmentação,
+  # as `N_FAIXAS_EAGER` primeiras faixas e quem declara `eager`. Hoje esta é a 4ª e
+  # caberia no corte por índice; a marca é o que impede uma faixa nova acima de
+  # empurrá-la para fora e deixar a sparkline nascer vazia, sem nenhum teste vermelho.
+  - altura: grafico
+    eager: true
+    colunas:
+      - visual: 74caae7037048fb1ad13
+        span: 12
+        render: lineChart
   - altura: matriz
     colunas:
       - visual: 381f3e30e0700e006aad
