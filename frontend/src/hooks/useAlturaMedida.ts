@@ -59,7 +59,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
  * próprio. Resolve também quando a rede não entrega a fonte — aí a promessa cumpre com
  * a de reserva e a medida já estava certa.
  */
-function remedeQuandoAFonteChegar(medir: () => void): void {
+export function remedeQuandoAFonteChegar(medir: () => void): void {
   const fontes = (document as Document & { fonts?: FontFaceSet }).fonts;
   if (fontes === undefined) return;
   void fontes.ready.then(() => medir());
