@@ -51,7 +51,8 @@ export function montaCsp(firebaseProjectId?: string): string {
     "script-src 'self' https://accounts.google.com https://apis.google.com",
     "style-src 'self'",
     "font-src 'self'",
-    "img-src 'self' data:",
+    // Os ladrilhos do mapa da aba "Operação ao vivo" (OpenStreetMap, sem chave).
+    "img-src 'self' data: https://tile.openstreetmap.org",
     [
       "connect-src 'self'",
       'https://accounts.google.com',

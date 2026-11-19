@@ -278,6 +278,7 @@ export class Servidor {
       | 'avisoDasPaginas'
       | 'usoDasTelas'
       | 'metas'
+      | 'insights'
       | 'ia'
       | 'sombraAoVivo'
       | 'aoVivo'
@@ -294,6 +295,7 @@ export class Servidor {
       | 'modoDosFiltros'
       | 'usoDasTelas'
       | 'metas'
+      | 'insights'
       | 'ia'
       | 'sombraAoVivo'
       | 'aoVivo'
@@ -1019,6 +1021,7 @@ export class Servidor {
       if (ehGestaoDeSessao) return this.gestaoDeSessao(req, res, rota, quem);
       if (ehGestaoDeMetas) return this.gestaoDeMetas(req, res, rota, quem);
       if (ehGestaoDeIa) return this.gestaoDeIa(req, res, rota, quem);
+      if (rota === '/api/insights' || rota.startsWith('/api/insights/')) return await this.insightsDaInstalacao(req, res, rota, quem);
       if (rota === '/api/dashboards') return this.lista(res, quem);
       if (rota === '/api/eventos') return this.eventos(req, res, quem);
       if (rota.startsWith('/api/dashboards/')) {
@@ -1489,6 +1492,46 @@ export class Servidor {
       return montaStatusDeRefresh(this.opts.snapshotDir, specsDir, agora);
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * `/api/insights/operacao` e `/api/insights/previsoes` — as abas "Operação ao vivo" e
+   * "Previsões" (`insights/fonte.ts`). Só GET (o portão de método acima já recusa o resto).
+   *
+   * O portão é a ABA, como em "Metas": `insights-operacao` e `insights-previsoes` são
+   * liberadas na tela "Acessos" e o 403 é daqui. Sem credencial do Voalle é 503; Voalle
+   * fora do ar também é 503, com a mensagem genérica — o detalhe fica só no log.
+   */
+  private async insightsDaInstalacao(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    rota: string,
+    quem: Identidade,
+  ): Promise<void> {
+    const qual = rota === '/api/insights/operacao' ? 'operacao' : rota === '/api/insights/previsoes' ? 'previsoes' : null;
+    if (!qual) {
+      responde(res, 404, { erro: `'${rota}' não existe. Use /api/insights/operacao ou /api/insights/previsoes.` });
+      return;
+    }
+    const aba = qual === 'operacao' ? 'insights-operacao' : 'insights-previsoes';
+    if (!this.opts.acesso.podeVer(quem, aba)) {
+      this.registraEventoSeg(req, 403, 'aba-sem-acesso', quem.usuario);
+      responde(res, 403, { erro: `Sem acesso à aba "${qual === 'operacao' ? 'Operação ao vivo' : 'Previsões'}".` });
+      return;
+    }
+    const fonte = this.opts.insights;
+    if (!fonte) {
+      responde(res, 503, { erro: 'Leitura do Voalle não configurada neste ambiente.', publico: true });
+      return;
+    }
+    try {
+      const corpo = qual === 'operacao' ? await fonte.operacao() : await fonte.previsoes();
+      res.setHeader('cache-control', 'no-store');
+      responde(res, 200, corpo);
+    } catch (err) {
+      console.error(`[insights] ${rota} falhou: ${err instanceof Error ? err.message : String(err)}`);
+      responde(res, 503, { erro: 'Não foi possível ler o Voalle agora. Tente de novo em instantes.', publico: true });
     }
   }
 

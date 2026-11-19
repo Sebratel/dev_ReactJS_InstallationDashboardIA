@@ -7,9 +7,10 @@
 // `usePreCargas` e `useVizinhanca` (o que adiantar) —, e os pedaços da tela são
 // componentes.
 
-import { useEffect, useMemo } from 'react';
-import { Settings } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
+import { lazy, Suspense, useEffect, useMemo, type ReactNode } from 'react';
+import { MapPin, Settings, TrendingUp } from 'lucide-react';
+import { useIsFetching, useQueryClient } from '@tanstack/react-query';
+import { CHAVE_INSIGHTS } from '../../services/insightsService.ts';
 import {
   ehAbortError,
   ehErroDeAcesso,
@@ -64,6 +65,17 @@ const ABA_PERMISSOES = 'permissoes';
 /** A aba METAS (`?pagina=metas`, 12/11/2026). Também não é tela do relatório — edita o
  *  número que a medida `# META` lê. Quem a recebe vem do servidor (`eu.abasExtras`). */
 const ABA_METAS = 'metas';
+/** As abas de INSIGHTS (18/11/2026): leem o Voalle ao vivo e mostram modelo. Também não são
+ *  do relatório, e chegam pelo `eu.abasExtras` como a Metas. Carregam sob demanda: o
+ *  recharts e o leaflet só baixam para quem abre uma delas. */
+const ABA_OPERACAO = 'insights-operacao';
+const ABA_PREVISOES = 'insights-previsoes';
+const Operacao = lazy(() => import('../../components/insights/Operacao.tsx'));
+const Previsoes = lazy(() => import('../../components/insights/Previsoes.tsx'));
+const ICONE_DA_ABA: Record<string, ReactNode> = {
+  [ABA_OPERACAO]: <MapPin size={13} aria-hidden />,
+  [ABA_PREVISOES]: <TrendingUp size={13} aria-hidden />,
+};
 
 export function DashboardPage() {
   const qc = useQueryClient();
@@ -82,8 +94,10 @@ export function DashboardPage() {
   } = useEstadoDaTela();
   const naGestao = atual === ABA_PERMISSOES;
   const nasMetas = atual === ABA_METAS;
-  // As duas abas que não são do relatório: nenhuma delas busca dado de página.
-  const foraDoRelatorio = naGestao || nasMetas;
+  const nosInsights = atual === ABA_OPERACAO || atual === ABA_PREVISOES;
+  // As abas que não são do relatório: nenhuma delas busca dado de página.
+  const foraDoRelatorio = naGestao || nasMetas || nosInsights;
+  const buscandoInsights = useIsFetching({ queryKey: CHAVE_INSIGHTS }) > 0;
   // A página cujo DADO a tela busca: nenhuma na PERMISSÕES nem na METAS — layout,
   // abertura, tempo real e pré-carga ficam parados enquanto uma delas está aberta.
   const paginaDoDado = foraDoRelatorio ? null : atual;
@@ -108,7 +122,11 @@ export function DashboardPage() {
   // `permissoes`: link e favorito antigos seguem abrindo a mesma tela.
   const abasExtras = useMemo(
     () => [
-      ...(eu?.abasExtras ?? []).map((a) => ({ id: a.id, rotulo: a.nome })),
+      ...(eu?.abasExtras ?? []).map((a) => ({
+        id: a.id,
+        rotulo: a.nome,
+        ...(ICONE_DA_ABA[a.id] ? { icone: ICONE_DA_ABA[a.id] } : {}),
+      })),
       ...(eu?.podeGerir
         ? [
             {
@@ -128,8 +146,8 @@ export function DashboardPage() {
   const atualLiberada = dashboardsQ.data
     ? naGestao
       ? eu?.podeGerir === true
-      : nasMetas
-        ? abasExtras.some((a) => a.id === ABA_METAS)
+      : nasMetas || nosInsights
+        ? abasExtras.some((a) => a.id === atual)
         : paginas.some((p) => p.id === atual)
     : null;
 
@@ -241,7 +259,9 @@ export function DashboardPage() {
     ? 'Configurações'
     : nasMetas
       ? 'Metas'
-      : (paginas.find((p) => p.id === atual)?.nome ?? 'Instalação');
+      : nosInsights
+        ? (abasExtras.find((a) => a.id === atual)?.rotulo ?? 'Insights')
+        : (paginas.find((p) => p.id === atual)?.nome ?? 'Instalação');
   // Avaliação de saúde das queries do snapshot (Marco A6): monitora atraso e falhas por query.
   // Na PERMISSÕES não há dado de snapshot para avisar.
   const avisoSaude = foraDoRelatorio
@@ -294,11 +314,19 @@ export function DashboardPage() {
         ) : null
       }
       acoes={
-        <BotaoAtualizar
-          aoClicar={atualiza}
-          desligado={!paginaDoDado}
-          buscando={paginaQ.isFetching}
-        />
+        nosInsights ? (
+          <BotaoAtualizar
+            aoClicar={() => void qc.invalidateQueries({ queryKey: CHAVE_INSIGHTS })}
+            desligado={false}
+            buscando={buscandoInsights}
+          />
+        ) : (
+          <BotaoAtualizar
+            aoClicar={atualiza}
+            desligado={!paginaDoDado}
+            buscando={paginaQ.isFetching}
+          />
+        )
       }
     >
       {invalidos.length > 0 ? (
@@ -312,6 +340,12 @@ export function DashboardPage() {
       {nasMetas ? (
         <div ref={antesDosVisuaisRef} className="flex flex-col gap-[var(--gap)]">
           <Metas />
+        </div>
+      ) : nosInsights ? (
+        <div ref={antesDosVisuaisRef} className="flex flex-col gap-[var(--gap)]">
+          <Suspense fallback={<Esqueleto titulo={nome} />}>
+            {atual === ABA_OPERACAO ? <Operacao /> : <Previsoes />}
+          </Suspense>
         </div>
       ) : naGestao ? (
         // A PERMISSÕES dentro do mesmo nó medido: a matriz é um cartão `matriz`, e a

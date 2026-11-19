@@ -30,6 +30,7 @@ import { mensagemDaConfiguracaoDeProducao, problemasDaConfiguracaoDeProducao } f
 import { criaAcesso } from './permissoes.ts';
 import { configDoAmbiente, criaPoolDeAcesso, garanteTabelas, lojaMaria } from './loja-acesso-maria.ts';
 import { lojaDeMetasMaria } from './loja-metas-maria.ts';
+import { criaInsights } from './insights/fonte.ts';
 import { criaLojaDeIaArquivo, criaLojaDeIaMaria } from './ia/loja-ia.ts';
 import { IDS_SEM_DASHBOARD } from './telas-extras.ts';
 import { criaSenior } from './senior.ts';
@@ -349,6 +350,23 @@ const avisoDaCompleta = avisoSemCompleta(ROOT, new Set(aoVivo.paginas.keys()));
 if (avisoDaCompleta) console.error(avisoDaCompleta);
 aoVivo.aquece();
 
+// As abas "Operação ao vivo" e "Previsões" (`insights/fonte.ts`): pool próprio e pequeno,
+// com nome próprio no `pg_stat_activity`. Sem credencial do Voalle a API sobe igual e as
+// duas rotas respondem 503. A meta do mês vem da aba "Metas", quando há banco.
+const lojaDeMetas = poolDeAcesso ? lojaDeMetasMaria(poolDeAcesso) : null;
+const insights =
+  missingFor('voalle').length === 0
+    ? criaInsights({
+        pool: () => createVoallePool({ ...loadConfig().voalle, poolMax: 2, statementTimeoutMs: 60_000, applicationName: 'insights-instalacao' }),
+        metaMes: async () => (await lojaDeMetas?.le())?.find((m) => m.id === 'meta_mes')?.valor ?? null,
+      })
+    : null;
+// Pré-aquece 2 min depois da subida, para não disputar memória e Voalle com o aquecedor
+// do relatório; `INSIGHTS_AQUECE=0` desliga (a primeira abertura da aba espera ~20–40 s).
+if (insights && process.env.INSIGHTS_AQUECE !== '0') {
+  setTimeout(() => void insights.aquece(), 120_000).unref();
+}
+
 const servidor = new Servidor({
   root: ROOT,
   snapshotDir: DIR_SNAPSHOT,
@@ -357,7 +375,8 @@ const servidor = new Servidor({
   ...(eventosDeSeguranca ? { eventosDeSeguranca } : {}),
   ...(usoDasTelas ? { usoDasTelas } : {}),
   // A aba "Metas" so edita com banco; sem ele a rota responde 503 (opcoes-servidor.ts).
-  ...(poolDeAcesso ? { metas: lojaDeMetasMaria(poolDeAcesso) } : {}),
+  ...(lojaDeMetas ? { metas: lojaDeMetas } : {}),
+  ...(insights ? { insights } : {}),
   ia: poolDeAcesso
     ? criaLojaDeIaMaria(poolDeAcesso, { dirFallback: DIR_RUNTIME })
     : criaLojaDeIaArquivo({ dir: DIR_RUNTIME }),
