@@ -12,13 +12,14 @@ Cada cartão mostra um número já filtrado pelo que está na barra: trocou o pe
 
 ![Gráfico com paginador](imagens/grafico.png)
 
-1. Passe o mouse para ver o valor de cada categoria
-2. Clique numa barra para filtrar a aba
-3. Use o paginador quando houver mais categorias do que cabem
+1. O valor de cada barra aparece desenhado, sem precisar passar o mouse
+2. Clique numa barra para filtrar a aba por aquele item
+3. O contador do cabeçalho mostra quanto você está vendo do total ("1–7 de 9")
+4. As setas do cabeçalho avançam para os itens seguintes
 
 ## O gráfico não rola: ele pagina
 
-1. Quando as categorias não cabem com largura legível, aparece um paginador embaixo.
+1. Quando as categorias não cabem com largura legível, o visual mostra uma janela com paginador.
 2. Clique nas setas para ver as categorias seguintes.
 3. Quantas cabem por página é decidido pelo tamanho do card e pelo tamanho dos rótulos.
 
