@@ -741,8 +741,17 @@ table.dados tbody tr.linha-selecionada:hover td {
 table.dados tbody tr.linha-selecionada td:first-child {
   box-shadow: inset 3px 0 0 var(--pbi-primary-texto);
 }
-td.num,
-th.num {
+/* `table.dados` no seletor NÃO é enfeite — é o conserto (19/11/2026).
+
+   `th.num` sozinho tem especificidade (0,1,1) e perdia para o `table.dados th` lá de
+   cima, que é (0,1,2) e declara `text-align: left`. Resultado: a CÉLULA numérica ia para
+   a direita (nada concorre com `td.num`) e o CABEÇALHO dela ficava à esquerda — cada
+   número encostado no título da coluna SEGUINTE. Na PROBABILIDADE DE CHUVA, com dez
+   colunas de data, a tabela inteira parecia deslocada meia coluna, e foi isso que o
+   Erick viu como "as colunas estão deixando muito desalinhado". A regra existia desde
+   sempre e nunca valeu para `th`: CSS não avisa quando uma declaração perde. */
+table.dados td.num,
+table.dados th.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }

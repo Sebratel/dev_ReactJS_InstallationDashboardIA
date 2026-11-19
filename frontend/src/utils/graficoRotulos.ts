@@ -24,8 +24,17 @@
 // Erick reclamou ser difícil. Cada forma precisa de um LUGAR diferente para o número, não
 // de uma permissão única.
 
-/** Acima de tantas categorias o número vira ruído e a leitura fica com o `title` (COM). */
-export const MAXIMO_COM_ROTULO = 24;
+/**
+ * Acima de tantas categorias o número vira ruído e a leitura fica com o `title` (COM).
+ *
+ * **31, e não 24 (19/11/2026).** 24 cortava o eixo mais comum desta operação: o MÊS. O
+ * PROTOCOLOS REALIZADOS tem 30 colunas — uma por dia — e saía sem um número sequer,
+ * embora a banda dele comportasse o chip com folga. O teto de verdade é físico e já
+ * existe marca a marca em `ColunasDoGrafico` (o chip cabe na banda? e, se não couber, o
+ * número sem chip cabe?); este aqui é só a guarda de ruído, e ela não tinha por que
+ * cortar um mês fechado.
+ */
+export const MAXIMO_COM_ROTULO = 31;
 
 /**
  * - `categoria` — um chip acima da coluna: série única, ou o TOTAL de uma pilha.

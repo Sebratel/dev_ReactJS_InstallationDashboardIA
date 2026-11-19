@@ -6,6 +6,7 @@ import { test } from 'vitest';
 import {
   caminhoDaSerie,
   maiorIndice,
+  bandaMinimaPara,
   orcamentoDoRotulo,
   orcamentoPorAltura,
   passoDoEixo,
@@ -92,4 +93,20 @@ test('o maior índice ignora nulo e fica com o primeiro no empate', () => {
   assert.equal(maiorIndice([3, null, 7, 7, 1]), 2);
   assert.equal(maiorIndice([null, null]), null);
   assert.equal(maiorIndice([]), null);
+});
+
+test('a banda minima sai do ROTULO: um mes de dias cabe onde uma data nao cabe', () => {
+  // 19/11/2026: com o P/M/G fora, o 40px fixo virou lei e o PROTOCOLOS GERADOS passou a
+  // mostrar "1-18 de 30" num cartao de meia largura (~740px de plot). Rotulo de dia tem
+  // 1-2 caracteres e nao precisa de 40px.
+  const plot = 740;
+  assert.ok(Math.floor(plot / bandaMinimaPara(2)) >= 30, 'um mes inteiro tem de caber');
+  // Piso: nem rotulo de 1 caractere espreme a coluna.
+  assert.equal(bandaMinimaPara(1), 18);
+  // Teto: 40, o MESMO valor fixo de antes. Rotulo longo (cidade, equipe) nao pode pedir
+  // mais largura do que pedia, senao esta mudanca pioraria o caso que ela nao quer tocar.
+  assert.equal(bandaMinimaPara(10), 40);
+  assert.equal(bandaMinimaPara(40), 40);
+  // E com rotulo longo cabe pelo menos o que cabia antes.
+  assert.ok(Math.floor(plot / bandaMinimaPara(30)) >= Math.floor(plot / 40));
 });

@@ -17279,3 +17279,47 @@ vermelho**.
 O controle de densidade existia para socorrer gráfico apertado. Quem aperta é o layout, e
 isso agora se resolve no `layout.yaml` e no eixo. O paginador fica — é ele que alcança o
 que não cabe.
+
+### #269, continuação — o que os prints do Erick acharam depois (19/11)
+
+Subida local da worktree para ele olhar. Três coisas apareceram, e duas são defeito antigo.
+
+**O eixo Y parava antes do maior valor.** `marcasDoEixo` fechava em `v <= teto + passo/2`:
+com teto 165 e passo 50, a última marca era 150. `Grafico.tsx` usa `Math.max(...marcas)`
+como topo da escala, então `y(165)` saía NEGATIVO — a coluna desenhada ACIMA do plot e o
+chip de valor dela fora do `<svg>`, cortado em silêncio pelo `overflow: hidden`. O
+sintoma que o Erick viu foi o contrário da causa: *"a coluna mais alta é a única sem
+número"*. E antes disso o gráfico já mentia: a barra de 165 e a de 150 terminavam quase
+na mesma altura. Valia para teto 165 (eixo em 150), 213 e 240 (em 200) — três dos
+gráficos que ele tinha aberto. O teste novo varre 2.000 tetos.
+
+**A banda mínima fixa virou lei quando o P/M/G saiu.** Os 40px eram o padrão de uma régua
+de três (24/40/64) que o botão deixava escolher. Sem o botão, PROTOCOLOS GERADOS num
+cartão de meia largura passou a mostrar "1–18 de 30": doze dias do mês fora da tela, sem
+saída. 40px é o orçamento de ~10 caracteres girados, e um eixo de DIA tem 1 ou 2. Agora a
+banda sai do rótulo (`bandaMinimaPara`), entre 18 e 40px.
+
+⚠️ **O teto tinha de ser 40, não 64.** A primeira versão deixava a banda crescer até 64px
+e teria PIORADO o caso que a mudança não queria tocar: eixo de nome (cidade, equipe) tem
+rótulo longo, pediria mais largura por categoria e caberia MENOS por página do que cabia
+antes. Rótulo longo não se resolve com largura — `orcamentoDoRotulo` corta e `passoDoEixo`
+pula. Teto = o valor fixo de antes é o que garante "nunca pior que estava".
+
+**Medição do resultado, contra a API local** (`--sem-login`, 14 gráficos de 7 telas, nas
+larguras que o `layout.yaml` dá hoje): nenhum pagina. O maior caso é a
+`agendamento-field` com 88 categorias num `span: 12` que comporta ~70 — e esse é o eixo de
+data em que paginar é o certo. **Não houve span para corrigir**: o que estourava era a
+banda, não o tamanho do cartão. Ressalva honesta: a medição usou a largura de grade
+estimada (~1640px) e a abertura sem filtro do usuário.
+
+**O cabeçalho numérico nunca esteve alinhado.** `th.num { text-align: right }` tem
+especificidade (0,1,1) e perdia para `table.dados th { text-align: left }`, que é (0,1,2).
+A CÉLULA ia para a direita (nada concorre com `td.num`) e o CABEÇALHO ficava à esquerda —
+cada número encostado no título da coluna SEGUINTE. Na PROBABILIDADE DE CHUVA, com dez
+colunas de data, a tabela inteira parecia deslocada meia coluna. Era o M-3 do plano
+("análise detalhada está muito feio, as colunas desalinhadas"), e a regra estava lá desde
+sempre sem nunca valer para `th`: **CSS não avisa quando uma declaração perde.**
+
+**Nota de operação:** o P/M/G que apareceu num print já não existia no código — era cache
+do navegador sobre uma subida `--sem-build`. Ao mostrar mudança de front numa subida
+local, ou se força o build, ou se pede `Ctrl+Shift+R`.

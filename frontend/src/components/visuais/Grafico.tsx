@@ -25,7 +25,7 @@ import type {
 } from '../../services/dashboardService.ts';
 import { inteiro } from '../../utils/formato.ts';
 import { corNoTema, maiorValorDe, montaGrafico, tetoDasAreas } from '../../utils/graficoForma.ts';
-import { prefixoComum } from '../../utils/graficoEixo.ts';
+import { bandaMinimaPara, prefixoComum, rotuloDoEixo } from '../../utils/graficoEixo.ts';
 import { useThemeStore } from '../../store/themeStore.ts';
 import { Cartao } from '../ui/Cartao.tsx';
 import { PaginadorDeJanela } from '../ui/PaginadorDeJanela.tsx';
@@ -44,18 +44,6 @@ import { DesenhoDoGrafico } from './grafico/DesenhoDoGrafico.tsx';
 import { LegendaDoGrafico } from './grafico/LegendaDoGrafico.tsx';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
 
-/**
- * Largura mínima por categoria. Vem do rótulo, não do gosto: girado a 45°, em 40px cabem
- * ~10 caracteres — "26/08" ou uma sigla de equipe.
- *
- * **Era uma régua de três (P/M/G), com um botão no cabeçalho de cada gráfico para
- * escolher** — o `ControlesDeZoom`, removido em 19/11/2026 a pedido do Erick ("a densidade
- * pode tirar e deixar tudo ajustado o layout"). O botão existia para socorrer o gráfico
- * apertado demais; quem aperta é o layout, e isso passou a ser resolvido no
- * `layout.yaml` (faixas reequilibradas) e no eixo (`passoDoEixo` pelo rótulo real). O
- * paginador continua — ele é quem alcança as categorias que não cabem.
- */
-const BANDA_MINIMA = 40;
 /** Abaixo de 4 categorias por página o gráfico deixa de comunicar tendência. */
 const MINIMO_POR_PAGINA = 4;
 
@@ -82,10 +70,34 @@ export function Grafico({
   const d = visual.dados as DadosDeGrafico | undefined;
   const gTudo = useMemo(() => (d && d.series && d.pontos ? montaGrafico(d) : null), [d]);
 
+  // Os níveis de cada categoria sem o prefixo comum a TODAS (ver `prefixoComum`), e o
+  // maior rótulo que o eixo vai desenhar. Calculado aqui, antes da janela, porque é ele
+  // que diz quantas categorias cabem numa página — ver `bandaMinimaPara`.
+  const partesPorCat = useMemo(
+    () =>
+      (gTudo?.categorias ?? []).map((c) =>
+        c.eixo !== undefined ? [c.eixo] : c.rotulo.split(' / '),
+      ),
+    [gTudo],
+  );
+  const comum = useMemo(() => prefixoComum(partesPorCat), [partesPorCat]);
+  const maiorRotulo = useMemo(
+    () =>
+      (gTudo?.categorias ?? []).reduce(
+        (maior, c, i) =>
+          Math.max(maior, rotuloDoEixo(partesPorCat[i]?.slice(comum) ?? [], c.rotulo, 999).length),
+        1,
+      ),
+    [gTudo, partesPorCat, comum],
+  );
+
   // ----------------------------------------------- quantas cabem, e qual janela
   const nTotal = gTudo?.categorias.length ?? 0;
   const larguraDoPlot = Math.max(120, caixa.w - MARGEM.esquerda - MARGEM.direita);
-  const cabem = Math.max(MINIMO_POR_PAGINA, Math.floor(larguraDoPlot / BANDA_MINIMA));
+  const cabem = Math.max(
+    MINIMO_POR_PAGINA,
+    Math.floor(larguraDoPlot / bandaMinimaPara(maiorRotulo)),
+  );
   const pagina = Math.min(cabem, Math.max(nTotal, 1));
   const precisaPaginar = nTotal > pagina;
   // Abre na página que TERMINA NO ÚLTIMO DIA COM DADO: categoria de gráfico operacional
@@ -173,11 +185,8 @@ export function Grafico({
       : [];
   const titulo = tituloDeGrafico(visual, d);
 
-  // O prefixo comum sai de TODAS as categorias — ver `prefixoComum`.
-  const partesPorCat = gTudo.categorias.map((c) =>
-    c.eixo !== undefined ? [c.eixo] : c.rotulo.split(' / '),
-  );
-  const comum = prefixoComum(partesPorCat);
+  // `partesPorCat` e `comum` saem de TODAS as categorias e já foram calculados lá em
+  // cima, junto com `maiorRotulo` — aqui só se recorta a janela visível.
   const partesVisiveis = g.categorias.map((_, i) => partesPorCat[de + i]?.slice(comum) ?? []);
 
   const acoesGrafico = (

@@ -511,13 +511,32 @@ export function corDoRotuloSobre(hexDeFundo: string): string {
   return contraste(lFundo, 1) >= contraste(lFundo, LUMINANCIA_TINTA) ? '#FFFFFF' : '#252423';
 }
 
+/**
+ * As marcas do eixo Y. **A última TEM de cobrir o teto** — `Grafico.tsx` usa
+ * `Math.max(...marcas)` como topo da escala, e marca que para antes do maior valor não
+ * encolhe a coluna: manda ela para FORA do plot.
+ *
+ * **O defeito, medido em 19/11/2026 nos prints do Erick.** A parada era
+ * `v <= teto + passo / 2`: com teto 165 e passo 50, a última marca era 150. Então
+ * `y(165)` saía NEGATIVO, a coluna era desenhada acima do topo do plot e o chip de valor
+ * dela ia parar fora do `<svg>`, cortado em silêncio pelo `overflow: hidden` da caixa. O
+ * sintoma que aparece é o contrário da causa — "a coluna mais alta é a única sem número"
+ * —, e a leitura já estava errada antes disso: a barra de 165 e a de 150 terminavam
+ * quase na mesma altura. Valia para teto 165 (eixo parava em 150), 213 e 240 (em 200).
+ *
+ * `quantas` continua sendo ALVO, não promessa: arredondar o limite para cima pode render
+ * uma marca a mais. É o preço de um eixo que contém o que desenha.
+ */
 export function marcasDoEixo(teto: number, quantas = 4): number[] {
   if (!Number.isFinite(teto) || teto <= 0) return [0];
   const cru = teto / quantas;
   const grandeza = 10 ** Math.floor(Math.log10(cru));
   const passo = [1, 2, 2.5, 5, 10].map((m) => m * grandeza).find((p) => p >= cru) ?? 10 * grandeza;
+  // O primeiro múltiplo do passo que ALCANÇA o teto. A folga de 1e-9 é contra o ponto
+  // flutuante: com teto 200 e passo 50, `Math.ceil` tem de dar 4, não 5.
+  const limite = Math.ceil(teto / passo - 1e-9) * passo;
   const marcas: number[] = [];
-  for (let v = 0; v <= teto + passo / 2; v += passo) marcas.push(Number(v.toFixed(10)));
+  for (let v = 0; v <= limite + passo / 2; v += passo) marcas.push(Number(v.toFixed(10)));
   return marcas;
 }
 

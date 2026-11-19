@@ -181,7 +181,13 @@ export function ColunasDoGrafico(props: {
             ? (areas[0]!.valores[i] ?? null)
             : null;
         const texto = total ? formata(total, props.tipo).texto : '';
-        const cabe = larguraDoChip(texto) <= geo.banda;
+        // O chip precisa de ~33px para três dígitos; o mesmo número SEM chip precisa de
+        // ~21px. Num mês inteiro num cartão de meia largura a banda fica em ~25px, e a
+        // regra antiga (só chip, ou nada) deixava o gráfico mudo justamente ali. O chip
+        // continua sendo a primeira escolha — é mais legível sobre a coluna colorida —,
+        // e o texto puro é o que sobra antes de desistir do número.
+        const cabeOChip = larguraDoChip(texto) <= geo.banda;
+        const cabeOTexto = texto.length * FONTE_DO_ROTULO * 0.58 + 4 <= geo.banda;
         return (
           <g
             key={i}
@@ -198,8 +204,19 @@ export function ColunasDoGrafico(props: {
               height={geo.alturaDoPlot}
             />
             {marcas}
-            {modo === 'categoria' && texto && cabe ? (
+            {modo === 'categoria' && texto && cabeOChip ? (
               <ChipDeValor x={geo.xMeio(i)} topo={topoDaCategoria} texto={texto} />
+            ) : null}
+            {modo === 'categoria' && texto && !cabeOChip && cabeOTexto ? (
+              <text
+                className="rotulo-valor"
+                x={geo.xMeio(i)}
+                y={topoDaCategoria - 5}
+                textAnchor="middle"
+                pointerEvents="none"
+              >
+                {texto}
+              </text>
             ) : null}
             {porFatia.map((r) =>
               r.dentro ? (

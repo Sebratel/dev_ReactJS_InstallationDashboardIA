@@ -91,6 +91,42 @@ export function orcamentoPorAltura(margemDeBaixo: number): number {
   return Math.floor((margemDeBaixo - 22) / (PX_POR_CARACTERE * COS_45));
 }
 
+/** Nem com rótulo de um caractere a coluna desce disto: abaixo a marca vira risco. */
+const PISO_DA_BANDA = 18;
+/**
+ * **40, que é exatamente o valor fixo de antes** — o orçamento de ~10 caracteres girados.
+ *
+ * O teto não pode passar disso, senão a mudança PIORARIA o caso que ela não quer tocar:
+ * eixo de nome (cidade, equipe, técnico) tem rótulo longo, pediria 60px ou mais por
+ * categoria e caberia MENOS por página do que cabia com o 40 fixo. Rótulo longo não se
+ * resolve com largura — `orcamentoDoRotulo` corta, e `passoDoEixo` pula —, então acima de
+ * 10 caracteres a banda para de crescer e deixa o eixo fazer o trabalho dele.
+ */
+const TETO_DA_BANDA = 40;
+
+/**
+ * Largura mínima por categoria — o que decide QUANTAS cabem numa página do gráfico.
+ *
+ * **Era um número fixo, e isso paginava cedo demais.** Até 19/11/2026 eram três valores
+ * (24/40/64) escolhidos à mão no botão P/M/G de cada gráfico, com 40 de padrão. O botão
+ * saiu a pedido do Erick, e aí o 40 virou lei: PROTOCOLOS GERADOS, num cartão de meia
+ * largura (~740px de plot), passou a mostrar "1–18 de 30" — doze dias do mês fora da
+ * tela, sem nenhuma saída. Foi o "em alguns gráficos o número do dia passa e não
+ * aparece".
+ *
+ * 40px era o orçamento de um rótulo de ~10 caracteres ("26/08" com folga). Um eixo de DIA
+ * tem rótulos de 1 a 2 caracteres e não precisa de nada perto disso. A conta agora é a
+ * mesma do resto do eixo — girado a 45°, cada caractere ocupa `5,6 × cos 45°` —, então a
+ * banda acompanha o rótulo de verdade: ~18px para dias (41 cabem num cartão de meia
+ * largura), ~46px para uma data inteira (16 cabem).
+ *
+ * @param caracteres o comprimento do maior rótulo que o eixo vai desenhar.
+ */
+export function bandaMinimaPara(caracteres: number): number {
+  const porRotulo = Math.max(1, caracteres) * PX_POR_CARACTERE * COS_45 + 6;
+  return Math.max(PISO_DA_BANDA, Math.min(TETO_DA_BANDA, porRotulo));
+}
+
 /**
  * Quantos caracteres o rótulo girado pode ter. **Duas restrições, e usar só uma corta o
  * rótulo.**
