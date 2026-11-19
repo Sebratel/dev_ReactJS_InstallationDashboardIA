@@ -79,3 +79,20 @@ test('MÉDIA GERAL, o caso do D-12, é porcentagem de duas casas', () => {
   // E uma contagem ao lado continua fora.
   assert.equal(casasDoPercentual(model.measure('Diferença')?.format), null);
 });
+
+test('casasDoNumero: as casas de um formato que não é porcentagem', async () => {
+  const { casasDoNumero } = await import('../src/percentual.ts');
+  // O caso que motivou a regra: `PRAZO MÉDIO (DIAS)` do RELATÓRIO DO ANO.
+  assert.equal(casasDoNumero('0.0'), 1);
+  assert.equal(casasDoNumero('0.00'), 2);
+  // Contagem: zero casas, e é informação — a tela arredonda em vez de inventar decimal.
+  assert.equal(casasDoNumero('0'), 0);
+  assert.equal(casasDoNumero('#,0'), 0);
+  // Porcentagem é trabalho de `casasDoPercentual`; aqui ela não responde.
+  assert.equal(casasDoNumero('0.0%'), null);
+  assert.equal(casasDoNumero('0.00%;-0.00%;0.00%'), null);
+  // Sem formato declarado, quem decide é a tela.
+  assert.equal(casasDoNumero(null), null);
+  assert.equal(casasDoNumero(undefined), null);
+  assert.equal(casasDoNumero(''), null);
+});

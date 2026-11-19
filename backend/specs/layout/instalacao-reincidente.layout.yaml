@@ -25,16 +25,18 @@ faixas:
       - visual: af1c3777d731245dd558
         span: 12
         render: lineStackedColumnComboChart
+  # 19/11/2026 — REINCIDÊNCIA POR MÊS e MANUTENÇÃO INICIAL POR MÊS lado a lado (pedido
+  # do Erick). São as duas leituras do MESMO eixo (mês), e empilhadas em largura cheia
+  # obrigavam a rolar para comparar o mesmo mês nas duas. Na mesma faixa a altura sai da
+  # fração fixa do `estilo.css`, não do pool — as duas ficam na mesma linha da tela.
   - titulo: Análise detalhada
     altura: tabela
     colunas:
       - visual: 1a8f0f425eea4d91d7da
-        span: 12
+        span: 6
         render: tableEx
-  - altura: tabela
-    colunas:
       - visual: 1bfe03ac7181a3ce2ace
-        span: 12
+        span: 6
         render: tableEx
   - altura: tabela
     colunas:

@@ -13,22 +13,12 @@ kpis:
   - visual: 9ebc3034e108d1452ddb
     enfase: normal
 faixas:
-  - altura: tabela
-    colunas:
-      - visual: e42420359d507de64376
-        span: 6
-        render: tableEx
-      - visual: 50d44b50c8a7c764fda7
-        span: 6
-        render: tableEx
+  # 19/11/2026 — a ordem da tela passa a ser a da leitura do Erick: o RESUMO primeiro,
+  # depois o detalhado, e só então o 2º Ponto e o detalhamento dele. Antes a tela abria
+  # pelos dois quadros de ponto adicional e o resumo vinha embaixo.
   - altura: tabela
     colunas:
       - visual: 5b536b4ab2c996794f97
-        span: 12
-        render: tableEx
-  - altura: tabela
-    colunas:
-      - visual: bb2892e77821cc094c8d
         span: 12
         render: tableEx
   - altura: matriz
@@ -38,10 +28,30 @@ faixas:
         render: pivotTable
   - altura: tabela
     colunas:
+      - visual: e42420359d507de64376
+        span: 12
+        render: tableEx
+  # O nome vem do `layout.yaml`, não do spec (que é gerado): o detalhamento passa a
+  # acompanhar o "2º Ponto" do quadro acima, que é o mesmo assunto com outro nome herdado
+  # do Power BI. Ver `ColunaDeFaixa.titulo`.
+  - altura: tabela
+    colunas:
       - visual: 77ebfd004e4106f33165
         span: 12
         render: tableEx
+        titulo: "Detalhamento Instalação 2º Ponto"
 ocultos:
+  # 19/11/2026, pedido do Erick: "Instalação Ponto Adicional pode retirar, pois Relatório
+  # Instalação 2º Ponto é a mesma coisa". Conferido campo a campo contra
+  # e42420359d507de64376 — mesma entidade (PROTOCOLOS PRODUTIVIDADE), mesmo INSTALADOR,
+  # mesma contagem de N°PROTOCOLO e o mesmo recorte por TIPO DE PROTOCOLO. Sai da GRADE;
+  # continua no spec, que é gerado e não se edita à mão.
+  - visual: 50d44b50c8a7c764fda7
+    porque: duplicata de 'Relatório Instalação 2º Ponto' (e42420359d507de64376) — retirado da tela em 19/11/2026
+  # Apuração fechada (01/05 a 10/05/2026). Ocultada, não apagada: o Erick disse que "pode
+  # voltar de outra maneira", e o id é a chave de backend/specs/paridade.
+  - visual: bb2892e77821cc094c8d
+    porque: apuração de maio/2026 encerrada — oculta em 19/11/2026, pode voltar em outro formato
   - visual: 1816f8391c128db5f970
     porque: tipo 'unknown' não calcula e não vira segmentação — hoje invisível na tela
   - visual: 39b19854921925b379c2

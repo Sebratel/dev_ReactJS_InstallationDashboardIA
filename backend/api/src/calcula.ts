@@ -29,7 +29,7 @@ import {
 } from '../../packages/widget-engine/src/index.ts';
 import type { DashboardSpec, FiltroSpec, VisualSpec } from '../../packages/widget-engine/src/spec.ts';
 import { TIPO_DE_TELA } from '../../packages/widget-engine/src/filtro-url.ts';
-import { casasDoPercentual } from '../../packages/widget-engine/src/percentual.ts';
+import { casasDoNumero, casasDoPercentual } from '../../packages/widget-engine/src/percentual.ts';
 import type { Evaluator } from '../../packages/measure-engine/src/evaluator.ts';
 import { isBlank, type DaxValue } from '../../packages/measure-engine/src/value.ts';
 
@@ -269,6 +269,11 @@ export interface TabelaCompleta {
      * e sai com uma.
      */
     percentual?: true;
+    /**
+     * As casas decimais do `format` da medida. Com `percentual`, as da porcentagem;
+     * sozinha, as do número comum — `PRAZO MÉDIO (DIAS)` é `"0.0"` e sai com uma
+     * (19/11/2026), onde antes o genérico da tela dava até duas.
+     */
     casas?: number;
   }[];
   linhas: unknown[][];
@@ -752,10 +757,11 @@ function dadosDo(
     // QA D-12: o card de porcentagem sai marcado, com as casas do próprio formato. Até
     // 16/11/2026 a tela decidia pelo RÓTULO (nome com `%`), e `MÉDIA GERAL` — que é
     // `REINCIDÊNCIA[Porcentagem]`, formato `0.00%` — aparecia como `0,064`.
-    const casas =
-      r.origem.kind === 'measure'
-        ? casasDoPercentual(ev.model.measure(r.origem.measure)?.format)
-        : null;
+    const formato =
+      r.origem.kind === 'measure' ? (ev.model.measure(r.origem.measure)?.format ?? null) : null;
+    const casas = casasDoPercentual(formato);
+    // Número comum com formato declarado (`"0.0"`): as casas vão junto, sem `percentual`.
+    const casasDoValor = casas === null ? casasDoNumero(formato) : null;
     return {
       nome: r.nome,
       valor: serializa(r.valor),
@@ -763,6 +769,7 @@ function dadosDo(
       origem: r.origem,
       filtros: r.filtros,
       ...(casas !== null ? { percentual: true as const, casas } : {}),
+      ...(casasDoValor !== null ? { casas: casasDoValor } : {}),
     };
   }
 
@@ -772,6 +779,8 @@ function dadosDo(
     chaves: r.chaves,
     series: r.series,
     tiposDeSerie: r.series.map((_, i) => tipoDaColuna(r.pontos.map((p) => p.valores[i]!))),
+    // As casas que o `format` da medida pede, série a série (`null` = a tela decide).
+    casasDasSeries: r.series.map((s) => s.casas),
     tiposDeChave: r.chaves.map((_, i) => tipoDaColuna(r.pontos.map((p) => p.categoria[i]!))),
     pontos: r.pontos.map((p) => ({
       categoria: p.categoria.map(serializa),
@@ -804,7 +813,9 @@ function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Tabe
       nivel: r.origemDasColunas[i]?.nivel ?? null,
       ...(r.percentuais[i] !== null && r.percentuais[i] !== undefined
         ? { percentual: true as const, casas: r.percentuais[i]! }
-        : {}),
+        : r.casas[i] !== null && r.casas[i] !== undefined
+          ? { casas: r.casas[i]! }
+          : {}),
     })),
     linhas: r.linhas.map((l) => l.map((c) => serializa(c.valor))),
     linhasTotais: r.linhas.length,

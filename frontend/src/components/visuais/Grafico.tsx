@@ -25,7 +25,7 @@ import type {
 } from '../../services/dashboardService.ts';
 import { inteiro } from '../../utils/formato.ts';
 import { corNoTema, maiorValorDe, montaGrafico, tetoDasAreas } from '../../utils/graficoForma.ts';
-import { prefixoComum } from '../../utils/graficoEixo.ts';
+import { bandaMinimaPara, prefixoComum, rotuloDoEixo } from '../../utils/graficoEixo.ts';
 import { useThemeStore } from '../../store/themeStore.ts';
 import { Cartao } from '../ui/Cartao.tsx';
 import { PaginadorDeJanela } from '../ui/PaginadorDeJanela.tsx';
@@ -35,17 +35,15 @@ import { useModo } from '../../context/ModoContext.tsx';
 import { useCaixa } from '../../hooks/useCaixa.ts';
 import { useCliqueNoEixo } from '../../hooks/useCliqueNoEixo.ts';
 import { MARGEM, geometriaDoGrafico } from './grafico/geometria.ts';
-import { MAXIMO_COM_ROTULO } from './grafico/ColunasDoGrafico.tsx';
-import { ControlesDeZoom } from './grafico/ControlesDeZoom.tsx';
+import {
+  modoDeRotulo,
+  precisaDeMargemParaRotulo,
+  rotulaTodosOsPontos,
+} from '../../utils/graficoRotulos.ts';
 import { DesenhoDoGrafico } from './grafico/DesenhoDoGrafico.tsx';
 import { LegendaDoGrafico } from './grafico/LegendaDoGrafico.tsx';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
 
-/**
- * Largura mínima por categoria em cada densidade (P, M, G). Vem do rótulo, não do
- * gosto: girado a 45°, em 40px cabem ~10 caracteres — "26/08" ou uma sigla de equipe.
- */
-const BANDA_MINIMA = [24, 40, 64];
 /** Abaixo de 4 categorias por página o gráfico deixa de comunicar tendência. */
 const MINIMO_POR_PAGINA = 4;
 
@@ -66,19 +64,39 @@ export function Grafico({
 
   // TODOS os hooks vêm ANTES de qualquer `return`: um guarda de nulo acima de um hook
   // muda a ORDEM DOS HOOKS entre renderizações, e o React derruba a árvore.
-  const [zoomIdx, setZoomIdx] = useState<number>(1);
   const [inicio, setInicio] = useState<number | null>(null);
   const [caixaRef, caixa] = useCaixa();
 
   const d = visual.dados as DadosDeGrafico | undefined;
   const gTudo = useMemo(() => (d && d.series && d.pontos ? montaGrafico(d) : null), [d]);
 
+  // Os níveis de cada categoria sem o prefixo comum a TODAS (ver `prefixoComum`), e o
+  // maior rótulo que o eixo vai desenhar. Calculado aqui, antes da janela, porque é ele
+  // que diz quantas categorias cabem numa página — ver `bandaMinimaPara`.
+  const partesPorCat = useMemo(
+    () =>
+      (gTudo?.categorias ?? []).map((c) =>
+        c.eixo !== undefined ? [c.eixo] : c.rotulo.split(' / '),
+      ),
+    [gTudo],
+  );
+  const comum = useMemo(() => prefixoComum(partesPorCat), [partesPorCat]);
+  const maiorRotulo = useMemo(
+    () =>
+      (gTudo?.categorias ?? []).reduce(
+        (maior, c, i) =>
+          Math.max(maior, rotuloDoEixo(partesPorCat[i]?.slice(comum) ?? [], c.rotulo, 999).length),
+        1,
+      ),
+    [gTudo, partesPorCat, comum],
+  );
+
   // ----------------------------------------------- quantas cabem, e qual janela
   const nTotal = gTudo?.categorias.length ?? 0;
   const larguraDoPlot = Math.max(120, caixa.w - MARGEM.esquerda - MARGEM.direita);
   const cabem = Math.max(
     MINIMO_POR_PAGINA,
-    Math.floor(larguraDoPlot / (BANDA_MINIMA[zoomIdx] ?? 40)),
+    Math.floor(larguraDoPlot / bandaMinimaPara(maiorRotulo)),
   );
   const pagina = Math.min(cabem, Math.max(nTotal, 1));
   const precisaPaginar = nTotal > pagina;
@@ -130,12 +148,19 @@ export function Grafico({
 
   // O TETO SAI DE TODAS AS CATEGORIAS, não das visíveis — ver `geometriaDoGrafico`.
   const linhasDoTudo = naFaceta ? [] : gTudo.series.filter((x) => x.desenho === 'linha');
-  // O chip de valor (COM): série única ou pilha, sem percentual, até 24 categorias.
-  const comRotulos =
-    !g.percentual &&
-    areas.length > 0 &&
-    (areas.length === 1 || g.empilha) &&
-    g.categorias.length <= MAXIMO_COM_ROTULO;
+  // ONDE O NÚMERO APARECE (19/11/2026) — a regra está em `utils/graficoRotulos.ts`, com
+  // o porquê de cada caso e os testes. Aqui só se descreve a forma desta janela.
+  const forma = {
+    nAreas: areas.length,
+    nLinhas: linhas.length,
+    empilha: g.empilha,
+    percentual: g.percentual,
+    nCategorias: g.categorias.length,
+    naFaceta,
+  };
+  const rotulos = modoDeRotulo(forma);
+  const rotulosDeLinha = rotulaTodosOsPontos(forma);
+  const comRotulos = precisaDeMargemParaRotulo(forma);
   const { geo, marcas } = geometriaDoGrafico({
     alturaDaCaixa: caixa.h,
     larguraDoPlot,
@@ -160,11 +185,8 @@ export function Grafico({
       : [];
   const titulo = tituloDeGrafico(visual, d);
 
-  // O prefixo comum sai de TODAS as categorias — ver `prefixoComum`.
-  const partesPorCat = gTudo.categorias.map((c) =>
-    c.eixo !== undefined ? [c.eixo] : c.rotulo.split(' / '),
-  );
-  const comum = prefixoComum(partesPorCat);
+  // `partesPorCat` e `comum` saem de TODAS as categorias e já foram calculados lá em
+  // cima, junto com `maiorRotulo` — aqui só se recorta a janela visível.
   const partesVisiveis = g.categorias.map((_, i) => partesPorCat[de + i]?.slice(comum) ?? []);
 
   const acoesGrafico = (
@@ -186,7 +208,6 @@ export function Grafico({
           }}
         />
       ) : null}
-      <ControlesDeZoom nivel={zoomIdx} niveis={BANDA_MINIMA.length} aoMudar={setZoomIdx} />
     </div>
   );
 
@@ -237,10 +258,12 @@ export function Grafico({
           percentual={g.percentual}
           naFaceta={naFaceta}
           tipo={d.tiposDeSerie[0] ?? null}
+          casas={d.casasDasSeries?.[0] ?? null}
           marcas={marcas}
           geo={geo}
           interacao={clique}
-          comRotulos={comRotulos}
+          rotulos={rotulos}
+          rotulosDeLinha={rotulosDeLinha}
         />
       </div>
     </Cartao>

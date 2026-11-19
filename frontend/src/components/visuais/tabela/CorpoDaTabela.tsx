@@ -14,7 +14,10 @@ export function textoDaCelula(
   valor: unknown,
   coluna: DadosDeTabela['colunas'][number] | undefined,
 ) {
-  const f = formata(valor, coluna?.tipo ?? null);
+  // Sem `percentual`, `casas` são as do número comum (`"0.0"` → uma casa).
+  const f = formata(valor, coluna?.tipo ?? null, {
+    casas: coluna?.percentual ? null : (coluna?.casas ?? null),
+  });
   return coluna?.percentual && !f.vazio
     ? { ...f, texto: razaoComoPercentual(valor, coluna.casas) }
     : f;

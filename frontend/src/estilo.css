@@ -359,24 +359,57 @@ body {
    apagam aba nenhuma) para dizer que há mais. A rolagem é DESTA faixa, não da página.
 
    A altura é medida pelo `NavDeTelas` e publicada em `--h-nav`, que `--util` desconta. */
-.nav-telas {
+/* A FAIXA é o que fica fixo abaixo do topo, desenha o fundo e a borda e ANCORA as setas
+   de rolagem; a `.nav-telas` de dentro é a caixa que ROLA. São dois elementos porque um
+   filho absoluto do elemento que rola andaria junto com o conteúdo — a seta sairia da
+   tela junto com as abas que ela deveria trazer de volta. Ver `NavDeTelas.tsx`. */
+.nav-telas-faixa {
   flex: none;
-  display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 0 28px 0 10px;
-  background: var(--superficie);
-  border-bottom: 1px solid var(--borda);
-  overflow-x: auto;
-  scrollbar-width: none;
   position: sticky;
   top: var(--h-topbar);
   z-index: 39;
-  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  background: var(--superficie);
+  border-bottom: 1px solid var(--borda);
+}
+
+.nav-telas {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 30px 0 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 .nav-telas::-webkit-scrollbar {
   display: none;
+}
+
+/* O ESMAECIDO DA BORDA — a dica de que há mais aba, agora só do lado que tem.
+   Antes era fixo à direita: a última aba vivia apagada mesmo com a faixa rolada até o
+   fim, e a primeira nunca avisava nada. `data-esq`/`data-dir` vêm de `NavDeTelas`. */
+.nav-telas[data-esq='nao'][data-dir='sim'] {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 34px), transparent);
+}
+.nav-telas[data-esq='sim'][data-dir='nao'] {
+  -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent);
+  mask-image: linear-gradient(to left, #000 calc(100% - 34px), transparent);
+}
+.nav-telas[data-esq='sim'][data-dir='sim'] {
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 34px,
+    #000 calc(100% - 34px),
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 34px,
+    #000 calc(100% - 34px),
+    transparent
+  );
 }
 
 /* ============================================================ ponto "ao vivo" */
@@ -741,8 +774,17 @@ table.dados tbody tr.linha-selecionada:hover td {
 table.dados tbody tr.linha-selecionada td:first-child {
   box-shadow: inset 3px 0 0 var(--pbi-primary-texto);
 }
-td.num,
-th.num {
+/* `table.dados` no seletor NÃO é enfeite — é o conserto (19/11/2026).
+
+   `th.num` sozinho tem especificidade (0,1,1) e perdia para o `table.dados th` lá de
+   cima, que é (0,1,2) e declara `text-align: left`. Resultado: a CÉLULA numérica ia para
+   a direita (nada concorre com `td.num`) e o CABEÇALHO dela ficava à esquerda — cada
+   número encostado no título da coluna SEGUINTE. Na PROBABILIDADE DE CHUVA, com dez
+   colunas de data, a tabela inteira parecia deslocada meia coluna, e foi isso que o
+   Erick viu como "as colunas estão deixando muito desalinhado". A regra existia desde
+   sempre e nunca valeu para `th`: CSS não avisa quando uma declaração perde. */
+table.dados td.num,
+table.dados th.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
@@ -879,44 +921,12 @@ table.dados.matriz td:first-child {
   overflow: hidden;
 }
 .paginador-grafico button,
-.controles-zoom button {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  color: var(--pbi-sobre-primary);
-  padding: 1px 6px;
-  font-size: 0.8rem;
-  line-height: 1.2;
-}
 .paginador-grafico button:hover:not(:disabled),
-.controles-zoom button:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--pbi-sobre-primary) 18%, transparent);
-}
 .paginador-grafico button:disabled,
-.controles-zoom button:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
 .paginador-rotulo,
-.zoom-rotulo {
-  font-size: 0.66rem;
-  font-weight: 800;
-  color: var(--pbi-sobre-primary);
-  padding: 0 5px;
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
 .paginador-rotulo .de {
   font-weight: 600;
   color: var(--pbi-sobre-primary-fraco);
-}
-.controles-zoom {
-  display: inline-flex;
-  align-items: center;
-  gap: 1px;
-  border: 1px solid color-mix(in srgb, var(--pbi-sobre-primary) 45%, transparent);
-  border-radius: 999px;
-  overflow: hidden;
 }
 .grafico-svg {
   background: transparent;
@@ -994,6 +1004,20 @@ table.dados.matriz td:first-child {
 /* Valor e rótulo em tinta, nunca na cor da série. */
 .rotulo-valor {
   fill: var(--texto);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font);
+}
+/* O número escrito DENTRO da fatia (pilha percentual, 19/11/2026). O fundo ali é a cor da
+   série, e numa pilha há várias — nenhuma cor de letra contrasta com todas. Branco com um
+   contorno escuro desenhado POR BAIXO (`paint-order: stroke`) resolve nos dois temas sem
+   precisar saber a cor da fatia; sem o `paint-order` o contorno come o miolo da letra. */
+.valor-na-fatia {
+  fill: #fff;
+  stroke: rgb(0 0 0 / 45%);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
   font-size: 10px;
   font-weight: 700;
   font-family: var(--font);

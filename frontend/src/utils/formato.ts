@@ -49,7 +49,7 @@ export function ehColunaDeAno(nomeDaColuna: string | null | undefined): boolean 
 export function formata(
   v: unknown,
   tipo: TipoDeValor,
-  opts?: { semAgrupamento?: boolean },
+  opts?: { semAgrupamento?: boolean; casas?: number | null },
 ): Formatado {
   if (v === null || v === undefined) return { texto: '—', numerico: false, vazio: true };
 
@@ -79,6 +79,13 @@ export function formata(
 
   if (tipo === 'number') {
     const n = v as number;
+    // **As casas do `format` da medida vencem o genérico (19/11/2026).** `PRAZO MÉDIO
+    // (DIAS)` é `format: "0.0"`: o Power BI escreve `5,3`, e o genérico daqui escrevia
+    // `5,25`. Não é só estética — o caractere a mais fazia o rótulo não caber na fatia
+    // do gráfico e o número era descartado (ver `casasDoNumero`, no back).
+    if (opts?.casas !== undefined && opts.casas !== null) {
+      return { texto: comCasas(opts.casas).format(n), numerico: true, vazio: false };
+    }
     return {
       texto: Number.isInteger(n) ? nfInt.format(n) : nf.format(n),
       numerico: true,
