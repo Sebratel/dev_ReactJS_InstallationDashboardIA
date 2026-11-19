@@ -328,12 +328,16 @@ test('a rota /api/saude expõe refresh.queries[] com status e idade (Contrato A2
     // `backend/tools/refresh/test/status.test.ts`. Testá-lo aqui amarrava o contrato da
     // rota ao arranjo de grupos do dia — que é exatamente o que acabou de mudar.
     //
-    // `field-agenda` voltou ao grupo `frio` com `completa_no_snapshot: true` para atender
-    // histórico completo sem filtro na Agendamento Field.
-    const fieldAgenda = j.refresh.queries.find((q: any) => q.id === 'field-agenda');
-    assert.ok(fieldAgenda);
-    assert.equal(fieldAgenda.grupo, 'frio');
-    assert.equal(fieldAgenda.status, 'falhou');
+    // **Uma query do `frio` que NÃO entra e sai com a chave da agenda.** Este trecho já
+    // usou a `field-agenda`, e ela é justamente a que troca de grupo conforme
+    // `completa_no_snapshot` (ACHADOS #272): com a chave em `false` ela sai do refresh,
+    // não tem entrada aqui, e o contrato da ROTA — que é o assunto deste teste — falhava
+    // por causa de uma decisão de projeção. `valores-do-relato` é do `frio` nos dois
+    // estados da chave.
+    const doFrio = j.refresh.queries.find((q: any) => q.id === 'valores-do-relato');
+    assert.ok(doFrio);
+    assert.equal(doFrio.grupo, 'frio');
+    assert.equal(doFrio.status, 'falhou');
 
     // O resumo do topo (ACHADOS #160): 2 falhas seguidas no frio acendem, e continua 200.
     assert.equal(j.degradacao.degradado, true);

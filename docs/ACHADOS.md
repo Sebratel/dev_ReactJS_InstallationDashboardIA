@@ -17458,3 +17458,128 @@ Três decisões que não são óbvias, e o porquê:
 as 14 abas a 1366px: início → só a seta direita; um clique → rola 1.024px e sobra só a
 esquerda; de volta ao começo; a 2400px nenhuma seta. Console limpo, sem rolagem
 horizontal de página, contraste do ícone 5,7:1 no claro e 7:1 no escuro.
+
+## #272 — o alerta de memória era uma chave de projeção religada por engano, e custava 520 MB de pico (19/11)
+
+Veio um alerta do vigia de infra do n8n: `api` em 80% do `mem_limit` (2,4 de 3,0 GiB).
+A causa provável que ele sugeria era o cache de visual estourando o teto — e estava
+errada nos dois sentidos, o que vale registrar porque o erro é convidativo.
+
+**Primeiro: um cache que RECUSA não ocupa memória.** `CacheDeVisual.guarda` com
+`bytes > teto` chama `aoRecusar`, apaga a chave e volta (`cache-visual.ts`). A entrada de
+83,5 MB que o alerta citava nunca entrou em lugar nenhum. Ela custa CPU e clique lento —
+não RAM. Perseguir aquela linha de log teria consumido a investigação inteira no lugar
+errado.
+
+**Segundo: o "teto de 64 MB" não é o do código.** `TETO_PADRAO_MB` é 512; o que vale em
+produção é `CACHE_VISUAL_MB: '128'` do compose dividido por `API_WORKERS: 2`
+(`configuracaoDaPiscina`, `piscina-workers.ts`). 128 ÷ 2 = 64 por worker.
+
+### O que estava acontecendo de verdade
+
+`npm run probe:peso-memoria` sobre o snapshot de 17/11 deu `visao-geral` em 117,08 MB.
+O #263, em 16/11, tinha medido 46,32 MB. A spec da página não é tocada desde 15/10 — o
+que mudou foi a projeção:
+
+```
+  backend/specs/_catalog/projecao.yaml, FIELD AGENDA
+  completa_no_snapshot: false  ->  true     (commit cd63c7b, 17/11)
+```
+
+Com `true`, `queryDaCarga` para de trocar a tabela pelo grão reduzido, e **toda** página
+que toca a FIELD AGENDA passa a carregar a query completa:
+
+```
+  field-agenda-slot    40.632 linhas, 19 col ->   9,13 MB
+  field-agenda        595.854 linhas, 26 col ->  87,58 MB   (50,26 só de `relato`)
+```
+
+Medido virando só a chave, mesmo snapshot:
+
+```
+                       true        false
+  visao-geral        117,08 MB    48,20 MB
+  agendamento-field  108,63 MB    38,12 MB
+  relatorio-do-mes   101,27 MB    31,xx MB
+```
+
+Três páginas, ~70 MB cada, em datasets que moram FORA do heap e de que há até 4 vivos ao
+mesmo tempo (`TETO_CACHE_POR_WORKER` 2 × 2 workers).
+
+### Por que nenhum teste pegou
+
+`completa-no-snapshot.test.ts` cobra que a chave e o `refresh.yaml` andem juntos — e o
+commit mudou **os dois**, então passou verde. Ele garante coerência interna; **nada no
+projeto cobrava o custo de memória da chave**. Pior: três testes tinham sido ajustados
+para AFIRMAR o estado `true` (`queries-que-alimentam.test.ts` lendo a spec real,
+`diario.test.ts` com `assert.ok(queries.includes('field-agenda'))` contradizendo o
+comentário logo acima, e `servidor.test.ts` usando a `field-agenda` como exemplo de query
+do grupo `frio`). Os três prendiam o teste ao VALOR vigente em vez de ao comportamento;
+os três foram refeitos para simular os dois ramos ou usar uma query que não troca de
+grupo com a chave.
+
+E o comentário de 8 linhas logo acima da chave — que explica por que ela é `false` desde
+26/10 — não foi atualizado, e ficou mentindo por dois dias.
+
+### A régua que faltava: `probe:carga-usuarios`
+
+Havia `probe:memoria-api` (bisseção do teto, uma página por vez, processo frio: a régua
+do CONTRATO), e não havia régua do PICO — "com o contrato fixo, até onde o RSS sobe com
+200 pessoas USANDO o dash". Agora há. Cada usuário faz uma volta de trabalho de verdade:
+abre a página, abre uma segmentação, marca um valor e refiltra, pagina, pesquisa e
+ordena; na volta seguinte troca de página.
+
+**Duas armadilhas que a primeira versão dela caiu, e que valem para quem escrever a
+próxima sonda de carga.** (1) `?ordem=` espera o ÍNDICE da coluna, não o nome
+(`/^(\d{1,3}):(asc|desc)$/`); mandar o nome devolve 400, e as falhas parecem defeito da
+rota. (2) `LIMITE_API_POR_MINUTO` é **300 por IP**: 200 usuários saindo todos de
+127.0.0.1 devolveram 1.800 de 2.100 passos em HTTP 429 e um RSS que não queria dizer
+nada. A sonda passou a subir a API com `CONFIA_PROXY=1` e a mandar `X-Real-IP` por
+usuário — que é exatamente o que o nginx faz em produção (compose, `CONFIA_PROXY: '1'`;
+`ipDoPedido` lê `x-real-ip`).
+
+### O número, com 200 usuários trabalhando
+
+Mesma máquina, mesmo snapshot, só a chave mudando:
+
+```
+                     true (como estava)   false (consertado)
+  RSS pico             1.926 MB             1.406 MB      -520 MB
+  RSS mediano          1.394 MB             1.152 MB
+  latência p50        13.178 ms            7.309 ms       -45%
+  latência p95        30.412 ms           24.194 ms
+  % do mem_limit          63%                  46%
+```
+
+`1.926 + 1.024` (o filho da busca ao vivo, que desde o #255 sempre existe) `= 2.950` de
+3.072 MB: 96% do teto, com 4% de folga. É isso que o alerta estava vendo. Com a chave
+consertada a mesma conta dá 2.430 MB, 79%.
+
+A recusa de cache da `agendamento-field` (98,8 MB) sumiu junto. A da `visao-geral`
+**continua**: 104,4 MB no visual `704b7bcb68fd3e17cd30` — a tabela "INFORMAÇÕES GERAIS
+DOS PROTOCOLOS", 24 colunas × 104.068 linhas, com CLIENTE, TELEFONE, RUA e BAIRRO. Ela
+nunca cabe em 64 MB, nunca cacheia, e é a razão de `pagina` ter p50 de 19,3 s mesmo
+depois do conserto. É a próxima frente, e é de velocidade e de exposição de dado pessoal
+(regra 2), não de memória.
+
+### O custo que o conserto tem, e que precisa de decisão
+
+A chave não voltou de graça. O comentário que o commit deixou em `servidor.test.ts` dizia
+que a `field-agenda` tinha voltado ao `frio` "para atender histórico completo sem filtro
+na Agendamento Field". Com `completa_no_snapshot: false`, um pedido da Agendamento Field
+**sem período reconhecível** cai no snapshot, e lá os visuais de relato voltam
+indisponíveis (passo 3b de DECISAO-AO-VIVO.md). Com período — o caminho normal da tela —
+a página vem do SRD e tem a agenda inteira. Se o histórico completo sem filtro for
+requisito, o caminho não é religar a chave (520 MB em três páginas, para sempre): é
+servir aquele caso pelo SRD também.
+
+### Também achado, e sem conserto ainda
+
+`LIMITE_API_POR_MINUTO` é 300 por IP, e a API só enxerga o IP de cada pessoa porque o
+compose põe `CONFIA_PROXY: '1'` e o nginx manda `X-Real-IP`. Não há teste que prove que
+esse cabeçalho chega. Se ele parar de chegar, `ipDoPedido` cai no `socket.remoteAddress`
+— o IP do nginx — e **todos os usuários passam a dividir uma cota de 300/min**: com 200
+pessoas, 1,5 pedido por pessoa por minuto antes do 429. Falha fechada e plausível, que é
+a classe cara.
+
+Verde: `npm test` (2.558 back + 285 tela) e `typecheck`.

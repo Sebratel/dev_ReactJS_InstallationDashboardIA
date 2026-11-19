@@ -89,8 +89,14 @@ test('modelo sem tabela calculada: conjunto vazio, mas seguro', () => {
 });
 
 test('grão reduzido: completaNoSnapshot=true inclui field-agenda, e completaNoSnapshot=false exclui e inclui relatos-do-dia', () => {
-  const m = SemanticModel.fromSpecsDir(path.join(ROOT, 'backend', 'specs'));
-  const rTrue = queriesQueAlimentamCalculada(m);
+  // Os DOIS ramos são simulados numa cópia em memória, e nenhum lê o valor que a spec
+  // tem hoje. O ramo `true` lia — e isso prendeu este teste ao `completa_no_snapshot`
+  // vigente: quando a chave voltou para `false` (ACHADOS #272), ele falhou sem que o
+  // comportamento testado tivesse mudado. Quem cobra a spec real é
+  // `completa-no-snapshot.test.ts`; aqui o que se testa é a FUNÇÃO.
+  const mCompleta = SemanticModel.fromSpecsDir(path.join(ROOT, 'backend', 'specs'));
+  (mCompleta.graoReduzido[0] as { completaNoSnapshot: boolean }).completaNoSnapshot = true;
+  const rTrue = queriesQueAlimentamCalculada(mCompleta);
   assert.equal(rTrue.seguro, true);
   assert.equal(rTrue.queries.has('field-agenda'), true);
 
