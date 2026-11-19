@@ -258,6 +258,7 @@ export function Grafico({
           percentual={g.percentual}
           naFaceta={naFaceta}
           tipo={d.tiposDeSerie[0] ?? null}
+          casas={d.casasDasSeries?.[0] ?? null}
           marcas={marcas}
           geo={geo}
           interacao={clique}

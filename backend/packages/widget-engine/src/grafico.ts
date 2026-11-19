@@ -25,6 +25,7 @@ import { DaxEvalError, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
 import { agrupar, campoAtivo, chaveDoCampo, type Chave } from './grupos.ts';
+import { casasDoNumero } from './percentual.ts';
 import type { CampoSpec, DashboardSpec, FiltroSpec, VisualSpec } from './spec.ts';
 
 /** Papéis que agrupam. `Series` é a segunda dimensão (a legenda). */
@@ -36,6 +37,13 @@ export interface SerieDeGrafico {
   nome: string | null;
   /** `Y` é o eixo principal, `Y2` o secundário — a escala é outra. */
   papel: string;
+  /**
+   * As casas decimais que o `format` da medida pede (`"0.0"` → 1), ou `null` quando a
+   * série não é medida ou o formato não diz. A tela escreve o número com elas — sem
+   * isso o rótulo sai com até 2 casas e, numa fatia estreita, é descartado por um
+   * caractere (ver `casasDoNumero`).
+   */
+  casas: number | null;
 }
 
 export interface ChaveDeGrafico extends Chave {
@@ -105,7 +113,9 @@ export function separaPapeis(
       }
       chaves.push({ ...chaveDoCampo(campo, onde), papel: campo.role });
     } else if ((PAPEIS_DE_VALOR as readonly string[]).includes(campo.role)) {
-      series.push({ campo, serie: { nome: campo.name ?? null, papel: campo.role } });
+      // `casas` nasce nula aqui: quem conhece o catálogo é `calculaGrafico`, que tem o
+      // modelo na mão e preenche com o `format` da medida.
+      series.push({ campo, serie: { nome: campo.name ?? null, papel: campo.role, casas: null } });
     } else {
       throw new DaxEvalError(
         `${onde}: papel '${campo.role}' não é eixo nem valor de gráfico. ` +
@@ -230,7 +240,13 @@ export function calculaGrafico(
     visual: visual.id,
     tipo: visual.type,
     chaves,
-    series: series.map((s) => s.serie),
+    series: series.map(({ campo, serie }) => ({
+      ...serie,
+      casas:
+        campo.kind === 'measure'
+          ? casasDoNumero(ev.model.measure(campo.property ?? '')?.format)
+          : null,
+    })),
     pontos,
     filtros: [...filtros.map((f) => f.origem), ...having.map((h) => h.origem)],
   };

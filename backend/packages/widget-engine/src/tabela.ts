@@ -17,7 +17,7 @@ import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts
 import { DaxEvalError, isBlank, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
-import { casasDoPercentual } from './percentual.ts';
+import { casasDoNumero, casasDoPercentual } from './percentual.ts';
 import { agrupar, campoAtivo, chaveDoCampo, combinacoesDistintas, type Chave } from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
@@ -65,6 +65,12 @@ export interface ValorDeTabela {
    * um a um, não deduzido.
    */
   percentuais: (number | null)[];
+  /**
+   * As casas que o `format` da medida pede numa coluna que NÃO é porcentagem (`"0.0"` →
+   * 1), ou `null` quando não há formato — aí a tela usa o genérico dela. É o par de
+   * `percentuais` para o número comum; ver `casasDoNumero` (19/11/2026).
+   */
+  casas: (number | null)[];
   linhas: CelulaTabela[][];
   /** `origem` de cada `TableFilter` de página e de visual. */
   filtros: string[];
@@ -303,6 +309,12 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
     percentuais: campos.map((c) =>
       c.kind === 'measure' ? casasDoPercentual(ev.model.measure(c.property ?? '')?.format) : null,
     ),
+    casas: campos.map((c) => {
+      if (c.kind !== 'measure') return null;
+      const formato = ev.model.measure(c.property ?? '')?.format ?? null;
+      // Porcentagem já viaja em `percentuais`, com as casas dela — não repetir aqui.
+      return casasDoPercentual(formato) === null ? casasDoNumero(formato) : null;
+    }),
     linhas:
       visual.origem === 'nativo'
         ? ordenaNativo(linhas.filter(temAlgumNumero), campos, visual, onde)

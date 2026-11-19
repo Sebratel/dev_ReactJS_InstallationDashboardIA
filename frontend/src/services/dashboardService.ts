@@ -122,6 +122,12 @@ export interface DadosDeGrafico {
   chaves: unknown[];
   series: { nome: string | null; papel?: string }[];
   tiposDeSerie: TipoDeValor[];
+  /**
+   * As casas que o `format` da medida pede, série a série (`"0.0"` → 1), ou `null`
+   * quando não há formato. Ausente em resposta anterior a 19/11/2026 — aí vale o
+   * genérico de `formata`, de até duas casas.
+   */
+  casasDasSeries?: (number | null)[];
   tiposDeChave: TipoDeValor[];
   pontos: { categoria: Valor[]; valores: Valor[] }[];
   filtros: string[];

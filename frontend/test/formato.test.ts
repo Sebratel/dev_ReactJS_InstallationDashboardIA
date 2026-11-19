@@ -129,3 +129,20 @@ test('as casas da porcentagem vêm do formato da medida (QA D-12)', async () => 
   assert.equal(razaoComoPercentual(0.064), '6,4%');
   assert.equal(razaoComoPercentual(0.064, 0), '6%');
 });
+
+test('as casas do número comum vêm do formato da medida (19/11/2026)', () => {
+  // `PRAZO MÉDIO (DIAS)` é `format: "0.0"`. O genérico da tela escrevia `5,25` — e no
+  // gráfico de coluna agrupada esse caractere a mais fazia o rótulo não caber na fatia,
+  // deixando onze dos doze meses sem número nenhum.
+  assert.equal(formata(5.254, 'number', { casas: 1 }).texto, '5,3');
+  assert.equal(formata(2.8, 'number', { casas: 1 }).texto, '2,8');
+  // Inteiro com uma casa declarada ganha a casa: é o que o Power BI mostra.
+  assert.equal(formata(3, 'number', { casas: 1 }).texto, '3,0');
+  // `format: "0"` arredonda, com o separador de milhar de sempre.
+  assert.equal(formata(3612.7, 'number', { casas: 0 }).texto, '3.613');
+  // Sem casas declaradas, nada muda: o genérico de até duas continua valendo.
+  assert.equal(formata(5.254, 'number').texto, '5,25');
+  assert.equal(formata(5.254, 'number', { casas: null }).texto, '5,25');
+  // BLANK não vira "0,0".
+  assert.equal(formata(null, 'number', { casas: 1 }).texto, '—');
+});

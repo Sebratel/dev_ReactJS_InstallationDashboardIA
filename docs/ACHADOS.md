@@ -17356,3 +17356,53 @@ Medido antes/depois, com a fatia e o número que o guarda compara:
 | AGENDA + CAPACIDADE (pilha) | 109px | 54px | 54px — não muda | "160" pede 21px |
 
 O efeito colateral é bem-vindo: coluna agrupada deixa de sair magra sem motivo.
+
+## #270 — o número do gráfico sumia por UM caractere: o `format` da medida nunca chegava na tela (19/11)
+
+O #269 deu lugar ao número em toda forma e alargou a fatia. Mesmo assim o PRAZO MÉDIO ATÉ
+INSTALAR (RELATÓRIO DO ANO, duas séries agrupadas) abriu com **3 números em 24** — e os
+três não eram os maiores, nem os últimos, nem os de nenhuma régua do desenho:
+
+```
+aparecem:  abril 4,4   outubro 3,4   novembro 3,1
+somem:     janeiro 2,85   maio 5,25   junho 4,37   ... (os outros 21)
+```
+
+O que os três têm em comum é o COMPRIMENTO DO TEXTO: `4,4` tem 3 caracteres, `5,25` tem 4.
+E o corte de `ColunasDoGrafico` é por caractere:
+
+```
+texto.length * 10 * 0.58 + 4 <= larguraDaFatia + VAO
+   3 caracteres -> 21,4px        4 caracteres -> 27,2px
+```
+
+A fatia deste gráfico fica entre os dois. Não é o gráfico que está apertado: **é o número
+que está longo**, e está longo porque a tela o escreve errado.
+
+### A causa: `format` só viajava quando era porcentagem
+
+`PRAZO MÉDIO (DIAS)` é `format: "0.0"` no catálogo — uma casa, e é assim que o Power BI o
+mostra. Mas o `format` da medida só chegava à tela dentro de `percentual`/`casas` (QA
+D-12, #264), que é o caminho da PORCENTAGEM. Para número comum a tela caía no formatador
+genérico de `formata()`, `maximumFractionDigits: 2`: `5,25` onde o relatório diz `5,3`.
+
+Um caractere a mais. Num card, só feiura; numa fatia de ~25px, o número é DESCARTADO.
+
+### O conserto
+
+`casasDoNumero(format)` (irmão de `casasDoPercentual`): `"0.0"` → 1, `"0"` → 0, `"#,0"` →
+0, porcentagem e sem-formato → `null`. As casas passam a viajar na resposta — por série no
+gráfico (`casasDasSeries`), por coluna na tabela, no card — e `formata(v, tipo, { casas })`
+as usa. Sem formato declarado nada muda: o genérico continua valendo.
+
+Alcance no catálogo: 6 medidas `"0.0"`, 53 `"0"`, 4 `"#,0"`, 16 sem formato.
+
+**Por que todos os 24 voltam.** Não foi preciso medir a fatia: os três rótulos de 3
+caracteres que já apareciam PROVAM que ela comporta 21,4px. Com `"0.0"` respeitado, todos
+os 24 passam a ter 3 caracteres.
+
+De quebra, `LinhasDoGrafico` escrevia o valor com `inteiro()` — SEMPRE sem casa decimal. A
+mesma medida lia `5` em linha e `5,25` em coluna; agora lê `5,3` nas duas.
+
+Testes novos: `casasDoNumero` (8 casos, em `percentual.test.ts`) e as casas em `formata`
+(7 casos, em `formato.test.ts`). `npm test` 2.559 + 267, `typecheck` e `lint` verdes.

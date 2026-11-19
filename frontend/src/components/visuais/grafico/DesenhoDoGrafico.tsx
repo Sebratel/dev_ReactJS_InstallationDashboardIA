@@ -23,6 +23,8 @@ export function DesenhoDoGrafico(props: {
   percentual: boolean;
   naFaceta: boolean;
   tipo: TipoDeValor;
+  /** As casas do `format` da medida (`"0.0"` → 1), ou `null` para o genérico da tela. */
+  casas: number | null;
   marcas: readonly number[];
   geo: Geometria;
   interacao: InteracaoDoGrafico;
@@ -60,6 +62,7 @@ export function DesenhoDoGrafico(props: {
         empilha={props.empilha}
         percentual={props.percentual}
         tipo={props.tipo}
+        casas={props.casas}
         geo={geo}
         interacao={props.interacao}
         rotulos={props.rotulos}
@@ -83,6 +86,7 @@ export function DesenhoDoGrafico(props: {
         linhas={props.naFaceta ? [] : props.linhas}
         categorias={categorias}
         geo={geo}
+        casas={props.casas}
         todosOsPontos={props.rotulosDeLinha}
       />
       {props.naFaceta ? (

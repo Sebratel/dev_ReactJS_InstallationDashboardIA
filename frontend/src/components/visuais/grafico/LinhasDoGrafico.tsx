@@ -1,7 +1,7 @@
 // As séries de linha desenhadas por cima das colunas, e o rótulo do maior valor de cada
 // uma. A faceta (linhas num painel próprio, embaixo) é `FacetaDeLinha.tsx`.
 
-import { inteiro } from '../../../utils/formato.ts';
+import { formata, inteiro } from '../../../utils/formato.ts';
 import { caminhoDaSerie, maiorIndice } from '../../../utils/graficoEixo.ts';
 import type { SerieDesenhada } from './ColunasDoGrafico.tsx';
 import type { Geometria } from './geometria.ts';
@@ -10,6 +10,12 @@ export function LinhasDoGrafico(props: {
   linhas: readonly SerieDesenhada[];
   categorias: readonly { rotulo: string }[];
   geo: Geometria;
+  /**
+   * As casas que o `format` da medida pede. Sem elas o número da linha saía SEMPRE
+   * inteiro (`inteiro`) — o `PRAZO MÉDIO (DIAS)`, que é `"0.0"`, virava `5` em vez de
+   * `5,3`, e a mesma medida lia diferente em coluna e em linha (19/11/2026).
+   */
+  casas?: number | null;
   /**
    * Escrever TODOS os pontos, não só o maior de cada série.
    *
@@ -24,6 +30,10 @@ export function LinhasDoGrafico(props: {
 }) {
   const { linhas, categorias, geo } = props;
   const todos = props.todosOsPontos === true;
+  const fmt = (v: number): string =>
+    props.casas === undefined || props.casas === null
+      ? inteiro(v)
+      : formata(v, 'number', { casas: props.casas }).texto;
   return (
     <>
       {linhas.map((s) => (
@@ -43,7 +53,7 @@ export function LinhasDoGrafico(props: {
                 r={4}
                 fill={s.cor}
               >
-                <title>{`${categorias[i]?.rotulo ?? ''} · ${s.nome}: ${inteiro(v)}`}</title>
+                <title>{`${categorias[i]?.rotulo ?? ''} · ${s.nome}: ${fmt(v)}`}</title>
               </circle>
             ),
           )}
@@ -64,7 +74,7 @@ export function LinhasDoGrafico(props: {
                     textAnchor="middle"
                     pointerEvents="none"
                   >
-                    {inteiro(v)}
+                    {fmt(v)}
                   </text>
                 ),
               )}
@@ -81,7 +91,7 @@ export function LinhasDoGrafico(props: {
             y={geo.y(s.valores[iMax]!) - 9}
             textAnchor="middle"
           >
-            {inteiro(s.valores[iMax]!)}
+            {fmt(s.valores[iMax]!)}
           </text>
         );
       })}

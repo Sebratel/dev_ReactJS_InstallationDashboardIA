@@ -78,6 +78,8 @@ export function ColunasDoGrafico(props: {
   empilha: boolean;
   percentual: boolean;
   tipo: TipoDeValor;
+  /** As casas do `format` da medida; `null` deixa o genérico de `formata` decidir. */
+  casas: number | null;
   geo: Geometria;
   interacao: InteracaoDoGrafico;
   /** Onde escrever o número (decidido por `Grafico`, que reservou a margem). */
@@ -85,6 +87,8 @@ export function ColunasDoGrafico(props: {
 }) {
   const { categorias, areas, empilha, percentual, geo, interacao } = props;
   const modo = props.rotulos;
+  /** O valor como a tela o escreve: com as casas que o `format` da medida pede. */
+  const fmt = (v: number | null): string => formata(v, props.tipo, { casas: props.casas }).texto;
   const base = geo.margemTopo + geo.alturaDoPlot;
 
   /** A soma da pilha numa categoria — o divisor do modo percentual. */
@@ -129,14 +133,12 @@ export function ColunasDoGrafico(props: {
           const altura = Math.max(1, empilha ? alto : base - cima);
           topoDaCategoria = Math.min(topoDaCategoria, cima);
           const cor = unica ? corDaColunaPorValor(v, min, max) : s.cor;
-          const titulo = `${c.rotulo} · ${s.nome}: ${formata(s.valores[i] ?? null, props.tipo).texto}`;
+          const titulo = `${c.rotulo} · ${s.nome}: ${fmt(s.valores[i] ?? null)}`;
 
           // O número de CADA fatia. `percentual` escreve a porcentagem desenhada (que é o
           // valor da parte); os demais escrevem o valor cru, não o da pilha.
           if (modo === 'fatia' || modo === 'dentro') {
-            const texto = percentual
-              ? `${Math.round(v)}%`
-              : formata(s.valores[i] ?? null, props.tipo).texto;
+            const texto = percentual ? `${Math.round(v)}%` : fmt(s.valores[i] ?? null);
             const meio = esquerda + geo.larguraDaFatia / 2;
             const cabeNaLargura =
               texto.length * FONTE_DO_ROTULO * 0.58 + 4 <= geo.larguraDaFatia + VAO;
@@ -180,7 +182,7 @@ export function ColunasDoGrafico(props: {
           : areas.length === 1
             ? (areas[0]!.valores[i] ?? null)
             : null;
-        const texto = total ? formata(total, props.tipo).texto : '';
+        const texto = total ? fmt(total) : '';
         // O chip precisa de ~33px para três dígitos; o mesmo número SEM chip precisa de
         // ~21px. Num mês inteiro num cartão de meia largura a banda fica em ~25px, e a
         // regra antiga (só chip, ou nada) deixava o gráfico mudo justamente ali. O chip
