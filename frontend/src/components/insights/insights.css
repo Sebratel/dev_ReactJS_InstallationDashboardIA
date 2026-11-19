@@ -1,0 +1,391 @@
+/* As abas "Operação ao vivo" e "Previsões". Classes `ins-*` só, nenhum seletor de
+   elemento solto (ver o `@layer base` do estilo.css: regra sem camada vence utilitário).
+   Toda cor é token `--pbi-*` ou mistura dele — o `.dark` vale aqui sem regra própria. */
+
+.ins {
+  /* faixas da premiação: rampa do dourado ao bordô (mais escuro = faixa maior) */
+  --ins-f-sem: var(--pbi-neutro);
+  --ins-f1: color-mix(in srgb, var(--pbi-gold) 40%, var(--pbi-gold-light));
+  --ins-f2: color-mix(in srgb, var(--pbi-gold) 70%, var(--pbi-gold-light));
+  --ins-f3: var(--pbi-gold);
+  --ins-f4: color-mix(in srgb, var(--pbi-gold) 72%, var(--pbi-primary-dark));
+  --ins-f5: color-mix(in srgb, var(--pbi-gold) 38%, var(--pbi-primary));
+  --ins-f6: var(--pbi-primary);
+  /* letra sobre as faixas claras: escura nos dois temas, porque o fundo dela não muda */
+  --ins-tinta-fixa: color-mix(in srgb, black 84%, var(--pbi-gold));
+
+  --ins-serie: color-mix(in srgb, var(--pbi-primary) 88%, var(--pbi-superficie));
+  --ins-ouro-escuro: color-mix(in srgb, var(--pbi-gold) 80%, var(--pbi-ink));
+  --ins-faixa-ouro: color-mix(in srgb, var(--pbi-gold) 28%, var(--pbi-superficie));
+  --ins-faixa-neutra: color-mix(in srgb, var(--pbi-neutro) 45%, var(--pbi-superficie));
+  --ins-projecao: color-mix(in srgb, var(--pbi-primary) 16%, var(--pbi-superficie));
+  --ins-concluido: color-mix(in srgb, var(--pbi-ink) 58%, var(--pbi-superficie));
+  --ins-cursor: color-mix(in srgb, var(--pbi-primary) 6%, transparent);
+  --ins-chuva-forte: color-mix(in srgb, var(--pbi-ink) 70%, var(--pbi-superficie));
+  --ins-chuva-media: color-mix(in srgb, var(--pbi-ink) 45%, var(--pbi-superficie));
+
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------- grades */
+.ins-faixa {
+  display: grid;
+  gap: var(--gap);
+  align-items: stretch;
+}
+.ins-faixa.dupla {
+  grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+}
+.ins-faixa.meio {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.ins-faixa.terco {
+  grid-template-columns: minmax(0, 36fr) minmax(0, 64fr);
+}
+@media (max-width: 1150px) {
+  .ins-faixa.dupla,
+  .ins-faixa.meio,
+  .ins-faixa.terco {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ---------------------------------------------------------- indicadores */
+.ins-kpis {
+  display: grid;
+  gap: var(--gap);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+.ins-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 8px 12px 9px;
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-top: 3px solid var(--pbi-primary);
+  border-radius: var(--card-radius);
+  box-shadow: var(--card-shadow);
+}
+.ins-kpi.destaque {
+  border-top-color: var(--pbi-gold);
+}
+.ins-kpi-rotulo {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.ins-kpi-linha {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ins-kpi-valor {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto);
+}
+.ins-kpi-valor small {
+  font-size: 13px;
+  color: var(--muted);
+  margin-left: 2px;
+}
+.ins-delta {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.ins-delta.sobe {
+  color: var(--pbi-green-texto);
+}
+.ins-delta.desce {
+  color: var(--pbi-critico-texto);
+}
+.ins-kpi-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+}
+.ins-barrinha {
+  height: 6px;
+  margin-top: 3px;
+  display: flex;
+  overflow: hidden;
+  border-radius: 0 3px 3px 0;
+  background: var(--grade);
+}
+.ins-barrinha > i {
+  display: block;
+  height: 100%;
+}
+
+/* ---------------------------------------------------------- peças comuns */
+.ins-legenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+.ins-legenda > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.ins-legenda i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.ins-legenda i.linha {
+  width: 14px;
+  height: 2px;
+  border-radius: 0;
+}
+.ins-legenda i.tracejada {
+  width: 14px;
+  height: 0;
+  border-top: 2px dashed;
+  border-radius: 0;
+  background: transparent;
+}
+.ins-legenda i.bola {
+  border-radius: 50%;
+}
+.ins-rodape {
+  margin: 0;
+  padding-top: 5px;
+  border-top: 1px solid var(--grade);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.ins-dica {
+  padding: 7px 9px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--pbi-ink) 94%, transparent);
+  color: var(--superficie);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--card-shadow-hover);
+}
+.ins-dica b {
+  display: block;
+  margin-bottom: 3px;
+}
+.ins-dica div {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+}
+.ins-pagina {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ins-pagina [aria-pressed='true'] {
+  background: var(--pbi-sobre-primary);
+  color: var(--pbi-primary);
+}
+
+/* ---------------------------------------------------------------- chips */
+.ins-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: var(--pbi-fundo);
+  color: var(--muted);
+}
+.ins-chip i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.ins-chip.execucao {
+  background: var(--pbi-ok-bg);
+  color: var(--pbi-green-texto);
+}
+.ins-chip.aCaminho {
+  background: var(--pbi-aviso-bg);
+  color: var(--pbi-gold-600);
+}
+.ins-chip.semSinal {
+  background: transparent;
+  border: 1px dashed var(--pbi-neutro);
+}
+.ins-faixa-tag {
+  display: inline-block;
+  min-width: 26px;
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* -------------------------------------------------------------- tabelas */
+.ins-rolagem {
+  overflow: auto;
+}
+.ins-tab {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto);
+}
+.ins-tab th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px 8px;
+  background: var(--pbi-primary);
+  color: var(--pbi-sobre-primary);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-align: right;
+  white-space: nowrap;
+}
+.ins-tab td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--grade);
+  text-align: right;
+  white-space: nowrap;
+}
+.ins-tab .txt {
+  text-align: left;
+}
+.ins-tab tbody tr:hover td {
+  background: var(--linha-hover);
+}
+.ins-sub {
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.ins-critico {
+  color: var(--pbi-critico-texto);
+}
+
+/* ------------------------------------------------------------ perguntas */
+.ins-perguntas {
+  display: grid;
+  gap: 8px;
+}
+.ins-pergunta {
+  padding: 8px 10px 9px;
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--pbi-neutro);
+  border-radius: 4px;
+  background: var(--superficie);
+}
+.ins-pergunta.bom {
+  border-left-color: var(--pbi-green);
+}
+.ins-pergunta.atencao {
+  border-left-color: var(--pbi-orange);
+}
+.ins-pergunta h3 {
+  margin: 0 0 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--texto);
+}
+.ins-pergunta p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--texto);
+}
+
+/* ------------------------------------------------------- mapa de calor */
+.ins-calor {
+  display: grid;
+  grid-template-columns: 34px repeat(12, minmax(0, 1fr));
+  gap: 2px;
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
+}
+.ins-calor .c {
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+}
+.ins-calor .eixo {
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+}
+
+/* ----------------------------------------------------------------- mapa */
+.ins-mapa {
+  position: relative;
+}
+.ins-mapa .leaflet-container {
+  height: 100%;
+  width: 100%;
+  font-family: var(--font);
+  background: var(--pbi-fundo);
+  border-radius: 4px;
+}
+.ins-mapa .leaflet-tile-pane {
+  filter: grayscale(1) contrast(0.92) brightness(1.06);
+}
+.dark .ins-mapa .leaflet-tile-pane {
+  filter: grayscale(1) invert(0.9) contrast(0.9);
+}
+.ins-mapa-vazio {
+  position: absolute;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+.ins-mapa-vazio span {
+  padding: 8px 12px;
+  border: 1px solid var(--borda);
+  border-radius: 4px;
+  background: var(--superficie);
+  font-size: 12px;
+  color: var(--muted);
+}
+.ins-mapa-dica {
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ins-nota {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--pbi-gold);
+  border-radius: 4px;
+  background: var(--superficie);
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--texto);
+}

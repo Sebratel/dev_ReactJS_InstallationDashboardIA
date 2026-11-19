@@ -13,6 +13,7 @@ import type { PiscinaWorkers } from './piscina-workers.ts';
 import type { OverlayDeTabela } from './overlay-realtime.ts';
 import type { EstadoDoRedis } from './saude-do-redis.ts';
 import type { LojaDeMetas } from './loja-metas-maria.ts';
+import type { FonteDeInsights } from './insights/fonte.ts';
 import type { LojaDeIa } from './ia/loja-ia.ts';
 import type { UsoDasTelas } from './uso-das-telas.ts';
 import type { ObservadorAoVivo } from './sombra-ao-vivo.ts';
@@ -79,6 +80,11 @@ export interface ServidorOptions {
    * a tela diz que nao da para editar agora, e NUNCA finge ter gravado.
    */
   metas?: LojaDeMetas;
+  /**
+   * As abas "Operação ao vivo" e "Previsões" (`insights/fonte.ts`), lidas do Voalle direto.
+   * Ausente (sem credencial do Voalle) faz `/api/insights/*` responder 503.
+   */
+  insights?: FonteDeInsights;
   /**
    * Registro e configuração do provedor de IA (`ia/loja-ia.ts`), para leitura interpretativa
    * de visuais agregados e gestão na aba administrativa.
