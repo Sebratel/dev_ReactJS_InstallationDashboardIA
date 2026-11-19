@@ -332,6 +332,8 @@ têm restrições que não ficam evidentes somente olhando a tela.
 | Necessidade | Documento |
 | --- | --- |
 | Regras iniciais, comandos e restrições | [CLAUDE.md](CLAUDE.md) |
+| Documentação técnica consolidada (arquitetura, API, permissões, operação) | [docs/DOC-TECNICA.md](docs/DOC-TECNICA.md) |
+| Manual de uso do painel (usuário final e administrador) | [docs/MANUAL-DE-USO.md](docs/MANUAL-DE-USO.md) |
 | Estado operacional, carga e próximos passos | [docs/PLANO-CARGA.md](docs/PLANO-CARGA.md) |
 | Visão de arquitetura | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Como specs direcionam o código | [docs/SPEC-DRIVEN.md](docs/SPEC-DRIVEN.md) |
