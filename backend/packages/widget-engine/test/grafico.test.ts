@@ -79,7 +79,8 @@ test('um eixo e um valor: um ponto por categoria distinta', () => {
     { categoria: ['Bauru'], valores: [300] },
     { categoria: ['Jaú'], valores: [700] },
   ]);
-  assert.deepEqual(r.series, [{ nome: 'Soma', papel: 'Y' }]);
+  // `casas` vem do `format` da medida; estas fixtures não declaram formato, então é `null`.
+  assert.deepEqual(r.series, [{ nome: 'Soma', papel: 'Y', casas: null }]);
   assert.equal(r.tipo, 'columnChart');
 });
 
@@ -95,8 +96,8 @@ test('dois valores no mesmo eixo dão duas séries por ponto', () => {
     campo('Y', 'measure', { property: 'Itens', name: 'Itens' }),
   ]));
   assert.deepEqual(r.series, [
-    { nome: 'Soma', papel: 'Y' },
-    { nome: 'Itens', papel: 'Y' },
+    { nome: 'Soma', papel: 'Y', casas: null },
+    { nome: 'Itens', papel: 'Y', casas: null },
   ]);
   assert.deepEqual(r.pontos.map((p) => p.valores), [[300, 2], [700, 2]]);
 });

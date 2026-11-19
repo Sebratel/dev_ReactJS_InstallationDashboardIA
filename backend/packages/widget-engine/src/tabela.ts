@@ -17,7 +17,7 @@ import type { EvalScope, Evaluator } from '../../measure-engine/src/evaluator.ts
 import { DaxEvalError, isBlank, type DaxValue } from '../../measure-engine/src/value.ts';
 import { escopoComFiltros, valorDoCampo } from './card.ts';
 import { predicadoDeGrupo, separaFiltros, traduzFiltros } from './filtro.ts';
-import { casasDoPercentual } from './percentual.ts';
+import { casasDoNumero, casasDoPercentual } from './percentual.ts';
 import { agrupar, campoAtivo, chaveDoCampo, combinacoesDistintas, type Chave } from './grupos.ts';
 import type { CampoSpec, DashboardSpec, VisualSpec } from './spec.ts';
 
@@ -65,6 +65,12 @@ export interface ValorDeTabela {
    * um a um, não deduzido.
    */
   percentuais: (number | null)[];
+  /**
+   * As casas que o `format` da medida pede numa coluna que NÃO é porcentagem (`"0.0"` →
+   * 1), ou `null` quando não há formato — aí a tela usa o genérico dela. É o par de
+   * `percentuais` para o número comum; ver `casasDoNumero` (19/11/2026).
+   */
+  casas: (number | null)[];
   linhas: CelulaTabela[][];
   /** `origem` de cada `TableFilter` de página e de visual. */
   filtros: string[];
@@ -178,6 +184,36 @@ function ehChave(c: CampoSpec): boolean {
 }
 
 /**
+ * A coluna de contagem cujo nome é só um PONTO.
+ *
+ * Seis tabelas começam com ela — `COUNT('FIELD AGENDA'[Protocolo])` e irmãs, com
+ * `displayName` `"."`: HISTÓRICO DE RELATOS e HISTÓRICO DE RELATOS COMPLETOS
+ * (`agendamento-field`), os dois quadros de ponto adicional da `premiacao-instalacao`, o
+ * detalhado de FTTx (`protocolos-detalhados`) e os protocolos de 30 dias da
+ * `instalacao-reincidente`. É resíduo do Power BI: uma coluna sem rótulo que conta a
+ * própria chave da linha, e por isso vale `1` quase sempre.
+ *
+ * **Retirada em 19/11/2026, a pedido do Erick ("remover o ponto que é o contador […] e
+ * não ser mostrado para o usuário").** Sai aqui, no motor, e não na tela: a Tabela do
+ * front manda ao SERVIDOR o ÍNDICE da coluna ordenada (`ordemParaServidor`), e filtrar
+ * coluna depois do cálculo deslocaria esse índice em silêncio — a tela ordenaria por uma
+ * coluna e o servidor por outra.
+ *
+ * **O que muda no número: nada.** Nessas tabelas o `.` é o único campo calculado, então
+ * sem ele `calculaTabela` troca `agrupar` por `combinacoesDistintas` — e a enumeração das
+ * duas é a MESMA (`planeja` + `enumeraCombinacoes`, ver `grupos.ts`), na mesma ordem. O
+ * que o caminho novo deixa de montar é o escopo de cada grupo, que ninguém mais lê: é o
+ * mesmo caminho que tirou ~1 GB de heap da tabela de detalhe da `visao-geral`. Perde-se
+ * uma informação real, e só uma: quantas vezes a linha repetia.
+ *
+ * O critério é estreito de propósito — nome `.` **e** campo calculado. Uma coluna crua
+ * que por acidente se chamasse `.` continua na tela.
+ */
+function ehContadorSemNome(c: CampoSpec): boolean {
+  return c.name?.trim() === '.' && !ehChave(c);
+}
+
+/**
  * Os campos que a tela mostra.
  *
  * Campo inativo não é "não agrupa" — é **não aparece**. Ele é um nível de
@@ -185,7 +221,7 @@ function ehChave(c: CampoSpec): boolean {
  * a tela não tem. Ver ACHADOS.md #32.
  */
 export function camposAtivos(visual: VisualSpec): CampoSpec[] {
-  return (visual.fields ?? []).filter(campoAtivo);
+  return (visual.fields ?? []).filter((c) => campoAtivo(c) && !ehContadorSemNome(c));
 }
 
 /**
@@ -273,6 +309,12 @@ export function calculaTabela(dash: DashboardSpec, visual: VisualSpec, ev: Evalu
     percentuais: campos.map((c) =>
       c.kind === 'measure' ? casasDoPercentual(ev.model.measure(c.property ?? '')?.format) : null,
     ),
+    casas: campos.map((c) => {
+      if (c.kind !== 'measure') return null;
+      const formato = ev.model.measure(c.property ?? '')?.format ?? null;
+      // Porcentagem já viaja em `percentuais`, com as casas dela — não repetir aqui.
+      return casasDoPercentual(formato) === null ? casasDoNumero(formato) : null;
+    }),
     linhas:
       visual.origem === 'nativo'
         ? ordenaNativo(linhas.filter(temAlgumNumero), campos, visual, onde)

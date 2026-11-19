@@ -17186,3 +17186,223 @@ comparadas no mesmo instante.
   quem prova esse caminho é o CI, no push.
 - **`probe:*` e `bench:*`** — não são portões; são medições sob demanda, e as que
   importavam hoje (`probe:peso-memoria`) rodaram.
+
+## #269 — os gráficos ficaram mudos por uma condição só, e o eixo pulava mês que cabia (19/11)
+
+Pedido do Erick, com a razão explícita: **os gestores tiram print do gráfico e mandam no
+grupo**. Print não tem `title` de SVG. Três achados, um layout e uma limpeza.
+
+### 1. Uma condição fechava três portas, e nenhuma delas aparecia como defeito
+
+`Grafico.tsx` decidia o rótulo de valor assim:
+
+```ts
+!g.percentual && areas.length > 0 && (areas.length === 1 || g.empilha)
+```
+
+Lida de trás para frente, ela nega **três** formas inteiras:
+
+| forma | o que ficava sem número | onde dói |
+|---|---|---|
+| só linha (`areas.length === 0`) | tudo, menos o pico de cada série | PROTOCOLOS REALIZADOS/GERADOS, prazo do RELATÓRIO DO ANO |
+| coluna agrupada (`!empilha && areas>1`) | tudo | BACKLOG, instalado por mês do ANO |
+| 100% empilhado (`percentual`) | tudo | TAXAS DE PRODUTIVIDADE |
+
+Era por isso que a AGENDA + CAPACIDADE tinha número e "o relatório do ano não" — a
+primeira é empilhada, a segunda é agrupada. Ninguém tinha decidido esconder: a condição
+foi escrita para o caso que existia (série única) e os outros caíram no `else` por
+omissão. **Rótulo que não aparece não quebra nada:** a tela desenha, os testes passam, e
+só quem olha percebe. Por isso a regra saiu do componente para `utils/graficoRotulos.ts`,
+pura, com um teste por porta.
+
+Cada forma precisava de um LUGAR, não de uma permissão: chip acima da coluna (série única
+ou total da pilha), número acima de **cada fatia** na coluna agrupada — sem chip, porque
+em ~25px de fatia o chip não cabe e o texto de 10px cabe —, e número **dentro** da fatia
+no 100% empilhado, onde o total é sempre 100% e só a parte informa. Esse último não cobra
+margem do plot, e a margem é o recurso escasso da tela.
+
+### 2. "Outubro sumiu" era o eixo, não o dado
+
+`passoDoEixo(banda)` era `banda < 30 ? 3 : banda < 44 ? 2 : 1`: supõe o pior rótulo
+possível. Na MANUTENÇÃO INICIAL POR MÊS os dois gráficos estão em `span: 6` — plot de
+~740px, ~18 meses, banda de ~41px — e isso dá **passo 2: um mês sim, um mês não**. A
+coluna continua desenhada; só o nome dela não é escrito. Quem olha não lê "um rótulo a
+cada dois", lê *outubro sumiu*.
+
+A conta certa já existia seis linhas abaixo (`orcamentoDoRotulo`) e nunca tinha sido
+consultada: girado a 45°, em 41px cabem ~10 caracteres, e "outubro" tem 7. O passo passou
+a receber o maior rótulo que SERÁ desenhado (já cortado pela altura — daí
+`orcamentoPorAltura` ter saído para fora) e só cresce quando o texto de fato não cabe.
+Sem o argumento, a régua antiga continua valendo: nada que já chamava mudou.
+
+⚠️ **O que não foi descartado.** Faltou o filtro que o Erick tinha na tela, então as duas
+outras hipóteses seguem de pé e têm correções diferentes: coluna de valor `0` não é
+desenhada (`v === 0` → `null` em `ColunasDoGrafico`), e a janela de abertura termina na
+última categoria com valor ≠ 0 (`ultimaCategoriaComDado`). A segunda **não** foi mexida
+de propósito: trocar `!== 0` por `!== null` ali reintroduziria o defeito que o comentário
+do código diz ter corrigido (a última página caindo em dias futuros) se alguma série
+devolver `0` em vez de BLANK. Medir antes.
+
+### 3. A coluna chamada "." sai, e não muda número nenhum
+
+Seis tabelas abrem com uma coluna cujo `displayName` é `.` — `COUNT(…[Protocolo])`,
+resíduo do Power BI, que conta a própria chave da linha e vale `1` quase sempre.
+
+Saiu no MOTOR (`camposAtivos`), não na tela: a Tabela do front manda ao servidor o
+**índice** da coluna ordenada, e filtrar coluna depois do cálculo deslocaria esse índice
+em silêncio — a tela ordenando por uma coluna e o servidor por outra.
+
+"Vai mudar algo?" Não, e dá para provar sem o banco: nessas tabelas o `.` é o único campo
+calculado, então sem ele `calculaTabela` troca `agrupar` por `combinacoesDistintas`, e a
+enumeração das duas é a MESMA (`planeja` + `enumeraCombinacoes`). O teste novo compara os
+dois caminhos lado a lado. De quebra, o caminho novo é o que não monta escopo por grupo —
+o mesmo que tirou ~1 GB de heap da tabela de detalhe da `visao-geral`. Perde-se uma
+informação, e só uma: quantas vezes a linha repetia.
+
+A paridade não se abala: `backend/specs/paridade/*.yaml` só guarda gabarito de CARD.
+
+### 4. O branco entre os gráficos era o pool de altura
+
+Faixa de uma coluna só divide a fração de `--util` do seu tipo pelo número de faixas
+largas daquele tipo. O RELATÓRIO DO MÊS tinha QUATRO gráficos em `span: 12`: as quatro no
+piso de 273px, cada uma com a largura inteira para meia dúzia de categorias. Dois deles
+passaram a dividir uma faixa (`span: 6`) e ficaram **mais altos** com metade da largura.
+
+Junto: PROTOCOLOS REALIZADOS desceu para abaixo da matriz de previsão do tempo com
+`eager: true` — o KPI `d914bdf23072848ca977` lê os pontos dele para a sparkline
+(`kpis[].tendencia`), e `idsIniciais` não pede `tendencia`. Sem a marca, uma faixa nova
+acima empurra o visual para fora do corte e a sparkline nasce vazia, **sem teste
+vermelho**.
+
+### 5. O P/M/G saiu
+
+O controle de densidade existia para socorrer gráfico apertado. Quem aperta é o layout, e
+isso agora se resolve no `layout.yaml` e no eixo. O paginador fica — é ele que alcança o
+que não cabe.
+
+### #269, continuação — o que os prints do Erick acharam depois (19/11)
+
+Subida local da worktree para ele olhar. Três coisas apareceram, e duas são defeito antigo.
+
+**O eixo Y parava antes do maior valor.** `marcasDoEixo` fechava em `v <= teto + passo/2`:
+com teto 165 e passo 50, a última marca era 150. `Grafico.tsx` usa `Math.max(...marcas)`
+como topo da escala, então `y(165)` saía NEGATIVO — a coluna desenhada ACIMA do plot e o
+chip de valor dela fora do `<svg>`, cortado em silêncio pelo `overflow: hidden`. O
+sintoma que o Erick viu foi o contrário da causa: *"a coluna mais alta é a única sem
+número"*. E antes disso o gráfico já mentia: a barra de 165 e a de 150 terminavam quase
+na mesma altura. Valia para teto 165 (eixo em 150), 213 e 240 (em 200) — três dos
+gráficos que ele tinha aberto. O teste novo varre 2.000 tetos.
+
+**A banda mínima fixa virou lei quando o P/M/G saiu.** Os 40px eram o padrão de uma régua
+de três (24/40/64) que o botão deixava escolher. Sem o botão, PROTOCOLOS GERADOS num
+cartão de meia largura passou a mostrar "1–18 de 30": doze dias do mês fora da tela, sem
+saída. 40px é o orçamento de ~10 caracteres girados, e um eixo de DIA tem 1 ou 2. Agora a
+banda sai do rótulo (`bandaMinimaPara`), entre 18 e 40px.
+
+⚠️ **O teto tinha de ser 40, não 64.** A primeira versão deixava a banda crescer até 64px
+e teria PIORADO o caso que a mudança não queria tocar: eixo de nome (cidade, equipe) tem
+rótulo longo, pediria mais largura por categoria e caberia MENOS por página do que cabia
+antes. Rótulo longo não se resolve com largura — `orcamentoDoRotulo` corta e `passoDoEixo`
+pula. Teto = o valor fixo de antes é o que garante "nunca pior que estava".
+
+**Medição do resultado, contra a API local** (`--sem-login`, 14 gráficos de 7 telas, nas
+larguras que o `layout.yaml` dá hoje): nenhum pagina. O maior caso é a
+`agendamento-field` com 88 categorias num `span: 12` que comporta ~70 — e esse é o eixo de
+data em que paginar é o certo. **Não houve span para corrigir**: o que estourava era a
+banda, não o tamanho do cartão. Ressalva honesta: a medição usou a largura de grade
+estimada (~1640px) e a abertura sem filtro do usuário.
+
+**O cabeçalho numérico nunca esteve alinhado.** `th.num { text-align: right }` tem
+especificidade (0,1,1) e perdia para `table.dados th { text-align: left }`, que é (0,1,2).
+A CÉLULA ia para a direita (nada concorre com `td.num`) e o CABEÇALHO ficava à esquerda —
+cada número encostado no título da coluna SEGUINTE. Na PROBABILIDADE DE CHUVA, com dez
+colunas de data, a tabela inteira parecia deslocada meia coluna. Era o M-3 do plano
+("análise detalhada está muito feio, as colunas desalinhadas"), e a regra estava lá desde
+sempre sem nunca valer para `th`: **CSS não avisa quando uma declaração perde.**
+
+**Nota de operação:** o P/M/G que apareceu num print já não existia no código — era cache
+do navegador sobre uma subida `--sem-build`. Ao mostrar mudança de front numa subida
+local, ou se força o build, ou se pede `Ctrl+Shift+R`.
+
+### #269, parte 3 — o teto de largura estava no grupo, e por isso a coluna agrupada ficou sem número (19/11)
+
+Print do RELATÓRIO DO ANO: INSTALADOS POR MÊS (duas séries, 2025 × 2026, largura cheia)
+sem um número sequer, e o PRAZO MÉDIO ao lado mostrando só três.
+
+`LARGURA_MAXIMA = 54` — o `maxBarSize` do COM — era aplicado à MARCA inteira:
+
+```ts
+const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda * 0.7));
+larguraDaFatia = (larguraDaMarca - VAO * (nAreas - 1)) / nAreas;
+```
+
+Com duas séries, o grupo todo cabia em 54px e cada coluna ficava com **26**. A categoria
+dispunha de ~200px: **146 deles vazios**, com as colunas espremidas no meio. E o número
+delas ("3.613" pede 33px a 10px de fonte) era descartado pelo guarda de largura — o
+gráfico ficava mudo com espaço sobrando ao lado, que é a pior combinação possível para
+quem tira print.
+
+`maxBarSize` no Power BI é o tamanho de UMA barra; o grupo é a soma delas. O teto passou
+a ser `LARGURA_MAXIMA * barras + VAO * (barras - 1)`, com `barras = 1` na PILHA — lá as
+fatias se sobrepõem na mesma coluna, e o teto continua sendo o da marca.
+
+Medido antes/depois, com a fatia e o número que o guarda compara:
+
+| gráfico | banda | fatia antes | fatia depois | "texto" |
+|---|---|---|---|---|
+| INSTALADOS POR MÊS (span 12, 2 séries) | 200px | 26px (descarta) | 54px (mostra) | "3.613" pede 33px |
+| BACKLOG (span 6, 2 séries) | 193px | 26px (descarta) | 54px (mostra) | "1.234" pede 33px |
+| PRAZO MÉDIO (span 6, 2 séries) | 97px | 26px (no limite) | 33px (mostra) | "2,77" pede 27px |
+| AGENDA + CAPACIDADE (pilha) | 109px | 54px | 54px — não muda | "160" pede 21px |
+
+O efeito colateral é bem-vindo: coluna agrupada deixa de sair magra sem motivo.
+
+## #270 — o número do gráfico sumia por UM caractere: o `format` da medida nunca chegava na tela (19/11)
+
+O #269 deu lugar ao número em toda forma e alargou a fatia. Mesmo assim o PRAZO MÉDIO ATÉ
+INSTALAR (RELATÓRIO DO ANO, duas séries agrupadas) abriu com **3 números em 24** — e os
+três não eram os maiores, nem os últimos, nem os de nenhuma régua do desenho:
+
+```
+aparecem:  abril 4,4   outubro 3,4   novembro 3,1
+somem:     janeiro 2,85   maio 5,25   junho 4,37   ... (os outros 21)
+```
+
+O que os três têm em comum é o COMPRIMENTO DO TEXTO: `4,4` tem 3 caracteres, `5,25` tem 4.
+E o corte de `ColunasDoGrafico` é por caractere:
+
+```
+texto.length * 10 * 0.58 + 4 <= larguraDaFatia + VAO
+   3 caracteres -> 21,4px        4 caracteres -> 27,2px
+```
+
+A fatia deste gráfico fica entre os dois. Não é o gráfico que está apertado: **é o número
+que está longo**, e está longo porque a tela o escreve errado.
+
+### A causa: `format` só viajava quando era porcentagem
+
+`PRAZO MÉDIO (DIAS)` é `format: "0.0"` no catálogo — uma casa, e é assim que o Power BI o
+mostra. Mas o `format` da medida só chegava à tela dentro de `percentual`/`casas` (QA
+D-12, #264), que é o caminho da PORCENTAGEM. Para número comum a tela caía no formatador
+genérico de `formata()`, `maximumFractionDigits: 2`: `5,25` onde o relatório diz `5,3`.
+
+Um caractere a mais. Num card, só feiura; numa fatia de ~25px, o número é DESCARTADO.
+
+### O conserto
+
+`casasDoNumero(format)` (irmão de `casasDoPercentual`): `"0.0"` → 1, `"0"` → 0, `"#,0"` →
+0, porcentagem e sem-formato → `null`. As casas passam a viajar na resposta — por série no
+gráfico (`casasDasSeries`), por coluna na tabela, no card — e `formata(v, tipo, { casas })`
+as usa. Sem formato declarado nada muda: o genérico continua valendo.
+
+Alcance no catálogo: 6 medidas `"0.0"`, 53 `"0"`, 4 `"#,0"`, 16 sem formato.
+
+**Por que todos os 24 voltam.** Não foi preciso medir a fatia: os três rótulos de 3
+caracteres que já apareciam PROVAM que ela comporta 21,4px. Com `"0.0"` respeitado, todos
+os 24 passam a ter 3 caracteres.
+
+De quebra, `LinhasDoGrafico` escrevia o valor com `inteiro()` — SEMPRE sem casa decimal. A
+mesma medida lia `5` em linha e `5,25` em coluna; agora lê `5,3` nas duas.
+
+Testes novos: `casasDoNumero` (8 casos, em `percentual.test.ts`) e as casas em `formata`
+(7 casos, em `formato.test.ts`). `npm test` 2.559 + 267, `typecheck` e `lint` verdes.

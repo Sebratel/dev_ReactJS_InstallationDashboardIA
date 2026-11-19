@@ -142,7 +142,9 @@ test('cada célula diz se é chave ou calculada', () => {
  * inteira (agendamento-field, 14/10/2026).
  */
 test('só coluna-chave tem origem; agregação e medida saem null', () => {
-  const campos = [agregacao('ID', 'count', '.'), coluna('CIDADE'), medida('Total')];
+  // O nome aqui NÃO pode ser `.`: desde 19/11/2026 a coluna de contagem chamada `.` é
+  // retirada da tabela (`ehContadorSemNome`), e o teste passaria a ter duas colunas.
+  const campos = [agregacao('ID', 'count', 'QTD'), coluna('CIDADE'), medida('Total')];
   const v = visual(campos);
   const r = calculaTabela(dashboard([v]), v, montar());
   assert.deepEqual(r.origemDasColunas, [
@@ -164,6 +166,47 @@ test('duas colunas com o mesmo rótulo não se confundem', () => {
     ['Bauru', 'Reparo'],
     ['Jaú', 'Instalação'],
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// A coluna de contagem chamada "." (19/11/2026)
+// ---------------------------------------------------------------------------
+
+test('a contagem chamada "." não vira coluna da tabela', () => {
+  const v = visual([agregacao('ID', 'count', '.'), coluna('CIDADE'), coluna('TIPO')]);
+  const r = calculaTabela(dashboard([v]), v, montar());
+  assert.deepEqual(r.colunas, ['CIDADE', 'TIPO']);
+  assert.deepEqual(r.percentuais, [null, null]);
+  assert.deepEqual(r.origemDasColunas, [
+    { tabela: 'OS', coluna: 'CIDADE', nivel: null },
+    { tabela: 'OS', coluna: 'TIPO', nivel: null },
+  ]);
+});
+
+test('tirar o "." NÃO muda as linhas, mesmo trocando agrupar por combinacoesDistintas', () => {
+  // É a pergunta que o Erick fez ("avaliar se vai mudar algo"). Sem o `.` a tabela fica
+  // só de chaves e `calculaTabela` passa pelo caminho de `combinacoesDistintas`; com uma
+  // segunda medida ela continua no caminho de `agrupar`. Os dois têm de dar as MESMAS
+  // combinações, na mesma ordem — é o que `grupos.ts` afirma, e aqui fica provado.
+  const semPonto = valores([agregacao('ID', 'count', '.'), coluna('CIDADE'), coluna('TIPO')]);
+  const comOutraMedida = valores([coluna('CIDADE'), coluna('TIPO'), medida('Total')]);
+  assert.deepEqual(
+    semPonto,
+    comOutraMedida.map((l) => l.slice(0, 2)),
+  );
+  assert.deepEqual(semPonto, [
+    ['Bauru', 'Instalação'],
+    ['Bauru', 'Reparo'],
+    ['Jaú', 'Instalação'],
+  ]);
+});
+
+test('uma coluna CRUA chamada "." continua na tela — o critério é ser contagem', () => {
+  // `coluna('CIDADE', '.')` é chave, não cálculo: tirá-la mudaria o agrupamento, que é
+  // justamente o que esta limpeza não pode fazer.
+  const v = visual([coluna('CIDADE', '.'), coluna('TIPO')]);
+  const r = calculaTabela(dashboard([v]), v, montar());
+  assert.deepEqual(r.colunas, ['.', 'TIPO']);
 });
 
 // ---------------------------------------------------------------------------

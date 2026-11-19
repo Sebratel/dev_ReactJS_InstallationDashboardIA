@@ -24,3 +24,26 @@ export function casasDoPercentual(format: string | null | undefined): number | n
   const decimais = /\.(0+)/.exec(primeira);
   return decimais ? decimais[1]!.length : 0;
 }
+
+/**
+ * As casas decimais de um formato que NÃO é porcentagem, ou `null` quando não há
+ * formato declarado (aí vale o genérico da tela) ou quando o formato é porcentagem —
+ * essa é a conta de `casasDoPercentual`.
+ *
+ * **Por que a tela precisa disto (19/11/2026).** `formata()` usa um formatador genérico
+ * com até 2 casas, e o `format` da medida só chegava à tela quando era porcentagem. O
+ * `PRAZO MÉDIO (DIAS)` do RELATÓRIO DO ANO é `format: "0.0"` e saía `5,25` em vez de
+ * `5,3`: um caractere a mais. No gráfico de coluna agrupada esse caractere é a diferença
+ * entre caber e não caber na fatia (`ColunasDoGrafico`), e o número era DESCARTADO —
+ * doze meses mudos, menos os três que por acaso tinham uma casa só.
+ *
+ *   `"0.0"` → 1     `"0.00"` → 2     `"0"` → 0     `"#,0"` → 0
+ *   `null` → null   `"0.0%"` → null (é porcentagem)
+ */
+export function casasDoNumero(format: string | null | undefined): number | null {
+  const primeira = (format ?? '').split(';')[0]?.trim() ?? '';
+  // Sem formato, ou um formato que não desenha dígito (data, texto): a tela decide.
+  if (!primeira || primeira.includes('%') || !/[0#]/.test(primeira)) return null;
+  const decimais = /\.(0+)/.exec(primeira);
+  return decimais ? decimais[1]!.length : 0;
+}

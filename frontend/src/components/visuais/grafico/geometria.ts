@@ -6,8 +6,21 @@ export const FACETA = 96;
 // `base` de 64 e nao 46: a margem de baixo e o teto do rotulo girado, e com 46 ele
 // cabia em 8 caracteres. Numa caixa de 460px sobra espaco, e o plot fica com 382.
 export const MARGEM = { topo: 14, direita: 8, base: 64, esquerda: 54 };
-/** A coluna mais larga: 54px, o `maxBarSize` do COM. Até 13/10/2026 eram 24px, e um
- *  gráfico de 6 categorias desenhava colunas de 11px num vão de 210. */
+/**
+ * A coluna mais larga: 54px, o `maxBarSize` do COM. Até 13/10/2026 eram 24px, e um
+ * gráfico de 6 categorias desenhava colunas de 11px num vão de 210.
+ *
+ * **É por BARRA, não por grupo (19/11/2026).** O teto era aplicado à marca inteira: com
+ * duas séries agrupadas, o grupo todo cabia em 54px e sobrava **26px por coluna** — num
+ * INSTALADOS POR MÊS de largura cheia, onde cada categoria dispõe de ~200px e 146 deles
+ * ficavam vazios. Duas consequências, e a segunda é a que o Erick viu: as colunas saíam
+ * magras sem motivo, e o número delas ("3.613" pede 33px) era DESCARTADO por não caber
+ * na fatia — o gráfico ficava sem número nenhum enquanto o espaço sobrava ao lado.
+ * `maxBarSize` no Power BI é o tamanho de uma barra; o grupo é a soma delas.
+ *
+ * Na PILHA não há soma: as fatias se empilham na mesma coluna, então ali o teto continua
+ * valendo para a marca inteira.
+ */
 export const LARGURA_MAXIMA = 54;
 /** O vão de 2px na cor do fundo é o que separa as fatias — nunca uma borda. */
 export const VAO = 2;
@@ -58,7 +71,14 @@ export function geometriaDoGrafico(p: {
   const marcas = marcasDoEixo(p.teto);
   const topo = Math.max(...marcas, 1);
   // 70% da categoria: o vão entre vizinhas fica proporcional, como no COM.
-  const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda * 0.7));
+  //
+  // O TETO É POR BARRA. Numa marca AGRUPADA o grupo pode chegar a `LARGURA_MAXIMA` vezes
+  // o número de séries, mais os vãos entre elas — senão duas séries dividem os mesmos
+  // 54px e saem com 26 cada, num vão de 200 (ver `LARGURA_MAXIMA`). Na PILHA as fatias se
+  // sobrepõem na mesma coluna, então lá o teto é o da marca inteira.
+  const barras = p.empilha ? 1 : Math.max(1, p.nAreas);
+  const tetoDaMarca = LARGURA_MAXIMA * barras + VAO * (barras - 1);
+  const larguraDaMarca = Math.min(tetoDaMarca, Math.max(6, banda * 0.7));
   return {
     marcas,
     geo: {

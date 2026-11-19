@@ -72,7 +72,13 @@ export function VisualGridSection({
               {faixa.titulo ? <TituloSecao>{faixa.titulo}</TituloSecao> : null}
               <div className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
                 {faixa.colunas.map((col) => {
-                  const visual = porId.get(col.visual);
+                  const achado = porId.get(col.visual);
+                  // `col.titulo` renomeia o cartão sem tocar no spec GERADO (ver
+                  // `ColunaDeFaixa`). Aplicado aqui, na borda: `tituloDoVisual` lê
+                  // `visual.titulo` primeiro, e cada desenho (tabela, matriz, gráfico)
+                  // monta o próprio `Cartao` por dentro — cobrir os três lá embaixo
+                  // seriam três lugares para esquecer um.
+                  const visual = achado && col.titulo ? { ...achado, titulo: col.titulo } : achado;
                   return (
                     <div key={col.visual} style={{ gridColumn: `span ${col.span}` }}>
                       {visual ? (
@@ -89,6 +95,7 @@ export function VisualGridSection({
                         <VisualNaDobra
                           pagina={pagina}
                           id={col.visual}
+                          titulo={col.titulo}
                           altura={faixa.altura}
                           filtros={filtros}
                           clicados={clicados}

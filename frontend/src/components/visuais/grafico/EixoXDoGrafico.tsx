@@ -2,7 +2,12 @@
 // gira com série densa), girados a 45° quando não. Quantos aparecem e com quantos
 // caracteres é conta de `utils/graficoEixo.ts`; aqui é só o desenho.
 
-import { orcamentoDoRotulo, passoDoEixo, rotuloDoEixo } from '../../../utils/graficoEixo.ts';
+import {
+  orcamentoDoRotulo,
+  orcamentoPorAltura,
+  passoDoEixo,
+  rotuloDoEixo,
+} from '../../../utils/graficoEixo.ts';
 import type { Geometria } from './geometria.ts';
 
 export function EixoXDoGrafico(props: {
@@ -15,10 +20,16 @@ export function EixoXDoGrafico(props: {
   sob: number | null;
 }) {
   const { categorias, partes, geo, cabemRotulos, sob } = props;
-  const passo = passoDoEixo(geo.banda);
-  const orcamento = orcamentoDoRotulo(geo.banda, passo, geo.base);
   // 11px em negrito dão ~6,4px por caractere; 8px de respiro entre vizinhos.
   const inteiros = categorias.map((c, i) => rotuloDoEixo(partes[i] ?? [], c.rotulo, 999));
+  // O passo vem do rótulo que SERÁ desenhado — o maior, já cortado pela altura (19/11/2026,
+  // "os meses fixos sem passar o mouse"). Antes vinha só da banda e pulava mês que cabia.
+  const maiorDesenhado = Math.min(
+    inteiros.reduce((maior, t) => Math.max(maior, t.length), 1),
+    Math.max(4, orcamentoPorAltura(geo.base)),
+  );
+  const passo = passoDoEixo(geo.banda, maiorDesenhado);
+  const orcamento = orcamentoDoRotulo(geo.banda, passo, geo.base);
   const retos = inteiros.every((t) => t.length * 6.4 + 8 <= geo.banda);
   return (
     <>

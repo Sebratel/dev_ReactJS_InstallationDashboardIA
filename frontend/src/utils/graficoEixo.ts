@@ -49,9 +49,82 @@ export function rotuloDoEixo(partes: readonly string[], rotulo: string, orcament
   return texto.length > orcamento ? texto.slice(0, orcamento - 1) + '…' : texto;
 }
 
-/** De quantas em quantas categorias o eixo desenha um rótulo — a densidade P chega perto de 64 por página. */
-export function passoDoEixo(banda: number): number {
-  return banda < 30 ? 3 : banda < 44 ? 2 : 1;
+/**
+ * De quantas em quantas categorias o eixo desenha um rótulo.
+ *
+ * **Sem `caracteres`, é a régua antiga: só a banda.** `banda < 30 ? 3 : banda < 44 ? 2 : 1`
+ * supõe o pior rótulo possível e por isso pula categoria mesmo quando o texto caberia de
+ * sobra. Medido em 19/11/2026 na MANUTENÇÃO INICIAL POR MÊS: os dois gráficos estão em
+ * `span: 6`, o plot fica com ~740px e ~18 meses dão banda de ~41px — **passo 2, um mês
+ * sim e um mês não**. Quem olha não vê "um rótulo a cada dois": vê *outubro sumiu*,
+ * porque a coluna continua desenhada e só o nome dela não é escrito. Era o pedido
+ * "colocar os meses fixos sem ter que passar o mouse", e é a explicação mais provável do
+ * "outubro não está mostrando no gráfico".
+ *
+ * **Com `caracteres`, a régua passa a ser o rótulo de verdade.** Girado a 45°, um rótulo
+ * desenhado a cada `passo` dispõe da diagonal de `banda * passo` — a MESMA conta de
+ * `orcamentoDoRotulo` logo abaixo, que existia e nunca foi consultada aqui. Com banda de
+ * 41px cabem ~10 caracteres e "outubro" tem 7: passo 1. O passo só cresce quando o texto
+ * REALMENTE não cabe, e nunca passa de 3 — acima disso o eixo deixa de localizar.
+ *
+ * @param caracteres o comprimento do maior rótulo que será DESENHADO, já cortado pela
+ *   altura (`orcamentoPorAltura`). É esse texto que ocupa a diagonal; usar o rótulo
+ *   inteiro que o `title` guarda faria o passo crescer por um texto que nunca aparece.
+ */
+export function passoDoEixo(banda: number, caracteres?: number): number {
+  if (caracteres === undefined) return banda < 30 ? 3 : banda < 44 ? 2 : 1;
+  const alvo = Math.max(1, caracteres);
+  for (const passo of [1, 2]) {
+    if (Math.floor((banda * passo) / COS_45 / PX_POR_CARACTERE) >= alvo) return passo;
+  }
+  return 3;
+}
+
+/**
+ * Quantos caracteres cabem abaixo do eixo num rótulo girado — a metade de
+ * `orcamentoDoRotulo` que NÃO depende do passo.
+ *
+ * Separada porque `passoDoEixo` precisa dela antes de haver um passo: o texto que disputa
+ * a diagonal é o já cortado pela altura.
+ */
+export function orcamentoPorAltura(margemDeBaixo: number): number {
+  return Math.floor((margemDeBaixo - 22) / (PX_POR_CARACTERE * COS_45));
+}
+
+/** Nem com rótulo de um caractere a coluna desce disto: abaixo a marca vira risco. */
+const PISO_DA_BANDA = 18;
+/**
+ * **40, que é exatamente o valor fixo de antes** — o orçamento de ~10 caracteres girados.
+ *
+ * O teto não pode passar disso, senão a mudança PIORARIA o caso que ela não quer tocar:
+ * eixo de nome (cidade, equipe, técnico) tem rótulo longo, pediria 60px ou mais por
+ * categoria e caberia MENOS por página do que cabia com o 40 fixo. Rótulo longo não se
+ * resolve com largura — `orcamentoDoRotulo` corta, e `passoDoEixo` pula —, então acima de
+ * 10 caracteres a banda para de crescer e deixa o eixo fazer o trabalho dele.
+ */
+const TETO_DA_BANDA = 40;
+
+/**
+ * Largura mínima por categoria — o que decide QUANTAS cabem numa página do gráfico.
+ *
+ * **Era um número fixo, e isso paginava cedo demais.** Até 19/11/2026 eram três valores
+ * (24/40/64) escolhidos à mão no botão P/M/G de cada gráfico, com 40 de padrão. O botão
+ * saiu a pedido do Erick, e aí o 40 virou lei: PROTOCOLOS GERADOS, num cartão de meia
+ * largura (~740px de plot), passou a mostrar "1–18 de 30" — doze dias do mês fora da
+ * tela, sem nenhuma saída. Foi o "em alguns gráficos o número do dia passa e não
+ * aparece".
+ *
+ * 40px era o orçamento de um rótulo de ~10 caracteres ("26/08" com folga). Um eixo de DIA
+ * tem rótulos de 1 a 2 caracteres e não precisa de nada perto disso. A conta agora é a
+ * mesma do resto do eixo — girado a 45°, cada caractere ocupa `5,6 × cos 45°` —, então a
+ * banda acompanha o rótulo de verdade: ~18px para dias (41 cabem num cartão de meia
+ * largura), ~46px para uma data inteira (16 cabem).
+ *
+ * @param caracteres o comprimento do maior rótulo que o eixo vai desenhar.
+ */
+export function bandaMinimaPara(caracteres: number): number {
+  const porRotulo = Math.max(1, caracteres) * PX_POR_CARACTERE * COS_45 + 6;
+  return Math.max(PISO_DA_BANDA, Math.min(TETO_DA_BANDA, porRotulo));
 }
 
 /**
@@ -71,8 +144,7 @@ export function passoDoEixo(banda: number): number {
  */
 export function orcamentoDoRotulo(banda: number, passo: number, margemDeBaixo: number): number {
   const porLargura = Math.floor((banda * passo) / COS_45 / PX_POR_CARACTERE);
-  const porAltura = Math.floor((margemDeBaixo - 22) / (PX_POR_CARACTERE * COS_45));
-  return Math.max(4, Math.min(porLargura, porAltura));
+  return Math.max(4, Math.min(porLargura, orcamentoPorAltura(margemDeBaixo)));
 }
 
 /** O `d` de um `<path>` de série: um traço por trecho contínuo — o nulo interrompe a linha. */

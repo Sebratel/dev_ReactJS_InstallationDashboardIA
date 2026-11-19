@@ -88,7 +88,11 @@ export function KpiCard({
 
   if (!d) return null;
 
-  const f = formata(d.valor, d.tipoDoValor ?? null);
+  const f = formata(d.valor, d.tipoDoValor ?? null, {
+    // `casas` sem `percentual` são as do número comum; com ele, quem escreve é
+    // `razaoComoPercentual` logo abaixo.
+    casas: d.percentual ? null : (d.casas ?? null),
+  });
   const nomeKpi = (d.nome ?? '(sem rótulo)').toUpperCase();
   const origem =
     d.origem?.measure ??
