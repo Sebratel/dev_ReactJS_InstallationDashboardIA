@@ -16,9 +16,26 @@ const fs = require('fs');
 const path = require('path');
 
 const PASTA = __dirname;
-const SKILL = process.env.SKILL_DOCS
-  || path.join(process.env.USERPROFILE || process.env.HOME || '', '.claude', 'plugins', 'cache',
-    'sebratel-plugins-doc', 'sebratel-docs', 'skills', 'padroes-documentacao');
+
+/** A skill instalada pelo plugin, ou a do marketplace clonado; `SKILL_DOCS` vence as duas. */
+function achaSkill() {
+  if (process.env.SKILL_DOCS) return process.env.SKILL_DOCS;
+  const casa = process.env.USERPROFILE || process.env.HOME || '';
+  const cache = path.join(casa, '.claude', 'plugins', 'cache', 'sebratel-plugins-doc', 'sebratel-docs');
+  if (fs.existsSync(cache)) {
+    // A pasta da versão entra no caminho: `.../sebratel-docs/0.2.0/skills/padroes-documentacao`.
+    for (const v of fs.readdirSync(cache).filter((n) => /^\d/.test(n)).sort().reverse()) {
+      const alvo = path.join(cache, v, 'skills', 'padroes-documentacao');
+      if (fs.existsSync(alvo)) return alvo;
+    }
+  }
+  const mercado = path.join(casa, '.claude', 'plugins', 'marketplaces', 'sebratel-plugins-doc',
+    'plugins', 'sebratel-docs', 'skills', 'padroes-documentacao');
+  if (fs.existsSync(mercado)) return mercado;
+  throw new Error('skill padroes-documentacao não encontrada: instale o plugin sebratel-docs ou informe SKILL_DOCS');
+}
+
+const SKILL = achaSkill();
 const S = require(path.join(SKILL, 'scripts', 'slides_sebratel.js'));
 
 // ------------------------------------------------------------------ leitura dos .md
