@@ -17323,3 +17323,36 @@ sempre sem nunca valer para `th`: **CSS não avisa quando uma declaração perde
 **Nota de operação:** o P/M/G que apareceu num print já não existia no código — era cache
 do navegador sobre uma subida `--sem-build`. Ao mostrar mudança de front numa subida
 local, ou se força o build, ou se pede `Ctrl+Shift+R`.
+
+### #269, parte 3 — o teto de largura estava no grupo, e por isso a coluna agrupada ficou sem número (19/11)
+
+Print do RELATÓRIO DO ANO: INSTALADOS POR MÊS (duas séries, 2025 × 2026, largura cheia)
+sem um número sequer, e o PRAZO MÉDIO ao lado mostrando só três.
+
+`LARGURA_MAXIMA = 54` — o `maxBarSize` do COM — era aplicado à MARCA inteira:
+
+```ts
+const larguraDaMarca = Math.min(LARGURA_MAXIMA, Math.max(6, banda * 0.7));
+larguraDaFatia = (larguraDaMarca - VAO * (nAreas - 1)) / nAreas;
+```
+
+Com duas séries, o grupo todo cabia em 54px e cada coluna ficava com **26**. A categoria
+dispunha de ~200px: **146 deles vazios**, com as colunas espremidas no meio. E o número
+delas ("3.613" pede 33px a 10px de fonte) era descartado pelo guarda de largura — o
+gráfico ficava mudo com espaço sobrando ao lado, que é a pior combinação possível para
+quem tira print.
+
+`maxBarSize` no Power BI é o tamanho de UMA barra; o grupo é a soma delas. O teto passou
+a ser `LARGURA_MAXIMA * barras + VAO * (barras - 1)`, com `barras = 1` na PILHA — lá as
+fatias se sobrepõem na mesma coluna, e o teto continua sendo o da marca.
+
+Medido antes/depois, com a fatia e o número que o guarda compara:
+
+| gráfico | banda | fatia antes | fatia depois | "texto" |
+|---|---|---|---|---|
+| INSTALADOS POR MÊS (span 12, 2 séries) | 200px | 26px (descarta) | 54px (mostra) | "3.613" pede 33px |
+| BACKLOG (span 6, 2 séries) | 193px | 26px (descarta) | 54px (mostra) | "1.234" pede 33px |
+| PRAZO MÉDIO (span 6, 2 séries) | 97px | 26px (no limite) | 33px (mostra) | "2,77" pede 27px |
+| AGENDA + CAPACIDADE (pilha) | 109px | 54px | 54px — não muda | "160" pede 21px |
+
+O efeito colateral é bem-vindo: coluna agrupada deixa de sair magra sem motivo.
