@@ -5,12 +5,14 @@
 // Ladrilhos do OpenStreetMap, sem chave (a CSP libera só `tile.openstreetmap.org`), em
 // tons de cinza para os pontos serem a única cor do mapa.
 //
-// Clicar num técnico na tabela ao lado (`focado`) voa até o ponto dele, abre a etiqueta e
-// desenha um anel bordô em volta. Quem não deu sinal na última hora não tem ponto: aí o
-// mapa diz isso, em vez de ficar parado sem explicação.
+// Clicar num técnico na tabela ao lado (`focado`) fecha o mapa no ponto dele: zoom 15,
+// etiqueta aberta, anel bordô em volta e os outros pontos apagados. Enquanto ele está
+// escolhido o mapa é dele — o reenquadramento automático não entra, ou desfaria o zoom na
+// atualização seguinte. Quem não deu sinal na última hora não tem ponto: aí o mapa diz
+// isso, em vez de ficar parado sem explicação.
 
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import type { TecnicoAgora } from '../../services/insightsService.ts';
 import { SITUACAO } from './formato.ts';
@@ -21,13 +23,22 @@ const ZOOM_FOCO = 15;
 type ComPosicao = TecnicoAgora & { lat: number; lng: number };
 
 /** Enquadra os pontos na primeira carga e quando muda o conjunto de técnicos. */
-function Enquadra({ pontos }: { pontos: readonly ComPosicao[] }) {
+function Enquadra({ pontos, temFoco }: { pontos: readonly ComPosicao[]; temFoco: boolean }) {
   const mapa = useMap();
   const chave = pontos
     .map((p) => p.tec_id)
     .sort((a, b) => a - b)
     .join(',');
+  // Guardado em referência, e não na lista de dependências: soltar o foco NÃO reenquadra
+  // — quem está olhando o mapa fica onde está.
+  const foco = useRef(temFoco);
   useEffect(() => {
+    foco.current = temFoco;
+  }, [temFoco]);
+  useEffect(() => {
+    // Com um técnico escolhido o mapa é dele. O conjunto muda a cada atualização (GPS
+    // entra e sai), e sem esta guarda o reenquadramento desfazia o zoom do escolhido.
+    if (foco.current) return;
     const [primeiro] = pontos;
     if (pontos.length >= 2) {
       mapa.fitBounds(
@@ -43,17 +54,20 @@ function Enquadra({ pontos }: { pontos: readonly ComPosicao[] }) {
   return null;
 }
 
-/** Voa até o técnico escolhido na tabela. Sem ponto no mapa, não mexe no enquadramento. */
+/** Fecha o mapa no técnico escolhido na tabela. Sem ponto, não mexe no enquadramento. */
 function Foco({ alvo }: { alvo: ComPosicao | null }) {
   const mapa = useMap();
   const id = alvo?.tec_id ?? null;
+  const lat = alvo?.lat ?? null;
+  const lng = alvo?.lng ?? null;
   useEffect(() => {
-    if (!alvo) return;
-    mapa.flyTo([alvo.lat, alvo.lng], Math.max(mapa.getZoom(), ZOOM_FOCO), { duration: 0.6 });
-    // Só na TROCA de técnico: o ponto se mexe a cada minuto e refazer o voo a cada
-    // atualização tiraria o mapa do lugar onde o coordenador o deixou.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, mapa]);
+    if (lat === null || lng === null) return;
+    // Salto seco, sem voo: o `flyTo` animado é cancelado por qualquer outra mexida no
+    // mapa (e o reenquadramento de cada minuto é uma delas), e aí o clique parecia não
+    // fazer nada. Enquanto o técnico está escolhido o mapa também ACOMPANHA o ponto
+    // dele — ele anda, e a atualização traz a posição nova.
+    mapa.setView([lat, lng], Math.max(mapa.getZoom(), ZOOM_FOCO), { animate: false });
+  }, [id, lat, lng, mapa]);
   return null;
 }
 
@@ -86,11 +100,14 @@ export function MapaTecnicos({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           maxZoom={18}
         />
-        <Enquadra pontos={pontos} />
+        <Enquadra pontos={pontos} temFoco={focado !== null} />
         <Foco alvo={alvo} />
         {pontos.map((t) => {
           const s = SITUACAO[t.situacao];
           const aceso = t.tec_id === focado;
+          // Com alguém escolhido, os outros apagam: fica só ele em cor cheia.
+          const apagado = focado !== null && !aceso;
+          const base = t.situacao === 'execucao' ? 9 : 7;
           return (
             <CircleMarker
               // A `key` muda com o foco DE PROPÓSITO: o react-leaflet lê `permanent` só
@@ -98,12 +115,13 @@ export function MapaTecnicos({
               // escolhido nunca abriria sozinha.
               key={aceso ? `${t.tec_id}-aceso` : t.tec_id}
               center={[t.lat, t.lng]}
-              radius={t.situacao === 'execucao' ? 9 : 7}
+              radius={aceso ? base + 3 : base}
               pathOptions={{
-                color: 'var(--pbi-superficie)',
-                weight: 2,
+                color: aceso ? 'var(--pbi-primary)' : 'var(--pbi-superficie)',
+                weight: aceso ? 3 : 2,
+                opacity: apagado ? 0.35 : 1,
                 fillColor: s.cor,
-                fillOpacity: aceso ? 1 : t.semSinal ? 0.25 : 0.95,
+                fillOpacity: aceso ? 1 : apagado ? 0.2 : t.semSinal ? 0.25 : 0.95,
               }}
             >
               <Tooltip direction="top" offset={[0, -6]} permanent={aceso}>
