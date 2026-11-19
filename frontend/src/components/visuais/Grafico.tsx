@@ -35,17 +35,27 @@ import { useModo } from '../../context/ModoContext.tsx';
 import { useCaixa } from '../../hooks/useCaixa.ts';
 import { useCliqueNoEixo } from '../../hooks/useCliqueNoEixo.ts';
 import { MARGEM, geometriaDoGrafico } from './grafico/geometria.ts';
-import { MAXIMO_COM_ROTULO } from './grafico/ColunasDoGrafico.tsx';
-import { ControlesDeZoom } from './grafico/ControlesDeZoom.tsx';
+import {
+  modoDeRotulo,
+  precisaDeMargemParaRotulo,
+  rotulaTodosOsPontos,
+} from '../../utils/graficoRotulos.ts';
 import { DesenhoDoGrafico } from './grafico/DesenhoDoGrafico.tsx';
 import { LegendaDoGrafico } from './grafico/LegendaDoGrafico.tsx';
 import { MensagemDeEstado } from '../ui/Estado.tsx';
 
 /**
- * Largura mínima por categoria em cada densidade (P, M, G). Vem do rótulo, não do
- * gosto: girado a 45°, em 40px cabem ~10 caracteres — "26/08" ou uma sigla de equipe.
+ * Largura mínima por categoria. Vem do rótulo, não do gosto: girado a 45°, em 40px cabem
+ * ~10 caracteres — "26/08" ou uma sigla de equipe.
+ *
+ * **Era uma régua de três (P/M/G), com um botão no cabeçalho de cada gráfico para
+ * escolher** — o `ControlesDeZoom`, removido em 19/11/2026 a pedido do Erick ("a densidade
+ * pode tirar e deixar tudo ajustado o layout"). O botão existia para socorrer o gráfico
+ * apertado demais; quem aperta é o layout, e isso passou a ser resolvido no
+ * `layout.yaml` (faixas reequilibradas) e no eixo (`passoDoEixo` pelo rótulo real). O
+ * paginador continua — ele é quem alcança as categorias que não cabem.
  */
-const BANDA_MINIMA = [24, 40, 64];
+const BANDA_MINIMA = 40;
 /** Abaixo de 4 categorias por página o gráfico deixa de comunicar tendência. */
 const MINIMO_POR_PAGINA = 4;
 
@@ -66,7 +76,6 @@ export function Grafico({
 
   // TODOS os hooks vêm ANTES de qualquer `return`: um guarda de nulo acima de um hook
   // muda a ORDEM DOS HOOKS entre renderizações, e o React derruba a árvore.
-  const [zoomIdx, setZoomIdx] = useState<number>(1);
   const [inicio, setInicio] = useState<number | null>(null);
   const [caixaRef, caixa] = useCaixa();
 
@@ -76,10 +85,7 @@ export function Grafico({
   // ----------------------------------------------- quantas cabem, e qual janela
   const nTotal = gTudo?.categorias.length ?? 0;
   const larguraDoPlot = Math.max(120, caixa.w - MARGEM.esquerda - MARGEM.direita);
-  const cabem = Math.max(
-    MINIMO_POR_PAGINA,
-    Math.floor(larguraDoPlot / (BANDA_MINIMA[zoomIdx] ?? 40)),
-  );
+  const cabem = Math.max(MINIMO_POR_PAGINA, Math.floor(larguraDoPlot / BANDA_MINIMA));
   const pagina = Math.min(cabem, Math.max(nTotal, 1));
   const precisaPaginar = nTotal > pagina;
   // Abre na página que TERMINA NO ÚLTIMO DIA COM DADO: categoria de gráfico operacional
@@ -130,12 +136,19 @@ export function Grafico({
 
   // O TETO SAI DE TODAS AS CATEGORIAS, não das visíveis — ver `geometriaDoGrafico`.
   const linhasDoTudo = naFaceta ? [] : gTudo.series.filter((x) => x.desenho === 'linha');
-  // O chip de valor (COM): série única ou pilha, sem percentual, até 24 categorias.
-  const comRotulos =
-    !g.percentual &&
-    areas.length > 0 &&
-    (areas.length === 1 || g.empilha) &&
-    g.categorias.length <= MAXIMO_COM_ROTULO;
+  // ONDE O NÚMERO APARECE (19/11/2026) — a regra está em `utils/graficoRotulos.ts`, com
+  // o porquê de cada caso e os testes. Aqui só se descreve a forma desta janela.
+  const forma = {
+    nAreas: areas.length,
+    nLinhas: linhas.length,
+    empilha: g.empilha,
+    percentual: g.percentual,
+    nCategorias: g.categorias.length,
+    naFaceta,
+  };
+  const rotulos = modoDeRotulo(forma);
+  const rotulosDeLinha = rotulaTodosOsPontos(forma);
+  const comRotulos = precisaDeMargemParaRotulo(forma);
   const { geo, marcas } = geometriaDoGrafico({
     alturaDaCaixa: caixa.h,
     larguraDoPlot,
@@ -186,7 +199,6 @@ export function Grafico({
           }}
         />
       ) : null}
-      <ControlesDeZoom nivel={zoomIdx} niveis={BANDA_MINIMA.length} aoMudar={setZoomIdx} />
     </div>
   );
 
@@ -240,7 +252,8 @@ export function Grafico({
           marcas={marcas}
           geo={geo}
           interacao={clique}
-          comRotulos={comRotulos}
+          rotulos={rotulos}
+          rotulosDeLinha={rotulosDeLinha}
         />
       </div>
     </Cartao>

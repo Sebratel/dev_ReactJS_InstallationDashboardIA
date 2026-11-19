@@ -4,7 +4,7 @@
 import type { TipoDeValor } from '../../../services/dashboardService.ts';
 import type { InteracaoDoGrafico } from '../../../hooks/useCliqueNoEixo.ts';
 import { inteiro } from '../../../utils/formato.ts';
-import { ColunasDoGrafico, type SerieDesenhada } from './ColunasDoGrafico.tsx';
+import { ColunasDoGrafico, type ModoDeRotulo, type SerieDesenhada } from './ColunasDoGrafico.tsx';
 import { EixoXDoGrafico } from './EixoXDoGrafico.tsx';
 import { FacetaDeLinha } from './FacetaDeLinha.tsx';
 import { LinhasDoGrafico } from './LinhasDoGrafico.tsx';
@@ -26,7 +26,10 @@ export function DesenhoDoGrafico(props: {
   marcas: readonly number[];
   geo: Geometria;
   interacao: InteracaoDoGrafico;
-  comRotulos: boolean;
+  /** Onde o número das COLUNAS é escrito — ver `ModoDeRotulo`. */
+  rotulos: ModoDeRotulo;
+  /** Escrever todos os pontos da linha, não só o maior de cada série. */
+  rotulosDeLinha: boolean;
 }) {
   const { largura, altura, categorias, geo, marcas } = props;
   return (
@@ -59,7 +62,7 @@ export function DesenhoDoGrafico(props: {
         tipo={props.tipo}
         geo={geo}
         interacao={props.interacao}
-        comRotulos={props.comRotulos}
+        rotulos={props.rotulos}
       />
       <line
         className="eixo"
@@ -80,6 +83,7 @@ export function DesenhoDoGrafico(props: {
         linhas={props.naFaceta ? [] : props.linhas}
         categorias={categorias}
         geo={geo}
+        todosOsPontos={props.rotulosDeLinha}
       />
       {props.naFaceta ? (
         <FacetaDeLinha

@@ -10,6 +10,11 @@ import { formata } from '../../../utils/formato.ts';
 import { DOURADO, corDaColunaPorValor } from '../../../utils/graficoForma.ts';
 import type { InteracaoDoGrafico } from '../../../hooks/useCliqueNoEixo.ts';
 import { VAO, type Geometria } from './geometria.ts';
+// A regra de ONDE o número vai mora em `utils/graficoRotulos.ts` (pura, sob `npm test`);
+// aqui é só o desenho. Reexportados para quem já importava daqui.
+import { MAXIMO_COM_ROTULO, type ModoDeRotulo } from '../../../utils/graficoRotulos.ts';
+
+export { MAXIMO_COM_ROTULO, type ModoDeRotulo };
 
 export interface SerieDesenhada {
   chave: string;
@@ -18,10 +23,10 @@ export interface SerieDesenhada {
   valores: (number | null)[];
 }
 
-/** Acima de tantas categorias o chip vira ruído e a leitura fica com o `title` (COM). */
-export const MAXIMO_COM_ROTULO = 24;
 const RAIO = 4;
 const FONTE_DO_CHIP = 11;
+/** O número sem chip (`.rotulo-valor`): 10px, e é por isso que ele cabe onde o chip não cabe. */
+const FONTE_DO_ROTULO = 10;
 
 /** Retângulo com só os cantos de cima arredondados. */
 function colunaDeTopoRedondo(x: number, y: number, w: number, h: number): string {
@@ -45,6 +50,28 @@ function ChipDeValor(props: { x: number; topo: number; texto: string }) {
   );
 }
 
+/** O número escrito DENTRO da fatia (pilha percentual): sem chip, com contorno, porque o
+ *  fundo é a cor da série e não dá para escolher uma letra que contraste com todas. */
+function ValorNaFatia(props: { x: number; y: number; texto: string }) {
+  return (
+    <text
+      className="valor-na-fatia"
+      x={props.x}
+      y={props.y}
+      textAnchor="middle"
+      dominantBaseline="central"
+      pointerEvents="none"
+    >
+      {props.texto}
+    </text>
+  );
+}
+
+/** Largura que o texto ocupa no chip, com a folga das bordas. */
+function larguraDoChip(texto: string): number {
+  return texto.length * FONTE_DO_CHIP * 0.58 + 14;
+}
+
 export function ColunasDoGrafico(props: {
   categorias: readonly { rotulo: string }[];
   areas: readonly SerieDesenhada[];
@@ -53,10 +80,11 @@ export function ColunasDoGrafico(props: {
   tipo: TipoDeValor;
   geo: Geometria;
   interacao: InteracaoDoGrafico;
-  /** Desenhar o chip de valor (decidido por `Grafico`, que reservou a margem). */
-  comRotulos: boolean;
+  /** Onde escrever o número (decidido por `Grafico`, que reservou a margem). */
+  rotulos: ModoDeRotulo;
 }) {
   const { categorias, areas, empilha, percentual, geo, interacao } = props;
+  const modo = props.rotulos;
   const base = geo.margemTopo + geo.alturaDoPlot;
 
   /** A soma da pilha numa categoria — o divisor do modo percentual. */
@@ -85,6 +113,9 @@ export function ColunasDoGrafico(props: {
           if (v !== null && v !== 0) ultima = k;
         });
         let topoDaCategoria = base;
+        /** Os números de `fatia`/`dentro`, colhidos enquanto as marcas são posicionadas. */
+        const porFatia: { chave: string; x: number; y: number; dentro: boolean; texto: string }[] =
+          [];
         const marcas = areas.map((s, k) => {
           const v = valorDesenhado(s.valores[i] ?? null, i);
           if (v === null || v === 0) return null;
@@ -99,6 +130,29 @@ export function ColunasDoGrafico(props: {
           topoDaCategoria = Math.min(topoDaCategoria, cima);
           const cor = unica ? corDaColunaPorValor(v, min, max) : s.cor;
           const titulo = `${c.rotulo} · ${s.nome}: ${formata(s.valores[i] ?? null, props.tipo).texto}`;
+
+          // O número de CADA fatia. `percentual` escreve a porcentagem desenhada (que é o
+          // valor da parte); os demais escrevem o valor cru, não o da pilha.
+          if (modo === 'fatia' || modo === 'dentro') {
+            const texto = percentual
+              ? `${Math.round(v)}%`
+              : formata(s.valores[i] ?? null, props.tipo).texto;
+            const meio = esquerda + geo.larguraDaFatia / 2;
+            const cabeNaLargura =
+              texto.length * FONTE_DO_ROTULO * 0.58 + 4 <= geo.larguraDaFatia + VAO;
+            // `dentro` ainda precisa de ALTURA: numa fatia de 8px o número sai por fora
+            // dela e passa a mentir sobre a qual série pertence.
+            const cabeNaAltura = modo === 'fatia' || altura >= FONTE_DO_ROTULO + 4;
+            if (texto && cabeNaLargura && cabeNaAltura) {
+              porFatia.push({
+                chave: s.chave,
+                x: meio,
+                y: modo === 'dentro' ? cima + altura / 2 : cima - 4,
+                dentro: modo === 'dentro',
+                texto,
+              });
+            }
+          }
           return !empilha || k === ultima ? (
             <path
               key={s.chave}
@@ -127,7 +181,7 @@ export function ColunasDoGrafico(props: {
             ? (areas[0]!.valores[i] ?? null)
             : null;
         const texto = total ? formata(total, props.tipo).texto : '';
-        const cabe = texto.length * FONTE_DO_CHIP * 0.58 + 14 <= geo.banda;
+        const cabe = larguraDoChip(texto) <= geo.banda;
         return (
           <g
             key={i}
@@ -144,9 +198,25 @@ export function ColunasDoGrafico(props: {
               height={geo.alturaDoPlot}
             />
             {marcas}
-            {props.comRotulos && texto && cabe ? (
+            {modo === 'categoria' && texto && cabe ? (
               <ChipDeValor x={geo.xMeio(i)} topo={topoDaCategoria} texto={texto} />
             ) : null}
+            {porFatia.map((r) =>
+              r.dentro ? (
+                <ValorNaFatia key={r.chave} x={r.x} y={r.y} texto={r.texto} />
+              ) : (
+                <text
+                  key={r.chave}
+                  className="rotulo-valor"
+                  x={r.x}
+                  y={r.y}
+                  textAnchor="middle"
+                  pointerEvents="none"
+                >
+                  {r.texto}
+                </text>
+              ),
+            )}
           </g>
         );
       })}

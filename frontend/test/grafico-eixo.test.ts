@@ -7,6 +7,7 @@ import {
   caminhoDaSerie,
   maiorIndice,
   orcamentoDoRotulo,
+  orcamentoPorAltura,
   passoDoEixo,
   prefixoComum,
   rotuloDoEixo,
@@ -45,6 +46,29 @@ test('o passo do eixo afina com a banda', () => {
   assert.equal(passoDoEixo(24), 3);
   assert.equal(passoDoEixo(40), 2);
   assert.equal(passoDoEixo(64), 1);
+});
+
+test('o passo pelo RÓTULO: a banda de 41px que pulava mês passa a escrever todos', () => {
+  // MANUTENÇÃO INICIAL POR MÊS, 19/11/2026: dois gráficos em `span: 6`, plot de ~740px e
+  // ~18 meses dão banda de ~41px. Pela régua antiga isso é passo 2 — um mês sim, um não —
+  // e quem olha lê "outubro sumiu", porque a coluna continua lá e só o nome não é escrito.
+  assert.equal(passoDoEixo(41), 2);
+  assert.equal(passoDoEixo(41, 'outubro'.length), 1);
+});
+
+test('o passo ainda cresce quando o rótulo REALMENTE não cabe', () => {
+  // 10px de banda não comportam nem 4 caracteres na diagonal: cai no teto de 3.
+  assert.equal(passoDoEixo(10, 20), 3);
+  // Rótulo médio numa banda estreita: 2 bandas resolvem.
+  assert.equal(passoDoEixo(24, 8), 2);
+  // Sem o argumento, a régua antiga continua valendo — nada que já chamava mudou.
+  assert.equal(passoDoEixo(24), 3);
+});
+
+test('o orçamento por altura é a metade da conta que não depende do passo', () => {
+  assert.equal(orcamentoPorAltura(64), Math.floor((64 - 22) / (5.6 * 0.71)));
+  // É ele que `orcamentoDoRotulo` usa quando a altura é quem limita.
+  assert.equal(orcamentoDoRotulo(330, 1, 64), orcamentoPorAltura(64));
 });
 
 test('o orçamento do rótulo respeita a largura E a altura', () => {
