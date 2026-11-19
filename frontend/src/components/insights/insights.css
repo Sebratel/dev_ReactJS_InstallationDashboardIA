@@ -281,6 +281,39 @@
 .ins-tab tbody tr:hover td {
   background: var(--linha-hover);
 }
+/* Linha que acha o técnico no mapa ao lado. O realce da escolhida repete o padrão da
+   `table.dados` no estilo.css: fundo dourado claro e traço bordô na primeira célula. */
+.ins-tab tbody tr.ins-tr-clicavel {
+  cursor: pointer;
+}
+.ins-tab tbody tr.ins-tr-clicavel.aceso td,
+.ins-tab tbody tr.ins-tr-clicavel.aceso:hover td {
+  background: var(--linha-selecionada);
+}
+.ins-tab tbody tr.ins-tr-clicavel.aceso td:first-child {
+  box-shadow: inset 3px 0 0 var(--pbi-primary-texto);
+}
+.ins-tec-botao {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.ins-tec-botao:hover {
+  text-decoration: underline;
+}
+.ins-tec-botao:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--pbi-primary-texto);
+  outline-offset: 2px;
+}
+.ins-tab tbody tr.aceso .ins-tec-botao {
+  color: var(--pbi-primary-texto);
+  font-weight: 600;
+}
 .ins-sub {
   font-size: 10.5px;
   color: var(--muted);
@@ -376,6 +409,26 @@
 .ins-mapa-dica {
   font-size: 12px;
   line-height: 1.45;
+}
+/* Quem foi escolhido na lista mas não tem ponto de GPS na última hora. */
+.ins-mapa-aviso {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  z-index: 500;
+  max-width: 90%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.ins-mapa-aviso span {
+  display: block;
+  padding: 6px 10px;
+  border: 1px solid var(--borda);
+  border-left: 3px solid var(--pbi-gold);
+  border-radius: 4px;
+  background: var(--superficie);
+  font-size: 12px;
+  color: var(--texto);
 }
 
 .ins-nota {

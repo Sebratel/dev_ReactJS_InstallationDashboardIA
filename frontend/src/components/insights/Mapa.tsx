@@ -4,25 +4,41 @@
 //
 // Ladrilhos do OpenStreetMap, sem chave (a CSP libera só `tile.openstreetmap.org`), em
 // tons de cinza para os pontos serem a única cor do mapa.
+//
+// Clicar num técnico na tabela ao lado (`focado`) fecha o mapa no ponto dele: zoom 15,
+// etiqueta aberta, anel bordô em volta e os outros pontos apagados. Enquanto ele está
+// escolhido o mapa é dele — o reenquadramento automático não entra, ou desfaria o zoom na
+// atualização seguinte. Quem não deu sinal na última hora não tem ponto: aí o mapa diz
+// isso, em vez de ficar parado sem explicação.
 
 import 'leaflet/dist/leaflet.css';
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { CircleMarker, MapContainer, TileLayer, Tooltip, useMap } from 'react-leaflet';
 import type { TecnicoAgora } from '../../services/insightsService.ts';
 import { SITUACAO } from './formato.ts';
 
 const CENTRO: [number, number] = [-29.82, -51.16]; // entre Canoas e São Leopoldo
+const ZOOM_FOCO = 15;
 
 type ComPosicao = TecnicoAgora & { lat: number; lng: number };
 
 /** Enquadra os pontos na primeira carga e quando muda o conjunto de técnicos. */
-function Enquadra({ pontos }: { pontos: readonly ComPosicao[] }) {
+function Enquadra({ pontos, temFoco }: { pontos: readonly ComPosicao[]; temFoco: boolean }) {
   const mapa = useMap();
   const chave = pontos
     .map((p) => p.tec_id)
     .sort((a, b) => a - b)
     .join(',');
+  // Guardado em referência, e não na lista de dependências: soltar o foco NÃO reenquadra
+  // — quem está olhando o mapa fica onde está.
+  const foco = useRef(temFoco);
   useEffect(() => {
+    foco.current = temFoco;
+  }, [temFoco]);
+  useEffect(() => {
+    // Com um técnico escolhido o mapa é dele. O conjunto muda a cada atualização (GPS
+    // entra e sai), e sem esta guarda o reenquadramento desfazia o zoom do escolhido.
+    if (foco.current) return;
     const [primeiro] = pontos;
     if (pontos.length >= 2) {
       mapa.fitBounds(
@@ -38,12 +54,32 @@ function Enquadra({ pontos }: { pontos: readonly ComPosicao[] }) {
   return null;
 }
 
+/** Fecha o mapa no técnico escolhido na tabela. Sem ponto, não mexe no enquadramento. */
+function Foco({ alvo }: { alvo: ComPosicao | null }) {
+  const mapa = useMap();
+  const id = alvo?.tec_id ?? null;
+  const lat = alvo?.lat ?? null;
+  const lng = alvo?.lng ?? null;
+  useEffect(() => {
+    if (lat === null || lng === null) return;
+    // Salto seco, sem voo: o `flyTo` animado é cancelado por qualquer outra mexida no
+    // mapa (e o reenquadramento de cada minuto é uma delas), e aí o clique parecia não
+    // fazer nada. Enquanto o técnico está escolhido o mapa também ACOMPANHA o ponto
+    // dele — ele anda, e a atualização traz a posição nova.
+    mapa.setView([lat, lng], Math.max(mapa.getZoom(), ZOOM_FOCO), { animate: false });
+  }, [id, lat, lng, mapa]);
+  return null;
+}
+
 export function MapaTecnicos({
   tecnicos,
   altura,
+  focado = null,
 }: {
   tecnicos: readonly TecnicoAgora[];
   altura: number;
+  /** `tec_id` do técnico clicado na tabela ao lado, ou `null`. */
+  focado?: number | null;
 }) {
   const pontos = useMemo(
     () =>
@@ -53,6 +89,9 @@ export function MapaTecnicos({
       ),
     [tecnicos],
   );
+  const alvo = focado === null ? null : (pontos.find((p) => p.tec_id === focado) ?? null);
+  const semPonto =
+    focado !== null && alvo === null ? (tecnicos.find((t) => t.tec_id === focado) ?? null) : null;
   return (
     <div className="ins-mapa" style={{ height: altura }}>
       <MapContainer center={CENTRO} zoom={11} scrollWheelZoom={false}>
@@ -61,22 +100,31 @@ export function MapaTecnicos({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           maxZoom={18}
         />
-        <Enquadra pontos={pontos} />
+        <Enquadra pontos={pontos} temFoco={focado !== null} />
+        <Foco alvo={alvo} />
         {pontos.map((t) => {
           const s = SITUACAO[t.situacao];
+          const aceso = t.tec_id === focado;
+          // Com alguém escolhido, os outros apagam: fica só ele em cor cheia.
+          const apagado = focado !== null && !aceso;
+          const base = t.situacao === 'execucao' ? 9 : 7;
           return (
             <CircleMarker
-              key={t.tec_id}
+              // A `key` muda com o foco DE PROPÓSITO: o react-leaflet lê `permanent` só
+              // quando o tooltip nasce, então sem remontar o marcador a etiqueta do
+              // escolhido nunca abriria sozinha.
+              key={aceso ? `${t.tec_id}-aceso` : t.tec_id}
               center={[t.lat, t.lng]}
-              radius={t.situacao === 'execucao' ? 9 : 7}
+              radius={aceso ? base + 3 : base}
               pathOptions={{
-                color: 'var(--pbi-superficie)',
-                weight: 2,
+                color: aceso ? 'var(--pbi-primary)' : 'var(--pbi-superficie)',
+                weight: aceso ? 3 : 2,
+                opacity: apagado ? 0.35 : 1,
                 fillColor: s.cor,
-                fillOpacity: t.semSinal ? 0.25 : 0.95,
+                fillOpacity: aceso ? 1 : apagado ? 0.2 : t.semSinal ? 0.25 : 0.95,
               }}
             >
-              <Tooltip direction="top" offset={[0, -6]}>
+              <Tooltip direction="top" offset={[0, -6]} permanent={aceso}>
                 <div className="ins-mapa-dica">
                   <b>{t.nome}</b>
                   <br />
@@ -93,6 +141,19 @@ export function MapaTecnicos({
             </CircleMarker>
           );
         })}
+        {alvo ? (
+          <CircleMarker
+            center={[alvo.lat, alvo.lng]}
+            radius={16}
+            interactive={false}
+            pathOptions={{
+              color: 'var(--pbi-primary)',
+              weight: 3,
+              fillOpacity: 0,
+              dashArray: '4 3',
+            }}
+          />
+        ) : null}
       </MapContainer>
       {pontos.length === 0 ? (
         <div className="ins-mapa-vazio">
@@ -100,6 +161,10 @@ export function MapaTecnicos({
             Nenhum técnico da instalação com GPS na última hora — fora do horário de campo ou app
             fechado.
           </span>
+        </div>
+      ) : semPonto ? (
+        <div className="ins-mapa-aviso">
+          <span>{semPonto.curto} está sem ponto de GPS na última hora — não aparece no mapa.</span>
         </div>
       ) : null}
     </div>

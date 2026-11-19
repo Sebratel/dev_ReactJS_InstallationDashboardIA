@@ -47,6 +47,8 @@ const POR_PAGINA = 20;
 
 export default function Operacao() {
   const q = useOperacao();
+  // Técnico escolhido na tabela "Quem está em quê": o mapa ao lado voa até ele.
+  const [focado, setFocado] = useState<number | null>(null);
   if (q.isPending) return <Esqueleto titulo="a operação de hoje" />;
   if (q.isError) return <Erro>{q.error.message}</Erro>;
   const d = q.data;
@@ -56,9 +58,9 @@ export default function Operacao() {
       <div className="ins-faixa dupla">
         <Cartao
           titulo="Onde está cada técnico agora"
-          sub="Último ponto do GPS do app na última hora; cor = situação na agenda de hoje."
+          sub="Último ponto do GPS do app na última hora; cor = situação na agenda de hoje. Clique num técnico da lista ao lado para achá-lo no mapa."
         >
-          <MapaTecnicos tecnicos={d.tecnicos} altura={420} />
+          <MapaTecnicos tecnicos={d.tecnicos} altura={420} focado={focado} />
           <Legenda
             itens={Object.values(SITUACAO).map((s) => ({
               rotulo: s.rotulo,
@@ -67,7 +69,11 @@ export default function Operacao() {
             }))}
           />
         </Cartao>
-        <QuemEstaEmQue d={d} />
+        <QuemEstaEmQue
+          d={d}
+          focado={focado}
+          aoEscolher={(id) => setFocado((atual) => (atual === id ? null : id))}
+        />
       </div>
       <CorridaPremiacao d={d} />
       <div className="ins-faixa meio">
@@ -183,11 +189,19 @@ function Chip({ t }: { t: TecnicoAgora }) {
   );
 }
 
-function QuemEstaEmQue({ d }: { d: RespostaOperacao }) {
+function QuemEstaEmQue({
+  d,
+  focado,
+  aoEscolher,
+}: {
+  d: RespostaOperacao;
+  focado: number | null;
+  aoEscolher: (tecId: number) => void;
+}) {
   return (
     <Cartao
       titulo={`Quem está em quê (${d.tecnicos.length} técnicos)`}
-      sub="Escalados hoje nas bases de ativação e quem está com GPS ligado. Ordem: em execução, a caminho, aguardando."
+      sub="Escalados hoje nas bases de ativação e quem está com GPS ligado. Ordem: em execução, a caminho, aguardando. Clique na linha para achar o técnico no mapa."
     >
       <div className="ins-rolagem" style={{ maxHeight: 440 }}>
         <table className="ins-tab">
@@ -210,10 +224,28 @@ function QuemEstaEmQue({ d }: { d: RespostaOperacao }) {
                 .filter(Boolean)
                 .join(' · ');
               const faixa = t.faixa as keyof typeof FAIXA_COR | null;
+              const aceso = t.tec_id === focado;
               return (
-                <tr key={t.tec_id}>
+                <tr
+                  key={t.tec_id}
+                  className={`ins-tr-clicavel${aceso ? ' aceso' : ''}`}
+                  onClick={() => aoEscolher(t.tec_id)}
+                >
                   <td className="txt" title={t.nome}>
-                    {t.curto}
+                    {/* Botão de verdade: é por ele que o teclado e o leitor de tela
+                          chegam ao mapa — a linha só repete o mesmo clique. */}
+                    <button
+                      type="button"
+                      className="ins-tec-botao"
+                      aria-pressed={aceso}
+                      title={`Achar ${t.nome} no mapa`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        aoEscolher(t.tec_id);
+                      }}
+                    >
+                      {t.curto}
+                    </button>
                     <div className="ins-sub">{t.base ?? '—'}</div>
                   </td>
                   <td className="txt">
