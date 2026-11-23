@@ -29,6 +29,9 @@ import { leGrupos, validaGrupos, type GrupoDeRefresh } from './grupos.ts';
 import { MEMORIA_PADRAO_MB, TEMPO_MAXIMO_GRUPO_PADRAO_MS, rodaGrupoAssincrono } from './executa-grupo.ts';
 import { iniciaSnapshotDiario, leHorarioUtc, queriesDoDiario } from './diario.ts';
 import { Agendador } from '../../../api/src/agendador.ts';
+import { geraEmProcesso } from '../../../api/src/geracao-em-processo.ts';
+import type { PedidoDeGeracao } from '../../../api/src/geracao-do-conjunto.ts';
+import { FilaDeBuscas } from '../../../api/src/periodos-ao-vivo.ts';
 import {
   descreveMortesDaApi,
   leHistorico,
@@ -495,12 +498,48 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
       process.exit(2);
     }
     const agendador = iniciaAgendadorPorGrupo();
+    const filaAoVivo = new FilaDeBuscas(1);
     const portaInterna = Number(process.env.REFRESH_PORT || 3102);
     const controleHttp = http.createServer((req, res) => {
       if (req.method === 'POST' && req.url === '/pede') {
         const disparados = ['quente', 'medio', 'frio'].filter((id) => agendador.pede(id));
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ ok: true, disparados }));
+        return;
+      }
+      if (req.method === 'POST' && req.url === '/ao-vivo') {
+        let bruto = '';
+        req.on('data', (chunk: Buffer | string) => {
+          bruto += String(chunk);
+        });
+        req.on('end', () => {
+          let pedido: PedidoDeGeracao;
+          try {
+            pedido = JSON.parse(bruto) as PedidoDeGeracao;
+          } catch {
+            res.writeHead(400, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, erro: 'JSON inválido em /ao-vivo' }));
+            return;
+          }
+          void (async () => {
+            await filaAoVivo.vez();
+            try {
+              const r = await geraEmProcesso(ROOT, pedido);
+              res.writeHead(200, { 'content-type': 'application/json' });
+              res.end(JSON.stringify({ ok: true, protocolos: r.protocolos, picoMB: r.picoMB }));
+            } catch (err: unknown) {
+              res.writeHead(500, { 'content-type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  ok: false,
+                  erro: err instanceof Error ? err.message : String(err),
+                }),
+              );
+            } finally {
+              filaAoVivo.libera();
+            }
+          })();
+        });
         return;
       }
       res.writeHead(404);

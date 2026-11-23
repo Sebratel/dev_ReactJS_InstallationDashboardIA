@@ -22,14 +22,18 @@ import {
   calculaGrafico,
   calculaMatriz,
   calculaTabela,
+  calculaTabelaIndexada,
   dataDaPagina,
   ignoraDataDaTela,
   NOTA_HORIZONTE,
+  projetaNivel,
   TIPOS_DE_GRAFICO,
 } from '../../packages/widget-engine/src/index.ts';
 import type { DashboardSpec, FiltroSpec, VisualSpec } from '../../packages/widget-engine/src/spec.ts';
 import { TIPO_DE_TELA } from '../../packages/widget-engine/src/filtro-url.ts';
 import { casasDoNumero, casasDoPercentual } from '../../packages/widget-engine/src/percentual.ts';
+import { normalizeName as normaliza } from '../../packages/semantic-model/src/model.ts';
+import { dicionarioDaColuna, indiceDaLinha, type Row } from '../../packages/measure-engine/src/dataset.ts';
 import type { Evaluator } from '../../packages/measure-engine/src/evaluator.ts';
 import { isBlank, type DaxValue } from '../../packages/measure-engine/src/value.ts';
 
@@ -297,7 +301,26 @@ export interface MatrizCompleta {
   filtros: string[];
 }
 
-export type Completo = TabelaCompleta | MatrizCompleta;
+/**
+ * Tabela plana de chaves puras de UMA tabela, guardada só como índices (`Int32Array`)
+ * apontando para `ev.dataset.rows(tabela)`.
+ *
+ * Não segura referência nenhuma a `Row`, `Dataset` ou `Evaluator` — quando o
+ * `cacheDeCarga` despeja o dataset da worker, a memória é liberada pelo GC. E para
+ * 104 mil linhas ocupa ~0,4 MB no `CacheDeVisual` (em vez de 104,4 MB em `unknown[][]`),
+ * então cabe com folga no teto de 64 MB sem inflar o RSS.
+ */
+export interface TabelaIndexada {
+  especie: 'tabela-indexada';
+  tabela: string;
+  linhasDaTabela: number;
+  colunas: TabelaCompleta['colunas'];
+  indices: Int32Array;
+  linhasTotais: number;
+  filtros: string[];
+}
+
+export type Completo = TabelaCompleta | TabelaIndexada | MatrizCompleta;
 
 export interface VisualCalculado {
   id: string;
@@ -742,14 +765,20 @@ function dadosDo(
     // A espécie é conferida, e não suposta: uma spec editada entre dois pedidos pode
     // trocar o tipo do visual com o mesmo id, e recortar uma matriz como tabela
     // devolveria uma tabela vazia sem erro nenhum — número plausível e errado.
-    const completo =
-      guardado?.especie === conteudo
-        ? guardado
-        : conteudo === 'tabela'
-          ? tabelaCompleta(dash, v, ev)
-          : matrizCompleta(dash, v, ev);
+    const reaproveitavel =
+      conteudo === 'tabela'
+        ? guardado?.especie === 'tabela' ||
+          (guardado?.especie === 'tabela-indexada' &&
+            ev.dataset.hasTable(guardado.tabela) &&
+            ev.dataset.rows(guardado.tabela).length === guardado.linhasDaTabela)
+        : guardado?.especie === 'matriz';
+    const completo: Completo = reaproveitavel
+      ? guardado!
+      : conteudo === 'tabela'
+        ? (tabelaIndexada(dash, v, ev) ?? tabelaCompleta(dash, v, ev))
+        : matrizCompleta(dash, v, ev);
     if (completo !== guardado) memo?.guarda(v.id, completo);
-    return janelaDe(completo, janela);
+    return janelaDe(completo, janela, ev);
   }
 
   if (conteudo === 'card') {
@@ -800,13 +829,45 @@ function dadosDo(
  * `slice`. Guardar a forma crua da engine em vez desta seria pior: lá cada célula é
  * um objeto `{valor, chave}`, e são duas células por valor útil.
  */
+function tabelaIndexada(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): TabelaIndexada | null {
+  const r = calculaTabelaIndexada(dash, v, ev);
+  if (r === null) return null;
+  return {
+    especie: 'tabela-indexada',
+    tabela: r.tabela,
+    linhasDaTabela: r.linhasDaTabela,
+    colunas: r.colunas.map((nome, i) => ({
+      nome,
+      tipo: tipoDe(r.primeirosValores[i]!),
+      chave: true,
+      tabela: r.origemDasColunas[i]?.tabela ?? null,
+      coluna: r.origemDasColunas[i]?.coluna ?? null,
+      nivel: r.origemDasColunas[i]?.nivel ?? null,
+    })),
+    indices: r.indices,
+    linhasTotais: r.indices.length,
+    filtros: r.filtros,
+  };
+}
+
+function tipoDaColunaNaTabela(
+  linhas: readonly { valor: DaxValue }[][],
+  indiceColuna: number,
+): TipoDeValor {
+  for (let i = 0; i < linhas.length; i++) {
+    const t = tipoDe(linhas[i]![indiceColuna]!.valor);
+    if (t !== null) return t;
+  }
+  return null;
+}
+
 function tabelaCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): TabelaCompleta {
   const r = calculaTabela(dash, v, ev);
   return {
     especie: 'tabela',
     colunas: r.colunas.map((nome, i) => ({
       nome,
-      tipo: tipoDaColuna(r.linhas.map((l) => l[i]!.valor)),
+      tipo: tipoDaColunaNaTabela(r.linhas, i),
       chave: r.linhas[0]?.[i]?.chave ?? true,
       tabela: r.origemDasColunas[i]?.tabela ?? null,
       coluna: r.origemDasColunas[i]?.coluna ?? null,
@@ -870,8 +931,171 @@ function matrizCompleta(dash: DashboardSpec, v: VisualSpec, ev: Evaluator): Matr
  * de erro que este projeto não pode cometer. Se um dia a matriz ganhar busca, os dois
  * arrays têm de ser recortados pelos MESMOS índices, num passo só.
  */
-export function janelaDe(completo: Completo, janela: Janela): unknown {
+function comparaValoresSerializados(vA: unknown, vB: unknown, desc: boolean): number {
+  const aNulo = vA === null || vA === undefined;
+  const bNulo = vB === null || vB === undefined;
+  if (aNulo) return bNulo ? 0 : 1;
+  if (bNulo) return -1;
+  if (typeof vA === 'number' && typeof vB === 'number') return desc ? vB - vA : vA - vB;
+  const sA = String(vA).toLowerCase();
+  const sB = String(vB).toLowerCase();
+  if (sA < sB) return desc ? 1 : -1;
+  if (sA > sB) return desc ? -1 : 1;
+  return 0;
+}
+
+function janelaDeTabelaIndexada(
+  completo: TabelaIndexada,
+  janela: Janela,
+  ev: Evaluator,
+): unknown {
+  if (janela.ordem && (janela.ordem.coluna < 0 || janela.ordem.coluna >= completo.colunas.length)) {
+    throw new Error(
+      `?ordem= pede a coluna ${janela.ordem.coluna}, e esta tabela tem ${completo.colunas.length}.`,
+    );
+  }
+
+  const rows = ev.dataset.rows(completo.tabela);
+  const molde = rows.length > 0 && indiceDaLinha(rows[0]!) >= 0 ? Object.getPrototypeOf(rows[0]!) : null;
+  const leitores: ((row: Row) => DaxValue)[] = completo.colunas.map((col) => {
+    const lerBase = ev.leitorDeColuna(col.tabela!, col.coluna!);
+    if (!col.nivel) return lerBase;
+    const chave = { tabela: col.tabela!, coluna: col.coluna!, nivel: col.nivel, nome: col.nome };
+    return (row: Row) => projetaNivel(chave, lerBase(row), `tabela-indexada/${completo.tabela}`);
+  });
+
+  const termo = janela.termo;
+  let selecionados: Int32Array = completo.indices;
+
+  if (termo) {
+    // Pré-testa o termo UMA vez por valor distinto do dicionário em cada coluna física
+    // colunar (ex.: 28 cidades, 159 planos), em vez de chamar `toLowerCase().includes()`
+    // em 2,4 milhões de células.
+    const dics = completo.colunas.map((col) => {
+      if (col.nivel || molde === null) return null;
+      const dic = dicionarioDaColuna(rows[0]!, normaliza(col.coluna!));
+      if (!dic) return null;
+      const casa = new Uint8Array(dic.valores.length);
+      for (let i = 0; i < dic.valores.length; i++) {
+        const s = serializa(dic.valores[i]!);
+        if (s !== null && s !== undefined && String(s).toLowerCase().includes(termo)) {
+          casa[i] = 1;
+        }
+      }
+      return { ids: dic.ids, casa };
+    });
+
+    const achados: number[] = [];
+    const nCol = completo.colunas.length;
+    for (let k = 0; k < selecionados.length; k++) {
+      const idx = selecionados[k]!;
+      const row = rows[idx]!;
+      const noMolde = molde !== null && Object.getPrototypeOf(row) === molde;
+      const posDic = noMolde ? indiceDaLinha(row) : -1;
+      let bateu = false;
+      for (let c = 0; c < nCol; c++) {
+        const d = dics[c];
+        if (noMolde && d !== null) {
+          if (d.casa[d.ids[posDic]!] === 1) {
+            bateu = true;
+            break;
+          }
+        } else {
+          const s = serializa(leitores[c]!(row));
+          if (s !== null && s !== undefined && String(s).toLowerCase().includes(termo)) {
+            bateu = true;
+            break;
+          }
+        }
+      }
+      if (bateu) achados.push(idx);
+    }
+    selecionados = Int32Array.from(achados);
+  }
+
+  let ordenados: Int32Array = selecionados;
+  if (janela.ordem && selecionados.length > 1) {
+    const colIdx = janela.ordem.coluna;
+    const desc = janela.ordem.desc;
+    const col = completo.colunas[colIdx]!;
+    const ler = leitores[colIdx]!;
+    const copia = selecionados.slice();
+
+    const dic = !col.nivel && molde !== null ? dicionarioDaColuna(rows[0]!, normaliza(col.coluna!)) : null;
+    let todosNoMolde = dic !== null;
+    if (todosNoMolde) {
+      for (let k = 0; k < copia.length; k++) {
+        if (Object.getPrototypeOf(rows[copia[k]!]!) !== molde) {
+          todosNoMolde = false;
+          break;
+        }
+      }
+    }
+
+    if (todosNoMolde && dic !== null) {
+      const nDic = dic.valores.length;
+      const ser = new Array<unknown>(nDic);
+      const ordemIds = new Array<number>(nDic);
+      for (let i = 0; i < nDic; i++) {
+        ser[i] = serializa(dic.valores[i]!);
+        ordemIds[i] = i;
+      }
+      ordemIds.sort((a, b) => comparaValoresSerializados(ser[a], ser[b], desc));
+      // Empates recebem o MESMO rank para que o TimSort estável preserve a ordem original.
+      const rankPorId = new Int32Array(nDic);
+      let rank = 0;
+      for (let i = 0; i < nDic; i++) {
+        if (i > 0 && comparaValoresSerializados(ser[ordemIds[i - 1]!], ser[ordemIds[i]!], desc) !== 0) {
+          rank++;
+        }
+        rankPorId[ordemIds[i]!] = rank;
+      }
+      const ids = dic.ids;
+      copia.sort((a, b) => rankPorId[ids[indiceDaLinha(rows[a]!)]!]! - rankPorId[ids[indiceDaLinha(rows[b]!)]!]!);
+    } else {
+      const cacheVal = new Map<number, unknown>();
+      const valDe = (idx: number): unknown => {
+        let v = cacheVal.get(idx);
+        if (v === undefined && !cacheVal.has(idx)) {
+          v = serializa(ler(rows[idx]!));
+          cacheVal.set(idx, v);
+        }
+        return v;
+      };
+      copia.sort((a, b) => comparaValoresSerializados(valDe(a), valDe(b), desc));
+    }
+    ordenados = copia;
+  }
+
+  const ate = Math.min(janela.de + janela.linhas, ordenados.length);
+  const inicio = Math.min(janela.de, ordenados.length);
+  const linhasDaJanela: unknown[][] = new Array(Math.max(0, ate - inicio));
+  const nCol = leitores.length;
+  for (let k = inicio; k < ate; k++) {
+    const row = rows[ordenados[k]!]!;
+    const out = new Array<unknown>(nCol);
+    for (let c = 0; c < nCol; c++) out[c] = serializa(leitores[c]!(row));
+    linhasDaJanela[k - inicio] = out;
+  }
+
+  return {
+    colunas: completo.colunas,
+    linhas: linhasDaJanela,
+    linhasTotais: ordenados.length,
+    ...(termo ? { totalSemBusca: completo.linhasTotais } : {}),
+    filtros: completo.filtros,
+    de: janela.de,
+  };
+}
+
+export function janelaDe(completo: Completo, janela: Janela, ev?: Evaluator): unknown {
   const ate = janela.de + janela.linhas;
+  if (completo.especie === 'tabela-indexada') {
+    if (!ev) {
+      throw new Error('janelaDe: TabelaIndexada exige Evaluator para materializar a janela.');
+    }
+    return janelaDeTabelaIndexada(completo, janela, ev);
+  }
   if (completo.especie === 'tabela') {
     const { especie: _, linhas, ...resto } = completo;
     const termo = janela.termo;
