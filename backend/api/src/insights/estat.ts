@@ -21,8 +21,7 @@ export const soma = (v: readonly number[]): number => v.reduce((s, x) => s + (Nu
 export function gerador(semente: string): Aleatorio {
   let a = [...semente].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 2654435761) >>> 0, 7);
   return () => {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
+    a = (a + 0x6d2b79f5) >>> 0;
     let t = Math.imul(a ^ (a >>> 15), 1 | a);
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;

@@ -164,7 +164,7 @@ async function checkRedis() {
     return;
   }
   const cfg = loadConfig().redis;
-  const safeUrl = cfg.url.replace(/\/\/[^@]*@/, '//***@');
+  const safeUrl = cfg.url.replace(/\/\/[^/@]*@/, '//***@');
   line(OK, 'configuração', `${safeUrl} prefix=${cfg.keyPrefix}`);
   let redis = null as { ping: () => Promise<string>; info: (s: string) => Promise<string>; quit: () => Promise<unknown> } | null;
   try {

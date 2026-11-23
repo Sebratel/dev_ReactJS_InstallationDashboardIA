@@ -43,7 +43,7 @@ function porChave(ls: readonly Linha[]): Map<string, string> {
   const m = new Map<string, string>();
   for (const l of ls) {
     const chave = `${texto(l['protocolo'])}|${texto(l['data'] ?? l['dia'] ?? null)}`;
-    const corpo = Object.keys(l).sort().map((k) => `${k}=${texto(l[k])}`).join(';');
+    const corpo = Object.keys(l).sort((a, b) => a.localeCompare(b)).map((k) => `${k}=${texto(l[k])}`).join(';');
     m.set(chave, m.has(chave) ? `${m.get(chave)}#${corpo}` : corpo);
   }
   return m;

@@ -412,7 +412,9 @@ const servidor = new Servidor({
       }
     } else if (process.env.REFRESH_URL) {
       try {
-        const res = await fetch(`${process.env.REFRESH_URL.replace(/\/+$/, '')}/pede`, {
+        let refreshBase = process.env.REFRESH_URL;
+      while (refreshBase.endsWith('/')) refreshBase = refreshBase.slice(0, -1);
+      const res = await fetch(`${refreshBase}/pede`, {
           method: 'POST',
           signal: AbortSignal.timeout(3_000),
         });

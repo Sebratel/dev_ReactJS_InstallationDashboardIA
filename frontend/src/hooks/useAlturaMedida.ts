@@ -313,7 +313,7 @@ export function useEspacoSemVisual<T extends HTMLElement>(
         elemento.getBoundingClientRect(),
       );
       const topoConteudo =
-        area.getBoundingClientRect().top + parseFloat(getComputedStyle(area).paddingTop);
+        area.getBoundingClientRect().top + Number.parseFloat(getComputedStyle(area).paddingTop);
       const primeiro = cartoes[0] ?? noAtual.getBoundingClientRect();
       antes = Math.max(0, Math.round(primeiro.top - topoConteudo));
 

@@ -117,7 +117,7 @@ export function corpoDaMatriz(
           .slice(inicio, ate)
           .flatMap((_, indice) =>
             (matriz.celulas[inicio + indice]?.[posicao] ?? matriz.medidas.map(() => null)).map(
-              celula,
+              (valor, indiceDaMedida) => celula(valor, indiceDaMedida),
             ),
           ),
       }))
@@ -125,7 +125,7 @@ export function corpoDaMatriz(
         rotulo: rotuloDaLinha(matriz, linha),
         celulas: (matriz.celulas[indice] ?? [])
           .slice(inicio, ate)
-          .flatMap((cel) => cel.map(celula)),
+          .flatMap((cel) => cel.map((valor, indiceDaMedida) => celula(valor, indiceDaMedida))),
       }));
 }
 

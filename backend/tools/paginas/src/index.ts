@@ -242,7 +242,7 @@ if (naoCarregaram.length) {
 // A conversão de tipo é a única coisa no carregamento que **muda o dado**. Se ela
 // não aparecer aqui, ela é silenciosa — e conversão silenciosa é o erro mais caro
 // desta base (ACHADOS #31 e #40).
-const convertidas = [...new Set(carregadas.flatMap((r) => r.convertidas))].sort();
+const convertidas = [...new Set(carregadas.flatMap((r) => r.convertidas))].sort((a, b) => a.localeCompare(b));
 if (convertidas.length) {
   console.log(`\n── Colunas convertidas para o tipo declarado (${convertidas.length}) ──`);
   for (const c of convertidas) console.log(`  ${c}`);
@@ -251,7 +251,7 @@ if (convertidas.length) {
 // A conversão **não** feita também muda o dado — e pela mesma razão tem de aparecer.
 // É a regra do #40 encontrando o limite dela numa coluna de junção: converter só um
 // lado punha número contra texto, e o relacionamento não casava nunca.
-const preservadas = [...new Set(carregadas.flatMap((r) => r.juncoesPreservadas))].sort();
+const preservadas = [...new Set(carregadas.flatMap((r) => r.juncoesPreservadas))].sort((a, b) => a.localeCompare(b));
 if (preservadas.length) {
   console.log(`\n── Conversões suprimidas para preservar a junção (${preservadas.length}) ──`);
   for (const c of preservadas) console.log(`  ${c}`);
@@ -259,7 +259,7 @@ if (preservadas.length) {
 
 // Recalcular uma tabela que estava congelada custa tempo e muda o número. As duas
 // coisas precisam ser visíveis, senão a página "às vezes demora" sem explicação.
-const recalculadas = [...new Set(carregadas.flatMap((r) => r.recalculadas))].sort();
+const recalculadas = [...new Set(carregadas.flatMap((r) => r.recalculadas))].sort((a, b) => a.localeCompare(b));
 if (recalculadas.length) {
   console.log(`\n── Tabelas calculadas recalculadas apesar do congelado (${recalculadas.length}) ──`);
   for (const c of recalculadas) console.log(`  ${c}`);

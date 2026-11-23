@@ -85,7 +85,7 @@ export function periodoDaTela(filtros: readonly FiltroSpec[], tetoDeDias = TETO_
     if (f.conditions.length !== 1 || c?.op !== 'in') return { porque: 'filtro de calendar[Data] que não é uma lista de valores' };
     const nivel = f.nivel ? normalizeName(f.nivel) : null;
     if (nivel === 'ano') {
-      const lidos = c.values.map((v) => (typeof v === 'number' ? v : typeof v === 'string' && /^\d{4}$/.test(v) ? Number(v) : NaN));
+      const lidos = c.values.map((v) => (typeof v === 'number' ? v : typeof v === 'string' && /^\d{4}$/.test(v) ? Number(v) : Number.NaN));
       if (lidos.some((a) => !Number.isInteger(a))) return { porque: 'ano da segmentação que não é um ano' };
       anos = lidos;
     } else if (nivel === 'mês' || nivel === 'mes') {

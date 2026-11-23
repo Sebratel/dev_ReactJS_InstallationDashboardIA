@@ -31,10 +31,13 @@ export function AcoesDoCabecalho(props: {
 
   const copiaLink = () => {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(window.location.href).then(() => {
-        setCopiado(true);
-        setTimeout(() => setCopiado(false), 2000);
-      });
+      void navigator.clipboard
+        .writeText(window.location.href)
+        .then(() => {
+          setCopiado(true);
+          setTimeout(() => setCopiado(false), 2000);
+        })
+        .catch(() => {});
     }
   };
 

@@ -122,7 +122,7 @@ export function avaliaSaudeQueries(
       const desde = vencidas
         .map((consulta) => consulta.paradaDesde)
         .filter((dados): dados is string => Boolean(dados))
-        .sort()[0];
+        .sort((dataA, dataB) => dataA.localeCompare(dataB))[0];
       if (desde) {
         // A régua é o intervalo do grupo, não dias (ACHADOS #160): "parado há 0,1 dia"
         // não diz nada; a hora da última carga boa, sim.

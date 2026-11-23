@@ -103,6 +103,6 @@ export async function escreveManifesto(dir: string, tabelas: EntradaDeManifesto[
 
 /** A materialização mais antiga do conjunto — a idade real do que a tela mostra. */
 export function maisAntigo(m: Manifesto): string | null {
-  const datas = m.tabelas.map((t) => t.geradoEm).sort();
+  const datas = m.tabelas.map((t) => t.geradoEm).sort((a, b) => a.localeCompare(b));
   return datas[0] ?? null;
 }

@@ -124,7 +124,9 @@ export function criaSenior(opts: OpcoesDaSenior): FonteSeniorSincronizada {
   const buscar = opts.buscar ?? fetch;
   const agora = opts.agora ?? (() => new Date());
   const log = opts.log ?? ((m: string) => console.error(m));
-  const url = `${opts.baseUrl.replace(/\/+$/, '')}/datasets/${encodeURIComponent(opts.dataset ?? 'db-senior-collaborators-2')}/rows`;
+  let baseSenior = opts.baseUrl;
+  while (baseSenior.endsWith('/')) baseSenior = baseSenior.slice(0, -1);
+  const url = `${baseSenior}/datasets/${encodeURIComponent(opts.dataset ?? 'db-senior-collaborators-2')}/rows`;
 
   let pessoas: Map<string, ColaboradorSenior> | null = null;
   let lidaEm: string | null = null;

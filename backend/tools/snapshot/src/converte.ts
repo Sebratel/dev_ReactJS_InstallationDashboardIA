@@ -196,7 +196,7 @@ const arquivos = fs
   .readdirSync(DIR)
   .filter(ehArquivoDeSnapshot)
   .filter((f) => sofilho === null || f === sofilho || f.startsWith(`${sofilho}.`))
-  .sort();
+  .sort((a, b) => a.localeCompare(b));
 
 if (arquivos.length === 0) {
   console.error(

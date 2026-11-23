@@ -9,11 +9,11 @@ import test from 'node:test';
 import { assertSomenteEvaluate, daUrl } from '../src/api.ts';
 
 test('assertSomenteEvaluate: EVALUATE e DEFINE+EVALUATE passam', () => {
-  assertSomenteEvaluate('EVALUATE ROW("n", 1)');
-  assertSomenteEvaluate('  evaluate VALUES(T[c])  ');
-  assertSomenteEvaluate('DEFINE MEASURE T[x] = 1 EVALUATE ROW("n", [x])');
-  assertSomenteEvaluate('-- comentario\nEVALUATE ROW("n", 1)');
-  assertSomenteEvaluate('/* bloco */ EVALUATE ROW("n", 1)');
+  assert.doesNotThrow(() => assertSomenteEvaluate('EVALUATE ROW("n", 1)'));
+  assert.doesNotThrow(() => assertSomenteEvaluate('  evaluate VALUES(T[c])  '));
+  assert.doesNotThrow(() => assertSomenteEvaluate('DEFINE MEASURE T[x] = 1 EVALUATE ROW("n", [x])'));
+  assert.doesNotThrow(() => assertSomenteEvaluate('-- comentario\nEVALUATE ROW("n", 1)'));
+  assert.doesNotThrow(() => assertSomenteEvaluate('/* bloco */ EVALUATE ROW("n", 1)'));
 });
 
 test('assertSomenteEvaluate: qualquer outra coisa é bloqueada', () => {

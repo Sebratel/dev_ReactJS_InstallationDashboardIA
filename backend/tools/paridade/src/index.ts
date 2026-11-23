@@ -135,7 +135,7 @@ function leGabaritos(pedidas: readonly string[]): Gabarito[] {
   return fs
     .readdirSync(DIR_GABARITOS)
     .filter((f) => f.endsWith('.yaml'))
-    .sort()
+    .sort((a, b) => a.localeCompare(b))
     .map((f) => parseYaml(fs.readFileSync(path.join(DIR_GABARITOS, f), 'utf8')) as Gabarito)
     .filter((g) => pedidas.length === 0 || pedidas.includes(g.pagina));
 }

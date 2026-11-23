@@ -512,10 +512,12 @@ export type AoTerminarVisual = (v: VisualCalculado, indice: number, total: numbe
  * Quem chama uma vez por página (`backend/tools/paginas`, `backend/tools/paridade`) não passa nada e
  * não paga nada; quem serve cliques (`backend/api/src/servidor.ts`) passa.
  */
+const JANELA_PADRAO: Janela = { de: 0, linhas: LINHAS_PADRAO };
+
 export function calculaPagina(
   dash: DashboardSpec,
   ev: Evaluator,
-  janela: Janela = { de: 0, linhas: LINHAS_PADRAO },
+  janela: Janela = JANELA_PADRAO,
   aoTerminar?: AoTerminarVisual,
   memo?: MemoDeCompletos,
   /** As colunas cujo filtro nasceu de clique. Ver `filtrosDoVisual`. */

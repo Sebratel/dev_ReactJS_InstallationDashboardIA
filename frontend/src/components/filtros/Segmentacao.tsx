@@ -143,7 +143,6 @@ export function Segmentacao(props: {
                 placeholder="Filtrar opções…"
                 value={busca}
                 onChange={(evento) => setBusca(evento.target.value)}
-                autoFocus
               />
               {visiveis.length === 0 ? (
                 <Nota>Nenhum resultado para esta busca.</Nota>

@@ -145,8 +145,10 @@ function nomeDaSerieNaLegenda(
 export function corDaColunaPorValor(valor: number, min: number, max: number): string {
   if (max <= min) return DOURADO;
   const tempo = Math.max(0, Math.min(1, (valor - min) / (max - min)));
-  const inicio = [1, 3, 5].map((indice) => parseInt(DOURADO_CLARO.slice(indice, indice + 2), 16));
-  const ate = [1, 3, 5].map((indice) => parseInt(DOURADO.slice(indice, indice + 2), 16));
+  const inicio = [1, 3, 5].map((indice) =>
+    Number.parseInt(DOURADO_CLARO.slice(indice, indice + 2), 16),
+  );
+  const ate = [1, 3, 5].map((indice) => Number.parseInt(DOURADO.slice(indice, indice + 2), 16));
   return `#${inicio
     .map((valor, indice) =>
       Math.round(valor + (ate[indice]! - valor) * tempo)
@@ -530,7 +532,9 @@ function decideFaceta(series: readonly SerieMontada[], empilha: boolean): string
  * `CLAUDE.md` (bordô sobre branco: 9,87:1 — reproduzido por esta função, não copiado).
  */
 function luminanciaRelativa(hex: string): number {
-  const canais = [1, 3, 5].map((indice) => parseInt(hex.slice(indice, indice + 2), 16) / 255);
+  const canais = [1, 3, 5].map(
+    (indice) => Number.parseInt(hex.slice(indice, indice + 2), 16) / 255,
+  );
   const [registro, grafico, azul] = canais.map((canal) =>
     canal <= 0.03928 ? canal / 12.92 : ((canal + 0.055) / 1.055) ** 2.4,
   );

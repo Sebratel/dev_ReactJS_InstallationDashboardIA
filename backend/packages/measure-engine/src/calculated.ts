@@ -84,7 +84,7 @@ export function calculatedTableDependencies(model: SemanticModel, t: ModelTable)
   visitar(t.tableDax);
 
   tabelas.delete(normalizeName(t.name)); // auto-referência é tratada na ordenação
-  return [...tabelas].filter((x) => calculadas.has(x)).sort();
+  return [...tabelas].filter((x) => calculadas.has(x)).sort((a, b) => a.localeCompare(b));
 }
 
 /**
@@ -167,7 +167,7 @@ export function calculatedTableSourceTables(model: SemanticModel, t: ModelTable)
     }
   }
 
-  const origens = [...tabelas].filter((x) => !calculadas.has(x)).sort();
+  const origens = [...tabelas].filter((x) => !calculadas.has(x)).sort((a, b) => a.localeCompare(b));
   // Nenhuma origem é resposta suspeita, não resposta vazia: toda calculada desta
   // base nasce de alguma tabela de query. Quem chama continua conservador.
   return origens.length > 0 ? origens : null;
@@ -324,8 +324,12 @@ function casaColunas(
  * assim que `TableValue` nomeia coluna.
  */
 function chaveDeOrigem(sourceColumn: string): string {
-  const m = /\[([^\]]*)\]\s*$/.exec(sourceColumn);
-  return normalizeName(m ? m[1]! : sourceColumn);
+  const aparado = sourceColumn.trimEnd();
+  if (aparado.endsWith(']')) {
+    const abre = aparado.lastIndexOf('[');
+    if (abre !== -1) return normalizeName(aparado.slice(abre + 1, -1));
+  }
+  return normalizeName(sourceColumn);
 }
 
 /**

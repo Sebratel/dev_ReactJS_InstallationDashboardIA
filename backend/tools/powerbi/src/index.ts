@@ -179,7 +179,7 @@ if (args.investiga) {
   ] as const) {
     try {
       const linhas = await pergunta(dax);
-      const nomes = linhas.map((l) => String(Object.values(l)[0])).sort();
+      const nomes = linhas.map((l) => String(Object.values(l)[0])).sort((a, b) => a.localeCompare(b));
       console.log(`\n  ${rotulo} (${nomes.length}):`);
       for (const n of nomes.slice(0, 60)) console.log(`    ${n}`);
       if (nomes.length > 60) console.log(`    ... e mais ${nomes.length - 60}`);
@@ -224,7 +224,7 @@ const ev = carregado.ev;
 // ------------------------------------------------------------- modo tabelas
 
 if (args.tabelas) {
-  const tabelas = [...carregado.linhasPorTabela.keys()].sort();
+  const tabelas = [...carregado.linhasPorTabela.keys()].sort((a, b) => a.localeCompare(b));
   console.log(`\n-- COUNTROWS, ${tabelas.length} tabelas ----------------------------`);
   const resultados: Comparacao[] = [];
   for (const t of tabelas) {
@@ -250,7 +250,7 @@ const medidas = [...new Set(
   (dash.visuals ?? []).flatMap((v) =>
     (v.fields ?? []).filter((c) => c.kind === 'measure' && c.property).map((c) => c.property!),
   ),
-)].sort();
+)].sort((a, b) => a.localeCompare(b));
 
 /**
  * Os cards que agregam COLUNA em vez de chamar medida.

@@ -138,7 +138,7 @@ async function main(): Promise<void> {
   const vazio = await client.query(`with base as (\n${SQL}\n) select * from base limit 0`);
   const noSql = new Set(vazio.fields.map((f) => f.name));
 
-  const dims = [...achadas.keys()].sort();
+  const dims = [...achadas.keys()].sort((a, b) => a.localeCompare(b));
   const emSql = dims.filter((d) => noSql.has(d));
   const calculadas = dims.filter((d) => !noSql.has(d));
 
@@ -148,10 +148,10 @@ async function main(): Promise<void> {
 
   console.log('  DIMENSÕES que a página usa (fora os visuais de detalhe):');
   for (const d of emSql) {
-    console.log(`    [sql ] ${d.padEnd(24)} ${[...(achadas.get(d) ?? [])].sort().join(', ')}`);
+    console.log(`    [sql ] ${d.padEnd(24)} ${[...(achadas.get(d) ?? [])].sort((a, b) => a.localeCompare(b)).join(', ')}`);
   }
   for (const d of calculadas) {
-    console.log(`    [calc] ${d.padEnd(24)} ${[...(achadas.get(d) ?? [])].sort().join(', ')}  <- não existe no SQL`);
+    console.log(`    [calc] ${d.padEnd(24)} ${[...(achadas.get(d) ?? [])].sort((a, b) => a.localeCompare(b)).join(', ')}  <- não existe no SQL`);
   }
   if (calculadas.length > 0) {
     console.log(`\n  ${calculadas.length} dimensão(ões) nasce(m) depois do SQL. Pré-agregar no banco exige portá-las`);

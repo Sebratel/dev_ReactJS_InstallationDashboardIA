@@ -99,9 +99,9 @@ export function situacaoDaFonte(
     (saude?.agendador?.grupos ?? []).map((grupo) => [grupo.id, grupo.intervaloMinutos]),
   );
   const porQuery = consultas.map((consulta) => {
-    const carga = consulta.ultimaCarga ? new Date(consulta.ultimaCarga).getTime() : NaN;
+    const carga = consulta.ultimaCarga ? new Date(consulta.ultimaCarga).getTime() : Number.NaN;
     const ponto = doPoller.get(consulta.id);
-    const conferido = ponto?.confirmadoEm ? new Date(ponto.confirmadoEm).getTime() : NaN;
+    const conferido = ponto?.confirmadoEm ? new Date(ponto.confirmadoEm).getTime() : Number.NaN;
     // Poll parado não dá frescor: a conferência só conta enquanto acompanha o intervalo.
     const pollEmDia =
       !Number.isNaN(conferido) && agora - conferido <= 2 * ponto!.intervaloMs + 60_000;
@@ -113,7 +113,7 @@ export function situacaoDaFonte(
     return {
       em: instante,
       pollEmDia,
-      proxima: consulta.proximaCarga ? new Date(consulta.proximaCarga).getTime() : NaN,
+      proxima: consulta.proximaCarga ? new Date(consulta.proximaCarga).getTime() : Number.NaN,
       cadenciaMin: pollEmDia ? ponto!.intervaloMs / 60_000 : (grupo ?? null),
     };
   });

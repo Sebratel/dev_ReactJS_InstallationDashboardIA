@@ -13,7 +13,7 @@ const tabelas = process.argv.slice(2);
 const uso = usoDeColunas(raiz);
 const dir = path.join(raiz, 'backend', 'specs', '_catalog', 'tables');
 
-for (const f of fs.readdirSync(dir).sort()) {
+for (const f of fs.readdirSync(dir).sort((a, b) => a.localeCompare(b))) {
   const t = parse(fs.readFileSync(path.join(dir, f), 'utf8')) as { name: string; columns?: { name: string }[] };
   if (tabelas.length > 0 && !tabelas.includes(t.name)) continue;
   for (const c of t.columns ?? []) {

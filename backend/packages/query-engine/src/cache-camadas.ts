@@ -118,7 +118,7 @@ export class CacheEmCamadas implements Cache {
     const local = await this.#rapida.keys(prefix);
     const remoto = await this.#tenta('keys', () => this.#duravel.keys(prefix));
     if (remoto === undefined) return local;
-    return [...new Set([...local, ...remoto])].sort();
+    return [...new Set([...local, ...remoto])].sort((a, b) => a.localeCompare(b));
   }
 
   /** Roda na camada durável engolindo a falha. `undefined` = não deu. */

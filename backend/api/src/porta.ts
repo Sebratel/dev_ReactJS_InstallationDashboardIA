@@ -64,15 +64,29 @@ export function pidsDoLsof(saida: string): number[] {
   return [...pids];
 }
 
+/** Resolve um binário de sistema por caminho absoluto fixo (evita depender do PATH — Sonar S4036). */
+function binarioSistema(candidatos: readonly string[]): string {
+  for (const caminho of candidatos) {
+    if (fs.existsSync(caminho)) return caminho;
+  }
+  return candidatos[0];
+}
+
+function systemRoot(): string {
+  return process.env.SystemRoot || 'C:\\Windows';
+}
+
 /** Quem escuta nesta porta agora. Lista vazia = não descobri (não = ninguém). */
 export function quemOcupa(porta: number): number[] {
   try {
     if (process.platform === 'win32') {
-      const r = spawnSync('netstat', ['-ano'], { encoding: 'utf8', timeout: 5000 });
+      const netstat = `${systemRoot()}\\System32\\netstat.exe`;
+      const r = spawnSync(netstat, ['-ano'], { encoding: 'utf8', timeout: 5000 });
       return r.stdout ? pidsDoNetstat(r.stdout, porta) : [];
     }
+    const lsof = binarioSistema(['/usr/bin/lsof', '/usr/sbin/lsof', '/bin/lsof']);
     const r = spawnSync(
-      'lsof',
+      lsof,
       ['-nP', `-iTCP:${porta}`, '-sTCP:LISTEN', '-t'],
       { encoding: 'utf8', timeout: 5000 },
     );
@@ -116,7 +130,8 @@ export function linhaDeComando(pid: number): string | null {
       ].join('; ');
       // 15 s, não 5: PowerShell + CIM a frio passa de 5 s com a máquina ocupada (medido
       // 15/10/2026 com a suíte inteira rodando), e o estouro vira `null` — "não é nosso".
-      const r = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
+      const powershell = `${systemRoot()}\\System32\\WindowsPowerShell\\v1.0\\powershell.exe`;
+      const r = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
         encoding: 'utf8', timeout: 15_000,
       });
       const b64 = r.stdout?.trim();
@@ -131,7 +146,8 @@ export function linhaDeComando(pid: number): string | null {
     } catch {
       // Sem /proc (macOS) ou processo já saiu: cai no `ps`.
     }
-    const r = spawnSync('ps', ['-p', String(pid), '-o', 'args='], { encoding: 'utf8', timeout: 5000 });
+    const ps = binarioSistema(['/bin/ps', '/usr/bin/ps']);
+    const r = spawnSync(ps, ['-p', String(pid), '-o', 'args='], { encoding: 'utf8', timeout: 5000 });
     const linha = r.stdout?.trim();
     return linha ? linha : null;
   } catch {
@@ -199,7 +215,8 @@ export function derruba(pids: readonly number[]): number[] {
   for (const pid of pids) {
     try {
       if (process.platform === 'win32') {
-        const r = spawnSync('taskkill', ['/PID', String(pid), '/F', '/T'], { timeout: 5000 });
+        const taskkill = `${systemRoot()}\\System32\\taskkill.exe`;
+        const r = spawnSync(taskkill, ['/PID', String(pid), '/F', '/T'], { timeout: 5000 });
         if (r.status !== 0) sobreviventes.push(pid);
       } else {
         process.kill(pid, 'SIGKILL');

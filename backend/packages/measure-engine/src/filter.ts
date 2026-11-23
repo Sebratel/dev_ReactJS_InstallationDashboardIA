@@ -351,7 +351,7 @@ function tabelasVisitadas(
   key: string,
   rels: ReadonlySet<string>,
 ): ReadonlySet<string> | null {
-  const ck = rels.size === 0 ? key : `${key}|${[...rels].sort().join(',')}`;
+  const ck = rels.size === 0 ? key : `${key}|${[...rels].sort((a, b) => a.localeCompare(b)).join(',')}`;
   let porGrafo = visitadasCache.get(propagation);
   if (!porGrafo) {
     porGrafo = new Map();
@@ -458,7 +458,7 @@ export class FilteredContext implements FilterContext {
   ): Row[] {
     const ck = relsNoCaminho.size === 0
       ? key
-      : `${key}|${[...relsNoCaminho].sort().join(',')}`;
+      : `${key}|${[...relsNoCaminho].sort((a, b) => a.localeCompare(b)).join(',')}`;
     const cacheado = this.cache.get(ck);
     if (cacheado) return cacheado;
 

@@ -82,7 +82,9 @@ export async function geraNoRefresh(
   pedido: PedidoDeGeracao,
   o: { tempoMaximoMs?: number } = {},
 ): Promise<ResultadoDaGeracao> {
-  const url = `${refreshUrl.replace(/\/+$/, '')}/ao-vivo`;
+  let baseRefresh = refreshUrl;
+  while (baseRefresh.endsWith('/')) baseRefresh = baseRefresh.slice(0, -1);
+  const url = `${baseRefresh}/ao-vivo`;
   const res = await fetch(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

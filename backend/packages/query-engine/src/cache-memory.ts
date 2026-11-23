@@ -151,7 +151,7 @@ export class MemoryCache implements Cache {
       }
       if (k.startsWith(prefix)) out.push(k);
     }
-    return out.sort();
+    return out.sort((a, b) => a.localeCompare(b));
   }
 
   /** Só para testes/observabilidade. */

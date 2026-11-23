@@ -47,7 +47,7 @@ export function montaBuscaPorIds(sqlDaSpec: string, nomeDaView: string, definica
   def = def.replace(ANCORA_DISTINCT, `${ANCORA_DISTINCT}                  WHERE ff.reserved_assignment_id = ${FILTRO}\n`);
   def = def.replace(ANCORA_JANELAS, `${ANCORA_JANELAS} AND fah.reserved_assignment_id = ${FILTRO}`);
   // O ORDER BY final da view não muda o resultado de uma subconsulta e custa um sort.
-  def = def.replace(/\n\s*ORDER BY a\.id, f\.begin_date, f\.routing_status\s*$/, '');
+  def = def.trimEnd().replace(/\n[ \t]*ORDER BY a\.id, f\.begin_date, f\.routing_status$/, '');
 
   const sql = sqlDaSpec.replace(/;\s*$/, '');
   const from = new RegExp(`FROM\\s+${nomeDaView}\\s+(\\w+)`);

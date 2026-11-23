@@ -47,8 +47,9 @@ function slugify(name) {
     .replace(/[̀-ͯ]/g, '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-{2,}/g, '-') || 'sem-nome';
+    .replace(/^-/, '')
+    .replace(/-$/, '')
+    || 'sem-nome';
 }
 
 const IGNORE_TABLE = /^(LocalDateTable_|DateTableTemplate_)/;
@@ -1188,7 +1189,7 @@ function build(pbip) {
       const fields = extractVisualFields(v);
       // Anda nas partes aninhadas: a entidade de um `Arithmetic` está nos operandos,
       // e somar só o nível de cima esconderia a tabela que o visual de fato lê.
-      const entities = [...fields.reduce((acc, f) => entidadesDoCampo(f, acc), new Set())].sort();
+      const entities = [...fields.reduce((acc, f) => entidadesDoCampo(f, acc), new Set())].sort((a, b) => a.localeCompare(b));
       return {
         id: v.name,
         type: v?.visual?.visualType || 'unknown',
@@ -1218,10 +1219,6 @@ function build(pbip) {
         (a, t) => a + t.columns.filter((c) => c.calculated).length,
         0,
       ),
-      calculated_tables: tableSpecs.filter((t) => t.table_dax).length,
-      calculated_tables: tableSpecs.filter((t) => t.table_dax).length,
-      calculated_tables: tableSpecs.filter((t) => t.table_dax).length,
-      calculated_tables: tableSpecs.filter((t) => t.table_dax).length,
       calculated_tables: tableSpecs.filter((t) => t.table_dax).length,
       relationships: relationships.length,
       queries: queries.length,

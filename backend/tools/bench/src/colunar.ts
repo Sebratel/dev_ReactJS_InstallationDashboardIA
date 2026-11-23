@@ -165,7 +165,7 @@ const arquivos = fs
   .filter(ehArquivoDeSnapshot)
   .filter((f) => !semSufixo(f).startsWith('calc.'))
   .filter((f) => pedidas.length === 0 || pedidas.includes(semSufixo(f)))
-  .sort();
+  .sort((a, b) => a.localeCompare(b));
 
 if (!arquivos.length) {
   console.error(`nada a medir em ${DIR}${pedidas.length ? ` para: ${pedidas.join(', ')}` : ''}`);

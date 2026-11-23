@@ -213,7 +213,7 @@ function referenciasDoLet(
         return;
       case 'If':
         anda(no.cond, emLambda);
-        anda(no.then, emLambda);
+        anda(no.consequent, emLambda);
         anda(no.otherwise, emLambda);
         return;
       case 'Binary':
@@ -478,7 +478,7 @@ export class MEvaluator {
             `A condição do \`if\` deu ${tipoDe(cond)}, e M exige logical (true/false).`,
           );
         }
-        return this.avalia(cond ? no.then : no.otherwise, escopo);
+        return this.avalia(cond ? no.consequent : no.otherwise, escopo);
       }
 
       case 'Unary':

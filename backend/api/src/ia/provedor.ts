@@ -39,7 +39,11 @@ export interface ProvedorIa {
 
 const TIMEOUT_PADRAO_MS = Number(process.env.AI_TIMEOUT_MS) || 90_000;
 
-const limpaBarra = (u: string): string => String(u).replace(/\/+$/, '');
+const limpaBarra = (u: string): string => {
+  let s = String(u);
+  while (s.endsWith('/')) s = s.slice(0, -1);
+  return s;
+};
 
 const ehErroTransitorioIa = (status: number, msg: string): boolean =>
   status === 429 ||

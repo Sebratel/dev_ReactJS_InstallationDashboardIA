@@ -278,8 +278,8 @@ function soMudaAOrdem(ref: VisualCalculado, vivo: VisualCalculado): boolean {
   if (conteudoDe({ ...ref, dados: null }) !== conteudoDe({ ...vivo, dados: null })) return false;
   if (!a || !b || typeof a !== 'object' || typeof b !== 'object' || Array.isArray(a) !== Array.isArray(b)) return false;
   if (Array.isArray(a)) return a.length === (b as unknown[]).length && soEm(a, b as unknown[]) === 0;
-  const ka = Object.keys(a).sort();
-  if (ka.join('\u0000') !== Object.keys(b).sort().join('\u0000')) return false;
+  const ka = Object.keys(a).sort((a, b) => a.localeCompare(b));
+  if (ka.join('\u0000') !== Object.keys(b).sort((a, b) => a.localeCompare(b)).join('\u0000')) return false;
   return ka.every((k) => {
     const x = (a as Record<string, unknown>)[k];
     const y = (b as Record<string, unknown>)[k];

@@ -143,5 +143,5 @@ export function extractSourceTables(sql) {
       tables.add(name);
     }
   }
-  return [...tables].sort();
+  return [...tables].sort((a, b) => a.localeCompare(b));
 }

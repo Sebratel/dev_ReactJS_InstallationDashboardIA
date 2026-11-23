@@ -265,7 +265,7 @@ test('reserva (ACHADOS #163): com fundo enchendo a piscina, um clique NÃO esper
 test('reserva: com UMA worker só não há reserva — o fundo ainda roda', async () => {
   const p = new PiscinaWorkers({ tamanhoPool: 1, scriptDaWorker: LENTO });
   try {
-    await p.executa(tarefa(20), WARMUP);
+    await assert.doesNotReject(() => p.executa(tarefa(20), WARMUP));
   } finally {
     p.destroi();
   }

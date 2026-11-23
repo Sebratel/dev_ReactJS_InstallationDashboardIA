@@ -80,7 +80,7 @@ export class QueryRegistry {
 
   /** Queries afetadas por uma mudança na tabela-fonte (usado pelo realtime). */
   queriesForTable(table: string): string[] {
-    return [...(this.dependents.get(table.toLowerCase()) ?? [])].sort();
+    return [...(this.dependents.get(table.toLowerCase()) ?? [])].sort((a, b) => a.localeCompare(b));
   }
 
   /** Valida integridade do registry. Retorna lista de problemas (vazia = ok). */

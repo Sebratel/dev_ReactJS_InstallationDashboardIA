@@ -196,7 +196,9 @@ export function compareValues(a: DaxValue, b: DaxValue, strict: boolean, onde: s
 
 /** Forma de comparar texto: sem caixa e sem os espaços do fim — ver `compareValues`. */
 function textoComparavel(s: string): string {
-  return s.replace(/ +$/, '').toLocaleLowerCase('pt-BR');
+  let fim = s.length;
+  while (fim > 0 && s.codePointAt(fim - 1) === 32) fim--;
+  return s.slice(0, fim).toLocaleLowerCase('pt-BR');
 }
 
 export function valuesEqual(a: DaxValue, b: DaxValue, strict: boolean, onde: string): boolean {

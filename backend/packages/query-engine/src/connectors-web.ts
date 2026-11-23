@@ -85,7 +85,7 @@ export function buscadorWeb(opts: BuscadorWebOptions): (pedido: PedidoWeb) => Pr
     if (!permitidos.has(url.host)) {
       throw new WebError(
         `Web: o host '${url.host}' não está na allowlist da query. ` +
-          `Permitidos: ${[...permitidos].sort().join(', ')}. ` +
+          `Permitidos: ${[...permitidos].sort((a, b) => a.localeCompare(b)).join(', ')}. ` +
           'A allowlist vem de `endpoints` no .spec.yaml, que o extrator gera do PBIP.',
       );
     }
@@ -123,5 +123,5 @@ export function buscadorWeb(opts: BuscadorWebOptions): (pedido: PedidoWeb) => Pr
 
 /** Junta os `endpoints` de várias specs numa allowlist só. */
 export function endpointsDe(specs: readonly { endpoints?: string[] }[]): string[] {
-  return [...new Set(specs.flatMap((s) => s.endpoints ?? []))].sort();
+  return [...new Set(specs.flatMap((s) => s.endpoints ?? []))].sort((a, b) => a.localeCompare(b));
 }

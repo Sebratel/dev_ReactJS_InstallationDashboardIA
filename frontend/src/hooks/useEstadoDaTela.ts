@@ -136,7 +136,7 @@ export function useEstadoDaTela(): EstadoDaTela {
   const iniciaEm = useCallback(
     (id: string) => {
       const rota = leRota(window.location.search, window.location.pathname);
-      vai(
+      void vai(
         id,
         rota.filtros.length > 0 || rota.limpo ? rota.filtros : filtrosPadrao(id),
         rota.clicados,
@@ -158,7 +158,7 @@ export function useEstadoDaTela(): EstadoDaTela {
         valores,
         nivel,
       );
-      vai(filtroAtual.pagina, filtro.filtros, filtro.clicados, false);
+      void vai(filtroAtual.pagina, filtro.filtros, filtro.clicados, false);
     },
     [vai],
   );
@@ -174,7 +174,7 @@ export function useEstadoDaTela(): EstadoDaTela {
         alvos,
         filtrosPadrao(filtroAtual.pagina),
       );
-      vai(filtroAtual.pagina, filtro.filtros, filtro.clicados, true);
+      void vai(filtroAtual.pagina, filtro.filtros, filtro.clicados, true);
     },
     [vai],
   );
@@ -183,7 +183,7 @@ export function useEstadoDaTela(): EstadoDaTela {
     const filtro = agora();
     if (!filtro.pagina) return;
     // Lista vazia vira `limpo=1` na URL (`escreveRota`), e não o padrão da página.
-    vai(filtro.pagina, [], [], true);
+    void vai(filtro.pagina, [], [], true);
   }, [vai]);
 
   return {
