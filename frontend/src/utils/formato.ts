@@ -24,10 +24,17 @@ export interface Formatado {
 
 const nf = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 });
 const nfInt = new Intl.NumberFormat('pt-BR');
-// UTC para data pura: o snapshot grava instante em meia-noite, e formatar no fuso local
-// faria a mesma data virar o dia anterior para quem estivesse a oeste de Greenwich.
+// UTC para data pura e data/hora vinda do banco/snapshot: colunas `timestamp without time zone`
+// do Voalle/Power BI já são relógio de parede do Brasil e gravadas em UTC no snapshot
+// (mesma convenção do `df`, `dfHora` e `HOUR()` do DAX). Formatar em America/Sao_Paulo
+// subtraía 3h indevidamente (ex.: Slot Agenda 09:00 aparecendo como 06:00).
 const df = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeZone: 'UTC' });
-// Fuso do Brasil (America/Sao_Paulo) para data com hora (ex: carimbo dadoDe do snapshot):
+const dfhUtc = new Intl.DateTimeFormat('pt-BR', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+  timeZone: 'UTC',
+});
+// Fuso do Brasil (America/Sao_Paulo) só para instantes reais em UTC (ex: carimbo dadoDe):
 const fusoLocal = 'America/Sao_Paulo';
 const dfh = new Intl.DateTimeFormat('pt-BR', {
   dateStyle: 'short',
@@ -74,7 +81,7 @@ export function formata(
     // Meia-noite exata é data pura; qualquer hora e a hora importa. É o que separa
     // "10/08/2026" de "10/08/2026 09:08" no mesmo card.
     const soData = d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0;
-    return { texto: (soData ? df : dfh).format(d), numerico: true, vazio: false };
+    return { texto: (soData ? df : dfhUtc).format(d), numerico: true, vazio: false };
   }
 
   if (tipo === 'number') {
