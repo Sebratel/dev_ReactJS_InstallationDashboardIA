@@ -196,16 +196,37 @@ export function configuracaoDoRefresh(env: NodeJS.ProcessEnv = process.env): Con
  * Docker este é o modo seguro: uma carga média congelada não descarta os disparos
  * do grupo quente, e uma suspensão do host aborta o filho e recupera a fila.
  */
-export function iniciaAgendadorPorGrupo(opts: Pick<DaemonOptions, 'raiz' | 'snapshotDir' | 'specsDir' | 'memoriaMb' | 'tempoMaximoMs'> = {}): Agendador {
+export function iniciaAgendadorPorGrupo(
+  opts: Pick<DaemonOptions, 'raiz' | 'snapshotDir' | 'specsDir' | 'memoriaMb' | 'tempoMaximoMs'> & {
+    fila?: FilaDeBuscas;
+  } = {},
+): Agendador {
   const raiz = opts.raiz ?? ROOT;
   applyDotEnv(raiz);
   const configuracao = configuracaoDoRefresh();
+  const memoriaMb = opts.memoriaMb ?? configuracao.memoriaMb;
+  const tempoMaximoMs = opts.tempoMaximoMs ?? configuracao.tempoMaximoMs;
+  const fila = opts.fila;
   const agendador = new Agendador({
     raiz,
     specsDir: opts.specsDir,
     snapshotDir: opts.snapshotDir ?? diretorioSnapshotPadrao(raiz),
-    memoriaMb: opts.memoriaMb ?? configuracao.memoriaMb,
-    tempoMaximoMs: opts.tempoMaximoMs ?? configuracao.tempoMaximoMs,
+    memoriaMb,
+    tempoMaximoMs,
+    // Quando há fila compartilhada (ex.: com `POST /ao-vivo`), nenhum grupo materializa
+    // em paralelo com um filho ao-vivo dentro do mesmo cgroup de 3 GiB do container.
+    ...(fila
+      ? {
+          roda: async (grupo, sinal) => {
+            await fila.vez();
+            try {
+              return await rodaGrupoAssincrono(raiz, grupo, { memoriaMb, tempoMaximoMs, sinal });
+            } finally {
+              fila.libera();
+            }
+          },
+        }
+      : {}),
   });
   agendador.inicia();
   return agendador;
@@ -497,8 +518,10 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
       console.error('--por-grupo não combina com --sem-imediato, --so-uma-vez nem --intervalo');
       process.exit(2);
     }
-    const agendador = iniciaAgendadorPorGrupo();
-    const filaAoVivo = new FilaDeBuscas(1);
+    // Uma única fila de 1 filho por vez para TODO o container `refresh`: grupos de
+    // materialização e buscas `POST /ao-vivo` nunca disputam o mesmo cgroup de 3 GiB.
+    const filaDeFilhos = new FilaDeBuscas(1);
+    const agendador = iniciaAgendadorPorGrupo({ fila: filaDeFilhos });
     const portaInterna = Number(process.env.REFRESH_PORT || 3102);
     const controleHttp = http.createServer((req, res) => {
       if (req.method === 'POST' && req.url === '/pede') {
@@ -522,7 +545,7 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
             return;
           }
           void (async () => {
-            await filaAoVivo.vez();
+            await filaDeFilhos.vez();
             try {
               const r = await geraEmProcesso(ROOT, pedido);
               res.writeHead(200, { 'content-type': 'application/json' });
@@ -536,7 +559,7 @@ CICLOS PULADOS: ${pulos.pulos} (último em ${pulos.ultimo})`);
                 }),
               );
             } finally {
-              filaAoVivo.libera();
+              filaDeFilhos.libera();
             }
           })();
         });
