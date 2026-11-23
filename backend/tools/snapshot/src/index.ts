@@ -1189,11 +1189,13 @@ let congelouCedoOk = true;
 for (const [i, id] of aBuscar.entries()) {
   process.stderr.write(`  ${id}… `);
   let r = await rodaEmSubprocesso(id);
-  // Uma conexão cortada no meio de UMA query (06/10/2026, `contratos`) derrubava o grupo
-  // inteiro por 15 min. Segunda chance só para erro de rede: o resto se repete igual.
-  if (!r.ok && r.erro && ehFalhaTransitoria(r.erro)) {
-    process.stderr.write(`FALHOU (${r.ms} ms, rede) — de novo em ${ESPERA_ANTES_DE_REPETIR_MS / 1000}s… `);
-    await new Promise((pronto) => setTimeout(pronto, ESPERA_ANTES_DE_REPETIR_MS));
+  // Uma conexão cortada ou conflito de réplica (`conflict with recovery`) no meio de UMA
+  // query derrubava o grupo inteiro. Até duas retentativas com espera progressiva só para
+  // erro transitório de rede/réplica: o resto se repete igual.
+  for (let tentativa = 1; tentativa <= 2 && !r.ok && r.erro && ehFalhaTransitoria(r.erro); tentativa++) {
+    const esperaMs = ESPERA_ANTES_DE_REPETIR_MS * tentativa;
+    process.stderr.write(`FALHOU (${r.ms} ms, transitório #${tentativa}) — de novo em ${esperaMs / 1000}s… `);
+    await new Promise((pronto) => setTimeout(pronto, esperaMs));
     r = await rodaEmSubprocesso(id);
   }
   process.stderr.write(`${r.ok ? 'ok' : 'FALHOU'} (${r.ms} ms)\n`);
