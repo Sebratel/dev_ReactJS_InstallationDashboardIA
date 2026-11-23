@@ -47,15 +47,15 @@ export function EsqueletoDaPagina({ layout }: { layout: LayoutSpec }) {
           aria-label="Indicadores"
           className="grid gap-[var(--gap)] [grid-template-columns:repeat(auto-fill,minmax(210px,1fr))] *:min-h-0 *:min-w-0"
         >
-          {layout.kpis.map((k) => (
-            <KpiEsqueleto key={k.visual} />
+          {layout.kpis.map((kpi) => (
+            <KpiEsqueleto key={kpi.visual} />
           ))}
         </section>
       ) : null}
-      {layout.faixas.map((faixa, i) => {
+      {layout.faixas.map((faixa, indice) => {
         const cheia = faixa.colunas.length === 1;
         return (
-          <div key={i} className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
+          <div key={indice} className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
             {faixa.colunas.map((col) => (
               <div key={col.visual} style={{ gridColumn: `span ${col.span}` }}>
                 <CartaoEsqueleto id={col.visual} altura={faixa.altura} />

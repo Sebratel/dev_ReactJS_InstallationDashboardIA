@@ -17,7 +17,7 @@ import {
 } from '../../services/dashboardService.ts';
 import { formata } from '../../utils/formato.ts';
 import { alternaValor } from '../../utils/vizinhanca.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { rotulosCurtos } from '../../utils/rotulosCurtos.ts';
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Nota } from '../ui/Nota.tsx';
@@ -55,14 +55,14 @@ export function SegmentacaoChips(props: {
 
   /** A seleção depois de clicar em `v` — a mesma conta do clique, da previsão e da
    *  vizinhança (`alternaValor`). */
-  const proxima = (v: Valor): Valor[] => alternaValor(props.selecao, v);
+  const proxima = (valor: Valor): Valor[] => alternaValor(props.selecao, valor);
 
-  function alterna(v: Valor): void {
-    props.aoMudar(proxima(v));
+  function alterna(valor: Valor): void {
+    props.aoMudar(proxima(valor));
   }
 
-  const completos = (opcoes ?? []).map((o) =>
-    o.valor === null ? '(vazio)' : formata(o.valor, o.tipo).texto,
+  const completos = (opcoes ?? []).map((opcao) =>
+    opcao.valor === null ? '(vazio)' : formata(opcao.valor, opcao.tipo).texto,
   );
   const curtos = rotulosCurtos(completos);
 
@@ -71,15 +71,19 @@ export function SegmentacaoChips(props: {
   // passivo e não impede a página de rolar junto.
   const fileiraRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = fileiraRef.current;
-    if (!el) return;
-    const rola = (e: globalThis.WheelEvent) => {
-      if (el.scrollWidth <= el.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
-      e.preventDefault();
-      el.scrollLeft += e.deltaY;
+    const elemento = fileiraRef.current;
+    if (!elemento) return;
+    const rola = (evento: globalThis.WheelEvent) => {
+      if (
+        elemento.scrollWidth <= elemento.clientWidth ||
+        Math.abs(evento.deltaX) > Math.abs(evento.deltaY)
+      )
+        return;
+      evento.preventDefault();
+      elemento.scrollLeft += evento.deltaY;
     };
-    el.addEventListener('wheel', rola, { passive: false });
-    return () => el.removeEventListener('wheel', rola);
+    elemento.addEventListener('wheel', rola, { passive: false });
+    return () => elemento.removeEventListener('wheel', rola);
   }, []);
 
   return (
@@ -99,31 +103,31 @@ export function SegmentacaoChips(props: {
         ref={fileiraRef}
       >
         <ChipsOuAviso erro={erro} vazio={opcoes === null} />
-        {opcoes?.map((o, i) => {
-          const marcado = props.selecao.some((x) => Object.is(x, o.valor));
+        {opcoes?.map((opcao, indice) => {
+          const marcado = props.selecao.some((x) => Object.is(x, opcao.valor));
           return (
             <button
-              key={i}
+              key={indice}
               type="button"
-              className={cn(
+              className={juntarClasses(
                 CHIP,
                 marcado
                   ? 'border-pbi-primary-texto bg-pbi-primary-soft font-semibold text-pbi-primary-texto'
-                  : cn('bg-pbi-superficie text-pbi-ink', HOVER),
+                  : juntarClasses('bg-pbi-superficie text-pbi-ink', HOVER),
               )}
               aria-pressed={marcado}
-              onClick={() => alterna(o.valor)}
-              onMouseEnter={() => props.aoPrever?.(proxima(o.valor))}
-              title={completos[i]}
+              onClick={() => alterna(opcao.valor)}
+              onMouseEnter={() => props.aoPrever?.(proxima(opcao.valor))}
+              title={completos[indice]}
             >
-              {curtos[i]}
+              {curtos[indice]}
             </button>
           );
         })}
         {props.selecao.length > 0 ? (
           <button
             type="button"
-            className={cn(CHIP, 'border-dashed bg-transparent text-pbi-muted', HOVER)}
+            className={juntarClasses(CHIP, 'border-dashed bg-transparent text-pbi-muted', HOVER)}
             onClick={() => props.aoMudar([])}
           >
             limpar

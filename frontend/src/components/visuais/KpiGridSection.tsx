@@ -27,15 +27,15 @@ export function KpiGridSection({
   layout: LayoutSpec | null;
   visuais: VisualCalculado[];
 }) {
-  const porId = new Map(visuais.map((v) => [v.id, v]));
+  const porId = new Map(visuais.map((visual) => [visual.id, visual]));
   const cards = (layout?.kpis ?? [])
-    .map((k) => ({ entrada: k, visual: porId.get(k.visual) }))
+    .map((kpi) => ({ entrada: kpi, visual: porId.get(kpi.visual) }))
     .filter(
       (x): x is { entrada: KpiEntry; visual: VisualCalculado } =>
         x.visual != null && !x.visual.erro,
     );
   const idsDestaque = new Set(
-    (layout?.kpis ?? []).filter((k) => k.enfase === 'alta').map((k) => k.visual),
+    (layout?.kpis ?? []).filter((kpi) => kpi.enfase === 'alta').map((kpi) => kpi.visual),
   );
 
   if (cards.length === 0) return null;

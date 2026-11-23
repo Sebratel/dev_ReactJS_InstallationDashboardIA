@@ -14,7 +14,7 @@ import {
 import type { RespostaOperacao } from '../../../services/insightsService.ts';
 import { Cartao } from '../../ui/Cartao.tsx';
 import { COR, EIXO, int } from '../formato.ts';
-import { Dica, Grafico, Legenda, Rodape, n } from '../partes.tsx';
+import { Dica, Grafico, Legenda, Rodape, numero } from '../partes.tsx';
 import { ultimoPontoComValor } from './dados.ts';
 
 type PontoDoRitmo = RespostaOperacao['ritmo'][number] & {
@@ -96,10 +96,10 @@ export function RitmoDoDia({ dados }: { dados: RespostaOperacao }) {
             <LabelList
               dataKey="hoje"
               content={(parte) =>
-                n(parte.index) === ultimaHoraPreenchida ? (
+                numero(parte.index) === ultimaHoraPreenchida ? (
                   <text
-                    x={n(parte.x) + 6}
-                    y={n(parte.y) + 4}
+                    x={numero(parte.x) + 6}
+                    y={numero(parte.y) + 4}
                     fontSize={12}
                     fontWeight={700}
                     fill={COR.tinta}

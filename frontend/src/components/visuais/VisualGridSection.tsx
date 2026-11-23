@@ -49,7 +49,7 @@ export function VisualGridSection({
    *  Opcional: sem ele, o clique continua funcionando, só sem o adiantamento. */
   aoPrever?: AoFiltrar;
 }) {
-  const porId = useMemo(() => new Map(visuais.map((v) => [v.id, v])), [visuais]);
+  const porId = useMemo(() => new Map(visuais.map((visual) => [visual.id, visual])), [visuais]);
   const contagem = layout
     ? contaFaixasLargasPorAltura(layout.faixas)
     : { grafico: 0, tabela: 0, matriz: 0 };
@@ -63,12 +63,12 @@ export function VisualGridSection({
   return (
     <ProvedorContextoDaPagina pagina={pagina} filtros={filtros} clicados={clicados}>
       <div className="flex flex-col gap-[var(--gap)]">
-        {layout.faixas.map((faixa, i) => {
+        {layout.faixas.map((faixa, indice) => {
           if (faixa.colunas.length === 0) return null;
           const cheia = faixa.colunas.length === 1;
 
           return (
-            <div key={i} className="flex flex-col gap-[var(--gap)]">
+            <div key={indice} className="flex flex-col gap-[var(--gap)]">
               {faixa.titulo ? <TituloSecao>{faixa.titulo}</TituloSecao> : null}
               <div className={`faixa-grade${cheia ? ' filas-largas' : ''}`}>
                 {faixa.colunas.map((col) => {

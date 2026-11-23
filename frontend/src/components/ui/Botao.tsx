@@ -6,15 +6,15 @@
 // como letra (cor cheia é fundo, escurecida é letra; `DESIGN-SYSTEM.md` § 1.1).
 
 import type { ButtonHTMLAttributes } from 'react';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 const VARIANTE = {
-  primario: cn(
+  primario: juntarClasses(
     'border-pbi-primary-texto bg-pbi-primary font-semibold text-pbi-sobre-primary',
     'enabled:hover:border-pbi-primary-dark enabled:hover:bg-pbi-primary-dark',
     'disabled:border-pbi-neutro disabled:bg-pbi-neutro',
   ),
-  secundario: cn(
+  secundario: juntarClasses(
     'bg-pbi-superficie font-semibold',
     'enabled:hover:border-pbi-primary-texto enabled:hover:text-pbi-primary-texto',
   ),
@@ -26,5 +26,5 @@ export function Botao({
   type = 'button',
   ...resto
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variante: keyof typeof VARIANTE }) {
-  return <button type={type} className={cn(VARIANTE[variante], className)} {...resto} />;
+  return <button type={type} className={juntarClasses(VARIANTE[variante], className)} {...resto} />;
 }

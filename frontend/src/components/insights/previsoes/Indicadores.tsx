@@ -12,7 +12,11 @@ function tecnicosComFaixa(tecnicos: RespostaPrevisoes['premiacao']['tecnicos']):
 
 /** O mesmo, só para a Faixa 3 e acima. */
 function tecnicosEmFaixaAlta(tecnicos: RespostaPrevisoes['premiacao']['tecnicos']): number {
-  return tecnicos.reduce((soma, t) => soma + t.probs.F3 + t.probs.F4 + t.probs.F5 + t.probs.F6, 0);
+  return tecnicos.reduce(
+    (soma, tecnico) =>
+      soma + tecnico.probs.F3 + tecnico.probs.F4 + tecnico.probs.F5 + tecnico.probs.F6,
+    0,
+  );
 }
 
 /** A descrição do fechamento previsto: intervalo, mês passado e chance de meta. */

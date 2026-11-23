@@ -42,17 +42,17 @@ export function DesenhoDoGrafico(props: {
       role="img"
       aria-label={props.ariaLabel}
     >
-      {marcas.map((m) => (
-        <g key={m}>
+      {marcas.map((medida) => (
+        <g key={medida}>
           <line
             className="grade"
             x1={MARGEM.esquerda}
             x2={largura - MARGEM.direita}
-            y1={geo.y(m)}
-            y2={geo.y(m)}
+            y1={geo.y(medida)}
+            y2={geo.y(medida)}
           />
-          <text className="tick" x={MARGEM.esquerda - 8} y={geo.y(m) + 3.5} textAnchor="end">
-            {props.percentual ? `${m}%` : inteiro(m)}
+          <text className="tick" x={MARGEM.esquerda - 8} y={geo.y(medida) + 3.5} textAnchor="end">
+            {props.percentual ? `${medida}%` : inteiro(medida)}
           </text>
         </g>
       ))}

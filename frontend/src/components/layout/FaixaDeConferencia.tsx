@@ -21,7 +21,9 @@ export function FaixaDeConferencia(props: {
         <Selo tom="apagado">sem filtro da tela</Selo>
       )}
       <span>{duracao(pagina.ms)} de cálculo</span>
-      <span>{pagina.tabelas.map((t) => `${t.nome}: ${inteiro(t.linhas)}`).join(' · ')}</span>
+      <span>
+        {pagina.tabelas.map((tela) => `${tela.nome}: ${inteiro(tela.linhas)}`).join(' · ')}
+      </span>
     </div>
   );
 }

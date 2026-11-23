@@ -5,7 +5,7 @@
 // VALOR em cima, grande, na primária (9,87:1 sobre o branco), e o nome embaixo, miúdo.
 
 import type { ReactNode } from 'react';
-import { cn } from '../../../utils/cn.ts';
+import { juntarClasses } from '../../../utils/cn.ts';
 
 /** A moldura do indicador. `data-visual` é o gancho de `backend/tools/tela/src/varre.ts`. */
 export function MolduraDoKpi(props: { children: ReactNode; esqueleto?: boolean }) {
@@ -13,7 +13,7 @@ export function MolduraDoKpi(props: { children: ReactNode; esqueleto?: boolean }
     <section
       data-visual
       aria-hidden={props.esqueleto || undefined}
-      className={cn(
+      className={juntarClasses(
         'flex min-h-[74px] min-w-0 flex-col justify-center gap-[1px] rounded-[var(--card-radius)] px-[14px] py-[10px]',
         'border border-pbi-borda bg-pbi-superficie shadow-[var(--card-shadow)]',
       )}
@@ -37,7 +37,7 @@ export function NomeDoKpi(props: { children: ReactNode; title?: string }) {
 export function ValorDoKpi(props: { children: ReactNode; vazio?: boolean; destaque?: boolean }) {
   return (
     <div
-      className={cn(
+      className={juntarClasses(
         'text-[clamp(20px,3.1vh,30px)] leading-[1.05] font-semibold whitespace-nowrap text-pbi-primary-texto tabular-nums',
         props.vazio && 'text-[16px] text-pbi-neutro',
         // Depois do vazio: no CSS antigo o tamanho do destaque vencia o do vazio.
@@ -58,7 +58,7 @@ export function LinhaDoKpi(props: {
   return (
     <div
       title={props.title}
-      className={cn(
+      className={juntarClasses(
         'mt-[2px] text-[10.5px] leading-[1.35]',
         props.tom === 'filtros' ? 'font-bold text-pbi-gold-600' : 'truncate text-pbi-muted',
       )}

@@ -23,7 +23,7 @@ import { DOMINIO_CORPORATIVO } from '../../config.ts';
 import { useBotaoDoGoogle } from '../../hooks/useBotaoDoGoogle.ts';
 import { caminhosDeEntrada, useEntrada } from '../../hooks/useEntrada.ts';
 import { Lock, RefreshCw, Wrench } from 'lucide-react';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 type LoginProps = {
   aoLogar: () => void;
@@ -95,7 +95,12 @@ export function Login({ aoLogar }: LoginProps) {
         </section>
 
         <section className="flex justify-center">
-          <div className={cn('login-card', (entrada.erro ?? erroDeConfiguracao) && 'tremer')}>
+          <div
+            className={juntarClasses(
+              'login-card',
+              (entrada.erro ?? erroDeConfiguracao) && 'tremer',
+            )}
+          >
             <header className="grid gap-[7px]">
               <span className="justify-self-start rounded-full border border-pbi-gold bg-pbi-aviso-bg px-[11px] py-[5px] text-[10px] font-extrabold tracking-[0.18em] text-pbi-gold-600 uppercase">
                 INST · Relatório Instalação

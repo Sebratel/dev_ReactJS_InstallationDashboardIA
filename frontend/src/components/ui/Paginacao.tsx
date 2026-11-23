@@ -19,34 +19,34 @@ export function Paginacao(props: {
   /** De quanto anda o "anterior". Ver `LINHAS_VISIVEIS` em `janela.ts`. */
   passo?: number;
 }) {
-  const { janela: j } = props;
+  const { janela: posicao } = props;
   // Tabela que cabe inteira não ganha botão: dois controles desabilitados ao lado de
   // "43 linhas" só ocupam espaço.
-  if (!podeVoltar(j) && !podeAvancar(j)) return null;
+  if (!podeVoltar(posicao) && !podeAvancar(posicao)) return null;
 
   return (
     <div className="paginacao">
-      <Nota>{rotuloDaJanela(j, inteiro)}</Nota>
+      <Nota>{rotuloDaJanela(posicao, inteiro)}</Nota>
       <span className="espaco" />
       <Botao
         variante="secundario"
         onClick={() => props.vaiPara(0)}
-        disabled={!podeVoltar(j) || props.carregando}
+        disabled={!podeVoltar(posicao) || props.carregando}
         title="primeira janela"
       >
         ⏮
       </Botao>
       <Botao
         variante="secundario"
-        onClick={() => props.vaiPara(anteriorDe(j, props.passo))}
-        disabled={!podeVoltar(j) || props.carregando}
+        onClick={() => props.vaiPara(anteriorDe(posicao, props.passo))}
+        disabled={!podeVoltar(posicao) || props.carregando}
       >
         anterior
       </Botao>
       <Botao
         variante="secundario"
-        onClick={() => props.vaiPara(proximoDe(j))}
-        disabled={!podeAvancar(j) || props.carregando}
+        onClick={() => props.vaiPara(proximoDe(posicao))}
+        disabled={!podeAvancar(posicao) || props.carregando}
       >
         {props.carregando ? 'carregando…' : 'próxima'}
       </Botao>

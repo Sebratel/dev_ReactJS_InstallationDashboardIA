@@ -26,8 +26,8 @@ type ComPosicao = TecnicoAgora & { lat: number; lng: number };
 function Enquadra({ pontos, temFoco }: { pontos: readonly ComPosicao[]; temFoco: boolean }) {
   const mapa = useMap();
   const chave = pontos
-    .map((p) => p.tec_id)
-    .sort((a, b) => a - b)
+    .map((ponto) => ponto.tec_id)
+    .sort((primeiro, segundo) => primeiro - segundo)
     .join(',');
   // Guardado em referência, e não na lista de dependências: soltar o foco NÃO reenquadra
   // — quem está olhando o mapa fica onde está.
@@ -42,7 +42,7 @@ function Enquadra({ pontos, temFoco }: { pontos: readonly ComPosicao[]; temFoco:
     const [primeiro] = pontos;
     if (pontos.length >= 2) {
       mapa.fitBounds(
-        pontos.map((p) => [p.lat, p.lng] as [number, number]),
+        pontos.map((ponto) => [ponto.lat, ponto.lng] as [number, number]),
         { padding: [30, 30], maxZoom: 13 },
       );
     } else if (primeiro) {
@@ -170,14 +170,19 @@ export function MapaTecnicos({
   const pontos = useMemo(
     () =>
       tecnicos.filter(
-        (t): t is ComPosicao =>
-          t.lat !== null && t.lng !== null && Number.isFinite(t.lat) && Number.isFinite(t.lng),
+        (tecnico): tecnico is ComPosicao =>
+          tecnico.lat !== null &&
+          tecnico.lng !== null &&
+          Number.isFinite(tecnico.lat) &&
+          Number.isFinite(tecnico.lng),
       ),
     [tecnicos],
   );
-  const alvo = focado === null ? null : (pontos.find((p) => p.tec_id === focado) ?? null);
+  const alvo = focado === null ? null : (pontos.find((ponto) => ponto.tec_id === focado) ?? null);
   const semPonto =
-    focado !== null && alvo === null ? (tecnicos.find((t) => t.tec_id === focado) ?? null) : null;
+    focado !== null && alvo === null
+      ? (tecnicos.find((tecnico) => tecnico.tec_id === focado) ?? null)
+      : null;
   return (
     <div className="ins-mapa" style={{ height: altura }}>
       <MapContainer center={CENTRO} zoom={11} scrollWheelZoom={false}>

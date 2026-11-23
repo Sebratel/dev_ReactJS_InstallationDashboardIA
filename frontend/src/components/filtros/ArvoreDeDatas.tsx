@@ -11,7 +11,7 @@ import {
   type SelecaoDeData,
 } from '../../utils/hierarquiaData.ts';
 import { NoDaArvore } from './NoDaArvore.tsx';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 export function ArvoreDeDatas(props: {
   arvore: readonly AnoDaArvore[];
@@ -24,49 +24,49 @@ export function ArvoreDeDatas(props: {
   const { arvore, sel, expandidos, aoAlternarNo, aoAplicar } = props;
   return (
     <div className="flex flex-col gap-[1px]">
-      {arvore.map((a) => {
-        const anoAberto = expandidos.has(`a${a.ano}`);
-        const mesesDoAno = a.meses.filter((m) => sel.meses.includes(m.nome));
+      {arvore.map((alvo) => {
+        const anoAberto = expandidos.has(`a${alvo.ano}`);
+        const mesesDoAno = alvo.meses.filter((mes) => sel.meses.includes(mes.nome));
         return (
-          <div key={a.ano}>
+          <div key={alvo.ano}>
             <NoDaArvore
               aberto={anoAberto}
               temFilhos
-              aoExpandir={() => aoAlternarNo(`a${a.ano}`)}
-              marcado={sel.anos.includes(a.ano)}
-              parcial={!sel.anos.includes(a.ano) && mesesDoAno.length > 0}
-              aoMarcar={() => aoAplicar(clicaAno(sel, a.ano))}
-              rotulo={String(a.ano)}
+              aoExpandir={() => aoAlternarNo(`a${alvo.ano}`)}
+              marcado={sel.anos.includes(alvo.ano)}
+              parcial={!sel.anos.includes(alvo.ano) && mesesDoAno.length > 0}
+              aoMarcar={() => aoAplicar(clicaAno(sel, alvo.ano))}
+              rotulo={String(alvo.ano)}
               forte
             />
             {anoAberto &&
-              a.meses.map((m) => {
-                const mesAberto = expandidos.has(`m${a.ano}-${m.indice}`);
-                const diasDoMes = m.dias.filter((d) => sel.dias.includes(d));
+              alvo.meses.map((mes) => {
+                const mesAberto = expandidos.has(`m${alvo.ano}-${mes.indice}`);
+                const diasDoMes = mes.dias.filter((dia) => sel.dias.includes(dia));
                 return (
-                  <div key={m.indice} className="pl-[16px]" data-nivel="mes">
+                  <div key={mes.indice} className="pl-[16px]" data-nivel="mes">
                     <NoDaArvore
                       aberto={mesAberto}
                       temFilhos
-                      aoExpandir={() => aoAlternarNo(`m${a.ano}-${m.indice}`)}
-                      marcado={sel.meses.includes(m.nome)}
-                      parcial={!sel.meses.includes(m.nome) && diasDoMes.length > 0}
-                      aoMarcar={() => aoAplicar(clicaMes(sel, a.ano, m.nome))}
-                      rotulo={MESES_CURTOS[m.indice]!}
+                      aoExpandir={() => aoAlternarNo(`m${alvo.ano}-${mes.indice}`)}
+                      marcado={sel.meses.includes(mes.nome)}
+                      parcial={!sel.meses.includes(mes.nome) && diasDoMes.length > 0}
+                      aoMarcar={() => aoAplicar(clicaMes(sel, alvo.ano, mes.nome))}
+                      rotulo={MESES_CURTOS[mes.indice]!}
                     />
                     {mesAberto && (
                       <div
                         className="grid grid-cols-[repeat(7,1fr)] gap-[2px] pt-[3px] pr-0 pb-[5px] pl-[20px]"
                         data-nivel="dias"
                       >
-                        {m.dias.map((d) => (
+                        {mes.dias.map((dia) => (
                           <label
-                            key={d}
-                            title={`${String(d).padStart(2, '0')}/${String(m.indice + 1).padStart(2, '0')}/${a.ano}`}
-                            className={cn(
+                            key={dia}
+                            title={`${String(dia).padStart(2, '0')}/${String(mes.indice + 1).padStart(2, '0')}/${alvo.ano}`}
+                            className={juntarClasses(
                               'flex cursor-pointer items-center justify-center rounded-[3px] py-[3px] text-[0.66rem] tabular-nums',
                               // Cor CHEIA é fundo, e a letra vem do token do papel: 9,87:1.
-                              sel.dias.includes(d)
+                              sel.dias.includes(dia)
                                 ? 'bg-pbi-primary font-bold text-pbi-sobre-primary'
                                 : 'text-pbi-ink hover:bg-pbi-primary-soft',
                             )}
@@ -77,10 +77,10 @@ export function ArvoreDeDatas(props: {
                             <input
                               className="absolute m-[-1px] size-px overflow-hidden border-0 p-0 whitespace-nowrap [clip:rect(0_0_0_0)]"
                               type="checkbox"
-                              checked={sel.dias.includes(d)}
-                              onChange={() => aoAplicar(clicaDia(sel, a.ano, m.nome, d))}
+                              checked={sel.dias.includes(dia)}
+                              onChange={() => aoAplicar(clicaDia(sel, alvo.ano, mes.nome, dia))}
                             />
-                            {d}
+                            {dia}
                           </label>
                         ))}
                       </div>

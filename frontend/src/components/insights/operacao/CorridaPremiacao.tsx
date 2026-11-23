@@ -17,7 +17,7 @@ import {
 import type { RespostaOperacao } from '../../../services/insightsService.ts';
 import { Cartao } from '../../ui/Cartao.tsx';
 import { COR, EIXO, EIXO_NOME, FAIXA_COR, FAIXA_NOME, dec, int, pct } from '../formato.ts';
-import { Dica, Grafico, Legenda, Paginador, Rodape, n } from '../partes.tsx';
+import { Dica, Grafico, Legenda, Paginador, Rodape, numero } from '../partes.tsx';
 import { barrasDaCorrida, type BarraDaCorrida } from './dados.ts';
 
 const POR_PAGINA = 20;
@@ -74,17 +74,17 @@ function RotuloDaProjecao({ barras }: { barras: readonly BarraDaCorrida[] }) {
     <LabelList
       dataKey="esperado"
       content={(parte) => {
-        const tecnico = barras[n(parte.index)];
+        const tecnico = barras[numero(parte.index)];
         if (!tecnico) return null;
-        const inicio = n(parte.x);
-        const largura = n(parte.width);
+        const inicio = numero(parte.x);
+        const largura = numero(parte.width);
         const pxPorUnidade = tecnico.falta > 0 ? largura / tecnico.falta : 0;
         const fimDoTraco =
           inicio + largura + ((tecnico.p90 ?? tecnico.esperado) - tecnico.esperado) * pxPorUnidade;
         return (
           <text
             x={fimDoTraco + 6}
-            y={n(parte.y) + n(parte.height) / 2 + 4}
+            y={numero(parte.y) + numero(parte.height) / 2 + 4}
             fontSize={10.5}
             fill={COR.tinta}
             fontWeight={600}
@@ -100,7 +100,10 @@ function RotuloDaProjecao({ barras }: { barras: readonly BarraDaCorrida[] }) {
 export function CorridaPremiacao({ dados }: { dados: RespostaOperacao }) {
   const [pagina, setPagina] = useState(0);
   const ordenados = useMemo(
-    () => [...dados.premiacao.tecnicos].sort((a, b) => b.esperado - a.esperado),
+    () =>
+      [...dados.premiacao.tecnicos].sort(
+        (primeiro, segundo) => segundo.esperado - primeiro.esperado,
+      ),
     [dados.premiacao.tecnicos],
   );
 

@@ -9,7 +9,9 @@ export function ActiveFilterPill({
   filtro: FiltroDaTela;
   aoRemover: () => void;
 }) {
-  const valores = filtro.valores.map((v) => (v === null ? '(vazio)' : String(v))).join(', ');
+  const valores = filtro.valores
+    .map((valor) => (valor === null ? '(vazio)' : String(valor)))
+    .join(', ');
   return (
     <span
       className="inline-flex h-[30px] items-center gap-[6px] rounded-[8px] border border-pbi-primary-texto bg-pbi-primary-soft px-[10px] text-[12.5px] text-pbi-primary-texto"

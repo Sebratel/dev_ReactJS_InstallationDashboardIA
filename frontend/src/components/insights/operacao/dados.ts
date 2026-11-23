@@ -65,7 +65,9 @@ export function corDoRetrabalho(taxa: number | null, taxaDaEquipe: number): stri
 
 /** O volume mediano de ativações entre os técnicos — a linha vertical do gráfico. */
 export function volumeMediano(qualidade: RespostaOperacao['qualidade']): number {
-  const volumes = qualidade.map((tecnico) => tecnico.instalacoes).sort((a, b) => a - b);
+  const volumes = qualidade
+    .map((tecnico) => tecnico.instalacoes)
+    .sort((primeiro, segundo) => primeiro - segundo);
   return volumes[Math.floor(volumes.length / 2)] ?? 0;
 }
 

@@ -6,28 +6,28 @@ import type { Categoria, Desfecho, Situacao } from '../../services/insightsServi
 
 type Talvez = number | null | undefined;
 
-export const int = (v: Talvez): string =>
-  v === null || v === undefined ? '—' : Math.round(v).toLocaleString('pt-BR');
+export const int = (valor: Talvez): string =>
+  valor === null || valor === undefined ? '—' : Math.round(valor).toLocaleString('pt-BR');
 
-export const dec = (v: Talvez, casas = 1): string =>
-  v === null || v === undefined
+export const dec = (valor: Talvez, casas = 1): string =>
+  valor === null || valor === undefined
     ? '—'
-    : v.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
+    : valor.toLocaleString('pt-BR', { minimumFractionDigits: casas, maximumFractionDigits: casas });
 
-export const pct = (v: Talvez, casas = 0): string =>
-  v === null || v === undefined
+export const pct = (valor: Talvez, casas = 0): string =>
+  valor === null || valor === undefined
     ? '—'
-    : `${emPorCento(v, { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
+    : `${emPorCento(valor, { minimumFractionDigits: casas, maximumFractionDigits: casas })}%`;
 
 /** O valor vezes 100, escrito no padrão pt-BR. */
 const emPorCento = (valor: number, opcoes: Intl.NumberFormatOptions): string =>
   (valor * 100).toLocaleString('pt-BR', opcoes);
 
 /** O mesmo que `pct`, mas com o `+` na frente quando sobe. */
-export const sinal = (v: Talvez, casas = 0): string => {
-  if (v === null || v === undefined) return '—';
-  const maisOuNada = v > 0 ? '+' : '';
-  return `${maisOuNada}${emPorCento(v, { maximumFractionDigits: casas })}%`;
+export const sinal = (valor: Talvez, casas = 0): string => {
+  if (valor === null || valor === undefined) return '—';
+  const maisOuNada = valor > 0 ? '+' : '';
+  return `${maisOuNada}${emPorCento(valor, { maximumFractionDigits: casas })}%`;
 };
 
 const DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];

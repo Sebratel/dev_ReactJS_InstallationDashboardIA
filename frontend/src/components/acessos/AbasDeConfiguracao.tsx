@@ -9,7 +9,7 @@
 
 import { Activity, History, Layers, Monitor, Sparkles, Users } from 'lucide-react';
 import type { Papel } from '../../services/acessoService.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 export type AbaDeConfiguracao = 'usuarios' | 'perfis' | 'uso' | 'ia' | 'sessoes' | 'historico';
 
@@ -74,7 +74,7 @@ export function AbasDeConfiguracao({
               role="tab"
               aria-selected={ativa}
               onClick={() => aoEscolher(id)}
-              className={cn(
+              className={juntarClasses(
                 'inline-flex cursor-pointer items-center gap-[6px] rounded-none border-0 border-b-2 border-transparent bg-transparent px-[12px] py-[9px] text-[13px] font-semibold text-pbi-muted hover:text-pbi-ink',
                 ativa &&
                   'border-b-pbi-primary-texto text-pbi-primary-texto hover:text-pbi-primary-texto',

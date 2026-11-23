@@ -13,7 +13,7 @@
 // papel FIXO (estado), já tratados por tema em estilo.css — ao contrário da cor de série
 // categórica de Rosca/Sparkline, que muda por índice e por isso precisa de hex + SVG.
 
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 export function Bullet({ valor, meta }: { valor: number; meta: number }) {
   if (!Number.isFinite(valor) || !Number.isFinite(meta) || meta <= 0) return null;
@@ -34,7 +34,7 @@ export function Bullet({ valor, meta }: { valor: number; meta: number }) {
     >
       <div className="relative h-[7px] rounded-[4px] bg-pbi-grid">
         <div
-          className={cn(
+          className={juntarClasses(
             'absolute inset-y-0 left-0 h-full rounded-[4px]',
             atingiu ? 'bg-pbi-green' : 'bg-pbi-gold',
           )}

@@ -11,7 +11,7 @@ import type {
   ModeloDisponivelIa,
   ResultadoTesteIa,
 } from '../../../services/iaService.ts';
-import { cn } from '../../../utils/cn.ts';
+import { juntarClasses } from '../../../utils/cn.ts';
 
 /** O que o cartão mostra quando ninguém cadastrou chave ainda. */
 const SEM_CHAVE =
@@ -20,7 +20,7 @@ const SEM_CHAVE =
 export function SeloDoProvedor({ estado }: { estado: EstadoPublicoIa }) {
   return (
     <div
-      className={cn(
+      className={juntarClasses(
         'flex items-center gap-[8px] rounded-[4px] border px-[10px] py-[7px]',
         estado.configurado
           ? 'border-emerald-500/40 bg-emerald-500/10 text-pbi-ink'
@@ -83,7 +83,7 @@ export function SeletorDeModelos({
               type="button"
               aria-pressed={ativo}
               onClick={() => aoEscolher(modelo.id)}
-              className={cn(
+              className={juntarClasses(
                 'cursor-pointer rounded-[4px] border px-[8px] py-[3px] text-[0.72rem] font-semibold transition-colors',
                 ativo
                   ? 'border-pbi-primary bg-pbi-primary text-pbi-sobre-primary'
@@ -109,7 +109,7 @@ export function ResultadoDoTeste({ teste }: { teste: ResultadoTesteIa | null }) 
 
   return (
     <span
-      className={cn(
+      className={juntarClasses(
         'inline-flex items-center gap-[5px] font-semibold',
         teste.ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-pbi-critico',
       )}

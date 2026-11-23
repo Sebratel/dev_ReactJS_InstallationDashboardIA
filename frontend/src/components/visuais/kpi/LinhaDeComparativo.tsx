@@ -5,7 +5,7 @@
 
 import { comparativo } from '../../../utils/comparativo.ts';
 import { formata } from '../../../utils/formato.ts';
-import { cn } from '../../../utils/cn.ts';
+import { juntarClasses } from '../../../utils/cn.ts';
 import { comoPercentual, type DadosDeKpi } from './dadosDoKpi.ts';
 
 interface LinhaDeComparativoProps {
@@ -39,7 +39,7 @@ export function LinhaDeComparativo({
       className="mt-[2px] truncate text-[10.5px] leading-[1.35] text-pbi-muted tabular-nums"
     >
       <span
-        className={cn(
+        className={juntarClasses(
           'font-bold',
           variacao.tom === 'bom' && 'text-pbi-green-texto',
           variacao.tom === 'ruim' && 'text-pbi-critico-texto',

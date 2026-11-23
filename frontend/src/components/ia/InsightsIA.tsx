@@ -34,16 +34,18 @@ function descreverFiltrosDaTela(
   filtros: readonly FiltroDaTela[],
   clicados: readonly { tabela: string; coluna: string }[] = [],
 ): string {
-  const ativos = filtros.filter((f) => f.valores.length > 0);
+  const ativos = filtros.filter((filtro) => filtro.valores.length > 0);
   if (ativos.length === 0 && clicados.length === 0) {
     return 'visão padrão da tela';
   }
-  const partes = ativos.map((f) => {
-    const rotulo = f.nivel ? `${f.coluna} (${f.nivel})` : f.coluna;
-    return `${rotulo}: ${f.valores.map((v) => String(v ?? '')).join(', ')}`;
+  const partes = ativos.map((filtroAtivo) => {
+    const rotulo = filtroAtivo.nivel
+      ? `${filtroAtivo.coluna} (${filtroAtivo.nivel})`
+      : filtroAtivo.coluna;
+    return `${rotulo}: ${filtroAtivo.valores.map((valor) => String(valor ?? '')).join(', ')}`;
   });
   if (clicados.length > 0) {
-    partes.push(`seleção em ${clicados.map((c) => c.coluna).join(', ')}`);
+    partes.push(`seleção em ${clicados.map((campoClicado) => campoClicado.coluna).join(', ')}`);
   }
   return partes.join(' · ');
 }
@@ -127,8 +129,8 @@ export function PainelInsights({
 
   useEffect(() => {
     if (!aberto) return undefined;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') fechar();
+    const onKey = (evento: KeyboardEvent) => {
+      if (evento.key === 'Escape') fechar();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -206,28 +208,32 @@ export function PainelInsights({
             <>
               {dados.resumo && <p className="ia-resumo">{dados.resumo}</p>}
 
-              {(dados.insights || []).map((i, idx) => {
-                const g = GRAVIDADE[i.gravidade] || GRAVIDADE.atencao;
+              {(dados.insights || []).map((indice, idx) => {
+                const grafico = GRAVIDADE[indice.gravidade] || GRAVIDADE.atencao;
                 return (
                   <article
-                    key={`${i.titulo}-${idx}`}
-                    className={`ia-card ${i.gravidade || 'atencao'}`}
+                    key={`${indice.titulo}-${idx}`}
+                    className={`ia-card ${indice.gravidade || 'atencao'}`}
                   >
                     <header>
-                      {g.icone === 'ok' ? <CheckCircle2 size={13} /> : <AlertTriangle size={13} />}
-                      <h4>{i.titulo}</h4>
-                      <span className="ia-selo">{g.rotulo}</span>
+                      {grafico.icone === 'ok' ? (
+                        <CheckCircle2 size={13} />
+                      ) : (
+                        <AlertTriangle size={13} />
+                      )}
+                      <h4>{indice.titulo}</h4>
+                      <span className="ia-selo">{grafico.rotulo}</span>
                     </header>
-                    <p>{i.detalhe}</p>
-                    {i.acao && (
+                    <p>{indice.detalhe}</p>
+                    {indice.acao && (
                       <p className="ia-acao">
-                        <b>Ação:</b> {i.acao}
+                        <b>Ação:</b> {indice.acao}
                       </p>
                     )}
-                    {!!(i.indicadores || []).length && (
+                    {!!(indice.indicadores || []).length && (
                       <ul className="ia-indicadores">
-                        {i.indicadores.map((n) => (
-                          <li key={n}>{n}</li>
+                        {indice.indicadores.map((indicador) => (
+                          <li key={indicador}>{indicador}</li>
                         ))}
                       </ul>
                     )}
@@ -239,8 +245,8 @@ export function PainelInsights({
                 <div className="ia-perguntas">
                   <h4>O gráfico não responde</h4>
                   <ul>
-                    {dados.perguntas.map((p) => (
-                      <li key={p}>{p}</li>
+                    {dados.perguntas.map((pergunta) => (
+                      <li key={pergunta}>{pergunta}</li>
                     ))}
                   </ul>
                 </div>

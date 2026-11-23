@@ -15,23 +15,23 @@ export function textoDaCelula(
   coluna: DadosDeTabela['colunas'][number] | undefined,
 ) {
   // Sem `percentual`, `casas` são as do número comum (`"0.0"` → uma casa).
-  const f = formata(valor, coluna?.tipo ?? null, {
+  const formatado = formata(valor, coluna?.tipo ?? null, {
     casas: coluna?.percentual ? null : (coluna?.casas ?? null),
   });
-  return coluna?.percentual && !f.vazio
-    ? { ...f, texto: razaoComoPercentual(valor, coluna.casas) }
-    : f;
+  return coluna?.percentual && !formatado.vazio
+    ? { ...formatado, texto: razaoComoPercentual(valor, coluna.casas) }
+    : formatado;
 }
 
 function ConteudoDaCelula(props: {
   valor: unknown;
   coluna: DadosDeTabela['colunas'][number] | undefined;
 }) {
-  const f = textoDaCelula(props.valor, props.coluna);
-  if (f.vazio) return <span className="sem">{f.texto}</span>;
-  const txt = f.texto.trim();
-  const selo = seloDeStatus(txt);
-  return selo ? <BadgeDeStatus tom={selo}>{txt}</BadgeDeStatus> : <>{f.texto}</>;
+  const formatado = textoDaCelula(props.valor, props.coluna);
+  if (formatado.vazio) return <span className="sem">{formatado.texto}</span>;
+  const textoLimpo = formatado.texto.trim();
+  const selo = seloDeStatus(textoLimpo);
+  return selo ? <BadgeDeStatus tom={selo}>{textoLimpo}</BadgeDeStatus> : <>{formatado.texto}</>;
 }
 
 /**
@@ -68,23 +68,23 @@ export function CorpoDaTabela(props: {
       <table className="dados">
         <thead>
           <tr>
-            {colunas.map((c, i) => (
+            {colunas.map((coluna, indice) => (
               <th
-                key={i}
-                className={`th-clicavel ${c.tipo === 'number' || c.tipo === 'date' ? 'num' : ''}`}
-                onClick={() => props.aoOrdenar(i)}
+                key={indice}
+                className={`th-clicavel ${coluna.tipo === 'number' || coluna.tipo === 'date' ? 'num' : ''}`}
+                onClick={() => props.aoOrdenar(indice)}
                 title="Clique para ordenar"
               >
-                {c.nome ?? '—'}
-                <SetaDeOrdem ativa={props.colOrdenada === i} desc={props.ordemDesc} />
+                {coluna.nome ?? '—'}
+                <SetaDeOrdem ativa={props.colOrdenada === indice} desc={props.ordemDesc} />
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {props.linhas.map((linha, i) => (
+          {props.linhas.map((linha, posicao) => (
             <tr
-              key={i}
+              key={posicao}
               className={classeDaLinha({
                 clicavel: aoClicarLinha !== undefined,
                 haSelecao: props.haSelecao,
@@ -95,15 +95,15 @@ export function CorpoDaTabela(props: {
                 aoClicarLinha ? 'Clique para filtrar a página inteira a este registro' : undefined
               }
             >
-              {linha.map((valor, j) => {
-                const f = textoDaCelula(valor, colunas[j]);
-                const escala = escalas.get(j);
+              {linha.map((valor, indice) => {
+                const filtro = textoDaCelula(valor, colunas[indice]);
+                const escala = escalas.get(indice);
                 const temBarra = escala !== undefined && typeof valor === 'number';
                 return (
                   <td
-                    key={j}
-                    className={`${f.numerico ? 'num' : ''}${temBarra ? ' barra-dado' : ''}`}
-                    title={f.texto}
+                    key={indice}
+                    className={`${filtro.numerico ? 'num' : ''}${temBarra ? ' barra-dado' : ''}`}
+                    title={filtro.texto}
                   >
                     {temBarra ? (
                       <i
@@ -112,7 +112,7 @@ export function CorpoDaTabela(props: {
                       />
                     ) : null}
                     <span>
-                      <ConteudoDaCelula valor={valor} coluna={colunas[j]} />
+                      <ConteudoDaCelula valor={valor} coluna={colunas[indice]} />
                     </span>
                   </td>
                 );

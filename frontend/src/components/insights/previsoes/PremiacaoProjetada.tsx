@@ -21,7 +21,7 @@ import {
   pct,
   sinal,
 } from '../formato.ts';
-import { Dica, Grafico, Legenda, Paginador, Rodape, n } from '../partes.tsx';
+import { Dica, Grafico, Legenda, Paginador, Rodape, numero } from '../partes.tsx';
 import { faixasRelevantes, tecnicosPorEsperado, type TecnicoComFaixas } from './dados.ts';
 
 const POR_PAGINA = 20;
@@ -134,8 +134,8 @@ function BarraDaFaixa({
           dataKey="esperado"
           content={(parte) => (
             <text
-              x={n(parte.x) + n(parte.width) + 6}
-              y={n(parte.y) + n(parte.height) / 2 + 4}
+              x={numero(parte.x) + numero(parte.width) + 6}
+              y={numero(parte.y) + numero(parte.height) / 2 + 4}
               fontSize={10.5}
               fill={COR.cinza}
             >

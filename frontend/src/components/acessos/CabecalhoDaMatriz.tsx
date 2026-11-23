@@ -5,7 +5,7 @@
 
 import type { PessoaNaTela } from '../../utils/rascunhoDeAcessos.ts';
 import { nomeDaAba } from '../../utils/ordemDasTelas.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import type { TelaNaMatriz } from './LinhaDaMatriz.tsx';
 
 /** As colunas que vêm antes das abas, na ordem da tela. */
@@ -64,7 +64,7 @@ export function CabecalhoDaMatriz({
         {telas.map((tela) => (
           <th
             key={tela.id}
-            className={cn(
+            className={juntarClasses(
               'min-w-[84px] px-[6px] py-[6px] text-center align-bottom',
               tela.mudou && 'bg-pbi-aviso-bg',
             )}

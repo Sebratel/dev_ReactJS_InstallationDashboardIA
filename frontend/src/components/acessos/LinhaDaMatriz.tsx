@@ -8,7 +8,7 @@ import { Trash2, Undo2 } from 'lucide-react';
 import type { MatrizDeAcesso, PerfilDeAcesso, Papel } from '../../services/acessoService.ts';
 import type { PessoaNaTela } from '../../utils/rascunhoDeAcessos.ts';
 import { ultimoAcessoNaTela } from '../../utils/inatividade.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { Selo } from '../ui/Selo.tsx';
 import { BotaoDeIcone } from '../ui/BotaoDeIcone.tsx';
 import { SituacaoDaPessoa } from './SituacaoDaPessoa.tsx';
@@ -188,7 +188,7 @@ export function LinhaDaMatriz({
 
   return (
     <tr
-      className={cn(
+      className={juntarClasses(
         'border-t border-pbi-borda',
         pessoa.mudou && 'bg-pbi-aviso-bg',
         pessoa.removida && 'text-pbi-muted line-through',

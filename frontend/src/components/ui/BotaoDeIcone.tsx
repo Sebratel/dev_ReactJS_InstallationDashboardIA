@@ -2,7 +2,7 @@
 // fechar do diálogo de filtro. Sem rótulo visível, o nome vai em `title`/`aria-label`.
 
 import type { ButtonHTMLAttributes } from 'react';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 const TONS = {
   /** Sobre a superfície: o `.icon-btn` do COM — contorno de grade, ícone na primária. */
@@ -25,7 +25,7 @@ export function BotaoDeIcone({
   return (
     <button
       type="button"
-      className={cn(
+      className={juntarClasses(
         'inline-flex cursor-pointer items-center justify-center rounded-[2px] border p-0',
         TONS[tom],
         tom === 'superficie' && 'enabled:hover:bg-pbi-hover',

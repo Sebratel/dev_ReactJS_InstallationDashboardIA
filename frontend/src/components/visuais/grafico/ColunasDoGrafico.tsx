@@ -29,21 +29,27 @@ const FONTE_DO_CHIP = 11;
 const FONTE_DO_ROTULO = 10;
 
 /** Retângulo com só os cantos de cima arredondados. */
-function colunaDeTopoRedondo(x: number, y: number, w: number, h: number): string {
-  const r = Math.max(0, Math.min(RAIO, w / 2, h));
-  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+function colunaDeTopoRedondo(x: number, y: number, largura: number, altura: number): string {
+  const raio = Math.max(0, Math.min(RAIO, largura / 2, altura));
+  return `M${x},${y + altura}V${y + raio}Q${x},${y} ${x + raio},${y}H${x + largura - raio}Q${x + largura},${y} ${x + largura},${y + raio}V${y + altura}Z`;
 }
 
 /** O chip do valor: retângulo na cor do texto, letra na cor da superfície — escuro no
  *  tema claro e claro no escuro (`.chip-valor` no `estilo.css`). */
 function ChipDeValor(props: { x: number; topo: number; texto: string }) {
-  const w = Math.max(props.texto.length * FONTE_DO_CHIP * 0.58 + 10, 22);
-  const h = FONTE_DO_CHIP + 7;
-  const cy = props.topo - h / 2 - 3;
+  const largura = Math.max(props.texto.length * FONTE_DO_CHIP * 0.58 + 10, 22);
+  const altura = FONTE_DO_CHIP + 7;
+  const centroY = props.topo - altura / 2 - 3;
   return (
     <g className="chip-valor" pointerEvents="none">
-      <rect x={props.x - w / 2} y={cy - h / 2} width={w} height={h} rx={3} />
-      <text x={props.x} y={cy} textAnchor="middle" dominantBaseline="central">
+      <rect
+        x={props.x - largura / 2}
+        y={centroY - altura / 2}
+        width={largura}
+        height={altura}
+        rx={3}
+      />
+      <text x={props.x} y={centroY} textAnchor="middle" dominantBaseline="central">
         {props.texto}
       </text>
     </g>
@@ -97,12 +103,12 @@ function numeroCabeNaFatia(
 function totalDaCategoria(
   empilha: boolean,
   areas: readonly { valores: readonly (number | null)[] }[],
-  i: number,
+  indice: number,
   somaEm: (i: number) => number | null,
 ): number | null {
-  if (empilha) return somaEm(i);
+  if (empilha) return somaEm(indice);
   if (areas.length !== 1) return null;
-  return areas[0]!.valores[i] ?? null;
+  return areas[0]!.valores[indice] ?? null;
 }
 
 /** A geometria de uma fatia: onde ela começa, onde termina e quanto ocupa. */
@@ -168,62 +174,66 @@ export function ColunasDoGrafico(props: {
   const { categorias, areas, empilha, percentual, geo, interacao } = props;
   const modo = props.rotulos;
   /** O valor como a tela o escreve: com as casas que o `format` da medida pede. */
-  const fmt = (v: number | null): string => formata(v, props.tipo, { casas: props.casas }).texto;
+  const fmt = (valor: number | null): string =>
+    formata(valor, props.tipo, { casas: props.casas }).texto;
   const base = geo.margemTopo + geo.alturaDoPlot;
 
   /** A soma da pilha numa categoria — o divisor do modo percentual. */
-  const somaEm = (i: number) => areas.reduce((a, s) => a + (s.valores[i] ?? 0), 0);
-  const valorDesenhado = (v: number | null, i: number): number | null => {
-    if (v === null) return null;
-    if (!percentual) return v;
-    const soma = somaEm(i);
-    return soma > 0 ? (v / soma) * 100 : null;
+  const somaEm = (indice: number) =>
+    areas.reduce((soma, area) => soma + (area.valores[indice] ?? 0), 0);
+  const valorDesenhado = (valor: number | null, indice: number): number | null => {
+    if (valor === null) return null;
+    if (!percentual) return valor;
+    const soma = somaEm(indice);
+    return soma > 0 ? (valor / soma) * 100 : null;
   };
 
   // Série única e dourada: a cor gradua com o valor, entre o menor e o maior da página.
   const unica = areas.length === 1 && areas[0]!.cor === DOURADO && !percentual ? areas[0]! : null;
-  const visiveis = unica ? unica.valores.filter((v): v is number => v !== null) : [];
+  const visiveis = unica ? unica.valores.filter((valor): valor is number => valor !== null) : [];
   const min = visiveis.length ? Math.min(...visiveis) : 0;
   const max = visiveis.length ? Math.max(...visiveis) : 0;
 
   return (
     <>
-      {categorias.map((c, i) => {
+      {categorias.map((categoriaAtual, posicao) => {
         const acumulado = { alto: 0 };
         // A fatia de cima da pilha é a última com valor: só ela leva o topo redondo.
         let ultima = -1;
-        areas.forEach((s, k) => {
-          const v = valorDesenhado(s.valores[i] ?? null, i);
-          if (v !== null && v !== 0) ultima = k;
+        areas.forEach((area, indice) => {
+          const valor = valorDesenhado(area.valores[posicao] ?? null, posicao);
+          if (valor !== null && valor !== 0) ultima = indice;
         });
         let topoDaCategoria = base;
         /** Os números de `fatia`/`dentro`, colhidos enquanto as marcas são posicionadas. */
         const porFatia: { chave: string; x: number; y: number; dentro: boolean; texto: string }[] =
           [];
-        const marcas = areas.map((s, k) => {
-          const v = valorDesenhado(s.valores[i] ?? null, i);
-          if (v === null || v === 0) return null;
+        const marcas = areas.map((area, indice) => {
+          const valorAtual = valorDesenhado(area.valores[posicao] ?? null, posicao);
+          if (valorAtual === null || valorAtual === 0) return null;
           const { cima, esquerda, altura } = geometriaDaFatia({
-            valor: v,
+            valor: valorAtual,
             geo,
             base,
             empilha,
             acumulado,
-            categoria: i,
-            serie: k,
+            categoria: posicao,
+            serie: indice,
           });
           topoDaCategoria = Math.min(topoDaCategoria, cima);
-          const cor = unica ? corDaColunaPorValor(v, min, max) : s.cor;
-          const titulo = `${c.rotulo} · ${s.nome}: ${fmt(s.valores[i] ?? null)}`;
+          const cor = unica ? corDaColunaPorValor(valorAtual, min, max) : area.cor;
+          const titulo = `${categoriaAtual.rotulo} · ${area.nome}: ${fmt(area.valores[posicao] ?? null)}`;
 
           // O número de CADA fatia. `percentual` escreve a porcentagem desenhada (que é o
           // valor da parte); os demais escrevem o valor cru, não o da pilha.
           if (modo === 'fatia' || modo === 'dentro') {
-            const texto = percentual ? `${Math.round(v)}%` : fmt(s.valores[i] ?? null);
+            const texto = percentual
+              ? `${Math.round(valorAtual)}%`
+              : fmt(area.valores[posicao] ?? null);
             if (texto && numeroCabeNaFatia(texto, geo.larguraDaFatia, altura, modo)) {
               const dentro = modo === 'dentro';
               porFatia.push({
-                chave: s.chave,
+                chave: area.chave,
                 x: esquerda + geo.larguraDaFatia / 2,
                 y: dentro ? cima + altura / 2 : cima - 4,
                 dentro,
@@ -231,9 +241,9 @@ export function ColunasDoGrafico(props: {
               });
             }
           }
-          return !empilha || k === ultima ? (
+          return !empilha || indice === ultima ? (
             <path
-              key={s.chave}
+              key={area.chave}
               d={colunaDeTopoRedondo(esquerda, cima, geo.larguraDaFatia, altura)}
               fill={cor}
             >
@@ -241,7 +251,7 @@ export function ColunasDoGrafico(props: {
             </path>
           ) : (
             <rect
-              key={s.chave}
+              key={area.chave}
               x={esquerda}
               y={cima}
               width={geo.larguraDaFatia}
@@ -253,7 +263,7 @@ export function ColunasDoGrafico(props: {
           );
         });
         // O chip: o valor da série única, ou o total da pilha.
-        const total = totalDaCategoria(empilha, areas, i, somaEm);
+        const total = totalDaCategoria(empilha, areas, posicao, somaEm);
         const texto = total ? fmt(total) : '';
         // O chip precisa de ~33px para três dígitos; o mesmo número SEM chip precisa de
         // ~21px. Num mês inteiro num cartão de meia largura a banda fica em ~25px, e a
@@ -264,27 +274,27 @@ export function ColunasDoGrafico(props: {
         const cabeOTexto = larguraDoTexto(texto) <= geo.banda;
         return (
           <g
-            key={i}
-            className={interacao.classeDa(i)}
-            onClick={() => interacao.clica(i)}
-            onMouseEnter={() => interacao.aoEntrar(i)}
+            key={posicao}
+            className={interacao.classeDa(posicao)}
+            onClick={() => interacao.clica(posicao)}
+            onMouseEnter={() => interacao.aoEntrar(posicao)}
             onMouseLeave={interacao.aoSair}
           >
             <rect
-              className={`banda${interacao.sob === i ? ' sob' : ''}`}
-              x={geo.xMeio(i) - geo.banda / 2}
+              className={`banda${interacao.sob === posicao ? ' sob' : ''}`}
+              x={geo.xMeio(posicao) - geo.banda / 2}
               y={geo.margemTopo}
               width={geo.banda}
               height={geo.alturaDoPlot}
             />
             {marcas}
             {modo === 'categoria' && texto && cabeOChip ? (
-              <ChipDeValor x={geo.xMeio(i)} topo={topoDaCategoria} texto={texto} />
+              <ChipDeValor x={geo.xMeio(posicao)} topo={topoDaCategoria} texto={texto} />
             ) : null}
             {modo === 'categoria' && texto && !cabeOChip && cabeOTexto ? (
               <text
                 className="rotulo-valor"
-                x={geo.xMeio(i)}
+                x={geo.xMeio(posicao)}
                 y={topoDaCategoria - 5}
                 textAnchor="middle"
                 pointerEvents="none"
@@ -292,19 +302,19 @@ export function ColunasDoGrafico(props: {
                 {texto}
               </text>
             ) : null}
-            {porFatia.map((r) =>
-              r.dentro ? (
-                <ValorNaFatia key={r.chave} x={r.x} y={r.y} texto={r.texto} />
+            {porFatia.map((rotulo) =>
+              rotulo.dentro ? (
+                <ValorNaFatia key={rotulo.chave} x={rotulo.x} y={rotulo.y} texto={rotulo.texto} />
               ) : (
                 <text
-                  key={r.chave}
+                  key={rotulo.chave}
                   className="rotulo-valor"
-                  x={r.x}
-                  y={r.y}
+                  x={rotulo.x}
+                  y={rotulo.y}
                   textAnchor="middle"
                   pointerEvents="none"
                 >
-                  {r.texto}
+                  {rotulo.texto}
                 </text>
               ),
             )}

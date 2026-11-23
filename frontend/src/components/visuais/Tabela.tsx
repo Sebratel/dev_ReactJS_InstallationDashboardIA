@@ -43,7 +43,7 @@ export function Tabela(props: {
   // mudam de uma janela para outra, e o `useJanela` precisa da ordem para montar o
   // pedido — pegar as colunas dele aqui seria circular.
   const colunasIniciais = (props.visual.dados as DadosDeTabela | undefined)?.colunas ?? [];
-  const ordem = useOrdemDaTabela(colunasIniciais.findIndex((c) => c.tipo === 'date'));
+  const ordem = useOrdemDaTabela(colunasIniciais.findIndex((coluna) => coluna.tipo === 'date'));
   const colOrdenada = ordem.coluna;
   const ordemDesc = ordem.desc;
   // **A ordem escolhida vai ao SERVIDOR (QA D-17).** Só a que sai do padrão: a de
@@ -71,10 +71,13 @@ export function Tabela(props: {
     escreveCelula: (valor, coluna) => textoDaCelula(valor as Valor, coluna).texto,
   });
 
-  const d = janela.visual.dados as DadosDeTabela | undefined;
-  const temDados = !!d && !!d.colunas && !!d.linhas;
-  const colunas = useMemo(() => (temDados ? d!.colunas : []), [temDados, d]);
-  const linhas = useMemo(() => (temDados ? d!.linhas : []), [temDados, d]);
+  const dadosDaTabela = janela.visual.dados as DadosDeTabela | undefined;
+  const temDados = !!dadosDaTabela && !!dadosDaTabela.colunas && !!dadosDaTabela.linhas;
+  const colunas = useMemo(
+    () => (temDados ? dadosDaTabela!.colunas : []),
+    [temDados, dadosDaTabela],
+  );
+  const linhas = useMemo(() => (temDados ? dadosDaTabela!.linhas : []), [temDados, dadosDaTabela]);
 
   // TODOS os hooks antes do `return` de "sem dados" (fase 4): eles estavam depois dele,
   // e uma tabela que perdesse os dados entre dois quadros derrubaria a árvore.
@@ -92,16 +95,16 @@ export function Tabela(props: {
 
   // A janela de 20 linhas dentro da fatia de 200 (`usePaginacaoLocal`).
   const paginacao = usePaginacaoLocal({
-    deDaFatia: d?.de,
-    linhasNaFatia: d?.linhas.length ?? 0,
+    deDaFatia: dadosDaTabela?.de,
+    linhasNaFatia: dadosDaTabela?.linhas.length ?? 0,
     ancoraDoConjunto: `${termoAplicado}|${String(colOrdenada)}|${String(ordemDesc)}`,
     pedeFatia: janela.vaiPara,
   });
 
-  if (!d || !d.colunas || !d.linhas) {
+  if (!dadosDaTabela || !dadosDaTabela.colunas || !dadosDaTabela.linhas) {
     return (
       <Cartao
-        titulo={tituloDeTabela(props.visual, d?.colunas ?? [])}
+        titulo={tituloDeTabela(props.visual, dadosDaTabela?.colunas ?? [])}
         id={props.visual.id}
         altura="tabela"
       >
@@ -120,10 +123,10 @@ export function Tabela(props: {
   // ordem no servidor (D-17) esse modo deixou de existir — e com ele a nota que avisava
   // "vale sobre as N linhas desta fatia", que era a confissão do defeito.
   const estado = {
-    de: d.de + inicio,
+    de: dadosDaTabela.de + inicio,
     mostradas: visiveis.length,
-    total: d.linhasTotais,
-    totalSemBusca: d.totalSemBusca,
+    total: dadosDaTabela.linhasTotais,
+    totalSemBusca: dadosDaTabela.totalSemBusca,
   };
 
   /**
@@ -136,8 +139,10 @@ export function Tabela(props: {
    * a página inteira caía no guarda de espécie (14/10/2026). A API devolve
    * tabela/coluna `null` em campo calculado justamente para ele ser pulado aqui.
    */
-  const iDoClique = d.colunas.findIndex((c) => !!c.tabela && !!c.coluna);
-  const colunaDoClique = iDoClique >= 0 ? d.colunas[iDoClique]! : null;
+  const iDoClique = dadosDaTabela.colunas.findIndex(
+    (colunaAtual) => !!colunaAtual.tabela && !!colunaAtual.coluna,
+  );
+  const colunaDoClique = iDoClique >= 0 ? dadosDaTabela.colunas[iDoClique]! : null;
   const podeClicarNaLinha = props.aoFiltrar !== undefined && colunaDoClique !== null;
   const selecaoDaLinha = colunaDoClique
     ? selecaoDe(props.filtros, colunaDoClique.tabela!, colunaDoClique.coluna!, colunaDoClique.nivel)
@@ -157,7 +162,7 @@ export function Tabela(props: {
 
   return (
     <Cartao
-      titulo={tituloDeTabela(props.visual, d.colunas)}
+      titulo={tituloDeTabela(props.visual, dadosDaTabela.colunas)}
       id={props.visual.id}
       largo
       altura="tabela"
@@ -171,7 +176,7 @@ export function Tabela(props: {
             onChange={(evento) => busca.escreve(evento.target.value)}
           />
           <button
-            onClick={() => void exportacao.exporta(d)}
+            onClick={() => void exportacao.exporta(dadosDaTabela)}
             disabled={exportacao.exportando}
             title="Exportar todas as linhas do período filtrado em formato CSV"
           >
@@ -188,7 +193,7 @@ export function Tabela(props: {
         </MensagemDeEstado>
       ) : (
         <CorpoDaTabela
-          colunas={d.colunas}
+          colunas={dadosDaTabela.colunas}
           linhas={visiveis}
           escalas={escalas}
           colOrdenada={colOrdenada}
@@ -196,7 +201,9 @@ export function Tabela(props: {
           aoOrdenar={ordem.alterna}
           aoClicarLinha={podeClicarNaLinha ? clicaNaLinha : undefined}
           haSelecao={selecaoDaLinha.length > 0}
-          estaSelecionada={(linha) => selecaoDaLinha.some((v) => Object.is(v, linha[iDoClique]))}
+          estaSelecionada={(linha) =>
+            selecaoDaLinha.some((valor) => Object.is(valor, linha[iDoClique]))
+          }
         />
       )}
       <Paginacao

@@ -72,7 +72,7 @@ export function BarraDeFiltros(props: {
     aoLimpar,
     aoPreverLimpeza,
   } = props;
-  const temFiltro = filtros.some((f) => f.valores.length > 0);
+  const temFiltro = filtros.some((filtro) => filtro.valores.length > 0);
   const { chips, dropdowns, ocultos } = segmentacoes;
   // `--h-filtros` valia 50px fixos e a barra mede 71px na maioria das telas — 110px
   // na MANUTENÇÃO INICIAL em 1366x768, que tem 13 controles e quebra em três linhas.
@@ -115,21 +115,23 @@ export function BarraDeFiltros(props: {
               }
             />
           ) : null}
-          {ocultos.map((f) => (
+          {ocultos.map((filtroAtual) => (
             <ActiveFilterPill
-              key={`${f.tabela}.${f.coluna}.${f.nivel ?? ''}`}
-              filtro={f}
-              aoRemover={() => aoMudar(f.tabela, f.coluna, [], f.nivel)}
+              key={`${filtroAtual.tabela}.${filtroAtual.coluna}.${filtroAtual.nivel ?? ''}`}
+              filtro={filtroAtual}
+              aoRemover={() =>
+                aoMudar(filtroAtual.tabela, filtroAtual.coluna, [], filtroAtual.nivel)
+              }
             />
           ))}
-          {dropdowns.map(({ id, spec: s }) => (
+          {dropdowns.map(({ id, spec: serie }) => (
             <Segmentacao
               key={id}
               pagina={pagina}
-              spec={s}
-              selecao={selecaoDe(filtros, s.tabela, s.coluna, s.nivel)}
-              aoMudar={(valores) => aoMudar(s.tabela, s.coluna, valores, s.nivel)}
-              aoPrever={(valores) => aoPrever(s.tabela, s.coluna, valores, s.nivel)}
+              spec={serie}
+              selecao={selecaoDe(filtros, serie.tabela, serie.coluna, serie.nivel)}
+              aoMudar={(valores) => aoMudar(serie.tabela, serie.coluna, valores, serie.nivel)}
+              aoPrever={(valores) => aoPrever(serie.tabela, serie.coluna, valores, serie.nivel)}
             />
           ))}
           {chips ? (

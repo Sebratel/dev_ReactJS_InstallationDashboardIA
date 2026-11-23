@@ -43,8 +43,8 @@ function EditorDePerfil(props: {
   const [telas, setTelas] = useState<string[]>(props.perfil?.telas ?? []);
   const salva = useMutation({
     mutationFn: () => salvaPerfil(props.perfil?.id ?? idDoPerfil(nome), nome.trim(), telas),
-    onSuccess: (m) => {
-      props.aoAtualizar(m);
+    onSuccess: (matriz) => {
+      props.aoAtualizar(matriz);
       props.aoFechar?.();
     },
   });
@@ -56,7 +56,7 @@ function EditorDePerfil(props: {
   const mudou =
     nome.trim() !== (props.perfil?.nome ?? '') ||
     telas.length !== (props.perfil?.telas.length ?? 0) ||
-    telas.some((t) => !props.perfil?.telas.includes(t));
+    telas.some((tela) => !props.perfil?.telas.includes(tela));
 
   return (
     <div className="grid gap-[6px] border-t border-pbi-borda py-[8px]">
@@ -64,7 +64,7 @@ function EditorDePerfil(props: {
         <input
           value={nome}
           maxLength={80}
-          onChange={(e) => setNome(e.target.value)}
+          onChange={(evento) => setNome(evento.target.value)}
           placeholder="Nome do perfil (ex.: Field)"
           aria-label="Nome do perfil"
           className="w-[min(240px,100%)]"
@@ -98,20 +98,20 @@ function EditorDePerfil(props: {
         </div>
       </div>
       <div className="flex flex-wrap gap-x-[14px] gap-y-[4px] text-[0.72rem]">
-        {props.telas.map((t) => (
-          <label key={t.id} className="flex items-center gap-[4px]">
+        {props.telas.map((tela) => (
+          <label key={tela.id} className="flex items-center gap-[4px]">
             <input
               type="checkbox"
               className="w-auto"
-              checked={telas.includes(t.id)}
+              checked={telas.includes(tela.id)}
               disabled={ocupado}
-              onChange={(e) =>
+              onChange={(evento) =>
                 setTelas((atual) =>
-                  e.target.checked ? [...atual, t.id] : atual.filter((x) => x !== t.id),
+                  evento.target.checked ? [...atual, tela.id] : atual.filter((x) => x !== tela.id),
                 )
               }
             />
-            {nomeDaAba(t.nome)}
+            {nomeDaAba(tela.nome)}
           </label>
         ))}
       </div>
@@ -134,10 +134,10 @@ export function PerfisDeAcesso(props: {
       largo
     >
       {perfis.length === 0 && !novo ? <Nota como="p">Nenhum perfil ainda.</Nota> : null}
-      {perfis.map((p) => (
+      {perfis.map((perfilAtual) => (
         <EditorDePerfil
-          key={`${p.id}:${p.telas.join(',')}:${p.nome}`}
-          perfil={p}
+          key={`${perfilAtual.id}:${perfilAtual.telas.join(',')}:${perfilAtual.nome}`}
+          perfil={perfilAtual}
           telas={props.m.telas}
           aoAtualizar={props.aoAtualizar}
         />

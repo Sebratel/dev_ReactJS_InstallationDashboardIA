@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 import type { DashboardDaLista } from '../../services/dashboardService.ts';
 import type { EstadoAvisoSaude } from '../../utils/avisoSaude.ts';
 import { dataHora, haQuanto } from '../../utils/formato.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { nomeDaAba } from '../../utils/ordemDasTelas.ts';
 import { Aviso, Erro } from '../ui/Cartao.tsx';
 import { SO_ICONE } from './soIcone.ts';
@@ -106,13 +106,13 @@ export function AppShell(props: {
       <header className="sticky top-0 z-40 flex h-[var(--h-topbar)] flex-none items-center gap-[16px] border-b border-pbi-borda bg-pbi-superficie px-[14px]">
         <div className="flex flex-none items-center gap-[11px] font-bold tracking-[0.5px] whitespace-nowrap text-pbi-primary-texto">
           <img src="/logo-sebratel.svg" alt="Sebratel" className="block h-[34px] w-auto" />
-          <span className={cn('text-[12px] tracking-[0.9px]', SO_ICONE)}>
+          <span className={juntarClasses('text-[12px] tracking-[0.9px]', SO_ICONE)}>
             INST · RELATÓRIO INSTALAÇÃO
           </span>
         </div>
 
         <h1
-          className={cn(
+          className={juntarClasses(
             'm-0 min-w-0 flex-1 truncate text-center text-[16px] font-semibold tracking-[0.8px] text-pbi-ink uppercase',
             SOME_ESTREITO,
           )}
@@ -122,12 +122,12 @@ export function AppShell(props: {
 
         <div className="ml-auto flex items-center gap-[8px] text-[12.5px] whitespace-nowrap text-pbi-muted">
           <span
-            className={cn('ponto-vivo', ponto.classe)}
+            className={juntarClasses('ponto-vivo', ponto.classe)}
             title={props.avisoSaude?.temAviso ? props.avisoSaude.mensagem : ponto.title}
             aria-hidden="true"
           />
           <span
-            className={cn(SOME_ESTREITO, ponto.texto)}
+            className={juntarClasses(SOME_ESTREITO, ponto.texto)}
             title={tituloDaIdade(props.avisoSaude, props.dadoDe)}
           >
             {quando}

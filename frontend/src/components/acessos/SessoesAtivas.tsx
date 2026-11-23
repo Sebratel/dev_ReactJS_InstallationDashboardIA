@@ -12,11 +12,11 @@ export const CHAVE_SESSOES = ['sessoes'] as const;
 const quando = (iso: string) => new Date(iso).toLocaleString('pt-BR');
 
 export function SessoesAtivas({ eu }: { eu: string }) {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   const sessoesQ = useQuery({ queryKey: CHAVE_SESSOES, queryFn: pegaSessoes });
   const derruba = useMutation({
     mutationFn: derrubaSessoes,
-    onSuccess: (r) => qc.setQueryData(CHAVE_SESSOES, { sessoes: r.sessoes }),
+    onSuccess: (sessao) => queryClient.setQueryData(CHAVE_SESSOES, { sessoes: sessao.sessoes }),
   });
   const sessoes = sessoesQ.data?.sessoes ?? [];
 
@@ -64,21 +64,21 @@ function CorpoDasSessoes({
         </tr>
       </thead>
       <tbody>
-        {sessoes.map((s) => (
-          <tr key={`${s.usuario}-${s.criadaEm}`} className="border-t border-pbi-borda">
-            <td className="px-[6px] py-[3px] whitespace-nowrap">{s.usuario}</td>
-            <td className="px-[6px] py-[3px]">{s.ip ?? '—'}</td>
-            <td className="px-[6px] py-[3px] whitespace-nowrap">{quando(s.ultimoUso)}</td>
-            <td className="px-[6px] py-[3px] whitespace-nowrap">{quando(s.expiraEm)}</td>
+        {sessoes.map((sessao) => (
+          <tr key={`${sessao.usuario}-${sessao.criadaEm}`} className="border-t border-pbi-borda">
+            <td className="px-[6px] py-[3px] whitespace-nowrap">{sessao.usuario}</td>
+            <td className="px-[6px] py-[3px]">{sessao.ip ?? '—'}</td>
+            <td className="px-[6px] py-[3px] whitespace-nowrap">{quando(sessao.ultimoUso)}</td>
+            <td className="px-[6px] py-[3px] whitespace-nowrap">{quando(sessao.expiraEm)}</td>
             <td className="px-[6px] py-[3px]">
               <Botao
                 variante="secundario"
                 disabled={derrubando}
-                onClick={() => aoDerrubar(s.usuario)}
+                onClick={() => aoDerrubar(sessao.usuario)}
                 title={
-                  s.usuario === eu
+                  sessao.usuario === eu
                     ? 'Fecha também a sua sessão — você vai precisar entrar de novo'
-                    : `Fecha todas as sessões de ${s.usuario}`
+                    : `Fecha todas as sessões de ${sessao.usuario}`
                 }
               >
                 Derrubar

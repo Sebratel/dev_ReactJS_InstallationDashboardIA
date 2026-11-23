@@ -52,8 +52,8 @@ export function VisualNaDobra(props: {
 
   useEffect(() => {
     if (visivel) return;
-    const no = ref.current;
-    if (!no) return;
+    const elemento = ref.current;
+    if (!elemento) return;
     const observer = new IntersectionObserver(
       (entradas) => {
         if (entradas[0]?.isIntersecting) {
@@ -63,7 +63,7 @@ export function VisualNaDobra(props: {
       },
       { rootMargin: MARGEM_DE_PRE_CARGA },
     );
-    observer.observe(no);
+    observer.observe(elemento);
     return () => observer.disconnect();
   }, [visivel]);
 

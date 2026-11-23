@@ -21,45 +21,47 @@ export function EixoXDoGrafico(props: {
 }) {
   const { categorias, partes, geo, cabemRotulos, sob } = props;
   // 11px em negrito dão ~6,4px por caractere; 8px de respiro entre vizinhos.
-  const inteiros = categorias.map((c, i) => rotuloDoEixo(partes[i] ?? [], c.rotulo, 999));
+  const inteiros = categorias.map((categoria, indice) =>
+    rotuloDoEixo(partes[indice] ?? [], categoria.rotulo, 999),
+  );
   // O passo vem do rótulo que SERÁ desenhado — o maior, já cortado pela altura (19/11/2026,
   // "os meses fixos sem passar o mouse"). Antes vinha só da banda e pulava mês que cabia.
   const maiorDesenhado = Math.min(
-    inteiros.reduce((maior, t) => Math.max(maior, t.length), 1),
+    inteiros.reduce((maior, tela) => Math.max(maior, tela.length), 1),
     Math.max(4, orcamentoPorAltura(geo.base)),
   );
   const passo = passoDoEixo(geo.banda, maiorDesenhado);
   const orcamento = orcamentoDoRotulo(geo.banda, passo, geo.base);
-  const retos = inteiros.every((t) => t.length * 6.4 + 8 <= geo.banda);
+  const retos = inteiros.every((tela) => tela.length * 6.4 + 8 <= geo.banda);
   return (
     <>
-      {categorias.map((c, i) => {
+      {categorias.map((categoria, indice) => {
         // A barra sob o mouse sempre mostra o rótulo, mesmo fora do passo — e é o
         // único que aparece quando a caixa é baixa demais para o eixo.
-        if (!cabemRotulos ? sob !== i : i % passo !== 0 && sob !== i) return null;
+        if (!cabemRotulos ? sob !== indice : indice % passo !== 0 && sob !== indice) return null;
         return retos ? (
           <text
-            key={i}
-            className={`rotulo-x${sob === i ? ' sob' : ''}`}
-            x={geo.xMeio(i)}
+            key={indice}
+            className={`rotulo-x${sob === indice ? ' sob' : ''}`}
+            x={geo.xMeio(indice)}
             y={geo.y(0) + 16}
             textAnchor="middle"
           >
-            <title>{c.rotulo}</title>
-            {inteiros[i]}
+            <title>{categoria.rotulo}</title>
+            {inteiros[indice]}
           </text>
         ) : (
           <text
-            key={i}
-            className={`rotulo-x${sob === i ? ' sob' : ''}`}
-            x={geo.xMeio(i)}
+            key={indice}
+            className={`rotulo-x${sob === indice ? ' sob' : ''}`}
+            x={geo.xMeio(indice)}
             y={geo.y(0) + 14}
             textAnchor="end"
-            transform={`rotate(-45 ${geo.xMeio(i)} ${geo.y(0) + 14})`}
+            transform={`rotate(-45 ${geo.xMeio(indice)} ${geo.y(0) + 14})`}
           >
             {/* O rótulo inteiro fica no tooltip; no eixo vai o que distingue. */}
-            <title>{c.rotulo}</title>
-            {rotuloDoEixo(partes[i] ?? [], c.rotulo, orcamento)}
+            <title>{categoria.rotulo}</title>
+            {rotuloDoEixo(partes[indice] ?? [], categoria.rotulo, orcamento)}
           </text>
         );
       })}

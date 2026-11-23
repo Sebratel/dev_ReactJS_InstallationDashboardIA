@@ -89,7 +89,8 @@ export function Capa(props: {
   // As idades ("há 23min") e a "próxima ~HH:MM" andam sozinhas, sem esperar um clique.
   const agora = useAgora();
   const leitura =
-    saude?.refresh?.queries.find((q) => q.id === 'hora-atualizado')?.ultimaCarga ?? props.dadoDe;
+    saude?.refresh?.queries.find((consulta) => consulta.id === 'hora-atualizado')?.ultimaCarga ??
+    props.dadoDe;
 
   return (
     <div className="flex flex-col gap-[10px] pb-[16px]">
@@ -123,8 +124,8 @@ export function Capa(props: {
       <div className="grid grid-cols-[repeat(auto-fit,minmax(300px,1fr))] items-stretch gap-[10px]">
         <Bloco titulo="Objetivo">
           <Lista>
-            {OBJETIVOS.map((o) => (
-              <li key={o}>{o}</li>
+            {OBJETIVOS.map((opcao) => (
+              <li key={opcao}>{opcao}</li>
             ))}
           </Lista>
         </Bloco>
@@ -153,9 +154,9 @@ export function Capa(props: {
 
         <Bloco titulo="Indicadores">
           <Lista>
-            {INDICADORES.map(([t, d]) => (
-              <li key={t}>
-                <b>{t}:</b> {d}
+            {INDICADORES.map(([tela, dados]) => (
+              <li key={tela}>
+                <b>{tela}:</b> {dados}
               </li>
             ))}
           </Lista>

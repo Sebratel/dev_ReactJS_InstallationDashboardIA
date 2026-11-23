@@ -30,7 +30,7 @@
 
 import { useMemo } from 'react';
 import type { DadosDeMatriz } from '../../services/dashboardService.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { inteiro } from '../../utils/formato.ts';
 
 const DIAS_DA_SEMANA = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
@@ -63,10 +63,10 @@ const formatoDoDia = new Intl.DateTimeFormat('pt-BR', {
 });
 
 /** A soma de uma coluna da matriz — o total daquele dia, somando todas as linhas. */
-function somaDaColuna(d: DadosDeMatriz, coluna: number): number {
+function somaDaColuna(matriz: DadosDeMatriz, coluna: number): number {
   let total = 0;
-  for (let linha = 0; linha < d.linhas.length; linha++) {
-    const valor = d.celulas[linha]?.[coluna]?.[0];
+  for (let linha = 0; linha < matriz.linhas.length; linha++) {
+    const valor = matriz.celulas[linha]?.[coluna]?.[0];
     if (typeof valor === 'number') total += valor;
   }
   return total;
@@ -79,13 +79,13 @@ function somaDaColuna(d: DadosDeMatriz, coluna: number): number {
  * daria um calendário em que o dia 3 soma dois meses diferentes.
  */
 function totaisPorDia(
-  d: DadosDeMatriz,
+  matriz: DadosDeMatriz,
 ): { porDia: Map<number, number>; ano: number; mes: number } | null {
   const porDia = new Map<number, number>();
   let anoMes: { ano: number; mes: number } | null = null;
 
-  for (let coluna = 0; coluna < d.colunas.length; coluna++) {
-    const bruto = d.colunas[coluna]?.[0];
+  for (let coluna = 0; coluna < matriz.colunas.length; coluna++) {
+    const bruto = matriz.colunas[coluna]?.[0];
     if (bruto == null) continue;
     const data = new Date(bruto as string);
     if (Number.isNaN(data.getTime())) continue;
@@ -95,7 +95,7 @@ function totaisPorDia(
     if (anoMes && (anoMes.ano !== ano || anoMes.mes !== mes)) return null;
     anoMes = { ano, mes };
 
-    porDia.set(data.getUTCDate(), somaDaColuna(d, coluna));
+    porDia.set(data.getUTCDate(), somaDaColuna(matriz, coluna));
   }
 
   return anoMes ? { porDia, ...anoMes } : null;
@@ -124,12 +124,12 @@ function celulasDoMes(ano: number, mes: number, porDia: ReadonlyMap<number, numb
  * Recusa sozinha o que não dá grade de mês: coluna que não é data, matriz sem coluna,
  * matriz ainda incompleta (o detalhe chega paginado) e mais de um mês.
  */
-function constroiSemanas(d: DadosDeMatriz): Semanas | null {
-  if (d.chavesDeColuna.length !== 1 || d.tiposDeColuna[0] !== 'date') return null;
-  if (d.colunas.length === 0) return null;
-  if (d.linhas.length !== d.linhasTotais) return null;
+function constroiSemanas(matriz: DadosDeMatriz): Semanas | null {
+  if (matriz.chavesDeColuna.length !== 1 || matriz.tiposDeColuna[0] !== 'date') return null;
+  if (matriz.colunas.length === 0) return null;
+  if (matriz.linhas.length !== matriz.linhasTotais) return null;
 
-  const totais = totaisPorDia(d);
+  const totais = totaisPorDia(matriz);
   if (!totais) return null;
   return celulasDoMes(totais.ano, totais.mes, totais.porDia);
 }
@@ -137,7 +137,7 @@ function constroiSemanas(d: DadosDeMatriz): Semanas | null {
 export function Calendario({ dados }: { dados: DadosDeMatriz }) {
   const semanas = useMemo(() => constroiSemanas(dados), [dados]);
 
-  if (!semanas || semanas.celulas.every((c) => c === null)) return null;
+  if (!semanas || semanas.celulas.every((celula) => celula === null)) return null;
 
   return (
     <div
@@ -145,26 +145,31 @@ export function Calendario({ dados }: { dados: DadosDeMatriz }) {
       role="img"
       aria-label="Distribuição diária no mês, um quadrado por dia"
     >
-      <div className={cn(GRADE, 'mb-[2px] text-center text-[0.55rem] font-bold text-pbi-muted')}>
-        {DIAS_DA_SEMANA.map((letra, i) => (
-          <span key={i}>{letra}</span>
+      <div
+        className={juntarClasses(
+          GRADE,
+          'mb-[2px] text-center text-[0.55rem] font-bold text-pbi-muted',
+        )}
+      >
+        {DIAS_DA_SEMANA.map((letra, indice) => (
+          <span key={indice}>{letra}</span>
         ))}
       </div>
       <div className={GRADE}>
-        {semanas.celulas.map((c, i) =>
-          c === null ? (
-            <span key={i} className={DIA} />
+        {semanas.celulas.map((celula, indice) =>
+          celula === null ? (
+            <span key={indice} className={DIA} />
           ) : (
             <span
-              key={i}
-              className={cn(DIA, 'bg-pbi-gold')}
+              key={indice}
+              className={juntarClasses(DIA, 'bg-pbi-gold')}
               style={{
                 opacity:
                   semanas.maior > 0
-                    ? OPACIDADE_MINIMA + (1 - OPACIDADE_MINIMA) * (c.valor / semanas.maior)
+                    ? OPACIDADE_MINIMA + (1 - OPACIDADE_MINIMA) * (celula.valor / semanas.maior)
                     : OPACIDADE_MINIMA,
               }}
-              title={`${c.rotulo}: ${inteiro(c.valor)}`}
+              title={`${celula.rotulo}: ${inteiro(celula.valor)}`}
             />
           ),
         )}

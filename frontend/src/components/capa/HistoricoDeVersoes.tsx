@@ -3,7 +3,7 @@
 // próxima e, ao lado, o selo da versão, a data e a alteração.
 
 import { VERSOES } from '../../utils/capaVersoes.ts';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 
 export function HistoricoDeVersoes() {
   return (
@@ -12,37 +12,39 @@ export function HistoricoDeVersoes() {
         Histórico de versões do painel
       </summary>
       <ol className="flex flex-col px-[20px] py-[18px]">
-        {VERSOES.map((v, i) => {
-          const ultima = i === VERSOES.length - 1;
+        {VERSOES.map((valor, indice) => {
+          const ultima = indice === VERSOES.length - 1;
           return (
-            <li key={v.versao} className="flex gap-[14px]">
+            <li key={valor.versao} className="flex gap-[14px]">
               <div className="flex flex-none flex-col items-center">
                 <span
-                  className={cn(
+                  className={juntarClasses(
                     'mt-[4px] size-[11px] flex-none rounded-[50%] bg-pbi-neutro',
-                    v.marco && 'bg-pbi-gold [box-shadow:0_0_0_4px_var(--pbi-gold-200)]',
+                    valor.marco && 'bg-pbi-gold [box-shadow:0_0_0_4px_var(--pbi-gold-200)]',
                   )}
                 />
                 {!ultima && <span className="my-[4px] w-px flex-[1_1_auto] bg-pbi-borda" />}
               </div>
-              <div className={cn('min-w-0', !ultima && 'pb-[16px]')}>
+              <div className={juntarClasses('min-w-0', !ultima && 'pb-[16px]')}>
                 <div className="flex flex-wrap items-center gap-[8px]">
                   <span
-                    className={cn(
+                    className={juntarClasses(
                       'rounded-[4px] border border-pbi-borda bg-pbi-fundo px-[7px] py-[1px] text-[0.66rem] font-extrabold text-pbi-ink',
-                      v.marco && 'border-pbi-primary bg-pbi-primary text-pbi-sobre-primary',
+                      valor.marco && 'border-pbi-primary bg-pbi-primary text-pbi-sobre-primary',
                     )}
                   >
-                    v{v.versao}
+                    v{valor.versao}
                   </span>
-                  <span className="text-[0.68rem] font-bold text-pbi-muted">{v.data}</span>
-                  {v.marco && (
+                  <span className="text-[0.68rem] font-bold text-pbi-muted">{valor.data}</span>
+                  {valor.marco && (
                     <span className="text-[0.6rem] font-extrabold tracking-[0.08em] text-pbi-gold-600 uppercase">
                       Marco
                     </span>
                   )}
                 </div>
-                <p className="mt-[3px] text-[0.8rem] leading-[1.45] text-pbi-ink">{v.alteracao}</p>
+                <p className="mt-[3px] text-[0.8rem] leading-[1.45] text-pbi-ink">
+                  {valor.alteracao}
+                </p>
               </div>
             </li>
           );

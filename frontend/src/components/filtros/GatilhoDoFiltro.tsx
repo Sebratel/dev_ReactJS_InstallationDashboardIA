@@ -6,7 +6,7 @@
 
 import type { ReactNode } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { cn } from '../../utils/cn.ts';
+import { juntarClasses } from '../../utils/cn.ts';
 import { rotuloDeCampo } from '../../utils/rotulos.ts';
 
 /** O nome de uma fileira da barra (a dos chips), pequeno e em maiúsculas. */
@@ -35,7 +35,7 @@ export function GatilhoDoFiltro(props: {
   return (
     <div className="relative">
       <button
-        className={cn(
+        className={juntarClasses(
           'inline-flex h-[30px] max-w-[280px] items-center gap-[6px] rounded-[8px] border-pbi-borda bg-pbi-superficie px-[10px] py-0 whitespace-nowrap text-pbi-ink transition-colors enabled:hover:border-pbi-primary-texto',
           marcado && 'border-pbi-primary-texto bg-pbi-primary-soft text-pbi-primary-texto',
         )}
@@ -44,7 +44,12 @@ export function GatilhoDoFiltro(props: {
         aria-expanded={props.aberto}
         title={props.title}
       >
-        <span className={cn('font-semibold text-pbi-muted', marcado && 'text-pbi-primary-texto')}>
+        <span
+          className={juntarClasses(
+            'font-semibold text-pbi-muted',
+            marcado && 'text-pbi-primary-texto',
+          )}
+        >
           {rotuloDeCampo(props.rotulo)}
         </span>
         <span className="max-w-[140px] truncate">{props.resumo}</span>

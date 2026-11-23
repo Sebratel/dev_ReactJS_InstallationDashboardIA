@@ -24,9 +24,9 @@ import { MensagemDeEstado } from '../ui/Estado.tsx';
 /** "12/11/2026 às 14:32", ou `null`. O fuso é o do navegador — o mesmo das outras telas. */
 function quando(iso: string | null): string | null {
   if (!iso) return null;
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const data = new Date(iso);
+  if (Number.isNaN(data.getTime())) return null;
+  return data.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 /** O texto gravado de uma meta, ou vazio quando ela ainda não tem valor. */
@@ -62,7 +62,7 @@ function vigenciaDaMeta(meta: MetaDeNegocio, gravadaEm: string | null): string {
 }
 
 function UmaMeta({ meta }: { meta: MetaDeNegocio }) {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   // O que está no campo. Começa no valor gravado e NUNCA é sincronizado sozinho com ele:
   // quem está digitando não pode ver o número pular embaixo do cursor, e uma releitura
   // (outro gestor salvou noutra aba) não pode apagar o que esta pessoa escreveu. Se os
@@ -72,9 +72,9 @@ function UmaMeta({ meta }: { meta: MetaDeNegocio }) {
   const gravacao = useMutation({
     mutationFn: (valor: number) => salvaMeta(meta.id, valor),
     onSuccess: (resposta) => {
-      qc.setQueryData(CHAVE_METAS, resposta);
+      queryClient.setQueryData(CHAVE_METAS, resposta);
       // O campo passa a mostrar o que o SERVIDOR devolveu, não o que foi digitado.
-      const gravada = resposta.metas.find((m) => m.id === meta.id);
+      const gravada = resposta.metas.find((metaAtual) => metaAtual.id === meta.id);
       setTexto(textoDaMeta(gravada?.valor ?? null));
     },
   });
@@ -152,8 +152,8 @@ export function Metas() {
 
   return (
     <div className="flex flex-col gap-[var(--gap)]">
-      {metas.map((m) => (
-        <UmaMeta key={m.id} meta={m} />
+      {metas.map((metaAtual) => (
+        <UmaMeta key={metaAtual.id} meta={metaAtual} />
       ))}
     </div>
   );

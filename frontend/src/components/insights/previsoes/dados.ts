@@ -29,7 +29,9 @@ function comFaixasEmpilhadas(tecnico: Tecnico): TecnicoComFaixas {
 
 /** Os técnicos do maior esperado para o menor, prontos para a barra empilhada. */
 export function tecnicosPorEsperado(tecnicos: readonly Tecnico[]): TecnicoComFaixas[] {
-  return [...tecnicos].sort((a, b) => b.esperado - a.esperado).map(comFaixasEmpilhadas);
+  return [...tecnicos]
+    .sort((primeiro, segundo) => segundo.esperado - primeiro.esperado)
+    .map(comFaixasEmpilhadas);
 }
 
 /** As faixas que valem a pena mostrar na dica de um técnico (≥ 1% de chance). */
@@ -87,9 +89,9 @@ export function pontosDiarios(dados: RespostaPrevisoes, hoje: string): PontoDiar
 
 /** Chuva fraca, média ou forte — a cor da barrinha do gráfico de baixo. */
 export function corDaChuva(milimetros: number | null): string {
-  const mm = milimetros ?? 0;
-  if (mm >= 25) return COR.chuvaForte;
-  if (mm >= 10) return COR.chuvaMedia;
+  const chuvaMm = milimetros ?? 0;
+  if (chuvaMm >= 25) return COR.chuvaForte;
+  if (chuvaMm >= 10) return COR.chuvaMedia;
   return COR.chuvaFraca;
 }
 
