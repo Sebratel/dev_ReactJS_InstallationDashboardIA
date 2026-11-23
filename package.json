@@ -46,6 +46,7 @@
     "probe:peso-memoria": "node --max-old-space-size=4096 backend/tools/probe/src/peso-memoria.ts",
     "probe:peso-visual": "node --max-old-space-size=4096 backend/tools/probe/src/peso-visual.ts",
     "probe:carga-usuarios": "node backend/tools/probe/src/carga-usuarios.ts",
+    "probe:agregada-srd": "node backend/tools/probe/src/agregada-srd.ts",
     "probe:memoria-workers": "node --max-old-space-size=768 --expose-gc backend/tools/probe/src/memoria-workers.ts",
     "probe:prioridade-fila": "node backend/tools/probe/src/prioridade-fila.ts",
     "probe:custo-contratos": "node backend/tools/probe/src/custo-contratos.ts",
